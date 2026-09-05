@@ -54,7 +54,9 @@ import {
   type AgencyMode,
   agencyModeFor,
   agencyShapeExperimentFor,
+  chatModelFor,
   nextConversationAgencyState,
+  type PracticeChatModel,
   truncateAgencyShape,
 } from "./conversation_agency.ts";
 import {
@@ -102,6 +104,7 @@ import {
   CLAUDE_HAIKU_MODEL,
   CLAUDE_SONNET_MODEL,
   type ClaudeArgs,
+  type ClaudeUsage,
 } from "./claude.ts";
 import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { buildAcquaintanceOrigin } from "./acquaintance_origin.ts";
@@ -2280,6 +2283,12 @@ export function createPracticeChatHandler(
         deps.getEnv("PRACTICE_AGENCY_SHAPE_EXPERIMENT"),
       )
       : "off";
+    // Phase 4.4 混合模型路由旗標：`mixed`＝她要介入的那一輪換 Claude Haiku 4.5、
+    // 其餘 DeepSeek；未設／其他值＝chat 生成路徑逐位元組與接線前相同（連
+    // telemetry 都不多一個 key）。與 agency 旗標獨立，但只在 agency `on` 且
+    // 這一輪真的介入時才有效果（`chatModelFor`）。
+    const chatModelRoutingFlag = deps.getEnv("PRACTICE_CHAT_MODEL_ROUTING");
+    const chatModelRoutingOn = chatModelRoutingFlag === "mixed";
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -4383,6 +4392,11 @@ export function createPracticeChatHandler(
     let stageDirectionRepairs = 0;
     /** Phase 3.3 `truncate` 臂丟掉幾則（旋鈕 off 時永遠 0，也不進 telemetry）。 */
     let shapeTruncatedBubbles = 0;
+    /** Phase 4.4：這一輪女生回覆實際用的模型（旗標 off 時永遠 deepseek）。 */
+    let chatModelUsed: PracticeChatModel = "deepseek";
+    /** Claude 呼叫失敗、當輪退回 DeepSeek 重生過。 */
+    let chatModelFallback = false;
+    let chatModelUsage: ClaudeUsage | undefined;
     try {
       // reply-style-v1（PR-2）：server-only 旗標；關閉或角色沒有 mapping 時
       // prompt／守門／回應逐字與舊版相同（index_test 對 fee76b87 golden bytes 比對）。
@@ -4428,16 +4442,56 @@ export function createPracticeChatHandler(
       // conversation-agency-v1（Codex P1）：獨立於 responsePlan，replyStyle 關閉
       // 或角色沒有 mapping 時一樣有值。
       agencyDecision = chatPromptBundle.agencyDecision;
+      // Phase 4.4 混合模型路由：條件與黑箱 runner 的 `--chat-model=mixed` 臂
+      // 逐字相同（`chatModelFor`）。沒有 Anthropic key／沒有注入 callClaude
+      // 就當作沒開（chat 本來就要求 DeepSeek key 才進得來，退路一定在）。
+      const useHaiku =
+        chatModelFor(chatModelRoutingFlag, agencyMode, agencyDecision) ===
+          "haiku" && !!claudeApiKey && !!deps.callClaude;
+      const generateWithDeepSeek = () =>
+        deps.callDeepSeek({
+          apiKey,
+          messages: chatPromptBundle.messages,
+          maxTokens: CHAT_MAX_TOKENS,
+          temperature: CHAT_TEMPERATURE,
+          timeoutMs: DEEPSEEK_TIMEOUT_MS,
+        });
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {
-          reply = await deps.callDeepSeek({
-            apiKey,
-            messages: chatPromptBundle.messages,
-            maxTokens: CHAT_MAX_TOKENS,
-            temperature: CHAT_TEMPERATURE,
-            timeoutMs: DEEPSEEK_TIMEOUT_MS,
-          });
+          if (useHaiku && !chatModelFallback) {
+            try {
+              // max_tokens／temperature 與 DeepSeek 路徑同值（成本護欄：Claude
+              // 這一輪不會比 DeepSeek 那一輪更長），system 走 `callClaude` 內建
+              // 的 ephemeral cache_control。
+              reply = await deps.callClaude!({
+                apiKey: claudeApiKey!,
+                model: CLAUDE_HAIKU_MODEL,
+                messages: chatPromptBundle.messages,
+                maxTokens: CHAT_MAX_TOKENS,
+                temperature: CHAT_TEMPERATURE,
+                timeoutMs: DEEPSEEK_TIMEOUT_MS,
+                onUsage: (usage) => {
+                  chatModelUsage = usage;
+                },
+              });
+              chatModelUsed = "haiku";
+            } catch (e) {
+              // 逾時／4xx／5xx／解析失敗都退回 DeepSeek 同一輪重生，之後這一輪
+              // 不再打 Claude（避免第二 attempt 又付一次同樣的失敗）。
+              chatModelFallback = true;
+              chatModelUsed = "deepseek";
+              chatModelUsage = undefined;
+              logWarn("practice_chat_model_fallback", {
+                user: summarizeUser(user.id),
+                attempt,
+                error: getErrorMessage(e),
+              });
+              reply = await generateWithDeepSeek();
+            }
+          } else {
+            reply = await generateWithDeepSeek();
+          }
           // DeepSeek 偶爾在短/冒犯輸入下退回訓練分佈的簡體字，繁體鐵則守不住；
           // 其他 AI 輸出欄位（hint/debrief/temperature）都已過這道轉換，這裡補齊。
           reply = toTraditionalChinese(normalizeLiteralNewlines(reply));
@@ -4730,6 +4784,16 @@ export function createPracticeChatHandler(
             : {}),
         }
         : null,
+      // Phase 4.4：混合模型路由旗標開著才有這三個 key（未設／off／亂填時
+      // 整組不存在，flag-off golden 一個位元都不動）。usage 只有真的成功打到
+      // Claude 那一輪才有；每日預算刻意不做，成本看 Anthropic console。
+      ...(chatModelRoutingOn
+        ? {
+          chatModel: chatModelUsed,
+          ...(chatModelFallback ? { chatModelFallback: true } : {}),
+          ...(chatModelUsage ? { chatModelUsage } : {}),
+        }
+        : {}),
       // Phase 2：delta cap 是否真的壓過這一輪的 heat／familiarity delta。
       // Codex round-2 P0-2：旗標 off 時這個 key **根本不存在**（不是 "none"）
       // ——`main` 的 telemetry 沒有它，填預設值等於旗標關著的 log 也多一個欄位。
@@ -4837,8 +4901,10 @@ export function createPracticeChatHandler(
       aiTurnCount: newAiCount,
       sessionComplete: isSessionComplete(newAiCount),
       costDeducted: deducted,
-      provider: "deepseek",
-      model: DEEPSEEK_MODEL,
+      // Phase 4.4：路由旗標關著時永遠是 deepseek／DEEPSEEK_MODEL（逐字舊行為）；
+      // 真的走 Haiku 那一輪就照實回報，payload 不說謊（client 目前不讀這兩格）。
+      provider: chatModelUsed === "haiku" ? "anthropic" : "deepseek",
+      model: chatModelUsed === "haiku" ? CLAUDE_HAIKU_MODEL : DEEPSEEK_MODEL,
       generatedAt: (deps.now?.() ?? new Date()).toISOString(),
       ...remainingFrom(sub, limits, deducted),
     };
