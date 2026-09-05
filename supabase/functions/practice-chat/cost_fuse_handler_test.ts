@@ -549,3 +549,34 @@ Deno.test("routing off 時 hint 照樣累加；同一天切成 mixed，下一輪
   assertEquals(routingMixed.state.claudeCalls.length, 0);
 });
 
+Deno.test("旗標未設：hint 路徑一樣零 DB 讀寫（三個 flush 點都在旗標之下）", async () => {
+  const fake = makeFake({
+    ledger: ledger({
+      practice_mode: "beginner",
+      ai_count: 1,
+      charged: true,
+      temperature_score: 30,
+      familiarity_score: 0,
+    }),
+    claudeReplies: [validHint()],
+    env: { [ROUTING_ENV]: "mixed", [AGENCY_ENV]: "true" },
+  });
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  try {
+    console.log = () => {};
+    console.warn = () => {};
+    await fake.handler(
+      makeRequest(hintBody({ practiceMode: "beginner", turns: SIDE_TURNS })),
+    );
+    await Promise.allSettled(fake.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  assertEquals(
+    fake.state.selects.filter((s) => s.table === COST_FUSE_TABLE),
+    [],
+  );
+  assertEquals(fake.state.rpcCalls.filter((r) => r.fn === COST_FUSE_RPC), []);
+});

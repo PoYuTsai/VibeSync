@@ -3661,7 +3661,7 @@ export function createPracticeChatHandler(
       } finally {
         // Phase 5 WP2（Codex R1 P1）：本請求付掉的 Anthropic 錢累加進今日。
         // `finally` 才蓋得到 503 那條 return（那一輪一樣付了錢）。
-        await flushAnthropicSpend();
+        if (costFuseBudgetUsd !== null) await flushAnthropicSpend();
       }
 
       const hintTotalDurationMs = elapsedMilliseconds(
@@ -4464,7 +4464,7 @@ export function createPracticeChatHandler(
       } finally {
         // Phase 5 WP2（Codex R1 P1）：本請求付掉的 Anthropic 錢累加進今日。
         // `finally` 才蓋得到 503 那條 return（那一輪一樣付了錢）。
-        await flushAnthropicSpend();
+        if (costFuseBudgetUsd !== null) await flushAnthropicSpend();
       }
 
       const debriefTotalDurationMs = elapsedMilliseconds(
@@ -5123,7 +5123,7 @@ export function createPracticeChatHandler(
       // Phase 5 WP2：本輪付掉的 Anthropic 錢累加進今日。放在 `finally` 是因為
       // 整輪失敗（500）那條路一樣付了錢——Codex R2 P2 當初把 `chatModelUsage`
       // 補進失敗事件是同一個理由。
-      await flushAnthropicSpend();
+      if (costFuseBudgetUsd !== null) await flushAnthropicSpend();
     }
 
     const { data: commitData, error: commitError } = await supabase.rpc(
