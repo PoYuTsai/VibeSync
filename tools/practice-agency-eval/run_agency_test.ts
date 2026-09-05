@@ -1129,3 +1129,41 @@ Deno.test("Phase 4.5g：runner 與 production 同源——forced check_out 那�
     globalThis.fetch = original;
   }
 });
+
+Deno.test("Phase 4.5g（P2-1 對拍）：shape=truncate 的 check_out 輪兩發都違規時，runner 的 fail-open 字面＝handler 的字面", async () => {
+  // 對拍固定輸入／期望值與 `chat_model_routing_test.ts` 的
+  // `CHECK_OUT_PAIR_INPUT`／`CHECK_OUT_PAIR_EXPECTED` 同字面：先 truncate
+  // （第一顆是問句 → 丟掉「先忙了」），後檢查仍命中（問句）→ fail-open。
+  const CHECK_OUT_PAIR_INPUT = "你在忙嗎？\n先忙了";
+  const CHECK_OUT_PAIR_EXPECTED = "你在忙嗎？";
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(CHECK_OUT_PAIR_INPUT),
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "on",
+      shape: "truncate",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assertEquals(result.error, undefined);
+    const checkOut = result.turns.filter((t) => t.forcedAct === "check_out");
+    assertEquals(checkOut.length, 1);
+    const t = checkOut[0];
+    assertEquals(t.reply, CHECK_OUT_PAIR_EXPECTED);
+    assertEquals(t.shapeDropped, 1);
+    assertEquals(t.attempts, 2);
+    assertEquals(t.checkOutRetry, true);
+    assertEquals(t.checkOutStructuralFail, true);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

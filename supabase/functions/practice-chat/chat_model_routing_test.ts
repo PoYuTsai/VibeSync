@@ -151,6 +151,8 @@ async function runChat(opts: {
   style?: boolean;
   /** Phase 4.5b：`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true`。 */
   standardClassifier?: boolean;
+  /** Phase 3.3 形狀旋鈕（production 目前開在 `truncate`）。 */
+  shape?: string;
 }): Promise<RunResult> {
   const practiceMode = opts.practiceMode ?? "beginner";
   const fake = makeFake({
@@ -169,6 +171,9 @@ async function runChat(opts: {
       ...(opts.standardClassifier
         ? { PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true" }
         : {}),
+      ...(opts.shape === undefined
+        ? {}
+        : { PRACTICE_AGENCY_SHAPE_EXPERIMENT: opts.shape }),
     },
   });
   const lines: string[] = [];
@@ -959,4 +964,66 @@ Deno.test("Phase 4.5g：不是 check_out 的輪次含問句照樣一次就過（
   assertEquals(agency.forcedAct !== "check_out", true);
   assertEquals(agency.checkOutRetry, undefined);
   assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+// ── Phase 4.5g Codex R1 P2-1／P2-2 ────────────────────────────────────────
+/**
+ * P2-1 對拍固定輸入：`check_out` 輪的兩發都是「問句＋收尾」兩則。
+ * truncate 先砍成第一則（第一顆是問句），後檢查仍命中（問句）→ fail-open。
+ * handler 與黑箱 runner 必須落在**同一個字面**上；runner 那一半釘在
+ * `tools/practice-agency-eval/run_agency_test.ts` 的同名測試。
+ */
+const CHECK_OUT_PAIR_INPUT = "你在忙嗎？\n先忙了";
+const CHECK_OUT_PAIR_EXPECTED = "你在忙嗎？";
+
+Deno.test("Phase 4.5g（P2-1 對拍）：shape=truncate 的 check_out 輪，兩發都違規時 handler 的 fail-open 字面＝runner 的字面", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    shape: "truncate",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: [CHECK_OUT_PAIR_INPUT, CHECK_OUT_PAIR_INPUT],
+  });
+  assertEquals(r.status, 200);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  // 先截斷（丟掉「先忙了」那一則）、再後檢查（第一則是問句）→ 兩發都命中。
+  assertEquals(r.body.reply, CHECK_OUT_PAIR_EXPECTED);
+  assertEquals(agency.shapeTruncatedBubbles, 1);
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutStructuralFail, true);
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+});
+
+Deno.test("Phase 4.5g（P2-2a）：第一發被 check_out 後檢查丟掉、第二發被既有守門擋 → 整輪 500（絕不送出被守門擋下的內容）", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    // 第二發整段是括號旁白，剝到空 → `chat_stage_direction`（不在已讀白名單）。
+    deepSeekReplies: ["你在忙嗎", "（她轉身離開）"],
+    expectFailure: true,
+  });
+  assertEquals(r.status, 500);
+  assertEquals(r.body.error, "practice_generation_failed");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+});
+
+Deno.test("Phase 4.5g（P2-2b）：第一發被既有守門擋、第二發只有 check_out 結構違規 → 200 fail-open，記 fail 但**不**記 retry", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["（她轉身離開）", "你在忙嗎"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "你在忙嗎");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  assertEquals(agency.checkOutStructuralFail, true);
+  // 那一次重試不是這道後檢查造成的，所以 `checkOutRetry` 連 key 都沒有。
+  assertEquals(agency.checkOutRetry, undefined);
 });
