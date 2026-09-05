@@ -2746,3 +2746,55 @@ Deno.test("P1-A：插了標點的**批評性**引用照樣代稱通過", () => {
   assert(card.summary.includes("那種字眼"), card.summary);
   assert(!card.summary.includes("姦"), card.summary);
 });
+
+Deno.test("GLM P1-4：同一則裡先批評再教唆，兩次出現都要收斂並判教唆", () => {
+  assertThrows(
+    () =>
+      parseDebriefCard(
+        cardWith({
+          summary: "你打了「強迫」不對，但「強，迫」也是方法，下次照做就好",
+        }),
+        { turns: FORCE_TURNS },
+      ),
+    Error,
+    "debrief_l4_unsafe",
+  );
+  // 收斂後每一個含詞子句都問過：第一句是批評，第二句是教唆 → true。
+  assert(
+    quotedTermIsIncitement(
+      "你打了強迫不對，但強迫也是方法，下次照做就好",
+      "強迫",
+    ),
+  );
+  // 兩次都是批評時仍然放行（不是把「出現兩次」當成教唆）。
+  const ok = parseDebriefCard(
+    cardWith({ summary: "你打了「強迫」不對，「強，迫」這種字她受不了" }),
+    { turns: FORCE_TURNS },
+  );
+  assert(!ok.summary.includes("強迫"), ok.summary);
+  assertEquals(ok.summary.split("那種字眼").length - 1, 2, ok.summary);
+});
+
+Deno.test("GLM P2-2：全形空白、零寬字元、引號夾在詞中間都收斂得掉", () => {
+  const forms = [
+    "強\u3000迫", // 全形空白
+    "強\u200b迫", // 零寬空格
+    "強\ufeff迫", // BOM／零寬不斷行空白
+    "強「」迫", // 引號
+    "強『』迫",
+  ];
+  for (const quoted of forms) {
+    const card = parseDebriefCard(
+      cardWith({ summary: `你打出「${quoted}」那句之後她就走了` }),
+      { turns: FORCE_TURNS },
+    );
+    assert(card.summary.includes("那種字眼"), JSON.stringify(quoted));
+    assert(!card.summary.includes("迫"), JSON.stringify(quoted));
+  }
+  // 簡體輸出也一樣：可見文字進守門前已經過 toTraditionalChinese。
+  const simplified = parseDebriefCard(
+    cardWith({ summary: "你打出「强，迫」那句之後她就走了" }),
+    { turns: FORCE_TURNS },
+  );
+  assert(simplified.summary.includes("那種字眼"), simplified.summary);
+});

@@ -584,16 +584,23 @@ export function quotedTermIsIncitement(value: string, term: string): boolean {
     .map(normalizeUnsafeText)
     .filter((clause) => clause.length > 0);
   const needle = normalizeUnsafeText(term);
-  const start = clauses.findIndex((clause) => clause.includes(needle));
-  if (start < 0) return false;
-  // 教唆通常接在引用**後面**（「…也是方法，下次照做就好」），所以看的是
-  // 含該詞那一句到句尾的整段。
-  const tail = clauses.slice(start).join("");
-  const incites = QUOTE_ADVICE_PATTERN.test(tail) ||
-    ANALYSIS_PUSH_MARKER_PATTERN.test(tail) ||
-    ANALYSIS_SPICY_ADVOCACY_PATTERN.test(tail);
-  if (!incites) return false;
-  return !condemnationExemptsAfter(tail, tail.indexOf(needle));
+  // GLM P1-4：**每一個**含詞的子句都要問一次。只看第一個的話，
+  // 「你打了「強迫」不對，但「強迫」也是方法，下次照做就好」會因為第一句是
+  // 批評而整段放行。教唆通常接在引用**後面**，所以每次看的是那一句到句尾。
+  //
+  // ponytail: 命中點**之前**的教唆（「下次可以照做，用強迫的」）仍抓不到；
+  // 那要整段語意判斷，超出這道詞面閘門的能力，沒被代稱的詞照舊走既有守門。
+  for (let i = 0; i < clauses.length; i++) {
+    if (!clauses[i].includes(needle)) continue;
+    const tail = clauses.slice(i).join("");
+    const incites = QUOTE_ADVICE_PATTERN.test(tail) ||
+      ANALYSIS_PUSH_MARKER_PATTERN.test(tail) ||
+      ANALYSIS_SPICY_ADVOCACY_PATTERN.test(tail);
+    if (incites && !condemnationExemptsAfter(tail, tail.indexOf(needle))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function hasL4UnsafeVisibleText(

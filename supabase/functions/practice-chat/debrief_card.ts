@@ -373,12 +373,23 @@ function normalizeCrudeText(value: string): string {
 /**
  * Codex R1 P2-6：輸出端也要容忍分隔字元。舊版對可見文字做逐字 `includes`，
  * 「輪 姦」「輪，姦」代稱不掉——而守門自己是正規化後比對，所以那一則照樣被拒，
- * 等於代稱在最需要它的形態上失效。字與字之間允許空白／標點／符號。
+ * 等於代稱在最需要它的形態上失效。
+ *
+ * 字元類要跟 `normalizeUnsafeText`（守門那一側）對得上，不然又會出現「守門看得到
+ * 但代稱看不到」的縫（GLM P2-2）：
+ *   - `\s` 已含全形空白 U+3000 與 U+FEFF；
+ *   - 零寬字元 U+200B 是 `Cf` 不在 `\s` 裡，所以另外收 `\p{Cf}`；
+ *   - 引號「」『』 是 `\p{P}`（Ps／Pe），已涵蓋。
+ * 繁簡不必在這裡處理：可見文字進守門前已經過 `toTraditionalChinese`，而兩張詞表
+ * 本來就同時收繁簡兩形。
+ *
+ * 一律帶 `g`：同一則裡出現兩次（一次原詞、一次夾標點）必須**全部**收斂，
+ * 否則教唆檢查只看得到其中一個（GLM P1-4）。
  */
 function separatorTolerantTermRegex(term: string): RegExp {
   const body = [...term]
     .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("[\\s\\p{P}\\p{S}]*");
+    .join("[\\s\\p{P}\\p{S}\\p{Cf}]*");
   return new RegExp(body, "gu");
 }
 
