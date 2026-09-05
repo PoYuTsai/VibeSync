@@ -116,9 +116,10 @@ Deno.test("429 退避重試三次後成功；每天一次呼叫、之間有間�
           ),
         );
       }
-      return Promise.resolve(
-        fakeResponse(200, '{"result":[{"timestamp":1,"event_message":"x"}]}'),
-      );
+      return Promise.resolve(fakeResponse(
+        200,
+        `{"result":[{"timestamp":${attempts},"event_message":"x"}]}`,
+      ));
     }) as unknown as typeof fetch,
     sleep: (ms) => {
       slept.push(ms);
@@ -277,7 +278,8 @@ Deno.test("--allow-out-anywhere 是逃生口，但 .. 永遠擋", () => {
 Deno.test("截斷是逐日判斷：只有回滿 limit 的那天被標，總數超過不算", async () => {
   const full = '{"result":[{"timestamp":1,"event_message":"a"},' +
     '{"timestamp":2,"event_message":"b"}]}';
-  const partial = '{"result":[{"timestamp":3,"event_message":"c"}]}';
+  const partial = (n: number) =>
+    `{"result":[{"timestamp":${n},"event_message":"c"}]}`;
   let day = 0;
   const result = await fetchLogRows({
     projectRef: "ref",
@@ -287,11 +289,40 @@ Deno.test("截斷是逐日判斷：只有回滿 limit 的那天被標，總數�
     limit: 2,
     fetchImpl: (() => {
       day += 1;
-      return Promise.resolve(fakeResponse(200, day === 2 ? full : partial));
+      return Promise.resolve(
+        fakeResponse(200, day === 2 ? full : partial(day)),
+      );
     }) as unknown as typeof fetch,
     sleep: () => Promise.resolve(),
   });
   // 三天共 4 列 > limit 2，但只有第二天真的回滿。
   assertEquals(result.rows.length, 4);
   assertEquals(result.truncatedDays, ["2026-08-31"]);
+});
+
+Deno.test("相鄰日窗邊界重疊的列只算一次", async () => {
+  const boundary = '{"timestamp":1788558109700000,"event_message":"edge"}';
+  let day = 0;
+  const result = await fetchLogRows({
+    projectRef: "ref",
+    token: "t",
+    sql: "SELECT 1",
+    windows: dayWindows({ from: "2026-08-30", to: "2026-09-01" }),
+    fetchImpl: (() => {
+      day += 1;
+      return Promise.resolve(fakeResponse(
+        200,
+        day === 1
+          ? `{"result":[${boundary},{"timestamp":1,"event_message":"a"}]}`
+          : `{"result":[${boundary},{"timestamp":2,"event_message":"b"}]}`,
+      ));
+    }) as unknown as typeof fetch,
+    sleep: () => Promise.resolve(),
+  });
+  // 兩天各回 2 列、其中一列相同 → 去重後 3 列。
+  assertEquals(result.rows.length, 3);
+  assertEquals(
+    result.rows.filter((row) => row.event_message === "edge").length,
+    1,
+  );
 });

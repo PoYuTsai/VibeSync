@@ -164,6 +164,11 @@ console.log(JSON.stringify({ level: "info", event, ...data }));
 `--dry-run` 會把 SQL、段數、每一段的 `iso_timestamp_start`／`iso_timestamp_end`
 全部印出來。
 
+**已知未確認**：`iso_timestamp_end` 到底是 inclusive 還是 exclusive 沒有實測過。
+所以相鄰兩段可能各自把邊界上那一列拉回來一次。腳本以
+`(timestamp, event_message)` 去重，重複列不會讓比率的分子分母各多一次；真要
+確認邊界語意，拿同一列的 timestamp 各跑一次 end 剛好等於它的窗即可。
+
 ### 限流
 
 端點回 HTTP 429，或 body 是

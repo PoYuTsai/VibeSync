@@ -255,6 +255,10 @@ export async function fetchLogRows(opts: {
   const rows: LogRow[] = [];
   const missingDays: string[] = [];
   const truncatedDays: string[] = [];
+  // 相鄰日窗的邊界重疊時同一列會被拉兩次（end 是 inclusive 還是 exclusive
+  // 沒有實測確認過）。以 (timestamp, event_message) 去重，重複列不會讓分子
+  // 分母各自多一次。
+  const seen = new Set<string>();
 
   for (const [index, window] of opts.windows.entries()) {
     if (index > 0) await sleep(LOGS_DAY_GAP_MS);
@@ -280,7 +284,12 @@ export async function fetchLogRows(opts: {
       if (opts.limit !== undefined && dayRows.length >= opts.limit) {
         truncatedDays.push(window.day);
       }
-      rows.push(...dayRows);
+      for (const dayRow of dayRows) {
+        const key = `${dayRow.timestamp}\u0000${dayRow.event_message}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push(dayRow);
+      }
       break;
     }
   }
