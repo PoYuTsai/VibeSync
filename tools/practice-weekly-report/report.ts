@@ -141,21 +141,28 @@ async function readAccessToken(): Promise<string> {
   );
 }
 
-async function runQuery<T>(
-  projectRef: string,
-  token: string,
-  sql: string,
-): Promise<T[]> {
-  assertReadOnlySql(sql);
-  const response = await fetch(
-    `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
+/**
+ * Postgres 唯讀查詢。守門在**這裡**再叫一次（不是只靠 main）：任何呼叫端拿到
+ * 這支函式都不可能繞過 `assertReadOnlySql`，而且是在 `fetch` 之前就丟錯——
+ * 被擋下的語句一個位元組都不會離開這台機器。
+ */
+export async function fetchDbRows<T>(opts: {
+  projectRef: string;
+  token: string;
+  sql: string;
+  fetchImpl?: typeof fetch;
+}): Promise<T[]> {
+  assertReadOnlySql(opts.sql);
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const response = await fetchImpl(
+    `https://api.supabase.com/v1/projects/${opts.projectRef}/database/query`,
     {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `Bearer ${opts.token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query: sql }),
+      body: JSON.stringify({ query: opts.sql }),
     },
   );
   if (!response.ok) {
@@ -201,6 +208,7 @@ export async function fetchLogRows(opts: {
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<LogFetchResult> {
+  assertReadOnlySql(opts.sql);
   const fetchImpl = opts.fetchImpl ?? fetch;
   const sleep = opts.sleep ??
     ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
@@ -268,13 +276,16 @@ async function main(): Promise<number> {
     return 2;
   }
   const token = await readAccessToken();
-  const sessions = await runQuery<SessionRow>(
-    opts.projectRef,
+  const sessions = await fetchDbRows<SessionRow>({
+    projectRef: opts.projectRef,
     token,
-    sessionsSql,
-  );
-  const aiLogs = await runQuery<AiLogRow>(opts.projectRef, token, aiLogsSql);
-  assertReadOnlySql(logsSql);
+    sql: sessionsSql,
+  });
+  const aiLogs = await fetchDbRows<AiLogRow>({
+    projectRef: opts.projectRef,
+    token,
+    sql: aiLogsSql,
+  });
   const logs = await fetchLogRows({
     projectRef: opts.projectRef,
     token,

@@ -127,3 +127,40 @@ Deno.test("logs 端點把 SQL 與 iso 時間窗都放進 query string", () => {
   assertStringIncludes(url, "iso_timestamp_end=2026-08-30T00%3A00%3A00Z");
   assertEquals(url.includes(" "), false);
 });
+
+Deno.test("守門擋掉「一條 SELECT 也能有副作用」的那一類（Codex R1 P1）", () => {
+  for (
+    const sql of [
+      "SELECT * INTO evil FROM ai_logs",
+      "SELECT nextval('seq')",
+      "SELECT setval('seq', 1)",
+      "SELECT currval('seq')",
+      "SELECT set_config('role', 'postgres', false)",
+      "SELECT pg_advisory_lock(1)",
+      "SELECT pg_advisory_xact_lock(1)",
+      "SELECT pg_advisory_unlock_all()",
+      "SELECT pg_sleep(60)",
+      "SELECT pg_sleep_for('5 minutes')",
+      "SELECT pg_terminate_backend(1)",
+      "SELECT pg_cancel_backend(1)",
+      "SELECT lo_import('/etc/passwd')",
+      "SELECT lo_from_bytea(0, 'x')",
+      "SELECT dblink('...', 'delete from ai_logs')",
+      "SELECT dblink_exec('...', 'drop table ai_logs')",
+    ]
+  ) {
+    assertThrows(() => assertReadOnlySql(sql), Error, "read_only_guard", sql);
+  }
+});
+
+Deno.test("守門不誤殺正常欄位名", () => {
+  for (
+    const sql of [
+      "SELECT created_at, updated_at, inserted_by FROM public.ai_logs",
+      "SELECT settings, dropped_count, intoxication FROM t",
+      "SELECT logo_url, copy_me FROM t",
+    ]
+  ) {
+    assertEquals(assertReadOnlySql(sql), sql);
+  }
+});

@@ -16,8 +16,18 @@ export const MAX_TURNS = 20;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * 禁字表。前半是 DDL/DML，後半是 Codex R1 P1 補的「一條 SELECT 也能造成副作用」
+ * 那一類：`SELECT … INTO` 會建表、序列函式會推進序列、`set_config` 改 session
+ * 狀態、advisory lock 會鎖住別人、`pg_sleep` 可以吊死連線、`pg_terminate_backend`
+ * ／`pg_cancel_backend` 殺別人的查詢、`lo_*` 大物件函式會寫 pg_largeobject、
+ * `dblink` 能把整條寫入語句轉手到別的連線去執行。
+ *
+ * `lo_` 與 advisory lock 用前綴比對（`lo_import`／`lo_from_bytea`／
+ * `pg_advisory_xact_lock_shared` 這種變體太多，逐一列舉必漏）。
+ */
 const WRITE_KEYWORDS =
-  /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|merge|copy|vacuum|call|do|set|refresh|comment)\b/i;
+  /\b(insert|into|update|delete|drop|alter|truncate|create|grant|revoke|merge|copy|vacuum|call|do|set|refresh|comment|nextval|setval|currval|set_config|pg_sleep\w*|pg_terminate_backend|pg_cancel_backend|pg_advisory\w*|lo_\w+|dblink\w*)\b/i;
 
 function assertIsoDate(value: string): string {
   if (!ISO_DATE.test(value)) {

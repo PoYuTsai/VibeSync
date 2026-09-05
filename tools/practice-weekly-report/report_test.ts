@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   DEFAULT_LOGS_LIMIT,
+  fetchDbRows,
   fetchLogRows,
   LOGS_DAY_GAP_MS,
   parseArgs,
@@ -190,4 +191,38 @@ Deno.test("未知參數、孤立參數、缺值一律報錯不靜默", () => {
   assertThrows(() => parseArgs(["stray"]), Error, "unexpected argument");
   assertThrows(() => parseArgs(["--out"]), Error, "missing value");
   assertThrows(() => parseArgs(["--out", "--from=2026-08-30"]), Error);
+});
+
+Deno.test("守門在送出前擋下：寫入語句一個位元組都不會離開這台機器", async () => {
+  let called = false;
+  const spy = (() => {
+    called = true;
+    return Promise.resolve(fakeResponse(200, '{"result":[]}'));
+  }) as unknown as typeof fetch;
+
+  await assertRejects(
+    () =>
+      fetchLogRows({
+        projectRef: "ref",
+        token: "t",
+        sql: "DELETE FROM ai_logs",
+        windows: dayWindows({ from: "2026-08-30", to: "2026-08-31" }),
+        fetchImpl: spy,
+        sleep: () => Promise.resolve(),
+      }),
+    Error,
+    "read_only_guard",
+  );
+  await assertRejects(
+    () =>
+      fetchDbRows({
+        projectRef: "ref",
+        token: "t",
+        sql: "SELECT pg_sleep(60)",
+        fetchImpl: spy,
+      }),
+    Error,
+    "read_only_guard",
+  );
+  assertEquals(called, false);
 });
