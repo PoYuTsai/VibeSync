@@ -543,8 +543,7 @@ void main() {
     expect(find.text('還沒有練習紀錄'), findsOneWidget);
   });
 
-  testWidgets('history sheet 批次刪除：選取→全選→確認後全刪、離開選取模式',
-      (tester) async {
+  testWidgets('history sheet 批次刪除：選取→全選→確認後全刪、離開選取模式', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     for (final id in ['s1', 's2', 's3']) {
@@ -576,8 +575,7 @@ void main() {
     // 選取模式下每列的單刪垃圾桶要收起來。
     expect(find.byKey(const ValueKey('delete-practice-s1')), findsNothing);
 
-    await tester
-        .tap(find.byKey(const ValueKey('practice-session-select-all')));
+    await tester.tap(find.byKey(const ValueKey('practice-session-select-all')));
     await tester.pump();
     expect(find.text('已選 3 場'), findsOneWidget);
 
@@ -1979,8 +1977,7 @@ void main() {
   // ── 2026-08-08：同一輪已判定沒有可貼句還再按提示 → 先確認再扣額度 ──
   // Eric 實測在死局連按兩次，各扣 1 則拿到同一個「收手」判定。她一回新訊息
   // reason 就會清掉（provider 側已修），確認框只擋原地重按。
-  testWidgets('no-pasteable 狀態下再按提示先彈確認框，取消不扣額度',
-      (tester) async {
+  testWidgets('no-pasteable 狀態下再按提示先彈確認框，取消不扣額度', (tester) async {
     const reason = '她已經明確要求停止聯絡並封鎖了你，這輪沒有任何適合送出的訊息。';
     final seed = revealedPreMsgSeed().copyWith(
       learningMode: PracticeLearningMode.beginner,
@@ -4609,8 +4606,10 @@ void main() {
   Future<void> pumpCheckedOut(
     WidgetTester tester, {
     String? partnerStatus,
+    Size size = const Size(390, 844),
+    double textScale = 1.0,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
@@ -4631,14 +4630,20 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: PracticeChatScreen()),
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
+          home: const PracticeChatScreen(),
+        ),
       ),
     );
     await tester.pump();
   }
 
-  testWidgets('Phase 4.5c：她先去忙了時輸入列上方多一行提示，輸入框仍可用',
-      (tester) async {
+  testWidgets('Phase 4.5c：她先去忙了時輸入列上方多一行提示，輸入框仍可用', (tester) async {
     await pumpCheckedOut(tester, partnerStatus: 'checked_out');
 
     expect(
@@ -4660,4 +4665,41 @@ void main() {
       findsNothing,
     );
   });
+
+  // U3：她只回已讀那一格用同一行提示；大字級與最小支援寬度都不得 overflow。
+  testWidgets('Phase 4.5c：read_only 沿用同一行提示', (tester) async {
+    await pumpCheckedOut(tester, partnerStatus: 'read_only');
+
+    expect(
+      find.byKey(const ValueKey('practice-partner-checked-out')),
+      findsOneWidget,
+    );
+    expect(find.text('她先去忙了，這場可以結束練習看拆解'), findsOneWidget);
+  });
+
+  for (final layout in [
+    // 大字級（iOS 無障礙常見級距）與最小支援寬度（iPhone SE 第一代 320pt）。
+    (label: '大字級 1.3', size: const Size(390, 844), scale: 1.3),
+    (label: '最小寬度 320', size: const Size(320, 568), scale: 1.0),
+    (label: '最小寬度 320 ＋大字級 1.3', size: const Size(320, 568), scale: 1.3),
+  ]) {
+    testWidgets('Phase 4.5c：提示行在${layout.label}下不 overflow', (tester) async {
+      await pumpCheckedOut(
+        tester,
+        partnerStatus: 'checked_out',
+        size: layout.size,
+        textScale: layout.scale,
+      );
+
+      expect(
+        find.byKey(const ValueKey('practice-partner-checked-out')),
+        findsOneWidget,
+      );
+      // `tester.takeException()` 會把 RenderFlex overflow 這類 layout 例外
+      // 取出來；沒有例外時回 null。**非恆真**：同一支測試在 120×400／
+      // textScale 3.0 下實測會失敗（2026-09-05 手動反證過），所以「沒有例外」
+      // 是有內容的斷言，不是這個 harness 根本抓不到 overflow。
+      expect(tester.takeException(), isNull, reason: layout.label);
+    });
+  }
 }
