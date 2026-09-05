@@ -4674,6 +4674,47 @@ void main() {
     expect(field.enabled, isNot(false));
   });
 
+  testWidgets('WP4：她的「（已讀）」回覆畫成玩家泡泡下的小字已讀，不畫成她的泡泡', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith(
+            (ref) => _SeededPracticeChatController(
+              seed: checkedOutSeed(partnerStatus: 'read_only').copyWith(
+                messages: const [
+                  PracticeMessage(role: 'user', text: '東東'),
+                  PracticeMessage(role: 'ai', text: '我先去忙一下'),
+                  PracticeMessage(role: 'user', text: '在嗎'),
+                  PracticeMessage(role: 'ai', text: '（已讀）'),
+                ],
+              ),
+              repository: repo,
+            ),
+          ),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('practice-read-receipt')), findsOneWidget);
+    expect(find.text('已讀'), findsOneWidget);
+    expect(find.text('（已讀）'), findsNothing);
+    // 她的真正回覆照樣是泡泡。
+    expect(find.text('我先去忙一下'), findsOneWidget);
+  });
+
   testWidgets('Phase 4.5c（反例）：一般輪次不顯示那一行', (tester) async {
     await pumpCheckedOut(tester);
 

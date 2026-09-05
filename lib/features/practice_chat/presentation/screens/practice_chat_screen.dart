@@ -337,10 +337,16 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                             if (state.learningMode == PracticeLearningMode.game)
                               const PracticeGameCoachIntro(),
                             for (var i = 0; i < state.messages.length; i++)
-                              _Bubble(
-                                message: state.messages[i],
-                                stagger: i == state.messages.length - 1,
-                              ),
+                              if (_isReadReceipt(state.messages[i]))
+                                const _ReadReceipt()
+                              else
+                                _Bubble(
+                                  message: state.messages[i],
+                                  stagger: i == state.messages.length - 1,
+                                  grouped: i > 0 &&
+                                      state.messages[i - 1].isFromMe ==
+                                          state.messages[i].isFromMe,
+                                ),
                             if (state.isSending) const _ThinkingBubble(),
                             if (state.debrief != null) ...[
                               const SizedBox(height: 8),
@@ -1398,12 +1404,48 @@ List<String> _splitBubbles(String text) {
   return parts;
 }
 
+/// server 在她已讀不回那一輪回的固定字串（`READ_ONLY_REPLY_TEXT`）。
+/// WP4：不畫成她的泡泡，改成玩家上一則底下的小字「已讀」（LINE 的視覺語言）。
+const _kReadReceiptText = '（已讀）';
+
+bool _isReadReceipt(PracticeMessage m) =>
+    !m.isFromMe && m.text.trim() == _kReadReceiptText;
+
+class _ReadReceipt extends StatelessWidget {
+  const _ReadReceipt();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4, bottom: 4),
+        child: Text(
+          '已讀',
+          key: const ValueKey('practice-read-receipt'),
+          style: AppTypography.caption.copyWith(
+            color: AppColors.onBackgroundSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Bubble extends StatefulWidget {
-  const _Bubble({required this.message, this.stagger = false});
+  const _Bubble({
+    required this.message,
+    this.stagger = false,
+    this.grouped = false,
+  });
   final PracticeMessage message;
 
   /// 只有畫面上最新的一則會逐則跳出（間隔 1 秒），歷史訊息直接全顯示。
   final bool stagger;
+
+  /// WP4：跟上一則同一個人 → 貼緊（間距 4）、不重複「我說／她說」；
+  /// 換人 → 間距 12。
+  final bool grouped;
 
   @override
   State<_Bubble> createState() => _BubbleState();
@@ -1462,8 +1504,9 @@ class _BubbleState extends State<_Bubble> {
           Align(
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
+              // 上一則底部固定留 4：同人 4＋0＝4，換人 4＋8＝12。
               margin: EdgeInsets.only(
-                top: index == 0 ? 4 : 2,
+                top: index == 0 ? (widget.grouped ? 0 : 8) : 2,
                 bottom: index == shown.length - 1 ? 4 : 0,
               ),
               padding: const EdgeInsets.symmetric(
@@ -1490,8 +1533,8 @@ class _BubbleState extends State<_Bubble> {
                     isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 說話者只標在第一顆泡，連發時不重複三次。
-                  if (index == 0) ...[
+                  // 說話者只標在一組的第一顆泡，連發／同人連續訊息不重複。
+                  if (index == 0 && !widget.grouped) ...[
                     Text(
                       isMe ? '我說' : '她說',
                       style: AppTypography.bodySmall.copyWith(
@@ -3318,7 +3361,16 @@ class _SessionReviewScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
           children: [
-            for (final m in session.messages) _Bubble(message: m),
+            for (var i = 0; i < session.messages.length; i++)
+              if (_isReadReceipt(session.messages[i]))
+                const _ReadReceipt()
+              else
+                _Bubble(
+                  message: session.messages[i],
+                  grouped: i > 0 &&
+                      session.messages[i - 1].isFromMe ==
+                          session.messages[i].isFromMe,
+                ),
             if (session.hasRestorableDebrief) ...[
               const SizedBox(height: 12),
               PracticeDebriefCard(
