@@ -3,7 +3,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { aggregate, aggregateLogs } from "./aggregate.ts";
-import { renderReport } from "./render.ts";
+import { renderReport, usd } from "./render.ts";
 
 const RANGE = { from: "2026-08-29", to: "2026-09-05" };
 
@@ -154,4 +154,12 @@ Deno.test("撞到單日上限的日子逐日印在涵蓋範圍段", () => {
   }));
   assertStringIncludes(md, "**1 天撞到單日列數上限**");
   assertStringIncludes(md, "2026-09-03");
+});
+
+Deno.test("小額不能顯示成 $0.0000", () => {
+  assertEquals(usd(0.0000294), "$0.0000294");
+  assertEquals(usd(0.00371), "$0.0037100");
+  assertEquals(usd(0), "$0.0000");
+  assertEquals(usd(0.0742), "$0.0742");
+  assertEquals(usd(12.5), "$12.5000");
 });

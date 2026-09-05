@@ -7,7 +7,12 @@ import {
   type Stats,
 } from "./aggregate.ts";
 
-const usd = (value: number) => `$${value.toFixed(4)}`;
+/**
+ * 金額顯示精度。4 位小數對每場成本夠用，但單次 DeepSeek 是 $0.0000294——
+ * 印成 `$0.0000` 等於謊報成零。小於 $0.01 的一律用 7 位小數。
+ */
+export const usd = (value: number) =>
+  `$${value.toFixed(Math.abs(value) < 0.01 && value !== 0 ? 7 : 4)}`;
 const twd = (value: number) =>
   `NT$${Math.round(value).toLocaleString("en-US")}`;
 const pct = (value: number | null) =>
