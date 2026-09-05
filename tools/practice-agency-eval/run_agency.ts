@@ -28,7 +28,8 @@
 //     tools/practice-agency-eval/out/<date>-<label>.json \
 //     [--profiles=a,b] [--scenarios=A01,A02] [--mode=standard|beginner|game] \
 //     [--style=1] [--agency=on] [--repeat=3] [--difficulty=normal] \
-//     [--state=1] [--concurrency=6] [--shape=truncate]
+//     [--state=1] [--concurrency=6] [--shape=truncate] \
+//     [--temperature=80] [--familiarity=70]
 //
 // `--shape=off|truncate`＝Phase 3.3 形狀實驗臂，對應 production 的
 // `PRACTICE_AGENCY_SHAPE_EXPERIMENT`（handler 從 env 讀，這支 runner 直接呼叫
@@ -70,6 +71,7 @@ import type { ChatMessage } from "../../supabase/functions/practice-chat/prompt.
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
 import { normalizeLiteralNewlines } from "../../supabase/functions/practice-chat/prompt_sanitizer.ts";
 import {
+  hasReadOnlyReply,
   hasStageDirection,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
@@ -83,18 +85,24 @@ import {
   buildBakeoffContextFixture,
 } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
+import { estimateCostUsd, HAIKU_4_5_PRICING } from "./pricing.ts";
 import {
   type AgencyClassifierSignal,
   type AgencyMode,
   type AgencyShapeExperiment,
   agencyShapeExperimentFor,
   chatModelFor,
+  checkOutRewriteInstruction,
+  checkOutStructuralViolations,
   type ConversationAgencyState,
   nextConversationAgencyState,
+  READ_ONLY_REPLY_TEXT,
   truncateAgencyShape,
 } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
+  buildStandardAgencyClassifierMessages,
   buildTurnClassifierMessages,
+  parseStandardAgencyClassification,
   parseTurnClassification,
 } from "../../supabase/functions/practice-chat/temperature.ts";
 import {
@@ -110,8 +118,10 @@ const CHAT_TEMPERATURE = 0.9;
 const CHAT_GENERATION_ATTEMPTS = 2;
 const MODEL_TIMEOUT_MS = 30000;
 // handler.ts assisted 分支在還沒有分類器結果時的注入值（beginner 起始溫度／熟悉度）。
-const BEGINNER_TEMPERATURE_SCORE = 40;
-const BEGINNER_FAMILIARITY_SCORE = 10;
+// Phase 4.5h 之後這兩個常數只是 `--temperature`／`--familiarity` 的**預設值**：
+// 省略旗標時注入的仍然是 40／10，行為與加旗標前逐位元組相同。
+export const BEGINNER_TEMPERATURE_SCORE = 40;
+export const BEGINNER_FAMILIARITY_SCORE = 10;
 // 照 handler.ts `TEMPERATURE_JUDGE_MAX_TOKENS`／`TEMPERATURE_JUDGE_TEMPERATURE`
 // 現用值抄錄（未 export；Phase 4.3 步驟 0 的分類器呼叫端，改動記得同步）。
 const CLASSIFIER_MAX_TOKENS = 450;
@@ -179,6 +189,12 @@ export interface AgencyTurnResult {
   readonly shapeDropped: number;
   /** 只在 `shapeDropped > 0` 時記錄：截斷前的完整泡泡（診斷用，逐字對照）。 */
   readonly preTruncationBubbles?: readonly string[];
+  /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發（為真才記）。 */
+  readonly checkOutRetry?: true;
+  /** Phase 4.6 刀 2：第二發真的帶了改寫指令（為真才記）。 */
+  readonly checkOutRewriteInjected?: true;
+  /** Phase 4.5g：第二發仍命中，fail-open 送出（為真才記）。 */
+  readonly checkOutStructuralFail?: true;
   /** 這一輪 `agencyPolicyFor` 的決策（agency 關閉／shadow 時省略）。 */
   readonly policyMode?: "forced" | "bounded";
   readonly forcedAct?: string | null;
@@ -193,8 +209,19 @@ export interface AgencyTurnResult {
   readonly classifierError?: string;
   /** 這一輪結束、狀態推進後的 `ConversationAgencyState`（`--state=1` 才有）。 */
   readonly agencyStateAfter?: ConversationAgencyState | null;
-  /** Phase 4.3 步驟 1（`--chat-model=mixed`）：這一輪實際用的女生回覆模型。 */
-  readonly chatModelUsed?: "deepseek" | "haiku";
+  /**
+   * Phase 4.3 步驟 1（`--chat-model=mixed`）：這一輪實際用的女生回覆模型。
+   * `"none"`＝這一輪**一支生成模型都沒打**（forced `read_only`，見
+   * `readOnlyReply`）。Phase 4.5e 之前這支 runner 沒有 production 的短路，
+   * read_only 那一輪照樣打模型，所以 `"none"` 永遠不會出現。
+   */
+  readonly chatModelUsed?: "deepseek" | "haiku" | "none";
+  /**
+   * Phase 4.5e：這一輪真的只送出一則「（已讀）」（forced `read_only` 短路）。
+   * 與 handler.ts 的 `readOnlyReply` telemetry 同判準（`hasReadOnlyReply`），
+   * 為真才寫；judge 不評這一輪（沒有可判的內容，見 `buildJudgeCases`）。
+   */
+  readonly readOnlyReply?: true;
 }
 
 export interface AgencySessionResult {
@@ -235,6 +262,8 @@ export function looksLikeQuestion(text: string): boolean {
 
 export type ChatCaller = (
   messages: { role: string; content: string }[],
+  /** Phase 4.5b 刀 B：Haiku 臂的 system cache 前綴（DeepSeek 臂不讀）。 */
+  systemCachePrefix?: string,
 ) => Promise<string>;
 
 /**
@@ -275,6 +304,8 @@ export function runnerChatModelFor(args: {
   applied: boolean | undefined;
   /** 這一輪的既有 planner 情境（`bundle.situation`）：越界輪也走 Haiku。 */
   situation?: string | null;
+  /** Phase 4.5b：對應 production 的 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`。 */
+  standardAgencyClassifier?: boolean;
 }): "deepseek" | "haiku" {
   if (args.chatModel === "haiku") return "haiku";
   if (args.chatModel !== "mixed") return "deepseek";
@@ -284,6 +315,7 @@ export function runnerChatModelFor(args: {
     args.applied === undefined ? null : { applied: args.applied },
     args.mode,
     args.situation,
+    args.standardAgencyClassifier === true,
   );
 }
 
@@ -329,8 +361,26 @@ export async function runAgencyScenario(args: {
   chatModel?: "deepseek" | "haiku" | "mixed";
   /** `chatModel==="mixed"` 時必填：她要介入那一輪換用的 Haiku 呼叫端。 */
   callChatHaiku?: ChatCaller;
+  /**
+   * Phase 4.5h：assisted（beginner／game）注入的**起始**溫度／熟悉度。省略＝
+   * `BEGINNER_TEMPERATURE_SCORE`／`BEGINNER_FAMILIARITY_SCORE`（handler 的
+   * beginner 起始值），逐位元組維持舊行為；standard 模式一律不注入分數。
+   *
+   * 為什麼要開這兩格：Game 的速約階梯（`evaluateGameFsm` 的
+   * `speedInviteDirection`／`spicyLevel`）完全由這兩個分數推出來，固定 40／10
+   * 時邀約成熟度恆為 28＝`not_ready`，`direct_invite_low_pressure`／
+   * `partner_window_close` 兩條路永遠走不到——4.4 與 4.5c 的「邀約 0 覆蓋」
+   * 就是這樣來的。分數→stage 對照表見 README「Phase 4.5h 評測工具」節。
+   *
+   * **這不是溫度演化**：整場固定同一組分數，不會每輪重算（真的要演化得每輪
+   * 多打一次溫度判官，成本加倍，另議）。
+   */
+  temperatureScore?: number;
+  familiarityScore?: number;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
+  const temperatureScore = args.temperatureScore ?? BEGINNER_TEMPERATURE_SCORE;
+  const familiarityScore = args.familiarityScore ?? BEGINNER_FAMILIARITY_SCORE;
   const profile = resolvePracticeProfile({
     difficulty,
     profileId: args.profileId,
@@ -348,6 +398,12 @@ export async function runAgencyScenario(args: {
   // stateSimulation：跨輪真的帶狀態（結構層近似，見上面欄位註解）；否則維持
   // 舊行為，每輪都傳 null（standard 與 production 一致）。
   let agencyState: ConversationAgencyState | null = null;
+  // Phase 4.5b：`--mode=standard --state=1` 對應 production 的
+  // `PRACTICE_STANDARD_AGENCY_CLASSIFIER=true`（standard 也有每輪分類器與
+  // 持久化狀態）。standard 走**精簡**分類器（只判四個 agency 欄位），
+  // beginner／game 維持既有的逐輪分類器。
+  const standardAgencyClassifierArm = args.mode === "standard" &&
+    args.stateSimulation === true;
   const base = {
     profileId: args.profileId,
     personaId: profile.personaId,
@@ -429,8 +485,8 @@ export async function runAgencyScenario(args: {
       ...(args.mode === "beginner" || args.mode === "game"
         ? {
           practiceMode: args.mode,
-          temperatureScore: BEGINNER_TEMPERATURE_SCORE,
-          familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+          temperatureScore,
+          familiarityScore,
         }
         : {}),
       ...chatContext,
@@ -445,10 +501,50 @@ export async function runAgencyScenario(args: {
       mode: args.mode,
       applied: bundle.agencyDecision?.applied,
       situation: bundle.situation,
+      // `--mode=standard --state=1`＝production 開了
+      // `PRACTICE_STANDARD_AGENCY_CLASSIFIER` 的那條路徑。
+      standardAgencyClassifier: standardAgencyClassifierArm,
     });
     const activeCallChat = args.chatModel === "mixed"
       ? (chatModelUsed === "haiku" ? args.callChatHaiku! : args.callChat)
       : args.callChat;
+    // ── Phase 4.5e：forced `read_only` 短路，**與 handler.ts 同源** ──────────
+    //
+    // 缺口（2026-09-05 Game 黑箱抓到）：production `handler.ts` 4621–4655 一帶
+    // 的 forced `read_only` 那一輪**一支生成模型都不打**，直接送出
+    // `READ_ONLY_REPLY_TEXT`；這支 runner 沒有這個短路，440 輪裡 32 筆 read_only
+    // 全部真的打了 Haiku、沒有一則回覆是「（已讀）」。歷來 runner 的 read_only
+    // 數字因此只是**決策頻率**，量不到 production 真正的省呼叫與逐字回覆，
+    // 成本外推也多算了那些呼叫。
+    //
+    // 與 handler.ts 逐行對照（左＝handler，右＝這裡）：
+    //   1. `readOnlyTurn` 三個條件（`agencyMode === "on"`、
+    //      `agencyDecision?.applied === true`、`forcedAct === "read_only"`）
+    //      → 下面 `readOnlyTurn`，逐條相同。
+    //   2. `if (readOnlyTurn) candidate = READ_ONLY_REPLY_TEXT;`（在 attempt
+    //      迴圈內、所有守門之前）→ 下面 attempt 迴圈裡同一個位置；字串**從
+    //      production import**，不抄字面。
+    //   3. `const allowReadOnly = agencyMode === "on" && (readOnlyAllowed ||
+    //      readOnlyTurn)`，再傳進 `hasStageDirection`／`stripStageDirections`
+    //      → 下面把 `readOnlyTurn` 當第二／第三個參數傳進同兩支函式（不傳的話
+    //      style 臂會把「（已讀）」當括號旁白剝掉，整段剝空還會丟
+    //      `chat_stage_direction`）。這支 runner 沒有 planner 的
+    //      `readOnlyAllowed` 分支（那是「模型自己選擇回已讀」，不是短路），
+    //      所以只對得上 `readOnlyTurn` 那一半，差異記在 README。
+    //   4. `chatModel: noModelCalled() ? "none" : chatModelUsed`
+    //      → 下面 `effectiveChatModel`。
+    //   5. `readOnlyReply: true` 只在 `readOnlyAllowedThisTurn &&
+    //      hasReadOnlyReply(reply)` 時才寫 → 下面同一組判準（同一支
+    //      `hasReadOnlyReply`）。
+    //   6. handler **沒有** chat 的 `promptChars` telemetry；那一輪 prompt
+    //      bundle 照樣建起來（`chatPromptBundle` 在 `readOnlyTurn` 之上），
+    //      但一個 byte 都沒送出去。這支 runner 的 `promptChars` 是拿來估
+    //      token 成本的，所以 read_only 輪記 0——記成「建好的 bundle 長度」
+    //      會把這次修掉的多算成本原封不動加回去。同理 `attempts` 記 0
+    //      （沒有任何一次生成呼叫）。
+    const readOnlyTurn = args.agency === "on" &&
+      bundle.agencyDecision?.applied === true &&
+      bundle.agencyDecision.decision.forcedAct === "read_only";
 
     const startedAt = Date.now();
     let reply: string | null = null;
@@ -456,14 +552,35 @@ export async function runAgencyScenario(args: {
     let stageDirectionRepairs = 0;
     let shapeDropped = 0;
     let preTruncationBubbles: string[] | undefined;
+    // Phase 4.5g：與 handler.ts 同源的 forced `check_out` 結構後檢查（同一支
+    // `checkOutStructuralViolation`、同一個位置＝所有守門與截斷之後）。
+    let checkOutRetried = false;
+    let checkOutStructuralFailed = false;
+    // Phase 4.6 刀 2（handler.ts 同源）：後檢查丟掉第一發時，第二發多帶的改寫
+    // 指令；只有這道後檢查造成的重試才有值。
+    let checkOutRewrite: string | null = null;
     const guardRejections: string[] = [];
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
       attempts = attempt;
       try {
-        let candidate = await activeCallChat(messages);
+        let candidate = readOnlyTurn
+          ? READ_ONLY_REPLY_TEXT
+          : await activeCallChat(
+            checkOutRewrite
+              ? [...messages, {
+                role: "user" as const,
+                content: checkOutRewrite,
+              }]
+              : messages,
+            bundle.systemStable,
+          );
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
+        // Phase 4.7（handler.ts 同源）：空白回覆當守門失敗重試。
+        if (candidate.trim().length === 0) {
+          throw new Error("chat_empty_reply");
+        }
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
           transcript: turns.map((t) => t.text).join("\n"),
           ...(args.style
@@ -474,13 +591,29 @@ export async function runAgencyScenario(args: {
           fieldClass: "strict",
           spicyAllowed: false,
         });
-        if (args.style && hasStageDirection(candidate)) {
+        if (args.style && hasStageDirection(candidate, readOnlyTurn)) {
           stageDirectionRepairs++;
-          candidate = stripStageDirections(candidate, "chat_stage_direction");
+          candidate = stripStageDirections(
+            candidate,
+            "chat_stage_direction",
+            readOnlyTurn,
+          );
         }
         // Phase 3.3 `truncate` 臂：與 handler 同一支函式、同一個位置（所有
         // 守門與修補之後、落成 reply 之前），所以 judge 讀到的就是截斷後的文字。
-        if (args.shape === "truncate") {
+        //
+        // Phase 4.5h 補上 handler 的另一半條件（handler.ts:4760 `&&
+        // !chatPromptBundle.gameFsmPriority`）：Game 的修復優先／現實旗標那幾輪
+        // production **不截斷**。4.4 的「已知非等價」記的就是這一條。
+        //
+        // **這是對齊，不是行為改變**：實測 A33 的踩線輪／道歉輪
+        // `agencyDecision.applied` 都是 false（boundary 與修復優先的 situation
+        // 都不讓 planner 保留決策），`truncateAgencyShape` 本來就是空操作，所以
+        // 歷史 artifact 的數字不受影響（`scenarios_test.ts` 鎖住這兩個 false）。
+        // 補這一條是為了哪天 planner 真的在修復優先輪介入時，這支 runner 不會
+        // 悄悄量到一個 production 不存在的截斷。非 game 模式 `gameFsmPriority`
+        // 恆為 false，那些臂逐位元組不變。
+        if (args.shape === "truncate" && !bundle.gameFsmPriority) {
           const truncated = truncateAgencyShape(
             candidate,
             bundle.agencyDecision,
@@ -490,6 +623,21 @@ export async function runAgencyScenario(args: {
           }
           candidate = truncated.text;
           shapeDropped = truncated.dropped;
+        }
+        // Phase 4.5g：handler.ts 同序、同一支函式。第一發命中就用既有的第二發
+        // 重試（不加第三次呼叫），第二發仍命中就 fail-open 送出。
+        // Phase 4.6 刀 2：第二發不再原樣重送，注入針對性改寫指令（同 handler）。
+        const checkOutViolations = checkOutStructuralViolations(
+          bundle.agencyDecision,
+          candidate,
+        );
+        if (checkOutViolations.length > 0) {
+          if (attempt < CHAT_GENERATION_ATTEMPTS) {
+            checkOutRetried = true;
+            checkOutRewrite = checkOutRewriteInstruction(checkOutViolations);
+            throw new Error("chat_agency_check_out_shape");
+          }
+          checkOutStructuralFailed = true;
         }
         reply = candidate;
         break;
@@ -524,7 +672,33 @@ export async function runAgencyScenario(args: {
     // 時才打（standard／未開 --state 維持舊行為，成本不變）。
     let classifierSignal: AgencyClassifierSignal | null = null;
     let classifierError: string | null = null;
-    if (
+    if (standardAgencyClassifierArm && args.classifierApiKey) {
+      // standard 的精簡分類器（production 的 `judgeStandardAgencyFailOpen`
+      // 同一組 prompt／parser；判準文字與逐輪分類器共用 AGENCY_CLASSIFIER_RULES）。
+      try {
+        const raw = await callDeepSeek({
+          apiKey: args.classifierApiKey,
+          messages: buildStandardAgencyClassifierMessages({
+            turns,
+            profile,
+            assistantReply: reply,
+            memorySummary: fixture.memorySummary,
+            herRecentMoments: fixture.herRecentMoments,
+          }),
+          maxTokens: CLASSIFIER_MAX_TOKENS,
+          temperature: CLASSIFIER_TEMPERATURE,
+          jsonMode: true,
+          timeoutMs: MODEL_TIMEOUT_MS,
+        });
+        const classification = parseStandardAgencyClassification(raw);
+        classifierSignal = {
+          coherence: classification.coherence,
+          aiChallengedThisTurn: classification.aiChallengedThisTurn,
+        };
+      } catch (e) {
+        classifierError = e instanceof Error ? e.message : String(e);
+      }
+    } else if (
       args.stateSimulation && args.classifierApiKey &&
       (args.mode === "beginner" || args.mode === "game")
     ) {
@@ -534,8 +708,8 @@ export async function runAgencyScenario(args: {
           messages: buildTurnClassifierMessages({
             turns,
             profile,
-            heatScore: BEGINNER_TEMPERATURE_SCORE,
-            familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+            heatScore: temperatureScore,
+            familiarityScore,
             assistantReply: reply,
             agencyEnabled: args.agency === "on",
             memorySummary: fixture.memorySummary,
@@ -572,7 +746,10 @@ export async function runAgencyScenario(args: {
     const askedUser = bundle.responsePlan?.askUserFocus !== undefined;
     if (
       args.stateSimulation && bundle.agencyDecision &&
-      (bundle.agencyDecision.applied || askedUser)
+      // Phase 4.5b：standard 那條路徑與 production 相同——旗標 on 就一定推進
+      // 狀態（handler.ts 的 `conversationAgencyState` 不看 `applied`）。
+      (standardAgencyClassifierArm || bundle.agencyDecision.applied ||
+        askedUser)
     ) {
       agencyState = nextConversationAgencyState(
         agencyState,
@@ -590,13 +767,20 @@ export async function runAgencyScenario(args: {
       previousAiAskedQuestion,
       scripted: false,
       probe: step.probe ?? null,
-      promptChars,
+      // handler 對照 6：read_only 那一輪 bundle 照建但一個 byte 都沒送出去，
+      // 這兩格記 0，成本外推才不會把剛修掉的多算成本加回來。
+      promptChars: readOnlyTurn ? 0 : promptChars,
       elapsedMs: Date.now() - startedAt,
-      attempts,
+      attempts: readOnlyTurn ? 0 : attempts,
       guardRejections,
       stageDirectionRepairs,
       shapeDropped,
       ...(preTruncationBubbles ? { preTruncationBubbles } : {}),
+      ...(checkOutRetried ? { checkOutRetry: true as const } : {}),
+      ...(checkOutRewrite ? { checkOutRewriteInjected: true as const } : {}),
+      ...(checkOutStructuralFailed
+        ? { checkOutStructuralFail: true as const }
+        : {}),
       ...(bundle.agencyDecision
         ? {
           policyMode: bundle.agencyDecision.decision.policyMode,
@@ -607,7 +791,14 @@ export async function runAgencyScenario(args: {
       ...(classifierSignal ? { classifierSignal } : {}),
       ...(classifierError ? { classifierError } : {}),
       ...(args.stateSimulation ? { agencyStateAfter: agencyState } : {}),
-      ...(args.chatModel ? { chatModelUsed } : {}),
+      // handler 對照 4：`noModelCalled() ? "none" : chatModelUsed`。
+      ...(args.chatModel
+        ? { chatModelUsed: readOnlyTurn ? "none" as const : chatModelUsed }
+        : {}),
+      // handler 對照 5：同一組判準（授權 ＋ 回覆整則真的是「（已讀）」）。
+      ...(readOnlyTurn && hasReadOnlyReply(reply)
+        ? { readOnlyReply: true }
+        : {}),
     });
     turns.push({ role: "ai", text: reply });
   }
@@ -641,6 +832,14 @@ interface CliOptions {
    * （`bundle.agencyDecision?.applied === true`）換 Haiku，其餘 DeepSeek。
    */
   chatModel: "deepseek" | "haiku" | "mixed";
+  /**
+   * --temperature=N／--familiarity=N（0–100 整數）：assisted 模式注入的起始
+   * 溫度／熟悉度。省略＝`BEGINNER_TEMPERATURE_SCORE`／
+   * `BEGINNER_FAMILIARITY_SCORE`（40／10），行為與加旗標前逐位元組相同。
+   * standard 模式不注入分數，這兩格只會出現在 artifact meta（記 null）。
+   */
+  temperatureScore: number;
+  familiarityScore: number;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -658,6 +857,19 @@ export function parseArgs(argv: string[]): CliOptions {
     stateSimulation: false,
     threadSalt: "",
     chatModel: "deepseek",
+    temperatureScore: BEGINNER_TEMPERATURE_SCORE,
+    familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+  };
+  // 分數旗標共用一支解析：非整數或落在 0–100 之外一律報錯，不靜默 clamp
+  // ——clamp 掉的話 artifact meta 記的起始分數就跟實際注入的不一樣。
+  const score = (key: string, value: string): number => {
+    const n = Number.parseInt(value, 10);
+    if (
+      !Number.isInteger(n) || n < 0 || n > 100 || String(n) !== value.trim()
+    ) {
+      throw new Error(`agency_invalid_${key}: "${value}"`);
+    }
+    return n;
   };
   for (const arg of argv) {
     if (!arg.startsWith("--")) {
@@ -718,6 +930,12 @@ export function parseArgs(argv: string[]): CliOptions {
         }
         opts.chatModel = value;
         break;
+      case "temperature":
+        opts.temperatureScore = score("temperature", value);
+        break;
+      case "familiarity":
+        opts.familiarityScore = score("familiarity", value);
+        break;
       case "state":
         opts.stateSimulation = value === "1" || value === "true";
         break;
@@ -749,18 +967,14 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model、--temperature、--familiarity）`,
         );
     }
   }
-  // Codex round-2 P2(d)：`--state=1` 在 standard 是**沒有作用**的旗標
-  // （standard 本來就不持久化跨回合狀態，每輪從逐字稿現推）。靜默忽略會讓
-  // artifact 的 `stateSimulation: true` 說謊，之後照著 meta 解讀數字就會錯。
-  if (opts.stateSimulation && (opts.mode ?? "standard") === "standard") {
-    throw new Error(
-      "agency_state_requires_assisted_mode: --state=1 只對 --mode=beginner／game 有意義（standard 不持久化跨回合狀態）",
-    );
-  }
+  // Codex round-2 P2(d) 的原始限制（`--state=1` 在 standard 沒有作用）在
+  // Phase 4.5b 之後不成立：`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true` 時
+  // standard 也有每輪分類器與持久化狀態，所以 `--mode=standard --state=1`
+  // 就是那條 production 路徑的黑箱對應（分類器走精簡版，見 runAgencyScenario）。
   return opts;
 }
 
@@ -771,14 +985,66 @@ export function parseArgs(argv: string[]): CliOptions {
 // cache_control／訊息角色對映與 production 走**同一份程式**，黑箱結論才搬得回
 // production（Phase 4.3 時這裡是抄一份，兩邊會漂）。
 
-/** Haiku pricing 抄錄自 `supabase/functions/analyze-chat/logger.ts`
- * `TOKEN_COSTS["claude-haiku-4-5-20251001"]`（USD／1K token，未 export，改動
- * 記得同步）。cache read／write 乘數是 Anthropic 官方文件的標準比例（read
- * 0.1x、5 分鐘 ephemeral write 1.25x base input），logger.ts 沒有算這兩格。 */
-const HAIKU_INPUT_USD_PER_1K = 0.0008;
-const HAIKU_OUTPUT_USD_PER_1K = 0.004;
-const HAIKU_CACHE_READ_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 0.1;
-const HAIKU_CACHE_WRITE_USD_PER_1K = HAIKU_INPUT_USD_PER_1K * 1.25;
+/**
+ * Phase 4.5c：一批場次裡「這一輪用了哪支女生回覆模型」的分佈。
+ *
+ * 為什麼要有這支：README 每一輪都要報一次「`chatModelUsed` Haiku 佔比
+ * 301/420」，之前是手算；而 Phase 4.5a 之後 production telemetry 的
+ * `chatModel`／`provider`／`model` 對 forced `read_only` 那一輪是 `"none"`
+ * ——**那一輪一支模型都沒打**，所以它：
+ *   1. 不算進任何一支模型（不是 deepseek）；
+ *   2. **不進 Haiku 佔比的分母**（沒有生成機會的輪次，不是「本來可以走 Haiku
+ *      卻走了 DeepSeek」）；
+ *   3. 也不進「每輪成本」的分母（那一輪成本為 0，除進去會低估單價）。
+ * `unknown`＝Phase 4.3 之前的舊 artifact 沒有這個欄位，單獨一格回報，不併進
+ * 任何一支模型。
+ */
+export interface ChatModelTally {
+  readonly deepseek: number;
+  readonly haiku: number;
+  readonly none: number;
+  readonly unknown: number;
+  /** 真的打了生成模型的輪數＝`deepseek + haiku`。 */
+  readonly modelRounds: number;
+  /** `haiku / modelRounds`；`modelRounds === 0` 時是 `null`，不除以零。 */
+  readonly haikuShare: number | null;
+}
+
+interface TallyableTurn {
+  readonly role: "user" | "ai";
+  readonly scripted?: boolean;
+  readonly chatModelUsed?: string;
+}
+interface TallyableSession {
+  readonly turns: readonly TallyableTurn[];
+  readonly error?: string;
+}
+
+/** 純函式（零 IO）：失敗的場次與腳本前文不算，只數真的推進過一輪的 user turn。 */
+export function tallyChatModelRounds(
+  results: readonly TallyableSession[],
+): ChatModelTally {
+  let deepseek = 0, haiku = 0, none = 0, unknown = 0;
+  for (const session of results) {
+    if (session.error) continue;
+    for (const turn of session.turns) {
+      if (turn.role !== "user" || turn.scripted) continue;
+      if (turn.chatModelUsed === "haiku") haiku++;
+      else if (turn.chatModelUsed === "deepseek") deepseek++;
+      else if (turn.chatModelUsed === "none") none++;
+      else unknown++;
+    }
+  }
+  const modelRounds = deepseek + haiku;
+  return {
+    deepseek,
+    haiku,
+    none,
+    unknown,
+    modelRounds,
+    haikuShare: modelRounds === 0 ? null : haiku / modelRounds,
+  };
+}
 
 export type HaikuUsage = ClaudeUsage;
 
@@ -786,13 +1052,9 @@ export interface HaikuUsageTotals extends HaikuUsage {
   readonly calls: number;
 }
 
+/** Phase 4.5c：單價唯一來源是 `pricing.ts`（這裡以前自己抄了一份 USD／1K）。 */
 export function estimateHaikuCostUsd(usage: HaikuUsage): number {
-  return (
-    (usage.inputTokens / 1000) * HAIKU_INPUT_USD_PER_1K +
-    (usage.cacheReadInputTokens / 1000) * HAIKU_CACHE_READ_USD_PER_1K +
-    (usage.cacheCreationInputTokens / 1000) * HAIKU_CACHE_WRITE_USD_PER_1K +
-    (usage.outputTokens / 1000) * HAIKU_OUTPUT_USD_PER_1K
-  );
+  return estimateCostUsd(usage, HAIKU_4_5_PRICING);
 }
 
 export function addHaikuUsage(
@@ -828,6 +1090,8 @@ export async function callHaikuChat(
     maxTokens: number;
     temperature: number;
     timeoutMs: number;
+    /** Phase 4.5b 刀 B：與 production 同一格（`bundle.systemStable`）。 */
+    systemCachePrefix?: string;
   },
 ): Promise<{ text: string; usage: HaikuUsage }> {
   let usage: HaikuUsage = ZERO_HAIKU_USAGE_TOTALS;
@@ -838,6 +1102,9 @@ export async function callHaikuChat(
     maxTokens: args.maxTokens,
     temperature: args.temperature,
     timeoutMs: args.timeoutMs,
+    ...(args.systemCachePrefix === undefined
+      ? {}
+      : { systemCachePrefix: args.systemCachePrefix }),
     onUsage: (u) => {
       usage = u;
     },
@@ -913,17 +1180,19 @@ async function main(): Promise<void> {
   // haiku 臂／mixed 臂的 usage 累加（純 deepseek 臂沒有這個帳，維持 undefined，
   // 逐字舊行為）。
   let haikuUsageTotals: HaikuUsageTotals | undefined;
-  const makeHaikuCaller = (apiKey: string): ChatCaller => async (messages) => {
-    const { text, usage } = await callHaikuChat({
-      apiKey,
-      messages: messages as ChatMessage[],
-      maxTokens: CHAT_MAX_TOKENS,
-      temperature: CHAT_TEMPERATURE,
-      timeoutMs: MODEL_TIMEOUT_MS,
-    });
-    haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
-    return text;
-  };
+  const makeHaikuCaller =
+    (apiKey: string): ChatCaller => async (messages, systemCachePrefix) => {
+      const { text, usage } = await callHaikuChat({
+        apiKey,
+        messages: messages as ChatMessage[],
+        maxTokens: CHAT_MAX_TOKENS,
+        temperature: CHAT_TEMPERATURE,
+        timeoutMs: MODEL_TIMEOUT_MS,
+        systemCachePrefix,
+      });
+      haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
+      return text;
+    };
   const makeDeepSeekCaller = (apiKey: string): ChatCaller => (messages) =>
     callDeepSeek({
       apiKey,
@@ -981,6 +1250,8 @@ async function main(): Promise<void> {
         threadSalt: opts.threadSalt,
         classifierApiKey,
         chatModel: opts.chatModel,
+        temperatureScore: opts.temperatureScore,
+        familiarityScore: opts.familiarityScore,
       });
       console.error(
         `[agency] ${
@@ -1004,6 +1275,7 @@ async function main(): Promise<void> {
     }
   }
 
+  const modelTally = tallyChatModelRounds(results);
   const artifact = {
     meta: {
       tool: "practice-agency-eval/run_agency",
@@ -1020,6 +1292,10 @@ async function main(): Promise<void> {
       // `haiku`＝評測臂、`mixed`＝Phase 4.3 步驟 1，介入輪換 Haiku）。judge
       // 模型不受這個旗標影響，仍是 DeepSeek。
       chatModel: opts.chatModel,
+      // Phase 4.5c：逐輪 `chatModelUsed` 的分佈（README 每一輪都要引用的
+      // 「Haiku 佔比」）。`none`＝那一輪沒打模型（production 的 forced
+      // `read_only`），不進 `modelRounds` 分母，見 `tallyChatModelRounds`。
+      chatModelRounds: modelTally,
       chat: {
         maxTokens: CHAT_MAX_TOKENS,
         temperature: CHAT_TEMPERATURE,
@@ -1037,6 +1313,14 @@ async function main(): Promise<void> {
         }
         : {}),
       practiceMode: opts.mode,
+      // Phase 4.5h：這一批 assisted 注入的**起始**溫度／熟悉度（整場固定，不是
+      // 演化值）。standard 不注入分數，記 null。這個 key **無條件寫出**，所以
+      // 新 artifact 與舊 artifact 的 JSON 一定差這一格（跟 `threadSalt` 同一個
+      // 慣例，不能宣稱 artifact bytes 相同）；生成行為只有在真的給了旗標時才變。
+      startingScores: opts.mode === "standard" ? null : {
+        temperature: opts.temperatureScore,
+        familiarity: opts.familiarityScore,
+      },
       replyStyle: opts.style,
       conversationAgency: opts.agency,
       // Phase 3.3 形狀實驗臂（`off`／`truncate`）；解讀數字時要跟
@@ -1081,6 +1365,17 @@ async function main(): Promise<void> {
   );
   console.error(
     `[agency] 完成 ${results.length} 場（失敗 ${failed}）、${calls} 次生成，寫入 ${opts.outPath}`,
+  );
+  console.error(
+    `[agency] chatModelUsed：haiku ${modelTally.haiku}、deepseek ${modelTally.deepseek}、` +
+      `none ${modelTally.none}（沒打模型的輪次，不進分母）、unknown ${modelTally.unknown}｜` +
+      `Haiku 佔比 ${
+        modelTally.haikuShare === null
+          ? "n/a（沒有任何生成輪）"
+          : `${modelTally.haiku}/${modelTally.modelRounds}（${
+            (modelTally.haikuShare * 100).toFixed(1)
+          }%）`
+      }`,
   );
   if (haikuUsageTotals) {
     const cost = estimateHaikuCostUsd(haikuUsageTotals);

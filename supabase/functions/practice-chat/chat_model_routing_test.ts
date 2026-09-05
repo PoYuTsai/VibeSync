@@ -23,7 +23,7 @@ import {
   makeFake,
   makeRequest,
 } from "./handler_test_fake.ts";
-import { chatModelFor } from "./conversation_agency.ts";
+import { chatModelFor, CHECK_OUT_MAX_CHARS } from "./conversation_agency.ts";
 import { CLAUDE_HAIKU_MODEL } from "./claude.ts";
 import { DEEPSEEK_MODEL } from "./deepseek.ts";
 
@@ -114,12 +114,19 @@ Deno.test("chatModelFor：越界輪是獨立的第二個入口（applied=false �
   );
 });
 
+/** 這一輪所有 DeepSeek 呼叫（chat ＋ 分類器）。 */
+function fakeStateDeepSeek(r: RunResult) {
+  return r.allDeepSeekCalls;
+}
+
 interface RunResult {
   status: number;
   body: Record<string, unknown>;
   claudeCalls: ReturnType<typeof makeFake>["state"]["claudeCalls"];
   /** 只算 chat 生成那幾發（分類器也走 DeepSeek，用 maxTokens 分辨）。 */
   chatDeepSeekCalls: ReturnType<typeof makeFake>["state"]["deepSeekCalls"];
+  /** 這一輪全部 DeepSeek 呼叫（含分類器）。 */
+  allDeepSeekCalls: ReturnType<typeof makeFake>["state"]["deepSeekCalls"];
   rpcCalls: ReturnType<typeof makeFake>["state"]["rpcCalls"];
   succeeded: Record<string, unknown>;
   lines: string[];
@@ -136,10 +143,21 @@ async function runChat(opts: {
   claudeUsageBeforeError?: boolean;
   /** 整輪預期失敗（沒有 practice_chat_succeeded）。 */
   expectFailure?: boolean;
+  /** assisted 的 thread seed（Phase 4.5a 的階梯狀態要從這裡進來）。 */
+  thread?: Record<string, unknown> | null;
+  /** Phase 4.5a：強制結束／已讀只給挑戰難度或 Game。 */
+  difficulty?: string;
+  /** 括號旁白守門只在 reply-style 有 plan 時才跑（production 是開的）。 */
+  style?: boolean;
+  /** Phase 4.5b：`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true`。 */
+  standardClassifier?: boolean;
+  /** Phase 3.3 形狀旋鈕（production 目前開在 `truncate`）。 */
+  shape?: string;
 }): Promise<RunResult> {
   const practiceMode = opts.practiceMode ?? "beginner";
   const fake = makeFake({
     ledger: ledger({ practice_mode: practiceMode }),
+    ...(opts.thread === undefined ? {} : { thread: opts.thread }),
     // 最後一則永遠留給生成後的分類器（assisted 模式才會打）。
     deepSeekReplies: [...(opts.deepSeekReplies ?? ["好啊"]), CLASSIFIER_JSON],
     // claudeReplies 有值時 fake 的 getEnv 才會給 CLAUDE_API_KEY（與 production
@@ -149,6 +167,13 @@ async function runChat(opts: {
     env: {
       ...(opts.routing === undefined ? {} : { [ROUTING_ENV]: opts.routing }),
       ...(opts.agency === undefined ? {} : { [AGENCY_ENV]: opts.agency }),
+      ...(opts.style ? { PRACTICE_REPLY_STYLE_ENABLED: "true" } : {}),
+      ...(opts.standardClassifier
+        ? { PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true" }
+        : {}),
+      ...(opts.shape === undefined
+        ? {}
+        : { PRACTICE_AGENCY_SHAPE_EXPERIMENT: opts.shape }),
     },
   });
   const lines: string[] = [];
@@ -167,6 +192,9 @@ async function runChat(opts: {
       makeRequest(chatBody({
         practiceMode,
         turns: opts.turns ?? FRAGMENT_TURNS,
+        ...(opts.difficulty === undefined
+          ? {}
+          : { difficulty: opts.difficulty }),
       })),
     );
     await Promise.allSettled(fake.state.backgroundTasks);
@@ -188,6 +216,7 @@ async function runChat(opts: {
     chatDeepSeekCalls: fake.state.deepSeekCalls.filter((c) =>
       c.maxTokens === 200
     ),
+    allDeepSeekCalls: fake.state.deepSeekCalls,
     rpcCalls: fake.state.rpcCalls,
     succeeded: succeededLine
       ? JSON.parse(succeededLine) as Record<string, unknown>
@@ -548,4 +577,621 @@ Deno.test("Response schema：deepseek／haiku／fallback 三種輪次的 key 集
     assertEquals(typeof r.body.aiTurnCount, "number");
     assertEquals(typeof r.body.generatedAt, "string");
   }
+});
+
+// ── Phase 4.5a 刀 3：forced `read_only` 那一輪一支模型都不打 ────────────────
+const CHECKED_OUT_THREAD = {
+  profile_id: "practice_girl_001",
+  temperature_score: 40,
+  familiarity_score: 10,
+  recent_facts: {
+    conversationAgency: {
+      version: 1,
+      lastCoherence: "repetitive",
+      unresolvedCount: 0,
+      priorChallengeIssued: true,
+      lastAgencyAct: "check_out",
+      checkedOut: true,
+    },
+  },
+};
+
+Deno.test("Phase 4.5a 刀 3：checkedOut 之後的低價值輪直接回一則「（已讀）」，不打生成模型", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECKED_OUT_THREAD,
+    claudeReplies: ["不該被呼叫"],
+  });
+  assertEquals(r.status, 200);
+  // 生成路徑一發都沒打（分類器那一發 maxTokens 不是 200，已被 filter 掉）。
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.claudeCalls.length, 0);
+  assertEquals(r.body.reply, "（已讀）");
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "read_only");
+  assertEquals(agency.allowedActSetId, "read_only_v1");
+  assertEquals(agency.readOnlyReply, true);
+  assertEquals(r.succeeded.chatModel, "none");
+  assertEquals(r.succeeded.chatModelCalls, { haiku: 0, deepseek: 0 });
+
+  // Codex R1 P3-1（exactly-once）：帳只寫一次，內容就是那一則已讀。
+  const commits = r.rpcCalls.filter((c) =>
+    c.fn === "commit_practice_chat_turn"
+  );
+  assertEquals(commits.length, 1);
+  // 扣額旗標照既有規則（非測試帳號＝扣），這一刀沒有動配額邏輯。
+  assertEquals(commits[0].params.p_charge_quota, true);
+  assertEquals(r.body.aiTurnCount, 1);
+  assert(r.body.costDeducted);
+  // Codex R2 P3-3：`commit_practice_chat_turn` 的 params **不含 AI 文字**
+  // （2026-09-05 實查：只有 user/session/quota/mode/溫度/心情六類欄位，AI 回覆
+  // 由 client 自己存），所以「內容恰為（已讀）」要從下游證明——生成後的分類器
+  // 吃的就是同一個字面。
+  assertEquals(
+    Object.keys(commits[0].params).some((k) => /reply|text|content/i.test(k)),
+    false,
+  );
+  const classifierCall = fakeStateDeepSeek(r).find((c) => c.maxTokens !== 200);
+  assert(classifierCall, "分類器沒有被呼叫");
+  assert(
+    JSON.stringify(classifierCall.messages).includes("（已讀）"),
+    "分類器沒有看到那一則已讀",
+  );
+  const threadWrites = r.rpcCalls.filter((c) =>
+    c.fn === "upsert_practice_relationship_thread"
+  );
+  assertEquals(threadWrites.length, 1);
+  const persisted = (threadWrites[0].params.p_recent_facts as Record<
+    string,
+    Record<string, unknown>
+  >).conversationAgency;
+  assertEquals(persisted.checkedOut, true);
+  assertEquals(persisted.lastAgencyAct, "read_only");
+  const learning = r.rpcCalls.filter((c) =>
+    c.fn === "apply_practice_learning_update"
+  );
+  assert(learning.length <= 1);
+  // Response snapshot：`provider`／`model` 照實回報「沒有模型」。key 集合不變，
+  // client 的 `practice_chat_api_service.dart` 從來沒讀過這兩格（2026-09-05 實查）。
+  assertEquals(r.body.provider, "none");
+  assertEquals(r.body.model, "none");
+
+  // 成對反例：同一批逐字稿、沒有 checkedOut 狀態 → 照常打模型，沒有 readOnlyReply。
+  const normal = await runChat({
+    routing: "mixed",
+    agency: "true",
+    difficulty: "challenge",
+  });
+  assertEquals(normal.claudeCalls.length, 1);
+  assertEquals(
+    (normal.succeeded.conversationAgency as Record<string, unknown>)
+      .readOnlyReply,
+    undefined,
+  );
+  // 旗標 off：同一份 thread 狀態根本不解析，逐字沿用舊行為。
+  const off = await runChat({ thread: CHECKED_OUT_THREAD });
+  assertEquals(off.chatDeepSeekCalls.length, 1);
+  assertEquals(off.body.reply, "好啊");
+  assertEquals(off.succeeded.conversationAgency, undefined);
+  assertEquals(off.body.provider, "deepseek");
+});
+
+Deno.test("Phase 4.5a 刀 2（Codex R1 P1-1）：沒被授權的輪次，模型自己吐「（已讀）」照樣被守門剝掉", async () => {
+  // beginner ＋ normal 難度（`readOnlyAllowed` 不存在、也不是 forced read_only）：
+  // 第一發「（已讀）」整段剝到空 → chat_stage_direction → 重試；第二發才採用。
+  const r = await runChat({
+    agency: "true",
+    style: true,
+    deepSeekReplies: ["（已讀）", "好啊"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "好啊");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    (r.succeeded.conversationAgency as Record<string, unknown>).readOnlyReply,
+    undefined,
+  );
+  // 兩發都吐已讀 → 整輪失敗（絕不把已讀送出去）。
+  const both = await runChat({
+    agency: "true",
+    style: true,
+    deepSeekReplies: ["（已讀）", "（已讀）"],
+    expectFailure: true,
+  });
+  assertEquals(both.status, 500);
+  assertEquals(both.body.error, "practice_generation_failed");
+  // 成對通過：挑戰難度 ＋ forced read_only 的那一格照樣回得了已讀。
+  const allowed = await runChat({
+    agency: "true",
+    style: true,
+    difficulty: "challenge",
+    thread: CHECKED_OUT_THREAD,
+  });
+  assertEquals(allowed.body.reply, "（已讀）");
+});
+
+Deno.test("Phase 4.5a（Codex R1 P3-4）：shadow 算得出 cold_return 也不得改溫度／Response", async () => {
+  // 玩家給了內容（解釋句）＋ 持久化的 checkedOut ⇒ policy 會算出 cold_return，
+  // 但 shadow 的 `applied`／`agencyDeltaCapActive` 都是 false。
+  const turns = [
+    { role: "user", text: "東東" },
+    { role: "ai", text: "東東是誰" },
+    { role: "user", text: "因為剛剛在列旅遊清單" },
+  ];
+  // `runChat` 會換掉全域 console，必須循序跑（併發會互相蓋掉 log 擷取）。
+  const shadow = await runChat({
+    agency: "shadow",
+    difficulty: "challenge",
+    thread: CHECKED_OUT_THREAD,
+    turns,
+  });
+  const off = await runChat({
+    difficulty: "challenge",
+    thread: CHECKED_OUT_THREAD,
+    turns,
+  });
+  assertEquals(shadow.status, off.status);
+  assertEquals(shadow.chatDeepSeekCalls.length, 1);
+  assertEquals(shadow.claudeCalls.length, 0);
+  // Response 逐位元組相同（只排除每輪都會變的時間戳）。
+  const stripped = (b: Record<string, unknown>) => {
+    const { generatedAt: _drop, ...rest } = b;
+    return JSON.stringify(rest);
+  };
+  assertEquals(stripped(shadow.body), stripped(off.body));
+  // 溫度／熟悉度的寫入參數也相同（cold_return 的 0/0 上界不得在 shadow 生效）。
+  const learningParams = (r: RunResult) =>
+    JSON.stringify(
+      r.rpcCalls.filter((c) => c.fn === "apply_practice_learning_update").map(
+        (c) => c.params,
+      ),
+    );
+  assertEquals(learningParams(shadow), learningParams(off));
+  // shadow 的契約：telemetry 可以多，輸出不可以。
+  assertEquals(shadow.succeeded.conversationAgency !== undefined, true);
+  assertEquals(off.succeeded.conversationAgency, undefined);
+});
+
+Deno.test("Phase 4.5a 刀 2（Codex R2 P1-3）：reply-style 關著時，已讀守門一樣要跑", async () => {
+  // agency on ＋ reply-style **未設** ＋ easy 難度：模型自己吐「（已讀）」
+  // 不得直接送出（舊版旁白守門綁 `responsePlan`，這一格整段漏過去）。
+  const r = await runChat({
+    agency: "true",
+    difficulty: "easy",
+    deepSeekReplies: ["（已讀）", "好啊"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "好啊");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    (r.succeeded.conversationAgency as Record<string, unknown>).readOnlyReply,
+    undefined,
+  );
+  const both = await runChat({
+    agency: "true",
+    difficulty: "easy",
+    deepSeekReplies: ["（已讀）", "（已讀）"],
+    expectFailure: true,
+  });
+  assertEquals(both.status, 500);
+  assertEquals(both.body.error, "practice_generation_failed");
+  // 成對通過：challenge ＋ forced `read_only`，即使沒有 responsePlan，
+  // 固定字面仍然送得出去。
+  const allowed = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECKED_OUT_THREAD,
+  });
+  assertEquals(allowed.body.reply, "（已讀）");
+  assertEquals(
+    (allowed.succeeded.conversationAgency as Record<string, unknown>)
+      .readOnlyReply,
+    true,
+  );
+  // 旗標 off：守門仍然只在有 plan 時跑（逐位元組沿用舊行為）。
+  const off = await runChat({
+    difficulty: "easy",
+    deepSeekReplies: ["（已讀）", "好啊"],
+  });
+  assertEquals(off.body.reply, "（已讀）");
+  assertEquals(off.chatDeepSeekCalls.length, 1);
+});
+
+// ── Phase 4.5b：standard 進路由 ───────────────────────────────────────────
+
+Deno.test("chatModelFor（Phase 4.5b）：standard 只有在第六個參數為真時才進路由，其餘一格都沒動", () => {
+  // 第六個參數＝`PRACTICE_STANDARD_AGENCY_CLASSIFIER` 開著。
+  assertEquals(
+    chatModelFor("mixed", "on", APPLIED, "standard", "neutral", true),
+    "haiku",
+  );
+  assertEquals(
+    chatModelFor("mixed", "on", NOT_APPLIED, "standard", "boundary", true),
+    "haiku",
+  );
+  assertEquals(
+    chatModelFor("mixed", "on", NOT_APPLIED, "standard", "neutral", true),
+    "deepseek",
+  );
+  // 省略／false＝Phase 4.4 的既有範圍（standard 一律 deepseek）。
+  for (const situation of ["neutral", "boundary"]) {
+    assertEquals(
+      chatModelFor("mixed", "on", APPLIED, "standard", situation),
+      "deepseek",
+    );
+    assertEquals(
+      chatModelFor("mixed", "on", APPLIED, "standard", situation, false),
+      "deepseek",
+    );
+  }
+  // 這支旗標不得繞過 routing／agency 兩道既有閘門。
+  assertEquals(
+    chatModelFor(undefined, "on", APPLIED, "standard", "neutral", true),
+    "deepseek",
+  );
+  assertEquals(
+    chatModelFor("mixed", "shadow", APPLIED, "standard", "neutral", true),
+    "deepseek",
+  );
+  // beginner／game 完全不受影響。
+  assertEquals(
+    chatModelFor("mixed", "on", APPLIED, "beginner", "neutral", true),
+    chatModelFor("mixed", "on", APPLIED, "beginner", "neutral"),
+  );
+});
+
+Deno.test("Phase 4.5b：mixed ＋ agency on ＋ standard 分類器旗標開的介入輪，chat 生成真的打 Haiku", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    practiceMode: "standard",
+    standardClassifier: true,
+  });
+  assertEquals(r.claudeCalls.length, 1);
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.succeeded.chatModel, "haiku");
+  assertEquals(r.body.provider, "anthropic");
+});
+
+// ── Phase 4.5g：forced `check_out` 的結構後檢查 ──────────────────────────
+/**
+ * 階梯的**前一格**：`checkedOut` 還是 false、`lowValueStreak` 已經到門檻，
+ * 這一輪他又丟一個沒內容的東西 → forced `check_out`（她說「先忙了」）。
+ * （`checkedOut: true` 是再下一格的 `read_only`，那一格不打模型。）
+ */
+const CHECK_OUT_THREAD = {
+  profile_id: "practice_girl_001",
+  temperature_score: 40,
+  familiarity_score: 10,
+  recent_facts: {
+    conversationAgency: {
+      version: 1,
+      lastCoherence: "repetitive",
+      unresolvedCount: 0,
+      priorChallengeIssued: true,
+      lastAgencyAct: "end_low_value_loop",
+      lowValueStreak: 3,
+      checkedOut: false,
+    },
+  },
+};
+
+Deno.test("Phase 4.5g：forced check_out 第一發含問句 → 丟掉、採用第二發，telemetry 記 checkOutRetry", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "先忙了"],
+  });
+  assertEquals(r.status, 200);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  // 既有的第二發，不是第三次呼叫。
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+  assertWrittenExactlyOnce(r);
+});
+
+Deno.test("Phase 4.5g：forced check_out 兩發都含問句 → fail-open 送出第二發，記 checkOutStructuralFail", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "你在忙嗎"],
+  });
+  // 絕不是 500：這一輪的形狀再差也比整輪失敗好。
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "你在忙嗎");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutStructuralFail, true);
+  assertWrittenExactlyOnce(r);
+});
+
+Deno.test("Phase 4.5g：形狀（多則／超長）同樣重試，`先忙了` 這種合格輸出一次就過", async () => {
+  const twoBubbles = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了\n晚點聊", "先忙了"],
+  });
+  assertEquals(twoBubbles.body.reply, "先忙了");
+  assertEquals(twoBubbles.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    (twoBubbles.succeeded.conversationAgency as Record<string, unknown>)
+      .checkOutRetry,
+    true,
+  );
+
+  const overLength = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    // 21 code units（上限 20），沒有任何問句標記。
+    deepSeekReplies: ["我這邊突然有點事情要先處理一下就先這樣了掰", "先忙了"],
+  });
+  assertEquals(overLength.body.reply, "先忙了");
+  assertEquals(overLength.chatDeepSeekCalls.length, 2);
+
+  const clean = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了"],
+  });
+  assertEquals(clean.body.reply, "先忙了");
+  assertEquals(clean.chatDeepSeekCalls.length, 1);
+  const agency = clean.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  assertEquals(agency.checkOutRetry, undefined);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+Deno.test("Phase 4.5g：不是 check_out 的輪次含問句照樣一次就過（既有行為不動）", async () => {
+  const r = await runChat({
+    agency: "true",
+    deepSeekReplies: ["你是說阿布達比嗎"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "你是說阿布達比嗎");
+  assertEquals(r.chatDeepSeekCalls.length, 1);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct !== "check_out", true);
+  assertEquals(agency.checkOutRetry, undefined);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+// ── Phase 4.6 刀 2：check_out 重試那一發注入針對性改寫指令 ────────────────
+/**
+ * 4.5i 實測：同一份 prompt 原樣重送，第一發違規約 70%、重試後仍 50–62%
+ * 失敗——同 prompt 重試無效（已入腦的坑）。第二發必須多帶一則 user 訊息，
+ * 把第一發的具體違規項目與改法講白。
+ */
+Deno.test("Phase 4.6 刀 2：check_out 第一發含問句 → 第二發 messages 多一則改寫指令，帶具體違規項目、不引第一發原文", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "先忙了"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  const first = r.chatDeepSeekCalls[0].messages;
+  const second = r.chatDeepSeekCalls[1].messages;
+  // 第一發原樣：bundle 的 messages 一則都不多。
+  assertEquals(second.length, first.length + 1);
+  assertEquals(second.slice(0, first.length), first);
+  const injected = second.at(-1)!;
+  assertEquals(injected.role, "user");
+  // Codex R1 P1：第一發是未受信任的模型輸出，不得混進 user 訊息（抄寫／
+  // 指令混淆），改寫指令只能是固定字串。
+  assert(!injected.content.includes("你在忙嗎"), injected.content);
+  assert(injected.content.includes("問句"), injected.content);
+  assert(injected.content.includes("重寫"), injected.content);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutRewriteInjected, true);
+  assertEquals(agency.checkOutStructuralFail, undefined);
+});
+
+Deno.test("Phase 4.6 刀 2：多則＋超長各自對到自己的改寫指令；沒重試的輪次 messages 與 telemetry 一個 key 都不多", async () => {
+  const twoBubbles = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了\n晚點聊", "先忙了"],
+  });
+  const twoInjected = twoBubbles.chatDeepSeekCalls[1].messages.at(-1)!;
+  assert(twoInjected.content.includes("只能回 1 則"), twoInjected.content);
+  // 沒命中的項目不列進原因（結尾的通用規則另計）。
+  assert(!twoInjected.content.includes("含問句"), twoInjected.content);
+
+  const overLength = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["我這邊突然有點事情要先處理一下就先這樣了掰", "先忙了"],
+  });
+  const overInjected = overLength.chatDeepSeekCalls[1].messages.at(-1)!;
+  assert(
+    overInjected.content.includes(`${CHECK_OUT_MAX_CHARS} 字`),
+    overInjected.content,
+  );
+
+  const clean = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["先忙了"],
+  });
+  assertEquals(clean.chatDeepSeekCalls.length, 1);
+  const agency = clean.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRewriteInjected, undefined);
+  // 既有守門造成的重試（不是這道後檢查）也不注入：第二發與第一發逐則相同。
+  const guardRetry = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["（她轉身離開）", "先忙了"],
+  });
+  assertEquals(guardRetry.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    guardRetry.chatDeepSeekCalls[1].messages,
+    guardRetry.chatDeepSeekCalls[0].messages,
+  );
+  assertEquals(
+    (guardRetry.succeeded.conversationAgency as Record<string, unknown>)
+      .checkOutRewriteInjected,
+    undefined,
+  );
+});
+
+Deno.test("Phase 4.6 Codex R1 P2：mixed 路由走 Haiku 時，第二發同樣多一則改寫指令", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    claudeReplies: ["你在忙嗎", "先忙了"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.claudeCalls.length, 2);
+  const first = r.claudeCalls[0].messages;
+  const second = r.claudeCalls[1].messages;
+  assertEquals(second.length, first.length + 1);
+  assertEquals(second.slice(0, first.length), first);
+  assert(second.at(-1)!.content.includes("重寫"), second.at(-1)!.content);
+  assertEquals(
+    (r.succeeded.conversationAgency as Record<string, unknown>)
+      .checkOutRewriteInjected,
+    true,
+  );
+});
+
+Deno.test("Phase 4.6 Codex R1 P2：第一發 check_out 違規、第二發被別的守門擋下 → 恰好兩次呼叫、沒有第三發", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "（她轉身離開）"],
+    expectFailure: true,
+  });
+  // 兩發都被擋＝既有的整輪失敗路徑（4.6 之前也是 500），沒有第三次呼叫。
+  assertEquals(r.status, 500);
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assert(
+    r.chatDeepSeekCalls[1].messages.at(-1)!.content.includes("重寫"),
+  );
+});
+
+Deno.test("Phase 4.7：第一發空字串當守門失敗重試，不算 check_out 結構違規、不注入改寫指令", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["", "先忙了"],
+  });
+  // 4.6 之前空字串沒有任何守門會擋，一發就 200 送出空訊息（Codex R1 抓到）。
+  // 4.7 起當守門失敗重試；check_out 後檢查對空字串仍回空陣列，所以第二發
+  // 與第一發逐則相同、沒有改寫指令。
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assertEquals(
+    r.chatDeepSeekCalls[1].messages,
+    r.chatDeepSeekCalls[0].messages,
+  );
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRetry, undefined);
+  assertEquals(agency.checkOutRewriteInjected, undefined);
+});
+
+Deno.test("Phase 4.7：兩發都是空白 → 既有整輪失敗路徑（500），不送空訊息、沒有第三發", async () => {
+  for (
+    const [agency, difficulty] of [["true", "challenge"], [
+      "off",
+      "normal",
+    ]] as const
+  ) {
+    const r = await runChat({
+      agency,
+      difficulty,
+      deepSeekReplies: ["", "  \n "],
+      expectFailure: true,
+    });
+    assertEquals(r.status, 500, agency);
+    assertEquals(r.chatDeepSeekCalls.length, 2, agency);
+  }
+});
+
+// ── Phase 4.5g Codex R1 P2-1／P2-2 ────────────────────────────────────────
+/**
+ * P2-1 對拍固定輸入：`check_out` 輪的兩發都是「問句＋收尾」兩則。
+ * truncate 先砍成第一則（第一顆是問句），後檢查仍命中（問句）→ fail-open。
+ * handler 與黑箱 runner 必須落在**同一個字面**上；runner 那一半釘在
+ * `tools/practice-agency-eval/run_agency_test.ts` 的同名測試。
+ */
+const CHECK_OUT_PAIR_INPUT = "你在忙嗎？\n先忙了";
+const CHECK_OUT_PAIR_EXPECTED = "你在忙嗎？";
+
+Deno.test("Phase 4.5g（P2-1 對拍）：shape=truncate 的 check_out 輪，兩發都違規時 handler 的 fail-open 字面＝runner 的字面", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    shape: "truncate",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: [CHECK_OUT_PAIR_INPUT, CHECK_OUT_PAIR_INPUT],
+  });
+  assertEquals(r.status, 200);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  // 先截斷（丟掉「先忙了」那一則）、再後檢查（第一則是問句）→ 兩發都命中。
+  assertEquals(r.body.reply, CHECK_OUT_PAIR_EXPECTED);
+  assertEquals(agency.shapeTruncatedBubbles, 1);
+  assertEquals(agency.checkOutRetry, true);
+  assertEquals(agency.checkOutStructuralFail, true);
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+});
+
+Deno.test("Phase 4.5g（P2-2a）：第一發被 check_out 後檢查丟掉、第二發被既有守門擋 → 整輪 500（絕不送出被守門擋下的內容）", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    // 第二發整段是括號旁白，剝到空 → `chat_stage_direction`（不在已讀白名單）。
+    deepSeekReplies: ["你在忙嗎", "（她轉身離開）"],
+    expectFailure: true,
+  });
+  assertEquals(r.status, 500);
+  assertEquals(r.body.error, "practice_generation_failed");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+});
+
+Deno.test("Phase 4.5g（P2-2b）：第一發被既有守門擋、第二發只有 check_out 結構違規 → 200 fail-open，記 fail 但**不**記 retry", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["（她轉身離開）", "你在忙嗎"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "你在忙嗎");
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.forcedAct, "check_out");
+  assertEquals(agency.checkOutStructuralFail, true);
+  // 那一次重試不是這道後檢查造成的，所以 `checkOutRetry` 連 key 都沒有。
+  assertEquals(agency.checkOutRetry, undefined);
 });

@@ -146,6 +146,7 @@ def block_fields(block: dict, book_id: str, chapter_id: str) -> list:
         add(block, 'text', 'text', required=True)
     elif typ == 'comparison':
         add(block, 'title', 'title')
+        add(block, 'scenario', 'scenario')
         add(block, 'caption', 'caption')
         for index, item in enumerate(_require_list(block, 'items', bid)):
             owner = _require_id(item, f'{bid}.items[{index}]')

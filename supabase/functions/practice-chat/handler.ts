@@ -55,8 +55,12 @@ import {
   agencyModeFor,
   agencyShapeExperimentFor,
   chatModelFor,
+  checkOutRewriteInstruction,
+  checkOutStructuralViolations,
   nextConversationAgencyState,
   type PracticeChatModel,
+  READ_ONLY_REPLY_TEXT,
+  standardAgencyClassifierEnabled,
   truncateAgencyShape,
 } from "./conversation_agency.ts";
 import {
@@ -110,6 +114,7 @@ import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { buildAcquaintanceOrigin } from "./acquaintance_origin.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
+  hasReadOnlyReply,
   hasStageDirection,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
@@ -140,13 +145,16 @@ import {
   applyCoherenceDeltaCap,
   applyLearningClassification,
   applyPartnerStateUpdate,
+  buildStandardAgencyClassifierMessages,
   buildTurnClassifierMessages,
   clampTemperature,
   type LearningJudgement,
+  parseStandardAgencyClassification,
   parseTurnClassification,
   type PartnerMood,
   type PartnerState,
   relationshipStageFor,
+  type StandardAgencyClassification,
   temperatureBandFor,
   type TurnClassification,
   withMaxNegativeLearningDeltas,
@@ -1041,7 +1049,7 @@ async function fetchRelationshipThreadState(opts: {
   const { data, error } = await opts.supabase
     .from("practice_relationship_threads")
     .select(
-      "memory_summary, partner_mood, partner_inner_thought, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage, recent_facts",
+      "memory_summary, partner_mood, partner_inner_thought, relationship_score, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage, recent_facts",
     )
     .eq("user_id", opts.userId)
     .eq("visible_thread_id", opts.visibleThreadId)
@@ -1319,10 +1327,15 @@ async function persistGameStateFailOpen(opts: {
   }
 }
 
+/**
+ * Codex R2 P2：回傳「這一次寫入有沒有成功」。既有呼叫端（beginner／game）
+ * 忽略回傳值＝行為一字不變；standard 的 `statePersisted` telemetry 需要真實
+ * 結果，不能假設 fail-open 的呼叫一定寫進去了。
+ */
 async function upsertRelationshipThreadFailOpen(opts: {
   supabase: PracticeSupabaseClient;
   params: ReturnType<typeof buildRelationshipThreadRpcParams>;
-}): Promise<void> {
+}): Promise<boolean> {
   const { error } = await opts.supabase.rpc(
     "upsert_practice_relationship_thread",
     opts.params,
@@ -1332,7 +1345,9 @@ async function upsertRelationshipThreadFailOpen(opts: {
       user: summarizeUser(String(opts.params.p_user_id)),
       error: error.message,
     });
+    return false;
   }
+  return true;
 }
 
 async function judgeLearningState(opts: {
@@ -1358,6 +1373,11 @@ async function judgeLearningState(opts: {
    * 同一個詞」還是拿得到正分。現在餵進 cap，重複永遠壓成 repetitive。
    */
   agencyEvidenceRepeatedExactToken?: boolean;
+  /**
+   * Phase 4.5a 刀 3：這一輪 planner forced `cold_return`（不收斂階梯的「回來
+   * 但冷」）。旗標 off 時永遠 false。
+   */
+  agencyColdReturn?: boolean;
   /** Phase 3.5：分類器的可信自我來源；旗標 off 時 buildTurnClassifierMessages 不用。 */
   memorySummary?: string | null;
   herRecentMoments?: readonly MomentMemoryPost[];
@@ -1470,18 +1490,20 @@ async function judgeLearningState(opts: {
     // 順序跟成功那條一致：applied-hint 保護之後、challenge 閘門之前。
     const { judgement: cappedFallback, capApplied: fallbackCapApplied } =
       agencyDeltaCapActive
-        ? applyCoherenceDeltaCap(
-          protectedFallback,
-          currentTemperature,
-          currentFamiliarity,
+        ? applyCoherenceDeltaCap({
+          judgement: protectedFallback,
+          currentHeat: currentTemperature,
+          currentFamiliarity: currentFamiliarity,
           // Codex round-2 P1-4：分類器沒給判斷就傳 null（不是字面
           // "ambiguous"）——傳字面會讓 cap 內部的結構退路永遠選不到。
-          null,
-          {
+          coherence: null,
+          structural: {
             repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
             unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
           },
-        )
+          // Phase 4.5a 刀 3：分類器壞掉的 fallback 也要壓（同 Codex P1-e 的理由）。
+          coldReturn: opts.agencyColdReturn,
+        })
         : { judgement: protectedFallback, capApplied: "none" as const };
     const gatedFallback = challengeGateActive
       ? applyChallengeRewardGate({
@@ -1550,21 +1572,23 @@ async function judgeLearningState(opts: {
     // 扣分之前——後兩者是硬下限，會直接蓋過這裡的 clamp，precedence 不變。
     // 旗標 off 時 agencyDeltaCapActive 一律 false，逐字沿用舊行為。
     const { judgement: cappedJudgement, capApplied } = agencyDeltaCapActive
-      ? applyCoherenceDeltaCap(
-        protectedJudgement,
-        currentTemperature,
-        currentFamiliarity,
-        classification.coherence ?? null,
-        {
+      ? applyCoherenceDeltaCap({
+        judgement: protectedJudgement,
+        currentHeat: currentTemperature,
+        currentFamiliarity: currentFamiliarity,
+        coherence: classification.coherence ?? null,
+        structural: {
           repeatedExactToken: opts.agencyEvidenceRepeatedExactToken ?? false,
           unresolvedCount: opts.agencyEvidenceUnresolvedCount ?? 0,
         },
         // Phase 3.4：她捏造跟玩家的共同過去（認識／共同朋友／一起經歷過）時，
         // 這一輪不得換到正分。只有 assisted 有分類器，standard 走不到這裡。
-        classification.sharedPastClaim,
+        sharedPastClaim: classification.sharedPastClaim,
         // Phase 3.6：她替自己補的設定跟來源矛盾、或明顯迎合玩家丟的詞時同樣不得換到正分。
-        classification.accommodatingSelfFact,
-      )
+        accommodatingSelfFact: classification.accommodatingSelfFact,
+        // Phase 4.5a 刀 3：「回來但冷」那一輪不補回溫度（就算分類器判 connected）。
+        coldReturn: opts.agencyColdReturn,
+      })
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
     // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。
@@ -1764,6 +1788,90 @@ async function judgeLearningState(opts: {
     }
     return fallback;
   }
+}
+
+/**
+ * conversation-agency-v1 Phase 4.5b：standard 模式的**精簡** agency 分類器。
+ *
+ * 與 `judgeLearningState` 的差別（刻意的）：只判四個 agency 欄位、不打溫度
+ * 分數、**不**呼叫 `update_practice_learning_state`、不動 partnerState。模型／
+ * maxTokens／temperature／timeout 用同一組常數。
+ *
+ * **fail-open**：任何錯誤（呼叫、逾時、解析）都不擋聊天——回 `null` 訊號，
+ * 呼叫端退回結構近似（與 beginner 分類器失敗時的 `AgencyClassifierSignal`
+ * 契約相同），只留一筆沒有逐字稿的 warn。
+ */
+interface StandardAgencyJudgement {
+  readonly classification: StandardAgencyClassification | null;
+  readonly durationMs: number;
+}
+
+async function judgeStandardAgencyFailOpen(opts: {
+  deps: PracticeChatHandlerDeps;
+  apiKey: string;
+  userId: string;
+  request: ReturnType<typeof validateRequest>;
+  reply: string;
+  memorySummary?: string | null;
+  herRecentMoments?: readonly MomentMemoryPost[];
+}): Promise<StandardAgencyJudgement> {
+  const startedAt = performance.now();
+  try {
+    const raw = await opts.deps.callDeepSeek({
+      apiKey: opts.apiKey,
+      messages: buildStandardAgencyClassifierMessages({
+        turns: opts.request.turns,
+        profile: opts.request.profile,
+        assistantReply: opts.reply,
+        memorySummary: opts.memorySummary,
+        herRecentMoments: opts.herRecentMoments,
+      }),
+      maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
+      temperature: TEMPERATURE_JUDGE_TEMPERATURE,
+      jsonMode: true,
+      timeoutMs: DEEPSEEK_TIMEOUT_MS,
+    });
+    const classification = parseStandardAgencyClassification(raw);
+    // 與 assisted 路徑同一個事件名（只有欄位名，沒有內容）：ops 算 repair 盛行
+    // 率時不必分兩張表。
+    if (classification.repairedFields?.length) {
+      logWarn("practice_chat_learning_classifier_repaired", {
+        user: summarizeUser(opts.userId),
+        fields: classification.repairedFields,
+      });
+    }
+    return { classification, durationMs: elapsedMilliseconds(startedAt) };
+  } catch (e) {
+    // Codex R2 U：**不記 `getErrorMessage(e)` 全文**。JSON 解析失敗時
+    // `JSON.parse` 的訊息會把模型吐出來的原文片段帶進來（那是對話衍生內容），
+    // 而這一行是無逐字稿觀測。只記固定的錯誤類別。
+    logWarn("practice_chat_standard_agency_classifier_failed", {
+      user: summarizeUser(opts.userId),
+      errorClass: classifierErrorClass(e),
+    });
+    return { classification: null, durationMs: elapsedMilliseconds(startedAt) };
+  }
+}
+
+/**
+ * Codex R2 U：分類器失敗的**固定代碼**，永遠不含模型原文。
+ * 只認 `deepseek.ts` 會丟的那幾個字面（自己的常數，不是使用者內容）；
+ * 其餘一律 `"unknown"`。
+ */
+function classifierErrorClass(
+  e: unknown,
+): "timeout" | "http" | "parse" | "unknown" {
+  if (e instanceof SyntaxError) return "parse";
+  const message = getErrorMessage(e);
+  if (message === "deepseek_timeout") return "timeout";
+  if (message.startsWith("deepseek_http_")) return "http";
+  if (
+    message === "deepseek_max_tokens" || message === "deepseek_empty_content" ||
+    message.startsWith("standard agency classification")
+  ) {
+    return "parse";
+  }
+  return "unknown";
 }
 
 async function releaseHintGeneration(opts: {
@@ -2289,6 +2397,17 @@ export function createPracticeChatHandler(
     // 這一輪真的介入時才有效果（`chatModelFor`）。
     const chatModelRoutingFlag = deps.getEnv("PRACTICE_CHAT_MODEL_ROUTING");
     const chatModelRoutingOn = chatModelRoutingFlag === "mixed";
+    // Phase 4.5b：standard 模式的每輪 agency 分類器。`true` 才開；未設／`off`／
+    // 亂填一律關（`standardAgencyClassifierEnabled` fail-closed），而且只在
+    // agency 旗標 `on` ∧ `practiceMode === "standard"` 時成立。旗標關著時
+    // standard 的 messages／response／rpc／telemetry 四面與接線前逐位元組相同
+    // （`agency_flag_off_equivalence_test.ts` 多枚舉的一維環境值）。
+    // 只在 chat 路徑消費（hint 是 assisted 專用；debrief 不打分類器）。
+    const standardAgencyClassifierOn = standardAgencyClassifierEnabled(
+      deps.getEnv("PRACTICE_STANDARD_AGENCY_CLASSIFIER"),
+      agencyMode,
+      request.practiceMode,
+    );
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -2372,6 +2491,7 @@ export function createPracticeChatHandler(
       visiblePracticeThreadId: request.visiblePracticeThreadId,
     });
     let relationshipThreadState: PracticeRelationshipThreadState | null = null;
+    let threadFetchFailed = false;
     try {
       relationshipThreadState = await fetchRelationshipThreadState({
         supabase,
@@ -2379,11 +2499,24 @@ export function createPracticeChatHandler(
         visibleThreadId,
       });
     } catch (e) {
+      // Codex R2 P1：讀取失敗與「確定沒有列」在 `relationshipThreadState` 上
+      // 長得一模一樣（都是 null）。standard 的寫入路徑不能把前者當後者——
+      // 那一列可能正躺著另一個角色的關係狀態。
+      threadFetchFailed = true;
       logWarn("practice_relationship_thread_fetch_failed", {
         user: summarizeUser(user.id),
         error: getErrorMessage(e),
       });
     }
+    /**
+     * Phase 4.5b（Codex R1 P1-1）：「這個 visible thread 上有另一個角色的列」
+     * 與「根本沒有列」是**兩件事**，舊版都被壓成 `relationshipThreadState = null`。
+     * standard 的新寫入路徑會把後者當成「建新列」，於是拿新角色的 profileId
+     * 去 upsert 同一個 (user, visible_thread_id)——四個 `= EXCLUDED` 欄位被寫成
+     * null（舊角色的分數與模式沒了），而 partner／invite／memory 走 COALESCE
+     * 留著舊角色的值，等於把兩個角色的狀態攪在一起。所以要把「不符」記下來。
+     */
+    let threadProfileMismatch = false;
     if (
       relationshipThreadState &&
       relationshipThreadState.profileId !== request.profile.girl.profileId
@@ -2394,7 +2527,21 @@ export function createPracticeChatHandler(
         threadProfileId: relationshipThreadState.profileId ?? null,
       });
       relationshipThreadState = null;
+      threadProfileMismatch = true;
     }
+    /**
+     * Phase 4.5b（Codex R1 P1-1 ＋ R2 P1）：standard 的 thread 寫入前提是
+     * **確定這一列可以安全覆寫**。兩種情形都不成立：讀取失敗（不知道列上有
+     * 什麼）、profile 不符（列上是別的角色）。任一成立就整個跳過寫入，
+     * telemetry 記 `statePersisted:false` ＋ `stateSkipReason`。
+     * beginner／game 的寫入路徑不看這一格（既有行為一字未改）。
+     */
+    const threadStateSkipReason: "fetch_failed" | "profile_mismatch" | null =
+      threadFetchFailed
+        ? "fetch_failed"
+        : threadProfileMismatch
+        ? "profile_mismatch"
+        : null;
     const promptMemorySummary = relationshipThreadState?.memorySummary ?? null;
 
     if (request.mode === "hint") {
@@ -4392,6 +4539,20 @@ export function createPracticeChatHandler(
     let stageDirectionRepairs = 0;
     /** Phase 3.3 `truncate` 臂丟掉幾則（旋鈕 off 時永遠 0，也不進 telemetry）。 */
     let shapeTruncatedBubbles = 0;
+    /** Phase 4.5a 刀 2：這一輪真的被授權回已讀（守門白名單與 telemetry 同源）。 */
+    let readOnlyAllowedThisTurn = false;
+    /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發、重試過。 */
+    let checkOutRetried = false;
+    /** Phase 4.5g：第二發仍命中，fail-open 送出去了。 */
+    let checkOutStructuralFailed = false;
+    /**
+     * Phase 4.6 刀 2：第一發被後檢查丟掉時，第二發要多帶的針對性改寫指令。
+     * 只有這道後檢查造成的重試才有值；既有守門造成的重試仍原樣重送。
+     */
+    let checkOutRewrite: string | null = null;
+    /** Phase 4.5a 刀 3：整輪一支生成模型都沒打（forced `read_only`）。 */
+    const noModelCalled = () =>
+      chatModelCalls.haiku + chatModelCalls.deepseek === 0;
     /** Phase 4.4：這一輪**最終採用**的回覆是哪支模型（旗標 off 時永遠 deepseek）。 */
     let chatModelUsed: PracticeChatModel = "deepseek";
     /** 這一輪有任何一次 Claude 呼叫失敗過（守門重試也算）。 */
@@ -4450,6 +4611,15 @@ export function createPracticeChatHandler(
             agencyMode,
             // standard 沒有 thread 寫入，也不讀 assisted 留下的狀態（規格附錄：
             // standard 的 priorDecline 一律 false）；agency 短期狀態改從逐字稿現推。
+            //
+            // Phase 4.5b：新旗標開著時 standard 也有每輪分類器與持久化狀態，
+            // 所以要把 thread 的 agencyState 帶回來——`aiClarifiedLastTurn`
+            // （4.3 死守邊界）／`lowValueStreak`／`checkedOut`（4.5a 階梯）全部
+            // 只吃持久化狀態，不帶就永遠是初始值。旗標關＝省略，與 `?? null`
+            // 逐字相同。
+            ...(standardAgencyClassifierOn
+              ? { agencyState: relationshipThreadState?.agencyState ?? null }
+              : {}),
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
@@ -4459,18 +4629,34 @@ export function createPracticeChatHandler(
       // Phase 4.4 混合模型路由：條件與黑箱 runner 的 `--chat-model=mixed` 臂
       // 逐字相同（`chatModelFor`）。沒有 Anthropic key／沒有注入 callClaude
       // 就當作沒開（chat 本來就要求 DeepSeek key 才進得來，退路一定在）。
+      // ── Phase 4.5a 刀 3：forced `read_only`＝她已經先去忙了、他又丟一個
+      // 沒內容的東西。這一格**不打生成模型**：直接送一則「（已讀）」，
+      // 守門鏈照走（白名單放行）。旗標 off／shadow 走不到（`applied` 恆 false）。
+      const readOnlyTurn = agencyMode === "on" &&
+        agencyDecision?.applied === true &&
+        agencyDecision.decision.forcedAct === "read_only";
       const useHaiku = chatModelFor(
             chatModelRoutingFlag,
             agencyMode,
             agencyDecision,
             request.practiceMode,
             chatPromptBundle.situation,
+            standardAgencyClassifierOn,
           ) === "haiku" && !!claudeApiKey && !!deps.callClaude;
+      // Phase 4.6 刀 2：重試那一發把改寫指令接在 bundle 後面當一則 user 訊息
+      // （DeepSeek／Claude 兩條路徑同一份）；沒注入時就是 bundle 本身。
+      const messagesForAttempt = () =>
+        checkOutRewrite
+          ? [
+            ...chatPromptBundle.messages,
+            { role: "user" as const, content: checkOutRewrite },
+          ]
+          : chatPromptBundle.messages;
       const generateWithDeepSeek = () => {
         chatModelCalls.deepseek++;
         return deps.callDeepSeek({
           apiKey,
-          messages: chatPromptBundle.messages,
+          messages: messagesForAttempt(),
           maxTokens: CHAT_MAX_TOKENS,
           temperature: CHAT_TEMPERATURE,
           timeoutMs: DEEPSEEK_TIMEOUT_MS,
@@ -4479,20 +4665,32 @@ export function createPracticeChatHandler(
       let lastError: unknown;
       for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
         try {
-          if (useHaiku && !chatModelFallback) {
+          // Codex R1 P1-1 連帶修掉的既有漏洞：舊版把每一次生成直接寫進外層的
+          // `reply`，守門（旁白／L4／內部標籤）在**最後一次** attempt 丟錯時，
+          // `reply` 仍留著那段被拒絕的文字，`if (reply === null)` 因此不成立
+          // ——被守門擋下來的內容照樣送出去。改成先收在 attempt 內的 `candidate`，
+          // 每一道守門都過了才寫回 `reply`。
+          let candidate: string;
+          if (readOnlyTurn) {
+            candidate = READ_ONLY_REPLY_TEXT;
+          } else if (useHaiku && !chatModelFallback) {
             try {
               // max_tokens／temperature 與 DeepSeek 路徑同值（成本護欄：Claude
               // 這一輪不會比 DeepSeek 那一輪更長），system 走 `callClaude` 內建
               // 的 ephemeral cache_control。
               chatModelCalls.haiku++;
-              reply = await deps.callClaude!({
+              candidate = await deps.callClaude!({
                 apiKey: claudeApiKey!,
                 model: CLAUDE_HAIKU_MODEL,
-                messages: chatPromptBundle.messages,
+                messages: messagesForAttempt(),
                 maxTokens: CHAT_MAX_TOKENS,
                 temperature: CHAT_TEMPERATURE,
                 timeoutMs: DEEPSEEK_TIMEOUT_MS,
                 onUsage: addChatModelUsage,
+                // Phase 4.5b 刀 B：system 的穩定前綴（人設／規則）另外掛一個
+                // cache block。整段掛 cache 而每輪夾著當輪 plan／溫度／記憶時，
+                // production 實測 21 輪全部 cache write、cache read 0。
+                systemCachePrefix: chatPromptBundle.systemStable,
               });
               chatModelUsed = "haiku";
             } catch (e) {
@@ -4506,26 +4704,35 @@ export function createPracticeChatHandler(
                 attempt,
                 error: getErrorMessage(e),
               });
-              reply = await generateWithDeepSeek();
+              candidate = await generateWithDeepSeek();
             }
           } else {
-            reply = await generateWithDeepSeek();
+            candidate = await generateWithDeepSeek();
           }
           // DeepSeek 偶爾在短/冒犯輸入下退回訓練分佈的簡體字，繁體鐵則守不住；
           // 其他 AI 輸出欄位（hint/debrief/temperature）都已過這道轉換，這裡補齊。
-          reply = toTraditionalChinese(normalizeLiteralNewlines(reply));
-          rejectVisibleInternalLabelLeak(reply, "chat_internal_label_leak", {
-            // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
-            transcript: request.turns.map((turn) => turn.text).join("\n"),
-            // style 層或 agency-only guidance 真的注入時才多攔 hidden heading
-            // （旗標全關時兩者皆無，零改動）。
-            ...(responsePlan || agencyDecision?.applied
-              ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
-              : {}),
-          });
+          candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
+          // Phase 4.7（4.6 Codex R1 抓到的舊缺口）：空白回覆沒有任何守門會攔，
+          // 一發就 200 送出空訊息。當守門失敗重試；兩發都空走既有整輪失敗路徑。
+          if (candidate.trim().length === 0) {
+            throw new Error("chat_empty_reply");
+          }
+          rejectVisibleInternalLabelLeak(
+            candidate,
+            "chat_internal_label_leak",
+            {
+              // 第二刀 A 組：NPC 引用對話裡出現過的詞不是機制外洩。
+              transcript: request.turns.map((turn) => turn.text).join("\n"),
+              // style 層或 agency-only guidance 真的注入時才多攔 hidden heading
+              // （旗標全關時兩者皆無，零改動）。
+              ...(responsePlan || agencyDecision?.applied
+                ? { extraChineseLabels: REPLY_STYLE_HIDDEN_HEADINGS }
+                : {}),
+            },
+          );
           // 第二刀（Eric 2026-08-24 拍板）：NPC 可以反撩——尺度類按本輪熱度
           // （與 prompt 的 allowSpicyLevel 同源），同意權類永遠攔。
-          rejectL4UnsafeVisibleText(reply, "chat_l4_unsafe", {
+          rejectL4UnsafeVisibleText(candidate, "chat_l4_unsafe", {
             fieldClass: "strict",
             spicyAllowed: assistedMode && request.practiceMode === "game" &&
               evaluateGameFsm({
@@ -4538,9 +4745,28 @@ export function createPracticeChatHandler(
           });
           // 括號旁白：style 層才會出現（run3–run5 量到 1–5%）；修補優先，
           // 整段剝到空才丟 chat_stage_direction 重試。
-          if (responsePlan && hasStageDirection(reply)) {
+          // Phase 4.5a 刀 2（Codex R1 P1-1 收緊）：白名單只給**這一輪真的被
+          // 授權**回已讀的格——planner 的 `readOnlyAllowed`（挑戰／Game 的收尾
+          // 格或連續越界）或 forced `read_only`。舊版只看 `agencyMode === "on"`，
+          // 等於 beginner／easy 的模型自己吐一句「（已讀）」也照樣放行。
+          // 其餘一律 false ＝走既有旁白修補／重試，也不會記 readOnlyReply。
+          const allowReadOnly = agencyMode === "on" &&
+            (responsePlan?.readOnlyAllowed === true || readOnlyTurn);
+          readOnlyAllowedThisTurn = allowReadOnly;
+          // Codex R2 P1-3：agency on 時**不論有沒有 `responsePlan`** 都要跑這道
+          // 守門——旗標分臂（agency on ＋ reply-style off）時模型自己吐一句
+          // 「（已讀）」原本會整段漏過去。off 路徑維持「只在有 plan 時跑」，
+          // 逐位元組不變。
+          if (
+            (responsePlan || agencyMode === "on") &&
+            hasStageDirection(candidate, allowReadOnly)
+          ) {
             stageDirectionRepairs++;
-            reply = stripStageDirections(reply, "chat_stage_direction");
+            candidate = stripStageDirections(
+              candidate,
+              "chat_stage_direction",
+              allowReadOnly,
+            );
           }
           // Phase 3.3 `truncate` 臂：她第一則就是問句時只留第一則（結構判斷，
           // 見 truncateAgencyShape）。放在最後一道後處理，`reply` 就地覆寫，
@@ -4559,10 +4785,34 @@ export function createPracticeChatHandler(
             agencyShapeExperiment === "truncate" &&
             !chatPromptBundle.gameFsmPriority
           ) {
-            const truncated = truncateAgencyShape(reply, agencyDecision);
-            reply = truncated.text;
+            const truncated = truncateAgencyShape(candidate, agencyDecision);
+            candidate = truncated.text;
             shapeTruncatedBubbles = truncated.dropped;
           }
+          // Phase 4.5g：forced `check_out` 的結構後檢查（見
+          // `checkOutStructuralViolation`）。放在**所有**守門與後處理之後，
+          // 檢查的就是真的要送出去的那串字。機制與 Phase 3.1 同一套：第一發
+          // 命中就用既有的第二發重試同一份 bundle（不加第三次呼叫），第二發
+          // 仍命中就留著送出（fail-open，只記 telemetry）——那一輪的形狀再差
+          // 也比 500 好。旗標 off／shadow 走不到（`applied` 恆 false）。
+          //
+          // Phase 4.6 刀 2：第二發不再原樣重送——把第一發命中的具體項目對成
+          // 改寫指令注入（`checkOutRewriteInstruction`）。
+          const checkOutViolations = checkOutStructuralViolations(
+            agencyDecision,
+            candidate,
+          );
+          if (checkOutViolations.length > 0) {
+            if (attempt < CHAT_GENERATION_ATTEMPTS) {
+              checkOutRetried = true;
+              checkOutRewrite = checkOutRewriteInstruction(
+                checkOutViolations,
+              );
+              throw new Error("chat_agency_check_out_shape");
+            }
+            checkOutStructuralFailed = true;
+          }
+          reply = candidate;
           break;
         } catch (e) {
           lastError = e;
@@ -4651,6 +4901,8 @@ export function createPracticeChatHandler(
             agencyDecision?.decision.evidence.unresolvedCount ?? 0,
           agencyEvidenceRepeatedExactToken:
             agencyDecision?.decision.evidence.repeatedExactToken ?? false,
+          agencyColdReturn:
+            agencyDecision?.decision.forcedAct === "cold_return",
           // Phase 3.5：跟 chat prompt 同一份記憶／貼文餵分類器（旗標 off 不用）。
           memorySummary: promptMemorySummary,
           herRecentMoments,
@@ -4764,6 +5016,82 @@ export function createPracticeChatHandler(
       }
     }
 
+    // ── Phase 4.5b：standard 模式的每輪 agency 分類器 ＋ 狀態持久化 ────────
+    // 旗標關著時整段不跑（messages／response／rpc／telemetry 四面與接線前逐位
+    // 元組相同）。**同步跑**：`practice_chat_succeeded` 要帶這一輪的分類器欄位，
+    // 丟進既有的 `waitUntil` 背景慣例就趕不上這一行（那條慣例只服務「回應之後
+    // 才寫」的 ai_logs 持久化）。耗時記進 `standardClassifierDurationMs`。
+    let standardAgency: StandardAgencyJudgement | null = null;
+    /** Codex R2 P2：RPC 真的回成功才是 true（fail-open 的呼叫可能寫失敗）。 */
+    let standardStatePersisted = false;
+    if (standardAgencyClassifierOn) {
+      standardAgency = await judgeStandardAgencyFailOpen({
+        deps,
+        apiKey,
+        userId: user.id,
+        request,
+        reply,
+        memorySummary: promptMemorySummary,
+        herRecentMoments,
+      });
+      // Codex R1 P1-1 ＋ R2 P1：讀取失敗或 profile 不符時**完全跳過** thread
+      // 寫入——那一列可能是別的角色的，這條路徑沒有任何一個欄位算得出正確的
+      // 值。分類器照跑、telemetry 照記，只是這一輪的狀態不落地。
+      if (agencyDecision && threadStateSkipReason === null) {
+        standardStatePersisted = await upsertRelationshipThreadFailOpen({
+          supabase,
+          params: buildRelationshipThreadRpcParams({
+            userId: user.id,
+            visibleThreadId,
+            profileId: request.profile.girl.profileId,
+            // RPC 的 `ON CONFLICT DO UPDATE` 對 `practice_mode`／
+            // `relationship_score`／`temperature_score`／`familiarity_score`
+            // 是 `= EXCLUDED`（**不是** COALESCE），所以既有 row 的值一律原樣
+            // 帶回，不然 standard 一輪就會把 beginner 累積的分數與模式清掉。
+            // `partner_*`／`invite_stage`／`memory_summary` 是 COALESCE，帶回
+            // 既有值與不覆寫等價，一起帶著是為了讓「原樣帶回」是一條規則而不是
+            // 逐欄位的例外表。沒有既有 row 時建立一列 mode `standard`、分數留空
+            // 的 thread——後續 beginner 的 `resolveLearningSeed` 對 null 分數有
+            // 既有退路（ledger 未建檔 → client seed → 難度起始值）。
+            // Codex R2 U：`practice_mode` 在 migration 是 `NOT NULL DEFAULT
+            // 'standard'`（`migration_source_test.ts` 釘住），而唯一的 writer
+            // （這支 RPC）只收三個合法值——所以讀回來的 `practiceMode` 不可能是
+            // null。`?? "standard"` 只是「這個 thread 還沒有列」的那條路。
+            practiceMode: relationshipThreadState?.practiceMode ?? "standard",
+            relationshipScore: relationshipThreadState?.relationshipScore ??
+              null,
+            temperatureScore: relationshipThreadState?.temperatureScore ?? null,
+            familiarityScore: relationshipThreadState?.familiarityScore ?? null,
+            partnerState: relationshipThreadState?.partnerState ?? null,
+            inviteStage: relationshipThreadState?.inviteStage ?? null,
+            memorySummary: relationshipThreadState?.memorySummary ?? null,
+            aiTurnCount: newAiCount,
+            existingRecentFacts: relationshipThreadState?.recentFacts ?? null,
+            agencyMode,
+            // standard 不推進 style 狀態（它不讀 styleState，`priorDecline`
+            // 規格上恆為 false）。**刻意不傳 `replyStyleState`**（Codex R1 U2）：
+            // `parseReplyStyleState` 是重建而不是原樣回傳，parse 後再寫回去會把
+            // `replyStyle` 裡本檔不認識的巢狀 key 靜默清掉。省略這個參數時
+            // `existingRecentFacts` 的原始 `replyStyle` 物件會原封不動穿過去。
+            // 與 beginner 同一支狀態機；分類器失敗時訊號傳 null＝退回純結構
+            // 近似（`AgencyClassifierSignal` 的既有契約）。
+            conversationAgencyState: nextConversationAgencyState(
+              relationshipThreadState?.agencyState ?? null,
+              agencyDecision.decision,
+              standardAgency.classification
+                ? {
+                  coherence: standardAgency.classification.coherence,
+                  aiChallengedThisTurn:
+                    standardAgency.classification.aiChallengedThisTurn,
+                } satisfies AgencyClassifierSignal
+                : null,
+              responsePlan?.askUserFocus !== undefined,
+            ),
+          }),
+        });
+      }
+    }
+
     logInfo("practice_chat_succeeded", {
       user: summarizeUser(user.id),
       mode: "chat",
@@ -4819,7 +5147,8 @@ export function createPracticeChatHandler(
       // 成本看 Anthropic console。
       ...(chatModelRoutingOn
         ? {
-          chatModel: chatModelUsed,
+          // Phase 4.5a 刀 3：forced `read_only` 那一輪一支模型都沒打。
+          chatModel: noModelCalled() ? "none" : chatModelUsed,
           chatModelCalls,
           ...(chatModelFallback ? { chatModelFallback: true } : {}),
           ...(chatModelUsage ? { chatModelUsage } : {}),
@@ -4916,26 +5245,112 @@ export function createPracticeChatHandler(
                   : {}),
               }
               : {}),
+            // Phase 4.5b：standard 的精簡分類器（旗標關時整組 key 不存在）。
+            // 四個欄位的 key 名與 beginner 相同（上面那幾格對 standard 是
+            // `null`／缺席，這裡覆寫成分類器真正判出來的值，key 順序不變）。
+            ...(standardAgency
+              ? {
+                standardClassifier: standardAgency.classification
+                  ? "ok"
+                  : "failed",
+                standardClassifierDurationMs: standardAgency.durationMs,
+                // Codex R1 P1-1 ＋ R2 P2：這一輪的狀態有沒有**真的**落地——
+                // RPC 回成功才是 true（跳過寫入、或 fail-open 的寫入失敗都是
+                // false）。跳過時另外記原因，兩種跳過分得開。
+                statePersisted: standardStatePersisted,
+                ...(threadStateSkipReason
+                  ? { stateSkipReason: threadStateSkipReason }
+                  : {}),
+                ...(standardAgency.classification
+                  ? {
+                    coherence: standardAgency.classification.coherence,
+                    aiChallengedThisTurn:
+                      standardAgency.classification.aiChallengedThisTurn,
+                    sharedPastClaim:
+                      standardAgency.classification.sharedPastClaim,
+                    accommodatingSelfFact:
+                      standardAgency.classification.accommodatingSelfFact,
+                    ...(standardAgency.classification.repairedFields?.includes(
+                        "sharedPastClaim",
+                      )
+                      ? { sharedPastClaimRepaired: true }
+                      : {}),
+                    ...(standardAgency.classification.repairedFields?.includes(
+                        "accommodatingSelfFact",
+                      )
+                      ? { accommodatingSelfFactRepaired: true }
+                      : {}),
+                  }
+                  : {}),
+              }
+              : {}),
             deltaCapApplied: temperature?.deltaCapApplied ?? "none",
             // Phase 3.3 `truncate` 臂：只有旋鈕開在 truncate 且這一輪 agency
             // 真的介入時這個 key 才存在（其他情形連欄位都不多一個）。
             ...(agencyShapeExperiment === "truncate" && agencyDecision.applied
               ? { shapeTruncatedBubbles }
               : {}),
+            // Phase 4.5a 刀 2／刀 3：她這一輪真的只回了一則「（已讀）」
+            // （forced `read_only` 或最冷那一格模型自己選的）。為真才寫，
+            // shadow／off 走不到（`agencyMode !== "on"` 時 `allowReadOnly`
+            // 是 false，那種輸出早就被守門剝掉了）。
+            ...(readOnlyAllowedThisTurn && hasReadOnlyReply(reply)
+              ? { readOnlyReply: true }
+              : {}),
+            // Phase 4.5g：forced `check_out` 的結構後檢查。兩個 key 都**只在
+            // 為真時**存在（沒重試過／沒 fail-open 就連欄位都不多一個）；
+            // 旗標 off／shadow 根本走不到那個檢查，所以等價 harness 的四面
+            // 輸出一個 key 都不多。
+            ...(checkOutRetried ? { checkOutRetry: true } : {}),
+            // Phase 4.6 刀 2：第二發真的帶了改寫指令（4.5g 的 rows 沒有這個
+            // key，telemetry 才分得出兩版重試）。
+            ...(checkOutRewrite ? { checkOutRewriteInjected: true } : {}),
+            ...(checkOutStructuralFailed
+              ? { checkOutStructuralFail: true }
+              : {}),
           }
           : null,
       }),
     });
 
+    // Phase 4.5c 刀 3：Game 的「她先去忙了」要能進檢討。4.5a 查證過
+    // `sessionComplete` 就是 `isSessionComplete(aiTurnCount)`（已達 20 則），
+    // 借用它會讓 UI 說一句不成立的話，所以多一個**選填**欄位。
+    // 只在 agency `on` ∧ Game ∧ 這一輪 forced `check_out`／`read_only` 時存在；
+    // 其餘情形連 key 都沒有（那兩格只在 agency `on` 時才可能是 `forcedAct`，
+    // 所以旗標 off／shadow 的 response 逐位元組不變）。
+    // App 只拿它多顯示一行提示——**不**自動結束、**不**鎖輸入（要不要強制
+    // 結束 Eric 還沒拍板）。
+    const partnerStatus = agencyMode === "on" &&
+        request.practiceMode === "game" && agencyDecision?.applied === true
+      ? agencyDecision.decision.forcedAct === "check_out"
+        ? "checked_out"
+        : agencyDecision.decision.forcedAct === "read_only"
+        ? "read_only"
+        : null
+      : null;
     const body: Record<string, unknown> = {
       reply,
       aiTurnCount: newAiCount,
       sessionComplete: isSessionComplete(newAiCount),
+      ...(partnerStatus === null ? {} : { partnerStatus }),
       costDeducted: deducted,
       // Phase 4.4：路由旗標關著時永遠是 deepseek／DEEPSEEK_MODEL（逐字舊行為）；
       // 真的走 Haiku 那一輪就照實回報，payload 不說謊（client 目前不讀這兩格）。
-      provider: chatModelUsed === "haiku" ? "anthropic" : "deepseek",
-      model: chatModelUsed === "haiku" ? CLAUDE_HAIKU_MODEL : DEEPSEEK_MODEL,
+      // Phase 4.5a 刀 3（Codex R1 P3-1）：forced `read_only` 那一輪一支模型都沒
+      // 打，照實回報 `"none"`。key 集合不變；client
+      // （`practice_chat_api_service.dart`）從來沒有讀過這兩格（2026-09-05 實查，
+      // 只有 coach-chat 的 service 會讀它自己那條路徑的同名欄位），所以不會炸。
+      provider: noModelCalled()
+        ? "none"
+        : chatModelUsed === "haiku"
+        ? "anthropic"
+        : "deepseek",
+      model: noModelCalled()
+        ? "none"
+        : chatModelUsed === "haiku"
+        ? CLAUDE_HAIKU_MODEL
+        : DEEPSEEK_MODEL,
       generatedAt: (deps.now?.() ?? new Date()).toISOString(),
       ...remainingFrom(sub, limits, deducted),
     };

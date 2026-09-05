@@ -66,7 +66,13 @@ export type UtteranceShape =
 export type AgencySituation =
   | "ambiguous_fragment"
   | "abrupt_topic_shift"
-  | "repeated_low_coherence";
+  | "repeated_low_coherence"
+  /**
+   * Phase 4.5a 刀 3：她「回來但冷」的那一輪——玩家終於給了結構內容，所以既不是
+   * 片段、也不是跳題、更不是重複迴圈。獨立一格，`agency_coaching.ts` 的修復輪
+   * 帳才不會把它算成又一輪「沒接上」。
+   */
+  | "cold_return";
 
 export type AgencyAct =
   | "ask_intent"
@@ -79,7 +85,13 @@ export type AgencyAct =
   // Eric 回報的「她把不相干的新詞當成答案順著聊」），改成一句二選一的指示：
   // 真的回答了就接受，沒回答就直接說他沒回答又跳題。渲染成一行（見
   // `AGENCY_SET_LINE`），不是清單裡的一個選項。
-  | "accept_if_answered";
+  | "accept_if_answered"
+  // ── Phase 4.5a 刀 3：不收斂階梯（Eric 2026-09-05「真人不會一直陪你耗」）──
+  // 收尾格（`hold_position`／`end_low_value_loop`）連續發生時，舊版每一輪都
+  // 重新生一則「維持立場」——她永遠站在同一格陪他耗。這三個 act 是那條階梯：
+  | "cold_return"
+  | "check_out"
+  | "read_only";
 
 export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
   {
@@ -89,8 +101,49 @@ export const AGENCY_ACTS: readonly AgencyAct[] = Object.keys(
     hold_position: true,
     end_low_value_loop: true,
     accept_if_answered: true,
+    cold_return: true,
+    check_out: true,
+    read_only: true,
   } satisfies Record<AgencyAct, true>,
 ) as AgencyAct[];
+
+/**
+ * forced `read_only` 那一格她送出的整則回覆。**不打生成模型**：省一次呼叫，
+ * 而且真人在這一格本來就不會打字。守門鏈的白名單認同一個字面
+ * （`visible_text_guard.ts` 的 `READ_ONLY_REPLY_RE`）。
+ */
+export const READ_ONLY_REPLY_TEXT = "（已讀）";
+
+/**
+ * Phase 4.5a 刀 3（CTO 2026-09-05 依 Eric「持續不收斂」原意擴大入口）：
+ * 哪些 forced act 算「她又被迫處理了一輪沒收斂的對話」。
+ *
+ * 原本只認兩個收尾格（`hold_position`／`end_low_value_loop`），離線重建量到
+ * 740 輪只觸發 1 次——因為她多半在問問題，玩家那一則就變成 `answer_candidate`，
+ * 走的是 4.3 的 `challenge_relevance`（`clarify_ignored_*`），根本進不了收尾格。
+ * 現在改成「這一輪 planner **真的強制**了任何一個 agency act」都算，只有
+ * `ask_intent` 除外——那是**第一個**沒有前文的裸詞，她還沒被耗到，第一次問清楚
+ * 不該被記成不收斂。`accept_if_answered`／`return_to_topic` 只出現在 bounded
+ * 清單裡，永遠不會是 `forcedAct`；階梯自己的三格（`cold_return` 走內容輪歸零、
+ * `check_out`／`read_only` 已經在門檻上）clamp 之後也不影響結果。
+ */
+function isLowValueStreakAct(act: PlanAct | null): boolean {
+  return act !== null && act !== "ask_intent" &&
+    (AGENCY_ACTS as readonly PlanAct[]).includes(act);
+}
+
+/** 階梯的門檻：收尾格連續這麼多輪還沒解決，她就先去忙了。 */
+export const LOW_VALUE_STREAK_CHECK_OUT = 3;
+
+/**
+ * 「結構上有內容」＝階梯的重置條件：問句、第一人稱／解釋標記的分享、明示換題，
+ * 或她的是非問句真的被回答（刀 1）。招呼／情緒反應詞**不算**內容——她已經
+ * 說要先忙了，他回一句「哈哈」不是把話接回來。
+ */
+export function isAgencyContentShape(shape: UtteranceShape): boolean {
+  return shape === "question" || shape === "self_share" ||
+    shape === "explicit_pivot";
+}
 
 /**
  * 「順著聊是合法選項」的 act。清單裡只要有一個，這一輪就不是「只做澄清」的
@@ -123,6 +176,11 @@ export function isClarifyingAct(act: PlanAct): boolean {
 export interface AgencyEvidence {
   readonly utteranceShape: UtteranceShape;
   readonly previousAiAskedQuestion: boolean;
+  /**
+   * Phase 4.5a 刀 1：她上一則是**是非問句**，而他這一則整則就是一個肯定／
+   * 否定短詞＝**他回答了**。這一輪一律不介入，欠債也不因這一句累加。
+   */
+  readonly answeredYesNo: boolean;
   readonly explicitPivot: boolean;
   readonly repeatedExactToken: boolean;
   readonly unresolvedCount: 0 | 1 | 2 | 3;
@@ -164,6 +222,14 @@ export interface AgencyEvidence {
    * `null`＝沒有持久化狀態（standard／第一輪）。
    */
   readonly priorCoherence: ConversationAgencyState["lastCoherence"] | null;
+  /**
+   * Phase 4.5a 刀 3：**上一輪為止**收尾格（`hold_position`／
+   * `end_low_value_loop`）連續發生了幾輪。只有 assisted 有持久化狀態，
+   * standard 一律 0＝階梯整段不生效。
+   */
+  readonly lowValueStreak: number;
+  /** Phase 4.5a 刀 3：她已經說過「先忙了」（`check_out`）。standard 一律 false。 */
+  readonly checkedOut: boolean;
 }
 
 export interface ConversationAgencyState {
@@ -225,6 +291,14 @@ export interface ConversationAgencyState {
    * 不是 `false`；`agencyPolicyFor` 對缺席退回保守的 standard 規則。
    */
   readonly aiClarifiedLastTurn?: boolean;
+  /**
+   * Phase 4.5a 刀 3：收尾格連續幾輪（clamp 在 `LOW_VALUE_STREAK_CHECK_OUT`）。
+   * 缺欄位／0 都是「沒有連續」，所以 0 時**不寫這個 key**（舊 row 相容，
+   * 也讓等價 harness 的物件形狀不變）。
+   */
+  readonly lowValueStreak?: number;
+  /** Phase 4.5a 刀 3：她已經先去忙了。缺欄位＝false。 */
+  readonly checkedOut?: boolean;
 }
 
 export const INITIAL_CONVERSATION_AGENCY_STATE: ConversationAgencyState = {
@@ -362,17 +436,90 @@ const TAIL_DECORATION_RE =
   /[\s~～!！,，.。、…\u200d\ufe0e\ufe0f\u20e3\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u;
 const SENTENCE_FINAL_PARTICLE_RE = /(嗎|呢|吧)$/u;
 
+/** 剝掉句尾裝飾後的最後一個子句（空字串＝整則只有裝飾）。 */
+function finalClauseOf(text: string): string {
+  const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
+  if (stripped.length === 0) return "";
+  return stripped
+    .split(CLAUSE_SPLIT_RE)
+    .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
+    .filter((clause) => clause.length > 0)
+    .at(-1) ?? "";
+}
+
 export function aiAskedQuestionStrict(text: string): boolean {
   if (!aiAskedQuestion(text)) return false;
   const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
   if (stripped.length === 0) return false;
   if (/[?？]$/u.test(stripped)) return true;
-  const last = stripped
-    .split(CLAUSE_SPLIT_RE)
+  return SENTENCE_FINAL_PARTICLE_RE.test(finalClauseOf(text));
+}
+
+// ── Phase 4.5a 刀 1：是非問句 ＋ 純肯定／否定短答＝「他回答了」──────────────
+// 4.2／4.3 釘下來的契約是「純肯定短詞算內容、前一句是陳述時會被問意思」，那條
+// **不動**。這裡補的是它漏掉的一格：她上一則**是是非問句**（剝掉句尾裝飾後
+// 句尾是「嗎／吧／嘛」），他回一個整則就是「對」「不是」的短詞——那在句法上
+// 就是答案，不是又丟一個裸詞。
+//
+// 為什麼安全（Codex R2 P1-1 撤回 4.3 那批改動的理由不適用這裡）：4.3 是把
+// 肯定／否定短詞**無條件**歸成 reaction，等於「你在說什麼？→ 不是」也一起
+// 免疫；這一刀多綁一個**她那一則的句法形狀**，開放問句（「你在說什麼？」）
+// 與陳述句都不吃，行為逐字維持 4.3 現況。
+const YES_NO_FINAL_PARTICLE_RE = /(嗎|吧|嘛)$/u;
+const SECOND_PERSON_RE = /[你妳]/u;
+// `CLAUSE_SPLIT_RE`（強制問句判準用的那支）**不切逗號**，所以
+// 「你一直丟地名，那我先去忙吧」整則會被當成一個子句，前半的「你」就把後半的
+// 自語判成在問他（Codex R2 P1-2）。這一支多切逗號／頓號，只給是非問句判準用，
+// 不動 `aiAskedQuestionStrict` 的既有行為。
+const YES_NO_CLAUSE_SPLIT_RE = /[。！!？?；;…，,、\n]+/u;
+
+/** 剝掉句尾裝飾、再以標點（含逗號）切開後的最後一個子句。 */
+function yesNoFinalClause(text: string): string {
+  const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
+  if (stripped.length === 0) return "";
+  return stripped
+    .split(YES_NO_CLAUSE_SPLIT_RE)
     .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
     .filter((clause) => clause.length > 0)
-    .at(-1);
-  return last !== undefined && SENTENCE_FINAL_PARTICLE_RE.test(last);
+    .at(-1) ?? "";
+}
+/**
+ * 她上一則是不是**是非問句**。三道都要過（Codex R1 P1-1 之後收緊）：
+ *
+ * 1. `aiAskedQuestion(text)`＝寬鬆問句判準先成立（「這本來就是韓國嘛」句尾是
+ *    「嘛」但整句沒有任何問句標記，這一關就擋掉）；
+ * 2. 剝掉句尾裝飾、再以標點（**含逗號**）切開後的最後一個子句以
+ *    「嗎／吧／嘛」結尾；
+ * 3. 「吧／嘛」**還要在同一個最後子句裡**出現第二人稱（你／妳）。「嗎」不
+ *    需要——它在中文裡幾乎只有疑問用法；「吧」同時是**提議／自語**
+ *    （「我先去忙吧」），只看句尾會把她自己的收尾句判成在問他，玩家一句
+ *    「好」就把 `checkedOut` 解開（Codex R1 P1-3）。第二人稱**只看最後子句**
+ *    ——看整則會讓「你一直丟地名，那我先去忙吧」因為前半句有「你」而過關
+ *    （Codex R2 P1-2）。
+ *
+ * **接受的代價**：帶第二人稱的提議句（「你早點睡吧」）仍算是非問句。那一格
+ * 玩家回「好」本來就是回答了，方向安全；而 `check_out` 的 act 說明已經明寫
+ * 「不問他問題」，她在那一輪本來就不該冒出這種句子。
+ */
+export function aiAskedYesNoQuestion(text: string): boolean {
+  // 第 1 關要對**剝掉句尾裝飾後**的字串做：`AI_QUESTION_RE` 的
+  // `(嗎|呢|吧)\s*$` 錨在原字串結尾，「你在報地名嗎😂」「是玩猜謎嗎～」
+  // 這種真人寫法會整批判漏（Phase 4.3 `isQuestionTextTolerant` 同一個坑）。
+  if (!aiAskedQuestion(text.trim().replace(TAIL_DECORATION_RE, ""))) {
+    return false;
+  }
+  const last = yesNoFinalClause(text);
+  if (!YES_NO_FINAL_PARTICLE_RE.test(last)) return false;
+  return /嗎$/u.test(last) || SECOND_PERSON_RE.test(last);
+}
+// 整則錨定，只容忍句尾裝飾（空白／標點／emoji，同 `TAIL_DECORATION_RE`）。
+// 刻意不加同義詞：多一個詞就多一次誤判，漏了只是退回 4.3 現況。
+const YES_NO_SHORT_ANSWER_RE =
+  /^(對|對啊|嗯對|是|是啊|不是|沒有|沒錯|不對|不要|好|好啊)$/u;
+export function isYesNoShortAnswer(text: string): boolean {
+  return YES_NO_SHORT_ANSWER_RE.test(
+    compact(text).replace(TAIL_DECORATION_RE, ""),
+  );
 }
 
 /**
@@ -421,6 +568,11 @@ function compact(text: string): string {
 export function utteranceShapeOf(
   text: string,
   previousAiAskedQuestion: boolean,
+  /**
+   * Phase 4.5a 刀 1：她上一則是**是非問句**（`aiAskedYesNoQuestion`）。省略＝
+   * false＝逐字沿用 4.3 行為（`contentUserTurnCount` 那個 caller 就是這樣傳）。
+   */
+  previousAiAskedYesNo = false,
 ): UtteranceShape {
   const compacted = compact(text);
   if (compacted.length === 0) return "unknown";
@@ -433,6 +585,11 @@ export function utteranceShapeOf(
   // consumer `forceAskUser` 要求 `agency.enabled === true`），所以 off 路徑
   // 的四面輸出不變——等價 harness 守門。
   if (isQuestionTextTolerant(text)) return "question";
+  // Phase 4.5a 刀 1：她問是非題、他整則就回「對／不是」＝答案。放在 reaction
+  // 之前，因為「好」「好啊」本來會被 `REACTION_RE` 先接走。
+  if (previousAiAskedYesNo && isYesNoShortAnswer(text)) {
+    return "answer_candidate";
+  }
   // Phase 4.3（Codex R1 P2-4）：反應詞同樣容忍句尾裝飾——「對！」「不是😂」
   // 「沒有。」在真人輸入裡比裸詞常見得多。剝到空字串（整則就是 emoji）時退回
   // 原字串，讓 `REACTION_RE` 既有的純 emoji 分支照樣接得到。
@@ -477,6 +634,8 @@ export function detectAgencyEvidence(
     previousAiAskedQuestion: boolean;
     /** 同一則 AI 訊息的**嚴格**問句判準，只給強制格的迴圈閘門用（P1-1）。 */
     previousAiAskedQuestionStrict: boolean;
+    /** Phase 4.5a 刀 1：她問是非題、他整則回一個肯定／否定短詞。 */
+    answeredYesNo: boolean;
   }[] = [];
   let lastAiText: string | null = null;
   for (const turn of turns) {
@@ -486,12 +645,19 @@ export function detectAgencyEvidence(
     }
     const previousAiAskedQuestion = lastAiText !== null &&
       aiAskedQuestion(lastAiText);
+    const previousAiAskedYesNo = lastAiText !== null &&
+      aiAskedYesNoQuestion(lastAiText);
     shapes.push({
       text: turn.text,
-      shape: utteranceShapeOf(turn.text, previousAiAskedQuestion),
+      shape: utteranceShapeOf(
+        turn.text,
+        previousAiAskedQuestion,
+        previousAiAskedYesNo,
+      ),
       previousAiAskedQuestion,
       previousAiAskedQuestionStrict: lastAiText !== null &&
         aiAskedQuestionStrict(lastAiText),
+      answeredYesNo: previousAiAskedYesNo && isYesNoShortAnswer(turn.text),
     });
     lastAiText = null;
   }
@@ -565,6 +731,13 @@ export function detectAgencyEvidence(
       continue;
     }
     if (s.previousAiAskedQuestion) askedInLoop = true;
+    // Phase 4.5a 刀 1：她的是非問句被回答了——這一句不累加欠債，也不留下
+    // 「她已經叫他講清楚而他沒做」的起點（`told`）。既有的欠債**不歸零**：
+    // 回答一個是非題不是結構修復，前面沒解決的仍然沒解決。
+    if (s.answeredYesNo) {
+      told = false;
+      continue;
+    }
     if (told) unresolved = clamp3(unresolved + 1);
     told = !(s.shape === "answer_candidate" && unresolved === 0 &&
       !askedInLoop);
@@ -627,6 +800,7 @@ export function detectAgencyEvidence(
   return {
     utteranceShape: current?.shape ?? "unknown",
     previousAiAskedQuestion: current?.previousAiAskedQuestion ?? false,
+    answeredYesNo: current?.answeredYesNo ?? false,
     explicitPivot: current?.shape === "explicit_pivot",
     repeatedExactToken,
     unresolvedCount: clamp3(unresolved),
@@ -650,6 +824,9 @@ export function detectAgencyEvidence(
     ),
     aiQuestionedInLoop,
     userTurnCount: shapes.length,
+    // Phase 4.5a 刀 3：純轉送持久化狀態（standard 的 `prev` 是 null＝0／false）。
+    lowValueStreak: prev?.lowValueStreak ?? 0,
+    checkedOut: prev?.checkedOut === true,
   };
 }
 
@@ -751,6 +928,24 @@ export interface AgencyThresholds {
   readonly holdAt: number;
   /** 到了 holdAt 時強制收掉迴圈（challenge／Game），而不是維持立場。 */
   readonly forceEndLoopBeforeChallenge: boolean;
+  /**
+   * Phase 4.5a（Codex R2 P3-1）：這一場允許**強制結束**（`check_out`／
+   * `read_only`）。值目前恆等於 `forceEndLoopBeforeChallenge`，但那是「收尾格
+   * 要收掉還是維持立場」，跟「她可不可以直接先去忙」是兩件事——共用一支具名
+   * predicate（`allowsCheckOut`）讓 policy 與 planner 不會各自漂移。
+   */
+  readonly allowsCheckOut: boolean;
+}
+
+/**
+ * 允許強制結束的場：挑戰難度或 Game。planner 的「（已讀）」開關與 policy 的
+ * `check_out`／`read_only` 閘門共用這一支（Codex R2 P3-1）。
+ */
+export function allowsCheckOut(
+  difficulty: "easy" | "normal" | "challenge",
+  isGame: boolean,
+): boolean {
+  return difficulty === "challenge" || isGame;
 }
 
 export const AGENCY_THRESHOLDS: Record<
@@ -768,6 +963,7 @@ export const AGENCY_THRESHOLDS: Record<
     ],
     holdAt: 3,
     forceEndLoopBeforeChallenge: false,
+    allowsCheckOut: false,
   },
   // 一般（Eric 的基準）：第一個片段 bounded {接住, 問意思}；第二個未解片段就要
   // 二選一（真的回答了就接受，沒回答就直說他跳題）；第三個以後維持立場。
@@ -776,6 +972,7 @@ export const AGENCY_THRESHOLDS: Record<
     debtAnswerActs: ["accept_if_answered", "challenge_relevance"],
     holdAt: 2,
     forceEndLoopBeforeChallenge: false,
+    allowsCheckOut: false,
   },
   // 挑戰／Game：早一步——她已經問過的話，第二個未解片段就直接收掉這串。
   challenge: {
@@ -783,6 +980,7 @@ export const AGENCY_THRESHOLDS: Record<
     debtAnswerActs: ["accept_if_answered", "challenge_relevance"],
     holdAt: 1,
     forceEndLoopBeforeChallenge: true,
+    allowsCheckOut: true,
   },
 };
 
@@ -801,7 +999,9 @@ export function agencyThresholdsFor(
   const base = isGame
     ? AGENCY_THRESHOLDS.challenge
     : AGENCY_THRESHOLDS[difficulty];
-  if (!profile) return base;
+  if (!profile) {
+    return { ...base, allowsCheckOut: allowsCheckOut(difficulty, isGame) };
+  }
   // ambiguityTolerance：第一個無前文裸片段要澄清還是先短接一次。
   // Phase 2.7 把三個難度的第一個片段全部降成 bounded {acknowledge, ask_intent}
   // （forced 只留同詞重複與欠債到門檻）；這裡**只有低容忍的人**把 forced 收回來，
@@ -827,6 +1027,9 @@ export function agencyThresholdsFor(
     firstFragmentActs,
     holdAt,
     debtAnswerActs,
+    // 難度表的 base 已經帶對值（challenge 才 true），這裡再用同一支 predicate
+    // 算一次，`isGame` 的路徑就不必依賴「base 剛好被換成 challenge」這件事。
+    allowsCheckOut: allowsCheckOut(difficulty, isGame),
   };
 }
 
@@ -846,7 +1049,59 @@ export function agencyPolicyFor(
   // 只介入「低資訊形狀」。問句、第一人稱分享、明示換題、招呼、長句一律不動；
   // 她剛問完問題而且前面沒有未解片段的短答＝有效短答，永遠不得被質疑（報告 §6）
   // ——這條與難度無關，任何難度都不會翻轉。
+  // ── Phase 4.5a 刀 3：不收斂階梯 ──────────────────────────────────────
+  // 三格都**只吃持久化狀態**（`lowValueStreak`／`checkedOut`），所以 standard
+  // （`prev === null`）永遠是 0／false＝這一段整個走不到，逐字沿用 4.4 行為。
+  // 放在最前面：一旦她已經先去忙了，任何形狀判斷都不該再把她拉回原本的格子。
+  //
+  // Codex R1 P1-2：**強制結束（`check_out`／`read_only`）只給挑戰難度或 Game**
+  // ——`thresholds.allowsCheckOut`（`allowsCheckOut(difficulty, isGame)`，與
+  // planner 的「（已讀）」開關共用同一支 predicate；Codex R2 P3-1）恰好就是那個條件
+  // （`AGENCY_THRESHOLDS.challenge` 是唯一 true 的一格，`agencyThresholdsFor`
+  // 對 `isGame` 直接套 challenge，profile 位移也不動這個欄位）。beginner 的
+  // easy／normal streak 照算、`cold_return` 照走，但到 3 不結束，留在既有的
+  // `hold_position`／`end_low_value_loop`（她冷但會回）。這一道是**防禦性**
+  // 的：就算 thread row 被直接種成 `lowValueStreak: 3`／`checkedOut: true`，
+  // 輕鬆難度也不得強制結束。
+  if (isAgencyContentShape(shape) || evidence.answeredYesNo) {
+    // 他終於給了內容：階梯歸零，但這一輪她是「回來但冷」，不補回剛才的落差。
+    if (evidence.checkedOut || evidence.lowValueStreak > 0) {
+      return {
+        ...base,
+        situation: "cold_return",
+        policyMode: "forced",
+        forcedAct: "cold_return",
+        allowedActs: ["cold_return"],
+        allowedActSetId: "cold_return_v1",
+      };
+    }
+  } else if (evidence.checkedOut && thresholds.allowsCheckOut) {
+    // 她說過先忙了，他又丟一個沒內容的東西 → 直接一則「（已讀）」，不打模型。
+    return {
+      ...base,
+      situation: "repeated_low_coherence",
+      policyMode: "forced",
+      forcedAct: "read_only",
+      allowedActs: ["read_only"],
+      allowedActSetId: "read_only_v1",
+    };
+  } else if (
+    evidence.lowValueStreak >= LOW_VALUE_STREAK_CHECK_OUT &&
+    thresholds.allowsCheckOut
+  ) {
+    return {
+      ...base,
+      situation: "repeated_low_coherence",
+      policyMode: "forced",
+      forcedAct: "check_out",
+      allowedActs: ["check_out"],
+      allowedActSetId: "check_out_v1",
+    };
+  }
   if (!isLowInformation(shape)) return { ...base, ...NO_OVERRIDE };
+  // Phase 4.5a 刀 1：她問是非題、他整則回「對／不是」＝回答了，任何欠債都
+  // 不得把它翻成質疑（同詞重複也不行——連兩題是非題答「對」是正常對話）。
+  if (evidence.answeredYesNo) return { ...base, ...NO_OVERRIDE };
   if (shape === "answer_candidate" && unresolvedCount === 0) {
     return { ...base, ...NO_OVERRIDE };
   }
@@ -1060,6 +1315,17 @@ export function parseConversationAgencyState(
     r.aiClarifiedLastTurn !== undefined && r.aiClarifiedLastTurn !== null &&
     typeof r.aiClarifiedLastTurn !== "boolean"
   ) return null;
+  // Phase 4.5a 刀 3：舊 row 缺這兩個欄位＝0／false（不是解析失敗）；
+  // `null` 字面值同 U-8 規則視同缺席。型別真的不對才整份作廢。
+  if (
+    r.lowValueStreak !== undefined && r.lowValueStreak !== null &&
+    !(typeof r.lowValueStreak === "number" &&
+      Number.isInteger(r.lowValueStreak) && r.lowValueStreak >= 0)
+  ) return null;
+  if (
+    r.checkedOut !== undefined && r.checkedOut !== null &&
+    typeof r.checkedOut !== "boolean"
+  ) return null;
   return {
     version: 1,
     lastCoherence: r.lastCoherence as ConversationAgencyState["lastCoherence"],
@@ -1077,6 +1343,16 @@ export function parseConversationAgencyState(
     ...(typeof r.aiClarifiedLastTurn === "boolean"
       ? { aiClarifiedLastTurn: r.aiClarifiedLastTurn }
       : {}),
+    // 0／false 是預設值，不寫 key（同 `repairedAtUserTurns`／`askedAboutUser`）。
+    // Codex R1 P2-2：state 宣稱 clamp 在 `LOW_VALUE_STREAK_CHECK_OUT`，讀回來
+    // 也要照做（舊 row／外部寫入的 4、999 一律當 3），不然「clamp 3」只在
+    // 寫入端成立。
+    ...(typeof r.lowValueStreak === "number" && r.lowValueStreak > 0
+      ? {
+        lowValueStreak: Math.min(LOW_VALUE_STREAK_CHECK_OUT, r.lowValueStreak),
+      }
+      : {}),
+    ...(r.checkedOut === true ? { checkedOut: true } : {}),
   };
 }
 
@@ -1085,6 +1361,9 @@ const COHERENCE_BY_SITUATION: Record<
   ConversationAgencyState["lastCoherence"]
 > = {
   ambiguous_fragment: "ambiguous",
+  // Phase 4.5a 刀 3：他確實給了內容，不該記成 disconnected／repetitive；
+  // 但這一輪她仍然是冷的，也不是「連上了」——`ambiguous`＝不獎不罰。
+  cold_return: "ambiguous",
   abrupt_topic_shift: "disconnected",
   repeated_low_coherence: "repetitive",
 };
@@ -1167,6 +1446,20 @@ export function nextConversationAgencyState(
   const repairedAtUserTurns = classifierSignal?.coherence === "connected"
     ? decision.evidence.userTurnCount
     : locatable;
+  // ── Phase 4.5a 刀 3：階梯的狀態推進 ───────────────────────────────────
+  // 只認**這一輪 planner 真的下的 forced act**（跟 `priorChallengeIssued` 同一
+  // 個規則：允許過 ≠ 做過）。玩家給了結構內容就整條歸零並解除 checkedOut。
+  const ladderContent =
+    isAgencyContentShape(decision.evidence.utteranceShape) ||
+    decision.evidence.answeredYesNo;
+  const lowValueStreak = ladderContent
+    ? 0
+    : isLowValueStreakAct(forced)
+    ? Math.min(LOW_VALUE_STREAK_CHECK_OUT, (base.lowValueStreak ?? 0) + 1)
+    : base.lowValueStreak ?? 0;
+  const checkedOut = ladderContent
+    ? false
+    : base.checkedOut === true || forced === "check_out";
   return {
     version: 1,
     lastCoherence: classifierSignal?.coherence ?? structuralCoherence,
@@ -1185,6 +1478,8 @@ export function nextConversationAgencyState(
     ...(typeof classifierSignal?.aiChallengedThisTurn === "boolean"
       ? { aiClarifiedLastTurn: classifierSignal.aiChallengedThisTurn }
       : {}),
+    ...(lowValueStreak > 0 ? { lowValueStreak } : {}),
+    ...(checkedOut ? { checkedOut: true } : {}),
   };
 }
 
@@ -1234,6 +1529,9 @@ export function agencyShapeExperimentFor(
  * `beginner ＋ --state=1`，而 standard 連分類器都沒有（4.3 的死守邊界在
  * standard 本來就不成立），介入輪的分佈與品質都沒量過——證據涵蓋不到的模式
  * 不進路由。game 併入前要先跑小黑箱。
+ * **Phase 4.5b 例外**：`PRACTICE_STANDARD_AGENCY_CLASSIFIER` 開著時 standard
+ * 也有分類器與持久化狀態，由第六個參數把它納入路由（黑箱同樣未量過，開旗標
+ * 前要先看 telemetry 的 `chatModel` 分佈與成本）。
  *
  * 2026-09-05（Eric 拍板）：除了介入輪，**越界輪**（`situation === "boundary"`
  * ——既有 planner 的最高優先權，強制 `direct_boundary`）也走 Haiku：劃界線是
@@ -1248,12 +1546,36 @@ export function chatModelFor(
   agencyDecision: { readonly applied: boolean } | null | undefined,
   practiceMode: string | null | undefined,
   situation?: string | null,
+  /**
+   * Phase 4.5b：`PRACTICE_STANDARD_AGENCY_CLASSIFIER` 開著時 standard 也有
+   * 每輪分類器與持久化狀態，介入輪的定義因此與 beginner 相同——把它一起納入
+   * 路由。省略／false＝standard 一律 deepseek（Phase 4.4 的 Codex R1 P1 範圍）。
+   */
+  standardAgencyClassifier = false,
 ): PracticeChatModel {
   if (routingFlag !== "mixed") return "deepseek";
   if (agencyMode !== "on") return "deepseek";
-  if (practiceMode !== "beginner" && practiceMode !== "game") return "deepseek";
+  const routedMode = practiceMode === "beginner" || practiceMode === "game" ||
+    (practiceMode === "standard" && standardAgencyClassifier);
+  if (!routedMode) return "deepseek";
   if (situation === "boundary") return "haiku";
   return agencyDecision?.applied === true ? "haiku" : "deepseek";
+}
+
+/**
+ * Phase 4.5b：standard 模式的每輪 agency 分類器旗標
+ * （`PRACTICE_STANDARD_AGENCY_CLASSIFIER`）。`"true"` 才開，未設／`off`／
+ * 亂填一律關（與 `agencyModeFor` 同款 fail-closed）。
+ *
+ * 只在 agency 旗標解析成 `on` **且** `practiceMode === "standard"` 時成立；
+ * beginner／game 走既有的逐輪分類器，這支旗標對它們沒有任何作用。
+ */
+export function standardAgencyClassifierEnabled(
+  flag: string | undefined,
+  agencyMode: AgencyMode,
+  practiceMode: string | null | undefined,
+): boolean {
+  return flag === "true" && agencyMode === "on" && practiceMode === "standard";
 }
 
 /**
@@ -1325,4 +1647,99 @@ export function truncateAgencyShape(
     return { text: reply, dropped: 0 };
   }
   return { text: bubbles[0], dropped: bubbles.length - 1 };
+}
+
+// ── Phase 4.5g：forced `check_out` 的結構後檢查 ──────────────────────────
+/**
+ * `check_out` 那一輪的長度上限（code units）。Phase 3.1 的難度表把同一個概念
+ * 寫成 `forcedStopMaxChars`（easy 32／normal 24／challenge・game 20）；
+ * `check_out` 只在挑戰／Game 才可能是 forced（`allowsCheckOut`），所以這裡
+ * 只有那一格的值，不多開一張表。
+ */
+export const CHECK_OUT_MAX_CHARS = 20;
+
+/**
+ * Phase 4.5g：forced `check_out` 那一輪的結構後檢查。
+ *
+ * act 說明（`turn_response_plan.ts`）已經明寫「回 1 則，短，說完就收，不問
+ * 問題、不開新話題」，但 2026-09-05 的 Game 單臂黑箱在這一格 16 筆裡量到
+ * 4 筆含問句——跟 Phase 3.1 同一個坑：服從率問題加字無效，要結構後檢查。
+ *
+ * 判準只有結構，不判語意：
+ *
+ *   (a) 她這一則在問問題——用既有的 `aiAskedQuestion`（**她那一側**的問句
+ *       判準，刻意寬鬆、不錨句尾，所以「你之後要去哪」這種不帶問號的中文
+ *       問句也認）。過寬在這裡是安全方向：多判一次只是多重試一發，第二發
+ *       仍命中就 fail-open 送出。玩家那一側的 `isQuestionText`／
+ *       `isQuestionTextTolerant` 錨在句尾，會漏掉「先忙了」前面那半句問句。
+ *   (b) 邀約／開新話題：**留白**。repo 既有的 `practiceInviteLevelFor`／
+ *       `looksLikeGameSoftInvite` 判的是**玩家**貼給她的邀約句（判準通篇是
+ *       「約妳」的語法），套到她自己的回覆是誤用；不自己發明邀約正則。
+ *       已知限制，記在計畫檔。
+ *   (c) 形狀：超過 1 則泡泡（`agencyBubbles`，與 client／黑箱 runner 同一套
+ *       切法）或整則超過 `CHECK_OUT_MAX_CHARS`。
+ *
+ * 回 true＝命中。呼叫端（handler／評測 runner）用**既有的第二發**重試同一份
+ * bundle（不加第三次呼叫）；第二發仍命中就送出去（fail-open，只記 telemetry）
+ * ——這一輪的形狀再差也比 500 好。
+ *
+ * 旗標 off／shadow 走不到：`applied` 那時恆為 false。beginner／easy 也走不到
+ * （`allowsCheckOut` 只給挑戰／Game）。
+ */
+export function checkOutStructuralViolation(
+  agency: AgencyApplication | null,
+  reply: string,
+): boolean {
+  return checkOutStructuralViolations(agency, reply).length > 0;
+}
+
+/** Phase 4.6 刀 2：後檢查命中的具體項目，供改寫指令對應。 */
+export type CheckOutViolation = "multi_bubble" | "too_long" | "question";
+
+/**
+ * Phase 4.6 刀 2：`checkOutStructuralViolation` 的原因清單版。判準與上面
+ * 那支完全同源（那支只是 `.length > 0`）；空陣列＝沒命中。
+ */
+export function checkOutStructuralViolations(
+  agency: AgencyApplication | null,
+  reply: string,
+): CheckOutViolation[] {
+  if (!agency?.applied || agency.decision.forcedAct !== "check_out") {
+    return [];
+  }
+  const trimmed = reply.trim();
+  if (trimmed.length === 0) return [];
+  const violations: CheckOutViolation[] = [];
+  if (agencyBubbles(trimmed).length > 1) violations.push("multi_bubble");
+  if (trimmed.length > CHECK_OUT_MAX_CHARS) violations.push("too_long");
+  if (aiAskedQuestion(trimmed)) violations.push("question");
+  return violations;
+}
+
+const CHECK_OUT_REWRITE_LINES: Record<CheckOutViolation, string> = {
+  multi_bubble: "分成了好幾則——只能回 1 則，不換行",
+  too_long:
+    `超過 ${CHECK_OUT_MAX_CHARS} 字——縮到 ${CHECK_OUT_MAX_CHARS} 字以內`,
+  question: "含問句——不問任何問題、不開新話題，說完就收",
+};
+
+/**
+ * Phase 4.6 刀 2：重試那一發要多帶的針對性改寫指令（user 訊息）。
+ *
+ * 4.5i 實測同一份 prompt 原樣重送，第一發違規約 70%、第二發仍 50–62% 失敗
+ * ——同 prompt 重試無效（已入腦的坑）。第二發要把第一發**哪裡不合格**與
+ * **要改成怎樣**講白，而不是原樣重送。呼叫端只在 `violations` 非空時注入。
+ *
+ * 刻意**不引第一發原文**（Codex R1 P1）：那段是模型自己吐的未受信任文字，
+ * 塞回 user 訊息等於把它升格成指令——引號沒閉合、帶角色標記或「請照抄」
+ * 這類內容會跟改寫指令競爭，而且模型會把它當內容抄走（已入腦的坑）。
+ * 這則訊息因此只由固定字串組成，沒有任何模型輸出混入。
+ */
+export function checkOutRewriteInstruction(
+  violations: readonly CheckOutViolation[],
+): string {
+  const reasons = violations
+    .map((violation) => `- ${CHECK_OUT_REWRITE_LINES[violation]}`)
+    .join("\n");
+  return `你剛才那句收尾不合格：\n${reasons}\n請重寫：只回 1 則、${CHECK_OUT_MAX_CHARS} 字以內、沒有問句，一句話交代先去忙就收。`;
 }

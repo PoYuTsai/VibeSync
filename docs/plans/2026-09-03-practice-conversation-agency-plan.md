@@ -108,6 +108,7 @@
 - 2026-09-05（Phase 4.3 R2，兩輪用盡）：Codex R2 三個 P1 全在程式面，已修。(1) **撤回** 4.3 加進 `REACTION_RE` 的肯定／否定短詞——它在看她上一句是哪種問題之前就把「是非題→不是」與「澄清→不是」一起免疫，而後者根本沒回答（4.2 那張反應詞契約表因此**回復原狀**）。(2) `aiClarifiedLastTurn === null`（standard／分類器缺席或解析失敗）**一律不強制**，`!precedingUserContext` 退路整條拿掉——**死守邊界只在 assisted（beginner／game）成立**，standard 維持既有二選一。(3) 新增 `EXPLANATION_RE`（因為／意思是／就是說／是說）判成 `self_share`，讓「因為下個月要去首爾出差」這種澄清後的完整解釋不落 `answer_candidate`（成對反例：同一格丟「清邁」仍強制）。另修 U-8（state parser 接受字面 `null`，不再整份作廢）、P2-4（judge prompt 補 `aiChallengedThisTurn` 的反例定義與互斥條款＋prompt／parser 測試）、P3-7（前文 1～8 位改成完整交替並斷言嚴格交替）。離線重建：**`null` 與 `false` 兩臂與 base 逐鍵逐值完全相同**——沒有分類器訊號時整個 Phase 4.3 在全矩陣上是零改動；`true` 臂維持 R1 的分佈（A06／A10／A12／A14／A25／A26 與無探針輪），A28／A29／A25.p9／A26.p9 四臂逐格不變，15 筆仍是 7/15。1,872 綠（＋17）、eval 49 綠、harness 6 綠且 off golden 未重印。**未解的天花板**：沒有解釋標記也沒有第一人稱的正當回答，在分類器判 true 的那一輪仍會被強制一次（生成前沒有能判當前回覆語意的訊號）；整刀的產品效果現在完全繫於分類器 `aiChallengedThisTurn` 的準確率，**只有黑箱量得到**。三個 replay 臂**不是** production 上下界，只是固定假設分支（R2 P2-5）。
 - 2026-09-05（Phase 4.1）：`agency-phase41` 分支（branch 自 main `21b43a5c`）落地 Hint／Debrief P2——教練指得出「沒有回答她、連續丟詞」，且她的補救不算玩家得分。新檔 `agency_coaching.ts` 兩支純函式＋21 支測試，hint／prompt 各一個選填參數，門檻與 chat 路徑同源（難度／isGame／角色 agency profile），旗標 `on` 才進 prompt；1,848 支測試綠（＋22）、等價 harness off／shadow golden 未重印且新增白名單釘住「旗標 on 時 11 個 hint／debrief 案例必須不同」。本輪零模型呼叫，沒有新的黑箱數字。Codex R1 BLOCKED（三個 P2＋四個 U）已全數處置，R2 **APPROVED_WITH_RISK**（撤銷 R1 的 P1、無 P0/P1/P2）的一個 P3 與三個 U 也已修完，HEAD `977ec7e8`。詳見本檔「Phase 4.1」節。
 - 2026-09-05（Phase 4.4）：`agency-phase44` 分支（branch 自 main `4b381189`）把 Phase 4.3 三臂黑箱的結論搬進 production——新旗標 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 時，**只有她真的要介入的那一輪**改打 Claude Haiku 4.5，其餘維持 DeepSeek；條件與黑箱 runner 的 `--chat-model=mixed` 臂逐字相同（`chatModelFor`）。Claude 失敗當輪退回 DeepSeek 重生並記 `chatModelFallback`；`practice_chat_succeeded` 多 `chatModel`／`chatModelUsage`，旗標不是 `mixed` 時整組 key 不存在。runner 的 haiku 呼叫端改成直接呼叫 production 的 `callClaude`（刪掉自己抄的那份對映），並用一支測試斷言兩邊送出的 request body 逐位元組相同。Codex R1 判 BLOCKED 的兩個 P1（成本觀測失真、證據範圍）、一個 P2、兩個 P3 與四個 U 已全數處置：usage 改整輪累加＋`chatModelCalls`、`standard` 排除在路由外、`onUsage` 搬到 content 驗證之後、mixed telemetry 改逐欄位比對、runner 選模入口直接呼叫 `chatModelFor`。另依 Eric 同日拍板，**越界輪**（`situation === "boundary"`，agency 恆未介入的那一格）也走 Haiku，是獨立於介入輪的第二個入口——這一格沒有黑箱數字，是安全側的產品判斷。Codex R2 的 P1（fallback 事件契約）／P2（200 但丟錯的成本）／P3（原始 bytes 比對）／U1（practiceMode 權威）也已處置。1,897 支測試綠（＋25）、等價 harness 9 綠且 **off golden 未重印**（多枚舉一維 routing env）、eval 工具 56 綠。**本輪零模型呼叫**，沒有新的黑箱數字；旗標預設關，開之前 production 行為逐位元組不變。詳見本檔「Phase 4.4」節。
+- 2026-09-05（Phase 4.5a）：`agency-phase45a` 分支（branch 自 main `22c9ef90`）落地 Eric 拍板的三刀——(1) 她問是非題、他回「對／不是」就算回答了（`answeredYesNo`，NO_OVERRIDE ＋ 欠債不累加）；(2) 挑戰／Game 的收尾格與連續越界允許只回一則「（已讀）」（planner `readOnlyAllowed` ＋ 守門白名單）；(3) 不收斂階梯（`lowValueStreak`／`checkedOut` → `check_out` → `read_only` 不打模型 → `cold_return` 冷回且溫度 delta 上限 0）。R1（CTO 依 Eric「持續不收斂」原意）再把 streak 入口擴成「任何 forced agency act，只有 `ask_intent` 不算」、`cold_return` 給獨立 `AgencySituation`、`applyCoherenceDeltaCap` 改 options 物件。practice-chat 1,907 綠（base 1,897＋10）、tools 111 綠、fmt／lint／check 全過、prompt 瘦身 gate 餘裕從 1,012 變 1,027（刀 2 是**取代**形狀行）。離線重建零模型呼叫：A01/A03/A07/A09、A28、A29 三個新 act 兩個界都 0；上界（`--ai-clarified=1`）p43-mixed 740 輪 `check_out` 40／`read_only` 102（A25.p5 17/20、A26.p5 13/20），p4full 1,920 輪 `cold_return` 23（全在 A15）。R2 修完 Codex R1 的三個 P1（守門授權過大、新手沒有硬性不結束、是非問句誤判）與兩個 P2，並連帶補掉一個既有漏洞——守門在最後一次 attempt 丟錯時被拒絕的文字照樣送出去。practice-chat 1,910 綠。R3 修完 Codex R2 的 P1-2（第二人稱只看最後子句、是非問句改切逗號）、P1-3（reply-style 關著時守門照跑）與 P3-1（`allowsCheckOut` 具名 predicate ＋ 240 組窮舉），並依 CTO 裁定把守門修補 rebase 成分支第一個獨立 commit（`776a4e2f`）＋補 3 種守門 × 3 個 off 面的測試；practice-chat 1,913 綠。真機未驗；Game 在 `check_out` 直接進 debrief 需要 client 配合，本輪不做。
 
 ## Phase 4.2 — 立場持久診斷、停滯輪不強制問、評測 salt（2026-09-05）
 
@@ -881,3 +882,947 @@ Anthropic **不是本刀新增的資料接收方**：practice-chat 的 hint／de
 - 真機未驗。旗標預設關，Eric 要在 Supabase 設 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 才會生效。
 - 成本：黑箱外推每次 Haiku 生成約 $0.003；只有介入輪才打，實際比例看 telemetry 的 `chatModel` 分佈。開了之後第一天就該看一次 Anthropic console。
 - 延遲：黑箱量到 Haiku p95 比 DeepSeek 多約 57%，但只落在介入輪。fallback 那一輪等於兩次呼叫的延遲相加（逾時 30s 上限）。
+
+## Phase 4.5a — 是非短答、（已讀）、不收斂階梯（2026-09-05，Eric 拍板）
+
+原則（Eric 原話）：**像真人——真人不會一直陪你耗。** 三刀都在 agency 旗標
+`on` 的路徑上；`off`／`shadow` 逐位元組不變（等價 harness 守門）。
+
+### 刀 1：「對／不是」回答是非問句不算裸詞
+
+- 判準（兩個都要成立，全部是句法標記，沒有語意判斷）：
+  1. **是非問句**（`aiAskedYesNoQuestion`，R1 P1-3 ＋ R2 P1-2 後三道閘門）：
+     剝掉句尾裝飾（`TAIL_DECORATION_RE`）後 `aiAskedQuestion` 要成立、以標點
+     （**含逗號**，`yesNoFinalClause`）切開後的最後一個子句以「嗎／吧／嘛」
+     結尾、而且**「吧／嘛」還要在同一個最後子句裡**出現第二人稱（你／妳）。
+     開放問句的「呢」刻意不收；「我先去忙吧」「這本來就是韓國嘛」
+     「你一直丟地名，那我先去忙吧」「那先這樣吧」都判 false，checked-out
+     不會被一句「好」解開；「你要不要先想清楚再說嘛」仍算可回答的是非問句。
+     逗號要切是 R2 P1-2 的重點——`aiAskedQuestionStrict` 用的 `CLAUSE_SPLIT_RE`
+     不切「，」，看整則就會被前半句的「你」帶過去（那支的行為不動）。
+  2. 他這一則**整則錨定**是純肯定／否定短詞
+     （對／對啊／嗯對／是／是啊／不是／沒有／沒錯／不對／不要／好／好啊），
+     只容忍句尾裝飾（`isYesNoShortAnswer`）。
+- 效果：`utteranceShapeOf` 判 `answer_candidate`（放在 `REACTION_RE` **之前**，
+  否則「好」「好啊」會先被反應詞接走）、`AgencyEvidence.answeredYesNo=true`；
+  `agencyPolicyFor` 對這一輪一律 NO_OVERRIDE（**在 `repeatedExactToken` 之前**
+  ——連兩題是非題答「對」是正常對話，不是同詞重複）；欠債迴圈遇到這一句
+  **不累加**、把 `told` 清成 false，但**既有欠債不歸零**（回答一題是非題不是
+  結構修復）。
+- 不變的邊界：她那一則是陳述句或開放問句時，逐字維持 4.3 行為
+  （「你在說什麼？」→「不是」仍然走 `clarify_ignored` 強制格）；
+  「對了我今天…」仍然是 `explicit_pivot`；`contentUserTurnCount` 那支 caller
+  少傳一個參數＝行為與 4.3 相同，4.2／4.3 的「反應詞邊界契約」整張表不動。
+
+### 刀 2：「（已讀）」冷回應
+
+- 開關（`TurnResponsePlan.readOnlyAllowed`）：agency `on` ＋（`challenge` 難度
+  或 `game`）＋（這一輪 forced `end_low_value_loop`，**或**
+  `situation === "boundary"` 且逐字稿尾端連續兩則玩家訊息命中 `BOUNDARY_RE`）。
+  easy／normal、旗標 off／shadow 一律不出現這個 key。越界輪的 agency decision
+  被 `computeAgencyDecision` 清成 `situation: null`，所以那一半只能從 planner
+  自己的 stance ＋逐字稿數，不能靠 agency 決策。
+- 渲染：`AGENCY_READ_ONLY_SHAPE` **取代**形狀行，不是多加一行——「只回一則
+  已讀」本來就是形狀指示，而且比它取代掉的 `AGENCY_CLARIFY_ONLY_SHAPE` 短
+  （prompt 瘦身 gate 的餘裕因此從 1,012 變成 1,027）。
+- 守門：`hasStageDirection`／`stripStageDirections` 多一個 `allowReadOnly`
+  參數，只放行**整則**（去頭尾空白後）完全等於「（已讀）」或「(已讀)」兩個
+  字面的回覆；多行（「（已讀）\n哈哈」「哈哈\n（已讀）」）、混括號
+  （「（已讀)」）、加尾巴（「（已讀）哈哈」）一律不豁免（Codex R1 P2-1）。
+  handler 的授權條件是 **agency on ＋（planner `readOnlyAllowed` 或 forced
+  `read_only`）**（Codex R1 P1-1）——只看旗標等於讓 beginner／easy 的模型自己
+  吐一句已讀也過關。守門本身的觸發條件是
+  `responsePlan || agencyMode === "on"`（Codex R2 P1-3）：旗標分臂
+  （agency on ＋ reply-style off）時原本整段不跑，模型自己吐的已讀就直接送出；
+  off 路徑維持「只在有 plan 時跑」，逐位元組不變。這兩支同時被 reply-style 路徑與兩支黑箱 runner 消費，
+  參數預設 false 讓 off 路徑逐位元組不變。
+- telemetry：`conversationAgency.readOnlyReply`（她真的回了已讀才寫）。
+
+### 刀 3：不收斂階梯
+
+state 兩個新欄位（**assisted 專用**；`parseConversationAgencyState` 缺欄位／
+字面 `null` 一律當 0／false，0／false 不寫 key，`lowValueStreak` 讀回來就
+`Math.min(3, n)`——Codex R1 P2-2）：`lowValueStreak`（收尾格連續
+輪數，clamp 在 `LOW_VALUE_STREAK_CHECK_OUT = 3`）、`checkedOut`。
+
+| 這一輪玩家給了什麼 | 狀態 | 結果 |
+| --- | --- | --- |
+| 結構內容（問句／self_share／解釋標記／明示換題／回答是非題） | streak > 0 或 checkedOut | forced `cold_return`（`cold_return_v1`）：一則、短、不主動問；階梯歸零、解除 checkedOut；**溫度 delta 上限 0** |
+| 結構內容 | streak 0 且未 checkedOut | 照 4.4（NO_OVERRIDE 等既有路徑） |
+| 低價值（裸片段／短答候選／反應詞） | checkedOut **且**挑戰／Game | forced `read_only`（`read_only_v1`）：**不打生成模型**，直接一則「（已讀）」 |
+| 低價值 | streak ≥ 3 且未 checkedOut **且**挑戰／Game | forced `check_out`（`check_out_v1`）：一句收尾、不問不約 |
+| 低價值 | 其餘 | 照 4.4（這一輪如果 forced 了 agency act，streak +1） |
+
+**streak 入口（R1，CTO 2026-09-05 依 Eric「持續不收斂」原意擴大）**：只認
+**這一輪 planner 真的下的 forced act**（跟 `priorChallengeIssued` 同一個規則：
+允許過 ≠ 做過），範圍是**任何 agency act**——`challenge_relevance`（含 4.3 的
+`clarify_ignored_*`）、`hold_position`、`end_low_value_loop`、同詞重複那格——
+**只有 `ask_intent` 不算**（第一個沒有前文的裸詞，她還沒被耗到，第一次問清楚
+不該記成不收斂）。`accept_if_answered`／`return_to_topic` 只出現在 bounded 清單，
+永遠不會是 `forcedAct`。
+
+> 為什麼擴：R1 之前只認兩個收尾格，離線重建量到 p43-mixed 740 輪只觸發 1 次
+> ——她多半在問問題，玩家那一則就變成 `answer_candidate`，走的是 4.3 的
+> `clarify_ignored`，根本進不了收尾格。
+
+**強制結束的難度門檻（Codex R1 P1-2、R2 P3-1）**：`check_out`／`read_only`
+只在 `thresholds.allowsCheckOut` 為真時成立，值來自具名 predicate
+`allowsCheckOut(difficulty, isGame)`＝**難度 challenge 或 practiceMode game**。
+planner 的「（已讀）」開關呼叫**同一支**，兩處不會各自漂移；它與既有的
+`forceEndLoopBeforeChallenge` 語意不同（那是「收尾格要收掉還是維持立場」）
+但值恆等，由 3 難度 × 2 mode × 20 位 SR profile × 有無 profile 位移的窮舉
+測試釘住。
+beginner 的 easy／normal：streak 照算、`cold_return` 照走，但到 3 **不結束**，
+留在既有的 `hold_position`／`end_low_value_loop`（她冷但會回）。這一道是
+**防禦性**的——就算 thread row 被直接種成 `lowValueStreak: 3`／
+`checkedOut: true`，輕鬆難度也不得強制結束。難度因此是硬門檻而不只是口氣，
+`check_out_cold_v1` 沒有第二個值可走，收成單一 `check_out_v1`。
+
+- `cold_return` 有**自己的 `AgencySituation` 值**（不借 `ambiguous_fragment`）；
+  `COHERENCE_BY_SITUATION` 仍映到 `ambiguous`（不獎不罰）。
+  `agency_coaching.ts` 的修復輪帳**明確跳過它**——他終於給了內容，不是又一輪
+  沒接上，算進去會讓 Hint／Debrief 多報一輪。
+- 溫度不補回靠 `applyCoherenceDeltaCap` 新增的 `cold_return` 零上界（跟
+  `shared_past_claim`／`accommodating_self_fact` 同一個機制：只壓正分、絕不抬
+  負分），成功與分類器失敗兩條路徑都套。該函式 R1 已改成**單一 options 物件**
+  （26 個呼叫點同步），fallback 路徑不再需要塞 `undefined` 佔位。
+- `read_only` 那一輪 handler 完全跳過生成模型，`practice_chat_succeeded` 的
+  `chatModel` 記 `"none"`、`chatModelCalls` 兩支都是 0，Response 的
+  `provider`／`model` 也照實回 `"none"`（key 集合不變；2026-09-05 實查
+  `lib/features/practice_chat/data/services/practice_chat_api_service.dart`
+  **從來沒有讀過**這兩格，只有 coach-chat 的 service 讀它自己那條路徑的同名
+  欄位，所以舊 client 不會炸）。扣額規則不動（是否扣一則仍由既有配額邏輯決定）。
+- 三格的 bubbleCount 都壓到 `minB`；形狀行（`AGENCY_LADDER_SHAPE`）**優先於**
+  clarify-only 形狀，因為那條是「只問清楚」的形狀，不是「冷冷接一句」。
+
+### Game 結束訊號：查證結果（**沒有現成的，留給 Eric**）
+
+`practice-chat` 的 chat 回應只有 `sessionComplete`，而它就是
+`isSessionComplete(aiTurnCount)`＝「已達 20 則」；client
+（`practice_chat_screen.dart`）在那一格印死字串「這場練習已達 20 則回覆」。
+debrief 也不是 server 主動觸發的，而是 client 另外送一次 `mode: "debrief"`。
+所以**沒有**可以誠實表達「她先忙了，這場結束」的既有欄位——硬把
+`sessionComplete` 設成 true 會讓 UI 說一句不成立的話。本輪因此**只做**
+`checkedOut` ＋ 已讀；Game 在 `check_out` 直接進 debrief 需要 client 配合
+（新欄位或新文案），留給 Eric 決定。`beginner` 本來就不強制結束；
+`standard` 沒有持久化狀態，整條階梯不生效。
+
+### Gate（實測數字）
+
+- `deno test supabase/functions/practice-chat`：**1,913 passed / 1 ignored**
+  （base 1,897 ＋ baseline 守門修補 1 支 ＋ 4.5a 15 支）。
+- `deno test tools`：**111 passed**（＝base，本輪沒動工具程式碼）。
+- `deno fmt`（只跑改到的 `.ts`）／`deno lint`／`deno check handler.ts`
+  ／`deno check moments_handler.ts`：全過。
+- 旗標 off 等價 harness：9/9（off golden 未重印）。
+- prompt 瘦身 gate（agency-on 至少比 off 少 1,000 code units）：餘裕
+  1,012 → **1,027**（刀 2 取代形狀行反而更短）。
+
+### 離線重建（`replay_plan.ts`，零模型呼叫）
+
+`replay_plan.ts` 預設**不餵**分類器訊號（artifact 裡沒有當時的
+`aiChallengedThisTurn`），所以 4.3 的 `clarify_ignored` 強制格整批不成立，
+階梯幾乎踩不到；`--ai-clarified=1` 是「她每一輪都真的在澄清」的**上界**。
+兩個界都列出來，production 夾在中間。
+
+**下界（預設，分類器訊號缺席）**
+
+| artifact | user 輪次 | `check_out` | `read_only` | `cold_return` |
+| --- | --- | --- | --- | --- |
+| `out/2026-09-05-p43-mixed.json` | 740 | 0 | 0 | 0 |
+| `out/2026-09-05-p4full-beginner-on.json` | 1,920 | 0 | 0 | 0 |
+
+**上界（`--ai-clarified=1`）**
+
+| artifact | user 輪次 | `check_out` | `read_only` | `cold_return` |
+| --- | --- | --- | --- | --- |
+| `out/2026-09-05-p43-mixed.json` | 740 | 0 | 0 | 0 |
+| `out/2026-09-05-p4full-beginner-on.json` | 1,920 | 0 | 0 | **23**（全在 A15.p1，23/60） |
+
+兩個 artifact 的 meta 都是 `difficulty: normal`，而回放固定走 beginner，所以
+Codex R1 P1-2 的難度門檻讓 `check_out`／`read_only` **在這兩份逐字稿上恆為 0**
+——這正是「新手不強制結束」的離線證明。要量結束那一半，用新加的
+`--difficulty=challenge` 覆寫同一批逐字稿（純診斷，零模型呼叫）：
+
+**`out/2026-09-05-p43-mixed.json --difficulty=challenge`**
+
+| 臂 | `check_out` | `read_only` | 分探針 |
+| --- | --- | --- | --- |
+| 下界 | 1 | 0 | A26.p8 1/20 |
+| 上界（`--ai-clarified=1`） | **40** | **102** | A25.p5 **17/20**、A26.p5 **13/20**、A26.p8 2/20；read_only：A25.p8 **20/20**、A26.p8 **18/20**；其餘無 probe id 的輪次 8/200 與 64/200 |
+
+`check_out` 落在 **p5**（連丟第 5 則就先忙了），之後 p8 是 `read_only`。
+
+- **A01／A03／A07／A09、A28（配合的玩家六個來回）、A29（停滯反應詞）三個新
+  act 全部 0**，每一個臂（含 `--difficulty=challenge`）都是——有效短答、明示換題、正常聊天、停滯輪都不得被
+  階梯掃到。
+- `cold_return` 全部落在 A15「玩家道歉並回到原題（不記仇）」——正是「他終於
+  給了內容、她回來但冷」那一格。
+
+### 風險與未做
+
+- **真機未驗。** production 的 `agency=true`／`shape=truncate` 已開，本輪三刀
+  都在 on 路徑上，合併即生效。
+- **零模型呼叫**：沒有新的黑箱品質數字。刀 2／刀 3 的「她真的會照做嗎」
+  （模型服從率）沒有量過——Phase 3.8 的教訓是觸發率與服從率是兩件事。
+- 階梯觸發率**只在有分類器訊號時才起得來**（上下界差很多）。production 的
+  assisted 每輪都有分類器，理論上靠近上界，但那是推論不是量測——真機第一天
+  要看 telemetry 的 `forcedAct` 分佈確認。
+- 上界量到 `read_only` 102/740（13.8%），代表她在連丟情境會有相當比例的輪次
+  只回一則已讀。這是刻意的產品行為，但**沒有真人驗收過**，體感可能過冷。
+- `read_only` 省下的那一次生成呼叫沒有換算成本；扣額規則沒動，所以玩家在那
+  一輪仍可能被扣一則（既有配額邏輯決定）。
+- Game 結束需要 client 配合（見上）。
+- **`chatModel`／`provider`／`model` 的 `"none"` 值，消費端要能吃（Codex R2
+  P3-2，列進 Phase 5 WP4）**：本輪只實查過 Flutter client 不讀
+  `provider`／`model`。`practice_chat_succeeded.chatModel` 的下游（週報 SQL、
+  成本分析、任何 enum decoder／dashboard）**沒有查過**——若只接受
+  `deepseek`／`anthropic`，`"none"` 可能被丟棄、歸進 unknown，或因價格表
+  join 不到而產生 null。開旗標前要補一筆 `"none"` fixture 驗事件不被拒、成本
+  記為零、週報仍計入 forced／read-only 輪次。
+- **連續越界只數 `BOUNDARY_RE`（Codex R1 P3-3，留 Eric 決定）**：
+  `trailingBoundaryTurns()` 只看玩家訊息文字有沒有命中 `BOUNDARY_RE`。
+  `situation === "boundary"` 還可以由 `gameGreasy`／`userOverEscalated` 產生
+  （Game FSM 的證據，文字本身不一定命中 regex），那種連續越界目前**拿不到**
+  `readOnlyAllowed`。這是刻意的窄規則（那兩個訊號不是「他又踩了一次同樣的
+  界線」的直接證據），要不要一起累計由 Eric 決定。
+
+### Codex R1：BLOCKED（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| P1-1 | `allowReadOnly` 只看 `agencyMode === "on"`，任何 beginner／easy 輪只要模型自己吐「（已讀）」就會被放行並記 `readOnlyReply` | **已修**。授權條件收成 agency on ＋（planner `readOnlyAllowed` 或 forced `read_only`）；telemetry 改讀同一個旗標。測試：未授權輪吐已讀 → 旁白守門剝到空 → 重試；兩發都吐 → 整輪 500。 |
+| P1-1（連帶） | 追這一項時發現的**既有漏洞**：每次生成直接寫進外層 `reply`，守門在最後一次 attempt 丟錯時 `reply` 仍留著被拒絕的文字，`if (reply === null)` 不成立 → 被擋下來的內容照樣送出去（L4／內部標籤／旁白三道都中） | **已修**（不在原範圍，但同一條路徑上的安全問題）：生成收在 attempt 內的 `candidate`，全部守門過了才寫回 `reply`。 |
+| P1-2 | 沒有硬性落實「新手不強制結束」 | **已修**。`check_out`／`read_only` 多一道 `thresholds.forceEndLoopBeforeChallenge`（⟺ challenge 難度或 game）。beginner 的 easy／normal streak 照算但不結束；直接 seed `lowValueStreak: 3`／`checkedOut: true` 也不得結束。兩條軌跡都有測試。 |
+| P1-3 | `aiAskedYesNoQuestion` 只看句尾助詞，會把「我先去忙吧」判成是非問句，玩家一句「好」就解除 checked-out | **已修**。三道閘門（剝裝飾後 `aiAskedQuestion` ＋ 最後子句助詞 ＋「吧／嘛」要有第二人稱）。第 1 關必須對**剝掉句尾裝飾後**的字串做，否則「你在報地名嗎😂」這類真人寫法會整批判漏。 |
+| P2-1 | 白名單是逐行判斷，「（已讀）\n哈哈」第一行會豁免；字元類還會接受「（已讀)」 | **已修**。改成整則（trim 後）完全等於兩個完整字面之一。 |
+| P2-2 | parser 沒有 clamp 3 | **已修**。讀回來 `Math.min(3, n)`，4／999 都是 3。 |
+| P3-1 | read-only 的 exactly-once 與 client schema 證據不足 | **已補**。展開 commit RPC 一次、`p_charge_quota`、`aiTurnCount`、thread 只寫一次且 `checkedOut: true`、learning ≤1；`provider`／`model` 決定回 `"none"`（實查 client 從不讀這兩格）。 |
+| P3-2 | 解釋標記是否真的算內容沒有證明 | **已查證＋釘測試**。`utteranceShapeOf` 的 `EXPLANATION_RE`（因為／意思是／就是說／是說）與 `FIRST_PERSON_RE` 同一個分支回 `self_share`，所以階梯本來就把它當內容；checked-out 下「因為剛剛在列旅遊清單」走 `cold_return` 不是 `read_only`。 |
+| P3-3 | `gameGreasy`／`userOverEscalated` 來源的連續越界未涵蓋 | **不改，記進風險**（見上），留 Eric 決定。 |
+| P3-4 | shadow 的 cold-return cap 需專門驗證 | **已補測試**。`agencyDeltaCapActive === (agencyMode === "on")`，shadow 恆 false；測試證明 shadow 與 off 的 Response（除時間戳）與溫度寫入參數逐位元組相同。 |
+
+### 上線後監看與回退門檻（Codex R2 P3-4）
+
+`read_only` 上界 13.8%（102/740）是 **challenge 覆寫 ＋ `--ai-clarified=1` 的
+合成上界**，不是實際觸發率；`check_out` 那一句「不問、不約」完全靠模型服從，
+本輪零黑箱、零真人驗收。production 四旗標已全開，合併即生效，所以要看：
+
+| 指標 | 怎麼看 |
+| --- | --- |
+| `conversationAgency.forcedAct` ∈ {`check_out`, `read_only`} 的比例 | 依難度（easy／normal／challenge）與 practiceMode（beginner／game）分組；預期 easy／normal **恆為 0** |
+| `conversationAgency.readOnlyReply` | 同上分組；`read_only` 佔全部 chat 回合的百分比 |
+| 已讀之後那一場的走向 | 使用者離場／續聊／進 debrief 的比例，以及那些輪次有沒有照扣額 |
+| `check_out` 那一則的內容 | 抽樣看含問句或邀約的比例（act 說明明寫不問不約，這是服從率） |
+| 客訴／回報 | 「她突然不理我」「一直已讀」這類回報 |
+
+**回退門檻**：`read_only` 佔全部回合 **> 5%**，或出現體感抱怨，就先關掉。
+**4.5a 沒有自己的旗標**——回退＝把 `PRACTICE_CONVERSATIONAL_AGENCY_ENABLED`
+改成 `shadow`（整個 agency 層一起休眠，回到旗標關閉的逐位元組行為）。要單獨
+關 4.5a 而保留 4.0–4.4，需要另外加一個旗標，本輪沒有做。
+
+### Codex R2：BLOCKED（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| P1-1 | 守門修補正確，但它同時改變 off／未設／亂填三個面的行為，與「旗標關閉逐位元組不變」互斥 | **CTO 裁定：這是既有安全漏洞的 baseline 修補，不是 4.5a 行為，適用所有旗標面。** 已把它 rebase 成本分支的**第一個獨立 commit**（`練習室生成守門：最後一次重試被擋的文字不得送出（既有漏洞）`），4.5a 的九個 commit 接在它後面；等價 harness 的契約文字補了例外說明；`index_test.ts` 新增 3 種守門 × 3 個 agency off 面 ＝ 9 案（500、無 reply、commit／thread／learning 三個 RPC 皆 0 次），base 行為寫在測試註解。**使用者可見的變化：以前 App 可能收到被守門擋下的文字，現在會收到錯誤並可重試。** |
+| P1-2 | 第二人稱看整則，「你一直丟地名，那我先去忙吧」仍會被判成是非問句 | **已修**。第二人稱只看最後子句，而且是非問句判準改用會切逗號的 `yesNoFinalClause`（`CLAUSE_SPLIT_RE` 不切「，」是真正的原因）。三個新反例＋一個正例（「你要不要先想清楚再說嘛」）都有測試；`aiAskedQuestion` 本來就認得「要不要」，不必補表。 |
+| P1-3 | reply-style 關著時旁白守門不跑，未授權的「（已讀）」仍可直接送出 | **已修**。守門條件改成 `responsePlan || agencyMode === "on"`；off 路徑維持只在有 plan 時跑。測試涵蓋 agency on＋style 未設＋easy 的重試／失敗兩格，以及 challenge forced `read_only` 無 plan 時固定字面仍通過。 |
+| P3-1 | 兩處條件沒共用具名 predicate，之後容易漂移 | **已修**。新增 `allowsCheckOut(difficulty, isGame)`，policy 走 `thresholds.allowsCheckOut`、planner 直接呼叫；3 × 2 × 20 × 2 ＝ 240 組窮舉斷言它與 `forceEndLoopBeforeChallenge` 恆等，並驗 seed 矩陣。 |
+| P3-2 | `"none"` 的分析端相容性未證明 | **不改，記進風險並列進 Phase 5 WP4**（見「風險與未做」）。 |
+| P3-3 | exactly-once 沒斷言 commit 內的 AI 文字 | **已查證＋補斷言**。`commit_practice_chat_turn` 的 params **不含任何 AI 文字欄位**（測試直接斷言沒有 reply／text／content 類 key），AI 回覆由 client 自己存；改以「生成後的分類器 messages 裡就是那個字面」證明同一則文字流到下游。 |
+| P3-4 | 13.8% 是合成上界，需記錄並監看 | **已記**：新增「上線後監看與回退門檻」節（分組指標、回退門檻 5%、回退＝把 agency 旗標改 `shadow`，4.5a 沒有專屬旗標）。 |
+
+## Phase 4.5b — 標準模式補 agency 分類器、Haiku system 拆快取（2026-09-05）
+
+**為什麼要做（production 實測 2026-09-05）**：App 預設是**標準模式**，而標準模式
+沒有每輪分類器、沒有持久化 agency 狀態、不進 Haiku 路由。連帶三件事在真機上
+全部不成立：Phase 4.3 的死守邊界（`aiClarifiedLastTurn` 恆 `null` → 強制質疑
+永遠不點火）、欠債不會因她質疑而歸零、4.5a 的階梯走不到。真機看到的結果是輕鬆
+難度下她把玩家連丟的地名一路接成「咖啡店」話題。Eric 決定：標準模式補分類器。
+
+兩把刀各自一個 commit、各自可獨立 revert。
+
+### 刀 A：標準模式 agency 分類器（`cb294760`）
+
+**旗標契約（分面寫法）**：新旗標 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`
+（server-only，與 agency／routing 旗標獨立），`"true"` 才開；未設／`off`／亂填
+一律關（`standardAgencyClassifierEnabled` fail-closed，與 `agencyModeFor` 同款）。
+只在 agency 旗標 `on` ∧ `practiceMode === "standard"` ∧ chat 路徑成立。
+等價 harness（`agency_flag_off_equivalence_test.ts`）把它加成第三個枚舉維度：
+
+- **未設／`off`／亂填** → `messages`／`response`／`rpc`／`telemetry` **四面**
+  逐位元組等於 `7f1d6d6c` golden，**而且**在 agency `true` 的那條臂上也逐位元組
+  等於「agency on ＋ 這一維未設」。agency 未設時這支旗標 `true` 也一樣四面全等
+  （旗標不可能繞過 agency 閘門）。
+- **`true`** → 只有 `chat／standard` 的案例允許 `messages`／`rpc`／`telemetry`
+  不同（白名單比對，名單外必須逐位元組相同）；`response` 一律不變。另有一支
+  測試斷言那三面**真的**都不同（不是只有 telemetry 多一個 key）。
+- **正向精確差（Codex R2 P3）**：`true` 那一格不是只證明「有不同」——
+  照 Phase 4.4 `mixed` 的做法把 on／off 正規化後比精確差：`messages` 是 off 的
+  每一筆 ＋ **恰好一次**精簡分類器呼叫（常數 450／0.2／jsonMode／30s 與
+  `judgeLearningState` 同組）；`rpc` 是 off 的每一筆 ＋ 恰好一次
+  `upsert_practice_relationship_thread`；`telemetry` 事件名列表與明確預期陣列
+  比對，每一行刪掉允許的 key、把被覆寫的 `coherence`／`aiChallengedThisTurn`
+  還原成 `null` 之後**逐位元組相同**。thread 上真的存過 agency 狀態的那三個
+  案例另外放行 `priorChallengeIssued`（實測**只有這一格**會變，其餘決策欄位
+  逐格相同），並正向斷言它確實 `false → true`。分類器 messages 與 RPC params
+  的**內容**另有一支測試與 `buildStandardAgencyClassifierMessages` 的輸出、
+  以及一個寫死的預期 params 物件逐位元組比對。
+- **交叉格（Codex R1 P2-1）**：另一支測試掃兩組交叉——routing `mixed` ×
+  新旗標 `off`／亂填（agency `off` 與 `on` 兩種都掃，基準是「routing=mixed ＋
+  新旗標未設」），以及 agency `off`／亂填／`shadow` × 新旗標 `true`／`off`
+  （前兩者四面全等 golden，`shadow` 沿用既有「只 telemetry 可以不同」契約）。
+- **golden 未重印**（`git status` 全程沒有 golden 檔）。
+
+**精簡分類器**：standard 生成成功後多打一次 DeepSeek（模型／`maxTokens`／
+`temperature`／`timeoutMs` 與 `judgeLearningState` 同一組常數），**只**判
+`coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／`accommodatingSelfFact`
+四欄。判準文字抽成 `AGENCY_CLASSIFIER_RULES`，與 `buildTurnClassifierMessages`
+的 agency 片段是**同一個常數**（抽取前後的 `buildTurnClassifierMessages` 輸出
+在 agency on／off 兩種情形下都實測逐位元組相同）。輸入同樣是逐字稿（整段窗口）
+＋人設可信自我來源＋`memorySummary`＋`herRecentMoments`＋她這一輪實際回覆。
+解析走既有的 `parseCoherence`／`parseAiChallengedThisTurn`／`parseClassifierFlag`
+（repair-first，修過的欄位沿用既有的 `practice_chat_learning_classifier_repaired`
+事件）。**不**打溫度分數、**不**呼叫 `update_practice_learning_state`、不動
+`partnerState`。任何錯誤 **fail-open**：訊號 `null` → 結構近似（與 beginner
+分類器失敗時同一個 `AgencyClassifierSignal` 契約），記一筆沒有逐字稿的
+`practice_chat_standard_agency_classifier_failed`。
+
+**同步跑，不進背景**：handler 既有的 `waitUntil` 慣例（`scheduleGenerationTelemetry`）
+只服務「回應之後才寫」的 ai_logs 持久化；分類器欄位必須趕上 `practice_chat_succeeded`
+那一行，所以同步跑，耗時記進 `standardClassifierDurationMs`。
+
+**RPC 原樣帶回的欄位清單**：`upsert_practice_relationship_thread` 的
+`ON CONFLICT DO UPDATE` 對下列四欄是 `= EXCLUDED`（**不是** COALESCE），
+standard 這條新路徑不帶回就等於把 beginner 累積的東西清掉——
+
+| 欄位 | ON CONFLICT | standard 帶回的值 |
+| --- | --- | --- |
+| `practice_mode` | `= EXCLUDED` | 既有 row 的 `practiceMode`（沒有 row＝`standard`） |
+| `relationship_score` | `= EXCLUDED` | 既有值（**本刀新增讀取這一欄**）／`null` |
+| `temperature_score` | `= EXCLUDED` | 既有值／`null` |
+| `familiarity_score` | `= EXCLUDED` | 既有值／`null` |
+| `partner_mood`／`partner_inner_thought` | COALESCE | 既有值（等價於不覆寫） |
+| `invite_stage` | COALESCE | 既有值／`null`（`null` 時連 `recent_facts.inviteStage` 都不覆寫） |
+| `memory_summary` | COALESCE | 既有值／`null` |
+| `profile_id` | COALESCE | request 的 profileId |
+| `recent_facts` | `= EXCLUDED` | 既有整份為底（Phase 2.6 規則）＋`conversationAgency`；`replyStyle` **原始物件原樣穿過**（見下） |
+
+`replyStyle` 刻意**不傳** `replyStyleState` 參數（Codex R1 U2）：
+`parseReplyStyleState` 是「驗過再重建」而不是原樣回傳，parse 後寫回去會把
+`replyStyle` 裡本檔不認識的巢狀 key 靜默清掉。省略參數時
+`existingRecentFacts` 的原始 `replyStyle` 物件會原封不動穿過去。
+
+**無法確認可安全覆寫時完全不寫（Codex R1 P1-1 ＋ R2 P1）**：handler 讀到的 row 若是**另一個
+角色**的，舊版只把 `relationshipThreadState` 設成 `null`，於是 standard 的寫入
+路徑會把它當成「沒有列」——拿新角色的 `profileId` 去 upsert 同一個
+`(user, visible_thread_id)`，四個 `= EXCLUDED` 欄位被寫成 `null`（舊角色的分數
+與模式沒了），而 `partner_*`／`invite_stage`／`memory_summary` 走 COALESCE 留著
+舊角色的值＝兩個角色的狀態攪在一起。**讀取失敗**（`fetchRelationshipThreadState` 丟錯）在
+`relationshipThreadState` 上跟「確定沒有列」長得一模一樣（都是 `null`），
+所以是同一條污染路徑的第二個入口。現在 fetch 之後同時記
+`threadFetchFailed` 與 `threadProfileMismatch`，合成一個
+`threadStateSkipReason`；**任一成立就 standard 完全跳過 thread 寫入**
+（分類器照跑、telemetry 記 `statePersisted:false` ＋
+`stateSkipReason: "fetch_failed" | "profile_mismatch"`）。
+beginner／game 的寫入路徑本輪一字未改（那條有自己算得出來的分數與階梯，
+`p_profile_id` 的 COALESCE 語意是既有行為，不在本刀範圍）。
+
+測試釘住：既有 beginner row 下，standard 一輪的 RPC params 除了
+`recent_facts.conversationAgency`（與每輪本來就會推進的 `source`／`aiTurnCount`）
+以外**逐欄位相同**——`p_recent_facts` 做**整份精確比對**，fixture 的每一格都
+刻意不是本檔會寫出來的預設值（`source` 是別的 writer、`aiTurnCount` 是 42、
+`replyStyle` 裡有一個未知巢狀 key、頂層兩個未知 key），所以「原樣帶回」不是
+恆真斷言。另有一支測試 seed 一列**別的角色**（同 visible thread）跑 standard，
+斷言 upsert RPC **一次都沒發**。沒有既有 row 時建立一列 mode `standard`、分數留空的 thread——
+後續 beginner 的 `resolveLearningSeed` 對 `null` 分數有既有退路（ledger 未建檔
+→ client seed → 難度起始值），該退路本輪未改。`threadState.practiceMode` 全域
+查證**沒有任何 consumer**（`parseRelationshipThreadRow` 產出後沒有人讀），所以
+寫回既有值不改任何行為，只是不讓 row 的欄位被 standard 一輪翻掉。
+
+**狀態回流**：standard 的 `buildChatPromptBundle` 在旗標開時帶 thread 的
+`agencyState`（旗標關＝省略，與既有 `?? null` 逐字相同），下一輪吃得到
+`aiClarifiedLastTurn`／`lowValueStreak`／`checkedOut`。handler 級測試：
+standard ＋旗標 on ＋分類器回 `aiChallengedThisTurn: true` → 下一輪裸詞
+forced `challenge_relevance`／`clarify_ignored_*`；反例（旗標關）維持 bounded。
+
+**多輪端到端（Codex R1 P2-3）**：一支測試把每一輪 RPC 寫出去的 `recent_facts`
+餵回下一輪的 thread row（＝production 的先讀後寫），玩家連丟七個不相干的地名、
+她每輪都問「你在說什麼？」、分類器據實回報 `aiChallengedThisTurn: true`——
+**挑戰難度**會走到 `check_out` 再一路 `read_only`；**同一段序列在 easy／normal
+兩種難度下都不得出現這兩格**。
+
+**standard／challenge 會進階梯**：`allowsCheckOut(difficulty, isGame)` ＝
+**難度 challenge 或 practiceMode game**，這支 predicate **不看 practiceMode 是不是
+standard**。standard 之前走不到階梯的原因是「沒有持久化狀態」（`prev === null`
+→ streak 0／`checkedOut` false），不是 predicate 排除了它。所以 4.5b 之後：
+**standard ＋挑戰難度**會走到 `check_out`／`read_only`（已讀），
+**standard ＋easy／normal** 只會 `cold_return`／`hold_position`／`end_low_value_loop`
+（她冷但會回）。有測試在 standard 的證據上逐難度斷言這件事。
+
+**路由**：`chatModelFor` 多第六個參數，旗標開時把 standard 納入 `mixed` 路由
+（介入輪與越界輪走 Haiku，規則與 beginner 相同）；旗標關時 standard 一律
+deepseek（Phase 4.4 的既有測試一個字都沒改）。黑箱 runner 的
+`runnerChatModelFor` 直接呼叫同一支，全矩陣逐項比對。
+
+**Telemetry 契約（分面寫法，Codex R1 P1-3）**——由
+`standard_agency_classifier_test.ts` 的「telemetry 契約」那一支把三種分類器
+結果的 **key set 與事件名列表**整組釘死（不是挑幾個欄位看）：
+
+- **(a) 旗標關**（含 agency `on`）：`conversationAgency` **零新 key**，
+  **零新事件**。
+- **(b) 旗標開**：`practice_chat_succeeded.conversationAgency` 一律多三個管理
+  欄位——`standardClassifier: "ok" | "failed"`、`standardClassifierDurationMs`、
+  `statePersisted`（Codex R2 P2：**RPC 真的回成功**才是 `true`；跳過寫入或
+  fail-open 的寫入失敗都是 `false`）。跳過寫入時**額外**多一個
+  `stateSkipReason: "fetch_failed" | "profile_mismatch"`（沒跳過時不存在）。
+  - **分類器成功**：再多 `coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／
+    `accommodatingSelfFact`（key 名與 beginner 相同；前兩個是覆寫既有那兩格的
+    `null`，所以 key set 只多後兩個）。修過的欄位另有
+    `sharedPastClaimRepaired`／`accommodatingSelfFactRepaired`——**與 beginner
+    完全相同的規則**：`coherence`／`aiChallengedThisTurn` 修過時**不多 key**，
+    只進 `practice_chat_learning_classifier_repaired` 事件。
+  - **分類器失敗**（Codex R2 P2 校正——舊稿寫「四個都缺席」是錯的）：
+    **逐字鏡射 beginner 分類器失敗時的形狀**——`coherence` 與
+    `aiChallengedThisTurn` **存在且為 `null`**（那兩格由 generic block 寫，
+    `agencyMode === "on"` 時就是 `temperature?.classification.… ?? null`，
+    standard 沒有 `temperature` 所以恆為 `null`）；只有 `sharedPastClaim`／
+    `accommodatingSelfFact` **缺席**。測試用 `Object.hasOwn` 逐欄位釘住。
+- **(c) 允許多出的事件只有兩個**：`practice_chat_learning_classifier_repaired`
+  （與 beginner 同名同 payload 形狀）與
+  `practice_chat_standard_agency_classifier_failed`（fail-open，payload 只有
+  `level`／`event`／匿名 `user`／**`errorClass`**，沒有逐字稿）。
+  **`errorClass` 是固定代碼**（`"timeout" | "http" | "parse" | "unknown"`），
+  不是 `getErrorMessage(e)` 全文（Codex R2 U：`JSON.parse` 的錯誤訊息會把模型
+  吐出來的原文片段帶進來，而這一行是無逐字稿觀測）。測試讓分類器回一個含唯一
+  marker 的壞 JSON，斷言整輪 telemetry 都不含那個 marker。測試對三種情形的事件名
+  union 做精確比對，任何第三個新事件都會炸。
+
+**黑箱 runner**：`--mode=standard --state=1` 不再被 CLI 擋掉（Codex round-2
+P2-d 的原始理由「standard 不持久化跨回合狀態」在本刀之後不成立），並且真的用
+`classifierApiKey` 打這支精簡分類器（不是硬編碼 `null`——那是踩過的坑）。
+本輪**沒有真的跑付費黑箱**，只證明路徑存在（假 fetch 測試）。
+
+### 刀 B：Haiku 的 system 拆成可快取的穩定前綴（`270972de`）
+
+production 21 輪 Haiku **全部是 cache write、cache read 0**：`callClaude` 把整段
+system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當輪 plan／
+溫度／記憶，逐位元組不可能命中。
+
+- `buildChatPromptBundle` 多回一格 `systemStable`＝總則（`chatSystemPromptFor`）
+  ＋人設（`buildProfilePrompt`）＋說話習慣（`renderReplyStyleGuidance`）＋認識
+  管道（`acquaintanceOriginPrompt`；seed 綁 threadId＋profile，跨輪不變）。
+  之後每一段都逐輪變（時間錨點、場景、記憶摘要、朋友圈、`partnerState`、Game
+  快照、張力／溫度／邀約、本輪 plan），留在當輪尾巴。
+- `callClaude` 新增選配的 `systemCachePrefix`：只有在它確實是 `system` 的字首、
+  而且拆完兩段都非空時，才送 `system: [{穩定, cache_control: ephemeral}, {當輪}]`；
+  不傳／不吻合（不是字首、整段相等、比 system 長、空字串）一律**逐位元組沿用
+  單一 block 的舊行為**。hint／debrief 都不傳。
+- **DeepSeek 路徑吃的仍然是 `messages`，一個位元都沒動**——`prompt_test` 在
+  3 模式 × 2 style × 2 agency 的矩陣上斷言 `systemStable` 是
+  `messages[0].content` 的逐位元組字首、且尾巴非空。
+- 黑箱 runner 的 Haiku 臂從 `ChatCaller` 的第二個參數拿同一格；既有的
+  「handler 與 runner 送出的 Claude request body 逐位元組相同」測試同步比 system
+  的兩個 block。
+
+### Gate（實測數字）
+
+- practice-chat 全套：**1,941 passed / 0 failed / 1 ignored**（base `9e64a41c`
+  1,913／0／1；＋28。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
+- 等價 harness：**12 passed / 1 ignored**（base 9／1；＋3），**off golden 未重印**。
+- `tools/`：**116 passed / 0 failed**（base 111；＋5，含 cache probe 的 2 支
+  dry-run）。
+- `deno fmt --check supabase/functions/practice-chat tools`：**64 個未格式化檔，
+  與 base 完全相同**（全部是未觸碰的既有檔；掃描檔數 478 → 481，多的是本輪新增
+  的三個檔且都已格式化）。
+- `deno lint supabase/functions/practice-chat tools`：**9 個問題，與 base 完全
+  相同**（全部在未觸碰的檔案）。
+- `deno check`（`practice-chat/index.ts`＋`run_agency.ts`＋`cache_probe.ts`）：0 error。
+- `flutter-ci.yml` 的 Edge contract tests 名單加入
+  `standard_agency_classifier_test.ts` 與
+  `tools/practice-agency-eval/cache_probe_test.ts`（Codex R2 U：整個 `tools/`
+  本來都不在 CI，不然這兩道 gate 在 PR CI 是死的）。
+
+### 已知限制與風險
+
+- **零黑箱、零真機**：本輪一個付費模型呼叫都沒打。standard 開分類器之後的介入
+  率、品質、`blind_follow`／`false_challenge` 變化**完全沒有量過**——Phase 4.3
+  的三臂矩陣量的是 `beginner ＋ --state=1`。開旗標前的最小驗證是
+  `--mode=standard --state=1` 跑一次小黑箱。
+- **成本**：standard 每一輪多一次 DeepSeek 分類器呼叫（比 beginner 的逐輪分類器
+  短，只問四欄），加上路由開著時介入輪的 Haiku。standard 是 App 預設模式，所以
+  這是**全體使用者**的每輪成本，不是 beginner 那一小群。開旗標第一天就要看
+  DeepSeek 與 Anthropic 兩邊的總帳。
+- **延遲**：分類器同步跑（要趕上 telemetry），所以 standard 每一輪多一次
+  DeepSeek 往返。`standardClassifierDurationMs` 是觀測點。
+- **cache 門檻沒量過**（**2026-09-05 更正：Haiku 4.5 的最小可快取長度是 4,096 tokens，不是 2,048**；見下方 4.5d 結論）：穩定前綴實測
+  **2,799–3,608 code units**（`practice_girl_001`，四種旗標組合），測試用字元數
+  粗估、**沒有**用真的 tokenizer 量過。開旗標後看
+  `chatModelUsage.cacheReadInputTokens` 是否真的非零；若仍恆為 0，下一步是把
+  記憶摘要／朋友圈也搬進前綴（那兩段一場之內多半不變），或者整個拆法退掉。
+- **standard 現在會寫 relationship thread**：以前 standard 完全不寫。同一個
+  visible thread 上先玩 standard 再玩 beginner 的使用者，thread row 會先被
+  standard 建成分數 `null` 的一列；`resolveLearningSeed` 的既有退路涵蓋這件事，
+  但這條路徑**沒有真機驗過**。
+- **未做**：不改 beginner／game 行為、不改 DeepSeek prompt 內容、不加 migration、
+  不動 hint、不重印 golden、未 push。
+- **thread 先讀後寫的 stale-read 窗口（Codex R1 U3，不修）**：handler 在請求
+  開頭讀 thread、在生成與分類器之後才寫，中間沒有樂觀鎖（`update_practice_
+  learning_state` 那條有 expected-score CAS，thread 這條沒有）。這是 beginner
+  的**既有型態**，standard 只是把窗口拉長了一段同步分類器的時間（實測
+  `standardClassifierDurationMs`）。同一個 visible thread 上兩個併發請求時，
+  後寫的會蓋掉先寫的 `conversationAgency`。本輪不修：agency 狀態是「最近一輪
+  的結構事實」，覆寫的後果是少記一輪，不是資料損毀。
+- **cache 是否真的命中還沒量**：`tools/practice-agency-eval/cache_probe.ts`
+  已經寫好（standard／beginner／game × style on／off，每格對同一場連續打兩次
+  Haiku，印出 `cacheCreationInputTokens`／`cacheReadInputTokens`），
+  **本輪刻意沒有執行**——付費呼叫要等 Eric 授權。`cache_probe_test.ts` 只跑
+  dry-run（矩陣形狀 ＋ 同格兩輪的穩定前綴逐位元組相同），零 Anthropic 呼叫。
+- **cache 探針結果（2026-09-05，Eric 授權後執行，12 次真呼叫 $0.05）**：
+  standard／beginner／game × style on／off 六格、每格兩輪，**12 次全部
+  `cacheCreationInputTokens=0`、`cacheReadInputTokens=0`**——穩定前綴只有
+  2,701–2,858 code units，換成 token 不到 Haiku 4.5 的最小可快取長度（官方文件：**4,096 tokens**；4.5b 當時誤記 2,048），
+  所以 Anthropic 連寫都不寫。刀 B 的原始目的（讀到 cache）**沒有達成**；實際
+  效果是把今天 production「整段掛 cache、每輪都付 1.25× 寫入溢價卻永遠讀不到」
+  改成「零 cache 活動、全部按 1.0× 輸入計價」，Haiku 輸入成本約降兩成。要真的
+  命中，下一步是把一場之內不變的段落（記憶摘要、朋友圈、難度文案、優先序
+  說明）也搬進前綴——但 4.5d 實測搬完只有約 2,400 tokens，離 4,096 仍遠（見 4.5d）；改 DeepSeek 順序那條路也一樣構不到，
+  是 on-path 改動，另開一刀。數字與逐格表在 `tools/practice-agency-eval/README.md`
+  「Phase 4.5b」節。
+- **標準模式兩臂黑箱（同日，A25／A26／A27、輕鬆、20 位 × 1，$2.37）**：
+  頭條 12.7%→**6.2%**、違反 mustForbid 18.0%→**9.7%**、滿足 mustAllow
+  67.3%→**81.0%**（三項信賴區間分開）；輕鬆難度兩臂 check_out／read_only 皆 0；
+  sequence 三項與 stance 在 repeat=1 下分不出；臂 B Haiku 佔比 71.7%（對抗
+  情境的上界）、p95 延遲 1.1s→2.1s。詳見同一節。
+- **回退**：把 `PRACTICE_STANDARD_AGENCY_CLASSIFIER` 拿掉即回到逐位元組舊行為
+  （刀 A）；刀 B 沒有旗標，回退＝revert `270972de`（它自己不改 DeepSeek 路徑，
+  只影響 Claude 的 request body 形狀）。
+
+### Codex R1：BLOCK（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1-1** | profile 不符時 standard 的寫入會清掉別的角色的分數並混入舊角色記憶 | **已修**。fetch 之後多記 `threadProfileMismatch`，profile 不符時 standard **完全跳過** thread 寫入；telemetry 記 `statePersisted:false`。兩支測試：別的角色的列 → 零 upsert RPC；沒有 row → 照樣建列且 `statePersisted:true` |
+| **P1-2** | cache 是否真的命中沒有證據 | **已加腳本，未執行**（付費呼叫等 Eric 授權）。`tools/practice-agency-eval/cache_probe.ts`：standard／beginner／game × style on／off 共 6 格，每格對同一場連續打兩次 Haiku，印 create／read／input tokens ＋ 前綴長度。`cache_probe_test.ts` 只跑 dry-run（零 Anthropic 呼叫） |
+| **P1-3** | telemetry 契約沒寫成分面、沒有 key set 級測試 | **已修（文件＋測試）**。契約見本節「Telemetry 契約（分面寫法）」；新增一支測試把三種分類器結果（合法 JSON／`{}`／非法 JSON）的 `conversationAgency` key set 與事件名 union 整組釘死 |
+| **P2-1** | 等價 harness 沒掃交叉格 | **已修**。新增 routing `mixed` × 新旗標 `off`／亂填（agency off／on 兩種），與 agency `off`／亂填／`shadow` × 新旗標 `true`／`off` |
+| **P2-2** | matching-row 測試有恆真斷言（`aiTurnCount: rest.aiTurnCount`） | **已修**。fixture 每一格都改成非預設值（`source` 是別的 writer、`aiTurnCount` 42、`replyStyle` 含未知巢狀 key、頂層兩個未知 key），對整份 `p_recent_facts` 精確比對，白名單只有 `source`／`aiTurnCount`／`conversationAgency` |
+| **P2-3** | 沒有多輪端到端證明階梯真的走得完 | **已修**。新增 7 輪端到端（每輪把上一輪 RPC 的 `recent_facts` 餵回去）：challenge 走到 `check_out` → `read_only`，easy／normal 兩格都不得出現 |
+| **U1** | 沒證明 `practiceMode` 缺席時的正規化 | **已查證＋釘住**。`validateRequest` 的 `practiceMode` 預設就是 `"standard"`（缺席時不可能是 `undefined`），新增一支不帶 `practiceMode` key 的 handler 測試 |
+| **U2** | `parseReplyStyleState` 會丟掉未知巢狀欄位 | **已修**。standard 路徑改成**不傳** `replyStyleState`，讓 `existingRecentFacts` 的原始 `replyStyle` 物件原樣穿過；P2-2 那支測試直接斷言未知巢狀 key 還在 |
+| **U3** | thread 先讀後寫的 stale-read 窗口 | **不修，記進「已知限制」**（beginner 既有型態，standard 多一段同步分類器時間；覆寫的後果是少記一輪，不是資料損毀） |
+
+### Codex R2：BLOCK（逐項處置，**全修、未三審**）
+
+R2 是最後一輪審查，修完不再送審——所以下面每一項都有測試釘住，但**沒有第三輪
+獨立審查**確認這些修法本身正確。
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1** | `fetchRelationshipThreadState` 丟錯時 state 是 null、`threadProfileMismatch` 是 false，standard 當成「確定沒有列」照寫＝R1 P1-1 的污染路徑從另一個入口漏回來 | **已修**。新增 `threadFetchFailed`，與 profile 不符合成 `threadStateSkipReason`；任一成立 standard 完全跳過寫入，telemetry 記 `statePersisted:false` ＋ `stateSkipReason` 區分原因。測試：`.maybeSingle()` 回 error → 零 upsert RPC。beginner／game 路徑一字未動 |
+| **P2** | `statePersisted` 在 RPC 失敗時錯報 `true` | **已修**。`upsertRelationshipThreadFailOpen` 改回傳布林（既有呼叫端忽略回傳值＝行為不變），standard 用真實結果。測試：RPC 回 error → `statePersisted:false`、無 `stateSkipReason`、仍印 `practice_relationship_thread_upsert_failed` |
+| **P2** | 分類器失敗時的欄位契約自相矛盾 | **已修（文件＋測試）**。契約改成**逐字鏡射 beginner**：`coherence`／`aiChallengedThisTurn` 存在且為 `null`，只有 `sharedPastClaim`／`accommodatingSelfFact` 缺席。三種情形用 `Object.hasOwn` 逐欄位釘住 |
+| **P3** | 正向 harness 只證明「有不同」；`eventNames(repaired)` 跟自己比是恆真 | **已修**。恆真斷言整段刪掉，改成事件名列表與明確預期陣列比對；新增「精確差」測試（messages／rpc／telemetry 三面，見上面「正向精確差」）。分類器 messages 與 RPC params 的內容另有一支測試與純函式輸出、寫死的預期物件逐位元組比對 |
+| **U** | 失敗 warn 可能洩漏模型原文 | **已修**。改記固定代碼 `errorClass: "timeout" \| "http" \| "parse" \| "unknown"`，不再記 `getErrorMessage(e)`。測試用含唯一 marker 的壞 JSON，斷言整輪 telemetry 都不含那個 marker |
+| **U** | 既有 row `practice_mode` 為 null 時被改成 standard | **已查證：不可能**。migration 是 `practice_mode TEXT NOT NULL DEFAULT 'standard'`，唯一 writer（那支 RPC）只收三個合法值。`migration_source_test.ts` 原本只釘 `NOT NULL`，本輪補上 `DEFAULT 'standard'`；handler 那一行加註解說明 `?? "standard"` 只服務「還沒有列」那條路 |
+| **U** | `cache_probe_test.ts` 有沒有進 CI | **查證：整個 `tools/` 都不在 CI**（`flutter-ci.yml` 只有 Edge contract 與 Postgres 兩份白名單）。已把 `tools/practice-agency-eval/cache_probe_test.ts` 加進 Edge contract 名單（實測只需 `--allow-env --allow-read`，與該步權限相同）。其餘 `tools/` 測試維持本機跑，不在本刀範圍 |
+| **TOCTOU** | thread 先讀後寫的窗口 | **不修**，已在「已知限制」記為 R1 U3 |
+
+### Phase 4.5d：Haiku cache 排版刀——**不併，結論記錄**（2026-09-05）
+
+- **做法**：分支 `agency-phase45d`（未併、worktree 已移除、分支保留）把 Claude 那條路的
+  system 重排成「穩定段先、當輪段後」（`systemSections` 16 段分類、`claudeSystemLayout`、
+  旗標 `PRACTICE_HAIKU_CACHE_LAYOUT=stable_first`），DeepSeek 的 prompt 逐位元組不動；
+  1,954 綠、harness 14 綠、golden 未動。六格穩定段 3,324–3,456 code units。
+- **探針（Eric 授權，12 次真呼叫 $0.06）**：新排版六格兩輪**仍全部 create=0、read=0**。
+  總輸入 4,612–6,054 tokens，穩定段換算約 2,400 tokens。
+- **根因**：官方文件（platform.claude.com prompt-caching）明列 **Claude Haiku 4.5 的最小
+  可快取長度是 4,096 tokens**；2,048 是 Haiku 3.5 的數字，4.5b 起的註解、測試與計畫檔
+  都抄錯了。一場之內不變的 system 內容全部加起來約 2,400 tokens，**在 system 這一層
+  不可能達標**，所以 4.5d 的排版刀沒有用武之地，不併。
+- **今天 production 的實際狀態就是終點**：4.5b 刀 B 拆前綴後，Haiku 介入輪零 cache 活動、
+  全按 1.0× 輸入計價（拆之前是整段掛 cache、每輪付 1.25× 寫入溢價卻永遠讀不到）。
+- **若日後真要命中**：唯一路徑是把當輪段從 system 移到訊息尾端，讓 cache 前綴＝穩定
+  system ＋ 之前所有對話（超過 4,096 tokens 後每輪都能命中）。那是 Claude prompt 結構
+  的改動，要自己的黑箱；上線規模夠大再議。
+- 4.5b 那句「Haiku 最小可快取 2048」在 `prompt_test.ts` 註解與 `cache_probe.ts` 檔頭一併
+  更正（README 由 4.5e 評測 commit 更正）。
+## Phase 4.5c — 補 4.5a 的兩個缺口（刀 2 已撤回，2026-09-05）
+
+交付的是**刀 1 與刀 3**；**刀 2（debrief 回放吃持久化修復點）在 Codex R2 之後
+整把撤回**，程式碼已逐位元組回到 main（見下面「刀 2：已撤回」）。
+
+兩刀都在既有的 agency `on` 路徑上，**沒有新旗標**——回退＝把
+`PRACTICE_CONVERSATIONAL_AGENCY_ENABLED` 改 `shadow`（與 4.5a 同一個開關，
+無法只回退這一輪）。旗標未設／`off`／亂填時
+`messages`／`response`／`rpc`／`telemetry` 四面仍逐位元組等於 `7f1d6d6c`
+golden（等價 harness，**golden 未重印**）。
+
+### 刀 1：`gameGreasy`／`userOverEscalated` 計入「（已讀）」授權
+
+4.5a Codex R1 P3-3 留給 Eric 的缺口。`policyStanceFor` 的 boundary 分支是
+`boundaryLike || gameGreasy || userOverEscalated` 三者 OR，但 4.5a 的
+`trailingBoundaryTurns()` 只數 `BOUNDARY_RE` 逐字稿——Game 的油膩／過度升溫
+`situation` 是 boundary，streak 卻恆為 0，那種連續越界永遠拿不到
+`readOnlyAllowed`。
+
+改成 `trailingColdRejectTurns(turns, evidence)`，判準與 stance 同源：
+
+- **逐則**（含最後一則）套可回溯的文字偵測函式：`BOUNDARY_RE`
+  （`boundaryLike` 同源）＋ `looksOverEscalated`（`userOverEscalated` 的定義
+  本身，也是 Game FSM `GREASY` 的文字來源）。
+- **最後一則**另外認 `evidence.gameGreasy`／`evidence.userOverEscalated`。
+  今天 `prompt.ts` 呼叫 `evaluateGameFsm` 沒有傳 `classification`，所以
+  `gameGreasy` 恆等於 `looksOverEscalated(latest)`；留這一段是為了它哪天被傳
+  進來時，stance 與這裡不會各自漂掉。
+- **近似的界線**：更早的訊息拿不到當時的 evidence，只能靠文字。所以
+  「classification 判越界但文字沒命中」的**歷史**輪次仍然數不到——今天不可能
+  發生（沒有傳 classification），是為未來留的已知窄口。
+
+難度門檻（`allowsCheckOut`＝挑戰或 Game）與 agency `on` 閘門**不變**。測試
+（`turn_response_plan_test.ts`）用兩則命中 `looksOverEscalated` 但**不**命中
+`BOUNDARY_RE` 的訊息（「我好想親妳」「那今晚去我家好不好」，先斷言
+`boundaryLike` 是 false 才有意義），涵蓋三種訊號各自連續兩則→授權、單一則→
+沒有、easy／normal→沒有、旗標 off／shadow→欄位不存在。
+
+### 刀 2：debrief 回放吃持久化修復點——**已撤回，未交付**
+
+原本要讓 `debriefAgencyLedgerFor` 吃 thread 上的 `repairedAtUserTurns`，把
+「分類器判 connected 的修復點」補回 4.1 的純結構回放。**兩輪審查後整把撤掉**：
+`agency_coaching.ts`／`agency_coaching_test.ts`／
+`standard_agency_classifier_test.ts` 三個檔案逐位元組回到 main，`handler.ts`
+只剩刀 3 的差異。
+
+撤回的三個理由（依提出順序）：
+
+1. **超出範圍改到 assisted（R1 P1-1）**：第一版閘門是
+   `debriefAssistedMode || standardAgencyClassifierEnabled(…)`，等於 beginner／
+   game 的 debrief 也開始吃狀態——同一段對話的介入輪數會從 6 變 4，Debrief 的
+   「需要她補救的輪次」與下游評分文字跟著動。那是改既有模式的評分口徑，不是
+   補缺口。
+2. **marker=1 是死分支（R1 P1-2）**：注入條件寫成 `state !== null && …`，第 1
+   則玩家訊息時 state 必為 null。修掉之後用 2,400 組合成案例對拍舊／新寫法，
+   `repairTurns` 與計數 **0 筆不同**——因為 `detectAgencyEvidence` 每輪都從
+   `shapes` 重算欠債、**不讀** `prev.unresolvedCount`，舊寫法在第 2 則注入的
+   效果已經把第 1 則那次完整重建。也就是那一格從頭到尾沒有產生過行為。
+3. **截窗完整性無法證明（R2 P1，決定性）**：debrief 的 `request.turns` 走
+   client 的 `endPractice() → _turnDtosForPrompt()`
+   （`kPracticePromptRecentTurns = 80`），超過就只送最後 80 則；marker 是
+   **整場**的絕對序號，套在 suffix 上會偏右＝少算介入輪。我用「這次的 ai 則數
+   ＝ ledger `aiCount`」當完整性閘門，但那**不是證明**——反例：前 10 則全是
+   玩家訊息、後 80 則含全部 ledger AI 回覆時，兩邊計數相等而 ordinal 已經
+   左移 10。
+
+**日後要重做的前提**：server 端必須拿得到**逐字稿起始 ordinal**，或 session
+綁定的完整性證明——例如 client 一併送出窗口起點，或把修復點改成綁**穩定
+turn id**（不依賴序號）。在那之前 debrief 維持 4.1 的純結構近似；
+「standard 也該吃狀態」與「assisted 要不要吃」都排在這個前提後面。
+
+### 刀 3：Game 的「先忙了」要能進檢討（server 訊號＋client 契約）
+
+4.5a 查證過 `practice-chat` 的 chat 回應只有 `sessionComplete`，而它就是
+`isSessionComplete(aiTurnCount)`＝「已達 20 則」，借用會讓 UI 說一句不成立的
+話。所以多一個**選填**欄位。
+
+- **server**：`partnerStatus: "checked_out" | "read_only"`，只在 agency `on`
+  ∧ `practiceMode === "game"` ∧ 這一輪 forcedAct 是那兩格時存在；其餘情形連
+  key 都沒有。那兩格只在 agency `on` 才可能是 forcedAct，所以旗標 off／
+  `shadow` 的 response 逐位元組不變。telemetry 不加（`forcedAct` 已經有了）。
+- **client**：`PracticeChatApiService` 白名單解析（認不得的值一律 null＝舊
+  client 對 server 未來新值 fail-closed，最多少一行提示）；
+  `PracticeChatState.partnerStatus` 每一輪照 server 覆寫（她被接回來的那一輪
+  沒有 key ＝提示消失，不黏住）；聊天輸入列上方多一行
+  「她先去忙了，這場可以結束練習看拆解」（key
+  `practice-partner-checked-out`）。
+- **刻意沒做**：**不**自動結束、**不**鎖輸入、`canSend` 不看這個欄位——要不
+  要強制結束 Eric 還沒拍板。beginner／challenge 也走得到 `check_out`，但本刀
+  只給 Game（beginner 沒有「這場收了」的產品語意，她冷但會回），反例測試釘住。
+
+### Gate（實測數字）
+
+**撤回刀 2 之後重跑**（分支 base ＝ main `048e5c50`）：
+
+- `deno test -A supabase/functions/practice-chat`：**1,944 passed / 0 failed /
+  1 ignored**（base 1,941 / 0 / 1；刀 1 ＋1、刀 3 ＋2。刀 2 的 ＋9 支測試隨
+  撤回一併移除）。
+- `deno test -A tools`：**131 passed / 0 failed**（main 的 base，本輪未動）。
+- 等價 harness：全綠，**golden 未重印**（`git status` 全程沒有 golden 檔）。
+- `deno fmt --check supabase/functions/practice-chat`：clean；`deno lint` 4 個
+  問題，**與 main 相同**（`draw_handler_test.ts`／`game_fsm.ts`／
+  `hint_test.ts`，皆非本輪檔案）。`tools/` 的既有 fmt／lint 問題本輪未動。
+- `deno check index.ts`：clean。
+- `flutter analyze lib/features/practice_chat test/unit/features/practice_chat
+  test/widget/features/practice_chat`：**No issues found**。
+- `flutter test test/unit/features/practice_chat test/widget/features/
+  practice_chat test/features/practice_chat`：**717 passed**（刀 3 的 provider
+  ／widget 測試，含 R1 U3 補的 `read_only`／大字級／最小寬度 ＋4）。
+
+### 風險與未做
+
+- **真機未驗。** production 的 agency=true 已開，兩刀合併即生效。
+- **零模型呼叫**：刀 1 讓「（已讀）」多了一個觸發入口，觸發率變高多少沒有量
+  過（4.5a 量到的 13.8% 是舊入口的合成上界）。上線後要看 `forcedAct` 與
+  `readOnlyReply` 的分佈有沒有跳。
+- **刀 2 撤回，所以 debrief 的帳仍是 4.1 的純結構近似**：分類器判 connected
+  的修復點在回放裡不存在，standard 與 assisted 都一樣。4.1 節
+  「null-classifier 近似的風險方向是雙向的」整段仍然成立。
+- 刀 3 的 `partnerStatus` 只是提示；玩家仍然可以繼續丟訊息並被扣額
+  （`read_only` 那一輪不打模型，但扣額規則沒動）。要不要強制結束、要不要在那
+  一格改扣額，留給 Eric。
+- 刀 3 沒有處理「她先忙了之後玩家直接關 App」——沒有主動觸發 debrief，維持
+  既有的 client 送 `mode: "debrief"` 流程。
+
+### Codex R1：BLOCK（逐項處置）
+
+**R1 的四項有三項落在刀 2**，隨 R2 的撤刀一併作廢——保留紀錄，說明為什麼那把
+刀連續兩輪都在同一個地方出問題。
+
+| 項 | 內容 | 當時處置 | 現況 |
+| --- | --- | --- | --- |
+| **P1-1** | 閘門 `debriefAssistedMode \|\| standardAgencyClassifierEnabled(…)` 讓 beginner／game 的 debrief 也吃狀態，等於改了 assisted 的評分口徑（實測 A25 從 6 輪變 4 輪） | 收成只有 standard，補 beginner／game 的差分反例測試 | **隨撤回消失** |
+| **P1-2** | 注入條件 `state !== null && …` 讓 `repairedAtUserTurns: 1` 永遠被跳過 | 改用 `INITIAL_CONVERSATION_AGENCY_STATE` 當底 | **隨撤回消失**。附帶結論仍有價值：2,400 組合成案例對拍舊／新寫法 **0 筆行為差異**，所以那是**死分支不是活 bug** |
+| **U1** | debrief 的 `request.turns` 是不是一定從第 1 輪開始 | 查證「不是」，加了 `ai 則數 === ledger.aiCount` 的完整性閘門 | **該閘門本身被 R2 判為不成立**，見下 |
+| **U3** | widget 測試只有一種版面 | 補 `read_only`、大字級 1.3、最小寬度 320×568 與兩者疊加，並手動反證非恆真（120×400／scale 3.0 會失敗） | **保留**（屬於刀 3） |
+
+順帶記一件容易被誤讀的事實（與刀 2 在不在都無關）：**第 1 則玩家訊息永遠會
+落在 `repairTurns`**。`agencyPolicyFor` 放過裸片段的唯一出口是
+`evidence.precedingUserContext`（前面有玩家講清楚過的內容），而第 1 則依定義
+沒有前一則玩家訊息——任何 marker 都改不了它。
+
+### Codex R2：BLOCK（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1** | `ai 則數 === ledger.aiCount` **不是**逐字稿完整性的證明。反例：前 10 則全是玩家訊息、後 80 則含全部 ledger AI 回覆時，兩邊計數相等但 ordinal 已左移 10，marker 會指到錯的位置 | **成立，且無法在兩輪內修好**。CTO 決定**整把撤掉刀 2**；程式碼逐位元組回到 main。重做的前提見「刀 2：已撤回」節末（要起始 ordinal 或穩定 turn id，不是計數相等） |
+| **P2** | 刀 1 讓「（已讀）」多一個觸發入口，觸發率沒有量過 | **不修**，記進下面「未做／提案」與上線監看：看 `forcedAct`／`readOnlyReply` 分佈，Game 另外排黑箱。回退門檻沿用 4.5a 那一節 |
+| **P3** | （刀 2 相關） | **隨撤回消失** |
+| **U** | （刀 2 相關的其餘 U 項） | **隨撤回消失**；刀 3 的 U3 已補並保留 |
+
+### 未做／提案
+
+- **debrief 吃持久化修復點（原刀 2）要重做的前提**：server 端拿得到逐字稿的
+  **起始 ordinal**，或把修復點改成綁**穩定 turn id**（不依賴序號）。在那之前
+  不要再用「計數相等」這類間接推論當完整性證明。**standard 與 assisted 都排在
+  這個前提後面**——尤其 assisted 那一半還是改既有模式評分口徑的產品決定，要
+  Eric 拍板。
+- **刀 1 的觸發率沒有量**（R2 P2）：4.5a 量到的 `read_only` 13.8% 是舊入口
+  （`BOUNDARY_RE` 連兩則）的合成上界；刀 1 新增的
+  `gameGreasy`／`userOverEscalated` 入口在真實 Game 對話上多久觸發一次**沒有
+  離線重建也沒有黑箱**。上線後看 telemetry 的 `forcedAct` 與 `readOnlyReply`
+  分佈，Game 另外排一次黑箱。
+- **刀 3 的 `partnerStatus` 只是提示**：不自動結束、不鎖輸入、不改扣額。要不要
+  強制結束、要不要在那一格改扣額，留給 Eric。
+
+### Phase 4.5f：分類器判準補「裸疑問語助詞」正例（2026-09-06，分支 `agency-phase45f`，起點 `b34210f1`）
+
+**問題**：4.5c 量到 `aiChallengedThisTurn` 的召回率代理只有 standard 78.1%／
+assisted 70.6%，漏的集中在三格。standard 的死守邊界與階梯**完全**靠這個布林
+（4.3 節），漏一則＝那一輪不記帳。
+
+**改了什麼（Codex R1 收窄後）**：只在 `AGENCY_CLASSIFIER_RULES` 的
+`aiChallengedThisTurn` 段加**一條**正例——整則只有疑問語助詞（「嗯？」「蛤？」
+「？」），而玩家上一句是**沒有前文可接的裸詞／名詞／帳號**；並在同一句裡寫死
+反向例子（他說「我午餐還沒吃」時同一句「嗯？」＝好奇或附和，false）。反例、
+「兩類互斥」、「判不出來給 false」逐字保留；另三個欄位一字未動。
+
+**R1 的三項處置**（詳表在 `tools/practice-agency-eval/README.md`）：
+
+| 項 | 處置 |
+| --- | --- |
+| 事後放寬事前門檻 | 成立→**刀收窄成只留第 1 條**（唯一遠超雜訊的改善） |
+| 「你是餓了還是怎樣」與互斥條款矛盾 | 成立→整條**刪除**（玩家講過「午餐還沒吃」時那是正常內容追問） |
+| `+5.7pp` 不是成對比較 | 成立→改**成對重放**（舊／新各 2 次 × 2 mode），翻面列輸出待**人工盲標** |
+
+**為什麼不用 regex**：評測用的 `CHALLENGE_CANDIDATES` 是取樣器不是判別器，抓不到
+回聲式質疑（「東東？」），又會誤中「什麼意思都可以」。把雙向都會錯的字串比對放進
+強制格的唯一判別器，還要在 Edge 端維護中文詞表，比改判準文字貴且更脆。
+
+**驗收數字**：
+
+| 指標 | 舊 | 新 | 讀法 |
+| --- | --- | --- | --- |
+| 裸語助詞格 standard／assisted | 50.0%／78.1% | **96.9%／96.9%** | **目標格達標**，+47／+19pp 遠超雜訊 |
+| 召回合計 standard | 78.1% | 84.6% | +6.5pp |
+| 召回合計 assisted | 70.6% | **68.9%** | **淨負**——沒被點名的兩格反而掉了 |
+| `suspect_nonsense`（兩支） | 66.7%／46.7% | 53.3%／33.3% | 各 −13.4pp |
+| `why_suddenly` assisted | 49.1% | 37.7% | −11.4pp |
+| 誤判代理 standard（成對平均） | 51.9% | 52.7% | +0.8pp，**落在組內雜訊（1.6–2.5pp）裡** |
+| 誤判代理 assisted（成對平均） | 30.5% | 33.7% | +3.2pp，略高於雜訊；**真值待盲標** |
+
+**尚未解決，要 Eric／下一輪決定**：
+
+- **列舉排他效應**：判準只點名一種口語形態，模型就把沒被點名的往 false 推
+  （`suspect_nonsense`／`why_suddenly` 兩支一致下滑）。這是「補正例」這條路本身的
+  副作用，不是這一刀寫壞。要嘛把三格一起用**不點名形態**的抽象條件寫（風險是拉歪
+  互斥條款），要嘛接受 standard 賺、assisted 賠。
+- **assisted 淨負**：以召回代理看，收窄後的刀在 assisted 這一側不划算。若 production
+  的 assisted 路徑也吃這個布林做強制格，這一刀不該無條件合併。
+- **誤判差是未知數**：`out/2026-09-06-p45f-flips.md` 的 124 列（51 穩定翻面／73 列
+  是同一判準自己跑兩次就不同）待人工盲標後才算得出真正的成對誤判差。
+
+**Gate**：`deno test -A supabase/functions/practice-chat` 1,945 passed／1 ignored
+（base 1,944，+1 為裸語助詞成對案例的 prompt 文字測試）、`deno test -A tools` 137
+（base 135，+2 為 `complementHitsFor` 與 complement 展開路徑）、
+`agency_flag_off_equivalence_test.ts` 12 passed／1 ignored、golden 未重印
+（旗標 off 時判準整段不進 prompt）、改動檔 fmt／lint 乾淨。
+
+**花費**：收窄後這一輪 2,346 次呼叫估價 $0.476（追加上限 $0.50）；連同收窄前的
+$0.412，Phase 4.5f 合計估價 $0.888。餘額起 $21.29（06:39:40Z，開跑前先讀）→
+訖 $21.07（06:50:07Z），差 −$0.22 **明顯落後估價**：餘額 API 有數分鐘延遲，
+起始值也還沒反映前一輪，對帳要以估價為準、隔一段時間再讀。
+
+**回退**：revert 判準那個 commit 即可。純 prompt 文字，沒有 schema、沒有消費端、
+沒有資料遷移；旗標 off 的四面本來就不含這段。
+
+#### Phase 4.5f 結論（2026-09-05 晚，協調者判定）：**判準改動不併**，只併量測工具與紀錄
+
+- 收窄版（只留裸疑問語助詞正例）的數字：裸語助詞格 standard 50.0→96.9%、assisted 78.1→96.9%；但**沒被點名的兩格反而掉**（`suspect_nonsense` 兩支各 −13.4pp、`why_suddenly` assisted −11.4pp），淨效果 standard +6.5pp、**assisted −1.7pp**。8 次成對 complement：standard +0.8pp（落在雜訊）、assisted +3.2pp（略高於雜訊）。
+- 讀法：對小模型「補一條正例」會產生**列舉排他**——點名的形態升、沒點名的被往 false 推。這條路本身有副作用，不是再補兩句就能收斂；事前門檻（三格 ≥80%、誤判 ≤+2pp）也沒過。Codex R1 的 P1-1（不得事後放寬門檻）與 P1-2（「還是怎樣」句與互斥規則矛盾）成立。
+- 因此 `temperature.ts` 的判準**維持 main 原文**；分支 `agency-phase45f` 保留（含兩版判準與全部重放產物）。併進 main 的只有 `classifier_recall.ts --complement`、7＋N 份 out 產物、`flips.md`（124 列翻面、未標）、README／計畫檔紀錄。
+- **下一步若要真的提高召回**，路徑不是判準文字：(a) 分類器改成少量**平衡** few-shot（正負各數則、涵蓋全部口語形態）並用 228＋315 兩集成對驗；或 (b) 把 `aiChallengedThisTurn` 拆成獨立的小判官（只判這一題，Haiku 或 DeepSeek），成本每輪多一次短呼叫。兩者都要先盲標 `flips.md` 的 51 列穩定翻面拿到真值，才有分母。
+- 教訓入坑：**對 LLM 分類器補單一形態的正例會壓低未點名形態的召回（列舉排他）；改判準前要有覆蓋全部形態的成對驗證集。**
+
+## Phase 4.5g — forced `check_out` 的結構後檢查（2026-09-05）
+
+**分支** `agency-phase45g`。原本自 main `b34210f1` 開出，Codex R1 之後 rebase
+到 main `cd63d41f`（Phase 4.5h）；實作 commit `30e8f979`、文件 `478c7135`、
+R1 測試 `7136e95c`。
+
+### 問題
+
+2026-09-05 的 Game 單臂黑箱在 forced `check_out` 那一則（她說「先忙了」）的
+16 筆裡量到 **4 筆含問句**、1 筆出戲後設語氣。act 說明（`turn_response_plan.ts`
+約 897 行）已經明寫「回 1 則，短，說完就收，不問問題、不開新話題」——這是
+生成模型的**服從率**問題，跟 Phase 3.1 完全同一個坑：加字無效，要結構後檢查。
+
+### 機制
+
+`checkOutStructuralViolation(agency, reply)`（`conversation_agency.ts` 檔末）。
+只在 forced `check_out` 那一輪跑（`applied === true` ∧ `forcedAct === "check_out"`），
+純結構、不判語意：
+
+- **(a) 問句**：沿用既有的 `aiAskedQuestion`——**她那一側**的問句判準，刻意
+  寬鬆、不錨句尾（`[?？]` 或句尾 `嗎／呢／吧` 或疑問詞出現在任何位置），所以
+  「先忙了，你之後要去哪」也認得。玩家那一側的 `isQuestionText`／
+  `isQuestionTextTolerant` 錨在句尾，會漏掉「問句在前、收尾在後」那半。
+  過寬在這裡是**安全方向**：多判一次只是多重試一發，第二發仍命中就 fail-open。
+- **(b) 邀約／開新話題**：**留白，沒做**。repo 既有的 `practiceInviteLevelFor`
+  （`practice_invite.ts`）與 `looksLikeGameSoftInvite`（`game_invite_classifier.ts`）
+  判的是**玩家貼給她**的邀約句（判準通篇是「約妳」「帶妳去」的語法），套到她
+  自己的回覆是誤用；本輪不自己發明邀約正則。
+- **(c) 形狀**：`agencyBubbles(reply).length > 1`（與 client `_splitBubbles`、
+  黑箱 runner 同一套換行切法、同一個 4 段上限）或 `trimmed.length >
+  CHECK_OUT_MAX_CHARS`。`CHECK_OUT_MAX_CHARS = 20`，就是 Phase 3.1 難度表
+  `forcedStopMaxChars` 的 challenge／game 那一格；`check_out` 只在挑戰／Game
+  才可能是 forced（`allowsCheckOut`），所以不多開一張難度表。
+
+命中 → 沿用 **Phase 3.1 的 attempt 機制**：第一發丟掉、用**既有的第二發**重生
+同一份 bundle（`CHAT_GENERATION_ATTEMPTS = 2`，不加第三次呼叫）；第二發仍命中
+就 fail-open 送出去，只記 telemetry——那一輪的形狀再差也比 500 好。
+
+接線位置在 handler 的 attempt 迴圈**最後**（旁白／L4／內部標籤／Phase 3.3
+truncate 全部之後，`reply = candidate` 之前），所以檢查的就是真的要送出去的
+那串字。黑箱 runner `tools/practice-agency-eval/run_agency.ts` 用**同一支函式、
+同一個位置**接上（本案子的硬規矩：runner 與 production 同源）。
+
+### telemetry 契約
+
+`practice_chat_succeeded` 的 `conversationAgency` 下新增兩個欄位，**都只在為真
+時存在**（沒重試過／沒 fail-open 就連 key 都不多一個）：
+
+| key | 意義 |
+| --- | --- |
+| `checkOutRetry: true` | 這一輪真的丟掉過第一發、重試了 |
+| `checkOutStructuralFail: true` | 第二發仍命中，fail-open 送出去了 |
+
+旗標 off／shadow **走不到**這道檢查（`applied` 恆 false），beginner／easy 也
+走不到（`allowsCheckOut` 只給挑戰／Game），所以等價 harness 的四面輸出一個
+key 都不多，golden `7f1d6d6c` 未動。runner 的逐輪紀錄用同名的兩個選填欄位。
+
+**監看時 `chat_agency_check_out_shape` 與 Phase 3.1 的 shape 錯誤一樣視為
+policy rejection，不算生成故障**（Codex R1 P3）。它走的是既有的
+`practice_chat_chat_generation_attempt_failed` warn——**事件名不改**，因為
+旁白／L4／內部標籤那幾道守門全部共用這一條，為這一刀另開一個事件反而讓
+「被守門擋下」這件事分散在兩個名字底下。實查 `scripts/practice_agency_telemetry.py`
+（2026-09-05）：它只讀 `practice_chat_succeeded`／`practice_chat_model_fallback`／
+`practice_chat_standard_agency_classifier_failed` 三個事件，**根本沒碰**
+`practice_chat_chat_generation_attempt_failed`，所以既有的成功率／fallback
+數字不受污染，那支 python 不需要改。人工翻 log 或之後新增儀表時，要把
+`error` 欄位是 `chat_agency_check_out_shape` 的那幾筆歸到 policy rejection。
+
+### Gate（實測）
+
+- `deno test -A supabase/functions/practice-chat`：**1,949 綠**／1 ignored
+  （base 1,944，新增 4 支 handler 級 ＋ 1 支判準單元測試）。
+- `deno test -A tools`：**136 綠**（base 135，新增 1 支 runner 同源測試）。
+- 等價 harness `agency_flag_off_equivalence_test.ts` 12 綠，golden 未動。
+- `deno fmt --check` ／ `deno lint`（本輪改動的 6 個檔）乾淨；
+  `deno check index.ts` 過。
+
+### 回退
+
+**單一 revert**：`git revert 30e8f979`（R1 那支只有測試，可一併 revert）。
+沒有 migration、沒有 schema、沒有新旗標
+——這一刀掛在既有的 forced `check_out` 路徑上，revert 之後那一輪就退回「模型
+說什麼就送什麼」。不需要動 production 環境變數。
+
+### 已知限制
+
+- **零黑箱**：本輪一次付費模型都沒打。服從率有沒有真的改善，要用 Game 的
+  A25 小黑箱驗（forced `check_out` 那一格的問句率 4/16 是本輪的 baseline；
+  同時要看 `checkOutStructuralFail` 佔 `check_out` 輪的比例——Phase 3.1 量到
+  重試 86% 仍犯，這一刀沒有理由假設會更好，只是這一格的判準比 3.1 窄很多）。
+- **(b) 沒做**：她在 `check_out` 那一則開新話題／邀約（不帶問句形狀、又在 20
+  字內）目前擋不到。要做得先有一支「她這一側」的邀約判準。
+- **成本**：命中就多打一發。`check_out` 是 forced 且一場最多觸發一兩次，量級
+  可忽略，但 `checkOutRetry` 的比例值得在上線後看一眼。
+- **`aiAskedQuestion` 過寬的代價**：「不知道怎麼說，先忙了」含「怎麼」會被判
+  成問句 → 多重試一發 → 第二發若合格就採用，若不合格就 fail-open 原樣送出。
+  方向安全（不會擋掉輸出），但會讓 `checkOutRetry` 的分母比真實問句多。
+
+### Codex R1：APPROVE_WITH_RISK（逐項處置）
+
+無 P0／P1。三項處置如下（commit `7136e95c`）。
+
+| 項目 | 判定 | 處置 |
+| --- | --- | --- |
+| **P2-1** forced `check_out` 與 `gameFsmPriority` 的互斥性／runner 截斷條件 | **不互斥**，且 runner 條件已由 main 的 4.5h 補齊 | 查證＋兩支對拍測試（見下） |
+| **P2-2** 後檢查與既有守門的交互 | 兩條路徑都沒被測到 | 補 (a)／(b) 兩支 handler 級測試 |
+| **P3** `chat_agency_check_out_shape` 污染失敗率 | 事實成立，但影響面小於改事件名 | 不改事件名／不改 python，改在上面的 telemetry 契約節寫清楚監看規則 |
+
+**P2-1 查證**：`computeAgencyDecision` 只要求 `situation === "neutral"` 才保留
+決策，而 `gameFsmPriority ＝ policyEvidence.gameRepairPriority ||
+policyEvidence.gameRealityFlagCount > 0` 是**另一條**證據線——handler 4763 行
+的既有註解本來就寫明「唯一會落在 neutral 卻仍有既有優先權的是 Game FSM 的
+修復優先／現實旗標」。所以兩者**可以同時為真**，不能寫互斥測試。
+`check_out` 又是持久化階梯格（`lowValueStreak >= 3`），跟 Game 修復優先各自
+獨立累積，更沒有理由互斥。
+
+runner 那半：本輪 rebase 到 `cd63d41f` 之後確認 **Phase 4.5h 已經把
+`run_agency.ts` 的截斷條件補成 `args.shape === "truncate" &&
+!bundle.gameFsmPriority`**（與 handler 同序），本輪不重複改。新增的對拍測試
+把兩邊釘在同一個字面上：同一則 `"你在忙嗎？\n先忙了"` 連丟兩發，truncate 先
+砍成第一則、後檢查仍命中（第一顆是問句）→ handler 與 runner 的 fail-open
+輸出都是 `"你在忙嗎？"`，`shapeDropped: 1`／`checkOutRetry`／
+`checkOutStructuralFail` 三格也對齊。
+
+**P2-2 的兩條路徑**（都在 `chat_model_routing_test.ts`）：
+
+- (a) 第一發被 check_out 後檢查丟掉、第二發被既有守門（括號旁白剝到空）擋
+  → **整輪 500**。這條守住「絕不把被守門擋下的內容送出去」——fail-open 只
+  對這一道結構後檢查生效，不會順手放行別道守門。
+- (b) 第一發被既有守門擋、第二發只有 check_out 結構違規 → **200 fail-open**、
+  `checkOutStructuralFail: true`，而 `checkOutRetry` **連 key 都沒有**。
+  這是刻意的語意：那一次重試不是這道後檢查造成的，telemetry 不冒領。
+
+**R1 之後的 Gate**：practice-chat **1,952 綠**／1 ignored、tools **150 綠**、
+等價 harness golden 未動、fmt／lint 乾淨、`deno check index.ts` 過。
+
+#### Phase 4.5g 後記（2026-09-05 晚，4.5i Game 黑箱實測）：結構後檢查**沒有量到服從率改善**
+
+- 4.5i 兩臂各 16 個 forced `check_out`：第一發違規 68.8%／75.0%，第二發仍違規並 fail-open 送出 62.5%／50.0%；最終文字含問句率 56%／50%，**高於** 4.5c 單發基線 4/16（25%）。兩個基線都只有 16 筆、且 4.5g 的問句判準（`aiAskedQuestion`，過寬）與 4.5c 人工標記不同源，所以不能說「變差」，只能說**看不到改善**。
+- 讀法與 Phase 3.1 相同：同一份 prompt 再打一次，模型多半重犯。這一刀留著的理由只剩 telemetry（`checkOutRetry`／`checkOutStructuralFail` 讓 production 量得到這格）與 fail-open 無害；成本是每個 check_out 輪約七成多一發 Haiku（量級可忽略）。
+- **若要真的修**：第二發不該是同一份 prompt——把「上一發含問句，改寫成一句陳述、不問、不邀」當修補指令注入第二發（有針對性的重寫，而非重試），或直接把 check_out 那一則改成模板化短句候選（結構層選、不生成）。兩者都是下一刀，要各自量。
+- 4.5i 另記：A32 邀約兩臂多數「打太極」（明確答應 L 1/20、H 4–5/20），judge 分不出中間態；A33 修復優先 100%、0 次 cold_return、道歉後無升溫；`forbidViolation` 臂 H 4.9% 主因是 A32.p5 兩則 false_challenge 誤判（判準缺口）。花費 $4.13（Anthropic $3.44＋DeepSeek 餘額差 $0.69）。數字在 `tools/practice-agency-eval/README.md`「Phase 4.5i」節。
+

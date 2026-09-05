@@ -32,6 +32,17 @@ export interface ClaudeArgs {
    * 回呼就完全不影響行為（hint／debrief 都不傳）。
    */
   onUsage?: (usage: ClaudeUsage) => void;
+  /**
+   * Phase 4.5b 刀 B：system 的**穩定前綴**（同一場每一輪逐位元組相同的那一
+   * 段）。帶了就把 system 拆成兩個 content block——前綴掛 `cache_control`
+   * ephemeral、當輪尾巴不掛，讓 Anthropic 真的讀得到 cache（整段掛 cache 而
+   * 每輪夾著當輪 plan／溫度／記憶時，production 實測 21 輪全部 cache write、
+   * cache read 0）。
+   *
+   * 只有在前綴確實是 `system` 的字首、而且拆完兩段都非空時才生效；
+   * 不傳／不吻合＝**逐位元組沿用單一 block 的舊行為**（hint／debrief 不傳）。
+   */
+  systemCachePrefix?: string;
 }
 
 /** Anthropic `usage` 的四格（cache read／write 分開，才算得出真實成本）。 */
@@ -67,6 +78,40 @@ export function claudeRequestMessages(messages: ChatMessage[]): {
   return { system, messages: conversation };
 }
 
+/**
+ * Phase 4.5b 刀 B：system 的 content block 形狀。
+ *
+ * - 空 system → 原樣回字串（Anthropic 拒絕空 text block）。
+ * - 沒有可用的穩定前綴 → 單一 block ＋ ephemeral cache（既有行為，逐位元組不變）。
+ * - 有穩定前綴 → 兩個 block：前綴掛 cache_control、當輪尾巴不掛。兩段拼起來
+ *   永遠等於原本那個字串（靠 `startsWith` 保證，不做任何重組）。
+ *
+ * export 只為了測試（cache 前綴的長度與穩定性），production 只有 `callClaude` 用。
+ */
+export function claudeSystemBlocks(
+  system: string,
+  cachePrefix?: string,
+): string | Array<Record<string, unknown>> {
+  if (!system) return system;
+  const usePrefix = !!cachePrefix && cachePrefix.length < system.length &&
+    system.startsWith(cachePrefix);
+  if (!usePrefix) {
+    return [{
+      type: "text",
+      text: system,
+      cache_control: { type: "ephemeral" },
+    }];
+  }
+  return [
+    {
+      type: "text",
+      text: cachePrefix,
+      cache_control: { type: "ephemeral" },
+    },
+    { type: "text", text: system.slice(cachePrefix!.length) },
+  ];
+}
+
 /** Calls Claude and returns only assistant text. Provider bodies never leak. */
 export async function callClaude(args: ClaudeArgs): Promise<string> {
   const controller = new AbortController();
@@ -90,13 +135,7 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
         // Prompt caching：同一段 system 文字（byte-for-byte 不變）改包成
         // content-block 陣列掛 ephemeral cache_control；空 system 維持原樣
         // （Anthropic 拒絕空 text block）。
-        system: prompt.system
-          ? [{
-            type: "text",
-            text: prompt.system,
-            cache_control: { type: "ephemeral" },
-          }]
-          : prompt.system,
+        system: claudeSystemBlocks(prompt.system, args.systemCachePrefix),
         messages: prompt.messages,
         ...(args.outputJsonSchema
           ? {

@@ -189,6 +189,8 @@ def rule_r03(fields, cfg, out):
 def _is_single_paragraph_field(field: Field) -> bool:
     if field.block_type == 'paragraph' and field.name == 'text':
         return True
+    if field.name.endswith('scenario') and field.block_type == 'comparison':
+        return True
     return field.name.endswith('caption') or field.name.endswith('annotation')
 
 
@@ -215,6 +217,9 @@ def limit_key_for(field: Field):
     if field.name.endswith('annotation'):
         return 'annotation'
     if field.name.endswith('caption'):
+        return 'caption'
+    # comparison 的題目前提沿用 caption 的 100 字上限，不另立一套數字。
+    if field.name.endswith('scenario') and field.block_type == 'comparison':
         return 'caption'
     if field.kind == 'item' and field.block_type == 'bulletList':
         return 'bulletItem'

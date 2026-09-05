@@ -58,7 +58,7 @@ def all_block_types_book():
         {'type': 'paragraph', 'id': f'{bid}-p', 'text': '段落'},
         {'type': 'bulletList', 'id': f'{bid}-b', 'title': '清單', 'items': ['一', '二']},
         {'type': 'callout', 'id': f'{bid}-c', 'tone': 'info', 'title': '補充', 'text': '內文'},
-        {'type': 'comparison', 'id': f'{bid}-cmp', 'caption': '說明', 'items': [
+        {'type': 'comparison', 'id': f'{bid}-cmp', 'scenario': '她問：「你週末去哪？」', 'caption': '說明', 'items': [
             {'id': f'{bid}-cmp-w', 'stance': 'weak', 'label': '弱', 'text': '弱句', 'note': '註'},
             {'id': f'{bid}-cmp-s', 'stance': 'strong', 'label': '強', 'text': '強句'},
         ]},
@@ -115,7 +115,8 @@ class SchemaTests(unittest.TestCase):
         names = {(f.block_type, f.name) for f in fields if f.block_type}
         expected = {
             ('heading', 'text'), ('paragraph', 'text'), ('bulletList', 'title'), ('bulletList', 'items[1]'),
-            ('callout', 'title'), ('callout', 'text'), ('comparison', 'caption'), ('comparison', 'items[0].note'),
+            ('callout', 'title'), ('callout', 'text'), ('comparison', 'scenario'), ('comparison', 'caption'),
+            ('comparison', 'items[0].note'),
             ('dialogue', 'lines[0].annotation'), ('dialogue', 'lines[0].timeLabel'), ('flipCard', 'backPoints[0]'),
             ('quiz', 'scenario'), ('quiz', 'choices[1].feedback'), ('stageFunnel', 'stages[1].targetLabel'),
             ('entryList', 'entries[0].summary'), ('entryList', 'caption'), ('crossRef', 'contextLabel'),
@@ -185,9 +186,14 @@ class AuditRuleTests(unittest.TestCase):
             {'type': 'paragraph', 'id': 'p1', 'text': '第一段\n\n第二段'},
             {'type': 'callout', 'id': 'c1', 'tone': 'warning', 'text': '硬規則：\n\n 種子拿到綠燈\n 累計兩個'},
             {'type': 'bulletList', 'id': 'b1', 'items': ['A. 配對數｜兩週內配對到幾個']},
+            # comparison 的題目前提是單段欄位，不得用雙換行塞多段。
+            {'type': 'comparison', 'id': 'cmp1', 'scenario': '她問：\n\n你週末去哪？', 'items': [
+                {'id': 'cmp1-w', 'stance': 'weak', 'label': '弱', 'text': '弱句'},
+                {'id': 'cmp1-s', 'stance': 'strong', 'label': '強', 'text': '強句'},
+            ]},
         ])
         findings = audit_findings(book)
-        self.assertEqual([f.id for f in findings if f.rule == 'R04'], ['p1'])
+        self.assertEqual([f.id for f in findings if f.rule == 'R04'], ['cmp1', 'p1'])
         self.assertEqual([f.id for f in findings if f.rule == 'R03'], ['c1'])
         self.assertEqual([f.id for f in findings if f.rule == 'R05'], ['b1'])
 
@@ -197,6 +203,14 @@ class AuditRuleTests(unittest.TestCase):
             {'type': 'paragraph', 'id': 'p1', 'text': long_text},
             {'type': 'paragraph', 'id': 'p2', 'text': '短' * 120 + '\n' + ' ' * 10},  # 空白不算長度
             {'type': 'callout', 'id': 'c1', 'tone': 'info', 'text': '長' * 121},  # callout 上限 160
+            {'type': 'comparison', 'id': 'cmp1', 'scenario': '情' * 101, 'items': [
+                {'id': 'cmp1-w', 'stance': 'weak', 'label': '弱', 'text': '弱句'},
+                {'id': 'cmp1-s', 'stance': 'strong', 'label': '強', 'text': '強句'},
+            ]},
+            {'type': 'comparison', 'id': 'cmp2', 'scenario': '情' * 100, 'items': [
+                {'id': 'cmp2-w', 'stance': 'weak', 'label': '弱', 'text': '弱句'},
+                {'id': 'cmp2-s', 'stance': 'strong', 'label': '強', 'text': '強句'},
+            ]},
             {'type': 'entryList', 'id': 'el', 'entries': [
                 {'id': 'e1', 'title': '一', 'summary': '摘' * 41, 'blocks': [{'type': 'paragraph', 'id': 'e1p', 'text': '內'}]},
                 {'id': 'e2', 'title': '二', 'blocks': [{'type': 'paragraph', 'id': 'e2p', 'text': '內'}]},
@@ -204,7 +218,9 @@ class AuditRuleTests(unittest.TestCase):
         ])
         book['chapters'][0]['title'] = '章' * 23
         findings = [f for f in audit_findings(book) if f.rule == 'R06']
-        self.assertEqual(sorted(f.id for f in findings), ['e1', 'ebook-9-fixture-chapter-1', 'p1'])
+        # comparison.scenario 沿用 caption 的 100 字上限：101 字進榜、100 字不進。
+        self.assertEqual(sorted(f.id for f in findings),
+                         ['cmp1', 'e1', 'ebook-9-fixture-chapter-1', 'p1'])
 
     def test_r07_summary_equals_first_paragraph(self):
         book = make_book(blocks=[{'type': 'entryList', 'id': 'el', 'entries': [

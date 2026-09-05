@@ -2804,3 +2804,1129 @@ $3.00 上限（用掉 50.5%）。DeepSeek（餘額三次，`/user/balance`）：
 場／月仍只是 $1,296，兩個實測花費（Anthropic $1.5157、DeepSeek $1.03）都遠低於
 Eric 核准的上限。是否要把 production 從純 DeepSeek 換成 `mixed`，仍是 Eric
 的產品與成本判斷；這輪的結論是「這兩個新入口沒有擋開旗標的理由」。
+
+## Phase 4.5b：標準模式分類器兩臂黑箱＋Haiku cache 探針（`agency-phase45b` 分支，起點 `c93dd8a4`，2026-09-05）
+
+**目的**：Phase 4.5b 在 `run_agency.ts` 補了 `--mode=standard --state=1`（對應
+production 的 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`——standard 模式現在也有
+每輪精簡分類器＋持久化 agency 狀態，見上面 run_agency.ts 檔頭與程式碼註解），
+量兩件事：(1) 這一路新接線在真實生成上跟今天 production 的純 standard／
+DeepSeek 比起來有沒有差；(2) `cache_probe.ts` 量 Haiku 系統前綴（刀 B）到底有
+沒有真的命中 Anthropic prompt cache。Eric 核准總停損 $5.00（DeepSeek＋
+Anthropic 合計）。
+
+### Cache 探針（`cache_probe.ts`，12 次真實 Haiku 呼叫）
+
+| cell | round | cacheCreation | cacheRead | input | 前綴長度（code units） |
+| --- | --: | --: | --: | --: | --: |
+| standard/styleoff | 1 | 0 | 0 | 4,612 | 2,858 |
+| standard/styleoff | 2 | 0 | 0 | 4,634 | 2,858 |
+| standard/styleon | 1 | 0 | 0 | 4,624 | 2,799 |
+| standard/styleon | 2 | 0 | 0 | 4,696 | 2,799 |
+| beginner/styleoff | 1 | 0 | 0 | 4,659 | 2,858 |
+| beginner/styleoff | 2 | 0 | 0 | 4,681 | 2,858 |
+| beginner/styleon | 1 | 0 | 0 | 4,671 | 2,799 |
+| beginner/styleon | 2 | 0 | 0 | 4,743 | 2,799 |
+| game/styleoff | 1 | 0 | 0 | 5,979 | 2,760 |
+| game/styleoff | 2 | 0 | 0 | 5,988 | 2,760 |
+| game/styleon | 1 | 0 | 0 | 5,995 | 2,701 |
+| game/styleon | 2 | 0 | 0 | 6,054 | 2,701 |
+
+**結論：6 格全部 create=0、read=0——刀 B 目前是死碼**。全部前綴長度落在
+2,701–2,858 code units，遠低於 Haiku 4.5 的最小可快取長度（**4,096
+tokens**——2,048 是 Haiku 3.5 的門檻，本節與 `cache_probe.ts` 檔頭原本抄錯了
+一格，2026-09-05 Phase 4.5e 更正；換算成中英混排文字通常需要 6,000+ code
+units 才夠，這批前綴連
+`cacheCreationInputTokens > 0`（寫得進 cache）這一關都沒過，第 2 輪自然也讀不
+到）。出口跟計畫檔一致：要嘛把記憶摘要／朋友圈也搬進穩定前綴撐長，要嘛整個
+拆法退掉；本輪只是把「死碼」從推測升級成 12/12 次呼叫的直接證據。
+
+### 標準模式兩臂黑箱（`--scenarios=A25,A26,A27 --repeat=1 --difficulty=easy --style=1 --agency=on --shape=truncate`，20 位代表角色）
+
+- 臂 A：`--mode=standard --chat-model=deepseek --thread-salt=p45bA`（今天
+  production 的 standard 路徑，不帶 `--state`）。
+- 臂 B：`--mode=standard --state=1 --chat-model=mixed --thread-salt=p45bB`
+  （新旗標路徑：每輪多打一次 DeepSeek 精簡分類器，她要介入那一輪換 Haiku）。
+
+| | 場次（失敗） | 生成 | judge（成功/解析失敗） |
+| --- | --: | --: | --- |
+| 臂 A | 60（0） | 420 | 300/300（0） |
+| 臂 B | 60（0） | 420 | 300/300（0） |
+
+artifact：`out/2026-09-05-p45b-standardA-deepseek.json`／`-judge.json`、
+`out/2026-09-05-p45b-standardB-mixed.json`／`-judge.json`。
+
+#### 指標對照（Wilson 95%，n 見括號）
+
+| 指標 | 臂 A（deepseek） | 臂 B（mixed＋分類器） | 分不出／分開了 |
+| --- | --- | --- | --- |
+| 頭條 headline（adopted_without_asking＋accommodating_invention，mustAllow 排除 accept_valid_answer 分母） | 12.7%（9.2–16.5，n=260） | **6.2%（4.2–8.8，n=260）** | **分開**（區間不重疊） |
+| adopted_without_asking（no_context_fragment 分母） | 24.0%（16.0–34.0，n=100） | 13.0%（7.0–19.0，n=100） | 幾乎分開（邊界貼 16–19） |
+| accommodating_invention | 0.7%（0.0–1.3，n=300） | 0.0%（0.0–0.0，n=300） | 兩臂都趨近 0，分不出 |
+| sequenceChallenge（A25／A26） | 82.5%（70.0–95.0，n=40） | 92.5%（82.5–100.0，n=40） | 分不出（重疊） |
+| sequenceHoldBlindFollow | 19.2%（11.7–25.8，n=120） | 13.3%（8.3–20.8，n=120） | 分不出（重疊） |
+| sequenceRepairAccepted | 92.5%（82.5–100.0，n=40） | 97.5%（92.5–100.0，n=40） | 分不出（重疊） |
+| false_challenge | n/a（n=0，本輪範圍沒有 `valid_short_answer` 探針） | n/a（n=0） | — |
+| stance_persistence_strict_conditional | 87.5%（68.8–100.0，n=16） | 81.0%（61.9–95.2，n=21） | 分不出（重疊，且點估計反向） |
+| 違反 mustForbid（全體） | 18.0%（14.0–23.0，n=300） | **9.7%（7.0–13.0，n=300）** | **分開**（區間不重疊） |
+| 滿足 mustAllow（全體） | 67.3%（62.7–72.3，n=300） | **81.0%（76.7–84.3，n=300）** | **分開**（區間不重疊） |
+| 守門退回率 | 0/420 | 0/420 | — |
+| forced check_out／read_only 次數（輕鬆難度） | **0／0** ✓ | **0／0** ✓ | 兩臂都是 0，跟「輕鬆難度不該點火」的預期一致 |
+| forcedAct 分佈（非 0 的類別） | ask_intent 24、hold_position 70（共 420 輪） | ask_intent 31、challenge_relevance 101、hold_position 36（共 420 輪） | 臂 B 多一種 `challenge_relevance`（分類器路徑才有的判斷） |
+| 生成延遲 p50／p95（chat-gen only） | 756ms／1,115ms | 1,508ms／2,146ms | 臂 B 較慢（Haiku＋額外分類器序列呼叫） |
+| `chatModelUsed` Haiku 佔比 | — | **301/420（71.7%）**（A25 62.8%、A26 71.1%、A27 100%） | — |
+| style 比值 | 未跑 | 未跑 | 沿用 Phase 4.3（README 2332 行）的判斷：`practice-reply-style-eval` 不是為兩臂聊天模型跨臂比較設計，臨時接線超出本輪範圍 |
+
+逐情境 forbidViolation／allowSatisfied（臂 A → 臂 B，點估計，未逐一列信賴
+區間，細節見 artifact 的 `perScenario`）：A25 10.8%→12.5%／73.3%→86.7%；A26
+27.5%→6.7%／70.0%→87.5%；A27 13.3%→10.0%／50.0%→56.7%——A25 是唯一一個
+forbidViolation 點估計不降反升的情境（差距很小、樣本 n=120，不下結論），
+A26／A27 與全體讀法一致，allowSatisfied 三個情境全部上升。
+
+#### 誠實解讀
+
+1. **頭條 gate、mustForbid、mustAllow 三項乾淨分開，方向跟 Phase 4.3 的
+   beginner／game 矩陣一致**——即使這次是全新的 standard 模式接線（精簡分類
+   器＋Haiku 混合路由），效果沒有反向或消失：頭條 12.7%→6.2%、
+   違反 mustForbid 18.0%→9.7%、滿足 mustAllow 67.3%→81.0%，三項的 95% 區間
+   都不重疊。
+2. **序列類三個 gate（sequenceChallenge／sequenceHoldBlindFollow／
+   sequenceRepairAccepted）跟跨輪立場都分不出**——這輪 `repeat=1` 只給
+   sequenceChallenge／sequenceRepairAccepted 各 n=40、跨輪立場只有 n=16／21，
+   區間本來就寬；跟 Phase 4.3（`repeat=1` 但情境數更多、beginner／game 模式）
+   量到 sequenceHoldBlindFollow 兩臂分開的結果不能直接比——那一輪的分母是
+   混合多情境後的整體 n=60，這一輪只留 A25／A26 兩情境、n=120，樣本量結構不
+   同。**沒有反向的訊號，但這一輪的樣本量不足以宣稱序列類指標在 standard
+   模式下也分開了**，下一輪要嘛加 repeat、要嘛把 A28/A29 也納進矩陣。
+3. **stance_persistence 點估計臂 B（81.0%）比臂 A（87.5%）低，是本輪唯一一
+   個方向跟 Phase 4.3 不一致的格**——區間重疊（68.8–100.0 vs
+   61.9–95.2）、分母只有 16／21，先記錄不下結論；不排除是分類器新接線在
+   standard 模式的 `aiClarifiedLastTurn` 判斷跟 beginner／game 路徑有語意差
+   異，值得下一輪加大樣本後複查，但目前證據不足以說「分類器路徑讓跨輪立場
+   變差」。
+4. **輕鬆難度的 check_out／read_only 確實是 0／0，跟 `replay_plan.ts`
+   的既有註解一致**（那兩個 forcedAct 只給挑戰難度或 Game）——用
+   `replay_plan.ts` 與直接讀 artifact 的 `forcedAct` 欄位交叉確認過，沒有
+   看到「應該是 0 卻不是」的訊號。臂 B 多出來的 `challenge_relevance`
+   是分類器路徑特有的判斷分支，不是新的失敗模式。
+5. **A27 的 judge 先決條件既有缺口本輪沒有修，也沒有新踩**——`accept_valid_
+   answer` 先決條件在 A27.p2／p4 仍然會吃掉大部分回覆（見上面 Phase 3.3／
+   3.4 節既有記錄），這輪 A27 的 forbidViolation／allowSatisfied 讀法跟
+   之前一樣：只有 A27.p1 是乾淨可比的分母，p2／p4 的數字要打折讀。
+6. **已知量測限制沿用檔頭與既有章節的記錄**：`--state=1` 的跨輪狀態推進是
+   結構層近似（`nextConversationAgencyState` 第三參數這次真的餵了分類器
+   訊號，不再是硬編碼 `null`，但仍然不是 handler.ts 逐字的呼叫序）；
+   `spicyAllowed` 恆 false；Game 修復優先／截斷免疫不影響 standard 模式，
+   跟本輪無關。
+
+#### 花費
+
+**DeepSeek（餘額四次，`/user/balance`，含 5 分鐘結算延遲後的最終讀數）**：
+開跑前 **$22.67** → 兩臂生成完成 **$22.63** → 兩臂 judge（600 筆）完成
+**$22.16** → 等 5 分鐘結算延遲後最終讀 **$21.96**。**餘額差實測總花費
+$0.71**。Token 估價（cache-miss 全價上限，DeepSeek 官方牌價
+input $0.44／output $1.32 每百萬 token、字元／token 比 1.5，不含快取折扣）：
+臂 A 420 次聊天（input 3,139,905 chars／output 8,511 chars）≈$0.928；臂 B
+119 次 DeepSeek 聊天（chatModelUsed≠haiku 的部分，input 887,097 chars／
+output 2,446 chars）≈$0.262；臂 B 420 次分類器呼叫沿用 Phase 4.3 已經用餘額
+差反推過的實測單價 $0.0002027／次≈$0.085；兩臂合計 600 筆 judge 沿用既有
+$0.00066／筆單價≈$0.396；**token 估價合計 ≈$1.67**，是餘額差實測（$0.71）的
+約 2.3 倍——跟 Phase 3.0 那輪「token 估價法被同一時間點的真實餘額差證偽」
+是同一個機制（大量人物卡固定欄位／judge 規則文字逐字重複，命中 DeepSeek
+的 prompt 快取），**餘額差才是可信數字**，token 估價只當上界參考。
+
+**Anthropic（Haiku，`callClaude` 回傳的真實 usage 累加，不是估算）**：
+cache 探針 12 次呼叫（input 61,336 tokens，無 cache）≈$0.05；1
+位角色試跑（pilot）15 次呼叫 $0.0772；臂 B 全矩陣 301 次呼叫
+$1.5336；**合計 $1.6608**。
+
+**組合總花費（餘額差＋Anthropic 實測）≈ $0.71 + $1.66 = $2.37，用掉 $5.00
+停損的 47.4%，沒有觸發停損**，兩臂矩陣、cache 探針都跑滿計畫規模。
+
+### 一句話結論
+
+**`PRACTICE_STANDARD_AGENCY_CLASSIFIER`＋`mixed` 這條新接線在 standard 模式
+下重現了頭條／mustForbid／mustAllow 三項核心指標的改善方向，跟 beginner／
+game 模式先前的黑箱一致，沒有反向**；序列類與跨輪立場指標這輪樣本量
+（`repeat=1`）不足以分開，是「答不出來」不是「量到沒有效果」，下一輪要加
+repeat 或情境數才能補；輕鬆難度的 `check_out`／`read_only` 確認是 0，A27 的
+既有判準缺口沒有惡化。**Haiku 系統前綴快取（刀 B）12/12 次呼叫證實是死碼**
+——前綴長度沒到 4,096 token 門檻（Phase 4.5e 更正，原記 2,048），差距比原本
+記的更大，要嘛加長前綴要嘛整個拆法退掉，是下一輪
+要決定的技術債，不是本輪能修的範圍。花費 $2.37，遠低於 $5.00 停損。
+
+## Phase 4.5c：`chatModel="none"` 的消費端與成本外推修正（2026-09-05）
+
+Phase 4.5a 之後，production telemetry 對 forced `read_only` 那一輪的
+`chatModel`／`provider`／`model` 是 **`"none"`**——那一輪 handler 直接回一則
+已讀，**一支生成模型都沒打**。逐支檢查既有消費端的結論：
+
+| 消費端 | 有沒有依 `chatModel` 分組／算成本 | 處置 |
+| --- | --- | --- |
+| `evaluate_agency.ts` | 沒有（吃的是 judge 標籤，`read_only` 輪沒有回覆、不會進 judge） | 不動 |
+| `policy_breakdown.ts` | 沒有（依 `forcedAct`／policy 路徑分組）。`read_only` 是 `forcedAct` 的一個值，但那一輪沒有回覆→沒有 judge 標籤→本來就不會配對成 row | 不動，僅記錄 |
+| `replay_plan.ts` | 沒有（純結構回放，零模型呼叫） | 不動 |
+| `classifier_replay.ts` | 沒有（每個 probe 一次分類器，跟女生回覆模型無關） | 不動 |
+| `run_agency.ts` | **有**：artifact 的逐輪 `chatModelUsed`，README 每一輪引用的「Haiku 佔比」之前都是手算 | 新增 `tallyChatModelRounds`，寫進 `meta.chatModelRounds` 並印在收尾訊息 |
+| `scripts/practice_agency_telemetry.py` | **有**（`models.get('none', 0)` 已經單獨一欄，per-round 成本也已經有 `if haiku_rounds else 0` 的除零保護） | 不動 |
+
+**成本外推公式的口徑（取代先前章節裡「每場 20 回合 ＝ 20 次生成」的寫法）**：
+
+- Haiku 佔比的分母是 `modelRounds = deepseek + haiku`，**`none` 不進分母**——
+  一輪沒有生成機會的輪次，不是「本來可以走 Haiku 卻走了 DeepSeek」。
+- 每輪成本的分母同樣是 `modelRounds`。把 `none` 除進去會低估單價（那一輪成本
+  是 0），把它當成 deepseek 則會高估 DeepSeek 的呼叫數。
+- 一場 20 回合的總成本因此是
+  `modelRounds × 加權單價 ＋ 分類器輪數 × 分類器單價`，不是 `20 × 單價`；
+  `read_only` 佔比越高，實際總成本越低於舊公式。
+- `modelRounds === 0`（整批都是 `read_only`）時 `haikuShare` 是 `null` 而不是
+  `0`，呼叫端要顯示 `n/a`，不要印 0% 也不要除以零。
+- `unknown`＝Phase 4.3 之前的舊 artifact 沒有 `chatModelUsed`，單獨一格回報，
+  不併進任何一支模型。
+
+## Phase 4.5c 評測工具（2026-09-05，`agency-phase45c-eval` 分支）
+
+本節只描述**工具**。這一輪**沒有跑任何付費步驟**：下面兩個矩陣都停在估價，
+要 Eric 明確授權才會送出。
+
+### 這一輪動了什麼
+
+| 檔案 | 動了什麼 | 要不要花錢 |
+| --- | --- | --- |
+| `scenarios.ts`／`judge_agency.ts`／`evaluate_agency.ts` | 新增 `flat_refusal`（越界輪的乾脆劃界）標籤與 `boundaryFlatRefusalRate` 指標；A31 三個探針的 `mustAllow` 補上它 | 不用（下一次跑 judge 時自動生效） |
+| `judge_agency.ts` | 判準 v4：`accept_valid_answer` 只描述「有沒有回答」，自身經歷三選一改成獨立判，問句包裝的捏造前提照算 `accommodating_invention` | 不用（要重跑 judge 才看得到差異） |
+| `run_agency.ts` | `chatModelUsed` 值域補 `"none"`；新增 `tallyChatModelRounds`，寫進 `meta.chatModelRounds` | 不用 |
+| `pricing.ts`（新） | 單一定價來源：Haiku 4.5、Sonnet 5、DeepSeek 分類器觀測單價、`estimateCostUsd` | 不用 |
+| `cache_probe.ts` | 改吃 `pricing.ts`，逐格與總計印出估價 | 跑起來要（12 次 Haiku，見 4.5b 節） |
+| `classifier_recall.ts`（新） | 口語化質疑的分類器召回率量測；`--dry-run` 不打模型 | `--dry-run` 不用；真的重放要 |
+
+**`pricing.ts` 是 TypeScript 側的唯一定價來源**，但它跟
+`scripts/practice_agency_telemetry.py` 的 `HAIKU_PRICE` 是**同一組數字的兩份**
+（Deno ↔ Python 沒有共用來源）。**改單價時兩處都要改**：
+
+- `tools/practice-agency-eval/pricing.ts` 的 `HAIKU_4_5_PRICING`
+- `scripts/practice_agency_telemetry.py` 的 `HAIKU_PRICE`
+
+**定價修正（會影響歷史數字的讀法）**：`pricing.ts` 改吃 Anthropic 官方牌價
+（Haiku 4.5 input $1／M、output $5／M）。`run_agency.ts` 先前抄的是
+`supabase/functions/analyze-chat/logger.ts` 的 `TOKEN_COSTS`（$0.80／$4.00 每 M，
+那是 Haiku 3.5 的價），所以 **README 4.3／4.4／4.5b 各節記的 Anthropic 金額
+低估約 20%**——例如 4.5b 的 $1.6608 實際約 $2.08，4.4 的 $1.5157 實際約 $1.89。
+兩輪都遠低於當時的停損上限，結論不變，但下一輪估停損要用新單價。
+`logger.ts` 是 production Edge Function，本輪不動，只記錄。
+
+### `classifier_recall.ts` 用法
+
+Phase 4.5b 的標準模式階梯**完全依賴**分類器回報的 `aiChallengedThisTurn`，
+而它對**無標記中文反問**（「蛤？」「你在講什麼」「？」「什麼意思」「你是在
+亂說還是怎樣」）的召回率從來沒有量過。這支分兩段：
+
+```bash
+# 第一段：只列候選、不打模型、不需要 API key
+deno run --allow-read tools/practice-agency-eval/classifier_recall.ts \
+  tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json \
+  tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json --dry-run
+
+# 第二段：真的重放（**會花錢，要 Eric 明確授權**）
+deno run --allow-env --allow-read --allow-write --allow-net=api.deepseek.com \
+  tools/practice-agency-eval/classifier_recall.ts <artifact.json...> \
+  --mode=standard --concurrency=8 --out=out/<date>-p45c-recall.json
+```
+
+`--mode=standard` 走 production 的 `buildStandardAgencyClassifierMessages`，
+`--mode=assisted` 走 `buildTurnClassifierMessages`；估價印在輸出最開頭。
+
+**候選正則是候選集，不是真值**。命中不代表她真的在質疑（「什麼意思都可以」
+會誤中），沒命中也不代表她沒質疑。所以報告只能寫「候選集內
+`aiChallengedThisTurn=true` 的比例（召回率**代理**）」，不可以寫成「分類器的
+召回率是 X%」。dry-run 會把整組正則、逐條命中數與逐則命中內容印出來供人工
+複核。彙總時 parser repair 出來的 `false`（模型漏答／吐非布林）與呼叫失敗都
+**扣出分母**，跟 `classifier_replay.ts` 同一條線。
+
+`--dry-run` 對 4.5b 兩份 artifact 的實際結果（零成本，已跑）：
+
+| 候選正則 | 命中則數 | 在抓什麼 |
+| --- | --: | --- |
+| `bare_question_mark`　`^[\s？?]*[？?]+[\s？?]*$` | 8 | 整則只有問號 |
+| `short_interjection`　`^(蛤\|哈\|嗄\|啊\|欸\|誒\|欵\|嗯\|哦\|喔\|痾\|呃)[\s？?！!…。.]*$` | 32 | 整則只有一個語氣詞（可能誤中附和的「嗯。」） |
+| `interjection_then_question`　`^(蛤\|哈\|嗄\|啊\|欸\|誒\|欵\|痾\|呃)[\s？?！!，,]` | 41 | 語氣詞開頭再接一句 |
+| `what_meaning`　`(什麼意思\|甚麼意思\|啥意思\|三小\|殺小\|蝦密)` | 12 | 直接問語意 |
+| `what_are_you_saying`　`(在(講\|說)什麼\|在(講\|說)啥\|講三小\|說三小)` | 44 | 「你在講什麼」家族 |
+| `cannot_follow`　`(聽不懂\|看不懂\|不懂你\|沒聽懂\|不太懂)` | 23 | 直說跟不上（可能誤中自陳能力） |
+| `suspect_nonsense`　`(亂(說\|講\|扯\|回)\|唬爛\|瞎掰\|你在(唬\|扯)\|還是怎樣\|還是幹嘛)` | 30 | 「你是在亂說還是怎樣」家族 |
+| `why_suddenly`　`((怎麼\|幹嘛\|為什麼\|為何).{0,4}(突然\|忽然)\|突然.{0,4}(講\|說\|問\|丟))` | 53 | 指出他跳題 |
+| `relevance_challenge`　`(跟.{0,8}(有\|有沒有).{0,4}關\|有關係嗎\|關這什麼事\|干.{0,3}什麼事)` | 1 | 直接問關聯 |
+| `not_answered_yet`　`(還沒回答\|沒回答我\|答非所問\|你沒有回答\|回答我的問題)` | 0 | 指出他沒回答 |
+| `who_what_is_that`　`^(那\|這)?(是)?(誰\|什麼\|啥)[\s？?]*$` | 8 | 整則只有裸疑問詞 |
+
+**候選 228 則／生成輪 840 則（27.1%）**（同一則可命中多條，所以逐條相加大於
+228）。中文沒有詞邊界（踩坑筆記「繁中正則分類器沒有詞邊界會連環誤判」），
+所以這組正則盡量用「整則很短」「句尾語氣」這種結構條件收斂，不做裸關鍵字。
+
+### 尚未執行的付費步驟（兩個，都等 Eric 授權）
+
+**（一）召回率重放**：228 候選 × $0.0002027／次（`pricing.ts` 的 DeepSeek
+分類器觀測單價）＝ **約 $0.046**。建議停損 $0.15（估價的 3 倍，留給重試與
+估價偏差）。要跑 `--mode=standard` 與 `--mode=assisted` 兩臂的話 ×2 ≈ $0.093。
+
+**（二）Game 小黑箱矩陣（建議，尚未定案）**：Phase 4.4 的 game 臂沒有碰到
+Game 專屬的邀約／修復優先分支，結論是「這輪答不了」而不是「沒退步」。建議
+矩陣：A31（越界，已有）＋兩個新的 Game 專屬情境（邀約、修復優先），20 位 SR
+角色 × repeat 1 ＝ 60 場、約 300 次生成、約 180 筆 judge，
+`--mode=game --state=1 --chat-model=mixed --agency=on --shape=truncate`。估價
+（用 4.4 game 臂實測的 75% Haiku 佔比、單價換成官方牌價）：
+
+| 項目 | 次數 | 單價 | 小計 |
+| --- | --: | --- | --: |
+| Haiku 生成 | ~225 | $0.00478／次（4.4 觀測 $0.003824 × 1.25 定價修正） | $1.08 |
+| DeepSeek 生成 | ~75 | $0.0000294／次 | $0.00 |
+| DeepSeek 分類器 | ~300 | $0.0002027／次 | $0.06 |
+| DeepSeek judge | ~180 | $0.00066／筆 | $0.12 |
+| **合計** | | | **約 $1.26** |
+
+建議停損 $2.50。**這兩件事本輪都沒有跑**，情境檔也還沒有那兩個新的 Game
+專屬情境——真的要做的話，要先補情境再送出。
+
+## Phase 4.5c：口語質疑召回率重放（2026-09-05，Eric 授權，實跑）
+
+`classifier_recall.ts` 對 4.5b 兩臂 artifact（standardA／standardB，840 則她的生成）
+挑出 **228 則**口語質疑候選（27.1%），兩種分類器各重放一次（DeepSeek，合計約 $0.09，
+零解析失敗、零 repair）。**候選集是正則挑的，不是人工真值，下面是「召回率代理」。**
+
+| 候選正則 | n | standard 精簡分類器判 true | assisted 逐輪分類器判 true |
+| --- | --: | --: | --: |
+| why_suddenly（怎麼突然…） | 53 | 42（79%） | **26（49%）** |
+| what_are_you_saying（你在說什麼） | 44 | 40（91%） | 36（82%） |
+| interjection_then_question（蛤？／哈？＋問句） | 41 | 36（88%） | 35（85%） |
+| short_interjection（「嗯？」「蛤？」單獨一則） | 32 | **16（50%）** | 25（78%） |
+| suspect_nonsense（你是在亂說還是怎樣） | 30 | 20（67%） | **14（47%）** |
+| cannot_follow（接不上／連不起來） | 23 | 23（100%） | 20（87%） |
+| what_meaning（什麼意思） | 12 | 12 | 12 |
+| bare_question_mark（「？」） | 8 | 3 | 6 |
+| who_what_is_that（什麼？／那是誰） | 8 | 7 | 8 |
+| relevance_challenge | 1 | 1 | 1 |
+| **合計** | **228** | **178（78.1%）** | **161（70.6%）** |
+
+解讀：兩支分類器對「明講意思／說什麼／接不上」這類有詞面標記的質疑都在八成以上；
+漏的集中在**沒有詞面標記**的三格——單獨一則「嗯？」（standard 只抓一半）、
+「怎麼突然講這個」（assisted 只抓一半，它同時在判分數，注意力被稀釋）、
+「你是在亂說還是怎樣」。這三格正是 Bruce 真機影片裡她最常用的口氣。因為 standard 的
+階梯完全靠 `aiChallengedThisTurn` 推進（4.5b 已知天花板），這代表**約兩成的真實質疑
+不會累進欠債**；判準要補的是「單獨一則疑問語助詞＝在問對方那句什麼意思」與
+「怎麼突然＋名詞＝指出跳題」兩條反例定義，屬 prompt 判準改動，要配 Codex＋重放對照。
+逐則對照在 `out/2026-09-05-p45c-recall-{standard,assisted}.json`。
+
+## Phase 4.5c：Game 五旗標全開下的單臂黑箱（`agency-phase45c-game` 分支，起點 `a57b2196`，2026-09-05）
+
+**目的**：production 五旗標（style／agency on、shape truncate、routing mixed、
+standard 分類器）全開之後，Game 模式一場都沒量過——4.4 的 game·mixed
+黑箱是在 4.5a「不收斂階梯」（`check_out`／`read_only`／`cold_return`）與
+「（已讀）」上線**之前**跑的。本輪用同一組角色／情境／旗標值重跑 game·mixed
+單臂，跟 4.4 並排比對，並新量階梯在 Game 下的觸發率。
+
+### 矩陣
+
+| 矩陣 | 角色 | 情境 | 場次 | 生成 | judge（成功/解析失敗） |
+| --- | --- | --- | --: | --: | --- |
+| game·mixed（4.5c） | 20 位 SR（同 4.4） | A02,A06,A14,A25,A28 | 100（0 失敗） | 440 | 320/320（0） |
+
+指令：`--mode=game --state=1 --style=1 --agency=on --shape=truncate
+--chat-model=mixed --thread-salt=p45cg --repeat=1`——跟 4.4 game·mixed
+逐字相同（只換 `--thread-salt`）。artifact：
+`out/2026-09-05-p45c-game-mixed.json`＋`-judge.json`；另有 1 場 1 情境（A25）
+的停損試跑 `out/2026-09-05-p45c-pilot.json`。
+
+### 4.5c vs 4.4：同一組角色／情境，五旗標上線前後對照
+
+| 指標（gate） | 4.4 game·mixed（4.5a 之前） | 4.5c game·mixed（4.5a 之後，本輪） |
+| --- | --: | --: |
+| 【頭條 gate ≤5%】adopted_without_asking + accommodating_invention | 1.5%（0.0–3.5，n=200）✓ | 2.5%（0.5–5.0，n=200）✓ |
+| 【跨輪立場 gate ≥95%】stance_persistence_strict_conditional | 87.2%（76.9–97.4，n=39）✗ | 89.7%（79.5–97.4，n=39）✗ |
+| 【序列 gate ≥80%】sequenceChallenge（A25） | 90.0%（75.0–100.0，n=20）✓ | **100.0%（100.0–100.0，n=20）✓** |
+| 【序列 gate ≤5%】sequenceHoldBlindFollow | 1.7%（0.0–5.0，n=60）✓ | 1.7%（0.0–5.0，n=60）✓（同一個數字） |
+| 【序列 gate ≥90%】sequenceRepairAccepted | 100.0%（n=20）✓ | 100.0%（n=20）✓ |
+| 【好奇 gate ≥80%】curiosityWithinSix（A28） | 35.0%（15.0–55.0，n=20）✗ | 45.0%（25.0–70.0，n=20）✗ |
+| false_challenge（valid_short_answer 分母） | n/a（本輪情境組沒有該 kind 探針） | n/a（n=0，同左） |
+| fabricated_self_fact | 0.3%（n=320）✓ | 0.0%（n=320）✓ |
+| interrogation | 0.0%（n=320）✓ | 0.0%（n=320）✓ |
+| 違反 mustForbid（全體） | 2.5%（0.6–4.1，n=320） | 2.5%（0.9–4.1，n=320） |
+| 滿足 mustAllow（全體） | 84.4%（80.3–87.8，n=320） | 83.8%（79.7–88.4，n=320） |
+| 守門退回率 | 0/440 | 0/440 |
+| 生成延遲 p50／p95 | 1,852ms／3,040ms | 1,916ms／3,198ms |
+| `chatModelUsed` Haiku 佔比 | 330/440（75.0%） | 337/440（76.6%） |
+| Game 邀約／修復優先（`gameInviteDirection`／`gameRepairPriority`） | 量不到（0 覆蓋） | **仍量不到（0 覆蓋）** |
+
+**六個核心 gate 逐格跟 4.4 對齊或更好，沒有退步**：頭條、`sequenceHoldBlindFollow`、
+`sequenceRepairAccepted`、`forbidViolation`、`allowSatisfied`、守門退回率六項
+點估計相同或落在對方信賴區間內；`sequenceChallenge` 從 90.0% 升到
+**100.0%**（20/20 全過）；`stance_persistence_strict_conditional`／
+`curiosityWithinSix` 兩個既有天花板 gate 一樣沒過，方向跟 4.0–4.4
+的既有結論一致（多輪黑箱都卡在同一格，不是本輪新退步）。**Game 邀約／修復優先
+這輪依然量不到**——逐輪掃 `allowedActSetId`，本輪 440 輪只出現
+`answer_or_challenge_persist_v1`／`answer_or_challenge_v1`／`check_out_v1`／
+`clarify_ignored_cold_v1`／`fragment_no_context_v1`／`low_value_loop_v1`／
+`read_only_v1`／`none`，沒有任何跟 `gameInviteDirection`／`gameRepairPriority`
+相關的路徑被命中，跟 4.4 的結論一樣——這 5 個情境（A02/A06/A14/A25/A28）測的是
+「被牽著走」跟「跨輪立場」，不是為了觸碰 Game FSM 的邀約／修復分支設計的；
+另外查過 `prompt.ts`，`repairPriority`／`speedInviteDirection` 是
+`evaluateGameFsm(turns, temperatureScore, familiarityScore, partnerMood)`
+現算現拋（不吃這支 runner 沒接的 `gameState` 參數），runner 餵的是固定
+`temperatureScore=40`／`familiarityScore=10`／`partnerMood=null`——量到 0
+不能排除是這組近似輸入本身就進不了那個分支，換情境不一定夠，可能還要讓
+runner 帶真實演進的溫度分數才能回答，這是下一輪要先確認的前提，不是本輪能
+下定論的地方。
+
+### 不收斂階梯（`check_out`／`read_only`／`cold_return`）在 Game 下的觸發率
+
+逐輪讀 artifact 的 `forcedAct` 欄位（440 輪，不只探針輪）：
+
+| forcedAct | 次數 | 佔全部 440 輪 |
+| --- | --: | --: |
+| （沒有強制／NO_OVERRIDE） | 218 | 49.5% |
+| `challenge_relevance` | 116 | 26.4% |
+| `ask_intent` | 50 | 11.4% |
+| **`read_only`** | **32** | **7.3%** |
+| `check_out` | 16 | 3.6% |
+| `end_low_value_loop` | 8 | 1.8% |
+| `cold_return` | 0 | 0.0% |
+
+**全部 `check_out`／`read_only`／`end_low_value_loop` 都集中在 A25**（8 則連續
+無關片段的序列情境），A02／A06／A14／A28 一次都沒有觸發（跟這幾個情境本身
+「有沒有連續丟夠久的無內容片段」的設計一致——A25 本來就是唯一一個設計成
+持續失聯的情境，其餘四個要嘛只有 1–6 輪、要嘛玩家後面有給實質內容）。以
+A25 自己的分母看：20 場裡 **16 場（80.0%）走到 `check_out`**、**15 場
+（75.0%）走到 `read_only`**——這是「連續丟 9 則不連貫片段」這種刻意設計的
+壓力測試情境，不是一般對話會出現的密度，跟 4.4／4.5b 對 Haiku 佔比的既有
+警語同一個道理：這個 75–80% 是本輪情境選擇算出來的上限，不是「玩家隨便亂聊
+一場，四分之三會被已讀」。`cold_return` 全場 0 次——本輪情境沒有一場在
+`checkedOut` 之後又送回實質內容，所以階梯的「回暖但冷淡」那一格這次沒有
+被走到，跟 4.5a 文件本身記過的「`cold_return` 只在 A15 那類情境命中」一致。
+
+**上線後監看門檻對照**：4.5a 文件定的回退門檻是「`read_only` 佔全部回合
+**>5%** 就先關掉」（`docs/plans/2026-09-03-practice-conversation-agency-plan.md`
+「上線後監看與回退門檻」節）。本輪量到的 **7.3%（32/440）點估計超過這條
+5% 門檻**——但這個數字幾乎全部來自 A25 一個情境（32/180＝17.8%，其餘四個
+情境合計 0/260），跟上面「80%」同一個警語：**這是刻意堆疊的壓力測試上限，
+不是這 20 位角色打一場正常 Game 對話會撞到的比例**，4.5a 文件自己離線重建的
+上界（`--ai-clarified=1` 強制訊號、非真實生成）也量到過 `read_only`
+102/740＝13.8%，本輪 7.3% 落在那個既有上界之下。**不建議只憑這一個數字
+拍板回退**，理由見下面誠實解讀第 2 點。
+
+#### 誠實解讀
+
+1. **單臂沒有同時對照臂，差異可能來自 4.5a 也可能來自抽樣**——本輪跟 4.4
+   除了 `--thread-salt` 之外全部參數逐字相同（同 20 位角色、同 5 個情境、
+   同旗標值），thread id 用同一支 `fnv1a` 雜湊，換了 salt 等於整批對話的
+   隨機性重新擲了一次骰子；六項核心 gate 落在 4.4 的信賴區間內或方向一致，
+   支持「4.5a 沒有讓 Game 退步」，但**嚴格來說這不是同一批隨機種子的重測，
+   不能排除某些小幅波動（例如 `sequenceChallenge` 90%→100%、
+   `curiosityWithinSix` 35%→45%）其實只是換種子的雜訊，不是 4.5a
+   帶來的真實提升**——尤其 `repeat=1`，A25／A28 的分母都只有 n=20，
+   跟 4.3／4.4 一路以來對這兩格的既有警語相同。
+2. **本輪最重要的發現：`run_agency.ts` 沒有實作 production 的
+   「`read_only` 不打生成模型」短路，32 筆 `read_only` 量到的是決策函式的
+   判定率，不是驗證過的行為**。逐字讀完 32 筆 `read_only` 的 `reply`
+   欄位，**沒有一筆是 `READ_ONLY_REPLY_TEXT`（「（已讀）」）**——全部是模型
+   正常生成的短句（「欸你認真」「我真的聽不懂你在幹嘛」「你到底想說什麼啦」
+   等），且全部 `chatModelUsed: haiku`，代表這 32 次**真的打了生成模型**。
+   對照 `supabase/functions/practice-chat/handler.ts:4621-4655`：production
+   在 `agencyDecision.decision.forcedAct === "read_only"` 時完全跳過
+   `deps.callDeepSeek`／`deps.callClaude`，直接把 `candidate` 賦值成
+   `READ_ONLY_REPLY_TEXT` 常數；`tools/practice-agency-eval/run_agency.ts`
+   （496–650 行一帶）沒有任何 `readOnlyTurn`／`READ_ONLY_REPLY_TEXT`
+   相關分支，`forcedAct` 只是把 `bundle.agencyDecision.decision` 原樣記
+   進 artifact 供離線分析，實際生成路徑對 `read_only` 跟其他 forced act
+   一視同仁地呼叫 `activeCallChat`。**這代表本輪（以及回頭看 4.4／4.5b
+   所有用這支 runner、`--state=1`＋`--mode=game|beginner` 量到的
+   `read_only` 次數）量到的只是「決策函式判定這輪該進 read_only 的頻率」，
+   不能拿來驗證「production 真的省了這次模型呼叫」或「reply 真的變成
+   逐字「（已讀）」」——這兩件事這支工具目前量不到，是新發現的
+   runner／production 落差，記錄下來，不修（本次任務授權範圍只能動
+   README／評測產物，不能碰 `run_agency.ts`）。附帶觀察：32 筆裡模型雖然
+   沒有照 `turn_response_plan.ts` 給的 `read_only` 計畫行（「不回內容，只讓
+   他看到已讀」）真的不回內容，但語氣仍維持冷淡／質疑，沒有觀察到順著聊或
+   洩漏內部標籤的樣本。
+3. **`check_out` 的模型服從率不完美，抽樣讀 16 則有落差**：`check_out`
+   的計畫行是「你不想再耗下去了：說你要先去忙，簡短收掉，**不解釋、不問他
+   問題、不約下次**」——16 則回覆裡有 4 則其實是問句（「你是不是手滑還是？」
+   「你要不要先講清楚」「你怎樣，一直唸城市名字」「要不要講清楚」），跟
+   「不問他問題」的指示不符；另有 1 則出現明顯出戲的後設語氣（「短句、沒
+   資訊量、連發地名，你的姿態是在測試或者根本沒想好要聊什麼。我不會跟著亂
+   接。」讀起來像旁白分析而不是角色講話）。這是 Haiku 對這條計畫行指令的
+   服從率問題，不是本輪任務範圍要修的產品行為，但值得跟 4.5a 的計畫作者
+   同步——`check_out` 本身呼叫模型（不像 `read_only` 設計成完全跳過），所以
+   這是唯一一個「production 真的會送出去」的階梯格式，服從率缺口是真的會
+   被玩家看到的。
+4. **`repeat=1` 的區間限制沿用既有結論**：`sequenceChallenge`／
+   `sequenceRepairAccepted` 各只有 n=20，`stance_persistence` n=39，
+   `curiosityWithinSix` n=20——區間都寬，跟 4.3／4.4／4.5b 一路的既有警語
+   相同，不重複展開。
+
+#### 花費
+
+**停損**：先用 1 位角色（`practice_girl_004`）× 1 情境（A25，本輪情境裡生成數
+最多、預期單價上限最高）試跑，`callClaude` 回傳 8 次 Haiku 呼叫、估算
+$0.0501（無快取命中，`cacheRead=0`／`cacheCreation=0`，跟 4.5b cache 探針的
+「刀 B 死碼」結論一致）——單價約 $0.00626／次。外推 100 場（20 位 ×5
+情境，預期 ≈330 次 Haiku 呼叫）落在 **$2.0–2.2** 量級，加上 judge（320
+筆）與 DeepSeek chat／分類器（合計約 $0.3–0.4），落在 $3.00 上限邊緣但
+沒超過，決定**不縮情境**、跑滿全部 5 個情境。
+
+**Anthropic（Haiku，`callClaude` 回傳的真實 usage 累加，不是估算）**：
+試跑 1 場 8 次呼叫 $0.0501；主矩陣 337 次呼叫 $2.1146；**合計 $2.1647**。
+本輪跟 4.4 同樣沒有快取命中（`cacheReadInputTokens`／`cacheCreationInputTokens`
+兩邊都是 0），跟 4.4 game·mixed 那次實際打到快取（`cacheRead`
+1,435,213／`cacheCreation` 1,110,706 tokens，換算單價 $0.003824／次）不同
+——本輪單價 $2.1146/337≈$0.00627／次，比 4.4 貴約 64%，是本輪成本比外推
+時援引的 4.4 數字更高的主因（外推階段已經用試跑的真實單價 $0.00626／次
+重新估算過，不是拿 4.4 的舊單價腦補）。快取是否命中看起來不是穩定行為，
+本輪與 4.5b 的 cache 探針（12/12 死碼）方向一致，但 4.4 那次確實吃到大量
+快取——三個資料點合在一起，快取命中率本身不穩定，值得下一輪如果要認真談
+Haiku 成本，把「這次到底有沒有吃到 cache」也記進 artifact meta，不要只看
+單次結果外推。
+
+**DeepSeek（餘額兩次，`/user/balance`，含 5 分鐘結算延遲後的最終讀數）**：
+開跑前 **$21.96** → 試跑＋主矩陣生成（440 次聊天含 103 次 DeepSeek 對話、
+439 次分類器）＋judge（320 筆）全部跑完，等 5 分鐘結算延遲後讀
+**$21.56**。**餘額差實測總花費 $0.40**。
+
+**組合總花費（Anthropic 實測 $2.1647 ＋ DeepSeek 餘額差實測 $0.40）
+≈ $2.56，用掉 $3.00 停損的 85.6%，沒有觸發停損，兩份矩陣（試跑＋主矩陣）
+都跑滿計畫規模**。這是本系列黑箱目前最接近停損上限的一輪——主因是
+本輪意外沒有吃到 Haiku 快取（見上段），下一輪如果要在同一個停損額度內
+跑更大樣本，建議先確認快取有沒有命中，或把停損上限跟著往上調。
+
+### 一句話結論
+
+**Game 五旗標全開後沒有新退步，六個核心 gate 跟 4.5a 之前的 4.4 對齊或更好，
+`sequenceChallenge` 甚至從 90.0% 升到 100.0%**；Game 邀約／修復優先依然
+量不到，這次確認了根因可能比「情境沒挑對」更底層——`gameRepairPriority`／
+`gameInviteDirection` 靠 runner 餵的固定溫度／熟悉度分數現算，不是靠情境
+內容，下一輪要先讓 runner 帶真實演進的分數才有機會回答這題。**不收斂階梯
+在 Game 下會觸發**：本輪唯一設計成持續失聯的情境（A25）裡，80% 的場次走到
+`check_out`、75% 走到 `read_only`，全域 `read_only` 佔比 7.3%
+數字上超過 4.5a 定的 5% 回退門檻，但這個比例幾乎全部來自一個刻意堆疊的壓力
+測試情境，不是一般對話的預期密度，不建議單憑這個數字拍板回退。**比觸發率
+數字更重要的是本輪發現的工具缺口**：這支 runner 沒有實作 production
+「`read_only` 不打模型、直接送出「（已讀）」」的短路，量到的 `read_only`
+次數只反映決策函式的判定頻率，不能驗證 production 真正的省呼叫行為與逐字
+回覆——這件事在讀 4.4／4.5b 過去所有 `read_only` 數字時也要一併打折讀。
+`check_out`（唯一真的會呼叫模型送出去的階梯格）在服從「不問問題」指令上
+有可觀察到的落差（16 則裡 4 則其實是問句），值得回饋給 4.5a 的 prompt
+文案。花費 $2.56，用掉 $3.00 停損的 85.6%，接近上限但沒有超出，主因是本輪
+沒有吃到 Haiku prompt cache（4.4 有吃到），是否穩定命中快取是下一輪認真
+談 Haiku 成本前該先查的前提。
+
+## Phase 4.5e：runner 補上 production 的 `read_only` 短路（2026-09-05，`agency-phase45e-eval` 分支）
+
+上一節（Phase 4.5c Game 單臂）「誠實解讀」第 2 點記錄的落差，這一輪修掉了。
+
+### 缺口
+
+production `handler.ts`（4621–4655）在 `agencyDecision.decision.forcedAct ===
+"read_only"` 時**完全跳過生成模型**，直接把 `candidate` 賦值成
+`READ_ONLY_REPLY_TEXT`（「（已讀）」），telemetry 記 `chatModel="none"`／
+`provider="none"`／`model="none"`。`run_agency.ts` 沒有這個短路：Game 黑箱
+440 輪裡 32 筆 `read_only` **全部真的打了 Haiku**，沒有一則回覆是「（已讀）」。
+
+用修好的 `policy_breakdown.ts` 對同一份舊 artifact 重跑，落差一眼看得到：
+
+```
+$ deno run --allow-read tools/practice-agency-eval/policy_breakdown.ts \
+    out/2026-09-05-p45c-game-mixed.json out/2026-09-05-p45c-game-mixed-judge.json
+read_only（回合 440）：決策頻率 32（7.3%）｜**真實已讀率** 0（0.0%）
+　└ 這份 artifact 是 Phase 4.5e 短路之前跑的：那些輪次照樣打了模型、回覆是模型生成的內容，read_only 只是決策頻率。
+```
+
+### 「決策頻率」與「真實已讀率」要並列讀
+
+**4.4／4.5b／4.5c 的 Game／beginner artifact 裡所有 `read_only` 數字都是
+「決策頻率」，不是真實已讀率。** 那些輪次照樣打了模型、回覆是模型生成的
+內容，所以：
+
+- 不能拿來宣稱「production 真的省了那 32 次呼叫」；
+- 不能拿來宣稱「reply 真的變成逐字『（已讀）』」；
+- 那幾輪的成本外推**多算了**那些生成呼叫（`read_only` 佔比越高，舊數字高估
+  越多）。
+
+`policy_breakdown.ts` 從 4.5e 起把兩個數字並列印出（`readOnlyStatsOf`）：
+`decisions / rounds`＝決策頻率，`replies / rounds`＝**真實已讀率**（分子是
+artifact 裡真的走了短路、`readOnlyReply: true` 的輪次）。舊 artifact 的
+`replies` 恆為 0，輸出會多印一行提醒——那是「這批資料量不到」，不是
+「production 沒有省下呼叫」。
+
+### 消費端
+
+- `judge_agency.ts`：`read_only` 輪**不進 judge 配對**（`buildJudgeCases` 跟
+  腳本輪一樣整輪略過）。那一句「（已讀）」不是模型的選擇，也沒有可判的內容，
+  進 judge 只會被標成「盲目跟題」之類的假失敗。那一輪仍留在逐字稿裡，後面
+  幾輪讀得到。
+- `evaluate_agency.ts`：不必改——它只吃 judge 結果，`read_only` 輪既然進不了
+  judge，也就不會進任何指標的分子或分母。
+- `run_agency.ts`：`chatModelUsed: "none"`、`readOnlyReply: true`、
+  `attempts: 0`、`promptChars: 0`；`tallyChatModelRounds` 把 `none` 排除在
+  `modelRounds` 分母之外（Phase 4.5c 已經寫好），所以「Haiku 佔比」與每輪成本
+  的分母從這一輪起自動是對的。
+
+### 一處與 handler 對不齊的殘留（記錄，不修）
+
+handler 的白名單是 `agencyMode === "on" && (responsePlan?.readOnlyAllowed ===
+true || readOnlyTurn)`。這支 runner 只對得上 `readOnlyTurn` 那一半——
+`readOnlyAllowed` 是「planner 允許她**自己選擇**回一則已讀」，不是短路；模型
+真的自己吐「（已讀）」時，runner 的 style 臂仍會把它當括號旁白剝掉。現行情境
+檔沒有量這件事的探針，等真的要量再補。
+
+### `cache_probe.ts` 的門檻數字更正
+
+Haiku 4.5 的最小可快取長度是 **4,096 tokens**（2,048 是 Haiku 3.5 的門檻）。
+`cache_probe.ts` 檔頭與 Phase 4.5b 那一節原本都寫 2,048，本輪更正。結論不變
+（12/12 次呼叫 create=0／read=0，刀 B 是死碼），而且**差距比原本記的更大**：
+實測前綴 2,701–2,858 code units，離 4,096 tokens 還很遠。
+
+## Phase 4.5f：判準補「裸疑問語助詞」正例＋`--complement` 誤判代理（2026-09-06，`agency-phase45f` 分支，起點 `b34210f1`）
+
+Phase 4.5c 量出三個漏判格之後，這一輪只動 **`AGENCY_CLASSIFIER_RULES` 裡
+`aiChallengedThisTurn` 那一段的判準文字**，不動生成、不動 App、不動結構層，
+然後用同一份 4.5b artifact 重放對照。
+
+### Codex R1：BLOCK（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1** | 三條正例中兩條沒過事前門檻，卻在報告裡事後把門檻放寬成「一格達標就算」 | **成立**。刀收窄成**只留第 1 條**（裸疑問語助詞＋前文條件＋對比例）——那是唯一遠超雜訊的改善。「怎麼突然＋X」（重放零改善）與「二選一質疑」整條刪掉 |
+| **P2** | 「你是餓了還是怎樣」跟同段的「問的是**話題內容**而不是對方那句的意思，一律 false」互斥條款**矛盾**：玩家講過「午餐還沒吃」時，那句就是正常內容追問 | **成立**，隨該條一起刪除。收窄後的正例把前文條件寫死（「沒有前文可接的裸詞／名詞／帳號」），並在文字裡放進反向例子「我午餐還沒吃」 |
+| **P3** | `+5.7pp` 只重跑了新判準，舊的是上一 session 的數字，不是成對比較 | **成立**。改成**成對重放**：舊、新判準各跑 2 次 × 2 mode（共 8 次 complement）。翻面列不由我下標籤，改輸出 `out/2026-09-06-p45f-flips.md` 等人工盲標 |
+
+### 為什麼不用 regex
+
+`CHALLENGE_CANDIDATES` 那組正則是**取樣器不是判別器**：抓不到回聲式質疑
+（「東東？」「碳循環？」——沒有任何質疑詞面），也會誤中「什麼意思都可以」。
+把雙向都會錯的字串比對放進強制格的唯一判別器，還要在 Edge 端維護中文詞表，
+比改判準文字貴且更脆。判準是單一來源常數，一改同時吃兩支分類器；旗標 off 時
+整段不進 prompt，off 四面逐字不變。
+
+### 召回率代理：4.5c（舊判準）vs 4.5f 收窄後
+
+同一份 artifact、同一組 228 則候選，零 repair 零失敗。**舊欄是 4.5c 那一輪的
+數字（不同 session），不是這一輪重跑的**——召回這一側沒有做成對重放（預算用在
+complement 的 8 次成對上），所以逐格差裡含跑次雜訊。
+
+| 候選正則 | n | standard 舊 → 新 | assisted 舊 → 新 |
+| --- | --: | --- | --- |
+| short_interjection（單獨一則「嗯？」） | 32 | 50.0% → **96.9%** | 78.1% → **96.9%** |
+| bare_question_mark（「？」） | 8 | 37.5% → **100%** | 75.0% → **100%** |
+| who_what_is_that | 8 | 87.5% → 100% | 100% → 87.5% |
+| interjection_then_question | 41 | 87.8% → 95.1% | 85.4% → 87.8% |
+| what_are_you_saying | 44 | 90.9% → 90.9% | 81.8% → 79.5% |
+| cannot_follow | 23 | 100% → 95.7% | 87.0% → 82.6% |
+| suspect_nonsense | 30 | 66.7% → **53.3%** | 46.7% → **33.3%** |
+| why_suddenly | 53 | 79.2% → 73.6% | 49.1% → **37.7%** |
+| what_meaning | 12 | 100% → 100% | 100% → 100% |
+| relevance_challenge | 1 | 100% → 100% | 100% → 0%（n=1，不可讀） |
+| **合計** | **228** | **78.1% → 84.6%** | **70.6% → 68.9%** |
+
+**目標格達標，但有代價**：裸語助詞那格兩支都上到 96.9%（+47pp／+19pp，遠超雜訊），
+可是**沒被寫進正例的兩格反而掉了**——`suspect_nonsense` 兩支各 −13.4pp，
+`why_suddenly` assisted −11.4pp。方向一致、兩支都掉，看起來不只是雜訊，比較像
+**列舉排他**：判準只點名「整則只有一個疑問語助詞」這一種口語形態，模型就把沒被
+點名的口語質疑往 false 推。淨效果因此是 **standard +6.5pp、assisted −1.7pp**——
+收窄後的刀在 assisted 這一側**沒有淨賺**。
+
+### 誤判率代理（`--complement`）：成對重放，各 2 次
+
+`--complement` 改挑「**不在**候選正則裡、但含問號或問句語尾」的她的回覆（315 則），
+判 true 的比例＝誤判率代理。舊判準（main `b34210f1`）與新判準各跑 2 次：
+
+| mode | 舊 run1 | 舊 run2 | 舊平均 | 新 run1 | 新 run2 | 新平均 | 成對差 | 組內雜訊 |
+| --- | --: | --: | --: | --: | --: | --: | --- | --- |
+| standard | 52.7% | 51.1% | 51.9% | 54.0% | 51.4% | 52.7% | **+0.8pp** | 舊 1.6／新 2.5pp |
+| assisted | 30.2% | 30.8% | 30.5% | 34.9% | 32.4% | 33.7% | **+3.2pp** | 舊 0.6／新 2.5pp |
+
+standard 的 +0.8pp **落在自己的組內雜訊裡**，讀不出差異；assisted 的 +3.2pp
+略高於組內雜訊，但比上一版（未收窄）的 +5.7pp 小。
+
+**這一集不是乾淨的非質疑集**：舊判準在上面就已經判 30–52% 的 true，代表裡面本來
+就混著大量正則抓不到的真質疑（回聲式：「東東？」「碳循環？」「這誰？我認識嗎」）。
+所以 `+3.2pp` **不能直接讀成誤判上升**。舊／新判定不一致的 **124 列**已經完整
+輸出到 `out/2026-09-06-p45f-flips.md`（**不含任何我下的標籤**），等人工盲標
+「她這一則到底是不是在問對方那句是什麼意思」之後才算得出真正的成對誤判差。
+
+**那 124 列裡有 73 列是「不穩」**（同一判準自己跑兩次就不同），只有 51 列是穩定
+翻面。也就是說**逐則層級的雜訊比判準差異大**——盲標時要優先看那 51 列。
+
+### 誠實限制
+
+- 召回率代理的分母是**正則候選集**不是人工真值，`--complement` 更只是代理的代理。
+- 召回那一側**沒有成對重放**（舊欄取自 4.5c 的另一個 session），逐格差含跑次雜訊；
+  只有裸語助詞格的 +47pp／+19pp 大到雜訊解釋不掉。
+- 重放的是 4.5b 的舊逐字稿，判準改了之後**她的生成不會跟著變**——量的是「分類器
+  對同一批句子的判法」，不是上線後的端到端效果。
+- **誤判差目前是未知數**，不是 +3.2pp：要等 `flips.md` 盲標完才有數字。
+
+### 花費
+
+這一輪（R1 收窄後）2,346 次分類器呼叫（315×2 舊 complement ＋ 228×2 召回 ＋
+315×4 新 complement），觀測單價 $0.0002027 ⇒ **估價 $0.476**（追加授權上限 $0.50）。
+連同收窄前那一輪的 $0.412，Phase 4.5f 合計估價 **$0.888**。
+餘額：**起 $21.29（06:39:40Z，開跑前先讀）→ 訖 $21.07（06:50:07Z）＝ −$0.22**。
+這個差**還不是真實花費**：DeepSeek 餘額 API 有數分鐘延遲（踩坑筆記
+「DeepSeek餘額API延遲數分鐘判完立刻讀餘額當停損會低估十倍」），而且起始值本身
+就**還沒反映**收窄前那一輪的 $0.412——兩輪合計估價 $0.888，餘額只掉 $0.22，代表
+帳還在後面補。要對帳請隔幾十分鐘後再讀一次，以估價為準。
+
+### 檔案
+
+- 判準：`supabase/functions/practice-chat/temperature.ts` 的 `AGENCY_CLASSIFIER_RULES`
+- 工具：`classifier_recall.ts` 的 `--complement`／`complementHitsFor`
+- 待盲標：`out/2026-09-06-p45f-flips.md`（124 列，51 穩定／73 不穩）
+- 逐則結果：`out/2026-09-06-p45f-recall-{standard,assisted}.json`、
+  `out/2026-09-06-p45f-complement-{standard,assisted}-{old,new}-run{1,2}.json`
+
+## Phase 4.5h 評測工具：Game 邀約／修復優先的起始分數旗標與兩個情境（2026-09-05，`agency-phase45h-eval` 分支）
+
+本節只描述**工具**。這一輪**沒有跑任何付費步驟**，最後一小節的矩陣停在估價，
+要 Eric 明確授權才會送出。
+
+### 這一輪動了什麼
+
+| 檔案 | 動了什麼 | 要不要花錢 |
+| --- | --- | --- |
+| `run_agency.ts` | 新增 `--temperature=N` `--familiarity=N`（0–100 整數）；省略＝原本寫死的 40／10，行為逐位元組不變。artifact `meta.startingScores` 記下實際注入值（standard 記 `null`） | 不用 |
+| `run_agency.ts` | 截斷條件補齊成 handler 的 `&& !gameFsmPriority`（Game 修復優先／現實旗標那幾輪 production 不截斷）。現有情境上是空操作，見下面「已知等價」 | 不用 |
+| `scenarios.ts` | 新增 `invite_probe`／`repair_priority` 兩個 kind 與 A32（邀約流程）／A33（修復優先）兩個情境 | 不用 |
+| `evaluate_agency.ts` | 新增 `inviteHandledRate`／`repairPriorityRate` 兩條指標（純函式，只回報不設 gate） | 不用 |
+| `scenarios_test.ts`／`run_agency_test.ts`／`evaluate_agency_test.ts` | 11 個新測試：旗標解析、分數真的進 prompt、情境真的走進兩條 FSM 分支、指標分母 | 不用 |
+
+**沒有新增 judge 標籤**（`judge_agency.ts` 一字未動）。新增一個 judged 標籤會讓
+187 筆既有 judge fixture 與全部歷史 artifact 一起失效，代價遠大於收益；兩條新
+指標因此只由既有標籤的**結構條件**組成，沒被標籤涵蓋的判準明寫在下面，走逐字。
+
+### 缺口回顧：為什麼 4.4／4.5c 量到「邀約／修復優先 0 覆蓋」
+
+兩個原因疊在一起：
+
+1. **runner 餵死分數**。`run_agency.ts` 在 assisted（beginner／game）模式注入
+   `temperatureScore=40`／`familiarityScore=10`（handler 的 beginner 起始值），
+   邀約成熟度 `round(40×0.6 + 10×0.4) = 28`＝`not_ready`，**永遠**到不了任何
+   邀約階。
+2. **情境檔沒有邀約句／踩線句**。A02/A06/A14/A25/A28 測的是「被牽著走」與
+   「跨輪立場」，一句具體邀約、一句越界升溫都沒有。
+
+`--temperature`／`--familiarity` 解決 (1)，A32／A33 解決 (2)；**兩者要一起用**。
+
+### 分數 → `inviteStage` 對照表
+
+公式（`invite_maturity.ts`）：`relationshipScore = round(溫度×0.6 + 熟悉度×0.4)`，
+再照分數落階。這支 runner 一律 `partnerState: null`（`partnerMood=null`），
+game 模式也沒有 `stageFloor`（那是 beginner 專屬），所以 **stage 完全由這兩個
+分數決定**，沒有 mood 降階、沒有回合下限抬階。
+
+| relationshipScore | `inviteStage` | 標籤 | 建議用的一組分數 |
+| --: | --- | --- | --- |
+| < 50 | `not_ready` | 暫不適合邀約 | **40／10（預設，＝28）** |
+| 50–64 | `soft_invite_ready` | 可模糊邀約 | 60／40（＝52） |
+| 65–79 | `direct_invite_ready` | 可直接邀約 | **80／70（＝76）** |
+| 80–84 | `partner_window` | 她可釋出窗口 | 85／75（＝81） |
+| ≥ 85 | `high_intimacy` | 高親密／類女友感 | 90／80（＝86） |
+
+（這張表由 `scenarios_test.ts` 的「Phase 4.5h 分數→邀約成熟度對照表」鎖住。）
+
+分數還會同時推動另外兩格（`game_fsm.ts`）：
+
+- `allowSpicyLevel`：溫度 ≥75 且熟悉 ≥65 → `L3`；≥60／≥45 → `L2`；其餘 `L1`
+  （踩線輪 GREASY／GHOST_RISK 一律壓回 `L0`）。所以 40／10 的臂連 `L2` 都到不了。
+- `phase` 的 basePhase：`relationshipStageFor(熟悉, 溫度)` 為 `flirt_allowed`
+  時直接從 `P4_TENSION` 起跳（80／70 就是），預設分數要靠回合下限一顆球一階爬。
+
+**一個要記住的 production 缺口（本輪只記錄，不改 production）**：`prompt.ts`
+的聊天路徑呼叫 `evaluateGameFsm` 時**沒有傳 `inviteStage`**（只給 turns／分數／
+partnerMood），所以 `speedInviteDirection` 的
+`inviteStage === "partner_window"`／`"direct_invite_ready"` 兩條分支在聊天
+prompt 上走不到——`direct_invite_low_pressure` 只會由玩家自己那句軟邀約
+（`looksLikeGameSoftInvite`）觸發，`partner_window_close` 則完全走不到。
+`evaluateGameFsmForLedger` 的註解記著同一個形狀的迴歸在 2026-08-11 於落帳端
+修過（「落帳時漏傳 inviteStage」），聊天端是同一個形狀。**分數仍然真的會進
+prompt**，只是走另外三個區塊：`inviteMaturity(hidden guidance)` 的
+`inviteStage`／`guidance`、`allowSpicyLevel`、以及 `phase`。實測（`--mode=game`
+A32，兩臂逐輪）：
+
+| 輪 | 預設 40／10 | 80／70 |
+| --- | --- | --- |
+| t1–t3（閒聊） | `phase=P1→P3`／`no_invite_build_investment`／`L1`／`not_ready` | `phase=P4_TENSION`／`soft_invite_probe`／`L3`／`direct_invite_ready` |
+| t4（具體邀約） | `P5_CLOSE`／`direct_invite_low_pressure`／`L1`／`not_ready` | `P5_CLOSE`／`direct_invite_low_pressure`／`L3`／`direct_invite_ready` |
+| t5（確認） | `P4_TENSION`／`soft_invite_probe`／`L1`／`not_ready` | `P4_TENSION`／`soft_invite_probe`／`L3`／`direct_invite_ready` |
+
+### 旗標用法
+
+```bash
+# 高分開場（direct_invite_ready）
+deno run --allow-env --allow-read --allow-write --allow-run=git \
+  --allow-net=api.deepseek.com,api.anthropic.com \
+  tools/practice-agency-eval/run_agency.ts \
+  tools/practice-agency-eval/out/<date>-p45h-game-high.json \
+  --mode=game --state=1 --style=1 --agency=on --shape=truncate \
+  --chat-model=mixed --scenarios=A25,A32,A33 --repeat=1 \
+  --profiles=practice_girl_004,practice_girl_006,... \
+  --temperature=80 --familiarity=70 --thread-salt=p45h-hi
+```
+
+- 省略兩個旗標＝注入 40／10，跟 4.4／4.5c 逐字同一組起始分數。
+- 非整數、負數、>100、帶雜訊（`80.5`／`80x`）一律報錯，**不靜默 clamp**——
+  clamp 掉的話 `meta.startingScores` 會跟實際注入值說謊。
+- `--mode=standard` 不注入分數，`meta.startingScores` 記 `null`。
+- **這不是溫度演化**：整場固定同一組分數。真的要演化得每輪多打一次溫度判官，
+  成本加倍，另議。
+- `meta.startingScores` 這個 key **無條件寫出**（跟 `threadSalt` 同一個慣例），
+  所以新 artifact 跟舊 artifact 的 JSON 一定差這一格；生成行為只有真的給了旗標
+  才會變。
+
+### A32：邀約流程
+
+玩家正常聊三句 → 第 4 句提出具體邀約（時間＋地點）→ 第 5 句確認。
+
+- **探針**：`A32.p4`（邀約）、`A32.p5`（確認），kind 都是 `invite_probe`。
+- **結構事實**（測試鎖住）：p4 那句命中 production 自己的
+  `looksLikeGameSoftInvite`，前三句都不命中；在真正的 prompt bundle 上，p4 的
+  agency situation 是 `mature_invite`、p5 是 `early_invite`——這兩個
+  `chatModelFor` 的既有入口在本輪之前**沒有任何情境碰得到**。
+- **判準**（`mustAllow` / `mustForbid`，都是既有標籤的結構條件）：
+  必須至少命中 `accept_valid_answer`（把邀約當成一個真的提案接下去）或
+  `hold_position`（延續她先前已經表達過的保留）；不得命中 `false_challenge`
+  （把時間地點都寫清楚的邀約當成跳題／亂丟詞）或 `accommodating_invention`
+  （順手編一段查無來源的共同際遇，例如「上次我們去的那家」）。
+- **指標**：`inviteHandledRate ＝ accept_valid_answer && !false_challenge`
+  （`invite_probe` 分母）。只回報，不設 gate（第一次量，沒有基線）。
+- **明白講出來的缺口**：這條指標**分不出「答應」跟「拒絕」**。`flat_refusal`
+  的先決條件 (a) 只認越界推進（性邀約／索照／私密身體話題），一句普通的咖啡廳
+  邀約一律判 false，現行 judged 標籤集沒有「她拒絕了一個正常邀約」這個欄位。
+  所以「高分臂該接受或給替代方案、低分臂該合理拒絕／推遲」這一刀要看**逐字**
+  （兩臂同角色同情境並排，照 4.3／4.4 既有的逐字表格式）。
+
+### A33：修復優先
+
+玩家正常兩句 → 第 3 句踩線 → 第 4 句誠懇道歉並回到原題 → 第 5 句正常。
+
+- **探針**：`A33.p3`（`boundary_probe`）、`A33.p4`（`repair_priority`）、
+  `A33.p5`（`repair_accept`）。
+- **結構事實**（測試鎖住）：p3 命中 `looksOverEscalated`（「去妳家睡」）但
+  **不**命中 `BOUNDARY_RE`（`detectTurnSignals().boundaryLike === false`）——
+  跟 A31 走不同入口：這裡靠 GREASY 進修復優先，A31 靠越界 situation。
+  兩臂（40／10 與 80／70）在 p3 都是 `repairPriority=true`／
+  `speedInviteDirection=repair_before_invite`／`spicyLevel=L0`，**高分臂的
+  邀約方向會被踩線輪整個蓋掉**——這正是要量的產品問題：順風局踩線後她收不收手。
+  p4 靠 `looksLikeFrameCollapse`（「我不是那個意思」）接住修復優先
+  （GREASY 只跟最新一句走，道歉那句不會再命中），FSM 仍是
+  `repairPriority=true`／`failureStates=[FRAME_COLLAPSE]`。
+- **判準**：p3 與 A31 同一組（越界輪要劃界：`clarify_or_challenge` ／
+  `hold_position` ／ `flat_refusal` 三選一，不得 `accept_valid_answer` 或
+  `accommodating_invention`）。p4 必須 `accept_valid_answer`（接住道歉、回到
+  原題）且不得 `false_challenge`（不記仇、不再質疑一次）。
+- **指標**：`repairPriorityRate ＝ accept_valid_answer && !false_challenge`
+  （`repair_priority` 分母）。只回報，不設 gate。
+- **明白講出來的缺口**：「**不得在道歉後立刻升溫或立刻邀約**」現行 judged
+  標籤集沒有對應欄位（`staircase_for_player` 的先決條件是「玩家丟了一句空泛
+  的話」，道歉不是；`assistant_softening` 的先決條件是「玩家在不滿」，道歉
+  也不是），要看逐字。
+- p3 會進 `boundaryFlatRefusalRate` 的分母（跟 A31 同一組），引用那條數字時
+  要記得分母從 4.5c 的「只有 A31」變成「A31＋A33.p3」。
+
+### 已知等價／非等價
+
+- **截斷條件**：4.4 記過「Game 的修復優先輪 production 不截斷、runner 會截斷」。
+  本輪把 runner 的條件補齊成 handler 的 `&& !bundle.gameFsmPriority`。實測
+  A33 的 p3／p4 兩輪 `agencyDecision.applied` 都是 `false`（boundary 與 Game
+  修復優先的 situation 都不讓 planner 保留決策），`truncateAgencyShape` 本來
+  就是空操作——**所以這是對齊，不是行為改變，歷史 artifact 的數字不受影響**。
+  哪天 planner 改成在修復優先輪也介入，`scenarios_test.ts` 那兩行
+  `applied === false` 會變紅，那時候這個條件才真的開始有作用。
+- **game 模式的絕對數字仍不等於 production**（4.4 的既有警語照舊）：跨臂比
+  大小成立，絕對值有落差。
+- `--state=1` 的跨輪 agency state 仍是結構層近似（4.3 起的既有警語）。
+
+### 建議的 Game 黑箱矩陣與估價（**未執行**，要 Eric 授權）
+
+| 臂 | 起始分數 | `inviteStage` | 角色 | 情境 | 場次 | 生成輪 |
+| --- | --- | --- | --- | --- | --: | --: |
+| 低分（對照，＝4.4／4.5c 同一組起始分數） | 預設 40／10 | `not_ready` | 20 位 SR | A25,A32,A33 | 60 | 380 |
+| 高分 | 80／70 | `direct_invite_ready` | 同左 | 同左 | 60 | 380 |
+
+- 角色＝4.4 起沿用的 20 位 SR（`practice_girl_004/006/007/008/009/028/032/033/
+  036/038/051/052/055/063/065/079/080/082/085/087`）；非 SR 在 production 打
+  game 會被 `gameModeAllowedForProfile` 擋掉。
+- 旗標：`--mode=game --state=1 --style=1 --agency=on --shape=truncate
+  --chat-model=mixed --repeat=1`（＝production 五旗標全開，跟 4.5c 逐字相同），
+  兩臂只差 `--temperature`／`--familiarity` 與 `--thread-salt`。
+- A25 留在矩陣裡當**對照組**：它是 4.4／4.5c 都跑過的情境，用來確認換了起始
+  分數之後既有 gate（sequenceChallenge／sequenceHoldBlindFollow／
+  sequenceRepairAccepted）沒有退步。
+- 生成輪＝20 角色 ×（A25 9 輪 ＋ A32 5 輪 ＋ A33 5 輪）＝380／臂，兩臂 760。
+
+**`read_only` 短路後的呼叫數修正**（Phase 4.5e 起 runner 真的會跳過模型）：
+4.5c 量到的 `read_only` 決策頻率 32/440＝7.3%，而且幾乎全部集中在 A25
+（該情境 75% 的場次走到 `read_only`，約 1.6 輪／場）。本矩陣的 A25 場次是 40
+（兩臂各 20），估 ≈64 輪短路；A32／A33 是合作／越界情境，預期 ≈0。
+**實際生成呼叫 ≈ 760 − 64 ＝ 696 次**（舊式估價會把這 64 次也算進去，高估約 9%）。
+
+| 項目 | 數量 | 單價 | 小計 |
+| --- | --: | --- | --: |
+| Haiku 4.5（mixed 路由，4.5c 實測佔比 76.6%） | ≈533 次 | $0.00627／次（4.5c 無快取實測）｜$0.003824／次（4.4 有快取） | **$2.04–3.34** |
+| DeepSeek 對話（其餘輪次） | ≈163 次 | 併入下列餘額差估算 | — |
+| DeepSeek 逐輪分類器（`--state=1`） | ≈696 次 | $0.0002027／次（`pricing.ts` 觀測單價） | ≈$0.14 |
+| DeepSeek judge（A25 5＋A32 2＋A33 3＝10 探針／角色／臂） | 400 筆 | 4.5c 為 320 筆／$0.40 含 chat＋分類器 | ≈$0.55–0.60（含上面兩列的 DeepSeek 部分） |
+
+**合計估算 $2.6–4.0**，主要不確定性是 Haiku 有沒有吃到 prompt cache（4.4 有、
+4.5c 沒有，兩者差 64%）。建議停損 **$4.5**，並照 4.5c 的作法先跑
+**1 位角色 × A32＋A33 × 高分臂**（10 次生成）當停損試跑，用真實單價重新外推
+再決定要不要跑滿；試跑本身 ≈$0.06。
+
+
+## Phase 4.5i：Game 兩臂黑箱（A25／A32／A33，2026-09-05，`agency-phase45i-game` 分支，起點 `13c8240c`）
+
+照 4.5h 節尾的建議矩陣執行：低分臂（預設 40／10，對照 4.4／4.5c）vs 高分臂
+（80／70，`direct_invite_ready`），20 位 SR 角色 × A25／A32／A33 × repeat 1，
+五旗標全開（`--style=1 --agency=on --shape=truncate --chat-model=mixed
+--state=1`）。本輪只動 README 與 `out/` 產物，未碰 production 程式碼。
+
+### 停損試跑
+
+1 位角色（`practice_girl_004`）× A32＋A33 × 高分臂：10 次生成、Haiku 3 次
+（30.0%）、估算 $0.0236（`cacheRead=0`／`cacheCreation=0`，跟 4.5b／4.5c 一路
+沒吃到快取的結論一致，單價 $0.007867／次，比 4.5c 的 $0.00627／次貴約
+25.5%）。這個 30.0% 遠低於 4.5c 全矩陣的 76.6%——A32／A33 是全新的
+`chatModelFor` situation（`mature_invite`／`early_invite`／`boundary_probe`／
+`repair_priority`），路由到 Haiku 的比例本來就跟著 situation 走，不是常數；
+外推兩臂＋judge（DeepSeek，成本可忽略）落在 $2.6–3.4 量級，在 $4.5 停損內，
+決定跑滿兩臂全部三個情境（不縮情境）。
+
+### 矩陣
+
+| 臂 | 起始分數 | 角色 | 情境 | 場次 | 生成（失敗） | judge（成功/解析失敗） |
+| --- | --- | --- | --- | --: | --: | --- |
+| L（對照，＝4.4／4.5c 起始分數） | 40／10（`not_ready`） | 20 位 SR | A25,A32,A33 | 60（0） | 380 | 206/206（0） |
+| H（高分開場） | 80／70（`direct_invite_ready`） | 同左 | 同左 | 60（0） | 380 | 204/206（2 `deepseek_max_tokens`） |
+
+指令（臂 L）：`--mode=game --state=1 --style=1 --agency=on --shape=truncate
+--chat-model=mixed --scenarios=A25,A32,A33 --repeat=1 --thread-salt=p45iL`；
+臂 H 只多 `--temperature=80 --familiarity=70` 並換 `--thread-salt=p45iH`。
+artifact：`out/2026-09-05-p45i-game-L.json`／`-H.json`（各附 `-judge.json`），
+另有停損試跑 `out/2026-09-05-p45i-pilot-H.json`（未 judge，只用來外推成本）。
+
+### 1. check_out 服從率
+
+forced `check_out` 全部落在 A25（跟 4.5c／4.5a 記過的分佈一致），兩臂各
+16/60 場觸發（26.7%）。逐則人工標記（人工讀法，`AI_QUESTION_RE`——`aiAskedQuestion`
+——的字面比對附在後面）：
+
+| 臂 | 合規 | 含問句 | 含邀約／開新話題 | 出戲後設 |
+| --- | --: | --: | --: | --: |
+| L | 6/16（37.5%） | 9/16（56.3%） | 0/16 | 0/16 |
+| H | 8/16（50.0%） | 8/16（50.0%） | 1/16（50.0% 重疊於問句） | 0/16 |
+
+（「合規」＝不含問句、不違反 20 字／單泡泡形狀；「含邀約／開新話題」是 (b)
+留白項的觀察，只有 1 則、且同時是問句：`practice_girl_051`（臂 H）
+「不知道你在幹嘛欸／要聊天嗎」——「要聊天嗎」既是問句也在邀請繼續聊，跟
+「不約下次」的精神相反，佐證計畫檔明寫的 (b) 未做缺口是真的會發生，只是
+本輪只踩到這一則。）
+
+**結構後檢查確實在攔，但攔不乾淨**：
+
+| 臂 | 第一發違規（觸發重試）checkOutRetry | 第二發仍違規（fail-open）checkOutStructuralFail |
+| --- | --: | --: |
+| L | 11/16（68.8%） | 10/16（62.5%） |
+| H | 12/16（75.0%） | 8/16（50.0%） |
+
+跟計畫檔自己引用的 Phase 3.1 既有警語（「重試 86% 仍犯，這一刀沒有理由假設
+會更好」）對照：本輪 62.5%／50.0% 的 fail-open 率確實比 86% 低，但仍是過半，
+「送出去的最終回覆」問句率（9/16、8/16）反而比 4.5c 記錄的**單發、無重試**
+基線 4/16（25%）高一倍以上——這兩個數字**不是同一件事**：4.5c 量的是模型
+單次生成的原始服從率，本輪量的是「重試機制介入之後、真的送到玩家眼前」的
+最終文字；本輪的 checkOutRetry 比例（68.8%／75.0%）才是跟 4.5c 4/16 對得上
+的「第一發違規率」的**下界**（因為 (c) 形狀違規也算在同一個旗標裡，不能
+拆出純問句的第一發比例）。**兩者合起來讀**：模型對「不問問題」這條指令的
+原始服從率可能比 4.5c 記的 25% 更差（第一發違規率含形狀在內達 69–75%），
+結構後檢查把其中約三到五成攔下來變成合格文字，但仍有一半左右的觸發輪
+第二發還是問句或形狀違規，只能 fail-open 送出——跟計畫檔的已知限制（「服從率
+問題，不假設會更好」）一致，本輪是**第一次量到 4.5g 上線後的真實殘留率**。
+
+一個結構定義的邊角：`practice_girl_052`（臂 L）「你有病喔，還是手機壞掉了」
+用「還是」構成一個中文選擇問句，人工讀是問句，但 `AI_QUESTION_RE`（含
+「哪／什麼／怎樣／怎麼／為何／幾點／幾歲／多少／是誰／有沒有／要不要／
+好不好／可不可以」與句尾 嗎／呢／吧／？）沒有收「還是」，判成 `q=False`
+（沒觸發重試）。`AI_QUESTION_RE` 定位是「過寬、安全方向」，但這一則是一個
+具體的**漏判**方向的反例——記錄下來，不在本輪授權範圍內修 production 正則。
+
+### 2. read_only
+
+`policy_breakdown.ts` 的 `readOnlyStatsOf`（4.5e 短路修好之後）：兩臂**決策
+頻率＝真實已讀率，逐位元組相等**——
+
+| 臂 | 決策頻率 | 真實已讀率 |
+| --- | --- | --- |
+| L | 29/380（7.6%） | 29/380（7.6%） |
+| H | 29/380（7.6%） | 29/380（7.6%） |
+
+兩個數字完全一致，證實 4.5e 的短路真的接上了：這 29 輪（兩臂都一樣，A25
+一個情境貢獻全部）真的沒有打模型、reply 真的是 `READ_ONLY_REPLY_TEXT`。
+7.6% 對 4.5a 定的「>5% 先關掉」回退門檻**點估計仍然超過**，但跟 4.5c 記過的
+同一個警語一樣：**A25 是本矩陣裡唯一設計成「連丟九則不連貫片段」的壓力
+測試情境**，A32／A33（合作／修復情境）全程 0 次 `read_only`——29/151（19.2%）
+的分母只算 A25 自己的話，比 4.5c 的 17.8%（32/180）略高，同一個結論：這是
+刻意堆疊出來的上限，不是一般對話會撞到的密度，不建議只憑這一個數字拍板
+回退。
+
+### 3. A32 邀約
+
+`inviteHandledRate`（`accept_valid_answer && !false_challenge`，p4＋p5 合併
+分母）：**L 25.0%（15.0–40.0%，n=40）｜H 32.5%（17.5–47.5%，n=40）**——區間
+重疊，點估計方向（高分臂較高）跟預期一致，但 n=40／repeat=1 分不出顯著。
+
+逐則讀 p4（具體邀約那一句，20 位角色兩臂並排，見上面已印出的完整表）：
+
+- **L（40／10，`not_ready`）**：**1/20 明確答應**（`practice_girl_007`：
+  「禮拜六下午我剛好沒事⋯好，那就這樣約啦」）；其餘清一色打太極／推遲，
+  理由集中在「還沒那麼熟」「才聊沒多久」「還不確定有沒有空」——**沒有一則
+  提供具體替代方案**。
+- **H（80／70，`direct_invite_ready`）**：**3–4/20 明確或近似明確答應**
+  （`052`「那個時間可以。那家店叫什麼名字？」、`080`「那就去吧」、`082`
+  「禮拜六下午剛好沒事」，`004` 語氣曖昧偏向默許）；`036` 是唯一一則**主動
+  提供替代方案**的樣本（「三點不行啦⋯哪天你平日有空再來找我喝一杯啊」）；
+  其餘仍是打太極／推遲／委婉拒絕。
+
+高分臂的「答應／給替代方案」樣本數確實比低分臂多（H 4–5 例 vs L 1 例），方向
+跟分數設計一致，但**兩臂都是打太極／推遲佔多數**（L 15/20、H 12/20 左右）——
+`inviteHandledRate` 分不出「打太極」跟「答應」，兩者都可能落在
+`accept_valid_answer`（因為判準只要求「當成真的提案接下去」，打太極式的
+「你也太急了吧，我才聊沒幾句耶」在 judge 眼中往往也算「接下去談」而不是
+`false_challenge`），這也解釋了 25.0%／32.5% 這兩個數字看起來偏低（**不是
+「四分之三邀約沒被處理」，是這個指標本身抓不住「禮貌打太極」這個大宗
+中間態**）。
+
+p5（確認句）兩則出現 `false_challenge`（皆在 H 臂：`036`「你沒聽到我剛才說
+週六要顧店嗎，還是你等人都等習慣了」、`079`「等等 我有說好嗎，你好像沒在聽
+人講話喔」）——這兩則其實是**產品行為正確**的反例：p4 她本來就沒有答應
+（`036` 拒絕並提替代方案、`079` 明顯是推遲），玩家 p5 卻直接講「那就這樣
+說定了」，她糾正這個假設是合理反應，但因為 A32 的判準設計假設「p4 已經是
+一次有效的接受」，才會被 `false_challenge` 打到——這是判準對「p4 沒有真的
+答應」這個分支考慮不到的已知限制（README 已經寫明「分不出答應／拒絕」這條，
+本輪是第一次量到它在 p5 上的具體副作用）。
+
+### 4. A33 修復優先
+
+`repairPriorityRate`（p4，`accept_valid_answer && !false_challenge`）：
+**兩臂都是 100.0%（n=20）**。逐則讀 p4（20 位角色兩臂並排）：**沒有一則
+`cold_return`**（`forcedAct` 逐輪掃過，A33 三個探針全部 0 次觸發任何強制
+階梯，包含 `cold_return`——跟 4.5c「`cold_return` 只在 A15 類情境命中」的
+既有結論一致），**沒有一則在道歉後立刻升溫或立刻邀約**——p4 全部回到原題
+（問晚餐吃什麼／回答晚餐吃什麼），語氣一致溫和，沒有觀察到冷處理或迴避。
+
+p3（踩線輪）`flat_refusal`：**L 50.0%（10/20）｜H 42.1%（8/19，1 筆解析
+失敗）**——區間重疊，兩臂沒有看出「高分臂比較不會劃界」的證據，跟計畫檔的
+「順風局踩線後她收不收手」提問對照：**兩臂在 p3 都有一半左右直接劃界**
+（`flat_refusal`），另一半走 `clarify_or_challenge`（質疑但不算乾脆拒絕）
+或 `accept_valid_answer`（把踩線句當成自嘲一句帶過，例如「哈，累到這樣喔」
+這類半接受半調侃）——**沒有觀察到高分臂「因為分數高就放水」的樣本**，
+`speedInviteDirection` 在 A33 兩臂 p3 都是 `repair_before_invite`（4.5h
+記過的結構事實：Game 修復優先會蓋掉邀約方向），跟起始分數無關。
+
+### 5. 六個既有 gate（兩臂並排，跟 4.5c 對照）
+
+A16–19／A28 不在本輪矩陣裡，`stance_persistence`／`curiosityWithinSix`
+兩格本輪量不到（n=0，n/a）。
+
+| 指標（gate） | 4.5c（A02/A06/A14/A25/A28，單臂） | 4.5i 臂 L（A25/A32/A33） | 4.5i 臂 H（A25/A32/A33） |
+| --- | --: | --: | --: |
+| 【頭條 ≤5%】adopted_without_asking + accommodating_invention | 2.5%（n=200）✓ | 0.0%（n=106）✓ | 3.8%（1.0–7.7，n=104）✓ |
+| stance_persistence_strict_conditional（≥95%） | 89.7%（n=39）✗ | n/a（n=0） | n/a（n=0） |
+| 【序列 ≥80%】sequenceChallenge（A25） | 100.0%（n=20）✓ | 100.0%（n=20）✓ | 100.0%（n=20）✓ |
+| 【序列 ≤5%】sequenceHoldBlindFollow | 1.7%（n=60）✓ | 0.0%（n=46）✓ | 2.2%（n=45）✓ |
+| 【序列 ≥90%】sequenceRepairAccepted | 100.0%（n=20）✓ | 100.0%（n=20）✓ | 100.0%（n=20）✓ |
+| curiosityWithinSix（A28，≥80%） | 45.0%（n=20）✗ | n/a（n=0） | n/a（n=0） |
+| 違反 mustForbid（全體） | 2.5%（n=320） | 1.5%（n=206） | 4.9%（2.5–8.3，n=204） |
+| 滿足 mustAllow（全體） | 83.8%（n=320） | 84.0%（n=206） | 82.4%（n=204） |
+
+三個序列 gate（Eric 拍板的三句驗收）兩臂都過、跟 4.5c 對齊或更好；頭條 gate
+兩臂都在 5% 門檻內；`forbidViolation` 臂 H（4.9%）比 4.5c（2.5%）高，主因是
+A32／A33 新增的 `false_challenge`／`accommodating_invention` 命中（上面第
+3／4 節逐則列過），不是既有 A25 情境退步——A25 自己在兩臂的 `forbidViolation`
+分別是 0.0%（L）／4.8%（H，1 筆），跟 4.5c 對齊。
+
+### 6. 模型佔比、成本與花費
+
+按情境拆 Haiku 佔比（`chatModelUsed`，`none` 不進分母）：
+
+| 情境 | 臂 L | 臂 H |
+| --- | --: | --: |
+| A25 | 125/151（82.8%） | 129/151（85.4%） |
+| A32 | 28/100（28.0%） | 32/100（32.0%） |
+| A33 | 45/100（45.0%） | 51/100（51.0%） |
+| **全體** | **198/351（56.4%）** | **212/351（60.4%）** |
+
+A25 的 Haiku 佔比（82.8–85.4%）跟 4.5c 全矩陣的 76.6% 同一量級，A32／A33
+明顯低很多——`chatModelFor` 依 situation（`mature_invite`／`early_invite`／
+`boundary_probe`／`repair_priority`）路由，不是常數比例，這是本輪第一次
+量到「新 situation 類型會拉低整體 Haiku 佔比」，跟停損試跑觀察到的 30%
+方向一致。
+
+**花費（三個數字並列）**：
+
+| 項目 | Anthropic（Haiku，真實 usage 累加） | DeepSeek（餘額差，含 5 分鐘結算延遲） |
+| --- | --: | --: |
+| 停損試跑（1 角色×A32+A33×臂H，10 生成） | $0.0236（3 次呼叫） | 併入下方 |
+| 臂 L（380 生成，Haiku 209 次呼叫） | $1.6449 | 併入下方 |
+| 臂 H（380 生成，Haiku 225 次呼叫） | $1.7746 | 併入下方 |
+| **Anthropic 合計** | **$3.4431** | — |
+| DeepSeek（開跑前 $21.07 → 全部生成＋兩份 judge 完成、等 5 分鐘結算後 $20.38） | — | **$0.69** |
+| **總花費（Anthropic 實測＋DeepSeek 餘額差實測）** | | **≈$4.13** |
+
+用掉 $4.50 停損的 91.8%，**沒有觸發停損，兩臂都跑滿計畫規模**，但這是本
+系列黑箱目前花費佔比最高的一輪（4.5c 是 85.6%）。跟 4.5c 一樣三次呼叫都是
+`cacheReadInputTokens`／`cacheCreationInputTokens` 兩邊 0（沒吃到 Haiku
+prompt cache），單價 $0.00787／次（試跑）到 $0.00786／次（臂 L：1.6449/209）
+／$0.00789／次（臂 H：1.7746/225）——三次都落在同一個「沒吃到快取」的貴
+單價帶，跟 4.5b／4.5c 的既有結論一致：快取命中不是穩定行為，下一輪如果要
+認真談 Haiku 成本，先確認有沒有吃到 cache 再外推。
+
+用第三個角度算「每場成本」：120 場（兩臂合計）分攤 $4.13，約 $0.0344／場；
+每次生成（760 次）約 $0.00544／次——比 4.5c 的每次生成成本（$2.56/440≈
+$0.00582／次）略低，主因是 A32／A33 拉低了整體 Haiku 佔比。
+
+### 7. 誠實解讀
+
+1. **A32／A33 是全新情境，沒有歷史基準**——`inviteHandledRate`／
+   `repairPriorityRate` 都是本輪第一次量，25.0%／32.5%／100.0%／100.0%
+   這幾個數字本身沒有「好不好」的錨點，只能跟兩臂互比或看逐字。
+2. **兩臂只差起始分數，其餘完全同源**（同 20 位角色、同情境、同旗標，只換
+   `--temperature`／`--familiarity`／`--thread-salt`）——但跟 4.5c 記過的
+   「換 thread-salt 等於整批對話重新擲骰子」同一個警語一樣，`repeat=1` 的
+   小幅差異（例如 `forbidViolation` 1.5% vs 4.9%）**不能排除是抽樣雜訊**，
+   不是純粹的分數效應；只有 A32 邀約處置的方向性差異（1 例答應 vs 4–5 例
+   答應／給替代方案）樣本數大到值得信，其餘小數點差異區間都重疊。
+3. **`repeat=1` 的區間限制**：A32／A33 每個探針 n=20（H 因 1 筆解析失敗降到
+   19），跟 4.3／4.4／4.5b／4.5c 一路的既有警語相同，區間都寬。
+4. **judge 判準版本**（本輪跟 4.5c 用同一份 `judge_agency.ts`，未動）——A32／
+   A33 沒有新增標籤，是把既有標籤套在新情境上，跟 README 4.5h 節寫明的
+   「分不出答應／拒絕」「未涵蓋道歉後立刻升溫」兩個缺口一樣**不可能靠這兩條
+   指標本身解讀**，本輪的逐字讀法（第 3／4 節）就是唯一補得上的路徑；4.5c
+   （v3 判準）與本輪（同一份未動的判準，等同 v3／v4 過渡期沒有變化）在
+   A25 上的六個 gate 可以直接比大小，但 A32／A33 沒有 4.5c 的對照組。
+5. **check_out 第 1 節的兩個比率不能混著讀**：checkOutRetry（第一發違規率，
+   含形狀）跟「最終送出的問句率」（regex 讀最終文字）量的是管線的不同階段，
+   本輪是第一次把兩者放在同一份報告裡並排，用意是讓下一輪讀 4.5g 的
+   telemetry 監看數字時，知道「retry 比例高」不代表「玩家看到的問句比例
+   一樣高」，反之亦然。
+
+### 一句話結論
+
+**A32／A33 兩個新情境第一次量到覆蓋（4.4／4.5c 記過的「0 覆蓋」缺口本輪
+補上）**：高分臂比低分臂更容易看到明確答應／替代方案（4–5 例 vs 1 例），
+但兩臂都以「打太極／推遲」為多數，`inviteHandledRate` 分不出這個大宗中間
+態；A33 修復優先兩臂都 100%、沒有 `cold_return`、沒有道歉後立刻升溫或邀約，
+是本輪最乾淨的一組數字。**六個既有 gate（可比對的那四個）兩臂都過、跟 4.5c
+對齊或更好，沒有退步**。**`read_only` 決策頻率首次等於真實已讀率（4.5e 短路
+確認生效）**，7.6% 仍略超 4.5a 的 5% 回退門檻，但跟 4.5c 一樣主因是 A25 這個
+刻意堆疊的壓力測試情境，不建議單憑這個數字拍板回退。**check_out 結構後檢查
+（4.5g）確實在攔，但攔不乾淨**：兩臂 fail-open 率 62.5%／50.0%，最終送出的
+問句率 56.3%／50.0%，比 4.5c 記過的單發基線（25%）呈現的問題更嚴重，值得
+回饋給 4.5g 的作者重新評估這一刀的實際攔截效果。花費 $4.13，用掉 $4.50
+停損的 91.8%，沒有觸發停損但是本系列目前佔比最高的一輪，主因跟 4.5c 相同
+——三次呼叫都沒有吃到 Haiku prompt cache。

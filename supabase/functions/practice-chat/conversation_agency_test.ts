@@ -12,14 +12,20 @@ import {
   agencyThresholdsFor,
   aiAskedQuestion,
   aiAskedQuestionStrict,
+  aiAskedYesNoQuestion,
+  allowsCheckOut,
+  CHECK_OUT_MAX_CHARS,
+  checkOutStructuralViolation,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isAcceptingPlanAct,
   isClarifyingAct,
   isQuestionText,
   isQuestionTextTolerant,
+  isYesNoShortAnswer,
   nextConversationAgencyState,
   parseConversationAgencyState,
+  standardAgencyClassifierEnabled,
   truncateAgencyShape,
   utteranceShapeOf,
 } from "./conversation_agency.ts";
@@ -28,6 +34,8 @@ import {
   computeAgencyDecision,
 } from "./turn_response_plan.ts";
 import { buildRelationshipThreadRpcParams } from "./relationship_thread.ts";
+import { agencyProfileFor } from "./agency_profile.ts";
+import { GIRL_PROFILES } from "./practice_persona.ts";
 import type { PracticeTurn } from "./validate.ts";
 
 const u = (text: string): PracticeTurn => ({ role: "user", text });
@@ -405,6 +413,8 @@ Deno.test("nextConversationAgencyState：只存 enum／布林／小整數，修�
     unresolvedCount: 2,
     priorChallengeIssued: true,
     lastAgencyAct: "hold_position",
+    // Phase 4.5a 刀 3：收尾格的那一輪 streak +1（連續三輪就 check_out）。
+    lowValueStreak: 1,
   });
   // bounded 輪（第二個未解片段，允許清單裡有質疑但沒有強制）：旗標不得被
   // 「允許過」灌成 true。
@@ -660,6 +670,9 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     userTurnCount: 3,
     aiClarifiedLastTurn: null,
     priorCoherence: null,
+    answeredYesNo: false,
+    lowValueStreak: 0,
+    checkedOut: false,
   };
   for (
     const thresholds of [
@@ -1761,7 +1774,17 @@ Deno.test("Phase 4.3 R2 P1-1：肯定／否定短詞的撤回後行為——1～
         assertEquals(d.evidence.utteranceShape, shape, label);
         // (b) 第 1 次是這一段迴圈的第一組一問一答／第一個片段 → 欠債 0；
         //     第 2 次起開始累積（不再永久免疫，R2 P1-1 的驗證步驟第 3 條）。
-        assertEquals(d.evidence.unresolvedCount, n === 1 ? 0 : n - 1, label);
+        //     **Phase 4.5a 刀 1 的唯一例外**：她那一則是**是非問句**（句尾
+        //     「嗎／吧／嘛」）時，「對／不是」就是答案，連丟幾次都不累積欠債。
+        //     陳述句與開放問句（「那你比較想去哪裡？」）逐字維持 4.3 行為。
+        const yesNoLead = leadName === "是非問句";
+        assertEquals(
+          d.evidence.unresolvedCount,
+          yesNoLead ? 0 : n === 1 ? 0 : n - 1,
+          label,
+        );
+        assertEquals(d.evidence.answeredYesNo, yesNoLead, label);
+        if (yesNoLead) assertEquals(d.situation, null, label);
         // (c) 消耗內容窗口（回到 Phase 4.2 契約表的原始值）。
         assert(utteranceShapeOf(token, false) !== "reaction", label);
       }
@@ -2083,6 +2106,10 @@ Deno.test("Phase 4.3 P3-7：只有三個 clarify_ignored_* 會在 forced act 說
     "clarify_ignored_easy_v1",
     "clarify_ignored_v1",
     "clarify_ignored_cold_v1",
+    // Phase 4.5a 刀 3 的三個新 forced set id 一起列進來。
+    "cold_return_v1",
+    "read_only_v1",
+    "check_out_v1",
   ];
   const withSetLine = forcedSetIds.filter((id) =>
     AGENCY_SET_LINE[id] !== undefined
@@ -2091,6 +2118,9 @@ Deno.test("Phase 4.3 P3-7：只有三個 clarify_ignored_* 會在 forced act 說
     "clarify_ignored_easy_v1",
     "clarify_ignored_v1",
     "clarify_ignored_cold_v1",
+    // Phase 4.5a 刀 3：`check_out_v1` 補一句口氣；`cold_return_v1`／
+    // `read_only_v1` 刻意**不給** set 級文字。
+    "check_out_v1",
   ]);
   // bounded 的候選組說明維持原樣（四個），沒有被本刀動到。
   assertEquals(
@@ -2102,6 +2132,7 @@ Deno.test("Phase 4.3 P3-7：只有三個 clarify_ignored_* 會在 forced act 說
       "answer_or_challenge_easy_v1",
       "answer_or_challenge_persist_v1",
       "answer_or_challenge_persist_easy_v1",
+      "check_out_v1",
     ],
   );
 });
@@ -2158,4 +2189,592 @@ Deno.test("Phase 4.3 R2 U-8：aiClarifiedLastTurn 的 round-trip——缺席／f
       v,
     );
   }
+});
+
+// ── Phase 4.5a（Eric 2026-09-05 拍板：「像真人——真人不會一直陪你耗」）────────
+Deno.test("Phase 4.5a 刀 1：是非問句判準只認句尾「嗎／吧／嘛」，容忍句尾裝飾", () => {
+  for (
+    const yes of [
+      "你該不會是要跟我聊韓國吧",
+      "你今天也很累嗎",
+      "你是說韓國嗎？",
+      "是玩猜謎嗎～",
+      "你在報地名嗎😂",
+      // Codex R2 P1-2 指定：「要不要」在 `aiAskedQuestion` 的句法標記表裡，
+      // 最後子句同時有第二人稱 → 是可以回答的是非問句。
+      "你要不要先想清楚再說嘛",
+    ]
+  ) assertEquals(aiAskedYesNoQuestion(yes), true, yes);
+  // 「要不要」確實是既有問句判定認得的標記（不必補表）。
+  assertEquals(aiAskedQuestion("你要不要先想清楚再說嘛"), true);
+  for (
+    const no of [
+      "你在說什麼？",
+      "那你比較想去哪裡？",
+      "你最想去哪",
+      "你怎麼了呢",
+      "我今天差點睡過頭",
+      "",
+      // Codex R1 P1-3：句尾有「吧／嘛」但根本不是在問他的兩種形態。
+      // 「我先去忙吧」＝她自己的收尾提議（沒有第二人稱）；
+      // 「這本來就是韓國嘛」＝陳述（連寬鬆問句判準都不成立）。
+      "我先去忙吧",
+      "這本來就是韓國嘛",
+      "那我先睡了吧",
+      "反正就是這樣嘛",
+      // Codex R2 P1-2：第二人稱只看**最後子句**——看整則的話這一句會因為
+      // 前半段有「你」而過關，她的收尾就被一句「好」解開了。
+      "你一直丟地名，那我先去忙吧",
+      "那先這樣吧",
+      "你講的那些地名我看不懂，先這樣吧",
+    ]
+  ) assertEquals(aiAskedYesNoQuestion(no), false, no);
+  // 短答判準：整則錨定，只容忍句尾裝飾。
+  for (const t of ["對", "對啊", "不是", "沒錯", "好啊", "對！", "不是😂"]) {
+    assertEquals(isYesNoShortAnswer(t), true, t);
+  }
+  for (
+    const t of ["對了我今天有去健身房", "不是啦 我是說剛剛那個", "韓國", "嗯嗯"]
+  ) {
+    assertEquals(isYesNoShortAnswer(t), false, t);
+  }
+});
+
+Deno.test("Phase 4.5a 刀 1：她問是非題、他回「對」＝回答了，任何欠債都不得質疑", () => {
+  // Eric 的原案：她自己猜「你該不會是要跟我聊韓國吧」，他回「對」。
+  const answered = policyAt(
+    [u("韓國"), a("你該不會是要跟我聊韓國吧"), u("對")],
+    "normal",
+    false,
+    stateWith(true),
+  );
+  assertEquals(answered.evidence.utteranceShape, "answer_candidate");
+  assertEquals(answered.evidence.answeredYesNo, true);
+  assertEquals(answered.situation, null);
+  // 挑戰／Game／easy 都一樣（跟有效短答免疫同一個層級，不受難度翻轉）。
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    assertEquals(
+      policyAt(
+        [u("韓國"), a("你該不會是要跟我聊韓國吧"), u("對")],
+        difficulty,
+        difficulty === "challenge",
+        stateWith(true),
+      ).situation,
+      null,
+      difficulty,
+    );
+  }
+  // 成對反例 1：她那一則是**開放**問句 → 照 Phase 4.3（分類器說她在澄清就強制）。
+  assertEquals(
+    policyAt(
+      [u("韓國"), a("你在說什麼？"), u("不是")],
+      "normal",
+      false,
+      stateWith(true),
+    ).forcedAct,
+    "challenge_relevance",
+  );
+  // 成對反例 2：明示換題不受影響（「對了」開頭不是純肯定短詞）。
+  const pivot = policyAt(
+    [u("韓國"), a("你該不會是要跟我聊韓國吧"), u("對了我今天去健身房")],
+    "normal",
+    false,
+    stateWith(true),
+  );
+  assertEquals(pivot.evidence.utteranceShape, "explicit_pivot");
+  assertEquals(pivot.evidence.answeredYesNo, false);
+  // 成對反例 3：同一個「對」原樣連丟兩次也不算同詞重複的收尾格。
+  assertEquals(
+    policyAt(
+      [a("你是要聊韓國吧"), u("對"), a("你是說真的吧"), u("對")],
+      "challenge",
+      true,
+      stateWith(true),
+    ).situation,
+    null,
+  );
+  // `contentUserTurnCount` 那支 caller（`utteranceShapeOf(t, false)`）不受影響：
+  // 少一個參數＝逐字沿用 4.3 形狀，「對」仍然算內容、不是 reaction。
+  assertEquals(utteranceShapeOf("對", false), "bare_fragment");
+  assertEquals(utteranceShapeOf("對", true), "answer_candidate");
+  assertEquals(utteranceShapeOf("對", false, true), "answer_candidate");
+});
+
+Deno.test("Phase 4.5a 刀 3：收尾格連三輪 → check_out → 已讀；他給內容才「回來但冷」", () => {
+  // 逐輪走 production 的兩步（policy → nextConversationAgencyState），
+  // 分類器訊號固定成「她一直在澄清、玩家一直沒接上」。
+  const turns: PracticeTurn[] = [];
+  let state: ConversationAgencyState | null = null;
+  const step = (next: PracticeTurn[]) => {
+    turns.push(...next);
+    const evidence = detectAgencyEvidence(turns, state);
+    const decision = agencyPolicyFor(
+      evidence,
+      agencyThresholdsFor("challenge", true),
+    );
+    state = nextConversationAgencyState(state, decision, {
+      coherence: "disconnected",
+      aiChallengedThisTurn: true,
+    });
+    return decision;
+  };
+  // Eric 真機序列：韓國 → 日本 → 清邁 → 哈哈 → 阿布達比 → …
+  // 第 1 輪：無前文裸詞 → bounded；`ask_intent` 都還沒強制，streak 不動。
+  const s1 = step([u("韓國")]);
+  assertEquals(s1.allowedActSetId, "fragment_no_context_v1");
+  assertEquals(state!.lowValueStreak, undefined);
+  // 第 2／3 輪：forced `challenge_relevance` 也算不收斂（CTO 2026-09-05 擴大
+  // 入口），streak 0→1→2。
+  for (
+    const [i, [lead, token]] of ([
+      ["你在說什麼？", "日本"],
+      ["你到底在講什麼", "清邁"],
+    ] as const).entries()
+  ) {
+    const d = step([a(lead), u(token)]);
+    assertEquals(d.forcedAct, "challenge_relevance", token);
+    assertEquals(d.evidence.lowValueStreak, i, token);
+  }
+  // 第 4 輪「哈哈」：純反應詞不介入，streak **保持**（不歸零也不加）。
+  assertEquals(step([a("？"), u("哈哈")]).situation, null);
+  assertEquals(state!.lowValueStreak, 2);
+  // 第 5 輪：收尾格 → streak 到 3。
+  const loop = step([a("嗯"), u("阿布達比")]);
+  assertEquals(loop.forcedAct, "end_low_value_loop");
+  assertEquals(loop.evidence.lowValueStreak, 2);
+  // 第 6 輪：streak 已達 3 → 她先去忙了。
+  const checkOut = step([a("嗯"), u("曼谷")]);
+  assertEquals(checkOut.evidence.lowValueStreak, 3);
+  assertEquals(checkOut.forcedAct, "check_out");
+  assertEquals(checkOut.allowedActSetId, "check_out_v1");
+  assertEquals(state!.checkedOut, true);
+  // 第 7～9 輪：他又丟沒內容的東西 → 直接一則「（已讀）」，不打模型。
+  for (const token of ["馬尼拉", "銅鑼灣", "東東"]) {
+    const d = step([a("嗯"), u(token)]);
+    assertEquals(d.forcedAct, "read_only", token);
+    assertEquals(d.allowedActSetId, "read_only_v1");
+  }
+  // 第 10 輪：他終於解釋 → 回來但冷，階梯整條歸零。
+  const back = step([a("嗯"), u("我在列下個月可能去的地方啦")]);
+  assertEquals(back.evidence.utteranceShape, "self_share");
+  assertEquals(back.forcedAct, "cold_return");
+  assertEquals(back.allowedActSetId, "cold_return_v1");
+  assertEquals(back.situation, "cold_return");
+  assertEquals(state!.lastCoherence, "disconnected");
+  assertEquals(state!.checkedOut, undefined);
+  assertEquals(state!.lowValueStreak, undefined);
+});
+
+Deno.test("Phase 4.5a 刀 3：forced `ask_intent` 不算不收斂（第一個裸詞不記帳）", () => {
+  // 低容忍分人（`ambiguityTolerance <= 1`）的第一個無前文裸詞是 forced
+  // `ask_intent`——她才剛問第一次，不該被記成「又耗了一輪」。
+  const thresholds = agencyThresholdsFor("normal", false, {
+    initiative: 2,
+    topicPersistence: 2,
+    ambiguityTolerance: 1,
+    skepticism: 2,
+  });
+  const turns = [u("韓國")];
+  const d = agencyPolicyFor(detectAgencyEvidence(turns, null), thresholds);
+  assertEquals(d.forcedAct, "ask_intent");
+  const next = nextConversationAgencyState(null, d, null);
+  assertEquals(next.lowValueStreak, undefined);
+  // 成對反例：同一個位置換成 forced `challenge_relevance` 就記帳。
+  const challenged = agencyPolicyFor(
+    detectAgencyEvidence(
+      [u("韓國"), a("你在說什麼？"), u("日本")],
+      stateWith(true),
+    ),
+    agencyThresholdsFor("normal", false),
+  );
+  assertEquals(challenged.forcedAct, "challenge_relevance");
+  assertEquals(
+    nextConversationAgencyState(null, challenged, null).lowValueStreak,
+    1,
+  );
+});
+
+Deno.test("Phase 4.5a 刀 3：階梯只吃持久化狀態——standard（prev=null）永遠走不到", () => {
+  // 同一批逐字稿，standard 沒有 thread state ⇒ streak／checkedOut 恆 0／false。
+  const turns: PracticeTurn[] = [u("韓國")];
+  for (const t of ["日本", "清邁", "阿布達比", "曼谷", "馬尼拉", "銅鑼灣"]) {
+    turns.push(a("嗯"), u(t));
+  }
+  const standard = agencyPolicyFor(
+    detectAgencyEvidence(turns, null),
+    agencyThresholdsFor("challenge", true),
+  );
+  assertEquals(standard.evidence.lowValueStreak, 0);
+  assertEquals(standard.evidence.checkedOut, false);
+  assert(standard.forcedAct !== "check_out");
+  assert(standard.forcedAct !== "read_only");
+  assert(standard.forcedAct !== "cold_return");
+  // 反應詞在 checkedOut 之後也算低價值（她說要先忙了，一句「哈哈」不是接回來）。
+  const checkedOut: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 0,
+    priorChallengeIssued: true,
+    lastAgencyAct: "check_out",
+    checkedOut: true,
+  };
+  assertEquals(
+    agencyPolicyFor(
+      detectAgencyEvidence([a("我先去忙了"), u("哈哈")], checkedOut),
+      agencyThresholdsFor("challenge", false),
+    ).forcedAct,
+    "read_only",
+  );
+  // 但問句／分享／回答是非題都算內容 → cold_return（不是已讀）。
+  for (
+    const [text, lead] of [
+      ["你在忙什麼？", "我先去忙了"],
+      ["我剛剛在想事情啦", "我先去忙了"],
+      ["對", "你是不是在耍我吧"],
+      // Codex R1 P3-2：不含第一人稱的**解釋句**（`EXPLANATION_RE` 的
+      // 「因為」）在 `utteranceShapeOf` 就已經是 `self_share`，所以階梯把它
+      // 當內容——釘住這條，不要在重構時掉回 `read_only`。
+      ["因為剛剛在列旅遊清單", "我先去忙了"],
+      ["就是說剛剛那幾個地名啦", "我先去忙了"],
+    ]
+  ) {
+    assertEquals(
+      utteranceShapeOf(text, false) === "self_share" ||
+        utteranceShapeOf(text, false) === "question" ||
+        text === "對",
+      true,
+      text,
+    );
+    assertEquals(
+      agencyPolicyFor(
+        detectAgencyEvidence([a(lead), u(text)], checkedOut),
+        agencyThresholdsFor("challenge", false),
+      ).forcedAct,
+      "cold_return",
+      text,
+    );
+  }
+
+  // Codex R1 P1-3／R2 P1-2：她收尾說「（你…）我先去忙吧」，玩家回一句「好」
+  // **不得**解除 checked-out（那不是內容，她也不是在問是非題）。
+  for (
+    const lead of ["我先去忙吧", "你一直丟地名，那我先去忙吧", "那先這樣吧"]
+  ) {
+    const notUnlocked = agencyPolicyFor(
+      detectAgencyEvidence([a(lead), u("好")], checkedOut),
+      agencyThresholdsFor("challenge", false),
+    );
+    assertEquals(notUnlocked.evidence.answeredYesNo, false, lead);
+    assertEquals(notUnlocked.forcedAct, "read_only", lead);
+    assertEquals(
+      nextConversationAgencyState(checkedOut, notUnlocked, null).checkedOut,
+      true,
+      lead,
+    );
+  }
+  // 成對：真的是非問句仍然算回答了。
+  assertEquals(
+    detectAgencyEvidence([a("你是說韓國嗎？"), u("不是")], null).answeredYesNo,
+    true,
+  );
+});
+
+Deno.test("Phase 4.5a 刀 3（Codex R1 P1-2）：beginner 的 easy／normal 難度不強制結束", () => {
+  // 軌跡 a：連續三次 forced `challenge_relevance`（easy 也會 forced，
+  // `clarify_ignored_easy_v1`）→ streak 到 3，但**不得** check_out。
+  const turns: PracticeTurn[] = [];
+  let state: ConversationAgencyState | null = null;
+  const step = (next: PracticeTurn[], difficulty: "easy" | "normal") => {
+    turns.push(...next);
+    const decision = agencyPolicyFor(
+      detectAgencyEvidence(turns, state),
+      agencyThresholdsFor(difficulty, false),
+    );
+    state = nextConversationAgencyState(state, decision, {
+      coherence: "disconnected",
+      aiChallengedThisTurn: true,
+    });
+    return decision;
+  };
+  step([u("韓國")], "easy");
+  for (
+    const [lead, token] of [
+      ["你在說什麼？", "日本"],
+      ["你到底在講什麼", "清邁"],
+      ["？", "曼谷"],
+    ] as const
+  ) {
+    const d = step([a(lead), u(token)], "easy");
+    assert(d.forcedAct !== "check_out", token);
+    assert(d.forcedAct !== "read_only", token);
+  }
+  assertEquals(state!.lowValueStreak, 3);
+  assertEquals(state!.checkedOut, undefined);
+  // streak 已經滿了，再丟一則低價值仍然不得結束（easy／normal 都測）。
+  for (const difficulty of ["easy", "normal"] as const) {
+    const d = agencyPolicyFor(
+      detectAgencyEvidence([...turns, a("嗯"), u("馬尼拉")], state),
+      agencyThresholdsFor(difficulty, false),
+    );
+    assert(d.forcedAct !== "check_out", difficulty);
+    assert(d.forcedAct !== "read_only", difficulty);
+    assertEquals(
+      nextConversationAgencyState(state, d, null).checkedOut,
+      undefined,
+      difficulty,
+    );
+  }
+  // 軌跡 b（防禦性）：thread row 被直接種成 streak 3／checkedOut true，
+  // easy／normal 一樣不得強制結束；換成挑戰或 Game 才會。
+  const seeded: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 3,
+    priorChallengeIssued: true,
+    lastAgencyAct: "end_low_value_loop",
+    lowValueStreak: 3,
+    checkedOut: true,
+  };
+  for (const difficulty of ["easy", "normal"] as const) {
+    const d = agencyPolicyFor(
+      detectAgencyEvidence([u("韓國"), a("嗯"), u("東京")], seeded),
+      agencyThresholdsFor(difficulty, false),
+    );
+    assert(d.forcedAct !== "check_out", difficulty);
+    assert(d.forcedAct !== "read_only", difficulty);
+  }
+  assertEquals(
+    agencyPolicyFor(
+      detectAgencyEvidence([u("韓國"), a("嗯"), u("東京")], seeded),
+      agencyThresholdsFor("challenge", false),
+    ).forcedAct,
+    "read_only",
+  );
+  assertEquals(
+    agencyPolicyFor(
+      detectAgencyEvidence([u("韓國"), a("嗯"), u("東京")], seeded),
+      agencyThresholdsFor("normal", true),
+    ).forcedAct,
+    "read_only",
+  );
+});
+
+Deno.test("Phase 4.5a 刀 3：state round-trip——舊 row 缺欄位＝0／false，壞型別整份 null", () => {
+  const base = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 2,
+    priorChallengeIssued: true,
+    lastAgencyAct: "hold_position",
+  };
+  const old = parseConversationAgencyState({ conversationAgency: base });
+  assertEquals(old?.lowValueStreak, undefined);
+  assertEquals(old?.checkedOut, undefined);
+  assertEquals(
+    detectAgencyEvidence([u("韓國")], old).lowValueStreak,
+    0,
+  );
+  assertEquals(detectAgencyEvidence([u("韓國")], old).checkedOut, false);
+  // 字面 null 視同缺席（同 R2 U-8）；0／false 不落欄位。
+  for (
+    const raw of [
+      { ...base, lowValueStreak: null, checkedOut: null },
+      { ...base, lowValueStreak: 0, checkedOut: false },
+    ]
+  ) {
+    const parsed = parseConversationAgencyState({ conversationAgency: raw });
+    assert(parsed !== null, JSON.stringify(raw));
+    assert(!("lowValueStreak" in parsed!), JSON.stringify(raw));
+    assert(!("checkedOut" in parsed!), JSON.stringify(raw));
+  }
+  assertEquals(
+    parseConversationAgencyState({
+      conversationAgency: { ...base, lowValueStreak: 2, checkedOut: true },
+    }),
+    { ...base, lowValueStreak: 2, checkedOut: true } as ConversationAgencyState,
+  );
+  // Codex R1 P2-2：讀回來就 clamp 在 3（外部寫入的 4／999 不得原樣進 state）。
+  for (const raw of [4, 999]) {
+    assertEquals(
+      parseConversationAgencyState({
+        conversationAgency: { ...base, lowValueStreak: raw },
+      })?.lowValueStreak,
+      3,
+      String(raw),
+    );
+  }
+  for (
+    const bad of [
+      { ...base, lowValueStreak: "2" },
+      { ...base, lowValueStreak: -1 },
+      { ...base, lowValueStreak: 1.5 },
+      { ...base, checkedOut: "true" },
+    ]
+  ) {
+    assertEquals(
+      parseConversationAgencyState({ conversationAgency: bad }),
+      null,
+      JSON.stringify(bad),
+    );
+  }
+});
+
+Deno.test("Phase 4.5a（Codex R2 P3-1）：`allowsCheckOut` 與難度表的 threshold 在整個矩陣上恆等", () => {
+  const difficulties = ["easy", "normal", "challenge"] as const;
+  const profiles = GIRL_PROFILES.filter((g) => g.rarity === "sr");
+  assertEquals(profiles.length, 20);
+  for (const difficulty of difficulties) {
+    for (const isGame of [false, true]) {
+      const expected = difficulty === "challenge" || isGame;
+      assertEquals(allowsCheckOut(difficulty, isGame), expected);
+      for (const girl of profiles) {
+        const profile = agencyProfileFor(girl.profileId);
+        for (const p of [null, profile]) {
+          const t = agencyThresholdsFor(difficulty, isGame, p);
+          const label = `${difficulty}/${isGame}/${girl.profileId}/${
+            p ? "profile" : "null"
+          }`;
+          assertEquals(t.allowsCheckOut, expected, label);
+          // 兩個欄位語意不同但值恆等（漂移就會炸在這裡）。
+          assertEquals(t.forceEndLoopBeforeChallenge, expected, label);
+          // 種好 streak 3／checkedOut 的完整矩陣：只有 expected 才強制結束。
+          const seeded: ConversationAgencyState = {
+            version: 1,
+            lastCoherence: "repetitive",
+            unresolvedCount: 3,
+            priorChallengeIssued: true,
+            lastAgencyAct: "end_low_value_loop",
+            lowValueStreak: 3,
+            checkedOut: true,
+          };
+          const d = agencyPolicyFor(
+            detectAgencyEvidence([u("韓國"), a("嗯"), u("東京")], seeded),
+            t,
+          );
+          assertEquals(d.forcedAct === "read_only", expected, label);
+          const notCheckedOut = agencyPolicyFor(
+            detectAgencyEvidence(
+              [u("韓國"), a("嗯"), u("東京")],
+              { ...seeded, checkedOut: false },
+            ),
+            t,
+          );
+          assertEquals(
+            notCheckedOut.forcedAct === "check_out",
+            expected,
+            label,
+          );
+        }
+      }
+    }
+  }
+});
+
+Deno.test("Phase 4.5b：`standardAgencyClassifierEnabled` fail-closed——只有 `true` ＋ agency on ＋ standard 才成立", () => {
+  assertEquals(
+    standardAgencyClassifierEnabled("true", "on", "standard"),
+    true,
+  );
+  for (const flag of [undefined, "", "off", "1", "shadow", "亂填", "TRUE"]) {
+    assertEquals(
+      standardAgencyClassifierEnabled(flag, "on", "standard"),
+      false,
+      `flag=${flag}`,
+    );
+  }
+  for (const mode of ["off", "shadow"] as const) {
+    assertEquals(
+      standardAgencyClassifierEnabled("true", mode, "standard"),
+      false,
+      `agency=${mode}`,
+    );
+  }
+  for (const practiceMode of ["beginner", "game", undefined, null]) {
+    assertEquals(
+      standardAgencyClassifierEnabled("true", "on", practiceMode),
+      false,
+      `practiceMode=${practiceMode}`,
+    );
+  }
+});
+
+Deno.test("Phase 4.5b：階梯的難度門檻不看 practiceMode——standard 在挑戰難度會 check_out／read_only，easy／normal 不會", () => {
+  // `allowsCheckOut(difficulty, isGame)` 是唯一的門檻（上面那支全矩陣測試已經
+  // 把它與 `agencyThresholdsFor` 釘成恆等）。standard 之前走不到階梯的原因是
+  // **沒有持久化狀態**（`prev === null` → streak 0／checkedOut false），不是
+  // 這個 predicate 排除了 standard；Phase 4.5b 讓 standard 也有狀態之後，
+  // 同一份難度規則直接生效。
+  const seeded: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 3,
+    priorChallengeIssued: true,
+    lastAgencyAct: "end_low_value_loop",
+    lowValueStreak: 3,
+    checkedOut: true,
+  };
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "東東" },
+    { role: "ai", text: "東東是誰" },
+    { role: "user", text: "阿布達比" },
+  ];
+  const evidence = detectAgencyEvidence(turns, seeded);
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const decision = agencyPolicyFor(
+      evidence,
+      agencyThresholdsFor(difficulty, false, null),
+    );
+    assertEquals(
+      decision.forcedAct === "read_only",
+      difficulty === "challenge",
+      difficulty,
+    );
+  }
+  // Game 走同一支 predicate（`isGame` 直接套挑戰門檻）。
+  assertEquals(
+    agencyPolicyFor(evidence, agencyThresholdsFor("easy", true, null))
+      .forcedAct,
+    "read_only",
+  );
+});
+
+Deno.test("Phase 4.5g：check_out 的結構後檢查——問句／多則／超長命中，合格的收尾句放行", () => {
+  const checkOut = appliedAgency(
+    [u("東東"), a("東東是誰"), u("阿布達比")],
+  ) as AgencyApplication;
+  // 這支測試不依賴 policy 真的算出 check_out（那是 4.5a 階梯的測試），
+  // 直接把 forcedAct 換成 check_out，只驗這一支後檢查的判準。
+  const agency: AgencyApplication = {
+    ...checkOut,
+    decision: { ...checkOut.decision, forcedAct: "check_out" },
+  };
+  // 合格：一則、短、沒有問句標記。
+  for (const ok of ["先忙了", "我先去忙囉", "嗯，先這樣"]) {
+    assertEquals(checkOutStructuralViolation(agency, ok), false, ok);
+  }
+  // (a) 問句：帶問號、句尾助詞、不帶問號的中文問句都算。
+  for (
+    const bad of ["你在忙嗎", "那你呢", "先忙了，你之後要去哪", "先忙了?"]
+  ) {
+    assertEquals(checkOutStructuralViolation(agency, bad), true, bad);
+  }
+  // (c) 形狀：多於一則、或超過上限。
+  assertEquals(checkOutStructuralViolation(agency, "先忙了\n晚點聊"), true);
+  assertEquals(
+    checkOutStructuralViolation(agency, "先".repeat(CHECK_OUT_MAX_CHARS)),
+    false,
+  );
+  assertEquals(
+    checkOutStructuralViolation(agency, "先".repeat(CHECK_OUT_MAX_CHARS + 1)),
+    true,
+  );
+  // 空白／空字串不檢查（沒有東西可判）。
+  assertEquals(checkOutStructuralViolation(agency, "   "), false);
+  // 閘門：不是 forced check_out 的輪次一律 false，`applied=false` 也是。
+  assertEquals(checkOutStructuralViolation(checkOut, "你在忙嗎"), false);
+  assertEquals(
+    checkOutStructuralViolation({ ...agency, applied: false }, "你在忙嗎"),
+    false,
+  );
+  assertEquals(checkOutStructuralViolation(null, "你在忙嗎"), false);
 });

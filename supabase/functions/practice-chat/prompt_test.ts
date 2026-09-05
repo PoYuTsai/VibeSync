@@ -378,6 +378,32 @@ Deno.test("standard/beginner buildChatMessages never carry the Game-only acquain
   }
 });
 
+Deno.test("Phase 4.6 刀 3：game chat 的 gameSnapshot 帶 inviteStage——順風局 system 推得出 partner_window_close／direct_invite_low_pressure", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "你講話很有畫面欸" },
+    { role: "ai", text: "那你倒是說說看看到什麼" },
+    { role: "user", text: "看到你在測我穩不穩，我先不照劇本走" },
+  ];
+  const sysFor = (temperatureScore: number, familiarityScore: number) =>
+    buildChatMessages(turns, profile, {
+      practiceMode: "game",
+      temperatureScore,
+      familiarityScore,
+      partnerState: { mood: "comfortable", innerThought: "他接得穩。" },
+    })[0].content;
+  // 成熟度 85×0.6＋75×0.4＝81 ≥ 80 → partner_window → 接住她給的窗口。
+  assert(
+    sysFor(85, 75).includes("speedInviteDirection: partner_window_close"),
+    sysFor(85, 75),
+  );
+  // 成熟度 70×0.6＋60×0.4＝66 ≥ 65 → direct_invite_ready → 低壓明確邀約。
+  assert(
+    sysFor(70, 60).includes("speedInviteDirection: direct_invite_low_pressure"),
+    sysFor(70, 60),
+  );
+});
+
 Deno.test("game buildChatMessages includes social-game FSM and persona strategy for every rarity", () => {
   const srProfile = resolvePracticeProfile({ profileId: "practice_girl_004" });
   const nonSrProfile = resolvePracticeProfile({
@@ -738,6 +764,37 @@ Deno.test("game debrief includes拆盤 guidance and mode-specific object schema"
   assertEquals(system.includes('"gameBreakdown": null'), false);
   assertEquals(user.includes("從 null 改成物件"), false);
   assertEquals(system.includes('"phase"'), false);
+});
+
+Deno.test("Phase 4.6 刀 1：game debrief 的 fresh snapshot 帶 inviteStage——順風局推得出 partner_window_close／direct_invite_low_pressure", () => {
+  const profile = resolvePracticeProfile({ profileId: "practice_girl_004" });
+  const turns = [
+    { role: "user" as const, text: "你講話很有畫面欸" },
+    { role: "ai" as const, text: "那你倒是說說看看到什麼" },
+    { role: "user" as const, text: "看到你在測我穩不穩，我先不照劇本走" },
+  ];
+  const debriefFor = (temperatureScore: number, familiarityScore: number) =>
+    buildDebriefMessages(turns, profile, {
+      practiceMode: "game",
+      temperatureScore,
+      familiarityScore,
+      partnerState: { mood: "comfortable", innerThought: "他接得穩。" },
+      // 沒有 ledger：debrief 只能靠 fresh snapshot，漏帶 inviteStage 就整條
+      // 邀約路線走不到（2026-08-11 handler 端同型迴歸）。
+      gameState: null,
+    })[1].content;
+  // 成熟度 85×0.6＋75×0.4＝81 ≥ 80 → partner_window → 接住她給的窗口。
+  assert(
+    debriefFor(85, 75).includes("speedInviteDirection: partner_window_close"),
+    debriefFor(85, 75),
+  );
+  // 成熟度 70×0.6＋60×0.4＝66 ≥ 65 → direct_invite_ready → 低壓明確邀約。
+  assert(
+    debriefFor(70, 60).includes(
+      "speedInviteDirection: direct_invite_low_pressure",
+    ),
+    debriefFor(70, 60),
+  );
 });
 
 Deno.test("beginner debrief keeps the null gameBreakdown schema", () => {
@@ -3180,5 +3237,86 @@ Deno.test("Phase 3.3 R2：gameFsmPriority 只在 Game 的修復優先／現實�
       partnerState: { mood: "guarded", innerThought: "" },
     }).gameFsmPriority,
     false,
+  );
+});
+
+// ── Phase 4.5b 刀 B：system 的穩定前綴（Anthropic prompt cache）────────────
+
+Deno.test("Phase 4.5b 刀 B：systemStable 是 messages[0].content 的逐位元組字首，DeepSeek 路徑一個位元都沒動", () => {
+  for (const replyStyle of [false, true]) {
+    for (const agencyMode of ["off", "on"] as const) {
+      for (const practiceMode of ["standard", "beginner", "game"] as const) {
+        const bundle = buildChatPromptBundle(
+          [
+            { role: "user", text: "東東" },
+            { role: "ai", text: "東東是誰" },
+            { role: "user", text: "阿布達比" },
+          ],
+          defaultProfile,
+          {
+            replyStyle,
+            agencyMode,
+            practiceMode,
+            temperatureScore: 40,
+            familiarityScore: 10,
+          },
+        );
+        const system = bundle.messages[0].content;
+        const label = `${practiceMode}/${replyStyle}/${agencyMode}`;
+        assert(system.startsWith(bundle.systemStable), label);
+        assert(bundle.systemStable.length > 0, label);
+        // 尾巴非空——不然拆完等於沒拆（`claudeSystemBlocks` 也會退回單一 block）。
+        assert(system.length > bundle.systemStable.length, label);
+      }
+    }
+  }
+});
+
+Deno.test("Phase 4.5b 刀 B：同一場連續兩輪的 systemStable 逐位元組相同，而且長到有機會被 Anthropic 快取", () => {
+  const base = {
+    replyStyle: true,
+    agencyMode: "on" as const,
+    practiceMode: "beginner" as const,
+    visiblePracticeThreadId: "thread-1",
+    acquaintanceOrigin: buildAcquaintanceOrigin({
+      profile: defaultProfile,
+      threadId: "thread-1",
+    }),
+  };
+  const round1 = buildChatPromptBundle(
+    [{ role: "user", text: "東東" }],
+    defaultProfile,
+    { ...base, temperatureScore: 40, familiarityScore: 10 },
+  );
+  const round2 = buildChatPromptBundle(
+    [
+      { role: "user", text: "東東" },
+      { role: "ai", text: "東東是誰" },
+      { role: "user", text: "阿布達比" },
+    ],
+    defaultProfile,
+    {
+      ...base,
+      // 這一輪的分數、心情、記憶都變了——全部落在「當輪尾巴」。
+      temperatureScore: 62,
+      familiarityScore: 31,
+      partnerState: { mood: "guarded", innerThought: "他又跳題了" },
+      memorySummary: "先前聊過她加班",
+    },
+  );
+  assertEquals(round1.systemStable, round2.systemStable);
+  // 當輪尾巴真的變了（不然上面那條是空洞的）。
+  assert(round1.messages[0].content !== round2.messages[0].content);
+
+  // 2026-09-05 更正：Haiku 4.5 的最小可快取長度是 **4,096** tokens（2048 是 Haiku 3.5），
+  // 穩定前綴約 2,400 tokens 構不到，所以這條斷言只是「前綴沒被清空」的地板，
+  // 不是「可快取」的證明（計畫檔 Phase 4.5d）。原本的粗估寫法保留如下：繁中在
+  // Claude 的 tokenizer 大致是每個字 ≳1 token，所以 2048 個 code unit 是一個
+  // 保守下界的近似，**沒有**用真的 tokenizer 量過。開旗標後要看 telemetry 的
+  // `chatModelUsage.cacheReadInputTokens`——若仍然恆為 0，下一步是把記憶摘要／
+  // 朋友圈也搬進前綴（那兩段一場之內多半不變），或者整個拆法退掉。
+  assert(
+    round1.systemStable.length >= 2048,
+    `穩定前綴只有 ${round1.systemStable.length} code units，可能構不到快取門檻`,
   );
 });

@@ -6,7 +6,7 @@ const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-6": { input: 0.003, output: 0.015 },
   // 舊版 Sonnet 4 保留：歷史 log / 在途請求計價用（2026-06-12 升級 4.6）
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
-  "claude-haiku-4-5-20251001": { input: 0.0008, output: 0.004 },
+  "claude-haiku-4-5-20251001": { input: 0.001, output: 0.005 },
 };
 
 const MAX_STORED_TEXT_LENGTH = 500;

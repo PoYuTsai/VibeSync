@@ -14,6 +14,20 @@
 //   4. `telemetry` ── 這一輪印出的每一行 `console.log`／`console.warn` JSON
 //                     （完整形狀：多一個 key、少一個 key、key 順序不同都會炸）。
 //
+// ── 唯一的例外（2026-09-05 baseline 安全修補）──────────────────────────
+// 三道可見文字守門（內部標籤外洩、L4 不安全、括號旁白）在**最後一次**生成
+// attempt 擋下時，base（`7f1d6d6c` 起）會把那段被拒絕的文字照樣送出（HTTP
+// 200 ＋ 寫帳）；修補後改成 `reply` 維持 null → `practice_generation_failed`
+// （500）、不扣額、不寫 thread。**這是與旗標無關的安全修補，四個旗標面都改變**，
+// 所以本檔的契約精確寫法是：
+//
+//   旗標未設／`off`／`shadow` 時四個面逐位元組等於 golden；**例外**是
+//   「守門在最後一次 attempt 被擋」這個形態——它是 baseline 安全修補，golden
+//   本來就不含這種輸入，不需要重印 golden。
+//
+// 那個形態由 `index_test.ts` 的「守門在最後一次 attempt 擋下時，被拒絕的文字
+// 不得送出（agency 三個 off 面）」直接守，含 base 行為的說明。
+//
 // ── 矩陣 ────────────────────────────────────────────────────────────────
 // chat：模式（standard／beginner／game）× reply-style（關／開）
 //     × thread 狀態（沒有 thread／有 replyStyle 狀態／有 agency key ＋未知 key）
@@ -68,6 +82,8 @@ import {
 const AGENCY_ENV = "PRACTICE_CONVERSATIONAL_AGENCY_ENABLED";
 /** Phase 4.4 混合模型路由旗標（harness 多枚舉的一維環境值）。 */
 const ROUTING_ENV = "PRACTICE_CHAT_MODEL_ROUTING";
+/** Phase 4.5b standard 每輪 agency 分類器旗標（harness 多枚舉的一維環境值）。 */
+const STANDARD_CLASSIFIER_ENV = "PRACTICE_STANDARD_AGENCY_CLASSIFIER";
 const STYLE_ENV = "PRACTICE_REPLY_STYLE_ENABLED";
 const TEST_ACCOUNT = { id: "user-1", email: "vibesync.test@gmail.com" };
 
@@ -446,6 +462,7 @@ async function observableDigest(
   user?: { id: string; email?: string | null },
   probe?: RunProbe,
   routingEnv?: string,
+  standardClassifierEnv?: string,
 ): Promise<ObservableDigest> {
   const fake = makeFake({
     ...c.options,
@@ -458,6 +475,9 @@ async function observableDigest(
       ...c.options.env,
       ...(agencyEnv === undefined ? {} : { [AGENCY_ENV]: agencyEnv }),
       ...(routingEnv === undefined ? {} : { [ROUTING_ENV]: routingEnv }),
+      ...(standardClassifierEnv === undefined
+        ? {}
+        : { [STANDARD_CLASSIFIER_ENV]: standardClassifierEnv }),
     },
   });
   const lines: string[] = [];
@@ -1664,6 +1684,358 @@ Deno.test({
         scrubWallClock(off[i]),
         `第 ${i + 1} 行除了允許的 key 之外必須逐位元組相同`,
       );
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.5b：PRACTICE_STANDARD_AGENCY_CLASSIFIER 未設／off／亂填時四面等價（含 agency on）；true 只有 standard chat 案例會變，且 Response 不變",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 分面寫法（沿用 Phase 4.4 加 routing 維度的做法）：
+    //   未設／`off`／亂填 → 四面全等 flag-off golden，**而且**在 agency `true`
+    //     的那條臂上也逐位元組等於「agency on ＋ 這維未設」。
+    //   `true` → 只有 `chat／standard` 的案例允許 `messages`／`rpc`／`telemetry`
+    //     不同（多一次精簡分類器呼叫、多一次 thread upsert、多幾個 telemetry
+    //     key），`response` 一律不變（分類器不改她這一輪的回覆）；其餘案例
+    //     （beginner／game／hint／debrief／draw／錯誤路徑）四面全等。
+    const changed: string[] = [];
+    for (const c of equivalenceCases()) {
+      const expected = parseGolden(c.name);
+      const agencyOn = await observableDigest(c, "true");
+      for (const env of ["off", "亂填"]) {
+        assertEquals(
+          await observableDigest(
+            c,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          expected,
+          `${c.name} / standardClassifier=${env}`,
+        );
+        assertEquals(
+          await observableDigest(
+            c,
+            "true",
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          agencyOn,
+          `${c.name} / agency=true ＋ standardClassifier=${env}`,
+        );
+      }
+      // agency 未設（＝off）時這支旗標不可能生效：`true` 也必須四面全等 golden。
+      assertEquals(
+        await observableDigest(
+          c,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "true",
+        ),
+        expected,
+        `${c.name} / agency 未設 ＋ standardClassifier=true`,
+      );
+      const on = await observableDigest(
+        c,
+        "true",
+        undefined,
+        undefined,
+        undefined,
+        "true",
+      );
+      assertEquals(on.response, agencyOn.response, `${c.name} / Response`);
+      if (digestLine(on) !== digestLine(agencyOn)) changed.push(c.name);
+    }
+    // 白名單：只有 standard 的 chat 案例會變（非空洞——名單非空且全部命中）。
+    const standardChatCases = equivalenceCases()
+      .map((c) => c.name)
+      .filter((name) => name.startsWith("chat／standard"));
+    assert(standardChatCases.length > 0);
+    assertEquals(changed.sort(), standardChatCases.slice().sort());
+  },
+});
+
+/** 一輪的原始可觀測面（不是 digest——要逐筆比欄位）。 */
+async function rawRun(
+  c: EquivalenceCase,
+  agencyEnv: string | undefined,
+  standardClassifierEnv: string | undefined,
+) {
+  const fake = makeFake({
+    ...c.options,
+    monotonicNowValues: [0],
+    env: {
+      ...c.options.env,
+      ...(agencyEnv === undefined ? {} : { [AGENCY_ENV]: agencyEnv }),
+      ...(standardClassifierEnv === undefined
+        ? {}
+        : { [STANDARD_CLASSIFIER_ENV]: standardClassifierEnv }),
+    },
+  });
+  const lines: string[] = [];
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  try {
+    console.log = (...args: unknown[]) =>
+      lines.push(args.map((a) => String(a)).join(" "));
+    console.warn = console.log;
+    await fake.handler(makeRequest(c.body));
+    await Promise.allSettled(fake.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  return {
+    deepSeek: fake.state.deepSeekCalls,
+    claude: fake.state.claudeCalls,
+    rpc: fake.state.rpcCalls.map((r) => ({ fn: r.fn, params: r.params })),
+    lines,
+  };
+}
+
+/**
+ * 新旗標開著時，`practice_chat_succeeded.conversationAgency` 唯一被允許
+ * **多出來**的 key。`coherence`／`aiChallengedThisTurn` 不在這裡——它們是
+ * generic block 本來就寫的欄位，只是值從 `null` 被覆寫成分類器判斷，
+ * 所以正規化時是**還原成 null**（見 `normalizeStandardLine`）。
+ */
+const STANDARD_ALLOWED_AGENCY_KEYS = [
+  "standardClassifier",
+  "standardClassifierDurationMs",
+  "statePersisted",
+  "stateSkipReason",
+  "sharedPastClaim",
+  "sharedPastClaimRepaired",
+  "accommodatingSelfFact",
+  "accommodatingSelfFactRepaired",
+];
+
+/** 新旗標開著時允許多出來的事件（都是既有／本刀宣告過的）。 */
+const STANDARD_ALLOWED_EVENTS = [
+  "practice_chat_learning_classifier_repaired",
+  "practice_chat_standard_agency_classifier_failed",
+];
+
+/**
+ * 把 on 那一行正規化回 off 應有的形狀（刪允許的 key、還原被覆寫的兩格）。
+ *
+ * `dropPriorChallenge`＝連 `priorChallengeIssued` 也還原。只有「thread 上真的
+ * 存過 agency 狀態」的案例需要：旗標開時 standard 才讀得到那份狀態，這一格
+ * 因此從 `false` 變成 `true`——那正是這把刀要做的事，不是洩漏。實測**只有
+ * 這一個決策欄位**會變（`policyMode`／`forcedAct`／`unresolvedCount`／
+ * `allowedActSetId` 逐格相同），所以照樣走精確差，不是整包放行。
+ */
+function normalizeStandardLine(
+  line: string,
+  dropPriorChallenge = false,
+): string {
+  const json = JSON.parse(line) as Record<string, unknown>;
+  const agency = json.conversationAgency as Record<string, unknown> | null;
+  if (agency) {
+    for (const key of STANDARD_ALLOWED_AGENCY_KEYS) delete agency[key];
+    if (Object.hasOwn(agency, "coherence")) agency.coherence = null;
+    if (Object.hasOwn(agency, "aiChallengedThisTurn")) {
+      agency.aiChallengedThisTurn = null;
+    }
+    if (dropPriorChallenge) delete agency.priorChallengeIssued;
+  }
+  return scrubWallClock(JSON.stringify(json));
+}
+
+/** 這一行是不是 `practice_chat_succeeded`。 */
+function isSucceededLine(line: string): boolean {
+  return (JSON.parse(line) as { event?: unknown }).event ===
+    "practice_chat_succeeded";
+}
+
+Deno.test({
+  name:
+    "Phase 4.5b（Codex R2 P3）：standard chat 案例在旗標 true 時的**精確差**——messages 恰好多一次精簡分類器、rpc 恰好多一次 thread upsert、telemetry 除了允許的 key 逐位元組相同",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    const cases = equivalenceCases().filter((c) =>
+      c.name.startsWith("chat／standard")
+    );
+    assert(cases.length > 0);
+    for (const c of cases) {
+      const off = await rawRun(c, "true", undefined);
+      const on = await rawRun(c, "true", "true");
+
+      // ── messages ──
+      // 前面每一筆逐欄位相同，尾端**恰好多一筆**，而且那一筆就是精簡分類器
+      // （常數與 `judgeLearningState` 同一組：450／0.2／jsonMode）。
+      assertEquals(on.deepSeek.length, off.deepSeek.length + 1, c.name);
+      assertEquals(
+        on.deepSeek.slice(0, off.deepSeek.length),
+        off.deepSeek,
+        c.name,
+      );
+      const probe = on.deepSeek[off.deepSeek.length];
+      assertEquals(probe.maxTokens, 450, c.name);
+      assertEquals(probe.temperature, 0.2, c.name);
+      assertEquals(probe.jsonMode, true, c.name);
+      assertEquals(probe.timeoutMs, 30000, c.name);
+      assertEquals(probe.messages.length, 2, c.name);
+      assert(
+        probe.messages[0].content.includes(
+          '{"coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}',
+        ),
+        `${c.name}：多出來的那一筆必須是精簡分類器`,
+      );
+      // Claude 一次都不多（standard 沒有 key，也沒進路由）。
+      assertEquals(on.claude, off.claude, c.name);
+
+      // ── rpc ──
+      // 恰好多一次 thread upsert，其餘每一筆逐欄位相同。
+      const upserts = on.rpc.filter((r) =>
+        r.fn === "upsert_practice_relationship_thread"
+      );
+      assertEquals(upserts.length, 1, `${c.name}：thread upsert 次數`);
+      assertEquals(
+        off.rpc.filter((r) => r.fn === "upsert_practice_relationship_thread")
+          .length,
+        0,
+        `${c.name}：旗標關時不得寫 thread`,
+      );
+      assertEquals(
+        on.rpc.filter((r) => r.fn !== "upsert_practice_relationship_thread"),
+        off.rpc,
+        `${c.name}：其餘 RPC 逐筆相同`,
+      );
+
+      // ── telemetry ──
+      // 剔除允許的新事件後事件名逐項相同；每一行刪掉允許的 key、把被覆寫的
+      // 兩格還原成 null 之後逐位元組相同。
+      const rest = on.lines.filter((l) => {
+        const event = String(
+          (JSON.parse(l) as { event?: unknown }).event ?? "",
+        );
+        return !STANDARD_ALLOWED_EVENTS.includes(event);
+      });
+      const eventNames = (lines: string[]) =>
+        lines.map((l) => (JSON.parse(l) as { event?: string }).event);
+      assertEquals(
+        eventNames(rest),
+        eventNames(off.lines),
+        `${c.name}：事件名`,
+      );
+      // 這個 thread fixture 上真的存過 `conversationAgency`：旗標開時 standard
+      // 才讀得到它，決策本身因此會變（本刀的目的）。那一格改成「除了
+      // `conversationAgency` 以外逐位元組相同」＋正向斷言決策真的變了。
+      const consumesState = c.name.includes("有agency與未知key");
+      for (let i = 0; i < rest.length; i++) {
+        const relax = consumesState && isSucceededLine(rest[i]);
+        assertEquals(
+          normalizeStandardLine(rest[i], relax),
+          normalizeStandardLine(off.lines[i], relax),
+          `${c.name}：第 ${i + 1} 行`,
+        );
+      }
+      if (consumesState) {
+        // 非空洞：持久化狀態真的被 standard 讀進決策，而且**只有這一格**變。
+        const pick = (lines: string[]) =>
+          JSON.parse(lines.find(isSucceededLine)!).conversationAgency as Record<
+            string,
+            unknown
+          >;
+        assertEquals(pick(off.lines).priorChallengeIssued, false, c.name);
+        assertEquals(pick(rest).priorChallengeIssued, true, c.name);
+      }
+      // 非空洞：真的多記了東西。
+      assert(
+        on.lines.join("\n").includes('"standardClassifier"'),
+        `${c.name}：沒有多記 standardClassifier`,
+      );
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.5b（Codex R1 P2-1）：新旗標 × routing／agency 的交叉——每一格都不得比單獨那一維多動任何一面",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 舊測試各自只掃一維，交叉格（例如 routing=mixed ＋ 新旗標亂填）從來沒被
+    // 跑過。這裡把兩組交叉補上，基準都是「同 agency／routing、新旗標未設」那
+    // 一輪，所以任何「兩個旗標湊在一起才發生」的洩漏都會被抓到。
+    for (const c of equivalenceCases()) {
+      // (1) routing `mixed` × 新旗標 off／亂填：必須等於「routing=mixed ＋
+      //     新旗標未設」（agency 兩種都掃：off 與 on）。
+      for (const agencyEnv of [undefined, "true"]) {
+        const mixedBase = await observableDigest(
+          c,
+          agencyEnv,
+          undefined,
+          undefined,
+          "mixed",
+        );
+        for (const std of ["off", "亂填"]) {
+          assertEquals(
+            await observableDigest(
+              c,
+              agencyEnv,
+              undefined,
+              undefined,
+              "mixed",
+              std,
+            ),
+            mixedBase,
+            `${c.name} / agency=${agencyEnv} routing=mixed standard=${std}`,
+          );
+        }
+      }
+      // (2) agency `off`／亂填 × 新旗標 `true`／off：新旗標繞不過 agency 閘門，
+      //     四面全等 golden。
+      const expected = parseGolden(c.name);
+      for (const agencyEnv of ["off", "亂填"]) {
+        for (const std of ["true", "off"]) {
+          assertEquals(
+            await observableDigest(
+              c,
+              agencyEnv,
+              undefined,
+              undefined,
+              undefined,
+              std,
+            ),
+            expected,
+            `${c.name} / agency=${agencyEnv} standard=${std}`,
+          );
+        }
+      }
+      // (3) agency `shadow` × 新旗標 `true`／off：沿用 shadow 既有契約
+      //     （messages／response／rpc 三面等於 golden，telemetry 允許不同）。
+      for (const std of ["true", "off"]) {
+        const shadow = await observableDigest(
+          c,
+          "shadow",
+          undefined,
+          undefined,
+          undefined,
+          std,
+        );
+        assertEquals(
+          {
+            messages: shadow.messages,
+            response: shadow.response,
+            rpc: shadow.rpc,
+          },
+          {
+            messages: expected.messages,
+            response: expected.response,
+            rpc: expected.rpc,
+          },
+          `${c.name} / agency=shadow standard=${std}`,
+        );
+      }
     }
   },
 });

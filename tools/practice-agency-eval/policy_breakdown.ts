@@ -29,6 +29,10 @@ interface ArtifactTurn {
   readonly reply: string;
   readonly scripted?: boolean;
   readonly probe: { readonly id: string } | null;
+  /** 這一輪 run 當下真的下的 forced act（agency off／shadow 時省略）。 */
+  readonly forcedAct?: string | null;
+  /** Phase 4.5e：這一輪真的只送出一則「（已讀）」（forced read_only 短路）。 */
+  readonly readOnlyReply?: true;
 }
 interface ArtifactSession {
   readonly profileId: string;
@@ -75,6 +79,52 @@ export function policyPathOf(
       : "bounded",
     forcedAct: decision.forcedAct ?? "-",
     actSetId: decision.allowedActSetId,
+  };
+}
+
+/**
+ * Phase 4.5e：`read_only` 的**決策頻率**與**真實已讀率**是兩個數字，要並列。
+ *
+ * production `handler.ts`（4621–4655）對 forced `read_only` 那一輪不打任何生成
+ * 模型，直接送出「（已讀）」。`run_agency.ts` 在 Phase 4.5e 之前**沒有這個
+ * 短路**，那些輪次照樣打模型、回覆是模型生成的內容——所以 4.4／4.5b／4.5c
+ * 的 Game artifact 裡 `forcedAct === "read_only"` 只代表 policy 這樣**決定**，
+ * 不代表她真的只回了一則已讀。舊 artifact 的 `replies` 會是 0，那是「這批資料
+ * 量不到」，不是「production 沒有省下呼叫」。
+ */
+export interface ReadOnlyStats {
+  /** 分母：模型真的推進過的回合（腳本前文與失敗場次不算）。 */
+  readonly rounds: number;
+  /** 決策頻率：`forcedAct === "read_only"` 的輪數。 */
+  readonly decisions: number;
+  /** 真實已讀率的分子：那一輪真的走了短路、只送出「（已讀）」。 */
+  readonly replies: number;
+  /** `decisions / rounds`；`rounds === 0` 時是 `null`，不除以零。 */
+  readonly decisionRate: number | null;
+  /** `replies / rounds`；同上。 */
+  readonly readOnlyReplyRate: number | null;
+}
+
+/** 純函式（零 IO）：測試直接餵假 artifact。 */
+export function readOnlyStatsOf(
+  artifact: { results: readonly ArtifactSession[] },
+): ReadOnlyStats {
+  let rounds = 0, decisions = 0, replies = 0;
+  for (const s of artifact.results) {
+    if (s.error) continue;
+    for (const t of s.turns) {
+      if (t.role !== "user" || t.scripted) continue;
+      rounds++;
+      if (t.forcedAct === "read_only") decisions++;
+      if (t.readOnlyReply === true) replies++;
+    }
+  }
+  return {
+    rounds,
+    decisions,
+    replies,
+    decisionRate: rounds === 0 ? null : decisions / rounds,
+    readOnlyReplyRate: rounds === 0 ? null : replies / rounds,
   };
 }
 
@@ -158,6 +208,19 @@ async function main(): Promise<void> {
   for (
     const line of tally(rows, (r) => `${r.actSetId}（${r.forcedAct}）`)
   ) console.log(line);
+  const ro = readOnlyStatsOf(artifact);
+  const pct = (v: number | null) =>
+    v === null ? "n/a" : `${(v * 100).toFixed(1)}%`;
+  console.log(
+    `\nread_only（回合 ${ro.rounds}）：決策頻率 ${ro.decisions}（${
+      pct(ro.decisionRate)
+    }）｜**真實已讀率** ${ro.replies}（${pct(ro.readOnlyReplyRate)}）`,
+  );
+  if (ro.decisions > 0 && ro.replies === 0) {
+    console.log(
+      "　└ 這份 artifact 是 Phase 4.5e 短路之前跑的：那些輪次照樣打了模型、回覆是模型生成的內容，read_only 只是決策頻率。",
+    );
+  }
   console.log("\n情境 × policy 路徑 | n | 命中 | 比例");
   for (
     const line of tally(rows, (r) => `${r.scenarioId} × ${r.path}`)

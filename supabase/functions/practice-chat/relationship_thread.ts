@@ -39,6 +39,12 @@ const PRACTICE_MODES: readonly PracticeLearningMode[] = [
 
 export interface PracticeRelationshipThreadState {
   memorySummary?: string | null;
+  /**
+   * Phase 4.5b：`relationship_score` 也要讀回來。RPC 的 `ON CONFLICT DO UPDATE`
+   * 對這一欄是 `= EXCLUDED`（不是 COALESCE），所以 standard 那條新的寫入路徑
+   * 不把既有值原樣帶回就等於把 beginner 累積的分數清成 NULL。
+   */
+  relationshipScore?: number | null;
   partnerState?: PartnerState | null;
   temperatureScore?: number | null;
   familiarityScore?: number | null;
@@ -103,6 +109,7 @@ export function parseRelationshipThreadRow(
   return {
     memorySummary: str(row.memory_summary, 1000),
     partnerState: partnerMood ? { mood: partnerMood, innerThought } : null,
+    relationshipScore: score(row.relationship_score),
     temperatureScore: score(row.temperature_score),
     familiarityScore: score(row.familiarity_score),
     profileId: str(row.profile_id, 80),
@@ -126,11 +133,16 @@ export function buildRelationshipThreadRpcParams(opts: {
   visibleThreadId: string;
   profileId?: string | null;
   practiceMode: PracticeLearningMode;
-  relationshipScore: number;
+  /**
+   * Phase 4.5b：standard 那條路徑沒有邀約成熟度可算，只能把既有 row 的值
+   * 原樣帶回（沒有既有 row 時是 `null`＝建立一列分數留空的 thread）。
+   */
+  relationshipScore: number | null;
   temperatureScore?: number | null;
   familiarityScore?: number | null;
   partnerState?: PartnerState | null;
-  inviteStage: InviteStage;
+  /** 同上：standard 沒有階梯可算，`null`＝不覆寫（RPC 對這一欄是 COALESCE）。 */
+  inviteStage: InviteStage | null;
   memorySummary?: string | null;
   aiTurnCount: number;
   /** reply-style-v1：只有 style 層真的跑了才帶；省略＝recent_facts 與舊版逐字相同。 */
@@ -168,10 +180,9 @@ export function buildRelationshipThreadRpcParams(opts: {
     p_visible_thread_id: opts.visibleThreadId,
     p_profile_id: opts.profileId ?? null,
     p_practice_mode: opts.practiceMode,
-    p_relationship_score: Math.max(
-      0,
-      Math.min(100, Math.round(opts.relationshipScore)),
-    ),
+    p_relationship_score: opts.relationshipScore === null
+      ? null
+      : Math.max(0, Math.min(100, Math.round(opts.relationshipScore))),
     p_temperature_score: opts.temperatureScore ?? null,
     p_familiarity_score: opts.familiarityScore ?? null,
     p_partner_mood: opts.partnerState?.mood ?? null,
@@ -182,7 +193,9 @@ export function buildRelationshipThreadRpcParams(opts: {
       ...preservedRecentFacts,
       source: "practice_chat",
       aiTurnCount: opts.aiTurnCount,
-      inviteStage: opts.inviteStage,
+      // `null`（Phase 4.5b 的 standard 路徑）＝不覆寫既有的 key；既有呼叫端
+      // 一律傳非 null，payload 逐位元組不變。
+      ...(opts.inviteStage ? { inviteStage: opts.inviteStage } : {}),
       ...(opts.replyStyleState
         ? { [REPLY_STYLE_STATE_KEY]: opts.replyStyleState }
         : {}),

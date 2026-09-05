@@ -164,6 +164,9 @@ export function debriefAgencyLedgerFor(
     );
     state = nextConversationAgencyState(state, decision, null);
     if (decision.situation === null) continue;
+    // Phase 4.5a 刀 3：`cold_return` 是「他終於給了內容、她冷冷接一句」，不是
+    // 又一輪沒接上——不進修復輪的帳（否則 Hint／Debrief 會多算一輪）。
+    if (decision.situation === "cold_return") continue;
     if (decision.situation === "ambiguous_fragment") fragmentTurns += 1;
     else if (decision.situation === "abrupt_topic_shift") topicShiftTurns += 1;
     else loopTurns += 1;

@@ -180,6 +180,29 @@ void main() {
       expect(r.temperature, isNull);
     });
 
+    test('Phase 4.5c：partnerStatus 白名單解析（缺席／不認得的值一律 null）',
+        () async {
+      Future<String?> statusFor(Object? raw) async {
+        final svc = serviceReturning(200, {
+          'reply': '先這樣囉',
+          'aiTurnCount': 1,
+          'sessionComplete': false,
+          'costDeducted': 1,
+          if (raw != null) 'partnerStatus': raw,
+        });
+        final r = await svc.sendMessage(
+            sessionId: 's', profile: profile, turns: turns);
+        return r.partnerStatus;
+      }
+
+      expect(await statusFor('checked_out'), 'checked_out');
+      expect(await statusFor('read_only'), 'read_only');
+      // key 不存在（絕大多數的輪次）＋ server 之後多出新值／型別怪的值。
+      expect(await statusFor(null), isNull);
+      expect(await statusFor('未來新值'), isNull);
+      expect(await statusFor(1), isNull);
+    });
+
     test('sendMessage parses partnerState tracker payload', () async {
       final svc = serviceReturning(200, {
         'reply': '嗯？聽起來你今天很忙。',

@@ -13,6 +13,7 @@ import {
   detectTurnSignals,
   planTurnResponse,
   type PolicyEvidence,
+  type PolicyStance,
   policyStanceFor,
   renderTurnPlan,
 } from "./turn_response_plan.ts";
@@ -1629,4 +1630,221 @@ Deno.test("Phase 4.3：clarify_ignored 的難度口氣接在 act 說明後面；
   );
   assert(hold.startsWith("維持你剛才的保留"));
   assert(!hold.includes("；直接問他到底在講什麼"));
+});
+
+// ── Phase 4.5a 刀 2：「（已讀）」冷回應（Eric 2026-09-05 拍板）──────────────
+Deno.test("Phase 4.5a 刀 2：只有挑戰／Game 的收尾格與連續越界才給「（已讀）」", () => {
+  const style = styles[0];
+  // 收尾格：同一個詞原樣再丟一次 → forced end_low_value_loop。
+  const loopTurns = [u("韓國"), a("蛤"), u("韓國")];
+  const planFor = (
+    turns: PracticeTurn[],
+    evidence: PolicyEvidence,
+    mode: AgencyMode = "on",
+  ) => {
+    const agency = computeAgencyDecision({
+      turns,
+      agencyMode: mode,
+      situation: classifySituation(
+        detectTurnSignals(turns),
+        policyStanceFor(detectTurnSignals(turns), evidence),
+      ),
+      difficulty: evidence.difficulty,
+      isGame: evidence.practiceMode === "game",
+    });
+    return {
+      plan: planTurnResponse({ turns, style, evidence, seedKey: "s", agency }),
+      agency,
+    };
+  };
+  const challenge = planFor(loopTurns, standard({ difficulty: "challenge" }));
+  assertEquals(challenge.agency?.decision.forcedAct, "end_low_value_loop");
+  assertEquals(challenge.plan.readOnlyAllowed, true);
+  assert(
+    renderTurnPlan(challenge.plan, style, challenge.agency).includes(
+      "（已讀）",
+    ),
+  );
+  // Game 走挑戰門檻，同樣給。
+  assertEquals(
+    planFor(loopTurns, standard({ practiceMode: "game" })).plan.readOnlyAllowed,
+    true,
+  );
+  // easy／normal 不給——計畫行一個「已讀」都不能出現。
+  for (const difficulty of ["easy", "normal"] as const) {
+    const soft = planFor(loopTurns, standard({ difficulty }));
+    assertEquals(soft.plan.readOnlyAllowed, undefined, difficulty);
+    assert(
+      !renderTurnPlan(soft.plan, style, soft.agency).includes("已讀"),
+      difficulty,
+    );
+  }
+  // 旗標 off／shadow：整個欄位不存在（逐字沿用 4.4）。
+  for (const mode of ["off", "shadow"] as const) {
+    assertEquals(
+      planFor(loopTurns, standard({ difficulty: "challenge" }), mode).plan
+        .readOnlyAllowed,
+      undefined,
+      mode,
+    );
+  }
+  // 越界：第 1 次不給，連續第 2 次才給（agency 在越界輪不介入，走 planner 自己的
+  // stance＋逐字稿計數）。
+  const once = [u("傳一張泳裝照來看看")];
+  const twice = [...once, a("不要這樣講"), u("那內衣照也可以啊")];
+  const boundaryPlan = (turns: PracticeTurn[]) =>
+    planFor(turns, standard({ difficulty: "challenge" }));
+  assertEquals(boundaryPlan(once).plan.situation, "boundary");
+  assertEquals(boundaryPlan(once).plan.readOnlyAllowed, undefined);
+  assertEquals(boundaryPlan(twice).plan.situation, "boundary");
+  assertEquals(boundaryPlan(twice).plan.readOnlyAllowed, true);
+});
+
+Deno.test("Phase 4.5a 刀 3：階梯三格的計畫行——冷回、先忙、已讀不打模型", () => {
+  const style = styles[0];
+  const turns = [u("韓國"), a("嗯"), u("東京")];
+  const render = (forcedAct: "cold_return" | "check_out", setId: string) => {
+    const agency = {
+      decision: {
+        ...agencyPolicyFor(
+          detectAgencyEvidence(turns),
+          agencyThresholdsFor(
+            "normal",
+            false,
+          ),
+        ),
+        situation: "ambiguous_fragment" as const,
+        policyMode: "forced" as const,
+        forcedAct,
+        allowedActs: [forcedAct],
+        allowedActSetId: setId,
+      },
+      applied: true,
+      enabled: true,
+      profile: null,
+    };
+    const plan = planTurnResponse({
+      turns,
+      style,
+      evidence: standard(),
+      seedKey: "s",
+      agency,
+    });
+    return { text: renderTurnPlan(plan, style, agency), plan };
+  };
+  const cold = render("cold_return", "cold_return_v1");
+  assert(cold.text.includes("你已經冷掉了"));
+  assert(cold.text.includes("回 1 則，短，不主動問他問題。"));
+  // 階梯形狀行取代 clarify-only 形狀行（那條是「只問清楚」，不是「冷冷接一句」）。
+  assert(!cold.text.includes("不替他補你猜的意思"));
+  const out = render("check_out", "check_out_v1");
+  assert(out.text.includes("先去忙"));
+  assert(out.text.includes("語氣冷，不解釋原因"));
+  // 三個 act 說明都不含範例台詞（報告 §13 第 8 點）。
+  for (const t of [cold.text, out.text]) assert(!t.includes("我先忙了"));
+});
+
+// ── Phase 4.5c 刀 1：已讀授權的第二個入口與 stance 同源 ────────────────────
+Deno.test("Phase 4.5c 刀 1：gameGreasy／userOverEscalated 連續兩則也給「（已讀）」", () => {
+  const style = styles[0];
+  const planFor = (
+    turns: PracticeTurn[],
+    evidence: PolicyEvidence,
+    mode: AgencyMode = "on",
+  ) => {
+    const signals = detectTurnSignals(turns);
+    const agency = computeAgencyDecision({
+      turns,
+      agencyMode: mode,
+      situation: classifySituation(signals, policyStanceFor(signals, evidence)),
+      difficulty: evidence.difficulty,
+      isGame: evidence.practiceMode === "game",
+    });
+    return planTurnResponse({ turns, style, evidence, seedKey: "s", agency });
+  };
+  // 兩則都命中 `looksOverEscalated`，但**都不**命中 `BOUNDARY_RE`——4.5a 的
+  // `trailingBoundaryTurns` 在這裡恆為 0。
+  const once = [u("我好想親妳")];
+  const twice = [...once, a("不要這樣"), u("那今晚去我家好不好")];
+  for (const text of ["我好想親妳", "那今晚去我家好不好"]) {
+    assertEquals(detectTurnSignals([u(text)]).boundaryLike, false, text);
+  }
+
+  // (1) userOverEscalated：連續兩則 → 授權；單一則 → 沒有。
+  const overEscalated = standard({
+    difficulty: "challenge",
+    userOverEscalated: true,
+  });
+  assertEquals(planFor(once, overEscalated).situation, "boundary");
+  assertEquals(planFor(once, overEscalated).readOnlyAllowed, undefined);
+  assertEquals(planFor(twice, overEscalated).situation, "boundary");
+  assertEquals(planFor(twice, overEscalated).readOnlyAllowed, true);
+
+  // (2) gameGreasy（Game 走挑戰門檻）：同樣連續兩則才給。
+  const greasy = standard({ practiceMode: "game", gameGreasy: true });
+  assertEquals(planFor(once, greasy).readOnlyAllowed, undefined);
+  assertEquals(planFor(twice, greasy).readOnlyAllowed, true);
+
+  // (3) boundaryLike（4.5a 既有入口）不變。
+  const boundary = standard({ difficulty: "challenge" });
+  const boundaryTwice = [
+    u("傳一張泳裝照來看看"),
+    a("不要這樣講"),
+    u("那內衣照也可以啊"),
+  ];
+  assertEquals(planFor(boundaryTwice, boundary).readOnlyAllowed, true);
+
+  // easy／normal（非 Game）一律不給——難度門檻不因訊號變寬而鬆掉。
+  for (const difficulty of ["easy", "normal"] as const) {
+    assertEquals(
+      planFor(twice, standard({ difficulty, userOverEscalated: true }))
+        .readOnlyAllowed,
+      undefined,
+      difficulty,
+    );
+  }
+  // 旗標 off／shadow：整個欄位不存在。
+  for (const mode of ["off", "shadow"] as const) {
+    assertEquals(
+      planFor(twice, overEscalated, mode).readOnlyAllowed,
+      undefined,
+      mode,
+    );
+  }
+});
+
+Deno.test("Phase 4.6 Codex R2：刀 3 修正後的成熟邀約方向仍壓不過拒絕／防備／修復／越界優先序", () => {
+  // 刀 3 讓第一場（沒 ledger）的 game 邀約輪拿得到 direct_invite_low_pressure。
+  // 這裡釘住 `policyStanceFor` 的順序：那個方向只在「沒有更高優先的證據」時
+  // 才把 stance 拉到 open；順風控制組之外，每一個高優先條件都必須壓過它。
+  const s = detectTurnSignals(invite);
+  const mature = (over: Partial<PolicyEvidence> = {}) =>
+    standard({
+      practiceMode: "game",
+      partnerMood: "comfortable",
+      inviteStage: "direct_invite_ready",
+      gameInviteDirection: "direct_invite_low_pressure",
+      ...over,
+    });
+  const control = policyStanceFor(s, mature());
+  assertEquals(control, "open");
+  assertEquals(classifySituation(s, control), "mature_invite");
+  const cases: ReadonlyArray<
+    [string, Partial<PolicyEvidence>, PolicyStance, string]
+  > = [
+    ["明確拒絕過", { priorDecline: true }, "decline", "early_invite"],
+    ["guarded", { partnerMood: "guarded" }, "hold", "early_invite"],
+    ["annoyed", { partnerMood: "annoyed" }, "hold", "early_invite"],
+    ["修復優先", { gameRepairPriority: true }, "hold", "early_invite"],
+    ["油膩", { gameGreasy: true }, "boundary", "boundary"],
+    ["玩家越界", { userOverEscalated: true }, "boundary", "boundary"],
+  ];
+  for (const [label, over, stance, situation] of cases) {
+    const got = policyStanceFor(s, mature(over));
+    assertEquals(got, stance, label);
+    assertEquals(classifySituation(s, got), situation, label);
+  }
+  // 現實旗標：拉到 cautious，邀約輪照樣不 open。
+  const flagged = policyStanceFor(s, mature({ gameRealityFlagCount: 1 }));
+  assertEquals(flagged === "open", false, "現實旗標");
 });

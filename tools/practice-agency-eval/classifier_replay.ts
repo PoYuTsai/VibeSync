@@ -178,21 +178,21 @@ async function main() {
           { heatScore: 40, familiarityScore: 10 },
           classification,
         );
-        const { judgement: capped, capApplied } = applyCoherenceDeltaCap(
-          judgement,
-          40,
-          10,
-          classification.coherence ?? null,
-          {
+        const { judgement: capped, capApplied } = applyCoherenceDeltaCap({
+          judgement: judgement,
+          currentHeat: 40,
+          currentFamiliarity: 10,
+          coherence: classification.coherence ?? null,
+          structural: {
             // 回放沒有真的跨輪 agency state，這兩個結構欄位只是佔位——
             // cap 現在以分類器的 coherence 為準（Codex round-2 P1-1），
             // 結構近似只在分類器沒給 coherence 時才會被用到。
             repeatedExactToken: false,
             unresolvedCount: 0,
           },
-          classification.sharedPastClaim,
-          classification.accommodatingSelfFact,
-        );
+          sharedPastClaim: classification.sharedPastClaim,
+          accommodatingSelfFact: classification.accommodatingSelfFact,
+        });
         rows.push({
           scenarioId: job.scenarioId,
           probeId: job.probeId,

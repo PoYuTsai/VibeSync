@@ -686,7 +686,31 @@ export function rejectL4UnsafeVisibleText(
 // 「杯具（悲劇）」這種註解不算。
 const STAGE_DIRECTION_RE = /^\s*[（(【][^）)】\n]{1,20}[）)】]/u;
 
-export function hasStageDirection(value: string): boolean {
+/**
+ * conversation-agency-v1 Phase 4.5a 刀 2：「（已讀）」是**產品行為本身**
+ * （Eric 2026-09-05：最冷的那一格她可以只回一個已讀），不是模型自己演旁白。
+ * 只放行**整則恰好等於**「（已讀）」／「(已讀)」的泡泡；「（我笑了）」
+ * 「（已讀）不好意思」都照舊剝掉。
+ */
+// Codex R1 P2-1：契約是「**整則**恰好等於」，所以判斷對整段（去頭尾空白）做，
+// 不是逐行——「（已讀）\n哈哈」「哈哈\n（已讀）」都不豁免。左右括號也必須成對，
+// 兩個完整字面分支，不用會接受「（已讀)」的字元類。
+const READ_ONLY_REPLY_LITERALS: readonly string[] = ["（已讀）", "(已讀)"];
+
+/** 這一則回覆整則就是「（已讀）」。守門白名單與 telemetry 共用同一個判準。 */
+export function hasReadOnlyReply(value: string): boolean {
+  return READ_ONLY_REPLY_LITERALS.includes(value.trim());
+}
+
+export function hasStageDirection(
+  value: string,
+  /**
+   * 這一輪**被授權**回已讀才傳 true（agency on ＋ planner 的
+   * `readOnlyAllowed`／forced `read_only`）；其餘一律 false＝逐字沿用舊行為。
+   */
+  allowReadOnly = false,
+): boolean {
+  if (allowReadOnly && hasReadOnlyReply(value)) return false;
   return value.split("\n").some((line) => STAGE_DIRECTION_RE.test(line));
 }
 
@@ -694,7 +718,12 @@ export function hasStageDirection(value: string): boolean {
  * 修補優先：剝掉每則開頭的括號旁白，剝完空的則丟掉。整段剝到空才丟 errorCode
  * 讓呼叫端重試——直接退回重試在 run8 量到 0.8% 場次兩次都中而整場失敗。
  */
-export function stripStageDirections(value: string, errorCode: string): string {
+export function stripStageDirections(
+  value: string,
+  errorCode: string,
+  allowReadOnly = false,
+): string {
+  if (allowReadOnly && hasReadOnlyReply(value)) return value.trim();
   const lines = value.split("\n").map((line) =>
     line.replace(STAGE_DIRECTION_STRIP_RE, "").trimEnd()
   );

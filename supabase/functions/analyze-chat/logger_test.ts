@@ -16,11 +16,11 @@ Deno.test("calculateCost includes prompt cache writes and reads", () => {
   );
 });
 
-Deno.test("Sonnet 5 token cost is 2.5x Haiku", () => {
+Deno.test("Sonnet 5 token cost is 2x Haiku 4.5（官方牌價 $2／$10 vs $1／$5）", () => {
   const sonnet = calculateCost("claude-sonnet-5", 1000, 1000);
   const haiku = calculateCost("claude-haiku-4-5-20251001", 1000, 1000);
 
-  assertEquals(sonnet / haiku, 2.5);
+  assertEquals(sonnet / haiku, 2);
 });
 
 Deno.test("unknown model IDs use conservative Sonnet pricing", () => {

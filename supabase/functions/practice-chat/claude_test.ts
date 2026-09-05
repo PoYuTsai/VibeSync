@@ -3,7 +3,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { callClaude } from "./claude.ts";
+import { callClaude, claudeSystemBlocks } from "./claude.ts";
 
 Deno.test("callClaude maps practice messages to the Messages API", async () => {
   const originalFetch = globalThis.fetch;
@@ -570,4 +570,83 @@ Deno.test("callClaude：回應沒有 usage 欄位時 onUsage 零次（沒有帳�
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+// ── Phase 4.5b 刀 B：system cache block 拆法 ───────────────────────────────
+
+Deno.test("Phase 4.5b：claudeSystemBlocks 不帶前綴時逐位元組沿用單一 block 的舊行為", () => {
+  assertEquals(claudeSystemBlocks(""), "");
+  assertEquals(claudeSystemBlocks("", "abc"), "");
+  const single = [{
+    type: "text",
+    text: "人設\n\n當輪",
+    cache_control: { type: "ephemeral" },
+  }];
+  assertEquals(claudeSystemBlocks("人設\n\n當輪"), single);
+  // 不是字首、整段相等、比 system 長——三種不吻合都退回舊行為（絕不重組字串）。
+  assertEquals(claudeSystemBlocks("人設\n\n當輪", "當輪"), single);
+  assertEquals(claudeSystemBlocks("人設\n\n當輪", "人設\n\n當輪"), single);
+  assertEquals(claudeSystemBlocks("人設\n\n當輪", "人設\n\n當輪X"), single);
+  assertEquals(claudeSystemBlocks("人設\n\n當輪", ""), single);
+});
+
+Deno.test("Phase 4.5b：帶前綴時拆成兩個 block——前綴掛 cache、尾巴不掛，拼起來逐位元組等於原字串", () => {
+  const system = "人設與規則\n\n本輪回應方式：只問清楚";
+  const prefix = "人設與規則";
+  const blocks = claudeSystemBlocks(system, prefix) as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(blocks.length, 2);
+  assertEquals(blocks[0], {
+    type: "text",
+    text: prefix,
+    cache_control: { type: "ephemeral" },
+  });
+  assertEquals(blocks[1], { type: "text", text: "\n\n本輪回應方式：只問清楚" });
+  assertEquals(`${blocks[0].text}${blocks[1].text}`, system);
+});
+
+Deno.test("Phase 4.5b：callClaude 帶 systemCachePrefix 時送出兩個 system block；不帶時 request body 與舊版逐位元組相同", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: string[] = [];
+  globalThis.fetch = (_input, init) => {
+    bodies.push(String((init as { body?: BodyInit } | undefined)?.body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "嗯" }] }),
+        { status: 200 },
+      ),
+    );
+  };
+  const args = {
+    apiKey: "k",
+    model: "claude-haiku-4-5-20251001",
+    messages: [
+      { role: "system" as const, content: "人設與規則\n\n本輪：只問清楚" },
+      { role: "user" as const, content: "阿布達比" },
+    ],
+    maxTokens: 200,
+    temperature: 0.9,
+    timeoutMs: 1000,
+  };
+  try {
+    await callClaude(args);
+    await callClaude({ ...args, systemCachePrefix: "人設與規則" });
+    // hint／debrief 不傳這一格，所以「不傳」那條必須逐位元組是舊行為。
+    await callClaude({ ...args, systemCachePrefix: undefined });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assertEquals(bodies[0], bodies[2]);
+  assertEquals(
+    (JSON.parse(bodies[0]) as { system: unknown[] }).system.length,
+    1,
+  );
+  const split = (JSON.parse(bodies[1]) as {
+    system: Array<{ text: string; cache_control?: unknown }>;
+  }).system;
+  assertEquals(split.length, 2);
+  assertEquals(split[0].text, "人設與規則");
+  assertEquals(split[1].cache_control, undefined);
+  assertEquals(split[0].text + split[1].text, args.messages[0].content);
 });

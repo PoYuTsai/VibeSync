@@ -1758,6 +1758,19 @@ class _BottomBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Phase 4.5c 刀 3：Game 的她說「先忙了」之後，玩家再丟就只拿到已讀
+          // ——沒有這一行的話他不知道這場其實該收了。**只提示**：輸入框仍然
+          // 可以打字送出（是否強制結束 Eric 還沒拍板）。
+          if (state.partnerCheckedOut) ...[
+            Text(
+              '她先去忙了，這場可以結束練習看拆解',
+              key: const ValueKey('practice-partner-checked-out'),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (state.isAssistedLearningMode) ...[
             _TemperatureMeter(state: state),
             const SizedBox(height: 8),

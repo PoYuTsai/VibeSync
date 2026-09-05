@@ -147,6 +147,12 @@ class PracticeChatReply {
   final String reply;
   final int aiTurnCount;
   final bool sessionComplete;
+
+  /// 練習室對話主體意識 Phase 4.5c：Game 模式她這一輪「先去忙了」
+  /// （`checked_out`）或之後只回已讀（`read_only`）。其他情形 server 連 key
+  /// 都不會給 → null。認不得的值一律當 null（舊 client 對新值 fail-closed，
+  /// 只是少一行提示，不會擋住聊天）。
+  final String? partnerStatus;
   final int costDeducted;
   final int? monthlyRemaining;
   final int? dailyRemaining;
@@ -159,6 +165,7 @@ class PracticeChatReply {
     required this.aiTurnCount,
     required this.sessionComplete,
     required this.costDeducted,
+    this.partnerStatus,
     this.monthlyRemaining,
     this.dailyRemaining,
     this.temperature,
@@ -613,6 +620,7 @@ class PracticeChatApiService {
       reply: rawReply.trim(),
       aiTurnCount: _asInt(data['aiTurnCount']) ?? 0,
       sessionComplete: data['sessionComplete'] == true,
+      partnerStatus: _parsePartnerStatus(data['partnerStatus']),
       costDeducted: _asInt(data['costDeducted']) ?? 0,
       monthlyRemaining: _asInt(data['monthlyRemaining']),
       dailyRemaining: _asInt(data['dailyRemaining']),
@@ -1382,6 +1390,11 @@ class PracticeChatApiService {
     if (v is num) return v.toInt();
     return null;
   }
+
+  /// Phase 4.5c 刀 3：白名單解析。server 之後多出新值時舊 client 回 null
+  /// （少一行提示），而不是把不認得的字串一路帶進 UI。
+  static String? _parsePartnerStatus(dynamic v) =>
+      v == 'checked_out' || v == 'read_only' ? v as String : null;
 
   static List<String> _asStringList(dynamic v) {
     if (v is List) {

@@ -408,6 +408,7 @@ EbookBlock _parseBlock(
       return EbookComparisonBlock(
         id: id,
         title: _optionalString(json, 'title', path),
+        scenario: _optionalString(json, 'scenario', path),
         caption: _optionalString(json, 'caption', path),
         items: _parseComparisonItems(json, path),
       );

@@ -132,7 +132,10 @@ const CHAT_PROMPT_GOLDEN_SHA256: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     "game-full",
-    "b5ccc1536324b3c74608ba4add22c7d5ab9c843e9658b00f9338012b5a64dff6",
+    // Phase 4.6 刀 3（2026-09-05）：chat 的 gameSnapshot 補帶 inviteStage，game
+    // 場的 speedInviteDirection 從 soft_invite_probe 推成 partner_window_close，
+    // 只有這一筆重算；standard／beginner 兩筆逐位元組不變。
+    "d3d561115b0191c41d4811f0fb94aa642928010ad45c35c859e003db670112b4",
   ],
 ];
 

@@ -14,6 +14,7 @@
 
 import type { PracticeTurn } from "./validate.ts";
 import type { PracticeDifficulty } from "./practice_persona.ts";
+import { looksOverEscalated } from "./game_fsm.ts";
 import type { InviteStage } from "./invite_maturity.ts";
 import type { PartnerMood } from "./temperature.ts";
 import { practiceInviteLevelFor } from "./practice_invite.ts";
@@ -33,6 +34,7 @@ import {
   type AgencyMode,
   agencyPolicyFor,
   agencyThresholdsFor,
+  allowsCheckOut,
   type ConversationAgencyProfile,
   type ConversationAgencyState,
   detectAgencyEvidence,
@@ -188,6 +190,13 @@ export interface TurnResponsePlan {
    * 「這輪問他一件事：X」取代泛用的「最多問一句」。只在 agency 旗標 on 出現。
    */
   readonly askUserFocus?: string;
+  /**
+   * Phase 4.5a 刀 2（Eric 2026-09-05）：這一輪允許她只回一則「（已讀）」。
+   * 只在 agency 旗標 on、挑戰難度或 Game，而且這一輪本來就是**收尾格**
+   * （forced `end_low_value_loop`）或**連續第 2 次以上越界**時出現；
+   * 其餘輪次（含 easy／normal）整個 key 不存在＝計畫行逐字與 4.4 相同。
+   */
+  readonly readOnlyAllowed?: true;
 }
 
 /**
@@ -474,7 +483,11 @@ export function planTurnResponse(args: {
   if (
     agency?.applied &&
     (agency.decision.forcedAct === "hold_position" ||
-      agency.decision.forcedAct === "end_low_value_loop")
+      agency.decision.forcedAct === "end_low_value_loop" ||
+      // Phase 4.5a 刀 3：階梯三格同樣壓到最少則數。
+      agency.decision.forcedAct === "cold_return" ||
+      agency.decision.forcedAct === "check_out" ||
+      agency.decision.forcedAct === "read_only")
   ) {
     bubbleCount = minB;
   }
@@ -612,6 +625,26 @@ export function planTurnResponse(args: {
       : "fact")
     : "none";
 
+  // ── Phase 4.5a 刀 2：「（已讀）」冷回應的開關 ─────────────────────────
+  // 只給最冷的兩格：挑戰難度／Game，而且這一輪要嘛是結構層下的收尾格
+  // （forced `end_low_value_loop`），要嘛是**連續**越界（第 2 次以上）。
+  // Phase 4.5c 刀 1：第二個入口的「越界」擴成與 stance 同源的三個訊號
+  // （`boundaryLike`／`gameGreasy`／`userOverEscalated`），見
+  // `trailingColdRejectTurns`。
+  // 越界輪的 agency decision 會被 `computeAgencyDecision` 清成 situation:null，
+  // 所以那一半只能從 planner 自己的 stance 與逐字稿數，不能靠 agency 決策。
+  const coldPersona = allowsCheckOut(
+    args.evidence.difficulty,
+    args.evidence.practiceMode === "game",
+  );
+  const readOnlyAllowed = agency?.enabled === true && coldPersona &&
+    (
+      (agency.applied &&
+        agency.decision.forcedAct === "end_low_value_loop") ||
+      (situation === "boundary" &&
+        trailingColdRejectTurns(args.turns, args.evidence) >= 2)
+    );
+
   return {
     styleVersion: REPLY_STYLE_VERSION,
     presetId: style.presetId,
@@ -625,7 +658,47 @@ export function planTurnResponse(args: {
     disclosureDepth,
     seed,
     ...(forceAskUser ? { askUserFocus: args.askUserFocus as string } : {}),
+    ...(readOnlyAllowed ? { readOnlyAllowed: true as const } : {}),
   };
+}
+
+/**
+ * 逐字稿尾端連續幾則玩家訊息踩到「她不想理」的界線。
+ *
+ * Phase 4.5c 刀 1（補 4.5a Codex R1 P3-3 留給 Eric 的缺口）：判準與
+ * `policyStanceFor` 的 boundary 分支**同源**——那裡是
+ * `boundaryLike || gameGreasy || userOverEscalated` 三者 OR，這裡原本只數
+ * `BOUNDARY_RE`，於是 Game 的油膩／過度升溫連兩則永遠拿不到 `readOnlyAllowed`
+ * （`situation` 是 boundary，但 streak 恆為 0）。
+ *
+ * 三個訊號的可回溯性不一樣，所以分兩段：
+ * - **逐則**（含最後一則）套文字偵測函式：`BOUNDARY_RE`（`boundaryLike` 同源）
+ *   ＋ `looksOverEscalated`（`userOverEscalated` 的定義本身，也是 Game FSM
+ *   `GREASY` 的文字來源）。更早的訊息拿不到當時的 evidence，只有文字回溯得到。
+ * - **最後一則**另外認 `evidence` 的兩個布林：它們是這一輪的權威判定。
+ *   `gameGreasy` 還可能來自 Game FSM 的 `classification`（今天 `prompt.ts`
+ *   呼叫 `evaluateGameFsm` 沒有傳 classification，所以恆等於
+ *   `looksOverEscalated(latest)`；留這一段是為了它哪天被傳進來時，stance 與
+ *   這裡不會各自漂掉——同一道守門在兩端各自帶判準會漂）。
+ */
+function trailingColdRejectTurns(
+  turns: readonly PracticeTurn[],
+  evidence: PolicyEvidence,
+): number {
+  const userTexts = turns.filter((t) => t.role === "user").map((t) => t.text);
+  let streak = 0;
+  for (let i = userTexts.length - 1; i >= 0; i--) {
+    const authoritativeThisTurn = i === userTexts.length - 1 &&
+      (evidence.gameGreasy || evidence.userOverEscalated);
+    if (!authoritativeThisTurn && !coldRejectText(userTexts[i])) break;
+    streak++;
+  }
+  return streak;
+}
+
+/** 逐則可回溯的越界文字判準（`boundaryLike` ＋ `userOverEscalated` 的定義）。 */
+function coldRejectText(text: string): boolean {
+  return BOUNDARY_RE.test(text) || looksOverEscalated(text);
 }
 
 /** runtime 列舉（telemetry 測試做 membership 用）；Record 型別保證漏一個就編譯錯。 */
@@ -712,6 +785,14 @@ const AGENCY_ACT_LINE: Partial<Record<PlanAct, string>> = {
   // 單獨列出來只為了型別完整；欠債輪實際渲染的是下面 `AGENCY_SET_LINE`
   // 那一句二選一，不會逐一列出候選。
   accept_if_answered: "他這句真的接得上前面就接受，接不上就說他沒回答你",
+  // Phase 4.5a 刀 3（不收斂階梯）。一樣不寫範例句（報告 §13 第 8 點）。
+  cold_return:
+    "他這句接得上就接住，但你已經冷掉了：不熱絡、不主動開新話題，也不要把剛才沒接上的那幾句當沒發生",
+  check_out:
+    "你不想再耗下去了：說你要先去忙，簡短收掉，不解釋、不問他問題、不約下次",
+  // 走 forced `read_only` 的輪次根本不打模型（handler 直接回一則已讀），
+  // 這一行只為型別／診斷完整。
+  read_only: "不回內容，只讓他看到已讀",
 };
 
 /**
@@ -741,6 +822,9 @@ export const AGENCY_SET_LINE: Record<string, string> = {
   clarify_ignored_easy_v1: "語氣可以溫和一點，但還是不要接他丟的詞",
   clarify_ignored_v1: "直接問他到底在講什麼，不接他的詞",
   clarify_ignored_cold_v1: "可以只回一個「？」或一句冷的，不解釋、不接",
+  // Phase 4.5a 刀 3：`check_out` 是 forced，這條只補口氣。Codex R1 P1-2 之後
+  // 強制結束**只給挑戰／Game**，所以難度分支沒有第二個值可以走，收成一條。
+  check_out_v1: "語氣冷，不解釋原因",
 };
 
 /** 獨立於 TurnResponsePlan：style 開或關都能算，只吃 agencyDecision 本身。 */
@@ -804,6 +888,21 @@ export function isAgencyClarifyOnlyTurn(
   return acts.length > 0 && !acts.some(isAcceptingPlanAct) &&
     acts.every((a) => (AGENCY_ACTS as readonly PlanAct[]).includes(a));
 }
+
+/**
+ * Phase 4.5a 刀 3：階梯兩格的回覆形狀。`read_only` 不在這裡——那一格不打模型。
+ */
+const AGENCY_LADDER_SHAPE: Partial<Record<PlanAct, string>> = {
+  cold_return: "回 1 則，短，不主動問他問題。",
+  check_out: "回 1 則，短，說完就收，不問問題、不開新話題。",
+};
+
+/**
+ * Phase 4.5a 刀 2（Eric 2026-09-05）：最冷的兩格（挑戰／Game 的收尾格、連續
+ * 越界第 2 次以上）允許她只回一則「（已讀）」。守門的白名單認同一個字面
+ * （`visible_text_guard.ts` 的 `READ_ONLY_REPLY_RE`）。
+ */
+const AGENCY_READ_ONLY_SHAPE = "回 1 則；可以只回「（已讀）」，或一句冷的。";
 
 const AGENCY_CLARIFY_ONLY_SHAPE =
   "回 1 則，就做這一件事：不替他補你猜的意思，也不要順著他丟的詞講你自己的事。";
@@ -902,6 +1001,11 @@ export function renderTurnPlan(
       (agency?.decision.allowedActs.some(isClarifyingAct) ?? false));
   const forcedAsk = isForcedAskIntent(agency ?? null);
   const clarifyOnly = isAgencyClarifyOnlyTurn(agency ?? null);
+  // Phase 4.5a 刀 3：階梯的形狀優先於 clarify-only（那條是「只問清楚」的形狀，
+  // 跟「冷冷接一句」「先去忙」不是同一件事）。
+  const ladderShape = agency?.applied && agency.decision.forcedAct
+    ? AGENCY_LADDER_SHAPE[agency.decision.forcedAct]
+    : undefined;
   // Phase 3.8：強制問他一件事的輪次，把泛用的「最多問一句」換成具體的好奇點。
   const question = plan.askUserFocus !== undefined && !forcedAsk
     // 3.8 黑箱：v1「這輪問他一件事：X，一句就好」管道好奇點 10/40 場；v2 改成
@@ -929,7 +1033,13 @@ export function renderTurnPlan(
   // ——離線重跑 planner 證明強制在 36/40 場真的觸發，但生成模型只有一半照做、
   // 15% 問到 X（v1 措辭反而 10/40 場問到管道好奇點）。瓶頸是模型對「問指定問題」
   // 的服從率，不是觸發；形狀行再綁也綁不到，留 v1 的問題行。
-  const shapeLine = forcedAsk
+  const shapeLine = plan.readOnlyAllowed === true
+    // Phase 4.5a 刀 2：**取代**形狀行，不是多加一行——「只回一則已讀」本來
+    // 就是形狀指示，而且比它取代掉的 `AGENCY_CLARIFY_ONLY_SHAPE` 短。
+    ? AGENCY_READ_ONLY_SHAPE
+    : ladderShape
+    ? ladderShape
+    : forcedAsk
     ? FORCED_ASK_INTENT_SHAPE
     : clarifyOnly
     ? AGENCY_CLARIFY_ONLY_SHAPE

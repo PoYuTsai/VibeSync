@@ -20,6 +20,12 @@ const aiClarifiedArg = Deno.args.find((x) => x.startsWith("--ai-clarified="));
 const aiClarified = aiClarifiedArg === undefined
   ? null
   : aiClarifiedArg.slice("--ai-clarified=".length) === "1";
+// Phase 4.5a（Codex R1 P1-2）：強制結束（`check_out`／`read_only`）只給挑戰難度
+// 或 Game，而長序列情境（A25／A26）只有 normal 難度的 artifact。這個旗標把回放
+// 的難度整批覆寫成指定值，用同一批逐字稿量「如果這場是挑戰難度會怎樣」。
+// 純診斷：零模型呼叫，不影響 production。
+const difficultyArg = Deno.args.find((x) => x.startsWith("--difficulty="));
+const difficultyOverride = difficultyArg?.slice("--difficulty=".length);
 const art = JSON.parse(await Deno.readTextFile(file));
 // Phase 4.2：artifact 用 `--thread-salt` 跑的話，thread id 每個 repeat 都不同，
 // 回放要照同一支 `saltedThreadId` 算，否則 seed 對不上（骰子面會不一樣）。
@@ -32,7 +38,7 @@ const bump = (p: string, k: string) => {
 for (const s of art.results) {
   const profile = resolvePracticeProfile({
     profileId: s.profileId,
-    difficulty: s.difficulty,
+    difficulty: difficultyOverride ?? s.difficulty,
   });
   const fx = buildBakeoffContextFixture(profile);
   const chatContext = {

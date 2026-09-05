@@ -13,6 +13,7 @@ import {
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
 import {
+  hasReadOnlyReply,
   hasStageDirection,
   REPLY_STYLE_HIDDEN_HEADINGS,
   stripStageDirections,
@@ -817,5 +818,45 @@ Deno.test("Phase 3.0：極短反問不會被誤判成內部標籤外洩，即使
       ),
     Error,
     "chat_internal_label_leak",
+  );
+});
+
+Deno.test("Phase 4.5a 刀 2：白名單是**整則完全相等**的兩個字面，其餘照舊剝", () => {
+  // 只有這兩個字面（去頭尾空白後整則相等）才豁免。
+  for (const t of ["（已讀）", "(已讀)", "  （已讀） ", "（已讀）\n"]) {
+    assertEquals(hasStageDirection(t, true), false, t);
+    assertEquals(stripStageDirections(t, "boom", true), t.trim(), t);
+    assertEquals(hasReadOnlyReply(t), true, t);
+    // 未授權（旗標 off／shadow／非冷格）逐字沿用舊行為：仍算旁白。
+    assertEquals(hasStageDirection(t), true, t);
+  }
+  // Codex R1 P2-1：多行、混括號、加尾巴一律不豁免。
+  for (
+    const t of [
+      "（已讀）\n哈哈",
+      "哈哈\n（已讀）",
+      "（已讀)",
+      "(已讀）",
+      "（已讀）哈哈",
+      "（我笑了）",
+      "（冷淡）嗯",
+    ]
+  ) {
+    assertEquals(hasReadOnlyReply(t), false, t);
+    assertEquals(hasStageDirection(t, true), hasStageDirection(t), t);
+  }
+  assertEquals(hasStageDirection("（已讀）\n哈哈", true), true);
+  assertEquals(
+    stripStageDirections("（已讀）\n哈哈", "boom", true),
+    "哈哈",
+  );
+  assertEquals(hasStageDirection("哈哈\n（已讀）", true), true);
+  assertEquals(
+    stripStageDirections("哈哈\n（已讀）", "boom", true),
+    "哈哈",
+  );
+  assertEquals(
+    stripStageDirections("（我笑了）真的假的", "boom", true),
+    "真的假的",
   );
 });

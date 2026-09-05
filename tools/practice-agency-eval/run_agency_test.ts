@@ -13,11 +13,16 @@ import {
   runAgencyScenario,
   runnerChatModelFor,
   saltedThreadId,
+  tallyChatModelRounds,
   threadSaltOfArtifactMeta,
   ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
 import { AGENCY_SCENARIOS, type AgencyScenario } from "./scenarios.ts";
-import { chatModelFor } from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import {
+  chatModelFor,
+  READ_ONLY_REPLY_TEXT,
+} from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import { AGENCY_CLASSIFIER_RULES } from "../../supabase/functions/practice-chat/temperature.ts";
 import { callClaude } from "../../supabase/functions/practice-chat/claude.ts";
 import {
   chatBody,
@@ -57,15 +62,14 @@ Deno.test("parseArgs：--state 省略或非 1/true 一律 false，1/true 才開"
   );
 });
 
-Deno.test("parseArgs：--state=1 搭 standard 直接報錯（Codex round-2 P2-d）", () => {
-  // standard 不持久化跨回合狀態，靜默忽略會讓 artifact meta 的
-  // stateSimulation:true 說謊。
+Deno.test("parseArgs：Phase 4.5b 後 --state=1 搭 standard 合法（對應 PRACTICE_STANDARD_AGENCY_CLASSIFIER）", () => {
+  // Codex round-2 P2-d 當時 standard 不持久化跨回合狀態，所以這個組合被擋掉。
+  // Phase 4.5b 之後 standard 也有每輪（精簡）分類器與 thread 狀態，
+  // `--mode=standard --state=1` 就是那條 production 路徑的黑箱對應。
   for (const args of [["--state=1"], ["--mode=standard", "--state=true"]]) {
-    assertThrows(
-      () => parseArgs(args),
-      Error,
-      "agency_state_requires_assisted_mode",
-    );
+    const opts = parseArgs(args);
+    assertEquals(opts.mode, "standard");
+    assertEquals(opts.stateSimulation, true);
   }
 });
 
@@ -349,8 +353,9 @@ Deno.test("addHaikuUsage／estimateHaikuCostUsd：純函式累加與估價（不
     outputTokens: 1000,
   });
   assertEquals(afterOne.calls, 1);
-  // input 1K@$0.0008 + output 1K@$0.004 = $0.0048。
-  assert(Math.abs(estimateHaikuCostUsd(afterOne) - 0.0048) < 1e-9);
+  // Phase 4.5c：單價改吃 pricing.ts 的官方牌價（$1／$5 每 M token，之前抄的是
+  // logger.ts 那組過期的 $0.80／$4）。input 1K@$1/M + output 1K@$5/M = $0.006。
+  assert(Math.abs(estimateHaikuCostUsd(afterOne) - 0.006) < 1e-9);
   const afterTwo = addHaikuUsage(afterOne, {
     inputTokens: 0,
     cacheReadInputTokens: 1000,
@@ -498,6 +503,128 @@ Deno.test("Phase 4.3 步驟 0（反例）：沒有 classifierApiKey 時退回舊
   } finally {
     globalThis.fetch = original;
   }
+});
+
+Deno.test("Phase 4.5b：--mode=standard --state=1 真的打**精簡**分類器（不是硬編碼 null），訊號接進 state 讓下一輪裸詞 forced challenge_relevance", async () => {
+  const original = globalThis.fetch;
+  const bodies: string[] = [];
+  globalThis.fetch = (_url: string | URL | Request, init?: RequestInit) => {
+    bodies.push(String(init?.body));
+    return Promise.resolve(fakeClassifierResponse(true));
+  };
+  let chatCalls = 0;
+  const replies = ["你在說什麼？", "喔 好"];
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(replies[chatCalls++]),
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "standard",
+      style: false,
+      agency: "on",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+    });
+    assertEquals(result.error, undefined);
+    assertEquals(bodies.length, 2, "standard 每一輪生成後也要打一次分類器");
+    // 精簡分類器：system prompt 只問四個 agency 欄位（沒有 connection／
+    // partnerMood／innerThought 那些核心欄位的 stub）。
+    const system = (JSON.parse(bodies[0]) as {
+      messages: { role: string; content: string }[];
+    }).messages[0].content;
+    assert(
+      system.includes(
+        '{"coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}',
+      ),
+      "standard 必須走精簡分類器的 JSON stub",
+    );
+    assert(
+      !system.includes('"partnerMood":"neutral"'),
+      "精簡分類器不得帶核心分數欄位",
+    );
+    // 判準文字與逐輪分類器同一份常數。
+    assert(system.includes(AGENCY_CLASSIFIER_RULES));
+
+    assertEquals(result.turns[0].classifierSignal, {
+      coherence: "disconnected",
+      aiChallengedThisTurn: true,
+    });
+    assertEquals(result.turns[0].agencyStateAfter?.aiClarifiedLastTurn, true);
+    const round2 = result.turns[1];
+    assertEquals(round2.policyMode, "forced");
+    assertEquals(round2.forcedAct, "challenge_relevance");
+    assert(round2.allowedActSetId?.startsWith("clarify_ignored"));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.5b（反例）：standard 未開 --state 時一次分類器都不打，round2 維持 bounded", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("不該打到 fetch：未開 --state 的 standard 不呼叫分類器");
+  };
+  let chatCalls = 0;
+  const replies = ["你在說什麼？", "喔 好"];
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(replies[chatCalls++]),
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "standard",
+      style: false,
+      agency: "on",
+      stateSimulation: false,
+      classifierApiKey: "test-key",
+    });
+    assertEquals(result.error, undefined);
+    assertEquals(result.turns[0].classifierSignal, undefined);
+    assertEquals(result.turns[1].policyMode, "bounded");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.5b：runnerChatModelFor 的 standard 路由與 production chatModelFor 全矩陣逐項相同", () => {
+  for (const standardOn of [false, true]) {
+    for (const applied of [false, true]) {
+      for (const situation of [null, "neutral", "boundary"]) {
+        assertEquals(
+          runnerChatModelFor({
+            chatModel: "mixed",
+            agency: "on",
+            mode: "standard",
+            applied,
+            situation,
+            standardAgencyClassifier: standardOn,
+          }),
+          chatModelFor(
+            "mixed",
+            "on",
+            { applied },
+            "standard",
+            situation,
+            standardOn,
+          ),
+        );
+      }
+    }
+  }
+  // 旗標關著時 standard 一律 deepseek（Phase 4.4 的既有範圍不變）。
+  assertEquals(
+    runnerChatModelFor({
+      chatModel: "mixed",
+      agency: "on",
+      mode: "standard",
+      applied: true,
+      situation: "neutral",
+    }),
+    "deepseek",
+  );
 });
 
 // ── Phase 4.3 步驟 1：`--chat-model=mixed` ────────────────────────────────
@@ -655,6 +782,9 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
       maxTokens: 200,
       temperature: 0.9,
       timeoutMs: 1000,
+      // Phase 4.5b 刀 B：production 從 `bundle.systemStable` 拿這一格，runner
+      // 從 `ChatCaller` 的第二個參數拿——兩邊都是同一個 bundle 欄位。
+      systemCachePrefix: handlerArgs.systemCachePrefix,
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -669,6 +799,19 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
   assertEquals(
     (JSON.parse(bodies[0]) as { model?: string }).model,
     "claude-haiku-4-5-20251001",
+  );
+  // Phase 4.5b 刀 B：system 真的是兩個 block（前綴掛 cache、當輪尾巴不掛），
+  // 而且拼起來等於 handler 交出去的那一份 system。
+  const system = (JSON.parse(bodies[0]) as {
+    system: Array<{ text: string; cache_control?: unknown }>;
+  }).system;
+  assertEquals(system.length, 2);
+  assert(system[0].cache_control);
+  assertEquals(system[1].cache_control, undefined);
+  assertEquals(
+    system[0].text + system[1].text,
+    handlerArgs.messages.filter((m) => m.role === "system")
+      .map((m) => m.content).join("\n\n").trim(),
   );
 
   // 上面兩個數字真的是 runner 的常數（不是這支測試自己編的）。
@@ -730,4 +873,359 @@ Deno.test("Phase 4.4：runner 的選模入口與 production chatModelFor 在整�
   // ＝ 2 模式 × 2 個非 true 的 applied ＝ 4 格。
   assertEquals(mixedHaiku, 12);
   assertEquals(boundaryHaiku, 4);
+});
+
+Deno.test("Phase 4.5c：tallyChatModelRounds 正確吃 chatModelUsed=none（不算模型、不進分母、不除以零）", () => {
+  const t = tallyChatModelRounds([
+    {
+      turns: [
+        // 腳本前文與 ai turn 都不是生成輪。
+        { role: "ai", chatModelUsed: "haiku" },
+        { role: "user", scripted: true, chatModelUsed: "haiku" },
+        { role: "user", chatModelUsed: "haiku" },
+        { role: "user", chatModelUsed: "deepseek" },
+        // Phase 4.5a 之後 production 對 forced read_only 那一輪的值。
+        { role: "user", chatModelUsed: "none" },
+        { role: "user", chatModelUsed: "none" },
+        // Phase 4.3 之前的舊 artifact 沒有這個欄位。
+        { role: "user" },
+      ],
+    },
+    // 失敗的場次整場不算。
+    { error: "boom", turns: [{ role: "user", chatModelUsed: "haiku" }] },
+  ]);
+  assertEquals(t.haiku, 1);
+  assertEquals(t.deepseek, 1);
+  assertEquals(t.none, 2);
+  assertEquals(t.unknown, 1);
+  // none／unknown 都不進「真的打了生成模型」的分母。
+  assertEquals(t.modelRounds, 2);
+  assertEquals(t.haikuShare, 0.5);
+});
+
+Deno.test("Phase 4.5c：整批都是 none 時 haikuShare 是 null，不是 0，也不會除以零", () => {
+  const t = tallyChatModelRounds([
+    {
+      turns: [
+        { role: "user", chatModelUsed: "none" },
+        { role: "user", chatModelUsed: "none" },
+      ],
+    },
+  ]);
+  assertEquals(t.none, 2);
+  assertEquals(t.modelRounds, 0);
+  assertEquals(t.haikuShare, null);
+  assertEquals(tallyChatModelRounds([]).haikuShare, null);
+});
+
+Deno.test("Phase 4.5e：forced read_only 那一輪不打生成模型，回覆逐字是「（已讀）」、chatModel=none（不打真網路）", async () => {
+  // A25（連續裸地名）× game × `--state=1`：階梯走
+  // ask_intent → challenge_relevance ×3 → check_out → read_only ×3，
+  // 跟 production Game 黑箱 artifact（out/2026-09-05-p45c-game-mixed.json 的
+  // A25/practice_girl_004#1）同一條軌跡。
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  // 分類器每輪都回 disconnected＋已質疑，階梯才推得動（真實那場也是這樣）。
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  // 這一場只有 6 輪該打模型（9 個 user turn 扣掉 3 輪 read_only）。上限抓
+  // `MODEL_ROUNDS × CHAT_GENERATION_ATTEMPTS`：Phase 4.5g 的 check_out 結構
+  // 後檢查會讓那一輪用掉既有的第二發（下面這支 fake 每輪都回問句），所以
+  // 呼叫數不再等於輪數；「read_only 輪沒打模型」改由 `attempts === 0` 直接證明。
+  const MODEL_ROUNDS = 6;
+  let chatCalls = 0;
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => {
+        chatCalls++;
+        if (chatCalls > MODEL_ROUNDS * 2) {
+          throw new Error("model_called_on_read_only_turn");
+        }
+        // 問句形狀：她真的問了才會進 `aiQuestionedInLoop`／推進階梯。
+        return Promise.resolve(`你在講什麼啊${chatCalls}？`);
+      },
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "on",
+      shape: "truncate",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assertEquals(result.error, undefined);
+    const generated = result.turns.filter((t) =>
+      t.role === "user" && !t.scripted
+    );
+    const readOnly = generated.filter((t) => t.forcedAct === "read_only");
+    assert(readOnly.length > 0, "這一場沒有跑到 read_only，測試沒有守到東西");
+    // 短路成立：打過模型的**輪數**＝總輪數扣掉 read_only 輪，而生成呼叫數
+    // 恰好是各輪 `attempts` 的總和（read_only 輪的 attempts 是 0）。
+    assertEquals(generated.length - readOnly.length, MODEL_ROUNDS);
+    assertEquals(
+      chatCalls,
+      generated.reduce((sum, t) => sum + t.attempts, 0),
+    );
+    for (const t of readOnly) {
+      // 逐字＝production 的 READ_ONLY_REPLY_TEXT（style 臂的括號旁白守門不得
+      // 把它剝掉——`hasStageDirection`／`stripStageDirections` 要吃到白名單）。
+      assertEquals(t.reply, READ_ONLY_REPLY_TEXT);
+      assertEquals(t.reply, "（已讀）");
+      assertEquals(t.chatModelUsed, "none");
+      assertEquals(t.readOnlyReply, true);
+      assertEquals(t.attempts, 0);
+      assertEquals(t.promptChars, 0);
+      assertEquals(t.guardRejections, []);
+    }
+    // 其餘輪次照舊打模型、照舊記 deepseek。
+    for (const t of generated.filter((x) => x.forcedAct !== "read_only")) {
+      assertEquals(t.chatModelUsed, "deepseek");
+      assertEquals(t.readOnlyReply, undefined);
+      assert(t.promptChars > 0);
+    }
+    // `tallyChatModelRounds` 接得上：read_only 進 none，不進 modelRounds 分母。
+    const tally = tallyChatModelRounds([result]);
+    assertEquals(tally.none, readOnly.length);
+    assertEquals(tally.deepseek, MODEL_ROUNDS);
+    assertEquals(tally.modelRounds, MODEL_ROUNDS);
+    assertEquals(tally.haikuShare, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// ── Phase 4.5h：`--temperature`／`--familiarity` ──────────────────────────
+
+Deno.test("parseArgs：--temperature／--familiarity 省略＝handler 的 beginner 起始值 40／10", () => {
+  assertEquals(parseArgs([]).temperatureScore, 40);
+  assertEquals(parseArgs([]).familiarityScore, 10);
+  assertEquals(parseArgs(["--temperature=80"]).temperatureScore, 80);
+  assertEquals(parseArgs(["--familiarity=70"]).familiarityScore, 70);
+  assertEquals(
+    parseArgs(["--temperature=0", "--familiarity=100"]).temperatureScore,
+    0,
+  );
+});
+
+Deno.test("parseArgs：分數超出 0–100、非整數、帶雜訊一律報錯（不靜默 clamp，meta 才不會說謊）", () => {
+  for (
+    const bad of [
+      "--temperature=101",
+      "--temperature=-1",
+      "--temperature=abc",
+      "--temperature=80.5",
+      "--temperature=80x",
+    ]
+  ) {
+    assertThrows(() => parseArgs([bad]), Error, "agency_invalid_temperature");
+  }
+  for (
+    const bad of ["--familiarity=101", "--familiarity=-1", "--familiarity="]
+  ) {
+    assertThrows(() => parseArgs([bad]), Error, "agency_invalid_familiarity");
+  }
+});
+
+Deno.test("runAgencyScenario：game 臂的起始分數真的進 prompt——省略＝not_ready，給高分＝direct_invite_ready", async () => {
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A32")!;
+  const promptOf = async (
+    scores?: { temperatureScore: number; familiarityScore: number },
+  ) => {
+    const seen: string[] = [];
+    const result = await runAgencyScenario({
+      callChat: (messages) => {
+        seen.push(messages.map((m) => m.content).join("\n"));
+        return Promise.resolve("嗯嗯");
+      },
+      profileId: "practice_girl_001",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: false,
+      agency: "off",
+      ...(scores ?? {}),
+    });
+    assertEquals(result.error, undefined);
+    return seen;
+  };
+  // 省略旗標＝逐位元組舊行為：溫度 40／熟悉 10 → 成熟度 28 → not_ready。
+  for (const prompt of await promptOf()) {
+    assert(
+      prompt.includes("inviteStage: not_ready"),
+      "省略旗標時不該離開 not_ready",
+    );
+  }
+  // 高分開場（80／70 → 成熟度 76）：整場都在可直接邀約那一階，spicy 上限也跟著開。
+  const high = await promptOf({ temperatureScore: 80, familiarityScore: 70 });
+  for (const prompt of high) {
+    assert(
+      prompt.includes("inviteStage: direct_invite_ready"),
+      "高分開場沒有進到 direct_invite_ready",
+    );
+  }
+  // 邀約那一輪（第 4 句）才會走到 direct_invite_low_pressure——那是玩家自己的
+  // 邀約句觸發的（`looksLikeGameSoftInvite`），不是分數。分數在聊天 prompt 這條
+  // 路上進的是 inviteMaturity／allowSpicyLevel／phase 三個區塊，見 README。
+  assert(high[3].includes("speedInviteDirection: direct_invite_low_pressure"));
+  assert(
+    high[0].includes("allowSpicyLevel: L3"),
+    "高分開場沒有把 spicy 上限開到 L3",
+  );
+  const low = await promptOf();
+  assert(
+    low[0].includes("allowSpicyLevel: L1"),
+    "省略旗標時 spicy 上限不該是 L3",
+  );
+});
+
+Deno.test("Phase 4.5g：runner 與 production 同源——forced check_out 那一輪第一發含問句就重試，第二發合格就採用（不打真網路）", async () => {
+  // 與上面 4.5e 同一條 A25 × game 軌跡：階梯的 check_out 落在 round5。
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  let chatCalls = 0;
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => {
+        chatCalls++;
+        // 每一發都先回問句；只有被 check_out 後檢查丟掉、重試的那一發回
+        // 合格的收尾句，證明「真的丟掉第一發、真的採用第二發」。
+        return Promise.resolve(
+          chatCalls === 6 ? "先忙了" : `你在講什麼啊${chatCalls}？`,
+        );
+      },
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "on",
+      shape: "truncate",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assertEquals(result.error, undefined);
+    const checkOut = result.turns.filter((t) => t.forcedAct === "check_out");
+    assertEquals(checkOut.length, 1);
+    const t = checkOut[0];
+    assertEquals(t.reply, "先忙了");
+    assertEquals(t.attempts, 2);
+    assertEquals(t.checkOutRetry, true);
+    assertEquals(t.checkOutStructuralFail, undefined);
+    assertEquals(t.guardRejections, ["chat_agency_check_out_shape"]);
+    // 其餘輪次一發就過，兩個欄位連 key 都沒有。
+    for (
+      const other of result.turns.filter((x) => x.forcedAct !== "check_out")
+    ) {
+      assertEquals(other.checkOutRetry, undefined, other.reply);
+      assertEquals(other.checkOutStructuralFail, undefined, other.reply);
+    }
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.5g（P2-1 對拍）：shape=truncate 的 check_out 輪兩發都違規時，runner 的 fail-open 字面＝handler 的字面", async () => {
+  // 對拍固定輸入／期望值與 `chat_model_routing_test.ts` 的
+  // `CHECK_OUT_PAIR_INPUT`／`CHECK_OUT_PAIR_EXPECTED` 同字面：先 truncate
+  // （第一顆是問句 → 丟掉「先忙了」），後檢查仍命中（問句）→ fail-open。
+  const CHECK_OUT_PAIR_INPUT = "你在忙嗎？\n先忙了";
+  const CHECK_OUT_PAIR_EXPECTED = "你在忙嗎？";
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(CHECK_OUT_PAIR_INPUT),
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "on",
+      shape: "truncate",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assertEquals(result.error, undefined);
+    const checkOut = result.turns.filter((t) => t.forcedAct === "check_out");
+    assertEquals(checkOut.length, 1);
+    const t = checkOut[0];
+    assertEquals(t.reply, CHECK_OUT_PAIR_EXPECTED);
+    assertEquals(t.shapeDropped, 1);
+    assertEquals(t.attempts, 2);
+    assertEquals(t.checkOutRetry, true);
+    assertEquals(t.checkOutStructuralFail, true);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.7：runner 與 production 同源——空白回覆當守門失敗重試，第二發合格就採用；兩發都空整輪失敗（不打真網路）", async () => {
+  const scenario = AGENCY_SCENARIOS.find((s) => s.id === "A25")!;
+  const original = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(fakeClassifierResponse(true));
+  try {
+    const run = (replies: (calls: number) => string) => {
+      let calls = 0;
+      return runAgencyScenario({
+        callChat: () => Promise.resolve(replies(++calls)),
+        profileId: "practice_girl_004",
+        scenario,
+        repeat: 1,
+        difficulty: "normal",
+        mode: "game",
+        style: true,
+        agency: "off",
+        shape: "off",
+        stateSimulation: true,
+        classifierApiKey: "test-key",
+        chatModel: "deepseek",
+      });
+    };
+    // 每一輪第一發空白（含純空白）、第二發合格：每輪恰好 2 次、沒有空回覆送出。
+    const recovered = await run((
+      calls,
+    ) => (calls % 2 === 1 ? "  \n " : "嗯嗯好"));
+    assertEquals(recovered.error, undefined);
+    assert(recovered.turns.length > 0);
+    for (const t of recovered.turns) {
+      assertEquals(t.attempts, 2, t.reply);
+      assertEquals(t.reply, "嗯嗯好");
+    }
+    // 兩發都空：整輪失敗、恰好 2 次呼叫，沒有第三發。
+    let count = 0;
+    const failed = await runAgencyScenario({
+      callChat: () => {
+        count++;
+        return Promise.resolve("");
+      },
+      profileId: "practice_girl_004",
+      scenario,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "game",
+      style: true,
+      agency: "off",
+      shape: "off",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+      chatModel: "deepseek",
+    });
+    assert(failed.error !== undefined);
+    assert(
+      String(failed.error).includes("chat_empty_reply"),
+      String(failed.error),
+    );
+    assertEquals(count, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
 });
