@@ -1787,3 +1787,85 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "Phase 4.5b（Codex R1 P2-1）：新旗標 × routing／agency 的交叉——每一格都不得比單獨那一維多動任何一面",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 舊測試各自只掃一維，交叉格（例如 routing=mixed ＋ 新旗標亂填）從來沒被
+    // 跑過。這裡把兩組交叉補上，基準都是「同 agency／routing、新旗標未設」那
+    // 一輪，所以任何「兩個旗標湊在一起才發生」的洩漏都會被抓到。
+    for (const c of equivalenceCases()) {
+      // (1) routing `mixed` × 新旗標 off／亂填：必須等於「routing=mixed ＋
+      //     新旗標未設」（agency 兩種都掃：off 與 on）。
+      for (const agencyEnv of [undefined, "true"]) {
+        const mixedBase = await observableDigest(
+          c,
+          agencyEnv,
+          undefined,
+          undefined,
+          "mixed",
+        );
+        for (const std of ["off", "亂填"]) {
+          assertEquals(
+            await observableDigest(
+              c,
+              agencyEnv,
+              undefined,
+              undefined,
+              "mixed",
+              std,
+            ),
+            mixedBase,
+            `${c.name} / agency=${agencyEnv} routing=mixed standard=${std}`,
+          );
+        }
+      }
+      // (2) agency `off`／亂填 × 新旗標 `true`／off：新旗標繞不過 agency 閘門，
+      //     四面全等 golden。
+      const expected = parseGolden(c.name);
+      for (const agencyEnv of ["off", "亂填"]) {
+        for (const std of ["true", "off"]) {
+          assertEquals(
+            await observableDigest(
+              c,
+              agencyEnv,
+              undefined,
+              undefined,
+              undefined,
+              std,
+            ),
+            expected,
+            `${c.name} / agency=${agencyEnv} standard=${std}`,
+          );
+        }
+      }
+      // (3) agency `shadow` × 新旗標 `true`／off：沿用 shadow 既有契約
+      //     （messages／response／rpc 三面等於 golden，telemetry 允許不同）。
+      for (const std of ["true", "off"]) {
+        const shadow = await observableDigest(
+          c,
+          "shadow",
+          undefined,
+          undefined,
+          undefined,
+          std,
+        );
+        assertEquals(
+          {
+            messages: shadow.messages,
+            response: shadow.response,
+            rpc: shadow.rpc,
+          },
+          {
+            messages: expected.messages,
+            response: expected.response,
+            rpc: expected.rpc,
+          },
+          `${c.name} / agency=shadow standard=${std}`,
+        );
+      }
+    }
+  },
+});
