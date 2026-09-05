@@ -179,6 +179,14 @@ function renderLogs(logs: LogStats): string[] {
   lines.push(
     `其中 ${logs.turns} 列是 \`practice_chat_succeeded\`（跳過：其他事件 ${logs.skippedOtherEvent} 列、無法解析 ${logs.skippedUnparsable} 列）。`,
   );
+  if (logs.missingDays.length > 0) {
+    lines.push("");
+    lines.push(
+      `**未取得 ${logs.missingDays.length} 天**（限流退避三次後仍失敗）：${
+        logs.missingDays.join("、")
+      }。這幾天的輪數不在上面任何一格分母裡。`,
+    );
+  }
   lines.push("");
   lines.push(
     "**保留期**：Supabase function logs 通常只留 7 天，時間窗超出保留期會回 0 筆",

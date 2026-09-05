@@ -2,7 +2,7 @@ import {
   assertAlmostEquals,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { aggregateLogs, type LogRow } from "./aggregate.ts";
+import { aggregateLogs, type LogRow, logTimestampToIso } from "./aggregate.ts";
 
 /** 一行 log ＝ `logger.ts` 的 `JSON.stringify({level, event, ...data})`。 */
 function line(payload: Record<string, unknown>): string {
@@ -163,4 +163,29 @@ Deno.test("沒有任何帶旗標的輪時比率是 null 而不是 0/0", () => {
   assertEquals(logs.chatModelFallbackRate, null);
   assertEquals(logs.checkOutRewriteFailRate, null);
   assertEquals(logs.readOnlyReplyRate, null);
+});
+
+Deno.test("Logs Explorer 的微秒整數 timestamp 換算成 ISO", () => {
+  assertEquals(logTimestampToIso(1788558109700000), "2026-09-04T21:41:49.700Z");
+  assertEquals(
+    logTimestampToIso("2026-09-01T00:00:00Z"),
+    "2026-09-01T00:00:00Z",
+  );
+  assertEquals(logTimestampToIso(null), null);
+  assertEquals(logTimestampToIso(0), null);
+  assertEquals(logTimestampToIso("nonsense"), "nonsense");
+});
+
+Deno.test("涵蓋範圍吃得下微秒 timestamp", () => {
+  const logs = aggregateLogs([
+    { timestamp: 1788558109700000, event_message: line({}) },
+    { timestamp: 1788471709700000, event_message: line({}) },
+  ]);
+  assertEquals(logs.earliest, "2026-09-03T21:41:49.700Z");
+  assertEquals(logs.latest, "2026-09-04T21:41:49.700Z");
+});
+
+Deno.test("被限流的日子原樣帶進統計", () => {
+  const logs = aggregateLogs([], ["2026-09-01", "2026-09-02"]);
+  assertEquals(logs.missingDays, ["2026-09-01", "2026-09-02"]);
 });

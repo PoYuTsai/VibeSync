@@ -132,3 +132,14 @@ Deno.test("有付費人數時印月營收與成本佔比", () => {
   assertStringIncludes(md, "Essential 5 人");
   assertStringIncludes(md, "NT$12,350");
 });
+
+Deno.test("被限流未取得的日子印在涵蓋範圍段", () => {
+  const md = renderReport(aggregate({
+    range: RANGE,
+    sessions: [],
+    aiLogs: [],
+    logs: aggregateLogs([], ["2026-09-01", "2026-09-02"]),
+  }));
+  assertStringIncludes(md, "**未取得 2 天**");
+  assertStringIncludes(md, "2026-09-01、2026-09-02");
+});

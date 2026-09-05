@@ -40,6 +40,10 @@ deno lint tools/practice-weekly-report/
 
 ### 參數
 
+`--k=v` 與 `--k v`（空格）兩種寫法都收；**認不得的參數、孤立的字串、缺值的
+參數一律報錯退出**。第一次實跑就是把 `--out path` 打進只認 `--k=v` 的解析器，
+被靜默忽略後寫到預設路徑——所以現在寧可炸掉也不安靜跑錯。
+
 | 參數                  | 預設                                   | 說明                                           |
 | --------------------- | -------------------------------------- | ---------------------------------------------- |
 | `--project-ref=`      | `SUPABASE_PROJECT_REF` env             | Supabase 專案 ref。腳本裡沒有寫死任何 ref。    |
@@ -48,7 +52,7 @@ deno lint tools/practice-weekly-report/
 | `--out=`              | `docs/reports/<to>-practice-weekly.md` | 輸出路徑。                                     |
 | `--payers-starter=`   | 無                                     | 手填 Starter 付費人數（見「損益」）。          |
 | `--payers-essential=` | 無                                     | 手填 Essential 付費人數。                      |
-| `--logs-limit=`       | `10000`                                | function logs 單次查詢列數上限；撞到會印警告。 |
+| `--logs-limit=`       | `10000`                                | function logs 單日查詢列數上限；撞到會印警告。 |
 | `--dry-run`           | 關                                     | 只印三條 SQL，不打網路、不落檔。               |
 
 ### Token 從哪來
@@ -67,9 +71,9 @@ deno lint tools/practice-weekly-report/
 - **ai_logs**：`public.ai_logs`，`request_type LIKE 'practice\_%'`，按
   `request_body->>'mode'`、`request_body->>'practiceMode'`、`model`、
   `status`、`fallback_used` 分組，取 `count(*)` 與 `sum(retry_count)`。
-- **function logs**（Logs Explorer，BigQuery 方言）：`function_logs` 的
-  `timestamp`、`event_message`，時間窗內且 `event_message` 含
-  `practice_chat_succeeded`，`order by timestamp` 加 `limit`。
+- **function logs**（Logs Explorer）：`function_logs` 的 `timestamp`、
+  `event_message`，`event_message` 含 `practice_chat_succeeded`，
+  `order by timestamp` 加 `limit`。**時間窗不在 SQL 裡**，見下。
 
 | 報告欄位           | 定義                                                          | 來源                              |
 | ------------------ | ------------------------------------------------------------- | --------------------------------- |
@@ -143,6 +147,31 @@ console.log(JSON.stringify({ level: "info", event, ...data }));
 **聊天成本**：`chatModelUsage` 是真 usage（所有成功 Claude 呼叫的四格累加），
 所以這一段吃 `HAIKU_4_5_PRICING` 真牌價，不是側寫估算；DeepSeek 那幾次用
 `DEEPSEEK_CHAT_USD_PER_CALL`（餘額差反推的每次觀測單價）。
+
+### 時間窗與逐日拉（2026-09-05 對 production 實跑後修正）
+
+兩件事實跑才知道：
+
+1. **時間窗只能走 query string**：
+   `?sql=…&iso_timestamp_start=2026-09-04T00:00:00Z&iso_timestamp_end=2026-09-06T00:00:00Z`。
+   寫進 SQL 的 `WHERE timestamp >= '…'`（字串或 `timestamp '…'` literal 都一樣）
+   會讓結果變成 **0 筆**。所以 SQL 只留 `event_message LIKE`＋`order`＋`limit`。
+2. **範圍太大會回空**：同一條 SQL 帶 2 天窗回 11 筆、帶 7 天窗回 0 筆。所以
+   `--from`～`--to` 會切成**一天一段**，每段一次 GET，之間 `sleep` 500ms。
+
+`--dry-run` 會把 SQL、段數、每一段的 `iso_timestamp_start`／`iso_timestamp_end`
+全部印出來。
+
+### 限流
+
+端點回 HTTP 429，或 body 是
+`{"message":"ThrottlerException: Too Many Requests"}` 時，退避重試 **1s → 2s →
+4s**（最多 3 次）。三次都不過就把那一天記成「未取得」
+印在報告的涵蓋範圍段（`**未取得 N 天**：…`），**不讓整份報告失敗**——少一天資料
+要看得見，但不該把整週的統計丟掉。其他 HTTP 錯誤照樣往上丟。
+
+回傳 body 是 `{"result":[…]}`，每列的 `timestamp` 是**微秒整數** （例
+`1788558109700000`），涵蓋範圍會換算成 ISO 再印。
 
 ### 保留期（會咬人的地方）
 

@@ -24,6 +24,8 @@ import {
   buildLogsSql,
   buildSessionsSql,
   type DateRange,
+  type DayWindow,
+  dayWindows,
   defaultRange,
   logsEndpoint,
 } from "./sql.ts";
@@ -41,38 +43,79 @@ export interface CliOptions {
   logsLimit: number;
 }
 
-function flag(argv: string[], name: string): string | undefined {
-  return argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(
-    name.length + 3,
-  );
+/**
+ * 認得的參數。分開列是為了「未知參數直接報錯」——第一次實跑就是把
+ * `--out path`（空格式）打進只認 `--k=v` 的解析器，被靜默忽略後寫到預設路徑。
+ * 現在兩種寫法都收，認不得的一律炸掉，不再有安靜的誤跑。
+ */
+const VALUE_FLAGS = [
+  "project-ref",
+  "from",
+  "to",
+  "out",
+  "payers-starter",
+  "payers-essential",
+  "logs-limit",
+] as const;
+const BOOL_FLAGS = ["dry-run"] as const;
+
+function readFlags(argv: string[]): Map<string, string> {
+  const values = new Map<string, string>();
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (!arg.startsWith("--")) {
+      throw new Error(`unexpected argument: ${arg}`);
+    }
+    const eq = arg.indexOf("=");
+    const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+    if ((BOOL_FLAGS as readonly string[]).includes(name)) {
+      values.set(name, eq === -1 ? "true" : arg.slice(eq + 1));
+      continue;
+    }
+    if (!(VALUE_FLAGS as readonly string[]).includes(name)) {
+      throw new Error(`unknown flag: --${name}`);
+    }
+    if (eq !== -1) {
+      values.set(name, arg.slice(eq + 1));
+      continue;
+    }
+    // `--out path` 空格式：吃下一個 token。
+    const next = argv[index + 1];
+    if (next === undefined || next.startsWith("--")) {
+      throw new Error(`missing value for --${name}`);
+    }
+    values.set(name, next);
+    index += 1;
+  }
+  return values;
 }
 
-function count(argv: string[], name: string): number | undefined {
-  const raw = flag(argv, name);
+function count(values: Map<string, string>, name: string): number | undefined {
+  const raw = values.get(name);
   if (raw === undefined) return undefined;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0) {
+  if (!Number.isInteger(value) || value < 0) {
     throw new Error(`invalid --${name}: ${raw}`);
   }
-  return Math.floor(value);
+  return value;
 }
 
 export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
+  const values = readFlags(argv);
   const fallback = defaultRange(now);
   const range: DateRange = {
-    from: flag(argv, "from") ?? fallback.from,
-    to: flag(argv, "to") ?? fallback.to,
+    from: values.get("from") ?? fallback.from,
+    to: values.get("to") ?? fallback.to,
   };
-  const starter = count(argv, "payers-starter");
-  const essential = count(argv, "payers-essential");
+  const starter = count(values, "payers-starter");
+  const essential = count(values, "payers-essential");
   return {
-    projectRef: flag(argv, "project-ref") ??
+    projectRef: values.get("project-ref") ??
       Deno.env.get("SUPABASE_PROJECT_REF"),
     range,
-    out: flag(argv, "out") ??
-      `docs/reports/${range.to}-practice-weekly.md`,
-    dryRun: argv.includes("--dry-run"),
-    logsLimit: count(argv, "logs-limit") ?? DEFAULT_LOGS_LIMIT,
+    out: values.get("out") ?? `docs/reports/${range.to}-practice-weekly.md`,
+    dryRun: values.get("dry-run") === "true",
+    logsLimit: count(values, "logs-limit") ?? DEFAULT_LOGS_LIMIT,
     payers: starter === undefined && essential === undefined
       ? undefined
       : { starter: starter ?? 0, essential: essential ?? 0 },
@@ -123,35 +166,80 @@ async function runQuery<T>(
   return await response.json() as T[];
 }
 
+/** 限流退避間隔（ms）：1s、2s、4s，共 3 次重試。 */
+export const LOGS_BACKOFF_MS = [1000, 2000, 4000] as const;
+
+/** 逐日呼叫之間的間隔（ms）。 */
+export const LOGS_DAY_GAP_MS = 500;
+
+export interface LogFetchResult {
+  rows: LogRow[];
+  /** 退避用完仍被限流的日子，報告會逐日印「未取得」。 */
+  missingDays: string[];
+}
+
+function isThrottled(status: number, body: string): boolean {
+  return status === 429 || body.includes("ThrottlerException");
+}
+
 /**
- * Logs Explorer 是 GET＋query string（跟 `/database/query` 不同端點），回傳
- * `{ result: [...] }`。查不到列不是錯誤——保留期把時間窗吃掉時就是 0 筆，
- * 報告會用涵蓋範圍把這件事印出來。
+ * 逐日拉 function logs。
+ *
+ * 為什麼逐日：實跑證實同一條 SQL 帶 2 天窗回 11 筆、帶 7 天窗回 0 筆，範圍
+ * 太大時端點直接回空而不報錯。時間窗只能走 query string，寫進 SQL 的 WHERE
+ * 會讓結果變空。
+ *
+ * 限流（HTTP 429 或 body 帶 `ThrottlerException`）退避重試 1s／2s／4s；三次
+ * 都不過就把那一天記進 `missingDays`——少一天資料要看得見，但不該讓整份報告
+ * 失敗。其他 HTTP 錯誤照樣往上丟（那是真的壞了）。
  */
-async function runLogsQuery(
-  projectRef: string,
-  token: string,
-  sql: string,
-): Promise<LogRow[]> {
-  assertReadOnlySql(sql);
-  const response = await fetch(logsEndpoint(projectRef, sql), {
-    method: "GET",
-    headers: { "Authorization": `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Logs API ${response.status}: ${await response.text()}`,
-    );
+export async function fetchLogRows(opts: {
+  projectRef: string;
+  token: string;
+  sql: string;
+  windows: readonly DayWindow[];
+  fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<LogFetchResult> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const sleep = opts.sleep ??
+    ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
+  const rows: LogRow[] = [];
+  const missingDays: string[] = [];
+
+  for (const [index, window] of opts.windows.entries()) {
+    if (index > 0) await sleep(LOGS_DAY_GAP_MS);
+    for (let attempt = 0;; attempt += 1) {
+      const response = await fetchImpl(
+        logsEndpoint(opts.projectRef, opts.sql, window),
+        { method: "GET", headers: { "Authorization": `Bearer ${opts.token}` } },
+      );
+      const body = await response.text();
+      if (isThrottled(response.status, body)) {
+        if (attempt < LOGS_BACKOFF_MS.length) {
+          await sleep(LOGS_BACKOFF_MS[attempt]);
+          continue;
+        }
+        missingDays.push(window.day);
+        break;
+      }
+      if (!response.ok) {
+        throw new Error(`Logs API ${response.status}: ${body}`);
+      }
+      const parsed = JSON.parse(body) as { result?: LogRow[] } | LogRow[];
+      rows.push(...(Array.isArray(parsed) ? parsed : parsed.result ?? []));
+      break;
+    }
   }
-  const body = await response.json() as { result?: LogRow[] } | LogRow[];
-  return Array.isArray(body) ? body : body.result ?? [];
+  return { rows, missingDays };
 }
 
 async function main(): Promise<number> {
   const opts = parseArgs(Deno.args);
   const sessionsSql = buildSessionsSql(opts.range);
   const aiLogsSql = buildAiLogsSql(opts.range);
-  const logsSql = buildLogsSql(opts.range, opts.logsLimit);
+  const logsSql = buildLogsSql(opts.logsLimit);
+  const windows = dayWindows(opts.range);
 
   if (opts.dryRun) {
     console.log(`-- sessions (${opts.range.from} ~ ${opts.range.to})`);
@@ -160,8 +248,18 @@ async function main(): Promise<number> {
     console.log(`-- ai_logs (${opts.range.from} ~ ${opts.range.to})`);
     console.log(aiLogsSql);
     console.log("");
-    console.log(`-- function logs (${opts.range.from} ~ ${opts.range.to})`);
+    console.log(
+      `-- function logs：逐日 ${windows.length} 段，每段一次 GET，間隔 ${LOGS_DAY_GAP_MS}ms`,
+    );
+    console.log(
+      "-- 時間窗走 query string，不寫進 SQL（寫進 WHERE 會回 0 筆）",
+    );
     console.log(logsSql);
+    for (const window of windows) {
+      console.log(
+        `-- ${window.day}: iso_timestamp_start=${window.isoStart}&iso_timestamp_end=${window.isoEnd}`,
+      );
+    }
     return 0;
   }
 
@@ -176,10 +274,21 @@ async function main(): Promise<number> {
     sessionsSql,
   );
   const aiLogs = await runQuery<AiLogRow>(opts.projectRef, token, aiLogsSql);
-  const logRows = await runLogsQuery(opts.projectRef, token, logsSql);
-  if (logRows.length >= opts.logsLimit) {
+  assertReadOnlySql(logsSql);
+  const logs = await fetchLogRows({
+    projectRef: opts.projectRef,
+    token,
+    sql: logsSql,
+    windows,
+  });
+  if (logs.rows.length >= opts.logsLimit) {
     console.warn(
-      `logs 回了 ${logRows.length} 列（撞到 --logs-limit），聊天那段可能被截斷`,
+      `logs 回了 ${logs.rows.length} 列（撞到 --logs-limit），聊天那段可能被截斷`,
+    );
+  }
+  if (logs.missingDays.length > 0) {
+    console.warn(
+      `logs 有 ${logs.missingDays.length} 天被限流擋掉，見報告涵蓋範圍`,
     );
   }
 
@@ -189,7 +298,7 @@ async function main(): Promise<number> {
       sessions,
       aiLogs,
       payers: opts.payers,
-      logs: aggregateLogs(logRows),
+      logs: aggregateLogs(logs.rows, logs.missingDays),
     }),
   );
   await Deno.writeTextFile(opts.out, markdown);

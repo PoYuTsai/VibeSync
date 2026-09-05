@@ -115,36 +115,79 @@ ORDER BY 1, 2, 3, 4`,
 /**
  * Edge Function logs：那七個「聊天回合」欄位只在
  * `logInfo("practice_chat_succeeded", …)` 的 console 輸出裡，Supabase 把它存進
- * function logs，只能從 Logs Explorer 查（`analytics/endpoints/logs.all`，
- * BigQuery 方言）。
+ * function logs，只能從 Logs Explorer 查（`analytics/endpoints/logs.all`）。
+ *
+ * **時間窗不在 SQL 裡**（2026-09-05 對 production 實跑後修正）：`WHERE
+ * timestamp >= '…'` 不管寫成字串還是 `timestamp '…'` literal，結果都會變空。
+ * 時間窗只能走 query string 的 `iso_timestamp_start`／`iso_timestamp_end`
+ * （見 `logsEndpoint`）。
  *
  * 只過濾 `event_message`，不過濾 function 名：`practice_chat_succeeded` 這個
  * 事件名整個 repo 只有 practice-chat 會印，而 `function_logs.metadata` 裡的
  * function 識別是巢狀陣列、要 `unnest` 才拿得到，形狀比事件名脆弱。
- *
- * **保留期**：Supabase function logs 通常只留 7 天，時間窗超出保留期會回 0 筆
- * 而不是報錯。所以報告一定要印實際涵蓋的最早／最晚 timestamp 與筆數。
  */
-export function buildLogsSql(range: DateRange, limit: number): string {
-  const from = assertIsoDate(range.from);
-  const to = assertIsoDate(range.to);
+export function buildLogsSql(limit: number): string {
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error(`invalid_limit: ${limit}`);
   }
   return assertReadOnlySql(
     `SELECT t.timestamp AS timestamp, t.event_message AS event_message
 FROM function_logs AS t
-WHERE t.timestamp >= '${from} 00:00:00+00'
-  AND t.timestamp < '${to} 00:00:00+00'
-  AND t.event_message LIKE '%practice_chat_succeeded%'
+WHERE t.event_message LIKE '%practice_chat_succeeded%'
 ORDER BY t.timestamp
 limit ${limit}`,
   );
 }
 
-/** Logs Explorer 是 GET＋query string，SQL 要 urlencode。 */
-export function logsEndpoint(projectRef: string, sql: string): string {
-  return `https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/logs.all?sql=${
-    encodeURIComponent(sql)
-  }`;
+/** 一天一段的查詢窗。 */
+export interface DayWindow {
+  /** 這一段代表的日子（`YYYY-MM-DD`），報告用它標「未取得」。 */
+  readonly day: string;
+  readonly isoStart: string;
+  readonly isoEnd: string;
+}
+
+/**
+ * 把 `--from`～`--to` 切成一天一段。
+ *
+ * 為什麼要逐日：實跑證實同一條 SQL 帶 2 天窗回得到 11 筆、帶 7 天窗回 0 筆
+ * ——範圍太大時端點似乎直接回空而不是報錯。逐日拉是唯一穩的取法。
+ *
+ * ponytail: 一天一次呼叫、之間 sleep 500ms。真的變慢（或端點放寬）再考慮
+ * 更大的段。
+ */
+export function dayWindows(range: DateRange): DayWindow[] {
+  const from = Date.parse(`${assertIsoDate(range.from)}T00:00:00Z`);
+  const to = Date.parse(`${assertIsoDate(range.to)}T00:00:00Z`);
+  const windows: DayWindow[] = [];
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  for (let start = from; start < to; start += DAY_MS) {
+    const startIso = new Date(start).toISOString();
+    windows.push({
+      day: startIso.slice(0, 10),
+      isoStart: startIso.replace(".000Z", "Z"),
+      isoEnd: new Date(Math.min(start + DAY_MS, to)).toISOString().replace(
+        ".000Z",
+        "Z",
+      ),
+    });
+  }
+  return windows;
+}
+
+/**
+ * Logs Explorer 是 GET＋query string：SQL 要 urlencode，時間窗走
+ * `iso_timestamp_start`／`iso_timestamp_end`（寫進 SQL 的 WHERE 會回空）。
+ */
+export function logsEndpoint(
+  projectRef: string,
+  sql: string,
+  window: DayWindow,
+): string {
+  const query = new URLSearchParams({
+    sql,
+    iso_timestamp_start: window.isoStart,
+    iso_timestamp_end: window.isoEnd,
+  });
+  return `https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/logs.all?${query}`;
 }

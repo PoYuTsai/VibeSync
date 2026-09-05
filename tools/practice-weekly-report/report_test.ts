@@ -1,8 +1,16 @@
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
+  assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { DEFAULT_LOGS_LIMIT, parseArgs } from "./report.ts";
+import {
+  DEFAULT_LOGS_LIMIT,
+  fetchLogRows,
+  LOGS_DAY_GAP_MS,
+  parseArgs,
+} from "./report.ts";
+import { dayWindows } from "./sql.ts";
 
 Deno.test("parseArgs 讀 project ref、日期、付費人數與輸出路徑", () => {
   const opts = parseArgs([
@@ -79,4 +87,107 @@ Deno.test("--dry-run 也印 function logs 那條 SQL", async () => {
 Deno.test("parseArgs 的 logs limit 預設值與覆寫", () => {
   assertEquals(parseArgs([]).logsLimit, DEFAULT_LOGS_LIMIT);
   assertEquals(parseArgs(["--logs-limit=42"]).logsLimit, 42);
+});
+
+function fakeResponse(status: number, body: string): Response {
+  return new Response(body, { status });
+}
+
+Deno.test("429 退避重試三次後成功；每天一次呼叫、之間有間隔", async () => {
+  const calls: string[] = [];
+  const slept: number[] = [];
+  let attempts = 0;
+  const result = await fetchLogRows({
+    projectRef: "ref",
+    token: "t",
+    sql: "SELECT 1",
+    windows: dayWindows({ from: "2026-08-30", to: "2026-09-01" }),
+    fetchImpl: ((url: string | URL) => {
+      calls.push(String(url));
+      attempts += 1;
+      // 第一天的頭兩發被限流（一次 429、一次 ThrottlerException body）。
+      if (attempts === 1) return Promise.resolve(fakeResponse(429, "nope"));
+      if (attempts === 2) {
+        return Promise.resolve(
+          fakeResponse(
+            200,
+            '{"message":"ThrottlerException: Too Many Requests"}',
+          ),
+        );
+      }
+      return Promise.resolve(
+        fakeResponse(200, '{"result":[{"timestamp":1,"event_message":"x"}]}'),
+      );
+    }) as unknown as typeof fetch,
+    sleep: (ms) => {
+      slept.push(ms);
+      return Promise.resolve();
+    },
+  });
+  assertEquals(result.rows.length, 2);
+  assertEquals(result.missingDays, []);
+  assertEquals(calls.length, 4);
+  assertStringIncludes(
+    calls[0],
+    "iso_timestamp_start=2026-08-30T00%3A00%3A00Z",
+  );
+  // 退避 1s、2s ＋ 兩天之間的 500ms 間隔。
+  assertEquals(slept, [1000, 2000, LOGS_DAY_GAP_MS]);
+});
+
+Deno.test("退避用完仍被限流：那一天標成未取得，其他天照常", async () => {
+  let attempts = 0;
+  const result = await fetchLogRows({
+    projectRef: "ref",
+    token: "t",
+    sql: "SELECT 1",
+    windows: dayWindows({ from: "2026-08-30", to: "2026-09-01" }),
+    fetchImpl: (() => {
+      attempts += 1;
+      return Promise.resolve(
+        attempts <= 4 ? fakeResponse(429, "slow down") : fakeResponse(
+          200,
+          '{"result":[{"timestamp":2,"event_message":"y"}]}',
+        ),
+      );
+    }) as unknown as typeof fetch,
+    sleep: () => Promise.resolve(),
+  });
+  assertEquals(result.missingDays, ["2026-08-30"]);
+  assertEquals(result.rows.length, 1);
+  assertEquals(attempts, 5);
+});
+
+Deno.test("非限流的 HTTP 錯誤照樣往上丟", async () => {
+  await assertRejects(
+    () =>
+      fetchLogRows({
+        projectRef: "ref",
+        token: "t",
+        sql: "SELECT 1",
+        windows: dayWindows({ from: "2026-08-30", to: "2026-08-31" }),
+        fetchImpl: (() =>
+          Promise.resolve(
+            fakeResponse(500, "boom"),
+          )) as unknown as typeof fetch,
+        sleep: () => Promise.resolve(),
+      }),
+    Error,
+    "Logs API 500",
+  );
+});
+
+Deno.test("--out path 空格式要收得到，不能靜默寫進預設路徑", () => {
+  assertEquals(
+    parseArgs(["--out", "docs/reports/manual.md", "--from", "2026-08-30"]).out,
+    "docs/reports/manual.md",
+  );
+  assertEquals(parseArgs(["--from", "2026-08-30"]).range.from, "2026-08-30");
+});
+
+Deno.test("未知參數、孤立參數、缺值一律報錯不靜默", () => {
+  assertThrows(() => parseArgs(["--nope=1"]), Error, "unknown flag");
+  assertThrows(() => parseArgs(["stray"]), Error, "unexpected argument");
+  assertThrows(() => parseArgs(["--out"]), Error, "missing value");
+  assertThrows(() => parseArgs(["--out", "--from=2026-08-30"]), Error);
 });

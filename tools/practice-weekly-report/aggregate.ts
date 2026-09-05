@@ -274,6 +274,8 @@ export interface LogRow {
 export interface LogStats {
   /** 端點實際回了幾列（撞到 limit 就代表被截斷）。 */
   rowsReturned: number;
+  /** 重試後仍拿不到的日子（限流），涵蓋範圍段會逐日列出。 */
+  missingDays: string[];
   /** 涵蓋範圍：保留期把時間窗吃掉時，這兩個值會比 --from／--to 窄。 */
   earliest: string | null;
   latest: string | null;
@@ -304,6 +306,18 @@ export interface LogStats {
 }
 
 const EVENT = "practice_chat_succeeded";
+
+/**
+ * Logs Explorer 的 `timestamp` 是**微秒整數**（例 1788558109700000），
+ * 不是 ISO 字串。換算成 ISO 才能印涵蓋範圍、才能字典序比大小。
+ * 已經是字串的（其他來源／未來改版）原樣留著。
+ */
+export function logTimestampToIso(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  const micros = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(micros) || micros <= 0) return null;
+  return new Date(Math.floor(micros / 1000)).toISOString();
+}
 
 function rate(part: number, whole: number): number | null {
   return whole > 0 ? part / whole : null;
@@ -343,7 +357,10 @@ function addUsage(total: TokenUsage, value: unknown): TokenUsage {
  * **整組不存在**（handler.ts 的等價保證），所以比率的分母是「帶那個 key 的
  * 輪數」，不是全部輪數。
  */
-export function aggregateLogs(rows: readonly LogRow[]): LogStats {
+export function aggregateLogs(
+  rows: readonly LogRow[],
+  missingDays: readonly string[] = [],
+): LogStats {
   let turns = 0;
   let skippedOtherEvent = 0;
   let skippedUnparsable = 0;
@@ -368,9 +385,7 @@ export function aggregateLogs(rows: readonly LogRow[]): LogStats {
   let readOnlyReply = 0;
 
   for (const row of rows) {
-    const stamp = row.timestamp === null || row.timestamp === undefined
-      ? null
-      : String(row.timestamp);
+    const stamp = logTimestampToIso(row.timestamp);
     if (stamp !== null) {
       if (earliest === null || stamp < earliest) earliest = stamp;
       if (latest === null || stamp > latest) latest = stamp;
@@ -424,6 +439,7 @@ export function aggregateLogs(rows: readonly LogRow[]): LogStats {
 
   return {
     rowsReturned: rows.length,
+    missingDays: [...missingDays],
     earliest,
     latest,
     turns,
