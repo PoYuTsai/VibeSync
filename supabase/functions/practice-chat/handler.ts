@@ -89,6 +89,7 @@ import {
   type DebriefCard,
   debriefToolSchemaFor,
   parseDebriefCard,
+  parseDebriefMemorySummary,
   salvageDebriefCandidate,
 } from "./debrief_card.ts";
 import {
@@ -1348,6 +1349,51 @@ async function upsertRelationshipThreadFailOpen(opts: {
     return false;
   }
   return true;
+}
+
+/**
+ * Phase 5 WP3：檢討成功後把「她記得的事」寫回 thread。
+ *
+ * 刻意**不走** `buildRelationshipThreadRpcParams`——那支的 `recent_facts` 是
+ * 「從零重建 ＋ agency 旗標決定要不要保留未知 key」，在檢討這條全新的寫入路徑
+ * 上會把 `replyStyle`／`conversationAgency` 這些 key 清掉。這裡只改
+ * `memory_summary` 一欄：`= EXCLUDED` 的四欄與整包覆寫的 `recent_facts` 一律把
+ * 讀回來的值原樣帶回，COALESCE 的欄位帶 null 即可（不覆寫）。
+ *
+ * fail-open：寫失敗只 warn，檢討照樣回 200。
+ */
+async function persistDebriefMemorySummaryFailOpen(opts: {
+  supabase: PracticeSupabaseClient;
+  userId: string;
+  visibleThreadId: string;
+  profileId?: string | null;
+  practiceMode: PracticeLearningMode;
+  thread: PracticeRelationshipThreadState | null;
+  memorySummary: string;
+}): Promise<void> {
+  const { error } = await opts.supabase.rpc(
+    "upsert_practice_relationship_thread",
+    {
+      p_user_id: opts.userId,
+      p_visible_thread_id: opts.visibleThreadId,
+      p_profile_id: opts.profileId ?? null,
+      p_practice_mode: opts.thread?.practiceMode ?? opts.practiceMode,
+      p_relationship_score: opts.thread?.relationshipScore ?? null,
+      p_temperature_score: opts.thread?.temperatureScore ?? null,
+      p_familiarity_score: opts.thread?.familiarityScore ?? null,
+      p_partner_mood: opts.thread?.partnerState?.mood ?? null,
+      p_partner_inner_thought: opts.thread?.partnerState?.innerThought || null,
+      p_invite_stage: opts.thread?.inviteStage ?? null,
+      p_memory_summary: opts.memorySummary,
+      p_recent_facts: opts.thread?.recentFacts ?? {},
+    },
+  );
+  if (error) {
+    logWarn("practice_relationship_thread_upsert_failed", {
+      user: summarizeUser(opts.userId),
+      error: error.message,
+    });
+  }
 }
 
 async function judgeLearningState(opts: {
@@ -4004,6 +4050,20 @@ export function createPracticeChatHandler(
       // 偏好門（grounding/主觀 rubric/fact ledger…）降級後的觀測通道：卡照端，
       // 違規碼記在這裡隨成功 log 出去（finding 率長期偏高＝回頭修 prompt 或門）。
       let debriefQualityFindingCodes: string[] = [];
+      // Phase 5 WP3 續聊敘事記憶：server-only 旗標。`true`＝檢討多吐一段「她
+      // 記得的事」寫回 thread；未設／其他值＝schema、prompt、RPC、Response、
+      // telemetry 五面與接線前逐位元組相同。
+      const memorySummaryWriteOn =
+        deps.getEnv("PRACTICE_MEMORY_SUMMARY_WRITE") === "true";
+      // 只在 validate 真的解析成功那一發賦值（跟 debriefQualityFindingCodes
+      // 同一個慣例）。salvage 出來的卡走不到這裡＝記 `missing` 不寫入：救回來
+      // 的候選本來就是被守門打回的文字，不該拿它當下一場的記憶。
+      // ponytail: salvage 路徑不撈記憶；真的想要就把 raw 一起帶出 salvage。
+      // 用陣列而不是 `let x = null`：賦值發生在 validate 閉包裡，TS 的流程分析
+      // 看不到，`let` 會被窄化成 `never`。
+      const debriefMemorySummaries: ReturnType<
+        typeof parseDebriefMemorySummary
+      >[] = [];
       // salvage 在 catch 裡要用同一份解析設定，但它宣告在 try 內；hoist 一個
       // 參照出來。還沒建好就失敗（例如 claude_unavailable）時為 null＝不搶救。
       let debriefParseOptionsForSalvage:
@@ -4074,6 +4134,7 @@ export function createPracticeChatHandler(
               appliedHintTurns: ledgerAppliedHintTurns,
               replyStyle: replyStyleProfile,
               agencyLedger: agencyMode === "on" ? debriefAgencyLedger : null,
+              memorySummaryWrite: memorySummaryWriteOn,
             }
             : {
               partnerState: partnerStateFromLedger(ledger) ??
@@ -4084,6 +4145,7 @@ export function createPracticeChatHandler(
               timeContext: nowContext,
               replyStyle: replyStyleProfile,
               agencyLedger: agencyMode === "on" ? debriefAgencyLedger : null,
+              memorySummaryWrite: memorySummaryWriteOn,
             },
         );
         const debriefFactualEvidence = hintTrustedFactualEvidence({
@@ -4130,6 +4192,7 @@ export function createPracticeChatHandler(
               "輸出練習拆解卡：總結、亮點、注意點、建議句與邀約評估（Game 模式含拆盤）。",
             inputSchema: debriefToolSchemaFor({
               game: debriefPracticeMode === "game",
+              memorySummary: memorySummaryWriteOn,
             }),
           },
           maxTokens: DEBRIEF_MAX_TOKENS,
@@ -4148,6 +4211,10 @@ export function createPracticeChatHandler(
               onQualityFinding: (code) => findingCodes.push(code),
             });
             debriefQualityFindingCodes = findingCodes;
+            if (memorySummaryWriteOn) {
+              debriefMemorySummaries.length = 0;
+              debriefMemorySummaries.push(parseDebriefMemorySummary(raw));
+            }
             return card;
           },
         });
@@ -4306,6 +4373,10 @@ export function createPracticeChatHandler(
       }
       const debriefResponse = {
         card: debriefCard,
+        // WP3：只給 telemetry／除錯看，client 不讀（旗標 off 時整個 key 不存在）。
+        ...(debriefMemorySummaries[0]?.summary
+          ? { memorySummary: debriefMemorySummaries[0].summary }
+          : {}),
         costDeducted: 0,
         generationSource: "model",
         fallbackUsed: false,
@@ -4375,12 +4446,38 @@ export function createPracticeChatHandler(
         pipeline: "single_shot_v2",
       });
 
+      // WP3：寫回失敗只 warn；`threadStateSkipReason` 不為 null（讀取失敗／
+      // 這一列是別的角色）時完全不寫——理由與 standard 那條寫入路徑同一條。
+      const debriefMemorySummary = debriefMemorySummaries[0] ?? null;
+      if (debriefMemorySummary?.summary && threadStateSkipReason === null) {
+        await persistDebriefMemorySummaryFailOpen({
+          supabase,
+          userId: user.id,
+          visibleThreadId,
+          profileId: request.profile.girl.profileId,
+          practiceMode: debriefPracticeMode,
+          thread: relationshipThreadState,
+          memorySummary: debriefMemorySummary.summary,
+        });
+      }
+
       logInfo("practice_chat_succeeded", {
         user: summarizeUser(user.id),
         mode: "debrief",
         personaId: request.profile.personaId,
         difficulty: request.profile.difficulty,
         costDeducted: 0,
+        // 旗標 off 時一個 key 都不多。
+        ...(memorySummaryWriteOn
+          ? {
+            memorySummaryChars: debriefMemorySummary?.summary?.length ?? 0,
+            ...(debriefMemorySummary?.skipped
+              ? { memorySummarySkipped: debriefMemorySummary.skipped }
+              : debriefMemorySummary === null
+              ? { memorySummarySkipped: "missing" }
+              : {}),
+          }
+          : {}),
       });
       return jsonResponse(
         responsePayloadWithCurrentUsage(authoritativeDebriefResponse),
