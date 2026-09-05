@@ -48,7 +48,7 @@ Phase 0–4.4 把「她像不像真人」這件事做到了模型服從率的天
 | 提示／場 | 1 | 3 | 5 |
 | 檢討／場 | 1 | 1 | 1 |
 | 玩家傳圖／場 | 0 | 3 | 5 |
-| 她傳圖／場 | 0 | 0 | 1（熱度門檻到才觸發） |
+| 她傳圖／場 | 0 | 0（待決 G：可能給沒臉的兩張） | 1（熱度門檻到才觸發） |
 | 混合模型（介入輪＋越界輪＋圖片輪走 Haiku） | 否 | 是 | 是 |
 
 - 檢討上限從程式現況的 `MAX_DEBRIEFS = 3` 改成 **1**（三個 tier 都是 1）。
@@ -70,11 +70,34 @@ Phase 0–4.4 把「她像不像真人」這件事做到了模型服從率的天
 
 ### D5　她傳圖＝預生照片庫，不即時生
 
-- 每位角色預先生一組，初估 **100 位 × 8–10 張，一次性 NT$1,000–1,500**。
-- 依情境標籤（自拍／吃飯／出遊／工作／居家）存 Storage。
-- 聊天熱度到門檻（Essential）由 planner 挑一張傳。
-- 邊際成本 ≈ 0；同角色臉一致。
-  - ⚠️ 這一條的「用既有 Fal.ai 流程」在程式上不成立，見 §9 查證衝突 C3。
+**第一版資產規格（Eric 2026-09-05 定，WP8a 照這個燒）**
+
+- **數量**：每位 **5 張**，100 位 ＝ **500 張**。Eric 與 Bruce **各 250 張**。
+- **生成方式**：**GPT Image 2，image-to-image**；參考圖 ＝ 既有的 `assets/images/practice_girls/practice_girl_NNN.jpg`（100 位都有）。
+  - ⚠️ 這條路**不是**既有的 Fal.ai moments 流程，見 §9 查證衝突 C3。
+- **五個標籤，每位各一張**：
+
+| 標籤 | 內容 | 有臉？ |
+|---|---|---|
+| `selfie_home` | 居家自拍、淡妝、自然光 | **有臉** |
+| `out` | 外出／旅遊，半身或全身，有場景 | **有臉** |
+| `work` | 符合她職業的工作場景 | **有臉** |
+| `food` | 食物／咖啡，本人不入鏡 | 沒臉 |
+| `life` | 寵物／書桌／窗外／健身房擇一，貼她的人設 | 沒臉 |
+
+  **3 張有臉 ＋ 2 張沒臉**。
+- **Prompt 模板**：自動帶入頭像（參考圖）＋ `personalityTags` ＋ 職業 ＋ 城市，**只換場景描述**。同一位的三張有臉用**同一參考圖、同一組人物描述**，只有場景句不同——這是臉一致性的主要手段。
+- **檔名**：`practice_girl_NNN/<tag>.jpg`；**1024 長邊、JPEG q80**。
+- **QA 清單（每張逐項）**：臉與頭像一致、無文字、無第二張臉、衣著保守、無水印、無多指。
+- **清單檔** `manifest.json`：`girlId`、`tag`、`path`、`sha256`、`approvedBy`。
+- **擴充**：先跑數據，之後只對**最常被玩的 20 位**加到 10 張。
+
+**傳圖規則**
+
+- **一場一張**。理由是**像真人 ＋ 庫存輪替**，不是成本（預生照片邊際成本 ≈ 0）。
+- 伺服器記「**該用戶 × 該女生已傳過哪幾張**」，不重複；5 張撐 5 場。
+- **挑圖靠情境標籤對上**：你問她在幹嘛 → `selfie_home`／`life`；她提到吃 → `food`；聊工作 → `work`；週末旅行 → `out`；**對不上就不傳**（寧可不傳，也不要為了傳而傳）。
+- 一次性成本：500 張，單價待核（GPT Image 2），落在 Eric 估的 NT$1,000–1,500 內即為 NT$2–3／張。攤到 20,000 場／月 ＝ 每場 < NT$0.08。
 
 ### D6　LINE 式互動（Bruce 前端）
 
@@ -129,51 +152,67 @@ server Response 加 `sessionEndedBy: "check_out"`，client 顯示並導向檢討
 
 ### D14　成本表（每場，USD；匯率取 1 USD ≈ NT$32）
 
-單價來源：Haiku 4.5 官方 `$1／$5` per MTok（D12 修帳後）、cache read 0.1×、cache write 1.25×；Sonnet 5 **單價待核**，下表暫用 `$3／$15` 外推並標星號；DeepSeek 聊天 `$0.0000294`／次、分類器 `$0.0002027`／次（`tools/practice-agency-eval/README.md` §4.3 實測）；mixed 聊天每場 `$0.0436`（4.3 基準 68.5% Haiku）～`$0.0648`（4.4 刻意堆疊上限 74.0%）。
+單價來源：Haiku 4.5 官方 `$1／$5` per MTok（D12 修帳後）、**Sonnet 5 官方 `$2／$10`**（claude.com/pricing，2026-09-05 核對；**程式內尚無 Sonnet 單價常數**，WP3 一起建）、cache read 0.1×、cache write 1.25×；DeepSeek 聊天 `$0.0000294`／次、分類器 `$0.0002027`／次（`tools/practice-agency-eval/README.md` §4.3 實測）；mixed 聊天每場 `$0.0436`（4.3 基準 68.5% Haiku）～`$0.0648`（4.4 刻意堆疊上限 74.0%）。
+
+單次呼叫外推（輸入 9k token，其中 8.1k 命中 cache）：
+
+| | 輸出 tokens | Haiku 4.5 | Sonnet 5 |
+|---|--:|--:|--:|
+| 提示 | ~400 | **$0.0037** | $0.0074 |
+| 檢討 | ~1,200 | $0.0060 | **$0.0154** |
 
 | 項目 | Free（10 回合） | Starter（20 回合） | Essential（20 回合） |
 |---|--:|--:|--:|
 | 聊天（含分類器） | $0.0023（純 DeepSeek） | $0.0436 ～ $0.0648 | $0.0436 ～ $0.0648 |
 | 提示（Haiku，D3 後） | 1 × $0.0037 | 3 × $0.0037 = $0.0111 | 5 × $0.0037 = $0.0185 |
-| 檢討（Sonnet 5*） | 1 × $0.022* | 1 × $0.022* | 1 × $0.022* |
+| 檢討（Sonnet 5） | 1 × $0.0154 | 1 × $0.0154 | 1 × $0.0154 |
 | 玩家圖（審核 $0.001 ＋ 視覺 $0.0016） | — | 3 × $0.0026 = $0.0078 | 5 × $0.0026 = $0.0130 |
-| 她傳圖 | — | — | ≈ $0（預生，攤提見下） |
-| **典型（4.3 基準）** | **$0.028** | **$0.0845** | **$0.0971** |
-| **最壞（4.4 上限 ＋ 額度全用滿）** | **$0.028** | **$0.106** | **$0.118** |
-| 折台幣（典型／最壞） | NT$0.9 | NT$2.7 ／ NT$3.4 | NT$3.1 ／ NT$3.8 |
+| 她傳圖 | — | — | ≈ $0（預生，攤提見 D5） |
+| **典型（4.3 基準）** | **$0.0214** | **$0.0779** | **$0.0905** |
+| **最壞（4.4 上限 ＋ 額度全用滿）** | **$0.0214** | **$0.0991** | **$0.1117** |
+| 折台幣（典型／最壞） | NT$0.7 | NT$2.49 ／ NT$3.17 | NT$2.90 ／ NT$3.57 |
 
 每則收入（月繳價 ÷ 月額度）：Starter `590 ÷ 300 = NT$1.97`、Essential `1290 ÷ 800 = NT$1.61`。一場練習扣 1–2 則：
 
-| | 一場收入（扣 2 則） | 典型成本 | 最壞成本 | 最壞毛利率 |
-|---|--:|--:|--:|--:|
-| Starter | NT$3.94 | NT$2.7 | NT$3.4 | **+14%** |
-| Essential | NT$3.22 | NT$3.1 | NT$3.8 | **−18%** |
+| | 一場收入（扣 2 則） | 典型成本 | 最壞成本 | 典型毛利率 | **最壞毛利率** |
+|---|--:|--:|--:|--:|--:|
+| Free | NT$0（獲客） | NT$0.7 | NT$0.7 | — | **−100%（NT$0.7／場獲客成本）** |
+| Starter | NT$3.94 | NT$2.49 | NT$3.17 | +37% | **+20%** |
+| Essential | NT$3.22 | NT$2.90 | NT$3.57 | +10% | **−11%** |
 
-**這張表是本計畫最重要的數字，也是 §7 第一條風險。** Essential 每則單價比 Starter 低（大方案折扣），但 Phase 5 給 Essential 的深度最高，兩件事乘起來讓「額度全用滿的 Essential 練習場」在最壞情況是**虧的**。這不代表方案虧損（一般使用者不會把 800 則全花在練習室，也不會每場都用滿 5 提示 5 張圖），但它代表**練習室不能變成 Essential 的主力用途**，所以 WP3 的保險絲與 WP4 的週報不是加分項，是這個方案結構成立的前提。
+**這張表是本計畫最重要的數字，也是 §7 第一條風險。** Sonnet 5 從 `$3／$15` 的外推改成官方 `$2／$10` 之後，三個方案都往上抬了一格——Starter 最壞從 +14% 變 +20%，Essential 最壞從 −18% 變 **−11%**，但**號誌沒有變綠**：Essential 每則單價比 Starter 低（大方案折扣），而 Phase 5 給 Essential 的深度最高，兩件事乘起來讓「額度全用滿的 Essential 練習場」在最壞情況仍然是虧的。這不代表方案虧損（一般使用者不會把 800 則全花在練習室，也不會每場都用滿 5 提示 5 張圖），但它代表**練習室不能變成 Essential 的主力用途**，所以 WP3 的保險絲與 WP4 的週報不是加分項，是這個方案結構成立的前提。
 
-一次性資產成本（D5）：100 位 × 9 張 × 約 $0.03／張 ≈ **$27（NT$865）**，落在 Eric 估的 NT$1,000–1,500 內。攤到 20,000 場／月＝每場 < NT$0.05，忽略不計。
+檢討是所有方案的最大單一模型支出：佔 Free 一場成本的 **72%**、Starter 的 16–20%、Essential 的 14–17%。D3 決定檢討留 Sonnet 5，這筆帳要看得見。
+
+一次性資產成本（D5）：500 張，落在 Eric 估的 NT$1,000–1,500 內；攤到 20,000 場／月 ＝ 每場 < NT$0.08，忽略不計。
 
 ---
 
-## 3. 待 Eric 決定（勾選清單）
+## 3. 待 Eric 決定（Fable 建議勾法）
 
-- [ ] **A. 免費月額度 30 → 20 則？**
-  **建議：先不改，等 WP4 週報跑滿四週再決定。** 理由：Free 每場只有 10 回合、純 DeepSeek、1 提示 1 檢討，一場成本 NT$0.9；30 則就算全花在練習室也只有 NT$27／月／人，而且 Free 一位角色只能玩第 1 輪（`decideContinuationGate` 既有硬閘）。先砍額度會直接砍掉獲客動作的曝光，砍完再想加回來很難。真要控成本，砍的應該是「檢討用 Sonnet」這個最大單項（佔 Free 一場成本的 79%），不是額度。
+每項的建議勾法都已經填好，Eric 只要改掉不同意的那幾格。
 
-- [ ] **B. 她傳圖的熱度門檻？**
-  **建議：溫度 ≥60 且熟悉度 ≥40，一場一次。** 理由：這兩條門檻與 `relationshipStageFor` 的 `personal_allowed` 邊界同區，不用新開一套值域；「一場一次」讓它保持是**事件**而不是功能——傳第二張的邊際驚喜遠低於第一張，成本卻線性。
+- [x] **A. 免費月額度 30 → 20 則 → 先不改。**
+  一場 NT$0.7、30 則全花在練習室也只有 NT$21／月／人，而且 Free 一位角色只能玩第 1 輪（`decideContinuationGate` 既有硬閘）；砍額度是砍獲客曝光，等 WP4 週報跑滿四週有真實分佈再決定。
 
-- [ ] **C. 照片庫風格，以及要不要讓 Bruce 先驗 5 位角色的臉一致性？**
-  **建議：要，而且是 WP8 的第一道 gate。** 理由：見 §9 C3——既有 moments 生圖是「畫面裡不准有人」的純靜物流程，臉部一致性在這條管線上**沒有任何既有證據**。先生 5 位 × 9 張、Bruce 逐張看臉，過了才生剩下 95 位；不過就換 reference-conditioned 路線再驗一次。風格建議沿用 `MOMENT_IMAGE_STYLE_PREFIX` 的「業餘手機隨手拍、台北日常、自然光」，只鬆綁「不准有人」那一條。
+- [x] **B. 她傳圖門檻 → 溫度 ≥60 且熟悉度 ≥40，一場一次，而且要有自然契機。**
+  這兩條門檻與 `relationshipStageFor` 的 `personal_allowed` 邊界同區，不用新開值域；「自然契機」＝ D5 的標籤要對得上，對不上就不傳——沒有契機的照片是功能感，不是真人感。
 
-- [ ] **D.「一般」模式（standard，無分類器、無狀態）：補齊還是降級成「自由聊」？**
-  **建議：降級成「自由聊」，明講它不計入這一套。** 理由：`chatModelFor` 已經把 standard 硬排除在 mixed 之外，hint 是 assisted 專用（standard 走不到），debrief 的 standard 分支本來就是純結構近似。要補齊等於把 Phase 0–4.4 的整條管線再接一次，成本是整個 Phase 5 的量級。改文案成本接近 0。
+- [x] **C. Bruce 先驗 5 位角色的臉一致性 → 要，而且是 WP8a 的硬 gate。**
+  臉部一致性在這條管線上沒有任何既有證據（§9 C3）；先生 5 位 × 5 張驗完才准燒剩下 95 位，最貴的錯誤是燒完 500 張才發現不一致。
 
-- [ ] **E. 已讀不回的更強版本（伺服器真的不回、App 顯示「已讀」）要不要做？**
-  **建議：做，但排在 WP6 之後、當 WP5 的第二階段，且只在越界輪。** 理由：這是唯一一個「用不回話來表達界線」的手段，比任何一句拒絕文案都更像真人；但它同時是**唯一會讓使用者以為 App 壞了**的功能，所以必須先有 WP6 的 LINE 式已讀／輸入中指示當視覺語言，否則使用者只會看到轉圈然後沒東西。
+- [x] **D.「一般」模式（standard）→ 降級成「自由聊」，明講不計入這一套。**
+  `chatModelFor` 已把 standard 排除在 mixed 之外、hint 是 assisted 專用、debrief 的 standard 分支本來就是純結構近似；補齊等於把 Phase 0–4.4 整條管線再接一次，改文案成本接近 0。
 
-- [ ] **F. `gameGreasy`／`userOverEscalated` 來源的連續越界，計入「已讀」允許嗎？**
-  **建議：`userOverEscalated` 計入，`gameGreasy` 不計入。** 理由：兩者在 `turn_response_plan.ts:228` 目前被當同一件事（都併進 cautious），但語意不同——`userOverEscalated` 是玩家往界線推，已讀是合理反應；`gameGreasy` 是玩家講話油膩（Game FSM 的失敗狀態），那是**該被教練指出來的技術問題**，用已讀處理等於把教學機會換成沉默。
+- [x] **E. 已讀不回的更強版本（伺服器真的不回）→ 不做，先用「（已讀）」文字。**
+  真的不回是唯一會讓使用者以為 App 壞了的功能；先在 WP6 把「（已讀）」這個視覺語言立起來、看使用者讀不讀得懂，再談要不要讓她真的沉默。
+
+- [x] **F. 連續越界計入「已讀」允許 → `userOverEscalated` 計入，`gameGreasy` 不計入。**
+  兩者在 `turn_response_plan.ts:228` 目前被當同一件事（都併進 cautious），但語意不同：`userOverEscalated` 是玩家往界線推，已讀是合理反應；`gameGreasy` 是玩家講話油膩（Game FSM 的失敗狀態），那是**該被教練指出來的技術問題**，用沉默處理等於把教學機會丟掉。
+
+- [ ] **G.（新）Starter 要不要給沒臉的兩張（`food`／`life`）當甜頭，一場 1 張，有臉三張留 Essential？**
+  **這一項沒有預填，等 Eric 決定。** 支持：邊際成本 ≈ 0，Starter 能感受到「她會傳照片」這件事，升級動機從「有沒有」變成「看不看得到她的臉」，比純鎖功能更好賣。反對：她傳的第一張如果永遠是食物，「她傳照片」這個驚喜的第一印象就被用掉了，Essential 的有臉照少了一半的意外感。
+  實作上兩種都是 D2 表格改一個數字（WP1 的 `limitsForTier` 加 `partnerPhotoFaceAllowed`），不影響任何一包的排程。
 
 ---
 
@@ -190,10 +229,11 @@ WP1 ──┬── WP2 ── WP3 ── WP4
       │
       ├── WP5 ── WP6
       │
-      └── WP7 ── WP8
+      └── WP7 ── WP8b ── WP8c
 
-WP9 ── WP10   （獨立，可與上面任何一包並行）
-WP11          （獨立小包）
+WP8a（照片資產）  ← 零 server 依賴，可與 WP5 並行開燒
+WP9 ── WP10        （獨立，可與上面任何一包並行）
+WP11               （獨立小包）
 ```
 
 WP1 是所有 tier 相關工作的地基（`limitsForTier`），WP2/WP5/WP7 都要讀它。WP9/WP10/WP11 不碰 tier，可任意插隊。
@@ -265,7 +305,7 @@ telemetry `practice_chat_succeeded` 新增：`tier`、`sessionChargedTotal`、`s
 
 **驗收**：20 對抽查裡「指出玩家沒回答她」的命中數 Haiku ≥ Sonnet，且沒有出現罐頭句／格式壞掉／繁簡混用。
 
-**成本**：每次提示 `$0.011*` → `$0.0037`，省 66%。Essential 一場 5 提示省 `$0.037`。
+**成本**：每次提示 `$0.0074`（Sonnet 5 官方價）→ `$0.0037`（Haiku），**省 50%**。Essential 一場 5 提示省 `$0.0185`。
 
 **旗標**：`PRACTICE_HINT_MODEL`（`sonnet`／`haiku`，預設 `sonnet`）。
 
@@ -460,35 +500,42 @@ telemetry `practice_chat_succeeded` 新增：`userImageCount`（本場累計）�
 
 ### WP8　預生照片庫＋她傳圖（資產 ＋ server ＋ client）
 
-**目的**：她在熱度到門檻時傳一張自己的照片。
+**目的**：她在情境對得上時傳一張自己的照片。
 
 | | |
 |---|---|
-| owner | Eric-AI（資產生成 ＋ server planner）＋ **Bruce 驗臉**（gate）＋ Bruce（client） |
-| PR | 三個：`WP8a-assets`（Eric-AI，含 5 位驗臉 gate）→ `WP8b-server`（Eric-AI）→ `WP8c-client`（Bruce）|
-| label | WP8a 產出後 `next:bruce`（驗臉），驗完 `next:eric-ai` |
-| 依賴 | WP1、WP7a（Storage 與圖片泡泡的路徑共用） |
+| owner | Eric-AI ＋ **Bruce**（資產各燒 250 張、Bruce 是驗臉 gate）＋ Bruce（client） |
+| PR | 三個：`WP8a-assets`（Eric-AI＋Bruce，含 5 位驗臉 gate）→ `WP8b-server`（Eric-AI）→ `WP8c-client`（Bruce）|
+| label | WP8a 開燒前 `next:discuss`（分工 250／250），驗臉時 `next:bruce`，驗完 `next:eric-ai` |
+| 依賴 | 資產（WP8a）**不依賴任何 server 改動，可與 WP5 並行開燒**；WP8b 依賴 WP1、WP7a |
 
-**WP8a（資產）**
-- 新檔 `tools/gen-practice-partner-photos/gen.ts`。
-- **不能直接沿用 `moments_image_gen.ts`**：`MOMENT_IMAGE_STYLE_PREFIX` 明寫 `No people in frame: no faces, no hands, no body parts, no silhouettes`，而且是 **text-to-image 無參考圖**。要臉一致必須改走 reference-conditioned（Seedream 4.5 的 edit／image-to-image 端點），參考圖 ＝ 既有的 `assets/images/practice_girls/practice_girl_NNN.jpg`（100 位都有）。見 §9 C3。
-- 情境標籤五類：`selfie`／`meal`／`outing`／`work`／`home`，每位 8–10 張。
-- 存 Storage bucket `practice-partner-photos`（**public 可以**，這是我們自己生的素材，不是 UGC），路徑 `<profileId>/<tag>_<n>.jpg`；DB 表 `practice_partner_photos(profile_id, tag, path)`。
+**WP8a（資產）　規格照 §2 D5，這裡只寫怎麼燒**
 
-**WP8a 的 gate（§3-C）**：先生 **5 位 × 9 張**，Bruce 逐張看臉。臉一致才生剩下 95 位。不過就換路線再驗一次，**不准直接生完 100 位**。
+- 新檔 `tools/gen-practice-partner-photos/gen.ts`（Deno）：讀 `practice_girl_catalog.dart` 的 100 位（`personalityTags`／職業／城市），對每位 × 5 個標籤組 prompt，呼叫 **GPT Image 2 image-to-image**，參考圖 ＝ `assets/images/practice_girls/practice_girl_NNN.jpg`。
+- **不能沿用 `moments_image_gen.ts`**：那條是 fal Seedream 4.5 **text-to-image 無參考圖**，而且 `MOMENT_IMAGE_STYLE_PREFIX` 明寫「畫面裡不准有人（無臉、無手、無身體、無剪影）」——臉一致在那條路上沒有任何機制（§9 C3）。
+- **prompt 模板只有兩段**：`[人物段：參考圖 ＋ personalityTags ＋ 職業 ＋ 城市]`（同一位的三張有臉**逐字相同**）＋ `[場景段：五個標籤各一句]`。人物段固定是臉一致性的主要手段，場景段是唯一的變數。
+- 輸出 `practice_girl_NNN/<tag>.jpg`，1024 長邊、JPEG q80；`manifest.json` 記 `girlId`／`tag`／`path`／`sha256`／`approvedBy`。
+- **分工**：Eric 250 張、Bruce 250 張（建議照 `girlId` 對半切，001–050 與 051–100，各自跑各自的 50 位 × 5 張，避免同一位被兩邊各生一次）。
+
+**WP8a 的硬 gate（§3-C）**：先燒 **5 位 × 5 張 ＝ 25 張**，Bruce 逐張過 QA 清單（臉與頭像一致、無文字、無第二張臉、衣著保守、無水印、無多指）。**過了才准燒剩下 95 位**；不過就換路線（調 prompt 人物段、或退成固定 seed ＋ 詳細外貌描述）再驗一次。
 
 **WP8b（server）改哪些檔**
-- 新檔 `supabase/functions/practice-chat/partner_photo.ts`：純函式 `shouldSendPhoto({ temperature, familiarity, alreadySentThisSession, tier })` ＋ `pickPhoto(profileId, tag, seed)`（決定論，沿用 `fnv1a` 慣例）。
+- 新 migration：Storage bucket `practice-partner-photos`（**public 可以**，這是我們自己生的素材，不是 UGC）；新表 `practice_partner_photos(profile_id, tag, path, sha256)`；新表 `practice_partner_photo_sent(user_id, profile_id, tag, sent_at)` — **「該用戶 × 該女生已傳過哪幾張」的去重帳**，5 張撐 5 場。
+- 新檔 `supabase/functions/practice-chat/partner_photo.ts`：兩支純函式。
+  - `matchPhotoTag(signals)` → `"selfie_home" | "out" | "work" | "food" | "life" | null`。**對不上就回 `null`，不傳。** 對應規則照 §2 D5：問她在幹嘛 → `selfie_home`／`life`；她提到吃 → `food`；聊工作 → `work`；週末旅行 → `out`。訊號來源用既有的結構欄位（`life_schedule.ts` 的當下情境、`conversation_signals.ts` 的話題），**不新增 regex、不新增模型呼叫**。
+  - `shouldSendPhoto({ tag, temperature, familiarity, alreadySentThisSession, sentTags, tier })` → 一張 `path` 或 `null`。門檻 ＝ §3-B（溫度 ≥60 且熟悉度 ≥40）；**一場一張**；`sentTags` 裡有的不重複；tier 決定看不看得到有臉的三張（§3-G 未定前一律只有 Essential 能拿到任何一張）。
 - `prompt.ts`：命中時渲染「你這一則會附一張你自己的照片（情境：吃飯）」，並要求文字**不要描述照片本身**（沿用 `moments_prompt.ts:216` 的既有做法）。
 - Response 新增 `partnerImageUrl`（public URL 或 null）。
 
-**驗收**
-- 5 位驗臉：Bruce 判定「看得出是同一個人」。
-- Essential、溫度／熟悉度到門檻 → 一場恰好一次；Free/Starter 永遠 0 次。
+**驗收條件**
+- **5 位驗臉**（gate）：Bruce 判定「看得出是同一個人」，且 QA 清單六項全過。
+- Essential、門檻到、標籤對得上 → 一場恰好一次；標籤對不上 → 不傳（**這一條要有測試**，不然會退化成「熱度到就硬傳」）。
+- 同一用戶對同一位連玩 5 場 → 收到 5 張**不重複**；第 6 場不傳。
+- Free 永遠 0 次；Starter 依 §3-G 決定。
 - 她的文字不會說「這是我拍的照片喔」這種描述照片的句子。
-- 同一 `(profileId, seed)` 挑到同一張（決定論測試）。
+- `matchPhotoTag` 與 `shouldSendPhoto` 都是決定論（同輸入同輸出），有測試。
 
-**成本**：一次性約 `$27`；每場邊際 ≈ `$0`（只多一個 public URL 字串）。
+**成本**：一次性 500 張（單價待核，Eric 估 NT$1,000–1,500）；每場邊際 ≈ `$0`（只多一個 public URL 字串與一次去重表寫入）。
 
 **旗標**：`PRACTICE_PARTNER_IMAGE_ENABLED`（`off`／`true`，預設 `off`）。
 
@@ -613,14 +660,14 @@ telemetry `practice_chat_succeeded` 新增：`userImageCount`（本場累計）�
 
 ## 7. 風險與停損
 
-1. **Essential 的最壞情況毛利是負的（−18%，見 D14）。**
+1. **Essential 的最壞情況毛利是負的（−11%，見 D14）。** Sonnet 5 用官方 `$2／$10` 重算之後從 −18% 改善到 −11%，但號誌沒有變綠。
    停損：WP4 週報連續兩週顯示 Essential 的「每場成本 ÷ 每場收入」> 0.9 → 把 Essential 的圖片與提示上限往下調（改常數即可，不用改架構），或把第 11 回合加扣改成加扣 2 則。
 
 2. **`claude.ts` 支援 image block 是這一階段唯一的架構級改動（§9 C1）。**
    它動到 hint／debrief 都在用的那支 `callClaude`。停損：`content` 維持 `string | ContentBlock[]` 的聯集型別，字串路徑一個位元組都不改，並用既有的「送出的 request body 逐位元組相同」測試釘住 hint／debrief 兩條路。
 
 3. **臉部一致性沒有任何既有證據（§9 C3）。**
-   停損：5 位驗臉是硬 gate。連續兩種路線（reference-conditioned、以及退而求其次的固定 seed ＋ 詳細外貌描述）都過不了 Bruce 的眼 → 這一包砍掉，她傳圖改成傳**靜物照**（沿用既有 moments 管線，零技術風險，只是驚喜少一點）。
+   停損：**5 位 × 5 張 ＝ 25 張的驗臉是硬 gate**，過不了不准燒剩下 475 張。連續兩種路線（GPT Image 2 image-to-image、以及退而求其次的固定 seed ＋ 詳細外貌描述）都過不了 Bruce 的眼 → 有臉的三張砍掉，她傳圖只留 `food`／`life` 兩張沒臉的（沿用既有 moments 的靜物邏輯，零技術風險，只是驚喜少一點）。
 
 4. **提示換 Haiku 可能讓提示品質掉。**
    停損：20 則抽查是硬 gate（D3）。切上去之後 WP4 週報看提示「沒有可貼句」的比率，比 base 高 5 個百分點以上就換回去（改旗標，一秒）。
@@ -643,7 +690,8 @@ telemetry `practice_chat_succeeded` 新增：`userImageCount`（本場累計）�
 
 1. **你先做 WP6（UI/UX 檢視與小優化）**——它不依賴任何 server 改動，檢查清單在 §4 WP6，逐項打勾 ＋ 每個大項一組 before／after 截圖就是驗收；順手把扣費文案改成「本場已扣 1 則（超過 10 則會再扣 1）」（`practice_chat_screen.dart` 的 1281／1713／2698 三處）。
 2. **你要接的所有 server 契約都在各包的「資料契約」小節**：長按選單看 §4 WP5（`replyToTurnIndex`／`recalledTurnIndex`／回報 telemetry），圖片泡泡與上傳看 §4 WP7（`imagePath`），Game 收尾導向檢討看 §4 WP11（`sessionEndedBy`）——每一個都等對應的 server PR 先合併，你的 PR 在那之前掛 Draft parent。
-3. **驗收怎麼看**：每包的「驗收條件」是可以一條一條在真機上點出來的，不是形容詞；有 gate 的包（WP8 的 5 位驗臉）你就是那道 gate，臉不像就直接說不過，這一階段最貴的錯誤是生完 100 位才發現不一致。
+3. **驗收怎麼看**：每包的「驗收條件」是可以一條一條在真機上點出來的，不是形容詞；有 gate 的包（WP8a 的 5 位 × 5 張驗臉）你就是那道 gate，臉不像就直接說不過，這一階段最貴的錯誤是燒完 500 張才發現不一致。
+4. **WP8a 的照片資產可以跟 WP5 並行開燒，不用等任何伺服器改動**——規格在 §2 D5（每位 5 張、五個標籤、3 有臉 2 沒臉、GPT Image 2 image-to-image、參考圖用既有頭像），你我各 250 張；先燒 5 位 25 張讓你驗臉，過了再燒剩下的。
 
 ---
 
@@ -657,8 +705,8 @@ telemetry `practice_chat_succeeded` 新增：`userImageCount`（本場累計）�
 **C2　混合路由目前是全域旗標，不是 tier-dependent，而且 standard 模式被硬排除。**
 `conversation_agency.ts:1245` 的 `chatModelFor` 現況：`routingFlag !== "mixed"` → deepseek；`agencyMode !== "on"` → deepseek；`practiceMode` 不是 `beginner`／`game` → deepseek。D2 要求「Free 否／Starter、Essential 是」，等於要加 `tier` 參數；D4 的圖片輪要加 `hasImage` 且必須**優先於** `practiceMode` 的排除（圖片輪走 DeepSeek 在物理上不可能）。簽章從 5 參數變 7 參數，`tools/practice-agency-eval/run_agency.ts` 的 `runnerChatModelFor` 要同步（既有全矩陣比對測試會抓漂移）。
 
-**C3　「用既有 Fal.ai 流程生角色照片」在程式上不成立。**
-既有的 `moments_image_gen.ts` 走 fal Seedream 4.5 **text-to-image，無參考圖**，而且 `MOMENT_IMAGE_STYLE_PREFIX` 第二句就是 `No people in frame: no faces, no hands, no body parts, no silhouettes`——這條管線的設計目的就是「畫面裡不准有人」。D5 的「同角色臉一致」在這條路上**沒有任何機制**（text-to-image 無參考圖，臉必然每張都不同）。需要的是 reference-conditioned 生成（Seedream 4.5 的 edit／image-to-image），參考圖用既有的 `assets/images/practice_girls/practice_girl_NNN.jpg`（100 位都有，`tools/gen-practice-photos/` 目前只有一支轉檔用的 `convert_practice_photos.dart`，沒有生成腳本，所以那批圖是外部產出的）。這是 WP8 的實質內容，也是 §3-C 的驗臉 gate 存在的原因。成本估算（100 × 9 × $0.03 ≈ $27）仍落在 Eric 估的 NT$1,000–1,500 內。
+**C3　「用既有 Fal.ai 流程生角色照片」不成立（Eric 已改採 GPT Image 2，此條保留為背景）。**
+既有的 `moments_image_gen.ts` 走 fal Seedream 4.5 **text-to-image，無參考圖**，而且 `MOMENT_IMAGE_STYLE_PREFIX` 第二句就是 `No people in frame: no faces, no hands, no body parts, no silhouettes`——這條管線的設計目的就是「畫面裡不准有人」，臉一致在上面**沒有任何機制**（text-to-image 無參考圖，臉必然每張都不同）。Eric 2026-09-05 已改成 **GPT Image 2 image-to-image**，參考圖用既有的 `assets/images/practice_girls/practice_girl_NNN.jpg`（100 位都有；`tools/gen-practice-photos/` 目前只有一支轉檔用的 `convert_practice_photos.dart`，沒有生成腳本，所以那批頭像是外部產出的）。新路線是**全新管線**，不共用 moments 的任何一行，所以 §3-C 的 5 位 × 5 張驗臉 gate 是這條路上唯一的證據來源。
 
 **C4　既有的 moments bucket 是 public，UGC bucket 不能照抄。**
 `handler.ts:2132` 用 `${supabaseUrl}/storage/v1/object/public/${MOMENT_IMAGE_BUCKET}` 組 URL，`practice-moment-images` 是公開 bucket。玩家上傳的照片是 UGC，必須是 **private bucket ＋ RLS ＋ 簽名 URL**，不能沿用那套。WP7a 已按私有設計。
@@ -669,5 +717,5 @@ telemetry `practice_chat_succeeded` 新增：`userImageCount`（本場累計）�
 **C6　`check_out` 不是程式裡存在的識別字。**
 `grep` 過 `supabase/functions/practice-chat/` 與 `lib/features/practice_chat/` 全部檔案，`check_out`／`checkOut`／「結帳」零命中。`game_fsm.ts` 的 `GameFsmPhase` 是 `P1_OPEN`／`P2_VALUE`／`P3_TEST`／`P4_TENSION`／`P5_CLOSE`。D13 要先定義 `check_out` 對應什麼——WP11 建議定成「Game 模式 ＋ FSM 走到 `P5_CLOSE` ＋ 她這一則是收尾語」，但這個定義要 Eric 確認是不是他講的那件事。
 
-**C7（非衝突，補充）　Sonnet 5 沒有單價常數。**
-D12 要「Sonnet 5 核價更新」，但程式裡目前只有 `tools/practice-agency-eval/run_agency.ts` 的 Haiku 四個常數，Sonnet 一個都沒有（hint／debrief 的成本從來沒有被程式算過）。D14 成本表裡的 Sonnet 數字全部是用 `$3／$15` 外推的估算，標了星號。WP3 修帳時要把 Sonnet 的四個常數一起建起來，否則 WP4 週報的「每場成本估算」會漏掉最大的單一項目（檢討佔 Free 一場成本的 79%、Starter 的 26%）。
+**C7（非衝突，補充）　Sonnet 5 有官方價，但程式內沒有常數。**
+D12 的「Sonnet 5 核價」已完成：**官方 `$2／$10` per MTok**（claude.com/pricing，2026-09-05 核對），§2 D14 的成本表已全部用這個價重算（原本是 `$3／$15` 外推）。但程式裡目前只有 `tools/practice-agency-eval/run_agency.ts` 的四個 Haiku 常數，**Sonnet 一個都沒有**（hint／debrief 的成本從來沒有被程式算過）。WP3 修帳時要把 Sonnet 的四個常數一起建起來，否則 WP4 週報的「每場成本估算」會漏掉最大的單一模型支出（檢討佔 Free 一場成本的 72%、Starter 的 16–20%、Essential 的 14–17%）。
