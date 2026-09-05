@@ -4042,16 +4042,31 @@ export function createPracticeChatHandler(
         });
       };
       // Phase 4.1：結構回放出「她在補救」的輪次。旗標 off 時整個不算（連
-      // telemetry key 都不該多一個）；shadow 算但不進 prompt。standard 沒有
-      // 持久化狀態，本來就是純結構近似（見 `debriefAgencyLedgerFor` 註解）。
+      // telemetry key 都不該多一個）；shadow 算但不進 prompt。
       // 門檻與 chat 路徑同源（難度／isGame／角色的 agency profile）。
+      //
+      // Phase 4.5c 刀 2：回放吃 thread 上的持久化 agency 狀態
+      // （只用得到 `repairedAtUserTurns`，見 `debriefAgencyLedgerFor`）。
+      // assisted 一直都有；standard 是 4.5b 之後才會寫，所以那一格用**同一支**
+      // `standardAgencyClassifierEnabled` 判——旗標關著時 standard 的 thread 上
+      // 沒有這一輪寫進去的 agency 狀態，讀它等於吃到別條路徑留下的殘值。
+      // 這裡刻意不重用 `standardAgencyClassifierOn`（那支綁 `request.practiceMode`，
+      // debrief 的模式來自 ledger）。
+      const debriefAgencyState = debriefAssistedMode ||
+          standardAgencyClassifierEnabled(
+            deps.getEnv("PRACTICE_STANDARD_AGENCY_CLASSIFIER"),
+            agencyMode,
+            debriefPracticeMode,
+          )
+        ? relationshipThreadState?.agencyState ?? null
+        : null;
       const debriefAgencyLedger = agencyMode === "off"
         ? null
         : debriefAgencyLedgerFor(request.turns, {
           difficulty: request.profile.difficulty,
           isGame: debriefPracticeMode === "game",
           profileId: request.profile.girl.profileId,
-        });
+        }, debriefAgencyState);
       try {
         const baseDebriefMessages = buildDebriefMessages(
           request.turns,

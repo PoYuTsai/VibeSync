@@ -503,3 +503,78 @@ Deno.test("hint 用真正持久化的 state 不會把同一輪的欠債再算一
     coaching.unresolvedCount,
   );
 });
+
+// ── Phase 4.5c 刀 2：debrief 回放吃 thread 上的持久化修復點 ────────────────
+/** 帶 `repairedAtUserTurns` 的最小合法狀態；其餘欄位刻意是中性預設。 */
+const stateWithRepairAt = (n: number) => ({
+  version: 1 as const,
+  lastCoherence: "ambiguous" as const,
+  unresolvedCount: 0 as const,
+  priorChallengeIssued: false,
+  lastAgencyAct: null,
+  repairedAtUserTurns: n,
+});
+
+Deno.test("Phase 4.5c 刀 2：省略／null 的持久化狀態＝逐字沿用 4.1 的純結構回放", () => {
+  assertEquals(
+    debriefAgencyLedgerFor(A25_TURNS, CTX),
+    debriefAgencyLedgerFor(A25_TURNS, CTX, null),
+  );
+  // 4.1 的基準（A25 六則玩家訊息全部被判成需要她補救）。
+  assertEquals(debriefAgencyLedgerFor(A25_TURNS, CTX), {
+    fragmentTurns: 1,
+    topicShiftTurns: 5,
+    loopTurns: 0,
+    repairTurns: [1, 2, 3, 4, 5, 6],
+    repairTurnCount: 6,
+  });
+});
+
+Deno.test("Phase 4.5c 刀 2：持久化的修復點真的注回回放——第 2 則之後才重新算欠債", () => {
+  // 分類器在第 2 則判 `connected`：第 2、3 則不再算成介入輪，帳從 6 掉到 4。
+  assertEquals(debriefAgencyLedgerFor(A25_TURNS, CTX, stateWithRepairAt(2)), {
+    fragmentTurns: 1,
+    topicShiftTurns: 3,
+    loopTurns: 0,
+    repairTurns: [1, 4, 5, 6],
+    repairTurnCount: 4,
+  });
+});
+
+Deno.test("Phase 4.5c 刀 2：定位不到的修復點（比這次逐字稿的玩家則數大）＝當成沒有", () => {
+  // 逐字稿被截窗時 marker 會指到不存在的位置——寧可不用，也不要指錯地方
+  // （與 `detectAgencyEvidence`／`nextConversationAgencyState` 的 R1 P1-4a 同規則）。
+  for (const n of [7, 99]) {
+    assertEquals(
+      debriefAgencyLedgerFor(A25_TURNS, CTX, stateWithRepairAt(n)),
+      debriefAgencyLedgerFor(A25_TURNS, CTX, null),
+      `marker=${n}`,
+    );
+  }
+  // 只有 `repairedAtUserTurns` 被消費：其餘欄位（結尾的累積值）不得影響回放。
+  assertEquals(
+    debriefAgencyLedgerFor(A25_TURNS, CTX, {
+      ...stateWithRepairAt(2),
+      lastCoherence: "connected",
+      unresolvedCount: 3,
+      priorChallengeIssued: true,
+      lastAgencyAct: "hold_position",
+      lowValueStreak: 3,
+      checkedOut: true,
+    }),
+    debriefAgencyLedgerFor(A25_TURNS, CTX, stateWithRepairAt(2)),
+  );
+});
+
+Deno.test("Phase 4.5c 刀 2：standard 與 beginner 同源——同一份 turns／ctx／state 一定同一份帳（函式沒有 practiceMode 分支）", () => {
+  // 4.5b 之後 standard 也會寫 `repairedAtUserTurns`，所以兩種模式的差別只剩
+  // handler 要不要把 state 傳進來（旗標閘門），不是這支函式自己有近似分支。
+  for (const n of [null, 1, 2, 4, 6]) {
+    const state = n === null ? null : stateWithRepairAt(n);
+    assertEquals(
+      debriefAgencyLedgerFor(A25_TURNS, CTX, state),
+      debriefAgencyLedgerFor(A25_TURNS, { ...CTX }, state),
+      `marker=${n}`,
+    );
+  }
+});

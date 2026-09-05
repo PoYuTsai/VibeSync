@@ -15,10 +15,12 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   chatBody,
+  debriefBody,
   type FakeOptions,
   ledger,
   makeFake,
   makeRequest,
+  validDebriefJson,
 } from "./handler_test_fake.ts";
 import {
   AGENCY_CLASSIFIER_RULES,
@@ -821,4 +823,95 @@ Deno.test("Phase 4.5b（Codex R2 P3）：多出來的那一次分類器呼叫，
     lastAgencyAct: null,
     aiClarifiedLastTurn: false,
   });
+});
+
+// ── Phase 4.5c 刀 2：debrief 也吃 standard 的持久化 agency 狀態 ────────────
+/** A25 型逐字稿（六則玩家訊息全部是裸地名）。 */
+const A25_DEBRIEF_TURNS = [
+  { role: "user", text: "東東" },
+  { role: "ai", text: "東東？誰啊" },
+  { role: "user", text: "阿布打比" },
+  { role: "ai", text: "蛤 你打什麼 看不懂" },
+  { role: "user", text: "清邁" },
+  { role: "ai", text: "喔 清邁\n我還沒去過那邊\n聽說食物很讚" },
+  { role: "user", text: "好市多" },
+  {
+    role: "ai",
+    text:
+      "你怎麼突然跳這麼多地方\n一下東東一下阿布達比\n現在又好市多\n到底在講哪個",
+  },
+  { role: "user", text: "曼谷" },
+  { role: "ai", text: "你是在背地名嗎\n我快跟不上你了啦" },
+  { role: "user", text: "馬尼拉" },
+  { role: "ai", text: "好 你慢慢背\n我累了先這樣" },
+];
+
+/** standard thread row，第 2 則玩家訊息上有分類器落下的修復點。 */
+const STANDARD_ROW_WITH_REPAIR = {
+  profile_id: "practice_girl_001",
+  practice_mode: "standard",
+  recent_facts: {
+    source: "practice_chat",
+    conversationAgency: {
+      version: 1,
+      lastCoherence: "ambiguous",
+      unresolvedCount: 0,
+      priorChallengeIssued: false,
+      lastAgencyAct: null,
+      repairedAtUserTurns: 2,
+    },
+  },
+};
+
+/** debrief 走 `practice_chat_generation_outcome`（不是 chat 的 succeeded）。 */
+function debriefAgencyTelemetry(r: RunResult): Record<string, unknown> {
+  const row = r.telemetry.find((t) =>
+    t.event === "practice_chat_generation_outcome" && t.mode === "debrief"
+  );
+  assert(row, "缺少 debrief 的 practice_chat_generation_outcome");
+  const agency = row.conversationAgency as Record<string, unknown> | undefined;
+  assert(agency, "缺少 conversationAgency telemetry");
+  return agency;
+}
+
+async function runStandardDebrief(env: Record<string, string | undefined>) {
+  return await runStandardTurn({
+    ledger: ledger({ practice_mode: "standard", ai_count: 1, charged: true }),
+    thread: STANDARD_ROW_WITH_REPAIR,
+    env,
+    claudeReplies: [validDebriefJson()],
+  }, debriefBody({ turns: A25_DEBRIEF_TURNS }));
+}
+
+Deno.test("Phase 4.5c 刀 2：standard debrief 在分類器旗標開著時吃 thread 上的修復點（第 2 則之後才重算欠債）", async () => {
+  const r = await runStandardDebrief(STANDARD_ENV);
+  assertEquals(r.status, 200);
+  // 期望值是手算的（`debriefAgencyLedgerFor` 的第 2 則修復點把第 2、3 則排除），
+  // 不是拿被驗對象自己算一次——見 `agency_coaching_test.ts` 的同一組數字。
+  assertEquals(debriefAgencyTelemetry(r), {
+    applied: true,
+    fragmentTurns: 1,
+    topicShiftTurns: 3,
+    loopTurns: 0,
+    repairTurnCount: 4,
+  });
+});
+
+Deno.test("Phase 4.5c 刀 2（反例）：分類器旗標關著時 standard debrief 不讀 thread 狀態，維持 4.1 的純結構回放", async () => {
+  // 旗標關著時 standard 這一輪根本不會寫 agency 狀態，讀它等於吃到別條路徑的
+  // 殘值；所以帳必須留在六則全記的 4.1 基準。
+  for (const flag of [undefined, "off", "亂填"]) {
+    const r = await runStandardDebrief({
+      [AGENCY_ENV]: "true",
+      [STANDARD_CLASSIFIER_ENV]: flag,
+    });
+    assertEquals(r.status, 200, String(flag));
+    assertEquals(debriefAgencyTelemetry(r), {
+      applied: true,
+      fragmentTurns: 1,
+      topicShiftTurns: 5,
+      loopTurns: 0,
+      repairTurnCount: 6,
+    }, String(flag));
+  }
 });
