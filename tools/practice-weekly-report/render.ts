@@ -184,6 +184,14 @@ function renderLogs(logs: LogStats): string[] {
   lines.push(
     `其中 ${logs.turns} 列是 \`practice_chat_succeeded\`（跳過：其他事件 ${logs.skippedOtherEvent} 列、無法解析 ${logs.skippedUnparsable} 列）。`,
   );
+  if (logs.truncatedDays.length > 0) {
+    lines.push("");
+    lines.push(
+      `**${logs.truncatedDays.length} 天撞到單日列數上限**（\`--logs-limit\`）：${
+        logs.truncatedDays.join("、")
+      }。那幾天只取到前 N 列，比率會偏。`,
+    );
+  }
   if (logs.missingDays.length > 0) {
     lines.push("");
     lines.push(

@@ -144,3 +144,14 @@ Deno.test("被限流未取得的日子印在涵蓋範圍段", () => {
   assertStringIncludes(md, "**未取得 2 天**");
   assertStringIncludes(md, "2026-09-01、2026-09-02");
 });
+
+Deno.test("撞到單日上限的日子逐日印在涵蓋範圍段", () => {
+  const md = renderReport(aggregate({
+    range: RANGE,
+    sessions: [],
+    aiLogs: [],
+    logs: aggregateLogs([], [], ["2026-09-03"]),
+  }));
+  assertStringIncludes(md, "**1 天撞到單日列數上限**");
+  assertStringIncludes(md, "2026-09-03");
+});

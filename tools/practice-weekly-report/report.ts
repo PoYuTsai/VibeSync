@@ -216,6 +216,11 @@ export interface LogFetchResult {
   rows: LogRow[];
   /** 退避用完仍被限流的日子，報告會逐日印「未取得」。 */
   missingDays: string[];
+  /**
+   * 單日回傳列數撞到 limit 的日子＝那一天被截斷。整週總數跟 limit 比是錯的
+   * 判準（limit 是**每次呼叫**的上限，7 天總數本來就可能超過）。
+   */
+  truncatedDays: string[];
 }
 
 function isThrottled(status: number, body: string): boolean {
@@ -238,6 +243,8 @@ export async function fetchLogRows(opts: {
   token: string;
   sql: string;
   windows: readonly DayWindow[];
+  /** 單日列數上限；某天回滿就代表那天被截斷。 */
+  limit?: number;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<LogFetchResult> {
@@ -247,6 +254,7 @@ export async function fetchLogRows(opts: {
     ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
   const rows: LogRow[] = [];
   const missingDays: string[] = [];
+  const truncatedDays: string[] = [];
 
   for (const [index, window] of opts.windows.entries()) {
     if (index > 0) await sleep(LOGS_DAY_GAP_MS);
@@ -268,11 +276,15 @@ export async function fetchLogRows(opts: {
         throw new Error(`Logs API ${response.status}: ${body}`);
       }
       const parsed = JSON.parse(body) as { result?: LogRow[] } | LogRow[];
-      rows.push(...(Array.isArray(parsed) ? parsed : parsed.result ?? []));
+      const dayRows = Array.isArray(parsed) ? parsed : parsed.result ?? [];
+      if (opts.limit !== undefined && dayRows.length >= opts.limit) {
+        truncatedDays.push(window.day);
+      }
+      rows.push(...dayRows);
       break;
     }
   }
-  return { rows, missingDays };
+  return { rows, missingDays, truncatedDays };
 }
 
 async function main(): Promise<number> {
@@ -324,10 +336,11 @@ async function main(): Promise<number> {
     token,
     sql: logsSql,
     windows,
+    limit: opts.logsLimit,
   });
-  if (logs.rows.length >= opts.logsLimit) {
+  if (logs.truncatedDays.length > 0) {
     console.warn(
-      `logs 回了 ${logs.rows.length} 列（撞到 --logs-limit），聊天那段可能被截斷`,
+      `logs 有 ${logs.truncatedDays.length} 天撞到 --logs-limit（可能被截斷），見報告涵蓋範圍`,
     );
   }
   if (logs.missingDays.length > 0) {
@@ -342,7 +355,7 @@ async function main(): Promise<number> {
       sessions,
       aiLogs,
       payers: opts.payers,
-      logs: aggregateLogs(logs.rows, logs.missingDays),
+      logs: aggregateLogs(logs.rows, logs.missingDays, logs.truncatedDays),
     }),
   );
   await Deno.writeTextFile(opts.out, markdown);

@@ -273,3 +273,25 @@ Deno.test("--allow-out-anywhere 是逃生口，但 .. 永遠擋", () => {
     "路徑穿越",
   );
 });
+
+Deno.test("截斷是逐日判斷：只有回滿 limit 的那天被標，總數超過不算", async () => {
+  const full = '{"result":[{"timestamp":1,"event_message":"a"},' +
+    '{"timestamp":2,"event_message":"b"}]}';
+  const partial = '{"result":[{"timestamp":3,"event_message":"c"}]}';
+  let day = 0;
+  const result = await fetchLogRows({
+    projectRef: "ref",
+    token: "t",
+    sql: "SELECT 1",
+    windows: dayWindows({ from: "2026-08-30", to: "2026-09-02" }),
+    limit: 2,
+    fetchImpl: (() => {
+      day += 1;
+      return Promise.resolve(fakeResponse(200, day === 2 ? full : partial));
+    }) as unknown as typeof fetch,
+    sleep: () => Promise.resolve(),
+  });
+  // 三天共 4 列 > limit 2，但只有第二天真的回滿。
+  assertEquals(result.rows.length, 4);
+  assertEquals(result.truncatedDays, ["2026-08-31"]);
+});

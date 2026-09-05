@@ -292,6 +292,8 @@ export interface LogStats {
   rowsReturned: number;
   /** 重試後仍拿不到的日子（限流），涵蓋範圍段會逐日列出。 */
   missingDays: string[];
+  /** 單日回滿 `--logs-limit` 的日子＝那天的資料可能不完整。 */
+  truncatedDays: string[];
   /** 涵蓋範圍：保留期把時間窗吃掉時，這兩個值會比 --from／--to 窄。 */
   earliest: string | null;
   latest: string | null;
@@ -376,6 +378,7 @@ function addUsage(total: TokenUsage, value: unknown): TokenUsage {
 export function aggregateLogs(
   rows: readonly LogRow[],
   missingDays: readonly string[] = [],
+  truncatedDays: readonly string[] = [],
 ): LogStats {
   let turns = 0;
   let skippedOtherEvent = 0;
@@ -456,6 +459,7 @@ export function aggregateLogs(
   return {
     rowsReturned: rows.length,
     missingDays: [...missingDays],
+    truncatedDays: [...truncatedDays],
     earliest,
     latest,
     turns,
