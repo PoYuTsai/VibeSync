@@ -1,8 +1,10 @@
 // Phase 4.5b 刀 B 的 cache 量測腳本（Codex R1 P1-2）。
 //
 // **為什麼要有這一支**：刀 B 把 Haiku 的 system 拆成「穩定前綴 ＋ 當輪尾巴」，
-// 前綴掛 `cache_control: ephemeral`。但 Haiku 4.5 的最小可快取長度是 2048
-// tokens，而穩定前綴實測只有 2,799–3,608 code units——`prompt_test.ts` 只能用
+// 前綴掛 `cache_control: ephemeral`。但 Haiku 4.5 的最小可快取長度是 **4,096
+// tokens**（Anthropic 官方文件；2,048 是 Haiku 3.5 的門檻，Phase 4.5b 的檔頭
+// 註解抄錯了一格，2026-09-05 Phase 4.5e 更正），而穩定前綴實測只有
+// 2,799–3,608 code units——`prompt_test.ts` 只能用
 // **字元數粗估**，沒有用真的 tokenizer 量過。唯一能證明「cache 真的命中」的
 // 證據是 Anthropic 回的 `usage`。
 //
@@ -18,7 +20,7 @@
 // 穩定前綴逐位元組不變）。判讀：
 //   - 第 1 輪 `cacheCreationInputTokens > 0`＝前綴長到寫得進 cache。
 //   - 第 2 輪 `cacheReadInputTokens > 0`＝**真的命中**（刀 B 成立）。
-//   - 兩輪 create/read 都 0＝前綴沒到 2048 tokens 門檻，刀 B 目前是死碼；
+//   - 兩輪 create/read 都 0＝前綴沒到 4,096 tokens 門檻，刀 B 目前是死碼；
 //     出口見計畫檔 Phase 4.5b「已知限制」（把記憶摘要／朋友圈也搬進前綴，
 //     或整個拆法退掉）。
 

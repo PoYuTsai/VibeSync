@@ -2833,8 +2833,10 @@ Anthropic 合計）。
 | game/styleon | 2 | 0 | 0 | 6,054 | 2,701 |
 
 **結論：6 格全部 create=0、read=0——刀 B 目前是死碼**。全部前綴長度落在
-2,701–2,858 code units，遠低於檔頭註解說的 Haiku 4.5 最小可快取長度（2,048
-tokens，換算成中英混排文字通常需要 3,000+ code units 才夠，這批前綴連
+2,701–2,858 code units，遠低於 Haiku 4.5 的最小可快取長度（**4,096
+tokens**——2,048 是 Haiku 3.5 的門檻，本節與 `cache_probe.ts` 檔頭原本抄錯了
+一格，2026-09-05 Phase 4.5e 更正；換算成中英混排文字通常需要 6,000+ code
+units 才夠，這批前綴連
 `cacheCreationInputTokens > 0`（寫得進 cache）這一關都沒過，第 2 輪自然也讀不
 到）。出口跟計畫檔一致：要嘛把記憶摘要／朋友圈也搬進穩定前綴撐長，要嘛整個
 拆法退掉；本輪只是把「死碼」從推測升級成 12/12 次呼叫的直接證據。
@@ -2949,7 +2951,8 @@ game 模式先前的黑箱一致，沒有反向**；序列類與跨輪立場指�
 （`repeat=1`）不足以分開，是「答不出來」不是「量到沒有效果」，下一輪要加
 repeat 或情境數才能補；輕鬆難度的 `check_out`／`read_only` 確認是 0，A27 的
 既有判準缺口沒有惡化。**Haiku 系統前綴快取（刀 B）12/12 次呼叫證實是死碼**
-——前綴長度沒到 2,048 token 門檻，要嘛加長前綴要嘛整個拆法退掉，是下一輪
+——前綴長度沒到 4,096 token 門檻（Phase 4.5e 更正，原記 2,048），差距比原本
+記的更大，要嘛加長前綴要嘛整個拆法退掉，是下一輪
 要決定的技術債，不是本輪能修的範圍。花費 $2.37，遠低於 $5.00 停損。
 
 ## Phase 4.5c：`chatModel="none"` 的消費端與成本外推修正（2026-09-05）
@@ -3313,3 +3316,69 @@ Haiku 成本，把「這次到底有沒有吃到 cache」也記進 artifact meta
 文案。花費 $2.56，用掉 $3.00 停損的 85.6%，接近上限但沒有超出，主因是本輪
 沒有吃到 Haiku prompt cache（4.4 有吃到），是否穩定命中快取是下一輪認真
 談 Haiku 成本前該先查的前提。
+
+## Phase 4.5e：runner 補上 production 的 `read_only` 短路（2026-09-05，`agency-phase45e-eval` 分支）
+
+上一節（Phase 4.5c Game 單臂）「誠實解讀」第 2 點記錄的落差，這一輪修掉了。
+
+### 缺口
+
+production `handler.ts`（4621–4655）在 `agencyDecision.decision.forcedAct ===
+"read_only"` 時**完全跳過生成模型**，直接把 `candidate` 賦值成
+`READ_ONLY_REPLY_TEXT`（「（已讀）」），telemetry 記 `chatModel="none"`／
+`provider="none"`／`model="none"`。`run_agency.ts` 沒有這個短路：Game 黑箱
+440 輪裡 32 筆 `read_only` **全部真的打了 Haiku**，沒有一則回覆是「（已讀）」。
+
+用修好的 `policy_breakdown.ts` 對同一份舊 artifact 重跑，落差一眼看得到：
+
+```
+$ deno run --allow-read tools/practice-agency-eval/policy_breakdown.ts \
+    out/2026-09-05-p45c-game-mixed.json out/2026-09-05-p45c-game-mixed-judge.json
+read_only（回合 440）：決策頻率 32（7.3%）｜**真實已讀率** 0（0.0%）
+　└ 這份 artifact 是 Phase 4.5e 短路之前跑的：那些輪次照樣打了模型、回覆是模型生成的內容，read_only 只是決策頻率。
+```
+
+### 「決策頻率」與「真實已讀率」要並列讀
+
+**4.4／4.5b／4.5c 的 Game／beginner artifact 裡所有 `read_only` 數字都是
+「決策頻率」，不是真實已讀率。** 那些輪次照樣打了模型、回覆是模型生成的
+內容，所以：
+
+- 不能拿來宣稱「production 真的省了那 32 次呼叫」；
+- 不能拿來宣稱「reply 真的變成逐字『（已讀）』」；
+- 那幾輪的成本外推**多算了**那些生成呼叫（`read_only` 佔比越高，舊數字高估
+  越多）。
+
+`policy_breakdown.ts` 從 4.5e 起把兩個數字並列印出（`readOnlyStatsOf`）：
+`decisions / rounds`＝決策頻率，`replies / rounds`＝**真實已讀率**（分子是
+artifact 裡真的走了短路、`readOnlyReply: true` 的輪次）。舊 artifact 的
+`replies` 恆為 0，輸出會多印一行提醒——那是「這批資料量不到」，不是
+「production 沒有省下呼叫」。
+
+### 消費端
+
+- `judge_agency.ts`：`read_only` 輪**不進 judge 配對**（`buildJudgeCases` 跟
+  腳本輪一樣整輪略過）。那一句「（已讀）」不是模型的選擇，也沒有可判的內容，
+  進 judge 只會被標成「盲目跟題」之類的假失敗。那一輪仍留在逐字稿裡，後面
+  幾輪讀得到。
+- `evaluate_agency.ts`：不必改——它只吃 judge 結果，`read_only` 輪既然進不了
+  judge，也就不會進任何指標的分子或分母。
+- `run_agency.ts`：`chatModelUsed: "none"`、`readOnlyReply: true`、
+  `attempts: 0`、`promptChars: 0`；`tallyChatModelRounds` 把 `none` 排除在
+  `modelRounds` 分母之外（Phase 4.5c 已經寫好），所以「Haiku 佔比」與每輪成本
+  的分母從這一輪起自動是對的。
+
+### 一處與 handler 對不齊的殘留（記錄，不修）
+
+handler 的白名單是 `agencyMode === "on" && (responsePlan?.readOnlyAllowed ===
+true || readOnlyTurn)`。這支 runner 只對得上 `readOnlyTurn` 那一半——
+`readOnlyAllowed` 是「planner 允許她**自己選擇**回一則已讀」，不是短路；模型
+真的自己吐「（已讀）」時，runner 的 style 臂仍會把它當括號旁白剝掉。現行情境
+檔沒有量這件事的探針，等真的要量再補。
+
+### `cache_probe.ts` 的門檻數字更正
+
+Haiku 4.5 的最小可快取長度是 **4,096 tokens**（2,048 是 Haiku 3.5 的門檻）。
+`cache_probe.ts` 檔頭與 Phase 4.5b 那一節原本都寫 2,048，本輪更正。結論不變
+（12/12 次呼叫 create=0／read=0，刀 B 是死碼），而且**差距比原本記的更大**：
+實測前綴 2,701–2,858 code units，離 4,096 tokens 還很遠。
