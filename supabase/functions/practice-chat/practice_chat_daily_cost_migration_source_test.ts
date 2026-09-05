@@ -36,7 +36,12 @@ Deno.test("保險絲 migration 建出 day 主鍵、非負累計與 updated_at", 
     ),
   );
   assert(executable.includes("day        DATE        PRIMARY KEY"));
-  assert(executable.includes("CHECK (spent_usd >= 0)"));
+  // NaN 也要擋：PG 的 numeric NaN 比任何值都大，`>= 0` 放它過。
+  assert(
+    executable.includes(
+      "CHECK (spent_usd >= 0 AND spent_usd <> 'NaN'::NUMERIC)",
+    ),
+  );
   assert(executable.includes("updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"));
 });
 
@@ -83,13 +88,38 @@ Deno.test("累加 RPC 收尾是 service-role only ＋ SECURITY DEFINER", () => {
     body.includes("SECURITY INVOKER"),
     "建立當下不得先暴露 SECURITY DEFINER 給預設 PUBLIC EXECUTE",
   );
-  assert(body.includes("SET search_path = public"));
+  // definer 函式不留可搜尋 schema（表名已全限定、now() 已寫成 pg_catalog.now()）。
+  assert(body.includes("SET search_path = ''"));
+  assert(
+    !body.includes("SET search_path = public"),
+    "definer 函式不得把 public 留在 search_path",
+  );
+  assert(
+    !/\bnow\(\)/.test(body.replace(/pg_catalog\.now\(\)/g, "")),
+    "search_path 清空後 now() 必須全限定成 pg_catalog.now()",
+  );
+  // NaN／±Infinity 都要在寫進去之前擋掉。
+  for (
+    const literal of [
+      "'NaN'::NUMERIC",
+      "'Infinity'::NUMERIC",
+      "'-Infinity'::NUMERIC",
+    ]
+  ) {
+    assert(body.includes(literal), `p_usd 守門缺少 ${literal}`);
+  }
   assert(body.includes("RETURNS NUMERIC"), "必須回傳累加後的值");
   // 「這一次剛好跨過門檻」要靠回傳值算，不能靠先讀再寫。
   assert(body.includes("ON CONFLICT (day) DO UPDATE"));
   assert(body.includes("SET spent_usd  = c.spent_usd + EXCLUDED.spent_usd"));
   assert(body.includes("RETURNING c.spent_usd INTO v_total"));
 
+  // Edge 端讀今日累計走直接 select，不能靠專案的 default privileges。
+  assert(
+    executable.includes(
+      "GRANT SELECT ON TABLE public.practice_chat_daily_cost TO service_role;",
+    ),
+  );
   for (
     const grant of [
       "REVOKE ALL ON FUNCTION public.increment_practice_chat_daily_cost(\n  DATE, NUMERIC\n) FROM PUBLIC;",

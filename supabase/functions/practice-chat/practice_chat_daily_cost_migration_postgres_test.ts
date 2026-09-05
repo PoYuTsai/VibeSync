@@ -26,14 +26,17 @@ const DAY = "2026-09-05";
 
 async function createDatabase(): Promise<PGlite> {
   const db = new PGlite();
-  // 忠實重現 Supabase 的角色與預設授權：新建物件會自動拿到 anon/authenticated
-  // 的權限，所以 migration 內的 REVOKE 是否真的有效，只有在這個前提下才驗得準。
+  // 函式的預設授權要重現（新函式會自動 PUBLIC EXECUTE），migration 內的
+  // REVOKE 是否真的有效只有在這個前提下才驗得準。
+  //
+  // **表的 default privileges 刻意不設**（Codex R1 P2）：舊版靠
+  // `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES` 讓 service_role 自動
+  // 拿到 SELECT，等於用人工 fixture 幫 migration 補了一個它自己沒寫的授權。
+  // 現在只靠 migration 裡那行 `GRANT SELECT ... TO service_role` 過。
   await db.exec(`
     CREATE ROLE anon;
     CREATE ROLE authenticated;
     CREATE ROLE service_role;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public
-      GRANT ALL ON TABLES TO anon, authenticated, service_role;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public
       GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
   `);
@@ -115,9 +118,11 @@ Deno.test("累加會更新 updated_at", async () => {
   }
 });
 
-Deno.test("負數與 NULL 參數被 RPC 擋下（不會把累計往回扣）", async () => {
+Deno.test("負數／NULL／NaN／±Infinity 參數被 RPC 擋下（不會把累計弄髒）", async () => {
   const db = await createDatabase();
   try {
+    // NaN 會讓之後每一次 `spent_usd >= budget` 失真、Infinity 會讓保險絲永久
+    // 燒斷，兩個都得在寫進去之前擋掉（Codex R1 P2）。
     for (const bad of [[DAY, -0.1], [null, 0.1], [DAY, null]]) {
       let threw = false;
       try {
@@ -129,6 +134,18 @@ Deno.test("負數與 NULL 參數被 RPC 擋下（不會把累計往回扣）", a
         threw = true;
       }
       assert(threw, `RPC 必須拒絕參數 ${JSON.stringify(bad)}`);
+    }
+    for (const literal of ["'NaN'", "'Infinity'", "'-Infinity'"]) {
+      let threw = false;
+      try {
+        await db.query(
+          `SELECT public.increment_practice_chat_daily_cost($1, ${literal}::NUMERIC)`,
+          [DAY],
+        );
+      } catch {
+        threw = true;
+      }
+      assert(threw, `RPC 必須拒絕 p_usd = ${literal}`);
     }
     const rows = await db.query<{ count: string }>(
       `SELECT count(*) AS count FROM public.practice_chat_daily_cost`,
@@ -147,13 +164,15 @@ Deno.test("RPC 收尾只有 service_role 能 EXECUTE，且表開了 RLS 但沒�
       authenticated_execute: boolean;
       service_execute: boolean;
       is_definer: boolean;
+      config: string[] | null;
     }>(`
       SELECT has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
              has_function_privilege('authenticated', p.oid, 'EXECUTE')
                AS authenticated_execute,
              has_function_privilege('service_role', p.oid, 'EXECUTE')
                AS service_execute,
-             p.prosecdef AS is_definer
+             p.prosecdef AS is_definer,
+             p.proconfig AS config
       FROM pg_proc p
       JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public'
@@ -165,6 +184,33 @@ Deno.test("RPC 收尾只有 service_role 能 EXECUTE，且表開了 RLS 但沒�
       authenticated_execute: false,
       service_execute: true,
       is_definer: true,
+      // definer 函式的 search_path 必須是空的（Codex R1 P2）。
+      config: [`search_path=""`],
+    });
+
+    // Edge 端讀今日累計走直接 select，所以 service_role 要有 SELECT，
+    // 而且是靠 migration 裡那行 GRANT 拿到的（fixture 沒有給表任何預設授權）。
+    const tablePriv = await db.query<{
+      anon_select: boolean;
+      authenticated_select: boolean;
+      service_select: boolean;
+      service_delete: boolean;
+    }>(`
+      SELECT has_table_privilege('anon', 'public.practice_chat_daily_cost', 'SELECT')
+               AS anon_select,
+             has_table_privilege('authenticated', 'public.practice_chat_daily_cost', 'SELECT')
+               AS authenticated_select,
+             has_table_privilege('service_role', 'public.practice_chat_daily_cost', 'SELECT')
+               AS service_select,
+             has_table_privilege('service_role', 'public.practice_chat_daily_cost', 'DELETE')
+               AS service_delete
+    `);
+    assertEquals(tablePriv.rows[0], {
+      anon_select: false,
+      authenticated_select: false,
+      service_select: true,
+      // 只給 SELECT：寫入一律走 definer RPC。
+      service_delete: false,
     });
 
     const rls = await db.query<{ relrowsecurity: boolean; policies: string }>(`

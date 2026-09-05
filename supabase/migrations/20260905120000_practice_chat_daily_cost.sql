@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS public.practice_chat_daily_cost (
   day        DATE        PRIMARY KEY,
   -- Anthropic 估算花費累計（USD）。單價來源是
   -- supabase/functions/_shared/model_pricing.ts，不是帳單實數。
-  spent_usd  NUMERIC     NOT NULL DEFAULT 0 CHECK (spent_usd >= 0),
+  -- `>= 0` 擋不住 NaN（PG 的 NaN 在 numeric 排序裡比任何值都大，`NaN >= 0`
+  -- 為真），所以另外明寫一條：累計一旦變成 NaN，之後每一次比較都會失真。
+  spent_usd  NUMERIC     NOT NULL DEFAULT 0
+               CHECK (spent_usd >= 0 AND spent_usd <> 'NaN'::NUMERIC),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -45,7 +48,11 @@ LANGUAGE plpgsql
 -- statement-by-statement runner 安全：先用 caller 權限建立，完成 REVOKE 後
 -- 才在檔尾切成 definer，避免 migration 中途留下 PUBLIC 可執行的 definer RPC。
 SECURITY INVOKER
-SET search_path = public
+-- definer 函式的 search_path 一律清空：函式內每一個表名都已經全限定
+-- （`public.practice_chat_daily_cost`），`now()` 也寫成 `pg_catalog.now()`，
+-- 所以不需要任何可搜尋 schema。留 `public` 的話，能建 public 物件的角色就有
+-- 機會用同名物件劫持 definer 函式。
+SET search_path = ''
 AS $$
 DECLARE
   v_total NUMERIC;
@@ -54,21 +61,34 @@ BEGIN
     RAISE EXCEPTION
       'increment_practice_chat_daily_cost: p_day is required';
   END IF;
-  IF p_usd IS NULL OR p_usd < 0 THEN
+  -- NaN／±Infinity 都要在寫進去之前擋掉：NaN 會讓之後每一次
+  -- `spent_usd >= budget` 比較失真，Infinity 會讓保險絲永久燒斷。
+  -- PG 的 numeric NaN 之間**相等**（不是 IEEE 的 NaN <> NaN），所以直接用
+  -- `= 'NaN'::NUMERIC` 判；`p_usd <> p_usd` 那種 IEEE 寫法在 numeric 上不成立。
+  IF p_usd IS NULL
+     OR p_usd = 'NaN'::NUMERIC
+     OR p_usd = 'Infinity'::NUMERIC
+     OR p_usd = '-Infinity'::NUMERIC
+     OR p_usd < 0 THEN
     RAISE EXCEPTION
-      'increment_practice_chat_daily_cost: p_usd must be non-negative';
+      'increment_practice_chat_daily_cost: p_usd must be a finite non-negative number';
   END IF;
 
   INSERT INTO public.practice_chat_daily_cost AS c (day, spent_usd, updated_at)
-  VALUES (p_day, p_usd, now())
+  VALUES (p_day, p_usd, pg_catalog.now())
   ON CONFLICT (day) DO UPDATE
     SET spent_usd  = c.spent_usd + EXCLUDED.spent_usd,
-        updated_at = now()
+        updated_at = pg_catalog.now()
   RETURNING c.spent_usd INTO v_total;
 
   RETURN v_total;
 END;
 $$;
+
+-- Edge 端的「今天燒掉多少」是一次直接 select（不走 RPC），所以 service_role
+-- 需要明確的 SELECT。不依賴 Supabase 的 default privileges——那是專案設定，
+-- 不是這份 migration 保證得了的東西。
+GRANT SELECT ON TABLE public.practice_chat_daily_cost TO service_role;
 
 REVOKE ALL ON FUNCTION public.increment_practice_chat_daily_cost(
   DATE, NUMERIC
