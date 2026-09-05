@@ -2804,3 +2804,150 @@ $3.00 上限（用掉 50.5%）。DeepSeek（餘額三次，`/user/balance`）：
 場／月仍只是 $1,296，兩個實測花費（Anthropic $1.5157、DeepSeek $1.03）都遠低於
 Eric 核准的上限。是否要把 production 從純 DeepSeek 換成 `mixed`，仍是 Eric
 的產品與成本判斷；這輪的結論是「這兩個新入口沒有擋開旗標的理由」。
+
+## Phase 4.5b：標準模式分類器兩臂黑箱＋Haiku cache 探針（`agency-phase45b` 分支，起點 `c93dd8a4`，2026-09-05）
+
+**目的**：Phase 4.5b 在 `run_agency.ts` 補了 `--mode=standard --state=1`（對應
+production 的 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`——standard 模式現在也有
+每輪精簡分類器＋持久化 agency 狀態，見上面 run_agency.ts 檔頭與程式碼註解），
+量兩件事：(1) 這一路新接線在真實生成上跟今天 production 的純 standard／
+DeepSeek 比起來有沒有差；(2) `cache_probe.ts` 量 Haiku 系統前綴（刀 B）到底有
+沒有真的命中 Anthropic prompt cache。Eric 核准總停損 $5.00（DeepSeek＋
+Anthropic 合計）。
+
+### Cache 探針（`cache_probe.ts`，12 次真實 Haiku 呼叫）
+
+| cell | round | cacheCreation | cacheRead | input | 前綴長度（code units） |
+| --- | --: | --: | --: | --: | --: |
+| standard/styleoff | 1 | 0 | 0 | 4,612 | 2,858 |
+| standard/styleoff | 2 | 0 | 0 | 4,634 | 2,858 |
+| standard/styleon | 1 | 0 | 0 | 4,624 | 2,799 |
+| standard/styleon | 2 | 0 | 0 | 4,696 | 2,799 |
+| beginner/styleoff | 1 | 0 | 0 | 4,659 | 2,858 |
+| beginner/styleoff | 2 | 0 | 0 | 4,681 | 2,858 |
+| beginner/styleon | 1 | 0 | 0 | 4,671 | 2,799 |
+| beginner/styleon | 2 | 0 | 0 | 4,743 | 2,799 |
+| game/styleoff | 1 | 0 | 0 | 5,979 | 2,760 |
+| game/styleoff | 2 | 0 | 0 | 5,988 | 2,760 |
+| game/styleon | 1 | 0 | 0 | 5,995 | 2,701 |
+| game/styleon | 2 | 0 | 0 | 6,054 | 2,701 |
+
+**結論：6 格全部 create=0、read=0——刀 B 目前是死碼**。全部前綴長度落在
+2,701–2,858 code units，遠低於檔頭註解說的 Haiku 4.5 最小可快取長度（2,048
+tokens，換算成中英混排文字通常需要 3,000+ code units 才夠，這批前綴連
+`cacheCreationInputTokens > 0`（寫得進 cache）這一關都沒過，第 2 輪自然也讀不
+到）。出口跟計畫檔一致：要嘛把記憶摘要／朋友圈也搬進穩定前綴撐長，要嘛整個
+拆法退掉；本輪只是把「死碼」從推測升級成 12/12 次呼叫的直接證據。
+
+### 標準模式兩臂黑箱（`--scenarios=A25,A26,A27 --repeat=1 --difficulty=easy --style=1 --agency=on --shape=truncate`，20 位代表角色）
+
+- 臂 A：`--mode=standard --chat-model=deepseek --thread-salt=p45bA`（今天
+  production 的 standard 路徑，不帶 `--state`）。
+- 臂 B：`--mode=standard --state=1 --chat-model=mixed --thread-salt=p45bB`
+  （新旗標路徑：每輪多打一次 DeepSeek 精簡分類器，她要介入那一輪換 Haiku）。
+
+| | 場次（失敗） | 生成 | judge（成功/解析失敗） |
+| --- | --: | --: | --- |
+| 臂 A | 60（0） | 420 | 300/300（0） |
+| 臂 B | 60（0） | 420 | 300/300（0） |
+
+artifact：`out/2026-09-05-p45b-standardA-deepseek.json`／`-judge.json`、
+`out/2026-09-05-p45b-standardB-mixed.json`／`-judge.json`。
+
+#### 指標對照（Wilson 95%，n 見括號）
+
+| 指標 | 臂 A（deepseek） | 臂 B（mixed＋分類器） | 分不出／分開了 |
+| --- | --- | --- | --- |
+| 頭條 headline（adopted_without_asking＋accommodating_invention，mustAllow 排除 accept_valid_answer 分母） | 12.7%（9.2–16.5，n=260） | **6.2%（4.2–8.8，n=260）** | **分開**（區間不重疊） |
+| adopted_without_asking（no_context_fragment 分母） | 24.0%（16.0–34.0，n=100） | 13.0%（7.0–19.0，n=100） | 幾乎分開（邊界貼 16–19） |
+| accommodating_invention | 0.7%（0.0–1.3，n=300） | 0.0%（0.0–0.0，n=300） | 兩臂都趨近 0，分不出 |
+| sequenceChallenge（A25／A26） | 82.5%（70.0–95.0，n=40） | 92.5%（82.5–100.0，n=40） | 分不出（重疊） |
+| sequenceHoldBlindFollow | 19.2%（11.7–25.8，n=120） | 13.3%（8.3–20.8，n=120） | 分不出（重疊） |
+| sequenceRepairAccepted | 92.5%（82.5–100.0，n=40） | 97.5%（92.5–100.0，n=40） | 分不出（重疊） |
+| false_challenge | n/a（n=0，本輪範圍沒有 `valid_short_answer` 探針） | n/a（n=0） | — |
+| stance_persistence_strict_conditional | 87.5%（68.8–100.0，n=16） | 81.0%（61.9–95.2，n=21） | 分不出（重疊，且點估計反向） |
+| 違反 mustForbid（全體） | 18.0%（14.0–23.0，n=300） | **9.7%（7.0–13.0，n=300）** | **分開**（區間不重疊） |
+| 滿足 mustAllow（全體） | 67.3%（62.7–72.3，n=300） | **81.0%（76.7–84.3，n=300）** | **分開**（區間不重疊） |
+| 守門退回率 | 0/420 | 0/420 | — |
+| forced check_out／read_only 次數（輕鬆難度） | **0／0** ✓ | **0／0** ✓ | 兩臂都是 0，跟「輕鬆難度不該點火」的預期一致 |
+| forcedAct 分佈（非 0 的類別） | ask_intent 24、hold_position 70（共 420 輪） | ask_intent 31、challenge_relevance 101、hold_position 36（共 420 輪） | 臂 B 多一種 `challenge_relevance`（分類器路徑才有的判斷） |
+| 生成延遲 p50／p95（chat-gen only） | 756ms／1,115ms | 1,508ms／2,146ms | 臂 B 較慢（Haiku＋額外分類器序列呼叫） |
+| `chatModelUsed` Haiku 佔比 | — | **301/420（71.7%）**（A25 62.8%、A26 71.1%、A27 100%） | — |
+| style 比值 | 未跑 | 未跑 | 沿用 Phase 4.3（README 2332 行）的判斷：`practice-reply-style-eval` 不是為兩臂聊天模型跨臂比較設計，臨時接線超出本輪範圍 |
+
+逐情境 forbidViolation／allowSatisfied（臂 A → 臂 B，點估計，未逐一列信賴
+區間，細節見 artifact 的 `perScenario`）：A25 10.8%→12.5%／73.3%→86.7%；A26
+27.5%→6.7%／70.0%→87.5%；A27 13.3%→10.0%／50.0%→56.7%——A25 是唯一一個
+forbidViolation 點估計不降反升的情境（差距很小、樣本 n=120，不下結論），
+A26／A27 與全體讀法一致，allowSatisfied 三個情境全部上升。
+
+#### 誠實解讀
+
+1. **頭條 gate、mustForbid、mustAllow 三項乾淨分開，方向跟 Phase 4.3 的
+   beginner／game 矩陣一致**——即使這次是全新的 standard 模式接線（精簡分類
+   器＋Haiku 混合路由），效果沒有反向或消失：頭條 12.7%→6.2%、
+   違反 mustForbid 18.0%→9.7%、滿足 mustAllow 67.3%→81.0%，三項的 95% 區間
+   都不重疊。
+2. **序列類三個 gate（sequenceChallenge／sequenceHoldBlindFollow／
+   sequenceRepairAccepted）跟跨輪立場都分不出**——這輪 `repeat=1` 只給
+   sequenceChallenge／sequenceRepairAccepted 各 n=40、跨輪立場只有 n=16／21，
+   區間本來就寬；跟 Phase 4.3（`repeat=1` 但情境數更多、beginner／game 模式）
+   量到 sequenceHoldBlindFollow 兩臂分開的結果不能直接比——那一輪的分母是
+   混合多情境後的整體 n=60，這一輪只留 A25／A26 兩情境、n=120，樣本量結構不
+   同。**沒有反向的訊號，但這一輪的樣本量不足以宣稱序列類指標在 standard
+   模式下也分開了**，下一輪要嘛加 repeat、要嘛把 A28/A29 也納進矩陣。
+3. **stance_persistence 點估計臂 B（81.0%）比臂 A（87.5%）低，是本輪唯一一
+   個方向跟 Phase 4.3 不一致的格**——區間重疊（68.8–100.0 vs
+   61.9–95.2）、分母只有 16／21，先記錄不下結論；不排除是分類器新接線在
+   standard 模式的 `aiClarifiedLastTurn` 判斷跟 beginner／game 路徑有語意差
+   異，值得下一輪加大樣本後複查，但目前證據不足以說「分類器路徑讓跨輪立場
+   變差」。
+4. **輕鬆難度的 check_out／read_only 確實是 0／0，跟 `replay_plan.ts`
+   的既有註解一致**（那兩個 forcedAct 只給挑戰難度或 Game）——用
+   `replay_plan.ts` 與直接讀 artifact 的 `forcedAct` 欄位交叉確認過，沒有
+   看到「應該是 0 卻不是」的訊號。臂 B 多出來的 `challenge_relevance`
+   是分類器路徑特有的判斷分支，不是新的失敗模式。
+5. **A27 的 judge 先決條件既有缺口本輪沒有修，也沒有新踩**——`accept_valid_
+   answer` 先決條件在 A27.p2／p4 仍然會吃掉大部分回覆（見上面 Phase 3.3／
+   3.4 節既有記錄），這輪 A27 的 forbidViolation／allowSatisfied 讀法跟
+   之前一樣：只有 A27.p1 是乾淨可比的分母，p2／p4 的數字要打折讀。
+6. **已知量測限制沿用檔頭與既有章節的記錄**：`--state=1` 的跨輪狀態推進是
+   結構層近似（`nextConversationAgencyState` 第三參數這次真的餵了分類器
+   訊號，不再是硬編碼 `null`，但仍然不是 handler.ts 逐字的呼叫序）；
+   `spicyAllowed` 恆 false；Game 修復優先／截斷免疫不影響 standard 模式，
+   跟本輪無關。
+
+#### 花費
+
+**DeepSeek（餘額四次，`/user/balance`，含 5 分鐘結算延遲後的最終讀數）**：
+開跑前 **$22.67** → 兩臂生成完成 **$22.63** → 兩臂 judge（600 筆）完成
+**$22.16** → 等 5 分鐘結算延遲後最終讀 **$21.96**。**餘額差實測總花費
+$0.71**。Token 估價（cache-miss 全價上限，DeepSeek 官方牌價
+input $0.44／output $1.32 每百萬 token、字元／token 比 1.5，不含快取折扣）：
+臂 A 420 次聊天（input 3,139,905 chars／output 8,511 chars）≈$0.928；臂 B
+119 次 DeepSeek 聊天（chatModelUsed≠haiku 的部分，input 887,097 chars／
+output 2,446 chars）≈$0.262；臂 B 420 次分類器呼叫沿用 Phase 4.3 已經用餘額
+差反推過的實測單價 $0.0002027／次≈$0.085；兩臂合計 600 筆 judge 沿用既有
+$0.00066／筆單價≈$0.396；**token 估價合計 ≈$1.67**，是餘額差實測（$0.71）的
+約 2.3 倍——跟 Phase 3.0 那輪「token 估價法被同一時間點的真實餘額差證偽」
+是同一個機制（大量人物卡固定欄位／judge 規則文字逐字重複，命中 DeepSeek
+的 prompt 快取），**餘額差才是可信數字**，token 估價只當上界參考。
+
+**Anthropic（Haiku，`callClaude` 回傳的真實 usage 累加，不是估算）**：
+cache 探針 12 次呼叫（input 61,336 tokens，無 cache）≈$0.05；1
+位角色試跑（pilot）15 次呼叫 $0.0772；臂 B 全矩陣 301 次呼叫
+$1.5336；**合計 $1.6608**。
+
+**組合總花費（餘額差＋Anthropic 實測）≈ $0.71 + $1.66 = $2.37，用掉 $5.00
+停損的 47.4%，沒有觸發停損**，兩臂矩陣、cache 探針都跑滿計畫規模。
+
+### 一句話結論
+
+**`PRACTICE_STANDARD_AGENCY_CLASSIFIER`＋`mixed` 這條新接線在 standard 模式
+下重現了頭條／mustForbid／mustAllow 三項核心指標的改善方向，跟 beginner／
+game 模式先前的黑箱一致，沒有反向**；序列類與跨輪立場指標這輪樣本量
+（`repeat=1`）不足以分開，是「答不出來」不是「量到沒有效果」，下一輪要加
+repeat 或情境數才能補；輕鬆難度的 `check_out`／`read_only` 確認是 0，A27 的
+既有判準缺口沒有惡化。**Haiku 系統前綴快取（刀 B）12/12 次呼叫證實是死碼**
+——前綴長度沒到 2,048 token 門檻，要嘛加長前綴要嘛整個拆法退掉，是下一輪
+要決定的技術債，不是本輪能修的範圍。花費 $2.37，遠低於 $5.00 停損。
