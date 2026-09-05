@@ -16,6 +16,13 @@ import {
   ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
 import { AGENCY_SCENARIOS, type AgencyScenario } from "./scenarios.ts";
+import { callClaude } from "../../supabase/functions/practice-chat/claude.ts";
+import {
+  chatBody,
+  ledger as fakeLedger,
+  makeFake,
+  makeRequest,
+} from "../../supabase/functions/practice-chat/handler_test_fake.ts";
 import { buildChatPromptBundle } from "../../supabase/functions/practice-chat/prompt.ts";
 import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
 import type { PracticeTurn } from "../../supabase/functions/practice-chat/validate.ts";
@@ -576,4 +583,80 @@ Deno.test("runAgencyScenario：--chat-model=haiku（非 mixed）逐字沿用舊�
   assertEquals(result.error, undefined);
   assertEquals(calls, 2);
   assertEquals(result.turns.map((t) => t.chatModelUsed), ["haiku", "haiku"]);
+});
+
+// ── Phase 4.4：production 的 mixed 路由與黑箱 haiku 臂送出的 request 逐位元組相同 ──
+//
+// 這是「黑箱結論搬得回 production」的唯一硬證據：同一份 bundle messages 進
+// handler 的 Claude 呼叫端與 runner 的 haiku 臂，打出去的 body 必須一模一樣。
+// 兩邊現在都走 `claude.ts` 的 `callClaude`，這支測試守住「哪天有人在其中一邊
+// 多塞一個參數」。
+Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body 與黑箱 haiku 臂逐位元組相同（不打真網路）", async () => {
+  const fake = makeFake({
+    ledger: fakeLedger(),
+    deepSeekReplies: ["好啊"],
+    claudeReplies: ["嗯？你先講東東"],
+    env: {
+      PRACTICE_CHAT_MODEL_ROUTING: "mixed",
+      PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+    },
+  });
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  try {
+    console.log = () => {};
+    console.warn = () => {};
+    await fake.handler(
+      makeRequest(chatBody({
+        turns: [
+          { role: "user", text: "東東" },
+          { role: "ai", text: "東東是誰" },
+          { role: "user", text: "阿布達比" },
+        ],
+      })),
+    );
+    await Promise.allSettled(fake.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  assertEquals(fake.state.claudeCalls.length, 1);
+  const handlerArgs = fake.state.claudeCalls[0];
+
+  const bodies: Array<Record<string, unknown>> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "嗯" }] }),
+        { status: 200 },
+      ),
+    );
+  };
+  try {
+    // production：handler 實際交給 callClaude 的那一組參數。
+    await callClaude({ ...handlerArgs, apiKey: "k", timeoutMs: 1000 });
+    // 黑箱 haiku 臂：runner 的 CHAT_MAX_TOKENS／CHAT_TEMPERATURE 直接寫死在這裡
+    // （run_agency.ts 的兩個模組常數），這樣 handler 那邊改了數字就會被抓到。
+    await callHaikuChat({
+      apiKey: "k",
+      messages: handlerArgs.messages,
+      maxTokens: 200,
+      temperature: 0.9,
+      timeoutMs: 1000,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assertEquals(bodies.length, 2);
+  assertEquals(bodies[0], bodies[1]);
+  assertEquals(bodies[0].model, "claude-haiku-4-5-20251001");
+
+  // 上面兩個數字真的是 runner 的常數（不是這支測試自己編的）。
+  const runnerSource = await Deno.readTextFile(
+    new URL("./run_agency.ts", import.meta.url),
+  );
+  assert(runnerSource.includes("const CHAT_MAX_TOKENS = 200;"));
+  assert(runnerSource.includes("const CHAT_TEMPERATURE = 0.9;"));
 });

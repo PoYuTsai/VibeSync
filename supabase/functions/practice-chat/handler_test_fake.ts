@@ -568,6 +568,14 @@ export function makeFake(options: FakeOptions = {}) {
   const claude: ClaudeCaller = (args) => {
     state.claudeCalls.push(args);
     state.events.push("claude");
+    // Phase 4.4：只有 chat 路由那條路會傳 onUsage（hint／debrief 不傳），固定值
+    // 讓 telemetry 可重現。
+    args.onUsage?.({
+      inputTokens: 120,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 0,
+      outputTokens: 15,
+    });
     const reply = options.claudeReplies?.[claudeIndex] ?? "AI reply";
     claudeIndex++;
     if (reply instanceof Error) return Promise.reject(reply);

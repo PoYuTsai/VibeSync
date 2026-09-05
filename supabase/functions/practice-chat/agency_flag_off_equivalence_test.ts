@@ -66,6 +66,8 @@ import {
 } from "./handler_test_fake.ts";
 
 const AGENCY_ENV = "PRACTICE_CONVERSATIONAL_AGENCY_ENABLED";
+/** Phase 4.4 混合模型路由旗標（harness 多枚舉的一維環境值）。 */
+const ROUTING_ENV = "PRACTICE_CHAT_MODEL_ROUTING";
 const STYLE_ENV = "PRACTICE_REPLY_STYLE_ENABLED";
 const TEST_ACCOUNT = { id: "user-1", email: "vibesync.test@gmail.com" };
 
@@ -441,6 +443,7 @@ async function observableDigest(
   agencyEnv: string | undefined,
   user?: { id: string; email?: string | null },
   probe?: RunProbe,
+  routingEnv?: string,
 ): Promise<ObservableDigest> {
   const fake = makeFake({
     ...c.options,
@@ -452,6 +455,7 @@ async function observableDigest(
     env: {
       ...c.options.env,
       ...(agencyEnv === undefined ? {} : { [AGENCY_ENV]: agencyEnv }),
+      ...(routingEnv === undefined ? {} : { [ROUTING_ENV]: routingEnv }),
     },
   });
   const lines: string[] = [];
@@ -1443,5 +1447,94 @@ Deno.test({
       assertEquals(on.rpc, golden.rpc, `${c.name} / RPC`);
     }
     assertEquals(changed.sort(), PHASE41_CHANGED_SIDE_CASES.slice().sort());
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.4：PRACTICE_CHAT_MODEL_ROUTING 未設／off／亂填時四面等價；mixed 只多 telemetry 一個 key，沒有 Anthropic key 就不換模型",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    for (const c of equivalenceCases()) {
+      const expected = parseGolden(c.name);
+      // 認不得的值一律 off（`chatModelFor` fail-closed）：四面全等 golden。
+      for (const routing of ["off", "亂填", "true"]) {
+        assertEquals(
+          await observableDigest(c, undefined, undefined, undefined, routing),
+          expected,
+          `${c.name} / routing=${routing}`,
+        );
+      }
+      // `mixed` 但 agency 未設（＝off）：路由不可能生效，messages／Response／RPC
+      // 三面必須全等；telemetry 是它唯一被允許不同的地方（多一個 chatModel key）。
+      const mixedOff = await observableDigest(
+        c,
+        undefined,
+        undefined,
+        undefined,
+        "mixed",
+      );
+      assertEquals(
+        {
+          messages: mixedOff.messages,
+          response: mixedOff.response,
+          rpc: mixedOff.rpc,
+        },
+        {
+          messages: expected.messages,
+          response: expected.response,
+          rpc: expected.rpc,
+        },
+        `${c.name} / routing=mixed（telemetry 以外三面必須全等）`,
+      );
+      // `mixed` ＋ agency on，但 fake 的 `CLAUDE_API_KEY` 是空字串（chat 案例沒有
+      // `claudeReplies`）：沒有 key 就必須退回 DeepSeek，三面等於「agency on ＋
+      // routing 未設」。真的換模型的正向案例在 `chat_model_routing_test.ts`。
+      const agencyOn = await observableDigest(c, "true");
+      const mixedOn = await observableDigest(
+        c,
+        "true",
+        undefined,
+        undefined,
+        "mixed",
+      );
+      assertEquals(
+        {
+          messages: mixedOn.messages,
+          response: mixedOn.response,
+          rpc: mixedOn.rpc,
+        },
+        {
+          messages: agencyOn.messages,
+          response: agencyOn.response,
+          rpc: agencyOn.rpc,
+        },
+        `${c.name} / routing=mixed＋agency=true（沒有 Anthropic key 就不換模型）`,
+      );
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.4 非空洞檢查：routing=mixed 的 chat 案例 telemetry 必須真的多記東西",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    const chatCases = equivalenceCases().filter((c) =>
+      c.name.startsWith("chat／")
+    );
+    for (const c of chatCases) {
+      const mixed = await observableDigest(
+        c,
+        undefined,
+        undefined,
+        undefined,
+        "mixed",
+      );
+      assert(
+        mixed.telemetry !== parseGolden(c.name).telemetry,
+        `${c.name}：routing=mixed 的 telemetry 必須與 flag-off golden 不同`,
+      );
+    }
   },
 });
