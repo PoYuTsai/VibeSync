@@ -123,6 +123,11 @@ export function isClarifyingAct(act: PlanAct): boolean {
 export interface AgencyEvidence {
   readonly utteranceShape: UtteranceShape;
   readonly previousAiAskedQuestion: boolean;
+  /**
+   * Phase 4.5a 刀 1：她上一則是**是非問句**，而他這一則整則就是一個肯定／
+   * 否定短詞＝**他回答了**。這一輪一律不介入，欠債也不因這一句累加。
+   */
+  readonly answeredYesNo: boolean;
   readonly explicitPivot: boolean;
   readonly repeatedExactToken: boolean;
   readonly unresolvedCount: 0 | 1 | 2 | 3;
@@ -362,17 +367,48 @@ const TAIL_DECORATION_RE =
   /[\s~～!！,，.。、…\u200d\ufe0e\ufe0f\u20e3\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u;
 const SENTENCE_FINAL_PARTICLE_RE = /(嗎|呢|吧)$/u;
 
+/** 剝掉句尾裝飾後的最後一個子句（空字串＝整則只有裝飾）。 */
+function finalClauseOf(text: string): string {
+  const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
+  if (stripped.length === 0) return "";
+  return stripped
+    .split(CLAUSE_SPLIT_RE)
+    .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
+    .filter((clause) => clause.length > 0)
+    .at(-1) ?? "";
+}
+
 export function aiAskedQuestionStrict(text: string): boolean {
   if (!aiAskedQuestion(text)) return false;
   const stripped = text.trim().replace(TAIL_DECORATION_RE, "");
   if (stripped.length === 0) return false;
   if (/[?？]$/u.test(stripped)) return true;
-  const last = stripped
-    .split(CLAUSE_SPLIT_RE)
-    .map((clause) => clause.trim().replace(TAIL_DECORATION_RE, ""))
-    .filter((clause) => clause.length > 0)
-    .at(-1);
-  return last !== undefined && SENTENCE_FINAL_PARTICLE_RE.test(last);
+  return SENTENCE_FINAL_PARTICLE_RE.test(finalClauseOf(text));
+}
+
+// ── Phase 4.5a 刀 1：是非問句 ＋ 純肯定／否定短答＝「他回答了」──────────────
+// 4.2／4.3 釘下來的契約是「純肯定短詞算內容、前一句是陳述時會被問意思」，那條
+// **不動**。這裡補的是它漏掉的一格：她上一則**是是非問句**（剝掉句尾裝飾後
+// 句尾是「嗎／吧／嘛」），他回一個整則就是「對」「不是」的短詞——那在句法上
+// 就是答案，不是又丟一個裸詞。
+//
+// 為什麼安全（Codex R2 P1-1 撤回 4.3 那批改動的理由不適用這裡）：4.3 是把
+// 肯定／否定短詞**無條件**歸成 reaction，等於「你在說什麼？→ 不是」也一起
+// 免疫；這一刀多綁一個**她那一則的句法形狀**，開放問句（「你在說什麼？」）
+// 與陳述句都不吃，行為逐字維持 4.3 現況。
+const YES_NO_FINAL_PARTICLE_RE = /(嗎|吧|嘛)$/u;
+/** 她上一則是不是**是非問句**（句尾助詞只認「嗎／吧／嘛」，不含開放問句的「呢」）。 */
+export function aiAskedYesNoQuestion(text: string): boolean {
+  return YES_NO_FINAL_PARTICLE_RE.test(finalClauseOf(text));
+}
+// 整則錨定，只容忍句尾裝飾（空白／標點／emoji，同 `TAIL_DECORATION_RE`）。
+// 刻意不加同義詞：多一個詞就多一次誤判，漏了只是退回 4.3 現況。
+const YES_NO_SHORT_ANSWER_RE =
+  /^(對|對啊|嗯對|是|是啊|不是|沒有|沒錯|不對|不要|好|好啊)$/u;
+export function isYesNoShortAnswer(text: string): boolean {
+  return YES_NO_SHORT_ANSWER_RE.test(
+    compact(text).replace(TAIL_DECORATION_RE, ""),
+  );
 }
 
 /**
@@ -421,6 +457,11 @@ function compact(text: string): string {
 export function utteranceShapeOf(
   text: string,
   previousAiAskedQuestion: boolean,
+  /**
+   * Phase 4.5a 刀 1：她上一則是**是非問句**（`aiAskedYesNoQuestion`）。省略＝
+   * false＝逐字沿用 4.3 行為（`contentUserTurnCount` 那個 caller 就是這樣傳）。
+   */
+  previousAiAskedYesNo = false,
 ): UtteranceShape {
   const compacted = compact(text);
   if (compacted.length === 0) return "unknown";
@@ -433,6 +474,11 @@ export function utteranceShapeOf(
   // consumer `forceAskUser` 要求 `agency.enabled === true`），所以 off 路徑
   // 的四面輸出不變——等價 harness 守門。
   if (isQuestionTextTolerant(text)) return "question";
+  // Phase 4.5a 刀 1：她問是非題、他整則就回「對／不是」＝答案。放在 reaction
+  // 之前，因為「好」「好啊」本來會被 `REACTION_RE` 先接走。
+  if (previousAiAskedYesNo && isYesNoShortAnswer(text)) {
+    return "answer_candidate";
+  }
   // Phase 4.3（Codex R1 P2-4）：反應詞同樣容忍句尾裝飾——「對！」「不是😂」
   // 「沒有。」在真人輸入裡比裸詞常見得多。剝到空字串（整則就是 emoji）時退回
   // 原字串，讓 `REACTION_RE` 既有的純 emoji 分支照樣接得到。
@@ -477,6 +523,8 @@ export function detectAgencyEvidence(
     previousAiAskedQuestion: boolean;
     /** 同一則 AI 訊息的**嚴格**問句判準，只給強制格的迴圈閘門用（P1-1）。 */
     previousAiAskedQuestionStrict: boolean;
+    /** Phase 4.5a 刀 1：她問是非題、他整則回一個肯定／否定短詞。 */
+    answeredYesNo: boolean;
   }[] = [];
   let lastAiText: string | null = null;
   for (const turn of turns) {
@@ -486,12 +534,19 @@ export function detectAgencyEvidence(
     }
     const previousAiAskedQuestion = lastAiText !== null &&
       aiAskedQuestion(lastAiText);
+    const previousAiAskedYesNo = lastAiText !== null &&
+      aiAskedYesNoQuestion(lastAiText);
     shapes.push({
       text: turn.text,
-      shape: utteranceShapeOf(turn.text, previousAiAskedQuestion),
+      shape: utteranceShapeOf(
+        turn.text,
+        previousAiAskedQuestion,
+        previousAiAskedYesNo,
+      ),
       previousAiAskedQuestion,
       previousAiAskedQuestionStrict: lastAiText !== null &&
         aiAskedQuestionStrict(lastAiText),
+      answeredYesNo: previousAiAskedYesNo && isYesNoShortAnswer(turn.text),
     });
     lastAiText = null;
   }
@@ -565,6 +620,13 @@ export function detectAgencyEvidence(
       continue;
     }
     if (s.previousAiAskedQuestion) askedInLoop = true;
+    // Phase 4.5a 刀 1：她的是非問句被回答了——這一句不累加欠債，也不留下
+    // 「她已經叫他講清楚而他沒做」的起點（`told`）。既有的欠債**不歸零**：
+    // 回答一個是非題不是結構修復，前面沒解決的仍然沒解決。
+    if (s.answeredYesNo) {
+      told = false;
+      continue;
+    }
     if (told) unresolved = clamp3(unresolved + 1);
     told = !(s.shape === "answer_candidate" && unresolved === 0 &&
       !askedInLoop);
@@ -627,6 +689,7 @@ export function detectAgencyEvidence(
   return {
     utteranceShape: current?.shape ?? "unknown",
     previousAiAskedQuestion: current?.previousAiAskedQuestion ?? false,
+    answeredYesNo: current?.answeredYesNo ?? false,
     explicitPivot: current?.shape === "explicit_pivot",
     repeatedExactToken,
     unresolvedCount: clamp3(unresolved),
@@ -847,6 +910,9 @@ export function agencyPolicyFor(
   // 她剛問完問題而且前面沒有未解片段的短答＝有效短答，永遠不得被質疑（報告 §6）
   // ——這條與難度無關，任何難度都不會翻轉。
   if (!isLowInformation(shape)) return { ...base, ...NO_OVERRIDE };
+  // Phase 4.5a 刀 1：她問是非題、他整則回「對／不是」＝回答了，任何欠債都
+  // 不得把它翻成質疑（同詞重複也不行——連兩題是非題答「對」是正常對話）。
+  if (evidence.answeredYesNo) return { ...base, ...NO_OVERRIDE };
   if (shape === "answer_candidate" && unresolvedCount === 0) {
     return { ...base, ...NO_OVERRIDE };
   }

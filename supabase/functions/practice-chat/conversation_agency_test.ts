@@ -12,12 +12,14 @@ import {
   agencyThresholdsFor,
   aiAskedQuestion,
   aiAskedQuestionStrict,
+  aiAskedYesNoQuestion,
   type ConversationAgencyState,
   detectAgencyEvidence,
   isAcceptingPlanAct,
   isClarifyingAct,
   isQuestionText,
   isQuestionTextTolerant,
+  isYesNoShortAnswer,
   nextConversationAgencyState,
   parseConversationAgencyState,
   truncateAgencyShape,
@@ -660,6 +662,7 @@ Deno.test("難度門檻：挑戰／game 在停止解讀那一格直接收掉（�
     userTurnCount: 3,
     aiClarifiedLastTurn: null,
     priorCoherence: null,
+    answeredYesNo: false,
   };
   for (
     const thresholds of [
@@ -1761,7 +1764,17 @@ Deno.test("Phase 4.3 R2 P1-1：肯定／否定短詞的撤回後行為——1～
         assertEquals(d.evidence.utteranceShape, shape, label);
         // (b) 第 1 次是這一段迴圈的第一組一問一答／第一個片段 → 欠債 0；
         //     第 2 次起開始累積（不再永久免疫，R2 P1-1 的驗證步驟第 3 條）。
-        assertEquals(d.evidence.unresolvedCount, n === 1 ? 0 : n - 1, label);
+        //     **Phase 4.5a 刀 1 的唯一例外**：她那一則是**是非問句**（句尾
+        //     「嗎／吧／嘛」）時，「對／不是」就是答案，連丟幾次都不累積欠債。
+        //     陳述句與開放問句（「那你比較想去哪裡？」）逐字維持 4.3 行為。
+        const yesNoLead = leadName === "是非問句";
+        assertEquals(
+          d.evidence.unresolvedCount,
+          yesNoLead ? 0 : n === 1 ? 0 : n - 1,
+          label,
+        );
+        assertEquals(d.evidence.answeredYesNo, yesNoLead, label);
+        if (yesNoLead) assertEquals(d.situation, null, label);
         // (c) 消耗內容窗口（回到 Phase 4.2 契約表的原始值）。
         assert(utteranceShapeOf(token, false) !== "reaction", label);
       }
@@ -2158,4 +2171,97 @@ Deno.test("Phase 4.3 R2 U-8：aiClarifiedLastTurn 的 round-trip——缺席／f
       v,
     );
   }
+});
+
+// ── Phase 4.5a（Eric 2026-09-05 拍板：「像真人——真人不會一直陪你耗」）────────
+Deno.test("Phase 4.5a 刀 1：是非問句判準只認句尾「嗎／吧／嘛」，容忍句尾裝飾", () => {
+  for (
+    const yes of [
+      "你該不會是要跟我聊韓國吧",
+      "你今天也很累嗎",
+      "你是說韓國嗎？",
+      "是玩猜謎嗎～",
+      "你在報地名嗎😂",
+      "所以你剛剛在忙喔？現在有空了嘛",
+    ]
+  ) assertEquals(aiAskedYesNoQuestion(yes), true, yes);
+  for (
+    const no of [
+      "你在說什麼？",
+      "那你比較想去哪裡？",
+      "你最想去哪",
+      "你怎麼了呢",
+      "我今天差點睡過頭",
+      "",
+    ]
+  ) assertEquals(aiAskedYesNoQuestion(no), false, no);
+  // 短答判準：整則錨定，只容忍句尾裝飾。
+  for (const t of ["對", "對啊", "不是", "沒錯", "好啊", "對！", "不是😂"]) {
+    assertEquals(isYesNoShortAnswer(t), true, t);
+  }
+  for (
+    const t of ["對了我今天有去健身房", "不是啦 我是說剛剛那個", "韓國", "嗯嗯"]
+  ) {
+    assertEquals(isYesNoShortAnswer(t), false, t);
+  }
+});
+
+Deno.test("Phase 4.5a 刀 1：她問是非題、他回「對」＝回答了，任何欠債都不得質疑", () => {
+  // Eric 的原案：她自己猜「你該不會是要跟我聊韓國吧」，他回「對」。
+  const answered = policyAt(
+    [u("韓國"), a("你該不會是要跟我聊韓國吧"), u("對")],
+    "normal",
+    false,
+    stateWith(true),
+  );
+  assertEquals(answered.evidence.utteranceShape, "answer_candidate");
+  assertEquals(answered.evidence.answeredYesNo, true);
+  assertEquals(answered.situation, null);
+  // 挑戰／Game／easy 都一樣（跟有效短答免疫同一個層級，不受難度翻轉）。
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    assertEquals(
+      policyAt(
+        [u("韓國"), a("你該不會是要跟我聊韓國吧"), u("對")],
+        difficulty,
+        difficulty === "challenge",
+        stateWith(true),
+      ).situation,
+      null,
+      difficulty,
+    );
+  }
+  // 成對反例 1：她那一則是**開放**問句 → 照 Phase 4.3（分類器說她在澄清就強制）。
+  assertEquals(
+    policyAt(
+      [u("韓國"), a("你在說什麼？"), u("不是")],
+      "normal",
+      false,
+      stateWith(true),
+    ).forcedAct,
+    "challenge_relevance",
+  );
+  // 成對反例 2：明示換題不受影響（「對了」開頭不是純肯定短詞）。
+  const pivot = policyAt(
+    [u("韓國"), a("你該不會是要跟我聊韓國吧"), u("對了我今天去健身房")],
+    "normal",
+    false,
+    stateWith(true),
+  );
+  assertEquals(pivot.evidence.utteranceShape, "explicit_pivot");
+  assertEquals(pivot.evidence.answeredYesNo, false);
+  // 成對反例 3：同一個「對」原樣連丟兩次也不算同詞重複的收尾格。
+  assertEquals(
+    policyAt(
+      [a("是要聊韓國吧"), u("對"), a("真的假的吧"), u("對")],
+      "challenge",
+      true,
+      stateWith(true),
+    ).situation,
+    null,
+  );
+  // `contentUserTurnCount` 那支 caller（`utteranceShapeOf(t, false)`）不受影響：
+  // 少一個參數＝逐字沿用 4.3 形狀，「對」仍然算內容、不是 reaction。
+  assertEquals(utteranceShapeOf("對", false), "bare_fragment");
+  assertEquals(utteranceShapeOf("對", true), "answer_candidate");
+  assertEquals(utteranceShapeOf("對", false, true), "answer_candidate");
 });
