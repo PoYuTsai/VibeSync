@@ -71,6 +71,7 @@ Deno.test("WP6 階梯：一次冷回、兩次已讀、三次封鎖", () => {
   assertEquals(one.next, {
     strikes: 1,
     cleanStreak: 0,
+    servedStage: 1,
     blocked: false,
     source: "boundary",
   });
@@ -97,7 +98,12 @@ Deno.test("WP6 階梯：羞辱一則（+2）直接跳已讀，再一則一般越
 });
 
 Deno.test("WP6 封鎖黏住：之後每一輪都是 blocked，狀態不再變動", () => {
-  const blockedState = { strikes: 3, cleanStreak: 0, blocked: true };
+  const blockedState = {
+    strikes: 3,
+    cleanStreak: 0,
+    servedStage: 3,
+    blocked: true,
+  };
   for (const text of [CLEAN, "對不起我錯了", "要不要打砲"]) {
     const t = offenseTurnFor(blockedState, text);
     assertEquals(t.stage, "blocked");
@@ -118,6 +124,7 @@ Deno.test("WP6 分類器補記：詞表沒中才補 +1，中了不重複算", ()
   assertEquals(late.next, {
     strikes: 1,
     cleanStreak: 0,
+    servedStage: 0,
     blocked: false,
     source: "classifier",
   });
@@ -166,4 +173,32 @@ Deno.test("WP6 正常對話 20 輪：累計恆 0，階梯恆 none", () => {
     assertEquals(s.strikes, 0);
     assertEquals(s.blocked, false);
   }
+});
+
+Deno.test("P1-3：分類器自己累的分要補做冷回與已讀，不是無預警第四輪封鎖", () => {
+  // 三輪詞表都沒中、分類器每輪都判 overstep：階梯各差一輪補做。
+  let s = INITIAL_OFFENSE_STATE;
+  const stages: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const t = turn(s, CLEAN, true);
+    stages.push(t.stage);
+    s = t.next;
+  }
+  assertEquals(stages, ["none", "cold", "read_only", "blocked"]);
+  assertEquals(s.blocked, true);
+  assertEquals(s.servedStage, 3);
+});
+
+Deno.test("P1-3：補做那一輪之後不會一直冷下去（累計沒再往上就是 none）", () => {
+  // 第一則越界 → cold（served 1）；之後全是正常話、分類器也乾淨 → 恆 none。
+  let s = turn(INITIAL_OFFENSE_STATE, "要不要打砲").next;
+  assertEquals(s.servedStage, 1);
+  for (let i = 0; i < 3; i++) {
+    const t = turn(s, CLEAN);
+    assertEquals(t.stage, "none");
+    s = t.next;
+  }
+  // 三輪乾淨 → 衰減歸零，已執行階也一起回到 0。
+  assertEquals(s.strikes, 0);
+  assertEquals(s.servedStage, 0);
 });

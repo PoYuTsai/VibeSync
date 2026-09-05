@@ -32,18 +32,46 @@ export const OFFENSE_DECAY_CLEAN_TURNS = 3;
 export type OffenseStage = "none" | "cold" | "read_only" | "blocked";
 export type OffenseSource = "crude" | "boundary" | "classifier" | null;
 
-/** 持久化在 `ConversationAgencyState` 的三個數字／布林。 */
+/** 持久化在 `ConversationAgencyState` 的四個數字／布林。 */
 export interface OffenseState {
   readonly strikes: number;
   readonly cleanStreak: number;
+  /**
+   * Codex R1 P1-3：**已經執行到第幾階**（0／1／2／3）。
+   *
+   * 沒有它的時候，階梯只在「這一輪詞表有加分」時往前走一格，於是分類器
+   * 自己累的分永遠跳過冷回與已讀——玩家看不到任何警告，第四輪突然被封。
+   * 有了它，只要 `stage(累計) > 已執行`，這一輪就補做那一階，就算玩家這則
+   * 是正常話。
+   */
+  readonly servedStage: number;
   readonly blocked: boolean;
 }
 
 export const INITIAL_OFFENSE_STATE: OffenseState = {
   strikes: 0,
   cleanStreak: 0,
+  servedStage: 0,
   blocked: false,
 };
+
+/** 累計對應到第幾階（0＝還沒到）。 */
+function stageIndexFor(strikes: number): number {
+  return strikes >= OFFENSE_BLOCK_STRIKES
+    ? 3
+    : strikes >= 2
+    ? 2
+    : strikes >= 1
+    ? 1
+    : 0;
+}
+
+const STAGE_NAMES: readonly OffenseStage[] = [
+  "none",
+  "cold",
+  "read_only",
+  "blocked",
+];
 
 /** 這一輪要做什麼（在生成之前就算得出來，因為只看詞表）。 */
 export interface OffenseTurn {
@@ -55,6 +83,8 @@ export interface OffenseTurn {
   readonly source: Exclude<OffenseSource, "classifier">;
   /** 上一輪之前就已經封了（這一輪連狀態都不必寫）。 */
   readonly wasBlocked: boolean;
+  /** 這一輪結束後「已執行到第幾階」（P1-3）。 */
+  readonly servedStage: number;
 }
 
 /**
@@ -149,32 +179,36 @@ export function offenseTermDelta(
 /**
  * 這一輪的階梯判定。`latestUserText`＝逐字稿裡玩家最新的那一則。
  *
- * 階梯只在**這一輪真的加分**時往前走一格：累計停在 1 但他這輪講的是正常話，
- * 她不會平白冷一輪（冷回是對那一句的反應，不是一種持續狀態）。
+ * 階梯走「累計對應的階 > 已執行的階」就補做那一階（Codex R1 P1-3）——所以
+ * 分類器在上一輪補的分，下一輪就算玩家這則是正常話也會補做冷回／已讀，
+ * 不會無預警跳到封鎖。累計沒往上就是 `none`（她不會平白一直冷下去）。
  */
 export function offenseTurnFor(
   prev: OffenseState,
   latestUserText: string,
 ): OffenseTurn {
-  if (prev.blocked) {
+  if (prev.blocked || prev.servedStage >= 3) {
     return {
       stage: "blocked",
       strikes: prev.strikes,
       delta: 0,
       source: null,
       wasBlocked: true,
+      servedStage: 3,
     };
   }
   const { delta, source } = offenseTermDelta(latestUserText);
   const strikes = prev.strikes + delta;
-  const stage: OffenseStage = strikes >= OFFENSE_BLOCK_STRIKES
-    ? "blocked"
-    : delta === 0
-    ? "none"
-    : strikes >= 2
-    ? "read_only"
-    : "cold";
-  return { stage, strikes, delta, source, wasBlocked: false };
+  const target = stageIndexFor(strikes);
+  const advance = target > prev.servedStage;
+  return {
+    stage: advance ? STAGE_NAMES[target] : "none",
+    strikes,
+    delta,
+    source,
+    wasBlocked: false,
+    servedStage: advance ? target : prev.servedStage,
+  };
 }
 
 /**
@@ -192,18 +226,24 @@ export function offenseStateAfter(
   const classifierScored = turn.delta === 0 && classifierOverstep;
   const strikes = turn.strikes + (classifierScored ? 1 : 0);
   const source: OffenseSource = classifierScored ? "classifier" : turn.source;
+  const servedStage = turn.servedStage;
+  // 封鎖不衰減、也不再累計。
+  if (servedStage >= 3) {
+    return { strikes, cleanStreak: 0, servedStage: 3, blocked: true, source };
+  }
   if (source === null) {
     const cleanStreak = prev.cleanStreak + 1;
     return cleanStreak >= OFFENSE_DECAY_CLEAN_TURNS
-      ? { strikes: 0, cleanStreak: 0, blocked: false, source: null }
-      : { strikes, cleanStreak, blocked: false, source: null };
+      ? {
+        strikes: 0,
+        cleanStreak: 0,
+        servedStage: 0,
+        blocked: false,
+        source: null,
+      }
+      : { strikes, cleanStreak, servedStage, blocked: false, source: null };
   }
-  return {
-    strikes,
-    cleanStreak: 0,
-    blocked: strikes >= OFFENSE_BLOCK_STRIKES,
-    source,
-  };
+  return { strikes, cleanStreak: 0, servedStage, blocked: false, source };
 }
 
 /**

@@ -314,6 +314,11 @@ export interface ConversationAgencyState {
   readonly offenseStrikes?: number;
   /** Phase 5 WP6：連續幾輪完全沒加分（滿 3 輪就把 `offenseStrikes` 歸零）。 */
   readonly offenseCleanStreak?: number;
+  /**
+   * Codex R1 P1-3：階梯**已經執行到第幾階**（1 冷回／2 已讀／3 封鎖）。
+   * 沒有它時分類器自己累的分會跳過冷回與已讀，玩家第四輪才無預警被封。
+   */
+  readonly offenseServedStage?: number;
   /** Phase 5 WP6：她已經封鎖他。缺欄位＝false；一旦為真就不再變。 */
   readonly blocked?: boolean;
 }
@@ -1344,7 +1349,13 @@ export function parseConversationAgencyState(
     typeof r.checkedOut !== "boolean"
   ) return null;
   // Phase 5 WP6：同一組規則（缺欄位／`null`＝預設值；型別真的不對才整份作廢）。
-  for (const key of ["offenseStrikes", "offenseCleanStreak"] as const) {
+  for (
+    const key of [
+      "offenseStrikes",
+      "offenseCleanStreak",
+      "offenseServedStage",
+    ] as const
+  ) {
     const v = r[key];
     if (
       v !== undefined && v !== null &&
@@ -1387,6 +1398,10 @@ export function parseConversationAgencyState(
       : {}),
     ...(typeof r.offenseCleanStreak === "number" && r.offenseCleanStreak > 0
       ? { offenseCleanStreak: r.offenseCleanStreak }
+      : {}),
+    // clamp 在 3（外部寫入的 9 一律當 3），同 `lowValueStreak` 的既有規則。
+    ...(typeof r.offenseServedStage === "number" && r.offenseServedStage > 0
+      ? { offenseServedStage: Math.min(3, r.offenseServedStage) }
       : {}),
     ...(r.blocked === true ? { blocked: true } : {}),
   };
@@ -1527,6 +1542,9 @@ export function nextConversationAgencyState(
     ...(offense && offense.cleanStreak > 0
       ? { offenseCleanStreak: offense.cleanStreak }
       : {}),
+    ...(offense && offense.servedStage > 0
+      ? { offenseServedStage: offense.servedStage }
+      : {}),
     ...(offense?.blocked ? { blocked: true } : {}),
   };
 }
@@ -1535,6 +1553,7 @@ export function nextConversationAgencyState(
 export interface OffenseStatePatch {
   readonly strikes: number;
   readonly cleanStreak: number;
+  readonly servedStage: number;
   readonly blocked: boolean;
 }
 

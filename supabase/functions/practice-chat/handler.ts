@@ -4810,6 +4810,8 @@ export function createPracticeChatHandler(
         strikes: relationshipThreadState?.agencyState?.offenseStrikes ?? 0,
         cleanStreak: relationshipThreadState?.agencyState?.offenseCleanStreak ??
           0,
+        servedStage: relationshipThreadState?.agencyState?.offenseServedStage ??
+          0,
         blocked: relationshipThreadState?.agencyState?.blocked === true,
       }
       : INITIAL_OFFENSE_STATE;
