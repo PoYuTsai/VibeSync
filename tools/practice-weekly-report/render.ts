@@ -210,9 +210,12 @@ function renderLogs(logs: LogStats): string[] {
     "**保留期**：Supabase function logs 通常只留 7 天，時間窗超出保留期會回 0 筆",
   );
   lines.push(
-    "而不會報錯。上面的涵蓋範圍如果比 `--from`／`--to` 窄，就是被保留期切掉了——",
+    "而不會報錯。上面的涵蓋範圍如果比 `--from`／`--to` 窄，**可能**是被保留期",
   );
-  lines.push("週報要每 7 天內跑一次。");
+  lines.push(
+    "切掉了，**也可能只是那幾天沒有事件**（沒人用）——這兩件事從這裡分不出來，",
+  );
+  lines.push("要分就看同期的場次數。無論如何，週報要每 7 天內跑一次。");
   lines.push("");
   lines.push("| 指標 | 分子／分母 | 比率 |");
   lines.push("| --- | ---: | ---: |");
