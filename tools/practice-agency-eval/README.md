@@ -2980,3 +2980,106 @@ Phase 4.5a 之後，production telemetry 對 forced `read_only` 那一輪的
   `0`，呼叫端要顯示 `n/a`，不要印 0% 也不要除以零。
 - `unknown`＝Phase 4.3 之前的舊 artifact 沒有 `chatModelUsed`，單獨一格回報，
   不併進任何一支模型。
+
+## Phase 4.5c 評測工具（2026-09-05，`agency-phase45c-eval` 分支）
+
+本節只描述**工具**。這一輪**沒有跑任何付費步驟**：下面兩個矩陣都停在估價，
+要 Eric 明確授權才會送出。
+
+### 這一輪動了什麼
+
+| 檔案 | 動了什麼 | 要不要花錢 |
+| --- | --- | --- |
+| `scenarios.ts`／`judge_agency.ts`／`evaluate_agency.ts` | 新增 `flat_refusal`（越界輪的乾脆劃界）標籤與 `boundaryFlatRefusalRate` 指標；A31 三個探針的 `mustAllow` 補上它 | 不用（下一次跑 judge 時自動生效） |
+| `judge_agency.ts` | 判準 v4：`accept_valid_answer` 只描述「有沒有回答」，自身經歷三選一改成獨立判，問句包裝的捏造前提照算 `accommodating_invention` | 不用（要重跑 judge 才看得到差異） |
+| `run_agency.ts` | `chatModelUsed` 值域補 `"none"`；新增 `tallyChatModelRounds`，寫進 `meta.chatModelRounds` | 不用 |
+| `pricing.ts`（新） | 單一定價來源：Haiku 4.5、Sonnet 5、DeepSeek 分類器觀測單價、`estimateCostUsd` | 不用 |
+| `cache_probe.ts` | 改吃 `pricing.ts`，逐格與總計印出估價 | 跑起來要（12 次 Haiku，見 4.5b 節） |
+| `classifier_recall.ts`（新） | 口語化質疑的分類器召回率量測；`--dry-run` 不打模型 | `--dry-run` 不用；真的重放要 |
+
+**`pricing.ts` 是 TypeScript 側的唯一定價來源**，但它跟
+`scripts/practice_agency_telemetry.py` 的 `HAIKU_PRICE` 是**同一組數字的兩份**
+（Deno ↔ Python 沒有共用來源）。**改單價時兩處都要改**：
+
+- `tools/practice-agency-eval/pricing.ts` 的 `HAIKU_4_5_PRICING`
+- `scripts/practice_agency_telemetry.py` 的 `HAIKU_PRICE`
+
+**定價修正（會影響歷史數字的讀法）**：`pricing.ts` 改吃 Anthropic 官方牌價
+（Haiku 4.5 input $1／M、output $5／M）。`run_agency.ts` 先前抄的是
+`supabase/functions/analyze-chat/logger.ts` 的 `TOKEN_COSTS`（$0.80／$4.00 每 M，
+那是 Haiku 3.5 的價），所以 **README 4.3／4.4／4.5b 各節記的 Anthropic 金額
+低估約 20%**——例如 4.5b 的 $1.6608 實際約 $2.08，4.4 的 $1.5157 實際約 $1.89。
+兩輪都遠低於當時的停損上限，結論不變，但下一輪估停損要用新單價。
+`logger.ts` 是 production Edge Function，本輪不動，只記錄。
+
+### `classifier_recall.ts` 用法
+
+Phase 4.5b 的標準模式階梯**完全依賴**分類器回報的 `aiChallengedThisTurn`，
+而它對**無標記中文反問**（「蛤？」「你在講什麼」「？」「什麼意思」「你是在
+亂說還是怎樣」）的召回率從來沒有量過。這支分兩段：
+
+```bash
+# 第一段：只列候選、不打模型、不需要 API key
+deno run --allow-read tools/practice-agency-eval/classifier_recall.ts \
+  tools/practice-agency-eval/out/2026-09-05-p45b-standardA-deepseek.json \
+  tools/practice-agency-eval/out/2026-09-05-p45b-standardB-mixed.json --dry-run
+
+# 第二段：真的重放（**會花錢，要 Eric 明確授權**）
+deno run --allow-env --allow-read --allow-write --allow-net=api.deepseek.com \
+  tools/practice-agency-eval/classifier_recall.ts <artifact.json...> \
+  --mode=standard --concurrency=8 --out=out/<date>-p45c-recall.json
+```
+
+`--mode=standard` 走 production 的 `buildStandardAgencyClassifierMessages`，
+`--mode=assisted` 走 `buildTurnClassifierMessages`；估價印在輸出最開頭。
+
+**候選正則是候選集，不是真值**。命中不代表她真的在質疑（「什麼意思都可以」
+會誤中），沒命中也不代表她沒質疑。所以報告只能寫「候選集內
+`aiChallengedThisTurn=true` 的比例（召回率**代理**）」，不可以寫成「分類器的
+召回率是 X%」。dry-run 會把整組正則、逐條命中數與逐則命中內容印出來供人工
+複核。彙總時 parser repair 出來的 `false`（模型漏答／吐非布林）與呼叫失敗都
+**扣出分母**，跟 `classifier_replay.ts` 同一條線。
+
+`--dry-run` 對 4.5b 兩份 artifact 的實際結果（零成本，已跑）：
+
+| 候選正則 | 命中則數 | 在抓什麼 |
+| --- | --: | --- |
+| `bare_question_mark`　`^[\s？?]*[？?]+[\s？?]*$` | 8 | 整則只有問號 |
+| `short_interjection`　`^(蛤\|哈\|嗄\|啊\|欸\|誒\|欵\|嗯\|哦\|喔\|痾\|呃)[\s？?！!…。.]*$` | 32 | 整則只有一個語氣詞（可能誤中附和的「嗯。」） |
+| `interjection_then_question`　`^(蛤\|哈\|嗄\|啊\|欸\|誒\|欵\|痾\|呃)[\s？?！!，,]` | 41 | 語氣詞開頭再接一句 |
+| `what_meaning`　`(什麼意思\|甚麼意思\|啥意思\|三小\|殺小\|蝦密)` | 12 | 直接問語意 |
+| `what_are_you_saying`　`(在(講\|說)什麼\|在(講\|說)啥\|講三小\|說三小)` | 44 | 「你在講什麼」家族 |
+| `cannot_follow`　`(聽不懂\|看不懂\|不懂你\|沒聽懂\|不太懂)` | 23 | 直說跟不上（可能誤中自陳能力） |
+| `suspect_nonsense`　`(亂(說\|講\|扯\|回)\|唬爛\|瞎掰\|你在(唬\|扯)\|還是怎樣\|還是幹嘛)` | 30 | 「你是在亂說還是怎樣」家族 |
+| `why_suddenly`　`((怎麼\|幹嘛\|為什麼\|為何).{0,4}(突然\|忽然)\|突然.{0,4}(講\|說\|問\|丟))` | 53 | 指出他跳題 |
+| `relevance_challenge`　`(跟.{0,8}(有\|有沒有).{0,4}關\|有關係嗎\|關這什麼事\|干.{0,3}什麼事)` | 1 | 直接問關聯 |
+| `not_answered_yet`　`(還沒回答\|沒回答我\|答非所問\|你沒有回答\|回答我的問題)` | 0 | 指出他沒回答 |
+| `who_what_is_that`　`^(那\|這)?(是)?(誰\|什麼\|啥)[\s？?]*$` | 8 | 整則只有裸疑問詞 |
+
+**候選 228 則／生成輪 840 則（27.1%）**（同一則可命中多條，所以逐條相加大於
+228）。中文沒有詞邊界（踩坑筆記「繁中正則分類器沒有詞邊界會連環誤判」），
+所以這組正則盡量用「整則很短」「句尾語氣」這種結構條件收斂，不做裸關鍵字。
+
+### 尚未執行的付費步驟（兩個，都等 Eric 授權）
+
+**（一）召回率重放**：228 候選 × $0.0002027／次（`pricing.ts` 的 DeepSeek
+分類器觀測單價）＝ **約 $0.046**。建議停損 $0.15（估價的 3 倍，留給重試與
+估價偏差）。要跑 `--mode=standard` 與 `--mode=assisted` 兩臂的話 ×2 ≈ $0.093。
+
+**（二）Game 小黑箱矩陣（建議，尚未定案）**：Phase 4.4 的 game 臂沒有碰到
+Game 專屬的邀約／修復優先分支，結論是「這輪答不了」而不是「沒退步」。建議
+矩陣：A31（越界，已有）＋兩個新的 Game 專屬情境（邀約、修復優先），20 位 SR
+角色 × repeat 1 ＝ 60 場、約 300 次生成、約 180 筆 judge，
+`--mode=game --state=1 --chat-model=mixed --agency=on --shape=truncate`。估價
+（用 4.4 game 臂實測的 75% Haiku 佔比、單價換成官方牌價）：
+
+| 項目 | 次數 | 單價 | 小計 |
+| --- | --: | --- | --: |
+| Haiku 生成 | ~225 | $0.00478／次（4.4 觀測 $0.003824 × 1.25 定價修正） | $1.08 |
+| DeepSeek 生成 | ~75 | $0.0000294／次 | $0.00 |
+| DeepSeek 分類器 | ~300 | $0.0002027／次 | $0.06 |
+| DeepSeek judge | ~180 | $0.00066／筆 | $0.12 |
+| **合計** | | | **約 $1.26** |
+
+建議停損 $2.50。**這兩件事本輪都沒有跑**，情境檔也還沒有那兩個新的 Game
+專屬情境——真的要做的話，要先補情境再送出。

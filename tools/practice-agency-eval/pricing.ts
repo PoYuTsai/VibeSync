@@ -92,3 +92,17 @@ export function estimateCostUsd(
       usage.cacheCreationInputTokens * pricing.cacheWritePerMTok) / 1_000_000
   );
 }
+
+/**
+ * DeepSeek 精簡分類器的**觀測單價**（USD／次呼叫），不是 token 牌價。
+ *
+ * 來源：README Phase 4.3 用餘額差反推的 $0.0002027／次，Phase 4.5b 沿用同一個
+ * 數字估臂 B 的 420 次分類器呼叫。之所以用觀測單價而不是 token 牌價：這批
+ * prompt（判準規則、人物卡固定欄位）在同一批次裡逐字重複，命中 DeepSeek 的
+ * prompt 快取，token 牌價法算出來一直是實測的 2–5 倍（README「A27 重跑」與
+ * 4.5b 兩節都記過這件事，餘額差才是可信數字）。
+ *
+ * 拿它做停損估算時要記得：這是「長 prompt ＋高快取命中」情境下的觀測值，
+ * 換情境（更短的逐字稿、冷快取）會偏。
+ */
+export const DEEPSEEK_CLASSIFIER_USD_PER_CALL = 0.0002027;
