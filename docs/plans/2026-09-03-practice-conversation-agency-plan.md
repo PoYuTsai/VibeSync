@@ -1683,3 +1683,86 @@ $0.412，Phase 4.5f 合計估價 $0.888。餘額起 $21.29（06:39:40Z，開跑�
 - **下一步若要真的提高召回**，路徑不是判準文字：(a) 分類器改成少量**平衡** few-shot（正負各數則、涵蓋全部口語形態）並用 228＋315 兩集成對驗；或 (b) 把 `aiChallengedThisTurn` 拆成獨立的小判官（只判這一題，Haiku 或 DeepSeek），成本每輪多一次短呼叫。兩者都要先盲標 `flips.md` 的 51 列穩定翻面拿到真值，才有分母。
 - 教訓入坑：**對 LLM 分類器補單一形態的正例會壓低未點名形態的召回（列舉排他）；改判準前要有覆蓋全部形態的成對驗證集。**
 
+## Phase 4.5g — forced `check_out` 的結構後檢查（2026-09-05）
+
+**分支** `agency-phase45g`（自 main `b34210f1`），HEAD `11f6b6e8`。
+
+### 問題
+
+2026-09-05 的 Game 單臂黑箱在 forced `check_out` 那一則（她說「先忙了」）的
+16 筆裡量到 **4 筆含問句**、1 筆出戲後設語氣。act 說明（`turn_response_plan.ts`
+約 897 行）已經明寫「回 1 則，短，說完就收，不問問題、不開新話題」——這是
+生成模型的**服從率**問題，跟 Phase 3.1 完全同一個坑：加字無效，要結構後檢查。
+
+### 機制
+
+`checkOutStructuralViolation(agency, reply)`（`conversation_agency.ts` 檔末）。
+只在 forced `check_out` 那一輪跑（`applied === true` ∧ `forcedAct === "check_out"`），
+純結構、不判語意：
+
+- **(a) 問句**：沿用既有的 `aiAskedQuestion`——**她那一側**的問句判準，刻意
+  寬鬆、不錨句尾（`[?？]` 或句尾 `嗎／呢／吧` 或疑問詞出現在任何位置），所以
+  「先忙了，你之後要去哪」也認得。玩家那一側的 `isQuestionText`／
+  `isQuestionTextTolerant` 錨在句尾，會漏掉「問句在前、收尾在後」那半。
+  過寬在這裡是**安全方向**：多判一次只是多重試一發，第二發仍命中就 fail-open。
+- **(b) 邀約／開新話題**：**留白，沒做**。repo 既有的 `practiceInviteLevelFor`
+  （`practice_invite.ts`）與 `looksLikeGameSoftInvite`（`game_invite_classifier.ts`）
+  判的是**玩家貼給她**的邀約句（判準通篇是「約妳」「帶妳去」的語法），套到她
+  自己的回覆是誤用；本輪不自己發明邀約正則。
+- **(c) 形狀**：`agencyBubbles(reply).length > 1`（與 client `_splitBubbles`、
+  黑箱 runner 同一套換行切法、同一個 4 段上限）或 `trimmed.length >
+  CHECK_OUT_MAX_CHARS`。`CHECK_OUT_MAX_CHARS = 20`，就是 Phase 3.1 難度表
+  `forcedStopMaxChars` 的 challenge／game 那一格；`check_out` 只在挑戰／Game
+  才可能是 forced（`allowsCheckOut`），所以不多開一張難度表。
+
+命中 → 沿用 **Phase 3.1 的 attempt 機制**：第一發丟掉、用**既有的第二發**重生
+同一份 bundle（`CHAT_GENERATION_ATTEMPTS = 2`，不加第三次呼叫）；第二發仍命中
+就 fail-open 送出去，只記 telemetry——那一輪的形狀再差也比 500 好。
+
+接線位置在 handler 的 attempt 迴圈**最後**（旁白／L4／內部標籤／Phase 3.3
+truncate 全部之後，`reply = candidate` 之前），所以檢查的就是真的要送出去的
+那串字。黑箱 runner `tools/practice-agency-eval/run_agency.ts` 用**同一支函式、
+同一個位置**接上（本案子的硬規矩：runner 與 production 同源）。
+
+### telemetry 契約
+
+`practice_chat_succeeded` 的 `conversationAgency` 下新增兩個欄位，**都只在為真
+時存在**（沒重試過／沒 fail-open 就連 key 都不多一個）：
+
+| key | 意義 |
+| --- | --- |
+| `checkOutRetry: true` | 這一輪真的丟掉過第一發、重試了 |
+| `checkOutStructuralFail: true` | 第二發仍命中，fail-open 送出去了 |
+
+旗標 off／shadow **走不到**這道檢查（`applied` 恆 false），beginner／easy 也
+走不到（`allowsCheckOut` 只給挑戰／Game），所以等價 harness 的四面輸出一個
+key 都不多，golden `7f1d6d6c` 未動。runner 的逐輪紀錄用同名的兩個選填欄位。
+
+### Gate（實測）
+
+- `deno test -A supabase/functions/practice-chat`：**1,949 綠**／1 ignored
+  （base 1,944，新增 4 支 handler 級 ＋ 1 支判準單元測試）。
+- `deno test -A tools`：**136 綠**（base 135，新增 1 支 runner 同源測試）。
+- 等價 harness `agency_flag_off_equivalence_test.ts` 12 綠，golden 未動。
+- `deno fmt --check` ／ `deno lint`（本輪改動的 6 個檔）乾淨；
+  `deno check index.ts` 過。
+
+### 回退
+
+**單一 revert**：`git revert 11f6b6e8`。沒有 migration、沒有 schema、沒有新旗標
+——這一刀掛在既有的 forced `check_out` 路徑上，revert 之後那一輪就退回「模型
+說什麼就送什麼」。不需要動 production 環境變數。
+
+### 已知限制
+
+- **零黑箱**：本輪一次付費模型都沒打。服從率有沒有真的改善，要用 Game 的
+  A25 小黑箱驗（forced `check_out` 那一格的問句率 4/16 是本輪的 baseline；
+  同時要看 `checkOutStructuralFail` 佔 `check_out` 輪的比例——Phase 3.1 量到
+  重試 86% 仍犯，這一刀沒有理由假設會更好，只是這一格的判準比 3.1 窄很多）。
+- **(b) 沒做**：她在 `check_out` 那一則開新話題／邀約（不帶問句形狀、又在 20
+  字內）目前擋不到。要做得先有一支「她這一側」的邀約判準。
+- **成本**：命中就多打一發。`check_out` 是 forced 且一場最多觸發一兩次，量級
+  可忽略，但 `checkOutRetry` 的比例值得在上線後看一眼。
+- **`aiAskedQuestion` 過寬的代價**：「不知道怎麼說，先忙了」含「怎麼」會被判
+  成問句 → 多重試一發 → 第二發若合格就採用，若不合格就 fail-open 原樣送出。
+  方向安全（不會擋掉輸出），但會讓 `checkOutRetry` 的分母比真實問句多。
