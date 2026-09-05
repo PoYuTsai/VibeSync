@@ -1448,12 +1448,14 @@ R2 是最後一輪審查，修完不再送審——所以下面每一項都有�
   的改動，要自己的黑箱；上線規模夠大再議。
 - 4.5b 那句「Haiku 最小可快取 2048」在 `prompt_test.ts` 註解與 `cache_probe.ts` 檔頭一併
   更正（README 由 4.5e 評測 commit 更正）。
-## Phase 4.5c — 補 4.5a／4.5b 的三個缺口（2026-09-05）
+## Phase 4.5c — 補 4.5a 的兩個缺口（刀 2 已撤回，2026-09-05）
 
-三刀都在既有的 agency `on` 路徑上，**沒有新旗標**。刀 1、刀 3 的回退＝把
+交付的是**刀 1 與刀 3**；**刀 2（debrief 回放吃持久化修復點）在 Codex R2 之後
+整把撤回**，程式碼已逐位元組回到 main（見下面「刀 2：已撤回」）。
+
+兩刀都在既有的 agency `on` 路徑上，**沒有新旗標**——回退＝把
 `PRACTICE_CONVERSATIONAL_AGENCY_ENABLED` 改 `shadow`（與 4.5a 同一個開關，
-無法只回退這一輪）；刀 2 綁既有的 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`
-（關掉就退回 4.1 的純結構回放）。旗標未設／`off`／亂填時
+無法只回退這一輪）。旗標未設／`off`／亂填時
 `messages`／`response`／`rpc`／`telemetry` 四面仍逐位元組等於 `7f1d6d6c`
 golden（等價 harness，**golden 未重印**）。
 
@@ -1484,47 +1486,38 @@ golden（等價 harness，**golden 未重印**）。
 `boundaryLike` 是 false 才有意義），涵蓋三種訊號各自連續兩則→授權、單一則→
 沒有、easy／normal→沒有、旗標 off／shadow→欄位不存在。
 
-### 刀 2：debrief 回放吃 thread 上的持久化修復點
+### 刀 2：debrief 回放吃持久化修復點——**已撤回，未交付**
 
-4.1 節寫「debrief 的 standard 模式沒有持久化狀態，本來就是純結構近似」；
-4.5b 之後 standard 也會寫 `agencyState`，這個近似沒有理由再留著。
+原本要讓 `debriefAgencyLedgerFor` 吃 thread 上的 `repairedAtUserTurns`，把
+「分類器判 connected 的修復點」補回 4.1 的純結構回放。**兩輪審查後整把撤掉**：
+`agency_coaching.ts`／`agency_coaching_test.ts`／
+`standard_agency_classifier_test.ts` 三個檔案逐位元組回到 main，`handler.ts`
+只剩刀 3 的差異。
 
-`debriefAgencyLedgerFor(turns, ctx, agencyState?)` 新增選填第三個參數，
-**只**消費 `repairedAtUserTurns`：
+撤回的三個理由（依提出順序）：
 
-- 它是**絕對序號**（第 N 則玩家訊息），其餘欄位（`unresolvedCount`／
-  `lastCoherence`／`lastAgencyAct`／階梯兩格…）是這一場**結尾**的累積值，拿去
-  當第 1 則的 prev 會整份算錯。
-- **注入時機**是回放走到那個序號的那一輪。直接塞進初始 state 沒有用——
-  `detectAgencyEvidence`／`nextConversationAgencyState` 會把「定位不到
-  （marker > 這次的玩家則數）」的 marker 丟掉且不再往下傳（4.5a R1 P1-4a），
-  在第 1 則就會被丟掉。注入之後由既有的 `locatable` 自然沿用。
-- marker 比這次逐字稿的玩家則數大＝當成沒有（同一條 R1 P1-4a 規則）。
+1. **超出範圍改到 assisted（R1 P1-1）**：第一版閘門是
+   `debriefAssistedMode || standardAgencyClassifierEnabled(…)`，等於 beginner／
+   game 的 debrief 也開始吃狀態——同一段對話的介入輪數會從 6 變 4，Debrief 的
+   「需要她補救的輪次」與下游評分文字跟著動。那是改既有模式的評分口徑，不是
+   補缺口。
+2. **marker=1 是死分支（R1 P1-2）**：注入條件寫成 `state !== null && …`，第 1
+   則玩家訊息時 state 必為 null。修掉之後用 2,400 組合成案例對拍舊／新寫法，
+   `repairTurns` 與計數 **0 筆不同**——因為 `detectAgencyEvidence` 每輪都從
+   `shapes` 重算欠債、**不讀** `prev.unresolvedCount`，舊寫法在第 2 則注入的
+   效果已經把第 1 則那次完整重建。也就是那一格從頭到尾沒有產生過行為。
+3. **截窗完整性無法證明（R2 P1，決定性）**：debrief 的 `request.turns` 走
+   client 的 `endPractice() → _turnDtosForPrompt()`
+   （`kPracticePromptRecentTurns = 80`），超過就只送最後 80 則；marker 是
+   **整場**的絕對序號，套在 suffix 上會偏右＝少算介入輪。我用「這次的 ai 則數
+   ＝ ledger `aiCount`」當完整性閘門，但那**不是證明**——反例：前 10 則全是
+   玩家訊息、後 80 則含全部 ledger AI 回覆時，兩邊計數相等而 ordinal 已經
+   左移 10。
 
-handler 的 debrief 路徑**只有 standard**（`standardAgencyClassifierEnabled(
-PRACTICE_STANDARD_AGENCY_CLASSIFIER, agencyMode, debriefPracticeMode)`）
-**且逐字稿完整**時才把 thread 上的狀態傳進來。刻意不重用
-`standardAgencyClassifierOn`——那支綁 `request.practiceMode`，debrief 的模式來自 ledger。**hint 不動**（standard
-沒有 hint）。
-
-**逐字稿完整性閘門（R1 U1）**：debrief 的 `request.turns` 走 client 的
-`endPractice() → _turnDtosForPrompt()`（`kPracticePromptRecentTurns = 80`），
-超過 80 則就只送最後 80 則；server `validate.ts` 只有 `MAX_TURNS = 130` 上限，
-**不保證從第 1 輪開始**。marker 是整場的絕對序號，套在 suffix 上會偏右＝把更
-多輪當成已修復（少算介入輪）。所以只有「這次帶上來的 ai 則數 ＝ ledger 累計的
-`aiCount`」時才注入，否則 fail-safe 不注入。完整性刻意用 **server 自己的帳**
-判，不在 server 複製 client 的窗口常數（同一道守門在兩端各自帶常數會漂）。
-實務上一場約 20 回合（≈40 則）遠低於 80，這道閘門平常恆真。
-
-- **只有 standard**（R1 P1-1 後）：函式本身沒有 practiceMode 分支，但 handler
-  的閘門只給 standard；beginner／game 一律傳 null＝逐位元組維持 4.1 行為。
-- **仍然是近似**：持久化狀態只記**最後一個**修復點，更早的分類器 `connected`
-  仍然補不回來；`classifierSignal` 也照舊一律傳 `null`。4.1 節「null-classifier
-  近似的風險方向是雙向的」那一段仍然成立，只是尾段對齊了正式路徑。
-- 實測（A25 逐字稿、`practice_girl_001`／normal）：無 marker 六則全記
-  （`repairTurns [1,2,3,4,5,6]`）；marker=2 → `[1,4,5,6]`，計數 6→4。
-  帳對 marker **不是單調的**（marker=3 反而回到 5），那是底層證據機制的既有
-  行為，不是這一刀新增的。
+**日後要重做的前提**：server 端必須拿得到**逐字稿起始 ordinal**，或 session
+綁定的完整性證明——例如 client 一併送出窗口起點，或把修復點改成綁**穩定
+turn id**（不依賴序號）。在那之前 debrief 維持 4.1 的純結構近似；
+「standard 也該吃狀態」與「assisted 要不要吃」都排在這個前提後面。
 
 ### 刀 3：Game 的「先忙了」要能進檢討（server 訊號＋client 契約）
 
@@ -1548,74 +1541,75 @@ PRACTICE_STANDARD_AGENCY_CLASSIFIER, agencyMode, debriefPracticeMode)`）
 
 ### Gate（實測數字）
 
-- `deno test -A supabase/functions/practice-chat`：**1,953 passed / 0 failed /
-  1 ignored**（base 1,941 / 0 / 1；刀 1 ＋1、刀 2 ＋6、刀 3 ＋2、R1 修補 ＋3）。
-- `deno test -A tools`：**131 passed / 0 failed**（rebase 後的 base 131，
-  本輪未動該目錄）。
+**撤回刀 2 之後重跑**（分支 base ＝ main `048e5c50`）：
+
+- `deno test -A supabase/functions/practice-chat`：**1,944 passed / 0 failed /
+  1 ignored**（base 1,941 / 0 / 1；刀 1 ＋1、刀 3 ＋2。刀 2 的 ＋9 支測試隨
+  撤回一併移除）。
+- `deno test -A tools`：**131 passed / 0 failed**（main 的 base，本輪未動）。
 - 等價 harness：全綠，**golden 未重印**（`git status` 全程沒有 golden 檔）。
 - `deno fmt --check supabase/functions/practice-chat`：clean；`deno lint` 4 個
   問題，**與 main 相同**（`draw_handler_test.ts`／`game_fsm.ts`／
-  `hint_test.ts`，皆非本輪檔案）。`tools/` 的 64 個 fmt ＋ 5 個 lint 問題是
-  既有基準，本輪未動該目錄。
+  `hint_test.ts`，皆非本輪檔案）。`tools/` 的既有 fmt／lint 問題本輪未動。
 - `deno check index.ts`：clean。
 - `flutter analyze lib/features/practice_chat test/unit/features/practice_chat
   test/widget/features/practice_chat`：**No issues found**。
 - `flutter test test/unit/features/practice_chat test/widget/features/
-  practice_chat test/features/practice_chat`：**717 passed**（R1 U3 ＋4）。
+  practice_chat test/features/practice_chat`：**717 passed**（刀 3 的 provider
+  ／widget 測試，含 R1 U3 補的 `read_only`／大字級／最小寬度 ＋4）。
 
 ### 風險與未做
 
-- **真機未驗。** production 的 agency=true 已開，三刀合併即生效。
+- **真機未驗。** production 的 agency=true 已開，兩刀合併即生效。
 - **零模型呼叫**：刀 1 讓「（已讀）」多了一個觸發入口，觸發率變高多少沒有量
   過（4.5a 量到的 13.8% 是舊入口的合成上界）。上線後要看 `forcedAct` 與
   `readOnlyReply` 的分佈有沒有跳。
-- 刀 2 的 marker 只有最後一個修復點；更早的分類器 `connected` 仍然補不回來，
-  也沒有量過「正式狀態回放 vs 全 null 回放」的 repair-turn 差集（4.1 節同一
-  個未做項）。
-- 刀 3 的 `partnerStatus` 只是提示；玩家仍然可以繼續丟訊息並被扣額（
-  `read_only` 那一輪不打模型，但扣額規則沒動）。要不要強制結束、要不要在那
+- **刀 2 撤回，所以 debrief 的帳仍是 4.1 的純結構近似**：分類器判 connected
+  的修復點在回放裡不存在，standard 與 assisted 都一樣。4.1 節
+  「null-classifier 近似的風險方向是雙向的」整段仍然成立。
+- 刀 3 的 `partnerStatus` 只是提示；玩家仍然可以繼續丟訊息並被扣額
+  （`read_only` 那一輪不打模型，但扣額規則沒動）。要不要強制結束、要不要在那
   一格改扣額，留給 Eric。
 - 刀 3 沒有處理「她先忙了之後玩家直接關 App」——沒有主動觸發 debrief，維持
   既有的 client 送 `mode: "debrief"` 流程。
 
 ### Codex R1：BLOCK（逐項處置）
 
+**R1 的四項有三項落在刀 2**，隨 R2 的撤刀一併作廢——保留紀錄，說明為什麼那把
+刀連續兩輪都在同一個地方出問題。
+
+| 項 | 內容 | 當時處置 | 現況 |
+| --- | --- | --- | --- |
+| **P1-1** | 閘門 `debriefAssistedMode \|\| standardAgencyClassifierEnabled(…)` 讓 beginner／game 的 debrief 也吃狀態，等於改了 assisted 的評分口徑（實測 A25 從 6 輪變 4 輪） | 收成只有 standard，補 beginner／game 的差分反例測試 | **隨撤回消失** |
+| **P1-2** | 注入條件 `state !== null && …` 讓 `repairedAtUserTurns: 1` 永遠被跳過 | 改用 `INITIAL_CONVERSATION_AGENCY_STATE` 當底 | **隨撤回消失**。附帶結論仍有價值：2,400 組合成案例對拍舊／新寫法 **0 筆行為差異**，所以那是**死分支不是活 bug** |
+| **U1** | debrief 的 `request.turns` 是不是一定從第 1 輪開始 | 查證「不是」，加了 `ai 則數 === ledger.aiCount` 的完整性閘門 | **該閘門本身被 R2 判為不成立**，見下 |
+| **U3** | widget 測試只有一種版面 | 補 `read_only`、大字級 1.3、最小寬度 320×568 與兩者疊加，並手動反證非恆真（120×400／scale 3.0 會失敗） | **保留**（屬於刀 3） |
+
+順帶記一件容易被誤讀的事實（與刀 2 在不在都無關）：**第 1 則玩家訊息永遠會
+落在 `repairTurns`**。`agencyPolicyFor` 放過裸片段的唯一出口是
+`evidence.precedingUserContext`（前面有玩家講清楚過的內容），而第 1 則依定義
+沒有前一則玩家訊息——任何 marker 都改不了它。
+
+### Codex R2：BLOCK（逐項處置）
+
 | 項 | 內容 | 處置 |
 | --- | --- | --- |
-| **P1-1** | 刀 2 的閘門是 `debriefAssistedMode \|\| standardAgencyClassifierEnabled(…)`，等於 beginner／game 的 debrief 也開始吃持久化狀態；`agency_coaching_test.ts` 自己證明 `repairedAtUserTurns: 2` 會把 ledger 從 6 輪變 4 輪，所以 assisted 的 debrief prompt／telemetry 已被改變 | **已修**。閘門收成**只有** standard（`standardAgencyClassifierEnabled(flag, agencyMode, debriefPracticeMode)`）；beginner／game 一律傳 null。測試：beginner 與 game 各一支**差分**對拍（同一段逐字稿、同一份 thread，只差 thread 上有沒有 `repairedAtUserTurns`），斷言 debrief 的 `conversationAgency` telemetry 與 Claude `messages` 逐欄位相同，且維持 4.1 的 6 輪基準 |
-| **P1-2** | 注入條件 `state !== null && …` 讓 `repairedAtUserTurns: 1` 永遠被跳過 | **已修**，但**沒有可觀測的行為差異**（見下面「P1-2 的誠實結論」）。改用 `INITIAL_CONVERSATION_AGENCY_STATE` 當底；不注入時仍原樣傳 `state`（含 null） |
-| **U1** | debrief 的 `request.turns` 是不是一定從第 1 輪開始 | **查證：不是。** client 的 `endPractice()` 走 `_turnDtosForPrompt()`（`kPracticePromptRecentTurns = 80`），超過就送最後 80 則；server 只有 `MAX_TURNS = 130`。**已改成 fail-safe**：只有「這次的 ai 則數 ＝ ledger 的 `aiCount`」才注入。正反例各一支測試 |
-| **U3** | widget 測試只有一種版面 | **已補**：`read_only` 一案、大字級 `TextScaler.linear(1.3)`、最小支援寬度 320×568，以及兩者疊加，各自斷言 `takeException()` 為 null。並手動反證過非恆真（120×400／scale 3.0 會失敗） |
-| **U2／P2** | 刀 1 讓「（已讀）」多一個入口，觸發率沒有量 | **不修**，記在下面「未做／提案」。交給上線 telemetry（`forcedAct`／`readOnlyReply` 分佈）與 Game 黑箱 |
-| **P2** | `logger_test` | 與本分支無關（main 上的另一個 commit 混進 packet diff），未動 |
-
-#### P1-2 的誠實結論：修了，但行為沒變
-
-用 2,400 組合成案例逐案對拍舊寫法與新寫法（10 種玩家形狀 × 逐字稿長度 1–6 ×
-marker 0–4 × 有／無她開場），`repairTurns` 與計數 **0 筆不同**。原因是
-`detectAgencyEvidence` 每一輪都從 `shapes` 重算欠債、**不讀**
-`prev.unresolvedCount`，而舊寫法在第 2 則就會把 marker 注進去——第 1 則那次
-注入的效果在第 2 則被完整重建。所以那是**死分支而不是活 bug**；修它是為了讓
-條件說得出自己的意思。
-
-順帶釘住一件容易被誤讀的事：**第 1 則玩家訊息永遠留在 `repairTurns`**。
-`agencyPolicyFor` 放過裸片段的唯一出口是 `evidence.precedingUserContext`
-（前面有玩家講清楚過的內容），而第 1 則依定義沒有前一則玩家訊息——**任何
-marker 都改不了它**，marker 只改「修復點之後」的欠債。R1 要求的
-「第 1 輪不在 `repairTurns`」因此結構上不可達，測試改成鎖住這條必然。
+| **P1** | `ai 則數 === ledger.aiCount` **不是**逐字稿完整性的證明。反例：前 10 則全是玩家訊息、後 80 則含全部 ledger AI 回覆時，兩邊計數相等但 ordinal 已左移 10，marker 會指到錯的位置 | **成立，且無法在兩輪內修好**。CTO 決定**整把撤掉刀 2**；程式碼逐位元組回到 main。重做的前提見「刀 2：已撤回」節末（要起始 ordinal 或穩定 turn id，不是計數相等） |
+| **P2** | 刀 1 讓「（已讀）」多一個觸發入口，觸發率沒有量過 | **不修**，記進下面「未做／提案」與上線監看：看 `forcedAct`／`readOnlyReply` 分佈，Game 另外排黑箱。回退門檻沿用 4.5a 那一節 |
+| **P3** | （刀 2 相關） | **隨撤回消失** |
+| **U** | （刀 2 相關的其餘 U 項） | **隨撤回消失**；刀 3 的 U3 已補並保留 |
 
 ### 未做／提案
 
-- **assisted（beginner／game）的 debrief 要不要也吃持久化狀態**（R1 P1-1 的
-  另一半）：技術上做得到，而且 assisted 每輪都有分類器，marker 的品質比
-  standard 更好。但那是**改既有模式的評分口徑**，不是補一個缺口——同一段對話
-  的介入輪數會變少（實測 A25 從 6 變 4），Debrief 的「需要她補救的輪次」與下游
-  評分文字都會動。**留給 Eric 拍板要不要開，本刀不做。**
-- **刀 1 的觸發率沒有量**（R1 U2／P2）：4.5a 量到的 `read_only` 13.8% 是舊入口
+- **debrief 吃持久化修復點（原刀 2）要重做的前提**：server 端拿得到逐字稿的
+  **起始 ordinal**，或把修復點改成綁**穩定 turn id**（不依賴序號）。在那之前
+  不要再用「計數相等」這類間接推論當完整性證明。**standard 與 assisted 都排在
+  這個前提後面**——尤其 assisted 那一半還是改既有模式評分口徑的產品決定，要
+  Eric 拍板。
+- **刀 1 的觸發率沒有量**（R2 P2）：4.5a 量到的 `read_only` 13.8% 是舊入口
   （`BOUNDARY_RE` 連兩則）的合成上界；刀 1 新增的
   `gameGreasy`／`userOverEscalated` 入口在真實 Game 對話上多久觸發一次**沒有
-  離線重建也沒有黑箱**。上線後看 telemetry 的 `forcedAct` 與
-  `readOnlyReply` 分佈，Game 另外排一次黑箱。回退門檻沿用 4.5a 那一節。
-- **刀 3 沒有處理逐字稿超過 80 則的 debrief**：那種場的 marker 不注入（U1
-  fail-safe），帳退回 4.1 的純結構近似。要根治得讓 client 送出窗口起點或改用
-  穩定 turn id，本輪不做。
+  離線重建也沒有黑箱**。上線後看 telemetry 的 `forcedAct` 與 `readOnlyReply`
+  分佈，Game 另外排一次黑箱。
+- **刀 3 的 `partnerStatus` 只是提示**：不自動結束、不鎖輸入、不改扣額。要不要
+  強制結束、要不要在那一格改扣額，留給 Eric。
