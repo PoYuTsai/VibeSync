@@ -23,7 +23,12 @@ CREATE TABLE IF NOT EXISTS public.practice_chat_daily_cost (
   -- `>= 0` 擋不住 NaN（PG 的 NaN 在 numeric 排序裡比任何值都大，`NaN >= 0`
   -- 為真），所以另外明寫一條：累計一旦變成 NaN，之後每一次比較都會失真。
   spent_usd  NUMERIC     NOT NULL DEFAULT 0
-               CHECK (spent_usd >= 0 AND spent_usd <> 'NaN'::NUMERIC),
+               CHECK (
+                 spent_usd >= 0
+                 AND spent_usd <> 'NaN'::NUMERIC
+                 AND spent_usd <> 'Infinity'::NUMERIC
+                 AND spent_usd <> '-Infinity'::NUMERIC
+               ),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

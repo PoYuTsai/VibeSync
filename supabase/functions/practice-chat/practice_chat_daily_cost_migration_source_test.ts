@@ -36,11 +36,14 @@ Deno.test("保險絲 migration 建出 day 主鍵、非負累計與 updated_at", 
     ),
   );
   assert(executable.includes("day        DATE        PRIMARY KEY"));
-  // NaN 也要擋：PG 的 numeric NaN 比任何值都大，`>= 0` 放它過。
+  // NaN 也要擋：PG 的 numeric NaN 比任何值都大，`>= 0` 放它過；±Infinity
+  // 也 `>= 0` 且 `<> NaN`，表級要各自點名（GLM 挑戰閘 P3-1，2026-09-06）。
+  const check = executable.replace(/\s+/g, " ");
   assert(
-    executable.includes(
-      "CHECK (spent_usd >= 0 AND spent_usd <> 'NaN'::NUMERIC)",
+    check.includes(
+      "CHECK ( spent_usd >= 0 AND spent_usd <> 'NaN'::NUMERIC AND spent_usd <> 'Infinity'::NUMERIC AND spent_usd <> '-Infinity'::NUMERIC )",
     ),
+    check,
   );
   assert(executable.includes("updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"));
 });
