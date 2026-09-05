@@ -18,6 +18,13 @@
 // （`prompt.ts:121` / `prompt.ts:130` 兩份 tail），生成端規則在
 // `DEBRIEF_MEMORY_SUMMARY_DIRECTIVE`。最後一支測試守讀取端那個信封格式。
 //
+// ── 已接受、不修的兩件事（Eric 2026-09-05 對 Codex R2 的裁決）──────────
+// 1. 不走整列 upsert、UPDATE 不建列：thread 列一定在第一輪聊天就由既有路徑建好
+//    （beginner／game 的 inviteMaturity 那條與 standard 分類器那條，production
+//    兩支旗標都開），而檢討必在聊天之後；真的命中 0 列會記
+//    `memorySummarySkipped: "thread_missing"`，是可觀測的。
+// 2. 同一場兩次檢討反序完成＝last-writer-wins：一場實務上只檢討一次，接受。
+//
 // ── 寫回為什麼是單欄 UPDATE 不是 upsert RPC（Codex R1 P1）───────────────
 // 檢討是長跑請求：它在請求開頭讀到的 thread 快照，寫回時可能已被同一個 thread
 // 的聊天輪次更新過。走 `upsert_practice_relationship_thread` 會把讀取時的
@@ -411,4 +418,114 @@ Deno.test("WP3 下一場：thread 上的 memory_summary 走既有 chat prompt �
       `<older_memory_untrusted>\n${HER_MEMORY}\n</older_memory_untrusted>`,
     ),
   );
+});
+
+Deno.test("WP3 換角色（Codex R2 P1）：同一個 visible thread 換人時，舊角色的記憶被清成 NULL", async () => {
+  // 這一列是 A 角色的（帶著 A 的摘要），這次請求是 B 角色。assisted 的 upsert
+  // 路徑下一步會把 profile_id 改成 B、memory_summary 走 COALESCE 留著 A 的
+  // 摘要——所以旗標 on 時要先把舊角色那一列的記憶清掉。
+  const { response, state } = await run(
+    {
+      env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
+      ledger: ledger({ ai_count: 1, charged: true }),
+      thread: {
+        profile_id: "practice_girl_006",
+        memory_summary: HER_MEMORY,
+        partner_mood: "neutral",
+        partner_inner_thought: "",
+      },
+      deepSeekReplies: ["AI reply", "not json"],
+    },
+    chatBody({ profileId: PROFILE_ID }),
+  );
+
+  assertEquals(response.status, 200);
+  const updates = threadMemoryUpdates(state);
+  assertEquals(updates.length, 1);
+  assertEquals(Object.keys(updates[0].values), ["memory_summary"]);
+  assertEquals(updates[0].values.memory_summary, null);
+  // WHERE 綁的是**舊角色**的 profileId，不是這次請求的角色。
+  assertEquals(updates[0].where, [
+    ["user_id", "user-1"],
+    ["visible_thread_id", "session-1"],
+    ["profile_id", "practice_girl_006"],
+  ]);
+  // 這一輪的 prompt 本來就讀不到（profile 不符 → thread state 直接當 null）。
+  const system = state.deepSeekCalls[0].messages[0].content;
+  assertEquals(system.includes("<older_memory_untrusted>"), false);
+});
+
+Deno.test("WP3 換角色：旗標 off 時不清、不多發任何 UPDATE（逐位元組不變）", async () => {
+  const { response, state } = await run(
+    {
+      ledger: ledger({ ai_count: 1, charged: true }),
+      thread: {
+        profile_id: "practice_girl_006",
+        memory_summary: HER_MEMORY,
+        partner_mood: "neutral",
+        partner_inner_thought: "",
+      },
+      deepSeekReplies: ["AI reply", "not json"],
+    },
+    chatBody({ profileId: PROFILE_ID }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(threadMemoryUpdates(state).length, 0);
+});
+
+Deno.test("WP3 同一角色續聊：旗標 on 也不清，記憶照樣進 prompt", async () => {
+  const { response, state } = await run(
+    {
+      env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
+      ledger: ledger({ ai_count: 1, charged: true }),
+      thread: {
+        profile_id: PROFILE_ID,
+        memory_summary: HER_MEMORY,
+        partner_mood: "neutral",
+        partner_inner_thought: "",
+      },
+      deepSeekReplies: ["AI reply", "not json"],
+    },
+    chatBody({ profileId: PROFILE_ID }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(threadMemoryUpdates(state).length, 0);
+  assert(
+    state.deepSeekCalls[0].messages[0].content.includes(HER_MEMORY),
+  );
+});
+
+Deno.test("WP3 檢討不會被 memorySummary 的形態問題打回：非字串與 1001 碼點都走完整驗證路徑仍回原卡", async () => {
+  // 本 repo 的 `callClaude` 對 tool_use input 不做任何 schema 驗證（只
+  // JSON.stringify），所以 schema 的 `maxLength`／`type` 擋不到 server 端；
+  // 唯一的守門是 `parseDebriefCard` ＋ `parseDebriefMemorySummary`。這一條
+  // 走真實的 validate/runSingleShot 路徑把它釘住。
+  for (
+    const [name, value] of [
+      ["not_string", 12],
+      ["too_long", "記".repeat(DEBRIEF_MEMORY_SUMMARY_MAX_CHARS + 1)],
+    ] as const
+  ) {
+    const { response, json, state, succeeded } = await runDebrief(
+      debriefOptions({
+        env: { PRACTICE_MEMORY_SUMMARY_WRITE: "true" },
+        claudeReplies: [validDebriefJson({ memorySummary: value })],
+      }),
+      debriefBody({ requestId: `wp3-shape-${name}`, profileId: PROFILE_ID }),
+    );
+
+    assertEquals(response.status, 200, name);
+    // 只發一次（沒有因為欄位形態而重試第二個模型）。
+    assertEquals(state.claudeCalls.length, 1, name);
+    assertEquals(
+      json.card.summary,
+      "你說今天忙到剛下班，她接著分享只想散步放空。",
+      name,
+    );
+    assertEquals("memorySummary" in json, false, name);
+    assertEquals(threadMemoryUpdates(state).length, 0, name);
+    assertEquals(succeeded?.memorySummarySkipped, name);
+  }
 });

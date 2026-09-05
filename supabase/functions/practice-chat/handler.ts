@@ -1352,12 +1352,15 @@ async function upsertRelationshipThreadFailOpen(opts: {
 }
 
 /**
- * Phase 5 WP3：檢討成功後把「她記得的事」寫回 thread。
+ * Phase 5 WP3：thread 的 `memory_summary` 單欄寫入（寫進去或清成 NULL）。
  *
- * **只 UPDATE `memory_summary` 一欄，不走 `upsert_practice_relationship_thread`**
+ * **只 UPDATE 這一欄，不走 `upsert_practice_relationship_thread`**
  * （Codex R1 P1）：那支 RPC 的 `practice_mode`／三個分數／`recent_facts` 是整包
  * 覆寫，而檢討是一支長跑的請求——它在請求開頭讀到的 thread 快照，寫回時可能
  * 已經被同一個 thread 的聊天輪次更新過，帶回舊值就是把別人的寫入蓋掉。
+ * 那支 RPC 也**清不掉**這一欄：`NULLIF(left(COALESCE(p_memory_summary,''),1000),'')`
+ * 把 null 與空字串都變成 NULL，而 `ON CONFLICT` 對這一欄是 COALESCE，
+ * 等於「傳什麼都保留舊值」（Codex R2 P1 的清除需求只能走這條 UPDATE）。
  *
  * WHERE 同時綁 `user_id`／`visible_thread_id`／`profile_id` 三欄：跨使用者隔離、
  * 換角色（同一個 visible thread 換人）都靠這三個條件擋掉，命中 0 列＝跳過。
@@ -1365,14 +1368,15 @@ async function upsertRelationshipThreadFailOpen(opts: {
  * `updated_at`／`last_interaction_at` 刻意不帶：表上沒有觸發器，這一欄是檢討
  * 的副產品而不是新的互動，聊天輪次已經把互動時間推進過了。
  *
- * fail-open：任何錯誤（回 error 或整個 reject）都只 warn，檢討照樣回 200。
+ * fail-open：任何錯誤（回 error 或整個 reject）都只 warn，呼叫端照樣走完。
  */
-async function persistDebriefMemorySummaryFailOpen(opts: {
+async function updateThreadMemorySummaryFailOpen(opts: {
   supabase: PracticeSupabaseClient;
   userId: string;
   visibleThreadId: string;
   profileId: string;
-  memorySummary: string;
+  /** `null`＝把這一列的記憶清掉（換角色時）。 */
+  memorySummary: string | null;
 }): Promise<"thread_missing" | "write_failed" | null> {
   try {
     const { data, error } = await opts.supabase
@@ -2460,6 +2464,11 @@ export function createPracticeChatHandler(
       agencyMode,
       request.practiceMode,
     );
+    // Phase 5 WP3 續聊敘事記憶：server-only 旗標。`true`＝檢討多吐一段「她記得
+    // 的事」寫回 thread、換角色時清掉舊角色的記憶；未設／其他值＝schema、
+    // prompt、RPC、Response、telemetry 五面與接線前逐位元組相同。
+    const memorySummaryWriteOn =
+      deps.getEnv("PRACTICE_MEMORY_SUMMARY_WRITE") === "true";
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -2578,6 +2587,21 @@ export function createPracticeChatHandler(
         requestedProfileId: request.profile.girl.profileId,
         threadProfileId: relationshipThreadState.profileId ?? null,
       });
+      // Phase 5 WP3（Codex R2 P1）：這一列是別的角色的，而 assisted 那條
+      // upsert 路徑會把 `profile_id` 改成現在這個角色、`memory_summary` 走
+      // COALESCE 留著舊角色的摘要——下一輪 profile 就對得上了，舊角色的記憶會
+      // 被當成這個角色的餵進 prompt。RPC 清不掉這一欄（見
+      // `updateThreadMemorySummaryFailOpen`），所以旗標 on 時直接單欄清成 NULL，
+      // WHERE 綁**舊角色**的 profileId。旗標 off 一個位元組不變。
+      if (memorySummaryWriteOn && relationshipThreadState.profileId) {
+        await updateThreadMemorySummaryFailOpen({
+          supabase,
+          userId: user.id,
+          visibleThreadId,
+          profileId: relationshipThreadState.profileId,
+          memorySummary: null,
+        });
+      }
       relationshipThreadState = null;
       threadProfileMismatch = true;
     }
@@ -4056,11 +4080,6 @@ export function createPracticeChatHandler(
       // 偏好門（grounding/主觀 rubric/fact ledger…）降級後的觀測通道：卡照端，
       // 違規碼記在這裡隨成功 log 出去（finding 率長期偏高＝回頭修 prompt 或門）。
       let debriefQualityFindingCodes: string[] = [];
-      // Phase 5 WP3 續聊敘事記憶：server-only 旗標。`true`＝檢討多吐一段「她
-      // 記得的事」寫回 thread；未設／其他值＝schema、prompt、RPC、Response、
-      // telemetry 五面與接線前逐位元組相同。
-      const memorySummaryWriteOn =
-        deps.getEnv("PRACTICE_MEMORY_SUMMARY_WRITE") === "true";
       // 只在 validate 真的解析成功那一發賦值（跟 debriefQualityFindingCodes
       // 同一個慣例）。salvage 出來的卡走不到這裡＝記 `missing` 不寫入：救回來
       // 的候選本來就是被守門打回的文字，不該拿它當下一場的記憶。
@@ -4455,9 +4474,14 @@ export function createPracticeChatHandler(
       // WP3：寫回只動 `memory_summary` 一欄，WHERE 綁死 user／thread／角色，
       // 所以不需要 `threadStateSkipReason` 那道前置閘門（讀取失敗也寫得安全，
       // 角色不符會命中 0 列）。失敗一律只 warn，檢討照樣 200。
+      //
+      // 已接受的兩個限制（Eric 2026-09-05 對 Codex R2 的裁決）：
+      // (1) 命中 0 列時**不建列**——thread 列一定在第一輪聊天就由既有路徑建好，
+      //     檢討必在聊天之後；真的沒命中會記 `thread_missing`，可觀測。
+      // (2) 同一場兩次檢討反序完成＝last-writer-wins；一場只檢討一次。
       const debriefMemorySummary = debriefMemorySummaries[0] ?? null;
       const debriefMemoryWriteSkipped = debriefMemorySummary?.summary
-        ? await persistDebriefMemorySummaryFailOpen({
+        ? await updateThreadMemorySummaryFailOpen({
           supabase,
           userId: user.id,
           visibleThreadId,
