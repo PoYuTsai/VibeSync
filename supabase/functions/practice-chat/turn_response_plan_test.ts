@@ -13,6 +13,7 @@ import {
   detectTurnSignals,
   planTurnResponse,
   type PolicyEvidence,
+  type PolicyStance,
   policyStanceFor,
   renderTurnPlan,
 } from "./turn_response_plan.ts";
@@ -1810,4 +1811,40 @@ Deno.test("Phase 4.5c 刀 1：gameGreasy／userOverEscalated 連續兩則也給�
       mode,
     );
   }
+});
+
+Deno.test("Phase 4.6 Codex R2：刀 3 修正後的成熟邀約方向仍壓不過拒絕／防備／修復／越界優先序", () => {
+  // 刀 3 讓第一場（沒 ledger）的 game 邀約輪拿得到 direct_invite_low_pressure。
+  // 這裡釘住 `policyStanceFor` 的順序：那個方向只在「沒有更高優先的證據」時
+  // 才把 stance 拉到 open；順風控制組之外，每一個高優先條件都必須壓過它。
+  const s = detectTurnSignals(invite);
+  const mature = (over: Partial<PolicyEvidence> = {}) =>
+    standard({
+      practiceMode: "game",
+      partnerMood: "comfortable",
+      inviteStage: "direct_invite_ready",
+      gameInviteDirection: "direct_invite_low_pressure",
+      ...over,
+    });
+  const control = policyStanceFor(s, mature());
+  assertEquals(control, "open");
+  assertEquals(classifySituation(s, control), "mature_invite");
+  const cases: ReadonlyArray<
+    [string, Partial<PolicyEvidence>, PolicyStance, string]
+  > = [
+    ["明確拒絕過", { priorDecline: true }, "decline", "early_invite"],
+    ["guarded", { partnerMood: "guarded" }, "hold", "early_invite"],
+    ["annoyed", { partnerMood: "annoyed" }, "hold", "early_invite"],
+    ["修復優先", { gameRepairPriority: true }, "hold", "early_invite"],
+    ["油膩", { gameGreasy: true }, "boundary", "boundary"],
+    ["玩家越界", { userOverEscalated: true }, "boundary", "boundary"],
+  ];
+  for (const [label, over, stance, situation] of cases) {
+    const got = policyStanceFor(s, mature(over));
+    assertEquals(got, stance, label);
+    assertEquals(classifySituation(s, got), situation, label);
+  }
+  // 現實旗標：拉到 cautious，邀約輪照樣不 open。
+  const flagged = policyStanceFor(s, mature({ gameRealityFlagCount: 1 }));
+  assertEquals(flagged === "open", false, "現實旗標");
 });
