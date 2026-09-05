@@ -6,7 +6,7 @@
 //
 // 計分（只看玩家最新一則）：
 //   - 羞辱型（`containsCrudeSexualOffense`：婊子、裸照、輪姦…）        → +2
-//   - 一般越界（`looksBoundaryCrossing`：打炮／打砲、約砲、開房、上床）→ +1
+//   - 一般越界（`OFFENSE_ADVANCE_TERMS`：打炮／打砲、約砲、開房、上床）    → +1
 //   - 下一輪補記：詞表沒中而學習分類器判 `boundary === "overstep"`     → +1
 //
 // 階梯（看**當輪加完詞表**後的累計）：
@@ -19,8 +19,10 @@
 // 記到約 2 次，有機會無辜被封。所以**連續 3 輪完全沒加分就把累計歸零**；
 // `blocked` 一旦成立不受衰減影響（她已經封了就是封了）。
 
-import { containsCrudeSexualOffense } from "./game_fsm.ts";
-import { looksBoundaryCrossing } from "./turn_response_plan.ts";
+import {
+  containsCrudeSexualOffense,
+  normalizedOffenseText,
+} from "./game_fsm.ts";
 
 /** 累計到這個值就封鎖。 */
 export const OFFENSE_BLOCK_STRIKES = 3;
@@ -78,14 +80,69 @@ function withoutDesireTerms(text: string): string {
   return stripped;
 }
 
-/** 詞表對單一則的判分。羞辱型優先（+2），一般越界 +1。 */
+/**
+ * +1 那一層的詞表（Codex R1 P1-2）。
+ *
+ * 舊版借用 `looksBoundaryCrossing`，而它背後的 `BOUNDARY_RE` 含「泳裝｜內衣｜
+ * 身材照」這種**沒有上下文的話題詞**——「我的泳裝放在健身房」講三次就被封。
+ * 這裡改成自己的、只收**明確性邀約／性暗示**的清單：取
+ * `visible_text_guard.ts` 的 `SPICY_VISIBLE_PATTERNS` 扣掉羞辱型（那些留在
+ * +2）、扣掉裸名詞（`胸部` 與泳裝同一類假陽性），再補幾個口語形。
+ *
+ * 刻意不收英文（`sex`／`nude` 這些在 `SPICY_VISIBLE_PATTERNS` 裡是子字串比對，
+ * `sexy`／`unisex` 會誤中）。這是階梯專用的窄表；`BOUNDARY_RE` 那條給 planner
+ * 用的路徑一個字都沒動。
+ */
+const OFFENSE_ADVANCE_TERMS: readonly string[] = [
+  "上床",
+  "開房",
+  "开房",
+  "脫衣",
+  "脱衣",
+  "脫光",
+  "脱光",
+  "裸體",
+  "裸体",
+  "私密照",
+  "摸你",
+  "摸妳",
+  "性交",
+  "打炮",
+  "打砲",
+  "約炮",
+  "约炮",
+  "約砲",
+  "一夜情",
+  "炮友",
+  "砲友",
+  "來我家過夜",
+  "去我家過夜",
+  "睡我家",
+  "來我房間",
+  "去你房間",
+  "去妳房間",
+  "直接睡你",
+  "直接睡妳",
+  "回家睡",
+];
+
+/** 詞表對單一則的判分。羞辱型優先（+2），明確性邀約 +1。 */
 export function offenseTermDelta(
   text: string,
 ): { delta: number; source: Exclude<OffenseSource, "classifier"> } {
-  if (containsCrudeSexualOffense(withoutDesireTerms(text))) {
+  // Codex R1 P1-5：**先正規化再抽欲望詞**。舊版對原文 split，「打 炮」抽不掉
+  // 卻被 `containsCrudeSexualOffense` 自己的 normalize 命中 → 判成 +2 羞辱。
+  const normalized = normalizedOffenseText(text);
+  if (containsCrudeSexualOffense(withoutDesireTerms(normalized))) {
     return { delta: 2, source: "crude" };
   }
-  if (looksBoundaryCrossing(text)) return { delta: 1, source: "boundary" };
+  if (
+    OFFENSE_ADVANCE_TERMS.some((term) =>
+      normalized.includes(normalizedOffenseText(term))
+    )
+  ) {
+    return { delta: 1, source: "boundary" };
+  }
   return { delta: 0, source: null };
 }
 

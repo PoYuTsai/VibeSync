@@ -39,6 +39,32 @@ Deno.test("WP6 詞表：羞辱型 +2、一般越界 +1、正常話 0", () => {
   assertEquals(offenseTermDelta(CLEAN), { delta: 0, source: null });
 });
 
+Deno.test("P1-2：話題詞不算冒犯——泳裝／內衣／身材照講三次也是 0 分", () => {
+  let s = INITIAL_OFFENSE_STATE;
+  for (
+    const text of [
+      "我的泳裝放在健身房",
+      "她內衣的牌子我不懂",
+      "你身材照拍得不錯",
+    ]
+  ) {
+    assertEquals(offenseTermDelta(text), { delta: 0, source: null }, text);
+    const t = turn(s, text);
+    assertEquals(t.stage, "none", text);
+    s = t.next;
+  }
+  assertEquals(s.strikes, 0);
+});
+
+Deno.test("P1-5：正規化先做——「打炮」與「打 炮」都是 +1，不會被判成羞辱型", () => {
+  for (const text of ["要不要打炮", "要不要打 炮", "要不要打\u3000砲"]) {
+    assertEquals(offenseTermDelta(text), {
+      delta: 1,
+      source: "boundary",
+    }, text);
+  }
+});
+
 Deno.test("WP6 階梯：一次冷回、兩次已讀、三次封鎖", () => {
   const one = turn(INITIAL_OFFENSE_STATE, "要不要打砲");
   assertEquals(one.stage, "cold");

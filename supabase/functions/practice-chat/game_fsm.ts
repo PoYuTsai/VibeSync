@@ -261,6 +261,14 @@ function clampDelta(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, rounded));
 }
 
+/**
+ * 導出給性冒犯階梯（`offense_ladder.ts`）用：詞表比對必須跟這裡**同一套**
+ * 正規化，不然「打 炮」在一邊抽得掉、另一邊抽不掉（Codex R1 P1-5）。
+ */
+export function normalizedOffenseText(text: string): string {
+  return normalized(text);
+}
+
 function normalized(text: string): string {
   return text
     .normalize("NFKC")
