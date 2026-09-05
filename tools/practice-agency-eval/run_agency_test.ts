@@ -631,10 +631,12 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
   assertEquals(fake.state.claudeCalls.length, 1);
   const handlerArgs = fake.state.claudeCalls[0];
 
-  const bodies: Array<Record<string, unknown>> = [];
+  // Codex R2 P3：存**原始字串**再比，才真的是逐位元組（JSON.parse 之後比物件
+  // 只證明語意相同，key 順序／escaping／空白的差異看不出來）。
+  const bodies: string[] = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (_input, init) => {
-    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    bodies.push(String(init?.body));
     return Promise.resolve(
       new Response(
         JSON.stringify({ content: [{ type: "text", text: "嗯" }] }),
@@ -659,7 +661,15 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
   }
   assertEquals(bodies.length, 2);
   assertEquals(bodies[0], bodies[1]);
-  assertEquals(bodies[0].model, "claude-haiku-4-5-20251001");
+  // UTF-8 bytes 也對一遍（字串相等已蘊含，但把宣稱寫死在斷言裡）。
+  assertEquals(
+    new TextEncoder().encode(bodies[0]),
+    new TextEncoder().encode(bodies[1]),
+  );
+  assertEquals(
+    (JSON.parse(bodies[0]) as { model?: string }).model,
+    "claude-haiku-4-5-20251001",
+  );
 
   // 上面兩個數字真的是 runner 的常數（不是這支測試自己編的）。
   const runnerSource = await Deno.readTextFile(

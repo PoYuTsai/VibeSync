@@ -2,8 +2,13 @@
 //
 // ── 契約（Codex R1 U1：把兩句互相矛盾的話講清楚）────────────────────────
 // 旗標不是 `mixed`（未設／`off`／亂填）：chat 生成路徑**四面**逐位元組不變。
-// 旗標 `mixed`：telemetry 只多允許的 key（`chatModel`／`chatModelCalls`／
-// `chatModelFallback`／`chatModelUsage`）；**真的打到 Haiku 並採用**的那一輪，
+// 旗標 `mixed`：`practice_chat_succeeded` 只多四個 key（`chatModel`／
+// `chatModelCalls`／`chatModelFallback`／`chatModelUsage`），整輪失敗時
+// `practice_chat_generation_failed` 只多 `chatModelCalls`／`chatModelUsage`；
+// **另外允許一個新事件** `practice_chat_model_fallback`（Codex R2 P1：只在
+// Claude 呼叫真的失敗時出現，payload 只有匿名 user／attempt／錯誤訊息，
+// 沒有 messages、沒有金鑰）。除此之外事件數與事件名都不變。
+// **真的打到 Haiku 並採用**的那一輪，
 // Response 的 `provider`／`model` 照實回報（key 集合不變，只有值不同），其餘輪次
 // 連 Response 都逐位元組不變。四面等價由 `agency_flag_off_equivalence_test.ts`
 // 的 harness 守；這支只驗「開起來時真的換模型、失敗真的退回、帳真的記對」。
@@ -127,6 +132,10 @@ async function runChat(opts: {
   turns?: Array<{ role: string; text: string }>;
   deepSeekReplies?: ReadonlyArray<string | Error>;
   claudeReplies?: ReadonlyArray<string | Error>;
+  /** 模擬 HTTP 200 但丟錯（max_tokens／refusal／空內容）：先記 usage 再拒絕。 */
+  claudeUsageBeforeError?: boolean;
+  /** 整輪預期失敗（沒有 practice_chat_succeeded）。 */
+  expectFailure?: boolean;
 }): Promise<RunResult> {
   const practiceMode = opts.practiceMode ?? "beginner";
   const fake = makeFake({
@@ -136,6 +145,7 @@ async function runChat(opts: {
     // claudeReplies 有值時 fake 的 getEnv 才會給 CLAUDE_API_KEY（與 production
     // 一致：沒有 key 就當作路由沒開）。
     claudeReplies: opts.claudeReplies ?? ["嗯？你先講東東"],
+    claudeUsageBeforeError: opts.claudeUsageBeforeError,
     env: {
       ...(opts.routing === undefined ? {} : { [ROUTING_ENV]: opts.routing }),
       ...(opts.agency === undefined ? {} : { [AGENCY_ENV]: opts.agency }),
@@ -168,7 +178,9 @@ async function runChat(opts: {
   const succeededLine = lines.find((l) =>
     l.includes('"event":"practice_chat_succeeded"')
   );
-  assert(succeededLine, "沒有印出 practice_chat_succeeded");
+  if (!opts.expectFailure) {
+    assert(succeededLine, "沒有印出 practice_chat_succeeded");
+  }
   return {
     status: response.status,
     body,
@@ -177,7 +189,9 @@ async function runChat(opts: {
       c.maxTokens === 200
     ),
     rpcCalls: fake.state.rpcCalls,
-    succeeded: JSON.parse(succeededLine) as Record<string, unknown>,
+    succeeded: succeededLine
+      ? JSON.parse(succeededLine) as Record<string, unknown>
+      : {},
     lines,
   };
 }
@@ -420,6 +434,91 @@ Deno.test("Claude 成功→守門拒→Claude 失敗→DeepSeek 成功：第一�
 });
 
 // ── Codex R1 U1：三種 Response 的 schema 相容 ────────────────────────────
+// ── Codex R2 P2：HTTP 200 但丟錯的 Claude 呼叫，錢已經付了 ──────────────
+// `handler_test_fake.ts` 的 `claudeUsageBeforeError` 模擬 `callClaude` 在
+// `max_tokens`／`refusal`／內容空時「先記 usage 再丟錯」的真實時序。
+Deno.test("Claude 回 max_tokens（帶 usage）→ DeepSeek fallback：那次的 token 帳不能消失", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    claudeReplies: [new Error("claude_max_tokens")],
+    claudeUsageBeforeError: true,
+    deepSeekReplies: ["好啊"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "好啊");
+  assertEquals(r.succeeded.chatModel, "deepseek");
+  assertEquals(r.succeeded.chatModelCalls, { haiku: 1, deepseek: 1 });
+  assertEquals(r.succeeded.chatModelFallback, true);
+  assertEquals(r.succeeded.chatModelUsage, {
+    inputTokens: 120,
+    cacheReadInputTokens: 80,
+    cacheCreationInputTokens: 0,
+    outputTokens: 15,
+  });
+});
+
+Deno.test("整輪最後失敗：付掉的 Claude 成本記在 practice_chat_generation_failed 上", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    claudeReplies: [new Error("claude_max_tokens")],
+    claudeUsageBeforeError: true,
+    deepSeekReplies: [
+      new Error("deepseek_http_500"),
+      new Error("deepseek_http_500"),
+    ],
+    expectFailure: true,
+  });
+  assertEquals(r.status, 500);
+  const failedLine = r.lines.find((l) =>
+    l.includes('"event":"practice_chat_generation_failed"')
+  );
+  assert(failedLine, "沒有印出 practice_chat_generation_failed");
+  const failed = JSON.parse(failedLine) as Record<string, unknown>;
+  assertEquals(failed.chatModelCalls, { haiku: 1, deepseek: 2 });
+  assertEquals(failed.chatModelUsage, {
+    inputTokens: 120,
+    cacheReadInputTokens: 80,
+    cacheCreationInputTokens: 0,
+    outputTokens: 15,
+  });
+});
+
+// ── Codex R2 U1：request 與 ledger 的 practiceMode 不一致 ────────────────
+// 既有 validation 就是權威來源：ledger 有明確 practice_mode 且與 request 不同
+// 時，chat 在生成之前就 409（`practice_mode_locked`），所以 standard 的排除
+// 繞不過去——這支測試把那個不變量釘住。
+Deno.test("ledger=standard 但 request=beginner：409 practice_mode_locked，一次模型都不打", async () => {
+  const fake = makeFake({
+    ledger: ledger({ practice_mode: "standard" }),
+    deepSeekReplies: ["好啊"],
+    claudeReplies: ["嗯？你先講東東"],
+    env: { [ROUTING_ENV]: "mixed", [AGENCY_ENV]: "true" },
+  });
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  let response: Response;
+  try {
+    console.log = () => {};
+    console.warn = () => {};
+    response = await fake.handler(
+      makeRequest(chatBody({
+        practiceMode: "beginner",
+        turns: FRAGMENT_TURNS,
+      })),
+    );
+    await Promise.allSettled(fake.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  assertEquals(response.status, 409);
+  assertEquals((await response.json()).error, "practice_mode_locked");
+  assertEquals(fake.state.claudeCalls.length, 0);
+  assertEquals(fake.state.deepSeekCalls.length, 0);
+});
+
 Deno.test("Response schema：deepseek／haiku／fallback 三種輪次的 key 集合完全相同", async () => {
   const deepseek = await runChat({
     routing: "mixed",

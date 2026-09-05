@@ -54,6 +54,12 @@ export interface FakeOptions {
   rpc?: Record<string, RpcResult[]>;
   deepSeekReplies?: ReadonlyArray<string | Error>;
   claudeReplies?: ReadonlyArray<string | Error>;
+  /**
+   * Phase 4.4（Codex R2 P2）：模擬 `callClaude` 在 HTTP 200 但丟錯
+   * （`max_tokens`／`refusal`／內容空）時的真實時序——provider 已經回了 usage，
+   * 所以 callback 先響，然後才拒絕。省略＝失敗完全不記帳（連線層失敗）。
+   */
+  claudeUsageBeforeError?: boolean;
   monotonicNowValues?: ReadonlyArray<number>;
   env?: Record<string, string | undefined>;
   randomUUID?: string;
@@ -570,16 +576,21 @@ export function makeFake(options: FakeOptions = {}) {
     state.events.push("claude");
     const reply = options.claudeReplies?.[claudeIndex] ?? "AI reply";
     claudeIndex++;
-    if (reply instanceof Error) return Promise.reject(reply);
     // Phase 4.4：只有 chat 路由那條路會傳 onUsage（hint／debrief 不傳），固定值
-    // 讓 telemetry 可重現。Codex R1 P3：失敗的回覆**不觸發** callback，與
-    // production 的 `callClaude` 契約（成功取到內容才記帳）同時序。
-    args.onUsage?.({
-      inputTokens: 120,
-      cacheReadInputTokens: 80,
-      cacheCreationInputTokens: 0,
-      outputTokens: 15,
-    });
+    // 讓 telemetry 可重現。時序與 production 的 `callClaude` 一致：provider 回了
+    // usage 就記帳（含 200 但丟錯），連線層失敗（逾時／HTTP 錯）則完全不記。
+    const emitUsage = () =>
+      args.onUsage?.({
+        inputTokens: 120,
+        cacheReadInputTokens: 80,
+        cacheCreationInputTokens: 0,
+        outputTokens: 15,
+      });
+    if (reply instanceof Error) {
+      if (options.claudeUsageBeforeError) emitUsage();
+      return Promise.reject(reply);
+    }
+    emitUsage();
     return Promise.resolve(reply);
   };
   // reviewer 整層已拆：deps 不再有 semanticAdjudicate；state.semanticCalls

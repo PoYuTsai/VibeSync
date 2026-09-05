@@ -1574,3 +1574,96 @@ Deno.test({
     }
   },
 });
+
+/** 攔一輪 handler 的 telemetry 行（不比 digest，要逐行比欄位）。 */
+async function telemetryLinesOf(
+  options: FakeOptions,
+  body: unknown,
+): Promise<string[]> {
+  const fake = makeFake({ ...options, monotonicNowValues: [0] });
+  const lines: string[] = [];
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  try {
+    console.log = (...args: unknown[]) =>
+      lines.push(args.map((a) => String(a)).join(" "));
+    console.warn = console.log;
+    await fake.handler(makeRequest(body));
+    await Promise.allSettled(fake.state.backgroundTasks);
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  return lines;
+}
+
+Deno.test({
+  name:
+    "Phase 4.4（Codex R2 P1）：mixed 真的 fallback 的那一輪，telemetry 只多四個 key ＋ 一個 practice_chat_model_fallback 事件",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 兩邊唯一的差別只有 routing 旗標：agency 都開、Anthropic key 都在
+    // （`claudeReplies` 有值 → fake 的 getEnv 才給 key）、DeepSeek 腳本相同。
+    // mixed 那邊 Claude 回 500 → 當輪退回 DeepSeek，最終回覆與 baseline 相同。
+    const base: FakeOptions = {
+      ledger: ledger({ practice_mode: "beginner" }),
+      deepSeekReplies: [
+        "好啊",
+        `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none"}`,
+      ],
+      claudeReplies: [new Error("claude_http_500")],
+      env: { [AGENCY_ENV]: "true" },
+    };
+    const body = chatBody({
+      practiceMode: "beginner",
+      turns: FRAGMENT_TURNS,
+    });
+    const off = await telemetryLinesOf(base, body);
+    const mixed = await telemetryLinesOf({
+      ...base,
+      env: { ...base.env, [ROUTING_ENV]: "mixed" },
+    }, body);
+
+    // 1) 新事件恰好一筆，而且只有 mixed 那邊有。
+    const fallbackLines = mixed.filter((l) =>
+      l.includes('"event":"practice_chat_model_fallback"')
+    );
+    assertEquals(fallbackLines.length, 1, "fallback 事件必須恰好一筆");
+    assertEquals(
+      off.filter((l) => l.includes('"event":"practice_chat_model_fallback"')),
+      [],
+      "routing 未設時不得出現 fallback 事件",
+    );
+    // 2) 那一筆的 payload 不含逐字稿／prompt／金鑰。
+    const fallback = JSON.parse(fallbackLines[0]) as Record<string, unknown>;
+    assertEquals(
+      Object.keys(fallback).sort(),
+      ["attempt", "error", "event", "level", "user"],
+    );
+    assertEquals(fallback.error, "claude_http_500");
+    const fallbackText = fallbackLines[0];
+    for (const secret of ["claude-key", "deepseek-key", "阿布達比", "東東"]) {
+      assert(
+        !fallbackText.includes(secret),
+        `fallback payload 不得含 ${secret}`,
+      );
+    }
+    // 3) 剔除 fallback 事件、刪掉四個允許的 key 之後，逐行逐位元組相同。
+    const rest = mixed.filter((l) =>
+      !l.includes('"event":"practice_chat_model_fallback"')
+    );
+    assertEquals(rest.length, off.length, "事件數（扣掉 fallback）必須相同");
+    const eventNames = (lines: string[]) =>
+      lines.map((l) => (JSON.parse(l) as { event?: string }).event);
+    assertEquals(eventNames(rest), eventNames(off), "事件名與順序");
+    for (let i = 0; i < rest.length; i++) {
+      const json = JSON.parse(rest[i]) as Record<string, unknown>;
+      for (const key of ROUTING_ALLOWED_KEYS) delete json[key];
+      assertEquals(
+        scrubWallClock(JSON.stringify(json)),
+        scrubWallClock(off[i]),
+        `第 ${i + 1} 行除了允許的 key 之外必須逐位元組相同`,
+      );
+    }
+  },
+});

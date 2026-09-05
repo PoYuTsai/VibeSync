@@ -417,10 +417,11 @@ Deno.test("callClaude rejects refusal before exposing partial text", async () =>
   }
 });
 
-// Codex R1 P2：`onUsage` 的契約是「只在成功取到內容時呼叫一次」。HTTP 200 但
-// content 空（或 forced tool 沒有 tool_use）時，callback 一次都不能響——不然
-// 呼叫端會把一次沒拿到內容的呼叫記成成功用量。
-Deno.test("callClaude：200＋usage 但 content 為空時丟 claude_empty_content，onUsage 零次", async () => {
+// Codex R2 P2：`onUsage` 的契約是「**只要 Anthropic 回了 usage 就呼叫一次**」。
+// `max_tokens`／`refusal`／content 空這些 HTTP 200 但丟錯的情況，token 費用已經
+// 發生，callback 不響會讓 fallback 那一輪的成本從 telemetry 消失（R1 訂成
+// 「只在成功時響」是錯的，R2 撤回）。沒有 usage 欄位才不呼叫。
+Deno.test("callClaude：200＋usage 但 content 為空時丟 claude_empty_content，onUsage 仍恰好一次（錢已經付了）", async () => {
   const originalFetch = globalThis.fetch;
   let usageCalls = 0;
   globalThis.fetch = () =>
@@ -451,7 +452,7 @@ Deno.test("callClaude：200＋usage 但 content 為空時丟 claude_empty_conten
       message = e instanceof Error ? e.message : String(e);
     }
     assertEquals(message, "claude_empty_content");
-    assertEquals(usageCalls, 0);
+    assertEquals(usageCalls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -492,6 +493,80 @@ Deno.test("callClaude：成功取到內容時 onUsage 恰好一次，四格用�
       cacheCreationInputTokens: 5,
       outputTokens: 15,
     }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude：stop_reason=max_tokens＋非零 usage 時先記帳再丟錯", async () => {
+  const originalFetch = globalThis.fetch;
+  const seen: unknown[] = [];
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          stop_reason: "max_tokens",
+          content: [],
+          usage: {
+            input_tokens: 120,
+            cache_read_input_tokens: 80,
+            output_tokens: 200,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    let message = "";
+    try {
+      await callClaude({
+        apiKey: "k",
+        model: "claude-haiku-4-5-20251001",
+        messages: [{ role: "user", content: "hi" }],
+        maxTokens: 200,
+        temperature: 0.9,
+        timeoutMs: 1000,
+        onUsage: (usage) => seen.push(usage),
+      });
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    assertEquals(message, "claude_max_tokens");
+    assertEquals(seen, [{
+      inputTokens: 120,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 0,
+      outputTokens: 200,
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude：回應沒有 usage 欄位時 onUsage 零次（沒有帳可記）", async () => {
+  const originalFetch = globalThis.fetch;
+  let usageCalls = 0;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "好啊" }] }),
+        { status: 200 },
+      ),
+    );
+  try {
+    const text = await callClaude({
+      apiKey: "k",
+      model: "claude-haiku-4-5-20251001",
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 10,
+      temperature: 0.5,
+      timeoutMs: 1000,
+      onUsage: () => {
+        usageCalls++;
+      },
+    });
+    assertEquals(text, "好啊");
+    assertEquals(usageCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
