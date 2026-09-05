@@ -110,6 +110,7 @@ import { buildPracticeSceneContext } from "./life_schedule.ts";
 import { buildAcquaintanceOrigin } from "./acquaintance_origin.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import {
+  hasReadOnlyReply,
   hasStageDirection,
   rejectL4UnsafeVisibleText,
   rejectVisibleInternalLabelLeak,
@@ -4552,9 +4553,17 @@ export function createPracticeChatHandler(
           });
           // 括號旁白：style 層才會出現（run3–run5 量到 1–5%）；修補優先，
           // 整段剝到空才丟 chat_stage_direction 重試。
-          if (responsePlan && hasStageDirection(candidate)) {
+          // Phase 4.5a 刀 2：agency on 時，整則就是「（已讀）」的泡泡是產品
+          // 行為，不是旁白（`hasStageDirection` 的白名單）。off／shadow 傳
+          // false＝逐字沿用舊行為。
+          const allowReadOnly = agencyMode === "on";
+          if (responsePlan && hasStageDirection(candidate, allowReadOnly)) {
             stageDirectionRepairs++;
-            candidate = stripStageDirections(candidate, "chat_stage_direction");
+            candidate = stripStageDirections(
+              candidate,
+              "chat_stage_direction",
+              allowReadOnly,
+            );
           }
           // Phase 3.3 `truncate` 臂：她第一則就是問句時只留第一則（結構判斷，
           // 見 truncateAgencyShape）。放在最後一道後處理，`reply` 就地覆寫，
@@ -4936,6 +4945,13 @@ export function createPracticeChatHandler(
             // 真的介入時這個 key 才存在（其他情形連欄位都不多一個）。
             ...(agencyShapeExperiment === "truncate" && agencyDecision.applied
               ? { shapeTruncatedBubbles }
+              : {}),
+            // Phase 4.5a 刀 2／刀 3：她這一輪真的只回了一則「（已讀）」
+            // （forced `read_only` 或最冷那一格模型自己選的）。為真才寫，
+            // shadow／off 走不到（`agencyMode !== "on"` 時 `allowReadOnly`
+            // 是 false，那種輸出早就被守門剝掉了）。
+            ...(agencyMode === "on" && hasReadOnlyReply(reply)
+              ? { readOnlyReply: true }
               : {}),
           }
           : null,

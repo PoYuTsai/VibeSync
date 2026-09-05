@@ -188,6 +188,13 @@ export interface TurnResponsePlan {
    * 「這輪問他一件事：X」取代泛用的「最多問一句」。只在 agency 旗標 on 出現。
    */
   readonly askUserFocus?: string;
+  /**
+   * Phase 4.5a 刀 2（Eric 2026-09-05）：這一輪允許她只回一則「（已讀）」。
+   * 只在 agency 旗標 on、挑戰難度或 Game，而且這一輪本來就是**收尾格**
+   * （forced `end_low_value_loop`）或**連續第 2 次以上越界**時出現；
+   * 其餘輪次（含 easy／normal）整個 key 不存在＝計畫行逐字與 4.4 相同。
+   */
+  readonly readOnlyAllowed?: true;
 }
 
 /**
@@ -612,6 +619,20 @@ export function planTurnResponse(args: {
       : "fact")
     : "none";
 
+  // ── Phase 4.5a 刀 2：「（已讀）」冷回應的開關 ─────────────────────────
+  // 只給最冷的兩格：挑戰難度／Game，而且這一輪要嘛是結構層下的收尾格
+  // （forced `end_low_value_loop`），要嘛是**連續**越界（第 2 次以上）。
+  // 越界輪的 agency decision 會被 `computeAgencyDecision` 清成 situation:null，
+  // 所以那一半只能從 planner 自己的 stance 與逐字稿數，不能靠 agency 決策。
+  const coldPersona = args.evidence.difficulty === "challenge" ||
+    args.evidence.practiceMode === "game";
+  const readOnlyAllowed = agency?.enabled === true && coldPersona &&
+    (
+      (agency.applied &&
+        agency.decision.forcedAct === "end_low_value_loop") ||
+      (situation === "boundary" && trailingBoundaryTurns(args.turns) >= 2)
+    );
+
   return {
     styleVersion: REPLY_STYLE_VERSION,
     presetId: style.presetId,
@@ -625,7 +646,19 @@ export function planTurnResponse(args: {
     disclosureDepth,
     seed,
     ...(forceAskUser ? { askUserFocus: args.askUserFocus as string } : {}),
+    ...(readOnlyAllowed ? { readOnlyAllowed: true as const } : {}),
   };
+}
+
+/** 逐字稿尾端連續幾則玩家訊息踩到界線（`BOUNDARY_RE`，與 `boundaryLike` 同源）。 */
+function trailingBoundaryTurns(turns: readonly PracticeTurn[]): number {
+  const userTexts = turns.filter((t) => t.role === "user").map((t) => t.text);
+  let streak = 0;
+  for (let i = userTexts.length - 1; i >= 0; i--) {
+    if (!BOUNDARY_RE.test(userTexts[i])) break;
+    streak++;
+  }
+  return streak;
 }
 
 /** runtime 列舉（telemetry 測試做 membership 用）；Record 型別保證漏一個就編譯錯。 */
@@ -805,6 +838,13 @@ export function isAgencyClarifyOnlyTurn(
     acts.every((a) => (AGENCY_ACTS as readonly PlanAct[]).includes(a));
 }
 
+/**
+ * Phase 4.5a 刀 2（Eric 2026-09-05）：最冷的兩格（挑戰／Game 的收尾格、連續
+ * 越界第 2 次以上）允許她只回一則「（已讀）」。守門的白名單認同一個字面
+ * （`visible_text_guard.ts` 的 `READ_ONLY_REPLY_RE`）。
+ */
+const AGENCY_READ_ONLY_SHAPE = "回 1 則；可以只回「（已讀）」，或一句冷的。";
+
 const AGENCY_CLARIFY_ONLY_SHAPE =
   "回 1 則，就做這一件事：不替他補你猜的意思，也不要順著他丟的詞講你自己的事。";
 
@@ -929,7 +969,11 @@ export function renderTurnPlan(
   // ——離線重跑 planner 證明強制在 36/40 場真的觸發，但生成模型只有一半照做、
   // 15% 問到 X（v1 措辭反而 10/40 場問到管道好奇點）。瓶頸是模型對「問指定問題」
   // 的服從率，不是觸發；形狀行再綁也綁不到，留 v1 的問題行。
-  const shapeLine = forcedAsk
+  const shapeLine = plan.readOnlyAllowed === true
+    // Phase 4.5a 刀 2：**取代**形狀行，不是多加一行——「只回一則已讀」本來
+    // 就是形狀指示，而且比它取代掉的 `AGENCY_CLARIFY_ONLY_SHAPE` 短。
+    ? AGENCY_READ_ONLY_SHAPE
+    : forcedAsk
     ? FORCED_ASK_INTENT_SHAPE
     : clarifyOnly
     ? AGENCY_CLARIFY_ONLY_SHAPE

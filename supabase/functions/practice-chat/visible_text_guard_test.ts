@@ -13,6 +13,7 @@ import {
   rejectVisibleInternalLabelLeak,
 } from "./visible_text_guard.ts";
 import {
+  hasReadOnlyReply,
   hasStageDirection,
   REPLY_STYLE_HIDDEN_HEADINGS,
   stripStageDirections,
@@ -817,5 +818,34 @@ Deno.test("Phase 3.0：極短反問不會被誤判成內部標籤外洩，即使
       ),
     Error,
     "chat_internal_label_leak",
+  );
+});
+
+Deno.test("Phase 4.5a 刀 2：整則「（已讀）」在 agency on 時放行，其餘括號照舊剝", () => {
+  // 白名單只認**整則恰好等於**「（已讀）」／「(已讀)」。
+  for (const t of ["（已讀）", "(已讀)", "  （已讀） "]) {
+    assertEquals(hasStageDirection(t, true), false, t);
+    assertEquals(stripStageDirections(t, "boom", true), t.trim(), t);
+    assertEquals(hasReadOnlyReply(t), true, t);
+    // 旗標 off／shadow（allowReadOnly 省略）逐字沿用舊行為：仍算旁白。
+    assertEquals(hasStageDirection(t), true, t);
+  }
+  // 其他括號文字照舊剝掉，即使白名單開著。
+  for (const t of ["（我笑了）", "（已讀）不好意思", "（冷淡）嗯"]) {
+    assertEquals(hasStageDirection(t, true), true, t);
+    assertEquals(hasReadOnlyReply(t), false, t);
+  }
+  assertEquals(
+    stripStageDirections("（我笑了）真的假的", "boom", true),
+    "真的假的",
+  );
+  // 多則：只有那一則被放行，同一段裡的旁白仍然剝掉。
+  assertEquals(
+    stripStageDirections("（冷淡）嗯\n（已讀）", "boom", true),
+    "嗯\n（已讀）",
+  );
+  assertEquals(
+    stripStageDirections("（冷淡）嗯\n（已讀）", "boom"),
+    "嗯",
   );
 });

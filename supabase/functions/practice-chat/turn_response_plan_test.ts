@@ -1630,3 +1630,71 @@ Deno.test("Phase 4.3：clarify_ignored 的難度口氣接在 act 說明後面；
   assert(hold.startsWith("維持你剛才的保留"));
   assert(!hold.includes("；直接問他到底在講什麼"));
 });
+
+// ── Phase 4.5a 刀 2：「（已讀）」冷回應（Eric 2026-09-05 拍板）──────────────
+Deno.test("Phase 4.5a 刀 2：只有挑戰／Game 的收尾格與連續越界才給「（已讀）」", () => {
+  const style = styles[0];
+  // 收尾格：同一個詞原樣再丟一次 → forced end_low_value_loop。
+  const loopTurns = [u("韓國"), a("蛤"), u("韓國")];
+  const planFor = (
+    turns: PracticeTurn[],
+    evidence: PolicyEvidence,
+    mode: AgencyMode = "on",
+  ) => {
+    const agency = computeAgencyDecision({
+      turns,
+      agencyMode: mode,
+      situation: classifySituation(
+        detectTurnSignals(turns),
+        policyStanceFor(detectTurnSignals(turns), evidence),
+      ),
+      difficulty: evidence.difficulty,
+      isGame: evidence.practiceMode === "game",
+    });
+    return {
+      plan: planTurnResponse({ turns, style, evidence, seedKey: "s", agency }),
+      agency,
+    };
+  };
+  const challenge = planFor(loopTurns, standard({ difficulty: "challenge" }));
+  assertEquals(challenge.agency?.decision.forcedAct, "end_low_value_loop");
+  assertEquals(challenge.plan.readOnlyAllowed, true);
+  assert(
+    renderTurnPlan(challenge.plan, style, challenge.agency).includes(
+      "（已讀）",
+    ),
+  );
+  // Game 走挑戰門檻，同樣給。
+  assertEquals(
+    planFor(loopTurns, standard({ practiceMode: "game" })).plan.readOnlyAllowed,
+    true,
+  );
+  // easy／normal 不給——計畫行一個「已讀」都不能出現。
+  for (const difficulty of ["easy", "normal"] as const) {
+    const soft = planFor(loopTurns, standard({ difficulty }));
+    assertEquals(soft.plan.readOnlyAllowed, undefined, difficulty);
+    assert(
+      !renderTurnPlan(soft.plan, style, soft.agency).includes("已讀"),
+      difficulty,
+    );
+  }
+  // 旗標 off／shadow：整個欄位不存在（逐字沿用 4.4）。
+  for (const mode of ["off", "shadow"] as const) {
+    assertEquals(
+      planFor(loopTurns, standard({ difficulty: "challenge" }), mode).plan
+        .readOnlyAllowed,
+      undefined,
+      mode,
+    );
+  }
+  // 越界：第 1 次不給，連續第 2 次才給（agency 在越界輪不介入，走 planner 自己的
+  // stance＋逐字稿計數）。
+  const once = [u("傳一張泳裝照來看看")];
+  const twice = [...once, a("不要這樣講"), u("那內衣照也可以啊")];
+  const boundaryPlan = (turns: PracticeTurn[]) =>
+    planFor(turns, standard({ difficulty: "challenge" }));
+  assertEquals(boundaryPlan(once).plan.situation, "boundary");
+  assertEquals(boundaryPlan(once).plan.readOnlyAllowed, undefined);
+  assertEquals(boundaryPlan(twice).plan.situation, "boundary");
+  assertEquals(boundaryPlan(twice).plan.readOnlyAllowed, true);
+});
