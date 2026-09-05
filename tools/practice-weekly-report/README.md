@@ -212,7 +212,9 @@ Supabase function logs **通常只保留 7 天**，而且時間窗超出保留�
 `--out` 預設只准寫進 `docs/reports/`；要寫別處（例如 scratchpad）加
 `--allow-out-anywhere`。路徑含 `..` 一律擋，逃生口也擋不掉。
 
-## 不 commit 報告
+## 報告可以 commit
 
-`docs/reports/` 只放 `.gitkeep`。真實報告含 production 使用量，跑出來自己
-看，不進 repo。
+報告只有聚合數字（場次、比率、金額），沒有逐字稿、沒有 user id、沒有任何個資
+——telemetry 的隱私邊界在寫入端就擋掉了（`telemetry.ts` 檔頭）。所以產出的
+週報**可以 commit 進 `docs/reports/`**，那本來就是計畫要的：上線後四週的週報
+是附錄凍結區要不要復活的依據，要留在 repo 裡看得到歷史。
