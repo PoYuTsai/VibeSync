@@ -1529,6 +1529,9 @@ export function agencyShapeExperimentFor(
  * `beginner ＋ --state=1`，而 standard 連分類器都沒有（4.3 的死守邊界在
  * standard 本來就不成立），介入輪的分佈與品質都沒量過——證據涵蓋不到的模式
  * 不進路由。game 併入前要先跑小黑箱。
+ * **Phase 4.5b 例外**：`PRACTICE_STANDARD_AGENCY_CLASSIFIER` 開著時 standard
+ * 也有分類器與持久化狀態，由第六個參數把它納入路由（黑箱同樣未量過，開旗標
+ * 前要先看 telemetry 的 `chatModel` 分佈與成本）。
  *
  * 2026-09-05（Eric 拍板）：除了介入輪，**越界輪**（`situation === "boundary"`
  * ——既有 planner 的最高優先權，強制 `direct_boundary`）也走 Haiku：劃界線是
@@ -1543,12 +1546,36 @@ export function chatModelFor(
   agencyDecision: { readonly applied: boolean } | null | undefined,
   practiceMode: string | null | undefined,
   situation?: string | null,
+  /**
+   * Phase 4.5b：`PRACTICE_STANDARD_AGENCY_CLASSIFIER` 開著時 standard 也有
+   * 每輪分類器與持久化狀態，介入輪的定義因此與 beginner 相同——把它一起納入
+   * 路由。省略／false＝standard 一律 deepseek（Phase 4.4 的 Codex R1 P1 範圍）。
+   */
+  standardAgencyClassifier = false,
 ): PracticeChatModel {
   if (routingFlag !== "mixed") return "deepseek";
   if (agencyMode !== "on") return "deepseek";
-  if (practiceMode !== "beginner" && practiceMode !== "game") return "deepseek";
+  const routedMode = practiceMode === "beginner" || practiceMode === "game" ||
+    (practiceMode === "standard" && standardAgencyClassifier);
+  if (!routedMode) return "deepseek";
   if (situation === "boundary") return "haiku";
   return agencyDecision?.applied === true ? "haiku" : "deepseek";
+}
+
+/**
+ * Phase 4.5b：standard 模式的每輪 agency 分類器旗標
+ * （`PRACTICE_STANDARD_AGENCY_CLASSIFIER`）。`"true"` 才開，未設／`off`／
+ * 亂填一律關（與 `agencyModeFor` 同款 fail-closed）。
+ *
+ * 只在 agency 旗標解析成 `on` **且** `practiceMode === "standard"` 時成立；
+ * beginner／game 走既有的逐輪分類器，這支旗標對它們沒有任何作用。
+ */
+export function standardAgencyClassifierEnabled(
+  flag: string | undefined,
+  agencyMode: AgencyMode,
+  practiceMode: string | null | undefined,
+): boolean {
+  return flag === "true" && agencyMode === "on" && practiceMode === "standard";
 }
 
 /**

@@ -58,6 +58,7 @@ import {
   nextConversationAgencyState,
   type PracticeChatModel,
   READ_ONLY_REPLY_TEXT,
+  standardAgencyClassifierEnabled,
   truncateAgencyShape,
 } from "./conversation_agency.ts";
 import {
@@ -142,13 +143,16 @@ import {
   applyCoherenceDeltaCap,
   applyLearningClassification,
   applyPartnerStateUpdate,
+  buildStandardAgencyClassifierMessages,
   buildTurnClassifierMessages,
   clampTemperature,
   type LearningJudgement,
+  parseStandardAgencyClassification,
   parseTurnClassification,
   type PartnerMood,
   type PartnerState,
   relationshipStageFor,
+  type StandardAgencyClassification,
   temperatureBandFor,
   type TurnClassification,
   withMaxNegativeLearningDeltas,
@@ -1043,7 +1047,7 @@ async function fetchRelationshipThreadState(opts: {
   const { data, error } = await opts.supabase
     .from("practice_relationship_threads")
     .select(
-      "memory_summary, partner_mood, partner_inner_thought, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage, recent_facts",
+      "memory_summary, partner_mood, partner_inner_thought, relationship_score, temperature_score, familiarity_score, profile_id, practice_mode, invite_stage, recent_facts",
     )
     .eq("user_id", opts.userId)
     .eq("visible_thread_id", opts.visibleThreadId)
@@ -1777,6 +1781,66 @@ async function judgeLearningState(opts: {
   }
 }
 
+/**
+ * conversation-agency-v1 Phase 4.5b：standard 模式的**精簡** agency 分類器。
+ *
+ * 與 `judgeLearningState` 的差別（刻意的）：只判四個 agency 欄位、不打溫度
+ * 分數、**不**呼叫 `update_practice_learning_state`、不動 partnerState。模型／
+ * maxTokens／temperature／timeout 用同一組常數。
+ *
+ * **fail-open**：任何錯誤（呼叫、逾時、解析）都不擋聊天——回 `null` 訊號，
+ * 呼叫端退回結構近似（與 beginner 分類器失敗時的 `AgencyClassifierSignal`
+ * 契約相同），只留一筆沒有逐字稿的 warn。
+ */
+interface StandardAgencyJudgement {
+  readonly classification: StandardAgencyClassification | null;
+  readonly durationMs: number;
+}
+
+async function judgeStandardAgencyFailOpen(opts: {
+  deps: PracticeChatHandlerDeps;
+  apiKey: string;
+  userId: string;
+  request: ReturnType<typeof validateRequest>;
+  reply: string;
+  memorySummary?: string | null;
+  herRecentMoments?: readonly MomentMemoryPost[];
+}): Promise<StandardAgencyJudgement> {
+  const startedAt = performance.now();
+  try {
+    const raw = await opts.deps.callDeepSeek({
+      apiKey: opts.apiKey,
+      messages: buildStandardAgencyClassifierMessages({
+        turns: opts.request.turns,
+        profile: opts.request.profile,
+        assistantReply: opts.reply,
+        memorySummary: opts.memorySummary,
+        herRecentMoments: opts.herRecentMoments,
+      }),
+      maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
+      temperature: TEMPERATURE_JUDGE_TEMPERATURE,
+      jsonMode: true,
+      timeoutMs: DEEPSEEK_TIMEOUT_MS,
+    });
+    const classification = parseStandardAgencyClassification(raw);
+    // 與 assisted 路徑同一個事件名（只有欄位名，沒有內容）：ops 算 repair 盛行
+    // 率時不必分兩張表。
+    if (classification.repairedFields?.length) {
+      logWarn("practice_chat_learning_classifier_repaired", {
+        user: summarizeUser(opts.userId),
+        fields: classification.repairedFields,
+      });
+    }
+    return { classification, durationMs: elapsedMilliseconds(startedAt) };
+  } catch (e) {
+    logWarn("practice_chat_standard_agency_classifier_failed", {
+      user: summarizeUser(opts.userId),
+      error: getErrorMessage(e),
+    });
+    return { classification: null, durationMs: elapsedMilliseconds(startedAt) };
+  }
+}
+
 async function releaseHintGeneration(opts: {
   supabase: PracticeSupabaseClient;
   userId: string;
@@ -2300,6 +2364,17 @@ export function createPracticeChatHandler(
     // 這一輪真的介入時才有效果（`chatModelFor`）。
     const chatModelRoutingFlag = deps.getEnv("PRACTICE_CHAT_MODEL_ROUTING");
     const chatModelRoutingOn = chatModelRoutingFlag === "mixed";
+    // Phase 4.5b：standard 模式的每輪 agency 分類器。`true` 才開；未設／`off`／
+    // 亂填一律關（`standardAgencyClassifierEnabled` fail-closed），而且只在
+    // agency 旗標 `on` ∧ `practiceMode === "standard"` 時成立。旗標關著時
+    // standard 的 messages／response／rpc／telemetry 四面與接線前逐位元組相同
+    // （`agency_flag_off_equivalence_test.ts` 多枚舉的一維環境值）。
+    // 只在 chat 路徑消費（hint 是 assisted 專用；debrief 不打分類器）。
+    const standardAgencyClassifierOn = standardAgencyClassifierEnabled(
+      deps.getEnv("PRACTICE_STANDARD_AGENCY_CLASSIFIER"),
+      agencyMode,
+      request.practiceMode,
+    );
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -4466,6 +4541,15 @@ export function createPracticeChatHandler(
             agencyMode,
             // standard 沒有 thread 寫入，也不讀 assisted 留下的狀態（規格附錄：
             // standard 的 priorDecline 一律 false）；agency 短期狀態改從逐字稿現推。
+            //
+            // Phase 4.5b：新旗標開著時 standard 也有每輪分類器與持久化狀態，
+            // 所以要把 thread 的 agencyState 帶回來——`aiClarifiedLastTurn`
+            // （4.3 死守邊界）／`lowValueStreak`／`checkedOut`（4.5a 階梯）全部
+            // 只吃持久化狀態，不帶就永遠是初始值。旗標關＝省略，與 `?? null`
+            // 逐字相同。
+            ...(standardAgencyClassifierOn
+              ? { agencyState: relationshipThreadState?.agencyState ?? null }
+              : {}),
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
@@ -4487,6 +4571,7 @@ export function createPracticeChatHandler(
             agencyDecision,
             request.practiceMode,
             chatPromptBundle.situation,
+            standardAgencyClassifierOn,
           ) === "haiku" && !!claudeApiKey && !!deps.callClaude;
       const generateWithDeepSeek = () => {
         chatModelCalls.deepseek++;
@@ -4820,6 +4905,71 @@ export function createPracticeChatHandler(
       }
     }
 
+    // ── Phase 4.5b：standard 模式的每輪 agency 分類器 ＋ 狀態持久化 ────────
+    // 旗標關著時整段不跑（messages／response／rpc／telemetry 四面與接線前逐位
+    // 元組相同）。**同步跑**：`practice_chat_succeeded` 要帶這一輪的分類器欄位，
+    // 丟進既有的 `waitUntil` 背景慣例就趕不上這一行（那條慣例只服務「回應之後
+    // 才寫」的 ai_logs 持久化）。耗時記進 `standardClassifierDurationMs`。
+    let standardAgency: StandardAgencyJudgement | null = null;
+    if (standardAgencyClassifierOn) {
+      standardAgency = await judgeStandardAgencyFailOpen({
+        deps,
+        apiKey,
+        userId: user.id,
+        request,
+        reply,
+        memorySummary: promptMemorySummary,
+        herRecentMoments,
+      });
+      if (agencyDecision) {
+        await upsertRelationshipThreadFailOpen({
+          supabase,
+          params: buildRelationshipThreadRpcParams({
+            userId: user.id,
+            visibleThreadId,
+            profileId: request.profile.girl.profileId,
+            // RPC 的 `ON CONFLICT DO UPDATE` 對 `practice_mode`／
+            // `relationship_score`／`temperature_score`／`familiarity_score`
+            // 是 `= EXCLUDED`（**不是** COALESCE），所以既有 row 的值一律原樣
+            // 帶回，不然 standard 一輪就會把 beginner 累積的分數與模式清掉。
+            // `partner_*`／`invite_stage`／`memory_summary` 是 COALESCE，帶回
+            // 既有值與不覆寫等價，一起帶著是為了讓「原樣帶回」是一條規則而不是
+            // 逐欄位的例外表。沒有既有 row 時建立一列 mode `standard`、分數留空
+            // 的 thread——後續 beginner 的 `resolveLearningSeed` 對 null 分數有
+            // 既有退路（ledger 未建檔 → client seed → 難度起始值）。
+            practiceMode: relationshipThreadState?.practiceMode ?? "standard",
+            relationshipScore: relationshipThreadState?.relationshipScore ??
+              null,
+            temperatureScore: relationshipThreadState?.temperatureScore ?? null,
+            familiarityScore: relationshipThreadState?.familiarityScore ?? null,
+            partnerState: relationshipThreadState?.partnerState ?? null,
+            inviteStage: relationshipThreadState?.inviteStage ?? null,
+            memorySummary: relationshipThreadState?.memorySummary ?? null,
+            aiTurnCount: newAiCount,
+            existingRecentFacts: relationshipThreadState?.recentFacts ?? null,
+            agencyMode,
+            // standard 不推進 style 狀態（它不讀 styleState，`priorDecline`
+            // 規格上恆為 false），既有值原樣帶回＝RPC 整包覆寫不會清空它。
+            replyStyleState: relationshipThreadState?.styleState ?? undefined,
+            // 與 beginner 同一支狀態機；分類器失敗時訊號傳 null＝退回純結構
+            // 近似（`AgencyClassifierSignal` 的既有契約）。
+            conversationAgencyState: nextConversationAgencyState(
+              relationshipThreadState?.agencyState ?? null,
+              agencyDecision.decision,
+              standardAgency.classification
+                ? {
+                  coherence: standardAgency.classification.coherence,
+                  aiChallengedThisTurn:
+                    standardAgency.classification.aiChallengedThisTurn,
+                } satisfies AgencyClassifierSignal
+                : null,
+              responsePlan?.askUserFocus !== undefined,
+            ),
+          }),
+        });
+      }
+    }
+
     logInfo("practice_chat_succeeded", {
       user: summarizeUser(user.id),
       mode: "chat",
@@ -4970,6 +5120,38 @@ export function createPracticeChatHandler(
                     "accommodatingSelfFact",
                   )
                   ? { accommodatingSelfFactRepaired: true }
+                  : {}),
+              }
+              : {}),
+            // Phase 4.5b：standard 的精簡分類器（旗標關時整組 key 不存在）。
+            // 四個欄位的 key 名與 beginner 相同（上面那幾格對 standard 是
+            // `null`／缺席，這裡覆寫成分類器真正判出來的值，key 順序不變）。
+            ...(standardAgency
+              ? {
+                standardClassifier: standardAgency.classification
+                  ? "ok"
+                  : "failed",
+                standardClassifierDurationMs: standardAgency.durationMs,
+                ...(standardAgency.classification
+                  ? {
+                    coherence: standardAgency.classification.coherence,
+                    aiChallengedThisTurn:
+                      standardAgency.classification.aiChallengedThisTurn,
+                    sharedPastClaim:
+                      standardAgency.classification.sharedPastClaim,
+                    accommodatingSelfFact:
+                      standardAgency.classification.accommodatingSelfFact,
+                    ...(standardAgency.classification.repairedFields?.includes(
+                        "sharedPastClaim",
+                      )
+                      ? { sharedPastClaimRepaired: true }
+                      : {}),
+                    ...(standardAgency.classification.repairedFields?.includes(
+                        "accommodatingSelfFact",
+                      )
+                      ? { accommodatingSelfFactRepaired: true }
+                      : {}),
+                  }
                   : {}),
               }
               : {}),

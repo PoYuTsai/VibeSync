@@ -82,6 +82,8 @@ import {
 const AGENCY_ENV = "PRACTICE_CONVERSATIONAL_AGENCY_ENABLED";
 /** Phase 4.4 混合模型路由旗標（harness 多枚舉的一維環境值）。 */
 const ROUTING_ENV = "PRACTICE_CHAT_MODEL_ROUTING";
+/** Phase 4.5b standard 每輪 agency 分類器旗標（harness 多枚舉的一維環境值）。 */
+const STANDARD_CLASSIFIER_ENV = "PRACTICE_STANDARD_AGENCY_CLASSIFIER";
 const STYLE_ENV = "PRACTICE_REPLY_STYLE_ENABLED";
 const TEST_ACCOUNT = { id: "user-1", email: "vibesync.test@gmail.com" };
 
@@ -460,6 +462,7 @@ async function observableDigest(
   user?: { id: string; email?: string | null },
   probe?: RunProbe,
   routingEnv?: string,
+  standardClassifierEnv?: string,
 ): Promise<ObservableDigest> {
   const fake = makeFake({
     ...c.options,
@@ -472,6 +475,9 @@ async function observableDigest(
       ...c.options.env,
       ...(agencyEnv === undefined ? {} : { [AGENCY_ENV]: agencyEnv }),
       ...(routingEnv === undefined ? {} : { [ROUTING_ENV]: routingEnv }),
+      ...(standardClassifierEnv === undefined
+        ? {}
+        : { [STANDARD_CLASSIFIER_ENV]: standardClassifierEnv }),
     },
   });
   const lines: string[] = [];
@@ -1678,6 +1684,106 @@ Deno.test({
         scrubWallClock(off[i]),
         `第 ${i + 1} 行除了允許的 key 之外必須逐位元組相同`,
       );
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.5b：PRACTICE_STANDARD_AGENCY_CLASSIFIER 未設／off／亂填時四面等價（含 agency on）；true 只有 standard chat 案例會變，且 Response 不變",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 分面寫法（沿用 Phase 4.4 加 routing 維度的做法）：
+    //   未設／`off`／亂填 → 四面全等 flag-off golden，**而且**在 agency `true`
+    //     的那條臂上也逐位元組等於「agency on ＋ 這維未設」。
+    //   `true` → 只有 `chat／standard` 的案例允許 `messages`／`rpc`／`telemetry`
+    //     不同（多一次精簡分類器呼叫、多一次 thread upsert、多幾個 telemetry
+    //     key），`response` 一律不變（分類器不改她這一輪的回覆）；其餘案例
+    //     （beginner／game／hint／debrief／draw／錯誤路徑）四面全等。
+    const changed: string[] = [];
+    for (const c of equivalenceCases()) {
+      const expected = parseGolden(c.name);
+      const agencyOn = await observableDigest(c, "true");
+      for (const env of ["off", "亂填"]) {
+        assertEquals(
+          await observableDigest(
+            c,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          expected,
+          `${c.name} / standardClassifier=${env}`,
+        );
+        assertEquals(
+          await observableDigest(
+            c,
+            "true",
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          agencyOn,
+          `${c.name} / agency=true ＋ standardClassifier=${env}`,
+        );
+      }
+      // agency 未設（＝off）時這支旗標不可能生效：`true` 也必須四面全等 golden。
+      assertEquals(
+        await observableDigest(
+          c,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "true",
+        ),
+        expected,
+        `${c.name} / agency 未設 ＋ standardClassifier=true`,
+      );
+      const on = await observableDigest(
+        c,
+        "true",
+        undefined,
+        undefined,
+        undefined,
+        "true",
+      );
+      assertEquals(on.response, agencyOn.response, `${c.name} / Response`);
+      if (digestLine(on) !== digestLine(agencyOn)) changed.push(c.name);
+    }
+    // 白名單：只有 standard 的 chat 案例會變（非空洞——名單非空且全部命中）。
+    const standardChatCases = equivalenceCases()
+      .map((c) => c.name)
+      .filter((name) => name.startsWith("chat／standard"));
+    assert(standardChatCases.length > 0);
+    assertEquals(changed.sort(), standardChatCases.slice().sort());
+  },
+});
+
+Deno.test({
+  name:
+    "Phase 4.5b：standard chat 案例在旗標 true 時 messages／rpc／telemetry 三面都真的不同（不是只有 telemetry 多一個 key）",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    const cases = equivalenceCases().filter((c) =>
+      c.name.startsWith("chat／standard")
+    );
+    for (const c of cases) {
+      const agencyOn = await observableDigest(c, "true");
+      const on = await observableDigest(
+        c,
+        "true",
+        undefined,
+        undefined,
+        undefined,
+        "true",
+      );
+      assert(on.messages !== agencyOn.messages, `${c.name}：messages`);
+      assert(on.rpc !== agencyOn.rpc, `${c.name}：rpc`);
+      assert(on.telemetry !== agencyOn.telemetry, `${c.name}：telemetry`);
     }
   },
 });

@@ -90,6 +90,7 @@ jobs:
           supabase/functions/practice-chat/index_test.ts
           supabase/functions/practice-chat/agency_flag_off_equivalence_test.ts
           supabase/functions/practice-chat/chat_model_routing_test.ts
+          supabase/functions/practice-chat/standard_agency_classifier_test.ts
           supabase/functions/delete-account/cleanup_alert_test.ts
           supabase/functions/practice-chat/prompt_test.ts
 

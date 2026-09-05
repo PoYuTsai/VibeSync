@@ -18,6 +18,7 @@ import {
 } from "./run_agency.ts";
 import { AGENCY_SCENARIOS, type AgencyScenario } from "./scenarios.ts";
 import { chatModelFor } from "../../supabase/functions/practice-chat/conversation_agency.ts";
+import { AGENCY_CLASSIFIER_RULES } from "../../supabase/functions/practice-chat/temperature.ts";
 import { callClaude } from "../../supabase/functions/practice-chat/claude.ts";
 import {
   chatBody,
@@ -57,15 +58,14 @@ Deno.test("parseArgs：--state 省略或非 1/true 一律 false，1/true 才開"
   );
 });
 
-Deno.test("parseArgs：--state=1 搭 standard 直接報錯（Codex round-2 P2-d）", () => {
-  // standard 不持久化跨回合狀態，靜默忽略會讓 artifact meta 的
-  // stateSimulation:true 說謊。
+Deno.test("parseArgs：Phase 4.5b 後 --state=1 搭 standard 合法（對應 PRACTICE_STANDARD_AGENCY_CLASSIFIER）", () => {
+  // Codex round-2 P2-d 當時 standard 不持久化跨回合狀態，所以這個組合被擋掉。
+  // Phase 4.5b 之後 standard 也有每輪（精簡）分類器與 thread 狀態，
+  // `--mode=standard --state=1` 就是那條 production 路徑的黑箱對應。
   for (const args of [["--state=1"], ["--mode=standard", "--state=true"]]) {
-    assertThrows(
-      () => parseArgs(args),
-      Error,
-      "agency_state_requires_assisted_mode",
-    );
+    const opts = parseArgs(args);
+    assertEquals(opts.mode, "standard");
+    assertEquals(opts.stateSimulation, true);
   }
 });
 
@@ -498,6 +498,128 @@ Deno.test("Phase 4.3 步驟 0（反例）：沒有 classifierApiKey 時退回舊
   } finally {
     globalThis.fetch = original;
   }
+});
+
+Deno.test("Phase 4.5b：--mode=standard --state=1 真的打**精簡**分類器（不是硬編碼 null），訊號接進 state 讓下一輪裸詞 forced challenge_relevance", async () => {
+  const original = globalThis.fetch;
+  const bodies: string[] = [];
+  globalThis.fetch = (_url: string | URL | Request, init?: RequestInit) => {
+    bodies.push(String(init?.body));
+    return Promise.resolve(fakeClassifierResponse(true));
+  };
+  let chatCalls = 0;
+  const replies = ["你在說什麼？", "喔 好"];
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(replies[chatCalls++]),
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "standard",
+      style: false,
+      agency: "on",
+      stateSimulation: true,
+      classifierApiKey: "test-key",
+    });
+    assertEquals(result.error, undefined);
+    assertEquals(bodies.length, 2, "standard 每一輪生成後也要打一次分類器");
+    // 精簡分類器：system prompt 只問四個 agency 欄位（沒有 connection／
+    // partnerMood／innerThought 那些核心欄位的 stub）。
+    const system = (JSON.parse(bodies[0]) as {
+      messages: { role: string; content: string }[];
+    }).messages[0].content;
+    assert(
+      system.includes(
+        '{"coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}',
+      ),
+      "standard 必須走精簡分類器的 JSON stub",
+    );
+    assert(
+      !system.includes('"partnerMood":"neutral"'),
+      "精簡分類器不得帶核心分數欄位",
+    );
+    // 判準文字與逐輪分類器同一份常數。
+    assert(system.includes(AGENCY_CLASSIFIER_RULES));
+
+    assertEquals(result.turns[0].classifierSignal, {
+      coherence: "disconnected",
+      aiChallengedThisTurn: true,
+    });
+    assertEquals(result.turns[0].agencyStateAfter?.aiClarifiedLastTurn, true);
+    const round2 = result.turns[1];
+    assertEquals(round2.policyMode, "forced");
+    assertEquals(round2.forcedAct, "challenge_relevance");
+    assert(round2.allowedActSetId?.startsWith("clarify_ignored"));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.5b（反例）：standard 未開 --state 時一次分類器都不打，round2 維持 bounded", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("不該打到 fetch：未開 --state 的 standard 不呼叫分類器");
+  };
+  let chatCalls = 0;
+  const replies = ["你在說什麼？", "喔 好"];
+  try {
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve(replies[chatCalls++]),
+      profileId: "practice_girl_001",
+      scenario: CLASSIFIER_WIRING_SCENARIO,
+      repeat: 1,
+      difficulty: "normal",
+      mode: "standard",
+      style: false,
+      agency: "on",
+      stateSimulation: false,
+      classifierApiKey: "test-key",
+    });
+    assertEquals(result.error, undefined);
+    assertEquals(result.turns[0].classifierSignal, undefined);
+    assertEquals(result.turns[1].policyMode, "bounded");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("Phase 4.5b：runnerChatModelFor 的 standard 路由與 production chatModelFor 全矩陣逐項相同", () => {
+  for (const standardOn of [false, true]) {
+    for (const applied of [false, true]) {
+      for (const situation of [null, "neutral", "boundary"]) {
+        assertEquals(
+          runnerChatModelFor({
+            chatModel: "mixed",
+            agency: "on",
+            mode: "standard",
+            applied,
+            situation,
+            standardAgencyClassifier: standardOn,
+          }),
+          chatModelFor(
+            "mixed",
+            "on",
+            { applied },
+            "standard",
+            situation,
+            standardOn,
+          ),
+        );
+      }
+    }
+  }
+  // 旗標關著時 standard 一律 deepseek（Phase 4.4 的既有範圍不變）。
+  assertEquals(
+    runnerChatModelFor({
+      chatModel: "mixed",
+      agency: "on",
+      mode: "standard",
+      applied: true,
+      situation: "neutral",
+    }),
+    "deepseek",
+  );
 });
 
 // ── Phase 4.3 步驟 1：`--chat-model=mixed` ────────────────────────────────

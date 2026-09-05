@@ -149,6 +149,8 @@ async function runChat(opts: {
   difficulty?: string;
   /** 括號旁白守門只在 reply-style 有 plan 時才跑（production 是開的）。 */
   style?: boolean;
+  /** Phase 4.5b：`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true`。 */
+  standardClassifier?: boolean;
 }): Promise<RunResult> {
   const practiceMode = opts.practiceMode ?? "beginner";
   const fake = makeFake({
@@ -164,6 +166,9 @@ async function runChat(opts: {
       ...(opts.routing === undefined ? {} : { [ROUTING_ENV]: opts.routing }),
       ...(opts.agency === undefined ? {} : { [AGENCY_ENV]: opts.agency }),
       ...(opts.style ? { PRACTICE_REPLY_STYLE_ENABLED: "true" } : {}),
+      ...(opts.standardClassifier
+        ? { PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true" }
+        : {}),
     },
   });
   const lines: string[] = [];
@@ -787,4 +792,60 @@ Deno.test("Phase 4.5a 刀 2（Codex R2 P1-3）：reply-style 關著時，已讀�
   });
   assertEquals(off.body.reply, "（已讀）");
   assertEquals(off.chatDeepSeekCalls.length, 1);
+});
+
+// ── Phase 4.5b：standard 進路由 ───────────────────────────────────────────
+
+Deno.test("chatModelFor（Phase 4.5b）：standard 只有在第六個參數為真時才進路由，其餘一格都沒動", () => {
+  // 第六個參數＝`PRACTICE_STANDARD_AGENCY_CLASSIFIER` 開著。
+  assertEquals(
+    chatModelFor("mixed", "on", APPLIED, "standard", "neutral", true),
+    "haiku",
+  );
+  assertEquals(
+    chatModelFor("mixed", "on", NOT_APPLIED, "standard", "boundary", true),
+    "haiku",
+  );
+  assertEquals(
+    chatModelFor("mixed", "on", NOT_APPLIED, "standard", "neutral", true),
+    "deepseek",
+  );
+  // 省略／false＝Phase 4.4 的既有範圍（standard 一律 deepseek）。
+  for (const situation of ["neutral", "boundary"]) {
+    assertEquals(
+      chatModelFor("mixed", "on", APPLIED, "standard", situation),
+      "deepseek",
+    );
+    assertEquals(
+      chatModelFor("mixed", "on", APPLIED, "standard", situation, false),
+      "deepseek",
+    );
+  }
+  // 這支旗標不得繞過 routing／agency 兩道既有閘門。
+  assertEquals(
+    chatModelFor(undefined, "on", APPLIED, "standard", "neutral", true),
+    "deepseek",
+  );
+  assertEquals(
+    chatModelFor("mixed", "shadow", APPLIED, "standard", "neutral", true),
+    "deepseek",
+  );
+  // beginner／game 完全不受影響。
+  assertEquals(
+    chatModelFor("mixed", "on", APPLIED, "beginner", "neutral", true),
+    chatModelFor("mixed", "on", APPLIED, "beginner", "neutral"),
+  );
+});
+
+Deno.test("Phase 4.5b：mixed ＋ agency on ＋ standard 分類器旗標開的介入輪，chat 生成真的打 Haiku", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    practiceMode: "standard",
+    standardClassifier: true,
+  });
+  assertEquals(r.claudeCalls.length, 1);
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.succeeded.chatModel, "haiku");
+  assertEquals(r.body.provider, "anthropic");
 });

@@ -23,6 +23,7 @@ import {
   isYesNoShortAnswer,
   nextConversationAgencyState,
   parseConversationAgencyState,
+  standardAgencyClassifierEnabled,
   truncateAgencyShape,
   utteranceShapeOf,
 } from "./conversation_agency.ts";
@@ -2665,4 +2666,72 @@ Deno.test("Phase 4.5a（Codex R2 P3-1）：`allowsCheckOut` 與難度表的 thre
       }
     }
   }
+});
+
+Deno.test("Phase 4.5b：`standardAgencyClassifierEnabled` fail-closed——只有 `true` ＋ agency on ＋ standard 才成立", () => {
+  assertEquals(
+    standardAgencyClassifierEnabled("true", "on", "standard"),
+    true,
+  );
+  for (const flag of [undefined, "", "off", "1", "shadow", "亂填", "TRUE"]) {
+    assertEquals(
+      standardAgencyClassifierEnabled(flag, "on", "standard"),
+      false,
+      `flag=${flag}`,
+    );
+  }
+  for (const mode of ["off", "shadow"] as const) {
+    assertEquals(
+      standardAgencyClassifierEnabled("true", mode, "standard"),
+      false,
+      `agency=${mode}`,
+    );
+  }
+  for (const practiceMode of ["beginner", "game", undefined, null]) {
+    assertEquals(
+      standardAgencyClassifierEnabled("true", "on", practiceMode),
+      false,
+      `practiceMode=${practiceMode}`,
+    );
+  }
+});
+
+Deno.test("Phase 4.5b：階梯的難度門檻不看 practiceMode——standard 在挑戰難度會 check_out／read_only，easy／normal 不會", () => {
+  // `allowsCheckOut(difficulty, isGame)` 是唯一的門檻（上面那支全矩陣測試已經
+  // 把它與 `agencyThresholdsFor` 釘成恆等）。standard 之前走不到階梯的原因是
+  // **沒有持久化狀態**（`prev === null` → streak 0／checkedOut false），不是
+  // 這個 predicate 排除了 standard；Phase 4.5b 讓 standard 也有狀態之後，
+  // 同一份難度規則直接生效。
+  const seeded: ConversationAgencyState = {
+    version: 1,
+    lastCoherence: "repetitive",
+    unresolvedCount: 3,
+    priorChallengeIssued: true,
+    lastAgencyAct: "end_low_value_loop",
+    lowValueStreak: 3,
+    checkedOut: true,
+  };
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "東東" },
+    { role: "ai", text: "東東是誰" },
+    { role: "user", text: "阿布達比" },
+  ];
+  const evidence = detectAgencyEvidence(turns, seeded);
+  for (const difficulty of ["easy", "normal", "challenge"] as const) {
+    const decision = agencyPolicyFor(
+      evidence,
+      agencyThresholdsFor(difficulty, false, null),
+    );
+    assertEquals(
+      decision.forcedAct === "read_only",
+      difficulty === "challenge",
+      difficulty,
+    );
+  }
+  // Game 走同一支 predicate（`isGame` 直接套挑戰門檻）。
+  assertEquals(
+    agencyPolicyFor(evidence, agencyThresholdsFor("easy", true, null))
+      .forcedAct,
+    "read_only",
+  );
 });

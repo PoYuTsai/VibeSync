@@ -94,7 +94,9 @@ import {
   truncateAgencyShape,
 } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import {
+  buildStandardAgencyClassifierMessages,
   buildTurnClassifierMessages,
+  parseStandardAgencyClassification,
   parseTurnClassification,
 } from "../../supabase/functions/practice-chat/temperature.ts";
 import {
@@ -275,6 +277,8 @@ export function runnerChatModelFor(args: {
   applied: boolean | undefined;
   /** 這一輪的既有 planner 情境（`bundle.situation`）：越界輪也走 Haiku。 */
   situation?: string | null;
+  /** Phase 4.5b：對應 production 的 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`。 */
+  standardAgencyClassifier?: boolean;
 }): "deepseek" | "haiku" {
   if (args.chatModel === "haiku") return "haiku";
   if (args.chatModel !== "mixed") return "deepseek";
@@ -284,6 +288,7 @@ export function runnerChatModelFor(args: {
     args.applied === undefined ? null : { applied: args.applied },
     args.mode,
     args.situation,
+    args.standardAgencyClassifier === true,
   );
 }
 
@@ -348,6 +353,12 @@ export async function runAgencyScenario(args: {
   // stateSimulation：跨輪真的帶狀態（結構層近似，見上面欄位註解）；否則維持
   // 舊行為，每輪都傳 null（standard 與 production 一致）。
   let agencyState: ConversationAgencyState | null = null;
+  // Phase 4.5b：`--mode=standard --state=1` 對應 production 的
+  // `PRACTICE_STANDARD_AGENCY_CLASSIFIER=true`（standard 也有每輪分類器與
+  // 持久化狀態）。standard 走**精簡**分類器（只判四個 agency 欄位），
+  // beginner／game 維持既有的逐輪分類器。
+  const standardAgencyClassifierArm = args.mode === "standard" &&
+    args.stateSimulation === true;
   const base = {
     profileId: args.profileId,
     personaId: profile.personaId,
@@ -445,6 +456,9 @@ export async function runAgencyScenario(args: {
       mode: args.mode,
       applied: bundle.agencyDecision?.applied,
       situation: bundle.situation,
+      // `--mode=standard --state=1`＝production 開了
+      // `PRACTICE_STANDARD_AGENCY_CLASSIFIER` 的那條路徑。
+      standardAgencyClassifier: standardAgencyClassifierArm,
     });
     const activeCallChat = args.chatModel === "mixed"
       ? (chatModelUsed === "haiku" ? args.callChatHaiku! : args.callChat)
@@ -524,7 +538,33 @@ export async function runAgencyScenario(args: {
     // 時才打（standard／未開 --state 維持舊行為，成本不變）。
     let classifierSignal: AgencyClassifierSignal | null = null;
     let classifierError: string | null = null;
-    if (
+    if (standardAgencyClassifierArm && args.classifierApiKey) {
+      // standard 的精簡分類器（production 的 `judgeStandardAgencyFailOpen`
+      // 同一組 prompt／parser；判準文字與逐輪分類器共用 AGENCY_CLASSIFIER_RULES）。
+      try {
+        const raw = await callDeepSeek({
+          apiKey: args.classifierApiKey,
+          messages: buildStandardAgencyClassifierMessages({
+            turns,
+            profile,
+            assistantReply: reply,
+            memorySummary: fixture.memorySummary,
+            herRecentMoments: fixture.herRecentMoments,
+          }),
+          maxTokens: CLASSIFIER_MAX_TOKENS,
+          temperature: CLASSIFIER_TEMPERATURE,
+          jsonMode: true,
+          timeoutMs: MODEL_TIMEOUT_MS,
+        });
+        const classification = parseStandardAgencyClassification(raw);
+        classifierSignal = {
+          coherence: classification.coherence,
+          aiChallengedThisTurn: classification.aiChallengedThisTurn,
+        };
+      } catch (e) {
+        classifierError = e instanceof Error ? e.message : String(e);
+      }
+    } else if (
       args.stateSimulation && args.classifierApiKey &&
       (args.mode === "beginner" || args.mode === "game")
     ) {
@@ -572,7 +612,10 @@ export async function runAgencyScenario(args: {
     const askedUser = bundle.responsePlan?.askUserFocus !== undefined;
     if (
       args.stateSimulation && bundle.agencyDecision &&
-      (bundle.agencyDecision.applied || askedUser)
+      // Phase 4.5b：standard 那條路徑與 production 相同——旗標 on 就一定推進
+      // 狀態（handler.ts 的 `conversationAgencyState` 不看 `applied`）。
+      (standardAgencyClassifierArm || bundle.agencyDecision.applied ||
+        askedUser)
     ) {
       agencyState = nextConversationAgencyState(
         agencyState,
@@ -753,14 +796,10 @@ export function parseArgs(argv: string[]): CliOptions {
         );
     }
   }
-  // Codex round-2 P2(d)：`--state=1` 在 standard 是**沒有作用**的旗標
-  // （standard 本來就不持久化跨回合狀態，每輪從逐字稿現推）。靜默忽略會讓
-  // artifact 的 `stateSimulation: true` 說謊，之後照著 meta 解讀數字就會錯。
-  if (opts.stateSimulation && (opts.mode ?? "standard") === "standard") {
-    throw new Error(
-      "agency_state_requires_assisted_mode: --state=1 只對 --mode=beginner／game 有意義（standard 不持久化跨回合狀態）",
-    );
-  }
+  // Codex round-2 P2(d) 的原始限制（`--state=1` 在 standard 沒有作用）在
+  // Phase 4.5b 之後不成立：`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true` 時
+  // standard 也有每輪分類器與持久化狀態，所以 `--mode=standard --state=1`
+  // 就是那條 production 路徑的黑箱對應（分類器走精簡版，見 runAgencyScenario）。
   return opts;
 }
 
