@@ -2706,3 +2706,14 @@ Deno.test("P1-1：strict 照唸句欄不受影響，教唆與否都拒", () => {
     );
   }
 });
+
+Deno.test("P2-6：輸出端夾了空白或標點也代稱得掉（守門本來就是正規化後比對）", () => {
+  for (const quoted of ["輪 姦", "輪，姦", "輪\u3000姦"]) {
+    const card = parseDebriefCard(
+      cardWith({ summary: `你打出「${quoted}」那句之後她就封鎖了` }),
+      { turns: OFFENSE_TURNS_FOR_DEBRIEF },
+    );
+    assert(card.summary.includes("那種字眼"), `${quoted}: ${card.summary}`);
+    assert(!card.summary.includes("姦"), `${quoted}: ${card.summary}`);
+  }
+});

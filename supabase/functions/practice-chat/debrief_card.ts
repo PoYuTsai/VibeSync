@@ -371,6 +371,18 @@ function normalizeCrudeText(value: string): string {
 }
 
 /**
+ * Codex R1 P2-6：輸出端也要容忍分隔字元。舊版對可見文字做逐字 `includes`，
+ * 「輪 姦」「輪，姦」代稱不掉——而守門自己是正規化後比對，所以那一則照樣被拒，
+ * 等於代稱在最需要它的形態上失效。字與字之間允許空白／標點／符號。
+ */
+function separatorTolerantTermRegex(term: string): RegExp {
+  const body = [...term]
+    .map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[\\s\\p{P}\\p{S}]*");
+  return new RegExp(body, "gu");
+}
+
+/**
  * 2026-09-05 production 事故：Eric 那場玩家打了「輪姦」「打砲」，教練在
  * summary 裡**引用玩家自己打的字**解釋為什麼她會封鎖，整張卡被
  * `CONSENT_UNSAFE_PATTERNS` 攔下，Sonnet／Haiku 兩發都拒＝點檢討直接失敗。
@@ -398,7 +410,9 @@ export function maskQuotedUnsafeTerms(
       ...CRUDE_SEXUAL_OFFENSE_TERMS,
     ]
   ) {
-    if (!masked.includes(term)) continue;
+    const termRe = separatorTolerantTermRegex(term);
+    if (!termRe.test(masked)) continue;
+    termRe.lastIndex = 0;
     if (
       !normalized.includes(normalizeUnsafeText(term)) &&
       !crudeNormalized.includes(normalizeCrudeText(term))
@@ -409,7 +423,7 @@ export function maskQuotedUnsafeTerms(
     if (quotedTermIsIncitement(masked, term)) {
       throw new Error("debrief_l4_unsafe");
     }
-    masked = masked.split(term).join(QUOTED_UNSAFE_TERM_MASK);
+    masked = masked.replace(termRe, QUOTED_UNSAFE_TERM_MASK);
   }
   return masked;
 }
