@@ -1501,14 +1501,23 @@ golden（等價 harness，**golden 未重印**）。
   在第 1 則就會被丟掉。注入之後由既有的 `locatable` 自然沿用。
 - marker 比這次逐字稿的玩家則數大＝當成沒有（同一條 R1 P1-4a 規則）。
 
-handler 的 debrief 路徑在 **assisted**，或 **standard ∧
-`standardAgencyClassifierEnabled(PRACTICE_STANDARD_AGENCY_CLASSIFIER,
-agencyMode, debriefPracticeMode)`** 時把 thread 上的狀態傳進來。刻意不重用
-`standardAgencyClassifierOn`——那支綁 `request.practiceMode`，debrief 的模式
-來自 ledger。**hint 不動**（standard 沒有 hint）。
+handler 的 debrief 路徑**只有 standard**（`standardAgencyClassifierEnabled(
+PRACTICE_STANDARD_AGENCY_CLASSIFIER, agencyMode, debriefPracticeMode)`）
+**且逐字稿完整**時才把 thread 上的狀態傳進來。刻意不重用
+`standardAgencyClassifierOn`——那支綁 `request.practiceMode`，debrief 的模式來自 ledger。**hint 不動**（standard
+沒有 hint）。
 
-- **同源**：函式沒有任何 practiceMode 分支，同一份 `turns`＋`ctx`＋
-  `agencyState` 一定算出同一份帳，standard 與 beginner 從此一致。
+**逐字稿完整性閘門（R1 U1）**：debrief 的 `request.turns` 走 client 的
+`endPractice() → _turnDtosForPrompt()`（`kPracticePromptRecentTurns = 80`），
+超過 80 則就只送最後 80 則；server `validate.ts` 只有 `MAX_TURNS = 130` 上限，
+**不保證從第 1 輪開始**。marker 是整場的絕對序號，套在 suffix 上會偏右＝把更
+多輪當成已修復（少算介入輪）。所以只有「這次帶上來的 ai 則數 ＝ ledger 累計的
+`aiCount`」時才注入，否則 fail-safe 不注入。完整性刻意用 **server 自己的帳**
+判，不在 server 複製 client 的窗口常數（同一道守門在兩端各自帶常數會漂）。
+實務上一場約 20 回合（≈40 則）遠低於 80，這道閘門平常恆真。
+
+- **只有 standard**（R1 P1-1 後）：函式本身沒有 practiceMode 分支，但 handler
+  的閘門只給 standard；beginner／game 一律傳 null＝逐位元組維持 4.1 行為。
 - **仍然是近似**：持久化狀態只記**最後一個**修復點，更早的分類器 `connected`
   仍然補不回來；`classifierSignal` 也照舊一律傳 `null`。4.1 節「null-classifier
   近似的風險方向是雙向的」那一段仍然成立，只是尾段對齊了正式路徑。
@@ -1539,9 +1548,10 @@ agencyMode, debriefPracticeMode)`** 時把 thread 上的狀態傳進來。刻意
 
 ### Gate（實測數字）
 
-- `deno test -A supabase/functions/practice-chat`：**1,950 passed / 0 failed /
-  1 ignored**（base 1,941 / 0 / 1；刀 1 ＋1、刀 2 ＋6、刀 3 ＋2）。
-- `deno test -A tools`：**116 passed / 0 failed**（base 116，未動）。
+- `deno test -A supabase/functions/practice-chat`：**1,953 passed / 0 failed /
+  1 ignored**（base 1,941 / 0 / 1；刀 1 ＋1、刀 2 ＋6、刀 3 ＋2、R1 修補 ＋3）。
+- `deno test -A tools`：**131 passed / 0 failed**（rebase 後的 base 131，
+  本輪未動該目錄）。
 - 等價 harness：全綠，**golden 未重印**（`git status` 全程沒有 golden 檔）。
 - `deno fmt --check supabase/functions/practice-chat`：clean；`deno lint` 4 個
   問題，**與 main 相同**（`draw_handler_test.ts`／`game_fsm.ts`／
@@ -1551,7 +1561,7 @@ agencyMode, debriefPracticeMode)`** 時把 thread 上的狀態傳進來。刻意
 - `flutter analyze lib/features/practice_chat test/unit/features/practice_chat
   test/widget/features/practice_chat`：**No issues found**。
 - `flutter test test/unit/features/practice_chat test/widget/features/
-  practice_chat test/features/practice_chat`：**713 passed**。
+  practice_chat test/features/practice_chat`：**717 passed**（R1 U3 ＋4）。
 
 ### 風險與未做
 
@@ -1567,3 +1577,45 @@ agencyMode, debriefPracticeMode)`** 時把 thread 上的狀態傳進來。刻意
   一格改扣額，留給 Eric。
 - 刀 3 沒有處理「她先忙了之後玩家直接關 App」——沒有主動觸發 debrief，維持
   既有的 client 送 `mode: "debrief"` 流程。
+
+### Codex R1：BLOCK（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1-1** | 刀 2 的閘門是 `debriefAssistedMode \|\| standardAgencyClassifierEnabled(…)`，等於 beginner／game 的 debrief 也開始吃持久化狀態；`agency_coaching_test.ts` 自己證明 `repairedAtUserTurns: 2` 會把 ledger 從 6 輪變 4 輪，所以 assisted 的 debrief prompt／telemetry 已被改變 | **已修**。閘門收成**只有** standard（`standardAgencyClassifierEnabled(flag, agencyMode, debriefPracticeMode)`）；beginner／game 一律傳 null。測試：beginner 與 game 各一支**差分**對拍（同一段逐字稿、同一份 thread，只差 thread 上有沒有 `repairedAtUserTurns`），斷言 debrief 的 `conversationAgency` telemetry 與 Claude `messages` 逐欄位相同，且維持 4.1 的 6 輪基準 |
+| **P1-2** | 注入條件 `state !== null && …` 讓 `repairedAtUserTurns: 1` 永遠被跳過 | **已修**，但**沒有可觀測的行為差異**（見下面「P1-2 的誠實結論」）。改用 `INITIAL_CONVERSATION_AGENCY_STATE` 當底；不注入時仍原樣傳 `state`（含 null） |
+| **U1** | debrief 的 `request.turns` 是不是一定從第 1 輪開始 | **查證：不是。** client 的 `endPractice()` 走 `_turnDtosForPrompt()`（`kPracticePromptRecentTurns = 80`），超過就送最後 80 則；server 只有 `MAX_TURNS = 130`。**已改成 fail-safe**：只有「這次的 ai 則數 ＝ ledger 的 `aiCount`」才注入。正反例各一支測試 |
+| **U3** | widget 測試只有一種版面 | **已補**：`read_only` 一案、大字級 `TextScaler.linear(1.3)`、最小支援寬度 320×568，以及兩者疊加，各自斷言 `takeException()` 為 null。並手動反證過非恆真（120×400／scale 3.0 會失敗） |
+| **U2／P2** | 刀 1 讓「（已讀）」多一個入口，觸發率沒有量 | **不修**，記在下面「未做／提案」。交給上線 telemetry（`forcedAct`／`readOnlyReply` 分佈）與 Game 黑箱 |
+| **P2** | `logger_test` | 與本分支無關（main 上的另一個 commit 混進 packet diff），未動 |
+
+#### P1-2 的誠實結論：修了，但行為沒變
+
+用 2,400 組合成案例逐案對拍舊寫法與新寫法（10 種玩家形狀 × 逐字稿長度 1–6 ×
+marker 0–4 × 有／無她開場），`repairTurns` 與計數 **0 筆不同**。原因是
+`detectAgencyEvidence` 每一輪都從 `shapes` 重算欠債、**不讀**
+`prev.unresolvedCount`，而舊寫法在第 2 則就會把 marker 注進去——第 1 則那次
+注入的效果在第 2 則被完整重建。所以那是**死分支而不是活 bug**；修它是為了讓
+條件說得出自己的意思。
+
+順帶釘住一件容易被誤讀的事：**第 1 則玩家訊息永遠留在 `repairTurns`**。
+`agencyPolicyFor` 放過裸片段的唯一出口是 `evidence.precedingUserContext`
+（前面有玩家講清楚過的內容），而第 1 則依定義沒有前一則玩家訊息——**任何
+marker 都改不了它**，marker 只改「修復點之後」的欠債。R1 要求的
+「第 1 輪不在 `repairTurns`」因此結構上不可達，測試改成鎖住這條必然。
+
+### 未做／提案
+
+- **assisted（beginner／game）的 debrief 要不要也吃持久化狀態**（R1 P1-1 的
+  另一半）：技術上做得到，而且 assisted 每輪都有分類器，marker 的品質比
+  standard 更好。但那是**改既有模式的評分口徑**，不是補一個缺口——同一段對話
+  的介入輪數會變少（實測 A25 從 6 變 4），Debrief 的「需要她補救的輪次」與下游
+  評分文字都會動。**留給 Eric 拍板要不要開，本刀不做。**
+- **刀 1 的觸發率沒有量**（R1 U2／P2）：4.5a 量到的 `read_only` 13.8% 是舊入口
+  （`BOUNDARY_RE` 連兩則）的合成上界；刀 1 新增的
+  `gameGreasy`／`userOverEscalated` 入口在真實 Game 對話上多久觸發一次**沒有
+  離線重建也沒有黑箱**。上線後看 telemetry 的 `forcedAct` 與
+  `readOnlyReply` 分佈，Game 另外排一次黑箱。回退門檻沿用 4.5a 那一節。
+- **刀 3 沒有處理逐字稿超過 80 則的 debrief**：那種場的 marker 不注入（U1
+  fail-safe），帳退回 4.1 的純結構近似。要根治得讓 client 送出窗口起點或改用
+  穩定 turn id，本輪不做。
