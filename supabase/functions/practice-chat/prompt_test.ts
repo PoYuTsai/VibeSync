@@ -3251,7 +3251,9 @@ Deno.test("Phase 4.5b 刀 B：同一場連續兩輪的 systemStable 逐位元組
   // 當輪尾巴真的變了（不然上面那條是空洞的）。
   assert(round1.messages[0].content !== round2.messages[0].content);
 
-  // Haiku 4.5 的最小可快取長度是 2048 tokens。這裡用**字元數粗估**：繁中在
+  // 2026-09-05 更正：Haiku 4.5 的最小可快取長度是 **4,096** tokens（2048 是 Haiku 3.5），
+  // 穩定前綴約 2,400 tokens 構不到，所以這條斷言只是「前綴沒被清空」的地板，
+  // 不是「可快取」的證明（計畫檔 Phase 4.5d）。原本的粗估寫法保留如下：繁中在
   // Claude 的 tokenizer 大致是每個字 ≳1 token，所以 2048 個 code unit 是一個
   // 保守下界的近似，**沒有**用真的 tokenizer 量過。開旗標後要看 telemetry 的
   // `chatModelUsage.cacheReadInputTokens`——若仍然恆為 0，下一步是把記憶摘要／

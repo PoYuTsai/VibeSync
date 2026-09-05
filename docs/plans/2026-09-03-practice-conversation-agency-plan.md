@@ -1356,7 +1356,7 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
   DeepSeek 與 Anthropic 兩邊的總帳。
 - **延遲**：分類器同步跑（要趕上 telemetry），所以 standard 每一輪多一次
   DeepSeek 往返。`standardClassifierDurationMs` 是觀測點。
-- **cache 門檻沒量過**：Haiku 4.5 的最小可快取長度是 2048 tokens，穩定前綴實測
+- **cache 門檻沒量過**（**2026-09-05 更正：Haiku 4.5 的最小可快取長度是 4,096 tokens，不是 2,048**；見下方 4.5d 結論）：穩定前綴實測
   **2,799–3,608 code units**（`practice_girl_001`，四種旗標組合），測試用字元數
   粗估、**沒有**用真的 tokenizer 量過。開旗標後看
   `chatModelUsage.cacheReadInputTokens` 是否真的非零；若仍恆為 0，下一步是把
@@ -1382,12 +1382,12 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
 - **cache 探針結果（2026-09-05，Eric 授權後執行，12 次真呼叫 $0.05）**：
   standard／beginner／game × style on／off 六格、每格兩輪，**12 次全部
   `cacheCreationInputTokens=0`、`cacheReadInputTokens=0`**——穩定前綴只有
-  2,701–2,858 code units，換成 token 不到 Haiku 4.5 的 2,048 最小可快取長度，
+  2,701–2,858 code units，換成 token 不到 Haiku 4.5 的最小可快取長度（官方文件：**4,096 tokens**；4.5b 當時誤記 2,048），
   所以 Anthropic 連寫都不寫。刀 B 的原始目的（讀到 cache）**沒有達成**；實際
   效果是把今天 production「整段掛 cache、每輪都付 1.25× 寫入溢價卻永遠讀不到」
   改成「零 cache 活動、全部按 1.0× 輸入計價」，Haiku 輸入成本約降兩成。要真的
   命中，下一步是把一場之內不變的段落（記憶摘要、朋友圈、難度文案、優先序
-  說明）也搬進前綴讓它超過 2,048 tokens——那會改 DeepSeek 拿到的 system 順序，
+  說明）也搬進前綴——但 4.5d 實測搬完只有約 2,400 tokens，離 4,096 仍遠（見 4.5d）；改 DeepSeek 順序那條路也一樣構不到，
   是 on-path 改動，另開一刀。數字與逐格表在 `tools/practice-agency-eval/README.md`
   「Phase 4.5b」節。
 - **標準模式兩臂黑箱（同日，A25／A26／A27、輕鬆、20 位 × 1，$2.37）**：
@@ -1428,3 +1428,23 @@ R2 是最後一輪審查，修完不再送審——所以下面每一項都有�
 | **U** | 既有 row `practice_mode` 為 null 時被改成 standard | **已查證：不可能**。migration 是 `practice_mode TEXT NOT NULL DEFAULT 'standard'`，唯一 writer（那支 RPC）只收三個合法值。`migration_source_test.ts` 原本只釘 `NOT NULL`，本輪補上 `DEFAULT 'standard'`；handler 那一行加註解說明 `?? "standard"` 只服務「還沒有列」那條路 |
 | **U** | `cache_probe_test.ts` 有沒有進 CI | **查證：整個 `tools/` 都不在 CI**（`flutter-ci.yml` 只有 Edge contract 與 Postgres 兩份白名單）。已把 `tools/practice-agency-eval/cache_probe_test.ts` 加進 Edge contract 名單（實測只需 `--allow-env --allow-read`，與該步權限相同）。其餘 `tools/` 測試維持本機跑，不在本刀範圍 |
 | **TOCTOU** | thread 先讀後寫的窗口 | **不修**，已在「已知限制」記為 R1 U3 |
+
+### Phase 4.5d：Haiku cache 排版刀——**不併，結論記錄**（2026-09-05）
+
+- **做法**：分支 `agency-phase45d`（未併、worktree 已移除、分支保留）把 Claude 那條路的
+  system 重排成「穩定段先、當輪段後」（`systemSections` 16 段分類、`claudeSystemLayout`、
+  旗標 `PRACTICE_HAIKU_CACHE_LAYOUT=stable_first`），DeepSeek 的 prompt 逐位元組不動；
+  1,954 綠、harness 14 綠、golden 未動。六格穩定段 3,324–3,456 code units。
+- **探針（Eric 授權，12 次真呼叫 $0.06）**：新排版六格兩輪**仍全部 create=0、read=0**。
+  總輸入 4,612–6,054 tokens，穩定段換算約 2,400 tokens。
+- **根因**：官方文件（platform.claude.com prompt-caching）明列 **Claude Haiku 4.5 的最小
+  可快取長度是 4,096 tokens**；2,048 是 Haiku 3.5 的數字，4.5b 起的註解、測試與計畫檔
+  都抄錯了。一場之內不變的 system 內容全部加起來約 2,400 tokens，**在 system 這一層
+  不可能達標**，所以 4.5d 的排版刀沒有用武之地，不併。
+- **今天 production 的實際狀態就是終點**：4.5b 刀 B 拆前綴後，Haiku 介入輪零 cache 活動、
+  全按 1.0× 輸入計價（拆之前是整段掛 cache、每輪付 1.25× 寫入溢價卻永遠讀不到）。
+- **若日後真要命中**：唯一路徑是把當輪段從 system 移到訊息尾端，讓 cache 前綴＝穩定
+  system ＋ 之前所有對話（超過 4,096 tokens 後每輪都能命中）。那是 Claude prompt 結構
+  的改動，要自己的黑箱；上線規模夠大再議。
+- 4.5b 那句「Haiku 最小可快取 2048」在 `prompt_test.ts` 註解與 `cache_probe.ts` 檔頭一併
+  更正（README 由 4.5e 評測 commit 更正）。
