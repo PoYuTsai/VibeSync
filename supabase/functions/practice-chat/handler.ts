@@ -78,6 +78,7 @@ import {
   type AgencyMode,
   agencyModeFor,
   agencyShapeExperimentFor,
+  BLOCKED_REPLY_TEXT,
   chatModelFor,
   checkOutRewriteInstruction,
   checkOutStructuralViolations,
@@ -87,6 +88,12 @@ import {
   standardAgencyClassifierEnabled,
   truncateAgencyShape,
 } from "./conversation_agency.ts";
+import {
+  INITIAL_OFFENSE_STATE,
+  type OffenseState,
+  offenseStateAfter,
+  offenseTurnFor,
+} from "./offense_ladder.ts";
 import {
   debriefAgencyLedgerFor,
   hintAgencyCoachingFor,
@@ -1903,6 +1910,8 @@ async function judgeStandardAgencyFailOpen(opts: {
   reply: string;
   memorySummary?: string | null;
   herRecentMoments?: readonly MomentMemoryPost[];
+  /** Phase 5 WP6：多問／多解析一個 boundary（旗標未設時逐位元組不變）。 */
+  offenseLadder?: boolean;
 }): Promise<StandardAgencyJudgement> {
   const startedAt = performance.now();
   try {
@@ -1914,13 +1923,17 @@ async function judgeStandardAgencyFailOpen(opts: {
         assistantReply: opts.reply,
         memorySummary: opts.memorySummary,
         herRecentMoments: opts.herRecentMoments,
+        ...(opts.offenseLadder ? { offenseLadder: true } : {}),
       }),
       maxTokens: TEMPERATURE_JUDGE_MAX_TOKENS,
       temperature: TEMPERATURE_JUDGE_TEMPERATURE,
       jsonMode: true,
       timeoutMs: DEEPSEEK_TIMEOUT_MS,
     });
-    const classification = parseStandardAgencyClassification(raw);
+    const classification = parseStandardAgencyClassification(
+      raw,
+      opts.offenseLadder === true,
+    );
     // 與 assisted 路徑同一個事件名（只有欄位名，沒有內容）：ops 算 repair 盛行
     // 率時不必分兩張表。
     if (classification.repairedFields?.length) {
@@ -4780,6 +4793,41 @@ export function createPracticeChatHandler(
       agencyMode === "on",
     );
 
+    // ── Phase 5 WP6：性冒犯三段階梯（Eric 2026-09-06）─────────────────────
+    // 旗標＝`PRACTICE_SESSION_END_SIGNAL=true` ∧ agency `on`；未設／其他值時
+    // `offenseTurn` 恆為 null，五面（schema／prompt／RPC／Response／telemetry）
+    // 逐位元組不變（`agency_flag_off_equivalence_test.ts` 守）。
+    // 不分模式、不分難度：`allowsCheckOut` 那道難度閘門對它不適用。
+    const offenseLadderOn = sessionEndSignalOn && agencyMode === "on";
+    const offensePrev: OffenseState = offenseLadderOn
+      ? {
+        strikes: relationshipThreadState?.agencyState?.offenseStrikes ?? 0,
+        cleanStreak: relationshipThreadState?.agencyState?.offenseCleanStreak ??
+          0,
+        blocked: relationshipThreadState?.agencyState?.blocked === true,
+      }
+      : INITIAL_OFFENSE_STATE;
+    const offenseTurn = offenseLadderOn
+      ? offenseTurnFor(
+        offensePrev,
+        [...request.turns].reverse().find((turn) => turn.role === "user")
+          ?.text ?? "",
+      )
+      : null;
+    /** 這一輪她已經封鎖：不打任何模型（chat、分類器都不打）。 */
+    const offenseBlockedTurn = offenseTurn?.stage === "blocked";
+    /** 下一輪補記的來源：這一輪的學習分類器判 `boundary === "overstep"`。 */
+    let offenseClassifierOverstep = false;
+    /** 要落地的階梯狀態（旗標未設時恆 null＝三個 key 一個都不寫）。 */
+    const offenseStateFor = () =>
+      offenseTurn === null ? null : offenseStateAfter(
+        offensePrev,
+        offenseTurn,
+        offenseClassifierOverstep,
+      );
+    /** assisted 那條既有寫入路徑真的發了 RPC（階梯就不必再補一次）。 */
+    let assistedStateWritten = false;
+
     let reply: string | null = null;
     let responsePlan: TurnResponsePlan | null = null;
     let agencyDecision: ChatAgencyDecision | null = null;
@@ -4853,6 +4901,12 @@ export function createPracticeChatHandler(
             styleState: relationshipThreadState?.styleState ?? null,
             agencyMode,
             agencyState: relationshipThreadState?.agencyState ?? null,
+            ...(offenseLadderOn
+              ? {
+                offenseLadder: true,
+                offenseColdTurn: offenseTurn?.stage === "cold",
+              }
+              : {}),
           }
           : {
             replyStyle: replyStyleEnabled,
@@ -4875,6 +4929,14 @@ export function createPracticeChatHandler(
             ...(standardAgencyClassifierOn
               ? { agencyState: relationshipThreadState?.agencyState ?? null }
               : {}),
+            // Phase 5 WP6：階梯自己讀 thread 狀態（不經 `agencyState`），
+            // 所以這裡只多兩個布林，standard 的既有 agency 政策一字未動。
+            ...(offenseLadderOn
+              ? {
+                offenseLadder: true,
+                offenseColdTurn: offenseTurn?.stage === "cold",
+              }
+              : {}),
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
@@ -4887,9 +4949,12 @@ export function createPracticeChatHandler(
       // ── Phase 4.5a 刀 3：forced `read_only`＝她已經先去忙了、他又丟一個
       // 沒內容的東西。這一格**不打生成模型**：直接送一則「（已讀）」，
       // 守門鏈照走（白名單放行）。旗標 off／shadow 走不到（`applied` 恆 false）。
-      const readOnlyTurn = agencyMode === "on" &&
+      const readOnlyTurn = (agencyMode === "on" &&
         agencyDecision?.applied === true &&
-        agencyDecision.decision.forcedAct === "read_only";
+        agencyDecision.decision.forcedAct === "read_only") ||
+        // Phase 5 WP6：階梯第二格走同一條路（不打模型、回「（已讀）」），
+        // 但**不經** forcedAct——階梯不分難度，`allowsCheckOut` 對它不適用。
+        offenseTurn?.stage === "read_only";
       // Phase 5 WP2 成本保險絲：`chatModelFor` **之前**先問今天燒掉多少
       // （一次 select）。燒斷＝這一輪強制走 DeepSeek，不是報錯（計畫 §7
       // 風險 1）；讀不到（`null`）一律當成沒燒斷，只有 `cost_fuse.ts` 記的
@@ -4943,7 +5008,10 @@ export function createPracticeChatHandler(
           // ——被守門擋下來的內容照樣送出去。改成先收在 attempt 內的 `candidate`，
           // 每一道守門都過了才寫回 `reply`。
           let candidate: string;
-          if (readOnlyTurn) {
+          if (offenseBlockedTurn) {
+            // Phase 5 WP6 第三格：她封鎖了。這一輪與之後每一輪都不打模型。
+            candidate = BLOCKED_REPLY_TEXT;
+          } else if (readOnlyTurn) {
             candidate = READ_ONLY_REPLY_TEXT;
           } else if (useHaiku && !chatModelFallback) {
             try {
@@ -5025,19 +5093,23 @@ export function createPracticeChatHandler(
           const allowReadOnly = agencyMode === "on" &&
             (responsePlan?.readOnlyAllowed === true || readOnlyTurn);
           readOnlyAllowedThisTurn = allowReadOnly;
+          // Phase 5 WP6：「（已封鎖）」是 server 自己送的固定字串，同一套白名單
+          // 規則（只有這一輪、只有整則恰好等於才放行）。
+          const allowBlocked = offenseBlockedTurn === true;
           // Codex R2 P1-3：agency on 時**不論有沒有 `responsePlan`** 都要跑這道
           // 守門——旗標分臂（agency on ＋ reply-style off）時模型自己吐一句
           // 「（已讀）」原本會整段漏過去。off 路徑維持「只在有 plan 時跑」，
           // 逐位元組不變。
           if (
             (responsePlan || agencyMode === "on") &&
-            hasStageDirection(candidate, allowReadOnly)
+            hasStageDirection(candidate, allowReadOnly, allowBlocked)
           ) {
             stageDirectionRepairs++;
             candidate = stripStageDirections(
               candidate,
               "chat_stage_direction",
               allowReadOnly,
+              allowBlocked,
             );
           }
           // Phase 3.3 `truncate` 臂：她第一則就是問句時只留第一則（結構判斷，
@@ -5164,7 +5236,8 @@ export function createPracticeChatHandler(
     const deducted = didCharge ? PRACTICE_QUOTA_COST : 0;
 
     let temperature: LearningJudgement | null = null;
-    if (assistedMode && currentTemperature !== null) {
+    // Phase 5 WP6：封鎖輪一支模型都不打，逐輪分類器也不例外。
+    if (assistedMode && currentTemperature !== null && !offenseBlockedTurn) {
       try {
         temperature = await judgeLearningState({
           deps,
@@ -5200,6 +5273,9 @@ export function createPracticeChatHandler(
         });
         return jsonResponse({ error: mapped.error }, mapped.status);
       }
+      // Phase 5 WP6：逐輪分類器的 boundary 就是階梯的「下一輪補記」來源。
+      offenseClassifierOverstep =
+        temperature?.classification.boundary === "overstep";
     }
 
     if (request.practiceMode === "game" && temperature) {
@@ -5294,10 +5370,12 @@ export function createPracticeChatHandler(
                 } satisfies AgencyClassifierSignal,
                 // Phase 3.8：這一輪 planner 強制她問他一件事 → 這場黏住不再強制。
                 responsePlan?.askUserFocus !== undefined,
+                offenseStateFor(),
               )
               : relationshipThreadState?.agencyState ?? undefined,
           }),
         });
+        assistedStateWritten = true;
       }
     }
 
@@ -5309,16 +5387,37 @@ export function createPracticeChatHandler(
     let standardAgency: StandardAgencyJudgement | null = null;
     /** Codex R2 P2：RPC 真的回成功才是 true（fail-open 的呼叫可能寫失敗）。 */
     let standardStatePersisted = false;
-    if (standardAgencyClassifierOn) {
-      standardAgency = await judgeStandardAgencyFailOpen({
-        deps,
-        apiKey,
-        userId: user.id,
-        request,
-        reply,
-        memorySummary: promptMemorySummary,
-        herRecentMoments,
-      });
+    /** Phase 5 WP6：封鎖輪連精簡分類器都不打。 */
+    const runStandardClassifier = standardAgencyClassifierOn &&
+      !offenseBlockedTurn;
+    /**
+     * Phase 5 WP6：階梯狀態每一輪都要落地，但既有兩條寫入路徑各自有前提
+     * （assisted 要有 temperature、standard 要 4.5b 旗標，封鎖輪兩者都被跳過）。
+     * 走不到既有寫入時借這一次 upsert **只寫狀態**（不打任何模型）。
+     * 已經封鎖過的輪次不寫——狀態本來就沒有變化。
+     */
+    const offenseStateWriteOnly = offenseTurn !== null &&
+      !offenseTurn.wasBlocked && !runStandardClassifier &&
+      !assistedStateWritten;
+    if (runStandardClassifier || offenseStateWriteOnly) {
+      if (runStandardClassifier) {
+        standardAgency = await judgeStandardAgencyFailOpen({
+          deps,
+          apiKey,
+          userId: user.id,
+          request,
+          reply,
+          memorySummary: promptMemorySummary,
+          herRecentMoments,
+          // Phase 5 WP6：旗標開著時精簡分類器多問一個 boundary（standard 也
+          // 要有階梯的分類器補記來源）；未設時 prompt 與 schema 逐位元組不變。
+          offenseLadder: offenseLadderOn,
+        });
+        // Phase 5 WP6：與逐輪分類器同一條規則（`overstep` 才 +1，`pushy` 不算；
+        // 分類器失敗／缺欄位＝不補分）。
+        offenseClassifierOverstep =
+          standardAgency.classification?.boundary === "overstep";
+      }
       // Codex R1 P1-1 ＋ R2 P1：讀取失敗或 profile 不符時**完全跳過** thread
       // 寫入——那一列可能是別的角色的，這條路徑沒有任何一個欄位算得出正確的
       // 值。分類器照跑、telemetry 照記，只是這一輪的狀態不落地。
@@ -5342,7 +5441,10 @@ export function createPracticeChatHandler(
             // 'standard'`（`migration_source_test.ts` 釘住），而唯一的 writer
             // （這支 RPC）只收三個合法值——所以讀回來的 `practiceMode` 不可能是
             // null。`?? "standard"` 只是「這個 thread 還沒有列」的那條路。
-            practiceMode: relationshipThreadState?.practiceMode ?? "standard",
+            // Phase 5 WP6：階梯借這條路只寫狀態時，這個 thread 可能還沒有列
+            // （封鎖發生在第一輪就會這樣）；用本輪模式建列比硬寫 "standard" 準。
+            practiceMode: relationshipThreadState?.practiceMode ??
+              request.practiceMode ?? "standard",
             relationshipScore: relationshipThreadState?.relationshipScore ??
               null,
             temperatureScore: relationshipThreadState?.temperatureScore ?? null,
@@ -5363,7 +5465,7 @@ export function createPracticeChatHandler(
             conversationAgencyState: nextConversationAgencyState(
               relationshipThreadState?.agencyState ?? null,
               agencyDecision.decision,
-              standardAgency.classification
+              standardAgency?.classification
                 ? {
                   coherence: standardAgency.classification.coherence,
                   aiChallengedThisTurn:
@@ -5371,12 +5473,15 @@ export function createPracticeChatHandler(
                 } satisfies AgencyClassifierSignal
                 : null,
               responsePlan?.askUserFocus !== undefined,
+              offenseStateFor(),
             ),
           }),
         });
       }
     }
 
+    /** Phase 5 WP6：這一輪最終落地的階梯狀態（旗標未設＝null）。 */
+    const offenseFinal = offenseStateFor();
     logInfo("practice_chat_succeeded", {
       user: summarizeUser(user.id),
       mode: "chat",
@@ -5598,6 +5703,15 @@ export function createPracticeChatHandler(
             ...(checkOutStructuralFailed
               ? { checkOutStructuralFail: true }
               : {}),
+            // Phase 5 WP6 性冒犯階梯：旗標未設時 `offenseTurn` 是 null，
+            // 三個 key 一個都不多。
+            ...(offenseTurn && offenseFinal
+              ? {
+                offenseStrikes: offenseFinal.strikes,
+                offenseStage: offenseTurn.stage,
+                offenseSource: offenseFinal.source,
+              }
+              : {}),
           }
           : null,
       }),
@@ -5613,9 +5727,14 @@ export function createPracticeChatHandler(
     // 挑戰難度也走得到那兩格（`allowsCheckOut` 只對 challenge 難度／Game 為真，
     // 非 Game 且非 challenge 的場永遠沒有這個 key）；旗標未設＝4.5c 的 Game-only。
     // App 拿它顯示收尾提示並導向檢討——**不**自動結束、**不**鎖輸入。
-    const partnerStatus = agencyMode === "on" &&
-        (sessionEndSignalOn || request.practiceMode === "game") &&
-        agencyDecision?.applied === true
+    // Phase 5 WP6：階梯的兩格不經 `agencyDecision.forcedAct`（不分難度），
+    // 所以先判它；旗標未設時 `offenseTurn` 是 null＝這一段整個不成立。
+    const partnerStatus = offenseTurn !== null &&
+        (offenseTurn.stage === "blocked" || offenseTurn.stage === "read_only")
+      ? offenseTurn.stage
+      : agencyMode === "on" &&
+          (sessionEndSignalOn || request.practiceMode === "game") &&
+          agencyDecision?.applied === true
       ? agencyDecision.decision.forcedAct === "check_out"
         ? "checked_out"
         : agencyDecision.decision.forcedAct === "read_only"

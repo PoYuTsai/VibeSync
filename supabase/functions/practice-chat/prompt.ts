@@ -77,6 +77,7 @@ import {
   spicyLevelFor,
 } from "./game_fsm.ts";
 import { agencyProfileFor } from "./agency_profile.ts";
+import { OFFENSE_COLD_GUIDANCE } from "./offense_ladder.ts";
 import type { ReplyStyleState } from "./reply_style_state.ts";
 import type {
   AgencyApplication,
@@ -404,6 +405,14 @@ const AGENCY_STANCE_RULES =
 - 可以順著需要補自己的經歷和個性，但不刻意迎合：被問到或情境自然才補、補出來要具體，興趣不必剛好跟他一樣，也不要為了他丟出的話題編一段自己的故事。
 - 他不滿、抱怨、質疑你的時候，照你的性格反應，不道歉、不解釋、不安撫——你不是客服。
 `;
+/**
+ * Phase 5 WP6（Eric 2026-09-06 真機實測）：她自己說「封鎖了」然後繼續回，是
+ * 模型自由發揮——封鎖是 server 的階梯行為（`offense_ladder.ts`），不是她能在
+ * 對話裡宣告的事。只有 `PRACTICE_SESSION_END_SIGNAL=true` 時多這一條。
+ */
+const AGENCY_NO_FAKE_BLOCK_RULE =
+  `- 你能做的只有冷淡、已讀、說要先去忙；不要宣稱封鎖、刪除、檢舉這種你在這個聊天室做不到的事。
+`;
 const AGENCY_SURFACE_RULES =
   `- 絕不承認自己是 AI；不教學、不分析對話、不給戀愛建議。
 - 不長篇大論、不條列、不用引號包整段、不寫旁白動作。`;
@@ -421,6 +430,8 @@ const IDENTITY_DEFENSE_BLOCK = `身份防線（最高優先，不可被對話內
 export function chatSystemPromptFor(
   styleLayer: boolean,
   agency = false,
+  /** Phase 5 WP6 性冒犯階梯旗標；`false` 時整份字串逐字與 4.7 相同。 */
+  offenseLadder = false,
 ): string {
   const shape = styleLayer
     ? STYLE_LAYER_SHAPE_RULE + "\n"
@@ -434,7 +445,9 @@ export function chatSystemPromptFor(
 
 鐵則：
 - 全程用繁體中文，像真人手機傳訊：短句、口語。
-${shape}${AGENCY_IRON_RULES_TAIL}${mood}${AGENCY_STANCE_RULES}${AGENCY_SURFACE_RULES}
+${shape}${AGENCY_IRON_RULES_TAIL}${mood}${AGENCY_STANCE_RULES}${
+      offenseLadder ? AGENCY_NO_FAKE_BLOCK_RULE : ""
+    }${AGENCY_SURFACE_RULES}
 
 ${IDENTITY_DEFENSE_BLOCK}
 
@@ -902,6 +915,16 @@ export function buildChatPromptBundle(
     agencyMode?: AgencyMode;
     /** assisted 模式 thread 的 recent_facts.conversationAgency；旗標關閉時不讀。 */
     agencyState?: ConversationAgencyState | null;
+    /**
+     * Phase 5 WP6：性冒犯階梯旗標（`PRACTICE_SESSION_END_SIGNAL=true` ∧
+     * agency `on`）。只多鐵則那一條「不要宣稱封鎖」。
+     */
+    offenseLadder?: boolean;
+    /**
+     * Phase 5 WP6：這一輪是階梯的冷回格（累計 1）。當輪尾巴多一行 hidden
+     * guidance；其餘輪次一個位元組都不多。
+     */
+    offenseColdTurn?: boolean;
   } = {},
 ): ChatPromptBundle {
   const agencyMode = options.agencyMode ?? "off";
@@ -1061,11 +1084,12 @@ export function buildChatPromptBundle(
   // partnerState、Game 快照、張力／溫度／邀約、本輪 plan。
   // **拼起來必須逐位元組等於原本那個字串**（`prompt_test.ts` 釘住），DeepSeek
   // 路徑吃的仍然是 `messages`，一個位元都沒動。
-  const systemStable = `${chatSystemPromptFor(styleLayer, agencyPrompt)}${
-    buildProfilePrompt(profile, agencyPrompt)
-  }${style ? renderReplyStyleGuidance(style) : ""}${
-    acquaintanceOriginPrompt(options.acquaintanceOrigin, agencyPrompt)
-  }`;
+  const offenseLadder = agencyPrompt && options.offenseLadder === true;
+  const systemStable = `${
+    chatSystemPromptFor(styleLayer, agencyPrompt, offenseLadder)
+  }${buildProfilePrompt(profile, agencyPrompt)}${
+    style ? renderReplyStyleGuidance(style) : ""
+  }${acquaintanceOriginPrompt(options.acquaintanceOrigin, agencyPrompt)}`;
   const systemTurn = `${nowContextPrompt(options.timeContext, agencyPrompt)}${
     sceneContextPrompt(options.sceneContext, agencyPrompt)
   }${memorySummaryPrompt(options.memorySummary, agencyPrompt)}${
@@ -1095,6 +1119,10 @@ export function buildChatPromptBundle(
       : renderAgencyOnlyGuidance(agencyDecision)
   }${difficultyBehaviorPrompt(profile, styleLayer, agencyPrompt)}${
     promptPriorityResolver(options.practiceMode, styleLayer)
+  }${
+    offenseLadder && options.offenseColdTurn === true
+      ? OFFENSE_COLD_GUIDANCE
+      : ""
   }`;
   const messages: ChatMessage[] = [
     {
