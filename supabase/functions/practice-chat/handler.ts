@@ -4608,6 +4608,10 @@ export function createPracticeChatHandler(
                 temperature: CHAT_TEMPERATURE,
                 timeoutMs: DEEPSEEK_TIMEOUT_MS,
                 onUsage: addChatModelUsage,
+                // Phase 4.5b 刀 B：system 的穩定前綴（人設／規則）另外掛一個
+                // cache block。整段掛 cache 而每輪夾著當輪 plan／溫度／記憶時，
+                // production 實測 21 輪全部 cache write、cache read 0。
+                systemCachePrefix: chatPromptBundle.systemStable,
               });
               chatModelUsed = "haiku";
             } catch (e) {

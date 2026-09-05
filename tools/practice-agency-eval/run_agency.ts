@@ -237,6 +237,8 @@ export function looksLikeQuestion(text: string): boolean {
 
 export type ChatCaller = (
   messages: { role: string; content: string }[],
+  /** Phase 4.5b 刀 B：Haiku 臂的 system cache 前綴（DeepSeek 臂不讀）。 */
+  systemCachePrefix?: string,
 ) => Promise<string>;
 
 /**
@@ -475,7 +477,7 @@ export async function runAgencyScenario(args: {
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
       attempts = attempt;
       try {
-        let candidate = await activeCallChat(messages);
+        let candidate = await activeCallChat(messages, bundle.systemStable);
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
@@ -867,6 +869,8 @@ export async function callHaikuChat(
     maxTokens: number;
     temperature: number;
     timeoutMs: number;
+    /** Phase 4.5b 刀 B：與 production 同一格（`bundle.systemStable`）。 */
+    systemCachePrefix?: string;
   },
 ): Promise<{ text: string; usage: HaikuUsage }> {
   let usage: HaikuUsage = ZERO_HAIKU_USAGE_TOTALS;
@@ -877,6 +881,9 @@ export async function callHaikuChat(
     maxTokens: args.maxTokens,
     temperature: args.temperature,
     timeoutMs: args.timeoutMs,
+    ...(args.systemCachePrefix === undefined
+      ? {}
+      : { systemCachePrefix: args.systemCachePrefix }),
     onUsage: (u) => {
       usage = u;
     },
@@ -952,17 +959,19 @@ async function main(): Promise<void> {
   // haiku 臂／mixed 臂的 usage 累加（純 deepseek 臂沒有這個帳，維持 undefined，
   // 逐字舊行為）。
   let haikuUsageTotals: HaikuUsageTotals | undefined;
-  const makeHaikuCaller = (apiKey: string): ChatCaller => async (messages) => {
-    const { text, usage } = await callHaikuChat({
-      apiKey,
-      messages: messages as ChatMessage[],
-      maxTokens: CHAT_MAX_TOKENS,
-      temperature: CHAT_TEMPERATURE,
-      timeoutMs: MODEL_TIMEOUT_MS,
-    });
-    haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
-    return text;
-  };
+  const makeHaikuCaller =
+    (apiKey: string): ChatCaller => async (messages, systemCachePrefix) => {
+      const { text, usage } = await callHaikuChat({
+        apiKey,
+        messages: messages as ChatMessage[],
+        maxTokens: CHAT_MAX_TOKENS,
+        temperature: CHAT_TEMPERATURE,
+        timeoutMs: MODEL_TIMEOUT_MS,
+        systemCachePrefix,
+      });
+      haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
+      return text;
+    };
   const makeDeepSeekCaller = (apiKey: string): ChatCaller => (messages) =>
     callDeepSeek({
       apiKey,

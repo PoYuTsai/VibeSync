@@ -3182,3 +3182,82 @@ Deno.test("Phase 3.3 R2：gameFsmPriority 只在 Game 的修復優先／現實�
     false,
   );
 });
+
+// ── Phase 4.5b 刀 B：system 的穩定前綴（Anthropic prompt cache）────────────
+
+Deno.test("Phase 4.5b 刀 B：systemStable 是 messages[0].content 的逐位元組字首，DeepSeek 路徑一個位元都沒動", () => {
+  for (const replyStyle of [false, true]) {
+    for (const agencyMode of ["off", "on"] as const) {
+      for (const practiceMode of ["standard", "beginner", "game"] as const) {
+        const bundle = buildChatPromptBundle(
+          [
+            { role: "user", text: "東東" },
+            { role: "ai", text: "東東是誰" },
+            { role: "user", text: "阿布達比" },
+          ],
+          defaultProfile,
+          {
+            replyStyle,
+            agencyMode,
+            practiceMode,
+            temperatureScore: 40,
+            familiarityScore: 10,
+          },
+        );
+        const system = bundle.messages[0].content;
+        const label = `${practiceMode}/${replyStyle}/${agencyMode}`;
+        assert(system.startsWith(bundle.systemStable), label);
+        assert(bundle.systemStable.length > 0, label);
+        // 尾巴非空——不然拆完等於沒拆（`claudeSystemBlocks` 也會退回單一 block）。
+        assert(system.length > bundle.systemStable.length, label);
+      }
+    }
+  }
+});
+
+Deno.test("Phase 4.5b 刀 B：同一場連續兩輪的 systemStable 逐位元組相同，而且長到有機會被 Anthropic 快取", () => {
+  const base = {
+    replyStyle: true,
+    agencyMode: "on" as const,
+    practiceMode: "beginner" as const,
+    visiblePracticeThreadId: "thread-1",
+    acquaintanceOrigin: buildAcquaintanceOrigin({
+      profile: defaultProfile,
+      threadId: "thread-1",
+    }),
+  };
+  const round1 = buildChatPromptBundle(
+    [{ role: "user", text: "東東" }],
+    defaultProfile,
+    { ...base, temperatureScore: 40, familiarityScore: 10 },
+  );
+  const round2 = buildChatPromptBundle(
+    [
+      { role: "user", text: "東東" },
+      { role: "ai", text: "東東是誰" },
+      { role: "user", text: "阿布達比" },
+    ],
+    defaultProfile,
+    {
+      ...base,
+      // 這一輪的分數、心情、記憶都變了——全部落在「當輪尾巴」。
+      temperatureScore: 62,
+      familiarityScore: 31,
+      partnerState: { mood: "guarded", innerThought: "他又跳題了" },
+      memorySummary: "先前聊過她加班",
+    },
+  );
+  assertEquals(round1.systemStable, round2.systemStable);
+  // 當輪尾巴真的變了（不然上面那條是空洞的）。
+  assert(round1.messages[0].content !== round2.messages[0].content);
+
+  // Haiku 4.5 的最小可快取長度是 2048 tokens。這裡用**字元數粗估**：繁中在
+  // Claude 的 tokenizer 大致是每個字 ≳1 token，所以 2048 個 code unit 是一個
+  // 保守下界的近似，**沒有**用真的 tokenizer 量過。開旗標後要看 telemetry 的
+  // `chatModelUsage.cacheReadInputTokens`——若仍然恆為 0，下一步是把記憶摘要／
+  // 朋友圈也搬進前綴（那兩段一場之內多半不變），或者整個拆法退掉。
+  assert(
+    round1.systemStable.length >= 2048,
+    `穩定前綴只有 ${round1.systemStable.length} code units，可能構不到快取門檻`,
+  );
+});

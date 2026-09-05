@@ -780,6 +780,13 @@ ${modeLine}
 
 export interface ChatPromptBundle {
   messages: ChatMessage[];
+  /**
+   * Phase 4.5b 刀 B：`messages[0].content` 的**穩定前綴**（總則／人設／說話
+   * 習慣／認識管道）——同一場、同一角色、同一組旗標下每一輪逐位元組相同。
+   * 只有 Claude 路徑拿它去掛 prompt cache block（`claudeSystemBlocks`）；
+   * DeepSeek 路徑吃的仍然是 `messages`，一個位元都沒動。
+   */
+  systemStable: string;
   /** reply-style 開啟且該角色有 mapping 時才有；handler 記 telemetry 用。 */
   responsePlan: TurnResponsePlan | null;
   /**
@@ -1017,48 +1024,64 @@ export function buildChatPromptBundle(
   // 組裝順序＝優先順序（規格 §5.1）：安全／身份／現實錨定 → 人設 → 說話習慣
   // → 情境與狀態 → 邀約成熟度 → 本輪回應方式（形狀）→ 難度標準（結果，最高權重）
   // → 衝突裁決。
+  // Phase 4.5b 刀 B：system 拆成「穩定前綴」與「當輪尾巴」兩段，**只為了
+  // Anthropic 的 prompt cache**（`callClaude` 收到分段時才會把前綴另外掛一個
+  // ephemeral cache block）。穩定前綴＝同一場、同一角色、同一組旗標下每一輪
+  // 逐位元組相同的四段：總則／人設／說話習慣／認識管道（`acquaintanceOrigin`
+  // 的 seed 綁 threadId＋profile，所以跨輪不變）。
+  // 之後的每一段都會逐輪變：時間錨點（分鐘／時段）、場景、記憶摘要、朋友圈、
+  // partnerState、Game 快照、張力／溫度／邀約、本輪 plan。
+  // **拼起來必須逐位元組等於原本那個字串**（`prompt_test.ts` 釘住），DeepSeek
+  // 路徑吃的仍然是 `messages`，一個位元都沒動。
+  const systemStable = `${chatSystemPromptFor(styleLayer, agencyPrompt)}${
+    buildProfilePrompt(profile, agencyPrompt)
+  }${style ? renderReplyStyleGuidance(style) : ""}${
+    acquaintanceOriginPrompt(options.acquaintanceOrigin, agencyPrompt)
+  }`;
+  const systemTurn = `${nowContextPrompt(options.timeContext, agencyPrompt)}${
+    sceneContextPrompt(options.sceneContext, agencyPrompt)
+  }${memorySummaryPrompt(options.memorySummary, agencyPrompt)}${
+    options.herRecentMomentsBlock ?? ""
+  }${safePartnerStatePrompt(options.partnerState)}${
+    options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
+  }${
+    gameSnapshot
+      ? gameModePrompt({
+        profile,
+        snapshot: gameSnapshot,
+        gameState: options.gameState,
+        acquaintanceOrigin: options.acquaintanceOrigin,
+      })
+      : ""
+  }${
+    tensionLadderPrompt({
+      practiceMode: options.practiceMode,
+      temperatureScore: effectiveTemperature,
+      familiarityScore: effectiveFamiliarity,
+      partnerState: options.partnerState,
+      gameSnapshot,
+    })
+  }${temperaturePrompt}${invitePrompt}${
+    responsePlan && style
+      ? renderTurnPlan(responsePlan, style, agencyDecision)
+      : renderAgencyOnlyGuidance(agencyDecision)
+  }${difficultyBehaviorPrompt(profile, styleLayer, agencyPrompt)}${
+    promptPriorityResolver(options.practiceMode, styleLayer)
+  }`;
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: `${chatSystemPromptFor(styleLayer, agencyPrompt)}${
-        buildProfilePrompt(profile, agencyPrompt)
-      }${style ? renderReplyStyleGuidance(style) : ""}${
-        acquaintanceOriginPrompt(options.acquaintanceOrigin, agencyPrompt)
-      }${nowContextPrompt(options.timeContext, agencyPrompt)}${
-        sceneContextPrompt(options.sceneContext, agencyPrompt)
-      }${memorySummaryPrompt(options.memorySummary, agencyPrompt)}${
-        options.herRecentMomentsBlock ?? ""
-      }${safePartnerStatePrompt(options.partnerState)}${
-        options.partnerState ? `\n${LEGACY_PARTNER_STATE_NO_LEAK_MARKER}` : ""
-      }${
-        gameSnapshot
-          ? gameModePrompt({
-            profile,
-            snapshot: gameSnapshot,
-            gameState: options.gameState,
-            acquaintanceOrigin: options.acquaintanceOrigin,
-          })
-          : ""
-      }${
-        tensionLadderPrompt({
-          practiceMode: options.practiceMode,
-          temperatureScore: effectiveTemperature,
-          familiarityScore: effectiveFamiliarity,
-          partnerState: options.partnerState,
-          gameSnapshot,
-        })
-      }${temperaturePrompt}${invitePrompt}${
-        responsePlan && style
-          ? renderTurnPlan(responsePlan, style, agencyDecision)
-          : renderAgencyOnlyGuidance(agencyDecision)
-      }${difficultyBehaviorPrompt(profile, styleLayer, agencyPrompt)}${
-        promptPriorityResolver(options.practiceMode, styleLayer)
-      }`,
+      content: `${systemStable}${systemTurn}`,
     },
     ...history,
   ];
   return {
     messages,
+    /**
+     * Phase 4.5b 刀 B：`messages[0].content` 的穩定前綴（同一場逐輪逐位元組
+     * 相同）。只有 Claude 路徑會用它掛 cache block；DeepSeek 路徑不讀。
+     */
+    systemStable,
     responsePlan,
     agencyDecision,
     // Phase 4.4：這一輪的既有 planner 情境（`classifySituation`，與 reply-style

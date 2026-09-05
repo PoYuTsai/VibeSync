@@ -777,6 +777,9 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
       maxTokens: 200,
       temperature: 0.9,
       timeoutMs: 1000,
+      // Phase 4.5b 刀 B：production 從 `bundle.systemStable` 拿這一格，runner
+      // 從 `ChatCaller` 的第二個參數拿——兩邊都是同一個 bundle 欄位。
+      systemCachePrefix: handlerArgs.systemCachePrefix,
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -791,6 +794,19 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
   assertEquals(
     (JSON.parse(bodies[0]) as { model?: string }).model,
     "claude-haiku-4-5-20251001",
+  );
+  // Phase 4.5b 刀 B：system 真的是兩個 block（前綴掛 cache、當輪尾巴不掛），
+  // 而且拼起來等於 handler 交出去的那一份 system。
+  const system = (JSON.parse(bodies[0]) as {
+    system: Array<{ text: string; cache_control?: unknown }>;
+  }).system;
+  assertEquals(system.length, 2);
+  assert(system[0].cache_control);
+  assertEquals(system[1].cache_control, undefined);
+  assertEquals(
+    system[0].text + system[1].text,
+    handlerArgs.messages.filter((m) => m.role === "system")
+      .map((m) => m.content).join("\n\n").trim(),
   );
 
   // 上面兩個數字真的是 runner 的常數（不是這支測試自己編的）。
