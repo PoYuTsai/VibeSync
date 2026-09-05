@@ -128,12 +128,22 @@ Deno.test("旗標留空／未設／非正數：零 DB 讀寫（不 select、不�
   }
 });
 
-Deno.test("routing 未開 mixed 時保險絲不啟動（chat 根本不打 Claude，讀寫這張表沒有意義）", async () => {
-  const { fake } = await runTurns(1, { env: { [ROUTING_ENV]: "off" } });
+Deno.test("routing 未開 mixed：保險絲照樣啟動（Codex R2 P1），只是降級動作沒有作用", async () => {
+  // 路由關著時 chat 本來就走 DeepSeek，所以「降級」是 no-op；但記帳不能跟著
+  // 關掉——提示／檢討的 Sonnet 錢跟路由旗標無關，照樣在燒。
+  const { fake, turns } = await runTurns(1, { env: { [ROUTING_ENV]: "off" } });
   assertEquals(
-    fake.state.selects.filter((s) => s.table === COST_FUSE_TABLE),
-    [],
+    Object.hasOwn(turns[0].succeeded, "chatModel"),
+    false,
+    "routing 關著時整組 routing key 不存在",
   );
+  // 讀今日累計仍然發生（保險絲有開）。
+  assertEquals(
+    fake.state.selects.filter((s) => s.table === COST_FUSE_TABLE).length,
+    1,
+  );
+  // 這一輪 chat 沒打 Claude（路由關著）→ 沒有花費 → 不打累加 RPC。
+  assertEquals(fake.state.claudeCalls.length, 0);
   assertEquals(fake.state.rpcCalls.filter((r) => r.fn === COST_FUSE_RPC), []);
 });
 
@@ -462,5 +472,80 @@ Deno.test("累加永不回應：撞死線後 fail-open，對話照常 200 ＋ te
 Deno.test("沒逾時的一般路徑不得出現 costFuseTimeout key", async () => {
   const { turns } = await runTurns(1, {}, "999");
   assertEquals(Object.hasOwn(turns[0].succeeded, "costFuseTimeout"), false);
+});
+
+Deno.test("routing off 時 hint 照樣累加；同一天切成 mixed，下一輪 chat 直接 deepseek（Codex R2 P1）", async () => {
+  const hintLedger = ledger({
+    practice_mode: "beginner",
+    ai_count: 1,
+    charged: true,
+    temperature_score: 30,
+    familiarity_score: 0,
+  });
+  const quiet = async (fake: ReturnType<typeof makeFake>, body: unknown) => {
+    const lines: string[] = [];
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const capture = (...args: unknown[]) =>
+      lines.push(args.map((a) => String(a)).join(" "));
+    let response: Response;
+    try {
+      console.log = capture;
+      console.warn = capture;
+      response = await fake.handler(makeRequest(body));
+      await Promise.allSettled(fake.state.backgroundTasks);
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+    return { response, lines };
+  };
+
+  // 1) 路由**關著**跑一次提示：Sonnet 的錢照樣記進當日累計。
+  const routingOff = makeFake({
+    ledger: hintLedger,
+    claudeReplies: [validHint()],
+    env: {
+      [ROUTING_ENV]: "off",
+      [AGENCY_ENV]: "true",
+      [FUSE_ENV]: BUDGET,
+    },
+  });
+  const hint = await quiet(
+    routingOff,
+    hintBody({ practiceMode: "beginner", turns: SIDE_TURNS }),
+  );
+  assertEquals(hint.response.status, 200);
+  const increments = routingOff.state.rpcCalls.filter((r) =>
+    r.fn === COST_FUSE_RPC
+  );
+  assertEquals(increments.length, 1, "routing off 也要累加");
+  assertEquals(increments[0].params.p_usd, SONNET_USD_PER_CALL);
+
+  // 2) 同一天把路由切成 mixed（新的 Edge 實例，但當日累計來自 DB）：
+  //    下一輪 chat 立刻被降級。
+  const routingMixed = makeFake({
+    ledger: ledger({ practice_mode: "beginner" }),
+    dailyCostUsd: SONNET_USD_PER_CALL,
+    deepSeekReplies: ["好啊", CLASSIFIER_JSON],
+    claudeReplies: ["不該被用到"],
+    env: {
+      [ROUTING_ENV]: "mixed",
+      [AGENCY_ENV]: "true",
+      [FUSE_ENV]: BUDGET,
+    },
+  });
+  const chat = await quiet(
+    routingMixed,
+    chatBody({ practiceMode: "beginner", turns: FRAGMENT_TURNS }),
+  );
+  const succeededLine = chat.lines.find((l) =>
+    l.includes('"event":"practice_chat_succeeded"')
+  );
+  assert(succeededLine);
+  const succeeded = JSON.parse(succeededLine) as Record<string, unknown>;
+  assertEquals(succeeded.chatModel, "deepseek");
+  assertEquals(succeeded.costFuseDegraded, true);
+  assertEquals(routingMixed.state.claudeCalls.length, 0);
 });
 

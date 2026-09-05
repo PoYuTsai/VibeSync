@@ -2488,21 +2488,22 @@ export function createPracticeChatHandler(
     // 空／未設／非正數／非數字＝關，而且**關的時候零 DB 讀寫**（四面等價由
     // `agency_flag_off_equivalence_test.ts` 釘住）。
     //
-    // 刻意綁在 `chatModelRoutingOn` 上：保險絲唯一的手段是把這一輪從 Haiku
-    // 扳回 DeepSeek，而唯一的花費來源也是那次 Haiku 呼叫——路由沒開 mixed 時
-    // chat 根本不打 Claude，讀寫這張表只是白花一次 DB round-trip。
-    // 提示與檢討走 `single_shot.ts`（Sonnet 5 → Haiku），沒有 DeepSeek 退路，
-    // 因此**不受保險絲影響**，也（目前）沒有 usage 回呼可以記帳，見
-    // `cost_fuse.ts` 檔頭的「已知天花板」。
-    const costFuseBudgetUsd = chatModelRoutingOn
-      ? parseCostFuseBudget(deps.getEnv(COST_FUSE_ENV))
-      : null;
+    // Codex R2 P1：**不看 `chatModelRoutingOn`**。記帳的來源是整個
+    // practice-chat 的 Anthropic 花費——chat 的 Haiku、提示與檢討的
+    // Sonnet 5 → Haiku（`single_shot.ts` 的 `onUsage`）——而提示與檢討跟
+    // 路由旗標無關，路由關著時它們照樣在燒 Anthropic 的錢。舊版把整支保險絲
+    // 綁在路由上，等於路由一關就整天不記帳。
+    //
+    // 路由關著時唯一失效的是**降級動作**（把 chat 從 Haiku 扳回 DeepSeek）：
+    // 那一輪本來就走 DeepSeek，所以 `costFuseDegraded` 即使為真也不改變任何
+    // 行為，而它的 telemetry key 本來就只在 routing `mixed` 那組裡才印。
+    const costFuseBudgetUsd = parseCostFuseBudget(deps.getEnv(COST_FUSE_ENV));
     const costFuseDay = utcDay(requestNow);
     /**
      * 本請求到目前為止付掉的 Anthropic 花費（USD）。chat 的 Haiku 與
      * hint／debrief 的 Sonnet／Haiku 都加進這一格（Codex R1 P1：需求是
      * 「Anthropic 當日花費」，不是只有 chat）。保險絲關著時永遠是 0，
-     * 而且沒有任何一條路徑會呼叫它。
+     * 因為三個接線點都掛在 `costFuseBudgetUsd !== null` 之下。
      */
     let anthropicSpendUsd = 0;
     /**
