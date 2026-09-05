@@ -5,8 +5,10 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   anthropicCostUsd,
+  COST_FUSE_READ_TIMEOUT_MS,
   COST_FUSE_RPC,
   COST_FUSE_TABLE,
+  COST_FUSE_WRITE_TIMEOUT_MS,
   type CostFuseSupabaseClient,
   parseCostFuseBudget,
   readSpentUsdToday,
@@ -237,4 +239,66 @@ Deno.test("recordAnthropicCost：RPC 回傳陣列或單欄物件（PostgREST 兩
       JSON.stringify(data),
     );
   }
+});
+
+// ── 死線（Codex R2 P1）────────────────────────────────────────────────────
+/** 永不 settle 的 client：只有死線能讓呼叫回來。 */
+function stuckClient(): CostFuseSupabaseClient {
+  const stuck = () => new Promise(() => {});
+  return {
+    from(_table: string) {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        maybeSingle: stuck,
+      };
+      return builder;
+    },
+    // deno-lint-ignore no-explicit-any
+    rpc: stuck as any,
+  };
+}
+
+Deno.test("readSpentUsdToday：撞死線 → null ＋ onTimeout 響一次 ＋ warn 說是逾時", async () => {
+  const client = stuckClient();
+  let timeouts = 0;
+  let result: number | null = 0;
+  const warns = await warnsOf(async () => {
+    result = await readSpentUsdToday(client, "2026-09-05", () => timeouts++);
+  });
+  assertEquals(result, null);
+  assertEquals(timeouts, 1);
+  assertEquals(warns.length, 1);
+  assert(warns[0].includes("cost_fuse_timeout"));
+});
+
+Deno.test("recordAnthropicCost：撞死線 → null ＋ onTimeout 響一次", async () => {
+  const client = stuckClient();
+  let timeouts = 0;
+  let result: unknown = 0;
+  const warns = await warnsOf(async () => {
+    result = await recordAnthropicCost(
+      client,
+      "2026-09-05",
+      1,
+      () => timeouts++,
+    );
+  });
+  assertEquals(result, null);
+  assertEquals(timeouts, 1);
+  assertEquals(warns.length, 1);
+  assert(warns[0].includes("cost_fuse_timeout"));
+});
+
+Deno.test("一般 DB 錯誤不算逾時（onTimeout 不響）", async () => {
+  const { client } = fakeClient({ selectError: "boom" });
+  let timeouts = 0;
+  await warnsOf(() =>
+    readSpentUsdToday(client, "2026-09-05", () => timeouts++)
+  );
+  assertEquals(timeouts, 0);
+});
+
+Deno.test("讀死線比寫緊：讀擋在模型呼叫前面，寫是回應前最後一步", () => {
+  assert(COST_FUSE_READ_TIMEOUT_MS < COST_FUSE_WRITE_TIMEOUT_MS);
 });

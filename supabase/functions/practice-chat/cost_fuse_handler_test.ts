@@ -426,3 +426,41 @@ Deno.test("旗標未設：hint 路徑的 callClaude 參數一個 onUsage key 都
     [],
   );
 });
+
+// ── Codex R2 P1：DB 死線 ──────────────────────────────────────────────────
+Deno.test("讀今日累計永不回應：撞死線後 fail-open，對話照常 200 ＋ telemetry 記 costFuseTimeout", async () => {
+  const { turns } = await runTurns(1, { dailyCostReadNeverCompletes: true });
+  // 保險絲逾時不能讓對話變慢到失敗，也不能改變模型選擇。
+  assertEquals(turns[0].succeeded.chatModel, "haiku");
+  assertEquals(Object.hasOwn(turns[0].succeeded, "costFuseDegraded"), false);
+  assertEquals(turns[0].succeeded.costFuseTimeout, "read");
+  assertEquals(
+    turns[0].lines.filter((l) =>
+      l.includes('"event":"practice_chat_cost_fuse_read_failed"')
+    ).length,
+    1,
+  );
+  assert(
+    turns[0].lines.some((l) => l.includes("cost_fuse_timeout")),
+    "warn 要說清楚是逾時不是一般 DB 錯誤",
+  );
+});
+
+Deno.test("累加永不回應：撞死線後 fail-open，對話照常 200 ＋ telemetry 記 costFuseTimeout", async () => {
+  const { turns } = await runTurns(1, { dailyCostWriteNeverCompletes: true });
+  assertEquals(turns[0].succeeded.chatModel, "haiku");
+  assertEquals(turns[0].succeeded.costFuseTimeout, "write");
+  assertEquals(blownLines(turns[0].lines).length, 0, "寫沒成功就不寫 blown");
+  assertEquals(
+    turns[0].lines.filter((l) =>
+      l.includes('"event":"practice_chat_cost_fuse_write_failed"')
+    ).length,
+    1,
+  );
+});
+
+Deno.test("沒逾時的一般路徑不得出現 costFuseTimeout key", async () => {
+  const { turns } = await runTurns(1, {}, "999");
+  assertEquals(Object.hasOwn(turns[0].succeeded, "costFuseTimeout"), false);
+});
+

@@ -76,6 +76,9 @@ export interface FakeOptions {
   dailyCostReadError?: string;
   /** 累加 RPC 回錯（fail-open 路徑）。 */
   dailyCostWriteError?: string;
+  /** 讀／寫永不 settle（驗 cost_fuse 的死線）。 */
+  dailyCostReadNeverCompletes?: boolean;
+  dailyCostWriteNeverCompletes?: boolean;
   env?: Record<string, string | undefined>;
   randomUUID?: string;
 }
@@ -372,6 +375,9 @@ export function makeFake(options: FakeOptions = {}) {
                 );
               }
               if (table === "practice_chat_daily_cost") {
+                if (options.dailyCostReadNeverCompletes) {
+                  return new Promise(() => {});
+                }
                 return Promise.resolve(
                   options.dailyCostReadError
                     ? {
@@ -606,6 +612,9 @@ export function makeFake(options: FakeOptions = {}) {
           };
         }
         if (fn === "increment_practice_chat_daily_cost") {
+          if (options.dailyCostWriteNeverCompletes) {
+            return { neverResolves: true };
+          }
           if (options.dailyCostWriteError) {
             return { error: options.dailyCostWriteError };
           }

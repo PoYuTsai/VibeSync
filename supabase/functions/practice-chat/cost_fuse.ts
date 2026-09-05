@@ -48,6 +48,45 @@ export const COST_FUSE_ENV = "PRACTICE_COST_FUSE_DAILY_USD";
 export const COST_FUSE_TABLE = "practice_chat_daily_cost";
 export const COST_FUSE_RPC = "increment_practice_chat_daily_cost";
 
+/**
+ * DB 逾時（Codex R2 P1）。保險絲是護欄，不能反過來拖垮它保護的請求：
+ * 讀是每一輪 chat 的前置（擋在模型呼叫前面），寫是回應前的最後一步，
+ * 所以讀給得比寫緊。逾時＝失敗＝fail-open（當成沒燒斷、只 warn）。
+ */
+export const COST_FUSE_READ_TIMEOUT_MS = 1_500;
+export const COST_FUSE_WRITE_TIMEOUT_MS = 2_500;
+
+/**
+ * 給一個 promise 加死線。逾時就 reject（呼叫端一律走既有的 fail-open catch）。
+ * `clearTimeout` 放在 `finally`：不清掉的話 Deno 的測試 timer sanitizer 會紅，
+ * production 也會多留一個沒用的 timer 到期。
+ */
+async function withDeadline<T>(
+  work: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  let handle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        handle = setTimeout(
+          () => reject(new Error("cost_fuse_timeout")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (handle !== undefined) clearTimeout(handle);
+  }
+}
+
+/** supabase 的 select／rpc 共同回傳形狀。 */
+interface CostFuseDbResult {
+  data: unknown;
+  error: { message: string } | null;
+}
+
 /** cost_fuse 只用得到 supabase client 的這兩支（避免跟 handler 循環 import）。 */
 export interface CostFuseSupabaseClient {
   // deno-lint-ignore no-explicit-any
@@ -104,13 +143,19 @@ function finiteNumber(value: unknown): number | null {
 export async function readSpentUsdToday(
   supabase: CostFuseSupabaseClient,
   day: string,
+  /** 逾時（不是一般 DB 錯誤）時響一次，供呼叫端記 telemetry。 */
+  onTimeout?: () => void,
 ): Promise<number | null> {
   try {
-    const { data, error } = await supabase
-      .from(COST_FUSE_TABLE)
-      .select("spent_usd")
-      .eq("day", day)
-      .maybeSingle();
+    // `from()` 是 `any`（PracticeSupabaseClient 的既有形狀），所以泛型要明寫。
+    const { data, error } = await withDeadline<CostFuseDbResult>(
+      supabase
+        .from(COST_FUSE_TABLE)
+        .select("spent_usd")
+        .eq("day", day)
+        .maybeSingle(),
+      COST_FUSE_READ_TIMEOUT_MS,
+    );
     if (error) {
       logWarn("practice_chat_cost_fuse_read_failed", {
         day,
@@ -130,10 +175,9 @@ export async function readSpentUsdToday(
     }
     return spent;
   } catch (e) {
-    logWarn("practice_chat_cost_fuse_read_failed", {
-      day,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    const message = e instanceof Error ? e.message : String(e);
+    if (message === "cost_fuse_timeout") onTimeout?.();
+    logWarn("practice_chat_cost_fuse_read_failed", { day, error: message });
     return null;
   }
 }
@@ -174,13 +218,15 @@ export async function recordAnthropicCost(
   supabase: CostFuseSupabaseClient,
   day: string,
   usd: number,
+  /** 逾時（不是一般 DB 錯誤）時響一次，供呼叫端記 telemetry。 */
+  onTimeout?: () => void,
 ): Promise<{ usd: number; before: number; after: number } | null> {
   if (!(usd > 0)) return null;
   try {
-    const { data, error } = await supabase.rpc(COST_FUSE_RPC, {
-      p_day: day,
-      p_usd: usd,
-    });
+    const { data, error } = await withDeadline(
+      supabase.rpc(COST_FUSE_RPC, { p_day: day, p_usd: usd }),
+      COST_FUSE_WRITE_TIMEOUT_MS,
+    );
     if (error) {
       logWarn("practice_chat_cost_fuse_write_failed", {
         day,
@@ -198,10 +244,9 @@ export async function recordAnthropicCost(
     }
     return { usd, before: after - usd, after };
   } catch (e) {
-    logWarn("practice_chat_cost_fuse_write_failed", {
-      day,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    const message = e instanceof Error ? e.message : String(e);
+    if (message === "cost_fuse_timeout") onTimeout?.();
+    logWarn("practice_chat_cost_fuse_write_failed", { day, error: message });
     return null;
   }
 }

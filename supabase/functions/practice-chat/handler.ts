@@ -2505,6 +2505,13 @@ export function createPracticeChatHandler(
      * 而且沒有任何一條路徑會呼叫它。
      */
     let anthropicSpendUsd = 0;
+    /**
+     * Codex R2 P1：保險絲的 DB 呼叫吃到死線（讀 1.5s／寫 2.5s）。逾時一律
+     * fail-open，但要看得見——不然「保險絲其實每一輪都在逾時、等於沒作用」
+     * 只會表現成一堆 warn，`practice_chat_succeeded` 上完全沒有痕跡。
+     * 沒發生時整個 key 不存在。
+     */
+    let costFuseTimeout: "read" | "write" | undefined;
     const addAnthropicSpend = (usage: ClaudeUsage, model: string) => {
       anthropicSpendUsd += anthropicCostUsd(usage, model);
     };
@@ -2518,7 +2525,14 @@ export function createPracticeChatHandler(
       if (costFuseBudgetUsd === null || anthropicSpendUsd <= 0) return;
       const usd = anthropicSpendUsd;
       anthropicSpendUsd = 0;
-      const recorded = await recordAnthropicCost(supabase, costFuseDay, usd);
+      const recorded = await recordAnthropicCost(
+        supabase,
+        costFuseDay,
+        usd,
+        () => {
+          costFuseTimeout = "write";
+        },
+      );
       if (
         recorded !== null && recorded.before < costFuseBudgetUsd &&
         recorded.after >= costFuseBudgetUsd
@@ -4873,7 +4887,13 @@ export function createPracticeChatHandler(
       // 風險 1）；讀不到（`null`）一律當成沒燒斷，只有 `cost_fuse.ts` 記的
       // 那一行 warn。旗標關著時 `costFuseBudgetUsd` 是 null → 連 select 都不發。
       if (costFuseBudgetUsd !== null) {
-        const spentUsdToday = await readSpentUsdToday(supabase, costFuseDay);
+        const spentUsdToday = await readSpentUsdToday(
+          supabase,
+          costFuseDay,
+          () => {
+            costFuseTimeout = "read";
+          },
+        );
         costFuseDegraded = spentUsdToday !== null &&
           shouldDegrade(spentUsdToday, costFuseBudgetUsd);
       }
@@ -5088,7 +5108,11 @@ export function createPracticeChatHandler(
             // Codex R1 P2：降級之後 DeepSeek 又失敗時，`practice_chat_succeeded`
             // 不會印，`costFuseDegraded` 就從這一輪的觀測消失了——「保險絲燒斷
             // 之後失敗率有沒有變」會被低估。成功事件有的 key 這裡也要有。
+            //
+            // 這個事件印在 chat 的 `finally`（累加）**之前**，所以這裡只看得到
+            // 讀逾時；寫逾時只會出現在 `practice_chat_succeeded`。
             ...(costFuseDegraded ? { costFuseDegraded: true } : {}),
+            ...(costFuseTimeout ? { costFuseTimeout } : {}),
             ...(chatModelUsage ? { chatModelUsage } : {}),
           }
           : {}),
@@ -5407,6 +5431,8 @@ export function createPracticeChatHandler(
           // Phase 5 WP2：保險絲把這一輪強制扳回 DeepSeek 時才有這個 key
           // （保險絲關著／還沒燒斷時整個 key 不存在，routing golden 不動）。
           ...(costFuseDegraded ? { costFuseDegraded: true } : {}),
+          // Codex R2 P1：保險絲的 DB 呼叫逾時（讀／寫）才有這個 key。
+          ...(costFuseTimeout ? { costFuseTimeout } : {}),
           ...(chatModelUsage ? { chatModelUsage } : {}),
         }
         : {}),
