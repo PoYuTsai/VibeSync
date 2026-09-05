@@ -62,9 +62,18 @@ export function assertRange(range: DateRange): DateRange {
 /**
  * 唯讀守門：只放行單一、以 SELECT 開頭、不含任何寫入關鍵字的語句。
  *
+ * **定位（Eric 2026-09-05 裁決）：這是防手誤的護欄，不是安全邊界。**
+ * 這支 CLI 沒有任何使用者 SQL 輸入——三條語句都是本檔寫死的常數，唯一的變數
+ * 是先過 `assertIsoDate` 的日期與先驗過正整數的 limit；token 是 Eric 自己的
+ * Management API token，權限本來就大於這道守門。它擋的是「以後有人在這個檔案
+ * 裡順手加了一條會寫的語句」，不是擋對抗式輸入。真的要防注入攻擊，該做的是
+ * 參數化查詢與最小權限 token，不是關鍵字黑名單——黑名單永遠繞得過。
+ *
  * 關鍵字用 `\b` 邊界比對，所以 `created_at`／`updated_at` 這種欄位名不會被
  * 誤判（`create` 後面接 `d` 仍是字元，邊界不成立）。分號一律擋掉，避免
- * 「SELECT 1; DROP ...」這種夾帶。
+ * 「SELECT 1; DROP ...」這種夾帶。`U&"…"` 與 `E'…'` 這兩種逸出寫法也擋掉：
+ * 它們能把關鍵字拆成黑名單看不出來的形狀（例如
+ * `U&"nextv\0061l"`），雖然照上面的定位沒人會這樣打，但擋掉只要兩行。
  */
 export function assertReadOnlySql(sql: string): string {
   const trimmed = sql.trim();
@@ -74,6 +83,12 @@ export function assertReadOnlySql(sql: string): string {
   }
   if (trimmed.includes(";")) {
     throw new Error("read_only_guard: semicolon is not allowed");
+  }
+  if (/\bU&\s*["']/i.test(trimmed)) {
+    throw new Error("read_only_guard: Unicode 逸出識別字（U&）不允許");
+  }
+  if (/\bE'/i.test(trimmed)) {
+    throw new Error("read_only_guard: 反斜線逸出字串（E'）不允許");
   }
   const match = WRITE_KEYWORDS.exec(trimmed);
   if (match) {

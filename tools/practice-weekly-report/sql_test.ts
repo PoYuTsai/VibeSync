@@ -192,3 +192,21 @@ Deno.test("--from 必須早於 --to；相等或顛倒都報錯（不產零資料
     "invalid_range",
   );
 });
+
+Deno.test("守門擋掉逸出寫法：關鍵字拆形狀繞不過去", () => {
+  for (
+    const sql of [
+      "SELECT pg_catalog.U&\"nextv\\0061l\"('seq')",
+      'SELECT U&"drop" FROM t',
+      "SELECT E'\\x41' FROM t",
+      "SELECT e'\\ndelete' FROM t",
+    ]
+  ) {
+    assertThrows(() => assertReadOnlySql(sql), Error, "read_only_guard", sql);
+  }
+  // 正常的欄位名／別名不受影響。
+  assertEquals(
+    assertReadOnlySql("SELECT value, price FROM t"),
+    "SELECT value, price FROM t",
+  );
+});

@@ -5,11 +5,20 @@
 
 **這支腳本絕不寫 DB。** 唯讀有三層保證：
 
+> **`assertReadOnlySql` 的定位（Eric 2026-09-05 裁決）：防手誤的護欄，不是安全
+> 邊界。** 這支 CLI 沒有任何使用者 SQL 輸入——三條語句都是 `sql.ts` 裡寫死的
+> 常數，唯一的變數是先驗過的日期與 limit；token 是 Eric 自己的 Management API
+> token，權限本來就遠大於這道守門。它擋的是「以後有人在這個檔案裡順手加了一條
+> 會寫的語句」，不是擋對抗式輸入。真要防注入該做的是參數化查詢與最小權限
+> token，關鍵字黑名單永遠繞得過。
+
 1. `sql.ts` 只組 `SELECT`。
-2. 每條語句在組出來時與送出前各過一次 `assertReadOnlySql`——擋掉
-   `insert/update/delete/drop/alter/truncate/create/grant/revoke/...`、擋掉 不是
-   `SELECT` 開頭的語句、擋掉分號（不准多語句夾帶）。日期參數在進字串 前必須通過
-   `^\d{4}-\d{2}-\d{2}$`。
+2. 每條語句在組出來時與送出前各過一次 `assertReadOnlySql`（`fetchDbRows`／
+   `fetchLogRows` 自己在 `fetch` 之前叫，繞不過去）——擋掉 DDL/DML、擋掉
+   `INTO`／序列函式／`set_config`／advisory lock／`pg_sleep`／
+   `pg_terminate_backend`／`lo_*`／`dblink*` 這類「一條 SELECT 也有副作用」的
+   寫法、擋掉 `U&"…"` 與 `E'…'` 逸出（能把關鍵字拆成黑名單看不出的形狀）、
+   擋掉不是 `SELECT` 開頭的語句與分號。日期必須是真實曆日、limit 必須是正整數。
 3. 只呼叫 Management API
    的兩個唯讀端點：`POST /v1/projects/<ref>/database/query` （Postgres）與
    `GET /v1/projects/<ref>/analytics/endpoints/logs.all?sql=…` （Logs
