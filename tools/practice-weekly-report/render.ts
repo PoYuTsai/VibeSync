@@ -179,7 +179,7 @@ function renderLogs(logs: LogStats): string[] {
   lines.push(
     `涵蓋範圍：${logs.earliest ?? "—"} ～ ${
       logs.latest ?? "—"
-    }，端點回了 ${logs.rowsReturned} 列，`,
+    }，端點回了 ${logs.rawRowsReturned} 列（跨日窗去重後 ${logs.rowsReturned} 列），`,
   );
   lines.push(
     `其中 ${logs.turns} 列是 \`practice_chat_succeeded\`（跳過：其他事件 ${logs.skippedOtherEvent} 列、無法解析 ${logs.skippedUnparsable} 列）。`,

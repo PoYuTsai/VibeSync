@@ -288,7 +288,9 @@ export interface LogRow {
 }
 
 export interface LogStats {
-  /** 端點實際回了幾列（撞到 limit 就代表被截斷）。 */
+  /** 端點回的原始總列數（去重前）。 */
+  rawRowsReturned: number;
+  /** 去重後實際拿來統計的列數。 */
   rowsReturned: number;
   /** 重試後仍拿不到的日子（限流），涵蓋範圍段會逐日列出。 */
   missingDays: string[];
@@ -385,6 +387,7 @@ export function aggregateLogs(
   rows: readonly LogRow[],
   missingDays: readonly string[] = [],
   truncatedDays: readonly string[] = [],
+  rawRowsReturned: number = rows.length,
 ): LogStats {
   let turns = 0;
   let skippedOtherEvent = 0;
@@ -463,6 +466,7 @@ export function aggregateLogs(
   }
 
   return {
+    rawRowsReturned,
     rowsReturned: rows.length,
     missingDays: [...missingDays],
     truncatedDays: [...truncatedDays],

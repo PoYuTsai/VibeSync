@@ -192,3 +192,11 @@ Deno.test("被限流的日子原樣帶進統計", () => {
   const logs = aggregateLogs([], ["2026-09-01", "2026-09-02"]);
   assertEquals(logs.missingDays, ["2026-09-01", "2026-09-02"]);
 });
+
+Deno.test("原始列數與去重後列數分開記", () => {
+  const logs = aggregateLogs(ROWS, [], [], 12);
+  assertEquals(logs.rawRowsReturned, 12);
+  assertEquals(logs.rowsReturned, 8);
+  // 沒給原始列數時退回去重後的數字（純函式測試用）。
+  assertEquals(aggregateLogs(ROWS).rawRowsReturned, 8);
+});

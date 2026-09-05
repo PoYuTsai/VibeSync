@@ -225,7 +225,10 @@ export const LOGS_BACKOFF_MS = [1000, 2000, 4000] as const;
 export const LOGS_DAY_GAP_MS = 500;
 
 export interface LogFetchResult {
+  /** 去重後的列。 */
   rows: LogRow[];
+  /** 端點回的原始總列數（去重前），報告會跟去重後並列印。 */
+  rawRowsReturned: number;
   /** 退避用完仍被限流的日子，報告會逐日印「未取得」。 */
   missingDays: string[];
   /**
@@ -267,6 +270,7 @@ export async function fetchLogRows(opts: {
   const rows: LogRow[] = [];
   const missingDays: string[] = [];
   const truncatedDays: string[] = [];
+  let rawRowsReturned = 0;
   // 相鄰日窗的邊界重疊時同一列會被拉兩次（end 是 inclusive 還是 exclusive
   // 沒有實測確認過）。以 (timestamp, event_message) 去重，重複列不會讓分子
   // 分母各自多一次。
@@ -296,6 +300,7 @@ export async function fetchLogRows(opts: {
       if (opts.limit !== undefined && dayRows.length >= opts.limit) {
         truncatedDays.push(window.day);
       }
+      rawRowsReturned += dayRows.length;
       for (const dayRow of dayRows) {
         const key = `${dayRow.timestamp}\u0000${dayRow.event_message}`;
         if (seen.has(key)) continue;
@@ -305,7 +310,7 @@ export async function fetchLogRows(opts: {
       break;
     }
   }
-  return { rows, missingDays, truncatedDays };
+  return { rows, rawRowsReturned, missingDays, truncatedDays };
 }
 
 async function main(): Promise<number> {
@@ -376,7 +381,12 @@ async function main(): Promise<number> {
       sessions,
       aiLogs,
       payers: opts.payers,
-      logs: aggregateLogs(logs.rows, logs.missingDays, logs.truncatedDays),
+      logs: aggregateLogs(
+        logs.rows,
+        logs.missingDays,
+        logs.truncatedDays,
+        logs.rawRowsReturned,
+      ),
     }),
   );
   await Deno.writeTextFile(opts.out, markdown);
