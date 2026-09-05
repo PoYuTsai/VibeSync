@@ -5,7 +5,9 @@
 import {
   assert,
   assertEquals,
+  assertStrictEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import * as shared from "../../supabase/functions/_shared/model_pricing.ts";
 import {
   CACHE_READ_MULTIPLIER,
   CACHE_WRITE_MULTIPLIER,
@@ -14,6 +16,18 @@ import {
   HAIKU_4_5_PRICING,
   SONNET_5_PRICING,
 } from "./pricing.ts";
+
+// Phase 5 WP2：單價本體搬到 `supabase/functions/_shared/model_pricing.ts`
+// （Edge 端的成本保險絲要 import 它），這支只 re-export。identity 比對釘住
+// 「工具側與 Edge 側吃的是同一個物件」——哪天有人在其中一邊重新宣告一份，
+// 這一格立刻紅。
+Deno.test("工具側的單價就是 Edge `_shared` 的同一個物件（不是抄一份）", () => {
+  assertStrictEquals(HAIKU_4_5_PRICING, shared.HAIKU_4_5_PRICING);
+  assertStrictEquals(SONNET_5_PRICING, shared.SONNET_5_PRICING);
+  assertStrictEquals(estimateCostUsd, shared.estimateCostUsd);
+  assertStrictEquals(CACHE_READ_MULTIPLIER, shared.CACHE_READ_MULTIPLIER);
+  assertStrictEquals(CACHE_WRITE_MULTIPLIER, shared.CACHE_WRITE_MULTIPLIER);
+});
 
 Deno.test("Haiku 4.5 四格單價（USD／1M token）逐格釘死", () => {
   assertEquals(HAIKU_4_5_PRICING.inputPerMTok, 1);
