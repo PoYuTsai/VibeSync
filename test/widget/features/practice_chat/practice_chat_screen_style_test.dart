@@ -4715,6 +4715,70 @@ void main() {
     expect(find.text('我先去忙一下'), findsOneWidget);
   });
 
+  // ── Phase 5 WP6：她封鎖你 ──────────────────────────────────────────────
+  Future<void> pumpBlocked(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith(
+            (ref) => _SeededPracticeChatController(
+              // partnerStatus 不進 Hive：只靠訊息也要推得出終局。
+              seed: checkedOutSeed().copyWith(
+                messages: const [
+                  PracticeMessage(role: 'user', text: '東東'),
+                  PracticeMessage(role: 'ai', text: '我先去忙一下'),
+                  PracticeMessage(role: 'user', text: '性冒犯'),
+                  PracticeMessage(role: 'ai', text: '（已封鎖）'),
+                ],
+              ),
+              repository: repo,
+            ),
+          ),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('WP6：封鎖畫成系統字＋輸入列換成終局，導向教練拆解', (tester) async {
+    await pumpBlocked(tester);
+
+    expect(find.byKey(const ValueKey('practice-blocked-line')), findsOneWidget);
+    expect(find.text('她已封鎖你'), findsOneWidget);
+    expect(find.text('（已封鎖）'), findsNothing);
+    // 沒有輸入框。
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('她已封鎖你，這場結束了'), findsOneWidget);
+    final btn = find.ancestor(
+      of: find.text('看教練拆解'),
+      matching: find.byType(BrandPrimaryButton),
+    );
+    expect(btn, findsOneWidget);
+    expect(tester.widget<BrandPrimaryButton>(btn).onPressed, isNotNull);
+    // 封鎖優先於已讀提示。
+    expect(find.text('她先去忙了，這場可以結束練習看拆解'), findsNothing);
+  });
+
+  testWidgets('WP6（反例）：一般輪次沒有封鎖那格', (tester) async {
+    await pumpCheckedOut(tester);
+
+    expect(find.byKey(const ValueKey('practice-blocked-line')), findsNothing);
+    expect(find.text('她已封鎖你，這場結束了'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
   testWidgets('Phase 4.5c（反例）：一般輪次不顯示那一行', (tester) async {
     await pumpCheckedOut(tester);
 

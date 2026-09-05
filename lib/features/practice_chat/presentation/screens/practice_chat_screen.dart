@@ -340,6 +340,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                             for (var i = 0; i < state.messages.length; i++)
                               if (_isReadReceipt(state.messages[i]))
                                 const _ReadReceipt()
+                              else if (_isBlockedLine(state.messages[i]))
+                                const _BlockedLine()
                               else
                                 _Bubble(
                                   message: state.messages[i],
@@ -1433,6 +1435,32 @@ class _ReadReceipt extends StatelessWidget {
   }
 }
 
+/// Phase 5 WP6：她封鎖你之後 server 每一輪都回固定字串（`kPracticeBlockedReplyText`）。
+/// 不畫成她的泡泡——這不是一句話，是這場的終局，改成置中的系統字。
+bool _isBlockedLine(PracticeMessage m) =>
+    !m.isFromMe && m.text.trim() == kPracticeBlockedReplyText;
+
+class _BlockedLine extends StatelessWidget {
+  const _BlockedLine();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: Text(
+          '她已封鎖你',
+          key: const ValueKey('practice-blocked-line'),
+          textAlign: TextAlign.center,
+          style: AppTypography.caption.copyWith(
+            color: AppColors.onBackgroundSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Bubble extends StatefulWidget {
   const _Bubble({
     required this.message,
@@ -1788,6 +1816,27 @@ class _BottomBar extends StatelessWidget {
                 PracticeWaitStage(minSeconds: 25, label: '快好了，正在做最後檢查…'),
               ],
             ),
+          ],
+        ),
+      );
+    }
+
+    // Phase 5 WP6：她封鎖你＝終局。不給輸入框（server 也會擋，這是雙保險），
+    // 只留一條路：看教練拆解。要排在 partnerCheckedOut 提示之前。
+    if (state.partnerBlocked) {
+      return _BarContainer(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '她已封鎖你，這場結束了',
+              key: const ValueKey('practice-partner-blocked'),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            BrandPrimaryButton(label: '看教練拆解', onPressed: onEndPractice),
           ],
         ),
       );
@@ -3426,6 +3475,8 @@ class _SessionReviewScreen extends StatelessWidget {
             for (var i = 0; i < session.messages.length; i++)
               if (_isReadReceipt(session.messages[i]))
                 const _ReadReceipt()
+              else if (_isBlockedLine(session.messages[i]))
+                const _BlockedLine()
               else
                 _Bubble(
                   message: session.messages[i],
