@@ -123,16 +123,14 @@ function withoutDesireTerms(text: string): string {
  * 身材照」這種**沒有上下文的話題詞**——「我的泳裝放在健身房」講三次就被封。
  * 這裡改成自己的、只收**明確性邀約／性暗示**的清單：取
  * `visible_text_guard.ts` 的 `SPICY_VISIBLE_PATTERNS` 扣掉羞辱型（那些留在
- * +2）、扣掉裸名詞（`胸部` 與泳裝同一類假陽性），再補幾個口語形。
+ * +2）、扣掉裸名詞（`胸部` 與泳裝同一類假陽性），再補幾個口語形。需要語境
+ * 才算數的兩個詞（開房／上床）在 `OFFENSE_ADVANCE_PATTERNS`。
  *
  * 刻意不收英文（`sex`／`nude` 這些在 `SPICY_VISIBLE_PATTERNS` 裡是子字串比對，
  * `sexy`／`unisex` 會誤中）。這是階梯專用的窄表；`BOUNDARY_RE` 那條給 planner
  * 用的路徑一個字都沒動。
  */
 const OFFENSE_ADVANCE_TERMS: readonly string[] = [
-  "上床",
-  "開房",
-  "开房",
   "脫衣",
   "脱衣",
   "脫光",
@@ -159,7 +157,21 @@ const OFFENSE_ADVANCE_TERMS: readonly string[] = [
   "去妳房間",
   "直接睡你",
   "直接睡妳",
-  "回家睡",
+];
+
+/**
+ * 需要語境才算數的兩個詞（Codex R2 P1-B）。純 `includes` 會把
+ * 「我去開房門」「今天想早點上床休息」判成性邀約，三輪就把正常玩家封掉。
+ *
+ * 「回家睡」整條拿掉——「累了，我先回家睡」是最普通的生活句，而真的邀約已經
+ * 被「睡我家／來我房間／去你房間／來我家過夜」蓋住。
+ */
+const OFFENSE_ADVANCE_PATTERNS: readonly RegExp[] = [
+  // 沿用 `turn_response_plan.ts` 原 regex 的 `(?!門)`：開房門不是開房。
+  /開房(?!門)/u,
+  /开房(?!门)/u,
+  // 只算性邀約語境；單獨的「上床」（早點上床休息）不算。
+  /(?:跟|和|與|与|想|要|一起)(?:你|妳|我)?上床(?!睡|休息)/u,
 ];
 
 /** 詞表對單一則的判分。羞辱型優先（+2），明確性邀約 +1。 */
@@ -175,7 +187,8 @@ export function offenseTermDelta(
   if (
     OFFENSE_ADVANCE_TERMS.some((term) =>
       normalized.includes(normalizedOffenseText(term))
-    )
+    ) ||
+    OFFENSE_ADVANCE_PATTERNS.some((pattern) => pattern.test(normalized))
   ) {
     return { delta: 1, source: "boundary" };
   }

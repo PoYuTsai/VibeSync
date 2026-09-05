@@ -10231,7 +10231,7 @@ Deno.test("WP6 (b)：第二次越界＝「（已讀）」＋ partnerStatus read_
 
 Deno.test("WP6 (c)：第三次越界＝「（已封鎖）」＋ blocked；之後每一輪零模型呼叫", async () => {
   const first = await offenseRun({
-    latest: "上床啦",
+    latest: "想跟妳上床",
     offense: { offenseStrikes: 2 },
     deepSeekReplies: [],
   });
@@ -10289,7 +10289,7 @@ Deno.test("WP6：不分難度、不分模式——beginner／easy 與 game 一�
     ]
   ) {
     const r = await offenseRun({
-      latest: "上床啦",
+      latest: "想跟妳上床",
       offense: { offenseStrikes: 2 },
       deepSeekReplies: [],
       ...c,
@@ -10371,7 +10371,7 @@ Deno.test("WP6：standard 模式的精簡分類器旗標開著才多問 boundary
 Deno.test("WP6（反例）：旗標未設／off／亂填時階梯整組不存在", async () => {
   for (const flag of [undefined, "off", "亂填"]) {
     const r = await offenseRun({
-      latest: "上床啦",
+      latest: "想跟妳上床",
       offense: { offenseStrikes: 2 },
       env: {
         PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",

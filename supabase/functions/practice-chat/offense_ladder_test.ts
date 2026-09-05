@@ -81,7 +81,7 @@ Deno.test("WP6 階梯：一次冷回、兩次已讀、三次封鎖", () => {
   assertEquals(two.next.strikes, 2);
   assertEquals(two.next.blocked, false);
 
-  const three = turn(two.next, "上床啦");
+  const three = turn(two.next, "想跟妳上床");
   assertEquals(three.stage, "blocked");
   assertEquals(three.next.strikes, 3);
   assertEquals(three.next.blocked, true);
@@ -201,4 +201,26 @@ Deno.test("P1-3：補做那一輪之後不會一直冷下去（累計沒再往�
   // 三輪乾淨 → 衰減歸零，已執行階也一起回到 0。
   assertEquals(s.strikes, 0);
   assertEquals(s.servedStage, 0);
+});
+
+Deno.test("P1-B：正常生活句不算性邀約——開房門／回家睡／早點上床休息串三輪也是 0 分", () => {
+  const innocent = ["我去開房門", "累了，我先回家睡", "今天想早點上床休息"];
+  let s = INITIAL_OFFENSE_STATE;
+  for (const text of innocent) {
+    assertEquals(offenseTermDelta(text), { delta: 0, source: null }, text);
+    const t = turn(s, text);
+    assertEquals(t.stage, "none", text);
+    s = t.next;
+  }
+  assertEquals(s.strikes, 0);
+  assertEquals(s.blocked, false);
+});
+
+Deno.test("P1-B：真的性邀約還是 +1", () => {
+  for (const text of ["想跟妳上床", "我想上床", "去開房", "不然去开房"]) {
+    assertEquals(offenseTermDelta(text), {
+      delta: 1,
+      source: "boundary",
+    }, text);
+  }
 });
