@@ -10,11 +10,13 @@
 //                                        空／未設／非正數＝關
 //   PRACTICE_HINT_PREFETCH_ENABLED       true／其他＝關
 //
-// **PRACTICE_COST_FUSE_DAILY_USD（Phase 5 WP2 成本保險絲）**：當日 chat 路徑的
-// Anthropic 估算花費到達預算時，之後每一輪強制走 DeepSeek（降級，不是報錯），
+// **PRACTICE_COST_FUSE_DAILY_USD（Phase 5 WP2 成本保險絲）**：當日**整支
+// practice-chat**（chat 的 Haiku ＋ 提示／檢討的 Sonnet 5 → Haiku）的 Anthropic
+// 估算花費到達預算時，之後每一輪 chat 強制走 DeepSeek（降級，不是報錯），
 // 並在跨過門檻的那一次寫一筆 `practice_chat_cost_fuse_blown`（一天一筆）。
-// 它只在 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 時有意義（那是 chat 唯一會打
-// Claude 的路徑），提示與檢討不受影響。手動覆蓋＝把值調很大或清空。
+// 記帳與 `PRACTICE_CHAT_MODEL_ROUTING` 無關；路由沒開 mixed 時只是「降級」
+// 這個動作沒有作用（那一輪本來就走 DeepSeek）。提示與檢討**永遠不被降級**
+// （沒有 DeepSeek 退路），只是把錢記進去。手動覆蓋＝把值調很大或清空。
 // 機制、資料表、fail-open 規則與已知天花板見 `cost_fuse.ts` 檔頭。
 // 旗標留空時**零 DB 讀寫**，四面逐位元組等於接線前
 // （`agency_flag_off_equivalence_test.ts`／`cost_fuse_handler_test.ts`）。

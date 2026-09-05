@@ -60,8 +60,8 @@ export const HAIKU_4_5_PRICING: TokenPricing = withCacheTiers(1, 5);
  * 抄自 `supabase/functions/analyze-chat/logger.ts` 的
  * `TOKEN_COSTS["claude-sonnet-5"]`（$0.002／$0.010 每 1K token，未 export）。
  * cache 兩格用同一組官方乘數推出來（$0.20／$2.50 每 M），跟 Haiku 同一條規則。
- * **待 Eric 補**：repo 裡只有 logger.ts 這一處記載，而同一張表的 Haiku 那格
- * 已經證實是過期價（見上），所以這組 $2／$10 也**沒有跟官方牌價對拍過**。
+ * **2026-09-05 已對拍 claude.com/pricing：$2／$10 per MTok**（也是 Phase 5 計畫
+ * §2 D14 成本表用的那一組），跟 logger.ts 抄來的數字一致。
  */
 export const SONNET_5_PRICING: TokenPricing = withCacheTiers(2, 10);
 
