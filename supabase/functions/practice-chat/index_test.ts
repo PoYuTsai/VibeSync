@@ -10195,81 +10195,97 @@ async function offenseRun(opts: {
   return { json, state, agency, lastFacts };
 }
 
-Deno.test("WP6 (a)：第一次一般越界＝她照常回，但 prompt 尾巴多一行冷回指引，沒有 partnerStatus", async () => {
-  const r = await offenseRun({ latest: "要不要打砲" });
-  assertEquals(r.json.reply, "好啊");
-  assertEquals("partnerStatus" in r.json, false);
-  // 第一發是 chat 生成，system 尾巴帶了冷回指引。
-  const system = r.state.deepSeekCalls[0].messages[0].content as string;
-  assert(
-    system.includes("在推性／身體的界線"),
-    "chat system prompt 應該帶冷回指引",
-  );
-  // 鐵則也多了「不要宣稱封鎖」那一條。
-  assert(system.includes("不要宣稱封鎖、刪除、檢舉"));
-  assertEquals(r.agency?.offenseStage, "cold");
-  assertEquals(r.agency?.offenseStrikes, 1);
-  assertEquals(r.agency?.offenseSource, "boundary");
-  assertEquals(r.lastFacts?.offenseStrikes, 1);
-  assertEquals("blocked" in (r.lastFacts ?? {}), false);
-});
-
-Deno.test("WP6 (b)：第二次越界＝「（已讀）」＋ partnerStatus read_only，不打生成模型", async () => {
-  const r = await offenseRun({
-    latest: "那來開房間",
-    offense: { offenseStrikes: 1 },
-    // read_only 那一輪只剩分類器一發。
-    deepSeekReplies: [CLASSIFIER_CAUGHT_MEDIUM],
+Deno.test("WP6 端到端：分類器連判 overstep → 第 2 輪冷回、第 3 輪已讀、第 4 輪封鎖", async () => {
+  // 玩家每一則詞表都沒中（+1 只來自分類器），逐輪分類器每輪都判 overstep。
+  // 第 1 輪：照常回，只把分數記起來。
+  const t1 = await offenseRun({
+    latest: "你穿那樣我受不了",
+    deepSeekReplies: ["好啊", CLASSIFIER_OVERSTEP],
   });
-  assertEquals(r.json.reply, "（已讀）");
-  assertEquals(r.json.partnerStatus, "read_only");
-  assertEquals(r.json.provider, "none");
-  assertEquals(r.json.sessionComplete, false);
-  assertEquals(r.agency?.offenseStage, "read_only");
-  assertEquals(r.lastFacts?.offenseStrikes, 2);
-});
+  assertEquals(t1.json.reply, "好啊");
+  assertEquals("partnerStatus" in t1.json, false);
+  assertEquals(t1.agency?.offenseStage, "none");
+  assertEquals(t1.agency?.offenseStrikes, 1);
+  assertEquals(t1.agency?.offenseSource, "classifier");
+  assertEquals(t1.lastFacts?.offenseStrikes, 1);
 
-Deno.test("WP6 (c)：第三次越界＝「（已封鎖）」＋ blocked；之後每一輪零模型呼叫", async () => {
-  const first = await offenseRun({
-    latest: "想跟妳上床",
-    offense: { offenseStrikes: 2 },
+  // 第 2 輪：補做冷回——照常回，但 system 尾巴多一行 hidden guidance。
+  const t2 = await offenseRun({
+    latest: "那妳穿什麼",
+    offense: t1.lastFacts as Record<string, unknown>,
+    deepSeekReplies: ["好啊", CLASSIFIER_OVERSTEP],
+  });
+  assertEquals(t2.json.reply, "好啊");
+  assertEquals("partnerStatus" in t2.json, false);
+  assertEquals(t2.agency?.offenseStage, "cold");
+  const system = t2.state.deepSeekCalls[0].messages[0].content as string;
+  assert(system.includes("在推性／身體的界線"), "應該注入冷回指引");
+  assert(system.includes("不要宣稱封鎖、刪除、檢舉"));
+  assertEquals(t2.lastFacts?.offenseServedStage, 1);
+
+  // 第 3 輪：補做已讀——不打生成模型，固定回「（已讀）」。
+  const t3 = await offenseRun({
+    latest: "妳都不回我",
+    offense: t2.lastFacts as Record<string, unknown>,
+    deepSeekReplies: [CLASSIFIER_OVERSTEP],
+  });
+  assertEquals(t3.json.reply, "（已讀）");
+  assertEquals(t3.json.partnerStatus, "read_only");
+  assertEquals(t3.json.provider, "none");
+  assertEquals(t3.json.sessionComplete, false);
+  assertEquals(t3.agency?.offenseStage, "read_only");
+  assertEquals(t3.lastFacts?.offenseServedStage, 2);
+
+  // 第 4 輪：封鎖——一支模型都不打。
+  const t4 = await offenseRun({
+    latest: "回我一下",
+    offense: t3.lastFacts as Record<string, unknown>,
     deepSeekReplies: [],
   });
-  assertEquals(first.json.reply, "（已封鎖）");
-  assertEquals(first.json.partnerStatus, "blocked");
-  assertEquals(first.json.provider, "none");
-  // 封鎖輪一支模型都不打（chat 與逐輪分類器都跳過）。
-  assertEquals(first.state.deepSeekCalls.length, 0);
-  assertEquals(first.state.claudeCalls.length, 0);
-  assertEquals(first.agency?.offenseStage, "blocked");
-  assertEquals(first.lastFacts?.blocked, true);
-  assertEquals(first.lastFacts?.offenseStrikes, 3);
+  assertEquals(t4.json.reply, "（已封鎖）");
+  assertEquals(t4.json.partnerStatus, "blocked");
+  assertEquals(t4.json.provider, "none");
+  assertEquals(t4.state.deepSeekCalls.length, 0);
+  assertEquals(t4.state.claudeCalls.length, 0);
+  assertEquals(t4.lastFacts?.blocked, true);
 
   // 之後再送一輪（就算是正常的話）仍然是封鎖，而且不寫狀態。
   const again = await offenseRun({
     latest: "對不起我錯了",
-    offense: { offenseStrikes: 3, blocked: true },
+    offense: t4.lastFacts as Record<string, unknown>,
     deepSeekReplies: [],
   });
   assertEquals(again.json.reply, "（已封鎖）");
   assertEquals(again.json.partnerStatus, "blocked");
   assertEquals(again.state.deepSeekCalls.length, 0);
-  assertEquals(again.state.claudeCalls.length, 0);
   assertEquals(again.lastFacts, null);
 });
 
-Deno.test("WP6 (d)：羞辱詞一則（+2）＋一般越界一則（+1）＝封鎖", async () => {
+Deno.test("WP6 端到端：羞辱型「賤貨」當輪直接已讀，再一次分類器 overstep 之後封鎖", async () => {
+  // 羞辱型 +2 是**當輪即時**的（不必等分類器）。
   const crude = await offenseRun({
-    latest: "你這個婊子",
+    latest: "你這賤貨",
     deepSeekReplies: [CLASSIFIER_CAUGHT_MEDIUM],
   });
   assertEquals(crude.json.reply, "（已讀）");
   assertEquals(crude.json.partnerStatus, "read_only");
+  assertEquals(crude.agency?.offenseSource, "crude");
   assertEquals(crude.lastFacts?.offenseStrikes, 2);
+  assertEquals(crude.lastFacts?.offenseServedStage, 2);
 
-  const blocked = await offenseRun({
-    latest: "約砲嗎",
+  // 分類器再補一分：這一輪還沒超過已執行的第 2 階，所以先照常回。
+  const pending = await offenseRun({
+    latest: "妳幹嘛不理我",
     offense: crude.lastFacts as Record<string, unknown>,
+    deepSeekReplies: ["好啊", CLASSIFIER_OVERSTEP],
+  });
+  assertEquals(pending.agency?.offenseStage, "none");
+  assertEquals(pending.lastFacts?.offenseStrikes, 3);
+
+  // 下一輪補做第 3 階＝封鎖。
+  const blocked = await offenseRun({
+    latest: "回我",
+    offense: pending.lastFacts as Record<string, unknown>,
     deepSeekReplies: [],
   });
   assertEquals(blocked.json.reply, "（已封鎖）");
@@ -10289,8 +10305,9 @@ Deno.test("WP6：不分難度、不分模式——beginner／easy 與 game 一�
     ]
   ) {
     const r = await offenseRun({
-      latest: "想跟妳上床",
-      offense: { offenseStrikes: 2 },
+      // 詞表沒中；累計 3 是前幾輪分類器補記出來的，這一輪補做第 3 階。
+      latest: "妳在忙嗎",
+      offense: { offenseStrikes: 3, offenseServedStage: 2 },
       deepSeekReplies: [],
       ...c,
     });
@@ -10320,10 +10337,7 @@ Deno.test("WP6：正常對話不加分——階梯 none、狀態不寫三個 key
 Deno.test("WP6：分類器補記——詞表沒中但 boundary=overstep 就 +1（下一輪才生效）", async () => {
   const r = await offenseRun({
     latest: "你穿那樣我受不了",
-    deepSeekReplies: [
-      "好啊",
-      `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"overstep","hintAlignment":"none"}`,
-    ],
+    deepSeekReplies: ["好啊", CLASSIFIER_OVERSTEP],
   });
   // 這一輪照常回（階梯只看詞表），但狀態被補記成 1 分。
   assertEquals(r.json.reply, "好啊");
@@ -10339,9 +10353,13 @@ Deno.test("WP6：standard 模式的精簡分類器旗標開著才多問 boundary
     PRACTICE_STANDARD_AGENCY_CLASSIFIER: "true",
   };
   const on = await offenseRun({
-    latest: "要不要打砲",
+    latest: "你穿那樣我受不了",
     practiceMode: "standard",
     env,
+    deepSeekReplies: [
+      "好啊",
+      `{"coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false,"boundary":"overstep"}`,
+    ],
   });
   // standard 只有 chat ＋ 精簡分類器兩發；第二發的 system 帶 boundary 判準。
   const classifierSystem = on.state
@@ -10354,7 +10372,7 @@ Deno.test("WP6：standard 模式的精簡分類器旗標開著才多問 boundary
 
   // 旗標未設：精簡分類器 prompt 不問 boundary。
   const off = await offenseRun({
-    latest: "要不要打砲",
+    latest: "你穿那樣我受不了",
     practiceMode: "standard",
     env: {
       PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
@@ -10371,8 +10389,8 @@ Deno.test("WP6：standard 模式的精簡分類器旗標開著才多問 boundary
 Deno.test("WP6（反例）：旗標未設／off／亂填時階梯整組不存在", async () => {
   for (const flag of [undefined, "off", "亂填"]) {
     const r = await offenseRun({
-      latest: "想跟妳上床",
-      offense: { offenseStrikes: 2 },
+      latest: "妳在忙嗎",
+      offense: { offenseStrikes: 3, offenseServedStage: 2 },
       env: {
         PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
         ...(flag === undefined ? {} : { PRACTICE_SESSION_END_SIGNAL: flag }),
@@ -10460,14 +10478,14 @@ Deno.test("P1-4（契約）：standard 的分類器補記需要 PRACTICE_STANDAR
   assertEquals(off.agency?.offenseStrikes, 0);
   assertEquals(off.agency?.offenseSource, null);
   assertEquals("offenseStrikes" in (off.lastFacts ?? {}), false);
-  // 詞表本身在 standard 照樣生效（降級只影響分類器補記那一條）。
+  // 羞辱型詞表在 standard 照樣即時生效（降級只影響分類器補記那一條）。
   const term = await offenseRun({
-    latest: "要不要打砲",
+    latest: "你這賤貨",
     practiceMode: "standard",
     env: END_SIGNAL_ON,
   });
-  assertEquals(term.agency?.offenseStrikes, 1);
-  assertEquals(term.agency?.offenseSource, "boundary");
+  assertEquals(term.agency?.offenseStrikes, 2);
+  assertEquals(term.agency?.offenseSource, "crude");
 });
 
 Deno.test("P2-C：延後補做的冷回指引不指定是哪一句（他這輪可能正在道歉）", async () => {

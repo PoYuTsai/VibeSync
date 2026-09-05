@@ -700,10 +700,13 @@ function trailingColdRejectTurns(
  * 逐則可回溯的越界文字判準（`boundaryLike` ＋ `userOverEscalated` 的定義）。
  *
  * **這是 planner 的判準，含話題詞**（`BOUNDARY_RE` 的泳裝／內衣／身材照）：
- * planner 只是換一種回法，誤判的代價很小。性冒犯階梯的計分**刻意不共用它**
- * （Codex R2 P1-2）——階梯的代價是封鎖，所以 `offense_ladder.ts` 有自己一份
- * 只收明確性邀約的清單（`OFFENSE_ADVANCE_TERMS`／`OFFENSE_ADVANCE_PATTERNS`）。
- * 兩邊分開是刻意的，不要為了「統一」把其中一份改成引用另一份。
+ * planner 只是換一種回法，誤判的代價很小。
+ *
+ * 性冒犯階梯（`offense_ladder.ts`）**完全不用這份詞表**：2026-09-06 GLM 挑戰閘
+ * 證明子字串比對在中文封不住（「做愛心便當」「脫衣服洗澡」誤中，「去飯店上床」
+ * 漏抓），而階梯誤判的代價是封鎖。階梯的 +1 只來自學習分類器的
+ * `boundary === "overstep"`；詞表層只留沒有正常語境的羞辱型。不要為了「統一」
+ * 把階梯改成引用這裡。
  */
 export function looksBoundaryCrossing(text: string): boolean {
   return BOUNDARY_RE.test(text) || looksOverEscalated(text);

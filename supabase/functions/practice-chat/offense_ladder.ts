@@ -5,11 +5,18 @@
 // `allowsCheckOut` 那道難度閘門。
 //
 // 計分（只看玩家最新一則）：
-//   - 羞辱型（`containsCrudeSexualOffense`：婊子、裸照、輪姦…）        → +2
-//   - 一般越界（`OFFENSE_ADVANCE_TERMS`：打炮／打砲、約砲、開房、上床）    → +1
-//   - 下一輪補記：詞表沒中而學習分類器判 `boundary === "overstep"`     → +1
+//   - 羞辱型（`containsCrudeSexualOffense`：婊子、裸照、輪姦…）→ +2，當輪即時
+//   - 其他一切 → 0；**+1 只來自學習分類器**判 `boundary === "overstep"`，
+//     下一輪補記（`servedStage` 會補做冷回／已讀，不會跳級封鎖）
 //
-// 階梯（看**當輪加完詞表**後的累計）：
+// 為什麼沒有 +1 詞表（2026-09-06 GLM 挑戰閘）：中文沒有詞邊界，子字串比對在
+// 這一層封不住。實測「做愛心便當」「脫衣服洗澡」「裸體素描課」「摸你養的貓」
+// 「我妹來我家過夜」全部 +1，而「上床啦」「去飯店上床」反而 0——誤殺與漏抓
+// 同時發生，加語境 regex 只是把界線往後推一格。羞辱型詞表留著是因為那批詞
+// （婊子、輪姦、賤貨）本來就沒有正常語境；判斷「這句是不是階段不對的性邀約」
+// 需要語意，那是分類器的工作。
+//
+// 階梯（看當輪加完後的累計）：
 //   1 → 冷回（chat prompt 當輪尾巴多一行 hidden guidance）
 //   2 → 這一輪 forced `read_only`（不打模型，回「（已讀）」）
 //   ≥3 → 封鎖（這一輪與之後每一輪都不打任何模型，回「（已封鎖）」）
@@ -17,8 +24,9 @@
 // 分類器補記的**前提**（Codex R1 P1-4）：beginner／game 讀逐輪分類器
 // （`judgeLearningState`），standard 讀 4.5b 的精簡分類器——後者只有
 // `PRACTICE_STANDARD_AGENCY_CLASSIFIER=true` 時才跑。所以 standard 在那支旗標
-// 關著時**階梯只有詞表**，沒有分類器補記（明確降級，不是 bug；production 兩支
-// 都開）。`index_test.ts` 有一條測試釘住這個行為。
+// 關著時**階梯只剩羞辱型詞表**（沒有 +1 那一層，等於只有一步就 +2 的路徑）。
+// 那是明確降級，不是 bug；production 兩支都開。`index_test.ts` 有一條測試
+// 釘住這個行為。
 //
 // 衰減（2026-09-06 黑箱實測依據）：逐輪分類器對正常調情的
 // `boundary === "overstep"` 誤殺率約 11%，累計不歸零時正常玩家一場 20 輪會被
@@ -36,7 +44,7 @@ export const OFFENSE_BLOCK_STRIKES = 3;
 export const OFFENSE_DECAY_CLEAN_TURNS = 3;
 
 export type OffenseStage = "none" | "cold" | "read_only" | "blocked";
-export type OffenseSource = "crude" | "boundary" | "classifier" | null;
+export type OffenseSource = "crude" | "classifier" | null;
 
 /** 持久化在 `ConversationAgencyState` 的四個數字／布林。 */
 export interface OffenseState {
@@ -96,9 +104,10 @@ export interface OffenseTurn {
 /**
  * 「打炮／打砲／約炮／約砲」同時躺在兩張既有詞表裡：`CRUDE_SEXUAL_OFFENSE_TERMS`
  * （Game FSM 的 GREASY／spicy 判定）與 `BOUNDARY_RE`。Eric 2026-09-06 對階梯的
- * 定義是「這幾個字是階段不對的**欲望**，1 分，不是羞辱」，所以判羞辱型之前先
- * 把它們從文字裡拿掉——**只影響本檔的階梯計分**，兩張原表一個字都沒動
- * （Game FSM 照舊把它們當粗俗冒犯）。
+ * 定義是「這幾個字是階段不對的**欲望**，不是羞辱」，所以判羞辱型之前先把它們
+ * 從文字裡拿掉——**只影響本檔的階梯計分**，兩張原表一個字都沒動（Game FSM
+ * 照舊把它們當粗俗冒犯）。拿掉之後它們在詞表層就是 0 分，跟其他性邀約一樣
+ * 交給分類器判（2026-09-06 GLM 挑戰閘之後 +1 詞表整條移除）。
  */
 const DESIRE_NOT_INSULT_TERMS: readonly string[] = [
   "打炮",
@@ -106,6 +115,10 @@ const DESIRE_NOT_INSULT_TERMS: readonly string[] = [
   "約炮",
   "约炮",
   "約砲",
+  // 2026-09-06 GLM 挑戰閘：「做愛心便當」被 `CRUDE_SEXUAL_OFFENSE_TERMS` 的
+  // 「做愛」命中判成羞辱型。它跟打炮同一類——是欲望不是羞辱，交給分類器判。
+  "做愛",
+  "做爱",
 ];
 
 function withoutDesireTerms(text: string): string {
@@ -117,82 +130,21 @@ function withoutDesireTerms(text: string): string {
 }
 
 /**
- * +1 那一層的詞表（Codex R1 P1-2）。
+ * 詞表對單一則的判分：**只有羞辱型**（+2，當輪即時）。
  *
- * 舊版借用 `looksBoundaryCrossing`，而它背後的 `BOUNDARY_RE` 含「泳裝｜內衣｜
- * 身材照」這種**沒有上下文的話題詞**——「我的泳裝放在健身房」講三次就被封。
- * 這裡改成自己的、只收**明確性邀約／性暗示**的清單：取
- * `visible_text_guard.ts` 的 `SPICY_VISIBLE_PATTERNS` 扣掉羞辱型（那些留在
- * +2）、扣掉裸名詞（`胸部` 與泳裝同一類假陽性），再補幾個口語形。需要語境
- * 才算數的兩個詞（開房／上床）在 `OFFENSE_ADVANCE_PATTERNS`。
- *
- * 刻意不收英文（`sex`／`nude` 這些在 `SPICY_VISIBLE_PATTERNS` 裡是子字串比對，
- * `sexy`／`unisex` 會誤中）。這是階梯專用的窄表；`BOUNDARY_RE` 那條給 planner
- * 用的路徑一個字都沒動。
+ * 其他一切回 0——階段不對的性邀約由分類器的 `boundary === "overstep"` 接手
+ * （下一輪補記）。這裡不做「明確性邀約」的字面判斷，理由見檔頭。
  */
-const OFFENSE_ADVANCE_TERMS: readonly string[] = [
-  "脫衣",
-  "脱衣",
-  "脫光",
-  "脱光",
-  "裸體",
-  "裸体",
-  "私密照",
-  "摸你",
-  "摸妳",
-  "性交",
-  "打炮",
-  "打砲",
-  "約炮",
-  "约炮",
-  "約砲",
-  "一夜情",
-  "炮友",
-  "砲友",
-  "來我家過夜",
-  "去我家過夜",
-  "睡我家",
-  "來我房間",
-  "去你房間",
-  "去妳房間",
-  "直接睡你",
-  "直接睡妳",
-];
-
-/**
- * 需要語境才算數的兩個詞（Codex R2 P1-B）。純 `includes` 會把
- * 「我去開房門」「今天想早點上床休息」判成性邀約，三輪就把正常玩家封掉。
- *
- * 「回家睡」整條拿掉——「累了，我先回家睡」是最普通的生活句，而真的邀約已經
- * 被「睡我家／來我房間／去你房間／來我家過夜」蓋住。
- */
-const OFFENSE_ADVANCE_PATTERNS: readonly RegExp[] = [
-  // 沿用 `turn_response_plan.ts` 原 regex 的 `(?!門)`：開房門不是開房。
-  /開房(?!門)/u,
-  /开房(?!门)/u,
-  // 只算性邀約語境；單獨的「上床」（早點上床休息）不算。
-  /(?:跟|和|與|与|想|要|一起)(?:你|妳|我)?上床(?!睡|休息)/u,
-];
-
-/** 詞表對單一則的判分。羞辱型優先（+2），明確性邀約 +1。 */
 export function offenseTermDelta(
   text: string,
 ): { delta: number; source: Exclude<OffenseSource, "classifier"> } {
   // Codex R1 P1-5：**先正規化再抽欲望詞**。舊版對原文 split，「打 炮」抽不掉
   // 卻被 `containsCrudeSexualOffense` 自己的 normalize 命中 → 判成 +2 羞辱。
-  const normalized = normalizedOffenseText(text);
-  if (containsCrudeSexualOffense(withoutDesireTerms(normalized))) {
-    return { delta: 2, source: "crude" };
-  }
-  if (
-    OFFENSE_ADVANCE_TERMS.some((term) =>
-      normalized.includes(normalizedOffenseText(term))
-    ) ||
-    OFFENSE_ADVANCE_PATTERNS.some((pattern) => pattern.test(normalized))
-  ) {
-    return { delta: 1, source: "boundary" };
-  }
-  return { delta: 0, source: null };
+  return containsCrudeSexualOffense(
+      withoutDesireTerms(normalizedOffenseText(text)),
+    )
+    ? { delta: 2, source: "crude" }
+    : { delta: 0, source: null };
 }
 
 /**

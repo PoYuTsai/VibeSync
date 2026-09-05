@@ -16,8 +16,9 @@
 // （Codex R1 P1-4）**：性冒犯階梯（`offense_ladder.ts`）的**分類器補記**在
 // standard 模式吃的是精簡分類器的 `boundary` 欄位，而那支分類器只有
 // `PRACTICE_STANDARD_AGENCY_CLASSIFIER=true` 時才跑。所以 standard 模式下：
-//   兩支都開＝詞表 ＋ 分類器補記（production 現況）；
-//   只開 SESSION_END_SIGNAL＝**階梯只有詞表**（明確、可接受的降級，不是 bug）。
+//   兩支都開＝羞辱型詞表 ＋ 分類器補記（production 現況）；
+//   只開 SESSION_END_SIGNAL＝**階梯只剩羞辱型詞表**（沒有 +1 那一層；明確、
+//   可接受的降級，不是 bug）。
 // beginner／game 走逐輪分類器（`judgeLearningState`），不受這支旗標影響。
 //
 // **PRACTICE_COST_FUSE_DAILY_USD（Phase 5 WP2 成本保險絲）**：當日**整支
