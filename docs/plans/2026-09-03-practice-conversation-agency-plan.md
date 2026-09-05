@@ -1132,3 +1132,166 @@ Codex R1 P1-2 的難度門檻讓 `check_out`／`read_only` **在這兩份逐字�
 | P3-2 | `"none"` 的分析端相容性未證明 | **不改，記進風險並列進 Phase 5 WP4**（見「風險與未做」）。 |
 | P3-3 | exactly-once 沒斷言 commit 內的 AI 文字 | **已查證＋補斷言**。`commit_practice_chat_turn` 的 params **不含任何 AI 文字欄位**（測試直接斷言沒有 reply／text／content 類 key），AI 回覆由 client 自己存；改以「生成後的分類器 messages 裡就是那個字面」證明同一則文字流到下游。 |
 | P3-4 | 13.8% 是合成上界，需記錄並監看 | **已記**：新增「上線後監看與回退門檻」節（分組指標、回退門檻 5%、回退＝把 agency 旗標改 `shadow`，4.5a 沒有專屬旗標）。 |
+
+## Phase 4.5b — 標準模式補 agency 分類器、Haiku system 拆快取（2026-09-05）
+
+**為什麼要做（production 實測 2026-09-05）**：App 預設是**標準模式**，而標準模式
+沒有每輪分類器、沒有持久化 agency 狀態、不進 Haiku 路由。連帶三件事在真機上
+全部不成立：Phase 4.3 的死守邊界（`aiClarifiedLastTurn` 恆 `null` → 強制質疑
+永遠不點火）、欠債不會因她質疑而歸零、4.5a 的階梯走不到。真機看到的結果是輕鬆
+難度下她把玩家連丟的地名一路接成「咖啡店」話題。Eric 決定：標準模式補分類器。
+
+兩把刀各自一個 commit、各自可獨立 revert。
+
+### 刀 A：標準模式 agency 分類器（`cb294760`）
+
+**旗標契約（分面寫法）**：新旗標 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`
+（server-only，與 agency／routing 旗標獨立），`"true"` 才開；未設／`off`／亂填
+一律關（`standardAgencyClassifierEnabled` fail-closed，與 `agencyModeFor` 同款）。
+只在 agency 旗標 `on` ∧ `practiceMode === "standard"` ∧ chat 路徑成立。
+等價 harness（`agency_flag_off_equivalence_test.ts`）把它加成第三個枚舉維度：
+
+- **未設／`off`／亂填** → `messages`／`response`／`rpc`／`telemetry` **四面**
+  逐位元組等於 `7f1d6d6c` golden，**而且**在 agency `true` 的那條臂上也逐位元組
+  等於「agency on ＋ 這一維未設」。agency 未設時這支旗標 `true` 也一樣四面全等
+  （旗標不可能繞過 agency 閘門）。
+- **`true`** → 只有 `chat／standard` 的案例允許 `messages`／`rpc`／`telemetry`
+  不同（白名單比對，名單外必須逐位元組相同）；`response` 一律不變。另有一支
+  測試斷言那三面**真的**都不同（不是只有 telemetry 多一個 key）。
+- **golden 未重印**（`git status` 全程沒有 golden 檔）。
+
+**精簡分類器**：standard 生成成功後多打一次 DeepSeek（模型／`maxTokens`／
+`temperature`／`timeoutMs` 與 `judgeLearningState` 同一組常數），**只**判
+`coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／`accommodatingSelfFact`
+四欄。判準文字抽成 `AGENCY_CLASSIFIER_RULES`，與 `buildTurnClassifierMessages`
+的 agency 片段是**同一個常數**（抽取前後的 `buildTurnClassifierMessages` 輸出
+在 agency on／off 兩種情形下都實測逐位元組相同）。輸入同樣是逐字稿（整段窗口）
+＋人設可信自我來源＋`memorySummary`＋`herRecentMoments`＋她這一輪實際回覆。
+解析走既有的 `parseCoherence`／`parseAiChallengedThisTurn`／`parseClassifierFlag`
+（repair-first，修過的欄位沿用既有的 `practice_chat_learning_classifier_repaired`
+事件）。**不**打溫度分數、**不**呼叫 `update_practice_learning_state`、不動
+`partnerState`。任何錯誤 **fail-open**：訊號 `null` → 結構近似（與 beginner
+分類器失敗時同一個 `AgencyClassifierSignal` 契約），記一筆沒有逐字稿的
+`practice_chat_standard_agency_classifier_failed`。
+
+**同步跑，不進背景**：handler 既有的 `waitUntil` 慣例（`scheduleGenerationTelemetry`）
+只服務「回應之後才寫」的 ai_logs 持久化；分類器欄位必須趕上 `practice_chat_succeeded`
+那一行，所以同步跑，耗時記進 `standardClassifierDurationMs`。
+
+**RPC 原樣帶回的欄位清單**：`upsert_practice_relationship_thread` 的
+`ON CONFLICT DO UPDATE` 對下列四欄是 `= EXCLUDED`（**不是** COALESCE），
+standard 這條新路徑不帶回就等於把 beginner 累積的東西清掉——
+
+| 欄位 | ON CONFLICT | standard 帶回的值 |
+| --- | --- | --- |
+| `practice_mode` | `= EXCLUDED` | 既有 row 的 `practiceMode`（沒有 row＝`standard`） |
+| `relationship_score` | `= EXCLUDED` | 既有值（**本刀新增讀取這一欄**）／`null` |
+| `temperature_score` | `= EXCLUDED` | 既有值／`null` |
+| `familiarity_score` | `= EXCLUDED` | 既有值／`null` |
+| `partner_mood`／`partner_inner_thought` | COALESCE | 既有值（等價於不覆寫） |
+| `invite_stage` | COALESCE | 既有值／`null`（`null` 時連 `recent_facts.inviteStage` 都不覆寫） |
+| `memory_summary` | COALESCE | 既有值／`null` |
+| `profile_id` | COALESCE | request 的 profileId |
+| `recent_facts` | `= EXCLUDED` | 既有整份為底（Phase 2.6 規則）＋`conversationAgency`；`replyStyle` 原樣帶回（standard 不推進 style 狀態） |
+
+測試釘住：既有 beginner row 下，standard 一輪的 RPC params 除了
+`recent_facts.conversationAgency`（與每輪本來就會推進的 `aiTurnCount`）以外
+**逐欄位相同**。沒有既有 row 時建立一列 mode `standard`、分數留空的 thread——
+後續 beginner 的 `resolveLearningSeed` 對 `null` 分數有既有退路（ledger 未建檔
+→ client seed → 難度起始值），該退路本輪未改。`threadState.practiceMode` 全域
+查證**沒有任何 consumer**（`parseRelationshipThreadRow` 產出後沒有人讀），所以
+寫回既有值不改任何行為，只是不讓 row 的欄位被 standard 一輪翻掉。
+
+**狀態回流**：standard 的 `buildChatPromptBundle` 在旗標開時帶 thread 的
+`agencyState`（旗標關＝省略，與既有 `?? null` 逐字相同），下一輪吃得到
+`aiClarifiedLastTurn`／`lowValueStreak`／`checkedOut`。handler 級測試：
+standard ＋旗標 on ＋分類器回 `aiChallengedThisTurn: true` → 下一輪裸詞
+forced `challenge_relevance`／`clarify_ignored_*`；反例（旗標關）維持 bounded。
+
+**standard／challenge 會進階梯**：`allowsCheckOut(difficulty, isGame)` ＝
+**難度 challenge 或 practiceMode game**，這支 predicate **不看 practiceMode 是不是
+standard**。standard 之前走不到階梯的原因是「沒有持久化狀態」（`prev === null`
+→ streak 0／`checkedOut` false），不是 predicate 排除了它。所以 4.5b 之後：
+**standard ＋挑戰難度**會走到 `check_out`／`read_only`（已讀），
+**standard ＋easy／normal** 只會 `cold_return`／`hold_position`／`end_low_value_loop`
+（她冷但會回）。有測試在 standard 的證據上逐難度斷言這件事。
+
+**路由**：`chatModelFor` 多第六個參數，旗標開時把 standard 納入 `mixed` 路由
+（介入輪與越界輪走 Haiku，規則與 beginner 相同）；旗標關時 standard 一律
+deepseek（Phase 4.4 的既有測試一個字都沒改）。黑箱 runner 的
+`runnerChatModelFor` 直接呼叫同一支，全矩陣逐項比對。
+
+**Telemetry**：`practice_chat_succeeded.conversationAgency` 在旗標開時補
+`coherence`／`aiChallengedThisTurn`／`sharedPastClaim`／`accommodatingSelfFact`
+（key 名與 beginner 相同，含 `sharedPastClaimRepaired`／
+`accommodatingSelfFactRepaired`）＋ `standardClassifier: "ok" | "failed"` ＋
+`standardClassifierDurationMs`。旗標關時整組 key 不存在。事件數與事件名不變
+（只多一個 fail-open 的 warn 事件）。
+
+**黑箱 runner**：`--mode=standard --state=1` 不再被 CLI 擋掉（Codex round-2
+P2-d 的原始理由「standard 不持久化跨回合狀態」在本刀之後不成立），並且真的用
+`classifierApiKey` 打這支精簡分類器（不是硬編碼 `null`——那是踩過的坑）。
+本輪**沒有真的跑付費黑箱**，只證明路徑存在（假 fetch 測試）。
+
+### 刀 B：Haiku 的 system 拆成可快取的穩定前綴（`270972de`）
+
+production 21 輪 Haiku **全部是 cache write、cache read 0**：`callClaude` 把整段
+system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當輪 plan／
+溫度／記憶，逐位元組不可能命中。
+
+- `buildChatPromptBundle` 多回一格 `systemStable`＝總則（`chatSystemPromptFor`）
+  ＋人設（`buildProfilePrompt`）＋說話習慣（`renderReplyStyleGuidance`）＋認識
+  管道（`acquaintanceOriginPrompt`；seed 綁 threadId＋profile，跨輪不變）。
+  之後每一段都逐輪變（時間錨點、場景、記憶摘要、朋友圈、`partnerState`、Game
+  快照、張力／溫度／邀約、本輪 plan），留在當輪尾巴。
+- `callClaude` 新增選配的 `systemCachePrefix`：只有在它確實是 `system` 的字首、
+  而且拆完兩段都非空時，才送 `system: [{穩定, cache_control: ephemeral}, {當輪}]`；
+  不傳／不吻合（不是字首、整段相等、比 system 長、空字串）一律**逐位元組沿用
+  單一 block 的舊行為**。hint／debrief 都不傳。
+- **DeepSeek 路徑吃的仍然是 `messages`，一個位元都沒動**——`prompt_test` 在
+  3 模式 × 2 style × 2 agency 的矩陣上斷言 `systemStable` 是
+  `messages[0].content` 的逐位元組字首、且尾巴非空。
+- 黑箱 runner 的 Haiku 臂從 `ChatCaller` 的第二個參數拿同一格；既有的
+  「handler 與 runner 送出的 Claude request body 逐位元組相同」測試同步比 system
+  的兩個 block。
+
+### Gate（實測數字）
+
+- practice-chat 全套：**1,931 passed / 0 failed / 1 ignored**（base `9e64a41c`
+  1,913／0／1；＋18。ignored 是既有的 `moments_image_gate_test.ts` 素材缺失）。
+- 等價 harness：**11 passed / 1 ignored**（base 9／1；＋2），**off golden 未重印**。
+- `tools/`：**114 passed / 0 failed**（base 111；＋3）。
+- `deno fmt --check supabase/functions/practice-chat tools`：**64 個未格式化檔，
+  與 base 完全相同**（全部是未觸碰的既有檔）。
+- `deno lint supabase/functions/practice-chat tools`：**9 個問題，與 base 完全
+  相同**（全部在未觸碰的檔案）。
+- `deno check supabase/functions/practice-chat/index.ts tools/practice-agency-eval/run_agency.ts`：0 error。
+- `flutter-ci.yml` 的 Edge contract tests 名單加入
+  `standard_agency_classifier_test.ts`（不然這道 gate 在 PR CI 是死的）。
+
+### 已知限制與風險
+
+- **零黑箱、零真機**：本輪一個付費模型呼叫都沒打。standard 開分類器之後的介入
+  率、品質、`blind_follow`／`false_challenge` 變化**完全沒有量過**——Phase 4.3
+  的三臂矩陣量的是 `beginner ＋ --state=1`。開旗標前的最小驗證是
+  `--mode=standard --state=1` 跑一次小黑箱。
+- **成本**：standard 每一輪多一次 DeepSeek 分類器呼叫（比 beginner 的逐輪分類器
+  短，只問四欄），加上路由開著時介入輪的 Haiku。standard 是 App 預設模式，所以
+  這是**全體使用者**的每輪成本，不是 beginner 那一小群。開旗標第一天就要看
+  DeepSeek 與 Anthropic 兩邊的總帳。
+- **延遲**：分類器同步跑（要趕上 telemetry），所以 standard 每一輪多一次
+  DeepSeek 往返。`standardClassifierDurationMs` 是觀測點。
+- **cache 門檻沒量過**：Haiku 4.5 的最小可快取長度是 2048 tokens，穩定前綴實測
+  **2,799–3,608 code units**（`practice_girl_001`，四種旗標組合），測試用字元數
+  粗估、**沒有**用真的 tokenizer 量過。開旗標後看
+  `chatModelUsage.cacheReadInputTokens` 是否真的非零；若仍恆為 0，下一步是把
+  記憶摘要／朋友圈也搬進前綴（那兩段一場之內多半不變），或者整個拆法退掉。
+- **standard 現在會寫 relationship thread**：以前 standard 完全不寫。同一個
+  visible thread 上先玩 standard 再玩 beginner 的使用者，thread row 會先被
+  standard 建成分數 `null` 的一列；`resolveLearningSeed` 的既有退路涵蓋這件事，
+  但這條路徑**沒有真機驗過**。
+- **未做**：不改 beginner／game 行為、不改 DeepSeek prompt 內容、不加 migration、
+  不動 hint、不重印 golden、未 push。
+- **回退**：把 `PRACTICE_STANDARD_AGENCY_CLASSIFIER` 拿掉即回到逐位元組舊行為
+  （刀 A）；刀 B 沒有旗標，回退＝revert `270972de`（它自己不改 DeepSeek 路徑，
+  只影響 Claude 的 request body 形狀）。
