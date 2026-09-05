@@ -142,7 +142,7 @@ Deno.test("成本：Sonnet 提示／檢討單次估價對得回 D14 成本表", 
   assertAlmostEquals(debrief.costUsd!, 0.0154, 0.0001);
 });
 
-Deno.test("成本：重試算進呼叫數，DeepSeek 列無單價不估", () => {
+Deno.test("成本：重試算進呼叫數，DeepSeek 走每次觀測單價", () => {
   const stats = aggregate({
     range: { from: "2026-08-29", to: "2026-09-05" },
     sessions: SESSIONS,
@@ -157,10 +157,14 @@ Deno.test("成本：重試算進呼叫數，DeepSeek 列無單價不估", () => 
   const deepseek = stats.generation.find(
     (row) => row.model === "deepseek-v4-flash",
   )!;
-  assertEquals(deepseek.costUsd, null);
-  assertEquals(stats.unpricedCalls, 3);
-  // 8 場、Sonnet 提示 10 次＋檢討 2 次＋Haiku 提示 1 次。
-  assertAlmostEquals(stats.totalCostUsd, 0.0742 + 0.0308 + 0.00371, 0.0005);
+  assertAlmostEquals(deepseek.costUsd!, 3 * 0.0000294, 1e-12);
+  assertEquals(stats.unpricedCalls, 0);
+  // 8 場、Sonnet 提示 10 次＋檢討 2 次＋Haiku 提示 1 次＋DeepSeek 3 次。
+  assertAlmostEquals(
+    stats.totalCostUsd,
+    0.0742 + 0.0308 + 0.00371 + 3 * 0.0000294,
+    0.0005,
+  );
   assertAlmostEquals(stats.costPerSessionUsd!, stats.totalCostUsd / 8, 1e-9);
 });
 
@@ -218,7 +222,7 @@ Deno.test("損益：有付費人數時算月營收與成本佔比", () => {
   );
 });
 
-Deno.test("計畫要求但 DB 沒有的欄位逐條列出來", () => {
+Deno.test("計畫要求但 DB 沒有、只能靠 function logs 的欄位逐條列出來", () => {
   const names = MISSING_FIELDS.map((field) => field.field);
   for (
     const expected of [

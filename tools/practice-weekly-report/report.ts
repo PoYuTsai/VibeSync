@@ -10,15 +10,26 @@
 //     [--out=docs/reports/<to>-practice-weekly.md] \
 //     [--payers-starter=N --payers-essential=N] [--dry-run]
 
-import { aggregate, type AiLogRow, type SessionRow } from "./aggregate.ts";
+import {
+  aggregate,
+  aggregateLogs,
+  type AiLogRow,
+  type LogRow,
+  type SessionRow,
+} from "./aggregate.ts";
 import { renderReport } from "./render.ts";
 import {
   assertReadOnlySql,
   buildAiLogsSql,
+  buildLogsSql,
   buildSessionsSql,
   type DateRange,
   defaultRange,
+  logsEndpoint,
 } from "./sql.ts";
+
+/** Logs Explorer 單次查詢的列數上限。 */
+export const DEFAULT_LOGS_LIMIT = 10000;
 
 export interface CliOptions {
   projectRef: string | undefined;
@@ -26,6 +37,8 @@ export interface CliOptions {
   out: string;
   dryRun: boolean;
   payers?: { starter: number; essential: number };
+  /** function logs 一次最多抓幾列（撞到就代表被截斷，報告會印出來）。 */
+  logsLimit: number;
 }
 
 function flag(argv: string[], name: string): string | undefined {
@@ -59,6 +72,7 @@ export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
     out: flag(argv, "out") ??
       `docs/reports/${range.to}-practice-weekly.md`,
     dryRun: argv.includes("--dry-run"),
+    logsLimit: count(argv, "logs-limit") ?? DEFAULT_LOGS_LIMIT,
     payers: starter === undefined && essential === undefined
       ? undefined
       : { starter: starter ?? 0, essential: essential ?? 0 },
@@ -109,10 +123,35 @@ async function runQuery<T>(
   return await response.json() as T[];
 }
 
+/**
+ * Logs Explorer 是 GET＋query string（跟 `/database/query` 不同端點），回傳
+ * `{ result: [...] }`。查不到列不是錯誤——保留期把時間窗吃掉時就是 0 筆，
+ * 報告會用涵蓋範圍把這件事印出來。
+ */
+async function runLogsQuery(
+  projectRef: string,
+  token: string,
+  sql: string,
+): Promise<LogRow[]> {
+  assertReadOnlySql(sql);
+  const response = await fetch(logsEndpoint(projectRef, sql), {
+    method: "GET",
+    headers: { "Authorization": `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Logs API ${response.status}: ${await response.text()}`,
+    );
+  }
+  const body = await response.json() as { result?: LogRow[] } | LogRow[];
+  return Array.isArray(body) ? body : body.result ?? [];
+}
+
 async function main(): Promise<number> {
   const opts = parseArgs(Deno.args);
   const sessionsSql = buildSessionsSql(opts.range);
   const aiLogsSql = buildAiLogsSql(opts.range);
+  const logsSql = buildLogsSql(opts.range, opts.logsLimit);
 
   if (opts.dryRun) {
     console.log(`-- sessions (${opts.range.from} ~ ${opts.range.to})`);
@@ -120,6 +159,9 @@ async function main(): Promise<number> {
     console.log("");
     console.log(`-- ai_logs (${opts.range.from} ~ ${opts.range.to})`);
     console.log(aiLogsSql);
+    console.log("");
+    console.log(`-- function logs (${opts.range.from} ~ ${opts.range.to})`);
+    console.log(logsSql);
     return 0;
   }
 
@@ -134,6 +176,12 @@ async function main(): Promise<number> {
     sessionsSql,
   );
   const aiLogs = await runQuery<AiLogRow>(opts.projectRef, token, aiLogsSql);
+  const logRows = await runLogsQuery(opts.projectRef, token, logsSql);
+  if (logRows.length >= opts.logsLimit) {
+    console.warn(
+      `logs 回了 ${logRows.length} 列（撞到 --logs-limit），聊天那段可能被截斷`,
+    );
+  }
 
   const markdown = renderReport(
     aggregate({
@@ -141,6 +189,7 @@ async function main(): Promise<number> {
       sessions,
       aiLogs,
       payers: opts.payers,
+      logs: aggregateLogs(logRows),
     }),
   );
   await Deno.writeTextFile(opts.out, markdown);

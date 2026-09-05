@@ -111,3 +111,40 @@ GROUP BY 1, 2, 3, 4, 5
 ORDER BY 1, 2, 3, 4`,
   );
 }
+
+/**
+ * Edge Function logs：那七個「聊天回合」欄位只在
+ * `logInfo("practice_chat_succeeded", …)` 的 console 輸出裡，Supabase 把它存進
+ * function logs，只能從 Logs Explorer 查（`analytics/endpoints/logs.all`，
+ * BigQuery 方言）。
+ *
+ * 只過濾 `event_message`，不過濾 function 名：`practice_chat_succeeded` 這個
+ * 事件名整個 repo 只有 practice-chat 會印，而 `function_logs.metadata` 裡的
+ * function 識別是巢狀陣列、要 `unnest` 才拿得到，形狀比事件名脆弱。
+ *
+ * **保留期**：Supabase function logs 通常只留 7 天，時間窗超出保留期會回 0 筆
+ * 而不是報錯。所以報告一定要印實際涵蓋的最早／最晚 timestamp 與筆數。
+ */
+export function buildLogsSql(range: DateRange, limit: number): string {
+  const from = assertIsoDate(range.from);
+  const to = assertIsoDate(range.to);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`invalid_limit: ${limit}`);
+  }
+  return assertReadOnlySql(
+    `SELECT t.timestamp AS timestamp, t.event_message AS event_message
+FROM function_logs AS t
+WHERE t.timestamp >= '${from} 00:00:00+00'
+  AND t.timestamp < '${to} 00:00:00+00'
+  AND t.event_message LIKE '%practice_chat_succeeded%'
+ORDER BY t.timestamp
+limit ${limit}`,
+  );
+}
+
+/** Logs Explorer 是 GET＋query string，SQL 要 urlencode。 */
+export function logsEndpoint(projectRef: string, sql: string): string {
+  return `https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/logs.all?sql=${
+    encodeURIComponent(sql)
+  }`;
+}

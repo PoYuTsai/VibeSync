@@ -2,7 +2,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { aggregate } from "./aggregate.ts";
+import { aggregate, aggregateLogs } from "./aggregate.ts";
 import { renderReport } from "./render.ts";
 
 const RANGE = { from: "2026-08-29", to: "2026-09-05" };
@@ -60,18 +60,50 @@ Deno.test("報告含時間窗、場次、直方圖與生成成本表", () => {
   assertStringIncludes(md, "$0.0308");
 });
 
-Deno.test("DeepSeek 無單價的列印「未估」而不是 0", () => {
+Deno.test("DeepSeek 列也有金額，不再印「未估」", () => {
   const md = renderReport(STATS);
   assertStringIncludes(md, "| deepseek-v4-flash |");
-  assertStringIncludes(md, "| 未估 |");
-  assertEquals(md.includes("| $0.0000 |"), false);
+  assertEquals(md.includes("未估"), false);
 });
 
-Deno.test("缺欄位逐條印出且不讓報告失敗", () => {
+Deno.test("沒有 logs 來源時，缺欄位逐條印出且不讓報告失敗", () => {
   const md = renderReport(STATS);
   assertStringIncludes(md, "## 欄位不存在");
   assertStringIncludes(md, "agency 介入率");
   assertStringIncludes(md, "practice_chat_succeeded");
+});
+
+Deno.test("有 logs 來源時印聊天回合段落與涵蓋範圍，不再印欄位不存在", () => {
+  const md = renderReport(aggregate({
+    range: RANGE,
+    sessions: [],
+    aiLogs: [],
+    logs: aggregateLogs([
+      {
+        timestamp: "2026-09-01T00:00:00Z",
+        event_message: JSON.stringify({
+          level: "info",
+          event: "practice_chat_succeeded",
+          chatModel: "haiku",
+          chatModelCalls: { haiku: 1, deepseek: 0 },
+          chatModelUsage: {
+            inputTokens: 900,
+            cacheReadInputTokens: 8100,
+            cacheCreationInputTokens: 0,
+            outputTokens: 200,
+          },
+          conversationAgency: { applied: true, readOnlyReply: true },
+        }),
+      },
+    ]),
+  }));
+  assertStringIncludes(md, "## 聊天回合（Edge Function logs）");
+  assertStringIncludes(md, "涵蓋範圍");
+  assertStringIncludes(md, "2026-09-01T00:00:00Z");
+  assertStringIncludes(md, "agency 介入率");
+  assertStringIncludes(md, "readOnlyReply");
+  assertStringIncludes(md, "保留期");
+  assertEquals(md.includes("## 欄位不存在"), false);
 });
 
 Deno.test("沒給付費人數時損益段印未提供", () => {

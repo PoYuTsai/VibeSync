@@ -106,3 +106,16 @@ export function estimateCostUsd(
  * 換情境（更短的逐字稿、冷快取）會偏。
  */
 export const DEEPSEEK_CLASSIFIER_USD_PER_CALL = 0.0002027;
+
+/**
+ * DeepSeek 聊天生成的**觀測單價**（USD／次呼叫），與上面分類器那格同一個
+ * 口徑：不是 token 牌價，是餘額差反推的每次呼叫金額。
+ *
+ * 來源：README Phase 4.3「模型 A/B」那輪的乾淨量測——該輪還沒有分類器呼叫
+ * 混進同一筆餘額差，是唯一能單獨拆出聊天單價的樣本（$0.02／680 次）。
+ * 4.5c 的成本外推（mixed 每場 $0.0436～$0.0648）也是拿這個數字加權出來的。
+ *
+ * 精度限制：DeepSeek 餘額只有兩位小數，這是小數點後第七位的推算值，量級
+ * 可信、尾數不可信。換情境（更短逐字稿、冷快取）會偏。
+ */
+export const DEEPSEEK_CHAT_USD_PER_CALL = 0.0000294;

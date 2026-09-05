@@ -1,6 +1,11 @@
 // 統計物件 → markdown。純函式，不打網路、不讀檔。
 
-import { MISSING_FIELDS, PLAN_MONTHLY_TWD, type Stats } from "./aggregate.ts";
+import {
+  type LogStats,
+  MISSING_FIELDS,
+  PLAN_MONTHLY_TWD,
+  type Stats,
+} from "./aggregate.ts";
 
 const usd = (value: number) => `$${value.toFixed(4)}`;
 const twd = (value: number) =>
@@ -81,8 +86,14 @@ export function renderReport(stats: Stats): string {
   lines.push(
     `fallback 呼叫比率 ${
       pct(ratio(stats.generationFallbackCalls, stats.generationTotalCalls))
-    }；無單價未估的呼叫 ${stats.unpricedCalls} 次（DeepSeek 生成沒有可信的 token 牌價常數）。`,
+    }。`,
   );
+  if (stats.unpricedCalls > 0) {
+    lines.push(
+      "其中 " + stats.unpricedCalls +
+        " 次呼叫的 model 沒有登記單價（`pricing.ts` 要補），金額欄印「未估」。",
+    );
+  }
   lines.push(
     `每場提示＋檢討成本：${
       stats.costPerSessionUsd === null
@@ -129,6 +140,11 @@ export function renderReport(stats: Stats): string {
   }
   lines.push("");
 
+  if (stats.logs) {
+    lines.push(...renderLogs(stats.logs));
+    return lines.join("\n");
+  }
+
   lines.push("## 欄位不存在");
   lines.push("");
   lines.push(
@@ -144,4 +160,90 @@ export function renderReport(stats: Stats): string {
   lines.push("");
 
   return lines.join("\n");
+}
+
+/**
+ * 聊天回合那七個欄位只在 `practice_chat_succeeded` 這個 console 事件裡，
+ * 來源是 Edge Function logs。Supabase 的 function logs 保留期通常只有 7 天，
+ * 超出保留期會回 0 筆而不是報錯，所以涵蓋範圍是這一段最重要的一行。
+ */
+function renderLogs(logs: LogStats): string[] {
+  const lines: string[] = [];
+  lines.push("## 聊天回合（Edge Function logs）");
+  lines.push("");
+  lines.push(
+    `涵蓋範圍：${logs.earliest ?? "—"} ～ ${
+      logs.latest ?? "—"
+    }，端點回了 ${logs.rowsReturned} 列，`,
+  );
+  lines.push(
+    `其中 ${logs.turns} 列是 \`practice_chat_succeeded\`（跳過：其他事件 ${logs.skippedOtherEvent} 列、無法解析 ${logs.skippedUnparsable} 列）。`,
+  );
+  lines.push("");
+  lines.push(
+    "**保留期**：Supabase function logs 通常只留 7 天，時間窗超出保留期會回 0 筆",
+  );
+  lines.push(
+    "而不會報錯。上面的涵蓋範圍如果比 `--from`／`--to` 窄，就是被保留期切掉了——",
+  );
+  lines.push("週報要每 7 天內跑一次。");
+  lines.push("");
+  lines.push("| 指標 | 分子／分母 | 比率 |");
+  lines.push("| --- | ---: | ---: |");
+  lines.push(
+    `| agency 介入率 | ${logs.agencyApplied}／${logs.agencyTurns} | ${
+      pct(logs.agencyAppliedRate)
+    } |`,
+  );
+  lines.push(
+    `| \`chatModelFallback\` | ${logs.chatModelFallbackTurns}／${logs.chatModelTurns} | ${
+      pct(logs.chatModelFallbackRate)
+    } |`,
+  );
+  lines.push(
+    `| \`checkOutStructuralFail\` | ${logs.checkOutStructuralFail}／${logs.agencyTurns} | ${
+      pct(logs.checkOutStructuralFailRate)
+    } |`,
+  );
+  lines.push(
+    `| \`checkOutRewriteInjected\` × fail | ${logs.checkOutRewriteAndFail}／${logs.checkOutRewriteInjected} | ${
+      pct(logs.checkOutRewriteFailRate)
+    } |`,
+  );
+  lines.push(
+    `| \`readOnlyReply\` | ${logs.readOnlyReply}／${logs.agencyTurns} | ${
+      pct(logs.readOnlyReplyRate)
+    } |`,
+  );
+  lines.push("");
+  lines.push(
+    "分母刻意不是全部輪數：旗標關著時 `conversationAgency`／`chatModel` 整組 key",
+  );
+  lines.push("不存在，所以分母是「這一輪真的帶了那個 key」的輪數。");
+  lines.push("");
+  lines.push("### `chatModel` 分佈");
+  lines.push("");
+  lines.push("| chatModel | 輪數（最終採用） | 呼叫次數（含守門重試） |");
+  lines.push("| --- | ---: | ---: |");
+  for (const [model, turns] of Object.entries(logs.chatModelDistribution)) {
+    const calls = model === "haiku"
+      ? String(logs.chatModelCalls.haiku)
+      : model === "deepseek"
+      ? String(logs.chatModelCalls.deepseek)
+      : "—";
+    lines.push(`| ${model} | ${turns} | ${calls} |`);
+  }
+  lines.push("");
+  lines.push("### 聊天成本");
+  lines.push("");
+  lines.push(
+    `Haiku usage 累加：input ${logs.chatModelUsage.inputTokens}、cache read ${logs.chatModelUsage.cacheReadInputTokens}、cache write ${logs.chatModelUsage.cacheCreationInputTokens}、output ${logs.chatModelUsage.outputTokens} tokens。`,
+  );
+  lines.push(
+    `DeepSeek ${logs.chatModelCalls.deepseek} 次 × 每次觀測單價。合計 **${
+      usd(logs.chatCostUsd)
+    }**（本段是真 usage，不是側寫估算）。`,
+  );
+  lines.push("");
+  return lines;
 }

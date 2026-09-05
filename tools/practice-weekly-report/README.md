@@ -10,7 +10,10 @@
    `insert/update/delete/drop/alter/truncate/create/grant/revoke/...`、擋掉 不是
    `SELECT` 開頭的語句、擋掉分號（不准多語句夾帶）。日期參數在進字串 前必須通過
    `^\d{4}-\d{2}-\d{2}$`。
-3. 只呼叫 Management API 的 `POST /v1/projects/<ref>/database/query`。
+3. 只呼叫 Management API
+   的兩個唯讀端點：`POST /v1/projects/<ref>/database/query` （Postgres）與
+   `GET /v1/projects/<ref>/analytics/endpoints/logs.all?sql=…` （Logs
+   Explorer）。兩條路徑的 SQL 都過同一道 `assertReadOnlySql`。
 
 ## 怎麼跑
 
@@ -37,15 +40,16 @@ deno lint tools/practice-weekly-report/
 
 ### 參數
 
-| 參數                  | 預設                                   | 說明                                        |
-| --------------------- | -------------------------------------- | ------------------------------------------- |
-| `--project-ref=`      | `SUPABASE_PROJECT_REF` env             | Supabase 專案 ref。腳本裡沒有寫死任何 ref。 |
-| `--from=`             | `--to` 往前 7 天                       | ISO 日期，**含**，以 UTC 00:00 為界。       |
-| `--to=`               | 今天（UTC）                            | ISO 日期，**不含**。                        |
-| `--out=`              | `docs/reports/<to>-practice-weekly.md` | 輸出路徑。                                  |
-| `--payers-starter=`   | 無                                     | 手填 Starter 付費人數（見「損益」）。       |
-| `--payers-essential=` | 無                                     | 手填 Essential 付費人數。                   |
-| `--dry-run`           | 關                                     | 只印 SQL，不打網路、不落檔。                |
+| 參數                  | 預設                                   | 說明                                           |
+| --------------------- | -------------------------------------- | ---------------------------------------------- |
+| `--project-ref=`      | `SUPABASE_PROJECT_REF` env             | Supabase 專案 ref。腳本裡沒有寫死任何 ref。    |
+| `--from=`             | `--to` 往前 7 天                       | ISO 日期，**含**，以 UTC 00:00 為界。          |
+| `--to=`               | 今天（UTC）                            | ISO 日期，**不含**。                           |
+| `--out=`              | `docs/reports/<to>-practice-weekly.md` | 輸出路徑。                                     |
+| `--payers-starter=`   | 無                                     | 手填 Starter 付費人數（見「損益」）。          |
+| `--payers-essential=` | 無                                     | 手填 Essential 付費人數。                      |
+| `--logs-limit=`       | `10000`                                | function logs 單次查詢列數上限；撞到會印警告。 |
+| `--dry-run`           | 關                                     | 只印三條 SQL，不打網路、不落檔。               |
 
 ### Token 從哪來
 
@@ -55,7 +59,7 @@ deno lint tools/practice-weekly-report/
 
 ## 欄位定義與 SQL 來源
 
-兩條查詢（`--dry-run` 可以完整看到）：
+三條查詢（`--dry-run` 可以完整看到）：
 
 - **sessions**：`public.practice_chat_sessions`，`created_at` 落在時間窗內， 按
   `practice_mode` × `ai_count` 分組，取 `count(*)`、`sum(hint_count)`、
@@ -63,6 +67,9 @@ deno lint tools/practice-weekly-report/
 - **ai_logs**：`public.ai_logs`，`request_type LIKE 'practice\_%'`，按
   `request_body->>'mode'`、`request_body->>'practiceMode'`、`model`、
   `status`、`fallback_used` 分組，取 `count(*)` 與 `sum(retry_count)`。
+- **function logs**（Logs Explorer，BigQuery 方言）：`function_logs` 的
+  `timestamp`、`event_message`，時間窗內且 `event_message` 含
+  `practice_chat_succeeded`，`order by timestamp` 加 `limit`。
 
 | 報告欄位           | 定義                                                          | 來源                              |
 | ------------------ | ------------------------------------------------------------- | --------------------------------- |
@@ -109,24 +116,43 @@ RevenueCat 的付費人數不在 Supabase，第一版由 Eric 手填
 - 外推月成本 ＝ 本週成本 × 52 ÷ 12（營收是月費、成本是週觀測，要同口徑）。
 - 成本佔營收 ＝ 外推月成本 ÷ 月營收。
 
-## 計畫點名但 DB 沒有的欄位
+## 第二個來源：Edge Function logs
 
-以下全部只存在於 `logInfo("practice_chat_succeeded", ...)` 這個 console
-事件（`supabase/functions/practice-chat/handler.ts` 5100–5320 一帶），
-**不寫進任何資料表**，所以本報告只在「欄位不存在」段落逐條列出原因，不
-偽造數字也不報錯：
+這七個欄位**不在任何資料表裡**，只在 `logInfo("practice_chat_succeeded", …)` 的
+console 輸出（`handler.ts` 5095–5330 一帶）：agency 介入率、`chatModel`
+分佈、`chatModelCalls`、
+`chatModelFallback`、聊天成本（`chatModelUsage`）、`checkOutStructuralFail`、
+`checkOutRewriteInjected` × fail、`readOnlyReply`。所以第三條查詢走 Logs
+Explorer 把它們撈回來。
 
-- `agency` 介入率
-- `chatModel` 分佈、`chatModelCalls`
-- `chatModelFallback` 比率
-- 每場聊天成本（`chatModelUsage` 四格 token）
-- `checkOutStructuralFail` 比率
-- `checkOutRewriteInjected` × `checkOutStructuralFail` 交叉比率
-- `readOnlyReply` 比率
+**一行 log 的格式**（`supabase/functions/practice-chat/logger.ts`）：
 
-要讓它們進週報，得先改 practice-chat 的寫入端把這些聚合值落進 DB（那是
-另一個工作包，不在 WP1 範圍）。在那之前，這幾項只能從 Supabase Edge Function
-logs 撈。
+```js
+console.log(JSON.stringify({ level: "info", event, ...data }));
+```
+
+沒有前綴、沒有多行——`event_message` 整行就是一個 JSON 物件。parser 逐列
+`JSON.parse`，不是物件或 `event !== "practice_chat_succeeded"` 就跳過，並分別
+計數（`其他事件 N 列、無法解析 N 列` 會印在報告上）；壞行不會讓報告掛掉，也
+不會被無聲吃掉。
+
+**分母**：`conversationAgency` 與 `chatModel` 這兩個 key 在旗標關著時
+**整組不存在**（handler.ts 的旗標等價保證）。所以比率的分母是「這一輪真的帶
+了那個 key」的輪數，不是全部輪數；沒有任何一輪帶那個 key 時印 `—` 而不是 0%。
+
+**聊天成本**：`chatModelUsage` 是真 usage（所有成功 Claude 呼叫的四格累加），
+所以這一段吃 `HAIKU_4_5_PRICING` 真牌價，不是側寫估算；DeepSeek 那幾次用
+`DEEPSEEK_CHAT_USD_PER_CALL`（餘額差反推的每次觀測單價）。
+
+### 保留期（會咬人的地方）
+
+Supabase function logs **通常只保留 7 天**，而且時間窗超出保留期時端點會回 **0
+筆、不報錯**。所以：
+
+- 報告一定會印「涵蓋範圍：最早 ～ 最晚 timestamp、端點回了幾列」。涵蓋範圍 比
+  `--from`／`--to` 窄，就是被保留期切掉了。
+- **週報要每 7 天內跑一次**，否則聊天那一段是空的，而且空得無聲無息。
+- 回傳列數撞到 `--logs-limit` 時 stderr 會印警告（可能被截斷）。
 
 ## 不 commit 報告
 

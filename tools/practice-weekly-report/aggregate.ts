@@ -2,6 +2,7 @@
 // 吐一個統計物件。不打網路、不讀檔、不看時鐘。
 
 import {
+  DEEPSEEK_CHAT_USD_PER_CALL,
   estimateCostUsd,
   HAIKU_4_5_PRICING,
   SONNET_5_PRICING,
@@ -73,6 +74,8 @@ export interface Stats {
   unpricedCalls: number;
   costPerSessionUsd: number | null;
   economics: Economics | null;
+  /** Edge Function logs 來源（沒查或查不到時是 null）。 */
+  logs: LogStats | null;
 }
 
 /** D14：匯率 1 USD ≈ NT$32。 */
@@ -153,6 +156,10 @@ export const MISSING_FIELDS: readonly { field: string; reason: string }[] = [
 ];
 
 function costOf(mode: string, model: string, calls: number): number | null {
+  // DeepSeek 沒有 token 牌價，只有餘額差反推的每次觀測單價（pricing.ts）。
+  if (model.startsWith("deepseek")) {
+    return calls * DEEPSEEK_CHAT_USD_PER_CALL;
+  }
   const pricing = PRICING_BY_MODEL[model];
   const profile = CALL_TOKEN_PROFILE[mode];
   if (!pricing || !profile) return null;
@@ -164,6 +171,7 @@ export function aggregate(input: {
   sessions: readonly SessionRow[];
   aiLogs: readonly AiLogRow[];
   payers?: { starter: number; essential: number };
+  logs?: LogStats | null;
 }): Stats {
   const byMode: Record<string, number> = {};
   const histogram = new Map<number, number>();
@@ -233,6 +241,7 @@ export function aggregate(input: {
     unpricedCalls,
     costPerSessionUsd: total > 0 ? totalCostUsd / total : null,
     economics: input.payers ? buildEconomics(input.payers, totalCostUsd) : null,
+    logs: input.logs ?? null,
   };
 }
 
@@ -253,5 +262,195 @@ function buildEconomics(
     costShareOfRevenue: monthlyRevenueTwd > 0
       ? monthlyCostTwd / monthlyRevenueTwd
       : null,
+  };
+}
+
+/** Logs Explorer 回來的一列。 */
+export interface LogRow {
+  timestamp: string | number | null;
+  event_message: string | null;
+}
+
+export interface LogStats {
+  /** 端點實際回了幾列（撞到 limit 就代表被截斷）。 */
+  rowsReturned: number;
+  /** 涵蓋範圍：保留期把時間窗吃掉時，這兩個值會比 --from／--to 窄。 */
+  earliest: string | null;
+  latest: string | null;
+  /** 解析成功的 `practice_chat_succeeded` 輪數。 */
+  turns: number;
+  skippedOtherEvent: number;
+  skippedUnparsable: number;
+
+  agencyTurns: number;
+  agencyApplied: number;
+  agencyAppliedRate: number | null;
+
+  chatModelTurns: number;
+  chatModelDistribution: Record<string, number>;
+  chatModelCalls: { haiku: number; deepseek: number };
+  chatModelFallbackTurns: number;
+  chatModelFallbackRate: number | null;
+  chatModelUsage: TokenUsage;
+  chatCostUsd: number;
+
+  checkOutStructuralFail: number;
+  checkOutStructuralFailRate: number | null;
+  checkOutRewriteInjected: number;
+  checkOutRewriteAndFail: number;
+  checkOutRewriteFailRate: number | null;
+  readOnlyReply: number;
+  readOnlyReplyRate: number | null;
+}
+
+const EVENT = "practice_chat_succeeded";
+
+function rate(part: number, whole: number): number | null {
+  return whole > 0 ? part / whole : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function addUsage(total: TokenUsage, value: unknown): TokenUsage {
+  const usage = asRecord(value);
+  if (!usage) return total;
+  const num = (key: string) => {
+    const raw = usage[key];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+  };
+  return {
+    inputTokens: total.inputTokens + num("inputTokens"),
+    cacheReadInputTokens: total.cacheReadInputTokens +
+      num("cacheReadInputTokens"),
+    cacheCreationInputTokens: total.cacheCreationInputTokens +
+      num("cacheCreationInputTokens"),
+    outputTokens: total.outputTokens + num("outputTokens"),
+  };
+}
+
+/**
+ * 把 function logs 的原始列折成統計。一行 log ＝ `logger.ts` 的
+ * `JSON.stringify({ level, event, ...data })`，沒有前綴、沒有多行。
+ *
+ * 容錯：不是 JSON、不是物件、不是 `practice_chat_succeeded` 的列一律跳過並
+ * 分別計數（壞行不能讓整份報告掛掉，但也不能無聲吃掉）。
+ *
+ * 分母刻意分開：`conversationAgency`／`chatModel` 這兩個 key 在旗標關著時
+ * **整組不存在**（handler.ts 的等價保證），所以比率的分母是「帶那個 key 的
+ * 輪數」，不是全部輪數。
+ */
+export function aggregateLogs(rows: readonly LogRow[]): LogStats {
+  let turns = 0;
+  let skippedOtherEvent = 0;
+  let skippedUnparsable = 0;
+  let earliest: string | null = null;
+  let latest: string | null = null;
+
+  let agencyTurns = 0;
+  let agencyApplied = 0;
+  let chatModelTurns = 0;
+  const chatModelDistribution: Record<string, number> = {};
+  const chatModelCalls = { haiku: 0, deepseek: 0 };
+  let chatModelFallbackTurns = 0;
+  let chatModelUsage: TokenUsage = {
+    inputTokens: 0,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+    outputTokens: 0,
+  };
+  let checkOutStructuralFail = 0;
+  let checkOutRewriteInjected = 0;
+  let checkOutRewriteAndFail = 0;
+  let readOnlyReply = 0;
+
+  for (const row of rows) {
+    const stamp = row.timestamp === null || row.timestamp === undefined
+      ? null
+      : String(row.timestamp);
+    if (stamp !== null) {
+      if (earliest === null || stamp < earliest) earliest = stamp;
+      if (latest === null || stamp > latest) latest = stamp;
+    }
+
+    let payload: Record<string, unknown> | null = null;
+    try {
+      payload = asRecord(JSON.parse(row.event_message ?? ""));
+    } catch {
+      payload = null;
+    }
+    if (!payload) {
+      skippedUnparsable += 1;
+      continue;
+    }
+    if (payload.event !== EVENT) {
+      skippedOtherEvent += 1;
+      continue;
+    }
+    turns += 1;
+
+    const agency = asRecord(payload.conversationAgency);
+    if (agency) {
+      agencyTurns += 1;
+      if (agency.applied === true) agencyApplied += 1;
+      if (agency.readOnlyReply === true) readOnlyReply += 1;
+      const failed = agency.checkOutStructuralFail === true;
+      const rewritten = agency.checkOutRewriteInjected === true;
+      if (failed) checkOutStructuralFail += 1;
+      if (rewritten) checkOutRewriteInjected += 1;
+      if (rewritten && failed) checkOutRewriteAndFail += 1;
+    }
+
+    if (typeof payload.chatModel === "string") {
+      chatModelTurns += 1;
+      chatModelDistribution[payload.chatModel] =
+        (chatModelDistribution[payload.chatModel] ?? 0) + 1;
+      if (payload.chatModelFallback === true) chatModelFallbackTurns += 1;
+      const calls = asRecord(payload.chatModelCalls);
+      if (calls) {
+        for (const key of ["haiku", "deepseek"] as const) {
+          const value = calls[key];
+          if (typeof value === "number" && Number.isFinite(value)) {
+            chatModelCalls[key] += value;
+          }
+        }
+      }
+      chatModelUsage = addUsage(chatModelUsage, payload.chatModelUsage);
+    }
+  }
+
+  return {
+    rowsReturned: rows.length,
+    earliest,
+    latest,
+    turns,
+    skippedOtherEvent,
+    skippedUnparsable,
+    agencyTurns,
+    agencyApplied,
+    agencyAppliedRate: rate(agencyApplied, agencyTurns),
+    chatModelTurns,
+    chatModelDistribution,
+    chatModelCalls,
+    chatModelFallbackTurns,
+    chatModelFallbackRate: rate(chatModelFallbackTurns, chatModelTurns),
+    chatModelUsage,
+    // Haiku 走 token 牌價（usage 只累加成功的 Claude 呼叫），DeepSeek 沒有
+    // token 牌價、只有餘額差反推的每次觀測單價。
+    chatCostUsd: estimateCostUsd(chatModelUsage, HAIKU_4_5_PRICING) +
+      chatModelCalls.deepseek * DEEPSEEK_CHAT_USD_PER_CALL,
+    checkOutStructuralFail,
+    checkOutStructuralFailRate: rate(checkOutStructuralFail, agencyTurns),
+    checkOutRewriteInjected,
+    checkOutRewriteAndFail,
+    checkOutRewriteFailRate: rate(
+      checkOutRewriteAndFail,
+      checkOutRewriteInjected,
+    ),
+    readOnlyReply,
+    readOnlyReplyRate: rate(readOnlyReply, agencyTurns),
   };
 }

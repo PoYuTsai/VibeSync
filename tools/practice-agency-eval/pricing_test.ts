@@ -9,6 +9,7 @@ import {
 import {
   CACHE_READ_MULTIPLIER,
   CACHE_WRITE_MULTIPLIER,
+  DEEPSEEK_CHAT_USD_PER_CALL,
   estimateCostUsd,
   HAIKU_4_5_PRICING,
   SONNET_5_PRICING,
@@ -68,4 +69,8 @@ Deno.test("estimateCostUsd：四格 token 各自吃自己的單價，零 usage �
     cacheCreationInputTokens: 1_000_000,
   }, HAIKU_4_5_PRICING);
   assert(read < base && base < write);
+});
+
+Deno.test("DeepSeek 聊天生成觀測單價（USD／次）釘死", () => {
+  assertEquals(DEEPSEEK_CHAT_USD_PER_CALL, 0.0000294);
 });

@@ -6,8 +6,10 @@ import {
 import {
   assertReadOnlySql,
   buildAiLogsSql,
+  buildLogsSql,
   buildSessionsSql,
   defaultRange,
+  logsEndpoint,
 } from "./sql.ts";
 
 const RANGE = { from: "2026-08-29", to: "2026-09-05" };
@@ -70,4 +72,28 @@ Deno.test("defaultRange 預設回推 7 天且 to 為當日", () => {
     from: "2026-08-29",
     to: "2026-09-05",
   });
+});
+
+Deno.test("logs SQL 查 function_logs、綁時間窗、鎖 practice_chat_succeeded", () => {
+  const sql = buildLogsSql(RANGE, 5000);
+  assertStringIncludes(sql, "function_logs");
+  assertStringIncludes(sql, "practice_chat_succeeded");
+  assertStringIncludes(sql, "'2026-08-29 00:00:00+00'");
+  assertStringIncludes(sql, "'2026-09-05 00:00:00+00'");
+  assertStringIncludes(sql, "limit 5000");
+  assertReadOnlySql(sql);
+});
+
+Deno.test("logs SQL 的 limit 必須是正整數", () => {
+  assertThrows(() => buildLogsSql(RANGE, 0), Error, "invalid_limit");
+  assertThrows(() => buildLogsSql(RANGE, 1.5), Error, "invalid_limit");
+});
+
+Deno.test("logs 端點路徑帶 urlencoded SQL", () => {
+  const url = logsEndpoint("myref", "select 1 from t where a = 'b c'");
+  assertStringIncludes(
+    url,
+    "https://api.supabase.com/v1/projects/myref/analytics/endpoints/logs.all?sql=",
+  );
+  assertEquals(url.includes(" "), false);
 });
