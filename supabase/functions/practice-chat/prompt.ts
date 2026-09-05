@@ -513,9 +513,15 @@ export const GAME_DEBRIEF_SYSTEM_PROMPT = DEBRIEF_SYSTEM_PROMPT.replace(
 /**
  * Phase 5 WP3 續聊敘事記憶：只有 `PRACTICE_MEMORY_SUMMARY_WRITE=true` 時才接在
  * debrief system prompt 尾巴。措辭沿用 chat 側既有的 Reality Anchoring
- * （`MEMORY_SUMMARY_TAIL_ON` 那份未驗證清單），因為這段字寫出來的東西下一場
- * 會原封不動被當成 `memorySummary` 餵回去——來源端就捏造的話，下一場的守門
- * 只會把它當「已驗證的更早對話」。
+ * （`MEMORY_SUMMARY_TAIL_ON`／`MEMORY_SUMMARY_TAIL_OFF` 那份未驗證清單），因為
+ * 這段字寫出來的東西下一場會原封不動被當成 `memorySummary` 餵回去。
+ *
+ * 讀取端**不會**把它當已驗證：`memorySummaryPrompt` 包成
+ * `<older_memory_untrusted>` 並附上「不能單獨證明共同朋友／介紹人／住址／工作
+ * 地點／行蹤／上次見面」的清單。但那份清單擋的是**關係與行蹤類的社交證明**，
+ * 一般話題與印象照樣會被當成連續性證據沿用下去——所以生成端不捏造仍是第一道
+ * 防線，這裡才要把規則寫進 prompt（Codex R2 P3：舊註解寫成「下一場只會把它當
+ * 已驗證的更早對話」是錯的）。
  */
 export const DEBRIEF_MEMORY_SUMMARY_DIRECTIVE =
   `另外輸出 memorySummary（選填，≤1000 字，繁體中文）：以第三人稱寫「她記得的事」，供下一場續聊當更早對話的摘要。
