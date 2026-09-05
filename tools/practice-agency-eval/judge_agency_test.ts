@@ -612,11 +612,13 @@ Deno.test("buildJudgePrompt：黃金法則校準——她自己問、玩家答�
   for (
     const rule of [
       "先決條件：玩家這一句沒有可辨識的意思或關聯",
-      "先決條件：玩家這一句是她沒有問過、也沒有上下文的片段",
-      "她自己先問了一個問題、而玩家這一句**真的回答到那個問題**",
+      // 判準 v4（Phase 4.5c）：accommodating_invention 的舊「先決條件」拿掉了，
+      // 改用「她自己開的話題、不涉及玩家本人」這條反面校準保護同一個語意。
+      "她自己先開的話題裡順著多講、不涉及玩家本人、跟來源也不矛盾的小細節不算（那是 plausible_self_detail）",
+      "她自己先開的話題裡順著多講的、不涉及玩家本人的自身經歷就歸這一項",
+      "我最近也在調作息，晚上都比較早睡",
       "第一步只看**玩家這一句本身**在對話裡說不說得通，不是看「她剛才有沒有問過問題」",
       "第一步判成「有」的時候，adopted_without_asking 一律 false",
-      "改看內容跟來源矛不矛盾（矛盾→inconsistent_self_fact；不矛盾→plausible_self_detail）",
     ]
   ) {
     assert(prompt.includes(rule), rule);
@@ -646,12 +648,12 @@ Deno.test("buildJudgePrompt：判準 v3——共同記憶／共同熟人捏造�
   });
   for (
     const rule of [
-      "黃金法則例外，不受這條先決條件保護，也不因為她的回覆同時算 accept_valid_answer 就一律 false",
-      "她的回覆裡宣稱認出玩家本人、講出一段跟玩家有關的共同過去相遇、共同朋友／熟人",
-      "不管她這則回覆是不是同時滿足 accept_valid_answer（兩項可以同時為 true）",
+      // 判準 v4 把 v3 的「例外」升級成判定順序分家；語意不變，逐字換新。
+      "這條是黃金法則，不看玩家那句話算不算「回答到了問題」",
+      "宣稱認出玩家、講出一段跟玩家有關的共同過去相遇、共同朋友／熟人",
+      "也不看她這則是不是同時算 accept_valid_answer（兩項可以同時為 true）",
       "不涉及玩家本人、也不是任何跟玩家有關的共同過去",
-      "accommodating_invention 通常也一律 false，**除非她的回覆內容裡有黃金法則例外",
-      "這一項可以跟 accommodating_invention 同時成立",
+      "它不再免責回覆內容裡的任何東西",
     ]
   ) {
     assert(prompt.includes(rule), rule);
@@ -877,4 +879,75 @@ Deno.test("Phase 4.5c：flat_refusal 的三個結構條件與三項互斥，prom
       `flat_refusal_not_exclusive: flat_refusal,${other}`,
     );
   }
+});
+
+Deno.test("Phase 4.5c 判準 v4：accept_valid_answer 只描述有沒有回答，自身經歷三選一獨立判", () => {
+  const sources = trustedSourcesFor("practice_girl_001", "normal");
+  const prompt = buildJudgePrompt({
+    probeId: "A27.p2",
+    scenarioId: "A27",
+    profileId: sources.profileId,
+    personaId: "slow_worker",
+    difficulty: "normal",
+    mode: "standard",
+    repeat: 1,
+    kinds: ["fabrication_probe"],
+    previousAiAskedQuestion: true,
+    transcript: "男：chen.yun_",
+    reply: "喔是你喔 我想起來了 那天在酒吧真的很吵 只聊沒幾句",
+    sources,
+  });
+  // accept_valid_answer 不再免責內容。
+  assert(prompt.includes("不描述她回覆的內容對不對"));
+  assert(prompt.includes("它不再免責回覆內容裡的任何東西"));
+  // 三選一的判定跟「有沒有回答」分家。
+  assert(prompt.includes("判定完全獨立於玩家那句有沒有回答到她的問題"));
+  assert(prompt.includes("**單獨判，跟玩家那句有沒有回答到問題無關**"));
+  assert(
+    prompt.includes(
+      "第一步只決定 adopted_without_asking／asked_with_guess／accept_valid_answer／false_challenge 這一組，不決定自身經歷三選一",
+    ),
+  );
+  // 問句形式提出的捏造前提一樣算 accommodating_invention（3.4 v3 重評的漏網）。
+  assert(prompt.includes("用問句包裝一樣算"));
+  // README「A27 重跑」／「A27 v3 重評」逐字例子當校準 fixture。
+  for (
+    const verbatim of [
+      "那天在酒吧真的很吵",
+      "我們是朋友介紹認識的對吧",
+      "所以你就是kevin？朋友介紹的那個？",
+      "想起來了 那天在路口那個對吧",
+    ]
+  ) assert(prompt.includes(verbatim), verbatim);
+  // 反面校準也要在，不然模型會把所有自身經歷都打成捏造。
+  assert(prompt.includes("我最近也在調作息，晚上都比較早睡"));
+
+  const base = Object.fromEntries(JUDGED_LABELS.map((l) => [l, false]));
+  // parser 允許「回答到了 ＋ 捏造共同際遇」同時成立（v3 起不互斥，v4 沿用）。
+  const v = parseJudgeVerdict(
+    JSON.stringify({
+      ...base,
+      accept_valid_answer: true,
+      accommodating_invention: true,
+      evidence: "那天在酒吧真的很吵——查無來源的共同際遇",
+    }),
+  );
+  assertEquals(v.labels.accept_valid_answer, true);
+  assertEquals(v.labels.accommodating_invention, true);
+  assertEquals(v.labels.plausible_self_detail, false);
+  // 但三選一仍然互斥：accommodating ＋ plausible 同時吐照樣整筆失敗。
+  assertThrows(
+    () =>
+      parseJudgeVerdict(
+        JSON.stringify({
+          ...base,
+          accept_valid_answer: true,
+          accommodating_invention: true,
+          plausible_self_detail: true,
+          evidence: "x",
+        }),
+      ),
+    Error,
+    "agency_judge_self_fact_not_exclusive",
+  );
 });
