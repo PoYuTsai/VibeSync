@@ -416,3 +416,83 @@ Deno.test("callClaude rejects refusal before exposing partial text", async () =>
     globalThis.fetch = originalFetch;
   }
 });
+
+// Codex R1 P2：`onUsage` 的契約是「只在成功取到內容時呼叫一次」。HTTP 200 但
+// content 空（或 forced tool 沒有 tool_use）時，callback 一次都不能響——不然
+// 呼叫端會把一次沒拿到內容的呼叫記成成功用量。
+Deno.test("callClaude：200＋usage 但 content 為空時丟 claude_empty_content，onUsage 零次", async () => {
+  const originalFetch = globalThis.fetch;
+  let usageCalls = 0;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [],
+          usage: { input_tokens: 120, output_tokens: 15 },
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    let message = "";
+    try {
+      await callClaude({
+        apiKey: "k",
+        model: "claude-haiku-4-5-20251001",
+        messages: [{ role: "user", content: "hi" }],
+        maxTokens: 10,
+        temperature: 0.5,
+        timeoutMs: 1000,
+        onUsage: () => {
+          usageCalls++;
+        },
+      });
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    assertEquals(message, "claude_empty_content");
+    assertEquals(usageCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("callClaude：成功取到內容時 onUsage 恰好一次，四格用量照 provider 回傳", async () => {
+  const originalFetch = globalThis.fetch;
+  const seen: unknown[] = [];
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: "喔 好啊" }],
+          usage: {
+            input_tokens: 120,
+            cache_read_input_tokens: 80,
+            cache_creation_input_tokens: 5,
+            output_tokens: 15,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  try {
+    const text = await callClaude({
+      apiKey: "k",
+      model: "claude-haiku-4-5-20251001",
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 10,
+      temperature: 0.5,
+      timeoutMs: 1000,
+      onUsage: (usage) => seen.push(usage),
+    });
+    assertEquals(text, "喔 好啊");
+    assertEquals(seen, [{
+      inputTokens: 120,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 5,
+      outputTokens: 15,
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

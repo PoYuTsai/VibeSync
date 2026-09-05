@@ -568,17 +568,18 @@ export function makeFake(options: FakeOptions = {}) {
   const claude: ClaudeCaller = (args) => {
     state.claudeCalls.push(args);
     state.events.push("claude");
+    const reply = options.claudeReplies?.[claudeIndex] ?? "AI reply";
+    claudeIndex++;
+    if (reply instanceof Error) return Promise.reject(reply);
     // Phase 4.4：只有 chat 路由那條路會傳 onUsage（hint／debrief 不傳），固定值
-    // 讓 telemetry 可重現。
+    // 讓 telemetry 可重現。Codex R1 P3：失敗的回覆**不觸發** callback，與
+    // production 的 `callClaude` 契約（成功取到內容才記帳）同時序。
     args.onUsage?.({
       inputTokens: 120,
       cacheReadInputTokens: 80,
       cacheCreationInputTokens: 0,
       outputTokens: 15,
     });
-    const reply = options.claudeReplies?.[claudeIndex] ?? "AI reply";
-    claudeIndex++;
-    if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve(reply);
   };
   // reviewer 整層已拆：deps 不再有 semanticAdjudicate；state.semanticCalls

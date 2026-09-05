@@ -434,6 +434,8 @@ function parseGolden(name: string): ObservableDigest {
  */
 interface RunProbe {
   durationKeys: string[];
+  /** Codex R1 P3：telemetry 原始行（要逐行比 key 集合，不只比 digest）。 */
+  lines?: string[];
 }
 
 const DURATION_KEY_RE = /"(\w*(?:Duration|Latency|Elapsed|Wait))Ms":/g;
@@ -495,6 +497,7 @@ async function observableDigest(
   raw.set(bodyBytes, head.length);
   const text = lines.join("\n");
   if (probe) {
+    probe.lines = lines.slice();
     probe.durationKeys = [
       ...new Set([...text.matchAll(DURATION_KEY_RE)].map((m) => m[1])),
     ].sort();
@@ -1452,7 +1455,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "Phase 4.4：PRACTICE_CHAT_MODEL_ROUTING 未設／off／亂填時四面等價；mixed 只多 telemetry 一個 key，沒有 Anthropic key 就不換模型",
+    "Phase 4.4：PRACTICE_CHAT_MODEL_ROUTING 未設／off／亂填時四面等價；mixed 只多 telemetry 允許的 key，沒有 Anthropic key 就不換模型",
   ignore: PRINT_GOLDEN,
   fn: async () => {
     for (const c of equivalenceCases()) {
@@ -1466,7 +1469,8 @@ Deno.test({
         );
       }
       // `mixed` 但 agency 未設（＝off）：路由不可能生效，messages／Response／RPC
-      // 三面必須全等；telemetry 是它唯一被允許不同的地方（多一個 chatModel key）。
+      // 三面必須全等；telemetry 是它唯一被允許不同的地方（多允許的那幾個 key，
+      // 逐欄位比對見下一支測試）。
       const mixedOff = await observableDigest(
         c,
         undefined,
@@ -1515,26 +1519,58 @@ Deno.test({
   },
 });
 
+/** routing=mixed 時 telemetry 唯一被允許多出來的 key（Codex R1 P3）。 */
+const ROUTING_ALLOWED_KEYS = [
+  "chatModel",
+  "chatModelCalls",
+  "chatModelFallback",
+  "chatModelUsage",
+];
+
 Deno.test({
   name:
-    "Phase 4.4 非空洞檢查：routing=mixed 的 chat 案例 telemetry 必須真的多記東西",
+    "Phase 4.4（Codex R1 P3）：routing=mixed 的 telemetry 只多允許的 key——事件數／事件名／其餘欄位逐位元組相同，且真的多記東西",
   ignore: PRINT_GOLDEN,
   fn: async () => {
     const chatCases = equivalenceCases().filter((c) =>
       c.name.startsWith("chat／")
     );
     for (const c of chatCases) {
-      const mixed = await observableDigest(
-        c,
-        undefined,
-        undefined,
-        undefined,
-        "mixed",
+      const offProbe: RunProbe = { durationKeys: [] };
+      const mixedProbe: RunProbe = { durationKeys: [] };
+      const off = await observableDigest(c, undefined, undefined, offProbe);
+      await observableDigest(c, undefined, undefined, mixedProbe, "mixed");
+      // 這個 case 的 flag-off 執行本身已被上面的 golden 測試釘成 7f1d6d6c bytes，
+      // 所以拿它當基準等同拿 golden 當基準（但比得到欄位，不只比雜湊）。
+      assertEquals(off.telemetry, parseGolden(c.name).telemetry, c.name);
+      const offLines = offProbe.lines ?? [];
+      const mixedLines = mixedProbe.lines ?? [];
+      assertEquals(mixedLines.length, offLines.length, `${c.name}：事件數`);
+      const eventNames = (lines: string[]) =>
+        lines.map((l) => (JSON.parse(l) as { event?: string }).event);
+      assertEquals(
+        eventNames(mixedLines),
+        eventNames(offLines),
+        `${c.name}：事件名與順序`,
       );
-      assert(
-        mixed.telemetry !== parseGolden(c.name).telemetry,
-        `${c.name}：routing=mixed 的 telemetry 必須與 flag-off golden 不同`,
-      );
+      let extra = 0;
+      for (let i = 0; i < mixedLines.length; i++) {
+        const mixedJson = JSON.parse(mixedLines[i]) as Record<string, unknown>;
+        for (const key of ROUTING_ALLOWED_KEYS) {
+          if (Object.hasOwn(mixedJson, key)) {
+            delete mixedJson[key];
+            extra++;
+          }
+        }
+        // 刪掉允許的 key 之後，整行（含 key 順序）必須與 flag-off 那一行相同。
+        assertEquals(
+          scrubWallClock(JSON.stringify(mixedJson)),
+          scrubWallClock(offLines[i]),
+          `${c.name}：第 ${i + 1} 行除了允許的 key 之外必須逐位元組相同`,
+        );
+      }
+      // 非空洞：真的多記了東西（chat 成功事件一定有 chatModel＋chatModelCalls）。
+      assert(extra >= 2, `${c.name}：routing=mixed 沒有多記任何允許的 key`);
     }
   },
 });

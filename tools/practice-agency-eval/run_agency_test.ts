@@ -11,11 +11,13 @@ import {
   estimateHaikuCostUsd,
   parseArgs,
   runAgencyScenario,
+  runnerChatModelFor,
   saltedThreadId,
   threadSaltOfArtifactMeta,
   ZERO_HAIKU_USAGE_TOTALS,
 } from "./run_agency.ts";
 import { AGENCY_SCENARIOS, type AgencyScenario } from "./scenarios.ts";
+import { chatModelFor } from "../../supabase/functions/practice-chat/conversation_agency.ts";
 import { callClaude } from "../../supabase/functions/practice-chat/claude.ts";
 import {
   chatBody,
@@ -593,8 +595,13 @@ Deno.test("runAgencyScenario：--chat-model=haiku（非 mixed）逐字沿用舊�
 // 多塞一個參數」。
 Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body 與黑箱 haiku 臂逐位元組相同（不打真網路）", async () => {
   const fake = makeFake({
-    ledger: fakeLedger(),
-    deepSeekReplies: ["好啊"],
+    // routing 只在 assisted 模式生效（Codex R1 P1 範圍限制），所以走 beginner；
+    // 最後一則 DeepSeek 回覆留給生成後的分類器。
+    ledger: fakeLedger({ practice_mode: "beginner" }),
+    deepSeekReplies: [
+      "好啊",
+      `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none"}`,
+    ],
     claudeReplies: ["嗯？你先講東東"],
     env: {
       PRACTICE_CHAT_MODEL_ROUTING: "mixed",
@@ -608,6 +615,7 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
     console.warn = () => {};
     await fake.handler(
       makeRequest(chatBody({
+        practiceMode: "beginner",
         turns: [
           { role: "user", text: "東東" },
           { role: "ai", text: "東東是誰" },
@@ -659,4 +667,47 @@ Deno.test("Phase 4.4：handler 走 mixed 路由送進 Claude 的 request body �
   );
   assert(runnerSource.includes("const CHAT_MAX_TOKENS = 200;"));
   assert(runnerSource.includes("const CHAT_TEMPERATURE = 0.9;"));
+});
+
+// Codex R1 U2：要證明的不只是「選了 Haiku 之後 body 相同」，而是「何時選 Haiku
+// 相同」。runner 的 mixed 臂選模入口就是 production 的 `chatModelFor`，這支測試
+// 對整個矩陣逐項比對，順便釘住 deepseek／haiku 兩個純臂的舊行為。
+Deno.test("Phase 4.4：runner 的選模入口與 production chatModelFor 在整個矩陣上逐項相等", () => {
+  const arms = [undefined, "deepseek", "haiku", "mixed"] as const;
+  const agencyModes = ["on", "shadow", "off"] as const;
+  const modes = ["standard", "beginner", "game"] as const;
+  const applieds = [true, false, undefined];
+  let mixedHaiku = 0;
+  for (const arm of arms) {
+    for (const agency of agencyModes) {
+      for (const mode of modes) {
+        for (const applied of applieds) {
+          const actual = runnerChatModelFor({
+            chatModel: arm,
+            agency,
+            mode,
+            applied,
+          });
+          const expected = arm === "haiku"
+            ? "haiku"
+            : arm === "mixed"
+            ? chatModelFor(
+              "mixed",
+              agency,
+              applied === undefined ? null : { applied },
+              mode,
+            )
+            : "deepseek";
+          assertEquals(
+            actual,
+            expected,
+            `arm=${arm} agency=${agency} mode=${mode} applied=${applied}`,
+          );
+          if (arm === "mixed" && actual === "haiku") mixedHaiku++;
+        }
+      }
+    }
+  }
+  // 非空洞：mixed 臂真的有格子選到 Haiku（agency=on × beginner/game × applied=true）。
+  assertEquals(mixedHaiku, 2);
 });
