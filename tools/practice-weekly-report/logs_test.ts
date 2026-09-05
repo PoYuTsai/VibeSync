@@ -148,6 +148,9 @@ Deno.test("check_out 結構後檢查與交叉比率、readOnlyReply 比率", () 
   const logs = aggregateLogs(ROWS);
   assertEquals(logs.checkOutStructuralFail, 1);
   assertAlmostEquals(logs.checkOutStructuralFailRate!, 1 / 4, 1e-9);
+  // 交叉比率的分母是**注入輪數**（2），不是 agency 輪數（4）——刻意的條件
+  // 機率：「注入改寫指令後仍失敗」的比例＝4.6 刀 2 的成效指標。
+  assertEquals(logs.agencyTurns, 4);
   assertEquals(logs.checkOutRewriteInjected, 2);
   assertEquals(logs.checkOutRewriteAndFail, 1);
   assertAlmostEquals(logs.checkOutRewriteFailRate!, 1 / 2, 1e-9);

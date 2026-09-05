@@ -318,6 +318,12 @@ export interface LogStats {
   checkOutStructuralFailRate: number | null;
   checkOutRewriteInjected: number;
   checkOutRewriteAndFail: number;
+  /**
+   * 分母是**注入輪數**，不是 agency 輪數——這是刻意的（Eric 2026-09-05 裁決）。
+   * 它量的是「注入了 4.6 刀 2 的改寫指令之後，第二發仍然失敗」的**條件機率**，
+   * 也就是那把刀的成效指標。無條件的整體失敗率看
+   * `checkOutStructuralFailRate`（分母＝agency 輪數），兩個要並列看。
+   */
   checkOutRewriteFailRate: number | null;
   readOnlyReply: number;
   readOnlyReplyRate: number | null;

@@ -227,7 +227,7 @@ function renderLogs(logs: LogStats): string[] {
     } |`,
   );
   lines.push(
-    `| \`checkOutRewriteInjected\` × fail | ${logs.checkOutRewriteAndFail}／${logs.checkOutRewriteInjected} | ${
+    `| 改寫注入後仍失敗（分母＝注入輪數） | ${logs.checkOutRewriteAndFail}／${logs.checkOutRewriteInjected} | ${
       pct(logs.checkOutRewriteFailRate)
     } |`,
   );
@@ -241,6 +241,17 @@ function renderLogs(logs: LogStats): string[] {
     "分母刻意不是全部輪數：旗標關著時 `conversationAgency`／`chatModel` 整組 key",
   );
   lines.push("不存在，所以分母是「這一輪真的帶了那個 key」的輪數。");
+  lines.push("");
+  lines.push(
+    "上面兩列 check_out 是**不同的問題**，要並列看：`checkOutStructuralFail`",
+  );
+  lines.push(
+    "的分母是 agency 輪數＝無條件的整體失敗率；「改寫注入後仍失敗」的分母是",
+  );
+  lines.push(
+    "注入輪數＝**條件機率**，量的是 4.6 刀 2 那道改寫指令注入之後還救不回來的",
+  );
+  lines.push("比例，那才是刀 2 的成效指標。");
   lines.push("");
   lines.push("### `chatModel` 分佈");
   lines.push("");
