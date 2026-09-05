@@ -4585,6 +4585,15 @@ export function createPracticeChatHandler(
         personaId: request.profile.personaId,
         difficulty: request.profile.difficulty,
         error: getErrorMessage(e),
+        // Codex R2 P2：整輪最後失敗時 `practice_chat_succeeded` 不會印，付掉的
+        // Claude 錢就從單輪 telemetry 消失了；成本欄位補在失敗事件上。旗標不是
+        // mixed 時整組 key 不存在（flag-off golden 不動）。
+        ...(chatModelRoutingOn
+          ? {
+            chatModelCalls,
+            ...(chatModelUsage ? { chatModelUsage } : {}),
+          }
+          : {}),
       });
       return jsonResponse({ error: "practice_generation_failed" }, 500);
     }

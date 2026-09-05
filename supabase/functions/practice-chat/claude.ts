@@ -26,8 +26,10 @@ export interface ClaudeArgs {
   endpoint?: string;
   model: string;
   /**
-   * 這一次呼叫的 token 帳（provider 回的 `usage`）。只在**成功**取到內容時
-   * 呼叫一次；不傳就完全不影響行為（hint／debrief 都不傳）。
+   * 這一次呼叫的 token 帳（provider 回的 `usage`）。**只要 Anthropic 回了
+   * `usage` 就呼叫一次**——包含 `refusal`／`max_tokens`／內容空這些 HTTP 200
+   * 但丟錯的情況（費用已經發生）。回應沒有 `usage` 欄位就不呼叫；不傳這個
+   * 回呼就完全不影響行為（hint／debrief 都不傳）。
    */
   onUsage?: (usage: ClaudeUsage) => void;
 }
@@ -128,23 +130,25 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
     }
 
     const json = await response.json();
-    if (json?.stop_reason === "refusal") {
-      throw new Error("claude_refusal");
-    }
-    if (json?.stop_reason === "max_tokens") {
-      throw new Error("claude_max_tokens");
-    }
-    // Codex R1 P2：契約是「只在成功取到內容時呼叫一次」，所以必須放在 content
-    // 解析與驗證**之後**——HTTP 200 但內容空／格式錯時 callback 一次都不能響。
-    const emitUsage = () => {
-      const u = json?.usage ?? {};
+    // Codex R2 P2：契約是「**只要 Anthropic 回了 usage 就呼叫一次**」——
+    // `refusal`／`max_tokens`／內容空這些 HTTP 200 但丟錯的情況 token 費用已經
+    // 發生了，callback 不響的話呼叫端會把付掉的錢記成零（R1 的「只在成功時響」
+    // 反而讓 fallback 那一輪的成本消失）。沒有 usage 欄位就不呼叫。
+    const u = json?.usage;
+    if (u && typeof u === "object") {
       args.onUsage?.({
         inputTokens: Number(u.input_tokens) || 0,
         cacheReadInputTokens: Number(u.cache_read_input_tokens) || 0,
         cacheCreationInputTokens: Number(u.cache_creation_input_tokens) || 0,
         outputTokens: Number(u.output_tokens) || 0,
       });
-    };
+    }
+    if (json?.stop_reason === "refusal") {
+      throw new Error("claude_refusal");
+    }
+    if (json?.stop_reason === "max_tokens") {
+      throw new Error("claude_max_tokens");
+    }
     const blocks = Array.isArray(json?.content) ? json.content : [];
     if (args.forcedTool) {
       const toolBlock = blocks.find((block: unknown) =>
@@ -154,7 +158,6 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
         (block as { input?: unknown }).input !== null
       );
       if (!toolBlock) throw new Error("claude_no_tool_use");
-      emitUsage();
       return JSON.stringify((toolBlock as { input: unknown }).input);
     }
     const content = blocks
@@ -167,7 +170,6 @@ export async function callClaude(args: ClaudeArgs): Promise<string> {
       .join("")
       .trim();
     if (!content) throw new Error("claude_empty_content");
-    emitUsage();
     return content;
   } catch (error) {
     if (
