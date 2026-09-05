@@ -296,6 +296,14 @@ export async function fetchLogRows(opts: {
         throw new Error(`Logs API ${response.status}: ${briefBody(body)}`);
       }
       const parsed = JSON.parse(body) as { result?: LogRow[] } | LogRow[];
+      // HTTP 200 但 body 沒有 result 陣列（例如 {"message":"…"} 這種非限流的
+      // 錯誤回應）＝端點在講別的事，不是「這天零筆」。當成零筆會讓一整天的
+      // 資料安靜消失，所以丟錯。
+      if (!Array.isArray(parsed) && !Array.isArray(parsed.result)) {
+        throw new Error(
+          `Logs API ${window.day} 回應沒有 result 陣列: ${briefBody(body)}`,
+        );
+      }
       const dayRows = Array.isArray(parsed) ? parsed : parsed.result ?? [];
       if (opts.limit !== undefined && dayRows.length >= opts.limit) {
         truncatedDays.push(window.day);

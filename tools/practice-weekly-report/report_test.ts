@@ -361,3 +361,38 @@ Deno.test("錯誤訊息裡的 API body 截到 300 字元", async () => {
   );
   assertEquals(logsError.message.length < 400, true);
 });
+
+Deno.test("HTTP 200 但 body 沒有 result 陣列＝錯誤，不是零筆", async () => {
+  await assertRejects(
+    () =>
+      fetchLogRows({
+        projectRef: "ref",
+        token: "t",
+        sql: "SELECT 1",
+        windows: dayWindows({ from: "2026-08-30", to: "2026-08-31" }),
+        fetchImpl: (() =>
+          Promise.resolve(
+            fakeResponse(200, '{"message":"something else went wrong"}'),
+          )) as unknown as typeof fetch,
+        sleep: () => Promise.resolve(),
+      }),
+    Error,
+    "沒有 result 陣列",
+  );
+});
+
+Deno.test("真的零筆（result 是空陣列）仍然正常收下", async () => {
+  const result = await fetchLogRows({
+    projectRef: "ref",
+    token: "t",
+    sql: "SELECT 1",
+    windows: dayWindows({ from: "2026-08-30", to: "2026-08-31" }),
+    fetchImpl: (() =>
+      Promise.resolve(
+        fakeResponse(200, '{"result":[]}'),
+      )) as unknown as typeof fetch,
+    sleep: () => Promise.resolve(),
+  });
+  assertEquals(result.rows, []);
+  assertEquals(result.missingDays, []);
+});
