@@ -1,8 +1,8 @@
 # 練習室 Phase 5「上線前補洞」實作計畫
 
 - 日期：2026-09-05
-- 程式基線：`main` `8d15cc57`（Phase 4.5g 後記；含 4.5a～4.5i。原稿對 `22c9ef90` 寫，2026-09-05 已 rebase 並逐條重核行號）
-- ⚠️ Phase 4.6（三把小刀：gameDebrief fresh snapshot 補 `inviteStage`、`check_out` 結構後檢查改注入改寫指令＋telemetry 新欄位 `checkOutRewriteInjected`、聊天端 gameSnapshot 補 `inviteStage`）在分支 `agency-phase46`，**尚未上 main**；本文所有行號以 main 為準，牽涉 `conversation_agency.ts` 4.5g 段與 `handler.ts` gameSnapshot 段的引用，**4.6 上 main 後再核對**。
+- 程式基線：`main` `74f14c76`（含 4.5a～4.5i、4.6 三把小刀、4.7 空白守門。原稿對 `22c9ef90` 寫，2026-09-05 已兩次 rebase 並逐條重核行號）
+- Phase 4.6（gameDebrief／聊天端 gameSnapshot 補 `inviteStage`、`check_out` 結構後檢查改注入改寫指令＋telemetry `checkOutRewriteInjected`）與 4.7（空白回覆守門）**已上 main**（`336e27b1`／`74f14c76`）；相關行號已重核：check_out 段 `conversation_agency.ts:1659-1745`、`partnerStatus` `handler.ts:5324-5336`。
 - 本文狀態：**Eric 2026-09-05 晚上定案**。Phase 5 ＝ **五包**（WP1 週報、WP2 成本保險絲、WP3 續聊敘事記憶、WP4 UI/UX 檢視、WP5 收尾導向檢討），彼此獨立、無依賴。其餘原案（計費第二次扣費、方案深度分層、提示換 Haiku、LINE 式互動整套、玩家傳圖、她傳圖照片庫、對抗式評測、分類器三刀）**全部進附錄凍結區**，上線後看四週週報再議。**PR #71 在五包做好、驗證好之後關閉。**
 - 產出性質：實作計畫；本文件本身零程式改動、零模型呼叫
 - 讀者：Bruce（前端 client）與 Eric-AI（server／工具）
@@ -73,7 +73,7 @@ Management API 拉練習室 telemetry：場次、回合分佈、介入率、`cha
 ### D13　Game check_out 進檢討需要 client 訊號
 
 server Response 要有一個訊號讓 client 導向檢討。
-- 現況（4.5a／4.5c 之後）：`check_out`／`read_only` 已是 policy 的 forced act（`conversation_agency.ts:93-94`），Response 已有選填 `partnerStatus: "checked_out" | "read_only"`（`handler.ts:5291-5303`，**只在 Game** 時給），client 已解析（`practice_chat_api_service.dart:1396`）但只多顯示一行、不導向。WP5 要做的是放寬條件與導向，見 WP5（§9 C6 已過時）。
+- 現況（4.5a／4.5c 之後）：`check_out`／`read_only` 已是 policy 的 forced act（`conversation_agency.ts:93-94`），Response 已有選填 `partnerStatus: "checked_out" | "read_only"`（`handler.ts:5324-5336`，**只在 Game** 時給），client 已解析（`practice_chat_api_service.dart:1396`）但只多顯示一行、不導向。WP5 要做的是放寬條件與導向，見 WP5（§9 C6 已過時）。
 
 ### D14　成本表（每場，USD；匯率取 1 USD ≈ NT$32）——保留當參考
 
@@ -167,7 +167,7 @@ server Response 要有一個訊號讓 client 導向檢討。
 - 介入率（agency 決策非 `none` 的比率）。
 - `chatModel` 分佈（`deepseek`／`haiku`）與 `chatModelFallback` 比率（`handler.ts:5123`）。
 - 每場成本估算：用 `chatModelUsage` 四格 × `tools/practice-agency-eval/pricing.ts` 的單價（`estimateCostUsd`／`HAIKU_4_5_PRICING`／`SONNET_5_PRICING`），提示與檢討各自一列。
-- `check_out` 結構後檢查：`checkOutStructuralFail` 比率（4.5g，main 已有）；`checkOutRewriteInjected` × `checkOutStructuralFail` 交叉比率（`checkOutRewriteInjected` 是 4.6 欄位，**4.6 上 main 前這一格輸出「欄位不存在」，不報錯**）。
+- `check_out` 結構後檢查：`checkOutStructuralFail` 比率（4.5g，main 已有）；`checkOutRewriteInjected` × `checkOutStructuralFail` 交叉比率（`checkOutRewriteInjected` 是 4.6 欄位，main 已有）。
 - 提示與檢討使用率（`hintUsedCount`、`practice_chat_debrief_succeeded` 事件數）。
 
 **損益表**：每個方案的付費人數、平均每人每月練習場數、練習室成本佔該方案收入的比例（成本＝場數 × 每場成本估算，收入＝該方案月費 × 付費人數）。**付費人數在 RevenueCat，不在 Supabase telemetry，第一版由 Eric 手填**（腳本留 `--paid-starter=N --paid-essential=N` 兩個參數，缺就只印成本欄）。
@@ -301,11 +301,11 @@ LINE 熟悉度：
 
 **現況（main `8d15cc57`）**
 - `check_out`／`read_only` 已是 policy 的 forced act（`conversation_agency.ts:93-94`；4.5a 刀 3）。強制結束**只給挑戰難度或 Game**（`:1057`，`allowsCheckOut` `:944`），policy 打出來的當輪 `forcedAct` 就是訊號來源，不必再看 FSM phase。
-- Response 已有選填 `partnerStatus: "checked_out" | "read_only"`（`handler.ts:5291-5303`，4.5c 刀 3），但條件多綁了 `practiceMode === "game"`；client 已解析（`practice_chat_api_service.dart:1396`），目前只多顯示一行、不自動結束、不鎖輸入。
-- 4.5g 的 forced `check_out` 結構後檢查在 `conversation_agency.ts:1652-1693`；**4.6 會改這一段（注入改寫指令＋`checkOutRewriteInjected`），4.6 上 main 後再核對行號。**
+- Response 已有選填 `partnerStatus: "checked_out" | "read_only"`（`handler.ts:5324-5336`，4.5c 刀 3），但條件多綁了 `practiceMode === "game"`；client 已解析（`practice_chat_api_service.dart:1396`），目前只多顯示一行、不自動結束、不鎖輸入。
+- forced `check_out` 結構後檢查（4.5g）與 4.6 的改寫指令注入在 `conversation_agency.ts:1659-1745`（main 已有）。
 
 **改哪些檔**
-- `handler.ts:5291-5303`：把 `partnerStatus` 的 Game-only 條件放掉——凡 agency `on` 且當輪 `forcedAct` 是 `check_out`／`read_only` 就給（挑戰難度自然納入，因為 `allowsCheckOut` 只在那兩種情形為真）。**不新開 `sessionEndedBy` 欄位**，沿用既有 `partnerStatus`，Bruce 端零新 parsing。
+- `handler.ts:5324-5336`：把 `partnerStatus` 的 Game-only 條件放掉——凡 agency `on` 且當輪 `forcedAct` 是 `check_out`／`read_only` 就給（挑戰難度自然納入，因為 `allowsCheckOut` 只在那兩種情形為真）。**不新開 `sessionEndedBy` 欄位**，沿用既有 `partnerStatus`，Bruce 端零新 parsing。
 - client：收到 `partnerStatus` 非 null → 顯示收尾提示並提供「看教練拆解」入口（導向檢討），而不是只多一行字。
 
 **資料契約**（既有，不改形狀）
@@ -375,7 +375,7 @@ WP1（唯讀腳本）與 WP4（純視覺）無旗標。
 寫這份計畫時逐檔查證了 `main@22c9ef90` 的現況，2026-09-05 rebase 到 `8d15cc57` 後逐條重核。C1–C4 都是傳圖相關，隨傳圖凍結搬到附錄；C5（`MAX_DEBRIEFS` 3 → 1）隨分層凍結，不再需要，已刪。C6、C7 已因 4.5a／4.5c 過時，保留為紀錄。
 
 **C6　~~`check_out` 不是程式裡存在的識別字~~ → 已過時（對 `22c9ef90` 成立，`8d15cc57` 不成立）。**
-4.5a 刀 3 已把 `check_out`／`read_only` 加進 policy 的 act 集合（`conversation_agency.ts:93-94`），4.5c 刀 3 已在 Game 的 Response 回 `partnerStatus`（`handler.ts:5291-5303`），4.5g 又補了 forced `check_out` 的結構後檢查（`:1652-1693`，4.6 會再改）。所以 D13 不需要再「定義 check_out」，WP5 改成「放寬到挑戰難度＋App 導向檢討」。
+4.5a 刀 3 已把 `check_out`／`read_only` 加進 policy 的 act 集合（`conversation_agency.ts:93-94`），4.5c 刀 3 已在 Game 的 Response 回 `partnerStatus`（`handler.ts:5324-5336`），4.5g 又補了 forced `check_out` 的結構後檢查（`:1659-1745`，4.6 已改）。所以 D13 不需要再「定義 check_out」，WP5 改成「放寬到挑戰難度＋App 導向檢討」。
 
 **C7（非衝突，補充）　~~Sonnet 5 有官方價，但程式內沒有常數~~ → 4.5c 已解。**
 `tools/practice-agency-eval/pricing.ts` 現在是單價唯一來源：`HAIKU_4_5_PRICING`（`:59`，`$1／$5`）、`SONNET_5_PRICING`（`:73`，`$2／$10`）、cache 乘數（`:32-33`）、`DEEPSEEK_CLASSIFIER_USD_PER_CALL`（`:108`）。§2 D14 的成本表用的就是這組價。WP1／WP2 直接 import，不要再抄。
