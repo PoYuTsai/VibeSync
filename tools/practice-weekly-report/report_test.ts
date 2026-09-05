@@ -326,3 +326,38 @@ Deno.test("相鄰日窗邊界重疊的列只算一次", async () => {
     1,
   );
 });
+
+Deno.test("錯誤訊息裡的 API body 截到 300 字元", async () => {
+  const huge = "x".repeat(5000);
+  const error = await assertRejects(
+    () =>
+      fetchDbRows({
+        projectRef: "ref",
+        token: "t",
+        sql: "SELECT 1",
+        fetchImpl: (() =>
+          Promise.resolve(fakeResponse(500, huge))) as unknown as typeof fetch,
+      }),
+    Error,
+    "Management API 500",
+  );
+  assertEquals(error.message.includes("共 5000 字元"), true);
+  assertEquals(error.message.length < 400, true);
+
+  const logsError = await assertRejects(
+    () =>
+      fetchLogRows({
+        projectRef: "ref",
+        token: "t",
+        sql: "SELECT 1",
+        windows: dayWindows({ from: "2026-08-30", to: "2026-08-31" }),
+        fetchImpl: (() =>
+          Promise.resolve(fakeResponse(503, huge))) as unknown as typeof fetch,
+        sleep: () =>
+          Promise.resolve(),
+      }),
+    Error,
+    "Logs API 503",
+  );
+  assertEquals(logsError.message.length < 400, true);
+});

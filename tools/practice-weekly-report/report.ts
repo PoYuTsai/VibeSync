@@ -175,6 +175,18 @@ async function readAccessToken(): Promise<string> {
 }
 
 /**
+ * 錯誤訊息裡的 API body 上限。整包 body 可能是幾 MB 的查詢結果或一長串
+ * HTML 錯誤頁；原樣塞進 Error 會刷爆終端機，也可能把資料內容帶進 log。
+ */
+const ERROR_BODY_MAX = 300;
+
+function briefBody(body: string): string {
+  return body.length > ERROR_BODY_MAX
+    ? `${body.slice(0, ERROR_BODY_MAX)}…（截斷，共 ${body.length} 字元）`
+    : body;
+}
+
+/**
  * Postgres 唯讀查詢。守門在**這裡**再叫一次（不是只靠 main）：任何呼叫端拿到
  * 這支函式都不可能繞過 `assertReadOnlySql`，而且是在 `fetch` 之前就丟錯——
  * 被擋下的語句一個位元組都不會離開這台機器。
@@ -200,7 +212,7 @@ export async function fetchDbRows<T>(opts: {
   );
   if (!response.ok) {
     throw new Error(
-      `Management API ${response.status}: ${await response.text()}`,
+      `Management API ${response.status}: ${briefBody(await response.text())}`,
     );
   }
   return await response.json() as T[];
@@ -277,7 +289,7 @@ export async function fetchLogRows(opts: {
         break;
       }
       if (!response.ok) {
-        throw new Error(`Logs API ${response.status}: ${body}`);
+        throw new Error(`Logs API ${response.status}: ${briefBody(body)}`);
       }
       const parsed = JSON.parse(body) as { result?: LogRow[] } | LogRow[];
       const dayRows = Array.isArray(parsed) ? parsed : parsed.result ?? [];
