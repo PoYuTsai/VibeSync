@@ -1448,3 +1448,122 @@ R2 是最後一輪審查，修完不再送審——所以下面每一項都有�
   的改動，要自己的黑箱；上線規模夠大再議。
 - 4.5b 那句「Haiku 最小可快取 2048」在 `prompt_test.ts` 註解與 `cache_probe.ts` 檔頭一併
   更正（README 由 4.5e 評測 commit 更正）。
+## Phase 4.5c — 補 4.5a／4.5b 的三個缺口（2026-09-05）
+
+三刀都在既有的 agency `on` 路徑上，**沒有新旗標**。刀 1、刀 3 的回退＝把
+`PRACTICE_CONVERSATIONAL_AGENCY_ENABLED` 改 `shadow`（與 4.5a 同一個開關，
+無法只回退這一輪）；刀 2 綁既有的 `PRACTICE_STANDARD_AGENCY_CLASSIFIER`
+（關掉就退回 4.1 的純結構回放）。旗標未設／`off`／亂填時
+`messages`／`response`／`rpc`／`telemetry` 四面仍逐位元組等於 `7f1d6d6c`
+golden（等價 harness，**golden 未重印**）。
+
+### 刀 1：`gameGreasy`／`userOverEscalated` 計入「（已讀）」授權
+
+4.5a Codex R1 P3-3 留給 Eric 的缺口。`policyStanceFor` 的 boundary 分支是
+`boundaryLike || gameGreasy || userOverEscalated` 三者 OR，但 4.5a 的
+`trailingBoundaryTurns()` 只數 `BOUNDARY_RE` 逐字稿——Game 的油膩／過度升溫
+`situation` 是 boundary，streak 卻恆為 0，那種連續越界永遠拿不到
+`readOnlyAllowed`。
+
+改成 `trailingColdRejectTurns(turns, evidence)`，判準與 stance 同源：
+
+- **逐則**（含最後一則）套可回溯的文字偵測函式：`BOUNDARY_RE`
+  （`boundaryLike` 同源）＋ `looksOverEscalated`（`userOverEscalated` 的定義
+  本身，也是 Game FSM `GREASY` 的文字來源）。
+- **最後一則**另外認 `evidence.gameGreasy`／`evidence.userOverEscalated`。
+  今天 `prompt.ts` 呼叫 `evaluateGameFsm` 沒有傳 `classification`，所以
+  `gameGreasy` 恆等於 `looksOverEscalated(latest)`；留這一段是為了它哪天被傳
+  進來時，stance 與這裡不會各自漂掉。
+- **近似的界線**：更早的訊息拿不到當時的 evidence，只能靠文字。所以
+  「classification 判越界但文字沒命中」的**歷史**輪次仍然數不到——今天不可能
+  發生（沒有傳 classification），是為未來留的已知窄口。
+
+難度門檻（`allowsCheckOut`＝挑戰或 Game）與 agency `on` 閘門**不變**。測試
+（`turn_response_plan_test.ts`）用兩則命中 `looksOverEscalated` 但**不**命中
+`BOUNDARY_RE` 的訊息（「我好想親妳」「那今晚去我家好不好」，先斷言
+`boundaryLike` 是 false 才有意義），涵蓋三種訊號各自連續兩則→授權、單一則→
+沒有、easy／normal→沒有、旗標 off／shadow→欄位不存在。
+
+### 刀 2：debrief 回放吃 thread 上的持久化修復點
+
+4.1 節寫「debrief 的 standard 模式沒有持久化狀態，本來就是純結構近似」；
+4.5b 之後 standard 也會寫 `agencyState`，這個近似沒有理由再留著。
+
+`debriefAgencyLedgerFor(turns, ctx, agencyState?)` 新增選填第三個參數，
+**只**消費 `repairedAtUserTurns`：
+
+- 它是**絕對序號**（第 N 則玩家訊息），其餘欄位（`unresolvedCount`／
+  `lastCoherence`／`lastAgencyAct`／階梯兩格…）是這一場**結尾**的累積值，拿去
+  當第 1 則的 prev 會整份算錯。
+- **注入時機**是回放走到那個序號的那一輪。直接塞進初始 state 沒有用——
+  `detectAgencyEvidence`／`nextConversationAgencyState` 會把「定位不到
+  （marker > 這次的玩家則數）」的 marker 丟掉且不再往下傳（4.5a R1 P1-4a），
+  在第 1 則就會被丟掉。注入之後由既有的 `locatable` 自然沿用。
+- marker 比這次逐字稿的玩家則數大＝當成沒有（同一條 R1 P1-4a 規則）。
+
+handler 的 debrief 路徑在 **assisted**，或 **standard ∧
+`standardAgencyClassifierEnabled(PRACTICE_STANDARD_AGENCY_CLASSIFIER,
+agencyMode, debriefPracticeMode)`** 時把 thread 上的狀態傳進來。刻意不重用
+`standardAgencyClassifierOn`——那支綁 `request.practiceMode`，debrief 的模式
+來自 ledger。**hint 不動**（standard 沒有 hint）。
+
+- **同源**：函式沒有任何 practiceMode 分支，同一份 `turns`＋`ctx`＋
+  `agencyState` 一定算出同一份帳，standard 與 beginner 從此一致。
+- **仍然是近似**：持久化狀態只記**最後一個**修復點，更早的分類器 `connected`
+  仍然補不回來；`classifierSignal` 也照舊一律傳 `null`。4.1 節「null-classifier
+  近似的風險方向是雙向的」那一段仍然成立，只是尾段對齊了正式路徑。
+- 實測（A25 逐字稿、`practice_girl_001`／normal）：無 marker 六則全記
+  （`repairTurns [1,2,3,4,5,6]`）；marker=2 → `[1,4,5,6]`，計數 6→4。
+  帳對 marker **不是單調的**（marker=3 反而回到 5），那是底層證據機制的既有
+  行為，不是這一刀新增的。
+
+### 刀 3：Game 的「先忙了」要能進檢討（server 訊號＋client 契約）
+
+4.5a 查證過 `practice-chat` 的 chat 回應只有 `sessionComplete`，而它就是
+`isSessionComplete(aiTurnCount)`＝「已達 20 則」，借用會讓 UI 說一句不成立的
+話。所以多一個**選填**欄位。
+
+- **server**：`partnerStatus: "checked_out" | "read_only"`，只在 agency `on`
+  ∧ `practiceMode === "game"` ∧ 這一輪 forcedAct 是那兩格時存在；其餘情形連
+  key 都沒有。那兩格只在 agency `on` 才可能是 forcedAct，所以旗標 off／
+  `shadow` 的 response 逐位元組不變。telemetry 不加（`forcedAct` 已經有了）。
+- **client**：`PracticeChatApiService` 白名單解析（認不得的值一律 null＝舊
+  client 對 server 未來新值 fail-closed，最多少一行提示）；
+  `PracticeChatState.partnerStatus` 每一輪照 server 覆寫（她被接回來的那一輪
+  沒有 key ＝提示消失，不黏住）；聊天輸入列上方多一行
+  「她先去忙了，這場可以結束練習看拆解」（key
+  `practice-partner-checked-out`）。
+- **刻意沒做**：**不**自動結束、**不**鎖輸入、`canSend` 不看這個欄位——要不
+  要強制結束 Eric 還沒拍板。beginner／challenge 也走得到 `check_out`，但本刀
+  只給 Game（beginner 沒有「這場收了」的產品語意，她冷但會回），反例測試釘住。
+
+### Gate（實測數字）
+
+- `deno test -A supabase/functions/practice-chat`：**1,950 passed / 0 failed /
+  1 ignored**（base 1,941 / 0 / 1；刀 1 ＋1、刀 2 ＋6、刀 3 ＋2）。
+- `deno test -A tools`：**116 passed / 0 failed**（base 116，未動）。
+- 等價 harness：全綠，**golden 未重印**（`git status` 全程沒有 golden 檔）。
+- `deno fmt --check supabase/functions/practice-chat`：clean；`deno lint` 4 個
+  問題，**與 main 相同**（`draw_handler_test.ts`／`game_fsm.ts`／
+  `hint_test.ts`，皆非本輪檔案）。`tools/` 的 64 個 fmt ＋ 5 個 lint 問題是
+  既有基準，本輪未動該目錄。
+- `deno check index.ts`：clean。
+- `flutter analyze lib/features/practice_chat test/unit/features/practice_chat
+  test/widget/features/practice_chat`：**No issues found**。
+- `flutter test test/unit/features/practice_chat test/widget/features/
+  practice_chat test/features/practice_chat`：**713 passed**。
+
+### 風險與未做
+
+- **真機未驗。** production 的 agency=true 已開，三刀合併即生效。
+- **零模型呼叫**：刀 1 讓「（已讀）」多了一個觸發入口，觸發率變高多少沒有量
+  過（4.5a 量到的 13.8% 是舊入口的合成上界）。上線後要看 `forcedAct` 與
+  `readOnlyReply` 的分佈有沒有跳。
+- 刀 2 的 marker 只有最後一個修復點；更早的分類器 `connected` 仍然補不回來，
+  也沒有量過「正式狀態回放 vs 全 null 回放」的 repair-turn 差集（4.1 節同一
+  個未做項）。
+- 刀 3 的 `partnerStatus` 只是提示；玩家仍然可以繼續丟訊息並被扣額（
+  `read_only` 那一輪不打模型，但扣額規則沒動）。要不要強制結束、要不要在那
+  一格改扣額，留給 Eric。
+- 刀 3 沒有處理「她先忙了之後玩家直接關 App」——沒有主動觸發 debrief，維持
+  既有的 client 送 `mode: "debrief"` 流程。
