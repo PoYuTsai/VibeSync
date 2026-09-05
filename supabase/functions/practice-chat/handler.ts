@@ -9,6 +9,8 @@
 //   PRACTICE_COST_FUSE_DAILY_USD         正數＝每日 Anthropic 預算（USD）；
 //                                        空／未設／非正數＝關
 //   PRACTICE_HINT_PREFETCH_ENABLED       true／其他＝關
+//   PRACTICE_MEMORY_SUMMARY_WRITE        true／其他＝關
+//   PRACTICE_SESSION_END_SIGNAL          true／其他＝關（Phase 5 WP5）
 //
 // **PRACTICE_COST_FUSE_DAILY_USD（Phase 5 WP2 成本保險絲）**：當日**整支
 // practice-chat**（chat 的 Haiku ＋ 提示／檢討的 Sonnet 5 → Haiku）的 Anthropic
@@ -2561,6 +2563,11 @@ export function createPracticeChatHandler(
     // prompt、RPC、Response、telemetry 五面與接線前逐位元組相同。
     const memorySummaryWriteOn =
       deps.getEnv("PRACTICE_MEMORY_SUMMARY_WRITE") === "true";
+    // Phase 5 WP5 收尾訊號：`true`＝`partnerStatus` 不再只給 Game，挑戰難度
+    // 打到 forced `check_out`／`read_only` 也給（App 據此導向檢討）；未設／其他值
+    // ＝維持 4.5c 的 Game-only 行為，Response 逐位元組不變。
+    const sessionEndSignalOn =
+      deps.getEnv("PRACTICE_SESSION_END_SIGNAL") === "true";
     const limits = resolveLimits(sub.tier);
     const responsePayloadWithCurrentUsage = (
       snapshot: Record<string, unknown>,
@@ -5599,13 +5606,16 @@ export function createPracticeChatHandler(
     // Phase 4.5c 刀 3：Game 的「她先去忙了」要能進檢討。4.5a 查證過
     // `sessionComplete` 就是 `isSessionComplete(aiTurnCount)`（已達 20 則），
     // 借用它會讓 UI 說一句不成立的話，所以多一個**選填**欄位。
-    // 只在 agency `on` ∧ Game ∧ 這一輪 forced `check_out`／`read_only` 時存在；
+    // 只在 agency `on` ∧ 這一輪 forced `check_out`／`read_only` 時存在；
     // 其餘情形連 key 都沒有（那兩格只在 agency `on` 時才可能是 `forcedAct`，
     // 所以旗標 off／shadow 的 response 逐位元組不變）。
-    // App 只拿它多顯示一行提示——**不**自動結束、**不**鎖輸入（要不要強制
-    // 結束 Eric 還沒拍板）。
+    // Phase 5 WP5：`PRACTICE_SESSION_END_SIGNAL=true` 時放掉 Game-only 條件——
+    // 挑戰難度也走得到那兩格（`allowsCheckOut` 只對 challenge／Game 為真，
+    // beginner／standard 永遠沒有這個 key）；旗標未設＝4.5c 的 Game-only。
+    // App 拿它顯示收尾提示並導向檢討——**不**自動結束、**不**鎖輸入。
     const partnerStatus = agencyMode === "on" &&
-        request.practiceMode === "game" && agencyDecision?.applied === true
+        (sessionEndSignalOn || request.practiceMode === "game") &&
+        agencyDecision?.applied === true
       ? agencyDecision.decision.forcedAct === "check_out"
         ? "checked_out"
         : agencyDecision.decision.forcedAct === "read_only"

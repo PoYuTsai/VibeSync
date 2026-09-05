@@ -10021,3 +10021,106 @@ Deno.test("Phase 4.5c 刀 3（反例）：沒走到那兩格、非 Game、旗標
     assertEquals("partnerStatus" in r.json, false, flag);
   }
 });
+
+/** 挑戰難度的 beginner thread；階梯狀態同樣直接種進 row。 */
+async function challengePartnerStatusRun(
+  agencyState: Record<string, unknown>,
+  env: Record<string, string>,
+  overrides: Record<string, unknown> = {},
+) {
+  const { json, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          conversationAgency: agencyState,
+        },
+      },
+      env,
+      deepSeekReplies: ["先這樣囉", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+      ...overrides,
+    }),
+  );
+  return {
+    json,
+    forcedAct: (succeeded?.conversationAgency as Record<string, unknown>)
+      ?.forcedAct,
+  };
+}
+
+const END_SIGNAL_ON = {
+  PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+  PRACTICE_SESSION_END_SIGNAL: "true",
+};
+
+Deno.test("Phase 5 WP5：PRACTICE_SESSION_END_SIGNAL=true 時挑戰難度的 check_out／read_only 也回 partnerStatus", async () => {
+  const checkOut = await challengePartnerStatusRun(
+    { ...LADDER_STATE, lowValueStreak: 3 },
+    END_SIGNAL_ON,
+  );
+  assertEquals(checkOut.forcedAct, "check_out");
+  assertEquals(checkOut.json.partnerStatus, "checked_out");
+
+  const readOnly = await challengePartnerStatusRun(
+    { ...LADDER_STATE, checkedOut: true },
+    END_SIGNAL_ON,
+  );
+  assertEquals(readOnly.forcedAct, "read_only");
+  assertEquals(readOnly.json.partnerStatus, "read_only");
+  // 仍然不自動結束、不鎖輸入。
+  assertEquals(readOnly.json.sessionComplete, false);
+
+  // Game 既有行為不受旗標影響。
+  const game = await gamePartnerStatusRun(
+    { ...LADDER_STATE, checkedOut: true },
+    END_SIGNAL_ON,
+  );
+  assertEquals(game.json.partnerStatus, "read_only");
+});
+
+Deno.test("Phase 5 WP5（反例）：旗標開著但 normal 難度／agency 非 on 沒有 key；旗標 off／亂填＝4.5c 的 Game-only", async () => {
+  // (1) 旗標開著，但 normal 難度的 `allowsCheckOut` 為 false → 走不到收尾格。
+  const normal = await challengePartnerStatusRun(
+    { ...LADDER_STATE, checkedOut: true },
+    END_SIGNAL_ON,
+    { difficulty: "normal" },
+  );
+  assert(
+    normal.forcedAct !== "check_out" && normal.forcedAct !== "read_only",
+    `normal 不該走到收尾格：${normal.forcedAct}`,
+  );
+  assertEquals("partnerStatus" in normal.json, false);
+
+  // (2) 旗標開著但 agency 只是 shadow → 沒有 key。
+  const shadow = await challengePartnerStatusRun(
+    { ...LADDER_STATE, checkedOut: true },
+    { ...END_SIGNAL_ON, PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "shadow" },
+  );
+  assertEquals("partnerStatus" in shadow.json, false);
+
+  // (3) 旗標 off／亂填：挑戰難度照樣走到 read_only，但 key 不給（Game-only）。
+  for (const flag of ["off", "亂填"]) {
+    const r = await challengePartnerStatusRun(
+      { ...LADDER_STATE, checkedOut: true },
+      {
+        PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true",
+        PRACTICE_SESSION_END_SIGNAL: flag,
+      },
+    );
+    assertEquals(r.forcedAct, "read_only", flag);
+    assertEquals("partnerStatus" in r.json, false, flag);
+  }
+});

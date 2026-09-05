@@ -1758,9 +1758,9 @@ class _BottomBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Phase 4.5c 刀 3：Game 的她說「先忙了」之後，玩家再丟就只拿到已讀
-          // ——沒有這一行的話他不知道這場其實該收了。**只提示**：輸入框仍然
-          // 可以打字送出（是否強制結束 Eric 還沒拍板）。
+          // Phase 4.5c 刀 3／Phase 5 WP5：她說「先忙了」或只回已讀之後，玩家
+          // 再丟也拿不到回應——沒有這一段他不知道這場其實該收了。提示＋一顆
+          // 「看教練拆解」導向檢討；輸入框仍然可以打字送出（不鎖、不自動結束）。
           if (state.partnerCheckedOut) ...[
             Text(
               '她先去忙了，這場可以結束練習看拆解',
@@ -1768,6 +1768,12 @@ class _BottomBar extends StatelessWidget {
               style: AppTypography.caption.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),
+            ),
+            const SizedBox(height: 8),
+            BrandPrimaryButton(
+              key: const ValueKey('practice-partner-checked-out-debrief'),
+              label: '看教練拆解',
+              onPressed: state.canDebrief ? onEndPractice : null,
             ),
             const SizedBox(height: 8),
           ],

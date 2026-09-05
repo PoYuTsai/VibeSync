@@ -28,6 +28,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
@@ -4651,7 +4652,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('她先去忙了，這場可以結束練習看拆解'), findsOneWidget);
-    // 只提示：輸入框沒有被換成「看教練拆解」那一格，也沒有被鎖。
+    // Phase 5 WP5：提示下面多一顆導向檢討的主鈕（aiReplyCount 3 → canDebrief）。
+    final debriefBtn = find.byKey(
+      const ValueKey('practice-partner-checked-out-debrief'),
+    );
+    expect(debriefBtn, findsOneWidget);
+    expect(tester.widget<BrandPrimaryButton>(debriefBtn).onPressed, isNotNull);
+    // 不鎖：輸入框沒有被換成「20 則上限」那一格，也沒有被禁用。
     expect(find.text('這場練習已達 20 則回覆'), findsNothing);
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.enabled, isNot(false));
@@ -4662,6 +4669,10 @@ void main() {
 
     expect(
       find.byKey(const ValueKey('practice-partner-checked-out')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('practice-partner-checked-out-debrief')),
       findsNothing,
     );
   });
