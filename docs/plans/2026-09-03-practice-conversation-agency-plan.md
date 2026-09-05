@@ -1379,6 +1379,22 @@ system 包成一個 block 掛 ephemeral cache，而 system 每一輪都夾著當
   Haiku，印出 `cacheCreationInputTokens`／`cacheReadInputTokens`），
   **本輪刻意沒有執行**——付費呼叫要等 Eric 授權。`cache_probe_test.ts` 只跑
   dry-run（矩陣形狀 ＋ 同格兩輪的穩定前綴逐位元組相同），零 Anthropic 呼叫。
+- **cache 探針結果（2026-09-05，Eric 授權後執行，12 次真呼叫 $0.05）**：
+  standard／beginner／game × style on／off 六格、每格兩輪，**12 次全部
+  `cacheCreationInputTokens=0`、`cacheReadInputTokens=0`**——穩定前綴只有
+  2,701–2,858 code units，換成 token 不到 Haiku 4.5 的 2,048 最小可快取長度，
+  所以 Anthropic 連寫都不寫。刀 B 的原始目的（讀到 cache）**沒有達成**；實際
+  效果是把今天 production「整段掛 cache、每輪都付 1.25× 寫入溢價卻永遠讀不到」
+  改成「零 cache 活動、全部按 1.0× 輸入計價」，Haiku 輸入成本約降兩成。要真的
+  命中，下一步是把一場之內不變的段落（記憶摘要、朋友圈、難度文案、優先序
+  說明）也搬進前綴讓它超過 2,048 tokens——那會改 DeepSeek 拿到的 system 順序，
+  是 on-path 改動，另開一刀。數字與逐格表在 `tools/practice-agency-eval/README.md`
+  「Phase 4.5b」節。
+- **標準模式兩臂黑箱（同日，A25／A26／A27、輕鬆、20 位 × 1，$2.37）**：
+  頭條 12.7%→**6.2%**、違反 mustForbid 18.0%→**9.7%**、滿足 mustAllow
+  67.3%→**81.0%**（三項信賴區間分開）；輕鬆難度兩臂 check_out／read_only 皆 0；
+  sequence 三項與 stance 在 repeat=1 下分不出；臂 B Haiku 佔比 71.7%（對抗
+  情境的上界）、p95 延遲 1.1s→2.1s。詳見同一節。
 - **回退**：把 `PRACTICE_STANDARD_AGENCY_CLASSIFIER` 拿掉即回到逐位元組舊行為
   （刀 A）；刀 B 沒有旗標，回退＝revert `270972de`（它自己不改 DeepSeek 路徑，
   只影響 Claude 的 request body 形狀）。
