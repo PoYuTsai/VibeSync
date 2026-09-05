@@ -79,7 +79,7 @@ export function renderReport(stats: Stats): string {
   }
   lines.push(
     `| **合計** | | | | | ${stats.generationTotalCalls} | **${
-      usd(stats.totalCostUsd)
+      usd(stats.generationCostUsd)
     }** |`,
   );
   lines.push("");
@@ -96,7 +96,7 @@ export function renderReport(stats: Stats): string {
     );
   }
   lines.push(
-    `每場提示＋檢討成本：${
+    `每場成本（提示＋檢討＋聊天）：${
       stats.costPerSessionUsd === null
         ? "—（本週沒有場次）"
         : usd(stats.costPerSessionUsd)
@@ -130,14 +130,18 @@ export function renderReport(stats: Stats): string {
     lines.push("");
     lines.push("| 項目 | 金額 |");
     lines.push("| --- | ---: |");
-    lines.push(`| 本週提示＋檢討成本 | ${twd(eco.weeklyCostTwd)} |`);
+    lines.push(`| 本週成本（提示＋檢討＋聊天） | ${twd(eco.weeklyCostTwd)} |`);
     lines.push(`| 外推月成本（×52/12） | ${twd(eco.monthlyCostTwd)} |`);
     lines.push(`| 月營收 | ${twd(eco.monthlyRevenueTwd)} |`);
     lines.push(`| 成本佔營收 | ${pct(eco.costShareOfRevenue)} |`);
     lines.push("");
     lines.push(
-      "付費人數是手填的；成本只含提示與檢討，聊天回合成本不在 DB（見下）。",
+      "付費人數是手填的。**聊天成本來自 Edge Function logs，涵蓋範圍見上**——",
     );
+    lines.push(
+      "涵蓋不足一整週（保留期切掉、或有天被限流標成未取得）時，這裡的成本與",
+    );
+    lines.push("佔比都會偏低。");
   }
   lines.push("");
 

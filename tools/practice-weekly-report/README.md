@@ -85,7 +85,7 @@ deno lint tools/practice-weekly-report/
 | 生成呼叫數         | `ai_logs` 列數 ＋ `retry_count`（同列內重試也是真的打了模型） | `ai_logs`                         |
 | fallback 比率      | `fallback_used = true` 的呼叫數 ÷ 總呼叫數                    | `ai_logs.fallback_used`           |
 | 估算成本           | 呼叫數 × 單次估價（見下）                                     | `ai_logs` ＋ `pricing.ts`         |
-| 每場成本           | 總估算成本 ÷ 場次                                             | 上面兩者                          |
+| 每場成本           | （提示檢討 ＋ 聊天）成本 ÷ 場次                               | 上面兩者 ＋ logs                  |
 
 ### 成本怎麼估（以及為什麼是估的）
 
@@ -116,7 +116,9 @@ RevenueCat 的付費人數不在 Supabase，第一版由 Eric 手填
 `--payers-starter=N --payers-essential=N`；沒給就印「未提供付費人數」，只出成本。
 
 - 月營收 ＝ Starter 人數 × NT$590 ＋ Essential 人數 × NT$1290。
-- 本週成本 ＝ 估算 USD × 32（D14 匯率）。
+- 本週成本 ＝（提示＋檢討估算 ＋ 聊天輪 logs 實 usage）× 32（D14 匯率）。
+  **聊天成本來自 function logs**，涵蓋範圍不足一整週（保留期切掉、或某天被
+  限流標成未取得）時，成本與佔比都會偏低——涵蓋範圍印在聊天段最上面。
 - 外推月成本 ＝ 本週成本 × 52 ÷ 12（營收是月費、成本是週觀測，要同口徑）。
 - 成本佔營收 ＝ 外推月成本 ÷ 月營收。
 

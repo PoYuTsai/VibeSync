@@ -69,6 +69,9 @@ export interface Stats {
   generation: GenerationRow[];
   generationTotalCalls: number;
   generationFallbackCalls: number;
+  /** 提示＋檢討的估算成本（不含聊天輪）。 */
+  generationCostUsd: number;
+  /** 提示＋檢討 ＋ 聊天輪（logs 有的話）。損益吃的是這個。 */
   totalCostUsd: number;
   /** 有呼叫但沒單價可估的次數（估價的分母缺口，要跟 console 對帳時看這個）。 */
   unpricedCalls: number;
@@ -225,6 +228,12 @@ export function aggregate(input: {
     else totalCostUsd += row.costUsd;
   }
 
+  // Codex R1 P1-3：損益必須含聊天成本，否則整份帳只算了提示與檢討兩支，
+  // 佔比會系統性偏低。聊天成本來自 logs，涵蓋範圍不足一週時同樣偏低——
+  // 報告的損益段會把這件事寫在旁邊。
+  const generationCostUsd = totalCostUsd;
+  const combinedCostUsd = generationCostUsd + (input.logs?.chatCostUsd ?? 0);
+
   const turnHistogram = Array.from({ length: MAX_TURNS }, (_, index) => ({
     turns: index + 1,
     sessions: histogram.get(index + 1) ?? 0,
@@ -241,10 +250,13 @@ export function aggregate(input: {
     generation,
     generationTotalCalls,
     generationFallbackCalls,
-    totalCostUsd,
+    generationCostUsd,
+    totalCostUsd: combinedCostUsd,
     unpricedCalls,
-    costPerSessionUsd: total > 0 ? totalCostUsd / total : null,
-    economics: input.payers ? buildEconomics(input.payers, totalCostUsd) : null,
+    costPerSessionUsd: total > 0 ? combinedCostUsd / total : null,
+    economics: input.payers
+      ? buildEconomics(input.payers, combinedCostUsd)
+      : null,
     logs: input.logs ?? null,
   };
 }

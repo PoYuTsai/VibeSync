@@ -1,9 +1,11 @@
 import {
+  assert,
   assertAlmostEquals,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   aggregate,
+  aggregateLogs,
   type AiLogRow,
   MISSING_FIELDS,
   type SessionRow,
@@ -235,4 +237,38 @@ Deno.test("計畫要求但 DB 沒有、只能靠 function logs 的欄位逐條�
   ) {
     assertEquals(names.includes(expected), true, expected);
   }
+});
+
+Deno.test("損益吃的成本含聊天輪：沒有任何 ai_logs 也不會是零", () => {
+  const logs = aggregateLogs([{
+    timestamp: 1788558109700000,
+    event_message: JSON.stringify({
+      level: "info",
+      event: "practice_chat_succeeded",
+      chatModel: "haiku",
+      chatModelCalls: { haiku: 1, deepseek: 0 },
+      chatModelUsage: {
+        inputTokens: 900,
+        cacheReadInputTokens: 8100,
+        cacheCreationInputTokens: 0,
+        outputTokens: 200,
+      },
+    }),
+  }]);
+  const stats = aggregate({
+    range: { from: "2026-08-29", to: "2026-09-05" },
+    sessions: SESSIONS,
+    aiLogs: [],
+    logs,
+    payers: { starter: 1, essential: 0 },
+  });
+  assertEquals(stats.generationCostUsd, 0);
+  assert(logs.chatCostUsd > 0);
+  assertAlmostEquals(stats.totalCostUsd, logs.chatCostUsd, 1e-12);
+  assert(stats.economics!.weeklyCostTwd > 0);
+  assertAlmostEquals(
+    stats.economics!.weeklyCostTwd,
+    logs.chatCostUsd * 32,
+    1e-12,
+  );
 });
