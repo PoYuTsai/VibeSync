@@ -102,10 +102,10 @@ deno lint tools/practice-weekly-report/
 - 算出來的單次金額與 D14 表格逐格相同：Sonnet 提示 `$0.0074`、檢討
   `$0.0154`、Haiku 提示 `$0.0037`。
 
-沒有牌價的模型（`deepseek-v4-flash`）那幾列印「未估」而不是 `$0`，並在
-下面單獨報「無單價未估的呼叫 N 次」——那是對帳時的分母缺口。 `pricing.ts` 只有
-`DEEPSEEK_CLASSIFIER_USD_PER_CALL`（分類器觀測單價）， 沒有 DeepSeek
-生成的單價常數，所以不拿它硬套。
+DeepSeek 的提示／檢討列印「未估」而不是 `$0`，並在下面單獨報未估呼叫數——那是
+對帳時的分母缺口。`pricing.ts` 的 `DEEPSEEK_CHAT_USD_PER_CALL` **只適用於聊天
+輪**（短 prompt、高快取命中的觀測值），提示與檢討的 prompt 長度與輸出長度都差
+一個量級，套上去只會低估到沒有意義，所以這一段刻意不套。
 
 驗收（計畫 WP1）：成本欄要能跟 Anthropic console 當週總帳對得起來、誤差 <
 10%。對不上時該修的是**寫入端**（讓 `ai_logs` 落真 usage），不是在這裡調 係數。

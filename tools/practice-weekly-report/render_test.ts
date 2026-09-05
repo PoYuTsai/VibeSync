@@ -60,10 +60,11 @@ Deno.test("報告含時間窗、場次、直方圖與生成成本表", () => {
   assertStringIncludes(md, "$0.0308");
 });
 
-Deno.test("DeepSeek 列也有金額，不再印「未估」", () => {
+Deno.test("DeepSeek 提示／檢討列印「未估」並單獨報未估呼叫數", () => {
   const md = renderReport(STATS);
   assertStringIncludes(md, "| deepseek-v4-flash |");
-  assertEquals(md.includes("未估"), false);
+  assertStringIncludes(md, "未估");
+  assertStringIncludes(md, "1 次呼叫");
 });
 
 Deno.test("沒有 logs 來源時，缺欄位逐條印出且不讓報告失敗", () => {

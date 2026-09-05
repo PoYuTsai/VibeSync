@@ -155,11 +155,15 @@ export const MISSING_FIELDS: readonly { field: string; reason: string }[] = [
   },
 ];
 
+/**
+ * 提示／檢討列的估價。
+ *
+ * **不套 `DEEPSEEK_CHAT_USD_PER_CALL`**（Codex R1 P1-2）：那個常數是「聊天輪」
+ * 的觀測單價——短 prompt、高快取命中的情境；提示與檢討的 prompt 長度、輸出長度
+ * 都是另一個量級，拿聊天單價去套會低估到沒有意義。DeepSeek 的提示／檢討列一律
+ * 「未估」，並在報告單獨列出未估呼叫數，讓對帳時看得見這個缺口。
+ */
 function costOf(mode: string, model: string, calls: number): number | null {
-  // DeepSeek 沒有 token 牌價，只有餘額差反推的每次觀測單價（pricing.ts）。
-  if (model.startsWith("deepseek")) {
-    return calls * DEEPSEEK_CHAT_USD_PER_CALL;
-  }
   const pricing = PRICING_BY_MODEL[model];
   const profile = CALL_TOKEN_PROFILE[mode];
   if (!pricing || !profile) return null;

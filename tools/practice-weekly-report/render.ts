@@ -91,7 +91,8 @@ export function renderReport(stats: Stats): string {
   if (stats.unpricedCalls > 0) {
     lines.push(
       "其中 " + stats.unpricedCalls +
-        " 次呼叫的 model 沒有登記單價（`pricing.ts` 要補），金額欄印「未估」。",
+        " 次呼叫未估（DeepSeek 只有「聊天輪」的觀測單價，prompt 與輸出長度" +
+        "差一個量級，不能拿來套提示／檢討）。",
     );
   }
   lines.push(
