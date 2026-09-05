@@ -2470,6 +2470,15 @@ export function createPracticeChatHandler(
         error: getErrorMessage(e),
       });
     }
+    /**
+     * Phase 4.5b（Codex R1 P1-1）：「這個 visible thread 上有另一個角色的列」
+     * 與「根本沒有列」是**兩件事**，舊版都被壓成 `relationshipThreadState = null`。
+     * standard 的新寫入路徑會把後者當成「建新列」，於是拿新角色的 profileId
+     * 去 upsert 同一個 (user, visible_thread_id)——四個 `= EXCLUDED` 欄位被寫成
+     * null（舊角色的分數與模式沒了），而 partner／invite／memory 走 COALESCE
+     * 留著舊角色的值，等於把兩個角色的狀態攪在一起。所以要把「不符」記下來。
+     */
+    let threadProfileMismatch = false;
     if (
       relationshipThreadState &&
       relationshipThreadState.profileId !== request.profile.girl.profileId
@@ -2480,6 +2489,7 @@ export function createPracticeChatHandler(
         threadProfileId: relationshipThreadState.profileId ?? null,
       });
       relationshipThreadState = null;
+      threadProfileMismatch = true;
     }
     const promptMemorySummary = relationshipThreadState?.memorySummary ?? null;
 
@@ -4925,7 +4935,10 @@ export function createPracticeChatHandler(
         memorySummary: promptMemorySummary,
         herRecentMoments,
       });
-      if (agencyDecision) {
+      // Codex R1 P1-1：profile 不符時**完全跳過** thread 寫入——那一列是別的
+      // 角色的，這條路徑沒有任何一個欄位算得出正確的值。分類器照跑、telemetry
+      // 照記（`statePersisted:false`），只是這一輪的狀態不落地。
+      if (agencyDecision && !threadProfileMismatch) {
         await upsertRelationshipThreadFailOpen({
           supabase,
           params: buildRelationshipThreadRpcParams({
@@ -4953,8 +4966,10 @@ export function createPracticeChatHandler(
             existingRecentFacts: relationshipThreadState?.recentFacts ?? null,
             agencyMode,
             // standard 不推進 style 狀態（它不讀 styleState，`priorDecline`
-            // 規格上恆為 false），既有值原樣帶回＝RPC 整包覆寫不會清空它。
-            replyStyleState: relationshipThreadState?.styleState ?? undefined,
+            // 規格上恆為 false）。**刻意不傳 `replyStyleState`**（Codex R1 U2）：
+            // `parseReplyStyleState` 是重建而不是原樣回傳，parse 後再寫回去會把
+            // `replyStyle` 裡本檔不認識的巢狀 key 靜默清掉。省略這個參數時
+            // `existingRecentFacts` 的原始 `replyStyle` 物件會原封不動穿過去。
             // 與 beginner 同一支狀態機；分類器失敗時訊號傳 null＝退回純結構
             // 近似（`AgencyClassifierSignal` 的既有契約）。
             conversationAgencyState: nextConversationAgencyState(
@@ -5136,6 +5151,10 @@ export function createPracticeChatHandler(
                   ? "ok"
                   : "failed",
                 standardClassifierDurationMs: standardAgency.durationMs,
+                // Codex R1 P1-1：這一輪有沒有**送出** thread 寫入（profile 不符
+                // 時刻意不碰別的角色那一列）。RPC 本身 fail-open，真的寫失敗會
+                // 另外印 `practice_relationship_thread_upsert_failed`。
+                statePersisted: !threadProfileMismatch,
                 ...(standardAgency.classification
                   ? {
                     coherence: standardAgency.classification.coherence,
