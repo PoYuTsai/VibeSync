@@ -1736,12 +1736,9 @@ Deno.test("Phase 4.5a 刀 3：階梯三格的計畫行——冷回、先忙、�
   assert(cold.text.includes("回 1 則，短，不主動問他問題。"));
   // 階梯形狀行取代 clarify-only 形狀行（那條是「只問清楚」，不是「冷冷接一句」）。
   assert(!cold.text.includes("不替他補你猜的意思"));
-  const out = render("check_out", "check_out_cold_v1");
+  const out = render("check_out", "check_out_v1");
   assert(out.text.includes("先去忙"));
   assert(out.text.includes("語氣冷，不解釋原因"));
-  assert(
-    render("check_out", "check_out_v1").text.includes("語氣可以自然，不用生氣"),
-  );
   // 三個 act 說明都不含範例台詞（報告 §13 第 8 點）。
   for (const t of [cold.text, out.text]) assert(!t.includes("我先忙了"));
 });
