@@ -19,6 +19,7 @@ import {
 } from "./aggregate.ts";
 import { renderReport } from "./render.ts";
 import {
+  assertRange,
   assertReadOnlySql,
   buildAiLogsSql,
   buildLogsSql,
@@ -107,6 +108,7 @@ export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
     from: values.get("from") ?? fallback.from,
     to: values.get("to") ?? fallback.to,
   };
+  assertRange(range);
   const starter = count(values, "payers-starter");
   const essential = count(values, "payers-essential");
   return {

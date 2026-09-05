@@ -226,3 +226,16 @@ Deno.test("守門在送出前擋下：寫入語句一個位元組都不會離開
   );
   assertEquals(called, false);
 });
+
+Deno.test("parseArgs 擋掉不存在的日子與顛倒的區間", () => {
+  assertThrows(
+    () => parseArgs(["--from=2026-02-31", "--to=2026-09-05"]),
+    Error,
+    "invalid_date",
+  );
+  assertThrows(
+    () => parseArgs(["--from=2026-09-05", "--to=2026-09-05"]),
+    Error,
+    "invalid_range",
+  );
+});

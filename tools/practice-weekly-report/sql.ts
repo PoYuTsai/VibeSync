@@ -29,11 +29,34 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const WRITE_KEYWORDS =
   /\b(insert|into|update|delete|drop|alter|truncate|create|grant|revoke|merge|copy|vacuum|call|do|set|refresh|comment|nextval|setval|currval|set_config|pg_sleep\w*|pg_terminate_backend|pg_cancel_backend|pg_advisory\w*|lo_\w+|dblink\w*)\b/i;
 
+/**
+ * 形狀對還不夠：`2026-02-31`／`2026-13-01` 都通得過正則，但 Postgres 會炸、
+ * Logs Explorer 會回空。用 Date 反解回字串比對，只有真實曆日才過。
+ */
 function assertIsoDate(value: string): string {
   if (!ISO_DATE.test(value)) {
     throw new Error(`invalid_date: ${value}`);
   }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (
+    Number.isNaN(parsed.getTime()) || !parsed.toISOString().startsWith(value)
+  ) {
+    throw new Error(`invalid_date: ${value}`);
+  }
   return value;
+}
+
+/**
+ * `--from` 必須早於 `--to`。相等或顛倒時報錯退出，不要產一份「零資料」的
+ * 報告——那種報告看起來像「這週沒人用」，其實是參數打錯（Codex R1 P2）。
+ */
+export function assertRange(range: DateRange): DateRange {
+  const from = assertIsoDate(range.from);
+  const to = assertIsoDate(range.to);
+  if (from >= to) {
+    throw new Error(`invalid_range: --from ${from} 必須早於 --to ${to}`);
+  }
+  return range;
 }
 
 /**

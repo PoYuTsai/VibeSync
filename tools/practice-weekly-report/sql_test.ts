@@ -4,6 +4,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  assertRange,
   assertReadOnlySql,
   buildAiLogsSql,
   buildLogsSql,
@@ -105,12 +106,12 @@ Deno.test("dayWindows 一天一段，最後一段止於 --to", () => {
   });
 });
 
-Deno.test("dayWindows 跨月正確，且 from === to 時是空陣列", () => {
+Deno.test("dayWindows 跨月正確", () => {
   assertEquals(
     dayWindows({ from: "2026-08-30", to: "2026-09-02" }).map((w) => w.day),
     ["2026-08-30", "2026-08-31", "2026-09-01"],
   );
-  assertEquals(dayWindows({ from: "2026-09-05", to: "2026-09-05" }), []);
+  assertEquals(dayWindows({ from: "2026-09-05", to: "2026-09-06" }).length, 1);
 });
 
 Deno.test("logs 端點把 SQL 與 iso 時間窗都放進 query string", () => {
@@ -163,4 +164,31 @@ Deno.test("守門不誤殺正常欄位名", () => {
   ) {
     assertEquals(assertReadOnlySql(sql), sql);
   }
+});
+
+Deno.test("日期要是真實曆日，形狀對但不存在的日子照樣擋", () => {
+  for (const bad of ["2026-02-31", "2026-13-01", "2026-00-10", "2026-04-31"]) {
+    assertThrows(
+      () => assertRange({ from: bad, to: "2026-09-05" }),
+      Error,
+      "invalid_date",
+    );
+  }
+  assertEquals(
+    assertRange({ from: "2028-02-29", to: "2028-03-01" }).from,
+    "2028-02-29",
+  );
+});
+
+Deno.test("--from 必須早於 --to；相等或顛倒都報錯（不產零資料報告）", () => {
+  assertThrows(
+    () => assertRange({ from: "2026-09-05", to: "2026-09-05" }),
+    Error,
+    "invalid_range",
+  );
+  assertThrows(
+    () => assertRange({ from: "2026-09-06", to: "2026-09-05" }),
+    Error,
+    "invalid_range",
+  );
 });
