@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sydney 動態背景｜給 Bruce 的發想</title>
+<style>
+:root{color-scheme:dark;--ink:#150c24;--surface:#241630;--flame:#ff6a2b;--muted:#c2b4cd;--line:#ffffff22}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 90% 0,#352047 0,transparent 48%),var(--ink);color:#f7f0fa;font:17px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft JhengHei",sans-serif}
+main{max-width:1080px;margin:auto;padding:54px 28px 60px}a{color:#e2c5ff;text-underline-offset:4px}button{font:inherit;cursor:pointer}
+.eyebrow{color:#c6a2ed;font-size:12px;letter-spacing:.14em}h1{font-size:clamp(32px,5vw,54px);line-height:1.2;letter-spacing:-.04em;margin:14px 0 18px}h2{font-size:23px;line-height:1.4;margin:0 0 12px}p{margin:0 0 14px}
+.intro{max-width:760px;color:var(--muted)}.authority{border-left:3px solid var(--flame);padding:12px 20px;margin:28px 0 32px;background:#ff6a2b0b}.authority strong{color:#ffb389}.authority p{margin:3px 0;font-size:15px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:30px 0 16px;flex-wrap:wrap}.tabs{display:flex;gap:6px;padding:5px;border:1px solid var(--line);border-radius:30px}.tabs button{border:0;background:transparent;border-radius:24px;color:var(--muted);padding:7px 15px;font-size:14px}.tabs button[aria-pressed=true]{background:var(--flame);color:#1c1027}.hint{color:var(--muted);font-size:13px;margin:0}
+.previews{display:grid;grid-template-columns:1fr 1fr;gap:20px}.preview{margin:0;border:1px solid var(--line);border-radius:22px;overflow:hidden;background:#fbf7f4;color:#2c173e}.preview[hidden]{display:none}.previews.single{grid-template-columns:minmax(0,520px);justify-content:center}.preview figcaption{padding:20px 24px 4px}.number{font-size:11px;letter-spacing:.1em;color:#795597}.preview h2{margin:3px 0;font-size:22px}.preview p{font-size:14px;line-height:1.6;color:#624b70;margin:0}.phone{position:relative;overflow:hidden;aspect-ratio:418/824;width:min(100%,418px);margin:12px auto 0}.phone img{position:absolute;width:352.15311%;max-width:none;height:auto;top:-18.56796%;left:-50.47847%}.phone.thinking img{left:-186.12440%}
+.caption{font-size:13px;color:var(--muted);margin:14px 0 32px}.flow{display:flex;gap:13px;align-items:center;margin:20px 0;flex-wrap:wrap}.step{flex:1;min-width:160px;border:1px solid var(--line);border-radius:16px;padding:18px;background:#ffffff04}.step b{display:block;color:#fff}.step span{font-size:14px;color:var(--muted)}.arrow{color:#ff9a6b}.proposal{border-top:1px solid var(--line);padding-top:32px;margin-top:35px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:30px}.layer{padding:10px 16px;border:1px solid #bfa0dc44;border-radius:9px;margin:7px 0;font-size:14px}.layer.character{background:#9d78f529}.layer.front{background:#f5f0f8;color:#4a3548}.layer.input{background:#ff6a2b18;border-color:#ff6a2b66}details{margin-top:26px;border-top:1px solid var(--line);padding-top:20px}summary{cursor:pointer;font-size:15px;color:#e3c9f9}ul{padding-left:21px;color:var(--muted);font-size:15px}li{margin:10px 0}code{font-size:13px;color:#f1d6ff;overflow-wrap:anywhere}.footer{margin-top:35px;color:#ab96bb;font-size:13px;border-top:1px solid var(--line);padding-top:18px}
+@media(max-width:620px){main{padding:32px 18px}.previews,.grid{grid-template-columns:1fr}.flow{display:grid;grid-template-columns:1fr;gap:5px}.arrow{transform:rotate(90deg);text-align:center}.authority{padding:10px 14px}.toolbar{align-items:flex-start}h1{font-size:36px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">VIBESYNC · SHOW-ME · 發想交接</div>
+<h1>Sydney 在場，<br>陪你把話聊清楚。</h1>
+<p class="intro">點進「問教練 Sydney」之後，人物成為聊天頁的背景。用很輕的姿態變化，讓閱讀與等待多一點教練陪伴感。</p>
+<div class="authority"><strong>Bruce，你的品味是這個方向的最高裁決。</strong><p>UI 構圖、Sydney 怎麼動、素材與實作方式，都由你決定。下面只是起點，可以完全改寫。</p><p>這張單是發想，沒有必做、期限或排程承諾。覺得沒必要，可以丟回來討論或直接關單。</p></div>
+<div class="toolbar"><div class="tabs" role="group" aria-label="預覽狀態"><button type="button" aria-pressed="true" data-view="both">並排比較</button><button type="button" aria-pressed="false" data-view="idle">待機</button><button type="button" aria-pressed="false" data-view="thinking">思考</button></div><p class="hint">靜態概念圖 · 切換只供看構圖</p></div>
+<div class="previews" id="previews">
+<figure class="preview" data-state="idle"><figcaption><div class="number">01 / IDLE</div><h2>她安靜在場</h2><p>可試自然呼吸、偶爾眨眼，鏡頭穩定。<br>幅度與節奏交給 Bruce。</p></figcaption><div class="phone"><img src="sydney-preview-board.png" alt="待機概念：Sydney 位於聊天頁上方，人物下緣淡化，文字卡片與輸入列在前景。"></div></figure>
+<figure class="preview" data-state="thinking"><figcaption><div class="number">02 / THINKING</div><h2>她正在整理回覆</h2><p>可試微微低頭、手靠下巴。<br>是否需要另一個姿勢，也由 Bruce 判斷。</p></figcaption><div class="phone thinking"><img src="sydney-preview-board.png" alt="思考概念：Sydney 微微低頭，前景顯示等待回覆的訊息。"></div></figure>
+</div>
+<p class="caption">兩個畫面取自同一張原始預覽板，這裡只用版面裁切展示，沒有重製圖像。<a href="sydney-preview-board.png">打開完整原圖</a>。圖中文字、間距與輸入狀態都是示意，不是定稿，也不是已完成的動畫。</p>
+<section class="proposal" aria-labelledby="ux-title">
+<div class="eyebrow">請 BRUCE 優先思考的 UX 問題</div>
+<h2 id="ux-title" style="margin-top:10px">長篇分析回來後，空間要交給誰？</h2>
+<p class="intro">現在把對話窗往下放，上方原本有預留空間。預覽只有短句；真的送出後，一大段高價值分析需要足夠的閱讀空間。這是本方向還沒解決的核心問題。</p>
+<div class="grid" style="margin-top:20px"><div><div class="layer character" style="padding:28px 16px">送出前：Sydney／預留空間</div><div class="layer front">開場短句</div><div class="layer input">輸入列</div></div>
+<div><div class="layer" style="border-style:dashed">收到長文：Sydney 要縮小、淡出，還是退到背景？</div><div class="layer front" style="padding:28px 16px">長篇分析需要主要閱讀區<br><span style="font-size:13px">段落、重點、回看前文、繼續追問</span></div><div class="layer input">鍵盤出現時，閱讀區還剩多少？</div></div></div>
+<p class="caption">右邊是待裁決的空間示意，並非定稿。請把完整長回答、捲動回看與鍵盤狀態一起想；人物如何退讓、是否調整整個版面，都由 Bruce 決定。</p>
+</section>
+<section class="proposal"><h2>如果往下試，可以先感受這個節奏</h2>
+<div class="flow"><div class="step"><b>待機</b><span>使用者讀內容、想問題</span></div><span class="arrow" aria-hidden="true">→</span><div class="step"><b>等待回覆</b><span>跟隨既有請求中的狀態</span></div><span class="arrow" aria-hidden="true">→</span><div class="step"><b>回到安靜</b><span>回覆完成或發生錯誤</span></div></div>
+<p class="hint">這是可選的兩狀態起點。也可以只留一個安靜循環，或最後採用靜態人物。</p></section>
+<section class="proposal grid"><div><h2>我的視覺偏好</h2><p class="intro">臉清楚、身體下緣融進背景，前景文字有穩定的閱讀底色。人物動作小，讓她看起來是在聽。</p><p class="intro">想像使用者正在打字或讀長回答時，Sydney 能自然退到背景；這個存在感的分寸，由 Bruce 拿捏。</p></div>
+<div><h2>可選的畫面分層</h2><div class="layer">既有深色背景</div><div class="layer character">Sydney 人物與下緣淡化</div><div class="layer front">前景對話、來源說明與進度</div><div class="layer input">固定底部輸入列</div><p class="hint">從背景到前景；只示意責任分層，並非要求使用特定 widget。</p></div></section>
+<details><summary>給 Bruce 的可選實作線索</summary><ul>
+<li><code>GlobalCoachScreen → CoachSurface</code> 是現有教練頁組合，可從局部人物背景試構圖。共用品牌背景目前採靜態設計。</li>
+<li>思考姿態可觀察既有 <code>isLoading</code>；成功與錯誤都能結束等待姿態。來源、對話範圍與額度流程維持現有責任。</li>
+<li><code>HomeCoachPresence</code> 已有各姿勢尺寸對齊、淡入淡出與遮罩經驗可參考；靜態 PNG 的交叉淡入淡出不等於眨眼或呼吸素材。</li>
+<li><code>motionDisabled(context)</code> 已處理減少動態與 <code>TickerMode</code>。若試作，可留意鍵盤出現、長對話、頁面離開與減少動態時的閱讀及播放狀態。</li>
+<li>動畫要採影片、序列圖或其他做法，由 Bruce 依人物質感、循環接點、透明邊緣、檔案大小與實機表現選擇；本單不指定套件或格式。</li>
+</ul></details>
+<p class="footer">2026-09-06 · Draft 發想 · 此頁只交接概念與靜態圖。Bruce 可繼續探索、退回討論或關單。</p>
+</main><script>
+const panels=[...document.querySelectorAll('[data-state]')], buttons=[...document.querySelectorAll('[data-view]')], previews=document.getElementById('previews');
+buttons.forEach(button=>button.addEventListener('click',()=>{const view=button.dataset.view;buttons.forEach(item=>item.setAttribute('aria-pressed',String(item===button)));panels.forEach(panel=>{panel.hidden=view!=='both'&&panel.dataset.state!==view});previews.classList.toggle('single',view!=='both')}));
+</script></body></html>
