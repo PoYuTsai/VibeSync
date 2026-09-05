@@ -1281,6 +1281,44 @@ void main() {
       expect(c.currentState.partnerStatus, isNull);
       expect(c.currentState.partnerCheckedOut, isFalse);
     });
+
+    // ── Phase 5 WP6：她封鎖你（性冒犯累到第三次）───────────────────────────
+    test('blocked → partnerBlocked、鎖輸入，但仍能進拆解', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async =>
+          reply(cost: 0, text: '（已封鎖）', partnerStatus: 'blocked');
+      await c.sendMessage('性冒犯');
+      final s = c.currentState;
+
+      expect(s.partnerStatus, 'blocked');
+      expect(s.partnerBlocked, isTrue);
+      expect(s.canSend, isFalse);
+      expect(s.canRequestHint, isFalse);
+      // 終局要能走到教練拆解。
+      expect(s.canDebrief, isTrue);
+    });
+
+    test('只靠訊息也推得出封鎖（partnerStatus 不進 Hive）', () {
+      final s = PracticeChatState(
+        sessionId: 'blocked-sess',
+        createdAt: DateTime(2026, 9, 6),
+        drawStatus: PracticeDrawStatus.revealed,
+        girl: null,
+        personaId: 'slow_worker',
+        personaLabel: '慢熱上班族',
+        difficulty: 'normal',
+        difficultyLabel: '一般',
+        aiReplyCount: 3,
+        messages: const [
+          PracticeMessage(role: 'user', text: '性冒犯'),
+          PracticeMessage(role: 'ai', text: '（已封鎖）'),
+        ],
+      );
+
+      expect(s.partnerStatus, isNull);
+      expect(s.partnerBlocked, isTrue);
+      expect(s.canSend, isFalse);
+    });
   });
 
   // ── sendMessage gating ─────────────────────────────────────────────────

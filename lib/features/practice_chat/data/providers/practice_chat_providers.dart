@@ -31,6 +31,9 @@ import '../services/practice_chat_api_service.dart';
 /// 一場練習最多 20 則 AI 回覆（與伺服器 MAX_AI_REPLIES 同步）。
 const int kMaxPracticeAiReplies = 20;
 
+/// Phase 5 WP6：她封鎖你之後 server 每一輪都回這個固定字串（`BLOCKED_REPLY_TEXT`）。
+const String kPracticeBlockedReplyText = '（已封鎖）';
+
 /// 新手模式同一輪最多 5 次 Hint（與伺服器 MAX_HINTS_PER_ROUND 同步）。
 const int kMaxPracticeHintsPerRound = 5;
 
@@ -313,11 +316,20 @@ class PracticeChatState {
       !isDebriefing &&
       !isHintLoading &&
       !ended &&
-      !sessionComplete;
+      !sessionComplete &&
+      !partnerBlocked;
 
   /// Phase 4.5c 刀 3：她已經先去忙了（含之後只回已讀）。純顯示用。
   bool get partnerCheckedOut =>
       partnerStatus == 'checked_out' || partnerStatus == 'read_only';
+
+  /// Phase 5 WP6：性冒犯累到第三次，她封鎖你＝這場終局（鎖輸入，但能進拆解）。
+  /// `partnerStatus` 不進 Hive，訊息會——所以還原後改用她那則固定字串推回來。
+  bool get partnerBlocked =>
+      partnerStatus == 'blocked' ||
+      (messages.isNotEmpty &&
+          messages.last.role == 'ai' &&
+          messages.last.text.trim() == kPracticeBlockedReplyText);
 
   bool get isBeginnerMode => learningMode == PracticeLearningMode.beginner;
   bool get isAssistedLearningMode => learningMode.usesAssistedLearning;
@@ -341,6 +353,7 @@ class PracticeChatState {
       !isDebriefing &&
       !ended &&
       !sessionComplete &&
+      !partnerBlocked &&
       girl != null &&
       aiReplyCount >= 1 &&
       messages.isNotEmpty &&

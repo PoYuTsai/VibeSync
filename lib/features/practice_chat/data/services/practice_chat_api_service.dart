@@ -1394,7 +1394,9 @@ class PracticeChatApiService {
   /// Phase 4.5c 刀 3：白名單解析。server 之後多出新值時舊 client 回 null
   /// （少一行提示），而不是把不認得的字串一路帶進 UI。
   static String? _parsePartnerStatus(dynamic v) =>
-      v == 'checked_out' || v == 'read_only' ? v as String : null;
+      v == 'checked_out' || v == 'read_only' || v == 'blocked'
+          ? v as String
+          : null;
 
   static List<String> _asStringList(dynamic v) {
     if (v is List) {
