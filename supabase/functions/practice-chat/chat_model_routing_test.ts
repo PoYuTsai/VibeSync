@@ -37,13 +37,20 @@ const ANSWERED_TURNS = [
   { role: "ai", text: "喔？哪一間" },
   { role: "user", text: "巷口那間小房子咖啡，他們家拿鐵很好喝" },
 ];
+/** 越界輪（`BOUNDARY_RE` 命中 → stance boundary → situation boundary）。
+ * agency 在這種輪次一律 `applied=false`，所以它是獨立的第二個入口。 */
+const BOUNDARY_TURNS = [
+  { role: "user", text: "今天過得還好嗎" },
+  { role: "ai", text: "還行啊 你呢" },
+  { role: "user", text: "傳一張泳裝照給我看" },
+];
 const CLASSIFIER_JSON =
   `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none"}`;
 
 const APPLIED = { applied: true };
 const NOT_APPLIED = { applied: false };
 
-Deno.test("chatModelFor：只有 mixed ＋ agency on ＋ 這一輪 applied ＋ assisted 模式才換 Haiku", () => {
+Deno.test("chatModelFor：只有 mixed ＋ agency on ＋（介入輪或越界輪）＋ assisted 模式才換 Haiku", () => {
   assertEquals(chatModelFor("mixed", "on", APPLIED, "beginner"), "haiku");
   assertEquals(chatModelFor("mixed", "on", APPLIED, "game"), "haiku");
   // Codex R1 P1（範圍）：standard 沒量過，一律 deepseek。
@@ -67,6 +74,39 @@ Deno.test("chatModelFor：只有 mixed ＋ agency on ＋ 這一輪 applied ＋ a
   assertEquals(chatModelFor("true", "on", APPLIED, "beginner"), "deepseek");
   assertEquals(chatModelFor("亂填", "on", APPLIED, "beginner"), "deepseek");
   assertEquals(chatModelFor("Mixed", "on", APPLIED, "beginner"), "deepseek");
+});
+
+Deno.test("chatModelFor：越界輪是獨立的第二個入口（applied=false 也走 Haiku）", () => {
+  // 正例：越界輪的 applied 恆為 false，仍然換 Haiku（劃界線最不能出錯）。
+  assertEquals(
+    chatModelFor("mixed", "on", NOT_APPLIED, "beginner", "boundary"),
+    "haiku",
+  );
+  assertEquals(
+    chatModelFor("mixed", "on", null, "game", "boundary"),
+    "haiku",
+  );
+  // 反例：其他情境不因為多帶了 situation 就換模型。
+  for (const situation of ["neutral", "question", "early_invite", null]) {
+    assertEquals(
+      chatModelFor("mixed", "on", NOT_APPLIED, "beginner", situation),
+      "deepseek",
+      `situation=${situation}`,
+    );
+  }
+  // 反例：越界輪也擋在 standard／agency 未開／旗標未開之外。
+  assertEquals(
+    chatModelFor("mixed", "on", NOT_APPLIED, "standard", "boundary"),
+    "deepseek",
+  );
+  assertEquals(
+    chatModelFor("mixed", "shadow", NOT_APPLIED, "beginner", "boundary"),
+    "deepseek",
+  );
+  assertEquals(
+    chatModelFor(undefined, "on", NOT_APPLIED, "beginner", "boundary"),
+    "deepseek",
+  );
 });
 
 interface RunResult {
@@ -222,6 +262,38 @@ Deno.test("mixed ＋ agency on 但 practiceMode=standard：證據涵蓋不到的
   assertEquals(r.chatDeepSeekCalls.length, 1);
   assertEquals(r.succeeded.chatModel, "deepseek");
   assertEquals(r.body.provider, "deepseek");
+});
+
+Deno.test("mixed ＋ agency on 的越界輪：即使 agency 沒介入也打 Claude Haiku", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    turns: BOUNDARY_TURNS,
+    claudeReplies: ["這個不行喔"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.claudeCalls.length, 1);
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.body.reply, "這個不行喔");
+  assertEquals(r.body.provider, "anthropic");
+  assertEquals(r.succeeded.chatModel, "haiku");
+  assertEquals(r.succeeded.chatModelCalls, { haiku: 1, deepseek: 0 });
+  // 這一輪 agency 沒介入（越界輪的既有優先權高於 agency），證明它是獨立入口。
+  const agency = r.succeeded.conversationAgency as { applied?: boolean } | null;
+  assertEquals(agency?.applied, false);
+  assertWrittenExactlyOnce(r);
+});
+
+Deno.test("越界輪在 standard 仍然不進路由", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    practiceMode: "standard",
+    turns: BOUNDARY_TURNS,
+  });
+  assertEquals(r.claudeCalls.length, 0);
+  assertEquals(r.chatDeepSeekCalls.length, 1);
+  assertEquals(r.succeeded.chatModel, "deepseek");
 });
 
 Deno.test("routing 未設／off／亂填：telemetry 連 chatModel key 都不存在", async () => {

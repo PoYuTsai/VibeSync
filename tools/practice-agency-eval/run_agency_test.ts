@@ -677,37 +677,47 @@ Deno.test("Phase 4.4：runner 的選模入口與 production chatModelFor 在整�
   const agencyModes = ["on", "shadow", "off"] as const;
   const modes = ["standard", "beginner", "game"] as const;
   const applieds = [true, false, undefined];
+  const situations = ["boundary", "neutral", "question", undefined];
   let mixedHaiku = 0;
+  let boundaryHaiku = 0;
   for (const arm of arms) {
     for (const agency of agencyModes) {
       for (const mode of modes) {
         for (const applied of applieds) {
-          const actual = runnerChatModelFor({
-            chatModel: arm,
-            agency,
-            mode,
-            applied,
-          });
-          const expected = arm === "haiku"
-            ? "haiku"
-            : arm === "mixed"
-            ? chatModelFor(
-              "mixed",
+          for (const situation of situations) {
+            const actual = runnerChatModelFor({
+              chatModel: arm,
               agency,
-              applied === undefined ? null : { applied },
               mode,
-            )
-            : "deepseek";
-          assertEquals(
-            actual,
-            expected,
-            `arm=${arm} agency=${agency} mode=${mode} applied=${applied}`,
-          );
-          if (arm === "mixed" && actual === "haiku") mixedHaiku++;
+              applied,
+              situation,
+            });
+            const expected = arm === "haiku"
+              ? "haiku"
+              : arm === "mixed"
+              ? chatModelFor(
+                "mixed",
+                agency,
+                applied === undefined ? null : { applied },
+                mode,
+                situation,
+              )
+              : "deepseek";
+            const label =
+              `arm=${arm} agency=${agency} mode=${mode} applied=${applied} situation=${situation}`;
+            assertEquals(actual, expected, label);
+            if (arm === "mixed" && actual === "haiku") {
+              mixedHaiku++;
+              if (applied !== true) boundaryHaiku++;
+            }
+          }
         }
       }
     }
   }
-  // 非空洞：mixed 臂真的有格子選到 Haiku（agency=on × beginner/game × applied=true）。
-  assertEquals(mixedHaiku, 2);
+  // 非空洞：mixed 臂真的有格子選到 Haiku——介入輪（agency=on × beginner/game ×
+  // applied=true × 四個 situation）＝8 格，越界輪（applied 非 true × boundary）
+  // ＝ 2 模式 × 2 個非 true 的 applied ＝ 4 格。
+  assertEquals(mixedHaiku, 12);
+  assertEquals(boundaryHaiku, 4);
 });
