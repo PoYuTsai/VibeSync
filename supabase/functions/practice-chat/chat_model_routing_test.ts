@@ -972,7 +972,7 @@ Deno.test("Phase 4.5g：不是 check_out 的輪次含問句照樣一次就過（
  * 失敗——同 prompt 重試無效（已入腦的坑）。第二發必須多帶一則 user 訊息，
  * 把第一發的具體違規項目與改法講白。
  */
-Deno.test("Phase 4.6 刀 2：check_out 第一發含問句 → 第二發 messages 多一則改寫指令，帶具體違規項目與第一發原文", async () => {
+Deno.test("Phase 4.6 刀 2：check_out 第一發含問句 → 第二發 messages 多一則改寫指令，帶具體違規項目、不引第一發原文", async () => {
   const r = await runChat({
     agency: "true",
     difficulty: "challenge",
@@ -989,7 +989,9 @@ Deno.test("Phase 4.6 刀 2：check_out 第一發含問句 → 第二發 messages
   assertEquals(second.slice(0, first.length), first);
   const injected = second.at(-1)!;
   assertEquals(injected.role, "user");
-  assert(injected.content.includes("你在忙嗎"), injected.content);
+  // Codex R1 P1：第一發是未受信任的模型輸出，不得混進 user 訊息（抄寫／
+  // 指令混淆），改寫指令只能是固定字串。
+  assert(!injected.content.includes("你在忙嗎"), injected.content);
   assert(injected.content.includes("問句"), injected.content);
   assert(injected.content.includes("重寫"), injected.content);
   const agency = r.succeeded.conversationAgency as Record<string, unknown>;
@@ -1049,6 +1051,64 @@ Deno.test("Phase 4.6 刀 2：多則＋超長各自對到自己的改寫指令；
       .checkOutRewriteInjected,
     undefined,
   );
+});
+
+Deno.test("Phase 4.6 Codex R1 P2：mixed 路由走 Haiku 時，第二發同樣多一則改寫指令", async () => {
+  const r = await runChat({
+    routing: "mixed",
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    claudeReplies: ["你在忙嗎", "先忙了"],
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.body.reply, "先忙了");
+  assertEquals(r.chatDeepSeekCalls.length, 0);
+  assertEquals(r.claudeCalls.length, 2);
+  const first = r.claudeCalls[0].messages;
+  const second = r.claudeCalls[1].messages;
+  assertEquals(second.length, first.length + 1);
+  assertEquals(second.slice(0, first.length), first);
+  assert(second.at(-1)!.content.includes("重寫"), second.at(-1)!.content);
+  assertEquals(
+    (r.succeeded.conversationAgency as Record<string, unknown>)
+      .checkOutRewriteInjected,
+    true,
+  );
+});
+
+Deno.test("Phase 4.6 Codex R1 P2：第一發 check_out 違規、第二發被別的守門擋下 → 恰好兩次呼叫、沒有第三發", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    style: true,
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["你在忙嗎", "（她轉身離開）"],
+    expectFailure: true,
+  });
+  // 兩發都被擋＝既有的整輪失敗路徑（4.6 之前也是 500），沒有第三次呼叫。
+  assertEquals(r.status, 500);
+  assertEquals(r.chatDeepSeekCalls.length, 2);
+  assert(
+    r.chatDeepSeekCalls[1].messages.at(-1)!.content.includes("重寫"),
+  );
+});
+
+Deno.test("Phase 4.6 Codex R1 P2：第一發空字串不算 check_out 結構違規，由既有守門處理", async () => {
+  const r = await runChat({
+    agency: "true",
+    difficulty: "challenge",
+    thread: CHECK_OUT_THREAD,
+    deepSeekReplies: ["", "先忙了"],
+  });
+  // 既有行為（4.6 之前亦然）：空字串沒有任何守門會擋，一發就送出。這道後檢查
+  // 對空字串刻意回空陣列，所以不會重試、不會注入改寫指令。空回覆本身要不要
+  // 擋是另一把刀，不在 4.6 範圍。
+  assertEquals(r.status, 200);
+  assertEquals(r.chatDeepSeekCalls.length, 1);
+  const agency = r.succeeded.conversationAgency as Record<string, unknown>;
+  assertEquals(agency.checkOutRetry, undefined);
+  assertEquals(agency.checkOutRewriteInjected, undefined);
 });
 
 // ── Phase 4.5g Codex R1 P2-1／P2-2 ────────────────────────────────────────

@@ -1729,13 +1729,17 @@ const CHECK_OUT_REWRITE_LINES: Record<CheckOutViolation, string> = {
  * 4.5i 實測同一份 prompt 原樣重送，第一發違規約 70%、第二發仍 50–62% 失敗
  * ——同 prompt 重試無效（已入腦的坑）。第二發要把第一發**哪裡不合格**與
  * **要改成怎樣**講白，而不是原樣重送。呼叫端只在 `violations` 非空時注入。
+ *
+ * 刻意**不引第一發原文**（Codex R1 P1）：那段是模型自己吐的未受信任文字，
+ * 塞回 user 訊息等於把它升格成指令——引號沒閉合、帶角色標記或「請照抄」
+ * 這類內容會跟改寫指令競爭，而且模型會把它當內容抄走（已入腦的坑）。
+ * 這則訊息因此只由固定字串組成，沒有任何模型輸出混入。
  */
 export function checkOutRewriteInstruction(
   violations: readonly CheckOutViolation[],
-  rejected: string,
 ): string {
   const reasons = violations
     .map((violation) => `- ${CHECK_OUT_REWRITE_LINES[violation]}`)
     .join("\n");
-  return `你剛才這句不合格：「${rejected.trim()}」\n${reasons}\n請重寫：只回 1 則、${CHECK_OUT_MAX_CHARS} 字以內、沒有問句，一句話交代先去忙就收。`;
+  return `你剛才那句收尾不合格：\n${reasons}\n請重寫：只回 1 則、${CHECK_OUT_MAX_CHARS} 字以內、沒有問句，一句話交代先去忙就收。`;
 }

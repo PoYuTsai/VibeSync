@@ -92,7 +92,8 @@ import {
   type AgencyShapeExperiment,
   agencyShapeExperimentFor,
   chatModelFor,
-  checkOutStructuralViolation,
+  checkOutRewriteInstruction,
+  checkOutStructuralViolations,
   type ConversationAgencyState,
   nextConversationAgencyState,
   READ_ONLY_REPLY_TEXT,
@@ -190,6 +191,8 @@ export interface AgencyTurnResult {
   readonly preTruncationBubbles?: readonly string[];
   /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發（為真才記）。 */
   readonly checkOutRetry?: true;
+  /** Phase 4.6 刀 2：第二發真的帶了改寫指令（為真才記）。 */
+  readonly checkOutRewriteInjected?: true;
   /** Phase 4.5g：第二發仍命中，fail-open 送出（為真才記）。 */
   readonly checkOutStructuralFail?: true;
   /** 這一輪 `agencyPolicyFor` 的決策（agency 關閉／shadow 時省略）。 */
@@ -553,6 +556,9 @@ export async function runAgencyScenario(args: {
     // `checkOutStructuralViolation`、同一個位置＝所有守門與截斷之後）。
     let checkOutRetried = false;
     let checkOutStructuralFailed = false;
+    // Phase 4.6 刀 2（handler.ts 同源）：後檢查丟掉第一發時，第二發多帶的改寫
+    // 指令；只有這道後檢查造成的重試才有值。
+    let checkOutRewrite: string | null = null;
     const guardRejections: string[] = [];
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHAT_GENERATION_ATTEMPTS; attempt++) {
@@ -560,7 +566,15 @@ export async function runAgencyScenario(args: {
       try {
         let candidate = readOnlyTurn
           ? READ_ONLY_REPLY_TEXT
-          : await activeCallChat(messages, bundle.systemStable);
+          : await activeCallChat(
+            checkOutRewrite
+              ? [...messages, {
+                role: "user" as const,
+                content: checkOutRewrite,
+              }]
+              : messages,
+            bundle.systemStable,
+          );
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
         rejectVisibleInternalLabelLeak(candidate, "chat_internal_label_leak", {
@@ -608,9 +622,15 @@ export async function runAgencyScenario(args: {
         }
         // Phase 4.5g：handler.ts 同序、同一支函式。第一發命中就用既有的第二發
         // 重試（不加第三次呼叫），第二發仍命中就 fail-open 送出。
-        if (checkOutStructuralViolation(bundle.agencyDecision, candidate)) {
+        // Phase 4.6 刀 2：第二發不再原樣重送，注入針對性改寫指令（同 handler）。
+        const checkOutViolations = checkOutStructuralViolations(
+          bundle.agencyDecision,
+          candidate,
+        );
+        if (checkOutViolations.length > 0) {
           if (attempt < CHAT_GENERATION_ATTEMPTS) {
             checkOutRetried = true;
+            checkOutRewrite = checkOutRewriteInstruction(checkOutViolations);
             throw new Error("chat_agency_check_out_shape");
           }
           checkOutStructuralFailed = true;
@@ -753,6 +773,7 @@ export async function runAgencyScenario(args: {
       shapeDropped,
       ...(preTruncationBubbles ? { preTruncationBubbles } : {}),
       ...(checkOutRetried ? { checkOutRetry: true as const } : {}),
+      ...(checkOutRewrite ? { checkOutRewriteInjected: true as const } : {}),
       ...(checkOutStructuralFailed
         ? { checkOutStructuralFail: true as const }
         : {}),

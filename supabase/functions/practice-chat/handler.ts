@@ -4802,7 +4802,6 @@ export function createPracticeChatHandler(
               checkOutRetried = true;
               checkOutRewrite = checkOutRewriteInstruction(
                 checkOutViolations,
-                candidate,
               );
               throw new Error("chat_agency_check_out_shape");
             }

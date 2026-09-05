@@ -171,7 +171,14 @@ Deno.test("A32／A33 在真正的 prompt bundle 上走到對的分支（situatio
     difficulty: "normal",
     profileId: "practice_girl_004",
   });
-  const bundleAt = (id: string, upto: number) => {
+  const bundleAt = (
+    id: string,
+    upto: number,
+    scores: { temperatureScore: number; familiarityScore: number } = {
+      temperatureScore: 80,
+      familiarityScore: 70,
+    },
+  ) => {
     const texts = userTexts(id);
     const turns: PracticeTurn[] = [];
     for (let k = 0; k < upto; k++) {
@@ -186,14 +193,21 @@ Deno.test("A32／A33 在真正的 prompt bundle 上走到對的分支（situatio
       styleState: null,
       agencyState: null,
       practiceMode: "game",
-      temperatureScore: 80,
-      familiarityScore: 70,
+      ...scores,
     });
   };
-  // A32：邀約那一輪走 mature_invite（高分開場），確認那一輪走 early_invite
-  // ——兩個都是 `chatModelFor` 的既有 situation 入口，之前沒有情境碰得到。
+  // A32：邀約輪與確認輪都是 `chatModelFor` 的既有 situation 入口。
+  // 高分開場（80/70 → direct_invite_ready）兩輪都走 mature_invite：Phase 4.6
+  // 刀 3 之前 chat 端的 gameSnapshot 漏帶 inviteStage，確認輪的
+  // speedInviteDirection 卡在 soft_invite_probe → stance hold → early_invite，
+  // 那是 bug 的副產物，不是產品意圖。early_invite 入口改用低分開場覆蓋。
   assertEquals(bundleAt("A32", 4).situation, "mature_invite");
-  assertEquals(bundleAt("A32", 5).situation, "early_invite");
+  assertEquals(bundleAt("A32", 5).situation, "mature_invite");
+  assertEquals(
+    bundleAt("A32", 5, { temperatureScore: 40, familiarityScore: 20 })
+      .situation,
+    "early_invite",
+  );
   // A33：踩線輪 boundary、道歉輪 neutral，兩輪都是 Game 修復優先。
   const cross = bundleAt("A33", 3);
   assertEquals(cross.situation, "boundary");

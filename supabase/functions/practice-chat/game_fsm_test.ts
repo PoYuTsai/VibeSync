@@ -10,11 +10,13 @@ import {
   buildGameStrategy,
   containsCrudeSexualOffense,
   evaluateGameFsm,
+  evaluateGameFsmForLedger,
   gameTacticDirectiveFor,
   hasExplicitSrGameStrategy,
   turnPressurePhaseFloor,
 } from "./game_fsm.ts";
 import type { PracticeTurn } from "./validate.ts";
+import { inviteMaturityFromLearningScores } from "./invite_maturity.ts";
 import { applyLearningClassification } from "./temperature.ts";
 import { GIRL_PROFILES, resolvePracticeProfile } from "./practice_persona.ts";
 
@@ -1376,4 +1378,55 @@ Deno.test("P4 之後三招輪替，不再每球一字不差", () => {
   for (let i = 1; i < moves.length; i++) {
     assert(moves[i] !== moves[i - 1], `第 ${i + 4} 球跟前一球撞招`);
   }
+});
+
+Deno.test("Phase 4.6 Codex R1：刀 1（ForLedger）與刀 3（inviteMaturity.stage）兩條 inviteStage 推導在整個分數網格上同源", () => {
+  // 刀 3 在 prompt.ts 用同一輪算好的 `inviteMaturityFromLearningScores(...).stage`
+  // （game 模式 stageFloor 恆 null），刀 1 用 `evaluateGameFsmForLedger`；兩者
+  // 必須在所有分數（含 65／80 邊界與 clamp 外的值）與心情上產出同一份 snapshot。
+  const turns: PracticeTurn[] = [
+    { role: "user", text: "你講話很有畫面欸" },
+    { role: "ai", text: "那你倒是說說看看到什麼" },
+    { role: "user", text: "看到你在測我穩不穩" },
+  ];
+  const moods = [null, "comfortable", "curious", "guarded", "annoyed"] as const;
+  let compared = 0;
+  for (
+    let temperatureScore = -10;
+    temperatureScore <= 110;
+    temperatureScore += 5
+  ) {
+    for (
+      let familiarityScore = -10;
+      familiarityScore <= 110;
+      familiarityScore += 5
+    ) {
+      for (const partnerMood of moods) {
+        const viaLedger = evaluateGameFsmForLedger({
+          turns,
+          temperatureScore,
+          familiarityScore,
+          partnerMood: partnerMood as never,
+        });
+        const viaMaturity = evaluateGameFsm({
+          turns,
+          temperatureScore,
+          familiarityScore,
+          partnerMood: partnerMood as never,
+          inviteStage: inviteMaturityFromLearningScores({
+            temperatureScore,
+            familiarityScore,
+            partnerMood: partnerMood as never,
+          })?.stage ?? null,
+        });
+        assertEquals(
+          viaMaturity,
+          viaLedger,
+          `${temperatureScore}/${familiarityScore}/${partnerMood}`,
+        );
+        compared++;
+      }
+    }
+  }
+  assertEquals(compared, 25 * 25 * moods.length);
 });
