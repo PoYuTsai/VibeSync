@@ -107,7 +107,7 @@
 - 2026-09-05（Phase 4.3 R1）：Codex R1 判 **BLOCKED**（兩個 P1 互相牽制）。**已查證** production 分類器在 chat 生成之後才跑（`buildChatPromptBundle` L4391 → `judgeLearningState` L4552，且它吃 `assistantReply`），當輪 coherence 拿不到，所以改用**上一輪已持久化**的分類器判斷。刀 1 閘門重寫成 `unresolvedCount ≥ 1 ∧ answer_candidate ∧ aiQuestionedInLoop ∧ priorCoherence ≠ connected ∧ (有分類器訊號就只認「她上一則真的在澄清」＝新 state 欄位 `aiClarifiedLastTurn`；沒有訊號才退回 `!precedingUserContext` 的保守近似)`——assisted 因此**拿掉**了 P1-2 指出的八回合豁免，而 P1-1 的五輪反例（想去日本）在分類器說她問的是內容問題時**不再被強制**。不共用 `priorChallengeIssued`（那是含 planner 強制過的黏住 OR）。刀 2 擴展到 `utteranceShapeOf`（問句與反應詞都容忍句尾裝飾，`TAIL_DECORATION_RE` 補 ZWJ／VS／keycap），`isQuestionText` 仍不動（off 路徑的 `detectTurnSignals` 在用）。回放工具加 `--ai-clarified=1|0` 夾上下界、狀態推進改成與 handler 對齊。三個臂的重建：`false` 臂新強制格全 0、`null` 與 `true` 臂逐格相同（現有 artifact 全是純丟詞情境，`precedingUserContext` 本來就 false，所以**這兩張表分辨不出新舊閘門**，分辨它的是單元測試）；A28／A29／A25.p9／A26.p9 四臂逐格不變（**A28 的保護來自既有狀態機，不是 `!precedingUserContext`**，R1 前的理由已撤回）。1,869 綠（＋14）、eval 49 綠、harness 6 綠且 off golden 未重印。**殘留成本**：分類器只判得到上一輪，所以「她真的澄清過＋他這輪其實是正當回答」第一次仍會被質疑一次，下一輪才恢復——這是程式的已知成本，不是 Eric 的授權。
 - 2026-09-05（Phase 4.3 R2，兩輪用盡）：Codex R2 三個 P1 全在程式面，已修。(1) **撤回** 4.3 加進 `REACTION_RE` 的肯定／否定短詞——它在看她上一句是哪種問題之前就把「是非題→不是」與「澄清→不是」一起免疫，而後者根本沒回答（4.2 那張反應詞契約表因此**回復原狀**）。(2) `aiClarifiedLastTurn === null`（standard／分類器缺席或解析失敗）**一律不強制**，`!precedingUserContext` 退路整條拿掉——**死守邊界只在 assisted（beginner／game）成立**，standard 維持既有二選一。(3) 新增 `EXPLANATION_RE`（因為／意思是／就是說／是說）判成 `self_share`，讓「因為下個月要去首爾出差」這種澄清後的完整解釋不落 `answer_candidate`（成對反例：同一格丟「清邁」仍強制）。另修 U-8（state parser 接受字面 `null`，不再整份作廢）、P2-4（judge prompt 補 `aiChallengedThisTurn` 的反例定義與互斥條款＋prompt／parser 測試）、P3-7（前文 1～8 位改成完整交替並斷言嚴格交替）。離線重建：**`null` 與 `false` 兩臂與 base 逐鍵逐值完全相同**——沒有分類器訊號時整個 Phase 4.3 在全矩陣上是零改動；`true` 臂維持 R1 的分佈（A06／A10／A12／A14／A25／A26 與無探針輪），A28／A29／A25.p9／A26.p9 四臂逐格不變，15 筆仍是 7/15。1,872 綠（＋17）、eval 49 綠、harness 6 綠且 off golden 未重印。**未解的天花板**：沒有解釋標記也沒有第一人稱的正當回答，在分類器判 true 的那一輪仍會被強制一次（生成前沒有能判當前回覆語意的訊號）；整刀的產品效果現在完全繫於分類器 `aiChallengedThisTurn` 的準確率，**只有黑箱量得到**。三個 replay 臂**不是** production 上下界，只是固定假設分支（R2 P2-5）。
 - 2026-09-05（Phase 4.1）：`agency-phase41` 分支（branch 自 main `21b43a5c`）落地 Hint／Debrief P2——教練指得出「沒有回答她、連續丟詞」，且她的補救不算玩家得分。新檔 `agency_coaching.ts` 兩支純函式＋21 支測試，hint／prompt 各一個選填參數，門檻與 chat 路徑同源（難度／isGame／角色 agency profile），旗標 `on` 才進 prompt；1,848 支測試綠（＋22）、等價 harness off／shadow golden 未重印且新增白名單釘住「旗標 on 時 11 個 hint／debrief 案例必須不同」。本輪零模型呼叫，沒有新的黑箱數字。Codex R1 BLOCKED（三個 P2＋四個 U）已全數處置，R2 **APPROVED_WITH_RISK**（撤銷 R1 的 P1、無 P0/P1/P2）的一個 P3 與三個 U 也已修完，HEAD `977ec7e8`。詳見本檔「Phase 4.1」節。
-- 2026-09-05（Phase 4.4）：`agency-phase44` 分支（branch 自 main `4b381189`）把 Phase 4.3 三臂黑箱的結論搬進 production——新旗標 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 時，**只有她真的要介入的那一輪**改打 Claude Haiku 4.5，其餘維持 DeepSeek；條件與黑箱 runner 的 `--chat-model=mixed` 臂逐字相同（`chatModelFor`）。Claude 失敗當輪退回 DeepSeek 重生並記 `chatModelFallback`；`practice_chat_succeeded` 多 `chatModel`／`chatModelUsage`，旗標不是 `mixed` 時整組 key 不存在。runner 的 haiku 呼叫端改成直接呼叫 production 的 `callClaude`（刪掉自己抄的那份對映），並用一支測試斷言兩邊送出的 request body 逐位元組相同。1,881 支測試綠（＋9）、等價 harness 8 綠且 **off golden 未重印**（多枚舉一維 routing env）、eval 工具 55 綠。**本輪零模型呼叫**，沒有新的黑箱數字；旗標預設關，開之前 production 行為逐位元組不變。詳見本檔「Phase 4.4」節。
+- 2026-09-05（Phase 4.4）：`agency-phase44` 分支（branch 自 main `4b381189`）把 Phase 4.3 三臂黑箱的結論搬進 production——新旗標 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 時，**只有她真的要介入的那一輪**改打 Claude Haiku 4.5，其餘維持 DeepSeek；條件與黑箱 runner 的 `--chat-model=mixed` 臂逐字相同（`chatModelFor`）。Claude 失敗當輪退回 DeepSeek 重生並記 `chatModelFallback`；`practice_chat_succeeded` 多 `chatModel`／`chatModelUsage`，旗標不是 `mixed` 時整組 key 不存在。runner 的 haiku 呼叫端改成直接呼叫 production 的 `callClaude`（刪掉自己抄的那份對映），並用一支測試斷言兩邊送出的 request body 逐位元組相同。Codex R1 判 BLOCKED 的兩個 P1（成本觀測失真、證據範圍）、一個 P2、兩個 P3 與四個 U 已全數處置：usage 改整輪累加＋`chatModelCalls`、`standard` 排除在路由外、`onUsage` 搬到 content 驗證之後、mixed telemetry 改逐欄位比對、runner 選模入口直接呼叫 `chatModelFor`。1,888 支測試綠（＋16）、等價 harness 8 綠且 **off golden 未重印**（多枚舉一維 routing env）、eval 工具 56 綠。**本輪零模型呼叫**，沒有新的黑箱數字；旗標預設關，開之前 production 行為逐位元組不變。詳見本檔「Phase 4.4」節。
 
 ## Phase 4.2 — 立場持久診斷、停滯輪不強制問、評測 salt（2026-09-05）
 
@@ -807,7 +807,8 @@ R2 正式撤銷 R1 的 P1（舊 packet 契約寫錯），無 P0／P1／P2。
 ### 旗標與路由
 
 - 新旗標 `PRACTICE_CHAT_MODEL_ROUTING`（server-only，與 agency 旗標獨立）：`"mixed"` ＝開；未設／`off`／任何其他值一律關（`chatModelFor` fail-closed，與 `agencyModeFor` 同款）。
-- 路由條件與黑箱 runner 的 `--chat-model=mixed` 臂**逐字相同**：`routingFlag === "mixed"` ∧ `agencyMode === "on"` ∧ `agencyDecision.applied === true`（planner 真的注入了 guidance，不是「允許」）。agency `off`／`shadow`、或這一輪沒介入 → DeepSeek。
+- 路由條件與黑箱 runner 的 `--chat-model=mixed` 臂**逐字相同**（R1 之後 runner 的選模入口 `runnerChatModelFor` 直接呼叫 production 的 `chatModelFor`，不是抄一份）：`routingFlag === "mixed"` ∧ `agencyMode === "on"` ∧ `practiceMode ∈ {beginner, game}` ∧ `agencyDecision.applied === true`（planner 真的注入了 guidance，不是「允許」）。agency `off`／`shadow`、`standard`、或這一輪沒介入 → DeepSeek。
+- **`standard` 一律不進路由**（Codex R1 P1）：Phase 4.3 三臂黑箱只量過 `beginner ＋ --state=1`，standard 連分類器都沒有（4.3 的死守邊界在 standard 本來就不成立），介入率與品質都沒量過。**`game` 併入後要先跑一次小黑箱再開旗標**（Eric 安排）。
 - 另外兩道現實條件在呼叫端檢查（不進純函式）：`CLAUDE_API_KEY` 存在且 `deps.callClaude` 有注入。缺任一個就當作沒開（chat 路徑本來就要求 DeepSeek key 才進得來，退路一定在）。
 - 命中時的呼叫參數：`model=claude-haiku-4-5-20251001`、`max_tokens=200`、`temperature=0.9`、`timeoutMs=30000`、system 走 `callClaude` 內建的 `cache_control: {type:"ephemeral"}`、messages ＝ `buildChatPromptBundle` 的同一份（DeepSeek 路徑吃的也是這一份）。回傳文字進**同一條**後處理：繁簡轉換、內部標籤守門、L4 守門、括號旁白剝除、`truncateAgencyShape`、重試迴圈。
 - Response body 的 `provider`／`model` 照實回報（旗標關著時仍是 `deepseek`／`deepseek-v4-flash`，逐字舊行為）。client 目前不讀這兩格。
@@ -818,25 +819,44 @@ Claude 呼叫失敗（逾時／4xx／5xx／`claude_empty_content` 等解析失�
 
 ### telemetry 與成本護欄
 
-- `practice_chat_succeeded` 在旗標 `mixed` 時多三個 key：`chatModel`（`"deepseek"|"haiku"`）、`chatModelFallback`（只有真的退回時存在）、`chatModelUsage`（只有成功打到 Claude 時存在，四個 token 數字：input／cache_read／cache_write／output）。旗標不是 `mixed` 時**整組 key 不存在**，flag-off golden 一個位元都不動。
+- `practice_chat_succeeded` 在旗標 `mixed` 時多四個 key：`chatModel`（最終**採用**的那一支）、`chatModelCalls`（`{haiku, deepseek}`，整輪各自真的被呼叫幾次，守門重試也算）、`chatModelFallback`（這一輪有任一次 Claude 呼叫失敗過）、`chatModelUsage`（整輪**所有成功** Claude 呼叫的四格累加：input／cache_read／cache_write／output）。旗標不是 `mixed` 時**整組 key 不存在**，flag-off golden 一個位元都不動。
+- Codex R1 P1 修正前的缺陷：`chatModelUsage` 是最後一次覆寫、fallback 還會把它清成 `undefined`，所以「Claude 成功→守門拒→Claude 成功」只記後面那次、「…→Claude 失敗→DeepSeek」整筆 Claude 用量消失。現在兩個案例都有測試釘住。
 - 成本護欄：`max_tokens` 與 DeepSeek 路徑同值（不高於），system prompt cache 必開（`callClaude` 既有行為）。**不做每日預算**（YAGNI）——成本用 Anthropic console 監控，異常時把旗標關掉即可。
 
 ### 反漂移
 
-`callClaude` 補了一個 `onUsage` 回呼（不傳就零改動，hint／debrief 都不傳）之後，黑箱 runner 的 `callHaikuChat` 改成直接呼叫它，刪掉 runner 自己抄的 `claudeRequestMessages` 與 fetch。`run_agency_test.ts` 一支測試把同一份 bundle messages 分別送進 handler 的 Claude 呼叫端與 runner 的 haiku 臂，斷言打出去的 request body **逐位元組相同**——黑箱結論才搬得回 production。
+`callClaude` 補了一個 `onUsage` 回呼（不傳就零改動，hint／debrief 都不傳；只在 content 解析與驗證**之後**才響，200 但內容空時一次都不呼叫）之後，黑箱 runner 的 `callHaikuChat` 改成直接呼叫它，刪掉 runner 自己抄的 `claudeRequestMessages` 與 fetch。兩支測試分別守住兩件事：「選了 Haiku 之後送出的 request body 逐位元組相同」（同一份 bundle messages 進 handler 的呼叫端與 runner haiku 臂），以及「**何時**選 Haiku 相同」（routing × agencyMode × applied × practiceMode 全矩陣比對 `runnerChatModelFor` 與 `chatModelFor`）。
+
+### 資料面（Codex R1 U3）
+
+Anthropic **不是本刀新增的資料接收方**：practice-chat 的 hint／debrief 早就用同一支 `callClaude` 把同一段練習對話送給 Anthropic（`CLAUDE_API_KEY` 也是既有的）。本刀只是讓介入輪的 chat 生成多送同一份 `chatPromptBundle.messages`（與 DeepSeek 拿到的那份逐字相同，沒有多帶 telemetry、id 或金鑰）。資料留存設定、DPA／地區、隱私揭露文字是否需要更新，**由 Eric 確認後才開 production 旗標**——這一輪沒有提供也沒有宣稱這些治理證據。
 
 ### Gate（實測）
 
-- practice-chat 全套：**1,881 passed / 0 failed / 1 ignored**（base `4b381189` 1,872；＋9）。
-- 等價 harness：**8 passed / 1 ignored**，**off golden 未重印**；harness 多枚舉一維 routing env（`off`／亂填／`true` 四面等價；`mixed` 只允許 telemetry 多一個 key，且沒有 Anthropic key 時三面等於「agency on ＋ routing 未設」）。
-- `tools/practice-agency-eval/`：**55 passed / 0 failed**（＋6）。
+- practice-chat 全套：**1,888 passed / 0 failed / 1 ignored**（base `4b381189` 1,872；＋16）。
+- 等價 harness：**8 passed / 1 ignored**，**off golden 未重印**；harness 多枚舉一維 routing env（`off`／亂填／`true` 四面等價；`mixed` 逐行解析 telemetry、刪掉允許的四個 key 後逐位元組相同，且事件數與事件名相同；沒有 Anthropic key 時三面等於「agency on ＋ routing 未設」）。
+- `tools/practice-agency-eval/`：**56 passed / 0 failed**（＋7）。
 - `deno fmt --check` 本輪觸碰的 `.ts` 全過；`deno check` 0 error；`deno lint` **5 個與 base 相同**（全在未觸碰檔案）。
 - prompt 瘦身 gate 不受影響（本刀一個字都沒動 prompt）。
 - `flutter-ci.yml` 的 Edge contract tests 名單加入 `chat_model_routing_test.ts`，不然這道 gate 在 PR CI 是死的。
 
+### Codex R1：BLOCKED（逐項處置）
+
+| 項 | 內容 | 處置 |
+| --- | --- | --- |
+| **P1** | Claude 重試成本被 telemetry 少算或抹除 | **已修**：usage 整輪累加、新增 `chatModelCalls`、fallback 不清已付掉的 usage、`chatModelFallback` 改成「任一次失敗」。兩個守門重試案例有測試 |
+| **P1** | 實驗證據沒覆蓋 production 路由範圍 | **已修（縮範圍）**：`chatModelFor` 加 `practiceMode`，`standard` 一律 deepseek；game 併入前先跑小黑箱。standard／game 的補跑仍未做 |
+| **P2** | `onUsage` 違反自己的契約 | **已修**：搬到 content 解析與驗證之後；`claude_test.ts` 兩支測試（空內容零次、成功恰好一次） |
+| **P3** | mixed telemetry 只檢查「不同」 | **已修**：逐行解析 JSON、刪允許的四個 key 後逐位元組比 flag-off（那份已被 golden 測試釘成 `7f1d6d6c` bytes），並斷言事件數與事件名逐項相同 |
+| **P3** | fake 的 usage 時序與 production 不一致 | **已修**：fake 只在非 Error 回覆時觸發 `onUsage` |
+| **U1** | mixed Response 契約自相矛盾 | **已修（明訂契約）**：見本節「旗標與路由」與測試檔頭——真的採用 Haiku 的輪次允許 `provider`／`model` 值不同，key 集合不變；三種 Response 有 schema 相容測試 |
+| **U2** | 沒證明 runner 與 production 的「何時選 Haiku」相同 | **已修**：runner 選模入口直接呼叫 `chatModelFor`，另有全矩陣逐項比對測試 |
+| **U3** | 新增 Anthropic 資料接收方的治理證據 | **已寫進本節「資料面」**：Anthropic 不是新接收方（hint／debrief 既有），本刀只多送同一份 bundle；留存／DPA／隱私揭露由 Eric 確認後才開旗標 |
+| **U4** | fallback 的 exactly-once 未被直接證明 | **已修**：四個失敗案例都斷言 `commit_practice_chat_turn` 恰好一次、learning update 與 thread 寫入各至多一次 |
+
 ### 仍未做／風險
 
-- **本輪零模型呼叫**：沒有新的黑箱數字，Phase 4.3 的三臂結論就是全部證據（20 位 × 10 情境 × repeat 1、beginner＋state）。standard／game 模式下的 mixed 效果**沒有量過**。
+- **本輪零模型呼叫**（R1 修正輪同樣零呼叫）：沒有新的黑箱數字，Phase 4.3 的三臂結論就是全部證據（20 位 × 10 情境 × repeat 1、beginner＋state）。`game` 的 mixed 效果**沒有量過**（程式上已允許，開旗標前要先跑小黑箱）；`standard` 已在程式層排除。
 - 真機未驗。旗標預設關，Eric 要在 Supabase 設 `PRACTICE_CHAT_MODEL_ROUTING=mixed` 才會生效。
 - 成本：黑箱外推每次 Haiku 生成約 $0.003；只有介入輪才打，實際比例看 telemetry 的 `chatModel` 分佈。開了之後第一天就該看一次 Anthropic console。
 - 延遲：黑箱量到 Haiku p95 比 DeepSeek 多約 57%，但只落在介入輪。fallback 那一輪等於兩次呼叫的延遲相加（逾時 30s 上限）。
