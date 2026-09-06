@@ -1,6 +1,21 @@
 # Sydney 教練頁：進場人物與長文閱讀
 
-2026-09-06：Eric 看過六狀態互動原型後確認「好，這樣應該可以」，由 Eric／AI 在同一張 PR 實作這個範圍的 Flutter UX。Bruce 的視覺探索保留為參考；Sydney 動圖仍是可放棄的試片發想，不含在這次實作中。
+2026-09-06：Eric 看過六狀態互動原型後確認閱讀優先 UX，並在比較完整表演 V3 後決定「可以，用這版吧」。同一張 PR 現在包含 Flutter 閱讀版與選定影片的入口接線。
+
+## 選定的 V3 動態素材
+
+- 入口人物循環播放完整 10 秒表演；固定 9:16、最多 240 邏輯像素高，大字體時縮小，保留頭部及手勢。
+- 開始輸入即卸載人物播放器，等待、釐清及長文都沿用標題列靜態頭像；影片不控制 AI 請求或答案完成時機。
+- 提供暫停／播放按鈕。切到背景、頁面被覆蓋或 TickerMode 停用時停止播放；手動暫停不因回到前景而解除。
+- 系統「減少動態效果」使用同一支影片的首幀靜態圖；載入或播放失敗也使用靜態圖，不阻擋提問。
+- 影片為 APP 內附資產，無額外下載 URL、生成費用或自動重試生成。原始輸出約 14.18 MB，包內衍生版約 1.90 MB。
+- 保留使用者選定的原表演與自然循環：最後回托腮較快、首尾笑容與角度不同，沒有做淡接或宣稱無縫。
+
+包內影片 `assets/videos/coach/sydney_performance_v3.mp4`：540×960、H.264 Baseline／8-bit／BT.709、24 fps、241 幀、10.041667 秒、無音軌、faststart。SHA-256：`795fe45dcffdfc16c2d7b4f009fb91df8515e6f30f96919f07f9d73c8fe22ade`。靜態圖 `assets/images/coach/sydney_performance_v3_poster.jpg` 是原輸出首幀擷取，SHA-256：`9113b99474bca933ec0a3312a45c04ec0e9dd6582d3726f5e9539ec2c2c872a5`。
+
+來源輸出 SHA-256：`faa942024bf13429339ad00be7c62e435079221ada81cb4894ad09491d0a3d41`。只縮放與編碼，完整保留幀數、比例與速度，未裁切、去背、補幀或重繪。使用 [Flutter 官方 video_player](https://pub.dev/packages/video_player/versions/2.14.0)，鎖定 2.14.0；native iPhone 播放、背景返回與 Reduce Motion 仍須 TestFlight 真機驗收。
+
+本輪 WSL Flutter 3.47.0：既有 10 檔 85 項回歸、13 項播放器生命週期測試及 1 項實際入口釋放測試通過，四態視覺擷取 1 項通過，8 檔靜態分析無問題。新增設計 token 檢查曾指出圓角及色碼不合規，改用既有圓角與品牌色後單獨重跑通過。另以隔離示範資料、實際 GlobalCoachScreen 編譯 JavaScript Web 預覽成功；這些證據不代表 iOS native 建置或 TestFlight 已完成。
 
 ## 先操作這一版
 
@@ -66,9 +81,9 @@ Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸
 
 [詳細素材檢閱與 Seedance 小規模試片提示詞](asset-review.md)
 
-先鎖定保有原形象的睜眼母圖，再做一段輕微待機循環；通過才考慮思考循環。閱讀不需要陪讀影片。9:16 可以作為來源畫布，但畫面容器應由上述 UX 決定。
+素材檢閱保留當時的小動作試片建議作為歷史。後續 Eric 選定完整表演 V3，以上方「選定的 V3 動態素材」為準；閱讀區仍不放陪讀影片。
 
-此 Flutter UI 實作不包含素材生成，也沒有將新的照片、影片或實機截圖上傳到 repository。
+此 Flutter 實作加入選定 V3 的包內衍生影片與首幀靜態圖。夥伴原片、私人照片與實機截圖不放入 repository。
 
 ## 實作位置與邊界
 
@@ -80,7 +95,7 @@ Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸
 | [HomeCoachPresence](../../../lib/features/partner/presentation/widgets/home_coach_presence.dart) | 參考現有姿勢對齊、淡切與下緣遮罩，先以原圖驗證布局 |
 | [motionDisabled](../../../lib/core/animation/motion_preference.dart) | 沿用減少動態與 TickerMode，離頁／背景暫停；格式與播放器等實測後再定 |
 
-先沿用既有靜態圖，沒有新增套件、播放器或生成費用。未來另測素材循環、去背邊緣、檔案、記憶體與 iPhone 流暢度，再決定是否接動圖。
+播放器由 `SydneyWelcomePortrait` 獨立管理，既有 `CoachSurface` 的閱讀版行為不依賴播放器。此接入沒有追加素材生成；真機需確認循環、靜音、音樂不中斷、離頁釋放與 iPhone 流暢度。
 
 ## Flutter 實際畫面
 
@@ -98,7 +113,7 @@ Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸
 
 [2026-09-05 的待機／思考 show-me](show-me-sydney.html) 為歷史發想，尚未處理完整長文使用流程。當時「交 Bruce 裁決」的交接已由本次 Eric／AI 接手取代；不表示那張圖是定稿。
 
-本 PR 現在包含 Flutter 版面、互動回歸測試與原型文件。未實作 App 動畫、未改 AI／額度／資料層，未合併 main 或發布。Widget 測試與截圖不能取代實體 iPhone 的鍵盤、捲動與觸控驗收。
+本 PR 包含 Flutter 版面、入口動態、互動回歸測試與原型文件。未改 AI／額度／資料層，未合併 main 或發布。Widget 測試與截圖不能取代實體 iPhone 的鍵盤、捲動、播放器與觸控驗收。
 
 ## 驗證入口
 

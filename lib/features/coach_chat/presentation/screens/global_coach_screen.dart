@@ -20,6 +20,7 @@ import '../../data/services/coach_chat_api_service.dart'
 import '../../data/providers/coach_chat_providers.dart';
 import '../../domain/entities/coach_scope.dart';
 import '../widgets/coach_surface.dart';
+import '../widgets/sydney_welcome_portrait.dart';
 
 /// 問教練 Sydney 獨立聊天視窗（2026-08-15 拍板：三入口共用同一個視窗）。
 ///
@@ -252,6 +253,10 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
+            final portraitWidth = (height * 9 / 16).clamp(
+              0.0,
+              constraints.maxWidth * 0.46 / textScale,
+            );
             return Row(
               children: [
                 Expanded(
@@ -264,25 +269,11 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                ExcludeSemantics(
-                  child: ShaderMask(
-                    blendMode: BlendMode.dstIn,
-                    shaderCallback: (bounds) => const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.white, Colors.white, Colors.transparent],
-                      stops: [0, 0.78, 1],
-                    ).createShader(bounds),
-                    child: Image.asset(
-                      'assets/images/coach/sydney_greeting.png',
-                      key: const Key('coach-welcome-portrait'),
-                      width: constraints.maxWidth * 0.46 / textScale,
-                      height: height,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
-                      filterQuality: FilterQuality.medium,
-                    ),
-                  ),
+                SizedBox(
+                  key: const Key('coach-welcome-portrait'),
+                  width: portraitWidth,
+                  height: portraitWidth * 16 / 9,
+                  child: const SydneyWelcomePortrait(),
                 ),
               ],
             );

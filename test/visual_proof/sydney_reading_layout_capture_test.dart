@@ -254,7 +254,7 @@ void main() {
     );
     await tester.runAsync(() async {
       await precacheImage(
-        const AssetImage('assets/images/coach/sydney_greeting.png'),
+        const AssetImage('assets/images/coach/sydney_performance_v3_poster.jpg'),
         tester.element(find.byType(GlobalCoachScreen)),
       );
     });

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
@@ -36,6 +37,7 @@ import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 import '../../helpers/memory_coach_chat_repository.dart';
 import '../../helpers/memory_coaching_outcome_repository.dart';
+import '../../helpers/fake_sydney_video_platform.dart';
 
 /// 引導問句直接引實作常數（review Grok Minor-3：防測試與文案漂移）。
 const _guideQuestions = GlobalCoachScreen.guideQuestions;
@@ -156,6 +158,31 @@ TextField _inputField(WidgetTester tester) => tester.widget<TextField>(
     );
 
 void main() {
+  testWidgets('進場影片播放後，點引導輸入會釋放播放器且不送出問題', (tester) async {
+    final previous = VideoPlayerPlatform.instance;
+    final platform = FakeSydneyVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    addTearDown(() {
+      platform.close();
+      VideoPlayerPlatform.instance = previous;
+    });
+
+    final calls = await _pump(tester);
+    expect(platform.playing[0], isTrue);
+    await tester.tap(find.text(_guideQuestions.first));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+
+    expect(_inputField(tester).controller!.text, _guideQuestions.first);
+    expect(find.byKey(const Key('coach-welcome')), findsNothing);
+    expect(find.byKey(const Key('coach-compact-avatar')), findsOneWidget);
+    expect(platform.disposed, [0]);
+    expect(platform.playing[0], isFalse);
+    expect(calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('AppBar 標題「問教練 Sydney」＋CoachSurface 掛 global scope',
       (tester) async {
     await _pump(tester);
