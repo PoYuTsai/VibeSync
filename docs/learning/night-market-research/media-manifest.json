@@ -1,0 +1,407 @@
+{
+  "generated": "2026-09-07",
+  "scope": "night-market bundled media",
+  "items": [
+    {
+      "path": "assets/audio/night_market/answer_intent.mp3",
+      "bytes": 46509,
+      "sha256": "c8d4e9800055a91d4b934fb69a111bc34c93406160a8b002db1ff2cec0f02fa6",
+      "durationSeconds": 5.784,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/ask_demographics.mp3",
+      "bytes": 30765,
+      "sha256": "2fee5bc6225e47c216fba2949bd0709db2d8fcb2d632930f218b61797f486829",
+      "durationSeconds": 3.816,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/challenge_sales.mp3",
+      "bytes": 31341,
+      "sha256": "6e60707d084bc23eeb8504c3a143cc972fa82762a04d7e453444119fb4512be0",
+      "durationSeconds": 3.888,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/first_today.mp3",
+      "bytes": 11181,
+      "sha256": "aad5785a9984c8dc9e0dfe587d413ee94a29107f60002663b120ac93f79bc8c7",
+      "durationSeconds": 1.368,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/hesitate-heartbeat.wav",
+      "bytes": 120044,
+      "sha256": "d54a542376fad8c88638af14ec4e0b6b6283057674bc82289da1467de69096df",
+      "durationSeconds": 1.25,
+      "codec": {
+        "audio": "pcm_s16le"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/hungry_vendor.mp3",
+      "bytes": 37677,
+      "sha256": "791a4b6592a0355a1f50f3e9315758e1b739bf0b9ec40ec12a57af88ac15ee5c",
+      "durationSeconds": 4.68,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/introduce.mp3",
+      "bytes": 35373,
+      "sha256": "0543bf9ea6378c895ca575420df70855c0a9140838c5d6da2ca48fc5800ab4e5",
+      "durationSeconds": 4.392,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/invite_craft_stall.mp3",
+      "bytes": 37677,
+      "sha256": "af1ef55cbee2d104a6c1560d223bfd562e02d37d5f3b16271ab7671b45eaec27",
+      "durationSeconds": 4.68,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/leave_available.mp3",
+      "bytes": 37293,
+      "sha256": "c3ec527accb566ce45dd02711c27ff1a9dc609556b2305987713bb967e5a9c69",
+      "durationSeconds": 4.632,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/market-bed.mp3",
+      "bytes": 123885,
+      "sha256": "7995549c1bbb88a256c405b91c6e8039455e76426b076ad1f89d80c12c593e4d",
+      "durationSeconds": 6.156,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/offer_contact.mp3",
+      "bytes": 52269,
+      "sha256": "7a5cb032fc24ab182605b1f9bcbb604f023e31e4a1638935cab5685333516ec3",
+      "durationSeconds": 6.504,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/pressure_wait.mp3",
+      "bytes": 29037,
+      "sha256": "be56a3ec45e9a7ba04fb50efecd554f14bd185a4733b4b3fc6afe53c84c6b913",
+      "durationSeconds": 3.6,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/respect_busy_bye.mp3",
+      "bytes": 40557,
+      "sha256": "2bdef235070df34cb08879558128d4db50328f5369121675ae3b7b1b0a1abb15",
+      "durationSeconds": 5.04,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/share_pen_holder.mp3",
+      "bytes": 44781,
+      "sha256": "901d005b070597b8d305a46a4b20015a56a527cc53cfcbdb17aeb9bc7e092c8b",
+      "durationSeconds": 5.568,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/share_pen_holder_light.mp3",
+      "bytes": 39405,
+      "sha256": "125be9a67b3b0cc019c50e2d6b7a5726755b15413e33bc741174e164bb3be763",
+      "durationSeconds": 4.896,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/share_product_design.mp3",
+      "bytes": 55149,
+      "sha256": "60bd50baab77e8b8005242b81930e6aa19362c18abda5d94f2cf75ee380e0859",
+      "durationSeconds": 6.864,
+      "codec": {
+        "audio": "mp3"
+      }
+    },
+    {
+      "path": "assets/audio/night_market/ui-cue.wav",
+      "bytes": 21164,
+      "sha256": "a4af77a38bde9b9aacbb713c5c143dce573be3138426490440d670984ceeccc9",
+      "durationSeconds": 0.22,
+      "codec": {
+        "audio": "pcm_s16le"
+      }
+    },
+    {
+      "path": "assets/images/night_market/leah-close.jpg",
+      "bytes": 159474,
+      "sha256": "f3c750d516c0f220099c69a91a0bb5fe8cfc309d537f11db00f119e2d06300e2",
+      "kind": "poster"
+    },
+    {
+      "path": "assets/images/night_market/leah-cup.jpg",
+      "bytes": 117454,
+      "sha256": "2fb0ea99d4b176d16151a9581cebf9b16729f22d1db910af29e0817a1b5f6d36",
+      "kind": "poster"
+    },
+    {
+      "path": "assets/images/night_market/leah.jpg",
+      "bytes": 145761,
+      "sha256": "f16701b740f09d68e30827e6ce616a2c27b0044aecdf48104ba57163a34c71da",
+      "kind": "poster"
+    },
+    {
+      "path": "assets/images/night_market/sydney.jpg",
+      "bytes": 237642,
+      "sha256": "2e0db0ec3274ea257fd80a8ef3cdc2edf848f85b24d4f57e5ae638082d5f6a12",
+      "kind": "poster"
+    },
+    {
+      "path": "assets/videos/night_market/available.mp4",
+      "bytes": 1537470,
+      "sha256": "30fa21ae6a46af42ba785fceb1c837824d6a6724ea7cc39703b8e536f1a816e9",
+      "durationSeconds": 10.08,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/busy.mp4",
+      "bytes": 1471371,
+      "sha256": "8176c9ca291aaf8886247725cc83a499ffb22fa1fe52d24eb94bfe0132158df5",
+      "durationSeconds": 8.064,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/call.mp4",
+      "bytes": 2141988,
+      "sha256": "5adbd77f26572f0179335ff617452b067730d2f524965deb702a30d823b97462",
+      "durationSeconds": 12.064,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/coach.mp4",
+      "bytes": 1919203,
+      "sha256": "0db856649bc13a70eb54a7125c226f1b2b173f0036c5f571d3dd2a244f613020",
+      "durationSeconds": 12.042,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/concern.mp4",
+      "bytes": 2068022,
+      "sha256": "84914ba34fc7d66e1c5133d8adb25e6886ebad6ccacb60686f32d033f6cba555",
+      "durationSeconds": 8.05,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/contact.mp4",
+      "bytes": 1809244,
+      "sha256": "6315d9cde4d6ca51075435cb9ab065148260975118c56e144a88864a9daaffe6",
+      "durationSeconds": 9.264,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/craft.mp4",
+      "bytes": 2409032,
+      "sha256": "9e7e39733c165c5f6d2710409f0753ff0699f1ab07e7143819c3fa1ba271f357",
+      "durationSeconds": 18.08,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/date.mp4",
+      "bytes": 4117313,
+      "sha256": "751d0236cb9c97bf3bcccbdfe4d85547a8be51927589c0cc9cc976d7fd44f66c",
+      "durationSeconds": 22.042,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/decline.mp4",
+      "bytes": 1032461,
+      "sha256": "a83b4eca1d98c8680f234ff74c076359e7179e68b3d79414ba16a3ddcd32eb78",
+      "durationSeconds": 8.064,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/establish.mp4",
+      "bytes": 6356704,
+      "sha256": "8efcbd577ea5c481213c9a84f0a67241c941c3ef6156c214aaa1372804d0c739",
+      "durationSeconds": 12.05,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/hesitate.mp4",
+      "bytes": 3971234,
+      "sha256": "d5997a50648b4cb641663d9e207f3f94a076911a6b856d35eeef72ff3eca7712",
+      "durationSeconds": 12.064,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/opening.mp4",
+      "bytes": 2402132,
+      "sha256": "d4988ae1e42453dc8464b71c5628634a9fb7c15fa2900ac264a6d5e59ceadcb7",
+      "durationSeconds": 14.08,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/tease.mp4",
+      "bytes": 1260706,
+      "sha256": "12be6b13ed2e6635286128e08c541aac7ef56f210d932bead46f287ca0ded764",
+      "durationSeconds": 10.042,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    },
+    {
+      "path": "assets/videos/night_market/work.mp4",
+      "bytes": 1415225,
+      "sha256": "e09b40229aef0303eb0a916a52373026b45589ccd9da2638303afbeda184d77f",
+      "durationSeconds": 6.75,
+      "codec": {
+        "video": "h264",
+        "audio": "aac"
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "pixFmt": "yuv420p",
+      "faststart": true
+    }
+  ]
+}

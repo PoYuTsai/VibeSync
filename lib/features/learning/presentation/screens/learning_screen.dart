@@ -16,6 +16,7 @@ import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
+import '../../../night_market/presentation/widgets/night_market_entry_card.dart';
 import '../../../practice_chat/presentation/widgets/practice_room_entry_card.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/articles_data.dart';
@@ -84,6 +85,13 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
               ),
             );
           },
+        ),
+
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: NightMarketEntryCard(),
+          ),
         ),
 
         // Hero 下方第一個區塊：聊天測驗。

@@ -23,6 +23,7 @@ import '../features/opener/presentation/screens/opening_rescue_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import '../features/practice_chat/presentation/screens/practice_moments_screen.dart';
+import '../features/night_market/presentation/screens/night_market_screen.dart';
 import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/ai_privacy_screen.dart';
@@ -257,6 +258,10 @@ final router = GoRouter(
     GoRoute(
       path: '/practice-moments',
       builder: (context, state) => const PracticeMomentsScreen(),
+    ),
+    GoRoute(
+      path: '/practice-night-market',
+      builder: (context, state) => const NightMarketScreen(),
     ),
     // literal '/profile/about-me' MUST come before '/profile/:id' so
     // 'about-me' isn't matched as a conversationId by the parametric route.
