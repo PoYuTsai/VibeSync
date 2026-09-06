@@ -6,7 +6,7 @@
 
 - 這是一段有限互動影片練習，不是自由 3D 場景。共 14 個 video beats；各路徑片段 duration 以媒體 QA 為準。實際一輪還包含選項閱讀、語音與方法卡，產品入口標示約 4 分鐘。
 - Learning 順序是 Hero 後的獨立小卡「和 Sydney 逛夜市」，副文為「一起逛攤位，練習開口與接話。約 4 分鐘」，點擊 `/practice-night-market`。
-- 路由建立 `NightMarketScreen`；選項與結果在本頁完成，不新增 session、quota 或 chat context。Leah CTA 使用中性文案「開啟 Leah 文字陪練」；`startSessionWithProfile` 若已有 Leah 開啟中的對話則恢復該對話，否則建立新的對話，且不注入夜市影片 context。
+- 路由建立 `NightMarketScreen`；選項與結果在本頁完成，不新增 session、quota 或 chat context。完整循環是影片 → 復盤 → 文章 1／11／21 → 關鍵點重練；文字練習是可選延伸，CTA 為「到圖鑑繼續文字陪練」並導向 `/practice-collection`。圖鑑 profile deeplink 須先解鎖才能使用，且不傳入夜市影片 context。
 - 原生依賴是 `video_player` 與 `audioplayers`。影片與聲音採 bundle manifest 路徑；目前約定根目錄為 `assets/videos/night_market/`、`assets/audio/night_market/`、`assets/images/night_market/`，不依賴 localhost 或遠端 URL。
 
 ## 目前 story source 的完整一輪
@@ -64,18 +64,20 @@
 - 文章 11／傾聽：先回應她實際分享的資訊，再接一個相關問題。
 - 文章 21／低壓邀約：把活動、時間感和可拒絕空間放進一句話。
 
-目前短題是「她說朋友快到了，你會怎麼做？」二選一；答題後顯示解釋並可重試關鍵點。短卡全文入口沿用既有文章 read gate；不以裸 push 繞過 gate。Leah 文字 CTA 顯示「開啟 Leah 文字陪練」；已有 Leah 開啟中的對話就恢復，否則建立新的對話，不宣稱帶入夜市上下文。
+目前短題是「她說朋友快到了，你會怎麼做？」二選一；答題後顯示解釋並可重試關鍵點。短卡全文入口沿用既有文章 read gate；不以裸 push 繞過 gate。文字練習 CTA 顯示「到圖鑑繼續文字陪練」，導向 `/practice-collection`；使用者需先解鎖對應 profile，文字對話不帶入夜市影片上下文。
 
 ## 聲音、字幕與資產完整性
 
 - 每個有 spoken text 的選項使用 `assets/audio/night_market/<choiceId>.mp3`；影片原音、選項語音、SFX、ambient bed 不可同時以重疊音量播放。
 - `market-bed.mp3` 是選項等待與男主語音期間的低音量環境底噪；mute 應設 volume 0，背景與 route cover pause，回前景 resume；缺檔時直接降級，不阻塞選項流程。
-- 每個片段應有 16:9、720p 或同等完整構圖影片；poster 使用 Sydney、Leah 或 Leah-cup 對應素材。字幕 timing 以 story captions 為來源，字幕區必須可讀且不洩漏尚未播放台詞；影片錯誤時才顯示完整文字 fallback。
+- 每個片段應有 16:9、720p 或同等完整構圖影片；poster 使用 Sydney、Leah 或 Leah-cup 對應素材。字幕 timing 以 story captions 為來源，字幕區必須可讀且不洩漏尚未播放台詞；影片錯誤或使用者選擇播放協助時顯示完整文字 fallback。
+- 若影片或選項語音載入後沒有播放進度、也沒有拋出 error event，畫面仍提供「播放卡住了？」手動入口；影片可改用該 beat 的文字 transcript 繼續，語音可跳過並以文字顯示 spoken text，不等待不存在的 completion event。
+- fallback 與每 beat retry 都要重設該 beat 的播放狀態與 generation，保留 mounted guard；重試只重置當前 beat，不帶入前一輪的選項或音訊狀態。
 - 素材到位後的唯讀完整性檢查：逐一核對 14 個 `.mp4`、所有非空選項 `.mp3`、`hesitate-heartbeat.wav`、`ui-cue.wav`、poster 圖片、pubspec asset roots 與 story manifest 路徑；確認沒有 localhost/remote URL、空檔或大小寫不一致。
 
 ## 研究索引狀態
 
-研究邊界、20 片完整索引（片號、標題、來源 URL、OCR 跨跨度狀態、時間定位與產品可取方向）集中在 [night-market-research/README.md](night-market-research/README.md) 與 [course-synthesis.md](night-market-research/course-synthesis.md)。最新 v3 拍攝 prompt 的文字副本在 [night-market-video-prompts-v3.json](night-market-research/night-market-video-prompts-v3.json)；v2 僅作早期草稿保留。5 份研究摘要未攜入原片、原始 OCR 或簽名下載 URL；研究中也明確標示未完成全片逐秒聽打、全量聲調核驗與全量身體動作標註，不能把研究索引當成影片或真機驗收證據。
+研究邊界、20 片完整索引（片號、標題、來源 URL、OCR 覆蓋狀態、時間定位與產品可取方向）集中在 [night-market-research/README.md](night-market-research/README.md) 與 [course-synthesis.md](night-market-research/course-synthesis.md)。最新 v3 拍攝 prompt 的文字副本在 [night-market-video-prompts-v3.json](night-market-research/night-market-video-prompts-v3.json)；v2 僅作早期草稿保留。5 份研究摘要未攜入原片、原始 OCR 或簽名下載 URL；研究中也明確標示未完成全片逐秒聽打、全量聲調核驗與全量身體動作標註，不能把研究索引當成影片或真機驗收證據。
 
 ## 從淺溝通到可觀察的表演細節
 
@@ -97,5 +99,6 @@
 3. 走 `approach → opening → introduce → concern → answer_intent → work`，確認每片播完才出選項，語音完成後才進下一片。
 4. 各跑一次 `available`（`invite_craft_stall → date → decline`）與 `busy`（`offer_contact → contact`），再跑 `keepwalking` 與其他 `decline`，確認三種正常結尾回顧文字具體且不讀心。
 5. 在影片中手動 pause/resume、選項語音中 mute、切背景再回來、route cover 再返回；確認不重播、不跳過、不永久卡住，ambient 與語音同步。
-6. 點「再練一次開場／話題延伸」及「試試另一種時間情境」，確認後續歷史與方法答案已清除；確認 Leah CTA 顯示為「開啟 Leah 文字陪練」，既有對話恢復、沒有既有對話時才建立新的對話。
-7. 開啟 iPhone Dynamic Type 大字級，檢查 16:9 畫面、字幕、按鈕與方法卡沒有 overflow，人物臉部不被選項遮住。
+6. 以無 error event 的停滯影片與停滯選項語音各驗一次，點「播放卡住了？」後確認能以文字 transcript／spoken text 繼續，且不重複播放、不等待 completion、不阻塞下一個 beat；再按該 beat retry，確認 generation、字幕與 audio phase 已重置。
+7. 點「再練一次開場／話題延伸」及「重新體驗另一種時間情境」，確認後續歷史與方法答案已清除；確認 CTA 顯示為「到圖鑑繼續文字陪練」，導向 `/practice-collection`，未解鎖時依圖鑑既有解鎖流程處理。
+8. 開啟 iPhone Dynamic Type 大字級，檢查 16:9 畫面、字幕、按鈕與方法卡沒有 overflow，人物臉部不被選項遮住。

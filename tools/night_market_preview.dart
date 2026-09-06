@@ -9,9 +9,9 @@ void main() {
   final router = GoRouter(routes: [
     GoRoute(path: '/', builder: (_, __) => const NightMarketScreen()),
     GoRoute(
-      path: '/practice-chat',
+      path: '/practice-collection',
       builder: (_, __) => const Scaffold(
-        body: Center(child: Text('預覽模式：正式 App 會開啟 Leah 文字陪練。')),
+        body: Center(child: Text('預覽模式：正式 App 會開啟角色圖鑑。')),
       ),
     ),
   ]);

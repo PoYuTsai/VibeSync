@@ -89,7 +89,7 @@
 
 肯定感落在真實可見節點：opening 的米色外套與來意、craft 的手作與陶杯回應；流動感落在先接住 Leah 的推銷疑慮、工作資訊與提問；娛樂感落在共同夜市、叫號與歪陶杯笑點。Sydney 的 hint 應在 NPC 影片完成、玩家需要選擇的階段出現，不替 Leah 解讀，也不在她發話時搶答。busy/available 是不同的時間與可用性條件；劇本只給一次小型、可拒絕的邀約，離場與尊重自己步調也都是有效結果。現行三種正常結尾是：一起看杯後友善道別（`date → decline`）、忙碌時交換聯絡方式後道別（`contact`），以及其他友善或明確收尾（`decline`）；內部 asset ID 不等於產品語意。
 
-本輪是有限互動影片分支 MVP：14 個 video beats（`establish, hesitate, opening, concern, work, craft, tease, call, available, date, busy, contact, decline, coach`），另有 `pause_ending` 文字結束；不是 Unity 自由 3D、不是動態 AI 女主，也不把影片歷史傳入 Leah 文字對話。手機路徑是 Learning → 夜市卡 → 影片分支 → 復盤三篇心法（文章 1／11／21 的短卡，全文入口沿用既有文章 read gate）→ 重練關鍵點或「開啟 Leah 文字陪練」。該 CTA 由 `startSessionWithProfile` 處理：已有 Leah 開啟中的對話則恢復，否則建立新的對話，且不注入夜市影片 context。
+本輪是有限互動影片分支 MVP：14 個 video beats（`establish, hesitate, opening, concern, work, craft, tease, call, available, date, busy, contact, decline, coach`），另有 `pause_ending` 文字結束；不是 Unity 自由 3D、不是動態 AI 女主，也不把影片歷史傳入 Leah 文字對話。手機路徑是 Learning → 夜市卡 → 影片分支 → 復盤三篇心法（文章 1／11／21 的短卡，全文入口沿用既有文章 read gate）→ 重練關鍵點；文字練習是可選延伸，CTA 顯示「到圖鑑繼續文字陪練」並導向 `/practice-collection`。圖鑑 profile deeplink 須先解鎖才能使用，且文字對話不帶入夜市影片 context。
 
 ## 研究證據限制（現行表述）
 

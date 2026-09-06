@@ -94,9 +94,9 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
           ),
         ),
 
-        // Hero 下方第一個區塊：聊天測驗。
+        // 夜市情境下方：聊天測驗。
         //
-        // 順序刻意是 練習室 Hero → 聊天測驗 → 電子書 → 短篇文章
+        // 順序是 練習室 Hero → 夜市情境 → 聊天測驗 → 電子書 → 短篇文章
         // （2026-07-31 §11 決定 1）。之前是「教材優先、文章在後」，測驗插在
         // 電子書之前的理由是：電子書是讀的，測驗是練的，練的東西放前面。
         const SliverToBoxAdapter(

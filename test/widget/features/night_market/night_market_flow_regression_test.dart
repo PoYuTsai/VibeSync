@@ -41,7 +41,7 @@ class _RegressionVideoPlatform extends FakeSydneyVideoPlatform {
     streams[id]!.add(VideoEvent(
       eventType: VideoEventType.initialized,
       duration: const Duration(seconds: 10),
-      size: const Size(540, 960),
+      size: const Size(1280, 720),
     ));
   }
 
@@ -88,6 +88,12 @@ class _FakeAudioPlatform extends AudioplayersPlatformInterface {
         'audio player $playerId must have native event listener');
     streams[playerId]!
         .add(const AudioEvent(eventType: AudioEventType.complete));
+  }
+
+  void error(String playerId) {
+    assert(streams[playerId]!.hasListener,
+        'audio player $playerId must have native event listener');
+    streams[playerId]!.addError(StateError('test voice stream failure'));
   }
 
   @override
@@ -503,8 +509,92 @@ void main() {
     expect(find.text('傾聽'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('低壓邀約'), 200, maxScrolls: 20);
     expect(find.text('低壓邀約'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('開啟 Leah 文字陪練'), 200,
+    await tester.scrollUntilVisible(find.text('到圖鑑繼續文字陪練'), 200,
         maxScrolls: 20);
-    expect(find.text('開啟 Leah 文字陪練'), findsOneWidget);
+    expect(find.text('到圖鑑繼續文字陪練'), findsOneWidget);
+  });
+
+  testWidgets('stuck video help shows full captions and advances by text',
+      (tester) async {
+    await _start(tester);
+    expect(platform.creations, hasLength(1));
+    final help = find.text('播放卡住了？');
+    await tester.scrollUntilVisible(help, 200, maxScrolls: 10);
+    await tester.tap(help);
+    await tester.pump();
+    expect(find.textContaining('前面有一家手作攤。'), findsOneWidget);
+    expect(find.text('用文字繼續'), findsOneWidget);
+    await tester.tap(find.text('用文字繼續'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(platform.creations, hasLength(2));
+    expect(platform.creations[1].dataSource.asset,
+        'assets/videos/night_market/hesitate.mp4');
+  });
+
+  testWidgets('voice playback failure can continue into next video',
+      (tester) async {
+    await _start(tester);
+    await _completeCurrent(tester, platform);
+    await _completeCurrent(tester, platform);
+    await tester.scrollUntilVisible(find.text('走到她看得到的側前方'), 200,
+        maxScrolls: 10);
+    await tester.tap(find.text('走到她看得到的側前方'));
+    await tester.pump();
+    await _completeCurrent(tester, platform);
+    final introduce = find.text('我叫阿澤，剛下班來逛逛。');
+    await tester.scrollUntilVisible(introduce, 200, maxScrolls: 10);
+    await tester.tap(introduce);
+    String? voicePlayer;
+    for (var turn = 0; turn < 20 && voicePlayer == null; turn++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      for (final entry in audio.sourceUrls.entries) {
+        if (entry.value.endsWith('/introduce.mp3')) voicePlayer = entry.key;
+      }
+    }
+    expect(voicePlayer, isNotNull);
+    audio.error(voicePlayer!);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('語音暫時無法播放，閱讀後繼續'), findsOneWidget);
+    await tester.tap(find.text('語音暫時無法播放，閱讀後繼續'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(platform.creations, hasLength(4));
+    expect(platform.creations[3].dataSource.asset,
+        'assets/videos/night_market/concern.mp4');
+  });
+
+  testWidgets('stuck voice exposes playback help and reading continuation',
+      (tester) async {
+    await _start(tester);
+    await _completeCurrent(tester, platform);
+    await _completeCurrent(tester, platform);
+    await tester.scrollUntilVisible(find.text('走到她看得到的側前方'), 200,
+        maxScrolls: 10);
+    await tester.tap(find.text('走到她看得到的側前方'));
+    await tester.pump();
+    await _completeCurrent(tester, platform);
+    final introduce = find.text('我叫阿澤，剛下班來逛逛。');
+    await tester.scrollUntilVisible(introduce, 200, maxScrolls: 10);
+    await tester.tap(introduce);
+    String? voicePlayer;
+    for (var turn = 0; turn < 20 && voicePlayer == null; turn++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      for (final entry in audio.sourceUrls.entries) {
+        if (entry.value.endsWith('/introduce.mp3')) voicePlayer = entry.key;
+      }
+    }
+    expect(voicePlayer, isNotNull);
+    expect(platform.creations, hasLength(3),
+        reason: 'stalled voice must not create the next video early');
+    // Deliberately emit neither complete nor error: the user must still have
+    // an escape hatch from a native player that stalls indefinitely.
+    expect(find.text('播放卡住了？'), findsOneWidget);
+    await tester.tap(find.text('播放卡住了？'));
+    await tester.pump();
+    expect(find.text('語音暫時無法播放，閱讀後繼續'), findsOneWidget);
+    await tester.tap(find.text('語音暫時無法播放，閱讀後繼續'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(platform.creations, hasLength(4));
+    expect(platform.creations[3].dataSource.asset,
+        'assets/videos/night_market/concern.mp4');
   });
 }

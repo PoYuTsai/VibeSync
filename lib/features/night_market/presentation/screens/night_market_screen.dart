@@ -182,6 +182,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
   Future<void> _loadBeat(String id) async {
     final beat = _scenario.beatById(id);
     if (beat == null) return;
+    if (_flow.beatId != id) _retryCount = 0;
     _pausedByUser = false;
     _readingFallback = false;
     unawaited(_ambient?.pause());
@@ -289,6 +290,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
   }
 
   bool get _canPlay =>
+      mounted &&
       _foreground &&
       !_pausedByUser &&
       (ModalRoute.of(context)?.isCurrent ?? true);
@@ -337,6 +339,8 @@ class _NightMarketScreenState extends State<NightMarketScreen>
 
   void _voiceError(int token) {
     if (!mounted || token != _audioToken || !_audioPhase) return;
+    unawaited(_voiceCompletion?.cancel());
+    _voiceCompletion = null;
     unawaited(_audio?.stop().catchError((Object _) {}));
     setState(() => _voiceFailed = true);
   }
@@ -391,6 +395,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
     await _audio?.setVolume(muted ? 0 : 1);
     await _sfx?.setVolume(muted ? 0 : 0.35);
     await _ambient?.setVolume(muted ? 0 : _ambientVolume);
+    if (!mounted) return;
     if (muted) {
       await _ambient?.pause();
     } else if (_audioPhase ||
@@ -410,6 +415,25 @@ class _NightMarketScreenState extends State<NightMarketScreen>
     } else {
       _resumeMedia();
     }
+  }
+
+  void _requestPlaybackHelp() {
+    if (!mounted || !_started) return;
+    _pausedByUser = false;
+    if (!_canPlay) return;
+    if (_audioPhase) {
+      _voiceError(_audioToken);
+      return;
+    }
+    if (_flow.videoCompleted || _beat?.textOnly == true) return;
+    // Invalidate an in-flight initialization so it cannot restart playback.
+    _loadAttempt++;
+    _video?.removeListener(_onVideoChanged);
+    _pauseMedia();
+    setState(() {
+      _failed = true;
+      _flow = _flow.copyWith(isPlaying: false);
+    });
   }
 
   @override
@@ -494,13 +518,20 @@ class _NightMarketScreenState extends State<NightMarketScreen>
             ),
           ),
         if (!beat.textOnly && !_failed && !_flow.videoCompleted)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: _togglePlayback,
-              icon: Icon(_pausedByUser ? Icons.play_arrow : Icons.pause),
-              label: Text(_pausedByUser ? '繼續播放' : '暫停'),
-            ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            children: [
+              TextButton(
+                onPressed: _requestPlaybackHelp,
+                child: const Text('播放卡住了？'),
+              ),
+              TextButton.icon(
+                onPressed: _togglePlayback,
+                icon: Icon(_pausedByUser ? Icons.play_arrow : Icons.pause),
+                label: Text(_pausedByUser ? '繼續播放' : '暫停'),
+              ),
+            ],
           ),
         ...[
           if (controller != null)
@@ -560,7 +591,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
           if (beat.ending && _flow.videoCompleted) ...[
             _endingFeedback(),
             _methodCards(),
-            _leahPracticeCta(),
+            _textPracticeCta(),
           ],
         ],
       ],
@@ -719,20 +750,19 @@ class _NightMarketScreenState extends State<NightMarketScreen>
         OutlinedButton(
           onPressed: _switchTimeVariant,
           child: Text(_variant == NightMarketRunVariant.available
-              ? '試試另一種時間情境（忙碌）'
-              : '試試另一種時間情境（有空）'),
+              ? '重新體驗另一種時間情境（忙碌）'
+              : '重新體驗另一種時間情境（有空）'),
         ),
       ],
     );
   }
 
-  Widget _leahPracticeCta() {
+  Widget _textPracticeCta() {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: OutlinedButton(
-        onPressed: () =>
-            context.push('/practice-chat?profileId=practice_girl_078'),
-        child: const Text('開啟 Leah 文字陪練'),
+        onPressed: () => context.push('/practice-collection'),
+        child: const Text('到圖鑑繼續文字陪練'),
       ),
     );
   }
