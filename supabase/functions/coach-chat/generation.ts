@@ -899,7 +899,11 @@ function normalizeVisibleText(card: RawCardShape): RawCardShape {
   for (const field of VISIBLE_FIELDS) {
     const value = out[field];
     if (typeof value !== "string") continue;
-    out[field] = toTraditionalChinese(value.replaceAll("只", ONLY_SENTINEL))
+    // 原文已含 sentinel（理論上不會）就不遮，寧可讓「只」交給 OpenCC。
+    const masked = value.includes(ONLY_SENTINEL)
+      ? value
+      : value.replaceAll("只", ONLY_SENTINEL);
+    out[field] = toTraditionalChinese(masked)
       .replaceAll(ONLY_SENTINEL, "只")
       .replaceAll("証", "證");
   }

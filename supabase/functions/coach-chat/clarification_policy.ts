@@ -7,20 +7,23 @@ export type CoachSessionTurnLike = {
 };
 
 // 使用者文字本身帶「個案證據」的結構訊號（Codex R2 審查 P2：已貼原話仍被
-// 逼再貼）。只看結構、不判語意：說話者標記、兩段以上引號、「她說『…』」
-// 句型、或 60 字以上的處境描述。命中＝交回模型判斷要不要再問。
+// 逼再貼；第二輪反例：引號可能只是選項、字數可以灌水）。只看結構、不判
+// 語意：說話者標記（我：／她：）、跟在說／回／傳／覆等動詞後的引文（允許
+// 冒號、引文一字即可）、或三段以上的引文。命中＝交回模型判斷要不要再問。
 const SPEAKER_LABEL_RE = /(^|[\n，。；、\s—\-–→])(我|她|他|對方)\s*[:：]/u;
-const QUOTED_SPAN_RE = /[「『“"][^」』”"\n]{2,}[」』”"]/gu;
+const QUOTED_SPAN_RE = /[「『“"][^」』”"\n]+[」』”"]/gu;
+const QUOTED_AFTER_VERB_RE =
+  /(說|回|傳|問|講|寫|覆|訊息|只有)[了我你她他的：:\s]{0,3}[「『“"][^」』”"\n]+[」』”"]/u;
 const SAID_QUOTE_RE =
-  /(她|他|對方)[^，。；\n「『“"]{0,4}(說|回|傳|問|講|寫)[了我你的]{0,2}[「『“"]/u;
+  /(她|他|對方)[^，。；\n「『“"]{0,4}(說|回|傳|問|講|寫|覆)[^，。；\n「『“"]{0,3}[「『“"][^」』”"\n]+[」』”"]/u;
 export function textCarriesCaseEvidence(text: unknown): boolean {
   if (typeof text !== "string") return false;
   const trimmed = text.trim();
   if (!trimmed) return false;
   if (SPEAKER_LABEL_RE.test(trimmed)) return true;
-  if ((trimmed.match(QUOTED_SPAN_RE) ?? []).length >= 2) return true;
   if (SAID_QUOTE_RE.test(trimmed)) return true;
-  return trimmed.length >= 60;
+  if (QUOTED_AFTER_VERB_RE.test(trimmed)) return true;
+  return (trimmed.match(QUOTED_SPAN_RE) ?? []).length >= 3;
 }
 
 /// 整個 session 的使用者發言（本題問句＋所有 user turns）有沒有帶個案證據。

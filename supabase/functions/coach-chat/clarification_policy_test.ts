@@ -6,7 +6,7 @@ import {
   textCarriesCaseEvidence,
 } from "./clarification_policy.ts";
 
-Deno.test("textCarriesCaseEvidence 只認結構訊號：說話者標記／兩段引號／她說「」／60 字描述", () => {
+Deno.test("textCarriesCaseEvidence 只認結構訊號：說話者標記／動詞後引文／三段引文", () => {
   assertEquals(textCarriesCaseEvidence("對方回得很短，我該怎麼判斷？"), false);
   assertEquals(
     textCarriesCaseEvidence("不知道怎麼開啟話題，給我一點方向？"),
@@ -16,12 +16,30 @@ Deno.test("textCarriesCaseEvidence 只認結構訊號：說話者標記／兩段
     textCarriesCaseEvidence("她已讀不回我好焦慮，我要再傳嗎？"),
     false,
   );
+  // Codex R2 第二輪反例：引號只是選項、字數灌水，都不算原話。
+  assertEquals(
+    textCarriesCaseEvidence("她對我是「有好感」還是「沒興趣」？"),
+    false,
+  );
+  assertEquals(
+    textCarriesCaseEvidence("請判斷她喜不喜歡我，".repeat(6)),
+    false,
+  );
+  // 純描述沒有原話：不算，先釐清一次請他貼。
+  assertEquals(
+    textCarriesCaseEvidence(
+      "認識一個月，十次有八次是我開頭，但她每次回得都蠻長，也會問我問題，我們聊工作聊旅行，週末也會互傳限動，只是她從來不先開口。",
+    ),
+    false,
+  );
+  // 說話者標記。
   assertEquals(
     textCarriesCaseEvidence(
       "她最近這樣回——我：這週末有要去哪玩嗎？她：沒欸 在家。",
     ),
     true,
   );
+  // 動詞後引文（含冒號、單字引文）。
   assertEquals(
     textCarriesCaseEvidence(
       "她昨天回我「沒欸 在家」，我推薦影集她說「好啊 哪部」，算有興趣嗎？",
@@ -33,8 +51,18 @@ Deno.test("textCarriesCaseEvidence 只認結構訊號：說話者標記／兩段
     true,
   );
   assertEquals(
+    textCarriesCaseEvidence("她說：「今天很累，先睡了。」我該怎麼回？"),
+    true,
+  );
+  assertEquals(
+    textCarriesCaseEvidence("她的回覆只有「嗯」和「好」，我該怎麼判斷？"),
+    true,
+  );
+  assertEquals(textCarriesCaseEvidence("我傳「今天好累喔」她已讀沒回"), true);
+  // 三段以上引文（純貼原話）。
+  assertEquals(
     textCarriesCaseEvidence(
-      "認識一個月，十次有八次是我開頭，但她每次回得都蠻長，也會問我問題，我們聊工作聊旅行，週末也會互傳限動，只是她從來不先開口。",
+      "「這週末要去哪」「沒欸 在家」「那我推薦影集」「好啊 哪部」",
     ),
     true,
   );

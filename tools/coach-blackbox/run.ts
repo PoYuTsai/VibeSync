@@ -11,6 +11,7 @@ import {
   runCoachChat,
 } from "../../supabase/functions/coach-chat/generation.ts";
 import { RequestSchema } from "../../supabase/functions/coach-chat/schemas.ts";
+import { textCarriesCaseEvidence } from "../../supabase/functions/coach-chat/clarification_policy.ts";
 
 type Msg = { sender: "me" | "partner"; text: string };
 type Turn = {
@@ -143,6 +144,15 @@ export const CASES: Case[] = [
     ),
     expectRound1: null, // 首問就貼了原話：不得被逼再貼；模型可答可問
   },
+  {
+    ...global(
+      "G9",
+      "global-pasted-colon",
+      "她說：「今天很累，先睡了。」我該怎麼回？",
+    ),
+    expectRound1: null,
+  },
+  global("G10", "global-quoted-options", "她對我是「有好感」還是「沒興趣」？"),
   global(
     "G2",
     "global-opener",
@@ -322,6 +332,7 @@ function flags(
   // 補充輪的證據在 userQuestion（使用者貼的原話／描述），只看首輪。
   if (
     round === 1 && line && msgs.length === 0 && !draft &&
+    !textCarriesCaseEvidence(req.userQuestion) &&
     card.responseType === "coachAnswer"
   ) {
     out.push("line_without_evidence");
