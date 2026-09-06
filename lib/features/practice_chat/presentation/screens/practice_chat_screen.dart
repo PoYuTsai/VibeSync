@@ -1427,7 +1427,7 @@ class _ReadReceipt extends StatelessWidget {
           '已讀',
           key: const ValueKey('practice-read-receipt'),
           style: AppTypography.caption.copyWith(
-            color: AppColors.onBackgroundSecondary,
+            color: AppColors.chatMetaGrey,
           ),
         ),
       ),
@@ -1453,7 +1453,7 @@ class _BlockedLine extends StatelessWidget {
           key: const ValueKey('practice-blocked-line'),
           textAlign: TextAlign.center,
           style: AppTypography.caption.copyWith(
-            color: AppColors.onBackgroundSecondary,
+            color: AppColors.chatMetaGrey,
           ),
         ),
       ),

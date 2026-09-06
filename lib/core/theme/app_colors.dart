@@ -95,6 +95,10 @@ class AppColors {
   static const onBackgroundPrimary = Color(0xFFFFFFFF);
   static const onBackgroundSecondary = Color(0xFFE0D0E8);
 
+  // 練習室白底對話板上的「已讀」／「她已封鎖你」小字：仿 LINE 的中性灰
+  // （onBackgroundSecondary 是給深底用的，放在白板上幾乎看不見）。
+  static const chatMetaGrey = Color(0xFF8E8E93);
+
   // Supporting text
   static const unselectedText = Color(0xFF5D4E6B);
 
