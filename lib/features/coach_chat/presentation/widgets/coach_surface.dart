@@ -8,10 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
-import '../../../../shared/widgets/reveal_pill.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
-import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../data/providers/coach_chat_providers.dart';
@@ -35,6 +33,8 @@ class CoachSurface extends ConsumerStatefulWidget {
   /// 視窗遞入的捲動區頂部內容（開場泡泡＋引導問句＋知識庫入口）。
   /// 放進本 widget 的捲動區而不是視窗自己捲，輸入列才能釘在畫面底部。
   final Widget? header;
+  final Widget? contextHeader;
+  final ValueChanged<bool>? onEngagementChanged;
 
   /// conversation scope 由分析頁 CTA 隨行傳入；partner/global scope 不傳。
   final CoachChatAnalysisSnapshot? analysisSnapshot;
@@ -52,6 +52,8 @@ class CoachSurface extends ConsumerStatefulWidget {
     super.key,
     required this.scope,
     this.header,
+    this.contextHeader,
+    this.onEngagementChanged,
     this.analysisSnapshot,
     this.onQuotaExceeded,
     this.focusRequestToken = 0,
@@ -117,14 +119,97 @@ class CoachSurface extends ConsumerStatefulWidget {
   ConsumerState<CoachSurface> createState() => _CoachSurfaceState();
 }
 
-class _CoachSurfaceState extends ConsumerState<CoachSurface> {
+class _CoachSurfaceState extends ConsumerState<CoachSurface>
+    with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   String? _lastAskedQuestion;
+  final _scrollController = ScrollController();
+  final _threadAnchor = GlobalKey();
+  final _engagedScopes = <CoachScope>{};
+  String? _visibleResultId;
+  String? _pendingResultId;
+  bool _keepReadingOnComplete = false;
+
+  bool get _engaged => _engagedScopes.contains(widget.scope);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  void _reportEngagement() {
+    final scope = widget.scope;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.scope == scope) {
+        widget.onEngagementChanged?.call(_engaged);
+      }
+    });
+  }
+
+  void _onFocusChanged() {
+    if (!_focusNode.hasFocus || _engaged) return;
+    final anchor = _captureReadingAnchor();
+    setState(() => _engagedScopes.add(widget.scope));
+    _reportEngagement();
+    _restoreReadingAnchor(anchor);
+  }
+
+  double? _captureReadingAnchor() {
+    final box = _threadAnchor.currentContext?.findRenderObject();
+    if (!_scrollController.hasClients || box is! RenderBox || !box.hasSize) {
+      return null;
+    }
+    return box.localToGlobal(Offset.zero).dy;
+  }
+
+  void _restoreReadingAnchor(double? before) {
+    if (before == null) return;
+    final scope = widget.scope;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.scope != scope || !_scrollController.hasClients) {
+        return;
+      }
+      final after = _captureReadingAnchor();
+      if (after == null) return;
+      final position = _scrollController.position;
+      final target = (position.pixels + after - before).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((target - position.pixels).abs() > 0.5) {
+        _scrollController.jumpTo(target);
+      }
+    });
+  }
+
+  @override
+  void didChangeMetrics() {
+    _restoreReadingAnchor(_captureReadingAnchor());
+  }
+
+  void _showLatestAnswer() {
+    final scope = widget.scope;
+    setState(() {
+      _visibleResultId = _pendingResultId ?? _visibleResultId;
+      _pendingResultId = null;
+      _keepReadingOnComplete = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.scope != scope) return;
+      final answerContext = _threadAnchor.currentContext;
+      if (answerContext != null) {
+        Scrollable.ensureVisible(answerContext, alignment: 0);
+      }
+    });
+  }
 
   /// 乾淨版（2026-08-16 Bruce 回饋三輪）：畫面只顯示本次進來後真的問出去
   /// 的結果；歷史只進教練記憶（repo／摘要／session 續接），不再上畫面。
   final Set<String> _sessionResultIds = <String>{};
+  final Map<String, int> _clarificationOrdinals = {};
 
   @override
   void didUpdateWidget(covariant CoachSurface oldWidget) {
@@ -134,6 +219,16 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
     if (widget.scope != oldWidget.scope) {
       _lastAskedQuestion = null;
+      _visibleResultId = null;
+      _pendingResultId = null;
+      _keepReadingOnComplete = false;
+      if (_focusNode.hasFocus) _engagedScopes.add(widget.scope);
+      _reportEngagement();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      });
     }
     if (widget.focusRequestToken != oldWidget.focusRequestToken) {
       final prefill = widget.prefillText?.trim();
@@ -150,6 +245,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _focusNode.removeListener(_onFocusChanged);
+    _scrollController.dispose();
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
@@ -183,8 +281,14 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     final activeError = state.hasError && _lastAskedQuestion != null;
     final activeErrorObject = state.error;
     final isLoading = state.isLoading;
-    final canSubmit = !isLoading;
-    final latest = timeline.isEmpty ? null : timeline.first;
+    final canSubmit = !isLoading && _pendingResultId == null;
+    final visibleIndex =
+        timeline.indexWhere((result) => result.id == _visibleResultId);
+    // 被捨棄／刪除的回覆不再是有效閱讀錨點，不能把整條串切成空白。
+    final visibleTimeline = _pendingResultId != null && visibleIndex >= 0
+        ? timeline.sublist(visibleIndex)
+        : timeline;
+    final latest = visibleTimeline.isEmpty ? null : visibleTimeline.first;
     final isClarifying =
         !activeError && (latest?.isClarifyingQuestion ?? false);
     // 序數必須跟後端 3 次上限同源：取 controller 當前追問串的釐清 turns 數。
@@ -195,15 +299,51 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
     final clarificationOrdinal = latest != null &&
             latest.isClarifyingQuestion &&
             controllerClarificationsUsed > 0
-        ? controllerClarificationsUsed
+        ? _clarificationOrdinals[latest.id] ?? controllerClarificationsUsed
         : null;
 
     ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
       // 只有這次進來後問出去的結果（loading→data）進顯示白名單；
       // 「想問別的」還原舊答案是 data→data，不會誤入。
+      final anchor = _captureReadingAnchor();
       final freshId = next.valueOrNull?.id;
-      if (previous?.isLoading == true && freshId != null) {
-        setState(() => _sessionResultIds.add(freshId));
+      if (next.isLoading && previous?.isLoading != true) {
+        // 以實際顯示中的回覆重綁；scope 切換或捨棄釐清後不沿用舊 ID。
+        _visibleResultId = latest?.id;
+        // Even the first lines are reading: a scroll-distance threshold cannot
+        // tell whether the user has finished with the currently visible answer.
+        _keepReadingOnComplete = _visibleResultId != null;
+        _restoreReadingAnchor(anchor);
+      }
+      if (previous?.isLoading == true &&
+          !next.isLoading &&
+          !next.hasError &&
+          freshId != null &&
+          _lastAskedQuestion != null) {
+        setState(() {
+          _sessionResultIds.add(freshId);
+          final ordinal =
+              ref.read(provider.notifier).noChargeClarificationsUsed;
+          if (next.valueOrNull!.isClarifyingQuestion && ordinal > 0) {
+            _clarificationOrdinals[freshId] = ordinal;
+          }
+          if (_keepReadingOnComplete && _visibleResultId != null) {
+            _pendingResultId = freshId;
+          } else {
+            _visibleResultId = freshId;
+            _pendingResultId = null;
+          }
+        });
+        if (_pendingResultId != null) {
+          _restoreReadingAnchor(anchor);
+        } else {
+          _showLatestAnswer();
+        }
+      } else if (next.hasError) {
+        _restoreReadingAnchor(anchor);
+        if (_controller.text.isEmpty && _lastAskedQuestion != null) {
+          _controller.text = _lastAskedQuestion!;
+        }
       }
       final error = next.error;
       if (error == null) return;
@@ -221,66 +361,100 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       );
     });
 
-    // 回覆串／progress／error 的配色是為淺色玻璃卡設計的，仍包在
-    // GlassmorphicContainer 裡；空狀態時整張卡不渲染，畫面乾淨如聊天頁。
-    final hasGlassContent = isLoading || activeError || timeline.isNotEmpty;
-
     return Column(
       children: [
+        if (_pendingResultId != null)
+          TextButton.icon(
+            key: const Key('coach-new-answer'),
+            onPressed: _showLatestAnswer,
+            icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+            label: const Text('新回覆已完成，從開頭看'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
+          ),
         Expanded(
-          child: SingleChildScrollView(
-            // 沒有常駐「收起鍵盤」鈕：往下滑就收（聊天視窗慣例）。
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.header != null) widget.header!,
-                _CoachMemorySourceStrip(sources: memorySources),
-                if (hasGlassContent) ...[
-                  const SizedBox(height: 12),
-                  GlassmorphicContainer(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollUpdateNotification &&
+                  notification.dragDetails != null &&
+                  isLoading) {
+                _keepReadingOnComplete = _visibleResultId != null;
+              }
+              return false;
+            },
+            child: SingleChildScrollView(
+              key: const Key('coach-reading-scroll'),
+              controller: _scrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.only(top: 8, bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (isLoading)
-                          CoachChatProgressNotice(
-                            update: progress,
-                            question: _lastAskedQuestion,
-                          )
-                        else if (activeError) ...[
-                          _CoachFailureNotice(
-                            title: CoachSurface.failureTitleFor(
-                                activeErrorObject!),
-                            subtitle: CoachSurface.failureSubtitleFor(
-                                activeErrorObject),
-                            question: _lastAskedQuestion!,
-                            message: CoachSurface.failureMessageFor(
-                                activeErrorObject),
-                            actionLabel: CoachSurface.failureActionLabelFor(
-                                activeErrorObject),
-                            onRetry:
-                                CoachSurface.isQuotaError(activeErrorObject)
-                                    ? (widget.onQuotaExceeded ??
-                                        _retryLastQuestion)
-                                    : _retryLastQuestion,
-                          ),
-                          if (timeline.isNotEmpty) const SizedBox(height: 12),
-                        ],
-                        if (!isLoading && timeline.isNotEmpty)
-                          _CoachChatThreadView(
-                            results: timeline,
-                            dailyRemaining: subscription.dailyRemaining,
-                            onFollowUp: _focusInputForFollowUp,
-                            onAskDifferent: _startNewQuestion,
-                            onForceAnswer: _forceAnswer,
-                            clarificationOrdinal: clarificationOrdinal,
-                          ),
+                        if (!_engaged && widget.header != null) widget.header!,
+                        if (widget.contextHeader != null) widget.contextHeader!,
+                        _CoachMemorySourceStrip(sources: memorySources),
+                        const SizedBox(height: 12),
                       ],
                     ),
                   ),
+                  // Stable sibling positions and keys preserve the same answer's
+                  // disclosure state while progress/error panels change height.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: isLoading
+                        ? CoachChatProgressNotice(
+                            update: progress,
+                            question: _lastAskedQuestion,
+                          )
+                        : activeError
+                            ? _CoachFailureNotice(
+                                title: CoachSurface.failureTitleFor(
+                                  activeErrorObject!,
+                                ),
+                                subtitle: CoachSurface.failureSubtitleFor(
+                                  activeErrorObject,
+                                ),
+                                question: _lastAskedQuestion!,
+                                message: CoachSurface.failureMessageFor(
+                                  activeErrorObject,
+                                ),
+                                actionLabel: CoachSurface.failureActionLabelFor(
+                                  activeErrorObject,
+                                ),
+                                onRetry:
+                                    CoachSurface.isQuotaError(activeErrorObject)
+                                        ? (widget.onQuotaExceeded ??
+                                            _retryLastQuestion)
+                                        : _retryLastQuestion,
+                              )
+                            : const SizedBox.shrink(),
+                  ),
+                  if (visibleTimeline.isNotEmpty)
+                    Material(
+                      color: AppColors.glassWhite,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: _CoachChatThreadView(
+                          key: _threadAnchor,
+                          results: visibleTimeline,
+                          dailyRemaining: subscription.dailyRemaining,
+                          onFollowUp: _focusInputForFollowUp,
+                          onAskDifferent: _startNewQuestion,
+                          onForceAnswer: _forceAnswer,
+                          actionsEnabled: canSubmit,
+                          clarificationOrdinal: clarificationOrdinal,
+                        ),
+                      ),
+                    ),
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -293,130 +467,154 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   /// 拍板一致）：白 12% 框底＋白 18% 框線＋聚焦橘框與橘色瞬態光暈
   /// （DESIGN.md §7 登記）、失焦中性黑陰影分層、送出鈕「有字才亮」漸層圓鈕。
   Widget _buildInputBar({required bool canSubmit, required bool isClarifying}) {
-    final isLoading = !canSubmit;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: SafeArea(
         top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: ListenableBuilder(
-                listenable: _focusNode,
-                builder: (context, child) => AnimatedContainer(
-                  duration: AppMotion.enter,
-                  curve: AppMotion.easeOut,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: _focusNode.hasFocus
-                        ? [
-                            BoxShadow(
-                              color: AppColors.ctaStart.withValues(alpha: 0.22),
-                              blurRadius: 14,
-                              offset: const Offset(0, 3),
-                            ),
-                          ]
-                        : [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                  ),
-                  child: child,
-                ),
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  maxLength: 240,
-                  minLines: 1,
-                  maxLines: 3,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: canSubmit ? (_) => _ask() : null,
-                  inputFormatters: [LengthLimitingTextInputFormatter(240)],
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    counterText: '',
-                    hintText: isClarifying
-                        ? '補充：你聽到後的感受，或你原本想怎麼回'
-                        : '例如：她這句話是真的有興趣嗎？',
-                    hintStyle: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.onBackgroundSecondary
-                          .withValues(alpha: 0.85),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(24)),
-                      borderSide: BorderSide(
-                        color: AppColors.ctaStart,
-                        width: 1.4,
-                      ),
-                    ),
+            if (_engaged)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '釐清免費 · 正式建議扣 1 則',
+                  key: const Key('coach-composer-cost'),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.35,
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            // 空字串灰階、有字才亮橘（同練習室 _SendButton）；loading 轉圈。
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _controller,
-              builder: (context, value, _) {
-                final enabled = canSubmit && value.text.trim().isNotEmpty;
-                return Semantics(
-                  button: true,
-                  label: isLoading ? '教練思考中' : '送出問題',
-                  child: GestureDetector(
-                    onTap: enabled ? _ask : null,
-                    child: Container(
-                      width: 46,
-                      height: 46,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: _focusNode,
+                    builder: (context, child) => AnimatedContainer(
+                      duration: AppMotion.enter,
+                      curve: AppMotion.easeOut,
                       decoration: BoxDecoration(
-                        gradient: enabled
-                            ? const LinearGradient(
-                                colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                              )
-                            : null,
-                        color: enabled ? null : AppColors.brandSurface2,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: _focusNode.hasFocus
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.ctaStart
+                                      .withValues(alpha: 0.22),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ]
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.18),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                       ),
-                      child: isLoading
-                          ? const Padding(
-                              padding: EdgeInsets.all(13),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(
-                              Icons.arrow_upward,
-                              color: enabled
-                                  ? AppColors.onBackgroundPrimary
-                                  : AppColors.onBackgroundSecondary
-                                      .withValues(alpha: 0.5),
-                              size: 22,
-                            ),
+                      child: child,
+                    ),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      maxLength: 240,
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction: TextInputAction.done,
+                      // 完成鍵沿用 Flutter 的主動收鍵盤行為；等待／待讀只擋送出。
+                      onSubmitted: canSubmit ? (_) => _ask() : null,
+                      inputFormatters: [LengthLimitingTextInputFormatter(240)],
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: isClarifying
+                            ? '補充：你聽到後的感受，或你原本想怎麼回'
+                            : '例如：她這句話是真的有興趣嗎？',
+                        hintStyle: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.onBackgroundSecondary.withValues(
+                            alpha: 0.85,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(24)),
+                          borderSide: BorderSide(
+                            color: AppColors.ctaStart,
+                            width: 1.4,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                );
-              },
+                ),
+                const SizedBox(width: 8),
+                // 空字串灰階、有字才亮橘（同練習室 _SendButton）；loading 轉圈。
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _controller,
+                  builder: (context, value, _) {
+                    final enabled = canSubmit && value.text.trim().isNotEmpty;
+                    return Semantics(
+                      button: true,
+                      enabled: enabled,
+                      label: _pendingResultId != null
+                          ? '新回覆已完成，請先閱讀'
+                          : canSubmit
+                              ? '送出問題'
+                              : '等待教練回覆',
+                      child: GestureDetector(
+                        onTap: enabled ? _ask : null,
+                        child: Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            gradient: enabled
+                                ? const LinearGradient(
+                                    colors: [
+                                      AppColors.ctaStart,
+                                      AppColors.ctaEnd
+                                    ],
+                                  )
+                                : null,
+                            color: enabled ? null : AppColors.brandSurface2,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.arrow_upward,
+                            color: enabled
+                                ? AppColors.onBackgroundPrimary
+                                : AppColors.onBackgroundSecondary.withValues(
+                                    alpha: 0.5,
+                                  ),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -472,10 +670,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
       // 來源標籤，載入中先當沒有風格，resolve 後這個 ConsumerWidget 會自動重繪。
       final styleContext = ref
-          .watch(coachChatStyleContextProvider((
-            partnerId: partnerId,
-            includePartnerOverride: !flagged,
-          )))
+          .watch(
+            coachChatStyleContextProvider((
+              partnerId: partnerId,
+              includePartnerOverride: !flagged,
+            )),
+          )
           .valueOrNull;
       if (styleContext != null && styleContext.trim().isNotEmpty) {
         sources.add('你的風格');
@@ -497,7 +697,8 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   }
 
   Future<void> _ask() async {
-    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
+    if (_pendingResultId != null ||
+        ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
       return;
     }
     final question = _controller.text.trim();
@@ -507,15 +708,17 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
       featureLabel: 'Coach 1:1',
     );
     if (!consented || !mounted) return;
-    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
+    if (_pendingResultId != null ||
+        ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
       return;
     }
-    FocusScope.of(context).unfocus();
     AppHaptics.light();
     setState(() {
       _lastAskedQuestion = question;
+      _engagedScopes.add(widget.scope);
       _controller.clear();
     });
+    _reportEngagement();
     ref.read(coachChatControllerProvider(widget.scope).notifier).ask(
           question: question,
           analysisSnapshot: widget.analysisSnapshot,
@@ -537,6 +740,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   }
 
   Future<void> _forceAnswer() async {
+    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) return;
     final consented = await AiDataSharingConsent.ensure(
       context,
       featureLabel: 'Coach 1:1',
@@ -551,6 +755,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   }
 
   void _focusInputForFollowUp() {
+    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) return;
     _controller.clear();
     _focusNode.requestFocus();
   }
@@ -559,11 +764,31 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface> {
   /// 二輪）——免費釐清列整串刪除、session 歸零，輸入列自然回到一般問句
   /// 引導，下一題從乾淨狀態開始。
   Future<void> _startNewQuestion() async {
+    final scope = widget.scope;
+    if (ref.read(coachChatControllerProvider(scope)).isLoading) return;
+    final previousIds = ref
+        .read(coachChatHistoryProvider(scope))
+        .map((result) => result.id)
+        .toSet();
     await ref
-        .read(coachChatControllerProvider(widget.scope).notifier)
+        .read(coachChatControllerProvider(scope).notifier)
         .discardClarifyingThread();
-    if (!mounted) return;
-    _controller.clear();
+    if (!mounted || widget.scope != scope) return;
+    final retained = ref.read(coachChatHistoryProvider(scope));
+    final retainedIds = retained.map((result) => result.id).toSet();
+    final discardedIds = previousIds.difference(retainedIds);
+    setState(() {
+      _sessionResultIds.removeAll(discardedIds);
+      _clarificationOrdinals.removeWhere((id, _) => discardedIds.contains(id));
+      _visibleResultId = retained
+          .where((result) => _sessionResultIds.contains(result.id))
+          .firstOrNull
+          ?.id;
+      _pendingResultId = null;
+      _keepReadingOnComplete = false;
+      _lastAskedQuestion = null;
+      _controller.clear();
+    });
     _focusNode.requestFocus();
   }
 }
@@ -575,14 +800,17 @@ class _CoachChatThreadView extends StatelessWidget {
   final VoidCallback onAskDifferent;
   final VoidCallback onForceAnswer;
   final int? clarificationOrdinal;
+  final bool actionsEnabled;
 
   const _CoachChatThreadView({
+    super.key,
     required this.results,
     required this.dailyRemaining,
     required this.onFollowUp,
     required this.onAskDifferent,
     required this.onForceAnswer,
     this.clarificationOrdinal,
+    this.actionsEnabled = true,
   });
 
   @override
@@ -599,6 +827,7 @@ class _CoachChatThreadView extends StatelessWidget {
           result: latest,
           question: latest.question,
           dailyRemaining: dailyRemaining,
+          actionsEnabled: actionsEnabled,
           onFollowUp: onFollowUp,
           onAskDifferent: onAskDifferent,
           onForceAnswer: onForceAnswer,
@@ -659,9 +888,7 @@ class _EarlierCoachSummaryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.primary.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.14),
-        ),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.14)),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -711,9 +938,7 @@ class _CoachChatHistoryTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.46),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.glassBorder.withValues(alpha: 0.7),
-        ),
+        border: Border.all(color: AppColors.glassBorder.withValues(alpha: 0.7)),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -817,10 +1042,7 @@ class _CoachChatHistoryTile extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: parts.join('\n')));
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('已複製'),
-        behavior: SnackBarBehavior.floating,
-      ),
+      const SnackBar(content: Text('已複製'), behavior: SnackBarBehavior.floating),
     );
   }
 }
@@ -836,6 +1058,7 @@ class CoachChatResultView extends ConsumerWidget {
   /// 釐清輪的「想問別的」：跳出補充循環、改問新問題。
   final VoidCallback onAskDifferent;
   final VoidCallback onForceAnswer;
+  final bool actionsEnabled;
 
   /// 本張釐清卡是本 session 的第幾次免費釐清（1 起算）。null＝不顯示序數
   /// （歷史卡、跨 session 檢視）。釐清是教練看情況才問的，所以文案用
@@ -850,6 +1073,7 @@ class CoachChatResultView extends ConsumerWidget {
     required this.onAskDifferent,
     required this.onForceAnswer,
     this.question,
+    this.actionsEnabled = true,
     this.clarificationOrdinal,
   });
 
@@ -857,13 +1081,8 @@ class CoachChatResultView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = CoachChatModeX.fromWire(result.mode);
     final isClarifying = result.isClarifyingQuestion;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
-      ),
+    return SizedBox(
+      width: double.infinity,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -924,7 +1143,7 @@ class CoachChatResultView extends ConsumerWidget {
               result.answer,
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextPrimary,
-                height: 1.45,
+                height: 1.65,
               ),
             ),
             const SizedBox(height: 8),
@@ -991,7 +1210,7 @@ class CoachChatResultView extends ConsumerWidget {
           const SizedBox(height: 8),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
           if (!isClarifying)
-            RevealPill(
+            _CoachFullAnalysis(
               key: ValueKey('coach-full-analysis-${result.id}'),
               label: '看完整教練分析',
               collapseLabel: '收起完整分析',
@@ -1005,23 +1224,17 @@ class CoachChatResultView extends ConsumerWidget {
                         result.answer,
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.glassTextPrimary,
-                          height: 1.45,
+                          height: 1.65,
                         ),
                       ),
                       const SizedBox(height: 8),
                       if (result.userTruth != null)
-                        _InfoLine(
-                          label: '我理解你的真實想法',
-                          value: result.userTruth!,
-                        ),
+                        _InfoLine(label: '我理解你的真實想法', value: result.userTruth!),
                       _InfoLine(
                         label: '這輪卡點',
                         value: _frictionTypeLabel(result.frictionType),
                       ),
-                      _InfoLine(
-                        label: '你現在卡在',
-                        value: result.userState,
-                      ),
+                      _InfoLine(label: '你現在卡在', value: result.userState),
                       if (result.rewriteDecision != null)
                         _InfoLine(
                           label: '教練判斷',
@@ -1048,7 +1261,7 @@ class CoachChatResultView extends ConsumerWidget {
                 // 「補充」由下方輸入列承擔（hint 已引導），這顆改為跳出
                 // 釐清循環的紅字出口（2026-08-16 Bruce 回饋拍板）。
                 TextButton(
-                  onPressed: onAskDifferent,
+                  onPressed: actionsEnabled ? onAskDifferent : null,
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.error,
                     visualDensity: VisualDensity.compact,
@@ -1057,7 +1270,7 @@ class CoachChatResultView extends ConsumerWidget {
                 )
               else
                 OutlinedButton.icon(
-                  onPressed: onFollowUp,
+                  onPressed: actionsEnabled ? onFollowUp : null,
                   icon: const Icon(Icons.add_comment_outlined, size: 18),
                   label: const Text('繼續深挖'),
                   style: OutlinedButton.styleFrom(
@@ -1070,7 +1283,9 @@ class CoachChatResultView extends ConsumerWidget {
                 ),
               if (isClarifying)
                 TextButton.icon(
-                  onPressed: () => _confirmForceAnswer(context),
+                  onPressed: actionsEnabled
+                      ? () => _confirmForceAnswer(context)
+                      : null,
                   icon: const Icon(Icons.bolt_outlined, size: 18),
                   // 橘色主 CTA 色，和灰字補述區分（2026-08-16 Bruce 回饋）。
                   style: TextButton.styleFrom(
@@ -1123,17 +1338,16 @@ class CoachChatResultView extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('直接看正式建議？'),
-        content: const Text(
-          '教練會跳過釐清，直接給完整建議；成功後會扣 1 則額度。',
-        ),
+        content: const Text('教練會跳過釐清，直接給完整建議；成功後會扣 1 則額度。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('先補充想法'),
           ),
           FilledButton(
-            onPressed:
-                AppHaptics.onPress(() => Navigator.of(dialogContext).pop(true)),
+            onPressed: AppHaptics.onPress(
+              () => Navigator.of(dialogContext).pop(true),
+            ),
             child: const Text('扣 1 則並生成'),
           ),
         ],
@@ -1149,10 +1363,67 @@ class CoachChatResultView extends ConsumerWidget {
     await Clipboard.setData(ClipboardData(text: text));
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('已複製'),
-        behavior: SnackBarBehavior.floating,
-      ),
+      const SnackBar(content: Text('已複製'), behavior: SnackBarBehavior.floating),
+    );
+  }
+}
+
+class _CoachFullAnalysis extends StatefulWidget {
+  const _CoachFullAnalysis({
+    super.key,
+    required this.label,
+    required this.collapseLabel,
+    required this.children,
+  });
+  final String label;
+  final String collapseLabel;
+  final List<Widget> children;
+
+  @override
+  State<_CoachFullAnalysis> createState() => _CoachFullAnalysisState();
+}
+
+class _CoachFullAnalysisState extends State<_CoachFullAnalysis> {
+  bool _expanded = false;
+  final _trigger = GlobalKey();
+
+  void _collapse() {
+    setState(() => _expanded = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _trigger.currentContext;
+      if (mounted && target != null) {
+        Scrollable.ensureVisible(target, alignment: 0.15);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
+        if (!_expanded)
+          FilledButton.icon(
+            key: _trigger,
+            onPressed: () => setState(() => _expanded = true),
+            icon: const Icon(Icons.keyboard_double_arrow_down_rounded),
+            label: Text(widget.label),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.brandInk,
+              foregroundColor: AppColors.onBackgroundPrimary,
+              minimumSize: const Size(0, 48),
+            ),
+          )
+        else ...[
+          ...widget.children,
+          TextButton.icon(
+            onPressed: _collapse,
+            icon: const Icon(Icons.keyboard_arrow_up_rounded),
+            label: Text(widget.collapseLabel),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1195,9 +1466,7 @@ class _CoachMemorySourceStrip extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.14),
-              ),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
             ),
             child: Text(
               source,
@@ -1238,9 +1507,7 @@ class _CoachFailureNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.warning.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.warning.withValues(alpha: 0.24),
-        ),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.24)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1381,11 +1648,11 @@ class _InfoLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: RichText(
-        text: TextSpan(
+      child: Text.rich(
+        TextSpan(
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.glassTextPrimary,
-            height: 1.4,
+            height: 1.65,
           ),
           children: [
             TextSpan(
@@ -1419,9 +1686,7 @@ class _CoachNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.56),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.14),
-        ),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.14)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1511,7 +1776,10 @@ class _CoachAdviceFeedbackRowState
           'userTier': tier,
           'modelUsed': widget.result.modelUsed,
           'aiResponse': {
-            'finalRecommendation': {'pick': 'coach_chat', 'content': advice},
+            'finalRecommendation': {
+              'pick': 'coach_chat',
+              'content': advice,
+            },
           },
         },
       ).timeout(const Duration(seconds: 20));

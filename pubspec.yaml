@@ -14,6 +14,7 @@ dependencies:
   # UI
   cupertino_icons: ^1.0.8
   skeletonizer: ^2.1.3
+  video_player: 2.14.0
 
   # Unicode-safe text utilities (grapheme clusters for ZWJ-safe truncation in
   # PartnerSummaryBuilder). Already pulled transitively by Flutter SDK; we
@@ -89,6 +90,7 @@ dev_dependencies:
 
   # Testing
   mocktail: ^1.0.4
+  video_player_platform_interface: ^6.9.0
 
   # Android 契約靜態測試的結構化解析（manifest/backup XML、workflow YAML）；
   # 已是 transitive 相依，升為直接 dev 相依供 test import
@@ -100,6 +102,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/coach/
+    - assets/videos/coach/
     - assets/images/practice/
     - assets/images/practice_girls/
     - assets/images/practice_moments/

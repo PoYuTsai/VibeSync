@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
@@ -36,6 +37,7 @@ import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 import '../../helpers/memory_coach_chat_repository.dart';
 import '../../helpers/memory_coaching_outcome_repository.dart';
+import '../../helpers/fake_sydney_video_platform.dart';
 
 /// 引導問句直接引實作常數（review Grok Minor-3：防測試與文案漂移）。
 const _guideQuestions = GlobalCoachScreen.guideQuestions;
@@ -131,6 +133,20 @@ Future<List<Map<String, dynamic>>> _pump(
   return apiCalls;
 }
 
+/// 開場是 chips；開始输入後從標題列選單選 scope，兩者都是使用者可操作路徑。
+Future<void> _selectScope(WidgetTester tester, Key scopeKey) async {
+  if (find.byKey(scopeKey).evaluate().isEmpty) {
+    await tester.tap(find.byKey(const Key('coach_scope_menu')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+  expect(find.byKey(scopeKey).hitTestable(), findsOneWidget);
+  await tester.tap(find.byKey(scopeKey));
+  // A/B 串可各自仍在等待，因此不能對持續進度動畫 pumpAndSettle。
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 CoachSurface _surface(WidgetTester tester) =>
     tester.widget<CoachSurface>(find.byType(CoachSurface));
 
@@ -142,6 +158,31 @@ TextField _inputField(WidgetTester tester) => tester.widget<TextField>(
     );
 
 void main() {
+  testWidgets('進場影片播放後，點引導輸入會釋放播放器且不送出問題', (tester) async {
+    final previous = VideoPlayerPlatform.instance;
+    final platform = FakeSydneyVideoPlatform();
+    VideoPlayerPlatform.instance = platform;
+    addTearDown(() {
+      platform.close();
+      VideoPlayerPlatform.instance = previous;
+    });
+
+    final calls = await _pump(tester);
+    expect(platform.playing[0], isTrue);
+    await tester.tap(find.text(_guideQuestions.first));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+
+    expect(_inputField(tester).controller!.text, _guideQuestions.first);
+    expect(find.byKey(const Key('coach-welcome')), findsNothing);
+    expect(find.byKey(const Key('coach-compact-avatar')), findsOneWidget);
+    expect(platform.disposed, [0]);
+    expect(platform.playing[0], isFalse);
+    expect(calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('AppBar 標題「問教練 Sydney」＋CoachSurface 掛 global scope',
       (tester) async {
     await _pump(tester);
@@ -195,11 +236,10 @@ void main() {
     expect(_surface(tester).scope, const CoachScope.global());
   });
 
-  testWidgets('點對象 chip → partner scope＋情境問句＋開場泡泡換對象版',
-      (tester) async {
+  testWidgets('點對象 chip → partner scope＋情境問句＋開場泡泡換對象版', (tester) async {
     await _pump(tester, partners: [_partner('p1', 'Alice')]);
 
-    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await _selectScope(tester, const Key('coach_scope_partner_p1'));
     await tester.pumpAndSettle();
 
     expect(_surface(tester).scope, const CoachScope.partner('p1'));
@@ -214,8 +254,7 @@ void main() {
     expect(find.text('想聊Alice的什麼？卡住的地方直接丟給我。'), findsOneWidget);
   });
 
-  testWidgets('partner scope 顯示「教練會參考」；無有效對話不渲染（Batch B1）',
-      (tester) async {
+  testWidgets('partner scope 顯示「教練會參考」；無有效對話不渲染（Batch B1）', (tester) async {
     await _pump(
       tester,
       partners: [_partner('p1', 'Alice')],
@@ -246,17 +285,16 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await _selectScope(tester, const Key('coach_scope_partner_p1'));
     await tester.pumpAndSettle();
 
     expect(find.text('教練會參考：你們 8/30 的對話紀錄'), findsOneWidget);
   });
 
-  testWidgets('點情境 chip → 預填情境問句＋種入 lifecyclePhase，不自動送出',
-      (tester) async {
+  testWidgets('點情境 chip → 預填情境問句＋種入 lifecyclePhase，不自動送出', (tester) async {
     final apiCalls = await _pump(tester, partners: [_partner('p1', 'Alice')]);
 
-    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await _selectScope(tester, const Key('coach_scope_partner_p1'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(_scenarioChips[1].label));
     await tester.pumpAndSettle();
@@ -266,15 +304,14 @@ void main() {
     expect(apiCalls, isEmpty);
   });
 
-  testWidgets('切回「一般」→ 回到 global scope 且清掉 lifecyclePhase',
-      (tester) async {
+  testWidgets('切回「一般」→ 回到 global scope 且清掉 lifecyclePhase', (tester) async {
     await _pump(tester, partners: [_partner('p1', 'Alice')]);
 
-    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await _selectScope(tester, const Key('coach_scope_partner_p1'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(_scenarioChips[0].label));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('coach_scope_general')));
+    await _selectScope(tester, const Key('coach_scope_general'));
     await tester.pumpAndSettle();
 
     expect(_surface(tester).scope, const CoachScope.global());
@@ -282,8 +319,7 @@ void main() {
         reason: '情境是跟著對象串的，回一般不得殘留 phase');
   });
 
-  testWidgets('鎖定模式（?partnerId=）：不渲染問誰、標題帶對象名、直接情境問句',
-      (tester) async {
+  testWidgets('鎖定模式（?partnerId=）：不渲染問誰、標題帶對象名、直接情境問句', (tester) async {
     await _pump(
       tester,
       partners: [_partner('p1', 'Alice')],
@@ -305,25 +341,29 @@ void main() {
     }
   });
 
-  testWidgets('情境選中才出現知識庫入口，且每個情境都有對應章節', (tester) async {
-    await _pump(
-      tester,
-      partners: [_partner('p1', 'Alice')],
-      lockedPartnerId: 'p1',
-    );
-    const linkKey = Key('coach_window_knowledge_link');
-    expect(find.byKey(linkKey), findsNothing,
-        reason: '沒選情境就無從得知該連哪一章，寧可不給入口');
+  for (final chip in _scenarioChips) {
+    testWidgets('情境「${chip.label}」選中後才出現對應知識庫入口', (tester) async {
+      // 每個情境從新畫面進場；首次預填後引導已完成任務，會收起。
+      final apiCalls = await _pump(
+        tester,
+        partners: [_partner('p1', 'Alice')],
+        lockedPartnerId: 'p1',
+      );
+      const linkKey = Key('coach_window_knowledge_link');
+      expect(find.byKey(linkKey), findsNothing,
+          reason: '沒選情境就無從得知該連哪一章，寧可不給入口');
 
-    for (final chip in _scenarioChips) {
       await tester.tap(find.text(chip.label));
       await tester.pumpAndSettle();
       expect(find.byKey(linkKey), findsOneWidget,
           reason: '點了「${chip.label}」之後應該出現知識庫入口');
       expect(DatingKnowledgeLinks.forFollowUpPhase(chip.phase), isNotNull,
           reason: 'phase ${chip.phase} 沒有對應章節，入口會連不到東西');
-    }
-  });
+      expect(_inputField(tester).controller?.text, chip.prefill);
+      expect(_surface(tester).lifecyclePhase, chip.phase);
+      expect(apiCalls, isEmpty);
+    });
+  }
 
   testWidgets('鎖定的對象已刪除 → 安靜退回一般模式', (tester) async {
     await _pump(
@@ -336,8 +376,7 @@ void main() {
     expect(find.text('隨時問我，聊天卡住我來接。'), findsOneWidget);
   });
 
-  testWidgets('鎖定的對象開著視窗時被刪 → 退回一般模式（ref.listen 路徑）',
-      (tester) async {
+  testWidgets('鎖定的對象開著視窗時被刪 → 退回一般模式（ref.listen 路徑）', (tester) async {
     await tester.binding.setSurfaceSize(const Size(430, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -390,7 +429,7 @@ void main() {
       matching: find.byType(TextField),
     );
     await tester.enterText(field, '她已讀我兩天，我該追問嗎？');
-    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await _selectScope(tester, const Key('coach_scope_partner_p1'));
     await tester.pumpAndSettle();
 
     expect(
@@ -449,7 +488,7 @@ void main() {
         reason: 'general 串 loading 中，progress 卡應帶 A 問句');
 
     // 切到 Alice 串，送出 B 問句，也卡在 loading。
-    await tester.tap(find.byKey(const Key('coach_scope_partner_p1')));
+    await _selectScope(tester, const Key('coach_scope_partner_p1'));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.enterText(field, questionB);
     await tester.tap(find.byIcon(Icons.arrow_upward));
@@ -458,7 +497,7 @@ void main() {
     expect(find.textContaining(questionB), findsOneWidget);
 
     // 切回仍在 loading 的 A 串：不得顯示 B 的問句。
-    await tester.tap(find.byKey(const Key('coach_scope_general')));
+    await _selectScope(tester, const Key('coach_scope_general'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.textContaining(questionB), findsNothing,
         reason: 'A 串的 progress 卡不得顯示 B 串的問句（scope 記憶要清）');
@@ -475,8 +514,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
   });
 
-  testWidgets('快速切 scope 不得閃「正在送出問題」（controller build 必須同步）',
-      (tester) async {
+  testWidgets('快速切 scope 不得閃「正在送出問題」（controller build 必須同步）', (tester) async {
     // 2026-08-11 Eric 真機回報：快速連點問誰 chips，下方閃出「正在送出
     // 問題」。真因＝autoDispose controller 的 async build 每次熱切換都留
     // 一幀 AsyncLoading，UI 誤當成問題送出中。此測試逐幀斷言堵回歸。
