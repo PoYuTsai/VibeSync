@@ -339,12 +339,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                               const PracticeGameCoachIntro(),
                             for (var i = 0; i < state.messages.length; i++)
                               if (_isReadReceipt(state.messages[i]))
-                                const _ReadReceipt()
+                                // 上一則是玩家泡泡時已讀疊在它的時間上方（LINE 排法），這裡不畫。
+                                if (i == 0 || !state.messages[i - 1].isFromMe)
+                                  const _ReadReceipt()
+                                else
+                                  const SizedBox.shrink()
                               else if (_isBlockedLine(state.messages[i]))
                                 const _BlockedLine()
                               else
                                 _Bubble(
                                   message: state.messages[i],
+                                  readReceipt: i + 1 < state.messages.length &&
+                                      _isReadReceipt(state.messages[i + 1]),
                                   stagger: i == state.messages.length - 1,
                                   grouped: i > 0 &&
                                       state.messages[i - 1].isFromMe ==
@@ -534,7 +540,8 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 width: double.infinity,
                 child: FilledButton(
                   key: const ValueKey('practice-goto-collection-cta'),
-                  onPressed: AppHaptics.onPress(() => context.push('/practice-collection')),
+                  onPressed: AppHaptics.onPress(
+                      () => context.push('/practice-collection')),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: AppColors.onCta,
@@ -1415,21 +1422,25 @@ bool _isReadReceipt(PracticeMessage m) =>
     !m.isFromMe && m.text.trim() == _kReadReceiptText;
 
 class _ReadReceipt extends StatelessWidget {
-  const _ReadReceipt();
+  const _ReadReceipt({this.inline = false});
+
+  /// true＝疊在玩家泡泡的時間上方（`_Bubble.readReceipt`）；false＝獨立一行
+  /// （上一則不是玩家泡泡時的保底）。
+  final bool inline;
 
   @override
   Widget build(BuildContext context) {
+    final text = Text(
+      '已讀',
+      key: const ValueKey('practice-read-receipt'),
+      style: AppTypography.caption.copyWith(color: AppColors.chatMetaGrey),
+    );
+    if (inline) return text;
     return Align(
       alignment: Alignment.centerRight,
       child: Padding(
         padding: const EdgeInsets.only(right: 4, bottom: 4),
-        child: Text(
-          '已讀',
-          key: const ValueKey('practice-read-receipt'),
-          style: AppTypography.caption.copyWith(
-            color: AppColors.chatMetaGrey,
-          ),
-        ),
+        child: text,
       ),
     );
   }
@@ -1466,8 +1477,12 @@ class _Bubble extends StatefulWidget {
     required this.message,
     this.stagger = false,
     this.grouped = false,
+    this.readReceipt = false,
   });
   final PracticeMessage message;
+
+  /// WP4：下一則是她的「（已讀）」→ 已讀小字疊在這顆泡泡的時間上方（LINE 排法）。
+  final bool readReceipt;
 
   /// 只有畫面上最新的一則會逐則跳出（間隔 1 秒），歷史訊息直接全顯示。
   final bool stagger;
@@ -1524,69 +1539,115 @@ class _BubbleState extends State<_Bubble> {
     final speakerColor = isMe ? AppColors.ctaEnd : AppColors.primaryDark;
 
     final shown = _parts.take(_visible).toList();
+    final sentAt = message.sentAt;
+    // WP4 時間戳：只掛在最後一顆泡旁邊（已讀疊在時間上方），跟 LINE 一樣。
+    Widget? meta(int index) {
+      if (index != shown.length - 1) return null;
+      if (sentAt == null && !widget.readReceipt) return null;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.readReceipt) const _ReadReceipt(inline: true),
+            if (sentAt != null)
+              Text(
+                _lineClockLabel(sentAt),
+                key: const ValueKey('practice-message-time'),
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.chatMetaGrey,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment:
           isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var index = 0; index < shown.length; index++)
-          Align(
-            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              // 上一則底部固定留 4：同人 4＋0＝4，換人 4＋8＝12。
-              margin: EdgeInsets.only(
-                top: index == 0 ? (widget.grouped ? 0 : 8) : 2,
-                bottom: index == shown.length - 1 ? 4 : 0,
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
-              ),
-              decoration: BoxDecoration(
-                color: fillColor,
-                borderRadius: BorderRadius.circular(18).copyWith(
-                  bottomRight: isMe && index == shown.length - 1
-                      ? const Radius.circular(5)
-                      : null,
-                  bottomLeft: !isMe && index == shown.length - 1
-                      ? const Radius.circular(5)
-                      : null,
+          Row(
+            mainAxisAlignment:
+                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (isMe && meta(index) != null) ...[
+                meta(index)!,
+                const SizedBox(width: 4),
+              ],
+              // Flexible：時間小字擠進來時泡泡讓位，不會撐出 Row。
+              Flexible(
+                  child: Container(
+                // 上一則底部固定留 4：同人 4＋0＝4，換人 4＋8＝12。
+                margin: EdgeInsets.only(
+                  top: index == 0 ? (widget.grouped ? 0 : 8) : 2,
+                  bottom: index == shown.length - 1 ? 4 : 0,
                 ),
-                border: Border.all(color: borderColor),
-              ),
-              child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 說話者只標在一組的第一顆泡，連發／同人連續訊息不重複。
-                  if (index == 0 && !widget.grouped) ...[
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                ),
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(18).copyWith(
+                    bottomRight: isMe && index == shown.length - 1
+                        ? const Radius.circular(5)
+                        : null,
+                    bottomLeft: !isMe && index == shown.length - 1
+                        ? const Radius.circular(5)
+                        : null,
+                  ),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 說話者只標在一組的第一顆泡，連發／同人連續訊息不重複。
+                    if (index == 0 && !widget.grouped) ...[
+                      Text(
+                        isMe ? '我說' : '她說',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: speakerColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     Text(
-                      isMe ? '我說' : '她說',
-                      style: AppTypography.bodySmall.copyWith(
-                        color: speakerColor,
-                        fontWeight: FontWeight.w700,
+                      shown[index],
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.glassTextPrimary,
+                        height: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 4),
                   ],
-                  Text(
-                    shown[index],
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.glassTextPrimary,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              )),
+              if (!isMe && meta(index) != null) ...[
+                const SizedBox(width: 4),
+                meta(index)!,
+              ],
+            ],
           ),
       ],
     );
   }
+}
+
+/// LINE 式時間：「上午 9:26」「下午 3:05」，用手機本地時間。
+String _lineClockLabel(DateTime t) {
+  final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  return '${t.hour < 12 ? '上午' : '下午'} $h:${t.minute.toString().padLeft(2, '0')}';
 }
 
 class _ThinkingBubble extends StatelessWidget {
@@ -3474,12 +3535,18 @@ class _SessionReviewScreen extends StatelessWidget {
           children: [
             for (var i = 0; i < session.messages.length; i++)
               if (_isReadReceipt(session.messages[i]))
-                const _ReadReceipt()
+                // 上一則是玩家泡泡時已讀疊在它的時間上方（LINE 排法），這裡不畫。
+                if (i == 0 || !session.messages[i - 1].isFromMe)
+                  const _ReadReceipt()
+                else
+                  const SizedBox.shrink()
               else if (_isBlockedLine(session.messages[i]))
                 const _BlockedLine()
               else
                 _Bubble(
                   message: session.messages[i],
+                  readReceipt: i + 1 < session.messages.length &&
+                      _isReadReceipt(session.messages[i + 1]),
                   grouped: i > 0 &&
                       session.messages[i - 1].isFromMe ==
                           session.messages[i].isFromMe,

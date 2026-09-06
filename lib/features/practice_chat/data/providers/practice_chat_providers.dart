@@ -1880,7 +1880,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         : null;
     final optimistic = [
       ...priorMessages,
-      PracticeMessage(role: 'user', text: trimmed),
+      PracticeMessage(role: 'user', text: trimmed, sentAt: DateTime.now()),
     ];
     state = state.copyWith(
       messages: optimistic,
@@ -1962,6 +1962,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
           text: reply.reply,
           mood: reply.partnerState?.mood,
           innerThought: reply.partnerState?.innerThought,
+          sentAt: DateTime.now(),
         ),
       ];
       final temperature = reply.temperature;

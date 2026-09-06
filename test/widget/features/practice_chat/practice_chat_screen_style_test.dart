@@ -4715,6 +4715,56 @@ void main() {
     expect(find.text('我先去忙一下'), findsOneWidget);
   });
 
+  testWidgets('WP4 時間戳：有 sentAt 的泡泡旁畫「上午/下午 h:mm」，舊資料（null）不畫', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith(
+            (ref) => _SeededPracticeChatController(
+              seed: checkedOutSeed(partnerStatus: 'read_only').copyWith(
+                messages: [
+                  const PracticeMessage(role: 'user', text: '舊資料沒時間'),
+                  PracticeMessage(
+                    role: 'ai',
+                    text: '嗨',
+                    sentAt: DateTime(2026, 9, 6, 9, 5),
+                  ),
+                  PracticeMessage(
+                    role: 'user',
+                    text: '在嗎',
+                    sentAt: DateTime(2026, 9, 6, 15, 26),
+                  ),
+                  const PracticeMessage(role: 'ai', text: '（已讀）'),
+                ],
+              ),
+              repository: repo,
+            ),
+          ),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+        find.byKey(const ValueKey('practice-message-time')), findsNWidgets(2));
+    expect(find.text('上午 9:05'), findsOneWidget);
+    expect(find.text('下午 3:26'), findsOneWidget);
+    // 已讀疊在玩家泡泡的時間上方，仍只有一個。
+    expect(find.byKey(const ValueKey('practice-read-receipt')), findsOneWidget);
+  });
+
   // ── Phase 5 WP6：她封鎖你 ──────────────────────────────────────────────
   Future<void> pumpBlocked(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));

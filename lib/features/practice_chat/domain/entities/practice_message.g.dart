@@ -21,13 +21,14 @@ class PracticeMessageAdapter extends TypeAdapter<PracticeMessage> {
       text: fields[1] as String,
       mood: fields[2] as String?,
       innerThought: fields[3] as String?,
+      sentAt: fields[4] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PracticeMessage obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.role)
       ..writeByte(1)
@@ -35,7 +36,9 @@ class PracticeMessageAdapter extends TypeAdapter<PracticeMessage> {
       ..writeByte(2)
       ..write(obj.mood)
       ..writeByte(3)
-      ..write(obj.innerThought);
+      ..write(obj.innerThought)
+      ..writeByte(4)
+      ..write(obj.sentAt);
   }
 
   @override
