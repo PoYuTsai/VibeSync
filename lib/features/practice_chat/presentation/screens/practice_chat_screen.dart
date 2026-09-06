@@ -349,8 +349,11 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                               else
                                 _Bubble(
                                   message: state.messages[i],
-                                  readReceipt: i + 1 < state.messages.length &&
-                                      _isReadReceipt(state.messages[i + 1]),
+                                  readReceipt: _playerBubbleRead(
+                                    state.messages,
+                                    i,
+                                    typing: state.isSending,
+                                  ),
                                   stagger: i == state.messages.length - 1,
                                   grouped: i > 0 &&
                                       state.messages[i - 1].isFromMe ==
@@ -1421,6 +1424,22 @@ const _kReadReceiptText = '（已讀）';
 bool _isReadReceipt(PracticeMessage m) =>
     !m.isFromMe && m.text.trim() == _kReadReceiptText;
 
+/// LINE 語意：「已讀」＝她看過了，不是「已讀不回」。玩家泡泡在她之後有任何
+/// 回應（含「（已讀）」）就亮；她輸入中時最後一顆先亮；封鎖那則不算看過
+/// （被封鎖＝永遠不會已讀）。
+bool _playerBubbleRead(
+  List<PracticeMessage> messages,
+  int i, {
+  bool typing = false,
+}) {
+  if (!messages[i].isFromMe) return false;
+  if (typing && i == messages.length - 1) return true;
+  for (var j = i + 1; j < messages.length; j++) {
+    if (!messages[j].isFromMe && !_isBlockedLine(messages[j])) return true;
+  }
+  return false;
+}
+
 class _ReadReceipt extends StatelessWidget {
   const _ReadReceipt({this.inline = false});
 
@@ -1978,7 +1997,10 @@ class _BottomBar extends StatelessWidget {
           // 「看教練拆解」導向檢討；輸入框仍然可以打字送出（不鎖、不自動結束）。
           if (state.partnerCheckedOut) ...[
             Text(
-              '她先去忙了，這場可以結束練習看拆解',
+              // 已讀不回跟「先去忙了」是兩種收場，文案分開，玩家才知道發生了什麼。
+              state.partnerStatus == 'read_only'
+                  ? '她已讀沒回，這場可以結束練習看拆解'
+                  : '她先去忙了，這場可以結束練習看拆解',
               key: const ValueKey('practice-partner-checked-out'),
               style: AppTypography.caption.copyWith(
                 color: AppColors.onBackgroundSecondary,
@@ -3545,8 +3567,7 @@ class _SessionReviewScreen extends StatelessWidget {
               else
                 _Bubble(
                   message: session.messages[i],
-                  readReceipt: i + 1 < session.messages.length &&
-                      _isReadReceipt(session.messages[i + 1]),
+                  readReceipt: _playerBubbleRead(session.messages, i),
                   grouped: i > 0 &&
                       session.messages[i - 1].isFromMe ==
                           session.messages[i].isFromMe,

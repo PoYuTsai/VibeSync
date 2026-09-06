@@ -4708,11 +4708,79 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('practice-read-receipt')), findsOneWidget);
-    expect(find.text('已讀'), findsOneWidget);
+    // LINE 語意：她回過的「東東」跟只被已讀的「在嗎」都亮已讀 → 兩個。
+    expect(
+        find.byKey(const ValueKey('practice-read-receipt')), findsNWidgets(2));
+    expect(find.text('已讀'), findsNWidgets(2));
     expect(find.text('（已讀）'), findsNothing);
     // 她的真正回覆照樣是泡泡。
     expect(find.text('我先去忙一下'), findsOneWidget);
+  });
+
+  testWidgets('已讀＝她看過：輸入中最後一顆先亮、她回過的都亮、封鎖那則不算', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Future<void> pumpWith(PracticeChatState seed) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          // 同位置的 ProviderScope 會沿用第一次的 overrides；換 key 才是新 seed。
+          key: UniqueKey(),
+          overrides: [
+            practiceChatControllerProvider.overrideWith(
+              (ref) =>
+                  _SeededPracticeChatController(seed: seed, repository: repo),
+            ),
+            subscriptionProvider.overrideWith(
+              (ref) => _SeededSubscriptionNotifier(
+                const SubscriptionState(
+                  tier: SubscriptionTierHelper.starter,
+                  monthlyLimit: 100,
+                  dailyLimit: 30,
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(home: PracticeChatScreen()),
+        ),
+      );
+      await tester.pump();
+    }
+
+    // 她輸入中：我方最後一顆已經亮已讀（她看了才會打字）。
+    await pumpWith(
+      checkedOutSeed(partnerStatus: null).copyWith(
+        isSending: true,
+        messages: const [
+          PracticeMessage(role: 'ai', text: '嗨'),
+          PracticeMessage(role: 'user', text: '在嗎'),
+        ],
+      ),
+    );
+    expect(find.byKey(const ValueKey('practice-read-receipt')), findsOneWidget);
+
+    // 還沒送出、她也還沒回：不亮。
+    await pumpWith(
+      checkedOutSeed(partnerStatus: null).copyWith(
+        messages: const [
+          PracticeMessage(role: 'ai', text: '嗨'),
+          PracticeMessage(role: 'user', text: '在嗎'),
+        ],
+      ),
+    );
+    expect(find.byKey(const ValueKey('practice-read-receipt')), findsNothing);
+
+    // 封鎖：她之前回過的那顆亮，觸發封鎖的最後一顆不亮。
+    await pumpWith(
+      checkedOutSeed(partnerStatus: 'blocked').copyWith(
+        messages: const [
+          PracticeMessage(role: 'user', text: '嗨'),
+          PracticeMessage(role: 'ai', text: '嗨'),
+          PracticeMessage(role: 'user', text: '（冒犯）'),
+          PracticeMessage(role: 'ai', text: kPracticeBlockedReplyText),
+        ],
+      ),
+    );
+    expect(find.byKey(const ValueKey('practice-read-receipt')), findsOneWidget);
   });
 
   testWidgets('WP4 時間戳：有 sentAt 的泡泡旁畫「上午/下午 h:mm」，舊資料（null）不畫', (tester) async {
@@ -4761,8 +4829,9 @@ void main() {
         find.byKey(const ValueKey('practice-message-time')), findsNWidgets(2));
     expect(find.text('上午 9:05'), findsOneWidget);
     expect(find.text('下午 3:26'), findsOneWidget);
-    // 已讀疊在玩家泡泡的時間上方，仍只有一個。
-    expect(find.byKey(const ValueKey('practice-read-receipt')), findsOneWidget);
+    // 已讀疊在玩家泡泡的時間上方；兩顆玩家泡泡她都看過 → 兩個。
+    expect(
+        find.byKey(const ValueKey('practice-read-receipt')), findsNWidgets(2));
   });
 
   // ── Phase 5 WP6：她封鎖你 ──────────────────────────────────────────────
@@ -4843,14 +4912,15 @@ void main() {
   });
 
   // U3：她只回已讀那一格用同一行提示；大字級與最小支援寬度都不得 overflow。
-  testWidgets('Phase 4.5c：read_only 沿用同一行提示', (tester) async {
+  testWidgets('Phase 4.5c：read_only 同一格但文案改成已讀沒回', (tester) async {
     await pumpCheckedOut(tester, partnerStatus: 'read_only');
 
     expect(
       find.byKey(const ValueKey('practice-partner-checked-out')),
       findsOneWidget,
     );
-    expect(find.text('她先去忙了，這場可以結束練習看拆解'), findsOneWidget);
+    expect(find.text('她已讀沒回，這場可以結束練習看拆解'), findsOneWidget);
+    expect(find.text('她先去忙了，這場可以結束練習看拆解'), findsNothing);
   });
 
   for (final layout in [
