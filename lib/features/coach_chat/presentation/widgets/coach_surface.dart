@@ -310,9 +310,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       if (next.isLoading && previous?.isLoading != true) {
         // 以實際顯示中的回覆重綁；scope 切換或捨棄釐清後不沿用舊 ID。
         _visibleResultId = latest?.id;
-        _keepReadingOnComplete = _visibleResultId != null &&
-            _scrollController.hasClients &&
-            _scrollController.offset > 80;
+        // Even the first lines are reading: a scroll-distance threshold cannot
+        // tell whether the user has finished with the currently visible answer.
+        _keepReadingOnComplete = _visibleResultId != null;
         _restoreReadingAnchor(anchor);
       }
       if (previous?.isLoading == true &&

@@ -281,9 +281,47 @@ void main() {
 
     harness.succeed(1, clarifying: true);
     await _finish(tester);
+    expect(find.byKey(const Key('coach-new-answer')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('coach-new-answer')));
+    await _finish(tester);
     expect(find.text('免費釐清 第 2 次（最多 3 次）'), findsOneWidget);
     expect(harness.usageSyncCalls, 0);
   });
+
+  for (final offset in [0.0, 40.0, 80.0]) {
+    testWidgets('在舊答案開頭 $offset px 追問仍保留原文，由使用者切到新答案', (tester) async {
+      final harness = await _pump(tester);
+      await _send(tester, harness, '先給我一份建議。');
+      harness.succeed(0);
+      await _finish(tester);
+      await tester.ensureVisible(find.text('看完整教練分析'));
+      await tester.tap(find.text('看完整教練分析'));
+      await _finish(tester);
+      _readingPosition(tester).jumpTo(offset);
+      await _finish(tester);
+      expect(_readingPosition(tester).pixels, closeTo(offset, 1));
+
+      await _send(tester, harness, '我還在看上面，再補充一個問題。');
+      final previousTop = tester.getTopLeft(find.text(_formalHeadline)).dy;
+      const nextHeadline = '新的回答，等待使用者主動查看';
+      harness.succeed(1, headline: nextHeadline);
+      await _finish(tester);
+
+      expect(find.text(_formalHeadline), findsOneWidget);
+      expect(find.text(nextHeadline), findsNothing);
+      expect(tester.getTopLeft(find.text(_formalHeadline)).dy,
+          closeTo(previousTop, 2));
+      expect(find.byKey(const Key('coach-new-answer')).hitTestable(),
+          findsOneWidget);
+      expect(harness.usageSyncCalls, 2);
+      await tester.tap(find.byKey(const Key('coach-new-answer')));
+      await _finish(tester);
+      expect(find.text(nextHeadline).hitTestable(), findsOneWidget);
+      expect(find.byKey(const Key('coach-new-answer')), findsNothing);
+      expect(harness.usageSyncCalls, 2);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('正式全文展開後，追問 pending 與 error 都保留原答案及展開狀態', (tester) async {
     final harness = await _pump(tester);
