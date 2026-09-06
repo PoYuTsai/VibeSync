@@ -157,25 +157,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  portraitTest('手動暫停後經背景及返回仍暫停，主動播放才恢復', (tester) async {
-    await mount(tester);
-    await tester.tap(find.byTooltip('暫停 Sydney 動畫'));
-    await _flush(tester);
-    final playsBeforeBackground = platform.playCalls.length;
-
-    await _lifecycle(tester, AppLifecycleState.paused);
-    await _flush(tester);
-    await _lifecycle(tester, AppLifecycleState.resumed);
-    await _flush(tester);
-
-    expect(platform.playing[0], isFalse);
-    expect(platform.playCalls.length, playsBeforeBackground);
-    expect(find.byTooltip('播放 Sydney 動畫'), findsOneWidget);
-    await tester.tap(find.byTooltip('播放 Sydney 動畫'));
-    await _flush(tester);
-    expect(platform.playing[0], isTrue);
-  });
-
   portraitTest('所有非 resumed 生命週期都停播，回前景才恢復', (tester) async {
     await mount(tester);
     for (final state in AppLifecycleState.values
@@ -295,7 +276,6 @@ void main() {
       }
       expect(_poster, findsOneWidget);
       expect(find.byType(VideoPlayer), findsNothing);
-      expect(find.byTooltip('暫停 Sydney 動畫'), findsNothing);
       expect(platform.disposed, [0], reason: '影片失敗後也要釋放 native decoder');
       expect(platform.playing[0], isFalse);
       await tester.enterText(find.byKey(const Key('coach-input')), '我想問教練');

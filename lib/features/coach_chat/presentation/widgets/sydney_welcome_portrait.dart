@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/animation/motion_preference.dart';
-import '../../../../core/theme/app_colors.dart';
 
 /// Entry-only Sydney performance. Removing the welcome section also releases
 /// the decoder; answers and keyboard space never depend on the video timeline.
+/// 沒有暫停鍵（2026-09-07 Eric）：靜音循環不需要控制項，Reduce Motion 走靜態圖。
 class SydneyWelcomePortrait extends StatefulWidget {
   const SydneyWelcomePortrait({super.key});
 
@@ -27,11 +27,9 @@ class _SydneyWelcomePortraitState extends State<SydneyWelcomePortrait>
   bool _failed = false;
   bool _motionDisabled = true;
   bool _routeCurrent = false;
-  bool _userPaused = false;
   bool _foreground = true;
 
-  bool get _canPlay =>
-      !_motionDisabled && _routeCurrent && !_userPaused && _foreground;
+  bool get _canPlay => !_motionDisabled && _routeCurrent && _foreground;
 
   bool get _supported =>
       kIsWeb ||
@@ -65,7 +63,7 @@ class _SydneyWelcomePortraitState extends State<SydneyWelcomePortrait>
 
   Future<void> _initialize() async {
     // This widget owns lifecycle decisions. The player's automatic resume must
-    // not override a user's pause, a covered route or Reduce Motion on return.
+    // not override a covered route or Reduce Motion on return.
     final controller = VideoPlayerController.asset(
       SydneyWelcomePortrait.videoAsset,
       videoPlayerOptions: VideoPlayerOptions(
@@ -144,53 +142,49 @@ class _SydneyWelcomePortraitState extends State<SydneyWelcomePortrait>
   @override
   Widget build(BuildContext context) {
     final showVideo = _ready && !_failed && !_motionDisabled;
+    // 素材底色是整片深紫，直接貼在漸層底上會露出一個長方形；四邊都淡出，
+    // 人物像是從背景長出來，不用裁圓角也不用暫停鍵蓋在臉旁邊。
+    Widget fade(Widget child,
+        {required Alignment begin,
+        required Alignment end,
+        required List<double> stops}) {
+      return ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (bounds) => LinearGradient(
+          begin: begin,
+          end: end,
+          colors: const [
+            Colors.transparent,
+            Colors.white,
+            Colors.white,
+            Colors.transparent,
+          ],
+          stops: stops,
+        ).createShader(bounds),
+        child: child,
+      );
+    }
+
     return AspectRatio(
       aspectRatio: 9 / 16,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ExcludeSemantics(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: ShaderMask(
-                blendMode: BlendMode.dstIn,
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.white, Colors.white, Colors.transparent],
-                  stops: [0, 0.88, 1],
-                ).createShader(bounds),
-                child: showVideo
-                    ? VideoPlayer(_controller!)
-                    : Image.asset(
-                        SydneyWelcomePortrait.posterAsset,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.medium,
-                      ),
-              ),
-            ),
+      child: ExcludeSemantics(
+        child: fade(
+          fade(
+            showVideo
+                ? VideoPlayer(_controller!)
+                : Image.asset(
+                    SydneyWelcomePortrait.posterAsset,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                  ),
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            stops: const [0, 0.16, 0.84, 1],
           ),
-          if (showVideo)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: IconButton.filledTonal(
-                tooltip: _userPaused ? '播放 Sydney 動畫' : '暫停 Sydney 動畫',
-                onPressed: () {
-                  setState(() => _userPaused = !_userPaused);
-                  unawaited(_syncPlayback());
-                },
-                style: IconButton.styleFrom(
-                  backgroundColor:
-                      AppColors.brandSurface.withValues(alpha: 0.8),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(44, 44),
-                  iconSize: 18,
-                ),
-                icon: Icon(_userPaused ? Icons.play_arrow : Icons.pause),
-              ),
-            ),
-        ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: const [0, 0.06, 0.86, 1],
+        ),
       ),
     );
   }

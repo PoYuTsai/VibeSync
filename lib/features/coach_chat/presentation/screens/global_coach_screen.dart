@@ -445,9 +445,8 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
               Expanded(
                 child: Text(
                   title,
-                  style: AppTypography.titleLarge.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                  ),
+                  // 同 brandAppBar 的標題字（19／w800），跟其他頁一致。
+                  style: AppTypography.appBarTitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),

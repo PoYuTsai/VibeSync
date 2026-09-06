@@ -10,6 +10,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../../../shared/widgets/glassmorphic_container.dart';
+import '../../../../shared/widgets/reveal_pill.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../data/providers/coach_chat_providers.dart';
@@ -403,53 +405,71 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
                   ),
                   // Stable sibling positions and keys preserve the same answer's
                   // disclosure state while progress/error panels change height.
+                  // progress／error 的配色是為淺色玻璃卡設計的（灰黑字放深底
+                  // 幾乎看不見，2026-09-07 Eric 真機反饋），各自包一張玻璃卡。
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      (isLoading || activeError) && visibleTimeline.isNotEmpty
+                          ? 12
+                          : 0,
+                    ),
                     child: isLoading
-                        ? CoachChatProgressNotice(
-                            update: progress,
-                            question: _lastAskedQuestion,
+                        ? GlassmorphicContainer(
+                            child: CoachChatProgressNotice(
+                              update: progress,
+                              question: _lastAskedQuestion,
+                            ),
                           )
                         : activeError
-                            ? _CoachFailureNotice(
-                                title: CoachSurface.failureTitleFor(
-                                  activeErrorObject!,
+                            ? GlassmorphicContainer(
+                                child: _CoachFailureNotice(
+                                  title: CoachSurface.failureTitleFor(
+                                    activeErrorObject!,
+                                  ),
+                                  subtitle: CoachSurface.failureSubtitleFor(
+                                    activeErrorObject,
+                                  ),
+                                  question: _lastAskedQuestion!,
+                                  message: CoachSurface.failureMessageFor(
+                                    activeErrorObject,
+                                  ),
+                                  actionLabel:
+                                      CoachSurface.failureActionLabelFor(
+                                    activeErrorObject,
+                                  ),
+                                  onRetry: CoachSurface.isQuotaError(
+                                    activeErrorObject,
+                                  )
+                                      ? (widget.onQuotaExceeded ??
+                                          _retryLastQuestion)
+                                      : _retryLastQuestion,
                                 ),
-                                subtitle: CoachSurface.failureSubtitleFor(
-                                  activeErrorObject,
-                                ),
-                                question: _lastAskedQuestion!,
-                                message: CoachSurface.failureMessageFor(
-                                  activeErrorObject,
-                                ),
-                                actionLabel: CoachSurface.failureActionLabelFor(
-                                  activeErrorObject,
-                                ),
-                                onRetry:
-                                    CoachSurface.isQuotaError(activeErrorObject)
-                                        ? (widget.onQuotaExceeded ??
-                                            _retryLastQuestion)
-                                        : _retryLastQuestion,
                               )
                             : const SizedBox.shrink(),
                   ),
+                  // 回覆串維持原本的淺色玻璃卡（不是整面白板），卡內
+                  // 保留紫色調子卡；閱讀寬度靠 header 收起換來，不靠拆卡。
                   if (visibleTimeline.isNotEmpty)
-                    Material(
-                      color: AppColors.glassWhite,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: _CoachChatThreadView(
-                          key: _threadAnchor,
-                          results: visibleTimeline,
-                          dailyRemaining: subscription.dailyRemaining,
-                          onFollowUp: _focusInputForFollowUp,
-                          onAskDifferent: _startNewQuestion,
-                          onForceAnswer: _forceAnswer,
-                          actionsEnabled: canSubmit,
-                          clarificationOrdinal: clarificationOrdinal,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: GlassmorphicContainer(
+                        // 前輪摺疊列是 ListTile：Material 要在有底色的容器
+                        // 之內，不然 ListTile 會抱怨墨水效果被蓋住；透明型不改色。
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: _CoachChatThreadView(
+                            key: _threadAnchor,
+                            results: visibleTimeline,
+                            dailyRemaining: subscription.dailyRemaining,
+                            onFollowUp: _focusInputForFollowUp,
+                            onAskDifferent: _startNewQuestion,
+                            onForceAnswer: _forceAnswer,
+                            actionsEnabled: canSubmit,
+                            clarificationOrdinal: clarificationOrdinal,
+                          ),
                         ),
                       ),
                     ),
@@ -890,37 +910,40 @@ class _EarlierCoachSummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.primary.withValues(alpha: 0.14)),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          initiallyExpanded: false,
-          title: Text(
-            title,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          subtitle: Text(
-            '超過最近 10 輪的內容會保留成摘要，不讓頁面無限變長。',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                result.earlierSummary!.trim(),
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
-                  height: 1.45,
-                ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            initiallyExpanded: false,
+            title: Text(
+              title,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.glassTextPrimary,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ],
+            subtitle: Text(
+              '超過最近 10 輪的內容會保留成摘要，不讓頁面無限變長。',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  result.earlierSummary!.trim(),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    height: 1.45,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -940,84 +963,87 @@ class _CoachChatHistoryTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.glassBorder.withValues(alpha: 0.7)),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          title: Text(
-            result.question,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.glassTextPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          subtitle: Text(
-            '${_timeLabel(result.generatedAt)} · ${result.headline}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _CostStatusChip(
-                costDeducted: result.costDeducted,
-                dailyRemaining: -1,
-                isClarifying: result.isClarifyingQuestion,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              result.answer,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            title: Text(
+              result.question,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.glassTextPrimary,
-                height: 1.45,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            if (result.suggestedLine != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.56),
-                  borderRadius: BorderRadius.circular(18),
+            subtitle: Text(
+              '${_timeLabel(result.generatedAt)} · ${result.headline}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.caption.copyWith(
+                color: AppColors.glassTextSecondary,
+              ),
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _CostStatusChip(
+                  costDeducted: result.costDeducted,
+                  dailyRemaining: -1,
+                  isClarifying: result.isClarifyingQuestion,
                 ),
-                child: Text(
-                  result.suggestedLine!,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.glassTextPrimary,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                result.answer,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.45,
+                ),
+              ),
+              if (result.suggestedLine != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.56),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Text(
+                    result.suggestedLine!,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.glassTextPrimary,
+                    ),
+                  ),
+                ),
+              ],
+              // B2 三態：正式 messageDecision 優先（缺席退回 null 態推導，
+              // 見 effectiveMessageDecision）。
+              if (result.effectiveMessageDecision == 'hold_off')
+                const _InfoLine(label: '教練判斷', value: '這輪先別傳')
+              else if (result.effectiveMessageDecision == 'no_message_needed')
+                const _InfoLine(label: '教練判斷', value: '這題不用回訊息'),
+              const SizedBox(height: 8),
+              _InfoLine(label: '這次先做', value: result.nextStep),
+              _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _copyCoachTurn(context),
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('複製這輪'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    visualDensity: VisualDensity.compact,
                   ),
                 ),
               ),
             ],
-            // B2 三態：正式 messageDecision 優先（缺席退回 null 態推導，
-            // 見 effectiveMessageDecision）。
-            if (result.effectiveMessageDecision == 'hold_off')
-              const _InfoLine(label: '教練判斷', value: '這輪先別傳')
-            else if (result.effectiveMessageDecision == 'no_message_needed')
-              const _InfoLine(label: '教練判斷', value: '這題不用回訊息'),
-            const SizedBox(height: 8),
-            _InfoLine(label: '這次先做', value: result.nextStep),
-            _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => _copyCoachTurn(context),
-                icon: const Icon(Icons.copy_rounded, size: 16),
-                label: const Text('複製這輪'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1081,8 +1107,13 @@ class CoachChatResultView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = CoachChatModeX.fromWire(result.mode);
     final isClarifying = result.isClarifyingQuestion;
-    return SizedBox(
-      width: double.infinity,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1210,7 +1241,7 @@ class CoachChatResultView extends ConsumerWidget {
           const SizedBox(height: 8),
           _InfoLine(label: '邊界提醒', value: result.boundaryReminder),
           if (!isClarifying)
-            _CoachFullAnalysis(
+            RevealPill(
               key: ValueKey('coach-full-analysis-${result.id}'),
               label: '看完整教練分析',
               collapseLabel: '收起完整分析',
@@ -1364,66 +1395,6 @@ class CoachChatResultView extends ConsumerWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已複製'), behavior: SnackBarBehavior.floating),
-    );
-  }
-}
-
-class _CoachFullAnalysis extends StatefulWidget {
-  const _CoachFullAnalysis({
-    super.key,
-    required this.label,
-    required this.collapseLabel,
-    required this.children,
-  });
-  final String label;
-  final String collapseLabel;
-  final List<Widget> children;
-
-  @override
-  State<_CoachFullAnalysis> createState() => _CoachFullAnalysisState();
-}
-
-class _CoachFullAnalysisState extends State<_CoachFullAnalysis> {
-  bool _expanded = false;
-  final _trigger = GlobalKey();
-
-  void _collapse() {
-    setState(() => _expanded = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final target = _trigger.currentContext;
-      if (mounted && target != null) {
-        Scrollable.ensureVisible(target, alignment: 0.15);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 16),
-        if (!_expanded)
-          FilledButton.icon(
-            key: _trigger,
-            onPressed: () => setState(() => _expanded = true),
-            icon: const Icon(Icons.keyboard_double_arrow_down_rounded),
-            label: Text(widget.label),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.brandInk,
-              foregroundColor: AppColors.onBackgroundPrimary,
-              minimumSize: const Size(0, 48),
-            ),
-          )
-        else ...[
-          ...widget.children,
-          TextButton.icon(
-            onPressed: _collapse,
-            icon: const Icon(Icons.keyboard_arrow_up_rounded),
-            label: Text(widget.collapseLabel),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -1865,10 +1836,13 @@ class _CoachAdviceFeedbackRowState
     }
     return Row(
       children: [
-        Text(
-          '這個建議有幫助嗎？',
-          style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.glassTextPrimary,
+        // 大字體下這句加兩顆拇指會撐爆卡寬，讓文字換行而不是溢出。
+        Flexible(
+          child: Text(
+            '這個建議有幫助嗎？',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.glassTextPrimary,
+            ),
           ),
         ),
         const SizedBox(width: 8),
