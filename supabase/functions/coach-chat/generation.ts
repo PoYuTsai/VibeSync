@@ -892,7 +892,8 @@ type RawCardShape = Record<
 // 教練文案已是繁中，只是偶爾漏一兩個簡體字。OpenCC 對本來就繁中的句子會
 // 把「只看／只是」的「只」改成「隻」（黑箱 2026-09-07 實測），所以「只」先
 // 遮起來再轉；「証」是模型自己吐的異體字，OpenCC 不碰，台灣用法一律「證」。
-const ONLY_SENTINEL = "\u0000";
+// 私用區字元：模型輸出不會有，也不會被 OpenCC 碰。
+const ONLY_SENTINEL = "\uE000";
 function normalizeVisibleText(card: RawCardShape): RawCardShape {
   const out = { ...card };
   for (const field of VISIBLE_FIELDS) {

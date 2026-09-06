@@ -27,6 +27,8 @@ interface Case {
   expectRound1: "clarifyingQuestion" | "coachAnswer" | null;
   /// 補充輪：使用者回釐清（或追問）的文字。
   followUp?: string;
+  /// 第三輪：拿到答案後「繼續深挖」的追問。
+  followUp2?: string;
 }
 
 const STYLE =
@@ -123,13 +125,24 @@ const m = (sender: "me" | "partner", text: string): Msg => ({ sender, text });
 
 export const CASES: Case[] = [
   // ── 一般模式（沒有對方原話）──
-  global(
-    "G1",
-    "global-judgment",
-    "對方回得很短，我該怎麼判斷？",
-    {},
-    "她最近這樣回——我：這週末有要去哪玩嗎？她：沒欸 在家。我：那我推薦你一部影集。她：好啊 哪部？",
-  ),
+  {
+    ...global(
+      "G1",
+      "global-judgment",
+      "對方回得很短，我該怎麼判斷？",
+      {},
+      "她最近這樣回——我：這週末有要去哪玩嗎？她：沒欸 在家。我：那我推薦你一部影集。她：好啊 哪部？",
+    ),
+    followUp2: "那我要怎麼回她比較好？",
+  },
+  {
+    ...global(
+      "G8",
+      "global-pasted-first",
+      "她昨天回我「沒欸 在家」，我說推薦影集她回「好啊 哪部」，這樣算有興趣嗎？",
+    ),
+    expectRound1: null, // 首問就貼了原話：不得被逼再貼；模型可答可問
+  },
   global(
     "G2",
     "global-opener",
@@ -433,7 +446,7 @@ async function main() {
               ).slice(0, 500),
             },
           ];
-          await runOne(
+          const card2 = await runOne(
             c.id,
             2,
             {
@@ -443,6 +456,30 @@ async function main() {
             },
             null,
           );
+          if (c.followUp2) {
+            const isClar2 = card2.responseType === "clarifyingQuestion";
+            const turns3: Turn[] = [
+              ...turns,
+              {
+                role: "user",
+                kind: isClar ? "supplement" : "question",
+                content: c.followUp!,
+              },
+              {
+                role: "coach",
+                kind: isClar2 ? "clarification" : "answer",
+                content: String(
+                  (isClar2 ? card2.reflectionQuestion : null) ?? card2.answer ??
+                    "",
+                ).slice(0, 500),
+              },
+            ];
+            await runOne(c.id, 3, {
+              ...c.request,
+              activeSessionTurns: turns3,
+              userQuestion: c.followUp2,
+            }, null);
+          }
         }
       } catch (e) {
         results.push({ id: c.id, error: String(e) });

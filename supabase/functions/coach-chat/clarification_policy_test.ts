@@ -3,7 +3,100 @@ import {
   countCoachClarifications,
   mustClarifyFirstRound,
   shouldForceCoachAnswerAfterClarifications,
+  textCarriesCaseEvidence,
 } from "./clarification_policy.ts";
+
+Deno.test("textCarriesCaseEvidence 只認結構訊號：說話者標記／兩段引號／她說「」／60 字描述", () => {
+  assertEquals(textCarriesCaseEvidence("對方回得很短，我該怎麼判斷？"), false);
+  assertEquals(
+    textCarriesCaseEvidence("不知道怎麼開啟話題，給我一點方向？"),
+    false,
+  );
+  assertEquals(
+    textCarriesCaseEvidence("她已讀不回我好焦慮，我要再傳嗎？"),
+    false,
+  );
+  assertEquals(
+    textCarriesCaseEvidence(
+      "她最近這樣回——我：這週末有要去哪玩嗎？她：沒欸 在家。",
+    ),
+    true,
+  );
+  assertEquals(
+    textCarriesCaseEvidence(
+      "她昨天回我「沒欸 在家」，我推薦影集她說「好啊 哪部」，算有興趣嗎？",
+    ),
+    true,
+  );
+  assertEquals(
+    textCarriesCaseEvidence("她剛剛回我「今天開會開到快死」。"),
+    true,
+  );
+  assertEquals(
+    textCarriesCaseEvidence(
+      "認識一個月，十次有八次是我開頭，但她每次回得都蠻長，也會問我問題，我們聊工作聊旅行，週末也會互傳限動，只是她從來不先開口。",
+    ),
+    true,
+  );
+  assertEquals(textCarriesCaseEvidence(null), false);
+});
+
+Deno.test("mustClarifyFirstRound 使用者已貼原話就不再逼貼（Codex R2 P2）", () => {
+  const base = {
+    forceAnswer: false,
+    scope: { type: "global" },
+    recentMessages: [],
+  };
+  // 首問就貼原話。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      userQuestion:
+        "她回我「沒欸 在家」，我說推薦影集她回「好啊 哪部」，這樣算有興趣嗎？",
+      activeSessionTurns: [],
+    }),
+    false,
+  );
+  // 釐清後貼了原話、拿到答案、繼續深挖：證據在上一張答案之前，不該再問。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      userQuestion: "那我要怎麼回她比較好？",
+      activeSessionTurns: [
+        {
+          role: "user",
+          kind: "question",
+          content: "對方回得很短，我該怎麼判斷？",
+        },
+        { role: "coach", kind: "clarification", content: "貼三句原話給我？" },
+        {
+          role: "user",
+          kind: "supplement",
+          content:
+            "我：這週末去哪玩？她：沒欸 在家。我：推薦你影集。她：好啊 哪部？",
+        },
+        {
+          role: "coach",
+          kind: "answer",
+          content: "她有接話還反問，不是冷淡。",
+        },
+      ],
+    }),
+    false,
+  );
+  // 上一題純問句＋答案（沒原話），新題也沒原話：照樣先釐清。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      userQuestion: "怎麼把聊天推進到約出來？",
+      activeSessionTurns: [
+        { role: "user", kind: "question", content: "不知道怎麼開啟話題？" },
+        { role: "coach", kind: "answer", content: "先釐清局面。" },
+      ],
+    }),
+    true,
+  );
+});
 
 Deno.test("coach clarification policy allows at most three no-charge clarifications", () => {
   const twoClarifications = [

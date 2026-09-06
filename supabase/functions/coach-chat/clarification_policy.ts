@@ -3,7 +3,38 @@ export const MAX_NO_CHARGE_CLARIFICATION_TURNS = 3;
 export type CoachSessionTurnLike = {
   role?: unknown;
   kind?: unknown;
+  content?: unknown;
 };
+
+// 使用者文字本身帶「個案證據」的結構訊號（Codex R2 審查 P2：已貼原話仍被
+// 逼再貼）。只看結構、不判語意：說話者標記、兩段以上引號、「她說『…』」
+// 句型、或 60 字以上的處境描述。命中＝交回模型判斷要不要再問。
+const SPEAKER_LABEL_RE = /(^|[\n，。；、\s—\-–→])(我|她|他|對方)\s*[:：]/u;
+const QUOTED_SPAN_RE = /[「『“"][^」』”"\n]{2,}[」』”"]/gu;
+const SAID_QUOTE_RE =
+  /(她|他|對方)[^，。；\n「『“"]{0,4}(說|回|傳|問|講|寫)[了我你的]{0,2}[「『“"]/u;
+export function textCarriesCaseEvidence(text: unknown): boolean {
+  if (typeof text !== "string") return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (SPEAKER_LABEL_RE.test(trimmed)) return true;
+  if ((trimmed.match(QUOTED_SPAN_RE) ?? []).length >= 2) return true;
+  if (SAID_QUOTE_RE.test(trimmed)) return true;
+  return trimmed.length >= 60;
+}
+
+/// 整個 session 的使用者發言（本題問句＋所有 user turns）有沒有帶個案證據。
+/// 看整段而不是只看本題：釐清後貼的原話留在上一張答案之前，「繼續深挖」
+/// 不該再逼他貼一次；24h 內種回的上一題若含原話，也是真證據（prompt 看得到）。
+export function userTextCarriesCaseEvidence(opts: {
+  userQuestion?: unknown;
+  activeSessionTurns?: readonly CoachSessionTurnLike[];
+}): boolean {
+  if (textCarriesCaseEvidence(opts.userQuestion)) return true;
+  return (opts.activeSessionTurns ?? []).some((turn) =>
+    turn.role === "user" && textCarriesCaseEvidence(turn.content)
+  );
+}
 
 export function countCoachClarifications(
   turns: readonly CoachSessionTurnLike[] = [],
@@ -49,6 +80,7 @@ export function clarifiedInCurrentThread(
 export function mustClarifyFirstRound(opts: {
   forceAnswer?: boolean;
   scope?: { type?: string } | null;
+  userQuestion?: unknown;
   activeSessionTurns?: readonly CoachSessionTurnLike[];
   recentMessages?: readonly unknown[];
   conversationSummary?: string | null;
@@ -56,7 +88,8 @@ export function mustClarifyFirstRound(opts: {
 }): boolean {
   if (opts.forceAnswer === true) return false;
   const noThreadEvidence = !clarifiedInCurrentThread(opts.activeSessionTurns) &&
-    (opts.recentMessages ?? []).length === 0;
+    (opts.recentMessages ?? []).length === 0 &&
+    !userTextCarriesCaseEvidence(opts);
   if (opts.scope?.type === "global") return noThreadEvidence;
   if (opts.scope?.type === "partner") {
     return noThreadEvidence &&
