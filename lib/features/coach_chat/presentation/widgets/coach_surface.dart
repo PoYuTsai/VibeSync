@@ -524,8 +524,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
                       minLines: 1,
                       maxLines: 3,
                       textInputAction: TextInputAction.done,
-                      // 等待或待讀時仍能打草稿，鍵盤完成鍵也只受送出 gate 控制。
-                      onEditingComplete: () {},
+                      // 完成鍵沿用 Flutter 的主動收鍵盤行為；等待／待讀只擋送出。
                       onSubmitted: canSubmit ? (_) => _ask() : null,
                       inputFormatters: [LengthLimitingTextInputFormatter(240)],
                       style: AppTypography.bodyMedium.copyWith(

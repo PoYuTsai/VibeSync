@@ -457,7 +457,6 @@ void main() {
       const firstDraft = '先記下另一個想法，等這題回覆。';
       await tester.enterText(_input, firstDraft);
       await tester.tap(find.byIcon(Icons.arrow_upward));
-      await tester.testTextInput.receiveAction(TextInputAction.done);
       await _finish(tester);
       expect(harness.calls, hasLength(1));
       expect(tester.widget<TextField>(_input).controller!.text, firstDraft);
@@ -469,6 +468,8 @@ void main() {
       harness.succeed(0);
       await _finish(tester);
       expect(tester.widget<TextField>(_input).controller!.text, firstDraft);
+      expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isTrue,
+          reason: '非同步回覆不應替使用者收起仍在編輯的輸入列');
       await tester.ensureVisible(find.text('看完整教練分析'));
       await tester.tap(find.text('看完整教練分析'));
       await _finish(tester);
@@ -489,6 +490,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.arrow_upward));
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await _finish(tester);
+      expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isFalse,
+          reason: '新回覆待讀時，使用者仍能按完成主動收鍵盤');
       expect(harness.calls, hasLength(2));
       expect(tester.widget<TextField>(_input).controller!.text,
           '$pendingDraft 先保存這句。');
@@ -500,6 +503,40 @@ void main() {
     } finally {
       semantics.dispose();
     }
+  });
+
+  testWidgets('首次等待沒有可捲長文時，完成鍵仍能主動收鍵盤且保留草稿', (tester) async {
+    final harness = await _pump(tester);
+    await tester.tap(_input);
+    harness.keyboardInset.value = 300;
+    await _send(tester, harness, '她剛剛只回一個字。');
+    await _finish(tester);
+    expect(_readingPosition(tester).maxScrollExtent, 0,
+        reason: '此情境不能依賴拖動長文收鍵盤');
+    expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    const draft = '我想補充她前一則其實有問我問題。';
+    await tester.enterText(_input, draft);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await _finish(tester);
+    expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(tester.widget<TextField>(_input).controller!.text, draft);
+    expect(harness.calls, hasLength(1));
+    expect(find.byType(CoachChatProgressNotice), findsOneWidget);
+
+    harness.succeed(0, clarifying: true);
+    await _finish(tester);
+    expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isFalse,
+        reason: '使用者已主動收起後，回覆到達也不應重新搶焦點');
+    expect(tester.widget<TextField>(_input).controller!.text, draft);
+    expect(harness.usageSyncCalls, 0);
+    await tester.tap(_input);
+    await _finish(tester);
+    expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isTrue);
+    expect(tester.widget<TextField>(_input).controller!.text, draft);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('大字體進場先縮人物，文字維持使用者倍率且輸入仍可見', (tester) async {
