@@ -136,6 +136,21 @@ Rect _fifthParagraphRect(WidgetTester tester) {
   );
 }
 
+Future<void> _scrollToFifthParagraph(WidgetTester tester) async {
+  final scroll = find.byKey(const Key('coach-reading-scroll'));
+  final position = _readingPosition(tester);
+  final target = position.pixels +
+      _fifthParagraphRect(tester).top -
+      tester.getTopLeft(scroll).dy -
+      80;
+  position.jumpTo(
+    target.clamp(position.minScrollExtent, position.maxScrollExtent),
+  );
+  await tester.pump();
+  expect(tester.getRect(scroll).contains(_fifthParagraphRect(tester).center),
+      isTrue);
+}
+
 Future<_Harness> _pump(
   WidgetTester tester, {
   bool lockedPartner = false,
@@ -282,9 +297,7 @@ void main() {
     await _finish(tester);
     expect(find.text(_longAnswer), findsOneWidget);
 
-    final position = _readingPosition(tester);
-    position.jumpTo(position.maxScrollExtent * 0.4);
-    await tester.pump();
+    await _scrollToFifthParagraph(tester);
 
     await _send(tester, harness, '如果她沒有接話呢？');
     expect(find.byType(CoachChatProgressNotice), findsOneWidget);
@@ -293,12 +306,22 @@ void main() {
     expect(find.byKey(const Key('coach-welcome')), findsNothing);
     expect(harness.usageSyncCalls, 1);
 
+    final beforeFailure = _fifthParagraphRect(tester);
     harness.fail(1);
     await _finish(tester);
     expect(find.byType(CoachChatProgressNotice), findsNothing);
     expect(find.text('這題教練沒接住'), findsOneWidget);
     expect(find.text(_longAnswer), findsOneWidget);
     expect(find.text('收起完整分析'), findsOneWidget);
+    expect(_fifthParagraphRect(tester).top, closeTo(beforeFailure.top, 2),
+        reason: '失敗通知及重填問題改變版面時，正在讀的段落仍留在原位');
+    expect(
+      tester
+          .getRect(find.byKey(const Key('coach-reading-scroll')))
+          .contains(_fifthParagraphRect(tester).center),
+      isTrue,
+    );
+    expect(tester.widget<TextField>(_input).controller?.text, '如果她沒有接話呢？');
     expect(harness.repo.putUnifiedCalls, 1);
     expect(harness.usageSyncCalls, 1);
   });
@@ -367,6 +390,133 @@ void main() {
     expect(headlineTop, lessThan(viewportTop + 140),
         reason: '主動點通知後應從新答案標題開始閱讀');
     expect(harness.usageSyncCalls, 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('正式 A 深挖成釐清 C 後捨棄 C，讀 A 期間新回覆完成不會變空白', (tester) async {
+    final harness = await _pump(tester);
+    await _send(tester, harness, '先分析目前的互動。');
+    harness.succeed(0);
+    await _finish(tester);
+    final formalId = harness.repo.latestForScope('global', 'me')!.id;
+
+    await tester.ensureVisible(find.text('繼續深挖'));
+    await tester.tap(find.text('繼續深挖'));
+    await _send(tester, harness, '可以再幫我確認自己的想法嗎？');
+    harness.succeed(1, clarifying: true);
+    await _finish(tester);
+    if (find.byKey(const Key('coach-new-answer')).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(const Key('coach-new-answer')));
+      await _finish(tester);
+    }
+    final clarifyId = harness.repo.latestForScope('global', 'me')!.id;
+    expect(clarifyId, isNot(formalId));
+    expect(find.text(_clarifyingQuestion), findsOneWidget);
+
+    await tester.ensureVisible(find.text('想問別的'));
+    await tester.tap(find.text('想問別的'));
+    await _finish(tester);
+    expect(
+        harness.repo.listByScope('global', 'me').map((r) => r.id), [formalId]);
+    expect(find.text(_clarifyingQuestion), findsNothing);
+    expect(find.byKey(const Key('coach-new-answer')), findsNothing);
+    expect(find.text(_formalHeadline), findsOneWidget);
+
+    await tester.ensureVisible(find.text('看完整教練分析'));
+    await tester.tap(find.text('看完整教練分析'));
+    await _finish(tester);
+    await _scrollToFifthParagraph(tester);
+    await _send(tester, harness, '另一件事，我要怎麼約下一次？');
+    final before = _fifthParagraphRect(tester);
+    harness.succeed(2, headline: '先提出一個具體又輕鬆的邀約');
+    await _finish(tester);
+
+    expect(find.byKey(const Key('coach-new-answer')).hitTestable(),
+        findsOneWidget);
+    expect(find.byKey(ValueKey('coach-answer-$formalId')), findsOneWidget,
+        reason: '捨棄的 C 不能再拿來切 timeline，舊正式 A 仍應可讀');
+    expect(find.byKey(ValueKey('coach-answer-$clarifyId')), findsNothing);
+    expect(find.text(_longAnswer), findsOneWidget);
+    expect(_fifthParagraphRect(tester).top, closeTo(before.top, 2));
+    expect(harness.repo.listByScope('global', 'me'), hasLength(2));
+    expect(harness.usageSyncCalls, 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('等待與新回覆待讀時都能寫草稿，只擋送出並持續顯示費用', (tester) async {
+    final harness = await _pump(tester);
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.tap(_input);
+      harness.keyboardInset.value = 300;
+      await _finish(tester);
+      expect(find.text('釐清免費 · 正式建議扣 1 則').hitTestable(), findsOneWidget);
+
+      await _send(tester, harness, '我該如何判斷她的短回？');
+      expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isTrue);
+      const firstDraft = '先記下另一個想法，等這題回覆。';
+      await tester.enterText(_input, firstDraft);
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await _finish(tester);
+      expect(harness.calls, hasLength(1));
+      expect(tester.widget<TextField>(_input).controller!.text, firstDraft);
+      expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isTrue);
+      expect(find.bySemanticsLabel('等待教練回覆'), findsOneWidget);
+      expect(find.byKey(const Key('coach-composer-cost')).hitTestable(),
+          findsOneWidget);
+
+      harness.succeed(0);
+      await _finish(tester);
+      expect(tester.widget<TextField>(_input).controller!.text, firstDraft);
+      await tester.ensureVisible(find.text('看完整教練分析'));
+      await tester.tap(find.text('看完整教練分析'));
+      await _finish(tester);
+      await _scrollToFifthParagraph(tester);
+      await _send(tester, harness, '但我還不確定自己想不想推進。');
+      const pendingDraft = '我想慢慢來，不用現在就邀約。';
+      await tester.enterText(_input, pendingDraft);
+      await _finish(tester);
+      harness.succeed(1, clarifying: true);
+      await _finish(tester);
+
+      expect(find.text('新回覆已完成，從開頭看'), findsOneWidget);
+      expect(find.bySemanticsLabel('新回覆已完成，請先閱讀'), findsOneWidget);
+      expect(find.bySemanticsLabel('等待教練回覆'), findsNothing);
+      expect(tester.widget<TextField>(_input).controller!.text, pendingDraft);
+      expect(tester.widget<TextField>(_input).focusNode!.hasFocus, isTrue);
+      await tester.enterText(_input, '$pendingDraft 先保存這句。');
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await _finish(tester);
+      expect(harness.calls, hasLength(2));
+      expect(tester.widget<TextField>(_input).controller!.text,
+          '$pendingDraft 先保存這句。');
+      expect(find.byKey(const Key('coach-composer-cost')).hitTestable(),
+          findsOneWidget);
+      expect(tester.getBottomRight(_input).dy, lessThanOrEqualTo(544));
+      expect(harness.usageSyncCalls, 1, reason: '第二輪免費釐清不能因提示或草稿操作多扣一次');
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('大字體進場先縮人物，文字維持使用者倍率且輸入仍可見', (tester) async {
+    await _pump(tester);
+    final portrait = find.byKey(const Key('coach-welcome-portrait'));
+    final normalSize = tester.getSize(portrait);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pump(tester, textScale: 2.5);
+    final largeTextPortrait = tester.getSize(portrait);
+
+    expect(largeTextPortrait.width, lessThan(normalSize.width));
+    expect(largeTextPortrait.height, lessThan(normalSize.height));
+    final opening = find.text('隨時問我，聊天卡住我來接。');
+    final richText =
+        find.descendant(of: opening, matching: find.byType(RichText));
+    expect(tester.widget<RichText>(richText).textScaler.scale(16), 40);
+    expect(_input.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -282,13 +282,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     final activeErrorObject = state.error;
     final isLoading = state.isLoading;
     final canSubmit = !isLoading && _pendingResultId == null;
-    final visibleTimeline = _pendingResultId == null
-        ? timeline
-        : timeline
-            .skipWhile((result) => result.id != _visibleResultId)
-            .toList();
+    final visibleIndex =
+        timeline.indexWhere((result) => result.id == _visibleResultId);
+    // 被捨棄／刪除的回覆不再是有效閱讀錨點，不能把整條串切成空白。
+    final visibleTimeline = _pendingResultId != null && visibleIndex >= 0
+        ? timeline.sublist(visibleIndex)
+        : timeline;
     final latest = visibleTimeline.isEmpty ? null : visibleTimeline.first;
-    _visibleResultId ??= latest?.id;
     final isClarifying =
         !activeError && (latest?.isClarifyingQuestion ?? false);
     // 序數必須跟後端 3 次上限同源：取 controller 當前追問串的釐清 turns 數。
@@ -308,6 +308,8 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       final anchor = _captureReadingAnchor();
       final freshId = next.valueOrNull?.id;
       if (next.isLoading && previous?.isLoading != true) {
+        // 以實際顯示中的回覆重綁；scope 切換或捨棄釐清後不沿用舊 ID。
+        _visibleResultId = latest?.id;
         _keepReadingOnComplete = _visibleResultId != null &&
             _scrollController.hasClients &&
             _scrollController.offset > 80;
@@ -366,7 +368,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
             key: const Key('coach-new-answer'),
             onPressed: _showLatestAnswer,
             icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-            label: const Text('新建議已完成，從開頭看'),
+            label: const Text('新回覆已完成，從開頭看'),
             style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
           ),
         Expanded(
@@ -469,123 +471,151 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: SafeArea(
         top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: ListenableBuilder(
-                listenable: _focusNode,
-                builder: (context, child) => AnimatedContainer(
-                  duration: AppMotion.enter,
-                  curve: AppMotion.easeOut,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: _focusNode.hasFocus
-                        ? [
-                            BoxShadow(
-                              color: AppColors.ctaStart.withValues(alpha: 0.22),
-                              blurRadius: 14,
-                              offset: const Offset(0, 3),
-                            ),
-                          ]
-                        : [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                  ),
-                  child: child,
-                ),
-                child: TextField(
-                  enabled: canSubmit,
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  maxLength: 240,
-                  minLines: 1,
-                  maxLines: 3,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: canSubmit ? (_) => _ask() : null,
-                  inputFormatters: [LengthLimitingTextInputFormatter(240)],
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    counterText: '',
-                    hintText: isClarifying
-                        ? '補充：你聽到後的感受，或你原本想怎麼回'
-                        : '例如：她這句話是真的有興趣嗎？',
-                    hintStyle: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.onBackgroundSecondary.withValues(
-                        alpha: 0.85,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    focusedBorder: const OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(24)),
-                      borderSide: BorderSide(
-                        color: AppColors.ctaStart,
-                        width: 1.4,
-                      ),
-                    ),
+            if (_engaged)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '釐清免費 · 正式建議扣 1 則',
+                  key: const Key('coach-composer-cost'),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    height: 1.35,
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            // 空字串灰階、有字才亮橘（同練習室 _SendButton）；loading 轉圈。
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _controller,
-              builder: (context, value, _) {
-                final enabled = canSubmit && value.text.trim().isNotEmpty;
-                return Semantics(
-                  button: true,
-                  label: canSubmit ? '送出問題' : '等待教練回覆',
-                  child: GestureDetector(
-                    onTap: enabled ? _ask : null,
-                    child: Container(
-                      width: 46,
-                      height: 46,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: _focusNode,
+                    builder: (context, child) => AnimatedContainer(
+                      duration: AppMotion.enter,
+                      curve: AppMotion.easeOut,
                       decoration: BoxDecoration(
-                        gradient: enabled
-                            ? const LinearGradient(
-                                colors: [AppColors.ctaStart, AppColors.ctaEnd],
-                              )
-                            : null,
-                        color: enabled ? null : AppColors.brandSurface2,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: _focusNode.hasFocus
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.ctaStart
+                                      .withValues(alpha: 0.22),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ]
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.18),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                       ),
-                      child: Icon(
-                        Icons.arrow_upward,
-                        color: enabled
-                            ? AppColors.onBackgroundPrimary
-                            : AppColors.onBackgroundSecondary.withValues(
-                                alpha: 0.5,
-                              ),
-                        size: 22,
+                      child: child,
+                    ),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      maxLength: 240,
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction: TextInputAction.done,
+                      // 等待或待讀時仍能打草稿，鍵盤完成鍵也只受送出 gate 控制。
+                      onEditingComplete: () {},
+                      onSubmitted: canSubmit ? (_) => _ask() : null,
+                      inputFormatters: [LengthLimitingTextInputFormatter(240)],
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.onBackgroundPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: isClarifying
+                            ? '補充：你聽到後的感受，或你原本想怎麼回'
+                            : '例如：她這句話是真的有興趣嗎？',
+                        hintStyle: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.onBackgroundSecondary.withValues(
+                            alpha: 0.85,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(24)),
+                          borderSide: BorderSide(
+                            color: AppColors.ctaStart,
+                            width: 1.4,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+                const SizedBox(width: 8),
+                // 空字串灰階、有字才亮橘（同練習室 _SendButton）；loading 轉圈。
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _controller,
+                  builder: (context, value, _) {
+                    final enabled = canSubmit && value.text.trim().isNotEmpty;
+                    return Semantics(
+                      button: true,
+                      enabled: enabled,
+                      label: _pendingResultId != null
+                          ? '新回覆已完成，請先閱讀'
+                          : canSubmit
+                              ? '送出問題'
+                              : '等待教練回覆',
+                      child: GestureDetector(
+                        onTap: enabled ? _ask : null,
+                        child: Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            gradient: enabled
+                                ? const LinearGradient(
+                                    colors: [
+                                      AppColors.ctaStart,
+                                      AppColors.ctaEnd
+                                    ],
+                                  )
+                                : null,
+                            color: enabled ? null : AppColors.brandSurface2,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.arrow_upward,
+                            color: enabled
+                                ? AppColors.onBackgroundPrimary
+                                : AppColors.onBackgroundSecondary.withValues(
+                                    alpha: 0.5,
+                                  ),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -668,7 +698,8 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
   }
 
   Future<void> _ask() async {
-    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
+    if (_pendingResultId != null ||
+        ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
       return;
     }
     final question = _controller.text.trim();
@@ -678,10 +709,10 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       featureLabel: 'Coach 1:1',
     );
     if (!consented || !mounted) return;
-    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
+    if (_pendingResultId != null ||
+        ref.read(coachChatControllerProvider(widget.scope)).isLoading) {
       return;
     }
-    FocusScope.of(context).unfocus();
     AppHaptics.light();
     setState(() {
       _lastAskedQuestion = question;
@@ -734,12 +765,31 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
   /// 二輪）——免費釐清列整串刪除、session 歸零，輸入列自然回到一般問句
   /// 引導，下一題從乾淨狀態開始。
   Future<void> _startNewQuestion() async {
-    if (ref.read(coachChatControllerProvider(widget.scope)).isLoading) return;
+    final scope = widget.scope;
+    if (ref.read(coachChatControllerProvider(scope)).isLoading) return;
+    final previousIds = ref
+        .read(coachChatHistoryProvider(scope))
+        .map((result) => result.id)
+        .toSet();
     await ref
-        .read(coachChatControllerProvider(widget.scope).notifier)
+        .read(coachChatControllerProvider(scope).notifier)
         .discardClarifyingThread();
-    if (!mounted) return;
-    _controller.clear();
+    if (!mounted || widget.scope != scope) return;
+    final retained = ref.read(coachChatHistoryProvider(scope));
+    final retainedIds = retained.map((result) => result.id).toSet();
+    final discardedIds = previousIds.difference(retainedIds);
+    setState(() {
+      _sessionResultIds.removeAll(discardedIds);
+      _clarificationOrdinals.removeWhere((id, _) => discardedIds.contains(id));
+      _visibleResultId = retained
+          .where((result) => _sessionResultIds.contains(result.id))
+          .firstOrNull
+          ?.id;
+      _pendingResultId = null;
+      _keepReadingOnComplete = false;
+      _lastAskedQuestion = null;
+      _controller.clear();
+    });
     _focusNode.requestFocus();
   }
 }

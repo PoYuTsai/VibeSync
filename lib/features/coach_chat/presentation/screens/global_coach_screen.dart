@@ -238,10 +238,14 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
   }
 
   Widget _buildOpeningBubble(Partner? scopePartner) {
-    final height = (MediaQuery.sizeOf(context).height * 0.26).clamp(
+    final baseHeight = (MediaQuery.sizeOf(context).height * 0.26).clamp(
       144.0,
       240.0,
     );
+    // 大字體時先把人物縮小，讓開場文字保有寬度，不裁字或降低文字倍率。
+    final textScale =
+        (MediaQuery.textScalerOf(context).scale(16) / 16).clamp(1.0, 2.5);
+    final height = (baseHeight / textScale).clamp(88.0, 240.0);
     return Column(
       key: const Key('coach-welcome'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,7 +275,8 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
                     ).createShader(bounds),
                     child: Image.asset(
                       'assets/images/coach/sydney_greeting.png',
-                      width: constraints.maxWidth * 0.46,
+                      key: const Key('coach-welcome-portrait'),
+                      width: constraints.maxWidth * 0.46 / textScale,
                       height: height,
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,

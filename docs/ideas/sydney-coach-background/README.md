@@ -44,14 +44,14 @@
 ## 閱讀位置與資料規則
 
 1. 第一份／新一輪答案預設從答案開頭讀，不能無條件捲到底。
-2. 若使用者正在回看前文，新回答到達時保留其位置，顯示「新建議已完成」入口，由使用者切過去。
+2. 若使用者正在回看前文，新回答到達時保留其位置，顯示「新回覆已完成」入口，由使用者切過去。
 3. 展開／收起全文，以原按鈕或目前段落為錨點，避免跳到頁首或頁尾。
 4. 鍵盤開關與後續追問，保留已展開全文及正在讀的段落；前一份是釐清就保留釐清。
 5. 追問失敗仍保留已取得的答案與草稿，沿用現有重試／扣額度責任。
 6. 不以字數或動圖播完判斷後端已完成；不把不存在的串流事件當成現有介面。
 7. 來源標示要對應當下問題或所屬回合；不可讓下一題的來源冒充舊答案依據。
 
-Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸載它。開始追問時已在下方閱讀，或等待中主動捲動前文，新答案完成後先顯示「新建議已完成，從開頭看」，點擊才切到最新回答。鍵盤、進度與失敗提示造成的高度變化，以閱讀區錨點補償。新答案待查看時暫停下一次送出，避免仍顯示舊文卻把追問接到新答案。
+Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸載它。開始追問時已在下方閱讀，或等待中主動捲動前文，新答案完成後先顯示「新回覆已完成，從開頭看」，點擊才切到最新回答。鍵盤、進度與失敗提示造成的高度變化，以閱讀區錨點補償。等待或新答案待查看時，輸入列仍可編輯，保留草稿與鍵盤，只暫停送出，避免仍顯示舊文卻把追問接到新答案。開始互動後，「釐清免費 · 正式建議扣 1 則」持續顯示在輸入列上方。
 
 ## 延續 Bruce 的工作
 
@@ -68,7 +68,7 @@ Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸
 
 先鎖定保有原形象的睜眼母圖，再做一段輕微待機循環；通過才考慮思考循環。閱讀不需要陪讀影片。9:16 可以作為來源畫布，但畫面容器應由上述 UX 決定。
 
-本次沒有上傳新的照片、影片或實機截圖到 repository，也未送出付費生成。
+此 Flutter UI 實作不包含素材生成，也沒有將新的照片、影片或實機截圖上傳到 repository。
 
 ## 實作位置與邊界
 
@@ -90,7 +90,7 @@ Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸
 | --- | --- |
 | ![Flutter 進場](flutter-entry.png) | ![Flutter 完整分析](flutter-expanded.png) |
 
-本地驗證：35 個互動／既有功能／設計棘輪測試通過；四態視覺測試 1 個通過；五個變更 Dart 檔 analyze 無問題。實體 iPhone 與 PR CI 另行確認。
+本地驗證：下列 10 檔共 84 個互動／既有功能／設計棘輪測試通過；四態視覺測試 1 個通過；本輪變更的 2 個 runtime 與 1 個測試 Dart 檔 analyze 無問題。實體 iPhone 與 PR CI 另行確認。
 
 ## 原始概念保留
 
@@ -102,9 +102,25 @@ Flutter 實作保留同一份回答元件及其展開狀態；追問期間不卸
 
 ## 驗證入口
 
-- coach_reading_layout_test.dart：免費釐清追問、等待／失敗時保留展開全文、大字體與鍵盤空間、新回答完成時保留正在讀的段落、切到新回答開頭、指定對象鎖定、取消扣額度確認。
-- global_coach_screen_test.dart：緊湊選單的對象切換、草稿、情境與來源，沿用原有功能斷言。
-- 既有 compact／clean-session／progress 測試：維持摘要、三態建議與等待文案責任。
-- sydney_reading_layout_capture_test.dart：以實際畫面與假資料輸出 Flutter 截圖；鍵盤圖只模擬可視高度，不是原生鍵盤截圖。
+本輪修正了放棄釐清後的失效回答 ID，並在 ID 已不存在時安全回到現有時間軸。回歸包含「正式 A → 深挖釐清 C → 放棄 C → 閱讀 A → 新回答到達」，以實際段落座標確認畫面沒有清空或跳動；失敗路徑也量測同一段落的位置。等待時的草稿、鍵盤、送出限制、費用說明與「新回覆」無障礙標籤皆有斷言。2.5 倍字體會縮小進場人物，正文與開場文字保留使用者字體大小。
 
-實機檢查：進場人物 → 點引導輸入 → 免費釐清 → 正式回答 → 展開中段追問 → 失敗重試／新答案到達 → 收起 → 切換對象並保留草稿。確認文字不被輸入列遮住，讀到的段落不被自動捲走。
+84 個測試的精確入口（WSL，既有依賴，`--no-pub`）：
+
+```sh
+flutter test --no-pub \
+  test/widget/coach_chat/coach_reading_layout_test.dart \
+  test/widget/coach_chat/global_coach_screen_test.dart \
+  test/widget/features/coach_chat/coach_surface_clean_session_test.dart \
+  test/widget/features/coach_chat/coach_chat_result_view_compact_test.dart \
+  test/widget/features/coach_chat/coach_chat_progress_notice_test.dart \
+  test/unit/features/coach_chat/presentation/coach_surface_error_copy_test.dart \
+  test/lint/slop_ratchet_test.dart \
+  test/widget/features/partner/partner_detail_coach_focus_test.dart \
+  test/widget/features/copy_sweep_snapshot_test.dart \
+  test/widget/features/analysis/analysis_screen_hydration_test.dart \
+  --reporter expanded
+```
+
+`test/visual_proof/sydney_reading_layout_capture_test.dart` 另外執行，輸出進場、摘要、完整分析與鍵盤高度四張實際 Widget 截圖；鍵盤圖只模擬可視高度，不是原生鍵盤截圖。
+
+實機檢查：進場人物 → 點引導輸入 → 免費釐清 → 正式回答 → 展開中段追問 → 失敗重試／新答案到達 → 放棄釐清再追問 → 收起 → 切換對象並保留草稿。等待時繼續輸入草稿，確認鍵盤、文字與費用說明仍在，讀到的段落不被自動捲走；另以大字體檢查進場及長文。
