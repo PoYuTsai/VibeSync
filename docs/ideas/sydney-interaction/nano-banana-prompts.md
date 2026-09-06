@@ -183,7 +183,7 @@ CHANGE: only her clothing. Dress her in a fitted dark navy blazer over a white s
 
 ## 6. 第二層：影片模型的起訖幀（可選）
 
-nano banana 只出圖。要真的流動，把兩張幀當起訖餵 Veo、Kling 這類 image-to-video，再去背轉動態 WebP。建議配對與影片提示：
+nano banana 只出圖。要真的流動，把兩張幀當起訖餵 Veo、Kling 這類 image-to-video，再去背轉動態 WebP。完整的分段影片指令已獨立成 `veo-video-prompts.md`；下表只保留最小配對供快速試驗：
 
 | 循環 | 起 | 訖 | 影片提示（英文） |
 | --- | --- | --- | --- |

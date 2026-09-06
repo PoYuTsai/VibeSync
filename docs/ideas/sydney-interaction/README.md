@@ -1,6 +1,6 @@
 # Sydney 互動與「動起來」設計（參考競品影片）
 
-> 發想文件，接續 PR #72（Sydney 教練頁動態背景與長文 UX）。依 PR #72 的約定，UI／品味與實作方式仍由 Bruce 裁決；本文提供一套可直接開工的互動模型、素材規格，以及配套的 nano banana 提示詞包（見 `nano-banana-prompts.md`）。只新增文件，不改 App，不動額度、付費與 AI 請求。
+> 發想文件，接續 PR #72（Sydney 教練頁動態背景與長文 UX）。依 PR #72 的約定，UI／品味與實作方式仍由 Bruce 裁決；本文提供一套可直接開工的互動模型、素材規格，以及配套的 nano banana 定格提示詞包（`nano-banana-prompts.md`）與 Gemini／Veo 完整版影片指令（`veo-video-prompts.md`）。只新增文件，不改 App，不動額度、付費與 AI 請求。
 
 ## 1. 影片看到什麼、借什麼
 
@@ -52,7 +52,7 @@ Eric 提供的 7 秒錄影是競品聊天頁（真人感角色「薔薔」全螢
 | 層 | 做法 | 需要的素材 | 備註 |
 | --- | --- | --- | --- |
 | 第一層（先做） | 純 Flutter、不加套件：同機位幀 crossfade（沿用 `HomeCoachPresence` 的 `AnimatedSwitcher` 寫法）＋ `Transform` 做呼吸與前傾 ＋ `Timer` 做眨眼 | 約 16 張同機位透明 WebP | 光這層就有「活著」的感覺；nano banana 提示詞包就是為這層設計 |
-| 第二層（之後） | 把起訖幀餵 image-to-video（Veo、Kling 類）產 2–4 秒循環 → 綠幕去背 → 動態 WebP（`Image.asset` 原生會播），或交 Rive 綁骨架做 state machine | 第一層的幀當起訖幀 | 先看角色一致性、循環接點、髮絲邊緣，再看檔案大小與實機流暢度 |
+| 第二層 | 用 Gemini／Veo 以休息姿 S01 為樞紐生成獨立短片 → 綠幕去背 → 動態 WebP（`Image.asset` 原生會播）；完整指令見 `veo-video-prompts.md` | S01 定格＋十五段 8 秒短片 | Eric 2026-09-05 的 10 秒試作已證明畫風能與立繪一致；剩下的關卡是檔案大小與循環接點 |
 
 ## 4. 素材規格（讓幀能疊在一起）
 
