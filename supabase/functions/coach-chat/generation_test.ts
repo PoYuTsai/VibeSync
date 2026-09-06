@@ -2731,3 +2731,29 @@ Deno.test("D: semantic critic 三次拒絕時 fail closed，回 fallback 且不�
   assertEquals(harness.deductCalls, 0);
   assertEquals(harness.events.includes("coach_chat_fallback_used"), true);
 });
+
+Deno.test("可見欄位過繁中正規化：这→這、只不變、証→證（2026-09-07 黑箱）", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({
+          answer: "这只是想証明她有接話，不是只看誰先傳。",
+          suggestedLine: "你上次說这週末想出門，只是還沒排？",
+        }),
+      ),
+  });
+  const result = await runCoachChat(
+    {
+      userId: "u1",
+      request: { ...globalFirstRoundRequest, forceAnswer: true },
+      tier: "free",
+      accountIsTest: false,
+      apiKey: "key",
+    },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  const card = result.body.card as Record<string, unknown>;
+  assertEquals(card.answer, "這只是想證明她有接話，不是只看誰先傳。");
+  assertEquals(card.suggestedLine, "你上次說這週末想出門，只是還沒排？");
+});

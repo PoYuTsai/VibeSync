@@ -45,6 +45,63 @@ Deno.test("coach clarification policy treats explicit forceAnswer as formal answ
   );
 });
 
+Deno.test("mustClarifyFirstRound looks at the current thread, not seeded memory (2026-09-07)", () => {
+  const base = {
+    forceAnswer: false,
+    scope: { type: "global" },
+    recentMessages: [],
+  };
+  // client 把上一題的問答種回 turns（24h resume／跨天摘要）：不算本題脈絡。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      activeSessionTurns: [
+        { role: "user", kind: "question" },
+        { role: "coach", kind: "answer" },
+      ],
+    }),
+    true,
+  );
+  // 上一題釐清過、已給答案，這一題重新開始：仍要先釐清。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      activeSessionTurns: [
+        { role: "user", kind: "question" },
+        { role: "coach", kind: "clarification" },
+        { role: "user", kind: "supplement" },
+        { role: "coach", kind: "answer" },
+      ],
+    }),
+    true,
+  );
+  // 本題已釐清過（在最後一張答案之後）：交回模型判斷。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      activeSessionTurns: [
+        { role: "user", kind: "question" },
+        { role: "coach", kind: "answer" },
+        { role: "user", kind: "question" },
+        { role: "coach", kind: "clarification" },
+      ],
+    }),
+    false,
+  );
+  // partner 同一套。
+  assertEquals(
+    mustClarifyFirstRound({
+      ...base,
+      scope: { type: "partner" },
+      activeSessionTurns: [
+        { role: "user", kind: "question" },
+        { role: "coach", kind: "answer" },
+      ],
+    }),
+    true,
+  );
+});
+
 Deno.test("mustClarifyFirstRound gates only contextless global first rounds", () => {
   const gated = {
     forceAnswer: false,

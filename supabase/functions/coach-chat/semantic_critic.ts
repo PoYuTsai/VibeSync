@@ -10,7 +10,12 @@ import {
 // 引擎（parser／呼叫）搬到 _shared/social/semantic_critic.ts 與 Analyze 共用；
 // Coach 的九碼與 prompt 字面不變。
 
-export const SEMANTIC_CRITIC_VIOLATIONS = COACH_CRITIC_VIOLATIONS;
+// 2026-09-07 第十碼（只在 Coach 這邊加，不動 Analyze 的 22 碼契約）：
+// 模型會替使用者發明糗事當建議句（production：「我上禮拜差點滑倒」）。
+export const SEMANTIC_CRITIC_VIOLATIONS = [
+  ...COACH_CRITIC_VIOLATIONS,
+  "invented_user_fact",
+] as const;
 
 export type SemanticCriticViolation = typeof SEMANTIC_CRITIC_VIOLATIONS[number];
 
@@ -47,8 +52,9 @@ export function buildSemanticCriticPrompt(
 - boundary_conflict：answer、nextStep、suggestedLine、boundaryReminder 互相矛盾，或造成施壓／越界。
 - non_actionable：nextStep 不是一個現在能做的最小行動、觀察或停止點。
 - judgment_sprawl：沒有收斂成一個工作判斷，而是把多個選項丟回使用者。
+- invented_user_fact：suggestedLine 或 answer 替使用者編造他沒提供的具體經歷、事件、地點、時間或近況（例如來源沒有卻寫「我上禮拜差點滑倒」），或在沒有對方原話時假裝引用她說過的話。使用者自己在 userQuestion、rawReplyDraft、recentMessages 的「我」方訊息或補充裡說過的事都是來源：把他的原句換句話說、依他描述的處境寫開場，不算捏造。核對方法：把 suggestedLine 裡每一個第一人稱的經歷句（「我後來…」「我上次…」「我也去…了」）逐句找來源，找不到就是違規。
 
-只有九項全數通過才能 pass。只輸出下列 JSON，不要 Markdown、不要其他鍵：
+只有十項全數通過才能 pass。只輸出下列 JSON，不要 Markdown、不要其他鍵：
 {"verdict":"pass | rewrite","violations":["上列代碼，最多4個；pass時必須空陣列"]}
 
 <evidence>${JSON.stringify(evidence)}</evidence>

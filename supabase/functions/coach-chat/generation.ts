@@ -13,6 +13,7 @@ import {
 } from "./clarification_policy.ts";
 import { LINE_INVITE_RE, shouldSuppressInviteLine } from "./invite_policy.ts";
 import { quotaExceededMessage } from "../_shared/quota.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import {
   findUnsupportedLatinTokens,
   isExplicitEnglishRequest,
@@ -589,6 +590,7 @@ function buildAttemptPrompt(
 上一次內容通過 schema 與安全守門，但第二層語意審核要求重寫：${violations}
 請重新輸出完整 JSON，只修正這些 rubric 病灶：
 - 直接回答使用者本題；所有事實只能來自上下文。
+- 不得替使用者編造他沒提供的經歷、事件、時間或近況；沒有他的材料就把 suggestedLine 設 null。
 - suggestedLine 必須接住現有內容，不可用空泛鉤子或查戶口補材料。
 - 遵守使用者風格設定裡的主／副風格、句長與問句密度。
 - 投入對等、策略與界線一致，並收斂成一個可立刻執行的最小下一步。
@@ -631,9 +633,9 @@ function buildAttemptPrompt(
   if (lastValidationError === "clarification_required") {
     return `${basePrompt}
 
-上一次輸出違反首輪規則：本回合完全沒有任何個案對話脈絡，必須先免費釐清，不可直接給 coachAnswer。
+上一次輸出違反首輪規則：這一題還沒釐清過、也沒有任何對方原話（前面的問答是上一題的紀錄，不算本題脈絡），必須先免費釐清，不可直接給 coachAnswer。
 請重新輸出 responseType="clarifyingQuestion" 的 JSON：
-- 只問一個問題。全域模式方向固定三選一：全新對象／聊到一半斷掉想重新接上／正在聊但沒話題。對象模式引導三選一：切到與她的對話視窗再問／貼上她最近三到五則原話／先聽通用原則。
+- 只問一個問題。全域模式：請使用者貼最近三到五句你來我往的原話；還沒開始聊就三選一：全新對象／聊到一半斷掉想重新接上／正在聊但沒話題。對象模式引導三選一：切到與她的對話視窗再問／貼上她最近三到五則原話／先聽通用原則。
 - costDeducted 必須是 0；suggestedLine、rewriteDecision、rewriteReason 用 null；needsReflection=true，reflectionQuestion 必填。
 - 只輸出 JSON，不要用 Markdown 格式，不要前後解釋。`;
   }
@@ -863,7 +865,9 @@ function parseAndValidateCard(
 ): CoachChatResponseCard {
   const parsed = parseClaudeJSON(claudeData);
   const repaired = repairCardShape(parsed, request);
-  const truncated = truncateCard(repaired);
+  // 可見欄位過繁中正規化（黑箱 2026-09-07：建議句混進「这」，語言守門只看
+  // 英文）。同 opener／練習室走 _shared 同一支，注音笑聲的厂丂已在裡面處理。
+  const truncated = truncateCard(normalizeVisibleText(repaired));
   const card = validateResponseCard(truncated);
   assertCardSafe(card);
   // repair 落保守 no-charge fallback（如 forced 模式下空 answer）時，
@@ -878,6 +882,27 @@ function parseAndValidateCard(
     return { ...card, costDeducted: FALLBACK_NO_CHARGE };
   }
   return card;
+}
+
+type RawCardShape = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+// 教練文案已是繁中，只是偶爾漏一兩個簡體字。OpenCC 對本來就繁中的句子會
+// 把「只看／只是」的「只」改成「隻」（黑箱 2026-09-07 實測），所以「只」先
+// 遮起來再轉；「証」是模型自己吐的異體字，OpenCC 不碰，台灣用法一律「證」。
+const ONLY_SENTINEL = "\u0000";
+function normalizeVisibleText(card: RawCardShape): RawCardShape {
+  const out = { ...card };
+  for (const field of VISIBLE_FIELDS) {
+    const value = out[field];
+    if (typeof value !== "string") continue;
+    out[field] = toTraditionalChinese(value.replaceAll("只", ONLY_SENTINEL))
+      .replaceAll(ONLY_SENTINEL, "只")
+      .replaceAll("証", "證");
+  }
+  return out;
 }
 
 function buildFallbackCard(

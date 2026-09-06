@@ -133,7 +133,11 @@ Deno.test("buildCoachChatPrompt carries partner note into 對方提示", () => {
     forceAnswer: false,
     recentMessages: [],
     dataQualityFlagged: false,
-    partnerHint: { name: "Jenny", traits: ["慢熱"], note: "喜歡潛水、想先約咖啡" },
+    partnerHint: {
+      name: "Jenny",
+      traits: ["慢熱"],
+      note: "喜歡潛水、想先約咖啡",
+    },
   });
   // 2026-08-19：標籤內嵌主詞判斷規則（意圖句＝用戶目標，非對方意願）。
   assertStringIncludes(prompt, "主詞不明的意圖句＝用戶自己的目標");
@@ -489,25 +493,53 @@ Deno.test("buildCoachChatPrompt injects the first-round clarify directive only w
   };
 
   const gated = buildCoachChatPrompt(gatedBase);
-  assertStringIncludes(gated, "本回合是全域首輪且沒有任何對話脈絡");
+  assertStringIncludes(gated, "本回合這一題還沒釐清過，也沒有任何對方原話");
   assertStringIncludes(gated, '必須輸出 responseType="clarifyingQuestion"');
+  assertStringIncludes(gated, "把最近三到五句你來我往的原話貼進來");
   assertStringIncludes(
     gated,
     "這是全新對象、聊到一半斷掉想重新接上、還是正在聊但沒話題？",
   );
   // 無條件「直接給可執行的建議」已改成有脈絡才直接給。
-  assertStringIncludes(gated, "已有脈絡（本輪對話、使用者補充）時直接給可執行的建議");
+  assertStringIncludes(
+    gated,
+    "已有脈絡（本題已釐清過、使用者貼了對方原話或補充了處境）時直接給可執行的建議",
+  );
 
+  // 本題已釐清過（教練問過、使用者補充）→ 不再注入硬指令。
   const withContext = buildCoachChatPrompt({
     ...gatedBase,
     activeSessionTurns: [
-      { role: "user" as const, kind: "supplement" as const, content: "全新對象" },
+      {
+        role: "coach" as const,
+        kind: "clarification" as const,
+        content: "貼三句原話給我？",
+      },
+      {
+        role: "user" as const,
+        kind: "supplement" as const,
+        content: "全新對象",
+      },
     ],
   });
-  assertEquals(withContext.includes("本回合是全域首輪"), false);
+  assertEquals(withContext.includes("本回合這一題還沒釐清過"), false);
+
+  // 2026-09-07：上一題的問答種回 turns 只是記憶，本題仍要先釐清。
+  const previousThreadOnly = buildCoachChatPrompt({
+    ...gatedBase,
+    activeSessionTurns: [
+      { role: "user" as const, kind: "question" as const, content: "上一題" },
+      {
+        role: "coach" as const,
+        kind: "answer" as const,
+        content: "上一題的答案",
+      },
+    ],
+  });
+  assertStringIncludes(previousThreadOnly, "本回合這一題還沒釐清過");
 
   const forced = buildCoachChatPrompt({ ...gatedBase, forceAnswer: true });
-  assertEquals(forced.includes("本回合是全域首輪"), false);
+  assertEquals(forced.includes("本回合這一題還沒釐清過"), false);
 });
 
 Deno.test("buildCoachChatPrompt forced global framing drops the clarify-first clause", () => {
@@ -521,9 +553,12 @@ Deno.test("buildCoachChatPrompt forced global framing drops the clarify-first cl
     dataQualityFlagged: false,
     scope: { type: "global" as const },
   });
-  assertStringIncludes(forced, "使用者已選擇直接看正式建議：直接給可執行的建議");
+  assertStringIncludes(
+    forced,
+    "使用者已選擇直接看正式建議：直接給可執行的建議",
+  );
   assertEquals(forced.includes("先用一個免費釐清問清處境"), false);
-  assertEquals(forced.includes("本回合是全域首輪"), false);
+  assertEquals(forced.includes("本回合這一題還沒釐清過"), false);
 });
 
 Deno.test("buildCoachChatPrompt injects partner first-round clarify framing only when evidence-less (Batch A)", () => {
@@ -541,7 +576,10 @@ Deno.test("buildCoachChatPrompt injects partner first-round clarify framing only
   const gatedPrompt = buildCoachChatPrompt(base);
   assertStringIncludes(gatedPrompt, "對象教練模式");
   assertStringIncludes(gatedPrompt, "看不到任何和她的實際對話");
-  assertStringIncludes(gatedPrompt, '必須輸出 responseType="clarifyingQuestion"');
+  assertStringIncludes(
+    gatedPrompt,
+    '必須輸出 responseType="clarifyingQuestion"',
+  );
 
   // 有任何個案證據（或 forceAnswer）就不注入。
   const withEvidence = buildCoachChatPrompt({
