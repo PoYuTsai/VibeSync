@@ -11,9 +11,11 @@
 - 影片為 APP 內附資產，無額外下載 URL、生成費用或自動重試生成。原始輸出約 14.18 MB，包內衍生版約 1.90 MB。
 - 保留使用者選定的原表演與自然循環：最後回托腮較快、首尾笑容與角度不同，沒有做淡接或宣稱無縫。
 
-包內影片 `assets/videos/coach/sydney_performance_v3.mp4`：540×960、H.264 Baseline／8-bit／BT.709、24 fps、241 幀、10.041667 秒、無音軌、faststart。SHA-256：`795fe45dcffdfc16c2d7b4f009fb91df8515e6f30f96919f07f9d73c8fe22ade`。靜態圖 `assets/images/coach/sydney_performance_v3_poster.jpg` 是原輸出首幀擷取，SHA-256：`9113b99474bca933ec0a3312a45c04ec0e9dd6582d3726f5e9539ec2c2c872a5`。
+包內影片 `assets/videos/coach/sydney_performance_v3.mp4`：540×960、H.264 Constrained Baseline／8-bit／BT.709、24 fps、241 幀、10.041667 秒、無音軌、faststart。SHA-256：`5660d468abc7cb4656d753a3610887803bdcc83d5e1ec1bd4f57f9026b60d75b`。靜態圖 `assets/images/coach/sydney_performance_v3_poster.jpg` 是包內影片首幀擷取，SHA-256：`48dba4cb717472f483d5b76681a24ee925c0028cc47e8f7451ec924abe3b87cf`。
 
-來源輸出 SHA-256：`faa942024bf13429339ad00be7c62e435079221ada81cb4894ad09491d0a3d41`。只縮放與編碼，完整保留幀數、比例與速度，未裁切、去背、補幀或重繪。使用 [Flutter 官方 video_player](https://pub.dev/packages/video_player/versions/2.14.0)，鎖定 2.14.0；native iPhone 播放、背景返回與 Reduce Motion 仍須 TestFlight 真機驗收。
+2026-09-07 底色校正（Eric 真機反饋「背景淺紫格格不入」）：素材原本的平面底色約 `#1F1132`，頁面漸層在人物那段約 `#180E28`～`#1E122F`，貼上去會露出一塊淺紫長方形。用 ffmpeg `colorlevels` 做全域線性映射（輸入黑點 `#1F1132` → 輸出黑點 `#190E29`，白點不動；libx264 crf 18 slow），底色落到約 `#190F2A`（頁面同高度約 `#180E28`），皮膚與白衣位移小於 3%，頭髮暗部跟著位移幾個單位；不做去背（chromakey 對低飽和深底會吃掉頭髮）。widget 端再加四邊淡出蓋掉殘差。前一版（未校正）SHA-256：`795fe45dcffdfc16c2d7b4f009fb91df8515e6f30f96919f07f9d73c8fe22ade`。
+
+來源輸出 SHA-256：`faa942024bf13429339ad00be7c62e435079221ada81cb4894ad09491d0a3d41`。只縮放、底色校正與編碼，完整保留幀數、比例與速度，未裁切、去背、補幀或重繪。使用 [Flutter 官方 video_player](https://pub.dev/packages/video_player/versions/2.14.0)，鎖定 2.14.0；native iPhone 播放、背景返回與 Reduce Motion 仍須 TestFlight 真機驗收。
 
 本輪 WSL Flutter 3.47.0：既有 10 檔 85 項回歸、13 項播放器生命週期測試及 1 項實際入口釋放測試通過，四態視覺擷取 1 項通過，8 檔靜態分析無問題。新增設計 token 檢查曾指出圓角及色碼不合規，改用既有圓角與品牌色後單獨重跑通過。另以隔離示範資料、實際 GlobalCoachScreen 編譯 JavaScript Web 預覽成功；這些證據不代表 iOS native 建置或 TestFlight 已完成。
 
