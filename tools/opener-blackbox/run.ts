@@ -12,6 +12,7 @@
 
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
 import { normalizeOpenerProfileInfo } from "../../supabase/functions/analyze-chat/opener_profile.ts";
+import { composeResonateOpener } from "../../supabase/functions/analyze-chat/opener_payload.ts";
 
 const MODEL = "claude-sonnet-5";
 const OPENER_TYPES = ["extend", "resonate", "tease", "humor", "coldRead"] as const;
@@ -268,6 +269,11 @@ for (const p of PROFILES) {
     outTok += usage?.output_tokens ?? 0;
     const parsed = parseJsonObjectFromText(text) as Record<string, unknown> | null;
     const openers = (parsed?.openers ?? {}) as Record<string, string>;
+    // 鏡像生產：共鳴前半句由後端組
+    const compose = openers.resonate
+      ? composeResonateOpener({ profileAnalysis: parsed?.profileAnalysis, resonate: openers.resonate, styleContext: p.styleContext ?? null })
+      : null;
+    if (compose) openers.resonate = compose.text;
     await Deno.writeTextFile(new URL(`${p.id}.${arm}.json`, outDir), JSON.stringify({ user, raw: text, usage }, null, 2));
     const missing = OPENER_TYPES.filter((t) => typeof openers[t] !== "string" || !openers[t].trim());
     if (missing.length) throw new Error(`${p.id}.${arm}：五句不齊（${missing.join(",")}），原文見 out/${tag}/${p.id}.${arm}.json`);
@@ -289,7 +295,7 @@ for (const p of PROFILES) {
     const bio = /bioComposition"\s*:\s*"([a-z_]+)/.exec(text)?.[1] ?? "?";
     const rb = /resonateBasis"\s*:\s*"([a-z_]+)/.exec(text)?.[1] ?? "?";
     const sfq = /senderFactQuoted"\s*:\s*("[^"]*"|null)/.exec(text)?.[1] ?? "?";
-    summary.push(`- bioComposition：${bio}；resonateBasis：${rb}；senderFactQuoted：${sfq}`);
+    summary.push(`- bioComposition：${bio}；resonateBasis：${rb}；senderFactQuoted：${sfq}；compose：${compose ? compose.basis + ("reason" in compose ? "/" + compose.reason : "") : "-"}`);
     summary.push(`- reason：${rec.reason ?? ""}`, "");
     console.log(`${p.id}.${arm} 踩雷=${hits.length}`);
   }
