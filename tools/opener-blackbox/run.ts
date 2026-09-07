@@ -151,6 +151,19 @@ const PROFILES: Profile[] = [
     styleContext: "語氣偏好：輕鬆直接\n我的興趣：爬山、看電影\n自我備註：不太會講幹話，怕被當油",
   },
   {
+    id: "style-dog-generic",
+    shape: "hooks",
+    profileInfo: {
+      name: "測試癸",
+      bio: "養了一隻不給摸的柴犬\n假日固定去河堤練滑板",
+      meetingContext: "交友軟體",
+    },
+    forbidden: [],
+    supplement: "想從柴犬開",
+    anchors: ["柴犬", "狗", "滑板", "河堤"],
+    styleContext: "語氣偏好：輕鬆直接\n我的興趣：養狗、打籃球\n自我備註：不太會講幹話，怕被當油",
+  },
+  {
     id: "sparse",
     shape: "sparse",
     profileInfo: { name: "測試丙", interests: "看電影", meetingContext: "交友軟體" },
