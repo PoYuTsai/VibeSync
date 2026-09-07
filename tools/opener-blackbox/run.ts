@@ -26,6 +26,8 @@ interface Profile {
   supplement: string;
   /** 正向線索字眼：混合型／線索型至少要有幾句從這裡長（覆蓋數，防「零踩雷但線索全丟」）。 */
   anchors?: string[];
+  /** 用戶（發訊者）風格設定原文；有給就照 handler 的包裝注入，驗「合法的我也」。 */
+  styleContext?: string;
 }
 
 const PROFILES: Profile[] = [
@@ -123,6 +125,19 @@ const PROFILES: Profile[] = [
     anchors: ["鼓", "調酒", "貓", "數字", "會計"],
   },
   {
+    id: "style-legit-common",
+    shape: "hooks",
+    profileInfo: {
+      name: "測試辛",
+      bio: "養了一隻不給摸的柴犬\n假日固定去河堤練滑板",
+      meetingContext: "交友軟體",
+    },
+    forbidden: [],
+    supplement: "想從柴犬開",
+    anchors: ["柴犬", "狗", "滑板", "河堤"],
+    styleContext: "語氣偏好：輕鬆直接\n我的興趣：養了一隻柴犬、週末爬山\n自我備註：不太會講幹話，怕被當油",
+  },
+  {
     id: "sparse",
     shape: "sparse",
     profileInfo: { name: "測試丙", interests: "看電影", meetingContext: "交友軟體" },
@@ -146,6 +161,12 @@ function compileUserContent(p: Profile, supplement: string | null): string {
     );
   }
   out.push("\n請根據以上可見資訊生成 5 種風格的開場白；只使用明確線索，不要補不存在的人格或共同點。");
+  if (p.styleContext) {
+    out.push(
+      "用戶（發訊者本人）的風格設定：\n" + p.styleContext +
+        "\n這些不是對方的資料；只用來調整開場白語氣，絕不當成對方的興趣或共同點。",
+    );
+  }
   return out.join("\n");
 }
 
@@ -181,6 +202,13 @@ function jaccard(a: string, b: string): number {
   return union === 0 ? 1 : inter / union;
 }
 
+// 第一人稱事實：用戶沒給的自身經歷／物件（我也養、我家那隻、我試過…）。
+// ponytail: 子字串啟發式會誤判（「我懂」「我覺得」不算事實），所以句子全列出來給人眼核。
+const FIRST_PERSON_FACT = /我(也|家|自己|朋友|養|有|試過|做過|以前|最近|平常|上|每次|常|認識|媽|妹|哥|姐|弟|狗|貓|週末|假日|下班|是那種|的(狗|貓|鳥|柴|朋友|同事|室友|家人))/;
+function firstPersonFacts(openers: Record<string, string>): string[] {
+  return OPENER_TYPES.filter((t) => FIRST_PERSON_FACT.test(openers[t] ?? "")).map((t) => `${t}：${openers[t]}`);
+}
+
 function arg(name: string): string | null {
   const hit = Deno.args.find((a) => a.startsWith(`--${name}=`));
   return hit ? hit.slice(name.length + 3) : null;
@@ -197,7 +225,7 @@ const outDir = new URL(`./out/${tag}/`, import.meta.url);
 await Deno.mkdir(outDir, { recursive: true });
 
 const summary: string[] = [`# opener blackbox · ${tag} · ${MODEL} · ${new Date().toISOString()}`, ""];
-let inTok = 0, outTok = 0;
+let inTok = 0, outTok = 0, fpTotal = 0, callTotal = 0;
 
 for (const p of PROFILES) {
   if (only && !only.includes(p.id)) continue;
@@ -209,6 +237,7 @@ for (const p of PROFILES) {
   for (const [arm, sup] of arms) {
     const user = compileUserContent(p, sup);
     const { text, usage } = await callModel(apiKey, user);
+    callTotal++;
     inTok += usage?.input_tokens ?? 0;
     outTok += usage?.output_tokens ?? 0;
     const parsed = parseJsonObjectFromText(text) as Record<string, unknown> | null;
@@ -224,6 +253,9 @@ for (const p of PROFILES) {
     summary.push(`## ${p.id} [${p.shape}] · ${arm}${sup ? `（補充：${sup}）` : ""}`);
     for (const t of OPENER_TYPES) summary.push(`- ${t}${rec.pick === t ? " ★" : ""}：${openers[t] ?? "（缺）"}`);
     summary.push(`- 踩雷：${hits.length ? hits.join("、") : "0"}`);
+    const fp = firstPersonFacts(openers);
+    fpTotal += fp.length;
+    summary.push(`- 第一人稱事實：${fp.length}${fp.length ? "\n  - " + fp.join("\n  - ") : ""}`);
     if (p.anchors) {
       const covered = OPENER_TYPES.filter((t) => p.anchors!.some((w) => openers[t].includes(w))).length;
       summary.push(`- 正向線索覆蓋：${covered}/5 句`);
@@ -248,6 +280,6 @@ for (const p of PROFILES) {
     summary.push(`- skip vs sup 相似度（bigram Jaccard，0=完全不同）：${sims.map((s) => s.toFixed(2)).join(" / ")}，平均 ${mean.toFixed(2)}`, "");
   }
 }
-summary.push(`tokens：in ${inTok} / out ${outTok}`);
+summary.push(`第一人稱事實合計：${fpTotal} / ${callTotal * 5} 句`, `tokens：in ${inTok} / out ${outTok}`);
 await Deno.writeTextFile(new URL("summary.md", outDir), summary.join("\n"));
 console.log(summary.join("\n"));
