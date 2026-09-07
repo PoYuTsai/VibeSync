@@ -138,6 +138,19 @@ const PROFILES: Profile[] = [
     styleContext: "語氣偏好：輕鬆直接\n我的興趣：養了一隻柴犬、週末爬山\n自我備註：不太會講幹話，怕被當油",
   },
   {
+    id: "style-no-overlap",
+    shape: "hooks",
+    profileInfo: {
+      name: "測試壬",
+      bio: "養了一隻不給摸的柴犬\n假日固定去河堤練滑板",
+      meetingContext: "交友軟體",
+    },
+    forbidden: [],
+    supplement: "想從柴犬開",
+    anchors: ["柴犬", "狗", "滑板", "河堤"],
+    styleContext: "語氣偏好：輕鬆直接\n我的興趣：爬山、看電影\n自我備註：不太會講幹話，怕被當油",
+  },
+  {
     id: "sparse",
     shape: "sparse",
     profileInfo: { name: "測試丙", interests: "看電影", meetingContext: "交友軟體" },
@@ -204,7 +217,7 @@ function jaccard(a: string, b: string): number {
 
 // 第一人稱事實：用戶沒給的自身經歷／物件（我也養、我家那隻、我試過…）。
 // ponytail: 子字串啟發式會誤判（「我懂」「我覺得」不算事實），所以句子全列出來給人眼核。
-const FIRST_PERSON_FACT = /我(也|家|自己|朋友|養|有|試過|做過|以前|最近|平常|上|每次|常|認識|媽|妹|哥|姐|弟|狗|貓|週末|假日|下班|是那種|的(狗|貓|鳥|柴|朋友|同事|室友|家人))/;
+const FIRST_PERSON_FACT = /我(也|家|自己|朋友|養|有|試過|做過|以前|最近|平常|上|每次|常|認識|媽|妹|哥|姐|弟|狗|貓|週末|假日|下班|是那種|的(狗|貓|鳥|柴|朋友|同事|室友|家人))|同城|同縣市|同鄉|同款|報到|舉手|我們(都|這種)/;
 function firstPersonFacts(openers: Record<string, string>): string[] {
   return OPENER_TYPES.filter((t) => FIRST_PERSON_FACT.test(openers[t] ?? "")).map((t) => `${t}：${openers[t]}`);
 }
@@ -261,7 +274,9 @@ for (const p of PROFILES) {
       summary.push(`- 正向線索覆蓋：${covered}/5 句`);
     }
     const bio = /bioComposition"\s*:\s*"([a-z_]+)/.exec(text)?.[1] ?? "?";
-    summary.push(`- bioComposition：${bio}`);
+    const rb = /resonateBasis"\s*:\s*"([a-z_]+)/.exec(text)?.[1] ?? "?";
+    const sfq = /senderFactQuoted"\s*:\s*("[^"]*"|null)/.exec(text)?.[1] ?? "?";
+    summary.push(`- bioComposition：${bio}；resonateBasis：${rb}；senderFactQuoted：${sfq}`);
     summary.push(`- reason：${rec.reason ?? ""}`, "");
     console.log(`${p.id}.${arm} 踩雷=${hits.length}`);
   }
