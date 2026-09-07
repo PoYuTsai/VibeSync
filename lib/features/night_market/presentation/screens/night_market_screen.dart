@@ -327,7 +327,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
           DecoratedBox(
             decoration: BoxDecoration(
               color: Colors.black54,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -354,7 +354,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
