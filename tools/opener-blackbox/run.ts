@@ -24,6 +24,8 @@ interface Profile {
   forbidden: string[];
   /** 兩段式模擬：用戶補的一句（方向或一手事實）。 */
   supplement: string;
+  /** 正向線索字眼：混合型／線索型至少要有幾句從這裡長（覆蓋數，防「零踩雷但線索全丟」）。 */
+  anchors?: string[];
 }
 
 const PROFILES: Profile[] = [
@@ -69,6 +71,19 @@ const PROFILES: Profile[] = [
     },
     forbidden: ["薪水", "科別", "喝酒", "唱歌", "色", "誠意", "自介", "規則"],
     supplement: "我對「休假學新東西」有興趣，我自己最近在學木工",
+    anchors: ["休假", "學", "大夜", "作息"],
+  },
+  {
+    id: "filter-plus-one-hook",
+    shape: "mixed",
+    profileInfo: {
+      name: "測試庚",
+      bio: "不約 不聊色\n有女友的不要來\n玩玩的左滑\n已讀不回就是沒興趣\n不要一直問住哪\n不要一開始就要 LINE\n沒誠意的不回\n看完自介再滑\n週末在家烤司康 養一隻很吵的玄鳳",
+      meetingContext: "交友軟體",
+    },
+    forbidden: ["約", "色", "女友", "玩玩", "已讀", "住哪", "LINE", "誠意", "自介", "規則"],
+    supplement: "我對玄鳳有興趣",
+    anchors: ["司康", "烤", "玄鳳", "鳥"],
   },
   {
     id: "mixed-rules-hobby",
@@ -80,6 +95,7 @@ const PROFILES: Profile[] = [
     },
     forbidden: ["約", "住哪", "女友", "自重", "規則"],
     supplement: "我對玄鳳有興趣，我家以前養過",
+    anchors: ["司康", "烤", "玄鳳", "鳥"],
   },
   {
     id: "short-concrete",
@@ -91,6 +107,7 @@ const PROFILES: Profile[] = [
     },
     forbidden: [],
     supplement: "想從柴犬開，我沒養狗但很怕狗",
+    anchors: ["柴犬", "狗", "滑板", "河堤"],
   },
   {
     id: "multi-hook",
@@ -103,6 +120,7 @@ const PROFILES: Profile[] = [
     },
     forbidden: [],
     supplement: "我對打鼓有興趣，我玩過三年樂團",
+    anchors: ["鼓", "調酒", "貓", "數字", "會計"],
   },
   {
     id: "sparse",
@@ -192,6 +210,8 @@ for (const p of PROFILES) {
     outTok += usage?.output_tokens ?? 0;
     const parsed = parseJsonObjectFromText(text) as Record<string, unknown> | null;
     const openers = (parsed?.openers ?? {}) as Record<string, string>;
+    const missing = OPENER_TYPES.filter((t) => typeof openers[t] !== "string" || !openers[t].trim());
+    if (missing.length) throw new Error(`${p.id}.${arm}：五句不齊（${missing.join(",")}），原文見 out/`);
     const rec = (parsed?.recommendation ?? {}) as Record<string, string>;
     openersByArm[arm] = openers;
     await Deno.writeTextFile(new URL(`${p.id}.${arm}.json`, outDir), JSON.stringify({ user, raw: text, usage }, null, 2));
@@ -201,13 +221,23 @@ for (const p of PROFILES) {
     summary.push(`## ${p.id} [${p.shape}] · ${arm}${sup ? `（補充：${sup}）` : ""}`);
     for (const t of OPENER_TYPES) summary.push(`- ${t}${rec.pick === t ? " ★" : ""}：${openers[t] ?? "（缺）"}`);
     summary.push(`- 踩雷：${hits.length ? hits.join("、") : "0"}`);
+    if (p.anchors) {
+      const covered = OPENER_TYPES.filter((t) => p.anchors!.some((w) => openers[t].includes(w))).length;
+      summary.push(`- 正向線索覆蓋：${covered}/5 句`);
+    }
+    const bio = /bioComposition"\s*:\s*"([a-z_]+)/.exec(text)?.[1] ?? "?";
+    summary.push(`- bioComposition：${bio}`);
     summary.push(`- reason：${rec.reason ?? ""}`, "");
     console.log(`${p.id}.${arm} 踩雷=${hits.length}`);
   }
   if (repeat > 1) {
-    const sims = OPENER_TYPES.map((t) => jaccard(openersByArm.skip[t] ?? "", openersByArm.skip2[t] ?? ""));
+    const names = arms.map(([a]) => a).filter((a) => a.startsWith("skip"));
+    const sims: number[] = [];
+    for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
+      for (const t of OPENER_TYPES) sims.push(jaccard(openersByArm[names[i]][t], openersByArm[names[j]][t]));
+    }
     const mean = sims.reduce((a, b) => a + b, 0) / sims.length;
-    summary.push(`- 雜訊帶 skip vs skip2 相似度：${sims.map((s) => s.toFixed(2)).join(" / ")}，平均 ${mean.toFixed(2)}`, "");
+    summary.push(`- 雜訊帶（${names.length} 抽兩兩比對）相似度平均 ${mean.toFixed(2)}`, "");
   }
   if (wantSupplement) {
     const sims = OPENER_TYPES.map((t) => jaccard(openersByArm.skip[t] ?? "", openersByArm.sup[t] ?? ""));
