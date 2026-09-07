@@ -320,13 +320,15 @@ export function buildWrongSurfaceErrorBody(surface: WrongSurface): {
 }
 
 export type ResonateComposeOutcome =
-  | { text: string; basis: "her_situation"; stripped: boolean }
+  | { text: string; basis: "her_situation"; stripped: boolean; unsafeTail: boolean }
   | { text: string; basis: "style_overlap"; quote: string; stripped: boolean }
   | {
     text: string;
     basis: "tail_only";
-    reason: "no_quote" | "quote_shape" | "quote_not_in_style" | "tail_first_person";
+    reason: "no_quote" | "quote_shape" | "quote_not_in_style";
     stripped: boolean;
+    /** 整句都是「我＋事實」又沒有可用引文：沒有安全替代，原句照回。監控用。 */
+    unsafeTail: boolean;
   };
 
 /**
@@ -334,7 +336,7 @@ export type ResonateComposeOutcome =
  * 「我猜」「我在想」這種態度句，也排除「自我」「妳跟我」。「我們」算共同身分。
  */
 const FIRST_PERSON_FACT_RE =
-  /(^|[^自])我(也|家|自己|朋友|養|有|沒|試過|做過|以前|最近|平常|上|每次|常|認識|的|都|是|會|跟|和|這|那|週末|假日|下班|剛)|我們/;
+  /(^|[^自])我(也|家|自己|朋友|養|有|沒|試過|做過|以前|最近|平常|上|每次|常|認識|的|都|是|會|跟|和|這|那|週末|假日|下班|剛|住|昨|今|明|喜歡|愛|念|讀|工作|通勤|習慣|從|去|來|吃|喝|玩|練|學|買)|我們/;
 
 /**
  * 共鳴卡「我也」前半句由程式組（Eric 2026-09-08 選項 1）。模型在
@@ -353,8 +355,9 @@ export function composeResonateOpener(args: {
   const tail = args.resonate;
   const softened = stripFirstPersonClauses(tail);
   const stripped = softened !== null && softened !== tail;
+  const unsafeTail = softened === null;
   if (pa?.resonateBasis !== "style_overlap") {
-    return { text: softened ?? tail, basis: "her_situation", stripped };
+    return { text: softened ?? tail, basis: "her_situation", stripped, unsafeTail };
   }
   const rawQuote = typeof pa.senderFactQuoted === "string" ? pa.senderFactQuoted : "";
   const quote = rawQuote
@@ -364,7 +367,7 @@ export function composeResonateOpener(args: {
     .trim()
     .replace(/^我也?/, "");
   const tailOnly = (reason: "no_quote" | "quote_shape" | "quote_not_in_style") =>
-    ({ text: softened ?? tail, basis: "tail_only", reason, stripped }) as const;
+    ({ text: softened ?? tail, basis: "tail_only", reason, stripped, unsafeTail }) as const;
   if (!quote) return tailOnly("no_quote");
   if (quote.length < 2 || quote.length > 20) return tailOnly("quote_shape");
   // 模型常把設定的「養狗」改寫成「養了一隻狗」：去掉量詞後再對一次，前綴用設定原文。
@@ -398,8 +401,9 @@ function quoteAffirmedIn(styleContext: string | null | undefined, quote: string)
   while (true) {
     const idx = styleContext.indexOf(quote, from);
     if (idx < 0) return false;
-    const before = styleContext.slice(Math.max(0, idx - 2), idx);
-    if (!/(不|沒|想|要|朋友|家人|同事|前)$/.test(before)) return true;
+    const before = styleContext.slice(Math.max(0, idx - 4), idx);
+    // 「沒有養狗」「朋友有養狗」「想要養狗」：否定／願望／他人後面可再接「有」「要」。
+    if (!/(不|沒|想|要|朋友|家人|同事|前任|前)(有|要)?$/.test(before)) return true;
     from = idx + 1;
   }
 }

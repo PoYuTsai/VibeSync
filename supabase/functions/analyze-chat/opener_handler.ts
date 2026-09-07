@@ -542,6 +542,7 @@ export async function handleOpenerRequest(
         user: summarizeUser(deps.userId),
         basis: outcome.basis,
         stripped: outcome.stripped,
+        ...(outcome.basis !== "style_overlap" ? { unsafeTail: outcome.unsafeTail } : {}),
         ...(outcome.basis === "tail_only" ? { reason: outcome.reason } : {}),
         hasStyleContext: Boolean(openerStyleContext),
       });

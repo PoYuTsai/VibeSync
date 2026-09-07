@@ -610,11 +610,11 @@ Deno.test("composeResonateOpener：引文對不回設定 → 不接前綴，仍�
     resonate: "我也養貓，但個性完全相反，妳這隻不給摸感覺很有原則",
     styleContext: STYLE,
   });
-  assertEquals(out, { text: "個性完全相反，妳這隻不給摸感覺很有原則", basis: "tail_only", reason: "quote_not_in_style", stripped: true });
+  assertEquals(out, { text: "個性完全相反，妳這隻不給摸感覺很有原則", basis: "tail_only", reason: "quote_not_in_style", stripped: true, unsafeTail: false });
 });
 
 Deno.test("composeResonateOpener：否定／願望／他人的「養狗」不算交集", () => {
-  for (const ctx of ["自我備註：不養狗", "我的興趣：想養狗", "自我備註：朋友養狗"]) {
+  for (const ctx of ["自我備註：不養狗", "我的興趣：想養狗", "自我備註：朋友養狗", "自我備註：沒有養狗", "自我備註：朋友有養狗", "我的興趣：想要養狗"]) {
     const out = composeResonateOpener({ profileAnalysis: overlap("養狗"), resonate: "妳家那隻幾歲", styleContext: ctx });
     assertEquals(out.basis, "tail_only", ctx);
   }
@@ -644,7 +644,7 @@ Deno.test("composeResonateOpener：her_situation 也清「我＋事實」子句�
   const her = { resonateBasis: "her_situation" };
   assertEquals(
     composeResonateOpener({ profileAnalysis: her, resonate: "固定行程這件事我懂，只是我的固定行程是找新片單", styleContext: STYLE }),
-    { text: "固定行程這件事我懂", basis: "her_situation", stripped: true },
+    { text: "固定行程這件事我懂", basis: "her_situation", stripped: true, unsafeTail: false },
   );
   assertEquals(
     composeResonateOpener({ profileAnalysis: her, resonate: "妳家那隻自我意識很強，平常誰說了算", styleContext: null }).text,
@@ -652,12 +652,18 @@ Deno.test("composeResonateOpener：her_situation 也清「我＋事實」子句�
   );
   assertEquals(
     composeResonateOpener({ profileAnalysis: her, resonate: "在家會被鳥吵到崩潰的心情我懂", styleContext: null }),
-    { text: "在家會被鳥吵到崩潰的心情我懂", basis: "her_situation", stripped: false },
+    { text: "在家會被鳥吵到崩潰的心情我懂", basis: "her_situation", stripped: false, unsafeTail: false },
   );
+  // 整句都是我且沒有引文：無安全替代，原句照回，但 unsafeTail=true 讓監控看得到（刻意取捨，Eric 拍板）。
   assertEquals(
-    composeResonateOpener({ profileAnalysis: null, resonate: "我也養過不給摸的貓 到現在還是搞不懂", styleContext: null }).text,
-    "我也養過不給摸的貓 到現在還是搞不懂",
-  ); // 整句都是我且沒有引文：無安全替代，原句照回（log 記 stripped=false）
+    composeResonateOpener({ profileAnalysis: null, resonate: "我也養過不給摸的貓 到現在還是搞不懂", styleContext: null }),
+    { text: "我也養過不給摸的貓 到現在還是搞不懂", basis: "her_situation", stripped: false, unsafeTail: true },
+  );
+  // 「我住／我喜歡」形狀也算事實
+  assertEquals(
+    composeResonateOpener({ profileAnalysis: her, resonate: "我住台中，妳平常去哪散步", styleContext: null }).text,
+    "妳平常去哪散步",
+  );
 });
 
 Deno.test("normalizeOpenerPayload：帶 styleContext 時共鳴卡由後端接前綴並回呼 outcome，內部欄位不外洩", () => {
