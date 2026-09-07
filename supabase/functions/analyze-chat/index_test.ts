@@ -884,7 +884,12 @@ Deno.test({
     // 2026-08-19 A/B 實測：prompt 裡的現成示範句會被模型原樣照抄（黑名單
     // 與禁令都壓不住，few-shot 大於 instruction），因此改成描述形狀、不給
     // 可貼的句子；斷言跟著改鎖形狀教學而非例句。
-    assert(source.includes("旁路到那些規則透露的個性"));
+    assert(source.includes("也不旁路到規則本身"));
+    // 2026-09-07 Eric 真機：篩選型自介三張卡都在回應她的抱怨，改成零回應、另開話題。
+    assert(source.includes("篩選型自介"));
+    assert(source.includes("不在她的條件裡報到或交答案"));
+    assert(source.includes("她的自介本身有沒有變成話題"));
+    assert(source.includes('"bioComposition": "hooks | mixed | filter_heavy | none'));
     assert(source.includes("有點壞但有邊界的鬆弛感"));
     // 2026-08-19 瘦身：旁路冷讀／三層優先級／框架大於話術／Specialness Gate／
     // Female Reply Check／品質標準／五題自檢七個區塊合併成兩塊，這裡改鎖語意
