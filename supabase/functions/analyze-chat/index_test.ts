@@ -890,6 +890,8 @@ Deno.test({
     assert(source.includes("不在她的條件裡報到或交答案"));
     assert(source.includes("她的自介本身有沒有變成話題"));
     assert(source.includes('"bioComposition": "hooks | mixed | filter_heavy | none'));
+    // 邊界：規則多但還有正向線索是 mixed，不能被當篩選型丟掉線索。
+    assert(source.includes("規則多但還有任何一個正向線索就是 mixed"));
     assert(source.includes("有點壞但有邊界的鬆弛感"));
     // 2026-08-19 瘦身：旁路冷讀／三層優先級／框架大於話術／Specialness Gate／
     // Female Reply Check／品質標準／五題自檢七個區塊合併成兩塊，這裡改鎖語意
