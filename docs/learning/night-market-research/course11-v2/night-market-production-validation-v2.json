@@ -1,0 +1,18 @@
+{
+  "scenarioId": "night_market_course11_v2",
+  "sha256": "cc0400dba7ca97f5ce5c3df548e60ec819220149177136e9c190863273488e48",
+  "beats": 39,
+  "reachable": 39,
+  "spokenCues": 71,
+  "checks": [
+    "unique IDs",
+    "all edges resolve",
+    "all nodes reachable",
+    "acyclic graph",
+    "all leaves ending",
+    "empathy exact speaker/text",
+    "intro exact text"
+  ],
+  "assetReady": false,
+  "voicesReady": false
+}

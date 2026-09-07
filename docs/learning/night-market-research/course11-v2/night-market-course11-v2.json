@@ -1,0 +1,1026 @@
+{
+  "schemaVersion": 2,
+  "sourceReferences": [
+    {
+      "kind": "approved_user_script",
+      "title": "Eric 核准的簡易搭訕流程詳解夜市劇本",
+      "approval": "可以 用這版 繼續處理完整",
+      "date": "2026-09-07"
+    },
+    {
+      "kind": "course_research",
+      "title": "第11集簡易搭訕流程詳解",
+      "url": "https://drive.google.com/file/d/10iRKZIORMfKBwovsJI0Xu8RI61kbdJZP/view",
+      "localNotes": "research-chris/flow11-deep-review.md",
+      "sourceSha256": "b6a8745c0572156337fe7c60c9b1b0f79f00304f0036847f7599ffe4f7d52d89"
+    }
+  ],
+  "branchContract": {
+    "selection": "Select a runProfile at session start; immutable per run. Reaction variants are authored scenario conditions, not attraction/consent inferred from player scores. Decisions use exact selected choice next; automatic beats use reaction key matching runProfile[beat.id], otherwise default. Record visitedBeatIds and selectedChoiceIds before progression; reset both for new run. Replay uses lesson-specific entry point and required narrative context, not arbitrary mid-sentence seek.",
+    "randomized": false,
+    "playerChoosesNpcResponse": false
+  },
+  "runProfiles": [
+    {
+      "id": "main",
+      "title": "基本流程",
+      "reactions": {}
+    },
+    {
+      "id": "busy",
+      "title": "她有行程",
+      "reactions": {
+        "qualify": "busy"
+      }
+    },
+    {
+      "id": "available",
+      "title": "有空再聊",
+      "reactions": {
+        "qualify": "available"
+      }
+    },
+    {
+      "id": "handshake_nohand",
+      "title": "沒有接握手",
+      "reactions": {
+        "empathy_intro": "handshake_declined"
+      }
+    },
+    {
+      "id": "hands_full",
+      "title": "手上拿著東西",
+      "reactions": {
+        "empathy_intro": "hands_full"
+      }
+    },
+    {
+      "id": "coldread_repair",
+      "title": "猜測被修正",
+      "reactions": {
+        "cold_read": "cold_read_wrong"
+      }
+    },
+    {
+      "id": "quiet_hook",
+      "title": "她沒有追問",
+      "reactions": {
+        "life_hook": "no_hook_question"
+      }
+    },
+    {
+      "id": "no_contact",
+      "title": "她不加陌生人",
+      "reactions": {
+        "offer_ig": "contact_declined"
+      }
+    },
+    {
+      "id": "no_invite",
+      "title": "今天不方便一起走",
+      "reactions": {
+        "qualify": "available",
+        "coffee_invite": "invite_declined"
+      }
+    },
+    {
+      "id": "not_interested",
+      "title": "她不想繼續認識",
+      "reactions": {
+        "qualify": "decline"
+      }
+    }
+  ],
+  "reviewCards": [
+    {
+      "id": "empathy",
+      "title": "同理心陳述",
+      "whenAllVisited": [
+        "empathy_intro"
+      ],
+      "text": "「有點突然。」是陳述。停一拍後接背景，先處理突然被接觸的安全感。",
+      "replayFrom": "opening"
+    },
+    {
+      "id": "background",
+      "title": "背景介紹",
+      "whenAllVisited": [
+        "empathy_intro"
+      ],
+      "text": "跟朋友來買東西、剛在哪裡等，讓自己的出現有脈絡。",
+      "replayFrom": "opening"
+    },
+    {
+      "id": "nonverbal",
+      "title": "淺溝通｜強眼神・重心往後・尾音下沉",
+      "whenAllVisited": [
+        "opening"
+      ],
+      "text": "回看示範的眼神、姿態與尾音。內容很普通，也能透過穩定的淺溝通形成交流。",
+      "replayFrom": "opening"
+    },
+    {
+      "id": "cold_read",
+      "title": "冷讀",
+      "whenAllVisited": [
+        "cold_read"
+      ],
+      "whenNoneVisited": [
+        "cold_read_repair"
+      ],
+      "text": "給出觀察與猜測，再留意她怎麼補充自己。",
+      "replayFrom": "transition"
+    },
+    {
+      "id": "cold_repair",
+      "title": "冷讀修復",
+      "whenAllVisited": [
+        "cold_read_repair"
+      ],
+      "text": "她修正猜測後，承認猜錯並接她的實際資訊，不用堅持自己的判斷。",
+      "replayFrom": "transition"
+    },
+    {
+      "id": "life_hook",
+      "title": "生活個性樣本＋留白",
+      "whenAllVisited": [
+        "personality"
+      ],
+      "text": "「最後是我不肯走」留下鉤子。她追問後，再透露自己的個性；不一次介紹完。",
+      "replayFrom": "craft_expand"
+    },
+    {
+      "id": "quiet_hook",
+      "title": "留白後沒有追問",
+      "whenAllVisited": [
+        "hook_no_question"
+      ],
+      "text": "她沒有追問，就接回共同話題。不要求她好奇，也不因此直接結束互動。",
+      "replayFrom": "craft_expand"
+    },
+    {
+      "id": "qualify",
+      "title": "賦格",
+      "whenAllVisited": [
+        "qualify"
+      ],
+      "text": "她說把手重做三次後，再肯定她的耐心。欣賞有前文。",
+      "replayFrom": "ordinary_chat"
+    },
+    {
+      "id": "wrap",
+      "title": "無興趣指標｜主動收尾",
+      "whenAllVisited": [
+        "highpoint_wrap"
+      ],
+      "text": "這段在仍有往返時先收一輪，再提出交換聯絡，沒有一直聊到沒話。",
+      "replayFrom": "ordinary_chat"
+    },
+    {
+      "id": "busy",
+      "title": "忙碌收尾",
+      "whenAllVisited": [
+        "busy_notice"
+      ],
+      "text": "她有自己的行程。縮短收尾，接下來依你選擇交換聯絡或直接道別。",
+      "replayFrom": "busy_notice"
+    },
+    {
+      "id": "contact",
+      "title": "收號",
+      "whenAllVisited": [
+        "scan_ig"
+      ],
+      "text": "提出加朋友、展示自己的 QR，對方接著掃碼；聲音與態度維持前面的穩定。",
+      "replayFrom": "offer_ig"
+    },
+    {
+      "id": "no_contact",
+      "title": "沒有交換聯絡",
+      "whenAllVisited": [
+        "decline_contact"
+      ],
+      "text": "她表達不加陌生人，這段以自然道別收尾。",
+      "replayFrom": "offer_ig"
+    },
+    {
+      "id": "date",
+      "title": "即約",
+      "whenAllVisited": [
+        "coffee_accept"
+      ],
+      "text": "把去處說具體，她回應願意之後，才交代朋友並一起走。",
+      "replayFrom": "available_notice"
+    },
+    {
+      "id": "invite_decline",
+      "title": "即約不方便",
+      "whenAllVisited": [
+        "coffee_unavailable"
+      ],
+      "text": "她今天不方便，接回改天聯絡，沒有繼續要求當下同行。",
+      "replayFrom": "available_notice"
+    },
+    {
+      "id": "keepwalking",
+      "title": "這次先繼續逛",
+      "whenAllVisited": [
+        "walk_ending"
+      ],
+      "text": "這次尚未進入搭話。可以重練從注意到她、到決定接近的那一段。",
+      "replayFrom": "notice"
+    }
+  ],
+  "id": "night_market_course11_v2",
+  "status": "approved_script_production_pending",
+  "approval": "Eric: 可以 用這版 繼續處理完整",
+  "source": "User-approved course11 adaptation; internal production source attribution only",
+  "initialBeatId": "stroll",
+  "voices": {
+    "Chris": {
+      "locale": "zh-TW",
+      "voiceId": null,
+      "status": "casting_required",
+      "direction": "adultmale stable relaxednatural; nofalsebass noforeignaccent"
+    },
+    "Leah": {
+      "locale": "zh-TW",
+      "voiceId": null,
+      "status": "casting_required",
+      "direction": "adultfemale neutralinitialsurprise -> genuinecuriosity -> sharedsmile; noconstantgiggle"
+    },
+    "Sydney": {
+      "locale": "zh-TW",
+      "voiceId": null,
+      "status": "casting_required",
+      "direction": "sameadultfemalevoice friendaside/coach; drynear coachbus only onrequest/pause"
+    }
+  },
+  "media": {
+    "aspectRatio": "9:16",
+    "nativePortraitRequired": true,
+    "rejectedLegacyReuse": true,
+    "generatedCount": 0,
+    "humanVoiceAccepted": false,
+    "voiceCloningCourseSpeaker": false
+  },
+  "hardLocks": [
+    "Chris alone says 有點突然。 No 對吧 added to this line; pause 1000–2000ms then continueintro withoutwaitingconfirmation.",
+    "Exact intro is locked, polite RIGHT handextendsduringname; handshakebranches preservefaceandwardrobe.",
+    "Strong eyecontact, weightback, fallingintonation throughout; nofixedstare/noartificialdrone.",
+    "Pottery is past life sample; do not materialize pottery cup at tea stall.",
+    "Leah beverage starts as orderticket and arrivesonlywithpickupaction; cups/hands/phones cannot teleport.",
+    "Allspokenlines nonlooping, ambience separate and no intelligible recurringdialogue.",
+    "Review based actualvisitedbeats/choices; no universalpositivefeedback or attraction score.",
+    "No legacy audio assigned to new text, no subtitle timing estimates treated as final."
+  ],
+  "beats": [
+    {
+      "id": "stroll",
+      "durationEstimate": 10,
+      "action": "Native9:16 first-person walking. Sydney right/front, real Taiwan night-market crowd; stop at craftgiftstall. Leah not yet introduced.",
+      "lines": [
+        {
+          "speaker": "Sydney",
+          "text": "等我一下，我看一下這個。"
+        }
+      ],
+      "next": "notice"
+    },
+    {
+      "id": "notice",
+      "durationEstimate": 9,
+      "action": "Gaze turns to tea counter. Adult Leah holds orderticket, looks at menu. Sydney notices player's pause, leans nearer withoutgrabbing.",
+      "lines": [
+        {
+          "speaker": "Sydney",
+          "text": "想認識她？",
+          "delivery": "quiet friend aside; halfbeat"
+        },
+        {
+          "speaker": "Sydney",
+          "text": "先吐口氣。三、二、一，走過去。"
+        }
+      ],
+      "hint": {
+        "title": "接近",
+        "text": "別在腦中排演整段對話。走到她看得到的側前方，停穩，再開口。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "choices": [
+        {
+          "id": "approach",
+          "label": "走到她看得到的側前方",
+          "next": "approach"
+        },
+        {
+          "id": "keepwalking",
+          "label": "先繼續逛夜市",
+          "next": "walk_ending"
+        }
+      ]
+    },
+    {
+      "id": "approach",
+      "durationEstimate": 5,
+      "action": "Voluntary walk sidefront, do notblockpickup lane. Stopconversationaldistance,stableeyelevel,weightback.",
+      "lines": [],
+      "next": "opening"
+    },
+    {
+      "id": "opening",
+      "durationEstimate": 10,
+      "action": "Leah raisesheadafterhi, slightlysurprised. Creamtopandearringsmustmatchreference. Normalblinks, directeyecontact; noforcedlaugh.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "嗨。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "剛剛看到妳，覺得妳這件米白色上衣配這個耳環，蠻好看的。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "喔，謝謝。",
+          "delivery": "slightlysurprised, processing; notflirty"
+        }
+      ],
+      "hint": {
+        "title": "淺溝通",
+        "text": "重心往後、尾音下沉、強眼神溝通。清楚說出你的觀察，不急著索取反應。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "next": "empathy_intro"
+    },
+    {
+      "id": "empathy_intro",
+      "durationEstimate": 17,
+      "action": "Chris says empathy statement, pause1–2s thencontinueswithoutwaitingconfirmation. Extend relaxedrighthand DURING name, darklongsleeve identityreference; handnotreachtowardSydney. No added 對吧.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "有點突然。",
+          "delivery": "statement; fallingtail; 1500ms pause thencontinue"
+        },
+        {
+          "speaker": "Chris",
+          "text": "我跟朋友來買東西，剛在那邊等她。看到妳，想過來打個招呼。你好，我叫 Chris。"
+        }
+      ],
+      "hint": {
+        "title": "同理心陳述｜處理安全感",
+        "text": "突然被陌生人搭話，會有戒心很正常。說出她可能的感受，停一拍，再接著說。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "secondaryHint": {
+        "title": "背景介紹",
+        "text": "交代你為什麼在這裡，讓她對你的出現有脈絡。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "nextByVariant": {
+        "default": "handshake_accept",
+        "handshake_declined": "handshake_nohand",
+        "hands_full": "handshake_full"
+      }
+    },
+    {
+      "id": "handshake_accept",
+      "durationEstimate": 4,
+      "action": "Leahacceptsrighthand; briefgentlehandshakeandrelease, nointerlockedfingers.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "我叫 Leah。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "Leah。"
+        }
+      ],
+      "next": "transition"
+    },
+    {
+      "id": "handshake_nohand",
+      "durationEstimate": 4,
+      "action": "Leahanswersnamewithouttakinghand. Chrisnaturallywithdraws,maintainseyecontact, doesnotexplainorrequestagain.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "我叫 Leah。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "Leah。"
+        }
+      ],
+      "next": "transition"
+    },
+    {
+      "id": "handshake_full",
+      "durationEstimate": 5,
+      "action": "Leahhandsoccupiedwithorderandbag; Chrisnoticesandretractswithoutmakingherjuggle. No handshake.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "我叫 Leah。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "Leah。"
+        }
+      ],
+      "next": "transition"
+    },
+    {
+      "id": "transition",
+      "durationEstimate": 10,
+      "action": "Normalconversation, mildsmile; frienddirectionconsistent. Nojokepunchlinedelivery.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "妳今天自己來逛？"
+        },
+        {
+          "speaker": "Leah",
+          "text": "跟朋友，她還在那邊買吃的。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "那我們現在都在等人。"
+        }
+      ],
+      "next": "cold_read"
+    },
+    {
+      "id": "cold_read",
+      "durationEstimate": 8,
+      "action": "Chrisobservesstylewithoutscanningbody. Leahcanagreeorcorrect.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "妳看起來蠻會挑這種小東西的，應該不太喜歡跟大家買一樣的。"
+        }
+      ],
+      "hint": {
+        "title": "冷讀",
+        "text": "給出你的觀察與猜測，不只是問資料。看看她怎麼認同、修正或補充。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "nextByVariant": {
+        "default": "craft_entry",
+        "cold_read_wrong": "cold_read_repair"
+      }
+    },
+    {
+      "id": "cold_read_repair",
+      "durationEstimate": 11,
+      "action": "Leahcorrects;Chrisacceptscorrection, noautomaticrejectionexit.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "沒有欸，我買東西蠻隨便的。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "喔，那我猜錯了。我剛看妳搭配，還以為妳會很挑。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "我比較喜歡看人家做東西，自己也有去上陶藝。"
+        }
+      ],
+      "next": "craft_expand"
+    },
+    {
+      "id": "craft_entry",
+      "durationEstimate": 11,
+      "action": "Leahwarmingthroughowninterest, nophysicalpotterypropsat teastall.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "也沒有啦，我只是蠻喜歡逛手作的。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "妳是喜歡逛，還是自己也會做？"
+        },
+        {
+          "speaker": "Leah",
+          "text": "我有去上陶藝課，但做得不怎麼樣。"
+        }
+      ],
+      "next": "craft_expand"
+    },
+    {
+      "id": "craft_expand",
+      "durationEstimate": 7,
+      "action": "Listen,norapidquestions. Leahnaturallyaddsfriendcontext.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "妳還真的自己下去做。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "朋友找我去的，後來覺得蠻好玩。"
+        }
+      ],
+      "hint": {
+        "title": "展開話題",
+        "text": "問問題可以，但不要一直問。接住她的生活片段，也透露一點你自己的東西。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "choices": [
+        {
+          "id": "share_sample",
+          "label": "分享一小段自己的經歷，留個鉤子",
+          "next": "life_hook"
+        },
+        {
+          "id": "keep_questions",
+          "label": "繼續問上课時間和地點",
+          "next": "question_repair"
+        }
+      ]
+    },
+    {
+      "id": "question_repair",
+      "durationEstimate": 10,
+      "action": "Notmoralpunishment; briefanswerthenplayergetsrepairchoice.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "妳在哪裡上？上多久了？"
+        },
+        {
+          "speaker": "Leah",
+          "text": "附近一間工作室，才幾堂。"
+        }
+      ],
+      "hint": {
+        "title": "問答修復",
+        "text": "她回答完了。現在讓她也看到你一點，不必再接下一份資料。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "choices": [
+        {
+          "id": "repair_share",
+          "label": "接回自己的相關經歷",
+          "next": "life_hook"
+        },
+        {
+          "id": "end_early",
+          "label": "自然道別",
+          "next": "early_bye"
+        }
+      ]
+    },
+    {
+      "id": "life_hook",
+      "durationEstimate": 9,
+      "action": "Ordinarypersonalstory; stopafterhook, calmeyecontact, notexpectantgrin.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "我之前也去過一次。原本只是陪朋友，結果最後是我不肯走。"
+        }
+      ],
+      "hint": {
+        "title": "生活／個性樣本＋留白",
+        "text": "每次透露一點自己的經歷與特質，留下可追問的鉤子。勾起她的好奇，讓她逐步了解你、猜測你的生活與價值。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "nextByVariant": {
+        "default": "hook_followup",
+        "no_hook_question": "hook_no_question"
+      }
+    },
+    {
+      "id": "hook_followup",
+      "durationEstimate": 4,
+      "action": "Leahcurious, selfinitiatedquestion; slightchangefrominitialpoliteness.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "為什麼？"
+        }
+      ],
+      "next": "personality"
+    },
+    {
+      "id": "hook_no_question",
+      "durationEstimate": 6,
+      "action": "Leahnodding, doesn'taskwhy. Chrisdoesnotdemandcuriosityorendautomatically.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "喔。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "做那個真的比看起來難。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "對啊，我那個把手重做了三次。"
+        }
+      ],
+      "next": "ordinary_chat"
+    },
+    {
+      "id": "personality",
+      "durationEstimate": 12,
+      "action": "Answerjusthook. Owntrait notCVorstatusboast.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "杯口一直歪。我平常很多事情都隨便，但自己想做好的東西，就會突然很龜毛。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "我也是，我那個把手重做了三次。"
+        }
+      ],
+      "next": "ordinary_chat"
+    },
+    {
+      "id": "ordinary_chat",
+      "durationEstimate": 14,
+      "action": "Sustainedeyecontact,naturalblinks;ordinarycontent,Leahsmilesandasks. Noforcedjokeorcontinuousgiggles.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "那妳有把它拿回家用嗎？"
+        },
+        {
+          "speaker": "Leah",
+          "text": "有啊，不然很浪費。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "我那個也還留著，但我朋友每次看到都要講一下。"
+        }
+      ],
+      "hint": {
+        "title": "強眼神溝通",
+        "text": "接住她的目光。不急著想下一句，也不因為她看回來就把視線移開。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "next": "second_hook"
+    },
+    {
+      "id": "second_hook",
+      "durationEstimate": 6,
+      "action": "Lightbanter, not seductivewhisper.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "到底是多醜？"
+        },
+        {
+          "speaker": "Chris",
+          "text": "下次給妳看。"
+        }
+      ],
+      "hint": {
+        "title": "觀察情緒",
+        "text": "內容不必多幽默。留意她有沒有笑、怎麼笑，以及是否繼續參與。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "next": "qualify"
+    },
+    {
+      "id": "qualify",
+      "durationEstimate": 11,
+      "action": "Groundedappreciationafterher3attempts.Noextraunrelatedcompliments.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "不過妳那個把手願意重做三次，蠻有耐心的。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "我就是不喜歡做一半。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "這點我蠻欣賞的。"
+        }
+      ],
+      "hint": {
+        "title": "賦格",
+        "text": "肯定她已經展現的特質。她先讓你看到一點自己，你再給出真實、具體的欣賞。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "nextByVariant": {
+        "default": "highpoint_wrap",
+        "busy": "busy_notice",
+        "available": "available_notice",
+        "decline": "decline"
+      }
+    },
+    {
+      "id": "highpoint_wrap",
+      "durationEstimate": 8,
+      "action": "SharedtopicendswhileLeahstillengaged. Chrisrelaxedturnslightlytowardfriendnotwalkawaystunt.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "好，那妳先忙吧，我也回去找我朋友。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "好啊。"
+        }
+      ],
+      "hint": {
+        "title": "無興趣指標｜主動收尾",
+        "text": "聊得好的時候，也能結束這一輪。不用一直留在她身邊，聊到沒話才走。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "next": "offer_ig"
+    },
+    {
+      "id": "busy_notice",
+      "durationEstimate": 6,
+      "action": "Leahchecksfriendmessage,reorientsbutfinishessentence.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "我朋友在等我了。"
+        }
+      ],
+      "hint": {
+        "title": "忙碌收尾",
+        "text": "她有自己的行程。收短一點，把下一步說清楚。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "choices": [
+        {
+          "id": "busy_contact",
+          "label": "簡短交換聯絡，讓她去忙",
+          "next": "busy_wrap"
+        },
+        {
+          "id": "busy_bye",
+          "label": "直接道別",
+          "next": "early_bye"
+        }
+      ]
+    },
+    {
+      "id": "busy_wrap",
+      "durationEstimate": 5,
+      "action": "Noobstructingpath.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "好，那妳先去找她。"
+        }
+      ],
+      "next": "offer_ig"
+    },
+    {
+      "id": "available_notice",
+      "durationEstimate": 8,
+      "action": "Leahfinishesmessageandvoluntarilyreengages.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "她還要一陣子。你們等一下還要去哪？"
+        }
+      ],
+      "hint": {
+        "title": "即約",
+        "text": "有時間、互動也在延續，就提出具體邀請，讓她回應。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "choices": [
+        {
+          "id": "invite_now",
+          "label": "邀她一起去前面喝咖啡",
+          "next": "coffee_invite"
+        },
+        {
+          "id": "contact_later",
+          "label": "先交換聯絡，改天再約",
+          "next": "highpoint_wrap"
+        }
+      ]
+    },
+    {
+      "id": "coffee_invite",
+      "durationEstimate": 10,
+      "action": "Cafeestablishedinopeninggeography. Chriswaitsanswerbeforemoving.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "我等一下想去前面那間喝個咖啡，妳要不要一起？"
+        }
+      ],
+      "nextByVariant": {
+        "default": "coffee_accept",
+        "invite_declined": "coffee_unavailable"
+      }
+    },
+    {
+      "id": "coffee_accept",
+      "durationEstimate": 14,
+      "action": "Leahagrees; tellSydneybeforeleaving; herfriendmeetingplanretained.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "好啊，我跟我朋友說一下。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "好，我也跟朋友講一聲。"
+        }
+      ],
+      "next": "coffee_walk"
+    },
+    {
+      "id": "coffee_walk",
+      "durationEstimate": 10,
+      "action": "Walktosydneycraftstallvisiblecontinuously; noinstantteleport;Leahkeepsphoneaftermessage. Sydneyacknowledges.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "我們去前面喝個咖啡，等一下再會合。"
+        },
+        {
+          "speaker": "Sydney",
+          "text": "好啊，等一下見。"
+        }
+      ],
+      "next": "date_ending"
+    },
+    {
+      "id": "coffee_unavailable",
+      "durationEstimate": 6,
+      "action": "Timeconstraintnotinsult.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "今天可能不行，我等一下還有事。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "好，那改天。"
+        }
+      ],
+      "next": "offer_ig"
+    },
+    {
+      "id": "offer_ig",
+      "durationEstimate": 8,
+      "action": "SayofferwhileopeningOWNphoneQR; screenmocknoactualcontact; holdneutralnotpush. Leahfreechoicetoscan.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "欸，加個朋友吧，妳有 IG 嗎？"
+        }
+      ],
+      "hint": {
+        "title": "收號｜狀態不要變",
+        "text": "眼神、聲音和前面一樣穩。簡單提出，不突然加快語速或解釋一大串理由。",
+        "voiceMode": "on_request_or_choice_pause"
+      },
+      "nextByVariant": {
+        "default": "scan_ig",
+        "contact_declined": "decline_contact"
+      }
+    },
+    {
+      "id": "scan_ig",
+      "durationEstimate": 12,
+      "action": "Leahconsents,takesOWNphone,scans; maintainhand/phonecontinuity. Chrislooksbackupspeaking.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "有啊，我掃你。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "妳是這個對吧？我發妳個貼圖。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "有了。"
+        }
+      ],
+      "next": "future_coffee"
+    },
+    {
+      "id": "future_coffee",
+      "durationEstimate": 8,
+      "action": "Naturalpostexchangeconversationandgoodbye notimmediatevictory.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "改天空了，約個咖啡。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "好啊。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "那先這樣，掰。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "掰。"
+        }
+      ],
+      "next": "return_sydney"
+    },
+    {
+      "id": "decline_contact",
+      "durationEstimate": 6,
+      "action": "Noinsistence.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "不好意思，我不太加不認識的人。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "好，沒問題。祝妳逛得開心。"
+        }
+      ],
+      "next": "return_sydney"
+    },
+    {
+      "id": "decline",
+      "durationEstimate": 6,
+      "action": "Canexitanyappropriateboundarywhenunwillingexplicit.",
+      "lines": [
+        {
+          "speaker": "Leah",
+          "text": "不好意思，我沒有想認識人。"
+        },
+        {
+          "speaker": "Chris",
+          "text": "好，沒問題。祝妳逛得開心。"
+        }
+      ],
+      "next": "return_sydney"
+    },
+    {
+      "id": "early_bye",
+      "durationEstimate": 5,
+      "action": "Calmdeparturewithoutcontact.",
+      "lines": [
+        {
+          "speaker": "Chris",
+          "text": "好，那妳先忙，掰。"
+        },
+        {
+          "speaker": "Leah",
+          "text": "掰。"
+        }
+      ],
+      "next": "return_sydney"
+    },
+    {
+      "id": "return_sydney",
+      "durationEstimate": 8,
+      "action": "Returntosamecraftstall,Sydneyfinishedgift, walktogethermarketcontinues.",
+      "lines": [
+        {
+          "speaker": "Sydney",
+          "text": "走吧。"
+        }
+      ],
+      "next": "review"
+    },
+    {
+      "id": "review",
+      "durationEstimate": 0,
+      "action": "Conditionalreviewonly;retainpreviousscene; do notloopdialogue. Displayonlyexperiencedtechniques and matching replayentry.",
+      "lines": [],
+      "ending": true
+    },
+    {
+      "id": "walk_ending",
+      "durationEstimate": 8,
+      "action": "SydneyandChriscontinuewalking; do notreplayintroline.",
+      "lines": [
+        {
+          "speaker": "Sydney",
+          "text": "走吧，我們往前逛。"
+        }
+      ],
+      "ending": true
+    },
+    {
+      "id": "date_ending",
+      "durationEstimate": 10,
+      "action": "WalkbesideLeahtocafewithvisiblejourney;offerlatercoachreviewwithoutinterruptingher.",
+      "lines": [],
+      "ending": true
+    }
+  ]
+}

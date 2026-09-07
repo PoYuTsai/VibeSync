@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "status": "awaiting_voice_casting",
+  "submissionAuthorized": true,
+  "purchasesAuthorized": false,
+  "automaticBulkGeneration": false,
+  "acceptanceRequiredBeforeVideoBatch": true,
+  "roles": [
+    {
+      "role": "Chris",
+      "voiceId": null,
+      "voiceType": null,
+      "locale": "zh-TW",
+      "mustRejectVoiceId": "e2a2d2e6-9ed2-59cd-82af-feaa27f8a678",
+      "direction": "自然台灣成年男性，鬆弛、穩定，中低音但不刻意壓嗓。來意清楚、尾音落穩，故事有個性。",
+      "takes": [
+        {
+          "id": "chris-empathy",
+          "text": "有點突然。",
+          "silenceAfterMs": 1500
+        },
+        {
+          "id": "chris-intro",
+          "text": "我跟朋友來買東西，剛在那邊等她。看到妳，想過來打個招呼。你好，我叫 Chris。",
+          "silenceAfterMs": 500
+        },
+        {
+          "id": "chris-hook",
+          "text": "我之前也去過一次。原本只是陪朋友，結果最後是我不肯走。",
+          "silenceAfterMs": 1000
+        },
+        {
+          "id": "chris-ig",
+          "text": "欸，加個朋友吧，妳有 IG 嗎？我發妳個貼圖。"
+        }
+      ]
+    },
+    {
+      "role": "Leah",
+      "voiceId": null,
+      "voiceType": null,
+      "locale": "zh-TW",
+      "direction": "自然台灣成年女性，初始意外但不誇張；真的有好奇才變輕快；不嗲、不每句笑、不英語母語腔。",
+      "takes": [
+        {
+          "id": "leah-initial",
+          "text": "喔，謝謝。我叫 Leah。",
+          "performance": "剛聽清來意，仍在熟悉對方"
+        },
+        {
+          "id": "leah-curious",
+          "text": "為什麼？",
+          "performance": "真正好奇，不是質問"
+        },
+        {
+          "id": "leah-personal",
+          "text": "我也是，我那個把手重做了三次。",
+          "performance": "接到共同經驗，帶自然短笑但不大笑"
+        },
+        {
+          "id": "leah-busy",
+          "text": "我朋友在等我了。",
+          "performance": "正常交代時間，沒有嫌棄"
+        }
+      ]
+    },
+    {
+      "role": "Sydney",
+      "voiceId": null,
+      "voiceType": null,
+      "locale": "zh-TW",
+      "sameVoiceAcrossModes": true,
+      "direction": "自然台灣成年女性，熟悉、俐落、帶玩心。同行靠近小聲；教練清楚近耳但同一音色，不主播化。",
+      "takes": [
+        {
+          "id": "sydney-friend",
+          "text": "想認識她？先吐口氣。三、二、一，走過去。",
+          "performance": "同行小聲鼓勵"
+        },
+        {
+          "id": "sydney-coach",
+          "text": "這叫同理心陳述。先接住她突然被搭話的感受，處理安全感。",
+          "performance": "教練提示，清楚但不講課腔"
+        },
+        {
+          "id": "sydney-hook",
+          "text": "她開始追問你了。先答這一點，不用一次全講完。",
+          "performance": "短提示，只在暫停/求助時播放"
+        }
+      ]
+    }
+  ],
+  "soundRules": [
+    "TTS prompt contains only exact spoken words. Keep delivery directions separate unless model explicitly supports them; never accidentally speak production instructions.",
+    "Audition natural voice without pitch-shifting to disguise wrong casting.",
+    "Use confirmed selected voice_id/voice_type; do not reuse visual character element as voice without actual audio support.",
+    "Single dialogue segment should preserve context; don't stitch unrelated single-word reactions as if natural conversation.",
+    "Keep utterance, ambient, SFX, Sydney coach separate. Loop ambience only.",
+    "ASR text check is necessary but not evidence of natural Taiwan accent; audition requires actual listening."
+  ],
+  "requiredChecks": [
+    "Chris/Leah name pronunciations",
+    "IG pronounced naturally in Taiwan sentence",
+    "貼圖 and 看/攤/單 syllables",
+    "male/female identity consistent",
+    "falling sentence tail not interrogative empathy",
+    "1000–2000ms empathy pause, nowaitingconfirmation",
+    "female surprise/curiosity distinct but samevoice",
+    "Sydney friend/coach sameidentity",
+    "noextrawords/repeatedsentences",
+    "noaudibleinstructiontags"
+  ],
+  "spend": {
+    "quotedCredits": null,
+    "jobsSubmitted": 0,
+    "actualDebitReconciled": false
+  }
+}

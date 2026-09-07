@@ -9,9 +9,10 @@
 - [opening03-notes.md](opening03-notes.md)：Opening 03 站位、開場與離場判讀補充。
 - [practice-notes.md](practice-notes.md)：Practice 01、02、03、04、05、08、09。
 - [tests-notes.md](tests-notes.md)：Tests 06、07、08、09 與 Advanced 06、07。
-- [night-market-video-prompts-v3.json](night-market-video-prompts-v3.json)：本輪實際製作 prompt、片長與報價合計；含兩段連續性修正。
-- [media-qa.md](media-qa.md)：正式素材的編碼、時間、SHA-256、修剪與驗證限制。
-- [night-market-video-prompts-v2.json](night-market-video-prompts-v2.json)：保留的早期草稿，以 v3 與 App 劇本資料為準。
+- [course11-v2/](course11-v2/README.md)：2026-09-08 上線那版（Opening 11 改編）的定稿劇本、逐句來源、配音清單與驗證表；App 內容以此為依據。
+- [portrait-script-review-v1.md](portrait-script-review-v1.md)：直式版文案與分鏡對稿。
+
+第一批（2026-09-07 Sydney 陪逛、14 支橫式影片）的拍攝 prompt 與媒體 QA 已於 2026-09-08 移除；素材與文件在 git 歷史（`fd65c6c8` 之前）。
 
 ## 20 支來源總索引
 

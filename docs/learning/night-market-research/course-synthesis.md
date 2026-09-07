@@ -70,26 +70,20 @@
 ## 產品驗收與回放
 
 - 每支原片都在索引中列出來源、時間碼與限制；不宣稱逐字稿或完整聽打。
-- 拍攝表為 14 支；各路徑的實際片長以 [媒體 QA](media-qa.md) 為準。一輪僅經過其中一個時間分支，加上選項思考及男主回應約 4 分鐘。詳細台詞與人物動作見 [v3 拍攝稿](night-market-video-prompts-v3.json)；製作目標與真機驗收狀態分開記錄。
+- 現行為三段直式主線約 3 分鐘、兩個選擇點；逐句與拍攝依據見 [course11-v2](course11-v2/README.md)。製作目標與真機驗收狀態分開記錄。
 - Leah 是成年、可見且有自己的茶與朋友行程；她的笑、回問、停留不自動變成喜歡。
 - 每次玩家選錯，只重播一個關鍵節點；自然播片不因環境中斷而停住，文字選擇才停。
 - 忙但願意稍後聯絡、當下短即約、明確拒絕與舒服離場都有各自回顧，不以收號評分。
 - Sydney 提示短、少、可行動；不洩露 Leah 心聲，不搶答，也不在 Leah 發話時長講。
 - 回顧至少指出一個做得好的具體行為與一個漏接的資訊，對應方法卡與可重試節點。
 
-## 現行 MVP source 對齊（2026-09-07）
+## 現行 MVP source 對齊（2026-09-08）
 
-本節以 repo 現行 `lib/features/night_market/data/night_market_story.dart` 為準，補充前述研究歸納之後的實際產品敘事；較早的 prompt 草稿與研究主張不在此覆寫。完整對白、選項文字、caption 時間與路徑 ID 仍以 story source 為單一真實來源。
+本節以 repo 現行 `lib/features/night_market/data/night_market_story.dart` 為準。完整對白、字幕時間、選項文字與復盤卡以 story source 為單一真實來源；劇本依據是 Opening 11「簡易搭訕流程詳解」，定稿見 `course11-v2/night-market-approved-production-v2.md`。
 
-從頭到尾的有限影片流程是：Sydney 以 `establish` 陪玩家進夜市，`hesitate` 提供吐氣與走近／繼續逛的選擇；走近後經 `opening → concern`，玩家先說明來意，再回應 Leah 對推銷的疑慮；`work` 交換工作資訊，`craft` 以職能治療、陶杯與歪杯故事建立共同話題，`tease` 以「至少還用得上。你很常跟女生打招呼嗎？」接續；`call` 呈現無糖烏龍叫號與 Leah 等茶。之後由預先指定的 run variant 進入 `available` 或 `busy`，不是玩家代替 Leah 判斷意願。
+流程是三段直式第一人稱影片、兩個選擇點：`s1_notice`（Sydney 同行、注意到 Leah）→ 選擇 1「確信感」（走到她看得到的側前方／等她逛到我旁邊再說）→ `s2_opening_to_craft`（米色外套開場、同理心陳述與背景介紹、握手、冷讀、陶藝）→ 選擇 2「提問是工具」（接她的話給自己一小段／查戶口）→ `s3_lifehook_to_end`（留白鉤子、把手重做三次、高點收尾、收 IG、改天咖啡、Sydney「走吧」）→ 復盤。兩個選擇都回主線；非主線選項先出一張 Sydney 講評卡（術語｜白話）。播放中沒有字幕、提示或側白，字幕預設關、可從右上開啟。
 
-- `available`：Leah 說朋友還要二十分鐘才來、還能逛一下，並問旁邊是否賣陶杯。玩家可邀請「去旁邊逛兩分鐘手作攤」（`invite_craft_stall → date → decline → coach`，一起看杯後友善道別），或說「那我們先各自逛，今晚玩得開心」（`leave_available → decline → coach`）。共用的 `decline` 是內部 asset ID，此分支不是拒絕。
-- `busy`：Leah 說朋友在前面等，但補充杯子故事蠻好笑。玩家可提出「妳願意的話我留我的，改天喝無糖烏龍；不用現在回」（`offer_contact → contact → coach`），或「了解，祝妳今晚逛得開心，再見」（`respect_busy_bye → decline → coach`）。低壓邀約只出現一次，不把交換聯絡方式當成必然結果。
-- `hesitate` 的 `keepwalking` 進 `pause_ending` text-only ending，僅文字復盤；一般結局才回到 `coach`，其後可再練 opening 或 craft 關鍵點。
-
-肯定感落在真實可見節點：opening 的米色外套與來意、craft 的手作與陶杯回應；流動感落在先接住 Leah 的推銷疑慮、工作資訊與提問；娛樂感落在共同夜市、叫號與歪陶杯笑點。Sydney 的 hint 應在 NPC 影片完成、玩家需要選擇的階段出現，不替 Leah 解讀，也不在她發話時搶答。busy/available 是不同的時間與可用性條件；劇本只給一次小型、可拒絕的邀約，離場與尊重自己步調也都是有效結果。現行三種正常結尾是：一起看杯後友善道別（`date → decline`）、忙碌時交換聯絡方式後道別（`contact`），以及其他友善或明確收尾（`decline`）；內部 asset ID 不等於產品語意。
-
-本輪是有限互動影片分支 MVP：14 個 video beats（`establish, hesitate, opening, concern, work, craft, tease, call, available, date, busy, contact, decline, coach`），另有 `pause_ending` 文字結束；不是 Unity 自由 3D、不是動態 AI 女主，也不把影片歷史傳入 Leah 文字對話。手機路徑是 Learning → 夜市卡 → 影片分支 → 復盤三篇心法（文章 1／11／21 的短卡，全文入口沿用既有文章 read gate）→ 重練關鍵點；文字練習是可選延伸，CTA 顯示「到圖鑑繼續文字陪練」並導向 `/practice-collection`。圖鑑 profile deeplink 須先解鎖才能使用，且文字對話不帶入夜市影片 context。
+復盤頁三層：四個感（確信、配得、自娛自樂、流動）、這次的六個關鍵（淺溝通＋強眼神溝通、同理心陳述＋背景介紹、冷讀、留白＋鉤子評估、無興趣指標、收號）、更多技巧收合（含失格、推拉標「不是必要」，忙碌收尾／即約標「這次沒遇到」），底部固定「下次只記這個：強眼神溝通」。分支影片（忙碌／拒絕）與麥克風接話尚未做，等真機驗收後決定。
 
 ## 研究證據限制（現行表述）
 
