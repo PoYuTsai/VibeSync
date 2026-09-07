@@ -5,11 +5,11 @@
 //      用戶原料真的會讓五句變不一樣嗎（bigram Jaccard，越低越不同）。
 // 跑法（repo 根目錄；讀 ~/.config/anthropic/key）：
 //   deno run --allow-read --allow-write --allow-env --allow-net=api.anthropic.com \
-//     tools/opener-blackbox/run.ts --tag=before [--supplement] [--repeat=2] [--only=id,id]
+//     tools/opener-blackbox/run.ts --tag=before [--supplement] [--repeat=2] [--only=id,id] \
+//     [--prompt=supabase/functions/analyze-chat/<舊版 opener_prompt 副本>.ts]  # 修前對照
 // 輸出 tools/opener-blackbox/out/<tag>/<profile>[.sup].json 與 summary.md。
 // ponytail: 不鏡像 handler 的圖片路徑，只鏡像純文字 user content；圖片版靠真機。
 
-import { OPENER_PROMPT } from "../../supabase/functions/analyze-chat/opener_prompt.ts";
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
 import { normalizeOpenerProfileInfo } from "../../supabase/functions/analyze-chat/opener_profile.ts";
 
@@ -187,6 +187,9 @@ function arg(name: string): string | null {
 }
 
 const tag = arg("tag") ?? "adhoc";
+// 修前對照：--prompt 指到同目錄下的舊版副本（它 import ./prompt_leak.ts，所以要放在 analyze-chat/ 內）。
+const promptPath = arg("prompt") ?? "supabase/functions/analyze-chat/opener_prompt.ts";
+const OPENER_PROMPT: string = (await import(new URL(`../../${promptPath}`, import.meta.url).href)).OPENER_PROMPT;
 const wantSupplement = Deno.args.includes("--supplement");
 const only = arg("only")?.split(",") ?? null;
 const apiKey = (await Deno.readTextFile(`${Deno.env.get("HOME")}/.config/anthropic/key`)).trim();
@@ -210,11 +213,11 @@ for (const p of PROFILES) {
     outTok += usage?.output_tokens ?? 0;
     const parsed = parseJsonObjectFromText(text) as Record<string, unknown> | null;
     const openers = (parsed?.openers ?? {}) as Record<string, string>;
+    await Deno.writeTextFile(new URL(`${p.id}.${arm}.json`, outDir), JSON.stringify({ user, raw: text, usage }, null, 2));
     const missing = OPENER_TYPES.filter((t) => typeof openers[t] !== "string" || !openers[t].trim());
-    if (missing.length) throw new Error(`${p.id}.${arm}：五句不齊（${missing.join(",")}），原文見 out/`);
+    if (missing.length) throw new Error(`${p.id}.${arm}：五句不齊（${missing.join(",")}），原文見 out/${tag}/${p.id}.${arm}.json`);
     const rec = (parsed?.recommendation ?? {}) as Record<string, string>;
     openersByArm[arm] = openers;
-    await Deno.writeTextFile(new URL(`${p.id}.${arm}.json`, outDir), JSON.stringify({ user, raw: text, usage }, null, 2));
     const hits = OPENER_TYPES.flatMap((t) =>
       p.forbidden.filter((w) => (openers[t] ?? "").includes(w)).map((w) => `${t}:${w}`)
     );
