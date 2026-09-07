@@ -58,7 +58,7 @@
       "file": "opener_prompt.ts",
       "start": "const OPENER_REPAIR_PROMPT = `",
       "end": "`;",
-      "sha256": "3291b27b089c9488a78319fd07f705ee690fad40e514d75e2d875ed5c0e444d8"
+      "sha256": "b8dda1ea2ca746648c2a7ab0b0794cca5c43a4d2aa2f6abe761c251534e100f6"
     },
     "TIER_MONTHLY_LIMITS": {
       "file": "analyze_chat_handler.ts",
@@ -142,7 +142,7 @@
       "file": "opener_prompt.ts",
       "start": "const OPENER_PROMPT =",
       "end": "`;",
-      "sha256": "27d30e5aa0df843505210ead1869f4082f56da8abc26d2f3821c480929769ed1"
+      "sha256": "6681050d9b0f11e79375d1c71fd8c5a3204f5ec8bb01644c27e4af9777012b23"
     },
     "PHASE1_VISION_INSTRUMENT_ADDENDUM": {
       "file": "ocr_recognition_prompt.ts",

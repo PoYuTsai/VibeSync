@@ -106,10 +106,12 @@ async function repairMalformedOpenerPayload({
   rawText,
   apiKey,
   absoluteDeadlineAtMs,
+  normalizeOpts,
 }: {
   rawText: string;
   apiKey: string;
   absoluteDeadlineAtMs: number;
+  normalizeOpts: Parameters<typeof normalizeOpenerPayload>[1];
 }): Promise<{
   parsed: Record<string, unknown> | null;
   rawText: string;
@@ -145,7 +147,7 @@ async function repairMalformedOpenerPayload({
   const repairedText = extractClaudeText(repairData);
 
   return {
-    parsed: normalizeOpenerPayload(parseJsonObjectFromText(repairedText)),
+    parsed: normalizeOpenerPayload(parseJsonObjectFromText(repairedText), normalizeOpts),
     rawText: repairedText,
     model: repairResult.model,
     fallbackUsed: repairResult.fallbackUsed,
@@ -531,7 +533,20 @@ export async function handleOpenerRequest(
     return jsonResponse(buildWrongSurfaceErrorBody(wrongSurface), 422);
   }
 
-  let parsed = normalizeOpenerPayload(openerPrimaryParsed);
+  // 共鳴「我也」前半句由 composeResonateOpener 組（Eric 2026-09-08）：引文
+  // 必須逐字在 openerStyleContext 裡，模型寫不到「我」；結果只記 log。
+  const normalizeOpts: Parameters<typeof normalizeOpenerPayload>[1] = {
+    styleContext: openerStyleContext,
+    onResonateCompose: (outcome) => {
+      logInfo("opener_resonate_compose", {
+        user: summarizeUser(deps.userId),
+        basis: outcome.basis,
+        ...(outcome.basis === "tail_only" ? { reason: outcome.reason } : {}),
+        hasStyleContext: Boolean(openerStyleContext),
+      });
+    },
+  };
+  let parsed = normalizeOpenerPayload(openerPrimaryParsed, normalizeOpts);
   let repairMetadata:
     | Awaited<
       ReturnType<typeof repairMalformedOpenerPayload>
@@ -543,6 +558,7 @@ export async function handleOpenerRequest(
         rawText,
         apiKey,
         absoluteDeadlineAtMs: openerDeadlineAtMs,
+        normalizeOpts,
       });
       parsed = repairMetadata.parsed;
       if (parsed) {
@@ -615,6 +631,7 @@ export async function handleOpenerRequest(
         rawText,
         apiKey,
         absoluteDeadlineAtMs: openerDeadlineAtMs,
+        normalizeOpts,
       });
       const repaired = repairMetadata.parsed;
       if (repaired && missingOpenerTypes(repaired).length === 0) {

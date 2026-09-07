@@ -18,11 +18,14 @@ const OPENER_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON 格式修復�
 - stretchLevels 對應同名 opener 相對使用者舒適區的延伸程度（within/stretch/far）；
   沒有舒適區資訊時全部回傳 "within"。
 - profileAnalysis / pioneerPlan / recommendation.reason 都是客戶可見解釋；只用自然中文說明具體線索與下一步，不寫技巧名、內部欄位名或方法標籤。
+- profileAnalysis.resonateBasis 與 senderFactQuoted 若原文有就逐字保留（共鳴前半句由後端接）。
 - 請只輸出 JSON object，不要 code fence，不要前後說明。
 
 必要 schema：
 {
   "profileAnalysis": {
+    "resonateBasis": "style_overlap | her_situation",
+    "senderFactQuoted": "style_overlap 時的設定引文，否則 null",
     "style": "可見風格 / 氛圍",
     "personality": "互動切入判斷，不是人格診斷",
     "avoidTopics": ["明確不該問/不該踩的點"],
@@ -180,7 +183,7 @@ profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，�
 
 ## 五種風格各有任務（不要五張都做成同一種壞壞推拉）
 1. **extend（延展）**：最穩、最好回。抓一個可見細節延伸成她能順手回答的東西；不問泛題、不油、不裝熟。
-2. **resonate（共鳴）**：共鳴句裡的「我」只有一個合法來源——訊息附的用戶風格設定，而且要和她的可見線索真的交集（她養柴犬、他的設定也寫養狗）。先在 profileAnalysis.resonateBasis 寫下依據：有交集是 style_overlap，這時可以說「我也」，但句子的形狀固定是「我也＋設定原文」＋把話題丟回她（我也養柴犬，妳家那隻不給摸是天生的嗎）；關於我的事實只有設定原文那幾個字，她的細節不能套到我身上（設定寫「養柴犬」，句子不能變成「我家那隻也不給摸」）；沒附設定、或沒交集，就是 her_situation，共鳴句**不得出現任何第一人稱的事實或經歷**，也不得用省略主詞的方式暗示共同身分（「同城的報到」「同縣市選手」「養狗人舉手」都算），改成站在她的處境說話（這種作息的人放假通常…、養這種狗的都懂…）。編一個用戶沒說過的經歷等於替他說謊，她一追問就穿幫。
+2. **resonate（共鳴）**：共鳴句裡的「我」只有一個合法來源——訊息附的用戶風格設定，而且要和她的可見線索真的交集（她養柴犬、他的設定也寫養狗）。先在 profileAnalysis.resonateBasis 寫下依據：有交集是 style_overlap，這時 senderFactQuoted 逐字抄設定裡的**一個**項目（不含頓號、不含「我」、20 字內），而 openers.resonate **只寫後半句**：一句關於她的話，不含「我」、不含前導標點——系統會自動在前面接上「我也＋senderFactQuoted，」。關於我的事實只有那句引文，她的細節不能套到我身上；沒附設定、或沒交集，就是 her_situation，共鳴句**不得出現任何第一人稱的事實或經歷**，也不得用省略主詞的方式暗示共同身分（「同城的報到」「同縣市選手」「養狗人舉手」都算），改成站在她的處境說話（這種作息的人放假通常…、養這種狗的都懂…）。編一個用戶沒說過的經歷等於替他說謊，她一追問就穿幫。
 3. **tease（調情）**：只做微拉不做重拉——像輕輕戳一下她資料裡的一個具體細節或反差（戳的是她的生活，不是她的自介寫法），不攻擊她本人價值、不冒犯、不讓她需要防衛。UI 上叫「調情」，**內部術語「微拉」絕不輸出**。若她自己先自嘲了某個特質（微胖、路痴、懶…），可以順著那個自嘲輕輕反駁回去——**接住並否定她的自貶**，不是解釋、不是安慰、不是道歉。只在她自己先提時可用，不得憑空評論身材。
 4. **humor（幽默）**：輕自嘲、場景幽默、無厘頭都可以，要「可愛地怪」不是表演段子。
 5. **coldRead（冷讀）**：只做可被推翻的互動風格猜測，不做深層人格判決。目標質感：**短、旁路、可否認可補充**，不把線索原文說破。反例——複述職業「妳在夜場上班嗎」、人格判決「你是高開放性人格」。
@@ -288,7 +291,7 @@ profileAnalysis.insufficientInfo 是 AI 對自己輸出品質的誠實自評，�
   "wrongSurface": null,
   "profileAnalysis": {
     "resonateBasis": "style_overlap | her_situation（共鳴句的「我」有沒有合法來源：用戶風格設定與她的線索真的交集才是 style_overlap，否則 her_situation、共鳴句不得出現第一人稱事實）",
-    "senderFactQuoted": "style_overlap 時逐字抄下設定裡要用的那一句（例如「養了一隻柴犬」），五句裡關於「我」的事實只能是這句、不能多一個字的細節；her_situation 時 null",
+    "senderFactQuoted": "style_overlap 時逐字抄設定裡要用的一個項目（例如「養了一隻柴犬」，不含頓號、不含「我」、20 字內）；系統會把「我也＋這句，」接在 openers.resonate 前面，所以 resonate 只寫關於她的後半句；her_situation 時 null",
     "bioComposition": "hooks | mixed | filter_heavy | none（先判自介組成再寫五句：可接線索為主／規則多但還有任何一個正向線索就是 mixed／抱怨與篩選條件佔大半且正向線索只剩基本欄位才是 filter_heavy／幾乎沒自介）",
     "style": "可見風格 / 氛圍（如果有截圖/資料）",
     "personality": "互動切入判斷，不是人格診斷",

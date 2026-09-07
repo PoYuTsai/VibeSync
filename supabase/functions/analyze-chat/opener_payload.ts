@@ -319,8 +319,98 @@ export function buildWrongSurfaceErrorBody(surface: WrongSurface): {
   };
 }
 
+export type ResonateComposeOutcome =
+  | { text: string; basis: "her_situation" }
+  | { text: string; basis: "style_overlap"; quote: string }
+  | {
+    text: string;
+    basis: "tail_only";
+    reason: "no_quote" | "quote_shape" | "quote_not_in_style" | "tail_first_person";
+  };
+
+/**
+ * 共鳴卡「我也」前半句由程式組（Eric 2026-09-08 選項 1）。模型在
+ * resonateBasis=style_overlap 時只寫關於她的後半句，「我也＋設定原文，」
+ * 由這裡接——模型寫不到「我」就編不了經歷。引文必須逐字存在於用戶風格
+ * 設定，否則退回只用後半句（等於 her_situation）。後半句若模型仍寫了
+ * 「我」，不接前綴（避免「我也養狗，我家狗也…」），照現況輸出並回報。
+ */
+export function composeResonateOpener(args: {
+  profileAnalysis: unknown;
+  resonate: string;
+  styleContext: string | null | undefined;
+}): ResonateComposeOutcome {
+  const pa = isPlainObject(args.profileAnalysis) ? args.profileAnalysis : null;
+  const tail = args.resonate;
+  if (pa?.resonateBasis !== "style_overlap") {
+    return { text: tail, basis: "her_situation" };
+  }
+  const rawQuote = typeof pa.senderFactQuoted === "string" ? pa.senderFactQuoted : "";
+  const quote = rawQuote
+    .replace(/[「」"'『』]/g, "")
+    .split(/[、，,;；\n]/)[0]
+    .replace(/^[^：:]*[：:]/, "")
+    .trim()
+    .replace(/^我也?/, "");
+  if (!quote) return { text: tail, basis: "tail_only", reason: "no_quote" };
+  if (quote.length < 2 || quote.length > 20) {
+    return { text: tail, basis: "tail_only", reason: "quote_shape" };
+  }
+  // 模型常把設定的「養狗」改寫成「養了一隻狗」：去掉量詞後再對一次，前綴用設定原文。
+  const candidates = [quote, quote.replace(/了?一(隻|個|台|輛|間|部|條|位)/g, "")];
+  const matched = candidates.find((c) => c.length >= 2 && args.styleContext?.includes(c));
+  if (!matched) {
+    // 引文對不回設定：不接前綴，但模型自己寫的「我…」子句一樣丟掉，只留她的部分。
+    return {
+      text: stripFirstPersonClauses(tail) ?? tail,
+      basis: "tail_only",
+      reason: "quote_not_in_style",
+    };
+  }
+  // 模型常無視「只寫後半句」，自己寫出「我也養了一隻柴犬，只是我家那隻很愛討摸，妳這隻…」。
+  // 這裡把含「我」的子句整個丟掉（活坑：清洗要丟整子句），只留關於她的部分，再接程式組的前綴。
+  let herPart = stripFirstPersonClauses(tail);
+  if (!herPart) {
+    return { text: tail, basis: "tail_only", reason: "tail_first_person" };
+  }
+  // 模型有時把引文本身當後半句開頭（「養了一隻柴犬，妳這隻…」），去重。
+  for (const c of candidates) {
+    if (c && herPart.startsWith(c)) {
+      herPart = herPart.slice(c.length).replace(/^[，,。！!？?；;、\s]+/, "");
+      break;
+    }
+  }
+  return {
+    text: herPart ? `我也${matched}，${herPart}` : `我也${matched}`,
+    basis: "style_overlap",
+    quote: matched,
+  };
+}
+
+/** 以標點切子句，丟掉含「我」的子句；全丟光回 null。 */
+function stripFirstPersonClauses(text: string): string | null {
+  const tokens = text.split(/([，,。！!？?；;\n])/);
+  let out = "";
+  for (let i = 0; i < tokens.length; i += 2) {
+    const clause = tokens[i];
+    const delim = tokens[i + 1] ?? "";
+    if (!clause.trim() || clause.includes("我")) continue;
+    out += clause + delim;
+  }
+  // 丟掉子句後開頭殘留的連接詞（「但」「只是」…）一起清掉。
+  const cleaned = out
+    .replace(/^[，,。！!？?；;、\s]+/, "")
+    .replace(/^(但是|但|只是|不過|可是|而且|然後|所以)/, "")
+    .replace(/[，,；;、\s]+$/, "");
+  return cleaned.length >= 2 ? cleaned : null;
+}
+
 export function normalizeOpenerPayload(
   parsed: Record<string, unknown> | null,
+  opts?: {
+    styleContext?: string | null;
+    onResonateCompose?: (outcome: ResonateComposeOutcome) => void;
+  },
 ): Record<string, unknown> | null {
   if (!parsed) return null;
 
@@ -332,6 +422,16 @@ export function normalizeOpenerPayload(
     if (opener) {
       openers[type] = opener;
     }
+  }
+
+  if (openers.resonate) {
+    const outcome = composeResonateOpener({
+      profileAnalysis: parsed.profileAnalysis,
+      resonate: openers.resonate,
+      styleContext: opts?.styleContext ?? null,
+    });
+    openers.resonate = outcome.text;
+    opts?.onResonateCompose?.(outcome);
   }
 
   if (Object.keys(openers).length === 0) {

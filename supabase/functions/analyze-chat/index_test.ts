@@ -898,6 +898,7 @@ Deno.test({
     assert(source.includes("她的細節不能套到我身上"));
     assert(source.includes("有沒有替用戶編經歷"));
     assert(source.includes('"senderFactQuoted"'));
+    assert(source.includes("系統會自動在前面接上「我也＋senderFactQuoted，」"));
     assert(source.includes("有點壞但有邊界的鬆弛感"));
     // 2026-08-19 瘦身：旁路冷讀／三層優先級／框架大於話術／Specialness Gate／
     // Female Reply Check／品質標準／五題自檢七個區塊合併成兩塊，這裡改鎖語意
