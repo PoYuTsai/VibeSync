@@ -1,393 +1,420 @@
 import '../domain/night_market_scenario.dart';
 
-const _videoRoot = 'assets/videos/night_market';
-const _voiceRoot = 'assets/audio/night_market';
-const _sfxRoot = 'assets/audio/night_market';
+const _s1Captions = <NightMarketCaption>[
+  NightMarketCaption(
+    start: Duration(milliseconds: 3640),
+    end: Duration(milliseconds: 5390),
+    speaker: NightMarketSpeaker.coach,
+    text: '等我一下，我看一下這個。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 5440),
+    end: Duration(milliseconds: 9410),
+    speaker: NightMarketSpeaker.coach,
+    text: '想認識她？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 9460),
+    end: Duration(milliseconds: 13710),
+    speaker: NightMarketSpeaker.coach,
+    text: '先吐口氣，三二一，走過去。',
+  ),
+];
 
-String _video(String id) => '$_videoRoot/$id.mp4';
-String _voice(String id) => '$_voiceRoot/$id.mp3';
-String _sfx(String id) => '$_sfxRoot/$id.wav';
+const _s2Captions = <NightMarketCaption>[
+  NightMarketCaption(
+    start: Duration(milliseconds: 6260),
+    end: Duration(milliseconds: 6610),
+    speaker: NightMarketSpeaker.user,
+    text: '嗨。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 6660),
+    end: Duration(milliseconds: 11310),
+    speaker: NightMarketSpeaker.user,
+    text: '剛剛看到妳，覺得妳這件米色外套蠻好看的，很適合妳。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 12900),
+    end: Duration(milliseconds: 13650),
+    speaker: NightMarketSpeaker.npc,
+    text: '喔，謝謝。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 13740),
+    end: Duration(milliseconds: 14690),
+    speaker: NightMarketSpeaker.user,
+    text: '有點突然。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 14740),
+    end: Duration(milliseconds: 27010),
+    speaker: NightMarketSpeaker.user,
+    text: '我跟朋友來買東西，剛在那邊等她。看到妳，想過來打個招呼。你好，我叫 Chris。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 27260),
+    end: Duration(milliseconds: 28490),
+    speaker: NightMarketSpeaker.npc,
+    text: '我叫 Leah。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 28680),
+    end: Duration(milliseconds: 29530),
+    speaker: NightMarketSpeaker.user,
+    text: 'Leah。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 29900),
+    end: Duration(milliseconds: 31510),
+    speaker: NightMarketSpeaker.user,
+    text: '妳今天自己來逛？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 32400),
+    end: Duration(milliseconds: 36030),
+    speaker: NightMarketSpeaker.npc,
+    text: '跟朋友，她還在那邊買吃的。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 36420),
+    end: Duration(milliseconds: 38910),
+    speaker: NightMarketSpeaker.user,
+    text: '那我們現在都在等人。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 42200),
+    end: Duration(milliseconds: 48450),
+    speaker: NightMarketSpeaker.user,
+    text: '妳看起來蠻會挑這種小東西的，應該不太喜歡跟大家買一樣的。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 48680),
+    end: Duration(milliseconds: 52410),
+    speaker: NightMarketSpeaker.npc,
+    text: '也沒有啦，我只是蠻喜歡逛手作的。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 52720),
+    end: Duration(milliseconds: 55970),
+    speaker: NightMarketSpeaker.user,
+    text: '妳是喜歡逛，還是自己也會做？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 57660),
+    end: Duration(milliseconds: 61610),
+    speaker: NightMarketSpeaker.npc,
+    text: '我有去上陶藝課，但做得不怎麼樣。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 62700),
+    end: Duration(milliseconds: 64770),
+    speaker: NightMarketSpeaker.user,
+    text: '妳還真的自己下去做。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 65700),
+    end: Duration(milliseconds: 69550),
+    speaker: NightMarketSpeaker.npc,
+    text: '朋友找我去的，後來覺得蠻好玩。',
+  ),
+];
 
-NightMarketCaption _caption(
-  NightMarketSpeaker speaker,
-  String text,
-  num endSeconds, {
-  num startSeconds = 0,
-}) {
-  return NightMarketCaption(
-    start: Duration(milliseconds: (startSeconds * 1000).round()),
-    end: Duration(milliseconds: (endSeconds * 1000).round()),
-    speaker: speaker,
-    text: text,
-  );
-}
+const _s3Captions = <NightMarketCaption>[
+  NightMarketCaption(
+    start: Duration(milliseconds: 0),
+    end: Duration(milliseconds: 6290),
+    speaker: NightMarketSpeaker.user,
+    text: '我之前也去過一次。原本只是陪朋友，結果最後是我不肯走。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 7140),
+    end: Duration(milliseconds: 7930),
+    speaker: NightMarketSpeaker.npc,
+    text: '為什麼？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 9100),
+    end: Duration(milliseconds: 21090),
+    speaker: NightMarketSpeaker.user,
+    text: '我那時候做一個杯子，杯口怎麼弄都弄不平。我平常很多事情都隨便，但自己想做好的東西，就會突然很龜毛。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 22700),
+    end: Duration(milliseconds: 26450),
+    speaker: NightMarketSpeaker.npc,
+    text: '我也是，我那個把手重做了三次。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 26460),
+    end: Duration(milliseconds: 28830),
+    speaker: NightMarketSpeaker.user,
+    text: '那妳有把它拿回家用嗎？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 30680),
+    end: Duration(milliseconds: 32410),
+    speaker: NightMarketSpeaker.npc,
+    text: '有啊，不然很浪費欸～',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 32460),
+    end: Duration(milliseconds: 37910),
+    speaker: NightMarketSpeaker.user,
+    text: '我那個也還留著，但我朋友每次看到都要講一下。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 39440),
+    end: Duration(milliseconds: 40610),
+    speaker: NightMarketSpeaker.npc,
+    text: '到底是多醜？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 41960),
+    end: Duration(milliseconds: 42850),
+    speaker: NightMarketSpeaker.user,
+    text: '下次給妳看。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 42900),
+    end: Duration(milliseconds: 47930),
+    speaker: NightMarketSpeaker.user,
+    text: '不過妳那個把手願意重做三次，蠻有耐心的。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 49680),
+    end: Duration(milliseconds: 51730),
+    speaker: NightMarketSpeaker.npc,
+    text: '我就是不喜歡做一半。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 52980),
+    end: Duration(milliseconds: 53750),
+    speaker: NightMarketSpeaker.user,
+    text: '這點我蠻欣賞的。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 53800),
+    end: Duration(milliseconds: 57750),
+    speaker: NightMarketSpeaker.user,
+    text: '好，那妳先忙吧，我也回去找我朋友。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 58460),
+    end: Duration(milliseconds: 59630),
+    speaker: NightMarketSpeaker.npc,
+    text: '好啊。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 59920),
+    end: Duration(milliseconds: 62150),
+    speaker: NightMarketSpeaker.user,
+    text: '加個朋友吧，妳有 IG 嗎？',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 62200),
+    end: Duration(milliseconds: 64130),
+    speaker: NightMarketSpeaker.npc,
+    text: '有啊，我掃你。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 68500),
+    end: Duration(milliseconds: 68710),
+    speaker: NightMarketSpeaker.npc,
+    text: '有了。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 68760),
+    end: Duration(milliseconds: 71710),
+    speaker: NightMarketSpeaker.user,
+    text: '改天有空，約個咖啡。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 72560),
+    end: Duration(milliseconds: 73630),
+    speaker: NightMarketSpeaker.npc,
+    text: '好啊。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 74600),
+    end: Duration(milliseconds: 75490),
+    speaker: NightMarketSpeaker.user,
+    text: '那先這樣，掰。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 75540),
+    end: Duration(milliseconds: 76650),
+    speaker: NightMarketSpeaker.npc,
+    text: '掰。',
+  ),
+  NightMarketCaption(
+    start: Duration(milliseconds: 80300),
+    end: Duration(milliseconds: 81170),
+    speaker: NightMarketSpeaker.coach,
+    text: '走吧。',
+  ),
+];
 
-NightMarketChoice _choice({
-  required String id,
-  required String label,
-  required String spokenText,
-  required String nextId,
-  required String feedbackTag,
-}) {
-  return NightMarketChoice(
-    id: id,
-    label: label,
-    spokenText: spokenText,
-    audioAsset: spokenText.trim().isEmpty ? null : _voice(id),
-    nextId: nextId,
-    feedbackTag: feedbackTag,
-  );
-}
-
-/// Builds the finite, asset-backed night-market story.
+/// Builds the finite, asset-backed night-market story (v2 script, 2026-09-08).
 ///
-/// The run variant is chosen by the caller before playback. It controls the
-/// time situation after the tea is called; it is never inferred from a user
-/// choice or from a perceived NPC reaction.
-NightMarketScenario buildNightMarketScenario({
-  NightMarketRunVariant variant = NightMarketRunVariant.available,
-}) {
-  final postCallId =
-      variant == NightMarketRunVariant.available ? 'available' : 'busy';
-
-  return NightMarketScenario(
-    id: 'night_market_v1',
-    initialBeatId: 'establish',
+/// Three bundled segments, two stop points. Every choice continues on the
+/// main line; a non-main choice first shows a coach card. Copy source:
+/// Opening 11「簡易搭訕流程詳解」, see docs/learning/night-market-research/.
+NightMarketScenario buildNightMarketScenario() {
+  return const NightMarketScenario(
+    id: 'night_market_v2',
+    title: '簡易搭訕流程詳解',
+    subtitle: '夜市實戰版：從注意到她到收號，約 3 分鐘、2 個選擇',
+    coverAsset: 'assets/images/night_market/cover.jpg',
+    initialBeatId: 's1_notice',
     beats: <NightMarketBeat>[
       NightMarketBeat(
-        id: 'establish',
-        videoAsset: _video('establish'),
-        posterAsset: 'assets/images/night_market/sydney.jpg',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.coach, '你剛剛不是說只吃一攤？', 2),
-          _caption(NightMarketSpeaker.coach, '好啦，先逛一圈。', 5, startSeconds: 2),
-          _caption(NightMarketSpeaker.coach, '前面有一家手作攤。', 8, startSeconds: 5),
-        ],
-        nextId: 'hesitate',
-      ),
-      NightMarketBeat(
-        id: 'hesitate',
-        videoAsset: _video('hesitate'),
-        posterAsset: 'assets/images/night_market/sydney.jpg',
-        hint: 'Sydney｜先吐口氣。穩穩走到她看得到的位置，不用急著想下一句。',
-        sfxAsset: _sfx('hesitate-heartbeat'),
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.coach, '有想認識她？先吐口氣。', 6.38,
-              startSeconds: 3.76),
-          _caption(NightMarketSpeaker.coach, '三、二、一。', 8.24,
-              startSeconds: 6.38),
-          _caption(NightMarketSpeaker.coach, '從她看得到的地方過去，', 10,
-              startSeconds: 8.24),
-          _caption(NightMarketSpeaker.coach, '我在這裡。', 10.92, startSeconds: 10),
-        ],
+        id: 's1_notice',
+        videoAsset: 'assets/videos/night_market/s1_notice.mp4',
+        captions: _s1Captions,
+        hint: '確信感｜決定要就走，決定不去就放下，不站著糾結。',
         choices: <NightMarketChoice>[
-          _choice(
+          NightMarketChoice(
             id: 'approach',
             label: '走到她看得到的側前方',
-            spokenText: '',
-            nextId: 'opening',
-            feedbackTag: 'clear_approach',
+            nextId: 's2_opening_to_craft',
           ),
-          _choice(
-            id: 'keepwalking',
-            label: '先繼續逛夜市',
-            spokenText: '',
-            nextId: 'pause_ending',
-            feedbackTag: 'respectful_pause',
+          NightMarketChoice(
+            id: 'wait_for_her',
+            label: '等她逛到我旁邊再說',
+            nextId: 's2_opening_to_craft',
+            coachCard: '等時機｜等時機就是猶豫，她不會走過來。要就現在走，不要就放下，兩個都比站著好。',
           ),
         ],
       ),
       NightMarketBeat(
-        id: 'opening',
-        videoAsset: _video('opening'),
-        posterAsset: 'assets/images/night_market/leah.jpg',
-        hint: 'Sydney｜她已經聽見了。簡短介紹自己，留一點空間讓她接。',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.user, '妳這件米色外套搭得很好看，', 7.28,
-              startSeconds: 4.86),
-          _caption(NightMarketSpeaker.user, '剛剛經過就注意到了。', 8.88,
-              startSeconds: 7.28),
-          _caption(NightMarketSpeaker.user, '我想來跟妳打個招呼。', 11.64,
-              startSeconds: 8.88),
-          _caption(NightMarketSpeaker.npc, '嗨。', 13.8, startSeconds: 13.22),
-        ],
+        id: 's2_opening_to_craft',
+        videoAsset: 'assets/videos/night_market/s2_opening_to_craft.mp4',
+        captions: _s2Captions,
+        hint: '提問是工具｜接她的話，再給她一小段你自己，不要連著問。',
         choices: <NightMarketChoice>[
-          _choice(
-            id: 'introduce',
-            label: '我叫阿澤，剛下班來逛逛。',
-            spokenText: '我叫阿澤，剛下班來逛逛。',
-            nextId: 'concern',
-            feedbackTag: 'clear_introduction',
+          NightMarketChoice(
+            id: 'extend',
+            label: '「我之前也去過一次，結果最後是我不肯走。」',
+            nextId: 's3_lifehook_to_end',
           ),
-          _choice(
-            id: 'pressure_wait',
-            label: '等一下，妳先不要走。',
-            spokenText: '等一下，妳先不要走。',
-            nextId: 'decline',
-            feedbackTag: 'pressure_repair',
+          NightMarketChoice(
+            id: 'interrogate',
+            label: '「妳平常在哪上班？住這附近嗎？」',
+            nextId: 's3_lifehook_to_end',
+            coachCard: '查戶口｜這樣她只會覺得被查戶口，對話會斷。接她的話，再給她一小段你自己。',
           ),
         ],
       ),
       NightMarketBeat(
-        id: 'concern',
-        videoAsset: _video('concern'),
-        posterAsset: 'assets/images/night_market/leah.jpg',
-        hint: 'Sydney｜這是來意的疑慮。先回答她，不必急著證明自己。',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '你不是在賣東西吧？', 5.68,
-              startSeconds: 2.52),
-          _caption(NightMarketSpeaker.npc, '剛剛好多人在發傳單。', 7.72,
-              startSeconds: 5.68),
-        ],
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'answer_intent',
-            label: '不是，我沒有東西要賣；就是想跟妳聊兩句。',
-            spokenText: '不是，我沒有東西要賣；就是想跟妳聊兩句。',
-            nextId: 'work',
-            feedbackTag: 'meaningful_callback',
-          ),
-          _choice(
-            id: 'challenge_sales',
-            label: '妳看我像推銷員嗎？',
-            spokenText: '妳看我像推銷員嗎？',
-            nextId: 'decline',
-            feedbackTag: 'defensive_reply',
-          ),
-        ],
-      ),
-      NightMarketBeat(
-        id: 'work',
-        videoAsset: _video('work'),
-        posterAsset: 'assets/images/night_market/leah.jpg',
-        hint: 'Sydney｜她在問你。給她一小段真實的自己，再把話題交回去。',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '喔，原來是這樣。', 3.88,
-              startSeconds: 2.14),
-          _caption(NightMarketSpeaker.npc, '我叫 Leah。你是做什麼的？', 6.44,
-              startSeconds: 4.42),
-        ],
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'share_product_design',
-            label: '我做產品設計，把亂的東西整理成好用的流程。妳呢？',
-            spokenText: '我做產品設計，把亂的東西整理成好用的流程。妳呢？',
-            nextId: 'craft',
-            feedbackTag: 'meaningful_callback',
-          ),
-          _choice(
-            id: 'ask_demographics',
-            label: '就上班啊。妳幾歲？',
-            spokenText: '就上班啊。妳幾歲？',
-            nextId: 'decline',
-            feedbackTag: 'missed_question',
-          ),
-        ],
-      ),
-      NightMarketBeat(
-        id: 'craft',
-        videoAsset: _video('craft'),
-        posterAsset: 'assets/images/night_market/leah.jpg',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '我做職能治療。下班有時去做陶杯。', 5.34,
-              startSeconds: 0.94),
-          _caption(NightMarketSpeaker.user, '我第一次拉坯，杯子歪得很有個性。', 9.4,
-              startSeconds: 6.2),
-          _caption(NightMarketSpeaker.npc, '那是杯子還是花盆？', 12, startSeconds: 10.5),
-          _caption(NightMarketSpeaker.user, '介於兩者，老師說很有個人風格。', 16.2,
-              startSeconds: 13.32),
-        ],
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'share_pen_holder',
-            label: '現在拿來放筆了，放在桌上剛剛好。',
-            spokenText: '現在拿來放筆了，放在桌上剛剛好。',
-            nextId: 'tease',
-            feedbackTag: 'meaningful_callback',
-          ),
-          _choice(
-            id: 'share_pen_holder_light',
-            label: '老師人很好，至少我做出了一個筆筒。',
-            spokenText: '老師人很好，至少我做出了一個筆筒。',
-            nextId: 'tease',
-            feedbackTag: 'shared_humor',
-          ),
-        ],
-      ),
-      NightMarketBeat(
-        id: 'tease',
-        videoAsset: _video('tease'),
-        posterAsset: 'assets/images/night_market/leah.jpg',
-        hint: 'Sydney｜她笑著接了杯子的梗。用你自在的方式回答，不用反擊。',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '至少還用得上。', 4.84, startSeconds: 2.86),
-          _caption(NightMarketSpeaker.npc, '你很常這樣跟女生打招呼嗎？', 8.22,
-              startSeconds: 5.58),
-        ],
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'first_today',
-            label: '今天第一個。',
-            spokenText: '今天第一個。',
-            nextId: 'call',
-            feedbackTag: 'consistent_humor',
-          ),
-          _choice(
-            id: 'hungry_vendor',
-            label: '我比較常跟老闆搭話，因為我肚子餓。',
-            spokenText: '我比較常跟老闆搭話，因為我肚子餓。',
-            nextId: 'call',
-            feedbackTag: 'shared_humor',
-          ),
-        ],
-      ),
-      NightMarketBeat(
-        id: 'call',
-        videoAsset: _video('call'),
-        posterAsset: 'assets/images/night_market/leah.jpg',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '至少你有先說來意。', 2.14),
-          _caption(NightMarketSpeaker.vendor, '十七號，無糖烏龍！', 5,
-              startSeconds: 2.92),
-          _caption(NightMarketSpeaker.npc, '我的茶好了，等我一下。', 7.44,
-              startSeconds: 5.52),
-        ],
-        nextId: postCallId,
-      ),
-      NightMarketBeat(
-        id: 'available',
-        videoAsset: _video('available'),
-        posterAsset: 'assets/images/night_market/leah-cup.jpg',
-        hint: 'Sydney｜她說還有時間，也接續了話題。邀請可以具體、小一點。',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '我朋友還要二十分鐘才來，', 6.48,
-              startSeconds: 4.44),
-          _caption(NightMarketSpeaker.npc, '還能逛一下。', 7.76, startSeconds: 6.48),
-          _caption(NightMarketSpeaker.npc, '旁邊那家是在賣陶杯嗎？', 9.94,
-              startSeconds: 7.76),
-        ],
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'invite_craft_stall',
-            label: '要不要去旁邊逛兩分鐘手作攤？',
-            spokenText: '要不要去旁邊逛兩分鐘手作攤？',
-            nextId: 'date',
-            feedbackTag: 'meaningful_callback',
-          ),
-          _choice(
-            id: 'leave_available',
-            label: '那我們先各自逛，今晚玩得開心。',
-            spokenText: '那我們先各自逛，今晚玩得開心。',
-            nextId: 'decline',
-            feedbackTag: 'respectful_exit',
-          ),
-        ],
-      ),
-      NightMarketBeat(
-        id: 'date',
-        videoAsset: _video('date'),
-        posterAsset: 'assets/images/night_market/leah-cup.jpg',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '好啊，去看一下。', 7.8, startSeconds: 6.4),
-          _caption(NightMarketSpeaker.user, '這杯子比我的直很多。', 10.4,
-              startSeconds: 8.22),
-          _caption(NightMarketSpeaker.npc, '拉坯要慢一點，急了就會歪。', 13.56,
-              startSeconds: 10.4),
-          _caption(NightMarketSpeaker.user, '那今天先欣賞就好。', 15.2,
-              startSeconds: 13.56),
-          _caption(NightMarketSpeaker.npc, '先不要把它碰倒。', 16.6,
-              startSeconds: 15.2),
-        ],
-        nextId: 'decline',
-      ),
-      NightMarketBeat(
-        id: 'busy',
-        videoAsset: _video('busy'),
-        posterAsset: 'assets/images/night_market/leah-cup.jpg',
-        hint: 'Sydney｜她有在接話，但朋友在等。先尊重時間，再決定怎麼收尾。',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '朋友在前面等我了。', 5, startSeconds: 2.86),
-          _caption(NightMarketSpeaker.npc, '不過剛剛那個杯子的故事蠻好笑的。', 7.74,
-              startSeconds: 5),
-        ],
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'offer_contact',
-            label: '妳願意的話我留我的，改天喝無糖烏龍；不用現在回。',
-            spokenText: '妳願意的話我留我的，改天喝無糖烏龍；不用現在回。',
-            nextId: 'contact',
-            feedbackTag: 'meaningful_callback',
-          ),
-          _choice(
-            id: 'respect_busy_bye',
-            label: '了解，祝妳今晚逛得開心，再見。',
-            spokenText: '了解，祝妳今晚逛得開心，再見。',
-            nextId: 'decline',
-            feedbackTag: 'respectful_exit',
-          ),
-        ],
-      ),
-      NightMarketBeat(
-        id: 'contact',
-        videoAsset: _video('contact'),
-        posterAsset: 'assets/images/night_market/leah-cup.jpg',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '好啊，我掃你。', 2.2, startSeconds: 0.66),
-          _caption(NightMarketSpeaker.npc, '下次可以看看那個很有個性的杯子。', 5.2,
-              startSeconds: 2.76),
-          _caption(NightMarketSpeaker.npc, '我要先走了，掰掰。', 7.48,
-              startSeconds: 6.06),
-        ],
-        nextId: 'coach',
-      ),
-      NightMarketBeat(
-        id: 'decline',
-        videoAsset: _video('decline'),
-        posterAsset: 'assets/images/night_market/leah-close.jpg',
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.npc, '謝謝，我先走了。', 2.36),
-          _caption(NightMarketSpeaker.npc, '祝你們逛得開心。', 4.22,
-              startSeconds: 2.36),
-        ],
-        nextId: 'coach',
-      ),
-      NightMarketBeat(
-        id: 'coach',
-        videoAsset: _video('coach'),
-        posterAsset: 'assets/images/night_market/sydney.jpg',
-        sfxAsset: _sfx('ui-cue'),
-        captions: <NightMarketCaption>[
-          _caption(NightMarketSpeaker.coach, '剛剛哪一句，讓你最想急著解釋？', 4.04,
-              startSeconds: 0.82),
-          _caption(NightMarketSpeaker.coach, '先接住對方說的，再選你真的想說的。', 9.32,
-              startSeconds: 5.28),
-          _caption(NightMarketSpeaker.coach, '這個比背台詞重要。', 11.4,
-              startSeconds: 9.8),
-        ],
-        ending: true,
-        choices: <NightMarketChoice>[
-          _choice(
-            id: 'retry_earliest',
-            label: '再練一次開場',
-            spokenText: '',
-            nextId: 'opening',
-            feedbackTag: 'keypoint_retry',
-          ),
-          _choice(
-            id: 'retry_callback',
-            label: '再練一次話題延伸',
-            spokenText: '',
-            nextId: 'craft',
-            feedbackTag: 'keypoint_retry',
-          ),
-        ],
-      ),
-      const NightMarketBeat(
-        id: 'pause_ending',
-        videoAsset: 'assets/videos/night_market/coach.mp4',
-        textOnly: true,
+        id: 's3_lifehook_to_end',
+        videoAsset: 'assets/videos/night_market/s3_lifehook_to_end.mp4',
+        captions: _s3Captions,
         ending: true,
       ),
     ],
+    review: <NightMarketReviewItem>[
+      // 心態層：四個感。
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.mindset,
+        term: '確信感',
+        plain: '你知道自己為什麼走過去，所以不用演。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.mindset,
+        term: '配得感',
+        plain: '不用證明自己配得上，也不用反覆解釋。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.mindset,
+        term: '自娛自樂感',
+        plain: '你先覺得這段互動好玩，她才會覺得好玩。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.mindset,
+        term: '流動感',
+        plain: '像跟朋友聊天，不在腦子裡檢查下一句。',
+      ),
+      // 這次的六個關鍵（流程順序）。
+      NightMarketReviewItem(
+        term: '淺溝通＋強眼神溝通',
+        plain: '重心往後、尾音下沉，直視她的眼睛不飄開。內容普通也能傳訊息。',
+      ),
+      NightMarketReviewItem(
+        term: '同理心陳述＋背景介紹',
+        plain: '「有點突然」是陳述。停一拍，再說你為什麼在這、等誰、名字。',
+      ),
+      NightMarketReviewItem(
+        term: '冷讀',
+        plain: '說出你的觀察和猜測，看她怎麼認同或修正。猜錯就承認。',
+      ),
+      NightMarketReviewItem(
+        term: '留白＋鉤子評估',
+        plain: '每次透露一點自己，留一個她可以追問的鉤子。她追不追問就是你的儀表板。',
+      ),
+      NightMarketReviewItem(
+        term: '無興趣指標',
+        plain: '聊得正好時先收一輪，不黏著、不聊到沒話。',
+      ),
+      NightMarketReviewItem(
+        term: '收號',
+        plain: '眼神和聲音跟前面一樣穩。簡單提，不解釋一堆。',
+      ),
+      // 更多技巧（收合）。
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '第一分鐘破防',
+        plain: '前六十秒先讓她放下戒心，之後才談吸引。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '打開',
+        plain: '走到她看得到的側前方，不擋人流，停穩再開口。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '開場白不重要',
+        plain: '直接或間接都可以，開場只是進門的工具。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '男女前提',
+        plain: '讓她知道你是以男生對女生的身分來認識她，不是路人問路。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '提問是工具',
+        plain: '可以問基本資訊，但要延伸、要過渡到對話，不要一直問。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '觀察情緒',
+        plain: '不必更好笑。看她有沒有笑、怎麼笑、還在不在。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '賦格',
+        plain: '她先讓你看到一點自己，你再給有根據的肯定。',
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '失格',
+        plain: '偶爾收回一點認同，製造張力。',
+        optional: true,
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '推拉',
+        plain: '一句靠近、一句退開，讓節奏有起伏。',
+        optional: true,
+      ),
+      NightMarketReviewItem(
+        tier: NightMarketReviewTier.more,
+        term: '忙碌收尾／即約',
+        plain: '她有行程就收短、把下一步說清楚；有時間又在延續，就提具體邀請。',
+        met: false,
+      ),
+    ],
+    takeaway: '下次只記這個：強眼神溝通。',
   );
 }

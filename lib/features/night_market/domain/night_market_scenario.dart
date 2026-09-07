@@ -1,27 +1,18 @@
 /// Typed contract for the finite Night Market video scenario.
 ///
 /// Concrete beats live in a separate data file so presentation code does not
-/// hard-code remote URLs or bind itself to one script revision.
-enum NightMarketRunVariant {
-  busy,
-  available,
-}
+/// bind itself to one script revision.
+enum NightMarketSpeaker { npc, coach, user }
 
-enum NightMarketSpeaker {
-  npc,
-  coach,
-  user,
-  vendor,
-}
-
-/// A timed caption rendered while [videoAsset] is playing.
+/// A timed caption; hidden by default, shown only when the player turns
+/// captions on.
 class NightMarketCaption {
   const NightMarketCaption({
     required this.start,
     required this.end,
     required this.speaker,
     required this.text,
-  }) : assert(end > start);
+  });
 
   final Duration start;
   final Duration end;
@@ -29,120 +20,88 @@ class NightMarketCaption {
   final String text;
 }
 
-/// One finite, non-interactive video beat. Choices become available only after
-/// the player reports completion; [nextId] handles automatic continuation.
-class NightMarketBeat {
-  const NightMarketBeat({
-    required this.id,
-    required this.videoAsset,
-    this.posterAsset,
-    this.captions = const <NightMarketCaption>[],
-    this.hint,
-    this.choices = const <NightMarketChoice>[],
-    this.nextId,
-    this.ending = false,
-    this.textOnly = false,
-    this.voiceoverAsset,
-    this.sfxAsset,
-  });
-
-  final String id;
-  final String videoAsset;
-  final String? posterAsset;
-  final List<NightMarketCaption> captions;
-  final String? hint;
-  final List<NightMarketChoice> choices;
-  final String? nextId;
-  final bool ending;
-  final bool textOnly;
-  final String? voiceoverAsset;
-  final String? sfxAsset;
-
-  bool get waitsForChoice => choices.isNotEmpty;
-}
-
-/// A user choice that may play one spoken line before advancing to [nextId].
+/// A choice at a stop point. Every choice continues to [nextId]; a non-main
+/// choice first shows [coachCard] (術語｜白話) before continuing.
 class NightMarketChoice {
   const NightMarketChoice({
     required this.id,
     required this.label,
-    this.spokenText,
-    this.audioAsset,
     required this.nextId,
-    this.feedbackTag,
+    this.coachCard,
   });
 
   final String id;
   final String label;
-  final String? spokenText;
-  final String? audioAsset;
   final String nextId;
-  final String? feedbackTag;
+  final String? coachCard;
+}
+
+/// One finite video segment. Playback stops at its last frame; [choices] then
+/// appear, or the review page when [ending].
+class NightMarketBeat {
+  const NightMarketBeat({
+    required this.id,
+    required this.videoAsset,
+    this.captions = const <NightMarketCaption>[],
+    this.hint,
+    this.choices = const <NightMarketChoice>[],
+    this.ending = false,
+  });
+
+  final String id;
+  final String videoAsset;
+  final List<NightMarketCaption> captions;
+  final String? hint;
+  final List<NightMarketChoice> choices;
+  final bool ending;
+}
+
+enum NightMarketReviewTier { mindset, key, more }
+
+/// One review-page card: `term｜plain`. [met] false renders greyed as
+/// 「這次沒遇到」; [optional] appends 「不是必要」.
+class NightMarketReviewItem {
+  const NightMarketReviewItem({
+    required this.term,
+    required this.plain,
+    this.tier = NightMarketReviewTier.key,
+    this.met = true,
+    this.optional = false,
+  });
+
+  final String term;
+  final String plain;
+  final NightMarketReviewTier tier;
+  final bool met;
+  final bool optional;
 }
 
 /// Bundle-level scenario manifest. Asset paths must point to app-bundled files.
 class NightMarketScenario {
   const NightMarketScenario({
     required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.coverAsset,
     required this.initialBeatId,
     required this.beats,
-    this.title = '台灣夜市練習',
+    required this.review,
+    required this.takeaway,
   });
 
   final String id;
   final String title;
+  final String subtitle;
+  final String coverAsset;
   final String initialBeatId;
   final List<NightMarketBeat> beats;
+  final List<NightMarketReviewItem> review;
+  final String takeaway;
 
   NightMarketBeat? beatById(String id) {
     for (final beat in beats) {
       if (beat.id == id) return beat;
     }
     return null;
-  }
-}
-
-/// Presentation state kept independent from Practice chat/session/quota state.
-class NightMarketFlowState {
-  const NightMarketFlowState({
-    required this.beatId,
-    this.variant = NightMarketRunVariant.available,
-    this.videoCompleted = false,
-    this.isPlaying = false,
-    this.isMuted = false,
-    this.hintVisible = true,
-    this.selectedChoiceIds = const <String>[],
-    this.keyRetry = 0,
-  });
-
-  final String beatId;
-  final NightMarketRunVariant variant;
-  final bool videoCompleted;
-  final bool isPlaying;
-  final bool isMuted;
-  final bool hintVisible;
-  final List<String> selectedChoiceIds;
-  final int keyRetry;
-
-  NightMarketFlowState copyWith({
-    String? beatId,
-    NightMarketRunVariant? variant,
-    bool? videoCompleted,
-    bool? isPlaying,
-    bool? isMuted,
-    bool? hintVisible,
-    List<String>? selectedChoiceIds,
-    int? keyRetry,
-  }) {
-    return NightMarketFlowState(
-      beatId: beatId ?? this.beatId,
-      variant: variant ?? this.variant,
-      videoCompleted: videoCompleted ?? this.videoCompleted,
-      isPlaying: isPlaying ?? this.isPlaying,
-      isMuted: isMuted ?? this.isMuted,
-      hintVisible: hintVisible ?? this.hintVisible,
-      selectedChoiceIds: selectedChoiceIds ?? this.selectedChoiceIds,
-      keyRetry: keyRetry ?? this.keyRetry,
-    );
   }
 }

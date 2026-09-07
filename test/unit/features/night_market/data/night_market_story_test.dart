@@ -4,135 +4,49 @@ import 'package:vibesync/features/night_market/domain/night_market_scenario.dart
 
 void main() {
   group('buildNightMarketScenario', () {
-    for (final variant in NightMarketRunVariant.values) {
-      test('reachable graph has all targets for $variant', () {
-        final scenario = buildNightMarketScenario(variant: variant);
-        final seen = <String>{};
-        final pending = <String>[scenario.initialBeatId];
+    final scenario = buildNightMarketScenario();
 
-        while (pending.isNotEmpty) {
-          final id = pending.removeLast();
-          if (!seen.add(id)) continue;
-          final beat = scenario.beatById(id);
-          expect(beat, isNotNull, reason: 'missing target $id');
-          if (beat!.nextId != null) pending.add(beat.nextId!);
-          pending.addAll(beat.choices.map((choice) => choice.nextId));
-        }
-
-        final expected = <String>[
-          'establish',
-          'hesitate',
-          'opening',
-          'concern',
-          'work',
-          'craft',
-          'tease',
-          'call',
-          if (variant == NightMarketRunVariant.available) ...[
-            'available',
-            'date',
-          ] else ...[
-            'busy',
-            'contact',
-          ],
-          'decline',
-          'coach',
-        ];
-        expect(seen, containsAll(expected));
-      });
-    }
-
-    test('variant controls time branch before playback', () {
-      final available = buildNightMarketScenario(
-        variant: NightMarketRunVariant.available,
-      );
-      final busy =
-          buildNightMarketScenario(variant: NightMarketRunVariant.busy);
-
-      expect(available.beatById('call')!.nextId, 'available');
-      expect(busy.beatById('call')!.nextId, 'busy');
-      expect(available.beatById('available'), isNotNull);
-      expect(busy.beatById('busy'), isNotNull);
-    });
-
-    test('has three distinct ending routes', () {
-      final scenario = buildNightMarketScenario();
-      final date = scenario.beatById('date')!;
-      final contact = scenario.beatById('contact')!;
-      final decline = scenario.beatById('decline')!;
-
-      expect(date.nextId, 'decline');
-      expect(contact.nextId, 'coach');
-      expect(decline.nextId, 'coach');
-      expect(decline.choices, isEmpty);
-      expect(scenario.beatById('coach')!.ending, isTrue);
-    });
-
-    test('decline cannot invite or request contact', () {
-      final scenario = buildNightMarketScenario();
-      final decline = scenario.beatById('decline')!;
-
-      expect(decline.choices, isEmpty);
-      expect(decline.captions.every((caption) => !caption.text.contains('聯絡')),
-          isTrue);
-    });
-
-    test('all choice labels and player voice assets are concrete', () {
-      final scenario = buildNightMarketScenario();
+    test('graph is closed and every stop point leads to the main line', () {
+      expect(scenario.beatById(scenario.initialBeatId), isNotNull);
       for (final beat in scenario.beats) {
         for (final choice in beat.choices) {
-          expect(choice.label.trim(), isNotEmpty);
-          expect(choice.nextId.trim(), isNotEmpty);
-          expect(choice.feedbackTag?.trim(), isNotEmpty);
-          if (choice.spokenText!.isEmpty) {
-            expect(choice.audioAsset, isNull);
-          } else {
-            expect(choice.label, choice.spokenText);
-            expect(choice.audioAsset, startsWith('assets/audio/night_market/'));
-          }
+          expect(scenario.beatById(choice.nextId), isNotNull,
+              reason: '${beat.id}/${choice.id} -> ${choice.nextId}');
+        }
+        // Every stop point has exactly one main-line choice and one coached one.
+        if (!beat.ending) {
+          expect(beat.choices.where((c) => c.coachCard == null), hasLength(1),
+              reason: beat.id);
+          expect(beat.choices.where((c) => c.coachCard != null), hasLength(1),
+              reason: beat.id);
+          expect(beat.hint, isNotNull, reason: beat.id);
+        }
+      }
+      expect(scenario.beats.where((b) => b.ending), hasLength(1));
+      expect(scenario.beats.where((b) => !b.ending), hasLength(2));
+    });
+
+    test('captions are ordered and inside each segment', () {
+      for (final beat in scenario.beats) {
+        var last = Duration.zero;
+        for (final caption in beat.captions) {
+          expect(caption.end, greaterThan(caption.start), reason: beat.id);
+          expect(caption.start, greaterThanOrEqualTo(last), reason: beat.id);
+          last = caption.start;
         }
       }
     });
 
-    test('only hesitate and coach carry original sfx cues', () {
-      final scenario = buildNightMarketScenario();
-      expect(scenario.beatById('hesitate')!.sfxAsset,
-          'assets/audio/night_market/hesitate-heartbeat.wav');
-      expect(scenario.beatById('coach')!.sfxAsset,
-          'assets/audio/night_market/ui-cue.wav');
+    test('review page keeps four mindsets, six keys and one takeaway', () {
+      final byTier = <NightMarketReviewTier, int>{};
+      for (final item in scenario.review) {
+        byTier.update(item.tier, (n) => n + 1, ifAbsent: () => 1);
+      }
+      expect(byTier[NightMarketReviewTier.mindset], 4);
+      expect(byTier[NightMarketReviewTier.key], 6);
       expect(
-        scenario.beats
-            .where((beat) => beat.sfxAsset != null)
-            .map((beat) => beat.id),
-        containsAll(<String>['hesitate', 'coach']),
-      );
-    });
-
-    test('all video targets use the 14 bundled asset names', () {
-      final scenario = buildNightMarketScenario();
-      final assets = scenario.beats.map((beat) => beat.videoAsset).toSet();
-
-      expect(assets.length, 14);
-      expect(assets, everyElement(startsWith('assets/videos/night_market/')));
-      expect(
-        assets,
-        containsAll(<String>[
-          'assets/videos/night_market/establish.mp4',
-          'assets/videos/night_market/hesitate.mp4',
-          'assets/videos/night_market/opening.mp4',
-          'assets/videos/night_market/concern.mp4',
-          'assets/videos/night_market/work.mp4',
-          'assets/videos/night_market/craft.mp4',
-          'assets/videos/night_market/tease.mp4',
-          'assets/videos/night_market/call.mp4',
-          'assets/videos/night_market/available.mp4',
-          'assets/videos/night_market/date.mp4',
-          'assets/videos/night_market/busy.mp4',
-          'assets/videos/night_market/contact.mp4',
-          'assets/videos/night_market/decline.mp4',
-          'assets/videos/night_market/coach.mp4',
-        ]),
-      );
+          scenario.review.where((i) => !i.met).map((i) => i.term), ['忙碌收尾／即約']);
+      expect(scenario.takeaway, contains('強眼神溝通'));
     });
   });
 }

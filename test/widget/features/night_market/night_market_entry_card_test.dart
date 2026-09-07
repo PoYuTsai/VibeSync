@@ -20,7 +20,7 @@ void main() {
       ],
     );
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    expect(find.text('和 Sydney 逛夜市'), findsOneWidget);
+    expect(find.text('簡易搭訕流程詳解'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('night-market-entry-card')));
     await tester.pumpAndSettle();
     expect(find.text('night-market-page'), findsOneWidget);

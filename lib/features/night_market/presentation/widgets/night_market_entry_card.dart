@@ -21,7 +21,7 @@ class NightMarketEntryCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 Image.asset(
-                  'assets/images/night_market/sydney.jpg',
+                  'assets/images/night_market/cover.jpg',
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const ColoredBox(
                     color: AppColors.brandSurface2,
@@ -50,13 +50,13 @@ class NightMarketEntryCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('和 Sydney 逛夜市',
+                            Text('簡易搭訕流程詳解',
                                 style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 17,
                                     fontWeight: FontWeight.w800)),
                             SizedBox(height: 4),
-                            Text('一起逛攤位，練習開口與接話。約 4 分鐘',
+                            Text('夜市實戰版：從注意到她到收號，約 3 分鐘、2 個選擇',
                                 style: TextStyle(
                                     color: Colors.white70, height: 1.35)),
                           ],
