@@ -583,96 +583,84 @@ Deno.test("sanitizeOpenerText 把混進來的簡體字轉繁，但不吃掉注�
 
 // 共鳴「我也」前半句由程式組（Eric 2026-09-08 選項 1）。
 const STYLE = "語氣偏好：輕鬆直接\n我的興趣：養狗、打籃球\n自我備註：不太會講幹話";
+const overlap = (quote: string | null) => ({ resonateBasis: "style_overlap", senderFactQuoted: quote });
 
-Deno.test("composeResonateOpener：style_overlap 且引文逐字在設定裡 → 我也＋引文，＋後半句", () => {
-  const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養狗" },
-    resonate: "妳家那隻不給摸是天生的嗎",
-    styleContext: STYLE,
-  });
-  assertEquals(out, { text: "我也養狗，妳家那隻不給摸是天生的嗎", basis: "style_overlap", quote: "養狗" });
+Deno.test("composeResonateOpener：style_overlap 且引文在設定裡 → 我也＋引文，＋後半句", () => {
+  const out = composeResonateOpener({ profileAnalysis: overlap("養狗"), resonate: "妳家那隻不給摸是天生的嗎", styleContext: STYLE });
+  assertEquals(out, { text: "我也養狗，妳家那隻不給摸是天生的嗎", basis: "style_overlap", quote: "養狗", stripped: false });
 });
 
-Deno.test("composeResonateOpener：引文不在設定裡（模型擴成柴犬）→ 只用後半句", () => {
+Deno.test("composeResonateOpener：模型自寫「我也…，只是我家…，」→ 丟掉我＋事實子句再接前綴；量詞改寫容忍", () => {
   const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養柴犬" },
-    resonate: "妳家那隻不給摸是天生的嗎",
+    profileAnalysis: overlap("養了一隻狗"),
+    resonate: "我也養了一隻狗，只是我家那隻反過來很愛討摸，妳這隻是傲嬌型的嗎",
     styleContext: STYLE,
   });
-  assertEquals(out, { text: "妳家那隻不給摸是天生的嗎", basis: "tail_only", reason: "quote_not_in_style" });
+  assertEquals(out, { text: "我也養狗，妳這隻是傲嬌型的嗎", basis: "style_overlap", quote: "養狗", stripped: true });
 });
 
-Deno.test("composeResonateOpener：引文帶標籤／頓號／我也 → 只取第一項並去前綴", () => {
+Deno.test("composeResonateOpener：整句都是我＋事實 → 只出程式組的前綴，不放行捏造", () => {
+  const out = composeResonateOpener({ profileAnalysis: overlap("養狗"), resonate: "我家狗也不太給碰", styleContext: STYLE });
+  assertEquals(out.text, "我也養狗");
+});
+
+Deno.test("composeResonateOpener：引文對不回設定 → 不接前綴，仍丟掉我＋事實子句與殘留連接詞", () => {
   const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "我的興趣：我也養狗、打籃球" },
+    profileAnalysis: overlap("養貓"),
+    resonate: "我也養貓，但個性完全相反，妳這隻不給摸感覺很有原則",
+    styleContext: STYLE,
+  });
+  assertEquals(out, { text: "個性完全相反，妳這隻不給摸感覺很有原則", basis: "tail_only", reason: "quote_not_in_style", stripped: true });
+});
+
+Deno.test("composeResonateOpener：否定／願望／他人的「養狗」不算交集", () => {
+  for (const ctx of ["自我備註：不養狗", "我的興趣：想養狗", "自我備註：朋友養狗"]) {
+    const out = composeResonateOpener({ profileAnalysis: overlap("養狗"), resonate: "妳家那隻幾歲", styleContext: ctx });
+    assertEquals(out.basis, "tail_only", ctx);
+  }
+});
+
+Deno.test("composeResonateOpener：引文帶標籤／頓號／我也、後半句前導標點 → 正規化", () => {
+  const out = composeResonateOpener({
+    profileAnalysis: overlap("我的興趣：我也養狗、打籃球"),
     resonate: "，妳家那隻不給摸是天生的嗎",
     styleContext: STYLE,
   });
   assertEquals(out.text, "我也養狗，妳家那隻不給摸是天生的嗎");
 });
 
-Deno.test("composeResonateOpener：整句都是「我」→ 不接前綴、原句照回、回報 tail_first_person", () => {
-  const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養狗" },
-    resonate: "我家狗也不太給碰",
-    styleContext: STYLE,
-  });
-  assertEquals(out, { text: "我家狗也不太給碰", basis: "tail_only", reason: "tail_first_person" });
-});
-
-Deno.test("composeResonateOpener：模型自己寫了「我也…，」開頭與中段捏造子句 → 丟掉含我的子句再接前綴", () => {
-  const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養狗" },
-    resonate: "我也養了一隻狗，只是我家那隻反過來很愛討摸，妳這隻是傲嬌型的嗎",
-    styleContext: STYLE,
-  });
-  assertEquals(out.text, "我也養狗，妳這隻是傲嬌型的嗎");
-  assertEquals(out.basis, "style_overlap");
-});
-
-Deno.test("composeResonateOpener：模型把「養狗」改寫成「養了一隻狗」→ 去量詞對回設定，前綴用設定原文", () => {
-  const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養了一隻狗" },
-    resonate: "我也養了一隻狗，但我家那隻黏到不行，妳這隻走高冷路線喔",
-    styleContext: STYLE,
-  });
-  assertEquals(out, { text: "我也養狗，妳這隻走高冷路線喔", basis: "style_overlap", quote: "養狗" });
-});
-
-Deno.test("composeResonateOpener：模型把引文本身當後半句開頭 → 去重不重複", () => {
-  const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養狗" },
-    resonate: "養狗，妳這隻不給摸的等級是到什麼程度",
-    styleContext: STYLE,
-  });
-  assertEquals(out.text, "我也養狗，妳這隻不給摸的等級是到什麼程度");
-});
-
-Deno.test("composeResonateOpener：引文真的對不回設定 → 不接前綴、丟掉「我」子句與殘留連接詞", () => {
-  const out = composeResonateOpener({
-    profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養貓" },
-    resonate: "我也養貓，但個性完全相反，妳這隻不給摸感覺很有原則",
-    styleContext: STYLE,
-  });
-  assertEquals(out, { text: "個性完全相反，妳這隻不給摸感覺很有原則", basis: "tail_only", reason: "quote_not_in_style" });
-});
-
-Deno.test("composeResonateOpener：her_situation／沒設定／引文為空 → 原句照回", () => {
+Deno.test("composeResonateOpener：去重只看詞邊界（「養狗的人」不被砍）", () => {
   assertEquals(
-    composeResonateOpener({ profileAnalysis: { resonateBasis: "her_situation" }, resonate: "養這種狗的都懂", styleContext: STYLE }),
-    { text: "養這種狗的都懂", basis: "her_situation" },
+    composeResonateOpener({ profileAnalysis: overlap("養狗"), resonate: "養狗，妳這隻不給摸的等級是到什麼程度", styleContext: STYLE }).text,
+    "我也養狗，妳這隻不給摸的等級是到什麼程度",
   );
   assertEquals(
-    composeResonateOpener({ profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養狗" }, resonate: "妳家那隻", styleContext: null }),
-    { text: "妳家那隻", basis: "tail_only", reason: "quote_not_in_style" },
-  );
-  assertEquals(
-    composeResonateOpener({ profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: null }, resonate: "妳家那隻", styleContext: STYLE }),
-    { text: "妳家那隻", basis: "tail_only", reason: "no_quote" },
+    composeResonateOpener({ profileAnalysis: overlap("養狗"), resonate: "養狗的人是不是都很習慣被無視", styleContext: STYLE }).text,
+    "我也養狗，養狗的人是不是都很習慣被無視",
   );
 });
 
-Deno.test("normalizeOpenerPayload：帶 styleContext 時共鳴卡由後端接前綴並回呼 outcome", () => {
+Deno.test("composeResonateOpener：her_situation 也清「我＋事實」子句，但保留態度句與「自我」「妳跟我」", () => {
+  const her = { resonateBasis: "her_situation" };
+  assertEquals(
+    composeResonateOpener({ profileAnalysis: her, resonate: "固定行程這件事我懂，只是我的固定行程是找新片單", styleContext: STYLE }),
+    { text: "固定行程這件事我懂", basis: "her_situation", stripped: true },
+  );
+  assertEquals(
+    composeResonateOpener({ profileAnalysis: her, resonate: "妳家那隻自我意識很強，平常誰說了算", styleContext: null }).text,
+    "妳家那隻自我意識很強，平常誰說了算",
+  );
+  assertEquals(
+    composeResonateOpener({ profileAnalysis: her, resonate: "在家會被鳥吵到崩潰的心情我懂", styleContext: null }),
+    { text: "在家會被鳥吵到崩潰的心情我懂", basis: "her_situation", stripped: false },
+  );
+  assertEquals(
+    composeResonateOpener({ profileAnalysis: null, resonate: "我也養過不給摸的貓 到現在還是搞不懂", styleContext: null }).text,
+    "我也養過不給摸的貓 到現在還是搞不懂",
+  ); // 整句都是我且沒有引文：無安全替代，原句照回（log 記 stripped=false）
+});
+
+Deno.test("normalizeOpenerPayload：帶 styleContext 時共鳴卡由後端接前綴並回呼 outcome，內部欄位不外洩", () => {
   let seen: unknown = null;
   const out = normalizeOpenerPayload({
     profileAnalysis: { resonateBasis: "style_overlap", senderFactQuoted: "養狗", style: "x" },
@@ -680,6 +668,5 @@ Deno.test("normalizeOpenerPayload：帶 styleContext 時共鳴卡由後端接前
   }, { styleContext: STYLE, onResonateCompose: (o) => seen = o });
   assertEquals((out?.openers as Record<string, string>).resonate, "我也養狗，妳家那隻不給摸是天生的嗎");
   assertEquals((seen as { basis: string }).basis, "style_overlap");
-  // 內部欄位不外洩
   assertEquals("resonateBasis" in (out?.profileAnalysis as Record<string, unknown>), false);
 });

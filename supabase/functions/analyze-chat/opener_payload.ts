@@ -320,20 +320,29 @@ export function buildWrongSurfaceErrorBody(surface: WrongSurface): {
 }
 
 export type ResonateComposeOutcome =
-  | { text: string; basis: "her_situation" }
-  | { text: string; basis: "style_overlap"; quote: string }
+  | { text: string; basis: "her_situation"; stripped: boolean }
+  | { text: string; basis: "style_overlap"; quote: string; stripped: boolean }
   | {
     text: string;
     basis: "tail_only";
     reason: "no_quote" | "quote_shape" | "quote_not_in_style" | "tail_first_person";
+    stripped: boolean;
   };
+
+/**
+ * 「我＋事實」子句的形狀：我也／我家／我養／我的／我都…。刻意不含「我懂」
+ * 「我猜」「我在想」這種態度句，也排除「自我」「妳跟我」。「我們」算共同身分。
+ */
+const FIRST_PERSON_FACT_RE =
+  /(^|[^自])我(也|家|自己|朋友|養|有|沒|試過|做過|以前|最近|平常|上|每次|常|認識|的|都|是|會|跟|和|這|那|週末|假日|下班|剛)|我們/;
 
 /**
  * 共鳴卡「我也」前半句由程式組（Eric 2026-09-08 選項 1）。模型在
  * resonateBasis=style_overlap 時只寫關於她的後半句，「我也＋設定原文，」
  * 由這裡接——模型寫不到「我」就編不了經歷。引文必須逐字存在於用戶風格
- * 設定，否則退回只用後半句（等於 her_situation）。後半句若模型仍寫了
- * 「我」，不接前綴（避免「我也養狗，我家狗也…」），照現況輸出並回報。
+ * 設定（容忍「養狗」→「養了一隻狗」的量詞改寫；前面接否定／願望詞不算）。
+ * 不論分支，模型自己寫的「我＋事實」子句整個丟掉（活坑：清洗要丟整子句）；
+ * 引文成立時全丟光就只出「我也＋引文」，不成立時才原句照回並回報。
  */
 export function composeResonateOpener(args: {
   profileAnalysis: unknown;
@@ -342,8 +351,10 @@ export function composeResonateOpener(args: {
 }): ResonateComposeOutcome {
   const pa = isPlainObject(args.profileAnalysis) ? args.profileAnalysis : null;
   const tail = args.resonate;
+  const softened = stripFirstPersonClauses(tail);
+  const stripped = softened !== null && softened !== tail;
   if (pa?.resonateBasis !== "style_overlap") {
-    return { text: tail, basis: "her_situation" };
+    return { text: softened ?? tail, basis: "her_situation", stripped };
   }
   const rawQuote = typeof pa.senderFactQuoted === "string" ? pa.senderFactQuoted : "";
   const quote = rawQuote
@@ -352,30 +363,22 @@ export function composeResonateOpener(args: {
     .replace(/^[^：:]*[：:]/, "")
     .trim()
     .replace(/^我也?/, "");
-  if (!quote) return { text: tail, basis: "tail_only", reason: "no_quote" };
-  if (quote.length < 2 || quote.length > 20) {
-    return { text: tail, basis: "tail_only", reason: "quote_shape" };
-  }
+  const tailOnly = (reason: "no_quote" | "quote_shape" | "quote_not_in_style") =>
+    ({ text: softened ?? tail, basis: "tail_only", reason, stripped }) as const;
+  if (!quote) return tailOnly("no_quote");
+  if (quote.length < 2 || quote.length > 20) return tailOnly("quote_shape");
   // 模型常把設定的「養狗」改寫成「養了一隻狗」：去掉量詞後再對一次，前綴用設定原文。
   const candidates = [quote, quote.replace(/了?一(隻|個|台|輛|間|部|條|位)/g, "")];
-  const matched = candidates.find((c) => c.length >= 2 && args.styleContext?.includes(c));
-  if (!matched) {
-    // 引文對不回設定：不接前綴，但模型自己寫的「我…」子句一樣丟掉，只留她的部分。
-    return {
-      text: stripFirstPersonClauses(tail) ?? tail,
-      basis: "tail_only",
-      reason: "quote_not_in_style",
-    };
+  const matched = candidates.find((c) => c.length >= 2 && quoteAffirmedIn(args.styleContext, c));
+  if (!matched) return tailOnly("quote_not_in_style");
+  let herPart = softened === null ? null : softened.replace(/^[，,。！!？?；;：:、\s]+/, "");
+  if (herPart === null) {
+    // 整句都是「我」：不放行捏造，只出程式組的前綴。
+    return { text: `我也${matched}`, basis: "style_overlap", quote: matched, stripped: true };
   }
-  // 模型常無視「只寫後半句」，自己寫出「我也養了一隻柴犬，只是我家那隻很愛討摸，妳這隻…」。
-  // 這裡把含「我」的子句整個丟掉（活坑：清洗要丟整子句），只留關於她的部分，再接程式組的前綴。
-  let herPart = stripFirstPersonClauses(tail);
-  if (!herPart) {
-    return { text: tail, basis: "tail_only", reason: "tail_first_person" };
-  }
-  // 模型有時把引文本身當後半句開頭（「養了一隻柴犬，妳這隻…」），去重。
+  // 模型有時把引文本身當後半句開頭（「養了一隻柴犬，妳這隻…」）：只在引文後面接標點或結尾時去重。
   for (const c of candidates) {
-    if (c && herPart.startsWith(c)) {
+    if (c && herPart.startsWith(c) && /^[，,。！!？?；;、\s]|^$/.test(herPart.slice(c.length))) {
       herPart = herPart.slice(c.length).replace(/^[，,。！!？?；;、\s]+/, "");
       break;
     }
@@ -384,24 +387,46 @@ export function composeResonateOpener(args: {
     text: herPart ? `我也${matched}，${herPart}` : `我也${matched}`,
     basis: "style_overlap",
     quote: matched,
+    stripped,
   };
 }
 
-/** 以標點切子句，丟掉含「我」的子句；全丟光回 null。 */
+/** 引文要在設定裡，而且前面不能接否定／願望／他人（不養狗、想養狗、朋友養狗都不算）。 */
+function quoteAffirmedIn(styleContext: string | null | undefined, quote: string): boolean {
+  if (!styleContext) return false;
+  let from = 0;
+  while (true) {
+    const idx = styleContext.indexOf(quote, from);
+    if (idx < 0) return false;
+    const before = styleContext.slice(Math.max(0, idx - 2), idx);
+    if (!/(不|沒|想|要|朋友|家人|同事|前)$/.test(before)) return true;
+    from = idx + 1;
+  }
+}
+
+/**
+ * 以標點切子句，丟掉「我＋事實」形狀的子句，順便清掉開頭殘留的連接詞。
+ * 沒動到回原句；全丟光回 null。
+ */
 function stripFirstPersonClauses(text: string): string | null {
-  const tokens = text.split(/([，,。！!？?；;\n])/);
+  const tokens = text.split(/([，,。！!？?；;：:\n])/);
   let out = "";
+  let dropped = false;
   for (let i = 0; i < tokens.length; i += 2) {
     const clause = tokens[i];
     const delim = tokens[i + 1] ?? "";
-    if (!clause.trim() || clause.includes("我")) continue;
+    if (!clause.trim()) continue;
+    if (FIRST_PERSON_FACT_RE.test(clause)) {
+      dropped = true;
+      continue;
+    }
     out += clause + delim;
   }
-  // 丟掉子句後開頭殘留的連接詞（「但」「只是」…）一起清掉。
+  if (!dropped) return text;
   const cleaned = out
-    .replace(/^[，,。！!？?；;、\s]+/, "")
+    .replace(/^[，,。！!？?；;：:、\s]+/, "")
     .replace(/^(但是|但|只是|不過|可是|而且|然後|所以)/, "")
-    .replace(/[，,；;、\s]+$/, "");
+    .replace(/[，,；;：:、\s]+$/, "");
   return cleaned.length >= 2 ? cleaned : null;
 }
 

@@ -541,6 +541,7 @@ export async function handleOpenerRequest(
       logInfo("opener_resonate_compose", {
         user: summarizeUser(deps.userId),
         basis: outcome.basis,
+        stripped: outcome.stripped,
         ...(outcome.basis === "tail_only" ? { reason: outcome.reason } : {}),
         hasStyleContext: Boolean(openerStyleContext),
       });
