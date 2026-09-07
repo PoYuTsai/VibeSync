@@ -142,7 +142,7 @@
       "file": "opener_prompt.ts",
       "start": "const OPENER_PROMPT =",
       "end": "`;",
-      "sha256": "a2a9ec87012947cd9552584ac5e6f35145d2f304a24a23c99b773cb909974b6b"
+      "sha256": "27d30e5aa0df843505210ead1869f4082f56da8abc26d2f3821c480929769ed1"
     },
     "PHASE1_VISION_INSTRUMENT_ADDENDUM": {
       "file": "ocr_recognition_prompt.ts",

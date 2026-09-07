@@ -895,6 +895,9 @@ Deno.test({
     // 2026-09-08 共鳴捏造：沒有用戶風格交集時，共鳴句不得出現第一人稱事實（黑箱 7/135 句全在共鳴卡）。
     assert(source.includes('"resonateBasis": "style_overlap | her_situation'));
     assert(source.includes("不得出現任何第一人稱的事實或經歷"));
+    assert(source.includes("她的細節不能套到我身上"));
+    assert(source.includes("有沒有替用戶編經歷"));
+    assert(source.includes('"senderFactQuoted"'));
     assert(source.includes("有點壞但有邊界的鬆弛感"));
     // 2026-08-19 瘦身：旁路冷讀／三層優先級／框架大於話術／Specialness Gate／
     // Female Reply Check／品質標準／五題自檢七個區塊合併成兩塊，這裡改鎖語意
