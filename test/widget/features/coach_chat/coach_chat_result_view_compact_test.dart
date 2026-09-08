@@ -57,7 +57,11 @@ CoachChatResult _clarifyingResult() {
   );
 }
 
-Widget _wrap(CoachChatResult result, {int? clarificationOrdinal}) {
+Widget _wrap(
+  CoachChatResult result, {
+  int? clarificationOrdinal,
+  bool actionsEnabled = true,
+}) {
   return ProviderScope(
     overrides: [
       coachingOutcomeRepositoryProvider.overrideWithValue(
@@ -76,6 +80,7 @@ Widget _wrap(CoachChatResult result, {int? clarificationOrdinal}) {
             onAskDifferent: () {},
             onForceAnswer: () {},
             clarificationOrdinal: clarificationOrdinal,
+            actionsEnabled: actionsEnabled,
           ),
         ),
       ),
@@ -188,6 +193,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('回饋暫時沒有送出，稍後可以再試一次。'), findsOneWidget);
+  });
+
+  testWidgets('請求在跑時釐清卡整排動作藏掉，不留灰按鈕（2026-09-08 Eric 真機）', (tester) async {
+    await tester.pumpWidget(_wrap(_clarifyingResult(), actionsEnabled: false));
+
+    expect(find.text('教練想先問清楚（幫教練釐清）'), findsOneWidget);
+    expect(find.text('想問別的'), findsNothing);
+    expect(find.text('直接看建議（扣 1 則）'), findsNothing);
   });
 
   testWidgets('釐清卡帶序數：第 1 次與第 3 次的文案（看情況框架，不是配額）', (tester) async {

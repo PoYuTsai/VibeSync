@@ -1283,50 +1283,53 @@ class CoachChatResultView extends ConsumerWidget {
                 ),
               ],
             ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (isClarifying)
-                // 「補充」由下方輸入列承擔（hint 已引導），這顆改為跳出
-                // 釐清循環的紅字出口（2026-08-16 Bruce 回饋拍板）。
-                TextButton(
-                  onPressed: actionsEnabled ? onAskDifferent : null,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.error,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  child: const Text('想問別的'),
-                )
-              else
-                OutlinedButton.icon(
-                  onPressed: actionsEnabled ? onFollowUp : null,
-                  icon: const Icon(Icons.add_comment_outlined, size: 18),
-                  label: const Text('繼續深挖'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    side: BorderSide(
-                      color: AppColors.primary.withValues(alpha: 0.38),
+          // 有請求在跑（或新回覆等著讀）時整排藏掉，不留按不了的灰按鈕：
+          // 上方進度卡已經在說「正在檢查」，critic 重試可拖到半分鐘，灰鍵
+          // 只會被當成壞掉（2026-09-08 Eric 真機）。
+          if (actionsEnabled) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (isClarifying)
+                  // 「補充」由下方輸入列承擔（hint 已引導），這顆改為跳出
+                  // 釐清循環的紅字出口（2026-08-16 Bruce 回饋拍板）。
+                  TextButton(
+                    onPressed: onAskDifferent,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    visualDensity: VisualDensity.compact,
+                    child: const Text('想問別的'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: onFollowUp,
+                    icon: const Icon(Icons.add_comment_outlined, size: 18),
+                    label: const Text('繼續深挖'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: BorderSide(
+                        color: AppColors.primary.withValues(alpha: 0.38),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ),
-                ),
-              if (isClarifying)
-                TextButton.icon(
-                  onPressed: actionsEnabled
-                      ? () => _confirmForceAnswer(context)
-                      : null,
-                  icon: const Icon(Icons.bolt_outlined, size: 18),
-                  // 橘色主 CTA 色，和灰字補述區分（2026-08-16 Bruce 回饋）。
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.ctaStart,
-                    visualDensity: VisualDensity.compact,
+                if (isClarifying)
+                  TextButton.icon(
+                    onPressed: () => _confirmForceAnswer(context),
+                    icon: const Icon(Icons.bolt_outlined, size: 18),
+                    // 橘色主 CTA 色，和灰字補述區分（2026-08-16 Bruce 回饋）。
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.ctaStart,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    label: const Text('直接看建議（扣 1 則）'),
                   ),
-                  label: const Text('直接看建議（扣 1 則）'),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
           if (!isClarifying) ...[
             const SizedBox(height: 12),
             // 兩段式成效回報卡退場（2026-08-16 Bruce 回饋三輪：資訊太多），
