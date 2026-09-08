@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/reveal_pill.dart';
 import '../../data/night_market_story.dart';
 import '../../domain/night_market_scenario.dart';
 
@@ -426,21 +427,13 @@ class _NightMarketScreenState extends State<NightMarketScreen>
               const SizedBox(height: 8),
               for (final item in tier(NightMarketReviewTier.key))
                 _reviewCard(item),
-              Theme(
-                data: Theme.of(context)
-                    .copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  iconColor: Colors.white70,
-                  collapsedIconColor: Colors.white70,
-                  title: const Text('更多技巧',
-                      style: TextStyle(
-                          color: Colors.white70, fontWeight: FontWeight.w700)),
-                  children: [
-                    for (final item in tier(NightMarketReviewTier.more))
-                      _reviewCard(item),
-                  ],
-                ),
+              // 與開場救星「下一步怎麼接？」同款揭示膠囊（Eric 2026-09-08）。
+              RevealPill(
+                label: '更多技巧',
+                children: [
+                  for (final item in tier(NightMarketReviewTier.more))
+                    _reviewCard(item),
+                ],
               ),
               const SizedBox(height: 20),
               Text(_scenario.takeaway,
