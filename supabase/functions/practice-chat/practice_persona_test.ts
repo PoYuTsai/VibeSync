@@ -599,10 +599,19 @@ Deno.test("photoScene：100 位皆非空、≤ 50 code units、不含檔名／�
     const scene = g.photoScene;
     assert(scene.trim().length > 0, `${g.profileId} photoScene 空白`);
     // 規格 ≤ 50（現有資料最長 37）；chat 預算是照 50 估的，別放寬。
-    assert(scene.length <= 50, `${g.profileId} photoScene 太長：${scene.length}`);
+    assert(
+      scene.length <= 50,
+      `${g.profileId} photoScene 太長：${scene.length}`,
+    );
     assertEquals(containsRawImageFilename(scene), false, g.profileId);
-    for (const banned of ["practice_girl", ".jpg", ".png", "assets/", "她", "妳"]) {
-      assertEquals(scene.includes(banned), false, `${g.profileId} 含「${banned}」`);
+    for (
+      const banned of ["practice_girl", ".jpg", ".png", "assets/", "她", "妳"]
+    ) {
+      assertEquals(
+        scene.includes(banned),
+        false,
+        `${g.profileId} 含「${banned}」`,
+      );
     }
   }
 });
@@ -610,9 +619,15 @@ Deno.test("photoScene：100 位皆非空、≤ 50 code units、不含檔名／�
 Deno.test("photoScene：P1 五案的敘事鎖住（照片與文字設定打架的那幾位）", () => {
   const scene = (id: string) => getPracticeGirlProfile(id)!.photoScene;
   assert(scene("practice_girl_023").includes("巴黎")); // 鐵塔前野餐→去年去進修
-  assert(scene("practice_girl_078").includes("香港")); // 中環雙層電車→前陣子去玩
+  assert(scene("practice_girl_078").includes("公園")); // 換成公園步道散步照
+  assert(scene("practice_girl_078").includes("咖啡"));
+  assertEquals(scene("practice_girl_078").includes("香港"), false);
   assert(scene("practice_girl_022").includes("吉娃娃")); // 抱吉娃娃；lifestyle 已改「下班顧狗」
-  assert(getPracticeGirlProfile("practice_girl_022")!.lifestyleTags.includes("下班顧狗"));
+  assert(
+    getPracticeGirlProfile("practice_girl_022")!.lifestyleTags.includes(
+      "下班顧狗",
+    ),
+  );
   assert(scene("practice_girl_024").includes("狗"));
   assert(scene("practice_girl_047").includes("狗"));
   assert(scene("practice_girl_053").includes("貓"));
