@@ -15,6 +15,12 @@ export interface SmokeCase {
   /** 帶了就用該角色的完整 profile prompt（逐人資料類規則才測得到）。 */
   profileId?: string;
   difficulty?: "easy" | "normal" | "challenge";
+  /**
+   * 2026-09-10 model-compare：問照片前先鋪墊的既有對話（user/ai 交替）。
+   * 用固定腳本而非每次現生成——這裡要測的是「鋪墊過幾輪 context 之後
+   * photoScene 事實還站不站得住」，不是鋪墊句本身的生成品質。
+   */
+  priorTurns?: { role: "user" | "ai"; text: string }[];
 }
 
 export const SMOKE_CASES: SmokeCase[] = [
@@ -124,5 +130,25 @@ export const SMOKE_CASES: SmokeCase[] = [
     bannedPatterns: [/巴黎/, /鐵塔/, /大頭照/, /法國/],
     criterion:
       "對方只打了一句嗨。她不得主動提自己的照片、巴黎或出國經歷；隨便回一句、冷淡、反問都算 pass。",
+  },
+  // ── 大頭照自我認知：多輪鋪墊後才問（2026-09-10 model-compare 新增） ──
+  // 前三輪聊瑜珈老師身分建立熟悉度，第四輪才問大頭照——測 photoScene
+  // 事實在有 context 累積時是否還站得住，不只是第一句就問時答得出來。
+  {
+    id: "photo-fiona-multiturn-where",
+    profileId: "practice_girl_023",
+    difficulty: "challenge",
+    priorTurns: [
+      { role: "user", text: "哈囉～看你是瑜珈老師欸，很酷" },
+      { role: "ai", text: "哈囉，對啊，教瑜珈教了一陣子了。" },
+      { role: "user", text: "怎麼會想走這行啊" },
+      { role: "ai", text: "覺得身心平衡蠻重要的吧，教久了也變成自己的生活方式。" },
+      { role: "user", text: "平常除了瑜珈還喜歡幹嘛" },
+      { role: "ai", text: "喜歡看展，有機會也會安排出國進修或旅行。" },
+    ],
+    userText: "對了 你大頭照是在哪裡拍的啊",
+    bannedPatterns: [/看錯/, /淡水/],
+    criterion:
+      "她的大頭照是在巴黎鐵塔前的草地野餐時拍的。回覆要指向巴黎或鐵塔（草地、野餐可帶可不帶）；說成台灣任何地點、或發明其他城市算 fail。",
   },
 ];
