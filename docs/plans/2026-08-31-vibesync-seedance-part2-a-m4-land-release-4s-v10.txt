@@ -1,0 +1,43 @@
+VibeSync MAIN FILM | PART 2 A v10 | M4 MALE-FIRST LAND / ORDERED RELEASE | LOCAL PREP
+
+STATUS: HISTORICAL SEGMENTED PROMPT. SUPERSEDED BY THE v11 SINGLE-MASTER FORWARD-EXTENSION PLAN. DO NOT SUBMIT, REROLL, RETRY OR RESEND.
+
+CONFIG CANDIDATE
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Generation duration: 4 seconds
+- Intended final-edit use: approximately 1.95 seconds selected from the accepted output
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M3_v10_ACCEPTED_TAIL_2p000s.mp4
+- static image: NONE
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- hero phone: POST-PRODUCTION ONLY; none in this module
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+CHARACTER LOCK — Sydney is @Sydney_V3_WhiteOnepiece. The adult male is @VibeSync_Male_M1, wearing the same charcoal-black long-sleeve top and dark trousers with bare feet.
+
+START STATE — Continue the accepted M3 approach along the clear wet lane beside the rib base. The male is lower and leading with bare feet beneath his hips. Sydney is slightly higher and behind. Their accepted RIGHT-hand clasp and Sydney's LEFT-hand support above his right wrist remain intact. The first debris wave is already below or off-axis. A delayed upper ice-and-black-panel mass is still attached above and begins casting a growing shadow.
+
+CAMERA — Use one grounded LOW SIDE THREE-QUARTER track on the same side of travel. Keep the male's leading bare foot, his black-sleeved right forearm, both hand contacts and Sydney's two graphite boots readable. Do not cut, orbit, cross the action axis or put the camera directly under either body.
+
+ONE CAUSAL ACTION — The male's leading bare foot contacts the wet deck FIRST, skids a short distance and begins carrying visible body weight. His second foot follows but cannot stop his forward rotation. Only after the leading foot is loaded, Sydney opens her LEFT support hand completely so his black-sleeved right forearm can rotate toward the floor. Her RIGHT hand keeps the main clasp for one brief guiding beat, then releases fully BEFORE his right forearm touches down. No one holds through the roll.
+
+Freed from both contacts, the male absorbs the remaining impact through his right forearm and shoulder and completes exactly ONE compact side roll, ending low on one knee. Sydney arrives a fraction later, lands on both graphite boots in one deep crouch and steadies herself with one free hand. Her landing remains separate from the male's roll. Both people stay low as the delayed overhead shadow grows rapidly across the floor behind them.
+
+END STATE — Both adults are grounded in separate low poses, hands fully apart and breathing. The male is screen-left on one knee; Sydney is screen-right in a two-boot crouch. A large moving shadow crosses behind them, but the delayed heavy debris has not struck. Leave two to three meters of readable empty wet floor behind them for the rear impact zone and one unobstructed extreme-foreground path for the post-production phone.
+
+CUT MATCH — The delayed shadow darkens the rear floor and continues directly into M5's heavy rear crash. Character positions and travel side remain unchanged.
+
+AUDIO — Bare-foot skid; one distinct LEFT support-hand release; one distinct RIGHT clasp release; right forearm and shoulder impact; one body roll; Sydney's two-boot landing; rising overhead pressure. No dialogue, hand contact through the roll, heavy rear crash, phone slide or amber-door sound yet.
+
+HARD LOCKS — The male lands before Sydney. Sydney's LEFT support releases before her RIGHT main clasp; both release before the male's forearm hits. No one holds through the roll. Exactly one compact male side roll. Sydney does not flip, land on the male, slide upright or fly. No extra hand, re-grip, 360 spin, second roll, ice strike on either body, phone, readable screen, UI, text, logo or visible fishbowl room.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

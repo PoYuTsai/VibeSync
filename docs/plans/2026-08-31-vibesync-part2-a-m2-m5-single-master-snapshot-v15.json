@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "vibesync-part2-a-m2-m5-single-master-v15",
+  "createdAt": "2026-08-31T05:24:20+08:00",
+  "workId": "w-6c706a6b-8992-4607-af22-653013949def",
+  "scope": "Exactly one paid M2-M5 Seedance master submission after a fresh explicit Eric approval following the final paid preflight.",
+  "spec": {
+    "promptBlockSha256": "9c1d8b2c2e4f2e8589b5ab6900f5a52ccbb2a3ffe8756eb511a9fea065732760",
+    "promptBlockCharacters": 10361,
+    "promptBlockUtf8Bytes": 10453,
+    "durationSeconds": 27,
+    "timeline": "M2-M5",
+    "part2BIncluded": false
+  },
+  "files": [
+    {
+      "role": "prompt",
+      "path": "/home/eric1/work/VibeSync/docs/plans/2026-08-31-vibesync-seedance-part2-a-m2-m5-single-master-27s-v15.txt",
+      "bytes": 11907,
+      "sha256": "ca92ed80cd35cbbd0372c536684cb76ef0f56c578ebdb2264cdecd9af4765da1"
+    },
+    {
+      "role": "director_lock",
+      "path": "/home/eric1/work/VibeSync/docs/plans/2026-08-31-vibesync-part2-a-m2-m5-single-master-lock-v15.md",
+      "bytes": 4099,
+      "sha256": "a8609eff8b1e8766498d7df4b81e0a1198d52bcae1fa5f7a34ea6a1a64c61183"
+    },
+    {
+      "role": "start_image",
+      "path": "/home/eric1/work/VibeSync/docs/handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/production-prep-v10/P2A_M2A_SYDNEY_SUBJECTIVE_GRIP_LOCK_CANDIDATE_v10_1920x1080.png",
+      "bytes": 3369734,
+      "sha256": "10c0eb85fad4390a7c1c9d04aef7b4ee5f0b61e90bdfe103255c077ac8137b8b"
+    },
+    {
+      "role": "sydney_identity",
+      "path": "/home/eric1/work/VibeSync/docs/handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/production-prep-v8/Sydney_V3_WhiteOnepiece_ELEMENT.png",
+      "bytes": 1771005,
+      "sha256": "f01c8dfa066ae719bc7220ba22bd06d9768be6d7f42744c38811c5ce3d198350"
+    },
+    {
+      "role": "male_identity",
+      "path": "/home/eric1/work/VibeSync/docs/handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/production-prep-v8/VibeSync_Male_M1_ELEMENT.png",
+      "bytes": 1791643,
+      "sha256": "f90e74d6697cdbf024726b23acac59a21376ca5b8f90023e4ddf060b884b8891"
+    },
+    {
+      "role": "fall_motion_reference",
+      "path": "/home/eric1/work/VibeSync/docs/handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/production-prep-v12/PART1_ACCEPTED_FAST_PHONE_WELL_FALL_16p00_18p50_2p50s_H264_AAC.mp4",
+      "bytes": 3267578,
+      "sha256": "629ec8b2eb977fc0dcbfb5d35bc4a244c2b94027c04275a0369a4da08831a52d"
+    }
+  ],
+  "higgsfieldMedia": [
+    {
+      "role": "start_image",
+      "mediaId": "5f58f7d7-0fe5-4e1a-ad93-47b872f98e3a",
+      "type": "image"
+    },
+    {
+      "role": "sydney_identity",
+      "mediaId": "983d3037-86f6-4c8d-9b6c-f9245b54bdb5",
+      "type": "image"
+    },
+    {
+      "role": "male_identity",
+      "mediaId": "fdb6c55f-24e4-4bab-bbdd-200654e845be",
+      "type": "image"
+    },
+    {
+      "role": "fall_motion_reference",
+      "mediaId": "515745fc-f342-4021-806e-26921af99517",
+      "type": "video"
+    }
+  ],
+  "generation": {
+    "model": "seedance_2_5",
+    "displayModel": "Seedance 2.5",
+    "mode": "omni_reference",
+    "displayMode": "Omni Reference",
+    "duration": 27,
+    "aspectRatio": "16:9",
+    "resolution": "1080p",
+    "bitrateMode": "high",
+    "generateAudio": true,
+    "count": 1,
+    "useUnlimited": false,
+    "reroll": false,
+    "autoRetry": false,
+    "autoResubmit": false
+  },
+  "paidPreflight": {
+    "balanceObserved": 1140.25,
+    "estimatedCredits": 243,
+    "estimatedRemaining": 897.25,
+    "quoteValidated": true,
+    "requiresFreshBalanceAndQuoteCheckImmediatelyBeforeSubmit": true,
+    "requiresFreshExplicitEricRunAfterFinalPreflight": true
+  },
+  "excluded": [
+    "M1 tail video as a generation reference",
+    "rejected v13b external start image",
+    "private grip-test photographs",
+    "K2-K7 and contact sheet",
+    "AI-generated visible phone UI or readable text",
+    "Part 2B fishbowl",
+    "automatic reroll, retry, or duplicate submission"
+  ]
+}

@@ -1,0 +1,35 @@
+VibeSync MAIN FILM | PART 2 A v7 | M2 SIDE EXTRACT | LOCAL TEMPLATE
+
+STATUS: SUPERSEDED LOCALLY BY v8. DO NOT SUBMIT THIS VERSION.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M1_v7_ACCEPTED_TAIL_0p75s.mp4
+- end_image: P2A_K2_SIDE_EXTRACT_FIRST_WALL_CONTACT_v7_1080p_16x9.png (PENDING)
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the accepted M1 tail. The male remains half trapped and below Sydney. Sydney's RIGHT hand still clasps his RIGHT hand; her LEFT hand still supports his right forearm just above the wrist. The amber contact heat already steams the waist-level cracks.
+
+CAMERA — Use the steam and passing ice to reveal one external 30–45 degree side three-quarter tracking view on the open side of the grip. Sydney stays upper-right and the male lower-left. Keep both hands, his trapped waist and Sydney's boots readable in one frame while the shaft continues moving upward around them.
+
+ONE CAUSAL ACTION — Sydney tucks both knees and places each graphite sole against a different surviving outer ice edge beside the male's hips, never against his body. She extends both legs, drives her hips and pulls with her shoulders and back without changing either grip. The heated waist ring opens along one circular crack; his torso, hips and bare legs slide completely free. The broken lower ring and its blank black phone-screen modules receive a downward-outward impulse and form the first debris wave below them. His released weight straightens Sydney's arms and carries her nearest boot toward the broad vertical wall rib.
+
+END STATE — Match the END_IMAGE: male fully free below Sydney, two-point grip unchanged, first boot just contacting the rib, second boot airborne, first debris wave already below. Hold briefly.
+
+CUT MATCH — One blank black screen panel passes close to lens for the next cut.
+
+AUDIO — Ice strain, boot pressure, one deep ring fracture, black-glass clacks, cloth tension and a heavy body drop.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

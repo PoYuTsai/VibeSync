@@ -1,0 +1,33 @@
+VibeSync MAIN FILM | PART 2 A v6 | M2 EXTRACT / FIRST BRAKE | LOCAL TEMPLATE
+
+STATUS: HISTORICAL TEMPLATE — DO NOT SUBMIT. SUPERSEDED BY M2 SIDE EXTRACT v7.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M1_ACCEPTED_TAIL_0p75s.mp4
+- end_image: P2A_K3_single_boot_vertical_brake_v3_BAREFOOT_LOCK_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the VIDEO_REFERENCE. Sydney holds the same distal forearm with one hand while her other palm braces the cracked rim. His lower torso and legs remain inside the descending half-cocoon.
+
+CAMERA — Keep one descending side three-quarter tracking view with the broad vertical rib beside Sydney.
+
+ONE CAUSAL ACTION — Sydney leans backward and the male's torso slides outward as the waist-level ice ring spreads. When his hips clear, her bracing palm leaves the rim and closes beside her first hand on the same distal forearm. The ice releases and his freed weight drops below her, straightening both arms and carrying her nearest graphite boot into the vertical face of the rib. That sole scrapes downward while her second boot remains airborne. The male's two bare feet remain visible below his dark trousers. Wall texture, ice and restrained sparks move upward through frame, preserving their descent.
+
+END STATE / CUT MATCH — Finish exactly on the END_IMAGE geometry and hold the final half-second: male below Sydney, one continuous forearm connection, first boot sliding on the vertical rib, second boot airborne, both bodies still descending.
+
+AUDIO — Wordless physical ambience: ice strain, one shell-release crack, cloth tension, a heavy downward pull and one continuous boot scrape.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

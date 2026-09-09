@@ -1,0 +1,47 @@
+VibeSync 主電影｜Part 2 B｜45–50s 雙人轉身＋百人揭露｜送件稿 v1
+
+STATUS: PREPARED LOCALLY, NOT SUBMITTED, NO PAID AUTHORIZATION.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference or Image-to-Video using the approved Part 2 A end frame
+- Editorial duration: 5.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission.
+
+CONTROL MEDIA
+- required start image: the exact accepted final frame from Part 2 A; not available until A passes
+- male identity: VibeSync_Male_M1
+- Sydney identity: Sydney_V3_WhiteOnepiece
+- architecture clean plate: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_fishbowl_empty_plate_v1_16x9.png
+- wide composition authority: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_fishbowl_wide_concept_v3_research_locked_16x9.png
+- duo direction reference: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/P2B_duo_tank_reveal_v1_16x9.png
+
+MASTER PROMPT
+
+A five-second photorealistic live-action feature-film shot continuing immediately after a dangerous landing. Same male, same Sydney, same wet round atrium, same lighting direction. No dialogue, no captions, no UI and no new plot event.
+
+START STATE
+The male stands on screen left and Sydney on screen right, both still breathing after landing. Sydney has just released his right forearm because he can now stand by himself. The room behind them remains deep purple-black with cold blue structural lines; thin steam rises. The huge glass practice room is physically in front of them but still dark and unreadable.
+
+CAMERA
+Begin as a 50–65mm chest-up two-shot. Sydney first shifts her eyes toward the dark glass and makes one tiny upward chin cue. Both turn about seventy degrees in the same direction. The camera makes a motivated arc around their shoulders; hide one cut behind the male's black shoulder and emerge as a 24–28mm over-the-shoulder hero wide. Keep the motion curved and spatially connected, never a slideshow cut or a walk down a corridor.
+
+ONE CAUSAL ACTION
+Sydney silently directs the male to look. As their gaze reaches the glass, the center bay turns on first. Warm amber light then travels continuously along one curved glass wall into four connected side bays. The reveal exposes five connected curved glass bays; every bay has two continuous deep oxblood-red sofa tiers with ten seated women per tier, creating one hundred women in total. The center twenty are already oriented toward the central male/camera viewing axis, so the next subjective shot can feel as if they are looking directly at him. At wide distance the women only breathe and make tiny unsynchronized head movements; no one performs a large gesture yet. The exact central identities and exact numbers are not generated in this shot and will be composited later.
+
+END STATE
+Finish on the approved grand-wide composition: the male's black back and shoulder frame the left foreground, Sydney's white back and recognizable glasses/hair frame the right foreground, and the five connected bays fill the center. It reads as one enormous relationship-practice room, not five cards. Center bay is brightest; outer bays remain visibly populated but slightly darker.
+
+CUT MATCH
+The male's foreground shoulder crosses enough of frame to provide a natural wipe into the locked center-20 plate. Save a clean final wide frame for reuse at 57.5–60.0s.
+
+AUDIO
+Close breathing and settling clothing at the start. As the center bay lights, introduce one deep glass-room resonance; the sound field expands left and right with the moving light. Add restrained bench fabric, distant human room tone and electrical architecture hum. No speech, cheering, applause, sexy breathing, nightclub beat or UI chime.
+
+HARD AVOID
+No long corridor, elevator, stadium, theater stage, airport lounge, database wall, grid of profile cards, separate televisions, aquarium water, price list, service tiers, cash desk or sexual posing. No extra Sydney or male. No sudden teleport. No crowd appearing from nothing: they are already seated before the lights reveal them. Do not render readable numbers or text. Do not make all one hundred women wave or move together.

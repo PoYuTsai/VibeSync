@@ -1,0 +1,72 @@
+VibeSync MAIN FILM | PART 2 A | 30–45s PHYSICAL RESCUE | ROUND-1 FIX v5
+
+STATUS: HISTORICAL — DO NOT SUBMIT. SUPERSEDED BY 2026-08-30-vibesync-part2-a-rescue-director-lock-v7.md AND THE FIVE v7 MODULE PROMPTS.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 15.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read only from the live confirmation screen immediately before submission.
+
+IDENTITY ELEMENTS — EXACT MAPPING
+- SYDNEY ELEMENT: Sydney_V3_WhiteOnepiece / Element db109a5a-f9a4-4999-905f-7809d5e1d69a / source media 983d3037-86f6-4c8d-9b6c-f9245b54bdb5
+- MALE ELEMENT: VibeSync_Male_M1 / Element 247e5e3c-5b28-4650-be9f-4a043943f0f3 / source media fdb6c55f-24e4-4bab-bbdd-200654e845be
+
+REFERENCE UPLOAD ORDER — EXACTLY FOUR STILLS
+- IMAGE 1 — START FRAME: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_t29p50.png
+- IMAGE 2 — K1 GRIP STATE: ../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v2/P2A_K1_partial_release_grip_lock_v2_1080p_16x9.png
+- IMAGE 3 — K3 BAREFOOT BRAKE STATE: ../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v3/P2A_K3_single_boot_vertical_brake_v3_BAREFOOT_LOCK_1080p_16x9.png
+- IMAGE 4 — K7 BAREFOOT END STATE: ../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v3/P2A_K7_amber_seam_end_lock_v2_BAREFOOT_LOCK_1080p_16x9.png
+- VIDEO REFERENCE: NONE. The existing 27.50–30.08 Part 1 tail remains human-only because it contains the forbidden raised-hand and strike motion.
+
+MEDIA COUNT
+- 4 ordered still files
+- 2 identity Elements
+- 0 model video references
+
+REFERENCE PRIORITY AND TIME BOUNDARIES
+1. IMAGE 1 controls only the opening white ice-dust composition, shaft color and transition.
+2. Identity Elements control face, body, hair, glasses and wardrobe in every shot.
+3. IMAGE 2 (K1) controls only 0.80–2.80s: half-cocoon state, high over-shoulder camera and exact hand contacts.
+4. IMAGE 3 (K3) controls only 4.70–8.60s: male below Sydney, first-boot contact and the right-wall braking geometry. Sydney is the only person wearing boots; the male is visibly barefoot.
+5. IMAGE 4 (K7) controls only 12.70–15.00s and is the exact final composition. Sydney is the only person wearing boots; the male is visibly barefoot.
+IMAGES 2 and 3 are pose/contact/geometry references only; never copy their face, body, hair or wardrobe over the Elements. No reference supplies motion outside its assigned interval. Do not reproduce any old board's diagonal truss, horizontal ledge or upper-arm grip.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+15-second photorealistic live-action fantasy rescue, immediately after an already-completed ice strike. Deep-purple-black wet cylindrical shaft, cold-blue seams, black metal, restrained amber sparks and convincing weight. Maintain one downward screen direction. Sydney is a grounded rescuer, never a flying superhero. The Sydney_V3_WhiteOnepiece Element and VibeSync_Male_M1 Element control both people and wardrobe: Sydney keeps her white one-piece and graphite boots; the male remains barefoot. Reference order is fixed: IMAGE 1 is the opening ice-dust frame; IMAGE 2 is K1 and controls only the 0.80–2.80 hand contacts; IMAGE 3 is K3 and controls only the 4.70–8.60 braking geometry; IMAGE 4 is K7 and is the exact ending. Sydney is the only person wearing boots in IMAGES 3 and 4. Do not assign anatomical RIGHT or LEFT to the male's arm: keep one continuous visible forearm and the same distal grip through the rescue, with no hand swap.
+
+0.00–0.80 — AFTERMATH
+Start exactly on IMAGE 1, the supplied white ice-dust frame. The strike is over: no raised hand, punch, fire or second explosion. As dust thins, reveal the same wet shaft and upward-streaming ice chips.
+
+0.80–2.80 — PARTIAL RELEASE
+Hide one cut in the cloud to a high three-quarter view over Sydney's shoulder, matching IMAGE 2 (K1). The male's head, one shoulder and one forearm are exposed; chest, waist, hips and both legs remain sealed in one cracked half-cocoon. Sydney's LEFT hand clamps that same distal forearm just above the wrist, with his open hand visible beyond her grip. Her RIGHT palm braces flat on the intact ice rim.
+
+2.80–4.70 — PULL
+Hide a cut behind a passing slab to an external side three-quarter wide. Everything continues falling. Sydney pulls and his torso slides out. Her RIGHT hand visibly leaves the ice, joins her LEFT on the same distal forearm, and never jumps toward the elbow. A waist-level ring crack spreads.
+
+4.70–6.10 — FIRST BOOT
+Match the braking geometry of IMAGE 3 (K3). The shell fails under his weight. He becomes fully free, drops lower and loads Sydney's straight arms. She keeps the two-hand grip. Her FIRST boot presses the vertical front face of one broad black-metal rib on the RIGHT wall and scrapes downward; her other boot remains airborne. The male remains barefoot. Sparks and ice trail upward. They do not stop.
+
+6.10–8.60 — SECOND BOOT
+Continue the same side-tracking shot. Her SECOND boot slams beside the first onto the SAME vertical rib face. Both soles press the wall, never a ledge top. Knees compress, shoulders bow, two contacts throw upward sparks. Wall parallax, hair and debris prove both bodies still descend while speed becomes controlled. The male remains barefoot below her.
+
+8.60–10.70 — REDIRECT
+Widen to reveal the circular deck below. Sydney pushes off and counter-pivots only slightly. The male stays below their linked forearms and makes one short pendulum redirect around 90 degrees, hard maximum 120. His center never rises above the grip; his bare feet move below his hips toward the deck. No orbit, inversion, shared spin or horizontal flight.
+
+10.70–12.70 — LANDING
+Cut low and wide. The lower male lands first: one bare foot skids on the wet deck, then forearm and shoulder carry him through exactly one side roll. Sydney lands a fraction later on both boots in a deep crouch, touches one hand down and releases him. Large ice slabs crash several meters behind them.
+
+12.70–15.00 — IMAGE 4 / K7 END
+Hide the final cut in the impact cloud. End on the exact stable composition of IMAGE 4 (K7): barefoot male screen-left on one knee, Sydney screen-right in a low two-foot crouch wearing graphite boots, hands separate. They lift their heads toward one narrow central amber seam that remains closed. Wet reflections, breath, ice and water settle naturally. Do not reveal the next room.
+
+AUDIO
+Native physical sound only: fading impact and steam, wind pressure, ice cracks, fabric, restrained wordless exertion, one low shell-failure crack, first-boot scrape, second-boot hit plus friction, one short redirect air sweep, separate male roll and Sydney landing, delayed ice crash. Finish with breath, drips, distant metal and a very low amber hum. No dialogue, narration, sexual gasp, UI sound or baked-in text.
+
+NON-NEGOTIABLE
+No repeated strike or intact ice sphere; no male already free after whiteout; no elbow/upper-arm grip, missing brace hand, merged limbs or unexplained hand swap; no diagonal truss, ledge, stair, platform, standing pause or instant boot pose swap; no footwear added to the barefoot male; no male above the grip, shared 360-degree spin, superhero flight, ride or game look; no skipped male-first landing; no fishbowl, girls, numbers, UI, writing or logo.

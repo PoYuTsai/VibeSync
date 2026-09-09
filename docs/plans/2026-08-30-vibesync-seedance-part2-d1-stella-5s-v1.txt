@@ -1,0 +1,44 @@
+VibeSync 主電影｜Part 2 D1｜53–55s Stella NO.038 認出男主｜送件稿 v1
+
+STATUS: PREPARED LOCALLY, NOT SUBMITTED, NO PAID AUTHORIZATION.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Image-to-Video / Omni Reference
+- Provider output duration: 5.0 seconds; editorial use: best continuous 2.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission.
+
+CONTROL MEDIA
+- exact start image with blank badge: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_Stella_keygirl_clean_badge_v1_16x9.png
+- identity source / future Element: assets/images/practice_girls/practice_girl_038.jpg / VibeSync_Girl_038_Stella
+- number-accurate visual check only: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_Stella_keygirl_lock_v1_NO038_16x9.png
+
+MASTER PROMPT
+
+A restrained photorealistic 65–85mm live-action close-up of the exact same yoga teacher from the opening VibeSync phone screen, now seated behind glass in the center bay. Preserve her exact face, low bun, age, body, deep sage-green evening dress, seated pose, blank badge, background, lens, crop and warm lighting. No dialogue and no new text.
+
+START STATE
+Stella sits naturally with hands low and out of the badge area. The camera lens is exactly at the male's eye position; Stella already looks directly into the center lens but has not yet recognized him. Other women remain soft background bokeh; none becomes a second subject.
+
+CAMERA
+Locked 65–85mm eye-level male-point-of-view close-up with one nearly imperceptible two-percent push. The lens remains centered on Stella's eye line. Shallow depth of field keeps both eyes sharp and the physical blank badge shape stable. No orbit, pan, reframing or beauty-commercial glide.
+
+ONE CAUSAL ACTION
+Stella's eyes finish focusing directly into the center lens, which is the male/audience point of view. Recognition appears first in her eyes, then in a tiny relaxation around the mouth. She holds direct eye contact, produces a very small closed-mouth knowing smile, and gives one shoulder-level greeting with minimal finger motion. Her movement is warm, attractive and human, never a vacant model pose and never a broad wave.
+
+END STATE
+She holds the small smile and direct center-lens eye contact for several clean frames, visibly addressing the male/audience. Her face, hair, dress, hands and blank badge are unchanged and trackable. Exact `NO.038` and the true badge frame will be composited after motion approval.
+
+CUT MATCH
+Cut on her held eye line to the male's reaction in D2; preserve the same screen direction and warm key-light side.
+
+AUDIO
+Soft glass-room tone, fabric, one quiet inhale and a nearly inaudible finger movement. No speech, name call, wink sound, heartbeat cliché, sexy breath or music cue baked into the clip.
+
+HARD AVOID
+No face drift, different yoga teacher, loose hair, ponytail, glasses, outfit change, exaggerated grin, teeth, laugh, blown kiss, flirtatious body pose, large wave, standing, camera look, readable generated number, text, logo or UI.

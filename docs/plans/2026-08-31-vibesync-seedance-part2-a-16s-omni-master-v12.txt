@@ -1,0 +1,62 @@
+VibeSync MAIN FILM | PART 2 A v12 | HISTORICAL REJECTED 16-SECOND OMNI MASTER
+
+STATUS: JOB ea8d04b0-5da3-447a-a544-55e2cb8ffd5c WAS GENERATED ONCE AND REJECTED. DO NOT SUBMIT, REROLL, RETRY OR RESEND. SUPERSEDED BY THE v13 MODULAR ACTION PLAN.
+
+CANDIDATE CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference / multimodal reference, NOT Video Extension
+- Generated duration: 16 seconds
+- Final edit: accepted M1 v8 97 frames + this expected 384-frame shot, then remove only one stable final frame = 480 frames / 20.000 seconds at 24 fps
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- use_unlim: false unless Eric explicitly changes it
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- image reference #1: P2A_M2A_SYDNEY_SUBJECTIVE_GRIP_LOCK_CANDIDATE_v10_1920x1080.png — camera and exact three-hand topology only
+- image reference #2: Sydney_V3_WhiteOnepiece original character image — Sydney identity, glasses, hair, white one-piece and graphite boots only
+- image reference #3: VibeSync_Male_M1 original character sheet — male identity, charcoal-black long sleeves, dark trousers and bare feet only
+- video reference #1: PART1_ACCEPTED_FAST_PHONE_WELL_FALL_16p00_18p50_2p50s_H264_AAC.mp4 — environment and vertical speed only
+- reference elements: NONE — Seedance 2.5 connector does not support Elements; all three stills are ordinary Omni image references
+- accepted M1 v8 video: EDITING SOURCE ONLY; DO NOT ATTACH TO THIS JOB
+- private husband-and-wife anatomy photos: NEVER UPLOAD
+- all K2–K7 images, ice topology image and contact sheets: DO NOT ATTACH
+- hero phone: POST-PRODUCTION ONLY
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+REFERENCE AUTHORITY — IMAGE REFERENCE 1 defines only Sydney's eye-level subjective camera, the three visible arms and the exact two-point grip. IMAGE REFERENCE 2 defines only Sydney's identity, glasses, hair, white short-sleeve collared one-piece and graphite ankle boots. IMAGE REFERENCE 3 defines only the male's identity, fitted charcoal-black long sleeves, dark trousers and bare feet. VIDEO REFERENCE 1 defines only the dense smartphone-well material, upward parallax and high vertical fall speed. Do not replay motion from any reference, turn references into separate scenes, or copy their backgrounds into a new location.
+
+START STATE — This is a NEW SHOT hard-cut after the accepted male-POV M1; do not continue the male POV. The camera is Sydney’s own eye-level subjective view. Sydney’s face and head are never visible. The trapped adult male faces her below inside the same rapidly descending dense smartphone shaft. Sydney can see both of her own forearms, both bent knees and both graphite-black rescue boots.
+
+The rescue connection is already complete and never re-grips: the male’s RIGHT hand and Sydney’s RIGHT hand hold one natural oblique palm clasp; Sydney’s LEFT hand wraps the male’s fitted charcoal-black RIGHT sleeve immediately above his wrist. Her left thumb lies on the upper/radial sleeve surface and four fingers wrap underneath. Both Sydney wrists are nearly straight. Exactly three hands are visible; the male’s left hand remains hidden on the far side. Preserve the arm directions of image reference #1 but widen the field enough to show both boots.
+
+The male is still half-frozen. Thin blue-white rime remains on his eyebrows, lashes, hairline, cheek edges and black right sleeve; his jaw is stiff, lips slightly pale and breathing strained, but his face, skin and fingers remain natural. His upper torso and right arm are free. His lower body is still trapped by a vertically hanging broken cocoon rear shell along his pelvis and legs. Its front is torn open: empty air is visible before his abdomen and along the centerline between his legs. One thin curved rear shell lies behind him and two separate boot-width side lips grip the outer thighs and legs. Nothing crosses his front or sits horizontally under him. There is no cube, ball, hoop, waist ring, seat, skirt, platform or slab beneath his body.
+
+CAMERA 0.00–3.80 — Keep Sydney’s subjective camera for this entire rescue beat. The dense cylindrical well contains hundreds of tightly packed black-glass smartphone panels in curved vertical ranks, narrow cold-blue seams and occasional amber screens. They race UPWARD behind the male; frost, hair and fabric stream upward in the falling wind. Use readable load-driven jolts, not digital shake. Never cut back to male POV.
+
+ONE CAUSAL ACTION 0.00–1.10 — Without moving either hand, Sydney tucks both knees. Her left boot and then right boot plant on the two separate lateral cocoon lips; neither touches the male. Each sole grinds four to six centimeters across hard ice while everyone continues falling. Orange-white friction sparks trail upward. Sydney inhales once, gives one short hard exhale, drops her shoulder blades and coils her core and hips.
+
+ONE CAUSAL ACTION 1.10–3.80 — A contact-bound thermal charge becomes bold and cinematic: tight saturated orange-gold flame crowns both boot soles and ankles, white-hot contact cores burn against the ice, clean heat distortion bends the cold-blue seams, and amber stress veins run only through existing cracks. At the peak Sydney makes one uninterrupted full-body extraction: both legs extend, hips open, core locks, shoulders and back pull, and both hands stay closed. The boots split the two side lips outward while her arms draw the male toward her. Show heavy resistance and an anatomical release from pelvis through thighs, calves and finally both bare feet. He never teleports.
+
+The peak is one very brief obsidian compression center followed by a hard orange-white contact ring. The broken cocoon separates into ten to fourteen long irregular translucent blue-white glacial splinters of different sizes, plus only a little crystal dust. They continue falling unbraked on the old vertical line. The male’s full released weight yanks Sydney’s arms and subjective camera forward and down. Both hand contacts remain intact. Only after both bare feet visibly clear, use the thermal flash for the single generated cut.
+
+CUT MATCH 3.80 — Hard-cut directly to one same-side THIRD-PERSON SIDE THREE-QUARTER MEDIUM-LONG SHOT. Do not orbit through the cut. Sydney is higher; the male hangs lower through the unchanged steep near-vertical grip. Keep this external camera through the end with no further cuts.
+
+ONE CAUSAL ACTION 3.80–7.20 — Hold a continuous HIGH-SPEED VERTICAL FREE FALL for 3.40 seconds before any wall contact or deck reveal. The same dense cylindrical smartphone well fills the environment: close black-glass phone rows, cold-blue seams and occasional amber panels streak rapidly upward. The camera descends at only about half the bodies’ speed, so Sydney and the male visibly cross from the upper area of frame toward the lower area by at least two body heights; do not lock them at frame center. The deck stays out of sight for the first three seconds. Wind hammers clothing and hair. Heads stay above pelvises, legs stay below hips, torsos remain vertical or diagonally downward. No prone chest-first glide, forward flying arms, backward floating legs, side-by-side centers of mass, shared spin or horizontal superhero-flight silhouette.
+
+ONE CAUSAL ACTION 7.20–8.80 — Sydney’s nearest graphite boot strikes one broad VERTICAL reinforced smartphone-frame rib and keeps scraping DOWN its wet face, throwing a narrow fan of sparks upward. Her second boot slams onto the same vertical rib a fraction later and also keeps sliding down. There is no ledge and no standing pause. Both knees compress under the male’s weight. Sydney makes one two-leg wall push, redirecting only part of the fast descent sideways while both people still move downward. Sydney never spins. Only the lower male deflects forty-five to seventy degrees away from vertical, hard maximum eighty degrees, with his hips and bare feet still below the connected arm.
+
+ONE CAUSAL ACTION 8.80–11.10 — The wet circular deck rushes up. The male is visibly lower and forward; Sydney remains higher and behind. His leading bare foot skids onto the deck FIRST while both of Sydney’s boots remain clearly airborne in the same frame. After his foot bears weight, Sydney’s LEFT support hand releases above his wrist, then her RIGHT palm clasp releases before his right forearm lands. The male absorbs impact through right forearm and shoulder and completes exactly one compact side roll toward screen-left. Keep a clear 0.35–0.50 second gap before Sydney’s two boots land separately at screen-right in a deep controlled crouch with one free hand down. Give the male and Sydney two distinct impact beats. The male ends clumsy and off-balance on one palm and knee; Sydney recovers faster but performs no flip or supernatural freeze.
+
+ONE CAUSAL ACTION 11.10–15.00 — The unbraked glacial splinters catch up in THREE staggered waves. They are irregular shattered cocoon fragments, not identical weapons and not one slab. First, three long splinters whistle down and strike behind the abandoned landing line. Sydney sees their fast floor shadows first and makes one low precise boot-slide into a safe pocket at screen-right. Second, five to seven larger splinters streak down at different angles. The exhausted male reacts half a beat late, his bare foot and palm slip on the wet floor, and he scrambles only half a body length toward front-left using one hand, one knee and one foot. The two nearest splinters crash thirty to fifty centimeters behind his shoulder and heel without touching him. Third, smaller sharp fragments strike sequentially and burst into crystalline fans, branching frost cracks and cold-blue pressure rings. No person is pierced or grazed.
+
+After the second wave, reserve one clean extreme-foreground lane from upper rear-left to lower front-right for the hero phone composite. Generate only a fast rectangular moving shadow, a narrow air wake, a small wet spark/splash where it will hit, and both characters instinctively ducking lower. Do not generate a phone-shaped object, screen, UI, text, number or logo.
+
+END STATE 15.00–16.00 — Fragments settle. The male remains screen-left on one knee and one palm, disheveled and breathing hard. Sydney remains screen-right in a balanced alert two-boot crouch, breathing with more control; she checks above first. Their hands stay separate. They raise their eyes one after the other toward one narrow CENTRAL AMBER SEAM. The seam remains closed; no next room, girl or fishbowl is visible. Hold a stable wet reflective final composition through the last frame.
+
+AUDIO — Continuous high-speed falling wind and dense phone-well resonance; two short boot-on-ice grinds; Sydney’s inhale and hard exhale; rising thermal roar; one dry low-frequency orange-white rupture; multiple sharp ice separations; sudden body-weight yank; at least three full seconds of intensifying free-fall wind; two separated boot-on-metal scrapes; wall-push sweep; male bare-foot skid, forearm/shoulder impact and one roll; 0.35–0.50 seconds later Sydney’s separate boot landing; three staggered waves of whistling ice and sequential crystal impacts; one reserved post-production phone whoosh/clang point; male ragged breath, Sydney controlled breath, drips and restrained amber hum. No dialogue, named attack, narration or generated UI sound.
+
+FAIL THE TAKE IF — The opening remains male POV; Sydney’s subjective view shows her face or hides either hand or either boot; the grip changes or gains an extra limb; the male is not half-frozen; his lower cocoon disappears or becomes a block, ball, hoop, seat, skirt or platform; white fog hides extraction; fire becomes jet propulsion; the external free fall lasts under three seconds or shows the deck early; the smartphone shaft becomes a flat generic wall, corridor or elevator; either torso flies horizontally; both people rotate, descend side by side or land together; Sydney lands first; the debris becomes one thick slab or strikes a person; or the model generates a phone, UI, text, logo, opened seam, girl or fishbowl.

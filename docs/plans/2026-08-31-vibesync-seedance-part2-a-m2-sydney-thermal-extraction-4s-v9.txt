@@ -1,0 +1,61 @@
+VibeSync MAIN FILM | PART 2 A v9 | M2 SYDNEY THERMAL EXTRACTION | LOCAL PREP
+
+STATUS: LOCAL PREP ONLY. M1 v8 IS ACCEPTED. M2 v8 IS REJECTED. NO PAID SUBMISSION, REROLL OR AUTOMATIC RETRY IS AUTHORIZED BY THIS FILE.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: PART2A_M1_v8_ACCEPTED_TAIL_2p064_4p064_2p000s_H264_AAC.mp4
+- ice_topology_image: P2A_M2_K2_ICE_TOPOLOGY_LOCK_v9_1920x1080.png — ICE PROP ONLY; PENDING ERIC APPROVAL BEFORE PAID SEND
+- end_image: NONE
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- private real-hand photos: LOCAL ANATOMY VALIDATION ONLY; DO NOT UPLOAD
+- rejected AI character stills: DO NOT UPLOAD; THEY CONTAIN WRONG HAND OR ICE TOPOLOGY
+- hero phone: POST-PRODUCTION ONLY; DO NOT USE AS A GENERATION REFERENCE
+
+CONTINUITY AND GEOMETRY LOCK
+- MEDIA AUTHORITY IS STRICTLY SPLIT. The accepted M1 v8 tail is the ONLY visual authority for both people, limb count, exact two-point grip, wardrobe and starting motion. The ice-topology image contains no people by design and controls ONLY the three discontinuous ice masses, viewing side and cold-versus-warm ice surface language. Never invent a human pose or hand arrangement from the ice image.
+- Continue the accepted M1 v8 tail. The completed two-point grip already exists before M2 begins.
+- The male extends only his RIGHT arm. Sydney's RIGHT hand keeps the same clasp on his RIGHT hand. Sydney's LEFT hand stays closed around his black-sleeved RIGHT forearm just above the wrist. His LEFT arm remains folded against his far ribs and its hand stays hidden.
+- The earlier heated strike removed the crown, front-upper shell and the side beside his right shoulder from the original ice cocoon.
+- One heavy lower cocoon remains: a broad rear-lower shell supports his pelvis and legs; two separated, unequal side plates still pinch his pelvis and opposite thigh.
+- Open air is continuously visible in front of his body from chest to knees. Each side plate ends at its own jagged fracture face before reaching the other plate. No ice object crosses the front of his abdomen.
+
+TIMING GUIDE
+- 0.00–0.25: preserve the accepted grip; contact steam fills the lens and hides one motivated cut.
+- 0.25–0.80: reveal the external hero view; Sydney plants two boots on two different side plates and coils both knees.
+- 0.80–1.45: one short contact-bound thermal charge makes the existing seams glow and vent steam.
+- 1.45–3.15: one continuous legs-to-hips-to-back extraction pulls the male out in anatomical order.
+- 3.15–3.65: the male's bare feet clear; the lower shell separates into a few heavy uneven slabs below them.
+- 3.65–4.00: his released weight yanks Sydney forward and both accelerate downward; neither boot reaches the wall yet.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+CHARACTER LOCK — Sydney is @Sydney_V3_WhiteOnepiece. The trapped male is @VibeSync_Male_M1.
+
+REFERENCE AUTHORITY — VIDEO REFERENCE 1 is the accepted M1 v8 tail and is the exclusive authority for both people, limb count, the exact two-point right-arm grip, black-long-sleeve continuity, wardrobe and starting motion. IMAGE REFERENCE 1 is a people-free ice-prop plate and controls only the three discontinuous lower-cocoon masses, their open gaps, the viewing side and cold-versus-warm ice surface language. Never copy a body, pose, hand or limb from IMAGE REFERENCE 1. Never let IMAGE REFERENCE 1 replace or rearrange the grip already established by VIDEO REFERENCE 1.
+
+START STATE — Continue the accepted M1 v8 tail at the same instant. The adult male wears the same fitted charcoal-BLACK LONG-SLEEVE top and dark trousers. Only his RIGHT arm reaches Sydney. Sydney's RIGHT hand keeps the accepted secure clasp on his RIGHT hand; Sydney's LEFT hand stays fully closed around his black-sleeved RIGHT forearm just above the wrist. The two contact points remain separated by visible black sleeve. His unused LEFT arm stays folded against the far side of his ribs and its hand remains hidden throughout this shot. His head, shoulders and right arm are outside the broken cocoon, while his abdomen, pelvis, thighs and legs are still wedged in one heavy lower cocoon. A broad rear-lower shell supports his pelvis and legs. Two unequal side plates remain beside his pelvis and opposite thigh, separated by open air; each plate stops at its own jagged fracture face. Open air remains visible in front of his body from chest to knees, with no ice crossing the front of his abdomen.
+
+CAMERA — From 0.00 to 0.25 second, the accepted M1 grip does not move while dense white contact steam fills the lens. Hidden inside that steam, make one motivated cut from male POV to one external HIGH SIDE THREE-QUARTER hero shot, 30–40 degrees from the male's RIGHT side, approximately a 35 mm lens. When the steam clears at 0.25 second, Sydney is full-body at upper-right and the male is lower-left; her face, both arms, both boots, the single male right arm and all three remaining shell masses are readable in the same frame. Stay on this side and follow their descent with only a slight lateral track. Do not orbit, cross the action axis, cut again or use a low angle. Dark wet shaft ribs and cold-blue seams stream upward behind them, proving that both people and the cocoon are still falling.
+
+ONE CAUSAL ACTION — From 0.25 to 0.80 second, Sydney's LEFT boot plants firmly on the near jagged side plate beside the male's RIGHT pelvis, then her RIGHT boot plants on the lower far-side plate beside the male's LEFT thigh, never on his body. She draws both knees deeply toward her torso, lowers her shoulders and sets her jaw. From 0.80 to 1.45, she takes one short effort breath and sends a CONTACT-BOUND THERMAL PULSE through her forearms, the two existing hand contacts, and the exterior frost attached to his black sleeve and torso. That surface frost carries the pulse into the existing ice seams without burning his body. Amber-white heat hugs her skin and forearms in short wind-swept flame tongues; it never leaves her body. Cold cyan frost retreats, three narrow internal fractures brighten amber, and pressured white steam vents outward. Her face, fingers and exact grip remain clearer than the fire. From 1.45 to 3.15, Sydney performs ONE continuous full-body extraction: both boot soles drive the two separate plates downward and outward; both legs extend; her hips open, core locks, back and shoulders pull away, and both elbows remain slightly flexed under heavy load. The accepted two-point grip does not slide or change. This force moves the male upward and outward through the already open front: right shoulder, chest, pelvis, thighs and finally both BARE FEET clear in that order. The heat only weakens the pre-existing seams; Sydney's legs, hips, back, shoulders and arms provide the rescue force. From 3.15 to 3.65, the two side plates peel away from the broad rear-lower shell and the remaining mass separates into only three to five thick, unequal slabs that fall below along the old centerline. From 3.65 to 4.00, the male's suddenly released full weight jerks Sydney's shoulders forward and downward, her knees recoil naturally, and both people accelerate downward together while the exact grip remains load-bearing.
+
+END STATE — At 4.00 seconds the male is completely free below Sydney, still wearing black long sleeves and dark trousers with both bare feet visible. Only his RIGHT arm connects to Sydney. Sydney remains above and to the right, face strained but controlled, with the accepted RIGHT-hand clasp and LEFT-hand forearm support unchanged. Both bodies are descending faster; Sydney is not standing or flying. Three to five heavy uneven ice slabs are already below them. A distant vertical wall rib may enter the far edge of frame, but neither of Sydney's boots touches it in M2. No readable phone appears; the first hero phone will be added to the falling debris in post-production.
+
+CUT MATCH — A dark ice slab and a ribbon of cold steam sweep upward across the lower edge after the readable weight-drop state. M3 begins on the same side and same falling axis with Sydney's nearest boot making first contact with the vertical wall rib. Do not perform that contact in M2.
+
+AUDIO — Continuous falling wind and strained fabric. Two distinct heavy boot-on-ice contacts; one short rising thermal hum; frost hiss and three tight steam vents; deep ice stress under Sydney's leg drive; one low asymmetric shell break; several heavy slab clacks below; then one abrupt body-weight tug with Sydney's short effort exhale. No dialogue, named attack, explosion, wall scrape, spark, landing impact or phone UI sound.
+
+HARD LOCKS — Exactly three visible hands at the rescue connection: the male RIGHT hand, Sydney RIGHT hand and Sydney LEFT hand. No male left hand in the grip area, no second extended male arm, no release, re-grip, hand swap, open supporting palm, extra hand, extra thumb or fused limb. Preserve the open front gap and the three discontinuous lower shell masses. No arm-only tug, symmetrical two-person tug-of-war, standing pose, wall contact, braking, swing, spin, landing, fireball, detached orange orb, flame sea, boot thruster, readable phone, UI, text, logo, game look or amusement-ride motion.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

@@ -1,0 +1,38 @@
+VibeSync 主電影｜Part 1（0–30s）｜Seedance 2.5 送件紀錄 v3
+日期：2026-08-29　job：6cc3fde3-5b5c-46e6-9a47-95f87d82f37a　費用：270 credits（Eric 授權「直接跑正式版」）
+設定：seedance_2_5 / omni_reference / 16:9 / 30s / 1080p / bitrate high / audio on
+medias：
+- start_image 149d0035-3c61-4267-bf42-84ed9342fa4d ＝ docs/handover-screenshots/film-boards-2026-08-29/U1_first_frame_hero_phone.png（ffmpeg 合成：黑底＋vibesyncai.app screen-practice.webp 旋轉 -2°）
+- image_references fdb6c55f-24e4-4bab-bbdd-200654e845be ＝ Element VibeSync_Male_M1 底圖
+- image_references 983d3037-86f6-4c8d-9b6c-f9245b54bdb5 ＝ Element Sydney_V3_WhiteOnepiece 底圖
+- image_references 776f4f15-471d-4008-8d73-499581700aac ＝ ENV0 V1（牆材質）
+拒絕 preset：FREE FALL、IN THE DARK（照字面生成）
+
+PROMPT（原文）：
+A 30-second live-action cinematic sequence, 16:9, the opening of a premium fantasy short film. One continuous world, one continuous fall, with a few invisible physically-motivated cuts. No text, no UI, no subtitles, no logos, no anime, no video-game look, no dialogue, no narration.
+
+REFERENCE ROLES. The start image is the exact first frame: a tilted smartphone on a black background showing a dating-practice app card with an orange round arrow button; keep this phone, this card and this button exactly as they are. Reference 1 (man) defines the male protagonist's identity only: East Asian, early 30s, strong jaw, textured black hair, dark charcoal long-sleeve shirt, dark trousers, barefoot. Reference 2 (woman) defines Sydney's identity only: East Asian, straight dark hair with blunt bangs, thin round black glasses, white short-sleeve collared shirt-dress, graphite ankle boots. Reference 3 defines only the wall material: an enclosed vertical shaft tiled with countless powered-off smartphone screens, dead purple-black wet glass in thin black metal frames, cold blue seams. No reference defines camera or composition.
+
+0-1s: the phone sits still on black, exactly as the start image. 1-2s: extreme close-up, a man's finger enters and presses the orange arrow button. 2-7s: handheld phone; blue-white ice crystals grow from all four edges of the glass toward the center, the app card still visible, the orange button the only warm spot still glowing; in the last second the finger clings to the edge of the glass and slips off, pulled downward.
+
+7-10s: hard cut to an extreme wide locked-off shot, the camera looking horizontally at a flat wall of dead phone screens filling the whole frame, no vanishing point, no corridor; the man is a tiny falling speck in the middle, dust streaks upward, a single tiny orange point of light at the very bottom.
+
+10-14s: the camera falls with him, close, tumbling and rolling, no fixed horizon; he flails and turns head over heels, hair and shirt whipped upward; the wall of screens smears into vertical streaks rushing upward; white frost spreads visibly from his fingertips up his forearms to his elbows; dark screen panels peel off the wall and slap onto his shoulders and back and stick.
+
+14-16s: close-up on his face, frost forming on his jaw, eyes looking down toward the orange light far below.
+
+16-18s: shot from above looking straight down the shaft, his small figure receding; the orange point below does not grow.
+
+18-20s: the orange point suddenly swells into a ball of fire rushing upward toward camera.
+
+20-23s: side medium shot, the man is NOT in frame: Sydney launches upward along the wall, one boot planted on a dead screen, every screen she has touched lighting up warm orange in a trail below her, a small orange fire in her open palm, hair and dress streaming downward, jaw set.
+
+23-25s: extreme close-up, hands only: her hand grips his frost-covered forearm, fire meets ice, steam bursts, ice shards and droplets fly upward; then his frosted face is pulled across the lens, blurring the whole frame white.
+
+25-27s: the white blur clears into a wide shot of the two of them tumbling together, half white frost, half orange fire, a cocoon of ice and dark screen panels already growing around him wider than his shoulders.
+
+27-29s: hero shot from low angle: Sydney braces one hand flat on the ice cocoon, her other palm raised high holding fire; starting from the screen under her hand, the dead screens on the cocoon light up orange one after another in an expanding ripple; ice shards fly upward on both sides of her.
+
+29-30s: her fire palm presses onto the ice, steam explodes toward camera, frame fills with white steam. End.
+
+Sound: room silence, a soft button click, glass frosting crackle, a fingernail scraping glass, a deep low-frequency pull, then roaring wind, cloth flapping, ice crackling along skin, glass panels clacking on, the roar of fire rising, impact and steam burst, the electric hum of screens lighting up. No music, no voice.

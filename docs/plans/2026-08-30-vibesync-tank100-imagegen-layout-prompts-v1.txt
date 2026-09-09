@@ -1,0 +1,33 @@
+VibeSync TANK100｜built-in imagegen 靜態空間測試
+日期：2026-08-30
+用途：只驗證 100 人金魚缸的規模、相機與階梯構圖；不是正式身份母幀、不是影片送件 Prompt。
+
+INPUT REFERENCES
+1. part2-static-locks-v1/P2B_duo_tank_reveal_v1_16x9.png
+   角色：空間、相機、男主／Sydney 前景位置。
+2. part2-static-locks-v1/B10_cast_plate_exact20_v2_16x9.png
+   角色：兩排座位、晚禮服、空白牌；不採用其生成臉。
+3. part2-static-locks-v1/TANK_CAST_20_REFERENCE_10x2.jpg
+   角色：前兩排 20 位真實 App 女孩身份參考。
+4. assets/images/practice_girls/practice_girl_038.jpg
+   角色：Key Girl Stella／NO.038 精確身份參考。
+
+PROMPT V1｜SCALE
+Use case: photorealistic-natural. Cinematic 16:9 feature-film keyframe. Preserve the vast circular purple-black hall, wet reflective floor, huge horizontal glass chamber, male in black at foreground left and Sydney in white at foreground right. Inside the chamber create exactly ten gently curved ascending tiers with exactly ten adult women per tier, total one hundred. First two tiers use the twenty distinct hero women from the identity sheet; rear eight tiers remain visibly human and distinct but progressively darker. First-tier center-left is Stella from practice_girl_038, keeping her face and low side bun in a deep sage-green evening gown; center-right is Audrey / NO.099 in black-gold formal styling. Warm gold and restrained rose light, cool cyan glass edges, epic fantasy realism. Every woman wears one blank smoked-glass hanging badge. No readable text, fake numbers, logo, watermark, lingerie, synchronized poses, clones or extra foreground people.
+
+V1 RESULT
+- 成立：巨型玻璃缸、濕黑地面、男左 Sydney 右、百人規模壓迫感。
+- 不成立：每排被模型擴成十多人；無法確認 10×10；Stella 與其餘真實身份未鎖。
+- 檔案：part2-static-locks-v1/TANK100_layout_concept_v1_scale_16x9.png
+
+PROMPT V2｜COUNTABLE STRUCTURE EDIT
+Edit V1 while preserving camera, chamber exterior, hall, foreground pair, lighting and floor. Change only the interior: exactly TEN curved horizontal seating tiers, exactly TEN seated adult women on every tier, exactly ONE HUNDRED total, no extra standing women or side clusters. Ten separated seat bays per tier, large row spacing, half-seat staggering. First tier and second tier exactly ten hero women each. First-tier seat 5 is Stella with the exact warm-eyed face and low side bun, deep sage gown; seat 6 is Audrey with black-rim glasses and black-gold gown. Rear eight tiers retain ten distinct visible adult women per row, no silhouettes, gaps or clones. No text, numbers, logo or watermark.
+
+V2 RESULT
+- 改善：階梯更規則、前後排更容易讀、高潮構圖更乾淨。
+- 仍不成立：模型依舊沒有遵守每排 10 位；多張臉趨同；Stella 不是精確本人。
+- 檔案：part2-static-locks-v1/TANK100_layout_concept_v2_countable_16x9.png
+
+DIRECTOR CONCLUSION
+兩張只做空間概念參考。正式 100 人 4K 母幀不得再靠單次生成數人頭；必須先建立固定 10×10 seat map，前兩排用 20 個描述式 Element／實際素材，後八排使用其餘 80 張 App 圖分排 crowd plates，再合成玻璃與燈光。
+

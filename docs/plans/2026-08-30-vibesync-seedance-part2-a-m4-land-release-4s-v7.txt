@@ -1,0 +1,36 @@
+VibeSync MAIN FILM | PART 2 A v7 | M4 LAND / RELEASE | LOCAL TEMPLATE
+
+STATUS: LOCAL TEMPLATE ONLY. M3 MUST BE ACCEPTED BEFORE PAID SUBMISSION.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M3_v7_ACCEPTED_TAIL_0p75s.mp4
+- static end image: none
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the accepted M3 tail toward the clear wet lane beside the rib base. The male is lower, bare feet beneath his hips. Sydney remains slightly higher. Their RIGHT-hand clasp and her LEFT-hand support above his right wrist are still visible. The first debris wave is already below or off-axis; the upper delayed debris remains above.
+
+CAMERA — Track from a grounded low side three-quarter angle on the same side of their travel line. Keep the male's leading foot, both hand contacts, his right forearm and Sydney's two graphite boots readable.
+
+ONE CAUSAL ACTION — The male's leading bare foot skids and begins carrying real weight. Only after that load appears, Sydney opens her LEFT support hand completely so his right forearm can rotate toward the deck. Her RIGHT hand keeps the main clasp for one brief guiding beat, then releases before his right forearm touches down. Freed from her grip, he absorbs impact through forearm and shoulder and completes exactly one compact side roll. Sydney lands a fraction later on both boots in a deep crouch and steadies herself with a free hand. No one holds through the roll. A large moving shadow and a few fine chips announce the delayed upper collapse, but the heavy second wave does not strike yet.
+
+END STATE — Both adults are grounded, low and breathing, hands fully separated. Hold this clean pre-impact state for the final half-second.
+
+CUT MATCH — The delayed debris shadow sweeps over them into M5.
+
+AUDIO — Bare-foot skid, two distinct grip releases, forearm and shoulder impact, one body roll and two-boot landing; no heavy rear crash yet.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1
+

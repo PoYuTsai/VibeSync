@@ -1,0 +1,47 @@
+VibeSync 主電影｜Part 2 D2｜55–57.5s 男主認出＋Sydney 俏皮眨眼｜送件稿 v1
+
+STATUS: PREPARED LOCALLY, NOT SUBMITTED, NO PAID AUTHORIZATION.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference / Image-to-Video
+- Provider output duration: 5.0 seconds; editorial use: best continuous 2.5 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission.
+
+CONTROL MEDIA
+- required start frame: an approved warm-lit two-shot made after B and C; not available until those pass
+- Sydney identity: Sydney_V3_WhiteOnepiece
+- male identity: VibeSync_Male_M1
+- expression authority: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/B11_Sydney_pre_wink_v1_16x9.png
+- background direction: accepted center-bay frame, used only as out-of-focus warm glass-room light
+
+MASTER PROMPT
+
+A restrained photorealistic live-action 50–65mm two-shot in the same round atrium outside the glass practice room. Same male on screen left, same Sydney on screen right. Exact identities, wardrobe, body position, eye lines and warm-light direction remain stable. The one causal action is recognition passing from Stella to the male and then to Sydney.
+
+START STATE
+The male is already looking toward Stella off-screen. Sydney is not looking at the camera; she has been quietly observing the male from the side. Behind them, the one-hundred-person room is only soft warm bokeh and must not resolve into new faces.
+
+CAMERA
+Locked 50–65mm chest-up two-shot with a very subtle human handheld settle, not a push-in. Male remains screen left, Sydney screen right. No shot/reverse-shot, orbit, dolly or rack focus that loses either face.
+
+ONE CAUSAL ACTION
+The male realizes Stella is the same woman from the phone and gives one involuntary small closed-mouth smile. Sydney notices his recognition, lets her own mouth soften into a cute but controlled smile, makes one playful single-eye wink exactly once, then raises her chin a few millimeters as if to say, without words, that he can begin. This is a coach encouraging a student, not a romantic advance between Sydney and the male.
+
+END STATE
+Both turn their eyes back toward the glass while keeping their bodies in place. Their faces and costumes remain stable. End with the warm room reflected in Sydney's glasses and enough still frames for a cut back to the grand wide.
+
+CUT MATCH
+Match their returning eye direction to the grand wide from B. Reuse B's clean wide end frame for 57.5–60.0s, add exact crowd/number composites, then dim naturally to the true VibeSync isometric cube mark.
+
+AUDIO
+Close natural breathing and a small fabric shift. Remove room tone for three or four frames at the wink so the expression reads, then restore the large warm room resonance. No dialogue, narration, wink chime, romantic sparkle, kiss sound or UI audio.
+
+HARD AVOID
+No kiss, touching faces, embrace, romantic gaze, sexual expression, broad grin, teeth, repeated wink, both winking, looking into camera, face drift, missing glasses, extra person, resolved background faces, generated badge, text, logo or UI.
+

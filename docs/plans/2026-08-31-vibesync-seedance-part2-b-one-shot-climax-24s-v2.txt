@@ -1,0 +1,96 @@
+VibeSync MAIN FILM | PART 2 B v2 | WET ESCAPE TO 100-WOMAN FISHBOWL CLIMAX | SINGLE 24-SECOND MASTER | 20 HERO GIRL ELEMENTS REQUIRED | LOCAL PREFLIGHT PREP ONLY
+
+STATUS: ALL TWENTY GIRL ELEMENTS WERE CREATED AND VERIFIED COMPLETED ON 2026-08-31; THEIR ONE-TIME CREATION AUTHORIZATION IS CONSUMED. NO VIDEO JOB IS AUTHORIZED BY THIS FILE. NO REROLL, RETRY OR AUTOMATIC RESUBMISSION. SUBMIT THE VIDEO ONLY AFTER THE COMPLETE LIVE 26-INPUT PAID PREFLIGHT IS SHOWN AND ERIC GIVES A NEW EXPLICIT “RUN” FOR THAT EXACT VIDEO ACTION.
+
+CANDIDATE CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference, not extension or edit
+- Duration: 24 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- use_unlim: false
+- Automatic retry / reroll / resubmission: OFF
+
+REQUIRED MEDIA ROLES — 26 TOTAL MULTIMODAL INPUTS IF THE LIVE UI ACCEPTS THEM
+- START IMAGE: P2B_START_CURRENT_CUT_t57p20_v1.png — exact current film end state
+- VIDEO REFERENCE 1: P2B_VIDEO_REFERENCE_CURRENT_CUT_TAIL_54p79_57p29_H264_AAC_v1.mp4 — exact 2.5-second wet lake-shore continuity only
+- CHARACTER ELEMENT 1: Sydney_V3_WhiteOnepiece / media 983d3037-86f6-4c8d-9b6c-f9245b54bdb5
+- CHARACTER ELEMENT 2: VibeSync_Male_M1 / media fdb6c55f-24e4-4bab-bbdd-200654e845be
+- CHARACTER ELEMENTS 3–22: ALL TWENTY named Hero Girls below, each attached exactly once
+- IMAGE REFERENCE 23: P2B_K1_WET_ESCAPE_3D_CARD_BACK_GATE_LOCK_v1.png — gate architecture and collapse-behind direction
+- IMAGE REFERENCE 24: TANK100_fishbowl_wide_concept_v3_research_locked_16x9.png — five-bay architecture and grand-wide end state only
+- Do not attach K2, the contact sheet, the center-20 control board, a duplicate Stella still, eighty individual crowd faces, a second logo asset or any rejected result.
+
+TWENTY REQUIRED GIRL ELEMENTS — IDENTITY ONLY; SEAT, WARDROBE, ACTION AND BADGE ARE CONTROLLED BELOW
+- BACK 01 @VibeSync_Girl_078_Leah
+- BACK 02 @VibeSync_Girl_024_Celine
+- BACK 03 @VibeSync_Girl_032_Peggy
+- BACK 04 @VibeSync_Girl_016_Ruby
+- BACK 05 @VibeSync_Girl_051_Jessie
+- BACK 06 @VibeSync_Girl_083_Tara
+- BACK 07 @VibeSync_Girl_011_Ella
+- BACK 08 @VibeSync_Girl_019_Vivian
+- BACK 09 @VibeSync_Girl_070_Yuki
+- BACK 10 @VibeSync_Girl_082_June
+- FRONT 01 @VibeSync_Girl_017_Grace
+- FRONT 02 @VibeSync_Girl_023_Fiona
+- FRONT 03 @VibeSync_Girl_026_Joyce
+- FRONT 04 @VibeSync_Girl_068_Flora
+- FRONT 05 @VibeSync_Girl_038_Stella — KEY GIRL, same opening-phone yoga teacher
+- FRONT 06 @VibeSync_Girl_099_Audrey
+- FRONT 07 @VibeSync_Girl_086_Demi
+- FRONT 08 @VibeSync_Girl_088_Joan
+- FRONT 09 @VibeSync_Girl_090_Talia
+- FRONT 10 @VibeSync_Girl_096_Willa
+
+REFERENCE PRIORITY: exact Sydney and male continuity; exact twenty Hero Girl identities and seats; exact five-bay hundred-woman scale; correct gaze target; Stella recognition; Sydney’s single wink; then secondary micro-gestures. If complexity conflicts, preserve identity, count, seat and gaze before secondary gestures.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+GLOBAL START STATE — Continue on the very next frame after the supplied accepted current-cut tail. Generate ONE complete twenty-four-second master in ONE Job. This is not one uninterrupted camera take: use only motivated cinematic cuts caused by the black gate-edge wipe, a shoulder wipe, held eye lines and returning gaze. Delayed phone-shaft failure forces the same two soaked adults through the amber threshold; the threshold seals; darkness and silence reset the rhythm; layered light reveals five connected glass bays and one hundred women; the camera curves behind the duo, enters the male’s exact POV, reveals twenty identity-locked Hero Girls and Stella, returns to the wet duo for Sydney’s one playful wink, then returns to the grand scale and cuts to black before the male completes his first step. No dialogue, captions, readable text, fake UI, card flip, selection frame or CTA.
+
+WORLD AND CHARACTER CONTINUITY — Opening remains inside the SAME huge cylindrical phone shaft and underground lake: wet purple-black glass, dense unlit black phone modules, curved black metal, cold-blue seams, obsidian shore and one narrow centered amber seam. Sydney keeps her exact identity, round glasses, soaked white short-sleeve collared one-piece, black belt and graphite ankle boots; wet white fabric remains fully opaque. The male keeps his exact identity, soaked fitted charcoal-black LONG-SLEEVE shirt, dark trousers and bare feet. Both keep wet hair, streaming clothes and heavy breath through the entire scene. No drying, wardrobe change, hand re-grip, towing or second rescue.
+
+FISHBOWL IDENTITY AND SPACE — Behind one continuous gently curved glass wall are FIVE connected bays. Each bay contains exactly two continuous oxblood-red sofa tiers, ten adult women per tier, exactly one hundred women total. Center bay contains the attached twenty Hero Girl Elements in the exact fixed order listed above: back ten and front ten. The other four bays contain eighty visibly different adult women from crowd plates, not clones or black silhouettes. Every woman has a different face, hairstyle and evening gown; adjacent gowns differ in color and cut. Each wears one stable blank smoked-glass badge. Exact NO.xxx, final badge frames, exact VibeSync emblem linework and final glass reflections are post-production layers, never generated text.
+
+GAZE GRAMMAR — In THIRD-PERSON coverage, every woman looks toward the male’s physical position outside the glass, never at the moving camera. In MALE POV coverage, the lens occupies his eye position, so the center twenty look directly into the center lens. Eyes settle at slightly different speeds; head and body angles remain naturally different. Warm upper-front 45-degree face keys create soft eye catchlights. Cold-blue light touches glass edges only. No underlit faces, black eye sockets, frozen horror stare or camera-following heads.
+
+0.00–0.80 | START STATE → ONE WARNING — Preserve the supplied composition: soaked male crouched left, soaked Sydney crouched right, both facing the same sealed amber seam. Rear water impacts subside. A deep circular structural groan, falling dust, tiny glass chips and one bank of dead phone modules shifting several centimeters reveal delayed progressive collapse. Sydney understands, fixes her gaze on the amber threshold and launches. No explosion or obstacle appears in front.
+
+0.80–3.60 | LOW REAR THREE-QUARTER ESCAPE — Camera drops into a low rear-side 28–35mm tracking view. Sydney rises first and runs straight toward the centered seam; the male follows half a beat later under his own power. Sydney stays half a body ahead; the cold barefoot male is heavier and more ragged. Water splashes from the thin film across black stone. Failure stays one to two meters BEHIND: loose black phone modules, eight to twelve irregular blue-white ice splinters and staggered shore fractures chase their footsteps. The clear route ahead remains intact. No hand-holding, jumping, wall-running, flying, hovering or Superman descent.
+
+3.60–4.80 | THREE-DIMENSIONAL VIBESYNC THRESHOLD — The seam expands into the monumental pointed black-obsidian arch from the K1 reference. Rebuild the real App practice-card-back language as thick architecture: concentric black-metal tracks, beveled gold inlays, violet-gold faceted radial nodes, physical mounts and a projecting isometric VibeSync cube lock with three visible G-labyrinth faces and stacked chevrons. Tracks energize, the cube pulls outward and rotates a few degrees, and six heavy black-stone petals fold inward. Nothing slides sideways like an elevator. Both characters sprint through without stopping; the passing black arch edge wipes the full frame.
+
+4.80–5.60 | CUT MATCH → SEALED SILENCE — On the black wipe, cut to a 24mm interior rear view. The duo decelerates two wet steps as the stone petals slam closed. External collapse and lake noise stop at once. Hold almost complete darkness: soaked male silhouette lower-left, soaked Sydney silhouette lower-right, breath, dripping clothes and one hairline amber floor reflection only. NO woman, face, chair, glass reflection or room outline is visible yet.
+
+5.60–6.50 | AMBER CENTER SILHOUETTES — One thin amber channel travels from the sealed threshold under the duo and reaches the central darkness. It lights only a low under-seat line, revealing exactly two tiers of twenty seated female silhouettes in the CENTER bay. Faces remain dark. Nobody materializes or moves broadly.
+
+6.50–7.60 | FIVE-BAY SCALE REVEAL — One cold-blue rim sweep expands continuously from the center across the same curved glass to both sides, revealing all FIVE connected bays and all one hundred seated silhouettes. Camera pulls back and rises only slightly to fit the architecture. No stage curtain, separate television frames, stadium grid or nightclub strobe.
+
+7.60–9.60 | WARM HUMAN FACE REVEAL — Restrained warm upper-front 45-degree face keys rise in staggered layers, exposing one hundred distinct faces, hair, skin, body types, evening gowns, oxblood sofas and blank badges. Center twenty exactly match their attached Elements and seats. Outer eighty remain readable humans, slightly darker toward the edges. At this first reveal everyone was already seated; motion is limited to breathing, natural slow blinks and tiny independent head adjustments. No greeting yet, no synchronized smile, and no horror underlight.
+
+9.60–12.20 | THIRD-PERSON 80-DEGREE ARC — Begin just behind Sydney’s rear-right side and make one controlled approximately EIGHTY-DEGREE arc behind the wet duo, ending over the male’s left shoulder. Remain entirely on the dark viewing side outside the glass. Never complete 360 degrees, cross through glass, reveal an undefined rear set or orbit behind the women. The continuous glass wall stays visible throughout. Every girl keeps her gaze on the MALE’S REAL PHYSICAL POSITION, not on the moving lens. Use the male’s left shoulder filling frame as the motivated wipe into his POV.
+
+12.20–15.00 | MALE POV → CENTER TWENTY HUMAN ATTENTION — Cut to an exact centered 35–50mm male-eye POV. Male and Sydney are invisible because the lens occupies his eye position. The attached twenty Hero Girls sit in two exact tiers of ten. Across 12.20–12.90 their pupils settle toward the center lens at different speeds while bodies remain seat-specific. Across 12.90–13.55 @VibeSync_Girl_024_Celine slow-blinks once, @VibeSync_Girl_051_Jessie gives a nearly imperceptible nod, and @VibeSync_Girl_026_Joyce develops a tiny closed-mouth smile with a slight eyebrow lift. Across 13.55–14.20 @VibeSync_Girl_078_Leah gives one two-finger greeting beside her cheek and retracts it, @VibeSync_Girl_099_Audrey forms a restrained one-sided smile, and @VibeSync_Girl_011_Ella performs an ordinary natural slow blink, NEVER a wink. Across 14.20–15.00 @VibeSync_Girl_096_Willa gives one tiny open-palm wave below shoulder level, @VibeSync_Girl_086_Demi sits slightly taller and @VibeSync_Girl_090_Talia tilts her head less than two degrees. At any instant no more than two or three readable motions occur. Everyone else breathes and maintains warm direct engagement. No synchronized wave, blink, smile, dance or pageant pose.
+
+15.00–16.80 | FRONT-LEFT HUMAN DETAIL GLIDE — Make one restrained 50–65mm lateral glide across front seats one through five without passing through glass. @VibeSync_Girl_017_Grace quietly stabilizes eye contact; @VibeSync_Girl_023_Fiona tucks one small strand behind her ear outside the badge area; @VibeSync_Girl_026_Joyce holds her natural small smile; @VibeSync_Girl_068_Flora makes one soft inhale; then the glide ends on @VibeSync_Girl_038_Stella’s eye line. Every visible hand has exactly five normal fingers, neutral wrists and correct thumb orientation. Hands do not merge, cross badges, grow extra fingers or penetrate glass.
+
+16.80–18.60 | STELLA RECOGNITION — Cut to a locked 65–85mm male-eye POV close-up of exact @VibeSync_Girl_038_Stella, the same yoga teacher shown on the opening phone. She is center-front seat five, with her exact face, recognizable low bun, deep sage or ink-green evening gown and one blank stable badge. First her eyes focus and recognition warms them; then her relaxed mouth becomes one very small closed-mouth genuine smile. She gives one minimal shoulder-level greeting under five centimeters, returns her hand and holds eye contact. She does NOT wink, bare teeth, wave broadly, blow a kiss or pose sexually. Do not generate NO.038; add it in post.
+
+18.60–21.20 | RECOGNITION PASSES TO MALE AND SYDNEY — Cut on Stella’s held eye line to a wet 50–65mm chest-up two-shot outside glass: male screen-left, Sydney screen-right, the same hall as coherent warm glass bokeh behind. Both remain soaked; Sydney’s round glasses carry droplets, white clothing stays opaque, male shirt stays long-sleeved. The male recognizes the woman from his opening phone and gives one involuntary small closed-mouth smile. Sydney was already watching his response, not the lens. They share one brief coach-and-student smile. At 20.35–20.65 Sydney closes only her camera-near eye once and opens it again while the other eye remains on the male; her lips form one cute, controlled, playful closed-mouth smile. She never looks into the lens. No repeated wink, both-eye blink, male wink, Stella wink, touch, embrace or romantic lingering. Sydney raises her chin a few millimeters and both look back to the glass.
+
+21.20–22.20 | RETURN TO TRUE CLIMAX — Match their returning gaze to the SAME 24–28mm symmetrical grand-wide composition. Five connected bays, two tiers each and one hundred different women remain clear. Wet male black silhouette is left foreground; wet Sydney white silhouette is right foreground. Center twenty keep gentle direct engagement; outer eighty keep sparse unsynchronized breathing and head micro-motion. Nobody performs a final group greeting.
+
+22.20–23.15 | UNFINISHED HALF-STEP — Keeping the grand wide, the male transfers his weight forward and begins only one incomplete half-step toward the glass. Sydney remains half a step behind him as coach. Center-bay eyes naturally track the male’s body; Stella keeps the same small knowing smile but adds no second greeting. The audience understands that his real choice is about to begin, but no woman is selected.
+
+23.15–23.60 | ONE ARCHITECTURAL BRAND PULSE — The central isometric-cube architectural light housing emits exactly one restrained violet-gold pulse. Its reflection travels across the entire continuous curved glass, not across individual badges. It does not select Stella, Audrey or anyone else, does not create a card frame, and does not become UI. Exact logo linework remains replaceable in post.
+
+23.60–24.00 | HARD CUT TO BLACK → SUSPENSE END STATE — Before the male finishes the step or reaches the glass, HARD CUT directly to pure black and hold black for four-tenths of a second. The unanswered question is whom he will approach next. No fade-out person, second door, new threat, title, slogan, fake logo, CTA or after-image.
+
+MICRO-EXPRESSION AND HAND PHYSICS — Smiles are tiny individual closed-mouth genuine smiles with relaxed jaws and soft eye involvement, not identical commercial grins, teeth, pouts or frozen masks. Eye contact is warm and curious, not sexual or predatory. Blinks, smiles and head shifts occur at different times. At most one arm performs a readable greeting at once; greeting travel is under five centimeters and below or beside the shoulder. Every visible hand has five normal fingers, anatomically correct thumb opposition, neutral wrist alignment and stable contact with its own body only. No extra hand, extra finger, fused fingers, backwards palm, broken wrist, body penetration or glass penetration. Only Sydney performs a deliberate single-eye wink in the entire film.
+
+AUDIO — Native sound only. Opening: receding water, dripping, circular structural groan, shifting dead phones, Sydney’s sharp breath, soaked boots and bare feet splashing, staggered rear ice and phone impacts. Gate: amber stone-electric hum, thick track movement, cube unlock and one heavy inward-fold pressure sound. At 4.80 seconds use one deep seal hit and remove external collapse, leaving close breathing and dripping through 5.60. Reveal: a central glass resonance begins with the amber floor line, stereo field widens with the cold-blue sweep, and warm harmonic air blooms with face light. Girl coverage: giant-room ambience, soft gown and sofa sounds and extremely quiet unsynchronized breaths only. Remove room tone for three or four frames during Sydney’s wink, with no wink chime. At 21.20 reach one restrained highest chord; at 22.20 reduce to intimate sub-bass and the male’s wet half-step; at 23.15 sound the single cube resonance; after the 23.60 hard cut, let only a 0.40-second low brand-tail ring in black. No speech, cheering, applause, sexy breathing, lyric, notification or UI sound.
+
+HARD LOCKS — No sudden dry clothes, wardrobe switch, short-sleeve male, missing Sydney glasses, transparent white fabric, duplicate character, missing Hero Girl Element, wrong Hero seat, Stella in back tier, Audrey replacing Stella, extra woman, missing woman, same-face crowd, twenty free-guessed center faces, hand re-grip, towing, second rescue, obstacle ahead, generic elevator, sliding subway door, flat HUD gate, literal religious star, premature visible women, women materializing, aquarium water, fish, bubbles, plants, stadium, theater stage, database grid, separate televisions, profile-card wall, readable generated number, fake text, fake UI, card-flip, selection frame, synchronized smile/blink/wave/dance, beauty-pageant pose, underlit horror face, camera-following eyes in third-person coverage, full 360 camera orbit, camera crossing glass, fast MV montage, broad Stella wave, Stella wink, Ella wink, repeated Sydney wink, Sydney looking into lens to wink, romantic embrace, kiss, second door, new threat, ending on one face, fade to a fake logo, slogan, CTA, automatic reroll, retry or resubmission.

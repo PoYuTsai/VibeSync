@@ -1,0 +1,48 @@
+整體 verdict：**BLOCK**。有一個 P1：standard challenge 沒有實作第 9 回合的「可輕推曖昧」。
+
+### Critical
+
+無 P0。
+
+### Important
+
+- **P1｜standard challenge 永遠不會取得第 9 回合的輕曖昧 pacing**
+
+  - 證據：政策表規定 challenge 為 `personal: 5、flirt: 9、invite: null`，但 `standardPacingLine()` 只讀取：
+    - `floors.invite`
+    - `floors.personal + 1`
+  - 函式完全沒有使用 `floors.flirt`。因此 challenge 從第 6 回合起直到任意回合，都只會得到「從生活資訊往感受、偏好、小故事走」的中段文字；第 9 回合不會新增任何「可輕推曖昧」指引。
+  - 現有測試只確認第 12 回合不含「模糊邀約」，沒有確認第 9 回合已放行輕曖昧，恰好漏掉這個缺口。
+  - 影響：beginner 的 5／9 floor 正確，但 standard 的白話 pacing 沒有逐格落實 challenge 5／9／無邀約政策，並可能接近回退條件「challenge 永遠推不動」。
+  - 驗證：比較 `standardPacingLine(8, null, "challenge")` 與 `(9, ...)`；第 9 回合應新增明確的輕曖昧許可，但仍不得包含模糊邀約。另應在完整 standard NPC prompt 做同樣斷言。
+
+### Minor
+
+- **P3｜easy／normal 的 3／6 測試沒有鎖住下界**
+
+  - 證據：新增測試只斷言第 3 回合是 `personal_allowed`、第 6 回合是 `flirt_allowed`，未斷言第 2 回合仍為 `null`、第 5 回合仍只有 `personal_allowed`。若未來誤改成 2／5，這些測試仍會通過。邀約的 7／8 邊界則有完整測到。
+  - 目前實作表本身確實是 3／6，這是回歸鎖不足，不是當前行為錯誤。
+  - 驗證：對 easy、normal 各補第 2、3、5、6、7、8 回合的邊界斷言。
+
+### Uncertain
+
+- **潛在 P1｜未能由 packet 證明所有 challenge standard/debrief 路徑都有傳 difficulty**
+
+  - 證據：`standardInviteMaturityPrompt()` 新增 optional `difficulty`，缺省時使用 `"normal"`；顯示的 `buildChatMessages()` 呼叫有傳 `profile.difficulty`，但 packet 沒有列出該 helper 的全部呼叫點。若另有 challenge-capable debrief 路徑未傳值，它會在第 8 回合套回 normal 的邀約 pacing。
+  - 驗證：列出 commit 中所有 `standardInviteMaturityPrompt(` 呼叫點；凡能處理 challenge profile 者都應傳入 difficulty，並以 challenge 第 8／9 回合的 debrief prompt 驗證不出現模糊邀約許可。
+
+- **潛在 P2｜mood 降階順序的回歸證據未完整呈現在 packet**
+
+  - 證據：新增測試確認 challenge 的 `practiceStageFloorFor()` 在 guarded／annoyed 回傳 `null`，但未直接驗證 `inviteMaturityFromLearningScores()` 的「先套 floor、再做 mood 降階」。該函式實作與既有測試內容未包含在 packet 中。
+  - 呼叫端仍同時傳入 `partnerMood` 與 `stageFloor`，且相關內部函式沒有出現在 diff，故目前沒有看到順序遭改壞的正面證據。
+  - 驗證：以 normal/easy 第 8 回合可產生 invite floor 的案例，分別加入 guarded、annoyed，斷言最終 maturity 不會被 floor 強制升階。
+
+### 看起來正確的部分
+
+- `PACING_FLOORS` 逐格符合 easy／normal 3／6／8、challenge 5／9／無邀約 floor。
+- 三個公開 API 都預設 `difficulty = "normal"`，舊呼叫行為可維持。
+- `hint.ts` 點名的四個呼叫點都已傳入 `opts.profile.difficulty`。
+- beginner NPC prompt 的 stage/invite floor 與 `buildHintDecision` 都使用同一組政策函式。
+- guarded／annoyed 的直接 floor 停用仍在政策查表前執行。
+- easy／normal 的 standard 中段門檻仍是 `3 + 1 = 4`，邀約行仍是第 8 回合，文字也未改。
+- challenge beginner 的 4／5、8／9 邊界與「純回合數永不取得 invite floor」實作正確。

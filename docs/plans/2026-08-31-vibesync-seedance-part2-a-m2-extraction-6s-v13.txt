@@ -1,0 +1,46 @@
+VibeSync MAIN FILM | PART 2 A v13 | M2 EXTERNAL HERO THERMAL EXTRACTION | LOCAL PREP ONLY
+
+STATUS: HISTORICAL REJECTED LOCAL DESIGN. ERIC REJECTED THE v13b EXTERNAL START IMAGE AND ITS HAND TOPOLOGY. M2 IS SUPERSEDED BY THE v14 SYDNEY-POV DESIGN. DO NOT UPLOAD, SUBMIT, REROLL, RETRY OR RESEND THIS PROMPT.
+
+CANDIDATE CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference, not video extension
+- Duration: 6 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- use_unlim: false
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- START IMAGE: P2A_M2_START_EXTERNAL_PRECONTACT_LOCK_v13b_1672x941.png — exact external camera, body order, pre-contact bent knees, three-hand rescue connection and open-front lower-body ice restraint
+- IMAGE REFERENCE 1: Sydney_V3_WhiteOnepiece — Sydney identity, glasses, white short-sleeve collared one-piece, black belt and graphite ankle boots only
+- IMAGE REFERENCE 2: VibeSync_Male_M1 — male identity, fitted charcoal-black long sleeves, dark trousers and bare feet only
+- NO video reference; do not inherit the accepted M1 male POV
+- NO v12 subjective image, K2–K7 image, topology image, contact sheet, private anatomy photo or hero phone
+- Reference Elements: NONE
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue from START IMAGE without changing camera or reconnecting hands. This is an external high side three-quarter shot, never Sydney first-person. Sydney is upper-right; the frost-covered male is lower-left. Both are falling head-up and feet-down inside the dense curved smartphone shaft. The male’s RIGHT hand and Sydney’s RIGHT hand keep one natural palm clasp. Sydney’s LEFT hand remains wrapped around the male’s BLACK-SLEEVED right forearm immediately above his wrist, with visible black sleeve between contacts. Exactly three hands participate at this rescue connection. The male’s LEFT arm hangs down along the far side of his torso; its hand may remain visible in the wide shot but stays far from the connection and never reaches toward Sydney.
+
+The male’s head, shoulders, chest, abdomen and right arm are free. Thin blue-white frost remains on eyebrows, lashes, hairline, cheek edges and his right black sleeve. His pelvis, thighs and calves remain held by the broken BACK and two narrow OUTER SIDE rails of the original vertical cocoon. Its entire front is open: empty air remains visible before his abdomen and pelvis, between his thighs, before his shins and below both bare feet. Nothing sits horizontally beneath him.
+
+CAMERA — One continuous 35 mm external high side three-quarter medium-long shot for all six seconds. Do not cut, orbit, cross the axis or become first-person. Follow downward at only about seventy percent of character speed so tightly packed black-glass phone modules and cold-blue seams continue sliding upward. Use wind-loaded body jolts, hair and fabric streaming upward. No floor, deck or wall-braking rib appears.
+
+ONE CAUSAL ACTION 0.00–2.35 — Sydney keeps both hand contacts closed and draws both knees deeper. At 0.70 her LEFT graphite boot reaches the continuous near outer ice rail beside the male’s right mid-thigh, sole first, then grinds four to six centimeters while both people continue falling. Orange-white contact sparks travel upward. At 1.55 her RIGHT boot reaches the separate continuous far outer rail beside the male’s left lower calf. Both soles are now on the same remaining cocoon restraint, below the male’s pelvis and outside his leg silhouette. Neither boot touches his body. No spark or flame exists in empty air.
+
+ONE CAUSAL ACTION 2.35–3.35 — Sydney inhales once and gives one short hard exhale. Her shoulder blades drop, elbows remain slightly flexed, core and hips lock, and both knees compress. Low protective warmth stays at the two hand contacts, but the main power is contact-bound at the two boot soles: saturated orange-gold fire crowns cling to the soles and ankles, white-hot cores press into ice, clean heat distortion bends the cold-blue seams, and amber stress veins run only through existing cracks. At the peak show one extremely brief shadow-dark compression center followed by a hard orange-white impact ring. No red-black lightning and no named attack.
+
+ONE CAUSAL ACTION 3.35–5.35 — Without pausing, Sydney performs one full-body extraction. Both legs extend and push the two continuous side rails outward, hips open, core stays rigid, back and shoulders pull away, and both hands guide the male toward her. Heat only weakens existing seams; her legs, hips, core, back, shoulders and arms provide the force. Show heavy resistance and release in anatomical order: pelvis, thighs, calves, then both bare feet. He never teleports. Do not hide this order behind steam or a full-frame flash.
+
+The failed rear shell splits into eight to twelve long irregular translucent blue-white glacial splinters of different sizes, plus little dust. They retain the old downward velocity on the original vertical line; they are not one thick slab, a symmetrical weapon array or radial spikes behind his head.
+
+END STATE 5.35–6.00 — Only after both bare feet visibly clear, the male’s full released weight yanks Sydney’s shoulders and arms forward and down. Sydney remains higher and the male lower in a steep near-vertical load chain. Both heads remain above hips and both legs below hips. The same right-hand clasp and left forearm support remain closed. Both accelerate downward; no one grabs a leg, stands, flies, glides horizontally, spins, touches a wall or lands. Hold this readable vertical free-fall state for the M3 cut.
+
+CUT MATCH — M3 begins on the same side axis with both people fully free and the ice splinters still on the old fall line. Do not add a transition inside M2.
+
+AUDIO — Continuous falling wind; two distinct sole-on-ice scrapes; upward spark hiss; Sydney’s single inhale and short effort exhale; rising thermal pressure; one compressed low-frequency impact; deep asymmetric ice cracking; multiple sharp splinter releases; one heavy body-weight yank. No dialogue, phone sound, wall scrape, landing or music cue.
+
+HARD LOCKS — No Sydney first-person, boots beside the male’s head or torso, fourth hand joining the rescue connection, male left hand approaching the connection, re-grip, hand swap, fused fingers, bent Sydney wrist, both Sydney hands on the palm, floating boot fire, detached stepping stone, giant ice cube, ball, hoop, waist ring, seat, platform, horizontal slab, fire jet, flight, Superman pose, trapeze pose, male holding Sydney’s legs, generic square-grid wall, readable phone, UI, text, logo, floor, landing, girls or fishbowl.

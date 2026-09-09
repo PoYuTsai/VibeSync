@@ -1,0 +1,40 @@
+{
+  "directorLock": {
+    "path": "/home/eric1/work/VibeSync/docs/plans/2026-08-31-vibesync-part2-a-20s-master-lock-v12.md",
+    "sha256": "3a773f73de1eed2b32e73f065f08a377fed57730fe341a50af80c6f1f96eeba6"
+  },
+  "promptFile": {
+    "path": "/home/eric1/work/VibeSync/docs/plans/2026-08-31-vibesync-seedance-part2-a-16s-omni-master-v12.txt",
+    "sha256": "3cc2f9f4e9c9e3612583a3e9e29deda6fe9079e01982aa3a8933d05248bb1f3f",
+    "promptBlockSha256": "7195860d89af47901a6a2bb56ba9583fc5ebe302d829c5d6c1a908ffd67d8449",
+    "promptChars": 10371,
+    "promptBytes": 10455
+  },
+  "localMotionReference": {
+    "path": "/home/eric1/work/VibeSync/docs/handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/production-prep-v12/PART1_ACCEPTED_FAST_PHONE_WELL_FALL_16p00_18p50_2p50s_H264_AAC.mp4",
+    "sha256": "629ec8b2eb977fc0dcbfb5d35bc4a244c2b94027c04275a0369a4da08831a52d",
+    "durationSeconds": 2.5,
+    "frames": 60
+  },
+  "higgsfield": {
+    "model": "seedance_2_5",
+    "mode": "omni_reference",
+    "duration": 16,
+    "aspectRatio": "16:9",
+    "resolution": "1080p",
+    "bitrateMode": "high",
+    "generateAudio": true,
+    "count": 1,
+    "useUnlim": false,
+    "imageMediaIds": [
+      "5f58f7d7-0fe5-4e1a-ad93-47b872f98e3a",
+      "983d3037-86f6-4c8d-9b6c-f9245b54bdb5",
+      "fdb6c55f-24e4-4bab-bbdd-200654e845be"
+    ],
+    "videoMediaIds": [
+      "515745fc-f342-4021-806e-26921af99517"
+    ],
+    "elements": [],
+    "estimatedCredits": 144
+  }
+}

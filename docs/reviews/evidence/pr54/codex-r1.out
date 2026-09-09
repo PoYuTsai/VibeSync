@@ -1,0 +1,79 @@
+## Critical（P0）
+
+無。
+
+## Important（P1，阻擋）
+
+1. `[P1] PracticeProfile 欄位名稱與定案需求不符`
+
+   - Packet 需求逐字要求：`DifficultyConfig／PracticeProfile 新增 hintStandard`。
+   - 實作卻是：
+     - `DifficultyConfig.hintStandard`
+     - `PracticeProfile.difficultyHintStandard`
+     - `profile.difficultyHintStandard`
+   - 這不是單純內部命名差異；`PracticeProfile` 是 exported interface，會改變預定介面，也讓新增測試只能驗證實作自己的命名。
+   - 驗證步驟：加入型別層測試，確認 `resolvePracticeProfile(...).hintStandard` 可用；若 `difficultyHintStandard` 才是定案名稱，應先修正定案需求，再審查實作。
+
+2. `[P1] 兩個可貼句仍可用的必補測試缺失`
+
+   - PR 5 新增的 `hint_test.ts` 只有：
+     - prompt 含有 `difficultyCoachingStandard`
+     - game prompt 不含該欄位
+     - challenge 第 12 回合邀約被守門擋下
+   - Diff 前一個既有測試的 `assertEquals(parsed.replies.length, 2)` 只驗數量，且屬於「第二刀」測試；沒有 PR 5 難度尺度下兩句都自然、可貼、且不靠故意產生差句模擬難度的證據。
+   - 驗證步驟：針對三難度，尤其 challenge，送入兩句符合最新對話內容的有效候選，驗證兩句都通過解析及品質守門；另加入故意變差不是難度實作方式的斷言。
+
+3. `[P1] 沒有驗證幕後設定及難度名稱不會進入可見回覆`
+
+   - 新文案本身含有 `"本場是輕鬆難度"`、`"本場是一般難度"`、`"本場是挑戰難度"`。
+   - 現有測試只檢查 hidden evidence 文字和設定值，例如：
+     - `assert(!config.hintStandard.includes("【"))`
+     - `assert(!config.hintStandard.includes("示範"))`
+     - `assert(!config.hintStandard.startsWith("本場難度是"))`
+   - 最後一項甚至擋不住目前實際使用的近義開頭 `"本場是…難度"`。更重要的是，這些斷言完全沒有經過可見 Hint 回覆路徑，因此無法滿足「不得把難度名稱或幕後設定抄進可見回覆」。
+   - 驗證步驟：在可見輸出邊界測試至少拒絕或清除 `difficultyCoachingStandard`、`本場是挑戰難度`、NPC 段落標記及第一人稱規格，並確認正常兩句仍被接受。
+
+4. `[P1] 所謂「Game tactic／FSM 優先」測試只有負面斷言`
+
+   - 測試名稱宣稱「game 不帶（FSM 優先）」，實際唯一 game 斷言是：
+     `assert(!gameText.includes("difficultyCoachingStandard"))`
+   - 即使 Game tactic 和 FSM 全部意外消失，甚至 game prompt 變成空字串，這個測試仍會通過。
+   - 驗證步驟：正向斷言 game prompt 確實包含預期 Game tactic/FSM 證據；若有互斥規則，再驗證 FSM 決策優先於一般 coaching standard。
+
+## Minor（P2/P3）
+
+5. `[P2] 三難度語意測試只抽查關鍵字，容易出現部分退化仍為綠燈`
+
+   - easy 只驗 `"低壓"`、`"修一次"`，未驗自然及有回應。
+   - normal 只驗 `"具體"`、`"查戶口"`，未驗「或分享自己」及最低門檻。
+   - challenge 未驗 `"最新一句"`、內容／情緒／梗及「訊號不足」條件。
+   - 實際文案目前看來有包含這些語意，但測試沒有完整鎖住。
+   - 驗證步驟：逐項斷言定案尺度，或用表格化測試覆蓋每個必要語意。
+
+6. `[P3] 「不重用 NPC 原文」測試強度不足`
+
+   - `config.hintStandard !== config.prompt` 只證明兩個完整字串不完全相等；複製大部分 NPC 原文再改一字仍會通過。
+   - 目前可見的 `hintStandard` 文案確實像是重新撰寫，但 packet 沒提供完整 NPC prompt，無法完全比對。
+   - 驗證步驟：比對並禁止已知 NPC 段落或代表性長片段，而不是只做完整字串不等。
+
+## Uncertain（需補證據）
+
+7. `[P2｜不確定] coaching instruction 會混入 partner factual evidence`
+
+   - Packet 明示 `hintTrustedFactualEvidence` 以 `compactForGame=false` 呼叫 `profileToEvidence`，用途是 fact ledger 的 partner evidence。
+   - 新增行位於完整分支且沒有呼叫情境隔離：
+     `difficultyCoachingStandard: ${profile.difficultyHintStandard}`
+   - 因此它確定會進入 partner evidence；但 packet 沒提供該 evidence 的包裝及下游消費方式，無法確認模型會將它視為教練指令、伴侶事實，或抄進回覆。
+   - 驗證步驟：檢查 standard/beginner 的完整 rendered prompt，確認此行在明確的 coaching-policy 區段；再測試 fact ledger 不會把難度名稱或教練指令當作 partner fact。若無法保證，應讓該呼叫點排除 coaching standard。
+
+## 看起來正確的部分
+
+- easy、normal、challenge 三段實際文案逐項看來符合定案語意，且使用「你的建議句」的教練視角。
+- 文案未出現可見的 NPC 段落標記或示範口吻，沒有明顯角色反轉或替女孩說話。
+- `profileToEvidence` 的完整分支確實新增了 coaching standard。
+- game 測試證明目前產生的 game messages 不含 `difficultyCoachingStandard`。
+- challenge 第 12 回合邀約測試鎖定了 `hint_quality_invalid_invite_route`，這部分不是任意錯誤造成的恆真。
+- Packet 表示 `resolvePracticeProfile` 是唯一建構點；該建構點已補上新值，未見漏建構。
+- 已提供 213/0 與 1641/0 的執行證據，但綠燈尚未覆蓋上述明確必補要求。
+
+**整體 verdict：BLOCK**。主要原因是 exported `PracticeProfile` 名稱偏離逐字需求，且三項明定必補測試仍未被實際驗證。

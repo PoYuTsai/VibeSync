@@ -1,0 +1,35 @@
+VibeSync MAIN FILM | PART 2 A v6 | M1 REVEAL | LOCAL DRAFT
+
+STATUS: HISTORICAL REJECTED DESIGN — DO NOT SUBMIT. SUPERSEDED BY M1 POV CONTACT v7.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- image_reference #1 (opening state): PART1_v5_t29p50.png
+- image_reference #2 (target end state): P2A_K1_partial_release_grip_lock_v2_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+
+HIGGSFIELD WEBSITE ORDER LOCK: IMAGE 1 is the frame at 0.00 seconds. IMAGE 2 is the target composition at 4.00 seconds.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Begin on the exact IMAGE 1: dense white ice dust fills the wet cylindrical shaft while small ice chips stream upward, preserving the cold-blue and deep-purple-black palette.
+
+CAMERA — The camera moves gently through the thinning cloud. The cloud hides one motivated transition into a high three-quarter view over Sydney's shoulder, converging smoothly on the IMAGE 2 composition.
+
+ONE CAUSAL ACTION — The dust clears and reveals the established rescue contact. The male's head, one shoulder and one continuous forearm emerge from a cracked half-cocoon while his chest, waist, hips and legs remain sealed. Sydney already clamps the distal forearm just above his wrist with one hand; his open hand remains visible beyond her grip. Her other palm presses flat against the intact ice rim. Both bodies and the cocoon continue descending together as wall ribs and ice chips move upward through frame.
+
+END STATE / CUT MATCH — Finish exactly on the IMAGE 2 geometry and hold it steadily for the final half-second: half-cocoon intact below his chest, one visible forearm grip, one bracing palm, downward motion still readable.
+
+AUDIO — Wordless physical ambience: fading steam, wind pressure, small ice ticks, fabric strain and controlled breathing.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

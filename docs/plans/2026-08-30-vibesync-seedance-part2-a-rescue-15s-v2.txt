@@ -1,0 +1,73 @@
+VibeSync 主電影｜Part 2 A｜30–45s 破冰後接觸、蒸氣減速、落地｜送件稿 v2
+
+STATUS: PREPARED LOCALLY, NOT SUBMITTED, NO PAID AUTHORIZATION.
+
+SUPERSEDES
+- v1 repeated Sydney's face reveal and outer-shell break already completed at the end of Part 1.
+- v2 begins inside the existing steam-white impact wipe after that break. Sydney does not strike again and the male does not break a second ice shell.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Editorial duration: 15.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission; never infer from an older run.
+
+CONTROL MEDIA
+- exact start image: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_t29p50.png
+- only video reference: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_tail_27p50_30p08_H264_AAC.mp4
+- continuity check only: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_t29p00.png
+- male identity: Higgsfield media fdb6c55f-24e4-4bab-bbdd-200654e845be / VibeSync_Male_M1
+- Sydney identity: Higgsfield media 983d3037-86f6-4c8d-9b6c-f9245b54bdb5 / Sydney_V3_WhiteOnepiece
+- palm composition: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/A2_palm_circuit_v1_16x9.png
+- landing end state: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/A3_weighted_landing_v2_round_atrium_16x9.png
+
+REFERENCE ROLES
+- The 29.50-second steam frame and 2.58-second tail video are transition, motion and spatial-continuity authority only.
+- The 29.00-second image proves that Sydney has already appeared and shattered the outer ice; never replay that action.
+- The male and Sydney references are identity and wardrobe authority only.
+- A2 is hand-side, eye-line and single palm-contact composition authority only.
+- A3 is gravity, floor, body weight and final architecture authority only.
+- Never use the full Part 1 video as a video reference.
+
+MASTER PROMPT
+
+A 15-second photorealistic live-action fantasy rescue sequence continuing immediately after the supplied steam-white impact wipe. The previous shot already showed Sydney's face, her right fire hand and the outer ice shell shattering. Do not repeat or re-stage them. One continuous vertical shaft, one continuous downward fall, premium feature-film cinematography. No dialogue, narration, captions, generated writing or new characters.
+
+START STATE
+Start on the exact supplied steam-white frame at the instant after Sydney has shattered the outer shell. The white cloud still moves outward and both people remain in fast downward free fall inside the same deep purple-black cylindrical shaft of dead smartphone panels. Behind the thinning steam, Sydney is above and slightly screen right; the male remains below and screen left, visible through the already-open fracture. Sydney's RIGHT hand is the fading warm fire hand on SCREEN LEFT of her body; her LEFT hand remains extended toward the opening on SCREEN RIGHT. Her thin round black glasses, blunt bangs, tied dark hair, white short-sleeve collared dress, black belt and graphite ankle boots remain constant. The scattered orange panels already glow from her previous fire strike, but they are not yet organized into a downward circuit. The male must never disappear.
+
+CAMERA
+0.0–1.3s: remain inside the moving steam-white wipe. Let one dark shaft rib and several ice fragments become visible at the edges, proving the same vertical world without replaying Sydney's strike.
+1.3–4.0s: emerge behind a passing ice shard into a 65–75mm side close-up through the existing broken opening. Male stays screen left; Sydney stays screen right. The broken rim is visible between them. Their hair, fabric, droplets and fragments stream upward relative to the continuing fall. Do not cross the 180-degree line.
+4.0–5.8s: move to one tight two-shot and palm insert. The male actively extends his RIGHT hand through the open gap toward Sydney's stationary LEFT palm. Their palms meet once in frame center; no ice remains between the palms.
+5.8–8.3s: follow the newly organized orange pulse DOWN the adjacent shaft panels. Show meltwater from the already-shattered shell falling into a heated lower channel and beginning to boil. Never leave this same cylindrical space.
+8.3–12.3s: return to a 24mm low wide that keeps both people visible and still descending. A powerful steam column rises below them. Wall-panel parallax, upward ice fragments, hair and clothing clearly change from extreme speed to slower speed.
+12.3–15.0s: only after deceleration, follow both bodies rotating feet-down. Sydney slides her left hand from palm contact to the male's right forearm. The camera stabilizes as Sydney lands first with bent knees and the male lands a quarter-second later with one weighted stumble.
+
+ONE CAUSAL ACTION
+Sydney has already opened the shell; she does not strike again. The male wakes inside the broken cocoon, sees her extended left hand and chooses to respond. He reaches his right hand through the existing gap and makes one physical palm contact. That contact does not create a second explosion: it transforms the already-scattered orange glow into one ordered pulse that travels down the dead smartphone panels. The ordered signal heats the lower channel; visible meltwater boils; a powerful upward steam column forms. Only after steam visibly reduces their downward speed does Sydney grip his right forearm, guide both bodies feet-down and help complete a weighted landing. The single feedback loop is: coach opens the way in Part 1 -> user reaches back -> shared contact organizes the signal -> steam decelerates them -> both land.
+
+END STATE
+Both characters stand with real weight on the wet dark floor of the same round atrium, male on screen left and Sydney on screen right. Their knees, hair and clothing settle from impact. Sydney still holds his right forearm only until he is stable. The horizon becomes level for the first time. Steam and a few fragments continue rising behind them. A faint warm-gold reflection begins in front of them, but no fishbowl, crowd, smile or wink appears yet.
+
+CUT MATCH
+End on a stable chest-to-knee two-shot with the warm reflection entering both faces from the same forward direction. Part 2 B must start from this exact accepted end frame. Do not end in white steam or on a floating body.
+
+AUDIO
+Carry the existing Part 1 ice-impact and steam burst through the first half-second, then reveal fast-fall wind, upward ice ticks and close breathing. One restrained contact tone occurs only when the palms meet. The ordered signal travels downward spatially. Water hits heat, boils and becomes a deep upward steam roar while wind pitch and wall rush audibly slow. Finish with two separate weighted boot impacts, sliding grit and breath. No voices, words, repeated explosion, sexual gasp, UI sound or music baked into dialogue range.
+
+HARD AVOID
+No repeated Sydney introduction, repeated fire strike, second shell-breaking blow, male breaking another membrane, intact cocoon regrowing, or replay of the Part 1 composition. No hovering, zero gravity, horizontal Superman flight, train tunnel, sky, lake, underwater look, portal, teleport, amusement ride or game aesthetic. No instant floor, disappearing floor, floor glued to a wall, standing in mid-air, wall sticking or Sydney waiting below. No hard catch of a high-speed body. No hand swap: Sydney right fire hand remains her fire hand; Sydney left hand is the contact hand; male uses his right hand. No extra arms, merged fingers, hand-through-solid-ice, handshake, missing male, duplicate Sydney or third person. No smile, wink or relaxed pose during rescue. No instant disappearance of all ice. No text, logo, badge, phone UI or fishbowl.
+
+PASS CONDITIONS
+1. The first image continues the existing steam wipe; it does not repeat Sydney's face reveal or breaking strike.
+2. The male remains visible after steam clears and actively reaches his right hand through an already-open gap.
+3. Existing scattered orange glow -> palm contact -> ordered downward pulse -> meltwater -> boiling -> steam -> deceleration is visually readable.
+4. Both remain in downward motion until steam slows them and they complete a weighted landing.
+5. Correct hand sides, no regenerated shell and one stable identity per person throughout.
+

@@ -1,0 +1,36 @@
+VibeSync MAIN FILM | PART 2 A v7 | M5 DELAYED DEBRIS / AMBER END | LOCAL TEMPLATE
+
+STATUS: LOCAL TEMPLATE ONLY. M4 MUST BE ACCEPTED BEFORE PAID SUBMISSION.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M4_v7_ACCEPTED_TAIL_0p75s.mp4
+- end_image: P2A_K7_amber_seam_end_lock_v2_BAREFOOT_LOCK_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- hero phone trajectories: post-production, not model references
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the accepted M4 tail. The barefoot male and Sydney are already grounded in low separate poses beside the rib base, hands apart. A large shadow crosses them as the upper ice bridge and its blank black phone-screen modules finally release behind their redirected landing path.
+
+CAMERA — Stay low and stable on the same side. Keep both adults in the foreground while preserving two to three meters of readable empty floor behind them. Settling impact dust may conceal a gentle transition toward the supplied END_IMAGE, but their positions and clothing remain continuous.
+
+ONE CAUSAL ACTION — The delayed second wave strikes the floor behind them, never intersecting either body. Heavy translucent ice, black glass and metal frames break and scatter within the rear impact zone. Both adults flinch lower under the passing pressure, then hold their ground. One blank black phone-shaped panel slides out of the rear debris, passes dangerously close across the extreme foreground and exits frame, screen dark; its stop is heard offscreen. As the fragments settle, the male remains screen-left on one knee and Sydney screen-right in a two-boot crouch. They lift their heads toward the narrow central amber seam.
+
+END STATE — Finish exactly on the END_IMAGE: hands separate, wet reflections, scattered ice, closed amber seam, no next room visible. Hold for at least the final three-quarters of a second.
+
+CUT MATCH — Stable final frame for the 45-second transition.
+
+AUDIO — Falling pressure, one heavy rear ice-glass-metal crash, a close phone slide and offscreen stop, settling fragments, breath, drips and a restrained low amber hum; no dialogue.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

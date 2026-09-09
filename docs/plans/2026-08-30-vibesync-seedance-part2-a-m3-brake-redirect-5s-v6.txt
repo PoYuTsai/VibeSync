@@ -1,0 +1,33 @@
+VibeSync MAIN FILM | PART 2 A v6 | M3 DOUBLE BRAKE / REDIRECT | LOCAL TEMPLATE
+
+STATUS: HISTORICAL TEMPLATE — DO NOT SUBMIT. SUPERSEDED BY M3 BRAKE / DEBRIS SEPARATION v7.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 5 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M2_ACCEPTED_TAIL_0p75s.mp4
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- static end image: none
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the VIDEO_REFERENCE with the male hanging below Sydney through one continuous distal-forearm connection. His bare feet remain below his hips. Sydney's first graphite boot already slides down the broad vertical rib while her second boot approaches the same face.
+
+CAMERA — Maintain the same descending side-tracking view, then widen slightly to reveal the circular deck below. Wall parallax and upward-moving debris preserve one gravity direction.
+
+ONE CAUSAL ACTION — Sydney's second sole lands beside the first on the same vertical rib. Both knees compress and both soles keep sliding as the wall force progressively controls their descent. She then extends both legs from that rib, transferring the remaining momentum through their linked forearms. The male stays below the connection and follows one short arc of about ninety degrees, with his torso upright and his bare feet settling beneath his hips toward the deck.
+
+END STATE / CUT MATCH — End in a stable low-wide approach to the deck. The male remains lower and reaches the landing zone first; Sydney remains slightly higher, their forearm connection visible, her two graphite boots clear. Hold this readable approach for the final half-second.
+
+AUDIO — Wordless physical ambience: second-boot impact, layered metal friction, decreasing wind pressure and one short air sweep.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

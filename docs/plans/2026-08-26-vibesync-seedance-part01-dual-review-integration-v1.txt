@@ -1,0 +1,42 @@
+VibeSync Part 1 Seedance V1｜Fable 5＋GPT 5 雙審整合紀錄
+日期：2026-08-26
+狀態：Prompt 技術／導演雙審通過；Higgsfield 判定卡背 Not eligible 後已切換為 Sydney 單一 reference；最終付費生成仍待 Eric 品味拍板
+
+共同結論
+- 雙審時兩張 reference 均建議保留；實際上傳時 Practice 卡背被平台判定 Not eligible，因此執行版只保留 Sydney，不增加 AI 概念背景。
+- Part 1 資訊量位於上限，但值得直接用一次長段生成驗證。
+- Audio On；原生聲音只作物理與品味驗證，正式配樂／混音後製。
+- 最大殘餘風險為 Sydney 臉部一致性、第一人稱抓握解剖與複雜運動執行，不再是 Prompt 架構。
+
+正式採納
+
+1. Sydney 轉譯改為 fully photographed live-action adult woman。
+   - 移除 semi-realistic 與 photographed live-action 的混合訊號。
+   - 加入自然成人眼睛比例、輕微臉部不對稱、自然皮膚與中性警覺表情。
+
+2. Practice 卡背因平台保護內容偵測退出 reference。
+   - 不嘗試裁切、變形或重新上傳來規避平台判定。
+   - Prompt 改成無標誌的極簡卡面佔位，只留下圓角比例、單一垂直軸、黑／深紫／低飽和金材質平衡與少量接縫。
+   - 正式 App 卡背在後製時合成進真實手機螢幕，避免模型偽造 UI。
+
+3. Sydney 不再有獨立正面全身亮相。
+   - 她在高速接近中短暫經過偏離中心的三分之二角度，少於一秒即可辨識臉、眼鏡、頭髮與白裙。
+   - 不停下、不居中、不形成角色卡 Hero Reveal。
+
+4. 壓力膜保留，刪除「先像怪獸／海嘯、再揭露」的二次辨識。
+   - 改成封閉工程井內、由肋骨約束的高壓凝結膜與碎冰。
+   - Sydney 判讀壓力週期後帶使用者穿過，膜變形再彈回，直接證明力、尺度與同一空間。
+
+本輪未採納／不混入
+
+- 不加入六元素或任何先前 AI 生成背景：Part 1 尚未出場。
+- 不再上傳 Practice 卡背；它只保留為後製真實產品素材。
+- 不把 25 秒與 30 秒條件寫進同一 Prompt。
+  - 目前唯一 Prompt 精確對應 25 秒。
+  - 若 Higgsfield 實際只能選 30 秒，再另製精確 30 秒版本，不讓同一 Prompt 出現兩組時長。
+- 不使用獨立 near-frontal full-body recognition beat。
+- 不重新撰寫故事，不拆回多支 5 秒短片。
+
+正式剩餘 Gate
+
+Eric 在 Higgsfield 只上傳 Sydney 一張 reference、貼入唯一英文 Prompt、確認 25 秒／9:16／1080p／High／Audio On／字幕 Off 後，親自決定是否支付本次 Generate。雙審 PASS 不等於自動授權付費生成。

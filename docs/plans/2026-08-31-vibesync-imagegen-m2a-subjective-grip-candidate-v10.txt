@@ -1,0 +1,53 @@
+VibeSync | PART 2 A v10 | M2A SYDNEY-SIDE SUBJECTIVE GRIP KEYFRAME | BUILT-IN IMAGEGEN RECORD
+
+STATUS
+- Eric approved the final artifact on 2026-08-31 for use as the M2A start image.
+- Built-in ImageGen was used. No CLI or API-key workflow was used.
+- Eric's private wife-view anatomy photos were inspected locally but were NOT uploaded to ImageGen.
+
+INPUT IMAGE ROLES
+1. PART2A_M1_v8_ACCEPTED_END_FRAME_3p850.png
+   - world lighting, wet shaft, accepted black sleeve and character continuity only
+   - do not copy its male first-person camera
+2. Sydney_V3_WhiteOnepiece_ELEMENT.png
+   - Sydney identity and skin tone; her face remains behind camera in this keyframe
+3. VibeSync_Male_M1_ELEMENT.png
+   - male identity, face and black-long-sleeve wardrobe
+
+PASS 1 — BASE GENERATION
+
+Use case: photorealistic-natural.
+Asset type: 16:9 cinematic production keyframe for VibeSync Part 2A M2A; lock only the Sydney-side subjective camera, three-hand anatomy, black-sleeve continuity and arm-entry directions.
+
+Create a brand-new reverse-angle shot from just beside Sydney's right shoulder, close to her line of sight but not fisheye. The adult male faces the camera in the midground with a strained, alert expression. His head and shoulders are free. Only his RIGHT arm reaches toward Sydney/camera. His black sleeve covers the full forearm to the wrist. The rescue grip is already complete and under load.
+
+- Natural 35 mm perspective, medium close shot; male face, one black-sleeved male right forearm and both separate Sydney contacts are readable without oversized hands.
+- Male RIGHT forearm approaches from upper-left/midground toward center.
+- Sydney RIGHT forearm enters from lower-right; RIGHT hand forms the primary secure palm-to-palm same-side rescue clasp with the male RIGHT hand.
+- Sydney LEFT forearm enters from lower-left; LEFT hand grips the male's black-sleeved RIGHT forearm several centimeters above the wrist, thumb on the visible upper sleeve and four fingers underneath.
+- A visible uninterrupted black-sleeve gap separates both Sydney contacts.
+- Exactly three visible hands total. Male left arm and hand are hidden.
+- Realistic adult hand proportions, five fingers and one thumb per hand, plausible knuckles and nearly straight wrists.
+- Sydney's two hands do not both grasp the male palm.
+
+Backdrop: deep purple-black wet metal shaft, cold-blue vertical seams, light white vapor, restrained amber rim at existing contacts. Crop before the male's pelvis; only a small blurred broken ice edge may appear at the bottom. No text, UI, logo, watermark, phone, additional person, extra hand, fused digit, bent wrist, ice ball, ice hoop, giant ice block, platform, fireball, orange orb, anime drawing, game look or amusement-ride look.
+
+PASS 1 REVIEW
+- Camera and three arm-entry directions passed local review.
+- Exactly three hands were present.
+- Rejected as final because Sydney's LEFT support hand landed too high on the male's mid-forearm.
+
+PASS 2 — TARGETED EDIT THAT PRODUCED THE SAVED CANDIDATE
+
+Edit only the two Sydney hand placements and wrist alignment. Preserve camera, crop, male identity and expression, clothing, black sleeve, lighting, wet shaft, vapor, color, scale and exactly three visible hands.
+
+1. Move Sydney's LEFT support hand toward the male's wrist. It grips only several centimeters above the wrist joint, not the middle of the forearm. LEFT thumb rests on the visible upper black sleeve; four fingers wrap underneath. Retain a short visible black-sleeve gap before the main clasp. This hand never touches the male palm.
+2. Preserve the male-right-to-Sydney-right palm clasp but align both wrists more nearly straight with their forearms. Use normal adult proportions, one thumb and four fingers per hand, plausible knuckles, no fused or duplicated digits.
+3. Preserve arm directions: male RIGHT forearm from upper-left/midground; Sydney RIGHT forearm from lower-right; Sydney LEFT forearm from lower-left.
+4. Male LEFT arm and hand remain hidden. Do not add, delete, swap, merge or crop any arm.
+5. No fourth hand, extra thumb, sixth finger, crossed wrist, sharp wrist bend, both Sydney hands on the male palm, ice block, ring, phone, text, UI, logo, watermark, fireball or new object.
+
+SAVED CANDIDATE
+../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/production-prep-v10/P2A_M2A_SYDNEY_SUBJECTIVE_GRIP_LOCK_CANDIDATE_v10_1920x1080.png
+
+Saved project copy: 1920×1080 PNG. Eric approved it for the M2A payload; the video generation itself still requires a separate explicit paid-run command after the complete preflight list.

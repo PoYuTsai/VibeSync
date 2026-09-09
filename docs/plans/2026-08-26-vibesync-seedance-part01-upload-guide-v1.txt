@@ -1,0 +1,47 @@
+VibeSync 手機主電影｜PART 1（0:00–0:25）Seedance 2.5 V1
+狀態：Fable 5／GPT 5 雙審已整合；待 Eric 最終品味拍板，尚未按 Generate
+
+目的
+先驗證一支能在手機直接觀看的電影級 25 秒長段落，不追求逐張概念圖還原。這次要測的是：Seedance 在受控世界規則內，能不能自行完成有作者性的 production design、攝影、物理與聲音。
+
+Higgsfield 設定
+- Model：Seedance 2.5
+- Mode：General / References
+- Duration：25 seconds；若介面只有 30 seconds，選 30 seconds，最後約 4 秒只讓冰塵與水霧沉降，不新增事件
+- Aspect ratio：9:16
+- Resolution：1080p
+- Bitrate：High
+- Audio：On
+- Captions / subtitles：Off
+- Elements：Off
+- Start Frame / End Frame：不用
+
+只上傳以下一張
+
+1. 01_Sydney_identity_sydney_thinking.png
+   - 只鎖 Sydney 的臉、年齡、髮型、眼鏡、身形與服裝。
+   - 不沿用插畫畫風、表情、手勢、背景、打光與構圖。
+
+Practice 卡背目前被 Higgsfield 標示 `Not eligible`，本輪不使用、不重傳、不裁切規避。Prompt 已改成極簡產品卡面佔位，正式 App 卡背於後製時合成回手機螢幕。
+
+這一 Part 不上傳
+- 六張關係階段素材：它們尚未出場，現在上傳只會增加風格污染與物件漂移。
+- `02_VibeSync_Practice_card_base.png`：平台判定不可用，已移出上傳資料夾。
+- 先前所有 AI 概念背景、井、雲、抓手、冰、火圖。
+- POV 手部圖。
+
+操作順序
+1. 在 References 只上傳 Sydney 一張。
+2. 把 `01_直接貼Higgsfield_PART01_V1_EN.txt` 全文貼入 Prompt。
+3. 先截圖給 Eric 確認 reference 與設定；只有 Eric 親自拍板後才按 Generate。
+
+聲音與字幕
+- V1 直接開聲音：只測同步環境聲、Foley 與低調 temp score。
+- 這不是最終混音；正式版仍會分軌／後製。
+- Part 1 沒有角色對白，所以不需要字幕。
+- 未來即使有對白，也不把精確字幕交給生成模型；字幕後製。
+
+「給想像空間」的真正意思
+- 鎖：Sydney 身分、產品入口、五段因果、同一井、光源責任、抓握／落地／冰塊物理、結尾交棒。
+- 放：建築細節、井的尺度、玻璃瑕疵、水膜形態、鏡頭微走位、光的散射、遮擋轉場。
+- 不是少寫，而是不拿 AI 概念底圖替模型預先決定整個世界。

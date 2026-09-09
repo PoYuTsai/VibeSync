@@ -1,0 +1,61 @@
+Create a 25-second vertical 9:16 opening movement for a premium live-action cinematic short film for VibeSync. Generate synchronized production audio. The result must feel authored, tactile and physically photographed, with restrained high-end visual effects. It is one continuous causal experience, not a montage, a game trailer, or an animation between uploaded pictures.
+
+REFERENCE KEY — attach only this one image
+
+@image_1 = SYDNEY IDENTITY AND WARDROBE ONLY. She is the same single adult East Asian woman throughout: long straight dark hair with blunt bangs, warm brown eyes, black round eyeglasses, a white short-sleeve collared button-front shirt dress with a fabric waist tie, knee-length skirt, and black ankle boots. Preserve her recognizable identity, age, hair, glasses, silhouette and clothing. Translate the illustrated reference into a fully photographed live-action adult woman with natural adult eye proportions, subtle facial asymmetry, visible natural skin texture, real fabric and real hair movement. Her resting expression is alert and neutral. Ignore the reference pose, hand gesture, smile, background, lighting, composition, lens and illustration style.
+
+PRODUCT-SCREEN PLACEHOLDER — TEXT DIRECTION ONLY, NO REFERENCE IMAGE
+
+The phone opening uses a deliberately minimal screen insert that will be replaced with the authentic VibeSync App screen in post-production. Show only a deep violet-black rounded rectangular card surface, one restrained muted-gold central vertical axis and a few subtle rounded structural seams. It contains no logo, emblem, radial ornament, decorative frame, readable interface text or collectible-card styling. After the descent begins, only its rounded proportions, central axis and restrained material balance may survive subliminally in the architecture.
+
+CREATIVE MANDATE
+
+Invent the environment, architecture, lighting details, water behavior, camera micro-blocking and transitions. No uploaded image defines the background or shot composition. Create an original cinematic world that belongs to VibeSync.
+
+The impossible space is a monumental enclosed engineering well born from the physical thickness of smartphone cover glass. Its construction is deep violet-black wet glass and blackened metal ribs, with sparse cyan condensation and ice. One dim warm amber bedside reflection survives from the real room and remains traceable through the entire sequence. The well feels human-made, dangerous, minimal and expensive: real scale, real moisture, real weight, imperfect surfaces, motivated light, natural asymmetry. It is not an open fantasy sky, natural cave, temple, spaceship, neon data tunnel, game level or magical portal.
+
+FIRST FRAME AND BLOCKING
+
+Begin in a dim contemporary bedroom at night from the viewer's natural first-person position. Rain is heard outside. A real vertical smartphone fills most of frame. The screen shows the minimal post-production placeholder defined above, with no generated readable text. One warm bedside practical reflects across the cover glass. A fingertip is already close to the card, while the viewer's other hand and body remain outside frame. Sydney is not yet visible.
+
+TIMELINE AND CAUSAL ACTION
+
+0.0–5.0 seconds — PRODUCT GLASS BECOMES PHYSICAL DEPTH
+
+The fingertip touches the card once. Make a slow macro push into the dark center. Do not open a glowing portal. Instead, reveal microscopic parallax and the true physical thickness of the cover glass. The rounded seams and the same amber reflection stretch naturally into the architecture of an immense enclosed vertical well. Support disappears and the viewer falls. The movement is body-led: lower chest edge, hips, legs and dark boots briefly enter frame while wet seams and condensation race upward with convincing depth parallax. The viewer's hands remain out of frame. After the initial shock, the camera finds one stable vertical axis.
+
+5.0–11.0 seconds — SYDNEY RECOGNITION, CROSSING AND HUMAN GRIP
+
+Sydney appears farther down the same well at believable human scale. During her approach she passes through one fleeting, off-center three-quarter angle lasting less than one second, with her face, glasses, hair and white dress readable in the existing motivated light. There is no separate frontal presentation or recognition hold: her body is already moving and tracking the viewer's fall. She crosses the viewer's fall laterally at high relative speed. Her body passes first; inertia turns her shoulder and torso back; then one arm reaches. Only now does exactly one viewer hand rise naturally from the lower edge. Sydney leaves a visible final gap that she cannot close; the viewer actively reaches across it and completes one clean anatomically correct grip. Her shoulder, upper arm and core visibly take the viewer's weight; both bodies continue moving and the contact never freezes into a pose.
+
+11.0–17.0 seconds — GRAVITY REDIRECTION AND PRESSURE-FLOW REVEAL
+
+The shared load redirects both bodies onto one strong curved lateral vector. The viewer's forearm lags with inertia. Preserve the grip through the first half of the turn, then let the camera pass naturally behind Sydney's shoulder or one structural rib. Use wet wall seams, cyan condensation and the same amber reflection to prove real parallax and changing gravity. Ahead, a high-pressure condensation membrane carrying fragmented ice shears between the well's engineered ribs and briefly blocks the route. Sydney reads its pressure cycle and leads the viewer through one narrow safe vector. The membrane deforms around their passage and snaps back against the ribs, proving force, enclosure, scale and continuity. The movement is fast and visceral but spatially readable.
+
+17.0–21.0 seconds — LANDING AND ACCIDENTAL MECHANISM
+
+They descend onto a wet black-glass maintenance platform grown from the same architecture. Return clearly to first-person body scale. Dark boots and knees enter before impact; knees take weight; the water film pushes outward; loose ice skitters. Sydney lands nearby without a superhero pose. While recovering balance, the viewer braces one hand against a recessed mechanical seam and unintentionally depresses a dense worn safety latch. Its negative space and metal insert subtly resemble a question mark, but it is a functional built-in mechanism, not a floating icon. A heavy internal lock releases. Let the sound and a fracture traveling overhead reveal the consequence before the camera looks up.
+
+21.0–25.0 seconds — ICE FAILURE, DODGE, CLEAN HANDOFF
+
+The camera looks up once. A fixed structural shelf of real ice fractures. Heavy translucent ice spears and slabs fall under gravity, carrying internal cracks, cyan edges, wet mass and real acceleration. Sydney indicates the safe side only through urgent body movement; there is no magic and no dialogue. The viewer makes one decisive lateral dodge. Ice impacts the platform with physical weight, fragments and cold water mist. End as the impact settles around a dark structural edge, while the same amber reflection remains faintly visible through cyan spray. Use this motivated ice-and-structure occlusion as a clean visual bridge to Part 2. Do not introduce fire, the balance mechanism, golden ballast, tickets, keys, ritual geometry or any later event.
+
+OPTICS, CAMERA AND EDITING
+
+Compose for a real phone screen. Keep Sydney's face, the grip, the latch and the ice impact inside the central 70 percent safe area. Use a restrained 24–28 mm first-person lens language with natural perspective, controlled depth of field, physically directional motion blur and a camera that has human mass. Each beat has one primary camera action. The sequence may use a few invisible editorial cuts only when concealed by the phone surface, a passing rib, Sydney's shoulder, the pressure membrane or the final ice occlusion. Every cut must preserve the same architecture, light direction, velocity and body state. No dissolve and no generic trailer montage.
+
+PHYSICS, PERFORMANCE AND CONTINUITY
+
+Sydney remains one anatomically correct adult human with one left arm, one right arm, two hands and five natural fingers per hand. Preserve the same face, glasses, hair, dress, belt and boots throughout. Her expression is focused and responsive, never a permanent smile or character-card performance. Hair and fabric respond to fall direction, acceleration, moisture and impact. Every hand has a clear starting position, contact point, path and ending position. Weight transfer, grip pressure, shoulder load, foot impact, water displacement, ice inertia, contact shadows and clothing drag must remain believable. The first-person hand does not appear before the reaching beat.
+
+LIGHTING AND COLOR
+
+Use deep violet-black as the environmental base, sparse cyan only where water, condensation or ice physically catches light, and one low-intensity warm amber practical reflection inherited from the bedroom. Light has direction, falloff, shadow and reflection; it never becomes decorative magic. Preserve detailed blacks and wet surface variation. Avoid uniform character glow, excessive bloom and glossy plastic skin.
+
+SYNCHRONIZED AUDIO
+
+Begin with quiet room rain, subtle bedding movement and one fingertip-on-glass contact. Stretch microscopic glass stress into wind pressure during the fall. Add physically synchronized cloth and hair movement, a brief high-frequency drop before the grip, one compact flesh-and-fabric contact, wet structural wind, pressure-membrane resonance, boots and knees landing on wet glass, a dense mechanical latch release, overhead ice fracture and one heavy final impact. Underneath, use only a restrained low tonal pulse after the fall begins; no heroic trailer crescendo. End with settling ice, cold water droplets and one breath of space for the handoff.
+
+GLOBAL LOCKS
+
+Photographed live-action feature-film language; grounded physical production design; one Sydney only; one viewer body; no generated readable text; no captions or subtitles; no voice-over; no dialogue; no logos or watermark; no anime, illustration, videogame rendering, magic symbols, monsters, duplicated people, extra limbs, broken hands, fisheye warping, random camera shake, neon HUD or floating particles.

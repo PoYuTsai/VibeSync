@@ -1,0 +1,49 @@
+VibeSync 主電影｜Part 2 C｜50–53s 中央 20 人活體中景｜送件稿 v1
+
+STATUS: PROMPT PREPARED; SUBMISSION BLOCKED UNTIL AN EXACT 4K CENTER-20 CLEAN MASTER EXISTS. NO PAID AUTHORIZATION.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Image-to-Video from one exact 4K clean master
+- Provider output duration: 5.0 seconds; editorial use: best continuous 3.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission.
+
+REQUIRED BEFORE SUBMISSION
+- exact start image: TANK100_center20_clean_master_v1_4K.png (not yet produced)
+- identity/seat authority: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_center20_identity_lock_v2_4K.png
+- element/performance authority: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_center20_element_manifest_v1.json
+- composition-only reference: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/TANK100_center20_cinematic_concept_v1_COMPOSITION_ONLY_16x9.png
+- The composition-only image is never identity authority.
+
+MASTER PROMPT
+
+A locked-camera, photorealistic live-action medium-wide shot of the exact twenty women already present in the supplied clean master, behind the same curved glass in the center bay of the VibeSync relationship-practice room. Preserve every identity, face, hairstyle, body, wardrobe, seat, hand, leg, blank physical badge and glass mullion from the start image. Do not regenerate, rearrange or add anyone.
+
+START STATE
+Exactly two continuous oxblood-red sofa tiers, ten women on the raised back tier and ten on the front tier. Stella NO.038 is front tier seat 5; Audrey NO.099 is front tier seat 6. The male and Sydney are not visible: the center camera lens occupies the male's eye position outside the glass, so looking into the lens means looking at the male and the audience. Everyone begins naturally alive but still, with non-identical breathing phases and seat-specific head angles.
+
+CAMERA
+35–50mm eye-level centered male-point-of-view medium-wide, tripod-stable, deep enough focus to retain all twenty faces and all blank badge rectangles. The lens stays exactly on the central viewing axis at the male's eye height. No pan, orbit, dolly, zoom, rack focus, reframing or camera shake. The camera does not cross glass or move between rows.
+
+ONE CAUSAL ACTION
+The twenty women notice the newly arrived male through the glass. Every pair of eyes is aimed at the same center lens, reading as direct eye contact with the male/audience; nobody looks toward Sydney, another woman, the side walls or an off-screen point. Their expressions and gestures emerge softly and asynchronously rather than as a wave: most only breathe, slow-blink or form a restrained inviting smile; no more than one woman at a time performs a small hair adjustment or low shoulder-level greeting. Head and body angles remain naturally different by seat, but each pupil line holds or returns to the center lens. Stella remains nearly still until the final second, then her direct gaze gains clear recognition. Her smile has not fully formed yet. All motions remain under five centimeters and never cross a badge.
+
+END STATE
+All twenty remain in their original seats with unchanged identities and blank physical badges. All twenty hold readable but naturally varied direct eye contact into the center lens, making the male/audience feel seen. Stella carries the clearest recognition and creates a clean eye-line match to her close-up. No one is frozen like a photograph, and the group never becomes a synchronized pageant pose.
+
+CUT MATCH
+Cut on Stella's eye line and the same warm key-light direction into the Stella close-up. Number badges and VibeSync frames are added only after motion approval with twenty independent planar tracks.
+
+AUDIO
+Large glass-room ambience, soft clothing and sofa movement, many extremely quiet unsynchronized breaths. No distinct speech, names, cheering, applause, giggling chorus or sexual breathing. Final mix may keep only the clean room-tone portion.
+
+HARD AVOID
+No off-axis gaze, looking at Sydney, looking at each other, vacant unfocused eyes, crossed eyes, face morph, same-face duplication, identity swap, hairstyle swap, seat change, extra woman, missing woman, mirror clone, synchronized blink, synchronized wave, standing up, crossing legs anew, touching badge, text, generated number, logo, UI, price, nightclub performance or beauty-pageant pose.
+
+FAILURE POLICY
+If only one group drifts, do not rerun this full clip automatically. Freeze the accepted master and repair only the affected C1/C2/C3/C4 five-person region in a separately authorized local plate.

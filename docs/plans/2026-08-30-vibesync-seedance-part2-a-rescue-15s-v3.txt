@@ -1,0 +1,86 @@
+VibeSync 主電影｜Part 2 A｜30–45s 半冰繭解放、雙腳制動、鐘擺卸力、完整落地｜送件稿 v3
+
+STATUS: HISTORICAL — DO NOT SUBMIT. SUPERSEDED BY 2026-08-30-vibesync-part2-a-rescue-director-lock-v7.md AND THE FIVE v7 MODULE PROMPTS.
+
+SUPERSEDES
+- v2's palm-to-palm contact, long orange pulse and steam-column deceleration.
+- Part 1 already ends with Sydney on the outside of the male's ice cocoon, punching it open and creating a white ice-dust blast.
+- The male is still partly enclosed after that blast; Part 2 begins by pulling him out of the remaining half-cocoon.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Editorial duration: 15.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission; never infer from an older run.
+
+CONTROL MEDIA — MINIMAL MODEL INPUT
+- exact start image: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_t29p50.png
+- only video reference: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_tail_27p50_30p08_H264_AAC.mp4
+- male identity element: Higgsfield media fdb6c55f-24e4-4bab-bbdd-200654e845be / VibeSync_Male_M1
+- Sydney identity element: Higgsfield media 983d3037-86f6-4c8d-9b6c-f9245b54bdb5 / Sydney_V3_WhiteOnepiece
+- image reference 1: ../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/P2A_K1_partial_release_overshoulder_v1_1080p_16x9.png
+- image reference 2: ../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/P2A_K3_single_boot_brake_v1_1080p_16x9.png
+- image reference 3: ../handover-screenshots/film-boards-2026-08-29/part2-rescue-physical-lock-v1/P2A_K7_amber_seam_end_lock_v1_1080p_16x9.png
+
+DIRECTOR-ONLY BOARDS — DO NOT UPLOAD
+- K2 half-cocoon pull, K4 double-boot motion, K5 pendulum redirect and K6 landing are human timing/physics references only.
+- Do not upload the seven-frame contact sheet or all seven separate images; too many adjacent poses invite interpolation drift.
+
+REFERENCE ROLES
+- The start frame and 2.58-second tail video are transition, motion and spatial-continuity authority. Never replay Sydney's punch.
+- K1 is authority for the reverse over-shoulder camera, the half-open cocoon and the male still enclosed below the waist.
+- K3 is authority for the same right wall, one-boot-first contact, the other boot still airborne, downward debris and the male below Sydney.
+- K7 is exact end-state authority: wet circular deck, both characters low and grounded, narrow central amber seam, no tank visible.
+- Identity Elements override any face variation in the boards.
+
+MASTER PROMPT
+
+A 15-second photorealistic live-action fantasy rescue continuing immediately after the supplied Part 1 ice-dust whiteout. Maintain one deep-purple black cylindrical shaft, one continuous downward direction and the supplied character identities. Sydney does not strike again. The male is not already free. No dialogue, narration, captions, writing, logo, fishbowl or new characters.
+
+START STATE
+Start on the exact supplied moving white steam and ice-dust frame. It is the aftermath of Sydney's already-completed punch. Through the thinning edges, reveal the same wet black shaft ribs and ice fragments streaming upward relative to the fall. Behind the cloud, Sydney remains on the fractured outside surface of the same cocoon. The male's head, one shoulder and right forearm have emerged, but his chest, waist, hips and both legs remain enclosed inside a thick cracked half-cocoon. Neither character disappears or resets position.
+
+CAMERA
+0.00–1.10s — Stay inside the existing white impact wipe. Do not show or repeat the punch. Let only shaft ribs and rising fragments prove continuity.
+
+1.10–3.10s — Use the white cloud as a motivated hidden cut into a high three-quarter over-Sydney-shoulder shot. Look down into the fractured cocoon. Sydney's LEFT hand closes around the male's RIGHT distal forearm above the wrist. Her RIGHT palm braces on the broad ice rim. The male's open hand remains visible past her grip. His lower body is visibly still inside the ice.
+
+3.10–4.70s — Cut behind a passing slab to an external side three-quarter wide. Show the whole falling half-cocoon. Sydney pulls backward; the male's freed torso slides out while a circumferential crack spreads around his waist. Steam, cocoon, people and fragments all continue downward in the same shaft.
+
+4.70–6.10s — The residual ice shell fails under the load. The male becomes fully free for the first time and drops lower, pulling Sydney off-axis. Sydney keeps the forearm grip. Her FIRST boot strikes and skids down one broad horizontal metal rib on the RIGHT wall. The other boot remains clearly airborne. One long friction trail and ice spray continue downward. No one stops.
+
+6.10–8.60s — Stay in the same side-tracking shot with no hidden pose swap. Sydney's SECOND boot slams onto the SAME broad rib beside the first. Both soles press the wall, knees compress deeply, shoulders bow, arms remain taut and her closed jaw visibly strains. Two contact points make sparks and crushed ice. Wall parallax, hair and debris show that both bodies still slide downward while speed changes from extreme to controlled.
+
+8.60–10.70s — Widen to reveal the circular landing deck below. Sydney pushes away from the right wall with both legs and pivots less than 90 degrees. The male alone swings beneath their joined forearms through one controlled 120–180 degree pendulum arc. His knees tuck and both boots rotate toward the deck. No full rotation and no shared spin.
+
+10.70–12.70s — Cut to a low ground-level wide. Because the male remains lower, he touches first: one boot slips, then one forearm and shoulder convert the remaining speed into exactly one side roll. Sydney arrives a fraction later on both boots in a deep crouch, touches one hand to the wet deck and releases the grip so his shoulder is not twisted. Large ice slabs impact the deck several meters behind them, never on them.
+
+12.70–15.00s — Let the impact cloud settle into a stable rear two-shot. The male remains on one knee with one hand grounded; Sydney remains in a low two-foot crouch. Both lift their heads toward one narrow vertical amber seam in the central dark wall. End exactly in the K7 composition. Do not reveal what is behind the seam.
+
+ONE CAUSAL ACTION
+Sydney's Part 1 punch opens only the upper cocoon. In Part 2 she grips the partly exposed male and pulls. His weight completes the residual shell fracture. The newly released body loads her arms and drags both downward. One boot finds the wall, then the second boot joins it; friction reduces speed but never cancels gravity. Sydney pushes off the wall, using the linked forearms as a pivot to orient the male toward the deck. The lower male lands and rolls first; Sydney lands second; falling ice impacts behind them. The complete causal chain is: punch already happened -> male still half enclosed -> Sydney pulls him free -> shell fails -> sudden load -> one boot -> two boots -> slower descent -> one pendulum redirect -> male roll -> Sydney landing -> amber seam.
+
+END STATE
+Both characters have real weight on the wet circular deck. Male is screen left on one knee; Sydney is screen right in a low crouch. Their hands are separate. Hair, clothing, breath, ice chips and water continue settling. One narrow warm amber seam is centered ahead and reflected on the floor. No smile, wink, tank, girls, number plates, UI, text or logo appears in Part 2 A.
+
+CUT MATCH
+Part 2 B must start from the accepted K7-like end frame. Use the same centered amber seam, wet reflection, character left/right placement and steam direction. Only Part 2 B may open the seam and reveal the next space.
+
+AUDIO
+Carry Part 1's existing ice impact and steam through 1.10 seconds without a second explosion. Add close wind pressure, ice crack propagation, fabric scrape and restrained exertion breaths with no words. At 4.70 seconds use one low shell-failure crack. At 4.70–8.60 seconds the first boot creates a long metal scrape; the second boot adds one heavier impact and a second friction layer while wind pitch falls with deceleration. At 8.60 seconds use one pendulum air sweep, not a magical spin. At 10.70–12.70 seconds separate the male boot, forearm/shoulder roll, Sydney's two boots and the delayed background ice crash. From 12.70 seconds remove most wind and retain breath, dripping water, distant metal and one restrained low amber hum. No voice, dialogue, sexual gasp, UI sound or baked-in music over dialogue range.
+
+HARD AVOID
+No repeated Sydney introduction, repeated punch, second fire strike, regrown intact sphere or second membrane. No male already floating free after the whiteout. No palm-to-palm, high five, handshake, romantic handholding or merged arms. No Sydney waiting below or hard-catching a high-speed body. No instant one-boot-to-two-boot pose swap; show the second boot joining in the same shot. No standing on a horizontal ledge, instant stop, calm smile or weightless wall pose. No shared 360-degree rotation, horizontal Superman flight, train-tunnel vanishing point, sky, portal, teleport, ride or game aesthetic. No sudden floor glued to a wall. No landing that skips the male's first contact and one side roll. No missing male, duplicate Sydney, third person, extra limbs or changing wardrobe. No orange blob travelling alone for several seconds. No fishbowl, girls, numbers, fake UI, text or logo.
+
+PASS CONDITIONS
+1. Whiteout continues Part 1 without replaying the punch.
+2. The male is visibly still enclosed below the waist when Sydney first grips and pulls him.
+3. Residual shell fracture causes the sudden load; one boot then two boots visibly decelerate the same downward motion.
+4. Sydney visibly strains and never becomes a relaxed wall rider.
+5. Only the male performs one partial pendulum redirect; neither character performs a full spin.
+6. Male touches and rolls first, Sydney lands second, ice hits behind, and the accepted final frame is the centered amber seam with no next-space reveal.

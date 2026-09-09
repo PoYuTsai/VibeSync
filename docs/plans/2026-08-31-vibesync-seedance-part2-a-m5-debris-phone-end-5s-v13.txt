@@ -1,0 +1,26 @@
+VibeSync MAIN FILM | PART 2 A v13 | M5 THREE-WAVE ICE AND PHONE NEAR MISS | LOCAL PREP ONLY
+
+STATUS: BLOCKED UNTIL M4 v13 IS GENERATED AND ACCEPTED. NO PAID SUBMISSION, REROLL, RETRY OR AUTOMATIC RESUBMISSION IS AUTHORIZED.
+
+TARGET CONTAINER: Seedance 2.5, 5 seconds, 16:9, 1080p High, audio ON, one output, no automatic retry or reroll. The hero phone remains a post-production insert.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue accepted M4 before either person stands. The male is left-of-center on one knee and one palm; Sydney is right-of-center in a low booted crouch. Three rapidly growing ice shadows cross the wet black deck behind their original landing point. The closed narrow amber door seam remains centered in the deep background.
+
+CAMERA — One low same-side wide shot with both people, the danger zone and amber seam readable. Use brief impact kicks but do not cut, orbit or reveal the next room.
+
+ONE CAUSAL ACTION — FIRST WAVE: three long irregular blue-white ice splinters retain their unbraked downward velocity and strike the pair’s former landing position. Sydney sees the shadows first and boot-slides half a body width right. The male reacts a fraction late.
+
+SECOND WAVE: four to six different irregular splinters arrive on staggered angles. The male’s bare foot slips on the wet deck and he urgently crawls forward-left by one body width using one hand and one knee. The nearest two splinters hit thirty to fifty centimeters behind his shoulder and heel. Sydney stays low and pulls only her own body clear; neither character is struck.
+
+PHONE NEAR MISS: immediately after the second wave, a fast rectangular shadow crosses from upper-left toward lower-right in the extreme foreground. Both characters instinctively duck. Generate only the shadow, wind kick, water spray and a small empty impact spark beyond them. Do not generate a visible device; the unlit black smartphone module will be composited in post-production.
+
+THIRD WAVE: two or three smaller sharp fragments land in diminishing rhythm, making fan-shaped cold-blue crystal cracks, small water plumes and loose ice chips. No full-screen snow, fog or single giant slab.
+
+END STATE — The impacts stop. The male remains left on one knee and one palm, breathing hard and embarrassed; Sydney remains right in a stable low crouch. Sydney checks above first, then the male follows her gaze. Both look toward the central narrow amber seam. Hold the final composition steady for at least one second. The door stays closed; no girls, fishbowl, UI or number is visible.
+
+AUDIO — Three distinct impact waves with accelerating whistles, sharp crystalline hits, deck resonance and water splashes; one extreme-foreground whoosh for the post phone; two separate effort breaths; debris settling into near-silence and a low amber electrical hum. No dialogue.
+
+HARD LOCKS — No ice strike on a person, one giant ice board, symmetrical weapon array, endless snowfall, full-screen steam, visible AI phone, readable screen, UI, text, logo, synchronous dodge, standing hero pose, new hand connection, opened door, girls or fishbowl.
+

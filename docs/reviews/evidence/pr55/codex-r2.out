@@ -1,0 +1,58 @@
+## Critical（P0）
+
+無。
+
+## Important（P1）
+
+### P1-1：`seedSource` 的宣告語意與新增測試互相矛盾
+
+- 證據：註解定義為「`seedSource＝本回合實際讀取層`」。
+- 但混合案例明確允許：
+  - 溫度取 thread、熟悉度取 client，仍記 `relationship_thread`。
+  - 溫度取 client、熟悉度取 thread，仍記 `client`。
+- 因此它只代表「溫度來源」，無法代表整個 learning seed 的實際讀取層；拿它監控整場 seed 穩定性會遺失熟悉度來源變化。
+
+驗證步驟：對兩個混合案例檢查實際 success log，確認需求究竟只追蹤溫度來源，還是要逐欄位記錄 `temperatureSeedSource`／`familiaritySeedSource`。若只追蹤溫度，現有欄位名稱與註解必須相應收窄。
+
+### P1-2：無效 thread 仍會被記成 continuation
+
+- 證據：packet 指出既有測試「thread 資料無效（分數欄 null）」會 fallback 到 client。
+- 但 log 使用：
+  ```ts
+  continuation: !ledger.exists && relationshipThreadState != null
+  ```
+- 因此 `relationshipThreadState` 存在、兩個分數皆無效時，會得到 `seedSource: "client"`、`continuation: true`。這不符合註解所稱「本回合 seed 是否接續上一場 thread」。
+
+驗證步驟：建立 `ledger=null`、matching thread 兩分數皆 null、client 分數有效的 handler 案例，斷言 success log。若 continuation 表示實際承接，預期應為 false；若表示「曾找到 thread row」，則目前名稱與註解不正確。
+
+### P1-3：完整 payload 看不到可供「同一場」跨輪關聯的鍵
+
+- 證據：完整 `practice_chat_succeeded` payload 有 `user`、`personaId`、`roundIndex`、`ledgerExisted`，但沒有 session、ledger 或 `visiblePracticeThreadId` 的穩定關聯鍵。
+- `ledgerExisted=false` 可以找出首輪候選紀錄，卻不能把它可靠地連到該場後續紀錄；同一使用者、角色可同時或連續開多場。因此 packet 宣稱可偵測「同一場 seed source 不穩定」尚未成立。
+
+驗證步驟：用同一 user/persona 建立兩個交錯 session，寫出實際 log 查詢並證明每筆後續輪次能唯一連回各自首輪。若 logger 外層已有穩定 session correlation，應把該證據納入 packet。
+
+## Minor（P2）
+
+### P2-1：P1-A 的觀測欄位沒有直接回歸測試
+
+本 commit 新測試涵蓋計分、fallback 與 prompt 順序，但沒有斷言首輪與第二輪 success log 的 `seedSource`、`ledgerExisted`、`continuation` 組合。1650 tests 通過不能證明新增觀測契約正確。
+
+驗證步驟：捕捉兩輪 handler log，至少鎖住正常 continuation、一般新場與無效 thread 三種情境。
+
+## Uncertain
+
+- 「profile mismatch」既有測試只有名稱與處置摘要，packet 未提供測試本文，無法確認它真的驗證上游傳給 resolver 的是 `null`，而非只驗證最終分數。
+- logger 外層可能自帶跨 request 的 session correlation；packet 沒有這份證據。若存在且可穩定查詢，P1-3 可解除。
+
+## 看起來正確的部分
+
+- continuation 計分測試確實鎖住 thread 的 62/41 優先於 client 80/60，回傳為 66/46，並檢查 prompt、commit 與 learning update 的起算值。
+- 三個逐欄位 fallback 案例已按本輪裁定加入。
+- debrief 測試已限定 `[1].content`，並鎖住 `band < stage < invite < final`；game 也鎖住 hidden guidance 在最終判準前。
+- 完整 payload 證明 `difficulty` 原本就存在。
+- packet 回報全套測試為 1650 passed / 0 failed，但本輪依指示未獨立執行。
+
+**Verdict：BLOCK**
+
+主要阻擋點是觀測語意仍可能產生錯誤真相：`seedSource` 無法表示混合來源，且無效 thread 會被標成 continuation。

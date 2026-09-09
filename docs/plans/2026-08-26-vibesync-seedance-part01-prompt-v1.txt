@@ -1,0 +1,105 @@
+VibeSync 手機主電影｜Seedance 2.5 Part 1（0:00–0:25.5）Prompt V1
+狀態：待 Eric／Fable 5／GPT Pro 品味審核；未授權付費生成
+日期：2026-08-26
+
+======================================================================
+HIGGSFIELD 設定
+======================================================================
+
+Model: Seedance 2.5
+Mode: General / References
+Duration: 25 seconds（若介面只有 30 seconds，選 30 seconds 並要求故事於約 25.5 秒完成，最後保留 4 秒冰塵沉降與呼吸，不新增情節）
+Aspect ratio: 9:16
+Resolution: 1080p
+Bitrate: High
+Audio: On（只作同步環境聲／Foley／暫定配樂；正式版仍會後製重混）
+Subtitles / captions: Off
+
+======================================================================
+只上傳兩張 REFERENCE
+======================================================================
+
+Reference A｜Sydney identity only
+sydney_thinking.png
+
+用途：只鎖成年東亞女性、臉型、齊瀏海長黑髮、暖棕眼、黑色圓框眼鏡、白色短袖翻領排扣襯衫洋裝與同布腰帶。
+不得照抄這張圖的思考手勢、笑容、站姿、插畫質感或透明背景。
+
+Reference B｜VibeSync Practice card geometry only
+practice_draw_card_back_base.png
+
+用途：只鎖片頭 Practice 卡背幾何、黑／金／深紫比例與少量產品 DNA。
+不得把它變成一路漂浮的 logo、傳送門、HUD 或遊戲道具。
+
+本 Part 不上傳：
+- 任何先前由 AI 生成的井、雲、抓手、冰、火或概念分鏡。
+- 六張 partner_stage 圖。
+- POV 手部圖。
+
+原因：第一支只需要鎖角色與產品入口；世界、建築、光、霧、水與攝影機構圖交由 Seedance 在下列物理規則內重新設計。
+
+======================================================================
+DIRECTLY PASTE THE ENGLISH PROMPT BELOW
+======================================================================
+
+Create a cohesive 25-second vertical cinematic sequence for VibeSync, designed as the opening movement of a premium live-action fantasy-science-fiction short film. It may use a small number of invisible, physically motivated editorial cuts, but it must feel like one continuous world and one continuous fall, not a montage, a game trailer, or an interpolation through reference images.
+
+REFERENCE ROLES
+The Sydney reference defines identity only: the same adult East Asian woman, long straight dark hair with blunt bangs, warm brown eyes, black round eyeglasses, a white short-sleeve collared button-front shirt dress with a fabric waist tie, knee-length skirt, and black ankle boots. Translate her into a refined semi-realistic cinematic character with natural adult anatomy, physically responsive hair, fabric, skin and glasses. Do not copy the reference pose, hand gesture, smile, illustration rendering or background.
+
+The VibeSync Practice card reference defines only the opening card-back geometry and a restrained design lineage for the architecture. Do not turn it into a floating logo, portal, game card, interface wall or recurring object after the opening.
+
+No uploaded image defines the environment or camera composition. Invent those with strong cinematic production design inside the following world rules.
+
+WORLD AND VISUAL LANGUAGE
+The fantastical space is a single monumental vertical engineering well born from the physical thickness of smartphone cover glass. It is enclosed, architectural and human-made: deep violet-black wet glass, blackened metal ribs, rounded structural seams inherited subtly from the Practice card, sparse cyan condensation and ice, and one low-intensity warm amber practical-light reflection carried in from the real room. Surfaces have water-film thickness, roughness variation, refraction and real depth. The space is dangerous, minimal and tactile, with expensive live-action production design and restrained high-end visual effects. It is not an outdoor sky, natural cave, temple, spaceship, neon data tunnel or fantasy game level. Never introduce magic symbols, floating UI, readable text, monsters or decorative particles.
+
+CHRONOLOGICAL FILM BEATS
+
+0.0–2.5 seconds — REAL PRODUCT THRESHOLD
+Begin in a dim contemporary bedroom at night, seen from the user’s natural first-person position. Rain is present outside but never romanticized. A real vertical smartphone fills most of frame; one warm bedside practical reflects across its cover glass. The screen contains the exact visual geometry of the referenced VibeSync Practice card, without inventing readable interface text. A fingertip touches the card once. The camera makes a slow macro push toward the center. The cover glass reveals physical thickness and microscopic parallax rather than opening a glowing portal.
+
+2.5–5.5 seconds — THE SCREEN BECOMES DEPTH
+Continue through the same dark center. The card’s rounded seams and the amber reflection elongate into the architecture of an immense enclosed vertical well. Support disappears and the viewer drops. The movement is body-led, not a flying drone: the lower chest edge, hips, legs and dark boots briefly enter frame, while wet seams and condensation race upward with convincing depth parallax. The viewer’s hands remain out of frame; do not begin reaching yet. After the initial shock, the camera finds one stable vertical axis.
+
+5.5–7.3 seconds — RECOGNITION
+Farther down the same well, Sydney is briefly visible at human scale against the wet architecture. Give the audience one concise near-frontal full-body recognition beat: this is the woman from the App, now physically present. She is already responding to danger, not posing, smiling for camera or hovering in a hero tableau. Her white dress catches only the existing amber reflection and cool wet light.
+
+7.3–10.8 seconds — CROSSING, REACHING, GRIP
+Sydney moves laterally past the falling viewer at high relative speed in side or three-quarter profile. Her body passes first; momentum turns her shoulder and torso back, then her arm reaches. Only now does exactly one viewer hand rise naturally from the lower edge of frame. The viewer chooses to close the remaining distance. Fingers make one clean, anatomically correct grip by approximately 10 seconds. Sydney’s shoulder, upper arm and core visibly take the viewer’s weight; the grip does not freeze into a posed image.
+
+10.8–15.5 seconds — GRAVITY REDIRECTION
+The shared load changes both bodies. The viewer’s forearm lags with inertia, then the camera is pulled onto one strong curved lateral vector. Maintain the grip through the first half of this movement. Use the wet wall seams, the same amber reflection and cyan condensation to prove real parallax and changing gravity. The camera may pass behind Sydney’s shoulder or a structural rib for one motivated invisible cut, then emerge still inside the same well. The motion is fast and visceral but readable: no barrel roll, random shake or weightless superhero flight.
+
+15.5–18.0 seconds — PRESSURE-FLOW MISREAD
+They approach a colossal moving form that initially feels dangerous, like a wall of water curling through darkness. As the viewing angle changes, parallax reveals that it is not a creature or ocean wave: it is a high-pressure condensation layer, water membrane and fragmented ice being forced between engineered ribs of the same vertical well. Sydney reads the pressure and leads the viewer through one narrow safe vector. Preserve a glimpse of wall seams and the amber reflection so the setting never becomes an outdoor cloudscape.
+
+18.0–20.3 seconds — LANDING
+They descend onto a wet black-glass maintenance platform grown from the same architecture. Return clearly to first-person body scale. Dark boots and knees enter frame before impact; the knees take weight, the water film pushes outward, and loose ice skitters across the surface. The camera settles quickly enough for the viewer to recover orientation. Sydney lands nearby without a superhero pose.
+
+20.3–22.2 seconds — ACCIDENTAL LATCH
+While regaining balance, the viewer braces one hand against a recessed mechanical seam. The hand unintentionally depresses a dense black-glass safety latch whose negative space and metal insert subtly form a question-mark silhouette. It is a functional worn mechanism built into the wall, not a floating cube, glowing icon or game prompt. A heavy internal lock releases. The sound and a traveling fracture above reveal the consequence before the camera looks up.
+
+22.2–25.0 seconds — ICE FAILURE AND EVASION
+The camera looks upward once. A structural shelf of real ice fractures from fixed overhead geometry. Heavy translucent ice spears and slabs fall under gravity with internal cracks, cyan edges and wet mass. Sydney signals the safe side through her body movement, without magic or dialogue. The viewer makes one decisive lateral dodge. Ice impacts the platform with physical weight, fragments and cold water mist. End on the impact settling around a dark structural edge, with the same amber reflection still traceable through the cyan spray. This final occlusion must provide a clean visual bridge into the next part; do not introduce fire, the balance mechanism or any new story event yet.
+
+CINEMATOGRAPHY AND EDITING
+Compose specifically for a real 9:16 phone screen. Keep faces, the grip, the question-mark latch and the ice impact inside the central seventy percent safe area. Use a restrained 24–28 mm first-person lens language, natural perspective, physically motivated directional motion blur and controlled depth of field. Each shot has only one primary camera action. Hide at most a few editorial cuts inside the phone surface, a passing structural rib, Sydney’s shoulder, the water membrane or the final ice occlusion. Never use a dissolve, random camera shake, fisheye warping or a generic trailer montage. Preserve Sydney’s exact identity, glasses, dress and adult proportions throughout.
+
+SYNCHRONIZED AUDIO
+Generate grounded synchronized production sound: quiet room rain and fingertip-on-glass at the opening; glass stress stretching into wind pressure; cloth and hair movement; a brief high-frequency drop just before the grip; one compact flesh-and-fabric grip impact; water pressure, ice fragments, boots and knees landing on wet glass; a dense mechanical latch release; overhead ice fracture and a heavy final impact. Add only a restrained low tonal pulse after the fall begins, never a heroic trailer crescendo. No dialogue, no voice-over, no subtitles, no lyrics and no UI notification sounds.
+
+CONTINUITY FAILURES TO AVOID
+No different woman, face swap, missing or changed glasses, different clothes, childlike anatomy, permanent smile, character-card pose, disembodied hands, hand visible before the reaching beat, extra fingers, fused hands, broken wrists, duplicate limbs, weightless movement, background-only sliding, anime or videogame rendering, magical glow, portal, open sky, giant creature, excessive bloom, plastic skin or readable generated text.
+
+======================================================================
+這一版的審核焦點
+======================================================================
+
+1. 是否看得出這是一個有作者性的電影世界，而不是 Codex 概念圖被動畫化。
+2. 兩張 reference 的責任是否夠乾淨，沒有把姿勢或背景當時間關鍵幀。
+3. 25 秒是否資訊過多；若要刪，只刪重複運動，不改骨架因果。
+4. Sydney 是否既可辨認又不像動漫角色卡。
+5. 第一人稱的手是否直到需要抓握才出現。
+6. 結尾是否自然停在冰層崩落，可接 Part 2 的火與融冰。
+7. 聲音是否只證明物理，而沒有把畫面做成遊戲預告片。

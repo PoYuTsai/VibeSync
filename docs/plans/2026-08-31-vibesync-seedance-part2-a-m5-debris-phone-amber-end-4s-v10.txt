@@ -1,0 +1,43 @@
+VibeSync MAIN FILM | PART 2 A v10 | M5 DELAYED DEBRIS / POST PHONE LANE / AMBER END | LOCAL PREP
+
+STATUS: HISTORICAL SEGMENTED PROMPT. SUPERSEDED BY THE v11 SINGLE-MASTER FORWARD-EXTENSION PLAN. DO NOT SUBMIT, REROLL, RETRY OR RESEND.
+
+CONFIG CANDIDATE
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Generation duration: 4 seconds
+- Intended final-edit use: approximately 1.85 seconds selected from the accepted output
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M4_v10_ACCEPTED_TAIL_2p000s.mp4
+- end_image: P2A_K7_amber_seam_end_lock_v2_BAREFOOT_LOCK_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- hero phone trajectory: POST-PRODUCTION ONLY; reserve an empty tracked foreground lane, do not ask the model to create a phone
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+CHARACTER LOCK — Sydney is @Sydney_V3_WhiteOnepiece. The adult male is @VibeSync_Male_M1, wearing the same charcoal-black long-sleeve top and dark trousers with bare feet.
+
+START STATE — Continue the accepted M4 tail. Both adults are already grounded in separate low poses beside the rib base, hands apart: the male screen-left on one knee and Sydney screen-right in a two-boot crouch. Two to three meters of empty wet floor remain behind them. The delayed upper rear ice bridge and its dark blank panel frames finally release outside their redirected landing path. A large shadow crosses the rear floor.
+
+CAMERA — Stay low, stable and on the same side. Keep both adults in the foreground while preserving the entire empty rear impact zone and a clean unobstructed path across the extreme foreground for a phone that will be added later in post-production. Settling white dust may hide only a gentle match toward END IMAGE 1. Do not pan into another room, orbit, cross the axis or follow any debris away from the characters.
+
+ONE CAUSAL ACTION — The delayed second debris wave strikes the floor BEHIND both adults, never intersecting either body. Several heavy translucent ice masses and dark blank metal-and-glass frames break within the rear impact zone. Use a small number of weighty objects, not a confetti explosion. The pressure wave makes both adults flinch lower and brace in place. One fast moving shadow and a narrow wake of loose ice dust sweep safely across the reserved extreme-foreground lane from rear-left toward front-right; keep that lane free of generated objects so a black-screen hero phone can be composited there later. The shadow passes dangerously close but never touches either person.
+
+As the rear fragments settle, both adults confirm that they are safe, remain low and lift their heads toward the narrow CENTRAL AMBER SEAM. The male stays screen-left; Sydney stays screen-right. Their breathing and wet reflections remain visible. Transition gently through settling vapor into the supplied END IMAGE without changing wardrobe, identity, limb count or position.
+
+END STATE — Finish exactly on END IMAGE 1: hands separate, male low at screen-left, Sydney in a two-boot crouch at screen-right, wet reflections, scattered rear ice, closed narrow central amber seam and no next room visible. Hold this stable composition for the remaining generation handle.
+
+CUT MATCH — Stable 45.00-second final frame for Part 2 B to begin the fishbowl reveal. M5 itself never opens the seam or shows any girl.
+
+AUDIO — Falling pressure; one heavy rear ice-glass-metal crash; short close foreground whoosh reserved for the later phone overlay; settling fragments; two strained breaths; water drips; restrained low amber hum. The phone's hard slide and offscreen stop are added in post with its visual. No dialogue.
+
+HARD LOCKS — Debris always strikes behind the redirected landing path. No ice or panel touches either body. Generate no phone-shaped object, smartphone, readable screen, UI, text, logo or number. Keep the post-production foreground lane clear. No synchronized character motion, standing pose, new hand contact, extra limb, second landing, explosion fireball, opened door, warm room, fishbowl, girl reveal or game look.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

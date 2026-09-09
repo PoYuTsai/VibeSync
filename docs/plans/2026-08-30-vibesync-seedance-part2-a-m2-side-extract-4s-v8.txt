@@ -1,0 +1,54 @@
+VibeSync MAIN FILM | PART 2 A v8 | M2 SIDE EXTRACT | LOCAL PREP
+
+STATUS: LOCAL PREP ONLY. M1 v8 IS ACCEPTED. NO PAID SUBMISSION IS AUTHORIZED BY THIS FILE.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: PART2A_M1_v8_ACCEPTED_TAIL_3p314_4p064_0p750s_H264_AAC.mp4
+- end_image: NONE — do not let an AI still override the accepted M1 hand continuity
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- private real-hand photos: LOCAL ANATOMY VALIDATION ONLY; DO NOT UPLOAD
+
+CONTINUITY LOCK
+- The accepted M1 tail already contains the completed two-point rescue grip.
+- The male extends only his RIGHT arm toward Sydney.
+- Sydney's RIGHT hand keeps the same secure clasp on his RIGHT hand.
+- Sydney's LEFT hand stays fully closed around his black-sleeved RIGHT forearm, one palm-width toward his elbow.
+- A visible band of black sleeve separates the two contact points.
+- No release, re-grip, hand swap, sliding hand, open supporting palm or fourth visible hand during the camera change.
+- The male's unused LEFT arm stays tucked behind his torso and its hand remains hidden.
+
+TIMING GUIDE
+- 0.00–0.45: preserve the accepted M1 tail exactly; steam and passing ice motivate the camera wipe.
+- 0.45–1.15: reveal the external high side three-quarter view; both grips remain locked.
+- 1.15–2.75: Sydney braces on two separate ice edges and performs one full-body extraction.
+- 2.75–3.55: the male clears the ice; his released weight pulls both bodies downward; first ice wave falls below.
+- 3.55–4.00: Sydney's nearest boot makes first light contact with the wall rib; hold a readable falling end state.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the accepted M1 v8 tail without replaying any punch or changing either hand. The adult male remains below Sydney and half trapped at the waist. He wears the same fitted BLACK LONG-SLEEVE top and dark trousers. His RIGHT hand remains clasped by Sydney's RIGHT hand; Sydney's LEFT hand remains fully closed around his black-sleeved RIGHT forearm one palm-width toward his elbow. The two grip points stay separated by a visible band of black sleeve. His unused LEFT arm and hand remain hidden behind his torso. Attached amber contact heat already produces steam in the waist-level cracks.
+
+CAMERA — During the first 0.45 second, preserve the accepted POV action and let dense motivated steam plus one passing ice slab fill the lens. Through that wipe, reveal one HIGH 30–45 degree external side three-quarter tracking view, never a low angle. Sydney stays upper-right and the male lower-left while the shaft streams upward around their continuing fall. Do not show a hand release, re-grip or morph during the cut; when the steam clears, the exact same two-point grip is still carrying his weight.
+
+ONE CAUSAL ACTION — Sydney first tucks both knees and plants each black boot sole against a DIFFERENT surviving outer ice edge beside the male's hips, never against his body. Contact-bound amber heat travels from the two locked grip points along his black sleeve into one waist-level ice ring; it brightens cinematically but never becomes a detached fireball. Sydney extends both legs and drives through her hips, back and shoulders while keeping both elbows slightly flexed under heavy tension; the two locked grips transmit her full-body pulling force without sliding. The heated waist ring opens along one circular fracture. The male's torso, hips, DARK TROUSER LEGS and both BARE FEET slide completely free. The broken lower ice ring receives a downward-outward impulse and becomes the FIRST ice-debris wave below them. Only after the ice ring breaks, his suddenly released weight straightens their connected arms and pulls both bodies downward. Sydney's nearest boot is carried toward one narrow vertical black-metal wall rib.
+
+END STATE — The male is fully free below Sydney, still in the same black long sleeves and dark trousers with both bare feet visible. Their exact two-point grip remains unchanged and load-bearing. Both people are still descending. Only Sydney's NEAREST boot has just made its FIRST LIGHT SOLE CONTACT with the wall rib; it has not slid, sparked or braked yet. Her other boot remains airborne. The first ice-debris wave is already below them. The original phone remains lodged in a delayed upper ice fragment outside the active foreground and does NOT join this first wave. Hold this readable state for the final 0.35 second.
+
+CUT MATCH — After the stable end state, a dense cold steam ribbon and one translucent ice edge sweep across the lower frame to motivate the next cut. No black rectangle, readable UI, text, logo or phone screen.
+
+AUDIO — Continuous wind and cloth strain; boot pressure on ice; one deep circular ice fracture; falling ice clacks; one heavy body-release drop; a very light rubber-on-metal touch at the final frame. No dialogue, no landing impact, no spark burst yet.
+
+HARD NEGATIVES — No replayed punch. No short-sleeve male. No footwear on the male. No open secondary hand. No two Sydney hands piled on the male's palm. No extra hand, arm, thumb or finger. No grip change. No both boots touching the wall. No standing, braking, landing, swing, spin, flying pose or 360-degree rotation. No second debris wave. No falling phone in M2. No detached orange orb or free fireball. No game or amusement-ride look.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

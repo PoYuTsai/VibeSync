@@ -1,0 +1,50 @@
+VibeSync MAIN FILM | PART 2 A v10 | M2A SYDNEY SUBJECTIVE LOAD TEST / CHARGE | LOCAL PREP
+
+STATUS: HISTORICAL BLOCKED RESULT. ONE ERIC-AUTHORIZED PAID GENERATION COMPLETED AS JOB 96787c40-94e2-4492-8089-6f0853eec6a2. NO REROLL, RETRY OR RESUBMISSION OCCURRED. THE SEGMENTED METHOD IS SUPERSEDED BY THE v11 SINGLE-MASTER FORWARD-EXTENSION PLAN. DO NOT SUBMIT THIS PROMPT AGAIN.
+
+CONFIG CANDIDATE
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Generation duration: 4 seconds
+- Intended final-edit use: approximately the final 1.20 seconds, selected only after visual acceptance
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: PART2A_M1_v8_ACCEPTED_TAIL_2p064_4p064_2p000s_H264_AAC.mp4 — people, black-long-sleeve wardrobe, exact two-point grip and live motion continuity only; its male POV is not the new camera authority
+- start_image: P2A_M2A_SYDNEY_SUBJECTIVE_GRIP_LOCK_CANDIDATE_v10_1920x1080.png — ERIC APPROVED FOR M2A; camera direction and arm-entry direction only; Higgsfield media 5f58f7d7-0fe5-4e1a-ad93-47b872f98e3a
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- private wife-view grip photos: LOCAL ANATOMY VALIDATION ONLY; DO NOT UPLOAD
+- ice topology image: NONE
+- hero phone: NONE
+
+EDIT INTENT
+- The accepted M1 master remains untouched. Its final film use targets 30.00–33.60.
+- M2A is generated with lead-in for stability. The final edit targets the last approximately 1.20 seconds, containing the peak failed load test, Sydney's full-body brace and the steam wipe.
+- M2B may use the accepted M2A final complete 2.000 seconds as its video reference.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+CHARACTER LOCK — Sydney is @Sydney_V3_WhiteOnepiece. The trapped adult male is @VibeSync_Male_M1 and wears the same fitted charcoal-black long-sleeve top and dark trousers.
+
+REFERENCE AUTHORITY — VIDEO REFERENCE 1 is the exclusive authority for both identities, black-sleeve continuity, limb count and the already completed two-point grip. START IMAGE 1 controls only the new Sydney-side shoulder-height subjective camera and the direction from which the three existing arms enter frame. Do not replay the reach, create a new grip or invent any limb from the image.
+
+START STATE — Begin after one editorial reverse-angle cut from the accepted M1. The grip is already fully complete before this shot starts. Only the male's RIGHT arm reaches Sydney. Sydney's RIGHT hand securely clasps his RIGHT hand palm-to-palm. Sydney's LEFT hand is already closed around his black-sleeved RIGHT forearm just above the wrist. A visible band of fitted black sleeve separates the two Sydney hand contacts. The male's unused LEFT arm and LEFT hand remain hidden against the far side of his body. Exactly three hands are visible at the rescue connection and all three have normal adult anatomy.
+
+CAMERA — Use a fixed shoulder-height subjective view just beside Sydney's RIGHT shoulder, close to her line of sight but not an ultra-wide eye POV. Approximately a natural 35 mm perspective with no fisheye or giant foreground hands. The male faces Sydney beyond the grip. His black-sleeved RIGHT forearm approaches from upper-left toward center. Sydney's RIGHT forearm enters from lower-right into the main hand clasp; her LEFT forearm enters from lower-left into the support above his wrist. Both Sydney wrists remain nearly straight and aligned with their forearms. Keep the male's strained face, both contact points and the black sleeve gap readable. Do not show Sydney's face, orbit, rack focus away from the hands or cut again.
+
+ONE CAUSAL ACTION — Sydney maintains both contacts and applies ONE gradually increasing test pull. Her RIGHT hand remains the load-bearing palm clasp; her LEFT thumb rests on the visible upper surface of the male's sleeved forearm while four fingers wrap underneath it. Her LEFT hand never slides down onto his hand. Both wrists stay neutral, not sharply bent. The male and the remaining rear ice restraint barely move, proving that his pelvis and thighs are still mechanically wedged. The black sleeve compresses under Sydney's support hand and both forearms become taut. Sydney then stops increasing arm force, takes one controlled breath, lowers both shoulder blades, locks her back and core, and keeps both elbows slightly flexed. A restrained amber warmth appears only along Sydney's forearms and the two existing contacts, pushing thin frost away without obscuring fingers or burning the male. During the final beat, pressured white steam rises from the broken ice outside the hand area and fills the lens for a motivated editorial cut.
+
+END STATE — Hold the exact same two-point grip under visible load as dense white steam covers the full frame. No hand releases, moves, opens or changes partner. The male remains trapped below the waist. Sydney has completed her brace but has not yet planted either boot or performed the full extraction.
+
+CUT MATCH — M2B begins inside the same dense steam, already on an external high side three-quarter camera. The steam clears to reveal Sydney's full body and both existing hand contacts without any on-screen camera rotation.
+
+AUDIO — Continuous falling wind, strained black fabric, one deep ice-resistance groan, Sydney's controlled inhale, a low rising thermal hum and a short pressured steam wipe. No dialogue, wall scrape, boot impact, explosion, named attack or phone sound.
+
+HARD LOCKS — Exactly three visible hands: male RIGHT hand, Sydney RIGHT hand and Sydney LEFT hand. No male left hand, second extended male arm, fourth hand, extra thumb, fused fingers, re-grip, hand swap, open support palm or sharp bent wrist. Sydney's two hands do not both hold the male's palm. No giant ice block in the foreground, ice ring, seat, platform, fireball, detached orange orb, foot flame, wall contact, extraction, landing, readable phone, UI, text, logo or game look.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

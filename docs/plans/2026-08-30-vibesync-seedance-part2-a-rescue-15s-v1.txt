@@ -1,0 +1,65 @@
+VibeSync 主電影｜Part 2 A｜30–45s 救援母片｜舊稿 v1（禁止送件；已由 v2 取代）
+
+STATUS: SUPERSEDED BY 2026-08-30-vibesync-seedance-part2-a-rescue-15s-v2.txt. DO NOT SUBMIT. NO PAID AUTHORIZATION.
+
+RECOMMENDED SEND CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Editorial duration: 15.0 seconds
+- Aspect: 16:9
+- Output: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+- Credits: read from the live confirmation screen immediately before submission; never infer from an older run.
+
+CONTROL MEDIA
+- start image: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_t28p50.png
+- only video reference: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/production-prep-v1/PART1_v5_tail_27p50_30p08_H264_AAC.mp4
+- male identity: Higgsfield media fdb6c55f-24e4-4bab-bbdd-200654e845be / VibeSync_Male_M1
+- Sydney identity: Higgsfield media 983d3037-86f6-4c8d-9b6c-f9245b54bdb5 / Sydney_V3_WhiteOnepiece
+- palm composition: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/A2_palm_circuit_v1_16x9.png
+- landing end state: ../handover-screenshots/film-boards-2026-08-29/part2-static-locks-v1/A3_weighted_landing_v2_round_atrium_16x9.png
+
+REFERENCE ROLES
+- The start image and 2.58-second tail video are motion and spatial continuity authority only.
+- The male and Sydney references are identity and wardrobe authority only.
+- A2 is hand-side, eye-line and palm-contact composition authority only.
+- A3 is gravity, floor, body weight and final architecture authority only.
+- Never use the full Part 1 video as a video reference.
+
+MASTER PROMPT
+
+A 15-second photorealistic live-action fantasy rescue sequence, one continuous vertical world, one continuous downward fall, premium feature-film cinematography. No dialogue, no narration, no captions, no generated writing and no new characters.
+
+START STATE
+Start from the exact supplied frame and motion tail: the camera is below the same huge translucent ice cocoon, looking upward inside the same deep purple-black cylindrical shaft of dead smartphone panels. Sydney is above the cocoon, already falling with it. Her RIGHT hand is the warm fire hand on SCREEN LEFT; her LEFT palm is pressed against the slanted crack on SCREEN RIGHT. Her thin round black glasses, blunt bangs, tied dark hair, white short-sleeve collared dress, black belt and graphite ankle boots remain constant. The male protagonist is still visible inside the transparent core ice and must never disappear. Steam from the previous impact expands across the lens, creating one physically motivated white wipe.
+
+CAMERA
+0.0–1.2s: continue the low 24mm upward angle for spatial confirmation; the cocoon and wall panels keep moving downward while loose ice travels upward relative to the fall.
+1.2–4.2s: hide one cut inside the densest steam and an ice shard. Emerge into a 75mm side close-up of Sydney, face clearly visible, screen right; the male is screen left behind one palm-thick clear core membrane. Her hair and clothes stream upward toward the shaft entrance. Do not cross the 180-degree line.
+4.2–7.2s: move to a 50–65mm tight two-shot and then a palm insert. Male stays screen left; Sydney stays screen right. The two correct palms meet in the center.
+7.2–10.5s: follow a single orange signal downward along adjacent dead screens, then tilt back to a low wide shot that still shows both people descending and the floor growing below them.
+10.5–15.0s: the camera descends below them while the wall parallax visibly slows; it rolls only enough to follow their controlled rotation to feet-down, then stabilizes for a weighted landing.
+
+ONE CAUSAL ACTION
+Sydney's outer fire has already cracked the shell but cannot finish the rescue. Her right-hand fire becomes smaller as she checks the male. He wakes, focuses on Sydney, flexes the fingers of his RIGHT hand once and actively presses his right palm from inside toward Sydney's LEFT palm. His pressure breaks the last thin core membrane. Their palms physically touch once. A single orange core lights at that contact, enters the existing dead smartphone panels and travels DOWN the shaft in a clear sequential path. The orange signal melts frost below into water; the visible water boils; a powerful steam column rises. Only after the upward steam visibly slows their continuing fall does Sydney slide her left hand from his palm to his right forearm, guide both bodies feet-down and help him land. Sydney's boots touch first with bent knees; the male lands about a quarter-second later, stumbles one weighted step and is steadied by her. The action is one complete feedback loop: coach opens the shell, user responds, the shared signal creates the force that saves them.
+
+END STATE
+Both characters stand on the wet dark floor of the same round atrium, male on screen left and Sydney on screen right. Their knees and clothing settle from real weight. Sydney still holds his right forearm only until he is stable. The horizon is level for the first time. Steam and a few ice fragments continue rising behind them. No fishbowl, crowd or smile yet.
+
+CUT MATCH
+End on a stable chest-to-knee two-shot with a soft warm reflection beginning off-screen in front of them. The next clip starts from this exact accepted end frame.
+
+AUDIO
+Carry the previous steam explosion tail across the first half-second, then sharply reduce it to close breathing, ice ticks and dripping water for Sydney's face. Palm contact has one clean restrained orange tone. The signal travels downward as a spatial sequence. Steam produces a deep upward roar while wind pitch falls with deceleration. Finish with two separate weighted foot impacts, sliding grit and half a second of breath. No voices, words, gasps that sound sexual, UI sounds or music baked into dialogue range.
+
+HARD AVOID
+No hovering, zero gravity, horizontal Superman flight, train tunnel, sky, lake, underwater look, portal, teleport, amusement ride or game aesthetic. No instant floor, disappearing floor, floor glued to a wall, standing in mid-air, wall sticking or Sydney waiting below. No hard catch of a high-speed body. No hand swap: Sydney right fire hand remains screen left; Sydney left contact hand remains screen right; male uses his right hand. No extra arms, merged fingers, hand-through-ice, handshake, missing male, duplicate Sydney or third person. No smile, wink or relaxed pose during rescue. No instant disappearance of the whole cocoon. No text, logo, badge, phone UI or fishbowl.
+
+PASS CONDITIONS
+1. Sydney's face is recognizable within the first four seconds.
+2. The male remains visible and initiates the final break with his right hand.
+3. Orange signal -> melting water -> boiling -> steam -> deceleration is visually readable.
+4. Both remain in downward motion until the weighted landing.
+5. Correct hand sides and one stable identity per person throughout.

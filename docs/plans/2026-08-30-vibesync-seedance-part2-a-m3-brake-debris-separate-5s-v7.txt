@@ -1,0 +1,36 @@
+VibeSync MAIN FILM | PART 2 A v7 | M3 BRAKE / DEBRIS SEPARATION | LOCAL TEMPLATE
+
+STATUS: LOCAL TEMPLATE ONLY. M2 MUST BE ACCEPTED BEFORE PAID SUBMISSION.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 5 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M2_v7_ACCEPTED_TAIL_0p75s.mp4
+- static end image: none
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the accepted M2 tail in the same side three-quarter direction. The male hangs lower through the unchanged RIGHT-hand clasp and LEFT-hand forearm support. Sydney's first graphite boot already scrapes down the broad vertical rib; her second boot approaches it. The first ice-and-phone debris wave is below and nearer the old centerline.
+
+CAMERA — Maintain the same descending side track, then widen enough to reveal the wet circular deck and the lateral safe lane beside the rib base. Upward wall parallax keeps the fall active.
+
+ONE CAUSAL ACTION — Sydney's second sole lands beside the first on the same vertical face. Both knees compress and both soles continue sliding while her two hand contacts remain unchanged. The first debris wave overtakes them along the old centerline and begins striking the deck off their new path. Sydney then extends both legs from the rib, redirecting their remaining momentum sideways toward the clear lane. The male stays below the grips and follows one compact arc of about ninety degrees, hard maximum one hundred twenty, with his bare feet settling below his hips. Upper ice bridges and several blank screen modules remain attached above for a later fall.
+
+END STATE — Hold a readable approach: male lower and aimed at the safe lane, Sydney slightly higher, both grips intact, first debris impacts separated from them, no landing yet.
+
+CUT MATCH — The broad black rib fills frame and reveals the grounded low camera.
+
+AUDIO — Second-boot impact, layered metal scraping, decreasing wind, distant first-wave ice and glass impacts, then one short push-off sweep.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1
+

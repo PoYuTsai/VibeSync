@@ -1,0 +1,43 @@
+VibeSync MAIN FILM | PART 2 A v10 | M3 WALL BRAKE / LATERAL SWING | LOCAL PREP
+
+STATUS: HISTORICAL SEGMENTED PROMPT. SUPERSEDED BY THE v11 SINGLE-MASTER FORWARD-EXTENSION PLAN. DO NOT SUBMIT, REROLL, RETRY OR RESEND.
+
+CONFIG CANDIDATE
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Generation duration: 4 seconds
+- Intended final-edit use: approximately 2.40 seconds selected from the accepted output
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M2B_v10_ACCEPTED_TAIL_2p000s.mp4
+- static image: NONE
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- hero phone: POST-PRODUCTION ONLY; none in this module
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+CHARACTER LOCK — Sydney is @Sydney_V3_WhiteOnepiece. The freed adult male is @VibeSync_Male_M1, wearing the same charcoal-black long-sleeve top and dark trousers with bare feet.
+
+START STATE — Continue the accepted M2B tail on the same falling axis and same side. The male hangs lower through the unchanged RIGHT-hand clasp and Sydney's unchanged LEFT-hand support above his right wrist. Sydney is slightly higher and to frame-right. Both bodies accelerate downward. The nearest broad vertical BLACK-METAL rib is at frame-right. The first heavy ice pieces fall below them along the old centerline, away from the lateral lane. Delayed upper debris remains attached above.
+
+CAMERA — Maintain one external side three-quarter descending track on the same side as M2B. Widen only enough to keep Sydney's two boots, both hand contacts, the lower male and the rib readable. Strong upward wall parallax must prove they continue descending through the entire brake. Do not orbit, cross the action axis, cut, lock to the wall or make the rib look like a platform.
+
+ONE CAUSAL ACTION — Sydney's nearest graphite boot reaches the broad vertical metal rib first. The sole hits at an angle and immediately slides DOWN the wet face; she never stands on it. The remaining white-hot amber at her sole and real boot-on-metal friction create one narrow upward fan of orange-white streaks. Her first knee compresses while the exact two-point hand connection bears the male's weight. A fraction later, her second graphite boot slams onto the SAME broad vertical face beside the first, not onto a different wall or horizontal ledge. Both soles keep sliding downward. Both knees compress deeply, Sydney's shoulders and core absorb the load, and a second brighter but short friction flare rises above her boots. Residual amber heat fades into ordinary metal sparks; there is no propulsion.
+
+Only after both soles are loaded, Sydney drives both legs against the rib in ONE powerful extension. The push changes the remaining downward momentum into a lateral path toward the clear wet lane. Sydney does not spin. The male remains attached below by the same right-arm connection and follows as a compact pendulum. Only the male rotates around the connected arm through approximately ninety degrees, with a hard maximum of one hundred twenty degrees. His torso, hips and bare feet settle beneath the arc instead of cartwheeling. The first ice wave continues past the old centerline and never intersects their new lateral path.
+
+END STATE — Hold a readable low approach toward the clear lane: male lower and leading, bare feet below his hips; Sydney slightly higher behind him; both hand contacts still intact. Their vertical speed has decreased and lateral speed is visible. No one has touched the floor. The delayed upper debris is still above and has not struck.
+
+CUT MATCH — The moving rib exits behind them while the wet circular deck rises into the lower frame. M4 begins from a grounded low side three-quarter camera on this same travel side.
+
+AUDIO — Falling wind; first sole impact and long metal scrape; second heavy boot impact; layered friction sparks; Sydney's loaded effort breath; one short two-leg push-off sweep; distant heavy ice impacts below. No dialogue, fireball, jet sound, landing, body roll, rear debris crash or phone sound.
+
+HARD LOCKS — The accepted RIGHT-hand clasp and LEFT-hand forearm support remain unchanged through the whole module. No release, re-grip, hand swap, extra hand or second male arm. Both boots contact the same broad vertical rib and remain visibly sliding before push-off. Sydney never stands still, flies, runs on the wall or rotates. The two people never rotate together. Male pendulum rotation is one compact arc, approximately 90 degrees and never beyond 120; no 360 spin, somersault, game swing or amusement-ride motion. No landing, amber door, readable phone, UI, text or logo.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

@@ -1,0 +1,10 @@
+VibeSync 主電影｜Part 1（0–30s）｜Seedance 2.5 送件紀錄 v3b（正式版第二次，修 Eric 四點＋我五點）
+日期：2026-08-29　job：d80974cb-8ae8-4131-98d0-8beb3f556eb1　費用：270 credits（Eric：「一次修好再送一次 30 秒完整，當正式版」）
+設定：seedance_2_5 / omni_reference / 16:9 / 30s / 1080p / bitrate high / audio on
+medias：
+- start_image 6da6423e-b66f-40ca-a8ac-f1d9f0bdf29c ＝ U1_first_frame_button_closeup.png（真截圖 screen-practice.webp 裁 240×135 於 (540,1244) 放大到 1920×1080：只有橘鈕、無任何文字 → 從根源解亂碼；0–1s 首頁手機那格已刪）
+- image_references M0 fdb6c55f… / Sydney 983d3037… / ENV0 776f4f15… / COCOON 2218f461-9a33-4713-8806-72d9878afaf8（selected/COCOON.png，2 credits）
+與 v3a 的差異：①首幀改橘鈕極近景、無字；②極遠景改「camera faces a flat wall… no tunnel… man drops top edge→bottom edge」；③15–17s 俯視補「dimly lit by orange, wall tiles visible」防全黑；④19–22s Sydney 改俯視、body vertical、trail below、「Sydney alone in frame… Nobody else」；⑤24–29s 繭段吃 COCOON 參考；⑥全片「Absolutely no written text…」。
+拒絕 preset：IN THE DARK。
+
+PROMPT（原文）：見 job 參數；與本檔同日 v3 檔 §13 分鏡表逐秒對應（時碼整體前移 1 秒，因首頁格刪除）。

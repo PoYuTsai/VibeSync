@@ -1,0 +1,38 @@
+VibeSync MAIN FILM | PART 2 A v7 | M1 POV CONTACT | LOCAL DRAFT
+
+STATUS: HISTORICAL PAID ATTEMPT. JOB 43a07915-7d09-4cf4-8a68-70268b5d8d98 COMPLETED, THEN REJECTED FOR MALE BARE-FOREARM WARDROBE DISCONTINUITY. DO NOT SUBMIT OR REROLL THIS v7 PACKAGE.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- image_reference #1 (opening state): PART1_v5_t29p50.png
+- image_reference #2 (target POV / hand state): P2A_K1A_MALE_POV_PHOTO3_POSE_LOCK_CANDIDATE_v7_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- other images / video references: 0
+
+HIGGSFIELD WEBSITE ORDER LOCK: IMAGE 1 is 0.00 seconds. IMAGE 2 is the target end state.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Begin on exact IMAGE 1. Dense white ice dust continues from the completed strike inside the same wet purple-black smartphone shaft. Small ice chips and wall seams move upward, proving that the cocoon and both adults still descend.
+
+CAMERA — Let the cloud conceal one transition into the trapped male's natural first-person view, about a restrained 35–40 mm perspective. Sydney's focused adult face appears first. His RIGHT forearm then enters from the lower-right, matching IMAGE 2.
+
+ONE CAUSAL ACTION — The male actively reaches. Sydney's RIGHT hand secures his RIGHT hand in the oblique rescue clasp of IMAGE 2; both grip back with separate natural thumbs. Sydney's LEFT hand then closes immediately above his right wrist, one left thumb on top and four fingers wrapped underneath. Both Sydney wrists remain nearly straight. Thin amber contact heat travels along their palm edges and down his forearm, steaming the frost. Her first pull moves the POV camera slightly toward her while his chest, waist, hips and legs remain sealed inside the cracked cocoon. Exactly three hands remain visible.
+
+END STATE — Hold the IMAGE 2 two-point grip and Sydney's determined eye contact for the final half-second while downward wall motion remains readable.
+
+CUT MATCH — Only after both grips are locked, white contact steam and one ice splinter fill the lens for the external cut.
+
+AUDIO — Fading steam, wind pressure, palm contact, ice ticks, fabric strain and controlled breathing; no dialogue.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

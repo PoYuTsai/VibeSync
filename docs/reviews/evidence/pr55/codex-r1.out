@@ -1,0 +1,110 @@
+整體 verdict：**BLOCK**
+
+## Critical
+
+- **P0：無。**
+
+## Important
+
+### P1（block）— 同一場的 seed provenance 與 continuation 會在第二輪改變
+
+**Packet 證據：**
+
+- 無 ledger 時，`source` 可能是 `relationship_thread` 或 `client`。
+- ledger 建立後，`resolveLearningSeed()` 改回 `"ledger"`。
+- log 直接記錄每輪的 `seedSource: learningSeed.source`。
+- `continuation` 也定義為 `!ledger.exists && relationshipThreadState != null`，註解明說「ledger 建檔後即為 false」。
+- 需求的回退條件卻是「同一場 seed source 不穩定」。
+
+因此一個從 thread 承接的新場，典型紀錄會是：
+
+- 第一輪：`seedSource=relationship_thread`、`continuation=true`
+- 第二輪：`seedSource=ledger`、`continuation=false`
+
+這會讓「同一場來源穩定」與「整場是否 continuation」都無法可靠觀測。
+
+**驗證步驟：**
+
+建立無新場 ledger、但有 matching thread 分數的兩輪對話，檢查兩筆 `practice_chat_succeeded`。若 `seedSource` 定義為整場初始來源，兩輪都應保持 `relationship_thread`；若要記每輪實際讀取層，應另增穩定的 `initialSeedSource`，並用它判斷回退條件。`continuation` 亦應驗證是否為整場屬性。
+
+### P1（block）— 必補的 continuation 計分測試沒有真正測到 delta
+
+**Packet 證據：**
+
+需求要求：
+
+> continuation 從上一場 N 分開始，第一輪只動本輪 delta，無隱藏重置
+
+新增測試只呼叫 `resolveLearningSeed()`，證明輸出仍是 `62/41`；它沒有經過 handler、LearningJudgement、分數更新或持久化，也沒有斷言：
+
+- `before = N`
+- `after = N + delta`
+- 只套用一次 delta
+- 下一輪從前一輪 after 開始
+
+全套 1648 tests 通過不能替代這項明列的驗收條件。
+
+**驗證步驟：**
+
+加入 handler 整合測試：thread seed 為 62、固定本輪 delta 為 +4，斷言第一輪 log/結果為 `before=62, after=66, delta=4`，下一輪起點為 66，且沒有回到 client seed 或難度預設。familiarity 也應做等價斷言。
+
+### P2 — 獨立欄位 fallback 沒有被測試鎖住
+
+**Packet 證據：**
+
+原行為要求 temperature、familiarity「逐欄位獨立 fallback」，但新增案例只有兩欄同時有值或同時為 null。以下路徑沒有測試：
+
+- thread temperature 有值、familiarity 為 null
+- thread temperature 為 null、familiarity 有值
+- ledger temperature 有值、familiarity 為 null
+
+目前實作看起來正確，但未來把兩欄錯誤綁成同一來源時，現有測試仍可能通過。
+
+**驗證步驟：**
+
+補三個混合欄位案例，並同時斷言分數與以 temperature 為準的 `source`。
+
+## Minor
+
+### P3 — debrief 順序測試未完整鎖住宣稱的順序
+
+**Packet 證據：**
+
+- 需求要求最終規則位於 band／stage／invite 之後。
+- 測試只斷言 band、invite，沒有斷言 stage。
+- Game 測試只檢查 `"不得繞過"` 存在，沒有斷言 Game contract 位於最終規則之前。
+- 測試把 system/user 內容 `join()` 後使用第一次 `indexOf()`；若 system prompt 未來出現相同 marker，可能產生假通過。
+
+**驗證步驟：**
+
+直接檢查 debrief user message，使用各段唯一 marker，斷言：
+
+`band < stage < invite < game（如適用）< finalDateChance`
+
+## Uncertain
+
+### P1（若缺少即 block）— diff 未顯示 `difficulty` log 欄位
+
+需求明列 log 必須包含 `practiceMode、difficulty、roundIndex...`；新增區塊有 `practiceMode` 與 `roundIndex`，但沒有 `difficulty`。由於 packet 沒有展示整個既有 log object，無法排除它早已存在。
+
+**驗證步驟：**
+
+檢查完整 `practice_chat_succeeded` payload 或捕捉一筆 runtime log，確認有 canonical `difficulty`，且值等於 `request.profile.difficulty`。
+
+### P2 — profile mismatch 的必補測試證據不足
+
+packet 說 handler 上游會把 mismatch thread 設為 null，但新增測試只涵蓋「分數欄為 null」，沒有展示 profile mismatch 經 handler 後確實不會得到 `relationship_thread` source。既有未修改測試可能已涵蓋，因此列為未決。
+
+**驗證步驟：**
+
+以不符 profile 的 thread row 呼叫 handler，斷言 seed 落到 client/default，且 log 的 `seedSource` 不得是 `relationship_thread`。
+
+## 看起來正確的部分
+
+- `resolveLearningSeed()` 的數值 fallback 與原 ternary 看起來逐項一致，包含 null／undefined 的 nullish fallback。
+- ledger 已存在但舊欄位為 null 時，仍不會誤吃 thread/client。
+- debrief 實作目前確實把難度最終判準放在 band／stage／invite／game 後，三條定案規則也都有寫出。
+- `challengeGateActive` 符合 packet 指定的 `beginner × challenge` 判準。
+- 新增 log 沒有放入 user 文字、女孩回覆、完整 prompt 或 `innerThought`；classification 顯示為列舉欄位。
+- `seedSource` 沒有加入產品 response 的可見變更。
+- prompt 預算調整有日期與實測值，且 packet 報告全套測試為 1648 passed。

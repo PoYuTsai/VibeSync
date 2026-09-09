@@ -1,0 +1,34 @@
+## Critical
+
+無 P0。
+
+## Important
+
+無 P1。第一輪 P1 已解掉。
+
+- 證據：`floors.invite === null && userTurnCount >= floors.flirt` 讓 challenge 在第 9 回合進入輕曖昧行；第 8 回合仍走中段行。
+- 證據：該行明確寫「帶一點曖昧的張力」，並以「先不急著提『改天一起…』」阻止模糊邀約。
+- 驗證：確認 `standardPacingLine(8, null, "challenge")` 無曖昧、9 有曖昧，且 9 與更晚回合不放行模糊邀約。packet 中測試已覆蓋 8、9、20。
+
+## Minor
+
+無 P3。第一輪 P3 已解掉。
+
+- 證據：easy／normal 測試新增第 2 回合為 `null`，以及第 5 回合仍為 `"personal_allowed"`，正好鎖住 3／6 的兩個下界。
+- 驗證：對 easy、normal 分別驗證回合 2、3、5、6；packet 中迴圈已完整覆蓋。
+
+## Uncertain
+
+- P3：模糊邀約測試主要靠字串關鍵字，語意保障稍弱。
+  - 證據：測試只斷言 `!flirtLine.includes("模糊邀約")`，但實際 prompt 仍包含模糊邀約範例「改天一起…」，只是以「先不急著提」加以禁止。
+  - 風險：目前文字語意符合需求，但若需求中的「不含模糊邀約」是指 prompt 完全不能出現此類範例，而非「不得放行」，現有實作與測試都不符合。
+  - 驗證：由需求擁有者確認「不含」的定義；若是禁止放行，目前正確。若是禁止在 prompt 中提及，則需移除範例並改測邀約片語不存在。
+
+## 看起來正確的部分
+
+- challenge 的輕曖昧門檻確實落在第 9 回合。
+- challenge 沒有因純回合數取得邀約許可。
+- easy／normal 第 6–7 回合仍走原中段行，第 8 回合仍走原邀約行，新分支不會攔截它們。
+- RED→GREEN 與全套 `1637 passed / 0 failed` 支持修正沒有造成已知回歸。
+
+**Verdict：APPROVE_WITH_RISK**——兩個第一輪 finding 均已實質修正；唯一保留風險是「不含模糊邀約」的語意定義。

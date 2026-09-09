@@ -1,0 +1,11 @@
+# Refracted Continuity
+
+Refracted Continuity treats space as evidence of persistence. A single line may alter width, depth, or material as it crosses a field, yet it never loses its origin. Planes inherit one another’s position rather than arriving as unrelated cards; gaps, overlaps, and partial occlusion communicate continuity more powerfully than explanation. Every alignment must feel meticulously crafted, the result of repeated optical correction by a master-level image maker.
+
+Color behaves like a source with a memory. Warm reflected gray belongs to the physical world, silver-gray belongs to interpretation, restrained violet belongs to guidance, and saturated orange is withheld from the field. Transitions happen through calibrated desaturation and changes in surface response, never through decorative glow. The palette should feel painstakingly tuned over countless comparisons, with each hue carrying one precise responsibility.
+
+Scale establishes what can be known. Identity arrives before detail; one node becomes legible while surrounding history remains present but deliberately unreadable. Rhythm is made from focus platforms separated by controlled movement, not from equal-duration panels. The work must show deep expertise in deciding what stays peripheral, with every blur radius, crop, and pause refined until the hierarchy feels inevitable.
+
+Composition uses a continuous directional spine rather than a dashboard grid. Objects gather around that spine only when they have a destination, then gradually adopt the geometry of their final surface. Text is sparse and clinical: names, times, state labels, and destination codes function as visual coordinates, never as explanatory paragraphs. Craftsmanship is visible in the exact inheritance of edges, baselines, and vanishing directions.
+
+The final image should feel like an artifact from an imaginary discipline devoted to observing fragile human signals without claiming certainty. It is analytical but not cold, cinematic but never grandiose. Master-level execution means resisting extra spectacle: polish comes from painstaking spatial logic, disciplined restraint, and the sense that every element was labored over until nothing could be removed without breaking the whole.

@@ -1,0 +1,44 @@
+VibeSync MAIN FILM | PART 2 A v13 | M3 HIGH-SPEED FALL AND AMBER VECTOR BRAKE | LOCAL PREP ONLY
+
+STATUS: BLOCKED UNTIL M2 v13 IS GENERATED AND ACCEPTED. NO PAID SUBMISSION, REROLL, RETRY OR AUTOMATIC RESUBMISSION IS AUTHORIZED.
+
+CANDIDATE CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference; final choice versus forward extension waits for the accepted M2 tail
+- Duration: 7 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- use_unlim: false
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- VIDEO REFERENCE 1: accepted M2 v13 final two seconds — exact people, vertical load chain, grip and first-frame continuity
+- VIDEO REFERENCE 2: PART1_ACCEPTED_FAST_PHONE_WELL_FALL_16p00_18p50_2p50s_H264_AAC.mp4 — smartphone-well density, upward parallax, wind pressure and camera-lag speed only
+- IMAGE REFERENCE 1: Sydney identity and wardrobe only
+- IMAGE REFERENCE 2: male identity and wardrobe only
+- NO K3/K4 contact sheet, no v12 output, no floor image, no hero phone
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue the accepted M2 end on the same external side axis. The male is completely free below Sydney; Sydney is higher. The male’s RIGHT hand and Sydney’s RIGHT hand retain the palm clasp, and Sydney’s LEFT hand retains the black-sleeved forearm support above his wrist. The falling ice splinters remain on the old vertical line. Both bodies are head-up and feet-down. They are already accelerating downward inside the same dense smartphone shaft.
+
+CAMERA 0.00–3.60 — One continuous external same-side medium-long shot. The camera descends at only forty-five to fifty-five percent of character speed and does not lock them at screen center. Over at least 3.6 uninterrupted seconds the pair visibly traverse six to eight body heights downward through frame while hundreds of tightly packed curved ranks of black-glass phone modules, cold-blue seams and occasional amber reflections race upward. Hair, clothing, frost grains and falling wind all stream upward. Use physical load jolts, not random digital shake. No deck, floor, landing surface, braking, hovering or cut appears during these 3.6 seconds.
+
+ONE CAUSAL ACTION 3.60–4.45 — Sydney spots one wide vertical metal rib between phone ranks and turns only her lower body toward it while remaining head-up. Her LEFT boot side and sole catch the rib and drag downward. She never stops. A long dense orange-white friction scar and spark stream travels upward behind the boot; nearby unlit phone glass flexes but shows no UI.
+
+ONE CAUSAL ACTION 4.45–5.20 — Her RIGHT boot hits the SAME rib a fraction later and lower than the left. The impact contains one or two frames of a shadow-dark compression core, then a hard orange-white ring, a sharp camera kick and a low-frequency hit. This is contact-bound energy, not red-black lightning and not an air blast.
+
+ONE CAUSAL ACTION 5.20–6.20 — Both knees compress while both soles continue scraping downward another full body height. Orange-gold heat clings only to boots and the metal-glass contact track. The rib bends and one unlit black phone module loosens offscreen for the later post-production near miss. Sydney and the male are still descending; they do not stand on the wall. Sydney does not rotate. The male remains lower and may swing only forty-five to seventy degrees from the original vertical line.
+
+ONE CAUSAL ACTION 6.20–7.00 — Sydney extends both legs once and pushes off the rib. The stored vertical momentum redirects into one downward-diagonal trajectory. Power immediately ends when the soles leave the wall. Both characters still move downward rapidly; no one hovers, air-steps or flies. Sydney stays higher and behind, the male lower and ahead. End before landing, on a clear nonparallel approach axis suitable for M4.
+
+END STATE — The wall scar glows above and recedes upward. The pair have left the wall on one downward-diagonal path; male lower-front, Sydney higher-rear, two-point hand connection still intact. The deck may be a tiny distant shape only at the extreme lower edge, never supporting them yet.
+
+CUT MATCH — M4 begins from the same side with the male still the lower endpoint and the target deck rapidly approaching.
+
+AUDIO — Escalating fall wind for 3.6 seconds; fabric strain and grip creak; one long metal-glass scrape; one later heavy boot strike with a momentary near-silence and bass hit; dense upward sparks; rib groan and glass tick; one explosive leg-drive thump. No dialogue, phone UI sound, landing or debris impact.
+
+HARD LOCKS — No slow hoist, trapeze, hanging straight under a static camera, generic elevator grid, empty wall, camera matching full fall speed, early floor, Superman flight, chest-forward glide, horizontal parallel bodies, Sydney jet boots, airborne fire, repeated air steps, hovering, 360 spin, male grabbing Sydney’s legs or boots, synchronized rotation, synchronized landing, readable screen, UI, text, logo, girls or fishbowl.
+

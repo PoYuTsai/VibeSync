@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "snapshot_kind": "content_manifest",
+  "project": "VibeSync",
+  "work_id": "w-8117e1bc-3cea-424a-80ad-ccee3bd3596d",
+  "scope": "Part 2 A M2-M5 deep-lake 27-second single paid generation candidate",
+  "prompt_file": "docs/plans/2026-08-31-vibesync-seedance-part2-a-m2-m5-deep-lake-27s-v16.txt",
+  "prompt_file_sha256": "69ea9a13085a0068dc38dd4d265091dac43474d76071cf2b09d181f71bab9183",
+  "prompt_block_sha256": "af822d808682cfcba48632bc2cfd1094683192081b031f89212fce37cdbc21ef",
+  "director_lock_file": "docs/plans/2026-08-31-vibesync-part2-a-m2-m5-deep-lake-lock-v16.md",
+  "director_lock_sha256": "ea3ba74d8ce7aeea96a7f1f3939795fef95d7322c08b34383f0f069c8cfa5abf",
+  "generation": {
+    "model": "seedance_2_5",
+    "mode": "omni_reference",
+    "duration_seconds": 27,
+    "aspect_ratio": "16:9",
+    "resolution": "1080p",
+    "bitrate_mode": "high",
+    "generate_audio": true,
+    "count": 1,
+    "use_unlim": false,
+    "reroll": false,
+    "automatic_retry": false,
+    "automatic_resubmission": false
+  },
+  "medias": [
+    {
+      "role": "start_image",
+      "id": "5f58f7d7-0fe5-4e1a-ad93-47b872f98e3a"
+    },
+    {
+      "role": "image",
+      "id": "983d3037-86f6-4c8d-9b6c-f9245b54bdb5"
+    },
+    {
+      "role": "image",
+      "id": "fdb6c55f-24e4-4bab-bbdd-200654e845be"
+    },
+    {
+      "role": "video",
+      "id": "515745fc-f342-4021-806e-26921af99517"
+    }
+  ],
+  "live_read_only_preflight": {
+    "checked_at": "2026-08-31T11:16:00+08:00",
+    "subscription_plan": "plus",
+    "credits_before_submission": 897.25,
+    "unlimited_available": false,
+    "quoted_cost_credits": 243,
+    "projected_credits_after_one_job": 654.25,
+    "model_duration_range_seconds": [4, 30]
+  },
+  "paid_gate": "No submission until a complete user-visible preflight and a new explicit Eric RUN. Exactly one job; no reroll, retry, duplicate, or automatic resubmission."
+}

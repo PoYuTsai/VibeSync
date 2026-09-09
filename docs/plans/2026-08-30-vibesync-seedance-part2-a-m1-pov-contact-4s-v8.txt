@@ -1,0 +1,40 @@
+VibeSync MAIN FILM | PART 2 A v8 | M1 POV CONTACT | BLACK-SLEEVE CONTINUITY LOCK | LOCAL DRAFT
+
+STATUS: FORMALLY ACCEPTED BY ERIC. JOB fb7126e5-6027-45d5-956b-298dc8452b69 IS THE LOCKED M1 v8 RESULT. DO NOT REROLL OR RESUBMIT.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 4 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: 1080p / High
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- image_reference #1 (opening state): PART1_v5_t29p50.png
+- image_reference #2 (target POV / hand / black-sleeve state): P2A_K1A_MALE_POV_BLACK_SLEEVE_LOCK_CANDIDATE_v8_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+- other images / video references: 0
+
+HIGGSFIELD WEBSITE ORDER LOCK: IMAGE 1 is 0.00 seconds. IMAGE 2 is the target end state.
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Begin on exact IMAGE 1. Dense white ice dust continues from the completed strike inside the same wet purple-black smartphone shaft. Small ice chips and wall seams move upward, proving that the cocoon and both adults still descend.
+
+CAMERA — Let the cloud conceal one transition into the trapped male's natural first-person view, about a restrained 35–40 mm perspective. Sydney's focused adult face appears first. His RIGHT arm then enters from the lower-right, matching IMAGE 2. His forearm is continuously covered by a fitted deep-charcoal long sleeve from the frame edge to the wrist bone; only his right hand is bare.
+
+ONE CAUSAL ACTION — The male actively reaches. Sydney's RIGHT hand secures his RIGHT hand in the oblique rescue clasp of IMAGE 2; both grip back with separate natural thumbs. Sydney's LEFT hand then closes over the black sleeve immediately above his right wrist, one left thumb on top and four fingers wrapped underneath. Both Sydney wrists remain nearly straight. Thin amber contact heat travels along their palm edges and over the sleeve toward his forearm, steaming the frost. Her first pull moves the POV camera slightly toward her while his chest, waist, hips and legs remain sealed inside the cracked cocoon. Exactly three hands remain visible.
+
+WARDROBE CONTINUITY LOCK — The male's entire visible right forearm remains covered by the same fitted deep-charcoal long sleeve throughout the shot. The cuff stays at the wrist bone. No bare forearm, rolled sleeve, torn sleeve, cuff gap, glove, watch, jewelry, logo or color change. Sydney's left hand presses into the sleeve fabric without moving its grip point.
+
+END STATE — Hold the IMAGE 2 two-point grip, continuous black sleeve and Sydney's determined eye contact for the final half-second while downward wall motion remains readable.
+
+CUT MATCH — Only after both grips are locked, white contact steam and one ice splinter fill the lens for the external cut.
+
+AUDIO — Fading steam, wind pressure, palm contact, ice ticks, fabric strain and controlled breathing; no dialogue.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1

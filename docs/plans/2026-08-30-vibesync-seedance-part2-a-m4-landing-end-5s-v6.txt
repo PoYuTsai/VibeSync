@@ -1,0 +1,33 @@
+VibeSync MAIN FILM | PART 2 A v6 | M4 LANDING / AMBER END | LOCAL TEMPLATE
+
+STATUS: HISTORICAL TEMPLATE — DO NOT SUBMIT. SPLIT INTO M4 LAND / RELEASE v7 AND M5 DELAYED DEBRIS / END v7.
+
+CONFIG
+- Model: Seedance 2.5
+- Mode: Omni Reference
+- Duration: 5 seconds
+- Aspect ratio: 16:9
+- Resolution / bitrate: decide at paid-send preflight
+- Native audio: ON
+- Outputs: 1
+- Automatic retry / reroll: OFF
+
+MEDIA ROLES
+- video_reference: M3_ACCEPTED_TAIL_0p75s.mp4
+- end_image: P2A_K7_amber_seam_end_lock_v2_BAREFOOT_LOCK_1080p_16x9.png
+- ref_element: Sydney_V3_WhiteOnepiece
+- ref_element: VibeSync_Male_M1
+
+COPY ONLY THE BLOCK BELOW INTO THE PROMPT FIELD
+
+START STATE — Continue directly from the VIDEO_REFERENCE in a low-wide approach to the wet circular deck. The male is lower, his bare feet beneath his hips, while Sydney remains slightly higher through the same visible distal-forearm connection.
+
+CAMERA — Track the male into the deck from a grounded low three-quarter angle. Settling ice dust motivates one final transition into the rear composition of the END_IMAGE.
+
+ONE CAUSAL ACTION — The male's leading bare foot skids across the wet deck. His forearm and shoulder carry his weight through one compact side roll, and the connected momentum draws Sydney down a fraction later. Her two graphite boots land in a deep crouch, one hand touches the deck, and their forearm connection releases. Large ice pieces strike several meters behind them. As the dust thins, both remain low and lift their heads toward the central amber seam.
+
+END STATE / CUT MATCH — Finish exactly on the END_IMAGE: barefoot male screen-left on one knee, Sydney screen-right in a two-boot crouch, hands separate, wet reflections and scattered ice leading to the closed amber seam. Hold this composition for at least the final three-quarters of a second.
+
+AUDIO — Wordless physical ambience: bare-foot skid, forearm and shoulder impact, two boot landings, delayed ice crash, breath, drips and a low amber hum.
+
+@Sydney_V3_WhiteOnepiece @VibeSync_Male_M1
