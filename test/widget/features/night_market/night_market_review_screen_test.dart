@@ -48,7 +48,12 @@ void main() {
     expect(find.text('知識詳解'), findsOneWidget);
     expect(find.text('延伸情境 · 本次主線未明確示範'), findsOneWidget);
     await _tap(tester, find.text('下一步怎麼做'));
-    expect(find.textContaining('先聽語氣與情緒'), findsOneWidget);
+    expect(
+        find.text(buildNightMarketScenario().reviewById('shit_test').practice),
+        findsOneWidget);
+    expect(find.text('課程來源'), findsNothing);
+    expect(find.textContaining('Chris'), findsNothing);
+    expect(find.textContaining('解惑篇'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -109,7 +114,8 @@ void main() {
     expect(tester.takeException(), isNull);
     await _tap(tester, find.text('繼續看「同理心陳述＋背景介紹」'));
     await _tap(tester, find.text('下一步怎麼做'));
-    await tester.ensureVisible(find.text('課程來源'));
+    await tester.ensureVisible(find.text(
+        buildNightMarketScenario().reviewById('empathy_background').practice));
     expect(tester.takeException(), isNull);
   });
 }

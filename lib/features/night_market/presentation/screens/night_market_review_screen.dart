@@ -312,9 +312,6 @@ class _KnowledgeScreen extends StatelessWidget {
               const _Heading('對照這次互動', small: true),
               _Paragraph(scene),
             ],
-            const SizedBox(height: 8),
-            const _Heading('課程來源', small: true),
-            _Paragraph(item.source, muted: true),
           ],
         ),
         if (chapters.isNotEmpty) ...[

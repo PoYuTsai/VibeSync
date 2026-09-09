@@ -78,6 +78,8 @@ class NightMarketReviewItem {
   final String term;
   final String plain;
   final String practice;
+
+  /// Internal editorial reference; never displayed in the learner's review.
   final String source;
   final String? detail;
   final String? sceneNote;
