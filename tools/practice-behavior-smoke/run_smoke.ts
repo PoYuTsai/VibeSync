@@ -9,8 +9,24 @@
 // 任何 FAIL → exit 1。NPC 生成溫度 0.7（貼近線上），單發有隨機性：
 // FAIL 先重看回覆內容再判是回歸還是抖動。
 
-import { CHAT_SYSTEM_PROMPT } from "../../supabase/functions/practice-chat/prompt.ts";
-import { SMOKE_CASES } from "./cases.ts";
+import {
+  buildChatMessages,
+  CHAT_SYSTEM_PROMPT,
+} from "../../supabase/functions/practice-chat/prompt.ts";
+import { resolvePracticeProfile } from "../../supabase/functions/practice-chat/practice_persona.ts";
+import { SMOKE_CASES, type SmokeCase } from "./cases.ts";
+
+// 2026-09-09：逐人資料類規則（photoScene）在不帶角色的 CHAT_SYSTEM_PROMPT 上
+// 根本測不到，所以案例可選帶 profileId → 用 production 同一條 buildChatMessages
+// 組完整 system prompt（profile 區塊＋鐵則＋錨定）。沒帶的案例沿用舊行為。
+function systemPromptFor(c: SmokeCase): string {
+  if (!c.profileId) return CHAT_SYSTEM_PROMPT;
+  const profile = resolvePracticeProfile({
+    profileId: c.profileId,
+    difficulty: c.difficulty ?? "normal",
+  });
+  return buildChatMessages([], profile, { practiceMode: "standard" })[0].content;
+}
 
 const envText = await Deno.readTextFile(
   new URL("../../supabase/.env", import.meta.url),
@@ -61,7 +77,7 @@ const JUDGE_SYSTEM =
 let failures = 0;
 for (const c of SMOKE_CASES) {
   const reply = await callDeepSeek({
-    system: CHAT_SYSTEM_PROMPT,
+    system: systemPromptFor(c),
     user: c.userText,
     temperature: 0.7,
   });
