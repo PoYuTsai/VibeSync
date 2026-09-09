@@ -169,4 +169,32 @@ void main() {
     expect(platform.seeks.last.$2, const Duration(milliseconds: 32521));
     expect(platform.playing[1], isTrue);
   });
+
+  testWidgets(
+      'initialization that never completes eventually shows the failed state',
+      (tester) async {
+    platform.autoInitialize = false;
+    await show(tester, 3);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // Never call platform.finishInitialization(0): initialize() hangs and
+    // only the 12s Future.any(...).timeout in _load should end the wait.
+    await tester.pump(const Duration(seconds: 13));
+    await _advance(tester);
+    expect(find.text('影片暫時無法播放'), findsOneWidget);
+    expect(find.text('重試'), findsOneWidget);
+  });
+
+  testWidgets('leaving the screen mid-timeout does not throw or leak state',
+      (tester) async {
+    platform.autoInitialize = false;
+    await show(tester, 3);
+    // Leave partway through the 12s wait, while _initializationCancelled is
+    // still pending, to exercise _cancelInitialization() from dispose().
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 13));
+    await _advance(tester);
+    expect(tester.takeException(), isNull);
+    expect(platform.disposed, contains(0));
+  });
 }
