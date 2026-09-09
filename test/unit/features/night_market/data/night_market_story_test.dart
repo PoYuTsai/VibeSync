@@ -27,22 +27,33 @@ void main() {
     });
 
     test('captions are ordered and inside each segment', () {
+      // ffprobe durations of the bundled natural v3 media; see conform record.
+      const durations = <String, Duration>{
+        's1_notice': Duration(milliseconds: 13250),
+        's2_opening_to_craft': Duration(microseconds: 52041667),
+        's3_lifehook_to_end': Duration(milliseconds: 67875),
+      };
       for (final beat in scenario.beats) {
         var last = Duration.zero;
         for (final caption in beat.captions) {
           expect(caption.end, greaterThan(caption.start), reason: beat.id);
           expect(caption.start, greaterThanOrEqualTo(last), reason: beat.id);
-          last = caption.start;
+          expect(caption.end, lessThanOrEqualTo(durations[beat.id]!),
+              reason: beat.id);
+          last = caption.end;
         }
       }
     });
 
-    test('review page keeps four mindsets, six keys and one takeaway', () {
+    test('review page includes approach anxiety, four mindsets and six keys',
+        () {
       final byTier = <NightMarketReviewTier, int>{};
       for (final item in scenario.review) {
         byTier.update(item.tier, (n) => n + 1, ifAbsent: () => 1);
       }
-      expect(byTier[NightMarketReviewTier.mindset], 4);
+      expect(byTier[NightMarketReviewTier.mindset], 5);
+      expect(scenario.review.first.term, '接近焦慮');
+      expect(scenario.review.first.tier, NightMarketReviewTier.mindset);
       expect(byTier[NightMarketReviewTier.key], 6);
       expect(
           scenario.review.where((i) => !i.met).map((i) => i.term), ['忙碌收尾／即約']);

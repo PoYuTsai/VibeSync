@@ -56,7 +56,7 @@ class NightMarketEntryCard extends StatelessWidget {
                                     fontSize: 17,
                                     fontWeight: FontWeight.w800)),
                             SizedBox(height: 4),
-                            Text('夜市實戰版：從注意到她到收號，約 3 分鐘、2 個選擇',
+                            Text('夜市實戰版：從注意到她到收號，約 2 分鐘、2 個選擇',
                                 style: TextStyle(
                                     color: Colors.white70, height: 1.35)),
                           ],

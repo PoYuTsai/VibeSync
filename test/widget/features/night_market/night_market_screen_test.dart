@@ -104,6 +104,8 @@ void main() {
 
     await _complete(tester, platform);
     expect(find.text('復盤'), findsOneWidget);
+    // Approach anxiety is visible in the main debrief, outside More tips.
+    expect(find.textContaining('接近焦慮'), findsOneWidget);
     expect(find.text('下次只記這個：強眼神溝通。', skipOffstage: false), findsOneWidget);
     expect(find.textContaining('淺溝通＋強眼神溝通'), findsOneWidget);
     // 「更多技巧」是揭示膠囊：收合時不列出次要技巧。
@@ -123,7 +125,7 @@ void main() {
     await _pumpStarted(tester);
     await tester.tap(find.byTooltip('顯示字幕'));
     await tester.pump();
-    // Fake position stays at zero; the first S1 line starts at 3.64s.
+    // Fake position stays at zero; the first S1 line starts at 3.50s.
     expect(find.textContaining('等我一下'), findsNothing);
   });
 
