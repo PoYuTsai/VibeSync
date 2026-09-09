@@ -632,3 +632,16 @@ Deno.test("photoScene：P1 五案的敘事鎖住（照片與文字設定打架�
   assert(scene("practice_girl_047").includes("狗"));
   assert(scene("practice_girl_053").includes("貓"));
 });
+
+Deno.test("photoScene：換圖後保留護理場景、牙套與餐飲內容", () => {
+  const scene = (id: string) => getPracticeGirlProfile(id)!.photoScene;
+  assert(scene("practice_girl_017").includes("醫院"));
+  assert(scene("practice_girl_017").includes("牙套"));
+  assert(scene("practice_girl_039").includes("診所"));
+  assert(scene("practice_girl_039").includes("候診座椅"));
+  assert(scene("practice_girl_068").includes("抹茶蛋糕"));
+  assert(scene("practice_girl_068").includes("冰拿鐵"));
+  assertEquals(scene("practice_girl_068").includes("台南"), false);
+  assert(scene("practice_girl_086").includes("燒烤攤"));
+  assert(scene("practice_girl_086").includes("小吃"));
+});
