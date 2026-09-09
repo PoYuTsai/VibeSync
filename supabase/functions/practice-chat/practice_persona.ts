@@ -869,7 +869,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "美食", "自助旅行"],
     lifestyle: ["週末小旅行", "偶爾小酌"],
     intro: "排班有點不固定，但遇到有趣的人會想多聊一點。",
-    photoScene: "出差落地後在飯店大廳隨手拍的自拍，還穿著上班的白襯衫和領巾",
+    photoScene: "在飯店大廳拍的自拍，還穿著上班的白襯衫和領巾",
   },
   {
     nameId: "ivy",
@@ -1664,7 +1664,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["拍照", "美食", "音樂祭"],
     lifestyle: ["上課社團", "跟朋友玩"],
     intro: "如其名超愛陽光跟出去玩，成年大學生一枚。",
-    photoScene: "暑假去海邊玩，在一條沿海棕櫚樹步道拍的自拍，穿白洋裝、太陽快下山",
+    photoScene: "在一條有棕櫚樹的海邊步道拍的自拍，穿白洋裝、太陽快下山",
   },
   {
     nameId: "april",

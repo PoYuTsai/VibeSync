@@ -585,111 +585,111 @@ function digestLine(d: ObservableDigest): string {
 const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   [
     "chat／standard／style關／無thread／分類器合法／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器合法／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器合法／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器未知心情／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器未知心情／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器未知心情／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器非JSON／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器非JSON／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／無thread／分類器非JSON／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器合法／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器合法／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器合法／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器未知心情／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器未知心情／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器未知心情／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器非JSON／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器非JSON／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有style狀態／分類器非JSON／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器合法／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器合法／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器合法／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器未知心情／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器未知心情／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器未知心情／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器非JSON／回覆一般",
-    "45b5c03f6c96d8ea|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器非JSON／回覆重複同一個詞",
-    "45b5c03f6c96d8ea|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|ac22540ca79bb4f1|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／standard／style關／有agency與未知key／分類器非JSON／回覆括號旁白",
-    "45b5c03f6c96d8ea|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
+    "94d7d22154e37bcf|89b8cbf201db1169|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "hint／standard／style關",
@@ -697,115 +697,115 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／standard／style關",
-    "ba8d6abcb1563ce8|4d813cf67931a647|e4208f69770442ed|4265e4c66b67ff56",
+    "8ed91aa7055f221b|4d813cf67931a647|e4208f69770442ed|46d2b36e8e33c15f",
   ],
   [
     "chat／standard／style開／無thread／分類器合法／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／無thread／分類器合法／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／無thread／分類器合法／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／無thread／分類器未知心情／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／無thread／分類器未知心情／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／無thread／分類器未知心情／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／無thread／分類器非JSON／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／無thread／分類器非JSON／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／無thread／分類器非JSON／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／有style狀態／分類器合法／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有style狀態／分類器合法／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有style狀態／分類器合法／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／有style狀態／分類器未知心情／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有style狀態／分類器未知心情／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有style狀態／分類器未知心情／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／有style狀態／分類器非JSON／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有style狀態／分類器非JSON／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有style狀態／分類器非JSON／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器合法／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器合法／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器合法／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器未知心情／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器未知心情／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器未知心情／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器非JSON／回覆一般",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器非JSON／回覆重複同一個詞",
-    "8b711f66d14a3b4c|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
+    "45a94b58c3bfa1ea|ac22540ca79bb4f1|942147acce9b12da|a6709448fe9c6a24",
   ],
   [
     "chat／standard／style開／有agency與未知key／分類器非JSON／回覆括號旁白",
-    "8b711f66d14a3b4c|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
+    "45a94b58c3bfa1ea|444e4e27dafce2e0|942147acce9b12da|99e9e976ad981bf5",
   ],
   [
     "hint／standard／style開",
@@ -813,239 +813,239 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "debrief／standard／style開",
-    "c1afbcb6fb9c9dc0|4d813cf67931a647|e4208f69770442ed|eae2902262f4f324",
+    "c2161e1413016a66|4d813cf67931a647|e4208f69770442ed|e793b009707a2fcc",
   ],
   [
     "chat／beginner／style關／無thread／分類器合法／回覆一般",
-    "e92ba8e00fe79f91|40607d6481b9863d|09c051cca196ddf7|66496dd2a429f5a8",
+    "bc854e8fb301208f|40607d6481b9863d|09c051cca196ddf7|66496dd2a429f5a8",
   ],
   [
     "chat／beginner／style關／無thread／分類器合法／回覆重複同一個詞",
-    "ae6be810525ae5fc|cc1a6ff91c109fc7|09c051cca196ddf7|66496dd2a429f5a8",
+    "3affdfbf7c7eae33|cc1a6ff91c109fc7|09c051cca196ddf7|66496dd2a429f5a8",
   ],
   [
     "chat／beginner／style關／無thread／分類器合法／回覆括號旁白",
-    "84521f50f1b88074|43a4c47dd5092a4e|09c051cca196ddf7|66496dd2a429f5a8",
+    "5551f901de05b392|43a4c47dd5092a4e|09c051cca196ddf7|66496dd2a429f5a8",
   ],
   [
     "chat／beginner／style關／無thread／分類器未知心情／回覆一般",
-    "e92ba8e00fe79f91|771738033fc40fc9|f718717ccd430dbb|2d76fd63cae91412",
+    "bc854e8fb301208f|771738033fc40fc9|f718717ccd430dbb|2d76fd63cae91412",
   ],
   [
     "chat／beginner／style關／無thread／分類器未知心情／回覆重複同一個詞",
-    "ae6be810525ae5fc|c740fbbcf3075a76|f718717ccd430dbb|2d76fd63cae91412",
+    "3affdfbf7c7eae33|c740fbbcf3075a76|f718717ccd430dbb|2d76fd63cae91412",
   ],
   [
     "chat／beginner／style關／無thread／分類器未知心情／回覆括號旁白",
-    "84521f50f1b88074|8d3b95566cc02221|f718717ccd430dbb|2d76fd63cae91412",
+    "5551f901de05b392|8d3b95566cc02221|f718717ccd430dbb|2d76fd63cae91412",
   ],
   [
     "chat／beginner／style關／無thread／分類器非JSON／回覆一般",
-    "e92ba8e00fe79f91|771738033fc40fc9|f718717ccd430dbb|2bcf33a15fdae4cb",
+    "bc854e8fb301208f|771738033fc40fc9|f718717ccd430dbb|2bcf33a15fdae4cb",
   ],
   [
     "chat／beginner／style關／無thread／分類器非JSON／回覆重複同一個詞",
-    "ae6be810525ae5fc|c740fbbcf3075a76|f718717ccd430dbb|2bcf33a15fdae4cb",
+    "3affdfbf7c7eae33|c740fbbcf3075a76|f718717ccd430dbb|2bcf33a15fdae4cb",
   ],
   [
     "chat／beginner／style關／無thread／分類器非JSON／回覆括號旁白",
-    "84521f50f1b88074|8d3b95566cc02221|f718717ccd430dbb|2bcf33a15fdae4cb",
+    "5551f901de05b392|8d3b95566cc02221|f718717ccd430dbb|2bcf33a15fdae4cb",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器合法／回覆一般",
-    "e92ba8e00fe79f91|40607d6481b9863d|dcbcb65fd81efe3e|653eb660aaa411ca",
+    "bc854e8fb301208f|40607d6481b9863d|dcbcb65fd81efe3e|653eb660aaa411ca",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器合法／回覆重複同一個詞",
-    "ae6be810525ae5fc|cc1a6ff91c109fc7|dcbcb65fd81efe3e|653eb660aaa411ca",
+    "3affdfbf7c7eae33|cc1a6ff91c109fc7|dcbcb65fd81efe3e|653eb660aaa411ca",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器合法／回覆括號旁白",
-    "84521f50f1b88074|43a4c47dd5092a4e|dcbcb65fd81efe3e|653eb660aaa411ca",
+    "5551f901de05b392|43a4c47dd5092a4e|dcbcb65fd81efe3e|653eb660aaa411ca",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器未知心情／回覆一般",
-    "e92ba8e00fe79f91|771738033fc40fc9|c47d6bd61d2a942d|e89b7b9e37cd67a4",
+    "bc854e8fb301208f|771738033fc40fc9|c47d6bd61d2a942d|e89b7b9e37cd67a4",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器未知心情／回覆重複同一個詞",
-    "ae6be810525ae5fc|c740fbbcf3075a76|c47d6bd61d2a942d|e89b7b9e37cd67a4",
+    "3affdfbf7c7eae33|c740fbbcf3075a76|c47d6bd61d2a942d|e89b7b9e37cd67a4",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器未知心情／回覆括號旁白",
-    "84521f50f1b88074|8d3b95566cc02221|c47d6bd61d2a942d|e89b7b9e37cd67a4",
+    "5551f901de05b392|8d3b95566cc02221|c47d6bd61d2a942d|e89b7b9e37cd67a4",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器非JSON／回覆一般",
-    "e92ba8e00fe79f91|771738033fc40fc9|c47d6bd61d2a942d|3672337ea18d7fa9",
+    "bc854e8fb301208f|771738033fc40fc9|c47d6bd61d2a942d|3672337ea18d7fa9",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器非JSON／回覆重複同一個詞",
-    "ae6be810525ae5fc|c740fbbcf3075a76|c47d6bd61d2a942d|3672337ea18d7fa9",
+    "3affdfbf7c7eae33|c740fbbcf3075a76|c47d6bd61d2a942d|3672337ea18d7fa9",
   ],
   [
     "chat／beginner／style關／有style狀態／分類器非JSON／回覆括號旁白",
-    "84521f50f1b88074|8d3b95566cc02221|c47d6bd61d2a942d|3672337ea18d7fa9",
+    "5551f901de05b392|8d3b95566cc02221|c47d6bd61d2a942d|3672337ea18d7fa9",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器合法／回覆一般",
-    "e92ba8e00fe79f91|40607d6481b9863d|09c051cca196ddf7|653eb660aaa411ca",
+    "bc854e8fb301208f|40607d6481b9863d|09c051cca196ddf7|653eb660aaa411ca",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器合法／回覆重複同一個詞",
-    "ae6be810525ae5fc|cc1a6ff91c109fc7|09c051cca196ddf7|653eb660aaa411ca",
+    "3affdfbf7c7eae33|cc1a6ff91c109fc7|09c051cca196ddf7|653eb660aaa411ca",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器合法／回覆括號旁白",
-    "84521f50f1b88074|43a4c47dd5092a4e|09c051cca196ddf7|653eb660aaa411ca",
+    "5551f901de05b392|43a4c47dd5092a4e|09c051cca196ddf7|653eb660aaa411ca",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器未知心情／回覆一般",
-    "e92ba8e00fe79f91|771738033fc40fc9|f718717ccd430dbb|e89b7b9e37cd67a4",
+    "bc854e8fb301208f|771738033fc40fc9|f718717ccd430dbb|e89b7b9e37cd67a4",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器未知心情／回覆重複同一個詞",
-    "ae6be810525ae5fc|c740fbbcf3075a76|f718717ccd430dbb|e89b7b9e37cd67a4",
+    "3affdfbf7c7eae33|c740fbbcf3075a76|f718717ccd430dbb|e89b7b9e37cd67a4",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器未知心情／回覆括號旁白",
-    "84521f50f1b88074|8d3b95566cc02221|f718717ccd430dbb|e89b7b9e37cd67a4",
+    "5551f901de05b392|8d3b95566cc02221|f718717ccd430dbb|e89b7b9e37cd67a4",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器非JSON／回覆一般",
-    "e92ba8e00fe79f91|771738033fc40fc9|f718717ccd430dbb|3672337ea18d7fa9",
+    "bc854e8fb301208f|771738033fc40fc9|f718717ccd430dbb|3672337ea18d7fa9",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器非JSON／回覆重複同一個詞",
-    "ae6be810525ae5fc|c740fbbcf3075a76|f718717ccd430dbb|3672337ea18d7fa9",
+    "3affdfbf7c7eae33|c740fbbcf3075a76|f718717ccd430dbb|3672337ea18d7fa9",
   ],
   [
     "chat／beginner／style關／有agency與未知key／分類器非JSON／回覆括號旁白",
-    "84521f50f1b88074|8d3b95566cc02221|f718717ccd430dbb|3672337ea18d7fa9",
+    "5551f901de05b392|8d3b95566cc02221|f718717ccd430dbb|3672337ea18d7fa9",
   ],
   [
     "hint／beginner／style關",
-    "7a67712779d97171|d964e260a498d58b|af3645bfecbe6a8f|8d40f3bcd495fa44",
+    "b959a8c389bdae42|d964e260a498d58b|af3645bfecbe6a8f|58f4687027daa662",
   ],
   [
     "debrief／beginner／style關",
-    "97e7589d91c0b3aa|4d813cf67931a647|d4c5e22bdcc3d87f|48d6dcf6e0407778",
+    "60019ea9427c372d|4d813cf67931a647|d4c5e22bdcc3d87f|e263a2f851a81928",
   ],
   [
     "chat／beginner／style開／無thread／分類器合法／回覆一般",
-    "ede43efc5e67c070|40607d6481b9863d|34ea2bc77d7e7356|b517185ce04483a6",
+    "44f1279934446992|40607d6481b9863d|34ea2bc77d7e7356|b517185ce04483a6",
   ],
   [
     "chat／beginner／style開／無thread／分類器合法／回覆重複同一個詞",
-    "0d3e962000b5f181|cc1a6ff91c109fc7|34ea2bc77d7e7356|b517185ce04483a6",
+    "265d17ad333c46d3|cc1a6ff91c109fc7|34ea2bc77d7e7356|b517185ce04483a6",
   ],
   [
     "chat／beginner／style開／無thread／分類器合法／回覆括號旁白",
-    "ede43efc5e67c070|40607d6481b9863d|34ea2bc77d7e7356|c4c4ac57495474bf",
+    "44f1279934446992|40607d6481b9863d|34ea2bc77d7e7356|c4c4ac57495474bf",
   ],
   [
     "chat／beginner／style開／無thread／分類器未知心情／回覆一般",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|9036727380a1c748",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|9036727380a1c748",
   ],
   [
     "chat／beginner／style開／無thread／分類器未知心情／回覆重複同一個詞",
-    "0d3e962000b5f181|c740fbbcf3075a76|44ef31491b15f391|9036727380a1c748",
+    "265d17ad333c46d3|c740fbbcf3075a76|44ef31491b15f391|9036727380a1c748",
   ],
   [
     "chat／beginner／style開／無thread／分類器未知心情／回覆括號旁白",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|44f3c379b1539940",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|44f3c379b1539940",
   ],
   [
     "chat／beginner／style開／無thread／分類器非JSON／回覆一般",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|dae5aa09a80c6aa6",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|dae5aa09a80c6aa6",
   ],
   [
     "chat／beginner／style開／無thread／分類器非JSON／回覆重複同一個詞",
-    "0d3e962000b5f181|c740fbbcf3075a76|44ef31491b15f391|dae5aa09a80c6aa6",
+    "265d17ad333c46d3|c740fbbcf3075a76|44ef31491b15f391|dae5aa09a80c6aa6",
   ],
   [
     "chat／beginner／style開／無thread／分類器非JSON／回覆括號旁白",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|b700294224e3998c",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|b700294224e3998c",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器合法／回覆一般",
-    "ede43efc5e67c070|40607d6481b9863d|377707428ee52024|0ea4da6878887e4c",
+    "44f1279934446992|40607d6481b9863d|377707428ee52024|0ea4da6878887e4c",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器合法／回覆重複同一個詞",
-    "0d3e962000b5f181|cc1a6ff91c109fc7|377707428ee52024|0ea4da6878887e4c",
+    "265d17ad333c46d3|cc1a6ff91c109fc7|377707428ee52024|0ea4da6878887e4c",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器合法／回覆括號旁白",
-    "ede43efc5e67c070|40607d6481b9863d|377707428ee52024|60625f4c59d7fd5a",
+    "44f1279934446992|40607d6481b9863d|377707428ee52024|60625f4c59d7fd5a",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器未知心情／回覆一般",
-    "ede43efc5e67c070|771738033fc40fc9|1a257feadb5d897d|468ec6a63ed30e4d",
+    "44f1279934446992|771738033fc40fc9|1a257feadb5d897d|468ec6a63ed30e4d",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器未知心情／回覆重複同一個詞",
-    "0d3e962000b5f181|c740fbbcf3075a76|1a257feadb5d897d|468ec6a63ed30e4d",
+    "265d17ad333c46d3|c740fbbcf3075a76|1a257feadb5d897d|468ec6a63ed30e4d",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器未知心情／回覆括號旁白",
-    "ede43efc5e67c070|771738033fc40fc9|1a257feadb5d897d|9d04bf008bfec203",
+    "44f1279934446992|771738033fc40fc9|1a257feadb5d897d|9d04bf008bfec203",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器非JSON／回覆一般",
-    "ede43efc5e67c070|771738033fc40fc9|1a257feadb5d897d|a2f8776f357a1bf5",
+    "44f1279934446992|771738033fc40fc9|1a257feadb5d897d|a2f8776f357a1bf5",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器非JSON／回覆重複同一個詞",
-    "0d3e962000b5f181|c740fbbcf3075a76|1a257feadb5d897d|a2f8776f357a1bf5",
+    "265d17ad333c46d3|c740fbbcf3075a76|1a257feadb5d897d|a2f8776f357a1bf5",
   ],
   [
     "chat／beginner／style開／有style狀態／分類器非JSON／回覆括號旁白",
-    "ede43efc5e67c070|771738033fc40fc9|1a257feadb5d897d|e057dc0f2e54097e",
+    "44f1279934446992|771738033fc40fc9|1a257feadb5d897d|e057dc0f2e54097e",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器合法／回覆一般",
-    "ede43efc5e67c070|40607d6481b9863d|34ea2bc77d7e7356|0ea4da6878887e4c",
+    "44f1279934446992|40607d6481b9863d|34ea2bc77d7e7356|0ea4da6878887e4c",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器合法／回覆重複同一個詞",
-    "0d3e962000b5f181|cc1a6ff91c109fc7|34ea2bc77d7e7356|0ea4da6878887e4c",
+    "265d17ad333c46d3|cc1a6ff91c109fc7|34ea2bc77d7e7356|0ea4da6878887e4c",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器合法／回覆括號旁白",
-    "ede43efc5e67c070|40607d6481b9863d|34ea2bc77d7e7356|60625f4c59d7fd5a",
+    "44f1279934446992|40607d6481b9863d|34ea2bc77d7e7356|60625f4c59d7fd5a",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器未知心情／回覆一般",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|468ec6a63ed30e4d",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|468ec6a63ed30e4d",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器未知心情／回覆重複同一個詞",
-    "0d3e962000b5f181|c740fbbcf3075a76|44ef31491b15f391|468ec6a63ed30e4d",
+    "265d17ad333c46d3|c740fbbcf3075a76|44ef31491b15f391|468ec6a63ed30e4d",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器未知心情／回覆括號旁白",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|9d04bf008bfec203",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|9d04bf008bfec203",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器非JSON／回覆一般",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|a2f8776f357a1bf5",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|a2f8776f357a1bf5",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器非JSON／回覆重複同一個詞",
-    "0d3e962000b5f181|c740fbbcf3075a76|44ef31491b15f391|a2f8776f357a1bf5",
+    "265d17ad333c46d3|c740fbbcf3075a76|44ef31491b15f391|a2f8776f357a1bf5",
   ],
   [
     "chat／beginner／style開／有agency與未知key／分類器非JSON／回覆括號旁白",
-    "ede43efc5e67c070|771738033fc40fc9|44ef31491b15f391|e057dc0f2e54097e",
+    "44f1279934446992|771738033fc40fc9|44ef31491b15f391|e057dc0f2e54097e",
   ],
   [
     "hint／beginner／style開",
-    "1109bc9c65ff518f|d964e260a498d58b|af3645bfecbe6a8f|0f6774f6c5580715",
+    "137bcb4c317eeecc|d964e260a498d58b|af3645bfecbe6a8f|d7257733971a8f4d",
   ],
   [
     "debrief／beginner／style開",
-    "35ef790ce441b4dd|4d813cf67931a647|d4c5e22bdcc3d87f|db9c33a97d7b8463",
+    "30e4154b21cebaaf|4d813cf67931a647|d4c5e22bdcc3d87f|a75c92d1694ddeb6",
   ],
   [
     "chat／game／style關／無thread／分類器合法／回覆一般",
@@ -1281,15 +1281,15 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<string, string>([
   ],
   [
     "chat／standard／貼文非空",
-    "434891157c9f482c|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
+    "1fea8fdaf537efa6|444e4e27dafce2e0|942147acce9b12da|ede9d103c77be708",
   ],
   [
     "chat／beginner／貼文非空",
-    "9899624623b92df8|40607d6481b9863d|dcbcb65fd81efe3e|653eb660aaa411ca",
+    "2855228b84af9dd9|40607d6481b9863d|dcbcb65fd81efe3e|653eb660aaa411ca",
   ],
   [
     "hint／beginner／prefetch",
-    "7a67712779d97171|464c81fdd6e63728|977cd06362f719d8|02ddf56d98d2ca17",
+    "b959a8c389bdae42|464c81fdd6e63728|977cd06362f719d8|4d18d7014bfa97aa",
   ],
   [
     "draw_status",

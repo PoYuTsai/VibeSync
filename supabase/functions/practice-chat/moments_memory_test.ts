@@ -122,15 +122,15 @@ export const CHAT_GOLDEN_CASES = [
 const CHAT_PROMPT_GOLDEN_SHA256: ReadonlyArray<readonly [string, string]> = [
   [
     "standard-minimal",
-    "5f07707c698db131295db585b06af08fa4e83914aa3a0b070f3e0d3247f6fdf3",
+    "a4c2920c75b7f1add6a6fd0f99908a87a6eacbe3b86342a5d9e0ca258aad022e",
   ],
   [
     "standard-full",
-    "c99d96d5719910441ca99a1b1690f54d7cd239efd52200c97406d7f78f192af1",
+    "1618cef527c406b5dcd70c6e1a525580be700f762a2f875e2a5f9ebffddc81bf",
   ],
   [
     "beginner-full",
-    "8dd7f025b47f17c3c3c01c37d8ea73893fbc8b10f0e106ed62a0d751e8105604",
+    "afba05f1110628fa638399ee849a29a0201caebf8d023e807f801b6d166ad818",
   ],
   [
     "game-full",
