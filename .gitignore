@@ -79,3 +79,8 @@ tools/keyboard-assist-benchmark/cases/*.local.json
 
 # voice-benchmark 黑箱驗證跑分輸出（throwaway，留本機供檢視，不入 git）
 tools/voice-benchmark/baselines/verify_*.ndjson
+
+# 本機產物與一次性評測輸出
+*.apk
+__pycache__/
+tools/practice-agency-eval/out/
