@@ -130,6 +130,12 @@ class _NightMarketReviewPlayerState extends State<NightMarketReviewPlayer>
   Future<void> _finishClip(VideoPlayerController controller) async {
     await _pause();
     if (!mounted || _controller != controller || _failed) return;
+    // 位置通知可能晚於終點：暫停後把位置拉回片段末端，不停在下一章的畫面
+    //（Codex R1 P2，2026-09-10）。
+    if (controller.value.position > _clip.end) {
+      await controller.seekTo(_clip.end);
+      if (!mounted || _controller != controller || _failed) return;
+    }
     if (_index + 1 < widget.chapter.clips.length) {
       await _load(_index + 1);
     } else {

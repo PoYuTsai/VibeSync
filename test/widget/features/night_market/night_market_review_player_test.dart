@@ -69,9 +69,12 @@ void main() {
         endsWith('s2_opening_to_craft.mp4'));
     expect(platform.seeks.single.$2, const Duration(milliseconds: 11150));
     expect(platform.playing[0], isTrue);
-    platform.positions[0] = const Duration(milliseconds: 23171);
+    // 位置通知晚於終點 300ms：要暫停並拉回片段末端，不停在下一章畫面。
+    platform.positions[0] = const Duration(milliseconds: 23471);
     await _advance(tester);
     expect(platform.playing[0], isFalse);
+    expect(platform.seeks.last.$2, const Duration(milliseconds: 23171));
+    expect(platform.positions[0], const Duration(milliseconds: 23171));
     expect(find.text('再看一次'), findsOneWidget);
     expect(platform.creations, hasLength(1));
     await tester.tap(find.text('再看一次'));
