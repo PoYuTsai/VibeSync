@@ -1,4 +1,5 @@
 import '../domain/night_market_scenario.dart';
+import 'night_market_debrief.dart';
 
 const _s1Captions = <NightMarketCaption>[
   NightMarketCaption(
@@ -314,114 +315,8 @@ NightMarketScenario buildNightMarketScenario() {
         ending: true,
       ),
     ],
-    review: <NightMarketReviewItem>[
-      // 心態層：接近焦慮＋四個感。
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.mindset,
-        term: '接近焦慮',
-        plain: '緊張也可以開始。先吐口氣，把目標縮成「有禮貌地打聲招呼」，不用先想收號。'
-            '看她是否願意停下來聊；她忙或不想聊就道別。不去也可以，不必責怪自己。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.mindset,
-        term: '確信感',
-        plain: '你知道自己為什麼走過去，所以不用演。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.mindset,
-        term: '配得感',
-        plain: '不用證明自己配得上，也不用反覆解釋。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.mindset,
-        term: '自娛自樂感',
-        plain: '你先覺得這段互動好玩，她才會覺得好玩。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.mindset,
-        term: '流動感',
-        plain: '像跟朋友聊天，不在腦子裡檢查下一句。',
-      ),
-      // 這次的六個關鍵（流程順序）。
-      NightMarketReviewItem(
-        term: '淺溝通＋強眼神溝通',
-        plain: '重心往後、尾音下沉，直視她的眼睛不飄開。內容普通也能傳訊息。',
-      ),
-      NightMarketReviewItem(
-        term: '同理心陳述＋背景介紹',
-        plain: '「有點突然」是陳述。停一拍，再說你為什麼在這、等誰、名字。',
-      ),
-      NightMarketReviewItem(
-        term: '冷讀',
-        plain: '說出你的觀察和猜測，看她怎麼認同或修正。猜錯就承認。',
-      ),
-      NightMarketReviewItem(
-        term: '留白＋鉤子評估',
-        plain: '每次透露一點自己，留一個她可以追問的鉤子。她追不追問就是你的儀表板。',
-      ),
-      NightMarketReviewItem(
-        term: '無興趣指標',
-        plain: '聊得正好時先收一輪，不黏著、不聊到沒話。',
-      ),
-      NightMarketReviewItem(
-        term: '收號',
-        plain: '眼神和聲音跟前面一樣穩。簡單提，不解釋一堆。',
-      ),
-      // 更多技巧（收合）。
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '第一分鐘破防',
-        plain: '前六十秒先讓她放下戒心，之後才談吸引。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '打開',
-        plain: '走到她看得到的側前方，不擋人流，停穩再開口。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '開場白不重要',
-        plain: '直接或間接都可以，開場只是進門的工具。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '男女前提',
-        plain: '讓她知道你是以男生對女生的身分來認識她，不是路人問路。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '提問是工具',
-        plain: '可以問基本資訊，但要延伸、要過渡到對話，不要一直問。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '觀察情緒',
-        plain: '不必更好笑。看她有沒有笑、怎麼笑、還在不在。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '賦格',
-        plain: '她先讓你看到一點自己，你再給有根據的肯定。',
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '失格',
-        plain: '偶爾收回一點認同，製造張力。',
-        optional: true,
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '推拉',
-        plain: '一句靠近、一句退開，讓節奏有起伏。',
-        optional: true,
-      ),
-      NightMarketReviewItem(
-        tier: NightMarketReviewTier.more,
-        term: '忙碌收尾／即約',
-        plain: '她有行程就收短、把下一步說清楚；有時間又在延續，就提具體邀請。',
-        met: false,
-      ),
-    ],
+    review: nightMarketReview,
+    reviewChapters: nightMarketReviewChapters,
     takeaway: '下次只記這個：強眼神溝通。',
   );
 }

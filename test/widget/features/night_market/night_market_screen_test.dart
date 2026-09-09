@@ -107,9 +107,9 @@ void main() {
     // Approach anxiety is visible in the main debrief, outside More tips.
     expect(find.textContaining('接近焦慮'), findsOneWidget);
     expect(find.text('下次只記這個：強眼神溝通。', skipOffstage: false), findsOneWidget);
-    expect(find.textContaining('淺溝通＋強眼神溝通'), findsOneWidget);
-    // 「更多技巧」是揭示膠囊：收合時不列出次要技巧。
-    expect(find.text('更多技巧', skipOffstage: false), findsOneWidget);
+    expect(find.text('帶著確信，走過去'), findsOneWidget);
+    // The full index uses the same disclosure; hidden terms stay collapsed.
+    expect(find.text('所有知識點（27）', skipOffstage: false), findsOneWidget);
     expect(find.textContaining('第一分鐘破防', skipOffstage: false), findsNothing);
     await tester.scrollUntilVisible(find.text('再練一次'), 300);
     await tester.tap(find.text('再練一次'));

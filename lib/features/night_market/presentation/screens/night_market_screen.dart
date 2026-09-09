@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../shared/widgets/reveal_pill.dart';
 import '../../data/night_market_story.dart';
 import '../../domain/night_market_scenario.dart';
+import 'night_market_review_screen.dart';
 
 /// Full-screen, VR-style run of the night-market scenario: no UI while the
 /// video plays; the film stops only at its stop points and at the review.
@@ -399,102 +399,9 @@ class _NightMarketScreenState extends State<NightMarketScreen>
     ]);
   }
 
-  Widget _reviewPage() {
-    final items = _scenario.review;
-    List<NightMarketReviewItem> tier(NightMarketReviewTier t) =>
-        items.where((i) => i.tier == t).toList(growable: false);
-    return Stack(
-      children: [
-        SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 48, 20, 32),
-            children: [
-              const Text('復盤',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              const Text('重點不是台詞，是淺溝通：態度、眼神、肢體。不背土味情話，不用罐頭話術。',
-                  style: TextStyle(color: Colors.white70, height: 1.45)),
-              const SizedBox(height: 20),
-              for (final item in tier(NightMarketReviewTier.mindset))
-                _reviewLine(item),
-              const SizedBox(height: 16),
-              const Text('這次的 6 個關鍵',
-                  style: TextStyle(
-                      color: AppColors.ctaStart, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              for (final item in tier(NightMarketReviewTier.key))
-                _reviewCard(item),
-              // 與開場救星「下一步怎麼接？」同款揭示膠囊（Eric 2026-09-08）。
-              RevealPill(
-                label: '更多技巧',
-                children: [
-                  for (final item in tier(NightMarketReviewTier.more))
-                    _reviewCard(item),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Text(_scenario.takeaway,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 20),
-              FilledButton(onPressed: _restart, child: const Text('再練一次')),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).maybePop(),
-                child: const Text('回練習室'),
-              ),
-            ],
-          ),
-        ),
-        _topBar(),
-      ],
-    );
-  }
-
-  Widget _reviewLine(NightMarketReviewItem item) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text.rich(TextSpan(children: [
-        TextSpan(
-            text: '${item.term}｜',
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        TextSpan(
-            text: item.plain, style: const TextStyle(color: Colors.white70)),
-      ])),
-    );
-  }
-
-  Widget _reviewCard(NightMarketReviewItem item) {
-    final color = item.met ? Colors.white : Colors.white38;
-    final suffix = !item.met
-        ? '（這次沒遇到）'
-        : item.optional
-            ? '（不是必要）'
-            : '';
-    return Card(
-      color: AppColors.brandSurface2,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${item.term}$suffix',
-                style: TextStyle(color: color, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(item.plain,
-                style: TextStyle(
-                    color: item.met ? Colors.white70 : Colors.white30,
-                    height: 1.4)),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _reviewPage() => NightMarketReviewScreen(
+        scenario: _scenario,
+        onRestart: _restart,
+        onExit: () => Navigator.of(context).maybePop(),
+      );
 }
