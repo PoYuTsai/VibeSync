@@ -593,12 +593,13 @@ Deno.test("AGENCY_DIFFICULTY_REWRITES：每一條都在難度文案裡剛好命�
 // 踩坑「餵 LLM 的第三人稱欄位開自由文字會主詞錯位」）。P1 五案的敘事另外鎖住，
 // 免得之後整理資料時把「去過巴黎」「家裡養的狗」誤刪。
 
-Deno.test("photoScene：100 位皆非空、≤ 60 code units、不含檔名／路徑／第三人稱", () => {
+Deno.test("photoScene：100 位皆非空、≤ 50 code units、不含檔名／路徑／第三人稱", () => {
   assertEquals(GIRL_PROFILES.length, 100);
   for (const g of GIRL_PROFILES) {
     const scene = g.photoScene;
     assert(scene.trim().length > 0, `${g.profileId} photoScene 空白`);
-    assert(scene.length <= 60, `${g.profileId} photoScene 太長：${scene.length}`);
+    // 規格 ≤ 50（現有資料最長 37）；chat 預算是照 50 估的，別放寬。
+    assert(scene.length <= 50, `${g.profileId} photoScene 太長：${scene.length}`);
     assertEquals(containsRawImageFilename(scene), false, g.profileId);
     for (const banned of ["practice_girl", ".jpg", ".png", "assets/", "她", "妳"]) {
       assertEquals(scene.includes(banned), false, `${g.profileId} 含「${banned}」`);
