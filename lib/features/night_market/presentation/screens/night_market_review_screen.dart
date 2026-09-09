@@ -459,7 +459,7 @@ class _NavigationRow extends StatelessWidget {
         children: [
           InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(18),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
               child: Row(
