@@ -94,6 +94,7 @@ jobs:
           tools/practice-agency-eval/cache_probe_test.ts
           supabase/functions/delete-account/cleanup_alert_test.ts
           supabase/functions/practice-chat/prompt_test.ts
+          supabase/functions/practice-chat/practice_persona_test.ts
 
       # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
       # 分開跑讓上面那組純函式契約測試 fail fast，失敗時也一眼看得出是資料層掛了。

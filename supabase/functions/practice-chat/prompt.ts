@@ -102,7 +102,9 @@ export interface ChatMessage {
  * Prompt 政策版本（PR 6）：只進結構化 log，供跨版本比對分數行為。
  * 改動 chat/hint/debrief 的政策性 prompt（順位、判準、閘門文案）時遞增。
  */
-export const PRACTICE_PROMPT_POLICY_VERSION = "2026-08-29.pr6";
+// 2026-09-09.photo：profile 區塊注入她的大頭照事實（photoScene），chat／hint／
+// debrief 都看得到；真機案例與規格見 `docs/bug-log.md` 2026-09-08 條目。
+export const PRACTICE_PROMPT_POLICY_VERSION = "2026-09-09.photo";
 
 const LEGACY_PARTNER_STATE_NO_LEAK_MARKER =
   "\u4E0D\u8981\u76F4\u63A5\u8AAA\u51FA partnerState";
@@ -724,6 +726,16 @@ function debriefTurnsToPromptTranscript(
 // 難度標準（profile.difficultyPrompt）不在這裡：它由 difficultyBehaviorPrompt
 // 排在整份 system prompt 尾端（band／invite 之後），否則會被後注入的一般性
 // 狀態指示蓋過（D3）。
+/**
+ * 她的大頭照事實（2026-09-08 真機）：照片只是 `photoId`，從未進任何 prompt，
+ * 被問「你大頭照在巴黎吧」時現實錨定把使用者的正確描述當「單方面聲稱」，
+ * 模型為守「住台北」就地編了「淡水河邊」。放 profile 區塊（現實錨定兩個分支
+ * 都以它為信任來源），鐵則與錨定一字不動。固定句長度有測試鎖住（預算貼上限）。
+ */
+export const PHOTO_SCENE_LINE_PREFIX = "你的大頭照（他看得到）：";
+export const PHOTO_SCENE_LINE_SUFFIX =
+  "。被問到照片在哪拍、穿什麼、旁邊有什麼就照這個答；沒拍到的細節不硬編。他把你的照片講對了就承認，別為了防備說他看錯。";
+
 function buildProfilePrompt(
   profile: PracticeProfile,
   agency = false,
@@ -738,8 +750,8 @@ function buildProfilePrompt(
   // - 「有沒有機會約出來」3 條刪（inviteMaturity ＋ 難度觸發條件已涵蓋）；
   // - 「絕對規則」第 1 條刪（與身份防線重複）。
   const identityLine = agency
-    ? `被問到工作、興趣、住哪、週末做什麼就照上面答；不主動背資料、不主動自我介紹，被問名字就說「${g.displayName}」。補自己的細節照鐵則的摩擦原則：被問到或情境自然才補，要具體，興趣不必剛好跟他一樣。`
-    : `你對自己的身份要有穩定一致的認知：被問到工作、興趣、住哪、週末做什麼、是不是常旅行，就照上面自然回答；但不要一開場就主動背一串資料，只在被問到或情境自然時帶出。被問名字可以自然說「${g.displayName}」，但不要主動自我介紹。`;
+    ? `被問到工作、興趣、住哪、週末做什麼、大頭照就照上面答；不主動背資料、不主動自我介紹，被問名字就說「${g.displayName}」。補自己的細節照鐵則的摩擦原則：被問到或情境自然才補，要具體，興趣不必剛好跟他一樣。`
+    : `你對自己的身份要有穩定一致的認知：被問到工作、興趣、住哪、週末做什麼、是不是常旅行、大頭照在哪拍的，就照上面自然回答；但不要一開場就主動背一串資料，只在被問到或情境自然時帶出。被問名字可以自然說「${g.displayName}」，但不要主動自我介紹。`;
   const personaPrompt = agency
     ? profile.personaPrompt.replace(`本場你是${profile.personaLabel}。`, "")
     : profile.personaPrompt;
@@ -760,6 +772,7 @@ function buildProfilePrompt(
 - 你的個性：${g.personalityTags.join("、")}。
 - 你平常喜歡：${g.interestTags.join("、")}。
 - 你的生活型態：${g.lifestyleTags.join("、")}。
+- ${PHOTO_SCENE_LINE_PREFIX}${g.photoScene}${PHOTO_SCENE_LINE_SUFFIX}
 - 你想要的關係步調：${g.relationshipGoal}。
 - 你內心的自我設定（不要一字不漏照背）：${g.selfIntro}
 
@@ -1304,6 +1317,7 @@ function debriefProfileEvidence(
       `她的人物設定：${g.displayName}，${g.age} 歲，${g.professionLabel}，住${g.city}。興趣：${
         g.interestTags.join("、")
       }；生活：${g.lifestyleTags.join("、")}。`,
+      `她的大頭照：${g.photoScene}。`,
       `她喜歡：${r.likes.join("、")}。她不喜歡：${r.dislikes.join("、")}。`,
       `會讓她變熱：${r.warmsWhen.join("、")}。會讓她變冷：${
         r.coolsWhen.join("、")

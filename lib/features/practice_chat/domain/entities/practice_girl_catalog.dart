@@ -422,7 +422,7 @@ const List<PracticeGirlProfile> practiceGirlProfiles = <PracticeGirlProfile>[
     rarity: PracticeGirlRarity.r,
     personalityTags: ['善良', '重安全感', '溫和'],
     interestTags: ['做菜', '寵物', '看書'],
-    lifestyleTags: ['跟診日常', '下班顧貓'],
+    lifestyleTags: ['跟診日常', '下班顧狗'],
     selfIntro: '個性比較慢熟，喜歡尊重彼此步調的相處。',
   ),
   PracticeGirlProfile(

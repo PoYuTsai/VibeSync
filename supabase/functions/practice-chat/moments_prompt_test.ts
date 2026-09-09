@@ -627,15 +627,34 @@ Deno.test("觀點題材只剩自拍候選時也有明確寫法，不要求描述
   for (const contentKind of OPINION_KINDS) {
     const sys = catalogSystem(contentKind, [SELF_PORTRAIT_IMAGE_ID]);
     assert(
-      sys.includes("照片只是此刻的你，不是這則要講的事"),
+      sys.includes("也不是這則要講的事——文字照樣寫你的想法或取捨"),
       `${contentKind} 的自拍路徑沒有觀點專用指示`,
     );
     assertEquals(
-      sys.includes("講你此刻的狀態、心情或樣子"),
+      sys.includes("文字寫你此刻的狀態或心情"),
       false,
       `${contentKind} 仍被要求把文字寫成配得上一張自拍`,
     );
     assert(sys.includes(`imageId 必須填 "${SELF_PORTRAIT_IMAGE_ID}"`));
+  }
+});
+
+// 2026-09-08 photoScene：自拍＝她的大頭照，場景是之前拍的（023 是巴黎鐵塔前）。
+// 兩個自拍分支都要把 photoScene 給模型、講明「不是此刻現場」，且不得再出現舊版
+// 「照片只是此刻的你」那種會把鐵塔寫成此刻所在的指令。
+Deno.test("photoScene：自拍指令帶她的大頭照事實，並講明那張不是此刻現場", () => {
+  for (const contentKind of CONTENT_KINDS) {
+    const sys = catalogSystem(contentKind, [SELF_PORTRAIT_IMAGE_ID]);
+    assert(sys.includes(girl.photoScene), `${contentKind} 自拍指令沒帶 photoScene`);
+    assert(
+      sys.includes("那張是之前拍的，不是此刻現場"),
+      `${contentKind} 沒講明大頭照不是此刻現場`,
+    );
+    assert(sys.includes("不要把照片裡的場景寫成你現在在的地方"));
+    assertEquals(sys.includes("照片只是此刻的你"), false, contentKind);
+    // 非自拍路徑不得洩漏 photoScene（catalog 圖與她的大頭照無關）。
+    const scene = catalogSystem(contentKind, [SCENE_IMAGE_ID]);
+    assertEquals(scene.includes(girl.photoScene), false, contentKind);
   }
 });
 
@@ -665,8 +684,8 @@ Deno.test("非觀點題材的 catalog 與自拍指示一字未動", () => {
     assertEquals(catalog.includes("那張圖只是搭配"), false);
 
     const selfie = catalogSystem(contentKind, [SELF_PORTRAIT_IMAGE_ID]);
-    assert(selfie.includes("講你此刻的狀態、心情或樣子"));
-    assertEquals(selfie.includes("照片只是此刻的你"), false);
+    assert(selfie.includes("文字寫你此刻的狀態或心情"));
+    assertEquals(selfie.includes("也不是這則要講的事"), false);
   }
 });
 

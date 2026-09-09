@@ -12,6 +12,8 @@ import {
   CHAT_SYSTEM_PROMPT,
   chatSystemPromptFor,
   DEBRIEF_SYSTEM_PROMPT,
+  PHOTO_SCENE_LINE_PREFIX,
+  PHOTO_SCENE_LINE_SUFFIX,
 } from "./prompt.ts";
 import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
 import { STYLE_BY_PROFILE_ID } from "./reply_style.ts";
@@ -940,8 +942,11 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
   // parsePersistedGameState 可接受的最大 Game 帳本一起守 Chat 總長。
   // 實測最長 79,987（PR 3 難度區塊移尾端＋衝突裁決段，淨增約 200），
   // 上限留約 160 code units 緩衝。
+  // 2026-09-09 photoScene：profile 區塊多一行大頭照事實（固定句 70＋identityLine
+  // 8＋每人 ≤ 50）。實測：旗標關 80,091（028）、reply-style 開 80,232（064）、
+  // agency 79,206、agency 介入輪 78,198；四個斷言共用同一上限，80,150→80,300。
   // `.length` 量的是 UTF-16 code units，不宣稱是 bytes 或模型 tokens。
-  assert(maxChat <= 80_150, `Chat max ${maxChat} at ${maxChatCase}`);
+  assert(maxChat <= 80_300, `Chat max ${maxChat} at ${maxChatCase}`);
 
   // reply-style-v1（旗標開、角色有 mapping）同樣守 80,150：說話習慣＋本輪回應方式
   // 的淨增量要被拿掉的全域表面規則與【示範口吻】抵掉（規格 §5.4，上限不動）。
@@ -991,7 +996,7 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
       assert(!system.includes("每則 4～15 字"), profileId);
       const length = styled.reduce((total, m) => total + m.content.length, 0);
       assert(
-        length <= 80_150,
+        length <= 80_300,
         `Styled chat ${length} at ${profileId}/${difficulty}`,
       );
 
@@ -1037,7 +1042,7 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
         } at ${profileId}/${difficulty}`,
       );
       assert(
-        agencyLength <= 80_150,
+        agencyLength <= 80_300,
         `Agency chat ${agencyLength} at ${profileId}/${difficulty}`,
       );
     }
@@ -1136,7 +1141,7 @@ Deno.test("conversation-agency-v1：agency 真的介入時的最大 payload 直�
     }
   }
   assertEquals(appliedCount, srGirls.length * 3, "每個角色 × 難度都要介入");
-  assert(maxChat <= 80_150, `Agency-applied max ${maxChat} at ${maxChatCase}`);
+  assert(maxChat <= 80_300, `Agency-applied max ${maxChat} at ${maxChatCase}`);
 });
 
 Deno.test("conversation-agency-v1：agency 介入那一輪的 turn plan 增量有界，且與最長 payload 互斥", () => {
@@ -3322,4 +3327,70 @@ Deno.test("Phase 4.5b 刀 B：同一場連續兩輪的 systemStable 逐位元組
     round1.systemStable.length >= 2048,
     `穩定前綴只有 ${round1.systemStable.length} code units，可能構不到快取門檻`,
   );
+});
+
+// ── 2026-09-09 photoScene：她的大頭照事實進 profile 區塊 ───────────────────
+// 真機（2026-09-08）：Fiona 被問「你大頭照不是在巴黎鐵塔」答「淡水河邊拍的」，
+// 根因是照片從未進 prompt（`docs/bug-log.md`）。這組測試鎖：兩個分支都注入、
+// 內容等於該角色的 photoScene、「講對了就承認」那句存在、固定句長度不變
+// （chat 預算貼上限，固定句被改長會吃掉緩衝）、hint／debrief 證據也帶。
+
+Deno.test("photoScene：旗標關與 agency 兩個分支的 profile 區塊都注入她的大頭照事實", () => {
+  const fiona = resolvePracticeProfile({ profileId: "practice_girl_023" });
+  assert(fiona.girl.photoScene.includes("巴黎"));
+  const turns: PracticeTurn[] = [{ role: "user", text: "你去過法國嗎" }];
+  for (const agency of [false, true]) {
+    const sys = buildChatMessages(turns, fiona, {
+      practiceMode: "standard",
+      agencyMode: agency ? "on" : "off",
+    })[0].content;
+    const line = `- ${PHOTO_SCENE_LINE_PREFIX}${fiona.girl.photoScene}${PHOTO_SCENE_LINE_SUFFIX}`;
+    assert(sys.includes(line), `agency=${agency} 缺大頭照行`);
+    assert(sys.includes("他把你的照片講對了就承認"), `agency=${agency}`);
+    // 放在 profile 區塊（現實錨定兩個分支都以它為信任來源），且在生活型態之後。
+    const profileStart = sys.indexOf("你本人的設定");
+    const lifestyle = sys.indexOf("- 你的生活型態：");
+    const photo = sys.indexOf(line);
+    assert(profileStart >= 0 && lifestyle > profileStart && photo > lifestyle);
+    // identityLine 的列舉補上大頭照。
+    assert(sys.includes("大頭照就照上面答") || sys.includes("大頭照在哪拍的，就照上面自然回答"));
+  }
+});
+
+Deno.test("photoScene：固定句長度鎖定（70 code units），別把預算緩衝吃掉", () => {
+  assertEquals(
+    PHOTO_SCENE_LINE_PREFIX.length + PHOTO_SCENE_LINE_SUFFIX.length,
+    70,
+  );
+});
+
+Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（中文標籤，不擴內部詞表）", () => {
+  const profile = resolvePracticeProfile({
+    profileId: "practice_girl_023",
+    difficulty: "challenge",
+  });
+  const hint = hintTrustedFactualEvidence({ profile, practiceMode: "standard" });
+  assert(
+    hint.partner.join("\n").includes(`她的大頭照：${profile.girl.photoScene}`),
+    "hint partner evidence 缺大頭照",
+  );
+  const debrief = buildDebriefMessages(
+    [
+      { role: "user", text: "你大頭照在巴黎拍的吧" },
+      { role: "ai", text: "對啊 去年去進修的時候" },
+    ],
+    profile,
+    { practiceMode: "standard", temperatureScore: 20 },
+  ).map((m) => m.content).join("\n");
+  assert(debrief.includes(`她的大頭照：${profile.girl.photoScene}。`));
+  // game 的 debrief 走 compact 分支：不帶（預算 4,720 只剩 21 緩衝，Game 以戰術優先）。
+  const gameDebrief = buildDebriefMessages(
+    [
+      { role: "user", text: "你大頭照在巴黎拍的吧" },
+      { role: "ai", text: "對啊 去年去進修的時候" },
+    ],
+    resolvePracticeProfile({ profileId: "practice_girl_023" }),
+    { practiceMode: "game", temperatureScore: 20 },
+  ).map((m) => m.content).join("\n");
+  assertEquals(gameDebrief.includes("她的大頭照"), false);
 });

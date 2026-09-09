@@ -1246,6 +1246,9 @@ function profileToEvidence(
     `testStyleShapes: ${
       formatConsistencyTestTypes(profile.consistencyTest.types)
     }`,
+    // 她的大頭照事實（2026-09-08）：使用者聊她照片時教練才接得到那個話題。
+    // 用中文標籤不用英文 key，免得 visible_text_guard 的內部標籤表要擴。
+    `她的大頭照：${girl.photoScene}`,
     `likes: ${girl.reactionModel.likes.join("、")}`,
     `coolsWhen: ${girl.reactionModel.coolsWhen.join("、")}`,
     `signalStyle: ${girl.signalStyle.join("；")}`,

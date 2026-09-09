@@ -8,6 +8,22 @@
 
 ---
 
+## 2026-09
+
+### [2026-09-08] AI 實戰練習室的她把巴黎鐵塔前的大頭照說成「淡水河邊拍的」
+
+**Symptom**: 真機（iPhone，2026-09-08 19:49–19:52）與 Fiona（`practice_girl_023`，挑戰難度）對話：「你去過法國嗎」→「沒去過」；「可是你大頭照不是就是在巴黎艾菲爾鐵塔」→「那是淡水河邊拍的啦」；追問後「哈哈 被你發現了」；「所以巴黎好玩嗎」→「我沒去過怎麼知道好不好玩」。三句互相矛盾，使用者講的是對的反而被否定；升溫條 19→20→20 沒把這段當異常。
+
+**Root Cause**: 照片從未進任何 prompt。`photoId` 只是找圖檔的編號（`buildGirlProfile()` 直接設成 `profileId`），`GirlSeed` 沒有任何描述照片內容的欄位，`prompt.ts` 全檔 grep `photo` 零命中，chat／hint／debrief／moments 四條 prompt 沒有一個字講她的大頭照長什麼樣，模型呼叫也是純文字不夾圖。三件事疊在一起就保證會編：(1) 缺資料；(2) 現實錨定把「你大頭照在巴黎」歸類成使用者單方面聲稱、不可當記憶（這條規則本身是對的，防假熟）；(3)「絕不捏造」只涵蓋時事／名人／事件，不涵蓋她自己的照片。100 張圖人工審計：與文字設定直接打架的 5 位（023 巴黎、078 香港、022 顧貓配吉娃娃、024／047 沒設寵物卻抱狗），其餘 95 張同樣沒有標準答案，「這張在哪拍的」「你那件外套」都會觸發同一機制。與 2026-08-28 星期五 bug 同病：模型答得出來的每一個硬事實都必須有 server 注入的來源。
+
+**Fix**: `GirlSeed`／`PracticeGirlProfile` 新增 server-only 必填欄位 `photoScene`（100 位各一句 ≤ 50 字，只寫照片看得到的、地點只寫類型、不寫品牌檔名、不寫「她」；地標明確到不寫反而穿幫的寫成一段經歷：023「去年去巴黎上瑜珈進修課」、078「前陣子去香港玩」）。`buildProfilePrompt()` 在生活型態之後注入「你的大頭照（他看得到）：…被問到照片在哪拍、穿什麼、旁邊有什麼就照這個答；沒拍到的細節不硬編。他把你的照片講對了就承認，別為了防備說他看錯」，identityLine 列舉補「大頭照」；鐵則、身份防線、現實錨定一字不動。hint `profileToEvidence()` 與 `debriefProfileEvidence()` 各加一行「她的大頭照：…」（中文標籤，不擴 `visible_text_guard` 內部詞表）。moments 自拍分支改成「這一則會配上你自己的大頭照（photoScene）。那張是之前拍的，不是此刻現場」，不再把鐵塔寫成此刻所在。022 lifestyle「下班顧貓」改「下班顧狗」並重產 client catalog。`PRACTICE_PROMPT_POLICY_VERSION` 升 `2026-09-09.photo`。欄位不鏡像到 client（與 `professionPrompt` 同原則），不加 feature flag（同時間錨點／認識管道前例：缺的硬事實由 server 注入，重印 golden 作為刻意接受的 production 行為改動）。
+
+**Prevention**: `practice_persona_test.ts`（併入 CI 白名單）鎖 100 筆非空、≤ 60 code units、不含檔名／`practice_girl`／`assets/`、不含「她」「妳」，並鎖 023 含巴黎、078 含香港、022／024／047 含狗、053 含貓；`prompt_test.ts` 鎖兩個分支都注入該行且固定句長度不變；`moments_prompt_test.ts` 鎖自拍分支帶 photoScene 與「不是此刻現場」。行為 smoke（`tools/practice-behavior-smoke`）harness 改成可帶 `profileId` 組完整 profile prompt，新增 Fiona 三句、Natalie 養狗、未知細節不編店名五案。舊 session 不會自癒：現實錨定以「這段對話裡你自己最新說過的」為準，已經說過「沒去過」的場次會維持，驗收要開新場。
+
+**Files**: `supabase/functions/practice-chat/practice_persona.ts`, `prompt.ts`, `hint.ts`, `moments_prompt.ts`, `practice_persona_test.ts`, `prompt_test.ts`, `index_test.ts`, `agency_flag_off_equivalence_test.ts`, `moments_prompt_test.ts`, `moments_memory_test.ts`, `lib/features/practice_chat/domain/entities/practice_girl_catalog.dart`, `tools/practice-behavior-smoke/`, `.github/workflows/flutter-ci.yml`
+
+---
+
 ## 2026-08
 
 ### [2026-08-28] AI 實戰練習室的她把星期五說成禮拜三，還「特別去看了手機」

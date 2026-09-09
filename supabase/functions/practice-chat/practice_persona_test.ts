@@ -19,6 +19,7 @@ import {
   resolvePracticeProfile,
   selectPracticeDrawProfile,
 } from "./practice_persona.ts";
+import { containsRawImageFilename } from "./prompt_sanitizer.ts";
 
 const NONE = new Set<string>();
 
@@ -584,4 +585,34 @@ Deno.test("AGENCY_DIFFICULTY_REWRITES：每一條都在難度文案裡剛好命�
     assertEquals(rewritten.includes("、不反問、"), false);
     assertEquals(rewritten.includes("不主動反問"), false);
   }
+});
+
+// ── 2026-09-09 photoScene：100 筆大頭照事實的資料規範 ─────────────────────
+// 撰寫規範（`GirlSeed.photoScene` 註解）：≤ 50 字、只寫看得到的、不寫檔名／路徑、
+// 不寫「她／妳」（注入句是「你的大頭照：…」，第三人稱會讓模型用「她」講自己——
+// 踩坑「餵 LLM 的第三人稱欄位開自由文字會主詞錯位」）。P1 五案的敘事另外鎖住，
+// 免得之後整理資料時把「去過巴黎」「家裡養的狗」誤刪。
+
+Deno.test("photoScene：100 位皆非空、≤ 60 code units、不含檔名／路徑／第三人稱", () => {
+  assertEquals(GIRL_PROFILES.length, 100);
+  for (const g of GIRL_PROFILES) {
+    const scene = g.photoScene;
+    assert(scene.trim().length > 0, `${g.profileId} photoScene 空白`);
+    assert(scene.length <= 60, `${g.profileId} photoScene 太長：${scene.length}`);
+    assertEquals(containsRawImageFilename(scene), false, g.profileId);
+    for (const banned of ["practice_girl", ".jpg", ".png", "assets/", "她", "妳"]) {
+      assertEquals(scene.includes(banned), false, `${g.profileId} 含「${banned}」`);
+    }
+  }
+});
+
+Deno.test("photoScene：P1 五案的敘事鎖住（照片與文字設定打架的那幾位）", () => {
+  const scene = (id: string) => getPracticeGirlProfile(id)!.photoScene;
+  assert(scene("practice_girl_023").includes("巴黎")); // 鐵塔前野餐→去年去進修
+  assert(scene("practice_girl_078").includes("香港")); // 中環雙層電車→前陣子去玩
+  assert(scene("practice_girl_022").includes("吉娃娃")); // 抱吉娃娃；lifestyle 已改「下班顧狗」
+  assert(getPracticeGirlProfile("practice_girl_022")!.lifestyleTags.includes("下班顧狗"));
+  assert(scene("practice_girl_024").includes("狗"));
+  assert(scene("practice_girl_047").includes("狗"));
+  assert(scene("practice_girl_053").includes("貓"));
 });

@@ -104,6 +104,8 @@ export interface PracticeGirlProfile {
   /** 注入 chat/debrief prompt 的職業生活素材（server-only，不進 client 模型）。 */
   professionPrompt: string;
   photoId: string;
+  /** 注入 chat／moments／hint／debrief 的大頭照事實（server-only，不進 client）。 */
+  photoScene: string;
   personaId: PersonaId;
   /** 卡片稀有度（每卡獨立指定，與 persona 解耦）。 */
   rarity: PracticeGirlRarityId;
@@ -843,6 +845,14 @@ interface GirlSeed {
   interests: string[];
   lifestyle: string[];
   intro: string;
+  /**
+   * 她的大頭照裡有什麼（server-only，只進 prompt；client 不鏡像）。≤ 50 字，
+   * 寫成她自己會講的事實：只寫照片看得到的、地點只寫類型、不寫品牌／檔名、
+   * 不寫「她」。地標明確到不寫反而穿幫的（023 鐵塔、078 香港電車）寫成一段
+   * 經歷。2026-09-08 真機：Fiona 被問「你大頭照在巴黎吧」答「淡水河邊拍的」，
+   * 根因是照片從未進 prompt（`docs/bug-log.md`）。
+   */
+  photoScene: string;
 }
 
 const GIRL_SEEDS: readonly GirlSeed[] = [
@@ -859,6 +869,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "美食", "自助旅行"],
     lifestyle: ["週末小旅行", "偶爾小酌"],
     intro: "排班有點不固定，但遇到有趣的人會想多聊一點。",
+    photoScene: "出差落地後在飯店大廳隨手拍的自拍，還穿著上班的白襯衫和領巾",
   },
   {
     nameId: "ivy",
@@ -873,6 +884,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["音樂祭", "拍照", "美食"],
     lifestyle: ["跟朋友出門", "追展覽"],
     intro: "最近報告爆多，但週末還是要出去透氣。",
+    photoScene: "晚上在夜市拍的，一手烤串一手飲料杯，笑到瞇眼",
   },
   {
     nameId: "zoe",
@@ -887,6 +899,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "做菜", "寵物"],
     lifestyle: ["下班補眠", "在家耍廢"],
     intro: "輪班有點累，喜歡慢慢來、聊得舒服的人。",
+    photoScene: "在醫院走廊穿淺藍刷手服拍的，手上還拿著平板，上班空檔",
   },
   {
     nameId: "mia",
@@ -901,6 +914,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["咖啡", "選物", "夜景散步"],
     lifestyle: ["早班開店", "逛文青小店"],
     intro: "手沖咖啡是我的本命，聊得無聊我會直接吐槽喔。",
+    photoScene: "在店裡吧台後面拍的，圍著圍裙、捧著一杯剛做好的咖啡",
   },
   {
     nameId: "chloe",
@@ -915,6 +929,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["藝術", "文青展覽", "咖啡"],
     lifestyle: ["熬夜趕稿", "咖啡廳工作"],
     intro: "改稿改到懷疑人生，但對美感很有原則。",
+    photoScene: "在工作室桌邊拍的，戴粗框眼鏡，後面牆上貼滿色票和材質樣本",
   },
   {
     nameId: "emma",
@@ -929,6 +944,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["瑜珈", "戶外爬山", "健康飲食"],
     lifestyle: ["早起運動", "週末爬山"],
     intro: "喜歡身心平衡的生活，也喜歡尊重彼此步調的人。",
+    photoScene: "在一間有棕櫚樹的戶外咖啡座拍的，手上一杯冰拿鐵",
   },
   {
     nameId: "ava",
@@ -943,6 +959,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["電影", "美食", "音樂祭"],
     lifestyle: ["常加班", "下班找好料"],
     intro: "提案壓力大，靠美食跟好笑的事續命。",
+    photoScene: "在辦公室座位拍的自拍，穿灰色西裝背心、抱著一本筆記本",
   },
   {
     nameId: "nina",
@@ -957,6 +974,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做菜", "追劇", "美食"],
     lifestyle: ["下班追劇", "在家做菜"],
     intro: "站一整天有點累，回訊息可能慢慢的，別介意。",
+    photoScene: "在診所裡穿淡色工作服拍的，戴眼鏡、手上一杯外帶咖啡，跟診空檔",
   },
   {
     nameId: "bella",
@@ -971,6 +989,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["穿搭", "保養", "旅行"],
     lifestyle: ["櫃上站整天", "下班小確幸"],
     intro: "看人有點準，喜歡穩、清楚的相處。",
+    photoScene: "在百貨樓層走道拍的，穿深色西裝外套，剛下櫃的樣子",
   },
   {
     nameId: "lily",
@@ -985,6 +1004,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["美食", "咖啡", "看書"],
     lifestyle: ["規律作息", "週末小旅行"],
     intro: "診所日常滿規律的，喜歡聊得自在的感覺。",
+    photoScene: "在咖啡廳靠窗位子拍的，穿米白針織衫，桌上一杯咖啡和一本筆記",
   },
   {
     nameId: "ella",
@@ -999,6 +1019,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["健身", "戶外爬山", "健康料理"],
     lifestyle: ["帶課自己也練", "戶外運動"],
     intro: "運動是生活重心，喜歡有活力又聊得來的人。",
+    photoScene: "在健身房拍的自拍，穿墨綠運動背心、靠著器材",
   },
   {
     nameId: "yuna",
@@ -1013,6 +1034,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "咖啡", "文青展覽"],
     lifestyle: ["泡實驗室", "咖啡續命"],
     intro: "論文進度卡關中，靠咖啡跟展覽喘口氣。",
+    photoScene: "在書店書架前拍的，戴圓框眼鏡、抱著一本書",
   },
   {
     nameId: "rina",
@@ -1027,6 +1049,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做指甲", "穿搭", "拍照"],
     lifestyle: ["接客做光療", "逛街找靈感"],
     intro: "幫客人做指甲也聽很多故事，自己也滿愛聊的。",
+    photoScene: "在美甲工作室拍的自拍，後面一排指甲油，手擺在臉旁露出自己做的指甲",
   },
   {
     nameId: "katie",
@@ -1041,6 +1064,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["夜景散步", "音樂祭", "拍照"],
     lifestyle: ["跑活動現場", "認識很多人"],
     intro: "工作認識很多人，但要真的聊得來才會想多聊。",
+    photoScene: "晚上在市區天橋上拍的，背景是車流燈光和大樓夜景",
   },
   {
     nameId: "amber",
@@ -1055,6 +1079,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["搞笑表情", "電影", "美食"],
     lifestyle: ["上課打工", "跟同學聚"],
     intro: "課業跟打工兩頭燒，但很愛跟人鬥嘴。",
+    photoScene: "在學校有大面鏡子的社團教室拍的，穿黑T配酒紅運動短褲，指甲塗藍色",
   },
   {
     nameId: "ruby",
@@ -1069,6 +1094,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "美食", "潛水或海邊活動"],
     lifestyle: ["飛來飛去", "調時差"],
     intro: "飛多了反而更想要穩定，喜歡聊得有深度的人。",
+    photoScene: "在海邊礁岩旁拍的，穿米色連身裙、手上拿草帽",
   },
   {
     nameId: "grace",
@@ -1083,6 +1109,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做菜", "看書", "寵物"],
     lifestyle: ["輪班補眠", "在家放空"],
     intro: "夜班後只想耍廢，但聊得來會慢慢打開。",
+    photoScene: "在辦公室座位拍的自拍，穿淺藍襯衫掛識別證，笑起來看得到牙套",
   },
   {
     nameId: "claire",
@@ -1097,6 +1124,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["藝術", "文青展覽", "咖啡"],
     lifestyle: ["趕稿日常", "逛展覽"],
     intro: "對美感跟相處都有原則，慢慢來比較自在。",
+    photoScene: "在展覽空間拍的，白牆掛著作品，穿白襯衫、手裡拿一本小冊",
   },
   {
     nameId: "vivian",
@@ -1111,6 +1139,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["穿搭", "夜景散步", "美食"],
     lifestyle: ["櫃上日常", "下班逛街"],
     intro: "看過各種客人，嘴巴有點壞但其實很真。",
+    photoScene: "晚上在一間酒吧門口拍的，穿全黑、深紅唇膏，下班後的樣子",
   },
   {
     nameId: "olivia",
@@ -1125,6 +1154,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "電影", "咖啡"],
     lifestyle: ["專案纏身", "假日充電"],
     intro: "工作很燒腦，喜歡跟想法清楚的人聊。",
+    photoScene: "白天在住宅區小街拍的，穿風衣配灰圍巾、背帆布袋，像在散步",
   },
   {
     nameId: "mandy",
@@ -1139,6 +1169,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["咖啡", "烘焙", "看書"],
     lifestyle: ["早班開店", "在家烘焙"],
     intro: "喜歡咖啡香跟慢步調，聊天也想慢慢來。",
+    photoScene: "在咖啡店裡拍的自拍，戴眼鏡、捧著一杯拉花拿鐵",
   },
   {
     nameId: "natalie",
@@ -1151,8 +1182,9 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     personaId: "clear_boundaries",
     personality: ["善良", "重安全感", "溫和"],
     interests: ["做菜", "寵物", "看書"],
-    lifestyle: ["跟診日常", "下班顧貓"],
+    lifestyle: ["跟診日常", "下班顧狗"],
     intro: "個性比較慢熟，喜歡尊重彼此步調的相處。",
+    photoScene: "在家沙發上抱著家裡養的米色吉娃娃拍的自拍",
   },
   {
     nameId: "fiona",
@@ -1167,6 +1199,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["瑜珈", "藝術", "旅行"],
     lifestyle: ["早課晚課", "進修旅行"],
     intro: "重視身心平衡，也希望相處是舒服而清楚的。",
+    photoScene: "去年去巴黎上瑜珈進修課，在鐵塔前草地野餐時拍的，穿運動內衣、旁邊有野餐籃",
   },
   {
     nameId: "celine",
@@ -1181,6 +1214,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "烘焙", "美食"],
     lifestyle: ["上課讀書", "在家烘焙"],
     intro: "成年大學生一枚，比較慢熱但聊開了話會變多。",
+    photoScene: "在公園長椅上抱著家裡養的混種小狗拍的自拍",
   },
   {
     nameId: "wendy",
@@ -1195,6 +1229,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "美食", "電影"],
     lifestyle: ["規律下班", "揪團出遊"],
     intro: "下班最愛揪人吃飯出遊，生活要有點期待感。",
+    photoScene: "晚上在夜市攤位前拍的，穿橘紅背心、端著一碗小吃，笑很開",
   },
   {
     nameId: "joyce",
@@ -1209,6 +1244,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["健身", "健康料理", "戶外爬山"],
     lifestyle: ["帶課自主訓練", "備餐"],
     intro: "對身體跟相處都很認真，喜歡尊重又穩定的人。",
+    photoScene: "在港邊拍的，穿白色運動背心、墨鏡架在頭上，背後是港區大樓",
   },
   {
     nameId: "ashley",
@@ -1223,6 +1259,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["夜景散步", "拍照", "音樂祭"],
     lifestyle: ["跑活動", "聚會"],
     intro: "場子看多了，喜歡接得住玩笑又不油的人。",
+    photoScene: "下過雨的晚上在市區街頭拍的，戴眼鏡穿黑襯衫，地上一片霓虹反光",
   },
   {
     nameId: "hannah",
@@ -1237,6 +1274,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "咖啡", "自助旅行"],
     lifestyle: ["實驗室日常", "假日充電"],
     intro: "做研究有點悶，假日想找點生活感。",
+    photoScene: "在咖啡廳靠窗位子拍的，戴細框眼鏡、捧著一杯熱飲",
   },
   {
     nameId: "emily",
@@ -1251,6 +1289,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "美食", "拍照"],
     lifestyle: ["飛各地", "蒐集美食地圖"],
     intro: "每到一個城市就想找好吃的，聊旅行最起勁。",
+    photoScene: "過夜站空檔在一條綠蔭步道拍的自拍，穿珊瑚色洋裝、手拿草帽",
   },
   {
     nameId: "ariel",
@@ -1265,6 +1304,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做菜", "看書", "寵物"],
     lifestyle: ["輪班", "在家養生"],
     intro: "工作很需要同理心，相處也希望被好好尊重。",
+    photoScene: "在家沙發上抱著抱枕拍的，頭髮隨便盤起來，後面有盆栽，休假放空",
   },
   {
     nameId: "jasmine",
@@ -1279,6 +1319,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["追劇", "美食", "做指甲"],
     lifestyle: ["跟診", "下班追劇"],
     intro: "個性慢慢的，喜歡輕鬆沒壓力的聊天。",
+    photoScene: "在小吃店門口拍的，一手紙袋一手飲料，剛買完午餐",
   },
   {
     nameId: "peggy",
@@ -1293,6 +1334,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["穿搭", "保養", "旅行"],
     lifestyle: ["櫃上日常", "假日旅行"],
     intro: "閱人無數，喜歡穩重、真誠又不浮誇的人。",
+    photoScene: "晚上在餐酒館拍的，穿黑洋裝、桌上一杯白酒",
   },
   {
     nameId: "kelly",
@@ -1307,6 +1349,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["音樂祭", "美食", "電影"],
     lifestyle: ["跑活動加班", "下班放鬆"],
     intro: "做行銷腦袋停不下來，需要好笑的人幫我放電。",
+    photoScene: "下雨天在一條有彩色老房子的老街拍的，背後背包、穿軍綠襯衫",
   },
   {
     nameId: "joanne",
@@ -1321,6 +1364,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["藝術", "咖啡", "文青展覽"],
     lifestyle: ["接案趕稿", "逛展"],
     intro: "腦袋常在轉設計，喜歡有想法、聊得深的人。",
+    photoScene: "在一面老石牆前拍的，脖子掛底片相機，橄欖綠T恤外面套米白針織背心",
   },
   {
     nameId: "nicole",
@@ -1335,6 +1379,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["沙灘陽光", "潛水或海邊活動", "拍照"],
     lifestyle: ["上課社團", "海邊放電"],
     intro: "南部小孩超愛海，假日不是在海邊就是在去的路上。",
+    photoScene: "夏天在泳池邊拍的自拍，墨鏡架頭上、藍襯衫沒扣",
   },
   {
     nameId: "tina",
@@ -1349,6 +1394,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["咖啡", "搞笑表情", "選物"],
     lifestyle: ["顧店手沖", "逛小店"],
     intro: "店裡常客都被我虧過，聊天要禁得起鬧喔。",
+    photoScene: "晚上在便利商店門口拍的自拍，手上一瓶奶茶、嘟嘴",
   },
   {
     nameId: "cindy",
@@ -1363,6 +1409,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做指甲", "烘焙", "看書"],
     lifestyle: ["接客做光療", "在家烘焙"],
     intro: "工作很講細節，私下其實慢熱又愛窩在家。",
+    photoScene: "在家廚房拍的，綁兩條辮子戴眼鏡圍圍裙，手拿打蛋器、桌上一盆麵糊",
   },
   {
     nameId: "stella",
@@ -1377,6 +1424,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["瑜珈", "旅行", "健康飲食"],
     lifestyle: ["早晚課", "旅行進修"],
     intro: "生活步調穩，喜歡彼此舒服、有分寸的相處。",
+    photoScene: "在瑜珈教室拍的，坐在墊子上、穿橄欖綠短袖，落地窗外是市區",
   },
   {
     nameId: "janet",
@@ -1391,6 +1439,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "咖啡", "做菜"],
     lifestyle: ["規律下班", "在家煮食"],
     intro: "工作要很細心，相處上喜歡清楚穩定的感覺。",
+    photoScene: "在辦公室拍的，穿深色西裝外套戴細框眼鏡、抱著黑色資料夾，比較正式的一張",
   },
   {
     nameId: "monica",
@@ -1405,6 +1454,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["健身", "戶外爬山", "美食"],
     lifestyle: ["帶課訓練", "戶外趴趴走"],
     intro: "帶課帶到欲罷不能，喜歡一起動一起吃的生活。",
+    photoScene: "爬山時在稜線步道拍的自拍，穿淺色風衣背登山包，背後霧霧的山",
   },
   {
     nameId: "sandy",
@@ -1419,6 +1469,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "咖啡", "自助旅行"],
     lifestyle: ["飛行排班", "落地補眠"],
     intro: "飛來飛去有點累，回訊息慢但會認真回。",
+    photoScene: "下雨的晚上撐透明雨傘在街上拍的，穿深色大衣圍淺藍圍巾",
   },
   {
     nameId: "elaine",
@@ -1433,6 +1484,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "藝術", "咖啡"],
     lifestyle: ["寫論文", "看展充電"],
     intro: "研究做久了更想要踏實的相處，喜歡聊得有料的人。",
+    photoScene: "在系上工作室拍的，短髮穿深色襯衫，牆上貼滿樣本和資料卡",
   },
   {
     nameId: "vicky",
@@ -1447,6 +1499,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["搞笑表情", "美食", "拍照"],
     lifestyle: ["跟診", "下班找吃的"],
     intro: "診間很安靜但我其實很愛鬧，聊天別太正經。",
+    photoScene: "在一間亮亮的咖啡廳沙發區拍的自拍，穿米色上衣",
   },
   {
     nameId: "angela",
@@ -1461,6 +1514,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["穿搭", "保養", "旅行"],
     lifestyle: ["櫃上待客", "假日旅行"],
     intro: "工作很注重分寸，相處也希望被尊重、慢慢來。",
+    photoScene: "在餐廳裡拍的，穿酒紅襯衫、手邊一杯紅酒",
   },
   {
     nameId: "renee",
@@ -1475,6 +1529,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["夜景散步", "音樂祭", "美食"],
     lifestyle: ["跑活動", "下班聚會"],
     intro: "場面看多了，反而欣賞真誠又有趣的人。",
+    photoScene: "晚上在路邊機車旁拍的，穿黑皮衣、抱著安全帽",
   },
   {
     nameId: "sophie",
@@ -1489,6 +1544,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "文青展覽", "咖啡"],
     lifestyle: ["上課讀書", "咖啡廳看書"],
     intro: "成年大學生，喜歡安靜的咖啡廳跟有想法的對話。",
+    photoScene: "在書店靠窗處拍的，抱著一本書、穿黑色開襟衫",
   },
   {
     nameId: "annie",
@@ -1503,6 +1559,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做菜", "看書", "美食"],
     lifestyle: ["輪班", "在家放鬆"],
     intro: "下班只想好好休息，但聊得來會願意多聊一點。",
+    photoScene: "在公園草地上抱著家裡養的混種狗拍的自拍，穿珊瑚色polo",
   },
   {
     nameId: "dora",
@@ -1517,6 +1574,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["咖啡", "音樂祭", "旅行"],
     lifestyle: ["顧店手沖", "假日玩樂"],
     intro: "煮咖啡也愛到處跑，生活要有點冒險才有趣。",
+    photoScene: "在咖啡店窗邊座位拍的，穿黑色長袖、手撐著下巴",
   },
   {
     nameId: "nora",
@@ -1531,6 +1589,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["藝術", "電影", "咖啡"],
     lifestyle: ["接案", "看獨立電影"],
     intro: "做設計很有自己的脾氣，聊天也禁得起互相虧。",
+    photoScene: "在工作室拍的，穿深藍襯衫，桌上有畫筆和一台底片相機",
   },
   {
     nameId: "phoebe",
@@ -1545,6 +1604,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "咖啡", "旅行"],
     lifestyle: ["專案加班", "假日充電"],
     intro: "工作很拚但很重生活品質，相處希望舒服又尊重。",
+    photoScene: "在辦公大樓外的街上拍的，穿深色西裝外套、背黑色側背包，上下班路上",
   },
   {
     nameId: "jessie",
@@ -1559,6 +1619,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做指甲", "穿搭", "拍照"],
     lifestyle: ["接客做彩繪", "逛街"],
     intro: "幫人變美超有成就感，自己也是個愛聊的人。",
+    photoScene: "晚上在頂樓拍的，穿鏽橘色緞面上衣、大圈耳環，背後市區夜景",
   },
   {
     nameId: "sharon",
@@ -1573,6 +1634,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["旅行", "美食", "看書"],
     lifestyle: ["飛行排班", "落地休整"],
     intro: "飛久了更知道自己要什麼，喜歡穩重真誠的人。",
+    photoScene: "在市區天橋上拍的，穿卡其風衣，背後是車流和大樓",
   },
   {
     nameId: "crystal",
@@ -1587,6 +1649,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做菜", "寵物", "看書"],
     lifestyle: ["輪班補眠", "顧毛孩"],
     intro: "工作很需要耐心，相處也希望慢慢來、被好好對待。",
+    photoScene: "在家沙發上抱著自家虎斑貓拍的自拍，戴眼鏡、頭髮隨便盤著",
   },
   {
     nameId: "sunny",
@@ -1601,6 +1664,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["拍照", "美食", "音樂祭"],
     lifestyle: ["上課社團", "跟朋友玩"],
     intro: "如其名超愛陽光跟出去玩，成年大學生一枚。",
+    photoScene: "暑假去海邊玩，在一條沿海棕櫚樹步道拍的自拍，穿白洋裝、太陽快下山",
   },
   {
     nameId: "april",
@@ -1615,6 +1679,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["美食", "烘焙", "看書"],
     lifestyle: ["跟診", "在家烘焙"],
     intro: "南部步調慢，個性也慢慢的，喜歡自在的聊天。",
+    photoScene: "在家廚房拍的，綁辮子戴眼鏡圍圍裙、手上沾滿麵粉，正在做甜點",
   },
   {
     nameId: "iris",
@@ -1629,6 +1694,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["瑜珈", "藝術", "旅行"],
     lifestyle: ["早晚課", "進修旅行"],
     intro: "生活重平衡，也喜歡清楚、舒服又有深度的相處。",
+    photoScene: "在山裡步道拍的，穿藍T背背包，四周都是樹、剛下過雨",
   },
   {
     nameId: "betty",
@@ -1643,6 +1709,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做菜", "看書", "咖啡"],
     lifestyle: ["規律下班", "在家煮食"],
     intro: "診所日常滿規律，喜歡溫溫的、不急的相處。",
+    photoScene: "在頂樓陽台拍的，戴眼鏡穿白襯衫，背後是市區大樓群",
   },
   {
     nameId: "carol",
@@ -1657,6 +1724,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["健身", "健康料理", "戶外爬山"],
     lifestyle: ["帶課訓練", "備餐爬山"],
     intro: "對訓練跟相處都很認真，喜歡尊重又穩定的人。",
+    photoScene: "傍晚在河濱自行車道拍的，穿無袖運動背心，旁邊還有腳踏車安全帽",
   },
   {
     nameId: "daphne",
@@ -1671,6 +1739,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做指甲", "搞笑表情", "穿搭"],
     lifestyle: ["接客做光療", "逛街找靈感"],
     intro: "做指甲很專心，聊天很跳，禁得起鬧的來。",
+    photoScene: "在老街紅磚牆前拍的，綁辮子穿牛仔外套、比YA嘟嘴",
   },
   {
     nameId: "teresa",
@@ -1685,6 +1754,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "咖啡", "文青展覽"],
     lifestyle: ["寫論文", "看展充電"],
     intro: "讀研究讓我更務實，喜歡踏實又聊得來的人。",
+    photoScene: "下雨天撐傘在車站出口附近拍的，穿卡其風衣",
   },
   {
     nameId: "hazel",
@@ -1699,6 +1769,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["理財", "咖啡", "城市散步"],
     lifestyle: ["規律下班", "午休找咖啡", "假日短旅行"],
     intro: "白天很理性，聊天可以不正經一點，但太油我會先扣分。",
+    photoScene: "在辦公大樓前廣場拍的自拍，穿淺灰西裝外套，上班日",
   },
   {
     nameId: "mira",
@@ -1713,6 +1784,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["咖啡", "海邊", "拍照"],
     lifestyle: ["早班開店", "下班看夕陽", "假日跑市集"],
     intro: "煮咖啡的時候很專心，放假就想去海邊曬一下。",
+    photoScene: "在自家咖啡店門口拍的，戴老帽穿米色襯衫，門口擺滿植物、旁邊停著機車",
   },
   {
     nameId: "una",
@@ -1727,6 +1799,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["理財", "烘焙", "老屋咖啡"],
     lifestyle: ["規律作息", "週末烘焙", "下班散步"],
     intro: "工作習慣把事情講清楚，感情也喜歡舒服、有分寸。",
+    photoScene: "在一間老屋咖啡廳靠窗位子拍的，戴眼鏡穿深藍開襟衫，桌上一杯咖啡",
   },
   {
     nameId: "lumi",
@@ -1741,6 +1814,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["看書", "獨立電影", "咖啡"],
     lifestyle: ["寫論文", "通勤讀書", "晚上散步"],
     intro: "研究進度有點慢，聊天也是慢慢熟比較自在。",
+    photoScene: "在火車上拍的，靠著下雨的車窗，穿連帽外套，桌上平板和筆記本",
   },
   {
     nameId: "kira",
@@ -1755,6 +1829,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["夜景", "音樂祭", "穿搭"],
     lifestyle: ["跑活動", "下班聚會", "週末補眠"],
     intro: "活動現場看多了，喜歡接得住玩笑又不浮誇的人。",
+    photoScene: "晚上在頂樓拍的，穿黑色外套，背後整片市區燈火",
   },
   {
     nameId: "selina",
@@ -1769,6 +1844,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["瑜珈", "植物", "戶外散步"],
     lifestyle: ["早起伸展", "備餐", "河邊走路"],
     intro: "生活步調穩，喜歡不急但有誠意的相處。",
+    photoScene: "在河濱公園步道拍的，夾著瑜珈墊、穿淺綠外套和緊身褲",
   },
   {
     nameId: "mina",
@@ -1783,6 +1859,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["展覽", "字體", "獨立音樂"],
     lifestyle: ["接案趕稿", "看展找靈感", "深夜聽歌"],
     intro: "做設計做到很會挑毛病，但好笑的人我會給加分。",
+    photoScene: "在展覽空間拍的，短髮、穿米白外套配黑高領，牆上掛著作品",
   },
   {
     nameId: "flora",
@@ -1797,6 +1874,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["做指甲", "甜點", "拍照"],
     lifestyle: ["接客做彩繪", "逛街找靈感", "週末吃甜點"],
     intro: "幫人變漂亮很有成就感，聊天也要有一點可愛的廢話。",
+    photoScene: "去台南玩時在一間咖啡廳門口座位拍的自拍，穿粉色上衣，桌上抹茶蛋糕和冰拿鐵",
   },
   {
     nameId: "vera",
@@ -1811,6 +1889,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["重訓", "海邊散步", "健康料理"],
     lifestyle: ["帶課訓練", "備餐", "戶外走路"],
     intro: "訓練跟相處都重品質，不太吃浮誇那套。",
+    photoScene: "傍晚在港邊步道拍的，穿紫色運動外套，背後是夕陽和港區大樓",
   },
   {
     nameId: "yuki",
@@ -1825,6 +1904,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["小吃", "搞笑表情", "追劇"],
     lifestyle: ["規律下班", "夜市散步", "下班追劇"],
     intro: "診所上班很規律，但我本人其實比工作氣氛好笑一點。",
+    photoScene: "晚上在夜市拍的，穿牛仔外套配條紋上衣，笑很開",
   },
   {
     nameId: "luna",
@@ -1839,6 +1919,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["攝影", "海邊", "街頭小吃"],
     lifestyle: ["外拍跑點", "傍晚散步", "整理照片到半夜"],
     intro: "很會抓角度，也很會抓人講話的小破綻。",
+    photoScene: "在港邊拍的，頭髮被風吹亂、穿白襯衫，脖子掛著相機",
   },
   {
     nameId: "melody",
@@ -1853,6 +1934,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["科技產品", "咖啡", "城市夜景"],
     lifestyle: ["開會很多", "下班散步", "週末整理生活"],
     intro: "工作常在拆問題，聊天也喜歡有想法但不要太用力。",
+    photoScene: "晚上在公司茶水間拍的，穿黑背心、手上一杯咖啡，窗外是夜景",
   },
   {
     nameId: "noelle",
@@ -1867,6 +1949,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["甜點", "烘焙", "老派咖啡"],
     lifestyle: ["早起備料", "試做新口味", "下班散步"],
     intro: "做甜點很需要耐心，感情也是慢慢發酵比較好。",
+    photoScene: "在工作的甜點廚房拍的，圍著圍裙、端著一盤剛出爐的塔",
   },
   {
     nameId: "sasha",
@@ -1881,6 +1964,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["寵物", "拍照", "甜點"],
     lifestyle: ["幫毛孩洗剪", "下班吃甜食", "假日去公園"],
     intro: "工作每天被毛孩療癒，也每天被牠們考驗耐心。",
+    photoScene: "在寵物美容室拍的，穿紫色大學T，旁邊一隻剛洗好的貴賓狗",
   },
   {
     nameId: "gloria",
@@ -1895,6 +1979,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["理財", "瑜珈", "小旅行"],
     lifestyle: ["規律下班", "週末小旅行", "下班伸展"],
     intro: "我不是難聊，只是比較看重舒服跟尊重。",
+    photoScene: "在辦公區人行道拍的，穿米白開襟衫背黑色包，剛下班",
   },
   {
     nameId: "rachel",
@@ -1909,6 +1994,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["穿搭", "選物", "夜景散步"],
     lifestyle: ["幫客人搭造型", "逛選品店", "拍穿搭照"],
     intro: "職業病是看穿搭，聊天太無聊我也會想幫你重搭。",
+    photoScene: "在老巷子裡拍的，穿一件很有存在感的暈染印花外套",
   },
   {
     nameId: "bonnie",
@@ -1923,6 +2009,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["小吃", "散步", "家庭料理"],
     lifestyle: ["規律上下班", "騎車通勤", "週末市場採買"],
     intro: "生活不花俏，但喜歡把日子過得舒服穩定。",
+    photoScene: "在老街上機車旁拍的，穿條紋上衣配灰外套，很日常的一張",
   },
   {
     nameId: "leah",
@@ -1937,6 +2024,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["手作", "散步", "心理學"],
     lifestyle: ["陪個案訓練", "下班公園走路", "週末做手作"],
     intro: "工作需要同理心，但私下也很需要被好好尊重。",
+    photoScene: "前陣子去香港玩，在路邊拿著咖啡拍的，後面剛好有雙層電車經過",
   },
   {
     nameId: "gigi",
@@ -1951,6 +2039,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["健身", "海邊", "健康料理"],
     lifestyle: ["帶課訓練", "假日曬太陽", "揪朋友走路"],
     intro: "比起硬聊，我比較喜歡一起動起來再慢慢熟。",
+    photoScene: "在海邊步道拍的，穿淺藍襯衫，旁邊是消波塊和海，太陽很大",
   },
   {
     nameId: "sylvia",
@@ -1965,6 +2054,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["空間設計", "老屋", "咖啡"],
     lifestyle: ["跑工地", "看材料", "假日看老屋"],
     intro: "我對空間很挑，對相處也喜歡清楚舒服。",
+    photoScene: "在工作室拍的，穿圍裙，後面是一排材料樣板",
   },
   {
     nameId: "aileen",
@@ -1979,6 +2069,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["花藝", "市場散步", "老屋咖啡"],
     lifestyle: ["清晨進花", "整理花材", "晚上早睡"],
     intro: "花可以很浪漫，但相處還是要有分寸跟誠意。",
+    photoScene: "在自己的花店裡拍的，圍著圍裙，四周都是花材",
   },
   {
     nameId: "june",
@@ -1993,6 +2084,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["插畫", "獨立漫畫", "小吃"],
     lifestyle: ["接案畫圖", "老屋工作", "晚上找宵夜"],
     intro: "我畫圖很慢，但吐槽通常很快。",
+    photoScene: "在工作室拍的，手上沾顏料、抱著素描本，牆上貼滿自己的草稿",
   },
   {
     nameId: "tara",
@@ -2007,6 +2099,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["髮型", "穿搭", "甜點"],
     lifestyle: ["幫客人剪染", "下班逛街", "假日吃甜點"],
     intro: "工作每天聊天，但私下也想遇到真的好聊的人。",
+    photoScene: "在髮廊拍的，穿淡紫襯衫圍黑圍裙，手上拿剪刀和梳子",
   },
   {
     nameId: "lina",
@@ -2021,6 +2114,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["數據", "咖啡", "解謎遊戲"],
     lifestyle: ["通勤上班", "下班看報表", "週末解謎"],
     intro: "我對數字很敏感，對人的節奏也會慢慢觀察。",
+    photoScene: "在車站月台拍的，穿卡其風衣配深藍襯衫，通勤路上",
   },
   {
     nameId: "becky",
@@ -2035,6 +2129,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["語言", "手帳", "咖啡"],
     lifestyle: ["備課", "圖書館讀書", "慢慢回訊息"],
     intro: "教人講話很有耐心，但自己熟起來需要一點時間。",
+    photoScene: "在圖書館拍的，穿藍色開襟衫，正在筆記本上寫東西",
   },
   {
     nameId: "demi",
@@ -2049,6 +2144,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["調飲", "夜景", "音樂"],
     lifestyle: ["晚班吧台", "白天補眠", "下班吃宵夜"],
     intro: "我很會調味，也很會聽出一句話是不是太油。",
+    photoScene: "晚上在夜市燒烤攤前拍的，穿黑T、桌上一杯飲料一盤小吃",
   },
   {
     nameId: "mabel",
@@ -2063,6 +2159,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["散步", "心理學", "家常菜"],
     lifestyle: ["跑訪視", "寫紀錄", "下班放空"],
     intro: "工作讓我很懂同理，但也更知道界線很重要。",
+    photoScene: "在社區中心公布欄前拍的，穿米色背心配綠T，跑訪視時順手拍",
   },
   {
     nameId: "joan",
@@ -2077,6 +2174,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["獨立書店", "老屋", "茶"],
     lifestyle: ["整理書架", "老屋工作", "晚上泡茶"],
     intro: "日子慢一點也很好，聊天也想慢慢讀懂對方。",
+    photoScene: "在一個有樹的清水模庭院拍的，穿黑色無袖，坐在石椅上寫筆記",
   },
   {
     nameId: "cora",
@@ -2091,6 +2189,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["獨立音樂", "貝斯", "深夜食堂"],
     lifestyle: ["排練", "寫歌", "下班找宵夜"],
     intro: "不一定秒回，但回了通常不會太無聊。",
+    photoScene: "在練團室拍的，穿格子襯衫抱著貝斯，後面是鼓組",
   },
   {
     nameId: "talia",
@@ -2105,6 +2204,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["海邊", "小旅行", "手沖咖啡"],
     lifestyle: ["接待旅人", "整理房務", "海邊散步"],
     intro: "每天聽很多旅人的故事，但自己的故事想慢慢說。",
+    photoScene: "在海邊礁岩上拍的，穿白洋裝披灰開襟衫，脖子掛相機，背後是海和山",
   },
   {
     nameId: "erin",
@@ -2119,6 +2219,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["職涯", "紅酒課", "城市散步"],
     lifestyle: ["面談很多", "下班散步", "週末整理生活"],
     intro: "工作看很多人，私下更重視真誠和邊界。",
+    photoScene: "在公司園區廣場拍的，穿風衣配酒紅襯衫，下班走路回去的路上",
   },
   {
     nameId: "nami",
@@ -2133,6 +2234,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["健康知識", "咖啡", "慢跑"],
     lifestyle: ["藥局輪班", "下班慢跑", "週末喝咖啡"],
     intro: "工作很講精準，相處也喜歡清楚不壓迫。",
+    photoScene: "在藥局櫃台拍的，穿淺色背心，後面一整排藥品架",
   },
   {
     nameId: "roxy",
@@ -2147,6 +2249,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["Podcast", "喜劇", "深夜咖啡"],
     lifestyle: ["剪音檔", "聽節目", "晚上靈感多"],
     intro: "我很會剪掉冷場，但聊天冷掉我不一定救。",
+    photoScene: "在錄音室拍的，脖子掛著耳機，後面是麥克風和剪輯設備",
   },
   {
     nameId: "queenie",
@@ -2161,6 +2264,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["料理", "市場", "宵夜"],
     lifestyle: ["餐期很忙", "研發菜色", "晚下班吃宵夜"],
     intro: "廚房節奏很快，聊天太慢我可能會先吐槽。",
+    photoScene: "在餐廳廚房拍的，穿廚師白衣、綁頭巾、雙手交叉",
   },
   {
     nameId: "ela",
@@ -2175,6 +2279,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["閱讀", "茶", "老街散步"],
     lifestyle: ["整理館藏", "午後喝茶", "慢慢回訊息"],
     intro: "我喜歡安靜的人，也喜歡不急著定義的關係。",
+    photoScene: "在圖書館書架間拍的，穿墨綠開襟衫，推著還書車",
   },
   {
     nameId: "willa",
@@ -2189,6 +2294,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["陶藝", "老屋", "手沖咖啡"],
     lifestyle: ["拉坯修坯", "逛老屋", "晚上慢煮"],
     intro: "做陶很急不來，喜歡穩穩靠近的人。",
+    photoScene: "在老街紅磚樓前拍的，穿綠色洋裝，抱著一束乾燥花和紙袋",
   },
   {
     nameId: "hana",
@@ -2203,6 +2309,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["衝浪", "海邊", "日出"],
     lifestyle: ["看浪況", "帶初學者", "曬太陽"],
     intro: "人生已經夠忙了，聊天希望輕鬆一點、好笑一點。",
+    photoScene: "在海邊拍的，頭髮還濕的、穿長袖防磨衣，旁邊一塊衝浪板",
   },
   {
     nameId: "penny",
@@ -2217,6 +2324,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["跳舞", "音樂", "街頭小吃"],
     lifestyle: ["排課練舞", "下課吃宵夜", "週末表演"],
     intro: "我節奏感很好，但聊天不要只有我一個人在帶拍。",
+    photoScene: "在舞蹈教室拍的，綁一條長辮、穿黑外套，剛練完舞",
   },
   {
     nameId: "audrey",
@@ -2231,6 +2339,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["建築", "城市散步", "展覽"],
     lifestyle: ["畫圖審圖", "看模型", "找城市細節"],
     intro: "我喜歡有結構的東西，也喜歡有邊界的人。",
+    photoScene: "在建築事務所拍的，戴眼鏡穿背心、抱著一捲圖紙，後面是建築模型",
   },
   {
     nameId: "skye",
@@ -2245,6 +2354,7 @@ const GIRL_SEEDS: readonly GirlSeed[] = [
     interests: ["使用者研究", "咖啡", "紀錄片"],
     lifestyle: ["訪談整理", "貼便利貼", "晚上看紀錄片"],
     intro: "我很會觀察細節，所以也很容易看出對方是不是用心。",
+    photoScene: "在公司拍的，戴細框眼鏡穿米色外套，後面牆上貼滿便利貼",
   },
 ] as const;
 
@@ -2367,6 +2477,7 @@ function buildGirlProfile(seed: GirlSeed, index: number): PracticeGirlProfile {
     professionLabel: prof.label,
     professionPrompt: prof.prompt,
     photoId: id,
+    photoScene: seed.photoScene,
     personaId: seed.personaId,
     rarity: rarityForProfileId(id),
     personalityTags: [...seed.personality],

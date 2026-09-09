@@ -8304,41 +8304,45 @@ function goldenCases(): {
 }
 
 // 由 fee76b87 的同一組 goldenCases 產生（拋棄式 worktree 跑 goldenDigest 印出）。
+// 2026-09-09 photoScene（刻意的 production 行為改動，與旗標無關）：profile 區塊
+// 多一行她的大頭照事實＋identityLine 列舉補「大頭照」，5 案的 messages 全部重印；
+// response 與 calls 一個位元都沒變（用臨時 printer 在本 commit 的樹上重印後逐案
+// 比對）。規格與真機案例見 `docs/bug-log.md` 2026-09-08 條目。
 const FLAG_OFF_GOLDEN = new Map<
   string,
   { messages: string; response: string; calls: number }
 >([
   ["standard／有 mapping（001）／旗標關", {
     messages:
-      "c86f2e76b9ead67322f466a2311c836bf117a64e3ada03c694245533f8806157",
+      "b0a76b46e05d255c5b9d6e0bb1c732984978d7a50c2714293d4f3c99128262bf",
     response:
       "89b8cbf201db1169a951dbf52ab54b34efbe75ed27145ba85540413f406b1151",
     calls: 1,
   }],
   ["beginner／有 mapping（001）／client seed／旗標關", {
     messages:
-      "06ee8ec57c3eb11e06d813d8afed27d11163fbd68fb054ac58cb2d334e5657c0",
+      "34d65d55d8547a7366a10f704296a0706540281de5b52ec63ed691597acef17a",
     response:
       "e12cdac4f1868123521d2c56f8a46073709fa7e2384d02eb95ab77fbfc992f24",
     calls: 2,
   }],
   ["game／有 mapping（004）／thread／旗標關", {
     messages:
-      "813c067a9398b053da1f05bb0ce684c266635bae6bc63055866575572f84d009",
+      "d3fb71bb754f6ca346c202081070880fe9b9cf5ed8eb4bf539f1858634511856",
     response:
       "f72c1445643454be89d73a15d6283687972fd999b11a4c9d8e6080e893333ee9",
     calls: 2,
   }],
   ["beginner／有 mapping（005）／旗標 test 一般帳號", {
     messages:
-      "fef0aa6a6a36a4e26f5b4296ea5047784f512707308f01e59bd627bf1f7e6673",
+      "c314ecc12982be85ed546866d12d7420484d7c6cf184cf7445017adbd112cb4f",
     response:
       "f38f5c6b27382a64a6ceba3cbe0091e7c63fe33b91bea4ed907595ec59430bc6",
     calls: 2,
   }],
   ["standard／有 mapping（005）／旗標 test 一般帳號", {
     messages:
-      "1b90dd1928a5c575b9a00528e79cede366883ca9368f3e2bfbca2dc8b32947ac",
+      "972125ab954158cbdfd45248a1c1d83f9e22a96d95e343d454b84cbe6df4a4ff",
     response:
       "89b8cbf201db1169a951dbf52ab54b34efbe75ed27145ba85540413f406b1151",
     calls: 1,
@@ -8718,13 +8722,14 @@ function agencyGoldenCases(): {
 }
 
 // 由 7f1d6d6c 的同一組 agencyGoldenCases 產生（拋棄式 checkout 跑 printer 印出）。
+// 2026-09-09 photoScene：6 案只有 messages 重印，response／recentFacts／calls 不變。
 const AGENCY_FLAG_OFF_GOLDEN = new Map<
   string,
   { messages: string; response: string; recentFacts: string; calls: number }
 >([
   ["standard／片段／style 關", {
     messages:
-      "0e20a871bb82e1b77553290b4dbee898e4f898aae53b2b05124e350bea8e4c56",
+      "bbfeb48effebef707d634e36b285fa8f216a996236dda6b8db7df264d944c811",
     response:
       "444e4e27dafce2e0ec8c13b924c4b46dd05d51f72ef1d863c13a22a5ce6f318b",
     recentFacts: "none",
@@ -8732,7 +8737,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<
   }],
   ["beginner／片段／style 關／thread", {
     messages:
-      "3c91b751932175777ce61d43f84b2721f057697d3f3fac7224e2dd747811bd15",
+      "8fb411fef02613089f49dd6e06bd6d72a8ae93c5fc6d185e0ea0ddec5c70d44d",
     response:
       "409f1af7e9d5f2f155f664cefacea35fe93780eab5c259be2394b648d4ac8364",
     recentFacts:
@@ -8741,7 +8746,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<
   }],
   ["game／片段／style 關／thread", {
     messages:
-      "3b7abfc9b9f469c0548ff7f62dd26b82f07161d466a2f39aab8ce29a1bae1a8c",
+      "2490d71ea9f8118afe30a2bbca618e798c1dccd4a491d9f6b0d0c8b25bc4564f",
     response:
       "b9e6a7ae6855f33005e763c8490e86ac3aa859e81aee7b78a2437044d328834c",
     recentFacts:
@@ -8750,7 +8755,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<
   }],
   ["beginner／片段／style 開／thread", {
     messages:
-      "0aaac4696ad6c55b9bf05405b2876101676679c6f4402d52637b207bf6888c69",
+      "31d178683aa56f0bf522dbd21493f5c81a34df564159891c86336183b0fbac29",
     response:
       "409f1af7e9d5f2f155f664cefacea35fe93780eab5c259be2394b648d4ac8364",
     recentFacts:
@@ -8759,7 +8764,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<
   }],
   ["standard／片段／style 開", {
     messages:
-      "cc946fd42a890cb993808a2b5fb2f183fe57065d9621318c0f2037d966b70bca",
+      "1e5354dbdd2743fd2191d03b257b2cd28245a1f26264d917d1191eabdd6de0c2",
     response:
       "444e4e27dafce2e0ec8c13b924c4b46dd05d51f72ef1d863c13a22a5ce6f318b",
     recentFacts: "none",
@@ -8767,7 +8772,7 @@ const AGENCY_FLAG_OFF_GOLDEN = new Map<
   }],
   ["game／片段／style 開／thread", {
     messages:
-      "e6d2689a7650d8c675296c079eb307745a00b4f3f0b7f875808b334d2226a202",
+      "fe9bd8bc00a224a8f1ddb1d9929b7feae79d577f5ee391387db365d127627093",
     response:
       "b9e6a7ae6855f33005e763c8490e86ac3aa859e81aee7b78a2437044d328834c",
     recentFacts:

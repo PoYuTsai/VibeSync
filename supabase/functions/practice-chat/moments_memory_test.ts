@@ -117,25 +117,27 @@ export const CHAT_GOLDEN_CASES = [
  * 而直接覆蓋。本次重凍依據：prompt_test 107 綠＋2026-08-29 bakeoff 24 場
  * （軌跡帶與 post-PR2 基準一致、零內部詞洩漏）。
  */
+// 2026-09-09 photoScene：profile 區塊多一行大頭照事實，四筆全部重算；本檔守的
+// 「省略 herRecentMomentsBlock 時逐字相同」性質不受影響（下一個測試仍鎖）。
 const CHAT_PROMPT_GOLDEN_SHA256: ReadonlyArray<readonly [string, string]> = [
   [
     "standard-minimal",
-    "9b6a55f5b4e2fa99e54fca3b66c262e5eb8f6d0cba8ac0afa925dae59d2a7832",
+    "5f07707c698db131295db585b06af08fa4e83914aa3a0b070f3e0d3247f6fdf3",
   ],
   [
     "standard-full",
-    "ca4128d9b27c7186b9dc0bf9954431f371fc3ca8d85a4d8783c9dcca37a9a70c",
+    "c99d96d5719910441ca99a1b1690f54d7cd239efd52200c97406d7f78f192af1",
   ],
   [
     "beginner-full",
-    "65c57a3e6f3bb06efb31558462b6b4c2af2da11b828f90119e840e9d0ad1d8c9",
+    "8dd7f025b47f17c3c3c01c37d8ea73893fbc8b10f0e106ed62a0d751e8105604",
   ],
   [
     "game-full",
     // Phase 4.6 刀 3（2026-09-05）：chat 的 gameSnapshot 補帶 inviteStage，game
     // 場的 speedInviteDirection 從 soft_invite_probe 推成 partner_window_close，
     // 只有這一筆重算；standard／beginner 兩筆逐位元組不變。
-    "d3d561115b0191c41d4811f0fb94aa642928010ad45c35c859e003db670112b4",
+    "36e44b2965b037161dd51db037d4d4d58e5b03961c2b2fab77f4d6b74203643c",
   ],
 ];
 

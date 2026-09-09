@@ -197,6 +197,7 @@ function imageDirective(
   imageCandidates: readonly string[],
   generatedImage: boolean,
   contentKind: MomentContentKind,
+  photoScene: string,
 ): string {
   const opinion = isMomentOpinionKind(contentKind);
   if (generatedImage) {
@@ -228,15 +229,16 @@ function imageDirective(
     // resolveAvailableMomentImages 的保底：候選全部不可用時整批換成自拍
     // sentinel，所以任何題材都可能落到這裡，觀點題材也不例外。目前閘門全開
     // 時實測 0 則，但這是資料狀態不是保證，兩種寫法都先定義好。
+    // 2026-09-08：這張「自拍」就是她的大頭照，場景是之前拍的（023 是巴黎鐵塔前），
+    // 舊指令「照片只是此刻的你」會讓文字把鐵塔寫成此刻所在。兩個分支都改成
+    // 「那張是之前拍的，不是此刻現場」，並把 photoScene 給模型免得文字跟圖打架。
     if (opinion) {
-      return `10. 這一則會配上你自己的照片（一張自拍）。照片只是此刻的你，` +
-        `不是這則要講的事——文字照樣寫你的想法或取捨，不要改成描述自己的樣子或所在的場景。` +
+      return `10. 這一則會配上你自己的大頭照（${photoScene}）。那張是之前拍的，不是此刻現場，` +
+        `也不是這則要講的事——文字照樣寫你的想法或取捨，不要把照片裡的場景寫成你現在在的地方，也不要描述照片本身。` +
         `imageId 必須填 "${SELF_PORTRAIT_IMAGE_ID}"。`;
     }
-    // 圖決定文，不是文決定圖：先讓模型知道會配自拍，文案才不會出現
-    // 「宵夜」配大頭照那種違和。
-    return `10. 這一則會配上你自己的照片（一張自拍）。把文字寫成配得上一張自拍的樣子——` +
-      `講你此刻的狀態、心情或樣子，不要描述一個你人不在畫面裡的場景。` +
+    return `10. 這一則會配上你自己的大頭照（${photoScene}）。那張是之前拍的，不是此刻現場——` +
+      `文字寫你此刻的狀態或心情，不要把照片裡的場景寫成你現在在的地方，也不要描述照片本身。` +
       `imageId 必須填 "${SELF_PORTRAIT_IMAGE_ID}"。`;
   }
   if (opinion) {
@@ -346,7 +348,7 @@ ${girl.professionPrompt}
 7. 不要用開頭問候語、不要加 hashtag、不要寫成廣告或文案。
 8. 結尾不准總結、不准昇華、不准硬轉正能量。真人發廢文不會幫自己的一天下註解。
 9. 不用把事情講完整，破碎一點反而真。標點自由：可以整句沒有句號，可以用空格斷句。
-${imageDirective(imageCandidates, generatedImage, contentKind)}
+${imageDirective(imageCandidates, generatedImage, contentKind, girl.photoScene)}
 11. 這則是「${CONTENT_KIND_LABEL[contentKind]}」：${contentGuidance}
 12. 用自然的台灣繁中口語，刪掉可以省略的鋪墊，直接進那個細節或念頭。不要寫成小作文、論說文或完整起承轉合；少用萬用感悟詞（突然覺得／原來／生活就是／儀式感／小確幸／被治癒／好好生活）。語氣詞與 emoji 只有真的符合這個人時才用，不要每則硬塞。
 
