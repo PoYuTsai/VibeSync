@@ -140,6 +140,7 @@ import {
   hintTrustedFactualEvidence,
   parseHintResult,
 } from "./hint.ts";
+import { partnerPhotoDenialQuotes } from "./conversation_signals.ts";
 import {
   runSingleShot,
   type SingleShotAttemptFailure,
@@ -4532,6 +4533,13 @@ export function createPracticeChatHandler(
             repairTurnCount: debriefAgencyLedger.repairTurnCount,
           },
         }),
+        // 2026-09-10 結構刀 A：她否認自己大頭照的句數（prompt 有點名才有這個
+        // key；沒觸發／game 時整個 key 不存在，golden 不動）。只記數量不記原句。
+        // 一週後看這個欄位的出現率，決定要不要升級成分類器。
+        ...(debriefPracticeMode !== "game" &&
+            partnerPhotoDenialQuotes(request.turns).length > 0
+          ? { photoDenialQuotes: partnerPhotoDenialQuotes(request.turns).length }
+          : {}),
       });
       if (debriefQualityFindingCodes.length > 0) {
         logInfo("practice_chat_debrief_quality_finding", {

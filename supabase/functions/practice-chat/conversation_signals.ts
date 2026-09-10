@@ -103,13 +103,17 @@ export function latestAssistantShowsHostility(
 // 但逐字稿沒序號，直接引原句更好對）。
 //
 // 觸發條件窄：使用者這句提到照片，她緊接的下一句含否認詞。
-// ponytail: 純規則，「妳照片很好看」→「沒有啦」這種客套否認也會中；注入文只叫
-// debrief「對照大頭照事實判定」，誤觸的代價是多一段沒用的提醒，不是錯判。
-// 要抓職業／城市／寵物等非照片事實或提高精度，再升級成分類器。
+// ponytail: 純規則；整句只有「沒有啦」的客套謙辭已排除，但「沒有啦我很醜」這種
+// 帶內容的仍會中，注入文只叫 debrief「對照大頭照事實判定」，誤觸代價是多一段
+// 提醒。要抓職業／城市／寵物等非照片事實或提高精度，再升級成分類器。
 const PHOTO_MENTION = /大頭照|頭像|照片|自拍|那張/u;
 const PHOTO_DENIAL =
   /沒有|不是|認錯|記錯|看錯|亂講|沒去過|沒穿|沒拍|沒戴|哪有|才不|才沒|不對|誤會/u;
 const PHOTO_DENIAL_QUOTE_MAX = 40;
+// 整句只是「沒有啦～」「哪有哈哈」這種客套謙辭（不含任何事實）不算否認——
+// 「妳照片很好看→沒有啦」點名給 debrief 會讓它無中生有寫「她否認照片細節」。
+const PHOTO_MODEST_DEFLECTION =
+  /^(?:沒有|哪有|才沒有?|沒有沒有|哪有哪有)(?:[啦啊呀喔哦欸耶嘛吧哈嘿嘻～~!！。.\s]|xd|XD|lol)*$/u;
 
 /**
  * 她否認自己大頭照細節的原句（依逐字稿順序、去重、各截 40 字）。
@@ -124,6 +128,7 @@ export function partnerPhotoDenialQuotes(
     const cur = turns[i];
     if (cur.role !== "ai" || prev.role !== "user") continue;
     if (!PHOTO_MENTION.test(prev.text) || !PHOTO_DENIAL.test(cur.text)) continue;
+    if (PHOTO_MODEST_DEFLECTION.test(cur.text.trim())) continue;
     const quote = cur.text.replace(/\s+/gu, " ").trim().slice(
       0,
       PHOTO_DENIAL_QUOTE_MAX,

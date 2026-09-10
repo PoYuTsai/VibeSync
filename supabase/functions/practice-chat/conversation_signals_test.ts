@@ -104,6 +104,24 @@ Deno.test("partnerPhotoDenialQuotes：不觸發的形狀 → 空陣列", () => {
     ]).length,
     1, // ponytail: 「沒戴」在她句裡也算否認詞——已知誤觸形狀，注入文只叫 debrief 對照判定
   );
+  // 純客套謙辭（整句沒有任何事實）不算否認；帶內容的仍算
+  for (const modest of ["沒有啦", "哪有～", "沒有啦哈哈", "才沒有！", "沒有沒有 XD"]) {
+    assertEquals(
+      partnerPhotoDenialQuotes([
+        { role: "user", text: "妳大頭照超好看" },
+        { role: "ai", text: modest },
+      ]),
+      [],
+      modest,
+    );
+  }
+  assertEquals(
+    partnerPhotoDenialQuotes([
+      { role: "user", text: "妳大頭照超好看，是在飯店大廳拍的吧" },
+      { role: "ai", text: "沒有啦，那不是飯店" },
+    ]),
+    ["沒有啦，那不是飯店"],
+  );
   assertEquals(partnerPhotoDenialQuotes([]), []);
   assertEquals(
     partnerPhotoDenialQuotes([{ role: "ai", text: "沒有啦" }]),
