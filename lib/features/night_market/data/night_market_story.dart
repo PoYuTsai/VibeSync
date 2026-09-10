@@ -266,7 +266,7 @@ NightMarketScenario buildNightMarketScenario() {
   return const NightMarketScenario(
     id: 'night_market_v2',
     title: '簡易搭訕流程詳解',
-    subtitle: '夜市實戰版：從注意到她到收號，約 2 分鐘、2 個選擇',
+    subtitle: '夜市實戰版：從注意到她到加聯繫方式',
     coverAsset: 'assets/images/night_market/cover.jpg',
     initialBeatId: 's1_notice',
     beats: <NightMarketBeat>[

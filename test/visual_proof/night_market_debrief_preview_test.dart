@@ -4,9 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:vibesync/core/theme/app_theme.dart';
-import 'package:vibesync/features/night_market/data/night_market_story.dart';
-import 'package:vibesync/features/night_market/presentation/screens/night_market_review_screen.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/features/night_market/presentation/screens/night_market_screen.dart';
+import 'package:vibesync/features/night_market/presentation/widgets/night_market_entry_card.dart';
 
 import 'proof_support.dart';
 
@@ -19,7 +21,26 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final captureKey = GlobalKey();
     final theme = AppTheme.darkTheme;
-    await tester.pumpWidget(MaterialApp(
+    final router = GoRouter(routes: [
+      GoRoute(
+        path: '/',
+        builder: (_, __) => Scaffold(
+          backgroundColor: AppColors.brandInk,
+          appBar: AppBar(title: const Text('學習')),
+          body: const Padding(
+            padding: EdgeInsets.all(16),
+            child: NightMarketEntryCard(),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/practice-night-market',
+        builder: (_, __) => const NightMarketScreen(),
+      ),
+    ]);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(
+      routerConfig: router,
       debugShowCheckedModeBanner: false,
       theme: theme.copyWith(
         textTheme: theme.textTheme.apply(fontFamily: 'AppTC'),
@@ -35,11 +56,6 @@ void main() {
           data: MediaQuery.of(context).copyWith(disableAnimations: true),
           child: child!,
         ),
-      ),
-      home: NightMarketReviewScreen(
-        scenario: buildNightMarketScenario(),
-        onRestart: () {},
-        onExit: () {},
       ),
     ));
     await tester.pumpAndSettle();
@@ -63,14 +79,21 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    await tester.runAsync(() => precacheImage(
+          const AssetImage('assets/images/night_market/cover.jpg'),
+          tester.element(find.byType(NightMarketEntryCard)),
+        ));
+    await tester.pumpAndSettle();
+    await capture('night_market_review_entry.png');
+    await tap('查看復盤');
     await capture('night_market_debrief_overview.png');
     await tap('接住感受，建立信任');
     await capture('night_market_debrief_chapter.png');
     await tap('看完整解析');
-    await tester.ensureVisible(find.text('繼續看「同理心陳述＋背景介紹」'));
+    await tester.ensureVisible(find.text('同理心陳述＋背景介紹'));
     await tester.pumpAndSettle();
     await capture('night_market_debrief_expanded.png');
-    await tap('繼續看「同理心陳述＋背景介紹」');
+    await tap('同理心陳述＋背景介紹');
     await capture('night_market_debrief_knowledge.png');
     await tap('下一步怎麼做');
     await capture('night_market_debrief_next_step.png');

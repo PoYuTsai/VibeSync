@@ -106,11 +106,13 @@ class NightMarketReviewExplanation {
     required this.knowledgeId,
     required this.title,
     required this.text,
+    required this.detail,
   });
 
   final String knowledgeId;
   final String title;
   final String text;
+  final String detail;
 }
 
 class NightMarketReviewChapter {

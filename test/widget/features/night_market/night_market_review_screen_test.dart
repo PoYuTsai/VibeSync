@@ -63,12 +63,18 @@ void main() {
     await _show(tester);
     await _tap(tester, find.text('接住感受，建立信任'));
     await _tap(tester, find.text('看完整解析'));
-    await tester.ensureVisible(find.text('繼續看「同理心陳述＋背景介紹」'));
+    final scenario = buildNightMarketScenario();
+    for (final explanation in scenario.reviewChapters[1].explanations) {
+      expect(find.text(explanation.detail), findsOneWidget);
+    }
+    expect(find.text(scenario.reviewById('empathy_background').plain),
+        findsNothing);
+    await tester.ensureVisible(find.text('同理心陳述＋背景介紹'));
     final before = tester
         .state<ScrollableState>(find.byType(Scrollable).first)
         .position
         .pixels;
-    await _tap(tester, find.text('繼續看「同理心陳述＋背景介紹」'));
+    await _tap(tester, find.text('同理心陳述＋背景介紹'));
     final button = find.ancestor(
         of: find.text('下一步怎麼做'),
         matching: find.byWidgetPredicate((widget) => widget is FilledButton));
@@ -101,7 +107,7 @@ void main() {
     await _tap(tester, find.text('下一段解析'));
     expect(find.text('片段解析 6／6'), findsOneWidget);
     await _tap(tester, find.text('回復盤總覽'));
-    expect(find.text('把剛才的互動看懂'), findsOneWidget);
+    expect(find.text('把這段互動看懂'), findsOneWidget);
     expect(find.text('知識詳解'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -112,7 +118,7 @@ void main() {
     await _tap(tester, find.text('接住感受，建立信任'));
     await _tap(tester, find.text('看完整解析'));
     expect(tester.takeException(), isNull);
-    await _tap(tester, find.text('繼續看「同理心陳述＋背景介紹」'));
+    await _tap(tester, find.text('同理心陳述＋背景介紹'));
     await _tap(tester, find.text('下一步怎麼做'));
     await tester.ensureVisible(find.text(
         buildNightMarketScenario().reviewById('empathy_background').practice));

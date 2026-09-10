@@ -52,7 +52,7 @@ class NightMarketReviewScreen extends StatelessWidget {
         icon: const Icon(Icons.close),
       ),
       children: [
-        const _Heading('把剛才的互動看懂'),
+        const _Heading('把這段互動看懂'),
         const _Paragraph('從走過去到收尾，回看每一步為什麼這樣接。'
             '也留意貫穿全程的潛溝通：態度、眼神與肢體。'),
         const SizedBox(height: 16),
@@ -188,7 +188,6 @@ class _ChapterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final index = scenario.reviewChapters.indexOf(chapter);
-    final primaryIds = chapter.explanations.map((e) => e.knowledgeId).toSet();
     return _ReadingPage(
       title: '片段解析 ${index + 1}／${scenario.reviewChapters.length}',
       children: [
@@ -218,21 +217,9 @@ class _ChapterScreen extends StatelessWidget {
         RevealPill(
           label: '看完整解析',
           children: [
-            for (final id in primaryIds) ...[
-              _Heading(scenario.reviewById(id).term, small: true),
-              _Paragraph(scenario.reviewById(id).plain),
-              if (scenario.reviewById(id).detail case final detail?)
-                _Paragraph(detail),
-              _NavigationRow(
-                title: '繼續看「${scenario.reviewById(id).term}」',
-                onTap: () => _openKnowledge(
-                  context,
-                  scenario,
-                  scenario.reviewById(id),
-                  onChapter,
-                  originChapterId: chapter.id,
-                ),
-              ),
+            for (final explanation in chapter.explanations) ...[
+              _Heading(explanation.title.split('｜').first, small: true),
+              _Paragraph(explanation.detail),
               const SizedBox(height: 8),
             ],
           ],
@@ -308,9 +295,9 @@ class _KnowledgeScreen extends StatelessWidget {
             ],
             const _Heading('下次可以這樣練', small: true),
             _Paragraph(item.practice),
-            if (item.sceneNote case final scene?) ...[
+            if (originChapterId == null && item.sceneNote != null) ...[
               const _Heading('對照這次互動', small: true),
-              _Paragraph(scene),
+              _Paragraph(item.sceneNote!),
             ],
           ],
         ),
