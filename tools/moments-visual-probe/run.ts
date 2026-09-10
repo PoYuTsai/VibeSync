@@ -19,6 +19,17 @@ import {
   buildImagePrompt,
   momentImageSeed,
 } from "../../supabase/functions/practice-chat/moments_image_gen.ts";
+
+/** 2026-09-10 前 production 的全站前綴（已從 production 移除，這裡留作 V1 對照基準）。 */
+const LEGACY_STYLE_PREFIX =
+  "Amateur smartphone photograph, taken casually with one hand. " +
+  "No people in frame: no faces, no hands, no body parts, no silhouettes. " +
+  "No readable text anywhere: no signage, no labels, no logos, no screens with UI. " +
+  "Everyday life in Taipei, Taiwan, present day. Natural available light, soft and " +
+  "slightly warm color, gentle contrast with lifted shadows, mild lens softness and " +
+  "fine sensor grain. Slightly imperfect framing, lived-in and unstaged. Photorealistic. " +
+  "Keep the main subject inside the central 4:3 area of the frame; leave the far left " +
+  "and far right edges empty.";
 import { MOMENT_IMAGE_SIZE_PRESET } from "../../supabase/functions/practice-chat/moments_constants.ts";
 
 const OUT = new URL("./out/", import.meta.url).pathname;
@@ -27,37 +38,33 @@ const DRY = Deno.args.includes("--dry-run");
 
 /** 手寫場景：只有主體與場域，不帶鏡頭／光線／城市。 */
 const SCENES = [
-  { id: "coffee", scene: "A partly finished coffee in a plain ceramic cup on a cafe counter." },
-  { id: "street", scene: "A narrow street corner after rain, wet pavement and a row of parked scooters along the curb." },
-  { id: "desk", scene: "A work desk with an open notebook, a pen, and a few loose sheets of paper, some crumpled." },
-  { id: "dinner", scene: "A simple home dinner: a bowl of rice with a fried egg on top and a small side dish on a kitchen table." },
+  {
+    id: "coffee",
+    scene: "A partly finished coffee in a plain ceramic cup on a cafe counter.",
+  },
+  {
+    id: "street",
+    scene:
+      "A narrow street corner after rain, wet pavement and a row of parked scooters along the curb.",
+  },
+  {
+    id: "desk",
+    scene:
+      "A work desk with an open notebook, a pen, and a few loose sheets of paper, some crumpled.",
+  },
+  {
+    id: "dinner",
+    scene:
+      "A simple home dinner: a bowl of rice with a fried egg on top and a small side dish on a kitchen table.",
+  },
 ] as const;
 
-/** 報告 §4.4 前三位；拍法句＝一個取景習慣＋一個處理習慣。 */
+/** 報告 §4.4 前三位；V2 拍法句由 production 的 momentVisualRecipe 決定。 */
 const PROFILES = [
-  {
-    id: "practice_girl_004",
-    name: "Mia",
-    recipe: "An oblique close view with the subject slightly off-center, showing its used state and texture. Clear local contrast and neutral color under ordinary available light.",
-  },
-  {
-    id: "practice_girl_005",
-    name: "Chloe",
-    recipe: "A medium view with the subject toward one side, using an edge or line in the scene as a simple graphic element, with some empty space. Clean, uncluttered, restrained color, natural contrast.",
-  },
-  {
-    id: "practice_girl_002",
-    name: "Ivy",
-    recipe: "An eye-level view keeping a bit of the surrounding environment, casually framed a little off-center. Daylight-like color with clear, slightly saturated hues.",
-  },
+  { id: "practice_girl_004", name: "Mia" },
+  { id: "practice_girl_005", name: "Chloe" },
+  { id: "practice_girl_002", name: "Ivy" },
 ] as const;
-
-const HARD =
-  "Photorealistic everyday photograph. No people, faces, hands, body parts or silhouettes. No readable text, logos, watermarks or recognizable screen interfaces.";
-
-function v2Prompt(scene: string, recipe: string): string {
-  return `${scene}\n${recipe}\n${HARD}`;
-}
 
 async function falKey(): Promise<string> {
   const env = Deno.env.get("FAL_API_KEY");
@@ -66,20 +73,30 @@ async function falKey(): Promise<string> {
   return (await Deno.readTextFile(`${home}/.config/fal/key`)).trim();
 }
 
-async function generateUrl(key: string, prompt: string, seed: number): Promise<string> {
-  const res = await fetch("https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image", {
-    method: "POST",
-    headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt,
-      image_size: MOMENT_IMAGE_SIZE_PRESET,
-      num_images: 1,
-      max_images: 1,
-      enable_safety_checker: true,
-      seed,
-    }),
-    signal: AbortSignal.timeout(60_000),
-  });
+async function generateUrl(
+  key: string,
+  prompt: string,
+  seed: number,
+): Promise<string> {
+  const res = await fetch(
+    "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Key ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt,
+        image_size: MOMENT_IMAGE_SIZE_PRESET,
+        num_images: 1,
+        max_images: 1,
+        enable_safety_checker: true,
+        seed,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
   if (!res.ok) throw new Error(`fal_http_${res.status}`);
   const json = await res.json() as { images?: { url?: string }[] };
   const url = json.images?.[0]?.url;
@@ -102,12 +119,32 @@ const md: string[] = [`# Step 0 探針 prompt 清單（${ISO_DATE}）`, ""];
 PROFILES.forEach((p, pi) => {
   SCENES.forEach((s, si) => {
     const seed = momentImageSeed(p.id, ISO_DATE, si, 1);
-    const v1 = buildImagePrompt(s.scene);
-    const v2 = v2Prompt(s.scene, p.recipe);
-    const base = `${String(pi * 8 + si * 2).padStart(2, "0")}_${p.name}_${s.id}`;
+    const v1 = `${LEGACY_STYLE_PREFIX}\n\n${s.scene}`;
+    const v2 = buildImagePrompt(s.scene, p.id);
+    const base = `${
+      String(pi * 8 + si * 2).padStart(2, "0")
+    }_${p.name}_${s.id}`;
     jobs.push({ file: `${base}_v1`, prompt: v1, seed });
-    jobs.push({ file: `${String(pi * 8 + si * 2 + 1).padStart(2, "0")}_${p.name}_${s.id}_v2`, prompt: v2, seed });
-    md.push(`## ${p.name} × ${s.id}（seed ${seed}）`, "", "V1:", "```", v1, "```", "V2:", "```", v2, "```", "");
+    jobs.push({
+      file: `${
+        String(pi * 8 + si * 2 + 1).padStart(2, "0")
+      }_${p.name}_${s.id}_v2`,
+      prompt: v2,
+      seed,
+    });
+    md.push(
+      `## ${p.name} × ${s.id}（seed ${seed}）`,
+      "",
+      "V1:",
+      "```",
+      v1,
+      "```",
+      "V2:",
+      "```",
+      v2,
+      "```",
+      "",
+    );
   });
 });
 await Deno.writeTextFile(`${OUT}prompts.md`, md.join("\n"));
@@ -133,7 +170,9 @@ for (const job of jobs) {
     if (!url) {
       if (REDOWNLOAD) throw new Error("no_url_recorded");
       url = await generateUrl(key, job.prompt, job.seed);
-      await Deno.writeTextFile(urlsPath, `${job.file}\t${url}\n`, { append: true });
+      await Deno.writeTextFile(urlsPath, `${job.file}\t${url}\n`, {
+        append: true,
+      });
     }
     const bytes = await download(url);
     const path = `${OUT}${job.file}.${ext(bytes)}`;
@@ -141,7 +180,11 @@ for (const job of jobs) {
     log.push(`${job.file}\tok\t${bytes.byteLength}B\t${Date.now() - t0}ms`);
     console.log(log.at(-1));
   } catch (e) {
-    log.push(`${job.file}\tFAIL\t${e instanceof Error ? e.message : String(e)}\t${Date.now() - t0}ms`);
+    log.push(
+      `${job.file}\tFAIL\t${e instanceof Error ? e.message : String(e)}\t${
+        Date.now() - t0
+      }ms`,
+    );
     console.log(log.at(-1));
   }
 }

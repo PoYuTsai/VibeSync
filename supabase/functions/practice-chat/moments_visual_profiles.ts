@@ -11,7 +11,7 @@
 // 拍法不描述主體與地點（那是場景句的事），也不能覆蓋貼文事實。
 import { fnv1a } from "./moments_schedule.ts";
 
-/** 取景習慣：四種都不預設主體種類，咖啡杯到海邊都套得上。 */
+/** 取景習慣：四種都不指定主體是什麼；第 0 種偏物件，海景會少一點貼切。 */
 const SHOTS = [
   // 0 斜側近拍：主體狀態與質地
   "An oblique close view with the subject slightly off-center, showing its used state and texture.",
@@ -44,15 +44,15 @@ const STYLES = [
 /** 人工指定：[取景, 處理]；其餘角色由 hash 決定。 */
 const OVERRIDES: Readonly<Record<string, readonly [number, number]>> = {
   practice_girl_002: [2, 3], // Ivy：平視帶環境、日光色
-  practice_girl_003: [1, 0], // Zoe：生活痕跡、適量背景
+  practice_girl_003: [1, 0], // Zoe：偏位中景、原色
   practice_girl_004: [0, 5], // Mia：近拍主體狀態、高反差
   practice_girl_005: [1, 2], // Chloe：線條、偏位、留白
-  practice_girl_068: [3, 3], // Flora：彩色小物、俯斜拍
-  practice_girl_071: [2, 4], // Luna：中遠景、光影與環境
-  practice_girl_073: [0, 1], // Noelle：食材質地、暖
-  practice_girl_074: [2, 0], // Sasha：平視、偶發生活細節
-  practice_girl_081: [0, 2], // Aileen：花材色塊、乾淨
-  practice_girl_097: [2, 5], // Hana：開闊景別、亮暗分明
+  practice_girl_068: [3, 3], // Flora：稍微俯視、日光色
+  practice_girl_071: [2, 4], // Luna：平視帶環境、低飽和
+  practice_girl_073: [0, 1], // Noelle：斜側近拍質地、暖
+  practice_girl_074: [2, 0], // Sasha：平視帶環境、原色
+  practice_girl_081: [0, 2], // Aileen：斜側近拍、乾淨
+  practice_girl_097: [2, 5], // Hana：平視帶環境、亮暗分明
 };
 
 /** 這位角色拍照的一句話；同 profileId 永遠同一句。 */

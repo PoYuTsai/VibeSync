@@ -20,6 +20,7 @@ async function read(name: string): Promise<string> {
 const momentsHandler = await read("moments_handler.ts");
 const momentsPrompt = await read("moments_prompt.ts");
 const momentsImageGen = await read("moments_image_gen.ts");
+const momentsVisualProfiles = await read("moments_visual_profiles.ts");
 const momentsValidate = await read("moments_validate.ts");
 const practiceHandler = await read("handler.ts");
 const migration = await Deno.readTextFile(
@@ -42,7 +43,8 @@ function withoutComments(source: string): string {
 
 const executableHandler = withoutComments(momentsHandler);
 const executablePrompt = withoutComments(momentsPrompt);
-const executableImageGen = withoutComments(momentsImageGen);
+const executableImageGen = withoutComments(momentsImageGen) + "\n" +
+  withoutComments(momentsVisualProfiles);
 
 Deno.test("生成失敗一定走 release，而且 release 是真的 RPC 呼叫", () => {
   assert(executableHandler.includes('"release_practice_moment_slot"'));

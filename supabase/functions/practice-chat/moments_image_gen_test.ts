@@ -96,6 +96,14 @@ Deno.test("題材模板句涵蓋排程 inventory 的每一個 themeId", () => {
   );
 });
 
+Deno.test("模板句不得殘留全站風格詞（風格由角色拍法決定）", () => {
+  const stale = /\b(soft|warm|cozy|relaxed|gentle|Taipei)\b/;
+  for (const id of coveredThemeIds()) {
+    assert(!stale.test(themeSceneLine(id)), `${id} 殘留風格詞`);
+  }
+  assert(!stale.test(themeSceneLine("theme_not_yet_invented")));
+});
+
 Deno.test("每一條模板句本身通過場景句驗證", () => {
   for (const id of coveredThemeIds()) {
     validateSceneLine(themeSceneLine(id)); // 不合格會 throw
@@ -144,7 +152,7 @@ Deno.test("完整 prompt = 場景句 → 角色拍法 → 硬限制；硬限制�
     }\n${MOMENT_IMAGE_HARD_RULES}`,
   );
   assert(MOMENT_IMAGE_HARD_RULES.includes("No people"));
-  assert(MOMENT_IMAGE_HARD_RULES.includes("No readable text"));
+  assert(MOMENT_IMAGE_HARD_RULES.includes("No readable text, signage, labels"));
   // 舊全站風格詞不得再回到共用段（tools/moments-visual-probe/results.md）。
   for (const stale of ["Taipei", "warm", "soft", "grain", "central 4:3"]) {
     assert(!MOMENT_IMAGE_HARD_RULES.includes(stale), `硬限制不得含 ${stale}`);
@@ -170,6 +178,24 @@ Deno.test("角色拍法：同人永遠同一句、全名冊合法、十位人工
   assert(momentVisualRecipe("practice_girl_002").startsWith("An eye-level"));
   // 不是人人一句：至少有 8 種不同拍法在名冊裡出現。
   assert(new Set(seen.values()).size >= 8);
+  // hash 角色的拍法跨版本釘住：改 hash、改陣列順序或長度都會讓 90 位一起
+  // 換拍法，這三句一變就要有人知道。每句都必須是「取景句＋處理句」。
+  for (const recipe of seen.values()) {
+    assert(/^(An oblique|A medium|An eye-level|A view from) /.test(recipe));
+    assert(!recipe.includes("undefined"));
+  }
+  assertEquals(
+    momentVisualRecipe("practice_girl_001"),
+    "A view from slightly above, looking down at the subject where that suits it, with the surface or ground around it. Slightly desaturated, natural tonal range, observational.",
+  );
+  assertEquals(
+    momentVisualRecipe("practice_girl_007"),
+    "A medium view with the subject toward one side, using an edge or line in the scene as a simple graphic element, with some empty space. Slightly soft detail with fine grain and natural color.",
+  );
+  assertEquals(
+    momentVisualRecipe("practice_girl_050"),
+    "A medium view with the subject toward one side, using an edge or line in the scene as a simple graphic element, with some empty space. Neutral color, ordinary exposure, nothing stylized.",
+  );
 });
 
 Deno.test("物件 key 以 token 隔離且 seed 是決定論", () => {
