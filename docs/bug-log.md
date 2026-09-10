@@ -10,6 +10,17 @@
 
 ## 2026-09
 
+### [2026-09-10] 練習室 debrief 把「她講錯大頭照、使用者講對」反扣在使用者頭上
+
+**Symptom**: 黑箱 `tools/practice-debrief-photo-evidence-blackbox`（10 場手寫劇本：使用者正確引用 photoScene，她自己否認）10/10 全中：debrief 一律採信她的否認台詞為事實，把使用者講對的細節寫成「誤認」「記錯」「查戶口」「像不信任她的話」，`suggestedLine` 教他為真話道歉（「我記錯了」）。無一場質疑她的台詞是否與人物設定一致。對應 2026-09-08 真機 Fiona 巴黎鐵塔案的 debrief 面。
+
+**Root Cause**: `DEBRIEF_SYSTEM_PROMPT` 寫「她是真實主體」「她的個資不可改成使用者事實」，`debriefProfileEvidence()` 雖有「她的大頭照：…」但沒有任何一句說人物設定是逐字稿之上的事實基準；逐字稿裡她一否認，模型二選一就選逐字稿的她。9/9 那刀只修 chat 側（她會承認），debrief 側完全沒動，舊場次與模型偶爾不服從都會漏到這裡。
+
+**Fix**: `debriefProfileEvidence()` 非 game 分支在大頭照行後加一行 `DEBRIEF_PROFILE_FACT_BASELINE_LINE`（人物設定與大頭照是事實基準；她講錯不是使用者記錯或查戶口；講對算觀察仔細；不教為真話道歉）；`PRACTICE_PROMPT_POLICY_VERSION` 升 `2026-09-10.debrief-fact`。同一支黑箱三個位置各跑 10 場（Sonnet 5 真呼叫）：證據區 watchouts 反扣 10→約 5、fiona 頭條改寫成「她講錯地點」；併 system「她是真實主體」bullet 約 8（更差）；逐字稿正前方約 7（suggestedLine 教認錯降到 4/10）。三刀都在雜訊帶內，取頭條修最好的證據區位置收工。**殘留**：約半數 watchouts 仍用「查戶口」描述使用者堅持真話，suggestedLine 幾乎都教「算我眼花」帶過；prompt 指令對這題有天花板，真修法是結構刀（server 偵測她對照片／人設的否認、把「她在第 N 句講錯」當硬證據注入），本輪不開。
+
+**Prevention**: `prompt_test.ts` 鎖該行緊跟大頭照行且 game compact 不帶；`agency_flag_off_equivalence_test.ts` golden 在本樹重印對拍（4 案 debrief messages＋telemetry 變、164 案只 telemetry、11 案錯誤路徑零位元差、`response`／`rpc` 全 179 案不變）。三輪原始卡片留在黑箱目錄 `results*.md`（未進版控）。
+
+
 ### [2026-09-08] AI 實戰練習室的她把巴黎鐵塔前的大頭照說成「淡水河邊拍的」
 
 **Symptom**: 真機（iPhone，2026-09-08 19:49–19:52）與 Fiona（`practice_girl_023`，挑戰難度）對話：「你去過法國嗎」→「沒去過」；「可是你大頭照不是就是在巴黎艾菲爾鐵塔」→「那是淡水河邊拍的啦」；追問後「哈哈 被你發現了」；「所以巴黎好玩嗎」→「我沒去過怎麼知道好不好玩」。三句互相矛盾，使用者講的是對的反而被否定；升溫條 19→20→20 沒把這段當異常。

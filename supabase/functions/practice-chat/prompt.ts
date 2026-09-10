@@ -104,7 +104,9 @@ export interface ChatMessage {
  */
 // 2026-09-09.photo：profile 區塊注入她的大頭照事實（photoScene），chat／hint／
 // debrief 都看得到；真機案例與規格見 `docs/bug-log.md` 2026-09-08 條目。
-export const PRACTICE_PROMPT_POLICY_VERSION = "2026-09-09.photo";
+// 2026-09-10.debrief-fact：debrief 角色證據補「人物設定是事實基準」一行，她講錯
+// 大頭照時不再反扣使用者；黑箱 `tools/practice-debrief-photo-evidence-blackbox`。
+export const PRACTICE_PROMPT_POLICY_VERSION = "2026-09-10.debrief-fact";
 
 const LEGACY_PARTNER_STATE_NO_LEAK_MARKER =
   "\u4E0D\u8981\u76F4\u63A5\u8AAA\u51FA partnerState";
@@ -1306,6 +1308,19 @@ function compactProfileList(values: readonly string[], limit = 2): string {
   return values.slice(0, limit).join("、");
 }
 
+/**
+ * 2026-09-10 debrief 事實基準：黑箱 10/10 把「她講錯大頭照、使用者講對」反扣在
+ * 使用者頭上（誤認／查戶口／教他為真話道歉）。根因是 debrief 只說「她是真實
+ * 主體」「個資不可改成使用者事實」，沒說人物設定是逐字稿之上的事實基準。
+ * 同一支黑箱三個位置各 10 場：這裡（緊跟大頭照行）watchouts 反扣 10→約 5、
+ * 頭條 fiona 案改寫成「她講錯地點」；併進 system「她是真實主體」bullet 約 8；
+ * 放逐字稿正前方約 7。三者都在雜訊帶內，prompt 指令有天花板，取實測最好的
+ * 位置收工；suggestedLine 仍多教「算我眼花」帶過，結構刀待議。
+ * 只加在非 game 分支（game compact 本來就不帶大頭照，判不了）。
+ */
+export const DEBRIEF_PROFILE_FACT_BASELINE_LINE =
+  "上述人物設定與大頭照是本場事實基準。逐字稿裡她若否認或講錯與之相符的細節，是她講錯，不是使用者記錯或查戶口；使用者講對要算他觀察仔細，不要教他為真話道歉，只教他怎麼輕鬆帶過。";
+
 function debriefProfileEvidence(
   profile: PracticeProfile,
   compactForGame: boolean,
@@ -1318,6 +1333,7 @@ function debriefProfileEvidence(
         g.interestTags.join("、")
       }；生活：${g.lifestyleTags.join("、")}。`,
       `她的大頭照：${g.photoScene}。`,
+      DEBRIEF_PROFILE_FACT_BASELINE_LINE,
       `她喜歡：${r.likes.join("、")}。她不喜歡：${r.dislikes.join("、")}。`,
       `會讓她變熱：${r.warmsWhen.join("、")}。會讓她變冷：${
         r.coolsWhen.join("、")

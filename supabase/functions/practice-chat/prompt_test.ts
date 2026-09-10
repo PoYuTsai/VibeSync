@@ -12,6 +12,7 @@ import {
   CHAT_SYSTEM_PROMPT,
   chatSystemPromptFor,
   DEBRIEF_SYSTEM_PROMPT,
+  DEBRIEF_PROFILE_FACT_BASELINE_LINE,
   PHOTO_SCENE_LINE_PREFIX,
   PHOTO_SCENE_LINE_SUFFIX,
 } from "./prompt.ts";
@@ -3393,4 +3394,12 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     { practiceMode: "game", temperatureScore: 20 },
   ).map((m) => m.content).join("\n");
   assertEquals(gameDebrief.includes("她的大頭照"), false);
+  // 2026-09-10：事實基準行緊跟大頭照行（非 game，黑箱三個位置實測最好）；game 不帶。
+  assert(
+    debrief.includes(
+      `她的大頭照：${profile.girl.photoScene}。\n${DEBRIEF_PROFILE_FACT_BASELINE_LINE}`,
+    ),
+    "debrief 缺事實基準行或位置不在大頭照行之後",
+  );
+  assertEquals(gameDebrief.includes(DEBRIEF_PROFILE_FACT_BASELINE_LINE), false);
 });
