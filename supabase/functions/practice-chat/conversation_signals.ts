@@ -95,3 +95,40 @@ export function latestAssistantShowsHostility(
     ].some((pattern) => pattern.test(text));
   });
 }
+
+// ── 2026-09-10 她否認自己大頭照細節（debrief 結構證據） ────────────────────
+// 黑箱 10/10：使用者正確引用 photoScene、她自己否認，debrief 反扣使用者
+// 「查戶口／不信任她」。抽象規則三個位置各 10 場只壓到 5～8/10，改走結構刀：
+// server 把她否認照片的原句點名給 debrief（同 agency ledger「第 N 則」的形狀，
+// 但逐字稿沒序號，直接引原句更好對）。
+//
+// 觸發條件窄：使用者這句提到照片，她緊接的下一句含否認詞。
+// ponytail: 純規則，「妳照片很好看」→「沒有啦」這種客套否認也會中；注入文只叫
+// debrief「對照大頭照事實判定」，誤觸的代價是多一段沒用的提醒，不是錯判。
+// 要抓職業／城市／寵物等非照片事實或提高精度，再升級成分類器。
+const PHOTO_MENTION = /大頭照|頭像|照片|自拍|那張/u;
+const PHOTO_DENIAL =
+  /沒有|不是|認錯|記錯|看錯|亂講|沒去過|沒穿|沒拍|沒戴|哪有|才不|才沒|不對|誤會/u;
+const PHOTO_DENIAL_QUOTE_MAX = 40;
+
+/**
+ * 她否認自己大頭照細節的原句（依逐字稿順序、去重、各截 40 字）。
+ * 空陣列＝沒觸發，呼叫端必須保持 prompt 逐位元組不變。
+ */
+export function partnerPhotoDenialQuotes(
+  turns: readonly { role: "user" | "ai"; text: string }[],
+): string[] {
+  const quotes: string[] = [];
+  for (let i = 1; i < turns.length; i++) {
+    const prev = turns[i - 1];
+    const cur = turns[i];
+    if (cur.role !== "ai" || prev.role !== "user") continue;
+    if (!PHOTO_MENTION.test(prev.text) || !PHOTO_DENIAL.test(cur.text)) continue;
+    const quote = cur.text.replace(/\s+/gu, " ").trim().slice(
+      0,
+      PHOTO_DENIAL_QUOTE_MAX,
+    );
+    if (quote.length > 0 && !quotes.includes(quote)) quotes.push(quote);
+  }
+  return quotes;
+}

@@ -13,6 +13,7 @@ import {
   chatSystemPromptFor,
   DEBRIEF_SYSTEM_PROMPT,
   DEBRIEF_PROFILE_FACT_BASELINE_LINE,
+  debriefPhotoDenialPrompt,
   PHOTO_SCENE_LINE_PREFIX,
   PHOTO_SCENE_LINE_SUFFIX,
 } from "./prompt.ts";
@@ -3402,4 +3403,31 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     "debrief 缺事實基準行或位置不在大頭照行之後",
   );
   assertEquals(gameDebrief.includes(DEBRIEF_PROFILE_FACT_BASELINE_LINE), false);
+
+  // 2026-09-10 結構刀：她否認照片 → 非 game 在角色證據區之後點名她的原句；沒觸發逐位元組不變；game 不注入。
+  const denialTurns: PracticeTurn[] = [
+    { role: "user", text: "妳大頭照是去巴黎鐵塔前野餐拍的吧？" },
+    { role: "ai", text: "巴黎？我沒去過巴黎啊，那是淡水河邊拍的。" },
+  ];
+  const note = debriefPhotoDenialPrompt(denialTurns);
+  assert(note.includes("「巴黎？我沒去過巴黎啊，那是淡水河邊拍的。」"));
+  assertEquals(debriefPhotoDenialPrompt(denialTurns.slice(0, 1)), "");
+  const denialDebrief = buildDebriefMessages(denialTurns, profile, {
+    practiceMode: "standard",
+    temperatureScore: 20,
+  }).map((m) => m.content).join("\n");
+  // 點名段接在整個角色證據區之後（事實基準行之後、partnerState 之前）。
+  assert(
+    denialDebrief.indexOf(note) >
+      denialDebrief.indexOf(DEBRIEF_PROFILE_FACT_BASELINE_LINE),
+    "否認句點名沒在事實基準行之後",
+  );
+  assert(denialDebrief.includes(`${note}\n\n`));
+  assert(!debrief.includes("否認自己大頭照細節的句子"));
+  const denialGame = buildDebriefMessages(
+    denialTurns,
+    resolvePracticeProfile({ profileId: "practice_girl_023" }),
+    { practiceMode: "game", temperatureScore: 20 },
+  ).map((m) => m.content).join("\n");
+  assert(!denialGame.includes("否認自己大頭照細節的句子"));
 });

@@ -4,6 +4,7 @@
 
 import type { AppliedHintTurn, PracticeTurn } from "./validate.ts";
 import type { DebriefAgencyLedger } from "./agency_coaching.ts";
+import { partnerPhotoDenialQuotes } from "./conversation_signals.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import {
   renderPersonalBaselinePrompt,
@@ -1321,6 +1322,20 @@ function compactProfileList(values: readonly string[], limit = 2): string {
 export const DEBRIEF_PROFILE_FACT_BASELINE_LINE =
   "上述人物設定與大頭照是本場事實基準。逐字稿裡她若否認或講錯與之相符的細節，是她講錯，不是使用者記錯或查戶口；使用者講對要算他觀察仔細，不要教他為真話道歉，只教他怎麼輕鬆帶過。";
 
+/**
+ * 2026-09-10 結構刀：她否認自己大頭照的原句點名給 debrief（同 agency ledger 的
+ * 形狀）。沒觸發回空字串＝prompt 逐位元組不變；game compact 不帶大頭照，不注入。
+ */
+export function debriefPhotoDenialPrompt(
+  turns: readonly PracticeTurn[],
+): string {
+  const quotes = partnerPhotoDenialQuotes(turns);
+  if (quotes.length === 0) return "";
+  return `\n她在逐字稿裡否認自己大頭照細節的句子：${
+    quotes.map((q) => `「${q}」`).join("")
+  }。請拿這些句子逐一對照上面「她的大頭照」：使用者說的若與大頭照相符，就是他講對、她講錯；這種情況 summary／watchouts 不得寫他誤認、記錯、查戶口或不信任她，suggestedLine 不教他說「我記錯／看錯／眼花」，改教他不否定自己看到的、輕鬆帶開。`;
+}
+
 function debriefProfileEvidence(
   profile: PracticeProfile,
   compactForGame: boolean,
@@ -1628,6 +1643,8 @@ export function buildDebriefMessages(
         "\n\n" +
         `${
           debriefProfileEvidence(profile, options.practiceMode === "game")
+        }${
+          options.practiceMode === "game" ? "" : debriefPhotoDenialPrompt(turns)
         }\n\n` +
         `${compactDebriefPartnerStatePrompt(options.partnerState)}\n\n` +
         `這是這場練習的逐字稿（「你」是學員、「她」是模擬對象）：\n\n${transcript}\n\n` +

@@ -18,7 +18,9 @@
 
 **Fix**: `debriefProfileEvidence()` 非 game 分支在大頭照行後加一行 `DEBRIEF_PROFILE_FACT_BASELINE_LINE`（人物設定與大頭照是事實基準；她講錯不是使用者記錯或查戶口；講對算觀察仔細；不教為真話道歉）；`PRACTICE_PROMPT_POLICY_VERSION` 升 `2026-09-10.debrief-fact`。同一支黑箱三個位置各跑 10 場（Sonnet 5 真呼叫）：證據區 watchouts 反扣 10→約 5、fiona 頭條改寫成「她講錯地點」；併 system「她是真實主體」bullet 約 8（更差）；逐字稿正前方約 7（suggestedLine 教認錯降到 4/10）。三刀都在雜訊帶內，取頭條修最好的證據區位置收工。**殘留**：約半數 watchouts 仍用「查戶口」描述使用者堅持真話，suggestedLine 幾乎都教「算我眼花」帶過；prompt 指令對這題有天花板，真修法是結構刀（server 偵測她對照片／人設的否認、把「她在第 N 句講錯」當硬證據注入），本輪不開。
 
-**Prevention**: `prompt_test.ts` 鎖該行緊跟大頭照行且 game compact 不帶；`agency_flag_off_equivalence_test.ts` golden 在本樹重印對拍（4 案 debrief messages＋telemetry 變、164 案只 telemetry、11 案錯誤路徑零位元差、`response`／`rpc` 全 179 案不變）。三輪原始卡片留在黑箱目錄 `results*.md`（未進版控）。
+**Fix 2（同日結構刀 A）**: `conversation_signals.ts` 新增 `partnerPhotoDenialQuotes()`（純規則：使用者句含「大頭照／頭像／照片／自拍／那張」＋她緊接的下一句含否認詞），`prompt.ts` 的 `debriefPhotoDenialPrompt()` 在非 game 的角色證據區之後把她否認的原句點名給 debrief（同 agency ledger「第 N 則」的形狀；逐字稿沒序號所以引原句）。沒觸發＝prompt 逐位元組不變、golden 全部不動。同一支黑箱 10 場：反扣降到約 2–3/10，summary 翻成「她否認大頭照細節、你退讓太快」「堅持觀察對的細節」；suggestedLine 教認錯約 4/10（多為玩笑式）。已知誤觸：「妳照片很好看→沒有啦」也會點名，代價只是多一段叫 debrief 對照判定的提醒。非照片事實（職業／城市／寵物）與精度要再升級成分類器。
+
+**Prevention**: `conversation_signals_test.ts` 鎖觸發／不觸發形狀與截 40 字去重；`prompt_test.ts` 鎖該行緊跟大頭照行且 game compact 不帶、否認句點名在事實基準行之後、沒觸發不注入、game 不注入；`agency_flag_off_equivalence_test.ts` golden 在本樹重印對拍（4 案 debrief messages＋telemetry 變、164 案只 telemetry、11 案錯誤路徑零位元差、`response`／`rpc` 全 179 案不變）。三輪原始卡片留在黑箱目錄 `results*.md`（未進版控）。
 
 
 ### [2026-09-08] AI 實戰練習室的她把巴黎鐵塔前的大頭照說成「淡水河邊拍的」

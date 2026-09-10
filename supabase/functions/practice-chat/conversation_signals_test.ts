@@ -2,7 +2,10 @@ import {
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { latestAssistantShowsHostility } from "./conversation_signals.ts";
+import {
+  latestAssistantShowsHostility,
+  partnerPhotoDenialQuotes,
+} from "./conversation_signals.ts";
 
 Deno.test("hostility signal accepts direct exit boundaries", () => {
   for (
@@ -56,4 +59,54 @@ Deno.test("hostility signal keeps direct-speaker colon boundaries", () => {
   for (const text of ["我說：不要再聯絡我", "先說清楚：不要再聯絡我"]) {
     assertEquals(latestAssistantShowsHostility(text), true, text);
   }
+});
+
+// ── 2026-09-10 她否認自己大頭照細節 ────────────────────────────────────────
+
+Deno.test("partnerPhotoDenialQuotes：使用者提照片、她下一句否認 → 引她原句，依序去重截 40 字", () => {
+  const long = "巴黎？我沒去過巴黎啊，那是淡水河邊拍的。" + "真的啦".repeat(20);
+  assertEquals(
+    partnerPhotoDenialQuotes([
+      { role: "ai", text: "今天上完瑜珈課，整個人很放鬆" },
+      { role: "user", text: "妳大頭照是去巴黎鐵塔前野餐拍的吧？" },
+      { role: "ai", text: long },
+      { role: "user", text: "可是真的很像巴黎欸" },
+      { role: "ai", text: "就說不是了，你認錯人了" },
+      { role: "user", text: "妳頭像那張" },
+      { role: "ai", text: "就說不是了，你認錯人了" },
+    ]),
+    [long.slice(0, 40), "就說不是了，你認錯人了"],
+  );
+});
+
+Deno.test("partnerPhotoDenialQuotes：不觸發的形狀 → 空陣列", () => {
+  // 她承認
+  assertEquals(
+    partnerPhotoDenialQuotes([
+      { role: "user", text: "妳大頭照在巴黎拍的吧" },
+      { role: "ai", text: "對啊 去年去進修的時候" },
+    ]),
+    [],
+  );
+  // 使用者沒提照片，她的否認是別的事
+  assertEquals(
+    partnerPhotoDenialQuotes([
+      { role: "user", text: "妳是護理師嗎" },
+      { role: "ai", text: "不是欸，我是設計師" },
+    ]),
+    [],
+  );
+  // 否認詞出現在使用者句、她的句子不含
+  assertEquals(
+    partnerPhotoDenialQuotes([
+      { role: "user", text: "妳照片沒有戴眼鏡吧" },
+      { role: "ai", text: "對，那天沒戴" },
+    ]).length,
+    1, // ponytail: 「沒戴」在她句裡也算否認詞——已知誤觸形狀，注入文只叫 debrief 對照判定
+  );
+  assertEquals(partnerPhotoDenialQuotes([]), []);
+  assertEquals(
+    partnerPhotoDenialQuotes([{ role: "ai", text: "沒有啦" }]),
+    [],
+  );
 });
