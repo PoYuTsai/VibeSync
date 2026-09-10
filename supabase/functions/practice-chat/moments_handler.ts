@@ -332,7 +332,12 @@ export async function handlePracticeMoments(args: {
       ? row.image_path
       : null;
     if (imageStatus === "pending") {
-      pendingImageJobs.push({ profileId, isoDate: postDate, slot });
+      pendingImageJobs.push({
+        profileId,
+        isoDate: postDate,
+        slot,
+        dayPart: dayPart as TaipeiDayPart,
+      });
     }
     posts.push({
       profileId,
@@ -566,6 +571,7 @@ export async function handlePracticeMoments(args: {
         profileId: item.girl.profileId,
         isoDate: item.isoDate,
         slot: item.plan.slot,
+        dayPart: item.plan.dayPart,
       });
     }
   };

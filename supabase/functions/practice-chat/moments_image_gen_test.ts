@@ -9,7 +9,7 @@ import {
   coveredThemeIds,
   generateMomentImage,
   isLegalSeedreamImageSize,
-  MOMENT_IMAGE_STYLE_PREFIX,
+  MOMENT_IMAGE_HARD_RULES,
   momentImagePath,
   momentImageSeed,
   type MomentsImageRpcClient,
@@ -19,13 +19,23 @@ import {
 } from "./moments_image_gen.ts";
 import { MOMENT_THEME_IDS } from "./moments_schedule.ts";
 import {
+  MOMENT_VISUAL_OVERRIDE_IDS,
+  momentVisualRecipe,
+} from "./moments_visual_profiles.ts";
+import { GIRL_PROFILES } from "./practice_persona.ts";
+import {
   MAX_MOMENT_IMAGE_ATTEMPTS,
   MOMENT_IMAGE_MAX_BYTES,
   MOMENT_IMAGE_MIN_BYTES,
   MOMENT_IMAGE_SIZE_PRESET,
 } from "./moments_constants.ts";
 
-const JOB = { profileId: "practice_girl_007", isoDate: "2026-08-25", slot: 0 };
+const JOB = {
+  profileId: "practice_girl_007",
+  isoDate: "2026-08-25",
+  slot: 0,
+  dayPart: "evening" as const,
+};
 const USER_ID = "11111111-2222-3333-4444-555555555555";
 const FAL_URL = "https://fal.run/fal-ai/bytedance/seedream/v4.5/text-to-image";
 const CDN_URL = "https://v3b.fal.media/files/b/0aa80780/result.jpg";
@@ -122,12 +132,44 @@ Deno.test("validateSceneLine 擋人、擋字、擋非 ASCII，不誤傷複合字
   }
 });
 
-Deno.test("完整 prompt = STYLE 前綴 + 場景句，且 STYLE 自帶兩條硬規則", () => {
-  const prompt = buildImagePrompt("A cup of tea on a desk in soft light.");
-  assert(prompt.startsWith(MOMENT_IMAGE_STYLE_PREFIX));
-  assert(prompt.endsWith("A cup of tea on a desk in soft light."));
-  assert(MOMENT_IMAGE_STYLE_PREFIX.includes("No people in frame"));
-  assert(MOMENT_IMAGE_STYLE_PREFIX.includes("No readable text anywhere"));
+Deno.test("完整 prompt = 場景句 → 角色拍法 → 硬限制；硬限制自帶兩條鐵則", () => {
+  const prompt = buildImagePrompt(
+    "A cup of tea on a desk.",
+    "practice_girl_004",
+  );
+  assertEquals(
+    prompt,
+    `A cup of tea on a desk.\n${
+      momentVisualRecipe("practice_girl_004")
+    }\n${MOMENT_IMAGE_HARD_RULES}`,
+  );
+  assert(MOMENT_IMAGE_HARD_RULES.includes("No people"));
+  assert(MOMENT_IMAGE_HARD_RULES.includes("No readable text"));
+  // 舊全站風格詞不得再回到共用段（tools/moments-visual-probe/results.md）。
+  for (const stale of ["Taipei", "warm", "soft", "grain", "central 4:3"]) {
+    assert(!MOMENT_IMAGE_HARD_RULES.includes(stale), `硬限制不得含 ${stale}`);
+  }
+});
+
+Deno.test("角色拍法：同人永遠同一句、全名冊合法、十位人工指定都在名冊", () => {
+  const seen = new Map<string, string>();
+  for (const girl of GIRL_PROFILES) {
+    const recipe = momentVisualRecipe(girl.profileId);
+    assertEquals(recipe, momentVisualRecipe(girl.profileId));
+    validateSceneLine(recipe); // 禁詞／ASCII／長度同場景句標準
+    seen.set(girl.profileId, recipe);
+  }
+  for (const id of MOMENT_VISUAL_OVERRIDE_IDS) {
+    assert(seen.has(id), `人工指定的 ${id} 不在名冊`);
+  }
+  // 三位探針角色要對上 results.md 的拍法方向。
+  assert(
+    momentVisualRecipe("practice_girl_004").startsWith("An oblique close"),
+  );
+  assert(momentVisualRecipe("practice_girl_005").startsWith("A medium view"));
+  assert(momentVisualRecipe("practice_girl_002").startsWith("An eye-level"));
+  // 不是人人一句：至少有 8 種不同拍法在名冊裡出現。
+  assert(new Set(seen.values()).size >= 8);
 });
 
 Deno.test("物件 key 以 token 隔離且 seed 是決定論", () => {
@@ -418,7 +460,8 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
   assertEquals(harness.sceneCalls.length, 1);
   assert(harness.sceneCalls[0].includes(BODY));
   assert(harness.sceneCalls[0].includes("sceneHint:"));
-  // fal 請求：最小合法 4:3、單張、決定論 seed、prompt 含 STYLE 與場景句。
+  assert(harness.sceneCalls[0].includes("postedAt: evening"));
+  // fal 請求：最小合法 4:3、單張、決定論 seed、prompt＝場景句＋拍法＋硬限制。
   const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
   assert(falCall && falCall.body);
   assertEquals(falCall.body.image_size, MOMENT_IMAGE_SIZE_PRESET);
@@ -431,8 +474,10 @@ Deno.test("成功路徑：claim → 場景句 → fal → 下載 → 上傳 → 
     "seed 必須混入 claim 回傳的 attempt（重試才不會生出同一張再失敗一次）",
   );
   const prompt = String(falCall.body.prompt);
-  assert(prompt.startsWith(MOMENT_IMAGE_STYLE_PREFIX));
+  assert(prompt.startsWith("A"), "場景句在最前面，事實不被風格覆蓋");
   assert(prompt.includes("instant noodles"));
+  assert(prompt.includes(momentVisualRecipe(JOB.profileId)));
+  assert(prompt.endsWith(MOMENT_IMAGE_HARD_RULES));
   // 上傳到 token 隔離的 key，commit 帶同一個 path、token 與出窗守衛。
   assertEquals(harness.uploads, [{
     path: TOKEN_PATH,
@@ -463,8 +508,32 @@ Deno.test("claim 撞限流（RPC error）：靜默結束，不打 fal、不 rele
   assertEquals(harness.fetchCalls.length, 0);
 });
 
-Deno.test("場景句失敗：退題材模板句，生圖照走且成功 commit", async () => {
+Deno.test("場景句失敗（還有 attempt）：不打 fal、release 讓下次重試場景句", async () => {
   const harness = makeJobHarness({
+    scene: () => Promise.reject(new Error("deepseek_timeout")),
+  });
+  await runJob(harness);
+  assertEquals(
+    harness.fetchCalls.filter((c) => c.url === FAL_URL).length,
+    0,
+    "模板句會用題材預設覆蓋貼文事實，未到最後 attempt 不得拿它生圖",
+  );
+  assertEquals(rpcNames(harness), [
+    "claim_practice_moment_image",
+    "clear_practice_moment_image_orphans",
+    "release_practice_moment_image",
+  ]);
+});
+
+Deno.test("場景句失敗（最後一次 attempt）：退題材模板句，生圖照走且 commit", async () => {
+  const harness = makeJobHarness({
+    claim: {
+      claimed: true,
+      token: TOKEN,
+      attempt_count: MAX_MOMENT_IMAGE_ATTEMPTS,
+      body: BODY,
+      theme_id: "dinner_simple",
+    },
     scene: () => Promise.reject(new Error("deepseek_timeout")),
   });
   await runJob(harness);
@@ -472,12 +541,12 @@ Deno.test("場景句失敗：退題材模板句，生圖照走且成功 commit",
   assert(falCall && falCall.body);
   assert(
     String(falCall.body.prompt).includes(themeSceneLine("dinner_simple")),
-    "場景句失敗必須退回題材模板句",
+    "最後一次 attempt 才退回題材模板句",
   );
   assert(rpcNames(harness).includes("commit_practice_moment_image"));
 });
 
-Deno.test("場景句含禁詞：驗證器擋下後退模板句", async () => {
+Deno.test("場景句含禁詞：驗證器擋下，視同場景句失敗（先重試）", async () => {
   const harness = makeJobHarness({
     scene: () =>
       Promise.resolve(JSON.stringify({
@@ -485,10 +554,8 @@ Deno.test("場景句含禁詞：驗證器擋下後退模板句", async () => {
       })),
   });
   await runJob(harness);
-  const falCall = harness.fetchCalls.find((c) => c.url === FAL_URL);
-  assert(falCall && falCall.body);
-  assert(!String(falCall.body.prompt).includes("woman"));
-  assert(String(falCall.body.prompt).includes(themeSceneLine("dinner_simple")));
+  assertEquals(harness.fetchCalls.filter((c) => c.url === FAL_URL).length, 0);
+  assert(rpcNames(harness).includes("release_practice_moment_image"));
 });
 
 Deno.test("fal 回 5xx：release、零上傳", async () => {
@@ -550,7 +617,17 @@ Deno.test("安全鐵則：每一次請求都必須帶 enable_safety_checker: tru
   for (
     const options of [
       {},
-      { scene: () => Promise.reject(new Error("down")) },
+      // 場景句失敗只有最後一次 attempt 才會真的打 fal（先重試場景句）。
+      {
+        claim: {
+          claimed: true,
+          token: TOKEN,
+          attempt_count: MAX_MOMENT_IMAGE_ATTEMPTS,
+          body: BODY,
+          theme_id: "dinner_simple",
+        },
+        scene: () => Promise.reject(new Error("down")),
+      },
       { imageBytes: 60_000 },
     ]
   ) {
