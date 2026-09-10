@@ -84,3 +84,5 @@ tools/voice-benchmark/baselines/verify_*.ndjson
 *.apk
 __pycache__/
 tools/practice-agency-eval/out/
+
+tools/moments-visual-probe/out/
