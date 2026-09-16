@@ -3,10 +3,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/core/theme/app_theme.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/night_market/presentation/screens/night_market_screen.dart';
 import 'package:vibesync/features/night_market/presentation/widgets/night_market_entry_card.dart';
 
@@ -39,22 +41,31 @@ void main() {
       ),
     ]);
     addTearDown(router.dispose);
-    await tester.pumpWidget(MaterialApp.router(
-      routerConfig: router,
-      debugShowCheckedModeBanner: false,
-      theme: theme.copyWith(
-        textTheme: theme.textTheme.apply(fontFamily: 'AppTC'),
-        primaryTextTheme: theme.primaryTextTheme.apply(fontFamily: 'AppTC'),
-        appBarTheme: theme.appBarTheme.copyWith(
-          titleTextStyle:
-              theme.appBarTheme.titleTextStyle!.copyWith(fontFamily: 'AppTC'),
+    await tester.pumpWidget(ProviderScope(
+      // This proof captures the full Essential experience end to end; the
+      // entry card and video screen now gate S2/S3 and the recap behind a
+      // subscription check, which this real-screen capture must not hit.
+      overrides: [
+        ebookSubscriptionAccessProvider
+            .overrideWithValue(const EbookSubscriptionAccess.essential()),
+      ],
+      child: MaterialApp.router(
+        routerConfig: router,
+        debugShowCheckedModeBanner: false,
+        theme: theme.copyWith(
+          textTheme: theme.textTheme.apply(fontFamily: 'AppTC'),
+          primaryTextTheme: theme.primaryTextTheme.apply(fontFamily: 'AppTC'),
+          appBarTheme: theme.appBarTheme.copyWith(
+            titleTextStyle: theme.appBarTheme.titleTextStyle!
+                .copyWith(fontFamily: 'AppTC'),
+          ),
         ),
-      ),
-      builder: (context, child) => RepaintBoundary(
-        key: captureKey,
-        child: MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: child!,
+        builder: (context, child) => RepaintBoundary(
+          key: captureKey,
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
         ),
       ),
     ));

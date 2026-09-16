@@ -614,6 +614,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           // 關清單＝內容不變式測試的 _freeLevelIds。
           _buildComparisonRow('互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊'),
           _buildComparisonRow('聊天測驗', '免費關卡', '全部關卡', '全部關卡'),
+          _buildComparisonRow('夜市實戰影片', '第一段', '第一段', '完整流程＋復盤'),
           _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),

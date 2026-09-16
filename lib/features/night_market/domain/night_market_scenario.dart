@@ -1,3 +1,7 @@
+import '../../learning/domain/models/ebook.dart' show EbookAccess;
+
+export '../../learning/domain/models/ebook.dart' show EbookAccess;
+
 /// Typed contract for the finite Night Market video scenario.
 ///
 /// Concrete beats live in a separate data file so presentation code does not
@@ -46,6 +50,7 @@ class NightMarketBeat {
     this.hint,
     this.choices = const <NightMarketChoice>[],
     this.ending = false,
+    this.access = EbookAccess.free,
   });
 
   final String id;
@@ -54,6 +59,11 @@ class NightMarketBeat {
   final String? hint;
   final List<NightMarketChoice> choices;
   final bool ending;
+
+  /// Subscription tier required to reach this beat. Only declares the tier;
+  /// never derived from what the beat covers (same rule as chat quiz levels,
+  /// ADR #38: see learning/domain/chat_quiz_access.dart).
+  final EbookAccess access;
 }
 
 enum NightMarketReviewTier { mindset, key, more }

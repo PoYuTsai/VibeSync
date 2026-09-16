@@ -294,6 +294,7 @@ NightMarketScenario buildNightMarketScenario() {
         videoAsset: 'assets/videos/night_market/s2_opening_to_craft.mp4',
         captions: _s2Captions,
         hint: '提問是工具｜接她的話，再給她一小段你自己，不要連著問。',
+        access: EbookAccess.essential,
         choices: <NightMarketChoice>[
           NightMarketChoice(
             id: 'extend',
@@ -313,6 +314,7 @@ NightMarketScenario buildNightMarketScenario() {
         videoAsset: 'assets/videos/night_market/s3_lifehook_to_end.mp4',
         captions: _s3Captions,
         ending: true,
+        access: EbookAccess.essential,
       ),
     ],
     review: nightMarketReview,

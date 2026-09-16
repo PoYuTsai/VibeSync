@@ -1,23 +1,26 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/night_market_story.dart';
 import '../../domain/night_market_scenario.dart';
+import '../night_market_essential_gate.dart';
 import 'night_market_review_screen.dart';
 
 /// Full-screen, VR-style run of the night-market scenario: no UI while the
 /// video plays; the film stops only at its stop points and at the review.
-class NightMarketScreen extends StatefulWidget {
+class NightMarketScreen extends ConsumerStatefulWidget {
   const NightMarketScreen({super.key});
 
   @override
-  State<NightMarketScreen> createState() => _NightMarketScreenState();
+  ConsumerState<NightMarketScreen> createState() => _NightMarketScreenState();
 }
 
-class _NightMarketScreenState extends State<NightMarketScreen>
+class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     with WidgetsBindingObserver {
   final _scenario = buildNightMarketScenario();
   late String _beatId = _scenario.initialBeatId;
@@ -32,6 +35,7 @@ class _NightMarketScreenState extends State<NightMarketScreen>
   bool _finished = false;
   String? _coachCard;
   String? _pendingNextId;
+  bool _paywallInFlight = false;
 
   NightMarketBeat get _beat => _scenario.beatById(_beatId)!;
 
@@ -125,14 +129,52 @@ class _NightMarketScreenState extends State<NightMarketScreen>
   }
 
   Future<void> _choose(NightMarketChoice choice) async {
-    if (choice.coachCard == null) {
-      await _load(choice.nextId);
-      return;
+    final target = _scenario.beatById(choice.nextId)!;
+    final gate =
+        gateFor(target.access, ref.read(ebookSubscriptionAccessProvider));
+    switch (gate) {
+      case ChatQuizGate.allowed:
+        // Only an allowed choice may show the coach card or advance the
+        // beat; a locked target must never leak either of those.
+        if (choice.coachCard == null) {
+          await _load(choice.nextId);
+          return;
+        }
+        setState(() {
+          _coachCard = choice.coachCard;
+          _pendingNextId = choice.nextId;
+        });
+        break;
+      case ChatQuizGate.locked:
+        await _unlockThenRestart();
+        break;
+      case ChatQuizGate.resolving:
+        showNightMarketGateNotice(context, '正在確認你的訂閱狀態，請稍後再點一次');
+        break;
+      case ChatQuizGate.unavailable:
+        showNightMarketGateNotice(
+          context,
+          '暫時無法確認訂閱狀態',
+          actionLabel: '重試',
+          onAction: () => ref.read(subscriptionProvider.notifier).refresh(),
+        );
+        break;
     }
-    setState(() {
-      _coachCard = choice.coachCard;
-      _pendingNextId = choice.nextId;
-    });
+  }
+
+  /// Paywall round trip for a locked stop point. Guard covers the whole
+  /// sequence including the restart, releasing only in `finally`, so a fast
+  /// double-tap can't open a second paywall or trigger a second restart.
+  Future<void> _unlockThenRestart() async {
+    if (_paywallInFlight) return;
+    _paywallInFlight = true;
+    try {
+      final unlocked = await resolveNightMarketEssentialUnlock(context, ref);
+      if (!context.mounted) return;
+      if (unlocked) await _restart();
+    } finally {
+      _paywallInFlight = false;
+    }
   }
 
   @override
@@ -367,6 +409,10 @@ class _NightMarketScreenState extends State<NightMarketScreen>
   }
 
   Widget _choiceCard(NightMarketBeat beat) {
+    final subscription = ref.watch(ebookSubscriptionAccessProvider);
+    final locked = beat.choices.any((choice) =>
+        gateFor(_scenario.beatById(choice.nextId)!.access, subscription) ==
+        ChatQuizGate.locked);
     return _card(children: [
       if (beat.hint != null)
         Padding(
@@ -374,6 +420,19 @@ class _NightMarketScreenState extends State<NightMarketScreen>
           child: Text(beat.hint!,
               style: const TextStyle(
                   color: AppColors.ctaStart, fontSize: 15, height: 1.4)),
+        ),
+      if (locked)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, size: 14, color: Colors.white54),
+              SizedBox(width: 6),
+              Text('接下來的段落是 Essential 方案內容',
+                  style: TextStyle(color: Colors.white54, fontSize: 12)),
+            ],
+          ),
         ),
       for (final choice in beat.choices)
         Padding(

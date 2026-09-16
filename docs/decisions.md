@@ -1100,3 +1100,25 @@
 **不動**: 書、章、條目、crossRef 的穩定 id；免費／試讀／Premium／Essential 權限；framed／spine 排版與 warning／safety 整框；Edge、AI prompt、付費牆、發行流程；書架大標「高階互動指南」與副標「系統化實戰教材」（2026-08-09 拍板）。
 
 **驗證**: `python3 -m unittest discover -s tools/content/tests`；`python3 tools/content/audit_ebook_copy.py --baseline tools/content/audit_baseline.json`；工作包 0 不改任何使用者文案，Flutter 學習模組測試不受影響。基準數字見 `docs/reviews/2026-09-03-ebook-copy-audit-baseline.md`。
+
+---
+
+## ADR #46 — [2026-09-17] 夜市實戰影片改為「第一段免費、停點之後 Essential 專屬」，復盤全段一併收回
+
+**狀態**: 🟢 Active — `feature/night-market-choice-paywall` 分支，待 Eric review／雙審後合併
+
+**背景**: 夜市實戰影片原本全段免費（S1–S3 三段影片＋完整復盤），與電子書、聊天測驗等付費內容的訂閱邊界不一致。規格草稿（`docs/plans` 外部附件，2026-09-16）提案在第一停點（`s1_notice`）之後收回，但把復盤頁的閘門留給「另案」。Eric 在交辦本次實作時明確擴大範圍：復盤不能只靠隱藏入口按鈕，因為復盤頁本身（對話逐字稿、片段拆解、片段回看）就是 S2／S3 內容的完整文字與影像重現，不擋復盤等於免費使用者換一個入口就拿到全部付費內容。
+
+**決定**:
+
+1. **權限宣告在劇本資料，不由畫面推導**：`NightMarketBeat.access` 重用電子書／聊天測驗既有的 `EbookAccess` 三態枚舉與 `chat_quiz_access.gateFor`，不新增訂閱資料來源、不新增第二套權限判斷；`s1_notice` 為 `free`，`s2_opening_to_craft`／`s3_lifehook_to_end` 為 `essential`（同 ADR #38 精神：access 只表達訂閱檔位，不由取材推導）。
+2. **Starter 與 Free 待遇相同**：essential 只認 `isEssential`，不得照抄 `isPremium`（ebook／聊天測驗已各踩過一次的陷阱，見 `chat_quiz_access.dart`）。
+3. **第一停點點任一選項（含非主線、會先看到教練卡的那個選項）直接開付費牆**，不顯示教練卡、不載入 S2；選擇卡在鎖定時顯示「接下來的段落是 Essential 方案內容」小字。
+4. **解鎖後立即從 S1 重播**（不回開始封面），重播到第一停點後照原流程自動續播，全程不再彈第二次付費牆。
+5. **復盤全段收回，不只是入口按鈕**：入口卡「查看復盤」與播放完成後的自然復盤入口共用同一道 Essential 閘門；未放行時開付費牆，取消或仍未解鎖則停留在原處，不進入復盤（片段回看、知識詳解等復盤內部的子頁面因此也一併保護，因為它們只能從復盤頁本身導航進入）。復盤教材、影片、字幕、既有教學內容與播放器體驗本身不改。
+6. **付款後的權限判斷以刷新後的真實訂閱狀態為準，不是付費牆回傳的字串**：`resolveNightMarketEssentialUnlock`（`night_market_essential_gate.dart`）付費牆關閉後依序 `forceSyncTier` → `refresh` → 重查 `gateFor`。若這樣仍未放行且 pop 值為 `essential`，改呼叫既有的 `SubscriptionNotifier.syncWithRevenueCat()` 直接問 RevenueCat 本機的授權快取並把結果寫回真正的訂閱狀態——這是重播播放器同一份既有復原機制，不是新發明的旁路；RevenueCat 本身也不確認時一樣回不放行，不會憑 pop 字串本身就發權限。因為結果寫回的是真正的訂閱狀態，下一次任何門檻都會直接讀到，不會在下一次選擇時再度被擋（附件示意碼的已知缺口）。同步流程中每個 await 後都重查登入帳號 id 是否改變，帳號不一致就視為未解鎖。
+7. **重入防護涵蓋「開付費牆→回來→同步／刷新→重播或進復盤」整段**，以呼叫端自己持有的旗標在 `finally` 一次釋放，不在拿到 pop 值當下就提早解鎖。
+8. **付費牆比較表新增「夜市實戰影片」列**（Free／Starter「第一段」，Essential「完整流程＋復盤」），文案與實際權益一致。
+9. **不動**：額度、Edge Function、migration；漏斗埋點另案（`night_market_paywall_shown`／`night_market_unlock_restart` 需同批改 client 字典、Edge `funnel_utils.ts`、`docs/integrations/funnel-events-v1.md` 三層，屬 Edge 變更，不併入本次）。
+
+**測試**: `test/unit/features/night_market/data/night_market_story_test.dart`（beat access 宣告＋isPremium／isEssential 陷阱守門）、`test/widget/features/night_market/night_market_screen_test.dart`／`night_market_entry_card_test.dart`（Free／Starter／resolving／unavailable／解鎖重播／Starter 購買仍鎖／同步失敗保底不建立永久權限／帳號中途切換不套用／中途離頁不炸）、`test/widget/screens/paywall_screen_test.dart`（比較表新列）。共用鷹架：`test/helpers/night_market_paywall_harness.dart`。

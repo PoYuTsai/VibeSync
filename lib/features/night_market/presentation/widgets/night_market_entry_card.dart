@@ -1,13 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/night_market_story.dart';
+import '../night_market_essential_gate.dart';
 import '../screens/night_market_review_screen.dart';
 
-class NightMarketEntryCard extends StatelessWidget {
+class NightMarketEntryCard extends ConsumerStatefulWidget {
   const NightMarketEntryCard({super.key});
+
+  @override
+  ConsumerState<NightMarketEntryCard> createState() =>
+      _NightMarketEntryCardState();
+}
+
+class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
+  /// Guards the whole "open paywall -> sync/refresh -> enter review" round
+  /// trip, released only in `finally` (same rule as the video screen's own
+  /// gate) so a fast double-tap can't open two paywalls or enter review
+  /// twice.
+  bool _reviewGateInFlight = false;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +37,7 @@ class NightMarketEntryCard extends StatelessWidget {
             style: TextButton.styleFrom(
               foregroundColor: AppColors.primaryLight,
             ),
-            onPressed: () => _openReview(context),
+            onPressed: _openReview,
             icon: const Icon(Icons.menu_book_outlined, size: 18),
             label: const Text('查看復盤'),
           ),
@@ -31,7 +46,50 @@ class NightMarketEntryCard extends StatelessWidget {
     );
   }
 
-  void _openReview(BuildContext context) {
+  /// The full recap (dialogue, chapter breakdowns, clip replay) is Essential
+  /// content end to end, not just this entry button — gating here is the
+  /// only call site left unguarded once beat-level gating covers the
+  /// post-playback path (finishing S3 already requires Essential).
+  Future<void> _openReview() async {
+    if (_reviewGateInFlight) return;
+    final gate = gateFor(
+      EbookAccess.essential,
+      ref.read(ebookSubscriptionAccessProvider),
+    );
+    switch (gate) {
+      case ChatQuizGate.allowed:
+        _pushReview();
+        break;
+      case ChatQuizGate.resolving:
+        showNightMarketGateNotice(context, '正在確認你的訂閱狀態，請稍後再點一次');
+        break;
+      case ChatQuizGate.unavailable:
+        showNightMarketGateNotice(
+          context,
+          '暫時無法確認訂閱狀態',
+          actionLabel: '重試',
+          onAction: () => ref.read(subscriptionProvider.notifier).refresh(),
+        );
+        break;
+      case ChatQuizGate.locked:
+        _reviewGateInFlight = true;
+        try {
+          final unlocked = await resolveNightMarketEssentialUnlock(
+            context,
+            ref,
+          );
+          if (!context.mounted) return;
+          // Unlocked -> go straight into the recap, not the S1 playback.
+          // Cancelled/still locked -> stay on this card, no restricted
+          // content shown.
+          if (unlocked) _pushReview();
+        } finally {
+          _reviewGateInFlight = false;
+        }
+    }
+  }
+
+  void _pushReview() {
     Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (reviewContext) => NightMarketReviewScreen(
         scenario: buildNightMarketScenario(),

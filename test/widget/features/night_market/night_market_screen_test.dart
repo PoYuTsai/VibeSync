@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/night_market/presentation/screens/night_market_screen.dart';
 
 import '../../../helpers/fake_sydney_video_platform.dart';
+import '../../../helpers/night_market_paywall_harness.dart';
 
 Future<void> _lifecycle(WidgetTester tester, AppLifecycleState state) async {
   await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
@@ -17,13 +19,23 @@ Future<void> _lifecycle(WidgetTester tester, AppLifecycleState state) async {
   await tester.pump(const Duration(milliseconds: 20));
 }
 
-Future<void> _pumpStarted(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(390, 844));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(const MaterialApp(home: NightMarketScreen()));
+Future<NightMarketPaywallHarness> _pumpStarted(
+  WidgetTester tester, {
+  EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
+  bool forceSyncTierShouldFail = false,
+  bool revenueCatRecoveryConfirmsEssential = false,
+}) async {
+  final harness = await pumpNightMarketPaywallHarness(
+    tester,
+    builder: (_, __) => const NightMarketScreen(),
+    access: access,
+    forceSyncTierShouldFail: forceSyncTierShouldFail,
+    revenueCatRecoveryConfirmsEssential: revenueCatRecoveryConfirmsEssential,
+  );
   await tester.tap(find.text('開始'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 30));
+  return harness;
 }
 
 /// Emits the platform completion event for the newest controller and pumps
@@ -35,6 +47,9 @@ Future<void> _complete(WidgetTester tester, FakeSydneyVideoPlatform p) async {
     await tester.pump(const Duration(milliseconds: 20));
   }
 }
+
+const _mainChoice = '走到她看得到的側前方';
+const _coachedChoice = '等她逛到我旁邊再說';
 
 void main() {
   late FakeSydneyVideoPlatform platform;
@@ -79,12 +94,14 @@ void main() {
   });
 
   testWidgets(
-      'stop point: wrong choice shows coach card then continues; ending shows review',
+      'Essential: stop point wrong choice shows coach card then continues; ending shows review',
       (tester) async {
     await _pumpStarted(tester);
     await _complete(tester, platform);
     expect(find.textContaining('確信感'), findsOneWidget);
-    await tester.tap(find.text('等她逛到我旁邊再說'));
+    // Essential never sees the lock hint.
+    expect(find.textContaining('Essential 方案內容'), findsNothing);
+    await tester.tap(find.text(_coachedChoice));
     await tester.pump();
     expect(find.textContaining('等時機'), findsOneWidget);
     expect(platform.creations, hasLength(1));
@@ -135,5 +152,207 @@ void main() {
     await _pumpStarted(tester);
     expect(find.text('影片暫時無法播放'), findsOneWidget);
     expect(find.text('重試'), findsOneWidget);
+  });
+
+  group('first stop point paywall (Free/Starter)', () {
+    testWidgets('main-line choice opens the paywall instead of loading S2',
+        (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      expect(find.textContaining('Essential 方案內容'), findsOneWidget);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+      expect(platform.creations, hasLength(1));
+      expect(find.textContaining('等時機'), findsNothing);
+    });
+
+    testWidgets('coached choice opens the paywall directly, never the coach card',
+        (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_coachedChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+      expect(find.textContaining('等時機'), findsNothing);
+      expect(platform.creations, hasLength(1));
+    });
+
+    testWidgets('cancel returns to the same choice card; tapping again reopens it',
+        (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('paywall-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('確信感'), findsOneWidget);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+    });
+
+    testWidgets('double tap opens only one paywall', (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+    });
+
+    testWidgets('Starter also opens the paywall', (tester) async {
+      await _pumpStarted(tester,
+          access: const EbookSubscriptionAccess.premium());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+    });
+
+    testWidgets('resolving shows a neutral notice, never a paywall',
+        (tester) async {
+      await _pumpStarted(tester,
+          access: const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      expect(find.text(paywallStubText), findsNothing);
+      expect(find.text('正在確認你的訂閱狀態，請稍後再點一次'), findsOneWidget);
+    });
+
+    testWidgets('unavailable shows a retry notice, never a paywall',
+        (tester) async {
+      await _pumpStarted(tester,
+          access: const EbookSubscriptionAccess.unavailable());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      expect(find.text(paywallStubText), findsNothing);
+      expect(find.text('暫時無法確認訂閱狀態'), findsOneWidget);
+      expect(find.text('重試'), findsOneWidget);
+    });
+  });
+
+  group('unlock consistency', () {
+    testWidgets(
+        'buying Essential restarts from S1 immediately and plays through with no second paywall',
+        (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('paywall-buy-essential')));
+      await tester.pumpAndSettle();
+      // Restarted from S1 (not the start cover, not S2 directly).
+      expect(platform.creations, hasLength(2));
+      expect(platform.creations[1].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(find.text(paywallStubText), findsNothing);
+      expect(platform.creations, hasLength(3));
+      expect(platform.creations[2].dataSource.asset,
+          'assets/videos/night_market/s2_opening_to_craft.mp4');
+    });
+
+    testWidgets('buying Starter only stays locked and does not restart',
+        (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('paywall-buy-starter')));
+      await tester.pumpAndSettle();
+      expect(platform.creations, hasLength(1));
+      expect(find.textContaining('確信感'), findsOneWidget);
+    });
+
+    testWidgets(
+        'sync failure but RevenueCat confirms the purchase: unlocks and '
+        'persists, not just this one attempt', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+        revenueCatRecoveryConfirmsEssential: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+      expect(harness.notifier.forceSyncTierCalls, 1);
+      expect(harness.notifier.revenueCatRecoveryCalls, 1);
+      expect(platform.creations, hasLength(2));
+      expect(platform.creations[1].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+      // Recovery persisted into the real subscription state, so the very
+      // next independent gate check must NOT be blocked again.
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsNothing);
+      expect(platform.creations, hasLength(3));
+      expect(platform.creations[2].dataSource.asset,
+          'assets/videos/night_market/s2_opening_to_craft.mp4');
+    });
+
+    testWidgets(
+        'sync failure and RevenueCat also cannot confirm it: stays locked, '
+        'no standing bypass from the popped string alone', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+      expect(harness.notifier.forceSyncTierCalls, 1);
+      expect(harness.notifier.revenueCatRecoveryCalls, 1);
+      // No evidence anywhere confirmed Essential: must not restart or grant
+      // access out of nothing.
+      expect(platform.creations, hasLength(1));
+      expect(find.textContaining('確信感'), findsOneWidget);
+    });
+
+    testWidgets(
+        'account switch while the paywall is open does not apply the stale result',
+        (tester) async {
+      final harness =
+          await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      harness.switchAccount('a-different-user');
+      await tester.tap(find.byKey(const ValueKey('paywall-buy-essential')));
+      await tester.pumpAndSettle();
+      // Account changed mid-flight: the unlock must not be applied.
+      expect(platform.creations, hasLength(1));
+      expect(find.textContaining('確信感'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'tearing down the screen while the paywall round trip is pending does not throw',
+        (tester) async {
+      await _pumpStarted(tester, access: const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   });
 }

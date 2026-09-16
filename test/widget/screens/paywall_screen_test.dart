@@ -194,6 +194,10 @@ void main() {
       // ADR #38：測驗欄不寫死關數，擴充各批加關不用回頭改這裡。
       expect(find.text('免費關卡'), findsOneWidget);
       expect(find.text('全部關卡'), findsNWidgets(2));
+      // 夜市第一停點付費牆：Free/Starter 只到第一段，Essential 才有全程＋復盤。
+      expect(find.text('夜市實戰影片'), findsOneWidget);
+      expect(find.text('第一段'), findsNWidgets(2));
+      expect(find.text('完整流程＋復盤'), findsOneWidget);
       expect(find.textContaining('Haiku'), findsNothing);
       expect(find.textContaining('Sonnet'), findsNothing);
     });

@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/learning/domain/chat_quiz_access.dart';
+import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/night_market/data/night_market_story.dart';
 import 'package:vibesync/features/night_market/domain/night_market_scenario.dart';
 
@@ -24,6 +26,66 @@ void main() {
       }
       expect(scenario.beats.where((b) => b.ending), hasLength(1));
       expect(scenario.beats.where((b) => !b.ending), hasLength(2));
+    });
+
+    test(
+        'the first stop point is free but every choice leads to an essential '
+        'beat (product fact: paywall right after S1)', () {
+      final s1 = scenario.beatById('s1_notice')!;
+      expect(s1.access, EbookAccess.free);
+      for (final choice in s1.choices) {
+        expect(scenario.beatById(choice.nextId)!.access,
+            EbookAccess.essential,
+            reason: choice.id);
+      }
+      expect(scenario.beatById('s2_opening_to_craft')!.access,
+          EbookAccess.essential);
+      expect(scenario.beatById('s3_lifehook_to_end')!.access,
+          EbookAccess.essential);
+    });
+
+    test('essential beat access only recognizes Essential, never Starter', () {
+      // Regression pin for the isPremium/isEssential trap that has already
+      // bitten this codebase twice (ebook, then chat quiz) — chat_quiz_access
+      // 的教訓：Starter 的 isPremium 也是 true，照抄會整段解鎖。
+      const essentialAccess = EbookAccess.essential;
+      expect(
+        gateFor(essentialAccess, const EbookSubscriptionAccess.free()),
+        ChatQuizGate.locked,
+      );
+      expect(
+        gateFor(essentialAccess, const EbookSubscriptionAccess.premium()),
+        ChatQuizGate.locked,
+      );
+      expect(
+        gateFor(essentialAccess, const EbookSubscriptionAccess.essential()),
+        ChatQuizGate.allowed,
+      );
+      expect(
+        gateFor(essentialAccess, const EbookSubscriptionAccess.resolving()),
+        ChatQuizGate.resolving,
+      );
+      expect(
+        gateFor(essentialAccess, const EbookSubscriptionAccess.unavailable()),
+        ChatQuizGate.unavailable,
+      );
+      // Paid user cold-starting offline: cached Essential and unexpired must
+      // still play, exactly like the ebook rule it's reusing.
+      expect(
+        gateFor(
+          essentialAccess,
+          const EbookSubscriptionAccess.cachedPremium(essential: true),
+        ),
+        ChatQuizGate.allowed,
+      );
+      expect(
+        gateFor(
+          essentialAccess,
+          const EbookSubscriptionAccess.cachedPremium(
+              essential: true, unexpired: false),
+        ),
+        ChatQuizGate.resolving,
+      );
     });
 
     test('captions are ordered and inside each segment', () {
