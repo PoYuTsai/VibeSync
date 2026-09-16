@@ -1105,7 +1105,7 @@
 
 ## ADR #46 — [2026-09-17] 夜市實戰影片改為「第一段免費、停點之後 Essential 專屬」，復盤全段一併收回
 
-**狀態**: 🟢 Active — `feature/night-market-choice-paywall` 分支，待 Eric review／雙審後合併
+**狀態**: 🟢 Active — `feature/night-market-choice-paywall` 分支（基準含 main #73 `9755637b`），待 Eric review／雙審後合併；已經過一輪跨模型 review（BLOCK→修正，見下方「審查修正」）
 
 **背景**: 夜市實戰影片原本全段免費（S1–S3 三段影片＋完整復盤），與電子書、聊天測驗等付費內容的訂閱邊界不一致。規格草稿（`docs/plans` 外部附件，2026-09-16）提案在第一停點（`s1_notice`）之後收回，但把復盤頁的閘門留給「另案」。Eric 在交辦本次實作時明確擴大範圍：復盤不能只靠隱藏入口按鈕，因為復盤頁本身（對話逐字稿、片段拆解、片段回看）就是 S2／S3 內容的完整文字與影像重現，不擋復盤等於免費使用者換一個入口就拿到全部付費內容。
 
@@ -1116,9 +1116,17 @@
 3. **第一停點點任一選項（含非主線、會先看到教練卡的那個選項）直接開付費牆**，不顯示教練卡、不載入 S2；選擇卡在鎖定時顯示「接下來的段落是 Essential 方案內容」小字。
 4. **解鎖後立即從 S1 重播**（不回開始封面），重播到第一停點後照原流程自動續播，全程不再彈第二次付費牆。
 5. **復盤全段收回，不只是入口按鈕**：入口卡「查看復盤」與播放完成後的自然復盤入口共用同一道 Essential 閘門；未放行時開付費牆，取消或仍未解鎖則停留在原處，不進入復盤（片段回看、知識詳解等復盤內部的子頁面因此也一併保護，因為它們只能從復盤頁本身導航進入）。復盤教材、影片、字幕、既有教學內容與播放器體驗本身不改。
-6. **付款後的權限判斷以刷新後的真實訂閱狀態為準，不是付費牆回傳的字串**：`resolveNightMarketEssentialUnlock`（`night_market_essential_gate.dart`）付費牆關閉後依序 `forceSyncTier` → `refresh` → 重查 `gateFor`。若這樣仍未放行且 pop 值為 `essential`，改呼叫既有的 `SubscriptionNotifier.syncWithRevenueCat()` 直接問 RevenueCat 本機的授權快取並把結果寫回真正的訂閱狀態——這是重播播放器同一份既有復原機制，不是新發明的旁路；RevenueCat 本身也不確認時一樣回不放行，不會憑 pop 字串本身就發權限。因為結果寫回的是真正的訂閱狀態，下一次任何門檻都會直接讀到，不會在下一次選擇時再度被擋（附件示意碼的已知缺口）。同步流程中每個 await 後都重查登入帳號 id 是否改變，帳號不一致就視為未解鎖。
+6. **付款後的權限判斷以刷新後的真實訂閱狀態為準，不是付費牆回傳的字串**：`resolveNightMarketEssentialUnlock`（`night_market_essential_gate.dart`）付費牆關閉後依序 `forceSyncTier` → `refresh` → 重查 `gateFor`。若這樣仍未放行且 pop 值為 `essential`，改呼叫 `SubscriptionNotifier.adoptRevenueCatTierIfHigher()`（本次新增，見下方審查修正 R2）直接問 RevenueCat 本機的授權快取，只在確認的檔位比現在高時才寫回真正的訂閱狀態；RevenueCat 也不確認時一樣不放行，不會憑 pop 字串本身就發權限，也不會建立任何獨立於真正訂閱狀態之外的旗標。因為結果寫回的是真正的訂閱狀態，下一次任何門檻都會直接讀到，不會在下一次選擇時再度被擋（附件示意碼的已知缺口）。同步流程中每個 await 後都重查登入帳號 id 是否改變，帳號不一致就視為未解鎖。
 7. **重入防護涵蓋「開付費牆→回來→同步／刷新→重播或進復盤」整段**，以呼叫端自己持有的旗標在 `finally` 一次釋放，不在拿到 pop 值當下就提早解鎖。
 8. **付費牆比較表新增「夜市實戰影片」列**（Free／Starter「第一段」，Essential「完整流程＋復盤」），文案與實際權益一致。
 9. **不動**：額度、Edge Function、migration；漏斗埋點另案（`night_market_paywall_shown`／`night_market_unlock_restart` 需同批改 client 字典、Edge `funnel_utils.ts`、`docs/integrations/funnel-events-v1.md` 三層，屬 Edge 變更，不併入本次）。
 
-**測試**: `test/unit/features/night_market/data/night_market_story_test.dart`（beat access 宣告＋isPremium／isEssential 陷阱守門）、`test/widget/features/night_market/night_market_screen_test.dart`／`night_market_entry_card_test.dart`（Free／Starter／resolving／unavailable／解鎖重播／Starter 購買仍鎖／同步失敗保底不建立永久權限／帳號中途切換不套用／中途離頁不炸）、`test/widget/screens/paywall_screen_test.dart`（比較表新列）。共用鷹架：`test/helpers/night_market_paywall_harness.dart`。
+**審查修正**（跨模型 review 第一輪 BLOCK，2026-09-17）：
+
+- **R1 帳號來源改真 reactive**：`nightMarketAccountIdProvider` 原本是沒有 reactive dependency 的普通 `Provider<String?>`，內部直接呼叫靜態 getter，等於算一次快取一輩子，帳號一致性檢查形同虛設；改成 `StreamProvider<String?>` 跟 `SupabaseService.authStateChanges`，並讀 `.future` 而不是 `.value`（這個 provider 通常在付費牆流程第一次被讀到，`.value` 在 stream 還沒送出第一個事件前是 null，會把「還沒到」誤判成「換人了」——這是修正過程中新發現的 cold-start race，不是原本已知的洞）。寫入前的帳號一致性另在 `SubscriptionNotifier._syncSubscriptionViaEdgeFunction` 加 `subscriptionSyncStillAppliesToAccount` 檢查，不能只在外層 await 結束後才發現切帳、內部早就寫進 `SubscriptionState`／`UsageService`。
+- **R2 真正的復原，不是呼叫既有函式就算數**：既有 `syncWithRevenueCat()` 的 `syncedTier ?? rcTier` 只在伺服器呼叫「失敗」時才信任 RevenueCat；若伺服器「成功」回應但回應本身是 webhook 還沒追上的舊 tier，會被整段當真並蓋掉更新的 RevenueCat 本機讀值。新增單向的 `adoptRevenueCatTierIfHigher()`：只在 RevenueCat 本機讀值的檔位排名高於目前檔位時才採用並寫回（`shouldAdoptRevenueCatTier`，`@visibleForTesting` 純函式），永遠不會拿它去降級——真正的撤銷／到期／降級仍交給既有 `syncWithRevenueCat`／`_loadSubscription` 的例行同步。夜市的復原步驟改呼叫這個新函式，不再呼叫 `syncWithRevenueCat()`。仍無法確認時顯示「已收到購買，正在確認中，請稍後再試一次」，不當成取消後再導購。
+- **R3 通過閘門不等於之後仍有權限**：教練卡「知道了」與 S3 播完建立完整復盤，原本都不重查閘門（只在「選擇當下」查過一次）。抽出共用的 `_withEssentialGate`，三個進入點（選項、知道了、S3 完播）都在**實際進入內容的當下**重新查一次；教練卡顯示後降級再按知道了、S3 播完前失去授權，都會改開付費牆，不建立受限內容。
+- **R4 重入防護要在最外層**：`_choose()` 原本只在 `locked` 分支裡查旗標；provider 在同步途中變成 allowed 時，第二次點擊會繞過旗標直接續播或開教練卡，跟稍後的 restart 交錯。旗標檢查移到 `_withEssentialGate` 最頂端，任何進入點在旗標為真時一律先擋下，不看當下的 gate 結果。
+- 四項修正都先寫在舊實作下會失敗的回歸測試，確認真的會失敗後才動正式程式碼，再確認測試轉綠（R1／R3／R4 已用還原正式碼＋跑測試的方式實測驗證；R2 的新函式沒有既有可失敗的舊實作可比對，改以純函式單元測試覆蓋決策邏輯）。
+
+**測試**: `test/unit/features/night_market/data/night_market_story_test.dart`（beat access 宣告＋isPremium／isEssential 陷阱守門）、`test/unit/features/subscription/data/subscription_sync_integrity_test.dart`（R1/R2 純函式：帳號一致性、單向採用 RevenueCat 較高檔位）、`test/widget/features/night_market/night_market_screen_test.dart`／`night_market_entry_card_test.dart`（Free／Starter／resolving／unavailable／解鎖重播／Starter 購買仍鎖／同步失敗但 RevenueCat 確認會持久解鎖／同步與 RevenueCat 都無法確認則維持鎖定／帳號中途切換不套用／中途離頁不炸／教練卡與 S3 完播前失去授權會重新擋／Completer 控制的完整回合重入競態）、`test/widget/screens/paywall_screen_test.dart`（比較表新列）。共用鷹架：`test/helpers/night_market_paywall_harness.dart`（帳號來源改用真的 `StreamController`，不再是側門 `StateProvider`）。

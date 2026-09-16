@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -287,7 +289,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(harness.notifier.forceSyncTierCalls, 1);
-      expect(harness.notifier.revenueCatRecoveryCalls, 1);
+      expect(harness.notifier.adoptRevenueCatTierIfHigherCalls, 1);
       expect(platform.creations, hasLength(2));
       expect(platform.creations[1].dataSource.asset,
           'assets/videos/night_market/s1_notice.mp4');
@@ -318,7 +320,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(harness.notifier.forceSyncTierCalls, 1);
-      expect(harness.notifier.revenueCatRecoveryCalls, 1);
+      expect(harness.notifier.adoptRevenueCatTierIfHigherCalls, 1);
       // No evidence anywhere confirmed Essential: must not restart or grant
       // access out of nothing.
       expect(platform.creations, hasLength(1));
@@ -334,6 +336,9 @@ void main() {
       await tester.tap(find.text(_mainChoice));
       await tester.pumpAndSettle();
       harness.switchAccount('a-different-user');
+      // Let the real StreamProvider actually deliver the new account id
+      // before continuing, same as a genuine auth-state event would.
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('paywall-buy-essential')));
       await tester.pumpAndSettle();
       // Account changed mid-flight: the unlock must not be applied.
@@ -353,6 +358,88 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('re-checks the gate at the actual moment of entering content', () {
+    testWidgets(
+        'coach card shown while Essential; losing access before tapping 知道了 '
+        'reopens the paywall instead of loading S2', (tester) async {
+      final harness = await _pumpStarted(tester);
+      await _complete(tester, platform);
+      await tester.tap(find.text(_coachedChoice));
+      await tester.pump();
+      expect(find.textContaining('等時機'), findsOneWidget);
+      // Access lost while the card was on screen (expiry/revocation).
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await tester.tap(find.text('知道了'));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+      expect(platform.creations, hasLength(1));
+    });
+
+    testWidgets(
+        'losing access right before S3 finishes does not build the full recap',
+        (tester) async {
+      final harness = await _pumpStarted(tester);
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await _complete(tester, platform);
+      await tester.tap(find.textContaining('我之前也去過一次'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(platform.creations, hasLength(3));
+      // Access lost while S3 is playing, right before it finishes.
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.pumpAndSettle();
+      expect(find.text('復盤'), findsNothing);
+      expect(find.text(paywallStubText), findsOneWidget);
+    });
+  });
+
+  group('full round-trip reentrancy', () {
+    testWidgets(
+        'provider flipping allowed mid-sync does not let a second tap race '
+        'the pending restart', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+      );
+      await _complete(tester, platform);
+      final gate = Completer<void>();
+      harness.notifier.forceSyncTierGate = gate;
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      // Pops the paywall as essential; the stub also flips the access
+      // provider to essential synchronously, before forceSyncTier (now
+      // stuck on `gate`) ever returns — the exact race under test.
+      await tester.tap(find.byKey(const ValueKey('paywall-buy-essential')));
+      // The pop transition itself needs settling (same as the push did),
+      // independent of `forceSyncTier` being genuinely stuck on `gate`:
+      // pumpAndSettle only cares about the frame scheduler, not arbitrary
+      // suspended futures, so it converges once the paywall page is fully
+      // gone and NightMarketScreen is interactive again.
+      await tester.pumpAndSettle();
+      expect(harness.notifier.forceSyncTierCalls, 1);
+      // Tap again while the round trip is still stuck: must be dropped
+      // outright, not race the pending restart by reading the now-allowed
+      // gate directly (which would prematurely load S2 or show a coach
+      // card).
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      expect(platform.creations, hasLength(1));
+      expect(find.text(paywallStubText), findsNothing);
+      expect(find.textContaining('等時機'), findsNothing);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      // The ORIGINAL round trip finishes and restarts exactly once.
+      expect(platform.creations, hasLength(2));
+      expect(platform.creations[1].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
     });
   });
 }

@@ -101,7 +101,17 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     if (!done) return;
     _completed = true;
     unawaited(controller.pause());
-    if (mounted) setState(() => _finished = _beat.ending);
+    if (!_beat.ending) {
+      if (mounted) setState(() {});
+      return;
+    }
+    // Access could have been lost while S3 was still playing (expiry,
+    // revocation). Passing the gate earlier at the choice does not carry
+    // forward — re-check right at the point of actually building the full
+    // recap, same rule as every other entry into essential-gated content.
+    unawaited(_withEssentialGate(_beat.access, () async {
+      if (mounted) setState(() => _finished = true);
+    }));
   }
 
   Future<void> _start() async {
@@ -128,25 +138,41 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     await _video?.setVolume(_muted ? 0 : 1);
   }
 
-  Future<void> _choose(NightMarketChoice choice) async {
-    final target = _scenario.beatById(choice.nextId)!;
-    final gate =
-        gateFor(target.access, ref.read(ebookSubscriptionAccessProvider));
+  /// Single choke point for every way this screen can advance into
+  /// essential-gated content: a choice tap, tapping "知道了" on a coach card,
+  /// and finishing the ending beat. Each one re-checks the gate fresh right
+  /// before acting — passing the gate earlier (at choice-time) does not
+  /// carry forward to a later moment of actually entering the content.
+  ///
+  /// Guards re-entrancy at the very top, before even reading the gate: if a
+  /// paywall round trip is already in flight, a second tap is dropped
+  /// outright, even if the subscription provider has already flipped to
+  /// allowed mid-flight (it would otherwise race the pending restart).
+  Future<void> _withEssentialGate(
+    EbookAccess access,
+    Future<void> Function() onAllowed,
+  ) async {
+    if (_paywallInFlight) return;
+    final gate = gateFor(access, ref.read(ebookSubscriptionAccessProvider));
     switch (gate) {
       case ChatQuizGate.allowed:
-        // Only an allowed choice may show the coach card or advance the
-        // beat; a locked target must never leak either of those.
-        if (choice.coachCard == null) {
-          await _load(choice.nextId);
-          return;
-        }
-        setState(() {
-          _coachCard = choice.coachCard;
-          _pendingNextId = choice.nextId;
-        });
+        await onAllowed();
         break;
       case ChatQuizGate.locked:
-        await _unlockThenRestart();
+        // Guard covers the whole sequence including the restart, releasing
+        // only in `finally`, so a fast double-tap can't open a second
+        // paywall or trigger a second restart.
+        _paywallInFlight = true;
+        try {
+          final unlocked = await resolveNightMarketEssentialUnlock(
+            context,
+            ref,
+          );
+          if (!context.mounted) return;
+          if (unlocked) await _restart();
+        } finally {
+          _paywallInFlight = false;
+        }
         break;
       case ChatQuizGate.resolving:
         showNightMarketGateNotice(context, '正在確認你的訂閱狀態，請稍後再點一次');
@@ -162,19 +188,31 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     }
   }
 
-  /// Paywall round trip for a locked stop point. Guard covers the whole
-  /// sequence including the restart, releasing only in `finally`, so a fast
-  /// double-tap can't open a second paywall or trigger a second restart.
-  Future<void> _unlockThenRestart() async {
-    if (_paywallInFlight) return;
-    _paywallInFlight = true;
-    try {
-      final unlocked = await resolveNightMarketEssentialUnlock(context, ref);
-      if (!context.mounted) return;
-      if (unlocked) await _restart();
-    } finally {
-      _paywallInFlight = false;
-    }
+  Future<void> _choose(NightMarketChoice choice) {
+    return _withEssentialGate(
+      _scenario.beatById(choice.nextId)!.access,
+      () async {
+        if (choice.coachCard == null) {
+          await _load(choice.nextId);
+          return;
+        }
+        setState(() {
+          _coachCard = choice.coachCard;
+          _pendingNextId = choice.nextId;
+        });
+      },
+    );
+  }
+
+  /// "知道了" on the coach card. Time may have passed since the choice was
+  /// made (and access could have been lost since), so this re-checks the
+  /// gate rather than loading `_pendingNextId` unconditionally.
+  Future<void> _acceptCoachCard() {
+    final pendingNextId = _pendingNextId!;
+    return _withEssentialGate(
+      _scenario.beatById(pendingNextId)!.access,
+      () => _load(pendingNextId),
+    );
   }
 
   @override
@@ -452,7 +490,7 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
               const TextStyle(color: Colors.white, fontSize: 16, height: 1.45)),
       const SizedBox(height: 12),
       FilledButton(
-        onPressed: () => _load(_pendingNextId!),
+        onPressed: _acceptCoachCard,
         child: const Text('知道了'),
       ),
     ]);

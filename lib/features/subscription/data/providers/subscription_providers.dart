@@ -157,6 +157,36 @@ String resolveStartupPaidRescueTier({
       : candidateTier;
 }
 
+/// A server sync response only belongs to whichever account was current
+/// when that specific sync attempt started. If the signed-in account changed
+/// during the network round trip (logout + different login), the response
+/// — even a "successful" one — must not be written into `state` or
+/// `UsageService`'s local cache, since it would silently apply one
+/// account's entitlement to whoever is using the app now.
+@visibleForTesting
+bool subscriptionSyncStillAppliesToAccount({
+  required String? startedForUserId,
+  required String? currentUserId,
+}) {
+  return startedForUserId == currentUserId;
+}
+
+/// Whether a fresh RevenueCat read should be adopted immediately in place of
+/// the current tier. Deliberately one-directional: only an upgrade (higher
+/// rank) is ever adopted this way. A RevenueCat read that is lower than the
+/// current tier is never used to downgrade here — that could just be a
+/// stale local SDK cache — and is left to the existing routine
+/// `syncWithRevenueCat`/`_loadSubscription` reconciliation, which already
+/// has its own (separately reviewed) rules for genuine revocation/expiry.
+@visibleForTesting
+bool shouldAdoptRevenueCatTier({
+  required String currentTier,
+  required String revenueCatTier,
+}) {
+  return SubscriptionTierHelper.rankOf(revenueCatTier) >
+      SubscriptionTierHelper.rankOf(currentTier);
+}
+
 class SubscriptionState {
   final String tier;
   final int monthlyMessagesUsed;
@@ -725,6 +755,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     required bool resetUsage,
     String? revenueCatAppUserId,
   }) async {
+    final startedForUserId = SupabaseService.currentUser?.id;
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         final body = <String, dynamic>{
@@ -749,6 +780,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         } else {
           final data = response.data;
           if (data is Map) {
+            if (!subscriptionSyncStillAppliesToAccount(
+              startedForUserId: startedForUserId,
+              currentUserId: SupabaseService.currentUser?.id,
+            )) {
+              debugPrint(
+                '[sync-subscription] account changed mid-sync; discarding '
+                'response for the account that started this attempt',
+              );
+              return null;
+            }
             final tier = SubscriptionTierHelper.normalizeTier(
               data['tier'] as String?,
             );
@@ -1342,6 +1383,65 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     debugPrint(
       '[forceSyncTier] SUCCESS: synced tier=${state.tier}, daily_messages_used=${state.dailyMessagesUsed}',
     );
+  }
+
+  /// Immediately adopts a fresh RevenueCat read when it outranks the current
+  /// tier, without waiting for (or trusting) the server mirror to catch up.
+  ///
+  /// For a purchase/restore that just completed, the server's own
+  /// `sync-subscription` response can still come back with its pre-webhook
+  /// (stale) tier even though the call itself "succeeded" — `forceSyncTier`
+  /// alone cannot be treated as having resolved that race. This reuses
+  /// RevenueCat's local SDK cache directly as independent evidence, and is
+  /// deliberately one-directional (see [shouldAdoptRevenueCatTier]): it can
+  /// only raise the local tier, never lower it, so it can't be used to
+  /// short-circuit a genuine revocation/expiry/downgrade. Returns whether it
+  /// adopted a new tier.
+  Future<bool> adoptRevenueCatTierIfHigher() async {
+    final startedForUserId = SupabaseService.currentUser?.id;
+    if (startedForUserId == null) return false;
+
+    final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
+      startedForUserId,
+    );
+    if (customerInfo == null) return false;
+    if (!subscriptionSyncStillAppliesToAccount(
+      startedForUserId: startedForUserId,
+      currentUserId: SupabaseService.currentUser?.id,
+    )) {
+      return false;
+    }
+
+    final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
+    if (!shouldAdoptRevenueCatTier(
+      currentTier: state.tier,
+      revenueCatTier: rcTier,
+    )) {
+      return false;
+    }
+
+    final limits = SubscriptionTierHelper.limitsFor(rcTier);
+    state = _applyPendingDowngradeMetadata(state.copyWith(
+      tier: rcTier,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
+      activeProductId: _cleanProductId(
+            RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
+          ) ??
+          state.activeProductId,
+    ));
+    _syncUsageCache(rcTier, limits, paidExpiresAt: state.renewsAt);
+
+    // Best-effort: tell the server too, but a slow/failed call here must not
+    // undo the local adoption that just happened.
+    unawaited(_syncSubscriptionViaEdgeFunction(
+      expectedTier: rcTier,
+      resetUsage: false,
+      revenueCatAppUserId: RevenueCatService.getRevenueCatAppUserId(
+        customerInfo,
+      ),
+    ));
+    return true;
   }
 
   Future<bool> restorePurchases() async {

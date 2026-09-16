@@ -1,10 +1,14 @@
 // test/helpers/night_market_paywall_harness.dart
 //
-// 夜市付費牆情境共用鷹架：可變訂閱切片、可變帳號 id（模擬中途切換帳號）、
-// 一個含 /paywall stub 的 GoRouter，以及可控制 forceSyncTier／refresh 是否
-// 失敗的假 SubscriptionNotifier。night_market_screen_test 與
-// night_market_entry_card_test 共用同一份，避免各自重寫一次可能各自漏檢查
-// 的鷹架（root-cause fix，2026-09-17）。
+// 夜市付費牆情境共用鷹架：可變訂閱切片、真的走 StreamProvider 契約的可控帳號
+// 來源（模擬中途切換帳號時走的是正式 reactive 路徑，不是側門直接改值）、一個
+// 含 /paywall stub 的 GoRouter，以及可控制 forceSyncTier／refresh 是否失敗、
+// 可暫停 forceSyncTier 完成時機的假 SubscriptionNotifier。
+// night_market_screen_test 與 night_market_entry_card_test 共用同一份，避免
+// 各自重寫一次可能各自漏檢查的鷹架（root-cause fix，2026-09-17；跨模型
+// review R1 後改用真的 stream 契約，2026-09-17）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,34 +23,44 @@ final testNightMarketAccessProvider = StateProvider<EbookSubscriptionAccess>(
   (ref) => const EbookSubscriptionAccess.essential(),
 );
 
-final testNightMarketAccountIdProvider =
-    StateProvider<String?>((ref) => 'harness-owner');
+Stream<String?> _accountStream(String? initial, Stream<String?> changes) async* {
+  yield initial;
+  yield* changes;
+}
 
 /// Stands in for the real notifier so tests never touch Supabase/RevenueCat.
-/// [forceSyncTierShouldFail] simulates "purchase succeeded but the server
-/// sync call failed"; [onRevenueCatRecovery] stands in for what the real
-/// `syncWithRevenueCat` does (ask RevenueCat's local cache and persist the
-/// result into real state) so tests can tell "recovery confirms the
-/// purchase" apart from "recovery also can't confirm it" without any
-/// network.
+/// - [forceSyncTierShouldFail] simulates "purchase succeeded but the server
+///   sync call failed".
+/// - [forceSyncTierGate], when set, makes `forceSyncTier` await it before
+///   returning — lets a test pause mid-round-trip to exercise reentrancy
+///   (R4: "paywall already returned, provider already flipped allowed, but
+///   the whole operation hasn't finished").
+/// - [onAdoptRevenueCatTierIfHigher] stands in for what the real method does
+///   (ask RevenueCat's local cache and persist the result into real state)
+///   so tests can prove night market calls *this* recovery path — never the
+///   old, reviewer-flagged `syncWithRevenueCat` — and can tell "recovery
+///   confirms the purchase" apart from "recovery also can't confirm it".
 class FakeSubscriptionNotifier extends SubscriptionNotifier {
   FakeSubscriptionNotifier(
     SubscriptionState seed, {
     this.forceSyncTierShouldFail = false,
-    this.onRevenueCatRecovery,
+    this.onAdoptRevenueCatTierIfHigher,
   }) {
     state = seed;
   }
 
   final bool forceSyncTierShouldFail;
-  final VoidCallback? onRevenueCatRecovery;
+  final VoidCallback? onAdoptRevenueCatTierIfHigher;
+  Completer<void>? forceSyncTierGate;
   int forceSyncTierCalls = 0;
   int refreshCalls = 0;
-  int revenueCatRecoveryCalls = 0;
+  int adoptRevenueCatTierIfHigherCalls = 0;
+  int syncWithRevenueCatCalls = 0;
 
   @override
   Future<void> forceSyncTier(String tier) async {
     forceSyncTierCalls++;
+    if (forceSyncTierGate != null) await forceSyncTierGate!.future;
     if (forceSyncTierShouldFail) {
       throw Exception('sync failed (test)');
     }
@@ -58,16 +72,26 @@ class FakeSubscriptionNotifier extends SubscriptionNotifier {
   }
 
   @override
-  Future<void> syncWithRevenueCat() async {
+  Future<bool> adoptRevenueCatTierIfHigher() async {
     // The base constructor's own `_initialize()` fire-and-forgets a call to
-    // this same method before any test interaction happens (it no-ops for
-    // real, since SupabaseService.currentUser is null in tests). Only react
-    // once a real paywall round trip has actually called forceSyncTier,
-    // otherwise that leftover call would prematurely flip access before the
-    // scenario under test even starts.
+    // `syncWithRevenueCat` before any test interaction happens (it no-ops
+    // for real, since SupabaseService.currentUser is null in tests). Only
+    // react to *this* method once a real paywall round trip has actually
+    // called forceSyncTier, otherwise a leftover call could prematurely
+    // flip access before the scenario under test even starts.
+    if (forceSyncTierCalls == 0) return false;
+    adoptRevenueCatTierIfHigherCalls++;
+    onAdoptRevenueCatTierIfHigher?.call();
+    return onAdoptRevenueCatTierIfHigher != null;
+  }
+
+  @override
+  Future<void> syncWithRevenueCat() async {
+    // Real production code should never reach this for the night-market
+    // recovery path (that's exactly what R2 flagged); tests assert this
+    // stays 0 for that flow, after the same leftover-init filter as above.
     if (forceSyncTierCalls == 0) return;
-    revenueCatRecoveryCalls++;
-    onRevenueCatRecovery?.call();
+    syncWithRevenueCatCalls++;
   }
 }
 
@@ -76,30 +100,32 @@ class NightMarketPaywallHarness {
     required this.container,
     required this.router,
     required this.notifier,
-  });
+    required StreamController<String?> accountController,
+  }) : _accountController = accountController;
 
   final ProviderContainer container;
   final GoRouter router;
   final FakeSubscriptionNotifier notifier;
+  final StreamController<String?> _accountController;
 
   void setAccess(EbookSubscriptionAccess access) {
     container.read(testNightMarketAccessProvider.notifier).state = access;
   }
 
-  void switchAccount(String? id) {
-    container.read(testNightMarketAccountIdProvider.notifier).state = id;
-  }
+  /// Emits a real account-id change through the same `StreamProvider`
+  /// contract `nightMarketAccountIdProvider` uses in production, rather
+  /// than mutating a side-channel value directly.
+  void switchAccount(String? id) => _accountController.add(id);
 }
 
 /// Pumps whatever [builder] returns at '/' inside a GoRouter that also owns a
 /// controllable /paywall stub, with the night-market subscription/account
-/// seams overridden. The stub's three buttons cover every purchase outcome a
+/// seams overridden. The stub's four buttons cover every purchase outcome a
 /// gate needs to survive:
 ///  - "buy essential"            -> server catches up before pop returns.
 ///  - "buy essential (sync lag)" -> pop says essential but the access
 ///    provider is left exactly as it was, so only [forceSyncTierShouldFail]
-///    being false, or the [revenueCatRecoveryConfirmsEssential] recovery,
-///    can unlock this.
+///    being false, or the RevenueCat recovery, can unlock this.
 ///  - "buy starter"               -> pops starter; must stay locked.
 ///  - "cancel"                    -> pops null.
 Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
@@ -108,6 +134,7 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
   bool forceSyncTierShouldFail = false,
   bool revenueCatRecoveryConfirmsEssential = false,
+  String? initialAccountId = 'harness-owner',
   List<GoRoute> extraRoutes = const [],
   Size size = const Size(390, 844),
 }) async {
@@ -115,25 +142,28 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
   final notifier = FakeSubscriptionNotifier(
     const SubscriptionState(tier: SubscriptionTierHelper.free),
     forceSyncTierShouldFail: forceSyncTierShouldFail,
-    onRevenueCatRecovery: revenueCatRecoveryConfirmsEssential
+    onAdoptRevenueCatTierIfHigher: revenueCatRecoveryConfirmsEssential
         ? () => container.read(testNightMarketAccessProvider.notifier).state =
             const EbookSubscriptionAccess.essential()
         : null,
   );
+  final accountController = StreamController<String?>.broadcast();
 
   container = ProviderContainer(
     overrides: [
       testNightMarketAccessProvider.overrideWith((ref) => access),
       ebookSubscriptionAccessProvider
           .overrideWith((ref) => ref.watch(testNightMarketAccessProvider)),
-      nightMarketAccountIdProvider
-          .overrideWith((ref) => ref.watch(testNightMarketAccountIdProvider)),
+      nightMarketAccountIdProvider.overrideWith(
+        (ref) => _accountStream(initialAccountId, accountController.stream),
+      ),
       subscriptionProvider.overrideWith((ref) => notifier),
       subscriptionScreenRefreshProvider
           .overrideWith((ref) => () => notifier.refresh()),
     ],
   );
   addTearDown(container.dispose);
+  addTearDown(accountController.close);
 
   final router = GoRouter(
     initialLocation: '/',
@@ -199,5 +229,6 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
     container: container,
     router: router,
     notifier: notifier,
+    accountController: accountController,
   );
 }

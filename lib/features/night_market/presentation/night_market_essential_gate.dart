@@ -25,11 +25,22 @@ export '../../learning/domain/models/ebook.dart' show EbookAccess;
 export '../../learning/presentation/widgets/ebook_access_gate.dart'
     show EbookSubscriptionAccess, ebookSubscriptionAccessProvider;
 
-/// 目前登入帳號 id 的快照，獨立成 provider 方便測試覆寫，也方便在付費牆
-/// 回合中途重查「還是不是同一個人在操作」（同 ebookPaidEntitlementProvider
-/// 為測試覆寫獨立出來的理由）。
-final nightMarketAccountIdProvider = Provider<String?>((ref) {
-  return SupabaseService.currentUser?.id;
+/// 目前登入帳號 id，跟著 Supabase auth 狀態即時更新——不是算一次就永久快取
+/// 的普通 Provider。中途登出換帳號時，`ref.read(...).future` 必須讀到新值，
+/// 不能停在啟動當下那個人（跨模型 review R1，2026-09-17：舊版用普通
+/// `Provider<String?>` 內部直接呼叫靜態 getter，沒有任何 reactive
+/// dependency，等於算一次快取一輩子，帳號一致性檢查形同虛設）。呼叫端讀
+/// `.future` 而不是 `.value`：這個 provider 通常在付費牆流程裡第一次被
+/// 讀到，`.value` 在 stream 還沒送出第一個事件前是 null，會把「還沒到」
+/// 誤判成「換人了」。
+///
+/// 獨立成自己的 provider（不是重用 `ebookProgressOwnerProvider`）：雖然底層
+/// 都是 `SupabaseService.authStateChanges`，但兩邊語意不同——一個是「進度
+/// 歸屬」，一個是「這筆付費操作中途還是不是同一人在按」，不宜互相耦合。
+final nightMarketAccountIdProvider = StreamProvider<String?>((ref) async* {
+  yield SupabaseService.currentUser?.id;
+  yield* SupabaseService.authStateChanges
+      .map((authState) => authState.session?.user.id);
 });
 
 /// 開付費牆 → 回來 → 同步／刷新 → 回報現在是否放行，整段一起做完才回傳，
@@ -39,13 +50,25 @@ final nightMarketAccountIdProvider = Provider<String?>((ref) {
 /// ——「開牆～後續動作」是同一段不可切開的操作，過早釋放旗標等於沒防到。
 ///
 /// 每個 await 之後都重查帳號 id：中途登出或切換帳號時，剛才那次付費牆結果
-/// 不得套用到現在這個帳號身上。
+/// 不得套用到現在這個帳號身上。真正的寫入前帳號一致性檢查在
+/// `SubscriptionNotifier._syncSubscriptionViaEdgeFunction`
+/// （`subscriptionSyncStillAppliesToAccount`）——不能只在這裡的外層 await
+/// 結束後才發現切帳，那時內部早就寫進 `SubscriptionState`／`UsageService`
+/// 了；這裡的重查是第二層、給夜市自己這次判斷用的防線。
 Future<bool> resolveNightMarketEssentialUnlock(
   BuildContext context,
   WidgetRef ref,
 ) async {
-  final account = ref.read(nightMarketAccountIdProvider);
-  bool sameAccount() => ref.read(nightMarketAccountIdProvider) == account;
+  // `.future` (not `.value`) so the very first read waits for the stream's
+  // first event instead of racing it: this provider is typically read for
+  // the first time right here, and `.value` on a still-loading
+  // `StreamProvider` is null — comparing that transient null against the
+  // real id once it arrives would misfire as "account changed" on every
+  // single call, never a real switch.
+  final account = await ref.read(nightMarketAccountIdProvider.future);
+  if (!context.mounted) return false;
+  Future<bool> sameAccount() async =>
+      await ref.read(nightMarketAccountIdProvider.future) == account;
   bool essentialAllowed() =>
       gateFor(
         EbookAccess.essential,
@@ -54,7 +77,8 @@ Future<bool> resolveNightMarketEssentialUnlock(
       ChatQuizGate.allowed;
 
   final poppedTier = await context.push<String>('/paywall');
-  if (!context.mounted || !sameAccount()) return false;
+  if (!context.mounted) return false;
+  if (!await sameAccount()) return false;
 
   if (poppedTier != null && poppedTier.isNotEmpty) {
     try {
@@ -62,7 +86,8 @@ Future<bool> resolveNightMarketEssentialUnlock(
     } catch (e) {
       debugPrint('NightMarket paywall force sync failed: $e');
     }
-    if (!context.mounted || !sameAccount()) return false;
+    if (!context.mounted) return false;
+    if (!await sameAccount()) return false;
   }
 
   try {
@@ -70,27 +95,37 @@ Future<bool> resolveNightMarketEssentialUnlock(
   } catch (e) {
     debugPrint('NightMarket paywall refresh failed: $e');
   }
-  if (!context.mounted || !sameAccount()) return false;
+  if (!context.mounted) return false;
+  if (!await sameAccount()) return false;
   if (essentialAllowed()) return true;
   if (poppedTier != SubscriptionTierHelper.essential) return false;
 
   // Money already changed hands (a real Essential purchase/restore just
-  // completed) but our server-side mirror hasn't caught up. A one-shot
-  // "trust the popped string" fallback would only unblock this single
-  // action — the very next independent gate check still reads the real
-  // provider and would block again. Instead reuse the same RevenueCat-backed
-  // recovery `syncWithRevenueCat` already performs elsewhere: it asks
-  // RevenueCat's own local entitlement cache directly and persists the
-  // result into the real subscription state, so this is never a bare trust
-  // of the string — if RevenueCat itself does not confirm Essential, this
-  // still returns false rather than conjuring access from nothing.
+  // completed) but our server-side mirror hasn't caught up — and calling
+  // the existing routine `syncWithRevenueCat` cannot be treated as having
+  // resolved this: it can itself adopt a stale-but-"successful" server
+  // response over a fresher RevenueCat read (`syncedTier ?? rcTier` only
+  // falls back when the call fails outright). `adoptRevenueCatTierIfHigher`
+  // asks RevenueCat's local entitlement cache directly and only ever raises
+  // the tier, never lowers it, so it can't be used to paper over a genuine
+  // revocation/expiry — if RevenueCat itself does not confirm Essential,
+  // this still falls through to "cannot confirm" below rather than
+  // conjuring access from nothing.
   try {
-    await ref.read(subscriptionProvider.notifier).syncWithRevenueCat();
+    await ref.read(subscriptionProvider.notifier).adoptRevenueCatTierIfHigher();
   } catch (e) {
     debugPrint('NightMarket paywall RevenueCat recovery sync failed: $e');
   }
-  if (!context.mounted || !sameAccount()) return false;
-  return essentialAllowed();
+  if (!context.mounted) return false;
+  if (!await sameAccount()) return false;
+  if (essentialAllowed()) return true;
+  if (!context.mounted) return false;
+
+  // Genuinely cannot confirm the purchase that was just made. This is not a
+  // cancellation, so a second paywall would look like asking to pay again —
+  // give a neutral confirm/retry instead.
+  showNightMarketGateNotice(context, '已收到你的購買，正在確認中，請稍後再試一次');
+  return false;
 }
 
 /// resolving／unavailable 的中性提示；locked 由呼叫端各自決定要不要先開牆。

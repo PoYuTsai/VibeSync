@@ -159,7 +159,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(harness.notifier.forceSyncTierCalls, 1);
-      expect(harness.notifier.revenueCatRecoveryCalls, 1);
+      expect(harness.notifier.adoptRevenueCatTierIfHigherCalls, 1);
       expect(find.text('復盤'), findsOneWidget);
 
       await tester.tap(find.byTooltip('回練習室'));
@@ -187,7 +187,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(harness.notifier.forceSyncTierCalls, 1);
-      expect(harness.notifier.revenueCatRecoveryCalls, 1);
+      expect(harness.notifier.adoptRevenueCatTierIfHigherCalls, 1);
       expect(find.text('復盤'), findsNothing);
       expect(find.text('查看復盤'), findsOneWidget);
     });
@@ -200,6 +200,9 @@ void main() {
       await tester.tap(find.text('查看復盤'));
       await tester.pumpAndSettle();
       harness.switchAccount('a-different-user');
+      // Let the real StreamProvider actually deliver the new account id
+      // before continuing, same as a genuine auth-state event would.
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('paywall-buy-essential')));
       await tester.pumpAndSettle();
       expect(find.text('復盤'), findsNothing);
