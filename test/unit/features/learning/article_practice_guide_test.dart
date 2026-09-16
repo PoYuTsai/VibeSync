@@ -52,5 +52,15 @@ void main() {
       expect(guide.practiceTitle, contains('曖昧回球'));
       expect(guide.carryBackHint, contains('測溫'));
     });
+
+    test('maps 2026-09-16 textbook batch to their practice categories', () {
+      // 判斷與邊界／推進與邀約要手動列在 switch；深度交流走分類預設。
+      expect(buildArticlePracticeGuide(_article('25')).category, '判斷與邊界');
+      expect(buildArticlePracticeGuide(_article('30')).category, '判斷與邊界');
+      expect(buildArticlePracticeGuide(_article('26')).category, '推進與邀約');
+      expect(buildArticlePracticeGuide(_article('29')).category, '推進與邀約');
+      expect(buildArticlePracticeGuide(_article('27')).category, '延伸與共鳴');
+      expect(buildArticlePracticeGuide(_article('28')).category, '延伸與共鳴');
+    });
   });
 }
