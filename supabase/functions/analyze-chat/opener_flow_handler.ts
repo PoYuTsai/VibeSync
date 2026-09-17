@@ -388,7 +388,8 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   const request = parsed.request;
   const imageValidation = validateOpenerImages(body.images);
   if (imageValidation.error) {
-    return jsonResponse({ error: imageValidation.error, shouldChargeQuota: false }, imageValidation.status ?? 400);
+    // 新版錯誤一律帶 code：App 靠「400 卻沒有 code」辨識舊 Edge 不支援兩段式。
+    return flowError("OPENER_IMAGE_INVALID", imageValidation.error, imageValidation.status ?? 400);
   }
   const images = Array.isArray(body.images) ? body.images : [];
   const imageCount = images.length;

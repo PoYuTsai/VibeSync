@@ -5,7 +5,44 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../domain/opener_flow_models.dart';
 import 'opener_service.dart';
+
+/// 兩段式草稿的延伸資料（附件 §9.5）：分析與題目版本、本次回答、sessionId／
+/// generationId、來源紀錄、到期時間與剩餘次數。舊草稿沒有這一段，照舊讀取。
+class OpenerDraftFlow {
+  const OpenerDraftFlow({
+    required this.analysis,
+    required this.generation,
+    required this.contributionDraft,
+  });
+
+  final OpenerAnalysis analysis;
+  final OpenerGeneration generation;
+  final OpenerContributionDraft contributionDraft;
+
+  /// 這份草稿是否還能繼續生成（未到期且本局還有次數）。
+  bool canContinueAt(DateTime now) =>
+      !analysis.isExpiredAt(now) && generation.usage.generationsRemaining > 0;
+
+  Map<String, dynamic> toJson() => {
+        'analysis': analysis.toJson(),
+        'generation': generation.toJson(),
+        'contributionDraft': contributionDraft.toJson(),
+      };
+
+  static OpenerDraftFlow? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final analysis = OpenerAnalysis.tryParse(raw['analysis']);
+    final generation = OpenerGeneration.tryParse(raw['generation']);
+    if (analysis == null || generation == null) return null;
+    return OpenerDraftFlow(
+      analysis: analysis,
+      generation: generation,
+      contributionDraft: OpenerContributionDraft.fromJson(raw['contributionDraft']),
+    );
+  }
+}
 
 class OpenerDraft {
   const OpenerDraft({
@@ -17,6 +54,7 @@ class OpenerDraft {
     this.inputPreview,
     this.continuedAt,
     this.partnerId,
+    this.flow,
   });
 
   final String id;
@@ -27,6 +65,9 @@ class OpenerDraft {
   final String? inputPreview;
   final DateTime? continuedAt;
   final String? partnerId;
+
+  /// 兩段式延伸；舊單段草稿為 null。
+  final OpenerDraftFlow? flow;
 
   String get title {
     final name = displayName?.trim();
@@ -70,6 +111,7 @@ class OpenerDraft {
       inputPreview: inputPreview,
       continuedAt: continuedAt ?? this.continuedAt,
       partnerId: partnerId ?? this.partnerId,
+      flow: flow,
     );
   }
 
@@ -82,6 +124,7 @@ class OpenerDraft {
         'inputPreview': inputPreview,
         'continuedAt': continuedAt?.toIso8601String(),
         'partnerId': partnerId,
+        if (flow != null) 'flow': flow!.toJson(),
       };
 
   static OpenerDraft? fromJson(Map<String, dynamic> json) {
@@ -118,6 +161,7 @@ class OpenerDraft {
       inputPreview: json['inputPreview']?.toString(),
       continuedAt: parseNullableDate(json['continuedAt']),
       partnerId: json['partnerId']?.toString(),
+      flow: OpenerDraftFlow.tryParse(json['flow']),
     );
   }
 }
@@ -185,6 +229,7 @@ class OpenerResultCacheService {
     String? sourceLabel,
     String? inputPreview,
     String? partnerId,
+    OpenerDraftFlow? flow,
   }) async {
     final now = DateTime.now();
     final scopedPartnerId = _blankToNull(partnerId);
@@ -197,6 +242,7 @@ class OpenerResultCacheService {
       sourceLabel: _blankToNull(sourceLabel),
       inputPreview: _blankToNull(inputPreview),
       partnerId: scopedPartnerId,
+      flow: flow,
     );
 
     final drafts = [
