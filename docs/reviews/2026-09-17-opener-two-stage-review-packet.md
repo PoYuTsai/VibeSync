@@ -96,6 +96,7 @@ Commits（一 commit 一關注）：
 | **修正後重跑**（新 head）：Deno analyze-chat／shared＋delete-account／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r1_*`（各有 `.exit`） | 同左 |
 | **第二輪修正後重跑**（新 head）：Deno analyze-chat 全套／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze／eval dry-run | 見 `logs/r2_*`（各有 `.exit`）；先紅證據 `logs/red_r2_*.txt` | 同左 |
 | **第三輪修正後重跑**（新 head；只動 Flutter controller／cache）：opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r3_*`（各有 `.exit`）；先紅證據 `logs/red_r3_a.txt`；Deno 未重跑（本輪無 Edge 改動）。全套第一次跑 F01 畫面測試 flake 一次（分析路徑多了排隊 Hive 寫入、固定 50ms 等待不夠），改成等真正 widget 出現（純測試修正）後單檔連跑 3 次綠、全套重跑；flake 那次的 log 未保留 | 同左 |
+| **第四輪修正後重跑**（新 head；只動 controller 與 controller 測試）：opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r4_*`（各有 `.exit`）；先紅證據 `logs/red_r4_a.txt`；Deno 未重跑（無 Edge 改動） | 同左 |
 | `deno run … tools/opener-two-stage-eval/run.ts --tag=dry-run` | dry-run 完成：156 次呼叫預估 ≈ $4.2 | `logs/eval_dry_run_summary.md` |
 
 先紅後綠證據（測試先失敗、再改程式）：
@@ -166,9 +167,20 @@ Commits（一 commit 一關注）：
 
 未用「dispose 後全部不保存」；離頁保存需求（R2a／R2a-2）測試全數保留並通過。
 
+## 11. 第四輪獨立複核（BLOCK，只補新建／補建保存工作兩處）修正對照 — 2026-09-18
+
+審查基準 `5e0b693d`；R2a-3 三項（固定 owner、世代檢查、局部合併）成立保留，B／C 與其他項不重開。reviewer 給的是來源靜態反例與未編譯的 Dart 候選（**未由 reviewer 跑紅**）；本機沿用既有 `debugWriteGate`＋真 controller／cache／Hive 寫成四支回歸，在 5e0b693d 上 4/4 重現（`logs/red_r4_a.txt`；P1 第一版案例因 checkpoint 一入隊就出隊而綠，改成「排在被卡住的寫入後面、尚未出隊」才重現 reviewer 描述的條件，兩次都留在紀錄裡）。
+
+| 項 | 反例（5e0b693d 實際接線重現） | 修正 | 綠燈 |
+|---|---|---|---|
+| P1 出隊讀可變 metadata | A 的 analyzing checkpoint 新建排在佇列後面時切 B＋restoreDraft(B)：出隊才讀 `_lastDisplayName／_lastSourceLabel／_lastInputPreview`，A key 存成「B 名／B 來源／B 預覽」；同帳號換另一份草稿同樣寫成 A2 的 | `_persistFlow` 與 `_persistDraftEdit` 的新建入口在入隊時以 `_captureMeta()` 固定完整 payload（flow／result／名稱／來源／預覽）；`_writeFlow` 只吃傳入的 meta，出隊不讀任何可變欄位 | 綠：A key 是 A 名／A 來源／A 預覽，B key 逐字元不變、active 仍是 B；同帳號案例亦綠 |
+| P2 建檔目標未共用／失敗永久卡住 | 分析成功但兩個 checkpoint 都沒落地→磁碟恢復後首次補建等待中按生成：pending checkpoint 以 null draftId 另建第二份（2 份）；首次補建失敗後 `_createDraftJob` 永遠是 null，之後的修改全部不保存（0 份） | 這一代的建檔目標改為「最新一個可能建檔的工作」鏈：回答編輯與階段 checkpoint 都等它的 id，成功沿用同一份、失敗（null）由下一筆重新建檔並成為新目標；目標解析、沿用與重試都綁定入隊時的世代與工作身分 | 綠：只有一份同局草稿（stage result、原 generationId、generationsUsed=1、回答正確）；失敗後恢復的下一次保存成功且後續繼續合併同一份 |
+
+R2a-3 三支、離頁保存（R2a／R2a-2）與必要 checkpoint 失敗 API=0 全部保留通過。
+
 ## 7. 跨模型審查
 
-**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（83c278f3）→ 已修正（§9）。第三輪：BLOCK（070cfbdb，只剩 A 保存佇列）→ 已修正（§10），待第四輪確認。**
+**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（83c278f3）→ 已修正（§9）。第三輪：BLOCK（070cfbdb）→ 已修正（§10）。第四輪：BLOCK（5e0b693d，新建／補建兩處）→ 已修正（§11），待第五輪確認。**
 
 原第一輪派審阻塞紀錄（保留）：
 
