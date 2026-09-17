@@ -24,6 +24,11 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
   /// twice.
   bool _reviewGateInFlight = false;
 
+  /// A likely-real purchase/restore was made but couldn't yet be confirmed
+  /// (see [NightMarketUnlockOutcome.pendingConfirmation]). While true, the
+  /// next tap retries confirmation instead of reopening the store paywall.
+  bool _pendingConfirmation = false;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -74,15 +79,19 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
       case ChatQuizGate.locked:
         _reviewGateInFlight = true;
         try {
-          final unlocked = await resolveNightMarketEssentialUnlock(
-            context,
-            ref,
-          );
+          // A prior attempt ended pendingConfirmation: retry confirmation
+          // only, never reopen the store paywall for a purchase that may
+          // have already gone through.
+          final outcome = _pendingConfirmation
+              ? await resolveNightMarketPendingConfirmation(context, ref)
+              : await resolveNightMarketEssentialUnlock(context, ref);
           if (!context.mounted) return;
+          _pendingConfirmation =
+              outcome == NightMarketUnlockOutcome.pendingConfirmation;
           // Unlocked -> go straight into the recap, not the S1 playback.
-          // Cancelled/still locked -> stay on this card, no restricted
-          // content shown.
-          if (unlocked) _pushReview();
+          // Cancelled/still locked/pending -> stay on this card, no
+          // restricted content shown.
+          if (outcome == NightMarketUnlockOutcome.unlocked) _pushReview();
         } finally {
           _reviewGateInFlight = false;
         }

@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/reveal_pill.dart';
 import '../../domain/night_market_scenario.dart';
+import '../night_market_essential_gate.dart';
 import 'night_market_review_player.dart';
 
 /// The completed demonstration has one shared knowledge source and native
 /// routes, so returning from a detail keeps the caller's reading position.
-class NightMarketReviewScreen extends StatelessWidget {
+///
+/// Reaching this screen at all already required Essential (see
+/// `night_market_screen.dart` / `night_market_entry_card.dart`'s own
+/// gating), but access could still be lost while someone is browsing around
+/// inside it (expiry, revocation) — every further navigation re-checks the
+/// gate rather than trusting that earlier check forever, and falls back to
+/// [onExit] instead of building another restricted page.
+class NightMarketReviewScreen extends ConsumerWidget {
   const NightMarketReviewScreen({
     super.key,
     required this.scenario,
@@ -21,10 +30,17 @@ class NightMarketReviewScreen extends StatelessWidget {
   final VoidCallback onExit;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final homeRoute = ModalRoute.of(context)!;
     final navigator = Navigator.of(context);
+    bool stillAllowed() =>
+        gateFor(EbookAccess.essential, ref.read(ebookSubscriptionAccessProvider)) ==
+        ChatQuizGate.allowed;
     void openChapter(NightMarketReviewChapter chapter) {
+      if (!stillAllowed()) {
+        onExit();
+        return;
+      }
       // A related chapter starts from the overview, rather than growing an
       // unbounded chapter -> knowledge -> chapter navigation stack.
       navigator.pushAndRemoveUntil<void>(
@@ -33,14 +49,20 @@ class NightMarketReviewScreen extends StatelessWidget {
             scenario: scenario,
             chapter: chapter,
             onChapter: openChapter,
+            onExit: onExit,
           ),
         ),
         (route) => identical(route, homeRoute),
       );
     }
 
-    void openKnowledge(NightMarketReviewItem item) =>
-        _openKnowledge(context, scenario, item, openChapter);
+    void openKnowledge(NightMarketReviewItem item) {
+      if (!stillAllowed()) {
+        onExit();
+        return;
+      }
+      _openKnowledge(context, scenario, item, openChapter);
+    }
 
     final mindsets = scenario.review
         .where((item) => item.tier == NightMarketReviewTier.mindset);
@@ -174,19 +196,51 @@ void _openKnowledge(
   ));
 }
 
-class _ChapterScreen extends StatelessWidget {
+class _ChapterScreen extends ConsumerWidget {
   const _ChapterScreen({
     required this.scenario,
     required this.chapter,
     required this.onChapter,
+    required this.onExit,
   });
 
   final NightMarketScenario scenario;
   final NightMarketReviewChapter chapter;
   final ValueChanged<NightMarketReviewChapter> onChapter;
+  final VoidCallback onExit;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    bool stillAllowed() =>
+        gateFor(EbookAccess.essential, ref.read(ebookSubscriptionAccessProvider)) ==
+        ChatQuizGate.allowed;
+    void openClip() {
+      if (!stillAllowed()) {
+        onExit();
+        return;
+      }
+      Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => NightMarketReviewPlayer(
+          scenario: scenario,
+          chapter: chapter,
+        ),
+      ));
+    }
+
+    void openKnowledgeFromChapter(String id) {
+      if (!stillAllowed()) {
+        onExit();
+        return;
+      }
+      _openKnowledge(
+        context,
+        scenario,
+        scenario.reviewById(id),
+        onChapter,
+        originChapterId: chapter.id,
+      );
+    }
+
     final index = scenario.reviewChapters.indexOf(chapter);
     return _ReadingPage(
       title: '片段解析 ${index + 1}／${scenario.reviewChapters.length}',
@@ -196,12 +250,7 @@ class _ChapterScreen extends StatelessWidget {
         OutlinedButton.icon(
           icon: const Icon(Icons.play_circle_outline),
           label: const Text('回看這段'),
-          onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
-            builder: (_) => NightMarketReviewPlayer(
-              scenario: scenario,
-              chapter: chapter,
-            ),
-          )),
+          onPressed: openClip,
         ),
         const SizedBox(height: 16),
         _Surface(children: [
@@ -232,13 +281,7 @@ class _ChapterScreen extends StatelessWidget {
         for (final id in chapter.knowledgeIds)
           _NavigationRow(
             title: scenario.reviewById(id).term,
-            onTap: () => _openKnowledge(
-              context,
-              scenario,
-              scenario.reviewById(id),
-              onChapter,
-              originChapterId: chapter.id,
-            ),
+            onTap: () => openKnowledgeFromChapter(id),
           ),
         const SizedBox(height: 24),
         if (index + 1 < scenario.reviewChapters.length)

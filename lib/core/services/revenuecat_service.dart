@@ -13,6 +13,14 @@ class RevenueCatService {
   @visibleForTesting
   static bool? debugIsIOSPlatformOverride;
 
+  /// Test-only seams for exercising the real [SubscriptionNotifier] against
+  /// a fake RevenueCat SDK boundary. Never set outside tests.
+  @visibleForTesting
+  static Future<CustomerInfo?> Function(String expectedAppUserId)?
+      debugGetCustomerInfoForAppUserIdOverride;
+  @visibleForTesting
+  static Future<CustomerInfo?> Function(String userId)? debugLoginOverride;
+
   static const MethodChannel _subscriptionManagementChannel = MethodChannel(
     'vibesync/subscription_management',
   );
@@ -70,11 +78,15 @@ class RevenueCatService {
   static void debugResetForTesting() {
     _isInitialized = false;
     debugIsIOSPlatformOverride = null;
+    debugGetCustomerInfoForAppUserIdOverride = null;
+    debugLoginOverride = null;
   }
 
   /// 關聯用戶 ID（登入後呼叫）
   /// 這讓 RevenueCat 知道訂閱屬於哪個 Supabase 用戶
   static Future<CustomerInfo?> login(String userId) async {
+    final override = debugLoginOverride;
+    if (override != null) return override(userId);
     if (!_isInitialized) return null;
 
     try {
@@ -227,6 +239,8 @@ class RevenueCatService {
   static Future<CustomerInfo?> getCustomerInfoForAppUserId(
     String expectedAppUserId,
   ) async {
+    final override = debugGetCustomerInfoForAppUserIdOverride;
+    if (override != null) return override(expectedAppUserId);
     if (!_isInitialized) return null;
     if (!await _matchesExpectedAppUserId(expectedAppUserId)) {
       return null;

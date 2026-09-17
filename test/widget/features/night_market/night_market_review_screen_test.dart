@@ -1,29 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/theme/app_theme.dart';
+import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/night_market/data/night_market_story.dart';
 import 'package:vibesync/features/night_market/presentation/screens/night_market_review_screen.dart';
 import 'package:vibesync/shared/widgets/reveal_pill.dart';
 
-Future<void> _show(WidgetTester tester, {double scale = 1}) async {
+final _testAccessProvider = StateProvider<EbookSubscriptionAccess>(
+  (ref) => const EbookSubscriptionAccess.essential(),
+);
+
+class _ReviewHarness {
+  _ReviewHarness(this.container);
+  final ProviderContainer container;
+
+  void setAccess(EbookSubscriptionAccess access) =>
+      container.read(_testAccessProvider.notifier).state = access;
+}
+
+Future<_ReviewHarness> _show(
+  WidgetTester tester, {
+  double scale = 1,
+  EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
+  VoidCallback? onExit,
+}) async {
   await tester.binding.setSurfaceSize(Size(scale == 1 ? 390 : 320, 844));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(MaterialApp(
-    theme: AppTheme.darkTheme,
-    builder: (context, child) => MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        disableAnimations: true,
-        textScaler: TextScaler.linear(scale),
+  final container = ProviderContainer(
+    overrides: [
+      _testAccessProvider.overrideWith((ref) => access),
+      // Reaching this screen at all already required Essential in
+      // production; most scenarios here are about its own reading UI, not
+      // the gate, so default to Essential and let individual tests flip it
+      // mid-test via [_ReviewHarness.setAccess].
+      ebookSubscriptionAccessProvider
+          .overrideWith((ref) => ref.watch(_testAccessProvider)),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(UncontrolledProviderScope(
+    container: container,
+    child: MaterialApp(
+      theme: AppTheme.darkTheme,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          disableAnimations: true,
+          textScaler: TextScaler.linear(scale),
+        ),
+        child: child!,
       ),
-      child: child!,
-    ),
-    home: NightMarketReviewScreen(
-      scenario: buildNightMarketScenario(),
-      onRestart: () {},
-      onExit: () {},
+      home: NightMarketReviewScreen(
+        scenario: buildNightMarketScenario(),
+        onRestart: () {},
+        onExit: onExit ?? () {},
+      ),
     ),
   ));
   await tester.pumpAndSettle();
+  return _ReviewHarness(container);
 }
 
 Future<void> _tap(WidgetTester tester, Finder target) async {
@@ -123,5 +158,46 @@ void main() {
     await tester.ensureVisible(find.text(
         buildNightMarketScenario().reviewById('empathy_background').practice));
     expect(tester.takeException(), isNull);
+  });
+
+  group('losing access mid-browse (review round 3, requirement 三/四.6)', () {
+    testWidgets(
+        'losing access then opening another chapter exits instead of building it',
+        (tester) async {
+      var exited = false;
+      final harness = await _show(tester, onExit: () => exited = true);
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await _tap(tester, find.text('接住感受，建立信任'));
+      expect(exited, isTrue);
+      expect(find.text('片段解析 2／6'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'losing access then opening a knowledge term exits instead of building it',
+        (tester) async {
+      var exited = false;
+      final harness = await _show(tester, onExit: () => exited = true);
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await _tap(tester, find.text('所有知識點（27）'));
+      await _tap(tester, find.text('廢物測試'));
+      expect(exited, isTrue);
+      expect(find.text('知識詳解'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'losing access while inside a chapter blocks its own clip replay and '
+        'knowledge links too', (tester) async {
+      var exited = false;
+      final harness = await _show(tester, onExit: () => exited = true);
+      await _tap(tester, find.text('接住感受，建立信任'));
+      expect(find.text('片段解析 2／6'), findsOneWidget);
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await _tap(tester, find.text('回看這段'));
+      expect(exited, isTrue);
+      expect(find.text('回看片段'), findsNothing); // the player's own AppBar title
+      expect(tester.takeException(), isNull);
+    });
   });
 }

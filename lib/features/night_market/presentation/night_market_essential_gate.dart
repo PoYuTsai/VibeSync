@@ -43,19 +43,40 @@ final nightMarketAccountIdProvider = StreamProvider<String?>((ref) async* {
       .map((authState) => authState.session?.user.id);
 });
 
+/// 結果三態，取代單純的 bool：「取消／買了別的方案」與「已經付款但還沒確認」
+/// 不能混成同一個 false——前者下一次點擊應該再開一次付費牆，後者不應該
+/// （跨模型 review 第三輪，R3）。
+enum NightMarketUnlockOutcome {
+  /// 現在確認可以看 Essential 內容。
+  unlocked,
+
+  /// 確定沒有解鎖（取消、買了 Starter、帳號中途改變、頁面已離開）。下一次
+  /// 觸發應該重新走完整流程（含開付費牆）。
+  denied,
+
+  /// 剛完成一次看起來像是真的購買／恢復，但同步／RevenueCat 都還無法確認。
+  /// 錢可能已經付了，下一次觸發不該再開一次付費牆，而是重試確認
+  /// （[resolveNightMarketPendingConfirmation]）。
+  pendingConfirmation,
+}
+
 /// 開付費牆 → 回來 → 同步／刷新 → 回報現在是否放行，整段一起做完才回傳，
 /// 不在中繼點提早下結論。
 ///
 /// 呼叫端仍要自己保留重入旗標，並在旗標釋放前做完後續動作（重播／進復盤）
 /// ——「開牆～後續動作」是同一段不可切開的操作，過早釋放旗標等於沒防到。
+/// 呼叫端也要記住 [NightMarketUnlockOutcome.pendingConfirmation]：下一次
+/// 同一個進入點被觸發時，改呼叫 [resolveNightMarketPendingConfirmation]，
+/// 不要再呼叫這個函式重新開一次付費牆。
 ///
 /// 每個 await 之後都重查帳號 id：中途登出或切換帳號時，剛才那次付費牆結果
 /// 不得套用到現在這個帳號身上。真正的寫入前帳號一致性檢查在
-/// `SubscriptionNotifier._syncSubscriptionViaEdgeFunction`
-/// （`subscriptionSyncStillAppliesToAccount`）——不能只在這裡的外層 await
-/// 結束後才發現切帳，那時內部早就寫進 `SubscriptionState`／`UsageService`
-/// 了；這裡的重查是第二層、給夜市自己這次判斷用的防線。
-Future<bool> resolveNightMarketEssentialUnlock(
+/// `SubscriptionNotifier._syncSubscriptionViaEdgeFunction`／
+/// `_loadSubscription`（`subscriptionSyncStillAppliesToAccount`）——不能只
+/// 在這裡的外層 await 結束後才發現切帳，那時內部早就寫進
+/// `SubscriptionState`／`UsageService` 了；這裡的重查是第二層、給夜市自己
+/// 這次判斷用的防線。
+Future<NightMarketUnlockOutcome> resolveNightMarketEssentialUnlock(
   BuildContext context,
   WidgetRef ref,
 ) async {
@@ -66,9 +87,65 @@ Future<bool> resolveNightMarketEssentialUnlock(
   // real id once it arrives would misfire as "account changed" on every
   // single call, never a real switch.
   final account = await ref.read(nightMarketAccountIdProvider.future);
-  if (!context.mounted) return false;
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
   Future<bool> sameAccount() async =>
       await ref.read(nightMarketAccountIdProvider.future) == account;
+
+  final poppedTier = await context.push<String>('/paywall');
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
+  if (!await sameAccount()) return NightMarketUnlockOutcome.denied;
+
+  if (poppedTier == null || poppedTier.isEmpty) {
+    return NightMarketUnlockOutcome.denied; // genuinely cancelled
+  }
+
+  if (poppedTier != SubscriptionTierHelper.essential) {
+    // Bought something else (e.g. Starter): still refresh so that tier's
+    // own UI reflects promptly, but this gate stays denied either way.
+    try {
+      await ref.read(subscriptionScreenRefreshProvider)();
+    } catch (e) {
+      debugPrint('NightMarket paywall refresh failed: $e');
+    }
+    return NightMarketUnlockOutcome.denied;
+  }
+
+  try {
+    await ref.read(subscriptionProvider.notifier).forceSyncTier(poppedTier);
+  } catch (e) {
+    debugPrint('NightMarket paywall force sync failed: $e');
+  }
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
+  if (!await sameAccount()) return NightMarketUnlockOutcome.denied;
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
+
+  return _confirmEssentialAfterPurchase(context, ref, sameAccount: sameAccount);
+}
+
+/// Re-verifies Essential without reopening the store paywall. Used on a
+/// retry while the previous attempt ended in
+/// [NightMarketUnlockOutcome.pendingConfirmation] — someone who may have
+/// already paid must never be asked to go through the store UI again just
+/// to confirm it landed.
+Future<NightMarketUnlockOutcome> resolveNightMarketPendingConfirmation(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  final account = await ref.read(nightMarketAccountIdProvider.future);
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
+  Future<bool> sameAccount() async =>
+      await ref.read(nightMarketAccountIdProvider.future) == account;
+  return _confirmEssentialAfterPurchase(context, ref, sameAccount: sameAccount);
+}
+
+/// Shared tail for both the initial post-purchase check and a later retry:
+/// refresh, then (if still not allowed) ask RevenueCat's local cache
+/// directly. Never opens the store paywall itself.
+Future<NightMarketUnlockOutcome> _confirmEssentialAfterPurchase(
+  BuildContext context,
+  WidgetRef ref, {
+  required Future<bool> Function() sameAccount,
+}) async {
   bool essentialAllowed() =>
       gateFor(
         EbookAccess.essential,
@@ -76,29 +153,14 @@ Future<bool> resolveNightMarketEssentialUnlock(
       ) ==
       ChatQuizGate.allowed;
 
-  final poppedTier = await context.push<String>('/paywall');
-  if (!context.mounted) return false;
-  if (!await sameAccount()) return false;
-
-  if (poppedTier != null && poppedTier.isNotEmpty) {
-    try {
-      await ref.read(subscriptionProvider.notifier).forceSyncTier(poppedTier);
-    } catch (e) {
-      debugPrint('NightMarket paywall force sync failed: $e');
-    }
-    if (!context.mounted) return false;
-    if (!await sameAccount()) return false;
-  }
-
   try {
     await ref.read(subscriptionScreenRefreshProvider)();
   } catch (e) {
     debugPrint('NightMarket paywall refresh failed: $e');
   }
-  if (!context.mounted) return false;
-  if (!await sameAccount()) return false;
-  if (essentialAllowed()) return true;
-  if (poppedTier != SubscriptionTierHelper.essential) return false;
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
+  if (!await sameAccount()) return NightMarketUnlockOutcome.denied;
+  if (essentialAllowed()) return NightMarketUnlockOutcome.unlocked;
 
   // Money already changed hands (a real Essential purchase/restore just
   // completed) but our server-side mirror hasn't caught up — and calling
@@ -109,23 +171,24 @@ Future<bool> resolveNightMarketEssentialUnlock(
   // asks RevenueCat's local entitlement cache directly and only ever raises
   // the tier, never lowers it, so it can't be used to paper over a genuine
   // revocation/expiry — if RevenueCat itself does not confirm Essential,
-  // this still falls through to "cannot confirm" below rather than
+  // this still falls through to "still pending" below rather than
   // conjuring access from nothing.
   try {
     await ref.read(subscriptionProvider.notifier).adoptRevenueCatTierIfHigher();
   } catch (e) {
     debugPrint('NightMarket paywall RevenueCat recovery sync failed: $e');
   }
-  if (!context.mounted) return false;
-  if (!await sameAccount()) return false;
-  if (essentialAllowed()) return true;
-  if (!context.mounted) return false;
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
+  if (!await sameAccount()) return NightMarketUnlockOutcome.denied;
+  if (essentialAllowed()) return NightMarketUnlockOutcome.unlocked;
+  if (!context.mounted) return NightMarketUnlockOutcome.denied;
 
-  // Genuinely cannot confirm the purchase that was just made. This is not a
-  // cancellation, so a second paywall would look like asking to pay again —
-  // give a neutral confirm/retry instead.
+  // Genuinely cannot confirm yet. This is not a cancellation, so opening
+  // another paywall would look like asking to pay again — give a neutral
+  // confirm/retry instead and let the caller remember to retry the same way
+  // next time.
   showNightMarketGateNotice(context, '已收到你的購買，正在確認中，請稍後再試一次');
-  return false;
+  return NightMarketUnlockOutcome.pendingConfirmation;
 }
 
 /// resolving／unavailable 的中性提示；locked 由呼叫端各自決定要不要先開牆。

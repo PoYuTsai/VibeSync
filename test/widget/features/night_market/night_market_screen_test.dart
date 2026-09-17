@@ -400,6 +400,117 @@ void main() {
     });
   });
 
+  group(
+      'S3 ending: resolving/unavailable/cancel stay recoverable (review '
+      'round 3, requirement 三/四.5)', () {
+    Future<void> reachS3End(WidgetTester tester) async {
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await _complete(tester, platform);
+      await tester.tap(find.textContaining('我之前也去過一次'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(platform.creations, hasLength(3));
+    }
+
+    // The resolving/unavailable notices are shown via a real SnackBar, which
+    // sits at the bottom of the screen — the same place as the persistent
+    // retry card underneath it — and stays on screen (absorbing taps) for
+    // its full display duration; `pumpAndSettle` does not wait that out
+    // (it stops as soon as no frame is scheduled, i.e. right after the
+    // entrance animation). Clearing it directly is deterministic, unlike
+    // guessing how long to elapse fake time.
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .clearSnackBars();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    testWidgets(
+        'resolving right as S3 finishes shows a neutral pending card, not a '
+        'paywall, and retry succeeds once the subscription resolves',
+        (tester) async {
+      final harness = await _pumpStarted(tester);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await settle(tester);
+      expect(find.text('復盤'), findsNothing);
+      expect(find.text(paywallStubText), findsNothing);
+      expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+
+      // Still resolving on this attempt too: stays on the same card, no
+      // paywall, no crash.
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await settle(tester);
+      expect(find.text('復盤'), findsNothing);
+      expect(find.text(paywallStubText), findsNothing);
+
+      // Now resolves: retry succeeds without ever opening the store paywall.
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await settle(tester);
+      expect(find.text('復盤'), findsOneWidget);
+      expect(find.text(paywallStubText), findsNothing);
+    });
+
+    testWidgets('unavailable right as S3 finishes offers retry, not a dead end',
+        (tester) async {
+      final harness = await _pumpStarted(tester);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.unavailable());
+      await _complete(tester, platform);
+      await settle(tester);
+      expect(find.text('復盤'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await settle(tester);
+      expect(find.text('復盤'), findsOneWidget);
+    });
+
+    testWidgets(
+        'cancelling the auto-opened paywall at S3 end leaves a retry card '
+        'that reopens it, not a dead end', (tester) async {
+      final harness = await _pumpStarted(tester);
+      await reachS3End(tester);
+      // Access lost right before S3 finishes: the ending gate opens the
+      // store paywall itself, same as the existing "losing access right
+      // before S3 finishes" case — but this time the purchase is cancelled
+      // instead of just leaving the paywall up mid-test.
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('paywall-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.text('復盤'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+
+      // Retry while still genuinely locked reopens the paywall, not a
+      // silent no-op.
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+      // Buying now: same as every other mid-story unlock, this restarts
+      // from S1 rather than jumping straight into the recap (established by
+      // the "unlock consistency" group above) — this call site is no
+      // different just because the trigger was S3 finishing.
+      await tester.tap(find.byKey(const ValueKey('paywall-buy-essential')));
+      await tester.pumpAndSettle();
+      expect(platform.creations, hasLength(4));
+      expect(platform.creations[3].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+    });
+  });
+
   group('full round-trip reentrancy', () {
     testWidgets(
         'provider flipping allowed mid-sync does not let a second tap race '

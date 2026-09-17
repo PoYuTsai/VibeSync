@@ -37,6 +37,17 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   String? _pendingNextId;
   bool _paywallInFlight = false;
 
+  /// A likely-real purchase/restore was made but couldn't yet be confirmed
+  /// (see [NightMarketUnlockOutcome.pendingConfirmation]). While true, the
+  /// next gate hit retries confirmation instead of reopening the store
+  /// paywall.
+  bool _pendingConfirmation = false;
+
+  /// S3 finished playing but essential access could not (yet) be confirmed
+  /// at that exact moment — shows a retry card instead of leaving the last
+  /// frozen frame with no way forward.
+  bool _awaitingReviewAccess = false;
+
   NightMarketBeat get _beat => _scenario.beatById(_beatId)!;
 
   @override
@@ -70,6 +81,7 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
       _paused = false;
       _coachCard = null;
       _pendingNextId = null;
+      _awaitingReviewAccess = false;
     });
     final controller = VideoPlayerController.asset(_beat.videoAsset);
     _video = controller;
@@ -105,13 +117,32 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
       if (mounted) setState(() {});
       return;
     }
-    // Access could have been lost while S3 was still playing (expiry,
-    // revocation). Passing the gate earlier at the choice does not carry
-    // forward — re-check right at the point of actually building the full
-    // recap, same rule as every other entry into essential-gated content.
-    unawaited(_withEssentialGate(_beat.access, () async {
-      if (mounted) setState(() => _finished = true);
-    }));
+    unawaited(_resolveEnding());
+  }
+
+  /// Access could have been lost while S3 was still playing (expiry,
+  /// revocation) — passing the gate earlier at the choice does not carry
+  /// forward, so this re-checks right at the point of actually building the
+  /// full recap, same rule as every other entry into essential-gated
+  /// content.
+  ///
+  /// Also the recovery entry point for a stalled "待進復盤" state: unlike a
+  /// mid-stream choice, S3 finishing has no choice buttons to tap again, so
+  /// resolving/unavailable/cancelled here would otherwise be a dead end —
+  /// [_awaitingReviewAccess] keeps a retry button on screen instead of
+  /// relying on this listener (which won't fire again once the video is
+  /// paused at the end) ever re-running on its own.
+  Future<void> _resolveEnding() async {
+    if (mounted) setState(() => _awaitingReviewAccess = true);
+    await _withEssentialGate(_beat.access, () async {
+      if (mounted) {
+        setState(() {
+          _finished = true;
+          _awaitingReviewAccess = false;
+        });
+      }
+    });
+    if (mounted && !_finished) setState(() {});
   }
 
   Future<void> _start() async {
@@ -164,12 +195,18 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
         // paywall or trigger a second restart.
         _paywallInFlight = true;
         try {
-          final unlocked = await resolveNightMarketEssentialUnlock(
-            context,
-            ref,
-          );
+          // A prior attempt ended pendingConfirmation: retry confirmation
+          // only, never reopen the store paywall for a purchase that may
+          // have already gone through.
+          final outcome = _pendingConfirmation
+              ? await resolveNightMarketPendingConfirmation(context, ref)
+              : await resolveNightMarketEssentialUnlock(context, ref);
           if (!context.mounted) return;
-          if (unlocked) await _restart();
+          _pendingConfirmation =
+              outcome == NightMarketUnlockOutcome.pendingConfirmation;
+          if (outcome == NightMarketUnlockOutcome.unlocked) {
+            await _restart();
+          }
         } finally {
           _paywallInFlight = false;
         }
@@ -392,6 +429,11 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
             alignment: Alignment.bottomCenter,
             child: _coachCard == null ? _choiceCard(beat) : _coachCardView(),
           ),
+        if (_completed && beat.ending && _awaitingReviewAccess)
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _reviewAccessPendingCard(),
+          ),
       ],
     );
   }
@@ -492,6 +534,27 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
       FilledButton(
         onPressed: _acceptCoachCard,
         child: const Text('知道了'),
+      ),
+    ]);
+  }
+
+  /// Shown on S3's frozen last frame while essential access still isn't
+  /// confirmed — the explicit "待進復盤" state and recovery entry point
+  /// required instead of leaving a dead end that only a (never-refiring)
+  /// video listener could have retried.
+  Widget _reviewAccessPendingCard() {
+    return _card(children: [
+      Text(
+        _pendingConfirmation
+            ? '已收到你的購買，正在確認中。'
+            : '復盤是 Essential 方案內容。',
+        style:
+            const TextStyle(color: Colors.white, fontSize: 16, height: 1.45),
+      ),
+      const SizedBox(height: 12),
+      FilledButton(
+        onPressed: _resolveEnding,
+        child: Text(_pendingConfirmation ? '重試確認' : '重試'),
       ),
     ]);
   }

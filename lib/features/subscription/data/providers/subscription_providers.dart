@@ -754,8 +754,26 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     required String expectedTier,
     required bool resetUsage,
     String? revenueCatAppUserId,
+    // The account this specific call is for. Defaults to self-capturing
+    // "whoever is current right now" for every existing caller that doesn't
+    // pass one (unchanged behaviour) — but that self-capture happens at
+    // THIS helper's own entry, which can already be later than the account
+    // the calling operation actually started for (a gap between the
+    // caller's own capture and this call). Callers with an account already
+    // captured at their OWN entry (`forceSyncTier`, `_loadSubscription`,
+    // [adoptRevenueCatTierIfHigher]'s confirmation step) must pass it here
+    // explicitly so the whole operation — not just this helper's own
+    // narrow window — shares one account of record.
+    String? requiredUserId,
+    // When set, a response tier ranked below this is treated as
+    // inconclusive (returns null, writes nothing) instead of authoritative.
+    // Only [adoptRevenueCatTierIfHigher]'s confirmation call sets this: its
+    // purpose is to persist a tier already independently confirmed by
+    // RevenueCat, so a lower/stale server read must not undo that — see the
+    // review round 3 write-back-consistency fix.
+    String? minimumSyncedTier,
   }) async {
-    final startedForUserId = SupabaseService.currentUser?.id;
+    final startedForUserId = requiredUserId ?? SupabaseService.currentUser?.id;
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         final body = <String, dynamic>{
@@ -793,6 +811,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             final tier = SubscriptionTierHelper.normalizeTier(
               data['tier'] as String?,
             );
+            if (minimumSyncedTier != null &&
+                SubscriptionTierHelper.rankOf(tier) <
+                    SubscriptionTierHelper.rankOf(minimumSyncedTier)) {
+              debugPrint(
+                '[sync-subscription] response tier ($tier) is below the '
+                'tier this call is confirming ($minimumSyncedTier); '
+                'treating as inconclusive rather than downgrading',
+              );
+              return null;
+            }
             final limits = SubscriptionTierHelper.limitsFor(tier);
             final monthlyUsed = _readInt(data['monthlyMessagesUsed']);
             final dailyUsed = _readInt(data['dailyMessagesUsed']);
@@ -917,10 +945,21 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     return error is PostgrestException && error.code == '23505';
   }
 
+  /// Test-only seam so [SubscriptionNotifier]'s real write paths (including
+  /// [_loadSubscription]) can be exercised against a fake `subscriptions`
+  /// row instead of a live Postgrest table. Never set outside tests.
+  @visibleForTesting
+  static Future<Map<String, dynamic>> Function({
+    required String userId,
+    required String tier,
+  })? debugLoadOrCreateSubscriptionRecordOverride;
+
   Future<Map<String, dynamic>> _loadOrCreateSubscriptionRecord({
     required String userId,
     required String tier,
   }) async {
+    final override = debugLoadOrCreateSubscriptionRecordOverride;
+    if (override != null) return override(userId: userId, tier: tier);
     final existing = await SupabaseService.client
         .from('subscriptions')
         .select()
@@ -1012,6 +1051,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
       final displayLimits = SubscriptionTierHelper.limitsFor(displayTier);
 
+      // The network round trips above (RevenueCat login, the subscriptions
+      // row fetch) may have taken long enough for the signed-in account to
+      // change (logout + different login) — this operation's own write must
+      // not apply this account's data to whoever is signed in now.
+      if (!subscriptionSyncStillAppliesToAccount(
+        startedForUserId: user.id,
+        currentUserId: SupabaseService.currentUser?.id,
+      )) {
+        return;
+      }
+
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: displayTier,
         monthlyMessagesUsed: rowMonthlyUsed,
@@ -1040,8 +1090,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         expectedTier: displayTier,
         resetUsage: initialTier != displayTier &&
             displayTier != SubscriptionTierHelper.free,
+        requiredUserId: user.id,
         revenueCatAppUserId: revenueCatAppUserId,
       );
+      if (!subscriptionSyncStillAppliesToAccount(
+        startedForUserId: user.id,
+        currentUserId: SupabaseService.currentUser?.id,
+      )) {
+        return;
+      }
       if (displayTier != SubscriptionTierHelper.free &&
           initialTier == SubscriptionTierHelper.free &&
           syncedDisplayTier == null) {
@@ -1373,6 +1430,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     final syncedTier = await _syncSubscriptionViaEdgeFunction(
       expectedTier: tier,
       resetUsage: tier != SubscriptionTierHelper.free,
+      requiredUserId: user.id,
+      // This call's entire contract is "confirm the user now has at least
+      // `tier`" (called right after a store purchase/restore resolves to
+      // it). A slower, earlier-issued sync for the same account that
+      // finally returns a lower/stale tier after this one already confirmed
+      // it must not be allowed to silently undo it (review round 3,
+      // requirement 一 — the same hazard as adoptRevenueCatTierIfHigher's
+      // own background confirmation, just from a different caller).
+      minimumSyncedTier: tier,
       revenueCatAppUserId:
           RevenueCatService.getRevenueCatAppUserId(customerInfo),
     );
@@ -1420,26 +1486,51 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       return false;
     }
 
+    // Adopting a higher tier without its own expiry is exactly the "blank
+    // or expired renewsAt" gap review round 3 flagged: `UsageService`'s
+    // offline/cold-start cache reads `renewsAt` to decide whether a cached
+    // paid tier still counts, so keeping whatever (possibly null/expired)
+    // value predates this adoption would silently defeat that cache the
+    // moment the app goes offline. Fetch RevenueCat's own expiry for the
+    // tier we're adopting right now, same helper `_purchaseProduct`/
+    // `restorePurchases` already use.
+    final renewsAt =
+        RevenueCatService.getPremiumExpirationDate(customerInfo) ??
+            state.renewsAt;
     final limits = SubscriptionTierHelper.limitsFor(rcTier);
     state = _applyPendingDowngradeMetadata(state.copyWith(
       tier: rcTier,
       monthlyLimit: limits.monthly,
       dailyLimit: limits.daily,
+      renewsAt: renewsAt,
       activeProductId: _cleanProductId(
             RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
           ) ??
           state.activeProductId,
     ));
-    _syncUsageCache(rcTier, limits, paidExpiresAt: state.renewsAt);
+    _syncUsageCache(rcTier, limits, paidExpiresAt: renewsAt);
 
-    // Best-effort: tell the server too, but a slow/failed call here must not
-    // undo the local adoption that just happened.
+    // Best-effort: tell the server too. `minimumSyncedTier` makes this the
+    // one call site that refuses to let its own response regress below what
+    // we just adopted — review round 3's finding: `unawaited` only means the
+    // caller doesn't wait for this; it does NOT stop a stale-but-"successful"
+    // server response (webhook not caught up yet) from later overwriting
+    // `state`/`UsageService` back down through the shared write path. This
+    // is not "always keep the higher tier" as a general rule (that would
+    // hide a genuine revocation) — it only protects the specific tier this
+    // call independently confirmed via RevenueCat a moment ago; every other
+    // caller of `_syncSubscriptionViaEdgeFunction` is unaffected and a
+    // genuine revocation/expiry still lands normally through the existing,
+    // separately-reviewed `syncWithRevenueCat`/`_loadSubscription` paths on
+    // their own next routine run.
     unawaited(_syncSubscriptionViaEdgeFunction(
       expectedTier: rcTier,
       resetUsage: false,
+      requiredUserId: startedForUserId,
       revenueCatAppUserId: RevenueCatService.getRevenueCatAppUserId(
         customerInfo,
       ),
+      minimumSyncedTier: rcTier,
     ));
     return true;
   }

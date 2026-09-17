@@ -19,6 +19,24 @@ class SupabaseService {
   static bool _passwordRecoveryInProgress = false;
   static final AppLinks _appLinks = AppLinks();
 
+  /// Test-only seams for exercising the real [SubscriptionNotifier] against
+  /// a fake SDK/HTTP boundary instead of Supabase itself (same idiom as
+  /// [RevenueCatService.debugIsIOSPlatformOverride]). Never set outside
+  /// tests.
+  @visibleForTesting
+  static User? Function()? debugCurrentUserOverride;
+  @visibleForTesting
+  static Future<FunctionResponse> Function(
+    String functionName, {
+    Map<String, dynamic>? body,
+  })? debugInvokeFunctionOverride;
+
+  @visibleForTesting
+  static void debugResetForTesting() {
+    debugCurrentUserOverride = null;
+    debugInvokeFunctionOverride = null;
+  }
+
   static Future<void> initialize({
     required String url,
     required String anonKey,
@@ -90,8 +108,11 @@ class SupabaseService {
     return _client;
   }
 
-  static User? get currentUser =>
-      _initialized ? _client.auth.currentUser : null;
+  static User? get currentUser {
+    final override = debugCurrentUserOverride;
+    if (override != null) return override();
+    return _initialized ? _client.auth.currentUser : null;
+  }
 
   static bool get isAuthenticated => currentUser != null;
 
@@ -302,6 +323,8 @@ class SupabaseService {
     Map<String, dynamic>? body,
     Duration timeout = const Duration(seconds: 60),
   }) async {
+    final override = debugInvokeFunctionOverride;
+    if (override != null) return override(functionName, body: body);
     return await client.functions
         .invoke(
           functionName,
