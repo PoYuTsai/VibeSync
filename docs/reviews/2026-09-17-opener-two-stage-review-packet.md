@@ -95,7 +95,7 @@ Commits（一 commit 一關注）：
 | `flutter test`（全套，fb40b62a） | 3857 passed，exit 0 | `logs/flutter_test_full.log` |
 | **修正後重跑**（新 head）：Deno analyze-chat／shared＋delete-account／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r1_*`（各有 `.exit`） | 同左 |
 | **第二輪修正後重跑**（新 head）：Deno analyze-chat 全套／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze／eval dry-run | 見 `logs/r2_*`（各有 `.exit`）；先紅證據 `logs/red_r2_*.txt` | 同左 |
-| **第三輪修正後重跑**（新 head；只動 Flutter controller／cache）：opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r3_*`（各有 `.exit`）；先紅證據 `logs/red_r3_a.txt`；Deno 未重跑（本輪無 Edge 改動） | 同左 |
+| **第三輪修正後重跑**（新 head；只動 Flutter controller／cache）：opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r3_*`（各有 `.exit`）；先紅證據 `logs/red_r3_a.txt`；Deno 未重跑（本輪無 Edge 改動）。全套第一次跑 F01 畫面測試 flake 一次（分析路徑多了排隊 Hive 寫入、固定 50ms 等待不夠），改成等真正 widget 出現（純測試修正）後單檔連跑 3 次綠、全套重跑；flake 那次的 log 未保留 | 同左 |
 | `deno run … tools/opener-two-stage-eval/run.ts --tag=dry-run` | dry-run 完成：156 次呼叫預估 ≈ $4.2 | `logs/eval_dry_run_summary.md` |
 
 先紅後綠證據（測試先失敗、再改程式）：
