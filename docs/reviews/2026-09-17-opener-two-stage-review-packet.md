@@ -178,6 +178,13 @@ Commits（一 commit 一關注）：
 
 R2a-3 三支、離頁保存（R2a／R2a-2）與必要 checkpoint 失敗 API=0 全部保留通過。
 
+## 12. 驗收（產品凍結 bf658fae）— 2026-09-18
+
+- **真 PostgreSQL 並行**：可丟棄本機 Postgres 16.15 叢集（一般使用者 initdb／pg_ctl，非 production）套兩支正式 migration；`tools/opener-pg-concurrency/run.ts` 三條獨立連線＋明確交易，11/11 PASS（同時 claim 鎖序列化＋競速×20、租約過期接手後舊作業不得結算×10、額度滿整筆回滾、觀察者取樣只見前／後狀態、重播不重扣含同時首次 settle×10、跨帳號與 anon／authenticated 隔離）。R1 P2「真並行」待驗項目關閉。
+- **真模型成對評估一輪**（Eric 授權、硬上限 $5）：`claude-sonnet-5`，156 呼叫、$3.634、0 API 失敗、0 修復／fallback；4 次硬檢查旗標（fabricated_sender_fact×1、negation_reversed×2、excluded_topic_used×1；原始輸出保留）。盲審包 Free／paid 各 144 題已隱藏版本標籤與推薦理由，解盲表另放；**語意品質尚未評分**。
+- 交付：`opener-two-stage-acceptance-bf658fae.zip`（REPORT.md、pg-concurrency/、model-eval/{raw,blind,unblinding}）。
+- 未執行：盲審評分、iPhone 真機；未涵蓋：讀圖／wrongSurface／App 鎖卡渲染。
+
 ## 7. 跨模型審查
 
 **第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（83c278f3）→ 已修正（§9）。第三輪：BLOCK（070cfbdb）→ 已修正（§10）。第四輪：BLOCK（5e0b693d）→ 已修正（§11）。第五輪：`bf658fae` **APPROVE_WITH_RISK**（2026-09-18，Eric 轉達 reviewer 裁決）— 第四輪指定項目與四支 R2a-4 回歸關閉；產品程式凍結在 `bf658fae`。**
