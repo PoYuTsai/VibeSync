@@ -154,20 +154,34 @@ Future<void> _settleBounded(WidgetTester tester) async {
 
 /// 生成／回看會寫 Hive 草稿（真實檔案 I/O）：在 fake async 裡那個 put 永遠完成不了，
 /// tearDownAll 的 Hive.close() 會等到天荒地老。用 runAsync 讓 I/O 真的完成。
-Future<void> _tapAndSettleAsync(WidgetTester tester, Finder finder) async {
+/// [until] 給了就等到那個 widget 出現（上限 5 秒）再回來：分析／生成路徑現在有多次排隊的
+/// Hive 寫入，固定 50ms 在全套並行跑時不夠（第三輪全套一次 F01 flake），要等真正的條件。
+Future<void> _tapAndSettleAsync(WidgetTester tester, Finder finder, {Finder? until}) async {
   await tester.runAsync(() async {
     await tester.tap(finder);
     await _settleBounded(tester);
     await Future<void>.delayed(const Duration(milliseconds: 50));
     await _settleBounded(tester);
+    if (until != null) {
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (until.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await _settleBounded(tester);
+    }
   });
 }
 
-Future<void> _analyze(WidgetTester tester) async {
+Future<void> _analyze(WidgetTester tester, {Finder? until}) async {
   await tester.enterText(find.byType(TextField).at(1), '有養一隻狗，假日會去河堤');
   await tester.pump();
-  // R2a 後分析完成就會寫 Hive 草稿：同樣要在 runAsync 裡讓 I/O 完成。
-  await _tapAndSettleAsync(tester, find.byKey(const ValueKey('opener-analyze-button')));
+  // R2a 後分析完成就會寫 Hive 草稿：同樣要在 runAsync 裡讓 I/O 完成；預設等到分析摘要出現。
+  await _tapAndSettleAsync(
+    tester,
+    find.byKey(const ValueKey('opener-analyze-button')),
+    until: until ?? find.byKey(const ValueKey('opener-approach-summary')),
+  );
 }
 
 /// controller 用「對方資料指紋＋初稿」鑄 analysisRequestId；種子草稿要給同一個值。
@@ -279,7 +293,7 @@ void main() {
   testWidgets('舊 Edge 不支援→退回舊單段 CTA，輸入保留', (tester) async {
     service.analyzeError = const OpenerFlowException(code: OpenerFlowErrorCode.flowUnsupported, message: 'x', status: 400);
     await _pumpManual(tester);
-    await _analyze(tester);
+    await _analyze(tester, until: find.text('生成開場白'));
     expect(find.text('生成開場白'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-analyze-button')), findsNothing);
     final bio = tester.widget<TextField>(find.byType(TextField).at(1));
