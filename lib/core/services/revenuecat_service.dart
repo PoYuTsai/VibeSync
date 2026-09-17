@@ -23,6 +23,15 @@ class RevenueCatService {
   @visibleForTesting
   static Future<CustomerInfo?> Function({String? expectedAppUserId})?
       debugSyncPurchasesAndRefreshCustomerInfoOverride;
+  // Review round 7: minimal seams so a real-notifier test can exercise
+  // `_loadOfferings`/`_loadStoreProducts` actually succeeding with non-empty
+  // data, instead of only the always-empty/null result `_isInitialized ==
+  // false` otherwise forces in a pure-Dart test.
+  @visibleForTesting
+  static Future<Offerings?> Function()? debugGetOfferingsOverride;
+  @visibleForTesting
+  static Future<List<StoreProduct>> Function(List<String> productIds)?
+      debugGetSubscriptionProductsOverride;
 
   static const MethodChannel _subscriptionManagementChannel = MethodChannel(
     'vibesync/subscription_management',
@@ -84,6 +93,8 @@ class RevenueCatService {
     debugGetCustomerInfoForAppUserIdOverride = null;
     debugLoginOverride = null;
     debugSyncPurchasesAndRefreshCustomerInfoOverride = null;
+    debugGetOfferingsOverride = null;
+    debugGetSubscriptionProductsOverride = null;
   }
 
   /// 關聯用戶 ID（登入後呼叫）
@@ -112,6 +123,8 @@ class RevenueCatService {
 
   /// 取得可購買的產品
   static Future<Offerings?> getOfferings() async {
+    final override = debugGetOfferingsOverride;
+    if (override != null) return override();
     if (!_isInitialized) return null;
 
     try {
@@ -129,6 +142,8 @@ class RevenueCatService {
   static Future<List<StoreProduct>> getSubscriptionProducts(
     List<String> productIds,
   ) async {
+    final override = debugGetSubscriptionProductsOverride;
+    if (override != null) return override(productIds);
     if (!_isInitialized) return const [];
 
     try {

@@ -22,6 +22,8 @@ import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/revenuecat_service.dart';
 import 'package:vibesync/core/services/supabase_service.dart';
 import 'package:vibesync/core/services/usage_service.dart';
+import 'package:vibesync/features/learning/domain/chat_quiz_access.dart';
+import 'package:vibesync/features/learning/domain/models/ebook.dart' show EbookAccess;
 import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -102,6 +104,23 @@ FunctionResponse _fakeSyncResponse({
     },
   );
 }
+
+/// Minimal non-null [Offerings] so `_loadOfferings` actually reaches its own
+/// `state.copyWith(offerings: ...)` write (review round 7, requirement 五) —
+/// its check is only `if (offerings != null)`, so no packages are needed.
+Offerings _fakeOfferings() => const Offerings({});
+
+/// Minimal [StoreProduct] so `_loadStoreProducts` actually reaches its own
+/// `state.copyWith(storeProducts: ...)` write instead of the always-empty
+/// list `_isInitialized == false` otherwise forces in this pure-Dart harness.
+StoreProduct _fakeStoreProduct(String productId) => StoreProduct(
+      productId,
+      'A fake product for tests',
+      'Fake Product',
+      9.99,
+      r'$9.99',
+      'USD',
+    );
 
 void main() {
   late Directory hiveDir;
@@ -1129,6 +1148,303 @@ void main() {
         SubscriptionTierHelper.starter,
         reason: 'the Hive-backed pending record itself must not have been '
             'cleared out from under the new account',
+      );
+    });
+  });
+  group(
+      'scenario 14 (review round 7, requirement 四) — a currently valid '
+      'query failure must resolve as unavailable through the real gate, '
+      'not as a confirmed lock that pushes toward purchase', () {
+    test(
+        'a fresh account whose subscription load fails outright sees '
+        'gateFor(...) == unavailable, never allowed or locked', () async {
+      final notifier = await bootFreeNotifier('user-x1');
+
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) async =>
+              throw Exception('boom: subscription row fetch failed');
+      await notifier.refresh();
+
+      expect(notifier.state.error, isNotNull,
+          reason: 'sanity check: the failure must actually have set an '
+              'error for this to be a meaningful test of requirement 四');
+      expect(notifier.state.isLoading, isFalse);
+
+      final access = EbookSubscriptionAccess.fromState(
+        notifier.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(access.hasError, isTrue);
+      expect(
+        access.isResolved,
+        isFalse,
+        reason: 'this is the exact projection night market and the ebook/'
+            'quiz gates all read — a real failure must not read back as '
+            'resolved (review round 7 P1)',
+      );
+
+      expect(
+        gateFor(EbookAccess.premium, access),
+        ChatQuizGate.unavailable,
+        reason: 'a real, current failure must surface as a retryable '
+            '"unavailable" screen — never as a confirmed lock, which is '
+            'the one decision that actually pushes the UI toward a '
+            'purchase CTA',
+      );
+      expect(
+        gateFor(EbookAccess.essential, access),
+        ChatQuizGate.unavailable,
+        reason: 'same for an Essential-only gate',
+      );
+    });
+  });
+
+  group(
+      'scenario 15 (review round 7, requirement 五) — a valid failure must '
+      'survive unrelated copyWith updates that succeed afterward in the '
+      'same operation chain', () {
+    test(
+        'offerings and store products both returning real, non-empty '
+        'data right after a subscription load failure must not clear '
+        "that failure's error", () async {
+      final notifier = await bootFreeNotifier('user-x2');
+
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) async =>
+              throw Exception('boom: subscription row fetch failed');
+      // Minimal SDK doubles (review round 7 explicitly allows this) so
+      // `_loadOfferings`/`_loadStoreProducts` — which `_isInitialized ==
+      // false` would otherwise force to always return null/empty in this
+      // pure-Dart harness — actually succeed with real data, exactly the
+      // "unrelated update succeeds afterward" case requirement 五 asks for.
+      RevenueCatService.debugGetOfferingsOverride =
+          () async => _fakeOfferings();
+      RevenueCatService.debugGetSubscriptionProductsOverride =
+          (productIds) async => [_fakeStoreProduct('essential_monthly')];
+
+      await notifier.refresh();
+
+      expect(notifier.state.offerings, isNotNull,
+          reason: 'sanity check: the offerings fetch actually succeeded '
+              'with real data');
+      expect(notifier.state.storeProducts, isNotEmpty,
+          reason: 'sanity check: the store products fetch actually '
+              'succeeded with real data');
+      expect(
+        notifier.state.error,
+        isNotNull,
+        reason: "the subscription load's own real failure must still be "
+            'visible after offerings/store products succeed — neither '
+            'represents a subscription confirmation and neither may '
+            'clear a currently valid query error (review round 7, item '
+            '二)',
+      );
+    });
+  });
+
+  group(
+      'scenario 16 (review round 7, requirement 五) — a subsequent '
+      'successful retry still explicitly clears the error, restoring the '
+      'real gate to its normal decision', () {
+    test(
+        'after a failed load sets a real error, a fresh successful '
+        'refresh clears it and gateFor resolves normally again',
+        () async {
+      final notifier = await bootFreeNotifier('user-x3');
+
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) async =>
+              throw Exception('boom: subscription row fetch failed');
+      await notifier.refresh();
+      expect(notifier.state.error, isNotNull);
+      final accessWhileFailing = EbookSubscriptionAccess.fromState(
+        notifier.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(
+        gateFor(EbookAccess.premium, accessWhileFailing),
+        ChatQuizGate.unavailable,
+      );
+
+      // Retry: the row fetch now succeeds.
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) async =>
+              _fakeSubscriptionRow(userId: userId);
+      await notifier.refresh();
+
+      expect(
+        notifier.state.error,
+        isNull,
+        reason: 'a genuinely successful retry must still be able to '
+            'explicitly clear a prior error (review round 7, item 三 — '
+            'the fix must not have made error impossible to resolve)',
+      );
+      final accessAfterRetry = EbookSubscriptionAccess.fromState(
+        notifier.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(accessAfterRetry.isResolved, isTrue);
+      expect(
+        gateFor(EbookAccess.premium, accessAfterRetry),
+        ChatQuizGate.locked,
+        reason: 'a confirmed Free user correctly locks a premium-only '
+            'gate once resolved — this is the normal, healthy outcome '
+            'retrying should restore',
+      );
+    });
+  });
+
+  group(
+      'scenario 17 (review round 7, requirement 五) — an older, now-stale '
+      'failure must not leak its error text after a newer operation '
+      'already succeeded', () {
+    test(
+        'an earlier-started refresh stalls then fails; a newer adopt '
+        'succeeds first; the stale failure landing later must not inject '
+        'its error over the newer success', () async {
+      final notifier = await bootFreeNotifier('user-x4');
+
+      // A: refresh() stalls on its own DB-row fetch, then will fail.
+      final rowGate = Completer<Map<String, dynamic>>();
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) => rowGate.future;
+      final refreshFuture = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // B: a newer, independent adopt completes first, writing Essential
+      // and explicitly clearing error.
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride = (_) async =>
+          _fakeCustomerInfo(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: DateTime.now().add(const Duration(days: 30)),
+          );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+      expect(notifier.state.error, isNull);
+
+      // A's long-stalled DB-row fetch finally rejects. Now that a valid
+      // error CAN actually persist (review round 7 fix), it is critical
+      // that the pre-existing account/generation guard is still what
+      // blocks this specific write from ever happening — otherwise this
+      // stale exception's text would now visibly leak through where the
+      // old (buggy) copyWith used to accidentally mask it.
+      rowGate.completeError(Exception('boom: stale DB request failed'));
+      await refreshFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.error,
+        isNull,
+        reason: "A's stale failure must not have overwritten B's newer, "
+            'successful, error-free result',
+      );
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+
+      final access = EbookSubscriptionAccess.fromState(
+        notifier.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(access.isResolved, isTrue);
+      expect(gateFor(EbookAccess.essential, access), ChatQuizGate.allowed);
+    });
+  });
+
+  group(
+      'scenario 18 (review round 7, requirement 五) — the original valid/'
+      'expired Essential cache rule still resolves correctly through the '
+      'real gate after the error-preservation fix', () {
+    test(
+        'an unexpired cached Essential entitlement still grants access '
+        'through gateFor while the fresh check is still resolving',
+        () async {
+      final box = Hive.box(AppConstants.usageBox);
+      await box.put('last_known_paid_user_id', 'user-x5');
+      await box.put('last_known_paid_tier', SubscriptionTierHelper.essential);
+      await box.put('last_known_paid_monthly_limit', 999999);
+      await box.put('last_known_paid_daily_limit', 999999);
+      await box.put(
+        'last_known_paid_expires_at',
+        DateTime.now().add(const Duration(days: 5)).toIso8601String(),
+      );
+      await box.put('subscription_tier', SubscriptionTierHelper.free);
+      await box.put('usage_user_id', 'user-x5');
+
+      SupabaseService.debugCurrentUserOverride = () => _fakeUser('user-x5');
+      UsageService.debugCurrentUserIdOverride = 'user-x5';
+      // Cold start: every SDK/HTTP boundary stalls forever (same pattern
+      // as scenario 1's cold-start test), so this inspects exactly what
+      // the constructor produces synchronously from persisted storage.
+      RevenueCatService.debugLoginOverride =
+          (_) => Completer<CustomerInfo?>().future;
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) => Completer<CustomerInfo?>().future;
+      SupabaseService.debugInvokeFunctionOverride =
+          (name, {body}) => Completer<FunctionResponse>().future;
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) =>
+              Completer<Map<String, dynamic>>().future;
+
+      final coldStart = SubscriptionNotifier();
+      expect(UsageService.hasUnexpiredPaidEntitlement(), isTrue);
+      final access = EbookSubscriptionAccess.fromState(
+        coldStart.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(access.isResolving, isTrue);
+      expect(
+        gateFor(EbookAccess.essential, access),
+        ChatQuizGate.allowed,
+        reason: 'an unexpired cached Essential entitlement must still '
+            'grant access while offline/still-resolving — this is the '
+            'pre-existing rule the round 7 error-preservation fix must '
+            'not have disturbed',
+      );
+    });
+
+    test(
+        'an expired cached Essential entitlement must not grant access, '
+        'and correctly falls through to resolving rather than an '
+        'incorrect lock or a false grant', () async {
+      final box = Hive.box(AppConstants.usageBox);
+      await box.put('last_known_paid_user_id', 'user-x6');
+      await box.put('last_known_paid_tier', SubscriptionTierHelper.essential);
+      await box.put('last_known_paid_monthly_limit', 999999);
+      await box.put('last_known_paid_daily_limit', 999999);
+      await box.put(
+        'last_known_paid_expires_at',
+        DateTime.now().subtract(const Duration(days: 5)).toIso8601String(),
+      );
+      await box.put('subscription_tier', SubscriptionTierHelper.free);
+      await box.put('usage_user_id', 'user-x6');
+
+      SupabaseService.debugCurrentUserOverride = () => _fakeUser('user-x6');
+      UsageService.debugCurrentUserIdOverride = 'user-x6';
+      RevenueCatService.debugLoginOverride =
+          (_) => Completer<CustomerInfo?>().future;
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) => Completer<CustomerInfo?>().future;
+      SupabaseService.debugInvokeFunctionOverride =
+          (name, {body}) => Completer<FunctionResponse>().future;
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) =>
+              Completer<Map<String, dynamic>>().future;
+
+      final coldStart = SubscriptionNotifier();
+      expect(UsageService.hasUnexpiredPaidEntitlement(), isFalse);
+      expect(coldStart.state.tier, SubscriptionTierHelper.free);
+      final access = EbookSubscriptionAccess.fromState(
+        coldStart.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(
+        gateFor(EbookAccess.essential, access),
+        ChatQuizGate.resolving,
+        reason: 'an expired cache must not grant access on its own, but a '
+            'genuinely unconfirmed cold start must still show '
+            '"resolving" — not a confirmed lock — until the real network '
+            'check lands',
       );
     });
   });

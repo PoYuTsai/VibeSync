@@ -500,7 +500,7 @@ class SubscriptionState {
     int? monthlyLimit,
     int? dailyLimit,
     bool? isLoading,
-    String? error,
+    Object? error = _subscriptionStateUnset,
     Offerings? offerings,
     Map<String, StoreProduct>? storeProducts,
     Object? pendingDowngradeToTier = _subscriptionStateUnset,
@@ -516,7 +516,19 @@ class SubscriptionState {
       monthlyLimit: monthlyLimit ?? this.monthlyLimit,
       dailyLimit: dailyLimit ?? this.dailyLimit,
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      // A query failure's `error` must survive every OTHER, unrelated
+      // `copyWith` call that happens to run afterward in the same
+      // operation chain (offerings/store-product loads, usage-cache
+      // syncs, pending-downgrade metadata refreshes via
+      // `_applyPendingDowngradeMetadata`) — otherwise a real, current
+      // failure silently reads back as resolved to
+      // `EbookSubscriptionAccess`/`gateFor` (review round 7, P1). `null`
+      // is a normal, valid value here (explicitly resolving a prior
+      // error), so — like every other nullable field below — omission is
+      // distinguished from an explicit `null` via the sentinel, not via
+      // `??` (that would make an explicit `error: null` on success
+      // indistinguishable from "not provided" and impossible to act on).
+      error: error == _subscriptionStateUnset ? this.error : error as String?,
       offerings: offerings ?? this.offerings,
       storeProducts: storeProducts ?? this.storeProducts,
       pendingDowngradeToTier: pendingDowngradeToTier == _subscriptionStateUnset
