@@ -7,6 +7,14 @@
 
 ## OPEN（最新在最上）
 
+## [2026-09-18] opener 兩段式 P2-R5-IO：局部回答保存拋例外時建檔目標鏈的錯誤收尾
+Status: **OPEN — 另案追蹤（第五輪 APPROVE_WITH_RISK 殘留；不阻擋 bf658fae 結案）**
+
+- **來源**：`docs/reviews/2026-09-17-opener-two-stage-review-packet.md` §7 第五輪；分支 `opener-two-stage`，產品程式凍結 `bf658fae`。
+- **內容**：`OpenerFlowController._persistDraftEdit` 走 `updateDraftContributionFor` 局部合併時若拋例外（Hive I/O），建檔目標鏈（`_createDraftJob`）可能沒有進入既有的可重試錯誤收尾（`_writeFlow` 有 try/catch 回 null，局部合併那條沒有）。
+- **狀態**：reviewer 靜態推演、未動態重現；不宣稱雙扣或跨帳號洩漏。付費路徑的必要 checkpoint（pending 落地）走 `_writeFlow`，失敗仍回 null→不打 API（R2a-2 測試保留）。
+- **下一步**：另開一輪時先用既有 `debugWriteGate`／`_FailingCache` 寫延遲回歸重現，再決定是否把局部合併也包進同一個可重試收尾；本輪不改碼。
+
 ## [2026-07-11] Beginner／Game Hint＋Debrief generated-only，永久移除成功罐頭
 Status: **CODEX APPROVED（0 P0/P1/P2）／EDGE v206 SHIPPED／LIVE SMOKE PASS／TESTFLIGHT REBUILD PENDING**
 

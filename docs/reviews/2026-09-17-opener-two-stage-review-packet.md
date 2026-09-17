@@ -180,7 +180,21 @@ R2a-3 三支、離頁保存（R2a／R2a-2）與必要 checkpoint 失敗 API=0 �
 
 ## 7. 跨模型審查
 
-**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（83c278f3）→ 已修正（§9）。第三輪：BLOCK（070cfbdb）→ 已修正（§10）。第四輪：BLOCK（5e0b693d，新建／補建兩處）→ 已修正（§11），待第五輪確認。**
+**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（83c278f3）→ 已修正（§9）。第三輪：BLOCK（070cfbdb）→ 已修正（§10）。第四輪：BLOCK（5e0b693d）→ 已修正（§11）。第五輪：`bf658fae` **APPROVE_WITH_RISK**（2026-09-18，Eric 轉達 reviewer 裁決）— 第四輪指定項目與四支 R2a-4 回歸關閉；產品程式凍結在 `bf658fae`。**
+
+### 第五輪殘留風險 P2-R5-IO（另案追蹤，不阻擋本輪結案）
+
+- 內容：局部回答保存（`updateDraftContributionFor` 這條）拋例外時，建檔目標鏈可能沒有進入既有的可重試錯誤收尾。
+- 狀態：reviewer 靜態推演、**未動態重現**；不宣稱雙扣或跨帳號洩漏。本輪不改碼、不自行展開下一輪。
+- 追蹤：`docs/reviews/ai-arbitration-queue.md` OPEN 項「2026-09-18 opener 兩段式 P2-R5-IO」。
+- 依全域政策 APPROVED_WITH_RISK 的殘留清單需 Eric 明確接受風險；Eric 2026-09-18 已指示「不阻擋本輪指定修正結案、另案追蹤」。
+
+### 下一階段（不再重寫規格、不再重跑相同本機測試）
+
+1. 真 PostgreSQL 並行驗證（R1 P2 真並行交錯交易）— 需可用的本機／staging Postgres 角色。
+2. 真模型成對評估與盲審（`tools/opener-two-stage-eval`，`--run --confirm-paid`）— 需 Eric 付費授權。
+3. iPhone 真機驗收 — Eric。
+4. 正式整合／部署（套 migration → 部署 analyze-chat `--no-verify-jwt` → 發版）— 需 Eric 分別授權；目前不 push、不 PR、不 merge、不部署、不套 production migration、不觸發 workflow。
 
 原第一輪派審阻塞紀錄（保留）：
 
