@@ -117,6 +117,24 @@ Future<void> _untilGenerateSent(_FakeOpenerService service) async {
 }
 
 
+/// R2a-2：模擬草稿保存失敗（磁碟／Hive 例外），驗證「必要 checkpoint 沒成功就不打付費 API」。
+class _FailingCache extends OpenerResultCacheService {
+  _FailingCache() : super(ownerIdResolver: () => 'user-a');
+  bool fail = false;
+
+  @override
+  Future<OpenerDraft> saveDraft({OpenerResult? result, String? displayName, String? sourceLabel, String? inputPreview, String? partnerId, OpenerDraftFlow? flow}) {
+    if (fail) throw StateError('disk full');
+    return super.saveDraft(result: result, displayName: displayName, sourceLabel: sourceLabel, inputPreview: inputPreview, partnerId: partnerId, flow: flow);
+  }
+
+  @override
+  Future<OpenerDraft?> updateDraft(String id, {OpenerResult? result, OpenerDraftFlow? flow}) {
+    if (fail) throw StateError('disk full');
+    return super.updateDraft(id, result: result, flow: flow);
+  }
+}
+
 void main() {
   setUpAll(() {
     Hive.init('./.dart_tool/test_hive_opener_flow_controller');
@@ -461,5 +479,100 @@ void main() {
     await c2.analyze(input: _input, initialNote: '🐶' * 301);
     expect(c2.state.phase, OpenerFlowPhase.editing);
     expect(c2.state.error, contains('300'));
+  });
+
+  // ── 第二輪獨立複核回歸（R2a-2：未完成流程的實際落地與重建）
+
+  test('R2a-2：分析後只選選項／改文字、尚未生成→離頁重建回到同一份回答', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    controller.selectOption('option_2');
+    controller.setFreeText('沒養過，只想問散步');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final draft = cache.loadDrafts().single;
+    expect(draft.flow!.contributionDraft.selectedOptionId, 'option_2');
+    expect(draft.flow!.contributionDraft.freeText, '沒養過，只想問散步');
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(draft);
+    expect(rebuilt.state.draft.selectedOptionId, 'option_2');
+    expect(rebuilt.state.draft.freeText, '沒養過，只想問散步');
+    expect(service.calls.where((c) => c.kind == 'generate'), isEmpty);
+  });
+
+  test('R2a-2：生成等待中改了 draft→新文字落地，但原 pending 的送出快照不變；重建後仍用原快照取回', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    controller.setFreeText('第一版');
+    service.hold = true;
+    final inflight = controller.generate();
+    await _untilGenerateSent(service);
+    final sentId = service.calls.last.args['generationId'] as String;
+    controller.setFreeText('等待中偷改');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final draft = cache.loadDrafts().single;
+    expect(draft.flow!.stage, OpenerDraftFlowStage.generating);
+    expect(draft.flow!.contributionDraft.freeText, '等待中偷改');
+    expect(draft.flow!.pendingGeneration!.generationId, sentId);
+    expect(draft.flow!.pendingGeneration!.contribution.freeText, '第一版', reason: '送出快照不得被等待中的修改改掉');
+
+    controller.dispose();
+    service.hold = false;
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(draft);
+    expect(rebuilt.state.draft.freeText, '等待中偷改');
+    await rebuilt.resumePendingGeneration();
+    expect(service.calls.last.args['generationId'], sentId);
+    expect((service.calls.last.args['contribution'] as Map)['freeText'], '第一版');
+    service.generateGate.single.complete(_FakeOpenerService.generation(generationId: 'stale', contribution: const OpenerContribution(state: OpenerContributionState.skipped)));
+    await inflight;
+  });
+
+  test('R2a-2：pending 快照保存失敗→不打生成 API（呼叫數 0）、輸入保留、提示重試；保存恢復後重試才送出', () async {
+    final failing = _FailingCache();
+    final c = OpenerFlowController(service: service, cache: failing, ownerIdResolver: () => owner, now: () => now);
+    await c.analyze(input: _input, initialNote: null);
+    c.setFreeText('沒養過');
+    failing.fail = true;
+    await c.generate();
+    expect(service.calls.where((x) => x.kind == 'generate').length, 0, reason: '必要 checkpoint 沒成功不得送出可扣費請求');
+    expect(c.state.phase, OpenerFlowPhase.contributing);
+    expect(c.state.draft.freeText, '沒養過');
+    expect(c.state.error, isNotNull);
+    expect(c.state.failedOperation, OpenerFlowFailedOperation.generate);
+    failing.fail = false;
+    await c.retryLastOperation();
+    expect(service.calls.where((x) => x.kind == 'generate').length, 1);
+    expect(c.state.phase, OpenerFlowPhase.result);
+    expect(failing.loadDrafts().single.flow!.stage, OpenerDraftFlowStage.result);
+  });
+
+  test('R2a-2：第一段分析尚未返回就離頁→輸入快照與 analysisRequestId 已落地，重建後用同 ID 續分析', () async {
+    service.hold = true;
+    final inflight = controller.analyze(input: _input, initialNote: '想從狗開');
+    for (var i = 0; i < 200 && service.analyzeGate.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    final sentId = service.calls.single.args['analysisRequestId'] as String;
+    expect(cache.loadDrafts(), isNotEmpty, reason: '分析送出後就要有可恢復的紀錄');
+    final draft = cache.loadDrafts().single;
+    expect(draft.result, isNull);
+    expect(draft.flow!.stage, OpenerDraftFlowStage.analyzing);
+    expect(draft.flow!.analysis, isNull);
+    expect(draft.flow!.analysisRequestId, sentId);
+    expect(draft.flow!.pendingAnalysis!.bio, '有養一隻狗');
+    expect(draft.flow!.pendingAnalysis!.initialNote, '想從狗開');
+
+    controller.dispose();
+    service.hold = false;
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(draft);
+    expect(rebuilt.pendingAnalysis!.bio, '有養一隻狗');
+    expect(rebuilt.hasPendingAnalysis, isTrue);
+    await rebuilt.resumePendingAnalysis();
+    expect(rebuilt.state.phase, OpenerFlowPhase.contributing);
+    expect(service.calls.last.args['analysisRequestId'], sentId, reason: '同輸入沿用同 analysisRequestId（伺服器 replay 同局）');
+    expect(service.calls.last.args['initialUserNote'], '想從狗開');
+    expect(cache.loadDrafts().length, 1, reason: '同一份紀錄由 analyzing 升到 analyzed');
+    expect(cache.loadDrafts().single.flow!.stage, OpenerDraftFlowStage.analyzed);
+    service.analyzeGate.single.complete(_FakeOpenerService.analysis());
+    await inflight;
   });
 }

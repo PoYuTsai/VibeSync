@@ -10,6 +10,9 @@ import 'opener_service.dart';
 
 /// 兩段式流程的階段（R2a：未完成操作也要落地，不只成功結果）。
 enum OpenerDraftFlowStage {
+  /// 分析請求已送出、尚未收到分析（R2a-2：輸入快照＋analysisRequestId 可恢復）。
+  analyzing,
+
   /// 分析完成、尚未生成（看分析、填回答中）。
   analyzed,
 
@@ -44,36 +47,87 @@ class OpenerPendingGeneration {
   }
 }
 
+/// 第一段送出時的輸入快照（R2a-2）：離頁後能填回欄位並用同 analysisRequestId 續分析。
+/// 不存圖片本體；有圖時只記張數，恢復後需重新上傳、分析會是新的一次（免費）。
+class OpenerPendingAnalysis {
+  const OpenerPendingAnalysis({
+    this.name,
+    this.bio,
+    this.interests,
+    this.meetingContext,
+    this.initialNote,
+    this.imageCount = 0,
+  });
+
+  final String? name;
+  final String? bio;
+  final String? interests;
+  final String? meetingContext;
+  final String? initialNote;
+  final int imageCount;
+
+  Map<String, dynamic> toJson() => {
+        if (name != null) 'name': name,
+        if (bio != null) 'bio': bio,
+        if (interests != null) 'interests': interests,
+        if (meetingContext != null) 'meetingContext': meetingContext,
+        if (initialNote != null) 'initialNote': initialNote,
+        'imageCount': imageCount,
+      };
+
+  static OpenerPendingAnalysis? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    String? str(String key) => raw[key] is String ? raw[key] as String : null;
+    return OpenerPendingAnalysis(
+      name: str('name'),
+      bio: str('bio'),
+      interests: str('interests'),
+      meetingContext: str('meetingContext'),
+      initialNote: str('initialNote'),
+      imageCount: raw['imageCount'] is int ? raw['imageCount'] as int : 0,
+    );
+  }
+}
+
 /// 兩段式草稿的延伸資料（附件 §9.5、R2a）：分析與題目版本、本次回答草稿、
 /// analysisRequestId／輸入指紋、送出中的 generationId＋回答快照、成功結果、
 /// 到期時間與剩餘次數。舊草稿沒有這一段，照舊讀取。
 class OpenerDraftFlow {
   const OpenerDraftFlow({
     required this.stage,
-    required this.analysis,
+    this.analysis,
     required this.contributionDraft,
     this.analysisRequestId,
     this.inputFingerprint,
+    this.pendingAnalysis,
     this.pendingGeneration,
     this.generation,
-  });
+  }) : assert(stage == OpenerDraftFlowStage.analyzing ? pendingAnalysis != null : analysis != null,
+            'analyzing 要有輸入快照；其他階段要有分析');
 
   final OpenerDraftFlowStage stage;
-  final OpenerAnalysis analysis;
+
+  /// stage=analyzing 時為 null（分析還沒回來）；其他階段必有。
+  final OpenerAnalysis? analysis;
   final OpenerContributionDraft contributionDraft;
   final String? analysisRequestId;
   final String? inputFingerprint;
+
+  /// stage=analyzing 時的輸入快照（R2a-2）。
+  final OpenerPendingAnalysis? pendingAnalysis;
 
   /// stage=generating 時的送出快照；伺服器已結算但回應遺失時靠它取回同組結果。
   final OpenerPendingGeneration? pendingGeneration;
   final OpenerGeneration? generation;
 
   int get generationsRemaining =>
-      generation?.usage.generationsRemaining ?? analysis.generationsRemaining;
+      generation?.usage.generationsRemaining ?? analysis?.generationsRemaining ?? 0;
 
   /// 這份草稿是否還能繼續生成（未到期且本局還有次數）。
-  bool canContinueAt(DateTime now) =>
-      !analysis.isExpiredAt(now) && generationsRemaining > 0;
+  bool canContinueAt(DateTime now) {
+    final current = analysis;
+    return current != null && !current.isExpiredAt(now) && generationsRemaining > 0;
+  }
 
   OpenerDraftFlow copyWith({
     OpenerDraftFlowStage? stage,
@@ -89,6 +143,7 @@ class OpenerDraftFlow {
       contributionDraft: contributionDraft ?? this.contributionDraft,
       analysisRequestId: analysisRequestId,
       inputFingerprint: inputFingerprint,
+      pendingAnalysis: pendingAnalysis,
       pendingGeneration:
           clearPendingGeneration ? null : (pendingGeneration ?? this.pendingGeneration),
       generation: generation ?? this.generation,
@@ -97,10 +152,11 @@ class OpenerDraftFlow {
 
   Map<String, dynamic> toJson() => {
         'stage': stage.name,
-        'analysis': analysis.toJson(),
+        if (analysis != null) 'analysis': analysis!.toJson(),
         'contributionDraft': contributionDraft.toJson(),
         if (analysisRequestId != null) 'analysisRequestId': analysisRequestId,
         if (inputFingerprint != null) 'inputFingerprint': inputFingerprint,
+        if (pendingAnalysis != null) 'pendingAnalysis': pendingAnalysis!.toJson(),
         if (pendingGeneration != null) 'pendingGeneration': pendingGeneration!.toJson(),
         if (generation != null) 'generation': generation!.toJson(),
       };
@@ -108,16 +164,22 @@ class OpenerDraftFlow {
   static OpenerDraftFlow? tryParse(dynamic raw) {
     if (raw is! Map) return null;
     final analysis = OpenerAnalysis.tryParse(raw['analysis']);
-    if (analysis == null) return null;
     final generation = OpenerGeneration.tryParse(raw['generation']);
     final pending = OpenerPendingGeneration.tryParse(raw['pendingGeneration']);
+    final pendingAnalysis = OpenerPendingAnalysis.tryParse(raw['pendingAnalysis']);
     final stage = switch (raw['stage']) {
+      'analyzing' => OpenerDraftFlowStage.analyzing,
       'analyzed' => OpenerDraftFlowStage.analyzed,
       'generating' => OpenerDraftFlowStage.generating,
       'result' => OpenerDraftFlowStage.result,
       // 舊版 flow（只有成功結果）沒有 stage 欄位。
       _ => generation != null ? OpenerDraftFlowStage.result : OpenerDraftFlowStage.analyzed,
     };
+    if (stage == OpenerDraftFlowStage.analyzing) {
+      if (pendingAnalysis == null) return null;
+    } else if (analysis == null) {
+      return null;
+    }
     if (stage == OpenerDraftFlowStage.result && generation == null) return null;
     return OpenerDraftFlow(
       stage: stage,
@@ -125,6 +187,7 @@ class OpenerDraftFlow {
       contributionDraft: OpenerContributionDraft.fromJson(raw['contributionDraft']),
       analysisRequestId: raw['analysisRequestId'] is String ? raw['analysisRequestId'] as String : null,
       inputFingerprint: raw['inputFingerprint'] is String ? raw['inputFingerprint'] as String : null,
+      pendingAnalysis: pendingAnalysis,
       pendingGeneration: pending,
       generation: generation,
     );
@@ -183,7 +246,11 @@ class OpenerDraft {
     }
     final stored = result;
     if (stored == null) {
-      return flow?.stage == OpenerDraftFlowStage.generating ? '生成中，尚未取得結果' : '分析完成，尚未生成';
+      return switch (flow?.stage) {
+        OpenerDraftFlowStage.analyzing => '分析中，尚未取得分析',
+        OpenerDraftFlowStage.generating => '生成中，尚未取得結果',
+        _ => '分析完成，尚未生成',
+      };
     }
     return stored.bestOpenerTextForAccess(isFreeUser: isFreeUser) ??
         '已保存開場建議';

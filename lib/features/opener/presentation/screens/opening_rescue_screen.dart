@@ -628,6 +628,32 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _suppressInputClear = false;
 
     if (!mounted) return;
+    final pendingAnalysis = draft.flow?.stage == OpenerDraftFlowStage.analyzing ? draft.flow?.pendingAnalysis : null;
+    if (pendingAnalysis != null && _useTwoStage) {
+      // R2a-2：分析沒回來就離頁的草稿：填回輸入欄位，沒截圖就用同 analysisRequestId 續分析；
+      // 有截圖無法原樣重送，等用戶重新上傳後自己按分析。
+      _suppressInputClear = true;
+      _nameController.text = pendingAnalysis.name ?? '';
+      _bioController.text = pendingAnalysis.bio ?? '';
+      _interestsController.text = pendingAnalysis.interests ?? '';
+      _initialNoteController.text = pendingAnalysis.initialNote ?? '';
+      _suppressInputClear = false;
+      setState(() {
+        _images = [];
+        _meetingContext = pendingAnalysis.meetingContext;
+        _selectedTab = 1;
+        _result = null;
+        _error = null;
+        _resultGeneratedPaid = false;
+        _legacyDraftView = false;
+        _currentDraftId = draft.id;
+      });
+      _flow.restoreDraft(draft);
+      if (_flow.hasPendingAnalysis && pendingAnalysis.imageCount == 0) {
+        unawaited(_flow.resumePendingAnalysis());
+      }
+      return;
+    }
     if (draft.flow != null && _useTwoStage) {
       // 兩段式草稿：回復分析、回答與結果；到期只能看、不能續生成；
       // 停在 generating 的草稿（送出過、沒收到結果）用原 generationId 取回（R2a）。

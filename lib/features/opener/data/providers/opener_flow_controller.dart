@@ -176,6 +176,16 @@ class OpenerFlowController extends ChangeNotifier {
   OpenerPendingGeneration? _pendingGeneration;
   OpenerPendingGeneration? get pendingGeneration => _pendingGeneration;
 
+  // R2a-2：第一段送出時的輸入快照（分析還沒回來就離頁，可填回欄位並續分析）。
+  OpenerPendingAnalysis? _pendingAnalysis;
+  OpenerPendingAnalysis? get pendingAnalysis => _pendingAnalysis;
+
+  // R2a-2：這局草稿所屬帳號；所有落地都綁它，切帳後的寫入一律略過。
+  String? _sessionOwner;
+
+  // R2a-2：草稿寫入排隊（同一份紀錄的修訂依發生順序落地，晚的不會被早的蓋掉）。
+  Future<void> _persistQueue = Future<void>.value();
+
   bool get isExpired {
     final analysis = _state.analysis;
     return analysis != null && analysis.isExpiredAt(_now());
@@ -206,9 +216,24 @@ class OpenerFlowController extends ChangeNotifier {
 
   /// 對方資料（截圖、自介、線索）改變：原分析失效，回到編輯（F15）。
   void resetForInputChange() {
-    if (_state.phase == OpenerFlowPhase.editing && !_state.hasSession) return;
+    if (_state.phase == OpenerFlowPhase.editing && !_state.hasSession && _pendingAnalysis == null) return;
     _opSeq += 1; // 進行中的分析／生成回來一律作廢
+    _discardAnalyzingRecord();
     _set(OpenerFlowState(flowUnsupported: _state.flowUnsupported));
+  }
+
+  /// 還沒拿到分析的紀錄沒有可回看的內容：輸入一改就刪掉，不留「分析中」殘骸。
+  void _discardAnalyzingRecord() {
+    final id = _state.draftId;
+    if (_pendingAnalysis == null || _state.analysis != null || id == null) return;
+    _pendingAnalysis = null;
+    final owner = _sessionOwner;
+    _persistQueue = _persistQueue.then((_) async {
+      if (_ownerIdResolver() != owner) return;
+      try {
+        await _cache.deleteDraft(id);
+      } catch (_) {}
+    });
   }
 
   /// 用戶明確開始新的一局（到期／三組用完後）。
@@ -241,11 +266,14 @@ class OpenerFlowController extends ChangeNotifier {
     if (input == null) return;
     final note = _lastInitialNote;
     final op = _beginOperation();
+    _sessionOwner = op.owner;
     _set(OpenerFlowState(
       phase: OpenerFlowPhase.analyzing,
       // 初稿就是同一份補充的起點：分析後帶進回答區，不要求重打。
       draft: OpenerContributionDraft(freeText: note ?? ''),
       flowUnsupported: _state.flowUnsupported,
+      // 同一次分析的重試／恢復沿用同一份紀錄；換輸入時 resetForInputChange 已清掉。
+      draftId: _state.draftId,
     ));
 
     final hint = await _resolveHint();
@@ -262,6 +290,30 @@ class OpenerFlowController extends ChangeNotifier {
     ]);
     _lastInputFingerprint = fingerprint;
     final attempt = _analysisSession.beginAttempt(fingerprint: fingerprint);
+    // R2a-2：分析送出前先落地輸入快照＋analysisRequestId（分析免費，落地失敗不擋）。
+    final pendingAnalysis = OpenerPendingAnalysis(
+      name: input.name,
+      bio: input.bio,
+      interests: input.interests,
+      meetingContext: input.meetingContext,
+      initialNote: note,
+      imageCount: input.images?.length ?? 0,
+    );
+    _pendingAnalysis = pendingAnalysis;
+    final analyzingDraftId = await _persistFlow(
+      existingDraftId: _state.draftId,
+      flow: OpenerDraftFlow(
+        stage: OpenerDraftFlowStage.analyzing,
+        pendingAnalysis: pendingAnalysis,
+        contributionDraft: _state.draft,
+        analysisRequestId: attempt.requestId,
+        inputFingerprint: fingerprint,
+      ),
+    );
+    if (!_isCurrent(op)) return;
+    if (analyzingDraftId != null && analyzingDraftId != _state.draftId) {
+      _set(_state.copyWith(draftId: analyzingDraftId));
+    }
     try {
       final analysis = await _service.analyzeProfileStreaming(
         images: input.images,
@@ -279,10 +331,11 @@ class OpenerFlowController extends ChangeNotifier {
       _analysisSession.markSuccess();
       _generationSession.markSuccess();
       _pendingGeneration = null;
+      _pendingAnalysis = null;
       _analysisRequestIdForState = attempt.requestId;
-      // R2a：分析完成就落地（stage=analyzed），離頁再回來能回到回答區。
+      // R2a：分析完成就落地（stage=analyzed），離頁再回來能回到回答區；同一份紀錄升級。
       final draftId = await _persistFlow(
-        existingDraftId: null,
+        existingDraftId: _state.draftId,
         flow: OpenerDraftFlow(
           stage: OpenerDraftFlowStage.analyzed,
           analysis: analysis,
@@ -310,6 +363,7 @@ class OpenerFlowController extends ChangeNotifier {
     } on OpenerFlowException catch (e) {
       if (!_isCurrent(op)) return;
       if (e.isUnsupported || e.isUnavailable) {
+        _discardAnalyzingRecord();
         _set(OpenerFlowState(
           phase: OpenerFlowPhase.editing,
           flowUnsupported: true,
@@ -342,6 +396,7 @@ class OpenerFlowController extends ChangeNotifier {
         ? current.copyWith(clearOption: true, skipped: false)
         : current.copyWith(selectedOptionId: optionId, skipped: false);
     _set(_state.copyWith(draft: next, clearError: true));
+    _persistDraftEdit();
   }
 
   void setFreeText(String text) {
@@ -357,11 +412,39 @@ class OpenerFlowController extends ChangeNotifier {
       next = next.copyWith(clearOption: true);
     }
     _set(_state.copyWith(draft: next, clearError: true));
+    _persistDraftEdit();
+  }
+
+  /// R2a-2：回答區每次修改都落地到同一份紀錄（離頁不丟最新回答）。
+  /// 只改 contributionDraft：階段、送出中的快照與既有結果原樣保留。
+  void _persistDraftEdit() {
+    final analysis = _state.analysis;
+    if (analysis == null) return;
+    // ponytail: 每次按鍵都寫一次 Hive（整份草稿清單重編碼）；卡頓再加 debounce＋dispose flush。
+    unawaited(_persistFlow(existingDraftId: _state.draftId, flow: _currentFlow(analysis)).then((id) {
+      if (id != null && id != _state.draftId && !_disposed) _set(_state.copyWith(draftId: id));
+    }));
+  }
+
+  OpenerDraftFlow _currentFlow(OpenerAnalysis analysis) {
+    final pending = _pendingGeneration;
+    return OpenerDraftFlow(
+      stage: pending != null
+          ? OpenerDraftFlowStage.generating
+          : (_state.generation != null ? OpenerDraftFlowStage.result : OpenerDraftFlowStage.analyzed),
+      analysis: analysis,
+      contributionDraft: _state.draft,
+      analysisRequestId: _lastAnalysisRequestId,
+      inputFingerprint: _lastInputFingerprint,
+      pendingGeneration: pending,
+      generation: _state.generation,
+    );
   }
 
   /// 「略過，直接生成」：清空答案並標記略過，隨即進第二段。
   Future<void> skipAndGenerate() async {
     _set(_state.copyWith(draft: const OpenerContributionDraft(skipped: true), clearError: true));
+    _persistDraftEdit();
     await generate();
   }
 
@@ -436,7 +519,19 @@ class OpenerFlowController extends ChangeNotifier {
       ),
     );
     if (!_isCurrent(op)) return;
-    if (draftId != null && draftId != _state.draftId) _set(_state.copyWith(draftId: draftId));
+    if (draftId == null) {
+      // R2a-2：送出快照沒落地就不打可扣費 API——伺服器結算後回應遺失時會無從取回。
+      // 輸入原樣保留，_pendingGeneration 留著讓「再試一次」同 ID 重來。
+      _set(_state.copyWith(
+        phase: _state.generation == null ? OpenerFlowPhase.contributing : OpenerFlowPhase.result,
+        error: '這次回答還沒保存好，尚未送出；請再試一次。',
+        failedOperation: OpenerFlowFailedOperation.generate,
+        progress: const [],
+        completedPhases: const {},
+      ));
+      return;
+    }
+    if (draftId != _state.draftId) _set(_state.copyWith(draftId: draftId));
     try {
       final generation = await _service.generateFromAnalysisStreaming(
         sessionId: analysis.sessionId,
@@ -551,15 +646,36 @@ class OpenerFlowController extends ChangeNotifier {
     await _runGenerate(analysis, pending.contribution, resumeGenerationId: pending.generationId);
   }
 
+  /// 恢復停在 analyzing 的草稿後：用原輸入（與同 analysisRequestId）續分析。
+  /// 有截圖的分析無法原樣重送（不存圖片），呼叫端要等用戶重新上傳後自己按分析。
+  Future<void> resumePendingAnalysis() async {
+    final pending = _pendingAnalysis;
+    if (pending == null || _state.isBusy || _state.analysis != null || pending.imageCount > 0) return;
+    await _runAnalyze();
+  }
+
   String? get _lastAnalysisRequestId => _state.analysis == null ? null : _analysisRequestIdForState;
   String? _analysisRequestIdForState;
 
-  /// 同一份草稿隨階段更新（R2a）；保存失敗回 null、不擋畫面。
+  /// 同一份草稿隨階段更新（R2a）；保存失敗回 null。寫入依呼叫順序排隊、綁定這局
+  /// 的帳號（R2a-2）：切帳後的寫入直接略過，不會把 A 的草稿寫到 B。
   Future<String?> _persistFlow({
     required String? existingDraftId,
     required OpenerDraftFlow flow,
     OpenerResult? result,
+  }) {
+    if (_ownerIdResolver() != _sessionOwner) return Future<String?>.value(null);
+    final run = _persistQueue.then((_) => _writeFlow(existingDraftId: existingDraftId, flow: flow, result: result));
+    _persistQueue = run.then((_) {});
+    return run;
+  }
+
+  Future<String?> _writeFlow({
+    required String? existingDraftId,
+    required OpenerDraftFlow flow,
+    OpenerResult? result,
   }) async {
+    if (_ownerIdResolver() != _sessionOwner) return null;
     try {
       if (existingDraftId != null) {
         final updated = await _cache.updateDraft(existingDraftId, result: result, flow: flow);
@@ -586,6 +702,7 @@ class OpenerFlowController extends ChangeNotifier {
     final flow = draft.flow;
     if (flow == null) return;
     _opSeq += 1;
+    _sessionOwner = _ownerIdResolver();
     _analysisSession.markSuccess();
     _generationSession.markSuccess();
     _analysisRequestIdForState = flow.analysisRequestId;
@@ -594,10 +711,40 @@ class OpenerFlowController extends ChangeNotifier {
     _lastDisplayName = draft.displayName;
     _lastSourceLabel = draft.sourceLabel;
     _lastInputPreview = draft.inputPreview;
-    final expired = flow.analysis.isExpiredAt(_now());
+    final analysis = flow.analysis;
+    final pendingAnalysis = flow.pendingAnalysis;
+    if (flow.stage == OpenerDraftFlowStage.analyzing || analysis == null) {
+      // R2a-2：分析沒回來就離頁：填回輸入、同 analysisRequestId 續分析（免費）。
+      if (pendingAnalysis == null) return;
+      _pendingAnalysis = pendingAnalysis;
+      _lastInput = OpenerGenerationInput(
+        name: pendingAnalysis.name,
+        bio: pendingAnalysis.bio,
+        interests: pendingAnalysis.interests,
+        meetingContext: pendingAnalysis.meetingContext,
+      );
+      _lastInitialNote = pendingAnalysis.initialNote;
+      final requestId = flow.analysisRequestId;
+      final fingerprint = flow.inputFingerprint;
+      if (requestId != null && fingerprint != null && pendingAnalysis.imageCount == 0) {
+        _analysisSession.adopt(requestId: requestId, fingerprint: fingerprint);
+      }
+      _set(OpenerFlowState(
+        phase: OpenerFlowPhase.editing,
+        draft: OpenerContributionDraft(freeText: pendingAnalysis.initialNote ?? ''),
+        draftId: draft.id,
+        flowUnsupported: _state.flowUnsupported,
+        failedOperation: OpenerFlowFailedOperation.analyze,
+        error: pendingAnalysis.imageCount > 0 ? '上次分析沒有完成；請重新上傳截圖後再分析。' : null,
+      ));
+      return;
+    }
+    _pendingAnalysis = null;
+    final expired = analysis.isExpiredAt(_now());
     final phase = expired
         ? OpenerFlowPhase.expired
         : switch (flow.stage) {
+            OpenerDraftFlowStage.analyzing => OpenerFlowPhase.editing,
             OpenerDraftFlowStage.analyzed => OpenerFlowPhase.contributing,
             // generating 由呼叫端接著 resumePendingGeneration()；先停在回答區。
             OpenerDraftFlowStage.generating => OpenerFlowPhase.contributing,
@@ -605,7 +752,7 @@ class OpenerFlowController extends ChangeNotifier {
           };
     _set(OpenerFlowState(
       phase: phase,
-      analysis: flow.analysis,
+      analysis: analysis,
       generation: flow.generation,
       draft: flow.contributionDraft,
       draftId: draft.id,
@@ -616,6 +763,9 @@ class OpenerFlowController extends ChangeNotifier {
 
   /// 是否有送出過、尚未取得結果的生成（恢復後可直接取回）。
   bool get hasPendingGeneration => _pendingGeneration != null;
+
+  /// 是否有送出過、尚未取得分析的第一段（恢復後可續分析）。
+  bool get hasPendingAnalysis => _pendingAnalysis != null && _state.analysis == null;
 
   void _onProgress(({int seq, String? owner}) op, String label, String? phase) {
     if (_disposed || op.seq != _opSeq) return;

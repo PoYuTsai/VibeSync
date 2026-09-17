@@ -49,7 +49,7 @@ void main() {
     final saved = await cache.saveDraft(result: flow().generation!.result, flow: flow(), sourceLabel: '手動輸入');
     final loaded = cache.loadDraft(saved.id)!;
     expect(loaded.flow, isNotNull);
-    expect(loaded.flow!.analysis.sessionId, 'sess-1');
+    expect(loaded.flow!.analysis!.sessionId, 'sess-1');
     expect(loaded.flow!.generation!.generationId, 'gen-1');
     expect(loaded.flow!.generation!.materialUse.displayNote, '這句接的是你妹妹的工作');
     expect(loaded.flow!.contributionDraft.freeText, '我妹也是美容師');

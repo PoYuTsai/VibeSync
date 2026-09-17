@@ -1,6 +1,7 @@
 // 開場救星畫面的兩段式接線：真的停下來等用戶、分析卡／回答區／生成／結果／
 // 再生成入口、舊 Edge 退回舊單段、到期草稿只能看（附件 §4、§9.3）。
 // Pump idiom 同 opening_rescue_field_limits_test；OpenerService 只替換兩個網路方法。
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
+import 'package:vibesync/features/opener/data/services/opener_request_session.dart';
 import 'package:vibesync/features/opener/data/services/opener_result_cache_service.dart';
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
 import 'package:vibesync/features/opener/domain/opener_flow_models.dart';
@@ -31,6 +33,7 @@ class _FakeOpenerService extends OpenerService {
   _FakeOpenerService() : super(accessTokenProvider: () => 'token');
 
   int analyzeCalls = 0;
+  String? lastAnalysisRequestId;
   int generateCalls = 0;
   int legacyCalls = 0;
   Object? analyzeError;
@@ -51,6 +54,7 @@ class _FakeOpenerService extends OpenerService {
     void Function(String label, String? phase)? onProgress,
   }) async {
     analyzeCalls += 1;
+    lastAnalysisRequestId = analysisRequestId;
     if (analyzeError != null) throw analyzeError!;
     return OpenerAnalysis.tryParse({
       'sessionId': 'sess-1',
@@ -166,6 +170,12 @@ Future<void> _analyze(WidgetTester tester) async {
   await _tapAndSettleAsync(tester, find.byKey(const ValueKey('opener-analyze-button')));
 }
 
+/// controller 用「對方資料指紋＋初稿」鑄 analysisRequestId；種子草稿要給同一個值。
+final String _analysisFingerprint = jsonEncode([
+  OpenerRequestIdSession.fingerprintFor(bio: '有養一隻狗，假日會去河堤'),
+  '想從狗開',
+]);
+
 void main() {
   late _FakeOpenerService service;
 
@@ -221,10 +231,14 @@ void main() {
     await _pumpManual(tester);
     await _analyze(tester);
 
-    await tester.tap(find.byKey(const ValueKey('opener-option-option_2')));
-    await tester.pump();
-    await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '沒養過，只想知道牠散步會不會自己選路');
-    await tester.pump();
+    // R2a-2 後回答區每次修改都寫 Hive：要在 runAsync 裡讓 I/O 完成。
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const ValueKey('opener-option-option_2')));
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '沒養過，只想知道牠散步會不會自己選路');
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     expect(find.byKey(const ValueKey('opener-contribution-summary')), findsOneWidget);
     await _tapAndSettleAsync(tester, find.byKey(const ValueKey('opener-generate-button')));
 
@@ -337,17 +351,80 @@ void main() {
     await _pumpManual(tester);
     await _analyze(tester);
     final over = '${'字' * 300}😀';
-    await tester.enterText(find.byKey(const ValueKey('opener-free-text')), over);
-    await tester.pump();
+    // R2a-2 後回答區每次修改都寫 Hive：要在 runAsync 裡讓 I/O 完成。
+    await tester.runAsync(() async {
+      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), over);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     final field = tester.widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
     expect(field.controller!.text, over);
     expect(find.textContaining('超過 1 字'), findsOneWidget);
     expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-generate-button'))).onPressed, isNull);
     expect(service.generateCalls, 0);
 
-    await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '字' * 300);
-    await tester.pump();
+    await tester.runAsync(() async {
+      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '字' * 300);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     expect(find.textContaining('超過'), findsNothing);
     expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-generate-button'))).onPressed, isNotNull);
+  });
+
+  // ── 第二輪獨立複核回歸（R2a-2：分析尚未返回就離頁的實際重建）
+
+  testWidgets('R2a-2：停在 analyzing 的草稿回看→欄位填回、用同 analysisRequestId 續分析、停在回答區', (tester) async {
+    await tester.runAsync(() async {
+      final cache = OpenerResultCacheService(ownerIdResolver: () => 'user-a');
+      await cache.saveDraft(
+        sourceLabel: '截圖自介',
+        flow: OpenerDraftFlow(
+          stage: OpenerDraftFlowStage.analyzing,
+          contributionDraft: const OpenerContributionDraft(freeText: '想從狗開'),
+          analysisRequestId: 'req-pending-1',
+          // 指紋要和 controller 由輸入快照重算的一致（同 analysisRequestId 才會沿用）。
+          inputFingerprint: _analysisFingerprint,
+          pendingAnalysis: const OpenerPendingAnalysis(bio: '有養一隻狗，假日會去河堤', initialNote: '想從狗開'),
+        ),
+      );
+    });
+    await _pumpManual(tester);
+    expect(find.text('分析中，尚未取得分析'), findsOneWidget);
+    await _tapAndSettleAsync(tester, find.text('回看'));
+    expect(service.analyzeCalls, 1, reason: '沒截圖的 analyzing 草稿回看後自動續分析（免費）');
+    expect(service.lastAnalysisRequestId, 'req-pending-1', reason: '同輸入沿用原 analysisRequestId');
+    expect(service.generateCalls, 0);
+    expect(find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget);
+    expect(find.byKey(const ValueKey('opener-generate-button')), findsOneWidget);
+    final bioField = tester.widget<TextField>(find.byType(TextField).at(1));
+    expect(bioField.controller!.text, '有養一隻狗，假日會去河堤', reason: '輸入欄位填回');
+    final drafts = OpenerResultCacheService(ownerIdResolver: () => 'user-a').loadDrafts();
+    expect(drafts.length, 1, reason: '同一份紀錄由 analyzing 升到 analyzed');
+    expect(drafts.single.flow!.stage, OpenerDraftFlowStage.analyzed);
+  });
+
+  testWidgets('R2a-2：分析後只改回答再離頁（重建畫面）→回看回到同一份回答，不打第二段', (tester) async {
+    await _pumpManual(tester);
+    await _analyze(tester);
+    await tester.runAsync(() async {
+      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '沒養過，只想問散步');
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    });
+    final saved = OpenerResultCacheService(ownerIdResolver: () => 'user-a').loadDrafts().single;
+    expect(saved.flow!.stage, OpenerDraftFlowStage.analyzed);
+    expect(saved.flow!.contributionDraft.freeText, '沒養過，只想問散步');
+
+    // 重建畫面（離頁再回來）；草稿卡在任一分頁都看得到，不用再切「手動輸入」分頁
+    //（草稿卡的來源標籤也叫「手動輸入」，tap 會找到兩個）。
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(MaterialApp(home: _screen()));
+    await tester.pump(const Duration(milliseconds: 600));
+    await _tapAndSettleAsync(tester, find.text('回看'));
+    final freeText = tester.widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
+    expect(freeText.controller!.text, '沒養過，只想問散步');
+    expect(service.generateCalls, 0);
+    expect(service.analyzeCalls, 1, reason: '回看 analyzed 草稿不重新分析');
   });
 }
