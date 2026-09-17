@@ -109,6 +109,14 @@ class _FakeOpenerService extends OpenerService {
 
 const _input = OpenerGenerationInput(bio: '有養一隻狗');
 
+/// 生成送出前多了一次草稿落地（R2a：Hive I/O），等到請求真的送到 service。
+Future<void> _untilGenerateSent(_FakeOpenerService service) async {
+  for (var i = 0; i < 200 && service.generateGate.isEmpty; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
+
 void main() {
   setUpAll(() {
     Hive.init('./.dart_tool/test_hive_opener_flow_controller');
@@ -205,7 +213,7 @@ void main() {
 
     final drafts = cache.loadDrafts();
     expect(drafts.single.flow, isNotNull);
-    expect(drafts.single.flow!.generation.generationId, firstGenId);
+    expect(drafts.single.flow!.generation!.generationId, firstGenId);
     expect(drafts.single.flow!.contributionDraft.selectedOptionId, 'option_2');
     expect(controller.state.draftId, drafts.single.id);
 
@@ -283,7 +291,7 @@ void main() {
     controller.setFreeText('第一版');
     final first = controller.generate();
     expect(controller.state.phase, OpenerFlowPhase.generating);
-    await Future<void>.delayed(Duration.zero); // 讓請求真的送出（模擬結果晚回）
+    await _untilGenerateSent(service); // 讓請求真的送出（模擬結果晚回）
     expect(service.generateGate.length, 1);
     // 生成中改資料（換截圖）：原局作廢。
     controller.resetForInputChange();
@@ -295,14 +303,16 @@ void main() {
     await first;
     expect(controller.state.phase, OpenerFlowPhase.editing, reason: '舊結果晚回被丟棄');
     expect(controller.state.generation, isNull);
-    expect(cache.loadDrafts(), isEmpty, reason: '作廢的結果不寫草稿');
+    // R2a 後分析完成就有一份 stage=analyzed／generating 的草稿；作廢的結果不得寫進去。
+    expect(cache.loadDrafts().where((d) => d.result != null), isEmpty, reason: '作廢的結果不寫草稿');
+    expect(cache.loadDrafts().where((d) => d.flow?.stage == OpenerDraftFlowStage.result), isEmpty);
   });
 
   test('切換帳號後回來的結果不套用、不寫草稿', () async {
     await controller.analyze(input: _input, initialNote: null);
     service.hold = true;
     final pending = controller.generate();
-    await Future<void>.delayed(Duration.zero);
+    await _untilGenerateSent(service);
     owner = 'user-b';
     service.generateGate.single.complete(_FakeOpenerService.generation(
       generationId: 'x',
@@ -312,16 +322,16 @@ void main() {
     expect(controller.state.generation, isNull);
     expect(controller.state.error, contains('帳號已切換'));
     owner = 'user-a';
-    expect(cache.loadDrafts(), isEmpty);
+    expect(cache.loadDrafts().where((d) => d.result != null), isEmpty, reason: 'A 帳號的草稿不得被寫入切帳後回來的結果');
     owner = 'user-b';
-    expect(cache.loadDrafts(), isEmpty);
+    expect(cache.loadDrafts(), isEmpty, reason: 'B 帳號不得出現任何 A 的紀錄');
   });
 
   test('連點生成：忙碌中第二次呼叫不會發第二個請求', () async {
     await controller.analyze(input: _input, initialNote: null);
     service.hold = true;
     final first = controller.generate();
-    await Future<void>.delayed(Duration.zero);
+    await _untilGenerateSent(service);
     await controller.generate();
     expect(service.calls.where((c) => c.kind == 'generate').length, 1);
     service.generateGate.single.complete(_FakeOpenerService.generation(
@@ -348,7 +358,7 @@ void main() {
     final fresh = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
     fresh.restoreDraft(draft);
     expect(fresh.state.phase, OpenerFlowPhase.result);
-    expect(fresh.state.generation!.generationId, draft.flow!.generation.generationId);
+    expect(fresh.state.generation!.generationId, draft.flow!.generation!.generationId);
     expect(fresh.state.draft.freeText, '沒養過');
     expect(fresh.state.generationsRemaining, 2);
 
@@ -367,5 +377,89 @@ void main() {
     // 模擬伺服器回 question=null：直接覆蓋 state 由 fake 回傳有題目版本無法做到，改驗 toContribution 行為。
     final contribution = c.state.draft.toContribution(null);
     expect(contribution.toJson(), {'state': 'answered', 'freeText': '我想問她那家店在哪'});
+  });
+
+  // ── 第一輪獨立複核回歸（R2a／R4b）
+
+  test('R2a：分析完成即落地 stage=analyzed（有 analysisRequestId／指紋，沒有結果）；離頁重建可回到回答區', () async {
+    await controller.analyze(input: _input, initialNote: '想從狗開');
+    final draft = cache.loadDrafts().single;
+    expect(draft.result, isNull);
+    expect(draft.flow!.stage, OpenerDraftFlowStage.analyzed);
+    expect(draft.flow!.analysisRequestId, service.calls.single.args['analysisRequestId']);
+    expect(draft.flow!.inputFingerprint, isNotNull);
+    expect(draft.flow!.contributionDraft.freeText, '想從狗開');
+    expect(controller.state.draftId, draft.id);
+
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(draft);
+    expect(rebuilt.state.phase, OpenerFlowPhase.contributing);
+    expect(rebuilt.state.analysis!.sessionId, 'sess-1');
+    expect(rebuilt.state.draft.freeText, '想從狗開');
+    expect(rebuilt.hasPendingGeneration, isFalse);
+  });
+
+  test('R2a：生成送出前先落地 stage=generating＋送出快照；銷毀重建後用原 generationId 取回，不開新局', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    controller.setFreeText('沒養過');
+    service.hold = true;
+    final inflight = controller.generate();
+    await _untilGenerateSent(service);
+    final sentId = service.calls.last.args['generationId'] as String;
+    // 送出當下草稿已是 generating＋快照（伺服器可能已結算）。
+    final pendingDraft = cache.loadDrafts().single;
+    expect(pendingDraft.flow!.stage, OpenerDraftFlowStage.generating);
+    expect(pendingDraft.flow!.pendingGeneration!.generationId, sentId);
+    expect(pendingDraft.flow!.pendingGeneration!.contribution.freeText, '沒養過');
+    expect(pendingDraft.result, isNull);
+
+    // 模擬 App 結束：舊 controller 丟掉、回應永遠不到。
+    controller.dispose();
+    service.hold = false;
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(pendingDraft);
+    expect(rebuilt.hasPendingGeneration, isTrue);
+    await rebuilt.resumePendingGeneration();
+    expect(rebuilt.state.phase, OpenerFlowPhase.result);
+    expect(service.calls.last.args['generationId'], sentId, reason: '沿用原 generationId 取回同組（伺服器 replay），不鑄新 ID');
+    expect((service.calls.last.args['contribution'] as Map)['freeText'], '沒養過');
+    expect(service.calls.where((c) => c.kind == 'analyze').length, 1, reason: '不重新分析、不開新局');
+    final finalDraft = cache.loadDrafts().single;
+    expect(finalDraft.flow!.stage, OpenerDraftFlowStage.result);
+    expect(finalDraft.result!.requestId, sentId);
+    expect(cache.loadDrafts().length, 1, reason: '同一份紀錄隨階段更新，不另建歷史');
+    service.generateGate.single.complete(_FakeOpenerService.generation(generationId: 'stale', contribution: const OpenerContribution(state: OpenerContributionState.skipped)));
+    await inflight;
+  });
+
+  test('R2a：失敗後改了回答再按「再試一次」→沿用送出快照（同 ID、原回答）；「生成」才是新的操作', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    controller.setFreeText('第一版');
+    service.generateError = Exception('連線中斷，請再試一次');
+    await controller.generate();
+    final sentId = service.calls.last.args['generationId'];
+    service.generateError = null;
+    controller.setFreeText('偷偷改了第二版');
+    await controller.retryLastOperation();
+    expect(service.calls.last.args['generationId'], sentId);
+    expect((service.calls.last.args['contribution'] as Map)['freeText'], '第一版', reason: 'retry 用送出快照');
+    expect(controller.state.draft.freeText, '偷偷改了第二版', reason: '修改後的 draft 保留為未生成版本');
+    await controller.generate(fresh: true);
+    expect(service.calls.last.args['generationId'], isNot(sentId));
+    expect((service.calls.last.args['contribution'] as Map)['freeText'], '偷偷改了第二版');
+  });
+
+  test('R4b：補充超過 300 字→不送出、原文保留、給錯誤；初稿超過 300 字→不分析', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    controller.setFreeText('字' * 301);
+    await controller.generate();
+    expect(service.calls.where((c) => c.kind == 'generate'), isEmpty);
+    expect(controller.state.freeTextTooLong, isTrue);
+    expect(controller.state.draft.freeText.length, 301);
+    expect(controller.state.error, contains('300'));
+    final c2 = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    await c2.analyze(input: _input, initialNote: '🐶' * 301);
+    expect(c2.state.phase, OpenerFlowPhase.editing);
+    expect(c2.state.error, contains('300'));
   });
 }

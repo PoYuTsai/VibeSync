@@ -325,6 +325,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   final _initialNoteController = TextEditingController();
   final _freeTextController = TextEditingController();
   OpenerQuotaExceededException? _handledQuotaError;
+
+  // R4a：舊單段草稿（flow=null）在兩段式畫面裡的回看狀態——結果只顯示、可複製
+  // 與回報，不觸發新分析或扣費；改任何對方資料就清掉。
+  bool _legacyDraftView = false;
   List<OpenerDraft> _drafts = const [];
   String? _currentDraftId;
   bool _suppressInputClear = false;
@@ -361,6 +365,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _nameController.addListener(_clearGeneratedResultOnInputChange);
     _bioController.addListener(_clearGeneratedResultOnInputChange);
     _interestsController.addListener(_clearGeneratedResultOnInputChange);
+    // 初稿字數／超長錯誤要即時反映（R4b）。
+    _initialNoteController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   bool get _useTwoStage => !_flow.state.flowUnsupported;
@@ -380,6 +388,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
     setState(() {
       if (state.hasSession || state.generation != null) {
+        _legacyDraftView = false;
         _result = state.generation?.result;
         _currentDraftId = state.draftId;
         _resultGeneratedPaid = state.generation?.result.access?.servedPaid ?? false;
@@ -486,11 +495,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     if (_suppressInputClear || !mounted) return;
     // 對方資料改變：原分析失效（F15），controller 回到編輯、進行中作業作廢。
     _flow.resetForInputChange();
-    if (_result == null && _error == null) return;
+    if (_result == null && _error == null && !_legacyDraftView) return;
     setState(() {
       _result = null;
       _error = null;
       _currentDraftId = null;
+      _legacyDraftView = false;
     });
   }
 
@@ -619,24 +629,33 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     if (!mounted) return;
     if (draft.flow != null && _useTwoStage) {
-      // 兩段式草稿：回復分析、回答與結果；到期只能看、不能續生成。
+      // 兩段式草稿：回復分析、回答與結果；到期只能看、不能續生成；
+      // 停在 generating 的草稿（送出過、沒收到結果）用原 generationId 取回（R2a）。
       setState(() {
         _images = [];
         _meetingContext = null;
         _resultGeneratedPaid = false;
+        _legacyDraftView = false;
       });
       _flow.restoreDraft(draft);
+      if (_flow.hasPendingGeneration) {
+        unawaited(_flow.resumePendingGeneration());
+      }
       _snapToResults();
       return;
     }
+    final legacyResult = draft.result;
+    if (legacyResult == null) return;
     _flow.resetForInputChange();
     setState(() {
       _images = [];
       _meetingContext = null;
-      _result = draft.result;
+      _result = legacyResult;
       _resultGeneratedPaid = false;
       _currentDraftId = draft.id;
       _error = null;
+      // R4a：兩段式畫面也要能顯示舊單段草稿的結果。
+      _legacyDraftView = true;
     });
 
     _snapToResults();
@@ -1087,16 +1106,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       widgets.addAll([
         _buildFieldLabel('這次想聊的內容（選填）'),
         const SizedBox(height: 6),
+        // R4b：不用 formatter 靜默截斷；超長保留原文、顯示錯誤、按鈕禁用。
         TextField(
           key: const ValueKey('opener-initial-note'),
           controller: _initialNoteController,
           enabled: state.phase == OpenerFlowPhase.editing,
           maxLines: 2,
-          inputFormatters: [
-            LengthLimitingTextInputFormatter(
-              OpenerFlowContract.freeTextMaxGraphemes,
-            ),
-          ],
           cursorColor: AppColors.coachAccentBright,
           style: AppTypography.bodyMedium.copyWith(color: Colors.white),
           decoration: brandInputDecoration(
@@ -1104,6 +1119,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             tone: BrandVisualTone.coach,
           ),
         ),
+        if (_initialNoteTooLong)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '${_initialNoteController.text.characters.length} / ${OpenerFlowContract.freeTextMaxGraphemes}，超過上限，已保留你的文字，請縮短後再分析',
+              key: const ValueKey('opener-initial-note-error'),
+              style: AppTypography.caption.copyWith(color: AppColors.error),
+            ),
+          ),
         const SizedBox(height: 12),
         Center(
           child: Column(
@@ -1136,8 +1160,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           key: const ValueKey('opener-analyze-button'),
           label: state.phase == OpenerFlowPhase.analyzing ? '分析中…' : '分析對方資料',
           isLoading: false,
-          onPressed:
-              state.phase == OpenerFlowPhase.analyzing ? null : _analyzeTwoStage,
+          onPressed: state.phase == OpenerFlowPhase.analyzing ||
+                  _initialNoteTooLong
+              ? null
+              : _analyzeTwoStage,
         ),
         const SizedBox(height: 16),
         if (state.phase == OpenerFlowPhase.analyzing)
@@ -1238,9 +1264,21 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
 
     if (_result != null &&
-        (state.phase == OpenerFlowPhase.result || expired)) {
+        (state.phase == OpenerFlowPhase.result || expired || _legacyDraftView)) {
       widgets.addAll([
         const SizedBox(height: 24),
+        if (_legacyDraftView)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '這是先前一般生成的開場草稿：可複製、可回報；想用新流程請改對方資料後重新分析。',
+              key: const ValueKey('opener-legacy-draft-notice'),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
         _buildResults(subscription),
       ]);
     }
@@ -1248,6 +1286,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     widgets.add(const SizedBox(height: 40));
     return widgets;
   }
+
+  bool get _initialNoteTooLong =>
+      OpenerFlowState.isTooLong(_initialNoteController.text);
 
   List<Widget> _buildLegacySections({
     required SubscriptionState subscription,

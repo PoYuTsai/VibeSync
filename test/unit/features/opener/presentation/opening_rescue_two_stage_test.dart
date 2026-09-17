@@ -19,6 +19,7 @@ import 'package:vibesync/features/opener/presentation/screens/opening_rescue_scr
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
@@ -161,8 +162,8 @@ Future<void> _tapAndSettleAsync(WidgetTester tester, Finder finder) async {
 Future<void> _analyze(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).at(1), '有養一隻狗，假日會去河堤');
   await tester.pump();
-  await tester.tap(find.byKey(const ValueKey('opener-analyze-button')));
-  await _settleBounded(tester);
+  // R2a 後分析完成就會寫 Hive 草稿：同樣要在 runAsync 裡讓 I/O 完成。
+  await _tapAndSettleAsync(tester, find.byKey(const ValueKey('opener-analyze-button')));
 }
 
 void main() {
@@ -285,7 +286,7 @@ void main() {
       await cache.saveDraft(
         result: generation.result,
         sourceLabel: '截圖自介', // 別跟 tab 標籤「手動輸入」撞名，tap 會找到兩個
-        flow: OpenerDraftFlow(analysis: expiredAnalysis, generation: generation, contributionDraft: const OpenerContributionDraft(freeText: '沒養過')),
+        flow: OpenerDraftFlow(stage: OpenerDraftFlowStage.result, analysis: expiredAnalysis, generation: generation, contributionDraft: const OpenerContributionDraft(freeText: '沒養過')),
       );
     });
     await _pumpManual(tester);
@@ -294,5 +295,59 @@ void main() {
     expect(find.byKey(const ValueKey('opener-expired-title')), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-adjust-button')), findsNothing);
     expect(service.generateCalls, 1, reason: '回看不會在背景重新扣費');
+  });
+
+  // ── 第一輪獨立複核回歸（R4a／R4b）
+
+  testWidgets('R4a：舊單段草稿（flow=null）在兩段式畫面回看仍看得到卡片、可複製；不觸發新分析', (tester) async {
+    await tester.runAsync(() async {
+      final cache = OpenerResultCacheService(ownerIdResolver: () => 'user-a');
+      await cache.saveDraft(
+        result: const OpenerResult(openers: {'extend': '舊單段的句子'}, recommendedPick: 'extend', requestId: 'req-old'),
+        sourceLabel: '截圖自介',
+      );
+    });
+    await _pumpManual(tester);
+    await _tapAndSettleAsync(tester, find.text('回看'));
+    expect(find.text('舊單段的句子'), findsOneWidget);
+    expect(find.byKey(const ValueKey('opener-legacy-draft-notice')), findsOneWidget);
+    expect(find.text('複製'), findsWidgets);
+    expect(service.analyzeCalls, 0);
+    expect(service.generateCalls, 0);
+    expect(find.byKey(const ValueKey('opener-adjust-button')), findsNothing, reason: '舊草稿沒有兩段式再生成入口');
+  });
+
+  testWidgets('R4b：初稿貼 301 字→原文保留、顯示錯誤、分析按鈕禁用；300 字可分析', (tester) async {
+    await _pumpManual(tester);
+    final over = '🐶' * 301;
+    await tester.enterText(find.byKey(const ValueKey('opener-initial-note')), over);
+    await tester.pump();
+    final note = tester.widget<TextField>(find.byKey(const ValueKey('opener-initial-note')));
+    expect(note.controller!.text, over, reason: '不得靜默截斷貼上的原文');
+    expect(find.byKey(const ValueKey('opener-initial-note-error')), findsOneWidget);
+    expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-analyze-button'))).onPressed, isNull);
+
+    await tester.enterText(find.byKey(const ValueKey('opener-initial-note')), '字' * 300);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('opener-initial-note-error')), findsNothing);
+    expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-analyze-button'))).onPressed, isNotNull);
+  });
+
+  testWidgets('R4b：回答欄貼 301 字（含 emoji）→原文保留、計數變紅、生成禁用；刪到 300 恢復', (tester) async {
+    await _pumpManual(tester);
+    await _analyze(tester);
+    final over = '${'字' * 300}😀';
+    await tester.enterText(find.byKey(const ValueKey('opener-free-text')), over);
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
+    expect(field.controller!.text, over);
+    expect(find.textContaining('超過 1 字'), findsOneWidget);
+    expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-generate-button'))).onPressed, isNull);
+    expect(service.generateCalls, 0);
+
+    await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '字' * 300);
+    await tester.pump();
+    expect(find.textContaining('超過'), findsNothing);
+    expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-generate-button'))).onPressed, isNotNull);
   });
 }

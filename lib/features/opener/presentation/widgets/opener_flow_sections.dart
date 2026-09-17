@@ -2,7 +2,6 @@
 // 再生成列、到期卡。沿用品牌元件，不重新設計整頁；不放人格分類、好感分數。
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -168,6 +167,7 @@ class OpenerContributionCard extends StatelessWidget {
     final question = analysis.question;
     final summary = OpenerContributionSummary.compose(question: question, draft: draft, cues: analysis.cues);
     final count = freeTextController.text.characters.length;
+    final tooLong = count > OpenerFlowContract.freeTextMaxGraphemes;
     return BrandSurfaceCard(
       tone: BrandVisualTone.coach,
       padding: const EdgeInsets.all(16),
@@ -203,14 +203,12 @@ class OpenerContributionCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
+          // R4b：不用 formatter 靜默截斷貼上的原文；超長時保留輸入、顯示錯誤、阻止送出。
           TextField(
             key: const ValueKey('opener-free-text'),
             controller: freeTextController,
             enabled: !busy,
             maxLines: 3,
-            inputFormatters: [
-              LengthLimitingTextInputFormatter(OpenerFlowContract.freeTextMaxGraphemes),
-            ],
             onChanged: onFreeTextChanged,
             cursorColor: AppColors.coachAccentBright,
             style: AppTypography.bodyMedium.copyWith(color: Colors.white),
@@ -223,9 +221,13 @@ class OpenerContributionCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: Text(
-              '$count / ${OpenerFlowContract.freeTextMaxGraphemes}',
+              tooLong
+                  ? '$count / ${OpenerFlowContract.freeTextMaxGraphemes}，超過 ${count - OpenerFlowContract.freeTextMaxGraphemes} 字，請縮短後再生成'
+                  : '$count / ${OpenerFlowContract.freeTextMaxGraphemes}',
               key: const ValueKey('opener-free-text-counter'),
-              style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7)),
+              style: AppTypography.caption.copyWith(
+                color: tooLong ? AppColors.error : AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+              ),
             ),
           ),
           if (summary != null) ...[
@@ -261,9 +263,9 @@ class OpenerContributionCard extends StatelessWidget {
             key: const ValueKey('opener-generate-button'),
             label: busy ? '生成中…' : (isRegenerating ? '用這個想法再生成' : '生成回覆'),
             isLoading: false,
-            onPressed: busy || generationsRemaining <= 0 ? null : onGenerate,
+            onPressed: busy || generationsRemaining <= 0 || tooLong ? null : onGenerate,
           ),
-          if (!isRegenerating && !busy && generationsRemaining > 0)
+          if (!isRegenerating && !busy && generationsRemaining > 0 && !tooLong)
             Center(
               child: TextButton(
                 key: const ValueKey('opener-skip-button'),

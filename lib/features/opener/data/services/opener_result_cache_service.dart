@@ -8,38 +8,125 @@ import '../../../../core/services/supabase_service.dart';
 import '../../domain/opener_flow_models.dart';
 import 'opener_service.dart';
 
-/// 兩段式草稿的延伸資料（附件 §9.5）：分析與題目版本、本次回答、sessionId／
-/// generationId、來源紀錄、到期時間與剩餘次數。舊草稿沒有這一段，照舊讀取。
-class OpenerDraftFlow {
-  const OpenerDraftFlow({
-    required this.analysis,
-    required this.generation,
-    required this.contributionDraft,
+/// 兩段式流程的階段（R2a：未完成操作也要落地，不只成功結果）。
+enum OpenerDraftFlowStage {
+  /// 分析完成、尚未生成（看分析、填回答中）。
+  analyzed,
+
+  /// 生成請求已送出、尚未收到可用結果（伺服器可能已結算）。
+  generating,
+
+  /// 已取得一組可交付結果。
+  result,
+}
+
+/// 生成操作的送出快照（R2a）：retry 沿用它，不是目前被改過的 draft。
+class OpenerPendingGeneration {
+  const OpenerPendingGeneration({
+    required this.generationId,
+    required this.contribution,
   });
 
+  final String generationId;
+  final OpenerContribution contribution;
+
+  Map<String, dynamic> toJson() => {
+        'generationId': generationId,
+        'contribution': contribution.toJson(),
+      };
+
+  static OpenerPendingGeneration? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final id = raw['generationId'];
+    final contribution = OpenerContribution.tryParse(raw['contribution']);
+    if (id is! String || id.isEmpty || contribution == null) return null;
+    return OpenerPendingGeneration(generationId: id, contribution: contribution);
+  }
+}
+
+/// 兩段式草稿的延伸資料（附件 §9.5、R2a）：分析與題目版本、本次回答草稿、
+/// analysisRequestId／輸入指紋、送出中的 generationId＋回答快照、成功結果、
+/// 到期時間與剩餘次數。舊草稿沒有這一段，照舊讀取。
+class OpenerDraftFlow {
+  const OpenerDraftFlow({
+    required this.stage,
+    required this.analysis,
+    required this.contributionDraft,
+    this.analysisRequestId,
+    this.inputFingerprint,
+    this.pendingGeneration,
+    this.generation,
+  });
+
+  final OpenerDraftFlowStage stage;
   final OpenerAnalysis analysis;
-  final OpenerGeneration generation;
   final OpenerContributionDraft contributionDraft;
+  final String? analysisRequestId;
+  final String? inputFingerprint;
+
+  /// stage=generating 時的送出快照；伺服器已結算但回應遺失時靠它取回同組結果。
+  final OpenerPendingGeneration? pendingGeneration;
+  final OpenerGeneration? generation;
+
+  int get generationsRemaining =>
+      generation?.usage.generationsRemaining ?? analysis.generationsRemaining;
 
   /// 這份草稿是否還能繼續生成（未到期且本局還有次數）。
   bool canContinueAt(DateTime now) =>
-      !analysis.isExpiredAt(now) && generation.usage.generationsRemaining > 0;
+      !analysis.isExpiredAt(now) && generationsRemaining > 0;
+
+  OpenerDraftFlow copyWith({
+    OpenerDraftFlowStage? stage,
+    OpenerAnalysis? analysis,
+    OpenerContributionDraft? contributionDraft,
+    OpenerPendingGeneration? pendingGeneration,
+    bool clearPendingGeneration = false,
+    OpenerGeneration? generation,
+  }) {
+    return OpenerDraftFlow(
+      stage: stage ?? this.stage,
+      analysis: analysis ?? this.analysis,
+      contributionDraft: contributionDraft ?? this.contributionDraft,
+      analysisRequestId: analysisRequestId,
+      inputFingerprint: inputFingerprint,
+      pendingGeneration:
+          clearPendingGeneration ? null : (pendingGeneration ?? this.pendingGeneration),
+      generation: generation ?? this.generation,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
+        'stage': stage.name,
         'analysis': analysis.toJson(),
-        'generation': generation.toJson(),
         'contributionDraft': contributionDraft.toJson(),
+        if (analysisRequestId != null) 'analysisRequestId': analysisRequestId,
+        if (inputFingerprint != null) 'inputFingerprint': inputFingerprint,
+        if (pendingGeneration != null) 'pendingGeneration': pendingGeneration!.toJson(),
+        if (generation != null) 'generation': generation!.toJson(),
       };
 
   static OpenerDraftFlow? tryParse(dynamic raw) {
     if (raw is! Map) return null;
     final analysis = OpenerAnalysis.tryParse(raw['analysis']);
+    if (analysis == null) return null;
     final generation = OpenerGeneration.tryParse(raw['generation']);
-    if (analysis == null || generation == null) return null;
+    final pending = OpenerPendingGeneration.tryParse(raw['pendingGeneration']);
+    final stage = switch (raw['stage']) {
+      'analyzed' => OpenerDraftFlowStage.analyzed,
+      'generating' => OpenerDraftFlowStage.generating,
+      'result' => OpenerDraftFlowStage.result,
+      // 舊版 flow（只有成功結果）沒有 stage 欄位。
+      _ => generation != null ? OpenerDraftFlowStage.result : OpenerDraftFlowStage.analyzed,
+    };
+    if (stage == OpenerDraftFlowStage.result && generation == null) return null;
     return OpenerDraftFlow(
+      stage: stage,
       analysis: analysis,
-      generation: generation,
       contributionDraft: OpenerContributionDraft.fromJson(raw['contributionDraft']),
+      analysisRequestId: raw['analysisRequestId'] is String ? raw['analysisRequestId'] as String : null,
+      inputFingerprint: raw['inputFingerprint'] is String ? raw['inputFingerprint'] as String : null,
+      pendingGeneration: pending,
+      generation: generation,
     );
   }
 }
@@ -58,7 +145,9 @@ class OpenerDraft {
   });
 
   final String id;
-  final OpenerResult result;
+
+  /// 可交付結果；兩段式未完成階段（分析完、生成中）為 null。
+  final OpenerResult? result;
   final DateTime createdAt;
   final String? displayName;
   final String? sourceLabel;
@@ -92,8 +181,11 @@ class OpenerDraft {
     if (input != null && input.isNotEmpty) {
       return input;
     }
-
-    return result.bestOpenerTextForAccess(isFreeUser: isFreeUser) ??
+    final stored = result;
+    if (stored == null) {
+      return flow?.stage == OpenerDraftFlowStage.generating ? '生成中，尚未取得結果' : '分析完成，尚未生成';
+    }
+    return stored.bestOpenerTextForAccess(isFreeUser: isFreeUser) ??
         '已保存開場建議';
   }
 
@@ -101,6 +193,7 @@ class OpenerDraft {
     OpenerResult? result,
     DateTime? continuedAt,
     String? partnerId,
+    OpenerDraftFlow? flow,
   }) {
     return OpenerDraft(
       id: id,
@@ -111,13 +204,13 @@ class OpenerDraft {
       inputPreview: inputPreview,
       continuedAt: continuedAt ?? this.continuedAt,
       partnerId: partnerId ?? this.partnerId,
-      flow: flow,
+      flow: flow ?? this.flow,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'result': result.toJson(),
+        if (result != null) 'result': result!.toJson(),
         'createdAt': createdAt.toIso8601String(),
         'displayName': displayName,
         'sourceLabel': sourceLabel,
@@ -130,7 +223,9 @@ class OpenerDraft {
   static OpenerDraft? fromJson(Map<String, dynamic> json) {
     final id = json['id']?.toString();
     final resultJson = json['result'];
-    if (id == null || id.isEmpty || resultJson is! Map) {
+    final flow = OpenerDraftFlow.tryParse(json['flow']);
+    // 舊草稿必有 result；兩段式未完成階段允許沒有 result 但要有 flow。
+    if (id == null || id.isEmpty || (resultJson is! Map && flow == null)) {
       return null;
     }
 
@@ -148,20 +243,22 @@ class OpenerDraft {
       return DateTime.tryParse(raw);
     }
 
-    final normalizedResult = resultJson.map(
-      (key, value) => MapEntry(key.toString(), value),
-    );
+    final result = resultJson is Map
+        ? OpenerResult.fromJson(
+            resultJson.map((key, value) => MapEntry(key.toString(), value)),
+          )
+        : null;
 
     return OpenerDraft(
       id: id,
-      result: OpenerResult.fromJson(normalizedResult),
+      result: result,
       createdAt: parseDate(json['createdAt'], DateTime.now()),
       displayName: json['displayName']?.toString(),
       sourceLabel: json['sourceLabel']?.toString(),
       inputPreview: json['inputPreview']?.toString(),
       continuedAt: parseNullableDate(json['continuedAt']),
       partnerId: json['partnerId']?.toString(),
-      flow: OpenerDraftFlow.tryParse(json['flow']),
+      flow: flow,
     );
   }
 }
@@ -195,15 +292,18 @@ class OpenerResultCacheService {
     return (owner == null || owner.isEmpty) ? null : owner;
   }
 
-  String? get _draftsKey {
-    final owner = _owner;
-    return owner == null ? null : '$_draftsKeyPrefix:$owner';
-  }
+  String? get _draftsKey => _draftsKeyFor(_owner);
 
-  String? get _latestResultKey {
-    final owner = _owner;
-    return owner == null ? null : '$_latestResultKeyPrefix:$owner';
-  }
+  String? get _latestResultKey => _latestKeyFor(_owner);
+
+  // R2b：每個會跨 await 的寫入路徑都以「操作起點」解析一次 owner，之後一路
+  // 帶著同一個 owner 走 drafts／latest 的所有寫入與讀回；不得在 await 後重讀
+  // 目前帳號（切帳中會把 A 的結果寫進 B 的 key）。
+  static String? _draftsKeyFor(String? owner) =>
+      owner == null ? null : '$_draftsKeyPrefix:$owner';
+
+  static String? _latestKeyFor(String? owner) =>
+      owner == null ? null : '$_latestResultKeyPrefix:$owner';
 
   /// 未綁帳號的舊 key 一次性搬到目前帳號名下後刪除。單帳號裝置（絕大多數）
   /// 升級不掉草稿；多帳號裝置最壞情況＝舊資料歸給升級後第一個開 opener 的
@@ -224,13 +324,15 @@ class OpenerResultCacheService {
   }
 
   Future<OpenerDraft> saveDraft({
-    required OpenerResult result,
+    OpenerResult? result,
     String? displayName,
     String? sourceLabel,
     String? inputPreview,
     String? partnerId,
     OpenerDraftFlow? flow,
   }) async {
+    assert(result != null || flow != null, '草稿至少要有結果或兩段式流程資料');
+    final owner = _owner; // 操作起點解析一次，全程沿用（R2b）。
     final now = DateTime.now();
     final scopedPartnerId = _blankToNull(partnerId);
     final draftSequence = (_draftSequence = (_draftSequence + 1) & 0x3fffffff);
@@ -247,18 +349,42 @@ class OpenerResultCacheService {
 
     final drafts = [
       draft,
-      ...loadDrafts().where((existing) => existing.id != draft.id),
+      ..._loadDraftsFor(owner).where((existing) => existing.id != draft.id),
     ].take(maxDrafts).toList(growable: false);
 
-    await _saveDrafts(drafts);
-    if (scopedPartnerId == null) {
-      await saveLatest(result);
+    await _saveDraftsFor(owner, drafts);
+    if (scopedPartnerId == null && result != null) {
+      await _saveLatestFor(owner, result);
     }
     return draft;
   }
 
-  List<OpenerDraft> loadDrafts() {
-    final key = _draftsKey;
+  /// 更新既有草稿（R2a：同一份紀錄隨流程階段更新，不另建歷史）。找不到就回 null。
+  Future<OpenerDraft?> updateDraft(
+    String id, {
+    OpenerResult? result,
+    OpenerDraftFlow? flow,
+  }) async {
+    final owner = _owner;
+    final drafts = _loadDraftsFor(owner);
+    OpenerDraft? updated;
+    final next = drafts.map((draft) {
+      if (draft.id != id) return draft;
+      updated = draft.copyWith(result: result, flow: flow);
+      return updated!;
+    }).toList(growable: false);
+    if (updated == null) return null;
+    await _saveDraftsFor(owner, next);
+    if (_blankToNull(updated!.partnerId) == null && result != null) {
+      await _saveLatestFor(owner, result);
+    }
+    return updated;
+  }
+
+  List<OpenerDraft> loadDrafts() => _loadDraftsFor(_owner);
+
+  List<OpenerDraft> _loadDraftsFor(String? owner) {
+    final key = _draftsKeyFor(owner);
     if (key == null) {
       return const [];
     }
@@ -302,8 +428,10 @@ class OpenerResultCacheService {
     final scopedDrafts = drafts
         .where((draft) => _blankToNull(draft.partnerId) == scopedPartnerId)
         .toList(growable: false);
+    final firstWithResult =
+        scopedDrafts.where((draft) => draft.result != null).firstOrNull;
     if (scopedDrafts.isNotEmpty) {
-      return scopedDrafts.first.result;
+      return firstWithResult?.result;
     }
 
     if (scopedPartnerId != null) {
@@ -327,21 +455,23 @@ class OpenerResultCacheService {
   /// paid styles from local storage; leak protection is read-time
   /// (`visibleForAccess`), not write-time (Batch 4 #4).
   Future<void> markDraftContinued(String id) async {
-    final drafts = loadDrafts();
-    final updated = drafts
+    final owner = _owner;
+    final updated = _loadDraftsFor(owner)
         .map(
           (draft) => draft.id == id
               ? draft.copyWith(continuedAt: DateTime.now())
               : draft,
         )
         .toList(growable: false);
-    await _saveDrafts(updated);
+    await _saveDraftsFor(owner, updated);
   }
 
   Future<void> deleteDraft(String id) async {
-    final updated =
-        loadDrafts().where((draft) => draft.id != id).toList(growable: false);
-    await _saveDrafts(updated);
+    final owner = _owner;
+    final updated = _loadDraftsFor(owner)
+        .where((draft) => draft.id != id)
+        .toList(growable: false);
+    await _saveDraftsFor(owner, updated);
   }
 
   /// Removes every draft scoped to [partnerId] (partner delete cascade).
@@ -350,10 +480,11 @@ class OpenerResultCacheService {
   Future<void> deleteDraftsForPartner(String partnerId) async {
     final scopedPartnerId = _blankToNull(partnerId);
     if (scopedPartnerId == null) return;
-    final updated = loadDrafts()
+    final owner = _owner;
+    final updated = _loadDraftsFor(owner)
         .where((draft) => _blankToNull(draft.partnerId) != scopedPartnerId)
         .toList(growable: false);
-    await _saveDrafts(updated);
+    await _saveDraftsFor(owner, updated);
   }
 
   /// Re-points every draft scoped to [fromPartnerId] onto [toPartnerId]
@@ -367,14 +498,15 @@ class OpenerResultCacheService {
     final from = _blankToNull(fromPartnerId);
     final to = _blankToNull(toPartnerId);
     if (from == null || to == null || from == to) return;
-    final updated = loadDrafts()
+    final owner = _owner;
+    final updated = _loadDraftsFor(owner)
         .map(
           (draft) => _blankToNull(draft.partnerId) == from
               ? draft.copyWith(partnerId: to)
               : draft,
         )
         .toList(growable: false);
-    await _saveDrafts(updated);
+    await _saveDraftsFor(owner, updated);
   }
 
   Future<void> clearDrafts() async {
@@ -385,8 +517,10 @@ class OpenerResultCacheService {
     await StorageService.settingsBox.delete(key);
   }
 
-  Future<void> saveLatest(OpenerResult result) async {
-    final key = _latestResultKey;
+  Future<void> saveLatest(OpenerResult result) => _saveLatestFor(_owner, result);
+
+  Future<void> _saveLatestFor(String? owner, OpenerResult result) async {
+    final key = _latestKeyFor(owner);
     if (key == null) return;
     await StorageService.settingsBox.put(
       key,
@@ -428,8 +562,8 @@ class OpenerResultCacheService {
     await StorageService.settingsBox.delete(key);
   }
 
-  Future<void> _saveDrafts(List<OpenerDraft> drafts) async {
-    final key = _draftsKey;
+  Future<void> _saveDraftsFor(String? owner, List<OpenerDraft> drafts) async {
+    final key = _draftsKeyFor(owner);
     if (key == null) return;
     await StorageService.settingsBox.put(
       key,
