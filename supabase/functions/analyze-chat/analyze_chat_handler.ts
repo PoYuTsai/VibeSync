@@ -70,6 +70,10 @@ import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
+import {
+  handleOpenerAnalyzeRequest,
+  handleOpenerGenerateRequest,
+} from "./opener_flow_handler.ts";
 import { handleAnalyzeStream } from "./analyze_stream_handler.ts";
 import {
   ANALYSIS_CONTRACT_VERSION_V2,
@@ -435,6 +439,10 @@ async function handleAnalyzeChat(
       ANALYSIS_CONTRACT_VERSION_V2;
     const confirmedOvercharge = confirmedParse.value;
     const isOpenerMode = requestShape.kind === "opener";
+    // 兩段式 opener：自帶 claim／限流／額度預查／結算，generic 月日 gate 不接管
+    //（與 opener／new_topic 同一條豁免）。
+    const isOpenerFlowMode = requestShape.kind === "opener_analyze" ||
+      requestShape.kind === "opener_generate";
     // 新話題 mode（2026-07-24）：自帶 sanitize／claim／fixed-cost-3 gate，
     // generic analyze 月/日 gate 與 optimize shape 檢查都不得接管。
     const isNewTopicMode = requestShape.kind === "new_topic";
@@ -535,6 +543,7 @@ async function handleAnalyzeChat(
     // so it resumes by run id without being blocked by a now-exhausted quota.
     if (
       !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
+      !isOpenerFlowMode &&
       !isOptimizeMessageRequestShape &&
       !isStreamRetryMode &&
       sub.monthly_messages_used >= monthlyLimit
@@ -572,6 +581,7 @@ async function handleAnalyzeChat(
     // Check daily limit（測試帳號與 stream retry 跳過，同上）。
     if (
       !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
+      !isOpenerFlowMode &&
       !isOptimizeMessageRequestShape &&
       !isStreamRetryMode &&
       sub.daily_messages_used >= dailyLimit
@@ -624,6 +634,30 @@ async function handleAnalyzeChat(
         refreshTierFromRevenueCat: maybeRefreshSubscriptionTierFromRevenueCat,
         quota: () => ({ sub, monthlyLimit, dailyLimit, effectiveTier }),
       });
+    }
+
+    // ── Opener 兩段式（2026-09-17）：先分析（免費）、再依用戶補充生成 ──
+    if (isOpenerFlowMode) {
+      const flowDeps = {
+        supabase,
+        userId: user.id,
+        requestBody: requestBody as Record<string, unknown>,
+        responseMode,
+        requestStartedAtMs,
+        accountIsTest,
+        claudeApiKey: CLAUDE_API_KEY,
+        refreshTierFromRevenueCat: maybeRefreshSubscriptionTierFromRevenueCat,
+        quota: () => ({
+          sub,
+          monthlyLimit,
+          dailyLimit,
+          effectiveTier,
+          allowedFeatures,
+        }),
+      };
+      return requestShape.kind === "opener_analyze"
+        ? await handleOpenerAnalyzeRequest(flowDeps)
+        : await handleOpenerGenerateRequest(flowDeps);
     }
 
     // ── Opener mode: generate opening lines ──
