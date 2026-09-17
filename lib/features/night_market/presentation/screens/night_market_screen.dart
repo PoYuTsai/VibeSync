@@ -204,14 +204,28 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
         // ordinary gate hit reaching here while a purchase round is still
         // pending must finish that round the same way a successful retry
         // would (restart), not silently treat it as a normal in-story
-        // advance (review round 4, requirement 三).
+        // advance (review round 4, requirement 三). This branch does its
+        // own `await` (the account check) and can itself call `_restart`,
+        // so — same as the `locked` branch below — it must hold
+        // `_paywallInFlight` for that whole span, released only in
+        // `finally`; otherwise a second tap landing before this branch
+        // gets a chance to set the flag races the same pending restart
+        // the lock exists to prevent (review round 5, requirement 三).
         if (_pendingConfirmation) {
-          final sameAccount = await _pendingConfirmationStillForCurrentAccount();
-          _pendingConfirmation = false;
-          _pendingConfirmationAccountId = null;
-          if (sameAccount) {
-            await _restart();
-            break;
+          if (_paywallInFlight) return;
+          _paywallInFlight = true;
+          try {
+            final sameAccount =
+                await _pendingConfirmationStillForCurrentAccount();
+            if (!mounted) return;
+            _pendingConfirmation = false;
+            _pendingConfirmationAccountId = null;
+            if (sameAccount) {
+              await _restart();
+              return;
+            }
+          } finally {
+            _paywallInFlight = false;
           }
         }
         await onAllowed();

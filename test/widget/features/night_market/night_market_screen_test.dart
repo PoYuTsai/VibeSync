@@ -667,5 +667,95 @@ void main() {
       expect(platform.creations[1].dataSource.asset,
           'assets/videos/night_market/s1_notice.mp4');
     });
+
+    testWidgets(
+        'gate already allowed while pendingConfirmation: a second tap during '
+        "the resulting restart's own video load is dropped, not raced "
+        '(review round 5, requirement 三)', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+      // pendingConfirmation, nothing restarted yet.
+      expect(platform.creations, hasLength(1));
+
+      // The subscription resolves independently — the very next tap takes
+      // the `allowed` + pendingConfirmation branch, which itself now calls
+      // `_restart()`. `_restart()`'s own `_load()` clears `_completed`
+      // (and disposes the old controller) essentially synchronously, so
+      // the choice card is gone by the next pump — the real race window
+      // to prove is BEFORE that: two taps dispatched back-to-back with NO
+      // `pump()` in between still see the SAME (stale, not yet rebuilt)
+      // widget tree, exactly like two physical taps landing faster than a
+      // frame. `_paywallInFlight` is set synchronously, before the first
+      // `await`, by the FIRST tap's handler — so the second must already
+      // see it and bail, never reaching a second `_restart()`.
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.text(_mainChoice));
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+
+      // Exactly one restart happened — not two — and the second tap did
+      // not resurrect `_pendingConfirmation` or otherwise re-enter the
+      // paywall flow.
+      expect(platform.creations, hasLength(2));
+      expect(platform.creations[1].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+      expect(find.text(paywallStubText), findsNothing);
+    });
+
+    testWidgets(
+        'tearing down the screen while the pendingConfirmation+allowed '
+        'restart is mid-flight does not throw (review round 5, requirement '
+        '三)', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      final creationGate = Completer<void>();
+      platform.creationGate = creationGate;
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+
+      // Leave the screen entirely while its own restart is still stuck
+      // inside video initialization.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      // Disposing while `createWithOptions` is still stalled hits a real,
+      // pre-existing race inside the `video_player` package itself (not
+      // this screen's code): `VideoPlayerController.dispose()` and
+      // `.initialize()` both await the same internal `_creatingCompleter`;
+      // once it resolves, `dispose()`'s own continuation runs first and
+      // sets `_isDisposed = true` before `initialize()` gets to attach its
+      // event listener, so its buffered "initialized" event is dropped
+      // (the listener early-returns once disposed) and `initialize()`'s
+      // Future then only ever settles via ITS OWN `.timeout(12s)` — same
+      // as it would on a real device if the platform's create call were
+      // still in flight when the user navigated away. Advancing fake time
+      // past that timeout (rather than pumping indefinitely) is what lets
+      // it resolve, exactly like the real 12 real seconds would.
+      creationGate.complete();
+      await tester.pump(const Duration(seconds: 13));
+      expect(tester.takeException(), isNull);
+    });
   });
 }

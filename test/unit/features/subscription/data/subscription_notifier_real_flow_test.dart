@@ -533,11 +533,33 @@ void main() {
                 tier: SubscriptionTierHelper.essential,
                 expiresAt: expiry,
               );
-      SupabaseService.debugInvokeFunctionOverride = (name, {body}) async =>
-          _fakeSyncResponse(tier: SubscriptionTierHelper.essential, expiresAt: expiry);
+      // _loadSubscription's OWN regular sync call (for displayTier=Free,
+      // unrelated to the rescue) must keep seeing Free — only the rescue's
+      // OWN confirm call (identifiable by it asking for `expectedTier:
+      // essential` in its request body) sees Essential. Otherwise the
+      // ordinary sync path alone would resolve this tier and the test
+      // would prove nothing about the rescue branch specifically (review
+      // round 5, requirement 四 — the previous version of this test set
+      // Essential unconditionally for every edge call, so it still passed
+      // even with the rescue's own adoption logic removed entirely).
+      var sawRescueConfirmCall = false;
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) async {
+        final expectedTier = body?['expectedTier'] as String?;
+        if (expectedTier == SubscriptionTierHelper.essential) {
+          sawRescueConfirmCall = true;
+          return _fakeSyncResponse(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: expiry,
+          );
+        }
+        return _fakeSyncResponse(tier: SubscriptionTierHelper.free);
+      };
 
       await notifier.refresh();
 
+      expect(sawRescueConfirmCall, isTrue,
+          reason: 'the rescue branch must actually have run its own '
+              'confirm call, not just the ordinary sync path');
       expect(notifier.state.tier, SubscriptionTierHelper.essential);
       expect(notifier.state.renewsAt, isNotNull);
       expect(UsageService.hasUnexpiredPaidEntitlement(), isTrue);
@@ -600,6 +622,126 @@ void main() {
         reason: "the offline cache must not carry user-l's entitlement into "
             "user-m's session either",
       );
+    });
+  });
+
+  group(
+      'scenario 8 (review round 5, requirement 一) — operation ordering '
+      'covers every writer of this same subscription record, not just the '
+      'four night-market-specific methods', () {
+    test(
+        'an earlier-started syncWithRevenueCat stalls and later resolves '
+        "with a stale Starter; a newer adopt already wrote Essential in "
+        "between; syncWithRevenueCat's late Starter must not overwrite it",
+        () async {
+      final notifier = await bootFreeNotifier('user-n');
+
+      // A: syncWithRevenueCat() starts — this is exactly what
+      // `_initialize()` always calls unconditionally, so it is reachable
+      // even though night market never calls it directly — and stalls on
+      // its own RevenueCat read.
+      final rcGate = Completer<CustomerInfo?>();
+      var rcCallCount = 0;
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride = (_) {
+        rcCallCount++;
+        if (rcCallCount == 1) return rcGate.future;
+        return Future.value(_fakeCustomerInfo(
+          tier: SubscriptionTierHelper.essential,
+          expiresAt: DateTime.now().add(const Duration(days: 30)),
+        ));
+      };
+      final syncFuture = notifier.syncWithRevenueCat();
+      await Future<void>.delayed(Duration.zero);
+
+      // B: a newer, independent adopt completes first (its own RevenueCat
+      // read is call #2, resolved immediately above), writing Essential.
+      final adopted = await notifier.adoptRevenueCatTierIfHigher();
+      expect(adopted, isTrue);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+
+      // A's long-stalled RevenueCat read finally resolves with a STALE
+      // Starter (e.g. the SDK's local cache hadn't caught up with the
+      // purchase that just happened) — a real, plausible race, not
+      // `minimumSyncedTier`-relevant since syncWithRevenueCat never sets
+      // one; only operation ordering protects this.
+      rcGate.complete(_fakeCustomerInfo(
+        tier: SubscriptionTierHelper.starter,
+        expiresAt: DateTime.now().add(const Duration(days: 30)),
+      ));
+      await syncFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.tier,
+        SubscriptionTierHelper.essential,
+        reason: "syncWithRevenueCat's late, stale Starter read must not "
+            "overwrite the newer adoption — it is not exempt just because "
+            "night market never calls it directly; it still runs from "
+            "_initialize() and writes the same subscription record",
+      );
+    });
+  });
+
+  group(
+      'scenario 9 (review round 5, requirement 二) — isLoading/error '
+      'resolution follows the same winning operation, not a stale one\'s '
+      'own finally', () {
+    test(
+        "refresh() sets isLoading true; a concurrent adopt writes Essential "
+        "before refresh's own _loadSubscription resolves; isLoading and the "
+        'real permission projection must both end up resolved, not '
+        'dangling', () async {
+      final notifier = await bootFreeNotifier('user-o');
+
+      // A: refresh() sets isLoading:true as its very first (synchronous)
+      // action, then its own _loadSubscription stalls on the DB-row fetch.
+      final rowGate = Completer<Map<String, dynamic>>();
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) => rowGate.future;
+      final refreshFuture = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.state.isLoading, isTrue,
+          reason: "sanity check: refresh()'s own initial write landed");
+
+      // B: a newer, independent adopt completes first, writing Essential.
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) async => _fakeCustomerInfo(
+                tier: SubscriptionTierHelper.essential,
+                expiresAt: DateTime.now().add(const Duration(days: 30)),
+              );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+
+      // A's stalled DB-row fetch finally resolves — its generation is
+      // stale either way and must be discarded entirely, including not
+      // touching isLoading/error (see [SubscriptionNotifier._claimWrite]).
+      rowGate.complete(_fakeSubscriptionRow(userId: 'user-o'));
+      await refreshFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+      expect(
+        notifier.state.isLoading,
+        isFalse,
+        reason: "adopt's own write must have explicitly resolved isLoading "
+            "itself — the superseded _loadSubscription's early-return "
+            "correctly writes nothing at all, so nothing else would ever "
+            "clear the flag refresh() set",
+      );
+      expect(notifier.state.error, isNull);
+
+      // The actual, real permission projection — not just the raw tier
+      // field — since a dangling isLoading would make gateFor perpetually
+      // report "still resolving" even though the tier is already correct.
+      final access = EbookSubscriptionAccess.fromState(
+        notifier.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(access.isEssential, isTrue);
+      expect(access.isResolved, isTrue);
     });
   });
 }

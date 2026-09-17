@@ -588,16 +588,39 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       'pending_downgrade_effective_at';
 
   /// Monotonic per-notifier operation/commit counters for
-  /// [subscriptionWriteIsCurrent] (review round 4, requirement 一). Every
-  /// write-driving operation (`_loadSubscription`, `forceSyncTier`,
-  /// `adoptRevenueCatTierIfHigher`, `_attemptStartupPaidRescue`) claims a
-  /// generation via `++_operationSequence` at its own start, and only
-  /// writes if `_lastCommittedGeneration` hasn't already moved past it.
-  /// Deliberately scoped to just these four — the ones reachable from the
-  /// night-market paywall flow — not a blanket rule for every caller of
-  /// `_syncSubscriptionViaEdgeFunction`.
+  /// [subscriptionWriteIsCurrent]. Every method that can write this
+  /// notifier's `state` claims a generation at its own start via
+  /// [_beginOperation] and gates each of its writes through [_claimWrite]
+  /// immediately before writing (review round 4 scoped this to the four
+  /// night-market-reachable methods; round 5 widened it to every writer of
+  /// this same subscription record — `syncWithRevenueCat` in particular
+  /// runs unconditionally from `_initialize()` and was still able to
+  /// silently overwrite a newer result with a stale one).
   int _operationSequence = 0;
   int _lastCommittedGeneration = 0;
+
+  /// Claims a new operation generation. Call once at the very start of any
+  /// method that may later write `state` for this subscription record —
+  /// before the first `await`, so nothing else can claim a generation in
+  /// between.
+  int _beginOperation() => ++_operationSequence;
+
+  /// True — and commits [operationGeneration] as the new last-committed
+  /// generation — iff no later-started operation has already won. Call
+  /// this immediately before every `state = ...` write (and before every
+  /// `_syncSubscriptionViaEdgeFunction` call whose response could itself
+  /// write) so a stale response can never land after a fresher one, and a
+  /// stale failure can never inject an error over a fresher success.
+  bool _claimWrite(int operationGeneration) {
+    if (!subscriptionWriteIsCurrent(
+      operationGeneration: operationGeneration,
+      lastCommittedGeneration: _lastCommittedGeneration,
+    )) {
+      return false;
+    }
+    _lastCommittedGeneration = operationGeneration;
+    return true;
+  }
 
   SubscriptionNotifier() : super(_initialStateFromUsageSnapshot()) {
     _initialize();
@@ -868,19 +891,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               return null;
             }
             if (operationGeneration != null &&
-                !subscriptionWriteIsCurrent(
-                  operationGeneration: operationGeneration,
-                  lastCommittedGeneration: _lastCommittedGeneration,
-                )) {
+                !_claimWrite(operationGeneration)) {
               debugPrint(
                 '[sync-subscription] a later-started operation already '
                 'committed a result; discarding this now-superseded '
                 'response',
               );
               return null;
-            }
-            if (operationGeneration != null) {
-              _lastCommittedGeneration = operationGeneration;
             }
             final limits = SubscriptionTierHelper.limitsFor(tier);
             final monthlyUsed = _readInt(data['monthlyMessagesUsed']);
@@ -1070,7 +1087,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         state = const SubscriptionState(error: 'Not logged in');
         return;
       }
-      final myGeneration = ++_operationSequence;
+      final myGeneration = _beginOperation();
 
       var customerInfo = await RevenueCatService.login(user.id);
       customerInfo ??= await RevenueCatService.getCustomerInfoForAppUserId(
@@ -1123,13 +1140,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       )) {
         return;
       }
-      if (!subscriptionWriteIsCurrent(
-        operationGeneration: myGeneration,
-        lastCommittedGeneration: _lastCommittedGeneration,
-      )) {
-        return;
-      }
-      _lastCommittedGeneration = myGeneration;
+      if (!_claimWrite(myGeneration)) return;
 
       state = _applyPendingDowngradeMetadata(state.copyWith(
         tier: displayTier,
@@ -1169,12 +1180,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       )) {
         return;
       }
-      if (!subscriptionWriteIsCurrent(
-        operationGeneration: myGeneration,
-        lastCommittedGeneration: _lastCommittedGeneration,
-      )) {
-        return;
-      }
+      if (!_claimWrite(myGeneration)) return;
       if (displayTier != SubscriptionTierHelper.free &&
           initialTier == SubscriptionTierHelper.free &&
           syncedDisplayTier == null) {
@@ -1281,13 +1287,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     )) {
       return;
     }
-    if (!subscriptionWriteIsCurrent(
-      operationGeneration: operationGeneration,
-      lastCommittedGeneration: _lastCommittedGeneration,
-    )) {
-      return;
-    }
-    _lastCommittedGeneration = operationGeneration;
+    if (!_claimWrite(operationGeneration)) return;
 
     final limits = SubscriptionTierHelper.limitsFor(tier);
     state = _applyPendingDowngradeMetadata(state.copyWith(
@@ -1387,6 +1387,14 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       fromTier: previousTier,
       toTier: requestedTier,
     );
+    // Captured before the purchase flow (which involves real user
+    // interaction — Face ID, an App Store sheet — and can take a while) so
+    // a later account switch during that time is caught the same way as
+    // every other write path (review round 5, requirement 一), not
+    // silently re-captured at whatever account happens to be current once
+    // the purchase sheet finally resolves.
+    final startedForUserId = SupabaseService.currentUser?.id;
+    final myGeneration = _beginOperation();
 
     try {
       state = _applyPendingDowngradeMetadata(
@@ -1425,18 +1433,24 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         }
 
         final currentLimits = SubscriptionTierHelper.limitsFor(previousTier);
-        state = _applyPendingDowngradeMetadata(state.copyWith(
-          tier: previousTier,
-          monthlyLimit: currentLimits.monthly,
-          dailyLimit: currentLimits.daily,
-          isLoading: false,
-          error: null,
-        ));
-        _syncUsageCache(
-          previousTier,
-          currentLimits,
-          paidExpiresAt: effectiveAt ?? state.renewsAt,
-        );
+        if (subscriptionSyncStillAppliesToAccount(
+              startedForUserId: startedForUserId,
+              currentUserId: SupabaseService.currentUser?.id,
+            ) &&
+            _claimWrite(myGeneration)) {
+          state = _applyPendingDowngradeMetadata(state.copyWith(
+            tier: previousTier,
+            monthlyLimit: currentLimits.monthly,
+            dailyLimit: currentLimits.daily,
+            isLoading: false,
+            error: null,
+          ));
+          _syncUsageCache(
+            previousTier,
+            currentLimits,
+            paidExpiresAt: effectiveAt ?? state.renewsAt,
+          );
+        }
 
         debugPrint(
           '[purchase] Scheduled downgrade preserved current tier: from=$previousTier to=$requestedTier effectiveAt=$effectiveAt',
@@ -1469,22 +1483,30 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         expectedTier: resolvedTier,
         resetUsage: previousTier != resolvedTier &&
             resolvedTier != SubscriptionTierHelper.free,
+        requiredUserId: startedForUserId,
+        operationGeneration: myGeneration,
         revenueCatAppUserId: revenueCatAppUserId,
       );
       final tier = syncedTier ?? resolvedTier;
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
-      state = _applyPendingDowngradeMetadata(state.copyWith(
-        tier: tier,
-        monthlyLimit: limits.monthly,
-        dailyLimit: limits.daily,
-        renewsAt: purchasedRenewsAt ?? state.renewsAt,
-        activeProductId:
-            tier == SubscriptionTierHelper.free ? null : purchasedProductId,
-        isLoading: false,
-        error: null,
-      ));
-      _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
+      if (subscriptionSyncStillAppliesToAccount(
+            startedForUserId: startedForUserId,
+            currentUserId: SupabaseService.currentUser?.id,
+          ) &&
+          _claimWrite(myGeneration)) {
+        state = _applyPendingDowngradeMetadata(state.copyWith(
+          tier: tier,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          renewsAt: purchasedRenewsAt ?? state.renewsAt,
+          activeProductId:
+              tier == SubscriptionTierHelper.free ? null : purchasedProductId,
+          isLoading: false,
+          error: null,
+        ));
+        _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
+      }
 
       debugPrint(
         '[purchase] final tier=$tier, synced=${syncedTier ?? 'null'}, monthlyLimit=${state.monthlyLimit}',
@@ -1502,9 +1524,18 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     } on PlatformException catch (error) {
       final errorCode = PurchasesErrorHelper.getErrorCode(error);
       debugPrint('Purchase platform error: $errorCode / $error');
-      state = _applyPendingDowngradeMetadata(
-        state.copyWith(isLoading: false, error: null),
-      );
+      // A newer operation may have already resolved the real state while
+      // this purchase attempt was failing — its own failure is now stale
+      // and must not inject an error over a fresher, valid result.
+      if (subscriptionSyncStillAppliesToAccount(
+            startedForUserId: startedForUserId,
+            currentUserId: SupabaseService.currentUser?.id,
+          ) &&
+          _claimWrite(myGeneration)) {
+        state = _applyPendingDowngradeMetadata(
+          state.copyWith(isLoading: false, error: null),
+        );
+      }
       return SubscriptionPurchaseResult(
         success: false,
         cancelled: errorCode == PurchasesErrorCode.purchaseCancelledError,
@@ -1517,9 +1548,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
     } catch (e) {
       debugPrint('Purchase error: $e');
-      state = _applyPendingDowngradeMetadata(
-        state.copyWith(isLoading: false, error: null),
-      );
+      if (subscriptionSyncStillAppliesToAccount(
+            startedForUserId: startedForUserId,
+            currentUserId: SupabaseService.currentUser?.id,
+          ) &&
+          _claimWrite(myGeneration)) {
+        state = _applyPendingDowngradeMetadata(
+          state.copyWith(isLoading: false, error: null),
+        );
+      }
       return SubscriptionPurchaseResult(
         success: false,
         cancelled: false,
@@ -1538,7 +1575,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       debugPrint('[forceSyncTier] ERROR: No user logged in');
       throw Exception('尚未登入');
     }
-    final myGeneration = ++_operationSequence;
+    final myGeneration = _beginOperation();
 
     debugPrint('[forceSyncTier] Starting sync: tier=$tier');
     final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
@@ -1584,7 +1621,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   Future<bool> adoptRevenueCatTierIfHigher() async {
     final startedForUserId = SupabaseService.currentUser?.id;
     if (startedForUserId == null) return false;
-    final myGeneration = ++_operationSequence;
+    final myGeneration = _beginOperation();
 
     final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
       startedForUserId,
@@ -1608,13 +1645,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     // fresh _loadSubscription reload) may have already committed a more
     // current result while the RevenueCat read above was in flight — this
     // adoption's own write must not clobber it either.
-    if (!subscriptionWriteIsCurrent(
-      operationGeneration: myGeneration,
-      lastCommittedGeneration: _lastCommittedGeneration,
-    )) {
-      return false;
-    }
-    _lastCommittedGeneration = myGeneration;
+    if (!_claimWrite(myGeneration)) return false;
 
     // Adopting a higher tier without its own expiry is exactly the "blank
     // or expired renewsAt" gap review round 3 flagged: `UsageService`'s
@@ -1637,6 +1668,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             RevenueCatService.getActiveProductIdFromCustomerInfo(customerInfo),
           ) ??
           state.activeProductId,
+      // This write is this operation's own definitive, resolved answer —
+      // explicitly clear isLoading/error rather than inheriting whatever
+      // an unrelated in-flight operation (e.g. a concurrent `refresh()`)
+      // happened to leave them as. Review round 5, requirement 二: without
+      // this, a stale `isLoading: true` from an operation this adoption's
+      // generation just superseded could hang forever, since the
+      // superseded operation's own early-return path correctly does
+      // nothing (see [_claimWrite]) and never gets to resolve it either.
+      isLoading: false,
+      error: null,
     ));
     _syncUsageCache(rcTier, limits, paidExpiresAt: renewsAt);
 
@@ -1667,6 +1708,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   Future<bool> restorePurchases() async {
+    final startedForUserId = SupabaseService.currentUser?.id;
+    final myGeneration = _beginOperation();
     try {
       state = state.copyWith(isLoading: true, error: null);
 
@@ -1696,6 +1739,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             !shouldPreservePaidFreeSnapshot &&
             previousTier != restoredTier &&
             restoredTier != SubscriptionTierHelper.free,
+        requiredUserId: startedForUserId,
+        operationGeneration: myGeneration,
         revenueCatAppUserId: revenueCatAppUserId,
       );
 
@@ -1723,6 +1768,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
             syncedTier = await _syncSubscriptionViaEdgeFunction(
               expectedTier: restoredTier,
               resetUsage: restoredTier != SubscriptionTierHelper.free,
+              requiredUserId: startedForUserId,
+              operationGeneration: myGeneration,
               revenueCatAppUserId: revenueCatAppUserId,
             );
           }
@@ -1735,15 +1782,21 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         debugPrint(
           'Restore purchases paid entitlement was not confirmed by server; keeping local free state until sync succeeds.',
         );
-        final limits = SubscriptionTierHelper.limitsFor(previousTier);
-        state = _applyPendingDowngradeMetadata(state.copyWith(
-          tier: previousTier,
-          monthlyLimit: limits.monthly,
-          dailyLimit: limits.daily,
-          isLoading: false,
-          error: null,
-        ));
-        _syncUsageCache(previousTier, limits, paidExpiresAt: state.renewsAt);
+        if (subscriptionSyncStillAppliesToAccount(
+              startedForUserId: startedForUserId,
+              currentUserId: SupabaseService.currentUser?.id,
+            ) &&
+            _claimWrite(myGeneration)) {
+          final limits = SubscriptionTierHelper.limitsFor(previousTier);
+          state = _applyPendingDowngradeMetadata(state.copyWith(
+            tier: previousTier,
+            monthlyLimit: limits.monthly,
+            dailyLimit: limits.daily,
+            isLoading: false,
+            error: null,
+          ));
+          _syncUsageCache(previousTier, limits, paidExpiresAt: state.renewsAt);
+        }
         return false;
       }
 
@@ -1753,40 +1806,67 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               : syncedTier ?? restoredTier;
       final limits = SubscriptionTierHelper.limitsFor(tier);
 
-      state = _applyPendingDowngradeMetadata(state.copyWith(
-        tier: tier,
-        monthlyLimit: limits.monthly,
-        dailyLimit: limits.daily,
-        renewsAt: renewsAt ?? state.renewsAt,
-        activeProductId: tier == SubscriptionTierHelper.free
-            ? null
-            : isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
-                ? state.activeProductId
-                : restoredProductId ?? state.activeProductId,
-        isLoading: false,
-        error: null,
-      ));
-      _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
+      if (subscriptionSyncStillAppliesToAccount(
+            startedForUserId: startedForUserId,
+            currentUserId: SupabaseService.currentUser?.id,
+          ) &&
+          _claimWrite(myGeneration)) {
+        state = _applyPendingDowngradeMetadata(state.copyWith(
+          tier: tier,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          renewsAt: renewsAt ?? state.renewsAt,
+          activeProductId: tier == SubscriptionTierHelper.free
+              ? null
+              : isScheduledDowngradeSnapshot || shouldPreservePaidFreeSnapshot
+                  ? state.activeProductId
+                  : restoredProductId ?? state.activeProductId,
+          isLoading: false,
+          error: null,
+        ));
+        _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
+      }
 
       return tier != SubscriptionTierHelper.free;
     } catch (e) {
       debugPrint('Restore error: $e');
-      state = _applyPendingDowngradeMetadata(
-        state.copyWith(isLoading: false, error: null),
-      );
+      if (subscriptionSyncStillAppliesToAccount(
+            startedForUserId: startedForUserId,
+            currentUserId: SupabaseService.currentUser?.id,
+          ) &&
+          _claimWrite(myGeneration)) {
+        state = _applyPendingDowngradeMetadata(
+          state.copyWith(isLoading: false, error: null),
+        );
+      }
       rethrow;
     }
   }
 
+  /// Runs unconditionally from `_initialize()` (and can also be called
+  /// directly, e.g. on app resume) — its writes must honor the same
+  /// account/operation-ordering rules as every other writer of this
+  /// subscription record (review round 5, requirement 一): it is NOT
+  /// exempt just because night market never calls it directly, since it
+  /// can still land after a night-market-triggered operation and silently
+  /// undo it. Only the account/generation guards are added here — every
+  /// existing purchase/downgrade/tier decision below is unchanged.
   Future<void> syncWithRevenueCat() async {
     try {
       final user = SupabaseService.currentUser;
       if (user == null) return;
+      final myGeneration = _beginOperation();
 
       final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
         user.id,
       );
       if (customerInfo == null) return;
+      if (!subscriptionSyncStillAppliesToAccount(
+        startedForUserId: user.id,
+        currentUserId: SupabaseService.currentUser?.id,
+      )) {
+        return;
+      }
 
       final rcTier = RevenueCatService.getTierFromCustomerInfo(customerInfo);
       final activeProductId = _cleanProductId(
@@ -1806,11 +1886,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         await _syncSubscriptionViaEdgeFunction(
           expectedTier: state.tier,
           resetUsage: false,
+          requiredUserId: user.id,
+          operationGeneration: myGeneration,
           revenueCatAppUserId: revenueCatAppUserId,
         );
-        if (renewsAt != null && renewsAt != state.renewsAt) {
+        if (renewsAt != null &&
+            renewsAt != state.renewsAt &&
+            _claimWrite(myGeneration)) {
           state = _applyPendingDowngradeMetadata(state.copyWith(
             renewsAt: renewsAt,
+            isLoading: false,
+            error: null,
           ));
         }
         final limits = SubscriptionTierHelper.limitsFor(state.tier);
@@ -1834,8 +1920,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           expectedTier: rcTier,
           resetUsage:
               state.tier != rcTier && rcTier != SubscriptionTierHelper.free,
+          requiredUserId: user.id,
+          operationGeneration: myGeneration,
           revenueCatAppUserId: revenueCatAppUserId,
         );
+        if (!subscriptionSyncStillAppliesToAccount(
+          startedForUserId: user.id,
+          currentUserId: SupabaseService.currentUser?.id,
+        )) {
+          return;
+        }
+        if (!_claimWrite(myGeneration)) return;
         final tier = syncedTier ?? rcTier;
         final limits = SubscriptionTierHelper.limitsFor(tier);
 
@@ -1847,6 +1942,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           activeProductId: tier == SubscriptionTierHelper.free
               ? null
               : activeProductId ?? state.activeProductId,
+          isLoading: false,
+          error: null,
         ));
         _syncUsageCache(tier, limits, paidExpiresAt: state.renewsAt);
       } else {
@@ -1854,6 +1951,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           await _syncSubscriptionViaEdgeFunction(
             expectedTier: rcTier,
             resetUsage: false,
+            requiredUserId: user.id,
+            operationGeneration: myGeneration,
             revenueCatAppUserId: revenueCatAppUserId,
           );
         }
@@ -1861,10 +1960,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         final shouldRefreshMetadata = (activeProductId != null &&
                 activeProductId != state.activeProductId) ||
             (renewsAt != null && renewsAt != state.renewsAt);
-        if (shouldRefreshMetadata) {
+        if (shouldRefreshMetadata &&
+            subscriptionSyncStillAppliesToAccount(
+              startedForUserId: user.id,
+              currentUserId: SupabaseService.currentUser?.id,
+            ) &&
+            _claimWrite(myGeneration)) {
           state = _applyPendingDowngradeMetadata(state.copyWith(
             activeProductId: activeProductId ?? state.activeProductId,
             renewsAt: renewsAt ?? state.renewsAt,
+            isLoading: false,
+            error: null,
           ));
           final limits = SubscriptionTierHelper.limitsFor(state.tier);
           _syncUsageCache(state.tier, limits, paidExpiresAt: state.renewsAt);
@@ -1885,6 +1991,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       final user = SupabaseService.currentUser;
       if (user == null) return;
+      final myGeneration = _beginOperation();
 
       var customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
         user.id,
@@ -1903,6 +2010,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       var syncedTier = await _syncSubscriptionViaEdgeFunction(
         expectedTier: expectedTier,
         resetUsage: false,
+        requiredUserId: user.id,
+        operationGeneration: myGeneration,
         revenueCatAppUserId: RevenueCatService.getRevenueCatAppUserId(
           customerInfo,
         ),
@@ -1930,6 +2039,8 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       await _syncSubscriptionViaEdgeFunction(
         expectedTier: expectedTier,
         resetUsage: false,
+        requiredUserId: user.id,
+        operationGeneration: myGeneration,
         revenueCatAppUserId: RevenueCatService.getRevenueCatAppUserId(
           customerInfo,
         ),
