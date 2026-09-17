@@ -50,7 +50,11 @@ class FakeSubscriptionNotifier extends SubscriptionNotifier {
   }
 
   final bool forceSyncTierShouldFail;
-  final VoidCallback? onAdoptRevenueCatTierIfHigher;
+  // Not `final`: a test can flip this between two taps to simulate "the
+  // subscription resolved independently between one retry and the next"
+  // (review round 3, requirement 四.4 — confirmation retry must not reopen
+  // the store paywall).
+  VoidCallback? onAdoptRevenueCatTierIfHigher;
   Completer<void>? forceSyncTierGate;
   int forceSyncTierCalls = 0;
   int refreshCalls = 0;

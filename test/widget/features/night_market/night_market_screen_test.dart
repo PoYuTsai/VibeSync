@@ -328,6 +328,42 @@ void main() {
     });
 
     testWidgets(
+        'confirmation retry after pendingConfirmation never reopens the '
+        'store paywall, even once the subscription resolves '
+        '(review round 3, requirement 四.4)', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+      // First attempt: sync failed and RevenueCat couldn't confirm either ->
+      // pendingConfirmation (not denied), stays on this card.
+      expect(platform.creations, hasLength(1));
+      expect(find.text(paywallStubText), findsNothing);
+
+      // Something independent resolves it between attempts (e.g. a
+      // periodic/webhook-driven sync elsewhere) — the retry tap must find
+      // this via refresh/adopt, not by reopening the store paywall.
+      harness.notifier.onAdoptRevenueCatTierIfHigher =
+          () => harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsNothing);
+      expect(harness.notifier.forceSyncTierCalls, 1,
+          reason: 'retrying confirmation must not re-run the purchase sync');
+      expect(platform.creations, hasLength(2));
+      expect(platform.creations[1].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+    });
+
+    testWidgets(
         'account switch while the paywall is open does not apply the stale result',
         (tester) async {
       final harness =
