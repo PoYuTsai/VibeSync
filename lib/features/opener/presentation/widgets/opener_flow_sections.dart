@@ -70,7 +70,7 @@ class OpenerAnalysisCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: AppColors.coachAccent.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: AppColors.coachAccent.withValues(alpha: 0.35)),
                     ),
                     child: Text(cue.label, style: AppTypography.bodySmall.copyWith(color: AppColors.onBackgroundPrimary)),

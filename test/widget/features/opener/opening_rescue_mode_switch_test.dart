@@ -69,8 +69,12 @@ Future<void> _pump(WidgetTester t, String initialLocation) async {
 }
 
 /// onstage＝IndexedStack 當前面板；另一側必須仍 mounted（offstage 找得到）。
+/// 2026-09-17 兩段式：opener body 的主 CTA 是「分析對方資料」（伺服器不支援時
+/// 才退回「生成開場白」），這裡以兩段式預設為準。
+const _openerCta = '分析對方資料';
+
 void _expectOpenerActive(WidgetTester t) {
-  expect(find.text('生成開場白'), findsOneWidget);
+  expect(find.text(_openerCta), findsOneWidget);
   expect(find.text('生成新話題'), findsNothing);
   expect(
     find.text('生成新話題', skipOffstage: false),
@@ -81,9 +85,9 @@ void _expectOpenerActive(WidgetTester t) {
 
 void _expectNewTopicActive(WidgetTester t) {
   expect(find.text('生成新話題'), findsOneWidget);
-  expect(find.text('生成開場白'), findsNothing);
+  expect(find.text(_openerCta), findsNothing);
   expect(
-    find.text('生成開場白', skipOffstage: false),
+    find.text(_openerCta, skipOffstage: false),
     findsOneWidget,
     reason: 'opener body 必須保持 mounted（IndexedStack），不得被卸載',
   );
