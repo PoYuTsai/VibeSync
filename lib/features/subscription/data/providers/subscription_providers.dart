@@ -917,6 +917,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
               activeProductId: tier == SubscriptionTierHelper.free
                   ? null
                   : activeProductId ?? state.activeProductId,
+              // This is the shared write chokepoint every caller
+              // (`forceSyncTier` in particular has no OTHER write path at
+              // all) relies on as its definitive, resolved answer —
+              // without this, a caller whose own `isLoading: true` this
+              // call is meant to resolve would hang forever (review round
+              // 6, requirement 四).
+              isLoading: false,
               error: null,
             ));
             UsageService.syncSubscriptionSnapshot(
@@ -1081,13 +1088,21 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   Future<void> _loadSubscription() async {
+    // Hoisted out of the try block (review round 6, requirement 二/五) so
+    // the catch below can gate its own write the same way every other
+    // write in this method already does — a `String?`/`int?` outside is
+    // enough since a genuine exception can only occur after both are set
+    // (the `user == null` branch returns directly, never throws).
+    String? startedForUserId;
+    int? myGeneration;
     try {
       final user = SupabaseService.currentUser;
       if (user == null) {
         state = const SubscriptionState(error: 'Not logged in');
         return;
       }
-      final myGeneration = _beginOperation();
+      startedForUserId = user.id;
+      myGeneration = _beginOperation();
 
       var customerInfo = await RevenueCatService.login(user.id);
       customerInfo ??= await RevenueCatService.getCustomerInfoForAppUserId(
@@ -1220,9 +1235,28 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       );
     } catch (e) {
       debugPrint('Load subscription error: $e');
-      state = _applyPendingDowngradeMetadata(
-        state.copyWith(isLoading: false, error: e.toString()),
-      );
+      // A newer operation (e.g. a `forceSyncTier` that landed while this
+      // load's own DB/RevenueCat call was still hung) may have already
+      // written a fresher, valid state by the time this exception surfaces
+      // — this stale failure must not inject an error over it, and must
+      // not apply to whoever is signed in now if the account already
+      // switched (review round 6, requirement 五). `myGeneration` is only
+      // ever still null here if the exception happened before this load
+      // even captured an account (nothing to compare against yet), so
+      // that corner case falls back to the original unconditional write.
+      final generation = myGeneration;
+      final canWrite = generation == null
+          ? true
+          : subscriptionSyncStillAppliesToAccount(
+                startedForUserId: startedForUserId,
+                currentUserId: SupabaseService.currentUser?.id,
+              ) &&
+              _claimWrite(generation);
+      if (canWrite) {
+        state = _applyPendingDowngradeMetadata(
+          state.copyWith(isLoading: false, error: e.toString()),
+        );
+      }
     }
   }
 
@@ -1423,21 +1457,30 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           package: package,
           storeProduct: product,
         );
-        if (effectiveAt != null) {
-          _storePendingDowngrade(
-            fromTier: previousTier,
-            toTier: requestedTier,
-            toProductId: productId,
-            effectiveAt: effectiveAt,
-          );
-        }
-
-        final currentLimits = SubscriptionTierHelper.limitsFor(previousTier);
+        // The whole group of side effects this branch performs — the
+        // pending-downgrade Hive record, the state write, and the usage
+        // cache — belongs to whichever account/operation started this
+        // purchase. `_storePendingDowngrade` self-captures "whoever is
+        // current right now" internally, so it must not run before this
+        // check either — otherwise a purchase started by account A, whose
+        // sheet resolves after account B has already signed in, would
+        // write A's downgrade record under B's identity (review round 6,
+        // requirement 一).
         if (subscriptionSyncStillAppliesToAccount(
               startedForUserId: startedForUserId,
               currentUserId: SupabaseService.currentUser?.id,
             ) &&
             _claimWrite(myGeneration)) {
+          if (effectiveAt != null) {
+            _storePendingDowngrade(
+              fromTier: previousTier,
+              toTier: requestedTier,
+              toProductId: productId,
+              effectiveAt: effectiveAt,
+            );
+          }
+
+          final currentLimits = SubscriptionTierHelper.limitsFor(previousTier);
           state = _applyPendingDowngradeMetadata(state.copyWith(
             tier: previousTier,
             monthlyLimit: currentLimits.monthly,
@@ -1890,6 +1933,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           operationGeneration: myGeneration,
           revenueCatAppUserId: revenueCatAppUserId,
         );
+        // The shared helper's own account/generation check only guards ITS
+        // OWN write — it discarding a stale response (returning without
+        // writing) says nothing about whether THIS branch may still go on
+        // to touch `state`/`UsageService` below. Re-check explicitly
+        // before either (review round 6, requirement 一).
+        if (!subscriptionSyncStillAppliesToAccount(
+          startedForUserId: user.id,
+          currentUserId: SupabaseService.currentUser?.id,
+        )) {
+          return;
+        }
         if (renewsAt != null &&
             renewsAt != state.renewsAt &&
             _claimWrite(myGeneration)) {
@@ -2061,11 +2115,24 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     if (user == null) {
       return false;
     }
+    final myGeneration = _beginOperation();
 
     final customerInfo = await RevenueCatService.getCustomerInfoForAppUserId(
       user.id,
     );
     if (customerInfo == null) {
+      return false;
+    }
+    // This clears/updates more than `state.tier` (activeProductId, renewsAt,
+    // and the Hive-backed pending record via `_clearPendingDowngrade`, which
+    // self-captures "whoever is current" internally) — a late response or a
+    // mid-flight account switch must not let any of that land under the
+    // wrong account or lose a race to a newer operation (review round 6,
+    // requirement 三).
+    if (!subscriptionSyncStillAppliesToAccount(
+      startedForUserId: user.id,
+      currentUserId: SupabaseService.currentUser?.id,
+    )) {
       return false;
     }
 
@@ -2086,6 +2153,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     );
     final renewsAt = RevenueCatService.getPremiumExpirationDate(customerInfo);
 
+    if (!_claimWrite(myGeneration)) {
+      return false;
+    }
     _clearPendingDowngrade();
     state = state.copyWith(
       pendingDowngradeToTier: null,

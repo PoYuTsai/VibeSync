@@ -744,4 +744,392 @@ void main() {
       expect(access.isResolved, isTrue);
     });
   });
+  group(
+      'scenario 10 (review round 6, requirement 一) — syncWithRevenueCat\'s '
+      'scheduled-downgrade branch must re-check the account after its own '
+      'await, not just rely on the shared helper\'s internal check', () {
+    test(
+        'account switches while the branch\'s own edge-sync call is in '
+        "flight; the new account hasn't started any operation of its own, "
+        "so only the account re-check — not generation ordering — can "
+        'catch this: state and the usage cache must stay untouched',
+        () async {
+      final notifier = await bootFreeNotifier('user-p');
+
+      // Seed a Hive-backed pending downgrade (essential -> starter) using
+      // the same keys `_storePendingDowngrade` writes, since the only
+      // production path that calls it is the purchase flow, which has no
+      // SDK seam in this harness. Adopting essential next, while this
+      // record is already present, lets that adopt's own write (which -
+      // like every write in this notifier - passes through
+      // `_applyPendingDowngradeMetadata`) pick the pending fields up onto
+      // `state`, exactly as a real purchase-time write would.
+      final settingsBox = Hive.box(AppConstants.settingsBox);
+      await settingsBox.put('pending_downgrade_user_id', 'user-p');
+      await settingsBox.put(
+          'pending_downgrade_from_tier', SubscriptionTierHelper.essential);
+      await settingsBox.put(
+          'pending_downgrade_to_tier', SubscriptionTierHelper.starter);
+      await settingsBox.put(
+          'pending_downgrade_to_product_id', 'starter_monthly');
+      await settingsBox.put(
+        'pending_downgrade_effective_at',
+        DateTime.now().add(const Duration(days: 10)).toIso8601String(),
+      );
+
+      final essentialExpiry = DateTime.now().add(const Duration(days: 30));
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) async => _fakeCustomerInfo(
+                tier: SubscriptionTierHelper.essential,
+                expiresAt: essentialExpiry,
+              );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+      expect(notifier.state.hasPendingDowngrade, isTrue,
+          reason: 'sanity check: the seeded pending record must have been '
+              'picked up onto state before the scheduled-downgrade branch '
+              'is even reachable');
+      final originalRenewsAt = notifier.state.renewsAt;
+
+      // A: syncWithRevenueCat()'s RevenueCat read reports starter — a
+      // downgrade from the current essential, non-free — which satisfies
+      // `_isScheduledPaidDowngradeSnapshot` and routes into the branch
+      // this round's fix targets. Its own edge-function confirmation call
+      // stalls.
+      final gate = Completer<FunctionResponse>();
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) => gate.future;
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) async => _fakeCustomerInfo(
+                tier: SubscriptionTierHelper.starter,
+                expiresAt: DateTime.now().add(const Duration(days: 60)),
+              );
+      final syncFuture = notifier.syncWithRevenueCat();
+      await Future<void>.delayed(Duration.zero);
+
+      // The account switches away. Critically, user-q has not started any
+      // operation of its own, so `_claimWrite`'s generation check alone
+      // would still succeed here — only the account re-check can catch
+      // this (review round 6, requirement 一 is explicit that the helper
+      // returning null already does not prove the caller may not still
+      // write).
+      SupabaseService.debugCurrentUserOverride = () => _fakeUser('user-q');
+      UsageService.debugCurrentUserIdOverride = 'user-q';
+
+      gate.complete(_fakeSyncResponse(
+        tier: SubscriptionTierHelper.starter,
+        expiresAt: DateTime.now().add(const Duration(days: 60)),
+      ));
+      await syncFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.tier,
+        SubscriptionTierHelper.essential,
+        reason: "the branch's continuation after the account switched must "
+            'not have touched state at all',
+      );
+      expect(
+        notifier.state.renewsAt,
+        originalRenewsAt,
+        reason: 'renewsAt must not have been overwritten by the stale '
+            "branch's continuation either",
+      );
+      expect(
+        UsageService.hasUnexpiredPaidEntitlement(),
+        isFalse,
+        reason: "the branch's own _syncUsageCache call must not have run "
+            'under user-q once the account check catches it',
+      );
+    });
+  });
+
+  group(
+      'scenario 11 (review round 6, requirement 四) — the shared edge-sync '
+      'helper\'s own success write must resolve isLoading, not just tier',
+      () {
+    test(
+        'an earlier-started refresh stalls after setting isLoading; a '
+        'newer forceSyncTier succeeds through the shared helper; the '
+        "stale refresh landing later must not resurrect isLoading or "
+        'clobber the result', () async {
+      final notifier = await bootFreeNotifier('user-r');
+
+      // A: refresh() sets isLoading:true synchronously, then stalls on its
+      // own DB-row fetch, before it ever reaches its own write.
+      final rowGate = Completer<Map<String, dynamic>>();
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) => rowGate.future;
+      final refreshFuture = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.state.isLoading, isTrue,
+          reason: "sanity check: refresh()'s own initial write landed");
+
+      // B: a newer, independent forceSyncTier succeeds — its ONLY write
+      // path is the shared `_syncSubscriptionViaEdgeFunction` chokepoint,
+      // not a `state.copyWith` of its own.
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) async =>
+          _fakeSyncResponse(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: DateTime.now().add(const Duration(days: 30)),
+          );
+      await notifier.forceSyncTier(SubscriptionTierHelper.essential);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+      expect(
+        notifier.state.isLoading,
+        isFalse,
+        reason: "the shared helper's own success write must resolve "
+            "isLoading itself — forceSyncTier has no other write path to "
+            "do it, so a caller whose isLoading:true this call is meant "
+            'to resolve would otherwise hang forever',
+      );
+      expect(notifier.state.error, isNull);
+
+      // A's long-stalled, stale DB row finally arrives. Its generation is
+      // stale either way and must write nothing at all — in particular it
+      // must not resurrect isLoading:true over the newer, already-resolved
+      // result ("不要由舊操作清掉新操作的 loading").
+      rowGate.complete(_fakeSubscriptionRow(userId: 'user-r'));
+      await refreshFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(notifier.state.tier, SubscriptionTierHelper.essential,
+          reason: "the stale refresh must not have overwritten "
+              "forceSyncTier's newer result");
+      expect(
+        notifier.state.isLoading,
+        isFalse,
+        reason: 'the superseded refresh must write nothing at all, not '
+            "reset the winning operation's own resolved isLoading",
+      );
+      expect(notifier.state.error, isNull);
+
+      // The real permission projection, not just the raw tier — a
+      // dangling isLoading would make gateFor perpetually report "still
+      // resolving" even with the correct tier already in place.
+      final access = EbookSubscriptionAccess.fromState(
+        notifier.state,
+        hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
+      );
+      expect(access.isEssential, isTrue);
+      expect(access.isResolved, isTrue);
+    });
+  });
+
+  group(
+      'scenario 12 (review round 6, requirement 五) — _loadSubscription\'s '
+      'own catch block must honor the same account/operation ownership as '
+      'its success path', () {
+    test(
+        'a newer confirmation already committed; a still-later, genuinely '
+        'in-flight refresh sets isLoading true; the oldest stale DB '
+        'request throwing afterward must not resurrect isLoading:false '
+        'over it', () async {
+      final notifier = await bootFreeNotifier('user-s');
+
+      // A (oldest): refresh() #1 stalls on its own DB-row fetch (call #1
+      // to the override below), before it ever reaches its own write.
+      // C (newest): a second refresh() #2 will stall on call #2 — used
+      // below to put a genuinely in-flight, still-unresolved isLoading:true
+      // back onto state AFTER B has already committed, so this test can
+      // tell "the guard skipped a stale write" apart from "the write
+      // happened to look the same as what was already there" (state.error
+      // cannot be used for this: `_applyPendingDowngradeMetadata`'s own
+      // `copyWith` calls never pass `error:`, and `copyWith`'s `error`
+      // parameter is a direct assignment rather than `?? this.error`, so
+      // every write that routes through it — which is effectively all of
+      // them — silently resets `error` back to null regardless of this
+      // round's fix; a pre-existing, separate bug, out of this round's
+      // scope, reported alongside these results rather than fixed here).
+      final gateA = Completer<Map<String, dynamic>>();
+      final gateC = Completer<Map<String, dynamic>>();
+      var loadCallCount = 0;
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) {
+        loadCallCount++;
+        return loadCallCount == 1 ? gateA.future : gateC.future;
+      };
+      final refreshA = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.state.isLoading, isTrue,
+          reason: "sanity check: A's own initial write landed");
+
+      // B: a newer, independent adopt completes and commits first, writing
+      // Essential and resolving isLoading:false.
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride = (_) async =>
+          _fakeCustomerInfo(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: DateTime.now().add(const Duration(days: 30)),
+          );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+      expect(notifier.state.isLoading, isFalse);
+
+      // C: a still-newer refresh() #2 starts — its own first (synchronous,
+      // ungated) action sets isLoading:true again, genuinely in-flight,
+      // then it too stalls on its own DB-row fetch (gateC, never resolved
+      // in this test — cleaned up at the end).
+      final refreshC = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.state.isLoading, isTrue,
+          reason: "sanity check: C's own initial write landed");
+
+      // A's long-stalled DB-row fetch finally rejects — a real possibility
+      // (network drop, timeout), not just "resolves late with stale
+      // data". A's generation is older than B's already-committed one, so
+      // it must write nothing at all — in particular it must not stomp
+      // C's genuinely in-flight isLoading:true with a stale isLoading:false.
+      gateA.completeError(Exception('boom: stale DB request failed'));
+      await refreshA;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.isLoading,
+        isTrue,
+        reason: "A's stale exception must not have resolved isLoading — "
+            "that would wrongly tell the UI nothing is loading while C's "
+            'own, still-in-flight refresh has not concluded',
+      );
+      expect(notifier.state.tier, SubscriptionTierHelper.essential,
+          reason: "A's stale exception must not have overwritten B's "
+              'newer result either');
+
+      // Clean up C so it doesn't dangle past the end of the test.
+      gateC.complete(_fakeSubscriptionRow(
+        userId: 'user-s',
+        tier: SubscriptionTierHelper.essential,
+      ));
+      await refreshC;
+    });
+
+    test(
+        'the account switches away while the old load is stalled; its '
+        'stale exception landing afterward must not resolve isLoading for '
+        'the account now signed in', () async {
+      final notifier = await bootFreeNotifier('user-t');
+
+      final rowGate = Completer<Map<String, dynamic>>();
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) => rowGate.future;
+      final refreshFuture = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.state.isLoading, isTrue);
+
+      // Account switches mid-flight, before the old load's exception
+      // surfaces. No operation for user-u has started, so generation
+      // ordering alone would not catch this — only the account re-check
+      // does (same shape as scenario 10).
+      SupabaseService.debugCurrentUserOverride = () => _fakeUser('user-u');
+
+      rowGate.completeError(Exception('boom: stale DB request failed'));
+      await refreshFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.tier,
+        SubscriptionTierHelper.free,
+        reason: "user-t's stale load failure must not have changed tier "
+            'after user-u signed in',
+      );
+      expect(
+        notifier.state.isLoading,
+        isTrue,
+        reason: "user-t's stale load failure must not resolve isLoading "
+            "for user-u's session — a real account switch is expected to "
+            'trigger its own fresh load elsewhere in the app, which this '
+            "focused test does not simulate; what matters here is that "
+            "the stale write is skipped outright, not silently accepted "
+            "just because no competing operation happened to be running "
+            'for the new account',
+      );
+    });
+  });
+
+  group(
+      'scenario 13 (review round 6, requirement 三) — '
+      'clearPendingDowngradeMetadata must honor the same account/operation '
+      'ownership as every other writer of this record', () {
+    test(
+        'the account switches away while its own RevenueCat confirmation '
+        'is in flight: neither the Hive pending record nor '
+        'activeProductId/renewsAt on state may be touched for the new '
+        'account, even though the tier itself never changes', () async {
+      final notifier = await bootFreeNotifier('user-v');
+
+      final settingsBox = Hive.box(AppConstants.settingsBox);
+      await settingsBox.put('pending_downgrade_user_id', 'user-v');
+      await settingsBox.put(
+          'pending_downgrade_from_tier', SubscriptionTierHelper.essential);
+      await settingsBox.put(
+          'pending_downgrade_to_tier', SubscriptionTierHelper.starter);
+      await settingsBox.put(
+          'pending_downgrade_to_product_id', 'starter_monthly');
+      await settingsBox.put(
+        'pending_downgrade_effective_at',
+        DateTime.now().add(const Duration(days: 10)).toIso8601String(),
+      );
+
+      final originalExpiry = DateTime.now().add(const Duration(days: 30));
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) async => _fakeCustomerInfo(
+                tier: SubscriptionTierHelper.essential,
+                expiresAt: originalExpiry,
+              );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+      expect(notifier.state.hasPendingDowngrade, isTrue,
+          reason: 'sanity check: the seeded pending record must have been '
+              'picked up onto state first');
+      final originalRenewsAt = notifier.state.renewsAt;
+
+      // clearPendingDowngradeMetadata's own RevenueCat confirmation call
+      // stalls. It would report a tier that is NOT a downgrade from the
+      // current essential (so the pre-existing "still reports a downgrade"
+      // guard alone would not block this), with a materially different
+      // expiration — if the account check did not exist, this would still
+      // land.
+      final gate = Completer<CustomerInfo?>();
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) => gate.future;
+      final clearFuture = notifier.clearPendingDowngradeMetadata();
+      await Future<void>.delayed(Duration.zero);
+
+      // The account switches away. No operation for user-w has started.
+      SupabaseService.debugCurrentUserOverride = () => _fakeUser('user-w');
+
+      gate.complete(_fakeCustomerInfo(
+        tier: SubscriptionTierHelper.essential,
+        expiresAt: DateTime.now().add(const Duration(days: 90)),
+      ));
+      final cleared = await clearFuture;
+
+      expect(cleared, isFalse,
+          reason: 'the operation could not complete for the account it '
+              'started for');
+      expect(
+        notifier.state.hasPendingDowngrade,
+        isTrue,
+        reason: 'the pending fields on state must not have been cleared '
+            "for user-w's session",
+      );
+      expect(
+        notifier.state.renewsAt,
+        originalRenewsAt,
+        reason: 'renewsAt must not have been overwritten by the stale '
+            'confirmation either',
+      );
+      expect(
+        settingsBox.get('pending_downgrade_to_tier'),
+        SubscriptionTierHelper.starter,
+        reason: 'the Hive-backed pending record itself must not have been '
+            'cleared out from under the new account',
+      );
+    });
+  });
 }
