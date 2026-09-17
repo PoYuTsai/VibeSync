@@ -115,7 +115,7 @@ Deno.test("題目清洗：meaning 白名單、assert_sender_fact 的 statement �
     ["option_2", "curious_without_experience"],
     ["option_3", "change_direction"],
   ]);
-  assertEquals(question.options[0].statement, "我有養狗");
+  assertEquals(question.options[0].statement, "我自己有養", "R3a 第二輪：授權的自述＝用戶看見的 label");
   assertEquals(question.options[0].cueId, "cue_1");
   assertEquals(question.options[2].cueId, undefined);
 });
@@ -204,7 +204,7 @@ Deno.test("R3a：label「沒養，但有興趣」配 assert_sender_fact／statem
   });
   assert(snapshot?.question);
   const meanings = snapshot.question.options.map((o) => `${o.label}:${o.meaning}:${o.statement ?? ""}`);
-  assertEquals(meanings, ["我自己有養:assert_sender_fact:我有養狗", "其實想聊別的:change_direction:"]);
+  assertEquals(meanings, ["我自己有養:assert_sender_fact:我自己有養", "其實想聊別的:change_direction:"], "授權的自述＝用戶看見的 label，不是隱藏 statement");
 });
 
 Deno.test("R3a：矛盾的自述選項被丟掉後只剩一個合法選項→零題，而不是留下矛盾題", () => {

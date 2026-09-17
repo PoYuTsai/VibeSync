@@ -307,24 +307,22 @@ function meaningNeedsCue(meaning: OpenerOptionMeaning): boolean {
 const NEGATION_RE = /沒|不|無|未|其實|別的|還好/u;
 const NON_SELF_SUBJECT_RE = /^我(妹|哥|姐|弟|媽|爸|爺|奶|朋友|同事|家人|室友|前任|們|的(妹|哥|姐|弟|媽|爸|朋友|同事|家人|室友))/u;
 
-/** R3a：assert_sender_fact 的標籤／statement／線索三者要一致，且主體是本人。 */
-export function senderFactOptionConsistent(label: string, statement: string, cueLabel: string | undefined): boolean {
-  if (NEGATION_RE.test(label) || NEGATION_RE.test(statement)) return false;
-  if (!/^我/u.test(statement) || NON_SELF_SUBJECT_RE.test(statement)) return false;
-  if (/她|妳|對方/u.test(statement)) return false;
-  if (!/我|自己/u.test(label)) return false;
-  if (cueLabel) {
-    const compact = cueLabel.replace(/[\s、，,]/g, "");
-    let overlap = compact.length <= 1 ? statement.includes(compact) : false;
-    for (let i = 0; !overlap && i + 2 <= compact.length; i++) {
-      if (statement.includes(compact.slice(i, i + 2))) overlap = true;
-    }
-    if (!overlap) return false;
-  }
-  return true;
+/**
+ * R3a（第二輪）：assert_sender_fact 授權的自述＝用戶實際看見並選取的那句 label。
+ * 模型另外給的 statement 一律不採用（用戶沒看過的內容不能變成他的經歷）。
+ * label 必須本身就是一句肯定的、主體是本人、不談她的第一人稱陳述；否則無法確認
+ * 用戶授權了什麼，就不授權新的個人經歷（選項丟掉）。
+ * 這裡只做「拒絕」方向的形狀檢查，不再用線索字面重疊去「證明」一致。
+ */
+export function senderFactStatementFromLabel(label: string): string | null {
+  const text = label.trim();
+  if (!/^我/u.test(text) || NON_SELF_SUBJECT_RE.test(text)) return null;
+  if (NEGATION_RE.test(text)) return null;
+  if (/她|妳|對方/u.test(text)) return null;
+  return text;
 }
 
-function sanitizeQuestion(raw: unknown, cueIdMap: Map<string, string>, cueLabelById: Map<string, string>): OpenerQuestion | null {
+function sanitizeQuestion(raw: unknown, cueIdMap: Map<string, string>): OpenerQuestion | null {
   if (!isPlainObject(raw)) return null;
   const text = customerText(raw.text, 60);
   if (!text) return null;
@@ -347,12 +345,9 @@ function sanitizeQuestion(raw: unknown, cueIdMap: Map<string, string>, cueLabelB
     if (meaningNeedsCue(meaning) && !cueId) continue;
     let statement: string | undefined;
     if (meaning === "assert_sender_fact") {
-      const candidate = textField(item.statement, 40);
-      // R3a：白名單類型不等於 statement 與題目、選項相符。只有「標籤是肯定的
-      // 本人自述、statement 是肯定的本人自述、且談的是同一個線索」才授權新自述；
-      // 矛盾（標籤「沒養，但有興趣」配「我有養狗」）或主體不是本人（「我妹有養狗」）
-      // 一律丟掉，不改成凡有「我」就是本人事實。
-      if (!candidate || !senderFactOptionConsistent(label, candidate, cueId ? cueLabelById.get(cueId) : undefined)) continue;
+      // R3a（第二輪）：授權只來自用戶看得到的 label；模型的 statement 不採用。
+      const candidate = senderFactStatementFromLabel(label);
+      if (!candidate) continue;
       statement = candidate;
     }
     const dedupeKey = `${meaning}:${cueId ?? ""}:${statement ?? ""}`;
@@ -399,7 +394,7 @@ export function buildOpenerAnalysisSnapshot(input: {
   return {
     approach: { mode, summary, avoid },
     cues,
-    question: sanitizeQuestion(parsed.question, idMap, new Map(cues.map((cue) => [cue.id, cue.label]))),
+    question: sanitizeQuestion(parsed.question, idMap),
     profileDigest: digest,
     profileText: profile,
     imageCount: input.imageCount,

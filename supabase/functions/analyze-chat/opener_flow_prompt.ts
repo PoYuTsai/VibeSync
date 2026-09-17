@@ -43,7 +43,7 @@ approach.avoid 最多兩點、必要才寫（例如不用回應她的抱怨、�
 
 ## 題目怎麼出（每局只挑最值得的一題）
 - 她有幾個可聊線索、用戶還沒選：問他比較想聊哪個（選項各對應一個 cue，meaning=pick_cue）。
-- 已鎖定單一線索但會不會變成假共同點還不清楚：問他跟這件事的關係，選項至少含「我自己有」（meaning=assert_sender_fact，statement 寫成一句第一人稱事實，例如以「我有…」開頭，不含品種、年數、細節）、「沒有，但有興趣」（curious_without_experience）、「其實想聊別的」（change_direction）。
+- 已鎖定單一線索但會不會變成假共同點還不清楚：問他跟這件事的關係，選項至少含一句肯定的第一人稱自述（meaning=assert_sender_fact；label 本身就是用戶會看到並選取的完整句子，例如「我自己有養狗」，不含品種、年數、細節；系統只採用用戶看得到的 label，不要另外寫 statement）、「沒有，但有興趣」（curious_without_experience）、「其實想聊別的」（change_direction）。
 - 篩選型自介沒有用戶偏好：問他自己最近真的想聊的小事，選項用 no_preference／change_direction 一類的低負擔方向。
 - 資料很少：給低負擔方向選擇。
 - 選項 2–4 個、每個 12 字內、不預選；不要用「幽默／冷讀／高價值」這種招式當選項。
@@ -69,7 +69,7 @@ approach.avoid 最多兩點、必要才寫（例如不用回應她的抱怨、�
 question 不為 null 時的形狀：
 { "affects": "material | sender_fact | direction", "text": "30 字內的問題",
   "options": [ { "id": "option_1", "label": "12 字內", "meaning": "pick_cue", "cueId": "cue_1" },
-               { "id": "option_2", "label": "12 字內", "meaning": "assert_sender_fact", "cueId": "cue_1", "statement": "我有…" } ] }
+               { "id": "option_2", "label": "我自己有…（完整第一人稱句）", "meaning": "assert_sender_fact", "cueId": "cue_1" } ] }
 圖片來源的 evidence 形狀：{ "imageIndex": 1, "visible": "看得到的具體內容" }
 Return valid JSON only.${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
