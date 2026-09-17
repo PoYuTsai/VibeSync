@@ -16,6 +16,8 @@ export interface EvalScenario {
   id: string;
   shape: string;
   profileInfo: { name?: string; bio?: string; interests?: string; meetingContext?: string };
+  /** 第一段附初稿的樣本（F02：初稿已說清楚想聊什麼＋為什麼時不應再問同一題）。 */
+  initialUserNote?: string;
   /** 篩選型／她的抱怨字眼：任何臂都不得回應。 */
   profileForbidden?: string[];
   armA: EvalContribution;
@@ -90,15 +92,17 @@ export const SCENARIOS: EvalScenario[] = [
   },
   {
     id: "raw-sentence",
-    shape: "已經有原始句子",
+    shape: "已經有原始句子（第一段附初稿）",
     profileInfo: { name: "測試壬", bio: "照片：登山路線，霧很大", interests: "爬山", meetingContext: "交友軟體" },
+    initialUserNote: "我想問她照片那條路線新手走不走得完，我沒爬過山",
     armA: { freeText: "我想問她照片那條路線新手走不走得完，我沒爬過山", forbidden: ["我上次也爬", "我也爬過"], anchors: ["路線", "新手"] },
     armB: { freeText: "我想問她那條路線值不值得去，看起來很漂亮", anchors: ["路線", "漂亮", "值"] },
   },
   {
     id: "explicit-exclusion",
-    shape: "明確排除某個話題",
+    shape: "明確排除某個話題（第一段附初稿）",
     profileInfo: { name: "測試癸", bio: "工程師，週末在家烤司康，養一隻很吵的玄鳳", meetingContext: "交友軟體" },
+    initialUserNote: "不要聊她的工作，想聊玄鳳",
     armA: { freeText: "不要聊她的工作，想聊玄鳳", forbidden: ["工程師", "工作"], anchors: ["玄鳳", "鳥"] },
     armB: { freeText: "不要聊玄鳳，司康我有興趣但沒烤過", forbidden: ["玄鳳", "我也烤", "我烤過"], anchors: ["司康", "烤"] },
   },
@@ -111,7 +115,14 @@ export const SCENARIOS: EvalScenario[] = [
   },
 ];
 
-/** 舊單段對照用的用戶補充（鏡像 tools/opener-blackbox 的 supplement 臂）。 */
+/**
+ * 附加實驗「舊單段＋A 補充」用的補充字串（鏡像 tools/opener-blackbox 的 supplement 臂）。
+ * 規格要求的控制組是「原樣舊單段、同樣對方資料、不注入補充」；這個只在
+ * --legacy-plus-a 時另列，不混成基準。
+ */
 export function legacySupplementFor(arm: EvalContribution): string | null {
   return arm.freeText ?? null;
 }
+
+/** 圖片／限動情境本工具不涵蓋（純文字 API 路徑）；列出來讓報告明說未涵蓋。 */
+export const NOT_COVERED = ["照片／限動的實際讀圖（photo-scene 只是文字替身）", "第一段 wrongSurface 錯圖判定", "Free／paid 在 App 端的鎖卡渲染"];
