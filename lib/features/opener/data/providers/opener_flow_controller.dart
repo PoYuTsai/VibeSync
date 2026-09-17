@@ -186,6 +186,26 @@ class OpenerFlowController extends ChangeNotifier {
   // R2a-2：草稿寫入排隊（同一份紀錄的修訂依發生順序落地，晚的不會被早的蓋掉）。
   Future<void> _persistQueue = Future<void>.value();
 
+  // R2a-3：流程世代。restoreDraft／resetForInputChange／新分析都換一代；
+  // 排隊中的保存工作在入隊時固定 owner＋目標紀錄＋世代，出隊時不重新認領。
+  // 保存完成（原紀錄合法落地）與更新畫面（只限同一世代）是兩個資格。
+  int _flowEpoch = 0;
+
+  // R2a-3：這一代第一次建立紀錄的工作；之後的回答編輯等它拿到 id 再局部合併，
+  // 不會各自建一份，也不從可變狀態重新認領紀錄身分。
+  Future<String?>? _createDraftJob;
+
+  void _bumpFlowEpoch() {
+    _flowEpoch += 1;
+    _createDraftJob = null;
+  }
+
+  Future<T?> _enqueue<T>(Future<T?> Function() job) {
+    final run = _persistQueue.then((_) => job());
+    _persistQueue = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
   bool get isExpired {
     final analysis = _state.analysis;
     return analysis != null && analysis.isExpiredAt(_now());
@@ -219,6 +239,7 @@ class OpenerFlowController extends ChangeNotifier {
     if (_state.phase == OpenerFlowPhase.editing && !_state.hasSession && _pendingAnalysis == null) return;
     _opSeq += 1; // 進行中的分析／生成回來一律作廢
     _discardAnalyzingRecord();
+    _bumpFlowEpoch();
     _set(OpenerFlowState(flowUnsupported: _state.flowUnsupported));
   }
 
@@ -228,7 +249,8 @@ class OpenerFlowController extends ChangeNotifier {
     if (_pendingAnalysis == null || _state.analysis != null || id == null) return;
     _pendingAnalysis = null;
     final owner = _sessionOwner;
-    _persistQueue = _persistQueue.then((_) async {
+    _enqueue<void>(() async {
+      // 刪除只在目前帳號仍是這局帳號時做（cache 以當下帳號解析 key）；切帳就略過。
       if (_ownerIdResolver() != owner) return;
       try {
         await _cache.deleteDraft(id);
@@ -267,6 +289,7 @@ class OpenerFlowController extends ChangeNotifier {
     final note = _lastInitialNote;
     final op = _beginOperation();
     _sessionOwner = op.owner;
+    _bumpFlowEpoch();
     _set(OpenerFlowState(
       phase: OpenerFlowPhase.analyzing,
       // 初稿就是同一份補充的起點：分析後帶進回答區，不要求重打。
@@ -420,9 +443,30 @@ class OpenerFlowController extends ChangeNotifier {
   void _persistDraftEdit() {
     final analysis = _state.analysis;
     if (analysis == null) return;
+    final owner = _ownerIdResolver();
+    if (owner != _sessionOwner) return;
+    final epoch = _flowEpoch;
+    final contributionDraft = _state.draft;
     // ponytail: 每次按鍵都寫一次 Hive（整份草稿清單重編碼）；卡頓再加 debounce＋dispose flush。
-    unawaited(_persistFlow(existingDraftId: _state.draftId, flow: _currentFlow(analysis)).then((id) {
-      if (id != null && id != _state.draftId && !_disposed) _set(_state.copyWith(draftId: id));
+    final knownId = _state.draftId;
+    if (knownId != null || _createDraftJob != null) {
+      // 目標紀錄在入隊時固定：已知 id，或這一代正在建立中的那份紀錄（等它的 id）。
+      final target = knownId != null ? Future<String?>.value(knownId) : _createDraftJob!;
+      unawaited(_enqueue<OpenerDraft>(() async {
+        final id = await target;
+        if (id == null) return null;
+        // 局部合併：只換回答，階段／送出快照／結果／使用量以儲存中的較新值為準。
+        return _cache.updateDraftContributionFor(owner: owner, id: id, contributionDraft: contributionDraft);
+      }));
+      return;
+    }
+    // 還沒有紀錄（先前落地失敗）：這一代只建一份；完成後只在同一世代才更新畫面的 draftId。
+    final flow = _currentFlow(analysis);
+    final create = _enqueue<String>(() => _writeFlow(owner: owner, existingDraftId: null, flow: flow));
+    _createDraftJob = create;
+    unawaited(create.then((id) {
+      if (id == null || _disposed || epoch != _flowEpoch || _state.draftId != null) return;
+      _set(_state.copyWith(draftId: id));
     }));
   }
 
@@ -664,24 +708,26 @@ class OpenerFlowController extends ChangeNotifier {
     required OpenerDraftFlow flow,
     OpenerResult? result,
   }) {
-    if (_ownerIdResolver() != _sessionOwner) return Future<String?>.value(null);
-    final run = _persistQueue.then((_) => _writeFlow(existingDraftId: existingDraftId, flow: flow, result: result));
-    _persistQueue = run.then((_) {});
-    return run;
+    final owner = _ownerIdResolver();
+    if (owner != _sessionOwner) return Future<String?>.value(null);
+    // owner 與目標紀錄在入隊時固定；出隊時不再看當下帳號或 _sessionOwner（R2a-3 P1）。
+    return _enqueue<String>(() => _writeFlow(owner: owner, existingDraftId: existingDraftId, flow: flow, result: result));
   }
 
   Future<String?> _writeFlow({
+    required String? owner,
     required String? existingDraftId,
     required OpenerDraftFlow flow,
     OpenerResult? result,
   }) async {
-    if (_ownerIdResolver() != _sessionOwner) return null;
     try {
       if (existingDraftId != null) {
-        final updated = await _cache.updateDraft(existingDraftId, result: result, flow: flow);
+        final updated = await _cache.updateDraftFor(owner: owner, id: existingDraftId, result: result, flow: flow);
         if (updated != null) return updated.id;
       }
-      final draft = await _cache.saveDraft(
+      // 找不到原紀錄（先前落地失敗或已被刪）：在同一個帳號下補建，永遠不落到別的帳號。
+      final draft = await _cache.saveDraftFor(
+        owner: owner,
         result: result,
         displayName: _lastDisplayName,
         sourceLabel: _lastSourceLabel,
@@ -703,6 +749,7 @@ class OpenerFlowController extends ChangeNotifier {
     if (flow == null) return;
     _opSeq += 1;
     _sessionOwner = _ownerIdResolver();
+    _bumpFlowEpoch();
     _analysisSession.markSuccess();
     _generationSession.markSuccess();
     _analysisRequestIdForState = flow.analysisRequestId;

@@ -397,9 +397,28 @@ class OpenerResultCacheService {
     String? inputPreview,
     String? partnerId,
     OpenerDraftFlow? flow,
+  }) =>
+      saveDraftFor(
+        owner: _owner, // 操作起點解析一次，全程沿用（R2b）。
+        result: result,
+        displayName: displayName,
+        sourceLabel: sourceLabel,
+        inputPreview: inputPreview,
+        partnerId: partnerId,
+        flow: flow,
+      );
+
+  /// 指定帳號寫入（R2a-3）：呼叫端在入隊時就固定 owner，出隊時不再重新解析。
+  Future<OpenerDraft> saveDraftFor({
+    required String? owner,
+    OpenerResult? result,
+    String? displayName,
+    String? sourceLabel,
+    String? inputPreview,
+    String? partnerId,
+    OpenerDraftFlow? flow,
   }) async {
     assert(result != null || flow != null, '草稿至少要有結果或兩段式流程資料');
-    final owner = _owner; // 操作起點解析一次，全程沿用（R2b）。
     final now = DateTime.now();
     final scopedPartnerId = _blankToNull(partnerId);
     final draftSequence = (_draftSequence = (_draftSequence + 1) & 0x3fffffff);
@@ -431,8 +450,16 @@ class OpenerResultCacheService {
     String id, {
     OpenerResult? result,
     OpenerDraftFlow? flow,
+  }) =>
+      updateDraftFor(owner: _owner, id: id, result: result, flow: flow);
+
+  /// 指定帳號更新（R2a-3）；找不到就回 null，不補建。
+  Future<OpenerDraft?> updateDraftFor({
+    required String? owner,
+    required String id,
+    OpenerResult? result,
+    OpenerDraftFlow? flow,
   }) async {
-    final owner = _owner;
     final drafts = _loadDraftsFor(owner);
     OpenerDraft? updated;
     final next = drafts.map((draft) {
@@ -445,6 +472,28 @@ class OpenerResultCacheService {
     if (_blankToNull(updated!.partnerId) == null && result != null) {
       await _saveLatestFor(owner, result);
     }
+    return updated;
+  }
+
+  /// 只換回答草稿的局部合併（R2a-3）：階段、送出快照、已完成結果、使用量都以
+  /// 儲存中的較新值為準，回答編輯排在 result 保存之後也不會把作業狀態寫退。
+  /// 紀錄不在（或不屬於這個帳號）就回 null，不補建。
+  Future<OpenerDraft?> updateDraftContributionFor({
+    required String? owner,
+    required String id,
+    required OpenerContributionDraft contributionDraft,
+  }) async {
+    final drafts = _loadDraftsFor(owner);
+    OpenerDraft? updated;
+    final next = drafts.map((draft) {
+      if (draft.id != id) return draft;
+      final flow = draft.flow;
+      if (flow == null) return draft;
+      updated = draft.copyWith(flow: flow.copyWith(contributionDraft: contributionDraft));
+      return updated!;
+    }).toList(growable: false);
+    if (updated == null) return null;
+    await _saveDraftsFor(owner, next);
     return updated;
   }
 
@@ -629,9 +678,15 @@ class OpenerResultCacheService {
     await StorageService.settingsBox.delete(key);
   }
 
+  /// 測試用：在真正寫入草稿清單前等待（模擬磁碟延遲，驗證排隊中切帳／切流程）。
+  @visibleForTesting
+  Future<void> Function()? debugWriteGate;
+
   Future<void> _saveDraftsFor(String? owner, List<OpenerDraft> drafts) async {
     final key = _draftsKeyFor(owner);
     if (key == null) return;
+    final gate = debugWriteGate;
+    if (gate != null) await gate();
     await StorageService.settingsBox.put(
       key,
       jsonEncode(drafts.map((draft) => draft.toJson()).toList()),

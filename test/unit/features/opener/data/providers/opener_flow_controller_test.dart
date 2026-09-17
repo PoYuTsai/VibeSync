@@ -122,16 +122,23 @@ class _FailingCache extends OpenerResultCacheService {
   _FailingCache() : super(ownerIdResolver: () => 'user-a');
   bool fail = false;
 
+  // R2a-3 後 controller 走固定 owner 的入口，失敗注入放在這三個方法。
   @override
-  Future<OpenerDraft> saveDraft({OpenerResult? result, String? displayName, String? sourceLabel, String? inputPreview, String? partnerId, OpenerDraftFlow? flow}) {
+  Future<OpenerDraft> saveDraftFor({required String? owner, OpenerResult? result, String? displayName, String? sourceLabel, String? inputPreview, String? partnerId, OpenerDraftFlow? flow}) {
     if (fail) throw StateError('disk full');
-    return super.saveDraft(result: result, displayName: displayName, sourceLabel: sourceLabel, inputPreview: inputPreview, partnerId: partnerId, flow: flow);
+    return super.saveDraftFor(owner: owner, result: result, displayName: displayName, sourceLabel: sourceLabel, inputPreview: inputPreview, partnerId: partnerId, flow: flow);
   }
 
   @override
-  Future<OpenerDraft?> updateDraft(String id, {OpenerResult? result, OpenerDraftFlow? flow}) {
+  Future<OpenerDraft?> updateDraftFor({required String? owner, required String id, OpenerResult? result, OpenerDraftFlow? flow}) {
     if (fail) throw StateError('disk full');
-    return super.updateDraft(id, result: result, flow: flow);
+    return super.updateDraftFor(owner: owner, id: id, result: result, flow: flow);
+  }
+
+  @override
+  Future<OpenerDraft?> updateDraftContributionFor({required String? owner, required String id, required OpenerContributionDraft contributionDraft}) {
+    if (fail) throw StateError('disk full');
+    return super.updateDraftContributionFor(owner: owner, id: id, contributionDraft: contributionDraft);
   }
 }
 
@@ -574,5 +581,105 @@ void main() {
     expect(cache.loadDrafts().single.flow!.stage, OpenerDraftFlowStage.analyzed);
     service.analyzeGate.single.complete(_FakeOpenerService.analysis());
     await inflight;
+  });
+
+  // ── 第三輪獨立複核回歸（R2a-3：保存佇列的一致性）
+
+  OpenerDraftFlow analyzedFlow(String sessionId) => OpenerDraftFlow(
+        stage: OpenerDraftFlowStage.analyzed,
+        analysis: OpenerAnalysis.tryParse({..._FakeOpenerService.analysis().toJson(), 'sessionId': sessionId})!,
+        contributionDraft: const OpenerContributionDraft(),
+        analysisRequestId: 'req-$sessionId',
+        inputFingerprint: 'fp-$sessionId',
+      );
+
+  Future<void> drain() async {
+    for (var i = 0; i < 6; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    }
+  }
+
+  test('R2a-3 P1：A 的兩筆保存排隊中切成 B 並恢復 B 的草稿→放行後 B 的儲存 key 不得有 A 原料；A 的合法保存仍完成在 A key', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    final draftB = await OpenerResultCacheService(ownerIdResolver: () => 'user-b').saveDraft(flow: analyzedFlow('sess-b'));
+
+    final gate = Completer<void>();
+    cache.debugWriteGate = () => gate.future;
+    controller.setFreeText('A 原料一');
+    await Future<void>.delayed(const Duration(milliseconds: 20)); // 第一筆已進入寫入、卡在閘門
+    controller.setFreeText('A 原料二'); // 第二筆排隊
+    owner = 'user-b';
+    controller.restoreDraft(draftB);
+    cache.debugWriteGate = null;
+    gate.complete();
+    await drain();
+
+    final box = Hive.box(AppConstants.settingsBox);
+    final bKey = box.get('opener_drafts_v1:user-b') as String;
+    expect(bKey, isNot(contains('A 原料')), reason: 'A 的排隊保存不得寫進 B 的 key');
+    expect(bKey, contains('sess-b'));
+    final aKey = box.get('opener_drafts_v1:user-a') as String;
+    expect(aKey, contains('A 原料二'), reason: 'A 原紀錄的合法保存可以完成');
+    expect(controller.state.analysis!.sessionId, 'sess-b');
+    expect(controller.state.draftId, draftB.id);
+  });
+
+  test('R2a-3 P2：同帳號保存 A 期間恢復 B→A 的舊保存返回後 active draftId／analysis 仍全屬 B', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    final draftA = cache.loadDrafts().single;
+    final draftB = await cache.saveDraft(flow: analyzedFlow('sess-b'));
+
+    final gate = Completer<void>();
+    cache.debugWriteGate = () => gate.future;
+    controller.setFreeText('A 改');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    controller.restoreDraft(draftB);
+    cache.debugWriteGate = null;
+    gate.complete();
+    await drain();
+
+    expect(controller.state.draftId, draftB.id, reason: '舊保存的返回 id 不得寫到新流程的 active state');
+    expect(controller.state.analysis!.sessionId, 'sess-b');
+    expect(controller.state.draft.freeText, '');
+    expect(cache.loadDraft(draftA.id)!.flow!.contributionDraft.freeText, 'A 改', reason: 'A 紀錄本身仍合法完成保存');
+  });
+
+  test('R2a-3 P3：result 保存等待期間改 draft→清空佇列後重建：原 generationId／結果／使用量與最新未生成回答都在', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    controller.setFreeText('第一版');
+    await drain();
+    service.hold = true;
+    final inflight = controller.generate();
+    await _untilGenerateSent(service);
+    final sentId = service.calls.last.args['generationId'] as String;
+    final sent = service.calls.last.args['contribution'] as Map;
+
+    // 回應到了，但 result 落地卡在磁碟。
+    final gate = Completer<void>();
+    cache.debugWriteGate = () => gate.future;
+    service.generateGate.single.complete(_FakeOpenerService.generation(
+      generationId: sentId,
+      contribution: OpenerContribution.tryParse(sent)!,
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    controller.setFreeText('等待中的新回答');
+    cache.debugWriteGate = null;
+    gate.complete();
+    await inflight;
+    await drain();
+
+    final stored = cache.loadDrafts().single;
+    expect(stored.flow!.stage, OpenerDraftFlowStage.result, reason: '回答編輯不得把作業狀態寫退');
+    expect(stored.flow!.generation!.generationId, sentId);
+    expect(stored.flow!.generation!.usage.generationsUsed, 1);
+    expect(stored.result!.requestId, sentId);
+    expect(stored.flow!.contributionDraft.freeText, '等待中的新回答', reason: '最新未生成回答也要在');
+
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(stored);
+    expect(rebuilt.state.phase, OpenerFlowPhase.result);
+    expect(rebuilt.state.generation!.generationId, sentId);
+    expect(rebuilt.state.draft.freeText, '等待中的新回答');
+    expect(rebuilt.state.generationsRemaining, 2);
   });
 }
