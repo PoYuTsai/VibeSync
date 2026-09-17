@@ -44,6 +44,7 @@ import { OPENER_FREE_V2_TYPES, OPENER_TYPES } from "../../supabase/functions/ana
 import { OPENER_MAX_TOKENS, OPENER_PROMPT } from "../../supabase/functions/analyze-chat/opener_prompt.ts";
 import { estimateCostUsd, SONNET_5_PRICING } from "../../supabase/functions/_shared/model_pricing.ts";
 import { type EvalContribution, type EvalScenario, legacySupplementFor, NOT_COVERED, SCENARIOS } from "./fixtures.ts";
+import { legacyControlUserContent } from "./control.ts";
 import { normalizeOpenerPayload, filterOpenerPayloadForAllowedFeatures } from "../../supabase/functions/analyze-chat/opener_payload.ts";
 
 const MODEL = "claude-sonnet-5";
@@ -169,7 +170,7 @@ for (const scenario of SCENARIOS) {
     // dry-run：估算 1 次分析 + 3 臂 × repeat 次生成 + legacyRepeat 次舊單段。
     const analyzeIn = estimateTokens(OPENER_ANALYZE_PROMPT + analyzeUser);
     const generateIn = estimateTokens(OPENER_GENERATE_PROMPT) + 900;
-    const legacyIn = estimateTokens(OPENER_PROMPT + analyzeUser);
+    const legacyIn = estimateTokens(OPENER_PROMPT + legacyControlUserContent(scenario));
     const legacyArms = legacyPlusA ? 2 : 1;
     dryCalls += 1 + 3 * repeat + legacyArms * legacyRepeat;
     dryInput += analyzeIn + 3 * repeat * generateIn + legacyArms * legacyRepeat * legacyIn;
@@ -227,14 +228,15 @@ for (const scenario of SCENARIOS) {
 
   // 舊單段控制組（R6a）：同對方資料、原樣舊 prompt、走舊產品的結果整理與 tier 投影；
   // 不注入任何補充。「舊單段＋A 補充」只是附加實驗（--legacy-plus-a）。
-  const legacyUserBase = analyzeUser.replace("請依系統指示只輸出第一段 JSON：不寫開場白。", "").trim();
+  // 控制組輸入只由對方資料決定（R6a 第二輪）：不從第一段 user content 刪句，初稿與 A／B 都碰不到它。
+  const legacyUserBase = legacyControlUserContent(scenario);
   const legacyArms: Array<[string, string | null]> = [["legacy", null]];
   if (legacyPlusA) legacyArms.push(["legacy+A", legacySupplementFor(scenario.armA)]);
   for (const [legacyArm, supplement] of legacyArms) {
     for (let attempt = 1; attempt <= legacyRepeat; attempt++) {
-      const user = legacyUserBase +
-        (supplement ? `\n用戶補充（他本人的一手資訊，只用來決定開場方向與可用素材；不得寫成對方說過的話、不得假造共同點）：${supplement}\n` : "") +
-        "\n請根據以上可見資訊生成 5 種風格的開場白；只使用明確線索，不要補不存在的人格或共同點。";
+      const user = supplement
+        ? `${legacyUserBase}\n用戶補充（他本人的一手資訊，只用來決定開場方向與可用素材；不得寫成對方說過的話、不得假造共同點）：${supplement}`
+        : legacyUserBase;
       let res;
       try {
         res = await callModel(OPENER_PROMPT, user, OPENER_MAX_TOKENS);
