@@ -42,6 +42,7 @@ import {
 } from "../../supabase/functions/analyze-chat/opener_flow_payload.ts";
 import { OPENER_FREE_V2_TYPES, OPENER_TYPES } from "../../supabase/functions/analyze-chat/opener_payload.ts";
 import { OPENER_MAX_TOKENS, OPENER_PROMPT } from "../../supabase/functions/analyze-chat/opener_prompt.ts";
+import { OPENER_FLOW_PROMPT_VERSION } from "../../supabase/functions/analyze-chat/opener_stage.ts";
 import { estimateCostUsd, SONNET_5_PRICING } from "../../supabase/functions/_shared/model_pricing.ts";
 import { type EvalContribution, type EvalScenario, legacySupplementFor, NOT_COVERED, SCENARIOS } from "./fixtures.ts";
 import { legacyControlUserContent } from "./control.ts";
@@ -61,11 +62,16 @@ const run = Deno.args.includes("--run");
 const confirmPaid = Deno.args.includes("--confirm-paid");
 // R6a：舊單段控制組＝原樣、不注入補充；「舊單段＋A 補充」只是附加實驗，要明確開。
 const legacyPlusA = Deno.args.includes("--legacy-plus-a");
+// 驗收：模型 API 費用硬上限（USD）。每次呼叫前用「已花費（實際 usage）＋這次最壞情況（輸入估算×1.3＋max_tokens 全滿）」
+// 預檢，超過就不再發任何新呼叫；API 失敗但沒有 usage 的呼叫以最壞情況計入（未知成本不當 0）。
+const budgetUsd = Number(arg("budget-usd") ?? "5");
+const headSha = arg("head") ?? "unknown";
 if (run && !confirmPaid) {
   console.error("真跑付費模型需要同時帶 --run --confirm-paid（Eric 授權後）。");
   Deno.exit(2);
 }
 const outDir = new URL(`./out/${tag}/`, import.meta.url);
+const startedAt = new Date().toISOString();
 await Deno.mkdir(outDir, { recursive: true });
 
 // 粗估：中文約 1 字≈1 token、英文／JSON 約 4 字元≈1 token；這裡取 1.1 字元/token 的保守值。
@@ -101,8 +107,38 @@ async function callModel(system: string, user: string, maxTokens: number): Promi
   return { text, usage: json.usage, elapsedMs: Date.now() - started };
 }
 
+let spentUsd = 0; // 實際 usage 估價＋失敗呼叫的最壞情況
+let budgetStopped = false;
+const notRun: string[] = [];
+function worstCaseUsd(system: string, user: string, maxTokens: number): number {
+  return estimateCostUsd({ inputTokens: Math.ceil(estimateTokens(system + user) * 1.3), outputTokens: maxTokens, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }, SONNET_5_PRICING);
+}
+/** 預算守門：回 false 代表不得發出這次呼叫（之後全部標 NOT_RUN）。 */
+function budgetAllows(label: string, system: string, user: string, maxTokens: number): boolean {
+  if (budgetStopped) { notRun.push(label); return false; }
+  const worst = worstCaseUsd(system, user, maxTokens);
+  if (spentUsd + worst > budgetUsd) {
+    budgetStopped = true;
+    notRun.push(label);
+    summary.push(`- **預算守門停止**：已花 $${spentUsd.toFixed(3)}＋下一次最壞 $${worst.toFixed(3)} 會超過上限 $${budgetUsd}；自 ${label} 起全部未執行`);
+    return false;
+  }
+  return true;
+}
 function record(base: Omit<CallRecord, "costUsd">): void {
-  records.push({ ...base, costUsd: estimateCostUsd({ inputTokens: base.inputTokens, outputTokens: base.outputTokens, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }, SONNET_5_PRICING) });
+  const cost = estimateCostUsd({ inputTokens: base.inputTokens, outputTokens: base.outputTokens, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }, SONNET_5_PRICING);
+  records.push({ ...base, costUsd: cost });
+  spentUsd += cost;
+}
+/** API 失敗（沒有 usage）：成本未知，以最壞情況計入預算。 */
+function recordFailure(base: Omit<CallRecord, "costUsd" | "inputTokens" | "outputTokens">, system: string, user: string, maxTokens: number): void {
+  const worst = worstCaseUsd(system, user, maxTokens);
+  records.push({ ...base, inputTokens: 0, outputTokens: 0, costUsd: worst, note: `${base.note ?? ""}（成本未知，以最壞情況 $${worst.toFixed(3)} 計）` });
+  spentUsd += worst;
+}
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function pickOption(snapshot: OpenerAnalysisSnapshot, arm: EvalContribution): { questionId: string | null; selectedOptionId: string | null } {
@@ -156,7 +192,7 @@ const summary: string[] = [
   `控制組：舊單段原樣（同對方資料、不注入補充）${legacyPlusA ? "；另有附加實驗「舊單段＋A 補充」" : ""}。未涵蓋：${NOT_COVERED.join("；")}。`,
   "",
 ];
-const blind: Array<{ key: string; scenario: string; profile: string; contribution: string; tier: string; openers: Record<string, string>; pick: string }> = [];
+const blind: Array<{ key: string; scenario: string; version: "two-stage" | "legacy"; arm: string; attempt: number; profile: string; contribution: string; tier: string; openers: Record<string, string>; pick: string; reason: string | null; traceStatus: string | null; displayNote: string | null }> = [];
 let dryInput = 0, dryOutput = 0, dryCalls = 0;
 
 for (const scenario of SCENARIOS) {
@@ -180,7 +216,15 @@ for (const scenario of SCENARIOS) {
   }
 
   // 第一段（每組一次；三臂共用同一份快照，對應真實產品的同一局）。
-  const analyzeRes = await callModel(OPENER_ANALYZE_PROMPT, analyzeUser, OPENER_ANALYZE_MAX_TOKENS);
+  if (!budgetAllows(`${scenario.id}.analyze`, OPENER_ANALYZE_PROMPT, analyzeUser, OPENER_ANALYZE_MAX_TOKENS)) { summary.push("- NOT_RUN（預算守門）", ""); continue; }
+  let analyzeRes;
+  try {
+    analyzeRes = await callModel(OPENER_ANALYZE_PROMPT, analyzeUser, OPENER_ANALYZE_MAX_TOKENS);
+  } catch (error) {
+    recordFailure({ scenario: scenario.id, arm: "-", stage: "analyze", attempt: 1, elapsedMs: 0, ok: false, note: String(error) }, OPENER_ANALYZE_PROMPT, analyzeUser, OPENER_ANALYZE_MAX_TOKENS);
+    summary.push(`- 第一段 API 失敗：${String(error).slice(0, 200)}`, "");
+    continue;
+  }
   const snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(analyzeRes.text), rawProfileInfo: scenario.profileInfo, imageCount: 0, initialUserNote: initialNote });
   record({ scenario: scenario.id, arm: "-", stage: "analyze", attempt: 1, elapsedMs: analyzeRes.elapsedMs, inputTokens: analyzeRes.usage.input_tokens, outputTokens: analyzeRes.usage.output_tokens, ok: snapshot !== null });
   await Deno.writeTextFile(new URL(`${scenario.id}.analyze.json`, outDir), JSON.stringify({ user: analyzeUser, raw: analyzeRes.text, snapshot }, null, 2));
@@ -197,11 +241,12 @@ for (const scenario of SCENARIOS) {
       const check = validateContributionAgainstSnapshot(contribution, snapshot);
       const materials = buildOpenerMaterials({ snapshot, contribution, option: check.ok ? check.option : null });
       const user = buildOpenerGenerateUserContent({ snapshot, materials, currentFreeText: contribution.freeText });
+      if (!budgetAllows(`${scenario.id}.${armName}.${attempt}`, OPENER_GENERATE_PROMPT, user, OPENER_GENERATE_MAX_TOKENS)) continue;
       let res;
       try {
         res = await callModel(OPENER_GENERATE_PROMPT, user, OPENER_GENERATE_MAX_TOKENS);
       } catch (error) {
-        record({ scenario: scenario.id, arm: armName, stage: "generate", attempt, elapsedMs: 0, inputTokens: 0, outputTokens: 0, ok: false, note: String(error) });
+        recordFailure({ scenario: scenario.id, arm: armName, stage: "generate", attempt, elapsedMs: 0, ok: false, note: String(error) }, OPENER_GENERATE_PROMPT, user, OPENER_GENERATE_MAX_TOKENS);
         continue;
       }
       const parsed = parseJsonObjectFromText(res.text);
@@ -221,7 +266,8 @@ for (const scenario of SCENARIOS) {
         summary.push(`  - [${tier}] 推薦=${projected.recommendation.pick} trace=${projected.materialUse.traceStatus} 禁字=${c.forbiddenHits.join("、") || "0"} 她的抱怨=${c.profileForbiddenHits.join("、") || "0"} 推薦採用=${c.anchorHit} 備選採用=${c.altHit}`);
         for (const t of OPENER_TYPES) if (openers[t]) summary.push(`    - ${t}${projected.recommendation.pick === t ? " ★" : ""}：${openers[t]}`);
         summary.push(`    - 推薦理由：${projected.recommendation.reason ?? ""}；採用說明：${projected.materialUse.displayNote ?? "—"}`);
-        blind.push({ key: `${scenario.id}|${armName}|${attempt}|${tier}`, scenario: scenario.id, profile: JSON.stringify(scenario.profileInfo), contribution: arm ? (arm.freeText ?? "（只選選項）") : "（略過）", tier, openers, pick: projected.recommendation.pick });
+        // 盲審隱藏版本：略過臂與舊單段控制組都寫「（無補充）」，避免從標籤分辨新舊。
+        blind.push({ key: `${scenario.id}|${armName}|${attempt}|${tier}`, scenario: scenario.id, version: "two-stage", arm: armName, attempt, profile: JSON.stringify(scenario.profileInfo), contribution: arm ? (arm.freeText ?? "（只選選項）") : "（無補充）", tier, openers, pick: projected.recommendation.pick, reason: projected.recommendation.reason ?? null, traceStatus: projected.materialUse.traceStatus ?? null, displayNote: projected.materialUse.displayNote ?? null });
       }
     }
   }
@@ -237,11 +283,12 @@ for (const scenario of SCENARIOS) {
       const user = supplement
         ? `${legacyUserBase}\n用戶補充（他本人的一手資訊，只用來決定開場方向與可用素材；不得寫成對方說過的話、不得假造共同點）：${supplement}`
         : legacyUserBase;
+      if (!budgetAllows(`${scenario.id}.${legacyArm}.${attempt}`, OPENER_PROMPT, user, OPENER_MAX_TOKENS)) continue;
       let res;
       try {
         res = await callModel(OPENER_PROMPT, user, OPENER_MAX_TOKENS);
       } catch (error) {
-        record({ scenario: scenario.id, arm: legacyArm, stage: "legacy", attempt, elapsedMs: 0, inputTokens: 0, outputTokens: 0, ok: false, note: String(error) });
+        recordFailure({ scenario: scenario.id, arm: legacyArm, stage: "legacy", attempt, elapsedMs: 0, ok: false, note: String(error) }, OPENER_PROMPT, user, OPENER_MAX_TOKENS);
         continue;
       }
       // 走舊產品的整理與投影（normalizeOpenerPayload 含共鳴組句器；無風格設定＝her_situation）。
@@ -265,7 +312,7 @@ for (const scenario of SCENARIOS) {
         const c = checkArm(scenario, supplement ? scenario.armA : null, openers, pick);
         summary.push(`  - [${tier}] 推薦=${pick} 她的抱怨=${c.profileForbiddenHits.join("、") || "0"}${supplement ? ` 禁字=${c.forbiddenHits.join("、") || "0"} 推薦採用=${c.anchorHit} 備選採用=${c.altHit}` : ""}`);
         for (const t of OPENER_TYPES) if (openers[t]) summary.push(`    - ${t}${pick === t ? " ★" : ""}：${openers[t]}`);
-        blind.push({ key: `${scenario.id}|${legacyArm}|${attempt}|${tier}`, scenario: scenario.id, profile: JSON.stringify(scenario.profileInfo), contribution: supplement ?? "（無補充；舊單段控制組）", tier, openers, pick });
+        blind.push({ key: `${scenario.id}|${legacyArm}|${attempt}|${tier}`, scenario: scenario.id, version: "legacy", arm: legacyArm, attempt, profile: JSON.stringify(scenario.profileInfo), contribution: supplement ?? "（無補充）", tier, openers, pick, reason: (projected as Record<string, unknown>).recommendationReason as string ?? null, traceStatus: null, displayNote: null });
       }
     }
   }
@@ -274,7 +321,7 @@ for (const scenario of SCENARIOS) {
 
 if (!run) {
   const cost = estimateCostUsd({ inputTokens: dryInput, outputTokens: dryOutput, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 }, SONNET_5_PRICING);
-  summary.push(`## 預算估算（dry-run，未打模型）`, `- 呼叫數：${dryCalls}（每組 1 分析＋3 臂×${repeat} 生成＋${legacyPlusA ? 2 : 1}×${legacyRepeat} 舊單段${legacyPlusA ? "（含附加實驗）" : ""}）`, `- 預估 input ${dryInput} / output ${dryOutput} tokens`, `- 預估成本 ≈ $${cost.toFixed(2)}（Sonnet 5 $2/M in、$10/M out；實際以 API 回報為準）`, `- 真跑指令：deno run --allow-read --allow-write --allow-env --allow-net=api.anthropic.com tools/opener-two-stage-eval/run.ts --tag=<名稱> --repeat=${repeat} --run --confirm-paid`);
+  summary.push(`## 預算估算（dry-run，未打模型）`, `- 硬上限 $${budgetUsd}：${cost <= budgetUsd ? "估算在上限內" : "估算超過上限，真跑不得開始"}`, `- 呼叫數：${dryCalls}（每組 1 分析＋3 臂×${repeat} 生成＋${legacyPlusA ? 2 : 1}×${legacyRepeat} 舊單段${legacyPlusA ? "（含附加實驗）" : ""}）`, `- 預估 input ${dryInput} / output ${dryOutput} tokens`, `- 預估成本 ≈ $${cost.toFixed(2)}（Sonnet 5 $2/M in、$10/M out；實際以 API 回報為準）`, `- 真跑指令：deno run --allow-read --allow-write --allow-env --allow-net=api.anthropic.com tools/opener-two-stage-eval/run.ts --tag=<名稱> --repeat=${repeat} --run --confirm-paid`);
 } else {
   const totalIn = records.reduce((a, r) => a + r.inputTokens, 0);
   const totalOut = records.reduce((a, r) => a + r.outputTokens, 0);
@@ -282,23 +329,34 @@ if (!run) {
   const byStage = (stage: CallRecord["stage"]) => records.filter((r) => r.stage === stage);
   const avg = (rows: CallRecord[], key: "elapsedMs") => rows.length ? Math.round(rows.reduce((a, r) => a + r[key], 0) / rows.length) : 0;
   summary.push(`## 時間／token／成本`, `- 呼叫 ${records.length}；in ${totalIn} / out ${totalOut} tokens；成本 ≈ $${totalCost.toFixed(3)}`, `- 平均耗時：analyze ${avg(byStage("analyze"), "elapsedMs")}ms、generate ${avg(byStage("generate"), "elapsedMs")}ms、legacy ${avg(byStage("legacy"), "elapsedMs")}ms`, `- 格式／硬檢查失敗：${records.filter((r) => !r.ok).length} 次`);
-  await Deno.writeTextFile(new URL("cost.json", outDir), JSON.stringify(records, null, 2));
+  summary.push(`- 預算上限 $${budgetUsd}；實際計入 $${spentUsd.toFixed(3)}（含失敗呼叫的最壞情況）；預算守門停止：${budgetStopped ? "是" : "否"}；未執行 ${notRun.length} 次${notRun.length ? `（${notRun.slice(0, 5).join("、")}${notRun.length > 5 ? "…" : ""}）` : ""}`);
+  summary.push(`- 修復／fallback／重試呼叫：0（本工具每次生成只打一次模型，不做修復或換模型）`);
+  await Deno.writeTextFile(new URL("cost.json", outDir), JSON.stringify({ budgetUsd, spentUsd, budgetStopped, notRun, records }, null, 2));
+  await Deno.writeTextFile(new URL("meta.json", outDir), JSON.stringify({
+    tag, model: MODEL, headSha, promptVersion: OPENER_FLOW_PROMPT_VERSION, repeat, legacyRepeat, legacyPlusA, budgetUsd,
+    pricing: SONNET_5_PRICING, thinking: "disabled", promptCache: "none",
+    maxTokens: { analyze: OPENER_ANALYZE_MAX_TOKENS, generate: OPENER_GENERATE_MAX_TOKENS, legacy: OPENER_MAX_TOKENS },
+    sha256: { analyzePrompt: await sha256(OPENER_ANALYZE_PROMPT), generatePrompt: await sha256(OPENER_GENERATE_PROMPT), legacyPrompt: await sha256(OPENER_PROMPT), fixtures: await sha256(await Deno.readTextFile(new URL("./fixtures.ts", import.meta.url))) },
+    startedAt, finishedAt: new Date().toISOString(),
+  }, null, 2));
 
-  // 盲審：打亂順序、不附 AI 自述的推薦理由與 traceStatus；answer key 另存。
+  // 盲審：Free／paid 各一份、順序打亂；隱藏新舊版本標籤、推薦理由、traceStatus、採用說明；解盲表另存。
   let seed = 20260917;
   const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
   const shuffled = [...blind].sort(() => rand() - 0.5);
-  const blindLines = ["# 盲審（順序已打亂；先看資料、回答與候選句再評分）", ""];
-  const key: Record<string, string> = {};
-  shuffled.forEach((item, index) => {
-    const code = `R${String(index + 1).padStart(3, "0")}`;
-    key[code] = item.key;
-    // 盲審不揭露 tier／推薦理由／traceStatus；只給資料、回答與可見候選句（推薦以 ★ 標，評「推薦對應是否正確」用）。
-    blindLines.push(`## ${code}`, `- 對方資料：${item.profile}`, `- 用戶回答：${item.contribution}`, `- 可見卡數：${Object.keys(item.openers).length}`);
-    for (const t of OPENER_TYPES) if (item.openers[t]) blindLines.push(`- ${t}${item.pick === t ? " ★" : ""}：${item.openers[t]}`);
-    blindLines.push(`- 評分（忠於本人／事實正確／原料影響／自然好讀／對方好接／備選價值／原意保留，各 1–5）：`, "");
-  });
-  await Deno.writeTextFile(new URL("blind_review.md", outDir), blindLines.join("\n"));
+  const key: Record<string, unknown> = {};
+  for (const tier of ["free", "paid"] as const) {
+    const items = shuffled.filter((b) => b.tier === tier);
+    const lines = [`# 盲審（${tier === "free" ? "Free 三卡" : "paid 五卡"}；順序已打亂；先看資料、回答與候選句再評分）`, "", "每題請評：忠於本人／事實正確／原料影響／自然好讀／對方好接／備選價值／原意保留（各 1–5），並註明推薦（★）是否是你會選的那句。", ""];
+    items.forEach((item, index) => {
+      const code = `${tier === "free" ? "F" : "P"}${String(index + 1).padStart(3, "0")}`;
+      key[code] = { scenario: item.scenario, version: item.version, arm: item.arm, attempt: item.attempt, tier: item.tier, pick: item.pick, reason: item.reason, traceStatus: item.traceStatus, displayNote: item.displayNote, key: item.key };
+      lines.push(`## ${code}`, `- 對方資料：${item.profile}`, `- 用戶回答：${item.contribution}`);
+      for (const t of OPENER_TYPES) if (item.openers[t]) lines.push(`- ${t}${item.pick === t ? " ★" : ""}：${item.openers[t]}`);
+      lines.push(`- 評分：`, "");
+    });
+    await Deno.writeTextFile(new URL(`blind_review_${tier}.md`, outDir), lines.join("\n"));
+  }
   await Deno.writeTextFile(new URL("answer_key.json", outDir), JSON.stringify(key, null, 2));
 }
 
