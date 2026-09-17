@@ -95,6 +95,7 @@ Commits（一 commit 一關注）：
 | `flutter test`（全套，fb40b62a） | 3857 passed，exit 0 | `logs/flutter_test_full.log` |
 | **修正後重跑**（新 head）：Deno analyze-chat／shared＋delete-account／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r1_*`（各有 `.exit`） | 同左 |
 | **第二輪修正後重跑**（新 head）：Deno analyze-chat 全套／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze／eval dry-run | 見 `logs/r2_*`（各有 `.exit`）；先紅證據 `logs/red_r2_*.txt` | 同左 |
+| **第三輪修正後重跑**（新 head；只動 Flutter controller／cache）：opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r3_*`（各有 `.exit`）；先紅證據 `logs/red_r3_a.txt`；Deno 未重跑（本輪無 Edge 改動） | 同左 |
 | `deno run … tools/opener-two-stage-eval/run.ts --tag=dry-run` | dry-run 完成：156 次呼叫預估 ≈ $4.2 | `logs/eval_dry_run_summary.md` |
 
 先紅後綠證據（測試先失敗、再改程式）：
@@ -153,9 +154,21 @@ Commits（一 commit 一關注）：
 
 未變：真 Postgres 並行、真模型評估、iPhone 真機驗收仍待驗，不冒稱完成。
 
+## 10. 第三輪獨立複核（BLOCK，只剩 A 保存佇列一致性）修正對照 — 2026-09-18
+
+審查基準 `070cfbdb`；B／C 已關閉不再動。reviewer 的三個反例為完整來源靜態推演，其 Dart 候選未送達；本機先加一個純測試用寫入閘門 seam（`OpenerResultCacheService.debugWriteGate`，不改行為）把三個反例寫成延遲回歸，在 070cfbdb 上 3/3 重現（`logs/red_r3_a.txt`），再修。
+
+| 項 | 反例（070cfbdb 實際接線重現） | 修正 | 綠燈 |
+|---|---|---|---|
+| P1 owner 出隊重認領 | A 兩筆保存排隊中切成 B 並 `restoreDraft(B)`：第二筆出隊時「當下 owner==可變 `_sessionOwner`」通過，cache 以當下帳號找不到 A id→fallback `saveDraft` 把「A 原料二」寫進 `opener_drafts_v1:user-b` | 保存工作在入隊時固定 owner；cache 新增 `saveDraftFor／updateDraftFor／updateDraftContributionFor(owner:…)`，出隊不再解析當下帳號或比對 `_sessionOwner`；找不到原紀錄只在同一帳號補建 | 綠：B key 無 A 原料、A key 仍完成「A 原料二」 |
+| P2 舊返回 id 寫進新 active state | 同帳號保存 A 期間 `restoreDraft(B)`，A 返回後 `draftId` 被改回 A | 流程世代 `_flowEpoch`（restore／reset／新分析換代）；保存完成（原紀錄合法落地）與更新畫面（只限同一世代且 `draftId` 仍空）分開；已知 id 或這一代建立中的紀錄在入隊時固定為目標 | 綠：active draftId／analysis 仍全屬 B，A 紀錄仍存到「A 改」 |
+| P3 回答編輯寫退作業狀態 | 生成回應已到、result 落地等待時改 draft：整份舊 flow（analyzed、無 generation）排在 result 之後，把 stage 寫退 | 回答編輯改為局部合併 `updateDraftContributionFor`：只換 `contributionDraft`，階段／送出快照／generation／使用量以儲存中的較新值為準；還沒有紀錄時這一代只建一份，後續編輯等它的 id 再合併 | 綠：重建後原 generationId／結果／generationsUsed=1／最新未生成回答都在 |
+
+未用「dispose 後全部不保存」；離頁保存需求（R2a／R2a-2）測試全數保留並通過。
+
 ## 7. 跨模型審查
 
-**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（基準 83c278f3）→ 已修正（§9），待第三輪確認。**
+**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（83c278f3）→ 已修正（§9）。第三輪：BLOCK（070cfbdb，只剩 A 保存佇列）→ 已修正（§10），待第四輪確認。**
 
 原第一輪派審阻塞紀錄（保留）：
 
