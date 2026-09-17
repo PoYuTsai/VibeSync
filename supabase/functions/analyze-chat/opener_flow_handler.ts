@@ -236,6 +236,10 @@ function rpcFailureResponse(
         });
       case "OPENER_OPERATION_OWNER_MISMATCH":
         return flowError("OPENER_GENERATION_PENDING", "這組回覆還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: 1500 });
+      case "OPENER_OPERATION_LEASE_EXPIRED":
+        // R1 fencing：本作業租約已過期（可能已被同局其他 ID 接手），本地結果丟棄；
+        // 用同一筆請求重試會重新 claim（若同局已有有效工作則回 busy）。
+        return flowError("OPENER_GENERATION_PENDING", "這組回覆已逾時，請用同一筆請求再試一次；本次不會扣額度。", 409, { retryable: true, retryAfterMs: 1500 });
       case "OPENER_SUBSCRIPTION_MISSING":
         return flowError("OPENER_SETTLEMENT_FAILED", "找不到訂閱資料，請重新登入後再試；本次不會扣額度。", 500);
     }
@@ -362,11 +366,10 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   const user = summarizeUser(deps.userId);
   const rpc: OpenerFlowRpc = async (fn, params) => await deps.supabase.rpc(fn, params);
 
-  // 0. 停用新局（既有局第二段不受影響）＋ DB 能力標記：新版 App 收到 503
-  //    只在「尚未進入兩段式」時退回舊單段。
-  if (env("OPENER_TWO_STAGE_ENABLED") === "false") {
-    return flowError("OPENER_FLOW_UNAVAILABLE", "新版開場流程暫停中，改用一般生成。本次不會扣額度。", 503, { retryable: false });
-  }
+  // 0. DB 能力標記（migration 沒套齊＝根本沒有會話可重播）：新版 App 收到 503
+  //    只在「尚未進入兩段式」時退回舊單段。停用新局的旗標放在 claim 之後（R6b）：
+  //    已保存的分析同 analysisRequestId 重試仍能取回，旗標只擋真正的新局。
+  const newSessionsDisabled = env("OPENER_TWO_STAGE_ENABLED") === "false";
   const dbContract = await readOpenerFlowDbContractVersion(rpc);
   if (dbContract !== OPENER_FLOW_DB_CONTRACT_VERSION) {
     logError("opener_flow_db_contract_missing", { user, dbContract });
@@ -455,6 +458,11 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
     const claimResponse = handleClaim(await claimOpenerAnalysis(claimArgs));
     if (claimResponse !== null) return claimResponse;
   }
+  if (newSessionsDisabled) {
+    // 走到這裡＝沒有可重播的快照、真的要開新局：停用中，釋放資格後退回舊單段。
+    if (!await release()) return releaseFailedResponse();
+    return flowError("OPENER_FLOW_UNAVAILABLE", "新版開場流程暫停中，改用一般生成。本次不會扣額度。", 503, { retryable: false });
+  }
 
   // 4. 限流（scope 與第二段、舊單段共用 opener 3/分 30/日）。
   {
@@ -512,7 +520,7 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
         if (!await release()) return releaseFailedResponse();
         return jsonResponse(buildWrongSurfaceErrorBody(wrongSurface), 422);
       }
-      let snapshot = buildOpenerAnalysisSnapshot({ parsed: primary, rawProfileInfo: body.profileInfo, imageCount, initialNoteProvided: request.initialUserNote !== null });
+      let snapshot = buildOpenerAnalysisSnapshot({ parsed: primary, rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
       let repaired = false;
       if (!snapshot) {
         try {
@@ -523,7 +531,7 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
             deadlineAtMs,
             allowModelFallback: false,
           });
-          snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialNoteProvided: request.initialUserNote !== null });
+          snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
           repaired = snapshot !== null;
         } catch (error) {
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("repair");
@@ -734,7 +742,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   });
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
   const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey);
-  const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials });
+  const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
     logWarn("opener_generate_deadline_exceeded", { user, stage });
     if (!await release()) return releaseFailedResponse();
@@ -766,11 +774,27 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
       }
 
+      // R5：格式修復與內容修正共用「一次額外機會」（附件 §12.2：每個作業的修復／
+      // 修正合計最多再做一次），並累加所有嘗試的 usage；拿不到的記 unknown，不當 0。
+      let extraCallsRemaining = 1;
+      const usageTotal = { inputTokens: 0, outputTokens: 0, complete: true, attempts: 0 };
+      const addUsage = (out: OpenerFlowModelOutput) => {
+        usageTotal.attempts += 1;
+        if (typeof out.inputTokens === "number" && typeof out.outputTokens === "number") {
+          usageTotal.inputTokens += out.inputTokens;
+          usageTotal.outputTokens += out.outputTokens;
+        } else {
+          usageTotal.complete = false;
+        }
+      };
+      addUsage(output);
+
       // 6a. 格式：解析／正規化；不齊五句就做一次格式修復（只修 JSON，不換意思）。
       let parsedJson = parseJsonObjectFromText(output.rawText);
       let normalized = normalizeOpenerGenerateOutput(parsedJson, materials);
       let repaired = false;
-      if (!normalized.ok) {
+      if (!normalized.ok && extraCallsRemaining > 0) {
+        extraCallsRemaining -= 1;
         try {
           const repair = await invokeModel({
             system: OPENER_FLOW_REPAIR_PROMPT,
@@ -779,6 +803,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             deadlineAtMs,
             allowModelFallback: false,
           });
+          addUsage(repair);
           const repairedJson = parseJsonObjectFromText(repair.rawText);
           const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials);
           if (repairedNormalized.ok) {
@@ -801,7 +826,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       let flags: OpenerQualityFlag[] = checkOpenersAgainstMaterials(normalized.value.openers, materials);
       const hardBefore = hardFlags(flags);
       let corrected = false;
-      if (hardBefore.length > 0) {
+      if (hardBefore.length > 0 && extraCallsRemaining > 0) {
+        extraCallsRemaining -= 1;
         try {
           const correction = await invokeModel({
             system: OPENER_GENERATE_PROMPT,
@@ -810,6 +836,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             deadlineAtMs,
             allowModelFallback: false,
           });
+          addUsage(correction);
           const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
           const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace);
           const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials);
@@ -829,7 +856,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       }
       const hardAfter = hardFlags(flags);
       if (hardAfter.length > 0) {
-        logWarn("opener_generate_content_conflict", { user, flags: hardAfter.map((f) => `${f.code}:${f.style ?? ""}`), corrected });
+        logWarn("opener_generate_content_conflict", { user, flags: hardAfter.map((f) => `${f.code}:${f.style ?? ""}`), corrected, repaired, extraCallsRemaining });
         return await failNoCharge("OPENER_CONTENT_CONFLICT", "這次沒生成成功，可以重試；本次不會扣額度。", 502);
       }
       if (Date.now() >= deadlineAtMs) return await rejectDeadline("pre_projection");
@@ -873,6 +900,12 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           logWarn("opener_generate_stale_owner", { user });
           return rpcFailureResponse(failure, "generate_settle", deps.userId);
         }
+        if (failure.kind === "business" && failure.code === "OPENER_OPERATION_LEASE_EXPIRED") {
+          // 租約過期但仍是我們的列：owner-bound release 讓同 ID 可重新取得資格。
+          logWarn("opener_generate_lease_expired", { user });
+          await release();
+          return rpcFailureResponse(failure, "generate_settle", deps.userId);
+        }
         await release();
         return rpcFailureResponse(failure, "generate_settle", deps.userId);
       }
@@ -896,8 +929,12 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         generationsUsed: settlement.usage.generationsUsed,
         replayed: settlement.usage.replayed,
         model: output.model,
-        inputTokens: output.inputTokens,
-        outputTokens: output.outputTokens,
+        // 累加主呼叫＋修復／修正的 usage；usageComplete=false 代表有嘗試拿不到 usage，
+        // 這個數字不得當本局完整模型成本。
+        inputTokens: usageTotal.inputTokens,
+        outputTokens: usageTotal.outputTokens,
+        modelAttempts: usageTotal.attempts,
+        usageComplete: usageTotal.complete,
         elapsedMs: Date.now() - deps.requestStartedAtMs,
       });
       // Handler 永遠回 settlement 的 stored result（stale race 時本地候選丟棄）。

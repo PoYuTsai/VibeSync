@@ -33,7 +33,8 @@ export interface OpenerGenerateNormalized {
   cardReasons: Partial<Record<OpenerType, string>>;
   rankedPicks: OpenerType[];
   references: OpenerMaterialReference[];
-  displayNote: string | null;
+  /** 每張卡自己的採用說明（R3：不再有整包全域 note）。 */
+  displayNotes: Partial<Record<OpenerType, string>>;
   reading: OpenerMaterialReadingItem[];
   stretchLevels: Record<OpenerType, StretchLevel>;
   pioneerPlan: Record<string, string> | null;
@@ -107,7 +108,12 @@ export function normalizeOpenerGenerateOutput(
     : [];
   const { references, flags: refFlags } = sanitizeMaterialReferences(rawRefs, openers, materials.materials);
   const { reading, flags: readingFlags } = sanitizeMaterialReading(parsed.materialReading, materials.materials);
-  const displayNote = customerText(materialUseRaw.displayNote, 60);
+  const displayNotes: Partial<Record<OpenerType, string>> = {};
+  const rawNotes = isPlainObject(materialUseRaw.displayNotes) ? materialUseRaw.displayNotes : {};
+  for (const type of OPENER_TYPES) {
+    const note = customerText(rawNotes[type], 60);
+    if (note) displayNotes[type] = note;
+  }
 
   let pioneerPlan: Record<string, string> | null = null;
   if (isPlainObject(parsed.pioneerPlan)) {
@@ -140,7 +146,7 @@ export function normalizeOpenerGenerateOutput(
       cardReasons,
       rankedPicks,
       references,
-      displayNote,
+      displayNotes,
       reading,
       stretchLevels: normalizeStretchLevels(parsed),
       pioneerPlan,
@@ -171,11 +177,18 @@ export function mergeOpenerCorrection(
   const corrRefs = Array.isArray(corrUse.references) ? corrUse.references : [];
   const keptRefs = origRefs.filter((ref) => !(isPlainObject(ref) && stylesToReplace.includes(ref.style as string)));
   const newRefs = corrRefs.filter((ref) => isPlainObject(ref) && stylesToReplace.includes(ref.style as string));
+  // 採用說明也綁卡：被換掉的卡丟舊說明，只採用修正輸出裡同一張卡的說明。
+  const origNotes = isPlainObject(origUse.displayNotes) ? { ...origUse.displayNotes } : {};
+  const corrNotes = isPlainObject(corrUse.displayNotes) ? corrUse.displayNotes : {};
+  for (const style of stylesToReplace) {
+    delete origNotes[style];
+    if (typeof corrNotes[style] === "string") origNotes[style] = corrNotes[style];
+  }
   return {
     ...original,
     openers: origOpeners,
     cardReasons: origReasons,
-    materialUse: { ...origUse, references: [...keptRefs, ...newRefs] },
+    materialUse: { ...origUse, references: [...keptRefs, ...newRefs], displayNotes: origNotes },
   };
 }
 
@@ -238,7 +251,8 @@ export function projectOpenerGenerateResult(input: {
   } else {
     traceStatus = "uncertain";
   }
-  const displayNote = traceStatus === "matched" ? normalized.displayNote : null;
+  // 採用說明只用最終可見 pick 自己那一句，且要它真的有對得上的來源紀錄。
+  const displayNote = traceStatus === "matched" && pickReferenced ? (normalized.displayNotes[pick] ?? null) : null;
   const reason = cardReasons[pick];
 
   const result: OpenerGenerateLedgerResult = {

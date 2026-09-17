@@ -1,6 +1,7 @@
 // opener_stage.ts：兩段式合約層純函式測試（附件 F12、F20、§10.3 選項白名單）。
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  approachStillApplies,
   buildOpenerAnalysisSnapshot,
   computeOpenerGenerationInputHash,
   graphemeLength,
@@ -40,7 +41,7 @@ function analysisWithQuestion(overrides: Record<string, unknown> = {}) {
     },
     rawProfileInfo: PROFILE,
     imageCount: 0,
-    initialNoteProvided: false,
+    initialUserNote: null,
   });
 }
 
@@ -184,4 +185,67 @@ Deno.test("生成輸入指紋：回答一定入 hash（改答案＝不同操作�
   assertEquals(a, same);
   assert(a !== edited && a !== skipped && edited !== skipped);
   assert(/^[0-9a-f]{64}$/.test(a));
+});
+
+// ── R3a（第一輪複核）：白名單類型不等於 statement 與題目、選項相符。
+Deno.test("R3a：label「沒養，但有興趣」配 assert_sender_fact／statement「我有養狗」→ 選項不得授權自述", () => {
+  const snapshot = analysisWithQuestion({
+    question: {
+      affects: "sender_fact",
+      text: "你跟養狗這件事比較接近哪種？",
+      options: [
+        { label: "沒養，但有興趣", meaning: "assert_sender_fact", cueId: "cue_1", statement: "我有養狗" },
+        { label: "我自己有養", meaning: "assert_sender_fact", cueId: "cue_1", statement: "我有養狗" },
+        { label: "我妹有養", meaning: "assert_sender_fact", cueId: "cue_1", statement: "我妹有養狗" },
+        { label: "我自己有養", meaning: "assert_sender_fact", cueId: "cue_1", statement: "我常去河堤" },
+        { label: "其實想聊別的", meaning: "change_direction" },
+      ],
+    },
+  });
+  assert(snapshot?.question);
+  const meanings = snapshot.question.options.map((o) => `${o.label}:${o.meaning}:${o.statement ?? ""}`);
+  assertEquals(meanings, ["我自己有養:assert_sender_fact:我有養狗", "其實想聊別的:change_direction:"]);
+});
+
+Deno.test("R3a：矛盾的自述選項被丟掉後只剩一個合法選項→零題，而不是留下矛盾題", () => {
+  const snapshot = analysisWithQuestion({
+    question: {
+      affects: "sender_fact",
+      text: "你跟養狗這件事比較接近哪種？",
+      options: [
+        { label: "沒養，但有興趣", meaning: "assert_sender_fact", cueId: "cue_1", statement: "我有養狗" },
+        { label: "其實想聊別的", meaning: "change_direction" },
+      ],
+    },
+  });
+  assertEquals(snapshot?.question, null);
+});
+
+// ── R3b：刪掉初稿後，第一段依初稿衍生的 approach 文字不得回到第二段。
+Deno.test("R3b：快照記初稿指紋；第二段只有在目前補充與初稿相同時才沿用第一段的方向文字", () => {
+  const withNote = buildOpenerAnalysisSnapshot({
+    parsed: {
+      profileDigest: "自介：有養一隻狗",
+      approach: { mode: "anchor_hooks", summary: "你自己有養狗，可以直接從狗的散步習慣開", avoid: ["不用提你妹"] },
+      cues: [{ id: "cue_1", label: "養狗", source: "profile_text", evidence: { field: "bio", quote: "有養一隻狗" } }],
+      question: null,
+    },
+    rawProfileInfo: PROFILE,
+    imageCount: 0,
+    initialUserNote: "我有養狗，想從狗開",
+  });
+  assert(withNote);
+  assertEquals(withNote.initialNoteProvided, true);
+  assert(typeof withNote.initialNoteFingerprint === "string" && withNote.initialNoteFingerprint.length > 0);
+  assertEquals(JSON.stringify(withNote).includes("我有養狗，想從狗開"), false, "快照不存初稿原文");
+  assertEquals(approachStillApplies(withNote, "我有養狗，想從狗開"), true);
+  assertEquals(approachStillApplies(withNote, "改聊咖啡，想問照片那家店在哪"), false);
+  assertEquals(approachStillApplies(withNote, null), false);
+  const withoutNote = buildOpenerAnalysisSnapshot({
+    parsed: { profileDigest: "x", approach: { mode: "low_info", summary: "線索不多" }, cues: [], question: null },
+    rawProfileInfo: PROFILE,
+    imageCount: 0,
+    initialUserNote: null,
+  });
+  assertEquals(approachStillApplies(withoutNote!, "任何補充"), true);
 });

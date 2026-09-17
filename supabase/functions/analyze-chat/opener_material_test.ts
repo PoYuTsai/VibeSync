@@ -35,6 +35,7 @@ const SNAPSHOT: OpenerAnalysisSnapshot = {
   profileText: { bio: "有養一隻狗" },
   imageCount: 0,
   initialNoteProvided: false,
+  initialNoteFingerprint: null,
   promptVersion: "v1",
 };
 

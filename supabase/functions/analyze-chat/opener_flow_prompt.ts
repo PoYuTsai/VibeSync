@@ -3,7 +3,7 @@
 // 這裡刻意不放示範句——實測示範句會被逐字抄成罐頭。
 
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
-import type { OpenerAnalysisSnapshot } from "./opener_stage.ts";
+import { approachStillApplies, type OpenerAnalysisSnapshot } from "./opener_stage.ts";
 import type { NormalizedOpenerProfile } from "./opener_profile.ts";
 import { type OpenerMaterialSet, renderMaterialsForPrompt } from "./opener_material.ts";
 import type { OpenerQualityFlag } from "./opener_material.ts";
@@ -50,7 +50,7 @@ approach.avoid 最多兩點、必要才寫（例如不用回應她的抱怨、�
 - meaning 只能是：pick_cue、assert_sender_fact、curious_without_experience、exclude_cue、change_direction、no_preference。需要指向線索的（pick_cue、curious_without_experience、exclude_cue、assert_sender_fact）要帶 cueId。
 
 ## profileDigest
-給第二段用的可見事實摘要（600 字內）：手填欄位重點、每張圖看得到的具體內容（標 imageIndex）、明確禁忌。只寫看得到的，不寫判斷。
+給第二段用的可見事實摘要（600 字內）：手填欄位重點、每張圖看得到的具體內容（標 imageIndex）、明確禁忌。只寫看得到的，不寫判斷。**絕不寫入用戶初稿裡的任何內容**（用戶的事、他的方向、他的猜測）——初稿之後可能被用戶改掉或刪掉，摘要必須只描述她。approach.summary／avoid 可以參考初稿，但系統只會在用戶沒改初稿時沿用它們。
 
 ## 錯圖（wrongSurface）
 截圖明顯不是對方的交友軟體個人頁／社群個人頁／個人照片（最常見是聊天對話截圖）：wrongSurface 填 "chat_conversation"（對話）或 "unrelated"（無關），其餘欄位可省略。只要是交友資料（資訊再少都算）就填 null。
@@ -110,7 +110,7 @@ rankedPicks 從最推薦排到最不推薦，五種都要列（系統會依用�
 - emoji 0–1 個。語助詞挑一個就好。
 
 ## 來源紀錄（materialUse）
-每張用到原料的卡，在 references 標出 style、materialId 與該句裡實際對應的片段 outputSpan（必須一字不差出現在那句裡）。displayNote 只在推薦卡確實採用了原料時寫一句（40 字內，說它接的是用戶想知道／想說的哪件事），否則 null。
+每張用到原料的卡，在 references 標出 style、materialId 與該句裡實際對應的片段 outputSpan（必須一字不差出現在那句裡）。displayNotes 是「每張卡自己的採用說明」：只對確實採用了原料的卡各寫一句（40 字內，說那句接的是用戶想知道／想說的哪件事），沒採用的卡不要寫；系統會依用戶方案最終可見的推薦卡取對應那句，不會拿別張卡的說明。
 materialReading：對每件用戶原文原料，標出主體（sender／sender_family／recipient／shared_scene／unknown）、類型與確定度，quote 逐字取自該原料原文。
 
 ## 輸出格式（只輸出 JSON，不要 code fence）
@@ -119,7 +119,7 @@ materialReading：對每件用戶原文原料，標出主體（sender／sender_f
   "openers": { "extend": "…", "resonate": "…", "tease": "…", "humor": "…", "coldRead": "…" },
   "cardReasons": { "extend": "…", "resonate": "…", "tease": "…", "humor": "…", "coldRead": "…" },
   "rankedPicks": ["extend", "humor", "tease", "coldRead", "resonate"],
-  "materialUse": { "references": [ { "style": "extend", "materialId": "material_1", "outputSpan": "句中片段" } ], "displayNote": null },
+  "materialUse": { "references": [ { "style": "extend", "materialId": "material_1", "outputSpan": "句中片段" } ], "displayNotes": { "extend": "這句接的是你想知道的…" } },
   "stretchLevels": { "extend": "within", "resonate": "within", "tease": "within", "humor": "within", "coldRead": "within" },
   "pioneerPlan": { "ifCold": "她冷回時下一步", "ifShortPositive": "她短回但有接時下一步", "ifEngaged": "她認真回時下一步", "handoff": "何時把回覆貼回對話分析" },
   "profileAnalysis": { "positiveHooks": ["可接線索"], "avoidTopics": ["先避開"], "openingStrategy": "一句教用戶怎麼回" }
@@ -143,7 +143,7 @@ export const OPENER_ANALYZE_SCHEMA_HINT =
   `{"wrongSurface":null,"profileDigest":"…","approach":{"mode":"anchor_hooks|fresh_topic|low_info","summary":"…","avoid":[]},"cues":[{"id":"cue_1","label":"…","source":"profile_text|image|manual_field","evidence":{}}],"question":null}`;
 
 export const OPENER_GENERATE_SCHEMA_HINT =
-  `{"materialReading":[],"openers":{"extend":"…","resonate":"…","tease":"…","humor":"…","coldRead":"…"},"cardReasons":{},"rankedPicks":["extend","resonate","tease","humor","coldRead"],"materialUse":{"references":[],"displayNote":null},"stretchLevels":{},"pioneerPlan":{},"profileAnalysis":{}}`;
+  `{"materialReading":[],"openers":{"extend":"…","resonate":"…","tease":"…","humor":"…","coldRead":"…"},"cardReasons":{},"rankedPicks":["extend","resonate","tease","humor","coldRead"],"materialUse":{"references":[],"displayNotes":{}},"stretchLevels":{},"pioneerPlan":{},"profileAnalysis":{}}`;
 
 function renderProfileFields(profile: NormalizedOpenerProfile): string {
   const parts: string[] = [];
@@ -180,8 +180,11 @@ export function buildOpenerAnalyzeUserContent(input: {
 export function buildOpenerGenerateUserContent(input: {
   snapshot: OpenerAnalysisSnapshot;
   materials: OpenerMaterialSet;
+  /** 目前完整補充（R3b：決定第一段依初稿衍生的方向文字還適不適用）。 */
+  currentFreeText: string | null;
 }): string {
   const { snapshot, materials } = input;
+  const approachApplies = approachStillApplies(snapshot, input.currentFreeText);
   const out: string[] = [];
   const fields = renderProfileFields(snapshot.profileText);
   const cueLines = snapshot.cues.map((cue) => {
@@ -199,14 +202,18 @@ export function buildOpenerGenerateUserContent(input: {
       fields || (snapshot.imageCount > 0 ? "（對方資料來自截圖，見摘要）" : "（沒有對方資料）"),
       snapshot.profileDigest ? `可見事實摘要：${snapshot.profileDigest}` : "",
       cueLines.length ? `可接線索：\n${cueLines.join("\n")}` : "可接線索：無",
-      snapshot.approach.avoid.length ? `先避開：${snapshot.approach.avoid.join("；")}` : "",
+      approachApplies && snapshot.approach.avoid.length ? `先避開：${snapshot.approach.avoid.join("；")}` : "",
     ].filter(Boolean).join("\n"),
   );
   out.push("【2. 用戶本次的選擇、補充與原始句子】\n" + renderMaterialsForPrompt(materials));
   const modeLabel = materials.directionOverride === "fresh_topic"
     ? "fresh_topic（用戶已表示第一段線索都沒興趣，改另開話題）"
     : snapshot.approach.mode;
-  out.push(`【3. 第一段的開場方向（建議，可被用戶有效選擇更新）】\n方向：${modeLabel}\n判斷：${snapshot.approach.summary}`);
+  out.push(
+    approachApplies
+      ? `【3. 第一段的開場方向（建議，可被用戶有效選擇更新）】\n方向：${modeLabel}\n判斷：${snapshot.approach.summary}`
+      : `【3. 第一段的開場方向】\n方向：${modeLabel}\n判斷：第一段的判斷是依用戶當時的初稿寫的，初稿已被修改或刪除，不採用；以第 2 節用戶目前的補充為準。`,
+  );
   out.push("請依系統指示輸出第二段 JSON。");
   return out.join("\n\n");
 }

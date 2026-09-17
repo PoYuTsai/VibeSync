@@ -125,7 +125,7 @@ const GENERATE_JSON = {
       { style: "extend", materialId: "material_1", outputSpan: "散步會自己選路" },
       { style: "humor", materialId: "material_1", outputSpan: "導航派" },
     ],
-    displayNote: "這句接的是你想知道的散步習慣",
+    displayNotes: { extend: "這句接的是你想知道的散步習慣" },
   },
   stretchLevels: { extend: "within", resonate: "within", tease: "within", humor: "within", coldRead: "within" },
   pioneerPlan: { ifCold: "先停一下", handoff: "她回了就貼回分析" },
@@ -249,8 +249,9 @@ async function passOneMinute(db: PGlite) {
   await db.query(`UPDATE public.model_call_rate_limits SET minute_window_start = now() - interval '61 seconds'`);
 }
 
+/** 有效作業數：pending／done；R1 後失敗 release 的列以 released 保留輸入身分，不算。 */
 async function runCount(db: PGlite) {
-  const rows = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_generation_runs`);
+  const rows = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_generation_runs WHERE state <> 'released'`);
   return rows.rows[0].n;
 }
 
@@ -328,7 +329,7 @@ Deno.test("第一段：wrongSurface→422 不建立會話；模型失敗→503 �
     h.script.throwOn = "analyze";
     const down = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 })));
     assertEquals(down.status, 503);
-    const rows = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions`);
+    const rows = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state <> 'released'`);
     assertEquals(rows.rows[0].n, 0);
   } finally {
     await h.db.close();
@@ -661,6 +662,70 @@ Deno.test("測試帳號：不扣費、不限流，但仍走 claim／settle 並�
     assertEquals((body.usage as Record<string, unknown>).chargedNow, 0);
     assertEquals((body.usage as Record<string, unknown>).generationsUsed, 1);
     assertEquals(await usage(h.db), { m: 0, d: 0 });
+  } finally {
+    await h.db.close();
+  }
+});
+
+// ── 第一輪獨立複核回歸（2026-09-17）
+
+Deno.test("R3b：刪掉初稿改聊咖啡→第一段依初稿寫的方向文字不得回到第二段 prompt", async () => {
+  const h = await harness();
+  try {
+    h.script.analyze = { ...ANALYSIS_JSON, approach: { mode: "anchor_hooks", summary: "你自己有養狗，可以直接從散步習慣開", avoid: ["不用提你妹"] } };
+    const analysis = await analyzed(h, { initialUserNote: "我有養狗，想從狗開" });
+    assertEquals((analysis.approach as Record<string, unknown>).summary, "你自己有養狗，可以直接從散步習慣開", "第一段當時的判斷照常回給 App 顯示");
+    const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, { state: "answered", freeText: "改聊咖啡，想問照片那家店在哪" })));
+    assertEquals(response.status, 200);
+    const content = String(h.script.calls[1].messages[0].content);
+    assertEquals(content.includes("你自己有養狗"), false, "已撤回初稿衍生的方向不得當底稿");
+    assertEquals(content.includes("不用提你妹"), false);
+    assert(content.includes("改聊咖啡"));
+    // 同一份初稿原封送回（等於沒改）：方向文字可沿用。
+    await passOneMinute(h.db);
+    const same = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_2, { state: "answered", freeText: "我有養狗，想從狗開" })));
+    assertEquals(same.status, 200);
+    assert(String(h.script.calls[2].messages[0].content).includes("你自己有養狗"));
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("R5：格式修復＋內容修正共用一次額外機會；修好格式後仍有硬錯誤→不發第三次模型請求、502 不扣", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    h.script.generate = "這不是 JSON";
+    h.script.repair = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, resonate: "我也養狗，妳那隻會帶路嗎" } };
+    h.script.correction = GENERATE_JSON; // 若被呼叫，會把錯誤修好——那就代表預算沒守住
+    const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, CURIOUS)));
+    assertEquals(response.status, 502);
+    assertEquals((await json(response)).code, "OPENER_CONTENT_CONFLICT");
+    const generateCalls = h.script.calls.filter((c) => c.system !== OPENER_ANALYZE_PROMPT);
+    assertEquals(generateCalls.length, 2, "主呼叫＋一次格式修復；不得再有內容修正");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(await runCount(h.db), 0);
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("R6b：分析已保存、回應遺失後關閉新局旗標→同 analysisRequestId 重試仍取回快照；新 ID 才被擋", async () => {
+  const h = await harness();
+  try {
+    const first = await analyzed(h);
+    h.env.OPENER_TWO_STAGE_ENABLED = "false";
+    const replay = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+    assertEquals(replay.status, 200);
+    const body = await json(replay);
+    assertEquals(body.sessionId, first.sessionId);
+    assertEquals(body.replayed, true);
+    assertEquals(h.script.calls.length, 1, "重播不打模型");
+    const fresh = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 })));
+    assertEquals(fresh.status, 503);
+    assertEquals((await json(fresh)).code, "OPENER_FLOW_UNAVAILABLE");
+    const rows = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state = 'pending'`);
+    assertEquals(rows.rows[0].n, 0, "被擋的新局不得留下 pending 列");
   } finally {
     await h.db.close();
   }

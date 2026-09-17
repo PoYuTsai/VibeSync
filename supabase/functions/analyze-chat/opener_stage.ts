@@ -115,7 +115,34 @@ export interface OpenerAnalysisSnapshot {
   imageCount: number;
   /** 只記「當時有沒有寫初稿」，不存原文——刪掉的初稿不得從快照復活。 */
   initialNoteProvided: boolean;
+  /**
+   * 初稿指紋（非密碼學 FNV-1a，只做相等比對）。第一段的 approach.summary／avoid
+   * 可能依初稿而寫；第二段只有在目前補充與初稿完全相同時才沿用它們（R3b）。
+   */
+  initialNoteFingerprint: string | null;
   promptVersion: string;
+}
+
+/** 初稿／補充的相等指紋：正規化空白後 FNV-1a 64 位元；不可逆向、不存原文。 */
+export function noteFingerprint(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  let hash = 0xcbf29ce484222325n;
+  for (const ch of normalized) {
+    hash ^= BigInt(ch.codePointAt(0) ?? 0);
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+/**
+ * 第一段方向文字（summary／avoid）還適不適用：沒有初稿→適用；有初稿→只有目前
+ * 補充與初稿相同才適用。刪掉或改寫初稿後，依初稿衍生的方向不得當底稿。
+ */
+export function approachStillApplies(snapshot: OpenerAnalysisSnapshot, freeText: string | null): boolean {
+  if (!snapshot.initialNoteProvided) return true;
+  if (!snapshot.initialNoteFingerprint) return false;
+  if (!freeText) return false;
+  return noteFingerprint(freeText) === snapshot.initialNoteFingerprint;
 }
 
 // ── 第一段請求 ────────────────────────────────────────────────────────────
@@ -277,7 +304,27 @@ function meaningNeedsCue(meaning: OpenerOptionMeaning): boolean {
  * 語意必須指向本局線索、assert_sender_fact 必帶第一人稱 statement 且不談她；
  * 清洗後不足 2 個選項＝這題不值得問，回 null（零題是合法結果）。
  */
-function sanitizeQuestion(raw: unknown, cueIdMap: Map<string, string>): OpenerQuestion | null {
+const NEGATION_RE = /沒|不|無|未|其實|別的|還好/u;
+const NON_SELF_SUBJECT_RE = /^我(妹|哥|姐|弟|媽|爸|爺|奶|朋友|同事|家人|室友|前任|們|的(妹|哥|姐|弟|媽|爸|朋友|同事|家人|室友))/u;
+
+/** R3a：assert_sender_fact 的標籤／statement／線索三者要一致，且主體是本人。 */
+export function senderFactOptionConsistent(label: string, statement: string, cueLabel: string | undefined): boolean {
+  if (NEGATION_RE.test(label) || NEGATION_RE.test(statement)) return false;
+  if (!/^我/u.test(statement) || NON_SELF_SUBJECT_RE.test(statement)) return false;
+  if (/她|妳|對方/u.test(statement)) return false;
+  if (!/我|自己/u.test(label)) return false;
+  if (cueLabel) {
+    const compact = cueLabel.replace(/[\s、，,]/g, "");
+    let overlap = compact.length <= 1 ? statement.includes(compact) : false;
+    for (let i = 0; !overlap && i + 2 <= compact.length; i++) {
+      if (statement.includes(compact.slice(i, i + 2))) overlap = true;
+    }
+    if (!overlap) return false;
+  }
+  return true;
+}
+
+function sanitizeQuestion(raw: unknown, cueIdMap: Map<string, string>, cueLabelById: Map<string, string>): OpenerQuestion | null {
   if (!isPlainObject(raw)) return null;
   const text = customerText(raw.text, 60);
   if (!text) return null;
@@ -301,8 +348,11 @@ function sanitizeQuestion(raw: unknown, cueIdMap: Map<string, string>): OpenerQu
     let statement: string | undefined;
     if (meaning === "assert_sender_fact") {
       const candidate = textField(item.statement, 40);
-      // 自述必須以「我」為主體、不談她；模型寫不出合格 statement 就不放行這個選項。
-      if (!candidate || !/我/.test(candidate) || /她|妳|對方/.test(candidate)) continue;
+      // R3a：白名單類型不等於 statement 與題目、選項相符。只有「標籤是肯定的
+      // 本人自述、statement 是肯定的本人自述、且談的是同一個線索」才授權新自述；
+      // 矛盾（標籤「沒養，但有興趣」配「我有養狗」）或主體不是本人（「我妹有養狗」）
+      // 一律丟掉，不改成凡有「我」就是本人事實。
+      if (!candidate || !senderFactOptionConsistent(label, candidate, cueId ? cueLabelById.get(cueId) : undefined)) continue;
       statement = candidate;
     }
     const dedupeKey = `${meaning}:${cueId ?? ""}:${statement ?? ""}`;
@@ -324,7 +374,7 @@ export function buildOpenerAnalysisSnapshot(input: {
   parsed: Record<string, unknown> | null;
   rawProfileInfo: unknown;
   imageCount: number;
-  initialNoteProvided: boolean;
+  initialUserNote: string | null;
 }): OpenerAnalysisSnapshot | null {
   const parsed = input.parsed;
   if (!parsed) return null;
@@ -349,11 +399,12 @@ export function buildOpenerAnalysisSnapshot(input: {
   return {
     approach: { mode, summary, avoid },
     cues,
-    question: sanitizeQuestion(parsed.question, idMap),
+    question: sanitizeQuestion(parsed.question, idMap, new Map(cues.map((cue) => [cue.id, cue.label]))),
     profileDigest: digest,
     profileText: profile,
     imageCount: input.imageCount,
-    initialNoteProvided: input.initialNoteProvided,
+    initialNoteProvided: input.initialUserNote !== null,
+    initialNoteFingerprint: input.initialUserNote === null ? null : noteFingerprint(input.initialUserNote),
     promptVersion: OPENER_FLOW_PROMPT_VERSION,
   };
 }
@@ -387,6 +438,7 @@ export function parseStoredOpenerAnalysisSnapshot(raw: unknown): OpenerAnalysisS
     profileText,
     imageCount: typeof raw.imageCount === "number" ? raw.imageCount : 0,
     initialNoteProvided: raw.initialNoteProvided === true,
+    initialNoteFingerprint: typeof raw.initialNoteFingerprint === "string" ? raw.initialNoteFingerprint : null,
     promptVersion: typeof raw.promptVersion === "string" ? raw.promptVersion : "unknown",
   };
 }

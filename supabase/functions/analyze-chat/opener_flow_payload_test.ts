@@ -18,6 +18,7 @@ const SNAPSHOT: OpenerAnalysisSnapshot = {
   profileText: { bio: "有養一隻狗" },
   imageCount: 0,
   initialNoteProvided: false,
+  initialNoteFingerprint: null,
   promptVersion: "v1",
 };
 
@@ -56,7 +57,10 @@ function modelOutput(overrides: Record<string, unknown> = {}): Record<string, un
         { style: "extend", materialId: "material_1", outputSpan: "散步會自己選路" },
         { style: "humor", materialId: "material_1", outputSpan: "導航派" },
       ],
-      displayNote: "這句接的是你想知道的散步習慣",
+      displayNotes: {
+        resonate: "共鳴卡的說明（鎖卡，不得外流）",
+        extend: "這句接的是你想知道的散步習慣",
+      },
     },
     stretchLevels: { extend: "within", resonate: "stretch", tease: "within", humor: "within", coldRead: "far" },
     pioneerPlan: { ifCold: "先停一下", handoff: "她回了就貼回分析" },
@@ -93,7 +97,8 @@ Deno.test("F13／§9.4：Free 先篩可見卡，再從可見卡選推薦、用�
   assertEquals(Object.keys(projected.cardReasons).sort(), ["extend", "humor", "tease"]);
   assertEquals(projected.materialUse.references.map((r) => r.style), ["extend", "humor"]);
   assertEquals(projected.materialUse.traceStatus, "matched");
-  assertEquals(projected.materialUse.displayNote, "這句接的是你想知道的散步習慣");
+  assertEquals(projected.materialUse.displayNote, "這句接的是你想知道的散步習慣", "採用說明綁最終可見 pick");
+  assertEquals(JSON.stringify(projected).includes("鎖卡，不得外流"), false, "鎖卡自己的說明不得外流");
   assertEquals(projected.materialUse.inputState, "answered");
   assertEquals(projected.access.lockedTypes, ["resonate", "coldRead"]);
   assertEquals(Object.keys(projected.stretchLevels).sort(), ["extend", "humor", "tease"]);
@@ -120,7 +125,7 @@ Deno.test("traceStatus：無有效原料→no_input（displayNote 一律 null）
   assertEquals(noInput?.materialUse.references, [], "沒有原料就沒有可對上的引用");
 
   const missingPick = normalizeOpenerGenerateOutput(modelOutput({
-    materialUse: { references: [{ style: "humor", materialId: "material_1", outputSpan: "導航派" }], displayNote: "不該顯示" },
+    materialUse: { references: [{ style: "humor", materialId: "material_1", outputSpan: "導航派" }], displayNotes: { extend: "不該顯示", humor: "也不該顯示" } },
   }), answeredMaterials);
   assert(missingPick.ok);
   const uncertain = projectOpenerGenerateResult({ normalized: missingPick.value, materials: answeredMaterials, visibleTypes: OPENER_FREE_V2_TYPES, servedTier: "free", contractVersion: 2 });
@@ -134,9 +139,14 @@ Deno.test("內容修正合併：只換被標記的句子與理由，其餘逐字
   const corrected = {
     openers: { extend: "改過的延展", resonate: "偷改共鳴不該被採用" },
     cardReasons: { extend: "改過的理由" },
-    materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "改過" }, { style: "resonate", materialId: "material_1", outputSpan: "x" }] },
+    materialUse: {
+      references: [{ style: "extend", materialId: "material_1", outputSpan: "改過" }, { style: "resonate", materialId: "material_1", outputSpan: "x" }],
+      displayNotes: { extend: "改過後的說明", resonate: "偷改的說明" },
+    },
   };
   const merged = mergeOpenerCorrection(original, corrected, ["extend"]);
+  const notes = (merged.materialUse as { displayNotes: Record<string, string> }).displayNotes;
+  assertEquals(notes, { resonate: "共鳴卡的說明（鎖卡，不得外流）", extend: "改過後的說明" }, "只換被標記卡的說明");
   const openers = merged.openers as Record<string, string>;
   assertEquals(openers.extend, "改過的延展");
   assertEquals(openers.resonate, "養這種狗的人假日應該都在外面");
@@ -151,4 +161,14 @@ Deno.test("回放結果驗證：缺 openers／推薦不在可見卡／空句一�
   assert(!isValidOpenerGenerateLedgerResult({ openers: {}, recommendation: { pick: "extend" }, access: { servedTier: "free", visibleTypes: [] }, materialUse: {} }));
   assert(!isValidOpenerGenerateLedgerResult({ openers: { extend: "x" }, recommendation: { pick: "humor" }, access: { servedTier: "free", visibleTypes: [] }, materialUse: {} }));
   assert(isValidOpenerGenerateLedgerResult({ openers: { extend: "x" }, recommendation: { pick: "extend" }, access: { servedTier: "free", visibleTypes: ["extend"] }, materialUse: {} }));
+});
+
+Deno.test("R3：模型只給整包 displayNote（未綁卡）→ 不採用；pick 沒有自己的說明→null", () => {
+  const legacyNote = normalizeOpenerGenerateOutput(modelOutput({
+    materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "散步會自己選路" }, { style: "humor", materialId: "material_1", outputSpan: "導航派" }], displayNote: "整包全域說明" },
+  }), answeredMaterials);
+  assert(legacyNote.ok);
+  const projected = projectOpenerGenerateResult({ normalized: legacyNote.value, materials: answeredMaterials, visibleTypes: OPENER_FREE_V2_TYPES, servedTier: "free", contractVersion: 2 });
+  assertEquals(projected?.materialUse.traceStatus, "matched");
+  assertEquals(projected?.materialUse.displayNote, null);
 });
