@@ -682,4 +682,118 @@ void main() {
     expect(rebuilt.state.draft.freeText, '等待中的新回答');
     expect(rebuilt.state.generationsRemaining, 2);
   });
+
+  // ── 第四輪獨立複核回歸（R2a-4：新建／補建保存工作的 payload 與建檔目標）
+
+  test('R2a-4 P1：A 的 analyzing checkpoint 新建排隊中切 B 並恢復 B→A key 不得含 B 名稱／來源／預覽；B key 與 active B 不變', () async {
+    final cacheB = OpenerResultCacheService(ownerIdResolver: () => 'user-b');
+    final draftB = await cacheB.saveDraft(flow: analyzedFlow('sess-b'), displayName: 'B 名', sourceLabel: 'B 來源', inputPreview: 'B 預覽');
+    final bBefore = Hive.box(AppConstants.settingsBox).get('opener_drafts_v1:user-b') as String;
+
+    // 先讓佇列被一筆寫入卡住，新建的 analyzing checkpoint 才會「排隊中（尚未出隊）」遇到切帳／恢復。
+    await controller.analyze(input: _input, initialNote: null);
+    final gate = Completer<void>();
+    cache.debugWriteGate = () => gate.future;
+    controller.setFreeText('卡住佇列');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    controller.resetForInputChange();
+    final inflight = controller.analyze(input: const OpenerGenerationInput(bio: '第二個人'), initialNote: null, displayName: 'A 名', sourceLabel: 'A 來源', inputPreview: 'A 預覽');
+    await Future<void>.delayed(const Duration(milliseconds: 20)); // analyzing checkpoint 排在閘門後面、尚未出隊
+    owner = 'user-b';
+    controller.restoreDraft(draftB);
+    cache.debugWriteGate = null;
+    gate.complete();
+    await inflight;
+    await drain();
+
+    final box = Hive.box(AppConstants.settingsBox);
+    final aKey = box.get('opener_drafts_v1:user-a') as String;
+    expect(aKey, contains('A 名'));
+    for (final leaked in ['B 名', 'B 來源', 'B 預覽']) {
+      expect(aKey, isNot(contains(leaked)), reason: '出隊時不得讀到另一流程的 metadata');
+    }
+    expect(box.get('opener_drafts_v1:user-b'), bBefore, reason: 'B key 不變');
+    expect(controller.state.draftId, draftB.id);
+    expect(controller.state.analysis!.sessionId, 'sess-b');
+    expect(service.calls.where((c) => c.kind == 'analyze').length, 1, reason: '切帳後被作廢的第二次分析不再打伺服器');
+  });
+
+  test('R2a-4 P1（同帳號）：A 新建排隊中恢復同帳號另一份草稿→A 紀錄仍是 A 自己的名稱／來源／預覽', () async {
+    final draftA2 = await cache.saveDraft(flow: analyzedFlow('sess-a2'), displayName: 'A2 名', sourceLabel: 'A2 來源', inputPreview: 'A2 預覽');
+    await controller.analyze(input: _input, initialNote: null);
+    final firstId = controller.state.draftId;
+    final gate = Completer<void>();
+    cache.debugWriteGate = () => gate.future;
+    controller.setFreeText('卡住佇列');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    controller.resetForInputChange();
+    final inflight = controller.analyze(input: const OpenerGenerationInput(bio: '第二個人'), initialNote: null, displayName: 'A 名', sourceLabel: 'A 來源', inputPreview: 'A 預覽');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    controller.restoreDraft(draftA2);
+    cache.debugWriteGate = null;
+    gate.complete();
+    await inflight;
+    await drain();
+
+    final drafts = cache.loadDrafts();
+    final created = drafts.where((d) => d.id != draftA2.id && d.id != firstId).single;
+    expect(created.displayName, 'A 名');
+    expect(created.sourceLabel, 'A 來源');
+    expect(created.inputPreview, 'A 預覽');
+    expect(controller.state.draftId, draftA2.id);
+  });
+
+  test('R2a-4 P2：分析成功但沒有本機草稿→磁碟恢復後首次補建等待中按生成→最後只有一份同局草稿，內容正確', () async {
+    final failing = _FailingCache();
+    final c = OpenerFlowController(service: service, cache: failing, ownerIdResolver: () => owner, now: () => now);
+    failing.fail = true;
+    await c.analyze(input: _input, initialNote: null);
+    expect(c.state.phase, OpenerFlowPhase.contributing);
+    expect(failing.loadDrafts(), isEmpty, reason: '分析成功、兩個 checkpoint 都沒落地');
+    failing.fail = false;
+
+    final gate = Completer<void>();
+    failing.debugWriteGate = () => gate.future;
+    c.setFreeText('回答');
+    await Future<void>.delayed(const Duration(milliseconds: 20)); // 首次補建卡在閘門
+    final inflight = c.generate(); // pending checkpoint 排在補建後面
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    failing.debugWriteGate = null;
+    gate.complete();
+    await inflight;
+    await drain();
+
+    final drafts = failing.loadDrafts();
+    expect(drafts.length, 1, reason: '同一代的回答編輯與階段 checkpoint 共用建檔目標');
+    final only = drafts.single;
+    final sentId = service.calls.last.args['generationId'] as String;
+    expect(only.flow!.stage, OpenerDraftFlowStage.result);
+    expect(only.flow!.generation!.generationId, sentId);
+    expect(only.flow!.generation!.usage.generationsUsed, 1);
+    expect(only.result!.requestId, sentId);
+    expect(only.flow!.contributionDraft.freeText, '回答');
+    expect(c.state.draftId, only.id);
+    expect(c.state.phase, OpenerFlowPhase.result);
+  });
+
+  test('R2a-4 P2：首次補建失敗→磁碟恢復後再次修改，下一次保存要成功，不被失敗的建檔工作永久卡住', () async {
+    final failing = _FailingCache();
+    final c = OpenerFlowController(service: service, cache: failing, ownerIdResolver: () => owner, now: () => now);
+    failing.fail = true;
+    await c.analyze(input: _input, initialNote: null);
+    c.setFreeText('一');
+    await drain();
+    expect(failing.loadDrafts(), isEmpty);
+    failing.fail = false;
+    c.setFreeText('二');
+    await drain();
+    final drafts = failing.loadDrafts();
+    expect(drafts.length, 1, reason: '磁碟恢復後的保存要能重試建檔');
+    expect(drafts.single.flow!.contributionDraft.freeText, '二');
+    expect(c.state.draftId, drafts.single.id);
+    c.setFreeText('三');
+    await drain();
+    expect(failing.loadDrafts().length, 1);
+    expect(failing.loadDrafts().single.flow!.contributionDraft.freeText, '三');
+  });
 }

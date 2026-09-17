@@ -191,8 +191,9 @@ class OpenerFlowController extends ChangeNotifier {
   // 保存完成（原紀錄合法落地）與更新畫面（只限同一世代）是兩個資格。
   int _flowEpoch = 0;
 
-  // R2a-3：這一代第一次建立紀錄的工作；之後的回答編輯等它拿到 id 再局部合併，
-  // 不會各自建一份，也不從可變狀態重新認領紀錄身分。
+  // R2a-3／R2a-4：這一代的建檔目標＝最新一個「可能建檔」的保存工作（回答編輯與階段
+  // checkpoint 共用）。state.draftId 還空著時，後續工作都等它的 id：成功就沿用同一份紀錄，
+  // 失敗（null）就由下一筆重新建檔並成為新的目標，不會永久卡住，也不從可變狀態重新認領身分。
   Future<String?>? _createDraftJob;
 
   void _bumpFlowEpoch() {
@@ -449,22 +450,28 @@ class OpenerFlowController extends ChangeNotifier {
     final contributionDraft = _state.draft;
     // ponytail: 每次按鍵都寫一次 Hive（整份草稿清單重編碼）；卡頓再加 debounce＋dispose flush。
     final knownId = _state.draftId;
-    if (knownId != null || _createDraftJob != null) {
-      // 目標紀錄在入隊時固定：已知 id，或這一代正在建立中的那份紀錄（等它的 id）。
-      final target = knownId != null ? Future<String?>.value(knownId) : _createDraftJob!;
-      unawaited(_enqueue<OpenerDraft>(() async {
-        final id = await target;
-        if (id == null) return null;
-        // 局部合併：只換回答，階段／送出快照／結果／使用量以儲存中的較新值為準。
-        return _cache.updateDraftContributionFor(owner: owner, id: id, contributionDraft: contributionDraft);
-      }));
+    if (knownId != null) {
+      // 目標紀錄在入隊時固定；局部合併，階段／送出快照／結果／使用量以儲存中的較新值為準。
+      unawaited(_enqueue<OpenerDraft>(
+        () => _cache.updateDraftContributionFor(owner: owner, id: knownId, contributionDraft: contributionDraft),
+      ));
       return;
     }
-    // 還沒有紀錄（先前落地失敗）：這一代只建一份；完成後只在同一世代才更新畫面的 draftId。
+    // 還沒有已知紀錄（先前落地失敗）：跟這一代的階段 checkpoint 共用建檔目標（R2a-4 P2）。
+    // 目標有 id 就局部合併；沒有（尚未建或建檔失敗）就用入隊時固定的完整內容建檔。
+    final prev = _createDraftJob;
     final flow = _currentFlow(analysis);
-    final create = _enqueue<String>(() => _writeFlow(owner: owner, existingDraftId: null, flow: flow));
-    _createDraftJob = create;
-    unawaited(create.then((id) {
+    final meta = _captureMeta();
+    final job = _enqueue<String>(() async {
+      final id = prev == null ? null : await prev; // prev 排在佇列前面，這裡只是取它的結果
+      if (id != null) {
+        final merged = await _cache.updateDraftContributionFor(owner: owner, id: id, contributionDraft: contributionDraft);
+        if (merged != null) return merged.id;
+      }
+      return _writeFlow(owner: owner, existingDraftId: null, flow: flow, meta: meta);
+    });
+    _createDraftJob = job;
+    unawaited(job.then((id) {
       if (id == null || _disposed || epoch != _flowEpoch || _state.draftId != null) return;
       _set(_state.copyWith(draftId: id));
     }));
@@ -702,7 +709,9 @@ class OpenerFlowController extends ChangeNotifier {
   String? _analysisRequestIdForState;
 
   /// 同一份草稿隨階段更新（R2a）；保存失敗回 null。寫入依呼叫順序排隊、綁定這局
-  /// 的帳號（R2a-2）：切帳後的寫入直接略過，不會把 A 的草稿寫到 B。
+  /// 的帳號（R2a-3）：切帳後的寫入直接略過，不會把 A 的草稿寫到 B。
+  /// 完整內容（flow／result／名稱／來源／預覽）都在入隊時固定（R2a-4 P1），
+  /// 出隊時不讀任何可變欄位；沒有已知紀錄時走這一代共用的建檔目標（R2a-4 P2）。
   Future<String?> _persistFlow({
     required String? existingDraftId,
     required OpenerDraftFlow flow,
@@ -710,14 +719,28 @@ class OpenerFlowController extends ChangeNotifier {
   }) {
     final owner = _ownerIdResolver();
     if (owner != _sessionOwner) return Future<String?>.value(null);
-    // owner 與目標紀錄在入隊時固定；出隊時不再看當下帳號或 _sessionOwner（R2a-3 P1）。
-    return _enqueue<String>(() => _writeFlow(owner: owner, existingDraftId: existingDraftId, flow: flow, result: result));
+    final meta = _captureMeta();
+    if (existingDraftId != null) {
+      return _enqueue<String>(() => _writeFlow(owner: owner, existingDraftId: existingDraftId, flow: flow, result: result, meta: meta));
+    }
+    final prev = _createDraftJob;
+    final job = _enqueue<String>(() async {
+      final id = prev == null ? null : await prev; // 成功就沿用其紀錄；失敗（null）就由這一筆重新建檔
+      return _writeFlow(owner: owner, existingDraftId: id, flow: flow, result: result, meta: meta);
+    });
+    _createDraftJob = job;
+    return job;
   }
+
+  /// 入隊時固定的紀錄 metadata；之後的 analyze／restoreDraft 改掉 _last* 也影響不到已排隊的工作。
+  ({String? displayName, String? sourceLabel, String? inputPreview}) _captureMeta() =>
+      (displayName: _lastDisplayName, sourceLabel: _lastSourceLabel, inputPreview: _lastInputPreview);
 
   Future<String?> _writeFlow({
     required String? owner,
     required String? existingDraftId,
     required OpenerDraftFlow flow,
+    required ({String? displayName, String? sourceLabel, String? inputPreview}) meta,
     OpenerResult? result,
   }) async {
     try {
@@ -729,9 +752,9 @@ class OpenerFlowController extends ChangeNotifier {
       final draft = await _cache.saveDraftFor(
         owner: owner,
         result: result,
-        displayName: _lastDisplayName,
-        sourceLabel: _lastSourceLabel,
-        inputPreview: _lastInputPreview,
+        displayName: meta.displayName,
+        sourceLabel: meta.sourceLabel,
+        inputPreview: meta.inputPreview,
         partnerId: partnerId,
         flow: flow,
       );
