@@ -331,7 +331,8 @@ Deno.test("B08：模型失敗 release 作業 → 不扣費、不占次數、可�
     await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
     const released = await rpc<boolean>(db, "release_opener_generation_claim", [USER_ID, GEN_1, OWNER_A]);
     assertEquals(released, true);
-    assertEquals(await runRow(db, GEN_1), null);
+    // R1：release 只釋放執行資格，列與輸入身分保留（state=released）。
+    assertEquals((await runRow(db, GEN_1))?.state, "released");
     assertEquals((await sessionRow(db, sessionId)).generations_used, 0);
     assertEquals(await usage(db), { monthly: 0, daily: 0 });
     const again = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]);
@@ -541,6 +542,112 @@ Deno.test("anon／authenticated 不能讀兩張表、不能呼叫任何 RPC", as
       await assertRejects(() => rpc(db, "cleanup_expired_opener_sessions", []), Error, "permission denied");
       await db.exec(`RESET ROLE`);
     }
+  } finally {
+    await db.close();
+  }
+});
+
+// ── R1 回歸（2026-09-17 第一輪獨立複核 BLOCK）：同局工作資格必須涵蓋不同 generationId
+// 的接手、settle 的租約 fencing、過期 run 重新 claim 的上限、release 不得抹掉輸入身分。
+// reviewer 的 SQL 候選檔未收到；以下是依審查描述自行寫的等價回歸。
+
+Deno.test("R1-a：G1 租約過期→G2 取得同局資格→G1 重試不得再 claimed（session_busy）", async () => {
+  const db = await createDatabase();
+  try {
+    const sessionId = await readySession(db);
+    await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
+    await db.query(`UPDATE public.opener_generation_runs SET lease_expires_at = now() - interval '1 second' WHERE generation_id = $1`, [GEN_1]);
+    const g2 = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_2, HASH_B, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(g2.kind, "claimed");
+    // G1 同 owner 重試（renewal 路徑）與他人接手（takeover 路徑）都不得拿到資格。
+    const retrySameOwner = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(retrySameOwner.kind, "session_busy");
+    assertEquals(retrySameOwner.generationId, GEN_2);
+    const takeover = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, "2c2c2c2c-2c2c-4c2c-8c2c-2c2c2c2c2c2c", JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(takeover.kind, "session_busy");
+    const pending = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_generation_runs WHERE state = 'pending' AND lease_expires_at > now()`);
+    assertEquals(pending.rows[0].n, 1, "同局同時只能有一個有效租約");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("R1-b：租約過期的作業不得結算；G2 接手同局後 G1 原 owner 晚回也不得結算", async () => {
+  const db = await createDatabase();
+  try {
+    const sessionId = await readySession(db);
+    await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
+    await db.query(`UPDATE public.opener_generation_runs SET lease_expires_at = now() - interval '1 second' WHERE generation_id = $1`, [GEN_1]);
+    // 沒人接手、只是租約過期：不能憑 owner token 結算（fencing 在 DB commit 邊界）。
+    await assertRejects(
+      () => rpc(db, "settle_opener_generation", [USER_ID, sessionId, GEN_1, OWNER_A, JSON.stringify(RESULT), 30, 10, true, 3]),
+      Error,
+      "OPENER_OPERATION_LEASE_EXPIRED",
+    );
+    const g2 = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_2, HASH_B, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(g2.kind, "claimed");
+    await assertRejects(
+      () => rpc(db, "settle_opener_generation", [USER_ID, sessionId, GEN_1, OWNER_A, JSON.stringify(RESULT), 30, 10, true, 3]),
+      Error,
+      "OPENER_OPERATION_LEASE_EXPIRED",
+    );
+    assertEquals(await usage(db), { monthly: 0, daily: 0 });
+    assertEquals((await sessionRow(db, sessionId)).generations_used, 0);
+    const settled = await rpc(db, "settle_opener_generation", [USER_ID, sessionId, GEN_2, OWNER_B, JSON.stringify(RESULT), 30, 10, true, 3]);
+    assertEquals(settled.chargedNow, 3);
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("R1-c：三組已用完後，殘留的過期 pending run 重新 claim 也要在模型前被擋", async () => {
+  const db = await createDatabase();
+  try {
+    const sessionId = await readySession(db);
+    // GEN_4 先 claim 後租約過期（模型失敗沒 release 的殘留）。
+    await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_4, HASH_B, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]);
+    await db.query(`UPDATE public.opener_generation_runs SET lease_expires_at = now() - interval '1 second' WHERE generation_id = $1`, [GEN_4]);
+    for (const gen of [GEN_1, GEN_2, GEN_3]) {
+      await rpc(db, "claim_opener_generation", [USER_ID, sessionId, gen, HASH_A, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
+      await rpc(db, "settle_opener_generation", [USER_ID, sessionId, gen, OWNER_A, JSON.stringify(RESULT), 30, 10, true, 3]);
+    }
+    await assertRejects(
+      () => rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_4, HASH_B, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]),
+      Error,
+      "OPENER_GENERATION_LIMIT_REACHED",
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("R1-d：失敗 release 只釋放執行資格，不抹掉同 ID 的輸入身分；同 ID 換輸入仍拒絕（生成與分析）", async () => {
+  const db = await createDatabase();
+  try {
+    const sessionId = await readySession(db);
+    await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(await rpc<boolean>(db, "release_opener_generation_claim", [USER_ID, GEN_1, OWNER_A]), true);
+    await assertRejects(
+      () => rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_B, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]),
+      Error,
+      "OPENER_OPERATION_INPUT_MISMATCH",
+    );
+    // 同輸入可重新取得資格；釋放中的列不算同局忙碌。
+    const again = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_1, HASH_A, OWNER_B, JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(again.kind, "claimed");
+    const other = await rpc(db, "claim_opener_generation", [USER_ID, sessionId, GEN_2, HASH_B, OWNER_A, JSON.stringify(CONTRIBUTION), 3, 65]);
+    assertEquals(other.kind, "session_busy");
+
+    // 分析：release 後同 analysisRequestId 換輸入也要拒絕。
+    await rpc(db, "claim_opener_analysis", [USER_ID, REQ_2, HASH_A, OWNER_A, 1, 2, 65]);
+    assertEquals(await rpc<boolean>(db, "release_opener_analysis_claim", [USER_ID, REQ_2, OWNER_A]), true);
+    await assertRejects(
+      () => rpc(db, "claim_opener_analysis", [USER_ID, REQ_2, HASH_B, OWNER_B, 1, 2, 65]),
+      Error,
+      "OPENER_OPERATION_INPUT_MISMATCH",
+    );
+    const reclaim = await rpc(db, "claim_opener_analysis", [USER_ID, REQ_2, HASH_A, OWNER_B, 1, 2, 65]);
+    assertEquals(reclaim.kind, "claimed");
   } finally {
     await db.close();
   }

@@ -11,6 +11,11 @@
 --     同一組結果（不重扣、不占成功次數）；同局同時只允許一個 pending 作業。
 --   * settle_opener_generation 在同一交易內：保存結果＋首次扣費＋成功數 +1＋
 --     標示完成；increment_usage RAISE 令整筆回滾（絕無「扣了卻沒結果」）。
+--   * R1（2026-09-17 第一輪獨立複核）：同局工作資格＝「唯一有效租約」，不論
+--     generationId 是新的、既有的接手或同 owner 續租；結算要求該 run 的租約
+--     仍有效（fencing 在 DB commit 邊界），過期就算 owner token 對也不得結算；
+--     失敗 release 只把 state 改成 released、保留 input_hash 與回答，同 ID
+--     換輸入仍 RAISE；三組上限在任何會發起模型工作的 claim 路徑都檢查。
 --   * 到期由 pg_cron 每小時清除（含 CASCADE 的作業列）；帳號刪除靠
 --     auth.users ON DELETE CASCADE＋delete-account 的顯式清單。
 --   * 兩表 RLS 開啟且不建 policy：只有 service_role 與 SECURITY DEFINER RPC
@@ -25,7 +30,7 @@ CREATE TABLE IF NOT EXISTS public.opener_sessions (
   input_hash            TEXT        NOT NULL
                                     CHECK (input_hash ~ '^[0-9a-f]{64}$'),
   state                 TEXT        NOT NULL DEFAULT 'pending'
-                                    CHECK (state IN ('pending', 'ready')),
+                                    CHECK (state IN ('pending', 'released', 'ready')),
   owner_token           UUID        NOT NULL,
   lease_expires_at      TIMESTAMPTZ NOT NULL,
   flow_version          INTEGER     NOT NULL CHECK (flow_version >= 1),
@@ -46,7 +51,7 @@ CREATE TABLE IF NOT EXISTS public.opener_sessions (
   CONSTRAINT opener_sessions_request_unique UNIQUE (user_id, analysis_request_id),
   CONSTRAINT opener_sessions_state_consistency CHECK (
     (
-      state = 'pending'
+      state IN ('pending', 'released')
       AND analysis_json IS NULL
       AND expires_at IS NULL
       AND quota_charged = FALSE
@@ -89,7 +94,7 @@ CREATE TABLE IF NOT EXISTS public.opener_generation_runs (
   input_hash            TEXT        NOT NULL
                                     CHECK (input_hash ~ '^[0-9a-f]{64}$'),
   state                 TEXT        NOT NULL DEFAULT 'pending'
-                                    CHECK (state IN ('pending', 'done')),
+                                    CHECK (state IN ('pending', 'released', 'done')),
   owner_token           UUID        NOT NULL,
   lease_expires_at      TIMESTAMPTZ NOT NULL,
   contribution_json     JSONB       NOT NULL,
@@ -100,7 +105,7 @@ CREATE TABLE IF NOT EXISTS public.opener_generation_runs (
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, generation_id),
   CONSTRAINT opener_generation_runs_state_consistency CHECK (
-    (state = 'pending' AND result_json IS NULL AND charged_amount = 0)
+    (state IN ('pending', 'released') AND result_json IS NULL AND charged_amount = 0)
     OR (
       state = 'done'
       AND result_json IS NOT NULL
@@ -132,7 +137,7 @@ DECLARE
 BEGIN
   DELETE FROM public.opener_sessions
   WHERE (state = 'ready' AND expires_at < now())
-     OR (state = 'pending' AND lease_expires_at < now() - interval '1 hour');
+     OR (state IN ('pending', 'released') AND lease_expires_at < now() - interval '1 hour');
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
   RETURN v_deleted;
 END;
@@ -247,6 +252,16 @@ BEGIN
       'generationsUsed', v_existing.generations_used
     );
   END IF;
+  IF v_existing.state = 'released' THEN
+    -- 失敗後同輸入重新取得資格（輸入身分已在上面比對過）。
+    UPDATE public.opener_sessions
+    SET state = 'pending',
+        owner_token = p_owner_token,
+        lease_expires_at = v_lease_expires_at,
+        updated_at = now()
+    WHERE session_id = v_existing.session_id;
+    RETURN jsonb_build_object('kind', 'claimed', 'leaseExpiresAt', v_lease_expires_at);
+  END IF;
   IF v_existing.owner_token = p_owner_token THEN
     UPDATE public.opener_sessions
     SET lease_expires_at = v_lease_expires_at, updated_at = now()
@@ -284,15 +299,20 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_deleted INTEGER;
+  v_updated INTEGER;
 BEGIN
-  DELETE FROM public.opener_sessions
+  -- 只釋放執行資格；analysis_request_id 與 input_hash 的關聯保留到清理期
+  --（同 ID 換輸入仍會被 claim 的 hash 比對擋下）。
+  UPDATE public.opener_sessions
+  SET state = 'released',
+      lease_expires_at = now(),
+      updated_at = now()
   WHERE user_id = p_user_id
     AND analysis_request_id = p_analysis_request_id
     AND owner_token = p_owner_token
     AND state = 'pending';
-  GET DIAGNOSTICS v_deleted = ROW_COUNT;
-  RETURN v_deleted = 1;
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  RETURN v_updated = 1;
 END;
 $$;
 
@@ -353,7 +373,9 @@ BEGIN
       'firstGenerationCost', v_existing.first_generation_cost
     );
   END IF;
-  IF v_existing.owner_token IS DISTINCT FROM p_owner_token THEN
+  IF v_existing.state <> 'pending'
+     OR v_existing.owner_token IS DISTINCT FROM p_owner_token
+     OR v_existing.lease_expires_at <= now() THEN
     RAISE EXCEPTION 'OPENER_OPERATION_OWNER_MISMATCH';
   END IF;
 
@@ -460,7 +482,10 @@ BEGIN
         'session', v_session_view
       );
     END IF;
-    IF v_run.owner_token = p_owner_token THEN
+    -- 同 owner 且租約仍有效：它就是同局唯一有效工作，續租。
+    IF v_run.state = 'pending'
+       AND v_run.owner_token = p_owner_token
+       AND v_run.lease_expires_at > now() THEN
       UPDATE public.opener_generation_runs
       SET lease_expires_at = v_lease_expires_at, updated_at = now()
       WHERE user_id = p_user_id AND generation_id = p_generation_id;
@@ -469,7 +494,8 @@ BEGIN
         'session', v_session_view
       );
     END IF;
-    IF v_run.lease_expires_at > now() THEN
+    -- 他人租約仍有效：連回同一作業等它完成。
+    IF v_run.state = 'pending' AND v_run.lease_expires_at > now() THEN
       RETURN jsonb_build_object(
         'kind', 'pending',
         'retryAfterMs', GREATEST(
@@ -478,18 +504,10 @@ BEGIN
         )
       );
     END IF;
-    UPDATE public.opener_generation_runs
-    SET owner_token = p_owner_token,
-        lease_expires_at = v_lease_expires_at,
-        updated_at = now()
-    WHERE user_id = p_user_id AND generation_id = p_generation_id;
-    RETURN jsonb_build_object(
-      'kind', 'claimed', 'leaseExpiresAt', v_lease_expires_at,
-      'session', v_session_view
-    );
   END IF;
 
-  -- 新作業：先擋次數（模型呼叫前），再擋同局併發。
+  -- 走到這裡＝要發起一次新的模型工作（新 ID、過期接手、released 重取）：
+  -- 先擋三組上限，再擋同局其他有效租約，最後才取得資格。
   IF v_session.generations_used >= p_max_generations THEN
     RAISE EXCEPTION 'OPENER_GENERATION_LIMIT_REACHED';
   END IF;
@@ -497,6 +515,7 @@ BEGIN
   SELECT * INTO v_busy
   FROM public.opener_generation_runs
   WHERE session_id = p_session_id
+    AND generation_id <> p_generation_id
     AND state = 'pending'
     AND lease_expires_at > now()
   ORDER BY lease_expires_at DESC
@@ -512,13 +531,22 @@ BEGIN
     );
   END IF;
 
-  INSERT INTO public.opener_generation_runs (
-    user_id, generation_id, session_id, input_hash, state, owner_token,
-    lease_expires_at, contribution_json
-  ) VALUES (
-    p_user_id, p_generation_id, p_session_id, p_input_hash, 'pending',
-    p_owner_token, v_lease_expires_at, p_contribution_json
-  );
+  IF v_run.generation_id IS NOT NULL THEN
+    UPDATE public.opener_generation_runs
+    SET state = 'pending',
+        owner_token = p_owner_token,
+        lease_expires_at = v_lease_expires_at,
+        updated_at = now()
+    WHERE user_id = p_user_id AND generation_id = p_generation_id;
+  ELSE
+    INSERT INTO public.opener_generation_runs (
+      user_id, generation_id, session_id, input_hash, state, owner_token,
+      lease_expires_at, contribution_json
+    ) VALUES (
+      p_user_id, p_generation_id, p_session_id, p_input_hash, 'pending',
+      p_owner_token, v_lease_expires_at, p_contribution_json
+    );
+  END IF;
   RETURN jsonb_build_object(
     'kind', 'claimed', 'leaseExpiresAt', v_lease_expires_at,
     'session', v_session_view
@@ -537,15 +565,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_deleted INTEGER;
+  v_updated INTEGER;
 BEGIN
-  DELETE FROM public.opener_generation_runs
+  -- 只釋放執行資格；generation_id 與 input_hash／回答的關聯保留（同 ID 換輸入仍拒絕）。
+  UPDATE public.opener_generation_runs
+  SET state = 'released',
+      lease_expires_at = now(),
+      updated_at = now()
   WHERE user_id = p_user_id
     AND generation_id = p_generation_id
     AND owner_token = p_owner_token
     AND state = 'pending';
-  GET DIAGNOSTICS v_deleted = ROW_COUNT;
-  RETURN v_deleted = 1;
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  RETURN v_updated = 1;
 END;
 $$;
 
@@ -673,8 +705,20 @@ BEGIN
       'result', v_run.result_json
     );
   END IF;
-  IF v_run.owner_token IS DISTINCT FROM p_owner_token THEN
+  IF v_run.state <> 'pending' OR v_run.owner_token IS DISTINCT FROM p_owner_token THEN
     RAISE EXCEPTION 'OPENER_OPERATION_OWNER_MISMATCH';
+  END IF;
+  -- Fencing：租約過期的作業即使 owner 對也不得提交（可能已被同局其他 ID 接手）；
+  -- 同局若另有有效租約，也代表本作業已不是目前工作。
+  IF v_run.lease_expires_at <= now()
+     OR EXISTS (
+       SELECT 1 FROM public.opener_generation_runs
+       WHERE session_id = p_session_id
+         AND generation_id <> p_generation_id
+         AND state = 'pending'
+         AND lease_expires_at > now()
+     ) THEN
+    RAISE EXCEPTION 'OPENER_OPERATION_LEASE_EXPIRED';
   END IF;
   IF v_session.expires_at <= now() THEN
     RAISE EXCEPTION 'OPENER_SESSION_EXPIRED';
