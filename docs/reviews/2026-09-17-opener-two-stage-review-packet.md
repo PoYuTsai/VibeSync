@@ -94,6 +94,7 @@ Commits（一 commit 一關注）：
 | `flutter test test/unit/features/opener` | 150 passed，exit 0 | `logs/flutter_test_opener.log` |
 | `flutter test`（全套，fb40b62a） | 3857 passed，exit 0 | `logs/flutter_test_full.log` |
 | **修正後重跑**（新 head）：Deno analyze-chat／shared＋delete-account／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r1_*`（各有 `.exit`） | 同左 |
+| **第二輪修正後重跑**（新 head）：Deno analyze-chat 全套／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze／eval dry-run | 見 `logs/r2_*`（各有 `.exit`）；先紅證據 `logs/red_r2_*.txt` | 同左 |
 | `deno run … tools/opener-two-stage-eval/run.ts --tag=dry-run` | dry-run 完成：156 次呼叫預估 ≈ $4.2 | `logs/eval_dry_run_summary.md` |
 
 先紅後綠證據（測試先失敗、再改程式）：
@@ -108,7 +109,7 @@ Commits（一 commit 一關注）：
 
 - **真模型成對評估未跑**：工具、fixtures（12 組×A／B／略過＋舊單段對照）、dry-run 與預算（≈$4.2／156 次，Sonnet 5）已備；請 Eric 授權後執行 `--run --confirm-paid`，再做盲審評分（附件 §14.4 門檻）。
 - **iPhone 真機驗收未做**：Eric 需走「分析→補充→生成→調整再生成→回看草稿」；額度顯示、paywall、限流文案、到期卡。
-- **收費時點與 24h 保存**是附件建議（ADR #47 Proposed），待 Eric 拍板。
+- 收費時點（分析免費、首次可交付生成扣一般 3／既有條件 0、一局三組）與 24h 保存：Eric 2026-09-17 交辦即採用（ADR #47），不再是待決項。
 - 事件埋點（analysis_ready／question_answered／generation_completed…）未新增 client funnel 事件（需同批改 client 字典＋Edge funnel_utils＋文件，屬另案）；Edge 端 `opener_analyze_success`／`opener_generate_success` log 只記數量與狀態，不記補充全文。
 
 ## 6. Migration／Edge 部署順序與回退
@@ -140,9 +141,21 @@ Commits（一 commit 一關注）：
 
 本輪未動：舊 `mode: opener`、夜市已接受 P2、與本輪無關的重構。
 
+## 9. 第二輪獨立複核（BLOCK）修正對照 — 2026-09-18
+
+審查基準 `83c278f3`。已修正項（R1、R2b、R3b、R4、R5、R6b）保留不重做。reviewer 的純函式 probe 已由 reviewer 執行；其候選 Flutter／Deno 測試**未送達本機**，以下回歸是依審查描述自行寫的等價案例。三組都先在 `83c278f3` 上證明失敗（`logs/red_r2_a.txt`、`logs/red_r2_b_c.txt`）再修正。
+
+| 項 | 缺口 | 先紅證據（83c278f3） | 修正 | 綠燈 |
+|---|---|---|---|---|
+| A R2a 持久化 | `selectOption`／`setFreeText` 只改記憶體；生成等待中的修改不落地；`_persistFlow` 回 null 仍送出可扣費 API；分析未返回時無恢復路徑 | ctrl「R2a-2」×4：選項落地 `option_2` 得 null；等待中修改落地得舊值；保存失敗仍呼叫 generate 1 次；分析送出後 `loadDrafts()` 為空（第 4 題另有新 API 型別紅） | 回答區每次修改經 `_persistDraftEdit` 落地到同一份紀錄，只換 `contributionDraft`、送出快照與結果原樣；`_runGenerate` 的 pending 落地是必要 checkpoint：回 null 就不打 API、輸入保留、`failedOperation=generate` 讓「再試一次」同 ID 重來；新增 `OpenerDraftFlowStage.analyzing`＋`OpenerPendingAnalysis`（文字欄位＋初稿＋張數，不存圖）：分析送出前落地，`restoreDraft` 填回輸入並 `adopt` 原 analysisRequestId／指紋，`resumePendingAnalysis` 同 ID 續分析（有圖時只填回、等用戶重新上傳）；同一份紀錄 analyzing→analyzed→generating→result；所有寫入經排隊（依發生順序）且綁定這局帳號（`_sessionOwner`），切帳後寫入略過；輸入一改就刪掉沒有內容的 analyzing 紀錄 | ctrl 22 綠、widget「R2a-2」×2（analyzing 草稿回看→欄位填回＋同 ID 續分析；只改回答→重建畫面回看同一份回答） |
+| B R3a 選項授權 | 「都有我、沒否定、cue 同字」就把隱藏 statement 當授權：「我對咖啡有興趣」→「我是咖啡師」、「我剛開始養狗」→「我養狗十年」 | `opener_option_authorization_test.ts`（正式路徑 snapshot→選項清洗→materials→prompt）3/4 FAILED：原料出現「我是咖啡師」「我養狗十年」 | 授權的自述＝用戶實際看見並選取的 label（`senderFactStatementFromLabel`）；模型的 statement 一律不採用；label 不是肯定的本人第一人稱句（如「有養」）→無法確認就不授權、選項丟掉；刪掉線索字面重疊啟發式；prompt 改為 label 本身就是完整句、不要再寫 statement | 4 綠；既有 R3a 兩題與「題目清洗」改斷言 statement＝label；合法自述／否定／家人主體對照保留 |
+| C R6a 控制組 | `legacyUserBase` 從含初稿的第一段 user content 只刪尾句，raw-sentence／explicit-exclusion 的初稿污染控制組 | `control_test.ts` 2/3 FAILED（control.ts 先以現行 run.ts 內聯邏輯逐字抽出） | 舊單段 user content 抽成 `buildLegacyOpenerUserContent`（`opener_prompt.ts`，handler 改呼叫它、字句順序不變、既有 source guard 不改）；控制組只由對方資料經這條正式路徑建立，初稿與 A／B 都碰不到；`--legacy-plus-a` 附加實驗接在其後；Free／paid 分開投影保留 | 3 綠；analyze-chat 全套綠；dry-run 重估仍 156 次≈$4.23 |
+
+未變：真 Postgres 並行、真模型評估、iPhone 真機驗收仍待驗，不冒稱完成。
+
 ## 7. 跨模型審查
 
-**第一輪：BLOCK（ChatGPT 獨立複核，非 Codex CLI）→ 本輪修正完成，待第二輪審查。**
+**第一輪：BLOCK → 已修正（§8）。第二輪：BLOCK（基準 83c278f3）→ 已修正（§9），待第三輪確認。**
 
 原第一輪派審阻塞紀錄（保留）：
 
