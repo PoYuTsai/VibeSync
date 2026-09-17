@@ -36,9 +36,23 @@ class NightMarketReviewScreen extends ConsumerWidget {
     bool stillAllowed() =>
         gateFor(EbookAccess.essential, ref.read(ebookSubscriptionAccessProvider)) ==
         ChatQuizGate.allowed;
+    // Losing access can be discovered from arbitrarily deep inside this
+    // flow (a chapter, a knowledge detail, a clip player) — calling the
+    // constructor's raw [onExit] directly from there only pops ONE level,
+    // stranding the caller on another restricted page (this screen's own
+    // chapters/knowledge overview) instead of actually leaving (review
+    // round 4, requirement 四). Popping back to this screen's own route
+    // first guarantees a full exit regardless of how deep the navigation
+    // went; for the top-level "回練習室" affordances (already on this
+    // route) `popUntil` is a no-op, so this is a strict superset of the
+    // original behaviour, not a change for them.
+    void exitReview() {
+      navigator.popUntil((route) => identical(route, homeRoute));
+      onExit();
+    }
     void openChapter(NightMarketReviewChapter chapter) {
       if (!stillAllowed()) {
-        onExit();
+        exitReview();
         return;
       }
       // A related chapter starts from the overview, rather than growing an
@@ -49,7 +63,7 @@ class NightMarketReviewScreen extends ConsumerWidget {
             scenario: scenario,
             chapter: chapter,
             onChapter: openChapter,
-            onExit: onExit,
+            onExit: exitReview,
           ),
         ),
         (route) => identical(route, homeRoute),
@@ -58,7 +72,7 @@ class NightMarketReviewScreen extends ConsumerWidget {
 
     void openKnowledge(NightMarketReviewItem item) {
       if (!stillAllowed()) {
-        onExit();
+        exitReview();
         return;
       }
       _openKnowledge(context, scenario, item, openChapter);
@@ -70,7 +84,7 @@ class NightMarketReviewScreen extends ConsumerWidget {
       title: '復盤',
       leading: IconButton(
         tooltip: '回練習室',
-        onPressed: onExit,
+        onPressed: exitReview,
         icon: const Icon(Icons.close),
       ),
       children: [
@@ -125,7 +139,7 @@ class NightMarketReviewScreen extends ConsumerWidget {
         _Heading(scenario.takeaway, small: true),
         const SizedBox(height: 8),
         FilledButton(onPressed: onRestart, child: const Text('再練一次')),
-        OutlinedButton(onPressed: onExit, child: const Text('回練習室')),
+        OutlinedButton(onPressed: exitReview, child: const Text('回練習室')),
       ],
     );
   }

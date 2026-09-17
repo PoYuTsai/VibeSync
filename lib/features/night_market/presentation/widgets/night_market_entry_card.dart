@@ -29,6 +29,16 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
   /// next tap retries confirmation instead of reopening the store paywall.
   bool _pendingConfirmation = false;
 
+  /// The account [_pendingConfirmation] belongs to — a different signed-in
+  /// account never attempted a purchase and must get the full flow, not a
+  /// confirmation-only retry (review round 4, requirement 三).
+  String? _pendingConfirmationAccountId;
+
+  Future<bool> _pendingConfirmationStillForCurrentAccount() async {
+    final currentAccount = await ref.read(nightMarketAccountIdProvider.future);
+    return currentAccount == _pendingConfirmationAccountId;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -63,6 +73,11 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
     );
     switch (gate) {
       case ChatQuizGate.allowed:
+        // Allowed either way means this specific attempt is over — clear
+        // any stale pending flag so a LATER, genuinely fresh lock-out
+        // doesn't incorrectly skip straight to a confirmation-only retry.
+        _pendingConfirmation = false;
+        _pendingConfirmationAccountId = null;
         _pushReview();
         break;
       case ChatQuizGate.resolving:
@@ -81,13 +96,24 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
         try {
           // A prior attempt ended pendingConfirmation: retry confirmation
           // only, never reopen the store paywall for a purchase that may
-          // have already gone through.
-          final outcome = _pendingConfirmation
+          // have already gone through — but only for the SAME account that
+          // made the attempt; a different signed-in account never
+          // attempted anything and must get the full flow.
+          final usePendingConfirmation = _pendingConfirmation &&
+              await _pendingConfirmationStillForCurrentAccount();
+          if (!mounted) return;
+          final outcome = usePendingConfirmation
               ? await resolveNightMarketPendingConfirmation(context, ref)
               : await resolveNightMarketEssentialUnlock(context, ref);
           if (!context.mounted) return;
-          _pendingConfirmation =
-              outcome == NightMarketUnlockOutcome.pendingConfirmation;
+          if (outcome == NightMarketUnlockOutcome.pendingConfirmation) {
+            _pendingConfirmation = true;
+            _pendingConfirmationAccountId =
+                await ref.read(nightMarketAccountIdProvider.future);
+          } else {
+            _pendingConfirmation = false;
+            _pendingConfirmationAccountId = null;
+          }
           // Unlocked -> go straight into the recap, not the S1 playback.
           // Cancelled/still locked/pending -> stay on this card, no
           // restricted content shown.

@@ -140,6 +140,15 @@ void main() {
         (_) async => _fakeCustomerInfo(tier: SubscriptionTierHelper.free);
     RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
         (_) async => _fakeCustomerInfo(tier: SubscriptionTierHelper.free);
+    // _loadSubscription's own boot-time call reaches _attemptStartupPaidRescue
+    // whenever the resolved display tier is Free (i.e. on every boot in this
+    // helper) — review round 4, requirement 二 confirmed this branch is very
+    // much reachable, not dead code. Default it to "nothing to rescue" so
+    // boot stays a clean, uneventful Free baseline; individual tests
+    // override this to drive INTO the rescue branch deliberately.
+    RevenueCatService.debugSyncPurchasesAndRefreshCustomerInfoOverride =
+        ({expectedAppUserId}) async =>
+            _fakeCustomerInfo(tier: SubscriptionTierHelper.free);
     SupabaseService.debugInvokeFunctionOverride = (name, {body}) async =>
         _fakeSyncResponse(tier: SubscriptionTierHelper.free);
 
@@ -235,14 +244,35 @@ void main() {
       expect(adopted, isTrue);
       expect(notifier.state.renewsAt, isNotNull);
       expect(notifier.state.renewsAt!.isAfter(DateTime.now()), isTrue);
-
-      // Reconstructs from the cache alone (simulating a cold start offline):
-      // the same rule EbookSubscriptionAccess/gateFor rely on.
       expect(UsageService.hasUnexpiredPaidEntitlement(), isTrue);
+
+      // A genuine cold start: a BRAND NEW SubscriptionNotifier instance,
+      // whose initial state is built by its constructor purely from
+      // persisted storage (`_initialStateFromUsageSnapshot` ->
+      // `UsageService().getLocalUsage()`) — not `notifier.state.copyWith`,
+      // which would just relabel the same already-resolved live object and
+      // prove nothing about what actually got persisted (review round 4,
+      // requirement 五). Every SDK/HTTP call is stalled forever so this
+      // inspects exactly what the constructor produces synchronously,
+      // before `_initialize()` ever resolves anything.
+      RevenueCatService.debugLoginOverride =
+          (_) => Completer<CustomerInfo?>().future;
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) => Completer<CustomerInfo?>().future;
+      SupabaseService.debugInvokeFunctionOverride =
+          (name, {body}) => Completer<FunctionResponse>().future;
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) =>
+              Completer<Map<String, dynamic>>().future;
+
+      final coldStart = SubscriptionNotifier();
       final access = EbookSubscriptionAccess.fromState(
-        notifier.state.copyWith(isLoading: true),
+        coldStart.state,
         hasUnexpiredPaidEntitlement: UsageService.hasUnexpiredPaidEntitlement(),
       );
+      expect(coldStart.state.tier, SubscriptionTierHelper.essential,
+          reason: 'the fresh instance\'s own constructor must read Essential '
+              'back from persisted storage, not from the old notifier');
       expect(access.isEssential, isTrue);
       expect(access.isResolved, isFalse); // still "loading" (offline)
       expect(access.hasUnexpiredPaidEntitlement, isTrue);
@@ -384,6 +414,192 @@ void main() {
           _fakeSyncResponse(tier: SubscriptionTierHelper.essential);
       expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
       expect(notifier.state.tier, SubscriptionTierHelper.essential);
+    });
+  });
+
+  group(
+      'scenario 6 (review round 4, requirement 一) — operation ordering, '
+      'not just tier-rank comparison', () {
+    test(
+        'an earlier-started refresh stalls; a newer adopt writes Essential; '
+        "the refresh's stale Free response arriving late must not undo it",
+        () async {
+      final notifier = await bootFreeNotifier('user-i');
+
+      // A: refresh() stalls on its own DB-row fetch, before either of its
+      // two write points has run.
+      final rowGate = Completer<Map<String, dynamic>>();
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) => rowGate.future;
+      final refreshFuture = notifier.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // B: a newer, independent recovery completes first.
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride = (_) async =>
+          _fakeCustomerInfo(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: DateTime.now().add(const Duration(days: 30)),
+          );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+
+      // A's long-stalled, stale Free row finally arrives. `minimumSyncedTier`
+      // alone would not have caught this (refresh() doesn't confirm a
+      // specific floor tier) — only operation ordering does.
+      rowGate.complete(_fakeSubscriptionRow(userId: 'user-i'));
+      await refreshFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.tier,
+        SubscriptionTierHelper.essential,
+        reason: "the earlier-started refresh's now-stale Free must not "
+            'overwrite the newer adoption',
+      );
+    });
+
+    test(
+        'a newer, genuine revocation already wrote Free; an earlier '
+        'essential confirmation arriving late must not resurrect Essential',
+        () async {
+      final notifier = await bootFreeNotifier('user-j');
+
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride = (_) async =>
+          _fakeCustomerInfo(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: DateTime.now().add(const Duration(days: 30)),
+          );
+      expect(await notifier.adoptRevenueCatTierIfHigher(), isTrue);
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+
+      // A: an earlier-started essential-confirmation stalls on its own
+      // edge-function call.
+      final gate = Completer<FunctionResponse>();
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) => gate.future;
+      final staleConfirm =
+          notifier.forceSyncTier(SubscriptionTierHelper.essential);
+      await Future<void>.delayed(Duration.zero);
+
+      // B: a newer, independent reload discovers a genuine lapse (server
+      // row + RevenueCat both agree, with an actually-past expiry) and
+      // writes Free.
+      RevenueCatService.debugGetCustomerInfoForAppUserIdOverride =
+          (_) async => _fakeCustomerInfo(tier: SubscriptionTierHelper.free);
+      SubscriptionNotifier.debugLoadOrCreateSubscriptionRecordOverride =
+          ({required userId, required tier}) async => _fakeSubscriptionRow(
+                userId: userId,
+                tier: SubscriptionTierHelper.free,
+              )..['expires_at'] = DateTime.now()
+                  .subtract(const Duration(days: 1))
+                  .toIso8601String();
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) async =>
+          _fakeSyncResponse(tier: SubscriptionTierHelper.free);
+      await notifier.refresh();
+      expect(notifier.state.tier, SubscriptionTierHelper.free);
+
+      // Now A's long-stalled, stale Essential confirmation finally lands.
+      // Its OWN `minimumSyncedTier` floor (essential) does NOT reject this —
+      // the response IS essential, not below its own floor — only
+      // operation ordering catches this.
+      gate.complete(_fakeSyncResponse(tier: SubscriptionTierHelper.essential));
+      await expectLater(staleConfirm, throwsException);
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.tier,
+        SubscriptionTierHelper.free,
+        reason: "A's stale essential confirmation must not resurrect a tier "
+            'that a newer, genuine revocation already superseded',
+      );
+    });
+  });
+
+  group(
+      'scenario 7 (review round 4, requirement 二) — _attemptStartupPaidRescue '
+      'is reachable from refresh() and must honor the same rules', () {
+    test(
+        "a real paid entitlement RevenueCat's own resync reveals gets "
+        'rescued via refresh(), and the offline cache reflects it '
+        'afterward', () async {
+      final notifier = await bootFreeNotifier('user-k');
+
+      final expiry = DateTime.now().add(const Duration(days: 14));
+      RevenueCatService.debugSyncPurchasesAndRefreshCustomerInfoOverride =
+          ({expectedAppUserId}) async => _fakeCustomerInfo(
+                tier: SubscriptionTierHelper.essential,
+                expiresAt: expiry,
+              );
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) async =>
+          _fakeSyncResponse(tier: SubscriptionTierHelper.essential, expiresAt: expiry);
+
+      await notifier.refresh();
+
+      expect(notifier.state.tier, SubscriptionTierHelper.essential);
+      expect(notifier.state.renewsAt, isNotNull);
+      expect(UsageService.hasUnexpiredPaidEntitlement(), isTrue);
+    });
+
+    test(
+        "account switches while the rescue's own RevenueCat resync is in "
+        'flight: the response is discarded for both state and the cached '
+        'account, not applied to whoever is signed in now', () async {
+      final notifier = await bootFreeNotifier('user-l');
+
+      final gate = Completer<CustomerInfo?>();
+      RevenueCatService.debugSyncPurchasesAndRefreshCustomerInfoOverride =
+          ({expectedAppUserId}) => gate.future;
+
+      final refreshFuture = notifier.refresh();
+      // Let _loadSubscription's OWN regular sync call (still expecting
+      // Free, unrelated to the rescue) run to completion first — it must
+      // stay on the boot-default Free response, otherwise a later override
+      // aimed at the rescue's call would corrupt that unrelated call too
+      // and the test would stop isolating account consistency specifically.
+      for (var i = 0; i < 5; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      // The rescue's own edge-function confirmation must actually be able
+      // to succeed with Essential — otherwise `minimumSyncedTier` alone
+      // would block the write regardless of account checks, and the test
+      // would prove nothing about account consistency specifically.
+      SupabaseService.debugInvokeFunctionOverride = (name, {body}) async =>
+          _fakeSyncResponse(
+            tier: SubscriptionTierHelper.essential,
+            expiresAt: DateTime.now().add(const Duration(days: 14)),
+          );
+
+      // Account switches while the rescue's own resync call is stalled —
+      // both the auth layer AND the usage-cache layer reflect the new user,
+      // not just Supabase.
+      SupabaseService.debugCurrentUserOverride = () => _fakeUser('user-m');
+      UsageService.debugCurrentUserIdOverride = 'user-m';
+
+      gate.complete(_fakeCustomerInfo(
+        tier: SubscriptionTierHelper.essential,
+        expiresAt: DateTime.now().add(const Duration(days: 14)),
+      ));
+      await refreshFuture;
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(
+        notifier.state.tier,
+        SubscriptionTierHelper.free,
+        reason: "user-l's rescued entitlement must not be written after "
+            'user-m signed in',
+      );
+      expect(
+        UsageService.hasUnexpiredPaidEntitlement(),
+        isFalse,
+        reason: "the offline cache must not carry user-l's entitlement into "
+            "user-m's session either",
+      );
     });
   });
 }

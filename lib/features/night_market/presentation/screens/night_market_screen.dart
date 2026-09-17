@@ -43,6 +43,13 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   /// paywall.
   bool _pendingConfirmation = false;
 
+  /// The account [_pendingConfirmation] belongs to. A pending confirmation
+  /// only means anything for the account that made the purchase attempt —
+  /// if the signed-in account changes afterward, the new account never
+  /// attempted a purchase and must get the full flow (open paywall), not a
+  /// confirmation-only retry (review round 4, requirement 三).
+  String? _pendingConfirmationAccountId;
+
   /// S3 finished playing but essential access could not (yet) be confirmed
   /// at that exact moment — shows a retry card instead of leaving the last
   /// frozen frame with no way forward.
@@ -169,6 +176,11 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     await _video?.setVolume(_muted ? 0 : 1);
   }
 
+  Future<bool> _pendingConfirmationStillForCurrentAccount() async {
+    final currentAccount = await ref.read(nightMarketAccountIdProvider.future);
+    return currentAccount == _pendingConfirmationAccountId;
+  }
+
   /// Single choke point for every way this screen can advance into
   /// essential-gated content: a choice tap, tapping "知道了" on a coach card,
   /// and finishing the ending beat. Each one re-checks the gate fresh right
@@ -187,6 +199,21 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     final gate = gateFor(access, ref.read(ebookSubscriptionAccessProvider));
     switch (gate) {
       case ChatQuizGate.allowed:
+        // The subscription can resolve to allowed independently of the
+        // retry card (a periodic/webhook-driven sync elsewhere) — an
+        // ordinary gate hit reaching here while a purchase round is still
+        // pending must finish that round the same way a successful retry
+        // would (restart), not silently treat it as a normal in-story
+        // advance (review round 4, requirement 三).
+        if (_pendingConfirmation) {
+          final sameAccount = await _pendingConfirmationStillForCurrentAccount();
+          _pendingConfirmation = false;
+          _pendingConfirmationAccountId = null;
+          if (sameAccount) {
+            await _restart();
+            break;
+          }
+        }
         await onAllowed();
         break;
       case ChatQuizGate.locked:
@@ -197,13 +224,24 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
         try {
           // A prior attempt ended pendingConfirmation: retry confirmation
           // only, never reopen the store paywall for a purchase that may
-          // have already gone through.
-          final outcome = _pendingConfirmation
+          // have already gone through — but only for the SAME account that
+          // made the attempt; a different signed-in account never
+          // attempted anything and must get the full flow.
+          final usePendingConfirmation = _pendingConfirmation &&
+              await _pendingConfirmationStillForCurrentAccount();
+          if (!mounted) return;
+          final outcome = usePendingConfirmation
               ? await resolveNightMarketPendingConfirmation(context, ref)
               : await resolveNightMarketEssentialUnlock(context, ref);
           if (!context.mounted) return;
-          _pendingConfirmation =
-              outcome == NightMarketUnlockOutcome.pendingConfirmation;
+          if (outcome == NightMarketUnlockOutcome.pendingConfirmation) {
+            _pendingConfirmation = true;
+            _pendingConfirmationAccountId =
+                await ref.read(nightMarketAccountIdProvider.future);
+          } else {
+            _pendingConfirmation = false;
+            _pendingConfirmationAccountId = null;
+          }
           if (outcome == NightMarketUnlockOutcome.unlocked) {
             await _restart();
           }
@@ -543,11 +581,20 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   /// required instead of leaving a dead end that only a (never-refiring)
   /// video listener could have retried.
   Widget _reviewAccessPendingCard() {
+    // Resolving/unavailable are not "you're locked" — that copy would be
+    // actively wrong while a genuinely-Essential user's subscription state
+    // just hasn't confirmed yet (review round 4, requirement 四).
+    final gate = gateFor(_beat.access, ref.read(ebookSubscriptionAccessProvider));
+    final message = _pendingConfirmation
+        ? '已收到你的購買，正在確認中。'
+        : switch (gate) {
+            ChatQuizGate.resolving => '正在確認訂閱狀態，請稍後再試一次。',
+            ChatQuizGate.unavailable => '暫時無法確認訂閱狀態，請稍後再試一次。',
+            _ => '復盤是 Essential 方案內容。',
+          };
     return _card(children: [
       Text(
-        _pendingConfirmation
-            ? '已收到你的購買，正在確認中。'
-            : '復盤是 Essential 方案內容。',
+        message,
         style:
             const TextStyle(color: Colors.white, fontSize: 16, height: 1.45),
       ),

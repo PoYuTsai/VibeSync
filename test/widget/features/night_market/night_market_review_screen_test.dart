@@ -19,11 +19,17 @@ class _ReviewHarness {
       container.read(_testAccessProvider.notifier).state = access;
 }
 
+/// A marker only visible on the real screen the review flow was entered
+/// from — used to prove `onExit`/`exitReview` actually navigates all the
+/// way back out, instead of just trusting a boolean flag a fake `onExit`
+/// callback set (review round 4, requirement 四: real entry point, real
+/// Navigator-stack verification).
+const _homeMarkerKey = ValueKey('night-market-home-marker');
+
 Future<_ReviewHarness> _show(
   WidgetTester tester, {
   double scale = 1,
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
-  VoidCallback? onExit,
 }) async {
   await tester.binding.setSurfaceSize(Size(scale == 1 ? 390 : 320, 844));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -50,13 +56,28 @@ Future<_ReviewHarness> _show(
         ),
         child: child!,
       ),
-      home: NightMarketReviewScreen(
-        scenario: buildNightMarketScenario(),
-        onRestart: () {},
-        onExit: onExit ?? () {},
+      home: Builder(
+        builder: (homeContext) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              key: _homeMarkerKey,
+              onPressed: () => Navigator.of(homeContext).push<void>(
+                MaterialPageRoute(
+                  builder: (reviewContext) => NightMarketReviewScreen(
+                    scenario: buildNightMarketScenario(),
+                    onRestart: () {},
+                    onExit: () => Navigator.of(reviewContext).pop(),
+                  ),
+                ),
+              ),
+              child: const Text('open review'),
+            ),
+          ),
+        ),
       ),
     ),
   ));
+  await tester.tap(find.byKey(_homeMarkerKey));
   await tester.pumpAndSettle();
   return _ReviewHarness(container);
 }
@@ -160,42 +181,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  group('losing access mid-browse (review round 3, requirement 三/四.6)', () {
+  group('losing access mid-browse (review round 3/4, requirement 三/四.6)', () {
     testWidgets(
-        'losing access then opening another chapter exits instead of building it',
-        (tester) async {
-      var exited = false;
-      final harness = await _show(tester, onExit: () => exited = true);
+        'losing access then opening another chapter exits all the way back '
+        'to the real entry point, not just one level', (tester) async {
+      final harness = await _show(tester);
+      expect(find.byKey(_homeMarkerKey), findsNothing);
       harness.setAccess(const EbookSubscriptionAccess.free());
       await _tap(tester, find.text('接住感受，建立信任'));
-      expect(exited, isTrue);
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(find.text('把這段互動看懂'), findsNothing); // the review overview too
       expect(find.text('片段解析 2／6'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets(
-        'losing access then opening a knowledge term exits instead of building it',
-        (tester) async {
-      var exited = false;
-      final harness = await _show(tester, onExit: () => exited = true);
+        'losing access then opening a knowledge term exits all the way back '
+        'to the real entry point, not just one level', (tester) async {
+      final harness = await _show(tester);
+      expect(find.byKey(_homeMarkerKey), findsNothing);
       harness.setAccess(const EbookSubscriptionAccess.free());
       await _tap(tester, find.text('所有知識點（27）'));
       await _tap(tester, find.text('廢物測試'));
-      expect(exited, isTrue);
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(find.text('把這段互動看懂'), findsNothing);
       expect(find.text('知識詳解'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets(
         'losing access while inside a chapter blocks its own clip replay and '
-        'knowledge links too', (tester) async {
-      var exited = false;
-      final harness = await _show(tester, onExit: () => exited = true);
+        'knowledge links too, exiting all the way back out', (tester) async {
+      final harness = await _show(tester);
       await _tap(tester, find.text('接住感受，建立信任'));
       expect(find.text('片段解析 2／6'), findsOneWidget);
+      expect(find.byKey(_homeMarkerKey), findsNothing);
       harness.setAccess(const EbookSubscriptionAccess.free());
       await _tap(tester, find.text('回看這段'));
-      expect(exited, isTrue);
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(find.text('把這段互動看懂'), findsNothing);
+      expect(find.text('片段解析 2／6'), findsNothing);
       expect(find.text('回看片段'), findsNothing); // the player's own AppBar title
       expect(tester.takeException(), isNull);
     });

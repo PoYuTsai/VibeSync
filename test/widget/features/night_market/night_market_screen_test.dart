@@ -364,6 +364,75 @@ void main() {
     });
 
     testWidgets(
+        'gate already independently allowed before the second tap still '
+        'finishes the purchase round (restart) and clears pending, not just '
+        'a normal advance (review round 4, requirement 三.1)', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+      expect(platform.creations, hasLength(1)); // pendingConfirmation
+
+      // The subscription resolves BEFORE the user even taps again — not as
+      // a side effect of the retry's own adopt callback (that's the
+      // round-3 test above). The very next tap is an ordinary gate hit,
+      // which must still finish the purchase round (restart), not just
+      // silently continue to S2 as if nothing happened.
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsNothing);
+      expect(platform.creations, hasLength(2));
+      expect(platform.creations[1].dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+
+      // pending must have been cleared: a LATER, genuinely fresh lock-out
+      // goes through the full flow again, not a confirmation-only retry.
+      harness.setAccess(const EbookSubscriptionAccess.free());
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      expect(find.text(paywallStubText), findsOneWidget);
+    });
+
+    testWidgets(
+        'account switch after a pendingConfirmation clears it: the new '
+        'account gets the full flow, not a confirmation-only retry '
+        '(review round 4, requirement 三.2)', (tester) async {
+      final harness = await _pumpStarted(
+        tester,
+        access: const EbookSubscriptionAccess.free(),
+        forceSyncTierShouldFail: true,
+      );
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('paywall-buy-essential-sync-lag')),
+      );
+      await tester.pumpAndSettle();
+      expect(platform.creations, hasLength(1)); // pendingConfirmation
+
+      harness.switchAccount('a-different-user');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+
+      await tester.tap(find.text(_mainChoice));
+      await tester.pumpAndSettle();
+      // A brand new account never attempted a purchase: must see the store
+      // paywall again, not a silent confirmation-only retry.
+      expect(find.text(paywallStubText), findsOneWidget);
+    });
+
+    testWidgets(
         'account switch while the paywall is open does not apply the stale result',
         (tester) async {
       final harness =
@@ -480,6 +549,11 @@ void main() {
       expect(find.text('復盤'), findsNothing);
       expect(find.text(paywallStubText), findsNothing);
       expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+      // Neutral wording, not "this is Essential content" — the user may
+      // well already be Essential; the subscription state just hasn't
+      // confirmed yet (review round 4, requirement 四).
+      expect(find.textContaining('正在確認訂閱狀態'), findsOneWidget);
+      expect(find.textContaining('Essential 方案內容'), findsNothing);
 
       // Still resolving on this attempt too: stays on the same card, no
       // paywall, no crash.
@@ -505,6 +579,8 @@ void main() {
       await settle(tester);
       expect(find.text('復盤'), findsNothing);
       expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+      expect(find.textContaining('暫時無法確認訂閱狀態'), findsOneWidget);
+      expect(find.textContaining('Essential 方案內容'), findsNothing);
 
       harness.setAccess(const EbookSubscriptionAccess.essential());
       await tester.tap(find.widgetWithText(FilledButton, '重試'));
@@ -529,6 +605,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('復盤'), findsNothing);
       expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+      // Genuinely locked (not resolving/unavailable): the Essential-specific
+      // wording is correct here, unlike the two cases above.
+      expect(find.textContaining('Essential 方案內容'), findsOneWidget);
 
       // Retry while still genuinely locked reopens the paywall, not a
       // silent no-op.
