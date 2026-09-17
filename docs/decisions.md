@@ -1131,9 +1131,9 @@
 
 **測試**: `test/unit/features/night_market/data/night_market_story_test.dart`（beat access 宣告＋isPremium／isEssential 陷阱守門）、`test/unit/features/subscription/data/subscription_sync_integrity_test.dart`（R1/R2 純函式：帳號一致性、單向採用 RevenueCat 較高檔位）、`test/widget/features/night_market/night_market_screen_test.dart`／`night_market_entry_card_test.dart`（Free／Starter／resolving／unavailable／解鎖重播／Starter 購買仍鎖／同步失敗但 RevenueCat 確認會持久解鎖／同步與 RevenueCat 都無法確認則維持鎖定／帳號中途切換不套用／中途離頁不炸／教練卡與 S3 完播前失去授權會重新擋／Completer 控制的完整回合重入競態）、`test/widget/screens/paywall_screen_test.dart`（比較表新列）。共用鷹架：`test/helpers/night_market_paywall_harness.dart`（帳號來源改用真的 `StreamController`，不再是側門 `StateProvider`）。
 
-## ADR #47 — [2026-09-17] 開場救星兩段式：先分析、再讓用戶補充、按生成才扣費（提案實作，待 Eric 拍板）
+## ADR #47 — [2026-09-17] 開場救星兩段式：先分析、再讓用戶補充、按生成才扣費
 
-**狀態**: 🟡 Proposed — 分支 `opener-two-stage`（基準 main `3134c513`），本機實作完成、待獨立跨模型 review 與 Eric 產品／收費拍板；未 push、未部署、migration 未套 production。
+**狀態**: 🟢 產品決策已採用（Eric 2026-09-17 交辦即採用附件 §17：分析不扣、首次可交付生成扣一般 3／既有條件 0、一局共三組、24h 固定保存），**實作待驗收** — 分支 `opener-two-stage`（基準 main `3134c513`）；第一輪獨立複核 BLOCK 後已修正（見複核包 §8），待第二輪審查；未 push、未部署、migration 未套 production；部署與付費真模型評估皆未授權。
 
 **背景**: 現行 `mode: opener` 一次取得分析與五句，中間沒有讓用戶提供「他這次真正想聊什麼、他知道哪件截圖沒有的事」的停點；共鳴卡的第一人稱事實只認「關於我」風格設定，而 App 端 `buildForOpener` 固定回 null。附件《以用戶自己的想法為核心的完整實作報告》（2026-09-12）提出兩段式；Eric 2026-09-17 交辦實作並補充決策（見交辦第二節）。
 
@@ -1149,6 +1149,8 @@
 8. **交付邊界**：串流只送進度，可複製內容只隨 `*.done`；結算（保存＋首次扣費＋成功數）在同一交易。
 9. **回退**：`OPENER_TWO_STAGE_ENABLED=false` 只停新局（第一段 503 `OPENER_FLOW_UNAVAILABLE`），既有局第二段照常；DB 能力標記 `opener_flow_contract_version()` 未就緒同樣只擋新局；App 收到不支援時退回舊單段（只限尚未進入兩段式的局，不會偷偷改走舊單段丟掉原料或重算費用）。
 
-**未決／待驗**: 真模型成對評估（附件 §14.3，108 組新版＋36 組舊版）與 iPhone 驗收未執行；本 ADR 的收費時點與 24 小時保存是附件建議，等 Eric 拍板後才轉 Active。
+**未決／待驗**: 真模型成對評估（附件 §14.3）與 iPhone 驗收未執行；真並行 Postgres 交錯交易未驗（本機無可用角色）；部署與付費評估需另取授權。
+
+**第一輪獨立複核修正（2026-09-17，BLOCK→修正）**: R1 同局工作資格＝唯一有效租約（含既有 run 接手／續租）、settle 租約 fencing、release 改 `released` 保留輸入身分、上限在所有會發起模型工作的 claim 路徑檢查；R2 分析完成／生成送出前即落地（stage＋送出快照），重試沿用送出快照，cache 寫入綁定操作起點帳號；R3 assert_sender_fact 的標籤／statement／線索一致性、初稿指紋決定第一段方向文字是否沿用、displayNote 綁每張卡；R4 舊單段草稿在兩段式畫面可回看、300 字不靜默截斷；R5 格式修復＋內容修正共用一次額外機會、usage 累加；R6 評估控制組改原樣舊單段、Free／paid 投影分開、開關只擋新局不擋同 ID 重播。
 
 **驗證**: 見交辦複核包（`docs/reviews/2026-09-17-opener-two-stage-review-packet.md`）。

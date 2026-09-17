@@ -92,7 +92,8 @@ Commits（一 commit 一關注）：
 | `deno check`／`deno lint`（新檔） | 乾淨 | — |
 | `flutter analyze` | 1 issue（`test/widget/features/empty_home_paged_overflow_test.dart` unnecessary_import，main 既有，非本案） | `logs/flutter_analyze.log` |
 | `flutter test test/unit/features/opener` | 150 passed，exit 0 | `logs/flutter_test_opener.log` |
-| `flutter test`（全套） | 見 `logs/flutter_test_full.log` 與 `logs/flutter_test_full.exit` | 同左 |
+| `flutter test`（全套，fb40b62a） | 3857 passed，exit 0 | `logs/flutter_test_full.log` |
+| **修正後重跑**（新 head）：Deno analyze-chat／shared＋delete-account／opener Flutter（unit＋widget＋slop）／全套 Flutter／analyze | 見 `logs/r1_*`（各有 `.exit`） | 同左 |
 | `deno run … tools/opener-two-stage-eval/run.ts --tag=dry-run` | dry-run 完成：156 次呼叫預估 ≈ $4.2 | `logs/eval_dry_run_summary.md` |
 
 先紅後綠證據（測試先失敗、再改程式）：
@@ -118,9 +119,32 @@ Commits（一 commit 一關注）：
 4. 回退：設 `OPENER_TWO_STAGE_ENABLED=false`（只停新局，既有有效局仍可完成／取回）；或 App 端退回舊單段（自動）。表與 RPC 可留（無外部依賴），要徹底移除時 drop 兩表與六支 RPC＋unschedule cron。
 5. 環境變數：無新 secret；`OPENER_STREAM_ENABLED`（既有）控制串流；`OPENER_TWO_STAGE_ENABLED` 預設視為開啟。
 
+## 8. 第一輪獨立複核（BLOCK）修正對照 — 2026-09-17／18
+
+審查來源：ChatGPT 獨立交付包複核（`OPENER_R1_fb40b62a_REVIEW.md`，全文由 Eric 貼入會話；附件 ZIP 與 `probes/` 在本機找不到，reviewer 的純函式 probe 與 SQL 候選**未收到**，以下回歸是依審查描述自行寫的等價案例，不冒稱是 reviewer 已執行的結果）。修正基準 `fb40b62a`；新 head 見 ZIP `HEAD.txt`。
+
+| 項 | 缺口 | 先紅證據 | 修正 | 綠燈 |
+|---|---|---|---|---|
+| R1 P1 | 既有 run 接手不查同局其他有效工作／上限；settle 只比 owner；release 刪掉輸入身分 | `opener_two_stage_migration_postgres_test.ts` R1-a～R1-d 在 fb40b62a 版 4/4 FAILED（`logs/red_r1_sql.txt`） | migration：claim 對「新 ID／過期接手／released 重取」統一先查上限再查同局唯一有效租約，同 owner 有效租約才續租；settle 要求 run 租約仍有效且同局無其他有效租約（`OPENER_OPERATION_LEASE_EXPIRED`）；release 改 state=`released` 保留 input_hash／回答；Edge 對映新碼、E2E `runCount` 只算 pending/done | PG 22 綠（含 B08 改為斷言 released） |
+| R1 P2 真並行 | PGlite 單連線 | — | 未做（本機 Postgres 16 無可用角色、無 sudo） | **待驗**（真並行交錯交易） |
+| R2a P1 | 未完成操作只在記憶體；retry 用目前 draft | `opener_flow_controller_test.dart` R2a×3 在舊版無法編譯（API 不存在，型別紅） | `OpenerDraft.result` 可空、`OpenerDraftFlow` 加 stage／analysisRequestId／指紋／`pendingGeneration`；分析完成即落地、生成送出前落地送出快照；`restoreDraft`＋`resumePendingGeneration` 用原 generationId 取回；retry 沿用送出快照，`generate(fresh:true)` 才是新操作；同一份紀錄隨階段更新 | ctrl 18 綠、cache 4 綠 |
+| R2b P1 | saveDraft 內 `_saveDrafts→await→saveLatest` 重讀 owner | `opener_result_cache_owner_test.dart` 在 fb40b62a：A 的整份草稿清單被寫進 B 的 key（`logs/red_r2b_cache.txt`） | 所有跨 await 寫入以操作起點 owner 一路帶到 drafts／latest；新增 `updateDraft` 同樣綁定 | 綠 |
+| R3a P1 | 白名單類型≠statement 與題目一致 | `opener_stage_test.ts` R3a×2（舊版 API 型別紅） | `senderFactOptionConsistent`：標籤與 statement 不得含否定／轉向詞、statement 主體必須是本人（非我妹／朋友…）、與線索有字面重疊；不一致選項丟掉，剩不足兩個→零題 | 綠 |
+| R3b P1 | 刪初稿後衍生 summary 仍進第二段 | E2E「R3b」在舊 handler 不可編譯（新簽名）；語意等價的探針見 reviewer 描述 | 快照存初稿 FNV 指紋（不存原文）；`approachStillApplies`：只有目前補充與初稿相同才沿用 summary／avoid，否則第二段明說「初稿已修改，不採用」；分析 prompt 禁止 digest 寫入初稿內容 | E2E 綠（含「同初稿原封送回可沿用」對照） |
+| R3 P2 | displayNote 整包全域 | payload 測試改 `displayNotes` 後紅 | 每張卡自己的 `displayNotes`；投影只取最終可見 pick 且該卡有對得上的 reference；修正合併只換被標記卡的說明；整包 `displayNote` 不採用 | payload 7 綠 |
+| R4a P2 | 舊草稿在兩段式畫面看不到 | widget「R4a」 | `_legacyDraftView`：舊草稿結果在兩段式畫面可見、可複製回報、有提示、不觸發分析扣費；改資料即清 | 綠 |
+| R4b P2 | formatter 靜默截斷 | widget「R4b」×2、ctrl「R4b」 | 拿掉 `LengthLimitingTextInputFormatter`；超長保留原文、計數變紅＋錯誤、分析／生成禁用；controller 端也擋 | 綠（中文 300／emoji 301） |
+| R5 P2 | 修復＋修正各一次＝三次呼叫；usage 只記首次 | E2E「R5」在探針（預算=2）下 FAILED（`logs/red_r5_r6b.txt`） | `extraCallsRemaining=1` 共用；累加所有嘗試 usage，`usageComplete=false` 標示未知 | 綠 |
+| R6a P2 | 評估控制組注入 A、只 paid 投影、任一卡命中 | — | 控制組＝原樣舊單段（走舊 normalize＋tier 投影）；`--legacy-plus-a` 才跑附加實驗；Free／paid 投影分開、推薦採用只看該投影的可見推薦、備選另計；兩組樣本附初稿；未涵蓋項目明列 | dry-run 重估（`logs/r1_eval_dry_run_summary.md`） |
+| R6b P2 | 旗標在 claim 前擋掉既有分析重播 | E2E「R6b」在探針（旗標前置）下 FAILED（`logs/red_r5_r6b.txt`） | 旗標檢查移到 claim 之後：replay 照回；只有真的新局才 release＋503 | 綠 |
+
+本輪未動：舊 `mode: opener`、夜市已接受 P2、與本輪無關的重構。
+
 ## 7. 跨模型審查
 
-**狀態：未完成（阻塞，非自檢代替）。**
+**第一輪：BLOCK（ChatGPT 獨立複核，非 Codex CLI）→ 本輪修正完成，待第二輪審查。**
+
+原第一輪派審阻塞紀錄（保留）：
 
 - 2026-09-17 12:50Z `graph-control quota refresh-codex`（無模型呼叫的 App Server 預檢）：Codex 共用配額剩 **1%**（門檻 10%），依 routing-policy 不得派 `codex-primary`；`codex-secondary` 只在 primary 真正可用性／權益／用量失敗時才用，這裡是配額耗盡，不是本案可自行切換的情境。
 - Grok（`grok-primary`）與 GLM 5.3 為計費路線，需 Eric 對本 snapshot 明確授權（`work authorize-metered-provider` / cross-model-review 授權），本回合沒有。
