@@ -120,4 +120,20 @@ Commits（一 commit 一關注）：
 
 ## 7. 跨模型審查
 
-見 `docs/reviews/2026-09-17-opener-two-stage-review-packet.md` 末段「審查結果」（由 dual-brain-review 補上）。
+**狀態：未完成（阻塞，非自檢代替）。**
+
+- 2026-09-17 12:50Z `graph-control quota refresh-codex`（無模型呼叫的 App Server 預檢）：Codex 共用配額剩 **1%**（門檻 10%），依 routing-policy 不得派 `codex-primary`；`codex-secondary` 只在 primary 真正可用性／權益／用量失敗時才用，這裡是配額耗盡，不是本案可自行切換的情境。
+- Grok（`grok-primary`）與 GLM 5.3 為計費路線，需 Eric 對本 snapshot 明確授權（`work authorize-metered-provider` / cross-model-review 授權），本回合沒有。
+- 依全域政策：獨立 review 不可用時，R2 本機工作維持「已實作、已驗證、已 commit、**未審查**」，停在 push 之前；本案本來就停在待 review，不影響交付狀態。
+
+配額恢復或 Eric 授權後的派審指令（以本複核包的最終 head 為 snapshot；work-id 見 `HEAD.txt`／最終回報）：
+
+```
+APPDATA=/home/eric1/.local node ~/.claude/skills/graph-control-plane/scripts/graph-control.mjs quota refresh-codex
+APPDATA=/home/eric1/.local node ~/.claude/skills/graph-control-plane/scripts/graph-control.mjs review dispatch \
+  --project-root /home/eric1/worktrees/vibesync-opener-two-stage-20260917 --work-id <id> \
+  --active-host claude --round 1 \
+  --instructions "R2/R3：計費（settle 同交易、首次扣費、三組、重播）、Edge 合約與串流交付邊界、24h 保存與 RLS、原料檢核繞過、App 回退與帳號隔離；範圍＝base 3134c513..head diff；語意品質留待真模型盲審"
+```
+
+審查焦點建議（給主審）：settle RPC 的 RAISE→回滾語義；claim 的 session_busy／pending／takeover 對兩裝置；`OPENER_OPERATION_OWNER_MISMATCH` 在 settle 的不 release 處理；`serverEligibleForNoCharge` 是否可被補充文字影響；App 舊 Edge 偵測（400 無 code）是否會把真正的 400 誤判成不支援；草稿 flow 欄位在降級 Free 後的鎖卡投影（沿用 `visibleForAccess`）。
