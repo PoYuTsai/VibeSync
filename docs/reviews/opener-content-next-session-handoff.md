@@ -2,6 +2,21 @@
 
 > 本檔只交接，不改產品程式、不重跑全套、不跑付費模型。維持：不 push、不 PR、不 merge、不部署、不套 production migration、不觸發 workflow、不跑付費模型／付費 reviewer。
 
+## 0. 結案狀態（2026-09-18 晚間，最新；以下各節是歷史脈絡）
+
+- 產品候選：`d72820ce7fbca416b58b29d6f010b55dc64c7b30`（內容守門第七輪）；工具交付：`75fbf17f26d334d00e3a133490eb2cad50c2f842`（`tools/opener-repair-replay/`，只供驗收）。HEAD＝75fbf17f＋本檔 docs-only commit；產品檔相對 d72820ce 零 diff；工作樹乾淨。
+- 付費驗收全部結案：真模型確認跑 70 次 $1.26（tag `g1g2-d4824177-confirm`）＋一次內容修正 12 次 $0.3615（tag `repair-d72820ce`，Free 8／paid 4）。**不再重抽、不追加模型呼叫、不為 repair-01 提高 token 上限或加第二次修正。**
+- Reviewer 最終裁決（`opener-cc-final-repair-review-d72820ce.zip`，`review/REVIEW.md`）：**建議 `APPROVE_WITH_RISK — 僅限下一階段內部 iPhone 候選`**。不是原規格全文 PASS、不是一般用戶公開上線通過。**新增內測風險由 Eric 決定是否採納，尚未採納。**
+  - 已修好：家庭用品／妹妹腳痠／妹妹引語的指定捏造已在修正結果移除；咖啡四筆推薦已接住邀約目標。
+  - 未完全符合：海邊三筆把「猜她喜歡海邊」擴成用戶沒明示的邀約，且可見備選仍全是滑板；咖啡備選只同主題不同邀約目標（原規格「推薦＋至少一張可見備選」仍有缺口；這是 `checkMaterialAdoption` 一張即過＋修正只改標記卡的既有範圍，不是執行漏改）。
+  - repair-01（single-hook-dog A2 Free）保持未交付：stop_reason=max_tokens、2800 tokens、text 為空；失敗不交付不結算的設計可接受；完整 HTTP body 當時未存，原因不可事後補造。
+- 保留風險（reviewer 命名，供內測候選記錄）：R-CONTENT-INTENT（猜測被擴成輕邀約）、R-CONTENT-ALT（採用下限一張，備選未必接原料）、R-CONTENT-WORDING（同行家屬／看人臉色／成癮玩笑等用語）、R-REPAIR-AVAILABILITY（一次修正可能無可用文字，照契約不結算）。
+- 勘誤：`opener-repair-confirmation-d72820ce.zip/REPORT.md` 的「51／56 份未修正內容」應為 **55／59**（與 55＋8、59＋4 一致）；只改文案，原 ZIP 不重製、不重跑。
+- 統計的正確讀法：Free 62/63、paid 63/63 是「歷史初次輸出＋離線修正」的機器放行數，不是端到端實測，也不是內容通過率；12 筆中 1 筆未交付不能推成一般用戶失敗率。
+- 下一階段＝整合＋限定真機驗收，**需要 Eric 另行明確授權**。屆時走本 repo 的 PR、必要 CI 與正式 ruleset，不用 owner bypass；目前仍不 push、不 PR、不 merge、不部署、不套 production migration、不觸發 build／release、不另跑付費模型或 reviewer。
+- 隔離／放行能力（本輪唯讀核對，供決策）：Edge 只有全域旗標 `OPENER_TWO_STAGE_ENABLED`（`opener_flow_handler.ts` 第 374 行，`=false` 只擋新局），**沒有帳號白名單**；`accountIsTest` 只影響扣額與限流，不是放行。App 端沒有旗標，裝了新版 client 的帳號就會走兩段式，舊版 client 走舊單段（Edge 收到舊請求仍走舊路徑）。所以「限定內測」實際上只能靠 TestFlight build 的發放範圍限制 client，Edge 一旦部署就是全域可達；要真正只對內測帳號開放需另做帳號級放行，本輪未做、也不在授權內。
+- 工程、PostgreSQL、Flutter、保存佇列、已接受 P2 全部不重開。
+
 ## 1. 目前狀態（交接當下核對）
 
 - worktree：`/home/eric1/worktrees/vibesync-opener-two-stage-20260917`
