@@ -153,6 +153,9 @@ function rawSet(freeText: string) {
 function codes(openers: Record<string, string>, set: ReturnType<typeof rawSet>, snapshot = SNAPSHOT) {
   return hardFlags(checkOpenersAgainstMaterials(openers, set, snapshot)).map((f) => `${f.style}:${f.code}`);
 }
+function softCodes(openers: Record<string, string>, set: ReturnType<typeof rawSet>, snapshot = SNAPSHOT) {
+  return checkOpenersAgainstMaterials(openers, set, snapshot).filter((f) => f.severity === "soft").map((f) => `${f.style}:${f.code}`);
+}
 
 Deno.test("第五輪 B：「柴犬：我養妳不是讓妳摸的」是代言不是自述；「我懂」只是共感", () => {
   const skipped = buildOpenerMaterials({ snapshot: SNAPSHOT, contribution: { state: "skipped", questionId: null, selectedOptionId: null, freeText: null }, option: null });
@@ -181,13 +184,17 @@ Deno.test("第五輪 B：「不聊工作」延伸到自介裡的職業線索（�
 
 Deno.test("第五輪 A：用戶經歷寫進沒有「我」的句子＝套到她身上；用「我」說就合法", () => {
   const set = rawSet("我對打鼓有興趣，我玩過三年樂團");
-  assertEquals(codes({ extend: "玩三年樂團才想學打鼓喔" }, set), ["extend:sender_fact_transposed"]);
+  // 第七輪分級：沒有主體的省略句只標 soft（主體不清）；明確問她／以她為主體才是 hard。
+  assertEquals(codes({ extend: "玩三年樂團才想學打鼓喔" }, set), []);
+  assertEquals(softCodes({ extend: "玩三年樂團才想學打鼓喔" }, set), ["extend:sender_fact_subject_unclear"]);
+  assertEquals(codes({ extend: "玩三年樂團after還打鼓不累嗎" }, set), ["extend:sender_fact_transposed"], "問人的問句＝在問她");
+  assertEquals(codes({ extend: "妳玩過三年樂團才來打鼓喔" }, set), ["extend:sender_fact_transposed"]);
   assertEquals(codes({ extend: "我玩過三年樂團 妳打鼓多久了" }, set), []);
 });
 
 Deno.test("第五輪 A：家人只給職業，卡片替家人加引語＝捏造；沒有引語不算", () => {
   const set = rawSet("我妹也是美容師");
-  assertEquals(codes({ resonate: "常聽我妹說美容師很燒體力" }, set), ["resonate:relative_quote_fabricated"]);
+  assertEquals(codes({ resonate: "常聽我妹說美容師很燒體力" }, set), ["resonate:relative_quote_fabricated", "resonate:relative_fact_extended"]);
   assertEquals(codes({ extend: "我妹也是美容師 妳們平常都站著上班嗎" }, set), []);
 });
 
@@ -280,7 +287,8 @@ Deno.test("G1：「我不想約她，先聊咖啡」→ 不要求邀約，聊咖
 Deno.test("G2：「我以前在寵物店打工過，妳也在寵物店待過嗎」是問她、語者自持；沒有「我」的斷言仍是套到她身上", () => {
   const set = rawSet("我自己以前在寵物店打工過，現在沒有了");
   assertEquals(codes({ humor: "我以前在寵物店打工過，妳也在寵物店待過嗎？" }, set), []);
-  assertEquals(codes({ extend: "在寵物店打工過才想當獸醫助理喔" }, set), ["extend:sender_fact_transposed"]);
+  assertEquals(codes({ extend: "妳在寵物店打工過才想當獸醫助理喔" }, set), ["extend:sender_fact_transposed"]);
+  assertEquals(softCodes({ extend: "在寵物店打工過才想當獸醫助理喔" }, set), ["extend:sender_fact_subject_unclear"], "省略主詞只標 soft");
   assertEquals(codes({ extend: "妳也在寵物店打工過三年嗎" }, set), ["extend:sender_fact_transposed"], "沒有用「我」先說出來，不能只靠問句放行");
 });
 
@@ -306,4 +314,46 @@ Deno.test("G2：「順帶一提：我也養狗」不能因冒號放行；柴犬�
   assertEquals(codes({ resonate: "順帶一提：我也養狗" }, skipped, DOG_SNAPSHOT), ["resonate:fabricated_sender_fact"]);
   assertEquals(codes({ humor: "柴犬：我養妳不是讓妳摸的", tease: "柴犬說：「我不是給你摸的」", extend: "牠的表情像在說「我也養人」", coldRead: "妳家那隻不給摸的柴犬：我只是高冷" }, skipped, DOG_SNAPSHOT), []);
   assertEquals(codes({ coldRead: "「我也養狗」這句我先收回" }, skipped, DOG_SNAPSHOT), ["coldRead:fabricated_sender_fact"]);
+});
+
+// ── 第七輪（真模型確認跑 reviewer 裁定）：無來源家庭敘事／共同習慣；旗標分級；線索錨字採用。
+Deno.test("第七輪：家人只給職業，卡片替家人或自家補情境＝relative_fact_extended；改寫職業本身、問她、假設語氣不算", () => {
+  const set = rawSet("我妹也是美容師");
+  assertEquals(codes({ humor: "我妹是美容師 家裡保養品多到可以開店" }, set), ["humor:relative_fact_extended"]);
+  assertEquals(codes({ resonate: "美容師應該很常站著吧 我妹回家都喊腳痠" }, set), ["resonate:relative_fact_extended"]);
+  assertEquals(codes({ extend: "我妹也是美容師耶 妳都做哪些項目啊", humor: "我妹也做美容 妳們該不會其實是同事", tease: "我妹是美容師 手應該沒妳巧啦", coldRead: "我妹也是美容師 難怪我對這行有點好奇" }, set), []);
+  assertEquals(codes({ extend: "妳家裡保養品應該也很多吧" }, set), [], "她家的不算自家");
+});
+
+Deno.test("第七輪：「我妹聽了應該會說」是假設不是引語→soft；「她說最怕」仍是 hard", () => {
+  const set = rawSet("我妹下班完全不想聊工作，我猜她也是");
+  assertEquals(codes({ humor: "下班只想睡 我妹聽了應該會說找到同類" }, set), []);
+  assert(softCodes({ humor: "下班只想睡 我妹聽了應該會說找到同類" }, set).includes("humor:relative_quote_fabricated"));
+  assertEquals(codes({ tease: "我妹也是美容師 她說最怕遇到很難搞的客人" }, rawSet("我妹也是美容師")), ["tease:relative_quote_fabricated"]);
+});
+
+Deno.test("第七輪：把自己寫成同類（同是…派／握個手）：有原文→soft 來源邊界；沒有任何自述來源→hard 捏造", () => {
+  const set = rawSet("我妹下班完全不想聊工作，我猜她也是");
+  assertEquals(codes({ humor: "同是收工就秒斷電派的，握個手" }, set), []);
+  assertEquals(softCodes({ humor: "同是收工就秒斷電派的，握個手" }, set), ["humor:shared_trait_unsourced"]);
+  assertEquals(softCodes({ resonate: "忙完一天只想耍廢，那種感覺我懂" }, set), [], "「我懂」只是共感");
+  const skipped = buildOpenerMaterials({ snapshot: SNAPSHOT, contribution: { state: "skipped", questionId: null, selectedOptionId: null, freeText: null }, option: null });
+  assertEquals(codes({ humor: "同是週末河堤派的 握個手" }, skipped), ["humor:fabricated_sender_fact"]);
+});
+
+Deno.test("第七輪：「興趣應該是挑我的痘吧」是保守玩笑邊界→soft；「我的狗也這樣」碰線索仍 hard", () => {
+  const skipped = buildOpenerMaterials({ snapshot: SNAPSHOT, contribution: { state: "skipped", questionId: null, selectedOptionId: null, freeText: null }, option: null });
+  assertEquals(codes({ humor: "職業是美容師 興趣應該是挑我的痘吧" }, skipped), []);
+  assertEquals(softCodes({ humor: "職業是美容師 興趣應該是挑我的痘吧" }, skipped), ["humor:fabricated_sender_fact"]);
+  assertEquals(codes({ humor: "我的狗應該也會這樣吧" }, skipped), ["humor:fabricated_sender_fact"]);
+  assertEquals(codes({ humor: "我也是美容師吧" }, skipped), ["humor:fabricated_sender_fact"], "「我也」不是只有「我的」");
+});
+
+Deno.test("第七輪：用戶點名她的貓，卡片寫「貓咪」也算接住（線索錨字）；沒點名的線索不算", () => {
+  const catSnapshot = { ...SNAPSHOT, cues: [{ id: "cue_1", label: "晚上打鼓", source: "profile_text" as const, subject: "recipient" as const }, { id: "cue_3", label: "家裡的貓", source: "profile_text" as const, subject: "recipient" as const }] };
+  const set = buildOpenerMaterials({ snapshot: catSnapshot, contribution: answered(null, "我對她的貓比較有興趣，我沒養過貓"), option: null });
+  assertEquals(cardAdoptsMaterial("貓咪比妳早睡也太可愛 妳們是幾點各自熄燈", set), true);
+  assertEquals(cardAdoptsMaterial("晚上打鼓不會吵到鄰居嗎", set), false, "打鼓不是他點名的線索");
+  const skateSet = buildOpenerMaterials({ snapshot: { ...SNAPSHOT, cues: [{ id: "cue_1", label: "河堤練滑板", source: "profile_text" as const, subject: "recipient" as const }] }, contribution: answered(null, "我猜她應該喜歡海邊，不確定"), option: null });
+  assertEquals(cardAdoptsMaterial("河堤練滑板都練多久了", skateSet), false, "猜海邊沒被接住，聊滑板不算");
 });

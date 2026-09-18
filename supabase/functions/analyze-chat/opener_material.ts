@@ -49,6 +49,8 @@ export interface OpenerMaterialSet {
   senderFactAllowed: boolean;
   /** 用戶選「其實想聊別的」→ 第一段方向被覆蓋成另開話題。 */
   directionOverride: "fresh_topic" | null;
+  /** 本局線索標籤：用戶原文點名的線索（她的貓）在卡片裡被接到，就算採用（第七輪 F051）。 */
+  cueLabels: string[];
 }
 
 const NO_PREFERENCE_RE = /^(不知道|不清楚|都可以|都行|都好|隨便|沒想法|沒有想法|還沒想好|沒差|沒有特別想聊的|沒特別想法|你決定|看你)[。！!～~\s]*$/u;
@@ -247,6 +249,7 @@ export function buildOpenerMaterials(input: {
     hasEffectiveMaterial,
     senderFactAllowed,
     directionOverride,
+    cueLabels: snapshot.cues.map((cue) => cue.label),
   };
 }
 
@@ -274,6 +277,9 @@ export interface OpenerQualityFlag {
     | "sender_fact_transposed"
     | "sender_fact_extended"
     | "relative_quote_fabricated"
+    | "relative_fact_extended"
+    | "shared_trait_unsourced"
+    | "sender_fact_subject_unclear"
     | "certainty_upgraded"
     | "profile_fact_reversed"
     | "material_unused"
@@ -382,6 +388,22 @@ function isQuestionClause(clause: string): boolean {
 function addressesRecipient(clause: string): boolean {
   return /(妳|你|她)/u.test(clause);
 }
+/** 假設語氣：「我妹聽了應該會說」不是已發生的引語；「應該是…吧」不是已發生的事（第七輪 F058／F042）。 */
+const HYPOTHETICAL_RE = /(應該會|大概會|可能會|一定會|肯定會|聽了會|如果|要是|會不會|應該是|大概是|搞不好|說不定)/u;
+/** 卡片裡指用戶自家的字眼（她家的用「妳家」，不算）。 */
+const SENDER_HOUSEHOLD_RE = /(?<![妳你她])(家裡|我家|我們家)/u;
+/** 把自己寫成跟她同一種人：比「我懂」多承諾了一項本人習慣（第七輪 F049）。 */
+const SHARED_TRAIT_RE = /(同是|同為|同樣是|同類|同道中人|同一掛|跟妳一樣|和妳一樣|我們都|握個手)/u;
+const PARTICLE_RE = /[耶欸啦吧喔啊呢嗎齁吼囉呀哦嘛～]/gu;
+/** 子句裡用戶原文沒有的內容字（去助詞、功能字）：家人／自家子句多出兩個以上就是新增情境。 */
+function novelContentChars(clause: string, userText: string): string {
+  const out: string[] = [];
+  for (const ch of clause.replace(PARTICLE_RE, "")) {
+    if (!/[一-鿿]/u.test(ch) || FUNCTION_CHARS.includes(ch) || userText.includes(ch) || out.includes(ch)) continue;
+    out.push(ch);
+  }
+  return out.join("");
+}
 const EXPERIENCE_RE = /(過|年|以前|曾|打工|學過|玩過|做過|養了|養過|待過|住過|去過|當過)/u;
 const SENSITIVE_SELF_FACT_RE = /(過敏|生病|受傷|住院|開刀|離婚|分手|失業|負債|懷孕|憂鬱|焦慮症)/u;
 const FUNCTION_CHARS = "的了過在是有也都很就還沒不對跟和與把被讓從到得著呢吧啊嗎我妳你她他牠們這那個";
@@ -468,18 +490,38 @@ function hasGoal(m: OpenerMaterial): boolean {
   return m.origin === "user_text" && GOAL_RE.test(stripNegatedGoal(m.originalText));
 }
 
-/** 原料裡「正向內容」的雙字片段：去掉主體、被否定的經歷與排除語，純否定／純排除的原料沒有正向片段。 */
-function positiveMaterialBigrams(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
+/** 原料的「正向內容」：去掉主體、被否定的經歷、排除語與被否定的目標；純否定／純排除的原料沒有正向內容。 */
+function positiveMaterialSource(m: OpenerMaterial, set: OpenerMaterialSet): string {
   // 排除型原料（不想聊 X／都沒興趣）只有 exclude 用途：遵守就是採用，沒有要被接住的正向內容。
-  if (m.allowedUse.every((use) => use === "exclude")) return [];
+  if (m.allowedUse.every((use) => use === "exclude")) return "";
   let source = m.originalText.replace(/^(想聊：|對「|」有興趣，但沒有相關經驗)/gu, "");
   if (m.origin === "user_text") {
     source = stripNegatedGoal(source).replace(EXCLUSION_RE, "");
     for (const fact of set.negatedFacts) source = source.replace(fact, "");
     source = source.replace(/(沒有|沒|不曾|未|從來沒|從沒|還沒|不想|不要|別|不用|不必)/gu, "");
   }
-  source = source.replace(/我(妹|哥|姐|弟|媽|爸|朋友|同事|室友)?|她|妳|你|自己/gu, "");
-  return contentBigrams(source);
+  return source.replace(/我(妹|哥|姐|弟|媽|爸|朋友|同事|室友)?|她|妳|你|自己/gu, "");
+}
+function positiveMaterialBigrams(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
+  return contentBigrams(positiveMaterialSource(m, set));
+}
+/** 線索錨字太泛的字（家裡／晚上／最近）不當錨。 */
+const GENERIC_ANCHOR_CHARS = "家裡上下晚早最近在學想去做玩看聊人事很有沒不好想的";
+/**
+ * 線索錨字：用戶原文點名了本局某個線索的本體（「她的貓」對線索「家裡的貓」→「貓」），
+ * 卡片提到這個本體就是接住原料，不必雙字逐字對上（「貓咪比妳早睡」也算；第七輪 F051）。
+ */
+function cueAnchorChars(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
+  if (m.origin !== "user_text") return [];
+  const source = positiveMaterialSource(m, set);
+  const out: string[] = [];
+  for (const label of set.cueLabels) {
+    for (const ch of label) {
+      if (!/[一-鿿]/u.test(ch) || FUNCTION_CHARS.includes(ch) || GENERIC_ANCHOR_CHARS.includes(ch)) continue;
+      if (source.includes(ch) && !out.includes(ch)) out.push(ch);
+    }
+  }
+  return out;
 }
 
 /** 這張卡有沒有實際用到用戶本次的原料（內容證據，不看模型自稱的 references）。 */
@@ -491,6 +533,7 @@ export function cardAdoptsMaterial(text: string, set: OpenerMaterialSet): boolea
       continue;
     }
     for (const bg of positiveMaterialBigrams(m, set)) if (text.includes(bg)) return true;
+    for (const ch of cueAnchorChars(m, set)) if (text.includes(ch)) return true;
   }
   return false;
 }
@@ -547,7 +590,15 @@ export function checkOpenersAgainstMaterials(
     // 冒號／引號後的代言（柴犬：我養妳…）不算本人自述（第五輪 P080）。
     const selfText = stripAttributedSpeech(text);
     if (!set.senderFactAllowed && FIRST_PERSON_FACT_RE.test(selfText)) {
-      flags.push({ code: "fabricated_sender_fact", severity: "hard", style });
+      // 「興趣應該是挑我的痘吧」：只有「我的」＋假設玩笑、又不碰本局線索＝保守邊界，不當確定捏造（第七輪 F042）。
+      const hitClause = clausesOf(selfText).find((c) => FIRST_PERSON_FACT_RE.test(c)) ?? selfText;
+      const possessiveJoke = !FIRST_PERSON_FACT_RE.test(hitClause.replace(/我的/gu, "")) && HYPOTHETICAL_RE.test(hitClause) &&
+        !set.cueLabels.some((label) => topicMentioned(hitClause, label));
+      flags.push({ code: "fabricated_sender_fact", severity: possessiveJoke ? "soft" : "hard", style, detail: possessiveJoke ? "possessive_joke" : undefined });
+    }
+    // 沒有任何自述來源時，「同是…派／握個手」等於「我也是」：仍是捏造自述（沒有「我」字也算）。
+    if (!set.senderFactAllowed && SHARED_TRAIT_RE.test(selfText)) {
+      flags.push({ code: "fabricated_sender_fact", severity: "hard", style, detail: "shared_trait" });
     }
     // 選了「沒有經驗」的線索，句子卻是「我也養狗／我家的狗」：不論有沒有其他原文都算捏造。
     for (const topic of set.noExperienceTopics) {
@@ -569,12 +620,17 @@ export function checkOpenersAgainstMaterials(
     }
     // 用戶自己的經歷（年數／曾做過）出現在沒有「我」的句子裡＝被套到她身上（P038／P070）。
     // 例外只有一種：同一張卡已用「我」說出這段經歷，再用「妳也…嗎」問她有沒有同樣經驗（語者自持、主體是她）。
+    // 分級（第七輪 F040／F055）：子句明確以她為主體、或本身是在問人的問句（「還打鼓不累嗎」）＝確定套到她身上（hard）；
+    // 沒有任何主體的「玩過三年樂團 …」是中文省略本人主詞的讀法，只標主體不清（soft），不冒稱已證實人物對調。
     for (const clause of clauses) {
       const hit = experienceBigrams.find((bg) => clause.includes(bg));
       if (!hit || /我/u.test(clause)) continue;
       const speakerOwns = clauses.some((c) => /我/u.test(c) && c.includes(hit));
       if (speakerOwns && addressesRecipient(clause) && isQuestionClause(clause)) continue;
-      flags.push({ code: "sender_fact_transposed", severity: "hard", style, detail: hit });
+      const certain = addressesRecipient(clause) || isQuestionClause(clause);
+      flags.push(certain
+        ? { code: "sender_fact_transposed", severity: "hard", style, detail: hit }
+        : { code: "sender_fact_subject_unclear", severity: "soft", style, detail: hit });
       break;
     }
     // 自述被加上用戶沒說的健康／人生事件（P018「現在只剩回憶跟過敏」）。
@@ -582,9 +638,32 @@ export function checkOpenersAgainstMaterials(
     if (sensitive && !userText.includes(sensitive) && !/(妳|她|你)/u.test(clausesOf(text).find((c) => c.includes(sensitive)) ?? "")) {
       flags.push({ code: "sender_fact_extended", severity: "hard", style, detail: sensitive });
     }
-    // 家人只提供了職業／狀態，卡片卻替他們加上說過的話（P009／P022）。
+    // 家人只提供了職業／狀態，卡片卻替他們加上說過的話（P009／P022）；
+    // 「我妹聽了應該會說」是假設未來的反應，不是已發生的引語 → soft（第七輪 F058）。
     if (userHasRelative && !userHasSpeech && RELATIVE_RE.test(text) && SPEECH_RE.test(text)) {
-      flags.push({ code: "relative_quote_fabricated", severity: "hard", style, detail: text.match(SPEECH_RE)?.[0] });
+      const speechClause = clauses.find((c) => RELATIVE_RE.test(c) && SPEECH_RE.test(c)) ?? text;
+      flags.push({ code: "relative_quote_fabricated", severity: HYPOTHETICAL_RE.test(speechClause) ? "soft" : "hard", style, detail: text.match(SPEECH_RE)?.[0] });
+    }
+    // 家人／自家的子句多出用戶沒說的情境（「家裡保養品多到可以開店」「我妹回家都喊腳痠」）＝替家人加敘事（第七輪 F039／F003）。
+    // 只看內容字是否出自用戶原文，不按個別詞加黑名單；假設語氣、以她為主體的子句不算。
+    if (userHasRelative) {
+      for (const clause of clauses) {
+        if (!(RELATIVE_RE.test(clause) || SENDER_HOUSEHOLD_RE.test(clause))) continue;
+        // 只豁免第二人稱「妳／你」的子句；卡片裡的「她」通常指家人本人（「家裡都是她帶回來的」仍是補情境）。
+        if (/(妳|你)/u.test(clause) || HYPOTHETICAL_RE.test(clause)) continue;
+        const novel = novelContentChars(clause, userText);
+        if (novel.length >= 2) {
+          flags.push({ code: "relative_fact_extended", severity: "hard", style, detail: novel });
+          break;
+        }
+      }
+    }
+    // 有用戶原文、但把自己寫成跟她同一種人（「同是收工就秒斷電派的」）：原文沒有這項本人習慣＝來源邊界，
+    // 只記 soft 不擋（比「我懂」多承諾一項，但不是職業／健康／經歷級的捏造；第七輪 F049）。
+    if (set.senderFactAllowed && SHARED_TRAIT_RE.test(selfText)) {
+      const traitClause = clauses.find((c) => SHARED_TRAIT_RE.test(c)) ?? selfText;
+      const novel = novelContentChars(traitClause.replace(SHARED_TRAIT_RE, ""), userText);
+      if (novel.length >= 2) flags.push({ code: "shared_trait_unsourced", severity: "soft", style, detail: novel });
     }
     // 「提過想去、還沒訂」被寫成「說好要訂」（P052）；「已經訂好了嗎」是在問、不是在說（G2）。
     if (userHedged) {

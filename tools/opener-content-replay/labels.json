@@ -1,12 +1,12 @@
 {
-  "_note": "第五輪驗收 reviewer 的離線標籤（Eric 2026-09-18 貼入；reviewer 未執行任何 handler 測試）。expect_flag：該卡必須有 hard flag；expect_clean：該卡不得有 hard flag；adoption：miss→可見推薦不得無原料（要 material_unused 或改推薦到有證據的卡）、partial→paid 推薦必須是有證據的卡、clear→不得誤判 material_unused。未列的卡只回報不斷言。adoption=exempt：純排除／否定型補充（不想聊 X／都沒興趣／不想約），遵守就是採用，只斷言不得 material_unused。synthetic-* 是 2026-09-18 G1/G2 合成正反例（snapshot 取自捕獲檔、openers 本輪撰寫），不是模型捕獲。",
+  "_note": "第五輪驗收 reviewer 的離線標籤（Eric 2026-09-18 貼入；reviewer 未執行任何 handler 測試）。expect_flag：該卡必須有 hard flag；expect_clean：該卡不得有 hard flag；adoption：miss→可見推薦不得無原料（要 material_unused 或改推薦到有證據的卡）、partial→paid 推薦必須是有證據的卡、clear→不得誤判 material_unused。未列的卡只回報不斷言。adoption=exempt：純排除／否定型補充（不想聊 X／都沒興趣／不想約），遵守就是採用，只斷言不得 material_unused。synthetic-* 是 2026-09-18 G1/G2 合成正反例（snapshot 取自捕獲檔、openers 本輪撰寫），不是模型捕獲。expect_soft：該卡必須是 soft（不得 hard）。captured-r7-* 是 2026-09-18 真模型確認跑捕獲＋reviewer 裁定（第七輪）。",
   "cases": [
     {"id":"P009","source":"filter-heavy.A.1.json","expect_flag":{"humor":"新增妹妹反覆批評保養的過往互動"},"adoption":"clear"},
     {"id":"P018","source":"family-fact.B.2.json","expect_flag":{"humor":"新增目前過敏病況（原句只有曾在寵物店打工）"},"adoption":"partial"},
     {"id":"P022","source":"filter-heavy.A.2.json","expect_flag":{"resonate":"新增妹妹曾反覆說的話"},"adoption":"clear"},
-    {"id":"P038","source":"multi-hook.A.3.json","expect_flag":{"extend":"三年樂團經歷放進對對方的問句"},"adoption":"miss"},
+    {"id":"P038","source":"multi-hook.A.3.json","expect_flag":{"extend":"「玩三年樂團after還打鼓不累嗎」是在問她＝套到她身上"},"adoption":"miss"},
     {"id":"P052","source":"she-said-vs-guess.A.1.json","expect_flag":{"tease":"提過想去、還沒訂 → 說好要訂"},"adoption":"miss"},
-    {"id":"P070","source":"multi-hook.A.2.json","expect_flag":{"extend":"樂團經歷改成對方三年後才想學鼓"},"adoption":"miss"},
+    {"id":"P070","source":"multi-hook.A.2.json","expect_flag":{},"expect_soft":{"extend":"「玩三年樂團才想學打鼓喔」省略主詞，第七輪裁定只標主體不清、不冒稱人物對調"},"adoption":"miss"},
     {"id":"P123","source":"multi-hook.B.1.json","expect_flag":{"humor":"自介明說貓比她早睡，備選改成晚睡","extend":"推薦忽略自介已知的相反資訊"},"adoption":"partial"},
     {"id":"P003","source":"filter-heavy.B.3.json","expect_flag":{"tease":"明說不聊工作，備選以美容師職業開話題"},"adoption":"clear"},
     {"id":"P140","source":"filter-heavy.B.2.json","expect_flag":{"tease":"明說不聊工作，備選仍以職業開話題"},"adoption":"clear"},
@@ -31,9 +31,18 @@
     {"id":"G1-01","source":"synthetic-G1-exclude-dog.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"exempt","note":"選「不想聊狗」後改聊週末／晚餐不得 material_unused"},
     {"id":"G1-02","source":"synthetic-G1-fresh-topic.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"exempt","note":"選「都沒興趣、聊別的」後合法新話題不得 material_unused"},
     {"id":"G1-03","source":"synthetic-G1-no-invite.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear","note":"「我不想約她，先聊咖啡」不得被要求邀約；聊咖啡就是採用"},
-    {"id":"G2-01","source":"synthetic-G2-petshop.json","expect_flag":{"extend":"用戶的寵物店經歷寫進沒有「我」的斷言"},"expect_clean":["humor","resonate","tease","coldRead"],"adoption":"clear","note":"「我以前在寵物店打工過，妳也在寵物店待過嗎？」語者自持＋問她"},
+    {"id":"G2-01","source":"synthetic-G2-petshop.json","expect_flag":{},"expect_soft":{"extend":"「在寵物店打工過才想當獸醫助理喔」省略主詞→第七輪改標主體不清"},"expect_clean":["humor","resonate","tease","coldRead"],"adoption":"clear","note":"「我以前在寵物店打工過，妳也在寵物店待過嗎？」語者自持＋問她"},
     {"id":"G2-02","source":"synthetic-G2-okinawa.json","expect_flag":{"extend":"「已經訂好沖繩了」陳述＝升級","humor":"「說好要訂」預設她承諾過"},"expect_clean":["tease","resonate","coldRead"],"adoption":"clear","note":"「沖繩機票已經訂好了嗎？」是在問"},
     {"id":"G2-03","source":"synthetic-G2-cat.json","expect_flag":{"extend":"你家貓比你晚睡＝貓被寫成晚睡","tease":"晚睡的貓"},"expect_clean":["humor","resonate","coldRead"],"adoption":null,"note":"「妳比貓晚睡」與自介「貓比我早睡」是同一件事；「沒養過貓的人」不是套經歷"},
+    {"id":"R7-F039","source":"captured-r7-filter-heavy.A.1.json","expect_flag":{"humor":"家裡保養品多到可以開店＝替家人／自家補情境"},"expect_clean":["extend","resonate","tease","coldRead"],"adoption":"clear"},
+    {"id":"R7-F049","source":"captured-r7-family-fact.A.1.json","expect_flag":{},"expect_soft":{"humor":"同是收工就秒斷電派＝無來源共同習慣，來源邊界"},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"R7-F003","source":"captured-r7-filter-heavy.A.3.json","expect_flag":{"tease":"她說最怕＝捏造引語","resonate":"我妹回家都喊腳痠＝替家人補狀況"},"expect_clean":["extend","humor","coldRead"],"adoption":"clear"},
+    {"id":"R7-F040","source":"captured-r7-multi-hook.A.3.json","expect_flag":{},"expect_soft":{"extend":"玩過三年樂團 妳打鼓多久了＝省略主詞"},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"R7-F055","source":"captured-r7-multi-hook.A.2.json","expect_flag":{},"expect_soft":{"extend":"玩過三年樂團才想聊打鼓＝主詞不清"},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"R7-F058","source":"captured-r7-family-fact.A.3.json","expect_flag":{},"expect_soft":{"humor":"我妹聽了應該會說＝假設不是引語"},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"R7-F042","source":"captured-r7-filter-heavy.skip.2.json","expect_flag":{},"expect_soft":{"humor":"興趣應該是挑我的痘吧＝保守玩笑邊界"},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":null},
+    {"id":"R7-F051","source":"captured-r7-multi-hook.B.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear","note":"貓咪比妳早睡＝接住貓的好奇，Free 不得 material_unused"},
+    {"id":"R7-GOAL","source":"captured-r7-goal-not-consent.A.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"miss","note":"想約沒邀約：Free／paid 都要 material_unused（進修正），不改成假成功"},
     {"id":"G2-04","source":"synthetic-G2-colon.json","expect_flag":{"resonate":"「順帶一提：」不是代言，冒號不放行"},"expect_clean":["extend","tease","humor","coldRead"],"adoption":null,"note":"柴犬／牠說的才是代言"}
   ]
 }

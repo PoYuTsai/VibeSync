@@ -16,7 +16,7 @@ import { OPENER_FREE_V2_TYPES, OPENER_TYPES, type OpenerType } from "../../supab
 const outDir = Deno.args.find((a) => a.startsWith("--out="))?.slice(6) ?? "tools/opener-content-replay/out";
 await Deno.mkdir(outDir, { recursive: true });
 const labels = JSON.parse(await Deno.readTextFile(new URL("./labels.json", import.meta.url))) as {
-  cases: Array<{ id: string; source: string; expect_flag: Record<string, string>; expect_clean?: string[]; adoption: "miss" | "partial" | "clear" | "exempt" | null; note?: string; informational?: Record<string, string> }>;
+  cases: Array<{ id: string; source: string; expect_flag: Record<string, string>; expect_clean?: string[]; expect_soft?: Record<string, string>; adoption: "miss" | "partial" | "clear" | "exempt" | null; note?: string; informational?: Record<string, string> }>;
 };
 // 修正後才有的正式入口（採用檢查／證據判定）；不存在時就是紅燈，不在 harness 自己實作替身。
 const mod = material as unknown as Record<string, unknown>;
@@ -40,10 +40,17 @@ for (const c of labels.cases) {
   lines.push(`## ${c.id}（${c.source}）adoption=${c.adoption ?? "—"}${c.note ? `；${c.note}` : ""}`);
   if (!normalized.ok) { lines.push(`- 格式無法正規化：${normalized.reason}`, ""); add(c.id, "normalize", false, normalized.reason); continue; }
   const openers = normalized.value.openers;
-  const baseFlags = material.hardFlags(material.checkOpenersAgainstMaterials(openers, materials, fx.snapshot));
+  const allFlags = material.checkOpenersAgainstMaterials(openers, materials, fx.snapshot);
+  const baseFlags = material.hardFlags(allFlags);
+  const soft = new Map<string, string[]>();
+  for (const f of allFlags.filter((f) => f.severity === "soft")) soft.set(f.style ?? "?", [...(soft.get(f.style ?? "?") ?? []), `${f.code}${f.detail ? `(${f.detail})` : ""}`]);
   const flagged = new Map<string, string[]>();
   for (const f of baseFlags) flagged.set(f.style ?? "?", [...(flagged.get(f.style ?? "?") ?? []), `${f.code}${f.detail ? `(${f.detail})` : ""}`]);
-  lines.push(`- 硬檢查：${[...flagged.entries()].map(([s, v]) => `${s}=${v.join("+")}`).join("、") || "無"}`);
+  lines.push(`- 硬檢查：${[...flagged.entries()].map(([s, v]) => `${s}=${v.join("+")}`).join("、") || "無"}；soft：${[...soft.entries()].map(([s, v]) => `${s}=${v.join("+")}`).join("、") || "無"}`);
+  for (const [style, why] of Object.entries(c.expect_soft ?? {})) {
+    const ok = soft.has(style) && !flagged.has(style);
+    add(c.id, `expect_soft:${style}`, ok, ok ? soft.get(style)!.join("+") : `應為 soft（${why}）；hard=${flagged.get(style)?.join("+") ?? "無"} soft=${soft.get(style)?.join("+") ?? "無"}`);
+  }
   for (const [style, why] of Object.entries(c.expect_flag)) {
     const ok = flagged.has(style);
     add(c.id, `expect_flag:${style}`, ok, ok ? flagged.get(style)!.join("+") : `未抓到（${why}）`);

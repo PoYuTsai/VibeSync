@@ -844,3 +844,121 @@ Deno.test("G2（handler）：良性對照（已經訂好了嗎）直接交付不
     await h.db.close();
   }
 });
+
+// ── 第七輪：用真模型確認跑捕獲的 raw（tag g1g2-d4824177-confirm）補驗正式一次內容修正路徑。
+//    scripted 模型只驗管線（呼叫數、交付、結算、不扣費），修正後的品質要新模型輸出才算。
+interface CapturedFixture { profileInfo: Record<string, unknown>; contribution: Record<string, unknown>; raw: string; analyzeRaw: string }
+async function captured(name: string): Promise<CapturedFixture> {
+  return JSON.parse(await Deno.readTextFile(new URL(`../../../tools/opener-content-replay/fixtures/captured-r7-${name}.json`, import.meta.url))) as CapturedFixture;
+}
+function generateCalls(h: Harness): number {
+  return h.script.calls.filter((c) => c.system === OPENER_GENERATE_PROMPT).length;
+}
+async function capturedSession(h: Harness, fx: CapturedFixture): Promise<string> {
+  h.script.analyze = fx.analyzeRaw;
+  const analysis = await analyzed(h, { profileInfo: fx.profileInfo });
+  return analysis.sessionId as string;
+}
+
+Deno.test("第七輪 F039：捕獲 raw「家裡保養品多到可以開店」→ relative_fact_extended 一次修正→交付扣 3；修正仍補情境→502 不扣不計次", async () => {
+  const h = await harness();
+  try {
+    const fx = await captured("filter-heavy.A.1");
+    const sessionId = await capturedSession(h, fx);
+    h.script.generate = fx.raw;
+    h.script.correction = { openers: { humor: "我妹也是美容師 妳們平常是不是都站一整天" }, cardReasons: { humor: "只用原句程度" }, materialUse: { references: [{ style: "humor", materialId: "material_1", outputSpan: "我妹也是美容師" }] } };
+    const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, fx.contribution)));
+    assertEquals(ok.status, 200);
+    const body = await json(ok);
+    assertEquals((body.openers as Record<string, string>).humor, "我妹也是美容師 妳們平常是不是都站一整天");
+    assertEquals((body.openers as Record<string, string>).extend, "我妹也是美容師耶 妳都做哪些項目啊", "沒被標記的句子逐字保留");
+    const correctionCall = h.script.calls.find((c) => String(c.messages[0].content).startsWith("以下這組開場白有可確定的錯誤"));
+    assert(correctionCall && String(correctionCall.messages[0].content).includes("補上沒說過的情境"), "修正提示要說明是替家人／自家補情境");
+    assertEquals(generateCalls(h), 2, "生成＋一次修正");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+
+    await passOneMinute(h.db);
+    h.script.correction = { openers: { humor: "我妹是美容師 家裡都是她帶回來的試用品" } };
+    const before = h.script.calls.length;
+    const still = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, fx.contribution)));
+    assertEquals(still.status, 502);
+    assertEquals((await json(still)).code, "OPENER_CONTENT_CONFLICT");
+    assertEquals(h.script.calls.length - before, 2, "沒有第三次模型請求");
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不扣");
+    const rows = await h.db.query<{ generations_used: number }>(`SELECT generations_used FROM public.opener_sessions WHERE session_id = $1`, [sessionId]);
+    assertEquals(rows.rows[0].generations_used, 1, "失敗不占次數");
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("第七輪 F051／F040／F058：捕獲 raw 只有 soft 或線索錨字採用 → Free 與 paid 都直接交付、不發修正", async () => {
+  const h = await harness();
+  try {
+    // multi-hook B1：「貓咪比妳早睡…」接住貓的好奇，Free 三卡不再 material_unused。
+    const cat = await captured("multi-hook.B.1");
+    const catSession = await capturedSession(h, cat);
+    h.script.generate = cat.raw;
+    const free = await handleOpenerGenerateRequest(h.deps(generateBody(catSession, GEN_1, cat.contribution)));
+    assertEquals(free.status, 200);
+    const freeBody = await json(free);
+    assertEquals((freeBody.recommendation as Record<string, unknown>).pick, "extend");
+    assertEquals(generateCalls(h), 1, "Free 沒有修正呼叫");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+    await passOneMinute(h.db);
+    h.tier = "essential";
+    const paid = await handleOpenerGenerateRequest(h.deps(generateBody(catSession, GEN_2, cat.contribution)));
+    assertEquals(paid.status, 200);
+    assertEquals(Object.keys((await json(paid)).openers as Record<string, string>).length, 5);
+    assertEquals(generateCalls(h), 2, "paid 也沒有修正呼叫");
+    h.tier = "free";
+    await passOneMinute(h.db);
+
+    // multi-hook A3「玩過三年樂團 妳打鼓多久了」與 family-fact A3「我妹聽了應該會說」：soft 不擋。
+    for (const [name, style, expected] of [["multi-hook.A.3", "extend", "玩過三年樂團 妳打鼓多久了"], ["family-fact.A.3", "humor", "下班只想睡 我妹聽了應該會說找到同類"]] as const) {
+      const h2 = await harness();
+      try {
+        const fx = await captured(name);
+        const sessionId = await capturedSession(h2, fx);
+        h2.script.generate = fx.raw;
+        const res = await handleOpenerGenerateRequest(h2.deps(generateBody(sessionId, GEN_1, fx.contribution)));
+        assertEquals(res.status, 200, name);
+        assertEquals(((await json(res)).openers as Record<string, string>)[style], expected, `${name} 逐字交付`);
+        assertEquals(generateCalls(h2), 1, `${name} 沒有修正呼叫`);
+      } finally {
+        await h2.db.close();
+      }
+    }
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("第七輪 goal A1：捕獲 raw 想約沒邀約 → Free 修正加邀約後交付；paid 另算一個情境，修正仍沒邀約→502 不扣不計次", async () => {
+  const h = await harness();
+  try {
+    const fx = await captured("goal-not-consent.A.1");
+    const sessionId = await capturedSession(h, fx);
+    h.script.generate = fx.raw;
+    h.script.correction = { openers: { extend: "一天三杯 找一天一起喝一杯看看？" }, cardReasons: { extend: "帶輕邀約" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "一起喝一杯" }] } };
+    const free = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, fx.contribution)));
+    assertEquals(free.status, 200);
+    assertEquals(((await json(free)).openers as Record<string, string>).extend, "一天三杯 找一天一起喝一杯看看？");
+    assertEquals(generateCalls(h), 2, "Free：生成＋一次修正");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+
+    await passOneMinute(h.db);
+    h.tier = "essential";
+    h.script.correction = { openers: { extend: "一天三杯是咖啡因在續命還是興趣使然" } };
+    const before = h.script.calls.length;
+    const paid = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, fx.contribution)));
+    assertEquals(paid.status, 502, "paid 五卡仍無邀約→不交付");
+    assertEquals((await json(paid)).code, "OPENER_CONTENT_CONFLICT");
+    assertEquals(h.script.calls.length - before, 2);
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不扣");
+    const rows = await h.db.query<{ generations_used: number }>(`SELECT generations_used FROM public.opener_sessions WHERE session_id = $1`, [sessionId]);
+    assertEquals(rows.rows[0].generations_used, 1);
+  } finally {
+    await h.db.close();
+  }
+});

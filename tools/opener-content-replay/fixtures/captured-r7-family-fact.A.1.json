@@ -1,0 +1,84 @@
+{
+ "source": "captured-r7-family-fact.A.1.json",
+ "captured": "2026-09-18 真模型確認跑 tag g1g2-d4824177-confirm（候選 d4824177）；reviewer 裁定見 reviewer_judgment",
+ "reviewer_judgment": {
+  "blind_ids": [
+   "F049",
+   "P049"
+  ],
+  "style": "humor",
+  "quote": "同是收工就秒斷電派的，握個手",
+  "judgment": "無來源共同習慣／語意邊界",
+  "reason": "原文只講妹妹與猜她；此句改為發訊息者也有相同習慣。比「我懂」更進一步，但不誇大成嚴重健康或職業捏造。此組未被要求修正。"
+ },
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介只有一個明確線索——動物醫院獸醫助理的工作，可以從這個切入，不用硬找其他話題",
+   "avoid": [
+    "不用糾結她下班只想睡這句，那只是描述累不是拒絕"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "獸醫助理工作",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "在動物醫院當獸醫助理"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟動物醫院這件事有關係嗎？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養寵物",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養寵物",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹提到在動物醫院當獸醫助理，下班只想睡。無其他手填欄位或圖片資訊。",
+  "profileText": {
+   "name": "測試庚",
+   "bio": "在動物醫院當獸醫助理，下班只想睡",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我妹下班完全不想聊工作，我猜她也是"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender_family\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我妹下班完全不想聊工作，我猜她也是\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"下班只想放空吧，最近靠什麼充電\",\n    \"resonate\": \"忙完一天只想耍廢，那種感覺我懂\",\n    \"tease\": \"下班只想睡的人，週末也這麼佛系嗎\",\n    \"humor\": \"同是收工就秒斷電派的，握個手\",\n    \"coldRead\": \"感覺妳是那種一到家就不想動的人\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"避開工作本身，改問她下班怎麼放鬆，順著她的狀態往下接\",\n    \"resonate\": \"用戶猜她下班不想聊工作，這句只表達理解這種疲憊感，不冒充自己也是同行\",\n    \"tease\": \"輕輕戳她下班只想睡的生活習慣，不提工作內容\",\n    \"humor\": \"把她的狀態變成一種共通的可愛標籤，輕鬆不刻意\",\n    \"coldRead\": \"從她自介的疲憊描述做一個可被反駁的輕觀察\"\n  },\n  \"rankedPicks\": [\"extend\", \"resonate\", \"humor\", \"coldRead\", \"tease\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"下班只想放空吧\" },\n      { \"style\": \"resonate\", \"materialId\": \"material_1\", \"outputSpan\": \"忙完一天只想耍廢，那種感覺我懂\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"接住你猜她下班不想聊工作的判斷，改問放鬆方式而非工作\",\n      \"resonate\": \"呼應你猜她也不想聊工作的心情，用理解代替追問\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"先不追問，換個輕鬆的生活小話題，給空間\",\n    \"ifShortPositive\": \"順著她提到的放鬆方式往下問細節，保持輕鬆\",\n    \"ifEngaged\": \"可以自然帶入約她一起做她提到的放鬆活動\",\n    \"handoff\": \"她回覆後把對話貼回來，幫你判斷下一句\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"下班想放空、耍廢的生活狀態\"],\n    \"avoidTopics\": [\"工作\", \"獸醫助理\", \"動物醫院\"],\n    \"openingStrategy\": \"她若回應下班習慣，順勢問細節而不提工作，保持輕鬆步調\"\n  }\n}",
+ "analyzeRaw": "{\n  \"wrongSurface\": null,\n  \"profileDigest\": \"自我介紹提到在動物醫院當獸醫助理，下班只想睡。無其他手填欄位或圖片資訊。\",\n  \"approach\": { \"mode\": \"anchor_hooks\", \"summary\": \"自介只有一個明確線索——動物醫院獸醫助理的工作，可以從這個切入，不用硬找其他話題\", \"avoid\": [\"不用糾結她下班只想睡這句，那只是描述累不是拒絕\"] },\n  \"cues\": [\n    { \"id\": \"cue_1\", \"label\": \"獸醫助理工作\", \"source\": \"profile_text\",\n      \"evidence\": { \"field\": \"bio\", \"quote\": \"在動物醫院當獸醫助理\" } }\n  ],\n  \"question\": {\n    \"affects\": \"sender_fact\",\n    \"text\": \"你跟動物醫院這件事有關係嗎？\",\n    \"options\": [\n      { \"id\": \"option_1\", \"label\": \"我自己有養寵物\", \"meaning\": \"assert_sender_fact\", \"cueId\": \"cue_1\" },\n      { \"id\": \"option_2\", \"label\": \"沒有，但有興趣\", \"meaning\": \"curious_without_experience\", \"cueId\": \"cue_1\" },\n      { \"id\": \"option_3\", \"label\": \"其實想聊別的\", \"meaning\": \"change_direction\" }\n    ]\n  }\n}",
+ "captured_flags": [],
+ "profileInfo": {
+  "name": "測試庚",
+  "bio": "在動物醫院當獸醫助理，下班只想睡",
+  "meetingContext": "交友軟體"
+ }
+}
