@@ -16,7 +16,7 @@ import { OPENER_FREE_V2_TYPES, OPENER_TYPES, type OpenerType } from "../../supab
 const outDir = Deno.args.find((a) => a.startsWith("--out="))?.slice(6) ?? "tools/opener-content-replay/out";
 await Deno.mkdir(outDir, { recursive: true });
 const labels = JSON.parse(await Deno.readTextFile(new URL("./labels.json", import.meta.url))) as {
-  cases: Array<{ id: string; source: string; expect_flag: Record<string, string>; expect_clean?: string[]; adoption: "miss" | "partial" | "clear" | null; note?: string; informational?: Record<string, string> }>;
+  cases: Array<{ id: string; source: string; expect_flag: Record<string, string>; expect_clean?: string[]; adoption: "miss" | "partial" | "clear" | "exempt" | null; note?: string; informational?: Record<string, string> }>;
 };
 // 修正後才有的正式入口（採用檢查／證據判定）；不存在時就是紅燈，不在 harness 自己實作替身。
 const mod = material as unknown as Record<string, unknown>;
@@ -67,6 +67,9 @@ for (const c of labels.cases) {
       add(c.id, `adoption:${tier}`, unused || pickFlagged || pickOk, unused ? "material_unused 已擋（交修正）" : pickFlagged ? `推薦 ${pick} 本身被硬檢查標記（交修正／不交付）` : pickOk ? `推薦改到有證據且乾淨的卡 ${pick}` : `推薦 ${pick} 不接原料（adopts=${pickAdopts}），也沒被擋`);
     } else if (c.adoption === "clear") {
       add(c.id, `adoption:${tier}`, !unused && pickAdopts !== false, !unused && pickAdopts !== false ? `推薦 ${pick} 有證據、無誤擋` : `誤判：material_unused=${unused} pickAdopts=${pickAdopts}`);
+    } else if (c.adoption === "exempt") {
+      // 純排除／否定型補充：遵守就是採用，沒有要被接住的正向內容，只能斷言不得誤擋。
+      add(c.id, `adoption:${tier}`, !unused, !unused ? `純排除型補充未被誤擋（推薦 ${pick}）` : `誤判：material_unused=${unused}`);
     }
   }
   lines.push("");

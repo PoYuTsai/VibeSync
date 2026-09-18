@@ -1,5 +1,5 @@
 {
-  "_note": "第五輪驗收 reviewer 的離線標籤（Eric 2026-09-18 貼入；reviewer 未執行任何 handler 測試）。expect_flag：該卡必須有 hard flag；expect_clean：該卡不得有 hard flag；adoption：miss→可見推薦不得無原料（要 material_unused 或改推薦到有證據的卡）、partial→paid 推薦必須是有證據的卡、clear→不得誤判 material_unused。未列的卡只回報不斷言。",
+  "_note": "第五輪驗收 reviewer 的離線標籤（Eric 2026-09-18 貼入；reviewer 未執行任何 handler 測試）。expect_flag：該卡必須有 hard flag；expect_clean：該卡不得有 hard flag；adoption：miss→可見推薦不得無原料（要 material_unused 或改推薦到有證據的卡）、partial→paid 推薦必須是有證據的卡、clear→不得誤判 material_unused。未列的卡只回報不斷言。adoption=exempt：純排除／否定型補充（不想聊 X／都沒興趣／不想約），遵守就是採用，只斷言不得 material_unused。synthetic-* 是 2026-09-18 G1/G2 合成正反例（snapshot 取自捕獲檔、openers 本輪撰寫），不是模型捕獲。",
   "cases": [
     {"id":"P009","source":"filter-heavy.A.1.json","expect_flag":{"humor":"新增妹妹反覆批評保養的過往互動"},"adoption":"clear"},
     {"id":"P018","source":"family-fact.B.2.json","expect_flag":{"humor":"新增目前過敏病況（原句只有曾在寵物店打工）"},"adoption":"partial"},
@@ -27,6 +27,13 @@
     {"id":"P107","source":"family-fact.A.3.json","expect_flag":{"humor":"以獸醫助理職業開話題，與用戶「不聊工作」分開處理"},"expect_clean":["extend","resonate","tease","coldRead"],"adoption":"clear","note":"「不聊工作吧」是遵守排除，不是使用"},
     {"id":"P013","source":"raw-sentence.A.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
     {"id":"P062","source":"explicit-exclusion.B.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
-    {"id":"P012","source":"photo-scene.A.2.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"}
+    {"id":"P012","source":"photo-scene.A.2.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"G1-01","source":"synthetic-G1-exclude-dog.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"exempt","note":"選「不想聊狗」後改聊週末／晚餐不得 material_unused"},
+    {"id":"G1-02","source":"synthetic-G1-fresh-topic.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"exempt","note":"選「都沒興趣、聊別的」後合法新話題不得 material_unused"},
+    {"id":"G1-03","source":"synthetic-G1-no-invite.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear","note":"「我不想約她，先聊咖啡」不得被要求邀約；聊咖啡就是採用"},
+    {"id":"G2-01","source":"synthetic-G2-petshop.json","expect_flag":{"extend":"用戶的寵物店經歷寫進沒有「我」的斷言"},"expect_clean":["humor","resonate","tease","coldRead"],"adoption":"clear","note":"「我以前在寵物店打工過，妳也在寵物店待過嗎？」語者自持＋問她"},
+    {"id":"G2-02","source":"synthetic-G2-okinawa.json","expect_flag":{"extend":"「已經訂好沖繩了」陳述＝升級","humor":"「說好要訂」預設她承諾過"},"expect_clean":["tease","resonate","coldRead"],"adoption":"clear","note":"「沖繩機票已經訂好了嗎？」是在問"},
+    {"id":"G2-03","source":"synthetic-G2-cat.json","expect_flag":{"extend":"你家貓比你晚睡＝貓被寫成晚睡","tease":"晚睡的貓"},"expect_clean":["humor","resonate","coldRead"],"adoption":null,"note":"「妳比貓晚睡」與自介「貓比我早睡」是同一件事；「沒養過貓的人」不是套經歷"},
+    {"id":"G2-04","source":"synthetic-G2-colon.json","expect_flag":{"resonate":"「順帶一提：」不是代言，冒號不放行"},"expect_clean":["extend","tease","humor","coldRead"],"adoption":null,"note":"柴犬／牠說的才是代言"}
   ]
 }

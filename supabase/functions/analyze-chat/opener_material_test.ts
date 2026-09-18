@@ -225,3 +225,85 @@ Deno.test("第五輪 A：原料採用——有原料時可見卡至少一張要�
   assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", goal), false, "只提咖啡不算接住邀約目標");
   assertEquals(cardAdoptsMaterial("一天三杯 找一天一起喝一杯吧", goal), true);
 });
+
+// ── 第五輪 G1／G2 補修：排除與否定不是正向採用要求；主體／語者／陳述範圍。
+const DOG_SNAPSHOT: OpenerAnalysisSnapshot = {
+  ...SNAPSHOT,
+  cues: [
+    { id: "cue_1", label: "不給摸的柴犬", source: "profile_text", subject: "recipient", evidence: { field: "bio", quote: "養了一隻不給摸的柴犬" } },
+    { id: "cue_2", label: "週末晚餐店", source: "profile_text", subject: "recipient" },
+  ],
+  question: {
+    id: "question_1",
+    affects: "sender_fact",
+    text: "你跟狗這件事比較接近哪種？",
+    options: [
+      { id: "option_1", label: "我自己有養狗", meaning: "assert_sender_fact", cueId: "cue_1", statement: "我自己有養狗" },
+      { id: "option_3", label: "其實想聊別的", meaning: "change_direction" },
+      { id: "option_4", label: "不想聊狗", meaning: "exclude_cue", cueId: "cue_1" },
+    ],
+  },
+  profileText: { bio: "養了一隻不給摸的柴犬，週末愛找晚餐店" },
+};
+const RANKED = ["extend", "humor", "tease", "resonate", "coldRead"] as const;
+function adoptionCodes(openers: Record<string, string>, set: ReturnType<typeof rawSet>, snapshot = DOG_SNAPSHOT) {
+  const flags = hardFlags(checkOpenersAgainstMaterials(openers, set, snapshot));
+  return checkMaterialAdoption({ openers, materials: set, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: RANKED, flags }).map((f) => `${f.style}:${f.code}`);
+}
+
+Deno.test("G1：選「不想聊狗」→ 改聊週末／晚餐不算 material_unused；提到狗仍是 excluded_topic_used", () => {
+  const opt = DOG_SNAPSHOT.question!.options.find((o) => o.id === "option_4")!;
+  const set = buildOpenerMaterials({ snapshot: DOG_SNAPSHOT, contribution: answered("option_4", null), option: opt });
+  assertEquals(set.excludedTopics, ["不給摸的柴犬"]);
+  const openers = { extend: "週末的晚餐店口袋名單借看一下", humor: "週末都在找晚餐店嗎", tease: "晚餐店踩雷率高嗎" };
+  assertEquals(adoptionCodes(openers, set), []);
+  assertEquals(codes({ extend: "不給摸的柴犬是傲嬌嗎" }, set, DOG_SNAPSHOT), ["extend:excluded_topic_used"], "排除仍要守");
+});
+
+Deno.test("G1：選「都沒興趣、聊別的」→ 合法新話題不算 material_unused；有補充方向時仍要接住", () => {
+  const opt = DOG_SNAPSHOT.question!.options.find((o) => o.id === "option_3")!;
+  const set = buildOpenerMaterials({ snapshot: DOG_SNAPSHOT, contribution: answered("option_3", null), option: opt });
+  assertEquals(set.directionOverride, "fresh_topic");
+  assertEquals(adoptionCodes({ extend: "板橋最近有沒有妳願意再去一次的店", humor: "週五晚上妳是充電派還是放電派", tease: "感覺妳很會安排時間" }, set), []);
+  const withText = buildOpenerMaterials({ snapshot: DOG_SNAPSHOT, contribution: answered("option_3", "想聊她的旅遊"), option: opt });
+  assertEquals(adoptionCodes({ extend: "板橋最近有沒有妳願意再去一次的店", humor: "週五晚上妳是充電派還是放電派", tease: "感覺妳很會安排時間" }, withText), ["extend:material_unused"], "用戶自己補的方向要被接住");
+  assertEquals(adoptionCodes({ extend: "妳的旅遊照最想再去哪一站", humor: "週五晚上妳是充電派還是放電派", tease: "感覺妳很會安排時間" }, withText), []);
+});
+
+Deno.test("G1：「我不想約她，先聊咖啡」→ 不要求邀約，聊咖啡就是採用；「我想約她」仍要帶輕邀約", () => {
+  const set = rawSet("我不想約她，先聊咖啡");
+  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", set), true);
+  assertEquals(cardAdoptsMaterial("找一天一起喝一杯吧", set), false, "邀約不是這次的目標");
+  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", rawSet("我想約她喝咖啡")), false, "真正想約仍要帶邀約");
+});
+
+Deno.test("G2：「我以前在寵物店打工過，妳也在寵物店待過嗎」是問她、語者自持；沒有「我」的斷言仍是套到她身上", () => {
+  const set = rawSet("我自己以前在寵物店打工過，現在沒有了");
+  assertEquals(codes({ humor: "我以前在寵物店打工過，妳也在寵物店待過嗎？" }, set), []);
+  assertEquals(codes({ extend: "在寵物店打工過才想當獸醫助理喔" }, set), ["extend:sender_fact_transposed"]);
+  assertEquals(codes({ extend: "妳也在寵物店打工過三年嗎" }, set), ["extend:sender_fact_transposed"], "沒有用「我」先說出來，不能只靠問句放行");
+});
+
+Deno.test("G2：「沖繩機票已經訂好了嗎」是在問；「已經訂好了」陳述與「說好要訂」預設都是升級", () => {
+  const set = rawSet("她上次聊天提過想去沖繩，還沒訂");
+  assertEquals(codes({ tease: "沖繩機票已經訂好了嗎？" }, set), []);
+  assertEquals(codes({ tease: "已經訂好沖繩了 什麼時候飛" }, set), ["tease:certainty_upgraded"]);
+  assertEquals(codes({ tease: "說好要訂的沖繩機票訂了嗎" }, set), ["tease:certainty_upgraded"], "問句裡的「說好」仍是預設她承諾過");
+});
+
+Deno.test("G2：「貓比我早睡」→「妳比貓晚睡」同一件事；「晚睡的貓」「你家貓比你晚睡嗎」才是反轉", () => {
+  const catSnapshot = { ...SNAPSHOT, profileText: { bio: "白天對數字\n最近在學調酒 家裡貓比我早睡" } };
+  const set = buildOpenerMaterials({ snapshot: catSnapshot, contribution: answered(null, "我對她的貓比較有興趣"), option: null });
+  assertEquals(codes({ humor: "妳比貓晚睡，牠會先去躺好嗎？", tease: "貓比妳早睡是貓在管妳吧" }, set, catSnapshot), []);
+  assertEquals(codes({ extend: "你家貓晚上比你晚睡嗎？", humor: "顧一隻晚睡的貓 妳幾條命" }, set, catSnapshot), ["extend:profile_fact_reversed", "humor:profile_fact_reversed"]);
+  const earlySnapshot = { ...SNAPSHOT, profileText: { bio: "早睡早起型" } };
+  const earlySet = buildOpenerMaterials({ snapshot: earlySnapshot, contribution: answered(null, "想聊她的作息"), option: null });
+  assertEquals(codes({ extend: "妳是晚睡派吧" }, earlySet, earlySnapshot), ["extend:profile_fact_reversed"], "沒寫主體的自介事實歸她本人");
+});
+
+Deno.test("G2：「順帶一提：我也養狗」不能因冒號放行；柴犬／牠說的才是代言；沒有說話者的引文不放行", () => {
+  const skipped = buildOpenerMaterials({ snapshot: DOG_SNAPSHOT, contribution: { state: "skipped", questionId: null, selectedOptionId: null, freeText: null }, option: null });
+  assertEquals(codes({ resonate: "順帶一提：我也養狗" }, skipped, DOG_SNAPSHOT), ["resonate:fabricated_sender_fact"]);
+  assertEquals(codes({ humor: "柴犬：我養妳不是讓妳摸的", tease: "柴犬說：「我不是給你摸的」", extend: "牠的表情像在說「我也養人」", coldRead: "妳家那隻不給摸的柴犬：我只是高冷" }, skipped, DOG_SNAPSHOT), []);
+  assertEquals(codes({ coldRead: "「我也養狗」這句我先收回" }, skipped, DOG_SNAPSHOT), ["coldRead:fabricated_sender_fact"]);
+});

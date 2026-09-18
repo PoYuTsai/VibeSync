@@ -771,3 +771,76 @@ Deno.test("A（第五輪）：可見推薦沒接原料→一次內容修正改�
     await h.db.close();
   }
 });
+
+// ── 第五輪 G1／G2：正常初次結果直接交付、不額外修正；真正壞結果最多一次修正，仍錯就 502 不扣。
+const EXCLUDE_ANALYSIS = { ...ANALYSIS_JSON, question: { ...ANALYSIS_JSON.question, options: [...ANALYSIS_JSON.question.options, { id: "option_4", label: "不想聊狗", meaning: "exclude_cue", cueId: "cue_1" }] } };
+const RIVER_OPENERS = { extend: "假日河堤那段妳都從哪裡開始走", resonate: "假日固定去河堤的人通常很需要放空", tease: "河堤是去運動還是去發呆的", humor: "河堤的風跟妳的週末 哪個比較自由", coldRead: "感覺妳週末不太待在室內" };
+
+Deno.test("G1（handler）：選「不想聊狗」→ 改聊河堤的整組直接交付、不發修正、扣 3；仍提到狗才修正", async () => {
+  const h = await harness();
+  try {
+    h.script.analyze = EXCLUDE_ANALYSIS;
+    const analysis = await analyzed(h);
+    const sessionId = analysis.sessionId as string;
+    const exclude = { state: "answered", questionId: "question_1", selectedOptionId: "option_4", freeText: null };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [{ materialId: "material_1", subject: "sender", kind: "restriction", certainty: "stated", quote: "不想聊" }], openers: RIVER_OPENERS, materialUse: { references: [], displayNotes: {} } };
+    const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, exclude)));
+    assertEquals(ok.status, 200);
+    const body = await json(ok);
+    assertEquals((body.openers as Record<string, string>).extend, RIVER_OPENERS.extend);
+    assertEquals((body.recommendation as Record<string, unknown>).pick, "extend");
+    assertEquals(h.script.calls.filter((c) => c.system === OPENER_GENERATE_PROMPT).length, 1, "沒有修正呼叫");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+
+    // 有一張仍聊狗 → excluded_topic_used 一次修正；修好就交付、不再扣。
+    await passOneMinute(h.db);
+    h.script.generate = { ...GENERATE_JSON, openers: { ...RIVER_OPENERS, tease: "妳養狗多久了 週末也帶去河堤嗎" }, materialUse: { references: [], displayNotes: {} } };
+    h.script.correction = { openers: { tease: "河堤是去運動還是去發呆的" }, cardReasons: { tease: "改成不碰狗" }, materialUse: { references: [] } };
+    const fixed = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, exclude)));
+    assertEquals(fixed.status, 200);
+    assertEquals(((await json(fixed)).openers as Record<string, string>).tease, "河堤是去運動還是去發呆的");
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "同局第二組不再扣");
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("G2（handler）：良性對照（已經訂好了嗎）直接交付不修正；「順帶一提：我也養狗」一次修正、仍錯 502 不扣不計次", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    const sessionId = analysis.sessionId as string;
+    const sheSaid = { state: "answered", questionId: null, selectedOptionId: null, freeText: "她上次聊天提過想去沖繩，還沒訂" };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [{ materialId: "material_1", subject: "recipient", kind: "raw_sentence", certainty: "prior_interaction", quote: "提過想去沖繩" }], openers: { ...GENERATE_JSON.openers, extend: "沖繩機票已經訂好了嗎？還是先顧狗" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "沖繩" }], displayNotes: { extend: "接的是她提過想去沖繩" } } };
+    const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, sheSaid)));
+    assertEquals(ok.status, 200);
+    const body = await json(ok);
+    assertEquals((body.openers as Record<string, string>).extend, "沖繩機票已經訂好了嗎？還是先顧狗");
+    assertEquals((body.materialUse as Record<string, unknown>).traceStatus, "matched");
+    assertEquals(h.script.calls.filter((c) => c.system === OPENER_GENERATE_PROMPT).length, 1, "良性問句不進修正");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+
+    // 略過補充卻寫「順帶一提：我也養狗」→ 冒號不放行 → 修正；修正仍自述 → 502 不扣不計次。
+    await passOneMinute(h.db);
+    h.tier = "essential"; // resonate 是 Free 鎖卡；要看修正結果得用五卡方案
+    const skipped = { state: "skipped", questionId: null, selectedOptionId: null, freeText: null };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [], openers: { ...GENERATE_JSON.openers, resonate: "順帶一提：我也養狗" }, materialUse: { references: [], displayNotes: {} } };
+    h.script.correction = { openers: { resonate: "柴犬：我養妳不是讓妳摸的" } };
+    const callsBefore = h.script.calls.length;
+    const still = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, skipped)));
+    assertEquals(still.status, 200, "代言不是自述，修正後可交付");
+    assertEquals(((await json(still)).openers as Record<string, string>).resonate, "柴犬：我養妳不是讓妳摸的");
+    assertEquals(h.script.calls.length - callsBefore, 2, "生成＋一次修正");
+
+    await passOneMinute(h.db);
+    h.script.correction = { openers: { resonate: "順帶一提：我也養狗啦" } };
+    const bad = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_3, skipped)));
+    assertEquals(bad.status, 502);
+    assertEquals((await json(bad)).code, "OPENER_CONTENT_CONFLICT");
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不扣");
+    const rows = await h.db.query<{ generations_used: number }>(`SELECT generations_used FROM public.opener_sessions WHERE session_id = $1`, [sessionId]);
+    assertEquals(rows.rows[0].generations_used, 2, "失敗不占次數");
+  } finally {
+    await h.db.close();
+  }
+});
