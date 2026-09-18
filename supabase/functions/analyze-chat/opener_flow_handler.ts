@@ -62,6 +62,7 @@ import {
 import {
   buildOpenerMaterials,
   checkOpenersAgainstMaterials,
+  checkMaterialAdoption,
   hardFlags,
   type OpenerMaterialSet,
   type OpenerQualityFlag,
@@ -87,6 +88,7 @@ import {
   normalizeOpenerGenerateOutput,
   type OpenerGenerateLedgerResult,
   projectOpenerGenerateResult,
+  type OpenerGenerateNormalized,
 } from "./opener_flow_payload.ts";
 import {
   buildReplayUsage,
@@ -823,7 +825,14 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
 
       // 6b. 內容硬檢查：沒有來源的自述、否定被反轉、排除話題被用——做一次有界
       //     內容修正（只改被標記的句子），仍有硬錯誤就回失敗，不交付假裝成功的卡。
-      let flags: OpenerQualityFlag[] = checkOpenersAgainstMaterials(normalized.value.openers, materials);
+      // 第五輪 A：方案可見卡在硬檢查前就要知道——原料採用是以用戶看得到的卡判定。
+      const servedTier = quota().effectiveTier;
+      const visibleTypes = visibleTypesFor(servedTier, contractVersion);
+      const contentFlags = (value: OpenerGenerateNormalized): OpenerQualityFlag[] => {
+        const base = checkOpenersAgainstMaterials(value.openers, materials, activeSession.snapshot);
+        return [...base, ...checkMaterialAdoption({ openers: value.openers, materials, visibleTypes, rankedPicks: value.rankedPicks, flags: base })];
+      };
+      let flags: OpenerQualityFlag[] = contentFlags(normalized.value);
       const hardBefore = hardFlags(flags);
       let corrected = false;
       if (hardBefore.length > 0 && extraCallsRemaining > 0) {
@@ -841,7 +850,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace);
           const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials);
           if (mergedNormalized.ok) {
-            const mergedFlags = checkOpenersAgainstMaterials(mergedNormalized.value.openers, materials);
+            const mergedFlags = contentFlags(mergedNormalized.value);
             if (hardFlags(mergedFlags).length === 0) {
               parsedJson = merged;
               normalized = mergedNormalized;
@@ -861,9 +870,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       }
       if (Date.now() >= deadlineAtMs) return await rejectDeadline("pre_projection");
 
-      // 7. 權益投影：先篩可見卡，再從可見卡選推薦（用那張卡自己的理由與來源）。
-      const servedTier = quota().effectiveTier;
-      const visibleTypes = visibleTypesFor(servedTier, contractVersion);
+      // 7. 權益投影：先篩可見卡，再從可見卡選推薦（先看原料證據，再看 rankedPicks）。
       const projected = projectOpenerGenerateResult({ normalized: normalized.value, materials, visibleTypes, servedTier, contractVersion });
       if (!projected) {
         return await failNoCharge("AI_RESPONSE_INVALID", "這次 AI 沒有產出目前方案可用的開場白，請再試一次。本次不會扣額度。", 502);

@@ -2,6 +2,8 @@
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildOpenerMaterials,
+  cardAdoptsMaterial,
+  checkMaterialAdoption,
   checkOpenersAgainstMaterials,
   extractExcludedTopics,
   extractNegatedFacts,
@@ -11,6 +13,7 @@ import {
   sanitizeMaterialReading,
   sanitizeMaterialReferences,
 } from "./opener_material.ts";
+import { OPENER_FREE_V2_TYPES, OPENER_TYPES } from "./opener_payload.ts";
 import type { OpenerAnalysisSnapshot, OpenerContribution, OpenerQuestionOption } from "./opener_stage.ts";
 
 const SNAPSHOT: OpenerAnalysisSnapshot = {
@@ -141,4 +144,84 @@ Deno.test("來源紀錄：ID 出自本局且片段真的在句子裡才算；對
   ], set.materials);
   assertEquals(reading.reading.map((r) => r.quote), ["沒養過"]);
   assertEquals(reading.flags.map((f) => f.code), ["reading_quote_mismatch"]);
+});
+
+// ── 第五輪驗收補的確定性規則（每條各一個最小案例＋一個不得誤判的對照）
+function rawSet(freeText: string) {
+  return buildOpenerMaterials({ snapshot: SNAPSHOT, contribution: answered(null, freeText), option: null });
+}
+function codes(openers: Record<string, string>, set: ReturnType<typeof rawSet>, snapshot = SNAPSHOT) {
+  return hardFlags(checkOpenersAgainstMaterials(openers, set, snapshot)).map((f) => `${f.style}:${f.code}`);
+}
+
+Deno.test("第五輪 B：「柴犬：我養妳不是讓妳摸的」是代言不是自述；「我懂」只是共感", () => {
+  const skipped = buildOpenerMaterials({ snapshot: SNAPSHOT, contribution: { state: "skipped", questionId: null, selectedOptionId: null, freeText: null }, option: null });
+  assertEquals(codes({ humor: "柴犬：我養妳不是讓妳摸的", resonate: "被自己養的狗嫌棄的心情我懂" }, skipped), []);
+  assertEquals(codes({ resonate: "我也養狗所以懂" }, skipped), ["resonate:fabricated_sender_fact"], "真正的自述仍要抓");
+});
+
+Deno.test("第五輪 B：「還有沒有推薦」是正反問句，不是被否定的經歷", () => {
+  assertEquals(extractNegatedFacts("上次她訂的那家餐廳我很喜歡，想問還有沒有推薦"), []);
+  assertEquals(extractNegatedFacts("我沒去過那家店"), ["去那家店"], "真正的否定仍要抓");
+});
+
+Deno.test("第五輪 B：「下班不聊工作吧」是遵守排除；以她的職業開話題才是使用", () => {
+  const set = rawSet("我妹下班完全不想聊工作，我猜她也是");
+  assert(set.excludedTopics.includes("工作"));
+  assertEquals(codes({ extend: "下班只想放空不聊工作吧" }, set), []);
+  assertEquals(codes({ extend: "妳工作是不是很累" }, set), ["extend:excluded_topic_used"]);
+});
+
+Deno.test("第五輪 B：「不聊工作」延伸到自介裡的職業線索（美容師）", () => {
+  const snapshot = { ...SNAPSHOT, cues: [{ id: "cue_1", label: "美容師工作", source: "manual_field" as const, subject: "recipient" as const }] };
+  const set = buildOpenerMaterials({ snapshot, contribution: answered(null, "我最近在找板橋晚餐店，不想聊工作"), option: null });
+  assert(set.excludedTopics.includes("美容師"), `排除：${set.excludedTopics.join("、")}`);
+  assertEquals(codes({ tease: "美容師的私房口袋名單應該不少吧", extend: "在找板橋晚餐店，妳附近有推薦嗎" }, set, snapshot), ["tease:excluded_topic_used"]);
+});
+
+Deno.test("第五輪 A：用戶經歷寫進沒有「我」的句子＝套到她身上；用「我」說就合法", () => {
+  const set = rawSet("我對打鼓有興趣，我玩過三年樂團");
+  assertEquals(codes({ extend: "玩三年樂團才想學打鼓喔" }, set), ["extend:sender_fact_transposed"]);
+  assertEquals(codes({ extend: "我玩過三年樂團 妳打鼓多久了" }, set), []);
+});
+
+Deno.test("第五輪 A：家人只給職業，卡片替家人加引語＝捏造；沒有引語不算", () => {
+  const set = rawSet("我妹也是美容師");
+  assertEquals(codes({ resonate: "常聽我妹說美容師很燒體力" }, set), ["resonate:relative_quote_fabricated"]);
+  assertEquals(codes({ extend: "我妹也是美容師 妳們平常都站著上班嗎" }, set), []);
+});
+
+Deno.test("第五輪 A：「提過想去、還沒訂」不得升級成「說好」；問「訂了嗎」可以", () => {
+  const set = rawSet("她上次聊天提過想去沖繩，還沒訂");
+  assertEquals(codes({ tease: "說好要訂的沖繩機票咧" }, set), ["tease:certainty_upgraded"]);
+  assertEquals(codes({ tease: "沖繩機票訂了沒還是又拖了" }, set), []);
+});
+
+Deno.test("第五輪 A：自述被加上沒說的健康狀況；自介已知事實不得反轉", () => {
+  const set = rawSet("我自己以前在寵物店打工過，現在沒有了");
+  assertEquals(codes({ humor: "我以前在寵物店打工過\n現在只剩回憶跟過敏" }, set), ["humor:sender_fact_extended"]);
+  const catSnapshot = { ...SNAPSHOT, profileText: { bio: "家裡貓比我早睡" } };
+  const catSet = buildOpenerMaterials({ snapshot: catSnapshot, contribution: answered(null, "我對她的貓比較有興趣"), option: null });
+  assertEquals(codes({ humor: "顧一隻晚睡的貓 妳幾條命" }, catSet, catSnapshot), ["humor:profile_fact_reversed"]);
+});
+
+Deno.test("第五輪 A：原料採用——有原料時可見卡至少一張要在內容上接住；純否定補充不要求；目標型要帶邀約", () => {
+  const set = rawSet("她上次聊天提過想去沖繩，還沒訂");
+  const openers = { extend: "河堤練滑板多久了", humor: "滑板技能點滿", tease: "沖繩機票訂了嗎", resonate: "假日固定練很自律", coldRead: "感覺妳計畫都放心裡" };
+  assertEquals(checkMaterialAdoption({ openers, materials: set, visibleTypes: OPENER_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }), []);
+  assertEquals(checkMaterialAdoption({ openers, materials: set, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }), [], "Free 三卡裡 tease 有接住");
+  // 只有鎖卡 resonate 接住：paid 可交付、Free 三卡一張都沒接住 → 標在排序第一的可見卡。
+  const lockedOnly = { ...openers, tease: "假日河堤曬得挺黑的吧", resonate: "她提過想去沖繩 我懂那種還沒訂的心情" };
+  assertEquals(checkMaterialAdoption({ openers: lockedOnly, materials: set, visibleTypes: OPENER_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }), []);
+  assertEquals(checkMaterialAdoption({ openers: lockedOnly, materials: set, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }).map((f) => `${f.style}:${f.code}`), ["extend:material_unused"]);
+  // 被硬檢查標記的卡不算採用（主體顛倒／升級確定度）。
+  const flaggedTease = { ...lockedOnly, tease: "說好要訂的沖繩機票咧" };
+  const teaseFlag = hardFlags(checkOpenersAgainstMaterials(flaggedTease, set));
+  assertEquals(teaseFlag.map((f) => f.code), ["certainty_upgraded"]);
+  assertEquals(checkMaterialAdoption({ openers: flaggedTease, materials: set, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"], flags: teaseFlag }).map((f) => `${f.style}:${f.code}`), ["extend:material_unused"]);
+  const negOnly = rawSet("沒養過");
+  assertEquals(checkMaterialAdoption({ openers: { extend: "牠散步會自己選路嗎" }, materials: negOnly, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend"] }), [], "純否定補充：遵守就是採用");
+  const goal = rawSet("我想約她喝咖啡");
+  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", goal), false, "只提咖啡不算接住邀約目標");
+  assertEquals(cardAdoptsMaterial("一天三杯 找一天一起喝一杯吧", goal), true);
 });

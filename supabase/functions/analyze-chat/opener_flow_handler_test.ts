@@ -393,6 +393,8 @@ Deno.test("F16／回歸：刪掉初稿改聊咖啡→第二段只用目前 freeT
   const h = await harness();
   try {
     const analysis = await analyzed(h, { initialUserNote: "我有養狗，想從狗開" });
+    // 第五輪 A：可見卡要在內容上接住「改聊咖啡」，否則會進 material_unused 修正。
+    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, extend: "改聊咖啡的話 妳平常都喝哪種" } };
     const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, { state: "answered", freeText: "改聊咖啡" })));
     assertEquals(response.status, 200);
     const generateCall = h.script.calls[1];
@@ -443,7 +445,7 @@ Deno.test("B04／B05：三組不同 generationId 共扣 3；第四組在模型�
     const sessionId = analysis.sessionId as string;
     for (const [i, gen] of [GEN_1, GEN_2, GEN_3].entries()) {
       await passOneMinute(h.db);
-      const body = await json(await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, gen, { ...CURIOUS, freeText: `第 ${i} 版回答` }))));
+      const body = await json(await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, gen, { ...CURIOUS, freeText: `第 ${i} 版：只想知道牠散步會不會自己選路` }))));
       assertEquals((body.usage as Record<string, unknown>).generationsUsed, i + 1);
       assertEquals((body.usage as Record<string, unknown>).chargedNow, i === 0 ? 3 : 0);
     }
@@ -548,7 +550,7 @@ Deno.test("B11：已扣費的同局，其他功能把額度用完後剩餘生成
     h.sub.monthly_messages_used = 30;
     h.sub.daily_messages_used = 10;
     await h.db.query(`UPDATE public.subscriptions SET monthly_messages_used = 30, daily_messages_used = 10 WHERE user_id = $1`, [USER_ID]);
-    const second = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { ...CURIOUS, freeText: "第二版" })));
+    const second = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { ...CURIOUS, freeText: "第二版：只想知道牠散步會不會自己選路" })));
     assertEquals(second.status, 200);
     assertEquals(((await json(second)).usage as Record<string, unknown>).chargedNow, 0);
     assertEquals(await usage(h.db), { m: 30, d: 10 });
@@ -563,8 +565,8 @@ Deno.test("B15：模型限流→429 MODEL_RATE_LIMITED 不帶額度鍵、不占�
     const analysis = await analyzed(h); // 第 1 次 opener 作業
     const sessionId = analysis.sessionId as string;
     assertEquals((await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, CURIOUS)))).status, 200); // 第 2 次
-    assertEquals((await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { ...CURIOUS, freeText: "二" })))).status, 200); // 第 3 次
-    const limited = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_3, { ...CURIOUS, freeText: "三" }))); // 第 4 次／分鐘
+    assertEquals((await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { ...CURIOUS, freeText: "二：牠散步會不會自己選路" })))).status, 200); // 第 3 次
+    const limited = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_3, { ...CURIOUS, freeText: "三：牠散步會不會自己選路" }))); // 第 4 次／分鐘
     assertEquals(limited.status, 429);
     const body = await json(limited);
     assertEquals(body.code, "MODEL_RATE_LIMITED");
@@ -675,6 +677,7 @@ Deno.test("R3b：刪掉初稿改聊咖啡→第一段依初稿寫的方向文字
     h.script.analyze = { ...ANALYSIS_JSON, approach: { mode: "anchor_hooks", summary: "你自己有養狗，可以直接從散步習慣開", avoid: ["不用提你妹"] } };
     const analysis = await analyzed(h, { initialUserNote: "我有養狗，想從狗開" });
     assertEquals((analysis.approach as Record<string, unknown>).summary, "你自己有養狗，可以直接從散步習慣開", "第一段當時的判斷照常回給 App 顯示");
+    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, extend: "改聊咖啡 妳照片那家店在哪啊" } };
     const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, { state: "answered", freeText: "改聊咖啡，想問照片那家店在哪" })));
     assertEquals(response.status, 200);
     const content = String(h.script.calls[1].messages[0].content);
@@ -683,6 +686,7 @@ Deno.test("R3b：刪掉初稿改聊咖啡→第一段依初稿寫的方向文字
     assert(content.includes("改聊咖啡"));
     // 同一份初稿原封送回（等於沒改）：方向文字可沿用。
     await passOneMinute(h.db);
+    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, extend: "我有養狗 妳家那隻散步會自己選路嗎" } };
     const same = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_2, { state: "answered", freeText: "我有養狗，想從狗開" })));
     assertEquals(same.status, 200);
     assert(String(h.script.calls[2].messages[0].content).includes("你自己有養狗"));
@@ -726,6 +730,43 @@ Deno.test("R6b：分析已保存、回應遺失後關閉新局旗標→同 analy
     assertEquals((await json(fresh)).code, "OPENER_FLOW_UNAVAILABLE");
     const rows = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state = 'pending'`);
     assertEquals(rows.rows[0].n, 0, "被擋的新局不得留下 pending 列");
+  } finally {
+    await h.db.close();
+  }
+});
+
+// ── 第五輪驗收 A：可見卡沒有一張真的接住用戶原料 → material_unused 一次修正；修不好 502 不扣、不計次。
+Deno.test("A（第五輪）：可見推薦沒接原料→一次內容修正改到接住原料才交付；修不好→502 不扣不計次", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    const sessionId = analysis.sessionId as string;
+    const contribution = { state: "answered", questionId: null, selectedOptionId: null, freeText: "她上次聊天提過想去沖繩，還沒訂" };
+    // 模型只聊狗：五張卡都沒有沖繩 → material_unused 標在排序第一的可見卡（extend）→ 修正。
+    h.script.generate = { ...GENERATE_JSON, materialReading: [{ materialId: "material_1", subject: "recipient", kind: "raw_sentence", certainty: "prior_interaction", quote: "她上次聊天提過想去沖繩，還沒訂" }], materialUse: { references: [], displayNotes: {} } };
+    h.script.correction = { openers: { extend: "沖繩機票訂了嗎 還是先顧狗" }, cardReasons: { extend: "接住她提過想去沖繩這件事" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "沖繩" }], displayNotes: { extend: "這句接的是她提過想去沖繩、還沒訂" } } };
+    const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, contribution)));
+    assertEquals(ok.status, 200);
+    const body = await json(ok);
+    assertEquals((body.recommendation as Record<string, unknown>).pick, "extend");
+    assertEquals((body.openers as Record<string, string>).extend, "沖繩機票訂了嗎 還是先顧狗");
+    assertEquals((body.materialUse as Record<string, unknown>).traceStatus, "matched");
+    assertEquals((body.usage as Record<string, unknown>).generationsUsed, 1);
+    const correctionCall = h.script.calls.find((c) => String(c.messages[0].content).startsWith("以下這組開場白有可確定的錯誤"));
+    assert(correctionCall && String(correctionCall.messages[0].content).includes("一張都沒真的用到"), "修正提示要說明原料未採用");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+
+    // 修正後仍然沒接住 → 502、不扣、不占次數，且不再發第三次模型請求。
+    await passOneMinute(h.db);
+    h.script.correction = { openers: { extend: "妳家狗真的很有主見" } };
+    const callsBefore = h.script.calls.length;
+    const still = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution)));
+    assertEquals(still.status, 502);
+    assertEquals((await json(still)).code, "OPENER_CONTENT_CONFLICT");
+    assertEquals(h.script.calls.length - callsBefore, 2, "生成＋一次修正，沒有第三次");
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不扣");
+    const rows = await h.db.query<{ generations_used: number }>(`SELECT generations_used FROM public.opener_sessions WHERE session_id = $1`, [sessionId]);
+    assertEquals(rows.rows[0].generations_used, 1, "失敗不占次數");
   } finally {
     await h.db.close();
   }

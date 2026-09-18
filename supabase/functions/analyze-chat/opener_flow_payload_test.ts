@@ -106,14 +106,21 @@ Deno.test("F13／§9.4：Free 先篩可見卡，再從可見卡選推薦、用�
   assert(isValidOpenerGenerateLedgerResult(projected));
 });
 
-Deno.test("付費五卡：模型第一名可見就直接採用", () => {
+Deno.test("付費五卡：模型第一名沒在內容上接住原料就往下找（第五輪 A）；沒有原料時第一名直接採用", () => {
   const normalized = normalizeOpenerGenerateOutput(modelOutput(), answeredMaterials);
   assert(normalized.ok);
   const projected = projectOpenerGenerateResult({ normalized: normalized.value, materials: answeredMaterials, visibleTypes: OPENER_TYPES, servedTier: "essential", contractVersion: 2 });
   assert(projected);
-  assertEquals(projected.recommendation.pick, "resonate");
-  assertEquals(projected.recommendation.reason, "站在她的處境說話");
+  // 模型排第一的 resonate「養這種狗的人假日應該都在外面」沒有用到「散步會不會自己選路」；extend 有。
+  assertEquals(projected.recommendation.pick, "extend");
+  assertEquals(projected.recommendation.reason, "直接問你想知道的事，也沒有寫成你養過狗");
   assertEquals(projected.materialUse.references.length, 3);
+  assertEquals(projected.materialUse.traceStatus, "matched");
+
+  const skipped = normalizeOpenerGenerateOutput(modelOutput(), skippedMaterials);
+  assert(skipped.ok);
+  const noInput = projectOpenerGenerateResult({ normalized: skipped.value, materials: skippedMaterials, visibleTypes: OPENER_TYPES, servedTier: "essential", contractVersion: 2 });
+  assertEquals(noInput?.recommendation.pick, "resonate", "沒有原料時照模型排序");
 });
 
 Deno.test("traceStatus：無有效原料→no_input（displayNote 一律 null）；推薦卡沒有來源紀錄→uncertain", () => {

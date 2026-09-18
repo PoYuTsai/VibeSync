@@ -5,6 +5,7 @@
 // 由 opener_material.ts 依本次原料檢核，合法的人物關係（我妹是美容師）不會
 // 被舊清洗器刪掉。可直接送出的句子仍走同一條 sanitizeOpenerText 正規化。
 
+import { cardAdoptsMaterial } from "./opener_material.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import {
@@ -235,18 +236,19 @@ export function projectOpenerGenerateResult(input: {
     const reason = normalized.cardReasons[type];
     if (reason) cardReasons[type] = reason;
   }
-  const pick = normalized.rankedPicks.find((type) => openers[type]) ??
-    visibleTypes.find((type) => openers[type]);
+  // 第五輪 A：先讓候選忠於本次原料再排序——有有效原料時，推薦只從「內容上真的用到
+  // 原料」的可見卡裡依 rankedPicks 取第一張；模型自稱的 references 不算證據。
+  const ranked = normalized.rankedPicks.filter((type) => openers[type]);
+  const adopting = materials.hasEffectiveMaterial ? ranked.filter((type) => cardAdoptsMaterial(openers[type]!, materials)) : [];
+  const pick = adopting[0] ?? ranked[0] ?? visibleTypes.find((type) => openers[type]);
   if (!pick) return null;
 
   const references = normalized.references.filter((ref) => visible.has(ref.style) && openers[ref.style]);
   const pickReferenced = references.some((ref) => ref.style === pick);
-  const referencedStyles = new Set(references.map((ref) => ref.style));
-  const visibleCount = Object.keys(openers).length;
   let traceStatus: OpenerTraceStatus;
   if (!materials.hasEffectiveMaterial) {
     traceStatus = "no_input";
-  } else if (pickReferenced && (referencedStyles.size >= 2 || visibleCount < 2)) {
+  } else if (adopting.includes(pick) && pickReferenced) {
     traceStatus = "matched";
   } else {
     traceStatus = "uncertain";
