@@ -1,0 +1,41 @@
+{
+ "source": "real-life-scene.B.1.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "資料很少，但她負責訂餐廳這件事是唯一具體可接的線索，可以從這裡自然開口",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "她訂餐廳這件事",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "朋友生日聚餐認識，她負責訂餐廳"
+    }
+   }
+  ],
+  "question": null,
+  "profileDigest": "自介文字說明認識場景：在朋友生日聚餐上認識，她當時負責訂餐廳。認識場景欄位標記為「現實認識」。沒有其他可見資訊。",
+  "profileText": {
+   "name": "測試己",
+   "bio": "朋友生日聚餐認識，她負責訂餐廳",
+   "meetingContext": "現實認識"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "上次她訂的那家餐廳我很喜歡，想問還有沒有推薦"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"上次她訂的那家餐廳我很喜歡，想問還有沒有推薦\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"上次那家餐廳我很喜歡\\n還有其他口袋名單嗎\",\n    \"resonate\": \"訂餐廳超花心力的\\n妳是不是很懂吃\",\n    \"tease\": \"訂餐廳的品味這麼準\\n是不是很常被朋友抓去訂位\",\n    \"humor\": \"訂位技能點滿的人\\n是不是自帶餐廳雷達\",\n    \"coldRead\": \"感覺妳選餐廳很有一套\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接延續用戶原句的核心（喜歡那家餐廳、想問推薦），最貼近他真正想問的事\",\n    \"resonate\": \"沒有用戶第一人稱經驗可用時，改用理解她訂餐廳這件事的辛苦來開口，不冒充經歷\",\n    \"tease\": \"從她訂餐廳這個具體事實輕輕戳，帶一點互動感但不評她本人\",\n    \"humor\": \"把訂餐廳說成技能，可愛地誇張但貼著唯一的事實\",\n    \"coldRead\": \"只做輕觀察，留空間讓她自己補充或反駁\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"humor\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      {\n        \"style\": \"extend\",\n        \"materialId\": \"material_1\",\n        \"outputSpan\": \"上次那家餐廳我很喜歡\"\n      }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你想問她還有沒有推薦餐廳這件事\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退一步問她平常吃飯口味偏好，降低壓力\",\n    \"ifShortPositive\": \"順著她給的餐廳類型或地點追問細節\",\n    \"ifEngaged\": \"可以約她一起去她推薦的地方吃\",\n    \"handoff\": \"她一回覆就把內容貼回對話分析，依她的回應調整下一步\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"她訂餐廳這件事\", \"用戶對那家餐廳的喜歡\"],\n    \"avoidTopics\": [\"外貌\", \"感情狀態\", \"沒發生過的共同經歷\"],\n    \"openingStrategy\": \"她若回推薦餐廳就順勢聊吃的話題，往約見面方向鋪\"\n  }\n}",
+ "captured_flags": []
+}

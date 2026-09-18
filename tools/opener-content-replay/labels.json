@@ -1,0 +1,32 @@
+{
+  "_note": "第五輪驗收 reviewer 的離線標籤（Eric 2026-09-18 貼入；reviewer 未執行任何 handler 測試）。expect_flag：該卡必須有 hard flag；expect_clean：該卡不得有 hard flag；adoption：miss→可見推薦不得無原料（要 material_unused 或改推薦到有證據的卡）、partial→paid 推薦必須是有證據的卡、clear→不得誤判 material_unused。未列的卡只回報不斷言。",
+  "cases": [
+    {"id":"P009","source":"filter-heavy.A.1.json","expect_flag":{"humor":"新增妹妹反覆批評保養的過往互動"},"adoption":"clear"},
+    {"id":"P018","source":"family-fact.B.2.json","expect_flag":{"humor":"新增目前過敏病況（原句只有曾在寵物店打工）"},"adoption":"partial"},
+    {"id":"P022","source":"filter-heavy.A.2.json","expect_flag":{"resonate":"新增妹妹曾反覆說的話"},"adoption":"clear"},
+    {"id":"P038","source":"multi-hook.A.3.json","expect_flag":{"extend":"三年樂團經歷放進對對方的問句"},"adoption":"miss"},
+    {"id":"P052","source":"she-said-vs-guess.A.1.json","expect_flag":{"tease":"提過想去、還沒訂 → 說好要訂"},"adoption":"miss"},
+    {"id":"P070","source":"multi-hook.A.2.json","expect_flag":{"extend":"樂團經歷改成對方三年後才想學鼓"},"adoption":"miss"},
+    {"id":"P123","source":"multi-hook.B.1.json","expect_flag":{"humor":"自介明說貓比她早睡，備選改成晚睡","extend":"推薦忽略自介已知的相反資訊"},"adoption":"partial"},
+    {"id":"P003","source":"filter-heavy.B.3.json","expect_flag":{"tease":"明說不聊工作，備選以美容師職業開話題"},"adoption":"clear"},
+    {"id":"P140","source":"filter-heavy.B.2.json","expect_flag":{"tease":"明說不聊工作，備選仍以職業開話題"},"adoption":"clear"},
+    {"id":"P017","source":"single-hook-dog.A.1.json","expect_flag":{},"adoption":"partial"},
+    {"id":"P021","source":"single-hook-dog.A.3.json","expect_flag":{},"adoption":"partial"},
+    {"id":"P029","source":"single-hook-dog.A.2.json","expect_flag":{},"adoption":"partial","informational":{"resonate":"程度擴張（自己選路≠完全不聽指揮）— 不做確定性斷言"}},
+    {"id":"P007","source":"she-said-vs-guess.A.2.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P049","source":"she-said-vs-guess.A.3.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P010","source":"she-said-vs-guess.B.2.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P044","source":"she-said-vs-guess.B.3.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P051","source":"she-said-vs-guess.B.1.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P069","source":"goal-not-consent.A.1.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P085","source":"goal-not-consent.A.2.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P114","source":"goal-not-consent.A.3.json","expect_flag":{},"adoption":"miss"},
+    {"id":"P080","source":"single-hook-dog.skip.1.json","expect_flag":{},"expect_clean":["humor","resonate","extend","tease","coldRead"],"adoption":null,"note":"柴犬：我養妳… 是動物擬人；「我懂」只是共感"},
+    {"id":"P066","source":"real-life-scene.B.2.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear","note":"「還有沒有推薦」是問句不是被否定的經歷"},
+    {"id":"P122","source":"real-life-scene.B.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"P107","source":"family-fact.A.3.json","expect_flag":{"humor":"以獸醫助理職業開話題，與用戶「不聊工作」分開處理"},"expect_clean":["extend","resonate","tease","coldRead"],"adoption":"clear","note":"「不聊工作吧」是遵守排除，不是使用"},
+    {"id":"P013","source":"raw-sentence.A.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"P062","source":"explicit-exclusion.B.1.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"},
+    {"id":"P012","source":"photo-scene.A.2.json","expect_flag":{},"expect_clean":["extend","resonate","tease","humor","coldRead"],"adoption":"clear"}
+  ]
+}

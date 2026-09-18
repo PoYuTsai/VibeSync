@@ -1,0 +1,66 @@
+{
+ "source": "goal-not-consent.A.3.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的資料圍繞咖啡這件事，可以直接從咖啡切入開場",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "一天三杯咖啡",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "咖啡成癮，一天三杯"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟咖啡的關係是？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己也很愛喝咖啡",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己也很愛喝咖啡",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣瞭解",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介提到咖啡成癮，一天三杯；興趣欄填咖啡。目前無其他手填資訊，無圖片。",
+  "profileText": {
+   "name": "測試子",
+   "bio": "咖啡成癮，一天三杯",
+   "interests": "咖啡",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我想約她喝咖啡"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"goal\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我想約她喝咖啡\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"一天三杯是哪種喝法啊\",\n    \"resonate\": \"咖啡成癮的人應該很懂怎麼挑店吧\",\n    \"tease\": \"三杯裡最不能少的是哪一杯\",\n    \"humor\": \"一天三杯這樣心臟還好嗎\",\n    \"coldRead\": \"感覺妳挑咖啡廳應該很挑剔\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接住一天三杯這個具體細節，順著問下去她最好回，也離用戶想約喝咖啡的目標最近\",\n    \"resonate\": \"不冒充自己也愛咖啡，改成理解她這種喝法背後大概很懂咖啡，自然帶到約喝咖啡的可能\",\n    \"tease\": \"從三杯裡挑一杯出來問，輕輕戳但不逾矩，也順勢留下約她的空間\",\n    \"humor\": \"用一天三杯的份量做小小誇張的關心，可愛不油\",\n    \"coldRead\": \"只是輕輕猜她對咖啡廳有要求，可被反駁也可被證實，風險低\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"humor\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"一天三杯\" },\n      { \"style\": \"tease\", \"materialId\": \"material_1\", \"outputSpan\": \"三杯裡最不能少的是哪一杯\" },\n      { \"style\": \"humor\", \"materialId\": \"material_1\", \"outputSpan\": \"一天三杯這樣心臟還好嗎\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你想從咖啡這件事開口約她的方向\",\n      \"tease\": \"這句順著咖啡話題輕輕互動，幫你鋪路到約喝咖啡\",\n      \"humor\": \"這句用她的咖啡量開個小玩笑，幫你自然搭話\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"先不提約喝咖啡，換個角度問她平常喝咖啡的習慣，等她多回應幾句再說\",\n    \"ifShortPositive\": \"順著她的回答多聊一句咖啡口味或店家，慢慢帶到要不要約喝一杯\",\n    \"ifEngaged\": \"她認真聊咖啡的話，可以直接提議約她喝這杯咖啡見面\",\n    \"handoff\": \"她回覆後把對話貼回來，幫你判斷下一步怎麼接\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"一天三杯咖啡的習慣\"],\n    \"avoidTopics\": [\"外貌相關\", \"感情狀態揣測\"],\n    \"openingStrategy\": \"先順著咖啡聊開，等她有反應再自然提約喝咖啡的事，不要一開口就邀約\"\n  }\n}",
+ "captured_flags": []
+}

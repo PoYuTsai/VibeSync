@@ -1,0 +1,65 @@
+{
+ "source": "she-said-vs-guess.A.3.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介線索明確，直接接滑板這件事就好",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "河堤練滑板",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "假日固定去河堤練滑板"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟滑板這件事的關係是？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己也玩滑板",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己也玩滑板",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介提到假日固定去河堤練滑板，是固定興趣活動。",
+  "profileText": {
+   "name": "測試辛",
+   "bio": "假日固定去河堤練滑板",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "她上次聊天提過想去沖繩，還沒訂"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"recipient\",\n      \"kind\": \"prior_interaction\",\n      \"certainty\": \"prior_interaction\",\n      \"quote\": \"她上次聊天提過想去沖繩，還沒訂\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"河堤練滑板都固定假日去嗎\",\n    \"resonate\": \"滑板這種要一直練習的興趣感覺很紓壓\",\n    \"tease\": \"假日河堤現在是不是曬得挺黑的\",\n    \"humor\": \"滑板技能點滿了嗎還是常常吃土\",\n    \"coldRead\": \"感覺妳是那種安排好假日行程的人\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接自介裡的滑板興趣，問法具體好回，符合方向判斷\",\n    \"resonate\": \"沒有用戶自身滑板經驗可用，改用理解她投入興趣的心情，避免冒充共同經驗\",\n    \"tease\": \"從河堤這個具體場景輕輕延伸，不評外貌只玩場景細節\",\n    \"humor\": \"貼著滑板這個活動本身找可愛切角，不硬套段子\",\n    \"coldRead\": \"從固定假日去河堤這件事做輕觀察，可被她反駁或補充\"\n  },\n  \"rankedPicks\": [\"extend\", \"coldRead\", \"humor\", \"tease\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [],\n    \"displayNotes\": {}\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退回更輕的問句，例如問她滑板多久了，不追問細節\",\n    \"ifShortPositive\": \"順著她回答的內容問一個具體延伸，例如常去哪個河堤\",\n    \"ifEngaged\": \"可以自然聊到她提過的沖繩計畫，問進度或想法\",\n    \"handoff\": \"她開始主動分享細節或提到沖繩相關話題時，把對話貼回分析\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"河堤滑板這個固定興趣活動\"],\n    \"avoidTopics\": [\"不要評論外表或身材\", \"不要直接搬出沖繩話題當開場，那是內部背景資訊\"],\n    \"openingStrategy\": \"先接她自介裡的滑板興趣讓她好回，之後再視聊天狀況自然帶到旅行話題\"\n  }\n}\n```",
+ "captured_flags": []
+}

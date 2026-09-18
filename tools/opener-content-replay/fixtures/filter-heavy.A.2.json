@@ -1,0 +1,61 @@
+{
+ "source": "filter-heavy.A.2.json",
+ "snapshot": {
+  "approach": {
+   "mode": "fresh_topic",
+   "summary": "她的自介幾乎都是篩選與提醒，沒有興趣或場景這類可接線索，直接從基本資訊（美容師、新北）另開輕鬆話題比較實在",
+   "avoid": [
+    "不用回應或評論她提到的擔憂與條件",
+    "不用特別強調自己情緒穩定或有耐心"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "美容師工作",
+    "source": "manual_field",
+    "subject": "recipient",
+    "evidence": {
+     "field": "meetingContext"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "direction",
+   "text": "想從她的工作聊起，還是找別的輕鬆話題？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "聊美容師工作",
+     "meaning": "pick_cue",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介以篩選條件與提醒為主：外型是肉肉的、不希望被要求改變、不想遇到騙色騙財或玩玩的人、希望對方情緒穩定有耐心、盼望長久關係。職業為美容師，地區新北，興趣欄未填寫，無其他可見資訊或照片內容。",
+  "profileText": {
+   "name": "小可愛",
+   "bio": "本人是肉肉的～不能接受請不要滑右邊～\n滑了聊天又叫我改變…我就是長這樣…\n騙色騙財 真的先不要～\n麻煩可以多一點正常人嗎？\n真的不要玩玩～想約的麻煩左滑謝謝～有女朋友的也不要滑右邊～\n想找情緒穩定～有耐心的男生～可以長長久久",
+   "interests": "職業：美容師；地區：新北",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我妹也是美容師"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender_family\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我妹也是美容師\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"我妹也是美容師耶\\n妳都做哪方面的呀\",\n    \"resonate\": \"常聽我妹說美容師很燒體力\",\n    \"tease\": \"美容師的手應該很巧吧\",\n    \"humor\": \"我妹也美容師 這是暗號嗎\",\n    \"coldRead\": \"感覺美容師都很有耐心欸\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接用戶真實補充的家人背景，順勢問她工作內容，好回又順手\",\n    \"resonate\": \"用旁觀者角度理解這行業的辛苦，不冒充自己做過，貼近用戶只知道妹妹做這行的事實\",\n    \"tease\": \"從美容師手藝這個具體職業細節輕輕帶一句，不涉及外貌評論\",\n    \"humor\": \"把巧合感講得可愛一點，帶出用戶真實補充又不生硬\",\n    \"coldRead\": \"從職業做一個很輕的觀察，方便她反駁或補充自己的個性\"\n  },\n  \"rankedPicks\": [\"extend\", \"humor\", \"tease\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"我妹也是美容師耶\" },\n      { \"style\": \"humor\", \"materialId\": \"material_1\", \"outputSpan\": \"我妹也美容師 這是暗號嗎\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你提到妹妹也做美容師這個真實巧合，順勢問她工作內容\",\n      \"humor\": \"這句用你妹妹也是美容師的巧合開個小玩笑，輕鬆帶出話題\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"不追問，換個輕鬆的生活小話題，減少壓力感\",\n    \"ifShortPositive\": \"順著她回答的工作細節多問一句具體內容，維持輕鬆步調\",\n    \"ifEngaged\": \"可以問她平常放假都做什麼，慢慢延伸到興趣話題\",\n    \"handoff\": \"她一有回覆就可以貼回對話分析，依照她的語氣調整下一句\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"美容師工作\"],\n    \"avoidTopics\": [\"她提到的騙色騙財、玩玩、外型等篩選條件與提醒\"],\n    \"openingStrategy\": \"她回覆後順著她聊工作或生活細節就好，不用刻意證明自己符合她的條件\"\n  }\n}",
+ "captured_flags": []
+}

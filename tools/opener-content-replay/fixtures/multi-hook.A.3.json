@@ -1,0 +1,86 @@
+{
+ "source": "multi-hook.A.3.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的自介給了三個明確線索（打鼓、學調酒、養貓），可以先確認想從哪個開始聊",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "晚上打鼓",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "晚上在 livehouse 打鼓"
+    }
+   },
+   {
+    "id": "cue_2",
+    "label": "最近在學調酒",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "最近在學調酒"
+    }
+   },
+   {
+    "id": "cue_3",
+    "label": "家裡的貓",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "家裡貓比我早睡"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "direction",
+   "text": "這三個線索你比較想從哪個開聊？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "打鼓、livehouse",
+     "meaning": "pick_cue",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "學調酒這件事",
+     "meaning": "pick_cue",
+     "cueId": "cue_2"
+    },
+    {
+     "id": "option_3",
+     "label": "她養的貓",
+     "meaning": "pick_cue",
+     "cueId": "cue_3"
+    }
+   ]
+  },
+  "profileDigest": "自介：白天在會計事務所工作，晚上在livehouse打鼓，最近在學調酒，家裡有養貓。興趣欄位列出：鼓、調酒、貓。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試丁",
+   "bio": "白天在會計事務所對數字\n晚上在 livehouse 打鼓\n最近在學調酒 家裡貓比我早睡",
+   "interests": "鼓、調酒、貓",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": "question_1",
+  "selectedOptionId": "option_1",
+  "freeText": "我對打鼓有興趣，我玩過三年樂團"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"interest\",\n      \"certainty\": \"stated\",\n      \"quote\": \"想聊：晚上打鼓\"\n    },\n    {\n      \"materialId\": \"material_2\",\n      \"subject\": \"unknown\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我對打鼓有興趣，我玩過三年樂團\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"玩三年樂團after還打鼓不累嗎\",\n    \"resonate\": \"白天算數字晚上打鼓\\n反差蠻大的\",\n    \"tease\": \"打鼓打到貓都習慣了吧\",\n    \"humor\": \"樂團打完換去livehouse續攤打鼓\",\n    \"coldRead\": \"感覺妳精力比貓旺盛\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"用戶自己有三年樂團經驗，直接接打鼓話題最順，也保留了他的經歷程度\",\n    \"resonate\": \"沒有用戶第一人稱事實可用時，點出她白天晚上的反差最安全好回\",\n    \"tease\": \"從貓的細節輕輕戳，不涉及外貌或猜測，貼著自介走\",\n    \"humor\": \"把她的打鼓和用戶的樂團背景做個小連結，輕鬆不浮誇\",\n    \"coldRead\": \"從打鼓晚睡的生活型態做個可被反駁的輕觀察\"\n  },\n  \"rankedPicks\": [\"extend\", \"humor\", \"resonate\", \"tease\", \"coldRead\"],\n  \"materialUse\": {\n    \"references\": [\n      {\n        \"style\": \"extend\",\n        \"materialId\": \"material_2\",\n        \"outputSpan\": \"玩三年樂團\"\n      },\n      {\n        \"style\": \"humor\",\n        \"materialId\": \"material_2\",\n        \"outputSpan\": \"樂團打完換去livehouse續攤打鼓\"\n      }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你玩過三年樂團、對打鼓有興趣這件事\",\n      \"humor\": \"這句接的是你玩過樂團跟她打鼓背景的小連結\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退回單純問打鼓多久了，不再提自己經歷，降低壓力\",\n    \"ifShortPositive\": \"順著她回答的內容問打什麼類型的鼓或團練頻率\",\n    \"ifEngaged\": \"可以聊到樂團經驗的交集，或延伸問她怎麼開始打鼓的\",\n    \"handoff\": \"她一回覆就把對話貼回分析，依她的反應調整下一句\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"晚上打鼓\", \"最近在學調酒\", \"家裡的貓\"],\n    \"avoidTopics\": [],\n    \"openingStrategy\": \"她回覆後順著她提到的細節追問，不要急著搬出自己的經歷\"\n  }\n}",
+ "captured_flags": []
+}
