@@ -112,6 +112,9 @@ serve(withOperationalErrorMonitoring("delete-account", async (req) => {
       { table: "ai_logs", column: "user_id", value: user.id, required: false },
       { table: "subscriptions", column: "user_id", value: user.id, required: false },
       { table: "practice_chat_sessions", column: "user_id", value: user.id, required: false },
+      // 開場救星兩段式短期快照（auth.users CASCADE 已涵蓋；顯式列出讓刪除順序與失敗可觀測）。
+      { table: "opener_generation_runs", column: "user_id", value: user.id, required: false },
+      { table: "opener_sessions", column: "user_id", value: user.id, required: false },
       { table: "users", column: "id", value: user.id, required: false },
       { table: "feedback", column: "user_id", value: user.id, required: false },
       { table: "webhook_logs", column: "user_id", value: user.id, required: false },

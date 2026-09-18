@@ -1,0 +1,52 @@
+{
+ "source": "raw-sentence.A.1.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的爬山興趣是明確線索，可以直接從照片那條路線問起，不用另找話題",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "登山路線與濃霧照片",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "照片：登山路線，霧很大"
+    }
+   },
+   {
+    "id": "cue_2",
+    "label": "爬山興趣",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "interests",
+     "quote": "爬山"
+    }
+   }
+  ],
+  "question": null,
+  "profileDigest": "興趣欄位寫「爬山」。自介文字提到照片是登山路線，霧很大。",
+  "profileText": {
+   "name": "測試壬",
+   "bio": "照片：登山路線，霧很大",
+   "interests": "爬山",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": true,
+  "initialNoteFingerprint": "2c2606ca6599f78b",
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我想問她照片那條路線新手走不走得完，我沒爬過山"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我想問她照片那條路線新手走不走得完，我沒爬過山\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"妳照片那條路線，新手走得完嗎\",\n    \"resonate\": \"看起來霧那麼大，路上會不會怕迷路\",\n    \"tease\": \"特地選霧最大那張，故意考驗人辨識度吧\",\n    \"humor\": \"我沒爬過山，看到霧已經先腿軟了\",\n    \"coldRead\": \"這張路線照感覺妳很熟這座山\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接問路線新手能不能走完，保留用戶原本疑問，也是她最順手能答的問題\",\n    \"resonate\": \"不假裝有爬山經驗，改用霧很大這個畫面去體會她拍照當下的情境\",\n    \"tease\": \"從她選的照片角度輕輕調侃，不評論外表，貼著照片本身做文章\",\n    \"humor\": \"老實承認自己沒爬過山，反差感輕鬆又不尷尬\",\n    \"coldRead\": \"用照片透露的熟悉感做輕觀察，讓她自己補充是不是常爬\"\n  },\n  \"rankedPicks\": [\"extend\", \"coldRead\", \"humor\", \"tease\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"妳照片那條路線，新手走得完嗎\" },\n      { \"style\": \"humor\", \"materialId\": \"material_1\", \"outputSpan\": \"我沒爬過山，看到霧已經先腿軟了\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句直接問出你想知道的：那條路線新手走不走得完\",\n      \"humor\": \"這句老實說出你沒爬過山的狀態，順便帶出想問路線的好奇\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"先不追問，換個輕鬆話題或暫停\",\n    \"ifShortPositive\": \"順著她回答的難度或地點細節，問她那次爬山的印象\",\n    \"ifEngaged\": \"可以問她是不是常安排這類行程，慢慢聊到約爬山的可能性\",\n    \"handoff\": \"她一有實質回覆（不只是貼圖或單字）就把對話貼回分析\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"登山路線照片\", \"爬山興趣\"],\n    \"avoidTopics\": [],\n    \"openingStrategy\": \"先問路線細節讓她自然分享經驗，再依她回答決定要不要接著問行程規劃\"\n  }\n}\n```",
+ "captured_flags": []
+}

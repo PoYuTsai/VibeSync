@@ -8,7 +8,7 @@ interface CallOptions {
 
 type ClaudeThinking = { type: "adaptive" | "disabled" };
 
-type ClaudeMessageContent =
+export type ClaudeMessageContent =
   | string
   | Array<{
     type: string;

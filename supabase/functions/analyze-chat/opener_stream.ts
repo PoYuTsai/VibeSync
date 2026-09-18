@@ -35,6 +35,27 @@ export const OPENER_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"recommendation"', phase: "recommendation", label: "挑選最適推薦" },
 ];
 
+// 兩段式（2026-09-17）：第一段只分析／提問，第二段才寫五句；進度事件不得
+// 讓 App 誤以為第一段完成＝五句已生成（phase 前綴不同）。
+export const OPENER_ANALYZE_STREAM_STAGES: StreamStageSpec[] = [
+  { marker: '"profileDigest"', phase: "analyze_digest", label: "讀取對方資料" },
+  { marker: '"approach"', phase: "analyze_approach", label: "判斷這次可以怎麼開" },
+  { marker: '"cues"', phase: "analyze_cues", label: "整理可接線索" },
+  { marker: '"question"', phase: "analyze_question", label: "決定要不要問你一題" },
+];
+
+export const OPENER_GENERATE_STREAM_STAGES: StreamStageSpec[] = [
+  { marker: '"materialReading"', phase: "generate_material", label: "整理你的想法與來源" },
+  { marker: '"openers"', phase: "openers", label: "開始寫五種風格開場白" },
+  { marker: '"extend"', phase: "style_extend", label: "開場白 1/5：延展" },
+  { marker: '"resonate"', phase: "style_resonate", label: "開場白 2/5：共鳴" },
+  { marker: '"tease"', phase: "style_tease", label: "開場白 3/5：調情" },
+  { marker: '"humor"', phase: "style_humor", label: "開場白 4/5：幽默" },
+  { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：冷讀" },
+  { marker: '"rankedPicks"', phase: "recommendation", label: "依你的想法挑選推薦" },
+  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
+];
+
 export const NEW_TOPIC_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"topics"', phase: "topics", label: "開始寫五個新話題" },
   {

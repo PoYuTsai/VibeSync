@@ -1,0 +1,67 @@
+{
+ "source": "single-hook-dog.skip.1.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她自介只有一個明確線索：養了一隻不給摸的柴犬，可以從這裡開，但先確認你跟狗的關係，避免亂認同好。",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "不給摸的柴犬",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "養了一隻不給摸的柴犬"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟狗是什麼關係？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養狗",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養狗",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹提到養了一隻不給摸的柴犬。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試乙",
+   "bio": "養了一隻不給摸的柴犬",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "skipped",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": null
+ },
+ "raw": "{\n  \"materialReading\": [\n    { \"materialId\": \"material_1\", \"subject\": \"sender\", \"kind\": \"fact\", \"certainty\": \"stated\", \"quote\": \"養了一隻不給摸的柴犬\" }\n  ],\n  \"openers\": {\n    \"extend\": \"不給摸是連妳都不行嗎\",\n    \"resonate\": \"被自己養的狗嫌棄的心情我懂\",\n    \"tease\": \"所以牠只是高冷還是討厭全人類\",\n    \"humor\": \"柴犬：我養你不是讓你摸的\",\n    \"coldRead\": \"感覺牠其實只是傲嬌吧\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接順著唯一的線索往下問，最好接話也最安全\",\n    \"resonate\": \"不冒充養過柴犬，改成理解那種被拒絕的無奈感\",\n    \"tease\": \"輕輕戳狗的態度而不是戳她本人，安全又有互動感\",\n    \"humor\": \"用狗的口吻講話製造反差萌，貼著她給的細節\",\n    \"coldRead\": \"拋出一個可被反駁的猜測，留空間讓她補充狗的個性\"\n  },\n  \"rankedPicks\": [\"extend\", \"coldRead\", \"humor\", \"tease\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"不給摸是連妳都不行嗎\" },\n      { \"style\": \"tease\", \"materialId\": \"material_1\", \"outputSpan\": \"所以牠只是高冷還是討厭全人類\" },\n      { \"style\": \"humor\", \"materialId\": \"material_1\", \"outputSpan\": \"柴犬：我養你不是讓你摸的\" },\n      { \"style\": \"coldRead\", \"materialId\": \"material_1\", \"outputSpan\": \"感覺牠其實只是傲嬌吧\" },\n      { \"style\": \"resonate\", \"materialId\": \"material_1\", \"outputSpan\": \"被自己養的狗嫌棄的心情我懂\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是妳提到狗不給摸這件事，順勢確認連妳也摸不到\",\n      \"tease\": \"這句接的是狗不給摸的細節，順勢問牠是不是排斥所有人\",\n      \"humor\": \"這句接的是狗不給摸的設定，用狗的口吻製造小反差\",\n      \"coldRead\": \"這句接的是狗不給摸的線索，猜牠其實是傲嬌而非兇\",\n      \"resonate\": \"這句接的是狗不給摸的處境，表達能理解那種心情\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退一步問養多久了，降低追問感\",\n    \"ifShortPositive\": \"順勢問狗的名字或平常個性\",\n    \"ifEngaged\": \"可以問她怎麼跟不給摸的狗相處、日常互動\",\n    \"handoff\": \"她回覆後貼回對話分析，依她語氣決定要不要深聊養狗細節\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"柴犬不給摸這件事\"],\n    \"avoidTopics\": [\"外貌、身材、感情狀態、收入等未提及事項\"],\n    \"openingStrategy\": \"她若回應狗的細節就順著問下去，若簡短回覆就放輕鬆別追問太深\"\n  }\n}",
+ "captured_flags": [
+  "fabricated_sender_fact"
+ ]
+}

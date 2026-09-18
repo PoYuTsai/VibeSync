@@ -1,0 +1,87 @@
+{
+ "source": "synthetic-G2-cat.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的自介給了三個明確線索（打鼓、學調酒、養貓），可以先確認想從哪個開始聊",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "晚上打鼓",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "晚上在 livehouse 打鼓"
+    }
+   },
+   {
+    "id": "cue_2",
+    "label": "最近在學調酒",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "最近在學調酒"
+    }
+   },
+   {
+    "id": "cue_3",
+    "label": "家裡的貓",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "家裡貓比我早睡"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "direction",
+   "text": "這三個線索你比較想從哪個開聊？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "打鼓、livehouse",
+     "meaning": "pick_cue",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "學調酒這件事",
+     "meaning": "pick_cue",
+     "cueId": "cue_2"
+    },
+    {
+     "id": "option_3",
+     "label": "她養的貓",
+     "meaning": "pick_cue",
+     "cueId": "cue_3"
+    }
+   ]
+  },
+  "profileDigest": "自介：白天在會計事務所工作，晚上在livehouse打鼓，最近在學調酒，家裡有養貓。興趣欄位列出：鼓、調酒、貓。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試丁",
+   "bio": "白天在會計事務所對數字\n晚上在 livehouse 打鼓\n最近在學調酒 家裡貓比我早睡",
+   "interests": "鼓、調酒、貓",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我對她的貓比較有興趣，我沒養過貓"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我對她的貓比較有興趣，我沒養過貓\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"你家貓晚上比你晚睡嗎？\",\n    \"resonate\": \"沒養過貓的人看到有貓的自介都會多看兩眼吧\",\n    \"tease\": \"顧一隻晚睡的貓 妳幾條命\",\n    \"humor\": \"妳比貓晚睡，牠會先去躺好嗎？\",\n    \"coldRead\": \"感覺妳家貓才是真正的老闆\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"合成案例\",\n    \"resonate\": \"合成案例\",\n    \"tease\": \"合成案例\",\n    \"humor\": \"合成案例\",\n    \"coldRead\": \"合成案例\"\n  },\n  \"rankedPicks\": [\n    \"extend\",\n    \"coldRead\",\n    \"tease\",\n    \"humor\",\n    \"resonate\"\n  ],\n  \"materialUse\": {\n    \"references\": [],\n    \"displayNotes\": {}\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"不追問，換個輕鬆話題或暫停等她主動\",\n    \"ifShortPositive\": \"順勢問貓的品種或名字，讓她多分享一點\",\n    \"ifEngaged\": \"可以自然帶到調酒或打鼓的話題，看她想聊哪個\",\n    \"handoff\": \"她回覆後把對話貼回分析，看她接得多深再調整下一步\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\n      \"晚上打鼓\",\n      \"最近在學調酒\",\n      \"家裡的貓\"\n    ],\n    \"avoidTopics\": [],\n    \"openingStrategy\": \"先從貓這個具體細節切入，讓她自然分享，回覆後再看要不要延伸到打鼓或調酒\"\n  }\n}\n```",
+ "captured_flags": [],
+ "synthetic": "2026-09-18 G1/G2 合成正反例：snapshot 取自 multi-hook.B.1.json，openers 由本輪撰寫，不是模型捕獲"
+}

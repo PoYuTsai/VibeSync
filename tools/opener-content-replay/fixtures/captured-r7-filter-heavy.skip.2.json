@@ -1,0 +1,68 @@
+{
+ "source": "captured-r7-filter-heavy.skip.2.json",
+ "captured": "2026-09-18 真模型確認跑 tag g1g2-d4824177-confirm（候選 d4824177）；reviewer 裁定見 reviewer_judgment",
+ "reviewer_judgment": {
+  "blind_ids": [
+   "F042",
+   "P042"
+  ],
+  "style": "humor",
+  "quote": "職業是美容師 興趣應該是挑我的痘吧",
+  "judgment": "假設自嘲的保守阻擋",
+  "reason": "偏刻意的玩笑，但不能直接等同已發生的健康／人生事件；本輪不把它當確定的真捏造。"
+ },
+ "snapshot": {
+  "approach": {
+   "mode": "fresh_topic",
+   "summary": "她的自介主要在寫篩選條件和防雷聲明，可接的正向線索只剩職業（美容師）這個基本欄位，適合從這裡另開話題，不用回應她列的條件。",
+   "avoid": [
+    "不用回應她的抱怨或防雷聲明",
+    "不用強調自己符合她列的條件"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "美容師工作",
+    "source": "manual_field",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio"
+    }
+   }
+  ],
+  "question": null,
+  "profileDigest": "自我介紹以篩選條件與抱怨為主：提到自己「肉肉的」、要求對方不要玩玩、不要騙色騙財、有女友不要滑、希望找情緒穩定有耐心能長久的對象。職業欄位填美容師，地區新北，認識場景為交友軟體。無其他興趣或照片描述文字。",
+  "profileText": {
+   "name": "小可愛",
+   "bio": "本人是肉肉的～不能接受請不要滑右邊～\n滑了聊天又叫我改變…我就是長這樣…\n騙色騙財 真的先不要～\n麻煩可以多一點正常人嗎？\n真的不要玩玩～想約的麻煩左滑謝謝～有女朋友的也不要滑右邊～\n想找情緒穩定～有耐心的男生～可以長長久久",
+   "interests": "職業：美容師；地區：新北",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "skipped",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": null
+ },
+ "raw": "{\n  \"materialReading\": [],\n  \"openers\": {\n    \"extend\": \"美容師平常最常被問什麼問題\",\n    \"resonate\": \"每天弄別人變美的人應該很挑保養品吧\",\n    \"tease\": \"當美容師是不是看人先看皮膚\",\n    \"humor\": \"職業是美容師 興趣應該是挑我的痘吧\",\n    \"coldRead\": \"感覺美容師都很有自己的一套保養哲學\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"用職業當開放式問題起頭，她好接又不用解釋自己\",\n    \"resonate\": \"從她工作性質延伸合理猜測，給她一個好回的方向\",\n    \"tease\": \"輕輕調她的職業視角，不涉外貌評論\",\n    \"humor\": \"自嘲式小幽默，貼著她的職業但不冒犯\",\n    \"coldRead\": \"溫和的觀察式猜測，她可以輕鬆反駁或補充\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"humor\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"cue_1\", \"outputSpan\": \"美容師\" },\n      { \"style\": \"tease\", \"materialId\": \"cue_1\", \"outputSpan\": \"當美容師\" },\n      { \"style\": \"humor\", \"materialId\": \"cue_1\", \"outputSpan\": \"職業是美容師\" },\n      { \"style\": \"coldRead\", \"materialId\": \"cue_1\", \"outputSpan\": \"美容師\" },\n      { \"style\": \"resonate\", \"materialId\": \"cue_1\", \"outputSpan\": \"弄別人變美的人\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是她的美容師職業，開放式問題讓她好回\",\n      \"tease\": \"這句接的是她的職業，用輕鬆角度調侃工作視角\",\n      \"humor\": \"這句接的是她的職業，用自嘲小幽默貼近\",\n      \"coldRead\": \"這句接的是她的職業，做輕觀察式猜測\",\n      \"resonate\": \"這句接的是她的職業性質，理解她工作可能養成的習慣\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"先停在職業話題，不追問，等她主動延伸再接\",\n    \"ifShortPositive\": \"順著她回答的內容問一個更具體的小問題，維持輕鬆\",\n    \"ifEngaged\": \"可以自然帶入約她聊近況或找一天喝咖啡的邀約\",\n    \"handoff\": \"她回覆後把內容貼回對話分析，依她的語氣調整下一句\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"美容師職業\", \"新北地區\"],\n    \"avoidTopics\": [\"她的篩選條件與抱怨\", \"肉肉的外型描述\", \"情緒穩定耐心的要求\"],\n    \"openingStrategy\": \"先不回應她的防雷聲明,從職業開放式問題切入,等她回覆再判斷下一步\"\n  }\n}",
+ "analyzeRaw": "{\n  \"wrongSurface\": null,\n  \"profileDigest\": \"自我介紹以篩選條件與抱怨為主：提到自己「肉肉的」、要求對方不要玩玩、不要騙色騙財、有女友不要滑、希望找情緒穩定有耐心能長久的對象。職業欄位填美容師，地區新北，認識場景為交友軟體。無其他興趣或照片描述文字。\",\n  \"approach\": {\n    \"mode\": \"fresh_topic\",\n    \"summary\": \"她的自介主要在寫篩選條件和防雷聲明，可接的正向線索只剩職業（美容師）這個基本欄位，適合從這裡另開話題，不用回應她列的條件。\",\n    \"avoid\": [\"不用回應她的抱怨或防雷聲明\", \"不用強調自己符合她列的條件\"]\n  },\n  \"cues\": [\n    { \"id\": \"cue_1\", \"label\": \"美容師工作\", \"source\": \"manual_field\",\n      \"evidence\": { \"field\": \"bio\", \"quote\": \"職業：美容師\" } }\n  ],\n  \"question\": null\n}",
+ "captured_flags": [
+  {
+   "code": "fabricated_sender_fact",
+   "severity": "hard",
+   "style": "humor"
+  }
+ ],
+ "profileInfo": {
+  "name": "小可愛",
+  "bio": "本人是肉肉的～不能接受請不要滑右邊～\n滑了聊天又叫我改變…我就是長這樣…\n騙色騙財 真的先不要～\n麻煩可以多一點正常人嗎？\n真的不要玩玩～想約的麻煩左滑謝謝～有女朋友的也不要滑右邊～\n想找情緒穩定～有耐心的男生～可以長長久久",
+  "interests": "職業：美容師；地區：新北",
+  "meetingContext": "交友軟體"
+ }
+}

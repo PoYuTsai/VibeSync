@@ -1,0 +1,66 @@
+{
+ "source": "synthetic-G2-colon.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她自介只有一個明確線索：養了一隻不給摸的柴犬，可以從這裡開，但先確認你跟狗的關係，避免亂認同好。",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "不給摸的柴犬",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "養了一隻不給摸的柴犬"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟狗是什麼關係？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養狗",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養狗",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹提到養了一隻不給摸的柴犬。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試乙",
+   "bio": "養了一隻不給摸的柴犬",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "skipped",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": null
+ },
+ "raw": "```json\n{\n  \"materialReading\": [],\n  \"openers\": {\n    \"extend\": \"牠的表情像在說「我也養人」\",\n    \"resonate\": \"順帶一提：我也養狗\",\n    \"tease\": \"柴犬說：「我不是給你摸的」\",\n    \"humor\": \"柴犬：我養妳不是讓妳摸的\",\n    \"coldRead\": \"感覺牠其實只是傲嬌吧\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"合成案例\",\n    \"resonate\": \"合成案例\",\n    \"tease\": \"合成案例\",\n    \"humor\": \"合成案例\",\n    \"coldRead\": \"合成案例\"\n  },\n  \"rankedPicks\": [\n    \"extend\",\n    \"coldRead\",\n    \"humor\",\n    \"tease\",\n    \"resonate\"\n  ],\n  \"materialUse\": {\n    \"references\": [],\n    \"displayNotes\": {}\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退一步問養多久了，降低追問感\",\n    \"ifShortPositive\": \"順勢問狗的名字或平常個性\",\n    \"ifEngaged\": \"可以問她怎麼跟不給摸的狗相處、日常互動\",\n    \"handoff\": \"她回覆後貼回對話分析，依她語氣決定要不要深聊養狗細節\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\n      \"柴犬不給摸這件事\"\n    ],\n    \"avoidTopics\": [\n      \"外貌、身材、感情狀態、收入等未提及事項\"\n    ],\n    \"openingStrategy\": \"她若回應狗的細節就順著問下去，若簡短回覆就放輕鬆別追問太深\"\n  }\n}\n```",
+ "captured_flags": [],
+ "synthetic": "2026-09-18 G1/G2 合成正反例：snapshot 取自 single-hook-dog.skip.1.json，openers 由本輪撰寫，不是模型捕獲"
+}

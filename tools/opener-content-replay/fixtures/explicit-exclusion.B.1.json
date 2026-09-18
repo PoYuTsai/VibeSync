@@ -1,0 +1,53 @@
+{
+ "source": "explicit-exclusion.B.1.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介裡烤司康跟玄鳳都是具體可接的線索，使用者已指定想聊玄鳳，可以直接從這隻吵鬧的鳥開聊",
+   "avoid": [
+    "不用聊工作相關話題"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "很吵的玄鳳",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "養一隻很吵的玄鳳"
+    }
+   },
+   {
+    "id": "cue_2",
+    "label": "週末烤司康",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "週末在家烤司康"
+    }
+   }
+  ],
+  "question": null,
+  "profileDigest": "自我介紹提到職業是工程師，週末習慣在家烤司康，養一隻玄鳳鸚鵡且形容牠很吵。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試癸",
+   "bio": "工程師，週末在家烤司康，養一隻很吵的玄鳳",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": true,
+  "initialNoteFingerprint": "8d96018d7b8d7569",
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "不要聊玄鳳，司康我有興趣但沒烤過"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"不要聊玄鳳，司康我有興趣但沒烤過\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"司康我有興趣但沒烤過，難嗎\",\n    \"resonate\": \"在家烤司康，週末過得挺療癒的吧\",\n    \"tease\": \"烤失敗過幾次才練成的\",\n    \"humor\": \"工程師配司康，反差蠻可愛的\",\n    \"coldRead\": \"感覺妳做事挺講究步驟的\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接住用戶說有興趣但沒烤過的事實，順勢問她好不好上手，最貼近用戶真實想法\",\n    \"resonate\": \"不假裝有烤過司康的經驗，改用理解她週末生活步調的方式接近話題\",\n    \"tease\": \"輕輕戳她烤司康過程中可能的小失敗，不涉及外貌或身材\",\n    \"humor\": \"用工程師與烤司康的反差製造輕鬆感，貼著自介事實不誇張\",\n    \"coldRead\": \"從烤司康需要精準度做的輕觀察，可被她反駁或補充\"\n  },\n  \"rankedPicks\": [\"extend\", \"humor\", \"tease\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"司康我有興趣但沒烤過\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你說對司康有興趣但沒烤過，直接問她好不好上手\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"不追問，換成問她平常還喜歡做什麼甜點或料理\",\n    \"ifShortPositive\": \"順勢問她司康口味偏好或第一次烤失敗的經驗\",\n    \"ifEngaged\": \"可以約她分享烤司康的小技巧，自然延伸到約線下喝下午茶\",\n    \"handoff\": \"她具體回覆後即可把對話貼回分析，進一步規劃下一步\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"週末烤司康\"],\n    \"avoidTopics\": [\"玄鳳\"],\n    \"openingStrategy\": \"先接她烤司康這件事，問她做法或口味，讓她能輕鬆分享\"\n  }\n}\n```",
+ "captured_flags": []
+}

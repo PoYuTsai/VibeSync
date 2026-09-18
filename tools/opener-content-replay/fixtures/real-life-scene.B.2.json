@@ -1,0 +1,43 @@
+{
+ "source": "real-life-scene.B.2.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "資料很少，但她負責訂餐廳這件事是唯一具體可接的線索，可以從這裡自然開口",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "她訂餐廳這件事",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "朋友生日聚餐認識，她負責訂餐廳"
+    }
+   }
+  ],
+  "question": null,
+  "profileDigest": "自介文字說明認識場景：在朋友生日聚餐上認識，她當時負責訂餐廳。認識場景欄位標記為「現實認識」。沒有其他可見資訊。",
+  "profileText": {
+   "name": "測試己",
+   "bio": "朋友生日聚餐認識，她負責訂餐廳",
+   "meetingContext": "現實認識"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "上次她訂的那家餐廳我很喜歡，想問還有沒有推薦"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"上次她訂的那家餐廳我很喜歡，想問還有沒有推薦\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"上次妳訂的餐廳我很喜歡\\n還有推薦口袋名單嗎\",\n    \"resonate\": \"選餐廳其實蠻花心思的吧\\n上次那間我很滿意\",\n    \"tease\": \"妳訂餐廳的品味我記住了\\n下次還要靠妳\",\n    \"humor\": \"妳訂餐廳這技能點得不錯\\n有沒有隱藏清單\",\n    \"coldRead\": \"感覺妳訂餐廳蠻有一套的\\n是常做這件事嗎\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接延續用戶原句的稱讚與提問，保留他真正想問的推薦需求\",\n    \"resonate\": \"從訂餐廳需要花心思的角度理解她，不冒充自己也做過\",\n    \"tease\": \"輕輕肯定她的選餐廳品味，留一個互動缺口讓她接話\",\n    \"humor\": \"把訂餐廳說成技能點，輕鬆帶出想問推薦的意圖\",\n    \"coldRead\": \"用輕觀察猜她是否常訂餐廳，可被她反駁或補充\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"humor\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"上次妳訂的餐廳我很喜歡\\n還有推薦口袋名單嗎\" },\n      { \"style\": \"resonate\", \"materialId\": \"material_1\", \"outputSpan\": \"上次那間我很滿意\" },\n      { \"style\": \"tease\", \"materialId\": \"material_1\", \"outputSpan\": \"妳訂餐廳的品味我記住了\" },\n      { \"style\": \"humor\", \"materialId\": \"material_1\", \"outputSpan\": \"有沒有隱藏清單\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句直接接你想問的餐廳推薦，保留你喜歡上次那家的原意\",\n      \"resonate\": \"這句從訂餐廳的用心角度接近她，呼應你對那家餐廳的好感\",\n      \"tease\": \"這句用輕鬆稱讚帶出你想再問推薦的意圖\",\n      \"humor\": \"這句用趣味說法包裝你想問還有沒有推薦這件事\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"簡短留空間，不追問，之後再視情況換話題\",\n    \"ifShortPositive\": \"順著她提到的餐廳名或菜系，追問細節，如口味偏好\",\n    \"ifEngaged\": \"可以聊到吃飯習慣或下次想吃什麼類型，慢慢往約吃飯方向鋪\",\n    \"handoff\": \"她回覆後將對話貼回分析，依她的態度調整下一步\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"她訂餐廳這件事\"],\n    \"avoidTopics\": [\"外貌、身材、感情狀態、收入等未提及資訊\"],\n    \"openingStrategy\": \"她若回推薦，就順勢多問細節；若簡短回應，先閒聊別急著約\"\n  }\n}",
+ "captured_flags": [
+  "negation_reversed"
+ ]
+}

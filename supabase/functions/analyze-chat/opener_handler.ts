@@ -50,6 +50,7 @@ import {
 } from "./opener_profile.ts";
 import { validateOpenerImages } from "./opener_image_validation.ts";
 import {
+  buildLegacyOpenerUserContent,
   buildOpenerRepairPrompt,
   OPENER_DEADLINE_MS,
   OPENER_MAX_TOKENS,
@@ -373,48 +374,12 @@ export async function handleOpenerRequest(
     }
   }
 
-  // Build user prompt
-  const userContent: string[] = [];
-
-  {
-    // Prompt builder reads from the same normalized object as the
-    // billing decision above, so a non-string profileInfo field can
-    // never leak into the prompt while bypassing the substance check.
-    const { name, bio, interests, meetingContext } = normalizedProfile;
-    const parts: string[] = [];
-    if (name) parts.push(`對方名字：${name}`);
-    if (bio) parts.push(`自我介紹：${bio}`);
-    if (interests) parts.push(`興趣：${interests}`);
-    if (meetingContext) parts.push(`認識場景：${meetingContext}`);
-    if (parts.length > 0) {
-      userContent.push("用戶提供的對方資訊：\n" + parts.join("\n"));
-    }
-  }
-
-  if (!userContent.length && !imageCount) {
-    userContent.push(
-      "用戶沒有提供對方資料。請明確標示可見線索不足，生成低風險、自然、不油、不假裝洞察的開場白。",
-    );
-  } else if (userContent.length > 0) {
-    userContent.push(
-      "\n請根據以上可見資訊生成 5 種風格的開場白；只使用明確線索，不要補不存在的人格或共同點。",
-    );
-  }
-
-  if (imageCount > 0) {
-    userContent.push(
-      "用戶上傳了對方的交友軟體自介截圖。請先讀取自介文字、明確禁忌、可接線索與照片中的具體場景，再生成開場白；不要只分析照片風格或外貌。",
-    );
-  }
-
-  // F3-1：風格設定必須在「對方資訊有無」分流之後注入，否則
-  // 沒填對方資料時它會被當成「可見資訊」觸發對方線索指令。
-  if (openerStyleContext) {
-    userContent.push(
-      "用戶（發訊者本人）的風格設定：\n" + openerStyleContext +
-        "\n這些不是對方的資料；只用來調整開場白語氣，絕不當成對方的興趣或共同點。",
-    );
-  }
+  // Build user prompt（純文字部分抽成 buildLegacyOpenerUserContent，評估工具控制組共用同一條路徑）。
+  const userContent: string[] = buildLegacyOpenerUserContent({
+    normalizedProfile,
+    imageCount,
+    openerStyleContext,
+  });
 
   // All production Opener tiers use Sonnet 5. Older models are reserved
   // for the bounded outage fallback chain in fallback.ts.

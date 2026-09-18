@@ -1,0 +1,67 @@
+{
+ "source": "family-fact.B.2.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的自介只有一個明確線索：獸醫助理的工作，可以從這個切入，但先確認你跟動物／這行有沒有交集比較好開",
+   "avoid": [
+    "不用糾結她下班想睡這句，那只是描述累不是拒絕聊天"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "獸醫助理工作",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "在動物醫院當獸醫助理"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟動物或獸醫這行有關係嗎？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養寵物",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養寵物",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹：在動物醫院當獸醫助理，下班只想睡。認識場景：交友軟體。",
+  "profileText": {
+   "name": "測試庚",
+   "bio": "在動物醫院當獸醫助理，下班只想睡",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我自己以前在寵物店打工過，現在沒有了"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我自己以前在寵物店打工過，現在沒有了\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"獸醫助理每天最常碰到什麼動物？\",\n    \"resonate\": \"顧毛小孩的工作應該很燒體力吧\",\n    \"tease\": \"下班只想睡是被哪隻動物榨乾的\",\n    \"humor\": \"我以前在寵物店打工過\\n現在只剩回憶跟過敏\",\n    \"coldRead\": \"感覺妳對動物很有耐心\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接住她自介裡唯一的工作線索，讓她順手就能講日常\",\n    \"resonate\": \"不冒充有相同經驗，但貼近她描述的辛苦感，好回又不失禮\",\n    \"tease\": \"把她自己寫的『下班只想睡』輕輕玩一下，方向不變成質疑她累\",\n    \"humor\": \"用戶自己說的打工經歷原句保留，時間與否定都沒改，帶點自嘲反差\",\n    \"coldRead\": \"只做很輕的觀察，方便她反駁或補充，不涉及外表或個性猜測\"\n  },\n  \"rankedPicks\": [\"humor\", \"extend\", \"resonate\", \"tease\", \"coldRead\"],\n  \"materialUse\": {\n    \"references\": [\n      {\n        \"style\": \"humor\",\n        \"materialId\": \"material_1\",\n        \"outputSpan\": \"我以前在寵物店打工過\"\n      }\n    ],\n    \"displayNotes\": {\n      \"humor\": \"這句接的是你想聊的『自己以前有寵物店經驗、現在沒有了』這件事\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退回單純問候，不再追問工作細節，改問輕鬆話題如最近在忙什麼\",\n    \"ifShortPositive\": \"順著她提到的動物種類或日常小事再問一句具體的\",\n    \"ifEngaged\": \"可以自然帶到用戶自己的寵物店打工經驗，做輕鬆的交換分享\",\n    \"handoff\": \"她一有實質回覆（不只是貼圖或單字）就把對話貼回分析\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"獸醫助理工作、動物相關話題\"],\n    \"avoidTopics\": [\"糾結她說下班想睡這件事本身\"],\n    \"openingStrategy\": \"先問她工作裡具體會遇到的事，讓她能輕鬆分享日常\"\n  }\n}",
+ "captured_flags": []
+}

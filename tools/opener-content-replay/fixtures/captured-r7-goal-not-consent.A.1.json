@@ -1,0 +1,85 @@
+{
+ "source": "captured-r7-goal-not-consent.A.1.json",
+ "captured": "2026-09-18 真模型確認跑 tag g1g2-d4824177-confirm（候選 d4824177）；reviewer 裁定見 reviewer_judgment",
+ "reviewer_judgment": {
+  "blind_ids": [
+   "-"
+  ],
+  "style": "extend",
+  "quote": "一天三杯 是提神還是純粹愛喝",
+  "judgment": "想約沒邀約：Free／paid 都 material_unused，進修正",
+  "reason": "五張卡都沒有邀約；正式流程一次修正，修不好 502 不扣。"
+ },
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的資料集中在咖啡這一件事，可以直接從咖啡開，不用硬找其他話題",
+   "avoid": [
+    "不用證明自己也很懂咖啡才能聊"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "咖啡成癮一天三杯",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "咖啡成癮，一天三杯"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你自己跟咖啡的關係是？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己也很愛喝咖啡",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己也很愛喝咖啡",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介提到咖啡成癮、一天三杯，興趣欄位也是咖啡，認識場景為交友軟體。目前可見資訊只有咖啡這個主題，沒有其他細節（沒有品項、店家、口味偏好等描述）。",
+  "profileText": {
+   "name": "測試子",
+   "bio": "咖啡成癮，一天三杯",
+   "interests": "咖啡",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我想約她喝咖啡"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"goal\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我想約她喝咖啡\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"一天三杯 是提神還是純粹愛喝\",\n    \"resonate\": \"一天三杯的咖啡因含量我光想都醒了\",\n    \"tease\": \"咖啡成癮聽起來像需要戒斷治療\",\n    \"humor\": \"一天三杯 咖啡因應該叫妳半個血液成分\",\n    \"coldRead\": \"看妳寫咖啡成癮 猜妳應該有固定喝的時間點\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"順著她自己講的一天三杯往下問，她能輕鬆接話，也留了後續約咖啡的空間\",\n    \"resonate\": \"不用裝懂咖啡，用「聽了都醒」的反應貼近她成癮的狀態，安全好接\",\n    \"tease\": \"把「成癮」這個詞輕輕玩一下，貼她自己用的字，不越界\",\n    \"humor\": \"用誇張說法呼應她的量詞，製造反差但不需要咖啡知識\",\n    \"coldRead\": \"從一天三杯推測她有固定習慣，給她一個可以反駁或補充的小觀察\"\n  },\n  \"rankedPicks\": [\"extend\", \"humor\", \"tease\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"一天三杯\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是她自介一天三杯咖啡的細節，順勢往下問，也為約咖啡鋪路\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"先別提約咖啡，換聊她喝咖啡的習慣細節（黑咖啡或加奶之類），拉近距離再說\",\n    \"ifShortPositive\": \"順勢問她平常喝哪種咖啡，再自然帶出要不要哪天一起喝一杯\",\n    \"ifEngaged\": \"直接提議找一天約她喝咖啡，時間地點都可以聽她的\",\n    \"handoff\": \"她一回覆任何咖啡細節，就把對話貼回來分析下一步怎麼接\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"咖啡成癮、一天三杯\"],\n    \"avoidTopics\": [\"不用證明自己也很懂咖啡才能聊\"],\n    \"openingStrategy\": \"她若認真回咖啡話題，就自然帶入想約她喝咖啡的邀約，不用等太久\"\n  }\n}\n```",
+ "analyzeRaw": "```json\n{\n  \"wrongSurface\": null,\n  \"profileDigest\": \"自介提到咖啡成癮、一天三杯，興趣欄位也是咖啡，認識場景為交友軟體。目前可見資訊只有咖啡這個主題，沒有其他細節（沒有品項、店家、口味偏好等描述）。\",\n  \"approach\": { \"mode\": \"anchor_hooks\", \"summary\": \"她的資料集中在咖啡這一件事，可以直接從咖啡開，不用硬找其他話題\", \"avoid\": [\"不用證明自己也很懂咖啡才能聊\"] },\n  \"cues\": [\n    { \"id\": \"cue_1\", \"label\": \"咖啡成癮一天三杯\", \"source\": \"profile_text\",\n      \"evidence\": { \"field\": \"bio\", \"quote\": \"咖啡成癮，一天三杯\" } }\n  ],\n  \"question\": {\n    \"affects\": \"sender_fact\",\n    \"text\": \"你自己跟咖啡的關係是？\",\n    \"options\": [\n      { \"id\": \"option_1\", \"label\": \"我自己也很愛喝咖啡\", \"meaning\": \"assert_sender_fact\", \"cueId\": \"cue_1\" },\n      { \"id\": \"option_2\", \"label\": \"沒有，但有興趣\", \"meaning\": \"curious_without_experience\", \"cueId\": \"cue_1\" },\n      { \"id\": \"option_3\", \"label\": \"其實想聊別的\", \"meaning\": \"change_direction\" }\n    ]\n  }\n}\n```",
+ "captured_flags": [],
+ "profileInfo": {
+  "name": "測試子",
+  "bio": "咖啡成癮，一天三杯",
+  "interests": "咖啡",
+  "meetingContext": "交友軟體"
+ }
+}

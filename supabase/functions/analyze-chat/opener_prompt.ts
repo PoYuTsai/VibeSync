@@ -77,6 +77,54 @@ function buildOpenerRepairPrompt(rawText: string): string {
   ].join("\n");
 }
 
+/**
+ * 舊單段（mode: opener）的 user content 純文字部分；圖片由 handler 以 image block 附上。
+ * 抽成純函式讓評估工具的控制組走「同一條」正式路徑（R6a）；順序與字句與原 handler 內聯版本相同。
+ */
+function buildLegacyOpenerUserContent(input: {
+  normalizedProfile: { name?: string; bio?: string; interests?: string; meetingContext?: string };
+  imageCount: number;
+  openerStyleContext: string | null;
+}): string[] {
+  const { normalizedProfile, imageCount, openerStyleContext } = input;
+  const userContent: string[] = [];
+  const { name, bio, interests, meetingContext } = normalizedProfile;
+  const parts: string[] = [];
+  if (name) parts.push(`對方名字：${name}`);
+  if (bio) parts.push(`自我介紹：${bio}`);
+  if (interests) parts.push(`興趣：${interests}`);
+  if (meetingContext) parts.push(`認識場景：${meetingContext}`);
+  if (parts.length > 0) {
+    userContent.push("用戶提供的對方資訊：\n" + parts.join("\n"));
+  }
+
+  if (!userContent.length && !imageCount) {
+    userContent.push(
+      "用戶沒有提供對方資料。請明確標示可見線索不足，生成低風險、自然、不油、不假裝洞察的開場白。",
+    );
+  } else if (userContent.length > 0) {
+    userContent.push(
+      "\n請根據以上可見資訊生成 5 種風格的開場白；只使用明確線索，不要補不存在的人格或共同點。",
+    );
+  }
+
+  if (imageCount > 0) {
+    userContent.push(
+      "用戶上傳了對方的交友軟體自介截圖。請先讀取自介文字、明確禁忌、可接線索與照片中的具體場景，再生成開場白；不要只分析照片風格或外貌。",
+    );
+  }
+
+  // F3-1：風格設定必須在「對方資訊有無」分流之後注入，否則
+  // 沒填對方資料時它會被當成「可見資訊」觸發對方線索指令。
+  if (openerStyleContext) {
+    userContent.push(
+      "用戶（發訊者本人）的風格設定：\n" + openerStyleContext +
+        "\n這些不是對方的資料；只用來調整開場白語氣，絕不當成對方的興趣或共同點。",
+    );
+  }
+  return userContent;
+}
+
 const OPENER_PROMPT =
   `你是 VibeSync 的開場救星先鋒教練。根據用戶提供的對方資訊（交友軟體自介截圖、IG/限動、現實認識線索或文字描述），生成 5 種不同風格的開場白。
 
@@ -341,6 +389,7 @@ Return valid JSON only.${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 // （逐則 200 字制已退役，舊 countMessages 已移除）。
 
 export {
+  buildLegacyOpenerUserContent,
   buildOpenerRepairPrompt,
   OPENER_DEADLINE_MS,
   OPENER_MAX_TOKENS,

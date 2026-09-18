@@ -1,0 +1,65 @@
+{
+ "source": "she-said-vs-guess.A.2.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介線索明確，直接接滑板這件事就好",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "河堤練滑板",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "假日固定去河堤練滑板"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟滑板這件事的關係是？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己也玩滑板",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己也玩滑板",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介提到假日固定去河堤練滑板，是固定興趣活動。",
+  "profileText": {
+   "name": "測試辛",
+   "bio": "假日固定去河堤練滑板",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "她上次聊天提過想去沖繩，還沒訂"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"recipient\",\n      \"kind\": \"prior_interaction\",\n      \"certainty\": \"stated\",\n      \"quote\": \"她上次聊天提過想去沖繩，還沒訂\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"河堤練滑板都練多久了\",\n    \"resonate\": \"假日還在練滑板也太自律\",\n    \"tease\": \"沖繩機票訂了沒還是又拖了\",\n    \"humor\": \"滑板跟沖繩，先解決哪個\",\n    \"coldRead\": \"感覺妳是說做就做的人？沖繩訂了嗎\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接從自介的滑板興趣延伸，最自然好接\",\n    \"resonate\": \"呼應她固定練習的習慣，不冒充經驗只是理解\",\n    \"tease\": \"輕輕戳她提過還沒訂的沖繩計畫，帶點玩笑感\",\n    \"humor\": \"把兩件事並列製造反差，輕鬆不刻意\",\n    \"coldRead\": \"用觀察帶出沖�enaka話題，讓她自己接話確認或反駁\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"humor\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"tease\", \"materialId\": \"material_1\", \"outputSpan\": \"沖繩機票訂了沒還是又拖了\" },\n      { \"style\": \"humor\", \"materialId\": \"material_1\", \"outputSpan\": \"沖繩\" },\n      { \"style\": \"coldRead\", \"materialId\": \"material_1\", \"outputSpan\": \"沖繩訂了嗎\" }\n    ],\n    \"displayNotes\": {\n      \"tease\": \"接的是她之前提過想去沖繩但還沒訂這件事，順勢問進度\",\n      \"humor\": \"把她提過的沖繩計畫跟滑板興趣放一起製造反差感\",\n      \"coldRead\": \"用她說過想去沖繩但還沒訂當觀察點，讓她自己回應\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退回單純問滑板細節，不再提沖繩\",\n    \"ifShortPositive\": \"順著她回答的方向，選一個追問（滑板技巧或沖繩想去的地方）\",\n    \"ifEngaged\": \"可以自然聊到假日安排或旅行偏好\",\n    \"handoff\": \"她回覆後把內容貼回對話分析，看她對哪個話題更有反應\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"河堤練滑板\", \"沖繩想去但還沒訂\"],\n    \"avoidTopics\": [],\n    \"openingStrategy\": \"先接滑板這個明確興趣，她的沖繩計畫可以當備用追問\"\n  }\n}\n```",
+ "captured_flags": []
+}

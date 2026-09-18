@@ -1,0 +1,721 @@
+// 開場救星兩段式：本次原料（用戶的選項、補充原文）的資料整理與確定性檢核
+//（附件 §6、§10.5、§10.7）。
+//
+// 原則：每件原料都知道「誰說的、在講誰、確定到什麼程度、可以怎麼用」。
+// 選主題不等於有經驗；妹妹的工作不是用戶的工作；用戶想邀約不等於對方答應。
+// 這裡只做程式能確定的事：來源 ID／引文對得上、沒有來源的第一人稱事實、
+// 明確被排除的話題、被否定的經歷又被寫成肯定。語意品質靠成對盲審。
+
+import { isPlainObject } from "../_shared/quota.ts";
+import { FIRST_PERSON_FACT_RE, OPENER_TYPES, type OpenerType } from "./opener_payload.ts";
+import type {
+  OpenerAnalysisSnapshot,
+  OpenerContribution,
+  OpenerQuestionOption,
+} from "./opener_stage.ts";
+
+export type OpenerMaterialOrigin = "option" | "user_text";
+export type OpenerMaterialSubject = "sender" | "sender_family" | "recipient" | "shared_scene" | "unknown";
+export type OpenerMaterialKind = "interest" | "fact" | "guess" | "goal" | "restriction" | "raw_sentence";
+export type OpenerMaterialCertainty = "stated" | "prior_interaction" | "hearsay" | "guess";
+export type OpenerMaterialAllowedUse = "topic" | "sender_fact" | "question" | "exclude";
+
+export interface OpenerMaterial {
+  id: string;
+  origin: OpenerMaterialOrigin;
+  subject: OpenerMaterialSubject;
+  kind: OpenerMaterialKind;
+  originalText: string;
+  certainty: OpenerMaterialCertainty;
+  cueId?: string;
+  allowedUse: OpenerMaterialAllowedUse[];
+  restrictions: string[];
+}
+
+export type OpenerInputState = "answered" | "skipped" | "no_answer" | "no_preference";
+
+export interface OpenerMaterialSet {
+  inputState: OpenerInputState;
+  materials: OpenerMaterial[];
+  /** 明確被排除的話題字眼（線索標籤或補充裡「不想聊 X」的 X）。 */
+  excludedTopics: string[];
+  /** 用戶明說「沒／不曾」的經歷片段（動詞＋受詞），輸出寫成肯定就是反轉否定。 */
+  negatedFacts: string[];
+  /** 用戶選「沒有經驗，只是有興趣」的線索標籤：句子裡「我＋這個線索」就是捏造。 */
+  noExperienceTopics: string[];
+  /** 有沒有取得可用的個人原料（「不知道／都可以」不算）。 */
+  hasEffectiveMaterial: boolean;
+  /** 第一人稱事實有沒有合法來源（assert_sender_fact 或用戶原文）。 */
+  senderFactAllowed: boolean;
+  /** 用戶選「其實想聊別的」→ 第一段方向被覆蓋成另開話題。 */
+  directionOverride: "fresh_topic" | null;
+  /** 本局線索標籤：用戶原文點名的線索（她的貓）在卡片裡被接到，就算採用（第七輪 F051）。 */
+  cueLabels: string[];
+}
+
+const NO_PREFERENCE_RE = /^(不知道|不清楚|都可以|都行|都好|隨便|沒想法|沒有想法|還沒想好|沒差|沒有特別想聊的|沒特別想法|你決定|看你)[。！!～~\s]*$/u;
+
+// 「不想聊她的工作」「先不要提我工作」「別問住哪」→ 排除字眼。
+const EXCLUSION_RE =
+  /(不想|不要|別|先不要|先不|不用|不需要)(聊|提|講|談|問|說|寫)(到|起)?(她的|他的|對方的|我的|我|她|他)?([^\s，,。！!？?；;、（）()]{1,10})/gu;
+
+// 「沒養狗」「沒去過」「不曾爬過」「以前養過現在沒有」→ 被否定的經歷片段。
+const NEGATED_FACT_RE =
+  /(沒有|沒|不曾|未|從來沒|從沒|還沒)(養|去過|去|做過|玩過|學過|有|會|爬過|試過|吃過|看過|住過|養過|接觸過|碰過)([^\s，,。！!？?；;、只但而]{0,4})/gu;
+
+export function isNoPreferenceText(text: string): boolean {
+  return NO_PREFERENCE_RE.test(text.trim());
+}
+
+export function extractExcludedTopics(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(EXCLUSION_RE)) {
+    const topic = match[5]?.replace(/(了|吧|喔|啦|囉)$/u, "").trim();
+    if (topic && topic.length >= 1 && !out.includes(topic)) out.push(topic);
+  }
+  return out;
+}
+
+export function extractNegatedFacts(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(NEGATED_FACT_RE)) {
+    const verb = match[2].replace(/過$/u, "");
+    const object = match[3]?.trim() ?? "";
+    // 「還有沒有推薦」「會不會」「去沒去過」是正反問句，不是被否定的經歷（第五輪 P066）。
+    const before = text.slice(Math.max(0, (match.index ?? 0) - verb.length), match.index ?? 0);
+    if (before === verb) continue;
+    // 「沒有興趣」「沒有特別」不是經歷；沒有受詞的「沒有」也不算。
+    if (!object || /^(興趣|特別|想|辦法|關係|差)/u.test(object)) continue;
+    const fact = `${verb}${object}`;
+    if (!out.includes(fact)) out.push(fact);
+  }
+  return out;
+}
+
+function optionMaterial(option: OpenerQuestionOption, snapshot: OpenerAnalysisSnapshot, id: string): OpenerMaterial | null {
+  const cueLabel = option.cueId ? snapshot.cues.find((cue) => cue.id === option.cueId)?.label : undefined;
+  switch (option.meaning) {
+    case "pick_cue":
+      return {
+        id,
+        origin: "option",
+        subject: "sender",
+        kind: "interest",
+        originalText: cueLabel ? `想聊：${cueLabel}` : option.label,
+        certainty: "stated",
+        cueId: option.cueId,
+        allowedUse: ["topic", "question"],
+        restrictions: ["選主題不等於有相關經驗；不得寫成用戶自己有做過、有養、常去"],
+      };
+    case "assert_sender_fact":
+      return {
+        id,
+        origin: "option",
+        subject: "sender",
+        kind: "fact",
+        originalText: option.statement ?? option.label,
+        certainty: "stated",
+        cueId: option.cueId,
+        allowedUse: ["topic", "sender_fact", "question"],
+        restrictions: ["只能用這句原文的事實；不得補品種、年數、頻率、地點或其他細節"],
+      };
+    case "curious_without_experience":
+      return {
+        id,
+        origin: "option",
+        subject: "sender",
+        kind: "interest",
+        originalText: cueLabel ? `對「${cueLabel}」有興趣，但沒有相關經驗` : `${option.label}（沒有相關經驗）`,
+        certainty: "stated",
+        cueId: option.cueId,
+        allowedUse: ["topic", "question"],
+        restrictions: ["用戶沒有相關經驗：不得出現「我也」「我家」「養過的人都懂」這類共同經驗"],
+      };
+    case "exclude_cue":
+      return {
+        id,
+        origin: "option",
+        subject: "sender",
+        kind: "restriction",
+        originalText: cueLabel ? `不想聊：${cueLabel}` : option.label,
+        certainty: "stated",
+        cueId: option.cueId,
+        allowedUse: ["exclude"],
+        restrictions: ["所有候選句都不得提到這個話題"],
+      };
+    case "change_direction":
+      return {
+        id,
+        origin: "option",
+        subject: "sender",
+        kind: "restriction",
+        originalText: "這些線索都沒興趣，想聊別的",
+        certainty: "stated",
+        allowedUse: ["exclude"],
+        restrictions: ["不得再用第一段列出的線索當主題；改走低壓新話題或用戶自己補充的方向"],
+      };
+    case "no_preference":
+      return null;
+  }
+}
+
+export function buildOpenerMaterials(input: {
+  snapshot: OpenerAnalysisSnapshot;
+  contribution: OpenerContribution;
+  option: OpenerQuestionOption | null;
+}): OpenerMaterialSet {
+  const { snapshot, contribution, option } = input;
+  const materials: OpenerMaterial[] = [];
+  const excludedTopics: string[] = [];
+  const noExperienceTopics: string[] = [];
+  let negatedFacts: string[] = [];
+  let senderFactAllowed = false;
+  let directionOverride: "fresh_topic" | null = null;
+  let noPreference = false;
+
+  if (option) {
+    const material = optionMaterial(option, snapshot, `material_${materials.length + 1}`);
+    if (material) {
+      materials.push(material);
+      if (material.allowedUse.includes("sender_fact")) senderFactAllowed = true;
+      if (option.meaning === "exclude_cue" && material.cueId) {
+        const label = snapshot.cues.find((cue) => cue.id === material.cueId)?.label;
+        if (label) excludedTopics.push(label);
+      }
+      if (option.meaning === "curious_without_experience" && material.cueId) {
+        const label = snapshot.cues.find((cue) => cue.id === material.cueId)?.label;
+        if (label) noExperienceTopics.push(label);
+      }
+      if (option.meaning === "change_direction") {
+        directionOverride = "fresh_topic";
+        for (const cue of snapshot.cues) excludedTopics.push(cue.label);
+      }
+    } else {
+      noPreference = true;
+    }
+  }
+
+  const freeText = contribution.freeText;
+  if (freeText) {
+    if (isNoPreferenceText(freeText)) {
+      noPreference = true;
+    } else {
+      // 用戶原文＝一件完整原料：保留主體、否定、時間、程度，由生成模型在
+      // materialReading 裡標主體與確定度（引文必須逐字出自這裡）。
+      materials.push({
+        id: `material_${materials.length + 1}`,
+        origin: "user_text",
+        subject: "unknown",
+        kind: "raw_sentence",
+        originalText: freeText,
+        certainty: "stated",
+        allowedUse: ["topic", "sender_fact", "question", "exclude"],
+        restrictions: [
+          "保留原句的主體（我／我妹／朋友／她）、否定、時間與程度，不得擴寫成沒說過的經歷",
+          "她曾說過的事只能當有來源的先前互動；用戶猜的只能當待確認方向",
+          "用戶的目標（想約、想問）不得寫成她的意願",
+        ],
+      });
+      senderFactAllowed = true;
+      for (const topic of extractExcludedTopics(freeText)) {
+        if (!excludedTopics.includes(topic)) excludedTopics.push(topic);
+      }
+      // 「不聊工作」＝也不拿她自介裡的職業當開場（第五輪 P003／P140／P107）：
+      // 由本局線索標籤（職業樣式）延伸，不是按情境加例外。
+      for (const topic of [...excludedTopics]) {
+        if (!WORK_TOPIC_RE.test(topic)) continue;
+        for (const cue of snapshot.cues) {
+          const profession = professionFromCueLabel(cue.label);
+          if (profession && !excludedTopics.includes(profession)) excludedTopics.push(profession);
+        }
+      }
+      negatedFacts = extractNegatedFacts(freeText);
+    }
+  }
+
+  const hasEffectiveMaterial = materials.length > 0;
+  const inputState: OpenerInputState = contribution.state !== "answered"
+    ? contribution.state
+    : hasEffectiveMaterial
+    ? "answered"
+    : "no_preference";
+  void noPreference;
+  return {
+    inputState,
+    materials,
+    excludedTopics,
+    negatedFacts,
+    noExperienceTopics,
+    hasEffectiveMaterial,
+    senderFactAllowed,
+    directionOverride,
+    cueLabels: snapshot.cues.map((cue) => cue.label),
+  };
+}
+
+// ── 生成輸出的確定性檢核 ──────────────────────────────────────────────────
+
+export interface OpenerMaterialReference {
+  style: OpenerType;
+  materialId: string;
+  outputSpan: string;
+}
+
+export interface OpenerMaterialReadingItem {
+  materialId: string;
+  subject: OpenerMaterialSubject;
+  kind: OpenerMaterialKind;
+  certainty: OpenerMaterialCertainty;
+  quote: string;
+}
+
+export interface OpenerQualityFlag {
+  code:
+    | "fabricated_sender_fact"
+    | "negation_reversed"
+    | "excluded_topic_used"
+    | "sender_fact_transposed"
+    | "sender_fact_extended"
+    | "relative_quote_fabricated"
+    | "relative_fact_extended"
+    | "shared_trait_unsourced"
+    | "sender_fact_subject_unclear"
+    | "certainty_upgraded"
+    | "profile_fact_reversed"
+    | "material_unused"
+    | "reference_invalid"
+    | "reading_quote_mismatch";
+  severity: "hard" | "soft";
+  style?: string;
+  materialId?: string;
+  detail?: string;
+}
+
+const SUBJECTS: readonly OpenerMaterialSubject[] = ["sender", "sender_family", "recipient", "shared_scene", "unknown"];
+const KINDS: readonly OpenerMaterialKind[] = ["interest", "fact", "guess", "goal", "restriction", "raw_sentence"];
+const CERTAINTIES: readonly OpenerMaterialCertainty[] = ["stated", "prior_interaction", "hearsay", "guess"];
+
+/** 模型對用戶原文的主體／確定度標記：引文對不上原文就丟（soft flag）。 */
+export function sanitizeMaterialReading(
+  raw: unknown,
+  materials: OpenerMaterial[],
+): { reading: OpenerMaterialReadingItem[]; flags: OpenerQualityFlag[] } {
+  const reading: OpenerMaterialReadingItem[] = [];
+  const flags: OpenerQualityFlag[] = [];
+  if (!Array.isArray(raw)) return { reading, flags };
+  const byId = new Map(materials.map((m) => [m.id, m]));
+  for (const item of raw.slice(0, 12)) {
+    if (!isPlainObject(item)) continue;
+    const material = typeof item.materialId === "string" ? byId.get(item.materialId) : undefined;
+    const quote = typeof item.quote === "string" ? item.quote.trim() : "";
+    if (!material || !quote || !material.originalText.includes(quote)) {
+      flags.push({ code: "reading_quote_mismatch", severity: "soft", materialId: material?.id });
+      continue;
+    }
+    reading.push({
+      materialId: material.id,
+      subject: SUBJECTS.includes(item.subject as OpenerMaterialSubject) ? item.subject as OpenerMaterialSubject : "unknown",
+      kind: KINDS.includes(item.kind as OpenerMaterialKind) ? item.kind as OpenerMaterialKind : material.kind,
+      certainty: CERTAINTIES.includes(item.certainty as OpenerMaterialCertainty) ? item.certainty as OpenerMaterialCertainty : "stated",
+      quote,
+    });
+  }
+  return { reading, flags };
+}
+
+/** 來源紀錄：ID 出自本局、引文片段真的在該句裡（trace matched 的前提）。 */
+export function sanitizeMaterialReferences(
+  raw: unknown,
+  openers: Record<string, string>,
+  materials: OpenerMaterial[],
+): { references: OpenerMaterialReference[]; flags: OpenerQualityFlag[] } {
+  const references: OpenerMaterialReference[] = [];
+  const flags: OpenerQualityFlag[] = [];
+  if (!Array.isArray(raw)) return { references, flags };
+  const ids = new Set(materials.map((m) => m.id));
+  for (const item of raw.slice(0, 20)) {
+    if (!isPlainObject(item)) continue;
+    const style = typeof item.style === "string" && (OPENER_TYPES as readonly string[]).includes(item.style)
+      ? item.style as OpenerType
+      : null;
+    const materialId = typeof item.materialId === "string" ? item.materialId : null;
+    const span = typeof item.outputSpan === "string" ? item.outputSpan.trim() : "";
+    const text = style ? openers[style] : undefined;
+    if (!style || !materialId || !ids.has(materialId) || !text || !span || !text.includes(span)) {
+      flags.push({ code: "reference_invalid", severity: "soft", style: style ?? undefined, materialId: materialId ?? undefined });
+      continue;
+    }
+    if (!references.some((ref) => ref.style === style && ref.materialId === materialId)) {
+      references.push({ style, materialId, outputSpan: span });
+    }
+  }
+  return { references, flags };
+}
+
+// ── 第五輪驗收補的確定性規則（只做能確定的部分；語意品質仍交盲審）──
+
+const WORK_TOPIC_RE = /^(工作|職業|上班|職場|工作的事|她的工作|我的工作)$/u;
+const PROFESSION_RE = /(師|助理|工程|設計|護理|老師|醫|業務|會計|店員|主管|公務|廚|導|顧問|編輯|記者|老闆)/u;
+/** 線索標籤像職業（「美容師工作」「獸醫助理工作」）就取職業本體。 */
+function professionFromCueLabel(label: string): string | null {
+  const core = label.replace(/(的)?(工作|職業|這行|這份工作)$/u, "").trim();
+  return core && core !== label.trim() && PROFESSION_RE.test(core) ? core : (PROFESSION_RE.test(core) && core.length <= 6 ? core : null);
+}
+/** 冒號前的說話者是動物／第三者（柴犬、牠、她、我媽）才算代言。 */
+const OTHER_SPEAKER_RE = /(犬|貓|狗|牠|喵|汪|寵物|主子|兔|鳥|魚|龜|鼠|鸚鵡|她|妳|你|媽|爸|爺|奶|老闆|同事|朋友|店員)/u;
+/**
+ * 「柴犬：我養妳…」「牠說「我…」」這種明確的代言不是用戶本人的自述；
+ * 「順帶一提：我也養狗」的冒號和沒有說話者的引文都不放行（第五輪 G2）。
+ */
+function stripAttributedSpeech(text: string): string {
+  return text
+    .replace(/([^\s，,。！!？?；;、：:「『"]{1,6})[：:]([^\n」』"，,。！!？?]*)/gu, (whole, label: string) => OTHER_SPEAKER_RE.test(label) ? label : whole)
+    .replace(/(說|講|喊|表示|抗議|嫌)[：:]?\s*[「『"][^\n」』"]*/gu, "$1");
+}
+const CLAUSE_SPLIT_RE = /[\n，,。！!？?；;\s]+/u;
+const RELATIVE_RE = /我(妹|哥|姐|弟|媽|爸|爺|奶|朋友|同事|家人|室友|前任)/u;
+const SPEECH_RE = /(說|嫌|講|抱怨|唸|念|告訴|吐槽|提過)/u;
+const HEDGE_RE = /(提過|想去|還沒|應該|好像|可能|猜|不確定|考慮|打算)/u;
+/** 預設她已承諾的字眼：不管是不是問句都算升級（「說好要訂的機票咧」）。 */
+const COMMIT_PRESUPPOSED_RE = /(說好|答應|約好|承諾)/u;
+/** 狀態字眼：陳述句是升級（「已經訂好了」），問句只是在問（「已經訂好了嗎」）。 */
+const COMMIT_STATE_RE = /(已經訂|訂好了|確定了|決定了)/u;
+/** 子句是不是在問她（子句已去掉 ？）：句尾疑問助詞或正反問。 */
+function isQuestionClause(clause: string): boolean {
+  return /(嗎|呢|吧|沒)$/u.test(clause) || /(有沒有|是不是|還是|了沒|了嗎)/u.test(clause);
+}
+/** 子句有沒有明確以她為主體（妳／你／她）。 */
+function addressesRecipient(clause: string): boolean {
+  return /(妳|你|她)/u.test(clause);
+}
+/** 假設語氣：「我妹聽了應該會說」不是已發生的引語；「應該是…吧」不是已發生的事（第七輪 F058／F042）。 */
+const HYPOTHETICAL_RE = /(應該會|大概會|可能會|一定會|肯定會|聽了會|如果|要是|會不會|應該是|大概是|搞不好|說不定)/u;
+/** 卡片裡指用戶自家的字眼（她家的用「妳家」，不算）。 */
+const SENDER_HOUSEHOLD_RE = /(?<![妳你她])(家裡|我家|我們家)/u;
+/** 把自己寫成跟她同一種人：比「我懂」多承諾了一項本人習慣（第七輪 F049）。 */
+const SHARED_TRAIT_RE = /(同是|同為|同樣是|同類|同道中人|同一掛|跟妳一樣|和妳一樣|我們都|握個手)/u;
+const PARTICLE_RE = /[耶欸啦吧喔啊呢嗎齁吼囉呀哦嘛～]/gu;
+/** 子句裡用戶原文沒有的內容字（去助詞、功能字）：家人／自家子句多出兩個以上就是新增情境。 */
+function novelContentChars(clause: string, userText: string): string {
+  const out: string[] = [];
+  for (const ch of clause.replace(PARTICLE_RE, "")) {
+    if (!/[一-鿿]/u.test(ch) || FUNCTION_CHARS.includes(ch) || userText.includes(ch) || out.includes(ch)) continue;
+    out.push(ch);
+  }
+  return out.join("");
+}
+const EXPERIENCE_RE = /(過|年|以前|曾|打工|學過|玩過|做過|養了|養過|待過|住過|去過|當過)/u;
+const SENSITIVE_SELF_FACT_RE = /(過敏|生病|受傷|住院|開刀|離婚|分手|失業|負債|懷孕|憂鬱|焦慮症)/u;
+const FUNCTION_CHARS = "的了過在是有也都很就還沒不對跟和與把被讓從到得著呢吧啊嗎我妳你她他牠們這那個";
+const STOP_BIGRAMS = new Set(["以前", "現在", "之前", "最近", "曾經", "已經", "平常", "上次", "這次", "自己", "想聊", "興趣", "相關", "經驗", "沒有", "但沒", "聊天", "想去", "還沒", "應該", "不確", "確定", "比較", "有興", "一次", "一下", "一起", "只是", "其實", "真的", "感覺", "覺得"]);
+const PROFILE_ANTONYMS: ReadonlyArray<readonly [string, string]> = [["早睡", "晚睡"], ["早起", "晚起"]];
+const ANTONYM_OF = new Map(PROFILE_ANTONYMS.flatMap(([a, b]) => [[a, b], [b, a]] as const));
+/** 「誰早睡／誰晚睡」的主體歸屬：自介裡的「我」和卡片裡的「妳」都是她；貓／狗歸一。 */
+function sleepSubject(raw: string, viewpoint: "profile" | "card"): string | null {
+  let s = raw.replace(/(妳家|你家|她家|我家|家裡|那隻|這隻|一隻|顧|養|晚上|白天|平常|每天|總是|應該|感覺|覺得|都|也|還|是|會|才|又)/gu, "").trim();
+  if (/(貓|喵)/u.test(s)) return "貓";
+  if (/(狗|犬|汪)/u.test(s)) return "狗";
+  s = s.replace(/^.*?(我|妳|你|她|牠)$/u, "$1");
+  if (s === "我") return viewpoint === "profile" ? "她" : "我";
+  if (s === "妳" || s === "你" || s === "她") return "她";
+  return s.length >= 1 && s.length <= 3 ? s : null;
+}
+/** 每個早睡／晚睡字眼歸給誰：A比B早睡 → A早睡、B晚睡；晚睡的貓 → 貓晚睡；貓晚睡 → 貓；沒主體＝她。 */
+function sleepAttributions(text: string, viewpoint: "profile" | "card"): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (const term of ANTONYM_OF.keys()) {
+    let idx = -1;
+    while ((idx = text.indexOf(term, idx + 1)) !== -1) {
+      const before = text.slice(0, idx).split(/[\n，,。！!？?；;、\s]/u).pop() ?? "";
+      const after = text.slice(idx + term.length);
+      const compare = before.match(/^(.*)比([^比]{0,4})$/u);
+      if (compare) {
+        const a = sleepSubject(compare[1].slice(-6), viewpoint);
+        const b = sleepSubject(compare[2], viewpoint);
+        if (a) out.push([a, term]);
+        if (b) out.push([b, ANTONYM_OF.get(term)!]);
+        continue;
+      }
+      const owner = after.match(/^的([^\s，,。！!？?；;、]{1,3})/u);
+      const subject = owner ? sleepSubject(owner[1], viewpoint) : before ? sleepSubject(before.slice(-3), viewpoint) ?? "她" : "她";
+      if (subject) out.push([subject, term]);
+    }
+  }
+  return out;
+}
+
+function contentBigrams(span: string): string[] {
+  const chars = [...span.replace(/[\s，,。！!？?；;、（）()「」『』：:]/gu, "")];
+  const out: string[] = [];
+  for (let i = 0; i + 2 <= chars.length; i++) {
+    const bg = chars[i] + chars[i + 1];
+    if (STOP_BIGRAMS.has(bg)) continue;
+    if (FUNCTION_CHARS.includes(chars[i]) && FUNCTION_CHARS.includes(chars[i + 1])) continue;
+    if (!/[\u4e00-\u9fffA-Za-z0-9]{2}/u.test(bg)) continue;
+    if (!out.includes(bg)) out.push(bg);
+  }
+  return out;
+}
+function clausesOf(text: string): string[] {
+  return text.split(CLAUSE_SPLIT_RE).map((c) => c.trim()).filter(Boolean);
+}
+/** 用戶原文裡「我＋經歷」的片段（我玩過三年樂團／我以前在寵物店打工過）；家人主體不算。 */
+function senderExperienceBigrams(set: OpenerMaterialSet): string[] {
+  const out: string[] = [];
+  for (const m of set.materials) {
+    if (m.origin !== "user_text") continue;
+    for (const clause of clausesOf(m.originalText)) {
+      if (!/^我/u.test(clause) || RELATIVE_RE.test(clause.slice(0, 3))) continue;
+      if (!EXPERIENCE_RE.test(clause)) continue;
+      // 「我沒養過貓」是被否定的經歷（由 negation_reversed 守），不是能被套到她身上的經歷。
+      if (/(沒|不曾|未|從沒|還沒)/u.test(clause)) continue;
+      for (const bg of contentBigrams(clause.replace(/^我(自己|也|們)?/u, ""))) if (!out.includes(bg)) out.push(bg);
+    }
+  }
+  return out;
+}
+function userTexts(set: OpenerMaterialSet): string {
+  return set.materials.filter((m) => m.origin === "user_text").map((m) => m.originalText).join("\n");
+}
+
+/** 目標型原料（想約她）：採用＝句子帶輕邀約，不是只提到咖啡。 */
+const GOAL_RE = /(想約|約她|約妳|想見面|見個面|想邀|一起去)/u;
+const INVITE_RE = /(約|一起|要不要|有空|哪天|改天|找一天|下次)/u;
+/** 「我不想約她」「先不要約」＝被否定的目標：不是邀約要求，也不是正向原料。 */
+const NEGATED_GOAL_RE = /(不|別|先不|沒|不用|不要|不必|不急著)(想|要|用|急著)?(約|邀|見面|見個面|一起去)[^\n，,。！!？?；;]*/gu;
+function stripNegatedGoal(text: string): string {
+  return text.replace(NEGATED_GOAL_RE, "");
+}
+function hasGoal(m: OpenerMaterial): boolean {
+  return m.origin === "user_text" && GOAL_RE.test(stripNegatedGoal(m.originalText));
+}
+
+/** 原料的「正向內容」：去掉主體、被否定的經歷、排除語與被否定的目標；純否定／純排除的原料沒有正向內容。 */
+function positiveMaterialSource(m: OpenerMaterial, set: OpenerMaterialSet): string {
+  // 排除型原料（不想聊 X／都沒興趣）只有 exclude 用途：遵守就是採用，沒有要被接住的正向內容。
+  if (m.allowedUse.every((use) => use === "exclude")) return "";
+  let source = m.originalText.replace(/^(想聊：|對「|」有興趣，但沒有相關經驗)/gu, "");
+  if (m.origin === "user_text") {
+    source = stripNegatedGoal(source).replace(EXCLUSION_RE, "");
+    for (const fact of set.negatedFacts) source = source.replace(fact, "");
+    source = source.replace(/(沒有|沒|不曾|未|從來沒|從沒|還沒|不想|不要|別|不用|不必)/gu, "");
+  }
+  return source.replace(/我(妹|哥|姐|弟|媽|爸|朋友|同事|室友)?|她|妳|你|自己/gu, "");
+}
+function positiveMaterialBigrams(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
+  return contentBigrams(positiveMaterialSource(m, set));
+}
+/** 線索錨字太泛的字（家裡／晚上／最近）不當錨。 */
+const GENERIC_ANCHOR_CHARS = "家裡上下晚早最近在學想去做玩看聊人事很有沒不好想的";
+/**
+ * 線索錨字：用戶原文點名了本局某個線索的本體（「她的貓」對線索「家裡的貓」→「貓」），
+ * 卡片提到這個本體就是接住原料，不必雙字逐字對上（「貓咪比妳早睡」也算；第七輪 F051）。
+ */
+function cueAnchorChars(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
+  if (m.origin !== "user_text") return [];
+  const source = positiveMaterialSource(m, set);
+  const out: string[] = [];
+  for (const label of set.cueLabels) {
+    for (const ch of label) {
+      if (!/[一-鿿]/u.test(ch) || FUNCTION_CHARS.includes(ch) || GENERIC_ANCHOR_CHARS.includes(ch)) continue;
+      if (source.includes(ch) && !out.includes(ch)) out.push(ch);
+    }
+  }
+  return out;
+}
+
+/** 這張卡有沒有實際用到用戶本次的原料（內容證據，不看模型自稱的 references）。 */
+export function cardAdoptsMaterial(text: string, set: OpenerMaterialSet): boolean {
+  if (!set.hasEffectiveMaterial) return false;
+  for (const m of set.materials) {
+    if (hasGoal(m)) {
+      if (INVITE_RE.test(text)) return true;
+      continue;
+    }
+    for (const bg of positiveMaterialBigrams(m, set)) if (text.includes(bg)) return true;
+    for (const ch of cueAnchorChars(m, set)) if (text.includes(ch)) return true;
+  }
+  return false;
+}
+
+/** 有沒有任何原料需要「採用證據」：只有否定／排除（「沒養過」「不聊工作」「不想約」）的補充，遵守就是採用。 */
+function materialsRequireAdoption(set: OpenerMaterialSet): boolean {
+  return set.materials.some((m) => hasGoal(m) || positiveMaterialBigrams(m, set).length > 0);
+}
+
+/**
+ * 原料採用檢查（第五輪 A）：有有效原料時，用戶方案可見的卡至少要有一張真的用到原料；
+ * 一張都沒有＝這組沒接住他這次的想法，標在排序第一張可見卡上讓修正改寫它。
+ */
+export function checkMaterialAdoption(input: {
+  openers: Record<string, string>;
+  materials: OpenerMaterialSet;
+  visibleTypes: readonly OpenerType[];
+  rankedPicks: readonly OpenerType[];
+  /** 已被其他硬檢查標記的卡：主體顛倒或升級確定度的句子不算「有採用」。 */
+  flags?: readonly OpenerQualityFlag[];
+}): OpenerQualityFlag[] {
+  const { openers, materials, visibleTypes, rankedPicks } = input;
+  if (!materials.hasEffectiveMaterial || !materialsRequireAdoption(materials)) return [];
+  const flaggedStyles = new Set((input.flags ?? []).filter((f) => f.severity === "hard").map((f) => f.style));
+  const visible = visibleTypes.filter((t) => openers[t]);
+  if (visible.some((t) => !flaggedStyles.has(t) && cardAdoptsMaterial(openers[t], materials))) return [];
+  const target = rankedPicks.find((t) => visible.includes(t)) ?? visible[0];
+  if (!target) return [];
+  return [{ code: "material_unused", severity: "hard", style: target, detail: materials.materials.map((m) => m.id).join(",") }];
+}
+
+/**
+ * 硬檢查：沒有來源的第一人稱事實、被否定的經歷被寫成肯定、明確排除的話題
+ * 被用上、用戶經歷被轉到她身上、家人被加上引語、確定度被升級、自介事實被反轉。
+ * 命中＝這組不能交付，handler 做一次有界修正，仍不過就 502 不扣。
+ */
+export function checkOpenersAgainstMaterials(
+  openers: Record<string, string>,
+  set: OpenerMaterialSet,
+  snapshot?: Pick<OpenerAnalysisSnapshot, "profileText" | "cues">,
+): OpenerQualityFlag[] {
+  const flags: OpenerQualityFlag[] = [];
+  const experienceBigrams = senderExperienceBigrams(set);
+  const userText = userTexts(set);
+  const userHasRelative = RELATIVE_RE.test(userText);
+  const userHasSpeech = SPEECH_RE.test(userText);
+  const userHedged = HEDGE_RE.test(userText);
+  const profileText = snapshot
+    ? [snapshot.profileText.bio, snapshot.profileText.interests, ...snapshot.cues.map((c) => c.evidence?.quote ?? "")].filter(Boolean).join("\n")
+    : "";
+  const profileSleep = profileText ? sleepAttributions(profileText, "profile") : [];
+  for (const [style, text] of Object.entries(openers)) {
+    const clauses = clausesOf(text);
+    // 冒號／引號後的代言（柴犬：我養妳…）不算本人自述（第五輪 P080）。
+    const selfText = stripAttributedSpeech(text);
+    if (!set.senderFactAllowed && FIRST_PERSON_FACT_RE.test(selfText)) {
+      // 「興趣應該是挑我的痘吧」：只有「我的」＋假設玩笑、又不碰本局線索＝保守邊界，不當確定捏造（第七輪 F042）。
+      const hitClause = clausesOf(selfText).find((c) => FIRST_PERSON_FACT_RE.test(c)) ?? selfText;
+      const possessiveJoke = !FIRST_PERSON_FACT_RE.test(hitClause.replace(/我的/gu, "")) && HYPOTHETICAL_RE.test(hitClause) &&
+        !set.cueLabels.some((label) => topicMentioned(hitClause, label));
+      flags.push({ code: "fabricated_sender_fact", severity: possessiveJoke ? "soft" : "hard", style, detail: possessiveJoke ? "possessive_joke" : undefined });
+    }
+    // 沒有任何自述來源時，「同是…派／握個手」等於「我也是」：仍是捏造自述（沒有「我」字也算）。
+    if (!set.senderFactAllowed && SHARED_TRAIT_RE.test(selfText)) {
+      flags.push({ code: "fabricated_sender_fact", severity: "hard", style, detail: "shared_trait" });
+    }
+    // 選了「沒有經驗」的線索，句子卻是「我也養狗／我家的狗」：不論有沒有其他原文都算捏造。
+    for (const topic of set.noExperienceTopics) {
+      if (FIRST_PERSON_FACT_RE.test(selfText) && topicMentioned(selfText, topic)) {
+        flags.push({ code: "fabricated_sender_fact", severity: "hard", style, detail: topic });
+      }
+    }
+    for (const fact of set.negatedFacts) {
+      if (/我/u.test(text) && text.includes(fact) && !/(沒|不曾|未|還沒)/u.test(text)) {
+        flags.push({ code: "negation_reversed", severity: "hard", style, detail: fact });
+      }
+    }
+    for (const topic of set.excludedTopics) {
+      if (!topic || !text.includes(topic)) continue;
+      // 「下班不聊工作吧」是遵守排除，不是使用（第五輪 P107）。
+      const avoidance = new RegExp(`(不|別|先不|不用|不要|不想|不必)(聊|提|講|談|問|說)(到|起)?[^\\n，,。！!？?]{0,3}${topic.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "u");
+      if (avoidance.test(text)) continue;
+      flags.push({ code: "excluded_topic_used", severity: "hard", style, detail: topic });
+    }
+    // 用戶自己的經歷（年數／曾做過）出現在沒有「我」的句子裡＝被套到她身上（P038／P070）。
+    // 例外只有一種：同一張卡已用「我」說出這段經歷，再用「妳也…嗎」問她有沒有同樣經驗（語者自持、主體是她）。
+    // 分級（第七輪 F040／F055）：子句明確以她為主體、或本身是在問人的問句（「還打鼓不累嗎」）＝確定套到她身上（hard）；
+    // 沒有任何主體的「玩過三年樂團 …」是中文省略本人主詞的讀法，只標主體不清（soft），不冒稱已證實人物對調。
+    for (const clause of clauses) {
+      const hit = experienceBigrams.find((bg) => clause.includes(bg));
+      if (!hit || /我/u.test(clause)) continue;
+      const speakerOwns = clauses.some((c) => /我/u.test(c) && c.includes(hit));
+      if (speakerOwns && addressesRecipient(clause) && isQuestionClause(clause)) continue;
+      const certain = addressesRecipient(clause) || isQuestionClause(clause);
+      flags.push(certain
+        ? { code: "sender_fact_transposed", severity: "hard", style, detail: hit }
+        : { code: "sender_fact_subject_unclear", severity: "soft", style, detail: hit });
+      break;
+    }
+    // 自述被加上用戶沒說的健康／人生事件（P018「現在只剩回憶跟過敏」）。
+    const sensitive = text.match(SENSITIVE_SELF_FACT_RE)?.[0];
+    if (sensitive && !userText.includes(sensitive) && !/(妳|她|你)/u.test(clausesOf(text).find((c) => c.includes(sensitive)) ?? "")) {
+      flags.push({ code: "sender_fact_extended", severity: "hard", style, detail: sensitive });
+    }
+    // 家人只提供了職業／狀態，卡片卻替他們加上說過的話（P009／P022）；
+    // 「我妹聽了應該會說」是假設未來的反應，不是已發生的引語 → soft（第七輪 F058）。
+    if (userHasRelative && !userHasSpeech && RELATIVE_RE.test(text) && SPEECH_RE.test(text)) {
+      const speechClause = clauses.find((c) => RELATIVE_RE.test(c) && SPEECH_RE.test(c)) ?? text;
+      flags.push({ code: "relative_quote_fabricated", severity: HYPOTHETICAL_RE.test(speechClause) ? "soft" : "hard", style, detail: text.match(SPEECH_RE)?.[0] });
+    }
+    // 家人／自家的子句多出用戶沒說的情境（「家裡保養品多到可以開店」「我妹回家都喊腳痠」）＝替家人加敘事（第七輪 F039／F003）。
+    // 只看內容字是否出自用戶原文，不按個別詞加黑名單；假設語氣、以她為主體的子句不算。
+    if (userHasRelative) {
+      for (const clause of clauses) {
+        if (!(RELATIVE_RE.test(clause) || SENDER_HOUSEHOLD_RE.test(clause))) continue;
+        // 只豁免第二人稱「妳／你」的子句；卡片裡的「她」通常指家人本人（「家裡都是她帶回來的」仍是補情境）。
+        if (/(妳|你)/u.test(clause) || HYPOTHETICAL_RE.test(clause)) continue;
+        const novel = novelContentChars(clause, userText);
+        if (novel.length >= 2) {
+          flags.push({ code: "relative_fact_extended", severity: "hard", style, detail: novel });
+          break;
+        }
+      }
+    }
+    // 有用戶原文、但把自己寫成跟她同一種人（「同是收工就秒斷電派的」）：原文沒有這項本人習慣＝來源邊界，
+    // 只記 soft 不擋（比「我懂」多承諾一項，但不是職業／健康／經歷級的捏造；第七輪 F049）。
+    if (set.senderFactAllowed && SHARED_TRAIT_RE.test(selfText)) {
+      const traitClause = clauses.find((c) => SHARED_TRAIT_RE.test(c)) ?? selfText;
+      const novel = novelContentChars(traitClause.replace(SHARED_TRAIT_RE, ""), userText);
+      if (novel.length >= 2) flags.push({ code: "shared_trait_unsourced", severity: "soft", style, detail: novel });
+    }
+    // 「提過想去、還沒訂」被寫成「說好要訂」（P052）；「已經訂好了嗎」是在問、不是在說（G2）。
+    if (userHedged) {
+      const upgraded = text.match(COMMIT_PRESUPPOSED_RE)?.[0] ??
+        clauses.find((c) => COMMIT_STATE_RE.test(c) && !isQuestionClause(c))?.match(COMMIT_STATE_RE)?.[0];
+      if (upgraded) flags.push({ code: "certainty_upgraded", severity: "hard", style, detail: upgraded });
+    }
+    // 自介已知事實被反轉：看主體歸屬——她說「貓比我早睡」，卡片寫「晚睡的貓」是反轉（P123），
+    // 「妳比貓晚睡」是同一件事換個說法（G2）。
+    for (const [subject, term] of sleepAttributions(text, "card")) {
+      const reversed = ANTONYM_OF.get(term)!;
+      if (profileSleep.some(([s, t]) => s === subject && t === reversed) && !profileSleep.some(([s, t]) => s === subject && t === term)) {
+        flags.push({ code: "profile_fact_reversed", severity: "hard", style, detail: `${subject}:${reversed}→${term}` });
+        break;
+      }
+    }
+  }
+  return flags;
+}
+
+/** 線索標籤（如「養狗」「河堤滑板」）任一個雙字片段出現在句中就算提到。 */
+function topicMentioned(text: string, topic: string): boolean {
+  const compact = topic.replace(/[\s、，,]/g, "");
+  if (compact.length <= 2) return text.includes(compact);
+  for (let i = 0; i + 2 <= compact.length; i++) {
+    if (text.includes(compact.slice(i, i + 2))) return true;
+  }
+  return false;
+}
+
+export function hardFlags(flags: OpenerQualityFlag[]): OpenerQualityFlag[] {
+  return flags.filter((flag) => flag.severity === "hard");
+}
+
+/** 原料整理成 prompt 用的純文字資料區塊（不含教學文字）。 */
+export function renderMaterialsForPrompt(set: OpenerMaterialSet): string {
+  if (set.materials.length === 0) {
+    return `本次用戶補充：無（inputState=${set.inputState}）。照現有資料正常生成，不要假裝有取得用戶個人想法。`;
+  }
+  const lines = set.materials.map((m) =>
+    [
+      `- ${m.id}｜來源=${m.origin === "option" ? "選項" : "用戶原文"}｜主體=${m.subject}｜類型=${m.kind}｜確定度=${m.certainty}` +
+      (m.cueId ? `｜對應線索=${m.cueId}` : ""),
+      `  原文：「${m.originalText}」`,
+      `  可用：${m.allowedUse.join("、")}；限制：${m.restrictions.join("；")}`,
+    ].join("\n")
+  );
+  const extra: string[] = [];
+  if (set.excludedTopics.length) extra.push(`明確排除的話題：${set.excludedTopics.join("、")}（所有候選句都不得提到）`);
+  if (set.negatedFacts.length) extra.push(`用戶明說沒有的經歷：${set.negatedFacts.join("、")}（不得寫成肯定）`);
+  if (set.noExperienceTopics.length) extra.push(`用戶對「${set.noExperienceTopics.join("、")}」只有興趣、沒有經驗：不得出現「我也」「我家」「我養」這類共同經驗。`);
+  if (!set.senderFactAllowed) extra.push("本次沒有任何可用的第一人稱事實：五句都不得出現「我也／我家／我養／我常」這類自述。");
+  if (set.directionOverride === "fresh_topic") extra.push("用戶表示第一段列的線索都沒興趣：另開話題，不要再接那些線索。");
+  return [`本次用戶補充（inputState=${set.inputState}）：`, ...lines, ...extra].join("\n");
+}

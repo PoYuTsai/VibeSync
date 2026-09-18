@@ -37,6 +37,14 @@ class OpenerRequestIdSession {
     );
   }
 
+  /// 從持久化的未完成操作恢復：沿用當時鑄造的 id 與指紋（R2a），
+  /// 同輸入重試才會被伺服器當同一次操作取回結果。
+  void adopt({required String requestId, required String fingerprint}) {
+    _pending = requestId;
+    _fingerprint = fingerprint;
+    _pendingStyleContext = null;
+  }
+
   /// 成功 parse 出結果後呼叫；下一次生成是新的一次計費。
   void markSuccess() {
     _pending = null;
