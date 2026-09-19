@@ -6545,6 +6545,151 @@ void main() {
       expect(api.lastDrawRequestId, isNot(normalId));
     });
   });
+
+  group('案2 B：practice 事件保存本輪條件、同場冪等', () {
+    PracticeTemperature temp(int score) => PracticeTemperature(
+          score: score,
+          delta: 5,
+          band: 'cold',
+          reason: 'r',
+          familiarityScore: 10,
+          familiarityDelta: 5,
+          stageLabel: '破冰',
+        );
+    const debrief = PracticeDebrief(
+      summary: '整體不錯',
+      strengths: ['開場自然'],
+      watchouts: [],
+      suggestedLine: '下次直接約她',
+      vibe: '暖',
+    );
+
+    test('beginner 收操 → 事件帶解析後難度、模式、AI 回覆數、session id；id 固定 practice:<sessionId>',
+        () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      // aiReplyCount 以 server 回的 aiTurnCount 為準（不是本機累加）。
+      api.sendHandler = (_, {profile}) async =>
+          reply(aiTurnCount: 1, temperature: temp(38));
+      await c.sendMessage('嗨');
+      api.sendHandler = (_, {profile}) async =>
+          reply(aiTurnCount: 2, temperature: temp(41));
+      await c.sendMessage('妳今天過得如何');
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+
+      final sessionId = c.currentState.sessionId;
+      final event = history.events.single;
+      expect(event.id, 'practice:$sessionId');
+      expect(event.practiceSessionId, sessionId);
+      expect(event.practiceMode, 'beginner');
+      expect(event.practiceDifficulty, c.currentState.difficulty);
+      expect(
+        ['easy', 'normal', 'challenge'],
+        contains(event.practiceDifficulty),
+      ); // 存解析後的值，不是 random 偏好
+      expect(event.aiReplyCount, 2);
+      expect(event.roundIndex, 1);
+    });
+
+    test('game 收操 → mode 為 game，不被當成 beginner', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          drawResult(profileId: 'practice_girl_004');
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.game);
+      api.sendHandler = (_, {profile}) async => reply(temperature: temp(40));
+      await c.sendMessage('嗨');
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+
+      expect(history.events.single.practiceMode, 'game');
+    });
+
+    test('續同一位第二輪 → 新 id、roundIndex 2、AI 回覆數只計第二輪', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(temperature: temp(38));
+      await c.sendMessage('嗨');
+      await c.sendMessage('第二句');
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+      final firstId = history.events.single.id;
+
+      c.continueWithSamePartner(isPaid: true);
+      api.sendHandler = (_, {profile}) async => reply(temperature: temp(50));
+      await c.sendMessage('再聊');
+      await c.endPractice();
+
+      expect(history.events.length, 2);
+      final second = history.events.last;
+      expect(second.id, isNot(firstId));
+      expect(second.roundIndex, 2);
+      expect(second.aiReplyCount, 1);
+      expect(second.temperatureScore, 50);
+    });
+
+    test('同一場 append 重做兩次 → repository 只有一筆（id 覆寫）', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(temperature: temp(38));
+      await c.sendMessage('嗨');
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+      final event = history.events.single;
+
+      // 模擬同場再寫一次（例如日後的補寫路徑）：走同一個 id。
+      await history.append(event);
+
+      expect(history.events.length, 1);
+      expect(history.events.single.id, 'practice:${c.currentState.sessionId}');
+    });
+
+    test('history append 丟錯 → 拆解卡保留、transport 確認照常、不重扣額度', () async {
+      history = _ThrowingHistoryRepository();
+      final confirmed = <String>[];
+      api.confirmDebriefHandler = (sessionId, requestId) async {
+        confirmed.add(sessionId);
+      };
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(temperature: temp(38));
+      await c.sendMessage('嗨');
+      final syncedBefore = synced.length;
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+
+      expect(c.currentState.debrief, isNotNull);
+      expect(c.currentState.sessionComplete, isTrue);
+      expect(c.currentState.debriefFailed, isFalse);
+      expect(synced.length, syncedBefore);
+      expect(repo.getById(c.currentState.sessionId)?.debriefSummary, '整體不錯');
+    });
+
+    test('transport 確認丟錯 → 事件已在落盤後寫入，不因確認失敗而漏記', () async {
+      api.confirmDebriefHandler = (sessionId, requestId) async {
+        throw StateError('confirm down');
+      };
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(temperature: temp(38));
+      await c.sendMessage('嗨');
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+
+      expect(history.events.length, 1);
+      expect(history.events.single.temperatureScore, 38);
+    });
+
+    test('standard 收操 → 不因補欄位而產生假的溫度事件', () async {
+      final c = await makeRevealed();
+      api.sendHandler = (_, {profile}) async => reply();
+      await c.sendMessage('嗨');
+      api.debriefHandler = (_, {profile}) async => debrief;
+      await c.endPractice();
+
+      expect(history.events, isEmpty);
+    });
+  });
 }
 
 /// 測試用翻牌回應：從 catalog 取真實對象身份，draw/usage 用參數覆寫。
@@ -6585,4 +6730,12 @@ PracticeDrawResult drawResult({
       dailyLimit: dailyLimit,
     ),
   );
+
+}
+
+class _ThrowingHistoryRepository extends MemoryAnalysisHistoryRepository {
+  @override
+  Future<void> append(AnalysisHistoryEvent event) async {
+    throw StateError('hive down');
+  }
 }

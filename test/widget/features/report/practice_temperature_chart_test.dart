@@ -182,4 +182,55 @@ void main() {
     expect(find.text('包含新手與 Game 模式。'), findsOneWidget);
     expect(find.textContaining('最近結束溫度'), findsNothing);
   });
+
+  group('選取資料第三行：練習條件', () {
+    testWidgets('新事件 → 模式 · 難度 · 輪次 · 她回覆 N 次', (tester) async {
+      await _pump(tester, [
+        _p(DateTime(2026, 9, 18, 9), 30, id: 'a'),
+        HeatTrendPoint(
+          date: DateTime(2026, 9, 19, 19, 20),
+          score: 61,
+          conversationName: '',
+          eventId: 'practice:s9',
+          practiceContext: const PracticeRecordContext(
+            difficulty: 'normal',
+            mode: 'beginner',
+            roundIndex: 2,
+            aiReplyCount: 8,
+          ),
+        ),
+      ]);
+
+      expect(find.text('新手 · 一般 · 第 2 輪 · 她回覆 8 次'), findsOneWidget);
+    });
+
+    testWidgets('部分未知 → 只列已知，不補預設值', (tester) async {
+      await _pump(tester, [
+        _p(DateTime(2026, 9, 18, 9), 30, id: 'a'),
+        HeatTrendPoint(
+          date: DateTime(2026, 9, 19, 19, 20),
+          score: 61,
+          conversationName: '',
+          eventId: 'practice:s9',
+          practiceContext: const PracticeRecordContext(
+            mode: 'game',
+            roundIndex: 1,
+          ),
+        ),
+      ]);
+
+      expect(find.text('Game · 第 1 輪'), findsOneWidget);
+      expect(find.textContaining('一般'), findsNothing);
+      expect(find.textContaining('回覆'), findsNothing);
+    });
+
+    testWidgets('舊事件全無條件 → 明說沒有保存', (tester) async {
+      await _pump(tester, [
+        _p(DateTime(2026, 9, 18, 9), 30, id: 'a'),
+        _p(DateTime(2026, 9, 19, 19, 20), 61, id: 'b'),
+      ]);
+
+      expect(find.text('這筆舊紀錄沒有保存練習條件'), findsOneWidget);
+    });
+  });
 }

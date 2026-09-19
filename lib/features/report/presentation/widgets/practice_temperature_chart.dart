@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
+import '../../../practice_chat/domain/entities/practice_learning_mode.dart';
+import '../../../practice_chat/domain/entities/practice_profile.dart';
 import '../../../practice_chat/presentation/widgets/practice_temperature_style.dart';
 import '../../domain/entities/report_models.dart';
 import 'report_line_chart_axes.dart';
@@ -235,8 +237,26 @@ class PracticeTemperatureChart extends StatelessWidget {
       detailLinesOf: (point, index, axes) => [
         '結束溫度 ${point.score} / 100 · '
             '${practiceTemperatureBandLabel(score: point.score)}',
+        practiceContextLine(point.practiceContext),
       ],
     );
+  }
+
+  /// 第三行：`新手 · 一般 · 第 2 輪 · 她回覆 8 次`。未知欄位直接省略，不補
+  /// 預設值；全部未知（舊事件）明說沒有保存條件。
+  static String practiceContextLine(PracticeRecordContext? context) {
+    if (context == null || context.isEmpty) {
+      return '這筆舊紀錄沒有保存練習條件';
+    }
+    final parts = <String>[
+      if (context.mode != null)
+        PracticeLearningMode.fromWire(context.mode).label,
+      if (context.difficulty != null)
+        practiceDifficultyLabel(context.difficulty!),
+      if (context.roundIndex != null) '第 ${context.roundIndex} 輪',
+      if (context.aiReplyCount != null) '她回覆 ${context.aiReplyCount} 次',
+    ];
+    return parts.join(' · ');
   }
 
   /// 五段溫度帶背景。分類是整數規則（0–20、21–40…），背景是連續座標

@@ -31,13 +31,17 @@ class AnalysisHistoryEventAdapter extends TypeAdapter<AnalysisHistoryEvent> {
       relationshipStageLabel: fields[11] as String?,
       partnerId: fields[12] as String?,
       isReconnect: fields[13] as bool?,
+      practiceDifficulty: fields[14] as String?,
+      aiReplyCount: (fields[15] as num?)?.toInt(),
+      practiceMode: fields[16] as String?,
+      practiceSessionId: fields[17] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AnalysisHistoryEvent obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -65,7 +69,15 @@ class AnalysisHistoryEventAdapter extends TypeAdapter<AnalysisHistoryEvent> {
       ..writeByte(12)
       ..write(obj.partnerId)
       ..writeByte(13)
-      ..write(obj.isReconnect);
+      ..write(obj.isReconnect)
+      ..writeByte(14)
+      ..write(obj.practiceDifficulty)
+      ..writeByte(15)
+      ..write(obj.aiReplyCount)
+      ..writeByte(16)
+      ..write(obj.practiceMode)
+      ..writeByte(17)
+      ..write(obj.practiceSessionId);
   }
 
   @override
