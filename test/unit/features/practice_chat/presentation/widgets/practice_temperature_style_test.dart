@@ -87,4 +87,24 @@ void main() {
       expect(practiceTemperatureColor(band: null, score: 80), AppColors.warm);
     });
   });
+
+  group('practiceTemperatureBandLabel（報告頁與溫度計共用白話標籤）', () {
+    test('五段對應，邊界與 band 邊界一致（warm 從 61 起）', () {
+      expect(practiceTemperatureBandLabel(score: 0), '很冷');
+      expect(practiceTemperatureBandLabel(score: 20), '很冷');
+      expect(practiceTemperatureBandLabel(score: 21), '偏冷');
+      expect(practiceTemperatureBandLabel(score: 40), '偏冷');
+      expect(practiceTemperatureBandLabel(score: 41), '普通');
+      expect(practiceTemperatureBandLabel(score: 60), '普通');
+      expect(practiceTemperatureBandLabel(score: 61), '熱絡');
+      expect(practiceTemperatureBandLabel(score: 80), '熱絡');
+      expect(practiceTemperatureBandLabel(score: 81), '很熱絡');
+      expect(practiceTemperatureBandLabel(score: 100), '很熱絡');
+    });
+
+    test('band 有值以 band 為準；未知 band 退回 score', () {
+      expect(practiceTemperatureBandLabel(score: 10, band: 'hot'), '很熱絡');
+      expect(practiceTemperatureBandLabel(score: 55, band: 'scorching'), '普通');
+    });
+  });
 }

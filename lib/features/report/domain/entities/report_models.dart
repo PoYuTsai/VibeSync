@@ -1,16 +1,42 @@
 // lib/features/report/domain/entities/report_models.dart
 
-/// 熱度趨勢數據點
+/// 熱度趨勢數據點。
+///
+/// [eventId] 是來源歷史事件的 id：同一時刻的多筆資料靠它做穩定排序與
+/// 「所選點」身分；測試／預覽資料可為 null（改以輸入位置當第二排序鍵）。
 class HeatTrendPoint {
   final DateTime date;
   final int score;
   final String conversationName;
+  final String? eventId;
 
   const HeatTrendPoint({
     required this.date,
     required this.score,
     required this.conversationName,
+    this.eventId,
   });
+}
+
+/// 報告頁所有折線資料共用的穩定排序：先依原始時間（微秒精度）升序，同時刻
+/// 再依 [HeatTrendPoint.eventId]，兩者都缺時退回輸入位置。Dart `List.sort`
+/// 不保證同值元素順序，所以第二、第三鍵是必要的，不是保險。不改動來源清單。
+List<HeatTrendPoint> sortHeatTrendPoints(List<HeatTrendPoint> source) {
+  final indexed = [
+    for (var i = 0; i < source.length; i++) (index: i, point: source[i]),
+  ];
+  indexed.sort((a, b) {
+    final byDate = a.point.date.compareTo(b.point.date);
+    if (byDate != 0) return byDate;
+    final idA = a.point.eventId;
+    final idB = b.point.eventId;
+    if (idA != null && idB != null) {
+      final byId = idA.compareTo(idB);
+      if (byId != 0) return byId;
+    }
+    return a.index.compareTo(b.index);
+  });
+  return [for (final entry in indexed) entry.point];
 }
 
 /// 將任一投入度時間序列整理成可讀的「近期趨勢」。
@@ -33,8 +59,7 @@ class HeatTrendSummary {
     int maxPoints = 7,
   }) {
     assert(maxPoints > 0);
-    final sorted = List<HeatTrendPoint>.from(source)
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final sorted = sortHeatTrendPoints(source);
     final recent = sorted.length > maxPoints
         ? sorted.sublist(sorted.length - maxPoints)
         : sorted;

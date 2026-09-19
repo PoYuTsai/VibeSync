@@ -191,7 +191,7 @@ class ReportDataService {
       for (final conversation in conversations)
         conversation.id.trim(): conversation,
     };
-    return events
+    final points = events
         .where((event) =>
             event.kind == AnalysisHistoryKind.analyze &&
             _subjectIdFor(event, conversationsById) == id &&
@@ -200,9 +200,10 @@ class ReportDataService {
               date: event.createdAt,
               score: clampVisibleInvestmentScore(event.enthusiasmScore!),
               conversationName: event.subjectName ?? '',
+              eventId: event.id,
             ))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+        .toList();
+    return sortHeatTrendPoints(points);
   }
 
   String? _subjectIdFor(
@@ -226,22 +227,28 @@ class ReportDataService {
     return persistedPartner ?? conversationId;
   }
 
-  /// 案2：練習溫度全域時間序列——刻意不分對象混排（練習溫度量的是玩家
-  /// 本人的開場→升溫能力，跨對象看斜率才是成長曲線）。temperatureScore
-  /// null（非新手模式）跳過。familiarityScore 不畫第二條線（YAGNI）。
+  /// 練習溫度紀錄序列：每筆是一輪練習（一個 practice session）收操時的
+  /// 結束溫度，不分對象混排。這不是能力成長曲線——難度、模式、聊天長度、
+  /// 續玩都會影響終溫，報告只呈現紀錄，不推斷能力。
+  /// temperatureScore null（標準模式）跳過；超出 0–100 的值視為錯誤資料，
+  /// 不入圖也不修改原始事件。familiarityScore 不畫第二條線（YAGNI）。
   List<HeatTrendPoint> practiceTemperaturePoints(
     List<AnalysisHistoryEvent> events,
   ) {
-    return events
+    final points = events
         .where((event) =>
             event.kind == AnalysisHistoryKind.practice &&
-            event.temperatureScore != null)
+            _isValidPracticeTemperature(event.temperatureScore))
         .map((event) => HeatTrendPoint(
               date: event.createdAt,
               score: event.temperatureScore!,
               conversationName: '',
+              eventId: event.id,
             ))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+        .toList();
+    return sortHeatTrendPoints(points);
   }
+
+  static bool _isValidPracticeTemperature(int? score) =>
+      score != null && score >= 0 && score <= 100;
 }

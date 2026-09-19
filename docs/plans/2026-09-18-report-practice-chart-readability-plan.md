@@ -535,3 +535,16 @@ Eric 需確認的三項：
 | E16 | `pubspec.lock` | fl_chart 0.70.2、hive_ce 2.19.3、hive_ce_generator 1.11.3 |
 | E17 | `AGENTS.md`、`.agent/environment.json` | 授權區別、高風險交叉審查、環境與實機驗收 |
 | E18 | `lib/features/analysis/domain/entities/enthusiasm_level.dart`（10, 14） | clamp 與 0.9 校準是兩個函式 |
+
+---
+
+## 16. PR-A 實作註記（2026-09-19）
+
+實作與第 4–6 節一致，另有四項落地決定：
+
+- **共用本體** `report_ordinal_line_chart.dart`：兩張圖的序數軸、直線、點色、選取狀態、圖下方資料區都在這一個 StatefulWidget；`practice_temperature_chart.dart` 與 `heat_trend_chart.dart` 只負責標題、文案、y 範圍、色帶／平均線與資料行文字。
+- **點擊命中範圍**：fl_chart 折線圖預設只算水平距離，`touchSpotThreshold` 設 40 px，整個欄位都能選中該筆，不需精準點到 3.5–6 px 的圓點。
+- **平均線標籤**：視覺證據顯示圖內「這 N 次平均」會壓到靠近平均的最後一點（第 5.2 節預留的情況），改為固定放在圖註「虛線是這 N 次平均。…」，圖內不放標籤。
+- **可見上限先於摘要**：`HeatTrendChart` 先把每筆分數 clamp 到 90 再建 `HeatTrendSummary`，平均、較上次、圖點、資料區來自同一份已 clamp 的視窗（A08）。
+
+`trend_flow_overlay.dart` 與其測試已刪除；`test/helpers/motion_free_app.dart` 只改註解。視覺證據輸出改名 `practice_temperature_record.png`、`engagement_trend_ordinal.png`，capture 高度提到 560（圖區 200 + 圖註 + 資料區）。

@@ -114,10 +114,11 @@ void main() {
     ]);
 
     final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
-    expect(chart.averageScore, 55);
-    expect(chart.scoreDelta, 26);
-    expect(chart.sampleCount, 2);
-    expect(find.text('近期平均 55'), findsOneWidget);
+    expect(chart.trendPoints.map((p) => p.score), [42, 68]);
+    // 平均、較上次、筆數由 chart 從同一份點列自己算。
+    expect(find.text('這 2 次平均 55 / 90'), findsOneWidget);
+    expect(find.text('較上次 +26'), findsOneWidget);
+    expect(find.text('最近 2 筆分析'), findsOneWidget);
     expect(find.text('小雲'), findsOneWidget);
     expect(find.byType(ReportSubjectSelector), findsNothing);
     expect(find.text('還沒有分析數據'), findsNothing);
@@ -126,8 +127,8 @@ void main() {
   testWidgets('舊用戶沒有事件時不把缺資料顯示成平均 0', (tester) async {
     await _pump(tester, const [], report: _legacyConversationReport);
 
-    expect(find.text('等待趨勢資料'), findsOneWidget);
-    expect(find.text('全部平均 0'), findsNothing);
+    expect(find.textContaining('次平均'), findsNothing);
+    expect(find.textContaining('較上次'), findsNothing);
     expect(find.text('再多分析幾次，就能比較對方每次互動的投入度'), findsOneWidget);
   });
 }

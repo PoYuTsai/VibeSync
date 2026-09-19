@@ -33,3 +33,20 @@ Color practiceTemperatureColor({required int score, String? band}) {
     _ => AppColors.hot,
   };
 }
+
+/// 溫度帶白話標籤（報告頁與溫度計共用）。優先吃 server 回的 [band]；缺席或
+/// 未知值退回 [practiceTemperatureBandForScore]，與 [practiceTemperatureColor]
+/// 同一套解析，避免顏色與文字對不上。
+String practiceTemperatureBandLabel({required int score, String? band}) {
+  final resolved = switch (band) {
+    'frozen' || 'cold' || 'neutral' || 'warm' || 'hot' => band!,
+    _ => practiceTemperatureBandForScore(score),
+  };
+  return switch (resolved) {
+    'frozen' => '很冷',
+    'cold' => '偏冷',
+    'neutral' => '普通',
+    'warm' => '熱絡',
+    _ => '很熱絡',
+  };
+}

@@ -57,8 +57,8 @@ class MyReportScreen extends ConsumerWidget {
         ),
     };
 
-    // 對象選擇器＋單對象歷史序列。折線、平均與 delta 必須全部來自同一位
-    // 對象的最近七次事件，不能混入 Conversation 全體摘要。
+    // 對象選擇器＋單對象歷史序列。折線、平均與 delta 由 HeatTrendChart 從
+    // 同一位對象的最近七筆自己算，不能混入 Conversation 全體摘要。
     final subjects = ref.watch(analysisSubjectsProvider);
     final requestedSubject = ref.watch(selectedReportSubjectProvider);
     final selectedSubject = requestedSubject != null &&
@@ -76,7 +76,6 @@ class MyReportScreen extends ConsumerWidget {
     final subjectPoints = selectedSubject == null
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
-    final subjectSummary = HeatTrendSummary.fromPoints(subjectPoints);
     final practicePoints = ref.watch(practiceTemperatureTrendProvider);
     // 歷史事件與 Conversation 最新快照是兩條合法資料流：只要任一條有資料，
     // 報告就應顯示。舊邏輯只看 Conversation，會把「只有練習紀錄」或仍保留
@@ -147,11 +146,9 @@ class MyReportScreen extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
             HeatTrendChart(
-              trendPoints: subjectSummary.points,
-              averageScore: subjectSummary.averageScore,
-              scoreDelta: subjectSummary.scoreDelta,
+              trendPoints: subjectPoints,
+              subjectId: selectedSubject,
               contextLabel: selectedSubjectName,
-              sampleCount: subjectSummary.sampleCount,
               emptyMessage: '再多分析幾次，就能比較對方每次互動的投入度',
             ),
           ],
@@ -159,8 +156,8 @@ class MyReportScreen extends ConsumerWidget {
           _ReportStoryHeader(
             number:
                 hasConversationReport || hasInteractionHistory ? '02' : '01',
-            title: '看自己的練習成長',
-            body: '練習室量的是你的升溫能力，獨立於真實對話，不拿來猜對方心意。',
+            title: '看每次練習的紀錄',
+            body: '看看每輪練習結束時的聊天溫度。難度、模式和聊天長度不同，分數會有起伏。',
           ),
           const SizedBox(height: 12),
           PracticeTemperatureChart(points: practicePoints),

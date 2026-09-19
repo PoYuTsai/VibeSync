@@ -67,10 +67,11 @@ void main() {
     );
   });
 
-  testWidgets('practice growth flowing dashes', (tester) async {
+  testWidgets('practice temperature record ordinal chart', (tester) async {
     await pumpAndCapture(
       tester,
-      size: const Size(390, 430),
+      // 圖區 200 + 圖註 + 選取資料區：卡片比舊流光版高。
+      size: const Size(390, 560),
       settle: const Duration(milliseconds: 2050),
       child: GradientBackground(
         child: Scaffold(
@@ -104,14 +105,14 @@ void main() {
           ),
         ),
       ),
-      outPath: outPath('liquid_practice_growth.png'),
+      outPath: outPath('practice_temperature_record.png'),
     );
   });
 
-  testWidgets('engagement trend flowing dashes', (tester) async {
+  testWidgets('engagement trend ordinal chart', (tester) async {
     await pumpAndCapture(
       tester,
-      size: const Size(390, 420),
+      size: const Size(390, 560),
       settle: const Duration(milliseconds: 720),
       child: GradientBackground(
         child: Scaffold(
@@ -136,15 +137,13 @@ void main() {
                   conversationName: '安安',
                 ),
               ],
-              averageScore: 54.7,
-              scoreDelta: 4,
+              subjectId: 'p-anan',
               contextLabel: '安安',
-              sampleCount: 3,
             ),
           ),
         ),
       ),
-      outPath: outPath('engagement_trend_motion.png'),
+      outPath: outPath('engagement_trend_ordinal.png'),
     );
   });
 }
