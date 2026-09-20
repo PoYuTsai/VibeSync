@@ -151,11 +151,25 @@ void main() {
     expect(find.text('本圖第 7 筆 · 6/13 00:00'), findsOneWidget);
   });
 
-  testWidgets('單點 → 顯示結束溫度與時間、不畫線', (tester) async {
-    await _pump(tester, [_p(DateTime(2026, 6, 1, 19, 20), 28)]);
+  testWidgets('單點 → 顯示結束溫度、時間與本輪條件，不畫線', (tester) async {
+    await _pump(tester, [
+      HeatTrendPoint(
+        date: DateTime(2026, 6, 1, 19, 20),
+        score: 28,
+        conversationName: '',
+        eventId: 'practice:single',
+        practiceContext: const PracticeRecordContext(
+          difficulty: 'normal',
+          mode: 'beginner',
+          roundIndex: 2,
+          aiReplyCount: 8,
+        ),
+      ),
+    ]);
 
     expect(find.byType(LineChart), findsNothing);
     expect(find.text('結束溫度 28 · 6/01 19:20'), findsOneWidget);
+    expect(find.text('新手 · 一般 · 第 2 輪 · 她回覆 8 次'), findsOneWidget);
     expect(find.text('再留下 1 筆紀錄，就能一起查看兩次的差別。'), findsOneWidget);
     expect(find.textContaining('起點'), findsNothing);
     expect(

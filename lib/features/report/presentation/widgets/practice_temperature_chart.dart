@@ -212,6 +212,15 @@ class PracticeTemperatureChart extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
+              practiceContextLine(point.practiceContext),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
               '再留下 1 筆紀錄，就能一起查看兩次的差別。',
               textAlign: TextAlign.center,
               style: TextStyle(

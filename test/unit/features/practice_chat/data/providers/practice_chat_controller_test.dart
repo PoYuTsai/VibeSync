@@ -6562,6 +6562,7 @@ void main() {
       watchouts: [],
       suggestedLine: '下次直接約她',
       vibe: '暖',
+      idempotencyRequestId: 'debrief-req-history',
     );
 
     test('beginner 收操 → 事件帶解析後難度、模式、AI 回覆數、session id；id 固定 practice:<sessionId>',
@@ -6646,9 +6647,9 @@ void main() {
 
     test('history append 丟錯 → 拆解卡保留、transport 確認照常、不重扣額度', () async {
       history = _ThrowingHistoryRepository();
-      final confirmed = <String>[];
+      final confirmed = <(String, String)>[];
       api.confirmDebriefHandler = (sessionId, requestId) async {
-        confirmed.add(sessionId);
+        confirmed.add((sessionId, requestId));
       };
       final c = await makeRevealed();
       await c.setPracticeLearningMode(PracticeLearningMode.beginner);
@@ -6663,10 +6664,15 @@ void main() {
       expect(c.currentState.debriefFailed, isFalse);
       expect(synced.length, syncedBefore);
       expect(repo.getById(c.currentState.sessionId)?.debriefSummary, '整體不錯');
+      expect(confirmed, [
+        (c.currentState.sessionId, 'debrief-req-history'),
+      ]);
     });
 
-    test('transport 確認丟錯 → 事件已在落盤後寫入，不因確認失敗而漏記', () async {
+    test('transport 確認丟錯 → non-null requestId 已送確認，事件仍不漏記', () async {
+      String? confirmedRequestId;
       api.confirmDebriefHandler = (sessionId, requestId) async {
+        confirmedRequestId = requestId;
         throw StateError('confirm down');
       };
       final c = await makeRevealed();
@@ -6676,6 +6682,7 @@ void main() {
       api.debriefHandler = (_, {profile}) async => debrief;
       await c.endPractice();
 
+      expect(confirmedRequestId, 'debrief-req-history');
       expect(history.events.length, 1);
       expect(history.events.single.temperatureScore, 38);
     });
