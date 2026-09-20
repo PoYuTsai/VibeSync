@@ -5,27 +5,33 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../domain/entities/report_models.dart';
 
-/// 報告首屏摘要：先回答「整體往哪走」，再讓使用者往下查看個別依據。
+/// 報告首屏摘要：只描述「目前各段對話的快照」，不推斷時間方向。
+///
+/// 這張卡的來源是各 Conversation 最新有效快照，不是同一人的事件序列；把
+/// 不同對話的快照切前後半相減得到的「回升／轉為保守」會被讀成某位對象或
+/// 使用者的進步，所以拿掉。要看前後變化，往下選一位對象看單人序列。
 class ReportOverviewCard extends StatelessWidget {
   const ReportOverviewCard({
     super.key,
     required this.averageScore,
-    required this.scoreDelta,
     required this.totalConversations,
     required this.stageDistributions,
   });
 
   final double averageScore;
-  final double scoreDelta;
   final int totalConversations;
   final List<StageDistribution> stageDistributions;
+
+  static const headline = '目前的對話概況';
+  static const subline = '整理各段對話最近一次有效分析；要看前後變化，請往下選一位對象。';
 
   @override
   Widget build(BuildContext context) {
     final stage = _dominantStage;
     return Semantics(
       container: true,
-      label: '整體摘要，${_headline()}，共 $totalConversations 個已分析對話',
+      label: '整體摘要，$headline，共 $totalConversations 個已分析對話，'
+          '對話平均投入 ${averageScore.round()}，常見階段 ${stage ?? '尚無'}',
       child: BrandSurfaceCard(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -62,12 +68,11 @@ class ReportOverviewCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                _DirectionBadge(delta: scoreDelta),
               ],
             ),
             const SizedBox(height: 18),
             Text(
-              _headline(),
+              headline,
               style: AppTypography.headlineMedium.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
@@ -76,7 +81,7 @@ class ReportOverviewCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '先看方向，再往下確認是哪位對象、哪次互動帶來變化。',
+              subline,
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                 height: 1.45,
@@ -96,13 +101,13 @@ class ReportOverviewCard extends StatelessWidget {
                 children: [
                   _Metric(
                     value: averageScore.round().toString(),
-                    label: '平均投入',
+                    label: '對話平均投入',
                   ),
                   const _MetricDivider(),
+                  // 數的是對話不是對象：同一人可能有多段 Conversation。
                   _Metric(
-                    value: _signedDelta,
-                    label: '前後趨勢',
-                    valueColor: _deltaColor,
+                    value: '$totalConversations',
+                    label: '有效對話',
                   ),
                   const _MetricDivider(),
                   _Metric(
@@ -141,25 +146,6 @@ class ReportOverviewCard extends StatelessWidget {
     );
   }
 
-  String _headline() {
-    if (totalConversations <= 1) return '第一個互動基準已建立';
-    if (scoreDelta >= 8) return '近期的投入訊號正在回升';
-    if (scoreDelta <= -8) return '近期的投入訊號轉為保守';
-    return '整體投入節奏大致穩定';
-  }
-
-  String get _signedDelta {
-    final rounded = scoreDelta.round();
-    if (rounded > 0) return '+$rounded';
-    return '$rounded';
-  }
-
-  Color get _deltaColor {
-    if (scoreDelta > 0) return AppColors.success;
-    if (scoreDelta < 0) return AppColors.error;
-    return Colors.white;
-  }
-
   String? get _dominantStage {
     if (stageDistributions.isEmpty) return null;
     return stageDistributions
@@ -168,65 +154,14 @@ class ReportOverviewCard extends StatelessWidget {
   }
 }
 
-class _DirectionBadge extends StatelessWidget {
-  const _DirectionBadge({required this.delta});
-
-  final double delta;
-
-  @override
-  Widget build(BuildContext context) {
-    final isUp = delta >= 8;
-    final isDown = delta <= -8;
-    final color = isUp
-        ? AppColors.success
-        : isDown
-            ? AppColors.error
-            : AppColors.primaryLight;
-    final label = isUp
-        ? '回升'
-        : isDown
-            ? '放慢'
-            : '穩定';
-    final icon = isUp
-        ? Icons.trending_up_rounded
-        : isDown
-            ? Icons.trending_down_rounded
-            : Icons.trending_flat_rounded;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: AppTypography.labelMedium.copyWith(
-              color: color,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _Metric extends StatelessWidget {
   const _Metric({
     required this.value,
     required this.label,
-    this.valueColor = Colors.white,
   });
 
   final String value;
   final String label;
-  final Color valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -238,7 +173,7 @@ class _Metric extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.titleLarge.copyWith(
-              color: valueColor,
+              color: Colors.white,
               fontWeight: FontWeight.w800,
             ),
           ),
