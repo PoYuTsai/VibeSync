@@ -387,6 +387,16 @@ class NewTopicService {
     final code = errorData['code']?.toString();
     final serverMessage = _localizedMessage(errorData['message']);
 
+    // Edge worker 被平台中止時，handler 可能來不及釋放 claim 或回傳結算
+    // 結果。沿用同一 requestId，交給既有有限重試查回 pending/replay，
+    // 不能把結果未知說成「本次不扣額度」，也不能重建一筆請求。
+    if (status == 546 &&
+        (code == 'WORKER_LIMIT' || code == 'WORKER_RESOURCE_LIMIT')) {
+      throw const NewTopicTransportException(
+        '服務暫時中斷，請再試一次；同一筆請求不會重複扣額度。',
+      );
+    }
+
     if (status == 429) {
       if (code == 'MODEL_RATE_LIMITED') {
         throw NewTopicException(

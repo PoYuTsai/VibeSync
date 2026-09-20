@@ -55,6 +55,115 @@ NewTopicService _service(http.Client client) => NewTopicService(
     );
 
 void main() {
+  for (final response in [(546, 'OTHER_ERROR'), (500, 'WORKER_LIMIT')]) {
+    test('其他服務錯誤 ${response.$1}/${response.$2} 不套用平台中止自動重試', () async {
+      var attempts = 0;
+      final service = NewTopicService(
+        accessTokenProvider: () => 'fake-token',
+        streamClientFactory: () => MockClient.streaming((_, body) async {
+          await body.drain<void>();
+          attempts++;
+          return http.StreamedResponse(
+              Stream.value(utf8.encode(jsonEncode({'code': response.$2}))),
+              response.$1,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
+      await expectLater(
+          service.generateTopicsStreaming(requestId: _requestId),
+          throwsA(isA<NewTopicException>().having(
+              (e) => e is NewTopicTransportException,
+              'not a worker stop',
+              isFalse)));
+      expect(attempts, 1);
+    });
+  }
+
+  for (final code in ['WORKER_LIMIT', 'WORKER_RESOURCE_LIMIT']) {
+    for (final legacyFallback in [false, true]) {
+      test('後端 $code 中止：${legacyFallback ? "legacy" : "stream"} 沿用原請求接回結果',
+          () async {
+        final requests = <Map<String, dynamic>>[];
+        final progress = <String>[];
+        var attempts = 0;
+        NewTopicInvokeResponse response(Map<String, dynamic> body) {
+          requests.add(body);
+          attempts++;
+          if (attempts == 1) {
+            return NewTopicInvokeResponse(status: 546, data: {'code': code});
+          }
+          if (attempts == 2) {
+            return const NewTopicInvokeResponse(status: 409, data: {
+              'code': 'NEW_TOPIC_REQUEST_IN_PROGRESS',
+              'retryAfterMs': 0,
+            });
+          }
+          return NewTopicInvokeResponse(status: 200, data: _paidBody());
+        }
+
+        final service = NewTopicService(
+          accessTokenProvider: () => 'fake-token',
+          streamClientFactory: () =>
+              MockClient.streaming((_, bodyStream) async {
+            final body = jsonDecode(await utf8.decodeStream(bodyStream))
+                as Map<String, dynamic>;
+            final reply = legacyFallback
+                ? const NewTopicInvokeResponse(status: 400, data: {
+                    'code': 'NEW_TOPIC_REQUEST_INVALID',
+                  })
+                : response(body);
+            return http.StreamedResponse(
+                Stream.value(utf8.encode(jsonEncode(reply.data))), reply.status,
+                headers: {'content-type': 'application/json'});
+          }),
+          invoker: (_, {required body}) async {
+            final reply = response(body);
+            if (reply.status != 200) {
+              throw FunctionException(
+                  status: reply.status, details: reply.data);
+            }
+            return reply;
+          },
+        );
+        final result = await service.generateTopicsStreaming(
+          requestId: _requestId,
+          partnerSummary: '合成測試資料',
+          situation: 'after_date',
+          expectedTier: 'essential',
+          onProgress: (label, _) => progress.add(label),
+        );
+        expect(result.topics, hasLength(5));
+        expect(attempts, 3);
+        expect(
+            requests.every(
+                (body) => jsonEncode(body) == jsonEncode(requests.first)),
+            isTrue);
+        expect(requests.first['requestId'], _requestId);
+        expect(progress, hasLength(2));
+      });
+    }
+    test('後端持續 $code：只自動接回一次，保留同筆請求且不保證未扣額度', () async {
+      var attempts = 0;
+      final service = NewTopicService(
+        accessTokenProvider: () => 'fake-token',
+        streamClientFactory: () => MockClient.streaming((_, body) async {
+          await body.drain<void>();
+          attempts++;
+          return http.StreamedResponse(
+              Stream.value(utf8.encode(jsonEncode({'code': code}))), 546,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
+      await expectLater(
+          service.generateTopicsStreaming(requestId: _requestId),
+          throwsA(isA<NewTopicTransportException>()
+              .having((e) => e.retrySameRequest, 'preserve request', isTrue)
+              .having((e) => e.message.contains('本次不會扣'), 'unknown outcome',
+                  isFalse)));
+      expect(attempts, 2);
+    });
+  }
+
   test('NDJSON：progress 依序回報、done 帶回完整結果；body 帶 responseMode', () async {
     String? capturedBody;
     final client = _ndjsonClient(
