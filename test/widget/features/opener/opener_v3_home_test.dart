@@ -376,6 +376,64 @@ void main() {
     expect(cta(t).onPressed, isNotNull);
   });
 
+  for (final size in [const Size(320, 568), const Size(390, 844)]) {
+    testWidgets(
+        'background tap dismisses keyboard without swallowing input or controls $size',
+        (t) async {
+      await _pump(t, size: size);
+      await t.tap(find.text('手動輸入'));
+      await t.pump();
+      final bio = field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店');
+      await t.enterText(bio, '喜歡散步與咖啡');
+      await t.pump(const Duration(milliseconds: 500));
+      await t.tapAt(t.getTopLeft(bio) + const Offset(24, 24));
+      await t.pump();
+      expect(t.testTextInput.isVisible, isTrue,
+          reason: 'a field tap must keep its keyboard open');
+
+      // The unpainted page gutter must also dismiss, not just a text label.
+      haptics.clear();
+      await t.tapAt(Offset(8, t.getCenter(bio).dy));
+      await t.pump();
+      expect(t.testTextInput.isVisible, isFalse);
+      expect(t.widget<TextField>(bio).controller!.text, '喜歡散步與咖啡');
+      expect(haptics, isEmpty);
+
+      await t.tapAt(t.getTopLeft(bio) + const Offset(24, 24));
+      await t.pump();
+      expect(t.testTextInput.isVisible, isTrue);
+      t.view.viewInsets =
+          FakeViewPadding(bottom: 300 * t.view.devicePixelRatio);
+      addTearDown(t.view.resetViewInsets);
+      await t.pumpAndSettle();
+      final note = find.byKey(const ValueKey('opener-initial-note'));
+      await t.ensureVisible(note);
+      await t.pumpAndSettle();
+      await t.tap(note);
+      await t.enterText(note, '我也喜歡咖啡');
+      await t.pump();
+      expect(t.testTextInput.isVisible, isTrue,
+          reason: 'switching text fields must keep input working');
+      expect(t.widget<TextField>(note).controller!.text, '我也喜歡咖啡');
+
+      await t.dragFrom(Offset(8, t.getCenter(note).dy), const Offset(0, 80));
+      await t.pumpAndSettle();
+      expect(t.testTextInput.isVisible, isFalse,
+          reason: 'existing drag-to-dismiss must still work');
+      t.view.resetViewInsets();
+      await t.pumpAndSettle();
+      await t.ensureVisible(find.text('額度說明'));
+      await t.pumpAndSettle();
+      haptics.clear();
+      await t.tap(find.text('額度說明'));
+      await t.pumpAndSettle();
+      expect(find.textContaining('包含 3 組'), findsOneWidget);
+      expect(haptics, ['HapticFeedbackType.mediumImpact'],
+          reason: 'a nested button must still activate exactly once');
+      expect(t.takeException(), isNull);
+    });
+  }
+
   for (final scale in [1.0, 1.5, 2.0]) {
     testWidgets(
         'UI-18/SH-03 manual focus survives keyboard footer move scale=$scale',

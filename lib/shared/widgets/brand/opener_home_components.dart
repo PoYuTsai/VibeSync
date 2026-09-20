@@ -297,26 +297,30 @@ class OpenerResponsiveBody extends StatelessWidget {
         final fixed = constraints.maxHeight >= 600 &&
             MediaQuery.viewInsetsOf(context).bottom == 0 &&
             MediaQuery.textScalerOf(context).scale(15) < 20;
-        return Center(
-            child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Column(children: [
-                  Expanded(
-                      child: SingleChildScrollView(
-                          controller: controller,
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                content,
-                                if (!fixed && footer != null) footer!
-                              ]))),
-                  if (fixed && footer != null)
-                    Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: footer!),
-                ])));
+        return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: Center(
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Column(children: [
+                      Expanded(
+                          child: SingleChildScrollView(
+                              controller: controller,
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    content,
+                                    if (!fixed && footer != null) footer!
+                                  ]))),
+                      if (fixed && footer != null)
+                        Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: footer!),
+                    ]))));
       });
 }
