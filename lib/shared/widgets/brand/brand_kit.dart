@@ -18,6 +18,7 @@ import '../../../core/services/app_haptics.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/theme/opener_home_style.dart';
 import '../pressable_scale.dart';
 
 /// Visual tone for shared brand primitives.
@@ -418,6 +419,7 @@ class BrandPrimaryButton extends StatelessWidget {
     this.icon,
     this.trailingIcon,
     this.verticalPadding = 15,
+    this.openerStyle = false,
   });
 
   final String label;
@@ -429,6 +431,7 @@ class BrandPrimaryButton extends StatelessWidget {
   /// 改用 Tabler icon 時走這個位置，不要為了遷就 [icon] 把它挪到句首。
   final IconData? trailingIcon;
   final double verticalPadding;
+  final bool openerStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -437,40 +440,57 @@ class BrandPrimaryButton extends StatelessWidget {
     return PressableScale(
       enabled: !disabled,
       hapticOnDown: true,
+      emitHaptics: !openerStyle,
+      reduceMotion: openerStyle && MediaQuery.disableAnimationsOf(context),
       child: AnimatedContainer(
-        duration: AppMotion.state,
+        duration: openerStyle && MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : AppMotion.state,
         curve: AppMotion.easeOut,
         width: double.infinity,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: disabled
-                ? [Colors.grey.shade700, Colors.grey.shade800]
-                : const [AppColors.ctaStart, AppColors.ctaEnd],
+            colors: openerStyle
+                ? disabled
+                    ? const [OpenerHomeStyle.disabled, OpenerHomeStyle.disabled]
+                    : const [OpenerHomeStyle.orange, OpenerHomeStyle.ctaEnd]
+                : disabled
+                    ? [Colors.grey.shade700, Colors.grey.shade800]
+                    : const [AppColors.ctaStart, AppColors.ctaEnd],
           ),
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(openerStyle ? 24 : 999),
           boxShadow: disabled
               ? null
               : [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.38),
-                    blurRadius: 18,
-                    offset: const Offset(0, 9),
+                    color: Colors.black
+                        .withValues(alpha: openerStyle ? 0.20 : 0.38),
+                    blurRadius: openerStyle ? 12 : 18,
+                    offset: Offset(0, openerStyle ? 4 : 9),
                   ),
                 ],
         ),
         child: ElevatedButton(
-          onPressed: disabled ? null : onPressed,
+          onPressed: disabled
+              ? null
+              : openerStyle
+                  ? AppHaptics.onPress(onPressed)
+                  : onPressed,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
             // 橘底字色走 AppColors.onCta 單一開關；disabled 底是灰，前景維持白系
             // 但改實色（半透明白 on 灰 3.98:1 不及格）。
-            foregroundColor: AppColors.onCta,
+            foregroundColor:
+                openerStyle ? OpenerHomeStyle.ink : AppColors.onCta,
             disabledBackgroundColor: Colors.transparent,
-            disabledForegroundColor: Colors.white,
-            padding: EdgeInsets.symmetric(vertical: verticalPadding),
+            disabledForegroundColor:
+                openerStyle ? OpenerHomeStyle.disabledText : Colors.white,
+            minimumSize: openerStyle ? const Size(44, 56) : null,
+            padding: EdgeInsets.symmetric(
+                vertical: verticalPadding, horizontal: openerStyle ? 16 : 0),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(openerStyle ? 24 : 999),
             ),
           ),
           child: isLoading
@@ -490,10 +510,17 @@ class BrandPrimaryButton extends StatelessWidget {
                       Icon(icon, size: 18),
                       const SizedBox(width: 8),
                     ],
-                    Text(
-                      label,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
+                    if (openerStyle)
+                      Flexible(
+                          child: Text(label,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 19, fontWeight: FontWeight.w600)))
+                    else
+                      Text(
+                        label,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
                     if (trailingIcon != null) ...[
                       const SizedBox(width: 8),
                       Icon(trailingIcon, size: 18),
@@ -564,6 +591,7 @@ class BrandChoiceChip extends StatelessWidget {
     required this.onTap,
     this.trailing,
     this.tone = BrandVisualTone.warm,
+    this.enabled = true,
   });
 
   final String label;
@@ -571,6 +599,7 @@ class BrandChoiceChip extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? trailing;
   final BrandVisualTone tone;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -584,10 +613,12 @@ class BrandChoiceChip extends StatelessWidget {
       selected: selected,
       showCheckmark: false,
       // 觸覺收在元件層：所有 chip 群一致有感，呼叫端不必各自補。
-      onSelected: (_) {
-        AppHaptics.light();
-        onTap();
-      },
+      onSelected: !enabled
+          ? null
+          : (_) {
+              AppHaptics.light();
+              onTap();
+            },
       color: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           return tone.choiceSelected;

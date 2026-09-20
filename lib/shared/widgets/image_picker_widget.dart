@@ -11,6 +11,7 @@ import '../services/screenshot_preflight_service.dart';
 import 'glassmorphic_container.dart';
 import 'pressable_scale.dart';
 import 'brand/opener_home_components.dart';
+import 'brand/opener_entry_icon.dart';
 
 enum ImagePickerVariant { compact, openerPanel }
 
@@ -113,6 +114,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   List<SelectedImageMetrics> _imageMetrics = [];
   bool _isProcessing = false;
   int _epoch = 0;
+  String? _panelMessage;
 
   @override
   void initState() {
@@ -124,7 +126,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   void _busy(bool value) {
     if (!mounted) return;
-    setState(() => _isProcessing = value);
+    setState(() {
+      _isProcessing = value;
+      if (value) _panelMessage = null;
+    });
     widget.onBusyChanged?.call(value);
   }
 
@@ -137,12 +142,16 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     // setState-during-build；而且變更本來就是父層發起的，它狀態已一致，
     // 非空批的 metrics 也由父層持有，回發只會用空 metrics 蓋掉它。
     final external = widget.externalImages;
-    if (oldWidget.operationScope != widget.operationScope) _epoch++;
+    if (oldWidget.operationScope != widget.operationScope) {
+      _epoch++;
+      _panelMessage = null;
+    }
     if (external != null && !listEquals(external, _images)) {
       _epoch++;
       setState(() {
         _images = List<Uint8List>.from(external);
         _imageMetrics = [];
+        _panelMessage = null;
       });
     }
   }
@@ -163,15 +172,23 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         return;
       }
 
+      var failed = 0;
       for (final file in files.take(remaining)) {
         try {
           final bytes = await file.readAsBytes();
           if (!_current(epoch)) return;
-          await _processImage(bytes, file.mimeType, epoch);
+          if (!await _processImage(bytes, file.mimeType, epoch)) failed++;
         } catch (_) {
+          failed++;
           if (_current(epoch)) _showError('這張圖片處理失敗，其他已加入的圖片會保留。');
         }
         if (!_current(epoch)) return;
+      }
+      if (failed > 0 && widget.variant == ImagePickerVariant.openerPanel) {
+        _showError('有 $failed 張圖片無法加入，請換張圖片再試。');
+      } else if (files.length > remaining &&
+          widget.variant == ImagePickerVariant.openerPanel) {
+        _showInfo('最多可加入 ${widget.maxImages} 張，已加入可用張數。');
       }
     } catch (_) {
       if (_current(epoch)) _showError('選取圖片失敗，請稍後再試。');
@@ -227,18 +244,18 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     }
   }
 
-  Future<void> _processImage(
+  Future<bool> _processImage(
       Uint8List bytes, String? mimeType, int epoch) async {
-    if (!_current(epoch)) return;
+    if (!_current(epoch)) return false;
     if (!ImageCompressService.isSupportedFormat(mimeType)) {
       _showError('目前只支援 JPEG、PNG、WebP、HEIC 截圖。');
-      return;
+      return false;
     }
 
     final preflight = ScreenshotPreflightService.inspect(bytes);
     if (preflight.isRejected) {
       _showError(preflight.message ?? '這張圖片暫時不適合做聊天截圖辨識。');
-      return;
+      return false;
     }
 
     if (preflight.isWarning) {
@@ -246,16 +263,16 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     }
 
     final compressed = await ImageCompressService.compressImage(bytes);
-    if (!_current(epoch)) return;
+    if (!_current(epoch)) return false;
 
     if (compressed == null) {
       _showError('圖片壓縮失敗，請換一張截圖再試。');
-      return;
+      return false;
     }
 
     if (compressed.length > ImageCompressService.maxSizeBytes) {
       _showError('這張截圖內容太複雜（例如多張照片拼貼），請只截自介文字段落再試。');
-      return;
+      return false;
     }
 
     setState(() {
@@ -268,6 +285,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       );
     });
     _emitChanges();
+    return true;
   }
 
   void _removeImage(int index) {
@@ -289,6 +307,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   }
 
   void _showError(String message) {
+    if (widget.variant == ImagePickerVariant.openerPanel) {
+      setState(() => _panelMessage = message);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -298,6 +320,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   }
 
   void _showInfo(String message) {
+    if (widget.variant == ImagePickerVariant.openerPanel) {
+      setState(() => _panelMessage = message);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -452,7 +478,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                   child: IconButton(
                     tooltip: '關閉',
                     icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    onPressed: widget.variant == ImagePickerVariant.openerPanel
+                        ? AppHaptics.onPress(
+                            () => Navigator.of(dialogContext).pop())
+                        : () => Navigator.of(dialogContext).pop(),
                   ),
                 ),
               ],
@@ -596,168 +625,235 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     );
   }
 
-  Widget _buildPanel() =>
-      OpenerHomePanel(child: LayoutBuilder(builder: (context, constraints) {
-        final disabled = _isProcessing || !widget.enabled;
-        final size = ((constraints.maxWidth - 16) / 3).clamp(64.0, 104.0);
-        final vertical = constraints.maxWidth < 300 ||
-            MediaQuery.textScalerOf(context).scale(15) > 20;
-        final add = TextButton.icon(
-          onPressed: disabled ? null : _pickImage,
-          icon: const Icon(Icons.add, size: 20),
-          label: Text(_images.isEmpty ? '加入圖片' : '加入更多'),
-          style: TextButton.styleFrom(
-              minimumSize: const Size(44, 44),
-              foregroundColor: OpenerHomeStyle.accent),
-        );
-        return ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 168),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (_images.isEmpty) ...[
-                if (vertical) ...[
-                  const Center(child: _ProfileImagesIcon()),
-                  const SizedBox(height: 12),
-                  const Text('加入她的自介或照片',
-                      style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white)),
-                  const SizedBox(height: 4),
-                  const Text('最多 3 張，讓開場更貼近她。', style: OpenerHomeStyle.body),
-                ] else
-                  const Row(children: [
-                    _ProfileImagesIcon(),
-                    SizedBox(width: 16),
-                    Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Text('加入她的自介或照片',
+  Widget _buildPanel() {
+    final disabled = _isProcessing || !widget.enabled;
+    return OpenerHomePanel(
+      padding: EdgeInsets.zero,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (_images.isEmpty)
+          Semantics(
+            button: true,
+            enabled: !disabled,
+            label: '加入她的自介或照片，最多 ${widget.maxImages} 張',
+            child: InkWell(
+              key: const ValueKey('opener-add-images'),
+              borderRadius: BorderRadius.circular(24),
+              onTap: disabled
+                  ? null
+                  : () {
+                      AppHaptics.tap();
+                      _pickImage();
+                    },
+              child: ExcludeSemantics(
+                  child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 136),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final vertical =
+                        MediaQuery.textScalerOf(context).scale(15) > 20;
+                    final icon = OpenerEntryIcon(
+                        kind: OpenerEntryKind.photos,
+                        size: constraints.maxWidth >= 300 ? 120 : 104);
+                    final copy = Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('加入她的自介或照片',
                               style: TextStyle(
                                   fontSize: 19,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white)),
-                          SizedBox(height: 4),
-                          Text('最多 3 張，讓開場更貼近她。', style: OpenerHomeStyle.body),
-                        ])),
-                  ]),
-              ] else
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (final entry in _images.asMap().entries) ...[
-                    if (entry.key > 0) const SizedBox(width: 8),
-                    SizedBox(
-                        width: size,
-                        height: size,
-                        child: Stack(children: [
-                          Positioned.fill(
-                              child: Semantics(
-                                  button: true,
-                                  label: '第 ${entry.key + 1} 張圖片，點擊查看',
-                                  child: InkWell(
-                                    onTap: () => _showFullImage(entry.value),
-                                    child: ExcludeSemantics(
-                                        child: ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(18),
-                                            child: Image.memory(entry.value,
-                                                fit: BoxFit.cover))),
-                                  ))),
-                          Positioned(
-                              top: 0,
-                              right: 0,
-                              child: SizedBox(
-                                  width: 44,
-                                  height: 44,
-                                  child: IconButton(
-                                    tooltip: '移除第 ${entry.key + 1} 張圖片',
-                                    onPressed: disabled
-                                        ? null
-                                        : () => _removeImage(entry.key),
-                                    padding: EdgeInsets.zero,
-                                    icon: Container(
-                                        width: 24,
-                                        height: 24,
-                                        decoration: const BoxDecoration(
-                                            color: OpenerHomeStyle.canvas,
-                                            shape: BoxShape.circle),
-                                        child: const Icon(Icons.close,
-                                            size: 16,
-                                            color: OpenerHomeStyle.icon)),
-                                  ))),
-                        ])),
-                  ],
-                  if (_images.length < widget.maxImages) ...[
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: size,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 72),
-                        child: OutlinedButton(
-                          key: const ValueKey('opener-add-image-tile'),
-                          onPressed: disabled ? null : _pickImage,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 8, horizontal: 4),
-                            foregroundColor: OpenerHomeStyle.accent,
-                            side: const BorderSide(
-                                color: OpenerHomeStyle.secondary),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18)),
-                          ),
-                          child: const Column(
-                              mainAxisSize: MainAxisSize.min,
+                          const SizedBox(height: 4),
+                          Wrap(children: [
+                            Text('最多 ${widget.maxImages} 張，',
+                                style: OpenerHomeStyle.body),
+                            const Text('讓開場更貼近她。', style: OpenerHomeStyle.body),
+                          ]),
+                        ]);
+                    return vertical
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [icon, const SizedBox(height: 12), copy])
+                        : Row(children: [
+                            icon,
+                            const SizedBox(width: 16),
+                            Expanded(child: copy)
+                          ]);
+                  }),
+                ),
+              )),
+            ),
+          )
+        else
+          Padding(
+              padding: const EdgeInsets.all(16),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final size =
+                    ((constraints.maxWidth - 16) / 3).clamp(0.0, 104.0);
+                return ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 136),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.add, size: 24),
-                                SizedBox(height: 4),
-                                Text('加入更多',
-                                    textAlign: TextAlign.center,
-                                    style: OpenerHomeStyle.body),
+                                for (final entry
+                                    in _images.asMap().entries) ...[
+                                  if (entry.key > 0) const SizedBox(width: 8),
+                                  Container(
+                                      width: size,
+                                      height: size,
+                                      decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(18),
+                                          boxShadow: [
+                                            BoxShadow(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.16),
+                                                offset: const Offset(0, 2),
+                                                blurRadius: 6)
+                                          ]),
+                                      child: Stack(children: [
+                                        Positioned.fill(
+                                            child: Semantics(
+                                                button: true,
+                                                label:
+                                                    '第 ${entry.key + 1} 張圖片，點擊查看',
+                                                child: InkWell(
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  onTap: () {
+                                                    AppHaptics.tap();
+                                                    _showFullImage(entry.value);
+                                                  },
+                                                  child: ExcludeSemantics(
+                                                      child: Container(
+                                                          clipBehavior:
+                                                              Clip.antiAlias,
+                                                          decoration: BoxDecoration(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          18),
+                                                              border: Border.all(
+                                                                  color: Colors
+                                                                      .white
+                                                                      .withValues(
+                                                                          alpha:
+                                                                              0.65))),
+                                                          child: Image.memory(
+                                                              entry.value,
+                                                              fit: BoxFit.cover))),
+                                                ))),
+                                        Positioned(
+                                            top: 0,
+                                            right: 0,
+                                            child: SizedBox(
+                                                width: 44,
+                                                height: 44,
+                                                child: IconButton(
+                                                  tooltip:
+                                                      '移除第 ${entry.key + 1} 張圖片',
+                                                  onPressed: AppHaptics.onPress(
+                                                      disabled
+                                                          ? null
+                                                          : () => _removeImage(
+                                                              entry.key)),
+                                                  padding: EdgeInsets.zero,
+                                                  icon: Container(
+                                                      width: 24,
+                                                      height: 24,
+                                                      decoration:
+                                                          const BoxDecoration(
+                                                              color:
+                                                                  OpenerHomeStyle
+                                                                      .canvas,
+                                                              shape: BoxShape
+                                                                  .circle),
+                                                      child: const Icon(
+                                                          Icons.close,
+                                                          size: 16,
+                                                          color: OpenerHomeStyle
+                                                              .icon)),
+                                                ))),
+                                      ])),
+                                ],
+                                if (_images.length < widget.maxImages) ...[
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                      width: size,
+                                      child: Align(
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                            width: 64,
+                                            child: OutlinedButton(
+                                              key: const ValueKey(
+                                                  'opener-add-image-tile'),
+                                              onPressed: disabled
+                                                  ? null
+                                                  : () {
+                                                      AppHaptics.tap();
+                                                      _pickImage();
+                                                    },
+                                              style: OutlinedButton.styleFrom(
+                                                  minimumSize:
+                                                      const Size(64, 72),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                          vertical: 8,
+                                                          horizontal: 4),
+                                                  backgroundColor:
+                                                      OpenerHomeStyle.input,
+                                                  foregroundColor:
+                                                      OpenerHomeStyle.secondary,
+                                                  side: BorderSide(
+                                                      color: Colors.white
+                                                          .withValues(
+                                                              alpha: 0.14)),
+                                                  shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              18))),
+                                              child: const Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.add, size: 24),
+                                                    SizedBox(height: 4),
+                                                    Text('加入',
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style: OpenerHomeStyle
+                                                            .helper),
+                                                  ]),
+                                            )),
+                                      )),
+                                ],
                               ]),
-                        ),
-                      ),
-                    ),
-                  ],
-                ]),
-              const SizedBox(height: 8),
-              if (_images.isEmpty) add,
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text('${_images.length} / ${widget.maxImages}',
-                    style: OpenerHomeStyle.helper),
-              ),
-              if (kIsWeb && _images.length < widget.maxImages)
-                TextButton(
-                    onPressed: disabled ? null : _pasteFromClipboard,
-                    child: const Text('貼上圖片')),
-              if (_isProcessing)
-                Semantics(
-                    liveRegion: true,
-                    child:
-                        const Text('正在處理圖片…', style: OpenerHomeStyle.helper)),
-            ]));
-      }));
-}
-
-class _ProfileImagesIcon extends StatelessWidget {
-  const _ProfileImagesIcon();
-  @override
-  Widget build(BuildContext context) => const ExcludeSemantics(
-      child: SizedBox(
-          width: 64,
-          height: 64,
-          child: Stack(children: [
-            Positioned(
-                left: 0,
-                top: 0,
-                child: Icon(Icons.photo_outlined,
-                    size: 48, color: OpenerHomeStyle.secondary)),
-            Positioned(
-                right: 0,
-                bottom: 0,
-                child: DecoratedBox(
-                    decoration: BoxDecoration(color: OpenerHomeStyle.panel),
-                    child: Icon(Icons.add_photo_alternate_outlined,
-                        size: 48, color: OpenerHomeStyle.icon))),
-          ])));
+                          const SizedBox(height: 8),
+                          Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                  '已加入 ${_images.length}／${widget.maxImages} 張',
+                                  style: OpenerHomeStyle.helper)),
+                        ]));
+              })),
+        if (kIsWeb && _images.length < widget.maxImages)
+          TextButton(
+              onPressed:
+                  AppHaptics.onPress(disabled ? null : _pasteFromClipboard),
+              child: const Text('貼上圖片')),
+        if (_isProcessing || _panelMessage != null)
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Semantics(
+                  liveRegion: true,
+                  child: Text(_isProcessing ? '正在處理圖片…' : _panelMessage!,
+                      style: OpenerHomeStyle.helper))),
+      ]),
+    );
+  }
 }

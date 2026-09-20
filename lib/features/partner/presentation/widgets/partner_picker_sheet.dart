@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/services/app_haptics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/widgets/local_avatar.dart';
 import '../../../../shared/widgets/brand/opener_home_components.dart';
@@ -77,7 +78,7 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
                     child: Text('選擇聊天對象', style: OpenerHomeStyle.title)),
                 IconButton(
                     tooltip: '關閉選擇對象',
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: AppHaptics.onPress(() => Navigator.pop(context)),
                     icon: const Icon(Icons.close, color: OpenerHomeStyle.icon)),
               ])),
         Padding(
@@ -103,7 +104,7 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Text(
               widget.openerStyle && _query.isNotEmpty
-                  ? '沒有符合搜尋的對象，試試其他名稱。'
+                  ? '找不到符合的對象，試試其他名字'
                   : '尚無其他對象，先回首頁建立後再操作',
               textAlign: TextAlign.center,
               style: widget.openerStyle ? OpenerHomeStyle.body : null,
@@ -120,12 +121,13 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
                         ? AppColors.glassBorder
                         : Colors.transparent,
                     child: ListTile(
+                      minTileHeight: widget.openerStyle ? 64 : null,
                       selected: p.id == widget.selectedId,
                       leading: widget.openerStyle
                           ? ClipOval(
                               child: SizedBox(
-                                  width: 48,
-                                  height: 48,
+                                  width: 40,
+                                  height: 40,
                                   child: LocalAvatar(
                                       path: p.avatarPath,
                                       fallback: const Icon(Icons.person_outline,
@@ -140,6 +142,7 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
                           ? const Icon(Icons.check)
                           : null,
                       onTap: () {
+                        if (widget.openerStyle) AppHaptics.tap();
                         // Preselect mode: route through onSelectedChanged so
                         // the host can swap preselect WITHOUT opening the
                         // destructive confirm dialog.

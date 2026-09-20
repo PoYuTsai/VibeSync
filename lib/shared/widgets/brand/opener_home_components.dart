@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/app_haptics.dart';
+import '../pressable_scale.dart';
 import '../../../core/theme/opener_home_style.dart';
 export '../../../core/theme/opener_home_style.dart';
 
@@ -16,10 +18,17 @@ class OpenerHomePanel extends StatelessWidget {
         padding: padding,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
               colors: [OpenerHomeStyle.panel, OpenerHomeStyle.panelEnd]),
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                offset: const Offset(0, 6),
+                blurRadius: 16)
+          ],
         ),
         child: child,
       );
@@ -46,7 +55,11 @@ class OpenerModeControl<T> extends StatelessWidget {
                 child: Semantics(
               selected: value == option.$1,
               child: TextButton(
-                onPressed: () => onChanged(option.$1),
+                onPressed: () {
+                  if (value == option.$1) return;
+                  AppHaptics.light();
+                  onChanged(option.$1);
+                },
                 style: TextButton.styleFrom(
                   minimumSize: const Size(44, 44),
                   backgroundColor: value == option.$1
@@ -89,8 +102,13 @@ class OpenerSourceTabs extends StatelessWidget {
                                   : Colors.transparent,
                               width: 2))),
                   child: TextButton(
-                      onPressed:
-                          onChanged == null ? null : () => onChanged!(index),
+                      onPressed: onChanged == null
+                          ? null
+                          : () {
+                              if (selected == index) return;
+                              AppHaptics.light();
+                              onChanged!(index);
+                            },
                       style: TextButton.styleFrom(
                           minimumSize: const Size(44, 48),
                           foregroundColor: selected == index
@@ -130,8 +148,12 @@ class OpenerSituationGrid extends StatelessWidget {
               selected: active,
               inMutuallyExclusiveGroup: true,
               child: OutlinedButton(
-                onPressed:
-                    onChanged == null ? null : () => onChanged!(option.value),
+                onPressed: onChanged == null
+                    ? null
+                    : () {
+                        AppHaptics.light();
+                        onChanged!(option.value);
+                      },
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 48),
                   padding:
@@ -202,34 +224,57 @@ class OpenerActionFooter extends StatelessWidget {
                 textAlign: TextAlign.center, style: OpenerHomeStyle.helper),
             const SizedBox(height: 8)
           ],
-          SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                key: buttonKey,
-                onPressed: onPressed,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(44, 56),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  backgroundColor: OpenerHomeStyle.orange,
-                  foregroundColor: OpenerHomeStyle.ink,
-                  disabledBackgroundColor: OpenerHomeStyle.disabled,
-                  disabledForegroundColor: OpenerHomeStyle.disabledText,
-                  elevation: 0,
-                  textStyle: Theme.of(context)
-                      .textTheme
-                      .labelLarge!
-                      .copyWith(fontSize: 19, fontWeight: FontWeight.w600),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24)),
-                ),
-                child: Text(label, textAlign: TextAlign.center),
-              )),
+          PressableScale(
+              enabled: onPressed != null,
+              emitHaptics: false,
+              reduceMotion: MediaQuery.disableAnimationsOf(context),
+              child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: onPressed == null
+                        ? null
+                        : const LinearGradient(colors: [
+                            OpenerHomeStyle.orange,
+                            OpenerHomeStyle.ctaEnd
+                          ]),
+                    color: onPressed == null ? OpenerHomeStyle.disabled : null,
+                    boxShadow: onPressed == null
+                        ? null
+                        : [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.20),
+                                offset: const Offset(0, 4),
+                                blurRadius: 12)
+                          ],
+                  ),
+                  child: ElevatedButton(
+                    key: buttonKey,
+                    onPressed: AppHaptics.onPress(onPressed),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(44, 56),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: OpenerHomeStyle.ink,
+                      disabledBackgroundColor: Colors.transparent,
+                      disabledForegroundColor: OpenerHomeStyle.disabledText,
+                      elevation: 0,
+                      textStyle: Theme.of(context)
+                          .textTheme
+                          .labelLarge!
+                          .copyWith(fontSize: 19, fontWeight: FontWeight.w600),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24)),
+                    ),
+                    child: Text(label, textAlign: TextAlign.center),
+                  ))),
           TextButton(
-              onPressed: onQuota,
+              onPressed: AppHaptics.onPress(onQuota),
               style: TextButton.styleFrom(
                   minimumSize: const Size(44, 44),
-                  foregroundColor: OpenerHomeStyle.secondary),
+                  foregroundColor: OpenerHomeStyle.accent),
               child: const Text('額度說明', style: TextStyle(fontSize: 12))),
         ]),
       ));

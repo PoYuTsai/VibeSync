@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../../shared/widgets/brand/opener_home_components.dart';
 import '../../domain/entities/new_topic_result.dart';
 
 /// 一張新話題卡（計畫 §13.6）：縱向排版，不沿用 opener 220px 橫向固定高。
@@ -21,12 +21,8 @@ class NewTopicIdeaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BrandSurfaceCard(
+    return OpenerHomePanel(
       key: ValueKey('new-topic-idea-card-${idea.id}'),
-      tone: BrandVisualTone.coach,
-      borderColor: isRecommended
-          ? AppColors.coachRecommendation.withValues(alpha: 0.58)
-          : null,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -36,7 +32,7 @@ class NewTopicIdeaCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   idea.direction,
-                  style: AppTypography.titleMedium.copyWith(
+                  style: AppTypography.titleLarge.copyWith(
                     color: AppColors.onBackgroundPrimary,
                   ),
                 ),
@@ -77,11 +73,8 @@ class NewTopicIdeaCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.coachBackgroundMid.withValues(alpha: 0.72),
+              color: OpenerHomeStyle.input,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: AppColors.coachAccent.withValues(alpha: 0.18),
-              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,7 +123,7 @@ class NewTopicIdeaCard extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.bodySmall.copyWith(
+          style: AppTypography.bodyMedium.copyWith(
             color: AppColors.coachAccentBright.withValues(alpha: 0.92),
             fontWeight: FontWeight.w600,
           ),
@@ -138,7 +131,7 @@ class NewTopicIdeaCard extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           body,
-          style: AppTypography.bodySmall.copyWith(
+          style: AppTypography.bodyMedium.copyWith(
             color: AppColors.onBackgroundPrimary,
             height: 1.5,
           ),

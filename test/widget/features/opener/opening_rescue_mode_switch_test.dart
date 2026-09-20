@@ -144,7 +144,7 @@ void main() {
     _expectOpenerActive(t);
   });
 
-  testWidgets('模式來回切換保留兩側 state（輸入文字＋情境 chip 都不丟）', (t) async {
+  testWidgets('模式來回切換保留兩側 state（手動輸入＋情境 chip 都不丟）', (t) async {
     await _pump(t, '/opener');
     _expectOpenerActive(t);
 
@@ -164,7 +164,7 @@ void main() {
     String? selected() => t.widget<OpenerSituationGrid>(find.byType(OpenerSituationGrid, skipOffstage: false)).selected;
     expect(selected(), 'stuck');
 
-    // 切回 opener：輸入文字與 tab 選擇必須原封保留。
+    // 切回 opener：手動輸入與 tab 選擇必須原封保留。
     await t.tap(find.text('開場白'));
     await t.pump();
     _expectOpenerActive(t);

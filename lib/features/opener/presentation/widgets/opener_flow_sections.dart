@@ -2,6 +2,8 @@
 // 再生成列、到期卡。沿用品牌元件，不重新設計整頁；不放人格分類、好感分數。
 
 import 'package:flutter/material.dart';
+import '../../../../core/services/app_haptics.dart';
+import '../../../../shared/widgets/brand/opener_home_components.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -23,29 +25,33 @@ class OpenerAnalysisCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final evidence = analysis.cues.where((c) => c.evidence != null).toList(growable: false);
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
+    final evidence =
+        analysis.cues.where((c) => c.evidence != null).toList(growable: false);
+    return OpenerHomePanel(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Icon(Icons.explore_outlined, size: 18, color: AppColors.coachAccent),
+              const Icon(Icons.explore_outlined,
+                  size: 18, color: AppColors.coachAccent),
               const SizedBox(width: 8),
               Text(
                 '這次可以怎麼開',
-                style: AppTypography.titleSmall.copyWith(
+                style: AppTypography.titleLarge.copyWith(
                   color: AppColors.onBackgroundPrimary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const Spacer(),
               Text(
                 modeLabel(analysis.approach.mode),
                 key: const ValueKey('opener-approach-mode'),
-                style: AppTypography.caption.copyWith(color: AppColors.coachAccentBright),
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.coachAccentBright),
               ),
             ],
           ),
@@ -53,11 +59,14 @@ class OpenerAnalysisCard extends StatelessWidget {
           Text(
             analysis.approach.summary,
             key: const ValueKey('opener-approach-summary'),
-            style: AppTypography.bodyMedium.copyWith(color: AppColors.onBackgroundPrimary, height: 1.5),
+            style: AppTypography.bodyMedium
+                .copyWith(color: AppColors.onBackgroundPrimary, height: 1.5),
           ),
           if (analysis.cues.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text('可用線索', style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary)),
+            Text('可用線索',
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.onBackgroundSecondary)),
             const SizedBox(height: 6),
             Wrap(
               spacing: 8,
@@ -66,25 +75,33 @@ class OpenerAnalysisCard extends StatelessWidget {
                 for (final cue in analysis.cues.take(3))
                   Container(
                     key: ValueKey('opener-cue-${cue.id}'),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: AppColors.coachAccent.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.coachAccent.withValues(alpha: 0.35)),
+                      border: Border.all(
+                          color: AppColors.coachAccent.withValues(alpha: 0.35)),
                     ),
-                    child: Text(cue.label, style: AppTypography.bodySmall.copyWith(color: AppColors.onBackgroundPrimary)),
+                    child: Text(cue.label,
+                        style: AppTypography.bodyMedium
+                            .copyWith(color: AppColors.onBackgroundPrimary)),
                   ),
               ],
             ),
           ],
           if (analysis.approach.avoid.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text('這次先避開', style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary)),
+            Text('這次先避開',
+                style: AppTypography.caption
+                    .copyWith(color: AppColors.onBackgroundSecondary)),
             const SizedBox(height: 4),
             for (final item in analysis.approach.avoid.take(2))
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text('・$item', style: AppTypography.bodySmall.copyWith(color: AppColors.onBackgroundSecondary, height: 1.4)),
+                child: Text('・$item',
+                    style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.onBackgroundSecondary, height: 1.4)),
               ),
           ],
           if (evidence.isNotEmpty) ...[
@@ -98,12 +115,15 @@ class OpenerAnalysisCard extends StatelessWidget {
                     child: Text(
                       '${cue.label}：${cue.evidence!.describe()}',
                       key: ValueKey('opener-evidence-${cue.id}'),
-                      style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary, height: 1.4),
+                      style: AppTypography.caption.copyWith(
+                          color: AppColors.onBackgroundSecondary, height: 1.4),
                     ),
                   ),
                 Text(
                   '看錯了？回上方修改對方資料後重新分析。',
-                  style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary.withValues(alpha: 0.7)),
+                  style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.7)),
                 ),
               ],
             ),
@@ -165,11 +185,11 @@ class OpenerContributionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final question = analysis.question;
-    final summary = OpenerContributionSummary.compose(question: question, draft: draft, cues: analysis.cues);
+    final summary = OpenerContributionSummary.compose(
+        question: question, draft: draft, cues: analysis.cues);
     final count = freeTextController.text.characters.length;
     final tooLong = count > OpenerFlowContract.freeTextMaxGraphemes;
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
+    return OpenerHomePanel(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +198,9 @@ class OpenerContributionCard extends StatelessWidget {
             Text(
               question.text,
               key: const ValueKey('opener-question-text'),
-              style: AppTypography.titleSmall.copyWith(color: AppColors.onBackgroundPrimary, fontWeight: FontWeight.w700),
+              style: AppTypography.titleLarge.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -188,10 +210,11 @@ class OpenerContributionCard extends StatelessWidget {
                 for (final option in question.options)
                   BrandChoiceChip(
                     key: ValueKey('opener-option-${option.id}'),
-                    tone: BrandVisualTone.coach,
                     label: option.label,
                     selected: draft.selectedOptionId == option.id,
-                    onTap: busy ? () {} : () => onSelectOption(option.id),
+                    tone: BrandVisualTone.coach,
+                    enabled: !busy,
+                    onTap: () => onSelectOption(option.id),
                   ),
               ],
             ),
@@ -199,7 +222,9 @@ class OpenerContributionCard extends StatelessWidget {
           ] else ...[
             Text(
               '原料已經足夠，想補一句也可以',
-              style: AppTypography.titleSmall.copyWith(color: AppColors.onBackgroundPrimary, fontWeight: FontWeight.w700),
+              style: AppTypography.titleLarge.copyWith(
+                  color: AppColors.onBackgroundPrimary,
+                  fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
           ],
@@ -212,10 +237,7 @@ class OpenerContributionCard extends StatelessWidget {
             onChanged: onFreeTextChanged,
             cursorColor: AppColors.coachAccentBright,
             style: AppTypography.bodyMedium.copyWith(color: Colors.white),
-            decoration: brandInputDecoration(
-              hintText: '寫一句就好，例如你注意到的地方、你知道的事，或你本來想傳的話',
-              tone: BrandVisualTone.coach,
-            ),
+            decoration: OpenerHomeStyle.field('寫一句就好，例如你注意到的地方、你知道的事，或你本來想傳的話'),
           ),
           const SizedBox(height: 4),
           Align(
@@ -226,7 +248,9 @@ class OpenerContributionCard extends StatelessWidget {
                   : '$count / ${OpenerFlowContract.freeTextMaxGraphemes}',
               key: const ValueKey('opener-free-text-counter'),
               style: AppTypography.caption.copyWith(
-                color: tooLong ? AppColors.error : AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
+                color: tooLong
+                    ? AppColors.error
+                    : AppColors.onBackgroundSecondary.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -235,13 +259,15 @@ class OpenerContributionCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.subject_rounded, size: 16, color: AppColors.coachAccentBright),
+                const Icon(Icons.subject_rounded,
+                    size: 16, color: AppColors.coachAccentBright),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     summary,
                     key: const ValueKey('opener-contribution-summary'),
-                    style: AppTypography.bodySmall.copyWith(color: AppColors.onBackgroundSecondary, height: 1.4),
+                    style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.onBackgroundSecondary, height: 1.4),
                   ),
                 ),
               ],
@@ -256,21 +282,26 @@ class OpenerContributionCard extends StatelessWidget {
               includedGenerationCount: analysis.includedGenerationCount,
             ),
             key: const ValueKey('opener-cost-hint'),
-            style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary),
+            style: AppTypography.caption
+                .copyWith(color: AppColors.onBackgroundSecondary),
           ),
           const SizedBox(height: 10),
           BrandPrimaryButton(
+            openerStyle: true,
             key: const ValueKey('opener-generate-button'),
             label: busy ? '生成中…' : (isRegenerating ? '用這個想法再生成' : '生成回覆'),
             isLoading: false,
-            onPressed: busy || generationsRemaining <= 0 || tooLong ? null : onGenerate,
+            onPressed: busy || generationsRemaining <= 0 || tooLong
+                ? null
+                : onGenerate,
           ),
           if (!isRegenerating && !busy && generationsRemaining > 0 && !tooLong)
             Center(
               child: TextButton(
                 key: const ValueKey('opener-skip-button'),
-                onPressed: onSkip,
-                style: TextButton.styleFrom(foregroundColor: AppColors.onBackgroundSecondary),
+                onPressed: AppHaptics.onPress(onSkip),
+                style: TextButton.styleFrom(
+                    foregroundColor: AppColors.onBackgroundSecondary),
                 child: const Text('略過，直接生成'),
               ),
             ),
@@ -290,19 +321,19 @@ class OpenerMaterialUseNote extends StatelessWidget {
   Widget build(BuildContext context) {
     final note = materialUse.displayNote;
     if (!materialUse.matched || note == null) return const SizedBox.shrink();
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
+    return OpenerHomePanel(
       padding: const EdgeInsets.all(12),
-      elevated: false,
       child: Row(
         children: [
-          const Icon(Icons.person_outline_rounded, size: 18, color: AppColors.coachAccentBright),
+          const Icon(Icons.person_outline_rounded,
+              size: 18, color: AppColors.coachAccentBright),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               note,
               key: const ValueKey('opener-material-use-note'),
-              style: AppTypography.bodySmall.copyWith(color: AppColors.onBackgroundSecondary),
+              style: AppTypography.bodyMedium
+                  .copyWith(color: AppColors.onBackgroundSecondary),
             ),
           ),
         ],
@@ -328,7 +359,8 @@ class OpenerRegenerateBar extends StatelessWidget {
   final VoidCallback onRegenerate;
   final VoidCallback onNewSession;
 
-  static String remainingLabel({required int remaining, required int included}) {
+  static String remainingLabel(
+      {required int remaining, required int included}) {
     return remaining > 0
         ? '這局還可以再生成 $remaining 組（共 $included 組，不再扣額度）'
         : '這局的 $included 組回覆已用完；重新分析可開始新的一局（3 則）';
@@ -340,14 +372,18 @@ class OpenerRegenerateBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          remainingLabel(remaining: generationsRemaining, included: includedGenerationCount),
+          remainingLabel(
+              remaining: generationsRemaining,
+              included: includedGenerationCount),
           key: const ValueKey('opener-generations-remaining'),
           textAlign: TextAlign.center,
-          style: AppTypography.caption.copyWith(color: AppColors.onBackgroundSecondary),
+          style: AppTypography.caption
+              .copyWith(color: AppColors.onBackgroundSecondary),
         ),
         const SizedBox(height: 8),
         if (generationsRemaining > 0) ...[
           BrandPrimaryButton(
+            openerStyle: true,
             key: const ValueKey('opener-adjust-button'),
             label: '調整想法再生成',
             icon: Icons.edit_note_rounded,
@@ -356,7 +392,7 @@ class OpenerRegenerateBar extends StatelessWidget {
           Center(
             child: TextButton(
               key: const ValueKey('opener-regenerate-button'),
-              onPressed: onRegenerate,
+              onPressed: AppHaptics.onPress(onRegenerate),
               style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
               child: const Text('不改想法，再抽一組'),
             ),
@@ -365,7 +401,7 @@ class OpenerRegenerateBar extends StatelessWidget {
           Center(
             child: TextButton(
               key: const ValueKey('opener-new-session-button'),
-              onPressed: onNewSession,
+              onPressed: AppHaptics.onPress(onNewSession),
               style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
               child: const Text('重新分析，開始新的一局'),
             ),
@@ -383,8 +419,7 @@ class OpenerExpiredCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
+    return OpenerHomePanel(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,15 +427,19 @@ class OpenerExpiredCard extends StatelessWidget {
           Text(
             '這份分析已到期',
             key: const ValueKey('opener-expired-title'),
-            style: AppTypography.titleSmall.copyWith(color: AppColors.onBackgroundPrimary, fontWeight: FontWeight.w700),
+            style: AppTypography.titleLarge.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           Text(
             '已生成的結果還可以看；想再生成請重新分析（新的一局會再計費一次）。',
-            style: AppTypography.bodySmall.copyWith(color: AppColors.onBackgroundSecondary, height: 1.4),
+            style: AppTypography.bodyMedium
+                .copyWith(color: AppColors.onBackgroundSecondary, height: 1.4),
           ),
           const SizedBox(height: 12),
           BrandPrimaryButton(
+            openerStyle: true,
             key: const ValueKey('opener-reanalyze-button'),
             label: '重新分析',
             onPressed: onReanalyze,

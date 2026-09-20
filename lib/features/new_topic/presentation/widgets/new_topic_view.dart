@@ -1,4 +1,5 @@
 import '../../../../shared/widgets/local_avatar.dart';
+import '../../../../shared/widgets/brand/opener_entry_icon.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../../shared/widgets/brand/opener_home_components.dart';
@@ -95,6 +96,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   String? _error;
   bool _isGenerating = false;
   bool _preparing = false;
+  final _partnerFocus = FocusNode();
   bool _showDetails = false;
   bool _pendingScroll = false;
   bool _confirmPending = false;
@@ -145,6 +147,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
   @override
   void dispose() {
+    _partnerFocus.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -159,26 +162,36 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   }
 
   Future<void> _pickPartner() async {
-    if (_busy) return;
+    if (_busy || !widget.isActive) return;
     final owner = _owner;
     final version = _inputVersion;
     final partners = ref.read(partnerListProvider);
     if (partners.isEmpty) {
-      context.push('/partner/new');
+      await context.push('/partner/new');
       return;
     }
 
     final selected = await showAppSheet<String>(
       context: context,
-      backgroundColor: AppColors.coachSurfaceRaised,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: OpenerHomeStyle.canvas,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetContext) => PartnerPickerSheet(
-        openerStyle: true,
-        selectedId: _selectedPartnerId,
-        onSelected: (partner) => Navigator.pop(sheetContext, partner.id),
-      ),
+      builder: (sheetContext) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+          child: ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: (MediaQuery.sizeOf(sheetContext).height -
+                          MediaQuery.viewInsetsOf(sheetContext).bottom) *
+                      0.8),
+              child: PartnerPickerSheet(
+                  openerStyle: true,
+                  selectedId: _selectedPartnerId,
+                  onSelected: (partner) =>
+                      Navigator.pop(sheetContext, partner.id)))),
     );
     if (!mounted ||
         selected == null ||
@@ -194,6 +207,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _inputVersion++;
       _selectedPartnerId = selected;
+      _result = null;
+      _confirmPending = false;
+      _showDetails = false;
       _error = null;
     });
   }
@@ -208,6 +224,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _inputVersion++;
       _situation = next;
+      _result = null;
+      _confirmPending = false;
       _error = null;
     });
   }
@@ -248,7 +266,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       ),
     );
     if (confirmed != true) return false;
-    if (mounted) setState(() => _result = null);
     return true;
   }
 
@@ -290,7 +307,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         setState(() => _error = '請選一個目前情境，或先補充對象資料。');
         return;
       }
-      if (!mounted) return;
+      // A background preparation may finish, but it must never open a modal
+      // over the other mode. The user can submit again when this mode is visible.
+      if (!mounted || !widget.isActive) return;
       final consented =
           await AiDataSharingConsent.ensure(context, featureLabel: '新話題');
       if (!current() || !consented) return;
@@ -299,9 +318,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (pending == null &&
           !subscriptionSnapshot.isLoading &&
           subscriptionSnapshot.error == null &&
-          (subscriptionSnapshot.monthlyRemaining < 3 ||
-              subscriptionSnapshot.dailyRemaining < 3)) {
-        setState(() => _error = '本次需要 3 則，目前可用額度不足。');
+          (subscriptionSnapshot.monthlyRemaining < kNewTopicQuotaCost ||
+              subscriptionSnapshot.dailyRemaining < kNewTopicQuotaCost)) {
+        setState(() => _error = '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。');
         if (widget.isActive) await _showPaywallAndRefresh();
         return;
       }
@@ -405,7 +424,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     } catch (e) {
       debugPrint('NewTopicView paywall refresh failed: $e');
     }
-    if (!mounted) return;
+    if (!mounted || owner != _owner) return;
     final subscription = ref.read(subscriptionProvider);
     if (_error != null && subscription.isPremium) {
       setState(() => _error = null);
@@ -439,6 +458,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _preparing = false;
         _isGenerating = false;
         _pendingScroll = false;
+        _confirmPending = false;
+        _showDetails = false;
         _requestSession.markSuccess();
       });
     });
@@ -456,6 +477,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _error = '找不到這位對象，請重新選擇。';
         _preparing = false;
         _isGenerating = false;
+        _confirmPending = false;
         _requestSession.markSuccess();
       });
     });
@@ -473,18 +495,23 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final pending = _requestSession.pendingFor(
         partnerId: validPartnerId, situation: _situation);
     final loading = style.isLoading && pending == null;
-    final ready = !loading &&
-        canGenerateNewTopic(
-            readiness: readiness,
-            styleContext: pending?.effectiveStyleContext ?? style.valueOrNull,
-            situation: _situation);
+    final ready = pending != null
+        ? validPartnerId != null &&
+            readiness != NewTopicReadiness.dataQualityBlocked
+        : !loading &&
+            canGenerateNewTopic(
+                readiness: readiness,
+                styleContext:
+                    pending?.effectiveStyleContext ?? style.valueOrNull,
+                situation: _situation);
     final otherMaterials = canGenerateNewTopic(
         readiness: readiness, styleContext: style.valueOrNull, situation: null);
     final usage = ref.watch(subscriptionProvider);
     final quotaBlocked = pending == null &&
         !usage.isLoading &&
         usage.error == null &&
-        (usage.monthlyRemaining < 3 || usage.dailyRemaining < 3);
+        (usage.monthlyRemaining < kNewTopicQuotaCost ||
+            usage.dailyRemaining < kNewTopicQuotaCost);
     final helper = validPartnerId == null
         ? '先選擇聊天對象，再補充目前情境。'
         : readiness == NewTopicReadiness.dataQualityBlocked
@@ -500,15 +527,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           ? '正在準備…'
           : _isGenerating
               ? '生成中…'
-              : _confirmPending
+              : _confirmPending && pending != null
                   ? '確認本次結果'
                   : pending != null
                       ? '重試'
                       : '生成新話題',
       hint: quotaBlocked
-          ? '本次需要 3 則，目前可用額度不足。'
+          ? '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。'
           : ready
-              ? '將使用 3 則額度'
+              ? '將使用 $kNewTopicQuotaCost 則額度'
               : validPartnerId == null
                   ? '先選擇聊天對象'
                   : '',
@@ -528,7 +555,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               _buildPartnerCard(partner,
                   _selectedPartnerId != null && validPartnerId == null),
               const SizedBox(height: 24),
-              const Text('目前聊得怎麼樣？（選填）', style: OpenerHomeStyle.body),
+              const Text('目前聊得怎麼樣？（選填）', style: OpenerHomeStyle.label),
               const SizedBox(height: 8),
               OpenerSituationGrid(
                   options: NewTopicView.situationOptions,
@@ -537,13 +564,21 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                       ? null
                       : (value) => unawaited(_selectSituation(value))),
               const SizedBox(height: 8),
-              Text(helper, style: OpenerHomeStyle.helper),
+              Semantics(
+                  liveRegion: true,
+                  child: Text(helper, style: OpenerHomeStyle.helper)),
+              if (readiness == NewTopicReadiness.dataQualityBlocked)
+                TextButton(
+                    onPressed: AppHaptics.onPress(_busy
+                        ? null
+                        : () => context.push('/partner/$validPartnerId')),
+                    child: const Text('查看對象資料')),
               if (style.hasError && validPartnerId != null)
                 TextButton(
-                    onPressed: _busy
+                    onPressed: AppHaptics.onPress(_busy
                         ? null
                         : () => ref.invalidate(
-                            newTopicStyleContextProvider(validPartnerId)),
+                            newTopicStyleContextProvider(validPartnerId))),
                     child: const Text('重新載入個人風格')),
               const SizedBox(height: 16),
               // v2：串流事件到達後顯示一行狀態＋五張題卡骨架（topic_n 事件
@@ -568,14 +603,16 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Center(
-                    child: Text(
-                      _error!,
-                      style: AppTypography.bodyMedium
-                          .copyWith(color: AppColors.error),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                  child: Semantics(
+                      liveRegion: true,
+                      child: Center(
+                        child: Text(
+                          _error!,
+                          style: AppTypography.bodyMedium
+                              .copyWith(color: AppColors.error),
+                          textAlign: TextAlign.center,
+                        ),
+                      )),
                 ),
               if (_result != null) ...[
                 const SizedBox(height: 24),
@@ -591,12 +628,16 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             ])));
   }
 
+  Future<void> _openPartnerPicker() async {
+    await _pickPartner();
+    if (mounted && widget.isActive) _partnerFocus.requestFocus();
+  }
+
   Widget _buildPartnerCard(Partner? partner, bool invalid) {
     final noPartners = ref.watch(partnerListProvider).isEmpty;
     final contextData = partner == null
         ? null
         : ref.watch(newTopicPartnerContextProvider(partner.id));
-    final hasDetails = contextData?.hasActionableSignals ?? false;
     final aggregate = partner == null
         ? null
         : ref.watch(partnerAggregateProvider(partner.id));
@@ -604,62 +645,104 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       ...?aggregate?.unionInterests,
       ...?aggregate?.unionTraits
     ].take(3).join('、');
-    final avatar = partner?.avatarPath;
-    final fallback =
-        const Icon(Icons.person_outline, size: 28, color: OpenerHomeStyle.icon);
+    final hasDetails = (contextData?.hasActionableSignals ?? false) ||
+        aggregate?.latestHeat != null ||
+        detailLabels.isNotEmpty;
+    final title = partner?.name ??
+        (invalid
+            ? '重新選擇聊天對象'
+            : noPartners
+                ? '先建立聊天對象'
+                : '選擇聊天對象');
+    final description = partner != null
+        ? '已選擇聊天對象'
+        : invalid
+            ? '找不到原本的對象，請重新選擇。'
+            : noPartners
+                ? '建立後，就能根據她的資料找新話題。'
+                : '根據她的作戰板，找到適合你們的話題。';
     return OpenerHomePanel(
         padding: EdgeInsets.zero,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Semantics(
               button: true,
-              label: partner == null ? '選擇聊天對象' : '目前對象 ${partner.name}，更換對象',
+              enabled: !_busy,
+              label: partner == null ? title : '目前對象 ${partner.name}，更換對象',
               child: InkWell(
+                focusNode: _partnerFocus,
                 borderRadius: BorderRadius.circular(24),
-                onTap: _busy ? null : _pickPartner,
-                child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 120),
+                onTap: AppHaptics.onPress(_busy ? null : _openPartnerPicker),
+                child: ExcludeSemantics(
                     child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: ExcludeSemantics(
-                            child: Row(children: [
-                          Container(
+                  padding: const EdgeInsets.all(16),
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(minHeight: partner == null ? 128 : 88),
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      final vertical =
+                          MediaQuery.textScalerOf(context).scale(15) > 20;
+                      final Widget avatar = partner == null
+                          ? OpenerEntryIcon(
+                              kind: OpenerEntryKind.partner,
+                              size: constraints.maxWidth >= 300 ? 128 : 104)
+                          : Container(
                               width: 48,
                               height: 48,
                               clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
+                              decoration: const BoxDecoration(
                                   color: OpenerHomeStyle.selected,
-                                  borderRadius: BorderRadius.circular(24)),
+                                  shape: BoxShape.circle),
                               child: LocalAvatar(
-                                  path: avatar, fallback: fallback)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                Text(
-                                    partner?.name ??
-                                        (noPartners ? '先建立聊天對象' : '選擇聊天對象'),
-                                    style: const TextStyle(
-                                        fontSize: 19,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white)),
-                                const SizedBox(height: 4),
-                                Text(
-                                    partner != null
-                                        ? '已選擇聊天對象'
-                                        : invalid
-                                            ? '原本的對象已不存在，請重新選擇'
-                                            : '根據她的作戰板，找到適合你們的話題。',
-                                    style: OpenerHomeStyle.helper),
-                              ])),
-                          const Icon(Icons.chevron_right,
-                              color: OpenerHomeStyle.secondary),
-                        ])))),
+                                  path: partner.avatarPath,
+                                  fallback: const Icon(Icons.person_outline,
+                                      size: 28, color: OpenerHomeStyle.icon)));
+                      final copy = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(title,
+                                maxLines: partner == null ? null : 2,
+                                overflow: partner == null
+                                    ? null
+                                    : TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white)),
+                            const SizedBox(height: 4),
+                            Text(description, style: OpenerHomeStyle.body),
+                          ]);
+                      final change =
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (partner != null)
+                          const Text('更換', style: OpenerHomeStyle.helper),
+                        const Icon(Icons.chevron_right,
+                            size: 20, color: OpenerHomeStyle.secondary),
+                      ]);
+                      if (vertical) {
+                        return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [avatar, const Spacer(), change]),
+                              const SizedBox(height: 12),
+                              copy
+                            ]);
+                      }
+                      return Row(children: [
+                        avatar,
+                        SizedBox(width: partner == null ? 8 : 12),
+                        Expanded(child: copy),
+                        const SizedBox(width: 4),
+                        change
+                      ]);
+                    }),
+                  ),
+                )),
               )),
           if (partner != null && !hasDetails)
             const Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Text('這位對象的紀錄還很少，建議可能會比較通用。',
+                child: Text('她的紀錄還不多，這次會先參考你的設定或所選情境。',
                     style: OpenerHomeStyle.helper)),
           if (hasDetails)
             Padding(
@@ -668,17 +751,20 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       TextButton(
-                          onPressed: () =>
-                              setState(() => _showDetails = !_showDetails),
+                          onPressed: AppHaptics.onPress(() =>
+                              setState(() => _showDetails = !_showDetails)),
                           child: Text(_showDetails ? '收合使用資料' : '查看使用資料')),
                       if (_showDetails)
                         Text(
                             [
+                              if (aggregate?.latestHeat != null)
+                                '目前熱度：${aggregate!.latestHeat}',
                               if (detailLabels.isNotEmpty) detailLabels,
-                              if (contextData!.hasNoteSignals) '已加入你的備註',
+                              if (contextData?.hasNoteSignals ?? false)
+                                '已加入你的備註',
                               if (detailLabels.isEmpty &&
-                                  !contextData.hasNoteSignals)
-                                '已加入你們的互動紀錄'
+                                  !(contextData?.hasNoteSignals ?? false))
+                                '已加入你們的互動紀錄',
                             ].join('\n'),
                             style: OpenerHomeStyle.body),
                     ])),
@@ -713,9 +799,9 @@ class NewTopicResultsSection extends StatelessWidget {
       children: [
         Text(
           '新話題建議',
-          style: AppTypography.titleMedium.copyWith(color: Colors.white),
+          style: AppTypography.titleLarge.copyWith(color: Colors.white),
         ),
-        if (result.recommendation.reason != null) ...[
+        if (result.recommendation.reason?.trim().isNotEmpty ?? false) ...[
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -729,7 +815,7 @@ class NewTopicResultsSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   'AI 推薦理由：${result.recommendation.reason}',
-                  style: AppTypography.bodySmall.copyWith(
+                  style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.4,
                   ),
@@ -777,7 +863,7 @@ class NewTopicResultsSection extends StatelessWidget {
                     children: [
                       Text(
                         NewTopicView.freeUpsellHeadline,
-                        style: AppTypography.bodySmall.copyWith(
+                        style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.onBackgroundPrimary,
                         ),
                       ),

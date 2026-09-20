@@ -200,18 +200,18 @@ void main() {
     expect(_button(t).onPressed, isNull);
     expect(find.text('合成對象 p'), findsNothing);
     await _capture(t, 'topic-no-selection');
-    await t.tap(find.bySemanticsLabel('選擇聊天對象'));
+    await t.tap(find.bySemanticsLabel('重新選擇聊天對象'));
     await t.pumpAndSettle();
     await _capture(t, 'topic-picker');
     await t.enterText(find.byType(TextField), 'missing');
     await t.pump();
-    expect(find.textContaining('沒有符合搜尋'), findsOneWidget);
+    expect(find.text('找不到符合的對象，試試其他名字'), findsOneWidget);
     expect(find.textContaining('尚無其他對象'), findsNothing);
     await t.enterText(find.byType(TextField), '合成');
     await t.pump();
     await t.tap(find.text('合成對象 p'));
     await t.pumpAndSettle();
-    expect(find.text('已選擇聊天對象'), findsOneWidget);
+    expect(find.text('更換'), findsOneWidget);
     expect(_button(t).onPressed, isNull);
   });
 
@@ -265,7 +265,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     style = '有效風格';
     await _pump(t);
-    await _tapGenerate(t);
+    // Two real pointer taps before the disabled rebuild must still share one
+    // preparation and one consent dialog.
+    final generate = find.byKey(const ValueKey('new-topic-generate'));
+    await t.ensureVisible(generate);
+    await t.tap(generate);
+    await t.tap(generate);
     await t.pump(const Duration(milliseconds: 500));
     expect(find.text('資料使用說明'), findsOneWidget);
     expect(_service.calls, isEmpty);
@@ -288,10 +293,12 @@ void main() {
     await t.pump();
     expect(find.text('確認本次結果'), findsOneWidget);
     await _capture(t, 'topic-pending-retry');
-    style = '背景已更新';
+    style = null;
     container.invalidate(newTopicStyleContextProvider('p'));
     await t.pump();
     await t.pump();
+    expect(_button(t).onPressed, isNotNull,
+        reason: 'pending envelope remains resolvable without current material');
     await _tapGenerate(t);
     expect(_service.calls, hasLength(2));
     expect(_service.calls[1], _service.calls[0]);
@@ -394,6 +401,78 @@ void main() {
     expect(find.text('新話題建議'), findsOneWidget);
   });
 
+  testWidgets('offstage preparation never opens consent after style resolves',
+      (t) async {
+    SharedPreferences.setMockInitialValues({});
+    style = '原本已載入的風格';
+    final container = await _pump(t);
+    final wait = Completer<String?>();
+    styleLoader = () => wait.future;
+    container.invalidate(newTopicStyleContextProvider('p'));
+    // The old enabled callback can still be delivered before the rebuild.
+    await t.tap(find.byKey(const ValueKey('new-topic-generate')));
+    _active.value = false;
+    await t.pump();
+    wait.complete('更新風格');
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.text('另一個模式'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(_service.calls, isEmpty);
+    _active.value = true;
+    await t.pump();
+    expect(_button(t).onPressed, isNotNull);
+  });
+
+  testWidgets('changing conditions retires pending confirmation label',
+      (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    _service.replies.single.completeError(
+        const NewTopicRequestInProgressException(message: '等待確認'));
+    await t.pump();
+    expect(find.text('確認本次結果'), findsOneWidget);
+    await t.tap(find.text('冷掉了'));
+    await t.pump();
+    expect(find.text('確認本次結果'), findsNothing);
+    expect(find.text('生成新話題'), findsOneWidget);
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(_service.calls[1]['id'], isNot(_service.calls[0]['id']));
+    expect(_service.calls[1]['situation'], 'went_cold');
+    _service.replies[1].complete(_result(_service.calls[1]['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+  });
+
+  for (final removePartner in [false, true]) {
+    testWidgets(
+        'preparation invalidated by ${removePartner ? 'partner deletion' : 'owner change'}',
+        (t) async {
+      SharedPreferences.setMockInitialValues({});
+      style = '有效風格';
+      final container = await _pump(t);
+      final wait = Completer<String?>();
+      styleLoader = () => wait.future;
+      container.invalidate(newTopicStyleContextProvider('p'));
+      await t.tap(find.byKey(const ValueKey('new-topic-generate')));
+      await t.pump();
+      if (removePartner) {
+        partners = [];
+        container.invalidate(partnerListProvider);
+      } else {
+        owner = 'b';
+        ownerEvents.add(owner);
+      }
+      await t.pump();
+      wait.complete('舊帳號的風格');
+      await t.pump(const Duration(milliseconds: 500));
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(_service.calls, isEmpty);
+      expect(find.text('合成對象 p'), findsNothing);
+      expect(_button(t).onPressed, isNull);
+    });
+  }
+
   testWidgets('NT-23 account or deleted partner rejects late provider result',
       (t) async {
     style = '有效風格';
@@ -413,6 +492,20 @@ void main() {
   });
 
   for (final scale in [1.0, 1.5, 2.0]) {
+    testWidgets(
+        'topic result remains readable in real 320 viewport scale=$scale',
+        (t) async {
+      style = '有效風格';
+      await _pump(t, scale: scale, size: const Size(320, 568));
+      await _tapGenerate(t);
+      _service.replies.single.complete(_result(_service.calls.single['id']!));
+      await t.pump(const Duration(milliseconds: 500));
+      await t.ensureVisible(find.text('新話題建議'));
+      await _capture(t, 'topic-result-320-$scale');
+      await t.ensureVisible(find.text('複製'));
+      expect(t.takeException(), isNull);
+      expect(find.byKey(const ValueKey('new-topic-generate')), findsNothing);
+    });
     testWidgets('NT-24/SH-04 320 width scale=$scale and own quota sheet',
         (t) async {
       style = '有效風格';

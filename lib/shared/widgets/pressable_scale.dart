@@ -19,11 +19,15 @@ class PressableScale extends StatefulWidget {
     required this.child,
     this.enabled = true,
     this.hapticOnDown = false,
+    this.reduceMotion = false,
+    this.emitHaptics = true,
   });
 
   final Widget child;
   final bool enabled;
   final bool hapticOnDown;
+  final bool reduceMotion;
+  final bool emitHaptics;
 
   @override
   State<PressableScale> createState() => _PressableScaleState();
@@ -41,18 +45,29 @@ class _PressableScaleState extends State<PressableScale> {
   Widget build(BuildContext context) {
     return Listener(
       onPointerDown: (_) {
-        if (widget.enabled && widget.hapticOnDown) AppHaptics.light();
+        if (widget.enabled && widget.emitHaptics && widget.hapticOnDown) {
+          AppHaptics.light();
+        }
         _setPressed(true);
       },
       onPointerUp: (_) {
         // _pressed 仍為 true 代表沒被捲動 cancel 掉，是真的點擊。
-        if (_pressed && !widget.hapticOnDown) AppHaptics.tap();
+        if (widget.enabled &&
+            widget.emitHaptics &&
+            _pressed &&
+            !widget.hapticOnDown) {
+          AppHaptics.tap();
+        }
         _setPressed(false);
       },
       onPointerCancel: (_) => _setPressed(false),
       child: AnimatedScale(
-        scale: _pressed ? AppMotion.pressedScale : 1.0,
-        duration: _pressed ? AppMotion.pressDown : AppMotion.pressUp,
+        scale: _pressed && !widget.reduceMotion ? AppMotion.pressedScale : 1.0,
+        duration: widget.reduceMotion
+            ? Duration.zero
+            : _pressed
+                ? AppMotion.pressDown
+                : AppMotion.pressUp,
         curve: AppMotion.easeOut,
         child: widget.child,
       ),

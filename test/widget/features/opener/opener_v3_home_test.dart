@@ -1,19 +1,21 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/services/app_haptics.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/opener/presentation/screens/opening_rescue_screen.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 import '../../../visual_proof/proof_support.dart';
@@ -48,13 +50,14 @@ final _root = GlobalKey();
 Future<void> _pump(WidgetTester t,
     {Size size = const Size(390, 844),
     double scale = 1,
+    List<Partner> partners = const [],
     bool quotaError = false}) async {
   await t.binding.setSurfaceSize(size);
   addTearDown(() => t.binding.setSurfaceSize(null));
   await t.pumpWidget(ProviderScope(
       overrides: [
         authConversationScopeProvider.overrideWith((_) => const Stream.empty()),
-        partnerListProvider.overrideWith((_) => const []),
+        partnerListProvider.overrideWith((_) => partners),
         subscriptionProvider
             .overrideWith((_) => _Subscription(error: quotaError)),
         subscriptionScreenRefreshProvider.overrideWith((_) => () async {
@@ -118,6 +121,7 @@ Future<Uint8List> _profileImage() async {
 }
 
 void main() {
+  final haptics = <Object?>[];
   late Uint8List profile;
   late FlutterImageCompressPlatform original;
   setUpAll(() async {
@@ -129,10 +133,20 @@ void main() {
     profile = await _profileImage();
   });
   setUp(() {
+    AppHaptics.enabled = true;
+    haptics.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') haptics.add(call.arguments);
+      return null;
+    });
     SharedPreferences.setMockInitialValues({});
     OpeningRescueScreen.debugOwnerIdOverride = () => 'synthetic-owner';
   });
   tearDown(() {
+    AppHaptics.enabled = true;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
     OpeningRescueScreen.debugOwnerIdOverride = null;
     OpeningRescueScreen.debugImageSelector = null;
   });
@@ -149,13 +163,13 @@ void main() {
     await capture(t, 'opener-empty-390');
     await t.tap(find.text('手動輸入'));
     await t.pump();
-    await t.enterText(field('貼上對方的自介內容'), '喜歡走步道');
+    await t.enterText(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'), '喜歡走步道');
     await t.pump();
     expect(cta(t).onPressed, isNotNull);
-    await t.enterText(field('貼上對方的自介內容'), '');
+    await t.enterText(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'), '');
     await t.pump();
     expect(cta(t).onPressed, isNull);
-    await t.tap(find.text('補充姓名、興趣與認識情境'));
+    await t.tap(find.text('補充其他資料（選填）'));
     await t.pump();
     await t.enterText(field('輸入對方名字（選填）'), '測試對象');
     await t.pump();
@@ -175,7 +189,7 @@ void main() {
     await t.enterText(note, '我也喜歡咖啡');
     await t.pump();
     expect(cta(t).onPressed, isNull);
-    await t.enterText(field('貼上對方的自介內容'), '週末去郊外');
+    await t.enterText(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'), '週末去郊外');
     await t.enterText(note, List.filled(300, '👨‍👩‍👧‍👦').join());
     await t.pump();
     expect(cta(t).onPressed, isNotNull);
@@ -198,15 +212,17 @@ void main() {
       return selected.future;
     };
     await _pump(t, size: const Size(320, 568));
-    await t.tap(find.text('加入圖片'));
+    await t.tap(find.byKey(const ValueKey('opener-add-images')));
     await t.pump();
-    await t.tap(find.text('加入圖片'));
+    expect(haptics, ['HapticFeedbackType.lightImpact']);
+    await t.tap(find.byKey(const ValueKey('opener-add-images')));
     await t.pump();
+    expect(haptics, hasLength(1), reason: 'busy picker cannot vibrate again');
     expect(calls, 1);
     expect(cta(t).onPressed, isNull);
     await t.tap(find.text('手動輸入'));
     await t.pump();
-    expect(field('貼上對方的自介內容'), findsNothing);
+    expect(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'), findsNothing);
     await t.runAsync(() async {
       selected.complete(List.generate(
           3,
@@ -215,22 +231,27 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 600));
     });
     await t.pump();
-    expect(find.text('3 / 3'), findsOneWidget);
-    expect(find.text('加入更多'), findsNothing);
+    expect(find.text('已加入 3／3 張'), findsOneWidget);
+    expect(find.text('加入'), findsNothing);
     await capture(t, 'opener-three-320');
+    haptics.clear();
     await t.tapAt(t.getBottomLeft(find.bySemanticsLabel('第 1 張圖片，點擊查看')) +
         const Offset(8, -8));
     await t.pump();
     expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(haptics, ['HapticFeedbackType.lightImpact']);
     await t.tap(find.byTooltip('關閉'));
     await t.pumpAndSettle();
+    haptics.clear();
     await t.tap(find.byTooltip('移除第 1 張圖片'));
     await t.pump();
+    expect(haptics, ['HapticFeedbackType.mediumImpact'],
+        reason: 'delete must not also activate thumbnail preview');
     expect(find.byType(InteractiveViewer), findsNothing);
-    expect(find.text('2 / 3'), findsOneWidget);
+    expect(find.text('已加入 2／3 張'), findsOneWidget);
     await t.tap(find.byTooltip('移除第 1 張圖片'));
     await t.pump();
-    expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.text('已加入 1／3 張'), findsOneWidget);
     await capture(t, 'opener-one-320');
     await t.binding.setSurfaceSize(const Size(390, 844));
     await t.pump();
@@ -245,7 +266,7 @@ void main() {
     expect(cta(t).onPressed, isNull);
     await t.tap(find.text('截圖自介'));
     await t.pump();
-    expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.text('已加入 1／3 張'), findsOneWidget);
     expect(cta(t).onPressed, isNotNull);
   });
 
@@ -270,7 +291,7 @@ void main() {
                   return picked.future;
                 })));
     await t.pumpWidget(widget());
-    await t.tap(find.text('加入更多'));
+    await t.tap(find.text('加入'));
     await t.pump();
     scope = 'b';
     await t.pumpWidget(widget());
@@ -279,7 +300,7 @@ void main() {
     expect(calls, 1);
     expect(changes, 0);
     expect(busy, [true, false]);
-    expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.text('已加入 1／3 張'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await t.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -289,9 +310,9 @@ void main() {
                 onImagesChanged: (_) => changes++,
                 fileSelector:
                     ({required allowMultiple, required limit}) async => []))));
-    await t.tap(find.text('加入更多'));
+    await t.tap(find.text('加入'));
     await t.pump();
-    expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.text('已加入 1／3 張'), findsOneWidget);
     expect(changes, 0);
     expect(find.byType(SnackBar), findsNothing);
   });
@@ -314,31 +335,43 @@ void main() {
       ],
     ))));
     await t.runAsync(() async {
-      await t.tap(find.text('加入圖片'));
+      await t.tap(find.byKey(const ValueKey('opener-add-images')));
       await Future<void>.delayed(const Duration(milliseconds: 600));
     });
     await t.pump();
     expect(images, hasLength(1));
     expect(busy, [true, false]);
-    expect(find.text('1 / 3'), findsOneWidget);
-    expect(find.text('加入更多'), findsOneWidget);
+    expect(find.text('已加入 1／3 張'), findsOneWidget);
+    expect(find.text('加入'), findsOneWidget);
+    expect(find.text('有 1 張圖片無法加入，請換張圖片再試。'), findsOneWidget);
   });
 
   testWidgets(
       'SH-01/02/03 full screen mode retains manual input with one active CTA',
       (t) async {
-    await _pump(t);
+    await _pump(t, partners: [
+      Partner(
+          id: 'synthetic-partner',
+          name: '合成測試對象',
+          ownerUserId: 'synthetic-owner',
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026))
+    ]);
     await t.tap(find.text('手動輸入'));
     await t.pump();
-    await t.enterText(field('貼上對方的自介內容'), '合成測試：喜歡閱讀');
+    await t.enterText(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'), '合成測試：喜歡閱讀');
     await t.tap(find.text('新話題'));
     await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('opener-analyze-button')), findsNothing);
+    expect(t.testTextInput.isVisible, isFalse);
+    expect(t.getRect(find.text('開場救星')).top, greaterThanOrEqualTo(0));
+    expect(t.getRect(find.byKey(const ValueKey('new-topic-generate'))).bottom,
+        lessThanOrEqualTo(844));
     await capture(t, 'topic-fullscreen-390');
     await t.tap(find.text('開場白').first);
     await t.pumpAndSettle();
-    expect(
-        t.widget<TextField>(field('貼上對方的自介內容')).controller!.text, '合成測試：喜歡閱讀');
+    expect(t.widget<TextField>(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店')).controller!.text,
+        '合成測試：喜歡閱讀');
     expect(find.byKey(const ValueKey('opener-analyze-button')), findsOneWidget);
     expect(cta(t).onPressed, isNotNull);
   });
@@ -350,14 +383,15 @@ void main() {
       await _pump(t, scale: scale);
       await t.tap(find.text('手動輸入'));
       await t.pump();
-      await t.enterText(field('貼上對方的自介內容'), '合成資料：喜歡散步與咖啡');
+      await t.enterText(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'), '合成資料：喜歡散步與咖啡');
       await t.pump();
-      final controller = t.widget<TextField>(field('貼上對方的自介內容')).controller;
+      final controller =
+          t.widget<TextField>(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店')).controller;
       t.view.viewInsets = const FakeViewPadding(bottom: 300);
       addTearDown(t.view.resetViewInsets);
       await t.pump();
-      expect(
-          t.widget<TextField>(field('貼上對方的自介內容')).controller, same(controller));
+      expect(t.widget<TextField>(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店')).controller,
+          same(controller));
       await t
           .ensureVisible(find.byKey(const ValueKey('opener-analyze-button')));
       await t.pump();
@@ -366,7 +400,7 @@ void main() {
       await capture(t, 'opener-keyboard-$scale');
       t.view.resetViewInsets();
       await t.pump();
-      await t.ensureVisible(field('貼上對方的自介內容'));
+      await t.ensureVisible(field('例如：喜歡爬山、養了一隻貓，週末常去咖啡店'));
       await t.pump();
       await capture(t, 'opener-manual-$scale');
     });

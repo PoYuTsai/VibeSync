@@ -14,6 +14,8 @@ const kAllowedRadii = {18, 22, 23, 24, 99, 999};
 /// 所以只在登記過的檔案、登記過的值上開洞，不放寬全域尺度。
 /// 新增條目＝先進 DESIGN.md 登記表，不得用重產基準放行（§11）。
 const kAllowedRadiiByFile = <String, Set<int>>{
+  // DESIGN.md §10: physical miniature photo/contact cards on a 64-unit canvas.
+  'lib/shared/widgets/brand/opener_entry_icon.dart': {3, 6},
   // 聊天泡泡「尾巴」5（DESIGN.md §4）：分則氣泡群組最後一顆的貼合角。
   'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart':
       {5},

@@ -10,6 +10,9 @@ import '../../domain/entities/new_topic_result.dart';
 
 /// Server 端 request deadline 50s＋settlement reserve；client 70s 讓
 /// server 的逾時/結算結果先到（同 opener 慣例）。
+/// Current new-topic contract, independent from opener analysis policy.
+const kNewTopicQuotaCost = 3;
+
 const kNewTopicRequestTimeout = Duration(seconds: 70);
 
 typedef NewTopicInvoker = Future<NewTopicInvokeResponse> Function(

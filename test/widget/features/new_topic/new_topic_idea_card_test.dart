@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/new_topic/domain/entities/new_topic_result.dart';
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_idea_card.dart';
-import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
+import 'package:vibesync/shared/widgets/brand/opener_home_components.dart';
 
 const _idea = NewTopicIdea(
   id: 'nt_2',
@@ -33,11 +33,10 @@ void main() {
     expect(find.text('接下來怎麼延續'), findsOneWidget);
     expect(find.text('AI 推薦'), findsNothing);
 
-    final card = tester.widget<BrandSurfaceCard>(
+    final card = tester.widget<OpenerHomePanel>(
       find.byKey(const ValueKey('new-topic-idea-card-nt_2')),
     );
-    expect(card.tone, BrandVisualTone.coach);
-    expect(card.borderColor, isNull);
+    expect(card.padding, const EdgeInsets.all(16));
 
     final openingLine = tester.widget<Container>(
       find.byKey(const ValueKey('new-topic-opening-line-nt_2')),
@@ -45,12 +44,9 @@ void main() {
     final openingDecoration = openingLine.decoration! as BoxDecoration;
     expect(
       openingDecoration.color,
-      AppColors.coachBackgroundMid.withValues(alpha: 0.72),
+      OpenerHomeStyle.input,
     );
-    expect(
-      openingDecoration.border!.top.color,
-      AppColors.coachAccent.withValues(alpha: 0.18),
-    );
+    expect(openingDecoration.border, isNull);
 
     await tester.tap(find.text('複製'));
     expect(copied, 1);
@@ -65,14 +61,10 @@ void main() {
 
     expect(find.text('AI 推薦'), findsOneWidget);
 
-    final card = tester.widget<BrandSurfaceCard>(
+    final card = tester.widget<OpenerHomePanel>(
       find.byKey(const ValueKey('new-topic-idea-card-nt_2')),
     );
-    expect(card.tone, BrandVisualTone.coach);
-    expect(
-      card.borderColor,
-      AppColors.coachRecommendation.withValues(alpha: 0.58),
-    );
+    expect(card.padding, const EdgeInsets.all(16));
 
     final badge = tester.widget<Container>(
       find.byKey(const ValueKey('new-topic-recommendation-nt_2')),

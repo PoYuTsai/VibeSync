@@ -4,9 +4,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
@@ -26,6 +28,24 @@ import 'package:vibesync/features/subscription/data/providers/subscription_provi
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
+import '../../../../visual_proof/proof_support.dart';
+
+final _proofRoot = GlobalKey();
+
+Future<void> _captureStage(WidgetTester t, String name) async {
+  await _settleBounded(t);
+  expect(t.takeException(), isNull);
+  await t.runAsync(() async {
+    final image = await t
+        .renderObject<RenderRepaintBoundary>(find.byKey(_proofRoot))
+        .toImage(pixelRatio: 2);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    File('build/visual_proof/v3/$name.png')
+      ..createSync(recursive: true)
+      ..writeAsBytesSync(data!.buffer.asUint8List());
+    image.dispose();
+  });
+}
 
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
@@ -66,21 +86,46 @@ class _FakeOpenerService extends OpenerService {
       'sessionId': 'sess-1',
       'analysisRevision': 1,
       'expiresAt': '2099-01-01T00:00:00Z',
-      'approach': {'mode': 'anchor_hooks', 'summary': '可以從她的狗開，但先確認你想聊哪個部分', 'avoid': ['不用證明自己符合條件']},
+      'approach': {
+        'mode': 'anchor_hooks',
+        'summary': '可以從她的狗開，但先確認你想聊哪個部分',
+        'avoid': ['不用證明自己符合條件']
+      },
       'cues': [
-        {'id': 'cue_1', 'label': '養狗', 'source': 'profile_text', 'evidence': {'field': 'bio', 'quote': '有養一隻狗'}},
+        {
+          'id': 'cue_1',
+          'label': '養狗',
+          'source': 'profile_text',
+          'evidence': {'field': 'bio', 'quote': '有養一隻狗'}
+        },
       ],
       'question': {
         'id': 'question_1',
         'affects': 'sender_fact',
         'text': '你跟養狗這件事比較接近哪種？',
         'options': [
-          {'id': 'option_1', 'label': '我自己有養', 'meaning': 'assert_sender_fact', 'cueId': 'cue_1', 'statement': '我有養狗'},
-          {'id': 'option_2', 'label': '沒養，但有興趣', 'meaning': 'curious_without_experience', 'cueId': 'cue_1'},
+          {
+            'id': 'option_1',
+            'label': '我自己有養',
+            'meaning': 'assert_sender_fact',
+            'cueId': 'cue_1',
+            'statement': '我有養狗'
+          },
+          {
+            'id': 'option_2',
+            'label': '沒養，但有興趣',
+            'meaning': 'curious_without_experience',
+            'cueId': 'cue_1'
+          },
           {'id': 'option_3', 'label': '其實想聊別的', 'meaning': 'change_direction'},
         ],
       },
-      'usage': {'firstGenerationCost': 3, 'includedGenerationCount': 3, 'generationsUsed': 0, 'quotaCharged': false},
+      'usage': {
+        'firstGenerationCost': 3,
+        'includedGenerationCount': 3,
+        'generationsUsed': 0,
+        'quotaCharged': false
+      },
     })!;
   }
 
@@ -101,12 +146,40 @@ class _FakeOpenerService extends OpenerService {
       'sessionId': sessionId,
       'generationId': generationId,
       'expiresAt': '2099-01-01T00:00:00Z',
-      'openers': {'extend': '牠散步會自己選路嗎', 'humor': '妳家狗是導航派還是隨機派', 'tease': '妳家狗看起來比妳會安排行程'},
+      'openers': {
+        'extend': '牠散步會自己選路嗎',
+        'humor': '妳家狗是導航派還是隨機派',
+        'tease': '妳家狗看起來比妳會安排行程'
+      },
       'recommendation': {'pick': 'extend', 'reason': '直接問你想知道的事，也沒有寫成你養過狗'},
       'cardReasons': {'extend': '直接問你想知道的事，也沒有寫成你養過狗'},
-      'materialUse': {'inputState': contribution.stateWire, 'references': [{'style': 'extend', 'materialId': 'material_1', 'outputSpan': '散步會自己選路'}], 'traceStatus': contribution.stateWire == 'answered' ? 'matched' : 'no_input', 'displayNote': contribution.stateWire == 'answered' ? '這句接的是你想知道的散步習慣' : null},
-      'access': {'contractVersion': 2, 'servedTier': 'free', 'visibleTypes': ['extend', 'humor', 'tease'], 'lockedTypes': ['resonate', 'coldRead']},
-      'usage': {'chargedNow': generateCalls == 1 ? 3 : 0, 'sessionChargedTotal': 3, 'generationsUsed': generateCalls, 'generationsRemaining': 3 - generateCalls, 'replayed': false},
+      'materialUse': {
+        'inputState': contribution.stateWire,
+        'references': [
+          {
+            'style': 'extend',
+            'materialId': 'material_1',
+            'outputSpan': '散步會自己選路'
+          }
+        ],
+        'traceStatus':
+            contribution.stateWire == 'answered' ? 'matched' : 'no_input',
+        'displayNote':
+            contribution.stateWire == 'answered' ? '這句接的是你想知道的散步習慣' : null
+      },
+      'access': {
+        'contractVersion': 2,
+        'servedTier': 'free',
+        'visibleTypes': ['extend', 'humor', 'tease'],
+        'lockedTypes': ['resonate', 'coldRead']
+      },
+      'usage': {
+        'chargedNow': generateCalls == 1 ? 3 : 0,
+        'sessionChargedTotal': 3,
+        'generationsUsed': generateCalls,
+        'generationsRemaining': 3 - generateCalls,
+        'replayed': false
+      },
     }, contribution: contribution)!;
   }
 
@@ -124,7 +197,8 @@ class _FakeOpenerService extends OpenerService {
     void Function(String label, String? phase)? onProgress,
   }) async {
     legacyCalls += 1;
-    return const OpenerResult(openers: {'extend': '舊單段句'}, recommendedPick: 'extend');
+    return const OpenerResult(
+        openers: {'extend': '舊單段句'}, recommendedPick: 'extend');
   }
 }
 
@@ -136,7 +210,10 @@ Widget _screen() => ProviderScope(
         coachingOutcomeEventProvider.overrideWith((ref, id) => null),
         subscriptionProvider.overrideWith(
           (ref) => _SeededSubscriptionNotifier(
-            const SubscriptionState(tier: SubscriptionTierHelper.free, monthlyLimit: 30, dailyLimit: 10),
+            const SubscriptionState(
+                tier: SubscriptionTierHelper.free,
+                monthlyLimit: 30,
+                dailyLimit: 10),
           ),
         ),
       ],
@@ -164,7 +241,8 @@ Future<void> _settleBounded(WidgetTester tester) async {
 /// tearDownAll 的 Hive.close() 會等到天荒地老。用 runAsync 讓 I/O 真的完成。
 /// [until] 給了就等到那個 widget 出現（上限 5 秒）再回來：分析／生成路徑現在有多次排隊的
 /// Hive 寫入，固定 50ms 在全套並行跑時不夠（第三輪全套一次 F01 flake），要等真正的條件。
-Future<void> _tapAndSettleAsync(WidgetTester tester, Finder finder, {Finder? until}) async {
+Future<void> _tapAndSettleAsync(WidgetTester tester, Finder finder,
+    {Finder? until}) async {
   await tester.runAsync(() async {
     await tester.tap(finder);
     await _settleBounded(tester);
@@ -182,7 +260,10 @@ Future<void> _tapAndSettleAsync(WidgetTester tester, Finder finder, {Finder? unt
 }
 
 Future<void> _analyze(WidgetTester tester, {Finder? until}) async {
-  await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容'), '有養一隻狗，假日會去河堤');
+  await tester.enterText(
+      find.byWidgetPredicate((w) =>
+          w is TextField && w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'),
+      '有養一隻狗，假日會去河堤');
   await tester.pump();
   // R2a 後分析完成就會寫 Hive 草稿：同樣要在 runAsync 裡讓 I/O 完成；預設等到分析摘要出現。
   await _tapAndSettleAsync(
@@ -202,11 +283,62 @@ void main() {
   late _FakeOpenerService service;
 
   setUpAll(() async {
+    await loadProofFonts();
+    await (FontLoader('packages/flutter_tabler_icons/tabler-icons')
+          ..addFont(rootBundle.load(
+              'packages/flutter_tabler_icons/assets/fonts/tabler-icons.ttf')))
+        .load();
     Hive.init(Directory.systemTemp.createTempSync('opener_two_stage').path);
     if (!Hive.isBoxOpen(AppConstants.settingsBox)) {
       await Hive.openBox(AppConstants.settingsBox);
     }
   });
+
+  for (final scale in [1.0, 1.5, 2.0]) {
+    testWidgets('real viewport analysis and result at 320 width scale=$scale',
+        (t) async {
+      await t.binding.setSurfaceSize(const Size(320, 568));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      await t.pumpWidget(RepaintBoundary(
+          key: _proofRoot,
+          child: MaterialApp(
+              theme: ThemeData(fontFamily: 'AppTC'),
+              debugShowCheckedModeBanner: false,
+              builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!),
+              home: _screen())));
+      await t.pump(const Duration(milliseconds: 600));
+      await t.tap(find.text('手動輸入'));
+      await t.pump();
+      await t.enterText(
+          find.byWidgetPredicate((w) =>
+              w is TextField &&
+              w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'),
+          '有養一隻狗，假日會去河堤');
+      await t.pump();
+      await t
+          .ensureVisible(find.byKey(const ValueKey('opener-analyze-button')));
+      await _tapAndSettleAsync(
+          t, find.byKey(const ValueKey('opener-analyze-button')),
+          until: find.byKey(const ValueKey('opener-approach-summary')));
+      await t
+          .ensureVisible(find.byKey(const ValueKey('opener-approach-summary')));
+      await _captureStage(t, 'opener-analysis-320-$scale');
+      await t
+          .ensureVisible(find.byKey(const ValueKey('opener-generate-button')));
+      await _captureStage(t, 'opener-contribution-320-$scale');
+      await _tapAndSettleAsync(
+          t, find.byKey(const ValueKey('opener-generate-button')),
+          until: find.text('開場白建議'));
+      await t.ensureVisible(find.text('開場白建議'));
+      await _captureStage(t, 'opener-result-320-$scale');
+      expect(find.text('牠散步會自己選路嗎'), findsOneWidget);
+      await t.ensureVisible(find.byKey(const ValueKey('opener-adjust-button')));
+      expect(t.takeException(), isNull);
+    });
+  }
 
   setUp(() async {
     service = _FakeOpenerService();
@@ -254,8 +386,9 @@ void main() {
     service.analyzeGate = Completer<void>();
     await _pumpManual(tester);
     await tester.enterText(
-        find.byWidgetPredicate(
-            (w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容'),
+        find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'),
         '有養一隻狗，假日會去河堤');
     await tester.pump();
     await _tapAndSettleAsync(
@@ -298,10 +431,12 @@ void main() {
 
     expect(service.analyzeCalls, 1);
     expect(service.generateCalls, 0);
-    expect(find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-cue-cue_1')), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-question-text')), findsOneWidget);
-    expect(find.byKey(const ValueKey('opener-generate-button')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('opener-generate-button')), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-skip-button')), findsOneWidget);
     expect(find.text('開場白建議'), findsNothing);
     expect(find.textContaining('第一次生成扣 3 則'), findsOneWidget);
@@ -315,54 +450,69 @@ void main() {
     await tester.runAsync(() async {
       await tester.tap(find.byKey(const ValueKey('opener-option-option_2')));
       await tester.pump();
-      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '沒養過，只想知道牠散步會不會自己選路');
+      await tester.enterText(
+          find.byKey(const ValueKey('opener-free-text')), '沒養過，只想知道牠散步會不會自己選路');
       await tester.pump();
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
-    expect(find.byKey(const ValueKey('opener-contribution-summary')), findsOneWidget);
-    await _tapAndSettleAsync(tester, find.byKey(const ValueKey('opener-generate-button')));
+    expect(find.byKey(const ValueKey('opener-contribution-summary')),
+        findsOneWidget);
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-generate-button')));
 
     expect(service.generateCalls, 1);
     expect(service.lastFreeText, '沒養過，只想知道牠散步會不會自己選路');
     expect(find.text('開場白建議'), findsOneWidget);
     expect(find.text('牠散步會自己選路嗎'), findsOneWidget);
-    expect(find.byKey(const ValueKey('opener-material-use-note')), findsOneWidget);
-    expect(find.byKey(const ValueKey('opener-generations-remaining')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('opener-material-use-note')), findsOneWidget);
+    expect(find.byKey(const ValueKey('opener-generations-remaining')),
+        findsOneWidget);
     expect(find.textContaining('還可以再生成 2 組'), findsOneWidget);
     expect(find.text('養這種狗的人假日應該都在外面'), findsNothing, reason: '鎖卡內容不在畫面');
 
     await tester.tap(find.byKey(const ValueKey('opener-adjust-button')));
     await _settleBounded(tester);
-    final field = tester.widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
+    final field = tester
+        .widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
     expect(field.controller!.text, '沒養過，只想知道牠散步會不會自己選路', reason: '保留上次的文字');
     expect(find.textContaining('本局已扣費'), findsOneWidget);
-    expect(find.byKey(const ValueKey('opener-skip-button')), findsNothing, reason: '調整模式不提供略過');
+    expect(find.byKey(const ValueKey('opener-skip-button')), findsNothing,
+        reason: '調整模式不提供略過');
   });
 
   testWidgets('略過，直接生成：送出 skipped、結果沒有採用說明', (tester) async {
     await _pumpManual(tester);
     await _analyze(tester);
-    await _tapAndSettleAsync(tester, find.byKey(const ValueKey('opener-skip-button')));
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-skip-button')));
     expect(service.lastState, 'skipped');
-    expect(find.byKey(const ValueKey('opener-material-use-note')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('opener-material-use-note')), findsNothing);
   });
 
   testWidgets('F15：分析後改對方資料→原分析失效、回到編輯（不拿舊快照生成）', (tester) async {
     await _pumpManual(tester);
     await _analyze(tester);
-    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容'), '改成另一個人的自介');
+    await tester.enterText(
+        find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'),
+        '改成另一個人的自介');
     await _settleBounded(tester);
     expect(find.byKey(const ValueKey('opener-question-text')), findsNothing);
     expect(find.byKey(const ValueKey('opener-analyze-button')), findsOneWidget);
   });
 
   testWidgets('舊 Edge 不支援→退回舊單段 CTA，輸入保留', (tester) async {
-    service.analyzeError = const OpenerFlowException(code: OpenerFlowErrorCode.flowUnsupported, message: 'x', status: 400);
+    service.analyzeError = const OpenerFlowException(
+        code: OpenerFlowErrorCode.flowUnsupported, message: 'x', status: 400);
     await _pumpManual(tester);
     await _analyze(tester, until: find.text('生成開場白'));
     expect(find.text('生成開場白'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-analyze-button')), findsNothing);
-    final bio = tester.widget<TextField>(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容'));
+    final bio = tester.widget<TextField>(find.byWidgetPredicate((w) =>
+        w is TextField && w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'));
     expect(bio.controller!.text, '有養一隻狗，假日會去河堤');
     expect(service.legacyCalls, 0, reason: '不會在同一下點擊偷偷改走舊單段扣費');
   });
@@ -372,19 +522,29 @@ void main() {
     await tester.runAsync(() async {
       final cache = OpenerResultCacheService(ownerIdResolver: () => 'user-a');
       final generation = await service.generateFromAnalysisStreaming(
-        sessionId: 'sess-1', analysisRevision: 1, generationId: 'gen-1',
-        contribution: const OpenerContribution(state: OpenerContributionState.answered, freeText: '沒養過'),
+        sessionId: 'sess-1',
+        analysisRevision: 1,
+        generationId: 'gen-1',
+        contribution: const OpenerContribution(
+            state: OpenerContributionState.answered, freeText: '沒養過'),
       );
-      final analysis = await service.analyzeProfileStreaming(analysisRequestId: 'r');
-      final expiredAnalysis = OpenerAnalysis.tryParse({...analysis.toJson(), 'expiresAt': '2020-01-01T00:00:00Z'})!;
+      final analysis =
+          await service.analyzeProfileStreaming(analysisRequestId: 'r');
+      final expiredAnalysis = OpenerAnalysis.tryParse(
+          {...analysis.toJson(), 'expiresAt': '2020-01-01T00:00:00Z'})!;
       await cache.saveDraft(
         result: generation.result,
         sourceLabel: '截圖自介', // 別跟 tab 標籤「手動輸入」撞名，tap 會找到兩個
-        flow: OpenerDraftFlow(stage: OpenerDraftFlowStage.result, analysis: expiredAnalysis, generation: generation, contributionDraft: const OpenerContributionDraft(freeText: '沒養過')),
+        flow: OpenerDraftFlow(
+            stage: OpenerDraftFlowStage.result,
+            analysis: expiredAnalysis,
+            generation: generation,
+            contributionDraft: const OpenerContributionDraft(freeText: '沒養過')),
       );
     });
     await _pumpManual(tester);
-    await tester.tap(find.text('草稿')); await tester.pumpAndSettle();
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
     await _tapAndSettleAsync(tester, find.text('回看'));
     expect(find.text('牠散步會自己選路嗎'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-expired-title')), findsOneWidget);
@@ -398,66 +558,106 @@ void main() {
     await tester.runAsync(() async {
       final cache = OpenerResultCacheService(ownerIdResolver: () => 'user-a');
       await cache.saveDraft(
-        result: const OpenerResult(openers: {'extend': '舊單段的句子'}, recommendedPick: 'extend', requestId: 'req-old'),
+        result: const OpenerResult(
+            openers: {'extend': '舊單段的句子'},
+            recommendedPick: 'extend',
+            requestId: 'req-old'),
         sourceLabel: '截圖自介',
       );
     });
     await _pumpManual(tester);
-    await tester.tap(find.text('草稿')); await tester.pumpAndSettle();
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
     await _tapAndSettleAsync(tester, find.text('回看'));
     expect(find.text('舊單段的句子'), findsOneWidget);
-    expect(find.byKey(const ValueKey('opener-legacy-draft-notice')), findsOneWidget);
+    expect(find.byKey(const ValueKey('opener-legacy-draft-notice')),
+        findsOneWidget);
     expect(find.text('複製'), findsWidgets);
     expect(service.analyzeCalls, 0);
     expect(service.generateCalls, 0);
-    expect(find.byKey(const ValueKey('opener-adjust-button')), findsNothing, reason: '舊草稿沒有兩段式再生成入口');
+    expect(find.byKey(const ValueKey('opener-adjust-button')), findsNothing,
+        reason: '舊草稿沒有兩段式再生成入口');
   });
 
   testWidgets('R4b：初稿貼 301 字→原文保留、顯示錯誤、分析按鈕禁用；300 字可分析', (tester) async {
     await _pumpManual(tester);
-    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容'), '有效對方資料');
+    await tester.enterText(
+        find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'),
+        '有效對方資料');
     final over = '🐶' * 301;
-    await tester.enterText(find.byKey(const ValueKey('opener-initial-note')), over);
+    await tester.enterText(
+        find.byKey(const ValueKey('opener-initial-note')), over);
     await tester.pump();
-    final note = tester.widget<TextField>(find.byKey(const ValueKey('opener-initial-note')));
+    final note = tester
+        .widget<TextField>(find.byKey(const ValueKey('opener-initial-note')));
     expect(note.controller!.text, over, reason: '不得靜默截斷貼上的原文');
-    expect(find.byKey(const ValueKey('opener-initial-note-error')), findsOneWidget);
-    expect(tester.widget<ElevatedButton>(find.byKey(const ValueKey('opener-analyze-button'))).onPressed, isNull);
+    expect(find.byKey(const ValueKey('opener-initial-note-error')),
+        findsOneWidget);
+    expect(
+        tester
+            .widget<ElevatedButton>(
+                find.byKey(const ValueKey('opener-analyze-button')))
+            .onPressed,
+        isNull);
 
-    await tester.enterText(find.byKey(const ValueKey('opener-initial-note')), '字' * 300);
+    await tester.enterText(
+        find.byKey(const ValueKey('opener-initial-note')), '字' * 300);
     await tester.pump();
-    expect(find.byKey(const ValueKey('opener-initial-note-error')), findsNothing);
-    expect(tester.widget<ElevatedButton>(find.byKey(const ValueKey('opener-analyze-button'))).onPressed, isNotNull);
+    expect(
+        find.byKey(const ValueKey('opener-initial-note-error')), findsNothing);
+    expect(
+        tester
+            .widget<ElevatedButton>(
+                find.byKey(const ValueKey('opener-analyze-button')))
+            .onPressed,
+        isNotNull);
   });
 
-  testWidgets('R4b：回答欄貼 301 字（含 emoji）→原文保留、計數變紅、生成禁用；刪到 300 恢復', (tester) async {
+  testWidgets('R4b：回答欄貼 301 字（含 emoji）→原文保留、計數變紅、生成禁用；刪到 300 恢復',
+      (tester) async {
     await _pumpManual(tester);
     await _analyze(tester);
     final over = '${'字' * 300}😀';
     // R2a-2 後回答區每次修改都寫 Hive：要在 runAsync 裡讓 I/O 完成。
     await tester.runAsync(() async {
-      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), over);
+      await tester.enterText(
+          find.byKey(const ValueKey('opener-free-text')), over);
       await tester.pump();
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
-    final field = tester.widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
+    final field = tester
+        .widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
     expect(field.controller!.text, over);
     expect(find.textContaining('超過 1 字'), findsOneWidget);
-    expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-generate-button'))).onPressed, isNull);
+    expect(
+        tester
+            .widget<BrandPrimaryButton>(
+                find.byKey(const ValueKey('opener-generate-button')))
+            .onPressed,
+        isNull);
     expect(service.generateCalls, 0);
 
     await tester.runAsync(() async {
-      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '字' * 300);
+      await tester.enterText(
+          find.byKey(const ValueKey('opener-free-text')), '字' * 300);
       await tester.pump();
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     expect(find.textContaining('超過'), findsNothing);
-    expect(tester.widget<BrandPrimaryButton>(find.byKey(const ValueKey('opener-generate-button'))).onPressed, isNotNull);
+    expect(
+        tester
+            .widget<BrandPrimaryButton>(
+                find.byKey(const ValueKey('opener-generate-button')))
+            .onPressed,
+        isNotNull);
   });
 
   // ── 第二輪獨立複核回歸（R2a-2：分析尚未返回就離頁的實際重建）
 
-  testWidgets('R2a-2：停在 analyzing 的草稿回看→欄位填回、用同 analysisRequestId 續分析、停在回答區', (tester) async {
+  testWidgets('R2a-2：停在 analyzing 的草稿回看→欄位填回、用同 analysisRequestId 續分析、停在回答區',
+      (tester) async {
     await tester.runAsync(() async {
       final cache = OpenerResultCacheService(ownerIdResolver: () => 'user-a');
       await cache.saveDraft(
@@ -468,22 +668,30 @@ void main() {
           analysisRequestId: 'req-pending-1',
           // 指紋要和 controller 由輸入快照重算的一致（同 analysisRequestId 才會沿用）。
           inputFingerprint: _analysisFingerprint,
-          pendingAnalysis: const OpenerPendingAnalysis(bio: '有養一隻狗，假日會去河堤', initialNote: '想從狗開'),
+          pendingAnalysis: const OpenerPendingAnalysis(
+              bio: '有養一隻狗，假日會去河堤', initialNote: '想從狗開'),
         ),
       );
     });
     await _pumpManual(tester);
-    await tester.tap(find.text('草稿')); await tester.pumpAndSettle();
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
     expect(find.text('分析中，尚未取得分析'), findsOneWidget);
-    await _tapAndSettleAsync(tester, find.text('回看'), until: find.byKey(const ValueKey('opener-approach-summary')));
+    await _tapAndSettleAsync(tester, find.text('回看'),
+        until: find.byKey(const ValueKey('opener-approach-summary')));
     expect(service.analyzeCalls, 1, reason: '沒截圖的 analyzing 草稿回看後自動續分析（免費）');
-    expect(service.lastAnalysisRequestId, 'req-pending-1', reason: '同輸入沿用原 analysisRequestId');
+    expect(service.lastAnalysisRequestId, 'req-pending-1',
+        reason: '同輸入沿用原 analysisRequestId');
     expect(service.generateCalls, 0);
-    expect(find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget);
-    expect(find.byKey(const ValueKey('opener-generate-button')), findsOneWidget);
-    final bioField = tester.widget<TextField>(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容'));
+    expect(
+        find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('opener-generate-button')), findsOneWidget);
+    final bioField = tester.widget<TextField>(find.byWidgetPredicate((w) =>
+        w is TextField && w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'));
     expect(bioField.controller!.text, '有養一隻狗，假日會去河堤', reason: '輸入欄位填回');
-    final drafts = OpenerResultCacheService(ownerIdResolver: () => 'user-a').loadDrafts();
+    final drafts =
+        OpenerResultCacheService(ownerIdResolver: () => 'user-a').loadDrafts();
     expect(drafts.length, 1, reason: '同一份紀錄由 analyzing 升到 analyzed');
     expect(drafts.single.flow!.stage, OpenerDraftFlowStage.analyzed);
   });
@@ -492,11 +700,14 @@ void main() {
     await _pumpManual(tester);
     await _analyze(tester);
     await tester.runAsync(() async {
-      await tester.enterText(find.byKey(const ValueKey('opener-free-text')), '沒養過，只想問散步');
+      await tester.enterText(
+          find.byKey(const ValueKey('opener-free-text')), '沒養過，只想問散步');
       await tester.pump();
       await Future<void>.delayed(const Duration(milliseconds: 80));
     });
-    final saved = OpenerResultCacheService(ownerIdResolver: () => 'user-a').loadDrafts().single;
+    final saved = OpenerResultCacheService(ownerIdResolver: () => 'user-a')
+        .loadDrafts()
+        .single;
     expect(saved.flow!.stage, OpenerDraftFlowStage.analyzed);
     expect(saved.flow!.contributionDraft.freeText, '沒養過，只想問散步');
 
@@ -505,9 +716,12 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(MaterialApp(home: _screen()));
     await tester.pump(const Duration(milliseconds: 600));
-    await tester.tap(find.text('草稿')); await tester.pumpAndSettle();
-    await _tapAndSettleAsync(tester, find.text('回看'), until: find.byKey(const ValueKey('opener-free-text')));
-    final freeText = tester.widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
+    await _tapAndSettleAsync(tester, find.text('回看'),
+        until: find.byKey(const ValueKey('opener-free-text')));
+    final freeText = tester
+        .widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
     expect(freeText.controller!.text, '沒養過，只想問散步');
     expect(service.generateCalls, 0);
     expect(service.analyzeCalls, 1, reason: '回看 analyzed 草稿不重新分析');

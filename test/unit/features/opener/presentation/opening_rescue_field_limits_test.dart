@@ -41,7 +41,7 @@ Future<void> _pumpManualTab(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 600));
   await tester.tap(find.text('手動輸入'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('補充姓名、興趣與認識情境'));
+  await tester.tap(find.text('補充其他資料（選填）'));
   await tester.pump();
 }
 
@@ -93,7 +93,7 @@ void main() {
   testWidgets('Bio 欄位輸入超過 2000 字元會被截斷在 2000', (tester) async {
     await _pumpManualTab(tester);
 
-    final bioField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容');
+    final bioField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店');
     await tester.enterText(bioField, 'b' * 2500);
     await tester.pump();
 
