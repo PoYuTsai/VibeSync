@@ -4,7 +4,8 @@
 // format repair→tier 投影→回應。stream 為 transport-only，扣費只在
 // completeOpenerRequest 共用管線內。
 
-import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
+import { ModelCallBudget } from "./model_call_budget.ts";
+import { buildModelRateUnavailablePayload, enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   buildQuotaExceededPayload,
   isPlainObject,
@@ -107,11 +108,13 @@ async function repairMalformedOpenerPayload({
   rawText,
   apiKey,
   absoluteDeadlineAtMs,
+  budget,
   normalizeOpts,
 }: {
   rawText: string;
   apiKey: string;
   absoluteDeadlineAtMs: number;
+  budget: ModelCallBudget;
   normalizeOpts: Parameters<typeof normalizeOpenerPayload>[1];
 }): Promise<{
   parsed: Record<string, unknown> | null;
@@ -139,6 +142,7 @@ async function repairMalformedOpenerPayload({
       maxRetries: 1,
       allowModelFallback: false,
       absoluteDeadlineAtMs,
+      budget, purpose: "repair",
     },
   );
   const repairData = repairResult.data as {
@@ -162,6 +166,7 @@ export async function handleOpenerRequest(
 ): Promise<Response> {
   const quota = deps.quota;
   const openerDeadlineAtMs = deps.requestStartedAtMs + OPENER_DEADLINE_MS;
+  const budget = new ModelCallBudget(openerDeadlineAtMs, { user: summarizeUser(deps.userId), stage: "legacy", tier: quota().effectiveTier });
   const openerDeadlineReached = () => Date.now() >= openerDeadlineAtMs;
   const rejectOpenerDeadline = (stage: string) => {
     logWarn("opener_deadline_exceeded", {
@@ -252,7 +257,7 @@ export async function handleOpenerRequest(
 
   // Batch 4#2 idempotency：requestId＋payload hash 在 quota gate 之前算。
   // Codex R2 P2b：replay 護欄前移——mismatch / 同 payload 刷超過上限
-  // 在燒 Claude 成本之前就 400。此讀 fail-open、非原子；最終權威仍在
+  // 在燒 Claude 成本之前就 400。此讀故障先拒絕、非原子；最終權威仍在
   // 扣費 RPC 的同款檢查。
   // Codex R3 P2-1：已知同 payload 預算內 dedup（已扣過費的重試）必須
   // 跳過 upfront quota gate——用戶額度剛好扣到頂時，回應丟失的重試
@@ -280,6 +285,7 @@ export async function handleOpenerRequest(
         user: summarizeUser(deps.userId),
         error: replayReadError.message,
       });
+      return jsonResponse(buildModelRateUnavailablePayload(), 503);
     } else {
       const verdict = classifyOpenerReplayPreflight({
         row: replayRow,
@@ -305,17 +311,16 @@ export async function handleOpenerRequest(
     }
   }
 
-  // 模型呼叫限流（docs/plans/2026-07-03-model-rate-limit-design.md）：
-  // opener 3/分、30/日。放在 replay preflight 後（mismatch/exhausted 400
-  // 不佔名額）、quota gate 前——並發 storm 在燒 Claude 成本前就封頂
-  // （P2-2 成本上界）。已知 dedup replay 不打模型、不計限流，cap 邊緣
-  // 重試才不會被 429 卡死。
-  if (!openerKnownDedupReplay) {
+  // Legacy stores only the charge receipt, not a reusable result. A same-ID
+  // retry still starts a new provider invocation, so it consumes the shared
+  // rate limit while retaining its existing no-double-charge entitlement.
+  {
     const openerRateVerdict = await enforceModelRateLimit({
       supabase: deps.supabase,
       userId: deps.userId,
       scope: "opener",
       isTestAccount: deps.accountIsTest,
+      failClosed: true,
     });
     if (openerRateVerdict.kind === "limited") {
       logWarn("model_rate_limited", {
@@ -325,13 +330,13 @@ export async function handleOpenerRequest(
       });
       return jsonResponse(openerRateVerdict.payload, 429);
     }
-    if (openerRateVerdict.kind === "failOpen") {
-      // fail-open：infra 錯誤（非超限 RAISE）不擋核心流程，必留 telemetry。
+    if (openerRateVerdict.kind === "unavailable") {
       logError("model_rate_limit_check_failed", {
         user: summarizeUser(deps.userId),
         scope: "opener",
         error: openerRateVerdict.errorMessage,
       });
+      return jsonResponse(openerRateVerdict.payload, 503);
     }
   }
 
@@ -525,6 +530,7 @@ export async function handleOpenerRequest(
         rawText,
         apiKey,
         absoluteDeadlineAtMs: openerDeadlineAtMs,
+        budget,
         normalizeOpts,
       });
       parsed = repairMetadata.parsed;
@@ -598,6 +604,7 @@ export async function handleOpenerRequest(
         rawText,
         apiKey,
         absoluteDeadlineAtMs: openerDeadlineAtMs,
+        budget,
         normalizeOpts,
       });
       const repaired = repairMetadata.parsed;
@@ -885,7 +892,7 @@ export async function handleOpenerRequest(
                 messages: claudeMessages,
               },
               apiKey,
-              { timeout: remainingBudgetMs },
+              { timeout: remainingBudgetMs, absoluteDeadlineAtMs: openerDeadlineAtMs, budget },
             );
             let fullText = "";
             for await (const chunk of claude.textStream) {
@@ -967,6 +974,7 @@ export async function handleOpenerRequest(
         maxRetries: 1,
         allowModelFallback: true,
         absoluteDeadlineAtMs: openerDeadlineAtMs,
+        budget,
       },
     );
   } catch (apiError) {

@@ -962,3 +962,59 @@ Deno.test("第七輪 goal A1：捕獲 raw 想約沒邀約 → Free 修正加邀�
     await h.db.close();
   }
 });
+
+Deno.test("C01/C02/C06: limiter infra failure blocks new work but completed replay stays readable", async () => {
+  const h = await harness();
+  try {
+    const first = await analyzed(h);
+    const real = supabaseFor(h.db);
+    for (const throws of [false, true]) {
+      const broken = { async rpc(fn: string, params: Record<string, unknown>) {
+        if (fn === "increment_model_usage") {
+          if (throws) throw new Error("connection lost");
+          return { data: null, error: { message: "database unavailable" } };
+        }
+        return await real.rpc(fn, params);
+      } };
+      const before = h.script.calls.length;
+      const replay = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { supabase: broken }));
+      assertEquals(replay.status, 200);
+      const blocked = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 }), { supabase: broken }));
+      assertEquals(blocked.status, 503);
+      assertEquals((await json(blocked)).code, "MODEL_RATE_LIMIT_UNAVAILABLE");
+      const gen = await handleOpenerGenerateRequest(h.deps(generateBody(first.sessionId as string, GEN_1, CURIOUS), { supabase: broken }));
+      assertEquals(gen.status, 503);
+      assertEquals((await json(gen)).code, "MODEL_RATE_LIMIT_UNAVAILABLE");
+      assertEquals(h.script.calls.length, before);
+      assertEquals(await usage(h.db), { m: 0, d: 0 });
+    }
+    // Actual production SQL limits; a completed replay bypasses both.
+    for (const [column, count] of [["minute_count", 3], ["day_count", 30]] as const) {
+      await h.db.exec(`UPDATE public.model_call_rate_limits SET ${column} = ${count}`);
+      const before = h.script.calls.length;
+      const res = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 })));
+      assertEquals(res.status, 429);
+      assertEquals((await json(res)).code, "MODEL_RATE_LIMITED");
+      assertEquals((await handleOpenerAnalyzeRequest(h.deps(analyzeBody()))).status, 200);
+      assertEquals(h.script.calls.length, before);
+      await passOneMinute(h.db);
+    }
+  } finally { await h.db.close(); }
+});
+
+Deno.test("C03/C05/C08: production invoker fallback leaves no fourth call for analysis repair", async () => {
+  const h = await harness();
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = () => Promise.resolve(++calls < 3
+    ? new Response(null, { status: 503 })
+    : Response.json({ content: [{ type: "text", text: "{}" }], usage: { input_tokens: 10, output_tokens: 5 } }));
+  try {
+    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: undefined }));
+    assertEquals(response.status, 502);
+    assertEquals(calls, 3);
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    const attempts = await h.db.query<{ day_count: number }>("SELECT day_count FROM public.model_call_rate_limits");
+    assertEquals(attempts.rows[0].day_count, 1, "failed provider work retains limiter attempt");
+  } finally { globalThis.fetch = oldFetch; await h.db.close(); }
+});

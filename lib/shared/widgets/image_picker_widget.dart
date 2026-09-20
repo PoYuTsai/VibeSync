@@ -10,6 +10,9 @@ import '../services/image_compress_service.dart';
 import '../services/screenshot_preflight_service.dart';
 import 'glassmorphic_container.dart';
 import 'pressable_scale.dart';
+import 'brand/opener_home_components.dart';
+
+enum ImagePickerVariant { compact, openerPanel }
 
 typedef ImagePickerFileSelector = Future<List<XFile>> Function({
   required bool allowMultiple,
@@ -74,6 +77,10 @@ class ImagePickerWidget extends StatefulWidget {
 
   /// 選圖磚與縮圖的邊長。
   final double tileSize;
+  final ImagePickerVariant variant;
+  final bool enabled;
+  final ValueChanged<bool>? onBusyChanged;
+  final Object? operationScope;
 
   const ImagePickerWidget({
     super.key,
@@ -89,6 +96,10 @@ class ImagePickerWidget extends StatefulWidget {
     this.accentColor,
     this.showHelperText = true,
     this.tileSize = 70,
+    this.variant = ImagePickerVariant.compact,
+    this.enabled = true,
+    this.onBusyChanged,
+    this.operationScope,
   });
 
   @override
@@ -101,6 +112,21 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   List<Uint8List> _images = [];
   List<SelectedImageMetrics> _imageMetrics = [];
   bool _isProcessing = false;
+  int _epoch = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _images = List.of(widget.externalImages ?? const <Uint8List>[]);
+  }
+
+  bool _current(int epoch) => mounted && epoch == _epoch;
+
+  void _busy(bool value) {
+    if (!mounted) return;
+    setState(() => _isProcessing = value);
+    widget.onBusyChanged?.call(value);
+  }
 
   @override
   void didUpdateWidget(ImagePickerWidget oldWidget) {
@@ -111,7 +137,9 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     // setState-during-build；而且變更本來就是父層發起的，它狀態已一致，
     // 非空批的 metrics 也由父層持有，回發只會用空 metrics 蓋掉它。
     final external = widget.externalImages;
+    if (oldWidget.operationScope != widget.operationScope) _epoch++;
     if (external != null && !listEquals(external, _images)) {
+      _epoch++;
       setState(() {
         _images = List<Uint8List>.from(external);
         _imageMetrics = [];
@@ -120,23 +148,35 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   }
 
   Future<void> _pickImage() async {
+    if (_isProcessing || !widget.enabled) return;
     if (_images.length >= widget.maxImages) {
       _showError('最多只能上傳 ${widget.maxImages} 張截圖。');
       return;
     }
 
+    final epoch = _epoch;
+    _busy(true);
     try {
       final remaining = widget.maxImages - _images.length;
       final files = await _selectFiles(remaining);
-      if (files.isEmpty) {
+      if (!_current(epoch) || files.isEmpty) {
         return;
       }
 
       for (final file in files.take(remaining)) {
-        await _processImage(await file.readAsBytes(), file.mimeType);
+        try {
+          final bytes = await file.readAsBytes();
+          if (!_current(epoch)) return;
+          await _processImage(bytes, file.mimeType, epoch);
+        } catch (_) {
+          if (_current(epoch)) _showError('這張圖片處理失敗，其他已加入的圖片會保留。');
+        }
+        if (!_current(epoch)) return;
       }
     } catch (_) {
-      _showError('選取圖片失敗，請稍後再試。');
+      if (_current(epoch)) _showError('選取圖片失敗，請稍後再試。');
+    } finally {
+      _busy(false);
     }
   }
 
@@ -158,6 +198,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   }
 
   Future<void> _pasteFromClipboard() async {
+    if (_isProcessing || !widget.enabled) return;
     if (!kIsWeb) {
       _showError('目前只有網頁版支援從剪貼簿貼上圖片。');
       return;
@@ -168,20 +209,27 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       return;
     }
 
+    final epoch = _epoch;
+    _busy(true);
     try {
       final imageBytes = await Pasteboard.image;
+      if (!_current(epoch)) return;
       if (imageBytes == null) {
         _showError('剪貼簿裡目前沒有圖片。');
         return;
       }
 
-      await _processImage(imageBytes, 'image/png');
+      await _processImage(imageBytes, 'image/png', epoch);
     } catch (_) {
-      _showError('貼上圖片失敗，請稍後再試。');
+      if (_current(epoch)) _showError('貼上圖片失敗，請稍後再試。');
+    } finally {
+      _busy(false);
     }
   }
 
-  Future<void> _processImage(Uint8List bytes, String? mimeType) async {
+  Future<void> _processImage(
+      Uint8List bytes, String? mimeType, int epoch) async {
+    if (!_current(epoch)) return;
     if (!ImageCompressService.isSupportedFormat(mimeType)) {
       _showError('目前只支援 JPEG、PNG、WebP、HEIC 截圖。');
       return;
@@ -197,11 +245,8 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       _showInfo(preflight.message ?? '這張截圖可能辨識較不穩，請先確認內容。');
     }
 
-    setState(() => _isProcessing = true);
     final compressed = await ImageCompressService.compressImage(bytes);
-    if (mounted) {
-      setState(() => _isProcessing = false);
-    }
+    if (!_current(epoch)) return;
 
     if (compressed == null) {
       _showError('圖片壓縮失敗，請換一張截圖再試。');
@@ -226,6 +271,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   }
 
   void _removeImage(int index) {
+    if (_isProcessing || !widget.enabled) return;
     setState(() {
       _images.removeAt(index);
       if (index < _imageMetrics.length) {
@@ -262,6 +308,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.variant == ImagePickerVariant.openerPanel) return _buildPanel();
     final helperTextColor =
         widget.helperTextColor ?? AppColors.onBackgroundSecondary;
 
@@ -511,8 +558,10 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
-            onTap: _pickImage,
-            onLongPress: kIsWeb ? _pasteFromClipboard : null,
+            onTap: _isProcessing || !widget.enabled ? null : _pickImage,
+            onLongPress: kIsWeb && !_isProcessing && widget.enabled
+                ? _pasteFromClipboard
+                : null,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -546,4 +595,169 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       ),
     );
   }
+
+  Widget _buildPanel() =>
+      OpenerHomePanel(child: LayoutBuilder(builder: (context, constraints) {
+        final disabled = _isProcessing || !widget.enabled;
+        final size = ((constraints.maxWidth - 16) / 3).clamp(64.0, 104.0);
+        final vertical = constraints.maxWidth < 300 ||
+            MediaQuery.textScalerOf(context).scale(15) > 20;
+        final add = TextButton.icon(
+          onPressed: disabled ? null : _pickImage,
+          icon: const Icon(Icons.add, size: 20),
+          label: Text(_images.isEmpty ? '加入圖片' : '加入更多'),
+          style: TextButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              foregroundColor: OpenerHomeStyle.accent),
+        );
+        return ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 168),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (_images.isEmpty) ...[
+                if (vertical) ...[
+                  const Center(child: _ProfileImagesIcon()),
+                  const SizedBox(height: 12),
+                  const Text('加入她的自介或照片',
+                      style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white)),
+                  const SizedBox(height: 4),
+                  const Text('最多 3 張，讓開場更貼近她。', style: OpenerHomeStyle.body),
+                ] else
+                  const Row(children: [
+                    _ProfileImagesIcon(),
+                    SizedBox(width: 16),
+                    Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                          Text('加入她的自介或照片',
+                              style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white)),
+                          SizedBox(height: 4),
+                          Text('最多 3 張，讓開場更貼近她。', style: OpenerHomeStyle.body),
+                        ])),
+                  ]),
+              ] else
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (final entry in _images.asMap().entries) ...[
+                    if (entry.key > 0) const SizedBox(width: 8),
+                    SizedBox(
+                        width: size,
+                        height: size,
+                        child: Stack(children: [
+                          Positioned.fill(
+                              child: Semantics(
+                                  button: true,
+                                  label: '第 ${entry.key + 1} 張圖片，點擊查看',
+                                  child: InkWell(
+                                    onTap: () => _showFullImage(entry.value),
+                                    child: ExcludeSemantics(
+                                        child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(18),
+                                            child: Image.memory(entry.value,
+                                                fit: BoxFit.cover))),
+                                  ))),
+                          Positioned(
+                              top: 0,
+                              right: 0,
+                              child: SizedBox(
+                                  width: 44,
+                                  height: 44,
+                                  child: IconButton(
+                                    tooltip: '移除第 ${entry.key + 1} 張圖片',
+                                    onPressed: disabled
+                                        ? null
+                                        : () => _removeImage(entry.key),
+                                    padding: EdgeInsets.zero,
+                                    icon: Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: const BoxDecoration(
+                                            color: OpenerHomeStyle.canvas,
+                                            shape: BoxShape.circle),
+                                        child: const Icon(Icons.close,
+                                            size: 16,
+                                            color: OpenerHomeStyle.icon)),
+                                  ))),
+                        ])),
+                  ],
+                  if (_images.length < widget.maxImages) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: size,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 72),
+                        child: OutlinedButton(
+                          key: const ValueKey('opener-add-image-tile'),
+                          onPressed: disabled ? null : _pickImage,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            foregroundColor: OpenerHomeStyle.accent,
+                            side: const BorderSide(
+                                color: OpenerHomeStyle.secondary),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18)),
+                          ),
+                          child: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add, size: 24),
+                                SizedBox(height: 4),
+                                Text('加入更多',
+                                    textAlign: TextAlign.center,
+                                    style: OpenerHomeStyle.body),
+                              ]),
+                        ),
+                      ),
+                    ),
+                  ],
+                ]),
+              const SizedBox(height: 8),
+              if (_images.isEmpty) add,
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text('${_images.length} / ${widget.maxImages}',
+                    style: OpenerHomeStyle.helper),
+              ),
+              if (kIsWeb && _images.length < widget.maxImages)
+                TextButton(
+                    onPressed: disabled ? null : _pasteFromClipboard,
+                    child: const Text('貼上圖片')),
+              if (_isProcessing)
+                Semantics(
+                    liveRegion: true,
+                    child:
+                        const Text('正在處理圖片…', style: OpenerHomeStyle.helper)),
+            ]));
+      }));
+}
+
+class _ProfileImagesIcon extends StatelessWidget {
+  const _ProfileImagesIcon();
+  @override
+  Widget build(BuildContext context) => const ExcludeSemantics(
+      child: SizedBox(
+          width: 64,
+          height: 64,
+          child: Stack(children: [
+            Positioned(
+                left: 0,
+                top: 0,
+                child: Icon(Icons.photo_outlined,
+                    size: 48, color: OpenerHomeStyle.secondary)),
+            Positioned(
+                right: 0,
+                bottom: 0,
+                child: DecoratedBox(
+                    decoration: BoxDecoration(color: OpenerHomeStyle.panel),
+                    child: Icon(Icons.add_photo_alternate_outlined,
+                        size: 48, color: OpenerHomeStyle.icon))),
+          ])));
 }

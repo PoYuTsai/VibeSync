@@ -41,6 +41,8 @@ Future<void> _pumpManualTab(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 600));
   await tester.tap(find.text('手動輸入'));
   await tester.pumpAndSettle();
+  await tester.tap(find.text('補充姓名、興趣與認識情境'));
+  await tester.pump();
 }
 
 void main() {
@@ -80,7 +82,7 @@ void main() {
   testWidgets('名字欄位輸入超過 200 字元會被截斷在 200', (tester) async {
     await _pumpManualTab(tester);
 
-    final nameField = find.byType(TextField).at(0);
+    final nameField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '輸入對方名字（選填）');
     await tester.enterText(nameField, 'n' * 300);
     await tester.pump();
 
@@ -91,7 +93,7 @@ void main() {
   testWidgets('Bio 欄位輸入超過 2000 字元會被截斷在 2000', (tester) async {
     await _pumpManualTab(tester);
 
-    final bioField = find.byType(TextField).at(1);
+    final bioField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '貼上對方的自介內容');
     await tester.enterText(bioField, 'b' * 2500);
     await tester.pump();
 
@@ -102,7 +104,7 @@ void main() {
   testWidgets('興趣欄位輸入超過 2000 字元會被截斷在 2000', (tester) async {
     await _pumpManualTab(tester);
 
-    final interestsField = find.byType(TextField).at(2);
+    final interestsField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '對方的興趣標籤（選填）');
     await tester.enterText(interestsField, 'i' * 2500);
     await tester.pump();
 
@@ -113,7 +115,7 @@ void main() {
   testWidgets('上限內的輸入不受影響', (tester) async {
     await _pumpManualTab(tester);
 
-    final nameField = find.byType(TextField).at(0);
+    final nameField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '輸入對方名字（選填）');
     await tester.enterText(nameField, '小美');
     await tester.pump();
 

@@ -1,3 +1,7 @@
+import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../../shared/widgets/brand/opener_home_components.dart';
+import '../widgets/opener_quota_sheet.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -180,6 +184,8 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   static OpenerService Function()? debugOpenerServiceFactory;
   @visibleForTesting
   static String? Function()? debugOwnerIdOverride;
+  @visibleForTesting
+  static ImagePickerFileSelector? debugImageSelector;
 
   /// Card list is contract-driven, not payload driven（contract v2）：
   /// Free 依展示序放 extend/humor/tease 實卡（缺句跳過，舊 v1 單卡快取只有
@@ -298,6 +304,18 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   String? _meetingContext;
 
   bool _isGenerating = false;
+  bool _preparing = false;
+  bool _pickerBusy = false;
+  bool _showSupplementary = false;
+  bool _pendingScroll = false;
+  int _inputVersion = 0;
+  String? get _owner =>
+      OpeningRescueScreen.debugOwnerIdOverride?.call() ??
+      SupabaseService.currentUser?.id;
+  bool get _inputLocked =>
+      _preparing || _pickerBusy || _flow.state.isBusy || _isGenerating;
+  final _analysisSectionKey = GlobalKey();
+  final _noteFocus = FocusNode();
 
   // F3-2 進度文案凍結在生成開始送出的 input（Codex R1 P2）：生成中用戶仍可
   // 切 tab/移除截圖，activeInput 會變但後端處理的是原始輸入，文案不得跟漂。
@@ -359,6 +377,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       tierHintResolver: _resolveTierHint,
       partnerId: widget.partnerId,
     );
+    _noteFocus.addListener(() {
+      if (mounted) setState(() {});
+    });
     _flow.addListener(_onFlowChanged);
     _reloadDrafts();
     _prefillFromPartner();
@@ -387,19 +408,28 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       );
     }
     setState(() {
+      // Analysis checkpoints also create drafts before the first generation.
+      _reloadDrafts();
       if (state.hasSession || state.generation != null) {
         _legacyDraftView = false;
         _result = state.generation?.result;
         _currentDraftId = state.draftId;
-        _resultGeneratedPaid = state.generation?.result.access?.servedPaid ?? false;
+        _resultGeneratedPaid =
+            state.generation?.result.access?.servedPaid ?? false;
       }
       _error = state.error;
       _isGenerating = false;
     });
+    if (state.phase == OpenerFlowPhase.contributing &&
+        previousPhase == OpenerFlowPhase.analyzing) {
+      _snapToResults();
+    }
     final quotaError = state.quotaError;
     if (quotaError != null && !identical(quotaError, _handledQuotaError)) {
       _handledQuotaError = quotaError;
-      unawaited(_showPaywallAndRefresh());
+      if (_mode == OpeningRescueMode.opener) {
+        unawaited(_showPaywallAndRefresh());
+      }
     }
     if (state.phase == OpenerFlowPhase.result &&
         previousPhase == OpenerFlowPhase.generating) {
@@ -443,9 +473,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
-  /// 兩段式第一段：分析對方資料（免費、不回開場白）。
+  /// Freeze before consent; late consent cannot submit another owner's input.
   Future<void> _analyzeTwoStage() async {
-    if (_flow.state.isBusy) return;
+    if (_inputLocked ||
+        _initialNoteTooLong ||
+        _mode != OpeningRescueMode.opener) {
+      return;
+    }
     final input = OpenerGenerationInput.fromActiveTab(
       useScreenshotTab: _selectedTab == 0,
       images: _images,
@@ -454,29 +488,38 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       interests: _interestsController.text,
       meetingContext: _meetingContext,
     );
-    if (!input.hasContent) {
-      setState(() => _error = '請上傳截圖或輸入對方資料');
-      return;
+    if (!input.hasContent) return;
+    final owner = _owner, version = _inputVersion;
+    final note = _initialNoteController.text;
+    final source = _selectedTab == 0 ? '截圖自介' : '手動輸入';
+    final preview = _buildDraftInputPreview();
+    setState(() => _preparing = true);
+    try {
+      final consented =
+          await AiDataSharingConsent.ensure(context, featureLabel: '開場救星');
+      if (!mounted ||
+          !consented ||
+          owner != _owner ||
+          version != _inputVersion) {
+        return;
+      }
+      if (_mode == OpeningRescueMode.opener) FocusScope.of(context).unfocus();
+      await _flow.analyze(
+          input: input,
+          initialNote: note,
+          displayName: input.name,
+          sourceLabel: source,
+          inputPreview: preview);
+    } finally {
+      if (mounted) setState(() => _preparing = false);
     }
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: '開場救星',
-    );
-    if (!consented || !mounted) return;
-    FocusScope.of(context).unfocus();
-    await _flow.analyze(
-      input: input,
-      initialNote: _initialNoteController.text,
-      displayName: input.name,
-      sourceLabel: _selectedTab == 0 ? '截圖自介' : '手動輸入',
-      inputPreview: _buildDraftInputPreview(),
-    );
   }
 
   void _prefillFromPartner() {
     final id = widget.partnerId;
     if (id == null || id.isEmpty) return;
-    final partner = ref.read(partnerByIdProvider(id));
+    final matches = ref.read(partnerListProvider).where((p) => p.id == id);
+    final partner = matches.isEmpty ? null : matches.first;
     if (partner == null) return;
     final name = partner.name.trim();
     if (name.isEmpty) return;
@@ -486,7 +529,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   String? _resolveBoundPartnerName() {
     final id = widget.partnerId;
     if (id == null || id.isEmpty) return null;
-    final partner = ref.watch(partnerByIdProvider(id));
+    final matches = ref.watch(partnerListProvider).where((p) => p.id == id);
+    final partner = matches.isEmpty ? null : matches.first;
     final name = partner?.name.trim();
     return (name == null || name.isEmpty) ? null : name;
   }
@@ -495,7 +539,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     if (_suppressInputClear || !mounted) return;
     // 對方資料改變：原分析失效（F15），controller 回到編輯、進行中作業作廢。
     _flow.resetForInputChange();
-    if (_result == null && _error == null && !_legacyDraftView) return;
+    _inputVersion++;
     setState(() {
       _result = null;
       _error = null;
@@ -549,6 +593,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Future<void> _showPaywallAndRefresh() async {
+    if (!mounted || _mode != OpeningRescueMode.opener) return;
     if (!mounted) return;
 
     final unlockedTier = await context.push<String>('/paywall');
@@ -628,7 +673,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _suppressInputClear = false;
 
     if (!mounted) return;
-    final pendingAnalysis = draft.flow?.stage == OpenerDraftFlowStage.analyzing ? draft.flow?.pendingAnalysis : null;
+    final pendingAnalysis = draft.flow?.stage == OpenerDraftFlowStage.analyzing
+        ? draft.flow?.pendingAnalysis
+        : null;
     if (pendingAnalysis != null && _useTwoStage) {
       // R2a-2：分析沒回來就離頁的草稿：填回輸入欄位，沒截圖就用同 analysisRequestId 續分析；
       // 有截圖無法原樣重送，等用戶重新上傳後自己按分析。
@@ -692,8 +739,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   /// 量得到新掛載的結果區位置。
   void _snapToResults() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final targetContext = _resultsSectionKey.currentContext;
-      if (targetContext == null || !mounted) return;
+      if (!mounted) return;
+      if (_mode != OpeningRescueMode.opener) {
+        _pendingScroll = true;
+        return;
+      }
+      final targetContext = _result != null
+          ? _resultsSectionKey.currentContext
+          : _analysisSectionKey.currentContext;
+      if (targetContext == null) return;
+      _pendingScroll = false;
       Scrollable.ensureVisible(
         targetContext,
         alignment: 0.04,
@@ -720,6 +775,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _nameController.removeListener(_clearGeneratedResultOnInputChange);
     _bioController.removeListener(_clearGeneratedResultOnInputChange);
     _interestsController.removeListener(_clearGeneratedResultOnInputChange);
+    _noteFocus.dispose();
     _nameController.dispose();
     _bioController.dispose();
     _interestsController.dispose();
@@ -732,6 +788,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   Future<void> _generate() async {
+    if (_inputLocked || _mode != OpeningRescueMode.opener) return;
+    final owner = _owner, version = _inputVersion;
+    bool current() => mounted && owner == _owner && version == _inputVersion;
+    final source = _selectedTab == 0 ? '截圖自介' : '手動輸入';
+    final preview = _buildDraftInputPreview();
     if (!OpeningRescueScreen.canStartGeneration(
       isGenerating: _isGenerating,
       hasResult: _result != null,
@@ -756,153 +817,168 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       return;
     }
 
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: '開場救星',
-    );
-    if (!consented || !mounted) return;
-
-    final cost = _estimatedCost;
-    if (!await _canStartGeneration(cost)) {
-      return;
-    }
-    if (!mounted) return;
-
-    // 收鍵盤
-    FocusScope.of(context).unfocus();
-
-    setState(() {
-      _isGenerating = true;
-      _streamProgress.clear();
-      _completedStreamPhases.clear();
-      _generationProgressPhrases = OpenerGenerationProgress.phrasesFor(
-        hasImages: input.images?.isNotEmpty ?? false,
-      );
-      _error = null;
-      _result = null;
-      _currentDraftId = null;
-    });
-
+    setState(() => _preparing = true);
     try {
-      final subscriptionSnapshot = ref.read(subscriptionProvider);
-      var expectedTier = subscriptionSnapshot.tier;
-      String? revenueCatAppUserId;
+      final consented = await AiDataSharingConsent.ensure(
+        context,
+        featureLabel: '開場救星',
+      );
+      if (!consented || !current()) return;
+
+      final cost = _estimatedCost;
+      if (!await _canStartGeneration(cost)) {
+        return;
+      }
+      if (!current()) return;
+
+      // 收鍵盤
+      if (!mounted) return;
+      if (_mode == OpeningRescueMode.opener) FocusScope.of(context).unfocus();
+
+      setState(() {
+        _isGenerating = true;
+        _streamProgress.clear();
+        _completedStreamPhases.clear();
+        _generationProgressPhrases = OpenerGenerationProgress.phrasesFor(
+          hasImages: input.images?.isNotEmpty ?? false,
+        );
+        _error = null;
+        _result = null;
+        _currentDraftId = null;
+      });
+
       try {
-        final customerInfo = await RevenueCatService.getCustomerInfo();
-        final revenueCatTier =
-            RevenueCatService.getTierFromCustomerInfo(customerInfo);
-        revenueCatAppUserId =
-            RevenueCatService.getRevenueCatAppUserId(customerInfo);
-        if (SubscriptionTierHelper.rankOf(revenueCatTier) >
-            SubscriptionTierHelper.rankOf(expectedTier)) {
-          expectedTier = revenueCatTier;
+        final subscriptionSnapshot = ref.read(subscriptionProvider);
+        var expectedTier = subscriptionSnapshot.tier;
+        String? revenueCatAppUserId;
+        try {
+          final customerInfo = await RevenueCatService.getCustomerInfo();
+          final revenueCatTier =
+              RevenueCatService.getTierFromCustomerInfo(customerInfo);
+          revenueCatAppUserId =
+              RevenueCatService.getRevenueCatAppUserId(customerInfo);
+          if (SubscriptionTierHelper.rankOf(revenueCatTier) >
+              SubscriptionTierHelper.rankOf(expectedTier)) {
+            expectedTier = revenueCatTier;
+          }
+        } catch (e) {
+          debugPrint('OpeningRescueScreen RevenueCat hint failed: $e');
         }
-      } catch (e) {
-        debugPrint('OpeningRescueScreen RevenueCat hint failed: $e');
-      }
-      if (!mounted) return;
+        if (!current()) return;
 
-      // F3-1：關於我/對象風格設定進 opener（只調語氣，server 端 prompt 守門）。
-      // await resolve 讓快照在 beginAttempt 之前定案（Codex R1 P2：sync
-      // valueOrNull 冷啟動讀到 loading，重試時 fingerprint 漂移會換新
-      // requestId，server 對前一次已扣費 run 去重失效）。載入失敗不擋生成。
-      String? effectiveStyleContext;
-      try {
-        effectiveStyleContext =
-            await ref.read(openerStyleContextProvider(widget.partnerId).future);
-      } catch (e) {
-        debugPrint('OpeningRescueScreen style context failed: $e');
-      }
-      if (!mounted) return;
+        // F3-1：關於我/對象風格設定進 opener（只調語氣，server 端 prompt 守門）。
+        // await resolve 讓快照在 beginAttempt 之前定案（Codex R1 P2：sync
+        // valueOrNull 冷啟動讀到 loading，重試時 fingerprint 漂移會換新
+        // requestId，server 對前一次已扣費 run 去重失效）。載入失敗不擋生成。
+        String? effectiveStyleContext;
+        try {
+          effectiveStyleContext = await ref
+              .read(openerStyleContextProvider(widget.partnerId).future);
+        } catch (e) {
+          debugPrint('OpeningRescueScreen style context failed: $e');
+        }
+        if (!current()) return;
 
-      // 同可見輸入的重試沿用 attempt 凍結的風格快照（Codex R2 P2），
-      // 所以 payload 一律取 attempt.styleContext 而非本次解析值。
-      final attempt = _requestSession.beginAttempt(
-        fingerprint: OpenerRequestIdSession.fingerprintFor(
+        // 同可見輸入的重試沿用 attempt 凍結的風格快照（Codex R2 P2），
+        // 所以 payload 一律取 attempt.styleContext 而非本次解析值。
+        final attempt = _requestSession.beginAttempt(
+          fingerprint: OpenerRequestIdSession.fingerprintFor(
+            images: input.images,
+            name: input.name,
+            bio: input.bio,
+            interests: input.interests,
+            meetingContext: input.meetingContext,
+          ),
+          styleContext: effectiveStyleContext,
+        );
+
+        final service = OpeningRescueScreen.debugOpenerServiceFactory?.call() ??
+            OpenerService();
+        // 2026-08-18 真串流：進度事件即時上牆；server flag off／舊 Edge 會
+        // 回一般 JSON，service 內自動降級，這裡無感。
+        final rawResult = await service.generateOpenersStreaming(
           images: input.images,
           name: input.name,
           bio: input.bio,
           interests: input.interests,
           meetingContext: input.meetingContext,
-        ),
-        styleContext: effectiveStyleContext,
-      );
-
-      final service = OpenerService();
-      // 2026-08-18 真串流：進度事件即時上牆；server flag off／舊 Edge 會
-      // 回一般 JSON，service 內自動降級，這裡無感。
-      final rawResult = await service.generateOpenersStreaming(
-        images: input.images,
-        name: input.name,
-        bio: input.bio,
-        interests: input.interests,
-        meetingContext: input.meetingContext,
-        expectedTier: expectedTier,
-        revenueCatAppUserId: revenueCatAppUserId,
-        effectiveStyleContext: attempt.styleContext,
-        requestId: attempt.requestId,
-        onProgress: (label, phase) {
-          if (!mounted || !_isGenerating) return;
-          if (phase == 'heartbeat') return; // 活著訊號不進階段清單
-          setState(() {
-            _streamProgress.add(label);
-            if (phase != null) _completedStreamPhases.add(phase);
-          });
-        },
-      );
-      // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
-      // 下一次生成沿用同 id 而被 server 當重試去重。
-      _requestSession.markSuccess();
-      // 批2：outcome adviceId 與扣費共用同一 requestId；必須在 saveDraft
-      // 前掛上，草稿序列化才帶得到。
-      final result = rawResult.withRequestId(attempt.requestId);
-      try {
-        final draft = await _resultCacheService.saveDraft(
-          result: result,
-          displayName: input.name,
-          sourceLabel: _selectedTab == 0 ? '截圖自介' : '手動輸入',
-          inputPreview: _buildDraftInputPreview(),
-          partnerId: widget.partnerId,
+          expectedTier: expectedTier,
+          revenueCatAppUserId: revenueCatAppUserId,
+          effectiveStyleContext: attempt.styleContext,
+          requestId: attempt.requestId,
+          onProgress: (label, phase) {
+            if (!current() || !_isGenerating) return;
+            if (phase == 'heartbeat') return; // 活著訊號不進階段清單
+            setState(() {
+              _streamProgress.add(label);
+              if (phase != null) _completedStreamPhases.add(phase);
+            });
+          },
         );
-        _currentDraftId = draft.id;
-        _reloadDrafts();
-      } catch (_) {
-        // The paid result should still be shown even if local persistence fails.
-      }
-      if (mounted) {
-        setState(() {
-          _result = result;
-          // Fresh result 的 tier 真相源＝server access；舊 Edge 未帶 access
-          // 時才退回 paid-only keys 形狀判斷（§8.4）。
-          _resultGeneratedPaid = result.access?.servedPaid ??
-              OpeningRescueScreen.resultHasPaidStyles(result.openers);
-          _isGenerating = false;
-          _reloadDrafts();
-        });
-
-        // 先排定格再做額度 refresh：refresh 是網路呼叫，擋在前面會造成
-        // 「結果出現 → 停 1~2 秒 → 突然捲動」的體感（dogfood 回報）。
-        _snapToResults();
-
+        // 結果已到手＝這次計費完結；之後任何失敗（存草稿等）都不該讓
+        // 下一次生成沿用同 id 而被 server 當重試去重。
+        if (!current()) return;
+        _requestSession.markSuccess();
+        // 批2：outcome adviceId 與扣費共用同一 requestId；必須在 saveDraft
+        // 前掛上，草稿序列化才帶得到。
+        final result = rawResult.withRequestId(attempt.requestId);
         try {
-          await ref.read(subscriptionScreenRefreshProvider)();
+          final draft = await _resultCacheService.saveDraftFor(
+            owner: owner,
+            result: result,
+            displayName: input.name,
+            sourceLabel: source,
+            inputPreview: preview,
+            partnerId: widget.partnerId,
+          );
+          if (!current()) return;
+          _currentDraftId = draft.id;
+          _reloadDrafts();
         } catch (_) {
-          // The opener result already succeeded; usage UI can catch up on the
-          // next subscription refresh if this best-effort sync fails.
+          // The paid result should still be shown even if local persistence fails.
+        }
+        if (current()) {
+          setState(() {
+            _result = result;
+            // Fresh result 的 tier 真相源＝server access；舊 Edge 未帶 access
+            // 時才退回 paid-only keys 形狀判斷（§8.4）。
+            _resultGeneratedPaid = result.access?.servedPaid ??
+                OpeningRescueScreen.resultHasPaidStyles(result.openers);
+            _isGenerating = false;
+            _reloadDrafts();
+          });
+
+          // 先排定格再做額度 refresh：refresh 是網路呼叫，擋在前面會造成
+          // 「結果出現 → 停 1~2 秒 → 突然捲動」的體感（dogfood 回報）。
+          _snapToResults();
+
+          try {
+            await ref.read(subscriptionScreenRefreshProvider)();
+          } catch (_) {
+            // The opener result already succeeded; usage UI can catch up on the
+            // next subscription refresh if this best-effort sync fails.
+          }
+        }
+      } on OpenerQuotaExceededException catch (e) {
+        if (current()) {
+          setState(() {
+            _error = e.message;
+            _isGenerating = false;
+          });
+          await _showPaywallAndRefresh();
+        }
+      } catch (e) {
+        if (current()) {
+          setState(() {
+            _error = _friendlyGenerationError(e);
+            _isGenerating = false;
+          });
         }
       }
-    } on OpenerQuotaExceededException catch (e) {
-      if (mounted) {
+    } finally {
+      if (mounted && version == _inputVersion) {
         setState(() {
-          _error = e.message;
-          _isGenerating = false;
-        });
-        await _showPaywallAndRefresh();
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = _friendlyGenerationError(e);
+          _preparing = false;
           _isGenerating = false;
         });
       }
@@ -955,6 +1031,32 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(authConversationScopeProvider, (previous, next) {
+      if (previous?.hasValue != true ||
+          previous?.valueOrNull == next.valueOrNull) {
+        return;
+      }
+      _flow.startNewSession();
+      _suppressInputClear = true;
+      _nameController.clear();
+      _bioController.clear();
+      _interestsController.clear();
+      _initialNoteController.clear();
+      _suppressInputClear = false;
+      setState(() {
+        _inputVersion++;
+        _images = [];
+        _result = null;
+        _error = null;
+        _drafts = const [];
+        _currentDraftId = null;
+        _meetingContext = null;
+        _isGenerating = false;
+        _preparing = false;
+        _requestSession.markSuccess();
+      });
+      _reloadDrafts();
+    });
     final subscription = ref.watch(subscriptionProvider);
     final boundPartnerName = _resolveBoundPartnerName();
     final activeInput = OpenerGenerationInput.fromActiveTab(
@@ -969,6 +1071,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return BrandScaffold(
       title: '開場救星',
+      backgroundColor: OpenerHomeStyle.canvas,
+      actions: _mode == OpeningRescueMode.opener && _drafts.isNotEmpty
+          ? [
+              TextButton(
+                  onPressed: _inputLocked ? null : _showDrafts,
+                  child: const Text('草稿', style: OpenerHomeStyle.body))
+            ]
+          : null,
       tone: BrandVisualTone.coach,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
@@ -981,22 +1091,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: BrandSegmentedButton<OpeningRescueMode>(
-                tone: BrandVisualTone.coach,
-                segments: const [
-                  BrandSegment(
-                    value: OpeningRescueMode.opener,
-                    label: '開場白',
-                  ),
-                  BrandSegment(
-                    value: OpeningRescueMode.newTopic,
-                    label: '新話題',
-                  ),
+              child: OpenerModeControl<OpeningRescueMode>(
+                value: _mode,
+                options: const [
+                  (OpeningRescueMode.opener, '開場白'),
+                  (OpeningRescueMode.newTopic, '新話題')
                 ],
-                selected: _mode,
-                // 本地切換不改 route（避免 GoRouter replace 重建）；
-                // IndexedStack 保兩側 state，生成中切換不中斷工作。
-                onChanged: (mode) => setState(() => _mode = mode),
+                onChanged: (mode) {
+                  setState(() => _mode = mode);
+                  if (mode == OpeningRescueMode.opener) {
+                    if (_pendingScroll) _snapToResults();
+                    // Leave offstage quota errors inline; returning never opens a surprise modal.
+                  }
+                },
               ),
             ),
             Expanded(
@@ -1009,7 +1116,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     activeInput: activeInput,
                     hasGeneratedResult: hasGeneratedResult,
                   ),
-                  NewTopicView(initialPartnerId: widget.partnerId),
+                  NewTopicView(
+                      initialPartnerId: widget.partnerId,
+                      isActive: _mode == OpeningRescueMode.newTopic),
                 ],
               ),
             ),
@@ -1027,76 +1136,97 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     required OpenerGenerationInput activeInput,
     required bool hasGeneratedResult,
   }) {
-    final scrollBody = SingleChildScrollView(
+    final editing = _useTwoStage &&
+        (_flow.state.phase == OpenerFlowPhase.editing ||
+            _flow.state.phase == OpenerFlowPhase.analyzing);
+    return OpenerResponsiveBody(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Text(
-            '開場救星',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.coachAccentBright,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            boundPartnerName != null
-                ? '為 $boundPartnerName 想開場'
-                : 'AI 幫你想第一句開場',
-            style: AppTypography.headlineLarge.copyWith(
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Tab switcher
-          BrandSegmentedButton<int>(
-            tone: BrandVisualTone.coach,
-            segments: const [
-              BrandSegment(value: 0, label: '截圖自介'),
-              BrandSegment(value: 1, label: '手動輸入'),
-            ],
+      footer: editing ? _analysisFooter(activeInput) : null,
+      content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Semantics(
+            label: boundPartnerName == null
+                ? '從她的資料，找到開場'
+                : '為 $boundPartnerName 找到開場',
+            excludeSemantics: true,
+            child: Text(
+                boundPartnerName == null
+                    ? '從她的資料，找到開場'
+                    : '為 $boundPartnerName 找到開場',
+                style: OpenerHomeStyle.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis)),
+        const SizedBox(height: 16),
+        OpenerSourceTabs(
             selected: _selectedTab,
-            onChanged: (val) {
-              _flow.resetForInputChange();
-              setState(() {
-                _selectedTab = val;
-                _result = null;
-                _error = null;
-                _currentDraftId = null;
-              });
-            },
-          ),
-          const SizedBox(height: 24),
-
-          // Tab content
-          if (_selectedTab == 0) _buildScreenshotTab(),
-          if (_selectedTab == 1) _buildManualTab(),
-
-          if (_drafts.isNotEmpty && _result == null) ...[
-            const SizedBox(height: 16),
-            _buildRecentDraftsCard(),
-          ],
-
-          const SizedBox(height: 16),
-
-          ..._buildFlowSections(
+            onChanged: _inputLocked
+                ? null
+                : (index) {
+                    _flow.resetForInputChange();
+                    setState(() {
+                      _inputVersion++;
+                      _selectedTab = index;
+                      _result = null;
+                      _error = null;
+                      _currentDraftId = null;
+                    });
+                  }),
+        const SizedBox(height: 16),
+        if (_selectedTab == 0) _buildScreenshotTab() else _buildManualTab(),
+        const SizedBox(height: 16),
+        ..._buildFlowSections(
             subscription: subscription,
             activeInput: activeInput,
-            hasGeneratedResult: hasGeneratedResult,
-          ),
-
-          const SizedBox(height: 40),
-        ],
-      ),
+            hasGeneratedResult: hasGeneratedResult),
+      ]),
     );
-
-    return scrollBody;
   }
 
+  Widget _analysisFooter(OpenerGenerationInput input) {
+    final busy = _flow.state.phase == OpenerFlowPhase.analyzing;
+    final retry = _flow.state.failedOperation != null;
+    return OpenerActionFooter(
+      buttonKey: const ValueKey('opener-analyze-button'),
+      label: _pickerBusy
+          ? '正在處理圖片…'
+          : _preparing && !busy
+              ? '正在準備…'
+              : busy
+                  ? '分析中…'
+                  : retry
+                      ? '重新分析'
+                      : '分析開場方向',
+      hint: input.hasContent ? '看完分析，再決定要不要生成回覆。' : '先加入截圖或輸入她的資料',
+      onPressed: _inputLocked ||
+              !input.hasContent ||
+              _initialNoteTooLong ||
+              _flow.state.quotaError != null
+          ? null
+          : retry
+              ? () => unawaited(_flow.retryLastOperation())
+              : _analyzeTwoStage,
+      onQuota: () => showOpenerQuotaSheet(context, newTopic: false),
+    );
+  }
+
+  Future<void> _showDrafts() async {
+    final owner = _owner;
+    await showAppSheet<void>(
+        context: context,
+        backgroundColor: OpenerHomeStyle.canvas,
+        builder: (sheetContext) => StatefulBuilder(
+            builder: (sheetContext, refresh) => SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: _buildRecentDraftsCard(
+                  onOpen: (draft) {
+                    Navigator.pop(sheetContext);
+                    if (mounted && owner == _owner) _openDraft(draft);
+                  },
+                  onDelete: (id) async {
+                    await _deleteDraft(id);
+                    if (sheetContext.mounted) refresh(() {});
+                  },
+                ))));
+  }
 
   /// 兩段式（伺服器支援時）或舊單段（不支援時）的 CTA／進度／錯誤／結果區。
   List<Widget> _buildFlowSections({
@@ -1130,67 +1260,32 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     if (state.phase == OpenerFlowPhase.editing ||
         state.phase == OpenerFlowPhase.analyzing) {
       widgets.addAll([
-        _buildFieldLabel('這次想聊的內容（選填）'),
-        const SizedBox(height: 6),
-        // R4b：不用 formatter 靜默截斷；超長保留原文、顯示錯誤、按鈕禁用。
+        _buildFieldLabel('你想從哪裡聊起？（選填）'),
+        const SizedBox(height: 8),
         TextField(
           key: const ValueKey('opener-initial-note'),
           controller: _initialNoteController,
-          enabled: state.phase == OpenerFlowPhase.editing,
-          maxLines: 2,
-          cursorColor: AppColors.coachAccentBright,
-          style: AppTypography.bodyMedium.copyWith(color: Colors.white),
-          decoration: brandInputDecoration(
-            hintText: '寫一句就好，例如你注意到的地方、你知道的事，或你本來想傳的話',
-            tone: BrandVisualTone.coach,
+          focusNode: _noteFocus,
+          enabled: !_inputLocked,
+          minLines: 2,
+          maxLines: 4,
+          cursorColor: OpenerHomeStyle.accent,
+          style: const TextStyle(fontSize: 15, color: Colors.white),
+          decoration: OpenerHomeStyle.field('例如：我也養貓，想從她的貓聊起').copyWith(
+            helperText: '寫你注意到的事，或你本來想傳的話；還沒想法也能先分析。',
+            helperMaxLines: 4,
+            helperStyle: OpenerHomeStyle.helper,
+            counterText:
+                _noteFocus.hasFocus || _initialNoteController.text.isNotEmpty
+                    ? '${_initialNoteController.text.characters.length} / 300'
+                    : null,
+            counterStyle: OpenerHomeStyle.helper,
+            errorText: _initialNoteTooLong ? '已保留你的文字，請縮短至 300 字內再分析。' : null,
+            errorMaxLines: 3,
           ),
         ),
         if (_initialNoteTooLong)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '${_initialNoteController.text.characters.length} / ${OpenerFlowContract.freeTextMaxGraphemes}，超過上限，已保留你的文字，請縮短後再分析',
-              key: const ValueKey('opener-initial-note-error'),
-              style: AppTypography.caption.copyWith(color: AppColors.error),
-            ),
-          ),
-        const SizedBox(height: 12),
-        Center(
-          child: Column(
-            children: [
-              Text(
-                '先分析不扣額度；按「生成回覆」第一次成功才扣 3 則，一局共 3 組',
-                key: const ValueKey('opener-analyze-hint'),
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.onBackgroundSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              if (activeInput.images == null ||
-                  activeInput.images!.isEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '附上對方截圖，AI 看到的線索更具體，開場通常更準',
-                  style: AppTypography.caption.copyWith(
-                    color:
-                        AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        BrandPrimaryButton(
-          key: const ValueKey('opener-analyze-button'),
-          label: state.phase == OpenerFlowPhase.analyzing ? '分析中…' : '分析對方資料',
-          isLoading: false,
-          onPressed: state.phase == OpenerFlowPhase.analyzing ||
-                  _initialNoteTooLong
-              ? null
-              : _analyzeTwoStage,
-        ),
+          const SizedBox(key: ValueKey('opener-initial-note-error')),
         const SizedBox(height: 16),
         if (state.phase == OpenerFlowPhase.analyzing)
           state.progress.isNotEmpty
@@ -1207,7 +1302,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     if (analysis != null && !expired) {
       widgets.addAll([
-        OpenerAnalysisCard(analysis: analysis),
+        KeyedSubtree(
+            key: _analysisSectionKey,
+            child: OpenerAnalysisCard(analysis: analysis)),
         const SizedBox(height: 12),
       ]);
     }
@@ -1262,10 +1359,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               Text(
                 _error!,
                 key: const ValueKey('opener-flow-error'),
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.error),
+                style:
+                    AppTypography.bodyMedium.copyWith(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
-              if (state.failedOperation != null && !state.isBusy)
+              if (state.failedOperation != null &&
+                  !state.isBusy &&
+                  state.analysis != null)
                 TextButton(
                   key: const ValueKey('opener-retry-button'),
                   onPressed: () => unawaited(_flow.retryLastOperation()),
@@ -1290,7 +1390,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
 
     if (_result != null &&
-        (state.phase == OpenerFlowPhase.result || expired || _legacyDraftView)) {
+        (state.phase == OpenerFlowPhase.result ||
+            expired ||
+            _legacyDraftView)) {
       widgets.addAll([
         const SizedBox(height: 24),
         if (_legacyDraftView)
@@ -1322,100 +1424,106 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     required bool hasGeneratedResult,
   }) {
     return [
-          // Cost indicator + 柔性提示
-          // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
-          // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
-          Center(
-            child: Column(
-              children: [
-                Text(
-                  OpeningRescueScreen.generationQuotaHint(
-                    hasResult: hasGeneratedResult,
-                    estimatedCost: _estimatedCost,
-                  ),
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
-                ),
-                if (activeInput.images == null ||
-                    activeInput.images!.isEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '附上對方截圖，AI 看到的線索更具體，開場通常更準',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary
-                          .withValues(alpha: 0.72),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Generate button
-          BrandPrimaryButton(
-            label: _isGenerating
-                ? '生成中…'
-                : OpeningRescueScreen.generateButtonText(
-                    hasResult: hasGeneratedResult,
-                  ),
-            // v2：生成中不轉圈（下方骨架卡已有動態，雙轉圈很吵），
-            // 改禁用態純文字「生成中…」。
-            isLoading: false,
-            onPressed: OpeningRescueScreen.canStartGeneration(
-              isGenerating: _isGenerating,
-              hasResult: hasGeneratedResult,
-            )
-                ? _generate
-                : null,
-          ),
-          const SizedBox(height: 16),
-
-          // Loading state（2026-08-19 v2）：串流事件到達後顯示一行狀態＋
-          // 五張風格骨架卡（server 每寫完一種就點亮一張＝真串流體感）；
-          // 事件還沒來（連線中）或 server 降級 legacy 時沿用本地輪播文案。
-          // 文案凍結在 _generate 送出的 input，不讀 activeInput。
-          if (_isGenerating)
-            _streamProgress.isNotEmpty
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      StreamProgressTicker(labels: _streamProgress),
-                      const SizedBox(height: 12),
-                      _OpenerStyleSkeletonRow(
-                        completedPhases: _completedStreamPhases,
-                      ),
-                    ],
-                  )
-                : Center(
-                    child: OpenerGenerationProgress(
-                      phrases: _generationProgressPhrases ??
-                          kOpenerManualProgressPhrases,
-                    ),
-                  ),
-
-          // Error
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Center(
-                child: Text(
-                  _error!,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+      // Cost indicator + 柔性提示
+      // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
+      // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
+      Center(
+        child: Column(
+          children: [
+            Text(
+              OpeningRescueScreen.generationQuotaHint(
+                hasResult: hasGeneratedResult,
+                estimatedCost: _estimatedCost,
+              ),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
               ),
             ),
-
-          // Results
-          if (_result != null) ...[
-            const SizedBox(height: 24),
-            _buildResults(subscription),
+            if (activeInput.images == null || activeInput.images!.isEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                '附上對方截圖，AI 看到的線索更具體，開場通常更準',
+                style: AppTypography.caption.copyWith(
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      // Generate button
+      OpenerActionFooter(
+        buttonKey: const ValueKey('opener-legacy-generate-button'),
+        hint: activeInput.hasContent ? '' : '先加入截圖或輸入她的資料',
+        onQuota: () =>
+            showOpenerQuotaSheet(context, newTopic: false, legacy: true),
+        label: _pickerBusy
+            ? '正在處理圖片…'
+            : _preparing
+                ? '正在準備…'
+                : _isGenerating
+                    ? '生成中…'
+                    : OpeningRescueScreen.generateButtonText(
+                        hasResult: hasGeneratedResult,
+                      ),
+        onPressed: !_inputLocked &&
+                activeInput.hasContent &&
+                OpeningRescueScreen.canStartGeneration(
+                  isGenerating: _isGenerating,
+                  hasResult: hasGeneratedResult,
+                )
+            ? _generate
+            : null,
+      ),
+      const SizedBox(height: 16),
+
+      // Loading state（2026-08-19 v2）：串流事件到達後顯示一行狀態＋
+      // 五張風格骨架卡（server 每寫完一種就點亮一張＝真串流體感）；
+      // 事件還沒來（連線中）或 server 降級 legacy 時沿用本地輪播文案。
+      // 文案凍結在 _generate 送出的 input，不讀 activeInput。
+      if (_isGenerating)
+        _streamProgress.isNotEmpty
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  StreamProgressTicker(labels: _streamProgress),
+                  const SizedBox(height: 12),
+                  _OpenerStyleSkeletonRow(
+                    completedPhases: _completedStreamPhases,
+                  ),
+                ],
+              )
+            : Center(
+                child: OpenerGenerationProgress(
+                  phrases: _generationProgressPhrases ??
+                      kOpenerManualProgressPhrases,
+                ),
+              ),
+
+      // Error
+      if (_error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Center(
+            child: Text(
+              _error!,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.error,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+
+      // Results
+      if (_result != null) ...[
+        const SizedBox(height: 24),
+        _buildResults(subscription),
+      ],
       const SizedBox(height: 40),
     ];
   }
@@ -1424,15 +1532,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '上傳對方的交友軟體自介截圖',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.onBackgroundSecondary,
-          ),
-        ),
-        const SizedBox(height: 12),
         ImagePickerWidget(
           maxImages: 3,
+          fileSelector: OpeningRescueScreen.debugImageSelector,
           allowMultiSelect: true,
           // 共用元件的提示文字是為聊天截圖寫的（「保留 15 則內」「LINE 回覆框」
           // 「請上傳聊天畫面」），開場救星只收自介／大頭照，那些提示在這裡
@@ -1441,12 +1543,19 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           showHelperText: false,
           // 對齊分析頁空片段的選圖磚大小（2026-08-14 Eric：原 70 太小）
           tileSize: 104,
+          variant: ImagePickerVariant.openerPanel,
+          enabled: !_preparing && !_flow.state.isBusy && !_isGenerating,
+          operationScope: _owner,
+          onBusyChanged: (busy) {
+            if (mounted) setState(() => _pickerBusy = busy);
+          },
           surfaceColor: AppColors.coachSurface,
           surfaceBorderColor: AppColors.coachAccent.withValues(alpha: 0.28),
           accentColor: AppColors.coachAccentBright,
           onImagesChanged: (images) {
             _flow.resetForInputChange();
             setState(() {
+              _inputVersion++;
               _images = images;
               _result = null;
               _error = null;
@@ -1459,7 +1568,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
-  Widget _buildRecentDraftsCard() {
+  Widget _buildRecentDraftsCard(
+      {required ValueChanged<OpenerDraft> onOpen,
+      required ValueChanged<String> onDelete}) {
     final drafts = _drafts.take(3).toList(growable: false);
 
     return BrandSurfaceCard(
@@ -1494,13 +1605,16 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          ...drafts.map(_buildDraftRow),
+          ...drafts.map((draft) =>
+              _buildDraftRow(draft, onOpen: onOpen, onDelete: onDelete)),
         ],
       ),
     );
   }
 
-  Widget _buildDraftRow(OpenerDraft draft) {
+  Widget _buildDraftRow(OpenerDraft draft,
+      {required ValueChanged<OpenerDraft> onOpen,
+      required ValueChanged<String> onDelete}) {
     final continued = draft.continuedAt != null;
 
     return Padding(
@@ -1561,7 +1675,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             ),
             const SizedBox(width: 8),
             TextButton(
-              onPressed: () => _openDraft(draft),
+              onPressed: () => onOpen(draft),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.ctaStart,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1570,7 +1684,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             ),
             IconButton(
               tooltip: '刪除草稿',
-              onPressed: () => _deleteDraft(draft.id),
+              onPressed: () => onDelete(draft.id),
               icon: const Icon(Icons.close, size: 18),
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
             ),
@@ -1580,66 +1694,65 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
-  Widget _buildManualTab() {
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildFieldLabel('對方名字'),
-          const SizedBox(height: 6),
-          _buildBrandField(
-            controller: _nameController,
-            hintText: '輸入對方名字（選填）',
-            maxLength: 200,
-            isDense: true,
-          ),
-          const SizedBox(height: 16),
-          _buildFieldLabel('Bio / 自我介紹'),
-          const SizedBox(height: 6),
-          _buildBrandField(
+  Widget _buildManualTab() => OpenerHomePanel(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _buildFieldLabel('她的自介'),
+        const SizedBox(height: 8),
+        _buildBrandField(
             controller: _bioController,
             hintText: '貼上對方的自介內容',
             maxLength: 2000,
-            maxLines: 3,
-          ),
+            maxLines: 3),
+        TextButton(
+            onPressed: _inputLocked
+                ? null
+                : () =>
+                    setState(() => _showSupplementary = !_showSupplementary),
+            child: Text(_showSupplementary ? '收合補充資料' : '補充姓名、興趣與認識情境',
+                style: OpenerHomeStyle.body)),
+        if (_showSupplementary) ...[
+          _buildFieldLabel('對方名字'),
+          const SizedBox(height: 8),
+          _buildBrandField(
+              controller: _nameController,
+              hintText: '輸入對方名字（選填）',
+              maxLength: 200,
+              isDense: true),
           const SizedBox(height: 16),
           _buildFieldLabel('興趣'),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           _buildBrandField(
-            controller: _interestsController,
-            hintText: '對方的興趣標籤（選填）',
-            maxLength: 2000,
-            isDense: true,
-          ),
+              controller: _interestsController,
+              hintText: '對方的興趣標籤（選填）',
+              maxLength: 2000,
+              isDense: true),
           const SizedBox(height: 16),
           _buildFieldLabel('認識場景'),
           const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _meetingOptions.map((option) {
-              return BrandChoiceChip(
-                tone: BrandVisualTone.coach,
-                label: option,
-                selected: _meetingContext == option,
-                onTap: () {
-                  _flow.resetForInputChange();
-                  setState(() {
-                    _meetingContext = _meetingContext == option ? null : option;
-                    _result = null;
-                    _error = null;
-                    _currentDraftId = null;
-                  });
-                },
-              );
-            }).toList(),
-          ),
+              spacing: 8,
+              runSpacing: 8,
+              children: _meetingOptions
+                  .map((option) => BrandChoiceChip(
+                      tone: BrandVisualTone.coach,
+                      label: option,
+                      selected: _meetingContext == option,
+                      onTap: () {
+                        if (_inputLocked) return;
+                        _flow.resetForInputChange();
+                        setState(() {
+                          _inputVersion++;
+                          _meetingContext =
+                              _meetingContext == option ? null : option;
+                          _result = null;
+                          _error = null;
+                          _currentDraftId = null;
+                        });
+                      }))
+                  .toList()),
         ],
-      ),
-    );
-  }
+      ]));
 
   Widget _buildFieldLabel(String text) {
     return Text(
@@ -1662,14 +1775,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }) {
     return TextField(
       controller: controller,
+      enabled: !_inputLocked,
       maxLines: maxLines,
       inputFormatters: [LengthLimitingTextInputFormatter(maxLength)],
       cursorColor: AppColors.coachAccentBright,
       style: AppTypography.bodyMedium.copyWith(color: Colors.white),
-      decoration: brandInputDecoration(
-        hintText: hintText,
-        tone: BrandVisualTone.coach,
-      ).copyWith(
+      decoration: OpenerHomeStyle.field(hintText).copyWith(
         isDense: isDense,
       ),
     );
@@ -1894,58 +2005,58 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       label: '下一步怎麼接？',
       children: [
         Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              height: 1.45,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.45,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          _buildNextStepRow(
-            icon: Icons.content_copy_outlined,
-            title: '1. 複製開場，去交友軟體送出',
-            description: '你可以直接用，也可以照自己的語氣微調。',
-          ),
-          const SizedBox(height: 8),
-          _buildNextStepRow(
-            icon: Icons.person_add_alt_1_outlined,
-            title: '2. 她回覆後，回來建立對象',
-            description: '先幫她建一張對象卡，之後的對話都收在同一個人底下。',
-          ),
-          const SizedBox(height: 8),
-          _buildNextStepRow(
-            icon: Icons.psychology_alt_outlined,
-            title: '3. 貼上對話，再問教練怎麼接',
-            description: '把你送出的那句加上她的回覆貼進對象卡；只有真實互動進入分析後，才會接上對象記憶。',
-          ),
-          const SizedBox(height: 16),
-          BrandPrimaryButton(
-            label: '她回覆了，開始分析對話',
-            icon: Icons.add_comment_outlined,
-            onPressed: () {
-              // 蓋「已接續」章是本機 bookkeeping，不擋導航：這一頁本來就會
-              // 離開堆疊（pop 或 replace），等一次磁碟寫入只是讓轉場變慢，
-              // 也讓導航行為變成無法在 widget test 裡驗證的非同步路徑。
-              unawaited(_markDraftContinuedForHandoff());
-              OpeningRescueScreen.navigateToHandoff(
-                context,
-                partnerId: widget.partnerId,
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '這次結果只套用在目前這組輸入；換對象或換截圖時會清空，避免混到上一個人的開場。',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
-              height: 1.4,
+            const SizedBox(height: 12),
+            _buildNextStepRow(
+              icon: Icons.content_copy_outlined,
+              title: '1. 複製開場，去交友軟體送出',
+              description: '你可以直接用，也可以照自己的語氣微調。',
             ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+            const SizedBox(height: 8),
+            _buildNextStepRow(
+              icon: Icons.person_add_alt_1_outlined,
+              title: '2. 她回覆後，回來建立對象',
+              description: '先幫她建一張對象卡，之後的對話都收在同一個人底下。',
+            ),
+            const SizedBox(height: 8),
+            _buildNextStepRow(
+              icon: Icons.psychology_alt_outlined,
+              title: '3. 貼上對話，再問教練怎麼接',
+              description: '把你送出的那句加上她的回覆貼進對象卡；只有真實互動進入分析後，才會接上對象記憶。',
+            ),
+            const SizedBox(height: 16),
+            BrandPrimaryButton(
+              label: '她回覆了，開始分析對話',
+              icon: Icons.add_comment_outlined,
+              onPressed: () {
+                // 蓋「已接續」章是本機 bookkeeping，不擋導航：這一頁本來就會
+                // 離開堆疊（pop 或 replace），等一次磁碟寫入只是讓轉場變慢，
+                // 也讓導航行為變成無法在 widget test 裡驗證的非同步路徑。
+                unawaited(_markDraftContinuedForHandoff());
+                OpeningRescueScreen.navigateToHandoff(
+                  context,
+                  partnerId: widget.partnerId,
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '這次結果只套用在目前這組輸入；換對象或換截圖時會清空，避免混到上一個人的開場。',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ],
     );

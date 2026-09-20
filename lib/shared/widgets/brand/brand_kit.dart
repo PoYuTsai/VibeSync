@@ -137,6 +137,7 @@ class BrandScaffold extends StatelessWidget {
     super.key,
     required this.body,
     this.title,
+    this.backgroundColor,
     this.actions,
     this.leading,
     this.bottomNavigationBar,
@@ -149,6 +150,7 @@ class BrandScaffold extends StatelessWidget {
 
   final Widget body;
   final String? title;
+  final Color? backgroundColor;
   final List<Widget>? actions;
   final Widget? leading;
   final Widget? bottomNavigationBar;
@@ -167,7 +169,7 @@ class BrandScaffold extends StatelessWidget {
     return BrandPageBackground(
       tone: tone,
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: backgroundColor ?? Colors.transparent,
         resizeToAvoidBottomInset: resizeToAvoidBottomInset,
         appBar: title == null
             ? null

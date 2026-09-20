@@ -1,4 +1,8 @@
+import { type ModelCallBudget, readProviderUsage } from "./model_call_budget.ts";
+
 interface CallOptions {
+  budget?: ModelCallBudget;
+  purpose?: string;
   timeout: number;
   maxRetries: number;
   allowModelFallback: boolean;
@@ -234,6 +238,9 @@ export async function callClaudeWithFallback(
       const attemptTimeoutMs = attemptBoundedByDeadline
         ? Math.max(1, deadlineRemainingMs)
         : opts.timeout;
+      const providerAttempt = opts.budget?.begin(currentModel, opts.purpose ?? "primary",
+        currentModel !== originalModel ? "fallback" : attempt > 1 ? "retry" : "primary");
+      let providerSucceeded = false;
       const controller = new AbortController();
       const timeoutId = setTimeout(
         () => controller.abort(),
@@ -271,7 +278,8 @@ export async function callClaudeWithFallback(
         if (!response.ok) {
           // Drain the provider body, but never log or expose it. Some upstream
           // validation errors can echo request details.
-          await response.text().catch(() => "");
+          const failureBody = await response.json().catch(() => null);
+          providerAttempt?.observe(readProviderUsage(failureBody));
 
           if (response.status === 429) {
             throw new AiServiceError(
@@ -313,9 +321,11 @@ export async function callClaudeWithFallback(
           );
         }
 
+        providerAttempt?.observe(readProviderUsage(data));
         validateSuccessfulResponse(data);
         throwIfDeadlineExceeded();
 
+        providerSucceeded = true;
         return {
           data,
           model: currentModel,
@@ -413,6 +423,7 @@ export async function callClaudeWithFallback(
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         await waitForRetryDelay(delay);
       } finally {
+        providerAttempt?.finish(providerSucceeded ? "success" : "failed");
         clearTimeout(timeoutId);
       }
     }

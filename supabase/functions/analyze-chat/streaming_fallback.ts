@@ -3,6 +3,8 @@
 // This mirrors fallback.ts request headers and prompt caching, but asks Claude
 // for SSE streaming output and exposes only text deltas to the caller.
 
+import { type ModelCallBudget, readProviderUsage, type ProviderUsage } from "./model_call_budget.ts";
+
 type ClaudeMessageContent =
   | string
   | Array<{
@@ -20,6 +22,10 @@ export interface ClaudeStreamingRequest {
 }
 
 export interface ClaudeStreamingOptions {
+  budget?: ModelCallBudget;
+  purpose?: string;
+  allowModelFallback?: boolean;
+  absoluteDeadlineAtMs?: number;
   timeout: number;
   fetchImpl: (input: string, init?: RequestInit) => Promise<Response>;
 }
@@ -306,6 +312,7 @@ export async function* parseAnthropicSse(
     cacheCreationTokens: 0,
     cacheReadTokens: 0,
   },
+  onUsage?: (usage: ProviderUsage) => void,
 ): AsyncGenerator<string> {
   const reader = readable.getReader();
   const decoder = new TextDecoder();
@@ -321,7 +328,10 @@ export async function* parseAnthropicSse(
     if (event.done) {
       return;
     }
-    if (event.usage) Object.assign(usage, event.usage);
+    if (event.usage) {
+      Object.assign(usage, event.usage);
+      onUsage?.(event.usage);
+    }
     if (event.failure) throw event.failure;
     if (event.text !== undefined) {
       yield event.text;
@@ -375,13 +385,15 @@ export async function* parseAnthropicSse(
 
 async function* cleanupOnStreamEnd(
   source: AsyncGenerator<string>,
-  cleanup: () => void,
+  cleanup: (success: boolean) => void,
   timeoutMs: number,
 ): AsyncGenerator<string> {
+  let success = false;
   try {
     for await (const text of source) {
       yield text;
     }
+    success = true;
   } catch (error) {
     if (error instanceof AiStreamingServiceError) throw error;
     if (isAbortError(error)) {
@@ -398,7 +410,7 @@ async function* cleanupOnStreamEnd(
       true,
     );
   } finally {
-    cleanup();
+    cleanup(success);
   }
 }
 
@@ -410,7 +422,7 @@ export async function callClaudeStreaming(
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const originalModel = request.model;
   let currentModel: string | undefined = originalModel;
-  const deadline = Date.now() + opts.timeout;
+  const deadline = Math.min(Date.now() + opts.timeout, opts.absoluteDeadlineAtMs ?? Infinity, opts.budget?.deadlineAtMs ?? Infinity);
 
   while (currentModel) {
     const remainingMs = deadline - Date.now();
@@ -422,6 +434,8 @@ export async function callClaudeStreaming(
         { timeoutMs: opts.timeout },
       );
     }
+    const providerAttempt = opts.budget?.begin(currentModel, opts.purpose ?? "primary",
+      currentModel === originalModel ? "primary" : "fallback");
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), remainingMs);
     const thinking = resolveThinkingContract(
@@ -452,12 +466,13 @@ export async function callClaudeStreaming(
       });
     } catch (error) {
       clearTimeout(timeoutId);
+      providerAttempt?.finish("failed");
       const mapped = preStreamFetchError(
         error,
         controller.signal,
         opts.timeout,
       );
-      const nextModel = nextFallbackModel(currentModel, mapped);
+      const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(currentModel, mapped);
       if (nextModel) {
         currentModel = nextModel;
         continue;
@@ -485,11 +500,14 @@ export async function callClaudeStreaming(
     }
 
     if (preStreamError) {
-      clearTimeout(timeoutId);
-      if (response.body) {
+      if (providerAttempt && !response.ok) {
+        providerAttempt.observe(readProviderUsage(await response.json().catch(() => null)));
+      } else if (response.body) {
         await response.body.cancel().catch(() => undefined);
       }
-      const nextModel = nextFallbackModel(currentModel, preStreamError);
+      clearTimeout(timeoutId);
+      providerAttempt?.finish("failed");
+      const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(currentModel, preStreamError);
       if (nextModel) {
         currentModel = nextModel;
         continue;
@@ -504,8 +522,11 @@ export async function callClaudeStreaming(
       cacheReadTokens: 0,
     };
     const textStream = cleanupOnStreamEnd(
-      parseAnthropicSse(response.body!, usage),
-      () => clearTimeout(timeoutId),
+      parseAnthropicSse(response.body!, usage, providerAttempt?.observe),
+      (success) => {
+        clearTimeout(timeoutId);
+        providerAttempt?.finish(success ? "success" : "failed");
+      },
       opts.timeout,
     );
 
@@ -515,7 +536,7 @@ export async function callClaudeStreaming(
       firstChunk = await textStream.next();
     } catch (error) {
       if (error instanceof AiStreamingServiceError) {
-        const nextModel = nextFallbackModel(
+        const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(
           currentModel,
           error,
           PRE_CONTENT_STREAM_FALLBACK_CODES,

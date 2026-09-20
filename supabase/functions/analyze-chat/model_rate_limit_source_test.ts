@@ -18,7 +18,7 @@ function indexOfRequired(snippet: string, from = 0): number {
   return index;
 }
 
-Deno.test("opener 限流：在 replay preflight 後、opener quota gate 前，dedup replay 跳過", () => {
+Deno.test("opener 限流：在 replay preflight 後、opener quota gate 前，legacy retry 也計新模型工作", () => {
   const scopeAt = indexOfRequired('scope: "opener"');
   const preflightResolvedAt = indexOfRequired(
     "openerKnownDedupReplay = replayRow !== null",
@@ -33,11 +33,11 @@ Deno.test("opener 限流：在 replay preflight 後、opener quota gate 前，de
     "opener 限流必須在 opener quota gate 之前（storm 在額度檢查前就封頂）",
   );
 
-  // dedup replay（已扣過費、不打模型）絕不得計限流——cap 邊緣重試才活得下來
+  // Legacy only stores a charge receipt; retries still invoke the provider.
   const gateWindow = source.slice(preflightResolvedAt, scopeAt + 200);
   assert(
-    gateWindow.includes("!openerKnownDedupReplay"),
-    "opener 限流 gate 必須帶 !openerKnownDedupReplay（dedup replay 不打模型不計限流）",
+    !gateWindow.includes("if (!openerKnownDedupReplay)"),
+    "legacy 重試仍打模型，不能繞過限流",
   );
 });
 

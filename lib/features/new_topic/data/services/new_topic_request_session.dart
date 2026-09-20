@@ -20,11 +20,20 @@ class NewTopicRequestSession {
   String? _fingerprint;
   NewTopicAttempt? _pendingAttempt;
 
+  NewTopicAttempt? pendingFor(
+          {required String? partnerId, required String? situation}) =>
+      _fingerprint ==
+              visibleFingerprintFor(partnerId: partnerId, situation: situation)
+          ? _pendingAttempt
+          : null;
+
   NewTopicAttempt beginAttempt({
     required String? partnerId,
     required String? partnerSummary,
     required String? effectiveStyleContext,
     required String? situation,
+    String? expectedTier,
+    String? revenueCatAppUserId,
   }) {
     final fingerprint = visibleFingerprintFor(
       partnerId: partnerId,
@@ -39,6 +48,8 @@ class NewTopicRequestSession {
         partnerSummary: partnerSummary,
         effectiveStyleContext: effectiveStyleContext,
         situation: situation,
+        expectedTier: expectedTier,
+        revenueCatAppUserId: revenueCatAppUserId,
       );
     }
     return _pendingAttempt!;
@@ -71,6 +82,8 @@ class NewTopicAttempt {
     required this.partnerSummary,
     required this.effectiveStyleContext,
     required this.situation,
+    this.expectedTier,
+    this.revenueCatAppUserId,
   });
 
   final String requestId;
@@ -78,4 +91,6 @@ class NewTopicAttempt {
   final String? partnerSummary;
   final String? effectiveStyleContext;
   final String? situation;
+  final String? expectedTier;
+  final String? revenueCatAppUserId;
 }

@@ -12,6 +12,7 @@
 // 模型邊界透過 deps.invokeModel 可替換（測試替身只換這一層；claim／settle／
 // 原料整理／投影都走正式路徑）。
 
+import { ModelCallBudget } from "./model_call_budget.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import { AiServiceError, callClaudeWithFallback, type ClaudeMessageContent, extractClaudeText } from "./fallback.ts";
@@ -114,6 +115,7 @@ export interface OpenerFlowModelRequest {
   maxTokens: number;
   deadlineAtMs: number;
   allowModelFallback: boolean;
+  purpose?: string;
   onChunk?: (chunk: string) => void;
 }
 
@@ -150,7 +152,7 @@ export interface OpenerFlowHandlerDeps {
   env?: (name: string) => string | undefined;
 }
 
-const defaultInvokeModel = (apiKey: string): OpenerFlowModelInvoker => async (req) => {
+const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlowModelInvoker => async (req) => {
   const remainingMs = req.deadlineAtMs - Date.now();
   if (remainingMs <= 0) throw new OpenerFlowDeadlineError("before_model");
   if (req.onChunk) {
@@ -158,7 +160,8 @@ const defaultInvokeModel = (apiKey: string): OpenerFlowModelInvoker => async (re
       const claude = await callClaudeStreaming(
         { model: OPENER_FLOW_MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
         apiKey,
-        { timeout: remainingMs },
+        { timeout: remainingMs, absoluteDeadlineAtMs: req.deadlineAtMs, budget,
+          purpose: req.purpose, allowModelFallback: req.allowModelFallback },
       );
       let fullText = "";
       for await (const chunk of claude.textStream) {
@@ -186,6 +189,7 @@ const defaultInvokeModel = (apiKey: string): OpenerFlowModelInvoker => async (re
         timeout: Math.min(60000, remainingMs),
         maxRetries: 1,
         allowModelFallback: req.allowModelFallback,
+        budget, purpose: req.purpose,
         absoluteDeadlineAtMs: req.deadlineAtMs,
       },
     );
@@ -468,14 +472,16 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
 
   // 4. 限流（scope 與第二段、舊單段共用 opener 3/分 30/日）。
   {
-    const verdict = await enforceModelRateLimit({ supabase: deps.supabase, userId: deps.userId, scope: "opener", isTestAccount: deps.accountIsTest });
+    const verdict = await enforceModelRateLimit({ supabase: deps.supabase, userId: deps.userId, scope: "opener", isTestAccount: deps.accountIsTest, failClosed: true });
     if (verdict.kind === "limited") {
       logWarn("model_rate_limited", { user, scope: "opener", stage: "analyze", reason: verdict.reason });
       if (!await release()) return releaseFailedResponse();
       return jsonResponse(verdict.payload, 429);
     }
-    if (verdict.kind === "failOpen") {
+    if (verdict.kind === "unavailable") {
       logError("model_rate_limit_check_failed", { user, scope: "opener", error: verdict.errorMessage });
+      if (!await release()) return releaseFailedResponse();
+      return jsonResponse(verdict.payload, 503);
     }
   }
   {
@@ -484,7 +490,8 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   }
 
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_ANALYZE_DEADLINE_MS;
-  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey);
+  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "analyze", operation: request.analysisRequestId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION });
+  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
   const userContent = buildOpenerAnalyzeUserContent({ profile, imageCount, initialUserNote: request.initialUserNote });
   const messages = buildClaudeMessages(images, userContent);
 
@@ -532,6 +539,7 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
             maxTokens: OPENER_ANALYZE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
+            purpose: "repair",
           });
           snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
           repaired = snapshot !== null;
@@ -721,14 +729,16 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
 
   // 5. 限流（新的模型作業才計次；重播已在 claim 回掉）。
   {
-    const verdict = await enforceModelRateLimit({ supabase: deps.supabase, userId: deps.userId, scope: "opener", isTestAccount: deps.accountIsTest });
+    const verdict = await enforceModelRateLimit({ supabase: deps.supabase, userId: deps.userId, scope: "opener", isTestAccount: deps.accountIsTest, failClosed: true });
     if (verdict.kind === "limited") {
       logWarn("model_rate_limited", { user, scope: "opener", stage: "generate", reason: verdict.reason });
       if (!await release()) return releaseFailedResponse();
       return jsonResponse(verdict.payload, 429);
     }
-    if (verdict.kind === "failOpen") {
+    if (verdict.kind === "unavailable") {
       logError("model_rate_limit_check_failed", { user, scope: "opener", error: verdict.errorMessage });
+      if (!await release()) return releaseFailedResponse();
+      return jsonResponse(verdict.payload, 503);
     }
   }
   {
@@ -743,7 +753,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     option: contributionCheck.option,
   });
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
-  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey);
+  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION });
+  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
   const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
     logWarn("opener_generate_deadline_exceeded", { user, stage });
@@ -804,6 +815,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
+            purpose: "repair",
           });
           addUsage(repair);
           const repairedJson = parseJsonObjectFromText(repair.rawText);
@@ -844,6 +856,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
+            purpose: "repair",
           });
           addUsage(correction);
           const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];

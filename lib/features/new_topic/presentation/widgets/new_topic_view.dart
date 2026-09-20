@@ -1,3 +1,8 @@
+import '../../../../shared/widgets/local_avatar.dart';
+import '../../../../core/services/supabase_service.dart';
+import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../../shared/widgets/brand/opener_home_components.dart';
+import '../../../opener/presentation/widgets/opener_quota_sheet.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -31,7 +36,12 @@ import '../../../../core/services/app_haptics.dart';
 /// 新話題（破冰腦力）分頁（計畫 §13）。掛在 OpeningRescueScreen 的
 /// IndexedStack 內：切換模式不 unmount，結果/錯誤/requestId 全保留。
 class NewTopicView extends ConsumerStatefulWidget {
-  const NewTopicView({super.key, this.initialPartnerId});
+  const NewTopicView({super.key, this.initialPartnerId, this.isActive = true});
+  final bool isActive;
+  @visibleForTesting
+  static NewTopicService Function()? debugServiceFactory;
+  @visibleForTesting
+  static String? Function()? debugOwnerIdOverride;
 
   /// 從 partner-scoped 入口帶進來的初選對象；必須先驗證存在
   /// owner-scoped partner list 才預選（missing/deleted 顯示重新選擇）。
@@ -84,6 +94,47 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   NewTopicResult? _result;
   String? _error;
   bool _isGenerating = false;
+  bool _preparing = false;
+  bool _showDetails = false;
+  bool _pendingScroll = false;
+  bool _confirmPending = false;
+  int _inputVersion = 0;
+  String? get _owner =>
+      NewTopicView.debugOwnerIdOverride?.call() ??
+      SupabaseService.currentUser?.id;
+  bool get _busy => _preparing || _isGenerating;
+
+  @override
+  void didUpdateWidget(covariant NewTopicView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive && _pendingScroll) {
+      _snapToResults();
+    }
+  }
+
+  void _snapToResults() {
+    if (!widget.isActive) {
+      _pendingScroll = true;
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !widget.isActive ||
+          !_pendingScroll &&
+              _scrollController.position.isScrollingNotifier.value) {
+        return;
+      }
+      final target = _resultsSectionKey.currentContext;
+      if (target == null) return;
+      _pendingScroll = false;
+      Scrollable.ensureVisible(target,
+          alignment: 0.04,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : AppMotion.scroll,
+          curve: AppMotion.easeOut);
+    });
+  }
 
   @override
   void initState() {
@@ -108,7 +159,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   }
 
   Future<void> _pickPartner() async {
-    if (_isGenerating) return;
+    if (_busy) return;
+    final owner = _owner;
+    final version = _inputVersion;
     final partners = ref.read(partnerListProvider);
     if (partners.isEmpty) {
       context.push('/partner/new');
@@ -122,27 +175,38 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) => PartnerPickerSheet(
+        openerStyle: true,
         selectedId: _selectedPartnerId,
         onSelected: (partner) => Navigator.pop(sheetContext, partner.id),
       ),
     );
-    if (!mounted || selected == null || selected == _selectedPartnerId) return;
+    if (!mounted ||
+        selected == null ||
+        selected == _selectedPartnerId ||
+        owner != _owner ||
+        version != _inputVersion ||
+        !ref.read(partnerListProvider).any((p) => p.id == selected)) {
+      return;
+    }
 
     if (!await _confirmClearResultIfNeeded()) return;
-    if (!mounted) return;
+    if (!mounted || owner != _owner || version != _inputVersion) return;
     setState(() {
+      _inputVersion++;
       _selectedPartnerId = selected;
       _error = null;
     });
   }
 
   Future<void> _selectSituation(String? value) async {
-    if (_isGenerating) return;
+    if (_busy) return;
     final next = _situation == value ? null : value;
     if (next == _situation) return;
+    final owner = _owner, version = _inputVersion;
     if (!await _confirmClearResultIfNeeded()) return;
-    if (!mounted) return;
+    if (!mounted || owner != _owner || version != _inputVersion) return;
     setState(() {
+      _inputVersion++;
       _situation = next;
       _error = null;
     });
@@ -189,177 +253,152 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   }
 
   Future<void> _generate() async {
-    if (_isGenerating) return;
+    if (_busy || _result != null || !widget.isActive) return;
     final partnerId = _validatedPartnerId();
-    if (partnerId == null) {
-      setState(() => _error = '請先選擇一位對象。');
-      return;
-    }
-
-    final readiness = ref.read(newTopicReadinessProvider(partnerId));
-    if (readiness == NewTopicReadiness.dataQualityBlocked) {
-      setState(
-        () => _error = '這位對象的資料需要先確認（資料品質提醒），暫時無法生成新話題。',
-      );
-      return;
-    }
-    if (readiness == NewTopicReadiness.missingPartner) {
-      setState(() => _error = '找不到這位對象，請重新選擇。');
-      return;
-    }
-
-    // await 讓 style 快照在 beginAttempt 前定案（同 opener Codex R1 P2）。
-    String? styleContext;
-    try {
-      styleContext =
-          await ref.read(newTopicStyleContextProvider(partnerId).future);
-    } catch (e) {
-      debugPrint('NewTopicView style context failed: $e');
-    }
-    if (!mounted) return;
-
+    if (partnerId == null) return;
+    final owner = _owner, version = _inputVersion;
+    final situation = _situation;
     final partnerContext = ref.read(newTopicPartnerContextProvider(partnerId));
-    if (!canGenerateNewTopic(
-      readiness: readiness,
-      styleContext: styleContext,
-      situation: _situation,
-    )) {
-      // 三類素材全空：client 不送出（server 也會 422）。
-      setState(
-        () => _error = '目前素材不足：先補一點對象紀錄、填「關於我」，或選一個目前狀況。',
-      );
-      return;
-    }
-
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: '新話題',
-    );
-    if (!consented || !mounted) return;
-
-    // 提示性 preflight：快照已載入且月/日剩餘都看得出 <3 才先擋；
-    // 未載入交給 server，不誤擋首次使用（§13.5-5）。
-    final subscriptionSnapshot = ref.read(subscriptionProvider);
-    if (!subscriptionSnapshot.isLoading &&
-        (subscriptionSnapshot.monthlyRemaining < 3 ||
-            subscriptionSnapshot.dailyRemaining < 3)) {
-      setState(() => _error = '額度不足（需要 3 點），升級方案可取得更多額度。');
-      await _showPaywallAndRefresh();
-      return;
-    }
-
+    final pending =
+        _requestSession.pendingFor(partnerId: partnerId, situation: situation);
+    bool current() =>
+        mounted &&
+        owner == _owner &&
+        version == _inputVersion &&
+        _validatedPartnerId() == partnerId &&
+        ref.read(newTopicReadinessProvider(partnerId)) !=
+            NewTopicReadiness.dataQualityBlocked;
+    if (!current()) return;
     setState(() {
-      _isGenerating = true;
-      _streamProgress.clear();
-      _completedStreamPhases.clear();
+      _preparing = true;
       _error = null;
-      _result = null;
     });
-
     try {
-      var expectedTier = subscriptionSnapshot.tier;
-      String? revenueCatAppUserId;
-      try {
-        final customerInfo = await RevenueCatService.getCustomerInfo();
-        final revenueCatTier =
-            RevenueCatService.getTierFromCustomerInfo(customerInfo);
-        revenueCatAppUserId =
-            RevenueCatService.getRevenueCatAppUserId(customerInfo);
-        if (SubscriptionTierHelper.rankOf(revenueCatTier) >
-            SubscriptionTierHelper.rankOf(expectedTier)) {
-          expectedTier = revenueCatTier;
-        }
-      } catch (e) {
-        debugPrint('NewTopicView RevenueCat hint failed: $e');
+      String? styleContext = pending?.effectiveStyleContext;
+      if (pending == null) {
+        try {
+          styleContext =
+              await ref.read(newTopicStyleContextProvider(partnerId).future);
+        } catch (_) {/* Other real materials may still be sufficient. */}
+      }
+      if (!current()) return;
+      if (pending == null &&
+          !canGenerateNewTopic(
+              readiness: ref.read(newTopicReadinessProvider(partnerId)),
+              styleContext: styleContext,
+              situation: situation)) {
+        setState(() => _error = '請選一個目前情境，或先補充對象資料。');
+        return;
       }
       if (!mounted) return;
-
+      final consented =
+          await AiDataSharingConsent.ensure(context, featureLabel: '新話題');
+      if (!current() || !consented) return;
+      final subscriptionSnapshot = ref.read(subscriptionProvider);
+      // A pending operation can already be settled; always resolve its original ID.
+      if (pending == null &&
+          !subscriptionSnapshot.isLoading &&
+          subscriptionSnapshot.error == null &&
+          (subscriptionSnapshot.monthlyRemaining < 3 ||
+              subscriptionSnapshot.dailyRemaining < 3)) {
+        setState(() => _error = '本次需要 3 則，目前可用額度不足。');
+        if (widget.isActive) await _showPaywallAndRefresh();
+        return;
+      }
+      var expectedTier = pending?.expectedTier ?? subscriptionSnapshot.tier;
+      String? revenueCatAppUserId = pending?.revenueCatAppUserId;
+      if (pending == null) {
+        try {
+          final info = await RevenueCatService.getCustomerInfo();
+          if (!current()) return;
+          final tier = RevenueCatService.getTierFromCustomerInfo(info);
+          revenueCatAppUserId = RevenueCatService.getRevenueCatAppUserId(info);
+          if (SubscriptionTierHelper.rankOf(tier) >
+              SubscriptionTierHelper.rankOf(expectedTier)) {
+            expectedTier = tier;
+          }
+        } catch (_) {/* Server remains authoritative. */}
+      }
+      if (!current()) return;
       final attempt = _requestSession.beginAttempt(
         partnerId: partnerId,
         partnerSummary: partnerContext.promptText,
         effectiveStyleContext: styleContext,
-        situation: _situation,
+        situation: situation,
+        expectedTier: expectedTier,
+        revenueCatAppUserId: revenueCatAppUserId,
       );
-
-      final service = NewTopicService();
-      // payload 全取 frozen envelope，不用呼叫端新解析值（§12.4）。
-      // 2026-08-18 真串流：進度事件即時上牆；server flag off／舊 Edge
-      // 回一般 JSON 時 service 內自動降級。
+      setState(() {
+        _preparing = false;
+        _isGenerating = true;
+        _streamProgress.clear();
+        _completedStreamPhases.clear();
+      });
+      final service =
+          NewTopicView.debugServiceFactory?.call() ?? NewTopicService();
       final result = await service.generateTopicsStreaming(
         requestId: attempt.requestId,
         partnerSummary: attempt.partnerSummary,
         effectiveStyleContext: attempt.effectiveStyleContext,
         situation: attempt.situation,
-        expectedTier: expectedTier,
-        revenueCatAppUserId: revenueCatAppUserId,
+        expectedTier: attempt.expectedTier,
+        revenueCatAppUserId: attempt.revenueCatAppUserId,
         onProgress: (label, phase) {
-          if (!mounted || !_isGenerating) return;
-          if (phase == 'heartbeat') return; // 活著訊號不進階段清單
+          if (!current() || !_isGenerating || phase == 'heartbeat') return;
           setState(() {
             _streamProgress.add(label);
             if (phase != null) _completedStreamPhases.add(phase);
           });
         },
       );
+      if (!current()) return;
       _requestSession.markSuccess();
-
-      if (!mounted) return;
       setState(() {
         _result = result;
-        _isGenerating = false;
+        _confirmPending = false;
       });
-
-      // 先排定格再做額度 refresh：refresh 是網路呼叫，擋在前面會造成
-      // 「結果出現 → 停 1~2 秒 → 突然捲動」的體感。定格錨結果區頂部
-      //（新話題建議標題），不捲到底略過題卡。
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final targetContext = _resultsSectionKey.currentContext;
-        if (targetContext == null || !mounted) return;
-        Scrollable.ensureVisible(
-          targetContext,
-          alignment: 0.04,
-          duration: AppMotion.scroll,
-          curve: AppMotion.easeOut,
-        );
-      });
-
+      _snapToResults();
       try {
         await ref.read(subscriptionScreenRefreshProvider)();
-      } catch (_) {
-        // 結果已成功；usage UI 下次 refresh 補上即可。
-      }
+      } catch (_) {/* Keep delivered result. */}
     } on NewTopicQuotaExceededException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _isGenerating = false;
-      });
-      await _showPaywallAndRefresh();
+      if (!current()) return;
+      setState(() => _error = e.message);
+      if (widget.isActive) await _showPaywallAndRefresh();
     } on NewTopicRequestInProgressException catch (e) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _error = e.message;
-        _isGenerating = false;
+        _confirmPending = true;
+      });
+    } on NewTopicStatePendingException catch (e) {
+      if (!current()) return;
+      setState(() {
+        _error = e.message;
+        _confirmPending = true;
       });
     } on NewTopicException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _isGenerating = false;
-      });
+      if (!current()) return;
+      setState(() => _error = e.message);
     } catch (e) {
-      if (!mounted) return;
-      debugPrint('NewTopicView unexpected generation error: $e');
-      setState(() {
-        _error = NewTopicView.customerMessageForUnexpectedError(e);
-        _isGenerating = false;
-      });
+      if (!current()) return;
+      setState(
+          () => _error = NewTopicView.customerMessageForUnexpectedError(e));
+    } finally {
+      if (mounted && version == _inputVersion) {
+        setState(() {
+          _preparing = false;
+          _isGenerating = false;
+        });
+      }
     }
   }
 
   Future<void> _showPaywallAndRefresh() async {
-    if (!mounted) return;
+    if (!mounted || !widget.isActive) return;
+    final owner = _owner;
     await context.push<String>('/paywall');
+    if (owner != _owner) return;
     if (!mounted) return;
     try {
       await ref.read(subscriptionScreenRefreshProvider)();
@@ -386,253 +425,264 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(authConversationScopeProvider, (previous, next) {
+      if (previous?.hasValue != true ||
+          previous?.valueOrNull == next.valueOrNull) {
+        return;
+      }
+      setState(() {
+        _inputVersion++;
+        _selectedPartnerId = null;
+        _situation = null;
+        _result = null;
+        _error = null;
+        _preparing = false;
+        _isGenerating = false;
+        _pendingScroll = false;
+        _requestSession.markSuccess();
+      });
+    });
+    ref.listen(partnerListProvider, (previous, next) {
+      final selected = _selectedPartnerId;
+      if (selected == null ||
+          previous == null ||
+          !previous.any((p) => p.id == selected) ||
+          next.any((p) => p.id == selected)) {
+        return;
+      }
+      setState(() {
+        _inputVersion++;
+        _result = null;
+        _error = '找不到這位對象，請重新選擇。';
+        _preparing = false;
+        _isGenerating = false;
+        _requestSession.markSuccess();
+      });
+    });
+    final partners = ref.watch(partnerListProvider);
     final validPartnerId = _validatedPartnerId();
     final partner = validPartnerId == null
         ? null
-        : ref.watch(partnerByIdProvider(validPartnerId));
-    final hadInvalidInitialPartner =
-        _selectedPartnerId != null && validPartnerId == null;
-
-    final scrollBody = SingleChildScrollView(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '新話題',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.coachAccentBright,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            partner != null ? '為 ${partner.name} 想新話題' : '聊天卡住？AI 幫你想新台階',
-            style: AppTypography.headlineLarge.copyWith(color: Colors.white),
-          ),
-          const SizedBox(height: 24),
-          _buildPartnerCard(partner, hadInvalidInitialPartner),
-          const SizedBox(height: 16),
-          Text(
-            '目前狀況（選填）',
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final option in NewTopicView.situationOptions)
-                BrandChoiceChip(
-                  tone: BrandVisualTone.coach,
-                  label: option.label,
-                  selected: _situation == option.value,
-                  onTap: () => unawaited(_selectSituation(option.value)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              _result != null ? '已生成，不會重複扣額度' : '將使用 3 則額度',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          BrandPrimaryButton(
-            label:
-                _isGenerating ? '生成中…' : (_result != null ? '已生成新話題' : '生成新話題'),
-            // v2：生成中不轉圈（下方骨架卡已有動態），改禁用態純文字。
-            isLoading: false,
-            onPressed:
-                (_isGenerating || _result != null || validPartnerId == null)
-                    ? null
-                    : _generate,
-          ),
-          const SizedBox(height: 16),
-          // v2：串流事件到達後顯示一行狀態＋五張題卡骨架（topic_n 事件
-          // 點亮）；事件未到（連線中／legacy 降級）沿用本地輪播。
-          if (_isGenerating)
-            _streamProgress.isNotEmpty
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      StreamProgressTicker(labels: _streamProgress),
-                      const SizedBox(height: 12),
-                      _TopicSkeletonList(
-                        completedPhases: _completedStreamPhases,
+        : partners.firstWhere((p) => p.id == validPartnerId);
+    final readiness = validPartnerId == null
+        ? NewTopicReadiness.missingPartner
+        : ref.watch(newTopicReadinessProvider(validPartnerId));
+    final style = validPartnerId == null
+        ? const AsyncData<String?>(null)
+        : ref.watch(newTopicStyleContextProvider(validPartnerId));
+    final pending = _requestSession.pendingFor(
+        partnerId: validPartnerId, situation: _situation);
+    final loading = style.isLoading && pending == null;
+    final ready = !loading &&
+        canGenerateNewTopic(
+            readiness: readiness,
+            styleContext: pending?.effectiveStyleContext ?? style.valueOrNull,
+            situation: _situation);
+    final otherMaterials = canGenerateNewTopic(
+        readiness: readiness, styleContext: style.valueOrNull, situation: null);
+    final usage = ref.watch(subscriptionProvider);
+    final quotaBlocked = pending == null &&
+        !usage.isLoading &&
+        usage.error == null &&
+        (usage.monthlyRemaining < 3 || usage.dailyRemaining < 3);
+    final helper = validPartnerId == null
+        ? '先選擇聊天對象，再補充目前情境。'
+        : readiness == NewTopicReadiness.dataQualityBlocked
+            ? '這位對象的資料需要先確認。'
+            : loading
+                ? '正在整理可用素材…'
+                : otherMaterials
+                    ? '可以不選，直接找新的切入點。'
+                    : '請選一個目前情境，或先補充對象資料。';
+    final footer = OpenerActionFooter(
+      buttonKey: const ValueKey('new-topic-generate'),
+      label: _preparing
+          ? '正在準備…'
+          : _isGenerating
+              ? '生成中…'
+              : _confirmPending
+                  ? '確認本次結果'
+                  : pending != null
+                      ? '重試'
+                      : '生成新話題',
+      hint: quotaBlocked
+          ? '本次需要 3 則，目前可用額度不足。'
+          : ready
+              ? '將使用 3 則額度'
+              : validPartnerId == null
+                  ? '先選擇聊天對象'
+                  : '',
+      onPressed: _busy || !ready || quotaBlocked ? null : _generate,
+      onQuota: () => showOpenerQuotaSheet(context, newTopic: true),
+    );
+    return ScrollCardTicks(
+        child: OpenerResponsiveBody(
+            controller: _scrollController,
+            footer: _result == null ? footer : null,
+            content:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('換個話題，讓聊天繼續', style: OpenerHomeStyle.title),
+              const SizedBox(height: 8),
+              const Text('從她的興趣和你們的互動，找到新切入點。', style: OpenerHomeStyle.body),
+              const SizedBox(height: 24),
+              _buildPartnerCard(partner,
+                  _selectedPartnerId != null && validPartnerId == null),
+              const SizedBox(height: 24),
+              const Text('目前聊得怎麼樣？（選填）', style: OpenerHomeStyle.body),
+              const SizedBox(height: 8),
+              OpenerSituationGrid(
+                  options: NewTopicView.situationOptions,
+                  selected: _situation,
+                  onChanged: _busy
+                      ? null
+                      : (value) => unawaited(_selectSituation(value))),
+              const SizedBox(height: 8),
+              Text(helper, style: OpenerHomeStyle.helper),
+              if (style.hasError && validPartnerId != null)
+                TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => ref.invalidate(
+                            newTopicStyleContextProvider(validPartnerId)),
+                    child: const Text('重新載入個人風格')),
+              const SizedBox(height: 16),
+              // v2：串流事件到達後顯示一行狀態＋五張題卡骨架（topic_n 事件
+              // 點亮）；事件未到（連線中／legacy 降級）沿用本地輪播。
+              if (_isGenerating)
+                _streamProgress.isNotEmpty
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          StreamProgressTicker(labels: _streamProgress),
+                          const SizedBox(height: 12),
+                          _TopicSkeletonList(
+                            completedPhases: _completedStreamPhases,
+                          ),
+                        ],
+                      )
+                    : const Center(
+                        child: OpenerGenerationProgress(
+                          phrases: NewTopicView.progressPhrases,
+                        ),
                       ),
-                    ],
-                  )
-                : const Center(
-                    child: OpenerGenerationProgress(
-                      phrases: NewTopicView.progressPhrases,
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Center(
+                    child: Text(
+                      _error!,
+                      style: AppTypography.bodyMedium
+                          .copyWith(color: AppColors.error),
+                      textAlign: TextAlign.center,
                     ),
                   ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Center(
-                child: Text(
-                  _error!,
-                  style:
-                      AppTypography.bodyMedium.copyWith(color: AppColors.error),
-                  textAlign: TextAlign.center,
                 ),
-              ),
-            ),
-          if (_result != null) ...[
-            const SizedBox(height: 24),
-            KeyedSubtree(
-              key: _resultsSectionKey,
-              child: NewTopicResultsSection(
-                result: _result!,
-                onCopyIdeaOpeningLine: _copyOpeningLine,
-                onUpgrade: _showPaywallAndRefresh,
-              ),
-            ),
-          ],
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-
-    return ScrollCardTicks(child: scrollBody);
+              if (_result != null) ...[
+                const SizedBox(height: 24),
+                KeyedSubtree(
+                  key: _resultsSectionKey,
+                  child: NewTopicResultsSection(
+                    result: _result!,
+                    onCopyIdeaOpeningLine: _copyOpeningLine,
+                    onUpgrade: _showPaywallAndRefresh,
+                  ),
+                ),
+              ],
+            ])));
   }
 
-  Widget _buildPartnerCard(Partner? partner, bool hadInvalidInitialPartner) {
-    if (partner == null) {
-      return BrandSurfaceCard(
-        tone: BrandVisualTone.coach,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              hadInvalidInitialPartner ? '原本的對象已不存在，請重新選擇' : '選擇對象',
-              style: AppTypography.titleMedium.copyWith(
-                color: AppColors.onBackgroundPrimary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '新話題會根據這位對象的作戰板來想切入點。',
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            BrandSecondaryButton(
-              label:
-                  ref.watch(partnerListProvider).isEmpty ? '先建立一位對象' : '選擇對象',
-              onPressed: _isGenerating ? null : _pickPartner,
-            ),
-          ],
-        ),
-      );
-    }
-
-    final aggregate = ref.watch(partnerAggregateProvider(partner.id));
-    final partnerContext =
-        ref.watch(newTopicPartnerContextProvider(partner.id));
-    final chips = <String>[
-      ...aggregate.unionInterests,
-      ...aggregate.unionTraits,
-    ].take(3).toList();
-    final hasNote = partnerContext.hasNoteSignals;
-
-    return BrandSurfaceCard(
-      tone: BrandVisualTone.coach,
-      elevated: false,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  partner.name,
-                  style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                  ),
-                ),
-              ),
-              if (aggregate.latestHeat != null)
-                Text(
-                  '熱度 ${aggregate.latestHeat}',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.coachAccentBright,
-                  ),
-                ),
-            ],
-          ),
-          if (chips.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final chip in chips)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.coachAccent.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppColors.coachAccent.withValues(alpha: 0.20),
-                      ),
-                    ),
-                    child: Text(
-                      chip,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.onBackgroundSecondary,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          if (hasNote) ...[
-            const SizedBox(height: 8),
-            Text(
-              '已加入你的備註',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.8),
-              ),
-            ),
-          ],
-          if (!partnerContext.hasActionableSignals) ...[
-            const SizedBox(height: 4),
-            Text(
-              '這位對象的紀錄還很少，建議可能會比較通用。',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _isGenerating ? null : _pickPartner,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.coachAccentBright,
-              ),
-              child: const Text('更換對象'),
-            ),
-          ),
-        ],
-      ),
-    );
+  Widget _buildPartnerCard(Partner? partner, bool invalid) {
+    final noPartners = ref.watch(partnerListProvider).isEmpty;
+    final contextData = partner == null
+        ? null
+        : ref.watch(newTopicPartnerContextProvider(partner.id));
+    final hasDetails = contextData?.hasActionableSignals ?? false;
+    final aggregate = partner == null
+        ? null
+        : ref.watch(partnerAggregateProvider(partner.id));
+    final detailLabels = [
+      ...?aggregate?.unionInterests,
+      ...?aggregate?.unionTraits
+    ].take(3).join('、');
+    final avatar = partner?.avatarPath;
+    final fallback =
+        const Icon(Icons.person_outline, size: 28, color: OpenerHomeStyle.icon);
+    return OpenerHomePanel(
+        padding: EdgeInsets.zero,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Semantics(
+              button: true,
+              label: partner == null ? '選擇聊天對象' : '目前對象 ${partner.name}，更換對象',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: _busy ? null : _pickPartner,
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 120),
+                    child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: ExcludeSemantics(
+                            child: Row(children: [
+                          Container(
+                              width: 48,
+                              height: 48,
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                  color: OpenerHomeStyle.selected,
+                                  borderRadius: BorderRadius.circular(24)),
+                              child: LocalAvatar(
+                                  path: avatar, fallback: fallback)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                Text(
+                                    partner?.name ??
+                                        (noPartners ? '先建立聊天對象' : '選擇聊天對象'),
+                                    style: const TextStyle(
+                                        fontSize: 19,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white)),
+                                const SizedBox(height: 4),
+                                Text(
+                                    partner != null
+                                        ? '已選擇聊天對象'
+                                        : invalid
+                                            ? '原本的對象已不存在，請重新選擇'
+                                            : '根據她的作戰板，找到適合你們的話題。',
+                                    style: OpenerHomeStyle.helper),
+                              ])),
+                          const Icon(Icons.chevron_right,
+                              color: OpenerHomeStyle.secondary),
+                        ])))),
+              )),
+          if (partner != null && !hasDetails)
+            const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Text('這位對象的紀錄還很少，建議可能會比較通用。',
+                    style: OpenerHomeStyle.helper)),
+          if (hasDetails)
+            Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextButton(
+                          onPressed: () =>
+                              setState(() => _showDetails = !_showDetails),
+                          child: Text(_showDetails ? '收合使用資料' : '查看使用資料')),
+                      if (_showDetails)
+                        Text(
+                            [
+                              if (detailLabels.isNotEmpty) detailLabels,
+                              if (contextData!.hasNoteSignals) '已加入你的備註',
+                              if (detailLabels.isEmpty &&
+                                  !contextData.hasNoteSignals)
+                                '已加入你們的互動紀錄'
+                            ].join('\n'),
+                            style: OpenerHomeStyle.body),
+                    ])),
+        ]));
   }
 }
 
