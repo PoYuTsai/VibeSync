@@ -165,8 +165,17 @@ class AnalysisHistoryEvent {
   }
 
   /// 新格式練習事件的穩定 id：同一場 debrief 再寫一次也只覆寫同一筆。
-  static String practiceEventId(String sessionId) =>
-      'practice:${sessionId.trim()}';
+  static String practiceEventId(String sessionId) {
+    final normalized = sessionId.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        sessionId,
+        'sessionId',
+        'must not be empty',
+      );
+    }
+    return 'practice:$normalized';
+  }
 
   static String? normalizeScope(String? value) => _optionalTrim(value);
 

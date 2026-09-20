@@ -99,6 +99,21 @@ void main() {
     expect(event.practiceSessionId, 'sess-9');
   });
 
+  test('practiceEventId trim 後不得為空，合法值穩定加前綴', () {
+    expect(
+      () => AnalysisHistoryEvent.practiceEventId(''),
+      throwsArgumentError,
+    );
+    expect(
+      () => AnalysisHistoryEvent.practiceEventId('   '),
+      throwsArgumentError,
+    );
+    expect(
+      AnalysisHistoryEvent.practiceEventId(' abc '),
+      'practice:abc',
+    );
+  });
+
   test('analyze factory 不補 practice 條件欄位（全 null）', () {
     final event = AnalysisHistoryEvent.analyze(
       id: 'e-3',
