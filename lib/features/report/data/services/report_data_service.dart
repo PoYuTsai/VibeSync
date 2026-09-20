@@ -244,6 +244,7 @@ class ReportDataService {
               score: event.temperatureScore!,
               conversationName: '',
               eventId: event.id,
+              practiceContext: _practiceContextOf(event),
             ))
         .toList();
     return sortHeatTrendPoints(points);
@@ -251,4 +252,24 @@ class ReportDataService {
 
   static bool _isValidPracticeTemperature(int? score) =>
       score != null && score >= 0 && score <= 100;
+
+  static const _validDifficulties = {'easy', 'normal', 'challenge'};
+  static const _validPracticeModes = {'beginner', 'game'};
+
+  /// 只從事件本身建 context：不 join PracticeSession（可能已被 5 段保留政策
+  /// 刪除），不從目前難度偏好反推。未知字串轉 null，避免 label fallback 把
+  /// 未來新值或錯誤值顯示成「一般」「新手」。
+  static PracticeRecordContext _practiceContextOf(AnalysisHistoryEvent event) {
+    final difficulty = event.practiceDifficulty;
+    final mode = event.practiceMode;
+    final replies = event.aiReplyCount;
+    return PracticeRecordContext(
+      difficulty: difficulty != null && _validDifficulties.contains(difficulty)
+          ? difficulty
+          : null,
+      mode: mode != null && _validPracticeModes.contains(mode) ? mode : null,
+      roundIndex: event.roundIndex,
+      aiReplyCount: replies != null && replies >= 0 ? replies : null,
+    );
+  }
 }

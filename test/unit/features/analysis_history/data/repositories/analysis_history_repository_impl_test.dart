@@ -152,4 +152,131 @@ void main() {
     await repo.clearAll();
     expect(repo.listRecent(), isEmpty);
   });
+
+  test('同 id（practice:<sessionId>）重寫 → 只有一筆、欄位以最後一次為準', () async {
+    final id = AnalysisHistoryEvent.practiceEventId('sess-dup');
+    await repo.append(AnalysisHistoryEvent.practice(
+      id: id,
+      createdAt: DateTime.utc(2026, 9, 19, 10),
+      temperatureScore: 40,
+      practiceSessionId: 'sess-dup',
+    ));
+    await repo.append(AnalysisHistoryEvent.practice(
+      id: id,
+      createdAt: DateTime.utc(2026, 9, 19, 10),
+      temperatureScore: 42,
+      practiceSessionId: 'sess-dup',
+    ));
+
+    final practice = repo.listByKind(AnalysisHistoryKind.practice);
+    expect(practice.length, 1);
+    expect(practice.single.temperatureScore, 42);
+  });
+
+  test('新欄位關箱重開 round-trip（不能只測記憶體物件）', () async {
+    await repo.append(AnalysisHistoryEvent.practice(
+      id: 'practice:sess-rt',
+      createdAt: DateTime.utc(2026, 9, 19, 11),
+      profileId: 'practice_girl_003',
+      roundIndex: 2,
+      temperatureScore: 55,
+      practiceDifficulty: 'challenge',
+      aiReplyCount: 9,
+      practiceMode: 'game',
+      practiceSessionId: 'sess-rt',
+    ));
+    final name = box.name;
+    await box.close();
+
+    box = await Hive.openBox<AnalysisHistoryEvent>(name);
+    repo = AnalysisHistoryRepositoryImpl(box);
+    final restored = repo.listByKind(AnalysisHistoryKind.practice).single;
+    expect(restored.practiceDifficulty, 'challenge');
+    expect(restored.aiReplyCount, 9);
+    expect(restored.practiceMode, 'game');
+    expect(restored.practiceSessionId, 'sess-rt');
+    expect(restored.roundIndex, 2);
+    expect(restored.temperatureScore, 55);
+  });
+
+  test('舊 adapter（14 欄）寫出的真實資料 → 新 adapter 讀：舊欄位保留、新欄位 null', () async {
+    Hive.registerAdapter(_LegacyFourteenFieldAdapter(), override: true);
+    final legacyBox = await Hive.openBox<AnalysisHistoryEvent>(
+      'legacy_history_${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await legacyBox.put(
+      'old-uuid',
+      AnalysisHistoryEvent.practice(
+        id: 'old-uuid',
+        createdAt: DateTime.utc(2026, 6, 1, 9),
+        profileId: 'practice_girl_001',
+        roundIndex: 1,
+        temperatureScore: 33,
+        familiarityScore: 5,
+        relationshipStageLabel: '破冰',
+      ),
+    );
+    final legacyName = legacyBox.name;
+    await legacyBox.close();
+
+    Hive.registerAdapter(AnalysisHistoryEventAdapter(), override: true);
+    final reopened = await Hive.openBox<AnalysisHistoryEvent>(legacyName);
+    addTearDown(() => reopened.deleteFromDisk());
+    final restored = reopened.get('old-uuid')!;
+
+    expect(restored.kind, AnalysisHistoryKind.practice);
+    expect(restored.temperatureScore, 33);
+    expect(restored.familiarityScore, 5);
+    expect(restored.relationshipStageLabel, '破冰');
+    expect(restored.roundIndex, 1);
+    expect(restored.practiceDifficulty, isNull);
+    expect(restored.aiReplyCount, isNull);
+    expect(restored.practiceMode, isNull);
+    expect(restored.practiceSessionId, isNull);
+  });
+}
+
+/// 新增 HiveField 14–17 之前，generator 產出的 `write` 形狀（0..13 共 14 欄），
+/// 用來製造真實的舊版資料列。
+class _LegacyFourteenFieldAdapter extends TypeAdapter<AnalysisHistoryEvent> {
+  @override
+  final typeId = 24;
+
+  @override
+  AnalysisHistoryEvent read(BinaryReader reader) =>
+      throw UnsupportedError('write-only legacy adapter');
+
+  @override
+  void write(BinaryWriter writer, AnalysisHistoryEvent obj) {
+    writer
+      ..writeByte(14)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.kind)
+      ..writeByte(2)
+      ..write(obj.createdAt)
+      ..writeByte(3)
+      ..write(obj.conversationId)
+      ..writeByte(4)
+      ..write(obj.subjectName)
+      ..writeByte(5)
+      ..write(obj.enthusiasmScore)
+      ..writeByte(6)
+      ..write(obj.gameStageLabel)
+      ..writeByte(7)
+      ..write(obj.profileId)
+      ..writeByte(8)
+      ..write(obj.roundIndex)
+      ..writeByte(9)
+      ..write(obj.temperatureScore)
+      ..writeByte(10)
+      ..write(obj.familiarityScore)
+      ..writeByte(11)
+      ..write(obj.relationshipStageLabel)
+      ..writeByte(12)
+      ..write(obj.partnerId)
+      ..writeByte(13)
+      ..write(obj.isReconnect);
+  }
 }

@@ -1,20 +1,50 @@
 // lib/features/report/domain/entities/report_models.dart
 
+/// 練習紀錄的當時條件（只給報告頁顯示，不做能力計算）。
+///
+/// 每個欄位都可能為 null：舊事件沒存、或值不在合法集合內。顯示端只列已知
+/// 部分，不補預設值；全部未知時顯示「這筆舊紀錄沒有保存練習條件」。
+class PracticeRecordContext {
+  /// `easy / normal / challenge`；其他值在讀取時就已轉成 null。
+  final String? difficulty;
+
+  /// `beginner / game`；其他值在讀取時就已轉成 null。
+  final String? mode;
+  final int? roundIndex;
+  final int? aiReplyCount;
+
+  const PracticeRecordContext({
+    this.difficulty,
+    this.mode,
+    this.roundIndex,
+    this.aiReplyCount,
+  });
+
+  bool get isEmpty =>
+      difficulty == null &&
+      mode == null &&
+      roundIndex == null &&
+      aiReplyCount == null;
+}
+
 /// 熱度趨勢數據點。
 ///
 /// [eventId] 是來源歷史事件的 id：同一時刻的多筆資料靠它做穩定排序與
 /// 「所選點」身分；測試／預覽資料可為 null（改以輸入位置當第二排序鍵）。
+/// [practiceContext] 只有練習點會帶；分析點為 null。
 class HeatTrendPoint {
   final DateTime date;
   final int score;
   final String conversationName;
   final String? eventId;
+  final PracticeRecordContext? practiceContext;
 
   const HeatTrendPoint({
     required this.date,
     required this.score,
     required this.conversationName,
     this.eventId,
+    this.practiceContext,
   });
 }
 

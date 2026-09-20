@@ -488,6 +488,59 @@ void main() {
       expect(neg.temperatureScore, -1);
     });
 
+    test('事件帶條件 → point.practiceContext 只從事件本身建立', () {
+      final points = service.practiceTemperaturePoints([
+        AnalysisHistoryEvent.practice(
+          id: 'practice:s1',
+          createdAt: DateTime(2026, 9, 19),
+          profileId: 'practice_girl_001',
+          roundIndex: 2,
+          temperatureScore: 61,
+          practiceDifficulty: 'challenge',
+          aiReplyCount: 8,
+          practiceMode: 'game',
+          practiceSessionId: 's1',
+        ),
+      ]);
+      final context = points.single.practiceContext!;
+      expect(context.difficulty, 'challenge');
+      expect(context.mode, 'game');
+      expect(context.roundIndex, 2);
+      expect(context.aiReplyCount, 8);
+      expect(context.isEmpty, isFalse);
+    });
+
+    test('舊事件無條件 → context 全 null（isEmpty），不猜「一般」「新手」', () {
+      final points = service.practiceTemperaturePoints([
+        _practice('p-old', 30, DateTime(2026, 6, 1)),
+      ]);
+      final context = points.single.practiceContext!;
+      expect(context.difficulty, isNull);
+      expect(context.mode, isNull);
+      expect(context.aiReplyCount, isNull);
+      expect(context.roundIndex, 1); // roundIndex 舊事件本來就有
+      expect(context.isEmpty, isFalse);
+    });
+
+    test('未知難度／模式字串與負數回覆數 → 該欄 null，不映射成一般難度', () {
+      final points = service.practiceTemperaturePoints([
+        AnalysisHistoryEvent.practice(
+          id: 'practice:s2',
+          createdAt: DateTime(2026, 9, 19),
+          temperatureScore: 40,
+          practiceDifficulty: 'nightmare',
+          aiReplyCount: -1,
+          practiceMode: 'standard',
+        ),
+      ]);
+      final context = points.single.practiceContext!;
+      expect(context.difficulty, isNull);
+      expect(context.mode, isNull);
+      expect(context.aiReplyCount, isNull);
+      expect(context.roundIndex, isNull);
+      expect(context.isEmpty, isTrue);
+    });
+
     test('合法邊界 0 與 100 都保留', () {
       final points = service.practiceTemperaturePoints([
         _practice('p0', 0, DateTime(2026, 6, 1)),

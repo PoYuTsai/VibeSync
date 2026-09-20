@@ -70,6 +70,26 @@ class AnalysisHistoryEvent {
   @HiveField(13)
   final bool? isReconnect;
 
+  /// practice 用：本輪已解析的難度 `easy / normal / challenge`（不是使用者選的
+  /// random 偏好）。舊事件為 null；報告頁不猜值。
+  @HiveField(14)
+  final String? practiceDifficulty;
+
+  /// practice 用：本輪成功接受的 AI 回覆次數（不是 messages 長度，也不是跨輪
+  /// 逐字稿長度）。舊事件為 null。
+  @HiveField(15)
+  final int? aiReplyCount;
+
+  /// practice 用：`beginner / game`。舊事件為 null。
+  @HiveField(16)
+  final String? practiceMode;
+
+  /// practice 用：當次完成的 session id。新格式事件的 id 亦為
+  /// `practice:<sessionId>`（同場冪等覆寫）；舊事件 id 是隨機 UUID，此欄位
+  /// 讓讀取端不必解析 id 字串。
+  @HiveField(17)
+  final String? practiceSessionId;
+
   /// Hive rebuild 用寬鬆建構子；寫入路徑一律走 [analyze] / [practice] factory。
   const AnalysisHistoryEvent({
     required this.id,
@@ -86,6 +106,10 @@ class AnalysisHistoryEvent {
     this.relationshipStageLabel,
     this.partnerId,
     this.isReconnect,
+    this.practiceDifficulty,
+    this.aiReplyCount,
+    this.practiceMode,
+    this.practiceSessionId,
   });
 
   factory AnalysisHistoryEvent.analyze({
@@ -119,6 +143,10 @@ class AnalysisHistoryEvent {
     int? temperatureScore,
     int? familiarityScore,
     String? relationshipStageLabel,
+    String? practiceDifficulty,
+    int? aiReplyCount,
+    String? practiceMode,
+    String? practiceSessionId,
   }) {
     return AnalysisHistoryEvent(
       id: _requireId(id),
@@ -129,7 +157,24 @@ class AnalysisHistoryEvent {
       temperatureScore: temperatureScore,
       familiarityScore: familiarityScore,
       relationshipStageLabel: _optionalTrim(relationshipStageLabel),
+      practiceDifficulty: _optionalTrim(practiceDifficulty),
+      aiReplyCount: aiReplyCount,
+      practiceMode: _optionalTrim(practiceMode),
+      practiceSessionId: _optionalTrim(practiceSessionId),
     );
+  }
+
+  /// 新格式練習事件的穩定 id：同一場 debrief 再寫一次也只覆寫同一筆。
+  static String practiceEventId(String sessionId) {
+    final normalized = sessionId.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        sessionId,
+        'sessionId',
+        'must not be empty',
+      );
+    }
+    return 'practice:$normalized';
   }
 
   static String? normalizeScope(String? value) => _optionalTrim(value);
@@ -150,6 +195,10 @@ class AnalysisHistoryEvent {
       relationshipStageLabel: relationshipStageLabel,
       partnerId: _optionalTrim(partnerId),
       isReconnect: isReconnect,
+      practiceDifficulty: practiceDifficulty,
+      aiReplyCount: aiReplyCount,
+      practiceMode: practiceMode,
+      practiceSessionId: practiceSessionId,
     );
   }
 

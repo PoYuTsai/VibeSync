@@ -2464,6 +2464,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       );
       final completedState = state;
       await _persist();
+      // 歷史事件緊接在 session 落盤之後、transport 確認之前：confirm 若丟錯
+      // 會進 catch，原本排在最後的寫入就會被跳過。append 自己 catch，不影響
+      // 後續確認與清理，也不改 replay key 必須等落盤才退休的規則。
+      final girl = completedState.girl;
+      if (girl != null) {
+        await _recordPracticeHistoryEvent(completedState, girl.profileId);
+      }
       final debriefRequestId = debrief.idempotencyRequestId;
       if (debriefRequestId != null) {
         // Retire the transport replay key only after the card is durable. If
@@ -2478,10 +2485,6 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       // Tier 2 批 1.5：首局練習完成漏斗事件（once-flag 去重，best-effort，
       // 不分模式——標準模式收操也算完成第一局）。
       unawaited(_funnelTracker.trackOnce('first_practice_completed'));
-      final girl = completedState.girl;
-      if (girl != null) {
-        await _recordPracticeHistoryEvent(completedState, girl.profileId);
-      }
     } on PracticeQuotaExceededException catch (e) {
       if (_isStaleDebrief(generation, requestSessionId)) return;
       state = state.copyWith(
@@ -2778,6 +2781,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 每局收操記一筆終溫；局中 _persist（送訊息/hint）絕不寫，避免同局多筆。
   /// 只在輔助模式且 temperatureScore 有值時寫——
   /// 標準模式三元組全 null，是畫不出來的空點（設計拍板）。
+  ///
+  /// id 固定為 `practice:<sessionId>`：repository 以 id 覆寫，同一場再寫一次
+  /// 也不會多一筆；續同一位是新 sessionId，所以會是新的一點。另存本輪已解析
+  /// 難度、模式、AI 回覆數與 session id（當下快照，日後換難度不回寫舊紀錄）。
   Future<void> _recordPracticeHistoryEvent(
     PracticeChatState s,
     String profileId,
@@ -2788,7 +2795,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     if (temperature == null) return;
     try {
       await history.append(AnalysisHistoryEvent.practice(
-        id: const Uuid().v4(),
+        id: AnalysisHistoryEvent.practiceEventId(s.sessionId),
         createdAt: DateTime.now(),
         profileId: profileId,
         roundIndex: s.roundIndex,
@@ -2796,10 +2803,23 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         familiarityScore: s.isAssistedLearningMode ? s.familiarityScore : null,
         relationshipStageLabel:
             s.isAssistedLearningMode ? s.relationshipStageLabel : null,
+        practiceDifficulty: _resolvedDifficultyForHistory(s.difficulty),
+        aiReplyCount: s.aiReplyCount,
+        practiceMode: s.learningMode.wireName,
+        practiceSessionId: s.sessionId,
       ));
     } catch (e) {
       debugPrint('AnalysisHistory practice append failed: $e');
     }
+  }
+
+  /// 只存三個合法解析值；其他（理論上不會出現的 random／未知）存 null，
+  /// 讓讀取端顯示「未記錄」而不是被 label fallback 當成一般難度。
+  static String? _resolvedDifficultyForHistory(String difficulty) {
+    return switch (difficulty) {
+      'easy' || 'normal' || 'challenge' => difficulty,
+      _ => null,
+    };
   }
 }
 

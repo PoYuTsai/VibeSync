@@ -41,6 +41,7 @@ class HeatTrendChart extends StatelessWidget {
           score: clampVisibleInvestmentScore(point.score),
           conversationName: point.conversationName,
           eventId: point.eventId,
+          practiceContext: point.practiceContext,
         ),
     ]);
     return BrandSurfaceCard(
