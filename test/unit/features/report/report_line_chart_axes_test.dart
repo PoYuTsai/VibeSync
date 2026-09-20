@@ -105,6 +105,19 @@ void main() {
       expect(sevenDays.dateRangeText(), '6/01 – 6/07');
     });
 
+
+    test('單一候選原始寬度超過 plot → 不因 clamp 被誤判可放', () {
+      final axes = ReportLineAxes(dates: [DateTime(2026, 6, 1)]);
+      expect(
+        axes.selectLabelIndices(
+          plotWidth: 60,
+          measureWidth: (_) => 100,
+        ),
+        isEmpty,
+      );
+      expect(axes.dateRangeText(), '6/01');
+    });
+
     test('全部同一天 → 只有一個標籤', () {
       final axes = ReportLineAxes(dates: [
         DateTime(2026, 6, 1, 9),

@@ -19,8 +19,10 @@ class HeatTrendPoint {
 }
 
 /// 報告頁所有折線資料共用的穩定排序：先依原始時間（微秒精度）升序，同時刻
-/// 再依 [HeatTrendPoint.eventId]，兩者都缺時退回輸入位置。Dart `List.sort`
-/// 不保證同值元素順序，所以第二、第三鍵是必要的，不是保險。不改動來源清單。
+/// 先排有 [HeatTrendPoint.eventId] 的真實事件，再依 id；沒有 id 的測試／預覽
+/// 資料最後才依輸入位置。這是一組一致的 tuple ordering，避免 mixed null/id
+/// comparator 出現非傳遞關係。Dart `List.sort` 不保證同值元素順序，所以最後
+/// 的輸入位置鍵仍是必要的。不改動來源清單。
 List<HeatTrendPoint> sortHeatTrendPoints(List<HeatTrendPoint> source) {
   final indexed = [
     for (var i = 0; i < source.length; i++) (index: i, point: source[i]),
@@ -30,6 +32,8 @@ List<HeatTrendPoint> sortHeatTrendPoints(List<HeatTrendPoint> source) {
     if (byDate != 0) return byDate;
     final idA = a.point.eventId;
     final idB = b.point.eventId;
+    if (idA == null && idB != null) return 1;
+    if (idA != null && idB == null) return -1;
     if (idA != null && idB != null) {
       final byId = idA.compareTo(idB);
       if (byId != 0) return byId;

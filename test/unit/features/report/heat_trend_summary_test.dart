@@ -62,6 +62,25 @@ void main() {
     expect(a.points.length, 3);
   });
 
+
+  test('同 timestamp 混合有／無 id 使用一致 tuple ordering，不受輸入位置干擾', () {
+    final t = DateTime(2026, 7, 1, 9);
+    HeatTrendPoint p(int score, {String? id}) => HeatTrendPoint(
+          date: t,
+          score: score,
+          conversationName: '',
+          eventId: id,
+        );
+    final source = [
+      p(30, id: 'z'),
+      p(20),
+      p(10, id: 'a'),
+    ];
+    final sorted = sortHeatTrendPoints(source);
+    expect(sorted.map((point) => point.eventId), ['a', 'z', null]);
+    expect(sorted.map((point) => point.score), [10, 30, 20]);
+  });
+
   test('沒有 id 的同時刻資料以輸入位置為序，單次處理穩定', () {
     final t = DateTime(2026, 7, 1);
     final source = [

@@ -107,7 +107,7 @@ class ReportLineAxes {
     if (candidates.isEmpty || plotWidth <= 0) return const [];
 
     final slotWidth = plotWidth / count;
-    ({double left, double right}) rectFor(int index) {
+    ({double left, double right, double rawWidth}) rectFor(int index) {
       final width = measureWidth(bottomDateText(index));
       final center = slotWidth * (index + 0.5);
       var left = center - width / 2;
@@ -120,12 +120,18 @@ class ReportLineAxes {
         left -= right - plotWidth;
         right = plotWidth;
       }
-      return (left: math.max(0, left), right: math.min(plotWidth, right));
+      return (
+        left: math.max(0, left),
+        right: math.min(plotWidth, right),
+        rawWidth: width,
+      );
     }
 
-    bool fits(({double left, double right}) rect,
-        List<({double left, double right})> kept) {
-      if (rect.right - rect.left > plotWidth) return false;
+    bool fits(({double left, double right, double rawWidth}) rect,
+        List<({double left, double right, double rawWidth})> kept) {
+      // 必須在 clamp 前判斷原始標籤寬度；否則超寬文字被裁進 plot 後，
+      // rect.right - rect.left 會看起來剛好等於 plotWidth 而誤判可放。
+      if (rect.rawWidth > plotWidth) return false;
       for (final other in kept) {
         final gap = math.max(other.left - rect.right, rect.left - other.right);
         if (gap < minGap) return false;
@@ -134,7 +140,7 @@ class ReportLineAxes {
     }
 
     final selected = <int>[];
-    final keptRects = <({double left, double right})>[];
+    final keptRects = <({double left, double right, double rawWidth})>[];
 
     final earliest = candidates.first;
     final latest = candidates.last;
