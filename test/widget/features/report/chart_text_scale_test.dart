@@ -74,8 +74,6 @@ void main() {
       t,
       const HeatTrendChart(
         trendPoints: [],
-        averageScore: 0,
-        scoreDelta: 0,
         emptyMessage: '完成第一次分析後，這裡會畫出互動熱度的變化。',
       ),
     );
@@ -95,22 +93,20 @@ void main() {
             conversationName: '小雲',
           ),
         ],
-        averageScore: 72,
-        scoreDelta: 0,
       ),
     );
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('練習升溫圖空態 @1.4x/320 不疊字', (t) async {
+  testWidgets('練習溫度圖空態 @1.4x/320 不疊字', (t) async {
     await pumpChart(t, const PracticeTemperatureChart(points: []));
-    final caption = t.getRect(find.text('只整理練習室表現，不混入真實對話。'));
+    final caption = t.getRect(find.text('每個點是一輪練習的結束溫度，不等於能力評分。'));
     final empty =
-        t.getRect(find.text('多完成幾場新手模式練習，這裡會畫出你的升溫能力成長曲線'));
+        t.getRect(find.text('完成有溫度計的練習並取得拆解卡後，這裡會留下紀錄。'));
     expect(empty.overlaps(caption), isFalse);
   });
 
-  testWidgets('練習升溫圖單點態 @1.4x/320 不溢出', (t) async {
+  testWidgets('練習溫度圖單點態 @1.4x/320 不溢出', (t) async {
     await pumpChart(
       t,
       PracticeTemperatureChart(
@@ -124,5 +120,33 @@ void main() {
       ),
     );
     expect(t.takeException(), isNull);
+  });
+
+  List<HeatTrendPoint> sevenDays(String name) => [
+        for (var day = 1; day <= 7; day++)
+          HeatTrendPoint(
+            date: DateTime(2026, 8, day, 9 + day),
+            score: 20 + day * 9,
+            conversationName: name,
+            eventId: 'e$day',
+          ),
+      ];
+
+  testWidgets('練習溫度圖多點態＋選取資料 @1.4x/320 不溢出', (t) async {
+    await pumpChart(t, PracticeTemperatureChart(points: sevenDays('練習')));
+    expect(t.takeException(), isNull);
+    expect(find.byKey(const ValueKey('report-chart-detail')), findsOneWidget);
+  });
+
+  testWidgets('互動熱度圖多點態＋長對象名 @1.4x/320 不溢出', (t) async {
+    await pumpChart(
+      t,
+      HeatTrendChart(
+        trendPoints: sevenDays('這是一個非常非常長的對象顯示名稱測試'),
+        contextLabel: '這是一個非常非常長的對象顯示名稱測試',
+      ),
+    );
+    expect(t.takeException(), isNull);
+    expect(find.byKey(const ValueKey('report-chart-detail')), findsOneWidget);
   });
 }

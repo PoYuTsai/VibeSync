@@ -12,8 +12,6 @@
     "lib/features/practice_chat/presentation/screens/practice_collection_screen.dart": 1,
     "lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart": 21,
     "lib/features/practice_chat/presentation/widgets/practice_rarity_style.dart": 2,
-    "lib/features/report/presentation/widgets/heat_trend_chart.dart": 1,
-    "lib/features/report/presentation/widgets/practice_temperature_chart.dart": 1,
     "lib/features/splash/presentation/screens/splash_screen.dart": 6,
     "lib/features/user_profile/presentation/widgets/profile_chip_section.dart": 6,
     "lib/shared/widgets/brand/brand_kit.dart": 3,

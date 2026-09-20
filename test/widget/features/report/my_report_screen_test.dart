@@ -265,7 +265,7 @@ void main() {
       expect(find.text('測試 · 6/9 #2'), findsOneWidget);
     });
 
-    testWidgets('所選對象只有 1 筆 → 顯示真實起點與下一步', (tester) async {
+    testWidgets('所選對象只有 1 筆 → 顯示那筆投入度與下一步', (tester) async {
       await _pumpReportScreen(
         tester,
         subscription: const SubscriptionState(
@@ -278,7 +278,7 @@ void main() {
         ],
       );
 
-      expect(find.text('起點 50 · 6/01'), findsOneWidget);
+      expect(find.text('投入度 50 · 6/01 00:00'), findsOneWidget);
       expect(find.text('再分析 1 次就能形成趨勢'), findsOneWidget);
     });
 
@@ -325,7 +325,9 @@ void main() {
       );
 
       expect(find.byType(PracticeTemperatureChart), findsOneWidget);
-      expect(find.text('練習溫度成長'), findsOneWidget);
+      expect(find.text('練習溫度紀錄'), findsOneWidget);
+      expect(find.text('看每次練習的紀錄'), findsOneWidget);
+      expect(find.text('練習溫度成長'), findsNothing);
     });
   });
 

@@ -38,4 +38,75 @@ void main() {
     expect(summary.scoreDelta, 0);
     expect(summary.sampleCount, 1);
   });
+
+  test('同 timestamp 不同 id：打亂輸入也得到相同 id 順序、不丟筆', () {
+    final t = DateTime(2026, 7, 1, 9, 0, 0);
+    HeatTrendPoint withId(String id, int score) => HeatTrendPoint(
+          date: t,
+          score: score,
+          conversationName: '',
+          eventId: id,
+        );
+    final a = HeatTrendSummary.fromPoints([
+      withId('c', 3),
+      withId('a', 1),
+      withId('b', 2),
+    ]);
+    final b = HeatTrendSummary.fromPoints([
+      withId('b', 2),
+      withId('c', 3),
+      withId('a', 1),
+    ]);
+    expect(a.points.map((p) => p.eventId), ['a', 'b', 'c']);
+    expect(b.points.map((p) => p.eventId), ['a', 'b', 'c']);
+    expect(a.points.length, 3);
+  });
+
+
+  test('同 timestamp 混合有／無 id 使用一致 tuple ordering，不受輸入位置干擾', () {
+    final t = DateTime(2026, 7, 1, 9);
+    HeatTrendPoint p(int score, {String? id}) => HeatTrendPoint(
+          date: t,
+          score: score,
+          conversationName: '',
+          eventId: id,
+        );
+    final source = [
+      p(30, id: 'z'),
+      p(20),
+      p(10, id: 'a'),
+    ];
+    final sorted = sortHeatTrendPoints(source);
+    expect(sorted.map((point) => point.eventId), ['a', 'z', null]);
+    expect(sorted.map((point) => point.score), [10, 30, 20]);
+  });
+
+  test('沒有 id 的同時刻資料以輸入位置為序，單次處理穩定', () {
+    final t = DateTime(2026, 7, 1);
+    final source = [
+      HeatTrendPoint(date: t, score: 1, conversationName: ''),
+      HeatTrendPoint(date: t, score: 2, conversationName: ''),
+      HeatTrendPoint(date: t, score: 3, conversationName: ''),
+    ];
+    expect(sortHeatTrendPoints(source).map((p) => p.score), [1, 2, 3]);
+    expect(sortHeatTrendPoints(source).map((p) => p.score), [1, 2, 3]);
+  });
+
+  test('微秒精度排序：同分鐘不同秒不合併、不重排', () {
+    final base = DateTime(2026, 7, 1, 9, 0, 1);
+    final source = [
+      HeatTrendPoint(
+        date: base.add(const Duration(seconds: 2)),
+        score: 3,
+        conversationName: '',
+      ),
+      HeatTrendPoint(date: base, score: 1, conversationName: ''),
+      HeatTrendPoint(
+        date: base.add(const Duration(seconds: 1)),
+        score: 2,
+        conversationName: '',
+      ),
+    ];
+    expect(sortHeatTrendPoints(source).map((p) => p.score), [1, 2, 3]);
+  });
 }

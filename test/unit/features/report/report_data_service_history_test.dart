@@ -475,6 +475,25 @@ void main() {
       ]);
 
       expect(points.map((p) => p.score), [30, 45]);
+      expect(points.map((p) => p.eventId), ['p1', 'p2']);
+    });
+
+    test('超出 0–100 的溫度不入圖，原事件不變', () {
+      final bad = _practice('p-bad', 101, DateTime(2026, 6, 3));
+      final neg = _practice('p-neg', -1, DateTime(2026, 6, 4));
+      final ok = _practice('p-ok', 40, DateTime(2026, 6, 5));
+      final points = service.practiceTemperaturePoints([bad, neg, ok]);
+      expect(points.map((p) => p.score), [40]);
+      expect(bad.temperatureScore, 101);
+      expect(neg.temperatureScore, -1);
+    });
+
+    test('合法邊界 0 與 100 都保留', () {
+      final points = service.practiceTemperaturePoints([
+        _practice('p0', 0, DateTime(2026, 6, 1)),
+        _practice('p100', 100, DateTime(2026, 6, 2)),
+      ]);
+      expect(points.map((p) => p.score), [0, 100]);
     });
 
     test('全空 → 空清單（UI 依此顯示引導文案）', () {

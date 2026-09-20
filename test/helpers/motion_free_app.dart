@@ -8,7 +8,7 @@
 // timeout 失敗。
 //
 // 解法沿用專案既有慣例：把 reduce motion 打開，讓那些元件停在自己的靜止幀
-// （見 liquid_motion_frame_test.dart、trend_flow_overlay_test.dart）。斷言看
+// （見 liquid_motion_frame_test.dart）。斷言看
 // 的是終態，而 pumpAndSettle 本來就是把畫面帶到終態——語意等價。
 //
 // 注意 `builder:` 而不是把 MediaQuery 包在外面：MaterialApp 自己會用

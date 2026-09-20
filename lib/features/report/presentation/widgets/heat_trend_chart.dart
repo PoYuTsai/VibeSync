@@ -1,48 +1,54 @@
 // lib/features/report/presentation/widgets/heat_trend_chart.dart
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_motion.dart';
-import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/report_models.dart';
-import 'trend_flow_overlay.dart';
+import 'report_line_chart_axes.dart';
+import 'report_ordinal_line_chart.dart';
 
-/// Heat score trend line chart widget.
+/// 單一對象的「每次互動投入度」折線圖。
 ///
-/// Displays a line chart of heat scores over recent analyses, wrapped in a dark
-/// [BrandSurfaceCard] (2026-06-17 BrandKit migration; was the light
-/// GlassmorphicContainer). Axis labels / grid / tooltip recolored for dark
-/// legibility while the orange ctaStart line accent is kept.
+/// 平均、較上次差值、筆數全部由本 widget 從 [trendPoints] 自己算（同一份
+/// 最近七筆視窗），呼叫端不再傳入可能與點列不一致的統計值。x 是紀錄順序
+/// 軸，不是真實時間。dark BrandKit 卡面沿用 2026-06-17 遷移。
 class HeatTrendChart extends StatelessWidget {
   final List<HeatTrendPoint> trendPoints;
-  final double averageScore;
-  final double scoreDelta;
-  final String emptyMessage;
+
+  /// 對象身分；切換時所選點直接改為新對象最新一筆。不以顯示名稱當身分。
+  final String? subjectId;
   final String? contextLabel;
-  final int? sampleCount;
+  final String emptyMessage;
 
   const HeatTrendChart({
     super.key,
     required this.trendPoints,
-    required this.averageScore,
-    required this.scoreDelta,
-    this.emptyMessage = '尚無數據',
+    this.subjectId,
     this.contextLabel,
-    this.sampleCount,
+    this.emptyMessage = '尚無這位對象的分析紀錄',
   });
 
   @override
   Widget build(BuildContext context) {
+    // 先套可見上限 90 再算摘要：平均、較上次、圖點來自同一份已 clamp 的視窗。
+    final summary = HeatTrendSummary.fromPoints([
+      for (final point in trendPoints)
+        HeatTrendPoint(
+          date: point.date,
+          score: clampVisibleInvestmentScore(point.score),
+          conversationName: point.conversationName,
+          eventId: point.eventId,
+        ),
+    ]);
     return BrandSurfaceCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(),
+          _buildHeader(summary),
           const SizedBox(height: 8),
           Text(
             '只反映這次互動中的文字訊號，不代表關係進度。',
@@ -53,12 +59,12 @@ class HeatTrendChart extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          if (trendPoints.isEmpty)
+          if (summary.points.isEmpty)
             _buildEmptyState()
-          else if (trendPoints.length == 1)
-            _buildSinglePointState(context)
+          else if (summary.points.length == 1)
+            _buildSinglePointState(context, summary.points.single)
           else
-            _buildChart(context),
+            _buildChart(summary),
         ],
       ),
     );
@@ -68,8 +74,8 @@ class HeatTrendChart extends StatelessWidget {
   // Header
   // ---------------------------------------------------------------------------
 
-  Widget _buildHeader() {
-    final count = sampleCount ?? trendPoints.length;
+  Widget _buildHeader(HeatTrendSummary summary) {
+    final count = summary.sampleCount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,44 +114,51 @@ class HeatTrendChart extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 6),
-        if (sampleCount != null && count == 0)
-          const Text(
-            '等待趨勢資料',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          )
-        else
-          // FittedBox：大字級＋窄機身時「平均＋前後差」一行擠不下（1.4x/320
-          // 溢 10px），整行微縮而不是截掉分數。
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '${sampleCount == null ? '全部平均' : '近期平均'} '
-                  '${clampVisibleInvestmentScore(averageScore)}',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (sampleCount == null || count >= 2) _buildDeltaBadge(),
-              ],
-            ),
-          ),
+        // 零筆不顯示平均 0 或差值 0：「沒有資料」不能用 0 代替。
         if (count > 0) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.end,
+            spacing: 8,
+            runSpacing: 2,
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '這 $count 次平均 ',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    TextSpan(
+                      text: '${summary.averageScore.round()}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' / ${AppConstants.investmentVisibleMax}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onBackgroundSecondary
+                            .withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (count >= 2) _buildDeltaText(summary.scoreDelta),
+            ],
+          ),
           const SizedBox(height: 4),
           Text(
-            count >= 7 ? '顯示最近 7 次分析' : '已累積 $count 次分析',
+            '最近 $count 筆分析',
             style: TextStyle(
               fontSize: 12,
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.62),
@@ -156,34 +169,22 @@ class HeatTrendChart extends StatelessWidget {
     );
   }
 
-  Widget _buildDeltaBadge() {
-    if (scoreDelta == 0) {
-      return Text(
-        '前後 0',
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
-        ),
-      );
-    }
-
-    final isPositive = scoreDelta > 0;
-    final sign = isPositive ? '+' : '';
-    final color = isPositive ? AppColors.success : AppColors.error;
-
+  /// 「較上次」只比較同一對象最後兩筆；中性色、只用正負號，不加成敗評語。
+  Widget _buildDeltaText(double scoreDelta) {
+    final rounded = scoreDelta.round();
+    final sign = rounded > 0 ? '+' : (rounded < 0 ? '−' : '');
     return Text(
-      '前後 $sign${scoreDelta.round()}',
+      '較上次 $sign${rounded.abs()}',
       style: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w600,
-        color: color,
+        color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Empty state
+  // Empty / single
   // ---------------------------------------------------------------------------
 
   Widget _buildEmptyState() {
@@ -222,12 +223,10 @@ class HeatTrendChart extends StatelessWidget {
     );
   }
 
-  Widget _buildSinglePointState(BuildContext context) {
-    final point = trendPoints.single;
-    final visibleScore = clampVisibleInvestmentScore(point.score);
-    final date = DateFormat('M/dd').format(point.date);
-    // minHeight 而非鎖死高：大字級（clamp 上限 1.4）＋窄機身時文案比
-    // 保留高度高，鎖死會溢出疊到卡片上方的註解行（dogfood 疊字系列）。
+  Widget _buildSinglePointState(BuildContext context, HeatTrendPoint point) {
+    final visibleScore = point.score;
+    final axes = ReportLineAxes(dates: [point.date]);
+    // minHeight 而非鎖死高：理由同空態。
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 150),
       child: Center(
@@ -253,7 +252,8 @@ class HeatTrendChart extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              '起點 $visibleScore · $date',
+              '投入度 $visibleScore · ${axes.detailDateText(0)}',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -278,214 +278,34 @@ class HeatTrendChart extends StatelessWidget {
   // Chart
   // ---------------------------------------------------------------------------
 
-  Widget _buildChart(BuildContext context) {
-    final sorted = List<HeatTrendPoint>.from(trendPoints)
-      ..sort((a, b) => a.date.compareTo(b.date));
-
-    final firstDate = sorted.first.date;
-    // x＝距首點天數（分鐘精度轉天，同日多點不撞 x）。
-    double xOf(DateTime date) =>
-        date.difference(firstDate).inMinutes / (24 * 60.0);
-
-    final spots = [
-      for (final point in sorted)
-        FlSpot(
-          xOf(point.date),
-          clampVisibleInvestmentScore(point.score).toDouble(),
-        ),
-    ];
-    // 全部同一時刻（maxX=0）時 fl_chart 需要 minX<maxX，退 1 天刻度。
-    final maxX = spots.last.x <= 0 ? 1.0 : spots.last.x;
-    final xPadding = maxX * 0.04;
-    final plotMinX = -xPadding;
-    final plotMaxX = maxX + xPadding;
-
-    final normalizedPoints = [
-      for (final spot in spots)
-        Offset(
-          (spot.x - plotMinX) / (plotMaxX - plotMinX),
-          spot.y / AppConstants.investmentVisibleMax,
-        ),
-    ];
-    return SizedBox(
-      height: 180,
-      child: TrendFlowOverlay(
-        points: normalizedPoints,
-        padding: const EdgeInsets.fromLTRB(32, 4, 4, 31),
-        color: const Color(0xFFFFD2B8),
-        glowColor: AppColors.ctaStart,
-        flowDuration: const Duration(milliseconds: 900),
-        // 進場流 2 圈後淡出停住：讀資料的圖不留永久裝飾動態。
-        cycles: 2,
-        coreAlpha: 0.82,
-        glowAlpha: 0.15,
-        dashLength: 12,
-        gapLength: 8,
-        painterKey: const ValueKey('engagement-trend-signal'),
-        child: LineChart(
-          LineChartData(
-            minX: plotMinX,
-            maxX: plotMaxX,
-            minY: 0,
-            // 投入度可見滿分 90（server × 0.9 校準後的尺度）。
-            maxY: AppConstants.investmentVisibleMax.toDouble(),
-            clipData: const FlClipData.all(),
-            gridData: _gridData(),
-            titlesData: _titlesData(firstDate, maxX),
-            borderData: FlBorderData(show: false),
-            lineBarsData: [_lineBarData(spots)],
-            lineTouchData: _touchData(sorted),
-            extraLinesData: ExtraLinesData(
-              horizontalLines: [
-                HorizontalLine(
-                  y: averageScore
-                      .clamp(0, AppConstants.investmentVisibleMax)
-                      .toDouble(),
-                  color: Colors.white.withValues(alpha: 0.22),
-                  strokeWidth: 1,
-                  dashArray: [4, 5],
-                  label: HorizontalLineLabel(
-                    show: true,
-                    alignment: Alignment.topRight,
-                    padding: const EdgeInsets.only(right: 4, bottom: 3),
-                    style: TextStyle(
-                      color: AppColors.onBackgroundSecondary
-                          .withValues(alpha: 0.58),
-                      fontSize: 12,
-                    ),
-                    labelResolver: (_) => '平均',
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildChart(HeatTrendSummary summary) {
+    final maxY = AppConstants.investmentVisibleMax.toDouble();
+    final count = summary.sampleCount;
+    return ReportOrdinalLineChart(
+      key: const ValueKey('engagement-ordinal-chart'),
+      points: summary.points,
+      maxY: maxY,
+      // 滿分 90 的尺度：0、30、60、90 對齊投入度分段邊界。
+      yInterval: 30,
+      lineColor: AppColors.ctaStart,
+      dotColorOf: (_) => AppColors.ctaStart,
+      selectionScope: subjectId,
+      // 平均線的說明放圖註而不是圖內：圖內標籤會壓到靠近平均的資料點。
+      note: '虛線是這 $count 次平均。按分析先後排列，點一下查看那次資料。',
+      extraLinesData: ExtraLinesData(
+        horizontalLines: [
+          HorizontalLine(
+            // 虛線用未捨入的平均；主數字用 round()，差距不超過半分。
+            y: summary.averageScore.clamp(0, maxY).toDouble(),
+            color: Colors.white.withValues(alpha: 0.22),
+            strokeWidth: 1,
+            dashArray: [4, 5],
           ),
-          duration: MediaQuery.maybeOf(context)?.disableAnimations == true
-              ? Duration.zero
-              : AppMotion.chartReveal,
-          curve: Curves.easeOutCubic,
-        ),
+        ],
       ),
-    );
-  }
-
-  LineChartBarData _lineBarData(List<FlSpot> spots) {
-    return LineChartBarData(
-      spots: spots,
-      isCurved: true,
-      curveSmoothness: 0.3,
-      color: AppColors.ctaStart,
-      barWidth: 2.5,
-      isStrokeCapRound: true,
-      dotData: FlDotData(
-        show: true,
-        getDotPainter: (spot, percent, bar, index) {
-          final isLatest = index == spots.length - 1;
-          return FlDotCirclePainter(
-            radius: isLatest ? 5 : 3.5,
-            color: isLatest ? AppColors.ctaStart : Colors.white,
-            strokeWidth: 2,
-            strokeColor: isLatest ? Colors.white : AppColors.ctaStart,
-          );
-        },
-      ),
-      belowBarData: BarAreaData(
-        show: true,
-        color: AppColors.ctaStart.withValues(alpha: 0.1),
-      ),
-    );
-  }
-
-  FlGridData _gridData() {
-    return FlGridData(
-      show: true,
-      drawVerticalLine: false,
-      horizontalInterval: 30,
-      getDrawingHorizontalLine: (value) {
-        return FlLine(
-          color: Colors.white.withValues(alpha: 0.10),
-          strokeWidth: 0.8,
-        );
-      },
-    );
-  }
-
-  FlTitlesData _titlesData(DateTime firstDate, double maxX) {
-    final dateFormat = DateFormat('M/dd');
-    // 最多 ~5 個日期標籤，避免重疊。
-    final bottomInterval = maxX <= 4 ? 1.0 : (maxX / 4).ceilToDouble();
-
-    return FlTitlesData(
-      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-      leftTitles: AxisTitles(
-        sideTitles: SideTitles(
-          showTitles: true,
-          reservedSize: 32,
-          interval: 30,
-          getTitlesWidget: (value, meta) {
-            // 滿分 90 的尺度：只標 0、30、60、90（對齊投入度分段邊界）。
-            if (value % 30 != 0) return const SizedBox.shrink();
-            return Text(
-              value.toInt().toString(),
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
-              ),
-            );
-          },
-        ),
-      ),
-      bottomTitles: AxisTitles(
-        sideTitles: SideTitles(
-          showTitles: true,
-          reservedSize: 28,
-          interval: bottomInterval,
-          getTitlesWidget: (value, meta) {
-            if (value < 0 || value > maxX) return const SizedBox.shrink();
-            final date =
-                firstDate.add(Duration(minutes: (value * 24 * 60).round()));
-            return Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                dateFormat.format(date),
-                style: TextStyle(
-                  fontSize: 12,
-                  color:
-                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  LineTouchData _touchData(List<HeatTrendPoint> sorted) {
-    return LineTouchData(
-      touchTooltipData: LineTouchTooltipData(
-        getTooltipColor: (_) => AppColors.brandInk.withValues(alpha: 0.94),
-        tooltipRoundedRadius: 8,
-        getTooltipItems: (touchedSpots) {
-          return touchedSpots.map((spot) {
-            final idx = spot.spotIndex;
-            final point = idx < sorted.length ? sorted[idx] : null;
-            final name = point?.conversationName ?? '';
-            final date =
-                point == null ? '' : DateFormat('M/dd').format(point.date);
-            final suffix = name.trim().isEmpty ? date : '$name · $date';
-            return LineTooltipItem(
-              '${spot.y.toInt()}\n$suffix',
-              const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            );
-          }).toList();
-        },
-      ),
-      handleBuiltInTouches: true,
+      detailLinesOf: (point, index, axes) => [
+        '投入度 ${point.score} / ${AppConstants.investmentVisibleMax}',
+      ],
     );
   }
 }
