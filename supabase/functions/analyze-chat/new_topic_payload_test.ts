@@ -53,6 +53,34 @@ Deno.test("sanitize：合法 request 全欄位正規化", () => {
   assertEquals(result.request.expectedTier, "free");
 });
 
+Deno.test("sanitize：App 的串流 envelope 不改變業務內容與 requestId", () => {
+  const legacy = sanitizeNewTopicRequest(validBody());
+  for (const responseMode of ["stream", "legacy"]) {
+    const result = sanitizeNewTopicRequest({ ...validBody(), responseMode });
+    assertEquals(result, legacy);
+  }
+});
+
+Deno.test("sanitize：傳輸欄位仍嚴格驗證，不能放行任意模式或業務欄位", () => {
+  for (const responseMode of [null, "", "quick", "full", "batch", 1, {}]) {
+    assertFalse(sanitizeNewTopicRequest({ ...validBody(), responseMode }).ok);
+  }
+  assertFalse(
+    sanitizeNewTopicRequest({
+      ...validBody(),
+      responseMode: "stream",
+      userDraft: "不能繞過的欄位",
+    }).ok,
+  );
+  assertFalse(
+    sanitizeNewTopicRequest({
+      ...validBody(),
+      responseMode: "stream",
+      unexpected: true,
+    }).ok,
+  );
+});
+
 Deno.test("sanitize：requestId 必須是 canonical UUID", () => {
   for (const bad of [undefined, null, "", "not-a-uuid", 123]) {
     const body = validBody();

@@ -7,9 +7,7 @@
 // 鐵則：任何缺欄、空白、超長、重複、項數不是五、推薦不存在、raw JSON／
 // code fence 修不回，都必須整份失敗；不可丟掉壞題後照樣扣 3。
 
-import {
-  normalizeOutgoingMessageText,
-} from "./outgoing_message_text.ts";
+import { normalizeOutgoingMessageText } from "./outgoing_message_text.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 
 export const NEW_TOPIC_SITUATIONS = [
@@ -66,10 +64,11 @@ function blankToNull(value: unknown): string | null {
 // Request sanitize
 // ---------------------------------------------------------------------------
 
-/** new_topic request 唯一允許的業務欄位（§5.3 allowlist）。 */
+/** new_topic 業務欄位及已驗證的傳輸選項（§5.3 allowlist）。 */
 const NEW_TOPIC_ALLOWED_KEYS = new Set([
   "mode",
   "requestId",
+  "responseMode",
   "partnerSummary",
   "effectiveStyleContext",
   "situation",
@@ -128,6 +127,15 @@ export function sanitizeNewTopicRequest(
     // 已在上面顯式擋掉的禁用欄位若值為 null/[]/false 會落到這裡：一樣拒絕
     //（allowlist 之外的鍵不靜默忽略）。
     return { ok: false, reason: `unknown_field:${key}` };
+  }
+
+  // responseMode 是傳輸選項，不進業務 payload／input hash；切換串流
+  // 與 legacy 必須仍是同一筆請求。其他模式與未知欄位照常 fail closed。
+  if (
+    body.responseMode !== undefined && body.responseMode !== "stream" &&
+    body.responseMode !== "legacy"
+  ) {
+    return { ok: false, reason: "response_mode_invalid" };
   }
 
   const rawRequestId = body.requestId;
