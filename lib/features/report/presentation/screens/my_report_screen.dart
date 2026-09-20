@@ -123,7 +123,6 @@ class MyReportScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             ReportOverviewCard(
               averageScore: report.averageScore,
-              scoreDelta: report.scoreDelta,
               totalConversations: report.totalConversations,
               stageDistributions: report.stageDistributions,
             ),

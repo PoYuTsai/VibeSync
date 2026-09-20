@@ -1,0 +1,113 @@
+{
+ "source": "captured-r7-multi-hook.A.2.json",
+ "captured": "2026-09-18 真模型確認跑 tag g1g2-d4824177-confirm（候選 d4824177）；reviewer 裁定見 reviewer_judgment",
+ "reviewer_judgment": {
+  "blind_ids": [
+   "F055",
+   "P055"
+  ],
+  "style": "extend",
+  "quote": "玩過三年樂團才想聊打鼓 妳都打什麼類型",
+  "judgment": "主詞與銜接不清",
+  "reason": "句子不夠自然，但不是上一輪明確把「三年」斷言成她的經歷。"
+ },
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介有三個具體可接的線索（打鼓、調酒、貓），先確認想從哪個切入比較好",
+   "avoid": [
+    "不用強調自己也懂會計或數字類話題"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "在 livehouse 打鼓",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "晚上在 livehouse 打鼓"
+    }
+   },
+   {
+    "id": "cue_2",
+    "label": "最近在學調酒",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "最近在學調酒"
+    }
+   },
+   {
+    "id": "cue_3",
+    "label": "家裡養貓",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "家裡貓比我早睡"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "direction",
+   "text": "這三個線索你比較想從哪個聊起？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "打鼓／樂團",
+     "meaning": "pick_cue",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "調酒",
+     "meaning": "pick_cue",
+     "cueId": "cue_2"
+    },
+    {
+     "id": "option_3",
+     "label": "貓",
+     "meaning": "pick_cue",
+     "cueId": "cue_3"
+    }
+   ]
+  },
+  "profileDigest": "自介提到白天在會計事務所工作，晚上在 livehouse 打鼓，最近在學調酒，家裡有貓。興趣欄列出鼓、調酒、貓。認識場景為交友軟體，無其他圖片或欄位資訊。",
+  "profileText": {
+   "name": "測試丁",
+   "bio": "白天在會計事務所對數字\n晚上在 livehouse 打鼓\n最近在學調酒 家裡貓比我早睡",
+   "interests": "鼓、調酒、貓",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": "question_1",
+  "selectedOptionId": "option_1",
+  "freeText": "我對打鼓有興趣，我玩過三年樂團"
+ },
+ "raw": "{\n  \"materialReading\": [\n    { \"materialId\": \"material_1\", \"subject\": \"sender\", \"kind\": \"interest\", \"certainty\": \"stated\", \"quote\": \"想聊：在 livehouse 打鼓\" },\n    { \"materialId\": \"material_2\", \"subject\": \"sender\", \"kind\": \"raw_sentence\", \"certainty\": \"stated\", \"quote\": \"我對打鼓有興趣，我玩過三年樂團\" }\n  ],\n  \"openers\": {\n    \"extend\": \"玩過三年樂團才想聊打鼓 你都打什麼類型\",\n    \"resonate\": \"白天算數字晚上打鼓 反差蠻大的欸\",\n    \"tease\": \"貓比妳早睡 那妳打鼓牠吵得醒嗎\",\n    \"humor\": \"打鼓調酒貓 妳這是想開一間有貓的livehouse吧\",\n    \"coldRead\": \"感覺妳是那種靜不下來的類型\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接用他自己玩過三年樂團的背景延伸提問，話題他熟又能讓她順手回\",\n    \"resonate\": \"貼著她白天上班晚上打鼓的反差感，不冒充經驗只是點出來\",\n    \"tease\": \"抓自介裡貓比她早睡這個具體細節，輕輕玩一下不越界\",\n    \"humor\": \"把她三個興趣兜在一起做可愛的联想，貼資料不硬掰段子\",\n    \"coldRead\": \"從她同時上班打鼓學調酒的生活型態做輕觀察，可被反駁\"\n  },\n  \"rankedPicks\": [\"extend\", \"humor\", \"tease\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_2\", \"outputSpan\": \"玩過三年樂團才想聊打鼓\" },\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"才想聊打鼓 你都打什麼類型\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你自己玩過三年樂團、想從打鼓聊起的興趣\"\n    }\n  },\n  \"stretchLevels\": { \"extend\": \"within\", \"resonate\": \"within\", \"tease\": \"within\", \"humor\": \"within\", \"coldRead\": \"within\" },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退回興趣本身，改問她開始打鼓的契機，降低追問強度\",\n    \"ifShortPositive\": \"順著她回的細節追一句，例如打什麼曲風或多久了\",\n    \"ifEngaged\": \"可以自然帶到約她一起去看場表演或聊調酒配方\",\n    \"handoff\": \"她回覆後，把對話貼回分析，看是否能往約時間推進\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"在 livehouse 打鼓\", \"最近在學調酒\", \"家裡養貓\"],\n    \"avoidTopics\": [\"會計或數字相關話題\"],\n    \"openingStrategy\": \"她如果回打鼓細節就順著追問，若冷淡就換聊貓或調酒試水溫\"\n  }\n}",
+ "analyzeRaw": "{\n  \"wrongSurface\": null,\n  \"profileDigest\": \"自介提到白天在會計事務所工作，晚上在 livehouse 打鼓，最近在學調酒，家裡有貓。興趣欄列出鼓、調酒、貓。認識場景為交友軟體，無其他圖片或欄位資訊。\",\n  \"approach\": {\n    \"mode\": \"anchor_hooks\",\n    \"summary\": \"自介有三個具體可接的線索（打鼓、調酒、貓），先確認想從哪個切入比較好\",\n    \"avoid\": [\"不用強調自己也懂會計或數字類話題\"]\n  },\n  \"cues\": [\n    { \"id\": \"cue_1\", \"label\": \"在 livehouse 打鼓\", \"source\": \"profile_text\",\n      \"evidence\": { \"field\": \"bio\", \"quote\": \"晚上在 livehouse 打鼓\" } },\n    { \"id\": \"cue_2\", \"label\": \"最近在學調酒\", \"source\": \"profile_text\",\n      \"evidence\": { \"field\": \"bio\", \"quote\": \"最近在學調酒\" } },\n    { \"id\": \"cue_3\", \"label\": \"家裡養貓\", \"source\": \"profile_text\",\n      \"evidence\": { \"field\": \"bio\", \"quote\": \"家裡貓比我早睡\" } }\n  ],\n  \"question\": {\n    \"affects\": \"direction\",\n    \"text\": \"這三個線索你比較想從哪個聊起？\",\n    \"options\": [\n      { \"id\": \"option_1\", \"label\": \"打鼓／樂團\", \"meaning\": \"pick_cue\", \"cueId\": \"cue_1\" },\n      { \"id\": \"option_2\", \"label\": \"調酒\", \"meaning\": \"pick_cue\", \"cueId\": \"cue_2\" },\n      { \"id\": \"option_3\", \"label\": \"貓\", \"meaning\": \"pick_cue\", \"cueId\": \"cue_3\" }\n    ]\n  }\n}",
+ "captured_flags": [
+  {
+   "code": "sender_fact_transposed",
+   "severity": "hard",
+   "style": "extend",
+   "detail": "玩過"
+  }
+ ],
+ "profileInfo": {
+  "name": "測試丁",
+  "bio": "白天在會計事務所對數字\n晚上在 livehouse 打鼓\n最近在學調酒 家裡貓比我早睡",
+  "interests": "鼓、調酒、貓",
+  "meetingContext": "交友軟體"
+ }
+}

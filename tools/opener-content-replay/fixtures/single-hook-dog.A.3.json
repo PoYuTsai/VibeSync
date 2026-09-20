@@ -1,0 +1,65 @@
+{
+ "source": "single-hook-dog.A.3.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她自介只有一個明確線索：養了一隻不給摸的柴犬，可以從這裡開，但先確認你跟狗的關係，避免亂認同好。",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "不給摸的柴犬",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "養了一隻不給摸的柴犬"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟狗是什麼關係？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養狗",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養狗",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹提到養了一隻不給摸的柴犬。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試乙",
+   "bio": "養了一隻不給摸的柴犬",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": "question_1",
+  "selectedOptionId": "option_1",
+  "freeText": "我家狗散步都自己選路"
+ },
+ "raw": "{\n  \"materialReading\": [\n    { \"materialId\": \"material_1\", \"subject\": \"sender\", \"kind\": \"fact\", \"certainty\": \"stated\", \"quote\": \"我自己有養狗\" },\n    { \"materialId\": \"material_2\", \"subject\": \"sender\", \"kind\": \"raw_sentence\", \"certainty\": \"stated\", \"quote\": \"我家狗散步都自己選路\" }\n  ],\n  \"openers\": {\n    \"extend\": \"你家柴犬不給摸是全身都不行還是挑地方？\",\n    \"resonate\": \"我家狗散步也都自己選路\\n感覺柴犬更固執？\",\n    \"tease\": \"傲嬌成這樣是誰寵出來的\",\n    \"humor\": \"認養了主子還是狗啊這是\",\n    \"coldRead\": \"感覺妳被牠管比較多\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接住不給摸這個線索，順著問細節讓她好回答，也符合先確認關係再互動的方向\",\n    \"resonate\": \"用自己養狗且狗會自己選路的原句共感，不硬套認同，保留原句主體與程度\",\n    \"tease\": \"輕輕戳柴犬不給摸的傲嬌感，不涉及外表或身材，貼著她提供的細節\",\n    \"humor\": \"用主子狗的反差製造輕鬆感，不編造沒提過的事\",\n    \"coldRead\": \"從不給摸推一個很輕的觀察，留空間讓她反駁或補充\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"resonate\", \"humor\", \"coldRead\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"cue_1\", \"outputSpan\": \"不給摸是全身都不行還是挑地方\" },\n      { \"style\": \"resonate\", \"materialId\": \"material_1\", \"outputSpan\": \"我家狗散步也都自己選路\" },\n      { \"style\": \"resonate\", \"materialId\": \"material_2\", \"outputSpan\": \"我家狗散步也都自己選路\" },\n      { \"style\": \"tease\", \"materialId\": \"cue_1\", \"outputSpan\": \"傲嬌成這樣\" },\n      { \"style\": \"humor\", \"materialId\": \"cue_1\", \"outputSpan\": \"認養了主子還是狗啊這是\" },\n      { \"style\": \"coldRead\", \"materialId\": \"cue_1\", \"outputSpan\": \"感覺妳被牠管比較多\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是妳自介裡柴犬不給摸的細節，想知道具體情況\",\n      \"resonate\": \"這句用你自己養狗、狗會自己選路的經驗，呼應她可能也遇到的狗狗主見\",\n      \"tease\": \"這句輕輕點出不給摸的傲嬌感，維持輕鬆調性\",\n      \"humor\": \"這句用主子狗的反差做輕鬆調侃，不涉及她本人\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退回單純問狗的品種或個性，不追問感情或深聊\",\n    \"ifShortPositive\": \"順著她回答的細節（例如不給摸的情境）再多問一句具體經驗\",\n    \"ifEngaged\": \"可以聊到彼此養狗的差異或趣事，慢慢帶到約線下遛狗的可能\",\n    \"handoff\": \"當她開始主動描述柴犬互動細節或反問用戶時，把回覆貼回對話分析\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"不給摸的柴犬\"],\n    \"avoidTopics\": [\"外貌、身材評論\", \"感情狀態猜測\", \"篩選型抱怨內容（無此項）\"],\n    \"openingStrategy\": \"先用具體問題讓她描述柴犬的個性或互動，再依她回答的細節延伸話題\"\n  }\n}",
+ "captured_flags": []
+}

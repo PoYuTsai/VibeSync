@@ -1,12 +1,12 @@
 // test/widget/features/learning/learning_screen_ebook_hierarchy_test.dart
 //
 // 學習頁階層回歸：
-//   Practice Hero → 聊天測驗 → 互動電子書 → 短篇實戰文章 → 24 篇文章 grid。
+//   Practice Hero → 聊天測驗 → 互動電子書 → 短篇實戰文章 → 30 篇文章 grid。
 //
 // 2026-07-31 起測驗插在電子書之前（§11 決定 1）：電子書是讀的，測驗是練的。
 //
 // 重點是 quota 提示只出現在文章區（電子書不消耗文章額度），
-// 以及既有 24 篇文章與 article id 沒有被電子書改動。
+// 以及既有文章與 article id 沒有被電子書改動（2026-09-16 教材改寫批：24 → 30 篇）。
 //
 // 2026-08-09 學習頁減長批：
 //   - 書架改單元群組收合。無進度＝展開第一單元；有進度＝全收合＋繼續閱讀卡。
@@ -207,10 +207,10 @@ void main() {
     expect(find.textContaining('免費閱讀'), findsNothing);
   });
 
-  testWidgets('既有 24 篇文章仍然渲染，且電子書沒有混進 articles', (tester) async {
+  testWidgets('既有 30 篇文章仍然渲染，且電子書沒有混進 articles', (tester) async {
     await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
 
-    expect(articles, hasLength(24));
+    expect(articles, hasLength(30));
 
     // 電子書 id 絕不能出現在 articles 的 id space 裡。
     final articleIds = articles.map((article) => article.id).toSet();
@@ -285,7 +285,7 @@ void main() {
     expect(find.text('內核 · 吸引怎麼發生'), findsNothing);
   });
 
-  testWidgets('分類 chips 過濾文章 grid，全部＝24 篇', (tester) async {
+  testWidgets('分類 chips 過濾文章 grid，全部＝30 篇', (tester) async {
     await pumpLearningScreen(tester, tier: SubscriptionTierHelper.free);
 
     await tester.scrollUntilVisible(
@@ -300,7 +300,7 @@ void main() {
       return (grid.delegate as SliverChildBuilderDelegate).childCount!;
     }
 
-    expect(gridCount(), 24);
+    expect(gridCount(), 30);
 
     // 從資料推導期望值，新增文章不必改這個測試。
     const category = '深度交流';
@@ -318,6 +318,6 @@ void main() {
 
     await tester.tap(find.byKey(learningArticleFilterAllKey));
     await tester.pumpAndSettle();
-    expect(gridCount(), 24);
+    expect(gridCount(), 30);
   });
 }

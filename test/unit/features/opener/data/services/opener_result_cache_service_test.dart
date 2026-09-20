@@ -120,7 +120,7 @@ void main() {
     expect(drafts.first.title, 'Grace');
     expect(drafts.first.previewForAccess(isFreeUser: false), '2 張截圖');
     expect(drafts.first.previewForAccess(isFreeUser: true), '2 張截圖');
-    expect(drafts.first.result.bestOpenerText, 'First line');
+    expect(drafts.first.result!.bestOpenerText, 'First line');
     expect(service.loadLatest()!.bestOpenerText, 'First line');
   });
 
@@ -370,15 +370,15 @@ void main() {
 
     final stored = service.loadDraft(draft.id)!;
     expect(stored.continuedAt, isNotNull);
-    expect(stored.result.openers, {
+    expect(stored.result!.openers, {
       'extend': 'free line',
       'coldRead': 'locked line',
     });
-    expect(stored.result.recommendedPick, 'coldRead');
-    expect(stored.result.recommendedReason, 'locked reason');
+    expect(stored.result!.recommendedPick, 'coldRead');
+    expect(stored.result!.recommendedReason, 'locked reason');
 
     // Read-time gating still hides locked content from free users.
-    final visible = stored.result.visibleForAccess(isFreeUser: true);
+    final visible = stored.result!.visibleForAccess(isFreeUser: true);
     expect(visible.openers, {'extend': 'free line'});
     expect(visible.recommendedPick, 'extend');
     expect(visible.recommendedReason, isNull);

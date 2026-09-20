@@ -1,0 +1,65 @@
+{
+ "source": "she-said-vs-guess.B.1.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介線索明確，直接接滑板這件事就好",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "河堤練滑板",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "假日固定去河堤練滑板"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟滑板這件事的關係是？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己也玩滑板",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己也玩滑板",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介提到假日固定去河堤練滑板，是固定興趣活動。",
+  "profileText": {
+   "name": "測試辛",
+   "bio": "假日固定去河堤練滑板",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我猜她應該喜歡海邊，不確定"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"unknown\",\n      \"kind\": \"guess\",\n      \"certainty\": \"guess\",\n      \"quote\": \"我猜她應該喜歡海邊，不確定\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"河堤練滑板都練多久了\",\n    \"resonate\": \"假日固定練滑板很有紀律欸\",\n    \"tease\": \"滑板玩到都固定報到了嗎\",\n    \"humor\": \"所以妳是河堤的班長嗎\",\n    \"coldRead\": \"猜妳滑板應該練一陣子了\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接接她自介裡最明確的興趣，問法具體好回，符合用戶想聊滑板這件事\",\n    \"resonate\": \"不冒充自己也玩滑板，用理解她固定去練的角度接近\",\n    \"tease\": \"輕輕戳她自介裡「固定」這個細節，帶點玩笑但不越界\",\n    \"humor\": \"用可愛的說法點出她的固定行程，貼著資料不硬掰\",\n    \"coldRead\": \"用輕觀察猜她練了一段時間，留空間讓她自己補充\"\n  },\n  \"rankedPicks\": [\"extend\", \"coldRead\", \"tease\", \"humor\", \"resonate\"],\n  \"materialUse\": { \"references\": [], \"displayNotes\": {} },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退一步問她平常都在哪練或最近有沒有去，降低追問感\",\n    \"ifShortPositive\": \"順著她回答的內容問一個具體細節，比如招式或多久練一次\",\n    \"ifEngaged\": \"可以聊她怎麼開始玩滑板的，或約她哪天去河堤看她玩\",\n    \"handoff\": \"她回覆後把對話貼回來，再依她的反應調整下一句\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"河堤練滑板\"],\n    \"avoidTopics\": [\"海邊（用戶猜測未經證實，不宜當開場事實）\"],\n    \"openingStrategy\": \"先問滑板相關細節，等她回應後再自然延伸話題\"\n  }\n}\n```",
+ "captured_flags": []
+}

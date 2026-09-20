@@ -114,6 +114,7 @@ jobs:
           supabase/functions/practice-chat/moments_images_migration_postgres_test.ts
           supabase/functions/analyze-chat/stream_runs_decision_kind_migration_postgres_test.ts
           supabase/functions/analyze-chat/retention_cleanup_migration_postgres_test.ts
+          supabase/functions/analyze-chat/opener_two_stage_migration_postgres_test.ts
 
   ios-keyboard-compile:
     name: iOS keyboard compile

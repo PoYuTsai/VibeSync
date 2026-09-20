@@ -1,0 +1,66 @@
+{
+ "source": "synthetic-G2-okinawa.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "自介線索明確，直接接滑板這件事就好",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "河堤練滑板",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "假日固定去河堤練滑板"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟滑板這件事的關係是？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己也玩滑板",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己也玩滑板",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介提到假日固定去河堤練滑板，是固定興趣活動。",
+  "profileText": {
+   "name": "測試辛",
+   "bio": "假日固定去河堤練滑板",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "她上次聊天提過想去沖繩，還沒訂"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"recipient\",\n      \"kind\": \"prior_interaction\",\n      \"certainty\": \"stated\",\n      \"quote\": \"她上次聊天提過想去沖繩，還沒訂\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"已經訂好沖繩了 什麼時候飛\",\n    \"resonate\": \"假日固定練滑板 感覺很需要意志力\",\n    \"tease\": \"沖繩機票已經訂好了嗎？\",\n    \"humor\": \"說好要訂的沖繩機票咧\",\n    \"coldRead\": \"感覺妳是那種計畫都放在心裡的人\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"合成案例\",\n    \"resonate\": \"合成案例\",\n    \"tease\": \"合成案例\",\n    \"humor\": \"合成案例\",\n    \"coldRead\": \"合成案例\"\n  },\n  \"rankedPicks\": [\n    \"extend\",\n    \"tease\",\n    \"humor\",\n    \"coldRead\",\n    \"resonate\"\n  ],\n  \"materialUse\": {\n    \"references\": [],\n    \"displayNotes\": {}\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"停止追問細節，改問更輕鬆的開放式問題或暫緩\",\n    \"ifShortPositive\": \"順勢問她最近滑板練得如何或沖繩計畫進度\",\n    \"ifEngaged\": \"可以聊滑板契機或沖繩想去的地方，往約出去的方向鋪\",\n    \"handoff\": \"她回覆後把內容貼回對話分析，依她的反應決定下一句\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\n      \"河堤練滑板\",\n      \"沖繩旅遊計畫\"\n    ],\n    \"avoidTopics\": [],\n    \"openingStrategy\": \"先接她自介的滑板習慣或提過的沖繩計畫，讓她順手就能回\"\n  }\n}\n```",
+ "captured_flags": [],
+ "synthetic": "2026-09-18 G1/G2 合成正反例：snapshot 取自 she-said-vs-guess.A.1.json，openers 由本輪撰寫，不是模型捕獲"
+}

@@ -1,0 +1,69 @@
+{
+ "source": "family-fact.A.3.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她的自介只有一個明確線索：獸醫助理的工作，可以從這個切入，但先確認你跟動物／這行有沒有交集比較好開",
+   "avoid": [
+    "不用糾結她下班想睡這句，那只是描述累不是拒絕聊天"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "獸醫助理工作",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "在動物醫院當獸醫助理"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟動物或獸醫這行有關係嗎？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養寵物",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養寵物",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹：在動物醫院當獸醫助理，下班只想睡。認識場景：交友軟體。",
+  "profileText": {
+   "name": "測試庚",
+   "bio": "在動物醫院當獸醫助理，下班只想睡",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我妹下班完全不想聊工作，我猜她也是"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender_family\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我妹下班完全不想聊工作，我猜她也是\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"下班只想放空不聊工作吧\",\n    \"resonate\": \"忙完一天應該只想耍廢\",\n    \"tease\": \"動物們今天有沒有欺負妳\",\n    \"humor\": \"獸醫助理聽起來像動物翻譯官\",\n    \"coldRead\": \"感覺妳是那種下班就斷電的人\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"順著用戶猜的方向確認她下班的狀態，且完全不碰工作內容本身\",\n    \"resonate\": \"不假裝自己也懂獸醫助理的日常，改用理解她下班心情的角度\",\n    \"tease\": \"挑她自介裡「動物醫院」這個具體場景輕輕互動，不涉及工作本身\",\n    \"humor\": \"用可愛的角度玩獸醫助理這個身分，避開下班疲累的話題\",\n    \"coldRead\": \"從她自介的語氣做輕觀察，讓她可以回應或反駁\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"coldRead\", \"humor\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      {\n        \"style\": \"extend\",\n        \"materialId\": \"material_1\",\n        \"outputSpan\": \"下班只想放空不聊工作吧\"\n      }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你猜她下班也不想聊工作的想法，順勢確認\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"退一步問她平常下班都怎麼放鬆，降低壓力感\",\n    \"ifShortPositive\": \"順著她回的內容延伸一個輕鬆的小問題，保持節奏\",\n    \"ifEngaged\": \"可以自然帶到動物醫院日常裡有趣的觀察，讓她多分享\",\n    \"handoff\": \"她一有實質回覆內容就貼回對話分析，再決定下一步方向\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"獸醫助理工作場景本身的日常（不談工作內容/壓力）\"],\n    \"avoidTopics\": [\"工作本身的細節或抱怨\", \"下班很累這件事的延伸解讀\"],\n    \"openingStrategy\": \"先確認她下班想放空的狀態是不是真的不想聊天，而不是不想理你\"\n  }\n}\n```",
+ "captured_flags": [
+  "excluded_topic_used"
+ ]
+}

@@ -18,11 +18,15 @@ import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../../../core/services/supabase_service.dart';
+import '../../data/providers/opener_flow_controller.dart';
 import '../../data/providers/opener_providers.dart';
 import '../../data/services/opener_request_session.dart';
 import '../../domain/opener_access.dart';
+import '../../domain/opener_flow_models.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
+import '../widgets/opener_flow_sections.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
 import '../../../../shared/widgets/staggered_appear.dart';
@@ -170,6 +174,13 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   static String? profileAnalysisLabelFor(String key) =>
       profileAnalysisLabels[key];
 
+  /// 測試用：widget 測試無法碰到 screen 內建構的 OpenerService／owner，
+  /// 只能從這裡覆蓋（同 OpenerResultCacheService.debugDefaultOwnerIdOverride）。
+  @visibleForTesting
+  static OpenerService Function()? debugOpenerServiceFactory;
+  @visibleForTesting
+  static String? Function()? debugOwnerIdOverride;
+
   /// Card list is contract-driven, not payload driven（contract v2）：
   /// Free 依展示序放 extend/humor/tease 實卡（缺句跳過，舊 v1 單卡快取只有
   /// extend），再固定補 resonate/coldRead 兩張鎖卡升級 CTA；鎖卡 content
@@ -306,6 +317,18 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   // 扣費 idempotency（Batch 4#2）：失敗重試沿用同 requestId，成功才 rotate。
   final _requestSession = OpenerRequestIdSession();
+
+  // 兩段式（2026-09-17）：分析→補充→生成由 controller 管，screen 只反映狀態。
+  // 伺服器不支援時（舊 Edge／停用新局）controller 標 flowUnsupported，
+  // 這一頁退回下方既有的舊單段 _generate 路徑（只限尚未進入兩段式的局）。
+  late final OpenerFlowController _flow;
+  final _initialNoteController = TextEditingController();
+  final _freeTextController = TextEditingController();
+  OpenerQuotaExceededException? _handledQuotaError;
+
+  // R4a：舊單段草稿（flow=null）在兩段式畫面裡的回看狀態——結果只顯示、可複製
+  // 與回報，不觸發新分析或扣費；改任何對方資料就清掉。
+  bool _legacyDraftView = false;
   List<OpenerDraft> _drafts = const [];
   String? _currentDraftId;
   bool _suppressInputClear = false;
@@ -326,11 +349,128 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   @override
   void initState() {
     super.initState();
+    _flow = OpenerFlowController(
+      service: OpeningRescueScreen.debugOpenerServiceFactory?.call() ??
+          OpenerService(),
+      cache: _resultCacheService,
+      ownerIdResolver: () =>
+          OpeningRescueScreen.debugOwnerIdOverride?.call() ??
+          SupabaseService.currentUser?.id,
+      tierHintResolver: _resolveTierHint,
+      partnerId: widget.partnerId,
+    );
+    _flow.addListener(_onFlowChanged);
     _reloadDrafts();
     _prefillFromPartner();
     _nameController.addListener(_clearGeneratedResultOnInputChange);
     _bioController.addListener(_clearGeneratedResultOnInputChange);
     _interestsController.addListener(_clearGeneratedResultOnInputChange);
+    // 初稿字數／超長錯誤要即時反映（R4b）。
+    _initialNoteController.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  bool get _useTwoStage => !_flow.state.flowUnsupported;
+
+  /// controller 狀態→畫面欄位（_result／草稿 id／錯誤／回答欄）。
+  /// 帳號與版本檢查在 controller 內保護實際寫入，這裡只反映當下狀態。
+  void _onFlowChanged() {
+    if (!mounted) return;
+    final state = _flow.state;
+    final previousPhase = _lastFlowPhase;
+    _lastFlowPhase = state.phase;
+    if (_freeTextController.text != state.draft.freeText) {
+      _freeTextController.value = TextEditingValue(
+        text: state.draft.freeText,
+        selection: TextSelection.collapsed(offset: state.draft.freeText.length),
+      );
+    }
+    setState(() {
+      if (state.hasSession || state.generation != null) {
+        _legacyDraftView = false;
+        _result = state.generation?.result;
+        _currentDraftId = state.draftId;
+        _resultGeneratedPaid = state.generation?.result.access?.servedPaid ?? false;
+      }
+      _error = state.error;
+      _isGenerating = false;
+    });
+    final quotaError = state.quotaError;
+    if (quotaError != null && !identical(quotaError, _handledQuotaError)) {
+      _handledQuotaError = quotaError;
+      unawaited(_showPaywallAndRefresh());
+    }
+    if (state.phase == OpenerFlowPhase.result &&
+        previousPhase == OpenerFlowPhase.generating) {
+      _reloadDrafts();
+      _snapToResults();
+      unawaited(_refreshUsageAfterGeneration());
+    }
+  }
+
+  OpenerFlowPhase _lastFlowPhase = OpenerFlowPhase.editing;
+
+  Future<void> _refreshUsageAfterGeneration() async {
+    try {
+      await ref.read(subscriptionScreenRefreshProvider)();
+    } catch (_) {
+      // 結果已成功；用量 UI 下次刷新再補。
+    }
+  }
+
+  /// 額度／RevenueCat 提示（伺服器仍是權威；失敗不擋流程）。
+  Future<OpenerTierHint> _resolveTierHint() async {
+    final subscriptionSnapshot = ref.read(subscriptionProvider);
+    var expectedTier = subscriptionSnapshot.tier;
+    String? revenueCatAppUserId;
+    try {
+      final customerInfo = await RevenueCatService.getCustomerInfo();
+      final revenueCatTier =
+          RevenueCatService.getTierFromCustomerInfo(customerInfo);
+      revenueCatAppUserId =
+          RevenueCatService.getRevenueCatAppUserId(customerInfo);
+      if (SubscriptionTierHelper.rankOf(revenueCatTier) >
+          SubscriptionTierHelper.rankOf(expectedTier)) {
+        expectedTier = revenueCatTier;
+      }
+    } catch (e) {
+      debugPrint('OpeningRescueScreen RevenueCat hint failed: $e');
+    }
+    return OpenerTierHint(
+      expectedTier: expectedTier,
+      revenueCatAppUserId: revenueCatAppUserId,
+    );
+  }
+
+  /// 兩段式第一段：分析對方資料（免費、不回開場白）。
+  Future<void> _analyzeTwoStage() async {
+    if (_flow.state.isBusy) return;
+    final input = OpenerGenerationInput.fromActiveTab(
+      useScreenshotTab: _selectedTab == 0,
+      images: _images,
+      name: _nameController.text,
+      bio: _bioController.text,
+      interests: _interestsController.text,
+      meetingContext: _meetingContext,
+    );
+    if (!input.hasContent) {
+      setState(() => _error = '請上傳截圖或輸入對方資料');
+      return;
+    }
+    final consented = await AiDataSharingConsent.ensure(
+      context,
+      featureLabel: '開場救星',
+    );
+    if (!consented || !mounted) return;
+    FocusScope.of(context).unfocus();
+    await _flow.analyze(
+      input: input,
+      initialNote: _initialNoteController.text,
+      displayName: input.name,
+      sourceLabel: _selectedTab == 0 ? '截圖自介' : '手動輸入',
+      inputPreview: _buildDraftInputPreview(),
+    );
   }
 
   void _prefillFromPartner() {
@@ -352,15 +492,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }
 
   void _clearGeneratedResultOnInputChange() {
-    if (_suppressInputClear ||
-        !mounted ||
-        (_result == null && _error == null)) {
-      return;
-    }
+    if (_suppressInputClear || !mounted) return;
+    // 對方資料改變：原分析失效（F15），controller 回到編輯、進行中作業作廢。
+    _flow.resetForInputChange();
+    if (_result == null && _error == null && !_legacyDraftView) return;
     setState(() {
       _result = null;
       _error = null;
       _currentDraftId = null;
+      _legacyDraftView = false;
     });
   }
 
@@ -488,13 +628,60 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _suppressInputClear = false;
 
     if (!mounted) return;
+    final pendingAnalysis = draft.flow?.stage == OpenerDraftFlowStage.analyzing ? draft.flow?.pendingAnalysis : null;
+    if (pendingAnalysis != null && _useTwoStage) {
+      // R2a-2：分析沒回來就離頁的草稿：填回輸入欄位，沒截圖就用同 analysisRequestId 續分析；
+      // 有截圖無法原樣重送，等用戶重新上傳後自己按分析。
+      _suppressInputClear = true;
+      _nameController.text = pendingAnalysis.name ?? '';
+      _bioController.text = pendingAnalysis.bio ?? '';
+      _interestsController.text = pendingAnalysis.interests ?? '';
+      _initialNoteController.text = pendingAnalysis.initialNote ?? '';
+      _suppressInputClear = false;
+      setState(() {
+        _images = [];
+        _meetingContext = pendingAnalysis.meetingContext;
+        _selectedTab = 1;
+        _result = null;
+        _error = null;
+        _resultGeneratedPaid = false;
+        _legacyDraftView = false;
+        _currentDraftId = draft.id;
+      });
+      _flow.restoreDraft(draft);
+      if (_flow.hasPendingAnalysis && pendingAnalysis.imageCount == 0) {
+        unawaited(_flow.resumePendingAnalysis());
+      }
+      return;
+    }
+    if (draft.flow != null && _useTwoStage) {
+      // 兩段式草稿：回復分析、回答與結果；到期只能看、不能續生成；
+      // 停在 generating 的草稿（送出過、沒收到結果）用原 generationId 取回（R2a）。
+      setState(() {
+        _images = [];
+        _meetingContext = null;
+        _resultGeneratedPaid = false;
+        _legacyDraftView = false;
+      });
+      _flow.restoreDraft(draft);
+      if (_flow.hasPendingGeneration) {
+        unawaited(_flow.resumePendingGeneration());
+      }
+      _snapToResults();
+      return;
+    }
+    final legacyResult = draft.result;
+    if (legacyResult == null) return;
+    _flow.resetForInputChange();
     setState(() {
       _images = [];
       _meetingContext = null;
-      _result = draft.result;
+      _result = legacyResult;
       _resultGeneratedPaid = false;
       _currentDraftId = draft.id;
       _error = null;
+      // R4a：兩段式畫面也要能顯示舊單段草稿的結果。
+      _legacyDraftView = true;
     });
 
     _snapToResults();
@@ -536,6 +723,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     _nameController.dispose();
     _bioController.dispose();
     _interestsController.dispose();
+    _initialNoteController.dispose();
+    _freeTextController.dispose();
+    _flow.removeListener(_onFlowChanged);
+    _flow.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -869,12 +1060,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               BrandSegment(value: 1, label: '手動輸入'),
             ],
             selected: _selectedTab,
-            onChanged: (val) => setState(() {
-              _selectedTab = val;
-              _result = null;
-              _error = null;
-              _currentDraftId = null;
-            }),
+            onChanged: (val) {
+              _flow.resetForInputChange();
+              setState(() {
+                _selectedTab = val;
+                _result = null;
+                _error = null;
+                _currentDraftId = null;
+              });
+            },
           ),
           const SizedBox(height: 24),
 
@@ -889,6 +1083,245 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
           const SizedBox(height: 16),
 
+          ..._buildFlowSections(
+            subscription: subscription,
+            activeInput: activeInput,
+            hasGeneratedResult: hasGeneratedResult,
+          ),
+
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+
+    return scrollBody;
+  }
+
+
+  /// 兩段式（伺服器支援時）或舊單段（不支援時）的 CTA／進度／錯誤／結果區。
+  List<Widget> _buildFlowSections({
+    required SubscriptionState subscription,
+    required OpenerGenerationInput activeInput,
+    required bool hasGeneratedResult,
+  }) {
+    if (_useTwoStage) {
+      return _buildTwoStageSections(
+        subscription: subscription,
+        activeInput: activeInput,
+      );
+    }
+    return _buildLegacySections(
+      subscription: subscription,
+      activeInput: activeInput,
+      hasGeneratedResult: hasGeneratedResult,
+    );
+  }
+
+  List<Widget> _buildTwoStageSections({
+    required SubscriptionState subscription,
+    required OpenerGenerationInput activeInput,
+  }) {
+    final state = _flow.state;
+    final analysis = state.analysis;
+    final generation = state.generation;
+    final expired = state.phase == OpenerFlowPhase.expired;
+    final widgets = <Widget>[];
+
+    if (state.phase == OpenerFlowPhase.editing ||
+        state.phase == OpenerFlowPhase.analyzing) {
+      widgets.addAll([
+        _buildFieldLabel('這次想聊的內容（選填）'),
+        const SizedBox(height: 6),
+        // R4b：不用 formatter 靜默截斷；超長保留原文、顯示錯誤、按鈕禁用。
+        TextField(
+          key: const ValueKey('opener-initial-note'),
+          controller: _initialNoteController,
+          enabled: state.phase == OpenerFlowPhase.editing,
+          maxLines: 2,
+          cursorColor: AppColors.coachAccentBright,
+          style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+          decoration: brandInputDecoration(
+            hintText: '寫一句就好，例如你注意到的地方、你知道的事，或你本來想傳的話',
+            tone: BrandVisualTone.coach,
+          ),
+        ),
+        if (_initialNoteTooLong)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '${_initialNoteController.text.characters.length} / ${OpenerFlowContract.freeTextMaxGraphemes}，超過上限，已保留你的文字，請縮短後再分析',
+              key: const ValueKey('opener-initial-note-error'),
+              style: AppTypography.caption.copyWith(color: AppColors.error),
+            ),
+          ),
+        const SizedBox(height: 12),
+        Center(
+          child: Column(
+            children: [
+              Text(
+                '先分析不扣額度；按「生成回覆」第一次成功才扣 3 則，一局共 3 組',
+                key: const ValueKey('opener-analyze-hint'),
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (activeInput.images == null ||
+                  activeInput.images!.isEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '附上對方截圖，AI 看到的線索更具體，開場通常更準',
+                  style: AppTypography.caption.copyWith(
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.72),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        BrandPrimaryButton(
+          key: const ValueKey('opener-analyze-button'),
+          label: state.phase == OpenerFlowPhase.analyzing ? '分析中…' : '分析對方資料',
+          isLoading: false,
+          onPressed: state.phase == OpenerFlowPhase.analyzing ||
+                  _initialNoteTooLong
+              ? null
+              : _analyzeTwoStage,
+        ),
+        const SizedBox(height: 16),
+        if (state.phase == OpenerFlowPhase.analyzing)
+          state.progress.isNotEmpty
+              ? StreamProgressTicker(labels: state.progress)
+              : Center(
+                  child: OpenerGenerationProgress(
+                    phrases: OpenerGenerationProgress.phrasesFor(
+                      hasImages: activeInput.images?.isNotEmpty ?? false,
+                    ),
+                  ),
+                ),
+      ]);
+    }
+
+    if (analysis != null && !expired) {
+      widgets.addAll([
+        OpenerAnalysisCard(analysis: analysis),
+        const SizedBox(height: 12),
+      ]);
+    }
+
+    if (analysis != null &&
+        (state.phase == OpenerFlowPhase.contributing ||
+            state.phase == OpenerFlowPhase.generating)) {
+      widgets.addAll([
+        OpenerContributionCard(
+          analysis: analysis,
+          draft: state.draft,
+          freeTextController: _freeTextController,
+          onSelectOption: _flow.selectOption,
+          onFreeTextChanged: _flow.setFreeText,
+          onGenerate: () {
+            FocusScope.of(context).unfocus();
+            unawaited(_flow.generate(fresh: generation != null));
+          },
+          onSkip: () => unawaited(_flow.skipAndGenerate()),
+          generationsRemaining: state.generationsRemaining,
+          quotaCharged: analysis.quotaCharged,
+          busy: state.phase == OpenerFlowPhase.generating,
+          isRegenerating: generation != null,
+        ),
+        const SizedBox(height: 16),
+        if (state.phase == OpenerFlowPhase.generating)
+          state.progress.isNotEmpty
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    StreamProgressTicker(labels: state.progress),
+                    const SizedBox(height: 12),
+                    _OpenerStyleSkeletonRow(
+                      completedPhases: state.completedPhases,
+                    ),
+                  ],
+                )
+              : const Center(
+                  child: OpenerGenerationProgress(
+                    phrases: kOpenerManualProgressPhrases,
+                  ),
+                ),
+      ]);
+    }
+
+    if (_error != null) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            children: [
+              Text(
+                _error!,
+                key: const ValueKey('opener-flow-error'),
+                style: AppTypography.bodyMedium.copyWith(color: AppColors.error),
+                textAlign: TextAlign.center,
+              ),
+              if (state.failedOperation != null && !state.isBusy)
+                TextButton(
+                  key: const ValueKey('opener-retry-button'),
+                  onPressed: () => unawaited(_flow.retryLastOperation()),
+                  child: const Text('再試一次'),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (expired) {
+      widgets.addAll([
+        OpenerExpiredCard(
+          onReanalyze: () {
+            _flow.startNewSession();
+            unawaited(_analyzeTwoStage());
+          },
+        ),
+        const SizedBox(height: 16),
+      ]);
+    }
+
+    if (_result != null &&
+        (state.phase == OpenerFlowPhase.result || expired || _legacyDraftView)) {
+      widgets.addAll([
+        const SizedBox(height: 24),
+        if (_legacyDraftView)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '這是先前一般生成的開場草稿：可複製、可回報；想用新流程請改對方資料後重新分析。',
+              key: const ValueKey('opener-legacy-draft-notice'),
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+        _buildResults(subscription),
+      ]);
+    }
+
+    widgets.add(const SizedBox(height: 40));
+    return widgets;
+  }
+
+  bool get _initialNoteTooLong =>
+      OpenerFlowState.isTooLong(_initialNoteController.text);
+
+  List<Widget> _buildLegacySections({
+    required SubscriptionState subscription,
+    required OpenerGenerationInput activeInput,
+    required bool hasGeneratedResult,
+  }) {
+    return [
           // Cost indicator + 柔性提示
           // 統一 3 則扣費；附截圖效果通常較好（AI 看到對方一手資訊
           // 而非用戶口中的二手描述），但不強制 — 用戶可以視情況決定。
@@ -983,13 +1416,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             const SizedBox(height: 24),
             _buildResults(subscription),
           ],
-
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-
-    return scrollBody;
+      const SizedBox(height: 40),
+    ];
   }
 
   Widget _buildScreenshotTab() {
@@ -1016,12 +1444,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           surfaceColor: AppColors.coachSurface,
           surfaceBorderColor: AppColors.coachAccent.withValues(alpha: 0.28),
           accentColor: AppColors.coachAccentBright,
-          onImagesChanged: (images) => setState(() {
-            _images = images;
-            _result = null;
-            _error = null;
-            _currentDraftId = null;
-          }),
+          onImagesChanged: (images) {
+            _flow.resetForInputChange();
+            setState(() {
+              _images = images;
+              _result = null;
+              _error = null;
+              _currentDraftId = null;
+            });
+          },
           externalImages: _images,
         ),
       ],
@@ -1194,6 +1625,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 label: option,
                 selected: _meetingContext == option,
                 onTap: () {
+                  _flow.resetForInputChange();
                   setState(() {
                     _meetingContext = _meetingContext == option ? null : option;
                     _result = null;
@@ -1373,6 +1805,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
         ],
 
+        // 兩段式：推薦句下方的採用說明（只在來源核對 matched 時顯示）。
+        if (_useTwoStage && _flow.state.generation != null) ...[
+          const SizedBox(height: 8),
+          OpenerMaterialUseNote(
+            materialUse: _flow.state.generation!.materialUse,
+          ),
+        ],
+
         if (result.pioneerPlan != null && result.pioneerPlan!.isNotEmpty) ...[
           const SizedBox(height: 12),
           _buildPioneerPlanCard(result.pioneerPlan!),
@@ -1385,16 +1825,32 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
         const SizedBox(height: 16),
 
-        Center(
-          child: Text(
-            '想重做？先調整上方線索；畫面會清空這次結果後再生成。',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
-              height: 1.35,
+        if (_useTwoStage &&
+            _flow.state.generation != null &&
+            _flow.state.phase == OpenerFlowPhase.result)
+          OpenerRegenerateBar(
+            generationsRemaining: _flow.state.generationsRemaining,
+            includedGenerationCount:
+                _flow.state.analysis?.includedGenerationCount ??
+                    OpenerFlowContract.includedGenerationCount,
+            onAdjust: _flow.adjustContribution,
+            onRegenerate: () => unawaited(_flow.generate(fresh: true)),
+            onNewSession: () {
+              _flow.startNewSession();
+              unawaited(_analyzeTwoStage());
+            },
+          )
+        else
+          Center(
+            child: Text(
+              '想重做？先調整上方線索；畫面會清空這次結果後再生成。',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+                height: 1.35,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
-        ),
       ],
     );
   }

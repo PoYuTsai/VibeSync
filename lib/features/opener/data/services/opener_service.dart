@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/opener_access.dart';
+import '../../domain/opener_flow_models.dart';
 
 /// Must stay above the Edge opener pipeline deadline so a server-side timeout
 /// reaches the app before Dart abandons the response.
@@ -514,6 +515,246 @@ class OpenerService {
     }
   }
 
+  // ── 兩段式（2026-09-17）：先分析（免費）、再依補充生成 ─────────────────
+
+  /// 第一段：分析對方資料、最多問一題。不扣額度、不回開場白。
+  /// 同 [analysisRequestId] 重試取回同一份分析（伺服器快照）。
+  Future<OpenerAnalysis> analyzeProfileStreaming({
+    List<Uint8List>? images,
+    String? name,
+    String? bio,
+    String? interests,
+    String? meetingContext,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    required String analysisRequestId,
+    String? initialUserNote,
+    void Function(String label, String? phase)? onProgress,
+  }) async {
+    final body = _buildRequestBody(
+      images: images,
+      name: name,
+      bio: bio,
+      interests: interests,
+      meetingContext: meetingContext,
+      expectedTier: expectedTier,
+      revenueCatAppUserId: revenueCatAppUserId,
+      responseMode: 'stream',
+      mode: 'opener_analyze',
+    );
+    body['openerFlowVersion'] = OpenerFlowContract.flowVersion;
+    body['analysisRequestId'] = analysisRequestId;
+    final note = initialUserNote?.trim();
+    if (note != null && note.isNotEmpty) body['initialUserNote'] = note;
+
+    final data = await _postStreaming(
+      body: body,
+      eventPrefix: 'opener_analyze',
+      onProgress: onProgress,
+      flow: true,
+    );
+    final analysis = OpenerAnalysis.tryParse(data);
+    if (analysis == null || data['stage'] != 'analyze') {
+      throw const OpenerFlowException(
+        code: 'OPENER_ANALYSIS_INVALID',
+        message: '這次分析格式異常，請重新分析一次；本次不會扣額度。',
+        status: 502,
+        retryable: true,
+      );
+    }
+    return analysis;
+  }
+
+  /// 第二段：依伺服器快照與本次回答生成。同 [generationId] 重試取回同一組
+  /// 結果；改回答或不改回答重抽都要換新的 generationId。
+  Future<OpenerGeneration> generateFromAnalysisStreaming({
+    required String sessionId,
+    required int analysisRevision,
+    required String generationId,
+    required OpenerContribution contribution,
+    String? expectedTier,
+    String? revenueCatAppUserId,
+    void Function(String label, String? phase)? onProgress,
+  }) async {
+    final body = <String, dynamic>{
+      'mode': 'opener_generate',
+      'openerFlowVersion': OpenerFlowContract.flowVersion,
+      'openerContractVersion': OpenerAccessContract.contractVersion,
+      'responseMode': 'stream',
+      'sessionId': sessionId,
+      'analysisRevision': analysisRevision,
+      'generationId': generationId,
+      'userContribution': contribution.toJson(),
+      if (expectedTier != null && expectedTier.trim().isNotEmpty)
+        'expectedTier': expectedTier.trim(),
+      if (revenueCatAppUserId != null && revenueCatAppUserId.trim().isNotEmpty)
+        'revenueCatAppUserId': revenueCatAppUserId.trim(),
+    };
+    final data = await _postStreaming(
+      body: body,
+      eventPrefix: 'opener_generate',
+      onProgress: onProgress,
+      flow: true,
+    );
+    final generation = OpenerGeneration.fromServerBody(
+      data,
+      contribution: contribution,
+    );
+    if (generation == null || data['stage'] != 'generate') {
+      throw const OpenerFlowException(
+        code: 'OPENER_RESPONSE_INVALID',
+        message: '開場產生格式異常，請重新生成一次。',
+        status: 502,
+        retryable: true,
+      );
+    }
+    return generation;
+  }
+
+  /// 共用 NDJSON 傳輸：done 事件帶整包 body；非 200 或 legacy JSON 走
+  /// [_throwForErrorResponse]。[flow] 為 true 時錯誤先對映成 [OpenerFlowException]。
+  Future<Map<String, dynamic>> _postStreaming({
+    required Map<String, dynamic> body,
+    required String eventPrefix,
+    void Function(String label, String? phase)? onProgress,
+    bool flow = false,
+  }) async {
+    final accessToken = _accessTokenProvider();
+    if (accessToken == null) {
+      throw Exception('請重新登入後再使用開場救星。');
+    }
+    final client = _streamClientFactory();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${AppConfig.supabaseUrl}/functions/v1/analyze-chat'),
+      )
+        ..headers.addAll({
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          'apikey': AppConfig.supabaseAnonKey,
+        })
+        ..body = jsonEncode(body);
+
+      final response =
+          await client.send(request).timeout(_streamConnectTimeout);
+      final contentType = response.headers['content-type'] ?? '';
+
+      if (response.statusCode != 200 || !contentType.contains('x-ndjson')) {
+        final bodyText = await response.stream
+            .bytesToString()
+            .timeout(_streamIdleTimeout);
+        dynamic decoded;
+        try {
+          decoded = bodyText.isEmpty ? null : jsonDecode(bodyText);
+        } catch (_) {
+          decoded = null;
+        }
+        if (response.statusCode != 200) {
+          if (flow) _throwFlowError(response.statusCode, decoded);
+          _throwForErrorResponse(response.statusCode, decoded);
+        }
+        if (decoded is! Map<String, dynamic>) {
+          throw Exception('開場產生格式異常，請重新生成一次。');
+        }
+        return decoded;
+      }
+
+      await for (final rawLine in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(_streamIdleTimeout)) {
+        final line = rawLine.trim();
+        if (line.isEmpty) continue;
+        final dynamic decoded;
+        try {
+          decoded = jsonDecode(line);
+        } catch (_) {
+          continue;
+        }
+        if (decoded is! Map<String, dynamic>) continue;
+        final type = decoded['type'] as String?;
+        if (type == '$eventPrefix.started' || type == '$eventPrefix.progress') {
+          final label = decoded['label'];
+          if (label is String && label.trim().isNotEmpty) {
+            onProgress?.call(
+              label.trim(),
+              decoded['phase'] is String ? decoded['phase'] as String : null,
+            );
+          }
+        } else if (type == '$eventPrefix.done') {
+          final result = decoded['result'];
+          if (result is Map<String, dynamic>) return result;
+          throw Exception('開場產生格式異常，請重新生成一次。');
+        } else if (type == '$eventPrefix.error') {
+          final status = (decoded['status'] as num?)?.round() ?? 500;
+          if (flow) _throwFlowError(status, decoded);
+          _throwForErrorResponse(status, decoded);
+        }
+      }
+      throw Exception('連線中斷，請再試一次；同一筆請求重試不會重複扣額度。');
+    } on TimeoutException {
+      throw Exception('連線逾時，請再試一次；同一筆請求重試不會重複扣額度。');
+    } on http.ClientException {
+      throw Exception('連線中斷，請再試一次；同一筆請求重試不會重複扣額度。');
+    } finally {
+      client.close();
+    }
+  }
+
+  /// 兩段式錯誤對映：訂閱額度 429 仍是 [OpenerQuotaExceededException]（開
+  /// paywall）；其他帶 code 的錯誤→[OpenerFlowException]；400 卻沒有 code＝
+  /// 舊 Edge 不認識兩段式 mode → OPENER_FLOW_UNSUPPORTED（呼叫端退回舊單段，
+  /// 只限尚未進入兩段式的局）。
+  Never _throwFlowError(int status, dynamic errorData) {
+    if (errorData is Map) {
+      final code = errorData['code'];
+      if (status == 429 &&
+          code != OpenerFlowErrorCode.modelRateLimited &&
+          (errorData['monthlyLimit'] != null ||
+              errorData['dailyLimit'] != null)) {
+        _throwForErrorResponse(status, errorData);
+      }
+      final message = errorData['message']?.toString().trim();
+      if (code is String && code.isNotEmpty) {
+        final unsupported = code == 'ANALYZE_STREAMING_REQUIRED' ||
+            code == 'ANALYZE_RESPONSE_MODE_RETIRED' ||
+            code == 'INVALID_RESPONSE_MODE';
+        throw OpenerFlowException(
+          code: unsupported ? OpenerFlowErrorCode.flowUnsupported : code,
+          message: message == null || message.isEmpty
+              ? _nonQuotaErrorMessage(status, errorData)
+              : message,
+          status: status,
+          retryable: errorData['retryable'] == true,
+          retryAfterMs: (errorData['retryAfterMs'] as num?)?.round(),
+          surface: errorData['surface'] is String
+              ? errorData['surface'] as String
+              : null,
+        );
+      }
+      // 舊單段 opener 的 wrongSurface 422 沒有 code，但有 error 名稱。
+      if (errorData['error'] == OpenerFlowErrorCode.wrongSurface) {
+        throw OpenerFlowException(
+          code: OpenerFlowErrorCode.wrongSurface,
+          message: message ?? '這張截圖看不出對方的個人資料。',
+          status: status,
+          surface: errorData['surface'] is String
+              ? errorData['surface'] as String
+              : null,
+        );
+      }
+      if (status == 400 || status == 404 || status == 410) {
+        throw OpenerFlowException(
+          code: OpenerFlowErrorCode.flowUnsupported,
+          message: '這個版本先用一般生成。',
+          status: status,
+        );
+      }
+    }
+    _throwForErrorResponse(status, errorData);
+  }
+
   Map<String, dynamic> _buildRequestBody({
     List<Uint8List>? images,
     String? name,
@@ -525,6 +766,7 @@ class OpenerService {
     String? requestId,
     String? effectiveStyleContext,
     String? responseMode,
+    String mode = 'opener',
   }) {
     List<Map<String, dynamic>>? imageDataList;
     if (images != null && images.isNotEmpty) {
@@ -550,7 +792,7 @@ class OpenerService {
     addProfileField('meetingContext', meetingContext);
 
     return {
-      'mode': 'opener',
+      'mode': mode,
       'openerContractVersion': OpenerAccessContract.contractVersion,
       if (responseMode != null) 'responseMode': responseMode,
       if (imageDataList != null) 'images': imageDataList,

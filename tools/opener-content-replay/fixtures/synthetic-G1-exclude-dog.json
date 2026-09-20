@@ -1,0 +1,72 @@
+{
+ "source": "synthetic-G1-exclude-dog.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "她自介只有一個明確線索：養了一隻不給摸的柴犬，可以從這裡開，但先確認你跟狗的關係，避免亂認同好。",
+   "avoid": []
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "不給摸的柴犬",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "養了一隻不給摸的柴犬"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "sender_fact",
+   "text": "你跟狗是什麼關係？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "我自己有養狗",
+     "meaning": "assert_sender_fact",
+     "statement": "我自己有養狗",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "沒有，但有興趣",
+     "meaning": "curious_without_experience",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_3",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    },
+    {
+     "id": "option_4",
+     "label": "不想聊狗",
+     "meaning": "exclude_cue",
+     "cueId": "cue_1"
+    }
+   ]
+  },
+  "profileDigest": "自我介紹提到養了一隻不給摸的柴犬。認識場景為交友軟體。",
+  "profileText": {
+   "name": "測試乙",
+   "bio": "養了一隻不給摸的柴犬",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": "question_1",
+  "selectedOptionId": "option_4",
+  "freeText": null
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"restriction\",\n      \"certainty\": \"stated\",\n      \"quote\": \"不想聊\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"週末有沒有妳願意再去一次的晚餐店\",\n    \"resonate\": \"週末找晚餐店的人通常很會安排時間\",\n    \"tease\": \"晚餐店踩雷率高嗎\",\n    \"humor\": \"週五晚上妳是充電派還是放電派\",\n    \"coldRead\": \"感覺妳週末很少待在家\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"合成案例\",\n    \"resonate\": \"合成案例\",\n    \"tease\": \"合成案例\",\n    \"humor\": \"合成案例\",\n    \"coldRead\": \"合成案例\"\n  },\n  \"rankedPicks\": [\n    \"extend\",\n    \"resonate\",\n    \"coldRead\",\n    \"humor\",\n    \"tease\"\n  ],\n  \"materialUse\": {\n    \"references\": [],\n    \"displayNotes\": {}\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"先停在狗的話題，不追問，換個輕鬆問題試水溫\",\n    \"ifShortPositive\": \"順著她回的細節，問柴犬平常會不會做什麼特別的事\",\n    \"ifEngaged\": \"可以聊到養狗的日常或彼此對寵物的態度，再自然過渡到其他話題\",\n    \"handoff\": \"她一有實質回覆（不只是貼圖或單字）就把對話貼回分析，看下一步方向\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\n      \"柴犬不給摸這個細節\"\n    ],\n    \"avoidTopics\": [\n      \"外表、身材、感情狀態、收入等未提及資訊\"\n    ],\n    \"openingStrategy\": \"先從狗的話題自然開場，等她回應後再依內容決定要深入養狗經驗還是轉聊其他\"\n  }\n}\n```",
+ "captured_flags": [],
+ "synthetic": "2026-09-18 G1/G2 合成正反例：snapshot 取自 single-hook-dog.A.1.json，openers 由本輪撰寫，不是模型捕獲"
+}

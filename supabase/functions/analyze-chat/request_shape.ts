@@ -3,7 +3,8 @@
 // 額度、模型工作之前。
 //
 // 優先序完全鏡射既有 handler 的分支順序（fc8bbe84 行為基準）：
-//   new_topic > opener > recognize > my_message > optimize_message /
+//   new_topic > opener > opener_analyze > opener_generate > recognize >
+//   my_message > optimize_message /
 //   draft_with_images_analyze > plain_analyze
 //
 // 兩個容易踩錯的既有契約，改這裡等於改計費邊界：
@@ -17,6 +18,9 @@
 export type AnalyzeChatRequestShape =
   | { kind: "new_topic" }
   | { kind: "opener" }
+  // 兩段式（2026-09-17）：先分析（免費、不回開場白）、再依用戶補充生成。
+  | { kind: "opener_analyze" }
+  | { kind: "opener_generate" }
   | { kind: "recognize" }
   | { kind: "my_message" }
   | { kind: "optimize_message" }
@@ -55,6 +59,10 @@ export function classifyAnalyzeChatRequest(
     ? { kind: "new_topic" }
     : input.mode === "opener"
     ? { kind: "opener" }
+    : input.mode === "opener_analyze"
+    ? { kind: "opener_analyze" }
+    : input.mode === "opener_generate"
+    ? { kind: "opener_generate" }
     : recognizeOnlyRequested
     ? { kind: "recognize" }
     : input.analyzeMode === "my_message"

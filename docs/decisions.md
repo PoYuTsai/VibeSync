@@ -1130,3 +1130,27 @@
 - 四項修正都先寫在舊實作下會失敗的回歸測試，確認真的會失敗後才動正式程式碼，再確認測試轉綠（R1／R3／R4 已用還原正式碼＋跑測試的方式實測驗證；R2 的新函式沒有既有可失敗的舊實作可比對，改以純函式單元測試覆蓋決策邏輯）。
 
 **測試**: `test/unit/features/night_market/data/night_market_story_test.dart`（beat access 宣告＋isPremium／isEssential 陷阱守門）、`test/unit/features/subscription/data/subscription_sync_integrity_test.dart`（R1/R2 純函式：帳號一致性、單向採用 RevenueCat 較高檔位）、`test/widget/features/night_market/night_market_screen_test.dart`／`night_market_entry_card_test.dart`（Free／Starter／resolving／unavailable／解鎖重播／Starter 購買仍鎖／同步失敗但 RevenueCat 確認會持久解鎖／同步與 RevenueCat 都無法確認則維持鎖定／帳號中途切換不套用／中途離頁不炸／教練卡與 S3 完播前失去授權會重新擋／Completer 控制的完整回合重入競態）、`test/widget/screens/paywall_screen_test.dart`（比較表新列）。共用鷹架：`test/helpers/night_market_paywall_harness.dart`（帳號來源改用真的 `StreamController`，不再是側門 `StateProvider`）。
+
+## ADR #47 — [2026-09-17] 開場救星兩段式：先分析、再讓用戶補充、按生成才扣費
+
+**狀態**: 🟢 產品決策已採用（Eric 2026-09-17 交辦即採用附件 §17：分析不扣、首次可交付生成扣一般 3／既有條件 0、一局共三組、24h 固定保存），**實作待驗收** — 分支 `opener-two-stage`（基準 main `3134c513`）；第一～四輪獨立複核 BLOCK 後已修正、第五輪 `bf658fae` APPROVE_WITH_RISK（殘留 P2-R5-IO 另案，見複核包 §7 與仲裁佇列），產品程式凍結在 `bf658fae`；驗收：真 Postgres 並行 11/11 PASS（結案）、真模型一輪已跑（$3.634）**內容未過**→內容守門／推薦重排補修＋離線回放 97/97（複核包 §12–13），新 prompt 待一輪確認（估 $1.64，需另授權）；未 push、未部署、migration 未套 production；部署與付費真模型評估皆未授權。
+
+**背景**: 現行 `mode: opener` 一次取得分析與五句，中間沒有讓用戶提供「他這次真正想聊什麼、他知道哪件截圖沒有的事」的停點；共鳴卡的第一人稱事實只認「關於我」風格設定，而 App 端 `buildForOpener` 固定回 null。附件《以用戶自己的想法為核心的完整實作報告》（2026-09-12）提出兩段式；Eric 2026-09-17 交辦實作並補充決策（見交辦第二節）。
+
+**決定**（依交辦第二節）:
+
+1. **兩段流程**：`mode: opener_analyze`（免費，只回分析、最多三個線索、最多一題、`firstGenerationCost` 報價 0 或 3）→ 用戶補充／略過 → `mode: opener_generate`（依伺服器快照＋本次回答生成）。`openerFlowVersion=1` 與 `openerContractVersion=2` 分開；舊 `mode: opener`、新話題 tab、舊草稿相容。
+2. **三個識別碼**：`analysisRequestId`（按分析的操作，斷線重試沿用）、`sessionId`（伺服器發的一局）、`generationId`（按生成的操作；改回答或不改重抽都換新）。同 ID 不同輸入 RAISE `OPENER_OPERATION_INPUT_MISMATCH`。
+3. **收費**：分析不扣；首次成功取得可交付結果才扣一般 3 則（符合既有「無圖＋無對方實質資料」客觀條件扣 0；用戶補充不算對方資料；模型 `insufficientInfo` 不能決定免費）。一局共三組＝首次＋兩次主動生成；傳輸重試取回同組不重扣、不減次數；失敗不扣、不占組數。已扣費的同局剩餘生成不因其他功能用完額度再要求付費。
+4. **保存**：`opener_sessions`／`opener_generation_runs` 保存分析快照、回答與結果 24 小時（到期固定、不因重試延長），不存原始圖片、不存初稿原文（只記有無）；pg_cron 每小時清除；`delete-account` 顯式納入；RLS 開啟不建 policy。
+5. **限流**：兩階段共用既有 `opener` scope（3/分、30/日），不各自取得一份；重播不計次；模型限流不是額度不足、不導購。
+6. **原料規則**：選項語意白名單（`pick_cue`／`assert_sender_fact`／`curious_without_experience`／`exclude_cue`／`change_direction`／`no_preference`）；第二段不信任 App 傳回的分析；`freeText` 是目前完整版本，刪掉的初稿不從快照復活；本次想法獨立於「關於我」，不恢復自動灌入，不新增跨局記憶。新版路徑不套舊共鳴「我也＋設定引文」組句器與第一人稱清洗器；改以確定性檢核（沒有來源的自述、否定被反轉、排除話題被用＝硬錯誤，一次內容修正，仍錯就 502 不扣）＋ `materialUse.traceStatus`（matched 只代表來源紀錄對得上）。
+7. **權益**：分析與問題卡對 Free 完整可用；第二段先依方案篩可見卡，再從可見卡選推薦、用該卡自己的理由；鎖卡句子、理由、引用不出伺服器。
+8. **交付邊界**：串流只送進度，可複製內容只隨 `*.done`；結算（保存＋首次扣費＋成功數）在同一交易。
+9. **回退**：`OPENER_TWO_STAGE_ENABLED=false` 只停新局（第一段 503 `OPENER_FLOW_UNAVAILABLE`），既有局第二段照常；DB 能力標記 `opener_flow_contract_version()` 未就緒同樣只擋新局；App 收到不支援時退回舊單段（只限尚未進入兩段式的局，不會偷偷改走舊單段丟掉原料或重算費用）。
+
+**未決／待驗**: 真模型成對評估（附件 §14.3）與 iPhone 驗收未執行；真並行 Postgres 交錯交易未驗（本機無可用角色）；部署與付費評估需另取授權。
+
+**第一輪獨立複核修正（2026-09-17，BLOCK→修正）**: R1 同局工作資格＝唯一有效租約（含既有 run 接手／續租）、settle 租約 fencing、release 改 `released` 保留輸入身分、上限在所有會發起模型工作的 claim 路徑檢查；R2 分析完成／生成送出前即落地（stage＋送出快照），重試沿用送出快照，cache 寫入綁定操作起點帳號；R3 assert_sender_fact 的標籤／statement／線索一致性、初稿指紋決定第一段方向文字是否沿用、displayNote 綁每張卡；R4 舊單段草稿在兩段式畫面可回看、300 字不靜默截斷；R5 格式修復＋內容修正共用一次額外機會、usage 累加；R6 評估控制組改原樣舊單段、Free／paid 投影分開、開關只擋新局不擋同 ID 重播。
+
+**驗證**: 見交辦複核包（`docs/reviews/2026-09-17-opener-two-stage-review-packet.md`）。

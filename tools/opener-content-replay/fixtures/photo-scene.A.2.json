@@ -1,0 +1,44 @@
+{
+ "source": "photo-scene.A.2.json",
+ "snapshot": {
+  "approach": {
+   "mode": "anchor_hooks",
+   "summary": "可用的線索不多，但照片裡的河堤咖啡店和拿鐵是具體可接的點，另外「週末不在家」也能順著問她通常去哪",
+   "avoid": [
+    "不用猜她週末具體都在忙什麼"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "週末不在家",
+    "source": "profile_text",
+    "subject": "recipient",
+    "evidence": {
+     "field": "bio",
+     "quote": "週末不在家"
+    }
+   }
+  ],
+  "question": null,
+  "profileDigest": "自介：「週末不在家」。興趣欄放了一張照片：河堤旁的咖啡店，桌上一杯拿鐵。認識場景為 IG。",
+  "profileText": {
+   "name": "測試戊",
+   "bio": "自介只有一句：週末不在家",
+   "interests": "照片：河堤旁的咖啡店、一杯拿鐵",
+   "meetingContext": "IG"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我認得照片那家店，在河堤旁邊，我去過一次"
+ },
+ "raw": "{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我認得照片那家店，在河堤旁邊，我去過一次\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"河堤那間我也去過一次\\n妳都固定點拿鐵嗎\",\n    \"resonate\": \"週末不在家，都往河堤那邊跑嗎\",\n    \"tease\": \"拿鐵配河堤風景，妳很懂享受耶\",\n    \"humor\": \"認出這家店的瞬間有點得意😆\",\n    \"coldRead\": \"感覺妳是那種周末閒不下來的人\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接沿用他真的去過那家店的原句，順勢延伸成她好答的問題\",\n    \"resonate\": \"沒有更多可用的第一人稱經驗時，貼著自介的「週末不在家」去理解她的生活型態\",\n    \"tease\": \"輕輕點出照片裡拿鐵配河堤的畫面感，不評她本人\",\n    \"humor\": \"用「認出來」這件小事本身製造一點可愛的反應，不硬掰笑點\",\n    \"coldRead\": \"從自介一句話做最輕的觀察，留空間讓她自己補充或反駁\"\n  },\n  \"rankedPicks\": [\"extend\", \"resonate\", \"tease\", \"coldRead\", \"humor\"],\n  \"materialUse\": {\n    \"references\": [\n      {\n        \"style\": \"extend\",\n        \"materialId\": \"material_1\",\n        \"outputSpan\": \"河堤那間我也去過一次\"\n      }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你認得那家店、去過一次的事，順勢問她喝什麼\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"不追問細節，換輕鬆話題或暫停，避免顯得急切\",\n    \"ifShortPositive\": \"順著她提到的店家或飲料喜好，延伸聊河堤附近還有什麼\",\n    \"ifEngaged\": \"可以自然帶到約在那附近碰面喝咖啡的可能性\",\n    \"handoff\": \"她一有具體回覆（提到店、飲料、週末安排）就把內容貼回對話分析\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"河堤咖啡店\", \"拿鐵\", \"週末不在家\"],\n    \"avoidTopics\": [\"猜測她週末具體行程或去處\"],\n    \"openingStrategy\": \"她若簡短回應店名或飲料，就順著細節往下接，不用急著約時間\"\n  }\n}",
+ "captured_flags": []
+}

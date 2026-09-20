@@ -1,0 +1,61 @@
+{
+ "source": "filter-heavy.B.3.json",
+ "snapshot": {
+  "approach": {
+   "mode": "fresh_topic",
+   "summary": "她的自介幾乎都是篩選與提醒，沒有興趣或場景這類可接線索，直接從基本資訊（美容師、新北）另開輕鬆話題比較實在",
+   "avoid": [
+    "不用回應或評論她提到的擔憂與條件",
+    "不用特別強調自己情緒穩定或有耐心"
+   ]
+  },
+  "cues": [
+   {
+    "id": "cue_1",
+    "label": "美容師工作",
+    "source": "manual_field",
+    "subject": "recipient",
+    "evidence": {
+     "field": "meetingContext"
+    }
+   }
+  ],
+  "question": {
+   "id": "question_1",
+   "affects": "direction",
+   "text": "想從她的工作聊起，還是找別的輕鬆話題？",
+   "options": [
+    {
+     "id": "option_1",
+     "label": "聊美容師工作",
+     "meaning": "pick_cue",
+     "cueId": "cue_1"
+    },
+    {
+     "id": "option_2",
+     "label": "其實想聊別的",
+     "meaning": "change_direction"
+    }
+   ]
+  },
+  "profileDigest": "自介以篩選條件與提醒為主：外型是肉肉的、不希望被要求改變、不想遇到騙色騙財或玩玩的人、希望對方情緒穩定有耐心、盼望長久關係。職業為美容師，地區新北，興趣欄未填寫，無其他可見資訊或照片內容。",
+  "profileText": {
+   "name": "小可愛",
+   "bio": "本人是肉肉的～不能接受請不要滑右邊～\n滑了聊天又叫我改變…我就是長這樣…\n騙色騙財 真的先不要～\n麻煩可以多一點正常人嗎？\n真的不要玩玩～想約的麻煩左滑謝謝～有女朋友的也不要滑右邊～\n想找情緒穩定～有耐心的男生～可以長長久久",
+   "interests": "職業：美容師；地區：新北",
+   "meetingContext": "交友軟體"
+  },
+  "imageCount": 0,
+  "initialNoteProvided": false,
+  "initialNoteFingerprint": null,
+  "promptVersion": "opener-two-stage-prompt-v1"
+ },
+ "contribution": {
+  "state": "answered",
+  "questionId": null,
+  "selectedOptionId": null,
+  "freeText": "我最近在找板橋晚餐店，不想聊工作"
+ },
+ "raw": "```json\n{\n  \"materialReading\": [\n    {\n      \"materialId\": \"material_1\",\n      \"subject\": \"sender\",\n      \"kind\": \"raw_sentence\",\n      \"certainty\": \"stated\",\n      \"quote\": \"我最近在找板橋晚餐店，不想聊工作\"\n    }\n  ],\n  \"openers\": {\n    \"extend\": \"在找板橋晚餐店，妳附近有推薦嗎\",\n    \"resonate\": \"新北吃的選擇太多，反而更難選厚\",\n    \"tease\": \"美容師的私房口袋名單應該不少吧\",\n    \"humor\": \"選餐廳選到懷疑人生，救救我\",\n    \"coldRead\": \"感覺妳是那種有自己口袋名單的人\"\n  },\n  \"cardReasons\": {\n    \"extend\": \"直接延續用戶想找板橋晚餐店的需求，順勢問她意見，最自然好接\",\n    \"resonate\": \"沒有她本人的餐飲偏好可用，改用理解找餐廳很煩的處境代替冒充經驗\",\n    \"tease\": \"輕輕連結她美容師身份與吃飯話題，不涉及外表或條件\",\n    \"humor\": \"用選擇困難的自嘲帶出找餐廳這件事，輕鬆不刻意\",\n    \"coldRead\": \"從新北地區猜她可能對吃的有主見，給她反駁或補充的空間\"\n  },\n  \"rankedPicks\": [\"extend\", \"tease\", \"humor\", \"coldRead\", \"resonate\"],\n  \"materialUse\": {\n    \"references\": [\n      { \"style\": \"extend\", \"materialId\": \"material_1\", \"outputSpan\": \"在找板橋晚餐店\" }\n    ],\n    \"displayNotes\": {\n      \"extend\": \"這句接的是你正在找板橋晚餐店這件事，直接問她意見\"\n    }\n  },\n  \"stretchLevels\": {\n    \"extend\": \"within\",\n    \"resonate\": \"within\",\n    \"tease\": \"within\",\n    \"humor\": \"within\",\n    \"coldRead\": \"within\"\n  },\n  \"pioneerPlan\": {\n    \"ifCold\": \"不追問，換個更輕的生活話題或暫停\",\n    \"ifShortPositive\": \"順著她給的店名或口味偏好往下聊一兩句\",\n    \"ifEngaged\": \"可以約她一起吃看看她推薦的店，順勢往見面方向推進\",\n    \"handoff\": \"她回覆後把對話貼回分析，依她的反應調整下一步\"\n  },\n  \"profileAnalysis\": {\n    \"positiveHooks\": [\"美容師工作\", \"新北地區\"],\n    \"avoidTopics\": [\"外型/體型\", \"感情經驗與騙色騙財疑慮\", \"工作\"],\n    \"openingStrategy\": \"直接問她餐廳推薦，讓她用生活化的小事回答，不用回應她的條件與提醒\"\n  }\n}\n```",
+ "captured_flags": []
+}
