@@ -1,3 +1,4 @@
+import 'package:vibesync/shared/widgets/brand/opener_home_components.dart';
 // Route-level 整合測試（Codex 審查 I3，Eric 2026-07-24 拍板補）：
 // /opener 的 mode deep link 與 IndexedStack 模式切換的 state 保留。
 // Hermetic：Hive settingsBox（drafts）走 cache-service test 同款暫存目錄；
@@ -71,7 +72,7 @@ Future<void> _pump(WidgetTester t, String initialLocation) async {
 /// onstage＝IndexedStack 當前面板；另一側必須仍 mounted（offstage 找得到）。
 /// 2026-09-17 兩段式：opener body 的主 CTA 是「分析對方資料」（伺服器不支援時
 /// 才退回「生成開場白」），這裡以兩段式預設為準。
-const _openerCta = '分析對方資料';
+const _openerCta = '分析開場方向';
 
 void _expectOpenerActive(WidgetTester t) {
   expect(find.text(_openerCta), findsOneWidget);
@@ -117,37 +118,17 @@ void main() {
     final scaffold = t.widget<BrandScaffold>(find.byType(BrandScaffold));
     expect(scaffold.tone, BrandVisualTone.coach);
 
-    final segmentedControls = t
-        .widgetList<BrandSegmentedButton<dynamic>>(
-          find.byWidgetPredicate(
-            (widget) => widget is BrandSegmentedButton,
-          ),
-        )
-        .toList();
-    expect(segmentedControls, hasLength(2));
-    expect(
-      segmentedControls
-          .every((control) => control.tone == BrandVisualTone.coach),
-      isTrue,
-    );
+    expect(find.byType(OpenerModeControl<OpeningRescueMode>), findsOneWidget);
+    expect(find.byType(OpenerSourceTabs), findsOneWidget);
   });
 
   testWidgets('?mode=new_topic deep link 直接落在新話題面板', (t) async {
     await _pump(t, '/opener?mode=new_topic');
     _expectNewTopicActive(t);
     // 沒有 partner 時顯示選擇對象卡（空 partner list → 建立 CTA）。
-    expect(find.text('選擇對象'), findsOneWidget);
-    expect(find.text('先建立一位對象'), findsOneWidget);
-    final situationChips = t
-        .widgetList<BrandChoiceChip>(
-          find.byType(BrandChoiceChip),
-        )
-        .toList();
-    expect(situationChips, hasLength(4));
-    expect(
-      situationChips.every((chip) => chip.tone == BrandVisualTone.coach),
-      isTrue,
-    );
+    expect(find.text('先建立聊天對象'), findsOneWidget);
+    expect(find.byType(OpenerSituationGrid), findsOneWidget);
+    expect(t.widget<OpenerSituationGrid>(find.byType(OpenerSituationGrid)).options, hasLength(4));
     // 沒選對象前生成鍵必須 disabled（不可能送出請求）。
     final button = t.widget<ElevatedButton>(
       find.ancestor(
@@ -180,13 +161,8 @@ void main() {
     _expectNewTopicActive(t);
     await t.tap(find.text('聊著但卡住'));
     await t.pump();
-    ChoiceChip chipOf(String label) => t.widget<ChoiceChip>(
-          find.ancestor(
-            of: find.text(label, skipOffstage: false),
-            matching: find.byType(ChoiceChip, skipOffstage: false),
-          ),
-        );
-    expect(chipOf('聊著但卡住').selected, isTrue);
+    String? selected() => t.widget<OpenerSituationGrid>(find.byType(OpenerSituationGrid, skipOffstage: false)).selected;
+    expect(selected(), 'stuck');
 
     // 切回 opener：輸入文字與 tab 選擇必須原封保留。
     await t.tap(find.text('開場白'));
@@ -198,6 +174,6 @@ void main() {
     await t.tap(find.text('新話題'));
     await t.pump();
     _expectNewTopicActive(t);
-    expect(chipOf('聊著但卡住').selected, isTrue);
+    expect(selected(), 'stuck');
   });
 }

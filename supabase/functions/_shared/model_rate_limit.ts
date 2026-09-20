@@ -83,7 +83,18 @@ export type ModelRateLimitResult =
     reason: ModelRateLimitReason;
     payload: ReturnType<typeof buildModelRateLimitedPayload>;
   }
-  | { kind: "failOpen"; errorMessage: string };
+  | { kind: "failOpen"; errorMessage: string }
+  | { kind: "unavailable"; errorMessage: string; payload: ReturnType<typeof buildModelRateUnavailablePayload> };
+
+export function buildModelRateUnavailablePayload() {
+  return {
+    error: "Model rate limit unavailable",
+    code: "MODEL_RATE_LIMIT_UNAVAILABLE",
+    message: "服務暫時無法確認狀態，請稍後用同一筆請求重試。",
+    retryable: true,
+    shouldChargeQuota: false,
+  } as const;
+}
 
 /**
  * 共用限流入口：測試帳號 bypass、計 attempt 不計 success（超限 RAISE 令
@@ -95,15 +106,22 @@ export async function enforceModelRateLimit(opts: {
   userId: string;
   scope: ModelRateLimitScope;
   isTestAccount: boolean;
+  failClosed?: boolean;
 }): Promise<ModelRateLimitResult> {
   if (opts.isTestAccount) return { kind: "allowed" };
   const limits = MODEL_RATE_LIMITS[opts.scope];
-  const { error } = await opts.supabase.rpc("increment_model_usage", {
+  let error: { message?: string } | null;
+  try {
+    ({ error } = await opts.supabase.rpc("increment_model_usage", {
     p_user_id: opts.userId,
     p_scope: opts.scope,
     p_minute_limit: limits.perMinute,
     p_daily_limit: limits.perDay,
-  });
+    }));
+  } catch (caught) {
+    if (!opts.failClosed) throw caught;
+    error = { message: "rate limit transport failure" };
+  }
   if (!error) return { kind: "allowed" };
   const reason = classifyModelRateLimitError(error.message);
   if (reason) {
@@ -112,6 +130,9 @@ export async function enforceModelRateLimit(opts: {
       reason,
       payload: buildModelRateLimitedPayload(reason),
     };
+  }
+  if (opts.failClosed) {
+    return { kind: "unavailable", errorMessage: error.message ?? "unknown", payload: buildModelRateUnavailablePayload() };
   }
   return { kind: "failOpen", errorMessage: error.message ?? "unknown" };
 }

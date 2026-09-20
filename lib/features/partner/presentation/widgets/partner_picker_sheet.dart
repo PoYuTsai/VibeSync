@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../shared/widgets/local_avatar.dart';
+import '../../../../shared/widgets/brand/opener_home_components.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/partner.dart';
@@ -29,6 +31,7 @@ class PartnerPickerSheet extends ConsumerStatefulWidget {
   final void Function(Partner)? onSelected;
   final String? selectedId;
   final void Function(Partner)? onSelectedChanged;
+  final bool openerStyle;
 
   const PartnerPickerSheet({
     super.key,
@@ -36,6 +39,7 @@ class PartnerPickerSheet extends ConsumerStatefulWidget {
     this.onSelected,
     this.selectedId,
     this.onSelectedChanged,
+    this.openerStyle = false,
   });
 
   @override
@@ -65,23 +69,44 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (widget.openerStyle)
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
+              child: Row(children: [
+                const Expanded(
+                    child: Text('選擇聊天對象', style: OpenerHomeStyle.title)),
+                IconButton(
+                    tooltip: '關閉選擇對象',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: OpenerHomeStyle.icon)),
+              ])),
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
             controller: _filterCtrl,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: '搜尋對象名稱',
-            ),
+            style: widget.openerStyle
+                ? const TextStyle(fontSize: 15, color: Colors.white)
+                : null,
+            decoration: widget.openerStyle
+                ? OpenerHomeStyle.field('搜尋對象名稱').copyWith(
+                    prefixIcon: const Icon(Icons.search,
+                        color: OpenerHomeStyle.secondary))
+                : const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: '搜尋對象名稱',
+                  ),
             onChanged: (s) => setState(() => _query = s),
           ),
         ),
         if (candidates.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: Text(
-              '尚無其他對象，先回首頁建立後再操作',
+              widget.openerStyle && _query.isNotEmpty
+                  ? '沒有符合搜尋的對象，試試其他名稱。'
+                  : '尚無其他對象，先回首頁建立後再操作',
               textAlign: TextAlign.center,
+              style: widget.openerStyle ? OpenerHomeStyle.body : null,
             ),
           )
         else
@@ -95,7 +120,22 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
                         ? AppColors.glassBorder
                         : Colors.transparent,
                     child: ListTile(
-                      title: Text(p.name),
+                      selected: p.id == widget.selectedId,
+                      leading: widget.openerStyle
+                          ? ClipOval(
+                              child: SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: LocalAvatar(
+                                      path: p.avatarPath,
+                                      fallback: const Icon(Icons.person_outline,
+                                          color: OpenerHomeStyle.icon))))
+                          : null,
+                      title: Text(p.name,
+                          style: widget.openerStyle
+                              ? const TextStyle(
+                                  fontSize: 15, color: Colors.white)
+                              : null),
                       trailing: p.id == widget.selectedId
                           ? const Icon(Icons.check)
                           : null,

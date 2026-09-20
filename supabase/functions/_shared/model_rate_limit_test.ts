@@ -233,3 +233,16 @@ Deno.test("enforce - every scope in MODEL_RATE_LIMITS is accepted", async () => 
     assertEquals(fake.calls[0].args.p_scope, scope);
   }
 });
+
+Deno.test("C02/C09: failClosed is opt-in and carries no subscription/paywall keys", async () => {
+  const fake = fakeSupabase("DB unavailable");
+  const closed = await enforceModelRateLimit({ supabase: fake.client, userId: "u1", scope: "opener", isTestAccount: false, failClosed: true });
+  assertEquals(closed.kind, "unavailable");
+  if (closed.kind !== "unavailable") throw new Error("expected technical failure");
+  assertEquals(closed.payload.code, "MODEL_RATE_LIMIT_UNAVAILABLE");
+  assertEquals(closed.payload.retryable, true);
+  assertFalse("quotaNeeded" in closed.payload);
+  for (const scope of ["coach_chat", "practice_turn", "new_topic", "keyboard_reply"] as const) {
+    assertEquals((await enforceModelRateLimit({ supabase: fake.client, userId: "u1", scope, isTestAccount: false })).kind, "failOpen");
+  }
+});
