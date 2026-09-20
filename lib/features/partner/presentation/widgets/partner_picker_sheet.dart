@@ -118,11 +118,15 @@ class _PartnerPickerSheetState extends ConsumerState<PartnerPickerSheet> {
                 for (final p in candidates)
                   Material(
                     color: p.id == widget.selectedId
-                        ? AppColors.glassBorder
+                        ? widget.openerStyle
+                            ? OpenerHomeStyle.selected
+                            : AppColors.glassBorder
                         : Colors.transparent,
                     child: ListTile(
                       minTileHeight: widget.openerStyle ? 64 : null,
                       selected: p.id == widget.selectedId,
+                      selectedColor:
+                          widget.openerStyle ? OpenerHomeStyle.accent : null,
                       leading: widget.openerStyle
                           ? ClipOval(
                               child: SizedBox(

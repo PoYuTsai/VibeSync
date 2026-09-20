@@ -194,6 +194,34 @@ void main() {
     await ownerEvents.close();
   });
 
+  testWidgets('已選對象的深色選取列保有文字對比，不出現亮白底', (t) async {
+    partners = [_partner('p'), _partner('q')];
+    await _pump(t);
+    await t.tap(find.bySemanticsLabel('目前對象 合成對象 p，更換對象'));
+    await t.pumpAndSettle();
+    const proofLabel =
+        String.fromEnvironment('PICKER_PROOF_LABEL', defaultValue: 'after');
+    await _capture(t, 'topic-selected-picker-$proofLabel');
+
+    final selected = find.byWidgetPredicate((w) => w is ListTile && w.selected);
+    expect(selected, findsOneWidget);
+    final tile = t.widget<ListTile>(selected);
+    final material = t.widget<Material>(
+        find.ancestor(of: selected, matching: find.byType(Material)).first);
+    final label = tile.title! as Text;
+    final background = material.color!;
+    final foreground = label.style!.color!;
+    final contrast = (foreground.computeLuminance() + 0.05) /
+        (background.computeLuminance() + 0.05);
+    expect(background.computeLuminance(), lessThan(0.1),
+        reason: '深色底的選取列不能整條變成高亮度底色');
+    expect(contrast, greaterThanOrEqualTo(4.5), reason: '白字與選取背景必須仍可清楚閱讀');
+    expect(tile.trailing, isA<Icon>());
+    await t.tap(find.text('合成對象 q'));
+    await t.pumpAndSettle();
+    expect(find.bySemanticsLabel('目前對象 合成對象 q，更換對象'), findsOneWidget);
+  });
+
   testWidgets('NT-01/02/04/06 select, search empty and invalid ID are distinct',
       (t) async {
     await _pump(t, selected: 'foreign-id');
