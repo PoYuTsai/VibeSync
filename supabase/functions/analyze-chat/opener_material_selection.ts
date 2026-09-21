@@ -10,11 +10,19 @@ export interface OmittedOpenerMaterial {
   materialId: string;
   quote: string;
   reason: OmitReason;
+  reasons?: OmitReason[];
 }
 export interface OpenerMaterialSelection {
   eligible: OpenerMaterialSet;
   omitted: OmittedOpenerMaterial[];
   valid: boolean;
+}
+
+interface UsageRange {
+  start: number;
+  end: number;
+  action: "use" | "omit";
+  reasons: OmitReason[];
 }
 
 const separatorsOnly = (text: string) => /^[\s\p{P}]*$/u.test(text);
@@ -51,8 +59,7 @@ export function resolveOpenerMaterialSelection(
       continue;
     }
     let cursor = 0;
-    const kept: string[] = [];
-    const excluded: OmittedOpenerMaterial[] = [];
+    const ranges: UsageRange[] = [];
     for (const part of item.usage) {
       if (!isPlainObject(part) || typeof part.quote !== "string" || !compact(part.quote)) {
         valid = false;
@@ -64,18 +71,37 @@ export function resolveOpenerMaterialSelection(
         break;
       }
       cursor = start + part.quote.length;
-      if (part.action === "use") {
-        kept.push(part.quote);
-      } else if (part.action === "omit" && OMIT_REASONS.includes(part.reason as OmitReason) && material.kind !== "restriction") {
-        excluded.push({ materialId: material.id, quote: part.quote, reason: part.reason as OmitReason });
-      } else {
+      if (part.action !== "use" && !(part.action === "omit" && OMIT_REASONS.includes(part.reason as OmitReason) && material.kind !== "restriction")) {
         valid = false;
         break;
       }
+      // Canonicalize adjacent decisions against source positions. Splitting a
+      // sentence must not insert punctuation or weaken exact-omission checks.
+      const action = part.action as "use" | "omit";
+      const reason = action === "omit" ? part.reason as OmitReason : null;
+      const last = ranges.at(-1);
+      if (last?.action === action) {
+        last.end = cursor;
+        if (reason && !last.reasons.includes(reason)) last.reasons.push(reason);
+      } else {
+        ranges.push({ start, end: cursor, action, reasons: reason ? [reason] : [] });
+      }
     }
     if (!separatorsOnly(material.originalText.slice(cursor))) valid = false;
-    omitted.push(...excluded);
-    if (kept.length) materials.push({ ...material, originalText: kept.join("，") });
+    const kept = ranges.filter((range) => range.action === "use");
+    const excluded = ranges.filter((range) => range.action === "omit");
+    omitted.push(...excluded.map((range) => ({
+      materialId: material.id,
+      quote: material.originalText.slice(range.start, range.end),
+      reason: range.reasons[0],
+      reasons: range.reasons,
+    })));
+    if (!excluded.length) {
+      // No omission means the entire original material, including separators.
+      materials.push(material);
+    } else if (kept.length) {
+      materials.push({ ...material, originalText: kept.map((range) => material.originalText.slice(range.start, range.end)).join("，") });
+    }
   }
   // Invalid source decisions never grant an exemption from the original checks.
   if (!valid) return { eligible: source, omitted: [], valid: false };
@@ -93,8 +119,9 @@ export function resolveOpenerMaterialSelection(
   };
 }
 
-/** Exact reintroduction is a detectable contradiction. Paraphrased suitability
- * remains a semantic quality question and must be covered by model evaluations.
+/** Exact reintroduction is a detectable contradiction.
+ * Singleton omissions are checked too; splitting a quote grants no exemption.
+ * Paraphrased suitability remains a semantic quality question for model evaluations.
  */
 export function checkOmittedMaterialUse(
   textsByStyle: Record<string, string>,
@@ -104,7 +131,7 @@ export function checkOmittedMaterialUse(
   for (const [style, text] of Object.entries(textsByStyle)) {
     for (const item of selection.omitted) {
       const quote = compact(item.quote);
-      if (quote.length >= 2 && compact(text).includes(quote)) {
+      if (quote && compact(text).includes(quote)) {
         flags.push({ code: "omitted_material_used", severity: "hard", style, materialId: item.materialId });
         break;
       }

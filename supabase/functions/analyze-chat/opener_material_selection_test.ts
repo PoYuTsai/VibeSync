@@ -110,3 +110,39 @@ Deno.test("內容修正不能翻轉取捨；重新生成用最新原文驗證", 
   const stale = normalizeOpenerGenerateOutput(original, materials("想聊她獨旅的城市"), true);
   assert(!stale.ok && stale.reason === "invalid_material_usage");
 });
+
+Deno.test("主審反例：相鄰 use 保留原文與否定，混合素材也不插入標點", () => {
+  for (const [text, parts, expected] of [
+    ["我不想約她", [use("我不想"), use("約她")], "我不想約她"],
+    ["  我不想約她！", [use("我不想"), use("約她")], "  我不想約她！"],
+    ["腿很長，我不想約她", [omit("腿很長"), use("我不想"), use("約她")], "我不想約她"],
+  ] as const) {
+    const set = materials(text);
+    const source = set.materials[0].originalText;
+    const selection = resolveOpenerMaterialSelection(reading(source, [...parts]), set, true);
+    assert(selection.valid);
+    assertEquals(selection.eligible.materials[0].originalText, expected);
+    assertEquals(checkMaterialAdoption({ openers: { extend: "獨旅最喜歡哪個城市" }, materials: selection.eligible, visibleTypes: ["extend"], rankedPicks: ["extend"] }), []);
+  }
+});
+
+Deno.test("主審反例：連續 omit 按來源合併，拆單字與標點不能漏過精確重引", () => {
+  for (const text of ["腿很長，想聊她獨旅的城市", "腿，很，長，想聊她獨旅的城市"]) {
+    const selection = resolveOpenerMaterialSelection(reading(text, [omit("腿"), omit("很", "irrelevant"), omit("長"), use("想聊她獨旅的城市")]), materials(text), true);
+    assert(selection.valid);
+    assertEquals(selection.omitted.length, 1);
+    assertEquals(selection.omitted[0].quote, text.split("，想聊")[0]);
+    assertEquals(checkOmittedMaterialUse({ extend: "妳腿很長，獨旅最想再去的城市是哪裡" }, selection)[0].code, "omitted_material_used");
+    assertEquals(checkOmittedMaterialUse({ extend: "獨旅最想再去的城市是哪裡" }, selection), []);
+  }
+});
+
+Deno.test("剩餘單字 omit 同樣檢核，正常 use 單字仍保留", () => {
+  const selection = resolveOpenerMaterialSelection(reading("腿，想聊狗", [omit("腿"), use("想聊狗")]), materials("腿，想聊狗"), true);
+  assert(selection.valid);
+  assertEquals(checkOmittedMaterialUse({ extend: "妳的狗腿很長嗎" }, selection)[0].code, "omitted_material_used");
+  assertEquals(checkOmittedMaterialUse({ extend: "妳的狗喜歡散步嗎" }, selection), []);
+  const allUse = resolveOpenerMaterialSelection(reading("狗", [use("狗")]), materials("狗"), true);
+  assert(allUse.valid);
+  assertEquals(allUse.eligible.materials[0].originalText, "狗");
+});

@@ -1101,3 +1101,42 @@ Deno.test("C03/C05/C08: production invoker fallback leaves no fourth call for an
     assertEquals(attempts.rows[0].day_count, 1, "failed provider work retains limiter attempt");
   } finally { globalThis.fetch = oldFetch; await h.db.close(); }
 });
+
+Deno.test("主審反例：相鄰 use 的不想約她直接交付，不被改成正向邀約要求", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    h.script.generate = { ...GENERATE_JSON, materialReading: [{ ...useReading("我不想約她", "material_1"), usage: [{ quote: "我不想", action: "use" }, { quote: "約她", action: "use" }] }], materialUse: { references: [], displayNotes: {} } };
+    h.script.correction = h.script.generate;
+    const response = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: "我不想約她" })));
+    assertEquals(response.status, 200);
+    assertEquals(h.script.calls.length, 2, "分析一次、生成一次，不需要內容修正");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+  } finally { await h.db.close(); }
+});
+
+Deno.test("主審反例：拆單字 omit 的原句回流必須修正，仍未清除則不結算", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    const text = "腿很長，想聊她的狗散步";
+    const bad = { ...GENERATE_JSON,
+      materialReading: [{ ...useReading(text, "material_1"), usage: [
+        { quote: "腿", action: "omit", reason: "unsuitable_opener" },
+        { quote: "很", action: "omit", reason: "unsuitable_opener" },
+        { quote: "長", action: "omit", reason: "unsuitable_opener" },
+        { quote: "想聊她的狗散步", action: "use" },
+      ] }],
+      openers: { ...GENERATE_JSON.openers, extend: "妳腿很長，牠散步會自己選路嗎" },
+      materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "散步" }], displayNotes: {} },
+    };
+    h.script.generate = bad;
+    h.script.correction = bad;
+    const response = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text })));
+    assertEquals(response.status, 502);
+    assertEquals((await json(response)).code, "OPENER_CONTENT_CONFLICT");
+    assertEquals(h.script.calls.length, 3, "只使用既有的一次內容修正");
+    assert(String(h.script.calls[2].messages[0].content).includes("句子或說明帶回已略過的素材"));
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+  } finally { await h.db.close(); }
+});
