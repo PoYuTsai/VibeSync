@@ -375,11 +375,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       setState(() {
         _result = result;
         _confirmPending = false;
+        _preparing = false;
+        _isGenerating = false;
       });
       _snapToResults();
-      try {
-        await ref.read(subscriptionScreenRefreshProvider)();
-      } catch (_) {/* Keep delivered result. */}
+      unawaited(_refreshUsageAfterResult());
     } on NewTopicQuotaExceededException catch (e) {
       if (!current()) return;
       setState(() => _error = e.message);
@@ -410,6 +410,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           _isGenerating = false;
         });
       }
+    }
+  }
+
+  Future<void> _refreshUsageAfterResult() async {
+    try {
+      await ref.read(subscriptionScreenRefreshProvider)();
+    } catch (_) {
+      /* A delivered result does not depend on subscription refresh. */
     }
   }
 
@@ -589,10 +597,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           StreamProgressTicker(labels: _streamProgress),
-                          const SizedBox(height: 12),
-                          _TopicSkeletonList(
-                            completedPhases: _completedStreamPhases,
-                          ),
+                          if (!_completedStreamPhases
+                              .contains('finalizing')) ...[
+                            const SizedBox(height: 12),
+                            _TopicSkeletonList(
+                              enteredPhases: _completedStreamPhases,
+                            ),
+                          ],
                         ],
                       )
                     : const Center(
@@ -892,20 +903,19 @@ class NewTopicResultsSection extends StatelessWidget {
   }
 }
 
-/// v2 串流骨架卡列（2026-08-19）：五個新話題的骨架，server 每寫完一題
-/// （topic_n 進度事件）就點亮一張；內容仍是 done 才落地（扣費前零外流）。
+/// 欄位開始事件只表示進入該題；正式內容只在 done 驗證成功後顯示。
 class _TopicSkeletonList extends StatelessWidget {
-  const _TopicSkeletonList({required this.completedPhases});
+  const _TopicSkeletonList({required this.enteredPhases});
 
-  final Set<String> completedPhases;
+  final Set<String> enteredPhases;
 
   @override
   Widget build(BuildContext context) {
-    Widget shimmerBar(double width, bool done) => Container(
+    Widget shimmerBar(double width, bool started) => Container(
           width: width,
           height: 10,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: done ? 0.16 : 0.07),
+            color: Colors.white.withValues(alpha: started ? 0.16 : 0.07),
             borderRadius: BorderRadius.circular(99),
           ),
         );
@@ -914,17 +924,18 @@ class _TopicSkeletonList extends StatelessWidget {
         for (var n = 1; n <= 5; n++) ...[
           if (n > 1) const SizedBox(height: 8),
           Builder(builder: (context) {
-            final done = completedPhases.contains('topic_$n');
+            final started = enteredPhases.contains('topic_$n');
             return AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
-              opacity: done ? 1 : 0.55,
+              opacity: started ? 1 : 0.55,
               child: BrandSurfaceCard(
                 key: ValueKey(
-                  'topic-skeleton-$n-${done ? 'done' : 'pending'}',
+                  'topic-skeleton-$n-${started ? 'started' : 'pending'}',
                 ),
                 tone: BrandVisualTone.coach,
-                borderColor:
-                    done ? AppColors.coachAccent.withValues(alpha: 0.55) : null,
+                borderColor: started
+                    ? AppColors.coachAccent.withValues(alpha: 0.55)
+                    : null,
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
@@ -940,15 +951,15 @@ class _TopicSkeletonList extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          shimmerBar(180, done),
+                          shimmerBar(180, started),
                           const SizedBox(height: 6),
-                          shimmerBar(120, done),
+                          shimmerBar(120, started),
                         ],
                       ),
                     ),
-                    done
+                    started
                         ? const Icon(
-                            Icons.check_circle_rounded,
+                            Icons.more_horiz_rounded,
                             size: 16,
                             color: AppColors.coachAccentBright,
                           )

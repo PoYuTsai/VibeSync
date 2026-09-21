@@ -32,6 +32,7 @@ class _Sub extends SubscriptionNotifier {
 class _FakeService extends NewTopicService {
   final calls = <Map<String, String?>>[];
   final replies = <Completer<NewTopicResult>>[];
+  void Function(String, String?)? progress;
   @override
   Future<NewTopicResult> generateTopicsStreaming(
       {required String requestId,
@@ -41,6 +42,7 @@ class _FakeService extends NewTopicService {
       String? expectedTier,
       String? revenueCatAppUserId,
       void Function(String, String?)? onProgress}) {
+    progress = onProgress;
     calls.add({
       'id': requestId,
       'summary': partnerSummary,
@@ -90,6 +92,7 @@ List<Partner> partners = [];
 String? style;
 bool blocked = false;
 bool refreshFails = false;
+Completer<void>? refreshGate;
 Future<String?> Function()? styleLoader;
 
 Future<ProviderContainer> _pump(WidgetTester t,
@@ -115,6 +118,7 @@ Future<ProviderContainer> _pump(WidgetTester t,
         subscriptionProvider.overrideWith((_) => _Sub()),
         subscriptionScreenRefreshProvider.overrideWith((_) => () async {
               if (refreshFails) throw StateError('offline');
+              await refreshGate?.future;
             }),
       ],
       child: RepaintBoundary(
@@ -177,6 +181,7 @@ void main() {
     style = null;
     blocked = false;
     refreshFails = false;
+    refreshGate = null;
     styleLoader = null;
     _active.value = true;
     ownerEvents = StreamController<String?>.broadcast();
@@ -192,6 +197,52 @@ void main() {
     NewTopicView.debugServiceFactory = null;
     AiDataSharingConsent.debugUserIdOverride = null;
     await ownerEvents.close();
+  });
+
+  testWidgets('正式結果立即結束生成，不等待額度刷新', (t) async {
+    style = '有效風格';
+    refreshGate = Completer<void>();
+    await _pump(t);
+    await _tapGenerate(t);
+    _service.progress?.call('新話題 1/5', 'topic_1');
+    await t.pump();
+    expect(
+        find.byKey(const ValueKey('stream-progress-ticker')), findsOneWidget);
+    _service.replies.single.complete(_result(_service.calls.single['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
+    expect(find.byKey(const ValueKey('stream-progress-ticker')), findsNothing);
+    expect(find.text('新話題 1'), findsNothing);
+    expect(_service.calls, hasLength(1));
+    await _capture(t, 'topic-result-quota-pending');
+    refreshGate!.completeError(StateError('refresh offline'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(t.takeException(), isNull);
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
+    expect(_service.calls, hasLength(1));
+  });
+
+  testWidgets('階段開始沒有完成勾勾，最後確認收起骨架但不提早交付', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    for (var n = 1; n <= 5; n++) {
+      _service.progress?.call('新話題 $n/5', 'topic_$n');
+    }
+    await t.pump();
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+    expect(find.text('新話題 1'), findsOneWidget);
+    _service.progress?.call('正在確認最後結果', 'finalizing');
+    await t.pump();
+    expect(find.text('新話題 1'), findsNothing);
+    expect(
+        find.byKey(const ValueKey('stream-progress-ticker')), findsOneWidget);
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsNothing);
+    expect(_button(t).onPressed, isNull);
+    _service.replies.single.complete(_result(_service.calls.single['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('stream-progress-ticker')), findsNothing);
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
   });
 
   testWidgets('已選對象的深色選取列保有文字對比，不出現亮白底', (t) async {

@@ -1349,10 +1349,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     StreamProgressTicker(labels: state.progress),
-                    const SizedBox(height: 12),
-                    _OpenerStyleSkeletonRow(
-                      completedPhases: state.completedPhases,
-                    ),
+                    if (!state.completedPhases.contains('finalizing')) ...[
+                      const SizedBox(height: 12),
+                      _OpenerStyleSkeletonRow(
+                        enteredPhases: state.completedPhases,
+                      ),
+                    ],
                   ],
                 )
               : const Center(
@@ -1496,7 +1498,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       const SizedBox(height: 16),
 
       // Loading state（2026-08-19 v2）：串流事件到達後顯示一行狀態＋
-      // 五張風格骨架卡（server 每寫完一種就點亮一張＝真串流體感）；
+      // 五張風格骨架卡（欄位開始事件只表示進入該階段）；
       // 事件還沒來（連線中）或 server 降級 legacy 時沿用本地輪播文案。
       // 文案凍結在 _generate 送出的 input，不讀 activeInput。
       if (_isGenerating)
@@ -1505,10 +1507,12 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   StreamProgressTicker(labels: _streamProgress),
-                  const SizedBox(height: 12),
-                  _OpenerStyleSkeletonRow(
-                    completedPhases: _completedStreamPhases,
-                  ),
+                  if (!_completedStreamPhases.contains('finalizing')) ...[
+                    const SizedBox(height: 12),
+                    _OpenerStyleSkeletonRow(
+                      enteredPhases: _completedStreamPhases,
+                    ),
+                  ],
                 ],
               )
             : Center(
@@ -2563,14 +2567,11 @@ class _CollapsibleBrandCardState extends State<_CollapsibleBrandCard> {
   }
 }
 
-/// v2 串流骨架卡列（2026-08-19）：生成一開始就把五種風格的骨架排出來，
-/// server 每寫完一種（`style_<type>` 進度事件）對應卡點亮打勾——「看著它
-/// 一張一張寫完」的體感，但內容仍是驗證＋扣費全過的 done 才落地，
-/// 扣費前零內容外流。
+/// 欄位開始事件只表示進入該風格；正式內容只在 done 驗證成功後顯示。
 class _OpenerStyleSkeletonRow extends StatelessWidget {
-  const _OpenerStyleSkeletonRow({required this.completedPhases});
+  const _OpenerStyleSkeletonRow({required this.enteredPhases});
 
-  final Set<String> completedPhases;
+  final Set<String> enteredPhases;
 
   @override
   Widget build(BuildContext context) {
@@ -2584,7 +2585,7 @@ class _OpenerStyleSkeletonRow extends StatelessWidget {
           final type = OpenerAccessContract.canonicalPaidOrder[index];
           return _SkeletonStyleCard(
             type: type,
-            done: completedPhases.contains('style_$type'),
+            started: enteredPhases.contains('style_$type'),
           );
         },
       ),
@@ -2593,10 +2594,10 @@ class _OpenerStyleSkeletonRow extends StatelessWidget {
 }
 
 class _SkeletonStyleCard extends StatelessWidget {
-  const _SkeletonStyleCard({required this.type, required this.done});
+  const _SkeletonStyleCard({required this.type, required this.started});
 
   final String type;
-  final bool done;
+  final bool started;
 
   @override
   Widget build(BuildContext context) {
@@ -2605,20 +2606,21 @@ class _SkeletonStyleCard extends StatelessWidget {
           width: width,
           height: 10,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: done ? 0.16 : 0.07),
+            color: Colors.white.withValues(alpha: started ? 0.16 : 0.07),
             borderRadius: BorderRadius.circular(99),
           ),
         );
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
-      opacity: done ? 1 : 0.55,
+      opacity: started ? 1 : 0.55,
       child: SizedBox(
         width: 148,
         child: BrandSurfaceCard(
-          key: ValueKey('opener-skeleton-$type-${done ? 'done' : 'pending'}'),
+          key: ValueKey(
+              'opener-skeleton-$type-${started ? 'started' : 'pending'}'),
           tone: BrandVisualTone.coach,
           borderColor:
-              done ? AppColors.coachAccent.withValues(alpha: 0.55) : null,
+              started ? AppColors.coachAccent.withValues(alpha: 0.55) : null,
           padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2639,9 +2641,9 @@ class _SkeletonStyleCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  done
+                  started
                       ? const Icon(
-                          Icons.check_circle_rounded,
+                          Icons.more_horiz_rounded,
                           size: 16,
                           color: AppColors.coachAccentBright,
                         )
