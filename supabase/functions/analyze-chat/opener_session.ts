@@ -4,7 +4,7 @@
 
 import { classifyQuotaRpcError } from "../_shared/quota.ts";
 import { isValidOpenerGenerateLedgerResult, type OpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
-import { type OpenerAnalysisSnapshot, type OpenerContribution, parseStoredOpenerAnalysisSnapshot } from "./opener_stage.ts";
+import { computeOpenerGenerationInputHash, type OpenerAnalysisSnapshot, type OpenerContribution, parseStoredOpenerAnalysisSnapshot } from "./opener_stage.ts";
 
 export const OPENER_FLOW_DB_CONTRACT_VERSION = "opener-two-stage-v1";
 
@@ -214,6 +214,55 @@ export type OpenerGenerationClaim =
   | { kind: "session_busy"; generationId: string | null; retryAfterMs: number }
   | { kind: "replay"; session: OpenerSessionView; result: OpenerGenerateLedgerResult }
   | { kind: "error"; failure: OpenerFlowRpcFailure };
+
+/** A prompt upgrade must not strand an already-paid result. This is a read-only
+ * compatibility path for completed runs, never an old-version claim/retry.
+ * The complete original request hash (including its prompt version) must match.
+ * Unknown versions, changed inputs, pending/released work and read failures all
+ * retain the original mismatch response; no model or settlement is attempted.
+ */
+export async function readPreviousPromptReplay(input: {
+  // Same service-role query client as the handler; both tables already grant SELECT.
+  // deno-lint-ignore no-explicit-any
+  supabase: any;
+  userId: string;
+  sessionId: string;
+  generationId: string;
+  analysisRevision: number;
+  contribution: OpenerContribution;
+  contractVersion: number;
+}): Promise<Extract<OpenerGenerationClaim, { kind: "replay" }> | null> {
+  try {
+    const { data: run, error: runError } = await input.supabase.from("opener_generation_runs")
+      .select("user_id,generation_id,session_id,state,input_hash,result_json")
+      .eq("user_id", input.userId).eq("generation_id", input.generationId)
+      .eq("session_id", input.sessionId).eq("state", "done").maybeSingle();
+    if (runError || !run || run.user_id !== input.userId || run.generation_id !== input.generationId ||
+      run.session_id !== input.sessionId || run.state !== "done" || !isValidOpenerGenerateLedgerResult(run.result_json)) return null;
+    const previousHash = await computeOpenerGenerationInputHash({
+      ...input, promptVersion: "opener-two-stage-prompt-v1",
+    });
+    if (run.input_hash !== previousHash) return null;
+    const { data: row, error: sessionError } = await input.supabase.from("opener_sessions")
+      .select("session_id,user_id,state,analysis_revision,analysis_json,expires_at,first_generation_cost,quota_charged,charged_amount,generations_used,contract_version")
+      .eq("user_id", input.userId).eq("session_id", input.sessionId).eq("state", "ready").maybeSingle();
+    if (sessionError || !row || row.user_id !== input.userId || row.session_id !== input.sessionId ||
+      row.state !== "ready" || row.analysis_revision !== input.analysisRevision ||
+      !(typeof row.expires_at === "string" && Date.parse(row.expires_at) > Date.now()) ||
+      !Number.isInteger(row.generations_used) || row.generations_used < 1 ||
+      !Number.isInteger(row.first_generation_cost) || row.first_generation_cost < 0 ||
+      !((row.quota_charged === false && row.charged_amount === 0) ||
+        (row.quota_charged === true && row.charged_amount === row.first_generation_cost))) return null;
+    const session = parseSessionView({
+      sessionId: row.session_id, analysisRevision: row.analysis_revision, analysisJson: row.analysis_json,
+      expiresAt: row.expires_at, firstGenerationCost: row.first_generation_cost, quotaCharged: row.quota_charged,
+      chargedAmount: row.charged_amount, generationsUsed: row.generations_used, contractVersion: row.contract_version,
+    });
+    return session ? { kind: "replay", session, result: run.result_json } : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function claimOpenerGeneration(input: {
   rpc: OpenerFlowRpc;

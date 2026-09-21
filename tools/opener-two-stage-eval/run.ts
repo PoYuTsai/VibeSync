@@ -48,6 +48,12 @@ import { type EvalContribution, type EvalScenario, legacySupplementFor, NOT_COVE
 import { legacyControlUserContent } from "./control.ts";
 import { normalizeOpenerPayload, filterOpenerPayloadForAllowedFeatures } from "../../supabase/functions/analyze-chat/opener_payload.ts";
 
+// New paired two-stage mode; the historical single-stage control remains intact.
+if (Deno.args.some(arg => arg === "--compare-naturalness" || arg.startsWith("--compare-naturalness="))) {
+  await (await import("./naturalness-run.ts")).main();
+  Deno.exit(0);
+}
+
 const MODEL = "claude-sonnet-5";
 
 function arg(name: string): string | null {

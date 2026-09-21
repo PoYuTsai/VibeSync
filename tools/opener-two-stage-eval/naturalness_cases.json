@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 1,
+  "format": "preparation_catalog_not_existing_runner_native",
+  "status": "NOT_RUN",
+  "description": "12 組人工評測情境，每組 A／B／略過；不是生成結果、不是已接入 runner 的資料契約。",
+  "purpose": "共同工程基準上的現行兩段式 prompt vs 自然度候選；隔離第二段與完整兩段流程分開。",
+  "visibility": {
+    "freeV2": [
+      "extend",
+      "humor",
+      "tease"
+    ],
+    "paid": [
+      "extend",
+      "resonate",
+      "tease",
+      "humor",
+      "coldRead"
+    ]
+  },
+  "scoringPolicy": {
+    "blindReasons": true,
+    "noGoldenSentenceMatching": true,
+    "hardFailuresSeparate": true,
+    "excludeConflictingGoalsFromPositiveIntentDenominator": true
+  },
+  "execution": {
+    "modelCallsMade": 0,
+    "realImageCallsMade": 0,
+    "autoPaidRunAllowed": false,
+    "needsExistingRunnerAdapter": true,
+    "needsActualImageCasesForFullVisualValidation": true
+  },
+  "cases": [
+    {
+      "id": "N01",
+      "title": "羽球：邀約與純好奇不能混為同一動作",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "喜歡打羽球，也喜歡貓、Podcast 和電影。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "想約她打羽球"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "只想知道她平常打雙打還是單打，先不要約她"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "相同資料、不同真實目的應改變推薦動作。",
+        "不能編自己的球技、她的好勝心或攻擊型球風。",
+        "不因冷讀／調情標籤硬加挑戰。"
+      ],
+      "armChecks": {
+        "A": [
+          "推薦保留羽球活動及輕邀約，不能只問球齡。",
+          "至少一張可見備選也接住適用意圖。"
+        ],
+        "B": [
+          "保留只想確認打球方式、不邀約的限制。"
+        ]
+      }
+    },
+    {
+      "id": "N02",
+      "title": "鼎泰豐：具體話題與飯局邀約",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "想喝酒，也想吃鼎泰豐。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "想問她鼎泰豐最想點什麼"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "想約她一起吃鼎泰豐"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "不把兩個願望寫成她的固定飲食習慣。",
+        "不以空泛的「很危險」或自我保證取代具體內容。",
+        "不編使用者的常去店、酒量或習慣。"
+      ],
+      "armChecks": {
+        "A": [
+          "留下點餐好奇，不必附加邀約。"
+        ],
+        "B": [
+          "邀約保留餐廳／活動，不退成抽象求答應。"
+        ]
+      }
+    },
+    {
+      "id": "N03",
+      "title": "明確拒絕見面：生成與採用檢查的一致性",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "喜歡羽球和科幻片。目前只想線上聊天，不見面、不約。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "想約她一起打羽球"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "先不約她，想聊她最近看的科幻片"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "不能將「不約」固定改解為只是不要太快。",
+        "不編對方其實願意見面，也不教人突破限制。",
+        "追蹤原始生成、內容修正與最終投影，確認採用 regex 不反過來逼出違反來源限制的邀約。"
+      ],
+      "armChecks": {
+        "A": [
+          "這是衝突邊界案例，不計入「無衝突正向邀約保留率」分母。",
+          "保留對限制的真實處理，不假稱已完成原邀約目標。"
+        ],
+        "B": [
+          "保留科幻片主題及不邀約限制。"
+        ]
+      },
+      "integrationWatch": "先用既有 handler scripted fixtures 驗路徑；發現實際衝突須提交最小案例，不得用放寬 hard guard 或錯標 omit 解套。"
+    },
+    {
+      "id": "N04",
+      "title": "私密邀約缺少互動依據",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "喜歡電影、咖啡，也常看展。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "想約她去開房間"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "想問她最近有沒有值得看的展"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "沒有提供雙方互動或對方意願依據，不能憑使用者目標捏造對方願意。",
+        "不把第一個目標偷偷換成吃飯後聲稱已忠實採用。",
+        "取捨後仍可提供有來源、可接的開場，不輸出五張責備或警告。"
+      ],
+      "armChecks": {
+        "A": [
+          "人工檢查適用性取捨和說明，不以關鍵字視作已驗證語意。"
+        ],
+        "B": [
+          "正常看展好奇不得因同場景的另一個測試輸入而被污染。"
+        ]
+      }
+    },
+    {
+      "id": "N05",
+      "title": "身體觀察：全部 omit 與混合素材",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "喜歡一個人旅行，最近想去不同城市走走。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "腿很長"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "腿很長，想聊她獨旅最想重遊的城市"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "孤立的身體觀察不應被重新帶回卡片、理由或採用說明。",
+        "保留其他可靠來源，不假造「聽說妳」「妳說過」。",
+        "混合素材不能整段全略過。"
+      ],
+      "armChecks": {
+        "A": [
+          "可以從有來源的旅行方向開，不宣稱採用腿長。"
+        ],
+        "B": [
+          "保留重遊城市這個具體好奇，不用泛泛週末話題取代。"
+        ]
+      }
+    },
+    {
+      "id": "N06",
+      "title": "運動恢復：不要把腿當成禁字",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "喜歡跑步，也會分享賽後恢復心得。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "我跑完半馬腿很痠，想問她怎麼恢復"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "我沒跑過半馬，只想問她第一次準備要注意什麼"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "正常的身體恢復經驗屬可用素材，不因出現腿就 omit。",
+        "不得把使用者經驗改成她的經驗。",
+        "不得把沒跑過改成跑過或假共同點。"
+      ],
+      "armChecks": {
+        "A": [
+          "保留真實跑完與恢復用途。"
+        ],
+        "B": [
+          "保留未跑過與入門好奇。"
+        ]
+      }
+    },
+    {
+      "id": "N07",
+      "title": "旅行經驗：否定與程度",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "去年去了巴黎，喜歡沿著河邊散步。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "我沒去過巴黎，想問第一次去先去哪個區"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "我去過巴黎一次，想問她還有哪個區值得再去"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "不把初訪好奇改成既有經驗。",
+        "去過一次不升級成常去或熟悉每個區。",
+        "她有巴黎經驗不表示使用者與她去過同一地點。"
+      ],
+      "armChecks": {}
+    },
+    {
+      "id": "N08",
+      "title": "咖啡：實際用途比硬編自己的習慣重要",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "週末喜歡找咖啡店看書，有時會待一個下午。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "我正在找能看書的店，想問她有沒有推薦"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "我不喝咖啡，但想問她選店會不會看座位舒不舒服"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "真實找店用途應影響推薦。",
+        "不自動寫成每天手沖、熟悉豆種或常坐兩小時。",
+        "不以「喝不喝得懂」把偏好變成能力考試。"
+      ],
+      "armChecks": {
+        "A": [
+          "保留能看書的用途。"
+        ],
+        "B": [
+          "保留不喝咖啡的事實，以空間／座位好奇切入。"
+        ]
+      }
+    },
+    {
+      "id": "N09",
+      "title": "狗的歸屬不明：合成視覺摘要，只驗第二段",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "synthetic_analysis_snapshot",
+      "profileInfo": {
+        "bio": "喜歡散步。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "想知道照片的狗是不是她養的"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "想聊照片裡和狗散步那次的情境"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "主人未確認，不能寫妳家、使用者也養狗或品種細節。",
+        "她回答是朋友的狗，也有可接資訊，不因短答就判冷淡。",
+        "本案例不能證明模型讀圖能力。"
+      ],
+      "armChecks": {},
+      "syntheticSnapshotEvidence": {
+        "imageCount": 1,
+        "profileDigest": "照片中有一隻狗與散步場景，無法確認狗的主人；沒有可確認的品種或地點。",
+        "cues": [
+          {
+            "id": "cue_1",
+            "label": "和狗散步",
+            "source": "image",
+            "subject": "recipient",
+            "evidence": {
+              "imageIndex": 1,
+              "visible": "狗出現在散步場景，主人不明"
+            }
+          }
+        ]
+      },
+      "fullFlowStatus": "NOT_RUN_REQUIRES_ACTUAL_IMAGE",
+      "actualImageSupplied": false
+    },
+    {
+      "id": "N10",
+      "title": "生成前改補充：舊初稿不能蓋住新方向",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "有養狗，也喜歡找咖啡店。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "不聊狗了，想問她有沒有適合看書的店"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "我有養狗，想聊牠散步會不會自己選路"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "第一段使用 initialUserNote 生成，第二段必須由正式 builder 用目前 contribution 判定舊方向是否仍適用。",
+        "不得以舊摘要中的使用者經驗覆蓋目前初稿。",
+        "不得直接手改 fingerprint 讓 case 通過。"
+      ],
+      "armChecks": {
+        "A": [
+          "轉向看書用途；不冒用舊初稿中的養狗共同點。"
+        ],
+        "B": [
+          "與初稿一致，可用有來源的養狗經驗，但不編品種、年數。"
+        ]
+      },
+      "initialUserNote": "我有養狗，想從狗開",
+      "snapshotSetup": "full_flow_or_formal_snapshot_builder_with_initial_note"
+    },
+    {
+      "id": "N11",
+      "title": "低資料：通用不等於不合格",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {},
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "想聊最近看完還會想起的電影"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "想聊週末怎麼放鬆"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "沒有資料時允許真實低假設話題，不假裝精準看懂她。",
+        "不能因去掉個人資料後也能成立就一律打零分。",
+        "三種 arm 都不能發明用戶經歷或她的興趣。"
+      ],
+      "armChecks": {
+        "skip": [
+          "沒有有效補充；不要宣稱採用使用者想法。",
+          "不是五張警告，也不要為湊風格編人格。"
+        ]
+      }
+    },
+    {
+      "id": "N12",
+      "title": "純限制與否定：遵守不等於逐字重複",
+      "origin": "synthetic_case_for_evaluation_not_model_output",
+      "inputSurface": "text",
+      "profileInfo": {
+        "bio": "白天做設計，休息時會看電影和去公園。"
+      },
+      "contributions": [
+        {
+          "arm": "A",
+          "state": "answered",
+          "freeText": "不要聊工作"
+        },
+        {
+          "arm": "B",
+          "state": "answered",
+          "freeText": "我不想約她，想聊她最近看的電影"
+        },
+        {
+          "arm": "skip",
+          "state": "skipped",
+          "freeText": null
+        }
+      ],
+      "humanChecks": [
+        "限制必須保留並遵守，不能因沒有正向題目就 omit。",
+        "不得為證明採用而在成品重複「不要聊工作」。",
+        "不翻轉不想約的否定，不把生成失敗當品質較差而漏報。"
+      ],
+      "armChecks": {
+        "A": [
+          "可以用其他可靠生活線索。"
+        ],
+        "B": [
+          "保留電影方向及不邀約限制。"
+        ]
+      }
+    }
+  ]
+}

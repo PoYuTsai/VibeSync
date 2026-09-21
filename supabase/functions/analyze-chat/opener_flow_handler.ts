@@ -13,7 +13,6 @@
 // 原料整理／投影都走正式路徑）。
 
 import { ModelCallBudget } from "./model_call_budget.ts";
-import { checkOmittedMaterialUse } from "./opener_material_selection.ts";
 import { OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
@@ -64,8 +63,6 @@ import {
 } from "./opener_stage.ts";
 import {
   buildOpenerMaterials,
-  checkOpenersAgainstMaterials,
-  checkMaterialAdoption,
   hardFlags,
   type OpenerMaterialSet,
   type OpenerQualityFlag,
@@ -89,6 +86,7 @@ import {
 import {
   mergeOpenerCorrection,
   normalizeOpenerGenerateOutput,
+  checkOpenerGenerationContent,
   type OpenerGenerateLedgerResult,
   projectOpenerGenerateResult,
   type OpenerGenerateNormalized,
@@ -103,6 +101,7 @@ import {
   type OpenerGenerationUsage,
   type OpenerSessionView,
   readOpenerFlowDbContractVersion,
+  readPreviousPromptReplay,
   releaseOpenerAnalysisClaim,
   releaseOpenerGenerationClaim,
   settleOpenerAnalysis,
@@ -686,7 +685,11 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     }
   };
   {
-    const claimResponse = handleClaim(await claimOpenerGeneration(claimArgs));
+    let claim = await claimOpenerGeneration(claimArgs);
+    if (claim.kind === "error" && claim.failure.kind === "business" && claim.failure.code === "OPENER_OPERATION_INPUT_MISMATCH") {
+      claim = await readPreviousPromptReplay({ supabase: deps.supabase, userId: deps.userId, ...request, contractVersion }) ?? claim;
+    }
+    const claimResponse = handleClaim(claim);
     if (claimResponse !== null) return claimResponse;
   }
   const activeSession = session as unknown as OpenerSessionView;
@@ -845,22 +848,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       // 第五輪 A：方案可見卡在硬檢查前就要知道——原料採用是以用戶看得到的卡判定。
       const servedTier = quota().effectiveTier;
       const visibleTypes = visibleTypesFor(servedTier, contractVersion);
-      const contentFlags = (value: OpenerGenerateNormalized): OpenerQualityFlag[] => {
-        const base = checkOpenersAgainstMaterials(value.openers, materials, activeSession.snapshot);
-        const eligible = value.selection.eligible;
-        const sourceFlags = value.selection.omitted.length
-          ? checkOpenersAgainstMaterials(value.openers, eligible, activeSession.snapshot)
-          : [];
-        // Each field is an independent visible surface. Concatenating before
-        // punctuation removal invents words across opener/reason/note borders.
-        const omittedFlags = [value.openers, value.cardReasons, value.displayNotes]
-          .flatMap((surface) => checkOmittedMaterialUse(surface, value.selection))
-          .filter((flag, index, flags) => flags.findIndex((other) =>
-            other.style === flag.style && other.materialId === flag.materialId
-          ) === index);
-        const guardFlags = [...base, ...sourceFlags, ...omittedFlags];
-        return [...guardFlags, ...checkMaterialAdoption({ openers: value.openers, materials: eligible, visibleTypes, rankedPicks: value.rankedPicks, flags: guardFlags })];
-      };
+      const contentFlags = (value: OpenerGenerateNormalized): OpenerQualityFlag[] =>
+        checkOpenerGenerationContent(value, materials, activeSession.snapshot, visibleTypes);
       let flags: OpenerQualityFlag[] = contentFlags(normalized.value);
       const hardBefore = hardFlags(flags);
       let corrected = false;
@@ -869,7 +858,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         try {
           const correction = await invokeModel({
             system: OPENER_GENERATE_PROMPT,
-            messages: [{ role: "user", content: buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials: normalized.value.selection.eligible, omitted: normalized.value.selection.omitted }) }],
+            messages: [{ role: "user", content: buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials: normalized.value.selection.eligible, omitted: normalized.value.selection.omitted, snapshot: activeSession.snapshot }) }],
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,

@@ -5,7 +5,8 @@
 // 由 opener_material.ts 依本次原料檢核，合法的人物關係（我妹是美容師）不會
 // 被舊清洗器刪掉。可直接送出的句子仍走同一條 sanitizeOpenerText 正規化。
 
-import { cardAdoptsMaterial } from "./opener_material.ts";
+import { cardAdoptsMaterial, checkMaterialAdoption, checkOpenersAgainstMaterials } from "./opener_material.ts";
+import type { OpenerAnalysisSnapshot } from "./opener_stage.ts";
 import { checkOmittedMaterialUse, materialHandlingNote, type OpenerMaterialSelection, referenceUsesEligibleMaterial, resolveOpenerMaterialSelection } from "./opener_material_selection.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
@@ -49,6 +50,27 @@ export interface OpenerGenerateNormalized {
 export type OpenerGenerateNormalizeResult =
   | { ok: true; value: OpenerGenerateNormalized }
   | { ok: false; reason: "not_object" | "incomplete_openers" | "invalid_material_usage"; missing: OpenerType[] };
+
+/** Shared by the live handler and paired eval: tier-specific content checks,
+ * including each visible explanation field without joining field boundaries.
+ */
+export function checkOpenerGenerationContent(
+  value: OpenerGenerateNormalized,
+  materials: OpenerMaterialSet,
+  snapshot: OpenerAnalysisSnapshot,
+  visibleTypes: readonly OpenerType[],
+): OpenerQualityFlag[] {
+  const base = checkOpenersAgainstMaterials(value.openers, materials, snapshot);
+  const eligible = value.selection.eligible;
+  const sourceFlags = value.selection.omitted.length ? checkOpenersAgainstMaterials(value.openers, eligible, snapshot) : [];
+  const omittedFlags = [value.openers, value.cardReasons, value.displayNotes]
+    .flatMap((surface) => checkOmittedMaterialUse(surface, value.selection))
+    .filter((flag, index, flags) => flags.findIndex((other) =>
+      other.style === flag.style && other.materialId === flag.materialId
+    ) === index);
+  const guardFlags = [...base, ...sourceFlags, ...omittedFlags];
+  return [...guardFlags, ...checkMaterialAdoption({ openers: value.openers, materials: eligible, visibleTypes, rankedPicks: value.rankedPicks, flags: guardFlags })];
+}
 
 const PIONEER_KEYS = ["ifCold", "ifShortPositive", "ifEngaged", "handoff"] as const;
 const PROFILE_ARRAY_KEYS = ["positiveHooks", "avoidTopics"] as const;

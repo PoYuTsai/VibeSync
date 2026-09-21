@@ -11,6 +11,8 @@ import {
   type OpenerFlowModelRequest,
 } from "./opener_flow_handler.ts";
 import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
+import { computeOpenerGenerationInputHash, parseOpenerGenerateRequest } from "./opener_stage.ts";
+import { readPreviousPromptReplay } from "./opener_session.ts";
 
 const MIGRATIONS = [
   "20260702120000_increment_usage_atomic_quota.sql",
@@ -55,6 +57,21 @@ async function createDatabase(): Promise<PGlite> {
 /** supabase.rpc 替身：把 named params 轉成真 SQL 呼叫，錯誤照 PostgREST 形狀回。 */
 function supabaseFor(db: PGlite) {
   return {
+    from(table: string) {
+      if (!["opener_generation_runs", "opener_sessions"].includes(table)) throw new Error("unexpected read table");
+      const filters: Array<[string, unknown]> = [];
+      let columns = "*";
+      const query = {
+        select(value: string) { columns = value; return query; },
+        eq(key: string, value: unknown) { filters.push([key, value]); return query; },
+        async maybeSingle() {
+          if (!/^[a-z_, ]+$/.test(columns) || filters.some(([key]) => !/^[a-z_]+$/.test(key))) throw new Error("unsafe query");
+          const rows = await db.query(`SELECT ${columns} FROM public.${table} WHERE ${filters.map(([key], i) => `${key} = $${i + 1}`).join(" AND ")}`, filters.map(([, value]) => value));
+          return { data: rows.rows[0] ? JSON.parse(JSON.stringify(rows.rows[0])) : null, error: null };
+        },
+      };
+      return query;
+    },
     async rpc(fn: string, params: Record<string, unknown>) {
       const keys = Object.keys(params);
       const args = keys.map((key, i) => {
@@ -329,6 +346,112 @@ async function runCount(db: PGlite) {
 }
 
 const CURIOUS = { state: "answered", questionId: "question_1", selectedOptionId: "option_2", freeText: "沒養過，只想知道牠散步會不會自己選路" };
+
+Deno.test("版本升級：舊 prompt 已完成結果唯讀重播；不同內容、帳號、版本或未完成不復用", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    const body = generateBody(String(analysis.sessionId), GEN_1, CURIOUS);
+    const first = await handleOpenerGenerateRequest(h.deps(body));
+    assertEquals(first.status, 200);
+    const saved = await json(first);
+    const parsed = parseOpenerGenerateRequest({ rawFlowVersion: body.openerFlowVersion, rawSessionId: body.sessionId, rawAnalysisRevision: body.analysisRevision, rawGenerationId: body.generationId, rawContribution: body.userContribution });
+    assert(parsed.ok);
+    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+    await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [oldHash, GEN_1]);
+    const before = h.script.calls.length;
+    const replay = await handleOpenerGenerateRequest(h.deps(body));
+    assertEquals(replay.status, 200);
+    const result = await json(replay);
+    assertEquals(result.openers, saved.openers);
+    assertEquals((result.usage as Record<string, unknown>).replayed, true);
+    assertEquals((result.usage as Record<string, unknown>).chargedNow, 0);
+    assertEquals(h.script.calls.length, before);
+    for (const change of [
+      { userContribution: { ...CURIOUS, freeText: "想聊別的" } },
+      { openerContractVersion: 1 }, { analysisRevision: 2 }, { sessionId: GEN_4 },
+    ]) {
+      assert((await handleOpenerGenerateRequest(h.deps({ ...body, ...change }))).status !== 200);
+    }
+    assert((await handleOpenerGenerateRequest(h.deps(body, { userId: OTHER_USER_ID }))).status !== 200);
+    const failedRead = { ...supabaseFor(h.db), from() { throw new Error("read unavailable"); } };
+    assert((await handleOpenerGenerateRequest(h.deps(body, { supabase: failedRead }))).status !== 200);
+    // A completed, otherwise valid row can expire between claim and the read.
+    await h.db.query(`UPDATE public.opener_sessions SET expires_at = now() - interval '1 second' WHERE session_id = $1`, [body.sessionId]);
+    assertEquals(await readPreviousPromptReplay({ supabase: supabaseFor(h.db), userId: USER_ID, ...parsed.request, contractVersion: 2 }), null);
+    await h.db.query(`UPDATE public.opener_sessions SET expires_at = now() + interval '1 hour' WHERE session_id = $1`, [body.sessionId]);
+    const unknownHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "unknown-version" });
+    await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [unknownHash, GEN_1]);
+    assert((await handleOpenerGenerateRequest(h.deps(body))).status !== 200);
+    await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1, result_json = '{}'::jsonb WHERE generation_id = $2`, [oldHash, GEN_1]);
+    assert((await handleOpenerGenerateRequest(h.deps(body))).status !== 200);
+    for (const state of ["pending", "released"]) {
+      await h.db.query(`UPDATE public.opener_generation_runs SET state = $1, result_json = NULL, charged_amount = 0 WHERE generation_id = $2`, [state, GEN_1]);
+      assert((await handleOpenerGenerateRequest(h.deps(body))).status !== 200);
+    }
+    await h.db.query(`UPDATE public.opener_sessions SET expires_at = now() - interval '1 second' WHERE session_id = $1`, [body.sessionId]);
+    assert((await handleOpenerGenerateRequest(h.deps(body))).status !== 200);
+    assertEquals(h.script.calls.length, before, "相容分支絕不新增模型工作");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+  } finally { await h.db.close(); }
+});
+
+for (const tier of ["free", "essential"]) {
+  Deno.test(`N03/${tier}：來源明確不見面，取捨保留羽球；錯誤全 use 仍是已知衝突`, async () => {
+    const h = await harness();
+    try {
+      h.tier = tier;
+      const bio = "喜歡羽球和科幻片。目前只想線上聊天，不見面、不約。";
+      h.script.analyze = { ...ANALYSIS_JSON, profileDigest: bio, cues: [{ id: "cue_1", label: "羽球", source: "profile_text", evidence: { field: "bio", quote: "喜歡羽球" } }], question: null };
+      const analysis = await analyzed(h, { profileInfo: { bio } });
+      const text = "想約她一起打羽球";
+      const safe = { ...GENERATE_JSON,
+        openers: { extend: "羽球妳比較喜歡單打還是雙打", resonate: "羽球最近哪一場打得最開心", tease: "羽球最讓妳不想下場的是哪個部分", humor: "羽球場上最常發生什麼小插曲", coldRead: "羽球妳最享受哪種節奏" },
+        cardReasons: { extend: "保留打球偏好，不邀約見面" },
+        materialReading: [{ ...useReading(text, "material_1"), usage: [{ quote: "想約她一起", action: "omit", reason: "unsuitable_opener" }, { quote: "打羽球", action: "use" }] }],
+        materialUse: { references: [], displayNotes: {} },
+      };
+      h.script.generate = safe;
+      const good = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text })));
+      assertEquals(good.status, 200);
+      assertEquals(h.script.calls.length, 2);
+      await passOneMinute(h.db);
+      // This records the remaining semantic decision boundary, not a guard bypass:
+      // treating the whole conflicting goal as use still demands an invitation.
+      h.script.generate = { ...safe, materialReading: [useReading(text, "material_1")] };
+      h.script.correction = h.script.generate;
+      const conflict = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_2, { state: "answered", freeText: text })));
+      assertEquals(conflict.status, 502);
+      assertEquals((await json(conflict)).code, "OPENER_CONTENT_CONFLICT");
+      assert(String(h.script.calls.at(-1)?.messages[0].content).includes("一張都沒真的用到"));
+      assert(String(h.script.calls.at(-1)?.messages[0].content).includes(bio), "修正必須仍看得到來源的拒絕，不只看到邀約素材");
+      assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不另扣費");
+    } finally { await h.db.close(); }
+  });
+}
+
+for (const accountIsTest of [false, true]) {
+  Deno.test(`版本升級：${accountIsTest ? "測試帳號" : "無資料零成本"} 已完成結果也可重播且不扣費`, async () => {
+    const h = await harness();
+    try {
+      h.script.analyze = { ...ANALYSIS_JSON, profileDigest: "沒有對方資料", cues: [], question: null };
+      const analysis = await analyzed(h, accountIsTest ? {} : { profileInfo: {} });
+      const body = generateBody(String(analysis.sessionId), GEN_1, { state: "skipped" });
+      h.script.generate = { ...GENERATE_JSON, materialReading: [], materialUse: { references: [], displayNotes: {} } };
+      assertEquals((await handleOpenerGenerateRequest(h.deps(body, { accountIsTest }))).status, 200);
+      const parsed = parseOpenerGenerateRequest({ rawFlowVersion: body.openerFlowVersion, rawSessionId: body.sessionId, rawAnalysisRevision: body.analysisRevision, rawGenerationId: body.generationId, rawContribution: body.userContribution });
+      assert(parsed.ok);
+      const hash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+      await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [hash, GEN_1]);
+      const before = h.script.calls.length;
+      const replay = await handleOpenerGenerateRequest(h.deps(body, { accountIsTest }));
+      assertEquals(replay.status, 200);
+      assertEquals(((await json(replay)).usage as Record<string, unknown>).chargedNow, 0);
+      assertEquals(h.script.calls.length, before);
+      assertEquals(await usage(h.db), { m: 0, d: 0 });
+    } finally { await h.db.close(); }
+  });
+}
 
 Deno.test("F01／B01：只按分析→只有分析與題目、沒有五句、只打一次模型、不扣額度", async () => {
   const h = await harness();
