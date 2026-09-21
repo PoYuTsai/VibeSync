@@ -13,6 +13,8 @@
 // 原料整理／投影都走正式路徑）。
 
 import { ModelCallBudget } from "./model_call_budget.ts";
+import { checkOmittedMaterialUse } from "./opener_material_selection.ts";
+import { OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import { AiServiceError, callClaudeWithFallback, type ClaudeMessageContent, extractClaudeText } from "./fallback.ts";
@@ -341,7 +343,7 @@ function streamOrRun(input: {
   stages: StreamStageSpec[];
   etaSeconds: number;
   startedLabel: string;
-  run: (onChunk?: (chunk: string) => void) => Promise<Response>;
+  run: (onChunk?: (chunk: string) => void, onFinalizing?: () => void) => Promise<Response>;
 }): Promise<Response> {
   const env = input.deps.env ?? ((name) => Deno.env.get(name));
   const streamRequested = input.deps.responseMode === "stream" && env("OPENER_STREAM_ENABLED") === "true";
@@ -353,7 +355,9 @@ function streamOrRun(input: {
       emit({ type: `${input.prefix}.progress`, phase: "heartbeat", label: "仍在進行", detail: "正在等待模型完成，請保持連線。" });
     }, 15000);
     try {
-      const response = await input.run((chunk) => tracker.push(chunk));
+      const response = await input.run((chunk) => tracker.push(chunk), () => {
+        emit({ type: `${input.prefix}.progress`, phase: "finalizing", label: "正在確認最後結果" });
+      });
       await emitJsonResponseAsStreamOutcome(response, emit, input.prefix);
     } finally {
       clearInterval(heartbeat);
@@ -772,7 +776,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     stages: OPENER_GENERATE_STREAM_STAGES,
     etaSeconds: 20,
     startedLabel: "開始整理你的想法並生成回覆",
-    run: async (onChunk) => {
+    run: async (onChunk, onFinalizing) => {
       let output: OpenerFlowModelOutput;
       try {
         output = await invokeModel({ system: OPENER_GENERATE_PROMPT, messages: [{ role: "user", content: userContent }], maxTokens: OPENER_GENERATE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
@@ -782,6 +786,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
       }
+      onFinalizing?.();
       if (hasAnalyzeChatPromptLeak(output.rawText)) {
         logWarn("prompt_leak_blocked", { user, surface: "opener_generate", textLength: output.rawText.length });
         return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
@@ -804,14 +809,14 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
 
       // 6a. 格式：解析／正規化；不齊五句就做一次格式修復（只修 JSON，不換意思）。
       let parsedJson = parseJsonObjectFromText(output.rawText);
-      let normalized = normalizeOpenerGenerateOutput(parsedJson, materials);
+      let normalized = normalizeOpenerGenerateOutput(parsedJson, materials, true);
       let repaired = false;
       if (!normalized.ok && extraCallsRemaining > 0) {
         extraCallsRemaining -= 1;
         try {
           const repair = await invokeModel({
-            system: OPENER_FLOW_REPAIR_PROMPT,
-            messages: [{ role: "user", content: buildOpenerFlowRepairPrompt(OPENER_GENERATE_SCHEMA_HINT, output.rawText) }],
+            system: OPENER_GENERATE_REPAIR_PROMPT,
+            messages: [{ role: "user", content: "修復下列生成契約；usage 必须依當次素材判斷，並同步修正受影響的句子與說明。\n" + OPENER_GENERATE_SCHEMA_HINT + "\n原始回覆：\n" + output.rawText.slice(0, 12000) + "\n\n當次素材與線索：\n" + userContent }],
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
@@ -819,7 +824,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           });
           addUsage(repair);
           const repairedJson = parseJsonObjectFromText(repair.rawText);
-          const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials);
+          const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials, true);
           if (repairedNormalized.ok) {
             parsedJson = repairedJson;
             normalized = repairedNormalized;
@@ -842,7 +847,16 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       const visibleTypes = visibleTypesFor(servedTier, contractVersion);
       const contentFlags = (value: OpenerGenerateNormalized): OpenerQualityFlag[] => {
         const base = checkOpenersAgainstMaterials(value.openers, materials, activeSession.snapshot);
-        return [...base, ...checkMaterialAdoption({ openers: value.openers, materials, visibleTypes, rankedPicks: value.rankedPicks, flags: base })];
+        const eligible = value.selection.eligible;
+        const sourceFlags = value.selection.omitted.length
+          ? checkOpenersAgainstMaterials(value.openers, eligible, activeSession.snapshot)
+          : [];
+        const surfaceText = Object.fromEntries(OPENER_TYPES.map((type) => [type,
+          [value.openers[type], value.cardReasons[type], value.displayNotes[type]].filter(Boolean).join("\n")
+        ]));
+        const omittedFlags = checkOmittedMaterialUse(surfaceText, value.selection);
+        const guardFlags = [...base, ...sourceFlags, ...omittedFlags];
+        return [...guardFlags, ...checkMaterialAdoption({ openers: value.openers, materials: eligible, visibleTypes, rankedPicks: value.rankedPicks, flags: guardFlags })];
       };
       let flags: OpenerQualityFlag[] = contentFlags(normalized.value);
       const hardBefore = hardFlags(flags);
@@ -852,7 +866,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         try {
           const correction = await invokeModel({
             system: OPENER_GENERATE_PROMPT,
-            messages: [{ role: "user", content: buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials }) }],
+            messages: [{ role: "user", content: buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials: normalized.value.selection.eligible, omitted: normalized.value.selection.omitted }) }],
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
@@ -861,7 +875,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           addUsage(correction);
           const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
           const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace);
-          const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials);
+          const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials, true);
           if (mergedNormalized.ok) {
             const mergedFlags = contentFlags(mergedNormalized.value);
             if (hardFlags(mergedFlags).length === 0) {

@@ -2,6 +2,7 @@
 // ＋正式原料整理／投影／結算；只有模型邊界是替身（附件 §五：不得 override
 // 核心方法直接塞成功狀態）。
 import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
+import { parseJsonObjectFromText } from "./json_text.ts";
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   handleOpenerAnalyzeRequest,
@@ -9,7 +10,7 @@ import {
   type OpenerFlowHandlerDeps,
   type OpenerFlowModelRequest,
 } from "./opener_flow_handler.ts";
-import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT } from "./opener_flow_prompt.ts";
+import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 
 const MIGRATIONS = [
   "20260702120000_increment_usage_atomic_quota.sql",
@@ -103,8 +104,12 @@ const ANALYSIS_JSON = {
   },
 };
 
+function useReading(quote: string, materialId = "material_2") {
+  return { materialId, subject: "unknown", kind: "raw_sentence", certainty: "stated", quote, usage: [{ quote, action: "use" }] };
+}
+
 const GENERATE_JSON = {
-  materialReading: [{ materialId: "material_1", subject: "sender", kind: "interest", certainty: "stated", quote: "有興趣" }],
+  materialReading: [{ materialId: "material_1", subject: "sender", kind: "interest", certainty: "stated", quote: "有興趣" }, useReading("沒養過，只想知道牠散步會不會自己選路")],
   openers: {
     extend: "牠散步會自己選路嗎",
     resonate: "養這種狗的人假日應該都在外面",
@@ -141,6 +146,74 @@ interface ScriptedModel {
   throwOn?: "analyze" | "generate";
 }
 
+function omitReading(quote: string, reason = "unsuitable_opener") {
+  return { ...useReading(quote, "material_1"), usage: [{ quote, action: "omit", reason }] };
+}
+
+for (const [text, reason, tier] of [["腿很長", "unsuitable_opener", "free"], ["幫我算一百乘三十", "irrelevant", "essential"]]) {
+  Deno.test(`新素材取捨：${reason}/${tier} 直接交付、單次生成、重播不重扣`, async () => {
+    const h = await harness();
+    try {
+      const analysis = await analyzed(h);
+      h.tier = tier;
+      h.script.generate = { ...GENERATE_JSON, materialReading: [omitReading(text, reason)], materialUse: { references: [], displayNotes: {} } };
+      const request = generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text });
+      const response = await handleOpenerGenerateRequest(h.deps(request));
+      assertEquals(response.status, 200);
+      const body = await json(response);
+      assertEquals((body.materialUse as Record<string, unknown>).traceStatus, "uncertain");
+      assert((body.materialUse as Record<string, unknown>).handlingNote);
+      assertEquals(JSON.stringify(body.openers).includes(text), false);
+      assertEquals(h.script.calls.length, 2, "分析一次、生成一次，沒有前置分類或修正呼叫");
+      assertEquals(await usage(h.db), { m: 3, d: 3 });
+      const replay = await handleOpenerGenerateRequest(h.deps(request));
+      assertEquals(replay.status, 200);
+      assertEquals((await json(replay)).materialUse, body.materialUse, "新的巢狀提示可以原樣保存回放");
+      assertEquals(h.script.calls.length, 2);
+      assertEquals(await usage(h.db), { m: 3, d: 3 });
+    } finally { await h.db.close(); }
+  });
+}
+
+Deno.test("取捨契約缺漏：既有一次修復可同步略過與修句；仍缺漏不扣費", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    h.script.generate = { ...GENERATE_JSON, materialReading: [], openers: { ...GENERATE_JSON.openers, extend: "聽說妳腿很長" } };
+    h.script.repair = { ...GENERATE_JSON, materialReading: [omitReading("腿很長")], materialUse: { references: [], displayNotes: {} } };
+    const request = generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: "腿很長" });
+    assertEquals((await handleOpenerGenerateRequest(h.deps(request))).status, 200);
+    assertEquals(h.script.calls.length, 3);
+    const repair = h.script.calls[2];
+    assertEquals(repair.system, OPENER_GENERATE_REPAIR_PROMPT);
+    assert(String(repair.messages[0].content).includes("腿很長"));
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+    await passOneMinute(h.db);
+    h.script.repair = { ...GENERATE_JSON, materialReading: [] };
+    const before = h.script.calls.length;
+    const failed = await handleOpenerGenerateRequest(h.deps({ ...request, generationId: GEN_2 }));
+    assertEquals(failed.status, 502);
+    assertEquals(h.script.calls.length - before, 2, "共用修復預算沒有第三次呼叫");
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不額外扣费");
+  } finally { await h.db.close(); }
+});
+
+Deno.test("略過後仍帶回原文：一次內容修正保持取捨，說明與引用同步清除", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    h.script.generate = { ...GENERATE_JSON, materialReading: [omitReading("腿很長")], openers: { ...GENERATE_JSON.openers, extend: "聽說妳腿很長" }, cardReasons: { extend: "保留腿很長" }, materialUse: { references: [], displayNotes: {} } };
+    h.script.correction = { ...GENERATE_JSON, materialReading: [useReading("腿很長", "material_1")], materialUse: { references: [], displayNotes: {} } };
+    const response = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: "腿很長" })));
+    assertEquals(response.status, 200);
+    const body = await json(response);
+    assertEquals(JSON.stringify(body).includes("腿很長"), false);
+    assertEquals((body.materialUse as Record<string, unknown>).traceStatus, "uncertain");
+    assertEquals(h.script.calls.length, 3);
+    assert(String(h.script.calls[2].messages[0].content).includes("不可改為採用略過內容"));
+  } finally { await h.db.close(); }
+});
+
 function invokerFor(script: ScriptedModel) {
   return (req: OpenerFlowModelRequest) => {
     script.calls.push(req);
@@ -151,7 +224,7 @@ function invokerFor(script: ScriptedModel) {
     if (req.system === OPENER_ANALYZE_PROMPT) {
       if (script.throwOn === "analyze") throw new Error("provider down");
       body = script.analyze ?? ANALYSIS_JSON;
-    } else if (req.system === OPENER_FLOW_REPAIR_PROMPT) {
+    } else if (req.system === OPENER_FLOW_REPAIR_PROMPT || req.system === OPENER_GENERATE_REPAIR_PROMPT) {
       body = script.repair ?? {};
     } else if (req.system === OPENER_GENERATE_PROMPT && userText.startsWith("以下這組開場白有可確定的錯誤")) {
       body = script.correction ?? GENERATE_JSON;
@@ -394,7 +467,7 @@ Deno.test("F16／回歸：刪掉初稿改聊咖啡→第二段只用目前 freeT
   try {
     const analysis = await analyzed(h, { initialUserNote: "我有養狗，想從狗開" });
     // 第五輪 A：可見卡要在內容上接住「改聊咖啡」，否則會進 material_unused 修正。
-    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, extend: "改聊咖啡的話 妳平常都喝哪種" } };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("改聊咖啡", "material_1")], openers: { ...GENERATE_JSON.openers, extend: "改聊咖啡的話 妳平常都喝哪種" } };
     const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, { state: "answered", freeText: "改聊咖啡" })));
     assertEquals(response.status, 200);
     const generateCall = h.script.calls[1];
@@ -445,6 +518,7 @@ Deno.test("B04／B05：三組不同 generationId 共扣 3；第四組在模型�
     const sessionId = analysis.sessionId as string;
     for (const [i, gen] of [GEN_1, GEN_2, GEN_3].entries()) {
       await passOneMinute(h.db);
+      h.script.generate = { ...GENERATE_JSON, materialReading: [useReading(`第 ${i} 版：只想知道牠散步會不會自己選路`)] };
       const body = await json(await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, gen, { ...CURIOUS, freeText: `第 ${i} 版：只想知道牠散步會不會自己選路` }))));
       assertEquals((body.usage as Record<string, unknown>).generationsUsed, i + 1);
       assertEquals((body.usage as Record<string, unknown>).chargedNow, i === 0 ? 3 : 0);
@@ -511,7 +585,7 @@ Deno.test("五句不齊→一次格式修復；仍不齊→502 OPENER_RESPONSE_I
     h.script.repair = GENERATE_JSON;
     const repaired = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, CURIOUS)));
     assertEquals(repaired.status, 200);
-    assert(h.script.calls.some((c) => c.system === OPENER_FLOW_REPAIR_PROMPT));
+    assert(h.script.calls.some((c) => c.system === OPENER_GENERATE_REPAIR_PROMPT));
     h.script.repair = { openers: { extend: "還是一句" } };
     await passOneMinute(h.db);
     const broken = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, CURIOUS)));
@@ -550,6 +624,7 @@ Deno.test("B11：已扣費的同局，其他功能把額度用完後剩餘生成
     h.sub.monthly_messages_used = 30;
     h.sub.daily_messages_used = 10;
     await h.db.query(`UPDATE public.subscriptions SET monthly_messages_used = 30, daily_messages_used = 10 WHERE user_id = $1`, [USER_ID]);
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("第二版：只想知道牠散步會不會自己選路")] };
     const second = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { ...CURIOUS, freeText: "第二版：只想知道牠散步會不會自己選路" })));
     assertEquals(second.status, 200);
     assertEquals(((await json(second)).usage as Record<string, unknown>).chargedNow, 0);
@@ -565,6 +640,7 @@ Deno.test("B15：模型限流→429 MODEL_RATE_LIMITED 不帶額度鍵、不占�
     const analysis = await analyzed(h); // 第 1 次 opener 作業
     const sessionId = analysis.sessionId as string;
     assertEquals((await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, CURIOUS)))).status, 200); // 第 2 次
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("二：牠散步會不會自己選路")] };
     assertEquals((await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { ...CURIOUS, freeText: "二：牠散步會不會自己選路" })))).status, 200); // 第 3 次
     const limited = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_3, { ...CURIOUS, freeText: "三：牠散步會不會自己選路" }))); // 第 4 次／分鐘
     assertEquals(limited.status, 429);
@@ -624,6 +700,7 @@ Deno.test("串流交付邊界：done 之前只有 started/progress，不外流�
     const events = (await generateResponse.text()).trim().split("\n").map((line) => JSON.parse(line));
     assertEquals(events[0].type, "opener_generate.started");
     assert(events.some((e) => e.type === "opener_generate.progress" && e.phase === "style_extend"));
+    assert(events.some((e) => e.type === "opener_generate.progress" && e.phase === "finalizing"));
     for (const event of events.slice(0, -1)) {
       assertEquals(JSON.stringify(event).includes("散步會自己選路"), false, "結算前不得公開可複製的完整回覆");
     }
@@ -641,6 +718,7 @@ Deno.test("F10／略過：inputState=skipped、traceStatus=no_input、displayNot
   const h = await harness();
   try {
     const analysis = await analyzed(h);
+    h.script.generate = { ...GENERATE_JSON, materialReading: [] };
     const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, { state: "skipped" })));
     assertEquals(response.status, 200);
     const use = (await json(response)).materialUse as Record<string, unknown>;
@@ -677,7 +755,7 @@ Deno.test("R3b：刪掉初稿改聊咖啡→第一段依初稿寫的方向文字
     h.script.analyze = { ...ANALYSIS_JSON, approach: { mode: "anchor_hooks", summary: "你自己有養狗，可以直接從散步習慣開", avoid: ["不用提你妹"] } };
     const analysis = await analyzed(h, { initialUserNote: "我有養狗，想從狗開" });
     assertEquals((analysis.approach as Record<string, unknown>).summary, "你自己有養狗，可以直接從散步習慣開", "第一段當時的判斷照常回給 App 顯示");
-    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, extend: "改聊咖啡 妳照片那家店在哪啊" } };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("改聊咖啡，想問照片那家店在哪", "material_1")], openers: { ...GENERATE_JSON.openers, extend: "改聊咖啡 妳照片那家店在哪啊" } };
     const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, { state: "answered", freeText: "改聊咖啡，想問照片那家店在哪" })));
     assertEquals(response.status, 200);
     const content = String(h.script.calls[1].messages[0].content);
@@ -686,7 +764,7 @@ Deno.test("R3b：刪掉初稿改聊咖啡→第一段依初稿寫的方向文字
     assert(content.includes("改聊咖啡"));
     // 同一份初稿原封送回（等於沒改）：方向文字可沿用。
     await passOneMinute(h.db);
-    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, extend: "我有養狗 妳家那隻散步會自己選路嗎" } };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("我有養狗，想從狗開", "material_1")], openers: { ...GENERATE_JSON.openers, extend: "我有養狗 妳家那隻散步會自己選路嗎" } };
     const same = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_2, { state: "answered", freeText: "我有養狗，想從狗開" })));
     assertEquals(same.status, 200);
     assert(String(h.script.calls[2].messages[0].content).includes("你自己有養狗"));
@@ -743,7 +821,7 @@ Deno.test("A（第五輪）：可見推薦沒接原料→一次內容修正改�
     const sessionId = analysis.sessionId as string;
     const contribution = { state: "answered", questionId: null, selectedOptionId: null, freeText: "她上次聊天提過想去沖繩，還沒訂" };
     // 模型只聊狗：五張卡都沒有沖繩 → material_unused 標在排序第一的可見卡（extend）→ 修正。
-    h.script.generate = { ...GENERATE_JSON, materialReading: [{ materialId: "material_1", subject: "recipient", kind: "raw_sentence", certainty: "prior_interaction", quote: "她上次聊天提過想去沖繩，還沒訂" }], materialUse: { references: [], displayNotes: {} } };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("她上次聊天提過想去沖繩，還沒訂", "material_1")], materialUse: { references: [], displayNotes: {} } };
     h.script.correction = { openers: { extend: "沖繩機票訂了嗎 還是先顧狗" }, cardReasons: { extend: "接住她提過想去沖繩這件事" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "沖繩" }], displayNotes: { extend: "這句接的是她提過想去沖繩、還沒訂" } } };
     const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, contribution)));
     assertEquals(ok.status, 200);
@@ -794,7 +872,7 @@ Deno.test("G1（handler）：選「不想聊狗」→ 改聊河堤的整組直�
 
     // 有一張仍聊狗 → excluded_topic_used 一次修正；修好就交付、不再扣。
     await passOneMinute(h.db);
-    h.script.generate = { ...GENERATE_JSON, openers: { ...RIVER_OPENERS, tease: "妳養狗多久了 週末也帶去河堤嗎" }, materialUse: { references: [], displayNotes: {} } };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [], openers: { ...RIVER_OPENERS, tease: "妳養狗多久了 週末也帶去河堤嗎" }, materialUse: { references: [], displayNotes: {} } };
     h.script.correction = { openers: { tease: "河堤是去運動還是去發呆的" }, cardReasons: { tease: "改成不碰狗" }, materialUse: { references: [] } };
     const fixed = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, exclude)));
     assertEquals(fixed.status, 200);
@@ -811,7 +889,7 @@ Deno.test("G2（handler）：良性對照（已經訂好了嗎）直接交付不
     const analysis = await analyzed(h);
     const sessionId = analysis.sessionId as string;
     const sheSaid = { state: "answered", questionId: null, selectedOptionId: null, freeText: "她上次聊天提過想去沖繩，還沒訂" };
-    h.script.generate = { ...GENERATE_JSON, materialReading: [{ materialId: "material_1", subject: "recipient", kind: "raw_sentence", certainty: "prior_interaction", quote: "提過想去沖繩" }], openers: { ...GENERATE_JSON.openers, extend: "沖繩機票已經訂好了嗎？還是先顧狗" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "沖繩" }], displayNotes: { extend: "接的是她提過想去沖繩" } } };
+    h.script.generate = { ...GENERATE_JSON, materialReading: [useReading("她上次聊天提過想去沖繩，還沒訂", "material_1")], openers: { ...GENERATE_JSON.openers, extend: "沖繩機票已經訂好了嗎？還是先顧狗" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "沖繩" }], displayNotes: { extend: "接的是她提過想去沖繩" } } };
     const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, sheSaid)));
     assertEquals(ok.status, 200);
     const body = await json(ok);
@@ -849,7 +927,12 @@ Deno.test("G2（handler）：良性對照（已經訂好了嗎）直接交付不
 //    scripted 模型只驗管線（呼叫數、交付、結算、不扣費），修正後的品質要新模型輸出才算。
 interface CapturedFixture { profileInfo: Record<string, unknown>; contribution: Record<string, unknown>; raw: string; analyzeRaw: string }
 async function captured(name: string): Promise<CapturedFixture> {
-  return JSON.parse(await Deno.readTextFile(new URL(`../../../tools/opener-content-replay/fixtures/captured-r7-${name}.json`, import.meta.url))) as CapturedFixture;
+  const fixture = JSON.parse(await Deno.readTextFile(new URL(`../../../tools/opener-content-replay/fixtures/captured-r7-${name}.json`, import.meta.url))) as CapturedFixture;
+  // Preserve captured sentences; supply the new internal contract as a scripted
+  // fixture. This does not turn historical raw into a live-model usage evaluation.
+  const parsed = parseJsonObjectFromText(fixture.raw)!;
+  parsed.materialReading = [useReading(String(fixture.contribution.freeText), fixture.contribution.selectedOptionId ? "material_2" : "material_1")];
+  return { ...fixture, raw: JSON.stringify(parsed) };
 }
 function generateCalls(h: Harness): number {
   return h.script.calls.filter((c) => c.system === OPENER_GENERATE_PROMPT).length;

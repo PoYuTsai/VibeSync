@@ -24,6 +24,7 @@ import 'package:vibesync/features/opener/data/services/opener_result_cache_servi
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
 import 'package:vibesync/features/opener/domain/opener_flow_models.dart';
 import 'package:vibesync/features/opener/presentation/screens/opening_rescue_screen.dart';
+import 'package:vibesync/features/opener/presentation/widgets/opener_flow_sections.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
@@ -62,6 +63,8 @@ class _FakeOpenerService extends OpenerService {
   int legacyCalls = 0;
   Object? analyzeError;
   Completer<void>? analyzeGate;
+  Completer<void>? generateGate;
+  void Function(String, String?)? generationProgress;
   String? lastFreeText;
   String? lastState;
 
@@ -142,6 +145,8 @@ class _FakeOpenerService extends OpenerService {
     generateCalls += 1;
     lastFreeText = contribution.freeText;
     lastState = contribution.stateWire;
+    generationProgress = onProgress;
+    await generateGate?.future;
     return OpenerGeneration.fromServerBody({
       'sessionId': sessionId,
       'generationId': generationId,
@@ -440,6 +445,60 @@ void main() {
     expect(find.byKey(const ValueKey('opener-skip-button')), findsOneWidget);
     expect(find.text('開場白建議'), findsNothing);
     expect(find.textContaining('第一次生成扣 3 則'), findsOneWidget);
+  });
+
+  testWidgets('開場欄位進度不打完成勾勾，最後確認後才交付正式結果', (tester) async {
+    service.generateGate = Completer<void>();
+    await _pumpManual(tester);
+    await _analyze(tester);
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-skip-button')));
+    expect(service.generateCalls, 1);
+    service.generationProgress?.call('正在寫延展', 'style_extend');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('opener-skeleton-extend-started')),
+        findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+    service.generationProgress?.call('正在確認最後結果', 'finalizing');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('opener-skeleton-extend-started')),
+        findsNothing);
+    expect(
+        find.byKey(const ValueKey('stream-progress-ticker')), findsOneWidget);
+    expect(find.text('開場白建議'), findsNothing);
+    await tester.runAsync(() async {
+      service.generateGate!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    });
+    await _settleBounded(tester);
+    expect(find.byKey(const ValueKey('stream-progress-ticker')), findsNothing);
+    expect(find.text('開場白建議'), findsOneWidget);
+  });
+
+  testWidgets('略過補充提示獨立呈現，不冒充來源採用，舊結果仍隱藏未知說明', (tester) async {
+    final use = OpenerMaterialUse.tryParse({
+      'inputState': 'answered',
+      'references': [],
+      'traceStatus': 'uncertain',
+      'displayNote': '未核對的採用說明',
+      'handlingNote': '這段補充先不放進開場，改用容易接話的方向。',
+    })!;
+    expect(OpenerMaterialUse.tryParse(use.toJson())!.handlingNote,
+        use.handlingNote);
+    expect(use.matched, isFalse);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: OpenerMaterialUseNote(materialUse: use))));
+    expect(find.text(use.handlingNote!), findsOneWidget);
+    expect(find.text('未核對的採用說明'), findsNothing);
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+            body: OpenerMaterialUseNote(
+                materialUse: OpenerMaterialUse(
+                    inputState: 'answered',
+                    references: [],
+                    traceStatus: 'uncertain')))));
+    expect(
+        find.byKey(const ValueKey('opener-material-use-note')), findsNothing);
   });
 
   testWidgets('回答後按生成→結果與採用說明；調整想法再生成保留原回答；第二次不再扣', (tester) async {

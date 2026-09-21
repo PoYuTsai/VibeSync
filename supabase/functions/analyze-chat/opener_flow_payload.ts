@@ -6,6 +6,7 @@
 // 被舊清洗器刪掉。可直接送出的句子仍走同一條 sanitizeOpenerText 正規化。
 
 import { cardAdoptsMaterial } from "./opener_material.ts";
+import { checkOmittedMaterialUse, materialHandlingNote, type OpenerMaterialSelection, referenceUsesEligibleMaterial, resolveOpenerMaterialSelection } from "./opener_material_selection.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import {
@@ -37,6 +38,7 @@ export interface OpenerGenerateNormalized {
   /** 每張卡自己的採用說明（R3：不再有整包全域 note）。 */
   displayNotes: Partial<Record<OpenerType, string>>;
   reading: OpenerMaterialReadingItem[];
+  selection: OpenerMaterialSelection;
   stretchLevels: Record<OpenerType, StretchLevel>;
   pioneerPlan: Record<string, string> | null;
   profileAnalysis: Record<string, unknown> | null;
@@ -46,7 +48,7 @@ export interface OpenerGenerateNormalized {
 
 export type OpenerGenerateNormalizeResult =
   | { ok: true; value: OpenerGenerateNormalized }
-  | { ok: false; reason: "not_object" | "incomplete_openers"; missing: OpenerType[] };
+  | { ok: false; reason: "not_object" | "incomplete_openers" | "invalid_material_usage"; missing: OpenerType[] };
 
 const PIONEER_KEYS = ["ifCold", "ifShortPositive", "ifEngaged", "handoff"] as const;
 const PROFILE_ARRAY_KEYS = ["positiveHooks", "avoidTopics"] as const;
@@ -65,6 +67,7 @@ export function missingOpenerFlowTypes(parsed: Record<string, unknown> | null): 
 export function normalizeOpenerGenerateOutput(
   parsed: Record<string, unknown> | null,
   materials: OpenerMaterialSet,
+  requireMaterialUsage = false,
 ): OpenerGenerateNormalizeResult {
   if (!parsed) return { ok: false, reason: "not_object", missing: [...OPENER_TYPES] };
   const rawOpeners = isPlainObject(parsed.openers) ? parsed.openers : {};
@@ -76,6 +79,8 @@ export function normalizeOpenerGenerateOutput(
     else missing.push(type);
   }
   if (missing.length > 0) return { ok: false, reason: "incomplete_openers", missing };
+  const selection = resolveOpenerMaterialSelection(parsed.materialReading, materials, requireMaterialUsage);
+  if (!selection.valid) return { ok: false, reason: "invalid_material_usage", missing: [] };
 
   const cardReasons: Partial<Record<OpenerType, string>> = {};
   const rawReasons = isPlainObject(parsed.cardReasons) ? parsed.cardReasons : {};
@@ -107,7 +112,11 @@ export function normalizeOpenerGenerateOutput(
         : ref
     )
     : [];
-  const { references, flags: refFlags } = sanitizeMaterialReferences(rawRefs, openers, materials.materials);
+  const { references: sourceReferences, flags: refFlags } = sanitizeMaterialReferences(rawRefs, openers, selection.eligible.materials);
+  const references = sourceReferences.filter((ref) =>
+    !selection.omitted.some((item) => item.materialId === ref.materialId) ||
+    referenceUsesEligibleMaterial(ref.outputSpan, ref.materialId, selection)
+  );
   const { reading, flags: readingFlags } = sanitizeMaterialReading(parsed.materialReading, materials.materials);
   const displayNotes: Partial<Record<OpenerType, string>> = {};
   const rawNotes = isPlainObject(materialUseRaw.displayNotes) ? materialUseRaw.displayNotes : {};
@@ -121,7 +130,7 @@ export function normalizeOpenerGenerateOutput(
     const plan: Record<string, string> = {};
     for (const key of PIONEER_KEYS) {
       const text = customerText(parsed.pioneerPlan[key], 500);
-      if (text) plan[key] = text;
+      if (text && checkOmittedMaterialUse({ [key]: text }, selection).length === 0) plan[key] = text;
     }
     if (Object.keys(plan).length > 0) pioneerPlan = plan;
   }
@@ -132,11 +141,11 @@ export function normalizeOpenerGenerateOutput(
     for (const key of PROFILE_ARRAY_KEYS) {
       const raw = parsed.profileAnalysis[key];
       if (!Array.isArray(raw)) continue;
-      const items = raw.map((item) => customerText(item, 240)).filter((item): item is string => item !== null);
+      const items = raw.map((item) => customerText(item, 240)).filter((item): item is string => item !== null && checkOmittedMaterialUse({ [key]: item }, selection).length === 0);
       if (items.length > 0) pa[key] = items;
     }
     const strategy = customerText(parsed.profileAnalysis.openingStrategy, 500);
-    if (strategy) pa.openingStrategy = strategy;
+    if (strategy && checkOmittedMaterialUse({ strategy }, selection).length === 0) pa.openingStrategy = strategy;
     if (Object.keys(pa).length > 0) profileAnalysis = pa;
   }
 
@@ -149,6 +158,7 @@ export function normalizeOpenerGenerateOutput(
       references,
       displayNotes,
       reading,
+      selection,
       stretchLevels: normalizeStretchLevels(parsed),
       pioneerPlan,
       profileAnalysis,
@@ -203,6 +213,7 @@ export interface OpenerGenerateLedgerResult {
     references: OpenerMaterialReference[];
     traceStatus: OpenerTraceStatus;
     displayNote: string | null;
+    handlingNote?: string;
   };
   stretchLevels: Partial<Record<OpenerType, StretchLevel>>;
   pioneerPlan?: Record<string, string>;
@@ -239,7 +250,8 @@ export function projectOpenerGenerateResult(input: {
   // 第五輪 A：先讓候選忠於本次原料再排序——有有效原料時，推薦只從「內容上真的用到
   // 原料」的可見卡裡依 rankedPicks 取第一張；模型自稱的 references 不算證據。
   const ranked = normalized.rankedPicks.filter((type) => openers[type]);
-  const adopting = materials.hasEffectiveMaterial ? ranked.filter((type) => cardAdoptsMaterial(openers[type]!, materials)) : [];
+  const eligible = normalized.selection.eligible;
+  const adopting = eligible.hasEffectiveMaterial ? ranked.filter((type) => cardAdoptsMaterial(openers[type]!, eligible)) : [];
   const pick = adopting[0] ?? ranked[0] ?? visibleTypes.find((type) => openers[type]);
   if (!pick) return null;
 
@@ -271,6 +283,7 @@ export function projectOpenerGenerateResult(input: {
       references,
       traceStatus,
       displayNote,
+      ...(materialHandlingNote(normalized.selection) ? { handlingNote: materialHandlingNote(normalized.selection)! } : {}),
     },
     stretchLevels,
     recommendedPick: pick,

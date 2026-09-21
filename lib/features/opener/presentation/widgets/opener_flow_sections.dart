@@ -311,7 +311,7 @@ class OpenerContributionCard extends StatelessWidget {
   }
 }
 
-/// 推薦句下方的採用說明：只在來源核對 matched 且有 displayNote 時顯示。
+/// 採用說明需來源 matched；略過提示是獨立的取捨說明，不冒充採用。
 class OpenerMaterialUseNote extends StatelessWidget {
   const OpenerMaterialUseNote({super.key, required this.materialUse});
 
@@ -319,8 +319,13 @@ class OpenerMaterialUseNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final note = materialUse.displayNote;
-    if (!materialUse.matched || note == null) return const SizedBox.shrink();
+    final notes = [
+      if (materialUse.matched && materialUse.displayNote != null)
+        materialUse.displayNote!,
+      if (materialUse.handlingNote != null) materialUse.handlingNote!,
+    ];
+    if (notes.isEmpty) return const SizedBox.shrink();
+    final note = notes.join('\n');
     return OpenerHomePanel(
       padding: const EdgeInsets.all(12),
       child: Row(

@@ -283,6 +283,7 @@ export interface OpenerQualityFlag {
     | "certainty_upgraded"
     | "profile_fact_reversed"
     | "material_unused"
+    | "omitted_material_used"
     | "reference_invalid"
     | "reading_quote_mismatch";
   severity: "hard" | "soft";

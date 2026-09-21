@@ -549,12 +549,14 @@ class OpenerMaterialUse {
     required this.references,
     required this.traceStatus,
     this.displayNote,
+    this.handlingNote,
   });
 
   final String inputState;
   final List<OpenerMaterialReference> references;
   final String traceStatus;
   final String? displayNote;
+  final String? handlingNote;
 
   bool get matched => traceStatus == 'matched';
 
@@ -565,17 +567,20 @@ class OpenerMaterialUse {
         'references': references.map((r) => r.toJson()).toList(),
         'traceStatus': traceStatus,
         if (displayNote != null) 'displayNote': displayNote,
+        if (handlingNote != null) 'handlingNote': handlingNote,
       };
 
   static OpenerMaterialUse? tryParse(dynamic raw) {
     if (raw is! Map) return null;
     final refs = raw['references'];
     final note = raw['displayNote'];
+    final handling = raw['handlingNote'];
     return OpenerMaterialUse(
       inputState: raw['inputState'] is String ? raw['inputState'] as String : 'no_answer',
       references: refs is List ? refs.map(OpenerMaterialReference.tryParse).whereType<OpenerMaterialReference>().toList(growable: false) : const [],
       traceStatus: raw['traceStatus'] is String ? raw['traceStatus'] as String : 'uncertain',
       displayNote: note is String && note.trim().isNotEmpty ? note.trim() : null,
+      handlingNote: handling is String && handling.trim().isNotEmpty ? handling.trim() : null,
     );
   }
 }
