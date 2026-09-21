@@ -851,10 +851,13 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         const sourceFlags = value.selection.omitted.length
           ? checkOpenersAgainstMaterials(value.openers, eligible, activeSession.snapshot)
           : [];
-        const surfaceText = Object.fromEntries(OPENER_TYPES.map((type) => [type,
-          [value.openers[type], value.cardReasons[type], value.displayNotes[type]].filter(Boolean).join("\n")
-        ]));
-        const omittedFlags = checkOmittedMaterialUse(surfaceText, value.selection);
+        // Each field is an independent visible surface. Concatenating before
+        // punctuation removal invents words across opener/reason/note borders.
+        const omittedFlags = [value.openers, value.cardReasons, value.displayNotes]
+          .flatMap((surface) => checkOmittedMaterialUse(surface, value.selection))
+          .filter((flag, index, flags) => flags.findIndex((other) =>
+            other.style === flag.style && other.materialId === flag.materialId
+          ) === index);
         const guardFlags = [...base, ...sourceFlags, ...omittedFlags];
         return [...guardFlags, ...checkMaterialAdoption({ openers: value.openers, materials: eligible, visibleTypes, rankedPicks: value.rankedPicks, flags: guardFlags })];
       };

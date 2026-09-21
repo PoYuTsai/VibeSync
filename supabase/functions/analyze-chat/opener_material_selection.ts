@@ -126,7 +126,15 @@ export function resolveOpenerMaterialSelection(
  * turn one-character clauses inside a longer range into standalone bans.
  */
 function omittedQuotes(quote: string): string[] {
-  const clauses = quote.split(/[，,；;。！？!?\r\n]+/u).map(compact)
+  // Recognize ASCII sentence stops without splitting decimals, dotted tokens
+  // (U.S.A., URLs) or common title/initial abbreviations into short bans. This is
+  // punctuation handling, not suitability classification. Ambiguous unspaced
+  // Latin tokens stay intact; Chinese text does not require a following space.
+  const sentenceStops = quote.replace(/([^\s，,；;。！？!?]+)\.(?=\s|$|\p{Script=Han})/gu, (match, token: string) => {
+    if (token.includes(".") || /^(?:[A-Za-z]|Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)$/iu.test(token)) return match;
+    return `${token}。`;
+  });
+  const clauses = sentenceStops.split(/[，,；;。！？!?\r\n]+/u).map(compact)
     .filter((clause) => Array.from(clause).length > 1);
   return [...new Set([compact(quote), ...clauses])].filter(Boolean);
 }

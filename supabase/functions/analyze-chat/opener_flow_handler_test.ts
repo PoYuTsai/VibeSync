@@ -1142,11 +1142,11 @@ Deno.test("主審反例：拆單字 omit 的原句回流必須修正，仍未清
 });
 
 for (const surface of ["opener", "reason", "note"] as const) {
-  Deno.test(`略過多分句的局部回流：${surface} 修正仍失敗時不結算`, async () => {
+  Deno.test(`R3-P2-1：ASCII 分句回流 ${surface} 修正仍失敗時不結算`, async () => {
     const h = await harness();
     try {
       const analysis = await analyzed(h);
-      const text = "腿很長，幫我算一百乘三十";
+      const text = "腿很長. 幫我算一百乘三十";
       const bad = { ...GENERATE_JSON,
         materialReading: [omitReading(text)],
         openers: { ...GENERATE_JSON.openers, ...(surface === "opener" ? { extend: "妳腿很長，牠散步會自己選路嗎" } : {}) },
@@ -1164,11 +1164,11 @@ for (const surface of ["opener", "reason", "note"] as const) {
   });
 }
 
-Deno.test("略過多分句的局部回流修正成功後交付，重播不多扣", async () => {
+Deno.test("R3-P2-1：ASCII 分句回流修正成功後交付，重播不多扣", async () => {
   const h = await harness();
   try {
     const analysis = await analyzed(h);
-    const text = "腿很長，幫我算一百乘三十";
+    const text = "腿很長. 幫我算一百乘三十";
     const good = { ...GENERATE_JSON, materialReading: [omitReading(text)], materialUse: { references: [], displayNotes: {} } };
     h.script.generate = { ...good, openers: { ...good.openers, extend: "妳腿很長，牠散步會自己選路嗎" } };
     h.script.correction = good;
@@ -1184,3 +1184,23 @@ Deno.test("略過多分句的局部回流修正成功後交付，重播不多扣
     assertEquals(await usage(h.db), { m: 3, d: 3 });
   } finally { await h.db.close(); }
 });
+
+for (const secondField of ["reason", "note"] as const) {
+  Deno.test(`R3-P2-2：opener 與 ${secondField} 分別合法，不跨欄位拼字誤擋`, async () => {
+    const h = await harness();
+    try {
+      const analysis = await analyzed(h);
+      h.script.generate = { ...GENERATE_JSON,
+        materialReading: [omitReading("腿很長")],
+        openers: { ...GENERATE_JSON.openers, extend: "旅行走久了，妳會不會先放鬆小腿？" },
+        cardReasons: secondField === "reason" ? { extend: "很長的路線走完，聊放鬆方式比較好接。" } : {},
+        materialUse: { references: [], displayNotes: secondField === "note" ? { extend: "很長的路線走完，聊放鬆方式比較好接。" } : {} },
+      };
+      h.script.correction = h.script.generate;
+      const response = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: "腿很長" })));
+      assertEquals(response.status, 200);
+      assertEquals(h.script.calls.length, 2, "分析、生成各一次，不增加內容修正");
+      assertEquals(await usage(h.db), { m: 3, d: 3 });
+    } finally { await h.db.close(); }
+  });
+}
