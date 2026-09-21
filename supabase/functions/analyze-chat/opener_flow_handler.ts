@@ -852,13 +852,14 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         checkOpenerGenerationContent(value, materials, activeSession.snapshot, visibleTypes);
       let flags: OpenerQualityFlag[] = contentFlags(normalized.value);
       const hardBefore = hardFlags(flags);
+      const reconsiderSelection = hardBefore.some((flag) => flag.code === "material_unused");
       let corrected = false;
       if (hardBefore.length > 0 && extraCallsRemaining > 0) {
         extraCallsRemaining -= 1;
         try {
           const correction = await invokeModel({
             system: OPENER_GENERATE_PROMPT,
-            messages: [{ role: "user", content: buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials: normalized.value.selection.eligible, omitted: normalized.value.selection.omitted, snapshot: activeSession.snapshot }) }],
+            messages: [{ role: "user", content: buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials: reconsiderSelection ? materials : normalized.value.selection.eligible, omitted: normalized.value.selection.omitted, snapshot: activeSession.snapshot }) }],
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
@@ -866,7 +867,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           });
           addUsage(correction);
           const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
-          const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace);
+          const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace, reconsiderSelection ? materials : undefined);
           const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials, true);
           if (mergedNormalized.ok) {
             const mergedFlags = contentFlags(mergedNormalized.value);

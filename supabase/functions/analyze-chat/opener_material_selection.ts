@@ -119,6 +119,49 @@ export function resolveOpenerMaterialSelection(
   };
 }
 
+/** Content correction may narrow a mistaken use decision, never reopen an
+ * omission. Compare source positions (not substring membership), so repeated
+ * text or different usage splits cannot move the exemption to another span.
+ * Suitability is still a model decision; this only proves source/transition
+ * integrity. Original identities and interpretation metadata stay unchanged.
+ */
+export function refineOpenerMaterialReading(
+  original: unknown,
+  corrected: unknown,
+  source: OpenerMaterialSet,
+): unknown[] | null {
+  if (!resolveOpenerMaterialSelection(original, source, true).valid ||
+    !resolveOpenerMaterialSelection(corrected, source, true).valid) return null;
+  const before = Array.isArray(original) ? original : [];
+  const after = Array.isArray(corrected) ? corrected : [];
+  const replacements = new Map<string, unknown>();
+  for (const material of source.materials.filter((m) => m.origin === "user_text")) {
+    const oldItem = before.find((item) => isPlainObject(item) && item.materialId === material.id && item.usage !== undefined);
+    const newItem = after.find((item) => isPlainObject(item) && item.materialId === material.id && item.usage !== undefined);
+    // Both complete, ordered source partitions were validated above.
+    if (!isPlainObject(oldItem) || !isPlainObject(newItem)) return null;
+    const usePositions = (item: Record<string, unknown>): Uint8Array => {
+      const mask = new Uint8Array(material.originalText.length);
+      let cursor = 0;
+      for (const part of item.usage as Array<{ quote: string; action: string }>) {
+        const start = material.originalText.indexOf(part.quote, cursor);
+        cursor = start + part.quote.length;
+        if (part.action === "use") mask.fill(1, start, cursor);
+      }
+      return mask;
+    };
+    const oldUse = usePositions(oldItem);
+    const newUse = usePositions(newItem);
+    for (let i = 0; i < oldUse.length; i++) {
+      if (!oldUse[i] && newUse[i] && !separatorsOnly(material.originalText[i])) return null;
+    }
+    replacements.set(material.id, { ...oldItem, usage: newItem.usage });
+  }
+  return before.map((item) => isPlainObject(item) && replacements.has(String(item.materialId))
+    ? replacements.get(String(item.materialId))
+    : item);
+}
+
 /** Check the entire omitted range and complete clauses delimited in the source.
  * Model-generated usage boundaries are not word boundaries: checking arbitrary
  * fragments (e.g. 很長 split from 腿很長) would ban unrelated normal sentences.

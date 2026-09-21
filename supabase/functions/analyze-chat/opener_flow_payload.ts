@@ -7,7 +7,7 @@
 
 import { cardAdoptsMaterial, checkMaterialAdoption, checkOpenersAgainstMaterials } from "./opener_material.ts";
 import type { OpenerAnalysisSnapshot } from "./opener_stage.ts";
-import { checkOmittedMaterialUse, materialHandlingNote, type OpenerMaterialSelection, referenceUsesEligibleMaterial, resolveOpenerMaterialSelection } from "./opener_material_selection.ts";
+import { checkOmittedMaterialUse, materialHandlingNote, type OpenerMaterialSelection, referenceUsesEligibleMaterial, refineOpenerMaterialReading, resolveOpenerMaterialSelection } from "./opener_material_selection.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import {
@@ -189,13 +189,21 @@ export function normalizeOpenerGenerateOutput(
   };
 }
 
-/** 內容修正後的合併：只接受被標記風格的新句子，其餘逐字沿用原輸出。 */
+/** 內容修正只換被標記風格；採用衝突時可縮小 use，既有 omit 不得回復。
+ * 合併後仍須對整組結果重跑來源、取捨、採用與方案檢查。
+ */
 export function mergeOpenerCorrection(
   original: Record<string, unknown>,
   corrected: Record<string, unknown> | null,
   stylesToReplace: string[],
+  selectionSource?: OpenerMaterialSet,
 ): Record<string, unknown> {
   if (!corrected) return original;
+  // A sentence-only correction keeps the already validated source partition.
+  const reading = selectionSource && corrected.materialReading !== undefined
+    ? refineOpenerMaterialReading(original.materialReading, corrected.materialReading, selectionSource)
+    : original.materialReading;
+  if (selectionSource && reading === null) return original;
   const origOpeners = isPlainObject(original.openers) ? { ...original.openers } : {};
   const corrOpeners = isPlainObject(corrected.openers) ? corrected.openers : {};
   const origReasons = isPlainObject(original.cardReasons) ? { ...original.cardReasons } : {};
@@ -219,6 +227,7 @@ export function mergeOpenerCorrection(
   }
   return {
     ...original,
+    materialReading: reading,
     openers: origOpeners,
     cardReasons: origReasons,
     materialUse: { ...origUse, references: [...keptRefs, ...newRefs], displayNotes: origNotes },

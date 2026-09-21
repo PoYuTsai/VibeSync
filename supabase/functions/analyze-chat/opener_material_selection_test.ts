@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildOpenerMaterials, checkMaterialAdoption, checkOpenersAgainstMaterials } from "./opener_material.ts";
-import { checkOmittedMaterialUse, resolveOpenerMaterialSelection } from "./opener_material_selection.ts";
-import { mergeOpenerCorrection, normalizeOpenerGenerateOutput, projectOpenerGenerateResult } from "./opener_flow_payload.ts";
+import { checkOmittedMaterialUse, refineOpenerMaterialReading, resolveOpenerMaterialSelection } from "./opener_material_selection.ts";
+import { checkOpenerGenerationContent, mergeOpenerCorrection, normalizeOpenerGenerateOutput, projectOpenerGenerateResult } from "./opener_flow_payload.ts";
 import type { OpenerAnalysisSnapshot } from "./opener_stage.ts";
 import { OPENER_FREE_V2_TYPES, OPENER_TYPES } from "./opener_payload.ts";
 
@@ -109,6 +109,79 @@ Deno.test("內容修正不能翻轉取捨；重新生成用最新原文驗證", 
   assertEquals(changed.materialReading, original.materialReading);
   const stale = normalizeOpenerGenerateOutput(original, materials("想聊她獨旅的城市"), true);
   assert(!stale.ok && stale.reason === "invalid_material_usage");
+});
+
+Deno.test("採用修正：可縮小 use，來源人物確定度與原 omit 保持", () => {
+  const text = "腿很長，想約她一起打羽球";
+  const set = materials(text);
+  const original = reading(text, [omit("腿很長"), use("想約她一起打羽球")]);
+  const corrected = reading(text, [omit("腿很長"), omit("想約她一起"), use("打羽球")]);
+  corrected[0].subject = "sender"; // Interpretation rewrites are not accepted.
+  const refined = refineOpenerMaterialReading(original, corrected, set);
+  assert(refined);
+  assertEquals(refined, [{ ...original[0], usage: corrected[0].usage }]);
+  const selection = resolveOpenerMaterialSelection(refined, set, true);
+  assertEquals(selection.eligible.materials[0].originalText, "打羽球");
+  assertEquals(refineOpenerMaterialReading(original, reading(text, [use(text)]), set), null);
+});
+
+Deno.test("採用修正：重複原文按位置鎖住 omit，重新分段不得偷換同字來源", () => {
+  const text = "羽球，羽球，想聊獨旅";
+  const set = materials(text);
+  const original = reading(text, [omit("羽球"), use("羽球"), use("想聊獨旅")]);
+  const swapped = reading(text, [use("羽球"), omit("羽球"), use("想聊獨旅")]);
+  assertEquals(refineOpenerMaterialReading(original, swapped, set), null);
+  const repartitioned = reading(text, [omit("羽"), omit("球"), use("羽球，想聊獨旅")]);
+  assert(refineOpenerMaterialReading(original, repartitioned, set));
+});
+
+Deno.test("採用修正：拒收無效來源，略過也不得移除原有明確限制", () => {
+  const text = "想約她一起打羽球";
+  const set = materials(text);
+  const original = reading(text, [use(text)]);
+  for (const invalid of [
+    null, [], reading("別的原文", [omit("別的原文")]),
+    reading(text, [omit("想約她一起")]),
+    reading(text, [omit(text), use("羽球")]),
+    [...reading(text, [omit(text)]), { materialId: "made_up", usage: [omit("假的")] }],
+  ]) assertEquals(refineOpenerMaterialReading(original, invalid, set), null);
+  const restriction = "不要聊獨旅";
+  const restrictionSet = materials(restriction);
+  const refined = refineOpenerMaterialReading(reading(restriction, [use(restriction)]), reading(restriction, [omit(restriction)]), restrictionSet);
+  assert(refined);
+  const selection = resolveOpenerMaterialSelection(refined, restrictionSet, true);
+  assertEquals(selection.eligible.excludedTopics, restrictionSet.excludedTopics);
+  assert(checkOpenersAgainstMaterials({ extend: "妳喜歡去哪裡獨旅" }, selection.eligible)
+    .some((flag) => flag.code === "excluded_topic_used"), "raw_sentence 被略過也不得移除來源限制");
+  const typedRestriction = { ...restrictionSet, materials: restrictionSet.materials.map((m) => ({ ...m, kind: "restriction" as const })) };
+  assertEquals(refineOpenerMaterialReading(reading(restriction, [use(restriction)]), reading(restriction, [omit(restriction)]), typedRestriction), null);
+});
+
+Deno.test("採用修正：新 omit 重跑未換卡、理由、說明，仍保留來源人物與否定檢查", () => {
+  const text = "腿很長，想聊獨旅";
+  const set = materials(text);
+  for (const surface of ["openers", "cardReasons", "displayNotes"]) {
+    const original = output(reading(text, [use(text)]));
+    const corrected = output(reading(text, [omit("腿很長"), use("想聊獨旅")]));
+    if (surface === "openers") original.openers.humor = "妳腿很長";
+    if (surface === "cardReasons") Object.assign(original.cardReasons, { humor: "腿很長" });
+    if (surface === "displayNotes") Object.assign(original.materialUse.displayNotes, { humor: "腿很長" });
+    const merged = mergeOpenerCorrection(original, corrected, ["extend"], set);
+    const normalized = normalizeOpenerGenerateOutput(merged, set, true);
+    assert(normalized.ok);
+    assert(checkOpenerGenerationContent(normalized.value, set, snapshot, OPENER_TYPES)
+      .some((flag) => flag.code === "omitted_material_used" && flag.style === "humor"), surface);
+  }
+  const negative = "我沒去過巴黎，腿很長";
+  const negatives = materials(negative);
+  const merged = mergeOpenerCorrection(output(reading(negative, [use(negative)])), {
+    ...output(reading(negative, [use("我沒去過巴黎"), omit("腿很長")])),
+    openers: { ...output([]).openers, extend: "我去巴黎好多次" },
+  }, ["extend"], negatives);
+  const normalized = normalizeOpenerGenerateOutput(merged, negatives, true);
+  assert(normalized.ok);
+  assert(checkOpenerGenerationContent(normalized.value, negatives, snapshot, OPENER_TYPES)
+    .some((flag) => flag.code === "negation_reversed"));
 });
 
 Deno.test("主審反例：相鄰 use 保留原文與否定，混合素材也不插入標點", () => {

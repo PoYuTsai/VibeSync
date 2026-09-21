@@ -397,7 +397,7 @@ Deno.test("版本升級：舊 prompt 已完成結果唯讀重播；不同內容�
 });
 
 for (const tier of ["free", "essential"]) {
-  Deno.test(`N03/${tier}：來源明確不見面，取捨保留羽球；錯誤全 use 仍是已知衝突`, async () => {
+  Deno.test(`N03/${tier}：來源明確不見面，既有修正可略過衝突邀約並保留羽球`, async () => {
     const h = await harness();
     try {
       h.tier = tier;
@@ -416,19 +416,56 @@ for (const tier of ["free", "essential"]) {
       assertEquals(good.status, 200);
       assertEquals(h.script.calls.length, 2);
       await passOneMinute(h.db);
-      // This records the remaining semantic decision boundary, not a guard bypass:
-      // treating the whole conflicting goal as use still demands an invitation.
+      // The initial all-use decision was wrong. A correction must be able to
+      // narrow it without being forced to add an invitation to the safe cards.
       h.script.generate = { ...safe, materialReading: [useReading(text, "material_1")] };
-      h.script.correction = h.script.generate;
-      const conflict = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_2, { state: "answered", freeText: text })));
-      assertEquals(conflict.status, 502);
-      assertEquals((await json(conflict)).code, "OPENER_CONTENT_CONFLICT");
-      assert(String(h.script.calls.at(-1)?.messages[0].content).includes("一張都沒真的用到"));
+      h.script.correction = safe;
+      const request = generateBody(String(analysis.sessionId), GEN_2, { state: "answered", freeText: text });
+      const recovered = await handleOpenerGenerateRequest(h.deps(request));
+      assertEquals(recovered.status, 200);
+      const result = await json(recovered);
+      assertEquals((result.openers as Record<string, string>).extend, safe.openers.extend);
+      assert((result.materialUse as Record<string, unknown>).handlingNote);
+      assertEquals(h.script.calls.length, 4, "沿用一次有界修正，不另開分類或生成呼叫");
       assert(String(h.script.calls.at(-1)?.messages[0].content).includes(bio), "修正必須仍看得到來源的拒絕，不只看到邀約素材");
+      assertEquals((await handleOpenerGenerateRequest(h.deps(request))).status, 200);
+      assertEquals(h.script.calls.length, 4, "重播不再生成");
+      assertEquals(await usage(h.db), { m: 3, d: 3 }, "同局後續生成與重播不另扣費");
+      await passOneMinute(h.db);
+      h.script.correction = h.script.generate;
+      const unresolved = await handleOpenerGenerateRequest(h.deps({ ...request, generationId: GEN_3 }));
+      assertEquals(unresolved.status, 502, "仍宣告全 use 又沒有採用，不可繞過採用檢查");
+      assertEquals((await json(unresolved)).code, "OPENER_CONTENT_CONFLICT");
+      assertEquals(h.script.calls.length, 6, "修不好也只有一次修正");
       assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不另扣費");
     } finally { await h.db.close(); }
   });
 }
+
+Deno.test("採用修正 handler：既有 omit 不能翻回 use；格式修復已用掉就不再補一次", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    const text = "腿很長，想約她一起打羽球";
+    const original = { ...GENERATE_JSON, materialReading: [{ ...useReading(text, "material_1"), usage: [
+      { quote: "腿很長", action: "omit", reason: "unsuitable_opener" },
+      { quote: "想約她一起打羽球", action: "use" },
+    ] }], materialUse: { references: [], displayNotes: {} } };
+    h.script.generate = original;
+    h.script.correction = { ...original, materialReading: [useReading(text, "material_1")], openers: { ...original.openers, extend: "下次一起打羽球嗎" } };
+    const request = generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text });
+    assertEquals((await handleOpenerGenerateRequest(h.deps(request))).status, 502, "即使卡片已符合採用，反轉舊 omit 的整次修正仍拒收");
+    assertEquals(h.script.calls.length, 3);
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    await passOneMinute(h.db);
+    h.script.generate = { ...original, materialReading: [] };
+    h.script.repair = original;
+    const before = h.script.calls.length;
+    assertEquals((await handleOpenerGenerateRequest(h.deps({ ...request, generationId: GEN_2 }))).status, 502);
+    assertEquals(h.script.calls.length - before, 2, "生成與格式修復後沒有額外內容修正");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+  } finally { await h.db.close(); }
+});
 
 for (const accountIsTest of [false, true]) {
   Deno.test(`版本升級：${accountIsTest ? "測試帳號" : "無資料零成本"} 已完成結果也可重播且不扣費`, async () => {
@@ -954,7 +991,7 @@ Deno.test("A（第五輪）：可見推薦沒接原料→一次內容修正改�
     assertEquals((body.materialUse as Record<string, unknown>).traceStatus, "matched");
     assertEquals((body.usage as Record<string, unknown>).generationsUsed, 1);
     const correctionCall = h.script.calls.find((c) => String(c.messages[0].content).startsWith("以下這組開場白有可確定的錯誤"));
-    assert(correctionCall && String(correctionCall.messages[0].content).includes("一張都沒真的用到"), "修正提示要說明原料未採用");
+    assert(correctionCall && String(correctionCall.messages[0].content).includes("尚未找到保留原料"), "修正提示要說明未找到原料採用證據");
     assertEquals(await usage(h.db), { m: 3, d: 3 });
 
     // 修正後仍然沒接住 → 502、不扣、不占次數，且不再發第三次模型請求。
