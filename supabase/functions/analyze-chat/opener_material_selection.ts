@@ -119,19 +119,33 @@ export function resolveOpenerMaterialSelection(
   };
 }
 
-/** Exact reintroduction is a detectable contradiction.
- * Singleton omissions are checked too; splitting a quote grants no exemption.
- * Paraphrased suitability remains a semantic quality question for model evaluations.
+/** Check the entire omitted range and complete clauses delimited in the source.
+ * Model-generated usage boundaries are not word boundaries: checking arbitrary
+ * fragments (e.g. 很長 split from 腿很長) would ban unrelated normal sentences.
+ * Do not split quotes, parentheses, apostrophes or spaces into shorter bans, or
+ * turn one-character clauses inside a longer range into standalone bans.
+ */
+function omittedQuotes(quote: string): string[] {
+  const clauses = quote.split(/[，,；;。！？!?\r\n]+/u).map(compact)
+    .filter((clause) => Array.from(clause).length > 1);
+  return [...new Set([compact(quote), ...clauses])].filter(Boolean);
+}
+
+/** Exact reintroduction of an omitted range or source clause is a contradiction.
+ * Standalone singleton omissions retain the existing conservative check.
+ * Partial reuse without a source clause boundary and paraphrases are not proven
+ * absent by this check; suitability remains a semantic model-quality question.
  */
 export function checkOmittedMaterialUse(
   textsByStyle: Record<string, string>,
   selection: OpenerMaterialSelection,
 ): OpenerQualityFlag[] {
   const flags: OpenerQualityFlag[] = [];
+  const omissions = selection.omitted.map((item) => ({ item, quotes: omittedQuotes(item.quote) }));
   for (const [style, text] of Object.entries(textsByStyle)) {
-    for (const item of selection.omitted) {
-      const quote = compact(item.quote);
-      if (quote && compact(text).includes(quote)) {
+    const normalizedText = compact(text);
+    for (const { item, quotes } of omissions) {
+      if (quotes.some((quote) => normalizedText.includes(quote))) {
         flags.push({ code: "omitted_material_used", severity: "hard", style, materialId: item.materialId });
         break;
       }

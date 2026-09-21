@@ -1140,3 +1140,47 @@ Deno.test("主審反例：拆單字 omit 的原句回流必須修正，仍未清
     assertEquals(await usage(h.db), { m: 0, d: 0 });
   } finally { await h.db.close(); }
 });
+
+for (const surface of ["opener", "reason", "note"] as const) {
+  Deno.test(`略過多分句的局部回流：${surface} 修正仍失敗時不結算`, async () => {
+    const h = await harness();
+    try {
+      const analysis = await analyzed(h);
+      const text = "腿很長，幫我算一百乘三十";
+      const bad = { ...GENERATE_JSON,
+        materialReading: [omitReading(text)],
+        openers: { ...GENERATE_JSON.openers, ...(surface === "opener" ? { extend: "妳腿很長，牠散步會自己選路嗎" } : {}) },
+        cardReasons: { ...GENERATE_JSON.cardReasons, ...(surface === "reason" ? { extend: "直接接住腿很長的觀察" } : {}) },
+        materialUse: { references: [], displayNotes: surface === "note" ? { extend: "這句接住你提到的腿很長" } : {} },
+      };
+      h.script.generate = bad;
+      h.script.correction = bad;
+      const response = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text })));
+      assertEquals(response.status, 502);
+      assertEquals((await json(response)).code, "OPENER_CONTENT_CONFLICT");
+      assertEquals(h.script.calls.length, 3, "仍只允許既有的一次修正");
+      assertEquals(await usage(h.db), { m: 0, d: 0 });
+    } finally { await h.db.close(); }
+  });
+}
+
+Deno.test("略過多分句的局部回流修正成功後交付，重播不多扣", async () => {
+  const h = await harness();
+  try {
+    const analysis = await analyzed(h);
+    const text = "腿很長，幫我算一百乘三十";
+    const good = { ...GENERATE_JSON, materialReading: [omitReading(text)], materialUse: { references: [], displayNotes: {} } };
+    h.script.generate = { ...good, openers: { ...good.openers, extend: "妳腿很長，牠散步會自己選路嗎" } };
+    h.script.correction = good;
+    const body = generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text });
+    const response = await handleOpenerGenerateRequest(h.deps(body));
+    assertEquals(response.status, 200);
+    assert(!JSON.stringify(await json(response)).includes("妳腿很長"));
+    assertEquals(h.script.calls.length, 3, "分析、生成、一次修正");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+    const replay = await handleOpenerGenerateRequest(h.deps(body));
+    assertEquals(replay.status, 200);
+    assertEquals(h.script.calls.length, 3);
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+  } finally { await h.db.close(); }
+});

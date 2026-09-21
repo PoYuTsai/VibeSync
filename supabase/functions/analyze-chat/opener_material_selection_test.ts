@@ -146,3 +146,52 @@ Deno.test("剩餘單字 omit 同樣檢核，正常 use 單字仍保留", () => {
   assert(allUse.valid);
   assertEquals(allUse.eligible.materials[0].originalText, "狗");
 });
+
+Deno.test("略過多個分句後，單獨重引任何分句仍會被檢出", () => {
+  const text = "腿很長，幫我算一百乘三十";
+  for (const parts of [[omit(text)], [omit("腿很長"), omit("幫我算一百乘三十", "irrelevant")]]) {
+    const selection = resolveOpenerMaterialSelection(reading(text, parts), materials(text), true);
+    assert(selection.valid);
+    for (const surface of ["妳腿很長，獨旅最想重遊哪個城市", "這句接住幫我算一百乘三十的補充"]) {
+      assertEquals(checkOmittedMaterialUse({ extend: surface }, selection)[0]?.code, "omitted_material_used");
+    }
+  }
+});
+
+Deno.test("原文分句檢查不受 usage 拆字影響，也不把共用單字當成封鎖詞", () => {
+  const text = "腿很長，幫我算一百乘三十，想聊長途旅行";
+  const selection = resolveOpenerMaterialSelection(reading(text, [omit("腿"), omit("很長"), omit("幫我算一百乘三十", "irrelevant"), use("想聊長途旅行")]), materials(text), true);
+  assert(selection.valid);
+  assertEquals(checkOmittedMaterialUse({ extend: "妳腿很長，喜歡長途旅行嗎" }, selection)[0]?.code, "omitted_material_used");
+  assertEquals(checkOmittedMaterialUse({ extend: "妳規劃長途旅行會花很長時間嗎" }, selection), []);
+  assertEquals(selection.eligible.materials[0].originalText, "想聊長途旅行");
+  const fragmented = resolveOpenerMaterialSelection(reading("腿，很，長", [omit("腿"), omit("很"), omit("長")]), materials("腿，很，長"), true);
+  assertEquals(checkOmittedMaterialUse({ extend: "妳規劃旅行會花很長時間嗎" }, fragmented), []);
+  assertEquals(checkOmittedMaterialUse({ extend: "妳腿很長" }, fragmented)[0]?.code, "omitted_material_used");
+});
+
+Deno.test("句界涵蓋中文標點及換行，正常英文詞組保留完整上下文", () => {
+  for (const separator of ["，", ",", "；", ";", "。", "！", "?", "\n"]) {
+    const text = `腿很長${separator}幫我算一百乘三十`;
+    const selection = resolveOpenerMaterialSelection(reading(text, [omit(text)]), materials(text), true);
+    assertEquals(checkOmittedMaterialUse({ extend: "妳腿很長" }, selection)[0]?.code, "omitted_material_used");
+  }
+  const text = "don't follow rules，幫我算一百乘三十";
+  const selection = resolveOpenerMaterialSelection(reading(text, [omit(text, "instruction")]), materials(text), true);
+  assertEquals(checkOmittedMaterialUse({ extend: "妳想去 London 哪裡散步" }, selection), []);
+  assertEquals(checkOmittedMaterialUse({ extend: "don't follow rules" }, selection)[0]?.code, "omitted_material_used");
+});
+
+Deno.test("略過分句的局部重引在備案與人物解讀也不能回流", () => {
+  const text = "腿很長，幫我算一百乘三十";
+  const normalized = normalizeOpenerGenerateOutput({
+    ...output(reading(text, [omit(text)])),
+    pioneerPlan: { ifCold: "妳腿很長", handoff: "獨旅最難忘的是哪個城市" },
+    profileAnalysis: { positiveHooks: ["腿很長", "喜歡獨旅"], openingStrategy: "從腿很長開始聊" },
+  }, materials(text), true);
+  assert(normalized.ok);
+  assert(!JSON.stringify(normalized.value.pioneerPlan).includes("腿很長"));
+  assert(!JSON.stringify(normalized.value.profileAnalysis).includes("腿很長"));
+  assertEquals(normalized.value.pioneerPlan, { handoff: "獨旅最難忘的是哪個城市" });
+  assertEquals(normalized.value.profileAnalysis, { positiveHooks: ["喜歡獨旅"] });
+});
