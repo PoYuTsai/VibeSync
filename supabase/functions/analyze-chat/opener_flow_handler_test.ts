@@ -397,7 +397,7 @@ Deno.test("版本升級：舊 prompt 已完成結果唯讀重播；不同內容�
 });
 
 for (const tier of ["free", "essential"]) {
-  Deno.test(`N03/${tier}：來源明確不見面，既有修正可略過衝突邀約並保留羽球`, async () => {
+  Deno.test(`N03/${tier}：來源明確不見面，想約是之後的目標，全 use 的羽球卡直接交付；話題型補充仍不可繞過採用檢查`, async () => {
     const h = await harness();
     try {
       h.tier = tier;
@@ -414,30 +414,62 @@ for (const tier of ["free", "essential"]) {
       h.script.generate = safe;
       const good = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text })));
       assertEquals(good.status, 200);
+      assert(((await json(good)).materialUse as Record<string, unknown>).handlingNote);
       assertEquals(h.script.calls.length, 2);
       await passOneMinute(h.db);
-      // The initial all-use decision was wrong. A correction must be able to
-      // narrow it without being forced to add an invitation to the safe cards.
+      // 2026-09-24 教練型 Opener：想約是之後的目標，這一則只開話題。全 use 也不再要求卡片帶邀約，
+      // 只聊羽球的卡直接交付，不送修正。
       h.script.generate = { ...safe, materialReading: [useReading(text, "material_1")] };
       h.script.correction = safe;
       const request = generateBody(String(analysis.sessionId), GEN_2, { state: "answered", freeText: text });
-      const recovered = await handleOpenerGenerateRequest(h.deps(request));
-      assertEquals(recovered.status, 200);
-      const result = await json(recovered);
-      assertEquals((result.openers as Record<string, string>).extend, safe.openers.extend);
-      assert((result.materialUse as Record<string, unknown>).handlingNote);
-      assertEquals(h.script.calls.length, 4, "沿用一次有界修正，不另開分類或生成呼叫");
-      assert(String(h.script.calls.at(-1)?.messages[0].content).includes(bio), "修正必須仍看得到來源的拒絕，不只看到邀約素材");
+      const direct = await handleOpenerGenerateRequest(h.deps(request));
+      assertEquals(direct.status, 200);
+      assertEquals(((await json(direct)).openers as Record<string, string>).extend, safe.openers.extend);
+      assertEquals(h.script.calls.length, 3, "直接交付，沒有修正呼叫");
       assertEquals((await handleOpenerGenerateRequest(h.deps(request))).status, 200);
-      assertEquals(h.script.calls.length, 4, "重播不再生成");
+      assertEquals(h.script.calls.length, 3, "重播不再生成");
       assertEquals(await usage(h.db), { m: 3, d: 3 }, "同局後續生成與重播不另扣費");
       await passOneMinute(h.db);
+      // 話題型補充（想問她科幻片）全 use，卡片卻只聊羽球：仍要一次修正，修不好 502。
+      const topic = "想問她都看哪些科幻片";
+      h.script.generate = { ...safe, materialReading: [useReading(topic, "material_1")] };
       h.script.correction = h.script.generate;
-      const unresolved = await handleOpenerGenerateRequest(h.deps({ ...request, generationId: GEN_3 }));
+      const unresolved = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_3, { state: "answered", freeText: topic })));
       assertEquals(unresolved.status, 502, "仍宣告全 use 又沒有採用，不可繞過採用檢查");
       assertEquals((await json(unresolved)).code, "OPENER_CONTENT_CONFLICT");
-      assertEquals(h.script.calls.length, 6, "修不好也只有一次修正");
+      assertEquals(h.script.calls.length, 5, "修不好也只有一次修正");
+      assert(String(h.script.calls.at(-1)?.messages[0].content).includes(bio), "修正必須仍看得到來源的拒絕，不只看到補充");
       assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不另扣費");
+    } finally { await h.db.close(); }
+  });
+
+  Deno.test(`N03/${tier}：話題型補充初判誤標全 use → 同一次修正可把不適用的補充收窄為 omit，交付羽球卡`, async () => {
+    // 原 N03 的收窄路徑（material_unused → reconsiderSelection → 修正改 omit → 200＋handlingNote）改用話題型補充重建。
+    const h = await harness();
+    try {
+      h.tier = tier;
+      const bio = "喜歡羽球和科幻片。目前只想線上聊天，不見面、不約。";
+      h.script.analyze = { ...ANALYSIS_JSON, profileDigest: bio, cues: [{ id: "cue_1", label: "羽球", source: "profile_text", evidence: { field: "bio", quote: "喜歡羽球" } }], question: null };
+      const analysis = await analyzed(h, { profileInfo: { bio } });
+      // 她只想線上聊，問住處不適合開場；初判卻全 use，五張只聊羽球 → material_unused。
+      const text = "想問她家住哪裡";
+      const badminton = { ...GENERATE_JSON,
+        openers: { extend: "羽球妳比較喜歡單打還是雙打", resonate: "羽球最近哪一場打得最開心", tease: "羽球最讓妳不想下場的是哪個部分", humor: "羽球場上最常發生什麼小插曲", coldRead: "羽球妳最享受哪種節奏" },
+        cardReasons: { extend: "保留打球偏好，不問住處" },
+        materialUse: { references: [], displayNotes: {} },
+      };
+      h.script.generate = { ...badminton, materialReading: [useReading(text, "material_1")] };
+      h.script.correction = { ...badminton, materialReading: [{ ...useReading(text, "material_1"), usage: [{ quote: text, action: "omit", reason: "unsuitable_opener" }] }] };
+      const res = await handleOpenerGenerateRequest(h.deps(generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text })));
+      assertEquals(res.status, 200);
+      const result = await json(res);
+      assertEquals((result.openers as Record<string, string>).extend, badminton.openers.extend);
+      assert((result.materialUse as Record<string, unknown>).handlingNote, "收窄後告知這段補充沒放進開場");
+      assertEquals(h.script.calls.length, 3, "分析＋生成＋一次有界修正，不另開分類或生成呼叫");
+      const correction = String(h.script.calls.at(-1)?.messages[0].content);
+      assert(correction.includes("方案可見的卡尚未找到保留原料"), "這次修正由 material_unused 觸發");
+      assert(correction.includes(bio), "修正必須仍看得到來源的拒絕，不只看到補充");
+      assertEquals(await usage(h.db), { m: 3, d: 3 }, "只扣一次");
     } finally { await h.db.close(); }
   });
 }
@@ -446,13 +478,14 @@ Deno.test("採用修正 handler：既有 omit 不能翻回 use；格式修復已
   const h = await harness();
   try {
     const analysis = await analyzed(h);
-    const text = "腿很長，想約她一起打羽球";
+    // 想約不再要求採用（2026-09-24 教練型 Opener），改用話題型補充觸發 material_unused。
+    const text = "腿很長，想問她都去哪裡打羽球";
     const original = { ...GENERATE_JSON, materialReading: [{ ...useReading(text, "material_1"), usage: [
       { quote: "腿很長", action: "omit", reason: "unsuitable_opener" },
-      { quote: "想約她一起打羽球", action: "use" },
+      { quote: "想問她都去哪裡打羽球", action: "use" },
     ] }], materialUse: { references: [], displayNotes: {} } };
     h.script.generate = original;
-    h.script.correction = { ...original, materialReading: [useReading(text, "material_1")], openers: { ...original.openers, extend: "下次一起打羽球嗎" } };
+    h.script.correction = { ...original, materialReading: [useReading(text, "material_1")], openers: { ...original.openers, extend: "妳都去哪裡打羽球" } };
     const request = generateBody(String(analysis.sessionId), GEN_1, { state: "answered", freeText: text });
     assertEquals((await handleOpenerGenerateRequest(h.deps(request))).status, 502, "即使卡片已符合採用，反轉舊 omit 的整次修正仍拒收");
     assertEquals(h.script.calls.length, 3);
@@ -1177,16 +1210,52 @@ Deno.test("第七輪 F051／F040／F058：捕獲 raw 只有 soft 或線索錨字
   }
 });
 
-Deno.test("第七輪 goal A1：捕獲 raw 想約沒邀約 → Free 修正加邀約後交付；paid 另算一個情境，修正仍沒邀約→502 不扣不計次", async () => {
+Deno.test("第七輪 goal A1：捕獲 raw 想約沒邀約 → 想約是之後的目標，Free 與 paid 都直接交付、不送修正", async () => {
+  // 2026-09-24 教練型 Opener 反轉原判（原為 Free 修正加邀約、paid 502）：這一則只開話題，想約不要求採用。
   const h = await harness();
   try {
     const fx = await captured("goal-not-consent.A.1");
     const sessionId = await capturedSession(h, fx);
     h.script.generate = fx.raw;
-    h.script.correction = { openers: { extend: "一天三杯 找一天一起喝一杯看看？" }, cardReasons: { extend: "帶輕邀約" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "一起喝一杯" }] } };
+    h.script.correction = { openers: { extend: "一天三杯 找一天一起喝一杯看看？" } };
     const free = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, fx.contribution)));
     assertEquals(free.status, 200);
-    assertEquals(((await json(free)).openers as Record<string, string>).extend, "一天三杯 找一天一起喝一杯看看？");
+    const freeBody = await json(free);
+    assertEquals((freeBody.openers as Record<string, string>).extend, "一天三杯 是提神還是純粹愛喝", "捕獲 raw 逐字交付");
+    assertEquals((freeBody.recommendation as Record<string, unknown>).pick, "extend", "推薦維持模型第一名");
+    assertEquals(generateCalls(h), 1, "Free 沒有修正呼叫");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+
+    await passOneMinute(h.db);
+    h.tier = "essential";
+    const paid = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, fx.contribution)));
+    assertEquals(paid.status, 200);
+    const paidOpeners = (await json(paid)).openers as Record<string, string>;
+    assertEquals(Object.keys(paidOpeners).length, 5);
+    assertEquals(paidOpeners.extend, "一天三杯 是提神還是純粹愛喝");
+    assertEquals(generateCalls(h), 2, "paid 也沒有修正呼叫");
+    assertEquals(await usage(h.db), { m: 3, d: 3 }, "同局第二組不另扣");
+    const rows = await h.db.query<{ generations_used: number }>(`SELECT generations_used FROM public.opener_sessions WHERE session_id = $1`, [sessionId]);
+    assertEquals(rows.rows[0].generations_used, 2);
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("第七輪 goal A1 話題型對照：捕獲 raw 沒接住想問的事 → Free 修正後交付；paid 另算一個情境，修正仍沒接住→502 不扣不計次", async () => {
+  // 原測試 paid 分支的保護（修正仍失敗→502、不扣不計次、只一次修正）改用話題型補充重建。
+  const h = await harness();
+  try {
+    const fx = await captured("goal-not-consent.A.1");
+    const sessionId = await capturedSession(h, fx);
+    const contribution = { ...fx.contribution, freeText: "想問她假日都去哪裡走走" };
+    const raw = parseJsonObjectFromText(fx.raw)!;
+    raw.materialReading = [useReading(contribution.freeText, "material_1")];
+    h.script.generate = JSON.stringify(raw);
+    h.script.correction = { openers: { extend: "假日都去哪裡走走？一天三杯應該也要配個好地方" }, cardReasons: { extend: "接住你想問的假日去處" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "假日都去哪裡走走" }] } };
+    const free = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, contribution)));
+    assertEquals(free.status, 200);
+    assertEquals(((await json(free)).openers as Record<string, string>).extend, "假日都去哪裡走走？一天三杯應該也要配個好地方");
     assertEquals(generateCalls(h), 2, "Free：生成＋一次修正");
     assertEquals(await usage(h.db), { m: 3, d: 3 });
 
@@ -1194,8 +1263,8 @@ Deno.test("第七輪 goal A1：捕獲 raw 想約沒邀約 → Free 修正加邀�
     h.tier = "essential";
     h.script.correction = { openers: { extend: "一天三杯是咖啡因在續命還是興趣使然" } };
     const before = h.script.calls.length;
-    const paid = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, fx.contribution)));
-    assertEquals(paid.status, 502, "paid 五卡仍無邀約→不交付");
+    const paid = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution)));
+    assertEquals(paid.status, 502, "paid 五卡仍沒接住→不交付");
     assertEquals((await json(paid)).code, "OPENER_CONTENT_CONFLICT");
     assertEquals(h.script.calls.length - before, 2);
     assertEquals(await usage(h.db), { m: 3, d: 3 }, "失敗不扣");

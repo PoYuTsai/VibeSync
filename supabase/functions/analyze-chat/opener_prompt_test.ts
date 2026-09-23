@@ -1,8 +1,14 @@
 import {
   assert,
+  assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
+import {
+  buildOpenerContentCorrectionPrompt,
+  OPENER_GENERATE_PROMPT,
+} from "./opener_flow_prompt.ts";
+import { OPENER_FLOW_PROMPT_VERSION } from "./opener_stage.ts";
 
 Deno.test({
   name: "OPENER_PROMPT teaches users how to reply, not just what to paste",
@@ -461,4 +467,128 @@ Deno.test({
       ),
     );
   },
+});
+
+// ─── 開場救星兩段式：教練型 Opener 只開話題（2026-09-24 topic-first-v1）───
+
+Deno.test("教練型 Opener：generate prompt 不再要求輕邀約，邀約目標改從 X 開話題並如實說明", () => {
+  assertEquals(OPENER_FLOW_PROMPT_VERSION, "opener-two-stage-topic-first-v1");
+
+  // 舊的邀約代寫義務不得回來。
+  for (
+    const old of [
+      "輕邀約意圖",
+      "提出符合情境的輕邀約",
+      "不是把合理邀約全部退成確認資料的問題",
+    ]
+  ) {
+    assertFalse(OPENER_GENERATE_PROMPT.includes(old), `舊邀約要求殘留：${old}`);
+  }
+  assert(OPENER_GENERATE_PROMPT.includes("五張卡整則都只開話題"));
+
+  // 「邀約目標」教練條：想約／幫我約／第一句就約／貼邀約原句都不在卡片提邀約。
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "- 邀約目標：這個入口是陌生開場的教練，不是代寫邀約。",
+    ),
+  );
+  assert(
+    OPENER_GENERATE_PROMPT.includes("要第一句就約，或貼上一句寫給她的邀約"),
+  );
+  assert(
+    OPENER_GENERATE_PROMPT.includes("五張卡都不向她提出見面、共同活動或約時間"),
+  );
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "改從 X 本身或最接近 X 的有來源話題自然開場",
+    ),
+  );
+  assert(
+    OPENER_GENERATE_PROMPT.includes("也不因為沒寫邀約就把 X 換成別的話題"),
+  );
+  // 明確要求時：誠實說明放在 cardReasons，不塞進可複製的開場句。推薦由系統依方案從可見卡選，
+  // 模型不知道哪張會被推薦（Free 看不到 resonate），所以五張都要帶。
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "五張卡的 cardReasons 都順帶如實說明這裡先從 X 開話題、不把第一句寫成邀約（系統依方案從可見卡選推薦，每張都可能是推薦）",
+    ),
+  );
+  assertFalse(OPENER_GENERATE_PROMPT.includes("推薦卡的 cardReasons 用一句話如實說明"));
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "這句說明不寫進開場句，也不假稱已照他的要求寫了邀約",
+    ),
+  );
+  // 邀約目標仍標 use（不錯標 irrelevant），但 use 不等於這一則要邀約。
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "邀約目標標 use 代表它決定從哪件事開聊，不代表這一則要提出邀約",
+    ),
+  );
+
+  // 提示欄：沒有邀約時機作業；明說不見面不再約；單寫「不約」保留不確定。
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "cardReasons、pioneerPlan 與 openingStrategy 受同一份來源與限制約束",
+    ),
+  );
+  assert(OPENER_GENERATE_PROMPT.includes("不必安排何時邀約"));
+  assert(
+    OPENER_GENERATE_PROMPT.includes("她明說不見面時，這些欄位都不建議再約"),
+  );
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "只寫「不約」而意思不明時保留不確定，不當成可以約",
+    ),
+  );
+
+  // 背景例外：家人／過去經歷不強塞，也不規定自述位置。
+  assert(
+    OPENER_GENERATE_PROMPT.includes(
+      "與用戶以前做過的經歷，預設只當選題與語氣依據，不必寫進句子",
+    ),
+  );
+  assert(OPENER_GENERATE_PROMPT.includes("也不為它硬湊話題或硬抓共同點"));
+  assertFalse(
+    OPENER_GENERATE_PROMPT.includes("放在她那件事後面"),
+    "不得定死自述位置",
+  );
+});
+
+Deno.test("教練型 Opener：material_unused 內容修正不再要求保留邀約意圖", () => {
+  const prompt = buildOpenerContentCorrectionPrompt({
+    previousJson: "{}",
+    flags: [{
+      code: "material_unused",
+      severity: "hard",
+      style: "extend",
+      detail: "想約她去陶藝課",
+    }],
+    materials: {
+      inputState: "answered",
+      materials: [],
+      excludedTopics: [],
+      negatedFacts: [],
+      noExperienceTopics: [],
+      hasEffectiveMaterial: true,
+      senderFactAllowed: false,
+      directionOverride: null,
+      cueLabels: [],
+    },
+  });
+
+  assertFalse(prompt.includes("正常邀約意圖"));
+  assertFalse(prompt.includes("正常且適用的邀約或素材"));
+  // 修正呼叫仍靠這句辨識（handler 測試依賴），不得改動。
+  assert(
+    prompt.includes("方案可見的卡尚未找到保留原料（想約她去陶藝課）的採用證據"),
+  );
+  assert(prompt.includes("不把程式的採用旗標當成邀約指令"));
+  assert(
+    prompt.includes(
+      "想約她的目標照系統指示「邀約目標」那條，不在這一則提出邀約",
+    ),
+  );
+  // omit 不能翻回 use 的保護維持。
+  assert(prompt.includes("原有 omit 固定，不可改為採用略過內容"));
 });

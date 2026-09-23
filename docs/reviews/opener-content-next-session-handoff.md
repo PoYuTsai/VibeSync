@@ -9,6 +9,7 @@
 - Reviewer 最終裁決（`opener-cc-final-repair-review-d72820ce.zip`，`review/REVIEW.md`）：**建議 `APPROVE_WITH_RISK — 僅限下一階段內部 iPhone 候選`**。不是原規格全文 PASS、不是一般用戶公開上線通過。**新增內測風險由 Eric 決定是否採納，尚未採納。**
   - 已修好：家庭用品／妹妹腳痠／妹妹引語的指定捏造已在修正結果移除；咖啡四筆推薦已接住邀約目標。
   - 未完全符合：海邊三筆把「猜她喜歡海邊」擴成用戶沒明示的邀約，且可見備選仍全是滑板；咖啡備選只同主題不同邀約目標（原規格「推薦＋至少一張可見備選」仍有缺口；這是 `checkMaterialAdoption` 一張即過＋修正只改標記卡的既有範圍，不是執行漏改）。
+  - （2026-09-24 取代：上兩條「接住邀約目標」的標準已由 `docs/decisions.md` ADR #47 附錄取代——照片／自介入口只做開場教練，五張卡都不提出邀約，想約的目標改為從 X 開話題；原紀錄保留不改。）
   - repair-01（single-hook-dog A2 Free）保持未交付：stop_reason=max_tokens、2800 tokens、text 為空；失敗不交付不結算的設計可接受；完整 HTTP body 當時未存，原因不可事後補造。
 - 保留風險（reviewer 命名，供內測候選記錄）：R-CONTENT-INTENT（猜測被擴成輕邀約）、R-CONTENT-ALT（採用下限一張，備選未必接原料）、R-CONTENT-WORDING（同行家屬／看人臉色／成癮玩笑等用語）、R-REPAIR-AVAILABILITY（一次修正可能無可用文字，照契約不結算）。
 - 勘誤：`opener-repair-confirmation-d72820ce.zip/REPORT.md` 的「51／56 份未修正內容」應為 **55／59**（與 55＋8、59＋4 一致）；只改文案，原 ZIP 不重製、不重跑。
@@ -43,12 +44,12 @@ commit 序列（新→舊）：`214af4ca` 複核包 §13 ｜ `2e5a470c` 離線�
 reviewer 檔：`/mnt/c/Users/eric1/Downloads/OPENER_ACCEPTANCE_bf658fae_REVIEW.md`（已收到，§6 根因範圍、§7 下一步）。reviewer 的 `offline_replay_cases.json` **沒有以檔案送到本機**；其 27 筆內容由 Eric 貼入對話，已整理成 `tools/opener-content-replay/labels.json`（來源欄位對應捕獲檔名）。
 
 ### G1 生成內容與可見推薦忠實性
-- reviewer 反例：三年樂團經歷被套到對方（multi-hook A.2／A.3）；曾在寵物店打工被加「過敏」（family-fact B.2）；妹妹職業被加「常說／嫌」（filter-heavy A.1／A.2）；「提過想去沖繩、還沒訂」變「說好要訂」（she-said A.1）；貓「比我早睡」被反轉成晚睡（multi-hook B.1）；推薦不接原料：single-hook-dog A（原料只在 resonate，推薦仍問摸狗）、she-said A/B 六次推薦仍聊滑板、goal-not-consent A 三次想約卻整組沒邀約。
+- reviewer 反例：三年樂團經歷被套到對方（multi-hook A.2／A.3）；曾在寵物店打工被加「過敏」（family-fact B.2）；妹妹職業被加「常說／嫌」（filter-heavy A.1／A.2）；「提過想去沖繩、還沒訂」變「說好要訂」（she-said A.1）；貓「比我早睡」被反轉成晚睡（multi-hook B.1）；推薦不接原料：single-hook-dog A（原料只在 resonate，推薦仍問摸狗）、she-said A/B 六次推薦仍聊滑板、goal-not-consent A 三次想約卻整組沒邀約。（2026-09-24 取代：想約卻沒邀約依 ADR #47 附錄不再算缺陷，照片／自介入口不在首句邀約。）
 - 已做（`47fb3eee`，`opener_material.ts`／`opener_flow_payload.ts`／`opener_flow_handler.ts`／`opener_flow_prompt.ts`）：
   - 新硬檢查 `sender_fact_transposed`（用戶經歷片段出現在沒有「我」的句子）、`sender_fact_extended`（加上用戶沒說的健康／人生事件，小型詞表）、`relative_quote_fabricated`（用戶只給家人職業，卡片替家人加引語）、`certainty_upgraded`（用戶有 hedge，卡片出現 說好／答應／已經訂）、`profile_fact_reversed`（自介早睡↔晚睡、早起↔晚起）。
-  - 原料採用：`cardAdoptsMaterial`（原料正向內容雙字片段是否出現在卡內；不看模型自稱 references；目標型「想約」要帶輕邀約）、`checkMaterialAdoption`（有有效原料時，方案可見卡至少一張接住；被硬檢查標記的卡不算；純否定／排除補充不要求）→ `material_unused` 標在 rankedPicks 第一張可見卡 → 走既有一次內容修正 → 修不好 502 `OPENER_CONTENT_CONFLICT` 不扣不計次。
+  - 原料採用：`cardAdoptsMaterial`（原料正向內容雙字片段是否出現在卡內；不看模型自稱 references；目標型「想約」要帶輕邀約〔2026-09-24 取代：topic-first 候選移除這條判斷，想約的目標本身不要求採用；用戶目標子句的目標字眼與「一起」不算採用證據，其他字（X、週末、有空…）仍是字面證據；見 ADR #47 附錄〕）、`checkMaterialAdoption`（有有效原料時，方案可見卡至少一張接住；被硬檢查標記的卡不算；純否定／排除補充不要求）→ `material_unused` 標在 rankedPicks 第一張可見卡 → 走既有一次內容修正 → 修不好 502 `OPENER_CONTENT_CONFLICT` 不扣不計次。
   - 投影推薦：先從有證據的可見卡依 rankedPicks 取，沒有原料時才照模型排序；`traceStatus=matched` 要證據＋來源紀錄。handler 在硬檢查前就決定方案可見卡。
-  - prompt：補「經歷只能用我說、家人不加引語、不加狀況、不升級確定度、不反轉自介事實、想約要帶輕邀約、排前面的卡要在內容上接住原料」；修正提示對映新碼。版本常數 `OPENER_FLOW_PROMPT_VERSION` 未動（它進生成輸入 hash）。
+  - prompt：補「經歷只能用我說、家人不加引語、不加狀況、不升級確定度、不反轉自介事實、想約要帶輕邀約、排前面的卡要在內容上接住原料」；修正提示對映新碼。版本常數 `OPENER_FLOW_PROMPT_VERSION` 未動（它進生成輸入 hash）。（2026-09-24 取代：「想約要帶輕邀約」已改為五張卡都不提邀約、從 X 開話題，版本改 `opener-two-stage-topic-first-v1`；見 ADR #47 附錄。）
 - 未做／做不到（如實）：程度擴張（「自己選路」→「完全不聽指揮」，P029）與一般性細節新增沒有確定性守門，只靠 prompt 與盲審；`materialReading` 沒有被拿來逐項核對（reviewer §6-1 提到）；**新 prompt 是否真的生成得更好尚未驗**。
 
 ### G2 硬檢查誤報／漏報

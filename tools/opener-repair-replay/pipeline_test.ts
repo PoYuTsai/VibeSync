@@ -50,21 +50,32 @@ Deno.test("smoke：修正仍補情境 → content_rejected；格式壞 → forma
   assert(down.error?.includes("provider down"));
 });
 
-Deno.test("smoke：goal A1 Free 是 material_unused→修正帶邀約通過；paid 是另一個情境，同 raw 各自準備；沒 hard 的 raw 不送模型", async () => {
+Deno.test("smoke：沒 hard 的 raw 不送模型——goal A1（想約喝咖啡，教練定位不要求採用）Free／paid 與 multi-hook B1 都是", async () => {
+  const goal = await fixture("goal-not-consent.A.1");
+  const cat = await fixture("multi-hook.B.1");
+  for (const noHard of [prepareJob(jobFor(goal, "free"), goal.snapshot, goal.raw), prepareJob(jobFor(goal, "paid"), goal.snapshot, goal.raw), prepareJob(jobFor(cat, "free"), cat.snapshot, cat.raw)]) {
+    assertEquals(noHard.preflight, "no_hard_before");
+    const run = await runJob(noHard, () => Promise.reject(new Error("must not be called")), "scripted");
+    assertEquals(run.calls, 0);
+    assertEquals(run.outcome.classification, "not_run_budget_or_preflight");
+  }
+});
+
+Deno.test("smoke：同 raw 換話題型補充（想問手沖還是拿鐵）Free 是 material_unused→修正接住話題通過、只補邀約仍擋；paid 是另一個情境，同 raw 各自準備", async () => {
+  // 合成：沿用 goal A1 捕獲的 raw 與 snapshot，只把補充換成話題型；raw 本身不動。
   const fx = await fixture("goal-not-consent.A.1");
-  const free = prepareJob(jobFor(fx, "free"), fx.snapshot, fx.raw);
-  const paid = prepareJob(jobFor(fx, "paid"), fx.snapshot, fx.raw);
+  const topic = { contribution: { ...fx.contribution, freeText: "我想問她手沖還是拿鐵" } };
+  const free = prepareJob(jobFor(topic, "free"), fx.snapshot, fx.raw);
+  const paid = prepareJob(jobFor(topic, "paid"), fx.snapshot, fx.raw);
+  assertEquals(free.hardBefore.map((f) => f.code), ["material_unused"]);
   assertEquals(free.stylesToReplace, ["extend"]);
   assertEquals(paid.stylesToReplace, ["extend"]);
   assertEquals(free.visibleTypes.length, 3);
   assertEquals(paid.visibleTypes.length, 5);
-  const ok = applyCorrection(free, JSON.stringify({ openers: { extend: "一天三杯 找一天一起喝一杯看看？" }, cardReasons: { extend: "帶輕邀約" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "一起喝一杯" }] } }));
+  assert(free.correctionUser!.includes("對方來源與限制"), "修正提示要與 handler 同參數（含 snapshot）");
+  const ok = applyCorrection(free, JSON.stringify({ openers: { extend: "一天三杯都是手沖嗎 還是也會喝拿鐵" }, cardReasons: { extend: "接住你想問的手沖或拿鐵" }, materialUse: { references: [{ style: "extend", materialId: "material_1", outputSpan: "手沖" }] } }));
   assertEquals(ok.classification, "ready_for_content_review");
   assertEquals(ok.projectionAfter!.pick, "extend");
-  const cat = await fixture("multi-hook.B.1");
-  const noHard = prepareJob(jobFor(cat, "free"), cat.snapshot, cat.raw);
-  assertEquals(noHard.preflight, "no_hard_before");
-  const run = await runJob(noHard, () => Promise.reject(new Error("must not be called")), "scripted");
-  assertEquals(run.calls, 0);
-  assertEquals(run.outcome.classification, "not_run_budget_or_preflight");
+  const inviteOnly = applyCorrection(free, JSON.stringify({ openers: { extend: "一天三杯 找一天一起喝一杯看看？" } }));
+  assertEquals(inviteOnly.classification, "content_rejected", "邀約字不算接住話題");
 });

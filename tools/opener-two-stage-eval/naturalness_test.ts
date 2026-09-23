@@ -53,9 +53,20 @@ Deno.test("評測走正式 use/omit、硬檢查與分方案推薦，失敗不是
   const invalid = inspectGeneration(c, "A", snapshot, JSON.stringify({ ...good, materialReading: [] }));
   assertEquals(invalid.tiers.free.formatFailure, "invalid_material_usage");
   assertEquals(invalid.tiers.free.projected, null);
+  // 教練定位：想約只決定從羽球開場，這一則不邀約也不是未採用；推薦指標只看有沒有碰到話題。
   const noInvite = inspectGeneration(c, "A", snapshot, JSON.stringify({ ...good, openers: Object.fromEntries(OPENER_TYPES.map(style => [style, "羽球妳都打單打還是雙打"])) }));
-  assert(noInvite.tiers.free.flags.some(flag => flag.code === "material_unused"));
-  assertEquals(noInvite.tiers.free.projected, null);
+  assert(!noInvite.tiers.free.flags.some(flag => flag.code === "material_unused"));
+  assertEquals(noInvite.tiers.free.projected?.recommendedPick, "humor");
+  assertEquals(noInvite.tiers.free.recommendedAdoption, true);
+  const offGoal = inspectGeneration(c, "A", snapshot, JSON.stringify({ ...good, openers: Object.fromEntries(OPENER_TYPES.map(style => [style, "妳養的貓叫什麼名字"])) }));
+  assertEquals(offGoal.tiers.free.recommendedAdoption, false, "沒碰到羽球：沒有程式擋，只能靠指標與盲審看出來");
+  // 無採用仍要擋：話題型補充（只想知道單打雙打）五卡都離題 → material_unused，不交付。
+  const topicText = contribution(c, "B").freeText!;
+  const offTopic = inspectGeneration(c, "B", snapshot, JSON.stringify({ ...output(topicText), openers: Object.fromEntries(OPENER_TYPES.map(style => [style, "妳養的貓叫什麼名字"])) }));
+  for (const tier of ["free", "paid"] as const) {
+    assert(offTopic.tiers[tier].flags.some(flag => flag.code === "material_unused"));
+    assertEquals(offTopic.tiers[tier].projected, null);
+  }
 });
 
 Deno.test("評測共享 P2 欄位界線，真正同欄位回流仍擋", () => {

@@ -179,3 +179,39 @@ Deno.test("R3：模型只給整包 displayNote（未綁卡）→ 不採用；pic
   assertEquals(projected?.materialUse.traceStatus, "matched");
   assertEquals(projected?.materialUse.displayNote, null);
 });
+
+Deno.test("教練型 Opener：明確要求邀約時，說明要在最終可見推薦的理由裡；推薦由系統依方案選，所以五張理由都要帶", () => {
+  const snapshot: OpenerAnalysisSnapshot = {
+    ...SNAPSHOT,
+    cues: [{ id: "cue_1", label: "密室逃脫", source: "profile_text", subject: "recipient" }],
+    profileDigest: "密室逃脫玩了快五十間",
+    profileText: { bio: "密室逃脫玩了快五十間，最怕恐怖主題" },
+  };
+  const project = (text: string, ranked: string[], cardReasons: Record<string, string>, visibleTypes: typeof OPENER_TYPES | typeof OPENER_FREE_V2_TYPES) => {
+    const materials = buildOpenerMaterials({ snapshot, contribution: { state: "answered", questionId: null, selectedOptionId: null, freeText: text }, option: null });
+    const normalized = normalizeOpenerGenerateOutput(modelOutput({
+      materialReading: [{ materialId: "material_1", subject: "unknown", kind: "raw_sentence", certainty: "stated", quote: text, usage: [{ quote: text, action: "use" }] }],
+      openers: { extend: "五十間裡最推哪一間", resonate: "密室最怕恐怖主題還硬上 這很勇", tease: "五十間了 應該是隊上的大腦吧", humor: "恐怖主題是閉著眼睛解謎嗎", coldRead: "妳應該是負責找線索的那個" },
+      cardReasons, rankedPicks: ranked, materialUse: { references: [], displayNotes: {} },
+    }), materials, true);
+    assert(normalized.ok);
+    return projectOpenerGenerateResult({ normalized: normalized.value, materials, visibleTypes, servedTier: visibleTypes.length === 3 ? "free" : "essential", contractVersion: 2 })!;
+  };
+  const note = "這裡先從密室逃脫開話題，不把第一句寫成邀約";
+  const direct = "第一句就直接約她去玩密室逃脫";
+  const ranked = ["resonate", "extend", "tease", "humor", "coldRead"];
+  // 只寫在模型自己的第一名：Free 看不到 resonate，推薦改成 extend，說明就不見了。
+  const onlyTop = project(direct, ranked, { resonate: note, extend: "接她玩過五十間，好回答" }, OPENER_FREE_V2_TYPES);
+  assertEquals([onlyTop.recommendation.pick, onlyTop.recommendation.reason], ["extend", "接她玩過五十間，好回答"]);
+  // 五張都帶（prompt 契約）：Free 與付費的最終推薦理由都有說明，說明不在開場句裡。
+  const all = Object.fromEntries(["extend", "resonate", "tease", "humor", "coldRead"].map((t) => [t, `${note}；接她的密室經驗`]));
+  for (const visibleTypes of [OPENER_FREE_V2_TYPES, OPENER_TYPES]) {
+    const projected = project(direct, ranked, all, visibleTypes);
+    assert(projected.recommendation.reason?.includes(note), `${visibleTypes.length} 卡：推薦理由要有說明`);
+    assert(Object.values(projected.openers).every((text) => !text?.includes("邀約")));
+  }
+  // 想約＋想問：推薦被話題證據改到非模型第一名，五張都帶才落得到最終推薦。
+  const mix = project("想約她去密室逃脫，想問她最怕哪種主題", ["extend", "humor", "tease", "resonate", "coldRead"], all, OPENER_TYPES);
+  assertEquals(mix.recommendation.pick, "humor");
+  assert(mix.recommendation.reason?.includes(note));
+});

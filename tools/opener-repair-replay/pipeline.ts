@@ -2,23 +2,17 @@
 //
 // 每筆依正式 handler（opener_flow_handler.ts 步驟 6b）的接線順序：
 //   validateContributionAgainstSnapshot → buildOpenerMaterials → parseJsonObjectFromText(初次 raw)
-//   → normalizeOpenerGenerateOutput → checkOpenersAgainstMaterials(含 snapshot) ＋ checkMaterialAdoption(方案可見卡)
-//   → hardBefore／stylesToReplace → buildOpenerContentCorrectionPrompt → （一次模型呼叫）
-//   → mergeOpenerCorrection(只換被標記的卡) → 再 normalize／guard／adoption → projectOpenerGenerateResult(方案投影)。
+//   → normalizeOpenerGenerateOutput → checkOpenerGenerationContent(與 handler contentFlags 同一個函式：硬檢查＋略過回流＋方案可見卡採用)
+//   → hardBefore／stylesToReplace → buildOpenerContentCorrectionPrompt(同 handler 參數) → （一次模型呼叫）
+//   → mergeOpenerCorrection(只換被標記的卡；material_unused 時同 handler 可縮小 use) → 再 normalize／checkOpenerGenerationContent → projectOpenerGenerateResult(方案投影)。
 // 正式路徑另有 deadline、claim／settle、串流與 502 回應形狀，這裡不覆蓋；每筆最多一次模型呼叫，沒有第二次。
+// 與正式路徑的刻意差異：normalize 不強制 materialReading.usage（handler 傳 true），因為 9/18 捕獲的 raw 還沒有 usage 欄；
+// 每件補充都有 usage 的新 raw 兩者結果相同；缺 usage 時正式路徑會先走格式修復，這裡照單接受。
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
 import { type OpenerAnalysisSnapshot, type OpenerContribution, validateContributionAgainstSnapshot } from "../../supabase/functions/analyze-chat/opener_stage.ts";
-import {
-  buildOpenerMaterials,
-  cardAdoptsMaterial,
-  checkMaterialAdoption,
-  checkOpenersAgainstMaterials,
-  hardFlags,
-  type OpenerMaterialSet,
-  type OpenerQualityFlag,
-} from "../../supabase/functions/analyze-chat/opener_material.ts";
+import { buildOpenerMaterials, cardAdoptsMaterial, hardFlags, type OpenerMaterialSet, type OpenerQualityFlag } from "../../supabase/functions/analyze-chat/opener_material.ts";
 import { buildOpenerContentCorrectionPrompt, OPENER_GENERATE_MAX_TOKENS, OPENER_GENERATE_PROMPT } from "../../supabase/functions/analyze-chat/opener_flow_prompt.ts";
-import { mergeOpenerCorrection, normalizeOpenerGenerateOutput, projectOpenerGenerateResult } from "../../supabase/functions/analyze-chat/opener_flow_payload.ts";
+import { checkOpenerGenerationContent, mergeOpenerCorrection, normalizeOpenerGenerateOutput, projectOpenerGenerateResult } from "../../supabase/functions/analyze-chat/opener_flow_payload.ts";
 import { OPENER_FREE_V2_TYPES, OPENER_TYPES, type OpenerType } from "../../supabase/functions/analyze-chat/opener_payload.ts";
 
 export interface RepairJob {
@@ -87,12 +81,6 @@ export function visibleTypesFor(servedTier: string, contractVersion: number): re
   return servedTier === "free" ? OPENER_FREE_V2_TYPES : OPENER_TYPES;
 }
 
-function flagsFor(openers: Record<string, string>, materials: OpenerMaterialSet, snapshot: OpenerAnalysisSnapshot, visibleTypes: readonly OpenerType[], rankedPicks: readonly OpenerType[]): OpenerQualityFlag[] {
-  // 與 handler contentFlags 相同：先內容硬檢查（含 snapshot），再以方案可見卡做原料採用檢查。
-  const base = checkOpenersAgainstMaterials(openers, materials, snapshot);
-  return [...base, ...checkMaterialAdoption({ openers, materials, visibleTypes, rankedPicks, flags: base })];
-}
-
 function projectFor(normalized: Parameters<typeof projectOpenerGenerateResult>[0]["normalized"], materials: OpenerMaterialSet, job: RepairJob): Projection | null {
   const visibleTypes = visibleTypesFor(job.served_tier, job.contract_version);
   const projected = projectOpenerGenerateResult({ normalized, materials, visibleTypes, servedTier: job.served_tier, contractVersion: 2 });
@@ -123,11 +111,12 @@ export function prepareJob(job: RepairJob, snapshot: OpenerAnalysisSnapshot, ini
   if (!normalized.ok || !parsedJson) {
     return { ...base, normalizeBefore: { ok: false, reason: normalized.ok ? "no_json" : normalized.reason }, initialOpeners: null, flagsBefore: [], hardBefore: [], stylesToReplace: [], correctionUser: null, projectionBefore: null, preflight: "initial_not_normalizable" };
   }
-  const flagsBefore = flagsFor(normalized.value.openers, materials, snapshot, visibleTypes, normalized.value.rankedPicks);
+  const flagsBefore = checkOpenerGenerationContent(normalized.value, materials, snapshot, visibleTypes);
   const hardBefore = hardFlags(flagsBefore);
   const stylesToReplace = [...new Set(hardBefore.map((f) => f.style).filter((s): s is string => typeof s === "string"))];
+  const reconsiderSelection = hardBefore.some((f) => f.code === "material_unused");
   const correctionUser = hardBefore.length
-    ? buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials })
+    ? buildOpenerContentCorrectionPrompt({ previousJson: JSON.stringify(parsedJson), flags: hardBefore, materials: reconsiderSelection ? materials : normalized.value.selection.eligible, omitted: normalized.value.selection.omitted, snapshot })
     : null;
   return {
     ...base,
@@ -160,14 +149,15 @@ export function applyCorrection(prepared: PreparedJob, correctionText: string | 
   if (failure || correctionText === null || !prepared.parsedJson) return empty;
   const correctionParsed = parseJsonObjectFromText(correctionText);
   if (!correctionParsed) return { ...empty, reason: "correction_not_json（正式流程：合併失敗→仍有硬錯誤→502 不扣）", correctionParsed: null };
-  const merged = mergeOpenerCorrection(prepared.parsedJson, correctionParsed, prepared.stylesToReplace);
+  const reconsiderSelection = prepared.hardBefore.some((f) => f.code === "material_unused");
+  const merged = mergeOpenerCorrection(prepared.parsedJson, correctionParsed, prepared.stylesToReplace, reconsiderSelection ? prepared.materials : undefined);
   const normalized = normalizeOpenerGenerateOutput(merged, prepared.materials);
   if (!normalized.ok) {
     return { ...empty, reason: `merged_not_normalizable:${normalized.reason}（正式流程：mergedNormalized 不 ok→保留原組硬錯誤→502 不扣）`, correctionParsed, merged, normalizeAfter: { ok: false, reason: normalized.reason } };
   }
   const openersAfter = normalized.value.openers;
   const untouchedPreserved = Object.entries(prepared.initialOpeners ?? {}).every(([style, text]) => prepared.stylesToReplace.includes(style) || (openersAfter as Record<string, string>)[style] === text);
-  const flagsAfter = flagsFor(openersAfter, prepared.materials, prepared.snapshot, prepared.visibleTypes, normalized.value.rankedPicks);
+  const flagsAfter = checkOpenerGenerationContent(normalized.value, prepared.materials, prepared.snapshot, prepared.visibleTypes);
   const hardAfter = hardFlags(flagsAfter);
   const projectionAfter = projectFor(normalized.value, prepared.materials, prepared.job);
   return {

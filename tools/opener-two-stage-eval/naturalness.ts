@@ -27,7 +27,7 @@ export const LIMITATIONS = [
   "generate-only uses identical synthetic snapshots from the production builder, not real first-stage output.",
   "N09 has synthetic image evidence only; full-two-stage is NOT_RUN_REQUIRES_ACTUAL_IMAGE.",
   "Suitability, paraphrases, naturalness and recipient intent require blinded human review; guards are not semantic proof.",
-  "N03 all-use conflicting invitation still triggers material_unused; changing adoption strategy is outside this phase.",
+  "Invitation goals (N01-A, N02-B, N03-A) no longer require adoption: the opener only opens on the topic, so no material_unused is raised for them; whether the recommendation actually touches the topic is lexical evidence plus blinded review, not a program check.",
   "Continuations/UI/newTopic/conversation-analysis are not evaluated.",
 ];
 
@@ -124,9 +124,10 @@ export function inspectGeneration(c: Scenario, arm: Arm, snapshot: OpenerAnalysi
     return {
       delivered: !!projected, projected, flags, formatFailure: null, promptLeak: false,
       positiveIntentDenominator: intentGroup(c, arm) === "positive_intent",
+      // 字面證據（補充的內容字／線索錨字）；用戶目標子句的目標字眼與「一起」不算，其他字（週末、有空…）仍會算，不是邀約偵測。
       recommendedAdoption: recommended ? cardAdoptsMaterial(openers[recommended] ?? "", eligible) : false,
       alternativeAdoption: Object.entries(openers).some(([style, text]) => style !== recommended && cardAdoptsMaterial(text, eligible)),
-      adoptionMetric: "lexical_evidence_not_semantic_score",
+      adoptionMetric: "lexical_evidence_goal_words_excluded_not_semantic_score",
       visibleLengths: Object.fromEntries(Object.entries(openers).map(([style, text]) => [style, graphemeLength(text)])),
       qualityScores: null,
     };
@@ -163,7 +164,7 @@ export function blindArtifacts(items: BlindItem[], seed: number) {
   const key: Record<string, unknown> = {};
   const documents: Record<string, string> = {};
   for (const tier of ["free", "paid"] as const) {
-    const lines = [`# ${tier === "free" ? "Free" : "付費"} 可見訊息盲審`, "", `各 1–5 分：${QUALITY_DIMENSIONS.join("／")}。失敗與硬錯另列，不靠問號、字數或風格標籤評分。`, ""];
+    const lines = [`# ${tier === "free" ? "Free" : "付費"} 可見訊息盲審`, "", `各 1–5 分：${QUALITY_DIMENSIONS.join("／")}。「近的下一步」指她容易接的下一句，不是邀約。失敗與硬錯另列，不靠問號、字數或風格標籤評分。`, ""];
     shuffled.filter(item => item.tier === tier).forEach((item, index) => {
       const code = `${tier === "free" ? "F" : "P"}${String(index + 1).padStart(3, "0")}`;
       key[code] = { key: item.key, mode: item.mode, variant: item.variant, caseId: item.caseId, arm: item.arm, attempt: item.attempt, tier };

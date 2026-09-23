@@ -76,7 +76,8 @@ for (const c of labels.cases) {
       add(c.id, `adoption:${tier}`, !unused && pickAdopts !== false, !unused && pickAdopts !== false ? `推薦 ${pick} 有證據、無誤擋` : `誤判：material_unused=${unused} pickAdopts=${pickAdopts}`);
     } else if (c.adoption === "exempt") {
       // 純排除／否定型補充：遵守就是採用，沒有要被接住的正向內容，只能斷言不得誤擋。
-      add(c.id, `adoption:${tier}`, !unused, !unused ? `純排除型補充未被誤擋（推薦 ${pick}）` : `誤判：material_unused=${unused}`);
+      // 2026-09-24 教練定位：想約目標型補充這一則不邀約、不要求採用，同樣只斷言不得誤擋。
+      add(c.id, `adoption:${tier}`, !unused, !unused ? `純排除型／想約目標型補充未被誤擋（推薦 ${pick}）` : `誤判：material_unused=${unused}`);
     }
   }
   lines.push("");

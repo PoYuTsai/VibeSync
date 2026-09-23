@@ -80,8 +80,9 @@ export const SCENARIOS: EvalScenario[] = [
     id: "family-fact",
     shape: "家人的事 vs 自己的事",
     profileInfo: { name: "測試庚", bio: "在動物醫院當獸醫助理，下班只想睡", meetingContext: "交友軟體" },
-    armA: { freeText: "我妹下班完全不想聊工作，我猜她也是", forbidden: ["我下班也", "我也是助理"], anchors: ["妹", "下班"] },
-    armB: { freeText: "我自己以前在寵物店打工過，現在沒有了", forbidden: ["我現在在寵物店", "我也在寵物店"], anchors: ["寵物店", "以前"] },
+    // 2026-09-24 教練定位：家人的事與用戶以前的經歷只當選題依據、不必寫進句子，錨字只看她的話題（原為 妹／下班、寵物店／以前）。
+    armA: { freeText: "我妹下班完全不想聊工作，我猜她也是", forbidden: ["我下班也", "我也是助理"], anchors: ["睡"] },
+    armB: { freeText: "我自己以前在寵物店打工過，現在沒有了", forbidden: ["我現在在寵物店", "我也在寵物店"], anchors: ["動物", "獸醫"] },
   },
   {
     id: "she-said-vs-guess",

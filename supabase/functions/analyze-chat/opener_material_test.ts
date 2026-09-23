@@ -212,7 +212,7 @@ Deno.test("第五輪 A：自述被加上沒說的健康狀況；自介已知事�
   assertEquals(codes({ humor: "顧一隻晚睡的貓 妳幾條命" }, catSet, catSnapshot), ["humor:profile_fact_reversed"]);
 });
 
-Deno.test("第五輪 A：原料採用——有原料時可見卡至少一張要在內容上接住；純否定補充不要求；目標型要帶邀約", () => {
+Deno.test("第五輪 A：原料採用——有原料時可見卡至少一張要在內容上接住；純否定補充不要求；想約目標不要求採用、聊咖啡算接住", () => {
   const set = rawSet("她上次聊天提過想去沖繩，還沒訂");
   const openers = { extend: "河堤練滑板多久了", humor: "滑板技能點滿", tease: "沖繩機票訂了嗎", resonate: "假日固定練很自律", coldRead: "感覺妳計畫都放心裡" };
   assertEquals(checkMaterialAdoption({ openers, materials: set, visibleTypes: OPENER_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }), []);
@@ -228,9 +228,12 @@ Deno.test("第五輪 A：原料採用——有原料時可見卡至少一張要�
   assertEquals(checkMaterialAdoption({ openers: flaggedTease, materials: set, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"], flags: teaseFlag }).map((f) => `${f.style}:${f.code}`), ["extend:material_unused"]);
   const negOnly = rawSet("沒養過");
   assertEquals(checkMaterialAdoption({ openers: { extend: "牠散步會自己選路嗎" }, materials: negOnly, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend"] }), [], "純否定補充：遵守就是採用");
+  // 2026-09-24 教練型 Opener：想約是之後的目標，這一則只開話題，不要求採用；什麼算接住仍看內容。
   const goal = rawSet("我想約她喝咖啡");
-  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", goal), false, "只提咖啡不算接住邀約目標");
-  assertEquals(cardAdoptsMaterial("一天三杯 找一天一起喝一杯吧", goal), true);
+  assertEquals(checkMaterialAdoption({ openers, materials: goal, visibleTypes: OPENER_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }), [], "想約目標不要求採用");
+  assertEquals(checkMaterialAdoption({ openers, materials: goal, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: ["extend", "humor", "tease", "resonate", "coldRead"] }), []);
+  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", goal), true, "聊咖啡就是接住，不必帶邀約");
+  assertEquals(cardAdoptsMaterial("一天三杯 找一天一起喝一杯吧", goal), false, "只有邀約字、沒碰到內容不算接住");
 });
 
 // ── 第五輪 G1／G2 補修：排除與否定不是正向採用要求；主體／語者／陳述範圍。
@@ -277,11 +280,13 @@ Deno.test("G1：選「都沒興趣、聊別的」→ 合法新話題不算 mater
   assertEquals(adoptionCodes({ extend: "妳的旅遊照最想再去哪一站", humor: "週五晚上妳是充電派還是放電派", tease: "感覺妳很會安排時間" }, withText), []);
 });
 
-Deno.test("G1：「我不想約她，先聊咖啡」→ 不要求邀約，聊咖啡就是採用；「我想約她」仍要帶輕邀約", () => {
+Deno.test("G1：「我不想約她，先聊咖啡」→ 不要求邀約，聊咖啡就是採用；「我想約她」聊咖啡也是接住", () => {
   const set = rawSet("我不想約她，先聊咖啡");
   assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", set), true);
   assertEquals(cardAdoptsMaterial("找一天一起喝一杯吧", set), false, "邀約不是這次的目標");
-  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", rawSet("我想約她喝咖啡")), false, "真正想約仍要帶邀約");
+  const goal = rawSet("我想約她喝咖啡");
+  assertEquals(cardAdoptsMaterial("一天三杯咖啡 是靠什麼撐的", goal), true, "想約是之後的目標，這一則從咖啡開場就是接住");
+  assertEquals(checkMaterialAdoption({ openers: { extend: "週末的晚餐店口袋名單借看一下", humor: "河堤練滑板多久了", tease: "滑板技能點滿" }, materials: goal, visibleTypes: OPENER_FREE_V2_TYPES, rankedPicks: RANKED }), [], "想約本身不要求採用");
 });
 
 Deno.test("G2：「我以前在寵物店打工過，妳也在寵物店待過嗎」是問她、語者自持；沒有「我」的斷言仍是套到她身上", () => {

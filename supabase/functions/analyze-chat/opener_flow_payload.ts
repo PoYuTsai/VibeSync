@@ -282,7 +282,8 @@ export function projectOpenerGenerateResult(input: {
   // 原料」的可見卡裡依 rankedPicks 取第一張；模型自稱的 references 不算證據。
   const ranked = normalized.rankedPicks.filter((type) => openers[type]);
   const eligible = normalized.selection.eligible;
-  const adopting = eligible.hasEffectiveMaterial ? ranked.filter((type) => cardAdoptsMaterial(openers[type]!, eligible)) : [];
+  // 推薦偏好只看話題部分：背景型補充（想約、家人、過去經歷）不把推薦推到含原字的卡。
+  const adopting = eligible.hasEffectiveMaterial ? ranked.filter((type) => cardAdoptsMaterial(openers[type]!, eligible, "topic")) : [];
   const pick = adopting[0] ?? ranked[0] ?? visibleTypes.find((type) => openers[type]);
   if (!pick) return null;
 
@@ -291,7 +292,7 @@ export function projectOpenerGenerateResult(input: {
   let traceStatus: OpenerTraceStatus;
   if (!materials.hasEffectiveMaterial) {
     traceStatus = "no_input";
-  } else if (adopting.includes(pick) && pickReferenced) {
+  } else if (cardAdoptsMaterial(openers[pick]!, eligible) && pickReferenced) {
     traceStatus = "matched";
   } else {
     traceStatus = "uncertain";

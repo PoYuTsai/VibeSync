@@ -479,32 +479,94 @@ function userTexts(set: OpenerMaterialSet): string {
   return set.materials.filter((m) => m.origin === "user_text").map((m) => m.originalText).join("\n");
 }
 
-/** 目標型原料（想約她）：採用＝句子帶輕邀約，不是只提到咖啡。 */
-const GOAL_RE = /(想約|約她|約妳|想見面|見個面|想邀|一起去)/u;
-const INVITE_RE = /(約|一起|要不要|有空|哪天|改天|找一天|下次)/u;
-/** 「我不想約她」「先不要約」＝被否定的目標：不是邀約要求，也不是正向原料。 */
-const NEGATED_GOAL_RE = /(不|別|先不|沒|不用|不要|不必|不急著)(想|要|用|急著)?(約|邀|見面|見個面|一起去)[^\n，,。！!？?；;]*/gu;
+/** 目標字眼（想約她去 X、想跟她見面）：之後的目標，不是這一則的動作，也不是採用證據。 */
+const GOAL_RE = /(想約|約她|約妳|直接約|約出來|約出去|想見面|見個面|想邀|一起去|約會|碰個面|見她一面|(跟|和|找)(她|妳)(見面|約會|出去|出來|碰面|碰個面))/u;
+const GOAL_WORDS_RE = new RegExp(GOAL_RE.source, "gu");
+/** 「我不想約她」「先不要約」＝被否定的目標：不是邀約要求，也不是正向原料。「要不要一起去」是邀約，不是否定。 */
+const NEGATED_GOAL_RE = /(?<!要)(不|別|先不|沒|不用|不要|不必|不急著)(想|要|用|急著)?(約|邀|見面|見個面|一起去)[^\n，,。！!？?；;]*/gu;
+/** 6997656e 原樣的否定目標 regex：只用在「採用要求上限」與採用證據，保證新規則不比舊規則多要求。 */
+const LEGACY_NEGATED_GOAL_RE = /(不|別|先不|沒|不用|不要|不必|不急著)(想|要|用|急著)?(約|邀|見面|見個面|一起去)[^\n，,。！!？?；;]*/gu;
 function stripNegatedGoal(text: string): string {
   return text.replace(NEGATED_GOAL_RE, "");
 }
-function hasGoal(m: OpenerMaterial): boolean {
-  return m.origin === "user_text" && GOAL_RE.test(stripNegatedGoal(m.originalText));
+/**
+ * 背景只供選題與語氣，不是「一定要接住」的話題（2026-09-23 Bruce 盲測：這一則先開話題、不邀約，
+ * 不硬拿自己或家人的事抓共同點）。背景只影響「要不要求採用」與推薦偏好，不影響什麼算採用證據。
+ * - 補充裡有想約的目標時，只有明確想聊想問的子句是話題。
+ * - 沒有目標時，家人或朋友的事、我＋過去經歷是背景；講到她的子句、轉述與建議、現在式自述不是。
+ */
+const LEADING_CONNECTIVE_RE = /^(其實|而且|但是|但|不過|可是|然後|還有|另外)/u;
+const TOPIC_INTENT_RE = /(想聊|想問|先聊|先問|順便聊|順便問|然後問|問她|問妳|聊她|聊妳|聊一下|想了解|想聽|可以問|好奇|想知道|想從)/u;
+const HER_RE = /(她|妳|你|(?<![吉其])他(?!們)|對方|女生|人家)/u;
+/** 「要不要一起去」「要不要約」：寫給她的邀約，當目標（直接邀約）處理。 */
+const INVITE_QUESTION_RE = /要不要.{0,4}(一起|約|見面|出來|出去)/u;
+const FAMILY_WORD_RE = /(妹|哥|姐|姊|弟|媽|爸|朋友|同事|家人|室友)/u;
+/** 句子主詞是她或第三方（她問我要不要…、很多人想約她、我朋友想約她）：不是用戶自己的目標。 */
+const OTHER_SUBJECT_BEFORE_RE = /(^|說)(她|妳|他|對方)|很多人|別人|大家|有人|朋友|同事/u;
+const PAST_EVENT_RE = /(過|上次|之前|以前|曾經)/u;
+const HEARSAY_RE = /(說|講|聽說|建議|推薦)/u;
+const FAMILY_LEAD_RE = /^(我的?|我家的?)?(表|堂)?(妹妹?|哥哥?|姐姐?|姊姊?|弟弟?|媽媽?|爸爸?|爺爺|奶奶|阿姨|舅舅?|叔叔?|嬸嬸?|姑姑?|家人|朋友|同事|室友|前任)|^(我家|家裡)(開|是|在|做|經營)/u;
+const PAST_EXPERIENCE_RE = /(過|以前|之前|曾)/u;
+const SUBJECTLESS_PAST_LEAD_RE = /^(以前|之前|曾|自己|大學|高中|國中|小時候|去年|前幾年)/u;
+const CLAUSE_SEP_RE = /([\n，,。！!？?；;]+|(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff]))/u;
+function isGoalClause(c: string): boolean {
+  if (!c || PAST_EVENT_RE.test(c) || FAMILY_LEAD_RE.test(c)) return false;
+  const invite = INVITE_QUESTION_RE.exec(c);
+  if (invite) return !OTHER_SUBJECT_BEFORE_RE.test(c.slice(0, invite.index));
+  if (TOPIC_INTENT_RE.test(c)) return false;
+  const s = stripNegatedGoal(c);
+  const hit = GOAL_RE.exec(s);
+  // 「她說想跟姊妹一起去」「問她都跟誰一起去」是她的事；只有目標字自己帶著她（約她、跟她見面）才算用戶的目標。
+  return !!hit && !HER_RE.test(s.slice(0, hit.index)) && !OTHER_SUBJECT_BEFORE_RE.test(s.slice(0, hit.index));
+}
+function isSelfBackgroundClause(c: string): boolean {
+  if (!c || TOPIC_INTENT_RE.test(c) || HER_RE.test(c) || HEARSAY_RE.test(c)) return false;
+  // 「之前一起去過」是跟她的共同經歷；「我跟我妹一起去過」才是自己的事。
+  if (/(一起|我們)/u.test(c) && !FAMILY_WORD_RE.test(c)) return false;
+  if (FAMILY_LEAD_RE.test(c)) return true;
+  return (/^我/u.test(c) || SUBJECTLESS_PAST_LEAD_RE.test(c)) && PAST_EXPERIENCE_RE.test(c);
+}
+function dropBackgroundClauses(text: string): string {
+  const parts = text.split(CLAUSE_SEP_RE);
+  const clean = (part: string) => part.trim().replace(LEADING_CONNECTIVE_RE, "");
+  const withGoal = parts.some((part) => isGoalClause(clean(part)));
+  return parts.filter((part) => {
+    const c = clean(part);
+    return withGoal ? TOPIC_INTENT_RE.test(c) && !isGoalClause(c) : !isSelfBackgroundClause(c);
+  }).join("，");
+}
+/** 採用證據用：用戶自己的目標子句去掉目標字眼與「一起」，X 本身留著；她或第三方的事（她常被朋友約出去玩）不動。 */
+function stripOwnGoalWords(text: string): string {
+  return text.split(CLAUSE_SEP_RE).map((part) =>
+    isGoalClause(part.trim().replace(LEADING_CONNECTIVE_RE, "")) ? part.replace(GOAL_WORDS_RE, "").replace(/一起/gu, "") : part
+  ).join("");
 }
 
-/** 原料的「正向內容」：去掉主體、被否定的經歷、排除語與被否定的目標；純否定／純排除的原料沒有正向內容。 */
-function positiveMaterialSource(m: OpenerMaterial, set: OpenerMaterialSet): string {
+/**
+ * 原料的「正向內容」：去掉主體、被否定的經歷、排除語、被否定的目標與目標字眼；純否定／純排除的原料沒有正向內容。
+ * scope＝all：整份補充（6997656e 的處理，再去掉用戶目標子句的目標字眼），是「什麼算採用證據」與採用要求的上限。
+ * 目標子句裡其他的字（X 本身、週末、有空…）仍是字面證據：這是字面檢查，不是邀約偵測，也不保證語意相關。
+ * scope＝topic：只留話題部分（去掉背景子句），決定「要不要求採用」與推薦偏好。
+ */
+type AdoptionScope = "all" | "topic";
+function positiveMaterialSource(m: OpenerMaterial, set: OpenerMaterialSet, scope: AdoptionScope = "all"): string {
   // 排除型原料（不想聊 X／都沒興趣）只有 exclude 用途：遵守就是採用，沒有要被接住的正向內容。
   if (m.allowedUse.every((use) => use === "exclude")) return "";
   let source = m.originalText.replace(/^(想聊：|對「|」有興趣，但沒有相關經驗)/gu, "");
   if (m.origin === "user_text") {
-    source = stripNegatedGoal(source).replace(EXCLUSION_RE, "");
+    // all：6997656e 的否定目標處理，再去掉用戶目標子句的目標字眼（想約、約她、一起…不算採用證據，
+    // 否則「有空想約妳出來走走」會冒充接住想問的話題）；topic：去掉背景子句與目標字眼。
+    source = scope === "topic"
+      ? stripNegatedGoal(dropBackgroundClauses(source)).replace(GOAL_WORDS_RE, "")
+      : stripOwnGoalWords(source.replace(LEGACY_NEGATED_GOAL_RE, ""));
+    source = source.replace(EXCLUSION_RE, "");
     for (const fact of set.negatedFacts) source = source.replace(fact, "");
     source = source.replace(/(沒有|沒|不曾|未|從來沒|從沒|還沒|不想|不要|別|不用|不必)/gu, "");
   }
   return source.replace(/我(妹|哥|姐|弟|媽|爸|朋友|同事|室友)?|她|妳|你|自己/gu, "");
 }
-function positiveMaterialBigrams(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
-  return contentBigrams(positiveMaterialSource(m, set));
+function positiveMaterialBigrams(m: OpenerMaterial, set: OpenerMaterialSet, scope: AdoptionScope = "all"): string[] {
+  return contentBigrams(positiveMaterialSource(m, set, scope));
 }
 /** 線索錨字太泛的字（家裡／晚上／最近）不當錨。 */
 const GENERIC_ANCHOR_CHARS = "家裡上下晚早最近在學想去做玩看聊人事很有沒不好想的";
@@ -512,9 +574,9 @@ const GENERIC_ANCHOR_CHARS = "家裡上下晚早最近在學想去做玩看聊�
  * 線索錨字：用戶原文點名了本局某個線索的本體（「她的貓」對線索「家裡的貓」→「貓」），
  * 卡片提到這個本體就是接住原料，不必雙字逐字對上（「貓咪比妳早睡」也算；第七輪 F051）。
  */
-function cueAnchorChars(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
+function cueAnchorChars(m: OpenerMaterial, set: OpenerMaterialSet, scope: AdoptionScope = "all"): string[] {
   if (m.origin !== "user_text") return [];
-  const source = positiveMaterialSource(m, set);
+  const source = positiveMaterialSource(m, set, scope);
   const out: string[] = [];
   for (const label of set.cueLabels) {
     for (const ch of label) {
@@ -525,23 +587,23 @@ function cueAnchorChars(m: OpenerMaterial, set: OpenerMaterialSet): string[] {
   return out;
 }
 
-/** 這張卡有沒有實際用到用戶本次的原料（內容證據，不看模型自稱的 references）。 */
-export function cardAdoptsMaterial(text: string, set: OpenerMaterialSet): boolean {
+/**
+ * 這張卡有沒有實際用到用戶本次的原料（內容證據，不看模型自稱的 references）。
+ * scope＝all 是採用證據（整份補充）；scope＝topic 只看話題部分，給推薦偏好用，背景型補充不會把推薦推到自介卡。
+ */
+export function cardAdoptsMaterial(text: string, set: OpenerMaterialSet, scope: AdoptionScope = "all"): boolean {
   if (!set.hasEffectiveMaterial) return false;
   for (const m of set.materials) {
-    if (hasGoal(m)) {
-      if (INVITE_RE.test(text)) return true;
-      continue;
-    }
-    for (const bg of positiveMaterialBigrams(m, set)) if (text.includes(bg)) return true;
-    for (const ch of cueAnchorChars(m, set)) if (text.includes(ch)) return true;
+    for (const bg of positiveMaterialBigrams(m, set, scope)) if (text.includes(bg)) return true;
+    for (const ch of cueAnchorChars(m, set, scope)) if (text.includes(ch)) return true;
   }
   return false;
 }
 
 /** 有沒有任何原料需要「採用證據」：只有否定／排除（「沒養過」「不聊工作」「不想約」）的補充，遵守就是採用。 */
 function materialsRequireAdoption(set: OpenerMaterialSet): boolean {
-  return set.materials.some((m) => hasGoal(m) || positiveMaterialBigrams(m, set).length > 0);
+  // 話題部分有內容才要求採用；整份補充（舊規則）沒要求的，新規則也不要求。
+  return set.materials.some((m) => positiveMaterialBigrams(m, set, "topic").length > 0 && positiveMaterialBigrams(m, set, "all").length > 0);
 }
 
 /**

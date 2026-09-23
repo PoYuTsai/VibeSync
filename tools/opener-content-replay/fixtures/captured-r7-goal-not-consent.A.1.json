@@ -8,7 +8,12 @@
   "style": "extend",
   "quote": "一天三杯 是提神還是純粹愛喝",
   "judgment": "想約沒邀約：Free／paid 都 material_unused，進修正",
-  "reason": "五張卡都沒有邀約；正式流程一次修正，修不好 502 不扣。"
+  "reason": "五張卡都沒有邀約；正式流程一次修正，修不好 502 不扣。",
+  "superseded": {
+   "at": "2026-09-24",
+   "by": "教練型 Opener 收斂決策（移除首句邀約例外，prompt opener-two-stage-topic-first-v1）",
+   "note": "以上原判保留作歷史。新定義下 Opener 只開場、這一則不邀約，想約目標不要求採用；本 raw 五卡無硬錯誤，Free／paid 都直接交付、不送修正。labels.json R7-GOAL 改標 exempt（adoptionBefore=miss）。"
+  }
  },
  "snapshot": {
   "approach": {
