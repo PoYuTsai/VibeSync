@@ -526,21 +526,16 @@ Deno.test("教練型 Opener：generate prompt 不再要求輕邀約，邀約目�
     ),
   );
 
-  // 提示欄：沒有邀約時機作業；明說不見面不再約；單寫「不約」保留不確定。
+  // 提示欄：沒有邀約時機作業。Eric 2026-09-25 取代 9/24「明說不見面不再約」：
+  // 不約、不見面看階段，Opener 只負責開場，提示欄不判斷能不能約。
   assert(
     OPENER_GENERATE_PROMPT.includes(
       "cardReasons、pioneerPlan 與 openingStrategy 受同一份來源與限制約束",
     ),
   );
   assert(OPENER_GENERATE_PROMPT.includes("不必安排何時邀約"));
-  assert(
-    OPENER_GENERATE_PROMPT.includes("她明說不見面時，這些欄位都不建議再約"),
-  );
-  assert(
-    OPENER_GENERATE_PROMPT.includes(
-      "只寫「不約」而意思不明時保留不確定，不當成可以約",
-    ),
-  );
+  assert(!OPENER_GENERATE_PROMPT.includes("不建議再約"));
+  assert(!OPENER_GENERATE_PROMPT.includes("不當成可以約"));
 
   // 背景例外：家人／過去經歷不強塞，也不規定自述位置。
   assert(
