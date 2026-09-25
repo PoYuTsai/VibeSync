@@ -33,10 +33,8 @@
 // 記到約 2 次，有機會無辜被封。所以**連續 3 輪完全沒加分就把累計歸零**；
 // `blocked` 一旦成立不受衰減影響（她已經封了就是封了）。
 
-import {
-  containsCrudeSexualOffense,
-  normalizedOffenseText,
-} from "./game_fsm.ts";
+// 欲望詞例外（打炮／約炮／做愛…先抽掉再判羞辱）搬到 _shared，與開場救星共用。
+import { containsCrudeInsult } from "../_shared/crude_offense.ts";
 
 /** 累計到這個值就封鎖。 */
 export const OFFENSE_BLOCK_STRIKES = 3;
@@ -101,33 +99,6 @@ export interface OffenseTurn {
   readonly servedStage: number;
 }
 
-/**
- * 「打炮／打砲／約炮／約砲」同時躺在兩張既有詞表裡：`CRUDE_SEXUAL_OFFENSE_TERMS`
- * （Game FSM 的 GREASY／spicy 判定）與 `BOUNDARY_RE`。Eric 2026-09-06 對階梯的
- * 定義是「這幾個字是階段不對的**欲望**，不是羞辱」，所以判羞辱型之前先把它們
- * 從文字裡拿掉——**只影響本檔的階梯計分**，兩張原表一個字都沒動（Game FSM
- * 照舊把它們當粗俗冒犯）。拿掉之後它們在詞表層就是 0 分，跟其他性邀約一樣
- * 交給分類器判（2026-09-06 GLM 挑戰閘之後 +1 詞表整條移除）。
- */
-const DESIRE_NOT_INSULT_TERMS: readonly string[] = [
-  "打炮",
-  "打砲",
-  "約炮",
-  "约炮",
-  "約砲",
-  // 2026-09-06 GLM 挑戰閘：「做愛心便當」被 `CRUDE_SEXUAL_OFFENSE_TERMS` 的
-  // 「做愛」命中判成羞辱型。它跟打炮同一類——是欲望不是羞辱，交給分類器判。
-  "做愛",
-  "做爱",
-];
-
-function withoutDesireTerms(text: string): string {
-  let stripped = text;
-  for (const term of DESIRE_NOT_INSULT_TERMS) {
-    stripped = stripped.split(term).join("");
-  }
-  return stripped;
-}
 
 /**
  * 詞表對單一則的判分：**只有羞辱型**（+2，當輪即時）。
@@ -138,11 +109,8 @@ function withoutDesireTerms(text: string): string {
 export function offenseTermDelta(
   text: string,
 ): { delta: number; source: Exclude<OffenseSource, "classifier"> } {
-  // Codex R1 P1-5：**先正規化再抽欲望詞**。舊版對原文 split，「打 炮」抽不掉
-  // 卻被 `containsCrudeSexualOffense` 自己的 normalize 命中 → 判成 +2 羞辱。
-  return containsCrudeSexualOffense(
-      withoutDesireTerms(normalizedOffenseText(text)),
-    )
+  // 欲望詞（打炮／約炮／做愛…）先抽掉再判羞辱，正規化順序見 _shared/crude_offense.ts。
+  return containsCrudeInsult(text)
     ? { delta: 2, source: "crude" }
     : { delta: 0, source: null };
 }
