@@ -1,0 +1,931 @@
+{
+ "schemaVersion": 1,
+ "source": {
+  "dir": "/mnt/c/Users/eric1/Documents/Codex/2026-09-21/opener-subtraction-diagnosis/v4-coach/v2",
+  "sha256": {
+   "scenarios.json": "2dd3ca18240a64d3f5d4fd8ad5a7b3d5c72aaf9b1ef4537831a1da41f4fccb94",
+   "regression_cases.json": "4258c66b56af81dc7eed34a849e3ce2226296b9cffb8aa34ae07d384aea3df64"
+  },
+  "note": "copied verbatim fields; humanChecks (pre-9/24 wording) intentionally dropped; N01/N03/N05/N10 arm A from tools/opener-two-stage-eval/naturalness_cases.json with CUE_QUOTES cues (as naturalness.ts syntheticSnapshot)",
+  "naturalness_cases.json": "56f90548998e1a88aa1ae7ad7116a5765f2b2cc4693d81ab98f34a22e2832c69"
+ },
+ "cases": [
+  {
+   "id": "F1",
+   "domain": "抱石",
+   "group": "invite_goal_help_me",
+   "intentNote": "想約 X，寫法用「幫我約她去 X」。用戶之後的目標是約她去抱石；這一則只該從抱石開話題，不代寫邀約。",
+   "profileInfo": {
+    "bio": "平日做行銷，下班常去岩館抱石，最近卡在一條紫色路線好幾週。假日喜歡找巷子裡的滷味攤。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "幫我約她去岩館抱石"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "平日做行銷，下班常去岩館抱石，最近卡在一條紫色路線好幾週。假日喜歡找巷子裡的滷味攤。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "抱石",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "抱石"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "紫色路線",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "紫色路線"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "滷味攤",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "滷味攤"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F2",
+   "domain": "拉麵",
+   "group": "invite_goal_schedule_tail",
+   "intentNote": "想約 X，寫法用「想約她出來聊聊」加排時間尾句。排時間是之後的事；這一則只從拉麵開話題，任何卡都不提時間或見面。",
+   "profileInfo": {
+    "bio": "竹科工程師，下班最大的樂趣是吃拉麵，目前最愛濃厚豚骨。週末偶爾去上拳擊有氧。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她出來吃拉麵聊聊，看她這週末還是下週哪天晚上有空"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "竹科工程師，下班最大的樂趣是吃拉麵，目前最愛濃厚豚骨。週末偶爾去上拳擊有氧。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "拉麵",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "拉麵"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "濃厚豚骨",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "濃厚豚骨"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "拳擊有氧",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "拳擊有氧"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F3",
+   "domain": "職棒（不在她資料）",
+   "group": "invite_goal_x_not_in_profile",
+   "intentNote": "想約 X，X 不在她資料裡。只能以不預設她喜好的方式碰 X，或從能說明關聯的有來源話題開場，不能捏造她或用戶的棒球背景。",
+   "profileInfo": {
+    "bio": "醫院藥師，輪班之外的時間都拿來照顧陽台的多肉，已經快擺不下了。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她去看職棒"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "醫院藥師，輪班之外的時間都拿來照顧陽台的多肉，已經快擺不下了。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "藥師",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "藥師"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "多肉",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "多肉"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "陽台",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "陽台"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F4",
+   "domain": "桌遊（她寫不見面）",
+   "group": "conflicting_goal",
+   "intentNote": "想約 X，但她自介明說線上聊、不見面。對照題：兩臂都應零邀約；新候選另要求所有可見提示欄也不建議再約。",
+   "profileInfo": {
+    "bio": "喜歡研究各種桌遊規則，家裡有一整面桌遊牆。在這裡想先認識新朋友，線上聊聊就好，不見面。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她去桌遊店玩"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "喜歡研究各種桌遊規則，家裡有一整面桌遊牆。在這裡想先認識新朋友，線上聊聊就好，不見面。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "桌遊規則",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "桌遊規則"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "桌遊牆",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "桌遊牆"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F5",
+   "domain": "密室逃脫",
+   "group": "explicit_first_message_invite",
+   "intentNote": "用戶明確要求這一則就約（第一句就直接約她去 X）。新定義下仍以開場教練處理，並在推薦卡理由如實說明先從 X 開話題。",
+   "profileInfo": {
+    "bio": "國小老師，密室逃脫玩了快五十間，最怕恐怖主題但每次都硬著頭皮上。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "第一句就直接約她去玩密室逃脫"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "國小老師，密室逃脫玩了快五十間，最怕恐怖主題但每次都硬著頭皮上。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "密室逃脫",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "密室逃脫"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "恐怖主題",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "恐怖主題"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "國小老師",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "國小老師"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F6",
+   "domain": "書法",
+   "group": "pasted_invite_line",
+   "intentNote": "用戶貼上一句寫給她、本身就是邀約的話。新定義下不照傳、不潤飾成邀約，改從 X 開場，並在推薦卡理由如實說明。",
+   "profileInfo": {
+    "bio": "在書法教室教小朋友寫字，自己週末還在練行書。宵夜首選鹹酥雞。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "我想直接傳這句給她：『這週六下午有空嗎？想約妳帶我體驗一下寫毛筆字』"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "在書法教室教小朋友寫字，自己週末還在練行書。宵夜首選鹹酥雞。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "書法教室",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "書法教室"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "行書",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "行書"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "鹹酥雞",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "鹹酥雞"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F7",
+   "domain": "街舞（家人事實）",
+   "group": "family_background",
+   "intentNote": "家人事實（我哥）＋過去。預設只當選題與語氣依據，不為證明採用硬寫進句子，也不當資格展示。",
+   "profileInfo": {
+    "bio": "平日在銀行上班，週末去學街舞，最近在練 locking，常常練到隔天手舉不起來。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "我哥以前在大學街舞社當過社長"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "平日在銀行上班，週末去學街舞，最近在練 locking，常常練到隔天手舉不起來。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "街舞",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "街舞"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "locking",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "locking"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "手舉不起來",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "手舉不起來"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F8",
+   "domain": "瑜珈（本人過去經歷）",
+   "group": "past_experience_background",
+   "intentNote": "我＋過去經歷（已停止）。預設只當選題與語氣依據；寫進去時不擴寫、不反轉「沒去了」，也不規定放句尾。",
+   "profileInfo": {
+    "bio": "在外商做財務，每天早上做半小時瑜珈，最近終於做得出頭倒立。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "我以前也上過一陣子瑜珈，後來工作忙就沒去了"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "在外商做財務，每天早上做半小時瑜珈，最近終於做得出頭倒立。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "瑜珈",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "瑜珈"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "頭倒立",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "頭倒立"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F9",
+   "domain": "海釣",
+   "group": "positive_intent",
+   "intentNote": "想問 X（對照）。話題型補充的採用要求兩臂相同，用來看新候選在非邀約題不退步。",
+   "profileInfo": {
+    "bio": "國貿業務，放假最常跟爸爸去基隆海釣，釣到的魚都拿回家清蒸。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想問她海釣最常釣到什麼魚"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "國貿業務，放假最常跟爸爸去基隆海釣，釣到的魚都拿回家清蒸。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "海釣",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "海釣"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "基隆",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "基隆"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "清蒸",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "清蒸"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "F10",
+   "domain": "電玩（現在式自述）",
+   "group": "present_self_statement",
+   "intentNote": "現在式自述（對照，觀察既有殘留：現在式自述仍被要求寫進至少一張卡）。只觀察是否硬抓共同點，不因本題改規則。",
+   "profileInfo": {
+    "bio": "在補習班教數學，下班後的放鬆就是打電動，最近在玩薩爾達。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "我最近也在玩薩爾達"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "在補習班教數學，下班後的放鬆就是打電動，最近在玩薩爾達。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "補習班",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "補習班"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "打電動",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "打電動"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "薩爾達",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "薩爾達"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H01",
+   "domain": "陶藝",
+   "group": "positive_intent",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "週末都在陶藝教室，最近在練拉坯。也愛看老電影。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她一起去陶藝體驗課"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "週末都在陶藝教室，最近在練拉坯。也愛看老電影。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "陶藝教室",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "陶藝教室"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "拉坯",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "拉坯"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "老電影",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "老電影"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H02",
+   "domain": "夜跑",
+   "group": "conflicting_goal",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "習慣晚上沿河夜跑。這裡只想交朋友，不見面也不約。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她一起夜跑"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "習慣晚上沿河夜跑。這裡只想交朋友，不見面也不約。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "夜跑",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "夜跑"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "沿河",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "沿河"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H03",
+   "domain": "看展",
+   "group": "positive_intent",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "最近迷上看當代藝術展，也常去獨立書店。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "想聊她最近看的展，但不要提工作，我不想聊工作"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "最近迷上看當代藝術展，也常去獨立書店。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "當代藝術展",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "當代藝術展"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "獨立書店",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "獨立書店"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H04",
+   "domain": "烘焙",
+   "group": "inapplicable_observation",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "假日會烤麵包，最近在養酵母。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "她腰很細，而且我自己也烤過吐司"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "假日會烤麵包，最近在養酵母。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "烤麵包",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "烤麵包"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "酵母",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "酵母"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H05",
+   "domain": "樂團",
+   "group": "positive_intent",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "在玩樂團，主要打鼓，也喜歡爬山。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "我哥是樂器行老闆，我自己沒玩過樂器"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "在玩樂團，主要打鼓，也喜歡爬山。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "樂團",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "樂團"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "打鼓",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "打鼓"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "爬山",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "爬山"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H06",
+   "domain": "潛水",
+   "group": "skip",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "拿到潛水證照兩年了，最近想去綠島。"
+   },
+   "contribution": {
+    "state": "skipped",
+    "freeText": null
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "拿到潛水證照兩年了，最近想去綠島。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "潛水證照",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "潛水證照"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "綠島",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "綠島"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H07",
+   "domain": "低資料",
+   "group": "skip",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "平常上班，假日看看劇。"
+   },
+   "contribution": {
+    "state": "skipped",
+    "freeText": null
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "平常上班，假日看看劇。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "看看劇",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "看看劇"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "H08",
+   "domain": "露營",
+   "group": "positive_intent",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "喜歡露營，也會自己煮。最近在找新的營地。"
+   },
+   "contribution": {
+    "state": "answered",
+    "freeText": "其實我想問她都去哪些營地，不用聊狗"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "喜歡露營，也會自己煮。最近在找新的營地。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "露營",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "露營"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "營地",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "營地"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "自己煮",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "自己煮"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "N01",
+   "domain": "羽球：想約與純好奇都從羽球開場，這一則不邀約",
+   "group": "regression",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "喜歡打羽球，也喜歡貓、Podcast 和電影。"
+   },
+   "initialUserNote": null,
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她打羽球"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "喜歡打羽球，也喜歡貓、Podcast 和電影。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "羽球",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "羽球"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "貓",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "貓"
+      }
+     },
+     {
+      "id": "cue_3",
+      "label": "電影",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "電影"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "N03",
+   "domain": "明確拒絕見面：生成與採用檢查的一致性",
+   "group": "regression",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "喜歡羽球和科幻片。目前只想線上聊天，不見面、不約。"
+   },
+   "initialUserNote": null,
+   "contribution": {
+    "state": "answered",
+    "freeText": "想約她一起打羽球"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "喜歡羽球和科幻片。目前只想線上聊天，不見面、不約。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "羽球",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "羽球"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "科幻片",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "科幻片"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "N05",
+   "domain": "身體觀察：全部 omit 與混合素材",
+   "group": "regression",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "喜歡一個人旅行，最近想去不同城市走走。"
+   },
+   "initialUserNote": null,
+   "contribution": {
+    "state": "answered",
+    "freeText": "腿很長"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "喜歡一個人旅行，最近想去不同城市走走。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "旅行",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "旅行"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "城市",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "城市"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "N10",
+   "domain": "生成前改補充：舊初稿不能蓋住新方向",
+   "group": "regression",
+   "intentNote": null,
+   "profileInfo": {
+    "bio": "有養狗，也喜歡找咖啡店。"
+   },
+   "initialUserNote": "我有養狗，想從狗開",
+   "contribution": {
+    "state": "answered",
+    "freeText": "不聊狗了，想問她有沒有適合看書的店"
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "有養狗，也喜歡找咖啡店。",
+    "cues": [
+     {
+      "id": "cue_1",
+      "label": "養狗",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "養狗"
+      }
+     },
+     {
+      "id": "cue_2",
+      "label": "咖啡店",
+      "source": "profile_text",
+      "evidence": {
+       "field": "bio",
+       "quote": "咖啡店"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

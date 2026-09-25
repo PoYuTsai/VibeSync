@@ -87,3 +87,6 @@ tools/practice-agency-eval/out/
 
 tools/moments-visual-probe/out/
 tools/opener-repair-replay/out/
+
+# 結構刀評測輸出（含模型原文；證據另存 Codex 工作資料夾）
+tools/opener-plan-write-eval/out/
