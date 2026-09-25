@@ -23,6 +23,7 @@ import {
   createStreamStageTracker,
   emitJsonResponseAsStreamOutcome,
   OPENER_ANALYZE_STREAM_STAGES,
+  OPENER_CARDSET2_GENERATE_STREAM_STAGES,
   OPENER_GENERATE_STREAM_STAGES,
   type StreamStageSpec,
 } from "./opener_stream.ts";
@@ -83,6 +84,11 @@ import {
   OPENER_GENERATE_PROMPT,
   OPENER_GENERATE_SCHEMA_HINT,
 } from "./opener_flow_prompt.ts";
+import {
+  planWriteEnabled,
+  runOpenerPlanWrite,
+  writerArmFromRequest,
+} from "./opener_plan_write.ts";
 import {
   mergeOpenerCorrection,
   normalizeOpenerGenerateOutput,
@@ -635,6 +641,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   if (!deps.claudeApiKey) {
     return flowError("OPENER_FLOW_UNAVAILABLE", "開場功能暫時無法使用，請稍後再試。本次不會扣額度。", 503, { retryable: true });
   }
+  // 結構刀（規劃→寫手→另外挑）旗標：關閉時舊路徑逐位元組不變。輸入指紋不分路徑，
+  // 旗標切換時同一筆請求照常重播或重新取得（不會卡在 409 輸入已改變）。
+  const env = deps.env ?? ((name) => Deno.env.get(name));
+  const usePlanWrite = planWriteEnabled(env);
 
   // 2. 生成輸入指紋（回答一定入 hash）＋ claim（同 ID 已完成→重播、進行中→pending、
   //    同局另一作業→busy、三組用完→擋，都在模型呼叫前）。
@@ -773,13 +783,121 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     return flowError(code, message, status);
   };
 
+  // 8. 結算（新舊路徑共用）：保存結果＋首次扣費＋成功數＋完成，同一交易；再驗額度、期限、租約。
+  const settleAndRespond = async (projected: OpenerGenerateLedgerResult, pathLog: Record<string, unknown>): Promise<Response> => {
+    const settlement = await settleOpenerGeneration({
+      rpc,
+      userId: deps.userId,
+      sessionId: request.sessionId,
+      generationId: request.generationId,
+      ownerToken,
+      result: projected,
+      monthlyLimit: quota().monthlyLimit,
+      dailyLimit: quota().dailyLimit,
+      chargeQuota: !deps.accountIsTest,
+      maxGenerations: OPENER_INCLUDED_GENERATION_COUNT,
+    });
+    if (settlement.kind === "error") {
+      const failure = settlement.failure;
+      if (failure.kind === "retryable") {
+        // 結果不明：可能已 commit＋已扣，絕不 release、絕不宣稱不扣。
+        logWarn("opener_generate_settlement_pending", { user, error: failure.message });
+        return flowError("OPENER_SETTLEMENT_PENDING", "結果正在確認，請用同一筆請求重試。", 503, { retryable: true });
+      }
+      if (failure.kind === "quota_exceeded") {
+        if (!await release()) return releaseFailedResponse();
+        logWarn("opener_generate_settle_quota_race", { user, reason: failure.reason });
+        return jsonResponse(buildQuotaExceededPayload({ sub: quota().sub, cost, reason: failure.reason, monthlyLimit: quota().monthlyLimit, dailyLimit: quota().dailyLimit }), 429);
+      }
+      if (failure.kind === "business" && failure.code === "OPENER_OPERATION_OWNER_MISMATCH") {
+        // 租約已被接手：本地結果丟棄，不 release（不是我們的）。
+        logWarn("opener_generate_stale_owner", { user });
+        return rpcFailureResponse(failure, "generate_settle", deps.userId);
+      }
+      if (failure.kind === "business" && failure.code === "OPENER_OPERATION_LEASE_EXPIRED") {
+        // 租約過期但仍是我們的列：owner-bound release 讓同 ID 可重新取得資格。
+        logWarn("opener_generate_lease_expired", { user });
+        await release();
+        return rpcFailureResponse(failure, "generate_settle", deps.userId);
+      }
+      await release();
+      return rpcFailureResponse(failure, "generate_settle", deps.userId);
+    }
+
+    logInfo("opener_generate_success", {
+      user,
+      inputState: materials.inputState,
+      materialCount: materials.materials.length,
+      hasFreeText: request.contribution.freeText !== null,
+      freeTextGraphemes: request.contribution.freeText ? graphemeLength(request.contribution.freeText) : 0,
+      optionMeaning: contributionCheck.option?.meaning ?? null,
+      ...pathLog,
+      traceStatus: settlement.result.materialUse.traceStatus,
+      referenceCount: settlement.result.materialUse.references.length,
+      pick: settlement.result.recommendation.pick,
+      chargedNow: settlement.usage.chargedNow,
+      generationsUsed: settlement.usage.generationsUsed,
+      replayed: settlement.usage.replayed,
+      elapsedMs: Date.now() - deps.requestStartedAtMs,
+    });
+    // Handler 永遠回 settlement 的 stored result（stale race 時本地候選丟棄）。
+    return jsonResponse(generateResponseBody({
+      session: activeSession,
+      generationId: request.generationId,
+      result: settlement.result,
+      usage: settlement.usage,
+    }));
+  };
+
   return streamOrRun({
     deps,
     prefix: "opener_generate",
-    stages: OPENER_GENERATE_STREAM_STAGES,
+    stages: usePlanWrite && writerArmFromRequest(body) === "free" ? OPENER_CARDSET2_GENERATE_STREAM_STAGES : OPENER_GENERATE_STREAM_STAGES,
     etaSeconds: 20,
     startedLabel: "開始整理你的想法並生成回覆",
     run: async (onChunk, onFinalizing) => {
+      if (usePlanWrite) {
+        const servedTier = quota().effectiveTier;
+        const outcome = await runOpenerPlanWrite({
+          snapshot: activeSession.snapshot,
+          freeText: request.contribution.freeText,
+          option: contributionCheck.option,
+          materials,
+          visibleTypes: visibleTypesFor(servedTier, contractVersion),
+          servedTier,
+          contractVersion,
+          arm: writerArmFromRequest(body),
+        }, { invokeModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, onChunk });
+        onFinalizing?.();
+        // telemetry 只有代碼與計數，不含用戶原文。
+        const { verdicts, ...planWriteLog } = outcome.telemetry;
+        const pathLog = {
+          path: "plan_write",
+          servedTier,
+          ...planWriteLog,
+          vetoes: Object.fromEntries(Object.entries(verdicts).map(([k, v]) => [k, v?.vetoes ?? []])),
+          demotions: Object.fromEntries(Object.entries(verdicts).map(([k, v]) => [k, v?.demotions ?? []])),
+        };
+        if (outcome.kind === "fail") {
+          logWarn("opener_generate_plan_write_failed", { user, reason: outcome.reason, stage: outcome.stage, ...pathLog });
+          switch (outcome.reason) {
+            case "deadline":
+              return await rejectDeadline(outcome.stage);
+            case "provider":
+              if (!await release()) return releaseFailedResponse();
+              return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
+            case "leak":
+              logWarn("prompt_leak_blocked", { user, surface: "opener_generate_plan_write" });
+              return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
+            case "incomplete":
+              return await failNoCharge("OPENER_RESPONSE_INCOMPLETE", "這次沒生成成功，可以重試；本次不會扣額度。", 502);
+            case "no_deliverable":
+              return await failNoCharge("OPENER_CONTENT_CONFLICT", "這次沒生成成功，可以重試；本次不會扣額度。", 502);
+          }
+        }
+        if (Date.now() >= deadlineAtMs) return await rejectDeadline("pre_settlement");
+        return await settleAndRespond(outcome.result, pathLog);
+      }
       let output: OpenerFlowModelOutput;
       try {
         output = await invokeModel({ system: OPENER_GENERATE_PROMPT, messages: [{ role: "user", content: userContent }], maxTokens: OPENER_GENERATE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
@@ -897,64 +1015,12 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       }
       if (Date.now() >= deadlineAtMs) return await rejectDeadline("pre_settlement");
 
-      // 8. 結算：保存結果＋首次扣費＋成功數＋完成，同一交易；再驗額度、期限、租約。
-      const settlement = await settleOpenerGeneration({
-        rpc,
-        userId: deps.userId,
-        sessionId: request.sessionId,
-        generationId: request.generationId,
-        ownerToken,
-        result: projected,
-        monthlyLimit: quota().monthlyLimit,
-        dailyLimit: quota().dailyLimit,
-        chargeQuota: !deps.accountIsTest,
-        maxGenerations: OPENER_INCLUDED_GENERATION_COUNT,
-      });
-      if (settlement.kind === "error") {
-        const failure = settlement.failure;
-        if (failure.kind === "retryable") {
-          // 結果不明：可能已 commit＋已扣，絕不 release、絕不宣稱不扣。
-          logWarn("opener_generate_settlement_pending", { user, error: failure.message });
-          return flowError("OPENER_SETTLEMENT_PENDING", "結果正在確認，請用同一筆請求重試。", 503, { retryable: true });
-        }
-        if (failure.kind === "quota_exceeded") {
-          if (!await release()) return releaseFailedResponse();
-          logWarn("opener_generate_settle_quota_race", { user, reason: failure.reason });
-          return jsonResponse(buildQuotaExceededPayload({ sub: quota().sub, cost, reason: failure.reason, monthlyLimit: quota().monthlyLimit, dailyLimit: quota().dailyLimit }), 429);
-        }
-        if (failure.kind === "business" && failure.code === "OPENER_OPERATION_OWNER_MISMATCH") {
-          // 租約已被接手：本地結果丟棄，不 release（不是我們的）。
-          logWarn("opener_generate_stale_owner", { user });
-          return rpcFailureResponse(failure, "generate_settle", deps.userId);
-        }
-        if (failure.kind === "business" && failure.code === "OPENER_OPERATION_LEASE_EXPIRED") {
-          // 租約過期但仍是我們的列：owner-bound release 讓同 ID 可重新取得資格。
-          logWarn("opener_generate_lease_expired", { user });
-          await release();
-          return rpcFailureResponse(failure, "generate_settle", deps.userId);
-        }
-        await release();
-        return rpcFailureResponse(failure, "generate_settle", deps.userId);
-      }
-
-      logInfo("opener_generate_success", {
-        user,
-        inputState: materials.inputState,
-        materialCount: materials.materials.length,
-        hasFreeText: request.contribution.freeText !== null,
-        freeTextGraphemes: request.contribution.freeText ? graphemeLength(request.contribution.freeText) : 0,
-        optionMeaning: contributionCheck.option?.meaning ?? null,
-        traceStatus: settlement.result.materialUse.traceStatus,
-        referenceCount: settlement.result.materialUse.references.length,
+      return await settleAndRespond(projected, {
         softFlags: flags.filter((f) => f.severity === "soft").map((f) => f.code),
         hardFlagsBeforeCorrection: hardBefore.map((f) => f.code),
         corrected,
         repaired,
         servedTier,
-        pick: settlement.result.recommendation.pick,
-        chargedNow: settlement.usage.chargedNow,
-        generationsUsed: settlement.usage.generationsUsed,
-        replayed: settlement.usage.replayed,
         model: output.model,
         // 累加主呼叫＋修復／修正的 usage；usageComplete=false 代表有嘗試拿不到 usage，
         // 這個數字不得當本局完整模型成本。
@@ -962,15 +1028,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         outputTokens: usageTotal.outputTokens,
         modelAttempts: usageTotal.attempts,
         usageComplete: usageTotal.complete,
-        elapsedMs: Date.now() - deps.requestStartedAtMs,
       });
-      // Handler 永遠回 settlement 的 stored result（stale race 時本地候選丟棄）。
-      return jsonResponse(generateResponseBody({
-        session: activeSession,
-        generationId: request.generationId,
-        result: settlement.result,
-        usage: settlement.usage,
-      }));
     },
   });
 }

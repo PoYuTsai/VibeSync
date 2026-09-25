@@ -238,7 +238,7 @@ export interface OpenerGenerateLedgerResult {
   openers: Partial<Record<OpenerType, string>>;
   recommendation: { pick: OpenerType; reason?: string };
   cardReasons: Partial<Record<OpenerType, string>>;
-  access: ReturnType<typeof buildOpenerAccess>;
+  access: ReturnType<typeof buildOpenerAccess> & { cardSet?: 2 };
   materialUse: {
     inputState: OpenerInputState;
     references: OpenerMaterialReference[];

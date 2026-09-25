@@ -11,6 +11,8 @@ import {
   type OpenerFlowModelRequest,
 } from "./opener_flow_handler.ts";
 import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
+import { OPENER_PLAN_PROMPT } from "./opener_plan.ts";
+import { buildOpenerWritePrompt } from "./opener_write.ts";
 import { computeOpenerGenerationInputHash, parseOpenerGenerateRequest } from "./opener_stage.ts";
 import { readPreviousPromptReplay } from "./opener_session.ts";
 
@@ -1433,3 +1435,147 @@ for (const secondField of ["reason", "note"] as const) {
     } finally { await h.db.close(); }
   });
 }
+
+// ── 結構刀（OPENER_PLAN_WRITE）：規劃→寫手→另外挑，claim／settle／扣費沿用正式路徑 ──
+
+const PLAN_JSON = {
+  spans: [{ quote: "想知道牠散步會不會自己選路", role: "question" }],
+  anchorCueIds: ["cue_1"],
+  herStated: ["有養一隻狗"],
+  questionTarget: "牠散步會不會自己選路",
+  intents: { shorter: false, funny: false },
+  nominatedStyle: "extend",
+};
+const WRITE_JSON = {
+  openers: {
+    extend: "妳家狗散步會自己挑路線嗎？",
+    resonate: "帶狗散步應該常被牠拉著走吧？",
+    tease: "妳家狗是帶路派還是跟班派？",
+    humor: "妳們散步是誰在遛誰？",
+    coldRead: "假日去河堤，應該是牠最期待的時間？",
+  },
+  cardReasons: { extend: "直接問你好奇的散步習慣，她好回答" },
+  pioneerPlan: { ifCold: "換問河堤", handoff: "她回兩三句就貼回分析" },
+};
+
+function planWriteInvoker(script: { calls: OpenerFlowModelRequest[]; plan?: unknown; write?: unknown; repair?: unknown }) {
+  return (req: OpenerFlowModelRequest) => {
+    script.calls.push(req);
+    const body = req.system === OPENER_ANALYZE_PROMPT
+      ? ANALYSIS_JSON
+      : req.system === OPENER_PLAN_PROMPT
+      ? script.plan ?? PLAN_JSON
+      : req.purpose === "repair"
+      ? script.repair ?? {}
+      : script.write ?? WRITE_JSON;
+    const rawText = JSON.stringify(body);
+    req.onChunk?.(rawText);
+    return Promise.resolve({ rawText, model: "claude-sonnet-5", inputTokens: 100, outputTokens: 50 });
+  };
+}
+
+Deno.test("結構刀旗標：規劃＋寫手兩次呼叫、首次成功扣一次、重播不重扣也不再呼叫模型", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const script = { calls: [] as OpenerFlowModelRequest[] };
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const request = generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" });
+    const response = await handleOpenerGenerateRequest(h.deps(request, { invokeModel: planWriteInvoker(script) }));
+    assertEquals(response.status, 200);
+    const body = await json(response);
+    assertEquals(script.calls.map((c) => c.purpose ?? "analyze"), ["analyze", "plan", "write"]);
+    assertEquals(Object.keys(body.openers as Record<string, unknown>).sort(), ["extend", "humor", "tease"], "Free 只拿可見卡");
+    assertEquals((body.recommendation as Record<string, unknown>).pick, "extend");
+    assertEquals((body.materialUse as Record<string, unknown>).traceStatus, "matched");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+    const replay = await handleOpenerGenerateRequest(h.deps(request, { invokeModel: planWriteInvoker(script) }));
+    assertEquals(replay.status, 200);
+    assertEquals((await json(replay)).openers, body.openers);
+    assertEquals(script.calls.length, 3);
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+    // 旗標關回舊路徑：已完成的結構刀結果仍可用同一筆請求重播（不卡 409、不再呼叫模型）。
+    h.env.OPENER_PLAN_WRITE = "false";
+    const back = await handleOpenerGenerateRequest(h.deps(request, { invokeModel: planWriteInvoker(script) }));
+    assertEquals(back.status, 200);
+    assertEquals((await json(back)).openers, body.openers);
+    assertEquals(script.calls.length, 3);
+  } finally { await h.db.close(); }
+});
+
+Deno.test("結構刀旗標：寫手缺卡且唯一修復仍缺 → 502 不扣費，規劃失敗不擋交付", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const partial = { openers: { extend: "妳家狗散步會自己挑路線嗎？" } };
+    const script = { calls: [] as OpenerFlowModelRequest[], write: partial, repair: partial };
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const failed = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "想聊牠" }), { invokeModel: planWriteInvoker(script) }));
+    assertEquals(failed.status, 502);
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(script.calls.length, 4, "分析＋規劃＋寫手＋一次修復");
+    await passOneMinute(h.db);
+    const ok = { calls: [] as OpenerFlowModelRequest[], plan: "不是 JSON" };
+    const recovered = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { state: "answered", freeText: "想聊牠" }), { invokeModel: planWriteInvoker(ok) }));
+    assertEquals(recovered.status, 200);
+    assertEquals(((await json(recovered)).materialUse as Record<string, unknown>).handlingNote, "這次沒讀到你的補充，先照她的資料寫。");
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+  } finally { await h.db.close(); }
+});
+
+Deno.test("結構刀旗標：走 production 預設呼叫器（不注入假模型），規劃與寫手各恰好送出一次請求", async () => {
+  const h = await harness();
+  const original = globalThis.fetch;
+  const sent: Array<Record<string, unknown>> = [];
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker({ calls: [] }) }));
+    const sessionId = String((await json(analysis)).sessionId);
+    globalThis.fetch = (input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      sent.push(body);
+      const system = Array.isArray(body.system) ? body.system.map((b: { text?: string }) => b.text ?? "").join("") : String(body.system ?? "");
+      const payload = system === OPENER_PLAN_PROMPT ? PLAN_JSON : WRITE_JSON;
+      void input;
+      return Promise.resolve(new Response(JSON.stringify({
+        id: "msg_test", type: "message", role: "assistant", model: body.model, stop_reason: "end_turn",
+        content: [{ type: "text", text: JSON.stringify(payload) }],
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    };
+    const started = Date.now();
+    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }));
+    delete (deps as Partial<OpenerFlowHandlerDeps>).invokeModel;
+    const response = await handleOpenerGenerateRequest(deps);
+    assertEquals(response.status, 200);
+    assertEquals(sent.length, 2, "規劃一次＋寫手一次");
+    assert(Date.now() - started < 5000, "不空轉到規劃截止");
+    assertEquals(sent.map((b) => b.model), ["claude-sonnet-5", "claude-sonnet-5"]);
+    assertEquals(((await json(response)).materialUse as Record<string, unknown>).traceStatus, "matched", "規劃真的有跑（不是退只用她的資料）");
+  } finally {
+    globalThis.fetch = original;
+    await h.db.close();
+  }
+});
+
+Deno.test("結構刀旗標：新版 App 帶 openerCardSet=2 拿一句推薦＋四句備選並標 access.cardSet；舊版不帶維持五風格", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const script = { calls: [] as OpenerFlowModelRequest[] };
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const contribution = { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" };
+    const newApp = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, contribution, { openerCardSet: 2 }), { invokeModel: planWriteInvoker(script) }));
+    assertEquals(newApp.status, 200);
+    assertEquals(((await json(newApp)).access as Record<string, unknown>).cardSet, 2);
+    assertEquals(script.calls.at(-1)?.system, buildOpenerWritePrompt("free"));
+    await passOneMinute(h.db);
+    const oldApp = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution), { invokeModel: planWriteInvoker(script) }));
+    assertEquals(oldApp.status, 200);
+    assertEquals(((await json(oldApp)).access as Record<string, unknown>).cardSet, undefined);
+    assertEquals(script.calls.at(-1)?.system, buildOpenerWritePrompt("styles"));
+  } finally { await h.db.close(); }
+});

@@ -45,8 +45,13 @@ Deno.test("handler：新局旗標與 DB 能力標記只擋第一段；第二段�
   const rateAt = generate.indexOf('scope: "opener"');
   const modelAt = generate.indexOf("system: OPENER_GENERATE_PROMPT");
   const projectAt = generate.indexOf("projectOpenerGenerateResult(");
-  const settleAt = generate.indexOf("await settleOpenerGeneration(");
+  const settleAt = generate.indexOf("await settleAndRespond(projected");
   assert(claimAt >= 0 && claimAt < rateAt && rateAt < modelAt && modelAt < projectAt && projectAt < settleAt);
+  // 結構刀路徑同樣在 claim／限流之後才呼叫模型、產出結果後才結算；結算 RPC 全檔只有一處（新舊路徑共用）。
+  const planWriteAt = generate.indexOf("await runOpenerPlanWrite(");
+  const planSettleAt = generate.indexOf("await settleAndRespond(outcome.result");
+  assert(rateAt < planWriteAt && planWriteAt < planSettleAt);
+  assert(generate.split("await settleOpenerGeneration(").length === 2);
   // 扣費只發生在 settle RPC（SQL 內），handler 沒有任何直接 increment_usage 呼叫。
   assertFalse(handlerSource.includes("increment_usage"));
   assertFalse(handlerSource.includes("chargeOpenerQuota"));

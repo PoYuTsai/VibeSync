@@ -56,6 +56,19 @@ export const OPENER_GENERATE_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
 ];
 
+/** 一句推薦＋四句備選（新版 App openerCardSet=2）：同一組 phase，標籤對齊 App 新卡片標籤。 */
+export const OPENER_CARDSET2_GENERATE_STREAM_STAGES: StreamStageSpec[] = [
+  { marker: '"materialReading"', phase: "generate_material", label: "整理你的想法與來源" },
+  { marker: '"openers"', phase: "openers", label: "開始寫開場白" },
+  { marker: '"extend"', phase: "style_extend", label: "開場白 1/5：直接接話" },
+  { marker: '"resonate"', phase: "style_resonate", label: "開場白 2/5：換個角度" },
+  { marker: '"tease"', phase: "style_tease", label: "開場白 3/5：換個方向" },
+  { marker: '"humor"', phase: "style_humor", label: "開場白 4/5：輕鬆一點" },
+  { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：帶到自己" },
+  { marker: '"rankedPicks"', phase: "recommendation", label: "依你的想法挑選推薦" },
+  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
+];
+
 export const NEW_TOPIC_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"topics"', phase: "topics", label: "開始寫五個新話題" },
   {
