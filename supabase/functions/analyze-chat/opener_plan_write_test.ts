@@ -6,7 +6,7 @@ import type { OpenerFlowModelRequest } from "./opener_flow_handler.ts";
 import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stage.ts";
 import { digestOpenerPlan, OPENER_PLAN_PROMPT, type OpenerPlanContext, parseOpenerPlan, profileOnlyPlan } from "./opener_plan.ts";
 import { buildOpenerWritePrompt, buildOpenerWriteUserContent, OPENER_REWRITE_PROMPT } from "./opener_write.ts";
-import { HANDLING_NOTE, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard } from "./opener_pick.ts";
+import { HANDLING_NOTE, handlingNoteFor, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard } from "./opener_pick.ts";
 import { runOpenerPlanWrite } from "./opener_plan_write.ts";
 import type { OpenerType } from "./opener_payload.ts";
 
@@ -67,7 +67,7 @@ Deno.test("規劃：逐字片段、角色、邀約活動與限制詞都要出自
   assertFalse(plan.coverageGap);
 });
 
-Deno.test("規劃：引文對不上丟掉、未知角色當 noise、漏字記 coverageGap；角色照規劃判，不用詞表改寫", () => {
+Deno.test("規劃：引文對不上丟掉、未知角色丟掉（不當亂字）、漏字記 coverageGap；角色照規劃判，不用詞表改寫", () => {
   const plan = parseOpenerPlan({
     spans: [
       { quote: "想問她半馬", role: "question" },
@@ -76,9 +76,32 @@ Deno.test("規劃：引文對不上丟掉、未知角色當 noise、漏字記 co
       { quote: "嗯嗯", role: "weird" },
     ],
   }, ctx("想問她半馬 我也是台中出生 哈哈 嗯嗯"));
-  assertEquals(plan.spans.map((s) => [s.quote, s.role]), [["想問她半馬", "question"], ["我也是台中出生", "sender_fact"], ["嗯嗯", "noise"]]);
+  assertEquals(plan.spans.map((s) => [s.quote, s.role]), [["想問她半馬", "question"], ["我也是台中出生", "sender_fact"]]);
   assert(plan.coverageGap, "「哈哈」沒被涵蓋");
   assert(plan.repairedFields.includes("spans.quote"));
+  assert(plan.repairedFields.includes("spans.role"));
+  // 只有角色不明的片段：照「沒讀到」處理，不告訴用戶「看不出想聊什麼」。
+  const unknownOnly = parseOpenerPlan({ spans: [{ quote: "想聊半馬", role: "Topic" }] }, ctx("想聊半馬"));
+  assertEquals(unknownOnly.source, "profile_only");
+  const digest = digestOpenerPlan(unknownOnly, { snapshot: SNAPSHOT, option: null });
+  assertEquals(handlingNoteFor(unknownOnly, digest, true), HANDLING_NOTE.unread);
+});
+
+Deno.test("規劃：有邀約時不採用規劃寫的「要問的點」（常是她哪天有空），沒有邀約照用", () => {
+  const text = "想約她出來吃拉麵，看她這週末哪天晚上有空";
+  const invite = parseOpenerPlan({
+    spans: [{ quote: text, role: "invite_request", topicPart: "吃拉麵" }],
+    anchorCueIds: ["cue_1"],
+    questionTarget: "這週末哪天晚上有空",
+  }, ctx(text));
+  assertEquals(invite.questionTarget, null);
+  assert(invite.repairedFields.includes("questionTarget.invite"));
+  const digest = digestOpenerPlan(invite, { snapshot: SNAPSHOT, option: null });
+  const content = buildOpenerWriteUserContent({ snapshot: SNAPSHOT, freeText: text, plan: invite, digest, primaryStyle: "extend", arm: "free" });
+  assertFalse(content.includes("有空"), "寫手拿不到邀約裡的時間");
+  assert(content.includes("吃拉麵"), "活動本身仍是話題");
+  const plain = parseOpenerPlan({ spans: [{ quote: "想聊半馬", role: "topic" }], questionTarget: "半馬之後的目標" }, ctx("想聊半馬"));
+  assertEquals(plain.questionTarget, "半馬之後的目標");
 });
 
 Deno.test("規劃：引文比對忽略空白與全半形標點，回傳原文片段", () => {
@@ -225,6 +248,11 @@ Deno.test("挑推薦：避開紅線、降級少者優先；同分依好笑→提
   const paid = { extend: "a", resonate: "b", tease: "c", humor: "d", coldRead: "e" };
   const allClean = Object.fromEntries(PAID.map((t) => [t, clean]));
   assertEquals(pickOpenerCard({ openers: paid, verdicts: allClean, visibleTypes: PAID, primaryStyle: "coldRead", funny: false }), "extend", "冷讀提名不優先");
+  // B 臂 tease＝換個方向（接她另一個線索），不是好笑：要好笑只讓幽默（輕鬆一點）優先，其次回推薦句 extend。
+  const humorDemoted = { ...allClean, humor: demoted };
+  assertEquals(pickOpenerCard({ openers: paid, verdicts: humorDemoted, visibleTypes: PAID, primaryStyle: "extend", funny: true, arm: "free" }), "extend");
+  assertEquals(pickOpenerCard({ openers: paid, verdicts: humorDemoted, visibleTypes: PAID, primaryStyle: "extend", funny: true }), "tease", "A 臂照舊：好笑→幽默、調情");
+  assertEquals(pickOpenerCard({ openers: paid, verdicts: allClean, visibleTypes: PAID, primaryStyle: "extend", funny: true, arm: "free" }), "humor");
 });
 
 // ── 共用執行函式（假模型）──
@@ -342,8 +370,14 @@ Deno.test("說明一致：推薦卡被改寫就不宣稱採用、邀約說明用
   if (out.kind !== "ok") return;
   assertEquals(out.result.recommendation.pick, "extend");
   assertEquals(out.result.materialUse.traceStatus, "uncertain", "改寫過的推薦卡不宣稱接了哪件事");
-  assertEquals(out.result.recommendation.reason, inviteDeferralNote(null));
   assertEquals(out.result.materialUse.handlingNote, HANDLING_NOTE.blockedWithIdeas);
+  // 五風格＝舊版 App：沒有處理提示欄，併進它會顯示的推薦理由。
+  assertEquals(out.result.recommendation.reason, `${inviteDeferralNote(null)} ${HANDLING_NOTE.blockedWithIdeas}`);
+  assertEquals(out.result.recommendedReason, out.result.recommendation.reason);
+  assertEquals(out.result.cardReasons.extend, inviteDeferralNote(null), "卡片理由不變");
+  const b = await runOpenerPlanWrite(input(text, FREE, "free"), deps({ plan, write: bad, rewrite: { openers: { extend: "半馬練到哪一段了？" } } }, []));
+  assertEquals(b.kind === "ok" && b.result.recommendation.reason, inviteDeferralNote(null), "新版 App 有處理提示欄，不重複");
+  assertEquals(b.kind === "ok" && b.result.materialUse.handlingNote, HANDLING_NOTE.blockedWithIdeas);
 });
 
 Deno.test("邀約說明一套文案（不看她寫不約）：推薦句逐字有活動才具名，否則通用句；B 臂結果標 cardSet=2", async () => {
@@ -360,6 +394,16 @@ Deno.test("邀約說明一套文案（不看她寫不約）：推薦句逐字有
   assertEquals(generic.kind === "ok" && generic.result.access.cardSet, undefined, "五風格不標 cardSet");
   const b = await runOpenerPlanWrite(input("想約她去跑步", PAID, "free"), deps({ plan: { spans: [] }, write: WRITE_OK }, []));
   assertEquals(b.kind === "ok" && b.result.access.cardSet, 2);
+  const oneChar = await runOpenerPlanWrite(input("想約她去跑"), deps({
+    plan: { spans: [{ quote: "想約她去跑", role: "invite_request", topicPart: "跑" }] },
+    write: { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "夜跑都跑幾公里？" } },
+  }, []));
+  assertEquals(oneChar.kind === "ok" && oneChar.result.recommendation.reason?.endsWith(inviteDeferralNote(null)), true, "單一個字不具名");
+  const emoji = await runOpenerPlanWrite(input("想約她去🏃‍♀️"), deps({
+    plan: { spans: [{ quote: "想約她去🏃‍♀️", role: "invite_request", topicPart: "🏃‍♀️" }] },
+    write: { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "夜跑都跑幾公里？🤷‍♀️" } },
+  }, []));
+  assertEquals(emoji.kind === "ok" && emoji.result.recommendation.reason?.endsWith(inviteDeferralNote(null)), true, "純 emoji 活動不具名");
 });
 
 Deno.test("寫手輸入：用戶的活動不在她資料裡就標成他自己的興趣；活動欄位夾邀約字不採用", () => {
@@ -421,4 +465,11 @@ Deno.test("執行：B 臂推薦句固定在 extend、好笑意圖讓幽默優先
   assertEquals(free.kind === "ok" && free.result.recommendation.pick, "extend");
   const funny = await runOpenerPlanWrite(input("好笑一點", PAID), deps({ plan: { spans: [{ quote: "好笑一點", role: "style_request" }], intents: { funny: true } }, write: WRITE_OK }, []));
   assertEquals(funny.kind === "ok" && funny.result.recommendation.pick, "humor");
+  // 幽默被降級（兩個問號）時：A 臂換調情，B 臂的 tease 是換個方向、不是好笑，回推薦句 extend。
+  const humorDemoted = { ...WRITE_OK, openers: { ...WRITE_OK.openers, humor: "妳會怕嗎？會累嗎？" } };
+  const funnyPlan = { spans: [{ quote: "好笑一點", role: "style_request" }], intents: { funny: true } };
+  const a = await runOpenerPlanWrite(input("好笑一點", PAID), deps({ plan: funnyPlan, write: humorDemoted }, []));
+  assertEquals(a.kind === "ok" && a.result.recommendation.pick, "tease");
+  const b = await runOpenerPlanWrite(input("好笑一點", PAID, "free"), deps({ plan: funnyPlan, write: humorDemoted }, []));
+  assertEquals(b.kind === "ok" && b.result.recommendation.pick, "extend");
 });

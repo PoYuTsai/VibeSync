@@ -350,7 +350,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   }
   telemetry.verdicts = verdicts;
 
-  const pick = pickOpenerCard({ openers, verdicts, visibleTypes: input.visibleTypes, primaryStyle, funny: plan.intents.funny });
+  const pick = pickOpenerCard({ openers, verdicts, visibleTypes: input.visibleTypes, primaryStyle, funny: plan.intents.funny, arm: input.arm });
   telemetry.pick = pick;
   if (!pick) return fail("no_deliverable", "pick", plan, writerRaw);
   deps.onChunk?.('"rankedPicks"');

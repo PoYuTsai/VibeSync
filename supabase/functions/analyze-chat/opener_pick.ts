@@ -9,7 +9,7 @@ import type { OpenerInputState } from "./opener_material.ts";
 import type { OpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
 import { approachStillApplies, graphemeLength, type OpenerAnalysisSnapshot } from "./opener_stage.ts";
 import type { OpenerPlan, OpenerPlanDigest } from "./opener_plan.ts";
-import { OPENER_LENGTH_LIMIT, OPENER_SHORT_LENGTH_LIMIT } from "./opener_write.ts";
+import { OPENER_LENGTH_LIMIT, OPENER_SHORT_LENGTH_LIMIT, type OpenerWriterArm } from "./opener_write.ts";
 
 export type OpenerVeto = "blocked_span_reused" | "excluded_topic";
 export type OpenerDemotion = "two_questions" | "too_long" | "profile_copy" | "self_claim_unsourced" | "self_first" | "foreign_token";
@@ -104,7 +104,8 @@ export function demotionScore(verdict: OpenerCardVerdict): number {
 
 /**
  * 挑推薦：可見、有句子、沒有紅線的卡裡，降級分數最低者；同分依偏好順序：
- * 用戶要好笑→幽默、調情；再來規劃提名／寫手的推薦卡（冷讀除外：冷讀永遠排最後）；最後固定順序。
+ * 用戶要好笑→幽默、調情（B 臂只有幽默＝輕鬆一點；tease 在 B 臂是換個方向，不是好笑）；
+ * 再來規劃提名／寫手的推薦卡（冷讀除外：冷讀永遠排最後）；最後固定順序。
  */
 export function pickOpenerCard(input: {
   openers: Partial<Record<OpenerType, string>>;
@@ -112,12 +113,13 @@ export function pickOpenerCard(input: {
   visibleTypes: readonly OpenerType[];
   primaryStyle: OpenerType;
   funny: boolean;
+  arm?: OpenerWriterArm;
 }): OpenerType | null {
   const preference: OpenerType[] = [];
   const push = (t: OpenerType) => {
     if (!preference.includes(t)) preference.push(t);
   };
-  if (input.funny) ["humor", "tease"].forEach((t) => push(t as OpenerType));
+  if (input.funny) (input.arm === "free" ? ["humor"] : ["humor", "tease"]).forEach((t) => push(t as OpenerType));
   if (input.primaryStyle !== "coldRead") push(input.primaryStyle);
   OPENER_TYPES.forEach(push);
   const candidates = preference.filter((t) =>
@@ -243,15 +245,19 @@ export function projectPlanWriteResult(input: {
   // 否則用通用說明，不宣稱沒寫進句子的話題。
   const pickText = openers[input.pick] ?? "";
   const topicKey = input.digest.inviteTopic ? vetoKey(input.digest.inviteTopic) : "";
-  const topic = topicKey && vetoKey(pickText).includes(topicKey) ? input.digest.inviteTopic : null;
+  // 至少兩個文字或數字才具名：單一個字（「跑」）或純 emoji（ZWJ、變體選擇符不算字）會在不相干的句子裡對到。
+  const topic = (topicKey.match(/[\p{L}\p{N}]/gu) ?? []).length >= 2 && vetoKey(pickText).includes(topicKey) ? input.digest.inviteTopic : null;
   const reason = input.digest.inviteRequested ? [baseReason, inviteDeferralNote(topic)].filter(Boolean).join(" ") : baseReason;
   if (reason) cardReasons[input.pick] = reason;
   const trace = traceFor({ ...input, pickText });
   const handlingNote = handlingNoteFor(input.plan, input.digest, input.freeText !== null);
+  // 五風格＝舊版 App（新版一律帶 openerCardSet=2）：它沒有處理提示欄、只顯示推薦理由，
+  // 併進推薦理由，補充沒讀到或被擋時用戶才看得到。
+  const shownReason = !input.cardSet && handlingNote ? [reason, handlingNote].filter(Boolean).join(" ") : reason;
   const profileAnalysis = profileAnalysisFromSnapshot(input.snapshot, input.plan, input.digest, input.freeText);
   const result: OpenerGenerateLedgerResult = {
     openers,
-    recommendation: reason ? { pick: input.pick, reason } : { pick: input.pick },
+    recommendation: shownReason ? { pick: input.pick, reason: shownReason } : { pick: input.pick },
     cardReasons,
     access: {
       ...buildOpenerAccess({ contractVersion: input.contractVersion, servedTier: input.servedTier, visibleTypes: input.visibleTypes }),
@@ -267,7 +273,7 @@ export function projectPlanWriteResult(input: {
     stretchLevels,
     recommendedPick: input.pick,
   };
-  if (reason) result.recommendedReason = reason;
+  if (shownReason) result.recommendedReason = shownReason;
   if (input.pioneerPlan) result.pioneerPlan = input.pioneerPlan;
   if (profileAnalysis) result.profileAnalysis = profileAnalysis;
   return result;

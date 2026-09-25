@@ -271,8 +271,8 @@ export function profileOnlyPlan(ctx: OpenerPlanContext, repairedFields: string[]
 }
 
 /**
- * 規劃輸出 → 可信計畫。逐欄修：引文對不上的片段丟掉、未知角色當 noise（不進寫手）、
- * topicPart／term 不在引文裡就清空；粗話詞表命中的片段一律 sexual。
+ * 規劃輸出 → 可信計畫。逐欄修：引文對不上或角色不明的片段丟掉（不進寫手，算沒讀到）、
+ * topicPart／term 不在引文裡就清空；角色照規劃判，詞表只丟規劃自己寫的不可信欄位。
  * 有補充卻一段都沒讀到 → 視同規劃失敗（profile_only）。
  */
 export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: OpenerPlanContext): OpenerPlan {
@@ -297,11 +297,13 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
     if (!separatorsOnly(freeText.slice(cursor, found.start))) coverageGap = true;
     cursor = found.end;
     const quote = found.original;
-    let role = (OPENER_SPAN_ROLES as readonly string[]).includes(item.role as string) ? item.role as OpenerSpanRole : null;
-    if (!role) {
+    // 角色不明不能當亂字（會告訴用戶「看不出想聊什麼」）：丟掉這段，照沒讀到處理。
+    if (!(OPENER_SPAN_ROLES as readonly string[]).includes(item.role as string)) {
       repaired.push("spans.role");
-      role = "noise";
+      coverageGap = true;
+      continue;
     }
+    const role = item.role as OpenerSpanRole;
     const topicPart = shortText(item.topicPart, 40);
     const term = shortText(item.term, 20);
     spans.push({
@@ -352,12 +354,20 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
     : null;
   if (raw.nominatedStyle !== undefined && !nominated) repaired.push("nominatedStyle");
 
+  // 有邀約時規劃看得到邀約原文，它寫的「要問的點」常是她哪天有空（評測 30 次邀約有 9 次）：
+  // 不採用，寫手照錨點線索問下一步（和只用她資料的計畫一樣）；活動本身仍由 topicPart 當話題。
+  let questionTarget = unsafe(shortText(raw.questionTarget, 30)) ? null : shortText(raw.questionTarget, 30);
+  if (questionTarget && spans.some((s) => s.role === "invite_request")) {
+    questionTarget = null;
+    repaired.push("questionTarget.invite");
+  }
+
   return {
     source: "model",
     spans,
     anchorCueIds: finalizeAnchors(anchorsRaw, ctx, terms),
     herStated: herStated.length ? herStated : profileClauses(ctx.snapshot),
-    questionTarget: unsafe(shortText(raw.questionTarget, 30)) ? null : shortText(raw.questionTarget, 30),
+    questionTarget,
     intents: { shorter: intentsRaw.shorter === true, funny: intentsRaw.funny === true },
     nominatedStyle: nominated,
     repairedFields: [...new Set(repaired)],
