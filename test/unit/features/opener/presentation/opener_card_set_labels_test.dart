@@ -13,4 +13,12 @@ void main() {
     );
     expect(OpeningRescueScreen.openerTypeLabel('unknown', cardSet: 2), 'unknown');
   });
+
+  test('標題：五風格寫「種風格」，一句推薦＋四句備選不是風格', () {
+    expect(OpeningRescueScreen.openerStylesHeaderSuffix(cardCount: 5),
+        ' ・5 種風格');
+    expect(
+        OpeningRescueScreen.openerStylesHeaderSuffix(cardCount: 5, cardSet: 2),
+        ' ・5 則');
+  });
 }

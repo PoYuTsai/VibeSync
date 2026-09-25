@@ -262,8 +262,9 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     return cards;
   }
 
-  static String openerStylesHeaderSuffix({required int cardCount}) {
-    return ' ・$cardCount 種風格';
+  static String openerStylesHeaderSuffix(
+      {required int cardCount, int cardSet = 1}) {
+    return cardSet == 2 ? ' ・$cardCount 則' : ' ・$cardCount 種風格';
   }
 
   /// Legacy fallback ONLY — fresh results use the server's `access.servedTier`
@@ -1861,6 +1862,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             Text(
               OpeningRescueScreen.openerStylesHeaderSuffix(
                 cardCount: openerCards.length,
+                cardSet: _result?.access?.cardSet ?? 1,
               ),
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary,
@@ -2361,8 +2363,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     bool isLocked = false,
     bool stretch = false,
   }) {
-    final label = OpeningRescueScreen.openerTypeLabel(type,
-        cardSet: _result?.access?.cardSet ?? 1);
+    final cardSet = _result?.access?.cardSet ?? 1;
+    final label = OpeningRescueScreen.openerTypeLabel(type, cardSet: cardSet);
+    // 一句推薦＋四句備選不是風格：不配五風格的圖示（調情眨眼、冷讀水晶球）。
+    final icon = cardSet == 2 ? null : replyStyleIcons[type];
 
     return SizedBox(
       width: stretch ? double.infinity : 280,
@@ -2378,9 +2382,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (replyStyleIcons[type] != null) ...[
-                  Icon(replyStyleIcons[type],
-                      size: 16, color: AppColors.onBackgroundPrimary),
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: AppColors.onBackgroundPrimary),
                   const SizedBox(width: 6),
                 ],
                 Text(
@@ -2489,7 +2492,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '升級解鎖此風格',
+            (_result?.access?.cardSet ?? 1) == 2 ? '升級解鎖這則' : '升級解鎖此風格',
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
             ),
@@ -2601,6 +2604,7 @@ class _OpenerStyleSkeletonRow extends StatelessWidget {
           final type = OpenerAccessContract.canonicalPaidOrder[index];
           return _SkeletonStyleCard(
             type: type,
+            index: index,
             started: enteredPhases.contains('style_$type'),
           );
         },
@@ -2610,16 +2614,18 @@ class _OpenerStyleSkeletonRow extends StatelessWidget {
 }
 
 class _SkeletonStyleCard extends StatelessWidget {
-  const _SkeletonStyleCard({required this.type, required this.started});
+  const _SkeletonStyleCard(
+      {required this.type, required this.index, required this.started});
 
   final String type;
+  final int index;
   final bool started;
 
   @override
   Widget build(BuildContext context) {
-    // 生成中還沒有結果：用這版 App 請求的卡片組標籤。
-    final label = OpeningRescueScreen.openerTypeLabel(type,
-        cardSet: OpenerAccessContract.cardSet);
+    // 生成中還不知道 server 給哪一組卡（旗標關時仍是五風格）：骨架用中性標籤，
+    // 各則名稱看上方 server 給的進度文字；結果出來才照 access.cardSet 顯示。
+    final label = '開場白 ${index + 1}';
     Widget shimmerBar(double width) => Container(
           width: width,
           height: 10,
@@ -2645,11 +2651,6 @@ class _SkeletonStyleCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  if (replyStyleIcons[type] != null) ...[
-                    Icon(replyStyleIcons[type],
-                        size: 14, color: AppColors.onBackgroundSecondary),
-                    const SizedBox(width: 4),
-                  ],
                   Expanded(
                     child: Text(
                       label,
