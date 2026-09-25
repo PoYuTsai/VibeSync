@@ -580,6 +580,7 @@ class OpenerService {
       'mode': 'opener_generate',
       'openerFlowVersion': OpenerFlowContract.flowVersion,
       'openerContractVersion': OpenerAccessContract.contractVersion,
+      'openerCardSet': OpenerAccessContract.cardSet,
       'responseMode': 'stream',
       'sessionId': sessionId,
       'analysisRevision': analysisRevision,

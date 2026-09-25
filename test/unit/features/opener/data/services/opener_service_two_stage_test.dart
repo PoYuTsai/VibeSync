@@ -97,6 +97,7 @@ void main() {
     expect(generation.contribution.freeText, '沒養過');
     final body = jsonDecode(captured!) as Map<String, dynamic>;
     expect(body['mode'], 'opener_generate');
+    expect(body['openerCardSet'], 2, reason: '這版 App 看得懂一句推薦＋四句備選');
     expect(body['userContribution'], {'state': 'answered', 'questionId': 'question_1', 'selectedOptionId': 'option_2', 'freeText': '沒養過'});
     expect(body.containsKey('images'), isFalse, reason: '第二段不重傳圖片');
   });

@@ -190,6 +190,13 @@ void main() {
     test('malformed or missing access metadata degrades to null, not a parse '
         'failure', () {
       expect(OpenerAccess.tryParse(null), isNull);
+      final base = {'servedTier': 'free', 'visibleTypes': ['extend'], 'lockedTypes': <String>[], 'contractVersion': 2};
+      expect(OpenerAccess.tryParse(base)!.cardSet, 1, reason: '舊 Edge／舊快取沒有 cardSet＝五風格');
+      final set2 = OpenerAccess.tryParse({...base, 'cardSet': 2})!;
+      expect(set2.cardSet, 2);
+      expect(set2.toJson()['cardSet'], 2);
+      expect(OpenerAccess.tryParse(base)!.toJson().containsKey('cardSet'), isFalse, reason: '五風格快取格式不變');
+      expect(OpenerAccess.tryParse({...base, 'cardSet': 'x'})!.cardSet, 1);
       expect(OpenerAccess.tryParse('free'), isNull);
       expect(OpenerAccess.tryParse({'servedTier': ''}), isNull);
       expect(

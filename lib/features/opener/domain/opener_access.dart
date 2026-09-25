@@ -7,6 +7,11 @@ abstract final class OpenerAccessContract {
   /// 新 App request 一律帶的契約版本；server 缺席／1 視為舊 App 單卡。
   static const int contractVersion = 2;
 
+  /// 這版 App 看得懂的卡片組（2026-09-25 Eric 選 B）：2＝一句推薦＋四句備選，
+  /// 標籤見 OpeningRescueScreen.openerCardSet2Labels。生成請求帶 openerCardSet，
+  /// server 實際給哪一組以回應的 access.cardSet 為準（旗標關時仍是五風格）。
+  static const int cardSet = 2;
+
   /// Canonical 付費五型展示序（＝server OPENER_TYPES）。
   static const List<String> canonicalPaidOrder = [
     'extend',
@@ -34,9 +39,12 @@ class OpenerAccess {
     required this.servedTier,
     required this.visibleTypes,
     required this.lockedTypes,
+    this.cardSet = 1,
   });
 
   final int contractVersion;
+  /// 1＝五風格（延展／共鳴／調情／幽默／冷讀）；2＝一句推薦＋四句備選。
+  final int cardSet;
   final String servedTier;
   final List<String> visibleTypes;
   final List<String> lockedTypes;
@@ -48,6 +56,7 @@ class OpenerAccess {
         'servedTier': servedTier,
         'visibleTypes': visibleTypes,
         'lockedTypes': lockedTypes,
+        if (cardSet == 2) 'cardSet': cardSet,
       };
 
   /// 防禦式解析：形狀不對回 null（呼叫端當作「沒有 server access」，
@@ -85,6 +94,7 @@ class OpenerAccess {
       servedTier: servedTier.trim(),
       visibleTypes: visibleTypes,
       lockedTypes: lockedTypes,
+      cardSet: raw['cardSet'] == 2 ? 2 : 1,
     );
   }
 }

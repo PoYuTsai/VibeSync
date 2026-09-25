@@ -157,6 +157,20 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
     'coldRead': '冷讀',
   };
 
+  /// 一句推薦＋四句備選（server access.cardSet=2，2026-09-25 Eric 選 B）：
+  /// 鏡像 server opener_write.ts FREE_CARDS 的角色，內容與標籤要對得上。
+  static const openerCardSet2Labels = {
+    'extend': '直接接話',
+    'resonate': '換個角度',
+    'tease': '換個方向',
+    'humor': '輕鬆一點',
+    'coldRead': '帶到自己',
+  };
+
+  /// 卡片標籤依 server 實際給的卡片組；舊快取／舊 Edge 沒有 cardSet＝五風格。
+  static String openerTypeLabel(String type, {int cardSet = 1}) =>
+      (cardSet == 2 ? openerCardSet2Labels : openerTypeLabels)[type] ?? type;
+
   /// profileAnalysis 的 server key 保持契約穩定；畫面只顯示客戶看得懂的語言，
   /// 不把「高手手法／雙球策略」這類內部方法名端出去。
   static const profileAnalysisLabels = {
@@ -2322,7 +2336,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         padding: const EdgeInsets.only(top: 8),
         child: CoachingOutcomeFollowUpBar(
           event: event,
-          label: OpeningRescueScreen.openerTypeLabels[card.type] ?? card.type,
+          label: OpeningRescueScreen.openerTypeLabel(card.type,
+              cardSet: _result?.access?.cardSet ?? 1),
           onUserActionSelected: (action) => _recordOpenerUserAction(
             type: card.type,
             content: card.content,
@@ -2346,7 +2361,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     bool isLocked = false,
     bool stretch = false,
   }) {
-    final label = OpeningRescueScreen.openerTypeLabels[type] ?? type;
+    final label = OpeningRescueScreen.openerTypeLabel(type,
+        cardSet: _result?.access?.cardSet ?? 1);
 
     return SizedBox(
       width: stretch ? double.infinity : 280,
@@ -2601,7 +2617,9 @@ class _SkeletonStyleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = OpeningRescueScreen.openerTypeLabels[type] ?? type;
+    // 生成中還沒有結果：用這版 App 請求的卡片組標籤。
+    final label = OpeningRescueScreen.openerTypeLabel(type,
+        cardSet: OpenerAccessContract.cardSet);
     Widget shimmerBar(double width) => Container(
           width: width,
           height: 10,
