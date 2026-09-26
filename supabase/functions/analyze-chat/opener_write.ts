@@ -28,7 +28,7 @@ const SENTENCE_RULES = `## 每一則都要
 - 用口語（入坑、在追、最近迷上），不寫得像訪問；句尾不加「可以交流一下」這類多餘的話。
 - 她不用猜你的意思、不用接受考核或配合演出就能回。
 - 只用給你的資料：她和用戶沒給的事，一個字都不加（地點、年數、品種、程度都算）。
-- 用戶自述只照原句程度用；推薦那一則只在自述就是話題本身、或問完她之後謙虛帶一句時才用，不拿來開頭、不當資格、不硬抓共同點。沒給用戶自述時，不寫任何用戶自己的經歷或習慣（我也…、我家…、我懂、我以前…）。
+- 用戶自述只照原句程度用；推薦那一則只在自述就是話題本身、或問完她之後謙虛帶一句時才用，不拿來開頭、不當資格、不硬抓共同點。沒給用戶自述時，不寫任何用戶自己的經歷或習慣（我也…、我家…、我懂、我以前…）；唯一例外是下面「帶到自己」的範例。
 - 不問私領域（是不是一個人、跟誰去、感情、住哪、收入）；不評論外貌身材、不猜她的人格或生活、不說教；不用 emoji。稱呼用「妳」，繁體中文、台灣用語。
 - 不用：嗨美女、妳好漂亮、在哪上班、要不要喝一杯、感覺妳很有趣、我有認真看完妳的自介。`;
 
@@ -47,9 +47,10 @@ const FREE_CARDS = `## 五則（一句推薦＋四句備選；App 標籤照括�
   - tease（換個方向）：接她另一個線索；只有一個線索時，聊她那件事的另一個面向。
   - humor（輕鬆一點）：同一件事，語氣輕鬆一點的問法。
   - coldRead（帶到自己）：有用戶自述時，先問她，問完再謙虛帶一句用戶自己的事。
-    沒有用戶自述時改寫「方向＋範例」：directions.coldRead 寫給用戶的一句方向（例：可以先分享自己夜跑的經驗）；
-    openers.coldRead 寫一句範例：先分享一個具體、合理的小經驗再問她（例：我最近都跑環河公園那，會經過公館水岸那很chill，妳都跑哪？）。
-    範例是給用戶換成自己真實經驗再傳的，細節可以舉例；其他四則仍不寫用戶自己的經歷。`;
+    沒有用戶自述時改寫「方向＋範例」（Bruce 的標準格式）：
+    directions.coldRead＝給用戶的一句方向（25 字內），例：可以先分享自己夜跑的經驗
+    openers.coldRead＝範例那一則訊息本身，用戶照著改成自己的再傳：用「我最近…」分享一個跟這次話題有關的具體小經驗，再問她。例：我最近都跑環河公園那，會經過公館水岸那很chill，妳都跑哪？
+    範例要是真的一則訊息，不是說明；地點與細節跟這次話題有關，不照抄上面的例子。其他四則仍不寫用戶自己的經歷。`;
 
 const OUTPUT_SPEC = `## 輸出（只輸出 JSON，不要 code fence）
 {"openers":{"extend":"…","resonate":"…","tease":"…","humor":"…","coldRead":"…"},"directions":{"coldRead":"只有要你寫方向＋範例時才給"},"cardReasons":{"extend":"一句：這則接了她什麼、她可以怎麼回","resonate":"…","tease":"…","humor":"…","coldRead":"…"},"pioneerPlan":{"ifCold":"她冷回時下一步","ifShortPositive":"她短回但有接時下一步","ifEngaged":"她認真回時下一步","handoff":"何時把她的回覆貼回對話分析"}}
@@ -66,6 +67,9 @@ ${OUTPUT_SPEC}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 }
 
 /** Bruce 9/26（Eric 定案）：B 臂用戶沒給自述時，「帶到自己」改成給用戶的方向＋一句範例（範例細節是舉例，要用戶換成自己的）。 */
+/** 寫手 prompt 裡範例的專有細節：卡片出現卻不在當次輸入裡＝照抄範例，不是這次話題的經驗。 */
+export const DIRECTION_EXAMPLE_TOKENS: readonly string[] = ["環河公園", "公館水岸"];
+
 export function writesDirectionExample(arm: OpenerWriterArm, digest: Pick<OpenerPlanDigest, "selfFacts" | "noExperienceLabels">): boolean {
   // 用戶說過「有興趣但沒有經驗」就不教他分享經驗。
   return arm === "free" && digest.selfFacts.length === 0 && digest.noExperienceLabels.length === 0;
@@ -107,10 +111,12 @@ export function buildOpenerWriteUserContent(input: OpenerWriteInput): string {
   out.push(
     digest.selfFacts.length
       ? "【用戶自述（照原句程度，可以用）】\n" + digest.selfFacts.map((s) => `- ${s}`).join("\n")
+      : writesDirectionExample(input.arm, digest)
+      ? "【用戶自述】沒有：推薦句與其他三則不寫用戶自己的經歷或習慣；coldRead 照【帶到自己】寫範例。"
       : "【用戶自述】沒有：不要寫任何用戶自己的經歷或習慣。",
   );
   if (writesDirectionExample(input.arm, digest)) {
-    out.push("【帶到自己】用戶沒給自述：coldRead 寫「方向＋範例」（directions.coldRead＋openers.coldRead），其他四則照上面不寫用戶的經歷。");
+    out.push("【帶到自己】用戶沒給自述：coldRead 寫「方向＋範例」——directions.coldRead 是給用戶的一句方向，openers.coldRead 是範例那一則訊息本身（「我最近…」分享一個跟這次話題有關的具體小經驗，再問她）。");
   }
   if (digest.noExperienceLabels.length) {
     out.push(`【用戶沒有經驗的話題】${digest.noExperienceLabels.join("、")}：只能說好奇，不寫成他做過、養過或常去。`);

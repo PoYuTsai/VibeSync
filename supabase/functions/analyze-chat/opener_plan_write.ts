@@ -32,6 +32,7 @@ import {
   buildOpenerWriteUserContent,
   OPENER_REWRITE_MAX_TOKENS,
   OPENER_REWRITE_PROMPT,
+  DIRECTION_EXAMPLE_TOKENS,
   OPENER_WRITE_MAX_TOKENS,
   type OpenerWriterArm,
   writesDirectionExample,
@@ -120,6 +121,18 @@ function customerText(value: unknown, max: number): string | null {
 }
 
 const PIONEER_KEYS = ["ifCold", "ifShortPositive", "ifEngaged", "handoff"] as const;
+export const OPENER_DIRECTION_MAX_CHARS = 60;
+
+/**
+ * 範例要是一則真的訊息（格式可判，不判語意）：用戶自己分享（有「我」）、不是寫給用戶的說明、
+ * 不跟方向同一句、沒有照抄寫手 prompt 範例裡的地名。bb5 實測寫手會把說明或「（沒有使用者自述）」
+ * 塞進範例欄，也會把「環河公園」搬去釣魚題。
+ */
+export function isDirectionExample(example: string, direction: string, inputText: string): boolean {
+  if (!example.includes("我") || example === direction) return false;
+  if (/先分享|再問她|範例|自述|使用者|方向/u.test(example)) return false;
+  return !DIRECTION_EXAMPLE_TOKENS.some((token) => example.includes(token) && !inputText.includes(token));
+}
 
 export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteDeps): Promise<PlanWriteOutcome> {
   const now = deps.now ?? Date.now;
@@ -239,9 +252,12 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
 
   let extraCallsRemaining = 1;
   let parsed = parseJsonObjectFromText(writerRaw);
+  // 方向＋範例卡寫不出來只拿掉那張（不修格式、不讓整組 502）：付費黑箱 bb5 有 4/60 因範例空白整組失敗。
+  const directional = writesDirectionExample(input.arm, digest);
+  const requiredTypes = input.visibleTypes.filter((t) => !(directional && t === "coldRead"));
   const visibleMissing = (json: Record<string, unknown> | null) => {
     const openers = json && isPlainObject(json.openers) ? json.openers : {};
-    return input.visibleTypes.filter((t) => sanitizeOpenerText(openers[t]) === null);
+    return requiredTypes.filter((t) => sanitizeOpenerText(openers[t]) === null);
   };
   if (visibleMissing(parsed).length > 0 && extraCallsRemaining > 0) {
     extraCallsRemaining -= 1;
@@ -301,7 +317,6 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   let verdicts = judgeAll();
   const vetoed = () => input.visibleTypes.filter((t) => (verdicts[t]?.vetoes.length ?? 0) > 0);
   // 方向＋範例卡不送改寫（改寫器不知道那是範例）：踩紅線就直接拿掉。
-  const directional = writesDirectionExample(input.arm, digest);
   const rewriteTargets = () => vetoed().filter((t) => !(directional && t === "coldRead"));
   if (rewriteTargets().length > 0 && extraCallsRemaining > 0 && deps.deadlineAtMs - now() >= REWRITE_MIN_REMAINING_MS) {
     extraCallsRemaining -= 1;
@@ -353,10 +368,10 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   // （範例細節是舉例，不能變成一張看起來可以原封送出的句子）。範例卡不當推薦。
   const directions: Partial<Record<OpenerType, string>> = {};
   if (directional && openers.coldRead) {
-    // 方向太長就當沒給（不截斷成半句）。
+    // 方向太長就當沒給（不截斷成半句）；bb5 實測寫手常寫到 41–50 字，上限放 60。
     const rawDirection = isPlainObject(parsed.directions) ? customerText(parsed.directions.coldRead, 4000) : null;
-    const direction = rawDirection && rawDirection.length <= 40 ? rawDirection : null;
-    if (direction && !leaksBlocked(direction)) {
+    const direction = rawDirection && rawDirection.length <= OPENER_DIRECTION_MAX_CHARS ? rawDirection : null;
+    if (direction && !leaksBlocked(direction) && isDirectionExample(openers.coldRead, direction, rules.inputText)) {
       directions.coldRead = direction;
       telemetry.directionCard = "ok";
     } else {
