@@ -171,6 +171,7 @@ export function buildOpenerPlanUserContent(ctx: OpenerPlanContext): string {
 }
 
 const SEPARATOR_RE = /[\s\p{P}\p{S}]/u;
+const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
 const separatorsOnly = (text: string) => [...text].every((ch) => SEPARATOR_RE.test(ch));
 
 /**
@@ -340,6 +341,33 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
       repaired.push("spans.topicPart");
     }
   }
+  // 寫手看不到的原文＝補充扣掉寫手看得到的片段（背景、邀約、亂字、指令，以及規劃漏標、引文對不上、角色不明的字）：
+  // 規劃自己寫的讀法與要問的點不能把那些原文帶回寫手（GPT 預審 R4）。有兩個字逐字出自那些原文、又不在
+  // 她的資料／線索／寫手看得到的片段裡＝來源是被隱藏的原文，那欄不送。上限：換句話說（「開飛機的哥哥」）抓不到。
+  const wordChars = (text: string) => [...text].filter((ch) => WORD_CHAR_RE.test(ch)).join("");
+  let rest = freeText;
+  for (const span of spans) if (WRITER_VISIBLE_ROLES.includes(span.role)) rest = rest.replace(span.quote, "\n");
+  const hidden = rest.split("\n").map(wordChars).filter((q) => q.length >= 2);
+  const allowed = [
+    ...herSources(ctx.snapshot),
+    ...ctx.snapshot.cues.map((c) => c.label),
+    ...spans.filter((s) => WRITER_VISIBLE_ROLES.includes(s.role)).map((s) => s.quote),
+    ...spans.map((s) => s.topicPart ?? ""),
+  ].map(wordChars);
+  const fromHidden = (text: string | null) => {
+    if (text === null || hidden.length === 0) return false;
+    const chars = [...wordChars(text)];
+    return chars.slice(1).some((ch, i) => {
+      const pair = chars[i] + ch;
+      return hidden.some((q) => q.includes(pair)) && !allowed.some((a) => a.includes(pair));
+    });
+  };
+  for (const span of spans) {
+    if (WRITER_VISIBLE_ROLES.includes(span.role) && fromHidden(span.readAs)) {
+      span.readAs = null;
+      repaired.push("spans.readAs.hidden");
+    }
+  }
   const anchorsRaw = Array.isArray(raw.anchorCueIds) ? raw.anchorCueIds.filter((x): x is string => typeof x === "string") : [];
   if (!Array.isArray(raw.anchorCueIds)) repaired.push("anchorCueIds");
 
@@ -369,6 +397,10 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
   if (questionTarget && !OPENER_QUESTION_KINDS_KEPT.includes(raw.questionKind as string)) {
     questionTarget = null;
     repaired.push("questionTarget.kind");
+  }
+  if (questionTarget && fromHidden(questionTarget)) {
+    questionTarget = null;
+    repaired.push("questionTarget.hidden");
   }
 
   return {

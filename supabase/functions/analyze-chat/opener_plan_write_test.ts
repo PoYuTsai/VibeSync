@@ -218,7 +218,7 @@ Deno.test("兩臂 prompt：A 臂保留五風格定義，B 臂是一句推薦＋�
 });
 
 // ── 挑選 ──
-const RULES = { blockedQuotes: ["她好醜"], excludedTerms: ["工作"], selfFactsAllowed: false, profileText: SNAPSHOT.profileText.bio!, shorter: false };
+const RULES = { blockedQuotes: ["她好醜"], excludedTerms: ["工作"], selfFacts: [] as string[], profileText: SNAPSHOT.profileText.bio!, shorter: false };
 
 Deno.test("逐卡規則：紅線只看逐字（兩邊同一套正規化），句型與長度只降級", () => {
   assertEquals(judgeOpenerCard("她好醜但半馬加油", RULES).vetoes, ["blocked_span_reused"]);
@@ -231,7 +231,7 @@ Deno.test("逐卡規則：紅線只看逐字（兩邊同一套正規化），句
   assertEquals(judgeOpenerCard("半馬練到哪了？會緊張嗎？", RULES).demotions, ["two_questions"]);
   assertEquals(judgeOpenerCard("最近在準備第一場半馬喔，練到哪了？", RULES).demotions, ["profile_copy"]);
   assertEquals(judgeOpenerCard("我也跑過半馬，妳練到哪了？", RULES).demotions, ["self_claim_unsourced", "self_first"]);
-  assertEquals(judgeOpenerCard("妳練到哪了？我也跑過半馬", { ...RULES, selfFactsAllowed: true }).demotions, []);
+  assertEquals(judgeOpenerCard("妳練到哪了？我也跑過半馬", { ...RULES, selfFacts: ["我也跑過半馬"] }), { vetoes: [], demotions: [] });
   assertEquals(judgeOpenerCard("半".repeat(36), RULES).demotions, ["too_long"]);
   assertEquals(judgeOpenerCard("半".repeat(26), { ...RULES, shorter: true }).demotions, ["too_long"]);
   assertEquals(longestProfileCopy("第一場半馬", SNAPSHOT.profileText.bio!), 5);
@@ -422,10 +422,10 @@ Deno.test("寫手輸入：用戶的活動不在她資料裡就標成他自己的
 });
 
 Deno.test("降級：自述放句首、憑空冒出的英文字", () => {
-  assertEquals(judgeOpenerCard("我也在練半馬，妳練到哪了？", { ...RULES, selfFactsAllowed: true }).demotions, ["self_first"]);
-  assertEquals(judgeOpenerCard("「欸 我也在練半馬，妳練到哪了？", { ...RULES, selfFactsAllowed: true }).demotions, ["self_first"], "句首標點與語助詞也算");
-  assertEquals(judgeOpenerCard("我好奇半馬妳練到哪了？", { ...RULES, selfFactsAllowed: true }).demotions, [], "「我好奇」是在問她");
-  assertEquals(judgeOpenerCard("妳練到哪了？我也在練半馬", { ...RULES, selfFactsAllowed: true }).demotions, []);
+  assertEquals(judgeOpenerCard("我也在練半馬，妳練到哪了？", { ...RULES, selfFacts: ["我也在練半馬"] }).demotions, ["self_first"]);
+  assertEquals(judgeOpenerCard("「欸 我也在練半馬，妳練到哪了？", { ...RULES, selfFacts: ["我也在練半馬"] }).demotions, ["self_first"], "句首標點與語助詞也算");
+  assertEquals(judgeOpenerCard("我好奇半馬妳練到哪了？", { ...RULES, selfFacts: ["我也在練半馬"] }).demotions, [], "「我好奇」是在問她");
+  assertEquals(judgeOpenerCard("妳練到哪了？我也在練半馬", { ...RULES, selfFacts: ["我也在練半馬"] }).demotions, []);
   assertEquals(judgeOpenerCard("basic 半馬練到哪了？", { ...RULES, inputText: SNAPSHOT.profileText.bio! }).demotions, ["foreign_token"]);
   assertEquals(judgeOpenerCard("Podcast 最近聽哪集？", { ...RULES, inputText: "喜歡 Podcast" }).demotions, []);
 });
@@ -507,10 +507,10 @@ Deno.test("方向＋範例（Bruce 9/26）：B 臂沒有用戶自述時，帶到
 
   // 有用戶自述：帶到自己照舊（真的自述，不是範例）；寫手卻還給了方向＝把它寫成範例了，那張不交付。
   const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
-  const selfWrite = { ...withDirection, directions: {} };
+  const selfWrite = { ...withDirection, openers: { ...withDirection.openers, coldRead: "半馬練到哪一段了？我也在練半馬" }, directions: {} };
   const self = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: selfWrite }, []));
   assertEquals(self.kind === "ok" && self.result.access.directions, undefined);
-  assertEquals(self.kind === "ok" && self.result.openers.coldRead, withDirection.openers.coldRead);
+  assertEquals(self.kind === "ok" && self.result.openers.coldRead, "半馬練到哪一段了？我也在練半馬");
   const unrequested = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: withDirection }, []));
   assertEquals(unrequested.kind === "ok" && unrequested.result.openers.coldRead, undefined);
   assertEquals(unrequested.kind === "ok" && unrequested.telemetry.directionCard, "unrequested");
@@ -567,4 +567,131 @@ Deno.test("方向卡範例要是真的訊息：說明、空白、照抄 prompt �
   assertEquals(calls.length, 2, "也不為它修格式");
   assertEquals(out.kind === "ok" && out.result.openers.coldRead, undefined);
   assertEquals(Object.keys(out.kind === "ok" ? out.result.openers : {}).length, 4);
+});
+
+// ── GPT 預審（4571b7c4）四項 P1 的固定回歸 ──
+
+Deno.test("R1 有自述時，自己的事只能是自述原句、放在問完她之後：bb6 擴寫的真實輸出都擋下", () => {
+  const yoga = { ...RULES, selfFacts: ["我以前也上過一陣子瑜珈，後來工作忙就沒去了"] };
+  const bread = { ...RULES, selfFacts: ["而且我自己也烤過吐司"] };
+  const unbound = (text: string, rules: typeof RULES) => judgeOpenerCard(text, rules).vetoes.includes("self_fact_unbound");
+  // bb6 付費黑箱 4571b7c4 的真實卡片（F8 r2／r3、H04 r1／r2／r3）
+  assert(unbound("頭倒立成功那次是靠牆練還是直接來，我以前上瑜珈連下犬式都做不好，後來工作忙就斷了", yoga));
+  assert(unbound("頭倒立終於做出來的過程是怎樣，會不會其實比想像中好上手？我以前也上過一陣子瑜珈，後來工作忙就沒去了，滿懷念那種伸展感的", yoga));
+  assert(unbound("養的酵母最近順利嗎，我自己烤過吐司但沒養過酵母，滿好奇的", bread));
+  assert(unbound("我自己烤吐司常常在等發酵的時候很煎熬，妳養酵母現在習慣了嗎", bread));
+  assert(unbound("養酵母現在卡在哪個階段，我自己烤吐司都是直接買現成酵母的，佩服妳從頭養", bread));
+  // 照原句、放句尾（bb6 F8 r1）；自述前的連接詞不用照抄，句尾語助詞與標點不影響
+  assertFalse(unbound("頭倒立看起來超難，妳是卡在哪個環節最久才突破的，我以前也上過一陣子瑜珈，後來工作忙就沒去了", yoga));
+  assertFalse(unbound("養酵母現在卡在哪個階段，我自己也烤過吐司啦！", bread));
+  assertFalse(unbound("我好奇妳都養哪種酵母，我自己也烤過吐司", bread), "「我好奇」是在問她");
+  assertFalse(unbound("妳都烤哪種麵包", bread), "沒提自己的事");
+  assertFalse(unbound("練到忘我是什麼感覺", yoga), "忘我不是自述");
+  assert(unbound("我自己也烤過吐司，妳都烤哪種", bread), "自述放句首：送改寫移到問完她之後");
+  // 沒有主詞的自述：前面補「我」不算另外的自述，後面再加料照擋
+  const clay = { ...RULES, selfFacts: ["以前學過一點陶藝"] };
+  assertFalse(unbound("妳現在都捏什麼，我以前學過一點陶藝", clay));
+  assert(unbound("妳現在都捏什麼，我以前學過一點陶藝，拉坯超難", clay));
+  // 自述本身以語助詞收尾（照抄或省掉都算原句）；整句自述都要照原句，「我」前面那段不能換
+  assertFalse(unbound("妳常去哪座山？我也很喜歡爬山啊", { ...RULES, selfFacts: ["我也很喜歡爬山啊"] }));
+  assertFalse(unbound("妳常去哪座山？我也很喜歡爬山", { ...RULES, selfFacts: ["我也很喜歡爬山啊"] }));
+  assertFalse(unbound("妳都去哪一間？我也很常去酒吧", { ...RULES, selfFacts: ["我也很常去酒吧"] }));
+  const hike = { ...RULES, selfFacts: ["上個月去爬玉山，我腳超痠"] };
+  assert(unbound("妳爬過嗎？上週去爬雪山還摔了一跤，我腳超痠", hike));
+  assert(unbound("妳喜歡爬山嗎？我腳超痠", hike));
+  assertFalse(unbound("妳爬過玉山嗎？我上個月去爬玉山，我腳超痠", hike));
+});
+
+Deno.test("R1 執行：擴寫自述的卡走唯一一次改寫；改好照交付，還擴寫就拿掉那張，推薦不受影響", async () => {
+  const plan = { spans: [{ quote: "我以前也跑過半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"], nominatedStyle: "extend" };
+  const embellished = "半馬練到哪一段了？我以前也跑過半馬，最後五公里超痛苦";
+  const write = { ...WRITE_OK, openers: { ...WRITE_OK.openers, coldRead: embellished } };
+  const calls: OpenerFlowModelRequest[] = [];
+  const fixed = await runOpenerPlanWrite(input("我以前也跑過半馬", PAID, "free"), deps({ plan, write, rewrite: { openers: { coldRead: "半馬練到哪一段了？我以前也跑過半馬" } } }, calls));
+  assertEquals(fixed.kind, "ok");
+  if (fixed.kind !== "ok") return;
+  assertEquals(calls.length, 3);
+  assertEquals(calls[2].system, OPENER_REWRITE_PROMPT);
+  assert(String(calls[2].messages[0].content).includes("照【用戶自述】原句"), "改寫器知道要照原句");
+  assertEquals(fixed.result.openers.coldRead, "半馬練到哪一段了？我以前也跑過半馬");
+  assertEquals(fixed.result.recommendation.pick, "extend");
+  const still = await runOpenerPlanWrite(input("我以前也跑過半馬", PAID, "free"), deps({ plan, write, rewrite: { openers: { coldRead: embellished } } }, []));
+  assertEquals(still.kind === "ok" && still.result.openers.coldRead, undefined);
+  assertEquals(still.kind === "ok" && still.telemetry.droppedStyles, ["coldRead"]);
+  assertEquals(still.kind === "ok" && still.result.recommendation.pick, "extend");
+  assert(still.kind === "ok" && isValidOpenerGenerateLedgerResult(still.result));
+});
+
+Deno.test("R2 範例身分在評判／改寫／挑選前鎖定：寫手標成範例、又不是當次要求的那張，整張不交付", async () => {
+  const noSelf = { spans: [{ quote: "想聊半馬", role: "topic" }], anchorCueIds: ["cue_2"] };
+  const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
+  const coldExample = "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？";
+  const extendExample = "我最近拉坯總是歪掉，妳半馬都怎麼配速";
+  // 要求方向＋範例時，寫手把 extend 也標成範例：extend 不交付、不當推薦，coldRead 範例照規則交付。
+  const both = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: extendExample, coldRead: coldExample }, directions: { extend: "分享自己練陶藝的小經驗", coldRead: "可以先分享自己夜跑的經驗" } };
+  const out = await runOpenerPlanWrite(input("想聊半馬", PAID, "free"), deps({ plan: noSelf, write: both }, []));
+  assertEquals(out.kind, "ok");
+  if (out.kind !== "ok") return;
+  assertEquals(out.result.openers.extend, undefined);
+  assertEquals(out.result.cardReasons.extend, undefined);
+  assertEquals(out.result.stretchLevels.extend, undefined);
+  assertEquals(out.result.access.directions, { coldRead: "可以先分享自己夜跑的經驗" });
+  assert(out.telemetry.droppedStyles.includes("extend"));
+  assert(!["extend", "coldRead"].includes(out.result.recommendation.pick));
+  assert(isValidOpenerGenerateLedgerResult(out.result));
+  // 有自述（沒要求範例）：標成範例的 extend 不交付；非空的任何型別都算標記，空字串不算。
+  const selfWrite = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: extendExample, coldRead: "半馬練到哪一段了？我也在練半馬" } };
+  const self = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: { ...selfWrite, directions: { extend: "分享自己的小經驗" } } }, []));
+  assertEquals(self.kind === "ok" && self.result.openers.extend, undefined);
+  assertEquals(self.kind === "ok" && self.result.openers.coldRead, "半馬練到哪一段了？我也在練半馬");
+  assertEquals(self.kind === "ok" && self.result.access.directions, undefined);
+  for (const marker of [1, { text: "分享" }, ["分享"]]) {
+    const typed = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: { ...selfWrite, directions: { coldRead: marker } } }, []));
+    assertEquals(typed.kind === "ok" && typed.result.openers.coldRead, undefined, JSON.stringify(marker));
+    assertEquals(typed.kind === "ok" && typed.telemetry.directionCard, "unrequested");
+  }
+  for (const directions of [{ coldRead: "" }, { foo: "分享" }, "分享自己的經驗", null]) {
+    const kept = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: { ...selfWrite, openers: { ...selfWrite.openers, extend: WRITE_OK.openers.extend }, directions } }, []));
+    assertEquals(kept.kind === "ok" && Object.keys(kept.result.openers).length, 5, JSON.stringify(directions));
+  }
+  // 標成範例的卡不送改寫（改寫器不知道那是範例）：踩紅線也直接拿掉，不多花一次呼叫。
+  const restricted = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }, { quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_2"] };
+  const calls: OpenerFlowModelRequest[] = [];
+  const vetoed = await runOpenerPlanWrite(input("我也在練半馬 不要聊工作", PAID, "free"), deps({ plan: restricted, write: { ...selfWrite, openers: { ...selfWrite.openers, extend: "我最近工作都很晚才跑，妳都跑哪" }, directions: { extend: "分享自己的小經驗" } } }, calls));
+  assertEquals(vetoed.kind === "ok" && vetoed.result.openers.extend, undefined);
+  assertEquals(calls.length, 2);
+  // 修格式時：原輸出標了範例、修好的輸出把標記弄丟，那張仍不交付。
+  const missingHumor = { ...selfWrite, openers: { ...selfWrite.openers, extend: "半馬配速都怎麼抓？", humor: "" }, directions: { extend: "分享自己的小經驗" } };
+  const repaired = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: missingHumor, repair: { ...selfWrite, directions: {} } }, []));
+  assertEquals(repaired.kind === "ok" && repaired.telemetry.formatRepairUsed, true);
+  assertEquals(repaired.kind === "ok" && repaired.result.openers.extend, undefined);  // 標成範例又空白的卡本來就不交付：不為它修格式，也不讓整組失敗。
+  const blankCalls: OpenerFlowModelRequest[] = [];
+  const blank = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: { ...selfWrite, openers: { ...selfWrite.openers, extend: "" }, directions: { extend: "分享自己的小經驗" } } }, blankCalls));
+  assertEquals(blank.kind, "ok");
+  assertEquals(blankCalls.length, 2);
+  assertEquals(blank.kind === "ok" && blank.result.openers.extend, undefined);
+});
+
+Deno.test("R4 規劃寫的讀法與要問的點不能把寫手看不到的片段帶回寫手；和她的資料共用的字不算", () => {
+  const text = "我哥是機師，想問她半馬最怕哪一段";
+  const spans = [{ quote: "我哥是機師", role: "background" }, { quote: "想問她半馬最怕哪一段", role: "question" }];
+  const leakedTarget = parseOpenerPlan({ spans, anchorCueIds: ["cue_2"], questionTarget: "我哥是機師，想問她半馬哪段最怕", questionKind: "story" }, ctx(text));
+  assertEquals(leakedTarget.questionTarget, null);
+  assert(leakedTarget.repairedFields.includes("questionTarget.hidden"));
+  const leakedReading = parseOpenerPlan({ spans: [spans[0], { ...spans[1], readAs: "哥哥是機師，想問她半馬最怕哪段" }], anchorCueIds: ["cue_2"], questionTarget: "半馬最怕哪一段", questionKind: "story" }, ctx(text));
+  assertEquals(leakedReading.spans[1].readAs, null);
+  assertEquals(leakedReading.questionTarget, "半馬最怕哪一段", "乾淨的要問的點照用");
+  for (const plan of [leakedTarget, leakedReading]) {
+    const content = buildOpenerWriteUserContent({ snapshot: SNAPSHOT, freeText: text, plan, digest: digestOpenerPlan(plan, { snapshot: SNAPSHOT, option: null }), primaryStyle: "extend", arm: "free" });
+    assertFalse(content.includes("機師"), "寫手看不到背景");
+    assert(content.includes("想問她半馬最怕哪一段"), "退回用戶原句");
+  }
+  // 背景提到她的線索（夜跑）：要問的點跟她的資料共用那兩個字，不算帶回背景。
+  const cueShared = parseOpenerPlan({ spans: [{ quote: "我姊也在夜跑", role: "background" }, { quote: "想聊夜跑", role: "topic" }], anchorCueIds: ["cue_1"], questionTarget: "夜跑都跑哪一帶", questionKind: "what" }, ctx("我姊也在夜跑 想聊夜跑"));
+  assertEquals(cueShared.questionTarget, "夜跑都跑哪一帶");
+  assertFalse(cueShared.repairedFields.includes("questionTarget.hidden"));
+  // 規劃漏標的字（沒有任何片段涵蓋）寫手也看不到：一樣不能被要問的點帶回去。
+  const omitted = parseOpenerPlan({ spans: [spans[1]], anchorCueIds: ["cue_2"], questionTarget: "機師朋友最怕哪段", questionKind: "story" }, ctx(text));
+  assert(omitted.coverageGap);
+  assertEquals(omitted.questionTarget, null);
 });

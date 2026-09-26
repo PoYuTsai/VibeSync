@@ -140,6 +140,7 @@ export const OPENER_REWRITE_PROMPT = `你是 VibeSync 開場救星的改寫器�
 const VETO_TEXT: Record<string, string> = {
   blocked_span_reused: "帶回了用戶那段不適合的字眼，整個拿掉，改用她的線索開場",
   excluded_topic: "提到用戶不想聊的事，改成完全不碰它",
+  self_fact_unbound: "用戶自己的事只能照【用戶自述】原句一字不改、放在問完她之後，不加任何細節、程度或感受",
 };
 
 export function buildOpenerRewriteUserContent(input: {

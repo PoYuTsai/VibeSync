@@ -319,11 +319,29 @@ function analyzeResponseBody(input: {
   };
 }
 
+/**
+ * 同一筆生成可能由另一版 App 重播（GPT 預審 R3）：舊版 App（沒帶 openerCardSet=2）不認得「方向＋範例」，
+ * 會把範例當一般卡顯示、一鍵複製。回給它的投影拿掉範例卡（範例卡不會是推薦）；存著的結果不動、不重生、不重扣。
+ */
+export function resultForClient(result: OpenerGenerateLedgerResult, showsExamples: boolean): OpenerGenerateLedgerResult {
+  const examples = Object.keys(result.access.directions ?? {}) as OpenerType[];
+  if (showsExamples || examples.length === 0) return result;
+  const out = structuredClone(result);
+  for (const type of examples) {
+    delete out.openers[type];
+    delete out.cardReasons[type];
+    delete out.stretchLevels[type];
+  }
+  delete out.access.directions;
+  return out;
+}
+
 function generateResponseBody(input: {
   session: OpenerSessionView;
   generationId: string;
   result: OpenerGenerateLedgerResult;
   usage: OpenerGenerationUsage;
+  showsExamples: boolean;
 }): Record<string, unknown> {
   return {
     stage: "generate",
@@ -332,7 +350,7 @@ function generateResponseBody(input: {
     analysisRevision: input.session.analysisRevision,
     generationId: input.generationId,
     expiresAt: input.session.expiresAt,
-    ...input.result,
+    ...resultForClient(input.result, input.showsExamples),
     usage: {
       ...input.usage,
       cost: input.usage.chargedNow,
@@ -646,7 +664,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   // 只給新版 App（openerCardSet=2，一句推薦＋四句備選）：舊版 App 旗標開了也走舊路徑，
   // 上線只影響新版，現有用戶不變（Bruce benchmark 只比過 B 與舊路徑）。
   const env = deps.env ?? ((name) => Deno.env.get(name));
-  const usePlanWrite = planWriteEnabled(env) && writerArmFromRequest(body) === "free";
+  const showsExamples = writerArmFromRequest(body) === "free";
+  const usePlanWrite = planWriteEnabled(env) && showsExamples;
 
   // 2. 生成輸入指紋（回答一定入 hash）＋ claim（同 ID 已完成→重播、進行中→pending、
   //    同局另一作業→busy、三組用完→擋，都在模型呼叫前）。
@@ -687,6 +706,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           generationId: request.generationId,
           result: claim.result,
           usage: buildReplayUsage(claim.session, OPENER_INCLUDED_GENERATION_COUNT),
+          showsExamples,
         }));
       case "pending":
         return flowError("OPENER_GENERATION_PENDING", "這組回覆還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs });
@@ -848,6 +868,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       generationId: request.generationId,
       result: settlement.result,
       usage: settlement.usage,
+      showsExamples,
     }));
   };
 

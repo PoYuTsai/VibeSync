@@ -252,9 +252,19 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
 
   let extraCallsRemaining = 1;
   let parsed = parseJsonObjectFromText(writerRaw);
+  const writerParsed = parsed;
   // 方向＋範例卡寫不出來只拿掉那張（不修格式、不讓整組 502）：付費黑箱 bb5 有 4/60 因範例空白整組失敗。
   const directional = writesDirectionExample(input.arm, digest);
-  const requiredTypes = input.visibleTypes.filter((t) => !(directional && t === "coldRead"));
+  // 範例身分在評判／改寫／挑選之前鎖定：寫手在 directions 標了哪張（任何 key、任何非空值；修格式時連原輸出的標記一起算），
+  // 除了當次要求的方向＋範例 coldRead，那張整張不交付——不能只丟標記、把範例留成可原封送出的句子（GPT 預審 R2）。
+  const markedExample = (json: Record<string, unknown> | null, type: OpenerType) => {
+    const value = json && isPlainObject(json.directions) ? json.directions[type] : undefined;
+    return value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "");
+  };
+  const unrequestedExample = (json: Record<string, unknown> | null, type: OpenerType) =>
+    !(directional && type === "coldRead") && (markedExample(json, type) || markedExample(writerParsed, type));
+  // 要不交付的卡不必交：不為它修格式，也不因它空白整組失敗。
+  const requiredTypes = input.visibleTypes.filter((t) => !(directional && t === "coldRead") && !unrequestedExample(writerParsed, t));
   const visibleMissing = (json: Record<string, unknown> | null) => {
     const openers = json && isPlainObject(json.openers) ? json.openers : {};
     return requiredTypes.filter((t) => sanitizeOpenerText(openers[t]) === null);
@@ -291,6 +301,11 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   const openers: Partial<Record<OpenerType, string>> = {};
   const cardReasons: Partial<Record<OpenerType, string>> = {};
   for (const type of input.visibleTypes) {
+    if (unrequestedExample(parsed, type)) {
+      telemetry.droppedStyles.push(type);
+      if (type === "coldRead") telemetry.directionCard = "unrequested";
+      continue;
+    }
     const sanitized = sanitizeOpenerText(rawOpeners[type]);
     const text = sanitized ? withoutEmoji(sanitized) : null;
     if (text) openers[type] = text;
@@ -302,7 +317,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   const rules = {
     blockedQuotes: digest.blockedQuotes,
     excludedTerms: digest.excludedTerms,
-    selfFactsAllowed: digest.selfFacts.length > 0,
+    selfFacts: digest.selfFacts,
     profileText: [input.snapshot.profileText.bio, input.snapshot.profileText.interests].filter(Boolean).join("\n"),
     shorter: plan.intents.shorter,
     // 寫手實際看到的全部內容＋她的資料＋用戶原文：卡片裡的英文字不在這裡面才算憑空冒出來。
@@ -367,14 +382,6 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   // 方向放 access.directions（跟 cardSet 一樣隨結果存進 App 快取），App 把句子標成範例；寫手沒給方向就不交付那張
   // （範例細節是舉例，不能變成一張看起來可以原封送出的句子）。範例卡不當推薦。
   const directions: Partial<Record<OpenerType, string>> = {};
-  // 沒要求範例（有自述、或用戶說沒經驗）寫手卻給了方向＝它把帶到自己寫成範例了：那張不能當可原封送出的句子。
-  const wroteDirection = isPlainObject(parsed.directions) && typeof parsed.directions.coldRead === "string" && parsed.directions.coldRead.trim() !== "";
-  if (!directional && wroteDirection && openers.coldRead) {
-    delete openers.coldRead;
-    delete cardReasons.coldRead;
-    telemetry.droppedStyles.push("coldRead");
-    telemetry.directionCard = "unrequested";
-  }
   if (directional && openers.coldRead) {
     // 方向太長就當沒給（不截斷成半句）；bb5 實測寫手常寫到 41–50 字，上限放 60。
     const rawDirection = isPlainObject(parsed.directions) ? customerText(parsed.directions.coldRead, 4000) : null;

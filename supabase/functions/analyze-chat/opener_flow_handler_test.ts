@@ -5,6 +5,7 @@ import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { parseJsonObjectFromText } from "./json_text.ts";
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  resultForClient,
   handleOpenerAnalyzeRequest,
   handleOpenerGenerateRequest,
   type OpenerFlowHandlerDeps,
@@ -1587,4 +1588,74 @@ Deno.test("結構刀旗標：新版 App 帶 openerCardSet=2 拿一句推薦＋�
     assertEquals((oldBody.usage as Record<string, unknown>).chargedNow, 0);
     assertEquals(await usage(h.db), charged, "同局後續生成不另扣費（舊路徑照常結算）");
   } finally { await h.db.close(); }
+});
+
+Deno.test("GPT 預審 R3：同一筆生成換舊版 App 重播，拿掉方向＋範例卡（存著的結果不動、不重生、不重扣）；新版照原樣", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    h.tier = "essential";
+    const direction = "分享一次自己假日散步的經驗";
+    const write = { ...WRITE_JSON, openers: { ...WRITE_JSON.openers, coldRead: "我假日也常去河堤走走，妳家狗最愛哪一段？" }, directions: { coldRead: direction } };
+    const script = { calls: [] as OpenerFlowModelRequest[], write };
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const newReq = generateBody(sessionId, GEN_1, { state: "answered", freeText: "想知道牠散步會不會自己選路" }, { openerCardSet: 2 });
+    const first = await json(await handleOpenerGenerateRequest(h.deps(newReq, { invokeModel: planWriteInvoker(script) })));
+    assertEquals((first.access as Record<string, unknown>).directions, { coldRead: direction });
+    const pick = (first.recommendation as Record<string, unknown>).pick;
+    const calls = script.calls.length;
+    const charged = await usage(h.db);
+    const { openerCardSet: _newAppOnly, ...oldReq } = newReq;
+    const replayOld = async () => {
+      const res = await handleOpenerGenerateRequest(h.deps(oldReq, { invokeModel: planWriteInvoker(script) }));
+      assertEquals(res.status, 200);
+      const body = await json(res);
+      const openers = body.openers as Record<string, unknown>;
+      assertEquals(openers.coldRead, undefined, "舊版 App 不懂範例標記：範例卡不交給它");
+      assertEquals((body.cardReasons as Record<string, unknown>).coldRead, undefined);
+      assertEquals((body.stretchLevels as Record<string, unknown>).coldRead, undefined);
+      assertEquals((body.access as Record<string, unknown>).directions, undefined);
+      assertEquals((body.recommendation as Record<string, unknown>).pick, pick);
+      assert(openers[String(pick)], "推薦卡仍在");
+      assertEquals((body.usage as Record<string, unknown>).replayed, true);
+    };
+    await replayOld();
+    const again = await json(await handleOpenerGenerateRequest(h.deps(newReq, { invokeModel: planWriteInvoker(script) })));
+    assertEquals(again.openers, first.openers, "新版 App 重播照原樣");
+    assertEquals((again.access as Record<string, unknown>).directions, { coldRead: direction });
+    // 前一版 prompt 指紋的重播出口（readPreviousPromptReplay）也一樣。
+    const parsed = parseOpenerGenerateRequest({ rawFlowVersion: newReq.openerFlowVersion, rawSessionId: newReq.sessionId, rawAnalysisRevision: newReq.analysisRevision, rawGenerationId: newReq.generationId, rawContribution: newReq.userContribution });
+    assert(parsed.ok);
+    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+    await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [oldHash, GEN_1]);
+    await replayOld();
+    assertEquals(script.calls.length, calls, "重播不呼叫模型");
+    assertEquals(await usage(h.db), charged, "重播不重扣");
+    const stored = await h.db.query<{ r: { access: Record<string, unknown> } }>(`SELECT result_json AS r FROM public.opener_generation_runs WHERE generation_id = $1`, [GEN_1]);
+    assertEquals(stored.rows[0].r.access.directions, { coldRead: direction }, "存著的結果不動");
+  } finally { await h.db.close(); }
+});
+
+Deno.test("GPT 預審 R3：回給客戶端的投影（重播與結算出口共用）——舊版拿掉範例卡、不改原物件；新版與沒有範例的結果原樣", () => {
+  const stored = {
+    openers: { extend: "妳家狗散步會自己挑路線嗎？", coldRead: "我假日也常去河堤走走，妳家狗最愛哪一段？" },
+    recommendation: { pick: "extend" },
+    cardReasons: { extend: "直接問", coldRead: "範例" },
+    access: { servedTier: "essential", visibleTypes: ["extend", "coldRead"], lockedTypes: [], contractVersion: 2, cardSet: 2, directions: { coldRead: "分享自己散步的經驗" } },
+    materialUse: { inputState: "answered", references: [], traceStatus: "uncertain", displayNote: null },
+    stretchLevels: { extend: "within", coldRead: "within" },
+    recommendedPick: "extend",
+  } as unknown as Parameters<typeof resultForClient>[0];
+  const before = JSON.stringify(stored);
+  const old = resultForClient(stored, false);
+  assertEquals(Object.keys(old.openers), ["extend"]);
+  assertEquals(Object.keys(old.cardReasons), ["extend"]);
+  assertEquals(Object.keys(old.stretchLevels), ["extend"]);
+  assertEquals(old.access.directions, undefined);
+  assertEquals(old.recommendation.pick, "extend");
+  assertEquals(JSON.stringify(stored), before, "存著的結果不動");
+  assertEquals(resultForClient(stored, true), stored);
+  const plain = { ...stored, access: { ...stored.access, directions: undefined } } as typeof stored;
+  assertEquals(resultForClient(plain, false), plain);
 });

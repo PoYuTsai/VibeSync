@@ -1,7 +1,7 @@
 // 開場救星結構刀 P3「另外挑」（需求凍結 §4.3）：寫手不再替自己排名。
 // 伺服器只用確定、逐字可判的規則：紅線（veto）不可交付；句型與長度只降級。
 // 語意品質（重述、硬抓共同點、捏造自述）不在這裡用 regex 猜——那是規劃的輸入
-// 結構與離線評審的工作。
+// 結構與離線評審的工作。唯一例外是有准用自述時：自述必須逐字綁定（格式可判，見 selfFactBound）。
 
 import { normalizeOutgoingMessageText } from "./outgoing_message_text.ts";
 import { FIRST_PERSON_FACT_RE, OPENER_TYPES, type OpenerType, buildOpenerAccess, type StretchLevel } from "./opener_payload.ts";
@@ -11,7 +11,7 @@ import { approachStillApplies, graphemeLength, type OpenerAnalysisSnapshot } fro
 import type { OpenerPlan, OpenerPlanDigest } from "./opener_plan.ts";
 import { OPENER_LENGTH_LIMIT, OPENER_SHORT_LENGTH_LIMIT, type OpenerWriterArm } from "./opener_write.ts";
 
-export type OpenerVeto = "blocked_span_reused" | "excluded_topic";
+export type OpenerVeto = "blocked_span_reused" | "excluded_topic" | "self_fact_unbound";
 export type OpenerDemotion = "two_questions" | "too_long" | "profile_copy" | "self_claim_unsourced" | "self_first" | "foreign_token";
 
 export interface OpenerCardVerdict {
@@ -22,13 +22,21 @@ export interface OpenerCardVerdict {
 export interface OpenerCardRules {
   blockedQuotes: readonly string[];
   excludedTerms: readonly string[];
-  selfFactsAllowed: boolean;
+  /** 准用自述原句（digest.selfFacts）；空＝用戶沒給自述。 */
+  selfFacts: readonly string[];
   /** 她的自介原文（重現偵測用）。 */
   profileText: string;
   shorter: boolean;
   /** 她的資料＋用戶補充全文：卡片裡的英文字不在這裡面＝寫手憑空冒出來的。 */
   inputText?: string;
 }
+
+/** 「我好奇／我想問」是在問她，不是自述（句首降級與自述綁定共用）。 */
+const QUESTION_LEAD = "(?:猜|好奇|很好奇|想問|在想|想知道)";
+/** 卡片裡有用戶自己的事：「我」「我們」（自我、忘我與問句開頭不算）。 */
+const SELF_CONTENT_RE = new RegExp(`(?:^|[^自忘])我(?!${QUESTION_LEAD})`, "u");
+const SELF_FIRST_RE = new RegExp(`^[\\p{P}\\p{S}\\s]*(?:欸|哈+|嗨|其實|說真的)?[，,\\s]*我(?!${QUESTION_LEAD})`, "u");
+const TRAILING_PARTICLES_RE = /[啦啊哈呀喔欸耶囉吧呢]+$/u;
 
 /** 她自介裡連續這麼多個字被原樣搬進卡片＝重現原句（降級，不擋）。 */
 export const PROFILE_COPY_MIN_CHARS = 6;
@@ -83,6 +91,27 @@ export function openerLength(text: string): number {
   return graphemeLength(text.replace(/[A-Za-z]+/g, "a"));
 }
 
+/** 自述句首的連接詞（「而且我自己也烤過吐司」）：卡片可以不照抄。 */
+const LEADING_CONNECTOR_RE = /^(?:而且|然後|其實|不過|所以|但是|但|還有|另外|對了)/u;
+
+/**
+ * 有准用自述時，卡片裡用戶自己的事只能是那句自述原句、放在問完她之後（GPT 預審 R1：bb6 有自述的 12 組
+ * 每組都有一張把自述擴寫成沒給過的細節，例：連下犬式都做不好、沒養過酵母）。格式可判、不判語意：
+ * 卡片（去標點、句尾語助詞）以整句自述（句首連接詞與句尾語助詞可省）收尾，前面沒有別的「我」。
+ * 上限：前面不帶「我」的省略主詞句（「上次也摔過」）抓不到；一張只綁一句自述。
+ */
+export function selfFactBound(text: string, selfFacts: readonly string[]): boolean {
+  const card = vetoKey(text).replace(TRAILING_PARTICLES_RE, "");
+  return selfFacts.some((fact) => {
+    const core = vetoKey(fact).replace(TRAILING_PARTICLES_RE, "").replace(LEADING_CONNECTOR_RE, "");
+    if (core.length < 2 || !card.endsWith(core)) return false;
+    let before = card.slice(0, card.length - core.length);
+    // 不是「我」開頭的自述（「以前學過陶藝」）前面補「我／我也／我自己」不算另外的自述。
+    if (!core.startsWith("我")) before = before.replace(/我(?:自己)?也?$/u, "");
+    return !SELF_CONTENT_RE.test(before);
+  });
+}
+
 export function judgeOpenerCard(text: string, rules: OpenerCardRules): OpenerCardVerdict {
   const vetoes: OpenerVeto[] = [];
   const demotions: OpenerDemotion[] = [];
@@ -92,10 +121,14 @@ export function judgeOpenerCard(text: string, rules: OpenerCardRules): OpenerCar
   if (openerLength(text) > (rules.shorter ? OPENER_SHORT_LENGTH_LIMIT : OPENER_LENGTH_LIMIT)) demotions.push("too_long");
   if (rules.profileText && longestProfileCopy(text, rules.profileText) >= PROFILE_COPY_MIN_CHARS) demotions.push("profile_copy");
   // 句式標記，不判語意：沒有准用自述卻出現「我也／我家／我以前…」只降級（寫手本來就沒收到自述）。
-  if (!rules.selfFactsAllowed && FIRST_PERSON_FACT_RE.test(text)) demotions.push("self_claim_unsourced");
+  if (rules.selfFacts.length === 0) {
+    if (FIRST_PERSON_FACT_RE.test(text)) demotions.push("self_claim_unsourced");
+  } else if (SELF_CONTENT_RE.test(text) && !selfFactBound(text, rules.selfFacts)) {
+    vetoes.push("self_fact_unbound");
+  }
   // Bruce 9/23：自己的事放在問完她之後，開頭就講自己＝抓共同點當資格（句首位置，不判語意）。
   // 句首可以有標點、表情或語助詞；「我好奇／我想問」是在問她，不是自述。
-  if (/^[\p{P}\p{S}\s]*(?:欸|哈+|嗨|其實|說真的)?[，,\s]*我(?!(?:猜|好奇|很好奇|想問|在想|想知道))/u.test(text)) demotions.push("self_first");
+  if (SELF_FIRST_RE.test(text)) demotions.push("self_first");
   if (rules.inputText !== undefined) {
     const input = rules.inputText.normalize("NFKC").toLowerCase();
     const words = text.normalize("NFKC").match(/[A-Za-z]{3,}/g) ?? [];
