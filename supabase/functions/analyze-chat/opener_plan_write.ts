@@ -97,8 +97,14 @@ export interface PlanWriteTelemetry {
   model: string | null;
   inputTokens: number;
   outputTokens: number;
+  /** 呼叫後失敗、拿不到用量的嘗試會讓它變 false（token 數只是已知小計）；沒呼叫就跳過的規劃不算。 */
   usageComplete: boolean;
+  /** 成功回覆數（名稱沿用既有 log）。 */
   modelAttempts: number;
+  /** 邏輯呼叫次數（含失敗）；底層供應商嘗試由 ModelCallBudget 的 opener_provider_attempt 記。 */
+  invokerCalls: number;
+  /** 限制未知時先避開的詞數（plan.guardTerms，不含原文）。 */
+  guardTermCount: number;
   planElapsedMs: number;
   writeElapsedMs: number;
 }
@@ -160,6 +166,8 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     outputTokens: 0,
     usageComplete: true,
     modelAttempts: 0,
+    invokerCalls: 0,
+    guardTermCount: 0,
     planElapsedMs: 0,
     writeElapsedMs: 0,
   };
@@ -170,6 +178,18 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
       telemetry.outputTokens += out.outputTokens;
     } else {
       telemetry.usageComplete = false;
+    }
+  };
+  // 每次呼叫都經過這裡：失敗（拋錯）的嘗試不知道用量，不能再說用量完整（GPT 主審 F2）。
+  const invoke = async (req: Parameters<OpenerFlowModelInvoker>[0]): Promise<OpenerFlowModelOutput> => {
+    telemetry.invokerCalls += 1;
+    try {
+      const out = await deps.invokeModel(req);
+      addUsage(out);
+      return out;
+    } catch (error) {
+      telemetry.usageComplete = false;
+      throw error;
     }
   };
   const fail = (reason: Extract<PlanWriteOutcome, { kind: "fail" }>["reason"], stage: string, plan: OpenerPlan | null, writerRaw: string | null): PlanWriteOutcome =>
@@ -186,7 +206,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     telemetry.planError = "skipped_deadline";
   } else {
     try {
-      const out = await deps.invokeModel({
+      const out = await invoke({
         system: OPENER_PLAN_PROMPT,
         messages: [{ role: "user", content: buildOpenerPlanUserContent(planCtx) }],
         maxTokens: OPENER_PLAN_MAX_TOKENS,
@@ -195,7 +215,6 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "plan",
       });
-      addUsage(out);
       if (hasAnalyzeChatPromptLeak(out.rawText)) {
         plan = profileOnlyPlan(planCtx, ["plan.leak"]);
         telemetry.planError = "leak";
@@ -214,6 +233,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   telemetry.planCoverageGap = plan.coverageGap;
   telemetry.anchorCount = plan.anchorCueIds.length;
   telemetry.herStatedCount = plan.herStated.length;
+  telemetry.guardTermCount = plan.guardTerms.length;
   telemetry.hasQuestionTarget = plan.questionTarget !== null;
   telemetry.intents = plan.intents;
   for (const span of plan.spans) telemetry.roleCounts[span.role] = (telemetry.roleCounts[span.role] ?? 0) + 1;
@@ -230,7 +250,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   const writeStarted = now();
   let writerRaw: string;
   try {
-    const out = await deps.invokeModel({
+    const out = await invoke({
       system: writerSystem,
       messages: [{ role: "user", content: writerContent }],
       maxTokens: OPENER_WRITE_MAX_TOKENS,
@@ -239,7 +259,6 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
       onChunk: deps.onChunk,
       purpose: "write",
     });
-    addUsage(out);
     telemetry.model = out.model;
     writerRaw = out.rawText;
   } catch (error) {
@@ -274,7 +293,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     extraCallsRemaining -= 1;
     telemetry.formatRepairUsed = true;
     try {
-      const repair = await deps.invokeModel({
+      const repair = await invoke({
         system: writerSystem,
         messages: [{
           role: "user",
@@ -286,7 +305,6 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "repair",
       });
-      addUsage(repair);
       if (!hasAnalyzeChatPromptLeak(repair.rawText)) {
         const repaired = parseJsonObjectFromText(repair.rawText);
         if (visibleMissing(repaired).length === 0) parsed = repaired;
@@ -317,7 +335,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   // ── P3 另外挑：紅線 → 一次定點改寫 → 仍踩就拿掉那張 ──
   const rules = {
     blockedQuotes: digest.blockedQuotes,
-    excludedTerms: digest.excludedTerms,
+    excludedTerms: [...digest.excludedTerms, ...digest.guardTerms],
     selfFacts: digest.selfFacts,
     profileText: [input.snapshot.profileText.bio, input.snapshot.profileText.interests].filter(Boolean).join("\n"),
     shorter: plan.intents.shorter,
@@ -339,7 +357,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     telemetry.rewriteUsed = true;
     const targets = rewriteTargets();
     try {
-      const rewrite = await deps.invokeModel({
+      const rewrite = await invoke({
         system: OPENER_REWRITE_PROMPT,
         messages: [{
           role: "user",
@@ -353,7 +371,6 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "repair",
       });
-      addUsage(rewrite);
       const json = hasAnalyzeChatPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
       const rewritten = json && isPlainObject(json.openers) ? json.openers : {};
       for (const style of targets) {

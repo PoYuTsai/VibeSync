@@ -8,6 +8,7 @@
 
 import { isPlainObject } from "../_shared/quota.ts";
 import { containsCrudeSexualOffense } from "../_shared/crude_offense.ts";
+import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
 import type { OpenerType } from "./opener_payload.ts";
 import { approachStillApplies, type OpenerAnalysisSnapshot, type OpenerQuestionOption } from "./opener_stage.ts";
@@ -60,6 +61,13 @@ export interface OpenerPlan {
   repairedFields: string[];
   /** 補充有字沒被任何片段涵蓋（那些字不會進寫手）。 */
   coverageGap: boolean;
+  /**
+   * 限制未知不等於沒有限制（GPT 主審 F1）：選題不選、卡片出現就擋，但不以「不聊 X」顯示給用戶。
+   * 規劃判成限制卻沒給引文裡的詞：那句提到的她的線索標籤、與她的資料逐字共有的片段、規劃的讀法（她的資料裡找得到才算）。
+   * 規劃沒涵蓋的字、規劃整份失敗：看不懂用戶意思，只避開那段提到的她的線索標籤。
+   * 用戶在寫手看得到的片段裡明說想聊的，不列入。
+   */
+  guardTerms: string[];
 }
 
 /** 規劃的結構化輸入：選項原料由伺服器確定，不交給規劃判。 */
@@ -223,6 +231,37 @@ function herSources(snapshot: OpenerAnalysisSnapshot): string[] {
     .filter((s): s is string => typeof s === "string" && s.length > 0);
 }
 
+/** text 與各來源逐字共有、兩個字以上的片段（由左往右取最長，只算文字與數字）。 */
+function sharedRuns(text: string, sources: readonly string[]): string[] {
+  const words = (value: string) => [...value].filter((ch) => WORD_CHAR_RE.test(ch)).join("");
+  const hay = sources.map(words).filter(Boolean);
+  const chars = [...words(text)];
+  const out: string[] = [];
+  for (let i = 0; i < chars.length;) {
+    let len = 0;
+    while (i + len < chars.length && hay.some((h) => h.includes(chars.slice(i, i + len + 1).join("")))) len++;
+    if (len >= 2) out.push(chars.slice(i, i + len).join(""));
+    i += Math.max(len, 1);
+  }
+  return out;
+}
+
+/** 她的資料全文（含線索標籤與圖片可見內容）。 */
+function herGuardSources(snapshot: OpenerAnalysisSnapshot): string[] {
+  return [...herSources(snapshot), ...snapshot.cues.flatMap((c) => [c.label, c.evidence?.visible ?? ""])].filter(Boolean);
+}
+
+/**
+ * 用戶原話提到的她的線索標籤（兩字以上；簡繁一致）；withRuns 時再加上與她的資料逐字共有的片段。不判語意。
+ * ponytail: 單字標籤（貓、狗）不算，換句話說也抓不到。
+ */
+function guardTermsIn(text: string, snapshot: OpenerAnalysisSnapshot, withRuns: boolean): string[] {
+  const said = toTraditionalChinese(text);
+  const labels = snapshot.cues.map((c) => c.label).filter((label) => label.length >= 2 && said.includes(toTraditionalChinese(label)));
+  const runs = withRuns ? sharedRuns(said, herGuardSources(snapshot).map(toTraditionalChinese)) : [];
+  return [...new Set([...labels, ...runs])];
+}
+
 /** 選項與限制排除的線索（用戶不想聊的不能當錨點）。 */
 export function excludedCueIds(ctx: Pick<OpenerPlanContext, "snapshot" | "option">, terms: readonly string[]): Set<string> {
   const out = new Set<string>();
@@ -261,16 +300,19 @@ function profileClauses(snapshot: OpenerAnalysisSnapshot): string[] {
 
 /** 規劃失敗或逾時：不讀補充，只照她的資料開場（不 502）。 */
 export function profileOnlyPlan(ctx: OpenerPlanContext, repairedFields: string[] = ["plan"]): OpenerPlan {
+  // 沒讀懂補充：裡面提到她的哪個線索都可能是「不要聊」，先避開（只看線索標籤，不拿常用字擋）。
+  const guardTerms = ctx.freeText ? guardTermsIn(ctx.freeText, ctx.snapshot, false) : [];
   return {
     source: "profile_only",
     spans: [],
-    anchorCueIds: finalizeAnchors(ctx.snapshot.cues.map((c) => c.id), ctx, []),
+    anchorCueIds: finalizeAnchors(ctx.snapshot.cues.map((c) => c.id), ctx, guardTerms),
     herStated: profileClauses(ctx.snapshot),
     questionTarget: null,
     intents: { shorter: false, funny: false },
     nominatedStyle: null,
     repairedFields,
     coverageGap: false,
+    guardTerms,
   };
 }
 
@@ -286,6 +328,8 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
   const spans: OpenerPlanSpan[] = [];
   let cursor = 0;
   let coverageGap = false;
+  /** 限制片段裡規劃給、但不在引文裡的詞（常是錯字的正確讀法：恐佈片 → 恐怖片）。 */
+  const plannerTerms = new Map<string, string>();
   const rawSpans = Array.isArray(raw.spans) ? raw.spans.slice(0, 24) : [];
   if (!Array.isArray(raw.spans)) repaired.push("spans");
   for (const item of rawSpans) {
@@ -310,6 +354,7 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
     const role = item.role as OpenerSpanRole;
     const topicPart = shortText(item.topicPart, 40);
     const term = shortText(item.term, 20);
+    if (role === "restriction" && term && !quote.includes(term)) plannerTerms.set(quote, term);
     spans.push({
       quote,
       role,
@@ -322,10 +367,28 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
   if (freeText && spans.length === 0) return profileOnlyPlan(ctx, [...repaired, "spans.empty"]);
 
   const terms = spans.map((s) => s.term).filter((t): t is string => !!t);
+  const visibleQuotes = spans.filter((s) => WRITER_VISIBLE_ROLES.includes(s.role)).map((s) => s.quote);
+  const candidates: string[] = [];
+  const herWords = herGuardSources(ctx.snapshot).map(toTraditionalChinese);
+  for (const span of spans) {
+    if (span.role === "restriction" && !span.term) {
+      candidates.push(...guardTermsIn(span.quote, ctx.snapshot, true));
+      // 規劃的讀法（常是錯字的正確寫法）在她的資料裡逐字找得到，就一起避開（兩邊原文都可核對）。
+      const reading = plannerTerms.get(span.quote);
+      if (reading && reading.length >= 2 && herWords.some((w) => w.includes(toTraditionalChinese(reading)))) candidates.push(reading);
+      repaired.push("spans.term.guard");
+    }
+  }
+  let uncovered = freeText;
+  for (const span of spans) uncovered = uncovered.replace(span.quote, "\n");
+  for (const part of uncovered.split("\n")) candidates.push(...guardTermsIn(part, ctx.snapshot, false));
+  // 用戶在寫手看得到的片段裡明說想聊的，比不確定的限制更明確：不列入。
+  const asked = visibleQuotes.map(toTraditionalChinese);
+  const guardTerms = [...new Set(candidates)].filter((term) => !asked.some((q) => q.includes(toTraditionalChinese(term))));
   // 規劃自己寫的文字（讀法、邀約活動、要問的點）只在乾淨時採用：不含粗話、冒犯片段或不想聊的詞。
   const blocked = spans.filter((s) => BLOCKED_ROLES.includes(s.role)).map((s) => s.quote);
   const unsafe = (text: string | null) =>
-    text !== null && (containsCrudeSexualOffense(text) || blocked.some((q) => text.includes(q) || q.includes(text)) || terms.some((t) => text.includes(t)));
+    text !== null && (containsCrudeSexualOffense(text) || blocked.some((q) => text.includes(q) || q.includes(text)) || [...terms, ...guardTerms].some((t) => text.includes(t)));
   for (const span of spans) {
     // 邀約活動只要「活動本身」：夾著一起／約／見面就不採用（活動不明時說明用通用句）。
     if (span.topicPart && /(一起|約|見面|碰面|出來)/u.test(span.topicPart)) {
@@ -406,13 +469,14 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
   return {
     source: "model",
     spans,
-    anchorCueIds: finalizeAnchors(anchorsRaw, ctx, terms),
+    anchorCueIds: finalizeAnchors(anchorsRaw, ctx, [...terms, ...guardTerms]),
     herStated: herStated.length ? herStated : profileClauses(ctx.snapshot),
     questionTarget,
     intents: { shorter: intentsRaw.shorter === true, funny: intentsRaw.funny === true },
     nominatedStyle: nominated,
     repairedFields: [...new Set(repaired)],
     coverageGap,
+    guardTerms,
   };
 }
 
@@ -428,8 +492,10 @@ export interface OpenerPlanDigest {
   adopted: Array<{ role: "topic" | "question" | "draft_message" | "interest"; text: string; quote: string; inHerData?: boolean }>;
   /** 准用自述（照原句程度）。 */
   selfFacts: string[];
-  /** 卡片不得逐字出現的詞（限制 X、被排除線索標籤）。 */
+  /** 卡片不得逐字出現的詞（限制 X、被排除線索標籤）；會以「不聊 X」顯示給用戶。 */
   excludedTerms: string[];
+  /** 同樣不得出現、但不顯示給用戶的詞（plan.guardTerms：限制未知時先避開）。 */
+  guardTerms: string[];
   /** 卡片逐字帶回就擋的片段（冒犯、性冒犯）。 */
   blockedQuotes: string[];
   inviteRequested: boolean;
@@ -491,6 +557,7 @@ export function digestOpenerPlan(plan: OpenerPlan, ctx: Pick<OpenerPlanContext, 
     adopted,
     selfFacts: [...new Set(selfFacts)],
     excludedTerms: [...new Set(excludedTerms.filter(Boolean))],
+    guardTerms: plan.guardTerms,
     blockedQuotes: blockedQuotes.filter((q) => q.length >= 2),
     inviteRequested,
     inviteTopic,

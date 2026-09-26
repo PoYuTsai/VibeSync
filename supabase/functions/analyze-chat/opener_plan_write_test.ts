@@ -142,7 +142,10 @@ Deno.test("規劃失敗：有補充卻一段都沒讀到、或輸出壞掉，都
   assertEquals(empty.source, "profile_only");
   const broken = parseOpenerPlan(null, ctx("想聊半馬"));
   assertEquals(broken.source, "profile_only");
-  assertEquals(broken.anchorCueIds, ["cue_1", "cue_2", "cue_3"]);
+  // 沒讀懂補充：提到她的哪件事都可能是「不要聊」，先避開（主審 F1）。
+  assertEquals(broken.anchorCueIds, ["cue_1", "cue_3"]);
+  assertEquals(broken.guardTerms, ["半馬"]);
+  assertEquals(parseOpenerPlan(null, ctx("隨便聊聊")).anchorCueIds, ["cue_1", "cue_2", "cue_3"]);
   assert(broken.herStated.includes("最近在準備第一場半馬"), "只用她的資料時，自介句子全當已寫過");
 });
 
@@ -325,7 +328,7 @@ Deno.test("執行：規劃＋寫手兩次呼叫，規劃不重試不 fallback，
 
 Deno.test("執行：規劃失敗不擋交付，退只用她的資料並提示補充沒讀到", async () => {
   const calls: OpenerFlowModelRequest[] = [];
-  const out = await runOpenerPlanWrite(input("想聊半馬", FREE), deps({ plan: new Error("boom"), write: WRITE_OK }, calls));
+  const out = await runOpenerPlanWrite(input("隨便聊聊", FREE), deps({ plan: new Error("boom"), write: WRITE_OK }, calls));
   assertEquals(out.kind, "ok");
   if (out.kind !== "ok") return;
   assertEquals(out.telemetry.planSource, "profile_only");
@@ -775,4 +778,77 @@ Deno.test("R2 複核對照：原標記丟失保護、額外呼叫只有一次、
   const allWork = { openers: { extend: "工作忙嗎", resonate: "工作累嗎", tease: "工作多嗎", humor: "工作好玩嗎", coldRead: "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
   const onlyExample = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: noSelfRestricted, write: allWork }, []));
   assertEquals(onlyExample.kind === "fail" && onlyExample.reason, "no_deliverable");
+});
+
+// ── GPT 正式主審（da5d76b6）F1／F2 ──
+
+Deno.test("主審 F1 限制未知不等於沒有限制：詞寫錯、詞缺席、規劃逾時、規劃壞掉，都不能推薦聊工作的句子", async () => {
+  const workWrite = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "妳工作最喜歡哪個部分？" }, cardReasons: { ...WRITE_OK.cardReasons, extend: "接她工作裡喜歡的事情" } };
+  const restrictionWith = (term?: string) => ({ spans: [{ quote: "不要聊工作", role: "restriction", ...(term === undefined ? {} : { term }) }], anchorCueIds: ["cue_3", "cue_1"] });
+  const cases: Array<[string, unknown]> = [
+    ["詞寫錯", restrictionWith("職場")],
+    ["詞缺席", restrictionWith()],
+    ["規劃逾時", new Error("deadline")],
+    ["規劃壞掉", "not json"],
+  ];
+  for (const [label, plan] of cases) {
+    const calls: OpenerFlowModelRequest[] = [];
+    const out = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan, write: workWrite }, calls));
+    assertEquals(out.kind, "ok", label);
+    if (out.kind !== "ok") continue;
+    assertEquals(out.result.openers.extend, undefined, `${label}：聊工作的卡不交付`);
+    assert(!Object.values(out.result.openers).some((t) => t?.includes("工作")), label);
+    assert(out.result.recommendation.pick !== "extend", label);
+    assert(out.plan.guardTerms.includes("工作"), label);
+    assertFalse(out.plan.anchorCueIds.includes("cue_3"), `${label}：選題不選工作`);
+    assert(String(calls[1].messages[0].content).includes("【不要提到】工作"), `${label}：寫手知道要避開`);
+    assertEquals(out.result.profileAnalysis?.avoidTopics, undefined, `${label}：不確定的詞不以「不聊 X」顯示`);
+  }
+  // 對照：有效的詞照舊（顯示不聊工作）；結構化排除照舊；一般正向補充降級仍交付；問句裡的「不聊」不是排除。
+  const valid = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: restrictionWith("工作"), write: workWrite }, []));
+  assertEquals(valid.kind === "ok" && valid.result.openers.extend, undefined);
+  assertEquals(valid.kind === "ok" && valid.plan.guardTerms, []);
+  assertEquals(valid.kind === "ok" && valid.result.profileAnalysis?.avoidTopics, ["不聊工作"]);
+  const option: OpenerQuestionOption = { id: "o", label: "不要聊工作", meaning: "exclude_cue", cueId: "cue_3" };
+  const structured = await runOpenerPlanWrite({ ...input(null, PAID, "free"), option }, deps({ plan: new Error("deadline"), write: workWrite }, []));
+  assertEquals(structured.kind === "ok" && structured.result.openers.extend, undefined);
+  const neutral = await runOpenerPlanWrite(input("想聊半馬", PAID, "free"), deps({ plan: new Error("deadline"), write: WRITE_OK }, []));
+  assertEquals(neutral.kind, "ok", "正向補充沒讀到仍降級交付");
+  assertEquals(neutral.kind === "ok" && neutral.result.materialUse.handlingNote, HANDLING_NOTE.unread);
+  const question = parseOpenerPlan({ spans: [{ quote: "想問她為什麼不聊工作", role: "question" }], anchorCueIds: ["cue_3"] }, ctx("想問她為什麼不聊工作"));
+  assertEquals(question.guardTerms, []);
+  assertEquals(question.anchorCueIds, ["cue_3"]);
+  assertEquals(digestOpenerPlan(question, { snapshot: SNAPSHOT, option: null }).excludedTerms, []);
+  // 錯字：規劃讀對了（公作 → 工作）但不在引文裡；她的資料逐字有這個詞 → 一樣避開（錄製資料有 恐佈片／公作）。
+  const typo = parseOpenerPlan({ spans: [{ quote: "不要聊公作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_3", "cue_1"] }, ctx("不要聊公作"));
+  assertEquals(typo.guardTerms, ["工作"]);
+  assertFalse(typo.anchorCueIds.includes("cue_3"));
+  // 看不懂用戶意思（規劃失敗）只避開她的線索標籤：常用字不擋、簡繁一致。
+  assertEquals(parseOpenerPlan(null, ctx("我最近也在準備比賽")).guardTerms, [], "最近、準備這類常用字不擋");
+  assertEquals(parseOpenerPlan(null, ctx("不要聊半马")).guardTerms, ["半馬"], "簡體也認得她的線索");
+  // 用戶在寫手看得到的片段裡明說想聊的，比不確定的限制更明確（別問配速 ≠ 別聊半馬）。
+  const asked = parseOpenerPlan({ spans: [{ quote: "想聊半馬", role: "topic" }, { quote: "但別問她半馬配速", role: "restriction" }], anchorCueIds: ["cue_2"] }, ctx("想聊半馬，但別問她半馬配速"));
+  assertEquals(asked.guardTerms, []);
+  assertEquals(asked.anchorCueIds, ["cue_2"]);
+  // 規劃寫的「要問的點」帶到要避開的詞就不送寫手。
+  const guardedTarget = parseOpenerPlan({ spans: [{ quote: "不要聊公作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_1"], questionTarget: "工作最近忙不忙", questionKind: "story" }, ctx("不要聊公作"));
+  assertEquals(guardedTarget.questionTarget, null);
+  // 限制的東西不在她的資料、也不在寫手看得到的片段裡：寫手拿不到任何相關原文，照常交付。
+  const unrelated = parseOpenerPlan({ spans: [{ quote: "不要聊前任", role: "restriction" }, { quote: "想聊半馬", role: "topic" }], anchorCueIds: ["cue_2"] }, ctx("不要聊前任 想聊半馬"));
+  assertEquals(unrelated.guardTerms, []);
+  assertEquals(unrelated.anchorCueIds, ["cue_2"]);
+});
+
+Deno.test("主審 F2 呼叫後失敗拿不到用量：用量不再算完整；沒呼叫就跳過的規劃不算", async () => {
+  const planFailed = await runOpenerPlanWrite(input("隨便聊聊", PAID, "free"), deps({ plan: new Error("boom"), write: WRITE_OK }, []));
+  assertEquals(planFailed.kind === "ok" && [planFailed.telemetry.invokerCalls, planFailed.telemetry.modelAttempts, planFailed.telemetry.usageComplete], [2, 1, false]);
+  const restricted = { spans: [{ quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_1"] };
+  const rewriteFailed = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: restricted, write: { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "妳工作最喜歡哪個部分？" } }, rewrite: new Error("boom") }, []));
+  assertEquals(rewriteFailed.kind, "ok");
+  assertEquals(rewriteFailed.kind === "ok" && [rewriteFailed.telemetry.invokerCalls, rewriteFailed.telemetry.modelAttempts, rewriteFailed.telemetry.usageComplete], [3, 2, false]);
+  const normal = await runOpenerPlanWrite(input("想聊半馬", PAID, "free"), deps({ plan: { spans: [{ quote: "想聊半馬", role: "topic" }], anchorCueIds: ["cue_2"] }, write: WRITE_OK }, []));
+  assertEquals(normal.kind === "ok" && [normal.telemetry.invokerCalls, normal.telemetry.modelAttempts, normal.telemetry.usageComplete], [2, 2, true]);
+  // 快到截止：規劃根本沒呼叫就跳過 → 不憑空算成未知用量。
+  const skipped = await runOpenerPlanWrite(input("隨便聊聊", PAID, "free"), deps({ write: WRITE_OK }, [], Date.now() + 20_000));
+  assertEquals(skipped.kind === "ok" && [skipped.telemetry.planError, skipped.telemetry.invokerCalls, skipped.telemetry.usageComplete], ["skipped_deadline", 1, true]);
 });

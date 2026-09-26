@@ -127,7 +127,8 @@ export function buildOpenerWriteUserContent(input: OpenerWriteInput): string {
   if (plan.intents.funny) tone.push("好笑一點");
   if (digest.playful) tone.push("可以輕鬆俏皮一點，但不曖昧、不露骨");
   if (tone.length) out.push(`【語氣】${tone.join("；")}`);
-  if (digest.excludedTerms.length) out.push(`【不要提到】${digest.excludedTerms.join("、")}`);
+  const avoidTerms = [...digest.excludedTerms, ...digest.guardTerms];
+  if (avoidTerms.length) out.push(`【不要提到】${avoidTerms.join("、")}`);
   if (approachStillApplies(snapshot, input.freeText) && snapshot.approach.avoid.length) {
     out.push(`【先避開】${snapshot.approach.avoid.join("；")}`);
   }
