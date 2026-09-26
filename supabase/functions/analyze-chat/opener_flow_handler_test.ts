@@ -1481,7 +1481,7 @@ Deno.test("結構刀旗標：規劃＋寫手兩次呼叫、首次成功扣一次
     const script = { calls: [] as OpenerFlowModelRequest[] };
     const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
     const sessionId = String((await json(analysis)).sessionId);
-    const request = generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" });
+    const request = generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 });
     const response = await handleOpenerGenerateRequest(h.deps(request, { invokeModel: planWriteInvoker(script) }));
     assertEquals(response.status, 200);
     const body = await json(response);
@@ -1512,13 +1512,13 @@ Deno.test("結構刀旗標：寫手缺卡且唯一修復仍缺 → 502 不扣費
     const script = { calls: [] as OpenerFlowModelRequest[], write: partial, repair: partial };
     const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
     const sessionId = String((await json(analysis)).sessionId);
-    const failed = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "想聊牠" }), { invokeModel: planWriteInvoker(script) }));
+    const failed = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "想聊牠" }, { openerCardSet: 2 }), { invokeModel: planWriteInvoker(script) }));
     assertEquals(failed.status, 502);
     assertEquals(await usage(h.db), { m: 0, d: 0 });
     assertEquals(script.calls.length, 4, "分析＋規劃＋寫手＋一次修復");
     await passOneMinute(h.db);
     const ok = { calls: [] as OpenerFlowModelRequest[], plan: "不是 JSON" };
-    const recovered = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { state: "answered", freeText: "想聊牠" }), { invokeModel: planWriteInvoker(ok) }));
+    const recovered = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { state: "answered", freeText: "想聊牠" }, { openerCardSet: 2 }), { invokeModel: planWriteInvoker(ok) }));
     assertEquals(recovered.status, 200);
     assertEquals(((await json(recovered)).materialUse as Record<string, unknown>).handlingNote, "這次沒讀到你的補充，先照她的資料寫。");
     assertEquals(await usage(h.db), { m: 3, d: 3 });
@@ -1546,7 +1546,7 @@ Deno.test("結構刀旗標：走 production 預設呼叫器（不注入假模型
       }), { status: 200, headers: { "content-type": "application/json" } }));
     };
     const started = Date.now();
-    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }));
+    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 }));
     delete (deps as Partial<OpenerFlowHandlerDeps>).invokeModel;
     const response = await handleOpenerGenerateRequest(deps);
     assertEquals(response.status, 200);
@@ -1560,7 +1560,7 @@ Deno.test("結構刀旗標：走 production 預設呼叫器（不注入假模型
   }
 });
 
-Deno.test("結構刀旗標：新版 App 帶 openerCardSet=2 拿一句推薦＋四句備選並標 access.cardSet；舊版不帶維持五風格", async () => {
+Deno.test("結構刀旗標：新版 App 帶 openerCardSet=2 拿一句推薦＋四句備選並標 access.cardSet；舊版 App 旗標開了也走舊路徑", async () => {
   const h = await harness();
   try {
     h.env.OPENER_PLAN_WRITE = "true";
@@ -1573,9 +1573,10 @@ Deno.test("結構刀旗標：新版 App 帶 openerCardSet=2 拿一句推薦＋�
     assertEquals(((await json(newApp)).access as Record<string, unknown>).cardSet, 2);
     assertEquals(script.calls.at(-1)?.system, buildOpenerWritePrompt("free"));
     await passOneMinute(h.db);
-    const oldApp = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution), { invokeModel: planWriteInvoker(script) }));
-    assertEquals(oldApp.status, 200);
-    assertEquals(((await json(oldApp)).access as Record<string, unknown>).cardSet, undefined);
-    assertEquals(script.calls.at(-1)?.system, buildOpenerWritePrompt("styles"));
+    // 舊版 App（不帶 openerCardSet）：旗標開了也走舊路徑（上線只影響新版 App）。
+    const before = script.calls.length;
+    await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution), { invokeModel: planWriteInvoker(script) }));
+    assertEquals(script.calls.slice(before).map((c) => c.system === OPENER_GENERATE_PROMPT || c.system === OPENER_GENERATE_REPAIR_PROMPT), script.calls.slice(before).map(() => true), "不呼叫規劃與結構刀寫手");
+    assert(script.calls.length > before);
   } finally { await h.db.close(); }
 });

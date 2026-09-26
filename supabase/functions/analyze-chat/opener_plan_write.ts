@@ -34,6 +34,7 @@ import {
   OPENER_REWRITE_PROMPT,
   OPENER_WRITE_MAX_TOKENS,
   type OpenerWriterArm,
+  writesDirectionExample,
 } from "./opener_write.ts";
 import { containsVetoed, judgeOpenerCard, type OpenerCardVerdict, pickOpenerCard, projectPlanWriteResult } from "./opener_pick.ts";
 
@@ -90,6 +91,8 @@ export interface PlanWriteTelemetry {
   rewriteUsed: boolean;
   rewrittenStyles: OpenerType[];
   droppedStyles: OpenerType[];
+  /** 帶到自己＝方向＋範例：ok 交付、missing 寫手沒給方向（那張不交付）、null 不適用。 */
+  directionCard: "ok" | "missing" | null;
   model: string | null;
   inputTokens: number;
   outputTokens: number;
@@ -138,6 +141,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     rewriteUsed: false,
     rewrittenStyles: [],
     droppedStyles: [],
+    directionCard: null,
     model: null,
     inputTokens: 0,
     outputTokens: 0,
@@ -339,6 +343,22 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   // 理由與備案也不得帶回冒犯片段或用戶不想聊的事。
   const leaksBlocked = (text: string) => containsVetoed(text, rules.blockedQuotes) || containsVetoed(text, rules.excludedTerms);
   for (const type of Object.keys(cardReasons) as OpenerType[]) if (leaksBlocked(cardReasons[type]!)) delete cardReasons[type];
+  // Bruce 9/26（Eric 定案）：B 臂沒有用戶自述時，帶到自己＝給用戶的方向＋一句範例。
+  // 方向放 access.directions（跟 cardSet 一樣隨結果存進 App 快取），App 把句子標成範例；寫手沒給方向就不交付那張
+  // （範例細節是舉例，不能變成一張看起來可以原封送出的句子）。範例卡不當推薦。
+  const directions: Partial<Record<OpenerType, string>> = {};
+  if (writesDirectionExample(input.arm, digest) && openers.coldRead) {
+    const direction = isPlainObject(parsed.directions) ? customerText(parsed.directions.coldRead, 40) : null;
+    if (direction && !leaksBlocked(direction)) {
+      directions.coldRead = direction;
+      telemetry.directionCard = "ok";
+    } else {
+      delete openers.coldRead;
+      delete cardReasons.coldRead;
+      telemetry.droppedStyles.push("coldRead");
+      telemetry.directionCard = "missing";
+    }
+  }
   let pioneerPlan: Record<string, string> | null = null;
   if (isPlainObject(parsed.pioneerPlan)) {
     const planOut: Record<string, string> = {};
@@ -350,7 +370,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   }
   telemetry.verdicts = verdicts;
 
-  const pick = pickOpenerCard({ openers, verdicts, visibleTypes: input.visibleTypes, primaryStyle, funny: plan.intents.funny, arm: input.arm });
+  const pick = pickOpenerCard({ openers, verdicts, visibleTypes: input.visibleTypes, primaryStyle, funny: plan.intents.funny, arm: input.arm, exclude: Object.keys(directions) as OpenerType[] });
   telemetry.pick = pick;
   if (!pick) return fail("no_deliverable", "pick", plan, writerRaw);
   deps.onChunk?.('"rankedPicks"');
@@ -372,6 +392,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     freeText: input.freeText,
     rewrittenStyles: telemetry.rewrittenStyles,
     ...(input.arm === "free" ? { cardSet: 2 as const } : {}),
+    directions,
   });
   return { kind: "ok", result, telemetry, plan, writerRaw };
 }

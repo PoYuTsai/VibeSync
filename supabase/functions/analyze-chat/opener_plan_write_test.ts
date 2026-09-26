@@ -473,3 +473,51 @@ Deno.test("執行：B 臂推薦句固定在 extend、好笑意圖讓幽默優先
   const b = await runOpenerPlanWrite(input("好笑一點", PAID, "free"), deps({ plan: funnyPlan, write: humorDemoted }, []));
   assertEquals(b.kind === "ok" && b.result.recommendation.pick, "extend");
 });
+
+Deno.test("方向＋範例（Bruce 9/26）：B 臂沒有用戶自述時，帶到自己給方向＋範例，標 access.directions、不當推薦", async () => {
+  const withDirection = {
+    ...WRITE_OK,
+    openers: { ...WRITE_OK.openers, coldRead: "我最近都跑環河公園那，會經過公館水岸那很chill，妳都跑哪？" },
+    directions: { coldRead: "可以先分享自己夜跑的經驗" },
+  };
+  const plan = { spans: [{ quote: "想約她一起夜跑", role: "invite_request", topicPart: "夜跑" }], anchorCueIds: ["cue_1"] };
+  const calls: OpenerFlowModelRequest[] = [];
+  const out = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: withDirection }, calls));
+  assertEquals(out.kind, "ok");
+  if (out.kind !== "ok") return;
+  assertEquals(out.result.access.directions, { coldRead: "可以先分享自己夜跑的經驗" });
+  assertEquals(out.result.openers.coldRead, withDirection.openers.coldRead);
+  assert(out.result.recommendation.pick !== "coldRead");
+  assertEquals(out.telemetry.directionCard, "ok");
+  assert(String(calls[1].messages[0].content).includes("【帶到自己】用戶沒給自述"), "寫手知道這次要寫方向＋範例");
+  assert(isValidOpenerGenerateLedgerResult(out.result));
+
+  // 即使其他卡都被降級，範例卡也不當推薦。
+  const allDemoted = { ...withDirection, openers: { extend: "妳會怕嗎？會累嗎？", resonate: "妳會怕嗎？會累嗎？", tease: "妳會怕嗎？會累嗎？", humor: "妳會怕嗎？會累嗎？", coldRead: withDirection.openers.coldRead } };
+  const demoted = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: allDemoted }, []));
+  assertEquals(demoted.kind === "ok" && demoted.result.recommendation.pick !== "coldRead", true);
+
+  // 寫手沒給方向：那張不交付（範例不能變成看起來可以原封送出的句子）。
+  const missing = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: { ...withDirection, directions: {} } }, []));
+  assertEquals(missing.kind === "ok" && missing.result.openers.coldRead, undefined);
+  assertEquals(missing.kind === "ok" && missing.result.access.directions, undefined);
+  assertEquals(missing.kind === "ok" && missing.telemetry.directionCard, "missing");
+
+  // 有用戶自述：帶到自己照舊（真的自述，不是範例）；五風格（舊版 App）也不做方向卡。
+  const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
+  const self = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: withDirection }, []));
+  assertEquals(self.kind === "ok" && self.result.access.directions, undefined);
+  assertEquals(self.kind === "ok" && self.result.openers.coldRead, withDirection.openers.coldRead);
+  const styles = await runOpenerPlanWrite(input("想約她一起夜跑", PAID), deps({ plan, write: withDirection }, []));
+  assertEquals(styles.kind === "ok" && styles.result.access.directions, undefined);
+});
+
+Deno.test("Bruce 9/26 寫法：不用 emoji（降級）、問句不一定要問號、不問為了問而問的數字行程", () => {
+  assertEquals(judgeOpenerCard("拉坯練到現在上手了嗎🙂", RULES).demotions, ["emoji"]);
+  assertEquals(judgeOpenerCard("拉坯練到現在上手了嗎", RULES).demotions, []);
+  const writer = buildOpenerWritePrompt("free");
+  assert(writer.includes("問句不一定要加問號"));
+  assert(writer.includes("不用 emoji"));
+  assert(writer.includes("不問天數、多久、多遠、頻率、班表"));
+  assert(OPENER_PLAN_PROMPT.includes("不問天數、時長、距離、頻率、班表"));
+});

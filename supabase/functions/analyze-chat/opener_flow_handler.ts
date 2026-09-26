@@ -643,8 +643,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   }
   // 結構刀（規劃→寫手→另外挑）旗標：關閉時舊路徑逐位元組不變。輸入指紋不分路徑，
   // 旗標切換時同一筆請求照常重播或重新取得（不會卡在 409 輸入已改變）。
+  // 只給新版 App（openerCardSet=2，一句推薦＋四句備選）：舊版 App 旗標開了也走舊路徑，
+  // 上線只影響新版，現有用戶不變（Bruce benchmark 只比過 B 與舊路徑）。
   const env = deps.env ?? ((name) => Deno.env.get(name));
-  const usePlanWrite = planWriteEnabled(env);
+  const usePlanWrite = planWriteEnabled(env) && writerArmFromRequest(body) === "free";
 
   // 2. 生成輸入指紋（回答一定入 hash）＋ claim（同 ID 已完成→重播、進行中→pending、
   //    同局另一作業→busy、三組用完→擋，都在模型呼叫前）。
@@ -852,7 +854,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   return streamOrRun({
     deps,
     prefix: "opener_generate",
-    stages: usePlanWrite && writerArmFromRequest(body) === "free" ? OPENER_CARDSET2_GENERATE_STREAM_STAGES : OPENER_GENERATE_STREAM_STAGES,
+    stages: usePlanWrite ? OPENER_CARDSET2_GENERATE_STREAM_STAGES : OPENER_GENERATE_STREAM_STAGES,
     etaSeconds: 20,
     startedLabel: "開始整理你的想法並生成回覆",
     run: async (onChunk, onFinalizing) => {

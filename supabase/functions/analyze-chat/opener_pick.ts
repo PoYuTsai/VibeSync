@@ -12,7 +12,7 @@ import type { OpenerPlan, OpenerPlanDigest } from "./opener_plan.ts";
 import { OPENER_LENGTH_LIMIT, OPENER_SHORT_LENGTH_LIMIT, type OpenerWriterArm } from "./opener_write.ts";
 
 export type OpenerVeto = "blocked_span_reused" | "excluded_topic";
-export type OpenerDemotion = "two_questions" | "too_long" | "profile_copy" | "self_claim_unsourced" | "self_first" | "foreign_token";
+export type OpenerDemotion = "two_questions" | "too_long" | "profile_copy" | "self_claim_unsourced" | "self_first" | "foreign_token" | "emoji";
 
 export interface OpenerCardVerdict {
   vetoes: OpenerVeto[];
@@ -90,6 +90,8 @@ export function judgeOpenerCard(text: string, rules: OpenerCardRules): OpenerCar
   // Bruce 9/23：自己的事放在問完她之後，開頭就講自己＝抓共同點當資格（句首位置，不判語意）。
   // 句首可以有標點、表情或語助詞；「我好奇／我想問」是在問她，不是自述。
   if (/^[\p{P}\p{S}\s]*(?:欸|哈+|嗨|其實|說真的)?[，,\s]*我(?!(?:猜|好奇|很好奇|想問|在想|想知道))/u.test(text)) demotions.push("self_first");
+  // Bruce 9/26：不用 emoji（寫手規則；這裡確定可判，只降級）。
+  if (/\p{Extended_Pictographic}/u.test(text)) demotions.push("emoji");
   if (rules.inputText !== undefined) {
     const input = rules.inputText.normalize("NFKC").toLowerCase();
     const words = text.normalize("NFKC").match(/[A-Za-z]{3,}/g) ?? [];
@@ -114,6 +116,8 @@ export function pickOpenerCard(input: {
   primaryStyle: OpenerType;
   funny: boolean;
   arm?: OpenerWriterArm;
+  /** 方向＋範例卡：範例要用戶換成自己的經驗，不能當推薦原封送出。 */
+  exclude?: readonly OpenerType[];
 }): OpenerType | null {
   const preference: OpenerType[] = [];
   const push = (t: OpenerType) => {
@@ -123,7 +127,7 @@ export function pickOpenerCard(input: {
   if (input.primaryStyle !== "coldRead") push(input.primaryStyle);
   OPENER_TYPES.forEach(push);
   const candidates = preference.filter((t) =>
-    input.visibleTypes.includes(t) && input.openers[t] && (input.verdicts[t]?.vetoes.length ?? 0) === 0
+    input.visibleTypes.includes(t) && input.openers[t] && (input.verdicts[t]?.vetoes.length ?? 0) === 0 && !input.exclude?.includes(t)
   );
   if (!candidates.length) return null;
   const score = (t: OpenerType) => input.verdicts[t] ? demotionScore(input.verdicts[t]!) : 0;
@@ -210,6 +214,11 @@ export function profileAnalysisFromSnapshot(
   return Object.keys(out).length ? out : null;
 }
 
+function directionsFor(directions: Partial<Record<OpenerType, string>> | undefined, openers: Partial<Record<OpenerType, string>>) {
+  const kept = Object.fromEntries(Object.entries(directions ?? {}).filter(([type]) => openers[type as OpenerType]));
+  return Object.keys(kept).length ? { directions: kept as Partial<Record<OpenerType, string>> } : {};
+}
+
 /** 可交付的卡 → 既有 ledger 形狀（SQL 白名單、回傳形狀、App 解析都不變）。 */
 export function projectPlanWriteResult(input: {
   openers: Partial<Record<OpenerType, string>>;
@@ -228,6 +237,8 @@ export function projectPlanWriteResult(input: {
   rewrittenStyles: readonly OpenerType[];
   /** 2＝一句推薦＋四句備選（新版 App 依此顯示新標籤）；沒給＝五風格。 */
   cardSet?: 2;
+  /** 方向＋範例卡：類型 → 給用戶的方向；App 依此把那張句子標成範例。 */
+  directions?: Partial<Record<OpenerType, string>>;
 }): OpenerGenerateLedgerResult {
   const openers: Partial<Record<OpenerType, string>> = {};
   const cardReasons: Partial<Record<OpenerType, string>> = {};
@@ -262,6 +273,7 @@ export function projectPlanWriteResult(input: {
     access: {
       ...buildOpenerAccess({ contractVersion: input.contractVersion, servedTier: input.servedTier, visibleTypes: input.visibleTypes }),
       ...(input.cardSet ? { cardSet: input.cardSet } : {}),
+      ...(directionsFor(input.directions, openers)),
     },
     materialUse: {
       inputState: input.inputState,
