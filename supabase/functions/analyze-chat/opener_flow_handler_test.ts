@@ -1574,10 +1574,17 @@ Deno.test("結構刀旗標：新版 App 帶 openerCardSet=2 拿一句推薦＋�
     assertEquals(((await json(newApp)).access as Record<string, unknown>).cardSet, 2);
     assertEquals(script.calls.at(-1)?.system, buildOpenerWritePrompt("free"));
     await passOneMinute(h.db);
-    // 舊版 App（不帶 openerCardSet）：旗標開了也走舊路徑（上線只影響新版 App）。
-    const before = script.calls.length;
-    await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution), { invokeModel: planWriteInvoker(script) }));
-    assertEquals(script.calls.slice(before).map((c) => c.system === OPENER_GENERATE_PROMPT || c.system === OPENER_GENERATE_REPAIR_PROMPT), script.calls.slice(before).map(() => true), "不呼叫規劃與結構刀寫手");
-    assert(script.calls.length > before);
+    // 舊版 App（不帶 openerCardSet）：旗標開了也走舊路徑（上線只影響新版 App），而且照常成功結算。
+    const charged = await usage(h.db);
+    const before = h.script.calls.length;
+    h.script.generate = { ...GENERATE_JSON, materialReading: [] };
+    const oldApp = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, { state: "skipped" })));
+    assertEquals(oldApp.status, 200);
+    const oldBody = await json(oldApp);
+    assertEquals((oldBody.access as Record<string, unknown>).cardSet, undefined);
+    assertEquals((oldBody.access as Record<string, unknown>).directions, undefined);
+    assertEquals(h.script.calls.slice(before).map((c) => c.system), [OPENER_GENERATE_PROMPT], "只有舊路徑生成一次，不呼叫規劃與結構刀寫手");
+    assertEquals((oldBody.usage as Record<string, unknown>).chargedNow, 0);
+    assertEquals(await usage(h.db), charged, "同局後續生成不另扣費（舊路徑照常結算）");
   } finally { await h.db.close(); }
 });

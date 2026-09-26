@@ -505,11 +505,15 @@ Deno.test("方向＋範例（Bruce 9/26）：B 臂沒有用戶自述時，帶到
   assertEquals(missing.kind === "ok" && missing.result.access.directions, undefined);
   assertEquals(missing.kind === "ok" && missing.telemetry.directionCard, "missing");
 
-  // 有用戶自述：帶到自己照舊（真的自述，不是範例）；五風格（舊版 App）也不做方向卡。
+  // 有用戶自述：帶到自己照舊（真的自述，不是範例）；寫手卻還給了方向＝把它寫成範例了，那張不交付。
   const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
-  const self = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: withDirection }, []));
+  const selfWrite = { ...withDirection, directions: {} };
+  const self = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: selfWrite }, []));
   assertEquals(self.kind === "ok" && self.result.access.directions, undefined);
   assertEquals(self.kind === "ok" && self.result.openers.coldRead, withDirection.openers.coldRead);
+  const unrequested = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: withDirection }, []));
+  assertEquals(unrequested.kind === "ok" && unrequested.result.openers.coldRead, undefined);
+  assertEquals(unrequested.kind === "ok" && unrequested.telemetry.directionCard, "unrequested");
   const styles = await runOpenerPlanWrite(input("想約她一起夜跑", PAID), deps({ plan, write: withDirection }, []));
   assertEquals(styles.kind === "ok" && styles.result.access.directions, undefined);
 
@@ -528,6 +532,7 @@ Deno.test("Bruce 9/26 寫法：emoji 直接拿掉、問句不一定要問號、�
   assertEquals(withoutEmoji("拉坯練到現在上手了嗎🙂"), "拉坯練到現在上手了嗎");
   assertEquals(withoutEmoji("跑步🏃‍♀️很療癒"), "跑步很療癒");
   assertEquals(withoutEmoji("🙂"), null);
+  assertEquals(withoutEmoji("東京🇯🇵好玩嗎"), "東京好玩嗎");
   const out = await runOpenerPlanWrite(input(null, FREE), deps({ write: { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "半馬賽前最怕哪一段🙂" } } }, []));
   assertEquals(out.kind === "ok" && out.result.openers.extend, "半馬賽前最怕哪一段", "推薦句不換掉，只拿掉 emoji");
   const writer = buildOpenerWritePrompt("free");

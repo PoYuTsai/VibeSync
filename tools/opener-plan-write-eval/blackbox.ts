@@ -4,7 +4,7 @@
 //   OLD ＝ 旗標關（f80b59bd 舊路徑，同一份程式碼逐位元組）
 //
 // 用法（在 repo 根目錄）：
-//   deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=A [--repeats=3] [--cases=F1,H01] [--tier=paid|free]
+//   deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=B [--repeats=3] [--cases=F1,H01] [--tier=paid|free]
 //        [--cap-usd=2.0] [--out=tools/opener-plan-write-eval/out/<runId>] [--live]
 // 沒有 --live＝dry run：假模型、不連網、零費用，檢查管線與請求大小。
 // --live 會讀 ~/.config/anthropic/key 真的付費呼叫 claude-sonnet-5：只在 Eric 說「跑」之後使用。
@@ -35,7 +35,8 @@ import {
 type Arm = "A" | "B" | "OLD";
 const args = parseArgs(Deno.args);
 const arm = String(args.arm ?? "A") as Arm;
-if (!["A", "B", "OLD"].includes(arm)) throw new Error("--arm must be A, B or OLD");
+// 旗標開時只有新版 App（openerCardSet=2＝B）走結構刀；A 已不會走到結構刀，量的其實是舊路徑（2026-09-26）。
+if (!["B", "OLD"].includes(arm)) throw new Error("--arm must be B or OLD (A no longer reaches plan-write)");
 const repeats = Number(args.repeats ?? 3);
 /** --repeat=N 只跑第 N 次（多個程序並行，各自有上限與資料庫）。 */
 const onlyRepeat = args.repeat === undefined ? null : Number(args.repeat);

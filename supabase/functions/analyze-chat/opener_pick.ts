@@ -56,7 +56,7 @@ export function longestProfileCopy(card: string, profile: string): number {
 
 /** Bruce 9/26：不用 emoji。確定可判就直接拿掉（降級會把最好的那句換成別張）；拿完沒字回 null。 */
 export function withoutEmoji(text: string): string | null {
-  const out = text.replace(/[\p{Extended_Pictographic}\u200d\ufe0f\u20e3]/gu, "").replace(/[ \t]{2,}/g, " ").trim();
+  const out = text.replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u200d\ufe0f\u20e3]/gu, "").replace(/[ \t]{2,}/g, " ").trim();
   return out || null;
 }
 
@@ -266,7 +266,7 @@ export function projectPlanWriteResult(input: {
   if (reason) cardReasons[input.pick] = reason;
   const trace = traceFor({ ...input, pickText });
   const handlingNote = handlingNoteFor(input.plan, input.digest, input.freeText !== null);
-  // 五風格＝舊版 App（新版一律帶 openerCardSet=2）：它沒有處理提示欄、只顯示推薦理由，
+  // 五風格臂（production 只剩評測用：舊版 App 旗標開也走舊路徑）沒有處理提示欄的 App 只顯示推薦理由，
   // 併進推薦理由，補充沒讀到或被擋時用戶才看得到。
   const shownReason = !input.cardSet && handlingNote ? [reason, handlingNote].filter(Boolean).join(" ") : reason;
   const profileAnalysis = profileAnalysisFromSnapshot(input.snapshot, input.plan, input.digest, input.freeText);

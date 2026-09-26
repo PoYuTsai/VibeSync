@@ -11,7 +11,7 @@
 | `corpus.json` | 114 句補充語料（14 種角色、58 句陷阱），五位撰寫者 × 兩位覆核者標註一致才收 |
 | `bruce_calibration.json` | Bruce 9/23 原始作答逐字轉錄：主表 36 句＋附表有標註的 60 句 |
 | `plan_eval.ts` | `--oracle` 免費結構檢查；`--live` 付費①規劃判類 |
-| `blackbox.ts` | `--arm=A|B|OLD` 黑箱；`--live` 付費② |
+| `blackbox.ts` | `--arm=B|OLD` 黑箱（A 旗標開也走舊路徑，已停用）；`--live` 付費② |
 | `judge.ts` | `--calibrate` 校準；`--runs=` 盲評黑箱輸出（打亂順序、不給風格名） |
 | `report.ts` | 依臂 × 次彙整閘門指標 |
 
@@ -21,7 +21,7 @@
 deno run -A tools/opener-plan-write-eval/plan_eval.ts --oracle                 # 免費：寫手輸入不漏不該進的原文
 deno run -A tools/opener-plan-write-eval/plan_eval.ts --live --repeats=3       # 付費①，約 US$2.5
 deno run -A tools/opener-plan-write-eval/judge.ts --calibrate --live           # 付費，約 US$0.5
-deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=A --live            # 付費②，三臂合計約 US$4.5
+deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=B --live            # 付費②，B 臂 66 次約 US$0.8
 deno run -A tools/opener-plan-write-eval/judge.ts --runs=<A>,<B>,<OLD> --live  # 付費，約 US$1.4
 deno run -A tools/opener-plan-write-eval/report.ts <judged.json>
 ```

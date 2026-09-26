@@ -92,8 +92,8 @@ export interface PlanWriteTelemetry {
   rewriteUsed: boolean;
   rewrittenStyles: OpenerType[];
   droppedStyles: OpenerType[];
-  /** 帶到自己＝方向＋範例：ok 交付、missing 寫手沒給方向（那張不交付）、null 不適用。 */
-  directionCard: "ok" | "missing" | null;
+  /** 帶到自己＝方向＋範例：ok 交付、missing 寫手沒給方向或範例不合格（那張不交付）、unrequested 沒要求卻寫成範例（不交付）、null 不適用。 */
+  directionCard: "ok" | "missing" | "unrequested" | null;
   model: string | null;
   inputTokens: number;
   outputTokens: number;
@@ -367,6 +367,14 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   // 方向放 access.directions（跟 cardSet 一樣隨結果存進 App 快取），App 把句子標成範例；寫手沒給方向就不交付那張
   // （範例細節是舉例，不能變成一張看起來可以原封送出的句子）。範例卡不當推薦。
   const directions: Partial<Record<OpenerType, string>> = {};
+  // 沒要求範例（有自述、或用戶說沒經驗）寫手卻給了方向＝它把帶到自己寫成範例了：那張不能當可原封送出的句子。
+  const wroteDirection = isPlainObject(parsed.directions) && typeof parsed.directions.coldRead === "string" && parsed.directions.coldRead.trim() !== "";
+  if (!directional && wroteDirection && openers.coldRead) {
+    delete openers.coldRead;
+    delete cardReasons.coldRead;
+    telemetry.droppedStyles.push("coldRead");
+    telemetry.directionCard = "unrequested";
+  }
   if (directional && openers.coldRead) {
     // 方向太長就當沒給（不截斷成半句）；bb5 實測寫手常寫到 41–50 字，上限放 60。
     const rawDirection = isPlainObject(parsed.directions) ? customerText(parsed.directions.coldRead, 4000) : null;
