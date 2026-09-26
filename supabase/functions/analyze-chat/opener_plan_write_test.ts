@@ -852,3 +852,33 @@ Deno.test("主審 F2 呼叫後失敗拿不到用量：用量不再算完整；�
   const skipped = await runOpenerPlanWrite(input("隨便聊聊", PAID, "free"), deps({ write: WRITE_OK }, [], Date.now() + 20_000));
   assertEquals(skipped.kind === "ok" && [skipped.telemetry.planError, skipped.telemetry.invokerCalls, skipped.telemetry.usageComplete], ["skipped_deadline", 1, true]);
 });
+
+Deno.test("主審第二輪 F1：用戶自述裡同一個詞不能撤掉限制（我以前做過行銷工作，不要聊工作）；只有明說想聊／想問才優先", async () => {
+  const text = "我以前做過行銷工作，不要聊工作";
+  const fact = { quote: "我以前做過行銷工作", role: "sender_fact" };
+  const workWrite = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "妳工作最喜歡哪個部分？" }, cardReasons: { ...WRITE_OK.cardReasons, extend: "接她工作裡喜歡的事情" } };
+  const cases: Array<[string, Record<string, unknown>, OpenerType[]]> = [
+    ["缺詞", { quote: "不要聊工作", role: "restriction" }, PAID],
+    ["錯詞", { quote: "不要聊工作", role: "restriction", term: "職場" }, PAID],
+    ["有效詞", { quote: "不要聊工作", role: "restriction", term: "工作" }, PAID],
+    ["Free 缺詞", { quote: "不要聊工作", role: "restriction" }, FREE],
+  ];
+  for (const [label, restriction, visible] of cases) {
+    const plan = { spans: [fact, restriction], anchorCueIds: ["cue_3", "cue_1"] };
+    const calls: OpenerFlowModelRequest[] = [];
+    const out = await runOpenerPlanWrite(input(text, visible, "free"), deps({ plan, write: workWrite }, calls));
+    assertEquals(out.kind, "ok", label);
+    if (out.kind !== "ok") continue;
+    assertEquals(out.result.openers.extend, undefined, `${label}：聊工作的卡不交付`);
+    assert(out.result.recommendation.pick !== "extend", label);
+    assertFalse(out.plan.anchorCueIds.includes("cue_3"), `${label}：選題不選工作`);
+    assert(String(calls[1].messages[0].content).includes("【不要提到】工作"), label);
+  }
+  // 自述跟限制不重疊：限制照樣保住，自述照樣可用。
+  const apart = parseOpenerPlan({ spans: [{ quote: "我也在練半馬", role: "sender_fact" }, { quote: "不要聊工作", role: "restriction" }], anchorCueIds: ["cue_2"] }, ctx("我也在練半馬，不要聊工作"));
+  assertEquals(apart.guardTerms, ["工作"]);
+  assertEquals(digestOpenerPlan(apart, { snapshot: SNAPSHOT, option: null }).selfFacts, ["我也在練半馬"]);
+  // 對照：明說想聊／想問的話題仍優先（別問配速 ≠ 別聊半馬）。
+  const askedQuestion = parseOpenerPlan({ spans: [{ quote: "想問她半馬準備得怎樣", role: "question" }, { quote: "但別問她半馬配速", role: "restriction" }], anchorCueIds: ["cue_2"] }, ctx("想問她半馬準備得怎樣，但別問她半馬配速"));
+  assertEquals(askedQuestion.guardTerms, []);
+});

@@ -367,7 +367,6 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
   if (freeText && spans.length === 0) return profileOnlyPlan(ctx, [...repaired, "spans.empty"]);
 
   const terms = spans.map((s) => s.term).filter((t): t is string => !!t);
-  const visibleQuotes = spans.filter((s) => WRITER_VISIBLE_ROLES.includes(s.role)).map((s) => s.quote);
   const candidates: string[] = [];
   const herWords = herGuardSources(ctx.snapshot).map(toTraditionalChinese);
   for (const span of spans) {
@@ -382,8 +381,9 @@ export function parseOpenerPlan(raw: Record<string, unknown> | null, ctx: Opener
   let uncovered = freeText;
   for (const span of spans) uncovered = uncovered.replace(span.quote, "\n");
   for (const part of uncovered.split("\n")) candidates.push(...guardTermsIn(part, ctx.snapshot, false));
-  // 用戶在寫手看得到的片段裡明說想聊的，比不確定的限制更明確：不列入。
-  const asked = visibleQuotes.map(toTraditionalChinese);
+  // 用戶明說想聊／想問的（topic、question）比不確定的限制更明確：不列入。寫手看得到不等於想聊——
+  // 自述、草稿裡剛好有同一個詞不能撤掉限制（GPT 主審第二輪：我以前做過行銷工作，不要聊工作）。
+  const asked = spans.filter((s) => s.role === "topic" || s.role === "question").map((s) => toTraditionalChinese(s.quote));
   const guardTerms = [...new Set(candidates)].filter((term) => !asked.some((q) => q.includes(toTraditionalChinese(term))));
   // 規劃自己寫的文字（讀法、邀約活動、要問的點）只在乾淨時採用：不含粗話、冒犯片段或不想聊的詞。
   const blocked = spans.filter((s) => BLOCKED_ROLES.includes(s.role)).map((s) => s.quote);
