@@ -263,11 +263,12 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   };
   const unrequestedExample = (json: Record<string, unknown> | null, type: OpenerType) =>
     !(directional && type === "coldRead") && (markedExample(json, type) || markedExample(writerParsed, type));
-  // 要不交付的卡不必交：不為它修格式，也不因它空白整組失敗。
-  const requiredTypes = input.visibleTypes.filter((t) => !(directional && t === "coldRead") && !unrequestedExample(writerParsed, t));
+  // 要不交付的卡不必交：不為它修格式，也不因它空白整組失敗（每一版用那一版的標記＋原輸出的標記判）。
   const visibleMissing = (json: Record<string, unknown> | null) => {
     const openers = json && isPlainObject(json.openers) ? json.openers : {};
-    return requiredTypes.filter((t) => sanitizeOpenerText(openers[t]) === null);
+    return input.visibleTypes.filter((t) =>
+      !(directional && t === "coldRead") && !unrequestedExample(json, t) && sanitizeOpenerText(openers[t]) === null
+    );
   };
   if (visibleMissing(parsed).length > 0 && extraCallsRemaining > 0) {
     extraCallsRemaining -= 1;
@@ -356,6 +357,14 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
       const json = hasAnalyzeChatPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
       const rewritten = json && isPlainObject(json.openers) ? json.openers : {};
       for (const style of targets) {
+        // 改寫回覆也可能把這張標成範例（改寫對象不含要求的方向＋範例卡）：新句子不當一般卡，整張不交付。
+        if (markedExample(json, style)) {
+          delete openers[style];
+          delete cardReasons[style];
+          telemetry.droppedStyles.push(style);
+          if (style === "coldRead") telemetry.directionCard = "unrequested";
+          continue;
+        }
         const sanitized = sanitizeOpenerText(rewritten[style]);
         const text = sanitized ? withoutEmoji(sanitized) : null;
         if (text) {

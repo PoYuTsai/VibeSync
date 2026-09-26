@@ -695,3 +695,84 @@ Deno.test("R4 規劃寫的讀法與要問的點不能把寫手看不到的片段
   assert(omitted.coverageGap);
   assertEquals(omitted.questionTarget, null);
 });
+
+Deno.test("R2 複核：改寫回覆新標的範例、修格式回覆新標的空白卡——每一版都先認範例身分再判完整與交付", async () => {
+  const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
+  const selfWrite = { ...WRITE_OK, openers: { ...WRITE_OK.openers, coldRead: "半馬練到哪一段了？我也在練半馬" } };
+  // 1) 改寫回覆把改寫的卡標成範例：新句子不交付（不當一般卡），也不多花呼叫。
+  const restricted = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }, { quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_2"] };
+  const withVeto = { ...selfWrite, openers: { ...selfWrite.openers, extend: "做行銷工作還能練半馬很猛" } };
+  const calls: OpenerFlowModelRequest[] = [];
+  const marked = await runOpenerPlanWrite(input("我也在練半馬 不要聊工作", PAID, "free"), deps({
+    plan: restricted,
+    write: withVeto,
+    rewrite: { openers: { extend: "半馬配速都怎麼抓？" }, directions: { extend: "分享自己找配速的經驗" } },
+  }, calls));
+  assertEquals(marked.kind, "ok");
+  if (marked.kind !== "ok") return;
+  assertEquals(calls.length, 3, "呼叫上限不變");
+  assertEquals(marked.result.openers.extend, undefined, "改寫回覆標成範例的句子不當一般卡交付");
+  assertEquals(marked.result.cardReasons.extend, undefined);
+  assert(marked.telemetry.droppedStyles.includes("extend"));
+  assertFalse(marked.telemetry.rewrittenStyles.includes("extend"));
+  assert(marked.result.recommendation.pick !== "extend");
+  // 對照：正常改寫照交付。
+  const normal = await runOpenerPlanWrite(input("我也在練半馬 不要聊工作", PAID, "free"), deps({ plan: restricted, write: withVeto, rewrite: { openers: { extend: "半馬配速都怎麼抓？" } } }, []));
+  assertEquals(normal.kind === "ok" && normal.result.openers.extend, "半馬配速都怎麼抓？");
+
+  // 2) 修格式回覆才把空白的卡標成範例：那張不必交，其他有效卡照交付（不整組 incomplete）。
+  const missing = { ...selfWrite, openers: { ...selfWrite.openers, humor: "" } };
+  const repairMarks = { ...selfWrite, openers: { ...selfWrite.openers, humor: "" }, directions: { humor: "分享自己的小經驗" } };
+  const repairCalls: OpenerFlowModelRequest[] = [];
+  const repaired = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: missing, repair: repairMarks }, repairCalls));
+  assertEquals(repaired.kind, "ok", "修格式版把空白卡標成範例：其他卡照交付");
+  if (repaired.kind !== "ok") return;
+  assertEquals(repairCalls.length, 3);
+  assertEquals(repaired.result.openers.humor, undefined);
+  assertEquals(Object.keys(repaired.result.openers).length, 4);
+  // 對照：修格式版仍缺一般卡（沒標範例）→ 整組照拒絕；原標記丟失保護照舊。
+  const stillMissing = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({ plan: selfPlan, write: missing, repair: { ...repairMarks, openers: { ...repairMarks.openers, resonate: "" }, directions: { humor: "分享" } } }, []));
+  assertEquals(stillMissing.kind === "fail" && stillMissing.reason, "incomplete");
+  // 對照：合法方向＋範例 coldRead 照交付、不當推薦。
+  const noSelf = { spans: [{ quote: "想聊半馬", role: "topic" }], anchorCueIds: ["cue_2"] };
+  const directional = { ...WRITE_OK, openers: { ...WRITE_OK.openers, humor: "", coldRead: "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
+  const dirRepaired = await runOpenerPlanWrite(input("想聊半馬", PAID, "free"), deps({ plan: noSelf, write: directional, repair: { ...directional, openers: { ...directional.openers, humor: "" }, directions: { coldRead: "可以先分享自己夜跑的經驗", humor: "分享" } } }, []));
+  assertEquals(dirRepaired.kind, "ok");
+  assertEquals(dirRepaired.kind === "ok" && dirRepaired.result.access.directions, { coldRead: "可以先分享自己夜跑的經驗" });
+  assert(dirRepaired.kind === "ok" && dirRepaired.result.recommendation.pick !== "coldRead");
+});
+
+Deno.test("R2 複核對照：原標記丟失保護、額外呼叫只有一次、合法範例卡不當推薦（改壞就要紅）", async () => {
+  const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
+  const selfWrite = { ...WRITE_OK, openers: { ...WRITE_OK.openers, coldRead: "半馬練到哪一段了？我也在練半馬" } };
+  // 原輸出把一張正常句子標成範例、修格式版把標記弄丟：那張仍不交付、不當推薦。
+  const calls: OpenerFlowModelRequest[] = [];
+  const lost = await runOpenerPlanWrite(input("我也在練半馬", PAID, "free"), deps({
+    plan: selfPlan,
+    write: { ...selfWrite, openers: { ...selfWrite.openers, humor: "" }, directions: { extend: "分享自己的小經驗" } },
+    repair: { ...selfWrite, directions: {} },
+  }, calls));
+  assertEquals(lost.kind, "ok");
+  if (lost.kind !== "ok") return;
+  assertEquals(calls.length, 3);
+  assertEquals(lost.result.openers.extend, undefined);
+  assert(lost.telemetry.droppedStyles.includes("extend"));
+  assert(lost.result.recommendation.pick !== "extend");
+  // 修格式用掉唯一額外呼叫後，踩紅線的卡直接拿掉、不再改寫。
+  const restricted = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }, { quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_2"] };
+  const capCalls: OpenerFlowModelRequest[] = [];
+  const capped = await runOpenerPlanWrite(input("我也在練半馬 不要聊工作", PAID, "free"), deps({
+    plan: restricted,
+    write: { ...selfWrite, openers: { ...selfWrite.openers, humor: "" } },
+    repair: { ...selfWrite, openers: { ...selfWrite.openers, tease: "做行銷工作還能練半馬很猛" } },
+    rewrite: { openers: { tease: "半馬配速都怎麼抓？" } },
+  }, capCalls));
+  assertEquals(capCalls.length, 3, "規劃＋寫手＋一次額外呼叫");
+  assertEquals(capped.kind === "ok" && capped.result.openers.tease, undefined);
+  assertEquals(capped.kind === "ok" && capped.telemetry.rewriteUsed, false);
+  // 除了方向＋範例卡其他都踩紅線：範例不當推薦，整組不交付。
+  const noSelfRestricted = { spans: [{ quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_1"] };
+  const allWork = { openers: { extend: "工作忙嗎", resonate: "工作累嗎", tease: "工作多嗎", humor: "工作好玩嗎", coldRead: "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
+  const onlyExample = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: noSelfRestricted, write: allWork }, []));
+  assertEquals(onlyExample.kind === "fail" && onlyExample.reason, "no_deliverable");
+});
