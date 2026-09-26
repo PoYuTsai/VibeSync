@@ -1,0 +1,611 @@
+{
+ "name": "Bruce 盲測 benchmark 2026-09-26",
+ "source": {
+  "sheet": "結構刀盲測表 完成.numbers（Bruce 9/26 09:46 LINE）",
+  "sheetSha256": "983b6afc16982341614e2b73edde055c3278128284c93b49b2de6486a40cd0bc",
+  "blindMapping": "Codex 資料夾 opener-structural-cut/blind-final/private_DO_NOT_SHIP/mapping.json",
+  "B": "live-bb4-B（snapshot 56d03148 前的最終 B）",
+  "OLD": "live-bb-OLD（f80b59bd 舊路徑）"
+ },
+ "decision": "Eric 9/26：這份夥伴 feedback 當 benchmark；Bruce 的夜跑例是「只給方向＋舉例」的標準格式。主判用 Bruce 判準，AI 評審只當初篩。",
+ "question": {
+  "willing": "1. 願意直接傳哪些？（可填①②、可複選、可填「都不要」）",
+  "best": "2. 最想傳哪一句？（可並列、可填「沒有」）",
+  "reason": "3. 原因一句話（選填）"
+ },
+ "totals": {
+  "B": {
+   "willing": 12,
+   "best": 11
+  },
+  "OLD": {
+   "willing": 13,
+   "best": 8
+  },
+  "cases": 22
+ },
+ "goldFromBruce": {
+  "H02": {
+   "kind": "direction_example",
+   "direction": "可以先分享自己夜跑的經驗",
+   "example": "我最近都跑環河公園那，會經過公館水岸那很chill. 你都跑哪？",
+   "note": "Eric 9/26 定為「只給方向＋舉例」標準格式"
+  },
+  "H03": {
+   "kind": "direction_example",
+   "direction": "可以先分享自己",
+   "example": "最近一直被故宮的紐約大都會博物館展燒到，你去了嗎"
+  },
+  "N10": {
+   "kind": "share_then_ask",
+   "direction": "可以建議（先分享自身經驗）再加建議的問句",
+   "example": "最近也在找適合讀書的咖啡店，有推薦的嗎。"
+  },
+  "N05": {
+   "kind": "share_then_ask",
+   "direction": "可以建議（先分享自身經驗）再加建議的問句",
+   "example": null
+  },
+  "F4": {
+   "kind": "better_question",
+   "example": "最近入坑哪款桌遊？"
+  },
+  "H05": {
+   "kind": "better_topic",
+   "direction": "也可從玩團和音樂風格下手",
+   "example": null
+  }
+ },
+ "cases": [
+  {
+   "row": 1,
+   "caseId": "F1",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "1",
+    "best": "1",
+    "reason": "簡短，讓她好回答卻又不多給"
+   },
+   "B": {
+    "sentence": "那條紫色路線後來有找到突破點嗎？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "卡在紫色路線好幾週是哪個環節卡住？是抓點角度還是核心balance？",
+    "willing": false,
+    "best": false,
+    "repeat": 2
+   }
+  },
+  {
+   "row": 2,
+   "caseId": "F2",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1,2",
+    "reason": null
+   },
+   "B": {
+    "sentence": "濃厚豚骨聽起來很對味，妳挑拉麵店通常會特別看重什麼？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "濃厚豚骨系是妳的本命嗎？還是其實吃過一輪才選出來的結論？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 3,
+   "caseId": "F3",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "都不要",
+    "best": "沒有",
+    "reason": "1討論輪班難以引發興趣  2連兩個問句太多，有點追問不恰當"
+   },
+   "B": {
+    "sentence": "輪班的休假通常是平日還是不太固定？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "陽台種到快擺不下，是那種一入坑就停不下來的類型嗎？現在數量大概多誇張？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 4,
+   "caseId": "F4",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "都不要",
+    "best": "沒有",
+    "reason": "可以改問 （最近入坑哪款桌遊？）會更好一點．2連兩個問句太多，有點追問不恰當"
+   },
+   "B": {
+    "sentence": "最近在研究哪款桌遊的規則呀？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳家那面桌遊牆是怎麼分類的啊？是照人數、難度還是主題排？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 5,
+   "caseId": "F5",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1,2",
+    "reason": "都還可以，有簡潔戶回答，有共鳴"
+   },
+   "B": {
+    "sentence": "最近有想挑戰的新密室嗎？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "最怕恐怖主題卻次次都硬上，感覺妳選關卡不是看喜不喜歡，是看有沒有解過，對嗎？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 6,
+   "caseId": "F6",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1,2",
+    "reason": null
+   },
+   "B": {
+    "sentence": "好奇一下，教小朋友的時候是不是要先寫楷書打底，行書是自己另外練的？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "會週末還主動練行書，感覺妳對寫字這件事是真的喜歡，不是隻把它當工作。",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 7,
+   "caseId": "F7",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1",
+    "best": "沒有",
+    "reason": null
+   },
+   "B": {
+    "sentence": "當初是怎麼開始跳街舞的呀？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳最近在練的 locking 是那種一停下來就要定格甩手的動作嗎？看起來很考驗手臂控制力。",
+    "willing": true,
+    "best": false,
+    "repeat": 2
+   }
+  },
+  {
+   "row": 8,
+   "caseId": "F8",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1,2",
+    "reason": "都不錯"
+   },
+   "B": {
+    "sentence": "練頭倒立花多久才抓到平衡感的？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "我以前也上過一陣子瑜珈，後來工作忙就斷了，看妳每天早上都有練，是怎麼堅持下來的？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 9,
+   "caseId": "F9",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "2",
+    "reason": null
+   },
+   "B": {
+    "sentence": "基隆海釣最常釣到什麼魚啊？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "跟爸爸去基隆海釣，最常釣到什麼魚啊？",
+    "willing": true,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 10,
+   "caseId": "F10",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "2",
+    "best": "2",
+    "reason": "1前半段不錯，後面的“可以交流一下”微扣分"
+   },
+   "B": {
+    "sentence": "玩到哪個進度了，還是也在破王國之淚？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "我最近也在玩薩爾達，妳現在進度到哪了？卡在哪個神殿的話可以交流一下",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 11,
+   "caseId": "H01",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1",
+    "best": "沒有",
+    "reason": "微笑的emoji不要用"
+   },
+   "B": {
+    "sentence": "拉坯練到現在，上手了嗎？還是每次都跟泥巴奮戰中🙂",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳說最近在練拉坯，是自己在轉盤前抓形狀的那種嗎？我很好奇上手前是不是常常整個垮掉。",
+    "willing": true,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 12,
+   "caseId": "H02",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "—",
+    "best": "—",
+    "reason": "新增一種回覆方式是只給使用者方向 並舉例，舉例不算是捏造使用者經驗．（可以先分享自己夜跑的經驗，如：我最近都跑環河公園那，會經過公館水岸那很chill. 你都跑哪？）"
+   },
+   "B": {
+    "sentence": "夜跑通常都跑多久或多遠啊？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "看妳習慣晚上沿河跑，是固定跑同一段河堤嗎？還是看心情換路線？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 13,
+   "caseId": "H03",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1,2",
+    "reason": "新增一種回覆方式是只給使用者方向 並舉例，舉例不算是捏造使用者經驗．（可以先分享自己，如：最近一直被故宮的紐約大都會博物館展燒到，你去了嗎）"
+   },
+   "B": {
+    "sentence": "最近看的當代藝術展裡，有沒有哪件作品讓妳印象特別深？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳最近看的當代藝術展裡，有沒有哪個作品讓妳站在前面看很久？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 14,
+   "caseId": "H04",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "1",
+    "best": "1",
+    "reason": "2的問號可以都刪掉, 問句不一定要有問號，問號多會增加索取資訊的感覺"
+   },
+   "B": {
+    "sentence": "養的酵母第一次拿來做的成品是什麼？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "看到妳在養酵母，好奇這批酵母養多久了？狀態穩定嗎？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 15,
+   "caseId": "H05",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "2",
+    "best": "都沒有",
+    "reason": "也可從玩團和音樂風格下手"
+   },
+   "B": {
+    "sentence": "打鼓是怎麼開始接觸的呀？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳打鼓多久了？我哥是開樂器行的，但我自己完全沒碰過樂器，一直很好奇學鼓是不是很燒體力。",
+    "willing": true,
+    "best": false,
+    "repeat": 2
+   }
+  },
+  {
+   "row": 16,
+   "caseId": "H06",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "都不要",
+    "best": "都沒有",
+    "reason": "1問天數不容易展開話題，偏向為了問而問的感覺．"
+   },
+   "B": {
+    "sentence": "想去綠島潛水大概排幾天啊？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "拿到潛水證照兩年了才要去綠島，是特別在等旺季還是等一個潛伴？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 17,
+   "caseId": "H07",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "2",
+    "best": "2",
+    "reason": null
+   },
+   "B": {
+    "sentence": "最近在追什麼劇嗎？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "假日看劇算是充電時間嗎？最近有沒有在追什麼劇？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 18,
+   "caseId": "H08",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1,2",
+    "reason": null
+   },
+   "B": {
+    "sentence": "平常都去哪一帶的營地比較多？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳最近在找新營地，是想找什麼類型的？靠海、靠溪，還是那種可以升火煮東西的？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 19,
+   "caseId": "N01",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1,2",
+    "best": "1",
+    "reason": null
+   },
+   "B": {
+    "sentence": "妳打羽球都是固定球友還是揪不同的人啊？",
+    "willing": true,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "看妳自介有打羽球，妳都習慣打單打還雙打？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 20,
+   "caseId": "N03",
+   "shown": {
+    "①": "B",
+    "②": "OLD"
+   },
+   "answers": {
+    "willing": "2",
+    "best": "2",
+    "reason": "1偏向為了問而問的感覺, 不恰當"
+   },
+   "B": {
+    "sentence": "妳平常羽球都打多久啊，算固定在打的那種嗎？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "看到妳喜歡打羽球，妳都習慣打單打還是雙打？",
+    "willing": true,
+    "best": true,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 21,
+   "caseId": "N05",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "都不要",
+    "best": "都沒有",
+    "reason": "可以建議（先分享自身經驗）再加建議的問句"
+   },
+   "B": {
+    "sentence": "一個人旅行的話，妳是先選城市還是先看時間安排？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "一個人旅行最近是想找有特色的城市，還是單純想換個環境走走？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   }
+  },
+  {
+   "row": 22,
+   "caseId": "N10",
+   "shown": {
+    "①": "OLD",
+    "②": "B"
+   },
+   "answers": {
+    "willing": "1",
+    "best": "都沒有",
+    "reason": "可以建議（先分享自身經驗）再加建議的問句  如：最近也在找適合讀書的咖啡店，有推薦的嗎。 "
+   },
+   "B": {
+    "sentence": "妳有沒有特別推薦適合看書的咖啡店？",
+    "willing": false,
+    "best": false,
+    "repeat": 1
+   },
+   "OLD": {
+    "sentence": "妳喜歡找咖啡店，那有沒有那種特別適合看書、可以安靜坐一下午的口袋名單？",
+    "willing": true,
+    "best": false,
+    "repeat": 1
+   }
+  }
+ ]
+}
