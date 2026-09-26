@@ -36,7 +36,7 @@ import {
   type OpenerWriterArm,
   writesDirectionExample,
 } from "./opener_write.ts";
-import { containsVetoed, judgeOpenerCard, type OpenerCardVerdict, pickOpenerCard, projectPlanWriteResult } from "./opener_pick.ts";
+import { containsVetoed, judgeOpenerCard, type OpenerCardVerdict, pickOpenerCard, projectPlanWriteResult, withoutEmoji } from "./opener_pick.ts";
 
 /** 定點改寫至少要留這麼多時間，否則直接用降級挑選。 */
 const REWRITE_MIN_REMAINING_MS = 8_000;
@@ -275,7 +275,8 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   const openers: Partial<Record<OpenerType, string>> = {};
   const cardReasons: Partial<Record<OpenerType, string>> = {};
   for (const type of input.visibleTypes) {
-    const text = sanitizeOpenerText(rawOpeners[type]);
+    const sanitized = sanitizeOpenerText(rawOpeners[type]);
+    const text = sanitized ? withoutEmoji(sanitized) : null;
     if (text) openers[type] = text;
     const reason = customerText(rawReasons[type], 200);
     if (reason) cardReasons[type] = reason;
@@ -299,10 +300,13 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   };
   let verdicts = judgeAll();
   const vetoed = () => input.visibleTypes.filter((t) => (verdicts[t]?.vetoes.length ?? 0) > 0);
-  if (vetoed().length > 0 && extraCallsRemaining > 0 && deps.deadlineAtMs - now() >= REWRITE_MIN_REMAINING_MS) {
+  // 方向＋範例卡不送改寫（改寫器不知道那是範例）：踩紅線就直接拿掉。
+  const directional = writesDirectionExample(input.arm, digest);
+  const rewriteTargets = () => vetoed().filter((t) => !(directional && t === "coldRead"));
+  if (rewriteTargets().length > 0 && extraCallsRemaining > 0 && deps.deadlineAtMs - now() >= REWRITE_MIN_REMAINING_MS) {
     extraCallsRemaining -= 1;
     telemetry.rewriteUsed = true;
-    const targets = vetoed();
+    const targets = rewriteTargets();
     try {
       const rewrite = await deps.invokeModel({
         system: OPENER_REWRITE_PROMPT,
@@ -322,7 +326,8 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
       const json = hasAnalyzeChatPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
       const rewritten = json && isPlainObject(json.openers) ? json.openers : {};
       for (const style of targets) {
-        const text = sanitizeOpenerText(rewritten[style]);
+        const sanitized = sanitizeOpenerText(rewritten[style]);
+        const text = sanitized ? withoutEmoji(sanitized) : null;
         if (text) {
           openers[style] = text;
           delete cardReasons[style];
@@ -347,8 +352,10 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   // 方向放 access.directions（跟 cardSet 一樣隨結果存進 App 快取），App 把句子標成範例；寫手沒給方向就不交付那張
   // （範例細節是舉例，不能變成一張看起來可以原封送出的句子）。範例卡不當推薦。
   const directions: Partial<Record<OpenerType, string>> = {};
-  if (writesDirectionExample(input.arm, digest) && openers.coldRead) {
-    const direction = isPlainObject(parsed.directions) ? customerText(parsed.directions.coldRead, 40) : null;
+  if (directional && openers.coldRead) {
+    // 方向太長就當沒給（不截斷成半句）。
+    const rawDirection = isPlainObject(parsed.directions) ? customerText(parsed.directions.coldRead, 4000) : null;
+    const direction = rawDirection && rawDirection.length <= 40 ? rawDirection : null;
     if (direction && !leaksBlocked(direction)) {
       directions.coldRead = direction;
       telemetry.directionCard = "ok";

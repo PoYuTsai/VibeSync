@@ -6,7 +6,7 @@ import type { OpenerFlowModelRequest } from "./opener_flow_handler.ts";
 import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stage.ts";
 import { digestOpenerPlan, OPENER_PLAN_PROMPT, type OpenerPlanContext, parseOpenerPlan, profileOnlyPlan } from "./opener_plan.ts";
 import { buildOpenerWritePrompt, buildOpenerWriteUserContent, OPENER_REWRITE_PROMPT } from "./opener_write.ts";
-import { HANDLING_NOTE, handlingNoteFor, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard } from "./opener_pick.ts";
+import { HANDLING_NOTE, handlingNoteFor, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard, withoutEmoji } from "./opener_pick.ts";
 import { runOpenerPlanWrite } from "./opener_plan_write.ts";
 import type { OpenerType } from "./opener_payload.ts";
 
@@ -52,6 +52,7 @@ Deno.test("規劃：逐字片段、角色、邀約活動與限制詞都要出自
     anchorCueIds: ["cue_3", "cue_1", "cue_9"],
     herStated: ["最近在準備第一場半馬", "她很漂亮"],
     questionTarget: "半馬之後的目標",
+    questionKind: "what",
     intents: { shorter: true },
     nominatedStyle: "humor",
   }, ctx(text));
@@ -100,7 +101,7 @@ Deno.test("規劃：有邀約時不採用規劃寫的「要問的點」（常是
   const content = buildOpenerWriteUserContent({ snapshot: SNAPSHOT, freeText: text, plan: invite, digest, primaryStyle: "extend", arm: "free" });
   assertFalse(content.includes("有空"), "寫手拿不到邀約裡的時間");
   assert(content.includes("吃拉麵"), "活動本身仍是話題");
-  const plain = parseOpenerPlan({ spans: [{ quote: "想聊半馬", role: "topic" }], questionTarget: "半馬之後的目標" }, ctx("想聊半馬"));
+  const plain = parseOpenerPlan({ spans: [{ quote: "想聊半馬", role: "topic" }], questionTarget: "半馬之後的目標", questionKind: "what" }, ctx("想聊半馬"));
   assertEquals(plain.questionTarget, "半馬之後的目標");
 });
 
@@ -194,6 +195,7 @@ Deno.test("寫手輸入：已知答案、要問的點、准用自述、不要提
     anchorCueIds: ["cue_2"],
     herStated: ["最近在準備第一場半馬"],
     questionTarget: "賽前最怕哪一段",
+    questionKind: "story",
     intents: { shorter: true },
   }, ctx(text));
   const digest = digestOpenerPlan(plan, { snapshot: SNAPSHOT, option: null });
@@ -510,14 +512,38 @@ Deno.test("方向＋範例（Bruce 9/26）：B 臂沒有用戶自述時，帶到
   assertEquals(self.kind === "ok" && self.result.openers.coldRead, withDirection.openers.coldRead);
   const styles = await runOpenerPlanWrite(input("想約她一起夜跑", PAID), deps({ plan, write: withDirection }, []));
   assertEquals(styles.kind === "ok" && styles.result.access.directions, undefined);
+
+  // 方向太長不截斷，當沒給；範例踩紅線不送改寫，直接拿掉。
+  const long = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: { ...withDirection, directions: { coldRead: "可".repeat(41) } } }, []));
+  assertEquals(long.kind === "ok" && long.result.openers.coldRead, undefined);
+  const restricted = { spans: [{ quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_1"] };
+  const badExample = { ...withDirection, openers: { ...withDirection.openers, coldRead: "我最近工作都很晚才跑，妳都跑哪？" } };
+  const calls2: OpenerFlowModelRequest[] = [];
+  const vetoed = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: restricted, write: badExample }, calls2));
+  assertEquals(vetoed.kind === "ok" && vetoed.result.openers.coldRead, undefined);
+  assertEquals(calls2.length, 2, "沒有為範例卡多花一次改寫");
 });
 
-Deno.test("Bruce 9/26 寫法：不用 emoji（降級）、問句不一定要問號、不問為了問而問的數字行程", () => {
-  assertEquals(judgeOpenerCard("拉坯練到現在上手了嗎🙂", RULES).demotions, ["emoji"]);
-  assertEquals(judgeOpenerCard("拉坯練到現在上手了嗎", RULES).demotions, []);
+Deno.test("Bruce 9/26 寫法：emoji 直接拿掉、問句不一定要問號、不問為了問而問的數字行程", async () => {
+  assertEquals(withoutEmoji("拉坯練到現在上手了嗎🙂"), "拉坯練到現在上手了嗎");
+  assertEquals(withoutEmoji("跑步🏃‍♀️很療癒"), "跑步很療癒");
+  assertEquals(withoutEmoji("🙂"), null);
+  const out = await runOpenerPlanWrite(input(null, FREE), deps({ write: { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "半馬賽前最怕哪一段🙂" } } }, []));
+  assertEquals(out.kind === "ok" && out.result.openers.extend, "半馬賽前最怕哪一段", "推薦句不換掉，只拿掉 emoji");
   const writer = buildOpenerWritePrompt("free");
   assert(writer.includes("問句不一定要加問號"));
   assert(writer.includes("不用 emoji"));
   assert(writer.includes("不問天數、多久、多遠、頻率、班表"));
-  assert(OPENER_PLAN_PROMPT.includes("不問天數、時長、距離、頻率、班表"));
+  assertFalse(writer.includes("下一步。"), "不再叫寫手問「下一步」（計畫類會變成排幾天）");
+});
+
+Deno.test("規劃「要問的點」只收名字／選擇（what）與經過／進度（story）；數量、時段、怎麼開始或沒標都不收", () => {
+  const base = { spans: [{ quote: "想聊半馬", role: "topic" }], questionTarget: "半馬想挑戰哪一場" };
+  assertEquals(parseOpenerPlan({ ...base, questionKind: "what" }, ctx("想聊半馬")).questionTarget, "半馬想挑戰哪一場");
+  assertEquals(parseOpenerPlan({ ...base, questionKind: "story" }, ctx("想聊半馬")).questionTarget, "半馬想挑戰哪一場");
+  for (const kind of ["amount", "schedule", "origin", undefined]) {
+    const plan = parseOpenerPlan({ ...base, questionKind: kind }, ctx("想聊半馬"));
+    assertEquals(plan.questionTarget, null, String(kind));
+    assert(plan.repairedFields.includes("questionTarget.kind"));
+  }
 });

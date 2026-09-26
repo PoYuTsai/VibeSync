@@ -2438,7 +2438,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
             const SizedBox(height: 8),
 
-            // Copy button or upgrade button
+            // Copy button or upgrade button；方向＋範例卡只給方向，不給一鍵複製（範例細節要換成自己的）。
             if (isLocked)
               SizedBox(
                 width: double.infinity,
@@ -2451,6 +2451,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   ),
                   child: const Text('升級解鎖'),
                 ),
+              )
+            else if (direction != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text('照方向寫你自己的版本',
+                    style: AppTypography.caption
+                        .copyWith(color: AppColors.onBackgroundSecondary)),
               )
             else
               Align(
@@ -2465,7 +2472,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     );
                   },
                   icon: const Icon(Icons.copy, size: 16),
-                  label: Text(direction == null ? '複製' : '複製範例'),
+                  label: const Text('複製'),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.ctaStart,
                   ),

@@ -12,7 +12,7 @@ import type { OpenerPlan, OpenerPlanDigest } from "./opener_plan.ts";
 import { OPENER_LENGTH_LIMIT, OPENER_SHORT_LENGTH_LIMIT, type OpenerWriterArm } from "./opener_write.ts";
 
 export type OpenerVeto = "blocked_span_reused" | "excluded_topic";
-export type OpenerDemotion = "two_questions" | "too_long" | "profile_copy" | "self_claim_unsourced" | "self_first" | "foreign_token" | "emoji";
+export type OpenerDemotion = "two_questions" | "too_long" | "profile_copy" | "self_claim_unsourced" | "self_first" | "foreign_token";
 
 export interface OpenerCardVerdict {
   vetoes: OpenerVeto[];
@@ -54,6 +54,12 @@ export function longestProfileCopy(card: string, profile: string): number {
   return best;
 }
 
+/** Bruce 9/26：不用 emoji。確定可判就直接拿掉（降級會把最好的那句換成別張）；拿完沒字回 null。 */
+export function withoutEmoji(text: string): string | null {
+  const out = text.replace(/[\p{Extended_Pictographic}\u200d\ufe0f\u20e3]/gu, "").replace(/[ \t]{2,}/g, " ").trim();
+  return out || null;
+}
+
 /** 紅線比對兩邊用同一套正規化（簡轉繁、你→妳、標點），再去掉空白與標點。 */
 export function vetoKey(text: string): string {
   return (normalizeOutgoingMessageText(text) ?? text).replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
@@ -90,8 +96,6 @@ export function judgeOpenerCard(text: string, rules: OpenerCardRules): OpenerCar
   // Bruce 9/23：自己的事放在問完她之後，開頭就講自己＝抓共同點當資格（句首位置，不判語意）。
   // 句首可以有標點、表情或語助詞；「我好奇／我想問」是在問她，不是自述。
   if (/^[\p{P}\p{S}\s]*(?:欸|哈+|嗨|其實|說真的)?[，,\s]*我(?!(?:猜|好奇|很好奇|想問|在想|想知道))/u.test(text)) demotions.push("self_first");
-  // Bruce 9/26：不用 emoji（寫手規則；這裡確定可判，只降級）。
-  if (/\p{Extended_Pictographic}/u.test(text)) demotions.push("emoji");
   if (rules.inputText !== undefined) {
     const input = rules.inputText.normalize("NFKC").toLowerCase();
     const words = text.normalize("NFKC").match(/[A-Za-z]{3,}/g) ?? [];

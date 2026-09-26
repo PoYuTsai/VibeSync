@@ -1443,6 +1443,7 @@ const PLAN_JSON = {
   anchorCueIds: ["cue_1"],
   herStated: ["有養一隻狗"],
   questionTarget: "牠散步會不會自己選路",
+  questionKind: "what",
   intents: { shorter: false, funny: false },
   nominatedStyle: "extend",
 };

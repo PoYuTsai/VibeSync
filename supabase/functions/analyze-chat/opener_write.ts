@@ -22,8 +22,8 @@ export const OPENER_SHORT_LENGTH_LIMIT = 25;
 const SENTENCE_RULES = `## 每一則都要
 - 只開話題：不約她、不提見面或一起做什麼、不約時間。
 - 一則只講一件事，最多問一個問題；一到兩句，通常 30 字內。
-- 問句不一定要加問號（「最近也在找適合讀書的咖啡店，有推薦的嗎。」「好奇妳最近在追哪部」都可以）；五則不要都用問號收尾，問號多像在索取資訊。
-- 問能讓她聊開的：她在那件事裡的選擇、偏好、最近在玩或在追的、會推薦的。不問天數、多久、多遠、頻率、班表這類為了問而問的數字行程，也不問「當初怎麼開始」這種對誰都能問的題目。
+- 問句不一定要加問號（「…有推薦的嗎。」「好奇妳會怎麼選」都可以）；五則不要都用問號收尾，問號多像在索取資訊。
+- 問她會想講的：她在那件事裡的選擇、偏好、最近在玩的、一段經過。不問天數、多久、多遠、頻率、班表這類為了問而問的數字行程，也不問「當初怎麼開始」這種對誰都能問的題目。
 - 不重述她寫過的句子，不問答案已知的事（見「她已寫過」）。
 - 用口語（入坑、在追、最近迷上），不寫得像訪問；句尾不加「可以交流一下」這類多餘的話。
 - 她不用猜你的意思、不用接受考核或配合演出就能回。
@@ -33,7 +33,7 @@ const SENTENCE_RULES = `## 每一則都要
 - 不用：嗨美女、妳好漂亮、在哪上班、要不要喝一杯、感覺妳很有趣、我有認真看完妳的自介。`;
 
 const STYLE_CARDS = `## 五則（同一件事、五種自然說法）
-- extend：直接問她那件事的下一步。
+- extend：直接接她那件事，問她會想講的一點。
 - resonate：先接住她的處境或感受，再輕輕問；給了用戶自述才可以說自己的事。
 - tease：在同一件事上多一點輕鬆互動；不比輸贏、不考她、不自抬身價。
 - humor：從同一件事長出來的小趣味；不硬湊兩個興趣、不捏造反差。
@@ -41,7 +41,7 @@ const STYLE_CARDS = `## 五則（同一件事、五種自然說法）
 「推薦」那一則最用心：它是用戶最可能直接送出的一句。`;
 
 const FREE_CARDS = `## 五則（一句推薦＋四句備選；App 標籤照括號顯示，內容要對得上）
-- extend（直接接話）：推薦句，用戶最可能直接送出的一句，最用心：接她那件事，問下一步。
+- extend（直接接話）：推薦句，用戶最可能直接送出的一句，最用心：接她那件事，問她會想講的一點。
 - 另外四則是同樣自然、同樣可以直接送的備選，不是換技巧：
   - resonate（換個角度）：同一件事，換一個切入點。
   - tease（換個方向）：接她另一個線索；只有一個線索時，聊她那件事的另一個面向。
@@ -66,8 +66,9 @@ ${OUTPUT_SPEC}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 }
 
 /** Bruce 9/26（Eric 定案）：B 臂用戶沒給自述時，「帶到自己」改成給用戶的方向＋一句範例（範例細節是舉例，要用戶換成自己的）。 */
-export function writesDirectionExample(arm: OpenerWriterArm, digest: Pick<OpenerPlanDigest, "selfFacts">): boolean {
-  return arm === "free" && digest.selfFacts.length === 0;
+export function writesDirectionExample(arm: OpenerWriterArm, digest: Pick<OpenerPlanDigest, "selfFacts" | "noExperienceLabels">): boolean {
+  // 用戶說過「有興趣但沒有經驗」就不教他分享經驗。
+  return arm === "free" && digest.selfFacts.length === 0 && digest.noExperienceLabels.length === 0;
 }
 
 export interface OpenerWriteInput {
