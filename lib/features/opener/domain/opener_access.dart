@@ -40,11 +40,16 @@ class OpenerAccess {
     required this.visibleTypes,
     required this.lockedTypes,
     this.cardSet = 1,
+    this.directions = const {},
   });
 
   final int contractVersion;
   /// 1＝五風格（延展／共鳴／調情／幽默／冷讀）；2＝一句推薦＋四句備選。
   final int cardSet;
+
+  /// 方向＋範例卡（2026-09-26 Bruce／Eric）：類型 → 給用戶的方向。那張卡的句子是範例，
+  /// 要用戶換成自己的經驗再傳；畫面依此標示，不當可原封送出的句子。
+  final Map<String, String> directions;
   final String servedTier;
   final List<String> visibleTypes;
   final List<String> lockedTypes;
@@ -57,6 +62,7 @@ class OpenerAccess {
         'visibleTypes': visibleTypes,
         'lockedTypes': lockedTypes,
         if (cardSet == 2) 'cardSet': cardSet,
+        if (directions.isNotEmpty) 'directions': directions,
       };
 
   /// 防禦式解析：形狀不對回 null（呼叫端當作「沒有 server access」，
@@ -95,6 +101,21 @@ class OpenerAccess {
       visibleTypes: visibleTypes,
       lockedTypes: lockedTypes,
       cardSet: raw['cardSet'] == 2 ? 2 : 1,
+      directions: _parseDirections(raw['directions']),
     );
+  }
+
+  static Map<String, String> _parseDirections(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <String, String>{};
+    raw.forEach((key, value) {
+      if (key is String &&
+          OpenerAccessContract.canonicalPaidOrder.contains(key) &&
+          value is String &&
+          value.trim().isNotEmpty) {
+        out[key] = value.trim();
+      }
+    });
+    return out;
   }
 }

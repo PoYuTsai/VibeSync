@@ -197,6 +197,17 @@ void main() {
       expect(set2.toJson()['cardSet'], 2);
       expect(OpenerAccess.tryParse(base)!.toJson().containsKey('cardSet'), isFalse, reason: '五風格快取格式不變');
       expect(OpenerAccess.tryParse({...base, 'cardSet': 'x'})!.cardSet, 1);
+      final withDirection = OpenerAccess.tryParse({
+        ...base,
+        'cardSet': 2,
+        'directions': {'coldRead': ' 可以先分享自己夜跑的經驗 ', 'bogus': 'x', 'extend': ''},
+      })!;
+      expect(withDirection.directions, {'coldRead': '可以先分享自己夜跑的經驗'},
+          reason: '只收五型之一、非空的方向');
+      expect(OpenerAccess.tryParse(withDirection.toJson())!.directions,
+          withDirection.directions,
+          reason: '快取往返保留方向');
+      expect(OpenerAccess.tryParse(base)!.toJson().containsKey('directions'), isFalse);
       expect(OpenerAccess.tryParse('free'), isNull);
       expect(OpenerAccess.tryParse({'servedTier': ''}), isNull);
       expect(

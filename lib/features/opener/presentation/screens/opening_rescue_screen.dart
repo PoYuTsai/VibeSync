@@ -2365,6 +2365,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   }) {
     final cardSet = _result?.access?.cardSet ?? 1;
     final label = OpeningRescueScreen.openerTypeLabel(type, cardSet: cardSet);
+    // 方向＋範例卡：句子是範例，要用戶換成自己的經驗（Bruce 9/26）。
+    final direction = cardSet == 2 ? _result?.access?.directions[type] : null;
     // 一句推薦＋四句備選不是風格：不配五風格的圖示（調情眨眼、冷讀水晶球）。
     final icon = cardSet == 2 ? null : replyStyleIcons[type];
 
@@ -2426,18 +2428,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             if (stretch)
               isLocked
                   ? _buildLockedContent()
-                  : Text(content,
-                      style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.onBackgroundPrimary, height: 1.6))
+                  : _buildOpenerContent(content, direction)
             else
               Expanded(
                   child: SingleChildScrollView(
                       child: isLocked
                           ? _buildLockedContent()
-                          : Text(content,
-                              style: AppTypography.bodyMedium.copyWith(
-                                  color: AppColors.onBackgroundPrimary,
-                                  height: 1.6)))),
+                          : _buildOpenerContent(content, direction))),
 
             const SizedBox(height: 8),
 
@@ -2468,7 +2465,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     );
                   },
                   icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('複製'),
+                  label: Text(direction == null ? '複製' : '複製範例'),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.ctaStart,
                   ),
@@ -2477,6 +2474,30 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildOpenerContent(String content, String? direction) {
+    final sentence = Text(content,
+        style: AppTypography.bodyMedium
+            .copyWith(color: AppColors.onBackgroundPrimary, height: 1.6));
+    if (direction == null) return sentence;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(direction,
+            style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundPrimary,
+                fontWeight: FontWeight.w600,
+                height: 1.5)),
+        const SizedBox(height: 8),
+        Text('範例，換成你自己的經驗再傳：',
+            style: AppTypography.caption
+                .copyWith(color: AppColors.onBackgroundSecondary)),
+        const SizedBox(height: 4),
+        sentence,
+      ],
     );
   }
 
