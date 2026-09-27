@@ -7,7 +7,7 @@
 
 | 檔案 | 內容 |
 |---|---|
-| `cases.json` | 22 題固定案例：V2 的 F1–F10、H01–H08、N01/N03/N05/N10（A 臂），含快照 |
+| `cases.json` | 26 題固定案例：V2 的 F1–F10、H01–H08、N01/N03/N05/N10（A 臂），加 L01–L04 沒線索案例，含快照 |
 | `corpus.json` | 114 句補充語料（14 種角色、58 句陷阱），五位撰寫者 × 兩位覆核者標註一致才收 |
 | `bruce_calibration.json` | Bruce 9/23 原始作答逐字轉錄：主表 36 句＋附表有標註的 60 句 |
 | `plan_eval.ts` | `--oracle` 免費結構檢查；`--live` 付費①規劃判類 |
@@ -15,13 +15,15 @@
 | `judge.ts` | `--calibrate` 校準；`--runs=` 盲評黑箱輸出（打亂順序、不給風格名） |
 | `report.ts` | 依臂 × 次彙整閘門指標 |
 
+L02（只有一張自拍）以 `imageCount=1`、零線索快照近似；現有 schema 沒有實際照片欄位，`blackbox.ts` 也不送圖片。此案例只覆蓋沒線索生成，不驗證照片辨識或照片計費。
+
 ## 用法（repo 根目錄；沒有 `--live` 都是免費 dry run）
 
 ```sh
 deno run -A tools/opener-plan-write-eval/plan_eval.ts --oracle                 # 免費：寫手輸入不漏不該進的原文
 deno run -A tools/opener-plan-write-eval/plan_eval.ts --live --repeats=3       # 付費①，約 US$2.5
 deno run -A tools/opener-plan-write-eval/judge.ts --calibrate --live           # 付費，約 US$0.5
-deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=B --live            # 付費②，B 臂 66 次約 US$0.8
+deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=B --live            # 付費②，B 臂 78 次，費用依實際 token
 deno run -A tools/opener-plan-write-eval/judge.ts --runs=<A>,<B>,<OLD> --live  # 付費，約 US$1.4
 deno run -A tools/opener-plan-write-eval/report.ts <judged.json>
 ```

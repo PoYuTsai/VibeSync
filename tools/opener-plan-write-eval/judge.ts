@@ -22,6 +22,8 @@ export const JUDGE_CODES = [
   "hard_to_answer",
   "fabricated",
   "awkward",
+  "speech_self_discount",
+  "retreat_filler",
 ] as const;
 
 export const JUDGE_PROMPT = `你是交友開場的資深教練，替一位付費用戶把關：他會不會把這句「原封不動」傳給她當第一則訊息。你只判斷，不改寫。
@@ -42,6 +44,8 @@ export const JUDGE_PROMPT = `你是交友開場的資深教練，替一位付費
 - hard_to_answer：她得先猜意思、接受考驗、證明自己或配合演出才能回。
 - fabricated：句子說出她或用戶的某件事，但資料與用戶補充裡都沒有。
 - awkward：意思不清楚、讀起來不像真人會傳的話。
+- speech_self_discount：句子以自己的問題、話題或發言為對象，明說它無聊、沒營養、不值得聽或不重要，並以此當開口鋪墊或撤回。形容劇情、描述無聊心情、引用對方的話都不算。必須附卡片裡的逐字片段當證據。
+- retreat_filler：核心提問已完整，卻另外加上「我只是隨口說說／不用當真／隨便問問」等撤回，或叫她隨便回的句尾。刪掉不影響原意；正常事實、必要界線與合理禮貌不算。必須附卡片裡的逐字片段當證據。
 沒有任何代碼、而且讀起來自然，才是 willing=true。不要因為句子「還可以」就放寬。
 
 ## 輸出（只輸出 JSON）

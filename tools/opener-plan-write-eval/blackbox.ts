@@ -1,4 +1,4 @@
-// 結構刀黑箱：22 題 × 臂 × 重複，走真的 handler（claim／生成／投影／settle）。
+// 結構刀黑箱：cases.json 的案例 × 臂 × 重複，走真的 handler（claim／生成／投影／settle）。
 //   A   ＝ OPENER_PLAN_WRITE=true、五風格寫手
 //   B   ＝ OPENER_PLAN_WRITE=true、請求帶 openerCardSet=2（新版 App：一句推薦＋四句備選）
 //   OLD ＝ 旗標關（f80b59bd 舊路徑，同一份程式碼逐位元組）

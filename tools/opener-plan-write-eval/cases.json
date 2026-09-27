@@ -6,7 +6,7 @@
    "scenarios.json": "2dd3ca18240a64d3f5d4fd8ad5a7b3d5c72aaf9b1ef4537831a1da41f4fccb94",
    "regression_cases.json": "4258c66b56af81dc7eed34a849e3ce2226296b9cffb8aa34ae07d384aea3df64"
   },
-  "note": "copied verbatim fields; humanChecks (pre-9/24 wording) intentionally dropped; N01/N03/N05/N10 arm A from tools/opener-two-stage-eval/naturalness_cases.json with CUE_QUOTES cues (as naturalness.ts syntheticSnapshot)",
+  "note": "copied verbatim fields; humanChecks (pre-9/24 wording) intentionally dropped; N01/N03/N05/N10 arm A from tools/opener-two-stage-eval/naturalness_cases.json with CUE_QUOTES cues (as naturalness.ts syntheticSnapshot); L01-L04 are synthetic low-info regression cases added 2026-09-27; L02 represents a selfie only as an analysis snapshot, not an actual image request",
   "naturalness_cases.json": "56f90548998e1a88aa1ae7ad7116a5765f2b2cc4693d81ab98f34a22e2832c69"
  },
  "cases": [
@@ -925,6 +925,76 @@
       }
      }
     ]
+   }
+  },
+  {
+   "id": "L01",
+   "domain": "只有名字",
+   "group": "low_info",
+   "intentNote": "只有名字，跳過補充；不從名字推測她的興趣或經歷。",
+   "profileInfo": {
+    "name": "小晴"
+   },
+   "contribution": {
+    "state": "skipped",
+    "freeText": null
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "只有名字，沒有可接話的資料。",
+    "cues": []
+   }
+  },
+  {
+   "id": "L02",
+   "domain": "只有一張自拍",
+   "group": "low_info",
+   "intentNote": "單張自拍、沒有文字或可接線索。既有 schema 無實際照片欄位，以 imageCount=1、零線索快照近似；blackbox 未送圖片，只覆蓋沒線索生成，不驗證照片辨識或照片計費。",
+   "profileInfo": {},
+   "contribution": {
+    "state": "skipped",
+    "freeText": null
+   },
+   "snapshot": {
+    "imageCount": 1,
+    "profileDigest": "只有一張自拍，沒有可接話的背景或其他資料。",
+    "cues": []
+   }
+  },
+  {
+   "id": "L03",
+   "domain": "自介只寫 hi",
+   "group": "low_info",
+   "intentNote": "自介只寫 hi，跳過補充；不把招呼當興趣或正向線索。",
+   "profileInfo": {
+    "bio": "hi"
+   },
+   "contribution": {
+    "state": "skipped",
+    "freeText": null
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "自介只有 hi，沒有可接話的資料。",
+    "cues": []
+   }
+  },
+  {
+   "id": "L04",
+   "domain": "篩選型自介沒有正向線索",
+   "group": "low_info",
+   "intentNote": "篩選型自介沒有正向線索，跳過補充；不把界線當話題，不推測興趣或說教。",
+   "profileInfo": {
+    "bio": "不約炮、不收罐頭訊息，沒禮貌的不用來。"
+   },
+   "contribution": {
+    "state": "skipped",
+    "freeText": null
+   },
+   "snapshot": {
+    "imageCount": 0,
+    "profileDigest": "自介只有互動界線與篩選條件，沒有正向線索。",
+    "cues": []
    }
   }
  ]
