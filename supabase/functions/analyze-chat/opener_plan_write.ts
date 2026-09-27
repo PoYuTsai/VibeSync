@@ -34,6 +34,7 @@ import {
   OPENER_REWRITE_PROMPT,
   DIRECTION_EXAMPLE_TOKENS,
   OPENER_WRITE_MAX_TOKENS,
+  OPENER_WRITER_PROMPT_REVISION,
   type OpenerWriterArm,
   writesDirectionExample,
 } from "./opener_write.ts";
@@ -76,6 +77,7 @@ export interface PlanWriteDeps {
 /** 不含用戶原文的 telemetry。 */
 export interface PlanWriteTelemetry {
   arm: OpenerWriterArm;
+  writerPromptRevision: string;
   planSource: OpenerPlan["source"];
   planRepairedFields: string[];
   planCoverageGap: boolean;
@@ -144,6 +146,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   const now = deps.now ?? Date.now;
   const telemetry: PlanWriteTelemetry = {
     arm: input.arm,
+    writerPromptRevision: OPENER_WRITER_PROMPT_REVISION,
     planSource: "profile_only",
     planRepairedFields: [],
     planCoverageGap: false,

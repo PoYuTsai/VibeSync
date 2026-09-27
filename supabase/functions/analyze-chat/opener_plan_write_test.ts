@@ -3,7 +3,7 @@ import { containsCrudeInsult } from "../_shared/crude_offense.ts";
 import { buildOpenerMaterials } from "./opener_material.ts";
 import { isValidOpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
 import type { OpenerFlowModelRequest } from "./opener_flow_handler.ts";
-import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stage.ts";
+import { computeOpenerGenerationInputHash, OPENER_FLOW_PROMPT_VERSION, type OpenerAnalysisSnapshot, type OpenerQuestionOption } from "./opener_stage.ts";
 import { digestOpenerPlan, OPENER_PLAN_PROMPT, type OpenerPlanContext, parseOpenerPlan, profileOnlyPlan } from "./opener_plan.ts";
 import { buildOpenerWritePrompt, buildOpenerWriteUserContent, OPENER_REWRITE_PROMPT } from "./opener_write.ts";
 import { HANDLING_NOTE, handlingNoteFor, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard, withoutEmoji } from "./opener_pick.ts";
@@ -220,6 +220,64 @@ Deno.test("兩臂 prompt：A 臂保留五風格定義，B 臂是一句推薦＋�
   for (const p of [a, b]) assert(p.includes("只開話題：不約她"));
 });
 
+// ── prompt 文字與生成指紋防回退 ──
+Deno.test("寫手姿態：兩種卡組共用理所當然的規則，保留自述來源與位置限制", () => {
+  const stance = `## 說話的姿態：理所當然
+- 這則訊息本來就值得她回：第一個字就是內容，不先替它打折。
+- 不評價自己的問題（無聊、沒營養、蠢、廢、亂問、隨便問問）；不請示、不預告（問妳一個問題、想請問、不好意思、打擾一下、冒昧）。
+- 不替她降低回答的份量（隨口說說、隨便回、想到什麼說什麼、不用當真、不回也沒關係）。
+- 好回答靠題目具體、她一句就能答，不是靠說這題不重要。低壓是她回得輕鬆，不是你講得心虛。
+- 自信不是強硬：不命令、不催、不給她條件（不准回隨便、一定要回、快說），不宣稱自己的話很重要，不替她斷言她會想回；直接問，語氣還是像對朋友那樣客氣。真的好奇、正常禮貌、對不確定的事說「我猜」都可以留。
+- 每則寫完，遮掉開頭那段鋪墊或句尾那段補充再讀：意思沒變，就刪掉。剩下的句子太空泛，就回到給你的線索把問題寫具體，不要再加一句包裝。`;
+  for (const arm of ["styles", "free"] as const) {
+    const prompt = buildOpenerWritePrompt(arm);
+    assert(prompt.includes(stance));
+    assert(prompt.indexOf(stance) > prompt.indexOf("## 每一則都要"));
+    assert(prompt.indexOf(stance) < prompt.indexOf("## 五則"));
+    assert(prompt.includes("或問完她之後照原句程度自然帶一句時才用（不誇大、不當資格，也不把自己講得很差），不拿來開頭、不當資格、不硬抓共同點"));
+    for (const old of ["語氣輕鬆一點的問法", "她好回答的低壓話題", "謙虛帶一句"]) assertFalse(prompt.includes(old));
+  }
+});
+
+Deno.test("寫手備選：輕鬆來自內容，帶到自己在問完她後自然帶一句", () => {
+  const prompt = buildOpenerWritePrompt("free");
+  assert(prompt.includes("humor（輕鬆一點）：同一件事，用更口語、俐落或帶一點小趣味的方式開口；趣味在內容裡，直接進話題。不先說問題無聊、沒營養，不叫她隨便回，也不硬加笑點。"));
+  assert(prompt.includes("coldRead（帶到自己）：有用戶自述時，先問她，問完再照原句程度自然帶一句用戶自己的事。"));
+});
+
+Deno.test("寫手沒線索：兩種卡組都直接問具體小話題，不用低壓包裝", () => {
+  const snapshot: OpenerAnalysisSnapshot = { ...SNAPSHOT, cues: [] };
+  const context = { ...ctx(null), snapshot };
+  const plan = profileOnlyPlan(context);
+  const digest = digestOpenerPlan(plan, context);
+  for (const arm of ["styles", "free"] as const) {
+    const content = buildOpenerWriteUserContent({ snapshot, freeText: null, plan, digest, primaryStyle: "extend", arm });
+    assert(content.includes("她的線索都不適合：開一個不預設她任何事實、她一句就能回答的具體小話題；直接問，不說這題無聊，也不叫她隨便回"));
+    for (const old of ["語氣輕鬆一點的問法", "她好回答的低壓話題", "謙虛帶一句"]) assertFalse(content.includes(old));
+  }
+});
+
+Deno.test("改寫器姿態：不加入自我貶低、退縮或強勢話術", () => {
+  assert(OPENER_REWRITE_PROMPT.includes("改寫時不加自我貶低或退縮的鋪墊，也不加命令或強勢話術。"));
+});
+
+Deno.test("寫手改版不改生成指紋：沿用 42eb022d 的兩種合約版本基準", async () => {
+  // 在修改 prompt 前，以 42eb022d 的 computeOpenerGenerationInputHash 實算；不是新版與自身互比。
+  const expected = [
+    "2981ad8723f1a21578153501920038ea54c74147987e5ccdc9d2991e960de47d",
+    "c45c87732d5dd61eb7f4c767ea567562bfd1276a3d17d5a81467faa246299a0a",
+  ];
+  for (const contractVersion of [1, 2]) {
+    assertEquals(await computeOpenerGenerationInputHash({
+      sessionId: "11111111-2222-4333-8444-555555555555",
+      analysisRevision: 1,
+      contribution: { state: "skipped", questionId: null, selectedOptionId: null, freeText: null },
+      promptVersion: OPENER_FLOW_PROMPT_VERSION,
+      contractVersion,
+    }), expected[contractVersion - 1]);
+  }
+});
+
 // ── 挑選 ──
 const RULES = { blockedQuotes: ["她好醜"], excludedTerms: ["工作"], selfFacts: [] as string[], profileText: SNAPSHOT.profileText.bio!, shorter: false };
 
@@ -324,6 +382,8 @@ Deno.test("執行：規劃＋寫手兩次呼叫，規劃不重試不 fallback，
   assertEquals(Object.keys(out.result.openers).length, 5);
   assertEquals(out.result.materialUse.traceStatus, "matched");
   assertEquals(out.telemetry.roleCounts, { invite_request: 1 });
+  assertEquals(out.telemetry.writerPromptRevision, "opener-confidence-tone-v1");
+  assertFalse("writerPromptRevision" in out.result, "revision 僅供 telemetry，不加入交付結果");
 });
 
 Deno.test("執行：規劃失敗不擋交付，退只用她的資料並提示補充沒讀到", async () => {
