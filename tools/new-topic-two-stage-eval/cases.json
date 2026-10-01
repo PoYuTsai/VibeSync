@@ -1,0 +1,107 @@
+{
+  "version": "new-topic-two-stage-eval-cases-v1",
+  "note": "人工示例，不是真用戶資料。partners 的格式照 NewTopicPartnerContextBuilder 產出（關於我已停用，一律 null）。topicContext 沒寫的欄位＝用戶沒選。E1–E3 是提案 §7 的三個例子。",
+  "partners": {
+    "xiaowen": "[對象作戰板：小雯]\n- 累計對話：4 段，最後互動 2026-09-14\n- 最近互動投入：58（只調整節奏，不是關係階段或長期特質）\n- 興趣：甜點、爬山、韓劇\n- 性格：慢熟、愛吐槽\n- 過往備註：回覆慢但都會回；週末常跟朋友去郊外\n- 只可使用以上明確紀錄；手動資料不能冒充她說過的話，也不得猜補未列出的興趣",
+    "ivy": "[對象作戰板：Ivy]\n- 累計對話：2 段，最後互動 2026-09-20\n- 最近互動投入：32（只調整節奏，不是關係階段或長期特質）\n- 興趣：咖啡、底片攝影、貓\n- 性格：理性、獨立\n- 使用者確認的對方資料：在設計公司上班，常加班\n- 只可使用以上明確紀錄；手動資料不能冒充她說過的話，也不得猜補未列出的興趣",
+    "anan": "[對象作戰板：安安]\n- 累計對話：6 段，最後互動 2026-09-27\n- 最近互動投入：81（只調整節奏，不是關係階段或長期特質）\n- 興趣：路跑、日本旅行、老歌\n- 性格：外向、愛笑、好勝\n- 過往備註：她說過想去北海道看雪；聊天常互虧\n- 只可使用以上明確紀錄；手動資料不能冒充她說過的話，也不得猜補未列出的興趣"
+  },
+  "cases": [
+    {
+      "id": "E1",
+      "source": "提案 §7 例一",
+      "label": "冷掉了・一到四週・我沒回她｜看到想到她的東西",
+      "partner": "xiaowen",
+      "situation": "went_cold",
+      "topicContext": { "coldDuration": "weeks", "coldStop": "i_no_reply", "materialKind": "trigger", "materialText": "路過一家很浮誇的甜點店，她之前說愛吃甜" }
+    },
+    {
+      "id": "E2",
+      "source": "提案 §7 例二",
+      "label": "還在聊，但接不下去・常只回哈哈、嗯｜沒有，幫我想",
+      "partner": "ivy",
+      "situation": "stuck",
+      "topicContext": { "engagement": "red", "materialKind": "none" }
+    },
+    {
+      "id": "E3",
+      "source": "提案 §7 例三",
+      "label": "聊得不錯，想更靠近・會反問、聊很多｜我們之間的梗",
+      "partner": "anan",
+      "situation": "warm_up",
+      "topicContext": { "engagement": "green", "materialKind": "inside_joke", "materialText": "她說我的五分鐘都是半小時" }
+    },
+    {
+      "id": "C1",
+      "source": "冷掉／幾天／她沒回",
+      "label": "冷掉了・幾天到一週・她沒回我｜之前聊過的事",
+      "partner": "xiaowen",
+      "situation": "went_cold",
+      "topicContext": { "coldDuration": "days", "coldStop": "she_no_reply", "materialKind": "past_topic", "materialText": "她說在準備潛水證照" }
+    },
+    {
+      "id": "C2",
+      "source": "冷掉／一個月以上／自然停（可承認空窗）",
+      "label": "冷掉了・一個月以上・聊著聊著就停了｜我最近遇到的事",
+      "partner": "anan",
+      "situation": "went_cold",
+      "topicContext": { "coldDuration": "month_plus", "coldStop": "faded", "materialKind": "my_story", "materialText": "信心滿滿走進店裡，才發現走錯分店" }
+    },
+    {
+      "id": "C3",
+      "source": "冷掉／一個月以上／她很冷；沒有對象資料",
+      "label": "冷掉了・一個月以上・她最近都回很冷｜沒有，幫我想",
+      "partner": null,
+      "situation": "went_cold",
+      "topicContext": { "coldDuration": "month_plus", "coldStop": "she_cold", "materialKind": "none" }
+    },
+    {
+      "id": "C4",
+      "source": "冷掉／沒選多久／她沒回；她的限動",
+      "label": "冷掉了・她沒回我｜看到想到她的東西",
+      "partner": "xiaowen",
+      "situation": "went_cold",
+      "topicContext": { "coldStop": "she_no_reply", "materialKind": "trigger", "materialText": "她發了爬山的限動，山頂雲海超誇張" }
+    },
+    {
+      "id": "C5",
+      "source": "冷掉／一個月以上／我沒回（可承認空窗、道歉最多一句）",
+      "label": "冷掉了・一個月以上・我沒回她｜我們之間的梗",
+      "partner": "ivy",
+      "situation": "went_cold",
+      "topicContext": { "coldDuration": "month_plus", "coldStop": "i_no_reply", "materialKind": "inside_joke", "materialText": "她都叫我人體氣象台，因為我每次都提醒她帶傘" }
+    },
+    {
+      "id": "S1",
+      "source": "還在聊／黃燈",
+      "label": "還在聊，但接不下去・有回，但很短｜之前聊過的事",
+      "partner": "xiaowen",
+      "situation": "stuck",
+      "topicContext": { "engagement": "yellow", "materialKind": "past_topic", "materialText": "她說最近在追一部韓劇，覺得男二比男主帥" }
+    },
+    {
+      "id": "D1",
+      "source": "剛約完會／綠燈（nextMove 可提見面）",
+      "label": "剛約完會・主動傳訊息或說開心｜約會時聊到的事",
+      "partner": "anan",
+      "situation": "after_date",
+      "topicContext": { "engagement": "green", "materialKind": "past_topic", "materialText": "吃飯時她說一直想學衝浪，但怕曬黑" }
+    },
+    {
+      "id": "D2",
+      "source": "剛約完會／紅燈",
+      "label": "剛約完會・還沒回或很冷淡｜我們之間的梗",
+      "partner": "ivy",
+      "situation": "after_date",
+      "topicContext": { "engagement": "red", "materialKind": "inside_joke", "materialText": "約會時她一直笑我點餐選擇困難" }
+    },
+    {
+      "id": "W1",
+      "source": "想更靠近／紅燈（不升溫）",
+      "label": "聊得不錯，想更靠近・常只回哈哈、嗯｜我最近遇到的事",
+      "partner": "ivy",
+      "situation": "warm_up",
+      "topicContext": { "engagement": "red", "materialKind": "my_story", "materialText": "這週被主管拉去跑公司接力賽，跑完腳直接廢掉" }
+    }
+  ]
+}
