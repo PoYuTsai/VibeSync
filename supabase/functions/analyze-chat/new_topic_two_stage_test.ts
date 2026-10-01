@@ -326,6 +326,21 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
     ),
   );
   assert(hasRule(rulesFor({ coldStop: "faded" }), "沒說多久："));
+  // 她沒回上一則：「直接接上次聊到的事」會變成追上一則，多久那行讓給怎麼停。
+  const daysNoReply = rulesFor({
+    coldDuration: "days",
+    coldStop: "she_no_reply",
+  });
+  assert(hasRule(daysNoReply, "她沒回上一則："));
+  assertFalse(hasRule(daysNoReply, "幾天到一週沒聊："));
+  assert(hasRule(daysNoReply, "見面："));
+  assert(hasRule(daysNoReply, "nextMove 多寫一句："));
+  assert(
+    hasRule(
+      rulesFor({ coldDuration: "days", coldStop: "she_cold" }),
+      "幾天到一週沒聊：",
+    ),
+  );
 
   const stops: Array<[string, string]> = [
     ["she_no_reply", "她沒回上一則："],

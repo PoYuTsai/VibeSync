@@ -212,6 +212,7 @@ topics 必須恰好五個；recommendation.index 是 0-4 的整數，指向最�
 | coldStop = i_no_reply | 上次是用戶沒回她：最多一句帶過（不長篇解釋、不一直道歉），接著講內容。 |
 | coldStop = she_cold | 她最近都回很冷：一則就好、很輕、她不用費力就能回；不連續丟話題、不加曖昧、不約她。 |
 | coldStop = faded | （不加行） |
+| coldDuration = days 且 coldStop = she_no_reply | 不送「幾天到一週」那行：「接上次聊到的事」等於追上一則，讓給「她沒回上一則」（2026-10-01 實作時補）。 |
 
 **投入程度**（stuck／after_date／warm_up 才有）：
 
@@ -353,3 +354,13 @@ Flutter（`flutter test` 相關檔＋`flutter analyze`）：
 ## 8. 這次不做
 
 照提案 §11；另外：不改 legacy 提示詞、不做真模型評估（只備好工具與估價）。
+
+## 9. 實作定案補記（2026-10-01）
+
+- **400 reason 名稱**：enum 錯誤用 snake_case 鍵名：`topic_context_cold_duration_invalid`、`topic_context_cold_stop_invalid`、`topic_context_engagement_invalid`、`topic_context_material_kind_invalid`。前四種素材缺 `materialText`（undefined 或 null）回 `topic_context_material_text_required`；有值但不是字串才回 `topic_context_material_text_invalid`。App 只看 code，不看 reason。
+- **§6 長度測試**：逐字系統提示詞比 legacy 短 27.8%，所以測試鎖兩件事：進階系統提示詞不比 legacy 長；system＋user 合計與 legacy 相差 ±25% 內（實測 0.76–0.81）。
+- **emoji 計數**：稽核的 `multiEmojiLines` 以 grapheme 計（ZWJ 組合與國旗各算一個），與「一則最多一個」的產品意圖一致。
+- **稽核**：包在 try/catch，失敗只 logWarn；settlement 是 replayed 時不稽核（題目不是這筆產生的）。
+- **局面行順序**：「怎麼停」排在「多久」前面。
+- **已接受風險**：開關在 settlement pending 重試窗口內被關掉時，那筆進階請求拿不到回放；用戶素材含英文 `stuck` 且被模型照抄時會被既有可見代碼守門判失敗（502、不扣）。
+- **App**：選基本模式後同一組答案持續用基本模式生成（改任何答案、換對象、調整狀況才恢復）；基本模式的結果「這組根據」只列第一問；素材被擋（422）後按鈕回到「生成新話題」，不邀重試；換對象時保留追問與素材文字（與保留第一問一致，待 Eric／Bruce 決定是否改清空）。

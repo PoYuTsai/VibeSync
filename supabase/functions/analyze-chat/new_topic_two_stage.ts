@@ -402,6 +402,10 @@ function situationRules(
     // 「怎麼停」比「多久」優先，所以排在前面。
     const stopRule = coldStop === null ? undefined : COLD_STOP_RULES[coldStop];
     if (stopRule) rules.push(stopRule);
+    // 她沒回上一則時不能「接上次聊到的事」（那等於追上一則）：多久那行讓給怎麼停。
+    if (coldDuration === "days" && coldStop === "she_no_reply") {
+      return rulesTail();
+    }
     rules.push(
       coldDuration === "days"
         ? COLD_DURATION_RULES.days
@@ -416,18 +420,23 @@ function situationRules(
   } else if (situation !== null && engagement !== null) {
     rules.push(ENGAGEMENT_RULES[situation][engagement]);
   }
-  rules.push(
-    (situation === "after_date" || situation === "warm_up") &&
-      engagement === "green"
-      ? MEET_ALLOWED_RULE
-      : MEET_DEFAULT_RULE,
-  );
-  if (
-    situation === "went_cold" || engagement === "yellow" || engagement === "red"
-  ) {
-    rules.push(COOL_NEXT_MOVE_RULE);
+  return rulesTail();
+
+  function rulesTail(): string[] {
+    rules.push(
+      (situation === "after_date" || situation === "warm_up") &&
+        engagement === "green"
+        ? MEET_ALLOWED_RULE
+        : MEET_DEFAULT_RULE,
+    );
+    if (
+      situation === "went_cold" || engagement === "yellow" ||
+      engagement === "red"
+    ) {
+      rules.push(COOL_NEXT_MOVE_RULE);
+    }
+    return rules;
   }
-  return rules;
 }
 
 /**
