@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_audio_sfx.dart';
@@ -64,6 +66,30 @@ void main() {
         expect(sha256.convert(snap.readAsBytesSync()).toString(), hash,
             reason: name);
       });
+    });
+  });
+
+  group('AudioContext（尊重靜音鍵、不打斷背景音樂）', () {
+    test('iOS 用 ambient，不明確加 mixWithOthers（避免被拒而退回 playback）', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        final context = buildPracticeDrawAudioContext();
+        expect(context.iOS.category, AVAudioSessionCategory.ambient);
+        expect(context.iOS.options, isEmpty);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    test('Android 沿用原本的通用旗標，行為不變', () {
+      final context = buildPracticeDrawAudioContext();
+      expect(
+        context.android,
+        AudioContextConfig(
+          respectSilence: true,
+          focus: AudioContextConfigFocus.mixWithOthers,
+        ).buildAndroid(),
+      );
     });
   });
 

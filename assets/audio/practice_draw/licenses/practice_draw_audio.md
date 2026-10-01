@@ -148,7 +148,9 @@ VibeSync 專用內容），加上 Claude Code 程式合成的長音。沒有使�
 2. 實作：`AudioPlayersPracticeDrawSfx`（`lib/features/practice_chat/presentation/widgets/practice_draw_audio_sfx.dart`）。
    - whoosh／reveal chime：一次性（`ReleaseMode.release`），各自獨立 player 避免互相截斷。
    - waiting loop：F3 已退役；相容 API 固定 no-op，不建立 player。
-   - iOS AudioContext：`respectSilence: true`（尊重靜音鍵，ambient）＋`mixWithOthers`（不中斷使用者背景音樂）。
+   - AudioContext：iOS 直接用 `ambient`（尊重靜音鍵、與其他 App 混音，不中斷使用者背景音樂），不再明確加
+     `mixWithOthers`：audioplayers 不允許這個組合，被 iOS 拒絕時 session 會停在 `playback`。Android 不變。
+     見 `buildPracticeDrawAudioContext()`。
    - 全程 guarded：headless／測試環境無 platform channel 時所有播放／停止靜默吞例外，不丟。
 3. 音量常數集中在實作檔內（whoosh 0.22／reveal chime 0.8／reveal bed 0.74／flip snap 0.25），方便真機調整。
 4. drawing 等待期不播放任何循環音效，只有咻聲 v2 自帶的一次性暖尾巴；同時 `preloadReveal()` 預載 bed 與

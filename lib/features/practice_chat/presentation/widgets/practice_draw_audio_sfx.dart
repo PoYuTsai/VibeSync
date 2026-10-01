@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'practice_draw_sfx.dart';
 
@@ -31,6 +32,26 @@ const List<String> _kFlipSnapAssets = [
   'audio/practice_draw/practice_draw_flip_snap_3.wav',
 ];
 
+/// 翻牌音效的全域 AudioContext：尊重靜音鍵、不打斷使用者的背景音樂。
+///
+/// iOS 直接指定 `ambient`：它本身就會與其他 App 混音、尊重靜音鍵，**不要**再明確加
+/// `mixWithOthers`。舊寫法 `AudioContextConfig(respectSilence: true, focus:
+/// mixWithOthers)` 是 audioplayers_platform_interface 7.1.1 在 debug 用 assert 擋下的
+/// 組合；release 沒有 assert，會把 `ambient＋mixWithOthers` 送給 iOS，被拒時 session
+/// 停在 plugin 預設的 `playback`：不理會靜音鍵，還會打斷背景音樂。
+/// Android 沿用同一組通用旗標，行為不變。
+@visibleForTesting
+AudioContext buildPracticeDrawAudioContext() {
+  final generic = AudioContextConfig(
+    respectSilence: true,
+    focus: AudioContextConfigFocus.mixWithOthers,
+  );
+  return AudioContext(
+    android: generic.buildAndroid(),
+    iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
+  );
+}
+
 /// 每日翻牌音效的真實實作（Batch 4.7B：把 4.7A 的 [NoopPracticeDrawSfx] 換成會真的
 /// 播放的版本）。背後用 `audioplayers`。
 ///
@@ -44,8 +65,8 @@ const List<String> _kFlipSnapAssets = [
 ///   先載好（`ReleaseMode.stop`，停止後保留音源），播放時從頭 resume，降低起播延遲。
 /// - **waiting loop 已退役**：build 326 證實等待期 shimmer 是殘留「西西簌簌」來源；
 ///   [playWaitingLoop]／[stopWaitingLoop] 暫留介面相容，但 production 實作固定 no-op。
-/// - **iOS AudioContext**：`respectSilence`（ambient，尊重靜音鍵）＋`mixWithOthers`
-///   （不中斷使用者背景音樂）；非必要的浪漫音效在公共場合不擾人。
+/// - **AudioContext**：見 [buildPracticeDrawAudioContext]。iOS 用 `ambient`：尊重靜音鍵、
+///   不中斷使用者背景音樂；非必要的浪漫音效在公共場合不擾人。
 class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   AudioPlayersPracticeDrawSfx();
 
@@ -63,22 +84,24 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
 
   bool _bedActive = false;
   bool _contextConfigured = false;
+  bool _contextPending = false;
 
-  /// 首次播放時設定一次全域 AudioContext（尊重靜音鍵＋與他人音樂混音不中斷）。
-  /// 失敗（測試／無 platform）靜默吞掉。
+  /// 播放前設定全域 AudioContext。成功後才記為已設定；失敗（測試／無 platform／被系統
+  /// 拒絕）靜默吞掉，下一次播放再試，不會卡在 plugin 預設的 `playback`。
   void _ensureContext() {
-    if (_contextConfigured) return;
-    _contextConfigured = true;
-    unawaited(
-      AudioPlayer.global
-          .setAudioContext(
-            AudioContextConfig(
-              respectSilence: true,
-              focus: AudioContextConfigFocus.mixWithOthers,
-            ).build(),
-          )
-          .catchError((Object _) {}),
-    );
+    if (_contextConfigured || _contextPending) return;
+    _contextPending = true;
+    unawaited(() async {
+      try {
+        await AudioPlayer.global
+            .setAudioContext(buildPracticeDrawAudioContext());
+        _contextConfigured = true;
+      } catch (_) {
+        // 音效非關鍵路徑：失敗不丟，留給下一次播放重試。
+      } finally {
+        _contextPending = false;
+      }
+    }());
   }
 
   /// Lazy 建立一個 player 並套用 release mode。
