@@ -17,8 +17,6 @@ export const ANALYZE_CHAT_PROMPT_SENTINELS: readonly string[] = [
   "你是 VibeSync 的開場救星先鋒教練",
   // NEW_TOPIC_PROMPT
   "唯一可以當成**對方事實**的來源",
-  // NEW_TOPIC_TWO_STAGE_PROMPT
-  "照類型決定主詞，不改主詞",
   // QUICK_SYSTEM_PROMPT
   "你是 VibeSync 的核心判斷教練",
   // OPTIMIZE_MESSAGE_PROMPT / REFINE_REPLY_SYSTEM_PROMPT
@@ -30,4 +28,21 @@ export function hasAnalyzeChatPromptLeak(
   text: string | null | undefined,
 ): boolean {
   return containsPromptLeak(text, ANALYZE_CHAT_PROMPT_SENTINELS);
+}
+
+/**
+ * 新話題進階路徑的 sentinel 只在進階路徑檢查：沒帶 topicContext 的請求與
+ * 其他模式的守門維持原樣（legacy 不變）。
+ */
+export const NEW_TOPIC_TWO_STAGE_PROMPT_SENTINELS: readonly string[] = [
+  "照類型決定主詞，不改主詞",
+];
+
+export function hasNewTopicTwoStagePromptLeak(
+  text: string | null | undefined,
+): boolean {
+  return containsPromptLeak(text, [
+    ...ANALYZE_CHAT_PROMPT_SENTINELS,
+    ...NEW_TOPIC_TWO_STAGE_PROMPT_SENTINELS,
+  ]);
 }

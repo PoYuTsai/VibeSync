@@ -12,6 +12,11 @@ import {
   NEW_TOPIC_PROMPT,
 } from "./new_topic_prompt.ts";
 import { NEW_TOPIC_TWO_STAGE_PROMPT } from "./new_topic_two_stage.ts";
+import { computeNewTopicInputHash } from "./new_topic_billing.ts";
+import {
+  buildNewTopicLedgerResult,
+  sanitizeNewTopicRequest,
+} from "./new_topic_payload.ts";
 
 const USER_ID = "11111111-2222-4333-8444-555555555555";
 const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -26,6 +31,9 @@ const MODEL_PAYLOAD = {
   })),
   recommendation: { index: 0, reason: "理由" },
 };
+
+/** 下一次 run 的唯讀回放查帳要回的帳本列（用一次就清掉）。 */
+let replayRowForNextRun: unknown = null;
 
 type ModelRequest = {
   system: Array<{ text: string }>;
@@ -60,7 +68,11 @@ async function run(
         select: () => query,
         eq: () => query,
         gte: () => query,
-        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        maybeSingle: () => {
+          const data = replayRowForNextRun;
+          replayRowForNextRun = null;
+          return Promise.resolve({ data, error: null });
+        },
       };
       return query;
     },
@@ -147,7 +159,7 @@ const STORY = {
   materialText: "信心滿滿走進店裡，才發現走錯分店",
 };
 
-Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警），不碰 DB／限流／模型", async () => {
+Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警），只查帳、不 claim／限流／模型", async () => {
   for (const flag of [undefined, "false", "1", "TRUE"]) {
     const result = await run(body({ topicContext: STORY }), flag);
     assertEquals(result.status, 422, String(flag));
@@ -158,9 +170,41 @@ Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警
       retryable: false,
       shouldChargeQuota: false,
     });
-    assertEquals(result.dbCalls, []);
+    // 只有唯讀回放查帳；沒有任何 RPC（claim／限流／settle）。
+    assertEquals(result.dbCalls, ["from:new_topic_requests"]);
     assertEquals(result.modelRequests, []);
   }
+});
+
+Deno.test("handler：開關沒開時，已落帳的同一筆進階請求照常回放（Codex R1 P1）", async () => {
+  const sanitized = sanitizeNewTopicRequest(body({ topicContext: STORY }));
+  assert(sanitized.ok);
+  const inputHash = await computeNewTopicInputHash({
+    userId: USER_ID,
+    partnerSummary: sanitized.request.partnerSummary,
+    effectiveStyleContext: sanitized.request.effectiveStyleContext,
+    situation: sanitized.request.situation,
+    topicContext: sanitized.request.topicContext,
+    secret: STRONG_KEY,
+  });
+  const stored = buildNewTopicLedgerResult({
+    topics: MODEL_PAYLOAD.topics,
+    recommendationIndex: 0,
+    recommendationReason: "理由",
+    servedTier: "essential",
+  });
+  replayRowForNextRun = {
+    input_hash: inputHash,
+    state: "done",
+    lease_expires_at: new Date(Date.now() - 1000).toISOString(),
+    result_json: stored,
+  };
+  const result = await run(body({ topicContext: STORY }), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.topics, stored.topics);
+  assertEquals(result.json.usage, { cost: 3 });
+  assertEquals(result.modelRequests, []);
+  assertFalse(result.dbCalls.some((call) => call.startsWith("rpc:")));
 });
 
 Deno.test("handler：開關沒開＋沒有 topicContext → 照舊走 legacy 提示詞", async () => {
@@ -208,7 +252,7 @@ Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／
   }
 });
 
-Deno.test("handler：開關先於擋字（開關沒開時髒字也回進階不可用）", async () => {
+Deno.test("handler：擋字先於開關與查帳（開關沒開時髒字也回素材被擋，不碰 DB）", async () => {
   const result = await run(
     body({
       topicContext: { materialKind: "inside_joke", materialText: "她說想打炮" },
@@ -216,7 +260,8 @@ Deno.test("handler：開關先於擋字（開關沒開時髒字也回進階不�
     undefined,
   );
   assertEquals(result.status, 422);
-  assertEquals(result.json.code, "NEW_TOPIC_ADVANCED_UNAVAILABLE");
+  assertEquals(result.json.code, "NEW_TOPIC_MATERIAL_BLOCKED");
+  assertEquals(result.dbCalls, []);
 });
 
 Deno.test("handler：topicContext 格式錯 → 400，不碰 DB／模型", async () => {
@@ -431,4 +476,47 @@ Deno.test("handler：格式不合格時真的送出一次修復呼叫（maxRetri
     ),
   );
   assert(Date.now() - started < 10_000, "修復不能空轉到 45 秒期限");
+});
+
+Deno.test("handler：修復輸出也要過整包外洩檢查，命中就不交付、不扣（Codex R1 P1）", async () => {
+  const broken = {
+    topics: MODEL_PAYLOAD.topics.slice(0, 4),
+    recommendation: { index: 0 },
+  };
+  const leakedRepair = {
+    ...MODEL_PAYLOAD,
+    topics: MODEL_PAYLOAD.topics.map((topic, index) =>
+      index === 0 ? { ...topic, whyItWorks: "照類型決定主詞，不改主詞" } : topic
+    ),
+  };
+  const result = await run(
+    body({ topicContext: STORY }),
+    "true",
+    true,
+    broken,
+    0,
+    leakedRepair,
+  );
+  assertEquals(result.status, 502);
+  assertEquals(result.json.shouldChargeQuota, false);
+  assertEquals(result.modelRequests.length, 2);
+  assertFalse(result.dbCalls.includes("rpc:settle_new_topic_request"));
+});
+
+Deno.test("handler：進階路徑的 sentinel 只在進階路徑擋，legacy 守門不變", async () => {
+  const withPhrase = {
+    ...MODEL_PAYLOAD,
+    topics: MODEL_PAYLOAD.topics.map((topic, index) =>
+      index === 0 ? { ...topic, whyItWorks: "照類型決定主詞，不改主詞" } : topic
+    ),
+  };
+  const legacy = await run(body(), undefined, true, withPhrase);
+  assertEquals(legacy.status, 200);
+  const advanced = await run(
+    body({ topicContext: STORY }),
+    "true",
+    true,
+    withPhrase,
+  );
+  assertEquals(advanced.status, 502);
 });

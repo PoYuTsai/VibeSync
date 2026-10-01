@@ -60,7 +60,10 @@ import {
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   newTopicTwoStageTelemetry,
 } from "./new_topic_two_stage.ts";
-import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
+import {
+  hasAnalyzeChatPromptLeak,
+  hasNewTopicTwoStagePromptLeak,
+} from "./prompt_leak.ts";
 import {
   getErrorMessage,
   logError,
@@ -148,26 +151,7 @@ export async function handleNewTopicRequest(
   // 進階路徑（2026-10-01 規格 §2）：開關沒開就整筆拒絕、不偷偷降級；
   // 用戶寫的那句命中粗俗詞表也在這裡擋。都在 claim／限流／模型／扣費
   // 之前，log 只記 reason、不記原文。
-  // 已知風險：開關在 SETTLEMENT_PENDING 重試窗口內被關，同 requestId 的
-  // 重試拿到 422 而非已存結果（規格 §2 順序在 HMAC preflight 之前）。
-  // 回 422 不回 503：這是可預期的產品狀態，不該灌進 http_5xx 告警；App 只看 code。
   const newTopicContext = newTopicRequest.topicContext;
-  if (
-    newTopicContext !== null &&
-    Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"
-  ) {
-    logWarn("new_topic_advanced_unavailable", {
-      user: summarizeUser(deps.userId),
-      reason: "two_stage_disabled",
-    });
-    return jsonResponse({
-      error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
-      code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
-      message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
-      retryable: false,
-      shouldChargeQuota: false,
-    }, 422);
-  }
   const newTopicMaterialText = newTopicContext?.materialText ?? null;
   if (
     newTopicMaterialText !== null &&
@@ -312,6 +296,26 @@ export async function handleNewTopicRequest(
         preflight.result as unknown as Record<string, unknown>,
       ));
     }
+  }
+
+  // 進階開關排在唯讀回放查帳之後、claim 之前（Codex R1 P1）：已落帳的
+  // 同一筆請求照常回放、進行中照常 409；開關只擋「新的」進階生成。
+  // 回 422 不回 503：這是可預期的產品狀態，不該灌進 http_5xx 告警；App 只看 code。
+  if (
+    newTopicContext !== null &&
+    Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"
+  ) {
+    logWarn("new_topic_advanced_unavailable", {
+      user: summarizeUser(deps.userId),
+      reason: "two_stage_disabled",
+    });
+    return jsonResponse({
+      error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+      code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+      message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
+      retryable: false,
+      shouldChargeQuota: false,
+    }, 422);
   }
 
   // 4. Claim 65s lease（claim 必須發生在 quota 429 終局回應之前，
@@ -567,6 +571,11 @@ export async function handleNewTopicRequest(
   // 從這裡起的解析／repair／tier 投影／settle 與 legacy 共用同一個
   // completeNewTopicRequest（內部邏輯零改動，shim 同名變數），
   // exactly-once settle 語義不變。
+  // 進階路徑多查一條自己的 sentinel；legacy 與其他模式守門不變。
+  const newTopicPromptLeak = (text: string): boolean =>
+    newTopicContext !== null
+      ? hasNewTopicTwoStagePromptLeak(text)
+      : hasAnalyzeChatPromptLeak(text);
   const completeNewTopicRequest = async (modelOutput: {
     rawText: string;
     model: string;
@@ -586,7 +595,7 @@ export async function handleNewTopicRequest(
 
     // 反 prompt 外洩（2026-08-19）：同 opener——整包擋下、release claim、
     // 不扣費（settle 尚未開始，release 安全）。
-    if (hasAnalyzeChatPromptLeak(newTopicRawText)) {
+    if (newTopicPromptLeak(newTopicRawText)) {
       logWarn("prompt_leak_blocked", {
         user: summarizeUser(deps.userId),
         surface: "new_topic",
@@ -637,6 +646,24 @@ export async function handleNewTopicRequest(
         const repairedText = extractClaudeText(
           repairResult.data as { content?: Array<{ text?: string }> },
         );
+        // 修復輸出也要過整包外洩檢查（Codex R1 P1）：命中就 release、不扣。
+        if (newTopicPromptLeak(repairedText)) {
+          logWarn("prompt_leak_blocked", {
+            user: summarizeUser(deps.userId),
+            surface: "new_topic_repair",
+            textLength: repairedText.length,
+          });
+          if (!await releaseNewTopicCurrentClaim()) {
+            return newTopicReleaseFailedResponse();
+          }
+          return jsonResponse({
+            error: "NEW_TOPIC_RESPONSE_INVALID",
+            code: "NEW_TOPIC_RESPONSE_INVALID",
+            message:
+              "這次 AI 沒有產出完整的五個新話題，請重新生成一次；本次不會扣額度。",
+            shouldChargeQuota: false,
+          }, 502);
+        }
         const repairedParsed = mergeNewTopicRepairWithPrimaryOpeningLines(
           newTopicPrimaryParsed,
           parseJsonObjectFromText(repairedText),

@@ -491,7 +491,7 @@ Deno.test("user prompt：投入程度 3×3 規則行＋標題，沒選不加行"
     warm_up: {
       green: ["會反問、聊很多", "她很投入：可以加個人感"],
       yellow: ["有回，但很短", "她有回但普通："],
-      red: ["常只回哈哈、嗯", "她常只回哈哈、嗯：現在不升溫"],
+      red: ["常只回哈哈、嗯", "她常只回哈哈、嗯：推薦的那一題改成自然收尾"],
     },
   };
   for (const [situation, byEngagement] of Object.entries(expected)) {
@@ -1020,5 +1020,24 @@ Deno.test("sanitize：看起來空白的填充字（U+3164／U+2800 等）也拿
     );
     assert(result.ok);
     assertEquals(result.topicContext?.materialText, "打炮");
+  }
+});
+
+Deno.test("user prompt：她常只回哈哈、嗯（stuck／warm_up 紅燈）推薦題一律改成自然收尾（決定 3）", () => {
+  for (const situation of ["stuck", "warm_up"] as const) {
+    const prompt = buildNewTopicTwoStageUserPrompt({
+      partnerSummary: null,
+      effectiveStyleContext: null,
+      situation,
+      topicContext: {
+        coldDuration: null,
+        coldStop: null,
+        engagement: "red",
+        materialKind: "none",
+        materialText: null,
+      },
+      requestId: "123e4567-e89b-42d3-a456-426614174000",
+    });
+    assert(prompt.includes("推薦的那一題改成自然收尾"), situation);
   }
 });

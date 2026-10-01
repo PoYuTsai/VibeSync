@@ -52,7 +52,7 @@ Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接�
   );
 });
 
-Deno.test("index：new_topic branch 固定順序 sanitize→進階開關→擋字→material→config→preflight→claim→quota→rate→renew→generate→settle", () => {
+Deno.test("index：new_topic branch 固定順序 sanitize→擋字→material→config→preflight→進階開關→claim→quota→rate→renew→generate→settle", () => {
   // dispatch 順序仍鎖在 index.ts；分支本體已抽到 new_topic_handler.ts。
   const branch = indexSource.indexOf("if (isNewTopicMode) {");
   assert(branch >= 0, "new_topic dispatch 必須存在");
@@ -61,9 +61,7 @@ Deno.test("index：new_topic branch 固定順序 sanitize→進階開關→擋�
 
   const anchors = [
     "sanitizeNewTopicRequest(",
-    // 進階開關與擋字（2026-10-01 規格 §2）：都在 material、DB、限流、模型之前。
-    'Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"',
-    "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+    // 擋字在 material、DB、限流、模型之前（規格 §2）。
     "containsCrudeSexualOffense(newTopicMaterialText)",
     "containsCrudeInsult(newTopicMaterialText)",
     "NEW_TOPIC_MATERIAL_BLOCKED",
@@ -71,6 +69,9 @@ Deno.test("index：new_topic branch 固定順序 sanitize→進階開關→擋�
     "isStrongNewTopicReplayHmacKey(newTopicHmacSecret)",
     "computeNewTopicInputHash({",
     "classifyNewTopicReplayPreflight(",
+    // 進階開關在唯讀回放查帳之後、claim 之前（Codex R1 P1）：已落帳的照常回放。
+    'Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"',
+    "NEW_TOPIC_ADVANCED_UNAVAILABLE",
     "claimNewTopicRequest({",
     "new_topic_quota_exceeded",
     'scope: "new_topic"',
