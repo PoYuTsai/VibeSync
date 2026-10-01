@@ -22,10 +22,11 @@ export const NEW_TOPIC_MATERIAL_TEXT_MAX_CODE_UNITS = 1500;
  * 格式字元（零寬、雙向控制、軟連字號…）會把粗俗詞拆開躲過擋字：一律拿掉。
  * 只留夾在兩個 emoji 之間的 ZWJ（👨‍👩‍👧 這類組合），拿掉會把一個 emoji
  * 拆成好幾個、grapheme 數變多，與 App 的計數對不上；emoji 本身就隔開文字，
- * 留著不會幫忙拆詞。組合符號（Mn）不在此列（規格 §9 已接受風險）。
+ * 留著不會幫忙拆詞。看起來空白的填充字（韓文填充字、點字空白）一併拿掉。
+ * 組合符號（Mn）不在此列（規格 §9 已接受風險）。
  */
 const FORMAT_CHARS =
-  /(?<![\p{Extended_Pictographic}\p{Emoji_Modifier}\u{FE0F}])\u{200D}|\u{200D}(?!\p{Extended_Pictographic})|[^\P{Cf}\u{200D}]/gu;
+  /(?<![\p{Extended_Pictographic}\p{Emoji_Modifier}\u{FE0F}])\u{200D}|\u{200D}(?!\p{Extended_Pictographic})|[^\P{Cf}\u{200D}]|[\u{115F}\u{1160}\u{3164}\u{FFA0}\u{2800}]/gu;
 
 export const NEW_TOPIC_COLD_DURATIONS = [
   "days",
@@ -410,7 +411,7 @@ const COOL_NEXT_MOVE_RULE =
 const SHARED_FRAME_ALLOWED_RULE =
   "「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。";
 const SHARED_FRAME_DENIED_RULE =
-  "「我們」：不寫「我們＋動作」的句子；提到過去的事用「上次」「那次」「妳那句」。";
+  "「我們」：不寫「我們」接動作或「我們兩個」「我們家」「我們以後」這類句子，也不寫一起養、一起住；提到過去的事用「上次」「那次」「妳那句」。";
 
 const MATERIAL_LABELS: Record<NewTopicMaterialKind, string> = {
   past_topic: "之前聊過的事（她提過的）",

@@ -80,7 +80,7 @@ const PROMPT_CONTRACT_TERMS =
 const SHARED_FRAME_ALLOWED_LINE =
   "「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。";
 const SHARED_FRAME_DENIED_LINE =
-  "「我們」：不寫「我們＋動作」的句子；提到過去的事用「上次」「那次」「妳那句」。";
+  "「我們」：不寫「我們」接動作或「我們兩個」「我們家」「我們以後」這類句子，也不寫一起養、一起住；提到過去的事用「上次」「那次」「妳那句」。";
 
 // ---------------------------------------------------------------------------
 // §3 重放指紋
@@ -1010,4 +1010,15 @@ Deno.test("telemetry：legacy 與進階欄位，只記代碼與字數不記原�
     materialTextLength: 5,
   });
   assertFalse(JSON.stringify(fields).includes("走錯分店"));
+});
+
+Deno.test("sanitize：看起來空白的填充字（U+3164／U+2800 等）也拿掉，擋字不會被拆開躲過", () => {
+  for (const filler of ["ㅤ", "⠀", "ᅟ", "ᅠ", "ﾠ"]) {
+    const result = sanitizeNewTopicTopicContext(
+      { materialKind: "my_story", materialText: `打${filler}炮` },
+      null,
+    );
+    assert(result.ok);
+    assertEquals(result.topicContext?.materialText, "打炮");
+  }
 });

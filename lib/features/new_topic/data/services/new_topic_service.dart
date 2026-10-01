@@ -92,7 +92,7 @@ class NewTopicStatePendingException extends NewTopicException {
 }
 
 /// 兩段式進階路徑暫時不可用：server 開關關著（code
-/// `NEW_TOPIC_ADVANCED_UNAVAILABLE`，現為 422、早期 503，只看 code），或舊 Edge
+/// `NEW_TOPIC_ADVANCED_UNAVAILABLE`，HTTP 422；只看 code，不看 status），或舊 Edge
 /// 不認得 `topicContext`（400）。View 據此詢問是否改用基本模式（不帶 topicContext）。
 class NewTopicAdvancedUnavailableException extends NewTopicException {
   const NewTopicAdvancedUnavailableException(super.message);

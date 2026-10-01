@@ -628,7 +628,8 @@ export async function handleNewTopicRequest(
           deps.claudeApiKey,
           {
             timeout: 60000,
-            maxRetries: 0,
+            // fallback.ts 的 maxRetries 是「嘗試次數」：0 會讓迴圈一次都不送、空轉到期限。
+            maxRetries: 1,
             allowModelFallback: false,
             absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
           },

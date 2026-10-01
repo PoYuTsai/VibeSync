@@ -241,7 +241,7 @@ topics 必須恰好五個；recommendation.index 是 0-4 的整數，指向最�
 **「我們」行**（永遠送一條，排在局面規則最後）：用跟輸出守門**同一個函式、同一組參數**算（`allowsNewTopicSharedFrame({ partnerSummary, situation, topicContext })`，見 4.5），提示詞與守門不會打架：
 
 - 放行 → 「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。
-- 不放行 → 「我們」：不寫「我們＋動作」的句子；提到過去的事用「上次」「那次」「妳那句」。
+- 不放行 → 「我們」：不寫「我們」接動作或「我們兩個」「我們家」「我們以後」這類句子，也不寫一起養、一起住；提到過去的事用「上次」「那次」「妳那句」。
 
 ### 4.4 素材規則
 
@@ -346,7 +346,7 @@ topics 必須恰好五個；recommendation.index 是 0-4 的整數，指向最�
 - `generateTopics`／`generateTopicsStreaming`／`_buildRequestBody` 加選填 `Map<String, dynamic>? topicContext`，非 null 才放進 body。
 - 新 typed exception `NewTopicAdvancedUnavailableException`：server 回 `code == NEW_TOPIC_ADVANCED_UNAVAILABLE`；或本次有送 `topicContext` 且收到 400 `NEW_TOPIC_REQUEST_INVALID`（舊 Edge 不認得新欄位）。串流路徑遇 400 會先降級 legacy 重打，legacy 仍 400 時才丟這個例外。
 - `NEW_TOPIC_MATERIAL_BLOCKED`（422）沿用 `NewTopicException` 顯示 server 中文訊息，不重試。
-- View 收到 `NewTopicAdvancedUnavailableException` → 對話框「進階模式暫時無法使用，要用基本模式生成嗎？」［先不要］［用基本模式生成］。選基本模式 → 用同一對象＋同一第一問、不帶 `topicContext` 生成（新 requestId）；畫面上的追問選擇與輸入框文字都保留，不清掉。
+- View 收到 `NewTopicAdvancedUnavailableException` → 先確認基本模式生得出來（不算素材原文時 `canGenerateNewTopic` 仍為真）；生不出來（例如沒選第一問、對象資料又不足，只靠素材）就不跳對話框，改顯示「進階模式暫時無法使用。先選一個目前狀況，就能改用基本模式生成。」。生得出來才跳對話框「進階模式暫時無法使用，要用基本模式生成嗎？」［先不要］［用基本模式生成］。選基本模式 → 用同一對象＋同一第一問、不帶 `topicContext` 生成（新 requestId）；畫面上的追問選擇與輸入框文字都保留，不清掉。
 
 ## 6. 測試（最少要有）
 
@@ -368,7 +368,7 @@ Flutter（`flutter test` 相關檔＋`flutter analyze`）：
 
 1. Edge 與 App 同一個 commit 系列上 `main`；push 會自動部署 analyze-chat，開關預設關，舊版 App 不受影響。
 2. 部署後確認 analyze-chat 版本號真的換了（坑：push 觸發的部署可能印 Deployed 但版本沒換）。
-3. 開關要不要在 production 打開、何時打開，由 Eric 決定；打開前新版 App 選了追問或素材會看到「進階模式暫時無法使用」對話框並可改用基本模式。
+3. 開關要不要在 production 打開、何時打開，由 Eric 決定；打開前新版 App 選了追問或素材會看到「進階模式暫時無法使用」：基本模式生得出來時跳對話框可改用基本模式，生不出來時請用戶先選狀況。
 4. 付費真模型實測要 Eric 說「跑」才跑，先估價。
 
 ## 8. 這次不做
@@ -390,3 +390,11 @@ Flutter（`flutter test` 相關檔＋`flutter analyze`）：
   - CI 的 Edge 測試白名單目前沒跑 `new_topic_*` 測試；這次沒改 CI，建議 Eric 決定是否加進白名單。
   - 粗俗詞正規化仍不處理組合符號（Mn）：新話題素材只拿掉格式字元（Cf），在字之間塞組合符號仍可能躲過詞表（UTF-16 1500 上限只擋疊字長度）。
 - **App**：選基本模式後同一組答案持續用基本模式生成（改任何答案、換對象、調整狀況才恢復）；基本模式的結果「這組根據」只列第一問；素材被擋（422）後按鈕回到「生成新話題」，不邀重試；換對象時保留追問與素材文字（與保留第一問一致，待 Eric／Bruce 決定是否改清空）。
+
+### 9.1 第二批補記（2026-10-01，內部多角度審查後）
+
+- **格式修復真的會送出**：`new_topic_handler.ts` 的修復呼叫原本傳 `maxRetries: 0`，而 `fallback.ts` 的 `maxRetries` 是「嘗試次數」，0 會讓迴圈一次都不送、同步空轉到 45 秒期限（或被平台 CPU 上限中止）。這個錯誤自 2026-07-24 起就在 production，legacy 路徑一樣受影響。改成 `maxRetries: 1`（只試一次、不換模型），與 ADR #31「最多一次 same-model format repair」一致。成本：只有主輸出不合格時多一次呼叫，原本設計就算在內。測試鎖住「送出恰好一次修復、不空轉」，並以改回 0 的 mutation 確認測試會失敗。
+- **「我們」不能用時那一行**：改成涵蓋守門實際擋的字樣（「我們」接動作、「我們兩個」「我們家」「我們以後」、一起養／住）。
+- **擋字前多拿掉看起來空白的填充字**：U+115F、U+1160、U+3164、U+FFA0、U+2800。
+- **App**：教練提醒「幾天到一週＋她沒回我」只顯示「她沒回我」那行（與 Edge 規則一致）；空字串素材不算素材；素材另擋 UTF-16 超過 1500；素材輸入框提示最多五行；狀況按鈕同一列等高；422／503 的進階不可用都照 code 對映。
+- **仍保留的已知限制**：修復合併會把通過可見字檢查、但違反「我們」守門的主輸出開場句放回去，所以這類失敗修不回來（502、不扣）；開關關閉時只靠素材的用戶要先選第一問才能用基本模式。

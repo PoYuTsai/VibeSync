@@ -48,6 +48,7 @@ async function run(
   settleCharged = true,
   modelPayload: unknown = MODEL_PAYLOAD,
   startedMsAgo = 0,
+  repairPayload: unknown = modelPayload,
 ) {
   const dbCalls: string[] = [];
   const logEvents: string[] = [];
@@ -88,10 +89,11 @@ async function run(
     .map((key) => [key, Deno.env.get(key)] as const);
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
     modelRequests.push(JSON.parse(String(init?.body)));
+    const payload = modelRequests.length === 1 ? modelPayload : repairPayload;
     return Promise.resolve(
       new Response(
         JSON.stringify({
-          content: [{ type: "text", text: JSON.stringify(modelPayload) }],
+          content: [{ type: "text", text: JSON.stringify(payload) }],
           usage: { input_tokens: 10, output_tokens: 10 },
           stop_reason: "end_turn",
         }),
@@ -296,7 +298,7 @@ Deno.test("handler：稽核只記本筆落帳的結果，replayed（先完成者
 const SHARED_FRAME_ALLOWED_LINE =
   "- 「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。";
 const SHARED_FRAME_DENIED_LINE =
-  "- 「我們」：不寫「我們＋動作」的句子；提到過去的事用「上次」「那次」「妳那句」。";
+  "- 「我們」：不寫「我們」接動作或「我們兩個」「我們家」「我們以後」這類句子，也不寫一起養、一起住；提到過去的事用「上次」「那次」「妳那句」。";
 
 function payloadWithOpening(openingLine: string) {
   const topics = MODEL_PAYLOAD.topics.map((topic) => ({ ...topic }));
@@ -405,4 +407,28 @@ Deno.test("handler：用戶素材裡的英文 stuck 被模型照抄不再判外�
     result.json.topics[0].openingLine,
     "報告卡在第一段，整個 stuck 住",
   );
+});
+
+Deno.test("handler：格式不合格時真的送出一次修復呼叫（maxRetries 是嘗試次數，0 會空轉到期限）", async () => {
+  const broken = {
+    topics: MODEL_PAYLOAD.topics.slice(0, 4),
+    recommendation: { index: 0 },
+  };
+  const started = Date.now();
+  const result = await run(
+    body(),
+    undefined,
+    true,
+    broken,
+    0,
+    MODEL_PAYLOAD,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(result.modelRequests.length, 2);
+  assert(
+    result.logEvents.some((line) =>
+      line.includes("new_topic_response_repaired")
+    ),
+  );
+  assert(Date.now() - started < 10_000, "修復不能空轉到 45 秒期限");
 });
