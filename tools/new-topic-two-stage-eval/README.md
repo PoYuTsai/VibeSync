@@ -15,7 +15,7 @@
 - 每個案例先過 production 的 `sanitizeNewTopicRequest`，組合不合法（例如冷掉了卻帶燈號）會直接報錯。
 - 同一案例同一次重複的兩臂用同一個 requestId，所以拿到同一個「本輪內容素材」角度（兩段式有素材原文時不送角度，跟 production 一樣）。
 - 模型 `claude-sonnet-5`、`max_tokens` = `NEW_TOPIC_MAX_TOKENS`、thinking 關閉（production 對 Sonnet 5 的契約）、不用 prompt cache。
-- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding 用 `allowsNewTopicSharedFrame`，legacy 的 topicContext 是 null）→ 外洩檢查。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
+- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding policy 逐欄同 handler 的 `newTopicGroundingPolicy`：`allowsNewTopicSharedFrame`＋兩段式帶 `userMaterialText`＝素材原文，用戶自己寫的內部代碼字如 stuck 不算外洩；legacy 的 topicContext 是 null，沒有這個豁免）→ 外洩檢查。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
 - 不經 Edge、DB、串流、扣費；只有模型呼叫是真的。
 
 ## 案例（`cases.json`，12 組）
@@ -66,13 +66,13 @@ deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/o
 
 用 production 的 `auditNewTopicTwoStageTopics`（只記錄不擋的同一套字面規則）計數，只看兩段式是否過關；舊版用同一份用戶回答稽核，當對照基準：
 
-- 有寫素材時，推薦題用到素材 ≥ 90%
+- 有寫素材時，推薦題用到素材 ≥ 90%：分母是這一臂**所有有素材的呼叫**，沒跑到、API 失敗、格式壞、外洩都算沒用到；分母 0 顯示「未評估」，不是過關。只看可交付輸出的條件比率另列一行，僅供參考、不判過關
 - 「她沒回我」：提到空窗的句子 0
-- 「我沒回她」：道歉超過一句的輸出 0
+- 「我沒回她」：同一題 openingLine（可能分兩則傳）裡道歉詞（抱歉／不好意思／對不起／sorry）出現超過一次的題數 0；五題是備選、不是一起傳，所以不跨題加總
 - 紅燈：第一則邀約 0；冷掉了：第一則邀約 0
 - 「在嗎」「最近好嗎」這類 0
 
-這些是字面計數，不是語意正確率。失敗（格式壞、外洩）不算進句數，但會列在「可交付／模型有回」，不從分母偷偷刪掉。「不捏造」「不加曖昧」「願意直接傳、最想傳不輸舊版」要靠 `blind_ab.md` 人工盲測。
+這些是字面計數，不是語意正確率。失敗（格式壞、外洩）不算進句數，但會列在「可交付／模型有回」，也算進素材比率的分母，不從分母偷偷刪掉。「不捏造」「不加曖昧」「願意直接傳、最想傳不輸舊版」要靠 `blind_ab.md` 人工盲測。
 
 ## 測試
 

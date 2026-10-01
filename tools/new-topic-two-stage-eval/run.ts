@@ -10,6 +10,7 @@ import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/j
 import { hasAnalyzeChatPromptLeak } from "../../supabase/functions/analyze-chat/prompt_leak.ts";
 import {
   allowsNewTopicSharedFrame,
+  type NewTopicGroundingPolicy,
   type NewTopicModelTopic,
   type NewTopicSituation,
   normalizeNewTopicModelPayload,
@@ -119,7 +120,7 @@ export type PlannedCall = {
   situation: NewTopicSituation;
   /** 用戶真實的回答（兩臂共用）；legacy 看不到，但稽核用同一份對照。 */
   topicContext: NewTopicTopicContext;
-  allowSharedFrame: boolean;
+  grounding: NewTopicGroundingPolicy;
   system: string;
   user: string;
 };
@@ -166,12 +167,15 @@ export async function buildPlan(cases: EvalCase[], repeat: number): Promise<Plan
           requestId,
           situation: c.situation,
           topicContext,
-          // 同 handler 的 newTopicGroundingPolicy：legacy 的 topicContext 是 null。
-          allowSharedFrame: allowsNewTopicSharedFrame({
-            partnerSummary: req.partnerSummary,
-            situation: req.situation,
-            topicContext: req.topicContext,
-          }),
+          // 逐欄同 handler 的 newTopicGroundingPolicy：legacy 的 topicContext 是 null，所以也沒有素材豁免。
+          grounding: {
+            allowSharedFrame: allowsNewTopicSharedFrame({
+              partnerSummary: req.partnerSummary,
+              situation: req.situation,
+              topicContext: req.topicContext,
+            }),
+            userMaterialText: req.topicContext?.materialText ?? null,
+          },
           system: arm === "legacy" ? NEW_TOPIC_PROMPT : NEW_TOPIC_TWO_STAGE_PROMPT,
           user: arm === "legacy"
             ? buildNewTopicUserPrompt(shared)
@@ -223,9 +227,7 @@ export type Inspection = {
 
 export function inspectOutput(call: PlannedCall, raw: string): Inspection {
   const promptLeak = hasAnalyzeChatPromptLeak(raw);
-  const normalized = normalizeNewTopicModelPayload(parseJsonObjectFromText(raw), {
-    allowSharedFrame: call.allowSharedFrame,
-  });
+  const normalized = normalizeNewTopicModelPayload(parseJsonObjectFromText(raw), call.grounding);
   if (!normalized.ok) {
     return { deliverable: false, promptLeak, normalizeReason: normalized.reason, topics: null, recommendationIndex: null, recommendationReason: null, audit: null };
   }
@@ -258,7 +260,15 @@ export type EvalRecord = Omit<PlannedCall, "system"> & {
   error?: string;
 };
 
-/** 提案 §10 能機械判定的幾條；只算可交付的輸出，失敗另列、不從分母偷偷刪掉。 */
+// 同 new_topic_two_stage.ts 的 APOLOGY_PATTERN（未 export），改成 g 旗標數次數。
+const APOLOGY_WORDS = /抱歉|不好意思|對不起|sorry/gi;
+
+/** 一則 openingLine（可能分兩則傳）裡出現幾次道歉。 */
+export function apologyCount(openingLine: string): number {
+  return openingLine.match(APOLOGY_WORDS)?.length ?? 0;
+}
+
+/** 提案 §10 能機械判定的幾條；句數只算可交付的輸出，素材比率的分母連失敗一起算。 */
 export function proposalChecks(records: EvalRecord[]) {
   const result = {} as Record<Arm, ReturnType<typeof armChecks>>;
   for (const arm of ARMS) result[arm] = armChecks(records.filter((r) => r.arm === arm));
@@ -268,15 +278,28 @@ export function proposalChecks(records: EvalRecord[]) {
 function armChecks(rows: EvalRecord[]) {
   const ok = rows.flatMap((r) => r.inspection?.deliverable && r.inspection.audit ? [{ r, a: r.inspection.audit }] : []);
   const sum = (xs: typeof ok, f: (x: typeof ok[number]) => number) => xs.reduce((n, x) => n + f(x), 0);
-  const material = ok.filter((x) => x.a.materialUsedInRecommended !== null);
-  const hit = material.filter((x) => x.a.materialUsedInRecommended).length;
+  // 分母＝這一臂所有有素材的呼叫；沒跑到、API 失敗、格式壞、外洩都算沒用到。
+  const total = rows.filter((r) => r.topicContext.materialText !== null).length;
+  const deliverableWithMaterial = ok.filter((x) => x.a.materialUsedInRecommended !== null);
+  const hit = deliverableWithMaterial.filter((x) => x.a.materialUsedInRecommended).length;
   return {
     outputs: rows.length,
     modelReturned: rows.filter((r) => r.inspection !== null).length,
     deliverable: ok.length,
-    materialInRecommended: { hit, total: material.length, pass: material.length === 0 || hit / material.length >= 0.9 },
+    materialInRecommended: {
+      hit,
+      total,
+      /** null＝分母 0、未評估（不是過關）。 */
+      pass: total === 0 ? null : hit / total >= 0.9,
+      /** 只看可交付輸出的條件比率；僅供參考，不判過關。 */
+      deliverableOnly: { hit, total: deliverableWithMaterial.length },
+    },
     sheNoReplyGapLines: sum(ok.filter((x) => x.r.topicContext.coldStop === "she_no_reply"), (x) => x.a.gapMentionLines),
-    iNoReplyOutputsOverOneApology: ok.filter((x) => x.r.topicContext.coldStop === "i_no_reply" && x.a.apologyLines > 1).length,
+    // 五題是五個備選，不是一起傳；規則是「同一題（可能兩則）裡道歉不超過一次」。
+    iNoReplyTopicsOverOneApology: sum(
+      ok.filter((x) => x.r.topicContext.coldStop === "i_no_reply"),
+      (x) => x.r.inspection!.topics!.filter((t) => apologyCount(t.openingLine) > 1).length,
+    ),
     redInviteLines: sum(ok.filter((x) => x.r.topicContext.engagement === "red"), (x) => x.a.inviteLines),
     coldInviteLines: sum(ok.filter((x) => x.r.situation === "went_cold"), (x) => x.a.inviteLines),
     bannedOpenerLines: sum(ok, (x) => x.a.bannedOpenerLines),
@@ -465,7 +488,7 @@ async function main(args: string[]): Promise<void> {
   await write("blind_ab.md", blind.markdown);
   await write("reveal-map.json", blind.reveal);
   const t = checks.two_stage, l = checks.legacy;
-  const mark = (pass: boolean) => (pass ? "✓" : "✗");
+  const mark = (pass: boolean | null) => (pass === null ? "未評估" : pass ? "✓" : "✗");
   const overDeadline = records.filter((r) => (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS).length;
   const status = stopped ? "STOPPED_BY_CAP_OR_FAILURE" : "FINISHED_QUALITY_UNREVIEWED";
   const summary = [
@@ -479,9 +502,10 @@ async function main(args: string[]): Promise<void> {
     "| 檢查 | two_stage | legacy（對照） |",
     "|---|---|---|",
     `| 可交付／模型有回 | ${t.deliverable}/${t.modelReturned} | ${l.deliverable}/${l.modelReturned} |`,
-    `| 推薦題用到素材 ≥90% | ${mark(t.materialInRecommended.pass)} ${t.materialInRecommended.hit}/${t.materialInRecommended.total} | ${l.materialInRecommended.hit}/${l.materialInRecommended.total} |`,
+    `| 推薦題用到素材 ≥90%（分母＝有素材的全部呼叫，失敗算沒用到） | ${mark(t.materialInRecommended.pass)} ${t.materialInRecommended.hit}/${t.materialInRecommended.total} | ${l.materialInRecommended.hit}/${l.materialInRecommended.total} |`,
+    `| 　只看可交付的條件比率（參考，不判過關） | ${t.materialInRecommended.deliverableOnly.hit}/${t.materialInRecommended.deliverableOnly.total} | ${l.materialInRecommended.deliverableOnly.hit}/${l.materialInRecommended.deliverableOnly.total} |`,
     `| 她沒回我：提空窗 0 句 | ${mark(t.sheNoReplyGapLines === 0)} ${t.sheNoReplyGapLines} | ${l.sheNoReplyGapLines} |`,
-    `| 我沒回她：道歉超過一句的輸出 0 | ${mark(t.iNoReplyOutputsOverOneApology === 0)} ${t.iNoReplyOutputsOverOneApology} | ${l.iNoReplyOutputsOverOneApology} |`,
+    `| 我沒回她：同一題道歉超過一次的題數 0 | ${mark(t.iNoReplyTopicsOverOneApology === 0)} ${t.iNoReplyTopicsOverOneApology} | ${l.iNoReplyTopicsOverOneApology} |`,
     `| 紅燈：第一則邀約 0 句 | ${mark(t.redInviteLines === 0)} ${t.redInviteLines} | ${l.redInviteLines} |`,
     `| 冷掉了：第一則邀約 0 句 | ${mark(t.coldInviteLines === 0)} ${t.coldInviteLines} | ${l.coldInviteLines} |`,
     `| 在嗎／最近好嗎類 0 句 | ${mark(t.bannedOpenerLines === 0)} ${t.bannedOpenerLines} | ${l.bannedOpenerLines} |`,
