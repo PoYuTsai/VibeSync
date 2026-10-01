@@ -12,9 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/new_topic/data/providers/new_topic_providers.dart';
 import 'package:vibesync/features/new_topic/data/services/new_topic_service.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/new_topic/domain/entities/new_topic_result.dart';
+import 'package:vibesync/features/new_topic/domain/new_topic_two_stage_copy.dart';
 import 'package:vibesync/features/new_topic/domain/services/new_topic_partner_context_builder.dart';
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_view.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 import 'package:vibesync/shared/widgets/brand/opener_home_components.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -39,6 +42,7 @@ class _FakeService extends NewTopicService {
       String? partnerSummary,
       String? effectiveStyleContext,
       String? situation,
+      Map<String, dynamic>? topicContext,
       String? expectedTier,
       String? revenueCatAppUserId,
       void Function(String, String?)? onProgress}) {
@@ -48,6 +52,7 @@ class _FakeService extends NewTopicService {
       'summary': partnerSummary,
       'style': effectiveStyleContext,
       'situation': situation,
+      'topicContext': topicContext == null ? null : jsonEncode(topicContext),
       'tier': expectedTier,
       'rc': revenueCatAppUserId
     });
@@ -156,6 +161,24 @@ Future<void> _tapGenerate(WidgetTester t) async {
   await t.tap(find.byKey(const ValueKey('new-topic-generate')));
   await t.pump();
   await t.pump(const Duration(milliseconds: 100));
+}
+
+Future<void> _tapVisible(WidgetTester t, Finder finder) async {
+  await t.ensureVisible(finder);
+  await t.tap(finder);
+  await t.pump();
+}
+
+Finder _key(String key) => find.byKey(ValueKey(key));
+final _materialField = _key('new-topic-material-text');
+bool _chipSelected(WidgetTester t, String key) =>
+    t.widget<BrandChoiceChip>(_key(key)).selected;
+String _materialText(WidgetTester t) =>
+    t.widget<TextField>(_materialField).controller!.text;
+Future<void> _typeMaterial(WidgetTester t, String text) async {
+  await t.ensureVisible(_materialField);
+  await t.enterText(_materialField, text);
+  await t.pump();
 }
 
 Future<void> _capture(WidgetTester t, String name) async {
@@ -301,11 +324,11 @@ void main() {
     final container = await _pump(t);
     expect(_button(t).onPressed, isNull);
     await _capture(t, 'topic-material-insufficient');
-    await t.tap(find.text('冷掉了'));
+    await t.tap(find.text('冷掉了，想重新聊'));
     await t.pump();
     expect(_button(t).onPressed, isNotNull);
     await _capture(t, 'topic-selected-situation');
-    await t.tap(find.text('冷掉了'));
+    await t.tap(find.text('冷掉了，想重新聊'));
     await t.pump();
     expect(_button(t).onPressed, isNull);
     style = '喜歡自然直白的語氣';
@@ -316,7 +339,7 @@ void main() {
     blocked = true;
     container.invalidate(newTopicReadinessProvider('p'));
     await t.pump();
-    await t.tap(find.text('想升溫'));
+    await t.tap(find.text('聊得不錯，想更靠近'));
     await t.pump();
     expect(_button(t).onPressed, isNull);
     expect(_service.calls, isEmpty);
@@ -328,7 +351,7 @@ void main() {
     final wait = Completer<String?>();
     styleLoader = () => wait.future;
     await _pump(t);
-    await t.tap(find.text('剛約完'));
+    await t.tap(find.text('剛約完會'));
     await t.pump();
     expect(_button(t).onPressed, isNull);
     expect(find.text('正在整理可用素材…'), findsOneWidget);
@@ -442,14 +465,14 @@ void main() {
     await t.tap(find.text('合成對象 p').last);
     await t.pumpAndSettle();
     expect(find.text('更換條件會清除目前結果'), findsNothing);
-    await t.ensureVisible(find.text('想升溫'));
-    await t.tap(find.text('想升溫'));
+    await t.ensureVisible(find.text('聊得不錯，想更靠近'));
+    await t.tap(find.text('聊得不錯，想更靠近'));
     await t.pumpAndSettle();
     expect(find.text('更換條件會清除目前結果'), findsOneWidget);
     await t.tap(find.text('先不要'));
     await t.pumpAndSettle();
     expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
-    await t.tap(find.text('想升溫'));
+    await t.tap(find.text('聊得不錯，想更靠近'));
     await t.pumpAndSettle();
     await t.tap(find.text('清除並更換'));
     await t.pumpAndSettle();
@@ -511,7 +534,7 @@ void main() {
         const NewTopicRequestInProgressException(message: '等待確認'));
     await t.pump();
     expect(find.text('確認本次結果'), findsOneWidget);
-    await t.tap(find.text('冷掉了'));
+    await t.tap(find.text('冷掉了，想重新聊'));
     await t.pump();
     expect(find.text('確認本次結果'), findsNothing);
     expect(find.text('生成新話題'), findsOneWidget);
@@ -519,8 +542,220 @@ void main() {
     expect(_service.calls, hasLength(2));
     expect(_service.calls[1]['id'], isNot(_service.calls[0]['id']));
     expect(_service.calls[1]['situation'], 'went_cold');
+    expect(_service.calls[1]['topicContext'], isNull,
+        reason: '只選第一問不送 topicContext，走 legacy');
     _service.replies[1].complete(_result(_service.calls[1]['id']!));
     await t.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('兩段式：追問依第一問切換、教練提醒即時更新、換第一問清追問留素材', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    expect(find.text('多久沒聊了？'), findsNothing);
+    expect(_key('new-topic-coach-tip'), findsNothing);
+
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    expect(find.text('多久沒聊了？'), findsOneWidget);
+    expect(find.text('上次是怎麼停的？'), findsOneWidget);
+    expect(find.text('這次怎麼開：有內容、低壓力、不追討。'), findsOneWidget);
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    expect(_chipSelected(t, 'new-topic-cold-duration-weeks'), isTrue);
+    expect(find.textContaining('這次怎麼開：帶一個新東西出現'), findsOneWidget);
+    expect(find.text('先避開：檢討關係'), findsOneWidget);
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    expect(_chipSelected(t, 'new-topic-cold-duration-weeks'), isFalse,
+        reason: '再點一次取消');
+    expect(find.text('這次怎麼開：有內容、低壓力、不追討。'), findsOneWidget);
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+
+    await _tapVisible(t, find.text('剛約完會'));
+    expect(find.text('多久沒聊了？'), findsNothing);
+    expect(find.text('約完之後她的反應？'), findsOneWidget);
+    expect(find.text('主動傳訊息或說開心'), findsOneWidget);
+    expect(find.text('這次怎麼開：承接約會的餘溫，不急著約下一次。'), findsOneWidget);
+    expect(find.text('約會時聊到的事'), findsOneWidget);
+    await _tapVisible(t, find.text('還在聊，但接不下去'));
+    expect(find.text('她最近回你的樣子？'), findsOneWidget);
+    expect(_chipSelected(t, 'new-topic-engagement-green'), isFalse);
+    expect(_chipSelected(t, 'new-topic-material-trigger'), isTrue);
+    expect(_materialText(t), '路過一家甜點店');
+    await _tapVisible(t, _key('new-topic-engagement-red'));
+    expect(find.textContaining('不要用更多問題去救'), findsOneWidget);
+
+    await _tapGenerate(t);
+    expect(_service.calls.single['situation'], 'stuck');
+    expect(jsonDecode(_service.calls.single['topicContext']!), {
+      'engagement': 'red',
+      'materialKind': 'trigger',
+      'materialText': '路過一家甜點店',
+    });
+    _service.replies.single.complete(_result(_service.calls.single['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('素材輸入框：選了才出現，沒寫或超長不能生成，超長不截斷', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    expect(_button(t).onPressed, isNotNull);
+    expect(_materialField, findsNothing);
+
+    await _tapVisible(t, _key('new-topic-material-past_topic'));
+    expect(find.text('她之前提過什麼？'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('她之前提過什麼')), findsWidgets);
+    expect(find.bySemanticsLabel('之前聊過的事'), findsOneWidget);
+    expect(find.text(NewTopicTwoStageCopy.materialHelper), findsOneWidget);
+    expect(find.text('0 / 150'), findsOneWidget);
+    expect(_button(t).onPressed, isNull);
+    expect(find.text(NewTopicTwoStageCopy.materialMissingHint), findsOneWidget);
+    await _typeMaterial(t, '   ');
+    expect(_button(t).onPressed, isNull);
+
+    await _typeMaterial(t, '她' * 151);
+    expect(_button(t).onPressed, isNull);
+    expect(find.text(NewTopicTwoStageCopy.materialTooLongHint), findsOneWidget);
+    final counter = t.widget<Text>(_key('new-topic-material-counter'));
+    expect(counter.data, '151 / 150，超過 1 字，請縮短後再生成');
+    expect(counter.style!.color, AppColors.error);
+    expect(_materialText(t), hasLength(151), reason: '超長不偷偷截斷');
+
+    await _typeMaterial(t, '她說在準備潛水證照');
+    expect(_button(t).onPressed, isNotNull);
+    expect(find.text('9 / 150'), findsOneWidget);
+
+    await _tapVisible(t, _key('new-topic-material-none'));
+    expect(_materialField, findsNothing);
+    expect(_button(t).onPressed, isNotNull);
+    await _tapVisible(t, _key('new-topic-material-none'));
+    expect(_chipSelected(t, 'new-topic-material-none'), isFalse);
+    await _tapVisible(t, _key('new-topic-material-my_story'));
+    expect(find.text('發生什麼事？'), findsOneWidget);
+    expect(_materialText(t), '她說在準備潛水證照', reason: '換素材類型保留文字');
+    expect(_service.calls, isEmpty);
+  });
+
+  testWidgets('結果顯示這組根據、輸入框唯讀；調整狀況確認後清結果並保留答案', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-cold-stop-i_no_reply'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '  路過一家很浮誇的甜點店  ');
+    await _tapGenerate(t);
+    final first = _service.calls.single;
+    expect(first['situation'], 'went_cold');
+    expect(jsonDecode(first['topicContext']!), {
+      'coldDuration': 'weeks',
+      'coldStop': 'i_no_reply',
+      'materialKind': 'trigger',
+      'materialText': '路過一家很浮誇的甜點店',
+    });
+    _service.replies.single.complete(_result(first['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('這組根據：冷掉了・一到四週・我沒回她｜看到想到她的東西'), findsOneWidget);
+    expect(t.widget<TextField>(_materialField).readOnly, isTrue);
+    await _capture(t, 'topic-two-stage-result');
+
+    await _tapVisible(t, _key('new-topic-adjust'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('更換條件會清除目前結果'), findsOneWidget);
+    await t.tap(find.text('先不要'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
+
+    await _tapVisible(t, _key('new-topic-adjust'));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text('清除並更換'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 100));
+    await t.pump(const Duration(seconds: 1));
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsNothing);
+    expect(_key('new-topic-basis'), findsNothing);
+    expect(_chipSelected(t, 'new-topic-cold-duration-weeks'), isTrue);
+    expect(_chipSelected(t, 'new-topic-cold-stop-i_no_reply'), isTrue);
+    expect(_materialText(t), '  路過一家很浮誇的甜點店  ');
+    expect(t.widget<TextField>(_materialField).readOnly, isFalse);
+    final q1 = t.getRect(find.text(NewTopicTwoStageCopy.situationTitle));
+    expect(q1.top, inInclusiveRange(0, 200), reason: '捲回第一問');
+    expect(_button(t).onPressed, isNotNull);
+
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(_service.calls[1]['id'], isNot(first['id']), reason: '重新生成照常計費');
+    expect(_service.calls[1]['topicContext'], first['topicContext']);
+    _service.replies[1].complete(_result(_service.calls[1]['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('進階不可用：先不要保留錯誤；用基本模式重送不帶 topicContext 且保留答案與文字', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapVisible(t, find.text('聊得不錯，想更靠近'));
+    await _tapVisible(t, _key('new-topic-engagement-green'));
+    await _tapVisible(t, _key('new-topic-material-inside_joke'));
+    await _typeMaterial(t, '她說我的五分鐘都是半小時');
+    const unavailable =
+        NewTopicAdvancedUnavailableException('進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。');
+
+    await _tapGenerate(t);
+    _service.replies[0].completeError(unavailable);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text(NewTopicTwoStageCopy.advancedUnavailableTitle),
+        findsOneWidget);
+    await t.tap(find.text(NewTopicTwoStageCopy.advancedUnavailableCancel));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(_service.calls, hasLength(1));
+    expect(find.text(unavailable.message), findsOneWidget);
+
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(
+        _service.calls[1]['topicContext'], _service.calls[0]['topicContext']);
+    _service.replies[1].completeError(unavailable);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tap(find.text(NewTopicTwoStageCopy.advancedUnavailableConfirm));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(_service.calls, hasLength(3));
+    final basic = _service.calls[2];
+    expect(basic['topicContext'], isNull);
+    expect(basic['situation'], 'warm_up');
+    expect(basic['id'], isNot(_service.calls[1]['id']));
+    expect(_chipSelected(t, 'new-topic-engagement-green'), isTrue);
+    expect(_chipSelected(t, 'new-topic-material-inside_joke'), isTrue);
+    expect(_materialText(t), '她說我的五分鐘都是半小時');
+
+    _service.replies[2].complete(_result(basic['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('這組根據：想更靠近'), findsOneWidget, reason: '基本模式只用到第一問');
+    expect(find.text(unavailable.message), findsNothing);
+  });
+
+  testWidgets('伺服器擋下素材用字：顯示 server 訊息、不邀重試，改字後換新請求', (t) async {
+    // 沒有作戰板訊號、沒有風格、不選第一問：只靠用戶寫的那句也能生成。
+    await _pump(t);
+    await _tapVisible(t, _key('new-topic-material-my_story'));
+    await _typeMaterial(t, '合成測試句');
+    expect(find.text('可以不選，直接找新的切入點。'), findsOneWidget);
+    expect(_button(t).onPressed, isNotNull);
+    await _tapGenerate(t);
+    _service.replies[0].completeError(const NewTopicMaterialBlockedException(
+        '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('重試'), findsNothing);
+    expect(find.text('生成新話題'), findsOneWidget);
+    await _typeMaterial(t, '合成測試句改');
+    expect(find.text('你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'), findsNothing);
+    await _tapGenerate(t);
+    expect(_service.calls[1]['id'], isNot(_service.calls[0]['id']));
+    expect(jsonDecode(_service.calls[1]['topicContext']!)['materialText'],
+        '合成測試句改');
   });
 
   for (final removePartner in [false, true]) {
@@ -589,8 +824,8 @@ void main() {
         (t) async {
       style = '有效風格';
       await _pump(t, scale: scale, size: const Size(320, 568));
-      await t.ensureVisible(find.text('聊著但卡住'));
-      await t.tap(find.text('聊著但卡住'));
+      await t.ensureVisible(find.text('還在聊，但接不下去'));
+      await t.tap(find.text('還在聊，但接不下去'));
       await t.pump();
       await _capture(t, 'topic-320-$scale');
       await t.ensureVisible(find.text('額度說明'));

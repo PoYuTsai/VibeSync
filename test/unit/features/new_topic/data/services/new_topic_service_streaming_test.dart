@@ -298,6 +298,67 @@ void main() {
         reason: 'legacy 重打不得再帶 responseMode');
   });
 
+  test('帶 topicContext：串流 400 先降級 legacy，legacy 仍 400 才丟進階不可用', () async {
+    final streamBodies = <Map<String, dynamic>>[];
+    final legacyBodies = <Map<String, dynamic>>[];
+    const invalid = {
+      'error': 'NEW_TOPIC_REQUEST_INVALID',
+      'code': 'NEW_TOPIC_REQUEST_INVALID',
+      'message': '新話題請求格式不正確，請更新 App 後再試。',
+    };
+    final service = NewTopicService(
+      accessTokenProvider: () => 'fake-token',
+      streamClientFactory: () => MockClient.streaming((_, bodyStream) async {
+        streamBodies.add(jsonDecode(await utf8.decodeStream(bodyStream))
+            as Map<String, dynamic>);
+        return http.StreamedResponse(
+            Stream.value(utf8.encode(jsonEncode(invalid))), 400,
+            headers: {'content-type': 'application/json'});
+      }),
+      invoker: (_, {required body}) async {
+        legacyBodies.add(body);
+        throw const FunctionException(status: 400, details: invalid);
+      },
+    );
+    const context = {'coldDuration': 'weeks', 'coldStop': 'i_no_reply'};
+
+    await expectLater(
+      service.generateTopicsStreaming(
+          requestId: _requestId, situation: 'went_cold', topicContext: context),
+      throwsA(isA<NewTopicAdvancedUnavailableException>()),
+    );
+    expect(streamBodies.single['topicContext'], context);
+    expect(legacyBodies.single['topicContext'], context);
+    expect(legacyBodies.single['requestId'], _requestId);
+  });
+
+  test('串流 503 進階開關關閉 → 進階不可用，不自動重試', () async {
+    var attempts = 0;
+    final service = NewTopicService(
+      accessTokenProvider: () => 'fake-token',
+      streamClientFactory: () => MockClient.streaming((_, bodyStream) async {
+        await bodyStream.drain<void>();
+        attempts++;
+        return http.StreamedResponse(
+            Stream.value(utf8.encode(jsonEncode({
+              'error': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+              'code': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+              'message': '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
+              'retryable': false,
+            }))),
+            503,
+            headers: {'content-type': 'application/json'});
+      }),
+    );
+
+    await expectLater(
+      service.generateTopicsStreaming(
+          requestId: _requestId, topicContext: {'materialKind': 'none'}),
+      throwsA(isA<NewTopicAdvancedUnavailableException>()),
+    );
+    expect(attempts, 1);
+  });
+
   test('legacy fallback 遇 SDK 409：等待後沿用同 requestId 自動接回結果', () async {
     var streamCalls = 0;
     var legacyCalls = 0;

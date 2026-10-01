@@ -73,6 +73,103 @@ void main() {
     });
   });
 
+  group('NewTopicService topicContext', () {
+    test('有 topicContext 才放進 body；沒有就不帶鍵', () async {
+      final bodies = <Map<String, dynamic>>[];
+      final service = NewTopicService(
+        invoker: (_, {required body}) async {
+          bodies.add(body);
+          return NewTopicInvokeResponse(status: 200, data: _paidBody());
+        },
+      );
+      const context = {'coldStop': 'she_cold', 'materialKind': 'none'};
+
+      await service.generateTopics(
+          requestId: _requestId, situation: 'went_cold', topicContext: context);
+      await service.generateTopics(requestId: _requestId);
+
+      expect(bodies[0]['topicContext'], context);
+      expect(bodies[1].containsKey('topicContext'), isFalse);
+    });
+
+    test('503 NEW_TOPIC_ADVANCED_UNAVAILABLE → 進階不可用例外（顯示 server 中文）',
+        () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => throw const FunctionException(
+          status: 503,
+          details: {
+            'error': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+            'code': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+            'message': '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
+            'retryable': false,
+            'shouldChargeQuota': false,
+          },
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(
+            requestId: _requestId, topicContext: {'materialKind': 'none'}),
+        throwsA(isA<NewTopicAdvancedUnavailableException>()
+            .having((e) => e.message, 'message', contains('進階模式暫時無法使用'))
+            .having((e) => e.retrySameRequest, 'retry', isFalse)),
+      );
+    });
+
+    test('有送 topicContext 的 400 → 進階不可用；沒送仍是一般錯誤', () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => const NewTopicInvokeResponse(
+          status: 400,
+          data: {
+            'code': 'NEW_TOPIC_REQUEST_INVALID',
+            'message': '新話題請求格式不正確，請更新 App 後再試。',
+          },
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(
+            requestId: _requestId, topicContext: {'engagement': 'red'}),
+        throwsA(isA<NewTopicAdvancedUnavailableException>()
+            .having((e) => e.message, 'message', contains('基本模式'))),
+      );
+      await expectLater(
+        service.generateTopics(requestId: _requestId),
+        throwsA(allOf(
+          isNot(isA<NewTopicAdvancedUnavailableException>()),
+          isA<NewTopicException>()
+              .having((e) => e.message, 'message', contains('格式不正確')),
+        )),
+      );
+    });
+
+    test('422 NEW_TOPIC_MATERIAL_BLOCKED → 顯示 server 訊息、不重試', () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => const NewTopicInvokeResponse(
+          status: 422,
+          data: {
+            'code': 'NEW_TOPIC_MATERIAL_BLOCKED',
+            'message': '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。',
+            'shouldChargeQuota': false,
+          },
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(
+            requestId: _requestId,
+            topicContext: {'materialKind': 'trigger', 'materialText': '合成'}),
+        throwsA(allOf(
+          isNot(isA<NewTopicAdvancedUnavailableException>()),
+          isA<NewTopicMaterialBlockedException>()
+              .having(
+                  (e) => e.message, 'message', '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。')
+              .having((e) => e.retrySameRequest, 'retry', isFalse),
+        )),
+      );
+    });
+  });
+
   group('NewTopicService success parsing', () {
     test('paid 五題完整解析；tier 信 server access', () async {
       final service = NewTopicService(
