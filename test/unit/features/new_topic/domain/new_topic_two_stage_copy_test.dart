@@ -59,12 +59,19 @@ void main() {
     });
 
     test('多久＋怎麼停兩行都顯示，先避開依序合併', () {
-      expect(_tip('went_cold', duration: 'days', stop: 'she_no_reply'), (
-        open: '這次怎麼開：話題還熱，直接把上次那條線接回來。不追上一則；有新的東西，再傳一則全新的內容。',
-        avoid: '先避開：正式說「好久沒聊」、「在嗎」「妳怎麼沒回」',
+      expect(_tip('went_cold', duration: 'days', stop: 'she_cold'), (
+        open: '這次怎麼開：話題還熱，直接把上次那條線接回來。先降低頻率和強度：一則就好，看她會不會主動多聊。',
+        avoid: '先避開：正式說「好久沒聊」、連續補話題、硬約',
       ));
       expect(_tip('went_cold', duration: 'weeks', stop: 'she_cold')!.avoid,
           '先避開：檢討關係、連續補話題、硬約');
+    });
+
+    test('同 server：幾天到一週＋她沒回我 → 不接上次那條線，只留她沒回那行', () {
+      expect(_tip('went_cold', duration: 'days', stop: 'she_no_reply'), (
+        open: '這次怎麼開：不追上一則；有新的東西，再傳一則全新的內容。',
+        avoid: '先避開：「在嗎」「妳怎麼沒回」',
+      ));
     });
 
     test('只選怎麼停（非 faded）就只有那一行', () {
@@ -207,6 +214,20 @@ void main() {
       expect(tooLong.materialTooLong, isTrue);
       expect(tooLong.materialLength, 151);
       expect(tooLong.toTopicContextJson()!['materialText'], over);
+    });
+
+    test('同 server：trim 後 UTF-16 超過 1500 也算超長（grapheme 沒超）', () {
+      String stacked(int marks) => 'a${'\u0301' * marks}';
+      final ok =
+          _A(materialKind: 'my_story', materialText: ' ${stacked(1499)} ');
+      final over = _A(materialKind: 'my_story', materialText: stacked(1500));
+      expect(ok.materialLength, 1);
+      expect(ok.materialTooLong, isFalse);
+      expect(over.materialLength, 1);
+      expect(over.materialTooLong, isTrue);
+      expect(
+          _A(materialKind: 'none', materialText: stacked(1500)).materialTooLong,
+          isFalse);
     });
 
     test('計數文案：n / 150，超過時說明超過幾字', () {
