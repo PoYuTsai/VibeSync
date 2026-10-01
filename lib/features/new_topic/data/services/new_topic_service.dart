@@ -91,6 +91,18 @@ class NewTopicStatePendingException extends NewTopicException {
   }) : super(message, retrySameRequest: true);
 }
 
+/// 兩段式進階路徑暫時不可用：server 開關關著（code
+/// `NEW_TOPIC_ADVANCED_UNAVAILABLE`，HTTP 422；只看 code，不看 status），或舊 Edge
+/// 不認得 `topicContext`（400）。View 據此詢問是否改用基本模式（不帶 topicContext）。
+class NewTopicAdvancedUnavailableException extends NewTopicException {
+  const NewTopicAdvancedUnavailableException(super.message);
+}
+
+/// 素材原文被 server 擋字（422）：同一句重送一定再被擋，View 不留 pending。
+class NewTopicMaterialBlockedException extends NewTopicException {
+  const NewTopicMaterialBlockedException(super.message);
+}
+
 class NewTopicService {
   NewTopicService({
     NewTopicInvoker? invoker,
@@ -133,6 +145,7 @@ class NewTopicService {
     String? partnerSummary,
     String? effectiveStyleContext,
     String? situation,
+    Map<String, dynamic>? topicContext,
     String? expectedTier,
     String? revenueCatAppUserId,
   }) async {
@@ -141,6 +154,7 @@ class NewTopicService {
       partnerSummary: partnerSummary,
       effectiveStyleContext: effectiveStyleContext,
       situation: situation,
+      topicContext: topicContext,
       expectedTier: expectedTier,
       revenueCatAppUserId: revenueCatAppUserId,
     );
@@ -150,7 +164,8 @@ class NewTopicService {
     if (response.status == 200) {
       return _parseSuccessData(response.data, requestId: requestId);
     }
-    _throwForErrorResponse(response.status, response.data);
+    _throwForErrorResponse(response.status, response.data,
+        sentTopicContext: topicContext != null);
   }
 
   /// 串流版生成（2026-08-18 呈現精修第 2 包）：`responseMode: 'stream'`，
@@ -161,6 +176,7 @@ class NewTopicService {
     String? partnerSummary,
     String? effectiveStyleContext,
     String? situation,
+    Map<String, dynamic>? topicContext,
     String? expectedTier,
     String? revenueCatAppUserId,
     void Function(String label, String? phase)? onProgress,
@@ -178,6 +194,7 @@ class NewTopicService {
           partnerSummary: partnerSummary,
           effectiveStyleContext: effectiveStyleContext,
           situation: situation,
+          topicContext: topicContext,
           expectedTier: expectedTier,
           revenueCatAppUserId: revenueCatAppUserId,
           onProgress: onProgress,
@@ -219,6 +236,7 @@ class NewTopicService {
     String? partnerSummary,
     String? effectiveStyleContext,
     String? situation,
+    Map<String, dynamic>? topicContext,
     String? expectedTier,
     String? revenueCatAppUserId,
     void Function(String label, String? phase)? onProgress,
@@ -233,6 +251,7 @@ class NewTopicService {
       partnerSummary: partnerSummary,
       effectiveStyleContext: effectiveStyleContext,
       situation: situation,
+      topicContext: topicContext,
       expectedTier: expectedTier,
       revenueCatAppUserId: revenueCatAppUserId,
       responseMode: 'stream',
@@ -266,7 +285,8 @@ class NewTopicService {
         }
         // 舊 Edge 對帶 responseMode 的 new_topic 一律 400（claim 之前拒絕、
         // 不扣費）：降級重打一次 legacy 請求（R2 主審 minor-5）。新 Edge 的
-        // 真 sanitize 400 會在 legacy 重試時得到同樣錯誤，只多一次呼叫。
+        // 真 sanitize 400 會在 legacy 重試時得到同樣錯誤，只多一次呼叫；
+        // 帶 topicContext 時 legacy 仍 400 才轉成進階不可用。
         if (response.statusCode == 400 &&
             decoded is Map &&
             decoded['code'] == 'NEW_TOPIC_REQUEST_INVALID') {
@@ -275,12 +295,14 @@ class NewTopicService {
             partnerSummary: partnerSummary,
             effectiveStyleContext: effectiveStyleContext,
             situation: situation,
+            topicContext: topicContext,
             expectedTier: expectedTier,
             revenueCatAppUserId: revenueCatAppUserId,
           );
         }
         if (response.statusCode != 200) {
-          _throwForErrorResponse(response.statusCode, decoded);
+          _throwForErrorResponse(response.statusCode, decoded,
+              sentTopicContext: topicContext != null);
         }
         return _parseSuccessData(decoded, requestId: requestId);
       }
@@ -313,7 +335,8 @@ class NewTopicService {
             return _parseSuccessData(decoded['result'], requestId: requestId);
           case 'new_topic.error':
             final status = (decoded['status'] as num?)?.round() ?? 500;
-            _throwForErrorResponse(status, decoded);
+            _throwForErrorResponse(status, decoded,
+                sentTopicContext: topicContext != null);
           default:
             continue; // 未知事件型別向前相容：忽略。
         }
@@ -349,6 +372,7 @@ class NewTopicService {
     String? partnerSummary,
     String? effectiveStyleContext,
     String? situation,
+    Map<String, dynamic>? topicContext,
     String? expectedTier,
     String? revenueCatAppUserId,
     String? responseMode,
@@ -362,6 +386,7 @@ class NewTopicService {
       if (_hasText(effectiveStyleContext))
         'effectiveStyleContext': effectiveStyleContext!.trim(),
       if (_hasText(situation)) 'situation': situation!.trim(),
+      if (topicContext != null) 'topicContext': topicContext,
       if (_hasText(expectedTier)) 'expectedTier': expectedTier!.trim(),
       if (_hasText(revenueCatAppUserId))
         'revenueCatAppUserId': revenueCatAppUserId!.trim(),
@@ -382,10 +407,28 @@ class NewTopicService {
   }
 
   /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。
-  Never _throwForErrorResponse(int status, dynamic data) {
+  Never _throwForErrorResponse(int status, dynamic data,
+      {bool sentTopicContext = false}) {
     final errorData = data is Map ? data : const {};
     final code = errorData['code']?.toString();
     final serverMessage = _localizedMessage(errorData['message']);
+
+    if (code == 'NEW_TOPIC_ADVANCED_UNAVAILABLE' ||
+        (sentTopicContext &&
+            status == 400 &&
+            code == 'NEW_TOPIC_REQUEST_INVALID')) {
+      throw NewTopicAdvancedUnavailableException(
+        code == 'NEW_TOPIC_ADVANCED_UNAVAILABLE' && serverMessage != null
+            ? serverMessage
+            : '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
+      );
+    }
+
+    if (code == 'NEW_TOPIC_MATERIAL_BLOCKED') {
+      throw NewTopicMaterialBlockedException(
+        serverMessage ?? '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。',
+      );
+    }
 
     // Edge worker 被平台中止時，handler 可能來不及釋放 claim 或回傳結算
     // 結果。沿用同一 requestId，交給既有有限重試查回 pending/replay，

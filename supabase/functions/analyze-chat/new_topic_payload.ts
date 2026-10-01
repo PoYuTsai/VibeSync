@@ -9,6 +9,10 @@
 
 import { normalizeOutgoingMessageText } from "./outgoing_message_text.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
+import {
+  type NewTopicTopicContext,
+  sanitizeNewTopicTopicContext,
+} from "./new_topic_two_stage.ts";
 
 export const NEW_TOPIC_SITUATIONS = [
   "went_cold",
@@ -74,6 +78,7 @@ const NEW_TOPIC_ALLOWED_KEYS = new Set([
   "situation",
   "expectedTier",
   "revenueCatAppUserId",
+  "topicContext",
 ]);
 
 export type NewTopicSanitizedRequest = {
@@ -83,6 +88,8 @@ export type NewTopicSanitizedRequest = {
   situation: NewTopicSituation | null;
   expectedTier: string | null;
   revenueCatAppUserId: string | null;
+  /** 進階路徑答案；null＝走 legacy（規格 §0 路由）。 */
+  topicContext: NewTopicTopicContext | null;
 };
 
 export type NewTopicRequestSanitizeResult =
@@ -198,6 +205,12 @@ export function sanitizeNewTopicRequest(
     return { ok: false, reason: "revenuecat_id_invalid" };
   }
 
+  const topicContext = sanitizeNewTopicTopicContext(
+    body.topicContext,
+    situation,
+  );
+  if (!topicContext.ok) return topicContext;
+
   return {
     ok: true,
     request: {
@@ -207,20 +220,23 @@ export function sanitizeNewTopicRequest(
       situation,
       expectedTier: blankToNull(body.expectedTier),
       revenueCatAppUserId: blankToNull(body.revenueCatAppUserId),
+      topicContext: topicContext.topicContext,
     },
   };
 }
 
 /**
- * 三類素材（作戰板摘要／關於我風格／情境）至少一類有實質內容才可生成；
- * 全空必須在 rate limit、model、claim、charge 前回 422（§1.4）。
+ * 三類素材（作戰板摘要／關於我風格／情境）或用戶寫的素材原文至少一類有
+ * 實質內容才可生成；全空必須在 rate limit、model、claim、charge 前回 422
+ * （§1.4）。素材類型「沒有，幫我想」單獨不算。
  */
 export function hasNewTopicMaterial(
   request: NewTopicSanitizedRequest,
 ): boolean {
   return request.partnerSummary !== null ||
     request.effectiveStyleContext !== null ||
-    request.situation !== null;
+    request.situation !== null ||
+    (request.topicContext?.materialText ?? null) !== null;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,10 +261,16 @@ export type NewTopicModelNormalizeResult =
 
 export type NewTopicGroundingPolicy = {
   allowSharedFrame: boolean;
+  /**
+   * 進階路徑用戶寫的素材原文（已正規化）。只用來放行「用戶自己寫過的字」
+   * 撞到內部術語的情況（例：人間失格、雙球冰淇淋、One Direction、stuck）；
+   * 沒給就跟以前一模一樣。
+   */
+  userMaterialText?: string | null;
 };
 
-const INTERNAL_VISIBLE_TOKEN =
-  /\b(?:went_cold|after_date|warm_up|stuck|new_topic)\b/i;
+const INTERNAL_VISIBLE_TOKENS =
+  /\b(?:went_cold|after_date|warm_up|stuck|new_topic)\b/gi;
 const UNVERIFIED_SHARED_FRAME =
   /(?:如果|假設|要是|改天|下次)?我們(?:一起|兩個|家|以後|會|要|去|來|找|約|玩|吃|喝|看|養|住)|一起(?:養|住|搬|過夜|成家)/;
 
@@ -275,24 +297,51 @@ function sanitizeVisibleText(value: unknown, maxLen: number): string | null {
   return trimmed;
 }
 
+function internalTokens(text: string): string[] {
+  return (text.match(INTERNAL_VISIBLE_TOKENS) ?? []).map((token) =>
+    token.toLowerCase()
+  );
+}
+
+/** 用戶素材原文裡本來就有的內部代碼字（例：英文 stuck）不算外洩。 */
 function sanitizeModelVisibleText(
   value: unknown,
   maxLen: number,
+  userMaterialText: string | null = null,
 ): string | null {
   const sanitized = sanitizeVisibleText(value, maxLen);
-  if (sanitized === null || INTERNAL_VISIBLE_TOKEN.test(sanitized)) return null;
+  if (sanitized === null) return null;
+  const allowed = new Set(internalTokens(userMaterialText ?? ""));
+  if (internalTokens(sanitized).some((token) => !allowed.has(token))) {
+    return null;
+  }
   return sanitized;
 }
 
 /**
  * 「想升溫」是使用者的生成目標，不是兩人已熟的證據。共同想像只在手動
  * 對象卡明列熟悉階段，或確定剛約完會時放行；AI 興趣／熱度不能自己升級。
+ * 進階路徑：用戶答「想更靠近＋她很投入」（提案決定 6），或寫了你們之間的梗，
+ * 也放行。
  */
 export function allowsNewTopicSharedFrame(input: {
   partnerSummary: string | null;
   situation: NewTopicSituation | null;
+  topicContext?: NewTopicTopicContext | null;
 }): boolean {
   if (input.situation === "after_date") return true;
+  if (
+    input.situation === "warm_up" && input.topicContext?.engagement === "green"
+  ) {
+    return true;
+  }
+  // 用戶親口寫了「你們之間的梗」＝他自己確認有共同經歷。
+  if (
+    input.topicContext?.materialKind === "inside_joke" &&
+    input.topicContext.materialText !== null
+  ) {
+    return true;
+  }
   if (input.partnerSummary === null) return false;
   return /(?:^|\n)- 你的備註：[^\n]*聊得來但還沒約/.test(
     input.partnerSummary,
@@ -325,6 +374,7 @@ export function normalizeNewTopicModelPayload(
     return { ok: false, reason: `topics_count:${rawTopics.length}` };
   }
 
+  const userMaterialText = policy.userMaterialText ?? null;
   const topics: NewTopicModelTopic[] = [];
   const directionKeys = new Set<string>();
   const openingKeys = new Set<string>();
@@ -335,20 +385,24 @@ export function normalizeNewTopicModelPayload(
     const direction = sanitizeCustomerExplanationText(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
+      userMaterialText,
     );
     const openingLine = normalizeOutgoingMessageText(
       sanitizeModelVisibleText(
         rawTopic.openingLine,
         NEW_TOPIC_FIELD_CAPS.openingLine,
+        userMaterialText,
       ),
     );
     const whyItWorks = sanitizeCustomerExplanationText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,
+      userMaterialText,
     );
     const nextMove = sanitizeCustomerExplanationText(
       rawTopic.nextMove,
       NEW_TOPIC_FIELD_CAPS.nextMove,
+      userMaterialText,
     );
     if (!direction || !openingLine || !whyItWorks || !nextMove) {
       return { ok: false, reason: "topic_field_invalid" };
@@ -387,6 +441,7 @@ export function normalizeNewTopicModelPayload(
     recommendationReason = sanitizeCustomerExplanationText(
       rawRecommendation.reason,
       NEW_TOPIC_FIELD_CAPS.recommendationReason,
+      userMaterialText,
     );
     if (recommendationReason === null) {
       return { ok: false, reason: "recommendation_reason_invalid" };
@@ -410,6 +465,7 @@ export function normalizeNewTopicModelPayload(
 export function mergeNewTopicRepairWithPrimaryOpeningLines(
   primaryParsed: unknown,
   repairedParsed: unknown,
+  userMaterialText: string | null = null,
 ): unknown {
   if (!isPlainObject(primaryParsed) || !isPlainObject(repairedParsed)) {
     return repairedParsed;
@@ -434,6 +490,7 @@ export function mergeNewTopicRepairWithPrimaryOpeningLines(
       sanitizeModelVisibleText(
         primaryTopic.openingLine,
         NEW_TOPIC_FIELD_CAPS.openingLine,
+        userMaterialText,
       ),
     );
     return primaryOpeningLine === null

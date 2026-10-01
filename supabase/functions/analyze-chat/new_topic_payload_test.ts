@@ -17,6 +17,10 @@ import {
   normalizeNewTopicModelPayload,
   sanitizeNewTopicRequest,
 } from "./new_topic_payload.ts";
+import {
+  NEW_TOPIC_MATERIAL_TEXT_MAX_CODE_UNITS,
+  NEW_TOPIC_MATERIAL_TEXT_MAX_GRAPHEMES,
+} from "./new_topic_two_stage.ts";
 
 const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -174,6 +178,225 @@ Deno.test("sanitize：空白字串正規化為 null", () => {
 });
 
 // ---------------------------------------------------------------------------
+// topicContext（2026-10-01 規格 §1）
+// ---------------------------------------------------------------------------
+
+function sanitizeContext(
+  topicContext: unknown,
+  situation: unknown = "went_cold",
+) {
+  return sanitizeNewTopicRequest({ ...validBody(), situation, topicContext });
+}
+
+function contextReason(topicContext: unknown, situation?: unknown): string {
+  const result = sanitizeContext(topicContext, situation);
+  assertFalse(result.ok, JSON.stringify(topicContext));
+  return result.reason;
+}
+
+Deno.test("topicContext：缺席或 null＝沒有；其他非物件拒絕", () => {
+  const absent = sanitizeNewTopicRequest(validBody());
+  assert(absent.ok);
+  assertEquals(absent.request.topicContext, null);
+  const explicitNull = sanitizeContext(null);
+  assert(explicitNull.ok);
+  assertEquals(explicitNull.request.topicContext, null);
+  for (const bad of ["x", 1, true, [], [{ materialKind: "none" }]]) {
+    assertEquals(contextReason(bad), "topic_context_invalid");
+  }
+});
+
+Deno.test("topicContext：只收五個鍵；空物件與全 null 拒絕", () => {
+  assertEquals(
+    contextReason({ materialKind: "none", mood: "happy" }),
+    "topic_context_unknown_field:mood",
+  );
+  assertEquals(contextReason({}), "topic_context_empty");
+  assertEquals(
+    contextReason({ coldDuration: null, materialText: null }),
+    "topic_context_empty",
+  );
+  const result = sanitizeContext({ materialKind: "none", coldStop: null });
+  assert(result.ok);
+  assertEquals(result.request.topicContext, {
+    coldDuration: null,
+    coldStop: null,
+    engagement: null,
+    materialKind: "none",
+    materialText: null,
+  });
+});
+
+Deno.test("topicContext：enum 值不在清單各自拒絕", () => {
+  assertEquals(
+    contextReason({ coldDuration: "year" }),
+    "topic_context_cold_duration_invalid",
+  );
+  assertEquals(
+    contextReason({ coldStop: "blocked" }),
+    "topic_context_cold_stop_invalid",
+  );
+  assertEquals(
+    contextReason({ engagement: "blue" }, "stuck"),
+    "topic_context_engagement_invalid",
+  );
+  assertEquals(
+    contextReason({ materialKind: "photo" }),
+    "topic_context_material_kind_invalid",
+  );
+  assertEquals(
+    contextReason({ materialKind: 1 }),
+    "topic_context_material_kind_invalid",
+  );
+  const ok = sanitizeContext({ coldDuration: "weeks", coldStop: "she_cold" });
+  assert(ok.ok);
+  assertEquals(ok.request.topicContext?.coldDuration, "weeks");
+  assertEquals(ok.request.topicContext?.coldStop, "she_cold");
+});
+
+Deno.test("topicContext：冷掉追問只能搭 went_cold", () => {
+  for (const situation of ["stuck", "after_date", "warm_up", null]) {
+    assertEquals(
+      contextReason({ coldDuration: "days" }, situation),
+      "topic_context_cold_fields_without_went_cold",
+    );
+    assertEquals(
+      contextReason({ coldStop: "faded" }, situation),
+      "topic_context_cold_fields_without_went_cold",
+    );
+  }
+  assert(sanitizeContext({ coldDuration: "days" }, "went_cold").ok);
+});
+
+Deno.test("topicContext：投入程度只能搭 stuck／after_date／warm_up", () => {
+  for (const situation of ["went_cold", null]) {
+    assertEquals(
+      contextReason({ engagement: "green" }, situation),
+      "topic_context_engagement_situation_mismatch",
+    );
+  }
+  for (const situation of ["stuck", "after_date", "warm_up"]) {
+    const result = sanitizeContext({ engagement: "red" }, situation);
+    assert(result.ok, situation);
+    assertEquals(result.request.topicContext?.engagement, "red");
+  }
+});
+
+Deno.test("topicContext：素材類型可以單獨出現（不選第一問）", () => {
+  const result = sanitizeContext(
+    { materialKind: "trigger", materialText: "路過浮誇甜點店" },
+    null,
+  );
+  assert(result.ok);
+  assertEquals(result.request.situation, null);
+  assertEquals(result.request.topicContext?.materialKind, "trigger");
+});
+
+Deno.test("topicContext：前四種素材必填原文；none／缺席不得帶原文", () => {
+  for (const kind of ["past_topic", "trigger", "my_story", "inside_joke"]) {
+    assertEquals(
+      contextReason({ materialKind: kind }),
+      "topic_context_material_text_required",
+    );
+    assertEquals(
+      contextReason({ materialKind: kind, materialText: " \n　 " }),
+      "topic_context_material_text_required",
+    );
+    assertEquals(
+      contextReason({ materialKind: kind, materialText: 123 }),
+      "topic_context_material_text_invalid",
+    );
+    assert(sanitizeContext({ materialKind: kind, materialText: "有內容" }).ok);
+  }
+  assertEquals(
+    contextReason({ materialKind: "none", materialText: "多的" }),
+    "topic_context_material_text_unexpected",
+  );
+  assertEquals(
+    contextReason({ coldDuration: "days", materialText: "多的" }),
+    "topic_context_material_text_unexpected",
+  );
+  assert(sanitizeContext({ materialKind: "none", materialText: null }).ok);
+});
+
+Deno.test("topicContext：原文 trim＋連續空白（含換行）收成一個半形空白", () => {
+  const result = sanitizeContext({
+    materialKind: "past_topic",
+    materialText: "  她說\n\n在準備　潛水  證照\t ",
+  });
+  assert(result.ok);
+  assertEquals(
+    result.request.topicContext?.materialText,
+    "她說 在準備 潛水 證照",
+  );
+});
+
+Deno.test("topicContext：原文上限 150 grapheme（emoji 算一個），超長不截斷", () => {
+  const family = "👨‍👩‍👧";
+  const at150 = "字".repeat(149) + family;
+  assert(at150.length > 150, "UTF-16 長度超過 150，只有 grapheme 計數會放行");
+  const ok = sanitizeContext({ materialKind: "my_story", materialText: at150 });
+  assert(ok.ok);
+  assertEquals(ok.request.topicContext?.materialText, at150);
+  assertEquals(
+    contextReason({ materialKind: "my_story", materialText: at150 + "字" }),
+    "topic_context_material_text_too_long",
+  );
+});
+
+Deno.test("topicContext：原文先拿掉零寬／雙向控制／軟連字號，emoji 組合的 ZWJ 保留", () => {
+  const cases: Array<[string, string]> = [
+    ["她說\u200B想打\u200C炮", "她說想打炮"],
+    ["打\u200D炮", "打炮"],
+    ["\u202E反過來\u202C的字", "反過來的字"],
+    ["潛\u00AD水\u2060證照\uFEFF", "潛水證照"],
+    ["\u200B \u200B她說 \u2066在準備\u2069", "她說 在準備"],
+    ["全家出動👨‍👩‍👧 彩虹🏳️‍🌈", "全家出動👨‍👩‍👧 彩虹🏳️‍🌈"],
+  ];
+  for (const [raw, expected] of cases) {
+    const result = sanitizeContext({
+      materialKind: "my_story",
+      materialText: raw,
+    });
+    assert(result.ok, raw);
+    assertEquals(result.request.topicContext?.materialText, expected, raw);
+  }
+  assertEquals(
+    contextReason({ materialKind: "my_story", materialText: "\u200B\u200E" }),
+    "topic_context_material_text_required",
+  );
+});
+
+Deno.test("topicContext：原文另以 UTF-16 長度 1500 封頂（組合符號／ZWJ 疊字）", () => {
+  assertEquals(NEW_TOPIC_MATERIAL_TEXT_MAX_CODE_UNITS, 1500);
+  const zalgo =
+    ("字" + "\u0301\u0302\u0303\u0304\u0306\u0307\u0308\u030A\u030B\u030C")
+      .repeat(NEW_TOPIC_MATERIAL_TEXT_MAX_GRAPHEMES);
+  const zwjChain = "👨‍👩‍👧‍👦".repeat(NEW_TOPIC_MATERIAL_TEXT_MAX_GRAPHEMES);
+  for (const [name, text] of [["zalgo", zalgo], ["zwj", zwjChain]]) {
+    const graphemes = [
+      ...new Intl.Segmenter("zh-Hant", { granularity: "grapheme" }).segment(
+        text,
+      ),
+    ].length;
+    assertEquals(graphemes, NEW_TOPIC_MATERIAL_TEXT_MAX_GRAPHEMES, name);
+    assert(text.length > NEW_TOPIC_MATERIAL_TEXT_MAX_CODE_UNITS, name);
+    assertEquals(
+      contextReason({ materialKind: "my_story", materialText: text }),
+      "topic_context_material_text_too_long",
+      name,
+    );
+  }
+  const normal = "字".repeat(145) + "😂👨‍👩‍👧🇹🇼🏳️‍🌈❤️‍🔥";
+  const ok = sanitizeContext({
+    materialKind: "my_story",
+    materialText: normal,
+  });
+  assert(ok.ok);
+  assertEquals(ok.request.topicContext?.materialText, normal);
+});
+
+// ---------------------------------------------------------------------------
 // hasNewTopicMaterial
 // ---------------------------------------------------------------------------
 
@@ -185,11 +408,32 @@ Deno.test("material：三類至少一類有實質內容才可生成", () => {
     situation: null,
     expectedTier: null,
     revenueCatAppUserId: null,
+    topicContext: null,
+  } as const;
+  const noContext = {
+    coldDuration: null,
+    coldStop: null,
+    engagement: null,
+    materialKind: null,
+    materialText: null,
   } as const;
   assertFalse(hasNewTopicMaterial({ ...base }));
   assert(hasNewTopicMaterial({ ...base, partnerSummary: "對象摘要" }));
   assert(hasNewTopicMaterial({ ...base, effectiveStyleContext: "風格" }));
   assert(hasNewTopicMaterial({ ...base, situation: "stuck" }));
+  // 用戶寫的素材原文也算素材；「沒有，幫我想」單獨不算。
+  assert(hasNewTopicMaterial({
+    ...base,
+    topicContext: {
+      ...noContext,
+      materialKind: "my_story",
+      materialText: "走錯分店",
+    },
+  }));
+  assertFalse(hasNewTopicMaterial({
+    ...base,
+    topicContext: { ...noContext, materialKind: "none" },
+  }));
 });
 
 // ---------------------------------------------------------------------------
@@ -420,6 +664,118 @@ Deno.test("repair merge：只修解釋時保留 primary 可直接傳句子", () 
   );
 });
 
+Deno.test("normalize：用戶素材原文裡本來就有的詞撞到內部術語不算外洩", () => {
+  const cases: Array<{
+    material: string;
+    topic: Partial<NewTopicModelTopic>;
+    reason?: string;
+  }> = [
+    {
+      material: "她說最近在重看人間失格",
+      topic: {
+        direction: "她在重看的人間失格",
+        whyItWorks: "她正在重看人間失格，接後續她最好回",
+      },
+      reason: "直接接她在看的人間失格",
+    },
+    {
+      material: "路過一家雙球冰淇淋只要五十元的店",
+      topic: {
+        openingLine: "剛路過一家雙球冰淇淋只要五十",
+        nextMove: "她回了就問她雙球會怎麼配口味",
+      },
+    },
+    {
+      material: "她說高中超迷 One Direction",
+      topic: {
+        direction: "她高中迷 One Direction 的那段",
+        openingLine: "剛聽到 One Direction 的歌就想到妳",
+      },
+    },
+    {
+      material: "這週寫報告一直 stuck 在第一段",
+      topic: {
+        openingLine: "報告卡在第一段，整個 stuck 住",
+        whyItWorks: "用你自己 stuck 的小事開場，她不用回答問題也能接",
+      },
+      reason: "Stuck 在第一段的小事最好接",
+    },
+  ];
+  for (const { material, topic, reason } of cases) {
+    const topics = modelTopics();
+    topics[0] = { ...topics[0], ...topic };
+    const payload = {
+      topics,
+      recommendation: { index: 0, reason: reason ?? "最貼近她的近況" },
+    };
+    const result = normalizeNewTopicModelPayload(payload, {
+      allowSharedFrame: false,
+      userMaterialText: material,
+    });
+    assert(result.ok, material);
+    for (const [field, value] of Object.entries(topic)) {
+      assertEquals(
+        result.topics[0][field as keyof NewTopicModelTopic],
+        value,
+        material,
+      );
+    }
+    // 沒給素材（legacy 路徑）照舊擋。
+    assertFalse(
+      normalizeNewTopicModelPayload(payload, { allowSharedFrame: false }).ok,
+      material,
+    );
+    assertFalse(normalizeNewTopicModelPayload(payload).ok, material);
+  }
+});
+
+Deno.test("normalize：素材原文只放行它自己有的詞，其他內部術語照擋", () => {
+  const material = "她說最近在重看人間失格";
+  const leaks: Array<Partial<NewTopicModelTopic>> = [
+    { whyItWorks: "人間失格這題用旁路冷讀，她容易反駁" },
+    { nextMove: "她回了就用雙球繼續推進" },
+    { openingLine: "人間失格看到 warm_up 的段落了嗎" },
+    { direction: "stuck 的時候聊人間失格" },
+  ];
+  for (const leak of leaks) {
+    const topics = modelTopics();
+    topics[0] = { ...topics[0], ...leak };
+    assertFalse(
+      normalizeNewTopicModelPayload(
+        { topics, recommendation: { index: 0 } },
+        { allowSharedFrame: true, userMaterialText: material },
+      ).ok,
+      JSON.stringify(leak),
+    );
+  }
+});
+
+Deno.test("repair merge：素材裡的 stuck 不會讓 primary 可直接傳句子被換掉", () => {
+  const primaryTopics = modelTopics();
+  primaryTopics[0].openingLine = "報告卡在第一段，整個 stuck 住";
+  primaryTopics[0].whyItWorks = "旁路冷讀：她容易反駁";
+  const repairedTopics = modelTopics();
+  repairedTopics[0].openingLine = "修復器不得改成這句";
+  const material = "這週寫報告一直 stuck 在第一段";
+  const merged = mergeNewTopicRepairWithPrimaryOpeningLines(
+    { topics: primaryTopics, recommendation: { index: 0 } },
+    { topics: repairedTopics, recommendation: { index: 0 } },
+    material,
+  );
+  const result = normalizeNewTopicModelPayload(merged, {
+    allowSharedFrame: true,
+    userMaterialText: material,
+  });
+  assert(result.ok);
+  assertEquals(result.topics[0].openingLine, "報告卡在第一段，整個 stuck 住");
+  // 沒給素材時 primary 那句算外洩，照舊用修復版。
+  const legacy = mergeNewTopicRepairWithPrimaryOpeningLines(
+    { topics: primaryTopics, recommendation: { index: 0 } },
+    { topics: repairedTopics, recommendation: { index: 0 } },
+  ) as { topics: NewTopicModelTopic[] };
+  assertEquals(legacy.topics[0].openingLine, "修復器不得改成這句");
+});
+
 Deno.test("normalize：未知關係階段不得用共同生活的『我們』框架", () => {
   const overstepped = modelTopics();
   overstepped[0].openingLine = "如果我們一起養狗妳一定搶著取名";
@@ -458,6 +814,82 @@ Deno.test("shared frame 權限只來自明確熟悉階段，不把 warm_up 當�
       partnerSummary: "[對象作戰板：Miya]\n- 你的備註：聊得來但還沒約",
       situation: "warm_up",
     }),
+  );
+});
+
+Deno.test("shared frame：進階路徑只有想更靠近＋她很投入才放行", () => {
+  const context = (engagement: "green" | "yellow" | null) => ({
+    coldDuration: null,
+    coldStop: null,
+    engagement,
+    materialKind: null,
+    materialText: null,
+  });
+  assert(
+    allowsNewTopicSharedFrame({
+      partnerSummary: null,
+      situation: "warm_up",
+      topicContext: context("green"),
+    }),
+  );
+  assertFalse(
+    allowsNewTopicSharedFrame({
+      partnerSummary: null,
+      situation: "warm_up",
+      topicContext: context("yellow"),
+    }),
+  );
+  assertFalse(
+    allowsNewTopicSharedFrame({
+      partnerSummary: null,
+      situation: "stuck",
+      topicContext: context("green"),
+    }),
+  );
+  assert(
+    allowsNewTopicSharedFrame({
+      partnerSummary: null,
+      situation: "after_date",
+      topicContext: context(null),
+    }),
+  );
+});
+
+Deno.test("shared frame：用戶寫了你們之間的梗＝他確認有共同經歷，放行", () => {
+  const joke = {
+    coldDuration: null,
+    coldStop: null,
+    engagement: null,
+    materialKind: "inside_joke" as const,
+    materialText: "她說我的五分鐘都是半小時",
+  };
+  for (const situation of [null, "went_cold", "stuck"] as const) {
+    assert(
+      allowsNewTopicSharedFrame({
+        partnerSummary: null,
+        situation,
+        topicContext: joke,
+      }),
+      String(situation),
+    );
+  }
+  assertFalse(
+    allowsNewTopicSharedFrame({
+      partnerSummary: null,
+      situation: "stuck",
+      topicContext: { ...joke, materialText: null },
+    }),
+  );
+  assertFalse(
+    allowsNewTopicSharedFrame({
+      partnerSummary: null,
+      situation: "stuck",
+      topicContext: { ...joke, materialKind: "past_topic" },
+    }),
+  );
+  // legacy 呼叫（沒有 topicContext）不變。
+  assertFalse(
+    allowsNewTopicSharedFrame({ partnerSummary: null, situation: "stuck" }),
   );
 });
 

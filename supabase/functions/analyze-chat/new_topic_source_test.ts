@@ -52,7 +52,7 @@ Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接�
   );
 });
 
-Deno.test("index：new_topic branch 固定順序 sanitize→material→config→preflight→claim→quota→rate→renew→generate→settle", () => {
+Deno.test("index：new_topic branch 固定順序 sanitize→擋字→material→config→preflight→claim→進階開關→quota→quota→rate→renew→generate→settle", () => {
   // dispatch 順序仍鎖在 index.ts；分支本體已抽到 new_topic_handler.ts。
   const branch = indexSource.indexOf("if (isNewTopicMode) {");
   assert(branch >= 0, "new_topic dispatch 必須存在");
@@ -61,11 +61,18 @@ Deno.test("index：new_topic branch 固定順序 sanitize→material→config→
 
   const anchors = [
     "sanitizeNewTopicRequest(",
+    // 擋字在 material、DB、限流、模型之前（規格 §2）。
+    "containsCrudeSexualOffense(newTopicMaterialText)",
+    "containsCrudeInsult(newTopicMaterialText)",
+    "NEW_TOPIC_MATERIAL_BLOCKED",
     "NEW_TOPIC_CONTEXT_REQUIRED",
     "isStrongNewTopicReplayHmacKey(newTopicHmacSecret)",
     "computeNewTopicInputHash({",
     "classifyNewTopicReplayPreflight(",
     "claimNewTopicRequest({",
+    // 進階開關在原子 claim 之後、quota 之前（Codex R1／R2 P1）：佔住編號、不 release。
+    'Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"',
+    "NEW_TOPIC_ADVANCED_UNAVAILABLE",
     "new_topic_quota_exceeded",
     'scope: "new_topic"',
     // 模型派發前 renew claim（第二個 claimNewTopicRequest 呼叫在 rate gate 後）
@@ -168,6 +175,30 @@ Deno.test("index：telemetry 事件名逐項對齊計畫 §14.1（Eric 2026-07-2
     ),
     "telemetry 不得帶 raw partnerSummary",
   );
+  assertFalse(
+    /log(Info|Warn|Error)\("new_topic_[^"]*",\s*\{[^}]*materialText\b/s.test(
+      branch,
+    ),
+    "telemetry 不得帶用戶寫的素材原文",
+  );
+});
+
+Deno.test("index：進階路徑 telemetry、稽核與兩條模型呼叫都接上", () => {
+  const branch = newTopicHandlerSource;
+  const telemetry = "...newTopicTwoStageTelemetry(newTopicContext)";
+  const received = branch.indexOf('"new_topic_request_received"');
+  const success = branch.indexOf('"new_topic_success"');
+  const audit = branch.indexOf('"new_topic_two_stage_audit"');
+  assert(branch.indexOf(telemetry, received) > received);
+  assert(branch.indexOf(telemetry, success) > success);
+  assert(audit > success, "稽核跟 new_topic_success 一起記在 settle 成功後");
+  // 重放指紋帶 topicContext；legacy 與 stream 兩條呼叫都換 system prompt。
+  assert(branch.includes("topicContext: newTopicContext,\n    secret:"));
+  assertEquals(
+    branch.match(/system: newTopicSystemPrompt,/g)?.length,
+    2,
+  );
+  assertFalse(branch.includes("system: NEW_TOPIC_PROMPT,"));
 });
 
 Deno.test("migration：claim/settle/release/cleanup/contract marker 俱全", () => {
