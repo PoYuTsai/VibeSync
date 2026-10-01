@@ -735,17 +735,21 @@ void main() {
     expect(find.text(unavailable.message), findsNothing);
   });
 
-  testWidgets('伺服器擋下素材用字：顯示 server 訊息，改字後換新請求', (t) async {
-    style = '有效風格';
+  testWidgets('伺服器擋下素材用字：顯示 server 訊息、不邀重試，改字後換新請求', (t) async {
+    // 沒有作戰板訊號、沒有風格、不選第一問：只靠用戶寫的那句也能生成。
     await _pump(t);
     await _tapVisible(t, _key('new-topic-material-my_story'));
     await _typeMaterial(t, '合成測試句');
+    expect(find.text('可以不選，直接找新的切入點。'), findsOneWidget);
+    expect(_button(t).onPressed, isNotNull);
     await _tapGenerate(t);
-    _service.replies[0].completeError(
-        const NewTopicException('你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'));
+    _service.replies[0].completeError(const NewTopicMaterialBlockedException(
+        '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'));
     await t.pump(const Duration(milliseconds: 300));
     expect(find.text('你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('重試'), findsNothing);
+    expect(find.text('生成新話題'), findsOneWidget);
     await _typeMaterial(t, '合成測試句改');
     expect(find.text('你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。'), findsNothing);
     await _tapGenerate(t);

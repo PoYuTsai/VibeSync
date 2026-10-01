@@ -97,6 +97,11 @@ class NewTopicAdvancedUnavailableException extends NewTopicException {
   const NewTopicAdvancedUnavailableException(super.message);
 }
 
+/// 素材原文被 server 擋字（422）：同一句重送一定再被擋，View 不留 pending。
+class NewTopicMaterialBlockedException extends NewTopicException {
+  const NewTopicMaterialBlockedException(super.message);
+}
+
 class NewTopicService {
   NewTopicService({
     NewTopicInvoker? invoker,
@@ -415,6 +420,12 @@ class NewTopicService {
         code == 'NEW_TOPIC_ADVANCED_UNAVAILABLE' && serverMessage != null
             ? serverMessage
             : '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
+      );
+    }
+
+    if (code == 'NEW_TOPIC_MATERIAL_BLOCKED') {
+      throw NewTopicMaterialBlockedException(
+        serverMessage ?? '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。',
       );
     }
 

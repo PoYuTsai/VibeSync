@@ -488,6 +488,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!current()) return;
       setState(() => _error = e.message);
       offerBasic = true;
+    } on NewTopicMaterialBlockedException catch (e) {
+      if (!current()) return;
+      // 同一句重送一定再被擋：不留 pending，按鈕回到「生成新話題」。
+      _requestSession.markSuccess();
+      setState(() => _error = e.message);
     } on NewTopicException catch (e) {
       if (!current()) return;
       setState(() => _error = e.message);
@@ -599,6 +604,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         : ref.watch(newTopicStyleContextProvider(validPartnerId));
     final answers = _answers;
     final topicContext = _topicContext;
+    final hasMaterialText = topicContext?['materialText'] != null;
     final pending = _requestSession.pendingFor(
         partnerId: validPartnerId,
         situation: _situation,
@@ -613,15 +619,19 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 styleContext:
                     pending?.effectiveStyleContext ?? style.valueOrNull,
                 situation: _situation,
-                hasMaterialText: topicContext?['materialText'] != null);
+                hasMaterialText: hasMaterialText);
     // 選了要寫的素材卻沒寫或超長：不能生成，不偷偷截斷。
     final materialHint = answers.materialMissing
         ? NewTopicTwoStageCopy.materialMissingHint
         : answers.materialTooLong
             ? NewTopicTwoStageCopy.materialTooLongHint
             : null;
+    // 第一問以外的素材（含用戶寫的那句）夠不夠：夠就可以不選第一問。
     final otherMaterials = canGenerateNewTopic(
-        readiness: readiness, styleContext: style.valueOrNull, situation: null);
+        readiness: readiness,
+        styleContext: style.valueOrNull,
+        situation: null,
+        hasMaterialText: hasMaterialText);
     final usage = ref.watch(subscriptionProvider);
     final quotaBlocked = pending == null &&
         !usage.isLoading &&
@@ -851,7 +861,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           keyPrefix: 'new-topic-material'),
       if (inputTitle != null) ...[
         const SizedBox(height: 16),
-        Text(inputTitle, style: OpenerHomeStyle.body),
+        // 標題已由下方 Semantics 掛在輸入框上，避免 VoiceOver 唸兩次。
+        ExcludeSemantics(child: Text(inputTitle, style: OpenerHomeStyle.body)),
         const SizedBox(height: 8),
         // 不用 formatter 截斷：超長保留原文、顯示紅字、擋生成。
         Semantics(

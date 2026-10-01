@@ -161,7 +161,7 @@ void main() {
             topicContext: {'materialKind': 'trigger', 'materialText': '合成'}),
         throwsA(allOf(
           isNot(isA<NewTopicAdvancedUnavailableException>()),
-          isA<NewTopicException>()
+          isA<NewTopicMaterialBlockedException>()
               .having(
                   (e) => e.message, 'message', '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。')
               .having((e) => e.retrySameRequest, 'retry', isFalse),

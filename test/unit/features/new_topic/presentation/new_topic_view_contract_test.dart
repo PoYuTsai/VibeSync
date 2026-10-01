@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
+import 'package:vibesync/features/new_topic/data/providers/new_topic_providers.dart';
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_view.dart';
 import 'package:vibesync/features/opener/presentation/screens/opening_rescue_screen.dart';
 
@@ -36,6 +37,23 @@ void main() {
       NewTopicView.situationOptions.map((o) => o.label).toList(),
       ['冷掉了，想重新聊', '還在聊，但接不下去', '剛約完會', '聊得不錯，想更靠近'],
     );
+  });
+
+  test('素材原文單獨也算素材（同 server hasNewTopicMaterial）', () {
+    bool can({bool hasMaterialText = false, NewTopicReadiness? readiness}) =>
+        canGenerateNewTopic(
+            readiness:
+                readiness ?? NewTopicReadiness.readyWithoutPartnerSignals,
+            styleContext: null,
+            situation: null,
+            hasMaterialText: hasMaterialText);
+    expect(can(), isFalse);
+    expect(can(hasMaterialText: true), isTrue);
+    expect(
+        can(
+            hasMaterialText: true,
+            readiness: NewTopicReadiness.dataQualityBlocked),
+        isFalse);
   });
 
   test('New Topic 專用進度文案五句', () {
