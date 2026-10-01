@@ -30,6 +30,7 @@ import '../../data/providers/new_topic_providers.dart';
 import '../../data/services/new_topic_request_session.dart';
 import '../../data/services/new_topic_service.dart';
 import '../../domain/entities/new_topic_result.dart';
+import '../../domain/new_topic_two_stage_copy.dart';
 import 'new_topic_idea_card.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -48,13 +49,8 @@ class NewTopicView extends ConsumerStatefulWidget {
   /// owner-scoped partner list 才預選（missing/deleted 顯示重新選擇）。
   final String? initialPartnerId;
 
-  /// 四個可 deselect 的情境 chips（不提供自由輸入）。
-  static const situationOptions = [
-    (label: '冷掉了', value: 'went_cold'),
-    (label: '剛約完', value: 'after_date'),
-    (label: '聊著但卡住', value: 'stuck'),
-    (label: '想升溫', value: 'warm_up'),
-  ];
+  /// 第一問四個可 deselect 的情境（文案在兩段式文案檔）。
+  static const situationOptions = NewTopicTwoStageCopy.situationOptions;
 
   /// New Topic 專用 staged 進度文案。
   static const progressPhrases = [
@@ -83,10 +79,19 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   // 2026-08-18 呈現精修：完成後定格在「新話題建議」標題，不再捲到底
   // 略過 5 張題卡。
   final _resultsSectionKey = GlobalKey();
+  final _situationKey = GlobalKey();
+  final _materialController = TextEditingController();
   final _requestSession = NewTopicRequestSession();
 
   String? _selectedPartnerId;
   String? _situation;
+  String? _coldDuration;
+  String? _coldStop;
+  String? _engagement;
+  String? _materialKind;
+  // 進階不可用時用戶選了基本模式：同一組答案改不送 topicContext，
+  // 任何答案或對象改變就回到進階。
+  bool _forceBasic = false;
   // 真串流進度（server 事件）；每次生成開始清空。空＝還沒收到事件
   //（或 server 降級 legacy），顯示本地輪播 fallback。heartbeat 不進清單。
   final List<String> _streamProgress = [];
@@ -105,6 +110,16 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       NewTopicView.debugOwnerIdOverride?.call() ??
       SupabaseService.currentUser?.id;
   bool get _busy => _preparing || _isGenerating;
+  NewTopicTwoStageAnswers get _answers => NewTopicTwoStageAnswers(
+        situation: _situation,
+        coldDuration: _coldDuration,
+        coldStop: _coldStop,
+        engagement: _engagement,
+        materialKind: _materialKind,
+        materialText: _materialController.text,
+      );
+  Map<String, dynamic>? get _topicContext =>
+      _forceBasic ? null : _answers.toTopicContextJson();
 
   @override
   void didUpdateWidget(covariant NewTopicView oldWidget) {
@@ -149,6 +164,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   void dispose() {
     _partnerFocus.dispose();
     _scrollController.dispose();
+    _materialController.dispose();
     super.dispose();
   }
 
@@ -207,6 +223,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _inputVersion++;
       _selectedPartnerId = selected;
+      _forceBasic = false;
       _result = null;
       _confirmPending = false;
       _showDetails = false;
@@ -214,20 +231,84 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     });
   }
 
-  Future<void> _selectSituation(String? value) async {
-    if (_busy) return;
-    final next = _situation == value ? null : value;
-    if (next == _situation) return;
+  /// 任何答案變更：有結果先確認清除，再套用變更（同一份答案才沿用 requestId）。
+  Future<bool> _changeAnswers(void Function() apply) async {
+    if (_busy) return false;
     final owner = _owner, version = _inputVersion;
-    if (!await _confirmClearResultIfNeeded()) return;
-    if (!mounted || owner != _owner || version != _inputVersion) return;
+    if (!await _confirmClearResultIfNeeded()) return false;
+    if (!mounted || owner != _owner || version != _inputVersion) return false;
     setState(() {
       _inputVersion++;
-      _situation = next;
+      apply();
+      _forceBasic = false;
       _result = null;
       _confirmPending = false;
       _error = null;
     });
+    return true;
+  }
+
+  /// 所有選項再點一次就取消。
+  static String? _toggle(String? current, String value) =>
+      current == value ? null : value;
+
+  /// 換第一問清掉追問、保留素材。
+  void _selectSituation(String value) => unawaited(_changeAnswers(() {
+        _situation = _toggle(_situation, value);
+        _coldDuration = _coldStop = _engagement = null;
+      }));
+
+  /// 「調整狀況」：清結果後捲回第一問。
+  Future<void> _adjustAnswers() async {
+    if (!await _changeAnswers(() {})) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _situationKey.currentContext;
+      if (!mounted || target == null) return;
+      Scrollable.ensureVisible(target,
+          alignment: 0.04,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : AppMotion.scroll,
+          curve: AppMotion.easeOut);
+    });
+  }
+
+  /// 進階不可用：問要不要改用基本模式；答案與文字都保留。
+  Future<void> _offerBasicMode() async {
+    final owner = _owner, version = _inputVersion;
+    final basic = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.coachSurfaceRaised,
+        title: Text(
+          NewTopicTwoStageCopy.advancedUnavailableTitle,
+          style: AppTypography.titleMedium.copyWith(color: Colors.white),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.onBackgroundSecondary,
+            ),
+            child: const Text(NewTopicTwoStageCopy.advancedUnavailableCancel),
+          ),
+          TextButton(
+            onPressed:
+                AppHaptics.onPress(() => Navigator.pop(dialogContext, true)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.ctaStart),
+            child: const Text(NewTopicTwoStageCopy.advancedUnavailableConfirm),
+          ),
+        ],
+      ),
+    );
+    if (basic != true ||
+        !mounted ||
+        owner != _owner ||
+        version != _inputVersion) {
+      return;
+    }
+    setState(() => _forceBasic = true);
+    await _generate();
   }
 
   /// 已有結果時要換 Partner／情境，先確認會清除舊結果（§13.7）。
@@ -275,9 +356,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     if (partnerId == null) return;
     final owner = _owner, version = _inputVersion;
     final situation = _situation;
+    final topicContext = _topicContext;
     final partnerContext = ref.read(newTopicPartnerContextProvider(partnerId));
-    final pending =
-        _requestSession.pendingFor(partnerId: partnerId, situation: situation);
+    final pending = _requestSession.pendingFor(
+        partnerId: partnerId, situation: situation, topicContext: topicContext);
+    var offerBasic = false;
     bool current() =>
         mounted &&
         owner == _owner &&
@@ -286,6 +369,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         ref.read(newTopicReadinessProvider(partnerId)) !=
             NewTopicReadiness.dataQualityBlocked;
     if (!current()) return;
+    // 生成前收鍵盤（同開場白），進度與結果不被鍵盤擋住。
+    FocusScope.of(context).unfocus();
     setState(() {
       _preparing = true;
       _error = null;
@@ -303,7 +388,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           !canGenerateNewTopic(
               readiness: ref.read(newTopicReadinessProvider(partnerId)),
               styleContext: styleContext,
-              situation: situation)) {
+              situation: situation,
+              hasMaterialText: topicContext?['materialText'] != null)) {
         setState(() => _error = '請選一個目前情境，或先補充對象資料。');
         return;
       }
@@ -344,6 +430,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         partnerSummary: partnerContext.promptText,
         effectiveStyleContext: styleContext,
         situation: situation,
+        topicContext: topicContext,
         expectedTier: expectedTier,
         revenueCatAppUserId: revenueCatAppUserId,
       );
@@ -360,6 +447,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         partnerSummary: attempt.partnerSummary,
         effectiveStyleContext: attempt.effectiveStyleContext,
         situation: attempt.situation,
+        topicContext: attempt.topicContext,
         expectedTier: attempt.expectedTier,
         revenueCatAppUserId: attempt.revenueCatAppUserId,
         onProgress: (label, phase) {
@@ -396,6 +484,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _error = e.message;
         _confirmPending = true;
       });
+    } on NewTopicAdvancedUnavailableException catch (e) {
+      if (!current()) return;
+      setState(() => _error = e.message);
+      offerBasic = true;
     } on NewTopicException catch (e) {
       if (!current()) return;
       setState(() => _error = e.message);
@@ -411,6 +503,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         });
       }
     }
+    // 生成鎖解開後才開對話框，選基本模式才能再進 _generate。
+    if (offerBasic && current() && widget.isActive) await _offerBasicMode();
   }
 
   Future<void> _refreshUsageAfterResult() async {
@@ -461,6 +555,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _inputVersion++;
         _selectedPartnerId = null;
         _situation = null;
+        _coldDuration = _coldStop = _engagement = _materialKind = null;
+        _materialController.clear();
+        _forceBasic = false;
         _result = null;
         _error = null;
         _preparing = false;
@@ -500,8 +597,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final style = validPartnerId == null
         ? const AsyncData<String?>(null)
         : ref.watch(newTopicStyleContextProvider(validPartnerId));
+    final answers = _answers;
+    final topicContext = _topicContext;
     final pending = _requestSession.pendingFor(
-        partnerId: validPartnerId, situation: _situation);
+        partnerId: validPartnerId,
+        situation: _situation,
+        topicContext: topicContext);
     final loading = style.isLoading && pending == null;
     final ready = pending != null
         ? validPartnerId != null &&
@@ -511,7 +612,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 readiness: readiness,
                 styleContext:
                     pending?.effectiveStyleContext ?? style.valueOrNull,
-                situation: _situation);
+                situation: _situation,
+                hasMaterialText: topicContext?['materialText'] != null);
+    // 選了要寫的素材卻沒寫或超長：不能生成，不偷偷截斷。
+    final materialHint = answers.materialMissing
+        ? NewTopicTwoStageCopy.materialMissingHint
+        : answers.materialTooLong
+            ? NewTopicTwoStageCopy.materialTooLongHint
+            : null;
     final otherMaterials = canGenerateNewTopic(
         readiness: readiness, styleContext: style.valueOrNull, situation: null);
     final usage = ref.watch(subscriptionProvider);
@@ -542,12 +650,16 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                       : '生成新話題',
       hint: quotaBlocked
           ? '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。'
-          : ready
-              ? '將使用 $kNewTopicQuotaCost 則額度'
-              : validPartnerId == null
-                  ? '先選擇聊天對象'
-                  : '',
-      onPressed: _busy || !ready || quotaBlocked ? null : _generate,
+          : materialHint != null && validPartnerId != null
+              ? materialHint
+              : ready
+                  ? '將使用 $kNewTopicQuotaCost 則額度'
+                  : validPartnerId == null
+                      ? '先選擇聊天對象'
+                      : '',
+      onPressed: _busy || !ready || quotaBlocked || materialHint != null
+          ? null
+          : _generate,
       onQuota: () => showOpenerQuotaSheet(context, newTopic: true),
     );
     return ScrollCardTicks(
@@ -563,14 +675,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               _buildPartnerCard(partner,
                   _selectedPartnerId != null && validPartnerId == null),
               const SizedBox(height: 24),
-              const Text('目前聊得怎麼樣？（選填）', style: OpenerHomeStyle.label),
+              Text(NewTopicTwoStageCopy.situationTitle,
+                  key: _situationKey, style: OpenerHomeStyle.label),
               const SizedBox(height: 8),
               OpenerSituationGrid(
                   options: NewTopicView.situationOptions,
                   selected: _situation,
-                  onChanged: _busy
-                      ? null
-                      : (value) => unawaited(_selectSituation(value))),
+                  onChanged: _busy ? null : _selectSituation),
+              ..._buildFollowUps(answers),
+              ..._buildMaterial(answers),
               const SizedBox(height: 8),
               Semantics(
                   liveRegion: true,
@@ -629,14 +742,181 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 const SizedBox(height: 24),
                 KeyedSubtree(
                   key: _resultsSectionKey,
-                  child: NewTopicResultsSection(
-                    result: _result!,
-                    onCopyIdeaOpeningLine: _copyOpeningLine,
-                    onUpgrade: _showPaywallAndRefresh,
-                  ),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildBasisRow(),
+                        const SizedBox(height: 8),
+                        NewTopicResultsSection(
+                          result: _result!,
+                          onCopyIdeaOpeningLine: _copyOpeningLine,
+                          onUpgrade: _showPaywallAndRefresh,
+                        ),
+                      ]),
                 ),
               ],
             ])));
+  }
+
+  Widget _choiceGroup(String? title, List<NewTopicOption> options,
+      String? selected, ValueChanged<String> onTap,
+      {required String keyPrefix}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (title != null) ...[
+        const SizedBox(height: 16),
+        Text(title, style: OpenerHomeStyle.body),
+      ],
+      const SizedBox(height: 8),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final option in options)
+          BrandChoiceChip(
+            key: ValueKey('$keyPrefix-${option.value}'),
+            label: option.label,
+            selected: selected == option.value,
+            tone: BrandVisualTone.coach,
+            enabled: !_busy,
+            onTap: () => onTap(option.value),
+          ),
+      ]),
+    ]);
+  }
+
+  /// 第一問的追問＋教練提醒（選了第一問才出現）。
+  List<Widget> _buildFollowUps(NewTopicTwoStageAnswers answers) {
+    final situation = _situation;
+    if (situation == null) return const [];
+    final tip = NewTopicTwoStageCopy.coachTip(answers);
+    return [
+      if (situation == 'went_cold') ...[
+        _choiceGroup(
+            NewTopicTwoStageCopy.coldDurationTitle,
+            NewTopicTwoStageCopy.coldDurationOptions,
+            _coldDuration,
+            (v) => unawaited(_changeAnswers(
+                () => _coldDuration = _toggle(_coldDuration, v))),
+            keyPrefix: 'new-topic-cold-duration'),
+        _choiceGroup(
+            NewTopicTwoStageCopy.coldStopTitle,
+            NewTopicTwoStageCopy.coldStopOptions,
+            _coldStop,
+            (v) => unawaited(
+                _changeAnswers(() => _coldStop = _toggle(_coldStop, v))),
+            keyPrefix: 'new-topic-cold-stop'),
+      ] else
+        _choiceGroup(
+            NewTopicTwoStageCopy.engagementTitle(situation),
+            NewTopicTwoStageCopy.engagementOptions(situation),
+            _engagement,
+            (v) => unawaited(
+                _changeAnswers(() => _engagement = _toggle(_engagement, v))),
+            keyPrefix: 'new-topic-engagement'),
+      if (tip != null) ...[
+        const SizedBox(height: 16),
+        OpenerHomePanel(
+            key: const ValueKey('new-topic-coach-tip'),
+            padding: const EdgeInsets.all(12),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Row(children: [
+                Icon(Icons.tips_and_updates_outlined,
+                    size: 18, color: AppColors.coachAccentBright),
+                SizedBox(width: 6),
+                Text(NewTopicTwoStageCopy.coachTipTitle,
+                    style: OpenerHomeStyle.label),
+              ]),
+              const SizedBox(height: 6),
+              Text(tip.open, style: OpenerHomeStyle.body),
+              const SizedBox(height: 4),
+              Text(tip.avoid, style: OpenerHomeStyle.body),
+            ])),
+      ],
+    ];
+  }
+
+  /// 第二問＋素材輸入框（選了要寫的素材才出現）。
+  List<Widget> _buildMaterial(NewTopicTwoStageAnswers answers) {
+    final inputTitle =
+        NewTopicTwoStageCopy.materialInputTitle(_materialKind, _situation);
+    final tooLong = answers.materialTooLong;
+    return [
+      const SizedBox(height: 24),
+      const Text(NewTopicTwoStageCopy.materialTitle,
+          style: OpenerHomeStyle.label),
+      _choiceGroup(
+          null,
+          NewTopicTwoStageCopy.materialOptions(_situation),
+          _materialKind,
+          (v) => unawaited(
+              _changeAnswers(() => _materialKind = _toggle(_materialKind, v))),
+          keyPrefix: 'new-topic-material'),
+      if (inputTitle != null) ...[
+        const SizedBox(height: 16),
+        Text(inputTitle, style: OpenerHomeStyle.body),
+        const SizedBox(height: 8),
+        // 不用 formatter 截斷：超長保留原文、顯示紅字、擋生成。
+        Semantics(
+          label: inputTitle,
+          child: TextField(
+            key: const ValueKey('new-topic-material-text'),
+            controller: _materialController,
+            readOnly: _busy || _result != null,
+            minLines: 1,
+            maxLines: 3,
+            onChanged: (_) => setState(() {
+              _inputVersion++;
+              _forceBasic = false;
+              _confirmPending = false;
+              _error = null;
+            }),
+            cursorColor: AppColors.coachAccentBright,
+            style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+            decoration: OpenerHomeStyle.field(
+                NewTopicTwoStageCopy.materialInputHint(_materialKind)),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Expanded(
+              child: Text(NewTopicTwoStageCopy.materialHelper,
+                  style: OpenerHomeStyle.helper)),
+          const SizedBox(width: 8),
+          Flexible(
+              child: Semantics(
+                  liveRegion: tooLong,
+                  child: Text(
+                    NewTopicTwoStageCopy.materialCounter(
+                        answers.materialLength),
+                    key: const ValueKey('new-topic-material-counter'),
+                    textAlign: TextAlign.end,
+                    style: OpenerHomeStyle.helper
+                        .copyWith(color: tooLong ? AppColors.error : null),
+                  ))),
+        ]),
+      ],
+    ];
+  }
+
+  /// 結果上方：「這組根據」＋「調整狀況」。
+  Widget _buildBasisRow() {
+    // 基本模式沒有送追問與素材，根據只剩第一問。
+    final basis = NewTopicTwoStageCopy.basisLine(_forceBasic
+        ? NewTopicTwoStageAnswers(situation: _situation)
+        : _answers);
+    return Row(children: [
+      Expanded(
+          child: basis == null
+              ? const SizedBox.shrink()
+              : Text(basis,
+                  key: const ValueKey('new-topic-basis'),
+                  style: OpenerHomeStyle.helper)),
+      TextButton(
+          key: const ValueKey('new-topic-adjust'),
+          onPressed: AppHaptics.onPress(_busy ? null : _adjustAnswers),
+          style: TextButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              foregroundColor: OpenerHomeStyle.accent),
+          child: const Text(NewTopicTwoStageCopy.adjustButton)),
+    ]);
   }
 
   Future<void> _openPartnerPicker() async {

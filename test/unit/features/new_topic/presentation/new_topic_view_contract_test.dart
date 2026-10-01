@@ -30,11 +30,11 @@ void main() {
   test('情境四 enum chips：payload 值鎖 server 契約、無自由輸入', () {
     expect(
       NewTopicView.situationOptions.map((o) => o.value).toList(),
-      ['went_cold', 'after_date', 'stuck', 'warm_up'],
+      ['went_cold', 'stuck', 'after_date', 'warm_up'],
     );
     expect(
       NewTopicView.situationOptions.map((o) => o.label).toList(),
-      ['冷掉了', '剛約完', '聊著但卡住', '想升溫'],
+      ['冷掉了，想重新聊', '還在聊，但接不下去', '剛約完會', '聊得不錯，想更靠近'],
     );
   });
 
