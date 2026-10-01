@@ -758,6 +758,8 @@ void main() {
     await _tapVisible(t, _key('new-topic-material-my_story'));
     expect(find.text('請選一個目前情境，或先補充對象資料。'), findsOneWidget,
         reason: '還沒寫的空素材不算素材');
+    expect(t.widget<TextField>(_materialField).decoration!.hintMaxLines, 5,
+        reason: '大字級提示不被截掉');
     await _typeMaterial(t, '合成測試句');
     expect(find.text('可以不選，直接找新的切入點。'), findsOneWidget);
     expect(_button(t).onPressed, isNotNull);

@@ -892,8 +892,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             }),
             cursorColor: AppColors.coachAccentBright,
             style: AppTypography.bodyMedium.copyWith(color: Colors.white),
+            // 大字級時提示會換行，不能被截掉。
             decoration: OpenerHomeStyle.field(
-                NewTopicTwoStageCopy.materialInputHint(_materialKind)),
+                    NewTopicTwoStageCopy.materialInputHint(_materialKind))
+                .copyWith(hintMaxLines: 5),
           ),
         ),
         const SizedBox(height: 4),
