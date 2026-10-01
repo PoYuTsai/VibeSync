@@ -332,32 +332,35 @@ void main() {
     expect(legacyBodies.single['requestId'], _requestId);
   });
 
-  test('串流 503 進階開關關閉 → 進階不可用，不自動重試', () async {
-    var attempts = 0;
-    final service = NewTopicService(
-      accessTokenProvider: () => 'fake-token',
-      streamClientFactory: () => MockClient.streaming((_, bodyStream) async {
-        await bodyStream.drain<void>();
-        attempts++;
-        return http.StreamedResponse(
-            Stream.value(utf8.encode(jsonEncode({
-              'error': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
-              'code': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
-              'message': '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
-              'retryable': false,
-            }))),
-            503,
-            headers: {'content-type': 'application/json'});
-      }),
-    );
+  // server 現回 422；舊版 Edge 回 503。都只看 code。
+  for (final status in [422, 503]) {
+    test('串流 $status 進階開關關閉 → 進階不可用，不降級、不自動重試', () async {
+      var attempts = 0;
+      final service = NewTopicService(
+        accessTokenProvider: () => 'fake-token',
+        streamClientFactory: () => MockClient.streaming((_, bodyStream) async {
+          await bodyStream.drain<void>();
+          attempts++;
+          return http.StreamedResponse(
+              Stream.value(utf8.encode(jsonEncode({
+                'error': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+                'code': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+                'message': '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
+                'retryable': false,
+              }))),
+              status,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
 
-    await expectLater(
-      service.generateTopicsStreaming(
-          requestId: _requestId, topicContext: {'materialKind': 'none'}),
-      throwsA(isA<NewTopicAdvancedUnavailableException>()),
-    );
-    expect(attempts, 1);
-  });
+      await expectLater(
+        service.generateTopicsStreaming(
+            requestId: _requestId, topicContext: {'materialKind': 'none'}),
+        throwsA(isA<NewTopicAdvancedUnavailableException>()),
+      );
+      expect(attempts, 1);
+    });
+  }
 
   test('legacy fallback 遇 SDK 409：等待後沿用同 requestId 自動接回結果', () async {
     var streamCalls = 0;

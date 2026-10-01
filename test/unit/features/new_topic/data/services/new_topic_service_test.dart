@@ -92,29 +92,32 @@ void main() {
       expect(bodies[1].containsKey('topicContext'), isFalse);
     });
 
-    test('503 NEW_TOPIC_ADVANCED_UNAVAILABLE → 進階不可用例外（顯示 server 中文）',
-        () async {
-      final service = NewTopicService(
-        invoker: (_, {required body}) async => throw const FunctionException(
-          status: 503,
-          details: {
-            'error': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
-            'code': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
-            'message': '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
-            'retryable': false,
-            'shouldChargeQuota': false,
-          },
-        ),
-      );
+    // server 現回 422；舊版 Edge 回 503。都只看 code。
+    for (final status in [422, 503]) {
+      test('$status NEW_TOPIC_ADVANCED_UNAVAILABLE → 進階不可用例外（顯示 server 中文）',
+          () async {
+        final service = NewTopicService(
+          invoker: (_, {required body}) async => throw FunctionException(
+            status: status,
+            details: {
+              'error': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+              'code': 'NEW_TOPIC_ADVANCED_UNAVAILABLE',
+              'message': '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。',
+              'retryable': false,
+              'shouldChargeQuota': false,
+            },
+          ),
+        );
 
-      await expectLater(
-        service.generateTopics(
-            requestId: _requestId, topicContext: {'materialKind': 'none'}),
-        throwsA(isA<NewTopicAdvancedUnavailableException>()
-            .having((e) => e.message, 'message', contains('進階模式暫時無法使用'))
-            .having((e) => e.retrySameRequest, 'retry', isFalse)),
-      );
-    });
+        await expectLater(
+          service.generateTopics(
+              requestId: _requestId, topicContext: {'materialKind': 'none'}),
+          throwsA(isA<NewTopicAdvancedUnavailableException>()
+              .having((e) => e.message, 'message', contains('進階模式暫時無法使用'))
+              .having((e) => e.retrySameRequest, 'retry', isFalse)),
+        );
+      });
+    }
 
     test('有送 topicContext 的 400 → 進階不可用；沒送仍是一般錯誤', () async {
       final service = NewTopicService(
