@@ -213,6 +213,7 @@ class _DrawApi extends PracticeChatApiService {
 /// 「等待 loop 不殘留」。預設 no-op 行為（不真的播放）。
 class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int whoosh = 0;
+  int preload = 0;
   int waitingStart = 0;
   int waitingStop = 0;
   int chime = 0;
@@ -227,6 +228,9 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playWhoosh() => whoosh++;
+
+  @override
+  void preloadReveal() => preload++;
 
   @override
   void playWaitingLoop() => waitingStart++;
@@ -3594,6 +3598,26 @@ void main() {
 
     // 收尾：成功揭曉、settle 收掉 overlay（避免殘留 ticker）。
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('音效（v4）：抽牌啟動時預載揭曉音效一次，揭曉直接起播 bed', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 進入 drawing
+    expect(spy.whoosh, 1);
+    expect(spy.preload, 1); // 與咻聲同時預載，server 回來前就載好
+    expect(spy.bedStart, 0);
+
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // revealing
+    expect(spy.bedStart, 1);
+    expect(spy.preload, 1); // 揭曉時不重複預載
+
     await tester.pumpAndSettle();
   });
 

@@ -255,8 +255,8 @@ Size practiceCeremonyCardSize(Size screen) {
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
 ///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性咻聲仍照觸發。
 /// - haptic 走 [AppHaptics]（抽牌 light、翻開成功 medium）；音效走
-///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入真實音效）。F3 起所有 motion 模式
-///   的 server 等待期都保持安靜；成功 reveal 才由修正版 master bed 接手。
+///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入真實音效）。F3 起 server 等待期不跑
+///   循環音效；v4 的咻聲檔自帶一段一次性的暖尾巴接住等待，成功 reveal 由預載好的 bed 接手。
 ///
 /// 由角色圖鑑頁（PracticeCollectionScreen，翻牌入口所在地）以 `Positioned.fill`
 /// 疊在內容最上層；idle 時整片透明且 `IgnorePointer`，不攔截底下的點擊。
@@ -364,6 +364,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     if (!wasDrawing && next.isDrawing) {
       AppHaptics.light();
       _sfx.playWhoosh();
+      // 揭曉配樂先載好：server 回來時從頭 resume，bed 裡的重音才對得上畫面。
+      _sfx.preloadReveal();
       setState(() {
         _phase = _CeremonyPhase.drawing;
         _revealGirl = null;
@@ -378,8 +380,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       } else {
         _intro.forward(from: 0);
         _waiting.repeat(); // 等待 server 期間持續蓄力微動。
-        // F3：等待 server 期間保持安靜。舊 shimmer loop 就是 build 326 仍可聽見的
-        // 「西西簌簌」來源；揭曉成功後再由修正版 reveal bed 接手。
+        // F3：等待 server 期間不跑循環音效。舊 shimmer loop 就是 build 326 仍可聽見的
+        // 「西西簌簌」來源。v4 只有咻聲檔自帶的一次性暖尾巴接住等待；揭曉成功後由 bed 接手。
       }
       return;
     }
@@ -409,7 +411,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       });
       _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
-      _sfx.playRevealBed(); // E2：揭曉起始播一條與 `_reveal`（~9s）同長同步的配樂 bed。
+      _sfx.playRevealBed(); // 揭曉起始播一條與 `_reveal`（10 s）同長同步的配樂 bed（已預載）。
       _reveal.forward(from: 0);
       return;
     }

@@ -12,7 +12,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('揭曉配樂 bed 真素材（F2）', () {
+  group('揭曉音檔 v4（bed＋咻聲 v2）', () {
     test('reveal bed 音檔實際 bundle 在 assets（避免 runtime 找不到 asset）', () {
       final bed =
           File('assets/audio/practice_draw/practice_draw_reveal_bed.mp3');
@@ -22,13 +22,30 @@ void main() {
       expect(bed.lengthSync(), greaterThan(10000));
     });
 
-    test('reveal bed 鎖定 F2 去細碎高頻 master（避免誤換回 F1）', () {
+    test('reveal bed 鎖定 v4 master（F2 提前 0.37 s 對齊畫面＋補洞；避免誤換回 F2）', () {
       final bed =
           File('assets/audio/practice_draw/practice_draw_reveal_bed.mp3');
 
       expect(
         sha256.convert(bed.readAsBytesSync()).toString(),
-        '20a516649bc6ac59b32ed73520b473e4ded6e1f7d091b45d7f69ae7fdfda92e2',
+        'f211ee0f1755b072ca3b0c27f665bc53b035e5602c13682c6d70630e71b11c07',
+      );
+    });
+
+    test('咻聲 v2 改成 m4a（含等待尾巴）並鎖定 master；舊 wav 已移除', () {
+      final whoosh =
+          File('assets/audio/practice_draw/practice_draw_whoosh.m4a');
+      expect(whoosh.existsSync(), isTrue,
+          reason: '咻聲 m4a 必須存在於 assets/audio/practice_draw/');
+      expect(
+        sha256.convert(whoosh.readAsBytesSync()).toString(),
+        '15e973f3620efa4f8eaf4f008a809a4d4d9e60d7d9e7bfdd79e585db3064e3aa',
+      );
+      expect(
+        File('assets/audio/practice_draw/practice_draw_whoosh.wav')
+            .existsSync(),
+        isFalse,
+        reason: '舊咻聲 wav 已由 m4a 取代，不要兩份並存',
       );
     });
   });
@@ -38,11 +55,12 @@ void main() {
       expect(AudioPlayersPracticeDrawSfx.new, returnsNormally);
     });
 
-    test('六個呼叫點在無 platform 下皆靜默不丟', () async {
+    test('七個呼叫點在無 platform 下皆靜默不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
       expect(() {
         sfx.playWhoosh();
+        sfx.preloadReveal();
         sfx.playWaitingLoop();
         sfx.playRevealChime();
         sfx.playRevealBed();
@@ -81,6 +99,28 @@ void main() {
 
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
+
+    test('preloadReveal：重複預載、預載後起播、停止與重起皆不丟', () async {
+      final sfx = AudioPlayersPracticeDrawSfx();
+
+      expect(() {
+        sfx.preloadReveal();
+        sfx.preloadReveal(); // 預載中再呼叫 → 共用同一次預載
+        sfx.playRevealBed();
+        sfx.stopRevealBed(); // 預載完成前就停 → 不起播
+        sfx.playRevealBed(); // 換一位：從頭重起
+      }, returnsNormally);
+
+      // 預載在無 platform 下失敗並被吞掉；之後再預載、再播仍安全（會重試）。
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(() {
+        sfx.preloadReveal();
+        sfx.playRevealBed();
+        sfx.stopRevealBed();
+      }, returnsNormally);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
   });
 
   group('practiceDrawSfxProvider 預設實作', () {
@@ -100,6 +140,7 @@ void main() {
       final sfx = container.read(practiceDrawSfxProvider);
       expect(() {
         sfx.playWhoosh();
+        sfx.preloadReveal();
         sfx.playWaitingLoop();
         sfx.stopWaitingLoop();
         sfx.playRevealChime();
