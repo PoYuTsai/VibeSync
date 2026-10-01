@@ -121,6 +121,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   Map<String, dynamic>? get _topicContext =>
       _forceBasic ? null : _answers.toTopicContextJson();
 
+  /// 要送出非空素材原文才算素材（空字串不算，同 server hasNewTopicMaterial）。
+  static bool _hasMaterialText(Map<String, dynamic>? topicContext) =>
+      (topicContext?['materialText'] as String?)?.isNotEmpty ?? false;
+
   @override
   void didUpdateWidget(covariant NewTopicView oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -361,6 +365,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final pending = _requestSession.pendingFor(
         partnerId: partnerId, situation: situation, topicContext: topicContext);
     var offerBasic = false;
+    String? styleContext = pending?.effectiveStyleContext;
     bool current() =>
         mounted &&
         owner == _owner &&
@@ -376,7 +381,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       _error = null;
     });
     try {
-      String? styleContext = pending?.effectiveStyleContext;
       if (pending == null) {
         try {
           styleContext =
@@ -389,7 +393,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               readiness: ref.read(newTopicReadinessProvider(partnerId)),
               styleContext: styleContext,
               situation: situation,
-              hasMaterialText: topicContext?['materialText'] != null)) {
+              hasMaterialText: _hasMaterialText(topicContext))) {
         setState(() => _error = '請選一個目前情境，或先補充對象資料。');
         return;
       }
@@ -486,8 +490,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       });
     } on NewTopicAdvancedUnavailableException catch (e) {
       if (!current()) return;
-      setState(() => _error = e.message);
-      offerBasic = true;
+      // 基本模式不帶素材原文：它自己生得出來才提議，否則請用戶先選第一問。
+      offerBasic = canGenerateNewTopic(
+          readiness: ref.read(newTopicReadinessProvider(partnerId)),
+          styleContext: styleContext,
+          situation: situation,
+          hasMaterialText: false);
+      setState(() => _error = offerBasic
+          ? e.message
+          : NewTopicTwoStageCopy.advancedUnavailableNeedsSituation);
     } on NewTopicMaterialBlockedException catch (e) {
       if (!current()) return;
       // 同一句重送一定再被擋：不留 pending，按鈕回到「生成新話題」。
@@ -604,7 +615,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         : ref.watch(newTopicStyleContextProvider(validPartnerId));
     final answers = _answers;
     final topicContext = _topicContext;
-    final hasMaterialText = topicContext?['materialText'] != null;
+    final hasMaterialText = _hasMaterialText(topicContext);
     final pending = _requestSession.pendingFor(
         partnerId: validPartnerId,
         situation: _situation,

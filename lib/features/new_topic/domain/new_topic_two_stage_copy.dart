@@ -152,6 +152,10 @@ abstract final class NewTopicTwoStageCopy {
   static const advancedUnavailableCancel = '先不要';
   static const advancedUnavailableConfirm = '用基本模式生成';
 
+  /// 進階不可用、而基本模式少了素材原文也生不出來（沒選第一問、資料又少）。
+  static const advancedUnavailableNeedsSituation =
+      '進階模式暫時無法使用。先選一個目前狀況，就能改用基本模式生成。';
+
   // ── 教練提醒（提案 §5 逐字）─────────────────────────────
 
   static const _coldDuration = {
