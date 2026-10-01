@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -209,8 +210,8 @@ class _DrawApi extends PracticeChatApiService {
       throw UnimplementedError();
 }
 
-/// 翻牌音效 spy：記錄各呼叫點次數，`looping` 由 start/stop 差推導，用來斷言
-/// 「等待 loop 不殘留」。預設 no-op 行為（不真的播放）。
+/// 翻牌音效 spy：記錄各呼叫點次數與呼叫順序（[calls]），`looping` 由 start/stop 差推導，
+/// 用來斷言「等待 loop 不殘留」。預設 no-op 行為（不真的播放）。
 class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int whoosh = 0;
   int preload = 0;
@@ -219,6 +220,8 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int chime = 0;
   int bedStart = 0;
   int bedStop = 0;
+  int flipSnap = 0;
+  final List<String> calls = [];
 
   /// start 次數多於 stop ⇒ loop 仍在播（用來驗證離開 drawing 後必為 false）。
   bool get looping => waitingStart > waitingStop;
@@ -227,25 +230,52 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   bool get bedPlaying => bedStart > bedStop;
 
   @override
-  void playWhoosh() => whoosh++;
+  void playWhoosh() {
+    whoosh++;
+    calls.add('whoosh');
+  }
 
   @override
-  void preloadReveal() => preload++;
+  void preloadReveal() {
+    preload++;
+    calls.add('preload');
+  }
 
   @override
-  void playWaitingLoop() => waitingStart++;
+  void playWaitingLoop() {
+    waitingStart++;
+    calls.add('waitingStart');
+  }
 
   @override
-  void stopWaitingLoop() => waitingStop++;
+  void stopWaitingLoop() {
+    waitingStop++;
+    calls.add('waitingStop');
+  }
 
   @override
-  void playRevealChime() => chime++;
+  void playRevealChime() {
+    chime++;
+    calls.add('chime');
+  }
 
   @override
-  void playRevealBed() => bedStart++;
+  void playRevealBed() {
+    bedStart++;
+    calls.add('bedStart');
+  }
 
   @override
-  void stopRevealBed() => bedStop++;
+  void stopRevealBed() {
+    bedStop++;
+    calls.add('bedStop');
+  }
+
+  @override
+  void playFlipSnap() {
+    flipSnap++;
+    calls.add('flipSnap');
+  }
 }
 
 class _HintApi extends _NoopPracticeChatApi {
@@ -3654,6 +3684,7 @@ void main() {
     expect(spy.waitingStart, 0); // F3：drawing 等待期固定靜音
     expect(spy.waitingStop, greaterThanOrEqualTo(1)); // 相容 stop 仍安全收斂
     expect(spy.chime, 0); // 402 不慶祝
+    expect(spy.flipSnap, 0); // 沒有翻面就沒有翻牌紙聲
     expect(spy.looping, isFalse);
   });
 
@@ -3671,6 +3702,7 @@ void main() {
     expect(spy.waitingStart, 0);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.chime, 0); // 429 不慶祝
+    expect(spy.flipSnap, 0); // 沒有翻面就沒有翻牌紙聲
     expect(spy.looping, isFalse);
   });
 
@@ -3790,11 +3822,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pumpAndSettle();
     expect(spy.bedStart, 1);
+    expect(spy.flipSnap, 1);
 
     // 再抽一次（Task 5 後換人入口在圖鑑；host 測試鈕直呼 draw）。
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pumpAndSettle();
     expect(spy.bedStart, 2); // 第二次揭曉重起一條
+    expect(spy.flipSnap, 2); // 對拍點每次揭曉重新觸發一輪
     expect(spy.bedPlaying, isFalse);
   });
 
@@ -3843,9 +3877,130 @@ void main() {
     await tester.pump(); // drawing
     await tester.pump(); // draw 完成 → reduce-motion 直接收掉 overlay
     expect(spy.bedStart, 0); // reduce-motion 無 _reveal 時間軸 → 不起配樂
+    expect(spy.flipSnap, 0); // 也沒有翻面對拍
     expect(spy.bedPlaying, isFalse);
 
     await tester.pumpAndSettle();
+  });
+
+  // ── v4 對拍：翻牌紙聲與觸覺跟著畫面撞擊格 ──────────────────────────────────
+  // 觸覺從系統 channel 攔：tap＝lightImpact、light＝mediumImpact、medium＝heavyImpact，
+  // celebrate＝light→medium→heavy（共 200 ms）。
+  List<String> recordHaptics(WidgetTester tester) {
+    final vibrates = <String>[];
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        vibrates.add(call.arguments as String);
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    return vibrates;
+  }
+
+  // 一次成功揭曉的完整音效序列：SR／R／N 必須完全相同（稀有度一致）。
+  const revealSfxSequence = [
+    'whoosh',
+    'preload',
+    'waitingStop',
+    'bedStart',
+    'flipSnap',
+    'waitingStop',
+    'bedStop',
+  ];
+  final flipAt =
+      atFraction((kPracticeRevealFlip1Start + kPracticeRevealFlip1End) / 2);
+
+  testWidgets('對拍（v4）：翻牌紙聲在第一次翻面中點（3.3 s）播一次', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // revealing（value≈0）
+
+    await tester.pump(flipAt - const Duration(milliseconds: 10));
+    expect(spy.flipSnap, 0); // 3.29 s：還沒到翻面中點
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(spy.flipSnap, 1); // 3.31 s：剛好一次
+
+    await tester.pumpAndSettle();
+    expect(spy.flipSnap, 1); // 整條跑完仍只有一次
+    expect(spy.chime, 0); // 舊 reveal chime 不回來
+  });
+
+  testWidgets('對拍（v4）：N 的觸覺從抽中當下移到撞擊格（3.3 tap／6.5 medium／8.5 tap）',
+      (tester) async {
+    final vibrates = recordHaptics(tester);
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing：抽牌 light
+    final n = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.n);
+    completer.complete(_drawResultFor(n));
+    await tester.pump(); // revealing
+    expect(vibrates, ['HapticFeedbackType.mediumImpact']); // 抽中當下不再震
+
+    await tester.pump(flipAt + const Duration(milliseconds: 10));
+    expect(vibrates.last, 'HapticFeedbackType.lightImpact'); // 翻牌 tap
+
+    await tester.pumpAndSettle();
+    expect(vibrates, [
+      'HapticFeedbackType.mediumImpact', // 抽牌
+      'HapticFeedbackType.lightImpact', // 3.3 s 翻牌
+      'HapticFeedbackType.heavyImpact', // 6.5 s 爆裂
+      'HapticFeedbackType.lightImpact', // 8.5 s 落定
+    ]);
+    expect(spy.calls, revealSfxSequence);
+  });
+
+  testWidgets('對拍（v4）：SR 在 6.3 s 起 celebrate、第三下落在爆裂；音效序列與 N 相同',
+      (tester) async {
+    final vibrates = recordHaptics(tester);
+    final spy = _SpyPracticeDrawSfx();
+    final sr = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
+    final api = _DrawApi(() async => _drawResultFor(sr));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+    expect(vibrates, [
+      'HapticFeedbackType.mediumImpact', // 抽牌
+      'HapticFeedbackType.lightImpact', // 3.3 s 翻牌
+      'HapticFeedbackType.lightImpact', // 6.3 s celebrate 第一下
+      'HapticFeedbackType.mediumImpact',
+      'HapticFeedbackType.heavyImpact', // 6.5 s 爆裂
+      'HapticFeedbackType.lightImpact', // 8.5 s 落定
+    ]);
+    expect(spy.calls, revealSfxSequence); // 聲音和 N 完全一樣
+  });
+
+  testWidgets('對拍（v4）：reduce-motion 沒有儀式，觸覺留在抽中當下、沒有紙聲', (tester) async {
+    final vibrates = recordHaptics(tester);
+    final spy = _SpyPracticeDrawSfx();
+    final n = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.n);
+    final api = _DrawApi(() async => _drawResultFor(n));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy, reduceMotion: true);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pumpAndSettle();
+    expect(vibrates, [
+      'HapticFeedbackType.mediumImpact', // 抽牌
+      'HapticFeedbackType.heavyImpact', // 抽中當下
+    ]);
+    expect(spy.flipSnap, 0);
   });
 
   // ── E1：揭曉時間軸對齊參考音軌「音檔.mp4」＋放大卡（復刻）──────────────────────

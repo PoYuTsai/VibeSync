@@ -48,6 +48,23 @@ void main() {
         reason: '舊咻聲 wav 已由 m4a 取代，不要兩份並存',
       );
     });
+
+    test('翻牌紙聲三個變體都 bundle 並鎖定 master', () {
+      const expected = {
+        'practice_draw_flip_snap_1.wav':
+            'b07529562f0d14f889c23195b67f4ffcc08ac378e5e70007117a03f7be36a9e5',
+        'practice_draw_flip_snap_2.wav':
+            '489f005df644cad6272be0953a697f94487e0f0343a1ef445c684bfc0cfdbeaa',
+        'practice_draw_flip_snap_3.wav':
+            '5a1074b789ea273555abf896d5874f9954d2401b8724401f92f442b7de9c96ca',
+      };
+      expected.forEach((name, hash) {
+        final snap = File('assets/audio/practice_draw/$name');
+        expect(snap.existsSync(), isTrue, reason: '$name 必須存在');
+        expect(sha256.convert(snap.readAsBytesSync()).toString(), hash,
+            reason: name);
+      });
+    });
   });
 
   group('AudioPlayersPracticeDrawSfx（headless 安全）', () {
@@ -55,12 +72,13 @@ void main() {
       expect(AudioPlayersPracticeDrawSfx.new, returnsNormally);
     });
 
-    test('七個呼叫點在無 platform 下皆靜默不丟', () async {
+    test('八個呼叫點在無 platform 下皆靜默不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
       expect(() {
         sfx.playWhoosh();
         sfx.preloadReveal();
+        sfx.playFlipSnap();
         sfx.playWaitingLoop();
         sfx.playRevealChime();
         sfx.playRevealBed();
@@ -95,6 +113,20 @@ void main() {
         sfx.playRevealBed(); // 重抽：stop-then-play 重起，不重疊
         sfx.stopRevealBed();
         sfx.stopRevealBed(); // 重複停 → no-op
+      }, returnsNormally);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    test('playFlipSnap：預載前後、連續多次（三個變體輪流）皆不丟', () async {
+      final sfx = AudioPlayersPracticeDrawSfx();
+
+      expect(() {
+        sfx.playFlipSnap(); // 沒預載也安全：會先預載
+        sfx.preloadReveal();
+        for (var i = 0; i < 4; i++) {
+          sfx.playFlipSnap(); // 輪過一圈再回到第一個變體
+        }
       }, returnsNormally);
 
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -141,6 +173,7 @@ void main() {
       expect(() {
         sfx.playWhoosh();
         sfx.preloadReveal();
+        sfx.playFlipSnap();
         sfx.playWaitingLoop();
         sfx.stopWaitingLoop();
         sfx.playRevealChime();
