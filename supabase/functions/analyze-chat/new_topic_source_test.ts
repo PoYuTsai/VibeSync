@@ -52,7 +52,7 @@ Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接�
   );
 });
 
-Deno.test("index：new_topic branch 固定順序 sanitize→擋字→material→config→preflight→進階開關→claim→quota→rate→renew→generate→settle", () => {
+Deno.test("index：new_topic branch 固定順序 sanitize→擋字→material→config→preflight→claim→進階開關→quota→quota→rate→renew→generate→settle", () => {
   // dispatch 順序仍鎖在 index.ts；分支本體已抽到 new_topic_handler.ts。
   const branch = indexSource.indexOf("if (isNewTopicMode) {");
   assert(branch >= 0, "new_topic dispatch 必須存在");
@@ -69,10 +69,10 @@ Deno.test("index：new_topic branch 固定順序 sanitize→擋字→material→
     "isStrongNewTopicReplayHmacKey(newTopicHmacSecret)",
     "computeNewTopicInputHash({",
     "classifyNewTopicReplayPreflight(",
-    // 進階開關在唯讀回放查帳之後、claim 之前（Codex R1 P1）：已落帳的照常回放。
+    "claimNewTopicRequest({",
+    // 進階開關在原子 claim 之後、quota 之前（Codex R1／R2 P1）：佔住編號、不 release。
     'Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"',
     "NEW_TOPIC_ADVANCED_UNAVAILABLE",
-    "claimNewTopicRequest({",
     "new_topic_quota_exceeded",
     'scope: "new_topic"',
     // 模型派發前 renew claim（第二個 claimNewTopicRequest 呼叫在 rate gate 後）

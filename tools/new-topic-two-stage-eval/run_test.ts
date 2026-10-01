@@ -178,3 +178,15 @@ Deno.test("盲測：同 seed 同順序、不露臂名、解盲表涵蓋每組兩
   const seeds = new Set(Array.from({ length: 8 }, (_, s) => JSON.stringify(blindAB(records, CASES.slice(0, 3), s).reveal)));
   assert(seeds.size > 1, "不同 seed 要能換順序");
 });
+
+Deno.test("外洩檢查同 handler：進階 sentinel 只在兩段式臂擋（Codex R2 P2）", async () => {
+  const plan = await buildPlan(CASES.slice(0, 1), 1);
+  const [legacy, two] = ARMS.map((arm) => plan.find((p) => p.arm === arm)!);
+  const raw = fakeOutput(["剛路過一家浮誇的甜點店", "今天的雲很像棉花糖", "我發現巷口開了新書店", "剛剛差點坐過站", "辦公室冷氣冷到發抖"])
+    .replace("她一句話就能接", "照類型決定主詞，不改主詞");
+  const twoResult = inspectOutput(two, raw);
+  assert(twoResult.promptLeak);
+  assert(!twoResult.deliverable);
+  const legacyResult = inspectOutput(legacy, raw);
+  assert(!legacyResult.promptLeak);
+});

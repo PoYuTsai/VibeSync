@@ -490,6 +490,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       });
     } on NewTopicAdvancedUnavailableException catch (e) {
       if (!current()) return;
+      // server 回這個時已佔住這筆編號且保證不會落帳（Codex R2 P1）：清掉 pending，
+      // 之後再按會換新編號，不會撞上被佔住的租約而空等。
+      _requestSession.markSuccess();
       // 基本模式不帶素材原文：它自己生得出來才提議，否則請用戶先選第一問。
       offerBasic = canGenerateNewTopic(
           readiness: ref.read(newTopicReadinessProvider(partnerId)),

@@ -714,6 +714,8 @@ void main() {
     expect(_service.calls, hasLength(2));
     expect(
         _service.calls[1]['topicContext'], _service.calls[0]['topicContext']);
+    // server 已佔住第一筆編號（保證不落帳），App 清掉 pending：再按換新編號。
+    expect(_service.calls[1]['id'], isNot(_service.calls[0]['id']));
     _service.replies[1].completeError(unavailable);
     await t.pump();
     await t.pump(const Duration(milliseconds: 300));

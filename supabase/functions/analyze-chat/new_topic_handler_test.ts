@@ -34,6 +34,8 @@ const MODEL_PAYLOAD = {
 
 /** 下一次 run 的唯讀回放查帳要回的帳本列（用一次就清掉）。 */
 let replayRowForNextRun: unknown = null;
+/** 下一次 run 的 claim RPC 回應（用一次就清掉；null＝claimed）。 */
+let claimResultForNextRun: unknown = null;
 
 type ModelRequest = {
   system: Array<{ text: string }>;
@@ -79,7 +81,9 @@ async function run(
     rpc(fn: string, params: Record<string, unknown>) {
       dbCalls.push(`rpc:${fn}`);
       if (fn === "claim_new_topic_request") {
-        return Promise.resolve({ data: { kind: "claimed" }, error: null });
+        const data = claimResultForNextRun ?? { kind: "claimed" };
+        claimResultForNextRun = null;
+        return Promise.resolve({ data, error: null });
       }
       if (fn === "settle_new_topic_request") {
         return Promise.resolve({
@@ -159,7 +163,7 @@ const STORY = {
   materialText: "信心滿滿走進店裡，才發現走錯分店",
 };
 
-Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警），只查帳、不 claim／限流／模型", async () => {
+Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警），佔住編號不釋放、不限流／模型", async () => {
   for (const flag of [undefined, "false", "1", "TRUE"]) {
     const result = await run(body({ topicContext: STORY }), flag);
     assertEquals(result.status, 422, String(flag));
@@ -170,8 +174,11 @@ Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警
       retryable: false,
       shouldChargeQuota: false,
     });
-    // 只有唯讀回放查帳；沒有任何 RPC（claim／限流／settle）。
-    assertEquals(result.dbCalls, ["from:new_topic_requests"]);
+    // 查帳＋原子 claim 佔住編號；刻意不 release、不限流、不 settle。
+    assertEquals(result.dbCalls, [
+      "from:new_topic_requests",
+      "rpc:claim_new_topic_request",
+    ]);
     assertEquals(result.modelRequests, []);
   }
 });
@@ -519,4 +526,27 @@ Deno.test("handler：進階路徑的 sentinel 只在進階路徑擋，legacy 守
     withPhrase,
   );
   assertEquals(advanced.status, 502);
+});
+
+Deno.test("handler：開關沒開時，原請求已先佔住編號 → 409 進行中，不回「不扣額度」（Codex R2 P1）", async () => {
+  claimResultForNextRun = { kind: "pending", retryAfterMs: 4000 };
+  const result = await run(body({ topicContext: STORY }), undefined);
+  assertEquals(result.status, 409);
+  assertEquals(result.json.code, "NEW_TOPIC_REQUEST_IN_PROGRESS");
+  assertEquals(result.modelRequests, []);
+  assertFalse(result.dbCalls.includes("rpc:release_new_topic_claim"));
+});
+
+Deno.test("handler：開關沒開時 claim 已是完成列 → 照常回放（不回進階不可用）", async () => {
+  const stored = buildNewTopicLedgerResult({
+    topics: MODEL_PAYLOAD.topics,
+    recommendationIndex: 0,
+    recommendationReason: "理由",
+    servedTier: "essential",
+  });
+  claimResultForNextRun = { kind: "replay", result: stored };
+  const result = await run(body({ topicContext: STORY }), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.topics, stored.topics);
+  assertEquals(result.modelRequests, []);
 });

@@ -298,26 +298,6 @@ export async function handleNewTopicRequest(
     }
   }
 
-  // 進階開關排在唯讀回放查帳之後、claim 之前（Codex R1 P1）：已落帳的
-  // 同一筆請求照常回放、進行中照常 409；開關只擋「新的」進階生成。
-  // 回 422 不回 503：這是可預期的產品狀態，不該灌進 http_5xx 告警；App 只看 code。
-  if (
-    newTopicContext !== null &&
-    Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"
-  ) {
-    logWarn("new_topic_advanced_unavailable", {
-      user: summarizeUser(deps.userId),
-      reason: "two_stage_disabled",
-    });
-    return jsonResponse({
-      error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
-      code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
-      message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
-      retryable: false,
-      shouldChargeQuota: false,
-    }, 422);
-  }
-
   // 4. Claim 65s lease（claim 必須發生在 quota 429 終局回應之前，
   //    才能保證同 identity 併發收斂到單一決策）。
   const newTopicOwnerToken = crypto.randomUUID();
@@ -412,6 +392,29 @@ export async function handleNewTopicRequest(
       user: summarizeUser(deps.userId),
       requestId: newTopicRequest.requestId,
     });
+    // 進階開關在「原子佔住這筆編號」之後才檢查（Codex R1／R2 P1）：
+    // 已落帳的同一筆在查帳或 claim 時就回放、進行中回 409；開關只擋新的進階生成。
+    // 開關關閉時回 422 且刻意不 release：同一編號若還有在途的原請求，它之後的
+    // claim 只會拿到 pending、無法 settle，「本次不會扣額度」因此一定成立。
+    // 租約 65 秒後自然過期、可被正常接手；帳列由每小時 cron 清。
+    // 回 422 不回 503：這是可預期的產品狀態，不該灌進 http_5xx 告警；App 只看 code。
+    if (
+      newTopicContext !== null &&
+      Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"
+    ) {
+      logWarn("new_topic_advanced_unavailable", {
+        user: summarizeUser(deps.userId),
+        requestId: newTopicRequest.requestId,
+        reason: "two_stage_disabled",
+      });
+      return jsonResponse({
+        error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+        code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+        message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
+        retryable: false,
+        shouldChargeQuota: false,
+      }, 422);
+    }
   }
 
   // 5. Fixed cost 3 quota gate（Free 只要月/日都剩 ≥3 就不得因 tier 先

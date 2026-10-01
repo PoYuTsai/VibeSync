@@ -7,7 +7,10 @@
 
 import catalog from "./cases.json" with { type: "json" };
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
-import { hasAnalyzeChatPromptLeak } from "../../supabase/functions/analyze-chat/prompt_leak.ts";
+import {
+  hasAnalyzeChatPromptLeak,
+  hasNewTopicTwoStagePromptLeak,
+} from "../../supabase/functions/analyze-chat/prompt_leak.ts";
 import {
   allowsNewTopicSharedFrame,
   type NewTopicGroundingPolicy,
@@ -226,7 +229,8 @@ export type Inspection = {
 };
 
 export function inspectOutput(call: PlannedCall, raw: string): Inspection {
-  const promptLeak = hasAnalyzeChatPromptLeak(raw);
+  // 與 handler 同組：進階臂多查進階 sentinel（依臂判斷，兩臂都帶 topicContext 供稽核）。
+  const promptLeak = call.arm === "legacy" ? hasAnalyzeChatPromptLeak(raw) : hasNewTopicTwoStagePromptLeak(raw);
   const normalized = normalizeNewTopicModelPayload(parseJsonObjectFromText(raw), call.grounding);
   if (!normalized.ok) {
     return { deliverable: false, promptLeak, normalizeReason: normalized.reason, topics: null, recommendationIndex: null, recommendationReason: null, audit: null };
