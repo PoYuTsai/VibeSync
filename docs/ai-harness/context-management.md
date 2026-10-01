@@ -64,7 +64,7 @@ Do not delete quarantined skills. They can be restored if Eric decides a specifi
 
 Project slash commands should be small prompts. They must not automatically inject files or shell output. If a command needs data, it should tell the agent what to summarize and let the agent choose a targeted read.
 
-`/.claude/commands/round.md` is the default short handoff format for lightweight rotations.
+`.claude/commands/round.md` is the short handoff format for collaborators who have no personal `/round`; a personal `~/.claude/commands/round.md` (Eric's, which also runs end-of-phase brain capture) takes precedence over it.
 
 ## Audit
 
