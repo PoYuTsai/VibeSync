@@ -157,4 +157,22 @@ void main() {
     expect(haptics, hasLength(3));
     expect(selected, isNull);
   });
+
+  testWidgets('situation grid keeps a two-column row even when one label wraps',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(320, 600));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    await pump(
+        t,
+        const OpenerSituationGrid(options: [
+          (label: '冷掉了', value: 'cold'),
+          (label: '一個很長很長很長很長很長很長的標籤', value: 'long'),
+        ], selected: 'long', onChanged: null));
+    final buttons = find.byType(OutlinedButton);
+    expect(buttons, findsNWidgets(2));
+    final short = t.getSize(buttons.first).height;
+    final long = t.getSize(buttons.last).height;
+    expect(long, greaterThan(48), reason: 'long label wraps');
+    expect(short, long);
+  });
 }
