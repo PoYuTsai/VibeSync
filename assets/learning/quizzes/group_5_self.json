@@ -328,7 +328,7 @@
         {
           "id": "q-5-1-10",
           "type": "findDeathPoint",
-          "revision": 1,
+          "revision": 2,
           "scenario": "這週你對她做了四次自我揭露。",
           "question": "哪一次在扣分？",
           "choices": [
@@ -354,7 +354,7 @@
               "id": "q-5-1-10-d",
               "text": "說你簡報前都會緊張到在廁所踱步，但上台就沒事",
               "correct": false,
-              "feedback": "緊張蓋在「上了台就搞定」上面，standard 八比二。"
+              "feedback": "緊張這個弱點，蓋在「上台就沒事」這個強項上面，是標準的八比二：八成強項、兩成弱點。"
             }
           ],
           "takeaway": "揭露弱點之前先確認底下有強項。沒有底的訴苦，是把她當樹洞。"
