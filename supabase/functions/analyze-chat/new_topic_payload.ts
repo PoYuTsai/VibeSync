@@ -9,6 +9,10 @@
 
 import { normalizeOutgoingMessageText } from "./outgoing_message_text.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
+import {
+  type NewTopicTopicContext,
+  sanitizeNewTopicTopicContext,
+} from "./new_topic_two_stage.ts";
 
 export const NEW_TOPIC_SITUATIONS = [
   "went_cold",
@@ -74,6 +78,7 @@ const NEW_TOPIC_ALLOWED_KEYS = new Set([
   "situation",
   "expectedTier",
   "revenueCatAppUserId",
+  "topicContext",
 ]);
 
 export type NewTopicSanitizedRequest = {
@@ -83,6 +88,8 @@ export type NewTopicSanitizedRequest = {
   situation: NewTopicSituation | null;
   expectedTier: string | null;
   revenueCatAppUserId: string | null;
+  /** 進階路徑答案；null＝走 legacy（規格 §0 路由）。 */
+  topicContext: NewTopicTopicContext | null;
 };
 
 export type NewTopicRequestSanitizeResult =
@@ -198,6 +205,12 @@ export function sanitizeNewTopicRequest(
     return { ok: false, reason: "revenuecat_id_invalid" };
   }
 
+  const topicContext = sanitizeNewTopicTopicContext(
+    body.topicContext,
+    situation,
+  );
+  if (!topicContext.ok) return topicContext;
+
   return {
     ok: true,
     request: {
@@ -207,20 +220,23 @@ export function sanitizeNewTopicRequest(
       situation,
       expectedTier: blankToNull(body.expectedTier),
       revenueCatAppUserId: blankToNull(body.revenueCatAppUserId),
+      topicContext: topicContext.topicContext,
     },
   };
 }
 
 /**
- * 三類素材（作戰板摘要／關於我風格／情境）至少一類有實質內容才可生成；
- * 全空必須在 rate limit、model、claim、charge 前回 422（§1.4）。
+ * 三類素材（作戰板摘要／關於我風格／情境）或用戶寫的素材原文至少一類有
+ * 實質內容才可生成；全空必須在 rate limit、model、claim、charge 前回 422
+ * （§1.4）。素材類型「沒有，幫我想」單獨不算。
  */
 export function hasNewTopicMaterial(
   request: NewTopicSanitizedRequest,
 ): boolean {
   return request.partnerSummary !== null ||
     request.effectiveStyleContext !== null ||
-    request.situation !== null;
+    request.situation !== null ||
+    (request.topicContext?.materialText ?? null) !== null;
 }
 
 // ---------------------------------------------------------------------------
@@ -287,12 +303,19 @@ function sanitizeModelVisibleText(
 /**
  * 「想升溫」是使用者的生成目標，不是兩人已熟的證據。共同想像只在手動
  * 對象卡明列熟悉階段，或確定剛約完會時放行；AI 興趣／熱度不能自己升級。
+ * 進階路徑：用戶答「想更靠近＋她很投入」也放行（提案決定 6）。
  */
 export function allowsNewTopicSharedFrame(input: {
   partnerSummary: string | null;
   situation: NewTopicSituation | null;
+  topicContext?: NewTopicTopicContext | null;
 }): boolean {
   if (input.situation === "after_date") return true;
+  if (
+    input.situation === "warm_up" && input.topicContext?.engagement === "green"
+  ) {
+    return true;
+  }
   if (input.partnerSummary === null) return false;
   return /(?:^|\n)- 你的備註：[^\n]*聊得來但還沒約/.test(
     input.partnerSummary,

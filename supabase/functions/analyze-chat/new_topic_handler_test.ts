@@ -1,0 +1,256 @@
+// 新話題 handler 行為測試（2026-10-01 規格 §2／§4.7）：正式 handler，只替換
+// supabase 與模型 fetch 邊界。鎖住進階開關、擋字發生在任何 DB／限流／模型
+// 之前，以及開關開時兩段提示詞真的換成進階版。
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { handleNewTopicRequest } from "./new_topic_handler.ts";
+import {
+  buildNewTopicUserPrompt,
+  NEW_TOPIC_PROMPT,
+} from "./new_topic_prompt.ts";
+import { NEW_TOPIC_TWO_STAGE_PROMPT } from "./new_topic_two_stage.ts";
+
+const USER_ID = "11111111-2222-4333-8444-555555555555";
+const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
+const STRONG_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+
+const MODEL_PAYLOAD = {
+  topics: [1, 2, 3, 4, 5].map((n) => ({
+    direction: `方向${n}`,
+    openingLine: `開場句${n}`,
+    whyItWorks: `因為${n}`,
+    nextMove: `下一步${n}`,
+  })),
+  recommendation: { index: 0, reason: "理由" },
+};
+
+type ModelRequest = {
+  system: Array<{ text: string }>;
+  messages: Array<{ role: string; content: string }>;
+};
+
+function body(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    mode: "new_topic",
+    requestId: REQUEST_ID,
+    partnerSummary: "對象：小雅。興趣：爬山。",
+    situation: "went_cold",
+    ...extra,
+  };
+}
+
+async function run(
+  requestBody: Record<string, unknown>,
+  twoStageFlag: string | undefined,
+) {
+  const dbCalls: string[] = [];
+  const modelRequests: ModelRequest[] = [];
+  const supabase = {
+    from(table: string) {
+      dbCalls.push(`from:${table}`);
+      const query = {
+        select: () => query,
+        eq: () => query,
+        gte: () => query,
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return query;
+    },
+    rpc(fn: string, params: Record<string, unknown>) {
+      dbCalls.push(`rpc:${fn}`);
+      if (fn === "claim_new_topic_request") {
+        return Promise.resolve({ data: { kind: "claimed" }, error: null });
+      }
+      if (fn === "settle_new_topic_request") {
+        return Promise.resolve({
+          data: { charged: true, result: params.p_result_json },
+          error: null,
+        });
+      }
+      if (fn === "increment_model_usage") {
+        return Promise.resolve({ data: null, error: null });
+      }
+      return Promise.resolve({ data: true, error: null });
+    },
+  };
+
+  const originalFetch = globalThis.fetch;
+  const env = ["NEW_TOPIC_TWO_STAGE_ENABLED", "NEW_TOPIC_REPLAY_HMAC_KEY"]
+    .map((key) => [key, Deno.env.get(key)] as const);
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+    modelRequests.push(JSON.parse(String(init?.body)));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: JSON.stringify(MODEL_PAYLOAD) }],
+          usage: { input_tokens: 10, output_tokens: 10 },
+          stop_reason: "end_turn",
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+  Deno.env.set("NEW_TOPIC_REPLAY_HMAC_KEY", STRONG_KEY);
+  if (twoStageFlag === undefined) {
+    Deno.env.delete("NEW_TOPIC_TWO_STAGE_ENABLED");
+  } else {
+    Deno.env.set("NEW_TOPIC_TWO_STAGE_ENABLED", twoStageFlag);
+  }
+  try {
+    const response = await handleNewTopicRequest({
+      supabase,
+      userId: USER_ID,
+      requestBody,
+      responseMode: "legacy",
+      requestStartedAtMs: Date.now(),
+      accountIsTest: false,
+      claudeApiKey: "test-key",
+      refreshTierFromRevenueCat: () => Promise.resolve("not_paid"),
+      quota: () => ({
+        sub: { monthly_messages_used: 0, daily_messages_used: 0, tier: "free" },
+        monthlyLimit: 100,
+        dailyLimit: 30,
+        effectiveTier: "essential",
+      }),
+    });
+    return {
+      status: response.status,
+      json: await response.json(),
+      dbCalls,
+      modelRequests,
+    };
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of env) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+}
+
+const STORY = {
+  coldDuration: "weeks",
+  materialKind: "my_story",
+  materialText: "信心滿滿走進店裡，才發現走錯分店",
+};
+
+Deno.test("handler：開關沒開＋有 topicContext → 503，不碰 DB／限流／模型", async () => {
+  for (const flag of [undefined, "false", "1", "TRUE"]) {
+    const result = await run(body({ topicContext: STORY }), flag);
+    assertEquals(result.status, 503, String(flag));
+    assertEquals(result.json, {
+      error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+      code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+      message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
+      retryable: false,
+      shouldChargeQuota: false,
+    });
+    assertEquals(result.dbCalls, []);
+    assertEquals(result.modelRequests, []);
+  }
+});
+
+Deno.test("handler：開關沒開＋沒有 topicContext → 照舊走 legacy 提示詞", async () => {
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.usage, { cost: 3 });
+  assertEquals(result.modelRequests.length, 1);
+  const [request] = result.modelRequests;
+  assertEquals(request.system[0].text, NEW_TOPIC_PROMPT);
+  assertEquals(
+    request.messages[0].content,
+    buildNewTopicUserPrompt({
+      partnerSummary: "對象：小雅。興趣：爬山。",
+      effectiveStyleContext: null,
+      situation: "went_cold",
+      requestId: REQUEST_ID,
+    }),
+  );
+  assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
+});
+
+Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／模型", async () => {
+  for (const materialText of ["她說想打炮", "幹你娘超好笑"]) {
+    const result = await run(
+      body({ topicContext: { materialKind: "inside_joke", materialText } }),
+      "true",
+    );
+    assertEquals(result.status, 422, materialText);
+    assertEquals(result.json, {
+      error: "NEW_TOPIC_MATERIAL_BLOCKED",
+      code: "NEW_TOPIC_MATERIAL_BLOCKED",
+      message: "你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。",
+      shouldChargeQuota: false,
+    });
+    assertEquals(result.dbCalls, []);
+    assertEquals(result.modelRequests, []);
+  }
+});
+
+Deno.test("handler：開關先於擋字（開關沒開時髒字也回 503）", async () => {
+  const result = await run(
+    body({
+      topicContext: { materialKind: "inside_joke", materialText: "她說想打炮" },
+    }),
+    undefined,
+  );
+  assertEquals(result.status, 503);
+  assertEquals(result.json.code, "NEW_TOPIC_ADVANCED_UNAVAILABLE");
+});
+
+Deno.test("handler：topicContext 格式錯 → 400，不碰 DB／模型", async () => {
+  const result = await run(body({ topicContext: { mood: "x" } }), "true");
+  assertEquals(result.status, 400);
+  assertEquals(result.json.code, "NEW_TOPIC_REQUEST_INVALID");
+  assertEquals(result.dbCalls, []);
+  assertEquals(result.modelRequests, []);
+});
+
+Deno.test("handler：只選「沒有，幫我想」且沒有其他素材 → 422 CONTEXT_REQUIRED", async () => {
+  const result = await run(
+    {
+      mode: "new_topic",
+      requestId: REQUEST_ID,
+      topicContext: { materialKind: "none" },
+    },
+    "true",
+  );
+  assertEquals(result.status, 422);
+  assertEquals(result.json.code, "NEW_TOPIC_CONTEXT_REQUIRED");
+  assertEquals(result.dbCalls, []);
+});
+
+Deno.test("handler：開關開＋有 topicContext → 進階 system＋含局面段的 user prompt", async () => {
+  const result = await run(body({ topicContext: STORY }), "true");
+  assertEquals(result.status, 200);
+  assertEquals(result.json.usage, { cost: 3 });
+  assertEquals(result.modelRequests.length, 1);
+  const [request] = result.modelRequests;
+  assertEquals(request.system[0].text, NEW_TOPIC_TWO_STAGE_PROMPT);
+  const userPrompt = request.messages[0].content;
+  assert(
+    userPrompt.includes("## 這次的局面（用戶自己說的現況，照這裡的做法寫）"),
+  );
+  assert(userPrompt.includes("- 多久沒聊：一到四週"));
+  assert(userPrompt.includes("- 原文：「信心滿滿走進店裡，才發現走錯分店」"));
+  assert(!userPrompt.includes("本輪內容素材"));
+  assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
+});
+
+Deno.test("handler：只有素材原文（沒選狀況、沒作戰板）也能生成", async () => {
+  const result = await run(
+    {
+      mode: "new_topic",
+      requestId: REQUEST_ID,
+      topicContext: { materialKind: "trigger", materialText: "路過浮誇甜點店" },
+    },
+    "true",
+  );
+  assertEquals(result.status, 200);
+  assertEquals(
+    result.modelRequests[0].system[0].text,
+    NEW_TOPIC_TWO_STAGE_PROMPT,
+  );
+});

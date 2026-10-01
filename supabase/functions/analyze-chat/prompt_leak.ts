@@ -17,6 +17,8 @@ export const ANALYZE_CHAT_PROMPT_SENTINELS: readonly string[] = [
   "你是 VibeSync 的開場救星先鋒教練",
   // NEW_TOPIC_PROMPT
   "唯一可以當成**對方事實**的來源",
+  // NEW_TOPIC_TWO_STAGE_PROMPT
+  "照類型決定主詞，不改主詞",
   // QUICK_SYSTEM_PROMPT
   "你是 VibeSync 的核心判斷教練",
   // OPTIMIZE_MESSAGE_PROMPT / REFINE_REPLY_SYSTEM_PROMPT

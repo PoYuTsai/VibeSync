@@ -1,9 +1,14 @@
 // NewTopic handler：破冰腦力（2026-07-24 計畫 §10.5）。
-// 固定順序：sanitize→material→config→HMAC preflight→claim→quota(3)→
-// rate limit→renew→generate(45s)→validate/project→settle(5s reserve)。
+// 固定順序：sanitize→進階開關→擋字→material→config→HMAC preflight→
+// claim→quota(3)→rate limit→renew→generate(45s)→validate/project→
+// settle(5s reserve)。
 // Handler 永遠只回 settlement 的 stored result，本地候選一律丟棄。
 // 2026-08-18 stream（transport-only）：模型輸出契約不變，僅逐塊接收＋進度事件。
 
+import {
+  containsCrudeInsult,
+  containsCrudeSexualOffense,
+} from "../_shared/crude_offense.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   AiServiceError,
@@ -48,6 +53,13 @@ import {
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
 } from "./new_topic_prompt.ts";
+import {
+  auditNewTopicTwoStageTopics,
+  buildNewTopicTwoStageUserPrompt,
+  NEW_TOPIC_TWO_STAGE_PROMPT,
+  NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+  newTopicTwoStageTelemetry,
+} from "./new_topic_two_stage.ts";
 import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
 import {
   getErrorMessage,
@@ -133,6 +145,43 @@ export async function handleNewTopicRequest(
     }, 400);
   }
   const newTopicRequest = newTopicSanitize.request;
+  // 進階路徑（2026-10-01 規格 §2）：開關沒開就整筆拒絕、不偷偷降級；
+  // 用戶寫的那句命中粗俗詞表也在這裡擋。都在 claim／限流／模型／扣費
+  // 之前，log 只記 reason、不記原文。
+  const newTopicContext = newTopicRequest.topicContext;
+  if (
+    newTopicContext !== null &&
+    Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"
+  ) {
+    logWarn("new_topic_advanced_unavailable", {
+      user: summarizeUser(deps.userId),
+      reason: "two_stage_disabled",
+    });
+    return jsonResponse({
+      error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+      code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+      message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
+      retryable: false,
+      shouldChargeQuota: false,
+    }, 503);
+  }
+  const newTopicMaterialText = newTopicContext?.materialText ?? null;
+  if (
+    newTopicMaterialText !== null &&
+    (containsCrudeSexualOffense(newTopicMaterialText) ||
+      containsCrudeInsult(newTopicMaterialText))
+  ) {
+    logWarn("new_topic_material_blocked", {
+      user: summarizeUser(deps.userId),
+      reason: "crude_offense",
+    });
+    return jsonResponse({
+      error: "NEW_TOPIC_MATERIAL_BLOCKED",
+      code: "NEW_TOPIC_MATERIAL_BLOCKED",
+      message: "你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。",
+      shouldChargeQuota: false,
+    }, 422);
+  }
   if (!hasNewTopicMaterial(newTopicRequest)) {
     return jsonResponse({
       error: "NEW_TOPIC_CONTEXT_REQUIRED",
@@ -150,6 +199,7 @@ export async function handleNewTopicRequest(
     situation: newTopicRequest.situation,
     hasPartnerSummary: newTopicRequest.partnerSummary !== null,
     hasStyleContext: newTopicRequest.effectiveStyleContext !== null,
+    ...newTopicTwoStageTelemetry(newTopicContext),
   });
 
   // 2. Config：模型金鑰＋new-topic-only HMAC secret。缺 secret 只有
@@ -189,6 +239,7 @@ export async function handleNewTopicRequest(
     partnerSummary: newTopicRequest.partnerSummary,
     effectiveStyleContext: newTopicRequest.effectiveStyleContext,
     situation: newTopicRequest.situation,
+    topicContext: newTopicContext,
     secret: newTopicHmacSecret,
   });
   const newTopicSuccessBody = (
@@ -459,17 +510,30 @@ export async function handleNewTopicRequest(
   // 8. 45 秒 generation deadline 內完成 primary／outage fallback。
   //    refusal、max_tokens、格式錯誤不走 outage fallback（fallback.ts
   //    既有分類）；deadline 前提早爆的 DEADLINE_EXCEEDED 也在這裡收。
-  const newTopicUserPrompt = buildNewTopicUserPrompt({
-    partnerSummary: newTopicRequest.partnerSummary,
-    effectiveStyleContext: newTopicRequest.effectiveStyleContext,
-    situation: newTopicRequest.situation,
-    // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
-    requestId: newTopicRequest.requestId,
-  });
+  // 有 topicContext 才走進階提示詞；沒有就是 legacy，逐字不變。
+  const newTopicSystemPrompt = newTopicContext === null
+    ? NEW_TOPIC_PROMPT
+    : NEW_TOPIC_TWO_STAGE_PROMPT;
+  const newTopicUserPrompt = newTopicContext === null
+    ? buildNewTopicUserPrompt({
+      partnerSummary: newTopicRequest.partnerSummary,
+      effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+      situation: newTopicRequest.situation,
+      // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
+      requestId: newTopicRequest.requestId,
+    })
+    : buildNewTopicTwoStageUserPrompt({
+      partnerSummary: newTopicRequest.partnerSummary,
+      effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+      situation: newTopicRequest.situation,
+      topicContext: newTopicContext,
+      requestId: newTopicRequest.requestId,
+    });
   const newTopicGroundingPolicy = {
     allowSharedFrame: allowsNewTopicSharedFrame({
       partnerSummary: newTopicRequest.partnerSummary,
       situation: newTopicRequest.situation,
+      topicContext: newTopicContext,
     }),
   };
   const rejectNewTopicDeadline = async (
@@ -673,8 +737,23 @@ export async function handleNewTopicRequest(
         inputTokens: newTopicApiData.usage?.input_tokens,
         outputTokens: newTopicApiData.usage?.output_tokens,
         stopReason: newTopicApiData.stop_reason,
+        ...newTopicTwoStageTelemetry(newTopicContext),
         // §8 telemetry：只記數量絕不記內容。
       });
+      // 進階路徑品質稽核：只記錄、不擋、不改扣費（規格 §4.6）。
+      if (newTopicContext !== null) {
+        logInfo("new_topic_two_stage_audit", {
+          user: summarizeUser(deps.userId),
+          requestId: newTopicRequest.requestId,
+          promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+          ...auditNewTopicTwoStageTopics({
+            topics: newTopicNormalized.topics,
+            recommendationIndex: newTopicNormalized.recommendationIndex,
+            topicContext: newTopicContext,
+            situation: newTopicRequest.situation,
+          }),
+        });
+      }
       // Handler 永遠回 settlement 回傳的 stored result；即使本地候選不同
       // （late/stale owner race），也丟棄本地結果（設計鐵律 §4-8/9）。
       return jsonResponse(newTopicSuccessBody(
@@ -802,7 +881,7 @@ export async function handleNewTopicRequest(
               {
                 model: newTopicModel,
                 max_tokens: NEW_TOPIC_MAX_TOKENS,
-                system: NEW_TOPIC_PROMPT,
+                system: newTopicSystemPrompt,
                 messages: [{ role: "user", content: newTopicUserPrompt }],
               },
               deps.claudeApiKey,
@@ -890,7 +969,7 @@ export async function handleNewTopicRequest(
       {
         model: newTopicModel,
         max_tokens: NEW_TOPIC_MAX_TOKENS,
-        system: NEW_TOPIC_PROMPT,
+        system: newTopicSystemPrompt,
         messages: [{ role: "user", content: newTopicUserPrompt }],
       },
       deps.claudeApiKey,
