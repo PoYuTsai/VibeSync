@@ -44,8 +44,10 @@ function body(extra: Record<string, unknown> = {}): Record<string, unknown> {
 async function run(
   requestBody: Record<string, unknown>,
   twoStageFlag: string | undefined,
+  settleCharged = true,
 ) {
   const dbCalls: string[] = [];
+  const logEvents: string[] = [];
   const modelRequests: ModelRequest[] = [];
   const supabase = {
     from(table: string) {
@@ -65,7 +67,7 @@ async function run(
       }
       if (fn === "settle_new_topic_request") {
         return Promise.resolve({
-          data: { charged: true, result: params.p_result_json },
+          data: { charged: settleCharged, result: params.p_result_json },
           error: null,
         });
       }
@@ -77,6 +79,8 @@ async function run(
   };
 
   const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  console.log = (message: unknown) => logEvents.push(String(message));
   const env = ["NEW_TOPIC_TWO_STAGE_ENABLED", "NEW_TOPIC_REPLAY_HMAC_KEY"]
     .map((key) => [key, Deno.env.get(key)] as const);
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
@@ -120,9 +124,11 @@ async function run(
       json: await response.json(),
       dbCalls,
       modelRequests,
+      logEvents,
     };
   } finally {
     globalThis.fetch = originalFetch;
+    console.log = originalLog;
     for (const [key, value] of env) {
       if (value === undefined) Deno.env.delete(key);
       else Deno.env.set(key, value);
@@ -253,4 +259,21 @@ Deno.test("handler：只有素材原文（沒選狀況、沒作戰板）也能�
     result.modelRequests[0].system[0].text,
     NEW_TOPIC_TWO_STAGE_PROMPT,
   );
+});
+
+Deno.test("handler：稽核只記本筆落帳的結果，replayed（先完成者贏）略過", async () => {
+  const hasAudit = (events: string[]) =>
+    events.some((event) => event.endsWith(" new_topic_two_stage_audit"));
+  const charged = await run(body({ topicContext: STORY }), "true");
+  assertEquals(charged.status, 200);
+  assert(hasAudit(charged.logEvents));
+
+  const replayed = await run(body({ topicContext: STORY }), "true", false);
+  assertEquals(replayed.status, 200);
+  assert(
+    replayed.logEvents.some((event) =>
+      event.endsWith(" new_topic_settlement_replayed")
+    ),
+  );
+  assert(!hasAudit(replayed.logEvents));
 });

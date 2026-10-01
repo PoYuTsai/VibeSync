@@ -523,6 +523,19 @@ const BANNED_OPENER_PATTERN =
   /在嗎|最近好嗎|最近在幹嘛|最近在忙什麼|有件事想跟妳說|有件事想跟你說/;
 const INVITE_PATTERN = /約妳|約你|見面|出來吃|出來喝|出來玩|一起去/;
 const APOLOGY_PATTERN = /抱歉|不好意思|對不起|sorry/i;
+const EMOJI_GRAPHEME = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
+const graphemeSegmenter = new Intl.Segmenter("zh-Hant", {
+  granularity: "grapheme",
+});
+
+/** 以 grapheme 計：ZWJ 組合、國旗都只算一個 emoji。 */
+function emojiCount(text: string): number {
+  let count = 0;
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    if (EMOJI_GRAPHEME.test(segment)) count++;
+  }
+  return count;
+}
 
 function cjkBigrams(text: string): Set<string> {
   const bigrams = new Set<string>();
@@ -582,9 +595,6 @@ export function auditNewTopicTwoStageTopics(input: {
     inviteLines: count(INVITE_PATTERN),
     apologyLines: count(APOLOGY_PATTERN),
     multiEmojiLines:
-      topics.filter((topic) =>
-        (topic.openingLine.match(/\p{Extended_Pictographic}/gu) ?? []).length >=
-          2
-      ).length,
+      topics.filter((topic) => emojiCount(topic.openingLine) >= 2).length,
   };
 }

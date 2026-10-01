@@ -244,6 +244,8 @@ Deno.test("system＋user 總長與 legacy 相差 ±25% 內（同一份輸入）"
     const ratio = twoStage / legacy;
     assert(ratio >= 0.75 && ratio <= 1.25, `${situation}: ${ratio}`);
   }
+  // 提案 §8 在意成本不增加：逐字系統提示詞不比 legacy 長。
+  assert(NEW_TOPIC_TWO_STAGE_PROMPT.length <= NEW_TOPIC_PROMPT.length);
 });
 
 // ---------------------------------------------------------------------------
@@ -670,10 +672,17 @@ Deno.test("audit：空窗、禁用開場、邀約、道歉、多 emoji 各自計
   assertEquals(dirty.inviteLines, 1);
   assertEquals(dirty.apologyLines, 1);
   assertEquals(dirty.multiEmojiLines, 1);
-  // 單一 emoji 不算。
+  // 單一 emoji 不算；ZWJ 家庭、國旗以 grapheme 計各算一個。
+  for (const single of ["只有一個😂", "全家出動👨‍👩‍👧", "台灣隊加油🇹🇼"]) {
+    assertEquals(
+      audit([single, ...PLAIN_LINES.slice(1)]).multiEmojiLines,
+      0,
+      single,
+    );
+  }
   assertEquals(
-    audit(["只有一個😂", ...PLAIN_LINES.slice(1)]).multiEmojiLines,
-    0,
+    audit(["兩面國旗🇹🇼🇯🇵", ...PLAIN_LINES.slice(1)]).multiEmojiLines,
+    1,
   );
 });
 

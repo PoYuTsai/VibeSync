@@ -148,6 +148,8 @@ export async function handleNewTopicRequest(
   // 進階路徑（2026-10-01 規格 §2）：開關沒開就整筆拒絕、不偷偷降級；
   // 用戶寫的那句命中粗俗詞表也在這裡擋。都在 claim／限流／模型／扣費
   // 之前，log 只記 reason、不記原文。
+  // 已知風險：開關在 SETTLEMENT_PENDING 重試窗口內被關，同 requestId 的
+  // 重試拿到 503 而非已存結果（規格 §2 順序在 HMAC preflight 之前）。
   const newTopicContext = newTopicRequest.topicContext;
   if (
     newTopicContext !== null &&
@@ -712,7 +714,9 @@ export async function handleNewTopicRequest(
     if (settlement.kind === "settled") {
       // §14.1：settle 落帳成功／被先完成者搶先（stored winner 回放）分流。
       // 測試帳號 chargeQuota=false 屬正常免扣，不算 replayed。
-      if (settlement.charged || deps.accountIsTest) {
+      const newTopicSettlementReplayed = !settlement.charged &&
+        !deps.accountIsTest;
+      if (!newTopicSettlementReplayed) {
         logInfo("new_topic_settlement_succeeded", {
           user: summarizeUser(deps.userId),
           requestId: newTopicRequest.requestId,
@@ -741,18 +745,26 @@ export async function handleNewTopicRequest(
         // §8 telemetry：只記數量絕不記內容。
       });
       // 進階路徑品質稽核：只記錄、不擋、不改扣費（規格 §4.6）。
-      if (newTopicContext !== null) {
-        logInfo("new_topic_two_stage_audit", {
-          user: summarizeUser(deps.userId),
-          requestId: newTopicRequest.requestId,
-          promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
-          ...auditNewTopicTwoStageTopics({
-            topics: newTopicNormalized.topics,
-            recommendationIndex: newTopicNormalized.recommendationIndex,
-            topicContext: newTopicContext,
-            situation: newTopicRequest.situation,
-          }),
-        });
+      // replayed 時用戶看到的是先完成那筆，本地候選不代表結果，略過。
+      if (newTopicContext !== null && !newTopicSettlementReplayed) {
+        try {
+          logInfo("new_topic_two_stage_audit", {
+            user: summarizeUser(deps.userId),
+            requestId: newTopicRequest.requestId,
+            promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+            ...auditNewTopicTwoStageTopics({
+              topics: newTopicNormalized.topics,
+              recommendationIndex: newTopicNormalized.recommendationIndex,
+              topicContext: newTopicContext,
+              situation: newTopicRequest.situation,
+            }),
+          });
+        } catch (error) {
+          logWarn("new_topic_two_stage_audit_failed", {
+            requestId: newTopicRequest.requestId,
+            error: getErrorMessage(error),
+          });
+        }
       }
       // Handler 永遠回 settlement 回傳的 stored result；即使本地候選不同
       // （late/stale owner race），也丟棄本地結果（設計鐵律 §4-8/9）。
