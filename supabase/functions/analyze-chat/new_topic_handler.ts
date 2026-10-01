@@ -56,6 +56,7 @@ import {
 import {
   auditNewTopicTwoStageTopics,
   buildNewTopicTwoStageUserPrompt,
+  enforceNewTopicRedClose,
   NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   newTopicTwoStageTelemetry,
@@ -717,6 +718,17 @@ export async function handleNewTopicRequest(
       }, 502);
     }
 
+    // 紅燈收尾（規格 §9.4）：只在進階路徑；推薦不是第一題就改推第一題、拿掉理由。
+    const newTopicRedClose = newTopicContext === null
+      ? null
+      : enforceNewTopicRedClose(newTopicNormalized, {
+        situation: newTopicRequest.situation,
+        topicContext: newTopicContext,
+      });
+    if (newTopicRedClose !== null) {
+      newTopicNormalized = newTopicRedClose.normalized;
+    }
+
     // 10. Tier 投影：server 權威 servedTier；Free 只留推薦一題，鎖定四題
     //     文字不進 ledger、不出 server。
     const newTopicServedTier = (() => {
@@ -793,6 +805,7 @@ export async function handleNewTopicRequest(
               topicContext: newTopicContext,
               situation: newTopicRequest.situation,
             }),
+            redCloseOverridden: newTopicRedClose?.overridden ?? false,
           });
         } catch (error) {
           logWarn("new_topic_two_stage_audit_failed", {

@@ -62,6 +62,7 @@ async function run(
 ) {
   const dbCalls: string[] = [];
   const logEvents: string[] = [];
+  const logMetadata = new Map<string, unknown>();
   const modelRequests: ModelRequest[] = [];
   const supabase = {
     from(table: string) {
@@ -100,7 +101,10 @@ async function run(
 
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
-  console.log = (message: unknown) => logEvents.push(String(message));
+  console.log = (message: unknown, metadata?: unknown) => {
+    logEvents.push(String(message));
+    logMetadata.set(String(message).split(" ").at(-1)!, metadata);
+  };
   const env = ["NEW_TOPIC_TWO_STAGE_ENABLED", "NEW_TOPIC_REPLAY_HMAC_KEY"]
     .map((key) => [key, Deno.env.get(key)] as const);
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
@@ -146,6 +150,7 @@ async function run(
       dbCalls,
       modelRequests,
       logEvents,
+      logMetadata,
     };
   } finally {
     globalThis.fetch = originalFetch;
@@ -549,4 +554,59 @@ Deno.test("handler：開關沒開時 claim 已是完成列 → 照常回放（�
   assertEquals(result.status, 200);
   assertEquals(result.json.topics, stored.topics);
   assertEquals(result.modelRequests, []);
+});
+
+// ---------------------------------------------------------------------------
+// 紅燈收尾（規格 §9.4）：推薦固定第一題，由伺服器保證
+// ---------------------------------------------------------------------------
+
+Deno.test("handler：還在聊＋她常只回哈哈、嗯，模型推第三題 → 改推第一題（nt_1）且不帶理由；稽核記改推", async () => {
+  const picked2 = {
+    ...MODEL_PAYLOAD,
+    recommendation: { index: 2, reason: "理由" },
+  };
+  const result = await run(
+    body({ situation: "stuck", topicContext: { engagement: "red" } }),
+    "true",
+    true,
+    picked2,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(result.json.recommendation, { topicId: "nt_1" });
+  assertEquals(result.json.topics[0].id, "nt_1");
+  assertEquals(result.json.topics[0].openingLine, "開場句1");
+  const audit = result.logMetadata.get("new_topic_two_stage_audit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(audit.redCloseApplied, true);
+  assertEquals(audit.redCloseOverridden, true);
+  assertEquals(audit.redCloseCueInFirst, 0);
+});
+
+Deno.test("handler：紅燈收尾以外（legacy 沒帶 topicContext、進階黃燈）推薦照模型", async () => {
+  const picked2 = {
+    ...MODEL_PAYLOAD,
+    recommendation: { index: 2, reason: "理由" },
+  };
+  const legacy = await run(body({ situation: "stuck" }), "true", true, picked2);
+  assertEquals(legacy.status, 200);
+  assertEquals(legacy.modelRequests[0].system[0].text, NEW_TOPIC_PROMPT);
+  assertEquals(legacy.json.recommendation, { topicId: "nt_3", reason: "理由" });
+  assertFalse(legacy.logMetadata.has("new_topic_two_stage_audit"));
+
+  const yellow = await run(
+    body({ situation: "stuck", topicContext: { engagement: "yellow" } }),
+    "true",
+    true,
+    picked2,
+  );
+  assertEquals(yellow.status, 200);
+  assertEquals(yellow.json.recommendation, { topicId: "nt_3", reason: "理由" });
+  const audit = yellow.logMetadata.get("new_topic_two_stage_audit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(audit.redCloseApplied, false);
+  assertEquals(audit.redCloseOverridden, false);
 });
