@@ -7,11 +7,23 @@ enum KeyboardReplyStyle: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .extend: return "🔄 延展"
-        case .resonate: return "💬 共鳴"
-        case .tease: return "😏 調情"
-        case .humor: return "🎭 幽默"
-        case .coldRead: return "🔮 冷讀"
+        case .extend: return "延展"
+        case .resonate: return "共鳴"
+        case .tease: return "調情"
+        case .humor: return "幽默"
+        case .coldRead: return "冷讀"
+        }
+    }
+
+    /// The glyph the app shows for the same style
+    /// (replyStyleIcons in lib/core/theme/app_icons.dart).
+    var icon: KeyboardIcon {
+        switch self {
+        case .extend: return .refresh
+        case .resonate: return .messageCircle
+        case .tease: return .moodWink
+        case .humor: return .masksTheater
+        case .coldRead: return .crystalBall
         }
     }
 }

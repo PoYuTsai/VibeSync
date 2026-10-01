@@ -18,6 +18,10 @@ final class KeyboardViewController: UIInputViewController {
     private let surface = UIColor(red: 42/255, green: 24/255, blue: 64/255, alpha: 1)
     private let primary = UIColor(red: 107/255, green: 78/255, blue: 230/255, alpha: 1)
     private let flame = UIColor(red: 255/255, green: 106/255, blue: 43/255, alpha: 1)
+    /// The heart in front of the panel titles, in the app's light accent.
+    private let markTint = UIColor(red: 198/255, green: 139/255, blue: 255/255, alpha: 1)
+    /// The analysis cue's bulb, the one warm highlight on the card.
+    private let cueTint = UIColor(red: 255/255, green: 209/255, blue: 102/255, alpha: 1)
 
     private let api = KeyboardAPI()
     private let rootStack = UIStackView()
@@ -50,6 +54,7 @@ final class KeyboardViewController: UIInputViewController {
     private let screenshotFlowMark = UILabel()
     private var isMarkPulsing = false
     private var styleButtons: [KeyboardReplyStyle: UIButton] = [:]
+    private var styleIcons: [KeyboardReplyStyle: UIImage] = [:]
     private var loadedMessage = ""
     private var pendingLegacyReply: PendingLegacyReply?
     private var activeLegacyOperationID: UUID?
@@ -226,9 +231,14 @@ final class KeyboardViewController: UIInputViewController {
         let header = UIStackView()
         header.axis = .horizontal
         header.spacing = 8
-        screenshotFlowMark.text = "💜 VibeSync"
         screenshotFlowMark.textColor = .white
         screenshotFlowMark.font = .systemFont(ofSize: 15, weight: .bold)
+        setText(
+            "VibeSync",
+            on: screenshotFlowMark,
+            leadingIcon: .heart,
+            iconColor: markTint
+        )
         header.addArrangedSubview(screenshotFlowMark)
         header.addArrangedSubview(UIView())
         header.addArrangedSubview(
@@ -292,9 +302,9 @@ final class KeyboardViewController: UIInputViewController {
         header.axis = .horizontal
         header.spacing = 8
         let mark = UILabel()
-        mark.text = "💜 文字模式"
         mark.textColor = .white
         mark.font = .systemFont(ofSize: 15, weight: .bold)
+        setText("文字模式", on: mark, leadingIcon: .heart, iconColor: markTint)
         header.addArrangedSubview(mark)
         header.addArrangedSubview(UIView())
         header.addArrangedSubview(
@@ -334,6 +344,15 @@ final class KeyboardViewController: UIInputViewController {
         for (index, style) in KeyboardReplyStyle.allCases.enumerated() {
             let button = makeButton(style.title, action: #selector(generateReply(_:)))
             button.accessibilityIdentifier = style.rawValue
+            button.tintColor = .white
+            let icon = style.icon.templateImage(
+                side: KeyboardIcon.side(
+                    for: button.titleLabel?.font ?? .systemFont(ofSize: 14)
+                ),
+                trailingSpace: KeyboardIcon.textGap
+            )
+            button.setImage(icon, for: .normal)
+            styleIcons[style] = icon
             styleButtons[style] = button
             (index < 3 ? firstRow : secondRow).addArrangedSubview(button)
         }
@@ -466,12 +485,17 @@ final class KeyboardViewController: UIInputViewController {
         screenshotPanel.addArrangedSubview(screenshotCandidateStack)
 
         // The loop only works if the user knows there is a loop.
-        screenshotContinuationHint.text = "💡 對方回覆後再截一次圖，就能接著聊"
         screenshotContinuationHint.font = .systemFont(ofSize: 11)
         screenshotContinuationHint.textColor =
             UIColor.white.withAlphaComponent(0.55)
         screenshotContinuationHint.textAlignment = .center
         screenshotContinuationHint.numberOfLines = 2
+        setText(
+            "對方回覆後再截一次圖，就能接著聊",
+            on: screenshotContinuationHint,
+            leadingIcon: .bulb,
+            iconColor: UIColor.white.withAlphaComponent(0.7)
+        )
         screenshotContinuationHint.isHidden = true
         screenshotPanel.addArrangedSubview(screenshotContinuationHint)
 
@@ -555,7 +579,12 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         analysisCard.isHidden = false
-        analysisCueLabel.text = "💡 \(presentation.cue)"
+        setText(
+            presentation.cue,
+            on: analysisCueLabel,
+            leadingIcon: .bulb,
+            iconColor: cueTint
+        )
         switch presentation.turnState {
         case .replyDue:
             analysisStateLabel.text =
@@ -571,7 +600,12 @@ final class KeyboardViewController: UIInputViewController {
         if let uncertainty = presentation.uncertainty,
            !uncertainty.isEmpty
         {
-            analysisUncertaintyLabel.text = "⚠︎ \(uncertainty)"
+            setText(
+                uncertainty,
+                on: analysisUncertaintyLabel,
+                leadingIcon: .alertTriangle,
+                iconColor: UIColor.white.withAlphaComponent(0.62)
+            )
             analysisUncertaintyLabel.isHidden = false
         } else {
             analysisUncertaintyLabel.isHidden = true
@@ -682,6 +716,29 @@ final class KeyboardViewController: UIInputViewController {
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
         button.addTarget(self, action: action, for: .touchUpInside)
         return button
+    }
+
+    /// Leads a label with a Tabler glyph where an emoji used to be. The glyph
+    /// is an image attachment rather than a character, so the label's own
+    /// alignment and truncation are put back afterwards, and VoiceOver is
+    /// given just the words.
+    private func setText(
+        _ text: String,
+        on label: UILabel,
+        leadingIcon icon: KeyboardIcon,
+        iconColor: UIColor
+    ) {
+        let alignment = label.textAlignment
+        let lineBreakMode = label.lineBreakMode
+        label.attributedText = icon.leading(
+            text,
+            font: label.font,
+            textColor: label.textColor,
+            iconColor: iconColor
+        )
+        label.textAlignment = alignment
+        label.lineBreakMode = lineBreakMode
+        label.accessibilityLabel = text
     }
 
     private func show(_ newMode: Mode) {
@@ -1019,10 +1076,13 @@ final class KeyboardViewController: UIInputViewController {
         pasteButton.alpha = pasteButton.isEnabled ? 1 : 0.45
         for (style, button) in styleButtons {
             let enabled = hasFullAccess && !loadedMessage.isEmpty && !isGenerating
+            let isBusy = style == selected && isGenerating
             button.isEnabled = enabled
             button.alpha = enabled || style == selected ? 1 : 0.45
             button.backgroundColor = style == selected ? primary : surface
-            button.setTitle(style == selected && isGenerating ? "產生中…" : style.title, for: .normal)
+            button.setTitle(isBusy ? "產生中…" : style.title, for: .normal)
+            // 產生中… stands alone, as it did when the emoji was in the title.
+            button.setImage(isBusy ? nil : styleIcons[style], for: .normal)
         }
     }
 
