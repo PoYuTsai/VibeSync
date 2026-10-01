@@ -36,9 +36,11 @@ class NewTopicTwoStageAnswers {
 
   bool get materialMissing => needsMaterialText && trimmedMaterialText.isEmpty;
 
+  /// 字數看 grapheme；另外同 server 擋 UTF-16 長度（組合字元堆疊）。
   bool get materialTooLong =>
       needsMaterialText &&
-      materialLength > NewTopicTwoStageCopy.materialMaxGraphemes;
+      (materialLength > NewTopicTwoStageCopy.materialMaxGraphemes ||
+          trimmedMaterialText.length > NewTopicTwoStageCopy.materialMaxUtf16);
 
   /// 只有選了任一追問或素材才送；只選第一問回 null（走 legacy）。
   /// 追問只在搭得上第一問時才帶，避免 server 400。
@@ -138,6 +140,7 @@ abstract final class NewTopicTwoStageCopy {
 
   static const materialHelper = '寫給教練看的就好，不用寫成要傳給她的句子。';
   static const materialMaxGraphemes = 150;
+  static const materialMaxUtf16 = 1500;
   static const materialMissingHint = '寫一句你手上的素材，或改選「沒有，幫我想」。';
   static const materialTooLongHint = '素材超過 150 字，請縮短後再生成。';
 
@@ -148,6 +151,10 @@ abstract final class NewTopicTwoStageCopy {
   static const advancedUnavailableTitle = '進階模式暫時無法使用，要用基本模式生成嗎？';
   static const advancedUnavailableCancel = '先不要';
   static const advancedUnavailableConfirm = '用基本模式生成';
+
+  /// 進階不可用、而基本模式少了素材原文也生不出來（沒選第一問、資料又少）。
+  static const advancedUnavailableNeedsSituation =
+      '進階模式暫時無法使用。先選一個目前狀況，就能改用基本模式生成。';
 
   // ── 教練提醒（提案 §5 逐字）─────────────────────────────
 
@@ -201,7 +208,9 @@ abstract final class NewTopicTwoStageCopy {
           lines.add(stop == 'she_no_reply' || stop == 'she_cold'
               ? _coldMonthHard
               : _coldMonthSoft);
-        } else if (_coldDuration[duration] != null) {
+        } else if (_coldDuration[duration] != null &&
+            // 同 server：幾天＋她沒回時「接回上次那條線」等於追上一則，只留她沒回那行。
+            !(duration == 'days' && stop == 'she_no_reply')) {
           lines.add(_coldDuration[duration]!);
         }
         if (_coldStop[stop] != null) lines.add(_coldStop[stop]!);

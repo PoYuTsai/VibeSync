@@ -91,8 +91,9 @@ class NewTopicStatePendingException extends NewTopicException {
   }) : super(message, retrySameRequest: true);
 }
 
-/// 兩段式進階路徑暫時不可用：server 開關關著（503），或舊 Edge 不認得
-/// `topicContext`（400）。View 據此詢問是否改用基本模式（不帶 topicContext）。
+/// 兩段式進階路徑暫時不可用：server 開關關著（code
+/// `NEW_TOPIC_ADVANCED_UNAVAILABLE`，現為 422、早期 503，只看 code），或舊 Edge
+/// 不認得 `topicContext`（400）。View 據此詢問是否改用基本模式（不帶 topicContext）。
 class NewTopicAdvancedUnavailableException extends NewTopicException {
   const NewTopicAdvancedUnavailableException(super.message);
 }

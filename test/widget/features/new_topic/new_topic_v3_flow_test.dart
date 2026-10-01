@@ -735,10 +735,31 @@ void main() {
     expect(find.text(unavailable.message), findsNothing);
   });
 
+  testWidgets('進階不可用但基本模式生不出來（資料少、沒選第一問）：不開對話框，請先選狀況', (t) async {
+    await _pump(t);
+    await _tapVisible(t, _key('new-topic-material-my_story'));
+    await _typeMaterial(t, '合成測試句');
+    await _tapGenerate(t);
+    _service.replies.single.completeError(
+        const NewTopicAdvancedUnavailableException(
+            '進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text(NewTopicTwoStageCopy.advancedUnavailableNeedsSituation),
+        findsOneWidget);
+    expect(_service.calls, hasLength(1));
+    expect(_materialText(t), '合成測試句');
+  });
+
   testWidgets('伺服器擋下素材用字：顯示 server 訊息、不邀重試，改字後換新請求', (t) async {
     // 沒有作戰板訊號、沒有風格、不選第一問：只靠用戶寫的那句也能生成。
     await _pump(t);
     await _tapVisible(t, _key('new-topic-material-my_story'));
+    expect(find.text('請選一個目前情境，或先補充對象資料。'), findsOneWidget,
+        reason: '還沒寫的空素材不算素材');
+    expect(t.widget<TextField>(_materialField).decoration!.hintMaxLines, 5,
+        reason: '大字級提示不被截掉');
     await _typeMaterial(t, '合成測試句');
     expect(find.text('可以不選，直接找新的切入點。'), findsOneWidget);
     expect(_button(t).onPressed, isNotNull);

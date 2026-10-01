@@ -190,11 +190,15 @@ class OpenerSituationGrid extends StatelessWidget {
             if (single)
               item(options[i])
             else
-              Row(children: [
-                Expanded(child: item(options[i])),
-                const SizedBox(width: 12),
-                Expanded(child: item(options[i + 1]))
-              ]),
+              // 一邊換行時兩顆一樣高，選了長標籤也不會一高一低。
+              IntrinsicHeight(
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                    Expanded(child: item(options[i])),
+                    const SizedBox(width: 12),
+                    Expanded(child: item(options[i + 1]))
+                  ])),
           ]
         ]);
       });
