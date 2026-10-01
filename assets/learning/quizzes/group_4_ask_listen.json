@@ -4,14 +4,14 @@
   "number": 4,
   "key": "askListen",
   "title": "問與聽",
-  "subtitle": "勾開話匣子，讓她覺得你懂",
+  "subtitle": "把她的話匣子勾開，讓她覺得你懂她",
   "stageLabel": "破冰",
   "levels": [
     {
       "id": "quiz-level-4-1",
       "number": "4-1",
       "title": "把話匣子勾開",
-      "goal": "把「你平常喜歡做什麼」換成一句有立場的話——問題的品質就是你的程度。",
+      "goal": "把「你平常喜歡做什麼」換成一句有立場的話：帶一個形容詞、猜測或玩笑，像「我猜你週末很少待在家」。問題的品質，就是你的程度。",
       "access": "premium",
       "passRatio": 0.8,
       "questions": [
@@ -551,7 +551,7 @@
       "id": "quiz-level-4-2",
       "number": "4-2",
       "title": "讓她覺得你懂",
-      "goal": "聽不是安靜。聽的價值在你回應的那一句，讓她感覺到你懂她。",
+      "goal": "會聽，不等於安靜。聽的價值在你回應的那一句：讓她感覺到你懂她。",
       "access": "premium",
       "passRatio": 0.8,
       "questions": [

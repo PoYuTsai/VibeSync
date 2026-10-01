@@ -4,14 +4,14 @@
   "number": 7,
   "key": "escalation",
   "title": "推進",
-  "subtitle": "三個層次，然後約出來",
+  "subtitle": "話題由淺到深分三個層次，然後約出來",
   "stageLabel": "連結",
   "levels": [
     {
       "id": "quiz-level-7-1",
       "number": "7-1",
       "title": "三個層次與曖昧",
-      "goal": "事件 → 個人 → 曖昧，不要越級。張力是「我在他心中算什麼」還沒有答案。",
+      "goal": "話題由淺到深有三個層次：事件（聊外面發生的事）、個人（聊她這個人）、曖昧（聊你們之間的感覺），不要越級。",
       "access": "premium",
       "passRatio": 0.8,
       "questions": [
@@ -551,7 +551,7 @@
       "id": "quiz-level-7-2",
       "number": "7-2",
       "title": "約出來",
-      "goal": "綠燈亮了就要往見面走，但第一步是一顆種子，不是精確到分鐘的邀約。",
+      "goal": "綠燈亮了就要往見面走。第一步是一顆種子：提一個具體的店或活動，先不定時間，像「那家店我一直想去，哪天一起」。她接了，再提具體時間。",
       "access": "premium",
       "passRatio": 0.8,
       "questions": [
