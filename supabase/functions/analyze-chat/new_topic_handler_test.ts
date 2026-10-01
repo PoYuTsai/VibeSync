@@ -4,6 +4,7 @@
 import {
   assert,
   assertEquals,
+  assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import {
@@ -45,6 +46,8 @@ async function run(
   requestBody: Record<string, unknown>,
   twoStageFlag: string | undefined,
   settleCharged = true,
+  modelPayload: unknown = MODEL_PAYLOAD,
+  startedMsAgo = 0,
 ) {
   const dbCalls: string[] = [];
   const logEvents: string[] = [];
@@ -88,7 +91,7 @@ async function run(
     return Promise.resolve(
       new Response(
         JSON.stringify({
-          content: [{ type: "text", text: JSON.stringify(MODEL_PAYLOAD) }],
+          content: [{ type: "text", text: JSON.stringify(modelPayload) }],
           usage: { input_tokens: 10, output_tokens: 10 },
           stop_reason: "end_turn",
         }),
@@ -108,7 +111,7 @@ async function run(
       userId: USER_ID,
       requestBody,
       responseMode: "legacy",
-      requestStartedAtMs: Date.now(),
+      requestStartedAtMs: Date.now() - startedMsAgo,
       accountIsTest: false,
       claudeApiKey: "test-key",
       refreshTierFromRevenueCat: () => Promise.resolve("not_paid"),
@@ -142,10 +145,10 @@ const STORY = {
   materialText: "信心滿滿走進店裡，才發現走錯分店",
 };
 
-Deno.test("handler：開關沒開＋有 topicContext → 503，不碰 DB／限流／模型", async () => {
+Deno.test("handler：開關沒開＋有 topicContext → 422（不進 5xx 告警），不碰 DB／限流／模型", async () => {
   for (const flag of [undefined, "false", "1", "TRUE"]) {
     const result = await run(body({ topicContext: STORY }), flag);
-    assertEquals(result.status, 503, String(flag));
+    assertEquals(result.status, 422, String(flag));
     assertEquals(result.json, {
       error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
       code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
@@ -178,7 +181,15 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 照舊走 legacy 提
 });
 
 Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／模型", async () => {
-  for (const materialText of ["她說想打炮", "幹你娘超好笑"]) {
+  // 零寬字元／雙向控制拆開的粗俗詞，sanitize 拿掉格式字元後一樣擋。
+  for (
+    const materialText of [
+      "她說想打炮",
+      "幹你娘超好笑",
+      "她說想打\u200B炮",
+      "幹\u2060你\u200D娘超好笑",
+    ]
+  ) {
     const result = await run(
       body({ topicContext: { materialKind: "inside_joke", materialText } }),
       "true",
@@ -195,14 +206,14 @@ Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／
   }
 });
 
-Deno.test("handler：開關先於擋字（開關沒開時髒字也回 503）", async () => {
+Deno.test("handler：開關先於擋字（開關沒開時髒字也回進階不可用）", async () => {
   const result = await run(
     body({
       topicContext: { materialKind: "inside_joke", materialText: "她說想打炮" },
     }),
     undefined,
   );
-  assertEquals(result.status, 503);
+  assertEquals(result.status, 422);
   assertEquals(result.json.code, "NEW_TOPIC_ADVANCED_UNAVAILABLE");
 });
 
@@ -276,4 +287,122 @@ Deno.test("handler：稽核只記本筆落帳的結果，replayed（先完成者
     ),
   );
   assert(!hasAudit(replayed.logEvents));
+});
+
+// ---------------------------------------------------------------------------
+// 「我們」：提示詞那一行與輸出守門同一個判準（2026-10-01 審查 E3／E7）
+// ---------------------------------------------------------------------------
+
+const SHARED_FRAME_ALLOWED_LINE =
+  "- 「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。";
+const SHARED_FRAME_DENIED_LINE =
+  "- 「我們」：不寫「我們＋動作」的句子；提到過去的事用「上次」「那次」「妳那句」。";
+
+function payloadWithOpening(openingLine: string) {
+  const topics = MODEL_PAYLOAD.topics.map((topic) => ({ ...topic }));
+  topics[0].openingLine = openingLine;
+  return { ...MODEL_PAYLOAD, topics };
+}
+
+Deno.test("handler：「我們」守門與提示詞一致（想靠近＋很投入、你們的梗放行；其他擋）", async () => {
+  const cases: Array<{
+    name: string;
+    request: Record<string, unknown>;
+    openingLine: string;
+    allowed: boolean;
+  }> = [
+    {
+      name: "warm_up＋green",
+      request: body({
+        situation: "warm_up",
+        topicContext: { engagement: "green" },
+      }),
+      openingLine: "我們一起去看那場展吧",
+      allowed: true,
+    },
+    {
+      name: "inside_joke＋原文",
+      request: body({
+        situation: "stuck",
+        topicContext: {
+          materialKind: "inside_joke",
+          materialText: "她說我的五分鐘都是半小時",
+        },
+      }),
+      openingLine: "我們吃飯那天的五分鐘又變半小時了",
+      allowed: true,
+    },
+    {
+      name: "stuck＋yellow＋my_story",
+      request: body({
+        situation: "stuck",
+        topicContext: {
+          engagement: "yellow",
+          materialKind: "my_story",
+          materialText: "信心滿滿走進店裡，才發現走錯分店",
+        },
+      }),
+      openingLine: "我們去那家分店吃吃看",
+      allowed: false,
+    },
+  ];
+  for (const { name, request, openingLine, allowed } of cases) {
+    const result = await run(
+      request,
+      "true",
+      true,
+      payloadWithOpening(openingLine),
+      // 擋下的那筆會進 format repair；把生成期限壓到剩約 1 秒，測試不用等滿 45 秒。
+      allowed ? 0 : 44_000,
+    );
+    const userPrompt = result.modelRequests[0].messages[0].content;
+    assert(
+      userPrompt.includes(
+        allowed ? SHARED_FRAME_ALLOWED_LINE : SHARED_FRAME_DENIED_LINE,
+      ),
+      name,
+    );
+    assertFalse(
+      userPrompt.includes(
+        allowed ? SHARED_FRAME_DENIED_LINE : SHARED_FRAME_ALLOWED_LINE,
+      ),
+      name,
+    );
+    if (allowed) {
+      assertEquals(result.status, 200, name);
+      assertEquals(result.json.topics[0].openingLine, openingLine, name);
+    } else {
+      // 守門擋下：整份不交付、不落帳、不扣。
+      assert(result.status !== 200, name);
+      assertEquals(result.json.shouldChargeQuota, false, name);
+      assertFalse(result.dbCalls.includes("rpc:settle_new_topic_request"));
+    }
+  }
+});
+
+Deno.test("handler：用戶素材裡的英文 stuck 被模型照抄不再判外洩", async () => {
+  const topics = MODEL_PAYLOAD.topics.map((topic) => ({ ...topic }));
+  topics[0] = {
+    ...topics[0],
+    openingLine: "報告卡在第一段，整個 stuck 住",
+    whyItWorks: "用你自己 stuck 的小事開場，她不用回答問題也能接",
+  };
+  const result = await run(
+    body({
+      situation: "stuck",
+      topicContext: {
+        materialKind: "my_story",
+        materialText: "這週寫報告一直 stuck 在第一段",
+      },
+    }),
+    "true",
+    true,
+    { ...MODEL_PAYLOAD, topics },
+  );
+  assertEquals(result.status, 200);
+  assertEquals(result.modelRequests.length, 1);
+  assertEquals(
+    result.json.topics[0].openingLine,
+    "報告卡在第一段，整個 stuck 住",
+  );
 });

@@ -149,7 +149,8 @@ export async function handleNewTopicRequest(
   // 用戶寫的那句命中粗俗詞表也在這裡擋。都在 claim／限流／模型／扣費
   // 之前，log 只記 reason、不記原文。
   // 已知風險：開關在 SETTLEMENT_PENDING 重試窗口內被關，同 requestId 的
-  // 重試拿到 503 而非已存結果（規格 §2 順序在 HMAC preflight 之前）。
+  // 重試拿到 422 而非已存結果（規格 §2 順序在 HMAC preflight 之前）。
+  // 回 422 不回 503：這是可預期的產品狀態，不該灌進 http_5xx 告警；App 只看 code。
   const newTopicContext = newTopicRequest.topicContext;
   if (
     newTopicContext !== null &&
@@ -165,7 +166,7 @@ export async function handleNewTopicRequest(
       message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
       retryable: false,
       shouldChargeQuota: false,
-    }, 503);
+    }, 422);
   }
   const newTopicMaterialText = newTopicContext?.materialText ?? null;
   if (
@@ -537,6 +538,8 @@ export async function handleNewTopicRequest(
       situation: newTopicRequest.situation,
       topicContext: newTopicContext,
     }),
+    // 只有進階路徑會有；用戶自己寫的字撞到內部術語時不算外洩。
+    userMaterialText: newTopicMaterialText,
   };
   const rejectNewTopicDeadline = async (
     stage: string,
@@ -636,6 +639,7 @@ export async function handleNewTopicRequest(
         const repairedParsed = mergeNewTopicRepairWithPrimaryOpeningLines(
           newTopicPrimaryParsed,
           parseJsonObjectFromText(repairedText),
+          newTopicMaterialText,
         );
         const repairedNormalized = normalizeNewTopicModelPayload(
           repairedParsed,
