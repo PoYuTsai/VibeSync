@@ -5,10 +5,12 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
+import { hasCustomerExplanationLeak } from "./customer_explanation.ts";
 import { computeNewTopicInputHash } from "./new_topic_billing.ts";
-import type {
-  NewTopicModelTopic,
-  NewTopicSituation,
+import {
+  allowsNewTopicSharedFrame,
+  type NewTopicModelTopic,
+  type NewTopicSituation,
 } from "./new_topic_payload.ts";
 import {
   buildNewTopicUserPrompt,
@@ -66,6 +68,19 @@ function situationRules(prompt: string): string[] {
 function hasRule(rules: string[], prefix: string): boolean {
   return rules.some((rule) => rule.startsWith(prefix));
 }
+
+/**
+ * 提示詞本來就得點名的 JSON 欄位名與「不得出現」的內部代碼；扣掉這些之後，
+ * 提示詞不得再含任何解釋欄守門會擋的詞（模型照抄進解釋欄就會被判外洩）。
+ */
+const PROMPT_CONTRACT_TERMS =
+  "direction openingLine whyItWorks nextMove recommendation.reason " +
+  "went_cold after_date stuck warm_up new_topic";
+
+const SHARED_FRAME_ALLOWED_LINE =
+  "「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。";
+const SHARED_FRAME_DENIED_LINE =
+  "「我們」：不寫「我們＋動作」的句子；提到過去的事用「上次」「那次」「妳那句」。";
 
 // ---------------------------------------------------------------------------
 // §3 重放指紋
@@ -193,7 +208,8 @@ Deno.test("system prompt：版本、保密指示收尾、四段素材與 groundi
   ) {
     assert(NEW_TOPIC_TWO_STAGE_PROMPT.includes(anchor), anchor);
   }
-  // 規格 §4.1 刪掉的 legacy 段落不得回來。
+  // 規格 §4.1 刪掉的 legacy 段落不得回來；球的比喻與會被解釋欄守門擋的詞
+  // 也不放（模型會照抄進 whyItWorks／nextMove）。
   for (
     const removed of [
       "關係階段只能讀作戰板",
@@ -201,10 +217,41 @@ Deno.test("system prompt：版本、保密指示收尾、四段素材與 groundi
       "共同身分",
       "輕資格審查",
       "2026-08-19",
+      "共同想像",
+      "球",
+      "怪得剛剛好",
+      "位階訊號",
+      "先發散再個人化",
     ]
   ) {
     assertFalse(NEW_TOPIC_TWO_STAGE_PROMPT.includes(removed), removed);
   }
+  assertFalse(
+    hasCustomerExplanationLeak(
+      NEW_TOPIC_TWO_STAGE_PROMPT,
+      PROMPT_CONTRACT_TERMS,
+    ),
+  );
+});
+
+Deno.test("system prompt：看不到對話紀錄的鐵律、沒素材不編經歷、「我們」照局面", () => {
+  for (
+    const anchor of [
+      "段落裡列的做法優先於下面的通則，但不凌駕本段的鐵律。",
+      "- 你看不到兩人的對話紀錄。「這次的局面」提到的上次話題、約會細節或你們的梗，只能用素材或作戰板寫明的內容；沒寫就是不知道——用新東西開，不假裝接舊話題、不編約會裡發生的事。\n",
+      "- 用戶自己的經歷也一樣：素材或「關於我」沒寫的事，不寫成用戶做過、看過或遇過。\n",
+      "3. 她一句話就能回，而且回完還能往下聊。\n沒有素材原文時，「為什麼是現在」用剛想到的事、一個看法或觀察，不編用戶沒說過的經歷或事件。\n",
+      "- 「我們一起……」這類一起做某件事的想像，照「這次的局面」裡「我們」那一行；不能用時不寫「我們＋動作」的句子（例如我們去、我們約、我們來），提到你們之間過去的事用「上次」「那次」「妳那句」。\n",
+      "最後才給她一個好接的點。",
+      "給她一個好回的小問題",
+    ]
+  ) {
+    assert(NEW_TOPIC_TWO_STAGE_PROMPT.includes(anchor), anchor);
+  }
+  // 兩條新鐵律接在原本四條後面，仍在同一段。
+  const ironRules = NEW_TOPIC_TWO_STAGE_PROMPT.split("鐵律：\n")[1]
+    .split("\n\n")[0].split("\n");
+  assertEquals(ironRules.length, 6);
 });
 
 Deno.test("system＋user 總長與 legacy 相差 ±25% 內（同一份輸入）", () => {
@@ -356,10 +403,21 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
         rules.findIndex((rule) => rule.startsWith("一到四週沒聊：")),
     );
   }
-  // faded 不加行：基本行＋多久＋見面＋偏冷補一行。
+  // faded 不加行：基本行＋多久＋見面＋偏冷補一行＋「我們」。
   assertEquals(
     rulesFor({ coldDuration: "weeks", coldStop: "faded" }).length,
-    4,
+    5,
+  );
+  // 一個月以上＋我沒回她：空窗只能併進「帶過」那一句，不能再多一句。
+  const monthIDidNotReply = rulesFor({
+    coldDuration: "month_plus",
+    coldStop: "i_no_reply",
+  });
+  assert(monthIDidNotReply.includes(
+    "一個月以上沒聊：「帶過」那一句可以順帶承認有陣子沒聊，整則只能有這一句鋪陳，接著直接講內容；不一上來就曖昧。",
+  ));
+  assertFalse(
+    hasRule(monthIDidNotReply, "一個月以上沒聊：可以用一句輕鬆承認有陣子沒聊"),
   );
   assertFalse(
     hasRule(
@@ -388,9 +446,18 @@ Deno.test("user prompt：gapMentionAllowed 真值表", () => {
     const rules = situationRules(
       promptFor("went_cold", { coldDuration: "month_plus", coldStop }),
     );
+    // 我沒回她：允許提空窗，但改用併進「帶過」那一句的寫法。
     assertEquals(
       hasRule(rules, "一個月以上沒聊：可以用一句輕鬆承認有陣子沒聊"),
-      allowed,
+      allowed && coldStop !== "i_no_reply",
+    );
+    assertEquals(
+      hasRule(rules, "一個月以上沒聊：「帶過」那一句可以順帶承認有陣子沒聊"),
+      coldStop === "i_no_reply",
+    );
+    assertEquals(
+      hasRule(rules, "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊"),
+      !allowed,
     );
   }
   for (const coldDuration of [null, "days", "weeks"]) {
@@ -446,9 +513,179 @@ Deno.test("user prompt：投入程度 3×3 規則行＋標題，沒選不加行"
     const none = situationRules(
       promptFor(situation as NewTopicSituation, { materialKind: "none" }),
     );
-    // 沒選投入程度：只有基本行＋見面行。
-    assertEquals(none.length, 2, situation);
+    // 沒選投入程度：只有基本行＋見面行＋「我們」。
+    assertEquals(none.length, 3, situation);
   }
+});
+
+Deno.test("user prompt：沒有共同經歷的素材時不叫模型接上次／用約會裡的事", () => {
+  const shared = [
+    { materialKind: "past_topic", materialText: "她說在準備潛水證照" },
+    { materialKind: "inside_joke", materialText: "她說我的五分鐘都是半小時" },
+  ];
+  const notShared = [
+    {},
+    { materialKind: "none" },
+    { materialKind: "trigger", materialText: "路過浮誇甜點店" },
+    { materialKind: "my_story", materialText: "走錯分店" },
+  ];
+  const daysShared =
+    "幾天到一週沒聊：直接接素材裡那件事，像昨天才聊過；不說好久沒聊。";
+  const daysFresh =
+    "幾天到一週沒聊：像昨天才聊過一樣自然，直接帶一個新東西；不說好久沒聊，也不假裝接上次的話題。";
+  const afterDate = {
+    green: [
+      "約完她主動傳訊息或說開心：用約會裡的事或梗延續，可以輕提「下次」，但不約時間。",
+      "約完她主動傳訊息或說開心：延續約會的好心情，可以輕提「下次」，但不約時間；你不知道約會細節，不編約會裡發生的事。",
+    ],
+    yellow: [
+      "約完她反應普通：用約會裡一件小事輕輕接，不問她覺得你怎樣，先不約下次。",
+      "約完她反應普通：輕輕帶一個新東西，不問她覺得你怎樣，先不約下次；不編約會裡發生的事。",
+    ],
+  } as const;
+  for (
+    const [material, sharedHistory] of [
+      ...shared.map((raw) => [raw, true] as const),
+      ...notShared.map((raw) => [raw, false] as const),
+    ]
+  ) {
+    const label = JSON.stringify(material);
+    const days = situationRules(
+      promptFor("went_cold", { coldDuration: "days", ...material }),
+    );
+    assert(days.includes(sharedHistory ? daysShared : daysFresh), label);
+    for (const engagement of ["green", "yellow"] as const) {
+      const rules = situationRules(
+        promptFor("after_date", { engagement, ...material }),
+      );
+      assert(
+        rules.includes(afterDate[engagement][sharedHistory ? 0 : 1]),
+        `${label}/${engagement}`,
+      );
+    }
+  }
+  // red 不分有沒有共同經歷。
+  assert(
+    hasRule(
+      situationRules(promptFor("after_date", { engagement: "red" })),
+      "約完她還沒回或很冷淡：",
+    ),
+  );
+});
+
+Deno.test("user prompt：想更靠近＋她很投入，只有寫了你們的梗才回勾曖昧梗", () => {
+  const joke = situationRules(
+    promptFor("warm_up", {
+      engagement: "green",
+      materialKind: "inside_joke",
+      materialText: "她說我的五分鐘都是半小時",
+    }),
+  );
+  assert(joke.includes(
+    "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像、輕輕回勾你們的曖昧梗；不突然告白、不越界。",
+  ));
+  for (
+    const material of [
+      {},
+      { materialKind: "past_topic", materialText: "她說在準備潛水證照" },
+      { materialKind: "none" },
+    ]
+  ) {
+    const rules = situationRules(
+      promptFor("warm_up", { engagement: "green", ...material }),
+    );
+    assert(
+      rules.includes(
+        "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像；不突然告白、不越界。",
+      ),
+      JSON.stringify(material),
+    );
+    assertFalse(rules.some((rule) => rule.includes("曖昧梗")));
+  }
+});
+
+Deno.test("user prompt：原文裡的「」換成『』，指紋仍用原值", async () => {
+  const raw = {
+    materialKind: "inside_joke",
+    materialText: "她說「五分鐘」都是半小時",
+  };
+  const prompt = promptFor("stuck", raw);
+  assert(prompt.includes("- 原文：「她說『五分鐘』都是半小時」\n"));
+  assertEquals(context(raw, "stuck").materialText, "她說「五分鐘」都是半小時");
+  const hashOf = (materialText: string) =>
+    computeNewTopicInputHash({
+      userId: USER_ID,
+      partnerSummary: null,
+      effectiveStyleContext: null,
+      situation: "stuck",
+      secret: STRONG_KEY,
+      topicContext: { ...context(raw, "stuck"), materialText },
+    });
+  assertFalse(
+    await hashOf("她說「五分鐘」都是半小時") ===
+      await hashOf("她說『五分鐘』都是半小時"),
+  );
+});
+
+Deno.test("user prompt：「我們」那一行永遠在局面最後，跟輸出守門同一個判準", () => {
+  const cases: Array<
+    [string | null, NewTopicSituation | null, Record<string, unknown>, boolean]
+  > = [
+    [null, "warm_up", { engagement: "green" }, true],
+    [null, "warm_up", { engagement: "yellow" }, false],
+    [null, "after_date", { materialKind: "none" }, true],
+    [null, "stuck", {
+      engagement: "yellow",
+      materialKind: "my_story",
+      materialText: "走錯分店",
+    }, false],
+    [null, "stuck", {
+      materialKind: "inside_joke",
+      materialText: "她說我的五分鐘都是半小時",
+    }, true],
+    [null, "went_cold", { coldDuration: "weeks" }, false],
+    ["[對象作戰板：Miya]\n- 你的備註：聊得來但還沒約", "stuck", {
+      engagement: "green",
+    }, true],
+  ];
+  for (const [partnerSummary, situation, raw, expected] of cases) {
+    const topicContext = context(raw, situation);
+    assertEquals(
+      allowsNewTopicSharedFrame({ partnerSummary, situation, topicContext }),
+      expected,
+    );
+    const rules = situationRules(
+      buildNewTopicTwoStageUserPrompt({
+        partnerSummary,
+        effectiveStyleContext: null,
+        situation,
+        topicContext,
+        requestId: REQUEST_ID,
+      }),
+    );
+    assertEquals(
+      rules.at(-1),
+      expected ? SHARED_FRAME_ALLOWED_LINE : SHARED_FRAME_DENIED_LINE,
+      `${situation} ${JSON.stringify(raw)}`,
+    );
+  }
+});
+
+Deno.test("user prompt：素材規則改寫（之前聊過的事不替用戶編進度、看到的東西不用球）", () => {
+  assert(
+    promptFor("stuck", {
+      materialKind: "past_topic",
+      materialText: "她說在準備潛水證照",
+    }).includes(
+      "做法：\n- 接那件事的後續或新進展；用戶寫明他已經做到當時說要做的事時，才寫他做到了。照用戶寫的程度，不加時間、地點、結果；她說想做的事不能寫成她做了，用戶沒寫他做了的事也不能寫成他做了。\n",
+    ),
+  );
+  assert(
+    promptFor("stuck", {
+      materialKind: "trigger",
+      materialText: "路過浮誇甜點店",
+    }).includes("寫成：看到什麼＋用戶的反應＋一個她好回的小問題；"),
+  );
 });
 
 Deno.test("user prompt：見面行（只有約完／想靠近＋她很投入才可提）", () => {
@@ -591,6 +828,22 @@ Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () =
               requestId: REQUEST_ID,
             });
             assertFalse(codes.test(prompt), prompt);
+            // 規則行不含解釋欄守門會擋的詞；「我們」行與守門同一判準。
+            assertFalse(
+              hasCustomerExplanationLeak(prompt, PROMPT_CONTRACT_TERMS),
+              prompt,
+            );
+            assertFalse(prompt.includes("球"), prompt);
+            assertEquals(
+              situationRules(prompt).at(-1),
+              allowsNewTopicSharedFrame({
+                  partnerSummary: null,
+                  situation,
+                  topicContext: result.topicContext,
+                })
+                ? SHARED_FRAME_ALLOWED_LINE
+                : SHARED_FRAME_DENIED_LINE,
+            );
             checked++;
           }
         }
