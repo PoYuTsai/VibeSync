@@ -68,21 +68,61 @@ Build 326 已確認包含 F2，但使用者在按下翻牌後約 2–5 秒仍聽
 - `practice_draw_waiting_loop.wav` 僅留作歷史 provenance，不再由 App 播放。
 - 揭曉成功後仍只播放 F2 `practice_draw_reveal_bed.mp3`，檔案與 SHA-256 不變。
 
+### v4 改版：bed v4 與咻聲 v2（2026-10-01）
+
+Bruce 的要求：SR／R／N 聲音一致、飽滿有質感、從按下抽牌到定音連貫不斷層；看過對照影片後選定
+「翻牌之後回到原本的音樂」（v4）。設計與驗收依《每日翻牌音效飽滿化：實作規格（v4）》（2026-10-01，
+Claude Code 起草，已交付 Bruce）。產生程式（Python：numpy／scipy／ffmpeg）`build_b4.py`、
+`mock_build.py` 與規格一起交付；要重做時照下列步驟即可重現。
+
+**bed v4（`practice_draw_reveal_bed.mp3`）**：由 F2 衍生（素材性質同 E2／F2：夥伴以 Gemini 生成的
+VibeSync 專用內容），加上 Claude Code 程式合成的長音。沒有使用任何第三方 sample。
+
+- 從 F2（SHA-256 `20a51664…92e2`）解碼、重取樣到 48 kHz，剪掉開頭 0.370 s：三個全頻段重音落在
+  3.32／6.48／8.52 s，對齊畫面的 3.3／6.5／8.5 s（F2 晚 0.35–0.39 s）。
+- 35 Hz 高通；50–150 Hz 飽和出 2–4 次諧波、以 −10 dB 混回；80 Hz 以下 −4 dB。開頭樂句（0.9–1.5 s）
+  退 1.5 dB，其餘照原曲，翻牌後不動。
+- 補洞：F2 自己的三個洞（1.9–2.5 s、屏息 4.4–5.2 s、落定前 7.9–8.1 s）用 C3｜C4–G4–C5 長音
+  （程式合成，只出現在 5.6 s 以前）與 F2 自己的殘響（2 kHz 以下送入 RT60 2.4 s／4.5 s 殘響）補上。
+  翻牌後不加任何新的音。
+- 翻牌後（3.3–9.6 s）的響度與舊版（F2 × 0.75）相同。檔案正規化到 −18 LUFS、true peak −2.9 dBTP，
+  程式播放音量 0.74。
+- 輸出 MP3 192 kbps／48 kHz／stereo、10.0 s、241KB，
+  SHA-256 `f211ee0f1755b072ca3b0c27f665bc53b035e5602c13682c6d70630e71b11c07`。
+- 量測（解碼後的檔，手機近似響度）：揭曉最低點 −15.0 dB（F2 −64.8 dB）、0.5 秒內最大跌幅 10.1 dB
+  （F2 57.9 dB）；翻牌後 500–3000 Hz 與 F2 原曲相關 0.96、時差 0 ms；40 Hz 以下能量 1.4%、
+  100 Hz 以下 22.8%（F2 7.7%／53.4%）。
+
+**咻聲 v2（`practice_draw_whoosh.m4a`，取代 `practice_draw_whoosh.wav`）**：Claude Code 原創程式化合成，
+沒有使用任何第三方 sample。
+
+- 層次：拿起卡片的喀聲（1–3 kHz）、帶通咻聲（400 Hz → 2.5 kHz → 1 kHz，7 kHz 以上低通）、
+  150–400 Hz whoomp、C6 小亮點，加一段 C3｜C4–G4–C5 暖尾巴：比主體低 8 dB，撐到 1.8 s 後每秒
+  −3 dB，5.5 s 收完，4 kHz 以上能量 0%。
+- 一次性播完，不是循環音效，F3「等待期不跑 loop」不變；但尾巴改變了「等待期全靜音」的聽感，待 Eric 確認。
+- 母帶 true peak −1.2 dBTP；AAC 160 kbps／48 kHz／stereo、5.5 s、110KB，
+  SHA-256 `15e973f3620efa4f8eaf4f008a809a4d4d9e60d7d9e7bfdd79e585db3064e3aa`。
+- 程式播放音量 0.22：手機上比揭曉高潮小 8 dB（舊咻聲比高潮大 8.5 dB）。
+
+**播放**：進入抽牌等待時 `preloadReveal()` 先把 bed 載入 player（`ReleaseMode.stop`），揭曉時從頭 resume，
+降低起播延遲；v4 的三個重音都在 bed 裡，bed 晚播重音就一起晚。
+
 ## 授權鐵則（放音檔進來前必過）
 
 - **僅可用**：本專案原創生成、CC0、自製、買斷、或授權條款明確允許「商用 app bundling」的素材。
 - **禁用**：NonCommercial / 授權不明 / 從遊戲或影片擷取 / 可辨識到第三方原聲（如神魔之塔、寶可夢等）的素材。
 - 授權文字只存在本 repo 文件，**不**塞進 app UI。
-- 目標：優先小檔案；F1 後整組翻牌音效資產約 **538KB**（bed mp3 約 242KB），未比 F1 前正式資產增加可感知體積。
+- 目標：優先小檔案；v4 後整組翻牌音效資產約 **601KB**（bed mp3 約 241KB、咻聲 m4a 約 110KB；已退役的
+  chime 與 waiting loop 共約 250KB 仍留在資料夾）。
 
 ## 音檔清單
 
 | 用途（呼叫點） | bundled 檔名 | 原始候選檔 | 來源／作者 | 授權 | 生成日期 | 需署名 |
 |---|---|---|---|---|---|---|
-| `playWhoosh()` 抽牌咻聲（一次性，~0.3–0.6s） | `practice_draw_whoosh.wav` | `A_romantic_magic_01_whoosh.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
+| `playWhoosh()` 抽牌咻聲（一次性：主體 ~0.5s＋暖尾巴，最長 5.5s） | `practice_draw_whoosh.m4a`（v2，110KB） | —（v1 為 `A_romantic_magic_01_whoosh.wav`） | Claude Code 原創程式化合成（for VibeSync） | 專案原創（非 CC0） | 2026-10-01 | 否 |
 | `playWaitingLoop()` 等待 shimmer loop（F3 已退役，不播放） | `practice_draw_waiting_loop.wav`（僅留歷史 provenance） | `A_romantic_magic_02_waiting_loop.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
 | `playRevealChime()` 揭曉 chime/sparkle（一次性，~0.6–1s） | `practice_draw_reveal_chime.wav` | `B_gacha_sss_03_reveal_chime.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
-| `playRevealBed()` 揭曉配樂 bed（一次性，約 10.06s，與 `_reveal` 同步） | `practice_draw_reveal_bed.mp3`（242KB，已 bundle） | F1 master + F2 2–5s 去細碎高頻後製 | 夥伴提供 VibeSync 專用 accent layer + Codex 後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-07-16 | 否 |
+| `playRevealBed()` 揭曉配樂 bed（一次性，10.0s，與 `_reveal` 同步） | `practice_draw_reveal_bed.mp3`（v4，241KB） | F2 master 衍生：提前 0.37s＋低頻整理＋補洞 | 夥伴提供素材（F2）＋Claude Code 程式合成長音與後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-10-01 | 否 |
 
 > ~~`playRiser()`／`playSettle()`（D4，`practice_draw_riser.wav`／`practice_draw_settle.wav`）已於 E2 退役並移除。~~
 
@@ -99,8 +139,9 @@ Build 326 已確認包含 F2，但使用者在按下翻牌後約 2–5 秒仍聽
      `mixWithOthers`：audioplayers 不允許這個組合，被 iOS 拒絕時 session 會停在 `playback`。Android 不變。
      見 `buildPracticeDrawAudioContext()`。
    - 全程 guarded：headless／測試環境無 platform channel 時所有播放／停止靜默吞例外，不丟。
-3. 音量常數集中在實作檔內（whoosh 0.7／reveal chime 0.8／reveal bed 0.75），方便真機調整。
-4. drawing 等待期只跑視覺 controller，不播放任何循環音效；成功後才播放 reveal bed。
+3. 音量常數集中在實作檔內（whoosh 0.22／reveal chime 0.8／reveal bed 0.74），方便真機調整。
+4. drawing 等待期不播放任何循環音效，只有咻聲 v2 自帶的一次性暖尾巴；同時 `preloadReveal()` 預載 bed，
+   成功後從頭 resume。
 5. 測試：`practiceDrawSfxProvider` 可 override 注入 spy，鎖定 normal-motion 也不得啟動 waiting loop。
 
 ## 待辦（TODO）
@@ -112,5 +153,7 @@ Build 326 已確認包含 F2，但使用者在按下翻牌後約 2–5 秒仍聽
 - [x] **F1 真機目檢未通過**：三爆點仍對齊，但 2–5s 細碎高頻需移除；production 未疊放 reveal chime，
       問題確認來自 bed 本身，後續由 F2 收斂。
 - [x] **F2／F3 根因拆分**：build 326 已確認包含 F2；殘留聲來自 reveal 前的 waiting loop，F3 已退役。
+- [ ] **v4 真機目檢**：咻聲尾巴接住等待、翻牌後的音樂與舊版同一首同樣大聲、三個重音對齊畫面
+      （240 fps 慢動作看 3.3／6.5／8.5s；bed 若整體偏晚，多剪前導補）。
 - [ ] reduce-motion 目前保留 haptic 與一次性音效；未來若加「使用者
       靜音偏好」，再決定是否連一次性音效一併靜音。
