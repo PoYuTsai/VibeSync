@@ -57,6 +57,22 @@ Deno.test("參數：預設 dry-run；真跑缺任何一個守門參數都拒絕"
   assertThrows(() => parseOptions(["--budget-usd=-1"]));
 });
 
+Deno.test("參數：--arms 預設兩臂，可以只跑一臂；其他值拒絕", async () => {
+  assertEquals(parseOptions([]).arms, ARMS);
+  assertEquals(parseOptions(["--arms=both"]).arms, ARMS);
+  assertEquals(parseOptions(["--arms=two_stage"]).arms, ["two_stage"]);
+  assertEquals(parseOptions(["--arms=legacy"]).arms, ["legacy"]);
+  assertThrows(() => parseOptions(["--arms=bogus"]));
+  assertThrows(() => parseOptions(["--arms"]));
+  const plan = await buildPlan(
+    CASES.filter((c) => ["E2", "W1"].includes(c.id)),
+    2,
+    ["two_stage"],
+  );
+  assertEquals(plan.length, 4);
+  assert(plan.every((call) => call.arm === "two_stage"));
+});
+
 Deno.test("案例：涵蓋提案三例、四種狀況、五種素材，且都過 production 請求驗證", async () => {
   for (const id of ["E1", "E2", "E3"]) assert(CASES.some((c) => c.id === id));
   assertEquals(new Set(CASES.map((c) => c.situation)).size, 4);
@@ -314,4 +330,68 @@ Deno.test("外洩檢查同 handler：進階 sentinel 只在兩段式臂擋（Cod
   assert(!twoResult.deliverable);
   const legacyResult = inspectOutput(legacy, raw);
   assert(!legacyResult.promptLeak);
+});
+
+Deno.test("紅燈收尾：兩段式臂套 production 保證（改推第一題、拿掉理由），legacy 照模型；summary 計數", async () => {
+  const plan = await buildPlan(
+    CASES.filter((c) => ["E2", "W1", "S1"].includes(c.id)),
+    1,
+  );
+  const plain = [
+    "今天的雲很像棉花糖",
+    "我發現巷口開了新書店",
+    "剛剛差點坐過站",
+    "辦公室冷氣冷到發抖",
+  ];
+  const noCue = fakeOutput(["剛路過一家浮誇的甜點店", ...plain], 2);
+  const cueFirst = fakeOutput(["我先去忙，晚點再跟妳說", ...plain], 0);
+  const outputs: Record<string, string> = {
+    "E2.1.two_stage": noCue,
+    "E2.1.legacy": noCue,
+    "W1.1.two_stage": cueFirst,
+    "W1.1.legacy": fakeOutput(["剛路過一家浮誇的甜點店", ...plain], 0),
+    "S1.1.two_stage": noCue,
+    "S1.1.legacy": noCue,
+  };
+  const records = toRecords(plan, (key) => outputs[key]);
+  const ins = (key: string) => records.find((r) => r.key === key)!.inspection!;
+
+  const e2 = ins("E2.1.two_stage");
+  assertEquals(
+    [
+      e2.recommendationIndex,
+      e2.recommendationReason,
+      e2.modelRecommendationIndex,
+      e2.redCloseOverridden,
+    ],
+    [0, null, 2, true],
+  );
+  const e2Legacy = ins("E2.1.legacy");
+  assertEquals(
+    [
+      e2Legacy.recommendationIndex,
+      e2Legacy.recommendationReason,
+      e2Legacy.redCloseOverridden,
+    ],
+    [2, "最好接", false],
+  );
+  // 不是紅燈收尾（還在聊＋黃燈）：兩段式也照模型。
+  const s1 = ins("S1.1.two_stage");
+  assertEquals([s1.recommendationIndex, s1.redCloseOverridden], [2, false]);
+
+  const checks = proposalChecks(records);
+  assertEquals(checks.two_stage.redClose, {
+    calls: 2,
+    deliverable: 2,
+    modelPickedFirst: 1,
+    closeCueInFirst: 1,
+    overridden: 1,
+  });
+  assertEquals(checks.legacy.redClose, {
+    calls: 2,
+    deliverable: 2,
+    modelPickedFirst: 1,
+    closeCueInFirst: 0,
+    overridden: 0,
+  });
 });

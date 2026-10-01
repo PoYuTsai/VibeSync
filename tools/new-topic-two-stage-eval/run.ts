@@ -3,6 +3,7 @@
 // 直接 import production 的 prompt 與純函式，不經 Edge／DB／串流／修格式；只有模型呼叫是真的。
 // 預設 dry-run：印出每次呼叫的完整 prompt 與保守費用估算；不讀金鑰、不連網、不跑 git。
 // 真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>，且 Eric 說「跑」之後才能下。
+// --arms=two_stage|legacy|both（預設 both）可以只跑一臂；兩段式臂套用 production 的紅燈收尾保證。
 // 指令與輸出說明見 README.md。
 
 import catalog from "./cases.json" with { type: "json" };
@@ -28,6 +29,8 @@ import {
 import {
   auditNewTopicTwoStageTopics,
   buildNewTopicTwoStageUserPrompt,
+  enforceNewTopicRedClose,
+  isNewTopicRedClose,
   NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   type NewTopicTopicContext,
@@ -66,6 +69,7 @@ export type Options = {
   repeat: number;
   seed: number;
   only: string[] | null;
+  arms: readonly Arm[];
   run: boolean;
   maxCalls: number | null;
   budgetUsd: number | null;
@@ -76,6 +80,7 @@ const VALUE_FLAGS = [
   "repeat",
   "seed",
   "only",
+  "arms",
   "max-calls",
   "budget-usd",
 ];
@@ -121,6 +126,13 @@ export function parseOptions(args: string[]): Options {
   ) {
     throw new Error("--only 有重複或不存在的案例 ID");
   }
+  const armsRaw = str("arms") ?? "both";
+  const arms = armsRaw === "both"
+    ? ARMS
+    : ARMS.filter((arm) => arm === armsRaw);
+  if (arms.length === 0) {
+    throw new Error("--arms 只能是 two_stage、legacy 或 both");
+  }
   const budgetRaw = str("budget-usd");
   const budgetUsd = budgetRaw === null ? null : Number(budgetRaw);
   if (budgetUsd !== null && !(Number.isFinite(budgetUsd) && budgetUsd > 0)) {
@@ -141,6 +153,7 @@ export function parseOptions(args: string[]): Options {
     repeat: int("repeat", 1, 5),
     seed: int("seed", 20261001, 0xffffffff),
     only,
+    arms,
     run,
     maxCalls,
     budgetUsd,
@@ -148,7 +161,7 @@ export function parseOptions(args: string[]): Options {
 }
 
 // ---------------------------------------------------------------------------
-// 呼叫計畫：每案例 × 每次重複 × 兩臂，prompt 全由 production 函式產生
+// 呼叫計畫：每案例 × 每次重複 × 選定的臂，prompt 全由 production 函式產生
 // ---------------------------------------------------------------------------
 
 export type PlannedCall = {
@@ -185,6 +198,7 @@ async function requestIdFor(caseId: string, attempt: number): Promise<string> {
 export async function buildPlan(
   cases: EvalCase[],
   repeat: number,
+  arms: readonly Arm[] = ARMS,
 ): Promise<PlannedCall[]> {
   const plan: PlannedCall[] = [];
   for (const c of cases) {
@@ -211,7 +225,7 @@ export async function buildPlan(
         );
       }
       const topicContext = full.request.topicContext;
-      for (const arm of ARMS) {
+      for (const arm of arms) {
         const req = arm === "legacy" ? legacy.request : full.request;
         const shared = {
           partnerSummary: req.partnerSummary,
@@ -286,7 +300,7 @@ export function estimatePlan(plan: PlannedCall[]) {
 }
 
 // ---------------------------------------------------------------------------
-// 結果整理（同 handler：parse → normalize＋grounding → 外洩檢查；不做修格式）
+// 結果整理（同 handler：parse → normalize＋grounding → 外洩檢查 → 紅燈收尾保證；不做修格式）
 // ---------------------------------------------------------------------------
 
 export type Inspection = {
@@ -294,8 +308,13 @@ export type Inspection = {
   promptLeak: boolean;
   normalizeReason: string | null;
   topics: NewTopicModelTopic[] | null;
+  /** 用戶實際看到的推薦（兩段式臂已套紅燈收尾保證，同 production）。 */
   recommendationIndex: number | null;
   recommendationReason: string | null;
+  /** 模型自己推的那題（套保證之前）。 */
+  modelRecommendationIndex: number | null;
+  /** 伺服器把推薦改成第一題（只有兩段式臂會發生）。 */
+  redCloseOverridden: boolean;
   audit: NewTopicTwoStageAudit | null;
 };
 
@@ -316,20 +335,32 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
       topics: null,
       recommendationIndex: null,
       recommendationReason: null,
+      modelRecommendationIndex: null,
+      redCloseOverridden: false,
       audit: null,
     };
   }
+  // 同 handler：只有進階路徑（兩段式臂）套紅燈收尾保證；legacy 照模型。
+  const enforced = call.arm === "two_stage"
+    ? enforceNewTopicRedClose(normalized, {
+      situation: call.situation,
+      topicContext: call.topicContext,
+    })
+    : { normalized, overridden: false };
+  const served = enforced.normalized;
   return {
     deliverable: !promptLeak,
     promptLeak,
     normalizeReason: null,
-    topics: normalized.topics,
-    recommendationIndex: normalized.recommendationIndex,
-    recommendationReason: normalized.recommendationReason,
+    topics: served.topics,
+    recommendationIndex: served.recommendationIndex,
+    recommendationReason: served.recommendationReason,
+    modelRecommendationIndex: normalized.recommendationIndex,
+    redCloseOverridden: enforced.overridden,
     // 兩臂都用用戶真實的回答稽核；只有 two_stage 算過關，legacy 是對照基準。
     audit: auditNewTopicTwoStageTopics({
-      topics: normalized.topics,
-      recommendationIndex: normalized.recommendationIndex,
+      topics: served.topics,
+      recommendationIndex: served.recommendationIndex,
       topicContext: call.topicContext,
       situation: call.situation,
     }),
@@ -380,6 +411,7 @@ function armChecks(rows: EvalRecord[]) {
   );
   const hit =
     deliverableWithMaterial.filter((x) => x.a.materialUsedInRecommended).length;
+  const red = ok.filter((x) => x.a.redCloseApplied);
   return {
     outputs: rows.length,
     modelReturned: rows.filter((r) => r.inspection !== null).length,
@@ -412,6 +444,17 @@ function armChecks(rows: EvalRecord[]) {
       (x) => x.a.inviteLines,
     ),
     bannedOpenerLines: sum(ok, (x) => x.a.bannedOpenerLines),
+    // 紅燈收尾（還在聊／想更靠近＋她常只回哈哈、嗯）：只看可交付的輸出。
+    redClose: {
+      calls: rows.filter((r) => isNewTopicRedClose(r.situation, r.topicContext))
+        .length,
+      deliverable: red.length,
+      modelPickedFirst:
+        red.filter((x) => x.r.inspection!.modelRecommendationIndex === 0)
+          .length,
+      closeCueInFirst: sum(red, (x) => x.a.redCloseCueInFirst ?? 0),
+      overridden: red.filter((x) => x.r.inspection!.redCloseOverridden).length,
+    },
   };
 }
 
@@ -522,7 +565,7 @@ async function git(args: string[]): Promise<string> {
 async function main(args: string[]): Promise<void> {
   const opts = parseOptions(args);
   const selected = CASES.filter((c) => !opts.only || opts.only.includes(c.id));
-  const plan = await buildPlan(selected, opts.repeat);
+  const plan = await buildPlan(selected, opts.repeat, opts.arms);
   const estimate = estimatePlan(plan);
   const out = new URL(`./out/${opts.tag}/`, import.meta.url);
   // 不覆寫任何既有證據（dry-run 或付費）。
@@ -612,7 +655,9 @@ async function main(args: string[]): Promise<void> {
       }最壞情況`;
     console.log(`=== 估算（dry-run，實際模型呼叫 0）===`);
     console.log(
-      `案例 ${selected.length} × 重複 ${opts.repeat} × 兩臂 = ${estimate.calls} 次呼叫${caps}`,
+      `案例 ${selected.length} × 重複 ${opts.repeat} × ${opts.arms.length} 臂（${
+        opts.arms.join("、")
+      }）= ${estimate.calls} 次呼叫${caps}`,
     );
     console.log(
       `預估 input ${estimate.inputTokens} tokens；output 一般 ${estimate.typicalOutputTokens}／最壞 ${estimate.worstOutputTokens}`,
@@ -626,6 +671,7 @@ async function main(args: string[]): Promise<void> {
       status: "DRY_RUN_NO_MODEL",
       cases: selected.length,
       repeat: opts.repeat,
+      arms: opts.arms,
       calls: estimate.calls,
       typicalUsd: Number(estimate.typicalUsd.toFixed(4)),
       worstUsd: Number(estimate.worstUsd.toFixed(4)),
@@ -762,7 +808,12 @@ async function main(args: string[]): Promise<void> {
   const summary = [
     `# 新話題兩段式成對評測 · ${opts.tag} · ${MODEL}`,
     "",
-    `工程 HEAD ${engineeringHead}；兩段式 prompt ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}；案例 ${selected.length} × 重複 ${opts.repeat} × 兩臂。`,
+    `工程 HEAD ${engineeringHead}；兩段式 prompt ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}；案例 ${selected.length} × 重複 ${opts.repeat} × ${opts.arms.length} 臂（${
+      opts.arms.join("、")
+    }）。`,
+    ...(opts.arms.length < ARMS.length
+      ? [`本次只跑 ${opts.arms.join("、")}：沒跑的那一欄是 0/0，不是結果。`]
+      : []),
     `實際呼叫 ${calls}／規劃 ${plan.length}；計入費用 $${
       spentUsd.toFixed(3)
     }（上限 $${opts.budgetUsd}；含成本未知的最壞情況）；提前停止：${
@@ -794,8 +845,19 @@ async function main(args: string[]): Promise<void> {
       mark(t.bannedOpenerLines === 0)
     } ${t.bannedOpenerLines} | ${l.bannedOpenerLines} |`,
     "",
+    "## 紅燈收尾（還在聊／想更靠近＋她常只回哈哈、嗯；規格 §9.4）",
+    "",
+    "| 檢查 | two_stage | legacy（對照，不套伺服器保證） |",
+    "|---|---|---|",
+    `| 可交付／紅燈呼叫 | ${t.redClose.deliverable}/${t.redClose.calls} | ${l.redClose.deliverable}/${l.redClose.calls} |`,
+    `| 模型自己推第一題 | ${t.redClose.modelPickedFirst}/${t.redClose.deliverable} | ${l.redClose.modelPickedFirst}/${l.redClose.deliverable} |`,
+    `| 第一題有收尾字眼（先去忙、晚點、下次…） | ${t.redClose.closeCueInFirst}/${t.redClose.deliverable} | ${l.redClose.closeCueInFirst}/${l.redClose.deliverable} |`,
+    `| 伺服器改推第一題 | ${t.redClose.overridden}/${t.redClose.deliverable} | — |`,
+    "",
     "這些是字面規則計數（同 production 只記錄不擋的稽核），不是語意正確率；不捏造事實、不加曖昧、願意直接傳要靠 blind_ab.md 人工盲測。",
-    blind.unpaired.length
+    opts.arms.length < ARMS.length
+      ? "只跑一臂，沒有盲測。"
+      : blind.unpaired.length
       ? `未成對、沒進盲測：${blind.unpaired.join("、")}`
       : "所有組都已成對進盲測。",
     "",
