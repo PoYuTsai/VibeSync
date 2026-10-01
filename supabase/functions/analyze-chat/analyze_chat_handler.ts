@@ -619,9 +619,7 @@ async function handleAnalyzeChat(
     }
 
     // ── New Topic mode: 破冰腦力（2026-07-24 計畫 §10.5）──
-    // 固定順序：sanitize→material→config→HMAC preflight→claim→quota(3)→
-    // rate limit→renew→generate(45s)→validate/project→settle(5s reserve)。
-    // Handler 永遠只回 settlement 的 stored result，本地候選一律丟棄。
+    // 處理順序見 new_topic_handler.ts 檔頭。
     if (isNewTopicMode) {
       return await handleNewTopicRequest({
         supabase,

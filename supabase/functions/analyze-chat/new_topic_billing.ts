@@ -6,6 +6,7 @@ import {
   type NewTopicLedgerResult,
   type NewTopicSituation,
 } from "./new_topic_payload.ts";
+import type { NewTopicTopicContext } from "./new_topic_two_stage.ts";
 
 // v2＝ledger result 允許選填 formulaTopics（migration 20260724180000）；
 // DB marker 只有新 constraint／validator 俱全時才回 v2。
@@ -44,21 +45,35 @@ export function isStrongNewTopicReplayHmacKey(
  * ["vibesync-new-topic-replay-v1", userId, partnerSummaryOrNull,
  *  effectiveStyleContextOrNull, situationOrNull]
  * 不納入 expectedTier / RevenueCat hint / quota counter / owner token。
+ * 有 topicContext 時尾端多一個固定順序陣列（用戶寫的那句只進這個指紋、
+ * 不存 DB）；沒有時 canonical 與舊版逐位元相同（舊請求 hash 不變）。
  */
 export async function computeNewTopicInputHash(input: {
   userId: string;
   partnerSummary: string | null;
   effectiveStyleContext: string | null;
   situation: NewTopicSituation | null;
+  topicContext?: NewTopicTopicContext | null;
   secret: string;
 }): Promise<string> {
-  const canonical = JSON.stringify([
+  const parts: unknown[] = [
     "vibesync-new-topic-replay-v1",
     input.userId,
     input.partnerSummary,
     input.effectiveStyleContext,
     input.situation,
-  ]);
+  ];
+  const context = input.topicContext;
+  if (context) {
+    parts.push([
+      context.coldDuration,
+      context.coldStop,
+      context.engagement,
+      context.materialKind,
+      context.materialText,
+    ]);
+  }
+  const canonical = JSON.stringify(parts);
   const encoder = new TextEncoder();
   const derivedKey = await crypto.subtle.digest(
     "SHA-256",
