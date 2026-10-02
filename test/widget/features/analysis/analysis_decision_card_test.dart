@@ -214,4 +214,26 @@ void main() {
     expect(copied, 1);
     _expectNoDoNotSendExtras();
   });
+
+  testWidgets('acknowledge_and_stop 沒附收尾句：顯示通用收尾提醒、沒有複製鈕', (tester) async {
+    await _pump(
+      tester,
+      AnalysisDecisionCard(
+        decision: const AnalysisDecisionV2(
+          messageDecision: AnalysisMessageDecision.acknowledgeAndStop,
+          replyMode: 'single',
+          action: 'pause',
+          reason: '她說之後再看看',
+          stopCondition: '等她主動提新時間',
+        ),
+        onCopyClosingMessage: () {},
+        onStartNewTopic: () {},
+        onCopyAgainstAdviceLine: () {},
+      ),
+    );
+    expect(find.text('這輪先收尾'), findsOneWidget);
+    expect(find.text('回一句簡短、不追問的話收尾就好，傳完就停。'), findsOneWidget);
+    expect(find.text('複製收尾句'), findsNothing);
+    _expectNoDoNotSendExtras();
+  });
 }

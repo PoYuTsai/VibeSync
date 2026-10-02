@@ -161,6 +161,8 @@ class _AnalysisDecisionCardState extends State<AnalysisDecisionCard> {
         decision.messageDecision == AnalysisMessageDecision.needContext;
     final isDoNotSend =
         decision.messageDecision == AnalysisMessageDecision.doNotSend;
+    final isAcknowledge =
+        decision.messageDecision == AnalysisMessageDecision.acknowledgeAndStop;
     final againstAdviceLine = decision.againstAdviceLine;
     final accent = isNeedContext ? AppColors.textSecondary : AppColors.error;
     final secondaryStyle =
@@ -259,6 +261,10 @@ class _AnalysisDecisionCardState extends State<AnalysisDecisionCard> {
                   : '等到這時候再回：${decision.stopCondition}',
               style: secondaryStyle,
             ),
+          ],
+          if (isAcknowledge && closingMessage == null) ...[
+            const SizedBox(height: 12),
+            Text('回一句簡短、不追問的話收尾就好，傳完就停。', style: AppTypography.bodyMedium),
           ],
           if (closingMessage != null) ...[
             const SizedBox(height: 12),

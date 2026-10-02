@@ -149,13 +149,9 @@ export function validateNoSendDecisionEvent(
       reason: "no-send decision reason and stopCondition are required",
     };
   }
-  if (kind === "acknowledge_and_stop" && !closingMessage) {
-    return {
-      ok: false,
-      code: "STREAM_MALFORMED_RECOMMENDATION",
-      reason: "acknowledge_and_stop requires closingMessage",
-    };
-  }
+  // 收尾決定沒附 closingMessage 不再整次失敗（2026-10-02 黑箱：Sonnet 5 在「婉拒
+  // 並說明原因」4 次漏 2 次，用戶只會看到錯誤）。判斷本身仍有效，App 改顯示通用
+  // 收尾提醒；DB RPC 本來就不檢查這欄。
   const modelAuthoredText = `${reason}\n${stopCondition}\n${closingMessage}`;
   if (
     hasPromptInjection(modelAuthoredText) ||
@@ -219,9 +215,9 @@ export function noSendChargePayloadFromStored(
   const stopCondition = textField(stored.stopCondition);
   const closingMessage = textField(stored.closingMessage);
   if (!action || !reason || !stopCondition) return null;
-  // closingMessage is required at charge time (validateNoSendDecisionEvent)
-  // but the DB RPC only enforces the four fields above, so a charged row
-  // without it must still resume rather than strand a charged run.
+  // closingMessage is optional for every kind (validateNoSendDecisionEvent and
+  // the DB RPC both accept a row without it), so a charged row without it must
+  // still resume rather than strand a charged run.
   const raw = typeof stored.raw === "object" && stored.raw !== null &&
       !Array.isArray(stored.raw)
     ? stored.raw as Record<string, unknown>
