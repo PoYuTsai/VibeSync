@@ -69,6 +69,11 @@ C×1＝21 次 $4.23＋評審 17 次 $0.21；合計 $15.15（不中 cache 最壞 
 - B 臂同開頭 4、問句超額 3（A 是 3、0）；C 臂只剩 thin_opening 與一次超 cap 枝，但只跑一次。
 - 拒答探針沒另跑：探針十案都在主語料裡，B 臂已各跑兩次。
 
+`out/2026-10-02-c-fix/`（commit 0fa60fe5，只修低投入 12 字地板，C×3＝63 次 $2.60＋評審）：thin_opening 仍 3/3
+`do_not_send`（hold 指引已不在，5.5 把「哈囉」標 `略`）；evaluate 49/63，question_budget 9（Sonnet 5 在
+2026-10-02-ab 是 0/42）；評審 rewrite 11/39，與 A 臂 8/29 同一水準，第一輪 C 的 2/14 是小樣本。後續
+6e378964 改成伺服器沒量到低投入時選單裡沒有 `do_not_send`。
+
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
 `defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
