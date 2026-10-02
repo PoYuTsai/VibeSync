@@ -11,7 +11,10 @@ import {
   buildNewTopicUserPrompt,
   NEW_TOPIC_PROMPT,
 } from "./new_topic_prompt.ts";
-import { NEW_TOPIC_TWO_STAGE_PROMPT } from "./new_topic_two_stage.ts";
+import {
+  NEW_TOPIC_RED_CLOSE_REASON,
+  NEW_TOPIC_TWO_STAGE_PROMPT,
+} from "./new_topic_two_stage.ts";
 import { computeNewTopicInputHash } from "./new_topic_billing.ts";
 import {
   buildNewTopicLedgerResult,
@@ -560,7 +563,7 @@ Deno.test("handler：開關沒開時 claim 已是完成列 → 照常回放（�
 // 紅燈收尾（規格 §9.4）：推薦固定第一題，由伺服器保證
 // ---------------------------------------------------------------------------
 
-Deno.test("handler：還在聊＋她常只回哈哈、嗯，模型推第三題 → 改推第一題（nt_1）且不帶理由；稽核記改推", async () => {
+Deno.test("handler：還在聊＋她常只回哈哈、嗯，模型推第三題 → 改推第一題（nt_1）、理由換固定句；稽核記改推", async () => {
   const picked2 = {
     ...MODEL_PAYLOAD,
     recommendation: { index: 2, reason: "理由" },
@@ -572,7 +575,10 @@ Deno.test("handler：還在聊＋她常只回哈哈、嗯，模型推第三題 �
     picked2,
   );
   assertEquals(result.status, 200);
-  assertEquals(result.json.recommendation, { topicId: "nt_1" });
+  assertEquals(result.json.recommendation, {
+    topicId: "nt_1",
+    reason: NEW_TOPIC_RED_CLOSE_REASON,
+  });
   assertEquals(result.json.topics[0].id, "nt_1");
   assertEquals(result.json.topics[0].openingLine, "開場句1");
   const audit = result.logMetadata.get("new_topic_two_stage_audit") as Record<
@@ -582,6 +588,30 @@ Deno.test("handler：還在聊＋她常只回哈哈、嗯，模型推第三題 �
   assertEquals(audit.redCloseApplied, true);
   assertEquals(audit.redCloseOverridden, true);
   assertEquals(audit.redCloseCueInFirst, 0);
+});
+
+Deno.test("handler：紅燈收尾模型自己推第一題 → 不算改推，但理由一樣換固定句（nt2-red-r2 指示措辭外洩）", async () => {
+  const picked0 = {
+    ...MODEL_PAYLOAD,
+    recommendation: { index: 0, reason: "照局面規定第一題要是收尾句" },
+  };
+  const result = await run(
+    body({ situation: "warm_up", topicContext: { engagement: "red" } }),
+    "true",
+    true,
+    picked0,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(result.json.recommendation, {
+    topicId: "nt_1",
+    reason: NEW_TOPIC_RED_CLOSE_REASON,
+  });
+  const audit = result.logMetadata.get("new_topic_two_stage_audit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(audit.redCloseApplied, true);
+  assertEquals(audit.redCloseOverridden, false);
 });
 
 Deno.test("handler：紅燈收尾以外（legacy 沒帶 topicContext、進階黃燈）推薦照模型", async () => {

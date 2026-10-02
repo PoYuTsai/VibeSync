@@ -718,7 +718,7 @@ export async function handleNewTopicRequest(
       }, 502);
     }
 
-    // 紅燈收尾（規格 §9.4）：只在進階路徑；推薦不是第一題就改推第一題、拿掉理由。
+    // 紅燈收尾（規格 §9.4）：只在進階路徑；推薦固定第一題、理由換固定句。
     const newTopicRedClose = newTopicContext === null
       ? null
       : enforceNewTopicRedClose(newTopicNormalized, {
