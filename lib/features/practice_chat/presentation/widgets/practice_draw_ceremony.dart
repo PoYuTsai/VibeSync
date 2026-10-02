@@ -389,6 +389,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _sfx.stopRevealBed(); // E2：揭曉結束／收掉 overlay → 配樂 bed 不殘留。
     _firedBeats.clear();
     _reveal.value = 0;
+    // intro 一併歸零：成功揭曉會把它留在終點，下一抽 `forward(from: 0)` 會先發出
+    // dismissed，被上面的收場 listener 當成「淡出走完」，把剛開始的第二抽收掉（卡背
+    // 不見、失敗兜底被跳過）。phase 已先設 hidden，這裡觸發的 dismissed 不會再進來。
+    _intro.value = 0;
   }
 
   bool get _reduceMotion =>

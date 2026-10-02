@@ -3716,6 +3716,40 @@ void main() {
     expect(spy.looping, isFalse);
   });
 
+  testWidgets('音效：成功揭曉後同頁再抽 → 卡背照常出現，第二抽 402 停掉咻聲', (tester) async {
+    // 回歸：成功揭曉把 intro 留在終點時，下一抽 forward(from: 0) 會發出 dismissed，
+    // 收場 listener 把剛開始的第二抽收成 hidden → 卡背不見、失敗兜底被跳過。
+    final spy = _SpyPracticeDrawSfx();
+    final first = Completer<PracticeDrawResult>();
+    final second = Completer<PracticeDrawResult>();
+    var call = 0;
+    final api = _DrawApi(() => ++call == 1 ? first.future : second.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+    final dim = find.byKey(const ValueKey('practice-draw-ceremony-dim'));
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 第一抽 drawing
+    expect(dim, findsOneWidget); // 對照：第一抽等待時卡背遮罩在
+    first.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle(); // 成功揭曉、收掉 overlay
+    expect(spy.whooshStop, 0);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 第二抽 drawing
+    expect(spy.whoosh, 2);
+    expect(dim, findsOneWidget); // 第二抽也要有卡背
+
+    second.completeError(PracticeDrawUpgradeRequiredException(
+      extraCostMessages: 5,
+      nextResetAt: '2026-06-27T04:00:00.000Z',
+    ));
+    await tester.pumpAndSettle();
+
+    expect(spy.whooshStop, 1); // 第二抽失敗也不把尾巴帶到付費牆
+    expect(dim, findsNothing);
+    expect(spy.looping, isFalse);
+  });
+
   testWidgets('音效：reduce-motion → 不啟動 waiting loop（咻聲仍觸發）', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
