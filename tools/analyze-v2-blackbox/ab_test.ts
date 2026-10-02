@@ -18,6 +18,7 @@ import {
   parseRepeat,
   percentile,
   planCalls,
+  reserveSpend,
   settleReservedSpend,
   summarizeArms,
 } from "./ab.ts";
@@ -217,6 +218,44 @@ Deno.test("paid guard spend: the reservation is replaced only by complete final 
   const http = newProviderCall({ model: "claude-sonnet-5-5" });
   http.httpStatus = 529;
   assertEquals(settleReservedSpend(1.0, 0.5, http), 1.0);
+});
+
+Deno.test("paid guard spend: reserve before the call, settle after; spent never goes below observed cost", () => {
+  const flags = { maxCalls: 2, budgetUsd: 1 };
+  // 上界超過剩餘預算、或次數用完：不准呼叫。
+  assertEquals(reserveSpend(0.6, 0.5, 0, flags), null);
+  assertEquals(reserveSpend(0, 0.5, 2, flags), null);
+  // 准了：spent 先含上界，完整結束後換成實際費用。
+  const reserved = reserveSpend(0, 0.5, 0, flags)!;
+  assertEquals(reserved, 0.5);
+  const call = newProviderCall({ model: "claude-sonnet-5-5" });
+  call.httpStatus = 200;
+  applySseEvent(call, {
+    type: "message_start",
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+    },
+  });
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+    usage: { output_tokens: 1000 },
+  });
+  const settled = settleReservedSpend(reserved, 0.5, call);
+  assertAlmostEquals(settled, call.costUsd, 1e-9);
+  assert(settled >= call.costUsd);
+  // 下一次呼叫照已結算的 spent 檢查預算。
+  assertAlmostEquals(
+    reserveSpend(settled, 0.9, 1, flags)!,
+    settled + 0.9,
+    1e-9,
+  );
 });
 
 function record(

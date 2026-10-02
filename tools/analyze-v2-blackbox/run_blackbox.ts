@@ -24,6 +24,7 @@ import {
   type PlannedCall,
   type ProviderCall,
   renderSummaryMd,
+  reserveSpend,
   settleReservedSpend,
   summarizeArms,
 } from "./ab.ts";
@@ -112,16 +113,14 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       Number(body.max_tokens),
       false,
     );
-    if (
-      providerCallCount >= (PAID.maxCalls ?? 0) ||
-      spentUsd + upper > (PAID.budgetUsd ?? 0)
-    ) {
+    // 先預留上界：斷線、error、usage 不全時就以上界計，不會低估已花的錢。
+    const reserved = reserveSpend(spentUsd, upper, providerCallCount, PAID);
+    if (reserved === null) {
       guardTripped = true;
       throw new TypeError("blackbox paid guard: max-calls or budget reached");
     }
     providerCallCount += 1;
-    // 先預留上界：斷線、error、usage 不全時就以上界計，不會低估已花的錢。
-    spentUsd += upper;
+    spentUsd = reserved;
     const call = newProviderCall(body);
     active.calls.push(call);
     const started = Date.now();
