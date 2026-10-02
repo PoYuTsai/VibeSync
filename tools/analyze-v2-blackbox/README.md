@@ -16,6 +16,7 @@
   adaptive thinking（`display:"omitted"`）＋effort `low`＋max_tokens +4000（`maxTokensFor`）。
 
 設定 C 上線後（`analysis-sonnet55-switch`）C 臂就等於 `ANALYZE_STREAM_SONNET_55=true` 的 production；`--refusal-probe` 改跑 C 臂。
+旗標只換 v2 合約串流（舊版 client 的 v1 照舊 Sonnet 5）；免費版兩種風格（4500＋4000）沒有單獨跑過黑箱。
 
 預設 **dry-run**：列每案交錯順序與估價，不讀 key、不打模型。估價用官方價：輸出吃滿
 max_tokens；system prompt 第一次以 cache 寫入價、同案同臂的重複以讀取價（同案的幾次

@@ -1314,14 +1314,14 @@ async function runThroughProvider(
 Deno.test("analyzeStreamModel reads ANALYZE_STREAM_SONNET_55 per request; forceModel wins", () => {
   withFlag(undefined, () => {
     assertEquals(
-      analyzeStreamModel("claude-sonnet-5", false),
+      analyzeStreamModel("claude-sonnet-5", false, true),
       "claude-sonnet-5",
     );
   });
   for (const value of ["false", "1", "TRUE", ""]) {
     withFlag(value, () => {
       assertEquals(
-        analyzeStreamModel("claude-sonnet-5", false),
+        analyzeStreamModel("claude-sonnet-5", false, true),
         "claude-sonnet-5",
         value,
       );
@@ -1329,16 +1329,21 @@ Deno.test("analyzeStreamModel reads ANALYZE_STREAM_SONNET_55 per request; forceM
   }
   withFlag("true", () => {
     assertEquals(
-      analyzeStreamModel("claude-sonnet-5", false),
+      analyzeStreamModel("claude-sonnet-5", false, true),
       "claude-sonnet-5-5",
+    );
+    // 舊版 client 的 v1 合約沒跑過 5.5 黑箱：旗標開也照舊 Sonnet 5。
+    assertEquals(
+      analyzeStreamModel("claude-sonnet-5", false, false),
+      "claude-sonnet-5",
     );
     // 測試帳號 forceModel：照指定，旗標不覆蓋（含指定 Sonnet 5 本身）。
     assertEquals(
-      analyzeStreamModel("claude-sonnet-5", true),
+      analyzeStreamModel("claude-sonnet-5", true, true),
       "claude-sonnet-5",
     );
     assertEquals(
-      analyzeStreamModel("claude-haiku-4-5-20251001", true),
+      analyzeStreamModel("claude-haiku-4-5-20251001", true, true),
       "claude-haiku-4-5-20251001",
     );
   });
@@ -1349,7 +1354,10 @@ Deno.test("flag off: the Sonnet 5 stream request is today's contract (thinking d
     const [tier, base] of [["free", 4500], ["essential", 6000]] as const
   ) {
     const { bodies, aiLogs } = await runThroughProvider(
-      withFlag(undefined, () => analyzeStreamModel("claude-sonnet-5", false)),
+      withFlag(
+        undefined,
+        () => analyzeStreamModel("claude-sonnet-5", false, true),
+      ),
       { effectiveTier: tier },
     );
     assertEquals(bodies.length, 1);
@@ -1380,7 +1388,7 @@ Deno.test("flag off: the Sonnet 5 stream request is today's contract (thinking d
 
 Deno.test("flag on: the stream request is Sonnet 5.5 configuration C and ai_logs records 5.5 with the headroom", async () => {
   const { bodies, aiLogs } = await runThroughProvider(
-    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false)),
+    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false, true)),
   );
   assertEquals(bodies.length, 1);
   assertEquals(bodies[0].model, "claude-sonnet-5-5");
@@ -1400,7 +1408,7 @@ Deno.test("flag on: the stream request is Sonnet 5.5 configuration C and ai_logs
 
 Deno.test("flag on, 5.5 overloaded: the Sonnet 5 fallback sends its own params and base max_tokens; ai_logs records Sonnet 5", async () => {
   const { bodies, aiLogs } = await runThroughProvider(
-    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false)),
+    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false, true)),
     { failFirst: true },
   );
   assertEquals(bodies.map((b) => b.model), [

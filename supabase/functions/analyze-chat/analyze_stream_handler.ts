@@ -76,13 +76,16 @@ const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
 
-/// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5；
+/// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5，
+/// 且只換 v2 合約（noSendDecisions，黑箱 QA 跑的那條）；舊版 client 的 v1 照舊。
 /// 測試帳號 forceModel 照指定。非串流分析與其他功能不經過這裡。
 export function analyzeStreamModel(
   selectedModel: string,
   modelForced: boolean,
+  noSendDecisions: boolean,
 ): string {
-  return !modelForced && Deno.env.get("ANALYZE_STREAM_SONNET_55") === "true"
+  return !modelForced && noSendDecisions &&
+      Deno.env.get("ANALYZE_STREAM_SONNET_55") === "true"
     ? SONNET_5_5_MODEL
     : selectedModel;
 }

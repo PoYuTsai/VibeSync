@@ -248,7 +248,7 @@ Deno.test("only the stream branch reads the Sonnet 5.5 flag; non-stream analyze 
   );
   assertEquals(index.split("analyzeStreamModel(").length - 1, 1);
   assert(streamCall.includes(
-    "selectedModel: analyzeStreamModel(\n          selectedModel,\n          Boolean((accountIsTest || TEST_MODE) && forceModel),\n        ),",
+    "selectedModel: analyzeStreamModel(\n          selectedModel,\n          Boolean((accountIsTest || TEST_MODE) && forceModel),\n          noSendDecisions,\n        ),",
   ));
   assertFalse(index.includes("ANALYZE_STREAM_SONNET_55"));
   assertFalse(index.includes("claude-sonnet-5-5"));
