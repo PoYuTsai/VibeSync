@@ -98,6 +98,12 @@ thin_opening 改判 `need_context` 2/2（「只有嗨和哈囉，硬寫只會查
 審查員 5.5 勝 27、Sonnet 5 勝 5、差不多 10；Codex 5.5 勝 21、Sonnet 5 勝 5、差不多 16。仍有的弱點：被問「你覺得呢」
 多半不表態、問句超額。
 
+`out/2026-10-02-e2e/`（整合分支 867e0799，A／C 各 23 案×1＝46 次 $3.49＋評審約 $0.13，C＝production helper 原樣）：
+C 22/23、決定 23/23 正確（含 user_waiting_after_reply 先別回、opening_boundary 收尾），p50 16.6s、p95 20.9s；A（旗標關時的
+production）20/23，其中 defer_polite_reason 的 `acknowledge_and_stop` 漏 `closingMessage` 被 reframer 擋成
+STREAM_MALFORMED_RECOMMENDATION（未扣）——舊 prompt 下 A 的收尾 8/8 都有附，n 太小，待補跑確認。三案先別回的備用句兩臂都有、
+皆無問號。評審 rewrite：A 1/15、C 3/15。
+
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
 `defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
