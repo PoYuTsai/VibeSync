@@ -637,6 +637,14 @@ class OpenerFlowController extends ChangeNotifier {
         _set(_state.copyWith(phase: OpenerFlowPhase.expired, error: e.message, flowError: e));
         return;
       }
+      if (e.isSessionInvalid || e.code == OpenerFlowErrorCode.inputMismatch) {
+        // 同一個 generationId 重送只會一樣失敗（伺服器在 claim 前就擋、沒扣）：丟掉送出快照、
+        // 草稿退出 generating（重開不再自動重送），下次按生成換新 ID。
+        _pendingGeneration = null;
+        _generationSession.markSuccess();
+        await _persistFlow(existingDraftId: _state.draftId, flow: _currentFlow(analysis));
+        if (!_isCurrent(op)) return;
+      }
       if (e.isSessionInvalid) {
         _set(_state.copyWith(phase: OpenerFlowPhase.editing, clearAnalysis: true, clearGeneration: true, error: e.message, flowError: e));
         return;
@@ -655,7 +663,8 @@ class OpenerFlowController extends ChangeNotifier {
         phase: _state.generation == null ? OpenerFlowPhase.contributing : OpenerFlowPhase.result,
         error: e.message,
         flowError: e,
-        failedOperation: OpenerFlowFailedOperation.generate,
+        // 只有暫時性錯誤才給「再試一次」；其餘同 ID 重送結果不會變。
+        failedOperation: e.retryable || e.isRateLimited || e.isPending ? OpenerFlowFailedOperation.generate : null,
       ));
     } catch (e) {
       if (!_isCurrent(op)) return;

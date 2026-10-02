@@ -290,6 +290,46 @@ void main() {
     expect(controller.state.analysis, isNotNull, reason: '到期仍保留分析供閱讀');
   });
 
+  test('可重試的 503 給「再試一次」並沿用同 generationId', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    service.generateError = const OpenerFlowException(code: 'OPENER_FLOW_RETRYABLE', message: '服務暫時無法確認狀態', status: 503, retryable: true);
+    await controller.generate();
+    expect(controller.state.failedOperation, OpenerFlowFailedOperation.generate);
+    final id = service.calls.last.args['generationId'];
+    service.generateError = null;
+    await controller.retryLastOperation();
+    expect(controller.state.phase, OpenerFlowPhase.result);
+    expect(service.calls.last.args['generationId'], id);
+  });
+
+  test('409 輸入不符：不給同 ID 重試，草稿退出 generating，下次生成換新 generationId', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    service.generateError = const OpenerFlowException(code: OpenerFlowErrorCode.inputMismatch, message: '這次輸入已改變', status: 409);
+    await controller.generate();
+    expect(controller.state.failedOperation, isNull);
+    expect(controller.hasPendingGeneration, isFalse);
+    expect(cache.loadDrafts().single.flow!.stage, isNot(OpenerDraftFlowStage.generating));
+    final id = service.calls.last.args['generationId'];
+    service.generateError = null;
+    await controller.generate();
+    expect(controller.state.phase, OpenerFlowPhase.result);
+    expect(service.calls.last.args['generationId'], isNot(id));
+  });
+
+  test('404 分析不存在：清掉送出快照，草稿不是 generating，重開不自動重送', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    service.generateError = const OpenerFlowException(code: OpenerFlowErrorCode.sessionInvalid, message: '找不到這份分析', status: 404);
+    await controller.generate();
+    expect(controller.state.analysis, isNull);
+    expect(controller.state.failedOperation, isNull);
+    expect(controller.hasPendingGeneration, isFalse);
+    final draft = cache.loadDrafts().single;
+    expect(draft.flow!.stage, isNot(OpenerDraftFlowStage.generating));
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(draft);
+    expect(rebuilt.hasPendingGeneration, isFalse, reason: '畫面只在有待續生成時自動 resume');
+  });
+
   test('本機時間到期：按生成不打伺服器、不偷偷開新局', () async {
     await controller.analyze(input: _input, initialNote: null);
     now = DateTime.utc(2100, 1, 1);
