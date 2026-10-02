@@ -23,6 +23,10 @@ abstract class PracticeDrawSfx {
   /// 抽牌啟動：翻牌「咻」的滑出聲（約 0.3–0.6 秒，音量克制）。
   void playWhoosh();
 
+  /// 停掉咻聲（含 v2 最長 5.5 s 的暖尾巴）。只在「離開畫面／抽牌失敗」呼叫；成功揭曉
+  /// 時刻意不停，讓尾巴交棒給配樂 bed。idempotent、靜默不丟。
+  void stopWhoosh();
+
   /// 已退役的等待 shimmer loop。production 固定 no-op，儀式流程也不得呼叫。
   void playWaitingLoop();
 
@@ -58,6 +62,9 @@ class NoopPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playWhoosh() {}
+
+  @override
+  void stopWhoosh() {}
 
   @override
   void playWaitingLoop() {}

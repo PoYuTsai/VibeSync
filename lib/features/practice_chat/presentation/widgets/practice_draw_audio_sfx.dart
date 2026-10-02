@@ -135,6 +135,17 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   }
 
   @override
+  void stopWhoosh() {
+    final player = _whooshPlayer;
+    if (player == null) return; // 從未播過 → no-op。
+    try {
+      unawaited(player.stop().catchError((Object _) {}));
+    } catch (_) {
+      // 停止失敗也不丟。
+    }
+  }
+
+  @override
   void playRevealChime() {
     final player = _chimePlayer ??= _create(ReleaseMode.release);
     _playOneShot(player, _kRevealChimeAsset, _kRevealChimeVolume);

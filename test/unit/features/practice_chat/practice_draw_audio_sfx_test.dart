@@ -117,6 +117,20 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
+    test('stopWhoosh：未播放／播放後／重複停皆靜默不丟', () async {
+      final sfx = AudioPlayersPracticeDrawSfx();
+
+      expect(() {
+        sfx.stopWhoosh(); // 從未播過咻聲 → no-op
+        sfx.playWhoosh();
+        sfx.stopWhoosh(); // 抽牌失敗／離開畫面：停掉尾巴
+        sfx.stopWhoosh(); // 重複停 → no-op
+        sfx.playWhoosh(); // 停過之後再抽仍可播
+      }, returnsNormally);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
     test('waiting loop 已退役：start／stop 相容 API 固定 no-op 不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
