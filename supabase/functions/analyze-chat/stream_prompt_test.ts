@@ -28,6 +28,7 @@ import {
   markLatestAnalysisFragment,
   normalizeStagePrior,
 } from "./stream_prompt.ts";
+import { offeredNoSendDecisions } from "./no_send_decision.ts";
 
 Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   const prompt = buildStreamSystemPrompt("Base full reasoning prompt.");
@@ -652,4 +653,32 @@ Deno.test("do_not_send closing line: offered with do_not_send, removed with it",
 
   // v1 prompt never sees the gate, so never the line.
   assert(!buildStreamSystemPrompt(base, ["extend"]).includes(sentence));
+});
+
+Deno.test("do_not_send waiting clause: his own last message gets the clause, removed with do_not_send", () => {
+  const base = "Base full reasoning prompt.";
+  const clause =
+    "Also use `do_not_send` when his own message is the last one in the transcript: he already replied and the ball is in her court, so any new message is a double text; this overrides the `send` and `acknowledge_and_stop` rules.";
+  // user_waiting_after_reply：她說晚點再聊，他回「好，等妳忙完」。
+  const offered = offeredNoSendDecisions([
+    { isFromMe: false },
+    { isFromMe: true },
+  ], false);
+  const waiting = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    offeredNoSendDecisions: offered,
+  });
+  assert(waiting.includes(clause));
+  assertEquals(waiting.split(clause).length, 2);
+
+  // 沒開 do_not_send（她最後一則、沒量到低投入）：條款跟著拿掉。
+  const herLast = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    offeredNoSendDecisions: offeredNoSendDecisions([
+      { isFromMe: true },
+      { isFromMe: true },
+      { isFromMe: false },
+    ], false),
+  });
+  assert(!herLast.includes("double text"));
 });

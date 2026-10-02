@@ -122,7 +122,7 @@ const DO_NOT_SEND_CLOSING_SENTENCE =
 // untouched.
 const NO_SEND_DECISION_GATE = [
   "1a. Message decision gate (this request supports it): every `analysis.decision` must include `messageDecision`, one of `send`, `do_not_send`, `acknowledge_and_stop`, `need_context`. Decide this before any reply wording.",
-  "Use `send` when there is a reasonable, low-risk next message, including when she offers an alternative time, invites you back, or keeps a topic going; then follow steps 1-3 exactly as written. Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her. Use `need_context` when you cannot tell who said what or the fragment is incomplete. Use `acknowledge_and_stop` when she set a boundary, cancelled, or deferred / hedged an invitation without offering an alternative (e.g. 這週有點忙, 下次再看看, 再說): the only correct move then is one neutral closing line that leaves the door open and does not ask again, so never turn a deferral into reply cards.",
+  "Use `send` when there is a reasonable, low-risk next message, including when she offers an alternative time, invites you back, or keeps a topic going; then follow steps 1-3 exactly as written. Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her. Also use `do_not_send` when his own message is the last one in the transcript: he already replied and the ball is in her court, so any new message is a double text; this overrides the `send` and `acknowledge_and_stop` rules. Use `need_context` when you cannot tell who said what or the fragment is incomplete. Use `acknowledge_and_stop` when she set a boundary, cancelled, or deferred / hedged an invitation without offering an alternative (e.g. 這週有點忙, 下次再看看, 再說): the only correct move then is one neutral closing line that leaves the door open and does not ask again, so never turn a deferral into reply cards.",
   "Every instruction below that is marked `[send decisions only]` applies only when `messageDecision` is `send`; for the three non-send decisions those events are forbidden, not optional.",
   "For the three non-send decisions: omit `selectedStyle`; include `action` (`stop`/`connect`/`extend`/`filter`/`invite`/`pause`), `reason` (why not now, grounded in her actual messages), and `stopCondition` (what she must do before you reconsider); for `acknowledge_and_stop` also include `closingMessage` (one short neutral line, Traditional Chinese)." +
   DO_NOT_SEND_CLOSING_SENTENCE +
@@ -131,9 +131,10 @@ const NO_SEND_DECISION_GATE = [
 ];
 
 // 結構刀：伺服器沒開放的不回決策，選單裡就沒有（不是叫模型少用）。
+// do_not_send 的「最後一則是他自己」條款跟 offeredNoSendDecisions 的等待規則對應，一起拿掉。
 const NO_SEND_USE_SENTENCE: Partial<Record<NoSendDecisionKind, string>> = {
   do_not_send:
-    " Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her.",
+    " Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her. Also use `do_not_send` when his own message is the last one in the transcript: he already replied and the ball is in her court, so any new message is a double text; this overrides the `send` and `acknowledge_and_stop` rules.",
   need_context:
     " Use `need_context` when you cannot tell who said what or the fragment is incomplete.",
 };
