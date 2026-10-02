@@ -658,4 +658,79 @@ void main() {
       );
     });
   });
+
+  // 2026-10-02 v3：練習室供應商補上 Anthropic，換 key 讓舊版同意的人重看一次。
+  testWidgets('練習室：舊版 v2 同意不算數，重問、拒絕不寫、同意後不再問、別的功能不受影響', (tester) async {
+    const legacyV2Key = 'ai_data_sharing_consent_practice_20260706_v2';
+    expect(AiDataSharingConsent.practiceConsentKey, isNot(legacyV2Key));
+    AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+    final otherKeys = <String, Object>{
+      '$legacyV2Key::user-a': true,
+      '${AiDataSharingConsent.acceptedKeyForTesting}::user-a': true,
+      '${AiDataSharingConsent.optimizeReplayConsentKey}::user-a': true,
+    };
+    SharedPreferences.setMockInitialValues(otherKeys);
+    final v3Key = '${AiDataSharingConsent.practiceConsentKey}::user-a';
+
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 實戰練習室',
+                  consentKey: AiDataSharingConsent.practiceConsentKey,
+                  destinationLabel:
+                      AiDataSharingConsent.practiceDestinationLabel,
+                  dataDescription: AiDataSharingConsent.practiceDataDescription,
+                  purposeText: AiDataSharingConsent.practicePurposeText,
+                );
+              },
+              child: const Text('start'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // 1) 只有 v2：照樣跳同意框，框裡點名兩家供應商；拒絕回 false、v3 不寫。
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+    expect(find.text('資料使用說明'), findsOneWidget);
+    expect(find.textContaining('DeepSeek、Anthropic'), findsAtLeastNWidgets(1));
+    await tester.tap(find.text('暫不同意'));
+    await tester.pumpAndSettle();
+    expect(result, isFalse);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool(v3Key), isNull);
+
+    // 2) 再按一次又跳框；勾選同意後回 true，寫入 v3。
+    result = null;
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+    expect(find.text('資料使用說明'), findsOneWidget);
+    await tester.ensureVisible(find.byType(CheckboxListTile));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
+    await tester.pumpAndSettle();
+    expect(result, isTrue);
+    expect(prefs.getBool(v3Key), isTrue);
+
+    // 3) 之後直接放行，不再跳框。
+    result = null;
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+    expect(find.text('資料使用說明'), findsNothing);
+    expect(result, isTrue);
+
+    // 4) 其他功能（含舊 v2 本身）的同意紀錄原封不動。
+    for (final entry in otherKeys.entries) {
+      expect(prefs.getBool(entry.key), entry.value, reason: entry.key);
+    }
+  });
 }
