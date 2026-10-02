@@ -19,6 +19,8 @@ import {
 import {
   auditNewTopicTwoStageTopics,
   buildNewTopicTwoStageUserPrompt,
+  enforceNewTopicRedClose,
+  isNewTopicRedClose,
   NEW_TOPIC_COLD_DURATIONS,
   NEW_TOPIC_COLD_STOPS,
   NEW_TOPIC_ENGAGEMENTS,
@@ -481,7 +483,10 @@ Deno.test("user prompt：投入程度 3×3 規則行＋標題，沒選不加行"
     stuck: {
       green: ["會反問、聊很多", "她有在投入："],
       yellow: ["有回，但很短", "她有回但很短："],
-      red: ["常只回哈哈、嗯", "她常只回哈哈、嗯：推薦的那一題改成自然收尾"],
+      red: [
+        "常只回哈哈、嗯",
+        "她常只回哈哈、嗯：第一題（topics 的第 1 個）不是開場",
+      ],
     },
     after_date: {
       green: ["主動傳訊息或說開心", "約完她主動傳訊息或說開心："],
@@ -491,7 +496,10 @@ Deno.test("user prompt：投入程度 3×3 規則行＋標題，沒選不加行"
     warm_up: {
       green: ["會反問、聊很多", "她很投入：可以加個人感"],
       yellow: ["有回，但很短", "她有回但普通："],
-      red: ["常只回哈哈、嗯", "她常只回哈哈、嗯：推薦的那一題改成自然收尾"],
+      red: [
+        "常只回哈哈、嗯",
+        "她常只回哈哈、嗯：第一題（topics 的第 1 個）不是開場",
+      ],
     },
   };
   for (const [situation, byEngagement] of Object.entries(expected)) {
@@ -828,6 +836,12 @@ Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () =
               requestId: REQUEST_ID,
             });
             assertFalse(codes.test(prompt), prompt);
+            // 紅燈收尾的位置指示只出現在還在聊／想更靠近＋紅燈。
+            assertEquals(
+              prompt.includes("推薦固定是第一題（recommendation.index 填 0）"),
+              isNewTopicRedClose(situation, result.topicContext),
+              prompt,
+            );
             // 規則行不含解釋欄守門會擋的詞；「我們」行與守門同一判準。
             assertFalse(
               hasCustomerExplanationLeak(prompt, PROMPT_CONTRACT_TERMS),
@@ -1023,21 +1037,161 @@ Deno.test("sanitize：看起來空白的填充字（U+3164／U+2800 等）也拿
   }
 });
 
-Deno.test("user prompt：她常只回哈哈、嗯（stuck／warm_up 紅燈）推薦題一律改成自然收尾（決定 3）", () => {
+const RED_CLOSE_RULES = {
+  stuck:
+    "她常只回哈哈、嗯：第一題（topics 的第 1 個）不是開場，是這段對話的收尾句：跟她說你先忙或先聊到這，留一個下次可以接的點；它不用照「好的第一則」那三件事，不開新話題、不寫問句；推薦固定是第一題（recommendation.index 填 0）。其他四題也都很輕，不連問、不加曖昧。",
+  warm_up:
+    "她常只回哈哈、嗯：第一題（topics 的第 1 個）不是開場，是這段對話的收尾句：跟她說你先忙或先聊到這，留一個下次可以接的點；它不用照「好的第一則」那三件事，不開新話題、不寫問句；推薦固定是第一題（recommendation.index 填 0）。現在不升溫，其他題也只給輕的；不加曖昧、不約。",
+} as const;
+const MATERIAL_TEXT_LINE =
+  "- 推薦的那一題一定要用到這個素材；五題裡至少三題從它出發，另外兩題給不同方向。";
+const RED_CLOSE_MATERIAL_TEXT_LINE =
+  "- 第一題的收尾可以順帶帶到這個素材（不硬塞）；其他題至少兩題從它出發，給不同方向。";
+
+Deno.test("user prompt：她常只回哈哈、嗯（stuck／warm_up 紅燈）第一題寫成收尾、推薦固定第一題（規格 §9.4）", () => {
   for (const situation of ["stuck", "warm_up"] as const) {
-    const prompt = buildNewTopicTwoStageUserPrompt({
-      partnerSummary: null,
-      effectiveStyleContext: null,
+    const rules = situationRules(
+      promptFor(situation, { engagement: "red", materialKind: "none" }),
+    );
+    assert(rules.includes(RED_CLOSE_RULES[situation]), situation);
+    assertFalse(
+      rules.some((rule) => rule.includes("推薦的那一題改成自然收尾")),
       situation,
-      topicContext: {
-        coldDuration: null,
-        coldStop: null,
-        engagement: "red",
-        materialKind: "none",
-        materialText: null,
-      },
-      requestId: "123e4567-e89b-42d3-a456-426614174000",
-    });
-    assert(prompt.includes("推薦的那一題改成自然收尾"), situation);
+    );
   }
+  // 其他燈號與約完會的紅燈不變。
+  assertEquals(
+    situationRules(promptFor("stuck", { engagement: "yellow" }))[1],
+    "她有回但很短：不加長、不連問，給好回的小題目（選邊、當裁判）。",
+  );
+  assertEquals(
+    situationRules(promptFor("warm_up", { engagement: "yellow" }))[1],
+    "她有回但普通：先讓聊天重新好玩，不加曖昧。",
+  );
+  assertEquals(
+    situationRules(promptFor("after_date", { engagement: "red" }))[1],
+    "約完她還沒回或很冷淡：最多一則輕鬆的內容，她沒接就先停；不追問感受、不約下次。",
+  );
+});
+
+Deno.test("user prompt：紅燈收尾有素材原文時，素材加碼行改成不跟推薦第一題打架", () => {
+  const material = { materialKind: "my_story", materialText: "被拉去跑接力賽" };
+  for (const situation of ["stuck", "warm_up"] as const) {
+    const prompt = promptFor(situation, { engagement: "red", ...material });
+    assert(prompt.includes(RED_CLOSE_MATERIAL_TEXT_LINE), situation);
+    assertFalse(prompt.includes(MATERIAL_TEXT_LINE), situation);
+  }
+  for (
+    const [situation, engagement] of [
+      ["stuck", "yellow"],
+      ["warm_up", "green"],
+      ["after_date", "red"],
+    ] as const
+  ) {
+    const prompt = promptFor(situation, { engagement, ...material });
+    assert(prompt.includes(MATERIAL_TEXT_LINE), `${situation}/${engagement}`);
+    assertFalse(
+      prompt.includes(RED_CLOSE_MATERIAL_TEXT_LINE),
+      `${situation}/${engagement}`,
+    );
+  }
+});
+
+Deno.test("enforceNewTopicRedClose：紅燈收尾推薦不是第一題 → 改第一題、拿掉理由；其他不動", () => {
+  const red = (situation: NewTopicSituation | null) => ({
+    situation,
+    topicContext: context({ engagement: "red" }, situation),
+  });
+  type Recommendation = {
+    recommendationIndex: number;
+    recommendationReason: string | null;
+  };
+  const picked2: Recommendation = {
+    recommendationIndex: 2,
+    recommendationReason: "寫給第三題的理由",
+  };
+  for (const situation of ["stuck", "warm_up"] as const) {
+    assertEquals(enforceNewTopicRedClose(picked2, red(situation)), {
+      normalized: { recommendationIndex: 0, recommendationReason: null },
+      applied: true,
+      overridden: true,
+    });
+    // 模型自己推第一題：理由保留。
+    const picked0: Recommendation = {
+      recommendationIndex: 0,
+      recommendationReason: "收尾最好",
+    };
+    assertEquals(enforceNewTopicRedClose(picked0, red(situation)), {
+      normalized: picked0,
+      applied: true,
+      overridden: false,
+    });
+  }
+  // 約完會紅燈、黃燈、沒有 topicContext（legacy）都不動。
+  for (
+    const input of [
+      red("after_date"),
+      {
+        situation: "stuck" as const,
+        topicContext: context({ engagement: "yellow" }, "stuck"),
+      },
+      { situation: "stuck" as const, topicContext: null },
+    ]
+  ) {
+    assertEquals(enforceNewTopicRedClose(picked2, input), {
+      normalized: picked2,
+      applied: false,
+      overridden: false,
+    });
+  }
+  // 其他欄位原樣帶過。
+  const withTopics = { ...picked2, topics: topics(PLAIN_LINES) };
+  assertEquals(
+    enforceNewTopicRedClose(withTopics, red("stuck")).normalized.topics,
+    withTopics.topics,
+  );
+});
+
+Deno.test("audit：紅燈收尾標記與第一題收尾字眼（只記 0／1，不是紅燈收尾為 null）", () => {
+  const closing = ["我先去忙，晚點再跟妳說", ...PLAIN_LINES.slice(1)];
+  const redStuck = audit(closing, { engagement: "red" }, "stuck");
+  assertEquals(redStuck.redCloseApplied, true);
+  assertEquals(redStuck.redCloseCueInFirst, 1);
+  const noCue = audit(PLAIN_LINES, { engagement: "red" }, "warm_up");
+  assertEquals(noCue.redCloseApplied, true);
+  assertEquals(noCue.redCloseCueInFirst, 0);
+  // 收尾字眼只看第一題。
+  assertEquals(
+    audit(
+      [...PLAIN_LINES.slice(0, 4), "改天再聊"],
+      { engagement: "red" },
+      "stuck",
+    )
+      .redCloseCueInFirst,
+    0,
+  );
+  for (
+    const [raw, situation] of [
+      [{ engagement: "red" }, "after_date"],
+      [{ engagement: "yellow" }, "stuck"],
+      [{ materialKind: "none" }, "went_cold"],
+    ] as const
+  ) {
+    const result = audit(closing, raw, situation);
+    assertEquals(result.redCloseApplied, false, situation);
+    assertEquals(result.redCloseCueInFirst, null, situation);
+  }
+});
+
+Deno.test("system prompt：紅燈第一題是收尾句時，不受「好的第一則」與素材推薦規定約束（Codex 紅燈審查 P2）", () => {
+  assert(
+    NEW_TOPIC_TWO_STAGE_PROMPT.includes(
+      "例外：「這次的局面」說第一題是收尾句時，那一題照局面寫成收尾，不受上面三件事與問句的規定約束。",
+    ),
+  );
+  assert(
+    NEW_TOPIC_TWO_STAGE_PROMPT.includes(
+      "推薦的那一題一定要用到它（「這次的局面」規定第一題是收尾句時，照局面的素材做法）",
+    ),
+  );
 });

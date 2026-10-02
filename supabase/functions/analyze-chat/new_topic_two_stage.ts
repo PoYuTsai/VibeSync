@@ -234,9 +234,10 @@ export const NEW_TOPIC_TWO_STAGE_PROMPT =
 沒有素材原文時，「為什麼是現在」用剛想到的事、一個看法或觀察，不編用戶沒說過的經歷或事件。
 問她的事只問兩種：她選哪個、看重什麼，或是事情後來怎樣。不問幾天、幾點、當初怎麼開始——那是查戶口。一則最多一個問題，不一次問兩件事。
 不寫：在嗎、嗨、最近好嗎、最近在幹嘛、怎麼都沒消息、說「有件事想跟妳說」卻不說、冷掉時的「最近一直想到妳」。冷掉時第一則不約。
+例外：「這次的局面」說第一題是收尾句時，那一題照局面寫成收尾，不受上面三件事與問句的規定約束。
 
 ## 想題
-- 「用戶手上的素材」有原文時：推薦的那一題一定要用到它；五題裡至少三題從它出發（切法彼此不同：接後續、給反應、給她一個好回的小問題），另外兩題給不同方向，讓用戶有得選。
+- 「用戶手上的素材」有原文時：推薦的那一題一定要用到它（「這次的局面」規定第一題是收尾句時，照局面的素材做法）；五題裡至少三題從它出發（切法彼此不同：接後續、給反應、給她一個好回的小問題），另外兩題給不同方向，讓用戶有得選。
 - 沒有素材原文時：先往遠處想、再貼回她身上——暫時放下她的興趣清單，想 8 個語意距離很遠的方向，再挑 5 個最合這次局面的，用作戰板線索寫成她的語言。目標是七成新東西、三成她已知的世界。
 - 五題不得全部繞同一個已知興趣。五題的句式也要彼此不同：「A 但 B」「妳感覺是那種…的人」「通常有兩種人 妳是哪種」這類前提＋轉折骨架最多一題。不要用她自介或備註的原句當開頭——線索要消化成你的觀察。寧可有一題隨口、只有六個字，也不要五題都工整。
 
@@ -372,8 +373,9 @@ const ENGAGEMENT_RULES: Record<
   stuck: {
     green: "她有在投入：接住她、加一點用戶的看法或故事，可以開點小玩笑。",
     yellow: "她有回但很短：不加長、不連問，給好回的小題目（選邊、當裁判）。",
+    // 紅燈收尾：寫在固定位置（第一題），伺服器再把推薦固定到第一題（enforceNewTopicRedClose）。
     red:
-      "她常只回哈哈、嗯：推薦的那一題改成自然收尾，留一個下次可以接的點，不硬開新話題；其他四題也都很輕，不連問、不加曖昧。",
+      "她常只回哈哈、嗯：第一題（topics 的第 1 個）不是開場，是這段對話的收尾句：跟她說你先忙或先聊到這，留一個下次可以接的點；它不用照「好的第一則」那三件事，不開新話題、不寫問句；推薦固定是第一題（recommendation.index 填 0）。其他四題也都很輕，不連問、不加曖昧。",
   },
   after_date: {
     green:
@@ -388,7 +390,7 @@ const ENGAGEMENT_RULES: Record<
       "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像；不突然告白、不越界。",
     yellow: "她有回但普通：先讓聊天重新好玩，不加曖昧。",
     red:
-      "她常只回哈哈、嗯：推薦的那一題改成自然收尾，留一個下次可以接的點；現在不升溫，其他題也只給輕的；不加曖昧、不約。",
+      "她常只回哈哈、嗯：第一題（topics 的第 1 個）不是開場，是這段對話的收尾句：跟她說你先忙或先聊到這，留一個下次可以接的點；它不用照「好的第一則」那三件事，不開新話題、不寫問句；推薦固定是第一題（recommendation.index 填 0）。現在不升溫，其他題也只給輕的；不加曖昧、不約。",
   },
 };
 
@@ -436,6 +438,45 @@ const MATERIAL_RULES: Record<NewTopicMaterialKind, string> = {
 };
 const MATERIAL_TEXT_RULE =
   "推薦的那一題一定要用到這個素材；五題裡至少三題從它出發，另外兩題給不同方向。";
+// 紅燈收尾時推薦固定是第一題的收尾，不能再要求「推薦題一定要用到素材」。
+const RED_CLOSE_MATERIAL_TEXT_RULE =
+  "第一題的收尾可以順帶帶到這個素材（不硬塞）；其他題至少兩題從它出發，給不同方向。";
+
+/** 還在聊／想更靠近＋她常只回哈哈、嗯：第一題寫成收尾，推薦固定第一題（規格 §9.4）。 */
+export function isNewTopicRedClose(
+  situation: NewTopicSituation | null,
+  topicContext: NewTopicTopicContext | null,
+): boolean {
+  return (situation === "stuck" || situation === "warm_up") &&
+    topicContext?.engagement === "red";
+}
+
+/**
+ * 紅燈收尾的伺服器端保證：模型推薦的不是第一題時改推第一題；理由是寫給
+ * 別題的，一併拿掉。純函式，只動推薦，不動五題內容。
+ */
+export function enforceNewTopicRedClose<
+  T extends {
+    recommendationIndex: number;
+    recommendationReason: string | null;
+  },
+>(
+  normalized: T,
+  input: {
+    situation: NewTopicSituation | null;
+    topicContext: NewTopicTopicContext | null;
+  },
+): { normalized: T; applied: boolean; overridden: boolean } {
+  const applied = isNewTopicRedClose(input.situation, input.topicContext);
+  const overridden = applied && normalized.recommendationIndex !== 0;
+  return {
+    normalized: overridden
+      ? { ...normalized, recommendationIndex: 0, recommendationReason: null }
+      : normalized,
+    applied,
+    overridden,
+  };
+}
 
 function situationRules(
   situation: NewTopicSituation | null,
@@ -570,7 +611,15 @@ export function buildNewTopicTwoStageUserPrompt(input: {
       );
     }
     lines.push("做法：", `- ${MATERIAL_RULES[materialKind]}`);
-    if (materialText !== null) lines.push(`- ${MATERIAL_TEXT_RULE}`);
+    if (materialText !== null) {
+      lines.push(
+        `- ${
+          isNewTopicRedClose(situation, topicContext)
+            ? RED_CLOSE_MATERIAL_TEXT_RULE
+            : MATERIAL_TEXT_RULE
+        }`,
+      );
+    }
   }
 
   if (materialText === null) {
@@ -601,6 +650,10 @@ export type NewTopicTwoStageAudit = {
   inviteLines: number;
   apologyLines: number;
   multiEmojiLines: number;
+  /** 這筆是紅燈收尾（還在聊／想更靠近＋她常只回哈哈、嗯）。 */
+  redCloseApplied: boolean;
+  /** 紅燈收尾時第一題 openingLine 有沒有收尾字眼（0／1）；不是紅燈收尾為 null。 */
+  redCloseCueInFirst: number | null;
 };
 
 const GAP_MENTION_PATTERN =
@@ -609,6 +662,8 @@ const BANNED_OPENER_PATTERN =
   /在嗎|最近好嗎|最近在幹嘛|最近在忙什麼|有件事想跟妳說|有件事想跟你說/;
 const INVITE_PATTERN = /約妳|約你|見面|出來吃|出來喝|出來玩|一起去/;
 const APOLOGY_PATTERN = /抱歉|不好意思|對不起|sorry/i;
+const RED_CLOSE_CUE_PATTERN =
+  /先去忙|晚點|改天|下次|再跟妳|再跟你|先這樣|報告|先睡|先忙|回頭再|有空再/;
 const EMOJI_GRAPHEME = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
 const graphemeSegmenter = new Intl.Segmenter("zh-Hant", {
   granularity: "grapheme",
@@ -668,6 +723,7 @@ export function auditNewTopicTwoStageTopics(input: {
     };
   }
 
+  const redCloseApplied = isNewTopicRedClose(input.situation, topicContext);
   return {
     materialUsedInRecommended: usesMaterial === null
       ? null
@@ -682,5 +738,9 @@ export function auditNewTopicTwoStageTopics(input: {
     apologyLines: count(APOLOGY_PATTERN),
     multiEmojiLines:
       topics.filter((topic) => emojiCount(topic.openingLine) >= 2).length,
+    redCloseApplied,
+    redCloseCueInFirst: redCloseApplied
+      ? Number(RED_CLOSE_CUE_PATTERN.test(topics[0].openingLine))
+      : null,
   };
 }

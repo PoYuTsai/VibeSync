@@ -11,11 +11,12 @@
 | `legacy` | `NEW_TOPIC_PROMPT` | `buildNewTopicUserPrompt` | 對象資料＋狀況（沒有局面追問、沒有素材） |
 | `two_stage` | `NEW_TOPIC_TWO_STAGE_PROMPT` | `buildNewTopicTwoStageUserPrompt` | 對象資料＋狀況＋局面＋素材 |
 
+- 預設兩臂都跑；`--arms=two_stage`（或 `legacy`）只跑一臂，呼叫數與費用跟著減半，沒有盲測。
 - 提示詞全部從 `supabase/functions/analyze-chat/` import，沒有複製；改 production 就是改這裡。
 - 每個案例先過 production 的 `sanitizeNewTopicRequest`，組合不合法（例如冷掉了卻帶燈號）會直接報錯。
 - 同一案例同一次重複的兩臂用同一個 requestId，所以拿到同一個「本輪內容素材」角度（兩段式有素材原文時不送角度，跟 production 一樣）。
 - 模型 `claude-sonnet-5`、`max_tokens` = `NEW_TOPIC_MAX_TOKENS`、thinking 關閉（production 對 Sonnet 5 的契約）、不用 prompt cache。
-- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding policy 逐欄同 handler 的 `newTopicGroundingPolicy`：`allowsNewTopicSharedFrame`＋兩段式帶 `userMaterialText`＝素材原文，用戶自己寫的內部代碼字如 stuck 不算外洩；legacy 的 topicContext 是 null，沒有這個豁免）→ 外洩檢查。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
+- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding policy 逐欄同 handler 的 `newTopicGroundingPolicy`：`allowsNewTopicSharedFrame`＋兩段式帶 `userMaterialText`＝素材原文，用戶自己寫的內部代碼字如 stuck 不算外洩；legacy 的 topicContext 是 null，沒有這個豁免）→ 外洩檢查 → 兩段式臂再套 production 的紅燈收尾保證 `enforceNewTopicRedClose`（還在聊／想更靠近＋她常只回哈哈、嗯時推薦固定第一題、拿掉理由；legacy 臂照模型）。records 的 `recommendationIndex` 是用戶實際看到的推薦，`modelRecommendationIndex` 是模型自己推的那題。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
 - 不經 Edge、DB、串流、扣費；只有模型呼叫是真的。
 
 ## 案例（`cases.json`，12 組）
@@ -29,6 +30,13 @@ E1–E3 是提案 §7 的三個例子；其餘每種狀況、各種燈號／冷�
 ```sh
 deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/out \
   tools/new-topic-two-stage-eval/run.ts --repeat=1 --tag=dry-run-r1
+```
+
+只跑兩段式臂、只看紅燈收尾兩組（E2、W1）重複兩次＝4 次呼叫：
+
+```sh
+deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/out \
+  tools/new-topic-two-stage-eval/run.ts --tag=dry-red --only=E2,W1 --repeat=2 --arms=two_stage
 ```
 
 會印出兩份系統提示詞全文、每次呼叫的使用者提示詞全文，最後是呼叫數與費用估算；另在 `out/<tag>/` 寫 `manifest.json`、`prompts.json`。同名輸出目錄已存在會拒絕執行，不覆寫任何證據。
@@ -57,7 +65,7 @@ deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/o
 | 檔案 | 內容 |
 |---|---|
 | `records.json` | 每次呼叫的提示詞、模型原文、usage、費用、整理結果、稽核數字 |
-| `summary.md` | 費用與 §10 機械檢查表 |
+| `summary.md` | 費用、§10 機械檢查表、紅燈收尾表 |
 | `blind_ab.md` | 給 Bruce 的盲測：每組兩版依 seed 打亂成甲／乙，只露五句 openingLine 和推薦星號 |
 | `reveal-map.json` | 解盲表（哪一版是甲、乙）；**不要跟 blind_ab.md 一起給 Bruce** |
 | `manifest.json` | 模型、HEAD、提示詞與案例的 sha256、單價、估算、參數 |
@@ -72,6 +80,10 @@ deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/o
 - 紅燈：第一則邀約 0；冷掉了：第一則邀約 0
 - 「在嗎」「最近好嗎」這類 0
 
+## 紅燈收尾（規格 §9.4）
+
+只算還在聊／想更靠近＋她常只回哈哈、嗯（E2、W1）的可交付輸出：模型自己推第一題幾次、第一題 openingLine 有收尾字眼（先去忙｜晚點｜改天｜下次｜再跟妳／你｜先這樣｜報告｜先睡｜先忙｜回頭再｜有空再）幾次、伺服器改推第一題幾次。legacy 欄只當對照，不套伺服器保證。第一題讀起來像不像收尾、有沒有留下次可以接的點，要人工看 records。
+
 這些是字面計數，不是語意正確率。失敗（格式壞、外洩）不算進句數，但會列在「可交付／模型有回」，也算進素材比率的分母，不從分母偷偷刪掉。「不捏造」「不加曖昧」「願意直接傳、最想傳不輸舊版」要靠 `blind_ab.md` 人工盲測。
 
 ## 測試
@@ -81,4 +93,4 @@ deno check tools/new-topic-two-stage-eval/run.ts
 deno test --allow-read tools/new-topic-two-stage-eval/run_test.ts
 ```
 
-`run_test.ts` 只測純函式（參數守門、案例合法、兩臂提示詞、估算、§10 計數、盲測打亂），不打模型、不寫檔。
+`run_test.ts` 只測純函式（參數守門、`--arms`、案例合法、兩臂提示詞、估算、§10 計數、紅燈收尾保證與計數、盲測打亂），不打模型、不寫檔。
