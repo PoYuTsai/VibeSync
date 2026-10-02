@@ -465,7 +465,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
       _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
       _sfx.stopRevealBed(); // 失敗兜底：配樂 bed 一律收掉（防殘留）。
-      _sfx.stopWhoosh(); // 失敗兜底：咻聲尾巴不帶到付費牆／錯誤提示上。
+      _sfx.stopWhoosh(); // 失敗兜底：咻聲尾巴淡出，不帶到付費牆／錯誤提示上。
       _reveal
         ..stop()
         ..value = 0;
@@ -481,7 +481,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void dispose() {
     _sfx.stopWaitingLoop(); // 卸載儀式：確保等待 loop 不在背景殘留。
     _sfx.stopRevealBed(); // 卸載儀式：確保配樂 bed 不在背景殘留。
-    _sfx.stopWhoosh(); // 卸載儀式：抽牌中離開畫面，咻聲尾巴不帶到下一頁。
+    _sfx.stopWhoosh(); // 卸載儀式：抽牌中離開畫面，咻聲尾巴淡出，不帶到下一頁。
     _intro.dispose();
     _reveal.dispose();
     _waiting.dispose();

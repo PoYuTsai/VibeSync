@@ -17,6 +17,11 @@ const double _kRevealBedVolume = 0.74;
 // - 翻牌紙聲：比 F2 自己的翻牌重音小 11 dB，只補紙的「啪」，不搶重音。
 const double _kFlipSnapVolume = 0.25;
 
+// 咻聲停止（抽牌失敗／離開畫面）：正在出聲時 0.5 秒淡出再停，不一刀切，跟畫面遮罩的
+// 淡出（約 0.5 秒）同步。20 步，每步 25 ms，音量差很小，聽不出階梯。
+const Duration _kWhooshFadeOut = Duration(milliseconds: 500);
+const int _kWhooshFadeSteps = 20;
+
 // ── 音檔路徑（相對 AudioCache 預設 prefix `assets/`）────────────────────────
 // 咻聲 v2：實心起手，加一段一次性的暖尾巴（C–G 長音，最長 5.5 s）接住等待 server 的空檔。
 const String _kWhooshAsset = 'audio/practice_draw/practice_draw_whoosh.m4a';
@@ -52,6 +57,26 @@ AudioContext buildPracticeDrawAudioContext() {
   );
 }
 
+/// 把音量從 [from] 分 [steps] 步線性降到 0，再呼叫 [stop]。每一步之前問一次 [stillWanted]；
+/// 變成 false（例如又開始新的一抽）就收手，不再動音量、也不停。
+@visibleForTesting
+Future<void> fadeOutThenStop({
+  required double from,
+  required Duration duration,
+  required int steps,
+  required bool Function() stillWanted,
+  required void Function(double volume) setVolume,
+  required void Function() stop,
+}) async {
+  final step = duration ~/ steps;
+  for (var i = 1; i <= steps; i++) {
+    await Future<void>.delayed(step);
+    if (!stillWanted()) return;
+    setVolume(from * (1 - i / steps));
+  }
+  if (stillWanted()) stop();
+}
+
 /// 每日翻牌音效的真實實作（Batch 4.7B：把 4.7A 的 [NoopPracticeDrawSfx] 換成會真的
 /// 播放的版本）。背後用 `audioplayers`。
 ///
@@ -63,6 +88,9 @@ AudioContext buildPracticeDrawAudioContext() {
 /// - **獨立 player**：whoosh／reveal chime／揭曉配樂 bed 各自一個 player，避免互相截斷。
 ///   whoosh／chime 是一次性（`ReleaseMode.release`）；bed 與三個翻牌紙聲由 [preloadReveal]
 ///   先載好（`ReleaseMode.stop`，停止後保留音源），播放時從頭 resume，降低起播延遲。
+/// - **咻聲停止**：[stopWhoosh] 在咻聲正在出聲時 0.5 秒淡出再停，還沒出聲就直接停。淡出用
+///   Dart 計時器，只有 player 真的在播（真機）才會啟動；headless／widget test 裡 player 從未
+///   進入播放狀態，所以不會留下計時器。
 /// - **waiting loop 已退役**：build 326 證實等待期 shimmer 是殘留「西西簌簌」來源；
 ///   [playWaitingLoop]／[stopWaitingLoop] 暫留介面相容，但 production 實作固定 no-op。
 /// - **AudioContext**：見 [buildPracticeDrawAudioContext]。iOS 用 `ambient`：尊重靜音鍵、
@@ -71,6 +99,10 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   AudioPlayersPracticeDrawSfx();
 
   AudioPlayer? _whooshPlayer;
+  // 每次 playWhoosh 遞增；淡出途中又開始新的一抽，舊的淡出就收手。
+  int _whooshGeneration = 0;
+  // 正在淡出的那一輪：同一輪重複 stopWhoosh 不重來，音量才不會跳回去。
+  int? _whooshFadingGeneration;
   AudioPlayer? _chimePlayer;
   AudioPlayer? _bedPlayer;
   // bed 預載：完成為 true；失敗會清掉，下一次預載或播放再試。
@@ -130,6 +162,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playWhoosh() {
+    _whooshGeneration++; // 新的一抽：取消進行中的淡出（play 會把音量設回來）。
     final player = _whooshPlayer ??= _create(ReleaseMode.release);
     _playOneShot(player, _kWhooshAsset, _kWhooshVolume);
   }
@@ -138,8 +171,26 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   void stopWhoosh() {
     final player = _whooshPlayer;
     if (player == null) return; // 從未播過 → no-op。
+    final generation = _whooshGeneration;
+    if (_whooshFadingGeneration == generation) return; // 這一輪已經在淡出。
     try {
-      unawaited(player.stop().catchError((Object _) {}));
+      if (player.state != PlayerState.playing) {
+        // 還沒出聲（載入中）或已經播完：直接停，沒有聲音可切，不會有斷層。
+        unawaited(player.stop().catchError((Object _) {}));
+        return;
+      }
+      _whooshFadingGeneration = generation;
+      unawaited(
+        fadeOutThenStop(
+          from: _kWhooshVolume,
+          duration: _kWhooshFadeOut,
+          steps: _kWhooshFadeSteps,
+          stillWanted: () => generation == _whooshGeneration,
+          setVolume: (volume) =>
+              unawaited(player.setVolume(volume).catchError((Object _) {})),
+          stop: () => unawaited(player.stop().catchError((Object _) {})),
+        ).catchError((Object _) {}),
+      );
     } catch (_) {
       // 停止失敗也不丟。
     }

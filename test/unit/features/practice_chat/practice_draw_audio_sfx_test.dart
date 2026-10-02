@@ -195,6 +195,47 @@ void main() {
     });
   });
 
+  // 「沒有真的出聲就直接停、不啟動淡出計時器」由圖鑑頁的 widget 測試守住：它們用真實音效
+  // 實作，若 headless 也啟動淡出，會因為「還有計時器沒跑完」而失敗。
+  group('咻聲停止：淡出，不一刀切', () {
+    test('fadeOutThenStop：音量分步線性降到 0，最後停一次', () async {
+      final volumes = <double>[];
+      var stops = 0;
+      await fadeOutThenStop(
+        from: 0.2,
+        duration: const Duration(milliseconds: 20),
+        steps: 4,
+        stillWanted: () => true,
+        setVolume: volumes.add,
+        stop: () => stops++,
+      );
+
+      expect(volumes, [
+        closeTo(0.15, 1e-9),
+        closeTo(0.10, 1e-9),
+        closeTo(0.05, 1e-9),
+        closeTo(0.0, 1e-9),
+      ]);
+      expect(stops, 1);
+    });
+
+    test('fadeOutThenStop：途中又開始新的一抽就收手，不再動音量也不停', () async {
+      final volumes = <double>[];
+      var stops = 0;
+      await fadeOutThenStop(
+        from: 0.2,
+        duration: const Duration(milliseconds: 20),
+        steps: 4,
+        stillWanted: () => volumes.length < 2, // 第 3 步前開始新的一抽
+        setVolume: volumes.add,
+        stop: () => stops++,
+      );
+
+      expect(volumes, hasLength(2));
+      expect(stops, 0);
+    });
+  });
+
   group('practiceDrawSfxProvider 預設實作', () {
     test('預設已換成真實 AudioPlayers 實作（非 Noop）', () {
       final container = ProviderContainer();
