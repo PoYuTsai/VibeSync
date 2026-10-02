@@ -287,3 +287,14 @@ Deno.test("blind sheet is seeded, hides the arm and maps 甲／乙 back in the r
   // 收尾句帶臂名只是測試標記：第一題的甲要對到 reveal。
   assert(first.markdown.includes(`收尾句：好啊 ${cases[0].甲}`));
 });
+
+Deno.test("blind sheet labels a do_not_send backup line apart from a closing line to send", () => {
+  const a = record("A", "user_waiting_after_reply", 1, "end_turn");
+  a.result.clientText =
+    `{"type":"analysis.decision","messageDecision":"do_not_send","closingMessage":"好，妳先忙"}\n`;
+  const b = record("B", "user_waiting_after_reply", 1, "end_turn");
+  const { markdown } = buildBlindSheet([a, b])!;
+  assert(markdown.includes("（收在「我還是想回」後）備用句：好，妳先忙"));
+  assert(!markdown.includes("收尾句：好，妳先忙"));
+  assert(markdown.includes("收尾句：好啊 B"));
+});

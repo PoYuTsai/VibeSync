@@ -538,8 +538,13 @@ function clientView(result: any): string[] {
     return ["（這次分析失敗，用戶只會看到錯誤訊息）"];
   }
   const out = [`決定：${decision.messageDecision ?? "?"}`];
+  // do_not_send 的備用句在 App 收在「我還是想回」後面，不是教練建議傳的收尾句。
   if (typeof decision.closingMessage === "string") {
-    out.push(`收尾句：${decision.closingMessage}`);
+    out.push(
+      decision.messageDecision === "do_not_send"
+        ? `（收在「我還是想回」後）備用句：${decision.closingMessage}`
+        : `收尾句：${decision.closingMessage}`,
+    );
   }
   if (options.length > 0) {
     out.push(`推薦：${decision.selectedStyle ?? "?"}`);
