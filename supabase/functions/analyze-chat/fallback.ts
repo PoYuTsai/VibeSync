@@ -249,8 +249,12 @@ export async function callClaudeWithFallback(
           max_tokens: maxTokensFor(currentModel, request.max_tokens),
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
+          // 呼叫端的 thinking 只給主模型；5.5 退到 Sonnet 5 時要回到 disabled，
+          // 否則隱藏思考會吃掉沒加餘裕的可見預算（同 streaming_fallback）。
           ...modelRequestParams(currentModel, {
-            thinking: request.thinking,
+            thinking: currentModel === originalModel
+              ? request.thinking
+              : undefined,
             outputConfig: request.output_config,
           }),
         };

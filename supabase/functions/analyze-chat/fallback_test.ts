@@ -151,7 +151,8 @@ Deno.test("Sonnet 5.5 gets configuration C merged into structured output, then S
   try {
     await callClaudeWithFallback(
       {
-        ...baseRequest(),
+        // 呼叫端 adaptive 只屬於 5.5；退到 Sonnet 5 必須回到 disabled。
+        ...baseRequest({ type: "adaptive" }),
         model: "claude-sonnet-5-5",
         output_config: {
           format: { type: "json_schema", schema: { type: "object" } },
