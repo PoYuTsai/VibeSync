@@ -16,7 +16,7 @@
 - 每個案例先過 production 的 `sanitizeNewTopicRequest`，組合不合法（例如冷掉了卻帶燈號）會直接報錯。
 - 同一案例同一次重複的兩臂用同一個 requestId，所以拿到同一個「本輪內容素材」角度（兩段式有素材原文時不送角度，跟 production 一樣）。
 - 模型 `claude-sonnet-5`、`max_tokens` = `NEW_TOPIC_MAX_TOKENS`、thinking 關閉（production 對 Sonnet 5 的契約）、不用 prompt cache。
-- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding policy 逐欄同 handler 的 `newTopicGroundingPolicy`：`allowsNewTopicSharedFrame`＋兩段式帶 `userMaterialText`＝素材原文，用戶自己寫的內部代碼字如 stuck 不算外洩；legacy 的 topicContext 是 null，沒有這個豁免）→ 外洩檢查 → 兩段式臂再套 production 的紅燈收尾保證 `enforceNewTopicRedClose`（還在聊／想更靠近＋她常只回哈哈、嗯時推薦固定第一題、拿掉理由；legacy 臂照模型）。records 的 `recommendationIndex` 是用戶實際看到的推薦，`modelRecommendationIndex` 是模型自己推的那題。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
+- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding policy 逐欄同 handler 的 `newTopicGroundingPolicy`：`allowsNewTopicSharedFrame`＋兩段式帶 `userMaterialText`＝素材原文，用戶自己寫的內部代碼字如 stuck 不算外洩；legacy 的 topicContext 是 null，沒有這個豁免）→ 外洩檢查 → 兩段式臂再套 production 的紅燈收尾保證 `enforceNewTopicRedClose`（還在聊／想更靠近＋她常只回哈哈、嗯時推薦固定第一題、理由換成固定句 `NEW_TOPIC_RED_CLOSE_REASON`；legacy 臂照模型）。records 的 `recommendationIndex` 是用戶實際看到的推薦，`modelRecommendationIndex` 是模型自己推的那題。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
 - 不經 Edge、DB、串流、扣費；只有模型呼叫是真的。
 
 ## 案例（`cases.json`，12 組）

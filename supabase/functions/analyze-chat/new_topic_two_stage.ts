@@ -452,8 +452,15 @@ export function isNewTopicRedClose(
 }
 
 /**
- * 紅燈收尾的伺服器端保證：模型推薦的不是第一題時改推第一題；理由是寫給
- * 別題的，一併拿掉。純函式，只動推薦，不動五題內容。
+ * 紅燈收尾時用戶看到的推薦理由。固定句：模型寫的理由會漏出指示措辭
+ * （「局面規定第一題要是收尾句」，nt2-red-r2 3/4），寫給別題的也不能用。
+ */
+export const NEW_TOPIC_RED_CLOSE_REASON =
+  "她最近常只回很短，先自然收尾、留一個下次可以接的點，比硬開新話題更不會把她推遠。";
+
+/**
+ * 紅燈收尾的伺服器端保證：推薦固定第一題、理由一律換成固定句。
+ * 純函式，只動推薦，不動五題內容。
  */
 export function enforceNewTopicRedClose<
   T extends {
@@ -470,8 +477,12 @@ export function enforceNewTopicRedClose<
   const applied = isNewTopicRedClose(input.situation, input.topicContext);
   const overridden = applied && normalized.recommendationIndex !== 0;
   return {
-    normalized: overridden
-      ? { ...normalized, recommendationIndex: 0, recommendationReason: null }
+    normalized: applied
+      ? {
+        ...normalized,
+        recommendationIndex: 0,
+        recommendationReason: NEW_TOPIC_RED_CLOSE_REASON,
+      }
       : normalized,
     applied,
     overridden,

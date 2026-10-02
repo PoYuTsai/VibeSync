@@ -23,7 +23,10 @@ import {
   NEW_TOPIC_MAX_TOKENS,
   NEW_TOPIC_PROMPT,
 } from "../../supabase/functions/analyze-chat/new_topic_prompt.ts";
-import { NEW_TOPIC_TWO_STAGE_PROMPT } from "../../supabase/functions/analyze-chat/new_topic_two_stage.ts";
+import {
+  NEW_TOPIC_RED_CLOSE_REASON,
+  NEW_TOPIC_TWO_STAGE_PROMPT,
+} from "../../supabase/functions/analyze-chat/new_topic_two_stage.ts";
 
 Deno.test("參數：預設 dry-run；真跑缺任何一個守門參數都拒絕", () => {
   assertEquals(parseOptions([]).run, false);
@@ -355,7 +358,7 @@ Deno.test("外洩檢查同 handler：進階 sentinel 只在兩段式臂擋（Cod
   assert(!legacyResult.promptLeak);
 });
 
-Deno.test("紅燈收尾：兩段式臂套 production 保證（改推第一題、拿掉理由），legacy 照模型；summary 計數", async () => {
+Deno.test("紅燈收尾：兩段式臂套 production 保證（推薦固定第一題、理由換固定句），legacy 照模型；summary 計數", async () => {
   const plan = await buildPlan(
     CASES.filter((c) => ["E2", "W1", "S1"].includes(c.id)),
     1,
@@ -387,7 +390,12 @@ Deno.test("紅燈收尾：兩段式臂套 production 保證（改推第一題、
       e2.modelRecommendationIndex,
       e2.redCloseOverridden,
     ],
-    [0, null, 2, true],
+    [0, NEW_TOPIC_RED_CLOSE_REASON, 2, true],
+  );
+  // 模型自己推第一題也換理由。
+  assertEquals(
+    ins("W1.1.two_stage").recommendationReason,
+    NEW_TOPIC_RED_CLOSE_REASON,
   );
   const e2Legacy = ins("E2.1.legacy");
   assertEquals(

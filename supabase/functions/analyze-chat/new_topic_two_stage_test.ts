@@ -9,6 +9,7 @@ import { hasCustomerExplanationLeak } from "./customer_explanation.ts";
 import { computeNewTopicInputHash } from "./new_topic_billing.ts";
 import {
   allowsNewTopicSharedFrame,
+  NEW_TOPIC_FIELD_CAPS,
   type NewTopicModelTopic,
   type NewTopicSituation,
 } from "./new_topic_payload.ts";
@@ -25,6 +26,7 @@ import {
   NEW_TOPIC_COLD_STOPS,
   NEW_TOPIC_ENGAGEMENTS,
   NEW_TOPIC_MATERIAL_KINDS,
+  NEW_TOPIC_RED_CLOSE_REASON,
   NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   newTopicGapMentionAllowed,
@@ -1097,7 +1099,7 @@ Deno.test("user prompt：紅燈收尾有素材原文時，素材加碼行改成�
   }
 });
 
-Deno.test("enforceNewTopicRedClose：紅燈收尾推薦不是第一題 → 改第一題、拿掉理由；其他不動", () => {
+Deno.test("enforceNewTopicRedClose：紅燈收尾推薦固定第一題、理由換固定句；其他不動", () => {
   const red = (situation: NewTopicSituation | null) => ({
     situation,
     topicContext: context({ engagement: "red" }, situation),
@@ -1111,18 +1113,22 @@ Deno.test("enforceNewTopicRedClose：紅燈收尾推薦不是第一題 → 改�
     recommendationReason: "寫給第三題的理由",
   };
   for (const situation of ["stuck", "warm_up"] as const) {
+    const fixed = {
+      recommendationIndex: 0,
+      recommendationReason: NEW_TOPIC_RED_CLOSE_REASON,
+    };
     assertEquals(enforceNewTopicRedClose(picked2, red(situation)), {
-      normalized: { recommendationIndex: 0, recommendationReason: null },
+      normalized: fixed,
       applied: true,
       overridden: true,
     });
-    // 模型自己推第一題：理由保留。
+    // 模型自己推第一題：理由也換（模型寫的理由會漏指示措辭，nt2-red-r2）。
     const picked0: Recommendation = {
       recommendationIndex: 0,
-      recommendationReason: "收尾最好",
+      recommendationReason: "照局面規定第一題要是收尾句",
     };
     assertEquals(enforceNewTopicRedClose(picked0, red(situation)), {
-      normalized: picked0,
+      normalized: fixed,
       applied: true,
       overridden: false,
     });
@@ -1144,6 +1150,12 @@ Deno.test("enforceNewTopicRedClose：紅燈收尾推薦不是第一題 → 改�
       overridden: false,
     });
   }
+  // 固定句本身要過客戶可見理由的 cap 與外洩檢查。
+  assert(
+    NEW_TOPIC_RED_CLOSE_REASON.length <=
+      NEW_TOPIC_FIELD_CAPS.recommendationReason,
+  );
+  assertFalse(hasCustomerExplanationLeak(NEW_TOPIC_RED_CLOSE_REASON));
   // 其他欄位原樣帶過。
   const withTopics = { ...picked2, topics: topics(PLAIN_LINES) };
   assertEquals(
