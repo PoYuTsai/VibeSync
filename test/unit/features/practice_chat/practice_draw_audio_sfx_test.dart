@@ -117,6 +117,20 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
+    test('stopWhoosh：未播放／播放後／重複停皆靜默不丟', () async {
+      final sfx = AudioPlayersPracticeDrawSfx();
+
+      expect(() {
+        sfx.stopWhoosh(); // 從未播過咻聲 → no-op
+        sfx.playWhoosh();
+        sfx.stopWhoosh(); // 抽牌失敗／離開畫面：停掉尾巴
+        sfx.stopWhoosh(); // 重複停 → no-op
+        sfx.playWhoosh(); // 停過之後再抽仍可播
+      }, returnsNormally);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
     test('waiting loop 已退役：start／stop 相容 API 固定 no-op 不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
@@ -178,6 +192,47 @@ void main() {
       }, returnsNormally);
 
       await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+  });
+
+  // 「沒有真的出聲就直接停、不啟動淡出計時器」由圖鑑頁的 widget 測試守住：它們用真實音效
+  // 實作，若 headless 也啟動淡出，會因為「還有計時器沒跑完」而失敗。
+  group('咻聲停止：淡出，不一刀切', () {
+    test('fadeOutThenStop：音量分步線性降到 0，最後停一次', () async {
+      final volumes = <double>[];
+      var stops = 0;
+      await fadeOutThenStop(
+        from: 0.2,
+        duration: const Duration(milliseconds: 20),
+        steps: 4,
+        stillWanted: () => true,
+        setVolume: volumes.add,
+        stop: () => stops++,
+      );
+
+      expect(volumes, [
+        closeTo(0.15, 1e-9),
+        closeTo(0.10, 1e-9),
+        closeTo(0.05, 1e-9),
+        closeTo(0.0, 1e-9),
+      ]);
+      expect(stops, 1);
+    });
+
+    test('fadeOutThenStop：途中又開始新的一抽就收手，不再動音量也不停', () async {
+      final volumes = <double>[];
+      var stops = 0;
+      await fadeOutThenStop(
+        from: 0.2,
+        duration: const Duration(milliseconds: 20),
+        steps: 4,
+        stillWanted: () => volumes.length < 2, // 第 3 步前開始新的一抽
+        setVolume: volumes.add,
+        stop: () => stops++,
+      );
+
+      expect(volumes, hasLength(2));
+      expect(stops, 0);
     });
   });
 

@@ -20,8 +20,14 @@ import 'practice_draw_audio_sfx.dart';
 /// - 可注入：[practiceDrawSfxProvider] 預設給 [AudioPlayersPracticeDrawSfx]，測試以
 ///   override 注入 spy 驗證「在對的轉場呼叫對的音效」。
 abstract class PracticeDrawSfx {
-  /// 抽牌啟動：翻牌「咻」的滑出聲（約 0.3–0.6 秒，音量克制）。
+  /// 抽牌啟動：翻牌「咻」的滑出聲，音量克制。v2 檔是實心起手加一段一次性的暖尾巴，
+  /// 最長 5.5 s，用來接住等待 server 的空檔。
   void playWhoosh();
+
+  /// 停掉咻聲（含 v2 最長 5.5 s 的暖尾巴）：正在出聲時 0.5 秒淡出再停，不一刀切；還沒出聲
+  /// 就直接停。只在「離開畫面／抽牌失敗」呼叫；成功揭曉時刻意不停，讓尾巴交棒給配樂 bed。
+  /// idempotent、靜默不丟。
+  void stopWhoosh();
 
   /// 已退役的等待 shimmer loop。production 固定 no-op，儀式流程也不得呼叫。
   void playWaitingLoop();
@@ -58,6 +64,9 @@ class NoopPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playWhoosh() {}
+
+  @override
+  void stopWhoosh() {}
 
   @override
   void playWaitingLoop() {}

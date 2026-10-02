@@ -214,6 +214,7 @@ class _DrawApi extends PracticeChatApiService {
 /// 用來斷言「等待 loop 不殘留」。預設 no-op 行為（不真的播放）。
 class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int whoosh = 0;
+  int whooshStop = 0;
   int preload = 0;
   int waitingStart = 0;
   int waitingStop = 0;
@@ -233,6 +234,12 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   void playWhoosh() {
     whoosh++;
     calls.add('whoosh');
+  }
+
+  @override
+  void stopWhoosh() {
+    whooshStop++;
+    calls.add('whooshStop');
   }
 
   @override
@@ -3631,7 +3638,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('音效（v4）：抽牌啟動時預載揭曉音效一次，揭曉直接起播 bed', (tester) async {
+  testWidgets('音效（v4）：抽牌啟動時預載揭曉音效一次，揭曉直接起播 bed、不停咻聲', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -3647,6 +3654,7 @@ void main() {
     await tester.pump(); // revealing
     expect(spy.bedStart, 1);
     expect(spy.preload, 1); // 揭曉時不重複預載
+    expect(spy.whooshStop, 0); // 揭曉起始不停咻聲：尾巴交棒給 bed
 
     await tester.pumpAndSettle();
   });
@@ -3668,7 +3676,7 @@ void main() {
     expect(spy.looping, isFalse); // 等待 loop 已停、不殘留
   });
 
-  testWidgets('音效：抽牌 402 → waiting loop 未啟動、不播揭曉叮聲', (tester) async {
+  testWidgets('音效：抽牌 402 → waiting loop 未啟動、不播揭曉叮聲、停掉咻聲', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(
       () async => throw PracticeDrawUpgradeRequiredException(
@@ -3685,10 +3693,11 @@ void main() {
     expect(spy.waitingStop, greaterThanOrEqualTo(1)); // 相容 stop 仍安全收斂
     expect(spy.chime, 0); // 402 不慶祝
     expect(spy.flipSnap, 0); // 沒有翻面就沒有翻牌紙聲
+    expect(spy.whooshStop, 1); // 咻聲尾巴不帶到付費牆
     expect(spy.looping, isFalse);
   });
 
-  testWidgets('音效：抽牌 429 → waiting loop 未啟動、不播揭曉叮聲', (tester) async {
+  testWidgets('音效：抽牌 429 → waiting loop 未啟動、不播揭曉叮聲、停掉咻聲', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(
       () async => throw PracticeQuotaExceededException('本月額度已用完',
@@ -3703,6 +3712,41 @@ void main() {
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.chime, 0); // 429 不慶祝
     expect(spy.flipSnap, 0); // 沒有翻面就沒有翻牌紙聲
+    expect(spy.whooshStop, 1); // 咻聲尾巴不帶到錯誤提示
+    expect(spy.looping, isFalse);
+  });
+
+  testWidgets('音效：成功揭曉後同頁再抽 → 卡背照常出現，第二抽 402 停掉咻聲', (tester) async {
+    // 回歸：成功揭曉把 intro 留在終點時，下一抽 forward(from: 0) 會發出 dismissed，
+    // 收場 listener 把剛開始的第二抽收成 hidden → 卡背不見、失敗兜底被跳過。
+    final spy = _SpyPracticeDrawSfx();
+    final first = Completer<PracticeDrawResult>();
+    final second = Completer<PracticeDrawResult>();
+    var call = 0;
+    final api = _DrawApi(() => ++call == 1 ? first.future : second.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+    final dim = find.byKey(const ValueKey('practice-draw-ceremony-dim'));
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 第一抽 drawing
+    expect(dim, findsOneWidget); // 對照：第一抽等待時卡背遮罩在
+    first.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pumpAndSettle(); // 成功揭曉、收掉 overlay
+    expect(spy.whooshStop, 0);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // 第二抽 drawing
+    expect(spy.whoosh, 2);
+    expect(dim, findsOneWidget); // 第二抽也要有卡背
+
+    second.completeError(PracticeDrawUpgradeRequiredException(
+      extraCostMessages: 5,
+      nextResetAt: '2026-06-27T04:00:00.000Z',
+    ));
+    await tester.pumpAndSettle();
+
+    expect(spy.whooshStop, 1); // 第二抽失敗也不把尾巴帶到付費牆
+    expect(dim, findsNothing);
     expect(spy.looping, isFalse);
   });
 
@@ -3723,7 +3767,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('音效：drawing 中卸載儀式 → waiting loop 從未啟動', (tester) async {
+  testWidgets('音效：drawing 中卸載儀式 → waiting loop 從未啟動、停掉咻聲', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -3740,6 +3784,7 @@ void main() {
 
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.looping, isFalse);
+    expect(spy.whooshStop, 1); // 抽牌中離開畫面：咻聲尾巴不帶到下一頁
 
     // draw 在途永不完成 → .timeout 的 45s Timer 還掛著；推過它讓 timeout
     // 觸發（controller 已 dispose，mounted 守門 no-op），否則 !timersPending

@@ -389,6 +389,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _sfx.stopRevealBed(); // E2：揭曉結束／收掉 overlay → 配樂 bed 不殘留。
     _firedBeats.clear();
     _reveal.value = 0;
+    // intro 一併歸零：成功揭曉會把它留在終點，下一抽 `forward(from: 0)` 會先發出
+    // dismissed，被上面的收場 listener 當成「淡出走完」，把剛開始的第二抽收掉（卡背
+    // 不見、失敗兜底被跳過）。phase 已先設 hidden，這裡觸發的 dismissed 不會再進來。
+    _intro.value = 0;
   }
 
   bool get _reduceMotion =>
@@ -465,6 +469,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
       _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
       _sfx.stopRevealBed(); // 失敗兜底：配樂 bed 一律收掉（防殘留）。
+      _sfx.stopWhoosh(); // 失敗兜底：咻聲尾巴淡出，不帶到付費牆／錯誤提示上。
       _reveal
         ..stop()
         ..value = 0;
@@ -480,6 +485,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void dispose() {
     _sfx.stopWaitingLoop(); // 卸載儀式：確保等待 loop 不在背景殘留。
     _sfx.stopRevealBed(); // 卸載儀式：確保配樂 bed 不在背景殘留。
+    _sfx.stopWhoosh(); // 卸載儀式：抽牌中離開畫面，咻聲尾巴淡出，不帶到下一頁。
     _intro.dispose();
     _reveal.dispose();
     _waiting.dispose();
