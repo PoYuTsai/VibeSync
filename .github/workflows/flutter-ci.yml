@@ -101,8 +101,37 @@ jobs:
           supabase/functions/delete-account/cleanup_alert_test.ts
           supabase/functions/practice-chat/prompt_test.ts
           supabase/functions/practice-chat/practice_persona_test.ts
+          supabase/functions/analyze-chat/opener_charge_test.ts
+          supabase/functions/analyze-chat/opener_cost_guard_test.ts
+          supabase/functions/analyze-chat/opener_flow_payload_test.ts
+          supabase/functions/analyze-chat/opener_flow_source_test.ts
+          supabase/functions/analyze-chat/opener_material_test.ts
+          supabase/functions/analyze-chat/opener_material_selection_test.ts
+          supabase/functions/analyze-chat/opener_material_topic_first_test.ts
+          supabase/functions/analyze-chat/opener_option_authorization_test.ts
+          supabase/functions/analyze-chat/opener_payload_test.ts
+          supabase/functions/analyze-chat/opener_plan_write_test.ts
+          supabase/functions/analyze-chat/opener_profile_test.ts
+          supabase/functions/analyze-chat/opener_prompt_test.ts
+          supabase/functions/analyze-chat/opener_stage_test.ts
+          supabase/functions/analyze-chat/opener_stream_test.ts
+          supabase/functions/analyze-chat/opener_stream_branch_test.ts
+          supabase/functions/analyze-chat/new_topic_billing_test.ts
+          supabase/functions/analyze-chat/new_topic_handler_test.ts
+          supabase/functions/analyze-chat/new_topic_payload_test.ts
+          supabase/functions/analyze-chat/new_topic_prompt_test.ts
+          supabase/functions/analyze-chat/new_topic_source_test.ts
+          supabase/functions/analyze-chat/new_topic_two_stage_test.ts
+          supabase/functions/analyze-chat/customer_explanation_test.ts
+          supabase/functions/analyze-chat/ndjson_response_test.ts
+          supabase/functions/analyze-chat/request_shape_test.ts
+          supabase/functions/analyze-chat/tier_sync_contract_test.ts
+          supabase/functions/analyze-chat/model_call_budget_test.ts
+          supabase/functions/analyze-chat/analysis_input_compiler_test.ts
+          supabase/functions/_shared/prompt_leak_guard_test.ts
+          supabase/functions/_shared/traditional_chinese_test.ts
 
-      # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 8 秒），
+      # PGlite（WASM Postgres）獨立成一步：它是唯一會拉 npm 套件的測試（約 100 秒），
       # 分開跑讓上面那組純函式契約測試 fail fast，失敗時也一眼看得出是資料層掛了。
       #
       # 權限刻意比上面那一步更窄——只有 --allow-read，連 --allow-env 都不給
@@ -121,6 +150,7 @@ jobs:
           supabase/functions/analyze-chat/stream_runs_decision_kind_migration_postgres_test.ts
           supabase/functions/analyze-chat/retention_cleanup_migration_postgres_test.ts
           supabase/functions/analyze-chat/opener_two_stage_migration_postgres_test.ts
+          supabase/functions/analyze-chat/opener_flow_handler_test.ts
 
   ios-keyboard-compile:
     name: iOS keyboard compile
