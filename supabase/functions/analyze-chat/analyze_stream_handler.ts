@@ -74,6 +74,7 @@ import type {
 
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
+const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
 
 /// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5；
 /// 測試帳號 forceModel 照指定。非串流分析與其他功能不經過這裡。
@@ -457,10 +458,11 @@ export async function handleAnalyzeStream(
   }
 
   let streamModel = deps.selectedModel;
-  // 5.5 多一跳（5.5→5→4.6→Haiku），Sonnet 5 照舊 3 次。
-  const streamProviderMaxAttempts = streamingProviderMaxAttempts(
-    deps.selectedModel,
-  );
+  // STREAM_PROVIDER_MAX_ATTEMPTS（baseline 鎖住）是 Sonnet 5 鏈的 3 次；
+  // 5.5 多一跳（5.5→5→4.6→Haiku），照備援鏈實際長度記。
+  const streamProviderMaxAttempts = deps.selectedModel === SONNET_5_5_MODEL
+    ? streamingProviderMaxAttempts(SONNET_5_5_MODEL)
+    : STREAM_PROVIDER_MAX_ATTEMPTS;
   // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
   // entire fixed output budget for the user-visible NDJSON contract; hidden
   // thinking can otherwise consume the visible-output budget and emit zero
