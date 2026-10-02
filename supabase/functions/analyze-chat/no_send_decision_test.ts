@@ -366,3 +366,25 @@ Deno.test("offeredNoSendDecisions: one line from the user means no silence and n
     "need_context",
   ]);
 });
+
+Deno.test("offeredNoSendDecisions: the user waiting for her always gets do_not_send", () => {
+  const me = (content: string) => ({ isFromMe: true, content });
+  const her = (content: string) => ({ isFromMe: false, content });
+  const all = ["do_not_send", "acknowledge_and_stop", "need_context"] as const;
+  // 她說晚點再聊、他已經回「等妳忙完」：球在她那邊，沒量到低投入也要能叫他先別回。
+  assertEquals(
+    offeredNoSendDecisions(
+      [her("我正在開會，晚點結束再跟你聊今天那件事"), me("好，等妳忙完")],
+      false,
+    ),
+    all,
+  );
+  assertEquals(offeredNoSendDecisions([me("嗨")], false), all);
+  const longer = [me("在幹嘛"), her("沒"), me("週末呢"), her("還好")];
+  assertEquals(offeredNoSendDecisions([...longer, me("那改天聊")], false), all);
+  // 最後是她、沒量到低投入：照舊沒有 do_not_send。
+  assertEquals(offeredNoSendDecisions(longer, false), [
+    "acknowledge_and_stop",
+    "need_context",
+  ]);
+});

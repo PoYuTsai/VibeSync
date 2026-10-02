@@ -58,16 +58,18 @@ export interface StreamNoSendRecommendationForCharge {
 /// 結構刀：伺服器決定這次選單裡有哪些不回決策，不靠模型自律（2026-10-02 黑箱：
 /// 拿掉一個不回出口，5.5 就換另一個）。
 /// - 用戶只傳過一句、最後一則是她：證據不夠叫他沉默，對話也短到談不上讀不出來，只留收尾。
+/// - 最後一則是用戶自己：球在她那邊、他在等她，不論有沒有量到低投入都有 do_not_send。
 /// - 其他情況：伺服器沒量到她低投入，就沒有 do_not_send。
 export function offeredNoSendDecisions(
   messages: readonly { isFromMe: boolean }[],
   lowInvestment: boolean,
 ): readonly NoSendDecisionKind[] {
   const mine = messages.filter((message) => message.isFromMe).length;
+  const lastIsMine = messages.at(-1)?.isFromMe === true;
   if (mine <= 1 && messages.at(-1)?.isFromMe === false) {
     return ["acknowledge_and_stop"];
   }
-  return lowInvestment
+  return lowInvestment || lastIsMine
     ? NO_SEND_DECISION_KINDS
     : ["acknowledge_and_stop", "need_context"];
 }

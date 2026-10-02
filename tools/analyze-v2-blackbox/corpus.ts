@@ -287,6 +287,16 @@ export const CORPUS: readonly CorpusCase[] = [
     ],
     expect: { messageDecision: ["send"] },
   },
+  {
+    // 球在她那邊：她說晚點再聊，他已經回了，再傳就是追。
+    id: "user_waiting_after_reply",
+    family: "waiting",
+    messages: [
+      { isFromMe: false, content: "我正在開會，晚點結束再跟你聊今天那件事" },
+      { isFromMe: true, content: "好，等妳忙完" },
+    ],
+    expect: { messageDecision: ["do_not_send"] },
+  },
 ];
 
 /// 拒答探針：帶曖昧／稱讚外表／邀約／約會後續／被拒情感內容的案。語料沒有露骨
