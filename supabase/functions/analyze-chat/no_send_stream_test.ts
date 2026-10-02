@@ -34,9 +34,10 @@ const INVENTORY = {
     reason: "語氣詞",
   }],
 };
-// 伺服器量得到她低投入，do_not_send 才在選單裡。
+// 用戶傳過兩句以上、伺服器量得到她低投入，do_not_send 才在選單裡。
 const LOW_INVESTMENT_MESSAGES = [
   { isFromMe: true, content: "我昨天去看展，裡面有一區超像你之前說的那種風格" },
+  { isFromMe: true, content: "妳最近有去哪裡走走嗎" },
   { isFromMe: false, content: "哈哈" },
 ];
 const NO_SEND = {
@@ -625,7 +626,7 @@ Deno.test("handler: a v2 client gets a charged, persisted no-send result with ze
   assertFalse(text.includes("STREAM_INCOMPLETE_REPLY_OPTIONS"));
 });
 
-Deno.test("handler: 「嗨」→「哈囉」 never offers do_not_send and refuses one before charging", async () => {
+Deno.test("handler: 「嗨」→「哈囉」 offers only acknowledge_and_stop and refuses need_context before charging", async () => {
   const calls: string[] = [];
   const chargeInputs: StreamChargePayload[] = [];
   const systems: string[] = [];
@@ -635,7 +636,12 @@ Deno.test("handler: 「嗨」→「哈囉」 never offers do_not_send and refuse
     doneResults: [],
     systems,
     noSendDecisions: true,
-    modelChunks: [INVENTORY, NO_SEND, METRICS, DONE_WITH_DEBRIS],
+    modelChunks: [
+      INVENTORY,
+      { ...NO_SEND, messageDecision: "need_context" },
+      METRICS,
+      DONE_WITH_DEBRIS,
+    ],
   });
   const opening = [
     { isFromMe: true, content: "嗨" },
@@ -649,12 +655,13 @@ Deno.test("handler: 「嗨」→「哈囉」 never offers do_not_send and refuse
 
   assert(systems[0].includes("1a. Message decision gate"));
   assertFalse(systems[0].includes("do_not_send"));
-  assert(systems[0].includes("acknowledge_and_stop"));
-  assert(systems[0].includes("need_context"));
-  assert(systems[0].includes("two non-send decisions"));
+  assertFalse(systems[0].includes("need_context"));
+  assert(systems[0].includes("one of `send`, `acknowledge_and_stop`."));
+  assert(systems[0].includes("for the non-send decisions those events"));
   assertEquals(chargeInputs.length, 0);
   assertFalse(calls.includes("chargeRun"));
   assert(text.includes("STREAM_MALFORMED_RECOMMENDATION"));
+  assert(text.includes("need_context was not offered"));
 });
 
 Deno.test("handler: a v1 client never receives the gate and a style-less decision fails as before", async () => {

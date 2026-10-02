@@ -5,6 +5,10 @@
 // order the streaming reframer can validate and assemble.
 
 import {
+  NO_SEND_DECISION_KINDS,
+  type NoSendDecisionKind,
+} from "./no_send_decision.ts";
+import {
   isStreamStyle,
   STREAM_STYLES,
   type StreamStyle,
@@ -41,9 +45,10 @@ export interface StreamPromptOptions {
   /// Phase 2a shadow (§5.12): ask for one `analysis.divergence_plan` after a
   /// send decision. Recorded only; every reply rule below stays as written.
   divergencePlan?: boolean;
-  /// false: the server measured that she is not under-investing, so
-  /// `do_not_send` is not offered at all (「嗨」→「哈囉」不能判先別回).
-  doNotSendAvailable?: boolean;
+  /// The non-send decisions the server offers for this request (see
+  /// offeredNoSendDecisions); omitted = all three. Missing ones are not in the
+  /// menu at all.
+  offeredNoSendDecisions?: readonly NoSendDecisionKind[];
 }
 
 // 枝數、方法、欄位全部從 divergence_contract 生成：prompt 說什麼，parser 就
@@ -117,17 +122,34 @@ const NO_SEND_DECISION_GATE = [
   'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題"}',
 ];
 
-// 結構刀：伺服器沒量到她低投入時，選單裡就沒有 do_not_send（不是叫模型少用）。
-const NO_SEND_DECISION_GATE_WITHOUT_DO_NOT_SEND = [
-  NO_SEND_DECISION_GATE[0].replace("`send`, `do_not_send`, ", "`send`, "),
-  NO_SEND_DECISION_GATE[1].replace(
+// 結構刀：伺服器沒開放的不回決策，選單裡就沒有（不是叫模型少用）。
+const NO_SEND_USE_SENTENCE: Partial<Record<NoSendDecisionKind, string>> = {
+  do_not_send:
     " Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her.",
-    "",
-  ),
-  NO_SEND_DECISION_GATE[2].replace("three non-send", "two non-send"),
-  NO_SEND_DECISION_GATE[3].replace("three non-send", "two non-send"),
-  // 不放範例：need_context 範例會讓模型把「缺細節」當成要用戶補對話（2026-10-02 黑箱 2/2）。
-];
+  need_context:
+    " Use `need_context` when you cannot tell who said what or the fragment is incomplete.",
+};
+
+function noSendDecisionGate(
+  offered: readonly NoSendDecisionKind[] = NO_SEND_DECISION_KINDS,
+): readonly string[] {
+  const dropped = NO_SEND_DECISION_KINDS.filter((kind) =>
+    !offered.includes(kind)
+  );
+  if (dropped.length === 0) return NO_SEND_DECISION_GATE;
+  let [menu, uses, scope, fields] = NO_SEND_DECISION_GATE;
+  for (const kind of dropped) {
+    menu = menu.replace(`, \`${kind}\``, "");
+    uses = uses.replace(NO_SEND_USE_SENTENCE[kind] ?? "", "");
+  }
+  // 不放範例：do_not_send 範例不能留，need_context 範例會讓模型把「缺細節」當成要用戶補對話（2026-10-02 黑箱 2/2）。
+  return [
+    menu,
+    uses,
+    scope.replace("three non-send", "non-send"),
+    fields.replace("three non-send", "non-send"),
+  ];
+}
 
 export function buildStreamSystemPrompt(
   basePrompt: string,
@@ -162,11 +184,9 @@ export function buildStreamSystemPrompt(
     options.noSendDecisions
       ? "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `messageDecision` (see 1a) and, only when it is `send`, `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. A send decision's `selectedStyle` segment sources must be balls marked `接`; their wording may incorporate related `併` context."
       : "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. Your `selectedStyle`'s segment sources must be balls marked `接`; their wording may incorporate related `併` context.",
-    ...(!options.noSendDecisions
-      ? []
-      : options.doNotSendAvailable === false
-      ? NO_SEND_DECISION_GATE_WITHOUT_DO_NOT_SEND
-      : NO_SEND_DECISION_GATE),
+    ...(options.noSendDecisions
+      ? noSendDecisionGate(options.offeredNoSendDecisions)
+      : []),
     ...(options.divergencePlan ? DIVERGENCE_PLAN_STEP : []),
     sendOnly(
       "2. `analysis.recommendation` once, thin: only `selectedStyle`, `reason`, and `expectedReaction` (one short line on how she will likely react). `analysis.recommendation` is REQUIRED even though it repeats the decision's selectedStyle; the recommendation card cannot render without it. Do not repeat the reply text here; the selected style's `analysis.reply_option` is the single source of the reply wording.",

@@ -855,7 +855,13 @@ Deno.test("stream_knowledge_selected is logged only for v2 and carries ids/signa
   const metadata = selected[1] as Record<string, unknown>;
   assertEquals(
     Object.keys(metadata).sort(),
-    ["analysisRunId", "knowledgeAtomIds", "knowledgeSignals", "user"],
+    [
+      "analysisRunId",
+      "knowledgeAtomIds",
+      "knowledgeSignals",
+      "offeredNoSendDecisions",
+      "user",
+    ],
   );
   assert((metadata.knowledgeAtomIds as string[]).length > 0);
   assert((metadata.knowledgeSignals as string[]).includes("rejection"));

@@ -27,6 +27,8 @@ import {
 import {
   isNoSendDecisionKind,
   noSendChargePayloadFromStored,
+  type NoSendDecisionKind,
+  offeredNoSendDecisions,
 } from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import {
@@ -475,7 +477,7 @@ export async function handleAnalyzeStream(
   // Phase 2 (§11)：v2 才挑情境 atoms；v1 prompt 一字不動。deterministic，
   // callClaude 重試時重算結果相同，所以只算一次。
   let situationKnowledge: readonly string[] = [];
-  let doNotSendAvailable = true;
+  let noSendMenu: readonly NoSendDecisionKind[] | undefined;
   if (deps.noSendDecisions === true) {
     const knowledgeInput = {
       messages: deps.messages,
@@ -489,13 +491,16 @@ export async function handleAnalyzeStream(
     const knowledgeSignals = detectAnalyzeSocialKnowledgeSignals(
       knowledgeInput,
     );
-    // 先別回只在伺服器量到她低投入時才是選項；「嗨」→「哈囉」這種不算。
-    doNotSendAvailable = knowledgeSignals.includes("low_investment");
+    noSendMenu = offeredNoSendDecisions(
+      deps.messages,
+      knowledgeSignals.includes("low_investment"),
+    );
     logInfo("stream_knowledge_selected", {
       user: summarizeUser(deps.userId),
       analysisRunId: streamRun.id,
       knowledgeAtomIds: atoms.map((atom) => atom.id),
       knowledgeSignals,
+      offeredNoSendDecisions: noSendMenu,
     });
   }
 
@@ -527,7 +532,7 @@ export async function handleAnalyzeStream(
             noSendDecisions: deps.noSendDecisions === true,
             situationKnowledge,
             divergencePlan: deps.noSendDecisions === true,
-            doNotSendAvailable,
+            offeredNoSendDecisions: noSendMenu,
           }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,
@@ -571,7 +576,7 @@ export async function handleAnalyzeStream(
     prechargedRecommendation,
     requiredReplyStyles: streamReplyStyles,
     noSendDecisions: deps.noSendDecisions === true,
-    doNotSendAvailable,
+    offeredNoSendDecisions: noSendMenu,
     markDone: async (finalResult) => {
       const guarded = checkAiOutput(
         finalResult as GuardrailAnalysisResult,

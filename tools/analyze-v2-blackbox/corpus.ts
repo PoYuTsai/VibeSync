@@ -27,6 +27,15 @@ export const CORPUS: readonly CorpusCase[] = [
     expect: { messageDecision: ["send"] },
   },
   {
+    id: "opening_boundary",
+    family: "opening",
+    messages: [
+      { isFromMe: true, content: "嗨 很高興認識妳" },
+      { isFromMe: false, content: "不好意思 我有男友了" },
+    ],
+    expect: { messageDecision: ["acknowledge_and_stop"] },
+  },
+  {
     id: "first_message_after_match",
     family: "opening",
     messages: [

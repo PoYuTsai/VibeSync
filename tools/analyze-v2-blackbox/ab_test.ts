@@ -24,16 +24,19 @@ import { CORPUS, REFUSAL_PROBE_IDS } from "./corpus.ts";
 
 const IDS = CORPUS.map((c) => c.id);
 
-Deno.test("plan: A,B×2 is 84 calls, C×1 is 21, arms interleave inside each case", () => {
+Deno.test("plan: A,B×2 is 4 calls per case, C×1 is one, arms interleave inside each case", () => {
   const ab = planCalls(IDS, ["A", "B"], parseRepeat("2", ["A", "B"]));
-  assertEquals(ab.length, 84);
-  assertEquals(planCalls(IDS, ["C"], parseRepeat("1", ["C"])).length, 21);
+  assertEquals(ab.length, IDS.length * 4);
+  assertEquals(
+    planCalls(IDS, ["C"], parseRepeat("1", ["C"])).length,
+    IDS.length,
+  );
   const abc = planCalls(
     IDS,
     ["A", "B", "C"],
     parseRepeat("A:2,B:2,C:1", ["A", "B", "C"]),
   );
-  assertEquals(abc.length, 105);
+  assertEquals(abc.length, IDS.length * 5);
   for (const id of IDS) {
     const order = ab.filter((c) => c.caseId === id).map((c) => c.arm);
     assertEquals([...order].sort(), ["A", "A", "B", "B"]);
@@ -64,7 +67,7 @@ Deno.test("estimate: repeats of the same case and arm are priced as cache reads;
     6500,
   );
   // 一次：40k×$2.50＋300×$2＋6500×$10 ＝ $0.1656。
-  assertEquals(Number((once.mainUsd / 21).toFixed(4)), 0.1656);
+  assertEquals(Number((once.mainUsd / IDS.length).toFixed(4)), 0.1656);
   assert(twice.mainUsd < 2 * once.mainUsd);
   assertAlmostEquals(twice.mainNoCacheUsd, 2 * once.mainNoCacheUsd, 1e-9);
   const sendable =
@@ -78,7 +81,7 @@ Deno.test("estimate: repeats of the same case and arm are priced as cache reads;
   );
   // C 臂輸出上界多 4000 token。
   assertEquals(
-    Number(((c.mainUsd - once.mainUsd) / 21).toFixed(4)),
+    Number(((c.mainUsd - once.mainUsd) / IDS.length).toFixed(4)),
     0.04,
   );
 });
