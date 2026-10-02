@@ -342,11 +342,11 @@ Deno.test(
 );
 
 Deno.test(
-  "callClaudeStreaming sends Sonnet 5.5 between_tools＋effort and falls back to 4.6 natively",
+  "callClaudeStreaming sends Sonnet 5.5 configuration C, then Sonnet 5 with its own params and base max_tokens",
   async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const result = await callClaudeStreaming(
-      // 呼叫端的 disabled 對 5.5 會 400，helper 必須改送 between_tools。
+      // 呼叫端的 disabled 對 5.5 會 400，helper 必須改送 adaptive。
       {
         ...streamingRequest("claude-sonnet-5-5"),
         thinking: { type: "disabled" },
@@ -357,7 +357,7 @@ Deno.test(
         fetchImpl: (_input, init) => {
           bodies.push(JSON.parse(String(init?.body)));
           return Promise.resolve(
-            bodies.length === 1
+            bodies.length < 4
               ? new Response("overloaded", { status: 529 })
               : successfulStream("fallback"),
           );
@@ -365,15 +365,71 @@ Deno.test(
       },
     );
 
-    assertEquals(bodies.map((b) => b.model), [
-      "claude-sonnet-5-5",
-      "claude-sonnet-4-6",
+    const contract = (b: Record<string, unknown>) => ({
+      model: b.model,
+      max_tokens: b.max_tokens,
+      thinking: b.thinking,
+      output_config: b.output_config,
+      temperature: b.temperature,
+    });
+    assertEquals(bodies.map(contract), [
+      {
+        model: "claude-sonnet-5-5",
+        max_tokens: 5536,
+        thinking: { type: "adaptive", display: "omitted" },
+        output_config: { effort: "low" },
+        temperature: undefined,
+      },
+      {
+        model: "claude-sonnet-5",
+        max_tokens: 1536,
+        thinking: { type: "disabled" },
+        output_config: undefined,
+        temperature: undefined,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 1536,
+        thinking: undefined,
+        output_config: undefined,
+        temperature: undefined,
+      },
+      {
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1536,
+        thinking: undefined,
+        output_config: undefined,
+        temperature: undefined,
+      },
     ]);
-    assertEquals(bodies[0].thinking, { type: "between_tools" });
-    assertEquals(bodies[0].output_config, { effort: "medium" });
-    assertEquals(bodies[1].thinking, undefined);
-    assertEquals(bodies[1].output_config, undefined);
-    assertEquals(result.model, "claude-sonnet-4-6");
+    assertEquals(result.model, "claude-haiku-4-5-20251001");
+  },
+);
+
+Deno.test(
+  "callClaudeStreaming: a Sonnet 5.5 refusal fails closed without falling back (ADR #28)",
+  async () => {
+    const models: unknown[] = [];
+    const error = await assertRejects(
+      () =>
+        callClaudeStreaming(streamingRequest("claude-sonnet-5-5"), "k", {
+          timeout: 5000,
+          fetchImpl: (_input, init) => {
+            models.push(JSON.parse(String(init?.body)).model);
+            return Promise.resolve(
+              new Response(
+                streamFromChunks([
+                  'data: {"type":"message_delta","delta":{"stop_reason":"refusal"},"usage":{"output_tokens":3}}\n\n',
+                ]),
+                { status: 200 },
+              ),
+            );
+          },
+        }),
+      AiStreamingServiceError,
+    );
+    assertEquals(error.code, "STREAM_MODEL_REFUSAL");
+    assertEquals(models, ["claude-sonnet-5-5"]);
   },
 );
 
