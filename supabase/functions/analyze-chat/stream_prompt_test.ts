@@ -626,7 +626,7 @@ Deno.test("Phase 2b branch attribution rule is emitted only with the divergence 
 Deno.test("do_not_send closing line: offered with do_not_send, removed with it", () => {
   const base = "Base full reasoning prompt.";
   const sentence =
-    "For `do_not_send` you may also include an optional `closingMessage`: the single lowest-pressure line he could send if he insists on replying anyway (no question, no chasing, no guilt, short, Traditional Chinese).";
+    "For `do_not_send` also include `closingMessage`: the single lowest-pressure line he could send if he insists on replying anyway (no question, no chasing, no guilt, short, Traditional Chinese).";
   const fieldsTail =
     "also include `closingMessage` (one short neutral line, Traditional Chinese).";
 

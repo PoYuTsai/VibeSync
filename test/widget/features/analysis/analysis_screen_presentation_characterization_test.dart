@@ -509,6 +509,23 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
+    testWidgets('do_not_send 沒備用句：仍有「我還是想回」，展開是通用提醒、沒有複製', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(noSendJson('do_not_send'))),
+      );
+      await dismissEditCoachMark(tester);
+      await tester.ensureVisible(find.text('我還是想回'));
+      await tester.tap(find.text('我還是想回'));
+      await tester.pump();
+      expect(
+        find.text('教練不建議現在回。真的要回，只傳一句不帶問號、不追問的短句，傳完就停。'),
+        findsOneWidget,
+      );
+      expect(find.text('複製這句'), findsNothing);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+    });
+
     testWidgets('v1 結果（無決策）：cold＋警語仍走本地放棄橫幅', (tester) async {
       final json = noSendJson('do_not_send')..remove('analysisDecisionV2');
       await _pumpScreen(tester, seed: _doneSeed(AnalysisResult.fromJson(json)));

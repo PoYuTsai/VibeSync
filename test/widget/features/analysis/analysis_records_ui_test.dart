@@ -757,6 +757,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('先不要回的紀錄沒備用句：展開「我還是想回」是通用提醒、沒有複製', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final record = _record(
+      id: 'no-send-no-line',
+      createdAt: DateTime(2026, 9, 2, 22),
+      preview: '哈哈',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 18, 'level': 'cold'},
+        'strategy': '先停一下。',
+        'analysisDecisionV2': {
+          'schemaVersion': 2,
+          'messageDecision': 'do_not_send',
+          'replyMode': 'none',
+          'action': 'pause',
+          'reason': '她只回哈哈，沒有新內容',
+          'stopCondition': '等她主動給新話題',
+        },
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('我還是想回'));
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(
+      find.text('教練不建議現在回。真的要回，只傳一句不帶問號、不追問的短句，傳完就停。'),
+      findsOneWidget,
+    );
+    expect(find.text('複製這句', skipOffstage: false), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('舊版缺欄位快照仍能唯讀顯示已有分析', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));

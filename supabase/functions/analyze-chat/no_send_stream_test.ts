@@ -671,7 +671,9 @@ Deno.test("handler: do_not_send with its against-advice line is charged once and
     ],
   }));
 
-  assert(systems[0].includes("For `do_not_send` you may also include"));
+  assert(
+    systems[0].includes("For `do_not_send` also include `closingMessage`"),
+  );
   assertEquals(calls.filter((call) => call === "chargeRun").length, 1);
   assert(isNoSendChargePayload(chargeInputs[0]));
   assertEquals(chargeInputs[0].closingMessage, "好，那妳先忙。");

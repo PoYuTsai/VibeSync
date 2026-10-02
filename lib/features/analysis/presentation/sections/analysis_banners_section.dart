@@ -111,7 +111,7 @@ class ReminderBanner extends StatelessWidget {
 /// Analyze V2 決策卡（Phase 1c）：replyMode none／single 時取代放棄橫幅與
 /// 回覆輪播——「先不要回」「資料不夠」「先收尾」三種，和回覆區結構上互斥。
 /// 「先不要回」另有「下一步」區塊：等待條件、新話題重開入口，以及收合在
-/// 「我還是想回」後面的備用句。
+/// 「我還是想回」後面的備用句（沒有備用句就展開成通用提醒）。
 class AnalysisDecisionCard extends StatefulWidget {
   final AnalysisDecisionV2 decision;
   final VoidCallback? onCopyClosingMessage;
@@ -216,38 +216,39 @@ class _AnalysisDecisionCardState extends State<AnalysisDecisionCard> {
                 ),
               ),
             ],
-            if (againstAdviceLine != null) ...[
+            const SizedBox(height: 8),
+            if (!_showAgainstAdviceLine)
+              TextButton(
+                onPressed: () => setState(() => _showAgainstAdviceLine = true),
+                child: const Text('我還是想回'),
+              )
+            else if (againstAdviceLine == null)
+              Text(
+                '教練不建議現在回。真的要回，只傳一句不帶問號、不追問的短句，傳完就停。',
+                style: secondaryStyle,
+              )
+            else ...[
+              Text('教練不建議現在回。真的要回，這句壓力最低：', style: secondaryStyle),
               const SizedBox(height: 8),
-              if (!_showAgainstAdviceLine)
-                TextButton(
-                  onPressed: () =>
-                      setState(() => _showAgainstAdviceLine = true),
-                  child: const Text('我還是想回'),
-                )
-              else ...[
-                Text('教練不建議現在回。真的要回，這句壓力最低：', style: secondaryStyle),
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child:
-                      Text(againstAdviceLine, style: AppTypography.bodyMedium),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                if (widget.onCopyAgainstAdviceLine != null) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: widget.onCopyAgainstAdviceLine,
-                      icon: const Icon(TablerIcons.copy, size: 16),
-                      label: const Text('複製這句'),
-                    ),
+                child: Text(againstAdviceLine, style: AppTypography.bodyMedium),
+              ),
+              if (widget.onCopyAgainstAdviceLine != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: widget.onCopyAgainstAdviceLine,
+                    icon: const Icon(TablerIcons.copy, size: 16),
+                    label: const Text('複製這句'),
                   ),
-                ],
+                ),
               ],
             ],
           ] else if (decision.stopCondition.isNotEmpty) ...[

@@ -10,12 +10,15 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
   );
 }
 
+const _genericAgainstAdvice = '教練不建議現在回。真的要回，只傳一句不帶問號、不追問的短句，傳完就停。';
+
 /// need_context／acknowledge_and_stop 卡維持原樣：沒有「先不要回」的下一步區塊。
 void _expectNoDoNotSendExtras() {
   expect(find.text('下一步'), findsNothing);
   expect(find.text('她一直沒動靜就別追這條，過幾天用新話題重開。'), findsNothing);
   expect(find.text('用新話題重新開'), findsNothing);
   expect(find.text('我還是想回'), findsNothing);
+  expect(find.text(_genericAgainstAdvice), findsNothing);
   expect(find.text('不該出現的句子'), findsNothing);
 }
 
@@ -36,7 +39,7 @@ void main() {
     closingMessage: '好，那妳先忙。',
   );
 
-  testWidgets('do_not_send：下一步區塊（等待條件＋固定提醒）；沒備用句就沒「我還是想回」', (tester) async {
+  testWidgets('do_not_send：下一步區塊（等待條件＋固定提醒）；沒備用句也收合著「我還是想回」', (tester) async {
     await _pump(tester, const AnalysisDecisionCard(decision: doNotSend));
     expect(
         find.byKey(const ValueKey('analysis-decision-card')), findsOneWidget);
@@ -45,10 +48,30 @@ void main() {
     expect(find.text('下一步'), findsOneWidget);
     expect(find.text('等到這時候再回：等她主動給新話題'), findsOneWidget);
     expect(find.text('她一直沒動靜就別追這條，過幾天用新話題重開。'), findsOneWidget);
-    expect(find.text('我還是想回'), findsNothing);
+    expect(find.text('我還是想回'), findsOneWidget);
+    expect(find.text(_genericAgainstAdvice), findsNothing);
     expect(find.text('複製收尾句'), findsNothing);
     // 沒傳回呼（例如歷史紀錄）就不出新話題按鈕。
     expect(find.text('用新話題重新開'), findsNothing);
+  });
+
+  testWidgets('do_not_send 沒備用句：展開「我還是想回」是通用提醒，沒有複製', (tester) async {
+    var copied = 0;
+    await _pump(
+      tester,
+      AnalysisDecisionCard(
+        decision: doNotSend,
+        onCopyAgainstAdviceLine: () => copied++,
+      ),
+    );
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(find.text('我還是想回'), findsNothing);
+    expect(find.text(_genericAgainstAdvice), findsOneWidget);
+    expect(find.text('教練不建議現在回。真的要回，這句壓力最低：'), findsNothing);
+    expect(find.text('複製這句'), findsNothing);
+    expect(find.text('複製收尾句'), findsNothing);
+    expect(copied, 0);
   });
 
   testWidgets('do_not_send 沒有等待條件：不出空的「等到這時候再回」', (tester) async {

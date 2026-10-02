@@ -112,9 +112,10 @@ export function buildSituationKnowledgeSection(
 }
 
 // 「先別回」的備用句：他堅持要回時壓力最低的一句，App 收合在「我還是想回」後面。
-// 跟 do_not_send 綁在一起：伺服器沒開 do_not_send 時整句一起拿掉。
+// 跟 do_not_send 綁在一起：伺服器沒開 do_not_send 時整句一起拿掉。prompt 要求必帶，
+// 但伺服器驗證照舊容許缺（validateNoSendDecisionEvent），缺了 App 改顯示通用提醒。
 const DO_NOT_SEND_CLOSING_SENTENCE =
-  " For `do_not_send` you may also include an optional `closingMessage`: the single lowest-pressure line he could send if he insists on replying anyway (no question, no chasing, no guilt, short, Traditional Chinese).";
+  " For `do_not_send` also include `closingMessage`: the single lowest-pressure line he could send if he insists on replying anyway (no question, no chasing, no guilt, short, Traditional Chinese).";
 
 // Phase 1b message decision gate. Appended right after step 1 so the model
 // decides before it writes a single reply; v1 wording above and below is
