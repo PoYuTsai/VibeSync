@@ -32,15 +32,19 @@ abstract class PracticeDrawSfx {
   /// 揭曉成功：卡片翻正的 chime/sparkle（約 0.6–1 秒，與 medium haptic 同步）。
   void playRevealChime();
 
-  /// 揭曉前預載：進入抽牌等待時與 [playWhoosh] 一起呼叫，先把揭曉配樂 bed 載入 player，
-  /// server 回來時 [playRevealBed] 只需從頭 resume。v4 的三個重音都在 bed 裡，bed 晚播
-  /// 重音就一起晚。可重複呼叫：預載中或已載好時 no-op。
+  /// 揭曉前預載：進入抽牌等待時與 [playWhoosh] 一起呼叫，先把揭曉配樂 bed 與翻牌紙聲
+  /// 載入 player，server 回來時 [playRevealBed]／[playFlipSnap] 只需從頭 resume。v4 的
+  /// 三個重音都在 bed 裡，bed 晚播重音就一起晚。可重複呼叫：預載中或已載好時 no-op。
   void preloadReveal();
 
   /// 揭曉配樂 bed：一條與 `_reveal`（10 s）同長同步的連續配樂。v4 以 F2 為底：整首提前
   /// 0.37 s 對齊畫面，翻牌前與屏息補 C–G 長音，翻牌後回到 F2 原曲。在揭曉時間軸起始
   /// （`_reveal.forward(from:0)`）播一次。可重複呼叫＝從頭重起（同時只一條、不重疊）。
   void playRevealBed();
+
+  /// 第一次翻牌（揭曉 3.3 s）的紙聲：比 F2 自己的翻牌重音小 11 dB，只補紙的「啪」。
+  /// 三個變體輪流，連續兩次不重複；只有 0.58 s，不另設停止方法。
+  void playFlipSnap();
 
   /// 停止揭曉配樂 bed。reveal 完成／hidden／失敗兜底／dispose 一律呼叫；idempotent
   /// （未播放／重複呼叫皆 no-op）。與 [stopWaitingLoop] 的離開出口一一對應。
@@ -69,6 +73,9 @@ class NoopPracticeDrawSfx implements PracticeDrawSfx {
 
   @override
   void playRevealBed() {}
+
+  @override
+  void playFlipSnap() {}
 
   @override
   void stopRevealBed() {}

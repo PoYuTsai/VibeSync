@@ -48,6 +48,25 @@ const double kPracticeRevealGrandFlipEnd = 0.725; // 7.25s：高潮翻面→金�
 @visibleForTesting
 const double kPracticeRevealHoldEnd = 0.82; // 8.2s：典藏卡停留結束→settle（8.5 落定）
 
+/// 聲音與觸覺的對拍點（`_reveal` 的進度，0–1）。由上面的視覺常數換算，視覺不動。
+enum _RevealBeat {
+  /// 3.3 s：第一次翻面中點閃光。翻牌紙聲＋tap。
+  flip((kPracticeRevealFlip1Start + kPracticeRevealFlip1End) / 2),
+
+  /// 6.3 s：只有 SR 呼叫 celebrate()（三下共 200 ms），第三下重擊落在 6.5 s。
+  srBuild(kPracticeRevealHaloClimax - 0.02),
+
+  /// 6.5 s：爆裂。非 SR 的 medium()。
+  burst(kPracticeRevealHaloClimax),
+
+  /// 8.5 s：落定脈衝（[kPracticeRevealHoldEnd] 之後 0.3 s）。tap。
+  settle(kPracticeRevealHoldEnd + 0.03);
+
+  const _RevealBeat(this.at);
+
+  final double at;
+}
+
 /// 揭曉舞台暗化程度（0＝亮 UI 全透出，1＝全暗聚焦）。隨 reveal 進度起落以復刻參考片
 /// 「亮 UI→暗星空→亮 UI」的開收對稱：beat0（0–0.5s）亮 UI＋卡背 → beat1 轉暗 →
 /// 中段全暗儀式 → beat9–10（8.2–10s）暗化退回、亮 UI 重現。drawing 等待期＝柔和聚焦。
@@ -254,7 +273,8 @@ Size practiceCeremonyCardSize(Size screen) {
 ///   widget test 不 hang；三條 controller 都在 dispose 先收。
 /// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
 ///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性咻聲仍照觸發。
-/// - haptic 走 [AppHaptics]（抽牌 light、翻開成功 medium）；音效走
+/// - haptic 走 [AppHaptics]：抽牌 light；揭曉時跟著畫面對拍（3.3 s tap、6.5 s 爆裂 medium，
+///   SR 改在 6.3 s 起 celebrate、8.5 s tap），reduce-motion 沒有儀式則留在抽中當下。音效走
 ///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入真實音效）。F3 起 server 等待期不跑
 ///   循環音效；v4 的咻聲檔自帶一段一次性的暖尾巴接住等待，成功 reveal 由預載好的 bed 接手。
 ///
@@ -303,10 +323,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
-  // 揭曉叮聲 edge-detect：跨白卡預覽翻面門檻觸發一次的 idempotent 旗標。
-  // `_reveal` 是有限 forward-only controller，每幀 tick 比對門檻；旗標確保整條時間軸
-  // E2/Eric reset：整條配樂 bed（`playRevealBed`）在揭曉起始就起播；舊 chime
-  // 不再疊在 master audio 上，避免真機聽感回到上一版。
+  // 已觸發的對拍點：`_reveal` 是有限 forward-only controller，每幀 tick 比對門檻，
+  // 這個集合確保每一拍在一次揭曉裡只觸發一次。揭曉起播前與收掉 overlay 時清空。
+  final Set<_RevealBeat> _firedBeats = {};
 
   @override
   void initState() {
@@ -333,12 +352,31 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   late final Listenable _ceremonyMotion =
       Listenable.merge([_intro, _reveal, _waiting]);
 
-  /// 揭曉時間軸跨白卡預覽翻面門檻觸發一次叮聲。只比對門檻、設旗標、播一聲——不
-  /// setState（重繪由 [_ceremonyMotion] 的 AnimatedBuilder 負責）。跨幅再大
-  /// （測試一次 pump 跳過門檻）也用 `>=`
-  /// Kept as a timeline edge hook, but intentionally does not play the old
-  /// reveal chime. The reference master audio owns all reveal accents.
-  void _onRevealEdge() {}
+  /// 揭曉時間軸的對拍：跨過門檻就觸發一次（測試一次 pump 跳過門檻也用 `>=`）。只播
+  /// 音效、給觸覺——不 setState（重繪由 [_ceremonyMotion] 的 AnimatedBuilder 負責）。
+  /// 配樂 bed 在揭曉起始就起播，重音都在 bed 裡；這裡只補翻牌紙聲與觸覺，舊 reveal
+  /// chime 不再播。
+  void _onRevealEdge() {
+    if (_phase != _CeremonyPhase.revealing) return;
+    for (final beat in _RevealBeat.values) {
+      if (_reveal.value >= beat.at && _firedBeats.add(beat)) _fireBeat(beat);
+    }
+  }
+
+  void _fireBeat(_RevealBeat beat) {
+    final isSr = _revealGirl?.rarity == PracticeGirlRarity.sr;
+    switch (beat) {
+      case _RevealBeat.flip:
+        _sfx.playFlipSnap();
+        AppHaptics.tap();
+      case _RevealBeat.srBuild:
+        if (isSr) AppHaptics.celebrate();
+      case _RevealBeat.burst:
+        if (!isSr) AppHaptics.medium();
+      case _RevealBeat.settle:
+        AppHaptics.tap();
+    }
+  }
 
   void _toHidden() {
     if (!mounted) return;
@@ -349,6 +387,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _waiting.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
     _sfx.stopRevealBed(); // E2：揭曉結束／收掉 overlay → 配樂 bed 不殘留。
+    _firedBeats.clear();
     _reveal.value = 0;
   }
 
@@ -392,16 +431,17 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
-      // 揭曉觸覺＋即時停等待 loop（兩條路徑都不等翻面跑完，shimmer loop 在揭曉當下就收）。
-      // 稀有（SR）給漸強慶祝，一般給單發重震——稀有的手感必須不一樣（文件觸感 7）。
-      if (next.girl!.rarity == PracticeGirlRarity.sr) {
-        AppHaptics.celebrate();
-      } else {
-        AppHaptics.medium();
-      }
+      // 即時停等待 loop（兩條路徑都不等翻面跑完）。
       _sfx.stopWaitingLoop();
       if (_reduceMotion) {
-        // reduce-motion：跳過 3D 翻面；不疊舊 chime，避免與 master audio 語意分裂。
+        // reduce-motion：跳過 3D 翻面，也就沒有對拍點，觸覺留在抽中當下。稀有（SR）給
+        // 漸強慶祝，一般給單發重震——稀有的手感必須不一樣（文件觸感 7）。
+        // 不疊舊 chime，避免與 master audio 語意分裂。
+        if (next.girl!.rarity == PracticeGirlRarity.sr) {
+          AppHaptics.celebrate();
+        } else {
+          AppHaptics.medium();
+        }
         _toHidden();
         return;
       }
@@ -412,6 +452,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
       _intro.value = 1;
       _sfx.playRevealBed(); // 揭曉起始播一條與 `_reveal`（10 s）同長同步的配樂 bed（已預載）。
+      // 翻牌紙聲與觸覺跟著畫面對拍（_onRevealEdge）：揭曉時的觸覺從抽中當下移到撞擊格，
+      // SR 的手感仍不一樣（6.3 s 起 celebrate）。
+      _firedBeats.clear();
       _reveal.forward(from: 0);
       return;
     }

@@ -29,3 +29,20 @@ export function hasAnalyzeChatPromptLeak(
 ): boolean {
   return containsPromptLeak(text, ANALYZE_CHAT_PROMPT_SENTINELS);
 }
+
+/**
+ * 新話題進階路徑的 sentinel 只在進階路徑檢查：沒帶 topicContext 的請求與
+ * 其他模式的守門維持原樣（legacy 不變）。
+ */
+export const NEW_TOPIC_TWO_STAGE_PROMPT_SENTINELS: readonly string[] = [
+  "照類型決定主詞，不改主詞",
+];
+
+export function hasNewTopicTwoStagePromptLeak(
+  text: string | null | undefined,
+): boolean {
+  return containsPromptLeak(text, [
+    ...ANALYZE_CHAT_PROMPT_SENTINELS,
+    ...NEW_TOPIC_TWO_STAGE_PROMPT_SENTINELS,
+  ]);
+}

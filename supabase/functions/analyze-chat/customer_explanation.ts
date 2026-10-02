@@ -87,15 +87,25 @@ function compactForLeakCheck(value: string): string {
     .replace(/[\s\p{P}\p{S}\p{C}\p{M}]/gu, "");
 }
 
-export function hasCustomerExplanationLeak(value: string): boolean {
+/**
+ * allowedText：用戶自己寫的字（例：新話題素材原文）。命中的詞若在它裡面也有，
+ * 就是用戶的內容而不是內部術語外洩，不算。沒給時行為不變。
+ */
+export function hasCustomerExplanationLeak(
+  value: string,
+  allowedText: string | null = null,
+): boolean {
   const compact = compactForLeakCheck(value);
-  if (
-    INTERNAL_EXPLANATION_LABELS.some((label) => compact.includes(label))
-  ) {
+  const allowed = allowedText === null
+    ? ""
+    : compactForLeakCheck(toTraditionalChinese(allowedText));
+  const leaks = (term: string) =>
+    compact.includes(term) && !allowed.includes(term);
+  if (INTERNAL_EXPLANATION_LABELS.some(leaks)) {
     return true;
   }
   return INTERNAL_EXPLANATION_PHRASES.some((phrase) =>
-    compact.includes(compactForLeakCheck(phrase))
+    leaks(compactForLeakCheck(phrase))
   );
 }
 
@@ -106,6 +116,7 @@ export function hasCustomerExplanationLeak(value: string): boolean {
 export function sanitizeCustomerExplanationText(
   value: unknown,
   maxLen: number,
+  allowedText: string | null = null,
 ): string | null {
   if (typeof value !== "string") return null;
   const normalized = toTraditionalChinese(value)
@@ -119,6 +130,6 @@ export function sanitizeCustomerExplanationText(
   if (normalized.length === 0 || normalized.length > maxLen) return null;
   if (normalized.includes("```")) return null;
   if (/^[{[]/u.test(normalized)) return null;
-  if (hasCustomerExplanationLeak(normalized)) return null;
+  if (hasCustomerExplanationLeak(normalized, allowedText)) return null;
   return normalized;
 }

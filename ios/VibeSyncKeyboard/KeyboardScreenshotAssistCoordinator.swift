@@ -2241,7 +2241,7 @@ final class KeyboardScreenshotAssistCoordinator {
         _ ready: KeyboardAssistReadyResponse
     ) -> String {
         // 「只根據這張截圖判讀，不會假裝知道其他對話」這句每次都會出現，且下方
-        // analysisCueLabel 已經用 💡 卡片重複顯示同一份 cue，純屬版面雜訊
+        // analysisCueLabel 的分析卡已經重複顯示同一份 cue，純屬版面雜訊
         // （2026-08-06 dogfood 回饋）；砍掉開頭這句樣板，只留 cue／limitation。
         let uncertainty = ready.uncertainty.map {
             "；限制：\($0)"

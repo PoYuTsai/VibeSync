@@ -61,6 +61,7 @@
 		E20000000000000000000001 /* KeyboardScreenshotAssistCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000011 /* KeyboardScreenshotAssistCoordinator.swift */; };
 		E20000000000000000000002 /* KeyboardScreenshotAssistCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000011 /* KeyboardScreenshotAssistCoordinator.swift */; };
 		E20000000000000000000003 /* KeyboardScreenshotAssistCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000012 /* KeyboardScreenshotAssistCoordinatorTests.swift */; };
+		F20000000000000000000001 /* KeyboardIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000011 /* KeyboardIcon.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -154,6 +155,7 @@
 		D20000000000000000000012 /* KeyboardAssistPendingReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAssistPendingReplayTests.swift; sourceTree = "<group>"; };
 		E20000000000000000000011 /* KeyboardScreenshotAssistCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardScreenshotAssistCoordinator.swift; sourceTree = "<group>"; };
 		E20000000000000000000012 /* KeyboardScreenshotAssistCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardScreenshotAssistCoordinatorTests.swift; sourceTree = "<group>"; };
+		F20000000000000000000011 /* KeyboardIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIcon.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -257,6 +259,7 @@
 				A2000000000000000000001A /* KeyboardAssistAPI.swift */,
 				D20000000000000000000011 /* KeyboardAssistPendingReplay.swift */,
 				E20000000000000000000011 /* KeyboardScreenshotAssistCoordinator.swift */,
+				F20000000000000000000011 /* KeyboardIcon.swift */,
 				A10000000000000000000014 /* Info.plist */,
 				A10000000000000000000015 /* VibeSyncKeyboard.entitlements */,
 			);
@@ -528,6 +531,7 @@
 				A2000000000000000000000A /* KeyboardAssistAPI.swift in Sources */,
 				D20000000000000000000001 /* KeyboardAssistPendingReplay.swift in Sources */,
 				E20000000000000000000001 /* KeyboardScreenshotAssistCoordinator.swift in Sources */,
+				F20000000000000000000001 /* KeyboardIcon.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

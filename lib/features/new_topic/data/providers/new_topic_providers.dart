@@ -87,17 +87,19 @@ final newTopicReadinessProvider =
 
 /// Generation readiness 總判（計畫 §9.5）：
 /// partner 存在 AND 未 flagged AND（作戰板有訊號 OR style context 非空 OR
-/// situation 已選）。
+/// situation 已選 OR 有送素材原文；同 server hasNewTopicMaterial）。
 bool canGenerateNewTopic({
   required NewTopicReadiness readiness,
   required String? styleContext,
   required String? situation,
+  bool hasMaterialText = false,
 }) {
   if (readiness == NewTopicReadiness.missingPartner ||
       readiness == NewTopicReadiness.dataQualityBlocked) {
     return false;
   }
   if (readiness == NewTopicReadiness.readyWithPartnerSignals) return true;
-  return (styleContext?.trim().isNotEmpty ?? false) ||
+  return hasMaterialText ||
+      (styleContext?.trim().isNotEmpty ?? false) ||
       (situation?.trim().isNotEmpty ?? false);
 }

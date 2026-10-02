@@ -14,6 +14,8 @@ import 'practice_draw_sfx.dart';
 const double _kWhooshVolume = 0.22;
 const double _kRevealChimeVolume = 0.8; // 揭曉叮聲：建議 0.7–0.9。
 const double _kRevealBedVolume = 0.74;
+// - 翻牌紙聲：比 F2 自己的翻牌重音小 11 dB，只補紙的「啪」，不搶重音。
+const double _kFlipSnapVolume = 0.25;
 
 // ── 音檔路徑（相對 AudioCache 預設 prefix `assets/`）────────────────────────
 // 咻聲 v2：實心起手，加一段一次性的暖尾巴（C–G 長音，最長 5.5 s）接住等待 server 的空檔。
@@ -23,6 +25,12 @@ const String _kRevealChimeAsset =
 // bed v4：F2 整首提前 0.37 s 對齊畫面＋低頻整理；翻牌前與屏息補 C–G 長音，翻牌後回到原曲。
 const String _kRevealBedAsset =
     'audio/practice_draw/practice_draw_reveal_bed.mp3';
+// 翻牌紙聲：三個變體輪流（沒有音高，離線做變體取代即時變速）。
+const List<String> _kFlipSnapAssets = [
+  'audio/practice_draw/practice_draw_flip_snap_1.wav',
+  'audio/practice_draw/practice_draw_flip_snap_2.wav',
+  'audio/practice_draw/practice_draw_flip_snap_3.wav',
+];
 
 /// 翻牌音效的全域 AudioContext：尊重靜音鍵、不打斷使用者的背景音樂。
 ///
@@ -53,8 +61,8 @@ AudioContext buildPracticeDrawAudioContext() {
 ///   ／widget-test 環境（無 audio platform channel）一律靜默、絕不丟例外、絕不留未監聽的
 ///   create 失敗。真機才會真的發聲。
 /// - **獨立 player**：whoosh／reveal chime／揭曉配樂 bed 各自一個 player，避免互相截斷。
-///   whoosh／chime 是一次性（`ReleaseMode.release`）；bed 由 [preloadReveal] 先載好
-///   （`ReleaseMode.stop`，停止後保留音源），揭曉時從頭 resume，降低起播延遲。
+///   whoosh／chime 是一次性（`ReleaseMode.release`）；bed 與三個翻牌紙聲由 [preloadReveal]
+///   先載好（`ReleaseMode.stop`，停止後保留音源），播放時從頭 resume，降低起播延遲。
 /// - **waiting loop 已退役**：build 326 證實等待期 shimmer 是殘留「西西簌簌」來源；
 ///   [playWaitingLoop]／[stopWaitingLoop] 暫留介面相容，但 production 實作固定 no-op。
 /// - **AudioContext**：見 [buildPracticeDrawAudioContext]。iOS 用 `ambient`：尊重靜音鍵、
@@ -69,6 +77,10 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   Future<bool>? _bedReady;
   // 每次 playRevealBed 遞增；預載期間被停掉或重起時，只讓最後一次起播。
   int _bedGeneration = 0;
+  // 翻牌紙聲：每個變體一個預載好的 player，輪流播。
+  final List<AudioPlayer> _snapPlayers = [];
+  Future<bool>? _snapReady;
+  int _nextSnap = 0;
 
   bool _bedActive = false;
   bool _contextConfigured = false;
@@ -142,8 +154,9 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   void preloadReveal() {
     try {
       _ensureBedPrepared();
+      _ensureSnapsPrepared();
     } catch (_) {
-      // 預載失敗不丟；playRevealBed 會再試。
+      // 預載失敗不丟；播放時會再試。
     }
   }
 
@@ -165,13 +178,55 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   Future<bool> _prepareBed() async {
     try {
       final player = _bedPlayer ??= AudioPlayer();
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setVolume(_kRevealBedVolume);
-      await player.setSource(AssetSource(_kRevealBedAsset));
+      await _loadForReplay(player, _kRevealBedAsset, _kRevealBedVolume);
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  /// 同 [_ensureBedPrepared]，給三個翻牌紙聲。
+  Future<bool> _ensureSnapsPrepared() {
+    final current = _snapReady;
+    if (current != null) return current;
+    final next = _prepareSnaps();
+    _snapReady = next;
+    unawaited(
+      next.then((ok) {
+        if (!ok && identical(_snapReady, next)) _snapReady = null;
+      }),
+    );
+    return next;
+  }
+
+  /// 建立三個紙聲 player 並載好音源。成功回 true；失敗回 false、不丟。
+  Future<bool> _prepareSnaps() async {
+    try {
+      if (_snapPlayers.isEmpty) {
+        _snapPlayers.addAll(
+          List.generate(_kFlipSnapAssets.length, (_) => AudioPlayer()),
+        );
+      }
+      await Future.wait([
+        for (var i = 0; i < _kFlipSnapAssets.length; i++)
+          _loadForReplay(
+              _snapPlayers[i], _kFlipSnapAssets[i], _kFlipSnapVolume),
+      ]);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 預載成可重播的 player：`ReleaseMode.stop` 停止後保留音源，下一次 stop 歸零再 resume。
+  Future<void> _loadForReplay(
+    AudioPlayer player,
+    String asset,
+    double volume,
+  ) async {
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setVolume(volume);
+    await player.setSource(AssetSource(asset));
   }
 
   // 揭曉配樂 bed：與 `_reveal`（10 s）同長同步的連續配樂，揭曉起始播一次。v4 的三個重音
@@ -198,6 +253,30 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
       if (player == null || !stillWanted()) return; // 預載期間已被停掉或重起。
       await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
       if (!stillWanted()) return;
+      await player.resume();
+    } catch (_) {
+      // 音效非關鍵路徑：失敗不丟。
+    }
+  }
+
+  @override
+  void playFlipSnap() {
+    try {
+      _ensureContext();
+      final variant = _nextSnap;
+      // 三個變體輪流，連續兩次不重複。
+      _nextSnap = (_nextSnap + 1) % _kFlipSnapAssets.length;
+      unawaited(_startSnap(_ensureSnapsPrepared(), variant));
+    } catch (_) {
+      // 音效非關鍵路徑：失敗不丟。
+    }
+  }
+
+  Future<void> _startSnap(Future<bool> ready, int variant) async {
+    try {
+      if (!await ready) return;
+      final player = _snapPlayers[variant];
+      await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
       await player.resume();
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。

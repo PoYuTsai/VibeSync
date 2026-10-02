@@ -1,9 +1,14 @@
 // NewTopic handler：破冰腦力（2026-07-24 計畫 §10.5）。
-// 固定順序：sanitize→material→config→HMAC preflight→claim→quota(3)→
-// rate limit→renew→generate(45s)→validate/project→settle(5s reserve)。
+// 固定順序：sanitize→進階開關→擋字→material→config→HMAC preflight→
+// claim→quota(3)→rate limit→renew→generate(45s)→validate/project→
+// settle(5s reserve)。
 // Handler 永遠只回 settlement 的 stored result，本地候選一律丟棄。
 // 2026-08-18 stream（transport-only）：模型輸出契約不變，僅逐塊接收＋進度事件。
 
+import {
+  containsCrudeInsult,
+  containsCrudeSexualOffense,
+} from "../_shared/crude_offense.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   AiServiceError,
@@ -48,7 +53,18 @@ import {
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
 } from "./new_topic_prompt.ts";
-import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
+import {
+  auditNewTopicTwoStageTopics,
+  buildNewTopicTwoStageUserPrompt,
+  enforceNewTopicRedClose,
+  NEW_TOPIC_TWO_STAGE_PROMPT,
+  NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+  newTopicTwoStageTelemetry,
+} from "./new_topic_two_stage.ts";
+import {
+  hasAnalyzeChatPromptLeak,
+  hasNewTopicTwoStagePromptLeak,
+} from "./prompt_leak.ts";
 import {
   getErrorMessage,
   logError,
@@ -133,6 +149,27 @@ export async function handleNewTopicRequest(
     }, 400);
   }
   const newTopicRequest = newTopicSanitize.request;
+  // 進階路徑（2026-10-01 規格 §2）：開關沒開就整筆拒絕、不偷偷降級；
+  // 用戶寫的那句命中粗俗詞表也在這裡擋。都在 claim／限流／模型／扣費
+  // 之前，log 只記 reason、不記原文。
+  const newTopicContext = newTopicRequest.topicContext;
+  const newTopicMaterialText = newTopicContext?.materialText ?? null;
+  if (
+    newTopicMaterialText !== null &&
+    (containsCrudeSexualOffense(newTopicMaterialText) ||
+      containsCrudeInsult(newTopicMaterialText))
+  ) {
+    logWarn("new_topic_material_blocked", {
+      user: summarizeUser(deps.userId),
+      reason: "crude_offense",
+    });
+    return jsonResponse({
+      error: "NEW_TOPIC_MATERIAL_BLOCKED",
+      code: "NEW_TOPIC_MATERIAL_BLOCKED",
+      message: "你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。",
+      shouldChargeQuota: false,
+    }, 422);
+  }
   if (!hasNewTopicMaterial(newTopicRequest)) {
     return jsonResponse({
       error: "NEW_TOPIC_CONTEXT_REQUIRED",
@@ -150,6 +187,7 @@ export async function handleNewTopicRequest(
     situation: newTopicRequest.situation,
     hasPartnerSummary: newTopicRequest.partnerSummary !== null,
     hasStyleContext: newTopicRequest.effectiveStyleContext !== null,
+    ...newTopicTwoStageTelemetry(newTopicContext),
   });
 
   // 2. Config：模型金鑰＋new-topic-only HMAC secret。缺 secret 只有
@@ -189,6 +227,7 @@ export async function handleNewTopicRequest(
     partnerSummary: newTopicRequest.partnerSummary,
     effectiveStyleContext: newTopicRequest.effectiveStyleContext,
     situation: newTopicRequest.situation,
+    topicContext: newTopicContext,
     secret: newTopicHmacSecret,
   });
   const newTopicSuccessBody = (
@@ -354,6 +393,29 @@ export async function handleNewTopicRequest(
       user: summarizeUser(deps.userId),
       requestId: newTopicRequest.requestId,
     });
+    // 進階開關在「原子佔住這筆編號」之後才檢查（Codex R1／R2 P1）：
+    // 已落帳的同一筆在查帳或 claim 時就回放、進行中回 409；開關只擋新的進階生成。
+    // 開關關閉時回 422 且刻意不 release：同一編號若還有在途的原請求，它之後的
+    // claim 只會拿到 pending、無法 settle，「本次不會扣額度」因此一定成立。
+    // 租約 65 秒後自然過期、可被正常接手；帳列由每小時 cron 清。
+    // 回 422 不回 503：這是可預期的產品狀態，不該灌進 http_5xx 告警；App 只看 code。
+    if (
+      newTopicContext !== null &&
+      Deno.env.get("NEW_TOPIC_TWO_STAGE_ENABLED") !== "true"
+    ) {
+      logWarn("new_topic_advanced_unavailable", {
+        user: summarizeUser(deps.userId),
+        requestId: newTopicRequest.requestId,
+        reason: "two_stage_disabled",
+      });
+      return jsonResponse({
+        error: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+        code: "NEW_TOPIC_ADVANCED_UNAVAILABLE",
+        message: "進階模式暫時無法使用，可以改用基本模式生成。本次不會扣額度。",
+        retryable: false,
+        shouldChargeQuota: false,
+      }, 422);
+    }
   }
 
   // 5. Fixed cost 3 quota gate（Free 只要月/日都剩 ≥3 就不得因 tier 先
@@ -459,18 +521,33 @@ export async function handleNewTopicRequest(
   // 8. 45 秒 generation deadline 內完成 primary／outage fallback。
   //    refusal、max_tokens、格式錯誤不走 outage fallback（fallback.ts
   //    既有分類）；deadline 前提早爆的 DEADLINE_EXCEEDED 也在這裡收。
-  const newTopicUserPrompt = buildNewTopicUserPrompt({
-    partnerSummary: newTopicRequest.partnerSummary,
-    effectiveStyleContext: newTopicRequest.effectiveStyleContext,
-    situation: newTopicRequest.situation,
-    // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
-    requestId: newTopicRequest.requestId,
-  });
+  // 有 topicContext 才走進階提示詞；沒有就是 legacy，逐字不變。
+  const newTopicSystemPrompt = newTopicContext === null
+    ? NEW_TOPIC_PROMPT
+    : NEW_TOPIC_TWO_STAGE_PROMPT;
+  const newTopicUserPrompt = newTopicContext === null
+    ? buildNewTopicUserPrompt({
+      partnerSummary: newTopicRequest.partnerSummary,
+      effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+      situation: newTopicRequest.situation,
+      // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
+      requestId: newTopicRequest.requestId,
+    })
+    : buildNewTopicTwoStageUserPrompt({
+      partnerSummary: newTopicRequest.partnerSummary,
+      effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+      situation: newTopicRequest.situation,
+      topicContext: newTopicContext,
+      requestId: newTopicRequest.requestId,
+    });
   const newTopicGroundingPolicy = {
     allowSharedFrame: allowsNewTopicSharedFrame({
       partnerSummary: newTopicRequest.partnerSummary,
       situation: newTopicRequest.situation,
+      topicContext: newTopicContext,
     }),
+    // 只有進階路徑會有；用戶自己寫的字撞到內部術語時不算外洩。
+    userMaterialText: newTopicMaterialText,
   };
   const rejectNewTopicDeadline = async (
     stage: string,
@@ -498,6 +575,11 @@ export async function handleNewTopicRequest(
   // 從這裡起的解析／repair／tier 投影／settle 與 legacy 共用同一個
   // completeNewTopicRequest（內部邏輯零改動，shim 同名變數），
   // exactly-once settle 語義不變。
+  // 進階路徑多查一條自己的 sentinel；legacy 與其他模式守門不變。
+  const newTopicPromptLeak = (text: string): boolean =>
+    newTopicContext !== null
+      ? hasNewTopicTwoStagePromptLeak(text)
+      : hasAnalyzeChatPromptLeak(text);
   const completeNewTopicRequest = async (modelOutput: {
     rawText: string;
     model: string;
@@ -517,7 +599,7 @@ export async function handleNewTopicRequest(
 
     // 反 prompt 外洩（2026-08-19）：同 opener——整包擋下、release claim、
     // 不扣費（settle 尚未開始，release 安全）。
-    if (hasAnalyzeChatPromptLeak(newTopicRawText)) {
+    if (newTopicPromptLeak(newTopicRawText)) {
       logWarn("prompt_leak_blocked", {
         user: summarizeUser(deps.userId),
         surface: "new_topic",
@@ -559,7 +641,8 @@ export async function handleNewTopicRequest(
           deps.claudeApiKey,
           {
             timeout: 60000,
-            maxRetries: 0,
+            // fallback.ts 的 maxRetries 是「嘗試次數」：0 會讓迴圈一次都不送、空轉到期限。
+            maxRetries: 1,
             allowModelFallback: false,
             absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
           },
@@ -567,9 +650,28 @@ export async function handleNewTopicRequest(
         const repairedText = extractClaudeText(
           repairResult.data as { content?: Array<{ text?: string }> },
         );
+        // 修復輸出也要過整包外洩檢查（Codex R1 P1）：命中就 release、不扣。
+        if (newTopicPromptLeak(repairedText)) {
+          logWarn("prompt_leak_blocked", {
+            user: summarizeUser(deps.userId),
+            surface: "new_topic_repair",
+            textLength: repairedText.length,
+          });
+          if (!await releaseNewTopicCurrentClaim()) {
+            return newTopicReleaseFailedResponse();
+          }
+          return jsonResponse({
+            error: "NEW_TOPIC_RESPONSE_INVALID",
+            code: "NEW_TOPIC_RESPONSE_INVALID",
+            message:
+              "這次 AI 沒有產出完整的五個新話題，請重新生成一次；本次不會扣額度。",
+            shouldChargeQuota: false,
+          }, 502);
+        }
         const repairedParsed = mergeNewTopicRepairWithPrimaryOpeningLines(
           newTopicPrimaryParsed,
           parseJsonObjectFromText(repairedText),
+          newTopicMaterialText,
         );
         const repairedNormalized = normalizeNewTopicModelPayload(
           repairedParsed,
@@ -616,6 +718,17 @@ export async function handleNewTopicRequest(
       }, 502);
     }
 
+    // 紅燈收尾（規格 §9.4）：只在進階路徑；推薦固定第一題、理由換固定句。
+    const newTopicRedClose = newTopicContext === null
+      ? null
+      : enforceNewTopicRedClose(newTopicNormalized, {
+        situation: newTopicRequest.situation,
+        topicContext: newTopicContext,
+      });
+    if (newTopicRedClose !== null) {
+      newTopicNormalized = newTopicRedClose.normalized;
+    }
+
     // 10. Tier 投影：server 權威 servedTier；Free 只留推薦一題，鎖定四題
     //     文字不進 ledger、不出 server。
     const newTopicServedTier = (() => {
@@ -648,7 +761,9 @@ export async function handleNewTopicRequest(
     if (settlement.kind === "settled") {
       // §14.1：settle 落帳成功／被先完成者搶先（stored winner 回放）分流。
       // 測試帳號 chargeQuota=false 屬正常免扣，不算 replayed。
-      if (settlement.charged || deps.accountIsTest) {
+      const newTopicSettlementReplayed = !settlement.charged &&
+        !deps.accountIsTest;
+      if (!newTopicSettlementReplayed) {
         logInfo("new_topic_settlement_succeeded", {
           user: summarizeUser(deps.userId),
           requestId: newTopicRequest.requestId,
@@ -673,8 +788,32 @@ export async function handleNewTopicRequest(
         inputTokens: newTopicApiData.usage?.input_tokens,
         outputTokens: newTopicApiData.usage?.output_tokens,
         stopReason: newTopicApiData.stop_reason,
+        ...newTopicTwoStageTelemetry(newTopicContext),
         // §8 telemetry：只記數量絕不記內容。
       });
+      // 進階路徑品質稽核：只記錄、不擋、不改扣費（規格 §4.6）。
+      // replayed 時用戶看到的是先完成那筆，本地候選不代表結果，略過。
+      if (newTopicContext !== null && !newTopicSettlementReplayed) {
+        try {
+          logInfo("new_topic_two_stage_audit", {
+            user: summarizeUser(deps.userId),
+            requestId: newTopicRequest.requestId,
+            promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+            ...auditNewTopicTwoStageTopics({
+              topics: newTopicNormalized.topics,
+              recommendationIndex: newTopicNormalized.recommendationIndex,
+              topicContext: newTopicContext,
+              situation: newTopicRequest.situation,
+            }),
+            redCloseOverridden: newTopicRedClose?.overridden ?? false,
+          });
+        } catch (error) {
+          logWarn("new_topic_two_stage_audit_failed", {
+            requestId: newTopicRequest.requestId,
+            error: getErrorMessage(error),
+          });
+        }
+      }
       // Handler 永遠回 settlement 回傳的 stored result；即使本地候選不同
       // （late/stale owner race），也丟棄本地結果（設計鐵律 §4-8/9）。
       return jsonResponse(newTopicSuccessBody(
@@ -802,7 +941,7 @@ export async function handleNewTopicRequest(
               {
                 model: newTopicModel,
                 max_tokens: NEW_TOPIC_MAX_TOKENS,
-                system: NEW_TOPIC_PROMPT,
+                system: newTopicSystemPrompt,
                 messages: [{ role: "user", content: newTopicUserPrompt }],
               },
               deps.claudeApiKey,
@@ -890,7 +1029,7 @@ export async function handleNewTopicRequest(
       {
         model: newTopicModel,
         max_tokens: NEW_TOPIC_MAX_TOKENS,
-        system: NEW_TOPIC_PROMPT,
+        system: newTopicSystemPrompt,
         messages: [{ role: "user", content: newTopicUserPrompt }],
       },
       deps.claudeApiKey,

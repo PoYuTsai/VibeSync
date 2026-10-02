@@ -135,8 +135,11 @@ class _ChatQuizLevelGateState extends ConsumerState<_ChatQuizLevelGate> {
           child: ChatQuizGateMessage(
             icon: Icons.workspace_premium_outlined,
             title: '這一關需要訂閱',
-            message: '「她現在是哪一種」和「她讀到你的字之前」兩關永久免費。'
-                '訂閱之後其餘關卡會一次全部開放，而且重試不限次數。',
+            // 不寫「重試不限次數」：免費關本來就能無限重來，寫在這裡像是
+            // 訂閱才有的好處。關號要寫出來：關名讀起來像句子，「……之前」
+            // 緊接「兩關」會被讀成「前兩關」，以為 1-2 也免費。
+            message: '1-1「她現在是哪一種」和 3-1「她讀到你的字之前」'
+                '這兩關永久免費。訂閱之後，其餘關卡會一次全部開放。',
             primaryLabel: '看訂閱方案',
             onPrimary: () => context.push('/paywall'),
             secondaryLabel: '回關卡地圖',

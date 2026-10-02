@@ -159,7 +159,7 @@ void main() {
     await t.tap(find.text('新話題'));
     await t.pump();
     _expectNewTopicActive(t);
-    await t.tap(find.text('聊著但卡住'));
+    await t.tap(find.text('還在聊，但接不下去'));
     await t.pump();
     String? selected() => t.widget<OpenerSituationGrid>(find.byType(OpenerSituationGrid, skipOffstage: false)).selected;
     expect(selected(), 'stuck');

@@ -7,14 +7,15 @@ import {
   buildNewTopicRepairPrompt,
   buildNewTopicUserPrompt,
   NEW_TOPIC_ANGLES,
-  pickNewTopicAngle,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
   NEW_TOPIC_PROMPT,
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
   NEW_TOPIC_SETTLEMENT_RESERVE_MS,
+  pickNewTopicAngle,
 } from "./new_topic_prompt.ts";
+import { NEW_TOPIC_TWO_STAGE_PROMPT } from "./new_topic_two_stage.ts";
 
 Deno.test("deadline 常數符合拍板規格（50s/45s/5s reserve、3000 tokens）", () => {
   assertEquals(NEW_TOPIC_MAX_TOKENS, 3000);
@@ -53,6 +54,7 @@ Deno.test("new topic prompts 過三層線 blocking 掃描（同 opener 黑名單
     const [name, prompt] of [
       ["NEW_TOPIC_PROMPT", NEW_TOPIC_PROMPT],
       ["NEW_TOPIC_REPAIR_PROMPT", NEW_TOPIC_REPAIR_PROMPT],
+      ["NEW_TOPIC_TWO_STAGE_PROMPT", NEW_TOPIC_TWO_STAGE_PROMPT],
     ] as const
   ) {
     for (const word of banned) {
@@ -97,7 +99,9 @@ Deno.test("NEW_TOPIC_PROMPT 產出規格：恰好五題＋四欄＋可直接傳"
   assert(NEW_TOPIC_PROMPT.includes("recommendation.index 是 0-4 的整數"));
   assert(NEW_TOPIC_PROMPT.includes("不要 code fence"));
   assert(NEW_TOPIC_PROMPT.includes("direction 是客戶看到的卡片標題"));
-  assert(NEW_TOPIC_PROMPT.includes("whyItWorks 與 nextMove 都用一般人看得懂的話"));
+  assert(
+    NEW_TOPIC_PROMPT.includes("whyItWorks 與 nextMove 都用一般人看得懂的話"),
+  );
   assert(NEW_TOPIC_PROMPT.includes("不得出現內部方法名"));
 });
 
@@ -154,14 +158,17 @@ Deno.test("buildNewTopicRepairPrompt：夾帶原文並裁 7000", () => {
   assert(buildNewTopicRepairPrompt("   ").includes("(empty)"));
 });
 
-
 Deno.test("角度輪替：同 requestId 穩定、不同 requestId 會換、都在清單內", () => {
   const a = "123e4567-e89b-42d3-a456-426614174000";
   const b = "9f8e7d6c-5b4a-4321-8765-0fedcba98765";
   // replay 契約：同一次生成必須拿到同一個角度。
   assertEquals(pickNewTopicAngle(a), pickNewTopicAngle(a));
-  assert((NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(a)));
-  assert((NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(b)));
+  assert(
+    (NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(a)),
+  );
+  assert(
+    (NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(b)),
+  );
 
   // 十個角度都取得到（否則輪替等於沒輪）。
   const seen = new Set<string>();
@@ -188,5 +195,45 @@ Deno.test("buildNewTopicUserPrompt：給 requestId 才附發想素材，且不�
   assert(
     withAngle.indexOf("## 對方作戰板") < withAngle.indexOf("## 本輪內容素材") &&
       withAngle.indexOf("## 本輪內容素材") < withAngle.indexOf("請依系統規則"),
+  );
+});
+
+// 進階路徑上線不得動到 legacy（規格 §0／§8）：舊版 App 與「全部不選」的
+// 新版 App 拿到的提示詞必須逐字不變。golden 取自 38ebd30d。
+const LEGACY_USER_PROMPT_GOLDEN = [
+  "## 對方作戰板（唯一可當對方事實的來源）",
+  "對象：小雅。興趣：爬山。",
+  "",
+  "## 關於我（用戶本人的風格與興趣，只能做自我揭露）",
+  "- 語氣：輕鬆",
+  "",
+  "## 目前狀況（只影響節奏與語氣）",
+  "聊天冷掉了（對方最近回得少或已讀）",
+  "",
+  "## 本輪內容素材（只供發想，不得照抄）：對某件小事的偏激意見",
+  "五題裡至少兩題從這個素材發展，其餘自由。它只用來避免連續生成撞題，不是題目本身——不要把這個素材名稱寫進任何可見欄位。",
+  "",
+  "請依系統規則產出恰好五個新話題的 JSON。",
+].join("\n");
+
+Deno.test("legacy：NEW_TOPIC_PROMPT 與 buildNewTopicUserPrompt 逐字不變", async () => {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(NEW_TOPIC_PROMPT),
+    ),
+  );
+  assertEquals(
+    Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join(""),
+    "81d49443da0ecf20eccec3ef39a9524d783ccd5b341bab9b4685e5244ff982cb",
+  );
+  assertEquals(
+    buildNewTopicUserPrompt({
+      partnerSummary: "對象：小雅。興趣：爬山。",
+      effectiveStyleContext: "- 語氣：輕鬆",
+      situation: "went_cold",
+      requestId: "123e4567-e89b-42d3-a456-426614174000",
+    }),
+    LEGACY_USER_PROMPT_GOLDEN,
   );
 });
