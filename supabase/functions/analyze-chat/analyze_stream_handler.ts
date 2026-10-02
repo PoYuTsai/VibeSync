@@ -44,7 +44,10 @@ import {
   scheduleAnalyzeCriticShadow,
 } from "./critic_shadow.ts";
 import type { SemanticCriticCallArgs } from "../_shared/social/semantic_critic.ts";
-import { callClaudeStreaming } from "./streaming_fallback.ts";
+import {
+  callClaudeStreaming,
+  streamingProviderMaxAttempts,
+} from "./streaming_fallback.ts";
 import {
   maxTokensFor,
   SONNET_5_5_MODEL,
@@ -71,7 +74,6 @@ import type {
 
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
-const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
 
 /// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5；
 /// 測試帳號 forceModel 照指定。非串流分析與其他功能不經過這裡。
@@ -455,6 +457,10 @@ export async function handleAnalyzeStream(
   }
 
   let streamModel = deps.selectedModel;
+  // 5.5 多一跳（5.5→5→4.6→Haiku），Sonnet 5 照舊 3 次。
+  const streamProviderMaxAttempts = streamingProviderMaxAttempts(
+    deps.selectedModel,
+  );
   // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
   // entire fixed output budget for the user-visible NDJSON contract; hidden
   // thinking can otherwise consume the visible-output budget and emit zero
@@ -701,7 +707,7 @@ export async function handleAnalyzeStream(
           analysisRunId: streamRun.id,
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-          providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
+          providerMaxAttempts: streamProviderMaxAttempts,
           // 實際送出的上限（5.5 含思考餘裕），跟著 served model 走。
           maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
@@ -755,8 +761,9 @@ export async function handleAnalyzeStream(
           analysisRunId: streamRun.id,
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-          providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          // 實際送出的上限（5.5 含思考餘裕），跟著 served model 走。
+          providerMaxAttempts: streamProviderMaxAttempts,
+          // 有 served model 就跟著它；整條鏈都失敗時 streamModel 仍是主模型，
+          // 記的是主模型的上限，不是最後一跳的。
           maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {

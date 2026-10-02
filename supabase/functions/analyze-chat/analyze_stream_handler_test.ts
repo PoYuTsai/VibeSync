@@ -1371,6 +1371,10 @@ Deno.test("flag off: the Sonnet 5 stream request is today's contract (thinking d
       (aiLogs[0].request_body as Record<string, unknown>).maxOutputTokens,
       base,
     );
+    assertEquals(
+      (aiLogs[0].request_body as Record<string, unknown>).providerMaxAttempts,
+      3,
+    );
   }
 });
 
@@ -1390,6 +1394,8 @@ Deno.test("flag on: the stream request is Sonnet 5.5 configuration C and ai_logs
   const requestBody = aiLogs[0].request_body as Record<string, unknown>;
   assertEquals(requestBody.maxOutputTokens, 8500);
   assertEquals(requestBody.thinkingDisabled, false);
+  // 5.5→5→4.6→Haiku：最多 4 次 provider 呼叫。
+  assertEquals(requestBody.providerMaxAttempts, 4);
 });
 
 Deno.test("flag on, 5.5 overloaded: the Sonnet 5 fallback sends its own params and base max_tokens; ai_logs records Sonnet 5", async () => {
@@ -1410,4 +1416,5 @@ Deno.test("flag on, 5.5 overloaded: the Sonnet 5 fallback sends its own params a
   const requestBody = aiLogs[0].request_body as Record<string, unknown>;
   assertEquals(requestBody.maxOutputTokens, 4500);
   assertEquals(requestBody.thinkingDisabled, true);
+  assertEquals(requestBody.providerMaxAttempts, 4);
 });

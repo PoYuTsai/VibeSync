@@ -8,6 +8,7 @@ import {
   callClaudeStreaming,
   type ClaudeStreamingRequest,
   parseAnthropicSse,
+  streamingProviderMaxAttempts,
 } from "./streaming_fallback.ts";
 
 function streamFromChunks(chunks: string[]): ReadableStream<Uint8Array> {
@@ -819,3 +820,10 @@ for (
     },
   );
 }
+
+Deno.test("streamingProviderMaxAttempts is the fallback chain length for the primary model", () => {
+  assertEquals(streamingProviderMaxAttempts("claude-sonnet-5-5"), 4);
+  assertEquals(streamingProviderMaxAttempts("claude-sonnet-5"), 3);
+  assertEquals(streamingProviderMaxAttempts("claude-sonnet-4-6"), 2);
+  assertEquals(streamingProviderMaxAttempts("claude-haiku-4-5-20251001"), 1);
+});

@@ -89,7 +89,11 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   );
   assert(source.includes('? { type: "disabled" }'));
   assert(source.includes("const STREAM_CLAUDE_TIMEOUT_MS = 120000"));
-  assert(source.includes("const STREAM_PROVIDER_MAX_ATTEMPTS = 3"));
+  assert(
+    source.includes(
+      "const streamProviderMaxAttempts = streamingProviderMaxAttempts(\n    deps.selectedModel,",
+    ),
+  );
   assert(source.includes("{ timeout: STREAM_CLAUDE_TIMEOUT_MS }"));
   assertEquals(
     streamBranch(source).split("timeoutMs: STREAM_CLAUDE_TIMEOUT_MS").length -
@@ -98,7 +102,7 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   );
   assertEquals(
     streamBranch(source).split(
-      "providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS",
+      "providerMaxAttempts: streamProviderMaxAttempts",
     ).length - 1,
     2,
   );

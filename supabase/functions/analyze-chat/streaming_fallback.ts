@@ -77,6 +77,16 @@ const MODEL_FALLBACK_CHAIN: Readonly<Record<string, string | undefined>> = {
   [SONNET_5_MODEL]: "claude-sonnet-4-6",
   "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
 };
+
+/// 這個主模型最多打幾次 provider（備援鏈長度，含自己）；ai_logs 記這個值。
+export function streamingProviderMaxAttempts(model: string): number {
+  let attempts = 1;
+  for (let m = MODEL_FALLBACK_CHAIN[model]; m; m = MODEL_FALLBACK_CHAIN[m]) {
+    attempts++;
+  }
+  return attempts;
+}
+
 const PRE_STREAM_FALLBACK_CODES = new Set([
   "NETWORK_ERROR",
   "RATE_LIMITED",
