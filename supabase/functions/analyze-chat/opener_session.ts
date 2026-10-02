@@ -98,14 +98,21 @@ function parseSessionView(raw: unknown): OpenerSessionView | null {
   };
 }
 
-export async function readOpenerFlowDbContractVersion(rpc: OpenerFlowRpc): Promise<string | null> {
+// 讀不到（transport 不明）≠ 讀到「沒有／不符」：前者回 ok:false 讓呼叫端回可重試，
+// 不把一時的 DB 抖動當成 migration 沒套而把 App 降級回舊單段。
+export async function readOpenerFlowDbContractVersion(
+  rpc: OpenerFlowRpc,
+): Promise<{ ok: true; version: string | null } | { ok: false; message: string }> {
+  let response: Awaited<ReturnType<OpenerFlowRpc>>;
   try {
-    const response = await rpc("opener_flow_contract_version", {});
-    if (response.error || typeof response.data !== "string") return null;
-    return response.data;
-  } catch {
-    return null;
+    response = await rpc("opener_flow_contract_version", {});
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
+  if (response.error && isAmbiguousRpcTransportFailure(response.error)) {
+    return { ok: false, message: response.error.message || "opener_flow_contract_version transport failed" };
+  }
+  return { ok: true, version: !response.error && typeof response.data === "string" ? response.data : null };
 }
 
 // ── 第一段 ────────────────────────────────────────────────────────────────

@@ -573,6 +573,40 @@ Deno.test("第一段：同 analysisRequestId 重試取回快照（replayed）、
   }
 });
 
+Deno.test("第一段：DB 能力標記讀取遇 transport 錯誤→503 OPENER_FLOW_RETRYABLE（可重試、不降級）；讀到函式不存在仍→OPENER_FLOW_UNAVAILABLE", async () => {
+  const h = await harness();
+  try {
+    const contractRpc = (result: { data: unknown; error: { message?: string; code?: string } | null } | Error) => {
+      const base = supabaseFor(h.db);
+      return {
+        ...base,
+        rpc(fn: string, params: Record<string, unknown>) {
+          if (fn !== "opener_flow_contract_version") return base.rpc(fn, params);
+          return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+        },
+      };
+    };
+    for (const result of [{ data: null, error: { message: "connection reset", code: "" } }, new Error("fetch failed")]) {
+      const blip = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { supabase: contractRpc(result) }));
+      assertEquals(blip.status, 503);
+      const body = await json(blip);
+      assertEquals(body.code, "OPENER_FLOW_RETRYABLE");
+      assertEquals(body.retryable, true);
+    }
+    const missing = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), {
+      supabase: contractRpc({ data: null, error: { message: "Could not find the function public.opener_flow_contract_version", code: "PGRST202" } }),
+    }));
+    assertEquals((await json(missing)).code, "OPENER_FLOW_UNAVAILABLE");
+    const wrong = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { supabase: contractRpc({ data: "incomplete", error: null }) }));
+    const wrongBody = await json(wrong);
+    assertEquals(wrongBody.code, "OPENER_FLOW_UNAVAILABLE");
+    assertEquals(wrongBody.retryable, false);
+    assertEquals(h.script.calls.length, 0);
+  } finally {
+    await h.db.close();
+  }
+});
+
 Deno.test("第一段：初稿只記「有無」不存原文；零扣費判準只看對方資料（補充不冒充對方資料）", async () => {
   const h = await harness();
   try {

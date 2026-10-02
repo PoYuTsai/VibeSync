@@ -406,8 +406,12 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   //    已保存的分析同 analysisRequestId 重試仍能取回，旗標只擋真正的新局。
   const newSessionsDisabled = env("OPENER_TWO_STAGE_ENABLED") === "false";
   const dbContract = await readOpenerFlowDbContractVersion(rpc);
-  if (dbContract !== OPENER_FLOW_DB_CONTRACT_VERSION) {
-    logError("opener_flow_db_contract_missing", { user, dbContract });
+  if (!dbContract.ok) {
+    logWarn("opener_flow_db_contract_unreadable", { user, error: dbContract.message });
+    return flowError("OPENER_FLOW_RETRYABLE", "服務暫時無法確認狀態，請稍後再試。本次不會扣額度。", 503, { retryable: true });
+  }
+  if (dbContract.version !== OPENER_FLOW_DB_CONTRACT_VERSION) {
+    logError("opener_flow_db_contract_missing", { user, dbContract: dbContract.version });
     return flowError("OPENER_FLOW_UNAVAILABLE", "新版開場流程尚未就緒，改用一般生成。本次不會扣額度。", 503, { retryable: false });
   }
 
