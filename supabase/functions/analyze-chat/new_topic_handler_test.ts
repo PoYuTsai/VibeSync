@@ -39,6 +39,14 @@ const MODEL_PAYLOAD = {
 let replayRowForNextRun: unknown = null;
 /** 下一次 run 的 claim RPC 回應（用一次就清掉；null＝claimed）。 */
 let claimResultForNextRun: unknown = null;
+/** 下一次 run 的 settle RPC 回應（可 throw 模擬 transport 不明；run 結束就清掉）。 */
+let settleRpcForNextRun:
+  | (() => { data: unknown; error: { message: string; code: string } | null })
+  | null = null;
+/** 下一次 run 的 release RPC 結果（run 結束就清掉；null＝釋放成功）。 */
+let releaseResultForNextRun: boolean | null = null;
+/** 下一次 run 的模型 HTTP 狀態（run 結束就清掉；null＝200）。 */
+let modelStatusForNextRun: number | null = null;
 
 type ModelRequest = {
   system: Array<{ text: string }>;
@@ -90,6 +98,9 @@ async function run(
         return Promise.resolve({ data, error: null });
       }
       if (fn === "settle_new_topic_request") {
+        if (settleRpcForNextRun !== null) {
+          return Promise.resolve(settleRpcForNextRun());
+        }
         return Promise.resolve({
           data: { charged: settleCharged, result: params.p_result_json },
           error: null,
@@ -97,6 +108,12 @@ async function run(
       }
       if (fn === "increment_model_usage") {
         return Promise.resolve({ data: null, error: null });
+      }
+      if (fn === "release_new_topic_claim") {
+        return Promise.resolve({
+          data: releaseResultForNextRun ?? true,
+          error: null,
+        });
       }
       return Promise.resolve({ data: true, error: null });
     },
@@ -113,6 +130,11 @@ async function run(
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
     modelRequests.push(JSON.parse(String(init?.body)));
     const payload = modelRequests.length === 1 ? modelPayload : repairPayload;
+    if (modelStatusForNextRun !== null) {
+      return Promise.resolve(
+        new Response("{}", { status: modelStatusForNextRun }),
+      );
+    }
     return Promise.resolve(
       new Response(
         JSON.stringify({
@@ -156,6 +178,9 @@ async function run(
       logMetadata,
     };
   } finally {
+    settleRpcForNextRun = null;
+    releaseResultForNextRun = null;
+    modelStatusForNextRun = null;
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     for (const [key, value] of env) {
@@ -349,6 +374,111 @@ Deno.test("handler：稽核只記本筆落帳的結果，replayed（先完成者
     ),
   );
   assert(!hasAudit(replayed.logEvents));
+});
+
+// ---------------------------------------------------------------------------
+// 扣費／釋放／逾時分支（金流安全）：settle 結果不明絕不 release；
+// settle 明確沒落帳、逾時、模型失敗都要先 owner-bound release；release
+// 失敗不得宣稱已清除。
+// ---------------------------------------------------------------------------
+
+Deno.test("handler：settle／release／逾時／模型失敗各分支的狀態碼與是否 release", async () => {
+  const RELEASE = "rpc:release_new_topic_claim";
+  const SETTLE = "rpc:settle_new_topic_request";
+  const cases: Array<{
+    name: string;
+    settle?: typeof settleRpcForNextRun;
+    releaseOk?: boolean;
+    modelStatus?: number;
+    startedMsAgo?: number;
+    status: number;
+    code?: string;
+    settled: boolean;
+    released: boolean;
+  }> = [
+    {
+      name: "settle 額度競態（RAISE 已回滾）→ release 後 429",
+      settle: () => ({
+        data: null,
+        error: { message: "QUOTA_EXCEEDED_DAILY", code: "P0001" },
+      }),
+      status: 429,
+      settled: true,
+      released: true,
+    },
+    {
+      name: "settle transport 不明（可能已扣）→ 503 結果確認中，絕不 release",
+      settle: () => {
+        throw new Error("fetch failed");
+      },
+      status: 503,
+      code: "NEW_TOPIC_SETTLEMENT_PENDING",
+      settled: true,
+      released: false,
+    },
+    {
+      name: "settle 明確 RAISE 失敗 → release 後 500",
+      settle: () => ({
+        data: null,
+        error: { message: "settle boom", code: "P0001" },
+      }),
+      status: 500,
+      code: "NEW_TOPIC_SETTLEMENT_FAILED",
+      settled: true,
+      released: true,
+    },
+    {
+      name: "settle 失敗但 release 也失敗 → 503 可重試，不宣稱已清除",
+      settle: () => ({
+        data: null,
+        error: { message: "settle boom", code: "P0001" },
+      }),
+      releaseOk: false,
+      status: 503,
+      code: "NEW_TOPIC_CLAIM_RELEASE_RETRYABLE",
+      settled: true,
+      released: true,
+    },
+    {
+      name: "生成期限已過 → release 後 504，不 settle",
+      startedMsAgo: 45_000,
+      status: 504,
+      code: "NEW_TOPIC_DEADLINE_EXCEEDED",
+      settled: false,
+      released: true,
+    },
+    {
+      name: "模型 4xx 失敗 → release 後 503，不 settle",
+      modelStatus: 400,
+      status: 503,
+      code: "NEW_TOPIC_PROVIDER_UNAVAILABLE",
+      settled: false,
+      released: true,
+    },
+  ];
+  for (const c of cases) {
+    settleRpcForNextRun = c.settle ?? null;
+    releaseResultForNextRun = c.releaseOk ?? null;
+    modelStatusForNextRun = c.modelStatus ?? null;
+    const result = await run(
+      body(),
+      undefined,
+      true,
+      MODEL_PAYLOAD,
+      c.startedMsAgo ?? 0,
+    );
+    assertEquals(result.status, c.status, c.name);
+    if (c.code) assertEquals(result.json.code, c.code, c.name);
+    assertEquals(result.dbCalls.includes(SETTLE), c.settled, c.name);
+    assertEquals(result.dbCalls.includes(RELEASE), c.released, c.name);
+    if (c.settled && c.released) {
+      // settle 沒落帳才 release：release 一定在 settle 之後。
+      assert(
+        result.dbCalls.indexOf(RELEASE) > result.dbCalls.indexOf(SETTLE),
+        c.name,
+      );
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
