@@ -188,7 +188,9 @@ void main() {
   testWidgets('第 3–5 群完全不出現在畫面上', (tester) async {
     await _pump(tester);
 
-    expect(find.textContaining('3-1'), findsNothing);
+    // 找的是關卡列（「編號　關名」，中間是全形空白）。地圖說明卡的內文
+    // 本來就會提到 3-1（指路去場外群），那不是關卡列。
+    expect(find.textContaining('3-1　'), findsNothing);
     expect(find.textContaining('即將推出'), findsNothing);
     expect(find.text('讀燈'), findsOneWidget);
     expect(find.text('救對話'), findsOneWidget);

@@ -87,7 +87,8 @@ class _QuizEntryCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '一次一題：先讀懂她現在是哪一種，再決定怎麼回。答錯不扣任何東西。',
+            '一次一題：先判讀她現在是哪一種狀態（綠燈、黃燈還是紅燈），'
+            '再決定怎麼回。答錯沒關係。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary,
               height: 1.5,
