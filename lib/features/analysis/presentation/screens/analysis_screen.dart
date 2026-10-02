@@ -385,7 +385,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       stage: _gameStage?.current.name,
       summary: _strategy,
       nextStep: _gameStage?.nextStep,
-      coachActionType: _finalRecommendation?.pick,
+      // 分析說不回時伺服器已刪 finalRecommendation，本地補的預設 pick
+      // （extend）不是建議：不送動作卡，免得教練以為要延展。
+      coachActionType:
+          (_decision?.isSend ?? true) ? _finalRecommendation?.pick : null,
       keySignals: keySignals.take(8).toList(growable: false),
     );
   }

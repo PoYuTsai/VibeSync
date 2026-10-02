@@ -23,6 +23,7 @@ import 'package:vibesync/features/analysis/presentation/widgets/swipe_hint_nudge
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_usage_summary_line.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
@@ -408,6 +409,45 @@ void main() {
             },
           ),
         ];
+
+    testWidgets('do_not_send：問教練快照不帶動作卡，其餘分析照帶', (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(noSendJson('do_not_send'))),
+        extraRoutes: captureRoutes(
+          (state) => snapshot = state.extra as CoachChatAnalysisSnapshot?,
+          (_) {},
+        ),
+      );
+      await dismissEditCoachMark(tester);
+      final cta = find.byKey(const Key('analysis_coach_cta'));
+      await tester.ensureVisible(cta);
+      await tester.tap(cta);
+      await tester.pumpAndSettle();
+      expect(find.text('coach-route'), findsOneWidget);
+      expect(snapshot, isNotNull);
+      expect(snapshot!.coachActionType, isNull);
+      expect(snapshot!.summary, '先停一下');
+    });
+
+    testWidgets('send 結果：問教練快照照舊帶推薦動作卡', (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(_paidResult()),
+        extraRoutes: captureRoutes(
+          (state) => snapshot = state.extra as CoachChatAnalysisSnapshot?,
+          (_) {},
+        ),
+      );
+      await dismissEditCoachMark(tester);
+      final cta = find.byKey(const Key('analysis_coach_cta'));
+      await tester.ensureVisible(cta);
+      await tester.tap(cta);
+      await tester.pumpAndSettle();
+      expect(snapshot!.coachActionType, 'tease');
+    });
 
     testWidgets('do_not_send：「用新話題重新開」直達這位對象的新話題 tab', (tester) async {
       Uri? openerUri;
