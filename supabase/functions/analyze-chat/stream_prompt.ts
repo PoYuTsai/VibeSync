@@ -41,6 +41,9 @@ export interface StreamPromptOptions {
   /// Phase 2a shadow (§5.12): ask for one `analysis.divergence_plan` after a
   /// send decision. Recorded only; every reply rule below stays as written.
   divergencePlan?: boolean;
+  /// false: the server measured that she is not under-investing, so
+  /// `do_not_send` is not offered at all (「嗨」→「哈囉」不能判先別回).
+  doNotSendAvailable?: boolean;
 }
 
 // 枝數、方法、欄位全部從 divergence_contract 生成：prompt 說什麼，parser 就
@@ -114,6 +117,18 @@ const NO_SEND_DECISION_GATE = [
   'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題"}',
 ];
 
+// 結構刀：伺服器沒量到她低投入時，選單裡就沒有 do_not_send（不是叫模型少用）。
+const NO_SEND_DECISION_GATE_WITHOUT_DO_NOT_SEND = [
+  NO_SEND_DECISION_GATE[0].replace("`send`, `do_not_send`, ", "`send`, "),
+  NO_SEND_DECISION_GATE[1].replace(
+    " Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her.",
+    "",
+  ),
+  NO_SEND_DECISION_GATE[2].replace("three non-send", "two non-send"),
+  NO_SEND_DECISION_GATE[3].replace("three non-send", "two non-send"),
+  'Example no-send line: {"type":"analysis.decision","messageDecision":"need_context","action":"pause","reason":"截圖只看得到她的半句話，分不出前一句是誰說的","stopCondition":"補上前後幾則對話"}',
+];
+
 export function buildStreamSystemPrompt(
   basePrompt: string,
   requestedReplyStyles: readonly string[] = STREAM_STYLES,
@@ -147,7 +162,11 @@ export function buildStreamSystemPrompt(
     options.noSendDecisions
       ? "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `messageDecision` (see 1a) and, only when it is `send`, `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. A send decision's `selectedStyle` segment sources must be balls marked `接`; their wording may incorporate related `併` context."
       : "1. `analysis.decision`, as soon as you know the next move. Do not wait for the full report. Include `selectedStyle`, `nextStepTitle`, `nextStepBody`, `doThis`, `avoidThis`, and `confidence`. Your `selectedStyle`'s segment sources must be balls marked `接`; their wording may incorporate related `併` context.",
-    ...(options.noSendDecisions ? NO_SEND_DECISION_GATE : []),
+    ...(!options.noSendDecisions
+      ? []
+      : options.doNotSendAvailable === false
+      ? NO_SEND_DECISION_GATE_WITHOUT_DO_NOT_SEND
+      : NO_SEND_DECISION_GATE),
     ...(options.divergencePlan ? DIVERGENCE_PLAN_STEP : []),
     sendOnly(
       "2. `analysis.recommendation` once, thin: only `selectedStyle`, `reason`, and `expectedReaction` (one short line on how she will likely react). `analysis.recommendation` is REQUIRED even though it repeats the decision's selectedStyle; the recommendation card cannot render without it. Do not repeat the reply text here; the selected style's `analysis.reply_option` is the single source of the reply wording.",

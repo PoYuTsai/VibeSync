@@ -34,6 +34,11 @@ const INVENTORY = {
     reason: "語氣詞",
   }],
 };
+// 伺服器量得到她低投入，do_not_send 才在選單裡。
+const LOW_INVESTMENT_MESSAGES = [
+  { isFromMe: true, content: "我昨天去看展，裡面有一區超像你之前說的那種風格" },
+  { isFromMe: false, content: "哈哈" },
+];
 const NO_SEND = {
   type: "analysis.decision",
   messageDecision: "do_not_send",
@@ -535,9 +540,9 @@ function makeDeps(options: {
     selectedModel: "claude-sonnet-5",
     userMessageContent: "分析這段對話",
     requestObservability: {},
-    messages: [{ isFromMe: false, content: "哈哈" }],
+    messages: LOW_INVESTMENT_MESSAGES,
     hashInput: {
-      messages: [{ isFromMe: false, content: "哈哈" }],
+      messages: LOW_INVESTMENT_MESSAGES,
       userDraft: undefined,
       partnerSummary: undefined,
       sessionContext: undefined,
@@ -598,6 +603,7 @@ Deno.test("handler: a v2 client gets a charged, persisted no-send result with ze
   }));
 
   assert(systems[0].includes("1a. Message decision gate"));
+  assert(systems[0].includes("Use `do_not_send` when"));
   assertEquals(calls.filter((call) => call === "chargeRun").length, 1);
   assert(isNoSendChargePayload(chargeInputs[0]));
   assertEquals(chargeInputs[0].decisionKind, "do_not_send");
@@ -617,6 +623,38 @@ Deno.test("handler: a v2 client gets a charged, persisted no-send result with ze
   assertFalse(JSON.stringify(stored).includes("DEBRIS"));
   assert(text.includes('"messageDecision":"do_not_send"'));
   assertFalse(text.includes("STREAM_INCOMPLETE_REPLY_OPTIONS"));
+});
+
+Deno.test("handler: 「嗨」→「哈囉」 never offers do_not_send and refuses one before charging", async () => {
+  const calls: string[] = [];
+  const chargeInputs: StreamChargePayload[] = [];
+  const systems: string[] = [];
+  const deps = makeDeps({
+    calls,
+    chargeInputs,
+    doneResults: [],
+    systems,
+    noSendDecisions: true,
+    modelChunks: [INVENTORY, NO_SEND, METRICS, DONE_WITH_DEBRIS],
+  });
+  const opening = [
+    { isFromMe: true, content: "嗨" },
+    { isFromMe: false, content: "哈囉" },
+  ];
+  const text = await runHandler({
+    ...deps,
+    messages: opening,
+    hashInput: { ...deps.hashInput, messages: opening },
+  });
+
+  assert(systems[0].includes("1a. Message decision gate"));
+  assertFalse(systems[0].includes("do_not_send"));
+  assert(systems[0].includes("acknowledge_and_stop"));
+  assert(systems[0].includes("need_context"));
+  assert(systems[0].includes("two non-send decisions"));
+  assertEquals(chargeInputs.length, 0);
+  assertFalse(calls.includes("chargeRun"));
+  assert(text.includes("STREAM_MALFORMED_RECOMMENDATION"));
 });
 
 Deno.test("handler: a v1 client never receives the gate and a style-less decision fails as before", async () => {

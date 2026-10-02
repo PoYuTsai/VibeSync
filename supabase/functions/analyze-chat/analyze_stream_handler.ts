@@ -475,6 +475,7 @@ export async function handleAnalyzeStream(
   // Phase 2 (§11)：v2 才挑情境 atoms；v1 prompt 一字不動。deterministic，
   // callClaude 重試時重算結果相同，所以只算一次。
   let situationKnowledge: readonly string[] = [];
+  let doNotSendAvailable = true;
   if (deps.noSendDecisions === true) {
     const knowledgeInput = {
       messages: deps.messages,
@@ -485,11 +486,16 @@ export async function handleAnalyzeStream(
     };
     const atoms = selectAnalyzeSocialKnowledge(knowledgeInput);
     situationKnowledge = atoms.map((atom) => atom.guidance);
+    const knowledgeSignals = detectAnalyzeSocialKnowledgeSignals(
+      knowledgeInput,
+    );
+    // 先別回只在伺服器量到她低投入時才是選項；「嗨」→「哈囉」這種不算。
+    doNotSendAvailable = knowledgeSignals.includes("low_investment");
     logInfo("stream_knowledge_selected", {
       user: summarizeUser(deps.userId),
       analysisRunId: streamRun.id,
       knowledgeAtomIds: atoms.map((atom) => atom.id),
-      knowledgeSignals: detectAnalyzeSocialKnowledgeSignals(knowledgeInput),
+      knowledgeSignals,
     });
   }
 
@@ -521,6 +527,7 @@ export async function handleAnalyzeStream(
             noSendDecisions: deps.noSendDecisions === true,
             situationKnowledge,
             divergencePlan: deps.noSendDecisions === true,
+            doNotSendAvailable,
           }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,
@@ -564,6 +571,7 @@ export async function handleAnalyzeStream(
     prechargedRecommendation,
     requiredReplyStyles: streamReplyStyles,
     noSendDecisions: deps.noSendDecisions === true,
+    doNotSendAvailable,
     markDone: async (finalResult) => {
       const guarded = checkAiOutput(
         finalResult as GuardrailAnalysisResult,

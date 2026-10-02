@@ -126,6 +126,9 @@ export interface ReframerOptions {
   /// Phase 1b: accept a no-send analysis.decision as the charge anchor.
   /// Off => v1 behaviour byte-for-byte (a style-less decision is malformed).
   noSendDecisions?: boolean;
+  /// false: the prompt never offered `do_not_send`; one that arrives anyway is
+  /// a contract violation and fails before any charge.
+  doNotSendAvailable?: boolean;
 }
 
 export interface StreamReframer {
@@ -811,6 +814,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       options.noSendDecisions && !chargeCompleted &&
       isNoSendDecisionKind(event.messageDecision)
     ) {
+      if (
+        options.doNotSendAvailable === false &&
+        event.messageDecision === "do_not_send"
+      ) {
+        emitError(
+          "STREAM_MALFORMED_RECOMMENDATION",
+          "do_not_send was not offered for this request",
+        );
+        closed = true;
+        return;
+      }
       const validation = validateNoSendDecisionEvent(event);
       if (!validation.ok) {
         emitError(validation.code, validation.reason);
