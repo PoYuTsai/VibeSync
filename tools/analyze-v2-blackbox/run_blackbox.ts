@@ -11,12 +11,15 @@ import {
   type ArmSpec,
   buildBlindSheet,
   type CallRecord,
+  countTokensRequestBody,
   estimatePlan,
   estimateTokens,
+  exactInputUpperBoundUsd,
   JUDGE_MODEL,
   newProviderCall,
   paidGuardError,
   parseArms,
+  parseCountTokens,
   parsePaidFlags,
   parseRepeat,
   planCalls,
@@ -25,7 +28,6 @@ import {
   renderSummaryMd,
   reserveSpend,
   settleReservedSpend,
-  strictCallUpperBoundUsd,
   summarizeArms,
 } from "./ab.ts";
 import {
@@ -104,10 +106,27 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.startsWith("https://api.anthropic.com/")) {
     if (!active) throw new TypeError("blackbox: Anthropic call outside plan");
     const body = applyArmOverride(JSON.parse(String(init?.body)), active.arm);
-    // 先預留嚴格上界：斷線、error、usage 不全時就以上界計，不會低估已花的錢。
-    const upper = strictCallUpperBoundUsd(
+    // 先用 count_tokens（免費）拿確切輸入 token，再預留上界：斷線、error、usage 不全時
+    // 就以上界計，不會低估已花的錢。查不到輸入 token 就不准呼叫。
+    const countRes = await realFetch(
+      "https://api.anthropic.com/v1/messages/count_tokens",
+      {
+        method: "POST",
+        headers: init?.headers,
+        body: JSON.stringify(countTokensRequestBody(body)),
+      },
+    );
+    const counted = parseCountTokens(
+      countRes.status,
+      await countRes.json().catch(() => null),
+    );
+    if (counted === null) {
+      guardTripped = true;
+      throw new TypeError("blackbox paid guard: count_tokens failed");
+    }
+    const upper = exactInputUpperBoundUsd(
       String(body.model),
-      JSON.stringify(body),
+      counted,
       Number(body.max_tokens),
     );
     const reserved = reserveSpend(spentUsd, upper, providerCallCount, PAID);

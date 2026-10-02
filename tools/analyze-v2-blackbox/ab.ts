@@ -178,23 +178,47 @@ export function callUpperBoundUsd(
   }, pricingFor(model));
 }
 
-/// 付費閘用的嚴格上界（不是估算）：BPE 每個 token 至少涵蓋 1 個位元組，所以整個
-/// request body 的 UTF-8 位元組數（加 role／格式標記的固定餘量）一定 ≥ 實際輸入
-/// token；輸入全以最貴的 cache 寫入價計，輸出（含思考）吃滿 max_tokens。
-export const STRICT_FRAMING_TOKENS = 2_000;
-export function strictCallUpperBoundUsd(
+/// 付費閘用的上界：輸入 token 用 Anthropic count_tokens 回的確切數字（查不到就
+/// 不准呼叫），全以最貴的 cache 寫入價計；輸出（含思考）吃滿 max_tokens。
+export function exactInputUpperBoundUsd(
   model: string,
-  requestBody: string,
+  countedInputTokens: number,
   maxTokens: number,
 ): number {
-  const inputTokens = new TextEncoder().encode(requestBody).length +
-    STRICT_FRAMING_TOKENS;
   return estimateCostUsd({
     inputTokens: 0,
     outputTokens: maxTokens,
     cacheReadInputTokens: 0,
-    cacheCreationInputTokens: inputTokens,
+    cacheCreationInputTokens: countedInputTokens,
   }, pricingFor(model));
+}
+
+/// count_tokens 只收影響輸入的欄位；max_tokens／stream／output_config 等不送。
+export function countTokensRequestBody(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (
+    const key of [
+      "model",
+      "system",
+      "messages",
+      "thinking",
+      "tools",
+      "tool_choice",
+    ]
+  ) {
+    if (body[key] !== undefined) out[key] = body[key];
+  }
+  return out;
+}
+
+/// count_tokens 回應 → 輸入 token；非 200 或沒有正整數就回 null（付費閘據此拒絕）。
+export function parseCountTokens(status: number, json: unknown): number | null {
+  const n = (json as { input_tokens?: unknown } | null)?.input_tokens;
+  return status === 200 && typeof n === "number" && Number.isInteger(n) && n > 0
+    ? n
+    : null;
 }
 
 /// 評審一次的上界：輸入以 cache 寫入價（實際不走 cache，是一般價）、輸出吃滿。
@@ -329,6 +353,8 @@ export interface ProviderCall {
   stopReason: string | null;
   stopDetails: { category?: unknown; explanation?: unknown } | null;
   usage: ProviderUsageTokens;
+  /// 收到帶 output_tokens 的 message_delta（最終 usage）才為 true。
+  finalUsageSeen: boolean;
   providerMs: number | null;
   costUsd: number;
 }
@@ -353,6 +379,7 @@ export function newProviderCall(body: Record<string, unknown>): ProviderCall {
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
     },
+    finalUsageSeen: false,
     providerMs: null,
     costUsd: 0,
   };
@@ -373,6 +400,7 @@ export function applySseEvent(call: ProviderCall, event: any): void {
     call.servedModel = String(event.message.model);
   }
   if (event?.type === "message_delta") {
+    if (Number.isFinite(event.usage?.output_tokens)) call.finalUsageSeen = true;
     call.stopReason = event.delta?.stop_reason ?? call.stopReason;
     call.stopDetails = event.delta?.stop_details ?? event.stop_details ??
       call.stopDetails;
@@ -406,20 +434,17 @@ export function reserveSpend(
 }
 
 /// 付費閘記帳：呼叫前已把上界 reservedUsd 記進 spentUsd；呼叫結束時只有拿到
-/// 完整最終 usage（HTTP 200、message_start＋stop_reason 都到、輸入與輸出 token 都有、
-/// 沒有 error 事件）才把預留換成實際費用；斷線、error、非 200、usage 不全都保留上界
-/// （預留用 strictCallUpperBoundUsd，實際費用不會超過它；保險起見仍取較大者）。回傳新的 spent。
+/// 完整最終 usage（HTTP 200、message_start、stop_reason、帶 output_tokens 的 message_delta
+/// 都到、沒有 error 事件）才把預留換成實際費用；斷線、error、非 200、沒收到最終 usage 都保留
+/// 上界（預留用 exactInputUpperBoundUsd；保險起見仍取較大者）。回傳新的 spent。
 export function settleReservedSpend(
   spentUsd: number,
   reservedUsd: number,
   call: ProviderCall,
 ): number {
-  const u = call.usage;
   const complete = call.httpStatus === 200 && call.error === null &&
     call.servedModel !== null && call.stopReason !== null &&
-    u.output_tokens > 0 &&
-    u.input_tokens + u.cache_read_input_tokens +
-          u.cache_creation_input_tokens > 0;
+    call.finalUsageSeen;
   return complete
     ? spentUsd - reservedUsd + call.costUsd
     : spentUsd + Math.max(0, call.costUsd - reservedUsd);

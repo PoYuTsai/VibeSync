@@ -10,10 +10,13 @@ import {
   ARMS,
   buildBlindSheet,
   type CallRecord,
+  countTokensRequestBody,
   estimatePlan,
+  exactInputUpperBoundUsd,
   newProviderCall,
   paidGuardError,
   parseArms,
+  parseCountTokens,
   parsePaidFlags,
   parseRepeat,
   percentile,
@@ -21,7 +24,6 @@ import {
   pricingFor,
   reserveSpend,
   settleReservedSpend,
-  strictCallUpperBoundUsd,
   summarizeArms,
 } from "./ab.ts";
 import { estimateCostUsd } from "../../supabase/functions/_shared/model_pricing.ts";
@@ -343,21 +345,14 @@ Deno.test("blind sheet labels a do_not_send backup line apart from a closing lin
   assert(markdown.includes("收尾句：好啊 B"));
 });
 
-Deno.test("strict upper bound covers the worst case; stop_reason without full usage keeps the reservation", () => {
-  const body = JSON.stringify({
-    model: "claude-sonnet-5-5",
-    max_tokens: 10_500,
-    system: "系統提示".repeat(5_000),
-    messages: [{ role: "user", content: "她：哈囉" }],
-  });
-  const bytes = new TextEncoder().encode(body).length;
-  const strict = strictCallUpperBoundUsd("claude-sonnet-5-5", body, 10_500);
+Deno.test("paid guard upper bound: exact counted input, and only a final message_delta usage releases the reservation", () => {
   const pricing = pricingFor("claude-sonnet-5-5");
-  // 每個 token 至少 1 byte：輸入 token ≤ bytes，最貴的計法也不會超過嚴格上界。
+  const upper = exactInputUpperBoundUsd("claude-sonnet-5-5", 40_000, 10_500);
+  // 輸入 ≤ 確切計數、輸出 ≤ max_tokens：任何計價組合都不超過上界。
   for (
     const usage of [
       {
-        inputTokens: bytes,
+        inputTokens: 40_000,
         outputTokens: 10_500,
         cacheReadInputTokens: 0,
         cacheCreationInputTokens: 0,
@@ -365,20 +360,66 @@ Deno.test("strict upper bound covers the worst case; stop_reason without full us
       {
         inputTokens: 0,
         outputTokens: 10_500,
+        cacheReadInputTokens: 40_000,
+        cacheCreationInputTokens: 0,
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 10_500,
         cacheReadInputTokens: 0,
-        cacheCreationInputTokens: bytes,
+        cacheCreationInputTokens: 40_000,
       },
     ]
   ) {
-    assert(estimateCostUsd(usage, pricing) <= strict);
+    assert(estimateCostUsd(usage, pricing) <= upper);
   }
-  const call = newProviderCall(JSON.parse(body));
+  assertEquals(
+    countTokensRequestBody({
+      model: "m",
+      system: "s",
+      messages: [],
+      max_tokens: 9,
+      stream: true,
+      output_config: {},
+      thinking: { type: "adaptive" },
+    }),
+    { model: "m", system: "s", messages: [], thinking: { type: "adaptive" } },
+  );
+  assertEquals(parseCountTokens(200, { input_tokens: 123 }), 123);
+  assertEquals(parseCountTokens(500, { input_tokens: 123 }), null);
+  assertEquals(parseCountTokens(200, { input_tokens: 0 }), null);
+  assertEquals(parseCountTokens(200, null), null);
+
+  const call = newProviderCall({ model: "claude-sonnet-5-5" });
   call.httpStatus = 200;
-  call.servedModel = "claude-sonnet-5-5";
-  call.stopReason = "end_turn";
-  call.costUsd = 0.001;
-  // 有 stop_reason 但沒有 output token：不算完整，保留預留。
-  assertEquals(settleReservedSpend(strict, strict, call), strict);
-  call.usage = { ...call.usage, input_tokens: 100, output_tokens: 50 };
-  assertEquals(settleReservedSpend(strict, strict, call), 0.001);
+  applySseEvent(call, {
+    type: "message_start",
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+    },
+  });
+  // 有開頭 usage、有 stop_reason，但最終 usage 沒到：保留預留。
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+  });
+  assertEquals(call.finalUsageSeen, false);
+  assertEquals(settleReservedSpend(upper, upper, call), upper);
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: {},
+    usage: { output_tokens: 50 },
+  });
+  assertEquals(call.finalUsageSeen, true);
+  assertAlmostEquals(
+    settleReservedSpend(upper, upper, call),
+    call.costUsd,
+    1e-12,
+  );
 });
