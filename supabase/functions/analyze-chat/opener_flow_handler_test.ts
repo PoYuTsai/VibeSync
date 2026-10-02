@@ -14,7 +14,7 @@ import {
 import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { OPENER_PLAN_PROMPT } from "./opener_plan.ts";
 import { buildOpenerWritePrompt } from "./opener_write.ts";
-import { computeOpenerGenerationInputHash, parseOpenerGenerateRequest } from "./opener_stage.ts";
+import { computeOpenerGenerationInputHash, OPENER_FLOW_PREVIOUS_PROMPT_VERSION, parseOpenerGenerateRequest } from "./opener_stage.ts";
 import { readPreviousPromptReplay } from "./opener_session.ts";
 import type { ProviderAttemptLogEntry } from "./model_call_budget.ts";
 
@@ -361,7 +361,7 @@ Deno.test("版本升級：舊 prompt 已完成結果唯讀重播；不同內容�
     const saved = await json(first);
     const parsed = parseOpenerGenerateRequest({ rawFlowVersion: body.openerFlowVersion, rawSessionId: body.sessionId, rawAnalysisRevision: body.analysisRevision, rawGenerationId: body.generationId, rawContribution: body.userContribution });
     assert(parsed.ok);
-    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION });
     await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [oldHash, GEN_1]);
     const before = h.script.calls.length;
     const replay = await handleOpenerGenerateRequest(h.deps(body));
@@ -515,7 +515,7 @@ for (const accountIsTest of [false, true]) {
       assertEquals((await handleOpenerGenerateRequest(h.deps(body, { accountIsTest }))).status, 200);
       const parsed = parseOpenerGenerateRequest({ rawFlowVersion: body.openerFlowVersion, rawSessionId: body.sessionId, rawAnalysisRevision: body.analysisRevision, rawGenerationId: body.generationId, rawContribution: body.userContribution });
       assert(parsed.ok);
-      const hash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+      const hash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION });
       await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [hash, GEN_1]);
       const before = h.script.calls.length;
       const replay = await handleOpenerGenerateRequest(h.deps(body, { accountIsTest }));
@@ -1674,7 +1674,7 @@ Deno.test("GPT 預審 R3：同一筆生成換舊版 App 重播，拿掉方向＋
     // 前一版 prompt 指紋的重播出口（readPreviousPromptReplay）也一樣。
     const parsed = parseOpenerGenerateRequest({ rawFlowVersion: newReq.openerFlowVersion, rawSessionId: newReq.sessionId, rawAnalysisRevision: newReq.analysisRevision, rawGenerationId: newReq.generationId, rawContribution: newReq.userContribution });
     assert(parsed.ok);
-    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION });
     await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [oldHash, GEN_1]);
     await replayOld();
     assertEquals(script.calls.length, calls, "重播不呼叫模型");

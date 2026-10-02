@@ -4,7 +4,7 @@
 
 import { classifyQuotaRpcError } from "../_shared/quota.ts";
 import { isValidOpenerGenerateLedgerResult, type OpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
-import { computeOpenerGenerationInputHash, type OpenerAnalysisSnapshot, type OpenerContribution, parseStoredOpenerAnalysisSnapshot } from "./opener_stage.ts";
+import { computeOpenerGenerationInputHash, OPENER_FLOW_PREVIOUS_PROMPT_VERSION, type OpenerAnalysisSnapshot, type OpenerContribution, parseStoredOpenerAnalysisSnapshot } from "./opener_stage.ts";
 
 export const OPENER_FLOW_DB_CONTRACT_VERSION = "opener-two-stage-v1";
 
@@ -247,7 +247,7 @@ export async function readPreviousPromptReplay(input: {
     if (runError || !run || run.user_id !== input.userId || run.generation_id !== input.generationId ||
       run.session_id !== input.sessionId || run.state !== "done" || !isValidOpenerGenerateLedgerResult(run.result_json)) return null;
     const previousHash = await computeOpenerGenerationInputHash({
-      ...input, promptVersion: "opener-two-stage-prompt-v1",
+      ...input, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION,
     });
     if (run.input_hash !== previousHash) return null;
     const { data: row, error: sessionError } = await input.supabase.from("opener_sessions")
