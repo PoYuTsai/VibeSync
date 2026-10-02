@@ -56,6 +56,19 @@ C×1＝21 次 $4.23＋評審 17 次 $0.21；合計 $15.15（不中 cache 最壞 
 - `blind.md`＋`blind-reveal.json`：固定種子 20261002 挑 10 案，每案 A／B 第 1 次隨機排成
   甲／乙給 Eric 盲選；對照表另檔。
 
+2026-10-02 結果（`out/2026-10-02-ab/`，主跑 $6.35＋評審約 $0.31）：
+
+| 臂 | evaluate | 評審 rewrite | p50／p95 | 平均 output | 每次費用 |
+|---|---|---|---|---|---|
+| A | 37/42 | 8/29 | 30.5s／41.0s | 2847 | $0.058 |
+| B | 33/42 | 5/26 | 18.5s／24.3s | 2377 | $0.054 |
+| C | 19/21 | 2/14 | 17.7s／21.6s | 2212 | （cache 排列不同，不可比） |
+
+- 5.5 兩臂 63 次 0 拒答、0 max_tokens。
+- **擋上線的回歸**：`thin_opening`（我「嗨」她「哈囉」）5.5 三次都 `do_not_send`（理由「硬接只會變成查戶口或尬聊」），Sonnet 5 兩次都 send。
+- B 臂同開頭 4、問句超額 3（A 是 3、0）；C 臂只剩 thin_opening 與一次超 cap 枝，但只跑一次。
+- 拒答探針沒另跑：探針十案都在主語料裡，B 臂已各跑兩次。
+
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
 `defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
