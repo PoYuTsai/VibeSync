@@ -3431,6 +3431,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 「我還是想回」的備用句：教練建議不回，這句不是教練的建議，所以不記
+  /// 成「已送出的建議」，免得問教練時被當成教練自己給的建議。
+  void _copyAgainstAdviceLine(String line) {
+    AppHaptics.light();
+    Clipboard.setData(ClipboardData(text: line));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已複製這句')),
+    );
+  }
+
   @override
   void copyStyleReply(String type, String text, String snackBarMessage) {
     unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
@@ -4052,9 +4062,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 onCopyAgainstAdviceLine:
                                     _decision!.againstAdviceLine == null
                                         ? null
-                                        : () => copyRecommendationText(
+                                        : () => _copyAgainstAdviceLine(
                                               _decision!.againstAdviceLine!,
-                                              '已複製這句',
                                             ),
                               ),
                               const SizedBox(height: 16),

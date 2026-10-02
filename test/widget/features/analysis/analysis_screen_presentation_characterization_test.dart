@@ -5,6 +5,7 @@
 // 同 commit 切換有行為證據可對拍。這些期望值描述的是「現狀」，
 // 不是新規格；抽出後全部必須原樣通過。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -219,6 +220,7 @@ Future<void> _pumpScreen(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
   Conversation? conversation,
+  MemoryCoachingOutcomeRepository? outcomes,
   // 非空時改用 GoRouter 掛 AnalysisScreen 於 '/'，讓導航目的地可被攔截。
   List<RouteBase> extraRoutes = const [],
 }) async {
@@ -230,7 +232,7 @@ Future<void> _pumpScreen(
     ProviderScope(
       overrides: [
         coachingOutcomeRepositoryProvider
-            .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            .overrideWithValue(outcomes ?? MemoryCoachingOutcomeRepository()),
         analysisHistoryRepositoryProvider
             .overrideWithValue(MemoryAnalysisHistoryRepository()),
         conversationArchiveStoreProvider
@@ -467,12 +469,24 @@ void main() {
           {'mode': 'new_topic', 'partnerId': 'partner-1'});
     });
 
-    testWidgets('do_not_send 帶備用句：預設收合，展開後可複製', (tester) async {
+    testWidgets('do_not_send 帶備用句：預設收合，展開後可複製，且不記成教練建議', (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final outcomes = MemoryCoachingOutcomeRepository();
       await _pumpScreen(
         tester,
         seed: _doneSeed(AnalysisResult.fromJson(
           noSendJson('do_not_send', closingMessage: '好，那妳先忙。'),
         )),
+        outcomes: outcomes,
       );
       expect(find.text('好，那妳先忙。'), findsNothing);
       expect(find.text('複製收尾句'), findsNothing);
@@ -483,6 +497,16 @@ void main() {
       expect(find.text('好，那妳先忙。'), findsOneWidget);
       expect(find.text('複製這句'), findsOneWidget);
       expect(find.byType(ReplyStyleCard), findsNothing);
+
+      await tester.tap(find.text('複製這句'));
+      await tester.pump();
+      expect(copied, ['好，那妳先忙。']);
+      expect(find.text('已複製這句'), findsOneWidget);
+      // 教練建議不回：這句不得進「已送出的建議」回顧。
+      expect(outcomes.listRecent(), isEmpty);
+      // 讓 SnackBar 計時收掉，免得拆樹後計時器才觸發。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
     });
 
     testWidgets('v1 結果（無決策）：cold＋警語仍走本地放棄橫幅', (tester) async {
