@@ -14,19 +14,17 @@ import {
   countTokensRequestBody,
   estimatePlan,
   estimateTokens,
-  exactInputUpperBoundUsd,
   JUDGE_MODEL,
   newProviderCall,
   paidGuardError,
   parseArms,
-  parseCountTokens,
   parsePaidFlags,
   parseRepeat,
   planCalls,
   type PlannedCall,
+  preflightPaidCall,
   type ProviderCall,
   renderSummaryMd,
-  reserveSpend,
   settleReservedSpend,
   summarizeArms,
 } from "./ab.ts";
@@ -106,36 +104,33 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.startsWith("https://api.anthropic.com/")) {
     if (!active) throw new TypeError("blackbox: Anthropic call outside plan");
     const body = applyArmOverride(JSON.parse(String(init?.body)), active.arm);
-    // 先用 count_tokens（免費）拿確切輸入 token，再預留上界：斷線、error、usage 不全時
-    // 就以上界計，不會低估已花的錢。查不到輸入 token 就不准呼叫。
-    const countRes = await realFetch(
-      "https://api.anthropic.com/v1/messages/count_tokens",
-      {
-        method: "POST",
-        headers: init?.headers,
-        body: JSON.stringify(countTokensRequestBody(body)),
+    // 先打 count_tokens（免費）＋餘量預留上界：斷線、error、usage 不全時就以上界計。
+    // 查不到輸入 token 或超出次數／預算就不發付費請求。
+    const pre = await preflightPaidCall({
+      countTokens: async () => {
+        const r = await realFetch(
+          "https://api.anthropic.com/v1/messages/count_tokens",
+          {
+            method: "POST",
+            headers: init?.headers,
+            body: JSON.stringify(countTokensRequestBody(body)),
+          },
+        );
+        return { status: r.status, json: await r.json().catch(() => null) };
       },
-    );
-    const counted = parseCountTokens(
-      countRes.status,
-      await countRes.json().catch(() => null),
-    );
-    if (counted === null) {
+      model: String(body.model),
+      maxTokens: Number(body.max_tokens),
+      spentUsd,
+      callCount: providerCallCount,
+      flags: PAID,
+    });
+    if (!pre.ok) {
       guardTripped = true;
-      throw new TypeError("blackbox paid guard: count_tokens failed");
+      throw new TypeError(`blackbox paid guard: ${pre.reason}`);
     }
-    const upper = exactInputUpperBoundUsd(
-      String(body.model),
-      counted,
-      Number(body.max_tokens),
-    );
-    const reserved = reserveSpend(spentUsd, upper, providerCallCount, PAID);
-    if (reserved === null) {
-      guardTripped = true;
-      throw new TypeError("blackbox paid guard: max-calls or budget reached");
-    }
+    const upper = pre.upperUsd;
     providerCallCount += 1;
-    spentUsd = reserved;
+    spentUsd = pre.spentUsd;
     const call = newProviderCall(body);
     active.calls.push(call);
     const started = Date.now();

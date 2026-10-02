@@ -10,6 +10,7 @@ import {
   ARMS,
   buildBlindSheet,
   type CallRecord,
+  countedInputWithMargin,
   countTokensRequestBody,
   estimatePlan,
   exactInputUpperBoundUsd,
@@ -21,6 +22,7 @@ import {
   parseRepeat,
   percentile,
   planCalls,
+  preflightPaidCall,
   pricingFor,
   reserveSpend,
   settleReservedSpend,
@@ -421,5 +423,79 @@ Deno.test("paid guard upper bound: exact counted input, and only a final message
     settleReservedSpend(upper, upper, call),
     call.costUsd,
     1e-12,
+  );
+});
+
+Deno.test("preflight: count_tokens failure or budget refuses before any paid call; input usage must arrive", async () => {
+  const flags = { maxCalls: 10, budgetUsd: 1 };
+  let paidCalls = 0;
+  const attempt = async (
+    countTokens: () => Promise<{ status: number; json: unknown }>,
+  ) => {
+    const pre = await preflightPaidCall({
+      countTokens,
+      model: "claude-sonnet-5-5",
+      maxTokens: 10_500,
+      spentUsd: 0,
+      callCount: 0,
+      flags,
+    });
+    if (pre.ok) paidCalls++; // run_blackbox 只有 ok 才發付費請求
+    return pre;
+  };
+  assertEquals(
+    (await attempt(() => Promise.resolve({ status: 500, json: {} }))).ok,
+    false,
+  );
+  assertEquals(
+    (await attempt(() => Promise.reject(new Error("net")))).ok,
+    false,
+  );
+  assertEquals(
+    (await attempt(() =>
+      Promise.resolve({ status: 200, json: { input_tokens: 0 } })
+    )).ok,
+    false,
+  );
+  // 預算不夠也不發：40 萬 token 的輸入上界遠超 $1。
+  assertEquals(
+    (await attempt(() =>
+      Promise.resolve({ status: 200, json: { input_tokens: 400_000 } })
+    )).ok,
+    false,
+  );
+  assertEquals(paidCalls, 0);
+
+  const ok = await attempt(() =>
+    Promise.resolve({ status: 200, json: { input_tokens: 40_000 } })
+  );
+  assert(ok.ok);
+  assertEquals(paidCalls, 1);
+  // 預留含 10%＋200 token 餘量。
+  assertEquals(countedInputWithMargin(40_000), 44_200);
+  assertAlmostEquals(
+    ok.upperUsd,
+    exactInputUpperBoundUsd("claude-sonnet-5-5", 44_200, 10_500),
+    1e-12,
+  );
+  assertAlmostEquals(ok.spentUsd, ok.upperUsd, 1e-12);
+
+  // model、stop_reason、最終 output usage 都到，但 message_start 沒帶 input usage：保留預留。
+  const call = newProviderCall({ model: "claude-sonnet-5-5" });
+  call.httpStatus = 200;
+  applySseEvent(call, {
+    type: "message_start",
+    message: { model: "claude-sonnet-5-5" },
+  });
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+    usage: { output_tokens: 50 },
+  });
+  assertEquals(call.startUsageSeen, false);
+  assertEquals(call.finalUsageSeen, true);
+  assertEquals(
+    settleReservedSpend(ok.upperUsd, ok.upperUsd, call),
+    ok.upperUsd,
   );
 });

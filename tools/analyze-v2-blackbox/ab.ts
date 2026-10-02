@@ -213,6 +213,45 @@ export function countTokensRequestBody(
   return out;
 }
 
+/// Anthropic 文件說 count_tokens 是估計值、可能與實際略有差異，所以預留時再加 10%
+/// 與 200 token 餘量（ponytail: 仍不是供應商保證的上界，Eric 依此接受停損可能有極小誤差）。
+export function countedInputWithMargin(counted: number): number {
+  return Math.ceil(counted * 1.1) + 200;
+}
+
+/// 付費呼叫前的關卡：先 count_tokens，查不到或超出次數／預算就回 ok:false，
+/// 呼叫端據此不發付費請求；准了回預留後的 spent 與這次的上界。
+export async function preflightPaidCall(args: {
+  readonly countTokens: () => Promise<{ status: number; json: unknown }>;
+  readonly model: string;
+  readonly maxTokens: number;
+  readonly spentUsd: number;
+  readonly callCount: number;
+  readonly flags: Pick<PaidFlags, "maxCalls" | "budgetUsd">;
+}): Promise<
+  | { ok: true; upperUsd: number; spentUsd: number }
+  | { ok: false; reason: string }
+> {
+  const counted = await args.countTokens()
+    .then((r) => parseCountTokens(r.status, r.json))
+    .catch(() => null);
+  if (counted === null) return { ok: false, reason: "count_tokens failed" };
+  const upperUsd = exactInputUpperBoundUsd(
+    args.model,
+    countedInputWithMargin(counted),
+    args.maxTokens,
+  );
+  const reserved = reserveSpend(
+    args.spentUsd,
+    upperUsd,
+    args.callCount,
+    args.flags,
+  );
+  return reserved === null
+    ? { ok: false, reason: "max-calls or budget reached" }
+    : { ok: true, upperUsd, spentUsd: reserved };
+}
+
 /// count_tokens 回應 → 輸入 token；非 200 或沒有正整數就回 null（付費閘據此拒絕）。
 export function parseCountTokens(status: number, json: unknown): number | null {
   const n = (json as { input_tokens?: unknown } | null)?.input_tokens;
@@ -353,6 +392,8 @@ export interface ProviderCall {
   stopReason: string | null;
   stopDetails: { category?: unknown; explanation?: unknown } | null;
   usage: ProviderUsageTokens;
+  /// message_start 帶了 input_tokens 才為 true。
+  startUsageSeen: boolean;
   /// 收到帶 output_tokens 的 message_delta（最終 usage）才為 true。
   finalUsageSeen: boolean;
   providerMs: number | null;
@@ -379,6 +420,7 @@ export function newProviderCall(body: Record<string, unknown>): ProviderCall {
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
     },
+    startUsageSeen: false,
     finalUsageSeen: false,
     providerMs: null,
     costUsd: 0,
@@ -395,6 +437,12 @@ export function applySseEvent(call: ProviderCall, event: any): void {
     : undefined;
   for (const key of Object.keys(call.usage) as (keyof ProviderUsageTokens)[]) {
     if (Number.isFinite(usage?.[key])) call.usage[key] = usage[key];
+  }
+  if (
+    event?.type === "message_start" &&
+    Number.isFinite(event.message?.usage?.input_tokens)
+  ) {
+    call.startUsageSeen = true;
   }
   if (event?.type === "message_start" && event.message?.model) {
     call.servedModel = String(event.message.model);
@@ -444,7 +492,7 @@ export function settleReservedSpend(
 ): number {
   const complete = call.httpStatus === 200 && call.error === null &&
     call.servedModel !== null && call.stopReason !== null &&
-    call.finalUsageSeen;
+    call.startUsageSeen && call.finalUsageSeen;
   return complete
     ? spentUsd - reservedUsd + call.costUsd
     : spentUsd + Math.max(0, call.costUsd - reservedUsd);

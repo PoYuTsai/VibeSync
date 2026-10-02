@@ -38,8 +38,9 @@ deno run --allow-env --allow-read --allow-run=git \
 旗標：`--arms=A,B`（預設）；`--repeat=N` 或 `--repeat=A:2,B:2,C:1`；`--only=a,b`；
 `--refusal-probe`（只跑 C 臂、只跑下列曖昧／邀約案）。付費閘：計畫次數要 ≤
 `--max-calls`、估價要 ≤ `--budget-usd`；跑的時候每次呼叫前先打 count_tokens（免費）拿
-確切輸入 token，以「輸入全按 cache 寫入價＋輸出吃滿 max_tokens」的上界檢查已花費，查不到
-或超過就停，已跑的結果照寫。已花費＝每次呼叫前先記上界，只有收到帶 output_tokens 的最終
+輸入 token（Anthropic 文件說是估計值，所以再加 10%＋200 token），以「輸入全按 cache 寫入價＋輸出吃滿
+max_tokens」的上界檢查已花費（不是供應商保證的嚴格上界，停損可能有極小誤差），查不到
+或超過就停，已跑的結果照寫。已花費＝每次呼叫前先記上界，只有 message_start 帶了 input usage、且收到帶 output_tokens 的最終
 message_delta（正常 stop、沒有 error 事件）才換成實際費用；斷線或最終 usage 沒到就以上界計
 （已回報費用比上界高時取已回報費用）。
 備援鏈關閉（`allowModelFallback:false`），失敗就記失敗，不讓 4.6 混進來；critic 影子關閉。
