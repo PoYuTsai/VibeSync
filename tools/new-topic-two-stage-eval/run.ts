@@ -405,9 +405,17 @@ function armChecks(rows: EvalRecord[]) {
   const sum = (xs: typeof ok, f: (x: typeof ok[number]) => number) =>
     xs.reduce((n, x) => n + f(x), 0);
   // 分母＝這一臂所有有素材的呼叫；沒跑到、API 失敗、格式壞、外洩都算沒用到。
-  const total = rows.filter((r) => r.topicContext.materialText !== null).length;
+  // 紅燈收尾（規格 §9.4）推薦的是收尾句，素材只是可順帶：不進這項驗收，另列觀察值。
+  const redClose = (r: EvalRecord) =>
+    isNewTopicRedClose(r.situation, r.topicContext);
+  const total =
+    rows.filter((r) => r.topicContext.materialText !== null && !redClose(r))
+      .length;
   const deliverableWithMaterial = ok.filter((x) =>
-    x.a.materialUsedInRecommended !== null
+    x.a.materialUsedInRecommended !== null && !redClose(x.r)
+  );
+  const redCloseWithMaterial = ok.filter((x) =>
+    x.a.materialUsedInRecommended !== null && redClose(x.r)
   );
   const hit =
     deliverableWithMaterial.filter((x) => x.a.materialUsedInRecommended).length;
@@ -423,6 +431,12 @@ function armChecks(rows: EvalRecord[]) {
       pass: total === 0 ? null : hit / total >= 0.9,
       /** 只看可交付輸出的條件比率；僅供參考，不判過關。 */
       deliverableOnly: { hit, total: deliverableWithMaterial.length },
+      /** 紅燈收尾的推薦（收尾句）有沒有順帶用到素材：觀察值，不判過關。 */
+      redCloseObserved: {
+        hit: redCloseWithMaterial.filter((x) => x.a.materialUsedInRecommended)
+          .length,
+        total: redCloseWithMaterial.length,
+      },
     },
     sheNoReplyGapLines: sum(
       ok.filter((x) => x.r.topicContext.coldStop === "she_no_reply"),
@@ -829,6 +843,7 @@ async function main(args: string[]): Promise<void> {
       mark(t.materialInRecommended.pass)
     } ${t.materialInRecommended.hit}/${t.materialInRecommended.total} | ${l.materialInRecommended.hit}/${l.materialInRecommended.total} |`,
     `| 　只看可交付的條件比率（參考，不判過關） | ${t.materialInRecommended.deliverableOnly.hit}/${t.materialInRecommended.deliverableOnly.total} | ${l.materialInRecommended.deliverableOnly.hit}/${l.materialInRecommended.deliverableOnly.total} |`,
+    `| 　紅燈收尾的收尾句順帶用到素材（觀察，不判過關、不計入上一列） | ${t.materialInRecommended.redCloseObserved.hit}/${t.materialInRecommended.redCloseObserved.total} | ${l.materialInRecommended.redCloseObserved.hit}/${l.materialInRecommended.redCloseObserved.total} |`,
     `| 她沒回我：提空窗 0 句 | ${
       mark(t.sheNoReplyGapLines === 0)
     } ${t.sheNoReplyGapLines} | ${l.sheNoReplyGapLines} |`,

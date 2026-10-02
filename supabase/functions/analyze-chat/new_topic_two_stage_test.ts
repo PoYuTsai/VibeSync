@@ -1182,3 +1182,16 @@ Deno.test("audit：紅燈收尾標記與第一題收尾字眼（只記 0／1，�
     assertEquals(result.redCloseCueInFirst, null, situation);
   }
 });
+
+Deno.test("system prompt：紅燈第一題是收尾句時，不受「好的第一則」與素材推薦規定約束（Codex 紅燈審查 P2）", () => {
+  assert(
+    NEW_TOPIC_TWO_STAGE_PROMPT.includes(
+      "例外：「這次的局面」說第一題是收尾句時，那一題照局面寫成收尾，不受上面三件事與問句的規定約束。",
+    ),
+  );
+  assert(
+    NEW_TOPIC_TWO_STAGE_PROMPT.includes(
+      "推薦的那一題一定要用到它（「這次的局面」規定第一題是收尾句時，照局面的素材做法）",
+    ),
+  );
+});

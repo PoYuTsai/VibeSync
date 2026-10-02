@@ -197,6 +197,7 @@ Deno.test("整理＋§10 計數：失敗不算進句數、但算進素材分母�
     total: 3,
     pass: false,
     deliverableOnly: { hit: 2, total: 2 },
+    redCloseObserved: { hit: 0, total: 0 },
   });
   assertEquals(checks.two_stage.sheNoReplyGapLines, 0);
   assertEquals(checks.legacy.sheNoReplyGapLines, 1);
@@ -225,24 +226,46 @@ Deno.test("素材比率：分母是有素材的全部呼叫，失敗算沒用到
     "剛剛差點坐過站",
     "辦公室冷氣冷到發抖",
   ]);
-  // 9 個格式失敗＋1 個命中：1/10，不是 1/1 過關。
+  // 紅燈收尾（W1：想更靠近＋常只回哈哈、嗯）推薦的是收尾句，不進素材驗收的分母。
+  // 8 個格式失敗＋1 個命中：1/9，不是 1/1 過關。
   const oneHit = proposalChecks(
     toRecords(plan, (key) => key === "E1.1.two_stage" ? hitE1 : "not json"),
   );
   assertEquals(oneHit.two_stage.materialInRecommended, {
     hit: 1,
-    total: 10,
+    total: 9,
     pass: false,
     deliverableOnly: { hit: 1, total: 1 },
+    redCloseObserved: { hit: 0, total: 0 },
   });
-  // 全部失敗：0/10 不過關，不是 0/0 過關。
+  // 全部失敗：0/9 不過關，不是 0/0 過關。
   const allFail = proposalChecks(toRecords(plan, () => "not json"));
   assertEquals(allFail.two_stage.materialInRecommended, {
     hit: 0,
-    total: 10,
+    total: 9,
     pass: false,
     deliverableOnly: { hit: 0, total: 0 },
+    redCloseObserved: { hit: 0, total: 0 },
   });
+  // W1 的合規收尾句沒用到素材：不算驗收失敗，只進觀察值。
+  const closeNoMaterial = fakeOutput([
+    "我先去忙 晚點再跟妳說",
+    "今天的雲很像棉花糖",
+    "我發現巷口開了新書店",
+    "剛剛差點坐過站",
+    "辦公室冷氣冷到發抖",
+  ]);
+  const w1Only = proposalChecks(
+    toRecords(
+      plan,
+      (key) => key === "W1.1.two_stage" ? closeNoMaterial : hitE1,
+    ),
+  );
+  assertEquals(w1Only.two_stage.materialInRecommended.redCloseObserved, {
+    hit: 0,
+    total: 1,
+  });
+  assertEquals(w1Only.two_stage.materialInRecommended.total, 9);
   // 選到的案例都沒有素材：未評估。
   const none = await buildPlan(
     CASES.filter((c) => !c.topicContext.materialText),
