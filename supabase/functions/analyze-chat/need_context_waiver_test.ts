@@ -9,6 +9,7 @@ import {
   type AnalyzeStreamDeps,
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
+import { MODEL_RATE_LIMITS } from "../_shared/model_rate_limit.ts";
 import { validateNoSendDecisionEvent } from "./no_send_decision.ts";
 import type { AnalysisStreamRun } from "./stream_run_store.ts";
 
@@ -284,9 +285,17 @@ Deno.test("need_context waiver: a short need_context run is not charged and usag
     fn: "increment_model_usage",
     p_user_id: USER,
     p_scope: "need_context_waiver",
-    p_minute_limit: 3,
+    p_minute_limit: 6,
     p_daily_limit: 3,
   }]);
+});
+
+Deno.test("need_context waiver: the minute window can never refuse the first waivers of a new UTC day", () => {
+  // increment_model_usage 先判分鐘窗，且分鐘窗跨 UTC 午夜不重置：昨天
+  // 23:59 用掉 3 次、今天 00:00 再來，分鐘計數仍是 3。上限至少 2×perDay，
+  // 今天的前 3 次才一定免扣。
+  const { perMinute, perDay } = MODEL_RATE_LIMITS.need_context_waiver;
+  assert(perMinute >= 2 * perDay);
 });
 
 Deno.test("need_context waiver: the 4th need_context of the day is charged as today", async () => {
