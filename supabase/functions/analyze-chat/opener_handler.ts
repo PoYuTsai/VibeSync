@@ -866,8 +866,9 @@ export async function handleOpenerRequest(
       }, 15000);
       // R2 主審 round-2 修正：try 只包 provider 呼叫與文字累積，
       // completeOpenerRequest 在 catch 外——complete 內部（含扣費後）
-      // 的非預期例外走 ndjson fail（=連線中斷），與 legacy 的全域 500
-      // 同語義，不會被誤映成 provider 錯誤。
+      // 的非預期例外不會被誤映成 provider 錯誤：finally 已 close，客戶端
+      // 看到沒有終止事件的中斷串流，伺服器記 ndjson_stream_unhandled；
+      // claim 刻意不 release（例外可能發生在扣費之後）。
       try {
         // deadline 先擋：剩餘預算 ≤0 不得再起 provider 呼叫（與 legacy
         // absoluteDeadlineAtMs 拒絕語義一致；不設 1 秒地板）。

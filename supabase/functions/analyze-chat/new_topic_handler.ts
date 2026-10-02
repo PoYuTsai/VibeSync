@@ -917,8 +917,9 @@ export async function handleNewTopicRequest(
       }, 15000);
       // R2 主審 round-2 修正：try 只包 provider 呼叫與文字累積，
       // completeNewTopicRequest 在 catch 外——settle 之後的非預期例外
-      // 走 ndjson fail（=連線中斷），絕不會被這裡的 catch 誤 release
-      // 已 settle 的 claim（與 legacy 全域 500 同語義）。
+      // 絕不會被這裡的 catch 誤 release 已 settle 的 claim：finally 已
+      // close，客戶端看到沒有終止事件的中斷串流，伺服器記
+      // ndjson_stream_unhandled；claim 刻意不 release。
       try {
         // deadline 先擋：剩餘預算 ≤0 不得再起 provider 呼叫（與 legacy
         // absoluteDeadlineAtMs 拒絕語義一致；不設 1 秒地板）。已知
