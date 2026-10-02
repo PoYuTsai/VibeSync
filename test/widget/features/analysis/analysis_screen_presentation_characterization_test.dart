@@ -5,8 +5,10 @@
 // 同 commit 切換有行為證據可對拍。這些期望值描述的是「現狀」，
 // 不是新規格；抽出後全部必須原樣通過。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
@@ -22,6 +24,7 @@ import 'package:vibesync/features/analysis/presentation/widgets/swipe_hint_nudge
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_usage_summary_line.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
@@ -131,10 +134,11 @@ class _EmptyCoachChatRepository extends CoachChatRepository {
   Future<bool> deleteUnified(String id) async => false;
 }
 
-Conversation _conversation({List<Message>? messages}) {
+Conversation _conversation({List<Message>? messages, String? partnerId}) {
   return Conversation(
     id: _conversationId,
     name: '小雲',
+    partnerId: partnerId,
     messages: messages ??
         [
           Message(
@@ -216,6 +220,9 @@ Future<void> _pumpScreen(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
   Conversation? conversation,
+  MemoryCoachingOutcomeRepository? outcomes,
+  // 非空時改用 GoRouter 掛 AnalysisScreen 於 '/'，讓導航目的地可被攔截。
+  List<RouteBase> extraRoutes = const [],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -225,7 +232,7 @@ Future<void> _pumpScreen(
     ProviderScope(
       overrides: [
         coachingOutcomeRepositoryProvider
-            .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            .overrideWithValue(outcomes ?? MemoryCoachingOutcomeRepository()),
         analysisHistoryRepositoryProvider
             .overrideWithValue(MemoryAnalysisHistoryRepository()),
         conversationArchiveStoreProvider
@@ -242,9 +249,22 @@ Future<void> _pumpScreen(
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
       ],
-      child: const MaterialApp(
-        home: AnalysisScreen(conversationId: _conversationId),
-      ),
+      child: extraRoutes.isEmpty
+          ? const MaterialApp(
+              home: AnalysisScreen(conversationId: _conversationId),
+            )
+          : MaterialApp.router(
+              routerConfig: GoRouter(
+                routes: [
+                  GoRoute(
+                    path: '/',
+                    builder: (_, __) =>
+                        const AnalysisScreen(conversationId: _conversationId),
+                  ),
+                  ...extraRoutes,
+                ],
+              ),
+            ),
     ),
   );
   // initState 的 post-frame hydration callback 落地。
@@ -362,6 +382,148 @@ void main() {
       expect(find.text('複製收尾句'), findsOneWidget);
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.byType(GiveUpAdviceBanner), findsNothing);
+    });
+
+    /// 首次進頁的「長按訊息泡泡」提示會蓋住整頁，點擊前先關掉。
+    Future<void> dismissEditCoachMark(WidgetTester tester) async {
+      await tester.tap(find.text('知道了'));
+      await tester.pump();
+    }
+
+    /// 攔下 /coach 與 /opener 的導航，記住帶去的快照與位址。
+    List<RouteBase> captureRoutes(
+      void Function(GoRouterState state) onCoach,
+      void Function(GoRouterState state) onOpener,
+    ) =>
+        [
+          GoRoute(
+            path: '/coach',
+            builder: (_, state) {
+              onCoach(state);
+              return const Text('coach-route');
+            },
+          ),
+          GoRoute(
+            path: '/opener',
+            builder: (_, state) {
+              onOpener(state);
+              return const Text('opener-route');
+            },
+          ),
+        ];
+
+    testWidgets('do_not_send：問教練快照不帶動作卡，其餘分析照帶', (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(noSendJson('do_not_send'))),
+        extraRoutes: captureRoutes(
+          (state) => snapshot = state.extra as CoachChatAnalysisSnapshot?,
+          (_) {},
+        ),
+      );
+      await dismissEditCoachMark(tester);
+      final cta = find.byKey(const Key('analysis_coach_cta'));
+      await tester.ensureVisible(cta);
+      await tester.tap(cta);
+      await tester.pumpAndSettle();
+      expect(find.text('coach-route'), findsOneWidget);
+      expect(snapshot, isNotNull);
+      expect(snapshot!.coachActionType, isNull);
+      expect(snapshot!.summary, '先停一下');
+    });
+
+    testWidgets('send 結果：問教練快照照舊帶推薦動作卡', (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(_paidResult()),
+        extraRoutes: captureRoutes(
+          (state) => snapshot = state.extra as CoachChatAnalysisSnapshot?,
+          (_) {},
+        ),
+      );
+      await dismissEditCoachMark(tester);
+      final cta = find.byKey(const Key('analysis_coach_cta'));
+      await tester.ensureVisible(cta);
+      await tester.tap(cta);
+      await tester.pumpAndSettle();
+      expect(snapshot!.coachActionType, 'tease');
+    });
+
+    testWidgets('do_not_send：「用新話題重新開」直達這位對象的新話題 tab', (tester) async {
+      Uri? openerUri;
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(noSendJson('do_not_send'))),
+        conversation: _conversation(partnerId: 'partner-1'),
+        extraRoutes: captureRoutes((_) {}, (state) => openerUri = state.uri),
+      );
+      await dismissEditCoachMark(tester);
+      final button = find.text('用新話題重新開');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text('opener-route'), findsOneWidget);
+      expect(openerUri!.queryParameters,
+          {'mode': 'new_topic', 'partnerId': 'partner-1'});
+    });
+
+    testWidgets('do_not_send 帶備用句：預設收合，展開後可複製，且不記成教練建議', (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final outcomes = MemoryCoachingOutcomeRepository();
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(
+          noSendJson('do_not_send', closingMessage: '好，那妳先忙。'),
+        )),
+        outcomes: outcomes,
+      );
+      expect(find.text('好，那妳先忙。'), findsNothing);
+      expect(find.text('複製收尾句'), findsNothing);
+      await dismissEditCoachMark(tester);
+      await tester.ensureVisible(find.text('我還是想回'));
+      await tester.tap(find.text('我還是想回'));
+      await tester.pump();
+      expect(find.text('好，那妳先忙。'), findsOneWidget);
+      expect(find.text('複製這句'), findsOneWidget);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+
+      await tester.tap(find.text('複製這句'));
+      await tester.pump();
+      expect(copied, ['好，那妳先忙。']);
+      expect(find.text('已複製這句'), findsOneWidget);
+      // 教練建議不回：這句不得進「已送出的建議」回顧。
+      expect(outcomes.listRecent(), isEmpty);
+      // 讓 SnackBar 計時收掉，免得拆樹後計時器才觸發。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('do_not_send 沒備用句：仍有「我還是想回」，展開是通用提醒、沒有複製', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: _doneSeed(AnalysisResult.fromJson(noSendJson('do_not_send'))),
+      );
+      await dismissEditCoachMark(tester);
+      await tester.ensureVisible(find.text('我還是想回'));
+      await tester.tap(find.text('我還是想回'));
+      await tester.pump();
+      expect(
+        find.text('教練不建議現在回。真的要回，只傳一句不帶問號、不追問的短句，傳完就停。'),
+        findsOneWidget,
+      );
+      expect(find.text('複製這句'), findsNothing);
+      expect(find.byType(ReplyStyleCard), findsNothing);
     });
 
     testWidgets('v1 結果（無決策）：cold＋警語仍走本地放棄橫幅', (tester) async {

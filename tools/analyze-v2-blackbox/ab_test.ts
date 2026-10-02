@@ -1,0 +1,501 @@
+import {
+  assert,
+  assertAlmostEquals,
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  applyArmOverride,
+  applySseEvent,
+  ARMS,
+  buildBlindSheet,
+  type CallRecord,
+  countedInputWithMargin,
+  countTokensRequestBody,
+  estimatePlan,
+  exactInputUpperBoundUsd,
+  newProviderCall,
+  paidGuardError,
+  parseArms,
+  parseCountTokens,
+  parsePaidFlags,
+  parseRepeat,
+  percentile,
+  planCalls,
+  preflightPaidCall,
+  pricingFor,
+  reserveSpend,
+  settleReservedSpend,
+  summarizeArms,
+} from "./ab.ts";
+import { estimateCostUsd } from "../../supabase/functions/_shared/model_pricing.ts";
+import { CORPUS, REFUSAL_PROBE_IDS } from "./corpus.ts";
+
+const IDS = CORPUS.map((c) => c.id);
+
+Deno.test("plan: A,B×2 is 4 calls per case, C×1 is one, arms interleave inside each case", () => {
+  const ab = planCalls(IDS, ["A", "B"], parseRepeat("2", ["A", "B"]));
+  assertEquals(ab.length, IDS.length * 4);
+  assertEquals(
+    planCalls(IDS, ["C"], parseRepeat("1", ["C"])).length,
+    IDS.length,
+  );
+  const abc = planCalls(
+    IDS,
+    ["A", "B", "C"],
+    parseRepeat("A:2,B:2,C:1", ["A", "B", "C"]),
+  );
+  assertEquals(abc.length, IDS.length * 5);
+  for (const id of IDS) {
+    const order = ab.filter((c) => c.caseId === id).map((c) => c.arm);
+    assertEquals([...order].sort(), ["A", "A", "B", "B"]);
+    assert(order[0] !== order[1], `${id} first round is interleaved`);
+  }
+  // 沒有哪一臂固定先跑。
+  assertEquals(
+    new Set(ab.filter((c) => c.rep === 1).map((c) => c.arm)).size,
+    2,
+  );
+  assertThrows(() => parseArms("A,D"));
+  assertThrows(() => parseRepeat("C:1", ["A", "B"]));
+  assert(REFUSAL_PROBE_IDS.every((id) => IDS.includes(id)));
+});
+
+Deno.test("estimate: repeats of the same case and arm are priced as cache reads; judge counts send-capable cases", () => {
+  const tokens = Object.fromEntries(
+    IDS.map((id) => [id, { system: 40_000, user: 300 }]),
+  );
+  const once = estimatePlan(
+    planCalls(IDS, ["A"], { A: 1 } as never),
+    tokens,
+    6500,
+  );
+  const twice = estimatePlan(
+    planCalls(IDS, ["A"], { A: 2 } as never),
+    tokens,
+    6500,
+  );
+  // 一次：40k×$2.50＋300×$2＋6500×$10 ＝ $0.1656。
+  assertEquals(Number((once.mainUsd / IDS.length).toFixed(4)), 0.1656);
+  assert(twice.mainUsd < 2 * once.mainUsd);
+  assertAlmostEquals(twice.mainNoCacheUsd, 2 * once.mainNoCacheUsd, 1e-9);
+  const sendable =
+    CORPUS.filter((c) => c.expect.messageDecision.includes("send"))
+      .length;
+  assertEquals(once.judgeCalls, sendable);
+  const c = estimatePlan(
+    planCalls(IDS, ["C"], { C: 1 } as never),
+    tokens,
+    6500,
+  );
+  // C 臂（production 5.5）輸出上界多 4000 token。
+  assertEquals(
+    Number(((c.mainUsd - once.mainUsd) / IDS.length).toFixed(4)),
+    0.04,
+  );
+  // B 臂改回舊設定：max_tokens 不加，上界與 A 同（兩模型同價）。
+  const b = estimatePlan(
+    planCalls(IDS, ["B"], { B: 1 } as never),
+    tokens,
+    6500,
+  );
+  assertAlmostEquals(b.mainUsd, once.mainUsd, 1e-9);
+});
+
+Deno.test("paid guard refuses real calls unless every flag is present and covers the plan", () => {
+  const ok = parsePaidFlags([
+    "--run",
+    "--confirm-paid",
+    "--max-calls=84",
+    "--budget-usd=17",
+  ]);
+  assertEquals(paidGuardError(ok, 84, 10), null);
+  assert(paidGuardError(parsePaidFlags([]), 84, 10)?.startsWith("dry-run"));
+  for (
+    const drop of ["--confirm-paid", "--max-calls=84", "--budget-usd=17"]
+  ) {
+    const flags = parsePaidFlags(
+      ["--run", "--confirm-paid", "--max-calls=84", "--budget-usd=17"].filter(
+        (a) => a !== drop,
+      ),
+    );
+    assert(paidGuardError(flags, 84, 10)?.startsWith("拒絕"), drop);
+  }
+  assert(paidGuardError(ok, 85, 10)?.startsWith("拒絕"));
+  assert(paidGuardError(ok, 84, 17.5)?.startsWith("拒絕"));
+});
+
+Deno.test("arm B rewrites the production 5.5 body back to configuration B; A and C go out untouched", () => {
+  const body = {
+    model: "claude-sonnet-5-5",
+    max_tokens: 10500,
+    thinking: { type: "adaptive", display: "omitted" },
+    output_config: { effort: "low" },
+  };
+  assertEquals(applyArmOverride(body, ARMS.A), body);
+  assertEquals(applyArmOverride(body, ARMS.C), body);
+  assertEquals(applyArmOverride(body, ARMS.B), {
+    model: "claude-sonnet-5-5",
+    max_tokens: 6500,
+    thinking: { type: "between_tools" },
+    output_config: { effort: "medium" },
+  });
+});
+
+Deno.test("SSE observer records served model, usage, refusal category and cost", () => {
+  const call = newProviderCall({
+    model: "claude-sonnet-5-5",
+    max_tokens: 6500,
+  });
+  applySseEvent(call, {
+    type: "message_start",
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 1,
+        cache_creation_input_tokens: 30_000,
+        cache_read_input_tokens: 0,
+      },
+    },
+  });
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: {
+      stop_reason: "refusal",
+      stop_details: { type: "refusal", category: "general_harms" },
+    },
+    usage: { output_tokens: 40 },
+  });
+  assertEquals(call.servedModel, "claude-sonnet-5-5");
+  assertEquals(call.stopReason, "refusal");
+  assertEquals(call.stopDetails?.category, "general_harms");
+  assertEquals(call.usage.output_tokens, 40);
+  assertEquals(call.usage.cache_creation_input_tokens, 30_000);
+  // 100×$2＋30k×$2.50＋40×$10 ＝ $0.0756。
+  assertEquals(Number(call.costUsd.toFixed(4)), 0.0756);
+});
+
+Deno.test("paid guard spend: the reservation is replaced only by complete final usage", () => {
+  const start = (model = "claude-sonnet-5-5") => {
+    const call = newProviderCall({ model, max_tokens: 10500 });
+    call.httpStatus = 200;
+    applySseEvent(call, {
+      type: "message_start",
+      message: {
+        model,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 1,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    });
+    return call;
+  };
+  const finish = (call: ReturnType<typeof start>) =>
+    applySseEvent(call, {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 1000 },
+    });
+  // 上界 $0.5 已預留（spent 1.0 含它）。正常 stop：換成實際 100×$2＋1000×$10＝$0.0102。
+  const ok = start();
+  finish(ok);
+  assertAlmostEquals(settleReservedSpend(1.0, 0.5, ok), 0.5102, 1e-9);
+  // 串流中斷（沒有 message_delta）：usage 只有開頭，保留上界。
+  assertEquals(settleReservedSpend(1.0, 0.5, start()), 1.0);
+  // stop 之後又來 error 事件：保留上界。
+  const errored = start();
+  finish(errored);
+  applySseEvent(errored, {
+    type: "error",
+    error: { type: "overloaded_error" },
+  });
+  assertEquals(settleReservedSpend(1.0, 0.5, errored), 1.0);
+  // 預留是估算：usage 不全但已回報 $0.0102 > 預留 $0.005 時，補上差額不低估。
+  assertAlmostEquals(settleReservedSpend(1.0, 0.005, errored), 1.0052, 1e-9);
+  // 只有 message_delta、沒有 message_start：輸入 usage 沒到，保留上界。
+  const noStart = newProviderCall({ model: "claude-sonnet-5-5" });
+  noStart.httpStatus = 200;
+  finish(noStart);
+  assertEquals(settleReservedSpend(1.0, 0.5, noStart), 1.0);
+  // 非 200（沒有 body）：保留上界。
+  const http = newProviderCall({ model: "claude-sonnet-5-5" });
+  http.httpStatus = 529;
+  assertEquals(settleReservedSpend(1.0, 0.5, http), 1.0);
+});
+
+Deno.test("paid guard spend: reserve before the call, settle after; spent never goes below observed cost", () => {
+  const flags = { maxCalls: 2, budgetUsd: 1 };
+  // 上界超過剩餘預算、或次數用完：不准呼叫。
+  assertEquals(reserveSpend(0.6, 0.5, 0, flags), null);
+  assertEquals(reserveSpend(0, 0.5, 2, flags), null);
+  // 准了：spent 先含上界，完整結束後換成實際費用。
+  const reserved = reserveSpend(0, 0.5, 0, flags)!;
+  assertEquals(reserved, 0.5);
+  const call = newProviderCall({ model: "claude-sonnet-5-5" });
+  call.httpStatus = 200;
+  applySseEvent(call, {
+    type: "message_start",
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+    },
+  });
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+    usage: { output_tokens: 1000 },
+  });
+  const settled = settleReservedSpend(reserved, 0.5, call);
+  assertAlmostEquals(settled, call.costUsd, 1e-9);
+  assert(settled >= call.costUsd);
+  // 下一次呼叫照已結算的 spent 檢查預算。
+  assertAlmostEquals(
+    reserveSpend(settled, 0.9, 1, flags)!,
+    settled + 0.9,
+    1e-9,
+  );
+});
+
+function record(
+  arm: "A" | "B",
+  caseId: string,
+  latencyMs: number,
+  stopReason: string,
+  category?: string,
+): CallRecord {
+  const pc = newProviderCall({ model: ARMS[arm].model });
+  pc.httpStatus = 200;
+  pc.stopReason = stopReason;
+  pc.stopDetails = category ? { category } : null;
+  pc.usage.output_tokens = 1000;
+  pc.costUsd = 0.1;
+  return {
+    arm,
+    caseId,
+    rep: 1,
+    model: ARMS[arm].model,
+    latencyMs,
+    costUsd: 0.1,
+    providerCalls: [pc],
+    result: {
+      name: `${caseId}#1`,
+      status: 200,
+      elapsedMs: latencyMs,
+      eventTypes: ["analysis.decision", "analysis.done"],
+      decision: { messageDecision: "acknowledge_and_stop" },
+      replyOptions: [],
+      telemetry: { usage: { output_tokens: 1000 } },
+      clientText:
+        `{"type":"analysis.decision","messageDecision":"acknowledge_and_stop","closingMessage":"好啊 ${arm}"}\n`,
+    },
+  };
+}
+
+Deno.test("summary counts max_tokens, refusals by category, percentiles and evaluate passes per arm", () => {
+  const rs = [
+    record("A", "defer_vague_busy", 10_000, "end_turn"),
+    record("A", "soft_reject_after_invite", 30_000, "max_tokens"),
+    record("B", "defer_vague_busy", 20_000, "refusal", "general_harms"),
+    record("B", "soft_reject_after_invite", 40_000, "end_turn"),
+  ];
+  const [a, b] = summarizeArms(rs);
+  assertEquals([a.arm, a.maxTokens, a.refusals, a.evalPassed], ["A", 1, 0, 2]);
+  assertEquals(b.refusalCategories, { general_harms: 1 });
+  assertEquals([b.p50Ms, b.p95Ms], [20_000, 40_000]);
+  assertEquals(b.costUsd, 0.2);
+  assertEquals(percentile([], 50), null);
+});
+
+Deno.test("blind sheet is seeded, hides the arm and maps 甲／乙 back in the reveal", () => {
+  const rs = IDS.flatMap((
+    id,
+  ) => [record("A", id, 1, "end_turn"), record("B", id, 1, "end_turn")]);
+  const first = buildBlindSheet(rs)!;
+  const again = buildBlindSheet(rs)!;
+  assertEquals(first, again);
+  // deno-lint-ignore no-explicit-any
+  const cases = (first.reveal as any).cases as {
+    caseId: string;
+    甲: string;
+    乙: string;
+  }[];
+  assertEquals(cases.length, 10);
+  assertEquals(new Set(cases.map((c) => c.caseId)).size, 10);
+  assert(cases.every((c) => [c.甲, c.乙].sort().join() === "A,B"));
+  assert(!first.markdown.includes("claude-"));
+  // 收尾句帶臂名只是測試標記：第一題的甲要對到 reveal。
+  assert(first.markdown.includes(`收尾句：好啊 ${cases[0].甲}`));
+});
+
+Deno.test("blind sheet labels a do_not_send backup line apart from a closing line to send", () => {
+  const a = record("A", "user_waiting_after_reply", 1, "end_turn");
+  a.result.clientText =
+    `{"type":"analysis.decision","messageDecision":"do_not_send","closingMessage":"好，妳先忙"}\n`;
+  const b = record("B", "user_waiting_after_reply", 1, "end_turn");
+  const { markdown } = buildBlindSheet([a, b])!;
+  assert(markdown.includes("（收在「我還是想回」後）備用句：好，妳先忙"));
+  assert(!markdown.includes("收尾句：好，妳先忙"));
+  assert(markdown.includes("收尾句：好啊 B"));
+});
+
+Deno.test("paid guard upper bound: exact counted input, and only a final message_delta usage releases the reservation", () => {
+  const pricing = pricingFor("claude-sonnet-5-5");
+  const upper = exactInputUpperBoundUsd("claude-sonnet-5-5", 40_000, 10_500);
+  // 輸入 ≤ 確切計數、輸出 ≤ max_tokens：任何計價組合都不超過上界。
+  for (
+    const usage of [
+      {
+        inputTokens: 40_000,
+        outputTokens: 10_500,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 10_500,
+        cacheReadInputTokens: 40_000,
+        cacheCreationInputTokens: 0,
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 10_500,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 40_000,
+      },
+    ]
+  ) {
+    assert(estimateCostUsd(usage, pricing) <= upper);
+  }
+  assertEquals(
+    countTokensRequestBody({
+      model: "m",
+      system: "s",
+      messages: [],
+      max_tokens: 9,
+      stream: true,
+      output_config: {},
+      thinking: { type: "adaptive" },
+    }),
+    { model: "m", system: "s", messages: [], thinking: { type: "adaptive" } },
+  );
+  assertEquals(parseCountTokens(200, { input_tokens: 123 }), 123);
+  assertEquals(parseCountTokens(500, { input_tokens: 123 }), null);
+  assertEquals(parseCountTokens(200, { input_tokens: 0 }), null);
+  assertEquals(parseCountTokens(200, null), null);
+
+  const call = newProviderCall({ model: "claude-sonnet-5-5" });
+  call.httpStatus = 200;
+  applySseEvent(call, {
+    type: "message_start",
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+    },
+  });
+  // 有開頭 usage、有 stop_reason，但最終 usage 沒到：保留預留。
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+  });
+  assertEquals(call.finalUsageSeen, false);
+  assertEquals(settleReservedSpend(upper, upper, call), upper);
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: {},
+    usage: { output_tokens: 50 },
+  });
+  assertEquals(call.finalUsageSeen, true);
+  assertAlmostEquals(
+    settleReservedSpend(upper, upper, call),
+    call.costUsd,
+    1e-12,
+  );
+});
+
+Deno.test("preflight: count_tokens failure or budget refuses before any paid call; input usage must arrive", async () => {
+  const flags = { maxCalls: 10, budgetUsd: 1 };
+  let paidCalls = 0;
+  const attempt = async (
+    countTokens: () => Promise<{ status: number; json: unknown }>,
+  ) => {
+    const pre = await preflightPaidCall({
+      countTokens,
+      model: "claude-sonnet-5-5",
+      maxTokens: 10_500,
+      spentUsd: 0,
+      callCount: 0,
+      flags,
+    });
+    if (pre.ok) paidCalls++; // run_blackbox 只有 ok 才發付費請求
+    return pre;
+  };
+  assertEquals(
+    (await attempt(() => Promise.resolve({ status: 500, json: {} }))).ok,
+    false,
+  );
+  assertEquals(
+    (await attempt(() => Promise.reject(new Error("net")))).ok,
+    false,
+  );
+  assertEquals(
+    (await attempt(() =>
+      Promise.resolve({ status: 200, json: { input_tokens: 0 } })
+    )).ok,
+    false,
+  );
+  // 預算不夠也不發：40 萬 token 的輸入上界遠超 $1。
+  assertEquals(
+    (await attempt(() =>
+      Promise.resolve({ status: 200, json: { input_tokens: 400_000 } })
+    )).ok,
+    false,
+  );
+  assertEquals(paidCalls, 0);
+
+  const ok = await attempt(() =>
+    Promise.resolve({ status: 200, json: { input_tokens: 40_000 } })
+  );
+  assert(ok.ok);
+  assertEquals(paidCalls, 1);
+  // 預留含 10%＋200 token 餘量。
+  assertEquals(countedInputWithMargin(40_000), 44_200);
+  assertAlmostEquals(
+    ok.upperUsd,
+    exactInputUpperBoundUsd("claude-sonnet-5-5", 44_200, 10_500),
+    1e-12,
+  );
+  assertAlmostEquals(ok.spentUsd, ok.upperUsd, 1e-12);
+
+  // model、stop_reason、最終 output usage 都到，但 message_start 沒帶 input usage：保留預留。
+  const call = newProviderCall({ model: "claude-sonnet-5-5" });
+  call.httpStatus = 200;
+  applySseEvent(call, {
+    type: "message_start",
+    message: { model: "claude-sonnet-5-5" },
+  });
+  applySseEvent(call, {
+    type: "message_delta",
+    delta: { stop_reason: "end_turn" },
+    usage: { output_tokens: 50 },
+  });
+  assertEquals(call.startUsageSeen, false);
+  assertEquals(call.finalUsageSeen, true);
+  assertEquals(
+    settleReservedSpend(ok.upperUsd, ok.upperUsd, call),
+    ok.upperUsd,
+  );
+});

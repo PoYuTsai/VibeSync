@@ -227,8 +227,10 @@ function addInvestmentSignal(
   );
   const myChars = mine.reduce((sum, message) => sum + message.text.length, 0);
   const partnerAsked = partner.some((message) => /[?？]/u.test(message.text));
+  // 她打得不比我少（「嗨」→「哈囉」、她先開口）就不是低投入；12 字的地板只用在我寫得比她多時。
   if (
-    !partnerAsked && partnerChars <= Math.max(12, Math.floor(myChars * 0.45))
+    !partnerAsked && partnerChars < myChars &&
+    partnerChars <= Math.max(12, Math.floor(myChars * 0.45))
   ) {
     signals.add("low_investment");
     return;

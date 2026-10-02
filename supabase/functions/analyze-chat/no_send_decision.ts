@@ -33,6 +33,10 @@ export const ANALYSIS_ACTIONS = [
 /// five-style contract; 2 adds no-send decisions and replyMode none/single.
 export const ANALYSIS_CONTRACT_VERSION_V2 = 2;
 
+/// 「資料不夠」免扣的標記：跟錨點一起存進 recommendation_json，retry 重建
+/// 錨點時一起帶回，最終 usage／telemetry 才會照樣標免扣。
+export const NEED_CONTEXT_WAIVED = "need_context_waived";
+
 export interface StreamNoSendRecommendationForCharge {
   decisionKind: NoSendDecisionKind;
   // Kept as an explicit null so existing readers of `.selectedStyle` on the
@@ -47,6 +51,27 @@ export interface StreamNoSendRecommendationForCharge {
   // Phase 0 charge-time snapshots, same optional semantics as the send payload.
   analysisInventory?: Record<string, unknown>;
   analysisEvidenceLinkage?: AnalysisEvidenceLinkage;
+  /// 只在 need_context 真的免扣時才有；client 決策事件不帶它。
+  quotaWaivedReason?: typeof NEED_CONTEXT_WAIVED;
+}
+
+/// 結構刀：伺服器決定這次選單裡有哪些不回決策，不靠模型自律（2026-10-02 黑箱：
+/// 拿掉一個不回出口，5.5 就換另一個）。
+/// - 用戶只傳過一句、最後一則是她：證據不夠叫他沉默，對話也短到談不上讀不出來，只留收尾。
+/// - 最後一則是用戶自己：球在她那邊、他在等她，不論有沒有量到低投入都有 do_not_send。
+/// - 其他情況：伺服器沒量到她低投入，就沒有 do_not_send。
+export function offeredNoSendDecisions(
+  messages: readonly { isFromMe: boolean }[],
+  lowInvestment: boolean,
+): readonly NoSendDecisionKind[] {
+  const mine = messages.filter((message) => message.isFromMe).length;
+  const lastIsMine = messages.at(-1)?.isFromMe === true;
+  if (mine <= 1 && messages.at(-1)?.isFromMe === false) {
+    return ["acknowledge_and_stop"];
+  }
+  return lowInvestment || lastIsMine
+    ? NO_SEND_DECISION_KINDS
+    : ["acknowledge_and_stop", "need_context"];
 }
 
 export function isNoSendDecisionKind(
@@ -124,13 +149,9 @@ export function validateNoSendDecisionEvent(
       reason: "no-send decision reason and stopCondition are required",
     };
   }
-  if (kind === "acknowledge_and_stop" && !closingMessage) {
-    return {
-      ok: false,
-      code: "STREAM_MALFORMED_RECOMMENDATION",
-      reason: "acknowledge_and_stop requires closingMessage",
-    };
-  }
+  // 收尾決定沒附 closingMessage 不再整次失敗（2026-10-02 黑箱：Sonnet 5 在「婉拒
+  // 並說明原因」4 次漏 2 次，用戶只會看到錯誤）。判斷本身仍有效，App 改顯示通用
+  // 收尾提醒；DB RPC 本來就不檢查這欄。
   const modelAuthoredText = `${reason}\n${stopCondition}\n${closingMessage}`;
   if (
     hasPromptInjection(modelAuthoredText) ||
@@ -194,9 +215,9 @@ export function noSendChargePayloadFromStored(
   const stopCondition = textField(stored.stopCondition);
   const closingMessage = textField(stored.closingMessage);
   if (!action || !reason || !stopCondition) return null;
-  // closingMessage is required at charge time (validateNoSendDecisionEvent)
-  // but the DB RPC only enforces the four fields above, so a charged row
-  // without it must still resume rather than strand a charged run.
+  // closingMessage is optional for every kind (validateNoSendDecisionEvent and
+  // the DB RPC both accept a row without it), so a charged row without it must
+  // still resume rather than strand a charged run.
   const raw = typeof stored.raw === "object" && stored.raw !== null &&
       !Array.isArray(stored.raw)
     ? stored.raw as Record<string, unknown>
@@ -210,6 +231,9 @@ export function noSendChargePayloadFromStored(
     ...(closingMessage ? { closingMessage } : {}),
     raw,
     analysisDecisionV2: {},
+    ...(stored.quotaWaivedReason === NEED_CONTEXT_WAIVED
+      ? { quotaWaivedReason: NEED_CONTEXT_WAIVED }
+      : {}),
   };
   payload.analysisDecisionV2 = noSendDecisionV2Snapshot(payload);
   return payload;
@@ -235,6 +259,9 @@ export function serializeNoSendRecommendation(
       : {}),
     ...(payload.analysisEvidenceLinkage
       ? { analysisEvidenceLinkage: payload.analysisEvidenceLinkage }
+      : {}),
+    ...(payload.quotaWaivedReason
+      ? { quotaWaivedReason: payload.quotaWaivedReason }
       : {}),
   };
 }

@@ -7,6 +7,7 @@ import {
   type StreamOutputEvent,
   toRecommendationEvent,
 } from "./reframer.ts";
+import type { NoSendDecisionKind } from "./no_send_decision.ts";
 import type { StreamStyle } from "./stream_events.ts";
 import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
@@ -30,6 +31,7 @@ export interface StreamAnalysisHandlerOptions {
   requiredReplyStyles?: readonly StreamStyle[];
   /// Phase 1b: accept no-send decisions (analysisContractVersion >= 2).
   noSendDecisions?: boolean;
+  offeredNoSendDecisions?: readonly NoSendDecisionKind[];
   markDone: (
     finalResult: Record<string, unknown>,
   ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
@@ -325,6 +327,7 @@ export function handleStreamAnalysisRequest(
       prechargedRecommendation: options.prechargedRecommendation,
       requiredReplyStyles: options.requiredReplyStyles,
       noSendDecisions: options.noSendDecisions,
+      offeredNoSendDecisions: options.offeredNoSendDecisions,
     });
 
     try {

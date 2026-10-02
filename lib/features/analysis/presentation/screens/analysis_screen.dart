@@ -92,6 +92,8 @@ import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../learning/presentation/screens/ebook_detail_screen.dart'
     show ebookChapterRoute;
+import '../../../opener/presentation/screens/opening_rescue_screen.dart'
+    show OpeningRescueScreen;
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -383,7 +385,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       stage: _gameStage?.current.name,
       summary: _strategy,
       nextStep: _gameStage?.nextStep,
-      coachActionType: _finalRecommendation?.pick,
+      // 分析說不回時伺服器已刪 finalRecommendation，本地補的預設 pick
+      // （extend）不是建議：不送動作卡，免得教練以為要延展。
+      coachActionType:
+          (_decision?.isSend ?? true) ? _finalRecommendation?.pick : null,
       keySignals: keySignals.take(8).toList(growable: false),
     );
   }
@@ -694,6 +699,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       '/coach?conversationId=${widget.conversationId}',
       extra: _buildCoachChatAnalysisSnapshot(),
     );
+  }
+
+  /// 「先不要回」的下一步：直達這位對象的新話題 tab。
+  void _openNewTopic() {
+    if (!mounted) return;
+    _dismissKeyboard();
+    final partnerId =
+        ref.read(conversationProvider(widget.conversationId))?.partnerId;
+    context.push(OpeningRescueScreen.newTopicLocationFor(partnerId: partnerId));
   }
 
   Future<void> _openNewConversationSheet() async {
@@ -3417,6 +3431,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 「我還是想回」的備用句：教練建議不回，這句不是教練的建議，所以不記
+  /// 成「已送出的建議」，免得問教練時被當成教練自己給的建議。
+  void _copyAgainstAdviceLine(String line) {
+    AppHaptics.light();
+    Clipboard.setData(ClipboardData(text: line));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已複製這句')),
+    );
+  }
+
   @override
   void copyStyleReply(String type, String text, String snackBarMessage) {
     unawaited(_recordAnalysisCopy(cardKey: type, copiedText: text));
@@ -4033,6 +4057,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               _decision!
                                                   .sendableClosingMessage!,
                                               '已複製收尾句',
+                                            ),
+                                onStartNewTopic: _openNewTopic,
+                                onCopyAgainstAdviceLine:
+                                    _decision!.againstAdviceLine == null
+                                        ? null
+                                        : () => _copyAgainstAdviceLine(
+                                              _decision!.againstAdviceLine!,
                                             ),
                               ),
                               const SizedBox(height: 16),

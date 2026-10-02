@@ -345,6 +345,34 @@ void main() {
     expect(harness.coordinator.inFlightCount, 0);
   });
 
+  test('persistLatestSnapshot：「資料不夠」免扣時不推進字數 baseline', () async {
+    final harness = _Harness(conversation: _conversation());
+    harness.conversation.lastAnalyzedCharCount = 7;
+    final revision = conversationContentRevision(harness.conversation);
+
+    await harness.coordinator.persistLatestSnapshot(
+      AnalysisResult.fromJson({
+        ..._resultJson(),
+        'usage': {
+          'messagesUsed': 0,
+          'shouldChargeQuota': false,
+          'quotaWaivedReason': 'need_context_waived',
+        },
+      }),
+      completionKey: 'run-waived',
+      previousAnalyzedCount: 0,
+      analyzedMessageCount: 1,
+      analyzedContentRevision: revision,
+      analyzedPartnerId: null,
+      analyzedIsReconnect: null,
+      analyzedSessionContext: null,
+    );
+    await harness.coordinator.awaitSettled();
+
+    expect(harness.analysisCompletedSaves, [revision]);
+    expect(harness.conversation.lastAnalyzedCharCount, 7);
+  });
+
   group('stage snapshot 守門（對象卡互動階段閉環）', () {
     test('合法 stage：寫入 currentGameStage，歷史事件帶 partnerId＋stage＋完成時間', () async {
       final harness = _Harness(

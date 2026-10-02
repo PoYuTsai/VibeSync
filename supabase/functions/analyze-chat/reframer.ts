@@ -23,6 +23,7 @@ import {
   isNoSendChargePayload,
   isNoSendDecisionKind,
   noSendDecisionEvent,
+  type NoSendDecisionKind,
   type StreamNoSendRecommendationForCharge,
   validateNoSendDecisionEvent,
 } from "./no_send_decision.ts";
@@ -126,6 +127,9 @@ export interface ReframerOptions {
   /// Phase 1b: accept a no-send analysis.decision as the charge anchor.
   /// Off => v1 behaviour byte-for-byte (a style-less decision is malformed).
   noSendDecisions?: boolean;
+  /// Non-send decisions the prompt offered; omitted = all three. One that was
+  /// not offered is a contract violation and fails before any charge.
+  offeredNoSendDecisions?: readonly NoSendDecisionKind[];
 }
 
 export interface StreamReframer {
@@ -811,6 +815,17 @@ export function createStreamReframer(options: ReframerOptions): StreamReframer {
       options.noSendDecisions && !chargeCompleted &&
       isNoSendDecisionKind(event.messageDecision)
     ) {
+      if (
+        options.offeredNoSendDecisions &&
+        !options.offeredNoSendDecisions.includes(event.messageDecision)
+      ) {
+        emitError(
+          "STREAM_MALFORMED_RECOMMENDATION",
+          `${event.messageDecision} was not offered for this request`,
+        );
+        closed = true;
+        return;
+      }
       const validation = validateNoSendDecisionEvent(event);
       if (!validation.ok) {
         emitError(validation.code, validation.reason);
