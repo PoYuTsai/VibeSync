@@ -183,6 +183,34 @@ Deno.test("index：telemetry 事件名逐項對齊計畫 §14.1（Eric 2026-07-2
   );
 });
 
+Deno.test("index：失敗事件都帶 requestId、提示詞版本與耗時（可對上 client 重試）", () => {
+  const branch = newTopicHandlerSource;
+  for (
+    const event of [
+      "new_topic_claim_failed",
+      "new_topic_quota_exceeded",
+      "new_topic_deadline_exceeded",
+      "prompt_leak_blocked",
+      "new_topic_repair_error",
+      "new_topic_response_invalid",
+      "new_topic_settle_quota_race",
+      "new_topic_settlement_pending",
+      "new_topic_settlement_failed",
+      "new_topic_api_error",
+    ]
+  ) {
+    const calls = [
+      ...branch.matchAll(
+        new RegExp(`log(?:Warn|Error)\\("${event}", \\{\\s*(\\S+)`, "g"),
+      ),
+    ];
+    assert(calls.length > 0, `失敗事件缺席：${event}`);
+    for (const call of calls) {
+      assertEquals(call[1], "...newTopicLogFields(),", event);
+    }
+  }
+});
+
 Deno.test("index：進階路徑 telemetry、稽核與兩條模型呼叫都接上", () => {
   const branch = newTopicHandlerSource;
   const telemetry = "...newTopicTwoStageTelemetry(newTopicContext)";

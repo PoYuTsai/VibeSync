@@ -121,7 +121,12 @@ async function run(
 
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
-  console.log = (message: unknown, metadata?: unknown) => {
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  console.log = console.warn = console.error = (
+    message: unknown,
+    metadata?: unknown,
+  ) => {
     logEvents.push(String(message));
     logMetadata.set(String(message).split(" ").at(-1)!, metadata);
   };
@@ -183,6 +188,8 @@ async function run(
     modelStatusForNextRun = null;
     globalThis.fetch = originalFetch;
     console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
     for (const [key, value] of env) {
       if (value === undefined) Deno.env.delete(key);
       else Deno.env.set(key, value);
@@ -621,6 +628,33 @@ Deno.test("handler：格式不合格時真的送出一次修復呼叫（maxRetri
     ),
   );
   assert(Date.now() - started < 10_000, "修復不能空轉到 45 秒期限");
+});
+
+Deno.test("handler：修復後仍不合格 → 失敗事件帶 requestId、提示詞版本與耗時，不帶素材原文", async () => {
+  const broken = {
+    topics: MODEL_PAYLOAD.topics.slice(0, 4),
+    recommendation: { index: 0 },
+  };
+  const result = await run(
+    body({ topicContext: STORY }),
+    "true",
+    true,
+    broken,
+    0,
+    broken,
+  );
+  assertEquals(result.status, 502);
+  const invalid = result.logMetadata.get("new_topic_response_invalid") as
+    | Record<string, unknown>
+    | undefined;
+  assert(invalid, "new_topic_response_invalid 必須記錄");
+  assertEquals(invalid.requestId, REQUEST_ID);
+  assertEquals(invalid.promptVariant, "two_stage_v1");
+  assert(typeof invalid.elapsedMs === "number" && invalid.elapsedMs >= 0);
+  const serialized = JSON.stringify(invalid);
+  assertFalse("partnerSummary" in invalid);
+  assertFalse(serialized.includes("小雅"));
+  assertFalse(serialized.includes(STORY.materialText));
 });
 
 Deno.test("handler：修復輸出也要過整包外洩檢查，命中就不交付、不扣（Codex R1 P1）", async () => {

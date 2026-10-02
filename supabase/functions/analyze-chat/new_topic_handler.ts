@@ -154,6 +154,14 @@ export async function handleNewTopicRequest(
   // 之前，log 只記 reason、不記原文。
   const newTopicContext = newTopicRequest.topicContext;
   const newTopicMaterialText = newTopicContext?.materialText ?? null;
+  // 失敗事件共用欄位：能用 requestId 對上 client 同編號重試、依提示詞版本
+  // 比失敗率、看耗時。只放識別與版本，絕不放素材原文。
+  const newTopicLogFields = () => ({
+    user: summarizeUser(deps.userId),
+    requestId: newTopicRequest.requestId,
+    promptVariant: newTopicTwoStageTelemetry(newTopicContext).promptVariant,
+    elapsedMs: Date.now() - deps.requestStartedAtMs,
+  });
   if (
     newTopicMaterialText !== null &&
     (containsCrudeSexualOffense(newTopicMaterialText) ||
@@ -367,7 +375,7 @@ export async function handleNewTopicRequest(
       }, 409);
     }
     logError("new_topic_claim_failed", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       kind: claim.kind,
       error: claim.message,
     });
@@ -449,7 +457,7 @@ export async function handleNewTopicRequest(
         ? "本月額度不足，升級方案可取得更多新話題與分析額度。"
         : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。";
       logWarn("new_topic_quota_exceeded", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         tier: quota().sub.tier,
         monthlyRemaining,
         dailyRemaining,
@@ -553,7 +561,7 @@ export async function handleNewTopicRequest(
     stage: string,
   ): Promise<Response> => {
     logWarn("new_topic_deadline_exceeded", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       stage,
     });
     // 能證明 settle 尚未開始才可 owner-bound release；release 失敗時
@@ -601,7 +609,7 @@ export async function handleNewTopicRequest(
     // 不扣費（settle 尚未開始，release 安全）。
     if (newTopicPromptLeak(newTopicRawText)) {
       logWarn("prompt_leak_blocked", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         surface: "new_topic",
         textLength: newTopicRawText.length,
       });
@@ -653,7 +661,7 @@ export async function handleNewTopicRequest(
         // 修復輸出也要過整包外洩檢查（Codex R1 P1）：命中就 release、不扣。
         if (newTopicPromptLeak(repairedText)) {
           logWarn("prompt_leak_blocked", {
-            user: summarizeUser(deps.userId),
+            ...newTopicLogFields(),
             surface: "new_topic_repair",
             textLength: repairedText.length,
           });
@@ -694,14 +702,14 @@ export async function handleNewTopicRequest(
           return await rejectNewTopicDeadline("format_repair");
         }
         logWarn("new_topic_repair_error", {
-          user: summarizeUser(deps.userId),
+          ...newTopicLogFields(),
           error: getErrorMessage(repairError),
         });
       }
     }
     if (!newTopicNormalized.ok) {
       logWarn("new_topic_response_invalid", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         model: newTopicApiResult.model,
         reason: newTopicNormalized.reason,
         stopReason: newTopicApiData.stop_reason,
@@ -788,6 +796,7 @@ export async function handleNewTopicRequest(
         inputTokens: newTopicApiData.usage?.input_tokens,
         outputTokens: newTopicApiData.usage?.output_tokens,
         stopReason: newTopicApiData.stop_reason,
+        elapsedMs: Date.now() - deps.requestStartedAtMs,
         ...newTopicTwoStageTelemetry(newTopicContext),
         // §8 telemetry：只記數量絕不記內容。
       });
@@ -809,6 +818,7 @@ export async function handleNewTopicRequest(
           });
         } catch (error) {
           logWarn("new_topic_two_stage_audit_failed", {
+            user: summarizeUser(deps.userId),
             requestId: newTopicRequest.requestId,
             error: getErrorMessage(error),
           });
@@ -835,7 +845,7 @@ export async function handleNewTopicRequest(
         quota().dailyLimit - quota().sub.daily_messages_used,
       );
       logWarn("new_topic_settle_quota_race", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         reason: settlement.reason,
       });
       return jsonResponse({
@@ -862,7 +872,7 @@ export async function handleNewTopicRequest(
       // Transport／結果不明：可能已 commit＋已扣一次，絕不 release、
       // 絕不宣稱「不會扣額度」；client 保留同 requestId 重試讀 ledger。
       logWarn("new_topic_settlement_pending", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         error: settlement.message,
       });
       return jsonResponse({
@@ -875,7 +885,7 @@ export async function handleNewTopicRequest(
     // settlement.kind === "failed"：RPC 明確 RAISE＝transaction 已回滾，
     // 可 owner-bound release 後回 500。
     logError("new_topic_settlement_failed", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       error: settlement.message,
     });
     if (!await releaseNewTopicCurrentClaim()) {
@@ -976,7 +986,7 @@ export async function handleNewTopicRequest(
               );
             } else {
               logWarn("new_topic_api_error", {
-                user: summarizeUser(deps.userId),
+                ...newTopicLogFields(),
                 error: getErrorMessage(streamError),
                 code: streamError instanceof AiStreamingServiceError
                   ? streamError.code
@@ -1050,7 +1060,7 @@ export async function handleNewTopicRequest(
       return await rejectNewTopicDeadline("primary_or_fallback");
     }
     logWarn("new_topic_api_error", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       error: getErrorMessage(apiError),
       code: apiError instanceof AiServiceError ? apiError.code : "UNKNOWN",
     });
