@@ -39,7 +39,8 @@ deno run --allow-env --allow-read --allow-run=git \
 `--refusal-probe`（只跑 C 臂、只跑下列曖昧／邀約案）。付費閘：計畫次數要 ≤
 `--max-calls`、估價要 ≤ `--budget-usd`；跑的時候每次呼叫前再以「不中 cache 的上界」
 檢查已花費，超過就停，已跑的結果照寫。已花費＝每次呼叫前先記上界，只有拿到完整最終
-usage（正常 stop、沒有 error 事件）才換成實際費用；斷線或 usage 不全就以上界計。
+usage（正常 stop、沒有 error 事件）才換成實際費用；斷線或 usage 不全就以上界計（已回報
+費用比上界高時取已回報費用）。
 備援鏈關閉（`allowModelFallback:false`），失敗就記失敗，不讓 4.6 混進來；critic 影子關閉。
 
 2026-10-02 dry-run（commit bffc668c 上的工作樹）：A,B×2＝84 次 $9.85＋評審 68 次 $0.86；
