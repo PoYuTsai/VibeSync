@@ -255,7 +255,8 @@ class AiDataSharingConsent {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(scopedKey) == true) {
       if (consentKey != keyboardScreenshotConsentKey) {
-        return true;
+        // 等 SharedPreferences 期間換了帳號：舊帳號的同意不能放行新帳號（Codex R2 P1）。
+        return _effectiveKey(consentKey) == scopedKey;
       }
       final existingReceiptKey = _keyboardReceiptKeyForConsentKey(scopedKey);
       final scopeStillCurrent = _effectiveKey(consentKey) == scopedKey &&

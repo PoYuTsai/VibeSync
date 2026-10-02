@@ -304,10 +304,27 @@ Deno.test("golden 正規化只換最上層 model，其他位置的 deepseek-flas
   // 最上層不是新名：一個位元組都不動（巢狀的新名會照常讓 golden 對不上）。
   const nested = enc({ model: "none", debug: { model: "deepseek-flash" } });
   assertEquals(legacyDeepSeekModelId(nested), nested);
-  // 最上層與巢狀同時出現：分不出哪個，直接炸，不猜。
+  // 最上層與巢狀同時出現：只換最上層，巢狀原樣保留。
+  assertEquals(
+    dec(
+      legacyDeepSeekModelId(
+        enc({ debug: { model: "deepseek-flash" }, model: "deepseek-flash" }),
+      ),
+    ),
+    '{"debug":{"model":"deepseek-flash"},"model":"deepseek-v4-flash"}',
+  );
+  // Codex R2 反例：最上層有空白、巢狀是 compact，不能換到巢狀那個。
+  const spaced = new TextEncoder().encode(
+    '{"model": "deepseek-flash","debug":{"model":"deepseek-flash"}}',
+  );
+  assertEquals(
+    dec(legacyDeepSeekModelId(spaced)),
+    '{"model": "deepseek-v4-flash","debug":{"model":"deepseek-flash"}}',
+  );
+  // 原文用跳脫寫法時位元組對不上新名：不猜，直接炸。
   assertThrows(() =>
     legacyDeepSeekModelId(
-      enc({ debug: { model: "deepseek-flash" }, model: "deepseek-flash" }),
+      new TextEncoder().encode('{"model":"deepseek\\u002dflash"}'),
     )
   );
 });

@@ -660,6 +660,50 @@ void main() {
   });
 
   // 2026-10-02 v3：練習室供應商補上 Anthropic，換 key 讓舊版同意的人重看一次。
+  testWidgets('已同意快速放行前重查帳號：讀設定期間換成另一個帳號就不放行（Codex R2 P1）', (tester) async {
+    final v3KeyA = '${AiDataSharingConsent.practiceConsentKey}::user-a';
+    SharedPreferences.setMockInitialValues({v3KeyA: true});
+    // 第一次解析帳號是 A（決定查哪個 key），之後都是 B：模擬等設定期間換帳號。
+    var calls = 0;
+    AiDataSharingConsent.debugUserIdOverride =
+        () => calls++ == 0 ? 'user-a' : 'user-b';
+
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await AiDataSharingConsent.ensure(
+                  context,
+                  featureLabel: 'AI 實戰練習室',
+                  consentKey: AiDataSharingConsent.practiceConsentKey,
+                );
+              },
+              child: const Text('start'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+    expect(result, isFalse, reason: 'A 的同意不能放行 B');
+    expect(find.text('資料使用說明'), findsNothing);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('${AiDataSharingConsent.practiceConsentKey}::user-b'),
+        isNull);
+    expect(prefs.getBool(v3KeyA), isTrue);
+
+    // 帳號沒變時照常快速放行。
+    AiDataSharingConsent.debugUserIdOverride = () => 'user-a';
+    result = null;
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+    expect(result, isTrue);
+  });
+
   testWidgets('練習室：舊版 v2 同意不算數，重問、拒絕不寫、同意後不再問、別的功能不受影響', (tester) async {
     const legacyV2Key = 'ai_data_sharing_consent_practice_20260706_v2';
     expect(AiDataSharingConsent.practiceConsentKey, isNot(legacyV2Key));

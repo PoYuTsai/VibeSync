@@ -761,16 +761,59 @@ export function legacyDeepSeekModelId(bytes: Uint8Array): Uint8Array {
   ) {
     return bytes;
   }
-  const needle = '"model":"deepseek-flash"';
-  const at = text.indexOf(needle);
-  if (at < 0 || text.indexOf(needle, at + needle.length) >= 0) {
-    // 找不到（非 compact JSON）或不只一處（分不出哪個是最上層）：不猜，直接炸。
+  // 依 JSON 層級找最上層 `model` 的值（不靠字串比對：空白排列不同或巢狀同名都不會換錯）。
+  const range = topLevelStringValueRange(text, "model");
+  if (range === null || text.slice(range[0], range[1]) !== '"deepseek-flash"') {
     throw new Error(
-      "legacyDeepSeekModelId: top-level model field is ambiguous",
+      "legacyDeepSeekModelId: top-level model value not found in raw bytes",
     );
   }
   return new TextEncoder().encode(
-    text.slice(0, at) + '"model":"deepseek-v4-flash"' +
-      text.slice(at + needle.length),
+    text.slice(0, range[0]) + '"deepseek-v4-flash"' + text.slice(range[1]),
   );
+}
+
+/**
+ * 回傳最上層物件中 `key` 的字串值在原文的 [start, end)（含引號）；不是字串或找不到回 null。
+ * 只追蹤深度與字串跳脫，給測試用的最小 JSON 掃描器。
+ */
+function topLevelStringValueRange(
+  text: string,
+  key: string,
+): [number, number] | null {
+  let depth = 0;
+  let i = 0;
+  const readString = (from: number): number => {
+    let j = from + 1;
+    while (j < text.length) {
+      if (text[j] === "\\") j += 2;
+      else if (text[j] === '"') return j + 1;
+      else j++;
+    }
+    return -1;
+  };
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      const end = readString(i);
+      if (end < 0) return null;
+      if (depth === 1 && JSON.parse(text.slice(i, end)) === key) {
+        let k = end;
+        while (/\s/.test(text[k] ?? "")) k++;
+        if (text[k] === ":") {
+          k++;
+          while (/\s/.test(text[k] ?? "")) k++;
+          if (text[k] !== '"') return null;
+          const valueEnd = readString(k);
+          return valueEnd < 0 ? null : [k, valueEnd];
+        }
+      }
+      i = end;
+      continue;
+    }
+    if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") depth--;
+    i++;
+  }
+  return null;
 }
