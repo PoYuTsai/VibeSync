@@ -70,7 +70,12 @@ Deno.test("stream branch is gated and uses the stream ledger", async () => {
   assert(source.includes("requiredReplyStyles: streamReplyStyles"));
   assert(source.includes("streamAnalyzeMaxTokensForStyleCount("));
   assert(source.includes("max_tokens: streamMaxOutputTokens"));
-  assert(source.includes("maxOutputTokens: streamMaxOutputTokens"));
+  assertEquals(
+    source.split(
+      "maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens)",
+    ).length - 1,
+    2,
+  );
   assert(
     source.includes(
       'let streamThinkingDisabled = deps.selectedModel === "claude-sonnet-5"',
@@ -231,4 +236,25 @@ Deno.test("stream request fails closed instead of calling the legacy model path"
   assertFalse(branch.includes("callClaudeWithFallback"));
   assertFalse(source.includes("stream_request_fell_back_to_legacy"));
   assertFalse(source.includes("streamRetryChargeWaived"));
+});
+
+Deno.test("only the stream branch reads the Sonnet 5.5 flag; non-stream analyze keeps selectedModel", async () => {
+  const index = await Deno.readTextFile(
+    new URL("./analyze_chat_handler.ts", import.meta.url),
+  );
+  const streamCall = index.slice(
+    index.indexOf("return await handleAnalyzeStream({"),
+    index.indexOf("let claudeResult;"),
+  );
+  assertEquals(index.split("analyzeStreamModel(").length - 1, 1);
+  assert(streamCall.includes(
+    "selectedModel: analyzeStreamModel(\n          selectedModel,\n          Boolean((accountIsTest || TEST_MODE) && forceModel),\n        ),",
+  ));
+  assertFalse(index.includes("ANALYZE_STREAM_SONNET_55"));
+  assertFalse(index.includes("claude-sonnet-5-5"));
+  // 非串流 callClaudeWithFallback 照舊送 selectedModel（production 恆為 Sonnet 5）。
+  const nonStream = index.slice(index.indexOf("let claudeResult;"));
+  assert(nonStream.includes(
+    "claudeResult = await callClaudeWithFallback(\n        {\n          model: selectedModel,",
+  ));
 });

@@ -45,6 +45,10 @@ import {
 } from "./critic_shadow.ts";
 import type { SemanticCriticCallArgs } from "../_shared/social/semantic_critic.ts";
 import { callClaudeStreaming } from "./streaming_fallback.ts";
+import {
+  maxTokensFor,
+  SONNET_5_5_MODEL,
+} from "../_shared/model_request_params.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import {
   type AnalysisResult as GuardrailAnalysisResult,
@@ -68,6 +72,17 @@ import type {
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
+
+/// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5；
+/// 測試帳號 forceModel 照指定。非串流分析與其他功能不經過這裡。
+export function analyzeStreamModel(
+  selectedModel: string,
+  modelForced: boolean,
+): string {
+  return !modelForced && Deno.env.get("ANALYZE_STREAM_SONNET_55") === "true"
+    ? SONNET_5_5_MODEL
+    : selectedModel;
+}
 
 /// Run store 的 narrow port（AnalysisStreamRunStore 的使用面）。
 export interface AnalyzeStreamRunPort {
@@ -687,7 +702,8 @@ export async function handleAnalyzeStream(
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
           providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          maxOutputTokens: streamMaxOutputTokens,
+          // 實際送出的上限（5.5 含思考餘裕），跟著 served model 走。
+          maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {
           streamRunStatus: "done",
@@ -740,7 +756,8 @@ export async function handleAnalyzeStream(
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
           providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          maxOutputTokens: streamMaxOutputTokens,
+          // 實際送出的上限（5.5 含思考餘裕），跟著 served model 走。
+          maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {
           streamRunStatus: "failed",
