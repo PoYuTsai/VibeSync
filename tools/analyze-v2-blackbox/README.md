@@ -81,6 +81,11 @@ first_message_after_match 2/2 `need_context`（理由是不知道照片在哪拍
 5.5 勝 16、Sonnet 5 勝 8、差不多 18；Codex（`blind-r*-codex.txt`）5.5 勝 21、Sonnet 5 勝 6、差不多 15。
 兩家只在「缺用戶事實時判 need_context 還是編地點」相反。5.5 已知弱點：被問「你覺得呢」時五張都反問不表態。
 
+`out/2026-10-02-c-noexample/`（commit 2ec3ebaf，拿掉範例，C×2＝42 次 $1.95＋評審）：照片題 2/2 恢復 send，但
+thin_opening 改判 `need_context` 2/2（「只有嗨和哈囉，硬寫只會查戶口」）；evaluate 36/42；評審 rewrite 4/26。結論：
+拿掉一個不回出口 5.5 就換另一個，開場要在結構上釘住。後續 commit 改成伺服器開選單（`offeredNoSendDecisions`）：
+用戶只傳過一句且最後是她時只留 `acknowledge_and_stop`；語料加 `opening_boundary`（開場就說有男友）。
+
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
 `defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
