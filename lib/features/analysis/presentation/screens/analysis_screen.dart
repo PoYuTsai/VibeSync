@@ -3917,6 +3917,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     !_isAnalyzing &&
                                     _persistence.inFlightCount == 0,
                             actions: this,
+                            partnerName: conversation.name,
                           ),
 
                           const SizedBox(height: 24),

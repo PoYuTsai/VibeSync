@@ -38,6 +38,7 @@ class AnalysisFragmentCard extends StatelessWidget {
     required this.sourceLabel,
     required this.sourceEditable,
     required this.actions,
+    this.partnerName,
   });
 
   final bool isEmptyFragmentSetup;
@@ -53,21 +54,59 @@ class AnalysisFragmentCard extends StatelessWidget {
   final bool sourceEditable;
   final AnalysisFragmentActions actions;
 
+  /// 對象名字（與頁首標題同一個字串），取第一個字當對方頭像；
+  /// 沒給就不畫頭像。
+  final String? partnerName;
+
+  String? get _partnerInitial {
+    final name = partnerName?.trim() ?? '';
+    if (name.isEmpty) return null;
+    return name.characters.first.toUpperCase();
+  }
+
+  /// 同一人連發貼緊（泡泡上下各 2＝間距 4），換人多留 8（＝12）；只有每組
+  /// 第一顆帶尾巴角與頭像。
+  List<Widget> _messageBubbles(String? partnerInitial) {
+    final bubbles = <Widget>[];
+    for (var i = 0; i < messages.length; i++) {
+      final item = messages[i];
+      final isGroupStart =
+          i == 0 || item.message.isFromMe != messages[i - 1].message.isFromMe;
+      if (i > 0 && isGroupStart) bubbles.add(const SizedBox(height: 8));
+      bubbles.add(
+        MessageBubble(
+          message: item.message,
+          isGroupStart: isGroupStart,
+          partnerInitial: partnerInitial,
+          onEdit: item.mutable
+              ? () => actions.editFragmentMessage(item.message)
+              : null,
+          onSwapSide: item.mutable
+              ? () => actions.swapFragmentMessageSide(item.message)
+              : null,
+          onDelete: item.mutable
+              ? () => actions.deleteFragmentMessage(item.message)
+              : null,
+        ),
+      );
+    }
+    return bubbles;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Messages preview（空白新片段時平鋪深色、不上白卡）
+    final partnerInitial = _partnerInitial;
+    // Messages preview（空白新片段時平鋪深色、不上對話板）
     return Container(
       width: double.infinity,
       padding:
           isEmptyFragmentSetup ? EdgeInsets.zero : const EdgeInsets.all(14),
       decoration: isEmptyFragmentSetup
           ? null
+          // A 案「LINE 熟悉感」：淡紫對話板襯白／蜜桃泡泡，不描橘邊。
           : BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.96),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: AppColors.ctaStart.withValues(alpha: 0.24),
-              ),
+              color: AppColors.transcriptBoard,
+              borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.12),
@@ -186,20 +225,7 @@ class AnalysisFragmentCard extends StatelessWidget {
                 ],
               ),
             ),
-          ...messages.map(
-            (item) => MessageBubble(
-              message: item.message,
-              onEdit: item.mutable
-                  ? () => actions.editFragmentMessage(item.message)
-                  : null,
-              onSwapSide: item.mutable
-                  ? () => actions.swapFragmentMessageSide(item.message)
-                  : null,
-              onDelete: item.mutable
-                  ? () => actions.deleteFragmentMessage(item.message)
-                  : null,
-            ),
-          ),
+          ..._messageBubbles(partnerInitial),
         ],
       ),
     );

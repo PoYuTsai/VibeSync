@@ -21,6 +21,9 @@ const kAllowedRadiiByFile = <String, Set<int>>{
       {5},
   // Sydney 視窗開場泡泡的尾巴 5（DESIGN.md §7）：同一套泡泡尾巴語彙。
   'lib/features/coach_chat/presentation/screens/global_coach_screen.dart': {5},
+  // 分析片段泡泡（DESIGN.md §4／§7）：每組第一顆的尾巴 5，加引用小卡的
+  // 微圓角 6（外圓角 18 的 1/3）。
+  'lib/features/conversation/presentation/widgets/message_bubble.dart': {5, 6},
 };
 
 /// 彩色陰影白名單：DESIGN.md §7 刻意保留登記表的檔案。
