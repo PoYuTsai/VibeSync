@@ -741,15 +741,36 @@ export async function sha256HexOf(text: string | Uint8Array): Promise<string> {
 
 /**
  * 2026-10-02 DeepSeek 改名（`deepseek-v4-flash` → `deepseek-flash`；舊名 9/10 起
- * 已改道 V4.1-Flash）是刻意的 production 改動，Response body 的 `model` 欄位跟著
- * 變。flag-off golden 都在舊名時印出，比對前把 JSON 裡的新名換回舊名，**其餘位元組
- * 仍須全等**。在 golden 出處 commit 上重印時這是 no-op。
+ * 已改道 V4.1-Flash）是刻意的 production 改動，chat 回應最上層的 `model` 欄位跟著
+ * 變。flag-off golden 都在舊名時印出，比對前**只**把最上層 `model` 的值換回舊名，
+ * 其餘位元組（含任何巢狀欄位或別處出現的 `deepseek-flash`）原樣進 digest。
+ * 新名寫死不吃 `DEEPSEEK_MODEL`：之後再改名，golden 會照常抓到。
+ * 在 golden 出處 commit 上重印時這是 no-op（最上層 model 不是新名）。
  */
 export function legacyDeepSeekModelId(bytes: Uint8Array): Uint8Array {
+  const text = new TextDecoder().decode(bytes);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return bytes;
+  }
+  if (
+    typeof parsed !== "object" || parsed === null || Array.isArray(parsed) ||
+    (parsed as Record<string, unknown>).model !== "deepseek-flash"
+  ) {
+    return bytes;
+  }
+  const needle = '"model":"deepseek-flash"';
+  const at = text.indexOf(needle);
+  if (at < 0 || text.indexOf(needle, at + needle.length) >= 0) {
+    // 找不到（非 compact JSON）或不只一處（分不出哪個是最上層）：不猜，直接炸。
+    throw new Error(
+      "legacyDeepSeekModelId: top-level model field is ambiguous",
+    );
+  }
   return new TextEncoder().encode(
-    new TextDecoder().decode(bytes).replaceAll(
-      '"deepseek-flash"',
-      '"deepseek-v4-flash"',
-    ),
+    text.slice(0, at) + '"model":"deepseek-v4-flash"' +
+      text.slice(at + needle.length),
   );
 }

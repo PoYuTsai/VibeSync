@@ -16,10 +16,12 @@
 import {
   assert,
   assertEquals,
+  assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   chatBody,
   ledger,
+  legacyDeepSeekModelId,
   makeFake,
   makeRequest,
 } from "./handler_test_fake.ts";
@@ -281,9 +283,33 @@ Deno.test("mixed ＋ agency on 但這一輪沒介入：照舊打 DeepSeek，tele
   assertEquals(r.chatDeepSeekCalls.length, 1);
   assertEquals(r.body.provider, "deepseek");
   assertEquals(r.body.model, DEEPSEEK_MODEL);
+  // 2026-10-02：未經 golden 正規化的原始回應，model 就是新正式名。
+  assertEquals(r.body.model, "deepseek-flash");
   assertEquals(r.succeeded.chatModel, "deepseek");
   assertEquals(r.succeeded.chatModelCalls, { haiku: 0, deepseek: 1 });
   assertEquals(r.succeeded.chatModelUsage, undefined);
+});
+
+Deno.test("golden 正規化只換最上層 model，其他位置的 deepseek-flash 原樣保留", () => {
+  const enc = (v: unknown) => new TextEncoder().encode(JSON.stringify(v));
+  const dec = (b: Uint8Array) => new TextDecoder().decode(b);
+  assertEquals(
+    dec(
+      legacyDeepSeekModelId(
+        enc({ reply: "deepseek-flash", model: "deepseek-flash" }),
+      ),
+    ),
+    '{"reply":"deepseek-flash","model":"deepseek-v4-flash"}',
+  );
+  // 最上層不是新名：一個位元組都不動（巢狀的新名會照常讓 golden 對不上）。
+  const nested = enc({ model: "none", debug: { model: "deepseek-flash" } });
+  assertEquals(legacyDeepSeekModelId(nested), nested);
+  // 最上層與巢狀同時出現：分不出哪個，直接炸，不猜。
+  assertThrows(() =>
+    legacyDeepSeekModelId(
+      enc({ debug: { model: "deepseek-flash" }, model: "deepseek-flash" }),
+    )
+  );
 });
 
 Deno.test("mixed ＋ agency shadow／off：永遠 DeepSeek（routing 不能繞過 agency 旗標）", async () => {
