@@ -18,6 +18,7 @@ import {
   parseRepeat,
   percentile,
   planCalls,
+  settleReservedSpend,
   summarizeArms,
 } from "./ab.ts";
 import { CORPUS, REFUSAL_PROBE_IDS } from "./corpus.ts";
@@ -165,6 +166,55 @@ Deno.test("SSE observer records served model, usage, refusal category and cost",
   assertEquals(call.usage.cache_creation_input_tokens, 30_000);
   // 100×$2＋30k×$2.50＋40×$10 ＝ $0.0756。
   assertEquals(Number(call.costUsd.toFixed(4)), 0.0756);
+});
+
+Deno.test("paid guard spend: the reservation is replaced only by complete final usage", () => {
+  const start = (model = "claude-sonnet-5-5") => {
+    const call = newProviderCall({ model, max_tokens: 10500 });
+    call.httpStatus = 200;
+    applySseEvent(call, {
+      type: "message_start",
+      message: {
+        model,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 1,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    });
+    return call;
+  };
+  const finish = (call: ReturnType<typeof start>) =>
+    applySseEvent(call, {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 1000 },
+    });
+  // 上界 $0.5 已預留（spent 1.0 含它）。正常 stop：換成實際 100×$2＋1000×$10＝$0.0102。
+  const ok = start();
+  finish(ok);
+  assertAlmostEquals(settleReservedSpend(1.0, 0.5, ok), 0.5102, 1e-9);
+  // 串流中斷（沒有 message_delta）：usage 只有開頭，保留上界。
+  assertEquals(settleReservedSpend(1.0, 0.5, start()), 1.0);
+  // stop 之後又來 error 事件：保留上界。
+  const errored = start();
+  finish(errored);
+  applySseEvent(errored, {
+    type: "error",
+    error: { type: "overloaded_error" },
+  });
+  assertEquals(settleReservedSpend(1.0, 0.5, errored), 1.0);
+  // 只有 message_delta、沒有 message_start：輸入 usage 沒到，保留上界。
+  const noStart = newProviderCall({ model: "claude-sonnet-5-5" });
+  noStart.httpStatus = 200;
+  finish(noStart);
+  assertEquals(settleReservedSpend(1.0, 0.5, noStart), 1.0);
+  // 非 200（沒有 body）：保留上界。
+  const http = newProviderCall({ model: "claude-sonnet-5-5" });
+  http.httpStatus = 529;
+  assertEquals(settleReservedSpend(1.0, 0.5, http), 1.0);
 });
 
 function record(

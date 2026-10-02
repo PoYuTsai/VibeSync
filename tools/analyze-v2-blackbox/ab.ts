@@ -369,6 +369,19 @@ export function applySseEvent(call: ProviderCall, event: any): void {
   }, pricingFor(call.servedModel ?? call.model));
 }
 
+/// 付費閘記帳：呼叫前已把上界 reservedUsd 記進 spentUsd；呼叫結束時只有拿到
+/// 完整最終 usage（HTTP 200、message_start＋stop_reason 都到、沒有 error 事件）
+/// 才把預留換成實際費用，斷線、error、非 200、usage 不全都保留上界。回傳新的 spent。
+export function settleReservedSpend(
+  spentUsd: number,
+  reservedUsd: number,
+  call: ProviderCall,
+): number {
+  const complete = call.httpStatus === 200 && call.error === null &&
+    call.servedModel !== null && call.stopReason !== null;
+  return complete ? spentUsd - reservedUsd + call.costUsd : spentUsd;
+}
+
 export interface CallRecord {
   readonly arm: ArmId;
   readonly caseId: string;

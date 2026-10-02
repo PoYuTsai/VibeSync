@@ -24,6 +24,7 @@ import {
   type PlannedCall,
   type ProviderCall,
   renderSummaryMd,
+  settleReservedSpend,
   summarizeArms,
 } from "./ab.ts";
 import {
@@ -55,10 +56,12 @@ let spentUsd = 0;
 let providerCallCount = 0;
 let guardTripped = false;
 
-/// 原樣轉送 SSE，順路記 stop_reason／stop_details／usage／耗時。
+/// 原樣轉送 SSE，順路記 stop_reason／stop_details／usage／耗時；串流正常讀完時
+/// 呼叫 onEnd（被取消就不呼叫，預留的上界留在 spent 裡）。
 function tapSse(
   call: ProviderCall,
   started: number,
+  onEnd: () => void,
 ): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -83,6 +86,7 @@ function tapSse(
       buffer += decoder.decode();
       scan(true);
       call.providerMs = Date.now() - started;
+      onEnd();
     },
   });
 }
@@ -116,6 +120,8 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       throw new TypeError("blackbox paid guard: max-calls or budget reached");
     }
     providerCallCount += 1;
+    // 先預留上界：斷線、error、usage 不全時就以上界計，不會低估已花的錢。
+    spentUsd += upper;
     const call = newProviderCall(body);
     active.calls.push(call);
     const started = Date.now();
@@ -125,7 +131,10 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       call.error = (await res.clone().text().catch(() => "")).slice(0, 400);
       return res;
     }
-    return new Response(res.body.pipeThrough(tapSse(call, started)), {
+    const settle = () => {
+      spentUsd = settleReservedSpend(spentUsd, upper, call);
+    };
+    return new Response(res.body.pipeThrough(tapSse(call, started, settle)), {
       status: res.status,
       headers: res.headers,
     });
@@ -637,8 +646,8 @@ for (const [i, call] of plan.entries()) {
   );
   const calls = active.calls;
   active = null;
+  // spentUsd 已在 fetch 層逐次預留／結算；這裡只記 provider 回報的實際費用。
   const costUsd = calls.reduce((s, c) => s + c.costUsd, 0);
-  spentUsd += costUsd;
   records.push({
     arm: call.arm,
     caseId: call.caseId,
