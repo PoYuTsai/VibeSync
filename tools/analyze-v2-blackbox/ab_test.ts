@@ -18,10 +18,13 @@ import {
   parseRepeat,
   percentile,
   planCalls,
+  pricingFor,
   reserveSpend,
   settleReservedSpend,
+  strictCallUpperBoundUsd,
   summarizeArms,
 } from "./ab.ts";
+import { estimateCostUsd } from "../../supabase/functions/_shared/model_pricing.ts";
 import { CORPUS, REFUSAL_PROBE_IDS } from "./corpus.ts";
 
 const IDS = CORPUS.map((c) => c.id);
@@ -338,4 +341,44 @@ Deno.test("blind sheet labels a do_not_send backup line apart from a closing lin
   assert(markdown.includes("（收在「我還是想回」後）備用句：好，妳先忙"));
   assert(!markdown.includes("收尾句：好，妳先忙"));
   assert(markdown.includes("收尾句：好啊 B"));
+});
+
+Deno.test("strict upper bound covers the worst case; stop_reason without full usage keeps the reservation", () => {
+  const body = JSON.stringify({
+    model: "claude-sonnet-5-5",
+    max_tokens: 10_500,
+    system: "系統提示".repeat(5_000),
+    messages: [{ role: "user", content: "她：哈囉" }],
+  });
+  const bytes = new TextEncoder().encode(body).length;
+  const strict = strictCallUpperBoundUsd("claude-sonnet-5-5", body, 10_500);
+  const pricing = pricingFor("claude-sonnet-5-5");
+  // 每個 token 至少 1 byte：輸入 token ≤ bytes，最貴的計法也不會超過嚴格上界。
+  for (
+    const usage of [
+      {
+        inputTokens: bytes,
+        outputTokens: 10_500,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 10_500,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: bytes,
+      },
+    ]
+  ) {
+    assert(estimateCostUsd(usage, pricing) <= strict);
+  }
+  const call = newProviderCall(JSON.parse(body));
+  call.httpStatus = 200;
+  call.servedModel = "claude-sonnet-5-5";
+  call.stopReason = "end_turn";
+  call.costUsd = 0.001;
+  // 有 stop_reason 但沒有 output token：不算完整，保留預留。
+  assertEquals(settleReservedSpend(strict, strict, call), strict);
+  call.usage = { ...call.usage, input_tokens: 100, output_tokens: 50 };
+  assertEquals(settleReservedSpend(strict, strict, call), 0.001);
 });

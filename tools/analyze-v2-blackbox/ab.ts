@@ -178,6 +178,25 @@ export function callUpperBoundUsd(
   }, pricingFor(model));
 }
 
+/// 付費閘用的嚴格上界（不是估算）：BPE 每個 token 至少涵蓋 1 個位元組，所以整個
+/// request body 的 UTF-8 位元組數（加 role／格式標記的固定餘量）一定 ≥ 實際輸入
+/// token；輸入全以最貴的 cache 寫入價計，輸出（含思考）吃滿 max_tokens。
+export const STRICT_FRAMING_TOKENS = 2_000;
+export function strictCallUpperBoundUsd(
+  model: string,
+  requestBody: string,
+  maxTokens: number,
+): number {
+  const inputTokens = new TextEncoder().encode(requestBody).length +
+    STRICT_FRAMING_TOKENS;
+  return estimateCostUsd({
+    inputTokens: 0,
+    outputTokens: maxTokens,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: inputTokens,
+  }, pricingFor(model));
+}
+
 /// 評審一次的上界：輸入以 cache 寫入價（實際不走 cache，是一般價）、輸出吃滿。
 export function judgeCallUpperBoundUsd(
   inputTokens = JUDGE_INPUT_TOKENS_EST,
@@ -387,16 +406,20 @@ export function reserveSpend(
 }
 
 /// 付費閘記帳：呼叫前已把上界 reservedUsd 記進 spentUsd；呼叫結束時只有拿到
-/// 完整最終 usage（HTTP 200、message_start＋stop_reason 都到、沒有 error 事件）
-/// 才把預留換成實際費用，斷線、error、非 200、usage 不全都保留上界；上界是 token
-/// 估算、不是嚴格上界，所以 usage 不全但已回報的費用比預留高時，補上差額。回傳新的 spent。
+/// 完整最終 usage（HTTP 200、message_start＋stop_reason 都到、輸入與輸出 token 都有、
+/// 沒有 error 事件）才把預留換成實際費用；斷線、error、非 200、usage 不全都保留上界
+/// （預留用 strictCallUpperBoundUsd，實際費用不會超過它；保險起見仍取較大者）。回傳新的 spent。
 export function settleReservedSpend(
   spentUsd: number,
   reservedUsd: number,
   call: ProviderCall,
 ): number {
+  const u = call.usage;
   const complete = call.httpStatus === 200 && call.error === null &&
-    call.servedModel !== null && call.stopReason !== null;
+    call.servedModel !== null && call.stopReason !== null &&
+    u.output_tokens > 0 &&
+    u.input_tokens + u.cache_read_input_tokens +
+          u.cache_creation_input_tokens > 0;
   return complete
     ? spentUsd - reservedUsd + call.costUsd
     : spentUsd + Math.max(0, call.costUsd - reservedUsd);

@@ -11,7 +11,6 @@ import {
   type ArmSpec,
   buildBlindSheet,
   type CallRecord,
-  callUpperBoundUsd,
   estimatePlan,
   estimateTokens,
   JUDGE_MODEL,
@@ -26,6 +25,7 @@ import {
   renderSummaryMd,
   reserveSpend,
   settleReservedSpend,
+  strictCallUpperBoundUsd,
   summarizeArms,
 } from "./ab.ts";
 import {
@@ -104,16 +104,12 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.startsWith("https://api.anthropic.com/")) {
     if (!active) throw new TypeError("blackbox: Anthropic call outside plan");
     const body = applyArmOverride(JSON.parse(String(init?.body)), active.arm);
-    const upper = callUpperBoundUsd(
+    // 先預留嚴格上界：斷線、error、usage 不全時就以上界計，不會低估已花的錢。
+    const upper = strictCallUpperBoundUsd(
       String(body.model),
-      {
-        system: estimateTokens(JSON.stringify(body.system)),
-        user: estimateTokens(JSON.stringify(body.messages)),
-      },
+      JSON.stringify(body),
       Number(body.max_tokens),
-      false,
     );
-    // 先預留上界：斷線、error、usage 不全時就以上界計，不會低估已花的錢。
     const reserved = reserveSpend(spentUsd, upper, providerCallCount, PAID);
     if (reserved === null) {
       guardTripped = true;
