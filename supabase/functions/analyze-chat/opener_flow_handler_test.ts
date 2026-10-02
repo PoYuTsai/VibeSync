@@ -16,6 +16,7 @@ import { OPENER_PLAN_PROMPT } from "./opener_plan.ts";
 import { buildOpenerWritePrompt } from "./opener_write.ts";
 import { computeOpenerGenerationInputHash, parseOpenerGenerateRequest } from "./opener_stage.ts";
 import { readPreviousPromptReplay } from "./opener_session.ts";
+import type { ProviderAttemptLogEntry } from "./model_call_budget.ts";
 
 const MIGRATIONS = [
   "20260702120000_increment_usage_atomic_quota.sql",
@@ -1321,13 +1322,20 @@ Deno.test("C03/C05/C08: production invoker fallback leaves no fourth call for an
   const h = await harness();
   const oldFetch = globalThis.fetch;
   let calls = 0;
+  const rows: ProviderAttemptLogEntry[] = [];
   globalThis.fetch = () => Promise.resolve(++calls < 3
     ? new Response(null, { status: 503 })
     : Response.json({ content: [{ type: "text", text: "{}" }], usage: { input_tokens: 10, output_tokens: 5 } }));
   try {
-    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: undefined }));
+    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: undefined, recordAiCall: (e) => rows.push(e) }));
     assertEquals(response.status, 502);
     assertEquals(calls, 3);
+    // ai_logs：每次真的送出的呼叫一列，被上限擋下的修復沒送出就不記。
+    assertEquals(rows.map((r) => [r.model, r.status, r.requestType]), [
+      ["claude-sonnet-5", "failed", "opener_analyze"],
+      ["claude-sonnet-4-6", "failed", "opener_analyze"],
+      ["claude-haiku-4-5-20251001", "success", "opener_analyze"],
+    ]);
     assertEquals(await usage(h.db), { m: 0, d: 0 });
     const attempts = await h.db.query<{ day_count: number }>("SELECT day_count FROM public.model_call_rate_limits");
     assertEquals(attempts.rows[0].day_count, 1, "failed provider work retains limiter attempt");
@@ -1548,11 +1556,16 @@ Deno.test("結構刀旗標：走 production 預設呼叫器（不注入假模型
       }), { status: 200, headers: { "content-type": "application/json" } }));
     };
     const started = Date.now();
-    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 }));
+    const rows: ProviderAttemptLogEntry[] = [];
+    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 }), { recordAiCall: (e) => rows.push(e) });
     delete (deps as Partial<OpenerFlowHandlerDeps>).invokeModel;
     const response = await handleOpenerGenerateRequest(deps);
     assertEquals(response.status, 200);
     assertEquals(sent.length, 2, "規劃一次＋寫手一次");
+    assertEquals(rows.map((r) => [r.requestType, (r.requestBody as Record<string, unknown>).purpose, (r.requestBody as Record<string, unknown>).path]), [
+      ["opener_generate", "plan", "plan_write"],
+      ["opener_generate", "write", "plan_write"],
+    ]);
     assert(Date.now() - started < 5000, "不空轉到規劃截止");
     assertEquals(sent.map((b) => b.model), ["claude-sonnet-5", "claude-sonnet-5"]);
     assertEquals(((await json(response)).materialUse as Record<string, unknown>).traceStatus, "matched", "規劃真的有跑（不是退只用她的資料）");

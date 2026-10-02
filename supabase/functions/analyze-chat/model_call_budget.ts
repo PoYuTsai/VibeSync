@@ -1,4 +1,4 @@
-import { calculateCost, logInfo } from "./logger.ts";
+import { calculateCost, type LogEntry, logInfo } from "./logger.ts";
 
 export type ProviderUsage = Partial<Record<
   "inputTokens" | "cacheCreationTokens" | "cacheReadTokens" | "outputTokens",
@@ -71,4 +71,53 @@ export class ModelCallBudget {
       },
     };
   }
+}
+
+export type ProviderAttemptLogEntry = Omit<LogEntry, "userId">;
+
+// ai_logs 一列＝一次供應商呼叫（含 fallback 跳轉與修復）。request_body 只收
+// 白名單：用途、路由、識別與版本；絕不放 profile、圖片、素材原文或模型輸出，
+// user 摘要也不放（user_id 有自己的欄位）。快取 token 沒有欄位，只進 cost_usd。
+const ATTEMPT_LOG_BODY_KEYS = [
+  "purpose", "route", "attempt", "stage", "operation", "flowVersion", "tier",
+  "usageComplete", "responseMode",
+];
+
+export function providerAttemptLogEntry(
+  requestType: string,
+  record: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+): ProviderAttemptLogEntry {
+  const count = (key: string) => typeof record[key] === "number" ? record[key] as number : 0;
+  const failed = record.status === "failed";
+  return {
+    model: String(record.model),
+    requestType,
+    inputTokens: count("inputTokens"),
+    outputTokens: count("outputTokens"),
+    cacheCreationTokens: count("cacheCreationTokens"),
+    cacheReadTokens: count("cacheReadTokens"),
+    latencyMs: count("elapsedMs"),
+    status: failed ? "failed" : "success",
+    errorCode: failed ? "PROVIDER_ATTEMPT_FAILED" : undefined,
+    fallbackUsed: record.route === "fallback",
+    retryCount: record.route === "retry" ? 1 : 0,
+    requestBody: {
+      ...Object.fromEntries(ATTEMPT_LOG_BODY_KEYS.filter((key) => key in record).map((key) => [key, record[key]])),
+      ...extra,
+    },
+  };
+}
+
+/** 保留原本的 console 事件，另交一列給 recordAiCall（沒注入就不寫，測試不會打 DB）。 */
+export function attemptReporter(
+  event: string,
+  requestType: string,
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void,
+  extra?: Record<string, unknown>,
+) {
+  return (record: Record<string, unknown>) => {
+    logInfo(event, record);
+    recordAiCall?.(providerAttemptLogEntry(requestType, record, extra));
+  };
 }

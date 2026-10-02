@@ -4,7 +4,7 @@
 // format repair→tier 投影→回應。stream 為 transport-only，扣費只在
 // completeOpenerRequest 共用管線內。
 
-import { ModelCallBudget } from "./model_call_budget.ts";
+import { attemptReporter, ModelCallBudget, type ProviderAttemptLogEntry } from "./model_call_budget.ts";
 import { buildModelRateUnavailablePayload, enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   buildQuotaExceededPayload,
@@ -102,6 +102,8 @@ export interface OpenerHandlerDeps {
   ) => Promise<TierSyncRefreshStatus>;
   /// 額度視圖 getter：refresh 會改寫 handler 端狀態，讀取必取當下值。
   quota: () => OpenerQuotaView;
+  /// 每次供應商呼叫寫一列 ai_logs；不注入就只記 console。
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
 async function repairMalformedOpenerPayload({
@@ -166,7 +168,8 @@ export async function handleOpenerRequest(
 ): Promise<Response> {
   const quota = deps.quota;
   const openerDeadlineAtMs = deps.requestStartedAtMs + OPENER_DEADLINE_MS;
-  const budget = new ModelCallBudget(openerDeadlineAtMs, { user: summarizeUser(deps.userId), stage: "legacy", tier: quota().effectiveTier });
+  const budget = new ModelCallBudget(openerDeadlineAtMs, { user: summarizeUser(deps.userId), stage: "legacy", tier: quota().effectiveTier },
+    attemptReporter("opener_provider_attempt", "opener", deps.recordAiCall));
   const openerDeadlineReached = () => Date.now() >= openerDeadlineAtMs;
   const rejectOpenerDeadline = (stage: string) => {
     logWarn("opener_deadline_exceeded", {

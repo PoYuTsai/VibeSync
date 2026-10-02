@@ -17,6 +17,10 @@ import {
 } from "./new_topic_two_stage.ts";
 import { computeNewTopicInputHash } from "./new_topic_billing.ts";
 import {
+  ModelCallBudget,
+  type ProviderAttemptLogEntry,
+} from "./model_call_budget.ts";
+import {
   buildNewTopicLedgerResult,
   sanitizeNewTopicRequest,
 } from "./new_topic_payload.ts";
@@ -47,6 +51,8 @@ let settleRpcForNextRun:
 let releaseResultForNextRun: boolean | null = null;
 /** 下一次 run 的模型 HTTP 狀態（run 結束就清掉；null＝200）。 */
 let modelStatusForNextRun: number | null = null;
+/** 下一次 run 前幾次模型呼叫回 503（run 結束就歸零），用來走 fallback 鏈。 */
+let failingModelCallsForNextRun = 0;
 
 type ModelRequest = {
   system: Array<{ text: string }>;
@@ -75,6 +81,8 @@ async function run(
   const logEvents: string[] = [];
   const logMetadata = new Map<string, unknown>();
   const modelRequests: ModelRequest[] = [];
+  const aiCallRows: ProviderAttemptLogEntry[] = [];
+  let servedModelCalls = 0;
   const supabase = {
     from(table: string) {
       dbCalls.push(`from:${table}`);
@@ -134,7 +142,10 @@ async function run(
     .map((key) => [key, Deno.env.get(key)] as const);
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
     modelRequests.push(JSON.parse(String(init?.body)));
-    const payload = modelRequests.length === 1 ? modelPayload : repairPayload;
+    if (modelRequests.length <= failingModelCallsForNextRun) {
+      return Promise.resolve(new Response("{}", { status: 503 }));
+    }
+    const payload = servedModelCalls++ === 0 ? modelPayload : repairPayload;
     if (modelStatusForNextRun !== null) {
       return Promise.resolve(
         new Response("{}", { status: modelStatusForNextRun }),
@@ -173,6 +184,7 @@ async function run(
         dailyLimit: 30,
         effectiveTier: "essential",
       }),
+      recordAiCall: (entry) => aiCallRows.push(entry),
     });
     return {
       status: response.status,
@@ -181,11 +193,13 @@ async function run(
       modelRequests,
       logEvents,
       logMetadata,
+      aiCallRows,
     };
   } finally {
     settleRpcForNextRun = null;
     releaseResultForNextRun = null;
     modelStatusForNextRun = null;
+    failingModelCallsForNextRun = 0;
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     console.warn = originalWarn;
@@ -488,6 +502,39 @@ Deno.test("handler：settle／release／逾時／模型失敗各分支的狀態�
   }
 });
 
+Deno.test("handler：時間剛好在 budget.begin() 跨過生成期限 → 主呼叫與修復都走 504 逾時並 release", async () => {
+  const broken = {
+    topics: MODEL_PAYLOAD.topics.slice(0, 4),
+    recommendation: { index: 0 },
+  };
+  const originalBegin = ModelCallBudget.prototype.begin;
+  const originalNow = Date.now;
+  for (const crossAt of [1, 2]) {
+    let begins = 0;
+    // fallback 自己的期限檢查剛過、begin() 的檢查才跨線：begin 拋
+    // ModelCallBudgetError，handler 靠 catch 裡的 Date.now() 走逾時路徑。
+    ModelCallBudget.prototype.begin = function (...args) {
+      if (++begins === crossAt) {
+        const late = originalNow() + 60_000;
+        Date.now = () => late;
+      }
+      return originalBegin.apply(this, args);
+    };
+    try {
+      const result = await run(body(), undefined, true, broken, 0, broken);
+      assertEquals(result.status, 504, `crossAt=${crossAt}`);
+      assertEquals(result.json.code, "NEW_TOPIC_DEADLINE_EXCEEDED");
+      assert(result.dbCalls.includes("rpc:release_new_topic_claim"));
+      assertFalse(result.dbCalls.includes("rpc:settle_new_topic_request"));
+      assertEquals(result.modelRequests.length, crossAt - 1);
+      assertEquals(result.aiCallRows.length, crossAt - 1);
+    } finally {
+      ModelCallBudget.prototype.begin = originalBegin;
+      Date.now = originalNow;
+    }
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 「我們」：提示詞那一行與輸出守門同一個判準（2026-10-01 審查 E3／E7）
 // ---------------------------------------------------------------------------
@@ -628,6 +675,63 @@ Deno.test("handler：格式不合格時真的送出一次修復呼叫（maxRetri
     ),
   );
   assert(Date.now() - started < 10_000, "修復不能空轉到 45 秒期限");
+});
+
+// ai_logs 每次供應商呼叫一列；請求內容只留白名單欄位。
+const rowSummary = (rows: ProviderAttemptLogEntry[]) =>
+  rows.map((row) => {
+    const requestBody = row.requestBody as Record<string, unknown>;
+    return [row.requestType, row.model, row.status, requestBody.purpose];
+  });
+
+Deno.test("handler：ai_logs 一次成功只記一列主呼叫，request_body 不帶素材原文", async () => {
+  const result = await run(body({ topicContext: STORY }), "true");
+  assertEquals(result.status, 200);
+  assertEquals(rowSummary(result.aiCallRows), [
+    ["new_topic", "claude-sonnet-5", "success", "primary"],
+  ]);
+  assertEquals(result.aiCallRows[0].requestBody, {
+    purpose: "primary",
+    route: "primary",
+    attempt: 1,
+    operation: REQUEST_ID,
+    tier: "essential",
+    usageComplete: false,
+    promptVariant: "two_stage_v1",
+  });
+  const serialized = JSON.stringify(result.aiCallRows);
+  assertFalse(serialized.includes("小雅"));
+  assertFalse(serialized.includes(STORY.materialText));
+});
+
+Deno.test("handler：ai_logs 格式不合格時主呼叫與修復各記一列", async () => {
+  const broken = {
+    topics: MODEL_PAYLOAD.topics.slice(0, 4),
+    recommendation: { index: 0 },
+  };
+  const result = await run(body(), undefined, true, broken, 0, MODEL_PAYLOAD);
+  assertEquals(result.status, 200);
+  assertEquals(rowSummary(result.aiCallRows), [
+    ["new_topic", "claude-sonnet-5", "success", "primary"],
+    ["new_topic", "claude-sonnet-5", "success", "repair"],
+  ]);
+});
+
+Deno.test("handler：主呼叫 fallback 用滿三次後仍能修復（修復有自己的上限，不變 502）", async () => {
+  const broken = {
+    topics: MODEL_PAYLOAD.topics.slice(0, 4),
+    recommendation: { index: 0 },
+  };
+  failingModelCallsForNextRun = 2;
+  const result = await run(body(), undefined, true, broken, 0, MODEL_PAYLOAD);
+  assertEquals(result.status, 200);
+  assertEquals(result.modelRequests.length, 4);
+  assertEquals(rowSummary(result.aiCallRows), [
+    ["new_topic", "claude-sonnet-5", "failed", "primary"],
+    ["new_topic", "claude-sonnet-4-6", "failed", "primary"],
+    ["new_topic", "claude-haiku-4-5-20251001", "success", "primary"],
+    ["new_topic", "claude-haiku-4-5-20251001", "success", "repair"],
+  ]);
 });
 
 Deno.test("handler：修復後仍不合格 → 失敗事件帶 requestId、提示詞版本與耗時，不帶素材原文", async () => {

@@ -20,6 +20,11 @@ import {
   AiStreamingServiceError,
   callClaudeStreaming,
 } from "./streaming_fallback.ts";
+import {
+  attemptReporter,
+  ModelCallBudget,
+  type ProviderAttemptLogEntry,
+} from "./model_call_budget.ts";
 import { ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamStageTracker,
@@ -102,6 +107,8 @@ export interface NewTopicHandlerDeps {
   /// 額度視圖 getter：RevenueCat refresh 會改寫 handler 端的 sub 與上限，
   /// 每次讀取都必須取當下值，不得快照。
   quota: () => NewTopicQuotaView;
+  /// 每次供應商呼叫寫一列 ai_logs；不注入就只記 console。
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
 export async function handleNewTopicRequest(
@@ -162,6 +169,28 @@ export async function handleNewTopicRequest(
     promptVariant: newTopicTwoStageTelemetry(newTopicContext).promptVariant,
     elapsedMs: Date.now() - deps.requestStartedAtMs,
   });
+  // 每次供應商呼叫記一筆（console＋ai_logs）。主呼叫與修復各開一個：主呼叫
+  // 的 fallback 鏈自己就可能用滿每個 budget 三次的上限，共用會讓本來救得回來
+  // 的修復變成 502。期限與 generation deadline 相同，begin() 拋期限錯誤時
+  // 下面各 catch 的 Date.now() 檢查一樣會走逾時路徑。
+  const newTopicAttemptBudget = () =>
+    new ModelCallBudget(
+      newTopicGenerationDeadlineAtMs,
+      {
+        user: summarizeUser(deps.userId),
+        operation: newTopicRequest.requestId,
+        tier: quota().effectiveTier,
+      },
+      attemptReporter(
+        "new_topic_provider_attempt",
+        "new_topic",
+        deps.recordAiCall,
+        {
+          promptVariant:
+            newTopicTwoStageTelemetry(newTopicContext).promptVariant,
+        },
+      ),
+    );
   if (
     newTopicMaterialText !== null &&
     (containsCrudeSexualOffense(newTopicMaterialText) ||
@@ -653,6 +682,8 @@ export async function handleNewTopicRequest(
             maxRetries: 1,
             allowModelFallback: false,
             absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
+            budget: newTopicAttemptBudget(),
+            purpose: "repair",
           },
         );
         const repairedText = extractClaudeText(
@@ -956,7 +987,11 @@ export async function handleNewTopicRequest(
                 messages: [{ role: "user", content: newTopicUserPrompt }],
               },
               deps.claudeApiKey,
-              { timeout: remainingBudgetMs },
+              {
+                timeout: remainingBudgetMs,
+                budget: newTopicAttemptBudget(),
+                purpose: "primary",
+              },
             );
             let fullText = "";
             for await (const chunk of claude.textStream) {
@@ -1049,6 +1084,8 @@ export async function handleNewTopicRequest(
         maxRetries: 1,
         allowModelFallback: true,
         absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
+        budget: newTopicAttemptBudget(),
+        purpose: "primary",
       },
     );
   } catch (apiError) {

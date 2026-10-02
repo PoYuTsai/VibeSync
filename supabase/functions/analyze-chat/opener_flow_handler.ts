@@ -12,7 +12,7 @@
 // 模型邊界透過 deps.invokeModel 可替換（測試替身只換這一層；claim／settle／
 // 原料整理／投影都走正式路徑）。
 
-import { ModelCallBudget } from "./model_call_budget.ts";
+import { attemptReporter, ModelCallBudget, type ProviderAttemptLogEntry } from "./model_call_budget.ts";
 import { OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
@@ -157,6 +157,8 @@ export interface OpenerFlowHandlerDeps {
   invokeModel?: OpenerFlowModelInvoker;
   /** 測試替身：旗標讀取。 */
   env?: (name: string) => string | undefined;
+  /** 每次供應商呼叫寫一列 ai_logs；不注入就只記 console。 */
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
 const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlowModelInvoker => async (req) => {
@@ -517,7 +519,8 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   }
 
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_ANALYZE_DEADLINE_MS;
-  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "analyze", operation: request.analysisRequestId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION });
+  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "analyze", operation: request.analysisRequestId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
+    attemptReporter("opener_provider_attempt", "opener_analyze", deps.recordAiCall));
   const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
   const userContent = buildOpenerAnalyzeUserContent({ profile, imageCount, initialUserNote: request.initialUserNote });
   const messages = buildClaudeMessages(images, userContent);
@@ -792,7 +795,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     option: contributionCheck.option,
   });
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
-  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION });
+  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
+    attemptReporter("opener_provider_attempt", "opener_generate", deps.recordAiCall, { path: usePlanWrite ? "plan_write" : "single" }));
   const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
   const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
@@ -1004,7 +1008,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
-            purpose: "repair",
+            purpose: "correction",
           });
           addUsage(correction);
           const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
