@@ -68,6 +68,7 @@ jobs:
           supabase/functions/analyze-chat/guardrails_test.ts
           supabase/functions/analyze-chat/no_send_decision_test.ts
           supabase/functions/analyze-chat/no_send_stream_test.ts
+          supabase/functions/analyze-chat/need_context_waiver_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts
           supabase/functions/practice-chat/moments_migration_source_test.ts
           supabase/functions/practice-chat/moments_slot_states_migration_source_test.ts
