@@ -139,6 +139,23 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
+  testWidgets('分析「先不要回」的新話題入口：位址帶 mode 與 partnerId，落在新話題面板', (t) async {
+    expect(
+      OpeningRescueScreen.newTopicLocationFor(partnerId: ' p1 '),
+      '/opener?mode=new_topic&partnerId=p1',
+    );
+    expect(OpeningRescueScreen.newTopicLocationFor(partnerId: ''),
+        '/opener?mode=new_topic');
+    expect(OpeningRescueScreen.newTopicLocationFor(), '/opener?mode=new_topic');
+
+    await _pump(t, OpeningRescueScreen.newTopicLocationFor(partnerId: 'p1'));
+    _expectNewTopicActive(t);
+    final screen =
+        t.widget<OpeningRescueScreen>(find.byType(OpeningRescueScreen));
+    expect(screen.partnerId, 'p1');
+    expect(screen.initialMode, OpeningRescueMode.newTopic);
+  });
+
   testWidgets('unknown mode fallback opener', (t) async {
     await _pump(t, '/opener?mode=garbage');
     _expectOpenerActive(t);

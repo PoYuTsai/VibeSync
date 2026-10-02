@@ -110,14 +110,24 @@ class ReminderBanner extends StatelessWidget {
 
 /// Analyze V2 決策卡（Phase 1c）：replyMode none／single 時取代放棄橫幅與
 /// 回覆輪播——「先不要回」「資料不夠」「先收尾」三種，和回覆區結構上互斥。
-class AnalysisDecisionCard extends StatelessWidget {
+/// 「先不要回」另有「下一步」區塊：等待條件、新話題重開入口，以及收合在
+/// 「我還是想回」後面的備用句。
+class AnalysisDecisionCard extends StatefulWidget {
   final AnalysisDecisionV2 decision;
   final VoidCallback? onCopyClosingMessage;
+
+  /// do_not_send：直達這位對象的新話題頁；null（例如歷史紀錄）就不出按鈕。
+  final VoidCallback? onStartNewTopic;
+
+  /// do_not_send 的備用句複製；null 就只顯示句子不給複製。
+  final VoidCallback? onCopyAgainstAdviceLine;
 
   const AnalysisDecisionCard({
     super.key,
     required this.decision,
     this.onCopyClosingMessage,
+    this.onStartNewTopic,
+    this.onCopyAgainstAdviceLine,
   });
 
   static String titleFor(AnalysisDecisionV2 decision) =>
@@ -128,11 +138,33 @@ class AnalysisDecisionCard extends StatelessWidget {
       };
 
   @override
+  State<AnalysisDecisionCard> createState() => _AnalysisDecisionCardState();
+}
+
+class _AnalysisDecisionCardState extends State<AnalysisDecisionCard> {
+  bool _showAgainstAdviceLine = false;
+
+  @override
+  void didUpdateWidget(AnalysisDecisionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 換了一輪分析就重新收合，不讓上一輪的「我還是想回」沿用到新結果。
+    if (!identical(oldWidget.decision, widget.decision)) {
+      _showAgainstAdviceLine = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final decision = widget.decision;
     final closingMessage = decision.sendableClosingMessage;
     final isNeedContext =
         decision.messageDecision == AnalysisMessageDecision.needContext;
+    final isDoNotSend =
+        decision.messageDecision == AnalysisMessageDecision.doNotSend;
+    final againstAdviceLine = decision.againstAdviceLine;
     final accent = isNeedContext ? AppColors.textSecondary : AppColors.error;
+    final secondaryStyle =
+        AppTypography.bodySmall.copyWith(color: AppColors.textSecondary);
     return Container(
       key: const ValueKey('analysis-decision-card'),
       padding: const EdgeInsets.all(14),
@@ -155,8 +187,8 @@ class AnalysisDecisionCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child:
-                    Text(titleFor(decision), style: AppTypography.titleSmall),
+                child: Text(AnalysisDecisionCard.titleFor(decision),
+                    style: AppTypography.titleSmall),
               ),
             ],
           ),
@@ -164,14 +196,67 @@ class AnalysisDecisionCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(decision.reason, style: AppTypography.bodyMedium),
           ],
-          if (decision.stopCondition.isNotEmpty) ...[
+          if (isDoNotSend) ...[
+            const SizedBox(height: 12),
+            Text('下一步', style: AppTypography.titleSmall),
+            if (decision.stopCondition.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('等到這時候再回：${decision.stopCondition}', style: secondaryStyle),
+            ],
+            const SizedBox(height: 6),
+            Text('她一直沒動靜就別追這條，過幾天用新話題重開。', style: secondaryStyle),
+            if (widget.onStartNewTopic != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: widget.onStartNewTopic,
+                  icon: const Icon(TablerIcons.message_circle, size: 18),
+                  label: const Text('用新話題重新開'),
+                ),
+              ),
+            ],
+            if (againstAdviceLine != null) ...[
+              const SizedBox(height: 8),
+              if (!_showAgainstAdviceLine)
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _showAgainstAdviceLine = true),
+                  child: const Text('我還是想回'),
+                )
+              else ...[
+                Text('教練不建議現在回。真的要回，這句壓力最低：', style: secondaryStyle),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child:
+                      Text(againstAdviceLine, style: AppTypography.bodyMedium),
+                ),
+                if (widget.onCopyAgainstAdviceLine != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: widget.onCopyAgainstAdviceLine,
+                      icon: const Icon(TablerIcons.copy, size: 16),
+                      label: const Text('複製這句'),
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ] else if (decision.stopCondition.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
               isNeedContext
                   ? '補上後再分析：${decision.stopCondition}'
                   : '等到這時候再回：${decision.stopCondition}',
-              style: AppTypography.bodySmall
-                  .copyWith(color: AppColors.textSecondary),
+              style: secondaryStyle,
             ),
           ],
           if (closingMessage != null) ...[
@@ -185,12 +270,12 @@ class AnalysisDecisionCard extends StatelessWidget {
               ),
               child: Text(closingMessage, style: AppTypography.bodyMedium),
             ),
-            if (onCopyClosingMessage != null) ...[
+            if (widget.onCopyClosingMessage != null) ...[
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
-                  onPressed: onCopyClosingMessage,
+                  onPressed: widget.onCopyClosingMessage,
                   icon: const Icon(TablerIcons.copy, size: 16),
                   label: const Text('複製收尾句'),
                 ),

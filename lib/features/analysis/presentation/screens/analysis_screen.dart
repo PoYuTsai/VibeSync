@@ -92,6 +92,8 @@ import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../learning/presentation/screens/ebook_detail_screen.dart'
     show ebookChapterRoute;
+import '../../../opener/presentation/screens/opening_rescue_screen.dart'
+    show OpeningRescueScreen;
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -694,6 +696,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       '/coach?conversationId=${widget.conversationId}',
       extra: _buildCoachChatAnalysisSnapshot(),
     );
+  }
+
+  /// 「先不要回」的下一步：直達這位對象的新話題 tab。
+  void _openNewTopic() {
+    if (!mounted) return;
+    _dismissKeyboard();
+    final partnerId =
+        ref.read(conversationProvider(widget.conversationId))?.partnerId;
+    context.push(OpeningRescueScreen.newTopicLocationFor(partnerId: partnerId));
   }
 
   Future<void> _openNewConversationSheet() async {
@@ -4033,6 +4044,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                               _decision!
                                                   .sendableClosingMessage!,
                                               '已複製收尾句',
+                                            ),
+                                onStartNewTopic: _openNewTopic,
+                                onCopyAgainstAdviceLine:
+                                    _decision!.againstAdviceLine == null
+                                        ? null
+                                        : () => copyRecommendationText(
+                                              _decision!.againstAdviceLine!,
+                                              '已複製這句',
                                             ),
                               ),
                               const SizedBox(height: 16),
