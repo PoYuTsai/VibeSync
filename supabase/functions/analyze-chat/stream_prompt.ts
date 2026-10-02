@@ -126,7 +126,7 @@ const NO_SEND_DECISION_GATE_WITHOUT_DO_NOT_SEND = [
   ),
   NO_SEND_DECISION_GATE[2].replace("three non-send", "two non-send"),
   NO_SEND_DECISION_GATE[3].replace("three non-send", "two non-send"),
-  'Example no-send line: {"type":"analysis.decision","messageDecision":"need_context","action":"pause","reason":"截圖只看得到她的半句話，分不出前一句是誰說的","stopCondition":"補上前後幾則對話"}',
+  // 不放範例：need_context 範例會讓模型把「缺細節」當成要用戶補對話（2026-10-02 黑箱 2/2）。
 ];
 
 export function buildStreamSystemPrompt(
