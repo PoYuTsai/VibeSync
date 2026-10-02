@@ -86,6 +86,13 @@ thin_opening 改判 `need_context` 2/2（「只有嗨和哈囉，硬寫只會查
 拿掉一個不回出口 5.5 就換另一個，開場要在結構上釘住。後續 commit 改成伺服器開選單（`offeredNoSendDecisions`）：
 用戶只傳過一句且最後是她時只留 `acknowledge_and_stop`；語料加 `opening_boundary`（開場就說有男友）。
 
+`out/2026-10-02-c-menu/`＋`-retry/`（commit d0d6acba，22 案 C×2＝44 次 $1.84＋補跑 8 次 $0.38＋評審約 $0.13）：
+主跑有 8 次是 Anthropic 串流中途 `overloaded_error`（0 token、$0），同案同參數補跑 8/8 通過。合併後 44/44 決定
+正確（thin_opening 2/2 send、照片題 2/2 send、opening_boundary 2/2 收尾、冷淡兩案先別回），evaluate 41/44
+（question_budget 3）；評審 rewrite 5/30。盲選（A 臂 vs 合併結果，`records-merged-with-retry.json`）：兩位 Claude
+審查員 5.5 勝 27、Sonnet 5 勝 5、差不多 10；Codex 5.5 勝 21、Sonnet 5 勝 5、差不多 16。仍有的弱點：被問「你覺得呢」
+多半不表態、問句超額。
+
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
 `defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
