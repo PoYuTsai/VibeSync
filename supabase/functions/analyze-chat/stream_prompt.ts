@@ -127,7 +127,7 @@ const NO_SEND_DECISION_GATE = [
   "For the three non-send decisions: omit `selectedStyle`; include `action` (`stop`/`connect`/`extend`/`filter`/`invite`/`pause`), `reason` (why not now, grounded in her actual messages), and `stopCondition` (what she must do before you reconsider); for `acknowledge_and_stop` also include `closingMessage` (one short neutral line, Traditional Chinese)." +
   DO_NOT_SEND_CLOSING_SENTENCE +
   " Then skip steps 2 and 3 entirely: emit no `analysis.recommendation` and no `analysis.reply_option`, continue from step 4, and put no replies in `finalResult`. A non-send decision is a complete, successful analysis, not a failure, and it is never a way to avoid a hard reply.",
-  'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題"}',
+  'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題","closingMessage":"哈哈好啦"}',
 ];
 
 // 結構刀：伺服器沒開放的不回決策，選單裡就沒有（不是叫模型少用）。

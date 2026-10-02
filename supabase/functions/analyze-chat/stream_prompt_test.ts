@@ -28,7 +28,10 @@ import {
   markLatestAnalysisFragment,
   normalizeStagePrior,
 } from "./stream_prompt.ts";
-import { offeredNoSendDecisions } from "./no_send_decision.ts";
+import {
+  offeredNoSendDecisions,
+  validateNoSendDecisionEvent,
+} from "./no_send_decision.ts";
 
 Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   const prompt = buildStreamSystemPrompt("Base full reasoning prompt.");
@@ -636,6 +639,18 @@ Deno.test("do_not_send closing line: offered with do_not_send, removed with it",
   });
   assert(all.includes(`${fieldsTail} ${sentence} Then skip steps 2 and 3`));
   assertEquals(all.split(sentence).length, 2);
+  // 範例要照自己的規則帶備用句，模型才不會照抄出沒有備用句的 do_not_send。
+  const examplePrefix = "Example no-send line: ";
+  const exampleLine = all.split("\n").find((line) =>
+    line.startsWith(examplePrefix)
+  );
+  assert(exampleLine, "no-send example missing");
+  const example = validateNoSendDecisionEvent(
+    JSON.parse(exampleLine.slice(examplePrefix.length)),
+  );
+  assert(example.ok);
+  assertEquals(example.payload.decisionKind, "do_not_send");
+  assert(example.payload.closingMessage);
 
   for (
     const offered of [
