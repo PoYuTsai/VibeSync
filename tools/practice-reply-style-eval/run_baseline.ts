@@ -5,7 +5,7 @@
 // 所以量不到這件事；這支工具反過來固定情境、換角色。
 //
 // 保真：prompt 走 production 的 buildChatPromptBundle（含 bakeoff 同一份固定 context
-// fixture），模型走 production 的 callDeepSeek（deepseek-v4-flash、200 tokens、0.9），
+// fixture），模型走 production 的 callDeepSeek（deepseek-flash、200 tokens、0.9），
 // 回覆後處理照 handler.ts 同序（繁體轉換→內部標籤守門→L4 守門，失敗重試一次）。
 // 不自造 prompt。standard 模式（production 不跑分類器、partnerState 為 null）。
 //

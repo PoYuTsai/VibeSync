@@ -738,3 +738,18 @@ export async function sha256HexOf(text: string | Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * 2026-10-02 DeepSeek 改名（`deepseek-v4-flash` → `deepseek-flash`；舊名 9/10 起
+ * 已改道 V4.1-Flash）是刻意的 production 改動，Response body 的 `model` 欄位跟著
+ * 變。flag-off golden 都在舊名時印出，比對前把 JSON 裡的新名換回舊名，**其餘位元組
+ * 仍須全等**。在 golden 出處 commit 上重印時這是 no-op。
+ */
+export function legacyDeepSeekModelId(bytes: Uint8Array): Uint8Array {
+  return new TextEncoder().encode(
+    new TextDecoder().decode(bytes).replaceAll(
+      '"deepseek-flash"',
+      '"deepseek-v4-flash"',
+    ),
+  );
+}

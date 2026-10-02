@@ -3,7 +3,10 @@
 
 import type { ChatMessage } from "./prompt.ts";
 
-export const DEEPSEEK_MODEL = "deepseek-v4-flash";
+// 2026-10-02：DeepSeek 已退役 `deepseek-v4-flash` 背後的模型，9/10 起舊名改道到
+// V4.1-Flash，新正式名是 `deepseek-flash`（官方 pricing／news260910）。舊名改道
+// 期限官方沒說，所以改用新名。V4.1 一樣預設開 thinking，下面照舊明確關掉。
+export const DEEPSEEK_MODEL = "deepseek-flash";
 export const DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions";
 
 export interface DeepSeekArgs {

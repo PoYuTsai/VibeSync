@@ -29,6 +29,7 @@ import {
   makeFake,
   makeRequest,
   NOW,
+  legacyDeepSeekModelId,
   run,
   sha256HexOf,
   subscription,
@@ -8213,7 +8214,9 @@ async function goldenDigest(
   const headers = [...response.headers.entries()].sort().map(([k, v]) =>
     `${k}:${v}`
   ).join("\n");
-  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const bodyBytes = legacyDeepSeekModelId(
+    new Uint8Array(await response.arrayBuffer()),
+  );
   const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
   const raw = new Uint8Array(head.length + bodyBytes.length);
   raw.set(head, 0);
@@ -8611,7 +8614,9 @@ async function agencyGoldenDigest(
   const headers = [...response.headers.entries()].sort().map(([k, v]) =>
     `${k}:${v}`
   ).join("\n");
-  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const bodyBytes = legacyDeepSeekModelId(
+    new Uint8Array(await response.arrayBuffer()),
+  );
   const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
   const raw = new Uint8Array(head.length + bodyBytes.length);
   raw.set(head, 0);
@@ -9306,7 +9311,9 @@ async function fullDigest(
   const headers = [...response.headers.entries()].sort().map(([k, v]) =>
     `${k}:${v}`
   ).join("\n");
-  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const bodyBytes = legacyDeepSeekModelId(
+    new Uint8Array(await response.arrayBuffer()),
+  );
   const head = new TextEncoder().encode(`${response.status}\n${headers}\n\n`);
   const raw = new Uint8Array(head.length + bodyBytes.length);
   raw.set(head, 0);

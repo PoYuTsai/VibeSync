@@ -26,12 +26,9 @@
 //
 //   deno run --allow-env --allow-read --allow-write --allow-net=api.deepseek.com \
 //     tools/practice-agency-eval/judge_agency.ts <artifact.json> \
-//     [--model=deepseek-v4-flash] [--concurrency=6]
+//     [--model=deepseek-flash] [--concurrency=6]
 
-import {
-  callDeepSeek,
-  DEEPSEEK_MODEL,
-} from "../../supabase/functions/practice-chat/deepseek.ts";
+import { callDeepSeek } from "../../supabase/functions/practice-chat/deepseek.ts";
 import {
   AGENCY_LABELS,
   type AgencyLabel,
@@ -410,7 +407,10 @@ async function main(): Promise<void> {
   }
   const flag = (k: string, d: string) =>
     Deno.args.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
-  const model = flag("model", DEEPSEEK_MODEL);
+  // 評審模型寫死，不跟 production 的 DEEPSEEK_MODEL 走：production 換名／換代時
+  // 評審不能跟著默默換，否則「回答的模型」和「評分的模型」同時變，前後數字不能比。
+  // 要換評審請明確傳 --model 並在報告記下。
+  const model = flag("model", "deepseek-flash");
   const concurrency = Number.parseInt(flag("concurrency", "6"), 10);
   const apiKey = Deno.env.get("DEEPSEEK_API_KEY") ??
     (await Deno.readTextFile(

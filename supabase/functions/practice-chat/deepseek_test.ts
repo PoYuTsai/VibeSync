@@ -107,6 +107,8 @@ Deno.test("DeepSeek V4 thinking 預設關閉，只有呼叫端明講才打開", 
     // 裡，本專案三個呼叫端的 max_tokens 都是照「只輸出可見文字」估的，開著就會
     // finish_reason=length——分類器 6/6 輪掛掉（溫度整場不動）、聊天 1/3 回空字串。
     assertEquals(bodies[1].thinking, { type: "disabled" });
+    // 2026-10-02：舊名 deepseek-v4-flash 已改道 V4.1，線上送新正式名。
+    assertEquals(bodies[1].model, "deepseek-flash");
 
     await callDeepSeek({ ...baseArgs, thinking: { type: "enabled" } });
     assertEquals(bodies[2].thinking, { type: "enabled" });

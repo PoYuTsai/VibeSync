@@ -4,7 +4,7 @@
 // 跑法（repo 根目錄，預設行為＝原本行為，不帶旗標時逐位元組不變）：
 //   deno run --allow-read --allow-net tools/practice-behavior-smoke/run_smoke.ts
 //
-// 用 production 同款 CHAT_SYSTEM_PROMPT＋deepseek-v4-flash 生 NPC 回覆，
+// 用 production 同款 CHAT_SYSTEM_PROMPT＋deepseek-flash 生 NPC 回覆，
 // 先過 bannedPatterns（確定性），再交 LLM 評審（temperature 0）判語意。
 // 任何 FAIL → exit 1。NPC 生成溫度 0.7（貼近線上），單發有隨機性：
 // FAIL 先重看回覆內容再判是回歸還是抖動。
@@ -93,7 +93,7 @@ async function callDeepSeek(opts: {
       Authorization: `Bearer ${deepseekKey}`,
     },
     body: JSON.stringify({
-      model: "deepseek-v4-flash",
+      model: "deepseek-flash",
       messages: opts.messages.map((m) => ({
         role: m.role,
         content: m.content,
