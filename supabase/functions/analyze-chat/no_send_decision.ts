@@ -33,6 +33,10 @@ export const ANALYSIS_ACTIONS = [
 /// five-style contract; 2 adds no-send decisions and replyMode none/single.
 export const ANALYSIS_CONTRACT_VERSION_V2 = 2;
 
+/// 「資料不夠」免扣的標記：跟錨點一起存進 recommendation_json，retry 重建
+/// 錨點時一起帶回，最終 usage／telemetry 才會照樣標免扣。
+export const NEED_CONTEXT_WAIVED = "need_context_waived";
+
 export interface StreamNoSendRecommendationForCharge {
   decisionKind: NoSendDecisionKind;
   // Kept as an explicit null so existing readers of `.selectedStyle` on the
@@ -47,6 +51,8 @@ export interface StreamNoSendRecommendationForCharge {
   // Phase 0 charge-time snapshots, same optional semantics as the send payload.
   analysisInventory?: Record<string, unknown>;
   analysisEvidenceLinkage?: AnalysisEvidenceLinkage;
+  /// 只在 need_context 真的免扣時才有；client 決策事件不帶它。
+  quotaWaivedReason?: typeof NEED_CONTEXT_WAIVED;
 }
 
 /// 結構刀：伺服器決定這次選單裡有哪些不回決策，不靠模型自律（2026-10-02 黑箱：
@@ -227,6 +233,9 @@ export function noSendChargePayloadFromStored(
     ...(closingMessage ? { closingMessage } : {}),
     raw,
     analysisDecisionV2: {},
+    ...(stored.quotaWaivedReason === NEED_CONTEXT_WAIVED
+      ? { quotaWaivedReason: NEED_CONTEXT_WAIVED }
+      : {}),
   };
   payload.analysisDecisionV2 = noSendDecisionV2Snapshot(payload);
   return payload;
@@ -252,6 +261,9 @@ export function serializeNoSendRecommendation(
       : {}),
     ...(payload.analysisEvidenceLinkage
       ? { analysisEvidenceLinkage: payload.analysisEvidenceLinkage }
+      : {}),
+    ...(payload.quotaWaivedReason
+      ? { quotaWaivedReason: payload.quotaWaivedReason }
       : {}),
   };
 }

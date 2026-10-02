@@ -27,6 +27,7 @@ import {
 import {
   isNoSendChargePayload,
   isNoSendDecisionKind,
+  NEED_CONTEXT_WAIVED,
   noSendChargePayloadFromStored,
   type NoSendDecisionKind,
   offeredNoSendDecisions,
@@ -80,7 +81,6 @@ import type {
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
-const NEED_CONTEXT_WAIVED = "need_context_waived";
 
 /// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5，
 /// 且只換 v2 合約（noSendDecisions，黑箱 QA 跑的那條）；舊版 client 的 v1 照舊。
@@ -510,7 +510,11 @@ export async function handleAnalyzeStream(
     quotaReason: deps.quotaUsage.quotaReason,
     quotaUnit: deps.quotaUsage.quotaUnit,
   };
-  let quotaWaivedReason: typeof NEED_CONTEXT_WAIVED | undefined;
+  // retry 沿用原 run 存下的免扣標記（錨點與標記同在 recommendation_json）。
+  let quotaWaivedReason: typeof NEED_CONTEXT_WAIVED | undefined =
+    isNoSendChargePayload(prechargedRecommendation)
+      ? prechargedRecommendation.quotaWaivedReason
+      : undefined;
 
   // Phase 2 (§11)：v2 才挑情境 atoms；v1 prompt 一字不動。deterministic，
   // callClaude 重試時重算結果相同，所以只算一次。
@@ -618,7 +622,10 @@ export async function handleAnalyzeStream(
           runId: streamRun.id,
           userId: deps.userId,
           conversationHash: conversationHashValue,
-          recommendation,
+          // 免扣標記跟錨點一起存：串流之後失敗、retry 重建錨點時才帶得回來。
+          recommendation: waived && isNoSendChargePayload(recommendation)
+            ? { ...recommendation, quotaWaivedReason: NEED_CONTEXT_WAIVED }
+            : recommendation,
           chargeQuota,
           messageCount: chargeQuota ? deps.quotaUsage.chargedMessageCount : 0,
         });

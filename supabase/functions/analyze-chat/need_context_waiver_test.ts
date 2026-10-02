@@ -11,7 +11,11 @@ import {
 } from "./analyze_stream_handler.ts";
 import { MODEL_RATE_LIMITS } from "../_shared/model_rate_limit.ts";
 import { validateNoSendDecisionEvent } from "./no_send_decision.ts";
-import type { AnalysisStreamRun } from "./stream_run_store.ts";
+import {
+  type AnalysisStreamRun,
+  type AnalysisStreamRunDriver,
+  AnalysisStreamRunStore,
+} from "./stream_run_store.ts";
 
 const USER = "00000000-0000-4000-8000-000000000001";
 // 用戶傳過兩句以上、她只回「哈哈」：三種不回決策都在選單裡。
@@ -112,8 +116,14 @@ function chargedNeedContextRun(
   });
 }
 
-async function* chunks(values: string[]): AsyncIterable<string> {
-  for (const value of values) yield value;
+async function* chunks(
+  values: string[],
+  breakAfter = Infinity,
+): AsyncIterable<string> {
+  for (const [i, value] of values.entries()) {
+    if (i >= breakAfter) throw new Error("upstream connection reset");
+    yield value;
+  }
 }
 
 async function analyze(options: {
@@ -123,28 +133,45 @@ async function analyze(options: {
   shouldChargeQuota?: boolean;
   analysisRunId?: string;
   existingRun?: AnalysisStreamRun;
+  /// 真的 AnalysisStreamRunStore（記憶體 driver）；省略＝只記扣費參數的假 store。
+  runStore?: AnalysisStreamRunStore;
+  /// 模型吐出決策後連線就斷（扣費已發生，沒有 analysis.done）。
+  streamBreaksAfterDecision?: boolean;
 }) {
   const charges: { chargeQuota: boolean; messageCount: number }[] = [];
   const done: Record<string, unknown>[] = [];
   const aiLogs: Record<string, unknown>[] = [];
+  const runStore = options.runStore;
   const deps: AnalyzeStreamDeps = {
-    store: {
-      getRun: () => Promise.resolve(options.existingRun ?? makeRun()),
-      reserveRetry: () => Promise.resolve(options.existingRun ?? makeRun()),
-      createPendingRun: () => Promise.resolve(makeRun()),
-      chargeRun: (args) => {
-        charges.push({
-          chargeQuota: args.chargeQuota,
-          messageCount: args.messageCount,
-        });
-        return Promise.resolve();
+    store: runStore
+      ? {
+        getRun: (args) => runStore.getRun(args),
+        reserveRetry: (args) => runStore.reserveRetry(args),
+        createPendingRun: (args) => runStore.createPendingRun(args),
+        chargeRun: (args) => runStore.chargeRun(args),
+        markDone: async (args) => {
+          done.push(args.finalResult);
+          return await runStore.markDone(args);
+        },
+        markFailed: (args) => runStore.markFailed(args),
+      }
+      : {
+        getRun: () => Promise.resolve(options.existingRun ?? makeRun()),
+        reserveRetry: () => Promise.resolve(options.existingRun ?? makeRun()),
+        createPendingRun: () => Promise.resolve(makeRun()),
+        chargeRun: (args) => {
+          charges.push({
+            chargeQuota: args.chargeQuota,
+            messageCount: args.messageCount,
+          });
+          return Promise.resolve();
+        },
+        markDone: (args) => {
+          done.push(args.finalResult);
+          return Promise.resolve();
+        },
+        markFailed: () => Promise.resolve(makeRun({ status: "failed" })),
       },
-      markDone: (args) => {
-        done.push(args.finalResult);
-        return Promise.resolve();
-      },
-      markFailed: () => Promise.resolve(makeRun({ status: "failed" })),
-    },
     userId: USER,
     analysisRunId: options.analysisRunId ?? null,
     requestType: "analyze",
@@ -201,6 +228,7 @@ async function analyze(options: {
             },
             { type: "analysis.done", finalResult: { strategy: "先停一下" } },
           ].map((event) => `${JSON.stringify(event)}\n`),
+          options.streamBreaksAfterDecision ? 1 : undefined,
         ),
         // deno-lint-ignore no-explicit-any
       } as any),
@@ -381,4 +409,109 @@ Deno.test("need_context waiver: retry and resume never charge or touch the count
   assertEquals(resume.done, []);
   assert(resume.text.includes('"recovered":true'), resume.text);
   assertEquals(counter.calls, []);
+});
+
+/// analysis_stream_runs 一列的記憶體版，照 charge_stream_analysis_run_v2 與
+/// reserve_stream_analysis_retry 的語義：recommendation_json 以 jsonb 原樣存、原樣讀回。
+function memoryRunDriver() {
+  let row = makeRun();
+  const driver: AnalysisStreamRunDriver = {
+    createPendingRun: () => Promise.resolve(row),
+    getRun: () => Promise.resolve(row),
+    reserveRetry: () => {
+      row = {
+        ...row,
+        status: "charged",
+        retry_count: row.retry_count + 1,
+        last_error_code: null,
+      };
+      return Promise.resolve(row);
+    },
+    chargeRun: (input) => {
+      if (row.charged_at === null) {
+        row = {
+          ...row,
+          status: "charged",
+          charged_at: new Date().toISOString(),
+          recommendation_json: JSON.parse(
+            JSON.stringify(input.recommendationJson),
+          ),
+          selected_style: input.selectedStyle,
+          decision_kind: input.decisionKind ?? null,
+        };
+      }
+      return Promise.resolve(row);
+    },
+    markDone: (input) => {
+      row = { ...row, status: "done", final_result_json: input.finalResult };
+      return Promise.resolve(row);
+    },
+    markFailed: (input) => {
+      row = { ...row, status: "failed", last_error_code: input.code };
+      return Promise.resolve(row);
+    },
+  };
+  return { store: new AnalysisStreamRunStore(driver), row: () => row };
+}
+
+Deno.test("need_context waiver: the waived anchor survives a failed stream, so the retry still reports the waiver", async () => {
+  const counter = fakeCounter();
+  const db = memoryRunDriver();
+  const failed = await analyze({
+    decision: "need_context",
+    counter,
+    runStore: db.store,
+    streamBreaksAfterDecision: true,
+  });
+  assertEquals(failed.done, []);
+  assertEquals(db.row().status, "failed");
+  assertEquals(
+    db.row().recommendation_json?.quotaWaivedReason,
+    "need_context_waived",
+  );
+
+  const retry = await analyze({
+    decision: "need_context",
+    counter,
+    runStore: db.store,
+    analysisRunId: "run-1",
+  });
+  assert(retry.text.includes('"messageDecision":"need_context"'), retry.text);
+  const { usage, telemetry, responseBody } = sections(retry);
+  assertEquals(usage.messagesUsed, 0);
+  assertEquals(usage.shouldChargeQuota, false);
+  assertEquals(usage.quotaWaivedReason, "need_context_waived");
+  assertEquals(telemetry.chargedMessageCount, 0);
+  assertEquals(telemetry.quotaWaivedReason, "need_context_waived");
+  assertEquals(responseBody.quotaWaivedReason, "need_context_waived");
+  // 免扣名額只在第一次扣費時佔一格，retry 不再碰計數。
+  assertEquals(counter.calls.length, 1);
+  // 存回的 final result 也帶標記：之後 resume 回放的就是這份。
+  assertEquals(
+    (db.row().final_result_json?.usage as Record<string, unknown>)
+      .quotaWaivedReason,
+    "need_context_waived",
+  );
+});
+
+Deno.test("need_context waiver: a charged need_context anchor never gains the marker on retry", async () => {
+  const counter = fakeCounter();
+  for (let i = 0; i < 3; i++) {
+    assertWaived(await analyze({ decision: "need_context", counter }));
+  }
+  const db = memoryRunDriver();
+  await analyze({
+    decision: "need_context",
+    counter,
+    runStore: db.store,
+    streamBreaksAfterDecision: true,
+  });
+  assertFalse("quotaWaivedReason" in db.row().recommendation_json!);
+  const retry = await analyze({
+    decision: "need_context",
+    counter,
+    runStore: db.store,
+    analysisRunId: "run-1",
+  });
+  assertFalse("quotaWaivedReason" in sections(retry).usage);
 });
