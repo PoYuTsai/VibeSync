@@ -1,0 +1,135 @@
+{
+  "base": "tools/analyze-v2-blackbox/out/2026-10-02-ab/records.json:A",
+  "cand": "tools/analyze-v2-blackbox/out/2026-10-02-c-gate/records.json:C",
+  "A": "base",
+  "B": "cand",
+  "seed": 20261003,
+  "cases": [
+    {
+      "n": 1,
+      "caseId": "cold_one_word_replies",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 2,
+      "caseId": "she_invites_first",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 3,
+      "caseId": "soft_reject_after_invite",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 4,
+      "caseId": "first_message_after_match",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 5,
+      "caseId": "defer_polite_reason",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 6,
+      "caseId": "thin_opening",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 7,
+      "caseId": "she_teases_him",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 8,
+      "caseId": "she_asks_personal_question",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 9,
+      "caseId": "defer_with_alternative",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 10,
+      "caseId": "she_asks_his_opinion",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 11,
+      "caseId": "hobby_common_ground",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 12,
+      "caseId": "defer_vague_busy",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 13,
+      "caseId": "logistics_confirm",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 14,
+      "caseId": "she_double_texts",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 15,
+      "caseId": "after_meetup_followup",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 16,
+      "caseId": "warm_question_back",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 17,
+      "caseId": "boundary_friend_hint",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 18,
+      "caseId": "she_shares_bad_day",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 19,
+      "caseId": "long_conversation_35",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 20,
+      "caseId": "user_over_investing",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 21,
+      "caseId": "she_returns_after_silence",
+      "甲": "A",
+      "乙": "B"
+    }
+  ]
+}

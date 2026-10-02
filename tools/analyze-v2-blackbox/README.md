@@ -74,6 +74,13 @@ C×1＝21 次 $4.23＋評審 17 次 $0.21；合計 $15.15（不中 cache 最壞 
 2026-10-02-ab 是 0/42）；評審 rewrite 11/39，與 A 臂 8/29 同一水準，第一輪 C 的 2/14 是小樣本。後續
 6e378964 改成伺服器沒量到低投入時選單裡沒有 `do_not_send`。
 
+`out/2026-10-02-c-gate/`（commit 57e41eae，C×2＝42 次 $1.93＋評審約 $0.12）：thin_opening 2/2 send，冷淡兩案照樣
+`do_not_send`；evaluate 37/42（A 臂 37/42）；p50 16.2s、p95 20.8s；評審 rewrite 5/26。新回歸：
+first_message_after_match 2/2 `need_context`（理由是不知道照片在哪拍），推測是受限版本換上的 need_context 範例
+帶偏，42ec3d25 已拿掉範例、未重驗。盲選（`blind_pair.ts`，A 臂 vs 本輪，兩份表各 21 題）：兩位 Claude 審查員
+5.5 勝 16、Sonnet 5 勝 8、差不多 18；Codex（`blind-r*-codex.txt`）5.5 勝 21、Sonnet 5 勝 6、差不多 15。
+兩家只在「缺用戶事實時判 need_context 還是編地點」相反。5.5 已知弱點：被問「你覺得呢」時五張都反問不表態。
+
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
 `defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
