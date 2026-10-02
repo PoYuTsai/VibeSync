@@ -28,6 +28,9 @@ export const MODEL_RATE_LIMITS = {
   // 一個人狂重整 feed 不該把全站當天的額度提前燒完。
   practice_moment: { perMinute: 6, perDay: 60 },
   practice_moment_image: { perMinute: 3, perDay: 20 },
+  // 不是限流：借同一張原子計數表數「資料不夠」今天免扣了幾次（每人每天 3 次，
+  // UTC 日翻轉＝主額度同一條日界）。超過就照常扣。見 analyze_stream_handler.ts。
+  need_context_waiver: { perMinute: 3, perDay: 3 },
 } as const;
 
 export type ModelRateLimitScope = keyof typeof MODEL_RATE_LIMITS;
@@ -69,7 +72,7 @@ export function buildModelRateLimitedPayload(reason: ModelRateLimitReason): {
   };
 }
 
-type RpcClient = {
+export type RpcClient = {
   rpc(
     fn: string,
     args: Record<string, unknown>,

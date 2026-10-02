@@ -1643,6 +1643,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         accountIsTest,
         allowedFeatures,
         noSendDecisions,
+        // 長分析帶（>2000 字：新 client 確認扣 20、舊 client 封頂 10）不免扣。
+        needContextWaiverEligible: billing.outcome === "charge" &&
+          !billing.legacyOver2000Capped,
+        rateLimitClient: supabase,
         quotaUsage,
         monthlyLimit,
         dailyLimit,

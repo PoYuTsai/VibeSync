@@ -25,6 +25,7 @@ import {
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
 import {
+  isNoSendChargePayload,
   isNoSendDecisionKind,
   noSendChargePayloadFromStored,
   type NoSendDecisionKind,
@@ -54,6 +55,10 @@ import { postProcessAnalysisResult } from "./post_process.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
+  enforceModelRateLimit,
+  type RpcClient,
+} from "../_shared/model_rate_limit.ts";
+import {
   getErrorMessage,
   logAiCall,
   logError,
@@ -68,6 +73,7 @@ import type {
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
+const NEED_CONTEXT_WAIVED = "need_context_waived";
 
 /// Run store 的 narrow port（AnalysisStreamRunStore 的使用面）。
 export interface AnalyzeStreamRunPort {
@@ -122,6 +128,11 @@ export interface AnalyzeStreamDeps {
   /// Phase 1b: client declared analysisContractVersion >= 2, so the model may
   /// answer with a no-send decision (zero reply cards) instead of options.
   noSendDecisions?: boolean;
+  /// 「資料不夠」（need_context）免扣的資格：不在長分析帶（>2000 字）。
+  /// 省略或 false＝照常扣。
+  needContextWaiverEligible?: boolean;
+  /// increment_model_usage 的 client，數每人每天免扣幾次；省略＝照常扣。
+  rateLimitClient?: RpcClient;
   quotaUsage: {
     shouldChargeQuota: boolean;
     quotaReason: string;
@@ -473,6 +484,7 @@ export async function handleAnalyzeStream(
     quotaReason: deps.quotaUsage.quotaReason,
     quotaUnit: deps.quotaUsage.quotaUnit,
   };
+  let quotaWaivedReason: typeof NEED_CONTEXT_WAIVED | undefined;
 
   // Phase 2 (§11)：v2 才挑情境 atoms；v1 prompt 一字不動。deterministic，
   // callClaude 重試時重算結果相同，所以只算一次。
@@ -548,14 +560,52 @@ export async function handleAnalyzeStream(
     },
     chargeRun: async (recommendation) => {
       try {
+        // 「資料不夠」每人每天前 3 次不扣（長分析帶除外）。retry 的 shouldCharge
+        // 本來就 false，不會碰計數。
+        // ponytail: 名額先佔後扣——之後 chargeRun 失敗，這格名額就白用了
+        // （只在基礎設施失敗時發生，上限仍是每天 3 次）。
+        let waived = false;
+        if (
+          shouldCharge && deps.needContextWaiverEligible === true &&
+          deps.rateLimitClient &&
+          isNoSendChargePayload(recommendation) &&
+          recommendation.decisionKind === "need_context"
+        ) {
+          const verdict = await enforceModelRateLimit({
+            supabase: deps.rateLimitClient,
+            userId: deps.userId,
+            scope: "need_context_waiver",
+            isTestAccount: deps.accountIsTest,
+            failClosed: true,
+          });
+          waived = verdict.kind === "allowed";
+          logInfo("need_context_waiver", {
+            user: summarizeUser(deps.userId),
+            analysisRunId: streamRun.id,
+            outcome: verdict.kind,
+          });
+        }
+        const chargeQuota = shouldCharge && !waived;
         await deps.store.chargeRun({
           runId: streamRun.id,
           userId: deps.userId,
           conversationHash: conversationHashValue,
           recommendation,
-          chargeQuota: shouldCharge,
-          messageCount: shouldCharge ? deps.quotaUsage.chargedMessageCount : 0,
+          chargeQuota,
+          messageCount: chargeQuota ? deps.quotaUsage.chargedMessageCount : 0,
         });
+        if (waived) {
+          Object.assign(streamUsage, {
+            messagesUsed: 0,
+            monthlyRemaining: Math.max(
+              0,
+              deps.monthlyLimit - deps.subMonthlyUsed,
+            ),
+            dailyRemaining: Math.max(0, deps.dailyLimit - deps.subDailyUsed),
+            shouldChargeQuota: false,
+          });
+          quotaWaivedReason = NEED_CONTEXT_WAIVED;
+        }
         return { charged: true };
       } catch (error) {
         const mapped = mapStreamChargeFailure(error);
@@ -589,20 +639,20 @@ export async function handleAnalyzeStream(
         requestMessages: deps.messages,
       });
       const latencyMs = Date.now() - streamStartTime;
+      const waivedFields = quotaWaivedReason ? { quotaWaivedReason } : {};
       const finalPayload = {
         ...calibratePhase0EvidenceLinkage(postProcessed),
-        usage: { ...streamUsage, model: streamModel },
+        usage: { ...streamUsage, model: streamModel, ...waivedFields },
         telemetry: {
           requestType: deps.requestType,
           responseMode: "stream",
           serverAiLatencyMs: latencyMs,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
           model: streamModel,
-          shouldChargeQuota: shouldCharge,
-          chargedMessageCount: shouldCharge
-            ? deps.quotaUsage.chargedMessageCount
-            : 0,
+          shouldChargeQuota: streamUsage.shouldChargeQuota,
+          chargedMessageCount: streamUsage.messagesUsed,
           estimatedMessageCount: deps.quotaUsage.estimatedMessageCount,
+          ...waivedFields,
         },
       };
 
@@ -691,7 +741,8 @@ export async function handleAnalyzeStream(
         },
         responseBody: {
           streamRunStatus: "done",
-          chargedQuota: shouldCharge,
+          chargedQuota: streamUsage.shouldChargeQuota,
+          ...waivedFields,
           cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
           cacheReadTokens: streamTokenUsage.cacheReadTokens,
         },
