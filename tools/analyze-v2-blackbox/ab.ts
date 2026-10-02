@@ -9,13 +9,17 @@ import {
   type TokenPricing,
 } from "../../supabase/functions/_shared/model_pricing.ts";
 import { SEMANTIC_CRITIC_MAX_TOKENS } from "../../supabase/functions/_shared/social/semantic_critic.ts";
+import {
+  maxTokensFor,
+  SONNET_5_5_THINKING_HEADROOM_TOKENS,
+} from "../../supabase/functions/_shared/model_request_params.ts";
 
 export type ArmId = "A" | "B" | "C";
 
 export interface ArmSpec {
   readonly model: string;
   readonly label: string;
-  /// 只有 C：在 fetch 層改寫 production 組好的 body。A／B 原樣送出。
+  /// 只有 B：在 fetch 層把 production 組好的 body 改回舊設定。A／C 原樣送出。
   readonly override?: {
     readonly thinking: Readonly<Record<string, unknown>>;
     readonly effort: string;
@@ -31,17 +35,17 @@ export const ARMS: Readonly<Record<ArmId, ArmSpec>> = {
   B: {
     model: "claude-sonnet-5-5",
     label:
-      "Sonnet 5.5，production helper（thinking between_tools＋effort medium，max_tokens 不變）",
+      "Sonnet 5.5，舊 helper（thinking between_tools＋effort medium，max_tokens 不變）",
+    override: {
+      thinking: { type: "between_tools" },
+      effort: "medium",
+      extraMaxTokens: -SONNET_5_5_THINKING_HEADROOM_TOKENS,
+    },
   },
   C: {
     model: "claude-sonnet-5-5",
     label:
-      "Sonnet 5.5，adaptive thinking＋effort low＋max_tokens +4000＋display omitted",
-    override: {
-      thinking: { type: "adaptive", display: "omitted" },
-      effort: "low",
-      extraMaxTokens: 4000,
-    },
+      "Sonnet 5.5，production helper（adaptive thinking＋display omitted＋effort low＋max_tokens +4000）",
   },
 };
 
@@ -216,7 +220,8 @@ export function estimatePlan(
   for (const call of plan) {
     const arm = ARMS[call.arm];
     const tokens = tokensByCase[call.caseId];
-    const maxOut = baseMaxTokens + (arm.override?.extraMaxTokens ?? 0);
+    const maxOut = maxTokensFor(arm.model, baseMaxTokens) +
+      (arm.override?.extraMaxTokens ?? 0);
     const key = `${call.caseId}|${call.arm}`;
     const usd = callUpperBoundUsd(arm.model, tokens, maxOut, written.has(key));
     written.add(key);
