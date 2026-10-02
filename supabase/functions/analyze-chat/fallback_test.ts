@@ -136,6 +136,49 @@ Deno.test("caller-specified adaptive thinking is not sent to older fallback mode
   ]);
 });
 
+Deno.test("Sonnet 5.5 gets between_tools＋effort merged into structured output and 4.6 stays the next hop", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Promise.resolve(
+      bodies.length === 1
+        ? new Response("upstream unavailable", { status: 529 })
+        : successResponse(),
+    );
+  };
+
+  try {
+    await callClaudeWithFallback(
+      {
+        ...baseRequest({ type: "disabled" }),
+        model: "claude-sonnet-5-5",
+        output_config: {
+          format: { type: "json_schema", schema: { type: "object" } },
+        },
+      },
+      "test-key",
+      { timeout: 1000, maxRetries: 1, allowModelFallback: true },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(bodies.map((b) => b.model), [
+    "claude-sonnet-5-5",
+    "claude-sonnet-4-6",
+  ]);
+  assertEquals(bodies[0].thinking, { type: "between_tools" });
+  assertEquals(bodies[0].output_config, {
+    format: { type: "json_schema", schema: { type: "object" } },
+    effort: "medium",
+  });
+  assertEquals(bodies[1].thinking, undefined);
+  assertEquals(bodies[1].output_config, {
+    format: { type: "json_schema", schema: { type: "object" } },
+  });
+});
+
 Deno.test("max_tokens without visible text fails closed on Sonnet 5", async () => {
   const originalFetch = globalThis.fetch;
   const capturedBodies: CapturedBody[] = [];

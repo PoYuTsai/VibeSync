@@ -341,6 +341,42 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "callClaudeStreaming sends Sonnet 5.5 between_tools＋effort and falls back to 4.6 natively",
+  async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const result = await callClaudeStreaming(
+      // 呼叫端的 disabled 對 5.5 會 400，helper 必須改送 between_tools。
+      {
+        ...streamingRequest("claude-sonnet-5-5"),
+        thinking: { type: "disabled" },
+      },
+      "test-api-key",
+      {
+        timeout: 5000,
+        fetchImpl: (_input, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(
+            bodies.length === 1
+              ? new Response("overloaded", { status: 529 })
+              : successfulStream("fallback"),
+          );
+        },
+      },
+    );
+
+    assertEquals(bodies.map((b) => b.model), [
+      "claude-sonnet-5-5",
+      "claude-sonnet-4-6",
+    ]);
+    assertEquals(bodies[0].thinking, { type: "between_tools" });
+    assertEquals(bodies[0].output_config, { effort: "medium" });
+    assertEquals(bodies[1].thinking, undefined);
+    assertEquals(bodies[1].output_config, undefined);
+    assertEquals(result.model, "claude-sonnet-4-6");
+  },
+);
+
 Deno.test("callClaudeStreaming keeps the fallback chain inside one total timeout", async () => {
   const models: unknown[] = [];
 

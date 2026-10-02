@@ -1,36 +1,140 @@
-// 本機黑箱：真 Sonnet 5、v2 契約（noSendDecisions）、essential 五風格。
+// 本機黑箱：真模型、v2 契約（noSendDecisions）、essential 五風格。
 // 走 handleAnalyzeStream 本體（system prompt＋knowledge atoms＋divergence plan
 // 全是 production 程式碼），只 stub DB store 與 supabase telemetry。
+// 2026-10-02 起是 A/B 工具：--arms 臂（ab.ts）、每案交錯、預設 dry-run；
+// 真呼叫要 --run --confirm-paid --max-calls --budget-usd --tag 全帶（見 README）。
+import {
+  applyArmOverride,
+  applySseEvent,
+  type ArmId,
+  ARMS,
+  type ArmSpec,
+  buildBlindSheet,
+  type CallRecord,
+  callUpperBoundUsd,
+  estimatePlan,
+  estimateTokens,
+  JUDGE_MODEL,
+  newProviderCall,
+  paidGuardError,
+  parseArms,
+  parsePaidFlags,
+  parseRepeat,
+  planCalls,
+  type PlannedCall,
+  type ProviderCall,
+  renderSummaryMd,
+  summarizeArms,
+} from "./ab.ts";
+import {
+  CORPUS,
+  corpusMessages,
+  type Msg,
+  REFUSAL_PROBE_IDS,
+} from "./corpus.ts";
+
 const ROOT =
   new URL("../../supabase/functions/analyze-chat", import.meta.url).pathname;
-const positional = Deno.args.filter((a) => !a.startsWith("--"));
 const flag = (name: string) =>
   Deno.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-const OUT = positional[0] ??
-  new URL("./out/latest.json", import.meta.url).pathname;
-// --only=a,b 只跑指定案；--repeat=N 每案跑 N 次（看邊界案穩不穩）。
-const ONLY = flag("only")?.split(",").filter(Boolean) ?? null;
-const REPEAT = Number(flag("repeat") ?? "1");
+// --refusal-probe：只跑 B 臂、只跑曖昧／邀約案（corpus.ts REFUSAL_PROBE_IDS）。
+const PROBE = Deno.args.includes("--refusal-probe");
+const ARM_IDS: ArmId[] = PROBE ? ["B"] : parseArms(flag("arms"));
+// --repeat=N 或 --repeat=A:2,B:2,C:1；--only=a,b 只跑指定案。
+const REPEAT = parseRepeat(flag("repeat"), ARM_IDS);
+const ONLY = PROBE
+  ? [...REFUSAL_PROBE_IDS]
+  : flag("only")?.split(",").filter(Boolean) ?? null;
+const TAG = flag("tag");
+const PAID = parsePaidFlags(Deno.args);
 
 const realFetch = globalThis.fetch;
-// 非 Anthropic 的 fetch（logAiCall 寫 supabase）只記 body，不外送。
+/// 目前這一案的臂與它實際送出的 provider 呼叫；null＝不在計畫內，一律不放行。
+let active: { arm: ArmSpec; calls: ProviderCall[] } | null = null;
+let spentUsd = 0;
+let providerCallCount = 0;
+let guardTripped = false;
+
+/// 原樣轉送 SSE，順路記 stop_reason／stop_details／usage／耗時。
+function tapSse(
+  call: ProviderCall,
+  started: number,
+): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const scan = (final: boolean) => {
+    const lines = buffer.split("\n");
+    buffer = final ? "" : lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+      try {
+        applySseEvent(call, JSON.parse(line.slice(5).trim()));
+      } catch { /* 非 JSON data 行（例如 [DONE]）：略過 */ }
+    }
+  };
+  return new TransformStream({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
+      scan(false);
+      call.providerMs = Date.now() - started;
+      controller.enqueue(chunk);
+    },
+    flush() {
+      buffer += decoder.decode();
+      scan(true);
+      call.providerMs = Date.now() - started;
+    },
+  });
+}
+
+// Anthropic：只在計畫內、付費閘內放行，C 臂改寫 body；其他 fetch（logAiCall 寫
+// supabase）只記 body，不外送。
 let sideBodies: string[] = [];
-globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string"
     ? input
     : input instanceof URL
     ? input.href
     : input.url;
   if (url.startsWith("https://api.anthropic.com/")) {
-    return realFetch(input, init);
+    if (!active) throw new TypeError("blackbox: Anthropic call outside plan");
+    const body = applyArmOverride(JSON.parse(String(init?.body)), active.arm);
+    const upper = callUpperBoundUsd(
+      String(body.model),
+      {
+        system: estimateTokens(JSON.stringify(body.system)),
+        user: estimateTokens(JSON.stringify(body.messages)),
+      },
+      Number(body.max_tokens),
+      false,
+    );
+    if (
+      providerCallCount >= (PAID.maxCalls ?? 0) ||
+      spentUsd + upper > (PAID.budgetUsd ?? 0)
+    ) {
+      guardTripped = true;
+      throw new TypeError("blackbox paid guard: max-calls or budget reached");
+    }
+    providerCallCount += 1;
+    const call = newProviderCall(body);
+    active.calls.push(call);
+    const started = Date.now();
+    const res = await realFetch(input, { ...init, body: JSON.stringify(body) });
+    call.httpStatus = res.status;
+    if (!res.ok || !res.body) {
+      call.error = (await res.clone().text().catch(() => "")).slice(0, 400);
+      return res;
+    }
+    return new Response(res.body.pipeThrough(tapSse(call, started)), {
+      status: res.status,
+      headers: res.headers,
+    });
   }
   if (typeof init?.body === "string") sideBodies.push(init.body);
-  return Promise.resolve(
-    new Response("{}", {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
-  );
+  return new Response("{}", {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 }) as typeof fetch;
 
 const { handleAnalyzeStream } = await import(
@@ -45,6 +149,10 @@ const { callClaudeStreaming } = await import(`${ROOT}/streaming_fallback.ts`);
 const { buildAnalyzeStreamSystemPrompt } = await import(
   `${ROOT}/analyze_prompt.ts`
 );
+const { selectAnalyzeSocialKnowledge } = await import(
+  `${ROOT}/knowledge_adapter.ts`
+);
+const { ANALYZE_CRITIC_SHADOW } = await import(`${ROOT}/critic_shadow.ts`);
 // 結果檔綁定：repo commit、v2 五風格 system prompt 雜湊、模型、時間，讓 artifact
 // 自己就能證明對應哪個快照（審查 P2）。
 async function sha256Hex(text: string): Promise<string> {
@@ -69,14 +177,6 @@ async function git(args: string[]): Promise<string> {
 }
 /// 每次真呼叫實際送出的 system prompt 雜湊與 request 模型（不是重建、不是常數）。
 const sentRequests: { model: string; systemSha256: string }[] = [];
-// --raw=1：把模型原始 JSONL 存進結果（看 parser 為什麼丟掉某行）。
-const RAW = flag("raw") === "1";
-
-const apiKey =
-  (await Deno.readTextFile(`${Deno.env.get("HOME")}/.config/anthropic/key`))
-    .trim();
-
-import { corpusMessages, type Msg } from "./corpus.ts";
 const CASES: Record<string, Msg[]> = corpusMessages();
 
 function latestIncomingRunStart(messages: Msg[]): number {
@@ -113,7 +213,12 @@ function extractTokenUsage(bodies: string[]): Record<string, number> | null {
   return null;
 }
 
-async function runCase(name: string, messages: Msg[]) {
+async function runCase(
+  name: string,
+  messages: Msg[],
+  model: string,
+  apiKey: string,
+) {
   const logs: unknown[][] = [];
   const origLog = console.log;
   console.log = (...args: unknown[]) => logs.push(args);
@@ -163,7 +268,7 @@ async function runCase(name: string, messages: Msg[]) {
     dailyLimit: 999,
     subMonthlyUsed: 0,
     subDailyUsed: 0,
-    selectedModel: "claude-sonnet-5",
+    selectedModel: model,
     userMessageContent: buildUserPrompt(messages),
     requestObservability: {},
     messages,
@@ -186,13 +291,17 @@ async function runCase(name: string, messages: Msg[]) {
         system: string;
       },
       key: string,
-      options?: Parameters<typeof callClaudeStreaming>[2],
+      options: Record<string, unknown> = {},
     ) => {
       sentRequests.push({
         model: request.model,
         systemSha256: await sha256Hex(request.system),
       });
-      const result = await callClaudeStreaming(request, key, options);
+      // 備援鏈關閉：每次只打這一臂的模型，失敗就記失敗，不讓 4.6 混進來。
+      const result = await callClaudeStreaming(request, key, {
+        ...options,
+        allowModelFallback: false,
+      });
       const source = result.textStream;
       async function* tee(): AsyncGenerator<string> {
         for await (const chunk of source) {
@@ -202,6 +311,8 @@ async function runCase(name: string, messages: Msg[]) {
       }
       return { ...result, textStream: tee() };
     }) as typeof callClaudeStreaming,
+    // critic 影子關閉：評審另用 run_critic.ts 固定 Sonnet 5 跑。
+    criticShadow: { ...ANALYZE_CRITIC_SHADOW, enabled: false },
   };
   sideBodies = [];
   const started = Date.now();
@@ -378,36 +489,125 @@ async function runCase(name: string, messages: Msg[]) {
     logNames: [...new Set(logs.map((e) => String(e[0])))],
     // 完整 client NDJSON：外洩判定要能被獨立複核。
     clientText: text,
-    ...(RAW
-      ? {
-        rawLines: rawText.split("\n").filter((l) => l.trim()).map((l) => {
-          try {
-            const parsed = JSON.parse(l);
-            return parsed.type === "analysis.divergence_plan" ||
-                parsed.type === "analysis.reply_option" ||
-                parsed.type === "analysis.decision" ||
-                // 3c：盤點球留全文，evaluate 才能離線重跑球面 gates。
-                parsed.type === "analysis.inventory"
-              ? parsed
-              : { type: parsed.type };
-          } catch {
-            return { type: "UNPARSEABLE", raw: l };
-          }
-        }),
+    // 模型原始 JSONL（評審 run_critic 靠它重建選中卡）。
+    rawLines: rawText.split("\n").filter((l) => l.trim()).map((l) => {
+      try {
+        const parsed = JSON.parse(l);
+        return parsed.type === "analysis.divergence_plan" ||
+            parsed.type === "analysis.reply_option" ||
+            parsed.type === "analysis.decision" ||
+            // 3c：盤點球留全文，evaluate 才能離線重跑球面 gates。
+            parsed.type === "analysis.inventory"
+          ? parsed
+          : { type: parsed.type };
+      } catch {
+        return { type: "UNPARSEABLE", raw: l };
       }
-      : {}),
+    }),
   };
 }
 
-const STYLES_FOR_HASH = [...STREAM_STYLES];
+function promptTokens(messages: Msg[]) {
+  const atoms = selectAnalyzeSocialKnowledge({
+    messages,
+    previousStage: undefined,
+    userDraft: undefined,
+    conversationSummary: undefined,
+    effectiveStyleContext: undefined,
+  });
+  const system = buildAnalyzeStreamSystemPrompt([...STREAM_STYLES], {
+    noSendDecisions: true,
+    // deno-lint-ignore no-explicit-any
+    situationKnowledge: atoms.map((a: any) => a.guidance),
+    divergencePlan: true,
+  });
+  return {
+    system: estimateTokens(system),
+    user: estimateTokens(buildUserPrompt(messages)),
+  };
+}
+
+const unknownIds = (ONLY ?? []).filter((id) => !CASES[id]);
+if (unknownIds.length > 0) {
+  console.error(`unknown case ids: ${unknownIds.join(",")}`);
+  Deno.exit(2);
+}
+const caseIds = CORPUS.map((c) => c.id).filter((id) =>
+  !ONLY || ONLY.includes(id)
+);
+const plan: PlannedCall[] = planCalls(caseIds, ARM_IDS, REPEAT);
+const baseMaxTokens = streamAnalyzeMaxTokensForStyleCount(
+  STREAM_STYLES.length,
+  { divergencePlan: true },
+);
+const estimate = estimatePlan(
+  plan,
+  Object.fromEntries(caseIds.map((id) => [id, promptTokens(CASES[id])])),
+  baseMaxTokens,
+);
+for (const id of caseIds) {
+  console.log(
+    `${id.padEnd(28)} ${
+      plan.filter((c) => c.caseId === id).map((c) => `${c.arm}${c.rep}`)
+        .join(" ")
+    }`,
+  );
+}
+const usd = (n: number) => Number(n.toFixed(2));
+console.log(JSON.stringify(
+  {
+    probe: PROBE,
+    arms: Object.fromEntries(ARM_IDS.map((a) => [a, ARMS[a]])),
+    repeat: REPEAT,
+    calls: estimate.calls,
+    perArm: Object.fromEntries(
+      Object.entries(estimate.perArm).map((
+        [a, v],
+      ) => [a, { calls: v.calls, usd: usd(v.usd) }]),
+    ),
+    baseMaxTokens,
+    mainUsd: usd(estimate.mainUsd),
+    mainNoCacheUsd: usd(estimate.mainNoCacheUsd),
+    judge: {
+      model: JUDGE_MODEL,
+      calls: estimate.judgeCalls,
+      usd: usd(estimate.judgeUsd),
+    },
+    totalUsd: usd(estimate.totalUsd),
+  },
+  null,
+  2,
+));
+const refusal = paidGuardError(PAID, plan.length, estimate.mainUsd);
+if (refusal) {
+  console.error(refusal);
+  Deno.exit(PAID.run ? 2 : 0);
+}
+if (!TAG || !/^\w[\w.-]*$/.test(TAG)) {
+  console.error("拒絕：真呼叫要 --tag=<名稱>（英數、. _ -）");
+  Deno.exit(2);
+}
+const outDir = new URL(`./out/${TAG}/`, import.meta.url).pathname;
+try {
+  await Deno.mkdir(outDir);
+} catch (error) {
+  if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+  console.error(`拒絕：${outDir} 已存在，不覆寫`);
+  Deno.exit(2);
+}
+const apiKey =
+  (await Deno.readTextFile(`${Deno.env.get("HOME")}/.config/anthropic/key`))
+    .trim();
+
 const meta = {
+  tag: TAG,
   commit: await git(["rev-parse", "HEAD"]),
   tree: await git(["rev-parse", "HEAD^{tree}"]),
   worktreeDirty: (await git(["status", "--porcelain"])) !== "",
-  // 每案實際送出的 model／system prompt 雜湊在 results[].sentRequests；這裡的
-  // 重建值只供對照。
+  // 每案實際送出的 model／system prompt 雜湊在 results[].sentRequests；實際
+  // thinking／effort／max_tokens 在 records[].providerCalls[].sent。
   v2SystemPromptSha256Rebuilt: await sha256Hex(
-    buildAnalyzeStreamSystemPrompt(STYLES_FOR_HASH, {
+    buildAnalyzeStreamSystemPrompt([...STREAM_STYLES], {
       noSendDecisions: true,
       situationKnowledge: [],
       divergencePlan: true,
@@ -415,19 +615,78 @@ const meta = {
   ),
   generatedAt: new Date().toISOString(),
   args: Deno.args,
+  probe: PROBE,
+  arms: Object.fromEntries(ARM_IDS.map((a) => [a, ARMS[a]])),
+  repeat: REPEAT,
+  allowModelFallback: false,
+  judgeModel: JUDGE_MODEL,
+  estimate,
+  maxCalls: PAID.maxCalls,
+  budgetUsd: PAID.budgetUsd,
 };
-const results = [];
-for (const [name, messages] of Object.entries(CASES)) {
-  if (ONLY && !ONLY.includes(name)) continue;
-  for (let i = 0; i < REPEAT; i++) {
-    results.push(
-      await runCase(REPEAT > 1 ? `${name}#${i + 1}` : name, messages),
-    );
-    console.error(`done ${name} ${i + 1}/${REPEAT}`);
-  }
+const records: CallRecord[] = [];
+for (const [i, call] of plan.entries()) {
+  if (guardTripped) break;
+  const arm = ARMS[call.arm];
+  active = { arm, calls: [] };
+  const result = await runCase(
+    `${call.caseId}#${call.rep}`,
+    CASES[call.caseId],
+    arm.model,
+    apiKey,
+  );
+  const calls = active.calls;
+  active = null;
+  const costUsd = calls.reduce((s, c) => s + c.costUsd, 0);
+  spentUsd += costUsd;
+  records.push({
+    arm: call.arm,
+    caseId: call.caseId,
+    rep: call.rep,
+    model: arm.model,
+    latencyMs: result.elapsedMs,
+    costUsd,
+    providerCalls: calls,
+    result,
+  });
+  // 每案寫一次：中途壞掉也留得住已付費的結果。
+  await Deno.writeTextFile(
+    `${outDir}records.json`,
+    JSON.stringify({ meta, records }, null, 2),
+  );
+  console.error(
+    `${i + 1}/${plan.length} ${call.arm} ${call.caseId}#${call.rep} stop=${
+      calls.map((c) => c.stopReason ?? c.httpStatus ?? c.error).join(",") ||
+      "-"
+    } ${(result.elapsedMs / 1000).toFixed(1)}s $${costUsd.toFixed(3)} total $${
+      spentUsd.toFixed(2)
+    }`,
+  );
+}
+for (const arm of ARM_IDS) {
+  await Deno.writeTextFile(
+    `${outDir}arm-${arm}.json`,
+    JSON.stringify(
+      {
+        meta: { ...meta, arm, model: ARMS[arm].model },
+        results: records.filter((r) => r.arm === arm).map((r) => r.result),
+      },
+      null,
+      2,
+    ),
+  );
 }
 await Deno.writeTextFile(
-  OUT,
-  JSON.stringify({ meta, results }, null, 2),
+  `${outDir}summary.md`,
+  renderSummaryMd(meta, summarizeArms(records)) +
+    (guardTripped ? "\n**付費閘中途停止：max-calls 或 budget 用完。**\n" : ""),
 );
-console.error(`wrote ${OUT}`);
+const blind = buildBlindSheet(records);
+if (blind) {
+  await Deno.writeTextFile(`${outDir}blind.md`, blind.markdown);
+  await Deno.writeTextFile(
+    `${outDir}blind-reveal.json`,
+    JSON.stringify(blind.reveal, null, 2),
+  );
+}
+console.error(`wrote ${outDir}（spent $${spentUsd.toFixed(3)}）`);

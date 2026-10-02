@@ -3,8 +3,17 @@
 // runtime。每案一次真呼叫會產生費用，跑前要 Eric 明確授權。
 //   deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
 //     --allow-net=api.anthropic.com tools/analyze-v2-blackbox/run_critic.ts \
-//     <artifact.json> <out.json> [--model=claude-sonnet-5] [--only=a,b] [--dry-run]
-// --dry-run：只組 prompt、列案數與字數、估成本，不呼叫 API（列參數給 Eric 看）。
+//     <artifact.json> <out.json> [--only=a,b] \
+//     [--run --confirm-paid --max-calls=N --budget-usd=X]
+// 預設 dry-run：只組 prompt、列案數與字數、估成本，不呼叫 API。評審模型固定
+// Sonnet 5（A/B 各臂共用同一把尺）。
+import {
+  estimateTokens,
+  JUDGE_MODEL,
+  judgeCallUpperBoundUsd,
+  paidGuardError,
+  parsePaidFlags,
+} from "./ab.ts";
 import { CORPUS, type CorpusCase } from "./corpus.ts";
 import { artifactCaseFinalResult } from "./evaluate.ts";
 import {
@@ -56,14 +65,17 @@ if (import.meta.main) {
     Deno.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
   if (positional.length < 2) {
     console.error(
-      "usage: run_critic.ts <artifact.json> <out.json> [--model=…] [--only=a,b]",
+      "usage: run_critic.ts <artifact.json> <out.json> [--only=a,b] [--run --confirm-paid --max-calls=N --budget-usd=X]",
     );
     Deno.exit(2);
   }
   const [artifactPath, outPath] = positional;
-  const model = flag("model") ?? "claude-sonnet-5";
+  if (flag("model") !== undefined && flag("model") !== JUDGE_MODEL) {
+    console.error(`評審固定 ${JUDGE_MODEL}，不接受 --model`);
+    Deno.exit(2);
+  }
+  const model = JUDGE_MODEL;
   const only = flag("only")?.split(",").filter(Boolean);
-  const dryRun = Deno.args.includes("--dry-run");
   const artifact = JSON.parse(await Deno.readTextFile(artifactPath)) as {
     meta?: Record<string, unknown>;
     // deno-lint-ignore no-explicit-any
@@ -77,38 +89,38 @@ if (import.meta.main) {
     ): x is { r: (typeof artifact.results)[number]; built: CriticCase } =>
       x.built !== null && (!only || only.includes(x.built.id))
     );
-  if (dryRun) {
-    // 粗估：CJK 約 1 token/字，英文 JSON key 約 0.3 token/字；用 0.8 當上界。
-    const promptChars = built.map(({ built: b }) =>
-      buildAnalyzeCriticPrompt(b.evidence, b.candidate).length
+  const prompts = built.map(({ built: b }) =>
+    buildAnalyzeCriticPrompt(b.evidence, b.candidate)
+  );
+  const estUsd = prompts.reduce(
+    (sum, p) => sum + judgeCallUpperBoundUsd(estimateTokens(p)),
+    0,
+  );
+  for (const [i, { built: b }] of built.entries()) {
+    console.error(
+      `${b.id.padEnd(28)} ${b.candidate.style.padEnd(9)} guard=[${
+        b.evidence.guardViolations.join(",")
+      }] promptChars=${prompts[i].length}`,
     );
-    const inputTokens = Math.round(
-      promptChars.reduce((a, b) => a + b, 0) * 0.8,
-    );
-    const outputTokens = built.length * SEMANTIC_CRITIC_MAX_TOKENS;
-    const price = model === "claude-sonnet-5"
-      ? { input: 2, output: 10 }
-      : { input: 0.8, output: 4 };
-    for (const [i, { built: b }] of built.entries()) {
-      console.error(
-        `${b.id.padEnd(28)} ${b.candidate.style.padEnd(9)} guard=[${
-          b.evidence.guardViolations.join(",")
-        }] promptChars=${promptChars[i]}`,
-      );
-    }
-    console.error(JSON.stringify({
-      dryRun: true,
-      model,
-      cases: built.length,
-      promptCharsTotal: promptChars.reduce((a, b) => a + b, 0),
-      estInputTokens: inputTokens,
-      maxOutputTokens: outputTokens,
-      estCostUsdUpperBound: Number(
-        ((inputTokens * price.input + outputTokens * price.output) / 1e6)
-          .toFixed(3),
-      ),
-    }));
-    Deno.exit(0);
+  }
+  console.error(JSON.stringify({
+    model,
+    cases: built.length,
+    estInputTokens: prompts.reduce((sum, p) => sum + estimateTokens(p), 0),
+    maxOutputTokens: built.length * SEMANTIC_CRITIC_MAX_TOKENS,
+    estCostUsdUpperBound: Number(estUsd.toFixed(3)),
+  }));
+  const refusal = Deno.args.includes("--dry-run")
+    ? "dry-run"
+    : paidGuardError(parsePaidFlags(Deno.args), built.length, estUsd);
+  if (refusal) {
+    console.error(refusal);
+    Deno.exit(refusal.startsWith("拒絕") ? 2 : 0);
+  }
+  const outExists = await Deno.lstat(outPath).then(() => true, () => false);
+  if (outExists) {
+    console.error(`拒絕：${outPath} 已存在，不覆寫`);
+    Deno.exit(2);
   }
   const apiKey = (await Deno.readTextFile(
     `${Deno.env.get("HOME")}/.config/anthropic/key`,

@@ -4,6 +4,11 @@
 // for SSE streaming output and exposes only text deltas to the caller.
 
 import { type ModelCallBudget, readProviderUsage, type ProviderUsage } from "./model_call_budget.ts";
+import {
+  modelRequestParams,
+  SONNET_5_5_MODEL,
+  SONNET_5_MODEL,
+} from "../_shared/model_request_params.ts";
 
 type ClaudeMessageContent =
   | string
@@ -65,9 +70,10 @@ const DEFAULT_OPTIONS: ClaudeStreamingOptions = {
   fetchImpl: fetch,
 };
 
-const SONNET_5_MODEL = "claude-sonnet-5";
+// ADR #24／#28：4.6 留在 Sonnet 5 與 5.5 之後。
 const MODEL_FALLBACK_CHAIN: Readonly<Record<string, string | undefined>> = {
   [SONNET_5_MODEL]: "claude-sonnet-4-6",
+  [SONNET_5_5_MODEL]: "claude-sonnet-4-6",
   "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
 };
 const PRE_STREAM_FALLBACK_CODES = new Set([
@@ -93,19 +99,6 @@ function buildCachedSystemPrompt(systemPrompt: string) {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
-}
-
-function resolveThinkingContract(
-  originalModel: string,
-  currentModel: string,
-  callerThinking?: { type: "disabled" },
-): { type: "disabled" } | undefined {
-  // A thinking choice made for the primary model is not portable across the
-  // fallback chain. Sonnet 5 needs the endpoint's fixed visible-output budget,
-  // while 4.6 and Haiku should receive their native request contract.
-  if (currentModel !== originalModel) return undefined;
-  if (callerThinking) return callerThinking;
-  return currentModel === SONNET_5_MODEL ? { type: "disabled" } : undefined;
 }
 
 function preStreamFetchError(
@@ -438,11 +431,13 @@ export async function callClaudeStreaming(
       currentModel === originalModel ? "primary" : "fallback");
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), remainingMs);
-    const thinking = resolveThinkingContract(
-      originalModel,
-      currentModel,
-      request.thinking,
-    );
+    // A thinking choice made for the primary model is not portable across the
+    // fallback chain; every model gets its own default (Sonnet 5 disabled,
+    // 5.5 between_tools＋effort, 4.6／Haiku native) so hidden thinking never
+    // eats the endpoint's fixed visible-output budget.
+    const modelParams = modelRequestParams(currentModel, {
+      thinking: currentModel === originalModel ? request.thinking : undefined,
+    });
 
     let response: Response;
     try {
@@ -460,7 +455,7 @@ export async function callClaudeStreaming(
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
           stream: true,
-          ...(thinking ? { thinking } : {}),
+          ...modelParams,
         }),
         signal: controller.signal,
       });

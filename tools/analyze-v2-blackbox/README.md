@@ -1,30 +1,83 @@
 # Analyze v2 本機黑箱
 
-真 Sonnet 5、v2 契約（`noSendDecisions`）、essential 五風格，直接跑
+真模型、v2 契約（`noSendDecisions`）、essential 五風格，直接跑
 `handleAnalyzeStream` 本體（system prompt、情境 atoms、發散計畫影子都是 production
-程式碼），只 stub DB store 與 supabase telemetry。每案一次真呼叫，會產生費用，
-跑前要 Eric 明確授權。
+程式碼），只 stub DB store 與 supabase telemetry。真呼叫會產生費用，跑前要 Eric
+明確授權。
+
+## Sonnet 5 → 5.5 A/B（2026-10-02）
+
+臂（`ab.ts` 的 `ARMS`）：
+
+- **A**：`claude-sonnet-5`，production 原樣（`thinking:{type:"disabled"}`）。
+- **B**：`claude-sonnet-5-5`，production helper（`_shared/model_request_params.ts`）送
+  `thinking:{type:"between_tools"}`＋`output_config.effort:"medium"`，max_tokens 不變。
+- **C**：`claude-sonnet-5-5`，在 fetch 層改成 adaptive thinking（`display:"omitted"`）＋
+  effort `low`＋max_tokens +4000。
+
+預設 **dry-run**：列每案交錯順序與估價，不讀 key、不打模型。估價用官方價：輸出吃滿
+max_tokens；system prompt 第一次以 cache 寫入價、同案同臂的重複以讀取價（同案的幾次
+在 5 分鐘內連著跑）；另列完全不中 cache 的最壞值。評審估價每次 4000 token 輸入（實測約
+2k）。
 
 ```sh
-# key 讀 ~/.config/anthropic/key
-deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
-  --allow-net=api.anthropic.com tools/analyze-v2-blackbox/run_blackbox.ts \
-  tools/analyze-v2-blackbox/out/<date>-<label>.json
+# dry-run（0 次模型呼叫）
+deno run --allow-env --allow-read --allow-run=git \
+  tools/analyze-v2-blackbox/run_blackbox.ts --arms=A,B,C --repeat=A:2,B:2,C:1
+
+# 真跑：五個旗標缺一個就拒絕；out/<tag> 已存在也拒絕（不覆寫）
+deno run --allow-env --allow-read --allow-run=git \
+  --allow-write=tools/analyze-v2-blackbox/out --allow-net=api.anthropic.com \
+  tools/analyze-v2-blackbox/run_blackbox.ts --arms=A,B,C --repeat=A:2,B:2,C:1 \
+  --run --confirm-paid --max-calls=105 --budget-usd=15.5 --tag=2026-10-02-ab
 ```
 
-旗標：`--only=a,b` 只跑指定案；`--repeat=N` 每案跑 N 次（看邊界案穩不穩）；
-`--raw=1` 把模型原始 JSONL 存進結果（看 parser 為什麼丟掉某行）。
+旗標：`--arms=A,B`（預設）；`--repeat=N` 或 `--repeat=A:2,B:2,C:1`；`--only=a,b`；
+`--refusal-probe`（只跑 B 臂、只跑下列曖昧／邀約案）。付費閘：計畫次數要 ≤
+`--max-calls`、估價要 ≤ `--budget-usd`；跑的時候每次呼叫前再以「不中 cache 的上界」
+檢查已花費，超過就停，已跑的結果照寫。備援鏈關閉（`allowModelFallback:false`），失敗
+就記失敗，不讓 4.6 混進來；critic 影子關閉。
 
-結果檔形狀：`{ meta, results }`，`meta` 綁定 repo commit、v2 五風格 system prompt
-SHA-256、模型與時間；每案另存完整 client NDJSON（`clientText`）供外洩判定獨立複核。
+2026-10-02 dry-run（commit bffc668c 上的工作樹）：A,B×2＝84 次 $9.85＋評審 68 次 $0.86；
+C×1＝21 次 $4.23＋評審 17 次 $0.21；合計 $15.15（不中 cache 最壞 $17.80＋評審 $1.07）。
+`--refusal-probe`：10 次 $1.61＋評審 6 次 $0.08。
 
-輸出每案：事件序列、決策、五風格回覆、client 是否漏計畫、server 快照是否有
-`analysisDivergencePlan`、`stream_knowledge_selected` 與 `stream_phase0_observability`
-（含 2a 計畫統計、2b `attribution`／`repairs`）、token 用量。
-18 案涵蓋開場、熱絡、冷淡、邀約前後、婉拒、反問、長對話。改 `CASES` 加案。
+輸出 `out/<tag>/`：
+
+- `records.json`：每次呼叫一筆（每案寫一次）：臂、模型、`providerCalls[]`（fetch 層實際送出
+  的 max_tokens／thinking／output_config、served model、HTTP 狀態、`stopReason`、
+  `stopDetails.category`、usage 四格、provider 耗時、費用）、端到端 `latencyMs`、
+  `result`（evaluate／critic 讀的那份）。
+- `arm-A.json`／`arm-B.json`／`arm-C.json`：舊 artifact 形狀，直接餵 `evaluate.ts` 與
+  `run_critic.ts`。
+- `summary.md`：每臂 evaluate 通過數與失敗 gate、max_tokens 次數、拒答次數與類別、HTTP
+  錯誤、p50／p95 延遲、平均 input／cache 寫／cache 讀／output token、費用。語料全是正常
+  聊天，任何拒答都算誤擋。
+- `blind.md`＋`blind-reveal.json`：固定種子 20261002 挑 10 案，每案 A／B 第 1 次隨機排成
+  甲／乙給 Eric 盲選；對照表另檔。
+
+拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
+`first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
+`defer_with_alternative`、`defer_polite_reason`、`she_invites_first`、
+`after_meetup_followup`、`logistics_confirm`、`she_teases_him`、`boundary_friend_hint`。
+
+評審固定 Sonnet 5（`run_critic.ts` 不接受別的 `--model`），每臂各跑一次：
+
+```sh
+deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
+  --allow-net=api.anthropic.com tools/analyze-v2-blackbox/run_critic.ts \
+  tools/analyze-v2-blackbox/out/<tag>/arm-B.json \
+  tools/analyze-v2-blackbox/out/<tag>/critic-B.json \
+  --run --confirm-paid --max-calls=40 --budget-usd=0.6
+```
+
+結果檔每案另存完整 client NDJSON（`clientText`）供外洩判定獨立複核，模型原始 JSONL
+（`rawLines`）一律保留（評審靠它重建選中卡）。21 案涵蓋開場、熱絡、冷淡、邀約前後、
+婉拒、反問、長對話；改 `corpus.ts` 加案。
 
 歷史結果（`out/`）：run2＝18 案 2a 影子基線；run3＝延後變體×3；run9＝2b 迭代中
-的失敗樣本（method 混用、sourceIndex 手誤）；run10＝2b 驗收。
+的失敗樣本（method 混用、sourceIndex 手誤）；run10＝2b 驗收。舊 run 用的是
+`run_blackbox.ts <out.json> [--raw=1]` 單臂介面，已換成上面的 A/B 介面。
 
 ## Phase 3a 評測器
 
@@ -56,8 +109,10 @@ production 隨 `stream_phase0_observability.candidateGuard` 出（只記不擋�
 deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
   --allow-net=api.anthropic.com tools/analyze-v2-blackbox/run_critic.ts \
   <artifact.json> tools/analyze-v2-blackbox/out/<date>-critic-<label>.json \
-  [--model=claude-haiku-4-5-20251001] [--only=a,b]
+  [--only=a,b] [--run --confirm-paid --max-calls=N --budget-usd=X]
 ```
+
+（2026-10-02 起預設 dry-run、評審固定 Sonnet 5、輸出檔已存在就拒絕。）
 
 對 artifact 的 send 案只審「選中卡」：證據＝語料訊息＋重建的盤點／決策／計畫（只帶
 用到的枝）＋3c guard 碼；rubric 在 `_shared/social/semantic_critic.ts`（Coach 九碼改成

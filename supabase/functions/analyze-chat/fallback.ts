@@ -1,4 +1,5 @@
 import { type ModelCallBudget, readProviderUsage } from "./model_call_budget.ts";
+import { modelRequestParams } from "../_shared/model_request_params.ts";
 
 interface CallOptions {
   budget?: ModelCallBudget;
@@ -71,21 +72,13 @@ const DEFAULT_OPTIONS: CallOptions = {
   allowModelFallback: true,
 };
 
+// ADR #24／#28：4.6 留在 Sonnet 5 與 5.5 之後。
 const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
   "claude-sonnet-5": "claude-sonnet-4-6",
+  "claude-sonnet-5-5": "claude-sonnet-4-6",
   "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
   "claude-haiku-4-5-20251001": null,
 };
-
-const SONNET_5_MODEL = "claude-sonnet-5";
-
-function resolveThinkingContract(
-  model: string,
-  callerThinking?: ClaudeThinking,
-): ClaudeThinking | undefined {
-  if (model !== SONNET_5_MODEL) return undefined;
-  return callerThinking ?? { type: "disabled" };
-}
 
 function validateSuccessfulResponse(data: unknown): void {
   if (typeof data !== "object" || data === null) return;
@@ -248,19 +241,15 @@ export async function callClaudeWithFallback(
       );
 
       try {
-        const thinking = resolveThinkingContract(
-          currentModel,
-          request.thinking,
-        );
         const cachedRequest = {
           model: currentModel,
           max_tokens: request.max_tokens,
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
-          ...(thinking ? { thinking } : {}),
-          ...(request.output_config
-            ? { output_config: request.output_config }
-            : {}),
+          ...modelRequestParams(currentModel, {
+            thinking: request.thinking,
+            outputConfig: request.output_config,
+          }),
         };
 
         const response = await fetch("https://api.anthropic.com/v1/messages", {
