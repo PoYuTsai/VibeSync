@@ -151,6 +151,8 @@ Deno.test("no-send: charges the decision, drops reply events, finishes with zero
   assertEquals(decision.messageDecision, "do_not_send");
   assertEquals(decision.replyMode, "none");
   assertFalse("leaked" in decision);
+  assertFalse("closingMessage" in decision);
+  assertFalse("closingMessage" in charge);
   assertFalse(events.some((event) => event.type === "analysis.error"));
 
   const finalResult = doneOf(events);
@@ -266,6 +268,30 @@ Deno.test("no-send: acknowledge_and_stop is replyMode single with its closing li
   assertEquals(
     (finalResult.analysisDecisionV2 as Record<string, unknown>).closingMessage,
     "好，那先這樣。",
+  );
+});
+
+Deno.test("no-send: do_not_send may carry its against-advice line, still replyMode none", async () => {
+  const { events, charges } = await run([
+    { ...NO_SEND, closingMessage: "好，那妳先忙。" },
+    METRICS,
+    DONE_WITH_DEBRIS,
+  ], { noSendDecisions: true });
+  assertEquals(charges.length, 1);
+  assert(isNoSendChargePayload(charges[0]));
+  assertEquals(charges[0].decisionKind, "do_not_send");
+  assertEquals(charges[0].closingMessage, "好，那妳先忙。");
+  const decision = events.find((event) => event.type === "analysis.decision");
+  assert(decision);
+  assertEquals(decision.replyMode, "none");
+  assertEquals(decision.closingMessage, "好，那妳先忙。");
+  const finalResult = doneOf(events);
+  assertEquals(finalResult.replies, {});
+  assertEquals(finalResult.replyOptions, {});
+  assertFalse("finalRecommendation" in finalResult);
+  assertEquals(
+    (finalResult.analysisDecisionV2 as Record<string, unknown>).closingMessage,
+    "好，那妳先忙。",
   );
 });
 
@@ -624,6 +650,38 @@ Deno.test("handler: a v2 client gets a charged, persisted no-send result with ze
   assertFalse(JSON.stringify(stored).includes("DEBRIS"));
   assert(text.includes('"messageDecision":"do_not_send"'));
   assertFalse(text.includes("STREAM_INCOMPLETE_REPLY_OPTIONS"));
+});
+
+Deno.test("handler: do_not_send with its against-advice line is charged once and the line is streamed and stored", async () => {
+  const calls: string[] = [];
+  const chargeInputs: StreamChargePayload[] = [];
+  const doneResults: Record<string, unknown>[] = [];
+  const systems: string[] = [];
+  const text = await runHandler(makeDeps({
+    calls,
+    chargeInputs,
+    doneResults,
+    systems,
+    noSendDecisions: true,
+    modelChunks: [
+      INVENTORY,
+      { ...NO_SEND, closingMessage: "好，那妳先忙。" },
+      METRICS,
+      DONE_WITH_DEBRIS,
+    ],
+  }));
+
+  assert(systems[0].includes("For `do_not_send` you may also include"));
+  assertEquals(calls.filter((call) => call === "chargeRun").length, 1);
+  assert(isNoSendChargePayload(chargeInputs[0]));
+  assertEquals(chargeInputs[0].closingMessage, "好，那妳先忙。");
+  assertFalse(calls.includes("markFailed"));
+  const stored = doneResults[0].analysisDecisionV2 as Record<string, unknown>;
+  assertEquals(stored.messageDecision, "do_not_send");
+  assertEquals(stored.replyMode, "none");
+  assertEquals(stored.closingMessage, "好，那妳先忙。");
+  assertEquals(doneResults[0].replies, {});
+  assert(text.includes('"closingMessage":"好，那妳先忙。"'));
 });
 
 Deno.test("handler: 「嗨」→「哈囉」 offers only acknowledge_and_stop and refuses need_context before charging", async () => {

@@ -111,6 +111,11 @@ export function buildSituationKnowledgeSection(
   ].join("\n");
 }
 
+// 「先別回」的備用句：他堅持要回時壓力最低的一句，App 收合在「我還是想回」後面。
+// 跟 do_not_send 綁在一起：伺服器沒開 do_not_send 時整句一起拿掉。
+const DO_NOT_SEND_CLOSING_SENTENCE =
+  " For `do_not_send` you may also include an optional `closingMessage`: the single lowest-pressure line he could send if he insists on replying anyway (no question, no chasing, no guilt, short, Traditional Chinese).";
+
 // Phase 1b message decision gate. Appended right after step 1 so the model
 // decides before it writes a single reply; v1 wording above and below is
 // untouched.
@@ -118,7 +123,9 @@ const NO_SEND_DECISION_GATE = [
   "1a. Message decision gate (this request supports it): every `analysis.decision` must include `messageDecision`, one of `send`, `do_not_send`, `acknowledge_and_stop`, `need_context`. Decide this before any reply wording.",
   "Use `send` when there is a reasonable, low-risk next message, including when she offers an alternative time, invites you back, or keeps a topic going; then follow steps 1-3 exactly as written. Use `do_not_send` when her latest fragment is low-effort, repeats non-uptake, or adds no new content, so replying would only keep the conversation alive for her. Use `need_context` when you cannot tell who said what or the fragment is incomplete. Use `acknowledge_and_stop` when she set a boundary, cancelled, or deferred / hedged an invitation without offering an alternative (e.g. 這週有點忙, 下次再看看, 再說): the only correct move then is one neutral closing line that leaves the door open and does not ask again, so never turn a deferral into reply cards.",
   "Every instruction below that is marked `[send decisions only]` applies only when `messageDecision` is `send`; for the three non-send decisions those events are forbidden, not optional.",
-  "For the three non-send decisions: omit `selectedStyle`; include `action` (`stop`/`connect`/`extend`/`filter`/`invite`/`pause`), `reason` (why not now, grounded in her actual messages), and `stopCondition` (what she must do before you reconsider); for `acknowledge_and_stop` also include `closingMessage` (one short neutral line, Traditional Chinese). Then skip steps 2 and 3 entirely: emit no `analysis.recommendation` and no `analysis.reply_option`, continue from step 4, and put no replies in `finalResult`. A non-send decision is a complete, successful analysis, not a failure, and it is never a way to avoid a hard reply.",
+  "For the three non-send decisions: omit `selectedStyle`; include `action` (`stop`/`connect`/`extend`/`filter`/`invite`/`pause`), `reason` (why not now, grounded in her actual messages), and `stopCondition` (what she must do before you reconsider); for `acknowledge_and_stop` also include `closingMessage` (one short neutral line, Traditional Chinese)." +
+  DO_NOT_SEND_CLOSING_SENTENCE +
+  " Then skip steps 2 and 3 entirely: emit no `analysis.recommendation` and no `analysis.reply_option`, continue from step 4, and put no replies in `finalResult`. A non-send decision is a complete, successful analysis, not a failure, and it is never a way to avoid a hard reply.",
   'Example no-send line: {"type":"analysis.decision","messageDecision":"do_not_send","action":"pause","reason":"她只回「哈哈」，沒有新內容也沒有問句","stopCondition":"等她主動提到新的話題或問你問題"}',
 ];
 
@@ -141,6 +148,9 @@ function noSendDecisionGate(
   for (const kind of dropped) {
     menu = menu.replace(`, \`${kind}\``, "");
     uses = uses.replace(NO_SEND_USE_SENTENCE[kind] ?? "", "");
+    if (kind === "do_not_send") {
+      fields = fields.replace(DO_NOT_SEND_CLOSING_SENTENCE, "");
+    }
   }
   // 不放範例：do_not_send 範例不能留，need_context 範例會讓模型把「缺細節」當成要用戶補對話（2026-10-02 黑箱 2/2）。
   return [
