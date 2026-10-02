@@ -167,8 +167,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     // 一錯，debrief 的「你有照提示做」就會歸錯人。
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    // 練習對話會送到 DeepSeek 生成模擬對象回覆，首次須取得第三方 AI 資料使用同意
-    // （走 DeepSeek，與 Claude 功能各自獨立）。不同意則保留輸入、不送出、不扣額度。
+    // 練習對話會送到 DeepSeek／Anthropic 生成模擬對象回覆，首次須取得第三方 AI
+    // 資料使用同意（練習室獨立一把 key）。不同意則保留輸入、不送出、不扣額度。
     final consented = await AiDataSharingConsent.ensure(
       context,
       featureLabel: 'AI 實戰練習室',
