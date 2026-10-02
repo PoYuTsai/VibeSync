@@ -103,6 +103,8 @@ C 22/23、決定 23/23 正確（含 user_waiting_after_reply 先別回、opening
 production）20/23，其中 defer_polite_reason 的 `acknowledge_and_stop` 漏 `closingMessage` 被 reframer 擋成
 STREAM_MALFORMED_RECOMMENDATION（未扣）——舊 prompt 下 A 的收尾 8/8 都有附，n 太小，待補跑確認。三案先別回的備用句兩臂都有、
 皆無問號。評審 rewrite：A 1/15、C 3/15。
+`out/2026-10-02-ack-a/`（A 臂五個收尾案×3＝15 次 $0.73）：defer_polite_reason 3 次又漏 1 次 closingMessage（前後 4 次漏 2 次），
+其餘四案 12/12 有附。之後改成收尾決定沒附句子不再失敗，App 顯示通用收尾提醒。
 
 拒答探針案（`corpus.ts` 的 `REFUSAL_PROBE_IDS`；語料沒有露骨性內容）：
 `first_message_after_match`、`soft_reject_after_invite`、`defer_vague_busy`、
