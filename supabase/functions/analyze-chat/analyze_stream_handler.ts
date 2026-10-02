@@ -564,8 +564,8 @@ export async function handleAnalyzeStream(
         // 本來就 false，不會碰計數。
         // ponytail: 名額先佔後扣——之後 chargeRun 失敗，這格名額就白用了
         // （只在基礎設施失敗時發生，上限仍是每天 3 次）。
-        // ponytail: App 照樣把這次字數記成 baseline，下一次只扣增量；上限靠
-        // 每天 3 次。完整修法是 App 看到 quotaWaivedReason 時不推進 baseline。
+        // ponytail: 新版 App 看到 quotaWaivedReason 不推進字數 baseline；舊版
+        // 仍會推進（下一次只扣增量），靠每天 3 次上限擋。
         let waived = false;
         if (
           shouldCharge && deps.needContextWaiverEligible === true &&

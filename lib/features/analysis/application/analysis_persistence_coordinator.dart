@@ -622,7 +622,11 @@ class AnalysisPersistenceCoordinator {
     //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
     //（避免分析中新進訊息造成 baseline 漂移）。
     final payloadCharCount = _lastPayloadCharCount();
-    if (payloadCharCount != null) {
+    // 「資料不夠」免扣時不推進字數 baseline：補完資料那次要對整段計費，
+    // 不然免扣的片段永遠不會被收到費。
+    final usage = result.rawResponse?['usage'];
+    final quotaWaived = usage is Map && usage['quotaWaivedReason'] != null;
+    if (payloadCharCount != null && !quotaWaived) {
       conv.lastAnalyzedCharCount = payloadCharCount;
     }
     // 對象卡互動階段閉環規則 9：缺少或非法 stage 不得寫入新 stage
