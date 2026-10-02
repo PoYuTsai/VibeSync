@@ -5,7 +5,7 @@
 // 只有標了 probe 的那幾輪送進 judge。
 //
 // 保真：prompt 走 production 的 buildChatPromptBundle（含 difficulty bakeoff 那份
-// 固定 context fixture），模型走 production 的 callDeepSeek（deepseek-v4-flash、
+// 固定 context fixture），模型走 production 的 callDeepSeek（deepseek-flash、
 // 200 tokens、0.9），回覆後處理照 handler.ts 同序（繁體→內部標籤守門→L4 守門→
 // style 開時剝括號旁白）。不自造 prompt。
 //

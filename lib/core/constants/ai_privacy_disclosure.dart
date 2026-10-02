@@ -14,7 +14,8 @@ class AiPrivacyDisclosure {
 
   // 廠商行：只在設定頁 AI 隱私頁揭露。onboarding 刻意不列，
   // 避免使用者誤以為練習室女孩「背後就是 DeepSeek」。
-  static const String _vendorLine = '（分析與教練用 Anthropic Claude，練習室用 DeepSeek）';
+  static const String _vendorLine =
+      '（分析與教練用 Anthropic Claude，練習室用 DeepSeek 與 Anthropic Claude）';
 
   static const String _consentLine = '每個 AI 功能首次使用前，都會先徵求你的同意';
 

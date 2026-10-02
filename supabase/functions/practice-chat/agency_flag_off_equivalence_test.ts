@@ -98,6 +98,7 @@ import {
   type FakeOptions,
   hintBody,
   ledger,
+  legacyDeepSeekModelId,
   makeFake,
   makeRequest,
   sha256HexOf,
@@ -531,7 +532,9 @@ async function observableDigest(
   const headers = [...response.headers.entries()].sort().map(([k, v]) =>
     `${k}:${v}`
   ).join("\n");
-  const bodyBytes = new Uint8Array(await response.arrayBuffer());
+  const bodyBytes = legacyDeepSeekModelId(
+    new Uint8Array(await response.arrayBuffer()),
+  );
   // Codex round-1（新項）U：`statusText` 也進 digest。handler 一路都用
   // `new Response(body, { status })`，Deno 不會自動補預設字串，所以現況每一個
   // 案例的 statusText 都是空字串——空字串一律不寫進 head，既有 golden 因此

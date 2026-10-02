@@ -50,8 +50,8 @@ The app is not a social network, does not provide public posting or user-to-user
 
 Privacy and AI processing:
 - Conversation content is local-first and stored on the user's device by default.
-- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the required content for that request is sent through our backend processing service to the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/screenshot recognition; DeepSeek API for the practice chat feature) to generate the response.
-- Before the first AI request of each feature is sent, the app shows a consent dialog that explains what data will be sent and names the specific recipients (VibeSync backend processing and Anthropic Claude API, or DeepSeek API for practice chat). Consent is stored per account. Practice chat has its own separate consent. If the user declines, the request is not sent. Onboarding also includes a static "AI & privacy" disclosure page, and a persistent "AI and your privacy" page with the full provider details is always available in Settings.
+- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the required content for that request is sent through our backend processing service to the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/screenshot recognition; DeepSeek API and Anthropic Claude API for the practice chat feature) to generate the response.
+- Before the first AI request of each feature is sent, the app shows a consent dialog that explains what data will be sent and names the specific recipients (VibeSync backend processing and Anthropic Claude API, or DeepSeek API and Anthropic Claude API for practice chat). Consent is stored per account. Practice chat has its own separate consent. If the user declines, the request is not sent. Onboarding also includes a static "AI & privacy" disclosure page, and a persistent "AI and your privacy" page with the full provider details is always available in Settings.
 - We do not use users' raw conversations to train our own model.
 - Users can delete conversations locally and can delete their account in the app.
 
@@ -78,7 +78,7 @@ Reviewer demo flow:
 5. Tap "Ask Coach" to test the 1:1 coaching flow (each feature asks for AI consent on first use).
 6. Open Settings / Subscription to verify plan, quota, Restore Purchases, Terms, Privacy, and account deletion entry points.
 7. Optional: from the new-conversation sheet, try the opener generator (staged progress text is shown while generating).
-8. Optional: open the practice chat in the Learn area. It asks for its own separate AI consent (DeepSeek) before starting.
+8. Optional: open the practice chat in the Learn area. It asks for its own separate AI consent (DeepSeek and Anthropic) before starting.
 9. Optional (keyboard): in Settings > Keyboard, follow the setup steps and enable the VibeSync keyboard in iOS Settings (Full Access required for generation). The "recent screenshot" assist is off by default and requires its own consent plus Photos permission, as described above.
 
 Reviewer account:
@@ -191,7 +191,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 
 - [ ] 新增對話 sheet 可產生開場白；等待期間顯示 staged 進度文案，不是只有轉圈
 - [ ] Free 用戶 opener 付費型卡顯示鎖卡與升級導流，不顯示 raw error
-- [ ] 練習室首次使用出現獨立 AI 同意（點名 DeepSeek）；拒絕則不送出任何內容
+- [ ] 練習室首次使用出現獨立 AI 同意（點名 DeepSeek、Anthropic）；拒絕則不送出任何內容
 - [ ] 翻牌／圖鑑收藏動線正常
 - [ ] 觸發 per-user 限流時顯示「稍後再試」類訊息，不落 paywall、不顯示 raw error
 
@@ -207,7 +207,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 | Purchase history / Subscription info | 是 | 訂閱驗證、restore、額度同步 | Apple / RevenueCat / Supabase |
 | User content: typed chat | 使用者主動分析時會處理 | AI 分析、回覆建議、Coach | local-first；請求期間傳 VibeSync 後端與 Anthropic Claude API |
 | User content: screenshots | 使用者主動上傳時會處理 | OCR、分析 | 不主動讀相簿；請求期間傳 VibeSync 後端與 Anthropic Claude API |
-| User content: practice chat | 使用者主動使用練習室時會處理 | AI 模擬對話練習 | 請求期間傳 VibeSync 後端與 DeepSeek API；獨立同意閘 |
+| User content: practice chat | 使用者主動使用練習室時會處理 | AI 模擬對話練習 | 請求期間傳 VibeSync 後端與 DeepSeek API、Anthropic Claude API；獨立同意閘 |
 | Diagnostics | 是 | crash/error/debug、服務穩定 | app version、error code、部分遮罩 metadata |
 | Usage data | 是 | 額度、成本、濫用防護、產品穩定 | token/model/latency/status |
 | Contact info in feedback | 使用者主動提交時可能有 | 客服與問題排查 | feedback context 應最小化 |
@@ -218,7 +218,7 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 - [ ] Privacy Policy、App Store Connect Privacy Label、Review Notes 三者一致
 - [ ] App Store Connect Support URL 使用已上線的 HTTPS 頁面：`https://vibesyncai.app/support`，不要填 `mailto:`
 - [ ] 不宣稱「資料永不離開裝置」
-- [ ] 清楚揭露 Anthropic Claude API（分析/Coach/OCR）與 DeepSeek API（練習室）會處理使用者主動送出的內容，且 App 內送出前會先取得同意（練習室為獨立同意項）
+- [ ] 清楚揭露 Anthropic Claude API（分析/Coach/OCR）與 DeepSeek API＋Anthropic Claude API（練習室）會處理使用者主動送出的內容，且 App 內送出前會先取得同意（練習室為獨立同意項）
 - [ ] 若新增 analytics / crash SDK，要回頭更新此表
 
 ### 3.1 App Store Connect Privacy Label 建議填法

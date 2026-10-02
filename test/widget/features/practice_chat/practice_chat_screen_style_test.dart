@@ -379,6 +379,18 @@ class _StartProfileSpyController extends _SeededPracticeChatController {
   }
 }
 
+/// 拆解卡同意閘：只錄 endPractice 有沒有真的被叫到（不打 API）。
+class _EndPracticeSpyController extends _SeededPracticeChatController {
+  _EndPracticeSpyController({required super.seed, required super.repository});
+
+  int endPracticeCalls = 0;
+
+  @override
+  Future<void> endPractice() async {
+    endPracticeCalls++;
+  }
+}
+
 /// Task 4b：儀式 overlay 的 production 掛載點已搬到角色圖鑑頁（唯一掛載，
 /// 見 practice_collection_screen.dart 與其測試）。本檔的儀式時間軸／音效行為
 /// 測試驗的是 ceremony 狀態機（watch controller 驅動、與掛載頁無關）。
@@ -4867,6 +4879,56 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('拆解卡也過練習室同意閘：只有舊版 v2 同意時先跳框，拒絕不送、同意才送', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'ai_data_sharing_consent_practice_20260706_v2': true,
+    });
+    final controller = _EndPracticeSpyController(
+      seed: checkedOutSeed(partnerStatus: 'checked_out'),
+      repository: repo,
+    );
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          practiceChatControllerProvider.overrideWith((ref) => controller),
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ),
+    );
+    await tester.pump();
+    final debriefBtn = find.byKey(
+      const ValueKey('practice-partner-checked-out-debrief'),
+    );
+
+    await tester.tap(debriefBtn);
+    await tester.pumpAndSettle();
+    expect(find.text('資料使用說明'), findsOneWidget);
+    await tester.tap(find.text('暫不同意'));
+    await tester.pumpAndSettle();
+    expect(controller.endPracticeCalls, 0);
+
+    await tester.tap(debriefBtn);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(CheckboxListTile));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('同意並繼續'));
+    await tester.tap(find.text('同意並繼續'));
+    await tester.pumpAndSettle();
+    expect(controller.endPracticeCalls, 1);
+  });
 
   testWidgets('Phase 4.5c：她先去忙了時輸入列上方多一行提示，輸入框仍可用', (tester) async {
     await pumpCheckedOut(tester, partnerStatus: 'checked_out');

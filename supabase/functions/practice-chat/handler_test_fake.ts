@@ -738,3 +738,82 @@ export async function sha256HexOf(text: string | Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+/**
+ * 2026-10-02 DeepSeek 改名（`deepseek-v4-flash` → `deepseek-flash`；舊名 9/10 起
+ * 已改道 V4.1-Flash）是刻意的 production 改動，chat 回應最上層的 `model` 欄位跟著
+ * 變。flag-off golden 都在舊名時印出，比對前**只**把最上層 `model` 的值換回舊名，
+ * 其餘位元組（含任何巢狀欄位或別處出現的 `deepseek-flash`）原樣進 digest。
+ * 新名寫死不吃 `DEEPSEEK_MODEL`：之後再改名，golden 會照常抓到。
+ * 在 golden 出處 commit 上重印時這是 no-op（最上層 model 不是新名）。
+ */
+export function legacyDeepSeekModelId(bytes: Uint8Array): Uint8Array {
+  const text = new TextDecoder().decode(bytes);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return bytes;
+  }
+  if (
+    typeof parsed !== "object" || parsed === null || Array.isArray(parsed) ||
+    (parsed as Record<string, unknown>).model !== "deepseek-flash"
+  ) {
+    return bytes;
+  }
+  // 依 JSON 層級找最上層 `model` 的值（不靠字串比對：空白排列不同或巢狀同名都不會換錯）。
+  const range = topLevelStringValueRange(text, "model");
+  if (range === null || text.slice(range[0], range[1]) !== '"deepseek-flash"') {
+    throw new Error(
+      "legacyDeepSeekModelId: top-level model value not found in raw bytes",
+    );
+  }
+  return new TextEncoder().encode(
+    text.slice(0, range[0]) + '"deepseek-v4-flash"' + text.slice(range[1]),
+  );
+}
+
+/**
+ * 回傳最上層物件中 `key` 的字串值在原文的 [start, end)（含引號）；不是字串或找不到回 null。
+ * 只追蹤深度與字串跳脫，給測試用的最小 JSON 掃描器。
+ */
+function topLevelStringValueRange(
+  text: string,
+  key: string,
+): [number, number] | null {
+  let depth = 0;
+  let i = 0;
+  const readString = (from: number): number => {
+    let j = from + 1;
+    while (j < text.length) {
+      if (text[j] === "\\") j += 2;
+      else if (text[j] === '"') return j + 1;
+      else j++;
+    }
+    return -1;
+  };
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      const end = readString(i);
+      if (end < 0) return null;
+      if (depth === 1 && JSON.parse(text.slice(i, end)) === key) {
+        let k = end;
+        while (/\s/.test(text[k] ?? "")) k++;
+        if (text[k] === ":") {
+          k++;
+          while (/\s/.test(text[k] ?? "")) k++;
+          if (text[k] !== '"') return null;
+          const valueEnd = readString(k);
+          return valueEnd < 0 ? null : [k, valueEnd];
+        }
+      }
+      i = end;
+      continue;
+    }
+    if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") depth--;
+    i++;
+  }
+  return null;
+}

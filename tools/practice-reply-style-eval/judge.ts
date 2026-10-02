@@ -9,12 +9,9 @@
 // 猜人，所以兩者都不進評審集合。
 //
 //   deno run --allow-env --allow-read --allow-write --allow-net=api.deepseek.com \
-//     tools/practice-reply-style-eval/judge.ts <artifact.json> [--model=deepseek-v4-flash] [--concurrency=4]
+//     tools/practice-reply-style-eval/judge.ts <artifact.json> [--model=deepseek-flash] [--concurrency=4]
 
-import {
-  callDeepSeek,
-  DEEPSEEK_MODEL,
-} from "../../supabase/functions/practice-chat/deepseek.ts";
+import { callDeepSeek } from "../../supabase/functions/practice-chat/deepseek.ts";
 import { GIRL_PROFILES } from "../../supabase/functions/practice-chat/practice_persona.ts";
 
 export const CALIBRATION_SCENARIOS = [
@@ -257,7 +254,9 @@ async function main(): Promise<void> {
   }
   const flag = (k: string, d: string) =>
     Deno.args.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
-  const model = flag("model", DEEPSEEK_MODEL);
+  // 評審模型寫死，不跟 production 的 DEEPSEEK_MODEL 走：production 換名／換代時
+  // 評審不能跟著默默換，否則前後猜中率不能比。要換評審請明確傳 --model 並記下。
+  const model = flag("model", "deepseek-flash");
   const concurrency = Number.parseInt(flag("concurrency", "4"), 10);
   const apiKey = Deno.env.get("DEEPSEEK_API_KEY");
   if (!apiKey) throw new Error("judge_missing_key: DEEPSEEK_API_KEY");

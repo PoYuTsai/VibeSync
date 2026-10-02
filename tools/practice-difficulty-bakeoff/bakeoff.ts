@@ -11,7 +11,7 @@
 // 絕不自造 prompt 或分類邏輯——這樣量到的才是真的會上線的行為，不是這支工具自己腦補的行為。
 //
 // 模型供應商（Eric 2026-07-06 拍板）：
-// - 預設 provider = DeepSeek（deepseek-v4-flash），與 practice-chat 正式環境一模一樣：
+// - 預設 provider = DeepSeek（deepseek-flash），與 practice-chat 正式環境一模一樣：
 //   重用 supabase/functions/practice-chat/deepseek.ts 的 callDeepSeek＋DEEPSEEK_MODEL，
 //   呼叫形狀（jsonMode／maxTokens／temperature／timeout）照 handler.ts 現用值。
 //   key 讀 env DEEPSEEK_API_KEY。正式 gate 只認 DeepSeek 結果。

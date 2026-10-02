@@ -42,6 +42,22 @@ void main() {
       }
     });
 
+    // 2026-10-02：練習室的回覆部分輪次、提示與拆解卡走 Anthropic Claude，
+    // 揭露只寫 DeepSeek 會少報一家供應商。設定頁與同意框都要點名兩家。
+    test('練習室揭露同時點名 DeepSeek 與 Anthropic', () {
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('練習室用 DeepSeek 與 Anthropic Claude'),
+      );
+      expect(
+          AiDataSharingConsent.practiceDestinationLabel, contains('DeepSeek'));
+      expect(
+        AiDataSharingConsent.practiceDestinationLabel,
+        contains('Anthropic'),
+      );
+      expect(AiDataSharingConsent.practicePurposeText, contains('提示'));
+    });
+
     test('onboarding 維持精簡版，不列廠商也不展開重播細節', () {
       // 廠商名刻意不在 onboarding 出現（避免誤解練習室女孩＝DeepSeek）。
       expect(AiPrivacyDisclosure.onboardingDescription,

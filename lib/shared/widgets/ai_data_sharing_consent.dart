@@ -45,13 +45,19 @@ class AiDataSharingConsent {
   static const optimizeReplayPurposeText =
       '用途：產生這次草稿潤飾或回覆微調。為了在回應中斷時恢復同一結果並避免重複扣額度，後端的可用重播資料保留 7 天並每小時清除，只存 AI 產生的結果句與理由，不另存原始草稿、微調指令或完整對話輸入；AI 生成文字仍可能重述或反映你提供的草稿、指令、姓名與對話內容。刪除後的備份副本依 Supabase 的備份與還原週期處理。';
 
-  /// AI 實戰練習室走 DeepSeek（非 Claude），須與 Claude 功能各自獨立同意，
-  /// 文案也須準確描述「模擬對象練習對話」而非 Claude 功能用途。
+  /// AI 實戰練習室須與其他 AI 功能各自獨立同意，文案也須準確描述「模擬對象
+  /// 練習對話」而非其他功能用途。供應商：她的回覆多數走 DeepSeek、部分輪次走
+  /// Anthropic Claude（PRACTICE_CHAT_MODEL_ROUTING=mixed），提示與拆解卡走
+  /// Anthropic Claude，所以兩家都要點名。
+  ///
+  /// 2026-10-02 v3：供應商從「只有 DeepSeek」補上 Anthropic。同意框寫明「服務
+  /// 供應商變更會再次徵求同意」，所以換 key 讓已同意舊版的人重看一次。
   static const practiceConsentKey =
-      'ai_data_sharing_consent_practice_20260706_v2';
-  static const practiceDestinationLabel = 'DeepSeek';
+      'ai_data_sharing_consent_practice_20261002_v3';
+  static const practiceDestinationLabel = 'DeepSeek、Anthropic';
   static const practiceDataDescription = '可能包含：你在練習室輸入的訊息，以及本次練習的對話脈絡。';
-  static const practicePurposeText = '用途：只用來在 AI 實戰練習室產生陪練女孩的回覆，以及練習結束後的一張拆解卡。';
+  static const practicePurposeText =
+      '用途：只用來在 AI 實戰練習室產生陪練女孩的回覆、提示，以及練習結束後的一張拆解卡。';
 
   /// 測試 seam：覆寫 userId 解析（回傳 null 模擬未登入）。production 不碰。
   @visibleForTesting
@@ -249,7 +255,8 @@ class AiDataSharingConsent {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(scopedKey) == true) {
       if (consentKey != keyboardScreenshotConsentKey) {
-        return true;
+        // 等 SharedPreferences 期間換了帳號：舊帳號的同意不能放行新帳號（Codex R2 P1）。
+        return _effectiveKey(consentKey) == scopedKey;
       }
       final existingReceiptKey = _keyboardReceiptKeyForConsentKey(scopedKey);
       final scopeStillCurrent = _effectiveKey(consentKey) == scopedKey &&

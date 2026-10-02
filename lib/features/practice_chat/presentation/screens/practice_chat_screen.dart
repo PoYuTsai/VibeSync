@@ -167,17 +167,9 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
     // 一錯，debrief 的「你有照提示做」就會歸錯人。
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    // 練習對話會送到 DeepSeek 生成模擬對象回覆，首次須取得第三方 AI 資料使用同意
-    // （走 DeepSeek，與 Claude 功能各自獨立）。不同意則保留輸入、不送出、不扣額度。
-    final consented = await AiDataSharingConsent.ensure(
-      context,
-      featureLabel: 'AI 實戰練習室',
-      consentKey: AiDataSharingConsent.practiceConsentKey,
-      destinationLabel: AiDataSharingConsent.practiceDestinationLabel,
-      dataDescription: AiDataSharingConsent.practiceDataDescription,
-      purposeText: AiDataSharingConsent.practicePurposeText,
-    );
-    if (!consented || !mounted) return;
+    // 練習對話會送到 DeepSeek／Anthropic 生成模擬對象回覆，首次須取得第三方 AI
+    // 資料使用同意（練習室獨立一把 key）。不同意則保留輸入、不送出、不扣額度。
+    if (!await _ensurePracticeConsent()) return;
     final currentState = ref.read(practiceChatControllerProvider);
     final boundDraft = _appliedHintDraft;
     final appliedHintDraft =
@@ -204,8 +196,10 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
             : null;
   }
 
-  Future<void> _requestHint() async {
-    _inputFocusNode.unfocus();
+  /// 練習室三個會把對話內容送出去的入口（送出、提示、拆解卡）共用的同意閘。
+  /// 拆解卡也要過：續聊舊場次（同意前或舊版同意時聊的）可以不送新訊息直接按
+  /// 拆解，整段對話會送去 Anthropic 產生拆解卡。
+  Future<bool> _ensurePracticeConsent() async {
     final consented = await AiDataSharingConsent.ensure(
       context,
       featureLabel: 'AI 實戰練習室',
@@ -214,8 +208,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
       dataDescription: AiDataSharingConsent.practiceDataDescription,
       purposeText: AiDataSharingConsent.practicePurposeText,
     );
-    if (!consented || !mounted) return;
+    return consented && mounted;
+  }
+
+  Future<void> _requestHint() async {
+    _inputFocusNode.unfocus();
+    if (!await _ensurePracticeConsent()) return;
     ref.read(practiceChatControllerProvider.notifier).requestHint();
+  }
+
+  Future<void> _endPractice() async {
+    if (!await _ensurePracticeConsent()) return;
+    await ref.read(practiceChatControllerProvider.notifier).endPractice();
   }
 
   /// 續聊同一位：付費才放行；Free 由 controller 觸發付費牆（不動 transcript）。
@@ -412,9 +416,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                 showStartCta: showOpeningProfile,
                 onStartChat: () => _openChat(state.sessionId),
                 onSend: _send,
-                onEndPractice: () => ref
-                    .read(practiceChatControllerProvider.notifier)
-                    .endPractice(),
+                onEndPractice: _endPractice,
                 onRequestHint: () => _requestHint(),
                 onHintApplied: (reply) {
                   final current = ref.read(practiceChatControllerProvider);
