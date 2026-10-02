@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
@@ -701,6 +702,58 @@ void main() {
     expect(find.textContaining('接法建議', skipOffstage: false), findsNothing);
     expect(find.textContaining('殘留', skipOffstage: false), findsNothing);
     expect(find.text('複製收尾句', skipOffstage: false), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('先不要回的紀錄：展開「我還是想回」後可複製備用句', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied.add((call.arguments as Map)['text'] as String);
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    final record = _record(
+      id: 'no-send-line',
+      createdAt: DateTime(2026, 9, 2, 22),
+      preview: '哈哈',
+      analysisSnapshotJson: jsonEncode({
+        'enthusiasm': {'score': 18, 'level': 'cold'},
+        'strategy': '先停一下。',
+        'analysisDecisionV2': {
+          'schemaVersion': 2,
+          'messageDecision': 'do_not_send',
+          'replyMode': 'none',
+          'closingMessage': '好，那妳先忙。',
+          'action': 'pause',
+          'reason': '她只回哈哈，沒有新內容',
+          'stopCondition': '等她主動給新話題',
+        },
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('好，那妳先忙。'), findsNothing);
+    expect(find.text('用新話題重新開'), findsNothing);
+    await tester.ensureVisible(find.text('我還是想回'));
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(find.text('好，那妳先忙。'), findsOneWidget);
+    await tester.ensureVisible(find.text('複製這句'));
+    await tester.tap(find.text('複製這句'));
+    await tester.pump();
+    expect(copied, ['好，那妳先忙。']);
+    expect(find.text('已複製這句'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

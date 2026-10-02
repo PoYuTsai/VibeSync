@@ -121,12 +121,15 @@ class _AnalysisRecordDetailScreenState
     }
   }
 
-  Future<void> _copyRecommendation(String content) async {
+  Future<void> _copyRecommendation(
+    String content, {
+    String message = '已複製建議',
+  }) async {
     AppHaptics.light();
     await Clipboard.setData(ClipboardData(text: content));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已複製建議')),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -564,7 +567,8 @@ class _SavedAnalysisCard extends StatelessWidget {
 
   final AnalysisResult result;
   final bool reconnectWording;
-  final Future<void> Function(String content) onCopyRecommendation;
+  final Future<void> Function(String content, {String message})
+      onCopyRecommendation;
   final void Function(String text, String message) onReplyCopied;
 
   static const _replyOrder = <String>[
@@ -650,7 +654,15 @@ class _SavedAnalysisCard extends StatelessWidget {
       children: [
         // Phase 1c：V2 不回／收尾決策的歷史紀錄用決策卡，取代本地放棄警示。
         if (showsDecisionCard) ...[
-          AnalysisDecisionCard(decision: decision),
+          AnalysisDecisionCard(
+            decision: decision,
+            onCopyAgainstAdviceLine: decision.againstAdviceLine == null
+                ? null
+                : () => onCopyRecommendation(
+                      decision.againstAdviceLine!,
+                      message: '已複製這句',
+                    ),
+          ),
           const SizedBox(height: 16),
         ] else if (result.shouldGiveUp) ...[
           Container(
