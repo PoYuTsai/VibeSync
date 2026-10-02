@@ -69,6 +69,11 @@ jobs:
           supabase/functions/analyze-chat/no_send_decision_test.ts
           supabase/functions/analyze-chat/no_send_stream_test.ts
           supabase/functions/analyze-chat/need_context_waiver_test.ts
+          supabase/functions/analyze-chat/fallback_test.ts
+          supabase/functions/analyze-chat/analyze_stream_handler_test.ts
+          supabase/functions/analyze-chat/knowledge_adapter_test.ts
+          supabase/functions/_shared/model_request_params_test.ts
+          supabase/functions/_shared/social/knowledge_selector_test.ts
           supabase/functions/practice-chat/moments_schedule_test.ts
           supabase/functions/practice-chat/moments_migration_source_test.ts
           supabase/functions/practice-chat/moments_slot_states_migration_source_test.ts
