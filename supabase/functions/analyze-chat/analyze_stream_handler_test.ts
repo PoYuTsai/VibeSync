@@ -8,13 +8,17 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   type AnalyzeStreamDeps,
+  analyzeStreamModel,
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
 import { buildAnalyzeStreamSystemPrompt } from "./analyze_prompt.ts";
 import { DIVERGENCE_PLAN_EXTRA_TOKENS } from "./stream_budget.ts";
 import { VALID_PLAN } from "./divergence_contract_test.ts";
 import { buildPhase0ObservabilityTelemetry } from "./phase0_observability.ts";
-import { AiStreamingServiceError } from "./streaming_fallback.ts";
+import {
+  AiStreamingServiceError,
+  callClaudeStreaming,
+} from "./streaming_fallback.ts";
 
 function line(value: Record<string, unknown>): string {
   return `${JSON.stringify(value)}\n`;
@@ -40,6 +44,41 @@ function makeRun(overrides: Record<string, unknown> = {}): any {
     ...overrides,
   };
 }
+
+const DEFAULT_MODEL_CHUNKS = [
+  line({
+    type: "analysis.recommendation",
+    selectedStyle: "tease",
+    message: "先回她這句試試看。",
+    reason: "接住話題再輕輕推進。",
+    quotedContext: "嗨",
+  }),
+  line({
+    type: "analysis.reply_option",
+    style: "extend",
+    message: "多聊聊今天的事吧。",
+    reason: "延展話題。",
+  }),
+  line({
+    type: "analysis.reply_option",
+    style: "tease",
+    message: "先回她這句試試看。",
+    reason: "接住話題再輕輕推進。",
+  }),
+  line({
+    type: "analysis.done",
+    finalResult: {
+      replies: {
+        extend: "多聊聊今天的事吧。",
+        tease: "先回她這句試試看。",
+      },
+      finalRecommendation: {
+        pick: "tease",
+        content: "先回她這句試試看。",
+      },
+    },
+  }),
+];
 
 function makeDeps(options: {
   calls: string[];
@@ -136,42 +175,7 @@ function makeDeps(options: {
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
         },
-        textStream: chunks(
-          options.modelChunks ?? [
-            line({
-              type: "analysis.recommendation",
-              selectedStyle: "tease",
-              message: "先回她這句試試看。",
-              reason: "接住話題再輕輕推進。",
-              quotedContext: "嗨",
-            }),
-            line({
-              type: "analysis.reply_option",
-              style: "extend",
-              message: "多聊聊今天的事吧。",
-              reason: "延展話題。",
-            }),
-            line({
-              type: "analysis.reply_option",
-              style: "tease",
-              message: "先回她這句試試看。",
-              reason: "接住話題再輕輕推進。",
-            }),
-            line({
-              type: "analysis.done",
-              finalResult: {
-                replies: {
-                  extend: "多聊聊今天的事吧。",
-                  tease: "先回她這句試試看。",
-                },
-                finalRecommendation: {
-                  pick: "tease",
-                  content: "先回她這句試試看。",
-                },
-              },
-            }),
-          ],
-        ),
+        textStream: chunks(options.modelChunks ?? DEFAULT_MODEL_CHUNKS),
         // deno-lint-ignore no-explicit-any
       } as any);
     },
@@ -1211,4 +1215,214 @@ Deno.test("Phase 3d critic shadow：關閉時不排程、不呼叫、不記", as
     logs.some((entry) => entry[0] === "[analyze-chat] stream_semantic_critic"),
     false,
   );
+});
+
+// ── Sonnet 5.5 旗標（ANALYZE_STREAM_SONNET_55）：真的走 callClaudeStreaming，
+// 在 provider fetch 層看實際送出的 body，在 supabase fetch 層看 ai_logs。
+const SONNET_55_FLAG = "ANALYZE_STREAM_SONNET_55";
+
+function withFlag<T>(value: string | undefined, run: () => T): T {
+  const previous = Deno.env.get(SONNET_55_FLAG);
+  if (value === undefined) Deno.env.delete(SONNET_55_FLAG);
+  else Deno.env.set(SONNET_55_FLAG, value);
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) Deno.env.delete(SONNET_55_FLAG);
+    else Deno.env.set(SONNET_55_FLAG, previous);
+  }
+}
+
+function sseResponse(texts: string[]): Response {
+  const encoder = new TextEncoder();
+  const events = [
+    ...texts.map((text) =>
+      `data: ${
+        JSON.stringify({
+          type: "content_block_delta",
+          delta: { type: "text_delta", text },
+        })
+      }\n\n`
+    ),
+    'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}\n\n',
+  ];
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const event of events) controller.enqueue(encoder.encode(event));
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  );
+}
+
+/// Provider 請求 body 與 ai_logs 列；`failFirst` 讓第一次 provider 呼叫 529。
+async function runThroughProvider(
+  selectedModel: string,
+  options: { failFirst?: boolean; effectiveTier?: string } = {},
+): Promise<{
+  bodies: Array<Record<string, unknown>>;
+  aiLogs: Array<Record<string, unknown>>;
+}> {
+  const bodies: Array<Record<string, unknown>> = [];
+  const aiLogs: Array<Record<string, unknown>> = [];
+  const paid = options.effectiveTier === "essential";
+  const deps: AnalyzeStreamDeps = {
+    ...makeDeps({
+      calls: [],
+      effectiveTier: options.effectiveTier,
+      allowedFeatures: paid
+        ? ["extend", "resonate", "tease", "humor", "coldRead"]
+        : undefined,
+    }),
+    selectedModel,
+    callModel: (request, apiKey, callOptions) =>
+      callClaudeStreaming(request, apiKey, {
+        ...callOptions,
+        fetchImpl: (_input, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(
+            options.failFirst && bodies.length === 1
+              ? new Response("overloaded", { status: 529 })
+              : sseResponse(DEFAULT_MODEL_CHUNKS),
+          );
+        },
+      }),
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    if (String(input).includes("/rest/v1/ai_logs")) {
+      const row = JSON.parse(String(init?.body));
+      aiLogs.push(Array.isArray(row) ? row[0] : row);
+    }
+    return Promise.resolve(
+      new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  };
+  try {
+    await (await handleAnalyzeStream(deps)).text();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return { bodies, aiLogs };
+}
+
+Deno.test("analyzeStreamModel reads ANALYZE_STREAM_SONNET_55 per request; forceModel wins", () => {
+  withFlag(undefined, () => {
+    assertEquals(
+      analyzeStreamModel("claude-sonnet-5", false, true),
+      "claude-sonnet-5",
+    );
+  });
+  for (const value of ["false", "1", "TRUE", ""]) {
+    withFlag(value, () => {
+      assertEquals(
+        analyzeStreamModel("claude-sonnet-5", false, true),
+        "claude-sonnet-5",
+        value,
+      );
+    });
+  }
+  withFlag("true", () => {
+    assertEquals(
+      analyzeStreamModel("claude-sonnet-5", false, true),
+      "claude-sonnet-5-5",
+    );
+    // 舊版 client 的 v1 合約沒跑過 5.5 黑箱：旗標開也照舊 Sonnet 5。
+    assertEquals(
+      analyzeStreamModel("claude-sonnet-5", false, false),
+      "claude-sonnet-5",
+    );
+    // 測試帳號 forceModel：照指定，旗標不覆蓋（含指定 Sonnet 5 本身）。
+    assertEquals(
+      analyzeStreamModel("claude-sonnet-5", true, true),
+      "claude-sonnet-5",
+    );
+    assertEquals(
+      analyzeStreamModel("claude-haiku-4-5-20251001", true, true),
+      "claude-haiku-4-5-20251001",
+    );
+  });
+});
+
+Deno.test("flag off: the Sonnet 5 stream request is today's contract (thinking disabled, base max_tokens)", async () => {
+  for (
+    const [tier, base] of [["free", 4500], ["essential", 6000]] as const
+  ) {
+    const { bodies, aiLogs } = await runThroughProvider(
+      withFlag(
+        undefined,
+        () => analyzeStreamModel("claude-sonnet-5", false, true),
+      ),
+      { effectiveTier: tier },
+    );
+    assertEquals(bodies.length, 1);
+    assertEquals(Object.keys(bodies[0]), [
+      "model",
+      "max_tokens",
+      "system",
+      "messages",
+      "stream",
+      "thinking",
+    ]);
+    assertEquals(bodies[0].model, "claude-sonnet-5");
+    assertEquals(bodies[0].max_tokens, base);
+    assertEquals(bodies[0].thinking, { type: "disabled" });
+    assertEquals(aiLogs.length, 1);
+    // 付費卡數不足會走 markFailed，兩條 ai_logs 路徑都記同一個上限。
+    assertEquals(aiLogs[0].model, "claude-sonnet-5");
+    assertEquals(
+      (aiLogs[0].request_body as Record<string, unknown>).maxOutputTokens,
+      base,
+    );
+    assertEquals(
+      (aiLogs[0].request_body as Record<string, unknown>).providerMaxAttempts,
+      3,
+    );
+  }
+});
+
+Deno.test("flag on: the stream request is Sonnet 5.5 configuration C and ai_logs records 5.5 with the headroom", async () => {
+  const { bodies, aiLogs } = await runThroughProvider(
+    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false, true)),
+  );
+  assertEquals(bodies.length, 1);
+  assertEquals(bodies[0].model, "claude-sonnet-5-5");
+  assertEquals(bodies[0].max_tokens, 4500 + 4000);
+  assertEquals(bodies[0].thinking, { type: "adaptive", display: "omitted" });
+  assertEquals(bodies[0].output_config, { effort: "low" });
+  assertFalse("temperature" in bodies[0]);
+  assertFalse("tool_choice" in bodies[0]);
+  assertEquals(aiLogs.length, 1);
+  assertEquals(aiLogs[0].model, "claude-sonnet-5-5");
+  const requestBody = aiLogs[0].request_body as Record<string, unknown>;
+  assertEquals(requestBody.maxOutputTokens, 8500);
+  assertEquals(requestBody.thinkingDisabled, false);
+  // 5.5→5→4.6→Haiku：最多 4 次 provider 呼叫。
+  assertEquals(requestBody.providerMaxAttempts, 4);
+});
+
+Deno.test("flag on, 5.5 overloaded: the Sonnet 5 fallback sends its own params and base max_tokens; ai_logs records Sonnet 5", async () => {
+  const { bodies, aiLogs } = await runThroughProvider(
+    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false, true)),
+    { failFirst: true },
+  );
+  assertEquals(bodies.map((b) => b.model), [
+    "claude-sonnet-5-5",
+    "claude-sonnet-5",
+  ]);
+  assertEquals(bodies[1].max_tokens, 4500);
+  assertEquals(bodies[1].thinking, { type: "disabled" });
+  assertFalse("output_config" in bodies[1]);
+  assertEquals(aiLogs.length, 1);
+  assertEquals(aiLogs[0].model, "claude-sonnet-5");
+  assertEquals(aiLogs[0].status, "success");
+  const requestBody = aiLogs[0].request_body as Record<string, unknown>;
+  assertEquals(requestBody.maxOutputTokens, 4500);
+  assertEquals(requestBody.thinkingDisabled, true);
+  assertEquals(requestBody.providerMaxAttempts, 4);
 });

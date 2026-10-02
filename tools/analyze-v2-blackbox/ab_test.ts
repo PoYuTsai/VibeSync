@@ -79,11 +79,18 @@ Deno.test("estimate: repeats of the same case and arm are priced as cache reads;
     tokens,
     6500,
   );
-  // C 臂輸出上界多 4000 token。
+  // C 臂（production 5.5）輸出上界多 4000 token。
   assertEquals(
     Number(((c.mainUsd - once.mainUsd) / IDS.length).toFixed(4)),
     0.04,
   );
+  // B 臂改回舊設定：max_tokens 不加，上界與 A 同（兩模型同價）。
+  const b = estimatePlan(
+    planCalls(IDS, ["B"], { B: 1 } as never),
+    tokens,
+    6500,
+  );
+  assertAlmostEquals(b.mainUsd, once.mainUsd, 1e-9);
 });
 
 Deno.test("paid guard refuses real calls unless every flag is present and covers the plan", () => {
@@ -109,20 +116,20 @@ Deno.test("paid guard refuses real calls unless every flag is present and covers
   assert(paidGuardError(ok, 84, 17.5)?.startsWith("拒絕"));
 });
 
-Deno.test("arm C rewrites thinking, effort and max_tokens; A and B go out untouched", () => {
+Deno.test("arm B rewrites the production 5.5 body back to configuration B; A and C go out untouched", () => {
   const body = {
-    model: "claude-sonnet-5-5",
-    max_tokens: 6500,
-    thinking: { type: "between_tools" },
-    output_config: { effort: "medium" },
-  };
-  assertEquals(applyArmOverride(body, ARMS.A), body);
-  assertEquals(applyArmOverride(body, ARMS.B), body);
-  assertEquals(applyArmOverride(body, ARMS.C), {
     model: "claude-sonnet-5-5",
     max_tokens: 10500,
     thinking: { type: "adaptive", display: "omitted" },
     output_config: { effort: "low" },
+  };
+  assertEquals(applyArmOverride(body, ARMS.A), body);
+  assertEquals(applyArmOverride(body, ARMS.C), body);
+  assertEquals(applyArmOverride(body, ARMS.B), {
+    model: "claude-sonnet-5-5",
+    max_tokens: 6500,
+    thinking: { type: "between_tools" },
+    output_config: { effort: "medium" },
   });
 });
 

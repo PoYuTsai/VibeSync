@@ -10,10 +10,13 @@
 臂（`ab.ts` 的 `ARMS`）：
 
 - **A**：`claude-sonnet-5`，production 原樣（`thinking:{type:"disabled"}`）。
-- **B**：`claude-sonnet-5-5`，production helper（`_shared/model_request_params.ts`）送
-  `thinking:{type:"between_tools"}`＋`output_config.effort:"medium"`，max_tokens 不變。
-- **C**：`claude-sonnet-5-5`，在 fetch 層改成 adaptive thinking（`display:"omitted"`）＋
-  effort `low`＋max_tokens +4000。
+- **B**：`claude-sonnet-5-5`，在 fetch 層改回舊 helper 的 `thinking:{type:"between_tools"}`＋
+  `output_config.effort:"medium"`，max_tokens 不加。
+- **C**：`claude-sonnet-5-5`，production helper（`_shared/model_request_params.ts`）原樣送
+  adaptive thinking（`display:"omitted"`）＋effort `low`＋max_tokens +4000（`maxTokensFor`）。
+
+設定 C 上線後（`analysis-sonnet55-switch`）C 臂就等於 `ANALYZE_STREAM_SONNET_55=true` 的 production；`--refusal-probe` 改跑 C 臂。
+旗標只換 v2 合約串流（舊版 client 的 v1 照舊 Sonnet 5）；免費版兩種風格（4500＋4000）沒有單獨跑過黑箱。
 
 預設 **dry-run**：列每案交錯順序與估價，不讀 key、不打模型。估價用官方價：輸出吃滿
 max_tokens；system prompt 第一次以 cache 寫入價、同案同臂的重複以讀取價（同案的幾次
@@ -33,7 +36,7 @@ deno run --allow-env --allow-read --allow-run=git \
 ```
 
 旗標：`--arms=A,B`（預設）；`--repeat=N` 或 `--repeat=A:2,B:2,C:1`；`--only=a,b`；
-`--refusal-probe`（只跑 B 臂、只跑下列曖昧／邀約案）。付費閘：計畫次數要 ≤
+`--refusal-probe`（只跑 C 臂、只跑下列曖昧／邀約案）。付費閘：計畫次數要 ≤
 `--max-calls`、估價要 ≤ `--budget-usd`；跑的時候每次呼叫前再以「不中 cache 的上界」
 檢查已花費，超過就停，已跑的結果照寫。備援鏈關閉（`allowModelFallback:false`），失敗
 就記失敗，不讓 4.6 混進來；critic 影子關閉。

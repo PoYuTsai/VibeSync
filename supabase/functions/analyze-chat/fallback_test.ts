@@ -136,13 +136,13 @@ Deno.test("caller-specified adaptive thinking is not sent to older fallback mode
   ]);
 });
 
-Deno.test("Sonnet 5.5 gets between_tools＋effort merged into structured output and 4.6 stays the next hop", async () => {
+Deno.test("Sonnet 5.5 gets configuration C merged into structured output, then Sonnet 5 with its own params and base max_tokens", async () => {
   const originalFetch = globalThis.fetch;
   const bodies: Array<Record<string, unknown>> = [];
   globalThis.fetch = (_input, init) => {
     bodies.push(JSON.parse(String(init?.body)));
     return Promise.resolve(
-      bodies.length === 1
+      bodies.length < 3
         ? new Response("upstream unavailable", { status: 529 })
         : successResponse(),
     );
@@ -151,7 +151,8 @@ Deno.test("Sonnet 5.5 gets between_tools＋effort merged into structured output 
   try {
     await callClaudeWithFallback(
       {
-        ...baseRequest({ type: "disabled" }),
+        // 呼叫端 adaptive 只屬於 5.5；退到 Sonnet 5 必須回到 disabled。
+        ...baseRequest({ type: "adaptive" }),
         model: "claude-sonnet-5-5",
         output_config: {
           format: { type: "json_schema", schema: { type: "object" } },
@@ -164,19 +165,35 @@ Deno.test("Sonnet 5.5 gets between_tools＋effort merged into structured output 
     globalThis.fetch = originalFetch;
   }
 
-  assertEquals(bodies.map((b) => b.model), [
-    "claude-sonnet-5-5",
-    "claude-sonnet-4-6",
-  ]);
-  assertEquals(bodies[0].thinking, { type: "between_tools" });
-  assertEquals(bodies[0].output_config, {
-    format: { type: "json_schema", schema: { type: "object" } },
-    effort: "medium",
-  });
-  assertEquals(bodies[1].thinking, undefined);
-  assertEquals(bodies[1].output_config, {
-    format: { type: "json_schema", schema: { type: "object" } },
-  });
+  const format = { type: "json_schema", schema: { type: "object" } };
+  assertEquals(
+    bodies.map(({ model, max_tokens, thinking, output_config }) => ({
+      model,
+      max_tokens,
+      thinking,
+      output_config,
+    })),
+    [
+      {
+        model: "claude-sonnet-5-5",
+        max_tokens: 4700,
+        thinking: { type: "adaptive", display: "omitted" },
+        output_config: { format, effort: "low" },
+      },
+      {
+        model: "claude-sonnet-5",
+        max_tokens: 700,
+        thinking: { type: "disabled" },
+        output_config: { format },
+      },
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 700,
+        thinking: undefined,
+        output_config: { format },
+      },
+    ],
+  );
 });
 
 Deno.test("max_tokens without visible text fails closed on Sonnet 5", async () => {

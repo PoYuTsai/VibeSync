@@ -5,6 +5,7 @@
 
 import { type ModelCallBudget, readProviderUsage, type ProviderUsage } from "./model_call_budget.ts";
 import {
+  maxTokensFor,
   modelRequestParams,
   SONNET_5_5_MODEL,
   SONNET_5_MODEL,
@@ -70,12 +71,22 @@ const DEFAULT_OPTIONS: ClaudeStreamingOptions = {
   fetchImpl: fetch,
 };
 
-// ADR #24／#28：4.6 留在 Sonnet 5 與 5.5 之後。
+// ADR #24／#28：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5（待 Eric 核 ADR）。
 const MODEL_FALLBACK_CHAIN: Readonly<Record<string, string | undefined>> = {
+  [SONNET_5_5_MODEL]: SONNET_5_MODEL,
   [SONNET_5_MODEL]: "claude-sonnet-4-6",
-  [SONNET_5_5_MODEL]: "claude-sonnet-4-6",
   "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
 };
+
+/// 這個主模型最多打幾次 provider（備援鏈長度，含自己）；ai_logs 記這個值。
+export function streamingProviderMaxAttempts(model: string): number {
+  let attempts = 1;
+  for (let m = MODEL_FALLBACK_CHAIN[model]; m; m = MODEL_FALLBACK_CHAIN[m]) {
+    attempts++;
+  }
+  return attempts;
+}
+
 const PRE_STREAM_FALLBACK_CODES = new Set([
   "NETWORK_ERROR",
   "RATE_LIMITED",
@@ -433,8 +444,8 @@ export async function callClaudeStreaming(
     const timeoutId = setTimeout(() => controller.abort(), remainingMs);
     // A thinking choice made for the primary model is not portable across the
     // fallback chain; every model gets its own default (Sonnet 5 disabled,
-    // 5.5 between_tools＋effort, 4.6／Haiku native) so hidden thinking never
-    // eats the endpoint's fixed visible-output budget.
+    // 5.5 adaptive＋effort low with max_tokens headroom, 4.6／Haiku native) so
+    // hidden thinking never eats the endpoint's fixed visible-output budget.
     const modelParams = modelRequestParams(currentModel, {
       thinking: currentModel === originalModel ? request.thinking : undefined,
     });
@@ -451,7 +462,7 @@ export async function callClaudeStreaming(
         },
         body: JSON.stringify({
           model: currentModel,
-          max_tokens: request.max_tokens,
+          max_tokens: maxTokensFor(currentModel, request.max_tokens),
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
           stream: true,

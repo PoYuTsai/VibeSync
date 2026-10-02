@@ -45,7 +45,14 @@ import {
   scheduleAnalyzeCriticShadow,
 } from "./critic_shadow.ts";
 import type { SemanticCriticCallArgs } from "../_shared/social/semantic_critic.ts";
-import { callClaudeStreaming } from "./streaming_fallback.ts";
+import {
+  callClaudeStreaming,
+  streamingProviderMaxAttempts,
+} from "./streaming_fallback.ts";
+import {
+  maxTokensFor,
+  SONNET_5_5_MODEL,
+} from "../_shared/model_request_params.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import {
   type AnalysisResult as GuardrailAnalysisResult,
@@ -74,6 +81,20 @@ const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
 const NEED_CONTEXT_WAIVED = "need_context_waived";
+
+/// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5，
+/// 且只換 v2 合約（noSendDecisions，黑箱 QA 跑的那條）；舊版 client 的 v1 照舊。
+/// 測試帳號 forceModel 照指定。非串流分析與其他功能不經過這裡。
+export function analyzeStreamModel(
+  selectedModel: string,
+  modelForced: boolean,
+  noSendDecisions: boolean,
+): string {
+  return !modelForced && noSendDecisions &&
+      Deno.env.get("ANALYZE_STREAM_SONNET_55") === "true"
+    ? SONNET_5_5_MODEL
+    : selectedModel;
+}
 
 /// Run store 的 narrow port（AnalysisStreamRunStore 的使用面）。
 export interface AnalyzeStreamRunPort {
@@ -451,6 +472,11 @@ export async function handleAnalyzeStream(
   }
 
   let streamModel = deps.selectedModel;
+  // STREAM_PROVIDER_MAX_ATTEMPTS（baseline 鎖住）是 Sonnet 5 鏈的 3 次；
+  // 5.5 多一跳（5.5→5→4.6→Haiku），照備援鏈實際長度記。
+  const streamProviderMaxAttempts = deps.selectedModel === SONNET_5_5_MODEL
+    ? streamingProviderMaxAttempts(SONNET_5_5_MODEL)
+    : STREAM_PROVIDER_MAX_ATTEMPTS;
   // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
   // entire fixed output budget for the user-visible NDJSON contract; hidden
   // thinking can otherwise consume the visible-output budget and emit zero
@@ -738,8 +764,9 @@ export async function handleAnalyzeStream(
           analysisRunId: streamRun.id,
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-          providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          maxOutputTokens: streamMaxOutputTokens,
+          providerMaxAttempts: streamProviderMaxAttempts,
+          // 實際送出的上限（5.5 含思考餘裕），跟著 served model 走。
+          maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {
           streamRunStatus: "done",
@@ -792,8 +819,10 @@ export async function handleAnalyzeStream(
           analysisRunId: streamRun.id,
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-          providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          maxOutputTokens: streamMaxOutputTokens,
+          providerMaxAttempts: streamProviderMaxAttempts,
+          // 有 served model 就跟著它；整條鏈都失敗時 streamModel 仍是主模型，
+          // 記的是主模型的上限，不是最後一跳的。
+          maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {
           streamRunStatus: "failed",

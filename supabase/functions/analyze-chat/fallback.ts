@@ -1,5 +1,8 @@
 import { type ModelCallBudget, readProviderUsage } from "./model_call_budget.ts";
-import { modelRequestParams } from "../_shared/model_request_params.ts";
+import {
+  maxTokensFor,
+  modelRequestParams,
+} from "../_shared/model_request_params.ts";
 
 interface CallOptions {
   budget?: ModelCallBudget;
@@ -72,10 +75,10 @@ const DEFAULT_OPTIONS: CallOptions = {
   allowModelFallback: true,
 };
 
-// ADR #24／#28：4.6 留在 Sonnet 5 與 5.5 之後。
+// ADR #24／#28：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5（待 Eric 核 ADR）。
 const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
+  "claude-sonnet-5-5": "claude-sonnet-5",
   "claude-sonnet-5": "claude-sonnet-4-6",
-  "claude-sonnet-5-5": "claude-sonnet-4-6",
   "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
   "claude-haiku-4-5-20251001": null,
 };
@@ -243,11 +246,15 @@ export async function callClaudeWithFallback(
       try {
         const cachedRequest = {
           model: currentModel,
-          max_tokens: request.max_tokens,
+          max_tokens: maxTokensFor(currentModel, request.max_tokens),
           system: buildCachedSystemPrompt(request.system),
           messages: request.messages,
+          // 呼叫端的 thinking 只給主模型；5.5 退到 Sonnet 5 時要回到 disabled，
+          // 否則隱藏思考會吃掉沒加餘裕的可見預算（同 streaming_fallback）。
           ...modelRequestParams(currentModel, {
-            thinking: request.thinking,
+            thinking: currentModel === originalModel
+              ? request.thinking
+              : undefined,
             outputConfig: request.output_config,
           }),
         };

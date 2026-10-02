@@ -74,7 +74,10 @@ import {
   handleOpenerAnalyzeRequest,
   handleOpenerGenerateRequest,
 } from "./opener_flow_handler.ts";
-import { handleAnalyzeStream } from "./analyze_stream_handler.ts";
+import {
+  analyzeStreamModel,
+  handleAnalyzeStream,
+} from "./analyze_stream_handler.ts";
 import {
   ANALYSIS_CONTRACT_VERSION_V2,
   parseAnalysisContractVersion,
@@ -1652,7 +1655,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         dailyLimit,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
-        selectedModel,
+        // 只有 v2 串流分析看 5.5 旗標；forceModel 優先，非串流路徑一律 selectedModel。
+        selectedModel: analyzeStreamModel(
+          selectedModel,
+          Boolean((accountIsTest || TEST_MODE) && forceModel),
+          noSendDecisions,
+        ),
         userMessageContent,
         requestObservability,
         messages,

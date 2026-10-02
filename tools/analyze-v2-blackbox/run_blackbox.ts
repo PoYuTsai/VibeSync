@@ -37,9 +37,9 @@ const ROOT =
   new URL("../../supabase/functions/analyze-chat", import.meta.url).pathname;
 const flag = (name: string) =>
   Deno.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-// --refusal-probe：只跑 B 臂、只跑曖昧／邀約案（corpus.ts REFUSAL_PROBE_IDS）。
+// --refusal-probe：只跑 C 臂（production 5.5）、只跑曖昧／邀約案（corpus.ts REFUSAL_PROBE_IDS）。
 const PROBE = Deno.args.includes("--refusal-probe");
-const ARM_IDS: ArmId[] = PROBE ? ["B"] : parseArms(flag("arms"));
+const ARM_IDS: ArmId[] = PROBE ? ["C"] : parseArms(flag("arms"));
 // --repeat=N 或 --repeat=A:2,B:2,C:1；--only=a,b 只跑指定案。
 const REPEAT = parseRepeat(flag("repeat"), ARM_IDS);
 const ONLY = PROBE
