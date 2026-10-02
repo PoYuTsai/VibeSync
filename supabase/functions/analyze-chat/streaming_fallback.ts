@@ -71,7 +71,7 @@ const DEFAULT_OPTIONS: ClaudeStreamingOptions = {
   fetchImpl: fetch,
 };
 
-// ADR #24／#28：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5（待 Eric 核 ADR）。
+// ADR #24／#28／#49：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5。
 const MODEL_FALLBACK_CHAIN: Readonly<Record<string, string | undefined>> = {
   [SONNET_5_5_MODEL]: SONNET_5_MODEL,
   [SONNET_5_MODEL]: "claude-sonnet-4-6",
