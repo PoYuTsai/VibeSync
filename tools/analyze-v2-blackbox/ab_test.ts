@@ -206,6 +206,8 @@ Deno.test("paid guard spend: the reservation is replaced only by complete final 
     error: { type: "overloaded_error" },
   });
   assertEquals(settleReservedSpend(1.0, 0.5, errored), 1.0);
+  // 預留是估算：usage 不全但已回報 $0.0102 > 預留 $0.005 時，補上差額不低估。
+  assertAlmostEquals(settleReservedSpend(1.0, 0.005, errored), 1.0052, 1e-9);
   // 只有 message_delta、沒有 message_start：輸入 usage 沒到，保留上界。
   const noStart = newProviderCall({ model: "claude-sonnet-5-5" });
   noStart.httpStatus = 200;

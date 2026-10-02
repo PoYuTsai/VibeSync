@@ -371,7 +371,8 @@ export function applySseEvent(call: ProviderCall, event: any): void {
 
 /// 付費閘記帳：呼叫前已把上界 reservedUsd 記進 spentUsd；呼叫結束時只有拿到
 /// 完整最終 usage（HTTP 200、message_start＋stop_reason 都到、沒有 error 事件）
-/// 才把預留換成實際費用，斷線、error、非 200、usage 不全都保留上界。回傳新的 spent。
+/// 才把預留換成實際費用，斷線、error、非 200、usage 不全都保留上界；上界是 token
+/// 估算、不是嚴格上界，所以 usage 不全但已回報的費用比預留高時，補上差額。回傳新的 spent。
 export function settleReservedSpend(
   spentUsd: number,
   reservedUsd: number,
@@ -379,7 +380,9 @@ export function settleReservedSpend(
 ): number {
   const complete = call.httpStatus === 200 && call.error === null &&
     call.servedModel !== null && call.stopReason !== null;
-  return complete ? spentUsd - reservedUsd + call.costUsd : spentUsd;
+  return complete
+    ? spentUsd - reservedUsd + call.costUsd
+    : spentUsd + Math.max(0, call.costUsd - reservedUsd);
 }
 
 export interface CallRecord {
