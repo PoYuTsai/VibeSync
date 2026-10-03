@@ -104,20 +104,29 @@ class MessageBubble extends StatelessWidget {
       ),
     );
 
+    // VoiceOver 一次念完一則：說話者、引用、回覆分開標明，避免把引用那句
+    // 聽成說話者自己說的（PR #86 審查 P2-3）。
+    final speaker = isMe ? '我說' : '她說';
+    final semanticsLabel = hasQuote
+        ? '$speaker\n引用：$quote\n回覆：${message.content}'
+        : '$speaker\n${message.content}';
+
     return MergeSemantics(
-      child: Semantics(
-        label: isMe ? '我說' : '她說',
-        child: GestureDetector(
-          // opaque：整個 bubble（含 padding 與兩側空白）都接收 long-press。
-          // 預設 deferToChild 只認 Text 渲染區，user 必須按到「字」才觸發
-          // — Bruce/Eric 2026-05-23 dogfood 點出這個跟視覺直覺落差。
-          behavior: HitTestBehavior.opaque,
-          onLongPress: hasActions
-              ? () {
-                  AppHaptics.light();
-                  _showActionMenu(context);
-                }
-              : null,
+      child: GestureDetector(
+        // opaque：整個 bubble（含 padding 與兩側空白）都接收 long-press。
+        // 預設 deferToChild 只認 Text 渲染區，user 必須按到「字」才觸發
+        // — Bruce/Eric 2026-05-23 dogfood 點出這個跟視覺直覺落差。
+        behavior: HitTestBehavior.opaque,
+        onLongPress: hasActions
+            ? () {
+                AppHaptics.light();
+                _showActionMenu(context);
+              }
+            : null,
+        // 標籤包在手勢裡面：子層文字不再各自念，長按動作仍併進同一個節點。
+        child: Semantics(
+          label: semanticsLabel,
+          excludeSemantics: true,
           child: Align(
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
             child: Padding(
@@ -231,6 +240,7 @@ class MessageBubble extends StatelessWidget {
 }
 
 /// 對方頭像：每組第一顆泡泡旁的霧玫瑰圓章，上面是對象名字的第一個字。
+/// 只是視覺錨點，語意由泡泡的整則標籤負責。
 class _PartnerAvatar extends StatelessWidget {
   const _PartnerAvatar({required this.initial});
 
@@ -238,28 +248,25 @@ class _PartnerAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 說話者已由 Semantics「她說」念出，頭像只是視覺錨點。
-    return ExcludeSemantics(
-      child: Container(
-        width: MessageBubble._avatarSize,
-        height: MessageBubble._avatarSize,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.partnerRoseStart, AppColors.partnerRoseEnd],
-          ),
+    return Container(
+      width: MessageBubble._avatarSize,
+      height: MessageBubble._avatarSize,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.partnerRoseStart, AppColors.partnerRoseEnd],
         ),
-        child: Center(
-          child: Text(
-            initial,
-            style: AppTypography.titleMedium.copyWith(
-              // 白字在霧玫瑰上只有 2.8:1；深墨 6.7:1（DESIGN.md §8）。
-              color: AppColors.brandInk,
-              fontWeight: FontWeight.w700,
-              height: 1,
-            ),
+      ),
+      child: Center(
+        child: Text(
+          initial,
+          style: AppTypography.titleMedium.copyWith(
+            // 白字在霧玫瑰上只有 2.8:1；深墨 6.7:1（DESIGN.md §8）。
+            color: AppColors.brandInk,
+            fontWeight: FontWeight.w700,
+            height: 1,
           ),
         ),
       ),

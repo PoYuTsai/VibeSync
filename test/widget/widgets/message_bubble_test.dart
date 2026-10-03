@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
@@ -82,6 +83,50 @@ void main() {
       expect(find.text('我說'), findsNothing);
       expect(find.bySemanticsLabel(RegExp(r'^她說\n她的訊息')), findsOneWidget);
       expect(find.bySemanticsLabel(RegExp(r'^我說\n我的訊息')), findsOneWidget);
+    });
+
+    testWidgets('VoiceOver 把引用和回覆分開念，引用不會聽成說話者自己說的', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: _message(
+                '好',
+                isFromMe: true,
+                quote: '明天一起吃飯？',
+                quoteIsFromMe: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.bySemanticsLabel('我說\n引用：明天一起吃飯？\n回覆：好'),
+        findsOneWidget,
+      );
+      // 子層文字不再各自成為節點，避免引用被單獨念成一句。
+      expect(find.bySemanticsLabel('明天一起吃飯？'), findsNothing);
+      expect(find.bySemanticsLabel('好'), findsNothing);
+    });
+
+    testWidgets('可編修的泡泡在語意節點上保留長按動作', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              message: _message('可以一起', isFromMe: false),
+              onEdit: () {},
+            ),
+          ),
+        ),
+      );
+
+      final node = tester.getSemantics(find.bySemanticsLabel('她說\n可以一起'));
+      expect(
+        node.getSemanticsData().hasAction(SemanticsAction.longPress),
+        isTrue,
+      );
     });
 
     testWidgets('引用小卡原樣顯示截圖原文，不拆名字也不寫「引用我剛剛說的」', (tester) async {
