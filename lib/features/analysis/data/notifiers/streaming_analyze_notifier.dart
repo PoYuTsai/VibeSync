@@ -267,6 +267,12 @@ class StreamingAnalyzeNotifier
   OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
   int? _cachedPayloadCharCount;
 
+  // 續接同一個 run 時保留用戶已看到的卡片（F12）。伺服器續接分兩種：run 還在
+  // 跑或已完成，只會重播最終的 done，不會再送卡片；run 已失敗則重跑一次，
+  // 會送出整組新卡片。所以舊卡留到新卡片的第一個內容事件才整批換掉，
+  // 避免同一組卡出現兩次。
+  bool _replaceKeptStreamContents = false;
+
   /// ADR #19 規格 #8：最近一次 [start] 實際送出 payload 的計費字數。
   /// 分析成功後由 screen 持久化為 conversation.lastAnalyzedCharCount
   /// （baseline 必須對應送出的 requestMessages，不是完成時 repository
@@ -327,6 +333,7 @@ class StreamingAnalyzeNotifier
     _cachedConfirmedOvercharge = confirmedOvercharge;
     // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages。
     _cachedPayloadCharCount = MessageCalculator.countPayloadChars(messages);
+    _replaceKeptStreamContents = false;
 
     state = StreamingAnalysisState(
       phase: StreamingAnalyzePhase.connecting,
@@ -423,6 +430,10 @@ class StreamingAnalyzeNotifier
           case AnalysisStreamUpdateKind.content:
             final content = update.content;
             if (content == null) break;
+            final previousContents = _replaceKeptStreamContents
+                ? const <AnalysisStreamContent>[]
+                : state.streamContents;
+            _replaceKeptStreamContents = false;
             state = state.copyWith(
               phase: StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
@@ -432,7 +443,7 @@ class StreamingAnalyzeNotifier
               streamProgressDetail: update.detail ?? content.body,
               streamContents: List<AnalysisStreamContent>.unmodifiable(
                 <AnalysisStreamContent>[
-                  ...state.streamContents,
+                  ...previousContents,
                   content,
                 ],
               ),
@@ -498,8 +509,10 @@ class StreamingAnalyzeNotifier
           automaticRecoveryAttempt < 2 &&
           _shouldAutomaticallyRecoverStream(e)) {
         stopLocalProgress();
-        final hasPartialResult = state.recommendationPreview != null ||
-            state.streamContents.isNotEmpty;
+        final hasShownContents = state.streamContents.isNotEmpty;
+        final hasPartialResult =
+            state.recommendationPreview != null || hasShownContents;
+        _replaceKeptStreamContents = hasShownContents;
         state = state.copyWith(
           phase: hasPartialResult
               ? StreamingAnalyzePhase.streamingReport
@@ -509,7 +522,6 @@ class StreamingAnalyzeNotifier
           streamErrorCode: null,
           streamProgressLabel: '連線中斷，正在取回分析結果',
           streamProgressDetail: '會接續原本的分析，不會重新扣除額度。',
-          streamContents: const <AnalysisStreamContent>[],
           retriesRemaining: 0,
           conversationMessageCount: conversationMessageCount,
           analyzedMessageCount: analyzedMessageCount,
@@ -675,6 +687,10 @@ class StreamingAnalyzeNotifier
   /// changes transport or starts a non-stream path, and does not re-charge
   /// recommendation quota. No-op if there is no cached run.
   ///
+  /// Cards the user already saw stay on screen until the retried run sends
+  /// its first content event, which replaces them (see
+  /// [_replaceKeptStreamContents]).
+  ///
   /// Caller passes no args so the retry survives screen remount; see
   /// invariant I-P1-b. The screen that triggered [start] may have been
   /// disposed by the time the user taps "重試"; the notifier itself owns the
@@ -685,12 +701,12 @@ class StreamingAnalyzeNotifier
     if (runId == null || cachedMessages == null) return;
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
+    _replaceKeptStreamContents = state.streamContents.isNotEmpty;
 
     state = state.copyWith(
       phase: StreamingAnalyzePhase.streamingReport,
       streamErrorMessage: null,
       streamErrorCode: null,
-      streamContents: const <AnalysisStreamContent>[],
       retriesRemaining: 0,
       conversationMessageCount: _cachedConversationMessageCount,
       previousAnalyzedCount: _cachedPreviousAnalyzedCount,
