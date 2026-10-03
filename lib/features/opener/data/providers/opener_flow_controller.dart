@@ -663,8 +663,9 @@ class OpenerFlowController extends ChangeNotifier {
         phase: _state.generation == null ? OpenerFlowPhase.contributing : OpenerFlowPhase.result,
         error: e.message,
         flowError: e,
-        // 只有暫時性錯誤才給「再試一次」；其餘同 ID 重送結果不會變。
-        failedOperation: e.retryable || e.isRateLimited || e.isPending ? OpenerFlowFailedOperation.generate : null,
+        // 4xx 拒絕同 ID 重送結果不會變，不給「再試一次」；5xx（逾時、模型輸出不完整等，伺服器已釋放 claim）
+        // 與暫時性錯誤才給。
+        failedOperation: e.retryable || e.isRateLimited || e.isPending || e.status >= 500 ? OpenerFlowFailedOperation.generate : null,
       ));
     } catch (e) {
       if (!_isCurrent(op)) return;

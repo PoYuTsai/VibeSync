@@ -302,6 +302,13 @@ void main() {
     expect(service.calls.last.args['generationId'], id);
   });
 
+  test('502 模型輸出不完整（retryable=false）仍給「再試一次」', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    service.generateError = const OpenerFlowException(code: 'OPENER_RESPONSE_INCOMPLETE', message: '這次沒生成成功，可以重試', status: 502);
+    await controller.generate();
+    expect(controller.state.failedOperation, OpenerFlowFailedOperation.generate);
+  });
+
   test('409 輸入不符：不給同 ID 重試，草稿退出 generating，下次生成換新 generationId', () async {
     await controller.analyze(input: _input, initialNote: null);
     service.generateError = const OpenerFlowException(code: OpenerFlowErrorCode.inputMismatch, message: '這次輸入已改變', status: 409);
