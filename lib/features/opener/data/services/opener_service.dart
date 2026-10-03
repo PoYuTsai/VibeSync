@@ -357,9 +357,12 @@ class OpenerService {
   final http.Client Function() _streamClientFactory;
   final String? Function() _accessTokenProvider;
 
-  /// 同 analysis_service 串流慣例：connect 45s、單事件 idle 120s（heartbeat
-  /// 每 15s 一定會來，idle 超時＝連線真的斷了）。
-  static const Duration _streamConnectTimeout = Duration(seconds: 45);
+  /// flag on 時 stream headers 會立刻到；flag off／舊 Edge 會等完整結果才回
+  /// headers。server deadline 是 analyze 45s、generate 50s 再加結算，因此
+  /// connect 要沿用 [kOpenerRequestTimeout]，否則 client 會先誤報逾時、server
+  /// 卻仍在結算。單事件 idle 120s（heartbeat 每 15s 一定會來，idle 超時＝連線
+  /// 真的斷了）。
+  static const Duration _streamConnectTimeout = kOpenerRequestTimeout;
   static const Duration _streamIdleTimeout = Duration(seconds: 120);
 
   Future<OpenerResult> generateOpeners({
