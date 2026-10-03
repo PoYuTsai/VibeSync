@@ -47,11 +47,9 @@ const withCacheTiers = (
  * cache read $0.10／M、cache write $1.25／M（Anthropic 官方牌價，也是
  * `scripts/practice_agency_telemetry.py` 的 `HAIKU_PRICE` 用的那一組）。
  *
- * **已知不一致（Phase 4.5c 發現，至今未改 production）**：
  * `supabase/functions/analyze-chat/logger.ts` 的
- * `TOKEN_COSTS["claude-haiku-4-5-20251001"]` 是 $0.0008／$0.004 每 1K token
- * ＝ $0.80／$4.00 每 M，比官方牌價低 20%（那是 Haiku 3.5 的價）。那支是
- * analyze-chat 的觀測欄位，不在練習室路徑上，只記錄不改。
+ * `TOKEN_COSTS["claude-haiku-4-5-20251001"]` 已是 $0.001／$0.005 每 1K token，
+ * 與這裡一致（Phase 4.5c 記的 $0.80／$4 舊價已修）。
  */
 export const HAIKU_4_5_PRICING: TokenPricing = withCacheTiers(1, 5);
 
@@ -64,6 +62,12 @@ export const HAIKU_4_5_PRICING: TokenPricing = withCacheTiers(1, 5);
  * §2 D14 成本表用的那一組），跟 logger.ts 抄來的數字一致。
  */
 export const SONNET_5_PRICING: TokenPricing = withCacheTiers(2, 10);
+
+/**
+ * Sonnet 5.5（`claude-sonnet-5-5`）：與 Sonnet 5 同價 $2／$10 每 M，
+ * cache read $0.20、cache write $2.50（2026-10-02 對拍官方 pricing 頁）。
+ */
+export const SONNET_5_5_PRICING: TokenPricing = withCacheTiers(2, 10);
 
 /** `callClaude` 的 `onUsage` 回呼形狀（四格 token 數）。 */
 export interface TokenUsage {

@@ -74,26 +74,39 @@ void main() {
       expect(sendNone.hidesReplyZone, isFalse);
     });
 
-    test('closingMessage 只屬於 acknowledge_and_stop，其他決策一律丟棄', () {
+    test('可傳收尾句只屬於 acknowledge_and_stop；do_not_send 的句子是備用句', () {
       final held = AnalysisDecisionV2.fromJson({
         ...noSend,
-        'closingMessage': '不該出現的句子',
+        'closingMessage': ' 好，那妳先忙。 ',
       })!;
-      expect(held.closingMessage, isNull);
       expect(held.sendableClosingMessage, isNull);
+      expect(held.againstAdviceLine, '好，那妳先忙。');
+      expect(AnalysisDecisionV2.fromJson(noSend)!.againstAdviceLine, isNull);
+
       final needContext = AnalysisDecisionV2.fromJson({
         ...noSend,
         'messageDecision': 'need_context',
         'closingMessage': '不該出現的句子',
       })!;
       expect(needContext.closingMessage, isNull);
+      expect(needContext.againstAdviceLine, isNull);
+
+      final ack = AnalysisDecisionV2.fromJson({
+        ...noSend,
+        'messageDecision': 'acknowledge_and_stop',
+        'closingMessage': '好，那先這樣。',
+      })!;
+      expect(ack.sendableClosingMessage, '好，那先這樣。');
+      expect(ack.againstAdviceLine, isNull);
+
       // 即使直接建構帶了句子，也只有 acknowledge_and_stop 可傳。
       const constructed = AnalysisDecisionV2(
         messageDecision: AnalysisMessageDecision.doNotSend,
         replyMode: 'none',
-        closingMessage: '不該出現的句子',
+        closingMessage: '備用句',
       );
       expect(constructed.sendableClosingMessage, isNull);
+      expect(constructed.againstAdviceLine, '備用句');
     });
 
     test('缺 schemaVersion 2、未知決策、非物件一律 null（退回 v1）', () {
@@ -155,12 +168,14 @@ void main() {
     test('決策隨 rawResponse 回存，重新解析後仍在（歷史快照 round-trip）', () {
       final result = AnalysisResult.fromJson({
         'replies': <String, dynamic>{},
-        'analysisDecisionV2': noSend,
+        'analysisDecisionV2': {...noSend, 'closingMessage': '好，那妳先忙。'},
       });
       final restored = AnalysisResult.fromJson(result.rawResponse!);
       expect(restored.decision!.messageDecision,
           AnalysisMessageDecision.doNotSend);
       expect(restored.decision!.stopCondition, '等她主動給新話題');
+      expect(restored.decision!.againstAdviceLine, '好，那妳先忙。');
+      expect(restored.decision!.sendableClosingMessage, isNull);
     });
   });
 }

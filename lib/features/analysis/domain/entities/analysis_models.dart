@@ -910,6 +910,13 @@ class AnalysisDecisionV2 {
           ? closingMessage
           : null;
 
+  /// do_not_send 的備用句：教練不建議回，他堅持要回時壓力最低的一句。
+  /// 不是建議，畫面收合在「我還是想回」後面。
+  String? get againstAdviceLine =>
+      messageDecision == AnalysisMessageDecision.doNotSend
+          ? closingMessage
+          : null;
+
   /// messageDecision 是唯一權威：非 send 一律不顯示回覆輪播、不推銷升級，
   /// 即使後端同時送了矛盾的 replyMode。
   bool get hidesReplyZone => !isSend;
@@ -935,10 +942,11 @@ class AnalysisDecisionV2 {
         ? rawReplyMode
         : impliedReplyMode;
     String text(Object? value) => value is String ? value.trim() : '';
-    // 收尾句只屬於 acknowledge_and_stop；do_not_send／need_context 是零回覆，
-    // 後端夾帶的 closingMessage 一律丟棄。
+    // 收尾句屬於 acknowledge_and_stop；do_not_send 的同欄位是備用句
+    // （againstAdviceLine）。need_context 是零回覆，夾帶的句子一律丟棄。
     final closingMessage =
-        messageDecision == AnalysisMessageDecision.acknowledgeAndStop
+        messageDecision == AnalysisMessageDecision.acknowledgeAndStop ||
+                messageDecision == AnalysisMessageDecision.doNotSend
             ? text(json['closingMessage'])
             : '';
     return AnalysisDecisionV2(

@@ -25,8 +25,12 @@ import {
   type StreamRecommendationForCharge,
 } from "./reframer.ts";
 import {
+  isNoSendChargePayload,
   isNoSendDecisionKind,
+  NEED_CONTEXT_WAIVED,
   noSendChargePayloadFromStored,
+  type NoSendDecisionKind,
+  offeredNoSendDecisions,
 } from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
 import {
@@ -42,7 +46,14 @@ import {
   scheduleAnalyzeCriticShadow,
 } from "./critic_shadow.ts";
 import type { SemanticCriticCallArgs } from "../_shared/social/semantic_critic.ts";
-import { callClaudeStreaming } from "./streaming_fallback.ts";
+import {
+  callClaudeStreaming,
+  streamingProviderMaxAttempts,
+} from "./streaming_fallback.ts";
+import {
+  maxTokensFor,
+  SONNET_5_5_MODEL,
+} from "../_shared/model_request_params.ts";
 import { hashConversation } from "./conversation_hash.ts";
 import {
   type AnalysisResult as GuardrailAnalysisResult,
@@ -51,6 +62,10 @@ import {
 import { postProcessAnalysisResult } from "./post_process.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { isPlainObject } from "../_shared/quota.ts";
+import {
+  enforceModelRateLimit,
+  type RpcClient,
+} from "../_shared/model_rate_limit.ts";
 import {
   getErrorMessage,
   logAiCall,
@@ -66,6 +81,20 @@ import type {
 const MAX_STREAM_RETRIES = 2;
 const STREAM_CLAUDE_TIMEOUT_MS = 120000;
 const STREAM_PROVIDER_MAX_ATTEMPTS = 3;
+
+/// 串流分析主模型：ANALYZE_STREAM_SONNET_55=true（每次請求讀）才換 Sonnet 5.5，
+/// 且只換 v2 合約（noSendDecisions，黑箱 QA 跑的那條）；舊版 client 的 v1 照舊。
+/// 測試帳號 forceModel 照指定。非串流分析與其他功能不經過這裡。
+export function analyzeStreamModel(
+  selectedModel: string,
+  modelForced: boolean,
+  noSendDecisions: boolean,
+): string {
+  return !modelForced && noSendDecisions &&
+      Deno.env.get("ANALYZE_STREAM_SONNET_55") === "true"
+    ? SONNET_5_5_MODEL
+    : selectedModel;
+}
 
 /// Run store 的 narrow port（AnalysisStreamRunStore 的使用面）。
 export interface AnalyzeStreamRunPort {
@@ -120,6 +149,11 @@ export interface AnalyzeStreamDeps {
   /// Phase 1b: client declared analysisContractVersion >= 2, so the model may
   /// answer with a no-send decision (zero reply cards) instead of options.
   noSendDecisions?: boolean;
+  /// 「資料不夠」（need_context）免扣的資格：不在長分析帶（>2000 字）。
+  /// 省略或 false＝照常扣。
+  needContextWaiverEligible?: boolean;
+  /// increment_model_usage 的 client，數每人每天免扣幾次；省略＝照常扣。
+  rateLimitClient?: RpcClient;
   quotaUsage: {
     shouldChargeQuota: boolean;
     quotaReason: string;
@@ -438,6 +472,11 @@ export async function handleAnalyzeStream(
   }
 
   let streamModel = deps.selectedModel;
+  // STREAM_PROVIDER_MAX_ATTEMPTS（baseline 鎖住）是 Sonnet 5 鏈的 3 次；
+  // 5.5 多一跳（5.5→5→4.6→Haiku），照備援鏈實際長度記。
+  const streamProviderMaxAttempts = deps.selectedModel === SONNET_5_5_MODEL
+    ? streamingProviderMaxAttempts(SONNET_5_5_MODEL)
+    : STREAM_PROVIDER_MAX_ATTEMPTS;
   // Sonnet 5 enables adaptive thinking by default. This endpoint needs its
   // entire fixed output budget for the user-visible NDJSON contract; hidden
   // thinking can otherwise consume the visible-output budget and emit zero
@@ -471,10 +510,16 @@ export async function handleAnalyzeStream(
     quotaReason: deps.quotaUsage.quotaReason,
     quotaUnit: deps.quotaUsage.quotaUnit,
   };
+  // retry 沿用原 run 存下的免扣標記（錨點與標記同在 recommendation_json）。
+  let quotaWaivedReason: typeof NEED_CONTEXT_WAIVED | undefined =
+    isNoSendChargePayload(prechargedRecommendation)
+      ? prechargedRecommendation.quotaWaivedReason
+      : undefined;
 
   // Phase 2 (§11)：v2 才挑情境 atoms；v1 prompt 一字不動。deterministic，
   // callClaude 重試時重算結果相同，所以只算一次。
   let situationKnowledge: readonly string[] = [];
+  let noSendMenu: readonly NoSendDecisionKind[] | undefined;
   if (deps.noSendDecisions === true) {
     const knowledgeInput = {
       messages: deps.messages,
@@ -485,11 +530,19 @@ export async function handleAnalyzeStream(
     };
     const atoms = selectAnalyzeSocialKnowledge(knowledgeInput);
     situationKnowledge = atoms.map((atom) => atom.guidance);
+    const knowledgeSignals = detectAnalyzeSocialKnowledgeSignals(
+      knowledgeInput,
+    );
+    noSendMenu = offeredNoSendDecisions(
+      deps.messages,
+      knowledgeSignals.includes("low_investment"),
+    );
     logInfo("stream_knowledge_selected", {
       user: summarizeUser(deps.userId),
       analysisRunId: streamRun.id,
       knowledgeAtomIds: atoms.map((atom) => atom.id),
-      knowledgeSignals: detectAnalyzeSocialKnowledgeSignals(knowledgeInput),
+      knowledgeSignals,
+      offeredNoSendDecisions: noSendMenu,
     });
   }
 
@@ -521,6 +574,7 @@ export async function handleAnalyzeStream(
             noSendDecisions: deps.noSendDecisions === true,
             situationKnowledge,
             divergencePlan: deps.noSendDecisions === true,
+            offeredNoSendDecisions: noSendMenu,
           }),
           messages: [{ role: "user", content: deps.userMessageContent }],
           thinking: streamThinkingDisabled ? { type: "disabled" } : undefined,
@@ -536,14 +590,57 @@ export async function handleAnalyzeStream(
     },
     chargeRun: async (recommendation) => {
       try {
+        // 「資料不夠」每人每天前 3 次不扣（長分析帶除外）。retry 的 shouldCharge
+        // 本來就 false，不會碰計數。
+        // ponytail: 名額先佔後扣——之後 chargeRun 失敗，這格名額就白用了
+        // （只在基礎設施失敗時發生，上限仍是每天 3 次）。
+        // ponytail: 新版 App 看到 quotaWaivedReason 不推進字數 baseline；舊版
+        // 仍會推進（下一次只扣增量），靠每天 3 次上限擋。
+        let waived = false;
+        if (
+          shouldCharge && deps.needContextWaiverEligible === true &&
+          deps.rateLimitClient &&
+          isNoSendChargePayload(recommendation) &&
+          recommendation.decisionKind === "need_context"
+        ) {
+          const verdict = await enforceModelRateLimit({
+            supabase: deps.rateLimitClient,
+            userId: deps.userId,
+            scope: "need_context_waiver",
+            isTestAccount: deps.accountIsTest,
+            failClosed: true,
+          });
+          waived = verdict.kind === "allowed";
+          logInfo("need_context_waiver", {
+            user: summarizeUser(deps.userId),
+            analysisRunId: streamRun.id,
+            outcome: verdict.kind,
+          });
+        }
+        const chargeQuota = shouldCharge && !waived;
         await deps.store.chargeRun({
           runId: streamRun.id,
           userId: deps.userId,
           conversationHash: conversationHashValue,
-          recommendation,
-          chargeQuota: shouldCharge,
-          messageCount: shouldCharge ? deps.quotaUsage.chargedMessageCount : 0,
+          // 免扣標記跟錨點一起存：串流之後失敗、retry 重建錨點時才帶得回來。
+          recommendation: waived && isNoSendChargePayload(recommendation)
+            ? { ...recommendation, quotaWaivedReason: NEED_CONTEXT_WAIVED }
+            : recommendation,
+          chargeQuota,
+          messageCount: chargeQuota ? deps.quotaUsage.chargedMessageCount : 0,
         });
+        if (waived) {
+          Object.assign(streamUsage, {
+            messagesUsed: 0,
+            monthlyRemaining: Math.max(
+              0,
+              deps.monthlyLimit - deps.subMonthlyUsed,
+            ),
+            dailyRemaining: Math.max(0, deps.dailyLimit - deps.subDailyUsed),
+            shouldChargeQuota: false,
+          });
+          quotaWaivedReason = NEED_CONTEXT_WAIVED;
+        }
         return { charged: true };
       } catch (error) {
         const mapped = mapStreamChargeFailure(error);
@@ -564,6 +661,7 @@ export async function handleAnalyzeStream(
     prechargedRecommendation,
     requiredReplyStyles: streamReplyStyles,
     noSendDecisions: deps.noSendDecisions === true,
+    offeredNoSendDecisions: noSendMenu,
     markDone: async (finalResult) => {
       const guarded = checkAiOutput(
         finalResult as GuardrailAnalysisResult,
@@ -576,20 +674,20 @@ export async function handleAnalyzeStream(
         requestMessages: deps.messages,
       });
       const latencyMs = Date.now() - streamStartTime;
+      const waivedFields = quotaWaivedReason ? { quotaWaivedReason } : {};
       const finalPayload = {
         ...calibratePhase0EvidenceLinkage(postProcessed),
-        usage: { ...streamUsage, model: streamModel },
+        usage: { ...streamUsage, model: streamModel, ...waivedFields },
         telemetry: {
           requestType: deps.requestType,
           responseMode: "stream",
           serverAiLatencyMs: latencyMs,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
           model: streamModel,
-          shouldChargeQuota: shouldCharge,
-          chargedMessageCount: shouldCharge
-            ? deps.quotaUsage.chargedMessageCount
-            : 0,
+          shouldChargeQuota: streamUsage.shouldChargeQuota,
+          chargedMessageCount: streamUsage.messagesUsed,
           estimatedMessageCount: deps.quotaUsage.estimatedMessageCount,
+          ...waivedFields,
         },
       };
 
@@ -673,12 +771,14 @@ export async function handleAnalyzeStream(
           analysisRunId: streamRun.id,
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-          providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          maxOutputTokens: streamMaxOutputTokens,
+          providerMaxAttempts: streamProviderMaxAttempts,
+          // 實際送出的上限（5.5 含思考餘裕），跟著 served model 走。
+          maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {
           streamRunStatus: "done",
-          chargedQuota: shouldCharge,
+          chargedQuota: streamUsage.shouldChargeQuota,
+          ...waivedFields,
           cacheCreationTokens: streamTokenUsage.cacheCreationTokens,
           cacheReadTokens: streamTokenUsage.cacheReadTokens,
         },
@@ -726,8 +826,10 @@ export async function handleAnalyzeStream(
           analysisRunId: streamRun.id,
           thinkingDisabled: streamThinkingDisabled,
           timeoutMs: STREAM_CLAUDE_TIMEOUT_MS,
-          providerMaxAttempts: STREAM_PROVIDER_MAX_ATTEMPTS,
-          maxOutputTokens: streamMaxOutputTokens,
+          providerMaxAttempts: streamProviderMaxAttempts,
+          // 有 served model 就跟著它；整條鏈都失敗時 streamModel 仍是主模型，
+          // 記的是主模型的上限，不是最後一跳的。
+          maxOutputTokens: maxTokensFor(streamModel, streamMaxOutputTokens),
         },
         responseBody: {
           streamRunStatus: "failed",

@@ -6,6 +6,7 @@ Deno.test("calculateCost locks Sonnet 5 standard $2/$10 MTok pricing", () => {
   assertEquals(calculateCost("claude-sonnet-5", 1000, 0), 0.002);
   assertEquals(calculateCost("claude-sonnet-5", 0, 1000), 0.010);
   assertEquals(calculateCost("claude-sonnet-5", 1000, 1000), 0.012);
+  assertEquals(calculateCost("claude-sonnet-5-5", 1000, 1000), 0.012);
 });
 
 Deno.test("calculateCost includes prompt cache writes and reads", () => {
