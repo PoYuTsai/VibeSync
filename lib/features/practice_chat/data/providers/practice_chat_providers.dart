@@ -1896,6 +1896,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       hintNoPasteableReason: null,
       hintCoaching: null,
       hintLimitReached: false,
+      // PR #88 G1：她還沒回之前先拿掉上一輪的「+N 這輪有升溫」，免得等待中
+      // 看起來像這一句已經加分。分數本身保留上一輪的值。
+      lastTemperatureDelta: null,
+      temperatureReason: null,
     );
     // Keep the whole provider -> local persistence pipeline single-owner even
     // after the AI reply makes isSending false so Hint can await its placeholder.
