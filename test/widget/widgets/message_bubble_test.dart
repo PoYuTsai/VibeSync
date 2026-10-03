@@ -84,41 +84,35 @@ void main() {
       expect(find.bySemanticsLabel(RegExp(r'^我說\n我的訊息')), findsOneWidget);
     });
 
-    testWidgets('引用小卡用截圖裡的名字當標題，不再寫「引用我剛剛說的」', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MessageBubble(
-              message: _message(
-                '好',
-                isFromMe: true,
-                quote: '阿哲：感覺11點多到的就好',
-                quoteIsFromMe: true,
+    testWidgets('引用小卡原樣顯示截圖原文，不拆名字也不寫「引用我剛剛說的」', (tester) async {
+      // 原文本身有冒號的情況（PR #86 審查 P2-2）也要原樣顯示。
+      for (final quote in [
+        '阿哲：感覺11點多到的就好',
+        '時間：明天下午',
+        '明天下午3：00見',
+        'PS: 記得帶傘',
+        '🙂 😮',
+      ]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                message: _message(
+                  '好',
+                  isFromMe: true,
+                  quote: quote,
+                  quoteIsFromMe: true,
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      expect(find.text('阿哲'), findsOneWidget);
-      expect(find.text('感覺11點多到的就好'), findsOneWidget);
-      expect(find.text('引用我剛剛說的'), findsNothing);
-      expect(find.textContaining('阿哲：'), findsNothing);
-    });
-
-    testWidgets('引用沒有名字時只顯示原文', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MessageBubble(
-              message: _message('隨便 social', isFromMe: false, quote: '🙂 😮'),
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text('🙂 😮'), findsOneWidget);
-      expect(find.text('引用對方剛剛說的'), findsNothing);
+        expect(find.text(quote), findsOneWidget, reason: quote);
+        expect(find.text('引用我剛剛說的'), findsNothing, reason: quote);
+        expect(find.text('引用對方剛剛說的'), findsNothing, reason: quote);
+      }
+      expect(find.text('阿哲'), findsNothing);
     });
 
     testWidgets('對方頭像只掛在每組第一則，我方不畫頭像', (tester) async {
@@ -150,34 +144,6 @@ void main() {
       final firstLeft = tester.getTopLeft(find.text('第一則')).dx;
       final secondLeft = tester.getTopLeft(find.text('連發第二則')).dx;
       expect(secondLeft, firstLeft, reason: '連發的泡泡要和第一顆對齊頭像欄');
-    });
-  });
-
-  group('QuotedReplyParts.parse', () {
-    test('拆出名字與原文', () {
-      final parts = QuotedReplyParts.parse('阿哲：感覺11點多到的就好');
-      expect(parts.name, '阿哲');
-      expect(parts.text, '感覺11點多到的就好');
-    });
-
-    test('半形冒號與英文名字也拆', () {
-      final parts = QuotedReplyParts.parse('Kai Lin: 好啊');
-      expect(parts.name, 'Kai Lin');
-      expect(parts.text, '好啊');
-    });
-
-    test('時間、網址、句子中的冒號不當成名字', () {
-      for (final raw in [
-        '12:30 見',
-        'https://example.com',
-        '好喔，那就：明天',
-        '：只有冒號',
-        '🙂 😮',
-      ]) {
-        final parts = QuotedReplyParts.parse(raw);
-        expect(parts.name, isNull, reason: raw);
-        expect(parts.text, raw, reason: raw);
-      }
     });
   });
 }

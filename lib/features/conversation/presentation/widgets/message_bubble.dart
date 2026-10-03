@@ -8,42 +8,16 @@ import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/message.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 
-/// 引用預覽拆成名字與原文。
-///
-/// 截圖辨識存的是「阿哲：感覺11點多到的就好」整串。名字拿來當引用小卡的
-/// 標題，取代舊的「引用我剛剛說的／引用對方剛剛說的」：那個標題靠
-/// `quotedReplyPreviewIsFromMe` 判斷，但它記的是引用卡在截圖哪一側
-/// （`blocktype_fold.ts`），引用第三人時會和名字自相矛盾。找不到名字
-/// （例如只有 emoji）就只顯示原文。
-@immutable
-class QuotedReplyParts {
-  const QuotedReplyParts({this.name, required this.text});
-
-  factory QuotedReplyParts.parse(String raw) {
-    final trimmed = raw.trim();
-    final match = _namePrefix.firstMatch(trimmed);
-    if (match == null) return QuotedReplyParts(text: trimmed);
-    return QuotedReplyParts(
-      name: match.group(1)!.trim(),
-      text: match.group(2)!.trim(),
-    );
-  }
-
-  /// 名字：開頭 1–20 字、不含換行與句讀。全形冒號一律算分隔；半形冒號
-  /// 後面接數字或斜線是時間或網址（12:30、https://），不拆。
-  static final _namePrefix = RegExp(
-    r'^([^\n：:，。！？、,.!?]{1,20})(?:：|:(?![\d/]))\s*(\S[\s\S]*)$',
-  );
-
-  final String? name;
-  final String text;
-}
-
 /// 分析片段裡的一則訊息（2026-10-02 A 案「LINE 熟悉感」）。
 ///
 /// 說話者只靠左右與底色分辨：她＝白泡泡靠左、我＝蜜桃泡泡靠右，不再在
 /// 每顆寫「她說／我說」（改由 Semantics 念給 VoiceOver）。同一人連發時只有
 /// 第一顆帶尾巴角與頭像，間距由片段卡控制。
+///
+/// 引用小卡只顯示截圖裡的原文。舊的「引用我剛剛說的／引用對方剛剛說的」
+/// 標題靠 `quotedReplyPreviewIsFromMe` 判斷，但它記的是引用卡在截圖哪一側
+/// （`blocktype_fold.ts`），群組裡回覆第三人時會說錯人，所以拿掉；引用
+/// 作者等辨識把 `quotedName` 送到 App 再顯示。
 class MessageBubble extends StatelessWidget {
   final Message message;
   final VoidCallback? onSwapSide;
@@ -114,7 +88,7 @@ class MessageBubble extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (quote != null && quote.isNotEmpty)
-              _QuoteCard(parts: QuotedReplyParts.parse(quote), isMe: isMe),
+              _QuoteCard(text: quote, isMe: isMe),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: hasQuote ? 6 : 0),
               child: Text(
@@ -293,12 +267,12 @@ class _PartnerAvatar extends StatelessWidget {
   }
 }
 
-/// 泡泡內的引用小卡：說話側色條＋名字＋最多兩行原文（Telegram／WhatsApp
-/// 的引用讀法）。
+/// 泡泡內的引用小卡：說話側色條＋最多兩行原文（Telegram／WhatsApp 的
+/// 引用讀法）。
 class _QuoteCard extends StatelessWidget {
-  const _QuoteCard({required this.parts, required this.isMe});
+  const _QuoteCard({required this.text, required this.isMe});
 
-  final QuotedReplyParts parts;
+  final String text;
   final bool isMe;
 
   // 微圓角 6＝外圓角 18 的 1/3（DESIGN.md §4 登記）；用 18 會變成 pill。
@@ -306,10 +280,9 @@ class _QuoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = parts.name;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color:
             isMe ? Colors.white.withValues(alpha: 0.55) : AppColors.glassWhite,
@@ -321,31 +294,13 @@ class _QuoteCard extends StatelessWidget {
           ),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (name != null)
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.bodySmall.copyWith(
-                color: isMe
-                    ? AppColors.transcriptQuoteNameMine
-                    : AppColors.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          Text(
-            parts.text,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.glassTextSecondary,
-            ),
-          ),
-        ],
+      child: Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.glassTextSecondary,
+        ),
       ),
     );
   }
