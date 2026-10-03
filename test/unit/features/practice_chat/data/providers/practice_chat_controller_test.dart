@@ -2610,6 +2610,35 @@ void main() {
       expect(c.currentState.temperatureReason, '低壓接住對話，讓互動穩定前進。');
     });
 
+    test('送出失敗還原時，上一輪的升溫標籤不會跳回來', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 4,
+              band: 'cold',
+              reason: '有接住她的情緒和前文，互動自然升溫。',
+              familiarityScore: 5,
+              familiarityDelta: 5,
+              stageLabel: '建立熟悉中',
+            ),
+          );
+      await c.sendMessage('第一句');
+      expect(c.currentState.lastTemperatureDelta, 4);
+
+      // PR #88 G1（Codex 主審第 1 輪 P2）：失敗處理用 priorState 還原，
+      // 舊的「+4」與原因不能跟著回來；分數維持上一輪的值。
+      api.sendHandler = (_, {profile}) async => throw Exception('network');
+      await c.sendMessage('第二句');
+      expect(c.currentState.isSending, isFalse);
+      expect(c.currentState.errorMessage, isNotNull);
+      expect(c.currentState.lastTemperatureDelta, isNull);
+      expect(c.currentState.temperatureReason, isNull);
+      expect(c.currentState.temperatureScore, 32);
+    });
+
     test('SR game mode sends and persists beginner-like learning state',
         () async {
       api.drawHandler = ({currentProfileId}) async =>

@@ -1815,7 +1815,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     }
     if (!state.canSend || _activeSendPipelineToken != null) return;
 
-    final priorState = state;
+    // PR #88 G1（Codex 主審第 1 輪 P2）：送出失敗時 8 個錯誤處理都用 priorState
+    // 還原；先在這裡拿掉上一輪的「+N」與原因，失敗後才不會又跳回舊的升溫標示。
+    final priorState = state.copyWith(
+      lastTemperatureDelta: null,
+      temperatureReason: null,
+    );
     final priorMessages = priorState.messages;
     final generationBeforeSend = _hintGeneration;
     final appliedHintTurnsBeforeSend =
