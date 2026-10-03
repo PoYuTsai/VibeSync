@@ -190,8 +190,88 @@ void main() {
       final secondLeft = tester.getTopLeft(find.text('連發第二則')).dx;
       expect(secondLeft, firstLeft, reason: '連發的泡泡要和第一顆對齊頭像欄');
     });
+
+    testWidgets('尾巴角只在每組第一顆，貼向說話者那側', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                MessageBubble(message: _message('她組首', isFromMe: false)),
+                MessageBubble(
+                  message: _message('她連發', isFromMe: false),
+                  isGroupStart: false,
+                ),
+                MessageBubble(message: _message('我組首', isFromMe: true)),
+                MessageBubble(
+                  message: _message('我連發', isFromMe: true),
+                  isGroupStart: false,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      BorderRadiusGeometry? radiusOf(String text) {
+        final bubble = tester.widget<Container>(_bubbleOf(text));
+        return (bubble.decoration! as BoxDecoration).borderRadius;
+      }
+
+      const round = Radius.circular(18);
+      const tail = Radius.circular(5);
+      expect(
+        radiusOf('她組首'),
+        const BorderRadius.only(
+          topLeft: tail,
+          topRight: round,
+          bottomLeft: round,
+          bottomRight: round,
+        ),
+      );
+      expect(
+        radiusOf('我組首'),
+        const BorderRadius.only(
+          topLeft: round,
+          topRight: tail,
+          bottomLeft: round,
+          bottomRight: round,
+        ),
+      );
+      expect(radiusOf('她連發'), const BorderRadius.all(round));
+      expect(radiusOf('我連發'), const BorderRadius.all(round));
+    });
+
+    testWidgets('泡泡最寬為螢幕 70%，短句不會被撐寬', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const longText = '那我先問小美要不要一起，晚點再跟妳說時間，順便問她幾點到';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                MessageBubble(message: _message(longText, isFromMe: true)),
+                MessageBubble(message: _message('好', isFromMe: true)),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final longWidth = tester.getSize(_bubbleOf(longText)).width;
+      expect(longWidth, lessThanOrEqualTo(390 * 0.7 + 0.5));
+      expect(longWidth, greaterThan(390 * 0.6), reason: '長句應該頂到上限換行');
+      expect(tester.getSize(_bubbleOf('好')).width, lessThan(80));
+    });
   });
 }
+
+/// 泡泡本體：內文往上最近的 Container（引用小卡不是內文的祖先）。
+Finder _bubbleOf(String text) =>
+    find.ancestor(of: find.text(text), matching: find.byType(Container)).first;
 
 Message _message(
   String content, {

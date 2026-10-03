@@ -45,6 +45,10 @@ class AppColors {
   /// 放白底只有 ~2.5:1，這顆在 glassWhite 上約 7:1。
   static const errorOnGlass = Color(0xFFC62828);
   static const warning = Color(0xFFFFB74D);
+
+  /// 淺色板（glassWhite、分析片段對話板）上的警示琥珀：warning 是深底用的
+  /// 亮橘黃，放淡紫板只有 1.46:1，這顆在對話板上 5.34:1（DESIGN.md §8）。
+  static const warningOnGlass = Color(0xFF8A5300);
   static const info = Color(0xFF64B5F6);
 
   // Warm theme backgrounds

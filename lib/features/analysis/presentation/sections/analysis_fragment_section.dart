@@ -167,7 +167,9 @@ class AnalysisFragmentCard extends StatelessWidget {
                 'analysis-record-repair-warning',
               ),
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.warning,
+                color: isEmptyFragmentSetup
+                    ? AppColors.warning
+                    : AppColors.warningOnGlass,
                 fontWeight: FontWeight.w700,
               ),
             ),
