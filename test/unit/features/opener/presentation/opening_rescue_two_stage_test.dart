@@ -59,6 +59,7 @@ class _FakeOpenerService extends OpenerService {
 
   int analyzeCalls = 0;
   String? lastAnalysisRequestId;
+  String? lastInitialUserNote;
   int generateCalls = 0;
   int legacyCalls = 0;
   Object? analyzeError;
@@ -83,6 +84,7 @@ class _FakeOpenerService extends OpenerService {
   }) async {
     analyzeCalls += 1;
     lastAnalysisRequestId = analysisRequestId;
+    lastInitialUserNote = initialUserNote;
     if (analyzeError != null) throw analyzeError!;
     await analyzeGate?.future;
     return OpenerAnalysis.tryParse({
@@ -561,6 +563,42 @@ void main() {
     await _settleBounded(tester);
     expect(find.byKey(const ValueKey('opener-question-text')), findsNothing);
     expect(find.byKey(const ValueKey('opener-analyze-button')), findsOneWidget);
+  });
+
+  Future<void> failAnalysisWithNote(WidgetTester tester) async {
+    service.analyzeError = Exception('network');
+    await _pumpManual(tester);
+    await tester.enterText(
+        find.byKey(const ValueKey('opener-initial-note')), '想從狗開');
+    await _analyze(tester, until: find.text('重新分析'));
+    expect(service.lastInitialUserNote, '想從狗開');
+    service.analyzeError = null;
+  }
+
+  testWidgets('分析失敗後改補充再按「重新分析」→送出改過的補充', (tester) async {
+    await failAnalysisWithNote(tester);
+    final failedRequestId = service.lastAnalysisRequestId;
+    await tester.enterText(
+        find.byKey(const ValueKey('opener-initial-note')), '想聊河堤散步');
+    await tester.pump();
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-analyze-button')),
+        until: find.byKey(const ValueKey('opener-approach-summary')));
+    expect(service.analyzeCalls, 2);
+    expect(service.lastInitialUserNote, '想聊河堤散步', reason: '不再重送舊補充');
+    expect(service.lastAnalysisRequestId, isNot(failedRequestId),
+        reason: '補充變了是新的一次分析');
+  });
+
+  testWidgets('分析失敗後補充沒改再按「重新分析」→沿用同一個 analysisRequestId', (tester) async {
+    await failAnalysisWithNote(tester);
+    final failedRequestId = service.lastAnalysisRequestId;
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-analyze-button')),
+        until: find.byKey(const ValueKey('opener-approach-summary')));
+    expect(service.analyzeCalls, 2);
+    expect(service.lastInitialUserNote, '想從狗開');
+    expect(service.lastAnalysisRequestId, failedRequestId);
   });
 
   testWidgets('舊 Edge 不支援→退回舊單段 CTA，輸入保留', (tester) async {
