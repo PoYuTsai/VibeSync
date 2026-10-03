@@ -727,7 +727,11 @@ class OpenerService {
             code == 'INVALID_RESPONSE_MODE';
         throw OpenerFlowException(
           code: unsupported ? OpenerFlowErrorCode.flowUnsupported : code,
-          message: message ?? _nonQuotaErrorMessage(status, const {}),
+          // 5xx 時生成可能已結算、只是回應沒送達，不能說「不會扣額度」。
+          message: message ??
+              (status >= 500
+                  ? '服務暫時無法確認狀態，請稍後用同一筆請求重試。'
+                  : _nonQuotaErrorMessage(status, const {})),
           status: status,
           retryable: errorData['retryable'] == true,
           retryAfterMs: (errorData['retryAfterMs'] as num?)?.round(),

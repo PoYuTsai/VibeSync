@@ -119,13 +119,21 @@ void main() {
     }
   });
 
-  test('平台英文錯誤（546 WORKER_LIMIT）改通用中文；中文伺服器訊息原樣保留', () async {
+  test('平台英文錯誤（546 WORKER_LIMIT）改通用中文且不宣稱不扣額度；中文伺服器訊息原樣保留', () async {
     final platform = _json(546, {'code': 'WORKER_LIMIT', 'message': 'Function failed due to not having enough compute resources'});
+    const uncertain = '服務暫時無法確認狀態，請稍後用同一筆請求重試。';
     await expectLater(
       () => _service(platform).analyzeProfileStreaming(bio: 'x', analysisRequestId: 'r'),
       throwsA(isA<OpenerFlowException>()
           .having((e) => e.code, 'code', 'WORKER_LIMIT')
-          .having((e) => e.message, 'message', 'AI 暫時生成失敗，請稍後再試；本次不會扣額度。')),
+          .having((e) => e.message, 'message', uncertain)),
+    );
+    // 生成階段可能已結算才被平台中止：不得說「不會扣額度」。
+    await expectLater(
+      () => _service(platform).generateFromAnalysisStreaming(sessionId: 's', analysisRevision: 1, generationId: 'g', contribution: _contribution),
+      throwsA(isA<OpenerFlowException>()
+          .having((e) => e.message, 'message', uncertain)
+          .having((e) => e.message.contains('不會扣額度'), 'claims no charge', isFalse)),
     );
     final chinese = _ndjson([
       {'type': 'opener_generate.error', 'status': 409, 'code': OpenerFlowErrorCode.inputMismatch, 'message': '補充內容和分析對不上', 'retryable': false},
