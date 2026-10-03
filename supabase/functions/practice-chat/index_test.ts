@@ -1281,12 +1281,58 @@ Deno.test("beginner first chat：challenge 難度起始溫度 20＋負 delta 放
   assertEquals(json.temperature.delta, -12);
   // fake RPC 已鏡射 Postgres 的 GREATEST(0, ...) 下限（2026-08-08）。
   assertEquals(json.temperature.familiarityScore, 0); // clamp(0 + (-6))
-  assertEquals(json.temperature.familiarityDelta, -6);
+  // PR #88 G2：回傳的是實際變化量（0 → 0）；送進 RPC 的仍是計算值 -6。
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(learningUpdateCalls(state)[0]?.params.p_familiarity_delta, -6);
   assert(state.deepSeekCalls[0].messages[0].content.includes("20/100"));
   assertEquals(
     learningUpdateCalls(state)[0]?.params.p_expected_temperature_score,
     20,
   );
+});
+
+// PR #88 G2：分數被夾在 0／100 時，回給 App 的 delta 是實際變化量——畫面不會
+// 在 100 分還顯示「+4」。送進 RPC 的仍是計算值，夾制由 DB 做。
+Deno.test("learning response reports the actual change when scores clamp at the bounds", async () => {
+  const cases = [
+    { heat: 98, familiarity: 97, score: 100, delta: 2, familiarityDelta: 3 },
+    { heat: 100, familiarity: 100, score: 100, delta: 0, familiarityDelta: 0 },
+  ];
+  for (const c of cases) {
+    const label = `${c.heat}/${c.familiarity}`;
+    const { response, json, state } = await run(
+      {
+        ledger: ledger({
+          practice_mode: "beginner",
+          temperature_score: c.heat,
+          familiarity_score: c.familiarity,
+        }),
+        deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        temperatureScore: c.heat,
+        familiarityScore: c.familiarity,
+        turns: [{ role: "user", text: "今天工作很多嗎" }],
+      }),
+    );
+
+    assertEquals(response.status, 200, label);
+    assertEquals(json.temperature.score, c.score, label);
+    assertEquals(json.temperature.delta, c.delta, label);
+    assertEquals(json.temperature.familiarityScore, 100, label);
+    assertEquals(json.temperature.familiarityDelta, c.familiarityDelta, label);
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      4,
+      label,
+    );
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_familiarity_delta,
+      5,
+      label,
+    );
+  }
 });
 
 Deno.test("beginner later chat uses ledger learning state over client sent scores", async () => {

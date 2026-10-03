@@ -1133,19 +1133,34 @@ function defaultPartnerState(): PartnerState {
   return { mood: "neutral", innerThought: "" };
 }
 
+/**
+ * DB 回的分數是權威值。PR #88 G2：回給 App 的 delta 也改成實際變化量（DB 新
+ * 分數減掉這次 CAS 比對用的舊分數）——分數被夾在 0／100（或 DB 每輪上限）時，
+ * 畫面不會在 100 分還顯示「+4」。DB 沒回分數時沿用計算值。
+ */
 function withAuthoritativeLearningScores(
   judgement: LearningJudgement,
   result: LearningStateUpdateResult,
+  expectedTemperature: number,
+  expectedFamiliarity: number,
 ): LearningJudgement {
   const score = result.temperatureScore ?? judgement.score;
   const familiarityScore = result.familiarityScore ??
     judgement.familiarityScore;
+  const delta = result.temperatureScore === null
+    ? judgement.delta
+    : result.temperatureScore - expectedTemperature;
+  const familiarityDelta = result.familiarityScore === null
+    ? judgement.familiarityDelta
+    : result.familiarityScore - expectedFamiliarity;
   const stage = relationshipStageFor(familiarityScore, score);
   return {
     ...judgement,
     score,
+    delta,
     band: temperatureBandFor(score),
     familiarityScore,
+    familiarityDelta,
     stage: stage.stage,
     stageLabel: stage.label,
     partnerState: partnerStateFromUpdateResult(result) ??
@@ -1826,9 +1841,16 @@ async function judgeLearningState(opts: {
       return withAuthoritativeLearningScores(
         protectedRetryJudgement,
         secondUpdate,
+        firstUpdate.temperatureScore,
+        firstUpdate.familiarityScore,
       );
     }
-    return withAuthoritativeLearningScores(protectedJudgement, firstUpdate);
+    return withAuthoritativeLearningScores(
+      protectedJudgement,
+      firstUpdate,
+      opts.currentTemperature,
+      opts.currentFamiliarity,
+    );
   } catch (e) {
     if (isMissingDualAxisLearningSchema(getErrorMessage(e))) {
       throw e;
@@ -1847,7 +1869,12 @@ async function judgeLearningState(opts: {
         judgement: fallback,
       });
       if (fallbackUpdate.updated) {
-        return withAuthoritativeLearningScores(fallback, fallbackUpdate);
+        return withAuthoritativeLearningScores(
+          fallback,
+          fallbackUpdate,
+          opts.currentTemperature,
+          opts.currentFamiliarity,
+        );
       }
       if (
         fallbackUpdate.temperatureScore !== null &&
@@ -1868,7 +1895,12 @@ async function judgeLearningState(opts: {
           judgement: retryFallback,
         });
         if (retryUpdate.updated) {
-          return withAuthoritativeLearningScores(retryFallback, retryUpdate);
+          return withAuthoritativeLearningScores(
+            retryFallback,
+            retryUpdate,
+            fallbackUpdate.temperatureScore,
+            fallbackUpdate.familiarityScore,
+          );
         }
       }
     } catch (updateError) {
