@@ -738,8 +738,15 @@ Deno.test("applyGameLearningDelta does not reward caught replies while BORING is
   assertEquals(game.familiarityDelta, 0);
 });
 
-Deno.test("applyGameLearningDelta lets a protected hint recover a BORING round", () => {
-  const classification = {
+// PR #88 B1（Eric 2026-10-03）：受保護的提示只解除停滯閘門（BORING 等），
+// 仍要真的接住（caught／passed）才加分；普通句一樣不加分。
+Deno.test("applyGameLearningDelta lets a protected hint lift BORING only with positive evidence", () => {
+  const turns = [
+    { role: "user" as const, text: "你幾歲？住哪？做什麼？" },
+    { role: "ai" as const, text: "你查戶口喔 XD" },
+    { role: "user" as const, text: "那你下班都去哪？今天在哪？" },
+  ];
+  const neutral = {
     connection: "neutral" as const,
     impact: "minor" as const,
     testHandling: "none" as const,
@@ -749,38 +756,49 @@ Deno.test("applyGameLearningDelta lets a protected hint recover a BORING round",
     moodConfidence: 0.8,
     innerThought: "照著提示換一個互動方向。",
   };
-  const base = applyLearningClassification({
-    heatScore: 30,
-    familiarityScore: 12,
-  }, classification);
-  const protectedHint = {
-    ...base,
-    delta: 2,
-    familiarityDelta: 1,
+  const caught = {
+    ...neutral,
+    connection: "caught" as const,
+    impact: "medium" as const,
   };
-  const snapshot = evaluateGameFsm({
-    turns: [
-      { role: "user", text: "你幾歲？住哪？做什麼？" },
-      { role: "ai", text: "你查戶口喔 XD" },
-      { role: "user", text: "那你下班都去哪？今天在哪？" },
-    ],
-    temperatureScore: 30,
-    familiarityScore: 12,
-    partnerMood: "neutral",
-    classification,
-  });
+  const scoreWith = (
+    classification: typeof neutral | typeof caught,
+    protectedAppliedHint?: boolean,
+  ) => {
+    const snapshot = evaluateGameFsm({
+      turns,
+      temperatureScore: 30,
+      familiarityScore: 12,
+      partnerMood: "neutral",
+      classification,
+    });
+    assert(snapshot.failureStates.includes("BORING"));
+    return applyGameLearningDelta({
+      judgement: applyLearningClassification({
+        heatScore: 30,
+        familiarityScore: 12,
+      }, classification),
+      currentTemperature: 30,
+      currentFamiliarity: 12,
+      snapshot,
+      protectedAppliedHint,
+    });
+  };
 
-  const game = applyGameLearningDelta({
-    judgement: protectedHint,
-    currentTemperature: 30,
-    currentFamiliarity: 12,
-    snapshot,
-    protectedAppliedHint: true,
-  });
+  // 普通句＋提示：沒有正向證據，不加分（提示只保證不扣分）。
+  const neutralWithHint = scoreWith(neutral, true);
+  assertEquals(neutralWithHint.delta, 0);
+  assertEquals(neutralWithHint.familiarityDelta, 0);
 
-  assert(snapshot.failureStates.includes("BORING"));
-  assertEquals(game.delta, 4);
-  assertEquals(game.familiarityDelta, 2);
+  // 接住＋提示：提示解除 BORING，照常放大（4×1.75、5×1.6）。
+  const caughtWithHint = scoreWith(caught, true);
+  assertEquals(caughtWithHint.delta, 7);
+  assertEquals(caughtWithHint.familiarityDelta, 8);
+
+  // 接住、沒用提示：BORING 照舊擋下正分。
+  const caughtWithoutHint = scoreWith(caught);
+  assertEquals(caughtWithoutHint.delta, 0);
+  assertEquals(caughtWithoutHint.familiarityDelta, 0);
 });
 
 Deno.test("applyGameLearningDelta does not reward caught replies while TOOL_GUY is active", () => {

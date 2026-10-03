@@ -1549,6 +1549,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     return partner?.name ?? '';
   }
 
+  /// 片段卡對方頭像用的名字。對象改名不會回寫 `conversation.name`，所以先取
+  /// 對象名字，沒有對象才退回對話名稱；「新對話」這類預設名稱由片段卡略過。
+  String _fragmentPartnerName(Conversation conversation) {
+    final partnerId = conversation.partnerId?.trim();
+    if (partnerId == null || partnerId.isEmpty) return conversation.name;
+    try {
+      final name = _partnerDisplayName(partnerId).trim();
+      return name.isEmpty ? conversation.name : name;
+    } catch (error) {
+      // 頭像只是視覺錨點，對象資料暫時讀不到時退回對話名稱，不擋畫面。
+      debugPrint('Partner name unavailable for fragment avatar: $error');
+      return conversation.name;
+    }
+  }
+
   /// 冷啟動還原：委派 coordinator，成功時套用畫面本地鏡像。
   void _restorePersistedAnalysis({bool repairRecord = true}) {
     final outcome = _persistence.restore(repairRecord: repairRecord);
@@ -3941,6 +3956,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                     !_isAnalyzing &&
                                     _persistence.inFlightCount == 0,
                             actions: this,
+                            partnerName: _fragmentPartnerName(conversation),
                           ),
 
                           const SizedBox(height: 24),
