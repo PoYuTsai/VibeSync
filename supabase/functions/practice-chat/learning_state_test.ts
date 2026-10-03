@@ -47,8 +47,8 @@ Deno.test("applyLearningClassification rewards catching her latest emotion in th
   assert(result.reason.includes("接住"));
 });
 
-// 挑戰獎勵閘門（PR 2，修 D2）：非 challenge 呼叫端不套閘門，低壓 neutral
-// 照舊 +1；challenge 呼叫端套閘門後無正向證據夾到 0。
+// 新手獎勵閘門（PR 2 修 D2；PR #88 擴大）：閘門不適用的呼叫端（Game、熱度
+// ≤40 的 easy）低壓 neutral 照舊 +1；套閘門後無正向證據夾到 0。
 Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate zeroes them", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
   const applyChallengeRewardGate = requireFn("applyChallengeRewardGate");
@@ -82,6 +82,39 @@ Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate z
   assertEquals(gated.delta, 0);
   assertEquals(gated.familiarityScore, 10);
   assertEquals(gated.familiarityDelta, 0);
+});
+
+// PR #88 A（Eric 2026-10-03 決定 1）：閘門適用範圍。easy 看這一輪開始前的熱度，
+// ≤40（frozen／cold 檔）不套；Game 與 standard 永遠不套（Game 有自己的閘門）。
+Deno.test("beginnerRewardGateActive covers challenge, normal and easy above heat 40 only", () => {
+  const beginnerRewardGateActive = requireFn("beginnerRewardGateActive");
+  const cases: Array<
+    [string | undefined, string | undefined, number, boolean]
+  > = [
+    ["beginner", "challenge", 0, true],
+    ["beginner", "challenge", 100, true],
+    ["beginner", "normal", 0, true],
+    ["beginner", "normal", 100, true],
+    ["beginner", "easy", 0, false],
+    ["beginner", "easy", 40, false],
+    ["beginner", "easy", 40.4, false],
+    ["beginner", "easy", 41, true],
+    ["beginner", "easy", 100, true],
+    // 不認得的難度比照 normal（difficultyTuningFor 的預設）。
+    ["beginner", undefined, 10, true],
+    ["game", "easy", 60, false],
+    ["game", "normal", 60, false],
+    ["game", "challenge", 60, false],
+    ["standard", "normal", 60, false],
+    [undefined, "normal", 60, false],
+  ];
+  for (const [practiceMode, difficulty, currentHeat, expected] of cases) {
+    assertEquals(
+      beginnerRewardGateActive({ practiceMode, difficulty, currentHeat }),
+      expected,
+      `${practiceMode}/${difficulty}@${currentHeat}`,
+    );
+  }
 });
 
 Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-protected positives", () => {

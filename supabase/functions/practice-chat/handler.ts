@@ -196,6 +196,7 @@ import {
   applyCoherenceDeltaCap,
   applyLearningClassification,
   applyPartnerStateUpdate,
+  beginnerRewardGateActive,
   buildStandardAgencyClassifierMessages,
   buildTurnClassifierMessages,
   clampTemperature,
@@ -1488,7 +1489,8 @@ async function judgeLearningState(opts: {
   memorySummary?: string | null;
   herRecentMoments?: readonly MomentMemoryPost[];
 }): Promise<LearningJudgement> {
-  // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
+  // 難度接線（槓桿 A）：正負 delta 倍率在新手與 Game 都會套（Game 之後再乘
+  // applyGameLearningDelta 自己的放大倍率），作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
   // 粗俗性冒犯＝確定性扣滿，不吃難度倍率（Easy 0.75 會把 -12 軟化成 -9，
   // 這類句子沒有「簡單難度就輕罰」的空間）。分類器成功/失敗兩條路都要蓋。
@@ -1497,11 +1499,17 @@ async function judgeLearningState(opts: {
   );
   const offenseCooldown = !crudeOffense &&
     inCrudeOffenseCooldown(opts.request.turns);
-  // 挑戰獎勵閘門（PR 2，修 D2）只接 challenge × beginner：Game 有自己的
-  // 閘門（applyGameLearningDelta 的 canEarnPositive），standard 無分數，
-  // easy／normal 完全不經過閘門、行為與改前一致。
-  const challengeGateActive = opts.request.practiceMode === "beginner" &&
-    opts.request.profile.difficulty === "challenge";
+  // 新手獎勵閘門（PR 2 修 D2；PR #88 擴到 normal，easy 只在熱度 > 40 時套）：
+  // Game 有自己的閘門（applyGameLearningDelta 的 canEarnPositive），standard
+  // 無分數。easy 的門檻看「這一輪開始前」的熱度，所以每個 snapshot（含 CAS
+  // 重試讀回的分數）各判一次。telemetry 的 challengeGateActive 刻意維持
+  // 「新手×挑戰」的原定義（golden 逐位元組比對），不跟著改。
+  const rewardGateActiveFor = (currentTemperature: number): boolean =>
+    beginnerRewardGateActive({
+      practiceMode: opts.request.practiceMode,
+      difficulty: opts.request.profile.difficulty,
+      currentHeat: currentTemperature,
+    });
   // conversation-agency-v1 Phase 2：只有 `on` 才動分類器 prompt／schema／
   // delta。`shadow`（跟 prompt.ts 的 agencyPrompt 同規則）與 `off` 一樣
   // 逐字沿用舊行為——shadow 只能改 telemetry，不能改分類器實際送出的 prompt
@@ -1611,7 +1619,7 @@ async function judgeLearningState(opts: {
           coldReturn: opts.agencyColdReturn,
         })
         : { judgement: protectedFallback, capApplied: "none" as const };
-    const gatedFallback = challengeGateActive
+    const gatedFallback = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
         judgement: cappedFallback,
         currentHeat: currentTemperature,
@@ -1698,7 +1706,7 @@ async function judgeLearningState(opts: {
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
     // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。
-    const gatedJudgement = challengeGateActive
+    const gatedJudgement = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
         judgement: cappedJudgement,
         currentHeat: currentTemperature,

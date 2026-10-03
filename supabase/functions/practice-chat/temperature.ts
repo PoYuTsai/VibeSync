@@ -523,12 +523,36 @@ export function withNonPositiveLearningDeltas(
 }
 
 /**
- * 挑戰難度獎勵閘門（修 D2）：challenge 下沒有正向證據的回合不得被動加分
- * ——neutral 淨 +1 吃 ×0.7 後被 roundNonZero 補回 +1，玩家躺著也升溫。
+ * 新手獎勵閘門的適用範圍（PR #88，Eric 2026-10-03 拍板）。原本只有挑戰難度
+ * （PR #51），現在擴到 normal；easy 只在這一輪開始前的熱度 > 40 時才套——
+ * ≤40（frozen／cold 檔）照舊讓低壓普通句 +1，保留規格「低溫可以靠穩住慢慢
+ * 修回來」。Game 有自己的閘門（`applyGameLearningDelta`），standard 沒有分數，
+ * 兩者都不適用。不認得的難度比照 normal（`difficultyTuningFor` 的預設）。
+ * handler 的成功、分類器失敗與 CAS 重試路徑，以及 bakeoff，都用這一支判斷；
+ * 重試時要用重新讀到的熱度再判一次。
+ */
+export const EASY_NEUTRAL_REPAIR_MAX_HEAT = 40;
+
+export function beginnerRewardGateActive(opts: {
+  practiceMode: string | undefined;
+  difficulty: string | undefined;
+  currentHeat: number;
+}): boolean {
+  if (opts.practiceMode !== "beginner") return false;
+  if (opts.difficulty === "easy") {
+    return clampTemperature(opts.currentHeat) > EASY_NEUTRAL_REPAIR_MAX_HEAT;
+  }
+  return true;
+}
+
+/**
+ * 新手獎勵閘門（修 D2，PR #88 擴大適用範圍）：沒有正向證據的回合不得被動
+ * 加分——neutral 淨 +1 經 roundNonZero 取整後仍是 +1，玩家躺著也升溫。
  * 正向證據＝connection caught 或 testHandling passed；受保護的 exact／
  * small-edit Hint 豁免（鏡像 game_fsm.ts canEarnPositive 的寫法，豁免放在
- * 閘門內、不靠套用順序）。負向照常放行。難度／模式適用性由呼叫端決定，
- * 閘門本身只執行證據規則，bakeoff 與 handler 共用同一份。
+ * 閘門內、不靠套用順序）。負向照常放行。適用範圍由
+ * `beginnerRewardGateActive` 決定，閘門本身只執行證據規則，bakeoff 與
+ * handler 共用同一份。
  */
 export function applyChallengeRewardGate(opts: {
   judgement: LearningJudgement;

@@ -35,6 +35,7 @@ import {
   applyChallengeRewardGate,
   applyLearningClassification,
   applyPartnerStateUpdate,
+  beginnerRewardGateActive,
   buildTurnClassifierMessages,
   parseTurnClassification,
   type PartnerState,
@@ -77,7 +78,7 @@ import {
 import { isScriptId, SCRIPT_IDS, type ScriptId, SCRIPTS } from "./scripts.ts";
 
 // 三種練習模式都可量測（PR 3 round 2 審查要求）：
-// - beginner＝原本的溫度管線（分類→難度倍率→挑戰閘門→回灌 prompt）
+// - beginner＝原本的溫度管線（分類→難度倍率→新手獎勵閘門→回灌 prompt）
 // - game＝全套 FSM：分數走 applyGameLearningDelta，gameState 逐輪
 //   buildNextGameState 演進並回灌 prompt（對齊 handler.ts:4331-4352）
 // - standard＝production 不跑分類器、不帶 practiceMode key、無分數；本工具
@@ -315,8 +316,9 @@ export interface TurnRecord {
   familiarityDelta: number | null;
   partnerMood: string;
   promptChars: number;
-  // 挑戰獎勵閘門（PR 2）：challenge 難度填該輪是否真被夾到 0；其他難度
-  // 不經過閘門，維持 null。
+  // 新手獎勵閘門（PR 2；PR #88 擴到 normal 與熱度 > 40 的 easy）：閘門適用的
+  // 輪次填是否真被夾到 0；不適用的輪次（Game、standard、熱度 ≤40 的 easy）
+  // 維持 null。欄位名沿用舊名，讓新舊 raw.json 可以直接對照。
   challengeGateApplied: boolean | null;
 }
 
@@ -459,9 +461,14 @@ export async function runOneSession(args: {
       classification,
       tuning,
     );
-    // 挑戰獎勵閘門（PR 2）：只接 challenge × beginner（Game 有自己的閘門，
-    // 對齊 handler.ts 的 challengeGateActive）。
-    const gated = practiceMode === "beginner" && args.difficulty === "challenge"
+    // 新手獎勵閘門：適用範圍與 handler.ts 同一支 beginnerRewardGateActive
+    // （easy 看這一輪開始前的熱度；Game 有自己的閘門）。
+    const rewardGateActive = beginnerRewardGateActive({
+      practiceMode,
+      difficulty: args.difficulty,
+      currentHeat: temperature,
+    });
+    const gated = rewardGateActive
       ? applyChallengeRewardGate({
         judgement: rawJudgement,
         currentHeat: temperature,
@@ -522,11 +529,10 @@ export async function runOneSession(args: {
       promptChars,
       // 用 delta 值比對而非物件 identity：純函式未來若改回傳等值 clone，
       // identity 比對會誤報 true（Codex 審 P2）。
-      challengeGateApplied:
-        practiceMode === "beginner" && args.difficulty === "challenge"
-          ? gated.delta !== rawJudgement.delta ||
-            gated.familiarityDelta !== rawJudgement.familiarityDelta
-          : null,
+      challengeGateApplied: rewardGateActive
+        ? gated.delta !== rawJudgement.delta ||
+          gated.familiarityDelta !== rawJudgement.familiarityDelta
+        : null,
     });
 
     if (assistedMode) {

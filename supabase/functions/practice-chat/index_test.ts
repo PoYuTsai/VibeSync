@@ -2325,7 +2325,9 @@ Deno.test("edited applied hint that diverges is scored like a normal reply", asy
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
 });
 
-Deno.test("normal low-impact beginner chat now gets small visible progress", async () => {
+// PR #88 A（Eric 2026-10-03 決定 1）：normal 的普通句（沒有 caught／passed）
+// 改持平，不再每輪 +1「這輪有升溫」。
+Deno.test("normal beginner neutral reply now stays flat without positive evidence", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -2346,16 +2348,17 @@ Deno.test("normal low-impact beginner chat now gets small visible progress", asy
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-// ── 挑戰獎勵閘門（PR 2，修 D2）：challenge × beginner 下沒有正向證據
-// （caught／passed）的回合不得被動加分；負向照常 ×1.3；easy／normal／Game
-// 行為與改前一致。
+// ── 新手獎勵閘門（PR 2 修 D2；PR #88 擴大）：沒有正向證據（caught／passed）
+// 的回合不得被動加分；負向照常放行。challenge、normal 一律套；easy 只在這一輪
+// 開始前熱度 > 40 時套；Game 走自己的閘門。
 Deno.test("challenge beginner neutral reply earns zero instead of a passive +1", async () => {
   const { response, json, state } = await run(
     {
@@ -2497,6 +2500,135 @@ Deno.test("easy beginner neutral reply on the same fixture still earns +1", asyn
   assertEquals(json.temperature.familiarityDelta, 1);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+});
+
+// PR #88 A（Eric 2026-10-03 決定 1）：普通句持平的適用範圍表。easy 以這一輪
+// 開始前的熱度為準：≤40（偏冷）照舊 +1，41 以上持平；有正向證據的回合照常加分。
+Deno.test("beginner reward gate table: easy keeps +1 only at heat ≤40, normal and challenge stay flat", async () => {
+  const cases = [
+    {
+      difficulty: "easy",
+      heat: 40,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 1,
+      familiarityDelta: 1,
+    },
+    {
+      difficulty: "easy",
+      heat: 41,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    {
+      difficulty: "normal",
+      heat: 20,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    {
+      difficulty: "challenge",
+      heat: 30,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    // 正向證據不受閘門影響：easy 熱度 > 40 與 normal 的 caught 照常加分。
+    {
+      difficulty: "easy",
+      heat: 60,
+      classifier: CLASSIFIER_CAUGHT_MEDIUM,
+      delta: 5,
+      familiarityDelta: 6,
+    },
+    {
+      difficulty: "normal",
+      heat: 60,
+      classifier: CLASSIFIER_CAUGHT_MEDIUM,
+      delta: 4,
+      familiarityDelta: 5,
+    },
+  ];
+  for (const c of cases) {
+    const label = `${c.difficulty}@${c.heat}`;
+    const { response, json, state } = await run(
+      {
+        ledger: ledger({
+          practice_mode: "beginner",
+          temperature_score: c.heat,
+          familiarity_score: 10,
+        }),
+        deepSeekReplies: ["AI reply", c.classifier],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        difficulty: c.difficulty,
+        temperatureScore: c.heat,
+        familiarityScore: 10,
+        turns: [{ role: "user", text: "今天工作很多嗎" }],
+      }),
+    );
+
+    assertEquals(response.status, 200, label);
+    assertEquals(json.temperature.delta, c.delta, label);
+    assertEquals(json.temperature.familiarityDelta, c.familiarityDelta, label);
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      c.delta,
+      label,
+    );
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_familiarity_delta,
+      c.familiarityDelta,
+      label,
+    );
+  }
+});
+
+Deno.test("easy reward gate re-checks the heat threshold on the CAS retry snapshot", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 38,
+        familiarity_score: 10,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 45,
+              familiarity_score: 10,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "easy",
+      temperatureScore: 38,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  // 第一發以 38 判（≤40）：照舊 +1。
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  // 重試以讀回的 45 再判（> 40）：持平。
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    45,
+  );
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
+  assertEquals(json.temperature.score, 45);
+  assertEquals(json.temperature.delta, 0);
 });
 
 // 順序鎖定（Codex 審 P1）：閘門豁免（caught＋protected Hint）不得擋下
@@ -2970,12 +3102,14 @@ Deno.test("stale retry does not reuse low-stage overstep override after flirt-re
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 61);
-  assertEquals(json.temperature.delta, 1);
+  // 重試不沿用低階段的越界覆寫（那會是 -12）；改以重新讀到的 60/60 正常評分。
+  // PR #88 A 之後 normal 的 neutral 沒有正向證據＝持平（原本是 +1）。
+  assertEquals(json.temperature.score, 60);
+  assertEquals(json.temperature.delta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
-  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
 });
 
 Deno.test("debrief requestId is threaded through claim and stored response replay", async () => {
