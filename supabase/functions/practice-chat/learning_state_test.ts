@@ -219,6 +219,31 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed positives o
   assertEquals(gatedNeutral.familiarityScore, 10);
 });
 
+// PR #88 H：倍率算出非有限數時熱度與熟悉度都回 0（熱度原本回 +1）。
+Deno.test("applyLearningClassification treats non-finite tuning results as zero on both axes", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+  const nanTuning = {
+    positiveDeltaMultiplier: Number.NaN,
+    negativeDeltaMultiplier: Number.NaN,
+  };
+  for (
+    const classification of [
+      safeCaught,
+      { ...safeCaught, connection: "missed" },
+    ]
+  ) {
+    const result = applyLearningClassification(
+      { heatScore: 40, familiarityScore: 20 },
+      classification,
+      nanTuning,
+    );
+    assertEquals(result.delta, 0, classification.connection);
+    assertEquals(result.familiarityDelta, 0, classification.connection);
+    assertEquals(result.score, 40, classification.connection);
+    assertEquals(result.familiarityScore, 20, classification.connection);
+  }
+});
+
 Deno.test("applyLearningClassification rewards passing a consistency test even before familiarity is ready", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
 

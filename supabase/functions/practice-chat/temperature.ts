@@ -336,7 +336,9 @@ function roundNonZero(delta: number): number {
 }
 
 function clampHeatDelta(delta: number): number {
-  if (!Number.isFinite(delta)) return 1;
+  // PR #88 H：非有限數一律當 0，跟 clampLearningDelta 一致（原本回 +1，等於
+  // 算壞了還送玩家一格升溫）。正常路徑碰不到，純防守。
+  if (!Number.isFinite(delta)) return 0;
   return Math.min(
     MAX_HEAT_DELTA,
     Math.max(MIN_HEAT_DELTA, roundNonZero(delta)),
