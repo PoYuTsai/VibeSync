@@ -119,6 +119,23 @@ void main() {
     }
   });
 
+  test('平台英文錯誤（546 WORKER_LIMIT）改通用中文；中文伺服器訊息原樣保留', () async {
+    final platform = _json(546, {'code': 'WORKER_LIMIT', 'message': 'Function failed due to not having enough compute resources'});
+    await expectLater(
+      () => _service(platform).analyzeProfileStreaming(bio: 'x', analysisRequestId: 'r'),
+      throwsA(isA<OpenerFlowException>()
+          .having((e) => e.code, 'code', 'WORKER_LIMIT')
+          .having((e) => e.message, 'message', 'AI 暫時生成失敗，請稍後再試；本次不會扣額度。')),
+    );
+    final chinese = _ndjson([
+      {'type': 'opener_generate.error', 'status': 409, 'code': OpenerFlowErrorCode.inputMismatch, 'message': '補充內容和分析對不上', 'retryable': false},
+    ]);
+    await expectLater(
+      () => _service(chinese).generateFromAnalysisStreaming(sessionId: 's', analysisRevision: 1, generationId: 'g', contribution: _contribution),
+      throwsA(isA<OpenerFlowException>().having((e) => e.message, 'message', '補充內容和分析對不上')),
+    );
+  });
+
   test('訂閱額度 429（帶額度鍵）仍是 OpenerQuotaExceededException；限流 429 不是', () async {
     final quota = _ndjson([
       {'type': 'opener_generate.error', 'status': 429, 'error': '額度不足', 'message': '本月額度不足', 'monthlyLimit': 30, 'dailyLimit': 10, 'monthlyRemaining': 1, 'quotaNeeded': 3},

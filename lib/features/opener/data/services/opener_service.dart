@@ -719,16 +719,15 @@ class OpenerService {
               errorData['dailyLimit'] != null)) {
         _throwForErrorResponse(status, errorData);
       }
-      final message = errorData['message']?.toString().trim();
+      // 只收中文訊息；平台英文錯誤（WORKER_LIMIT、BOOT_ERROR）改用通用中文。
+      final message = _localizedMessage(errorData['message']);
       if (code is String && code.isNotEmpty) {
         final unsupported = code == 'ANALYZE_STREAMING_REQUIRED' ||
             code == 'ANALYZE_RESPONSE_MODE_RETIRED' ||
             code == 'INVALID_RESPONSE_MODE';
         throw OpenerFlowException(
           code: unsupported ? OpenerFlowErrorCode.flowUnsupported : code,
-          message: message == null || message.isEmpty
-              ? _nonQuotaErrorMessage(status, errorData)
-              : message,
+          message: message ?? _nonQuotaErrorMessage(status, const {}),
           status: status,
           retryable: errorData['retryable'] == true,
           retryAfterMs: (errorData['retryAfterMs'] as num?)?.round(),
@@ -878,6 +877,13 @@ class OpenerService {
       // Server 權威 tier 判定；形狀壞掉→null，讀取端走 legacy fallback。
       access: OpenerAccess.tryParse(data['access']),
     );
+  }
+
+  static String? _localizedMessage(dynamic raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return RegExp(r'[一-鿿]').hasMatch(trimmed) ? trimmed : null;
   }
 
   String _nonQuotaErrorMessage(int status, Map errorData) {
