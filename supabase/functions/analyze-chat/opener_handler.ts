@@ -780,9 +780,11 @@ export async function handleOpenerRequest(
         user: summarizeUser(deps.userId),
         error: chargeOutcome.message,
       });
+      // failed 含傳輸逾時，扣費可能已落帳，不能說不扣；帶 requestId 時
+      // 同一筆重試由 idempotent RPC 去重。
       return jsonResponse({
         error: "credit_deduct_failed",
-        message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+        message: "服務暫時無法確認狀態，請稍後用同一筆請求重試。",
       }, 500);
     }
     if (chargeOutcome.kind === "dedup") {
@@ -934,7 +936,7 @@ export async function handleOpenerRequest(
                 responseMode: "stream",
               });
               failureResponse = jsonResponse({
-                error: `AI 生成失敗：${getErrorMessage(streamError)}`,
+                error: "AI 生成失敗，請稍後再試。",
                 shouldChargeQuota: false,
               }, 500);
             }
@@ -1004,7 +1006,8 @@ export async function handleOpenerRequest(
       imageCount,
       userContentLength: userContent.join("\n").length,
     });
-    return jsonResponse({ error: `AI 生成失敗：${errMsg}` }, 500);
+    // 供應商錯誤原文只進 log，不外露給 client。
+    return jsonResponse({ error: "AI 生成失敗，請稍後再試。" }, 500);
   }
 
   const legacyApiData = apiResult.data as {
