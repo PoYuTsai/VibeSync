@@ -68,6 +68,8 @@ import {
 } from "./request_shape.ts";
 import { loadSubscriptionAccess } from "./subscription_access.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
+import { scheduleAnalyzeCriticShadow } from "./critic_shadow.ts";
+import { type ProviderAttemptLogEntry } from "./model_call_budget.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import { handleOpenerRequest } from "./opener_handler.ts";
 import {
@@ -621,6 +623,19 @@ async function handleAnalyzeChat(
       }
     }
 
+    // 開場救星與新話題：每次供應商呼叫一列 ai_logs，交給 waitUntil 背景寫入，
+    // 不 await、不拖慢回應；沒有排程器（本機測試）就不寫。
+    const recordAiCall = (entry: ProviderAttemptLogEntry) => {
+      scheduleAnalyzeCriticShadow(
+        undefined,
+        () =>
+          logAiCall(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+            userId: user.id,
+            ...entry,
+          }),
+      );
+    };
+
     // ── New Topic mode: 破冰腦力（2026-07-24 計畫 §10.5）──
     // 處理順序見 new_topic_handler.ts 檔頭。
     if (isNewTopicMode) {
@@ -634,6 +649,7 @@ async function handleAnalyzeChat(
         claudeApiKey: CLAUDE_API_KEY,
         refreshTierFromRevenueCat: maybeRefreshSubscriptionTierFromRevenueCat,
         quota: () => ({ sub, monthlyLimit, dailyLimit, effectiveTier }),
+        recordAiCall,
       });
     }
 
@@ -655,6 +671,7 @@ async function handleAnalyzeChat(
           effectiveTier,
           allowedFeatures,
         }),
+        recordAiCall,
       };
       return requestShape.kind === "opener_analyze"
         ? await handleOpenerAnalyzeRequest(flowDeps)
@@ -684,6 +701,7 @@ async function handleAnalyzeChat(
           effectiveTier,
           allowedFeatures,
         }),
+        recordAiCall,
       });
     }
 

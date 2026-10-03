@@ -12,7 +12,7 @@
 // 模型邊界透過 deps.invokeModel 可替換（測試替身只換這一層；claim／settle／
 // 原料整理／投影都走正式路徑）。
 
-import { ModelCallBudget } from "./model_call_budget.ts";
+import { attemptReporter, ModelCallBudget, type ProviderAttemptLogEntry } from "./model_call_budget.ts";
 import { OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
@@ -157,6 +157,8 @@ export interface OpenerFlowHandlerDeps {
   invokeModel?: OpenerFlowModelInvoker;
   /** 測試替身：旗標讀取。 */
   env?: (name: string) => string | undefined;
+  /** 每次供應商呼叫寫一列 ai_logs；不注入就只記 console。 */
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
 const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlowModelInvoker => async (req) => {
@@ -404,8 +406,12 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   //    已保存的分析同 analysisRequestId 重試仍能取回，旗標只擋真正的新局。
   const newSessionsDisabled = env("OPENER_TWO_STAGE_ENABLED") === "false";
   const dbContract = await readOpenerFlowDbContractVersion(rpc);
-  if (dbContract !== OPENER_FLOW_DB_CONTRACT_VERSION) {
-    logError("opener_flow_db_contract_missing", { user, dbContract });
+  if (!dbContract.ok) {
+    logWarn("opener_flow_db_contract_unreadable", { user, error: dbContract.message });
+    return flowError("OPENER_FLOW_RETRYABLE", "服務暫時無法確認狀態，請稍後再試。本次不會扣額度。", 503, { retryable: true });
+  }
+  if (dbContract.version !== OPENER_FLOW_DB_CONTRACT_VERSION) {
+    logError("opener_flow_db_contract_missing", { user, dbContract: dbContract.version });
     return flowError("OPENER_FLOW_UNAVAILABLE", "新版開場流程尚未就緒，改用一般生成。本次不會扣額度。", 503, { retryable: false });
   }
 
@@ -517,7 +523,8 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   }
 
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_ANALYZE_DEADLINE_MS;
-  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "analyze", operation: request.analysisRequestId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION });
+  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "analyze", operation: request.analysisRequestId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
+    attemptReporter("opener_provider_attempt", "opener_analyze", deps.recordAiCall));
   const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
   const userContent = buildOpenerAnalyzeUserContent({ profile, imageCount, initialUserNote: request.initialUserNote });
   const messages = buildClaudeMessages(images, userContent);
@@ -792,7 +799,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     option: contributionCheck.option,
   });
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
-  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION });
+  const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
+    attemptReporter("opener_provider_attempt", "opener_generate", deps.recordAiCall, { path: usePlanWrite ? "plan_write" : "single" }));
   const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
   const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
@@ -1004,7 +1012,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             maxTokens: OPENER_GENERATE_MAX_TOKENS,
             deadlineAtMs,
             allowModelFallback: false,
-            purpose: "repair",
+            purpose: "correction",
           });
           addUsage(correction);
           const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];

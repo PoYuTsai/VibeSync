@@ -36,19 +36,6 @@ export const NEW_TOPIC_FIELD_CAPS = {
 
 export const NEW_TOPIC_TOPIC_COUNT = 5;
 
-// Legacy 公式新話題（2026-08-19 下架）：新 row 不再寫入，這組常數與下方
-// isValidStoredFormulaReply 只服務既存 row 的 replay 讀取驗證。
-export const NEW_TOPIC_FORMULA_MAX_COUNT = 2;
-export const NEW_TOPIC_FORMULA_CAPS = {
-  openingLine: 180,
-  whyItWorks: 300,
-} as const;
-
-export type NewTopicFormulaReply = {
-  openingLine: string;
-  whyItWorks: string;
-};
-
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -521,10 +508,6 @@ export type NewTopicLedgerResult = {
   topics: NewTopicLedgerTopic[];
   recommendation: { topicId: string; reason?: string };
   access: NewTopicAccess;
-  // Legacy 第四鍵（公式新話題已於 2026-08-19 下架）：新 row 不再寫入，
-  // 但 2026-07-24～08-19 之間的既存 row 帶著它，replay 讀回必須照樣通過
-  // 驗證，所以型別與讀取端驗證都保留。
-  formulaTopics?: NewTopicFormulaReply[];
 };
 
 /**
@@ -598,76 +581,20 @@ const LEDGER_ACCESS_KEYS = [
   "lockedCount",
 ] as const;
 
-// 公式欄可見文字守門（與 migration helper 同組；marker 檢查比 SQL 嚴格，
-// 但 canonical 寫入端一律先過 normalizer，正常 row 不會分歧）。
-function isStoredFormulaText(value: unknown, maxCodePoints: number): boolean {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return false;
-  // JS/Dart trim 聯集判空（U+0085 只有 Dart 視為空白）；與 migration
-  // helper 及 normalizer 同一規則。
-  if (trimmed.replace(/\u0085/g, "").trim().length === 0) return false;
-  // cap 對 raw 字串以 code points 計，對齊 PostgreSQL char_length()。
-  if ([...value].length > maxCodePoints) return false;
-  if (trimmed.includes("```")) return false;
-  if (/^[{[]/.test(trimmed)) return false;
-  const lower = trimmed.toLowerCase();
-  if (
-    lower.includes('"formulaopeners"') ||
-    lower.includes('"formulatopics"') ||
-    lower.includes('"openingline"') ||
-    lower.includes('"whyitworks"') ||
-    lower.includes('"openers"') ||
-    lower.includes('"topics"')
-  ) {
-    return false;
-  }
-  return true;
-}
-
-function isValidStoredFormulaReply(
-  value: unknown,
-): value is NewTopicFormulaReply {
-  if (!isPlainObject(value)) return false;
-  const keys = Object.keys(value);
-  if (
-    keys.length !== 2 || !("openingLine" in value) || !("whyItWorks" in value)
-  ) {
-    return false;
-  }
-  return isStoredFormulaText(
-    value.openingLine,
-    NEW_TOPIC_FORMULA_CAPS.openingLine,
-  ) &&
-    isStoredFormulaText(value.whyItWorks, NEW_TOPIC_FORMULA_CAPS.whyItWorks);
-}
-
 /**
  * Ledger／replay result 驗證（與 migration 的 validate_new_topic_result
- * 同組）：legacy 頂層恰三鍵、新 shape 恰四鍵（第四鍵只能是 formulaTopics，
- * 0–2 則深驗）、tier 投影一致、每題欄位白名單＋cap、ID 唯一且推薦存在。
- * settle 前與 replay 讀回都要過這關。
+ * 同組，但更嚴）：頂層恰三鍵、tier 投影一致、每題欄位白名單＋cap、ID 唯一
+ * 且推薦存在。settle 前與 replay 讀回都要過這關。
+ * 公式新話題（2026-08-19 下架）的第四鍵 formulaTopics 不再接受：replay 只讀
+ * 24h 內的 row，claim 與每小時 cron 都會刪掉更舊的 row，舊 row 已讀不到。
  */
 export function isValidNewTopicLedgerResult(
   value: unknown,
 ): value is NewTopicLedgerResult {
   if (!isPlainObject(value)) return false;
-  const keys = Object.keys(value);
-  const hasFormula = "formulaTopics" in value;
-  if (keys.length !== (hasFormula ? 4 : 3)) return false;
+  if (Object.keys(value).length !== 3) return false;
   if (!("topics" in value) || !("recommendation" in value)) return false;
   if (!("access" in value)) return false;
-
-  if (hasFormula) {
-    const formula = value.formulaTopics;
-    if (
-      !Array.isArray(formula) ||
-      formula.length > NEW_TOPIC_FORMULA_MAX_COUNT ||
-      !formula.every(isValidStoredFormulaReply)
-    ) {
-      return false;
-    }
-  }
 
   const access = value.access;
   if (!isPlainObject(access)) return false;

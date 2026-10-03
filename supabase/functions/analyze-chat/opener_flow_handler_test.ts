@@ -14,8 +14,9 @@ import {
 import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { OPENER_PLAN_PROMPT } from "./opener_plan.ts";
 import { buildOpenerWritePrompt } from "./opener_write.ts";
-import { computeOpenerGenerationInputHash, parseOpenerGenerateRequest } from "./opener_stage.ts";
+import { computeOpenerGenerationInputHash, OPENER_FLOW_PREVIOUS_PROMPT_VERSION, parseOpenerGenerateRequest } from "./opener_stage.ts";
 import { readPreviousPromptReplay } from "./opener_session.ts";
+import type { ProviderAttemptLogEntry } from "./model_call_budget.ts";
 
 const MIGRATIONS = [
   "20260702120000_increment_usage_atomic_quota.sql",
@@ -360,7 +361,7 @@ Deno.test("版本升級：舊 prompt 已完成結果唯讀重播；不同內容�
     const saved = await json(first);
     const parsed = parseOpenerGenerateRequest({ rawFlowVersion: body.openerFlowVersion, rawSessionId: body.sessionId, rawAnalysisRevision: body.analysisRevision, rawGenerationId: body.generationId, rawContribution: body.userContribution });
     assert(parsed.ok);
-    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION });
     await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [oldHash, GEN_1]);
     const before = h.script.calls.length;
     const replay = await handleOpenerGenerateRequest(h.deps(body));
@@ -514,7 +515,7 @@ for (const accountIsTest of [false, true]) {
       assertEquals((await handleOpenerGenerateRequest(h.deps(body, { accountIsTest }))).status, 200);
       const parsed = parseOpenerGenerateRequest({ rawFlowVersion: body.openerFlowVersion, rawSessionId: body.sessionId, rawAnalysisRevision: body.analysisRevision, rawGenerationId: body.generationId, rawContribution: body.userContribution });
       assert(parsed.ok);
-      const hash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+      const hash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION });
       await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [hash, GEN_1]);
       const before = h.script.calls.length;
       const replay = await handleOpenerGenerateRequest(h.deps(body, { accountIsTest }));
@@ -567,6 +568,40 @@ Deno.test("第一段：同 analysisRequestId 重試取回快照（replayed）、
     const notReady = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 })));
     assertEquals(notReady.status, 503);
     assertEquals((await json(notReady)).code, "OPENER_FLOW_UNAVAILABLE");
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("第一段：DB 能力標記讀取遇 transport 錯誤→503 OPENER_FLOW_RETRYABLE（可重試、不降級）；讀到函式不存在仍→OPENER_FLOW_UNAVAILABLE", async () => {
+  const h = await harness();
+  try {
+    const contractRpc = (result: { data: unknown; error: { message?: string; code?: string } | null } | Error) => {
+      const base = supabaseFor(h.db);
+      return {
+        ...base,
+        rpc(fn: string, params: Record<string, unknown>) {
+          if (fn !== "opener_flow_contract_version") return base.rpc(fn, params);
+          return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+        },
+      };
+    };
+    for (const result of [{ data: null, error: { message: "connection reset", code: "" } }, new Error("fetch failed")]) {
+      const blip = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { supabase: contractRpc(result) }));
+      assertEquals(blip.status, 503);
+      const body = await json(blip);
+      assertEquals(body.code, "OPENER_FLOW_RETRYABLE");
+      assertEquals(body.retryable, true);
+    }
+    const missing = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), {
+      supabase: contractRpc({ data: null, error: { message: "Could not find the function public.opener_flow_contract_version", code: "PGRST202" } }),
+    }));
+    assertEquals((await json(missing)).code, "OPENER_FLOW_UNAVAILABLE");
+    const wrong = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { supabase: contractRpc({ data: "incomplete", error: null }) }));
+    const wrongBody = await json(wrong);
+    assertEquals(wrongBody.code, "OPENER_FLOW_UNAVAILABLE");
+    assertEquals(wrongBody.retryable, false);
+    assertEquals(h.script.calls.length, 0);
   } finally {
     await h.db.close();
   }
@@ -1321,13 +1356,20 @@ Deno.test("C03/C05/C08: production invoker fallback leaves no fourth call for an
   const h = await harness();
   const oldFetch = globalThis.fetch;
   let calls = 0;
+  const rows: ProviderAttemptLogEntry[] = [];
   globalThis.fetch = () => Promise.resolve(++calls < 3
     ? new Response(null, { status: 503 })
     : Response.json({ content: [{ type: "text", text: "{}" }], usage: { input_tokens: 10, output_tokens: 5 } }));
   try {
-    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: undefined }));
+    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: undefined, recordAiCall: (e) => rows.push(e) }));
     assertEquals(response.status, 502);
     assertEquals(calls, 3);
+    // ai_logs：每次真的送出的呼叫一列，被上限擋下的修復沒送出就不記。
+    assertEquals(rows.map((r) => [r.model, r.status, r.requestType]), [
+      ["claude-sonnet-5", "failed", "opener_analyze"],
+      ["claude-sonnet-4-6", "failed", "opener_analyze"],
+      ["claude-haiku-4-5-20251001", "success", "opener_analyze"],
+    ]);
     assertEquals(await usage(h.db), { m: 0, d: 0 });
     const attempts = await h.db.query<{ day_count: number }>("SELECT day_count FROM public.model_call_rate_limits");
     assertEquals(attempts.rows[0].day_count, 1, "failed provider work retains limiter attempt");
@@ -1548,11 +1590,16 @@ Deno.test("結構刀旗標：走 production 預設呼叫器（不注入假模型
       }), { status: 200, headers: { "content-type": "application/json" } }));
     };
     const started = Date.now();
-    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 }));
+    const rows: ProviderAttemptLogEntry[] = [];
+    const deps = h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 }), { recordAiCall: (e) => rows.push(e) });
     delete (deps as Partial<OpenerFlowHandlerDeps>).invokeModel;
     const response = await handleOpenerGenerateRequest(deps);
     assertEquals(response.status, 200);
     assertEquals(sent.length, 2, "規劃一次＋寫手一次");
+    assertEquals(rows.map((r) => [r.requestType, (r.requestBody as Record<string, unknown>).purpose, (r.requestBody as Record<string, unknown>).path]), [
+      ["opener_generate", "plan", "plan_write"],
+      ["opener_generate", "write", "plan_write"],
+    ]);
     assert(Date.now() - started < 5000, "不空轉到規劃截止");
     assertEquals(sent.map((b) => b.model), ["claude-sonnet-5", "claude-sonnet-5"]);
     assertEquals(((await json(response)).materialUse as Record<string, unknown>).traceStatus, "matched", "規劃真的有跑（不是退只用她的資料）");
@@ -1627,7 +1674,7 @@ Deno.test("GPT 預審 R3：同一筆生成換舊版 App 重播，拿掉方向＋
     // 前一版 prompt 指紋的重播出口（readPreviousPromptReplay）也一樣。
     const parsed = parseOpenerGenerateRequest({ rawFlowVersion: newReq.openerFlowVersion, rawSessionId: newReq.sessionId, rawAnalysisRevision: newReq.analysisRevision, rawGenerationId: newReq.generationId, rawContribution: newReq.userContribution });
     assert(parsed.ok);
-    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: "opener-two-stage-prompt-v1" });
+    const oldHash = await computeOpenerGenerationInputHash({ ...parsed.request, contractVersion: 2, promptVersion: OPENER_FLOW_PREVIOUS_PROMPT_VERSION });
     await h.db.query(`UPDATE public.opener_generation_runs SET input_hash = $1 WHERE generation_id = $2`, [oldHash, GEN_1]);
     await replayOld();
     assertEquals(script.calls.length, calls, "重播不呼叫模型");

@@ -15,6 +15,8 @@ import {
 
 export const OPENER_FLOW_VERSION = 1;
 export const OPENER_FLOW_PROMPT_VERSION = "opener-two-stage-topic-first-v1";
+// 上一版，供已完成結果重播（readPreviousPromptReplay）；升版時兩個要一起改。
+export const OPENER_FLOW_PREVIOUS_PROMPT_VERSION = "opener-two-stage-natural-v1";
 export const OPENER_SESSION_TTL_SECONDS = 24 * 60 * 60;
 export const OPENER_INCLUDED_GENERATION_COUNT = 3;
 export const OPENER_FIRST_GENERATION_COST = 3;

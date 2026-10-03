@@ -109,3 +109,31 @@ Deno.test("ndjsonStreamResponse exposes client cancellation to async producers",
 
   assertEquals(observedClosed, true);
 });
+
+Deno.test("ndjsonStreamResponse logs exceptions thrown after close without erroring the reader", async () => {
+  const originalError = console.error;
+  const calls: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  try {
+    const response = ndjsonStreamResponse(async (emit, close) => {
+      try {
+        emit({ type: "started" });
+        await Promise.resolve();
+      } finally {
+        close();
+      }
+      throw new Error("after close");
+    });
+
+    assertEquals(await text(response), '{"type":"started"}\n');
+    // 讓 .catch 的 microtask 跑完
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0][0], "[analyze-chat] ndjson_stream_unhandled");
+    assertEquals(calls[0][1], { error: "after close" });
+  } finally {
+    console.error = originalError;
+  }
+});
