@@ -474,7 +474,6 @@ export async function runOneSession(args: {
         currentHeat: temperature,
         currentFamiliarity: familiarity,
         classification,
-        protectedAppliedHint: false,
       })
       : rawJudgement;
     // game 分數走 applyGameLearningDelta（對齊 handler.ts applyGameLearningIfNeeded）

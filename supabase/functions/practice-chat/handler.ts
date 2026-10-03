@@ -349,34 +349,6 @@ function parseDebriefRequestLedger(
   return ledger;
 }
 
-function appliedHintHeatFloor(
-  appliedHintType: string | undefined,
-  practiceMode: PracticeLearningMode,
-): number {
-  if (practiceMode === "game") {
-    if (appliedHintType === "warm_up") return 2;
-    if (appliedHintType === "steady") return 3;
-    return Number.NEGATIVE_INFINITY;
-  }
-  if (appliedHintType === "warm_up") return 0;
-  if (appliedHintType === "steady") return 1;
-  return Number.NEGATIVE_INFINITY;
-}
-
-function appliedHintFamiliarityFloor(
-  appliedHintType: string | undefined,
-  practiceMode: PracticeLearningMode,
-): number {
-  if (practiceMode === "game") {
-    if (appliedHintType === "warm_up") return 1;
-    if (appliedHintType === "steady") return 2;
-    return Number.NEGATIVE_INFINITY;
-  }
-  if (appliedHintType === "warm_up") return 0;
-  if (appliedHintType === "steady") return 1;
-  return Number.NEGATIVE_INFINITY;
-}
-
 function normalizedHintText(text: string): string {
   return text
     .normalize("NFKC")
@@ -1212,6 +1184,10 @@ function shouldProtectAppliedHint(opts: {
   ) {
     return false;
   }
+  // PR #88 B1（Codex 指出、Eric 2026-10-03 拍板）：分類器判 pushy／overstep
+  // 時，原封貼也不保護——維持 8/11「有壓迫感一律扣分」。保底改成 0 之後若照舊
+  // 保護，這類負分會被抬成 0。
+  if (opts.classification.boundary !== "safe") return false;
   if (isExactAppliedHint(opts.request)) {
     return true;
   }
@@ -1235,31 +1211,21 @@ function isExactAppliedHint(
   );
 }
 
+/**
+ * 受保護的提示（原封貼，或小幅修改且分類器判對齊）：只保證這一輪不扣分
+ * （PR #88 Eric 決定 2，2026-10-03）。保底一律 0，新手與 Game 一致；不再補
+ * 「熟悉度上升就熱度至少 +1」。要加分仍得靠分類器判的正向證據，新手獎勵閘門與
+ * Game 的 canEarnPositive 照常把關。
+ */
 function protectAppliedHintTemperature(
   judgement: LearningJudgement,
   currentTemperature: number,
   currentFamiliarity: number,
   appliedHintType: string | undefined,
-  practiceMode: PracticeLearningMode,
 ): LearningJudgement {
-  const heatFloor = appliedHintHeatFloor(appliedHintType, practiceMode);
-  if (
-    heatFloor === Number.NEGATIVE_INFINITY
-  ) {
-    return judgement;
-  }
-  const visibleHintFloor = judgement.familiarityDelta > 0
-    ? Math.max(heatFloor, 1)
-    : heatFloor;
-  const familiarityFloor = appliedHintFamiliarityFloor(
-    appliedHintType,
-    practiceMode,
-  );
-  const protectedHeatDelta = Math.max(judgement.delta, visibleHintFloor);
-  const protectedFamiliarityDelta = Math.max(
-    judgement.familiarityDelta,
-    familiarityFloor,
-  );
+  if (appliedHintType === undefined) return judgement;
+  const protectedHeatDelta = Math.max(judgement.delta, 0);
+  const protectedFamiliarityDelta = Math.max(judgement.familiarityDelta, 0);
   if (
     protectedHeatDelta === judgement.delta &&
     protectedFamiliarityDelta === judgement.familiarityDelta
@@ -1593,11 +1559,11 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       protectedHintType,
-      opts.request.practiceMode,
     );
     // Codex round-1 P1-e：分類器解析失敗會走這條 fallback，而 delta cap 只掛在
-    // 成功那條——等於「分類器壞掉」變成 agency 的免罰卡：applied-hint 保護可以
-    // 在這裡把 delta 撐成正的，而沒有任何 coherence 判斷把它壓回去。
+    // 成功那條——等於「分類器壞掉」變成 agency 的免罰卡：applied-hint 保護當時
+    // 可以在這裡把 delta 撐成正的（PR #88 起保底改 0，已撐不上去），而沒有任何
+    // coherence 判斷把它壓回去。
     // 沒有分類器結果時我們**不知道**玩家接上了沒有，`ambiguous`（不獎不罰）
     // 就是那個「不知道」的誠實表示；結構訊號（同詞重複／未解計數）仍照舊在
     // `applyCoherenceDeltaCap` 內部優先。旗標 off 時整段不套用，逐字沿用舊行為。
@@ -1625,7 +1591,6 @@ async function judgeLearningState(opts: {
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         classification: cappedFallback.classification,
-        protectedAppliedHint: protectedHintType !== undefined,
       })
       : cappedFallback;
     const cooledFallback = offenseCooldown
@@ -1679,7 +1644,6 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       protectedHintType,
-      opts.request.practiceMode,
     );
     // conversation-agency-v1 Phase 2（報告 §8.3）：coherence delta cap 放在
     // applied-hint 保護之後、challenge 閘門與 crude-offense／cooldown 強制
@@ -1704,15 +1668,14 @@ async function judgeLearningState(opts: {
         coldReturn: opts.agencyColdReturn,
       })
       : { judgement: protectedJudgement, capApplied: "none" as const };
-    // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
-    // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。
+    // 閘門在 delta cap 之後、crude-offense 確定性扣滿之前——閘門只夾正向，
+    // 扣滿與 cooldown 行為不受影響。受保護的提示不再豁免（PR #88 B1）。
     const gatedJudgement = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
         judgement: cappedJudgement,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         classification,
-        protectedAppliedHint: protectedHintType !== undefined,
       })
       : cappedJudgement;
     // 放在 applied-hint 保護之後：使用者把 hint 改寫成粗俗冒犯句時，保護

@@ -548,9 +548,9 @@ export function beginnerRewardGateActive(opts: {
 /**
  * 新手獎勵閘門（修 D2，PR #88 擴大適用範圍）：沒有正向證據的回合不得被動
  * 加分——neutral 淨 +1 經 roundNonZero 取整後仍是 +1，玩家躺著也升溫。
- * 正向證據＝connection caught 或 testHandling passed；受保護的 exact／
- * small-edit Hint 豁免（鏡像 game_fsm.ts canEarnPositive 的寫法，豁免放在
- * 閘門內、不靠套用順序）。負向照常放行。適用範圍由
+ * 正向證據＝connection caught 或 testHandling passed。負向照常放行。
+ * PR #88（Eric 決定 2）：受保護的提示不再豁免——原封貼提示只保證不扣分
+ * （保底在 handler），要加分一樣得有正向證據。適用範圍由
  * `beginnerRewardGateActive` 決定，閘門本身只執行證據規則，bakeoff 與
  * handler 共用同一份。
  */
@@ -559,10 +559,8 @@ export function applyChallengeRewardGate(opts: {
   currentHeat: number;
   currentFamiliarity: number;
   classification: TurnClassification;
-  protectedAppliedHint: boolean;
 }): LearningJudgement {
-  const canEarnPositive = opts.protectedAppliedHint ||
-    opts.classification.connection === "caught" ||
+  const canEarnPositive = opts.classification.connection === "caught" ||
     opts.classification.testHandling === "passed";
   if (canEarnPositive) return opts.judgement;
   return withNonPositiveLearningDeltas(

@@ -75,7 +75,6 @@ Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate z
     currentHeat: 30,
     currentFamiliarity: 10,
     classification: neutralMinor,
-    protectedAppliedHint: false,
   });
 
   assertEquals(gated.score, 30);
@@ -117,7 +116,7 @@ Deno.test("beginnerRewardGateActive covers challenge, normal and easy above heat
   }
 });
 
-Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-protected positives", () => {
+Deno.test("challenge reward gate keeps negatives and evidence-backed positives only", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
   const applyChallengeRewardGate = requireFn("applyChallengeRewardGate");
   const challengeTuning = {
@@ -128,14 +127,12 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
   const gate = (
     judgement: Record<string, unknown>,
     classification: Record<string, unknown>,
-    protectedAppliedHint = false,
   ) =>
     applyChallengeRewardGate({
       judgement,
       currentHeat: 30,
       currentFamiliarity: 10,
       classification,
-      protectedAppliedHint,
     });
 
   // caught → 正向證據，正分保留（已吃 ×0.7：+4/+5 → +3/+4）
@@ -200,7 +197,8 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
   assert(defensive.delta < 0);
   assertEquals(gate(defensive, defensiveClassification), defensive);
 
-  // 受保護 Hint → 豁免，neutral 也保留正分（Hint floor 不被夾掉）
+  // PR #88 B1：受保護的 Hint 不再豁免——對齊提示的 neutral 一樣夾到 0
+  // （原封貼提示只保證不扣分，加分要有正向證據）。
   const neutralMinor = {
     connection: "neutral",
     impact: "minor",
@@ -214,7 +212,11 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
     challengeTuning,
   );
   assert(neutral.delta > 0);
-  assertEquals(gate(neutral, neutralMinor, true), neutral);
+  const gatedNeutral = gate(neutral, neutralMinor);
+  assertEquals(gatedNeutral.delta, 0);
+  assertEquals(gatedNeutral.familiarityDelta, 0);
+  assertEquals(gatedNeutral.score, 30);
+  assertEquals(gatedNeutral.familiarityScore, 10);
 });
 
 Deno.test("applyLearningClassification rewards passing a consistency test even before familiarity is ready", () => {

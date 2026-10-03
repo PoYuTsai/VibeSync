@@ -1111,8 +1111,11 @@ export function applyGameLearningDelta(opts: {
     GAME_FAMILIARITY_DELTA_MIN,
     GAME_FAMILIARITY_DELTA_MAX,
   );
-  const canEarnPositive = opts.protectedAppliedHint ||
-    (hasPositiveGameEvidence && !hasStagnationFailure);
+  // PR #88 B1（Eric 2026-10-03）：受保護的提示只解除停滯閘門（BORING／
+  // TOOL_GUY／ENGINE_STALL，避免 BORING 之後整場不能升溫），仍要真的接住
+  // （caught／passed）才加分；原封貼提示本身只保證不扣分。
+  const canEarnPositive = hasPositiveGameEvidence &&
+    (opts.protectedAppliedHint === true || !hasStagnationFailure);
   if (!canEarnPositive) {
     heatDelta = Math.min(heatDelta, 0);
     familiarityDelta = Math.min(familiarityDelta, 0);
