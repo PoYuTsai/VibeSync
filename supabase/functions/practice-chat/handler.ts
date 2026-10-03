@@ -1599,12 +1599,6 @@ async function judgeLearningState(opts: {
     // no-op；Game 那邊也因為 fallback 分類是 neutral 而拿不到正向證據。保留
     // 呼叫，是讓 fallback 日後若改出負分時仍有同一道保底。
     const protectedHint = isExactAppliedHint(opts.request);
-    const protectedFallback = protectAppliedHintTemperature(
-      base,
-      currentTemperature,
-      currentFamiliarity,
-      protectedHint,
-    );
     // Codex round-1 P1-e：分類器解析失敗會走這條 fallback，而 delta cap 只掛在
     // 成功那條——等於「分類器壞掉」變成 agency 的免罰卡：applied-hint 保護當時
     // 可以在這裡把 delta 撐成正的（PR #88 起保底改 0，已撐不上去），而沒有任何
@@ -1612,11 +1606,12 @@ async function judgeLearningState(opts: {
     // 沒有分類器結果時我們**不知道**玩家接上了沒有，`ambiguous`（不獎不罰）
     // 就是那個「不知道」的誠實表示；結構訊號（同詞重複／未解計數）仍照舊在
     // `applyCoherenceDeltaCap` 內部優先。旗標 off 時整段不套用，逐字沿用舊行為。
-    // 順序跟成功那條一致：applied-hint 保護之後、challenge 閘門之前。
+    // 順序跟成功那條一致：coherence cap 之後才套 applied-hint 保護（PR #88
+    // 決定 2：貼提示只保證不扣分，cap 壓出的負分也要抬回 0），再進 challenge 閘門。
     const { judgement: cappedFallback, capApplied: fallbackCapApplied } =
       agencyDeltaCapActive
         ? applyCoherenceDeltaCap({
-          judgement: protectedFallback,
+          judgement: base,
           currentHeat: currentTemperature,
           currentFamiliarity: currentFamiliarity,
           // Codex round-2 P1-4：分類器沒給判斷就傳 null（不是字面
@@ -1632,15 +1627,21 @@ async function judgeLearningState(opts: {
           readOnly: opts.agencyReadOnly,
           offenseCold: opts.agencyOffenseCold,
         })
-        : { judgement: protectedFallback, capApplied: "none" as const };
+        : { judgement: base, capApplied: "none" as const };
+    const protectedFallback = protectAppliedHintTemperature(
+      cappedFallback,
+      currentTemperature,
+      currentFamiliarity,
+      protectedHint,
+    );
     const gatedFallback = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
-        judgement: cappedFallback,
+        judgement: protectedFallback,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
-        classification: cappedFallback.classification,
+        classification: protectedFallback.classification,
       })
-      : cappedFallback;
+      : protectedFallback;
     const cooledFallback = offenseCooldown
       ? withNonPositiveLearningDeltas(
         gatedFallback,
@@ -1685,19 +1686,15 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
     });
-    const protectedJudgement = protectAppliedHintTemperature(
-      judgement,
-      currentTemperature,
-      currentFamiliarity,
-      protectedHint,
-    );
     // conversation-agency-v1 Phase 2（報告 §8.3）：coherence delta cap 放在
-    // applied-hint 保護之後、challenge 閘門與 crude-offense／cooldown 強制
-    // 扣分之前——後兩者是硬下限，會直接蓋過這裡的 clamp，precedence 不變。
+    // challenge 閘門與 crude-offense／cooldown 強制扣分之前——後兩者是硬下限，
+    // 會直接蓋過這裡的 clamp，precedence 不變。PR #88 決定 2 起 applied-hint
+    // 保護改到 cap 之後：貼提示只保證不扣分，cap 壓出的負分（disconnected／
+    // repetitive）也要抬回 0；cap 夾掉的正分保護不會撐回來（保護只抬負分）。
     // 旗標 off 時 agencyDeltaCapActive 一律 false，逐字沿用舊行為。
     const { judgement: cappedJudgement, capApplied } = agencyDeltaCapActive
       ? applyCoherenceDeltaCap({
-        judgement: protectedJudgement,
+        judgement,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         coherence: classification.coherence ?? null,
@@ -1717,17 +1714,23 @@ async function judgeLearningState(opts: {
         readOnly: opts.agencyReadOnly,
         offenseCold: opts.agencyOffenseCold,
       })
-      : { judgement: protectedJudgement, capApplied: "none" as const };
-    // 閘門在 delta cap 之後、crude-offense 確定性扣滿之前——閘門只夾正向，
-    // 扣滿與 cooldown 行為不受影響。受保護的提示不再豁免（PR #88 B1）。
+      : { judgement, capApplied: "none" as const };
+    const protectedJudgement = protectAppliedHintTemperature(
+      cappedJudgement,
+      currentTemperature,
+      currentFamiliarity,
+      protectedHint,
+    );
+    // 閘門在 delta cap 與提示保護之後、crude-offense 確定性扣滿之前——閘門只夾
+    // 正向，扣滿與 cooldown 行為不受影響。受保護的提示不再豁免（PR #88 B1）。
     const gatedJudgement = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
-        judgement: cappedJudgement,
+        judgement: protectedJudgement,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         classification,
       })
-      : cappedJudgement;
+      : protectedJudgement;
     // 放在 applied-hint 保護之後：使用者把 hint 改寫成粗俗冒犯句時，保護
     // 不得替它擋下扣分。
     const enforcedJudgement = crudeOffense

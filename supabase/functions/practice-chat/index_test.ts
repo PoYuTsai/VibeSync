@@ -2010,6 +2010,45 @@ Deno.test("exact applied steady hint stays flat when classifier falls back", asy
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
+// PR #88 決定 2（Claude 預審 P3）：agency 開時，coherence cap 判 disconnected／
+// repetitive 會壓出負分；提示保護放在 cap 之後，原封貼提示仍只到 0、不扣分。
+Deno.test("exact applied steady hint is not pushed below zero by the agency coherence cap", async () => {
+  const exactHint = "聽起來真的很滿，我懂那種一整天被工作追著跑的感覺。";
+  for (const coherence of ["disconnected", "repetitive"]) {
+    const { response, json, state } = await run(
+      {
+        ledger: ledger({
+          practice_mode: "beginner",
+          temperature_score: 30,
+          familiarity_score: 20,
+          hint_count: 1,
+        }),
+        env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+        deepSeekReplies: [
+          "AI reply",
+          `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"aligned","coherence":"${coherence}","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`,
+        ],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        temperatureScore: 30,
+        appliedHintType: "steady",
+        appliedHintText: exactHint,
+        turns: [{ role: "user", text: exactHint }],
+      }),
+    );
+
+    assertEquals(response.status, 200, coherence);
+    assertEquals(json.temperature.delta, 0, coherence);
+    assertEquals(json.temperature.familiarityDelta, 0, coherence);
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      0,
+      coherence,
+    );
+  }
+});
+
 Deno.test("exact applied warm-up hint (english) is penalized when the classifier flags overstep", async () => {
   const exactHint =
     "That sounds like a packed day. What part drained you most?";
