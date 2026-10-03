@@ -25,6 +25,7 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
+import 'package:vibesync/features/analysis/presentation/sections/analysis_fragment_section.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -669,6 +670,53 @@ void main() {
       expect(find.text('片段 4'), findsNothing);
       expect(find.text('分析新增內容'), findsNothing);
       expect(find.text('分析新片段'), findsOneWidget);
+    });
+  });
+
+  group('AnalysisScreen fragment avatar name', () {
+    testWidgets('有對象時頭像取對象名字，不用對話名稱', (tester) async {
+      final conversation = Conversation(
+        id: 'continue-input-test',
+        name: '春季活動那次',
+        partnerId: 'partner-yun',
+        messages: [
+          Message(
+            id: 'm1',
+            content: '昨天那家甜點不錯耶',
+            isFromMe: false,
+            timestamp: DateTime(2026, 5, 4),
+          ),
+        ],
+        createdAt: DateTime(2026, 5, 4),
+        updatedAt: DateTime(2026, 5, 4),
+      );
+
+      await _pumpAnalysisScreen(
+        tester,
+        conversation: conversation,
+        partnerRepository: _StubPartnerRepository(
+          Partner(
+            id: 'partner-yun',
+            name: '小雲',
+            createdAt: DateTime(2026, 5, 4),
+            updatedAt: DateTime(2026, 5, 4),
+          ),
+        ),
+      );
+
+      final card = tester.widget<AnalysisFragmentCard>(
+        find.byType(AnalysisFragmentCard),
+      );
+      expect(card.partnerName, '小雲');
+    });
+
+    testWidgets('沒有對象時退回對話名稱', (tester) async {
+      await _pumpAnalysisScreen(tester);
+
+      final card = tester.widget<AnalysisFragmentCard>(
+        find.byType(AnalysisFragmentCard),
+      );
+      expect(card.partnerName, '小雲');
     });
   });
 }

@@ -10,62 +10,182 @@ Future<void> _pump(WidgetTester tester, Widget child) async {
   );
 }
 
+const _genericAgainstAdvice = '教練不建議現在回。真的要回，只傳一句不帶問號、不追問的短句，傳完就停。';
+
+/// need_context／acknowledge_and_stop 卡維持原樣：沒有「先不要回」的下一步區塊。
+void _expectNoDoNotSendExtras() {
+  expect(find.text('下一步'), findsNothing);
+  expect(find.text('她一直沒動靜就別追這條，過幾天用新話題重開。'), findsNothing);
+  expect(find.text('用新話題重新開'), findsNothing);
+  expect(find.text('我還是想回'), findsNothing);
+  expect(find.text(_genericAgainstAdvice), findsNothing);
+  expect(find.text('不該出現的句子'), findsNothing);
+}
+
 void main() {
-  testWidgets('do_not_send：標題、原因、等待條件；無收尾句與複製鈕', (tester) async {
+  const doNotSend = AnalysisDecisionV2(
+    messageDecision: AnalysisMessageDecision.doNotSend,
+    replyMode: 'none',
+    action: 'pause',
+    reason: '她只回哈哈，沒有新內容',
+    stopCondition: '等她主動給新話題',
+  );
+  const doNotSendWithLine = AnalysisDecisionV2(
+    messageDecision: AnalysisMessageDecision.doNotSend,
+    replyMode: 'none',
+    action: 'pause',
+    reason: '她只回哈哈，沒有新內容',
+    stopCondition: '等她主動給新話題',
+    closingMessage: '好，那妳先忙。',
+  );
+
+  testWidgets('do_not_send：下一步區塊（等待條件＋固定提醒）；沒備用句也收合著「我還是想回」', (tester) async {
+    await _pump(tester, const AnalysisDecisionCard(decision: doNotSend));
+    expect(
+        find.byKey(const ValueKey('analysis-decision-card')), findsOneWidget);
+    expect(find.text('這輪先不要回'), findsOneWidget);
+    expect(find.text('她只回哈哈，沒有新內容'), findsOneWidget);
+    expect(find.text('下一步'), findsOneWidget);
+    expect(find.text('等到這時候再回：等她主動給新話題'), findsOneWidget);
+    expect(find.text('她一直沒動靜就別追這條，過幾天用新話題重開。'), findsOneWidget);
+    expect(find.text('我還是想回'), findsOneWidget);
+    expect(find.text(_genericAgainstAdvice), findsNothing);
+    expect(find.text('複製收尾句'), findsNothing);
+    // 沒傳回呼（例如歷史紀錄）就不出新話題按鈕。
+    expect(find.text('用新話題重新開'), findsNothing);
+  });
+
+  testWidgets('do_not_send 沒備用句：展開「我還是想回」是通用提醒，沒有複製', (tester) async {
+    var copied = 0;
+    await _pump(
+      tester,
+      AnalysisDecisionCard(
+        decision: doNotSend,
+        onCopyAgainstAdviceLine: () => copied++,
+      ),
+    );
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(find.text('我還是想回'), findsNothing);
+    expect(find.text(_genericAgainstAdvice), findsOneWidget);
+    expect(find.text('教練不建議現在回。真的要回，這句壓力最低：'), findsNothing);
+    expect(find.text('複製這句'), findsNothing);
+    expect(find.text('複製收尾句'), findsNothing);
+    expect(copied, 0);
+  });
+
+  testWidgets('do_not_send 沒有等待條件：不出空的「等到這時候再回」', (tester) async {
     await _pump(
       tester,
       const AnalysisDecisionCard(
         decision: AnalysisDecisionV2(
           messageDecision: AnalysisMessageDecision.doNotSend,
           replyMode: 'none',
-          action: 'pause',
-          reason: '她只回哈哈，沒有新內容',
-          stopCondition: '等她主動給新話題',
+          reason: '她只回哈哈',
         ),
       ),
     );
-    expect(
-        find.byKey(const ValueKey('analysis-decision-card')), findsOneWidget);
-    expect(find.text('這輪先不要回'), findsOneWidget);
-    expect(find.text('她只回哈哈，沒有新內容'), findsOneWidget);
-    expect(find.text('等到這時候再回：等她主動給新話題'), findsOneWidget);
-    expect(find.text('複製收尾句'), findsNothing);
+    expect(find.textContaining('等到這時候再回'), findsNothing);
+    expect(find.text('她一直沒動靜就別追這條，過幾天用新話題重開。'), findsOneWidget);
   });
 
-  testWidgets('do_not_send 帶 closingMessage：不顯示句子也不給複製', (tester) async {
-    var copied = 0;
+  testWidgets('do_not_send 有回呼才出「用新話題重新開」，點了觸發回呼', (tester) async {
+    var opened = 0;
     await _pump(
       tester,
       AnalysisDecisionCard(
-        decision: const AnalysisDecisionV2(
-          messageDecision: AnalysisMessageDecision.doNotSend,
-          replyMode: 'none',
-          reason: '她只回哈哈',
-          stopCondition: '等她提新話題',
-          closingMessage: '不該出現的句子',
-        ),
-        onCopyClosingMessage: () => copied++,
+        decision: doNotSend,
+        onStartNewTopic: () => opened++,
       ),
     );
-    expect(find.text('不該出現的句子'), findsNothing);
+    await tester.tap(find.text('用新話題重新開'));
+    await tester.pump();
+    expect(opened, 1);
+  });
+
+  testWidgets('do_not_send 帶備用句：收合在「我還是想回」後面，展開才看得到句子與複製', (tester) async {
+    var copied = 0;
+    var closingCopied = 0;
+    await _pump(
+      tester,
+      AnalysisDecisionCard(
+        decision: doNotSendWithLine,
+        onCopyClosingMessage: () => closingCopied++,
+        onCopyAgainstAdviceLine: () => copied++,
+      ),
+    );
+    expect(find.text('我還是想回'), findsOneWidget);
+    expect(find.text('好，那妳先忙。'), findsNothing);
+    expect(find.text('教練不建議現在回。真的要回，這句壓力最低：'), findsNothing);
+    expect(find.text('複製這句'), findsNothing);
+    // 不是收尾句：永遠不出「複製收尾句」。
     expect(find.text('複製收尾句'), findsNothing);
-    expect(copied, 0);
+
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(find.text('我還是想回'), findsNothing);
+    expect(find.text('教練不建議現在回。真的要回，這句壓力最低：'), findsOneWidget);
+    expect(find.text('好，那妳先忙。'), findsOneWidget);
+    await tester.tap(find.text('複製這句'));
+    await tester.pump();
+    expect(copied, 1);
+    expect(closingCopied, 0);
+    expect(find.text('複製收尾句'), findsNothing);
+  });
+
+  testWidgets('do_not_send 備用句沒給複製回呼：展開只顯示句子', (tester) async {
+    await _pump(
+      tester,
+      const AnalysisDecisionCard(decision: doNotSendWithLine),
+    );
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(find.text('好，那妳先忙。'), findsOneWidget);
+    expect(find.text('複製這句'), findsNothing);
+  });
+
+  testWidgets('換一輪分析（新決策）就重新收合「我還是想回」', (tester) async {
+    await _pump(
+      tester,
+      const AnalysisDecisionCard(decision: doNotSendWithLine),
+    );
+    await tester.tap(find.text('我還是想回'));
+    await tester.pump();
+    expect(find.text('好，那妳先忙。'), findsOneWidget);
+
+    await _pump(
+      tester,
+      const AnalysisDecisionCard(
+        decision: AnalysisDecisionV2(
+          messageDecision: AnalysisMessageDecision.doNotSend,
+          replyMode: 'none',
+          reason: '她還是只回貼圖',
+          closingMessage: '好，改天聊。',
+        ),
+      ),
+    );
+    expect(find.text('我還是想回'), findsOneWidget);
+    expect(find.text('好，改天聊。'), findsNothing);
   });
 
   testWidgets('need_context：補截圖文案', (tester) async {
     await _pump(
       tester,
-      const AnalysisDecisionCard(
-        decision: AnalysisDecisionV2(
+      AnalysisDecisionCard(
+        onStartNewTopic: () {},
+        onCopyAgainstAdviceLine: () {},
+        decision: const AnalysisDecisionV2(
           messageDecision: AnalysisMessageDecision.needContext,
           replyMode: 'none',
           reason: '看不出哪句是誰說的',
           stopCondition: '補上完整對話截圖',
+          closingMessage: '不該出現的句子',
         ),
       ),
     );
     expect(find.text('資料不夠，先補截圖'), findsOneWidget);
     expect(find.text('補上後再分析：補上完整對話截圖'), findsOneWidget);
+    _expectNoDoNotSendExtras();
   });
 
   testWidgets('acknowledge_and_stop：顯示收尾句，複製鈕觸發回呼', (tester) async {
@@ -82,12 +202,38 @@ void main() {
           closingMessage: '好，那先這樣，改天再聊。',
         ),
         onCopyClosingMessage: () => copied++,
+        onStartNewTopic: () {},
+        onCopyAgainstAdviceLine: () {},
       ),
     );
     expect(find.text('這輪先收尾'), findsOneWidget);
+    expect(find.text('等到這時候再回：等她再約'), findsOneWidget);
     expect(find.text('好，那先這樣，改天再聊。'), findsOneWidget);
     await tester.tap(find.text('複製收尾句'));
     await tester.pump();
     expect(copied, 1);
+    _expectNoDoNotSendExtras();
+  });
+
+  testWidgets('acknowledge_and_stop 沒附收尾句：顯示通用收尾提醒、沒有複製鈕', (tester) async {
+    await _pump(
+      tester,
+      AnalysisDecisionCard(
+        decision: const AnalysisDecisionV2(
+          messageDecision: AnalysisMessageDecision.acknowledgeAndStop,
+          replyMode: 'single',
+          action: 'pause',
+          reason: '她說之後再看看',
+          stopCondition: '等她主動提新時間',
+        ),
+        onCopyClosingMessage: () {},
+        onStartNewTopic: () {},
+        onCopyAgainstAdviceLine: () {},
+      ),
+    );
+    expect(find.text('這輪先收尾'), findsOneWidget);
+    expect(find.text('回一句簡短、不追問的話收尾就好，傳完就停。'), findsOneWidget);
+    expect(find.text('複製收尾句'), findsNothing);
+    _expectNoDoNotSendExtras();
   });
 }

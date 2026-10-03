@@ -4,6 +4,8 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { evaluateArtifact } from "./evaluate.ts";
 import { CORPUS } from "./corpus.ts";
+import { detectAnalyzeSocialKnowledgeSignals } from "../../supabase/functions/analyze-chat/knowledge_adapter.ts";
+import { offeredNoSendDecisions } from "../../supabase/functions/analyze-chat/no_send_decision.ts";
 
 const send = (name: string, patch: Record<string, unknown> = {}) => ({
   name,
@@ -228,4 +230,18 @@ Deno.test("evaluate: candidate guard violations come from telemetry, or are rebu
       .guard,
     null,
   );
+});
+
+Deno.test("corpus: every expectation is reachable from the server's no-send menu", () => {
+  // 與 analyze_stream_handler 同一算法：期望只有不回的案，伺服器選單裡要有它。
+  for (const c of CORPUS) {
+    const lowInvestment = detectAnalyzeSocialKnowledgeSignals({
+      messages: c.messages,
+    }).includes("low_investment");
+    const offered = offeredNoSendDecisions(c.messages, lowInvestment);
+    assert(
+      c.expect.messageDecision.some((d) => d === "send" || offered.includes(d)),
+      `${c.id}: expected ${c.expect.messageDecision} but menu is ${offered}`,
+    );
+  }
 });

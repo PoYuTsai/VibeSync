@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
   // Sonnet 5 standard pricing (USD per 1K tokens).
   "claude-sonnet-5": { input: 0.002, output: 0.010 },
+  // Sonnet 5.5 同價（2026-10-02 官方牌價 $2／$10）。
+  "claude-sonnet-5-5": { input: 0.002, output: 0.010 },
   "claude-sonnet-4-6": { input: 0.003, output: 0.015 },
   // 舊版 Sonnet 4 保留：歷史 log / 在途請求計價用（2026-06-12 升級 4.6）
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },

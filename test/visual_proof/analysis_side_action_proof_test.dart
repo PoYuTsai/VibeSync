@@ -1,12 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/features/analysis/presentation/sections/analysis_fragment_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
-import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
 import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 import 'proof_support.dart';
+
+class _NoopFragmentActions implements AnalysisFragmentActions {
+  const _NoopFragmentActions();
+
+  @override
+  void chooseConversationSource() {}
+
+  @override
+  void editFragmentMessage(Message message) {}
+
+  @override
+  void swapFragmentMessageSide(Message message) {}
+
+  @override
+  void deleteFragmentMessage(Message message) {}
+}
 
 class _AnalysisActionProof extends StatelessWidget {
   const _AnalysisActionProof();
@@ -56,37 +71,22 @@ class _AnalysisActionProof extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 120),
           children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.96),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: AppColors.ctaStart.withValues(alpha: 0.24),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    '待分析的新片段',
-                    style: TextStyle(
-                      color: AppColors.glassTextPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ...messages.map((message) => MessageBubble(message: message)),
-                ],
-              ),
+            // 用真正的片段卡，避免手刻舊卡配新泡泡的混合體。
+            AnalysisFragmentCard(
+              isEmptyFragmentSetup: false,
+              isPendingFragment: true,
+              isCompletedFragment: false,
+              showRecordRepairWarning: false,
+              isScreenshotOnlyEmptyState: false,
+              showEmptyState: false,
+              messages: [
+                for (final message in messages)
+                  FragmentMessageItem(message: message, mutable: true),
+              ],
+              sourceLabel: '來源未設定',
+              sourceEditable: true,
+              actions: const _NoopFragmentActions(),
+              partnerName: 'Bruce',
             ),
           ],
         ),

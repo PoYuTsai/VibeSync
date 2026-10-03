@@ -64,6 +64,25 @@ Deno.test("selector derives low versus high partner investment from recent turns
   assert(!high.has("low_investment"));
 });
 
+Deno.test("partner writing at least as much as me is never low investment", () => {
+  // 我「嗨」她「哈囉」：她回得比我多，不能塞「暫時不傳也可以」（Sonnet 5.5 A/B 回歸）。
+  for (
+    const recentMessages of [
+      [
+        { sender: "me" as const, text: "嗨" },
+        { sender: "partner" as const, text: "哈囉" },
+      ],
+      [{ sender: "partner" as const, text: "嗨" }],
+    ]
+  ) {
+    const signals = detectSocialKnowledgeSignals({
+      userQuestion: "",
+      recentMessages,
+    });
+    assert(!signals.has("low_investment"));
+  }
+});
+
 Deno.test("boundary and intimacy query selects fail-safe knowledge", () => {
   const selected = selectSocialKnowledge({
     userQuestion: "她喝醉又沉默，我可以繼續親密推進嗎？",

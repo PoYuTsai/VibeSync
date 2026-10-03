@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/presentation/widgets/message_bubble.dart';
@@ -84,7 +85,7 @@ void main() {
       expect(find.bySemanticsLabel(RegExp(r'^我說\n我的訊息')), findsOneWidget);
     });
 
-    testWidgets('引用小卡用截圖裡的名字當標題，不再寫「引用我剛剛說的」', (tester) async {
+    testWidgets('VoiceOver 把引用和回覆分開念，引用不會聽成說話者自己說的', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -92,7 +93,7 @@ void main() {
               message: _message(
                 '好',
                 isFromMe: true,
-                quote: '阿哲：感覺11點多到的就好',
+                quote: '明天一起吃飯？',
                 quoteIsFromMe: true,
               ),
             ),
@@ -100,25 +101,63 @@ void main() {
         ),
       );
 
-      expect(find.text('阿哲'), findsOneWidget);
-      expect(find.text('感覺11點多到的就好'), findsOneWidget);
-      expect(find.text('引用我剛剛說的'), findsNothing);
-      expect(find.textContaining('阿哲：'), findsNothing);
+      expect(
+        find.bySemanticsLabel('我說\n引用：明天一起吃飯？\n回覆：好'),
+        findsOneWidget,
+      );
+      // 子層文字不再各自成為節點，避免引用被單獨念成一句。
+      expect(find.bySemanticsLabel('明天一起吃飯？'), findsNothing);
+      expect(find.bySemanticsLabel('好'), findsNothing);
     });
 
-    testWidgets('引用沒有名字時只顯示原文', (tester) async {
+    testWidgets('可編修的泡泡在語意節點上保留長按動作', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: MessageBubble(
-              message: _message('隨便 social', isFromMe: false, quote: '🙂 😮'),
+              message: _message('可以一起', isFromMe: false),
+              onEdit: () {},
             ),
           ),
         ),
       );
 
-      expect(find.text('🙂 😮'), findsOneWidget);
-      expect(find.text('引用對方剛剛說的'), findsNothing);
+      final node = tester.getSemantics(find.bySemanticsLabel('她說\n可以一起'));
+      expect(
+        node.getSemanticsData().hasAction(SemanticsAction.longPress),
+        isTrue,
+      );
+    });
+
+    testWidgets('引用小卡原樣顯示截圖原文，不拆名字也不寫「引用我剛剛說的」', (tester) async {
+      // 原文本身有冒號的情況（PR #86 審查 P2-2）也要原樣顯示。
+      for (final quote in [
+        '阿哲：感覺11點多到的就好',
+        '時間：明天下午',
+        '明天下午3：00見',
+        'PS: 記得帶傘',
+        '🙂 😮',
+      ]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                message: _message(
+                  '好',
+                  isFromMe: true,
+                  quote: quote,
+                  quoteIsFromMe: true,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(find.text(quote), findsOneWidget, reason: quote);
+        expect(find.text('引用我剛剛說的'), findsNothing, reason: quote);
+        expect(find.text('引用對方剛剛說的'), findsNothing, reason: quote);
+      }
+      expect(find.text('阿哲'), findsNothing);
     });
 
     testWidgets('對方頭像只掛在每組第一則，我方不畫頭像', (tester) async {
@@ -151,36 +190,88 @@ void main() {
       final secondLeft = tester.getTopLeft(find.text('連發第二則')).dx;
       expect(secondLeft, firstLeft, reason: '連發的泡泡要和第一顆對齊頭像欄');
     });
-  });
 
-  group('QuotedReplyParts.parse', () {
-    test('拆出名字與原文', () {
-      final parts = QuotedReplyParts.parse('阿哲：感覺11點多到的就好');
-      expect(parts.name, '阿哲');
-      expect(parts.text, '感覺11點多到的就好');
-    });
+    testWidgets('尾巴角只在每組第一顆，貼向說話者那側', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                MessageBubble(message: _message('她組首', isFromMe: false)),
+                MessageBubble(
+                  message: _message('她連發', isFromMe: false),
+                  isGroupStart: false,
+                ),
+                MessageBubble(message: _message('我組首', isFromMe: true)),
+                MessageBubble(
+                  message: _message('我連發', isFromMe: true),
+                  isGroupStart: false,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 
-    test('半形冒號與英文名字也拆', () {
-      final parts = QuotedReplyParts.parse('Kai Lin: 好啊');
-      expect(parts.name, 'Kai Lin');
-      expect(parts.text, '好啊');
-    });
-
-    test('時間、網址、句子中的冒號不當成名字', () {
-      for (final raw in [
-        '12:30 見',
-        'https://example.com',
-        '好喔，那就：明天',
-        '：只有冒號',
-        '🙂 😮',
-      ]) {
-        final parts = QuotedReplyParts.parse(raw);
-        expect(parts.name, isNull, reason: raw);
-        expect(parts.text, raw, reason: raw);
+      BorderRadiusGeometry? radiusOf(String text) {
+        final bubble = tester.widget<Container>(_bubbleOf(text));
+        return (bubble.decoration! as BoxDecoration).borderRadius;
       }
+
+      const round = Radius.circular(18);
+      const tail = Radius.circular(5);
+      expect(
+        radiusOf('她組首'),
+        const BorderRadius.only(
+          topLeft: tail,
+          topRight: round,
+          bottomLeft: round,
+          bottomRight: round,
+        ),
+      );
+      expect(
+        radiusOf('我組首'),
+        const BorderRadius.only(
+          topLeft: round,
+          topRight: tail,
+          bottomLeft: round,
+          bottomRight: round,
+        ),
+      );
+      expect(radiusOf('她連發'), const BorderRadius.all(round));
+      expect(radiusOf('我連發'), const BorderRadius.all(round));
+    });
+
+    testWidgets('泡泡最寬為螢幕 70%，短句不會被撐寬', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      const longText = '那我先問小美要不要一起，晚點再跟妳說時間，順便問她幾點到';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                MessageBubble(message: _message(longText, isFromMe: true)),
+                MessageBubble(message: _message('好', isFromMe: true)),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final longWidth = tester.getSize(_bubbleOf(longText)).width;
+      expect(longWidth, lessThanOrEqualTo(390 * 0.7 + 0.5));
+      expect(longWidth, greaterThan(390 * 0.6), reason: '長句應該頂到上限換行');
+      expect(tester.getSize(_bubbleOf('好')).width, lessThan(80));
     });
   });
 }
+
+/// 泡泡本體：內文往上最近的 Container（引用小卡不是內文的祖先）。
+Finder _bubbleOf(String text) =>
+    find.ancestor(of: find.text(text), matching: find.byType(Container)).first;
 
 Message _message(
   String content, {

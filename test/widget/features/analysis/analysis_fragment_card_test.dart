@@ -85,7 +85,7 @@ void main() {
     expect(find.text('我說'), findsNothing);
   });
 
-  testWidgets('換人比同一人連發多留 8 的間距', (tester) async {
+  testWidgets('泡泡之間：同一人連發 4、換人 12', (tester) async {
     await _pumpCard(
       tester,
       partnerName: '小雲',
@@ -96,29 +96,16 @@ void main() {
       ],
     );
 
-    double gapBetween(String upper, String lower) {
-      final upperBottom = tester
-          .getBottomLeft(
-            find.ancestor(
-              of: find.text(upper),
-              matching: find.byType(MessageBubble),
-            ),
-          )
-          .dy;
-      final lowerTop = tester
-          .getTopLeft(
-            find.ancestor(
-              of: find.text(lower),
-              matching: find.byType(MessageBubble),
-            ),
-          )
-          .dy;
-      return lowerTop - upperBottom;
-    }
+    // 量泡泡本體（內文往上最近的 Container），不是整個 MessageBubble 列。
+    Finder bubble(String text) => find
+        .ancestor(of: find.text(text), matching: find.byType(Container))
+        .first;
+    double gapBetween(String upper, String lower) =>
+        tester.getTopLeft(bubble(lower)).dy -
+        tester.getBottomLeft(bubble(upper)).dy;
 
-    final sameSpeaker = gapBetween('訊息 1', '訊息 2');
-    final speakerChange = gapBetween('訊息 2', '訊息 3');
-    expect(speakerChange - sameSpeaker, 8);
+    expect(gapBetween('訊息 1', '訊息 2'), 4);
+    expect(gapBetween('訊息 2', '訊息 3'), 12);
   });
 
   testWidgets('沒有對象名字就不畫頭像', (tester) async {
@@ -129,5 +116,19 @@ void main() {
 
     final bubble = tester.widget<MessageBubble>(find.byType(MessageBubble));
     expect(bubble.partnerInitial, isNull);
+  });
+
+  testWidgets('「新對話」這類預設名稱不畫頭像（不會出現「新」）', (tester) async {
+    for (final placeholder in ['新對話', '新的對話', '  ']) {
+      await _pumpCard(
+        tester,
+        partnerName: placeholder,
+        messages: [_message('1', isFromMe: false)],
+      );
+
+      final bubble = tester.widget<MessageBubble>(find.byType(MessageBubble));
+      expect(bubble.partnerInitial, isNull, reason: placeholder);
+      expect(find.text('新'), findsNothing, reason: placeholder);
+    }
   });
 }

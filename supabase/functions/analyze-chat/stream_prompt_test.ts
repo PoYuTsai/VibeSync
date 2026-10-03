@@ -28,6 +28,10 @@ import {
   markLatestAnalysisFragment,
   normalizeStagePrior,
 } from "./stream_prompt.ts";
+import {
+  offeredNoSendDecisions,
+  validateNoSendDecisionEvent,
+} from "./no_send_decision.ts";
 
 Deno.test("stream prompt wraps base prompt with JSONL event contract", () => {
   const prompt = buildStreamSystemPrompt("Base full reasoning prompt.");
@@ -621,4 +625,75 @@ Deno.test("Phase 2b branch attribution rule is emitted only with the divergence 
   const fields = parseReplyOptionBranchFields(example, plan, example.style);
   assert(fields, "example attribution must satisfy the parser");
   assertEquals(fields.selectedBranchIds, example.selectedBranchIds);
+});
+
+Deno.test("do_not_send closing line: offered with do_not_send, removed with it", () => {
+  const base = "Base full reasoning prompt.";
+  const sentence =
+    "For `do_not_send` also include `closingMessage`: the single lowest-pressure line he could send if he insists on replying anyway (no question, no chasing, no guilt, short, Traditional Chinese).";
+  const fieldsTail =
+    "also include `closingMessage` (one short neutral line, Traditional Chinese).";
+
+  const all = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+  });
+  assert(all.includes(`${fieldsTail} ${sentence} Then skip steps 2 and 3`));
+  assertEquals(all.split(sentence).length, 2);
+  // 範例要照自己的規則帶備用句，模型才不會照抄出沒有備用句的 do_not_send。
+  const examplePrefix = "Example no-send line: ";
+  const exampleLine = all.split("\n").find((line) =>
+    line.startsWith(examplePrefix)
+  );
+  assert(exampleLine, "no-send example missing");
+  const example = validateNoSendDecisionEvent(
+    JSON.parse(exampleLine.slice(examplePrefix.length)),
+  );
+  assert(example.ok);
+  assertEquals(example.payload.decisionKind, "do_not_send");
+  assert(example.payload.closingMessage);
+
+  for (
+    const offered of [
+      ["acknowledge_and_stop"],
+      ["acknowledge_and_stop", "need_context"],
+    ] as const
+  ) {
+    const restricted = buildStreamSystemPrompt(base, ["extend"], {
+      noSendDecisions: true,
+      offeredNoSendDecisions: offered,
+    });
+    assert(!restricted.includes("do_not_send"), offered.join(","));
+    assert(restricted.includes(`${fieldsTail} Then skip steps 2 and 3`));
+  }
+
+  // v1 prompt never sees the gate, so never the line.
+  assert(!buildStreamSystemPrompt(base, ["extend"]).includes(sentence));
+});
+
+Deno.test("do_not_send waiting clause: his own last message gets the clause, removed with do_not_send", () => {
+  const base = "Base full reasoning prompt.";
+  const clause =
+    "Also use `do_not_send` when his own message is the last one in the transcript: he already replied and the ball is in her court, so any new message is a double text; this overrides the `send` and `acknowledge_and_stop` rules.";
+  // user_waiting_after_reply：她說晚點再聊，他回「好，等妳忙完」。
+  const offered = offeredNoSendDecisions([
+    { isFromMe: false },
+    { isFromMe: true },
+  ], false);
+  const waiting = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    offeredNoSendDecisions: offered,
+  });
+  assert(waiting.includes(clause));
+  assertEquals(waiting.split(clause).length, 2);
+
+  // 沒開 do_not_send（她最後一則、沒量到低投入）：條款跟著拿掉。
+  const herLast = buildStreamSystemPrompt(base, ["extend"], {
+    noSendDecisions: true,
+    offeredNoSendDecisions: offeredNoSendDecisions([
+      { isFromMe: true },
+      { isFromMe: true },
+      { isFromMe: false },
+    ], false),
+  });
+  assert(!herLast.includes("double text"));
 });

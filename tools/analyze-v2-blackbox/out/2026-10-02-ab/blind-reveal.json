@@ -1,0 +1,65 @@
+{
+  "seed": 20261002,
+  "cases": [
+    {
+      "n": 1,
+      "caseId": "she_asks_personal_question",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 2,
+      "caseId": "defer_polite_reason",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 3,
+      "caseId": "she_shares_bad_day",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 4,
+      "caseId": "warm_question_back",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 5,
+      "caseId": "soft_reject_after_invite",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 6,
+      "caseId": "thin_opening",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 7,
+      "caseId": "she_returns_after_silence",
+      "甲": "A",
+      "乙": "B"
+    },
+    {
+      "n": 8,
+      "caseId": "she_asks_his_opinion",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 9,
+      "caseId": "after_meetup_followup",
+      "甲": "B",
+      "乙": "A"
+    },
+    {
+      "n": 10,
+      "caseId": "hobby_common_ground",
+      "甲": "B",
+      "乙": "A"
+    }
+  ]
+}

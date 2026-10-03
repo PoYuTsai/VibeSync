@@ -45,6 +45,10 @@ class AppColors {
   /// 放白底只有 ~2.5:1，這顆在 glassWhite 上約 7:1。
   static const errorOnGlass = Color(0xFFC62828);
   static const warning = Color(0xFFFFB74D);
+
+  /// 淺色板（glassWhite、分析片段對話板）上的警示琥珀：warning 是深底用的
+  /// 亮橘黃，放淡紫板只有 1.46:1，這顆在對話板上 5.34:1（DESIGN.md §8）。
+  static const warningOnGlass = Color(0xFF8A5300);
   static const info = Color(0xFF64B5F6);
 
   // Warm theme backgrounds
@@ -100,11 +104,9 @@ class AppColors {
   static const chatMetaGrey = Color(0xFF8E8E93);
 
   // 分析片段對話板（2026-10-02 選定 A 案「LINE 熟悉感」）：淡紫底板上
-  // 她＝白泡泡、我＝蜜桃泡泡。我方引用小卡的名字用深橘：品牌橘在淺底
-  // 只有 ~2.9:1，這顆在引用底（白 55% 疊蜜桃）上 4.98:1（DESIGN.md §8）。
+  // 她＝白泡泡、我＝蜜桃泡泡。
   static const transcriptBoard = Color(0xFFEEEAF4);
   static const transcriptBubbleMine = Color(0xFFFFE1D2);
-  static const transcriptQuoteNameMine = Color(0xFFB4470F);
 
   // Supporting text
   static const unselectedText = Color(0xFF5D4E6B);

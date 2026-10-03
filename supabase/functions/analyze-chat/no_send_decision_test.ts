@@ -7,6 +7,7 @@ import {
   noSendChargePayloadFromStored,
   noSendDecisionEvent,
   noSendDecisionFromResult,
+  offeredNoSendDecisions,
   parseAnalysisContractVersion,
   serializeNoSendRecommendation,
   validateNoSendDecisionEvent,
@@ -87,10 +88,6 @@ Deno.test("no-send decision validation: three kinds pass, empty shells and unsaf
     [{ ...DO_NOT_SEND, reason: "  " }, "STREAM_MALFORMED_RECOMMENDATION"],
     [
       { ...DO_NOT_SEND, stopCondition: undefined },
-      "STREAM_MALFORMED_RECOMMENDATION",
-    ],
-    [
-      { ...DO_NOT_SEND, messageDecision: "acknowledge_and_stop" },
       "STREAM_MALFORMED_RECOMMENDATION",
     ],
     [
@@ -332,4 +329,67 @@ Deno.test("store: a no-send payload charges through charge_stream_analysis_run_v
   assertEquals(rpcCalls[1].fn, "charge_stream_analysis_run");
   assertEquals(rpcCalls[1].args.p_selected_style, "extend");
   assertFalse("p_decision_kind" in rpcCalls[1].args);
+});
+
+Deno.test("offeredNoSendDecisions: one line from the user means no silence and no need_context", () => {
+  const me = (content: string) => ({ isFromMe: true, content });
+  const her = (content: string) => ({ isFromMe: false, content });
+  // 用戶只傳過一句、最後是她：只留收尾，就算量到低投入也一樣。
+  assertEquals(offeredNoSendDecisions([me("嗨"), her("哈囉")], false), [
+    "acknowledge_and_stop",
+  ]);
+  assertEquals(offeredNoSendDecisions([me("長長一句"), her("嗯")], true), [
+    "acknowledge_and_stop",
+  ]);
+  assertEquals(offeredNoSendDecisions([her("你的照片在哪拍的")], false), [
+    "acknowledge_and_stop",
+  ]);
+  // 用戶傳過兩句以上：沒量到低投入就沒有 do_not_send，量到才全開。
+  const longer = [me("在幹嘛"), her("沒"), me("週末呢"), her("還好")];
+  assertEquals(offeredNoSendDecisions(longer, false), [
+    "acknowledge_and_stop",
+    "need_context",
+  ]);
+  assertEquals(offeredNoSendDecisions(longer, true), [
+    "do_not_send",
+    "acknowledge_and_stop",
+    "need_context",
+  ]);
+  // 最後一則是用戶自己：不算她回了，照一般規則。
+  assertEquals(offeredNoSendDecisions([me("嗨")], true), [
+    "do_not_send",
+    "acknowledge_and_stop",
+    "need_context",
+  ]);
+});
+
+Deno.test("offeredNoSendDecisions: the user waiting for her always gets do_not_send", () => {
+  const me = (content: string) => ({ isFromMe: true, content });
+  const her = (content: string) => ({ isFromMe: false, content });
+  const all = ["do_not_send", "acknowledge_and_stop", "need_context"] as const;
+  // 她說晚點再聊、他已經回「等妳忙完」：球在她那邊，沒量到低投入也要能叫他先別回。
+  assertEquals(
+    offeredNoSendDecisions(
+      [her("我正在開會，晚點結束再跟你聊今天那件事"), me("好，等妳忙完")],
+      false,
+    ),
+    all,
+  );
+  assertEquals(offeredNoSendDecisions([me("嗨")], false), all);
+  const longer = [me("在幹嘛"), her("沒"), me("週末呢"), her("還好")];
+  assertEquals(offeredNoSendDecisions([...longer, me("那改天聊")], false), all);
+  // 最後是她、沒量到低投入：照舊沒有 do_not_send。
+  assertEquals(offeredNoSendDecisions(longer, false), [
+    "acknowledge_and_stop",
+    "need_context",
+  ]);
+});
+
+Deno.test("acknowledge_and_stop without closingMessage is still a valid, chargeable decision", () => {
+  const ack = { ...DO_NOT_SEND, messageDecision: "acknowledge_and_stop" };
+  assertEquals("closingMessage" in ack, false);
+  const result = validateNoSendDecisionEvent(ack);
+  assert(result.ok);
+  assertEquals(result.payload.decisionKind, "acknowledge_and_stop");
+  assertEquals(result.payload.closingMessage, undefined);
 });

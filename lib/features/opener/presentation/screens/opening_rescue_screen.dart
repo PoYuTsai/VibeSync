@@ -68,6 +68,19 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
         : OpeningRescueMode.opener;
   }
 
+  /// 直達新話題 tab 的位址（分析「先不要回」的「用新話題重新開」）；
+  /// 有 partnerId 就鎖定這位對象。
+  static String newTopicLocationFor({String? partnerId}) {
+    final id = partnerId?.trim();
+    return Uri(
+      path: '/opener',
+      queryParameters: {
+        'mode': 'new_topic',
+        if (id != null && id.isNotEmpty) 'partnerId': id,
+      },
+    ).toString();
+  }
+
   /// Builds the handoff URL used by the「她回覆了，開始分析對話」CTA.
   ///
   /// 2026-08-26 產品調整：拿掉中間的「接續開場」頁，CTA 直接進「新增對象」。

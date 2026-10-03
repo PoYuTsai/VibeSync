@@ -22,7 +22,7 @@ class _NoopFragmentActions implements AnalysisFragmentActions {
   void deleteFragmentMessage(Message message) {}
 }
 
-/// 截圖匯入的群組聊天片段：引用第三人、引用對方、沒有名字的引用、
+/// 截圖匯入的群組聊天片段：引用原文（有的帶「名字：」前綴，原樣顯示）、
 /// 同一人連發與多行長句都在這一屏。
 class _FragmentBubbleProof extends StatelessWidget {
   const _FragmentBubbleProof();
@@ -69,7 +69,7 @@ class _FragmentBubbleProof extends StatelessWidget {
         quote: 'Kai Lin：但小美不認識他們吧',
         quoteIsFromMe: false,
       ),
-      // 沒有名字的引用（截圖裡只看得到原文）。
+      // 辨識只存卡片原文的引用。
       message('5', '隨便 social', isFromMe: false, quote: '哈哈好啊'),
       message('6', '嗯嗯', isFromMe: false),
       message('7', '那我先問小美要不要一起，晚點再跟妳說時間', isFromMe: true),
