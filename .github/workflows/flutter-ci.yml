@@ -63,6 +63,7 @@ jobs:
           supabase/functions/_shared/quota_test.ts
           supabase/functions/analyze-chat/logger_test.ts
           supabase/functions/analyze-chat/index_test.ts
+          supabase/functions/analyze-chat/ai_logs_entry_wiring_test.ts
           supabase/functions/analyze-chat/streaming_fallback_test.ts
           supabase/functions/analyze-chat/stream_branch_test.ts
           supabase/functions/analyze-chat/guardrails_test.ts
