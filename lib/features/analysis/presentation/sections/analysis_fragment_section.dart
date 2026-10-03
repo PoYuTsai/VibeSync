@@ -4,6 +4,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/presentation/widgets/message_bubble.dart';
+import '../../domain/services/screenshot_recognition_helper.dart';
 
 /// 片段卡的動作介面：來源設定與訊息編修（對話寫入、對話框）由 screen 實作。
 abstract interface class AnalysisFragmentActions {
@@ -54,13 +55,15 @@ class AnalysisFragmentCard extends StatelessWidget {
   final bool sourceEditable;
   final AnalysisFragmentActions actions;
 
-  /// 對象名字（與頁首標題同一個字串），取第一個字當對方頭像；
-  /// 沒給就不畫頭像。
+  /// 對象名字，取第一個字當對方頭像。沒給、或是「新對話」這類預設名稱
+  /// （手動輸入、截圖沒讀到名字時）就不畫頭像，避免頭像顯示「新」。
   final String? partnerName;
 
   String? get _partnerInitial {
     final name = partnerName?.trim() ?? '';
-    if (name.isEmpty) return null;
+    if (ScreenshotRecognitionHelper.isPlaceholderConversationName(name)) {
+      return null;
+    }
     return name.characters.first.toUpperCase();
   }
 

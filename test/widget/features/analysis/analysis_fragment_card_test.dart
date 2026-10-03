@@ -130,4 +130,18 @@ void main() {
     final bubble = tester.widget<MessageBubble>(find.byType(MessageBubble));
     expect(bubble.partnerInitial, isNull);
   });
+
+  testWidgets('「新對話」這類預設名稱不畫頭像（不會出現「新」）', (tester) async {
+    for (final placeholder in ['新對話', '新的對話', '  ']) {
+      await _pumpCard(
+        tester,
+        partnerName: placeholder,
+        messages: [_message('1', isFromMe: false)],
+      );
+
+      final bubble = tester.widget<MessageBubble>(find.byType(MessageBubble));
+      expect(bubble.partnerInitial, isNull, reason: placeholder);
+      expect(find.text('新'), findsNothing, reason: placeholder);
+    }
+  });
 }
