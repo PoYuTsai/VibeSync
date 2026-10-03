@@ -531,6 +531,9 @@ export function withNonPositiveLearningDeltas(
   };
 }
 
+/** easy 難度在這個熱度（含）以下不套新手獎勵閘門，普通句照舊 +1。 */
+export const EASY_NEUTRAL_REPAIR_MAX_HEAT = 40;
+
 /**
  * 新手獎勵閘門的適用範圍（PR #88，Eric 2026-10-03 拍板）。原本只有挑戰難度
  * （PR #51），現在擴到 normal；easy 只在這一輪開始前的熱度 > 40 時才套——
@@ -540,8 +543,6 @@ export function withNonPositiveLearningDeltas(
  * handler 的成功、分類器失敗與 CAS 重試路徑，以及 bakeoff，都用這一支判斷；
  * 重試時要用重新讀到的熱度再判一次。
  */
-export const EASY_NEUTRAL_REPAIR_MAX_HEAT = 40;
-
 export function beginnerRewardGateActive(opts: {
   practiceMode: string | undefined;
   difficulty: string | undefined;
