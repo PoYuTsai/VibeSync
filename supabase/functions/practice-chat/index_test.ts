@@ -1335,6 +1335,137 @@ Deno.test("learning response reports the actual change when scores clamp at the 
   }
 });
 
+// PR #88 G2（Codex 主審第 1 輪 P2）：分類成功與 fallback 的寫入都失敗時，DB 沒有
+// 任何變化——回給 App 的是 DB 最後回報的分數、兩軸 delta 0，不是算出來卻沒寫
+// 進去的確定性扣分。
+Deno.test("learning response stays flat when every learning write errors", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 20,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          { error: "db down" },
+          { error: "db down" },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 20,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  // 送進 RPC 的是確定性扣分（沒寫進去）。
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, -12);
+  assertEquals(json.temperature.score, 40);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 20);
+  assertEquals(json.temperature.familiarityDelta, 0);
+});
+
+Deno.test("learning response reports the last DB scores when every CAS retry is rejected", async () => {
+  const stale = {
+    updated: false,
+    temperature_score: 45,
+    familiarity_score: 25,
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 20,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          { data: stale },
+          { data: stale },
+          { data: stale },
+          { data: stale },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 20,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 4);
+  assertEquals(json.temperature.score, 45);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 25);
+  assertEquals(json.temperature.familiarityDelta, 0);
+});
+
+// PR #88 G2：RPC 沒回分數時，delta 一樣用「分數減舊分數」——夾在 100 時不會顯示 +4。
+Deno.test("learning response derives the delta from the clamped score when the RPC returns no row", async () => {
+  const { response, json } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 98,
+        familiarity_score: 97,
+      }),
+      rpc: { update_practice_learning_state: [{ data: null }] },
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 98,
+      familiarityScore: 97,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 100);
+  assertEquals(json.temperature.delta, 2);
+  assertEquals(json.temperature.familiarityScore, 100);
+  assertEquals(json.temperature.familiarityDelta, 3);
+});
+
+// PR #88 G2：fallback 第一次寫入那個呼叫點——分類器失敗＋粗俗冒犯，扣分被 DB 夾在 0。
+Deno.test("fallback first write reports the actual change after a crude offense near zero", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 5,
+        familiarity_score: 3,
+      }),
+      deepSeekReplies: ["AI reply", new Error("classifier down")],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 5,
+      familiarityScore: 3,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(json.temperature.score, 0);
+  assertEquals(json.temperature.delta, -5);
+  assertEquals(json.temperature.familiarityScore, 0);
+  assertEquals(json.temperature.familiarityDelta, -3);
+});
+
 Deno.test("beginner later chat uses ledger learning state over client sent scores", async () => {
   const { response, json, state } = await run(
     {

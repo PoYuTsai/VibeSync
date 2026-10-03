@@ -1136,7 +1136,9 @@ function defaultPartnerState(): PartnerState {
 /**
  * DB 回的分數是權威值。PR #88 G2：回給 App 的 delta 也改成實際變化量（DB 新
  * 分數減掉這次 CAS 比對用的舊分數）——分數被夾在 0／100（或 DB 每輪上限）時，
- * 畫面不會在 100 分還顯示「+4」。DB 沒回分數時沿用計算值。
+ * 畫面不會在 100 分還顯示「+4」。DB 沒回分數時沿用計算出的分數（它本來就是
+ * 夾過 0～100 的 expected＋delta），delta 一樣用「分數減舊分數」，兩條分支同一
+ * 個定義。
  */
 function withAuthoritativeLearningScores(
   judgement: LearningJudgement,
@@ -1147,12 +1149,8 @@ function withAuthoritativeLearningScores(
   const score = result.temperatureScore ?? judgement.score;
   const familiarityScore = result.familiarityScore ??
     judgement.familiarityScore;
-  const delta = result.temperatureScore === null
-    ? judgement.delta
-    : result.temperatureScore - expectedTemperature;
-  const familiarityDelta = result.familiarityScore === null
-    ? judgement.familiarityDelta
-    : result.familiarityScore - expectedFamiliarity;
+  const delta = score - expectedTemperature;
+  const familiarityDelta = familiarityScore - expectedFamiliarity;
   const stage = relationshipStageFor(familiarityScore, score);
   return {
     ...judgement,
@@ -1165,6 +1163,34 @@ function withAuthoritativeLearningScores(
     stageLabel: stage.label,
     partnerState: partnerStateFromUpdateResult(result) ??
       judgement.partnerState ?? defaultPartnerState(),
+  };
+}
+
+/**
+ * PR #88 G2：分類成功與 fallback 的寫入都失敗時，DB 沒有任何變化，回給 App 的
+ * 就是 DB 最後回報的分數（沒回報就用這輪開始時讀到的）、兩軸 delta 0；不回傳
+ * 算出來卻沒寫進去的分數（例如確定性越界的 -12），免得畫面先掉、下一輪又跳回
+ * DB 的值。classification 保留，冒犯階梯照用。
+ */
+function withUnwrittenLearningScores(
+  judgement: LearningJudgement,
+  currentTemperature: number,
+  currentFamiliarity: number,
+  currentPartnerState: PartnerState | null | undefined,
+): LearningJudgement {
+  const score = clampTemperature(currentTemperature);
+  const familiarityScore = clampTemperature(currentFamiliarity);
+  const stage = relationshipStageFor(familiarityScore, score);
+  return {
+    ...judgement,
+    score,
+    delta: 0,
+    band: temperatureBandFor(score),
+    familiarityScore,
+    familiarityDelta: 0,
+    stage: stage.stage,
+    stageLabel: stage.label,
+    partnerState: currentPartnerState ?? defaultPartnerState(),
   };
 }
 
@@ -1738,6 +1764,20 @@ async function judgeLearningState(opts: {
     opts.currentFamiliarity,
     opts.currentPartnerState,
   );
+  // PR #88 G2：DB 最後回報的分數（CAS 衝突時會帶回目前的權威值）。所有寫入
+  // 都失敗時就回這組、delta 0，而不是一開始讀到的舊值。
+  let knownTemperature = opts.currentTemperature;
+  let knownFamiliarity = opts.currentFamiliarity;
+  let knownPartnerState = opts.currentPartnerState;
+  const noteKnownScores = (result: LearningStateUpdateResult) => {
+    if (result.temperatureScore === null || result.familiarityScore === null) {
+      return;
+    }
+    knownTemperature = result.temperatureScore;
+    knownFamiliarity = result.familiarityScore;
+    knownPartnerState = partnerStateFromUpdateResult(result) ??
+      knownPartnerState;
+  };
   try {
     const rawClassification = await opts.deps.callDeepSeek({
       apiKey: opts.apiKey,
@@ -1812,6 +1852,7 @@ async function judgeLearningState(opts: {
       opts.currentFamiliarity,
       protectedJudgement,
     );
+    noteKnownScores(firstUpdate);
     if (!firstUpdate.updated) {
       if (
         firstUpdate.temperatureScore === null ||
@@ -1830,6 +1871,7 @@ async function judgeLearningState(opts: {
         firstUpdate.familiarityScore,
         protectedRetryJudgement,
       );
+      noteKnownScores(secondUpdate);
       if (!secondUpdate.updated) {
         throw new Error("learning_state_update_not_applied");
       }
@@ -1863,6 +1905,7 @@ async function judgeLearningState(opts: {
         expectedFamiliarity: opts.currentFamiliarity,
         judgement: fallback,
       });
+      noteKnownScores(fallbackUpdate);
       if (fallbackUpdate.updated) {
         return withAuthoritativeLearningScores(
           fallback,
@@ -1889,6 +1932,7 @@ async function judgeLearningState(opts: {
           expectedFamiliarity: fallbackUpdate.familiarityScore,
           judgement: retryFallback,
         });
+        noteKnownScores(retryUpdate);
         if (retryUpdate.updated) {
           return withAuthoritativeLearningScores(
             retryFallback,
@@ -1904,7 +1948,12 @@ async function judgeLearningState(opts: {
         error: getErrorMessage(updateError),
       });
     }
-    return fallback;
+    return withUnwrittenLearningScores(
+      fallback,
+      knownTemperature,
+      knownFamiliarity,
+      knownPartnerState,
+    );
   }
 }
 
