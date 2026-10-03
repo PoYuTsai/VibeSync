@@ -80,8 +80,11 @@ class _FakeAnalyzeStreamClient extends AnalyzeStreamClient {
   Exception? streamError;
   List<Exception?> streamCallErrors = <Exception?>[];
   Completer<void>? streamStartGate;
+  Map<int, Completer<void>> streamCallStartGates = <int, Completer<void>>{};
   Completer<void>? streamGate;
   List<AnalysisStreamContent> streamContents = const [];
+  List<List<AnalysisStreamContent>> streamCallContents =
+      <List<AnalysisStreamContent>>[];
   bool emitRunIdOnlyOnDone = false;
 
   int streamCallCount = 0;
@@ -94,11 +97,16 @@ class _FakeAnalyzeStreamClient extends AnalyzeStreamClient {
     lastStreamRunId = request.analysisRunId;
     capturedStreamMessages = List<Message>.from(request.messages);
     if (streamStartGate != null) await streamStartGate!.future;
+    final callStartGate = streamCallStartGates[callIndex];
+    if (callStartGate != null) await callStartGate.future;
     yield AnalysisStreamUpdate.started(
       runId: emitRunIdOnlyOnDone ? null : 'stream-run',
       label: 'starting stream',
     );
-    for (final content in streamContents) {
+    final contents = callIndex < streamCallContents.length
+        ? streamCallContents[callIndex]
+        : streamContents;
+    for (final content in contents) {
       yield AnalysisStreamUpdate.content(
         content: content,
         runId: 'stream-run',
@@ -134,6 +142,20 @@ ProviderContainer _container(AnalyzeStreamClient fake) {
     analyzeStreamClientProvider.overrideWithValue(fake),
   ]);
 }
+
+const _shownDecision = AnalysisStreamContent(
+  kind: AnalysisStreamContentKind.decision,
+  title: 'Decision',
+  body: 'A useful partial decision.',
+  rawEvent: {'type': 'analysis.decision'},
+);
+
+const _regeneratedDecision = AnalysisStreamContent(
+  kind: AnalysisStreamContentKind.decision,
+  title: 'Decision',
+  body: 'The same run, generated again.',
+  rawEvent: {'type': 'analysis.decision'},
+);
 
 void main() {
   group('StreamingAnalyzeNotifier — happy path', () {
@@ -678,7 +700,8 @@ void main() {
       expect(done.streamErrorCode, isNull);
     });
 
-    test('retryStream clears preserved stream content before replay', () async {
+    test('retryStream keeps shown cards until the retried run sends content',
+        () async {
       final fake = _FakeAnalyzeStreamClient()
         ..streamError = StreamModeException(
           'stream reset',
@@ -687,14 +710,7 @@ void main() {
           retriesRemaining: 1,
           suggestedAction: AnalysisErrorAction.retry,
         )
-        ..streamContents = const [
-          AnalysisStreamContent(
-            kind: AnalysisStreamContentKind.decision,
-            title: 'Decision',
-            body: 'A useful partial decision.',
-            rawEvent: {'type': 'analysis.decision'},
-          ),
-        ];
+        ..streamContents = const [_shownDecision];
 
       final container = _container(fake);
       addTearDown(container.dispose);
@@ -710,6 +726,7 @@ void main() {
 
       fake.streamError = null;
       fake.streamResult = _analysisResult();
+      fake.streamContents = const [_regeneratedDecision];
       fake.streamStartGate = Completer<void>();
 
       final retryFuture = notifier.retryStream();
@@ -718,10 +735,17 @@ void main() {
 
       final running = container.read(streamingAnalyzeProvider('conv-1'));
       expect(running.phase, StreamingAnalyzePhase.streamingReport);
-      expect(running.streamContents, isEmpty);
+      expect(running.streamContents, const [_shownDecision],
+          reason: 'F12: cards the user already saw stay while retrying');
 
       fake.streamStartGate!.complete();
       await retryFuture;
+
+      final done = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(done.phase, StreamingAnalyzePhase.done);
+      expect(done.streamContents, const [_regeneratedDecision],
+          reason: 'the retried run replaces the old cards instead of '
+              'appending a second set');
     });
   });
 
@@ -1029,6 +1053,110 @@ void main() {
       expect(state.result, same(fake.streamResult));
       expect(fake.streamCallCount, 2);
       expect(fake.lastStreamRunId, 'stream-run');
+    });
+
+    test('keeps shown cards while the server replays the finished result',
+        () async {
+      final resumeGate = Completer<void>();
+      final fake = _FakeAnalyzeStreamClient()
+        ..streamResult = _analysisResult()
+        ..streamCallContents = const [
+          [_shownDecision],
+          // 續接（resume）只重播最終的 done，不會再送卡片。
+          <AnalysisStreamContent>[],
+        ]
+        ..streamCallStartGates = {1: resumeGate}
+        ..streamCallErrors = <Exception?>[
+          AnalysisException(
+            '網路連線中斷。',
+            code: 'NETWORK_ERROR',
+            suggestedAction: AnalysisErrorAction.retry,
+          ),
+          null,
+        ];
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      final startFuture = container
+          .read(streamingAnalyzeProvider('conv-1').notifier)
+          .start(messages: [_msg('hi')]);
+      for (var i = 0; i < 5 && fake.streamCallCount < 2; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      final recovering = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(fake.streamCallCount, 2);
+      expect(recovering.phase, StreamingAnalyzePhase.streamingReport);
+      expect(recovering.streamProgressLabel, '連線中斷，正在取回分析結果');
+      expect(recovering.streamContents, const [_shownDecision],
+          reason: 'F12: reconnecting must not blank the cards already shown');
+
+      resumeGate.complete();
+      await startFuture;
+
+      final done = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(done.phase, StreamingAnalyzePhase.done);
+      expect(done.streamContents, const [_shownDecision]);
+    });
+
+    test('replaces kept cards when the failed run is generated again',
+        () async {
+      final fake = _FakeAnalyzeStreamClient()
+        ..streamResult = _analysisResult()
+        ..streamCallContents = const [
+          [_shownDecision],
+          [_regeneratedDecision],
+        ]
+        ..streamCallErrors = <Exception?>[
+          AnalysisException(
+            '網路連線中斷。',
+            code: 'NETWORK_ERROR',
+            suggestedAction: AnalysisErrorAction.retry,
+          ),
+          null,
+        ];
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+        messages: [_msg('hi')],
+      );
+
+      final done = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(done.phase, StreamingAnalyzePhase.done);
+      expect(done.streamContents, const [_regeneratedDecision],
+          reason: 'no duplicate set of cards after the run is regenerated');
+    });
+
+    test('keeps shown cards on screen when recovery finally fails', () async {
+      final networkError = AnalysisException(
+        '網路連線中斷。',
+        code: 'NETWORK_ERROR',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+      final fake = _FakeAnalyzeStreamClient()
+        ..streamCallContents = const [
+          [_shownDecision],
+          <AnalysisStreamContent>[],
+          <AnalysisStreamContent>[],
+        ]
+        ..streamCallErrors = <Exception?>[
+          networkError,
+          networkError,
+          networkError,
+        ];
+      final container = _container(fake);
+      addTearDown(container.dispose);
+
+      await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+        messages: [_msg('hi')],
+      );
+
+      final failed = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(fake.streamCallCount, 3);
+      expect(failed.phase, StreamingAnalyzePhase.failedAfterRecommendation);
+      expect(failed.streamContents, const [_shownDecision]);
+      expect(failed.retriesRemaining, 1);
     });
 
     test('uses the same run when recovery reports that a retry is ready',

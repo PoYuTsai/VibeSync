@@ -12,6 +12,9 @@ import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcom
 import '../../../helpers/memory_analysis_history_repository.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/core/services/usage_service.dart';
+import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
+import 'package:vibesync/features/analysis/application/ports/conversation_memory_port.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
@@ -749,13 +752,38 @@ Map<String, dynamic> _staleSnapshotJson() {
 Future<_RecordingAnalyzeStreamClient> _pumpHydratedAnalysisScreen(
   WidgetTester tester, {
   required StreamingAnalysisState seed,
+  List<Override> extraOverrides = const <Override>[],
 }) async {
   return (await _pumpHydratedAnalysisScreenWithRepo(
     tester,
     seed: seed,
     conversation: _conversation(),
+    extraOverrides: extraOverrides,
   ))
       .recorder;
+}
+
+/// 不讀 Hive 的對話記憶：讓「重新分析」能在 widget test 裡走到額度確認框。
+class _NoopConversationMemory implements ConversationMemoryPort {
+  @override
+  String? persistedHistoricalSummary(Conversation conversation) => null;
+
+  @override
+  Future<String> formatEphemeralSummary(
+    Conversation conversation,
+    int olderRounds,
+  ) async =>
+      '';
+
+  @override
+  List<Message> clipToRecentRounds(List<Message> messages, int maxRounds) =>
+      messages;
+
+  @override
+  int get maxRecentRounds => 15;
+
+  @override
+  int get minRoundsPerSummary => 3;
 }
 
 class _HydrationHarness {
@@ -808,6 +836,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
   _MemoryConversationArchiveStore? archiveStore,
   AnalysisRecordStore? analysisRecordStore,
   String? analysisRecordOwnerUserId,
+  List<Override> extraOverrides = const <Override>[],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -842,6 +871,7 @@ Future<_HydrationHarness> _pumpHydratedAnalysisScreenWithRepo(
             .overrideWithValue(const []),
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
+        ...extraOverrides,
       ],
       child: const MaterialApp(
         home: AnalysisScreen(conversationId: _conversationId),
@@ -1356,6 +1386,82 @@ void main() {
             reason:
                 'Full retry state should not insert the upload/start-analysis card above retry.');
         expect(recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'F13：重試用完 → 顯示原因與能按的「重新分析」，按下走一般開始流程',
+      (tester) async {
+        final recorder = await _pumpHydratedAnalysisScreen(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedAfterRecommendation,
+            analysisRunId: 'run_exhausted',
+            streamErrorMessage: '原本的分析沒有完成，請重新分析一次。',
+            streamErrorCode: 'STREAM_RUN_RETRY_UNAVAILABLE',
+            retriesRemaining: 0,
+          ),
+          extraOverrides: [
+            analysisRunPreparerProvider.overrideWithValue(
+              AnalysisRunPreparer(
+                memory: _NoopConversationMemory(),
+                resolvePartnerSummary: (_) => null,
+                resolveEffectiveStyleContext: (_) => null,
+              ),
+            ),
+            usageDataProvider.overrideWithValue(
+              UsageData(
+                monthlyUsed: 0,
+                monthlyLimit: 30,
+                dailyUsed: 0,
+                dailyLimit: 15,
+                dailyResetAt: DateTime(2026, 10, 4),
+              ),
+            ),
+          ],
+        );
+
+        expect(find.text('原本的分析沒有完成，請重新分析一次。'), findsOneWidget);
+        final reanalyze = find.widgetWithText(FilledButton, '重新分析');
+        expect(reanalyze, findsOneWidget);
+
+        final dismissCoachMark = find.text('知道了');
+        if (dismissCoachMark.evaluate().isNotEmpty) {
+          await tester.tap(dismissCoachMark);
+          await tester.pump();
+        }
+        await tester.ensureVisible(reanalyze);
+        await tester.pump();
+        await tester.tap(reanalyze);
+        await tester.pump();
+        await tester.pump();
+
+        // 重新分析是新的一次：先出現一般的額度確認框，確認前不會送出。
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      'F13：片段更新後的過期結果 → 顯示原因與能按的「重新分析」',
+      (tester) async {
+        await _pumpHydratedAnalysisScreen(
+          tester,
+          seed: StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.done,
+            result: _analysisResult(),
+            analysisRunId: 'run_stale',
+            conversationMessageCount: 5,
+          ),
+        );
+
+        expect(
+          find.text('你剛剛更新了本次片段，這份完整分析先不套用，請重新分析。'),
+          findsOneWidget,
+        );
+        final reanalyze = find.widgetWithText(FilledButton, '重新分析');
+        expect(reanalyze, findsOneWidget);
+        expect(tester.widget<FilledButton>(reanalyze).onPressed, isNotNull);
       },
     );
 
