@@ -6,6 +6,8 @@
 // (tools/analyze-v2-blackbox/out/2026-10-02-e2e/records.json, arm C), one
 // milestone at a time, so every frame is what the App would show at that
 // point of a real stream. No network, no paid call.
+// The recording is a paid (essential, five-style) run, so the screen is
+// seeded as an essential subscriber too; a free screen would mismatch it.
 //
 //   flutter test test/visual_proof/analysis_stream_ux_capture_test.dart
 // Out: build/visual_proof/ux_*.png
@@ -38,6 +40,8 @@ import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -65,13 +69,15 @@ const _tall = Size(390, 2400);
 // ---------------------------------------------------------------------------
 
 List<String> _wireLines(String caseId) {
-  final file =
-      File('tools/analyze-v2-blackbox/out/2026-10-02-e2e/records.json');
-  final records = (jsonDecode(file.readAsStringSync())
-      as Map<String, dynamic>)['records'] as List<dynamic>;
+  final file = File(
+    'tools/analyze-v2-blackbox/out/2026-10-02-e2e/records.json',
+  );
+  final records =
+      (jsonDecode(file.readAsStringSync()) as Map<String, dynamic>)['records']
+          as List<dynamic>;
   final record = records.cast<Map<String, dynamic>>().firstWhere(
-        (r) => r['arm'] == 'C' && r['caseId'] == caseId,
-      );
+    (r) => r['arm'] == 'C' && r['caseId'] == caseId,
+  );
   final text = (record['result'] as Map<String, dynamic>)['clientText'];
   return (text as String)
       .split('\n')
@@ -126,11 +132,16 @@ class _MemoryArchiveStore implements ConversationArchiveStore {
   @override
   ConversationArchiveEntry? entryFor(Conversation conversation) => null;
   @override
-  Future<void> markActive(Conversation conversation,
-      {DateTime? changedAt, String? analyzedContentRevision}) async {}
+  Future<void> markActive(
+    Conversation conversation, {
+    DateTime? changedAt,
+    String? analyzedContentRevision,
+  }) async {}
   @override
-  Future<void> markArchived(Conversation conversation,
-      {required DateTime archivedAt}) async {}
+  Future<void> markArchived(
+    Conversation conversation, {
+    required DateTime archivedAt,
+  }) async {}
   @override
   Future<void> remove(Conversation conversation) async {}
 }
@@ -185,6 +196,36 @@ const _softReject = [
 
 final _rootKey = GlobalKey();
 
+final _essentialLimits = SubscriptionTierHelper.limitsFor(
+  SubscriptionTierHelper.essential,
+);
+
+/// Keeps the seeded paid state; every sync just restores it.
+class _PaidSubscriptionNotifier extends SubscriptionNotifier {
+  _PaidSubscriptionNotifier(this._seed) {
+    state = _seed;
+  }
+
+  final SubscriptionState _seed;
+
+  @override
+  Future<void> refresh() async => state = _seed;
+
+  @override
+  Future<void> syncWithRevenueCat() async => state = _seed;
+
+  @override
+  Future<void> ensureServerEntitlementSyncedForAnalysis() async =>
+      state = _seed;
+
+  @override
+  void syncUsageFromServer({
+    required int monthlyRemaining,
+    required int dailyRemaining,
+    bool isTestAccount = false,
+  }) {}
+}
+
 Future<_ScriptedHttp> _pumpScreen(
   WidgetTester tester,
   Conversation conversation,
@@ -195,43 +236,62 @@ Future<_ScriptedHttp> _pumpScreen(
     displayMapper: const AnalysisStreamContentDisplayMapper(),
     clientFactory: () => transport,
     accessTokenProvider: () => 'proof-token',
-    expectedTierProvider: () => 'free',
+    expectedTierProvider: () => SubscriptionTierHelper.essential,
     revenueCatAppUserIdProvider: () async => null,
   );
   final theme = AppTheme.darkTheme;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider
-            .overrideWithValue(MemoryCoachingOutcomeRepository()),
-        analysisHistoryRepositoryProvider
-            .overrideWithValue(MemoryAnalysisHistoryRepository()),
-        conversationArchiveStoreProvider
-            .overrideWithValue(_MemoryArchiveStore()),
-        conversationRepositoryProvider
-            .overrideWithValue(_StubConversationRepository(conversation)),
+        coachingOutcomeRepositoryProvider.overrideWithValue(
+          MemoryCoachingOutcomeRepository(),
+        ),
+        analysisHistoryRepositoryProvider.overrideWithValue(
+          MemoryAnalysisHistoryRepository(),
+        ),
+        conversationArchiveStoreProvider.overrideWithValue(
+          _MemoryArchiveStore(),
+        ),
+        conversationRepositoryProvider.overrideWithValue(
+          _StubConversationRepository(conversation),
+        ),
         conversationProvider(_id).overrideWithValue(conversation),
         analyzeStreamClientProvider.overrideWithValue(client),
         // Signed-in owner so the analysis record persists like production.
         analysisRecordOwnerProvider.overrideWith((ref) => 'proof-user'),
-        // Hive usage box stand-in: free tier, 12/30 this month, 3/15 today.
-        usageDataProvider.overrideWithValue(UsageData(
-          monthlyUsed: 12,
-          monthlyLimit: 30,
-          dailyUsed: 3,
-          dailyLimit: 15,
-          dailyResetAt: DateTime(2026, 10, 3),
-        )),
+        // Essential subscriber, matching the paid five-style recording.
+        subscriptionProvider.overrideWith(
+          (ref) => _PaidSubscriptionNotifier(
+            SubscriptionState(
+              tier: SubscriptionTierHelper.essential,
+              monthlyLimit: _essentialLimits.monthly,
+              dailyLimit: _essentialLimits.daily,
+            ),
+          ),
+        ),
+        // Hive usage box stand-in: essential limits, a few used.
+        usageDataProvider.overrideWithValue(
+          UsageData(
+            monthlyUsed: 12,
+            monthlyLimit: _essentialLimits.monthly,
+            dailyUsed: 3,
+            dailyLimit: _essentialLimits.daily,
+            dailyResetAt: DateTime(2026, 10, 3),
+          ),
+        ),
         // Real preparer; only Hive-backed partner/profile lookups stubbed
         // (this proof conversation has no partner card).
-        analysisRunPreparerProvider.overrideWithValue(AnalysisRunPreparer(
-          memory: ConversationMemoryAdapter(),
-          resolvePartnerSummary: (_) => null,
-          resolveEffectiveStyleContext: (_) => null,
-          resolveSessionContext: (c) => c.sessionContext,
-        )),
-        coachChatRepositoryProvider
-            .overrideWithValue(MemoryCoachChatRepository()),
+        analysisRunPreparerProvider.overrideWithValue(
+          AnalysisRunPreparer(
+            memory: ConversationMemoryAdapter(),
+            resolvePartnerSummary: (_) => null,
+            resolveEffectiveStyleContext: (_) => null,
+            resolveSessionContext: (c) => c.sessionContext,
+          ),
+        ),
+        coachChatRepositoryProvider.overrideWithValue(
+          MemoryCoachChatRepository(),
+        ),
         coachChatHistoryProvider(CoachScope.conversation(_id))
             .overrideWithValue(const <UnifiedCoachResult>[]),
       ],
@@ -241,8 +301,9 @@ Future<_ScriptedHttp> _pumpScreen(
           textTheme: theme.textTheme.apply(fontFamily: 'AppTC'),
           primaryTextTheme: theme.primaryTextTheme.apply(fontFamily: 'AppTC'),
           appBarTheme: theme.appBarTheme.copyWith(
-            titleTextStyle:
-                AppTypography.appBarTitle.copyWith(fontFamily: 'AppTC'),
+            titleTextStyle: AppTypography.appBarTitle.copyWith(
+              fontFamily: 'AppTC',
+            ),
           ),
         ),
         // Boundary wraps the Navigator so dialogs/snackbars are in frame.
@@ -268,8 +329,9 @@ Future<void> _shot(WidgetTester tester, String name, {Size? size}) async {
     await tester.binding.setSurfaceSize(size);
     await tester.pump(const Duration(milliseconds: 50));
   }
-  final boundary =
-      tester.renderObject<RenderRepaintBoundary>(find.byKey(_rootKey));
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+    find.byKey(_rootKey),
+  );
   await tester.runAsync(() async {
     final image = await boundary.toImage(pixelRatio: 2.0);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -279,8 +341,12 @@ Future<void> _shot(WidgetTester tester, String name, {Size? size}) async {
   // Verbatim on-stage copy (tree order) next to the PNG, icon glyphs dropped.
   final texts = tester
       .widgetList<RichText>(find.byType(RichText))
-      .map((w) =>
-          w.text.toPlainText().replaceAll(RegExp('[\uE000-\uF8FF]'), '').trim())
+      .map(
+        (w) => w.text
+            .toPlainText()
+            .replaceAll(RegExp('[\uE000-\uF8FF]'), '')
+            .trim(),
+      )
       .where((t) => t.isNotEmpty)
       .toList();
   File(outPath('ux_$name.txt')).writeAsStringSync('${texts.join('\n')}\n');
@@ -389,16 +455,22 @@ void main() {
     // Tabler icon font (package font) so production icons are not tofu.
     final pkgs =
         (jsonDecode(File('.dart_tool/package_config.json').readAsStringSync())
-            as Map<String, dynamic>)['packages'] as List;
-    final root = (pkgs
-            .cast<Map<String, dynamic>>()
-            .firstWhere((p) => p['name'] == 'flutter_tabler_icons')['rootUri']
-        as String);
-    final ttf = File.fromUri(Uri.parse(root.endsWith('/') ? root : '$root/')
-        .resolve('assets/fonts/tabler-icons.ttf'));
-    await (FontLoader('packages/flutter_tabler_icons/tabler-icons')
-          ..addFont(Future.value(
-              ByteData.view(Uint8List.fromList(ttf.readAsBytesSync()).buffer))))
+                as Map<String, dynamic>)['packages']
+            as List;
+    final root =
+        (pkgs.cast<Map<String, dynamic>>().firstWhere(
+              (p) => p['name'] == 'flutter_tabler_icons',
+            )['rootUri']
+            as String);
+    final ttf = File.fromUri(
+      Uri.parse(root.endsWith('/') ? root : '$root/')
+          .resolve('assets/fonts/tabler-icons.ttf'),
+    );
+    await (FontLoader('packages/flutter_tabler_icons/tabler-icons')..addFont(
+          Future.value(
+            ByteData.view(Uint8List.fromList(ttf.readAsBytesSync()).buffer),
+          ),
+        ))
         .load();
   });
   setUp(() {
@@ -418,41 +490,41 @@ void main() {
   testWidgets('01 input: recognition confirm dialog', (tester) async {
     final now = DateTime(2026, 10, 2);
     Widget dialog() => ColoredBox(
-          // App background behind the sheet (the dialog is pumped alone).
-          color: const Color(0xFF140C24),
-          child: TickerMode(
-            enabled: false,
-            child: ScreenshotRecognitionDialog(
-              recognized: RecognizedConversation(
-                contactName: 'Ivy',
-                messageCount: _hobby.length,
-                summary: '識別到 ${_hobby.length} 則訊息',
-                messages: [
-                  for (final (mine, text) in _hobby)
-                    RecognizedMessage(
-                      side: mine ? 'right' : 'left',
-                      isFromMe: mine,
-                      content: text,
-                    ),
-                ],
-              ),
-              warningMessage: null,
-              initialName: 'Ivy',
-              initialMeetingContext: MeetingContext.datingApp,
-              initialDuration: AcquaintanceDuration.justMet,
-              initialGoal: UserGoal.dateInvite,
-              initialAnalysisContextNote: '',
-              expectedPartnerName: 'Ivy',
-              currentConversation: Conversation(
-                id: 'ux-dialog',
-                name: 'Ivy',
-                messages: const [],
-                createdAt: now,
-                updatedAt: now,
-              ),
-            ),
+      // App background behind the sheet (the dialog is pumped alone).
+      color: const Color(0xFF140C24),
+      child: TickerMode(
+        enabled: false,
+        child: ScreenshotRecognitionDialog(
+          recognized: RecognizedConversation(
+            contactName: 'Ivy',
+            messageCount: _hobby.length,
+            summary: '識別到 ${_hobby.length} 則訊息',
+            messages: [
+              for (final (mine, text) in _hobby)
+                RecognizedMessage(
+                  side: mine ? 'right' : 'left',
+                  isFromMe: mine,
+                  content: text,
+                ),
+            ],
           ),
-        );
+          warningMessage: null,
+          initialName: 'Ivy',
+          initialMeetingContext: MeetingContext.datingApp,
+          initialDuration: AcquaintanceDuration.justMet,
+          initialGoal: UserGoal.dateInvite,
+          initialAnalysisContextNote: '',
+          expectedPartnerName: 'Ivy',
+          currentConversation: Conversation(
+            id: 'ux-dialog',
+            name: 'Ivy',
+            messages: const [],
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ),
+      ),
+    );
     // Page through the sheet's own scroll body.
     for (var page = 1; page <= 4; page++) {
       final name = 'ux_01_input_recognition_dialog_p$page';
@@ -530,13 +602,14 @@ void main() {
     await _shot(tester, '03_result_t20_done_top');
     await _shot(tester, '03_result_done_full', size: const Size(390, 3200));
 
-    // Reply carousel: swipe through the style cards (free tier gating).
+    // Reply carousel: swipe through the five style cards.
     final zone = find.byKey(const ValueKey('analysis-reply-zone'));
     if (zone.evaluate().isNotEmpty) {
       await tester.ensureVisible(zone);
       await tester.pump(const Duration(milliseconds: 200));
-      final pager =
-          find.descendant(of: zone, matching: find.byType(Scrollable)).first;
+      final pager = find
+          .descendant(of: zone, matching: find.byType(Scrollable))
+          .first;
       for (var i = 2; i <= 5; i++) {
         await tester.drag(pager, const Offset(-340, 0));
         await tester.pump(const Duration(milliseconds: 600));
@@ -552,8 +625,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       tester.takeException();
       await _scrollToTop(tester);
-      await _shot(tester, '03_result_done_detail_expanded_full',
-          size: const Size(390, 4400));
+      await _shot(
+        tester,
+        '03_result_done_detail_expanded_full',
+        size: const Size(390, 4400),
+      );
       await _pages(tester, '03_result_detail_expanded');
     }
     await _drain(tester);
@@ -568,23 +644,28 @@ void main() {
       final transport = await _pumpScreen(tester, _conversation(convo));
       await _dismissCoachMark(tester);
       await _startAnalysis(tester);
-      final decisionIndex =
-          lines.indexWhere((l) => l.contains('"analysis.decision"'));
+      final decisionIndex = lines.indexWhere(
+        (l) => l.contains('"analysis.decision"'),
+      );
       await _push(tester, transport, lines.sublist(0, decisionIndex + 1));
       await _shot(tester, '04_nosend_${tag}_stream_decision_tall', size: _tall);
       await _push(tester, transport, lines.sublist(decisionIndex + 1));
       await tester.pump(const Duration(milliseconds: 900));
       await _shot(tester, '04_nosend_${tag}_done_viewport');
       await _scrollToTop(tester);
-      await _shot(tester, '04_nosend_${tag}_done_full',
-          size: const Size(390, 2600));
+      await _shot(
+        tester,
+        '04_nosend_${tag}_done_full',
+        size: const Size(390, 2600),
+      );
       await _pages(tester, '04_nosend_${tag}_done');
       await _drain(tester);
     });
   }
 
-  testWidgets('05 error: timeout after cards (auto-recover then retry card)',
-      (tester) async {
+  testWidgets('05 error: timeout after cards (auto-recover then retry card)', (
+    tester,
+  ) async {
     final lines = _wireLines('hobby_common_ground');
     final transport = await _pumpScreen(tester, _conversation(_hobby));
     await _dismissCoachMark(tester);
@@ -596,7 +677,8 @@ void main() {
     transport.current.addError(TimeoutException('idle'));
     for (var i = 0; i < 6; i++) {
       await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 30)));
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(transport.bodies.length, 2, reason: 'recovery request opened');
@@ -607,7 +689,8 @@ void main() {
     transport.current.addError(TimeoutException('idle'));
     for (var i = 0; i < 6; i++) {
       await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 30)));
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
     }
     tester.takeException();
@@ -616,8 +699,9 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('05 error: fails before any event (connect timeout)',
-      (tester) async {
+  testWidgets('05 error: fails before any event (connect timeout)', (
+    tester,
+  ) async {
     final transport = await _pumpScreen(tester, _conversation(_hobby));
     transport.failNextSends = 1;
     await _dismissCoachMark(tester);
