@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 | 1 | f905628a | 7fd880a7296e9866d23040e9b6597c8af62ea149f76db767e486d0e78effab25 | 26955e774909fe4a90a8ef287272e47b282325914867e416caaf45b6e8db5c52 | APPROVED_WITH_RISK |
 | 2 | 6a84427a | 12cb376742c67b1ec4ece7021a4f283877bda7b967307d17f3fc55649e80be05 | bce82924679a13e67e752ff4a60280ef16409a41898287d3cd0a4b755c72dd42 | APPROVED_WITH_RISK |
+| 3 | 5dea7e63 | a2cfabbfd41b9104ce5a85d909f3b3a656f357053d6cee732d91fd6e8472c0d2 | 102b5f743e9d1f602bcff925faa2aa3d3c772b4af322d680fb33c08446e16f40 | APPROVED |
 
 封包 sha256 是封包內 `SHA256SUMS.txt`（逐檔 sha256 清單）的 sha256；封包內容：完整快照（git archive of head）、`git format-patch --no-binary` 補丁、計畫、測試證據與審查範圍。
 
@@ -13,7 +14,9 @@ Eric 授權原話：「第二張pr清掉你剛說的opener + 新話題技術債�
 
 第 1 輪後處置：P2（5xx 平台錯誤誤稱不扣額度）以 6a84427a 修正；P3（ai_logs 正式入口串接沒有測試）不在本輪處理。
 
-剩餘風險：P3 正式入口串接測試未補（兩輪皆確認串接本身正確）。待 Eric 明確接受；補測試需要 Eric 授權第 3 輪。
+第 2 輪後：殘餘 P3（正式入口串接測試未補）。
+
+第 3 輪例外，Eric 原話：「授權第 3 輪：補正式入口串接測試」，並說「希望可以把opener跟新話題乾淨收尾／然後我們接手的話 PR單就自己關了吧 不用勞煩夥伴了／這輪處理乾淨」。第 3 輪以 5dea7e63 新增 `ai_logs_entry_wiring_test.ts`（從 `createAnalyzeChatHandler` 驗證新話題、開場兩段式與舊開場都經 `waitUntil` 寫 ai_logs，production 程式未改），Codex 判 P3 FIXED、APPROVED，沒有剩餘風險。
 
 ## 第 1 輪回覆
 
@@ -55,4 +58,25 @@ Checked and OK
 全程唯讀，未呼叫付費 API 或連 production。未重跑 Flutter 測試與 analyze；README 所述通過結果未獨立核實。
 
 VERDICT: APPROVED_WITH_RISK
+````
+
+## 第 3 輪回覆
+
+````text
+第 2 輪殘餘 P3：**FIXED**。本輪未發現新增 finding。
+
+- [P3] **FIXED** 成本紀錄缺少正式入口串接測試 — `supabase/functions/analyze-chat/ai_logs_entry_wiring_test.ts:115` — 三個案例均從 `createAnalyzeChatHandler` 進入，驗證真正的 logger 經 `waitUntil` 寫入一筆 `ai_logs`。依程式路徑，移除任一入口的 `recordAiCall` 注入，對應案例的排程及列數斷言便會失敗。無需追加修正。
+
+Checked and OK
+
+- 覆蓋 `new_topic`、`opener_analyze`、舊版 `opener`，不靠原始碼文字比對。
+- 驗證使用者、請求類型、成功狀態與 token 數；對整筆紀錄檢查不得含測試中的用戶內容及模型輸出。
+- `fetch` 在入口匯入前替換，未知網址直接拋錯；每例清空紀錄並等待背景工作完成。
+- `opener_generate` 未獨立驅動，但確實與 analyze 共用 `flowDeps`，符合本輪明示範圍。
+- CI 第 66 行仍在 `>-` 折疊純量內，沒有行內註解或空行；YAML 解析與全部測試路徑檢查通過。
+- 封包 SHA-256 校驗全部通過，新增測試與補丁一致；production 程式未改動。
+
+核對範圍：`6a84427a → 5dea7e63`。全程唯讀，未呼叫付費 API 或連 production。未重跑 Deno 測試或變異測試；實作端所述執行結果未獨立核實。
+
+VERDICT: APPROVED
 ````
