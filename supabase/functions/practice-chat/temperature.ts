@@ -35,6 +35,13 @@ export type DeltaCapApplied =
    * （forced `cold_return`）——他終於給了內容，但前面那幾輪的落差不補回來。
    */
   | "cold_return"
+  /**
+   * PR #88 D：她這一輪只回「（已讀）」（planner forced `read_only`，或性冒犯
+   * 階梯第二格）——她根本沒有回應，這一輪不換到正分。
+   */
+  | "read_only"
+  /** PR #88 D：性冒犯階梯第一格的冷回那一輪——她明顯還沒回暖。 */
+  | "offense_cold"
   | "none";
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
@@ -329,7 +336,9 @@ function roundNonZero(delta: number): number {
 }
 
 function clampHeatDelta(delta: number): number {
-  if (!Number.isFinite(delta)) return 1;
+  // PR #88 H：非有限數一律當 0，跟 clampLearningDelta 一致（原本回 +1，等於
+  // 算壞了還送玩家一格升溫）。正常路徑碰不到，純防守。
+  if (!Number.isFinite(delta)) return 0;
   return Math.min(
     MAX_HEAT_DELTA,
     Math.max(MIN_HEAT_DELTA, roundNonZero(delta)),
@@ -522,23 +531,46 @@ export function withNonPositiveLearningDeltas(
   };
 }
 
+/** easy 難度在這個熱度（含）以下不套新手獎勵閘門，普通句照舊 +1。 */
+export const EASY_NEUTRAL_REPAIR_MAX_HEAT = 40;
+
 /**
- * 挑戰難度獎勵閘門（修 D2）：challenge 下沒有正向證據的回合不得被動加分
- * ——neutral 淨 +1 吃 ×0.7 後被 roundNonZero 補回 +1，玩家躺著也升溫。
- * 正向證據＝connection caught 或 testHandling passed；受保護的 exact／
- * small-edit Hint 豁免（鏡像 game_fsm.ts canEarnPositive 的寫法，豁免放在
- * 閘門內、不靠套用順序）。負向照常放行。難度／模式適用性由呼叫端決定，
- * 閘門本身只執行證據規則，bakeoff 與 handler 共用同一份。
+ * 新手獎勵閘門的適用範圍（PR #88，Eric 2026-10-03 拍板）。原本只有挑戰難度
+ * （PR #51），現在擴到 normal；easy 只在這一輪開始前的熱度 > 40 時才套——
+ * ≤40（frozen／cold 檔）照舊讓低壓普通句 +1，保留規格「低溫可以靠穩住慢慢
+ * 修回來」。Game 有自己的閘門（`applyGameLearningDelta`），standard 沒有分數，
+ * 兩者都不適用。不認得的難度比照 normal（`difficultyTuningFor` 的預設）。
+ * handler 的成功、分類器失敗與 CAS 重試路徑，以及 bakeoff，都用這一支判斷；
+ * 重試時要用重新讀到的熱度再判一次。
+ */
+export function beginnerRewardGateActive(opts: {
+  practiceMode: string | undefined;
+  difficulty: string | undefined;
+  currentHeat: number;
+}): boolean {
+  if (opts.practiceMode !== "beginner") return false;
+  if (opts.difficulty === "easy") {
+    return clampTemperature(opts.currentHeat) > EASY_NEUTRAL_REPAIR_MAX_HEAT;
+  }
+  return true;
+}
+
+/**
+ * 新手獎勵閘門（修 D2，PR #88 擴大適用範圍）：沒有正向證據的回合不得被動
+ * 加分——neutral 淨 +1 經 roundNonZero 取整後仍是 +1，玩家躺著也升溫。
+ * 正向證據＝connection caught 或 testHandling passed。負向照常放行。
+ * PR #88（Eric 決定 2）：受保護的提示不再豁免——原封貼提示只保證不扣分
+ * （保底在 handler），要加分一樣得有正向證據。適用範圍由
+ * `beginnerRewardGateActive` 決定，閘門本身只執行證據規則，bakeoff 與
+ * handler 共用同一份。
  */
 export function applyChallengeRewardGate(opts: {
   judgement: LearningJudgement;
   currentHeat: number;
   currentFamiliarity: number;
   classification: TurnClassification;
-  protectedAppliedHint: boolean;
 }): LearningJudgement {
-  const canEarnPositive = opts.protectedAppliedHint ||
-    opts.classification.connection === "caught" ||
+  const canEarnPositive = opts.classification.connection === "caught" ||
     opts.classification.testHandling === "passed";
   if (canEarnPositive) return opts.judgement;
   return withNonPositiveLearningDeltas(
@@ -583,6 +615,10 @@ export function applyCoherenceDeltaCap(
     readonly accommodatingSelfFact?: boolean;
     /** Phase 4.5a 刀 3：這一輪 planner forced `cold_return`；省略／false＝不套用。 */
     readonly coldReturn?: boolean;
+    /** PR #88 D：這一輪她只回「（已讀）」；省略／false＝不套用。 */
+    readonly readOnly?: boolean;
+    /** PR #88 D：這一輪是性冒犯階梯的冷回格；省略／false＝不套用。 */
+    readonly offenseCold?: boolean;
   },
 ): { judgement: LearningJudgement; capApplied: DeltaCapApplied } {
   const {
@@ -594,6 +630,8 @@ export function applyCoherenceDeltaCap(
     sharedPastClaim,
     accommodatingSelfFact,
     coldReturn,
+    readOnly,
+    offenseCold,
   } = opts;
   let heatDelta = judgement.delta;
   let familiarityDelta = judgement.familiarityDelta;
@@ -652,6 +690,9 @@ export function applyCoherenceDeltaCap(
     ["accommodating_self_fact", accommodatingSelfFact],
     // Phase 4.5a 刀 3：跟上面兩條同一個 0/0 上界（只壓正分，不抬負分）。
     ["cold_return", coldReturn],
+    // PR #88 D：她只回已讀、或冒犯階梯冷回的那一輪，同一個 0/0 上界。
+    ["read_only", readOnly],
+    ["offense_cold", offenseCold],
   ];
   for (const [label, flagged] of zeroCaps) {
     if (flagged !== true) continue;

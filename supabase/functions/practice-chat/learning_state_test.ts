@@ -47,8 +47,8 @@ Deno.test("applyLearningClassification rewards catching her latest emotion in th
   assert(result.reason.includes("接住"));
 });
 
-// 挑戰獎勵閘門（PR 2，修 D2）：非 challenge 呼叫端不套閘門，低壓 neutral
-// 照舊 +1；challenge 呼叫端套閘門後無正向證據夾到 0。
+// 新手獎勵閘門（PR 2 修 D2；PR #88 擴大）：閘門不適用的呼叫端（Game、熱度
+// ≤40 的 easy）低壓 neutral 照舊 +1；套閘門後無正向證據夾到 0。
 Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate zeroes them", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
   const applyChallengeRewardGate = requireFn("applyChallengeRewardGate");
@@ -75,7 +75,6 @@ Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate z
     currentHeat: 30,
     currentFamiliarity: 10,
     classification: neutralMinor,
-    protectedAppliedHint: false,
   });
 
   assertEquals(gated.score, 30);
@@ -84,7 +83,40 @@ Deno.test("low-pressure neutral replies stay +1 ungated but the challenge gate z
   assertEquals(gated.familiarityDelta, 0);
 });
 
-Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-protected positives", () => {
+// PR #88 A（Eric 2026-10-03 決定 1）：閘門適用範圍。easy 看這一輪開始前的熱度，
+// ≤40（frozen／cold 檔）不套；Game 與 standard 永遠不套（Game 有自己的閘門）。
+Deno.test("beginnerRewardGateActive covers challenge, normal and easy above heat 40 only", () => {
+  const beginnerRewardGateActive = requireFn("beginnerRewardGateActive");
+  const cases: Array<
+    [string | undefined, string | undefined, number, boolean]
+  > = [
+    ["beginner", "challenge", 0, true],
+    ["beginner", "challenge", 100, true],
+    ["beginner", "normal", 0, true],
+    ["beginner", "normal", 100, true],
+    ["beginner", "easy", 0, false],
+    ["beginner", "easy", 40, false],
+    ["beginner", "easy", 40.4, false],
+    ["beginner", "easy", 41, true],
+    ["beginner", "easy", 100, true],
+    // 不認得的難度比照 normal（difficultyTuningFor 的預設）。
+    ["beginner", undefined, 10, true],
+    ["game", "easy", 60, false],
+    ["game", "normal", 60, false],
+    ["game", "challenge", 60, false],
+    ["standard", "normal", 60, false],
+    [undefined, "normal", 60, false],
+  ];
+  for (const [practiceMode, difficulty, currentHeat, expected] of cases) {
+    assertEquals(
+      beginnerRewardGateActive({ practiceMode, difficulty, currentHeat }),
+      expected,
+      `${practiceMode}/${difficulty}@${currentHeat}`,
+    );
+  }
+});
+
+Deno.test("challenge reward gate keeps negatives and evidence-backed positives only", () => {
   const applyLearningClassification = requireFn("applyLearningClassification");
   const applyChallengeRewardGate = requireFn("applyChallengeRewardGate");
   const challengeTuning = {
@@ -95,14 +127,12 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
   const gate = (
     judgement: Record<string, unknown>,
     classification: Record<string, unknown>,
-    protectedAppliedHint = false,
   ) =>
     applyChallengeRewardGate({
       judgement,
       currentHeat: 30,
       currentFamiliarity: 10,
       classification,
-      protectedAppliedHint,
     });
 
   // caught → 正向證據，正分保留（已吃 ×0.7：+4/+5 → +3/+4）
@@ -167,7 +197,8 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
   assert(defensive.delta < 0);
   assertEquals(gate(defensive, defensiveClassification), defensive);
 
-  // 受保護 Hint → 豁免，neutral 也保留正分（Hint floor 不被夾掉）
+  // PR #88 B1：受保護的 Hint 不再豁免——對齊提示的 neutral 一樣夾到 0
+  // （原封貼提示只保證不扣分，加分要有正向證據）。
   const neutralMinor = {
     connection: "neutral",
     impact: "minor",
@@ -181,7 +212,36 @@ Deno.test("challenge reward gate keeps negatives and evidence-backed or hint-pro
     challengeTuning,
   );
   assert(neutral.delta > 0);
-  assertEquals(gate(neutral, neutralMinor, true), neutral);
+  const gatedNeutral = gate(neutral, neutralMinor);
+  assertEquals(gatedNeutral.delta, 0);
+  assertEquals(gatedNeutral.familiarityDelta, 0);
+  assertEquals(gatedNeutral.score, 30);
+  assertEquals(gatedNeutral.familiarityScore, 10);
+});
+
+// PR #88 H：倍率算出非有限數時熱度與熟悉度都回 0（熱度原本回 +1）。
+Deno.test("applyLearningClassification treats non-finite tuning results as zero on both axes", () => {
+  const applyLearningClassification = requireFn("applyLearningClassification");
+  const nanTuning = {
+    positiveDeltaMultiplier: Number.NaN,
+    negativeDeltaMultiplier: Number.NaN,
+  };
+  for (
+    const classification of [
+      safeCaught,
+      { ...safeCaught, connection: "missed" },
+    ]
+  ) {
+    const result = applyLearningClassification(
+      { heatScore: 40, familiarityScore: 20 },
+      classification,
+      nanTuning,
+    );
+    assertEquals(result.delta, 0, classification.connection);
+    assertEquals(result.familiarityDelta, 0, classification.connection);
+    assertEquals(result.score, 40, classification.connection);
+    assertEquals(result.familiarityScore, 20, classification.connection);
+  }
 });
 
 Deno.test("applyLearningClassification rewards passing a consistency test even before familiarity is ready", () => {

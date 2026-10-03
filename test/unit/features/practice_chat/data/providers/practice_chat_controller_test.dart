@@ -2563,6 +2563,82 @@ void main() {
       expect(saved.hintUsedCount, 1);
     });
 
+    test('送出下一句時先清掉上一輪的升溫標籤，等她回了才顯示新的 delta', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 4,
+              band: 'cold',
+              reason: '有接住她的情緒和前文，互動自然升溫。',
+              familiarityScore: 5,
+              familiarityDelta: 5,
+              stageLabel: '建立熟悉中',
+            ),
+          );
+      await c.sendMessage('第一句');
+      expect(c.currentState.lastTemperatureDelta, 4);
+
+      final pending = Completer<PracticeChatReply>();
+      api.sendHandler = (_, {profile}) => pending.future;
+      final sending = c.sendMessage('第二句');
+
+      // PR #88 G1：她還沒回，上一輪的「+4 這輪有升溫」不能掛在畫面上；
+      // 分數本身維持上一輪的值。
+      expect(c.currentState.isSending, isTrue);
+      expect(c.currentState.lastTemperatureDelta, isNull);
+      expect(c.currentState.temperatureReason, isNull);
+      expect(c.currentState.temperatureScore, 32);
+
+      pending.complete(reply(
+        cost: 0,
+        temperature: const PracticeTemperature(
+          score: 32,
+          delta: 0,
+          band: 'cold',
+          reason: '低壓接住對話，讓互動穩定前進。',
+          familiarityScore: 5,
+          familiarityDelta: 0,
+          stageLabel: '建立熟悉中',
+        ),
+      ));
+      await sending;
+      expect(c.currentState.isSending, isFalse);
+      expect(c.currentState.lastTemperatureDelta, 0);
+      expect(c.currentState.temperatureReason, '低壓接住對話，讓互動穩定前進。');
+    });
+
+    test('送出失敗還原時，上一輪的升溫標籤不會跳回來', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 32,
+              delta: 4,
+              band: 'cold',
+              reason: '有接住她的情緒和前文，互動自然升溫。',
+              familiarityScore: 5,
+              familiarityDelta: 5,
+              stageLabel: '建立熟悉中',
+            ),
+          );
+      await c.sendMessage('第一句');
+      expect(c.currentState.lastTemperatureDelta, 4);
+
+      // PR #88 G1（Codex 主審第 1 輪 P2）：失敗處理用 priorState 還原，
+      // 舊的「+4」與原因不能跟著回來；分數維持上一輪的值。
+      api.sendHandler = (_, {profile}) async => throw Exception('network');
+      await c.sendMessage('第二句');
+      expect(c.currentState.isSending, isFalse);
+      expect(c.currentState.errorMessage, isNotNull);
+      expect(c.currentState.lastTemperatureDelta, isNull);
+      expect(c.currentState.temperatureReason, isNull);
+      expect(c.currentState.temperatureScore, 32);
+    });
+
     test('SR game mode sends and persists beginner-like learning state',
         () async {
       api.drawHandler = ({currentProfileId}) async =>
