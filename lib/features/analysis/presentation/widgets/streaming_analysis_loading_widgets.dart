@@ -236,27 +236,36 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
 /// Retry CTA card for an interrupted analysis stream.
 ///
 /// When [retriesRemaining] > 0, shows the user-facing error plus a primary
-/// retry button labelled "重試完整分析（剩 N 次）". When 0, swaps the body
-/// for [kRetryExhaustedMessage] and disables the button to force "重新分析".
+/// retry button labelled "重試完整分析（剩 N 次）" that resumes the same run.
+/// When 0, the same run cannot continue: shows [errorMessage] (falling back to
+/// [kRetryExhaustedMessage]) and a "重新分析" button wired to [onReanalyze],
+/// which starts a new analysis through the normal start flow. The button is
+/// disabled while [onReanalyze] is null (e.g. screenshot recognition running).
 class StreamingAnalysisRetryCard extends StatelessWidget {
   final String? errorMessage;
   final int retriesRemaining;
   final VoidCallback? onRetry;
+  final VoidCallback? onReanalyze;
 
   const StreamingAnalysisRetryCard({
     super.key,
     required this.retriesRemaining,
     this.errorMessage,
     this.onRetry,
+    this.onReanalyze,
   });
 
   bool get _canRetry => retriesRemaining > 0;
 
   @override
   Widget build(BuildContext context) {
-    final headline =
-        _canRetry ? (errorMessage ?? '完整分析暫時失敗。') : kRetryExhaustedMessage;
-    final buttonLabel = _canRetry ? '重試完整分析（剩 $retriesRemaining 次）' : '無法再重試';
+    final exhaustedMessage = errorMessage?.trim() ?? '';
+    final headline = _canRetry
+        ? (errorMessage ?? '完整分析暫時失敗。')
+        : (exhaustedMessage.isEmpty
+            ? kRetryExhaustedMessage
+            : exhaustedMessage);
+    final buttonLabel = _canRetry ? '重試完整分析（剩 $retriesRemaining 次）' : '重新分析';
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       padding: const EdgeInsets.all(16),
@@ -319,7 +328,7 @@ class StreamingAnalysisRetryCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: AppHaptics.onPress(_canRetry ? onRetry : null),
+            onPressed: AppHaptics.onPress(_canRetry ? onRetry : onReanalyze),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.ctaStart,
               disabledBackgroundColor: Colors.white.withValues(alpha: 0.16),

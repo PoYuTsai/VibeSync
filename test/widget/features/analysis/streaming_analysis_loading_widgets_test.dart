@@ -73,24 +73,53 @@ void main() {
       expect(tapped, 1);
     });
 
-    testWidgets('disables retry and shows exhausted copy when 0 left',
-        (tester) async {
-      var tapped = 0;
+    testWidgets('0 left：顯示原因，「重新分析」呼叫 onReanalyze 而不是 onRetry', (tester) async {
+      var retried = 0;
+      var reanalyzed = 0;
       await tester.pumpWidget(_wrap(StreamingAnalysisRetryCard(
         retriesRemaining: 0,
-        errorMessage: '不該顯示',
-        onRetry: () => tapped++,
+        errorMessage: '你剛剛更新了本次片段，這份完整分析先不套用，請重新分析。',
+        onRetry: () => retried++,
+        onReanalyze: () => reanalyzed++,
+      )));
+
+      expect(
+        find.text('你剛剛更新了本次片段，這份完整分析先不套用，請重新分析。'),
+        findsOneWidget,
+      );
+      expect(find.text(kRetryExhaustedMessage), findsNothing);
+      expect(find.text('無法再重試'), findsNothing);
+
+      await tester.tap(find.text('重新分析'));
+      expect(reanalyzed, 1);
+      expect(retried, 0);
+    });
+
+    testWidgets('0 left 且沒有原因：退回預設文案', (tester) async {
+      await tester.pumpWidget(_wrap(StreamingAnalysisRetryCard(
+        retriesRemaining: 0,
+        errorMessage: '  ',
+        onReanalyze: () {},
       )));
 
       expect(find.text(kRetryExhaustedMessage), findsOneWidget);
-      expect(find.text('不該顯示'), findsNothing);
+      expect(find.text('重新分析'), findsOneWidget);
+    });
 
+    testWidgets('0 left 但 onReanalyze 是 null（例如辨識中）：按鈕停用', (tester) async {
+      var retried = 0;
+      await tester.pumpWidget(_wrap(StreamingAnalysisRetryCard(
+        retriesRemaining: 0,
+        onRetry: () => retried++,
+      )));
+
+      expect(find.text('重新分析'), findsOneWidget);
+      expect(find.text('無法再重試'), findsNothing);
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
       expect(button.onPressed, isNull);
 
-      // Even if we tap, callback must not fire because disabled.
       await tester.tap(find.byType(FilledButton), warnIfMissed: false);
-      expect(tapped, 0);
+      expect(retried, 0);
     });
   });
 
