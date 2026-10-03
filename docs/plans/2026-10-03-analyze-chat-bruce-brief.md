@@ -227,7 +227,7 @@ prompt 本身一天就能被抄。護城河在 prompt 外面的資料、結構�
 
 > 以下是我們實際跑一次分析之後整理的觀察和參考寫法，不是規格。版面、口吻和取捨都由你決定。牽涉扣額度時機的項目，要另外請 Eric 拍板。截圖用的是真的分析頁和真的資料處理流程，只把網路回應換成 Sonnet 5.5 黑箱測試錄下來的真實輸出。時間標記取自實際紀錄，但截圖沒有照真實秒數播放。
 
-截圖可以自己重跑：`flutter test test/visual_proof/analysis_stream_ux_capture_test.dart`，輸出在 `build/visual_proof/ux_*.png`（真的分析頁元件，只把網路回應換成黑箱錄下的 Sonnet 5.5 真實輸出；改完版面重跑一次就能前後對照）。
+截圖可以自己重跑：`flutter test test/visual_proof/analysis_stream_ux_capture_test.dart`，輸出在 `build/visual_proof/ux_*.png`（真的分析頁元件，只把網路回應換成黑箱錄下的 Sonnet 5.5 真實輸出；改完版面重跑一次就能前後對照）。目前的截圖是 2026-10-04 用合併 #86（分析片段泡泡改成 LINE 熟悉感）之後的 main 重截的。
 
 ### 1. 現在用戶實際看到什麼（逐秒）
 
