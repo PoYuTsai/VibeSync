@@ -1,7 +1,7 @@
 // NewTopic handler：破冰腦力（2026-07-24 計畫 §10.5）。
-// 固定順序：sanitize→進階開關→擋字→material→config→HMAC preflight→
-// claim→quota(3)→rate limit→renew→generate(45s)→validate/project→
-// settle(5s reserve)。
+// 固定順序：sanitize→擋字→material→config→HMAC preflight→claim→
+// 進階開關（claim 後，不 release）→quota(3)→rate limit→renew→
+// generate(45s)→validate/project→settle(5s reserve)。
 // Handler 永遠只回 settlement 的 stored result，本地候選一律丟棄。
 // 2026-08-18 stream（transport-only）：模型輸出契約不變，僅逐塊接收＋進度事件。
 
@@ -36,6 +36,7 @@ import {
   classifyNewTopicReplayPreflight,
   computeNewTopicInputHash,
   isStrongNewTopicReplayHmacKey,
+  NEW_TOPIC_REPLAY_HMAC_SECRET_NAME,
   newTopicReplayCutoffIso,
   type NewTopicReplayRow,
   releaseNewTopicClaim,
@@ -230,11 +231,11 @@ export async function handleNewTopicRequest(
   // 2. Config：模型金鑰＋new-topic-only HMAC secret。缺 secret 只有
   //    new_topic fail closed，opener/analyze/OCR 不受影響。config 缺失
   //    絕不能發生在 claim 之後（會留 pending claim 卡同 requestId）。
-  const newTopicHmacSecret = Deno.env.get("NEW_TOPIC_REPLAY_HMAC_KEY");
+  const newTopicHmacSecret = Deno.env.get(NEW_TOPIC_REPLAY_HMAC_SECRET_NAME);
   if (!isStrongNewTopicReplayHmacKey(newTopicHmacSecret)) {
     logError("new_topic_config_missing", {
       user: summarizeUser(deps.userId),
-      missing: "NEW_TOPIC_REPLAY_HMAC_KEY",
+      missing: NEW_TOPIC_REPLAY_HMAC_SECRET_NAME,
     });
     return jsonResponse({
       error: "NEW_TOPIC_REPLAY_NOT_CONFIGURED",
