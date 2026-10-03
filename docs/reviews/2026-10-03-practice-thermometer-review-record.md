@@ -5,6 +5,7 @@
 | 輪 | 審查 head | 封包 sha256 | 回覆 sha256 | 結論 |
 |---|---|---|---|---|
 | 1 | 4b1a7068 | e59e4883a24b518e61ccdfcbb23c10adbea72863a4f4404d49dbea953b9caa6b | 533d24f101bdf7e4200e7c7c14d30cd2dd8989b683b07633464bdec956c948fb | BLOCKED |
+| 2 | f812e83b | 63d1e9aef7f17f3b677dd098aa34e4f05ea344105bfff23916d5dcbc889d8a2d | ae71ecedaf282c44d457e34bd41f926af5c8fd4eb86b1e9db2d9143503cd7703 | APPROVED |
 
 封包 sha256 指封包根目錄 `SHA256SUMS.txt` 的雜湊。第 1 輪第一次派送因封包不是 git 目錄被 Codex CLI 拒絕執行，沒有任何輸出也沒有結論，不算一輪；同一份封包重送後才是上表的第 1 輪。
 
@@ -23,4 +24,14 @@ Eric 的授權與決定（原話）：
 [P2] lib/features/practice_chat/data/providers/practice_chat_providers.dart:1901 — G1 僅清除等待中的標籤，失敗還原仍帶回上一輪 +N — 上一輪 +4、下一輪逾時時，2123 行還原清除前保存的 priorState，重新顯示 +4；API 失敗亦同 — 同步清除失敗還原快照的 lastTemperatureDelta／temperatureReason，補上逾時與 API 失敗測試。
 
 VERDICT: BLOCKED
+````
+
+第 2 輪只審 `4b1a7068..f812e83b` 的差異，兩個第 1 輪 P2 都判已修好，沒有新發現；結論 APPROVED，兩輪內完成，不需要第三輪例外。本紀錄這一筆提交只改文件，在第 2 輪審查的 head 之後。
+
+## 第 2 輪回覆
+
+````text
+[OK] G2 寫入全失敗仍回傳未落帳分數 — 四個寫入結果均更新最後確認分數；全部失敗時回傳該分數或回合起始值，兩軸 delta 歸零並保留 fallback classification。封包中的 RPC 錯誤與 CAS 重試耗盡測試均通過。
+[OK] G1 失敗還原帶回上一輪 +N — priorState 已明確清除 lastTemperatureDelta 與 temperatureReason；逾時、API 失敗等八個還原分支均使用此快照，原分數保留。已核對新增回歸測試；本輪未重跑測試。
+VERDICT: APPROVED
 ````
