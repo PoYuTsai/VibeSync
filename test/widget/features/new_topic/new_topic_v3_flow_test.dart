@@ -90,6 +90,7 @@ Partner _partner(String id, {String? avatar}) => Partner(
 
 final _root = GlobalKey();
 final _active = ValueNotifier(true);
+final _visible = ValueNotifier(true);
 late _FakeService _service;
 late StreamController<String?> ownerEvents;
 String owner = 'a';
@@ -142,9 +143,13 @@ Future<ProviderContainer> _pump(WidgetTester t,
                           valueListenable: _active,
                           builder: (_, active, __) =>
                               IndexedStack(index: active ? 0 : 1, children: [
-                                NewTopicView(
-                                    initialPartnerId: selected,
-                                    isActive: active),
+                                ValueListenableBuilder<bool>(
+                                    valueListenable: _visible,
+                                    builder: (_, visible, __) => visible
+                                        ? NewTopicView(
+                                            initialPartnerId: selected,
+                                            isActive: active)
+                                        : const SizedBox.shrink()),
                                 const Center(child: Text('另一個模式'))
                               ]))))))));
   await t.pump(const Duration(milliseconds: 250));
@@ -207,6 +212,7 @@ void main() {
     refreshGate = null;
     styleLoader = null;
     _active.value = true;
+    _visible.value = true;
     ownerEvents = StreamController<String?>.broadcast();
     _service = _FakeService();
     NewTopicView.debugOwnerIdOverride = () => owner;
@@ -220,6 +226,53 @@ void main() {
     NewTopicView.debugServiceFactory = null;
     AiDataSharingConsent.debugUserIdOverride = null;
     await ownerEvents.close();
+  });
+
+  testWidgets('生成中離開並重建畫面，同答案送出相同 requestId', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    final first = _service.calls.single;
+    _visible.value = false;
+    await t.pump();
+    expect(find.byType(NewTopicView), findsNothing);
+    // 舊畫面已銷毀，即使請求完成也不能清掉尚未交付的 pending。
+    _service.replies.first.complete(_result(first['id']!));
+    await t.pump();
+    _visible.value = true;
+    await t.pump();
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(_service.calls.last, first);
+    _service.replies.last.complete(_result(first['id']!));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
+  });
+
+  testWidgets('成功交付後離開再生成，送出新的 requestId', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    final firstId = _service.calls.single['id']!;
+    _service.replies.first.complete(_result(firstId));
+    await t.pump(const Duration(milliseconds: 300));
+    _visible.value = false;
+    await t.pump();
+    _visible.value = true;
+    await t.pump();
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(_service.calls.last['id'], isNot(firstId));
+    _service.replies.last.complete(_result(_service.calls.last['id']!));
+    await t.pump(const Duration(milliseconds: 300));
   });
 
   testWidgets('正式結果立即結束生成，不等待額度刷新', (t) async {
@@ -498,6 +551,7 @@ void main() {
     expect(scroll.offset, offset);
     expect(find.byType(AlertDialog), findsNothing);
     _active.value = true;
+    _visible.value = true;
     await t.pump();
     await t.pump(const Duration(milliseconds: 500));
     expect(find.text('新話題建議'), findsOneWidget);
@@ -521,6 +575,7 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(_service.calls, isEmpty);
     _active.value = true;
+    _visible.value = true;
     await t.pump();
     expect(_button(t).onPressed, isNotNull);
   });

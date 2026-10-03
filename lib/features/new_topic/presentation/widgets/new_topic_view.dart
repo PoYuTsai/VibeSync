@@ -27,7 +27,6 @@ import '../../../partner/presentation/widgets/partner_picker_sheet.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../data/providers/new_topic_providers.dart';
-import '../../data/services/new_topic_request_session.dart';
 import '../../data/services/new_topic_service.dart';
 import '../../domain/entities/new_topic_result.dart';
 import '../../domain/new_topic_two_stage_copy.dart';
@@ -81,7 +80,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _resultsSectionKey = GlobalKey();
   final _situationKey = GlobalKey();
   final _materialController = TextEditingController();
-  final _requestSession = NewTopicRequestSession();
 
   String? _selectedPartnerId;
   String? _situation;
@@ -359,10 +357,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final partnerId = _validatedPartnerId();
     if (partnerId == null) return;
     final owner = _owner, version = _inputVersion;
+    if (owner == null) return;
+    final requestSession = ref.read(
+        newTopicRequestSessionProvider((ownerId: owner, partnerId: partnerId)));
     final situation = _situation;
     final topicContext = _topicContext;
     final partnerContext = ref.read(newTopicPartnerContextProvider(partnerId));
-    final pending = _requestSession.pendingFor(
+    final pending = requestSession.pendingFor(
         partnerId: partnerId, situation: situation, topicContext: topicContext);
     var offerBasic = false;
     String? styleContext = pending?.effectiveStyleContext;
@@ -429,7 +430,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         } catch (_) {/* Server remains authoritative. */}
       }
       if (!current()) return;
-      final attempt = _requestSession.beginAttempt(
+      final attempt = requestSession.beginAttempt(
         partnerId: partnerId,
         partnerSummary: partnerContext.promptText,
         effectiveStyleContext: styleContext,
@@ -463,7 +464,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         },
       );
       if (!current()) return;
-      _requestSession.markSuccess();
+      requestSession.markSuccess();
       setState(() {
         _result = result;
         _confirmPending = false;
@@ -492,7 +493,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!current()) return;
       // server 回這個時已佔住這筆編號且保證不會落帳（Codex R2 P1）：清掉 pending，
       // 之後再按會換新編號，不會撞上被佔住的租約而空等。
-      _requestSession.markSuccess();
+      requestSession.markSuccess();
       // 基本模式不帶素材原文：它自己生得出來才提議，否則請用戶先選第一問。
       offerBasic = canGenerateNewTopic(
           readiness: ref.read(newTopicReadinessProvider(partnerId)),
@@ -505,7 +506,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     } on NewTopicMaterialBlockedException catch (e) {
       if (!current()) return;
       // 同一句重送一定再被擋：不留 pending，按鈕回到「生成新話題」。
-      _requestSession.markSuccess();
+      requestSession.markSuccess();
       setState(() => _error = e.message);
     } on NewTopicException catch (e) {
       if (!current()) return;
@@ -584,7 +585,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _pendingScroll = false;
         _confirmPending = false;
         _showDetails = false;
-        _requestSession.markSuccess();
       });
     });
     ref.listen(partnerListProvider, (previous, next) {
@@ -595,6 +595,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           next.any((p) => p.id == selected)) {
         return;
       }
+      final owner = _owner;
+      if (owner != null) {
+        ref
+            .read(newTopicRequestSessionProvider(
+                (ownerId: owner, partnerId: selected)))
+            .markSuccess();
+      }
       setState(() {
         _inputVersion++;
         _result = null;
@@ -602,7 +609,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _preparing = false;
         _isGenerating = false;
         _confirmPending = false;
-        _requestSession.markSuccess();
       });
     });
     final partners = ref.watch(partnerListProvider);
@@ -619,7 +625,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     final answers = _answers;
     final topicContext = _topicContext;
     final hasMaterialText = _hasMaterialText(topicContext);
-    final pending = _requestSession.pendingFor(
+    final owner = _owner;
+    final requestSession = owner == null || validPartnerId == null
+        ? null
+        : ref.watch(newTopicRequestSessionProvider(
+            (ownerId: owner, partnerId: validPartnerId)));
+    final pending = requestSession?.pendingFor(
         partnerId: validPartnerId,
         situation: _situation,
         topicContext: topicContext);
