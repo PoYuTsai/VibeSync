@@ -35,6 +35,13 @@ export type DeltaCapApplied =
    * （forced `cold_return`）——他終於給了內容，但前面那幾輪的落差不補回來。
    */
   | "cold_return"
+  /**
+   * PR #88 D：她這一輪只回「（已讀）」（planner forced `read_only`，或性冒犯
+   * 階梯第二格）——她根本沒有回應，這一輪不換到正分。
+   */
+  | "read_only"
+  /** PR #88 D：性冒犯階梯第一格的冷回那一輪——她明顯還沒回暖。 */
+  | "offense_cold"
   | "none";
 
 export type TemperatureBand = "frozen" | "cold" | "neutral" | "warm" | "hot";
@@ -605,6 +612,10 @@ export function applyCoherenceDeltaCap(
     readonly accommodatingSelfFact?: boolean;
     /** Phase 4.5a 刀 3：這一輪 planner forced `cold_return`；省略／false＝不套用。 */
     readonly coldReturn?: boolean;
+    /** PR #88 D：這一輪她只回「（已讀）」；省略／false＝不套用。 */
+    readonly readOnly?: boolean;
+    /** PR #88 D：這一輪是性冒犯階梯的冷回格；省略／false＝不套用。 */
+    readonly offenseCold?: boolean;
   },
 ): { judgement: LearningJudgement; capApplied: DeltaCapApplied } {
   const {
@@ -616,6 +627,8 @@ export function applyCoherenceDeltaCap(
     sharedPastClaim,
     accommodatingSelfFact,
     coldReturn,
+    readOnly,
+    offenseCold,
   } = opts;
   let heatDelta = judgement.delta;
   let familiarityDelta = judgement.familiarityDelta;
@@ -674,6 +687,9 @@ export function applyCoherenceDeltaCap(
     ["accommodating_self_fact", accommodatingSelfFact],
     // Phase 4.5a 刀 3：跟上面兩條同一個 0/0 上界（只壓正分，不抬負分）。
     ["cold_return", coldReturn],
+    // PR #88 D：她只回已讀、或冒犯階梯冷回的那一輪，同一個 0/0 上界。
+    ["read_only", readOnly],
+    ["offense_cold", offenseCold],
   ];
   for (const [label, flagged] of zeroCaps) {
     if (flagged !== true) continue;

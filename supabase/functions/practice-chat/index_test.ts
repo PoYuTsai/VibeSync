@@ -10570,6 +10570,96 @@ Deno.test("WP6 端到端：分類器連判 overstep → 第 2 輪冷回、第 3 
   assertEquals(again.lastFacts, null);
 });
 
+// PR #88 D：她冷回或只回「（已讀）」的那一輪不加分——就算分類器把道歉判成
+// caught（coherence connected，agency cap 原本不會壓）。只壓正分、不抬負分。
+const CLASSIFIER_CAUGHT_CONNECTED =
+  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`;
+const CLASSIFIER_OVERSTEP_CONNECTED =
+  `{"connection":"overstepped","impact":"strong","testHandling":"none","boundary":"overstep","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`;
+
+Deno.test("PR #88 D：冒犯階梯冷回與已讀那一輪，道歉被判 caught 也不加分", async () => {
+  const t1 = await offenseRun({
+    latest: "你穿那樣我受不了",
+    deepSeekReplies: ["蛤？", CLASSIFIER_OVERSTEP_CONNECTED],
+  });
+  assertEquals(t1.lastFacts?.offenseStrikes, 1);
+
+  // 冷回格：她冷冷回一句，這一輪的道歉被判 caught → 0/0。
+  const t2 = await offenseRun({
+    latest: "抱歉 我剛剛講話太過分了",
+    offense: t1.lastFacts as Record<string, unknown>,
+    deepSeekReplies: ["嗯。", CLASSIFIER_CAUGHT_CONNECTED],
+  });
+  assertEquals(t2.agency?.offenseStage, "cold");
+  assertEquals(t2.json.temperature.delta, 0);
+  assertEquals(t2.json.temperature.familiarityDelta, 0);
+  assertEquals(t2.agency?.deltaCapApplied, "offense_cold");
+  const t2Update =
+    t2.state.rpcCalls.filter((c) =>
+      c.fn === "update_practice_learning_state"
+    )[0];
+  assertEquals(t2Update.params.p_temperature_delta, 0);
+  assertEquals(t2Update.params.p_familiarity_delta, 0);
+
+  // 已讀格：冷回那一輪再越界一次，下一輪道歉 → 她只回「（已讀）」、0/0。
+  const s2 = await offenseRun({
+    latest: "那妳穿什麼",
+    offense: t1.lastFacts as Record<string, unknown>,
+    deepSeekReplies: ["嗯。", CLASSIFIER_OVERSTEP_CONNECTED],
+  });
+  // 冷回格的負分照常扣（只壓正分）。
+  assert(s2.json.temperature.delta < 0);
+  const t3 = await offenseRun({
+    latest: "對不起 我不該那樣說",
+    offense: s2.lastFacts as Record<string, unknown>,
+    // 已讀那一輪不打生成模型：第一發就是分類器。
+    deepSeekReplies: [CLASSIFIER_CAUGHT_CONNECTED],
+  });
+  assertEquals(t3.json.reply, "（已讀）");
+  assertEquals(t3.agency?.offenseStage, "read_only");
+  assertEquals(t3.json.temperature.delta, 0);
+  assertEquals(t3.json.temperature.familiarityDelta, 0);
+  assertEquals(t3.agency?.deltaCapApplied, "read_only");
+});
+
+Deno.test("PR #88 D：planner forced read_only 那一輪，分類器判 caught 也不加分", async () => {
+  const { json, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          conversationAgency: { ...LADDER_STATE, checkedOut: true },
+        },
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      // 已讀那一輪不打生成模型：第一發就是分類器。
+      deepSeekReplies: [CLASSIFIER_CAUGHT_CONNECTED],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  const agency = succeeded?.conversationAgency as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(agency?.forcedAct, "read_only");
+  assertEquals(json.reply, "（已讀）");
+  // 沒有 D 時是 caught ×0.7 的 +3/+4。
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(agency?.deltaCapApplied, "read_only");
+});
+
 Deno.test("WP6 端到端：羞辱型「賤貨」當輪直接已讀，再一次分類器 overstep 之後封鎖", async () => {
   // 羞辱型 +2 是**當輪即時**的（不必等分類器）。
   const crude = await offenseRun({

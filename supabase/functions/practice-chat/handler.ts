@@ -1451,6 +1451,13 @@ async function judgeLearningState(opts: {
    * 但冷」）。旗標 off 時永遠 false。
    */
   agencyColdReturn?: boolean;
+  /**
+   * PR #88 D：這一輪她只回「（已讀）」（planner forced `read_only` 或性冒犯
+   * 階梯第二格）。旗標 off 時永遠 false。
+   */
+  agencyReadOnly?: boolean;
+  /** PR #88 D：這一輪是性冒犯階梯的冷回格。階梯旗標未開時永遠 false。 */
+  agencyOffenseCold?: boolean;
   /** Phase 3.5：分類器的可信自我來源；旗標 off 時 buildTurnClassifierMessages 不用。 */
   memorySummary?: string | null;
   herRecentMoments?: readonly MomentMemoryPost[];
@@ -1583,6 +1590,9 @@ async function judgeLearningState(opts: {
           },
           // Phase 4.5a 刀 3：分類器壞掉的 fallback 也要壓（同 Codex P1-e 的理由）。
           coldReturn: opts.agencyColdReturn,
+          // PR #88 D：已讀與冒犯階梯冷回那一輪也一樣。
+          readOnly: opts.agencyReadOnly,
+          offenseCold: opts.agencyOffenseCold,
         })
         : { judgement: protectedFallback, capApplied: "none" as const };
     const gatedFallback = rewardGateActiveFor(currentTemperature)
@@ -1666,6 +1676,10 @@ async function judgeLearningState(opts: {
         accommodatingSelfFact: classification.accommodatingSelfFact,
         // Phase 4.5a 刀 3：「回來但冷」那一輪不補回溫度（就算分類器判 connected）。
         coldReturn: opts.agencyColdReturn,
+        // PR #88 D：她只回「（已讀）」或冒犯階梯冷回的那一輪，同樣不換到正分
+        // （就算分類器把道歉判成 caught）。
+        readOnly: opts.agencyReadOnly,
+        offenseCold: opts.agencyOffenseCold,
       })
       : { judgement: protectedJudgement, capApplied: "none" as const };
     // 閘門在 delta cap 之後、crude-offense 確定性扣滿之前——閘門只夾正向，
@@ -4832,6 +4846,8 @@ export function createPracticeChatHandler(
     let shapeTruncatedBubbles = 0;
     /** Phase 4.5a 刀 2：這一輪真的被授權回已讀（守門白名單與 telemetry 同源）。 */
     let readOnlyAllowedThisTurn = false;
+    /** PR #88 D：這一輪她只回「（已讀）」——與下面的 readOnlyTurn 同源，給溫度上限用。 */
+    let readOnlyTurnServed = false;
     /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發、重試過。 */
     let checkOutRetried = false;
     /** Phase 4.5g：第二發仍命中，fail-open 送出去了。 */
@@ -4951,6 +4967,7 @@ export function createPracticeChatHandler(
         // Phase 5 WP6：階梯第二格走同一條路（不打模型、回「（已讀）」），
         // 但**不經** forcedAct——階梯不分難度，`allowsCheckOut` 對它不適用。
         offenseTurn?.stage === "read_only";
+      readOnlyTurnServed = readOnlyTurn;
       // Phase 5 WP2 成本保險絲：`chatModelFor` **之前**先問今天燒掉多少
       // （一次 select）。燒斷＝這一輪強制走 DeepSeek，不是報錯（計畫 §7
       // 風險 1）；讀不到（`null`）一律當成沒燒斷，只有 `cost_fuse.ts` 記的
@@ -5257,6 +5274,9 @@ export function createPracticeChatHandler(
             agencyDecision?.decision.evidence.repeatedExactToken ?? false,
           agencyColdReturn:
             agencyDecision?.decision.forcedAct === "cold_return",
+          // PR #88 D：她只回已讀、或冒犯階梯冷回的那一輪不加分。
+          agencyReadOnly: readOnlyTurnServed,
+          agencyOffenseCold: offenseTurn?.stage === "cold",
           // Phase 3.5：跟 chat prompt 同一份記憶／貼文餵分類器（旗標 off 不用）。
           memorySummary: promptMemorySummary,
           herRecentMoments,

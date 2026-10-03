@@ -1107,6 +1107,59 @@ Deno.test("applyCoherenceDeltaCap Phase 3.6：accommodatingSelfFact 壓成 0/0 �
   assertEquals(coldNegative.capApplied, "none");
 });
 
+// PR #88 D：她只回「（已讀）」或性冒犯階梯冷回的那一輪，走跟 cold_return
+// 同一個 0/0 上界——就算分類器判 connected 也不換到正分，負分不得被抬高。
+Deno.test("applyCoherenceDeltaCap PR #88：read_only 與 offense_cold 壓成 0/0 只壓正分", () => {
+  const args = {
+    currentHeat: 50,
+    currentFamiliarity: 30,
+    coherence: "connected" as const,
+    structural: { repeatedExactToken: false, unresolvedCount: 0 },
+  };
+  const readOnly = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
+    ...args,
+    readOnly: true,
+  });
+  assertEquals(readOnly.judgement.delta, 0);
+  assertEquals(readOnly.judgement.familiarityDelta, 0);
+  assertEquals(readOnly.capApplied, "read_only");
+
+  const offenseCold = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
+    ...args,
+    offenseCold: true,
+  });
+  assertEquals(offenseCold.judgement.delta, 0);
+  assertEquals(offenseCold.judgement.familiarityDelta, 0);
+  assertEquals(offenseCold.capApplied, "offense_cold");
+
+  for (const flags of [{ readOnly: true }, { offenseCold: true }]) {
+    const negative = applyCoherenceDeltaCap({
+      judgement: judgement(-5, -3),
+      ...args,
+      ...flags,
+    });
+    assertEquals(negative.judgement.delta, -5, JSON.stringify(flags));
+    assertEquals(
+      negative.judgement.familiarityDelta,
+      -3,
+      JSON.stringify(flags),
+    );
+    assertEquals(negative.capApplied, "none", JSON.stringify(flags));
+  }
+
+  // 省略／false＝逐字沿用既有行為。
+  const untouched = applyCoherenceDeltaCap({
+    judgement: judgement(4, 2),
+    ...args,
+    readOnly: false,
+    offenseCold: false,
+  });
+  assertEquals(untouched.judgement.delta, 4);
+  assertEquals(untouched.capApplied, "none");
+});
+
 Deno.test("Phase 4.3 R2 P2-4：aiChallengedThisTurn 的 judge 規則有反例定義，且只在 agency 開時進 prompt", () => {
   const build = (agencyEnabled: boolean) =>
     buildTurnClassifierMessages({
