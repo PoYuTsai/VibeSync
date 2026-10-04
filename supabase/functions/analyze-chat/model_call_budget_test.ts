@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { ModelCallBudget, ModelCallBudgetError } from "./model_call_budget.ts";
+import { attemptReporter, ModelCallBudget, ModelCallBudgetError, providerAttemptLogEntry } from "./model_call_budget.ts";
+import { calculateCost } from "./logger.ts";
 import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
 import { AiStreamingServiceError, callClaudeStreaming } from "./streaming_fallback.ts";
 
@@ -87,4 +88,33 @@ Deno.test("C04: shared deadline stops streaming fallback instead of resetting ti
     assertEquals(calls, 1);
     await assertRejects(() => callClaudeWithFallback(request, "fake", { budget }), ModelCallBudgetError);
   } finally { Date.now = originalNow; }
+});
+
+Deno.test("K3: provider attempt maps to one ai_logs entry with cache cost and an allowlisted request body", async () => {
+  const old = globalThis.fetch;
+  const entries: ReturnType<typeof providerAttemptLogEntry>[] = [];
+  const context = { user: "u_summary", stage: "generate", operation: "op-1", tier: "free", profileInfo: "SENTINEL_PROFILE", freeText: "SENTINEL_TEXT" };
+  const budget = new ModelCallBudget(Date.now() + 1000, context, attemptReporter("opener_provider_attempt", "opener_generate", (e) => entries.push(e), { path: "single" }));
+  let calls = 0;
+  globalThis.fetch = () => Promise.resolve(++calls === 1 ? Response.json({ usage: rawUsage }, { status: 503 }) : success());
+  try {
+    await callClaudeWithFallback(request, "fake", { maxRetries: 1, budget });
+    assertEquals(entries.length, 2);
+    const [failed, ok] = entries;
+    assertEquals([ok.inputTokens, ok.cacheCreationTokens, ok.cacheReadTokens, ok.outputTokens], [10, 20, 30, 5]);
+    assertEquals(calculateCost(ok.model, ok.inputTokens, ok.outputTokens, ok.cacheCreationTokens, ok.cacheReadTokens),
+      calculateCost("claude-sonnet-4-6", 10, 5, 20, 30));
+    assert(calculateCost(ok.model, ok.inputTokens, ok.outputTokens, ok.cacheCreationTokens, ok.cacheReadTokens) > calculateCost(ok.model, 10, 5));
+    assertEquals([failed.model, failed.status, failed.errorCode, failed.fallbackUsed], ["claude-sonnet-5", "failed", "PROVIDER_ATTEMPT_FAILED", false]);
+    assertEquals([ok.model, ok.status, ok.errorCode, ok.fallbackUsed, ok.retryCount, ok.requestType], ["claude-sonnet-4-6", "success", undefined, true, 0, "opener_generate"]);
+    assertEquals(ok.requestBody, { purpose: "primary", route: "fallback", attempt: 2, stage: "generate", operation: "op-1", tier: "free", usageComplete: true, path: "single" });
+    const serialized = JSON.stringify(entries);
+    for (const leaked of ["SENTINEL", "profileInfo", "freeText", "u_summary"]) assert(!serialized.includes(leaked), leaked);
+  } finally { globalThis.fetch = old; }
+});
+
+Deno.test("K3: unknown usage writes zero tokens; retry route counts one retry", () => {
+  const entry = providerAttemptLogEntry("new_topic", { model: "claude-sonnet-5", route: "retry", status: "success", elapsedMs: 12, inputTokens: null, outputTokens: null });
+  assertEquals([entry.inputTokens, entry.outputTokens, entry.cacheCreationTokens, entry.cacheReadTokens], [0, 0, 0, 0]);
+  assertEquals([entry.retryCount, entry.fallbackUsed, entry.latencyMs], [1, false, 12]);
 });

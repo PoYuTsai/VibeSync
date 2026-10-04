@@ -5,6 +5,16 @@ import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../domain/services/new_topic_partner_context_builder.dart';
+import '../services/new_topic_request_session.dart';
+
+/// 非 autoDispose：離開畫面後仍在 app 的 ProviderScope 保留凍結請求。
+/// 使用者與對象共同隔離；不落盤，App 關閉後不保留。
+typedef NewTopicRequestSessionKey = ({String ownerId, String partnerId});
+
+final newTopicRequestSessionProvider =
+    Provider.family<NewTopicRequestSession, NewTopicRequestSessionKey>(
+  (ref, key) => NewTopicRequestSession(),
+);
 
 /// 新話題的 Spec 2.5 style context。鏡像 openerStyleContextProvider 的
 /// Future-based 設計：async 依賴 await 完才 beginAttempt 鑄 requestId，

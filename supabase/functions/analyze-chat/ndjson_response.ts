@@ -38,10 +38,22 @@ export function ndjsonStreamResponse(
 
       const isClosed: NdjsonIsClosed = () => closed;
 
-      try {
-        Promise.resolve(start(emit, close, fail, isClosed)).catch(fail);
-      } catch (error) {
+      // start 逃出的例外常發生在 finally close() 之後，fail 會因已關閉而
+      // 不動作；先留紀錄，否則伺服器端完全看不到。直接用 console.error，
+      // 不引 logger.ts（它頂層載入 supabase-js），保持本檔零依賴。
+      const failUnhandled = (error: unknown) => {
+        console.error("[analyze-chat] ndjson_stream_unhandled", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         fail(error);
+      };
+
+      try {
+        Promise.resolve(start(emit, close, fail, isClosed)).catch(
+          failUnhandled,
+        );
+      } catch (error) {
+        failUnhandled(error);
       }
     },
     cancel() {

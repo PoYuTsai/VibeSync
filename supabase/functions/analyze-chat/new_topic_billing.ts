@@ -8,8 +8,9 @@ import {
 } from "./new_topic_payload.ts";
 import type { NewTopicTopicContext } from "./new_topic_two_stage.ts";
 
-// v2＝ledger result 允許選填 formulaTopics（migration 20260724180000）；
-// DB marker 只有新 constraint／validator 俱全時才回 v2。
+// v2＝DB 有 migration 20260724180000（SQL validator 仍容許已下架的選填
+// formulaTopics；JS 端 isValidNewTopicLedgerResult 已不接受）。DB marker 只有
+// 新 constraint／validator 俱全時才回 v2；此常數只給 runbook 對照，程式不讀。
 export const NEW_TOPIC_CONTRACT_VERSION = "new-topic-exactly-once-v2";
 export const NEW_TOPIC_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const NEW_TOPIC_REPLAY_HMAC_SECRET_NAME = "NEW_TOPIC_REPLAY_HMAC_KEY";

@@ -1281,12 +1281,189 @@ Deno.test("beginner first chat：challenge 難度起始溫度 20＋負 delta 放
   assertEquals(json.temperature.delta, -12);
   // fake RPC 已鏡射 Postgres 的 GREATEST(0, ...) 下限（2026-08-08）。
   assertEquals(json.temperature.familiarityScore, 0); // clamp(0 + (-6))
-  assertEquals(json.temperature.familiarityDelta, -6);
+  // PR #88 G2：回傳的是實際變化量（0 → 0）；送進 RPC 的仍是計算值 -6。
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(learningUpdateCalls(state)[0]?.params.p_familiarity_delta, -6);
   assert(state.deepSeekCalls[0].messages[0].content.includes("20/100"));
   assertEquals(
     learningUpdateCalls(state)[0]?.params.p_expected_temperature_score,
     20,
   );
+});
+
+// PR #88 G2：分數被夾在 0／100 時，回給 App 的 delta 是實際變化量——畫面不會
+// 在 100 分還顯示「+4」。送進 RPC 的仍是計算值，夾制由 DB 做。
+Deno.test("learning response reports the actual change when scores clamp at the bounds", async () => {
+  const cases = [
+    { heat: 98, familiarity: 97, score: 100, delta: 2, familiarityDelta: 3 },
+    { heat: 100, familiarity: 100, score: 100, delta: 0, familiarityDelta: 0 },
+  ];
+  for (const c of cases) {
+    const label = `${c.heat}/${c.familiarity}`;
+    const { response, json, state } = await run(
+      {
+        ledger: ledger({
+          practice_mode: "beginner",
+          temperature_score: c.heat,
+          familiarity_score: c.familiarity,
+        }),
+        deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        temperatureScore: c.heat,
+        familiarityScore: c.familiarity,
+        turns: [{ role: "user", text: "今天工作很多嗎" }],
+      }),
+    );
+
+    assertEquals(response.status, 200, label);
+    assertEquals(json.temperature.score, c.score, label);
+    assertEquals(json.temperature.delta, c.delta, label);
+    assertEquals(json.temperature.familiarityScore, 100, label);
+    assertEquals(json.temperature.familiarityDelta, c.familiarityDelta, label);
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      4,
+      label,
+    );
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_familiarity_delta,
+      5,
+      label,
+    );
+  }
+});
+
+// PR #88 G2（Codex 主審第 1 輪 P2）：分類成功與 fallback 的寫入都失敗時，DB 沒有
+// 任何變化——回給 App 的是 DB 最後回報的分數、兩軸 delta 0，不是算出來卻沒寫
+// 進去的確定性扣分。
+Deno.test("learning response stays flat when every learning write errors", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 20,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          { error: "db down" },
+          { error: "db down" },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 20,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  // 送進 RPC 的是確定性扣分（沒寫進去）。
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, -12);
+  assertEquals(json.temperature.score, 40);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 20);
+  assertEquals(json.temperature.familiarityDelta, 0);
+});
+
+Deno.test("learning response reports the last DB scores when every CAS retry is rejected", async () => {
+  const stale = {
+    updated: false,
+    temperature_score: 45,
+    familiarity_score: 25,
+  };
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 20,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          { data: stale },
+          { data: stale },
+          { data: stale },
+          { data: stale },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 40,
+      familiarityScore: 20,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 4);
+  assertEquals(json.temperature.score, 45);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 25);
+  assertEquals(json.temperature.familiarityDelta, 0);
+});
+
+// PR #88 G2：RPC 沒回分數時，delta 一樣用「分數減舊分數」——夾在 100 時不會顯示 +4。
+Deno.test("learning response derives the delta from the clamped score when the RPC returns no row", async () => {
+  const { response, json } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 98,
+        familiarity_score: 97,
+      }),
+      rpc: { update_practice_learning_state: [{ data: null }] },
+      deepSeekReplies: ["AI reply", CLASSIFIER_CAUGHT_MEDIUM],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 98,
+      familiarityScore: 97,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 100);
+  assertEquals(json.temperature.delta, 2);
+  assertEquals(json.temperature.familiarityScore, 100);
+  assertEquals(json.temperature.familiarityDelta, 3);
+});
+
+// PR #88 G2：fallback 第一次寫入那個呼叫點——分類器失敗＋粗俗冒犯，扣分被 DB 夾在 0。
+Deno.test("fallback first write reports the actual change after a crude offense near zero", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 5,
+        familiarity_score: 3,
+      }),
+      deepSeekReplies: ["AI reply", new Error("classifier down")],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 5,
+      familiarityScore: 3,
+      turns: [{ role: "user", text: "想幹妳屁眼" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(json.temperature.score, 0);
+  assertEquals(json.temperature.delta, -5);
+  assertEquals(json.temperature.familiarityScore, 0);
+  assertEquals(json.temperature.familiarityDelta, -3);
 });
 
 Deno.test("beginner later chat uses ledger learning state over client sent scores", async () => {
@@ -1724,7 +1901,9 @@ Deno.test("successful beginner classifier uses JSON mode and updates learning st
   );
 });
 
-Deno.test("exact applied warm-up hint stays flat despite classifier overstep", async () => {
+// PR #88 B1（Codex 指出、Eric 2026-10-03 拍板）：分類器判 pushy／overstep 時
+// 原封貼提示也不保護，維持 8/11「有壓迫感一律扣分」。
+Deno.test("exact applied warm-up hint is not protected when the classifier flags overstep", async () => {
   const exactHint = "You said you were tired. Was work heavy today?";
   const { response, json, state } = await run(
     {
@@ -1750,18 +1929,18 @@ Deno.test("exact applied warm-up hint stays flat despite classifier overstep", a
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
-    score: 30,
-    delta: 0,
-    band: temperatureBandFor(30),
-    reason: "套用提示回覆，維持不降溫",
-    familiarityScore: 20,
-    familiarityDelta: 0,
+    score: 18,
+    delta: -12,
+    band: temperatureBandFor(18),
+    reason: "這句踩到界線或越界，先退回安全、低壓的互動。",
+    familiarityScore: 8,
+    familiarityDelta: -12,
     stageLabel: "建立熟悉中",
     partnerState: GUARDED_PARTNER_STATE,
   });
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("exact applied hint stays flat when classifier falls back", async () => {
@@ -1796,7 +1975,9 @@ Deno.test("exact applied hint stays flat when classifier falls back", async () =
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("exact applied steady hint shows a small bump when classifier falls back", async () => {
+// PR #88 B1（Eric 2026-10-03 決定 2）：原封貼提示只保證不扣分，穩住回覆也
+// 不再保底 +1。
+Deno.test("exact applied steady hint stays flat when classifier falls back", async () => {
   const exactHint = "聽起來真的很滿，我懂那種一整天被工作追著跑的感覺。";
   const { response, json, state } = await run(
     {
@@ -1821,14 +2002,54 @@ Deno.test("exact applied steady hint shows a small bump when classifier falls ba
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("exact applied warm-up hint does not drop protected beginner temperature", async () => {
+// PR #88 決定 2（Claude 預審 P3）：agency 開時，coherence cap 判 disconnected／
+// repetitive 會壓出負分；提示保護放在 cap 之後，原封貼提示仍只到 0、不扣分。
+Deno.test("exact applied steady hint is not pushed below zero by the agency coherence cap", async () => {
+  const exactHint = "聽起來真的很滿，我懂那種一整天被工作追著跑的感覺。";
+  for (const coherence of ["disconnected", "repetitive"]) {
+    const { response, json, state } = await run(
+      {
+        ledger: ledger({
+          practice_mode: "beginner",
+          temperature_score: 30,
+          familiarity_score: 20,
+          hint_count: 1,
+        }),
+        env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+        deepSeekReplies: [
+          "AI reply",
+          `{"connection":"neutral","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"aligned","coherence":"${coherence}","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`,
+        ],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        temperatureScore: 30,
+        appliedHintType: "steady",
+        appliedHintText: exactHint,
+        turns: [{ role: "user", text: exactHint }],
+      }),
+    );
+
+    assertEquals(response.status, 200, coherence);
+    assertEquals(json.temperature.delta, 0, coherence);
+    assertEquals(json.temperature.familiarityDelta, 0, coherence);
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      0,
+      coherence,
+    );
+  }
+});
+
+Deno.test("exact applied warm-up hint (english) is penalized when the classifier flags overstep", async () => {
   const exactHint =
     "That sounds like a packed day. What part drained you most?";
   const { response, json, state } = await run(
@@ -1855,21 +2076,21 @@ Deno.test("exact applied warm-up hint does not drop protected beginner temperatu
 
   assertEquals(response.status, 200);
   assertEquals(json.temperature, {
-    score: 30,
-    delta: 0,
-    band: temperatureBandFor(30),
-    reason: "套用提示回覆，維持不降溫",
-    familiarityScore: 20,
-    familiarityDelta: 0,
+    score: 18,
+    delta: -12,
+    band: temperatureBandFor(18),
+    reason: "這句踩到界線或越界，先退回安全、低壓的互動。",
+    familiarityScore: 8,
+    familiarityDelta: -12,
     stageLabel: "建立熟悉中",
     partnerState: GUARDED_PARTNER_STATE,
   });
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
-Deno.test("exact applied steady hint gets visible credit despite classifier overstep", async () => {
+Deno.test("exact applied steady hint is penalized when the classifier flags overstep", async () => {
   const exactHint =
     "That sounds like a packed day. What part drained you most?";
   const { response, json, state } = await run(
@@ -1895,11 +2116,11 @@ Deno.test("exact applied steady hint gets visible credit despite classifier over
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 18);
+  assertEquals(json.temperature.delta, -12);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
 Deno.test("exact applied hint with obvious overstep is not protected", async () => {
@@ -1934,7 +2155,7 @@ Deno.test("exact applied hint with obvious overstep is not protected", async () 
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -12);
 });
 
-Deno.test("exact applied steady hint shows a small heat bump when familiarity grows", async () => {
+Deno.test("exact applied steady hint keeps the classifier's caught reward", async () => {
   const exactHint =
     "That sounds like a packed day. What part drained you most?";
   const { response, json, state } = await run(
@@ -1967,7 +2188,8 @@ Deno.test("exact applied steady hint shows a small heat bump when familiarity gr
   assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 5);
 });
 
-Deno.test("edited applied steady hint aligned with the original gets visible credit", async () => {
+// PR #88 A＋B1：小幅修改且對齊的提示一樣只保證不扣分；normal 沒有正向證據就持平。
+Deno.test("edited applied steady hint aligned with the original stays flat without positive evidence", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -1991,14 +2213,14 @@ Deno.test("edited applied steady hint aligned with the original gets visible cre
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("game exact warm-up hint gets visible reward when classifier falls back", async () => {
+Deno.test("game exact warm-up hint stays flat when classifier falls back", async () => {
   const exactHint = "先接她剛剛那個點，輕輕丟一個有畫面的球。";
   const { response, json, state } = await run(
     {
@@ -2024,16 +2246,18 @@ Deno.test("game exact warm-up hint gets visible reward when classifier falls bac
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 34);
-  assertEquals(json.temperature.delta, 4);
-  assertEquals(json.temperature.familiarityScore, 22);
-  assertEquals(json.temperature.familiarityDelta, 2);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 20);
+  assertEquals(json.temperature.familiarityDelta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 4);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 2);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-Deno.test("game exact steady hint earns stronger execution credit than beginner", async () => {
+// PR #88 B1：Game 的提示只解除停滯閘門，沒有正向證據（caught／passed）一樣
+// 不加分（原本保底 +5/+3）。
+Deno.test("game exact steady hint without positive evidence stays flat", async () => {
   const exactHint = "她丟了窗口，你直接用低壓句把時間地點收成一個小約。";
   const { response, json, state } = await run(
     {
@@ -2059,13 +2283,13 @@ Deno.test("game exact steady hint earns stronger execution credit than beginner"
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 35);
-  assertEquals(json.temperature.delta, 5);
-  assertEquals(json.temperature.familiarityScore, 23);
-  assertEquals(json.temperature.familiarityDelta, 3);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityScore, 20);
+  assertEquals(json.temperature.familiarityDelta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 5);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 3);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
 Deno.test("game exact hint with obvious overstep still takes full penalty", async () => {
@@ -2106,7 +2330,161 @@ Deno.test("game exact hint with obvious overstep still takes full penalty", asyn
   );
 });
 
-Deno.test("english edited applied steady hint with small wording changes gets visible credit", async () => {
+// PR #88 B1（Eric 2026-10-03 決定 2）：原封貼提示只保證不扣分——沒有壓迫感的
+// 負分（例如沒接住）照樣抬到 0；分類器判 pushy／overstep 時不保護。
+Deno.test("exact applied hint still guarantees no deduction for a non-pressure miss", async () => {
+  const exactHint = "聽起來今天真的很滿，先好好吃頓飯再說";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "steady",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(json.temperature.reason, "套用提示回覆，維持不降溫");
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
+});
+
+Deno.test("exact applied hint is not protected when the classifier flags pushy", async () => {
+  const exactHint = "聽起來今天真的很滿，先好好吃頓飯再說";
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 30,
+        familiarity_score: 20,
+        hint_count: 1,
+      }),
+      deepSeekReplies: [
+        "AI reply",
+        `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"pushy","hintAlignment":"aligned"}`,
+      ],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      temperatureScore: 30,
+      appliedHintType: "warm_up",
+      appliedHintText: exactHint,
+      turns: [{ role: "user", text: exactHint }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  // caught＋pushy 照 8/11 規則夾到 pushy 的罰則 -3/-2，提示不再把它抬成 0。
+  assertEquals(json.temperature.score, 27);
+  assertEquals(json.temperature.delta, -3);
+  assertEquals(json.temperature.familiarityDelta, -2);
+  assertLearningFieldsAndNoDebug(json.temperature);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -3);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, -2);
+});
+
+// PR #88 B1：Game 卡在停滯閘門（BORING）時，原封貼提示只解除停滯閘門，
+// 仍要真的接住才加分；沒用提示的接住照舊被 BORING 擋下。
+Deno.test("game exact hint lifts the stagnation gate only together with positive evidence", async () => {
+  const exactHint = "那你下班都去哪？今天在哪？";
+  const turns = [
+    { role: "user", text: "你幾歲？住哪？做什麼？" },
+    { role: "ai", text: "你查戶口喔 XD" },
+    { role: "user", text: exactHint },
+  ];
+  const caught =
+    `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"aligned"}`;
+  const cases = [
+    {
+      label: "提示＋接住",
+      withHint: true,
+      classifier: caught,
+      delta: 7,
+      familiarityDelta: 8,
+    },
+    {
+      label: "沒提示＋接住",
+      withHint: false,
+      classifier: CLASSIFIER_CAUGHT_MEDIUM,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    {
+      label: "提示＋普通句",
+      withHint: true,
+      classifier: CLASSIFIER_ALIGNED_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    {
+      label: "提示＋沒接住",
+      withHint: true,
+      classifier:
+        `{"connection":"missed","impact":"minor","testHandling":"none","boundary":"safe","hintAlignment":"aligned"}`,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+  ];
+  for (const c of cases) {
+    const { response, json, state } = await run(
+      {
+        ledger: gameStartedLedger({
+          temperature_score: 30,
+          familiarity_score: 20,
+          hint_count: c.withHint ? 1 : 0,
+        }),
+        drawEvents: [{ profile_id: "practice_girl_004" }],
+        deepSeekReplies: ["AI reply", c.classifier],
+      },
+      chatBody({
+        practiceMode: "game",
+        profileId: "practice_girl_004",
+        temperatureScore: 30,
+        ...(c.withHint
+          ? { appliedHintType: "steady", appliedHintText: exactHint }
+          : {}),
+        turns,
+      }),
+    );
+
+    assertEquals(response.status, 200, c.label);
+    assertEquals(json.temperature.delta, c.delta, c.label);
+    assertEquals(
+      json.temperature.familiarityDelta,
+      c.familiarityDelta,
+      c.label,
+    );
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      c.delta,
+      c.label,
+    );
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_familiarity_delta,
+      c.familiarityDelta,
+      c.label,
+    );
+  }
+});
+
+Deno.test("english edited applied steady hint with small wording changes stays flat without positive evidence", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -2133,11 +2511,11 @@ Deno.test("english edited applied steady hint with small wording changes gets vi
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
 Deno.test("edited applied hint with low text similarity is scored normally even when classifier says aligned", async () => {
@@ -2325,7 +2703,9 @@ Deno.test("edited applied hint that diverges is scored like a normal reply", asy
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, -12);
 });
 
-Deno.test("normal low-impact beginner chat now gets small visible progress", async () => {
+// PR #88 A（Eric 2026-10-03 決定 1）：normal 的普通句（沒有 caught／passed）
+// 改持平，不再每輪 +1「這輪有升溫」。
+Deno.test("normal beginner neutral reply now stays flat without positive evidence", async () => {
   const { response, json, state } = await run(
     {
       ledger: ledger({
@@ -2346,16 +2726,17 @@ Deno.test("normal low-impact beginner chat now gets small visible progress", asy
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[0].params.p_familiarity_delta, 0);
 });
 
-// ── 挑戰獎勵閘門（PR 2，修 D2）：challenge × beginner 下沒有正向證據
-// （caught／passed）的回合不得被動加分；負向照常 ×1.3；easy／normal／Game
-// 行為與改前一致。
+// ── 新手獎勵閘門（PR 2 修 D2；PR #88 擴大）：沒有正向證據（caught／passed）
+// 的回合不得被動加分；負向照常放行。challenge、normal 一律套；easy 只在這一輪
+// 開始前熱度 > 40 時套；Game 走自己的閘門。
 Deno.test("challenge beginner neutral reply earns zero instead of a passive +1", async () => {
   const { response, json, state } = await run(
     {
@@ -2441,7 +2822,8 @@ Deno.test("challenge beginner caught reply still earns its 0.7-scaled positive",
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 3);
 });
 
-Deno.test("challenge beginner protected exact hint keeps its floor through the gate", async () => {
+// PR #88 B1：受保護的提示不再豁免新手獎勵閘門。
+Deno.test("challenge beginner protected exact hint no longer bypasses the reward gate", async () => {
   const exactHint = "你剛剛說今天很累，是工作很多嗎？";
   const { response, json, state } = await run(
     {
@@ -2465,11 +2847,11 @@ Deno.test("challenge beginner protected exact hint keeps its floor through the g
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 31);
-  assertEquals(json.temperature.delta, 1);
-  assertEquals(json.temperature.familiarityDelta, 1);
+  assertEquals(json.temperature.score, 30);
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
-  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 0);
 });
 
 Deno.test("easy beginner neutral reply on the same fixture still earns +1", async () => {
@@ -2497,6 +2879,135 @@ Deno.test("easy beginner neutral reply on the same fixture still earns +1", asyn
   assertEquals(json.temperature.familiarityDelta, 1);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+});
+
+// PR #88 A（Eric 2026-10-03 決定 1）：普通句持平的適用範圍表。easy 以這一輪
+// 開始前的熱度為準：≤40（偏冷）照舊 +1，41 以上持平；有正向證據的回合照常加分。
+Deno.test("beginner reward gate table: easy keeps +1 only at heat ≤40, normal and challenge stay flat", async () => {
+  const cases = [
+    {
+      difficulty: "easy",
+      heat: 40,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 1,
+      familiarityDelta: 1,
+    },
+    {
+      difficulty: "easy",
+      heat: 41,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    {
+      difficulty: "normal",
+      heat: 20,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    {
+      difficulty: "challenge",
+      heat: 30,
+      classifier: CLASSIFIER_NEUTRAL_MINOR,
+      delta: 0,
+      familiarityDelta: 0,
+    },
+    // 正向證據不受閘門影響：easy 熱度 > 40 與 normal 的 caught 照常加分。
+    {
+      difficulty: "easy",
+      heat: 60,
+      classifier: CLASSIFIER_CAUGHT_MEDIUM,
+      delta: 5,
+      familiarityDelta: 6,
+    },
+    {
+      difficulty: "normal",
+      heat: 60,
+      classifier: CLASSIFIER_CAUGHT_MEDIUM,
+      delta: 4,
+      familiarityDelta: 5,
+    },
+  ];
+  for (const c of cases) {
+    const label = `${c.difficulty}@${c.heat}`;
+    const { response, json, state } = await run(
+      {
+        ledger: ledger({
+          practice_mode: "beginner",
+          temperature_score: c.heat,
+          familiarity_score: 10,
+        }),
+        deepSeekReplies: ["AI reply", c.classifier],
+      },
+      chatBody({
+        practiceMode: "beginner",
+        difficulty: c.difficulty,
+        temperatureScore: c.heat,
+        familiarityScore: 10,
+        turns: [{ role: "user", text: "今天工作很多嗎" }],
+      }),
+    );
+
+    assertEquals(response.status, 200, label);
+    assertEquals(json.temperature.delta, c.delta, label);
+    assertEquals(json.temperature.familiarityDelta, c.familiarityDelta, label);
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_temperature_delta,
+      c.delta,
+      label,
+    );
+    assertEquals(
+      learningUpdateCalls(state)[0].params.p_familiarity_delta,
+      c.familiarityDelta,
+      label,
+    );
+  }
+});
+
+Deno.test("easy reward gate re-checks the heat threshold on the CAS retry snapshot", async () => {
+  const { response, json, state } = await run(
+    {
+      ledger: ledger({
+        practice_mode: "beginner",
+        temperature_score: 38,
+        familiarity_score: 10,
+      }),
+      rpc: {
+        update_practice_learning_state: [
+          {
+            data: {
+              updated: false,
+              temperature_score: 45,
+              familiarity_score: 10,
+            },
+          },
+        ],
+      },
+      deepSeekReplies: ["AI reply", CLASSIFIER_NEUTRAL_MINOR],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "easy",
+      temperatureScore: 38,
+      familiarityScore: 10,
+      turns: [{ role: "user", text: "今天工作很多嗎" }],
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(learningUpdateCalls(state).length, 2);
+  // 第一發以 38 判（≤40）：照舊 +1。
+  assertEquals(learningUpdateCalls(state)[0].params.p_temperature_delta, 1);
+  // 重試以讀回的 45 再判（> 40）：持平。
+  assertEquals(
+    learningUpdateCalls(state)[1].params.p_expected_temperature_score,
+    45,
+  );
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
+  assertEquals(json.temperature.score, 45);
+  assertEquals(json.temperature.delta, 0);
 });
 
 // 順序鎖定（Codex 審 P1）：閘門豁免（caught＋protected Hint）不得擋下
@@ -2970,12 +3481,14 @@ Deno.test("stale retry does not reuse low-stage overstep override after flirt-re
   );
 
   assertEquals(response.status, 200);
-  assertEquals(json.temperature.score, 61);
-  assertEquals(json.temperature.delta, 1);
+  // 重試不沿用低階段的越界覆寫（那會是 -12）；改以重新讀到的 60/60 正常評分。
+  // PR #88 A 之後 normal 的 neutral 沒有正向證據＝持平（原本是 +1）。
+  assertEquals(json.temperature.score, 60);
+  assertEquals(json.temperature.delta, 0);
   assertLearningFieldsAndNoDebug(json.temperature);
   assertEquals(learningUpdateCalls(state).length, 2);
-  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 1);
-  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 1);
+  assertEquals(learningUpdateCalls(state)[1].params.p_temperature_delta, 0);
+  assertEquals(learningUpdateCalls(state)[1].params.p_familiarity_delta, 0);
 });
 
 Deno.test("debrief requestId is threaded through claim and stored response replay", async () => {
@@ -10271,6 +10784,96 @@ Deno.test("WP6 端到端：分類器連判 overstep → 第 2 輪冷回、第 3 
   assertEquals(again.json.partnerStatus, "blocked");
   assertEquals(again.state.deepSeekCalls.length, 0);
   assertEquals(again.lastFacts, null);
+});
+
+// PR #88 D：她冷回或只回「（已讀）」的那一輪不加分——就算分類器把道歉判成
+// caught（coherence connected，agency cap 原本不會壓）。只壓正分、不抬負分。
+const CLASSIFIER_CAUGHT_CONNECTED =
+  `{"connection":"caught","impact":"medium","testHandling":"none","boundary":"safe","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`;
+const CLASSIFIER_OVERSTEP_CONNECTED =
+  `{"connection":"overstepped","impact":"strong","testHandling":"none","boundary":"overstep","hintAlignment":"none","coherence":"connected","aiChallengedThisTurn":false,"sharedPastClaim":false,"accommodatingSelfFact":false}`;
+
+Deno.test("PR #88 D：冒犯階梯冷回與已讀那一輪，道歉被判 caught 也不加分", async () => {
+  const t1 = await offenseRun({
+    latest: "你穿那樣我受不了",
+    deepSeekReplies: ["蛤？", CLASSIFIER_OVERSTEP_CONNECTED],
+  });
+  assertEquals(t1.lastFacts?.offenseStrikes, 1);
+
+  // 冷回格：她冷冷回一句，這一輪的道歉被判 caught → 0/0。
+  const t2 = await offenseRun({
+    latest: "抱歉 我剛剛講話太過分了",
+    offense: t1.lastFacts as Record<string, unknown>,
+    deepSeekReplies: ["嗯。", CLASSIFIER_CAUGHT_CONNECTED],
+  });
+  assertEquals(t2.agency?.offenseStage, "cold");
+  assertEquals(t2.json.temperature.delta, 0);
+  assertEquals(t2.json.temperature.familiarityDelta, 0);
+  assertEquals(t2.agency?.deltaCapApplied, "offense_cold");
+  const t2Update =
+    t2.state.rpcCalls.filter((c) =>
+      c.fn === "update_practice_learning_state"
+    )[0];
+  assertEquals(t2Update.params.p_temperature_delta, 0);
+  assertEquals(t2Update.params.p_familiarity_delta, 0);
+
+  // 已讀格：冷回那一輪再越界一次，下一輪道歉 → 她只回「（已讀）」、0/0。
+  const s2 = await offenseRun({
+    latest: "那妳穿什麼",
+    offense: t1.lastFacts as Record<string, unknown>,
+    deepSeekReplies: ["嗯。", CLASSIFIER_OVERSTEP_CONNECTED],
+  });
+  // 冷回格的負分照常扣（只壓正分）。
+  assert(s2.json.temperature.delta < 0);
+  const t3 = await offenseRun({
+    latest: "對不起 我不該那樣說",
+    offense: s2.lastFacts as Record<string, unknown>,
+    // 已讀那一輪不打生成模型：第一發就是分類器。
+    deepSeekReplies: [CLASSIFIER_CAUGHT_CONNECTED],
+  });
+  assertEquals(t3.json.reply, "（已讀）");
+  assertEquals(t3.agency?.offenseStage, "read_only");
+  assertEquals(t3.json.temperature.delta, 0);
+  assertEquals(t3.json.temperature.familiarityDelta, 0);
+  assertEquals(t3.agency?.deltaCapApplied, "read_only");
+});
+
+Deno.test("PR #88 D：planner forced read_only 那一輪，分類器判 caught 也不加分", async () => {
+  const { json, succeeded } = await runCapturingLogs(
+    {
+      ledger: null,
+      thread: {
+        profile_id: "practice_girl_001",
+        practice_mode: "beginner",
+        temperature_score: 40,
+        familiarity_score: 10,
+        recent_facts: {
+          source: "practice_chat",
+          conversationAgency: { ...LADDER_STATE, checkedOut: true },
+        },
+      },
+      env: { PRACTICE_CONVERSATIONAL_AGENCY_ENABLED: "true" },
+      // 已讀那一輪不打生成模型：第一發就是分類器。
+      deepSeekReplies: [CLASSIFIER_CAUGHT_CONNECTED],
+    },
+    chatBody({
+      practiceMode: "beginner",
+      difficulty: "challenge",
+      visiblePracticeThreadId: "thread-visible-1",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      turns: AGENCY_FRAGMENT_TURNS,
+    }),
+  );
+  const agency = succeeded?.conversationAgency as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(agency?.forcedAct, "read_only");
+  assertEquals(json.reply, "（已讀）");
+  // 沒有 D 時是 caught ×0.7 的 +3/+4。
+  assertEquals(json.temperature.delta, 0);
+  assertEquals(json.temperature.familiarityDelta, 0);
+  assertEquals(agency?.deltaCapApplied, "read_only");
 });
 
 Deno.test("WP6 端到端：羞辱型「賤貨」當輪直接已讀，再一次分類器 overstep 之後封鎖", async () => {

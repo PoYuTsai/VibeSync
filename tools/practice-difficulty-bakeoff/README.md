@@ -115,8 +115,9 @@ deno run --env-file="$env:USERPROFILE\.vibesync-secrets\local-evals.env" `
 - `--context=full`（預設）注入固定、無個資的 full-context fixture，覆蓋
   production 的所有注入區塊；fixture 用固定日期與固定 thread
   seed，三難度共用同一份， deterministic 可重現。
-- 每輪紀錄補：`partnerMood`、`promptChars`、`challengeGateApplied`（challenge
-  難度填該輪是否被挑戰獎勵閘門夾到 0；其他難度為 `null`）。
+- 每輪紀錄補：`partnerMood`、`promptChars`、`challengeGateApplied`（新手獎勵
+  閘門適用的輪次填是否被夾到 0：challenge、normal，以及這一輪開始前熱度 > 40 的
+  easy；其他為 `null`。PR #88 起範圍擴大，欄位名沿用舊名方便新舊 raw.json 對照）。
 - 工具自測：`deno test --allow-read --allow-env tools/practice-difficulty-bakeoff/bakeoff_test.ts`
   （零外部 API 呼叫，用 fake ModelCaller 驗呼叫形狀與順序；deno.land std assert
   依賴首次解析仍需模組快取或網路）。

@@ -196,6 +196,7 @@ import {
   applyCoherenceDeltaCap,
   applyLearningClassification,
   applyPartnerStateUpdate,
+  beginnerRewardGateActive,
   buildStandardAgencyClassifierMessages,
   buildTurnClassifierMessages,
   clampTemperature,
@@ -346,34 +347,6 @@ function parseDebriefRequestLedger(
     ledger.set(requestId, { result, startedAt, generationToken, counted });
   }
   return ledger;
-}
-
-function appliedHintHeatFloor(
-  appliedHintType: string | undefined,
-  practiceMode: PracticeLearningMode,
-): number {
-  if (practiceMode === "game") {
-    if (appliedHintType === "warm_up") return 2;
-    if (appliedHintType === "steady") return 3;
-    return Number.NEGATIVE_INFINITY;
-  }
-  if (appliedHintType === "warm_up") return 0;
-  if (appliedHintType === "steady") return 1;
-  return Number.NEGATIVE_INFINITY;
-}
-
-function appliedHintFamiliarityFloor(
-  appliedHintType: string | undefined,
-  practiceMode: PracticeLearningMode,
-): number {
-  if (practiceMode === "game") {
-    if (appliedHintType === "warm_up") return 1;
-    if (appliedHintType === "steady") return 2;
-    return Number.NEGATIVE_INFINITY;
-  }
-  if (appliedHintType === "warm_up") return 0;
-  if (appliedHintType === "steady") return 1;
-  return Number.NEGATIVE_INFINITY;
 }
 
 function normalizedHintText(text: string): string {
@@ -1160,23 +1133,64 @@ function defaultPartnerState(): PartnerState {
   return { mood: "neutral", innerThought: "" };
 }
 
+/**
+ * DB 回的分數是權威值。PR #88 G2：回給 App 的 delta 也改成實際變化量（DB 新
+ * 分數減掉這次 CAS 比對用的舊分數）——分數被夾在 0／100（或 DB 每輪上限）時，
+ * 畫面不會在 100 分還顯示「+4」。DB 沒回分數時沿用計算出的分數（它本來就是
+ * 夾過 0～100 的 expected＋delta），delta 一樣用「分數減舊分數」，兩條分支同一
+ * 個定義。
+ */
 function withAuthoritativeLearningScores(
   judgement: LearningJudgement,
   result: LearningStateUpdateResult,
+  expectedTemperature: number,
+  expectedFamiliarity: number,
 ): LearningJudgement {
   const score = result.temperatureScore ?? judgement.score;
   const familiarityScore = result.familiarityScore ??
     judgement.familiarityScore;
+  const delta = score - expectedTemperature;
+  const familiarityDelta = familiarityScore - expectedFamiliarity;
   const stage = relationshipStageFor(familiarityScore, score);
   return {
     ...judgement,
     score,
+    delta,
     band: temperatureBandFor(score),
     familiarityScore,
+    familiarityDelta,
     stage: stage.stage,
     stageLabel: stage.label,
     partnerState: partnerStateFromUpdateResult(result) ??
       judgement.partnerState ?? defaultPartnerState(),
+  };
+}
+
+/**
+ * PR #88 G2：分類成功與 fallback 的寫入都失敗時，DB 沒有任何變化，回給 App 的
+ * 就是 DB 最後回報的分數（沒回報就用這輪開始時讀到的）、兩軸 delta 0；不回傳
+ * 算出來卻沒寫進去的分數（例如確定性越界的 -12），免得畫面先掉、下一輪又跳回
+ * DB 的值。classification 保留，冒犯階梯照用。
+ */
+function withUnwrittenLearningScores(
+  judgement: LearningJudgement,
+  currentTemperature: number,
+  currentFamiliarity: number,
+  currentPartnerState: PartnerState | null | undefined,
+): LearningJudgement {
+  const score = clampTemperature(currentTemperature);
+  const familiarityScore = clampTemperature(currentFamiliarity);
+  const stage = relationshipStageFor(familiarityScore, score);
+  return {
+    ...judgement,
+    score,
+    delta: 0,
+    band: temperatureBandFor(score),
+    familiarityScore,
+    familiarityDelta: 0,
+    stage: stage.stage,
+    stageLabel: stage.label,
+    partnerState: currentPartnerState ?? defaultPartnerState(),
   };
 }
 
@@ -1211,12 +1225,15 @@ function shouldProtectAppliedHint(opts: {
   ) {
     return false;
   }
+  // PR #88 B1（Codex 指出、Eric 2026-10-03 拍板）：分類器判 pushy／overstep
+  // 時，原封貼也不保護——維持 8/11「有壓迫感一律扣分」。保底改成 0 之後若照舊
+  // 保護，這類負分會被抬成 0。
+  if (opts.classification.boundary !== "safe") return false;
   if (isExactAppliedHint(opts.request)) {
     return true;
   }
   if (!opts.request.appliedHintText) return false;
   return opts.classification.hintAlignment === "aligned" &&
-    opts.classification.boundary === "safe" &&
     opts.classification.connection !== "defensive" &&
     opts.classification.connection !== "overstepped" &&
     opts.classification.testHandling !== "failed" &&
@@ -1234,31 +1251,22 @@ function isExactAppliedHint(
   );
 }
 
+/**
+ * 受保護的提示（原封貼，或小幅修改且分類器判對齊）：只保證這一輪不扣分
+ * （PR #88 Eric 決定 2，2026-10-03）。保底一律 0，新手與 Game 一致；不再補
+ * 「熟悉度上升就熱度至少 +1」。要加分仍得靠分類器判的正向證據，新手獎勵閘門與
+ * Game 的 canEarnPositive 照常把關。只有真的把負分抬回 0 時才改寫 reason，
+ * 而且一律寫「維持不降溫」——正分不是保護給的，後面的閘門也可能再把它歸零。
+ */
 function protectAppliedHintTemperature(
   judgement: LearningJudgement,
   currentTemperature: number,
   currentFamiliarity: number,
-  appliedHintType: string | undefined,
-  practiceMode: PracticeLearningMode,
+  protectedHint: boolean,
 ): LearningJudgement {
-  const heatFloor = appliedHintHeatFloor(appliedHintType, practiceMode);
-  if (
-    heatFloor === Number.NEGATIVE_INFINITY
-  ) {
-    return judgement;
-  }
-  const visibleHintFloor = judgement.familiarityDelta > 0
-    ? Math.max(heatFloor, 1)
-    : heatFloor;
-  const familiarityFloor = appliedHintFamiliarityFloor(
-    appliedHintType,
-    practiceMode,
-  );
-  const protectedHeatDelta = Math.max(judgement.delta, visibleHintFloor);
-  const protectedFamiliarityDelta = Math.max(
-    judgement.familiarityDelta,
-    familiarityFloor,
-  );
+  if (!protectedHint) return judgement;
+  const protectedHeatDelta = Math.max(judgement.delta, 0);
+  const protectedFamiliarityDelta = Math.max(judgement.familiarityDelta, 0);
   if (
     protectedHeatDelta === judgement.delta &&
     protectedFamiliarityDelta === judgement.familiarityDelta
@@ -1270,10 +1278,6 @@ function protectAppliedHintTemperature(
     currentFamiliarity + protectedFamiliarityDelta,
   );
   const stage = relationshipStageFor(familiarityScore, score);
-  const protectedReason =
-    protectedHeatDelta > 0 || protectedFamiliarityDelta > 0
-      ? "套用提示回覆，穩定推進關係"
-      : "套用提示回覆，維持不降溫";
   return {
     ...judgement,
     score,
@@ -1283,7 +1287,7 @@ function protectAppliedHintTemperature(
     familiarityDelta: protectedFamiliarityDelta,
     stage: stage.stage,
     stageLabel: stage.label,
-    reason: protectedReason,
+    reason: "套用提示回覆，維持不降溫",
   };
 }
 
@@ -1484,11 +1488,19 @@ async function judgeLearningState(opts: {
    * 但冷」）。旗標 off 時永遠 false。
    */
   agencyColdReturn?: boolean;
+  /**
+   * PR #88 D：這一輪她只回「（已讀）」（planner forced `read_only` 或性冒犯
+   * 階梯第二格）。旗標 off 時永遠 false。
+   */
+  agencyReadOnly?: boolean;
+  /** PR #88 D：這一輪是性冒犯階梯的冷回格。階梯旗標未開時永遠 false。 */
+  agencyOffenseCold?: boolean;
   /** Phase 3.5：分類器的可信自我來源；旗標 off 時 buildTurnClassifierMessages 不用。 */
   memorySummary?: string | null;
   herRecentMoments?: readonly MomentMemoryPost[];
 }): Promise<LearningJudgement> {
-  // 難度接線（槓桿 A）：正負 delta 倍率只在 beginner 溫度管線生效，作用域內解析一次。
+  // 難度接線（槓桿 A）：正負 delta 倍率在新手與 Game 都會套（Game 之後再乘
+  // applyGameLearningDelta 自己的放大倍率），作用域內解析一次。
   const tuning = difficultyTuningFor(opts.request.profile.difficulty);
   // 粗俗性冒犯＝確定性扣滿，不吃難度倍率（Easy 0.75 會把 -12 軟化成 -9，
   // 這類句子沒有「簡單難度就輕罰」的空間）。分類器成功/失敗兩條路都要蓋。
@@ -1497,11 +1509,17 @@ async function judgeLearningState(opts: {
   );
   const offenseCooldown = !crudeOffense &&
     inCrudeOffenseCooldown(opts.request.turns);
-  // 挑戰獎勵閘門（PR 2，修 D2）只接 challenge × beginner：Game 有自己的
-  // 閘門（applyGameLearningDelta 的 canEarnPositive），standard 無分數，
-  // easy／normal 完全不經過閘門、行為與改前一致。
-  const challengeGateActive = opts.request.practiceMode === "beginner" &&
-    opts.request.profile.difficulty === "challenge";
+  // 新手獎勵閘門（PR 2 修 D2；PR #88 擴到 normal，easy 只在熱度 > 40 時套）：
+  // Game 有自己的閘門（applyGameLearningDelta 的 canEarnPositive），standard
+  // 無分數。easy 的門檻看「這一輪開始前」的熱度，所以每個 snapshot（含 CAS
+  // 重試讀回的分數）各判一次。telemetry 的 challengeGateActive 刻意維持
+  // 「新手×挑戰」的原定義（golden 逐位元組比對），不跟著改。
+  const rewardGateActiveFor = (currentTemperature: number): boolean =>
+    beginnerRewardGateActive({
+      practiceMode: opts.request.practiceMode,
+      difficulty: opts.request.profile.difficulty,
+      currentHeat: currentTemperature,
+    });
   // conversation-agency-v1 Phase 2：只有 `on` 才動分類器 prompt／schema／
   // delta。`shadow`（跟 prompt.ts 的 agencyPrompt 同規則）與 `off` 一樣
   // 逐字沿用舊行為——shadow 只能改 telemetry，不能改分類器實際送出的 prompt
@@ -1577,27 +1595,23 @@ async function judgeLearningState(opts: {
       currentFamiliarity,
       currentPartnerState,
     );
-    const protectedHintType = isExactAppliedHint(opts.request)
-      ? opts.request.appliedHintType
-      : undefined;
-    const protectedFallback = protectAppliedHintTemperature(
-      base,
-      currentTemperature,
-      currentFamiliarity,
-      protectedHintType,
-      opts.request.practiceMode,
-    );
+    // PR #88 B1 起保護只把負分抬到 0，而 base 本來就是 0/0，這裡對分數已是
+    // no-op；Game 那邊也因為 fallback 分類是 neutral 而拿不到正向證據。保留
+    // 呼叫，是讓 fallback 日後若改出負分時仍有同一道保底。
+    const protectedHint = isExactAppliedHint(opts.request);
     // Codex round-1 P1-e：分類器解析失敗會走這條 fallback，而 delta cap 只掛在
-    // 成功那條——等於「分類器壞掉」變成 agency 的免罰卡：applied-hint 保護可以
-    // 在這裡把 delta 撐成正的，而沒有任何 coherence 判斷把它壓回去。
+    // 成功那條——等於「分類器壞掉」變成 agency 的免罰卡：applied-hint 保護當時
+    // 可以在這裡把 delta 撐成正的（PR #88 起保底改 0，已撐不上去），而沒有任何
+    // coherence 判斷把它壓回去。
     // 沒有分類器結果時我們**不知道**玩家接上了沒有，`ambiguous`（不獎不罰）
     // 就是那個「不知道」的誠實表示；結構訊號（同詞重複／未解計數）仍照舊在
     // `applyCoherenceDeltaCap` 內部優先。旗標 off 時整段不套用，逐字沿用舊行為。
-    // 順序跟成功那條一致：applied-hint 保護之後、challenge 閘門之前。
+    // 順序跟成功那條一致：coherence cap 之後才套 applied-hint 保護（PR #88
+    // 決定 2：貼提示只保證不扣分，cap 壓出的負分也要抬回 0），再進 challenge 閘門。
     const { judgement: cappedFallback, capApplied: fallbackCapApplied } =
       agencyDeltaCapActive
         ? applyCoherenceDeltaCap({
-          judgement: protectedFallback,
+          judgement: base,
           currentHeat: currentTemperature,
           currentFamiliarity: currentFamiliarity,
           // Codex round-2 P1-4：分類器沒給判斷就傳 null（不是字面
@@ -1609,17 +1623,25 @@ async function judgeLearningState(opts: {
           },
           // Phase 4.5a 刀 3：分類器壞掉的 fallback 也要壓（同 Codex P1-e 的理由）。
           coldReturn: opts.agencyColdReturn,
+          // PR #88 D：已讀與冒犯階梯冷回那一輪也一樣。
+          readOnly: opts.agencyReadOnly,
+          offenseCold: opts.agencyOffenseCold,
         })
-        : { judgement: protectedFallback, capApplied: "none" as const };
-    const gatedFallback = challengeGateActive
+        : { judgement: base, capApplied: "none" as const };
+    const protectedFallback = protectAppliedHintTemperature(
+      cappedFallback,
+      currentTemperature,
+      currentFamiliarity,
+      protectedHint,
+    );
+    const gatedFallback = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
-        judgement: cappedFallback,
+        judgement: protectedFallback,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
-        classification: cappedFallback.classification,
-        protectedAppliedHint: protectedHintType !== undefined,
+        classification: protectedFallback.classification,
       })
-      : cappedFallback;
+      : protectedFallback;
     const cooledFallback = offenseCooldown
       ? withNonPositiveLearningDeltas(
         gatedFallback,
@@ -1632,7 +1654,7 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,
-      protectedHintType !== undefined,
+      protectedHint,
     );
   };
   const protectedJudgementForSnapshot = (
@@ -1658,28 +1680,21 @@ async function judgeLearningState(opts: {
       classification,
       tuning,
     );
-    const protectedHintType = shouldProtectAppliedHint({
-        request: opts.request,
-        classification,
-        currentTemperature,
-        currentFamiliarity,
-      })
-      ? opts.request.appliedHintType
-      : undefined;
-    const protectedJudgement = protectAppliedHintTemperature(
-      judgement,
+    const protectedHint = shouldProtectAppliedHint({
+      request: opts.request,
+      classification,
       currentTemperature,
       currentFamiliarity,
-      protectedHintType,
-      opts.request.practiceMode,
-    );
+    });
     // conversation-agency-v1 Phase 2（報告 §8.3）：coherence delta cap 放在
-    // applied-hint 保護之後、challenge 閘門與 crude-offense／cooldown 強制
-    // 扣分之前——後兩者是硬下限，會直接蓋過這裡的 clamp，precedence 不變。
+    // challenge 閘門與 crude-offense／cooldown 強制扣分之前——後兩者是硬下限，
+    // 會直接蓋過這裡的 clamp，precedence 不變。PR #88 決定 2 起 applied-hint
+    // 保護改到 cap 之後：貼提示只保證不扣分，cap 壓出的負分（disconnected／
+    // repetitive）也要抬回 0；cap 夾掉的正分保護不會撐回來（保護只抬負分）。
     // 旗標 off 時 agencyDeltaCapActive 一律 false，逐字沿用舊行為。
     const { judgement: cappedJudgement, capApplied } = agencyDeltaCapActive
       ? applyCoherenceDeltaCap({
-        judgement: protectedJudgement,
+        judgement,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         coherence: classification.coherence ?? null,
@@ -1694,19 +1709,28 @@ async function judgeLearningState(opts: {
         accommodatingSelfFact: classification.accommodatingSelfFact,
         // Phase 4.5a 刀 3：「回來但冷」那一輪不補回溫度（就算分類器判 connected）。
         coldReturn: opts.agencyColdReturn,
+        // PR #88 D：她只回「（已讀）」或冒犯階梯冷回的那一輪，同樣不換到正分
+        // （就算分類器把道歉判成 caught）。
+        readOnly: opts.agencyReadOnly,
+        offenseCold: opts.agencyOffenseCold,
       })
-      : { judgement: protectedJudgement, capApplied: "none" as const };
-    // 閘門在 delta cap 之後（豁免在閘門內判斷）、crude-offense 確定
-    // 性扣滿之前——閘門只夾正向，扣滿與 cooldown 行為不受影響。
-    const gatedJudgement = challengeGateActive
+      : { judgement, capApplied: "none" as const };
+    const protectedJudgement = protectAppliedHintTemperature(
+      cappedJudgement,
+      currentTemperature,
+      currentFamiliarity,
+      protectedHint,
+    );
+    // 閘門在 delta cap 與提示保護之後、crude-offense 確定性扣滿之前——閘門只夾
+    // 正向，扣滿與 cooldown 行為不受影響。受保護的提示不再豁免（PR #88 B1）。
+    const gatedJudgement = rewardGateActiveFor(currentTemperature)
       ? applyChallengeRewardGate({
-        judgement: cappedJudgement,
+        judgement: protectedJudgement,
         currentHeat: currentTemperature,
         currentFamiliarity: currentFamiliarity,
         classification,
-        protectedAppliedHint: protectedHintType !== undefined,
       })
-      : cappedJudgement;
+      : protectedJudgement;
     // 放在 applied-hint 保護之後：使用者把 hint 改寫成粗俗冒犯句時，保護
     // 不得替它擋下扣分。
     const enforcedJudgement = crudeOffense
@@ -1735,7 +1759,7 @@ async function judgeLearningState(opts: {
       currentTemperature,
       currentFamiliarity,
       currentPartnerState,
-      protectedHintType !== undefined,
+      protectedHint,
     );
   };
   const fallback = fallbackForSnapshot(
@@ -1743,6 +1767,20 @@ async function judgeLearningState(opts: {
     opts.currentFamiliarity,
     opts.currentPartnerState,
   );
+  // PR #88 G2：DB 最後回報的分數（CAS 衝突時會帶回目前的權威值）。所有寫入
+  // 都失敗時就回這組、delta 0，而不是一開始讀到的舊值。
+  let knownTemperature = opts.currentTemperature;
+  let knownFamiliarity = opts.currentFamiliarity;
+  let knownPartnerState = opts.currentPartnerState;
+  const noteKnownScores = (result: LearningStateUpdateResult) => {
+    if (result.temperatureScore === null || result.familiarityScore === null) {
+      return;
+    }
+    knownTemperature = result.temperatureScore;
+    knownFamiliarity = result.familiarityScore;
+    knownPartnerState = partnerStateFromUpdateResult(result) ??
+      knownPartnerState;
+  };
   try {
     const rawClassification = await opts.deps.callDeepSeek({
       apiKey: opts.apiKey,
@@ -1817,6 +1855,7 @@ async function judgeLearningState(opts: {
       opts.currentFamiliarity,
       protectedJudgement,
     );
+    noteKnownScores(firstUpdate);
     if (!firstUpdate.updated) {
       if (
         firstUpdate.temperatureScore === null ||
@@ -1835,15 +1874,23 @@ async function judgeLearningState(opts: {
         firstUpdate.familiarityScore,
         protectedRetryJudgement,
       );
+      noteKnownScores(secondUpdate);
       if (!secondUpdate.updated) {
         throw new Error("learning_state_update_not_applied");
       }
       return withAuthoritativeLearningScores(
         protectedRetryJudgement,
         secondUpdate,
+        firstUpdate.temperatureScore,
+        firstUpdate.familiarityScore,
       );
     }
-    return withAuthoritativeLearningScores(protectedJudgement, firstUpdate);
+    return withAuthoritativeLearningScores(
+      protectedJudgement,
+      firstUpdate,
+      opts.currentTemperature,
+      opts.currentFamiliarity,
+    );
   } catch (e) {
     if (isMissingDualAxisLearningSchema(getErrorMessage(e))) {
       throw e;
@@ -1861,8 +1908,14 @@ async function judgeLearningState(opts: {
         expectedFamiliarity: opts.currentFamiliarity,
         judgement: fallback,
       });
+      noteKnownScores(fallbackUpdate);
       if (fallbackUpdate.updated) {
-        return withAuthoritativeLearningScores(fallback, fallbackUpdate);
+        return withAuthoritativeLearningScores(
+          fallback,
+          fallbackUpdate,
+          opts.currentTemperature,
+          opts.currentFamiliarity,
+        );
       }
       if (
         fallbackUpdate.temperatureScore !== null &&
@@ -1882,8 +1935,14 @@ async function judgeLearningState(opts: {
           expectedFamiliarity: fallbackUpdate.familiarityScore,
           judgement: retryFallback,
         });
+        noteKnownScores(retryUpdate);
         if (retryUpdate.updated) {
-          return withAuthoritativeLearningScores(retryFallback, retryUpdate);
+          return withAuthoritativeLearningScores(
+            retryFallback,
+            retryUpdate,
+            fallbackUpdate.temperatureScore,
+            fallbackUpdate.familiarityScore,
+          );
         }
       }
     } catch (updateError) {
@@ -1892,7 +1951,12 @@ async function judgeLearningState(opts: {
         error: getErrorMessage(updateError),
       });
     }
-    return fallback;
+    return withUnwrittenLearningScores(
+      fallback,
+      knownTemperature,
+      knownFamiliarity,
+      knownPartnerState,
+    );
   }
 }
 
@@ -4861,6 +4925,8 @@ export function createPracticeChatHandler(
     let shapeTruncatedBubbles = 0;
     /** Phase 4.5a 刀 2：這一輪真的被授權回已讀（守門白名單與 telemetry 同源）。 */
     let readOnlyAllowedThisTurn = false;
+    /** PR #88 D：這一輪她只回「（已讀）」——與下面的 readOnlyTurn 同源，給溫度上限用。 */
+    let readOnlyTurnServed = false;
     /** Phase 4.5g：forced `check_out` 的結構後檢查真的丟掉第一發、重試過。 */
     let checkOutRetried = false;
     /** Phase 4.5g：第二發仍命中，fail-open 送出去了。 */
@@ -4980,6 +5046,7 @@ export function createPracticeChatHandler(
         // Phase 5 WP6：階梯第二格走同一條路（不打模型、回「（已讀）」），
         // 但**不經** forcedAct——階梯不分難度，`allowsCheckOut` 對它不適用。
         offenseTurn?.stage === "read_only";
+      readOnlyTurnServed = readOnlyTurn;
       // Phase 5 WP2 成本保險絲：`chatModelFor` **之前**先問今天燒掉多少
       // （一次 select）。燒斷＝這一輪強制走 DeepSeek，不是報錯（計畫 §7
       // 風險 1）；讀不到（`null`）一律當成沒燒斷，只有 `cost_fuse.ts` 記的
@@ -5286,6 +5353,9 @@ export function createPracticeChatHandler(
             agencyDecision?.decision.evidence.repeatedExactToken ?? false,
           agencyColdReturn:
             agencyDecision?.decision.forcedAct === "cold_return",
+          // PR #88 D：她只回已讀、或冒犯階梯冷回的那一輪不加分。
+          agencyReadOnly: readOnlyTurnServed,
+          agencyOffenseCold: offenseTurn?.stage === "cold",
           // Phase 3.5：跟 chat prompt 同一份記憶／貼文餵分類器（旗標 off 不用）。
           memorySummary: promptMemorySummary,
           herRecentMoments,
@@ -5580,7 +5650,9 @@ export function createPracticeChatHandler(
       ...(agencyMode !== "off"
         ? { deltaCapApplied: temperature?.deltaCapApplied ?? "none" }
         : {}),
-      // 與計分管線同一判準（challenge × beginner 才有獎勵閘門）。
+      // 刻意維持「新手×挑戰」的原定義（golden 逐位元組比對）。PR #88 起計分管線
+      // 的獎勵閘門也蓋 normal 與熱度 >40 的 easy（beginnerRewardGateActive），
+      // 這個欄位不跟著改，所以它不等於「這一輪有沒有套閘門」。
       challengeGateActive: request.practiceMode === "beginner" &&
         request.profile.difficulty === "challenge",
       // 本回合是否真的從上一場 thread 取到分數（thread 存在但欄位全無效

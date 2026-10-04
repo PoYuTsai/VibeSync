@@ -987,6 +987,10 @@ Deno.test("validate：頂層夾帶其他鍵、tier 投影不一致、推薦不�
     isValidNewTopicLedgerResult({ ...paid, usage: { cost: 3 } }),
     "頂層多 usage 鍵應拒絕",
   );
+  assertFalse(
+    isValidNewTopicLedgerResult({ ...paid, formulaTopics: [] }),
+    "已下架的公式欄 formulaTopics 也算多鍵，應拒絕",
+  );
 
   const wrongCounts = structuredClone(paid) as Record<string, unknown>;
   // deno-lint-ignore no-explicit-any
@@ -1013,118 +1017,4 @@ Deno.test("validate：頂層夾帶其他鍵、tier 投影不一致、推薦不�
     isValidNewTopicLedgerResult(extraTopicKey),
     "topic 多任何一鍵應拒絕（防 prompt 滲入帳本）",
   );
-});
-
-// ---------------------------------------------------------------------------
-// formulaTopics ledger 相容（2026-07-24 公式回覆計畫 §7.2/§7.3）
-// ---------------------------------------------------------------------------
-
-function formulaItem(n: number): Record<string, unknown> {
-  return {
-    openingLine: `公式開場句${n}，抓一個具體線索加一點我的反應。`,
-    whyItWorks: `因為她可以順手補一個細節，不用想太久（${n}）。`,
-  };
-}
-
-function ledgerWithFormula(
-  servedTier: "free" | "essential",
-  formulaTopics: unknown,
-): Record<string, unknown> {
-  const base = buildNewTopicLedgerResult({
-    topics: modelTopics(),
-    recommendationIndex: 0,
-    recommendationReason: null,
-    servedTier,
-  }) as unknown as Record<string, unknown>;
-  return { ...base, formulaTopics };
-}
-
-Deno.test("validate formula：legacy 三-key 仍合法；四-key 0/1/2 則皆合法（Free/Paid）", () => {
-  for (const tier of ["free", "essential"] as const) {
-    // Legacy row（migration 前寫入）＝根本沒有 formulaTopics 鍵。
-    const legacy = buildNewTopicLedgerResult({
-      topics: modelTopics(),
-      recommendationIndex: 0,
-      recommendationReason: null,
-      servedTier: tier,
-    }) as unknown as Record<string, unknown>;
-    delete legacy.formulaTopics;
-    assert(isValidNewTopicLedgerResult(legacy), `${tier} legacy 三-key 合法`);
-    for (const count of [0, 1, 2]) {
-      const stored = ledgerWithFormula(
-        tier,
-        [1, 2].slice(0, count).map(formulaItem),
-      );
-      assert(
-        isValidNewTopicLedgerResult(stored),
-        `${tier}＋formula ${count} 則應合法`,
-      );
-    }
-  }
-});
-
-Deno.test("validate formula：三則、缺欄、多鍵、空白、非 array、非 object 全拒絕", () => {
-  const cases: Array<[string, unknown]> = [
-    ["三則", [formulaItem(1), formulaItem(2), formulaItem(3)]],
-    ["缺 whyItWorks", [{ openingLine: "只有一欄" }]],
-    ["多餘鍵", [{ ...formulaItem(1), nextMove: "leak" }]],
-    ["openingLine 空白", [{ openingLine: "   ", whyItWorks: "理由" }]],
-    ["whyItWorks 非 string", [{ openingLine: "句子", whyItWorks: 42 }]],
-    ["非 array", { openingLine: "句子", whyItWorks: "理由" }],
-    ["item 非 object", ["句子"]],
-    ["null item", [null]],
-  ];
-  for (const [label, formula] of cases) {
-    assertFalse(
-      isValidNewTopicLedgerResult(ledgerWithFormula("essential", formula)),
-      `${label} 應拒絕`,
-    );
-  }
-});
-
-Deno.test("validate formula：cap 以 Unicode code points 計（astral emoji 邊界）", () => {
-  // 180 個 code points 的 openingLine（含 astral emoji）合法；181 拒絕。
-  const emoji = "🀄"; // astral plane，UTF-16 length 2、code point 1
-  const at180 = emoji.repeat(180);
-  const at181 = emoji.repeat(181);
-  assert(
-    isValidNewTopicLedgerResult(ledgerWithFormula("essential", [
-      { openingLine: at180, whyItWorks: "理由" },
-    ])),
-    "openingLine 180 code points 應合法",
-  );
-  assertFalse(
-    isValidNewTopicLedgerResult(ledgerWithFormula("essential", [
-      { openingLine: at181, whyItWorks: "理由" },
-    ])),
-    "openingLine 181 code points 應拒絕",
-  );
-  assertFalse(
-    isValidNewTopicLedgerResult(ledgerWithFormula("essential", [
-      { openingLine: "句子", whyItWorks: "多".repeat(301) },
-    ])),
-    "whyItWorks 301 code points 應拒絕",
-  );
-});
-
-Deno.test("validate formula：code fence／raw JSON／schema 洩漏拒絕；formula 不改 tier 投影規則", () => {
-  for (
-    const leaked of [
-      "```json",
-      '{"formulaTopics":[]}',
-      '看看 "openingline" 這個鍵',
-    ]
-  ) {
-    assertFalse(
-      isValidNewTopicLedgerResult(ledgerWithFormula("essential", [
-        { openingLine: leaked, whyItWorks: "理由" },
-      ])),
-      `${leaked} 應拒絕`,
-    );
-  }
-  // formula 合法也救不了 tier 投影錯誤（free 存五題仍拒絕）。
-  const freeWithFive = ledgerWithFormula("essential", [formulaItem(1)]);
-  // deno-lint-ignore no-explicit-any
-  (freeWithFive.access as any).servedTier = "free";
-  assertFalse(isValidNewTopicLedgerResult(freeWithFive));
 });

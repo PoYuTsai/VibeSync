@@ -2264,24 +2264,32 @@ class _TemperatureMeter extends StatelessWidget {
                   AppColors.onBackgroundSecondary.withValues(alpha: 0.14),
             ),
           ),
-          if (signalText != null) ...[
+          // PR #88 G1：送出後到她回覆前「+N」先拿掉，這一列改成隱形但保留高度，
+          // 溫度計和上方對話才不會每輪先縮一行、再長回來。
+          if (signalText != null || state.isSending) ...[
             const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(Icons.insights, size: 14, color: color),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    signalText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
-                      height: 1.25,
+            Visibility(
+              visible: signalText != null,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: Row(
+                children: [
+                  Icon(Icons.insights, size: 14, color: color),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      signalText ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        height: 1.25,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ],

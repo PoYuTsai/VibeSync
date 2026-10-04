@@ -1241,9 +1241,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               _initialNoteTooLong ||
               _flow.state.quotaError != null
           ? null
-          : retry
-              ? () => unawaited(_flow.retryLastOperation())
-              : _analyzeTwoStage,
+          // 「重新分析」也送目前畫面上的補充：同輸入同補充時指紋相同，
+          // controller 沿用待續的 analysisRequestId；改過補充就是新的一次分析。
+          : _analyzeTwoStage,
       onQuota: () => showOpenerQuotaSheet(context, newTopic: false),
     );
   }

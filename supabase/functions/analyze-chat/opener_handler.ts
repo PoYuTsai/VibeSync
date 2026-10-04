@@ -4,7 +4,7 @@
 // format repair→tier 投影→回應。stream 為 transport-only，扣費只在
 // completeOpenerRequest 共用管線內。
 
-import { ModelCallBudget } from "./model_call_budget.ts";
+import { attemptReporter, ModelCallBudget, type ProviderAttemptLogEntry } from "./model_call_budget.ts";
 import { buildModelRateUnavailablePayload, enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import {
   buildQuotaExceededPayload,
@@ -102,6 +102,8 @@ export interface OpenerHandlerDeps {
   ) => Promise<TierSyncRefreshStatus>;
   /// 額度視圖 getter：refresh 會改寫 handler 端狀態，讀取必取當下值。
   quota: () => OpenerQuotaView;
+  /// 每次供應商呼叫寫一列 ai_logs；不注入就只記 console。
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
 async function repairMalformedOpenerPayload({
@@ -166,7 +168,8 @@ export async function handleOpenerRequest(
 ): Promise<Response> {
   const quota = deps.quota;
   const openerDeadlineAtMs = deps.requestStartedAtMs + OPENER_DEADLINE_MS;
-  const budget = new ModelCallBudget(openerDeadlineAtMs, { user: summarizeUser(deps.userId), stage: "legacy", tier: quota().effectiveTier });
+  const budget = new ModelCallBudget(openerDeadlineAtMs, { user: summarizeUser(deps.userId), stage: "legacy", tier: quota().effectiveTier },
+    attemptReporter("opener_provider_attempt", "opener", deps.recordAiCall));
   const openerDeadlineReached = () => Date.now() >= openerDeadlineAtMs;
   const rejectOpenerDeadline = (stage: string) => {
     logWarn("opener_deadline_exceeded", {
@@ -777,9 +780,11 @@ export async function handleOpenerRequest(
         user: summarizeUser(deps.userId),
         error: chargeOutcome.message,
       });
+      // failed 含傳輸逾時，扣費可能已落帳，不能說不扣；帶 requestId 時
+      // 同一筆重試由 idempotent RPC 去重。
       return jsonResponse({
         error: "credit_deduct_failed",
-        message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
+        message: "服務暫時無法確認狀態，請稍後用同一筆請求重試。",
       }, 500);
     }
     if (chargeOutcome.kind === "dedup") {
@@ -866,8 +871,9 @@ export async function handleOpenerRequest(
       }, 15000);
       // R2 主審 round-2 修正：try 只包 provider 呼叫與文字累積，
       // completeOpenerRequest 在 catch 外——complete 內部（含扣費後）
-      // 的非預期例外走 ndjson fail（=連線中斷），與 legacy 的全域 500
-      // 同語義，不會被誤映成 provider 錯誤。
+      // 的非預期例外不會被誤映成 provider 錯誤：finally 已 close，客戶端
+      // 看到沒有終止事件的中斷串流，伺服器記 ndjson_stream_unhandled；
+      // claim 刻意不 release（例外可能發生在扣費之後）。
       try {
         // deadline 先擋：剩餘預算 ≤0 不得再起 provider 呼叫（與 legacy
         // absoluteDeadlineAtMs 拒絕語義一致；不設 1 秒地板）。
@@ -930,7 +936,7 @@ export async function handleOpenerRequest(
                 responseMode: "stream",
               });
               failureResponse = jsonResponse({
-                error: `AI 生成失敗：${getErrorMessage(streamError)}`,
+                error: "AI 生成失敗，請稍後再試。",
                 shouldChargeQuota: false,
               }, 500);
             }
@@ -1000,7 +1006,8 @@ export async function handleOpenerRequest(
       imageCount,
       userContentLength: userContent.join("\n").length,
     });
-    return jsonResponse({ error: `AI 生成失敗：${errMsg}` }, 500);
+    // 供應商錯誤原文只進 log，不外露給 client。
+    return jsonResponse({ error: "AI 生成失敗，請稍後再試。" }, 500);
   }
 
   const legacyApiData = apiResult.data as {

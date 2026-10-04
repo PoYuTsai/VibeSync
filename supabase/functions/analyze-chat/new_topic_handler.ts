@@ -1,7 +1,7 @@
 // NewTopic handler：破冰腦力（2026-07-24 計畫 §10.5）。
-// 固定順序：sanitize→進階開關→擋字→material→config→HMAC preflight→
-// claim→quota(3)→rate limit→renew→generate(45s)→validate/project→
-// settle(5s reserve)。
+// 固定順序：sanitize→擋字→material→config→HMAC preflight→claim→
+// 進階開關（claim 後，不 release）→quota(3)→rate limit→renew→
+// generate(45s)→validate/project→settle(5s reserve)。
 // Handler 永遠只回 settlement 的 stored result，本地候選一律丟棄。
 // 2026-08-18 stream（transport-only）：模型輸出契約不變，僅逐塊接收＋進度事件。
 
@@ -20,6 +20,11 @@ import {
   AiStreamingServiceError,
   callClaudeStreaming,
 } from "./streaming_fallback.ts";
+import {
+  attemptReporter,
+  ModelCallBudget,
+  type ProviderAttemptLogEntry,
+} from "./model_call_budget.ts";
 import { ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamStageTracker,
@@ -31,6 +36,7 @@ import {
   classifyNewTopicReplayPreflight,
   computeNewTopicInputHash,
   isStrongNewTopicReplayHmacKey,
+  NEW_TOPIC_REPLAY_HMAC_SECRET_NAME,
   newTopicReplayCutoffIso,
   type NewTopicReplayRow,
   releaseNewTopicClaim,
@@ -102,6 +108,8 @@ export interface NewTopicHandlerDeps {
   /// 額度視圖 getter：RevenueCat refresh 會改寫 handler 端的 sub 與上限，
   /// 每次讀取都必須取當下值，不得快照。
   quota: () => NewTopicQuotaView;
+  /// 每次供應商呼叫寫一列 ai_logs；不注入就只記 console。
+  recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
 export async function handleNewTopicRequest(
@@ -154,6 +162,36 @@ export async function handleNewTopicRequest(
   // 之前，log 只記 reason、不記原文。
   const newTopicContext = newTopicRequest.topicContext;
   const newTopicMaterialText = newTopicContext?.materialText ?? null;
+  // 失敗事件共用欄位：能用 requestId 對上 client 同編號重試、依提示詞版本
+  // 比失敗率、看耗時。只放識別與版本，絕不放素材原文。
+  const newTopicLogFields = () => ({
+    user: summarizeUser(deps.userId),
+    requestId: newTopicRequest.requestId,
+    promptVariant: newTopicTwoStageTelemetry(newTopicContext).promptVariant,
+    elapsedMs: Date.now() - deps.requestStartedAtMs,
+  });
+  // 每次供應商呼叫記一筆（console＋ai_logs）。主呼叫與修復各開一個：主呼叫
+  // 的 fallback 鏈自己就可能用滿每個 budget 三次的上限，共用會讓本來救得回來
+  // 的修復變成 502。期限與 generation deadline 相同，begin() 拋期限錯誤時
+  // 下面各 catch 的 Date.now() 檢查一樣會走逾時路徑。
+  const newTopicAttemptBudget = () =>
+    new ModelCallBudget(
+      newTopicGenerationDeadlineAtMs,
+      {
+        user: summarizeUser(deps.userId),
+        operation: newTopicRequest.requestId,
+        tier: quota().effectiveTier,
+      },
+      attemptReporter(
+        "new_topic_provider_attempt",
+        "new_topic",
+        deps.recordAiCall,
+        {
+          promptVariant:
+            newTopicTwoStageTelemetry(newTopicContext).promptVariant,
+        },
+      ),
+    );
   if (
     newTopicMaterialText !== null &&
     (containsCrudeSexualOffense(newTopicMaterialText) ||
@@ -193,11 +231,11 @@ export async function handleNewTopicRequest(
   // 2. Config：模型金鑰＋new-topic-only HMAC secret。缺 secret 只有
   //    new_topic fail closed，opener/analyze/OCR 不受影響。config 缺失
   //    絕不能發生在 claim 之後（會留 pending claim 卡同 requestId）。
-  const newTopicHmacSecret = Deno.env.get("NEW_TOPIC_REPLAY_HMAC_KEY");
+  const newTopicHmacSecret = Deno.env.get(NEW_TOPIC_REPLAY_HMAC_SECRET_NAME);
   if (!isStrongNewTopicReplayHmacKey(newTopicHmacSecret)) {
     logError("new_topic_config_missing", {
       user: summarizeUser(deps.userId),
-      missing: "NEW_TOPIC_REPLAY_HMAC_KEY",
+      missing: NEW_TOPIC_REPLAY_HMAC_SECRET_NAME,
     });
     return jsonResponse({
       error: "NEW_TOPIC_REPLAY_NOT_CONFIGURED",
@@ -367,7 +405,7 @@ export async function handleNewTopicRequest(
       }, 409);
     }
     logError("new_topic_claim_failed", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       kind: claim.kind,
       error: claim.message,
     });
@@ -449,7 +487,7 @@ export async function handleNewTopicRequest(
         ? "本月額度不足，升級方案可取得更多新話題與分析額度。"
         : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。";
       logWarn("new_topic_quota_exceeded", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         tier: quota().sub.tier,
         monthlyRemaining,
         dailyRemaining,
@@ -553,7 +591,7 @@ export async function handleNewTopicRequest(
     stage: string,
   ): Promise<Response> => {
     logWarn("new_topic_deadline_exceeded", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       stage,
     });
     // 能證明 settle 尚未開始才可 owner-bound release；release 失敗時
@@ -601,7 +639,7 @@ export async function handleNewTopicRequest(
     // 不扣費（settle 尚未開始，release 安全）。
     if (newTopicPromptLeak(newTopicRawText)) {
       logWarn("prompt_leak_blocked", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         surface: "new_topic",
         textLength: newTopicRawText.length,
       });
@@ -645,6 +683,8 @@ export async function handleNewTopicRequest(
             maxRetries: 1,
             allowModelFallback: false,
             absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
+            budget: newTopicAttemptBudget(),
+            purpose: "repair",
           },
         );
         const repairedText = extractClaudeText(
@@ -653,7 +693,7 @@ export async function handleNewTopicRequest(
         // 修復輸出也要過整包外洩檢查（Codex R1 P1）：命中就 release、不扣。
         if (newTopicPromptLeak(repairedText)) {
           logWarn("prompt_leak_blocked", {
-            user: summarizeUser(deps.userId),
+            ...newTopicLogFields(),
             surface: "new_topic_repair",
             textLength: repairedText.length,
           });
@@ -694,14 +734,14 @@ export async function handleNewTopicRequest(
           return await rejectNewTopicDeadline("format_repair");
         }
         logWarn("new_topic_repair_error", {
-          user: summarizeUser(deps.userId),
+          ...newTopicLogFields(),
           error: getErrorMessage(repairError),
         });
       }
     }
     if (!newTopicNormalized.ok) {
       logWarn("new_topic_response_invalid", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         model: newTopicApiResult.model,
         reason: newTopicNormalized.reason,
         stopReason: newTopicApiData.stop_reason,
@@ -788,6 +828,7 @@ export async function handleNewTopicRequest(
         inputTokens: newTopicApiData.usage?.input_tokens,
         outputTokens: newTopicApiData.usage?.output_tokens,
         stopReason: newTopicApiData.stop_reason,
+        elapsedMs: Date.now() - deps.requestStartedAtMs,
         ...newTopicTwoStageTelemetry(newTopicContext),
         // §8 telemetry：只記數量絕不記內容。
       });
@@ -809,6 +850,7 @@ export async function handleNewTopicRequest(
           });
         } catch (error) {
           logWarn("new_topic_two_stage_audit_failed", {
+            user: summarizeUser(deps.userId),
             requestId: newTopicRequest.requestId,
             error: getErrorMessage(error),
           });
@@ -835,7 +877,7 @@ export async function handleNewTopicRequest(
         quota().dailyLimit - quota().sub.daily_messages_used,
       );
       logWarn("new_topic_settle_quota_race", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         reason: settlement.reason,
       });
       return jsonResponse({
@@ -862,7 +904,7 @@ export async function handleNewTopicRequest(
       // Transport／結果不明：可能已 commit＋已扣一次，絕不 release、
       // 絕不宣稱「不會扣額度」；client 保留同 requestId 重試讀 ledger。
       logWarn("new_topic_settlement_pending", {
-        user: summarizeUser(deps.userId),
+        ...newTopicLogFields(),
         error: settlement.message,
       });
       return jsonResponse({
@@ -875,7 +917,7 @@ export async function handleNewTopicRequest(
     // settlement.kind === "failed"：RPC 明確 RAISE＝transaction 已回滾，
     // 可 owner-bound release 後回 500。
     logError("new_topic_settlement_failed", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       error: settlement.message,
     });
     if (!await releaseNewTopicCurrentClaim()) {
@@ -917,8 +959,9 @@ export async function handleNewTopicRequest(
       }, 15000);
       // R2 主審 round-2 修正：try 只包 provider 呼叫與文字累積，
       // completeNewTopicRequest 在 catch 外——settle 之後的非預期例外
-      // 走 ndjson fail（=連線中斷），絕不會被這裡的 catch 誤 release
-      // 已 settle 的 claim（與 legacy 全域 500 同語義）。
+      // 絕不會被這裡的 catch 誤 release 已 settle 的 claim：finally 已
+      // close，客戶端看到沒有終止事件的中斷串流，伺服器記
+      // ndjson_stream_unhandled；claim 刻意不 release。
       try {
         // deadline 先擋：剩餘預算 ≤0 不得再起 provider 呼叫（與 legacy
         // absoluteDeadlineAtMs 拒絕語義一致；不設 1 秒地板）。已知
@@ -945,7 +988,11 @@ export async function handleNewTopicRequest(
                 messages: [{ role: "user", content: newTopicUserPrompt }],
               },
               deps.claudeApiKey,
-              { timeout: remainingBudgetMs },
+              {
+                timeout: remainingBudgetMs,
+                budget: newTopicAttemptBudget(),
+                purpose: "primary",
+              },
             );
             let fullText = "";
             for await (const chunk of claude.textStream) {
@@ -975,7 +1022,7 @@ export async function handleNewTopicRequest(
               );
             } else {
               logWarn("new_topic_api_error", {
-                user: summarizeUser(deps.userId),
+                ...newTopicLogFields(),
                 error: getErrorMessage(streamError),
                 code: streamError instanceof AiStreamingServiceError
                   ? streamError.code
@@ -1038,6 +1085,8 @@ export async function handleNewTopicRequest(
         maxRetries: 1,
         allowModelFallback: true,
         absoluteDeadlineAtMs: newTopicGenerationDeadlineAtMs,
+        budget: newTopicAttemptBudget(),
+        purpose: "primary",
       },
     );
   } catch (apiError) {
@@ -1049,7 +1098,7 @@ export async function handleNewTopicRequest(
       return await rejectNewTopicDeadline("primary_or_fallback");
     }
     logWarn("new_topic_api_error", {
-      user: summarizeUser(deps.userId),
+      ...newTopicLogFields(),
       error: getErrorMessage(apiError),
       code: apiError instanceof AiServiceError ? apiError.code : "UNKNOWN",
     });

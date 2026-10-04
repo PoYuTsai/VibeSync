@@ -372,7 +372,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         maxTokens: OPENER_REWRITE_MAX_TOKENS,
         deadlineAtMs: deps.deadlineAtMs - REWRITE_DEADLINE_MARGIN_MS,
         allowModelFallback: false,
-        purpose: "repair",
+        purpose: "rewrite",
       });
       const json = hasAnalyzeChatPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
       const rewritten = json && isPlainObject(json.openers) ? json.openers : {};

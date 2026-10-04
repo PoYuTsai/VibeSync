@@ -357,9 +357,12 @@ class OpenerService {
   final http.Client Function() _streamClientFactory;
   final String? Function() _accessTokenProvider;
 
-  /// 同 analysis_service 串流慣例：connect 45s、單事件 idle 120s（heartbeat
-  /// 每 15s 一定會來，idle 超時＝連線真的斷了）。
-  static const Duration _streamConnectTimeout = Duration(seconds: 45);
+  /// flag on 時 stream headers 會立刻到；flag off／舊 Edge 會等完整結果才回
+  /// headers。server deadline 是 analyze 45s、generate 50s 再加結算，因此
+  /// connect 要沿用 [kOpenerRequestTimeout]，否則 client 會先誤報逾時、server
+  /// 卻仍在結算。單事件 idle 120s（heartbeat 每 15s 一定會來，idle 超時＝連線
+  /// 真的斷了）。
+  static const Duration _streamConnectTimeout = kOpenerRequestTimeout;
   static const Duration _streamIdleTimeout = Duration(seconds: 120);
 
   Future<OpenerResult> generateOpeners({
@@ -716,16 +719,19 @@ class OpenerService {
               errorData['dailyLimit'] != null)) {
         _throwForErrorResponse(status, errorData);
       }
-      final message = errorData['message']?.toString().trim();
+      // 只收中文訊息；平台英文錯誤（WORKER_LIMIT、BOOT_ERROR）改用通用中文。
+      final message = _localizedMessage(errorData['message']);
       if (code is String && code.isNotEmpty) {
         final unsupported = code == 'ANALYZE_STREAMING_REQUIRED' ||
             code == 'ANALYZE_RESPONSE_MODE_RETIRED' ||
             code == 'INVALID_RESPONSE_MODE';
         throw OpenerFlowException(
           code: unsupported ? OpenerFlowErrorCode.flowUnsupported : code,
-          message: message == null || message.isEmpty
-              ? _nonQuotaErrorMessage(status, errorData)
-              : message,
+          // 5xx 時生成可能已結算、只是回應沒送達，不能說「不會扣額度」。
+          message: message ??
+              (status >= 500
+                  ? '服務暫時無法確認狀態，請稍後用同一筆請求重試。'
+                  : _nonQuotaErrorMessage(status, const {})),
           status: status,
           retryable: errorData['retryable'] == true,
           retryAfterMs: (errorData['retryAfterMs'] as num?)?.round(),
@@ -875,6 +881,13 @@ class OpenerService {
       // Server 權威 tier 判定；形狀壞掉→null，讀取端走 legacy fallback。
       access: OpenerAccess.tryParse(data['access']),
     );
+  }
+
+  static String? _localizedMessage(dynamic raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return RegExp(r'[一-鿿]').hasMatch(trimmed) ? trimmed : null;
   }
 
   String _nonQuotaErrorMessage(int status, Map errorData) {
