@@ -1,9 +1,10 @@
 // 新話題（破冰腦力）prompts（2026-07-24 計畫 §10.3）。
 //
 // 2026-10-05 起（ADR #51）production 基本與進階都改用 new_topic_two_stage.ts
-// 的提示詞 v2.3。這裡的 NEW_TOPIC_PROMPT／buildNewTopicUserPrompt 已不在生成
-// 路徑上，暫留給 tools/new-topic-two-stage-eval 當「改前」基準，評測做完另案
-// 刪除；修格式提示詞、期限常數與切入角度仍是 production 共用。
+// 的提示詞 v2.3（路由在 new_topic_prompt_plan.ts）。這裡的 NEW_TOPIC_PROMPT／
+// buildNewTopicUserPrompt 已不在生成路徑上：評測的改前基準從 git 取 7c5cc523，
+// 這兩個只剩評測工具的路由測試在用，評測做完另案刪除。修格式提示詞、模型與
+// 期限常數、切入角度仍是 production 共用。
 //
 // Grounding 鐵律：只有「對方作戰板」段落可以被當成對方的事實；「關於我」
 // 只能拿來做自然的自我揭露，絕不可改寫成對方也喜歡、共同興趣或已知事實。
@@ -12,6 +13,8 @@
 import type { NewTopicSituation } from "./new_topic_payload.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 
+/** 新話題主呼叫的模型（備援鏈由 fallback.ts 決定）；評測工具也用這個常數。 */
+export const NEW_TOPIC_MODEL = "claude-sonnet-5";
 export const NEW_TOPIC_MAX_TOKENS = 3000;
 export const NEW_TOPIC_REQUEST_DEADLINE_MS = 50_000;
 export const NEW_TOPIC_GENERATION_DEADLINE_MS = 45_000;

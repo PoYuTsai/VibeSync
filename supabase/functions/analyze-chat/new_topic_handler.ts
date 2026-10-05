@@ -43,7 +43,6 @@ import {
   settleNewTopicRequest,
 } from "./new_topic_billing.ts";
 import {
-  allowsNewTopicSharedFrame,
   buildNewTopicLedgerResult,
   hasNewTopicMaterial,
   mergeNewTopicRepairWithPrimaryOpeningLines,
@@ -54,20 +53,18 @@ import {
   buildNewTopicRepairPrompt,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
+  NEW_TOPIC_MODEL,
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
 } from "./new_topic_prompt.ts";
 import {
   auditNewTopicTwoStageTopics,
-  buildNewTopicTwoStageUserPrompt,
   enforceNewTopicRedClose,
-  NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   newTopicPromptVariant,
-  newTopicTodayLabel,
   newTopicTwoStageTelemetry,
 } from "./new_topic_two_stage.ts";
-import { hasNewTopicTwoStagePromptLeak } from "./prompt_leak.ts";
+import { planNewTopicPrompt } from "./new_topic_prompt_plan.ts";
 import {
   getErrorMessage,
   logError,
@@ -558,28 +555,20 @@ export async function handleNewTopicRequest(
   // 8. 45 秒 generation deadline 內完成 primary／outage fallback。
   //    refusal、max_tokens、格式錯誤不走 outage fallback（fallback.ts
   //    既有分類）；deadline 前提早爆的 DEADLINE_EXCEEDED 也在這裡收。
-  // 基本與進階共用提示詞 v2.3（ADR #51）：沒帶 topicContext（基本模式）時
-  // 「這次的局面」只有狀況那幾行、沒有素材段。
-  const newTopicSystemPrompt = NEW_TOPIC_TWO_STAGE_PROMPT;
-  const newTopicUserPrompt = buildNewTopicTwoStageUserPrompt({
+  // 基本與進階共用提示詞 v2.3（ADR #51）。路由在 planNewTopicPrompt，評測工具
+  // 呼叫同一個函式：提示詞、今天的日期、外洩守門、grounding 與紅燈收尾規則
+  // 都跟這裡一致。
+  const newTopicPromptPlan = planNewTopicPrompt({
     partnerSummary: newTopicRequest.partnerSummary,
     effectiveStyleContext: newTopicRequest.effectiveStyleContext,
     situation: newTopicRequest.situation,
     topicContext: newTopicContext,
-    // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
     requestId: newTopicRequest.requestId,
-    // 不進重放指紋：同一筆跨日重試照常回放已落帳的結果。
-    today: newTopicTodayLabel(deps.requestStartedAtMs),
+    nowMs: deps.requestStartedAtMs,
   });
-  const newTopicGroundingPolicy = {
-    allowSharedFrame: allowsNewTopicSharedFrame({
-      partnerSummary: newTopicRequest.partnerSummary,
-      situation: newTopicRequest.situation,
-      topicContext: newTopicContext,
-    }),
-    // 只有進階路徑會有；用戶自己寫的字撞到內部術語時不算外洩。
-    userMaterialText: newTopicMaterialText,
-  };
+  const newTopicSystemPrompt = newTopicPromptPlan.system;
+  const newTopicUserPrompt = newTopicPromptPlan.user;
+  const newTopicGroundingPolicy = newTopicPromptPlan.grounding;
   const rejectNewTopicDeadline = async (
     stage: string,
   ): Promise<Response> => {
@@ -607,8 +596,7 @@ export async function handleNewTopicRequest(
   // completeNewTopicRequest（內部邏輯零改動，shim 同名變數），
   // exactly-once settle 語義不變。
   // 新話題提示詞多查一條自己的 sentinel；其他模式的守門不變。
-  const newTopicPromptLeak = (text: string): boolean =>
-    hasNewTopicTwoStagePromptLeak(text);
+  const newTopicPromptLeak = newTopicPromptPlan.hasPromptLeak;
   const completeNewTopicRequest = async (modelOutput: {
     rawText: string;
     model: string;
@@ -750,12 +738,12 @@ export async function handleNewTopicRequest(
     }
 
     // 紅燈收尾（規格 §9.4）：只在進階路徑；推薦固定第一題、理由換固定句。
-    const newTopicRedClose = newTopicContext === null
-      ? null
-      : enforceNewTopicRedClose(newTopicNormalized, {
+    const newTopicRedClose = newTopicPromptPlan.appliesRedClose
+      ? enforceNewTopicRedClose(newTopicNormalized, {
         situation: newTopicRequest.situation,
         topicContext: newTopicContext,
-      });
+      })
+      : null;
     if (newTopicRedClose !== null) {
       newTopicNormalized = newTopicRedClose.normalized;
     }
@@ -923,7 +911,7 @@ export async function handleNewTopicRequest(
     }, 500);
   };
 
-  const newTopicModel = "claude-sonnet-5";
+  const newTopicModel = NEW_TOPIC_MODEL;
   if (newTopicStreamRequested) {
     logInfo("new_topic_stream_started", {
       user: summarizeUser(deps.userId),
