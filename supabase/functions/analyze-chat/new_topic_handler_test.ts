@@ -84,6 +84,7 @@ async function run(
   const logMetadata = new Map<string, unknown>();
   const modelRequests: ModelRequest[] = [];
   const aiCallRows: ProviderAttemptLogEntry[] = [];
+  const settleCalls: Array<Record<string, unknown>> = [];
   let servedModelCalls = 0;
   const supabase = {
     from(table: string) {
@@ -108,11 +109,16 @@ async function run(
         return Promise.resolve({ data, error: null });
       }
       if (fn === "settle_new_topic_request") {
+        settleCalls.push(params);
         if (settleRpcForNextRun !== null) {
           return Promise.resolve(settleRpcForNextRun());
         }
+        // 跟正式 RPC 一樣：handler 沒要求扣（p_charge_quota=false）就不會扣。
         return Promise.resolve({
-          data: { charged: settleCharged, result: params.p_result_json },
+          data: {
+            charged: settleCharged && params.p_charge_quota === true,
+            result: params.p_result_json,
+          },
           error: null,
         });
       }
@@ -196,6 +202,7 @@ async function run(
       logEvents,
       logMetadata,
       aiCallRows,
+      settleCalls,
     };
   } finally {
     settleRpcForNextRun = null;
@@ -269,6 +276,12 @@ Deno.test("handler：開關沒開時，已落帳的同一筆進階請求照常�
   assertEquals(result.json.usage, { cost: 3 });
   assertEquals(result.modelRequests, []);
   assertFalse(result.dbCalls.some((call) => call.startsWith("rpc:")));
+  const replayHit = result.logMetadata.get("new_topic_replay_hit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(replayHit.servedTier, "essential");
+  assertEquals(replayHit.subscriptionTier, "essential");
 });
 
 Deno.test("handler：開關沒開＋沒有 topicContext → 照舊走 legacy 提示詞", async () => {
@@ -314,7 +327,18 @@ Deno.test("handler：Free 也拿完整五題、照常扣 3 則，以 starter 投
   assertEquals(result.json.recommendation.topicId, "nt_1");
   assertEquals(result.json.access, FULL_ACCESS("starter"));
   assertEquals(result.json.usage, { cost: 3 });
-  assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
+  // 扣不扣、落帳什麼由 handler 送給 settle 的參數決定，不看 mock 回的 charged。
+  assertEquals(result.settleCalls.length, 1);
+  const [settle] = result.settleCalls;
+  assertEquals(settle.p_charge_quota, true);
+  assertEquals(settle.p_monthly_limit, 100);
+  assertEquals(settle.p_daily_limit, 30);
+  const ledger = settle.p_result_json as {
+    access: unknown;
+    topics: unknown[];
+  };
+  assertEquals(ledger.access, FULL_ACCESS("starter"));
+  assertEquals(ledger.topics.length, 5);
   const success = result.logMetadata.get("new_topic_success") as Record<
     string,
     unknown
@@ -338,6 +362,13 @@ Deno.test("handler：方案投影——starter／essential 照舊，不認得的
     assertEquals(result.status, 200, tier);
     assertEquals(result.json.access, FULL_ACCESS(served), tier);
     assertEquals(result.json.topics.length, 5, tier);
+    assertEquals(result.settleCalls.length, 1, tier);
+    assertEquals(result.settleCalls[0].p_charge_quota, true, tier);
+    assertEquals(
+      (result.settleCalls[0].p_result_json as { access: unknown }).access,
+      FULL_ACCESS(served),
+      tier,
+    );
     const success = result.logMetadata.get("new_topic_success") as Record<
       string,
       unknown
@@ -361,6 +392,13 @@ Deno.test("handler：改版前落帳的 Free 一題結果，24 小時內照常�
   assertEquals(result.json.topics.length, 1);
   assertEquals(result.json.access.limited, true);
   assertEquals(result.modelRequests, []);
+  assertEquals(result.settleCalls, []);
+  const replayHit = result.logMetadata.get("new_topic_replay_hit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(replayHit.servedTier, "free");
+  assertEquals(replayHit.subscriptionTier, "free");
 });
 
 Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／模型", async () => {

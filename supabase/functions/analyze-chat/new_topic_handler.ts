@@ -330,6 +330,7 @@ export async function handleNewTopicRequest(
         user: summarizeUser(deps.userId),
         requestId: newTopicRequest.requestId,
         servedTier: preflight.result.access.servedTier,
+        subscriptionTier: normalizeSubscriptionTier(quota().effectiveTier),
         costDeducted: 0,
       });
       return jsonResponse(newTopicSuccessBody(
@@ -376,6 +377,7 @@ export async function handleNewTopicRequest(
         user: summarizeUser(deps.userId),
         requestId: newTopicRequest.requestId,
         servedTier: claim.result.access.servedTier,
+        subscriptionTier: normalizeSubscriptionTier(quota().effectiveTier),
         costDeducted: 0,
       });
       return jsonResponse(newTopicSuccessBody(
@@ -773,8 +775,8 @@ export async function handleNewTopicRequest(
     // 10. 投影：2026-10-05 起新話題所有方案都拿完整五題、照常扣 3 則
     //     （ADR #52）。帳本 CHECK、ledger 驗證與已上架的 App 都只認「free＝
     //     一題」的形狀，所以 Free 的完整五題以 starter 投影落帳：不動
-    //     migration，舊版 App 不用更新就看得到五題。真正方案另記在 log 的
-    //     subscriptionTier。
+    //     migration，舊版 App 不用更新就看得到五題。log 另記
+    //     subscriptionTier（effectiveTier 正規化；測試帳號記 essential）。
     const newTopicSubscriptionTier = normalizeSubscriptionTier(
       quota().effectiveTier,
     );
