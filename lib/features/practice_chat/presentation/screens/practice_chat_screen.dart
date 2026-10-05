@@ -9,6 +9,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
+import '../../../../shared/widgets/chat_bubble.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/providers/practice_chat_providers.dart';
@@ -353,6 +354,7 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                               else
                                 _Bubble(
                                   message: state.messages[i],
+                                  girl: state.girl,
                                   readReceipt: _playerBubbleRead(
                                     state.messages,
                                     i,
@@ -363,7 +365,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                                       state.messages[i - 1].isFromMe ==
                                           state.messages[i].isFromMe,
                                 ),
-                            if (state.isSending) const _ThinkingBubble(),
+                            if (state.isSending)
+                              _ThinkingBubble(girl: state.girl),
                             if (state.debrief != null) ...[
                               const SizedBox(height: 8),
                               PracticeDebriefCard(
@@ -1125,14 +1128,8 @@ class _PracticeChatWorkspace extends StatelessWidget {
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color:
-            opening ? Colors.transparent : Colors.white.withValues(alpha: 0.96),
+        color: opening ? Colors.transparent : AppColors.transcriptBoard,
         borderRadius: opening ? BorderRadius.zero : _radius,
-        border: opening
-            ? null
-            : Border.all(
-                color: AppColors.ctaStart.withValues(alpha: 0.24),
-              ),
         boxShadow: opening
             ? null
             : [
@@ -1383,7 +1380,7 @@ class _PracticeChatOriginIntro extends StatelessWidget {
 }
 
 // ── 訊息泡泡 ──────────────────────────────────────────────────────────
-// 沿用對話窗（analyze chat）的泡泡樣式：我說＝橘色系右對齊、她說＝紫色系左對齊。
+// 共用分析片段的泡泡外觀：我方蜜桃色靠右、對方白色靠左；分則、時間與動畫留在練習室。
 //
 // 分則顯示（2026-08-11）：真人傳 LINE 是一次連發 2-3 則短訊，不是一段長句。
 // server 端的 NPC 回覆與 Hint 可貼句都改成用換行分則，這裡照換行拆成多顆泡。
@@ -1499,8 +1496,10 @@ class _Bubble extends StatefulWidget {
     this.stagger = false,
     this.grouped = false,
     this.readReceipt = false,
+    this.girl,
   });
   final PracticeMessage message;
+  final PracticeGirlProfile? girl;
 
   /// WP4：下一則是她的「（已讀）」→ 已讀小字疊在這顆泡泡的時間上方（LINE 排法）。
   final bool readReceipt;
@@ -1508,7 +1507,7 @@ class _Bubble extends StatefulWidget {
   /// 只有畫面上最新的一則會逐則跳出（間隔 1 秒），歷史訊息直接全顯示。
   final bool stagger;
 
-  /// WP4：跟上一則同一個人 → 貼緊（間距 4）、不重複「我說／她說」；
+  /// WP4：跟上一則同一個人 → 貼緊（間距 4）、不重複頭像與尾巴；
   /// 換人 → 間距 12。
   final bool grouped;
 
@@ -1551,14 +1550,6 @@ class _BubbleState extends State<_Bubble> {
   Widget build(BuildContext context) {
     final message = widget.message;
     final isMe = message.isFromMe;
-    final fillColor = isMe
-        ? AppColors.ctaStart.withValues(alpha: 0.14)
-        : AppColors.primaryLight.withValues(alpha: 0.18);
-    final borderColor = isMe
-        ? AppColors.ctaEnd.withValues(alpha: 0.46)
-        : AppColors.primaryLight.withValues(alpha: 0.52);
-    final speakerColor = isMe ? AppColors.ctaEnd : AppColors.primaryDark;
-
     final shown = _parts.take(_visible).toList();
     final sentAt = message.sentAt;
     // WP4 時間戳：只掛在最後一顆泡旁邊（已讀疊在時間上方），跟 LINE 一樣。
@@ -1566,7 +1557,7 @@ class _BubbleState extends State<_Bubble> {
       if (index != shown.length - 1) return null;
       if (sentAt == null && !widget.readReceipt) return null;
       return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.only(bottom: 2),
         child: Column(
           crossAxisAlignment:
               isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -1586,81 +1577,74 @@ class _BubbleState extends State<_Bubble> {
       );
     }
 
-    return Column(
-      crossAxisAlignment:
-          isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var index = 0; index < shown.length; index++)
-          Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (isMe && meta(index) != null) ...[
-                meta(index)!,
-                const SizedBox(width: 4),
-              ],
-              // Flexible：時間小字擠進來時泡泡讓位，不會撐出 Row。
-              Flexible(
-                  child: Container(
-                // 上一則底部固定留 4：同人 4＋0＝4，換人 4＋8＝12。
-                margin: EdgeInsets.only(
-                  top: index == 0 ? (widget.grouped ? 0 : 8) : 2,
-                  bottom: index == shown.length - 1 ? 4 : 0,
+    Widget part(int index) {
+      final metadata = meta(index);
+      final row = Row(
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (isMe && metadata != null) ...[
+            metadata,
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: ChatBubble(
+              isMe: isMe,
+              tail: index == 0 && !widget.grouped,
+              maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+              child: Text(
+                shown[index],
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.4,
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.75,
-                ),
-                decoration: BoxDecoration(
-                  color: fillColor,
-                  borderRadius: BorderRadius.circular(18).copyWith(
-                    bottomRight: isMe && index == shown.length - 1
-                        ? const Radius.circular(5)
-                        : null,
-                    bottomLeft: !isMe && index == shown.length - 1
-                        ? const Radius.circular(5)
-                        : null,
-                  ),
-                  border: Border.all(color: borderColor),
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 說話者只標在一組的第一顆泡，連發／同人連續訊息不重複。
-                    if (index == 0 && !widget.grouped) ...[
-                      Text(
-                        isMe ? '我說' : '她說',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: speakerColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    Text(
-                      shown[index],
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.glassTextPrimary,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              )),
-              if (!isMe && meta(index) != null) ...[
-                const SizedBox(width: 4),
-                meta(index)!,
-              ],
-            ],
+              ),
+            ),
           ),
-      ],
+          if (!isMe && metadata != null) ...[
+            const SizedBox(width: 4),
+            metadata,
+          ],
+        ],
+      );
+      return Padding(
+        // 外距包住整列，頭像靠上、時間靠下；同人 4、換人 12、分段 2。
+        padding: EdgeInsets.only(
+          top: index == 0 ? (widget.grouped ? 0 : 8) : 2,
+          bottom: index == shown.length - 1 ? 4 : 0,
+        ),
+        child: !isMe && widget.girl != null
+            ? ChatAvatarGutter(
+                avatar: index == 0 && !widget.grouped
+                    ? _PracticeBubbleAvatar(girl: widget.girl!)
+                    : null,
+                child: row,
+              )
+            : row,
+      );
+    }
+
+    // 只朗讀已顯示的分段；每則一次說話者，時間／已讀也保留且不重複。
+    final semanticsLabel = [
+      isMe ? '我說' : '她說',
+      ...shown,
+      if (widget.readReceipt) '已讀',
+      if (sentAt != null) _lineClockLabel(sentAt),
+    ].join('\n');
+    return MergeSemantics(
+      child: Semantics(
+        label: semanticsLabel,
+        excludeSemantics: true,
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < shown.length; index++) part(index),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1671,26 +1655,52 @@ String _lineClockLabel(DateTime t) {
   return '${t.hour < 12 ? '上午' : '下午'} $h:${t.minute.toString().padLeft(2, '0')}';
 }
 
-class _ThinkingBubble extends StatelessWidget {
-  const _ThinkingBubble();
+/// 圓形照片只作視覺識別，說話者由整則訊息的 Semantics 負責。
+class _PracticeBubbleAvatar extends StatelessWidget {
+  const _PracticeBubbleAvatar({required this.girl});
+  final PracticeGirlProfile girl;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(18).copyWith(
-            bottomLeft: const Radius.circular(5),
-          ),
-          border: Border.all(
-            color: AppColors.primaryLight.withValues(alpha: 0.52),
-          ),
+    return ExcludeSemantics(
+      child: PracticeGirlPhoto(
+        key: const ValueKey('practice-bubble-avatar'),
+        profile: girl,
+        width: ChatAvatarGutter.avatarSize,
+        height: ChatAvatarGutter.avatarSize,
+        circle: true,
+      ),
+    );
+  }
+}
+
+class _ThinkingBubble extends StatelessWidget {
+  const _ThinkingBubble({this.girl});
+  final PracticeGirlProfile? girl;
+
+  @override
+  Widget build(BuildContext context) {
+    const bubble = ChatBubble(
+      isMe: false,
+      tail: true,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: _TypingDots(),
+    );
+    return Semantics(
+      label: '她正在輸入',
+      excludeSemantics: true,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          // 上一則底部 4 ＋這裡 8＝換人的 12。
+          padding: const EdgeInsets.only(top: 8, bottom: 4),
+          child: girl == null
+              ? bubble
+              : ChatAvatarGutter(
+                  avatar: _PracticeBubbleAvatar(girl: girl!),
+                  child: bubble,
+                ),
         ),
-        child: const _TypingDots(),
       ),
     );
   }
@@ -3577,6 +3587,7 @@ class _SessionReviewScreen extends StatelessWidget {
               else
                 _Bubble(
                   message: session.messages[i],
+                  girl: girlProfileById(session.profileId),
                   readReceipt: _playerBubbleRead(session.messages, i),
                   grouped: i > 0 &&
                       session.messages[i - 1].isFromMe ==

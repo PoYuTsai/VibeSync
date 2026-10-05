@@ -36,7 +36,7 @@
 B7 批 2026-08-10 收斂：8–16→18、20→22、28/30→24（234 處）。
 
 圓角登記例外（保留）：
-- ≤7 的功能性微圓角：聊天泡泡「尾巴」5、進度條/指示條圓端 2–4、小徽章 6–7、分析片段引用小卡 6。
+- ≤7 的功能性微圓角：共用聊天泡泡（`chat_bubble.dart`）組首上角尾巴 5、Sydney 開場泡泡尾巴 5、進度條/指示條圓端 2–4、小徽章 6–7、分析片段引用小卡 6。
 - `analysis_screen.dart` 的 47 處出格值＝拍板不動版面，留給重構案（棘輪基準內）。
 
 ## 5. 間距
@@ -74,9 +74,9 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | Sydney 視窗輸入列聚焦光 | `coach_surface.dart`（同練習室配方：聚焦 ctaStart@.22，失焦中性黑陰影） | 2026-08-15 Eric 拍板兩個聊天介面輸入列一致；同上瞬態 focus 回饋 |
 | 草稿潤飾面板輸入框聚焦光 | `draft_polish_sheet.dart`（同練習室配方） | 2026-08-16 Bruce 回饋「參照練習室窗」；同上瞬態 focus 回饋 |
 | Collection 漸層大標 | `practice_collection_screen.dart` hero「Collection」金→橘→粉 ShaderMask | Eric 2026-08-10 翻案保留：抽卡儀式頁的華麗感 |
-| 聊天泡泡尾巴圓角 5 | `practice_chat_screen.dart`（分則氣泡群組最後一顆的貼合角，見 §4 圓角登記例外） | 憲法尺度最小 18，表達不出「這顆黏在上一顆」；白名單＝`kAllowedRadiiByFile`，只開這一檔這一個值 |
+| 共用聊天泡泡尾巴圓角 5 | `chat_bubble.dart`（分析片段與練習室共用，每組第一顆朝說話者的上角，見 §4） | PR #87：沿用分析片段的 LINE 熟悉感，練習室同組後續分段不重複尾巴；白名單＝`kAllowedRadiiByFile`，只開共用元件這一個值 |
 | Sydney 視窗開場泡泡尾巴圓角 5 | `global_coach_screen.dart`（開場泡泡朝頭像的貼合角） | 同上：沿用分則氣泡的尾巴語彙；白名單＝`kAllowedRadiiByFile`，只開這一檔這一個值 |
-| 分析片段泡泡尾巴 5＋引用小卡 6 | `message_bubble.dart`（每組第一顆貼向說話者的角；泡泡內引用小卡） | 2026-10-02 A 案「LINE 熟悉感」：尾巴沿用分則氣泡語彙；引用小卡取外圓角 18 的 1/3，用 18 會變 pill；白名單＝`kAllowedRadiiByFile`，只開這一檔這兩個值 |
+| 分析片段引用小卡 6 | `message_bubble.dart`（泡泡內引用小卡；尾巴由共用 `chat_bubble.dart` 提供） | 2026-10-02 A 案「LINE 熟悉感」：引用小卡取外圓角 18 的 1/3，用 18 會變 pill；白名單＝`kAllowedRadiiByFile`，此檔只保留 6 |
 
 規則：想把新的彩色光暈/漸層加進產品＝先加進這張表並說明理由，否則視為 slop。
 

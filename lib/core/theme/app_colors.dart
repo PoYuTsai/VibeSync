@@ -105,6 +105,7 @@ class AppColors {
 
   // 分析片段對話板（2026-10-02 選定 A 案「LINE 熟悉感」）：淡紫底板上
   // 她＝白泡泡、我＝蜜桃泡泡。
+  // 分析片段與練習室共用底板／我方泡泡；對方泡泡維持白色。
   static const transcriptBoard = Color(0xFFEEEAF4);
   static const transcriptBubbleMine = Color(0xFFFFE1D2);
 
