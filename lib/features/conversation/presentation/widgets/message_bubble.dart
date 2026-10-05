@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/message.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
+import '../../../../shared/widgets/chat_bubble.dart';
 
 /// 分析片段裡的一則訊息（2026-10-02 A 案「LINE 熟悉感」）。
 ///
@@ -40,13 +41,6 @@ class MessageBubble extends StatelessWidget {
     this.partnerInitial,
   });
 
-  static const _radius = Radius.circular(18);
-
-  // 尾巴角 5：每組第一顆貼向說話者那側（DESIGN.md §4 聊天泡泡尾巴）。
-  static const _tailRadius = Radius.circular(5);
-  static const _avatarSize = 30.0;
-  static const _avatarGap = 8.0;
-
   @override
   Widget build(BuildContext context) {
     final hasActions = onSwapSide != null || onDelete != null || onEdit != null;
@@ -55,31 +49,14 @@ class MessageBubble extends StatelessWidget {
     final hasQuote = quote != null && quote.isNotEmpty;
     final initial = isMe ? null : partnerInitial;
 
-    final bubble = Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.sizeOf(context).width * 0.7,
-      ),
-      // 有引用時內距縮成 6 讓小卡貼近泡泡邊緣，內文再補 6，左緣仍對齊 12。
+    final bubble = ChatBubble(
+      isMe: isMe,
+      tail: isGroupStart,
+      maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+      // 有引用時內距縮成 6，內文再補 6，左緣仍對齊 12。
       padding: hasQuote
           ? const EdgeInsets.fromLTRB(6, 6, 6, 8)
           : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isMe ? AppColors.transcriptBubbleMine : Colors.white,
-        borderRadius: BorderRadius.only(
-          topLeft: !isMe && isGroupStart ? _tailRadius : _radius,
-          topRight: isMe && isGroupStart ? _tailRadius : _radius,
-          bottomLeft: _radius,
-          bottomRight: _radius,
-        ),
-        // 不描邊，只用一道中性微陰影把泡泡托離底板。
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
       // 泡泡寬度跟著內文或引用較寬的那個走，引用小卡再撐滿泡泡；有引用
       // 不會再整排撐到最寬，內文也一律靠左。
       child: IntrinsicWidth(
@@ -133,17 +110,11 @@ class MessageBubble extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: initial == null
                   ? bubble
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isGroupStart)
-                          _PartnerAvatar(initial: initial)
-                        else
-                          const SizedBox(width: _avatarSize),
-                        const SizedBox(width: _avatarGap),
-                        Flexible(child: bubble),
-                      ],
+                  : ChatAvatarGutter(
+                      avatar: isGroupStart
+                          ? _PartnerAvatar(initial: initial)
+                          : null,
+                      child: bubble,
                     ),
             ),
           ),
@@ -249,8 +220,8 @@ class _PartnerAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: MessageBubble._avatarSize,
-      height: MessageBubble._avatarSize,
+      width: ChatAvatarGutter.avatarSize,
+      height: ChatAvatarGutter.avatarSize,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(

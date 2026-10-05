@@ -50,6 +50,8 @@ let releaseResultForNextRun: boolean | null = null;
 let modelStatusForNextRun: number | null = null;
 /** 下一次 run 前幾次模型呼叫回 503（run 結束就歸零），用來走 fallback 鏈。 */
 let failingModelCallsForNextRun = 0;
+/** 下一次 run 的 quota().effectiveTier（run 結束就清掉；null＝essential）。 */
+let effectiveTierForNextRun: string | null = null;
 
 type ModelRequest = {
   system: Array<{ text: string }>;
@@ -79,6 +81,7 @@ async function run(
   const logMetadata = new Map<string, unknown>();
   const modelRequests: ModelRequest[] = [];
   const aiCallRows: ProviderAttemptLogEntry[] = [];
+  const settleCalls: Array<Record<string, unknown>> = [];
   let servedModelCalls = 0;
   const supabase = {
     from(table: string) {
@@ -103,11 +106,16 @@ async function run(
         return Promise.resolve({ data, error: null });
       }
       if (fn === "settle_new_topic_request") {
+        settleCalls.push(params);
         if (settleRpcForNextRun !== null) {
           return Promise.resolve(settleRpcForNextRun());
         }
+        // 跟正式 RPC 一樣：handler 沒要求扣（p_charge_quota=false）就不會扣。
         return Promise.resolve({
-          data: { charged: settleCharged, result: params.p_result_json },
+          data: {
+            charged: settleCharged && params.p_charge_quota === true,
+            result: params.p_result_json,
+          },
           error: null,
         });
       }
@@ -179,7 +187,7 @@ async function run(
         sub: { monthly_messages_used: 0, daily_messages_used: 0, tier: "free" },
         monthlyLimit: 100,
         dailyLimit: 30,
-        effectiveTier: "essential",
+        effectiveTier: effectiveTierForNextRun ?? "essential",
       }),
       recordAiCall: (entry) => aiCallRows.push(entry),
     });
@@ -191,12 +199,14 @@ async function run(
       logEvents,
       logMetadata,
       aiCallRows,
+      settleCalls,
     };
   } finally {
     settleRpcForNextRun = null;
     releaseResultForNextRun = null;
     modelStatusForNextRun = null;
     failingModelCallsForNextRun = 0;
+    effectiveTierForNextRun = null;
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     console.warn = originalWarn;
@@ -263,6 +273,12 @@ Deno.test("handler：開關沒開時，已落帳的同一筆進階請求照常�
   assertEquals(result.json.usage, { cost: 3 });
   assertEquals(result.modelRequests, []);
   assertFalse(result.dbCalls.some((call) => call.startsWith("rpc:")));
+  const replayHit = result.logMetadata.get("new_topic_replay_hit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(replayHit.servedTier, "essential");
+  assertEquals(replayHit.subscriptionTier, "essential");
 });
 
 Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走提示詞 v2.3，局面只有狀況那幾行", async () => {
@@ -306,6 +322,104 @@ Deno.test("handler：基本模式 settle 被先完成者搶先（回放）→ �
   assertEquals(result.status, 200);
   assert(result.logMetadata.has("new_topic_settlement_replayed"));
   assertFalse(result.logMetadata.has("new_topic_two_stage_audit"));
+});
+
+// ---------------------------------------------------------------------------
+// ADR #52：新話題所有方案都拿完整五題、照常扣 3 則
+// ---------------------------------------------------------------------------
+
+const FULL_ACCESS = (servedTier: string) => ({
+  servedTier,
+  limited: false,
+  totalCount: 5,
+  unlockedCount: 5,
+  lockedCount: 0,
+});
+
+Deno.test("handler：Free 也拿完整五題、照常扣 3 則，以 starter 投影落帳；log 記真正方案", async () => {
+  effectiveTierForNextRun = "free";
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.topics.length, 5);
+  assertEquals(
+    result.json.topics.map((topic: { id: string }) => topic.id),
+    ["nt_1", "nt_2", "nt_3", "nt_4", "nt_5"],
+  );
+  assertEquals(result.json.recommendation.topicId, "nt_1");
+  assertEquals(result.json.access, FULL_ACCESS("starter"));
+  assertEquals(result.json.usage, { cost: 3 });
+  // 扣不扣、落帳什麼由 handler 送給 settle 的參數決定，不看 mock 回的 charged。
+  assertEquals(result.settleCalls.length, 1);
+  const [settle] = result.settleCalls;
+  assertEquals(settle.p_charge_quota, true);
+  assertEquals(settle.p_monthly_limit, 100);
+  assertEquals(settle.p_daily_limit, 30);
+  const ledger = settle.p_result_json as {
+    access: unknown;
+    topics: unknown[];
+  };
+  assertEquals(ledger.access, FULL_ACCESS("starter"));
+  assertEquals(ledger.topics.length, 5);
+  const success = result.logMetadata.get("new_topic_success") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(success.servedTier, "starter");
+  assertEquals(success.subscriptionTier, "free");
+  assertEquals(success.charged, true);
+});
+
+Deno.test("handler：方案投影——starter／essential 照舊，不認得的方案字串當 Free（也拿五題）", async () => {
+  for (
+    const [tier, served, subscription] of [
+      ["starter", "starter", "starter"],
+      ["essential", "essential", "essential"],
+      ["premium", "starter", "free"],
+      ["", "starter", "free"],
+    ] as const
+  ) {
+    effectiveTierForNextRun = tier;
+    const result = await run(body(), undefined);
+    assertEquals(result.status, 200, tier);
+    assertEquals(result.json.access, FULL_ACCESS(served), tier);
+    assertEquals(result.json.topics.length, 5, tier);
+    assertEquals(result.settleCalls.length, 1, tier);
+    assertEquals(result.settleCalls[0].p_charge_quota, true, tier);
+    assertEquals(
+      (result.settleCalls[0].p_result_json as { access: unknown }).access,
+      FULL_ACCESS(served),
+      tier,
+    );
+    const success = result.logMetadata.get("new_topic_success") as Record<
+      string,
+      unknown
+    >;
+    assertEquals(success.subscriptionTier, subscription, tier);
+  }
+});
+
+Deno.test("handler：改版前落帳的 Free 一題結果，24 小時內照常回放（不變成 409／503）", async () => {
+  const stored = buildNewTopicLedgerResult({
+    topics: MODEL_PAYLOAD.topics,
+    recommendationIndex: 0,
+    recommendationReason: "理由",
+    servedTier: "free",
+  });
+  claimResultForNextRun = { kind: "replay", result: stored };
+  effectiveTierForNextRun = "free";
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.topics, stored.topics);
+  assertEquals(result.json.topics.length, 1);
+  assertEquals(result.json.access.limited, true);
+  assertEquals(result.modelRequests, []);
+  assertEquals(result.settleCalls, []);
+  const replayHit = result.logMetadata.get("new_topic_replay_hit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(replayHit.servedTier, "free");
+  assertEquals(replayHit.subscriptionTier, "free");
 });
 
 Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／模型", async () => {

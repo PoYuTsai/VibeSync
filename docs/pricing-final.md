@@ -86,7 +86,7 @@
 | 延展/調情回覆 | ✓ | ✓ | ✓ |
 | 共鳴/幽默/冷讀回覆 | ✗ | ✓ | ✓ |
 | 開場白（opener）風格 | 延展／幽默／調情 3 型³ | 5 型全開 | 5 型全開 |
-| 新話題（破冰腦力，扣 3 則）| 只看最推薦 1 題（另 4 題升級解鎖）| 5 題全開 | 5 題全開 |
+| 新話題（破冰腦力，扣 3 則）| 只看最推薦 1 題（另 4 題升級解鎖）；由 ADR #52 取代（提案中）：5 題全開 | 5 題全開 | 5 題全開 |
 | 草稿潤飾器 | ✗ | ✗ | ✓ |
 | Needy 警示 | ✗ | ✓ | ✓ |
 | 5 維雷達圖 | ✗ | ✓ | ✓ |
@@ -104,7 +104,7 @@
 >
 > ³ 2026-07-24 起 Opener contract v2：新 App（request 帶 `openerContractVersion: 2`）Free 恰好解鎖 `extend`／`humor`／`tease` 三型，鎖 `resonate`／`coldRead`；舊 App（缺版本欄位）維持 legacy `extend` 單卡投影。模型仍固定產五種，差異只在 server 權益投影（ADR #31）。
 > 2026-07-17 起 Free `analyze-chat` 固定回傳 `extend`＋`tease` 兩種（analyze 權益與 Opener 各自獨立）。
-> 新話題（`mode: new_topic`）成功一律扣 3 則；所有 tier 模型都生成五題，Free 由 server 投影只回最推薦一題（另外四題文字不出 server）。限流 scope `new_topic`＝3/分、30/日，與 opener 分開計數。Free 只要月／日額度都剩 ≥3 就可用，不因 tier 先擋。
+> 新話題（`mode: new_topic`）成功一律扣 3 則；所有 tier 模型都生成五題，Free 由 server 投影只回最推薦一題（另外四題文字不出 server）。由 ADR #52 取代（提案中）：所有方案都回完整五題，Free 以 `starter` 投影落帳。限流 scope `new_topic`＝3/分、30/日，與 opener 分開計數。Free 只要月／日額度都剩 ≥3 就可用，不因 tier 先擋。
 > 上表其餘 gating 對照實碼：草稿潤飾
 > client＋server 雙閘 Essential、翻牌 1/3/5＋加購規則（`practice-chat/draw_decision.ts`）、
 > Free 續玩閘（`practice-chat/quota_decision.ts`）。

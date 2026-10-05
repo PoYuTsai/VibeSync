@@ -516,6 +516,10 @@ export type NewTopicLedgerResult = {
  * - 推薦 topic 永遠排 client response 第一位。
  * - Free 只存推薦那一題；另外四題文字不進 ledger、不進 response。
  * - Paid 五題全存（推薦在前）。
+ *
+ * 2026-10-05 起（ADR #52）handler 不再要 free 投影：所有方案都拿五題，
+ * Free 以 starter 投影落帳。free 分支留著，與 DB CHECK 一致，24 小時內
+ * 改版前落帳的一題結果照常回放。
  */
 export function buildNewTopicLedgerResult(opts: {
   topics: NewTopicModelTopic[];
