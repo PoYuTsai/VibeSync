@@ -53,6 +53,8 @@ let releaseResultForNextRun: boolean | null = null;
 let modelStatusForNextRun: number | null = null;
 /** 下一次 run 前幾次模型呼叫回 503（run 結束就歸零），用來走 fallback 鏈。 */
 let failingModelCallsForNextRun = 0;
+/** 下一次 run 的 quota().effectiveTier（run 結束就清掉；null＝essential）。 */
+let effectiveTierForNextRun: string | null = null;
 
 type ModelRequest = {
   system: Array<{ text: string }>;
@@ -182,7 +184,7 @@ async function run(
         sub: { monthly_messages_used: 0, daily_messages_used: 0, tier: "free" },
         monthlyLimit: 100,
         dailyLimit: 30,
-        effectiveTier: "essential",
+        effectiveTier: effectiveTierForNextRun ?? "essential",
       }),
       recordAiCall: (entry) => aiCallRows.push(entry),
     });
@@ -200,6 +202,7 @@ async function run(
     releaseResultForNextRun = null;
     modelStatusForNextRun = null;
     failingModelCallsForNextRun = 0;
+    effectiveTierForNextRun = null;
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     console.warn = originalWarn;
@@ -285,6 +288,79 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 照舊走 legacy 提
     }),
   );
   assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
+});
+
+// ---------------------------------------------------------------------------
+// ADR #52：新話題所有方案都拿完整五題、照常扣 3 則
+// ---------------------------------------------------------------------------
+
+const FULL_ACCESS = (servedTier: string) => ({
+  servedTier,
+  limited: false,
+  totalCount: 5,
+  unlockedCount: 5,
+  lockedCount: 0,
+});
+
+Deno.test("handler：Free 也拿完整五題、照常扣 3 則，以 starter 投影落帳；log 記真正方案", async () => {
+  effectiveTierForNextRun = "free";
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.topics.length, 5);
+  assertEquals(
+    result.json.topics.map((topic: { id: string }) => topic.id),
+    ["nt_1", "nt_2", "nt_3", "nt_4", "nt_5"],
+  );
+  assertEquals(result.json.recommendation.topicId, "nt_1");
+  assertEquals(result.json.access, FULL_ACCESS("starter"));
+  assertEquals(result.json.usage, { cost: 3 });
+  assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
+  const success = result.logMetadata.get("new_topic_success") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(success.servedTier, "starter");
+  assertEquals(success.subscriptionTier, "free");
+  assertEquals(success.charged, true);
+});
+
+Deno.test("handler：方案投影——starter／essential 照舊，不認得的方案字串當 Free（也拿五題）", async () => {
+  for (
+    const [tier, served, subscription] of [
+      ["starter", "starter", "starter"],
+      ["essential", "essential", "essential"],
+      ["premium", "starter", "free"],
+      ["", "starter", "free"],
+    ] as const
+  ) {
+    effectiveTierForNextRun = tier;
+    const result = await run(body(), undefined);
+    assertEquals(result.status, 200, tier);
+    assertEquals(result.json.access, FULL_ACCESS(served), tier);
+    assertEquals(result.json.topics.length, 5, tier);
+    const success = result.logMetadata.get("new_topic_success") as Record<
+      string,
+      unknown
+    >;
+    assertEquals(success.subscriptionTier, subscription, tier);
+  }
+});
+
+Deno.test("handler：改版前落帳的 Free 一題結果，24 小時內照常回放（不變成 409／503）", async () => {
+  const stored = buildNewTopicLedgerResult({
+    topics: MODEL_PAYLOAD.topics,
+    recommendationIndex: 0,
+    recommendationReason: "理由",
+    servedTier: "free",
+  });
+  claimResultForNextRun = { kind: "replay", result: stored };
+  effectiveTierForNextRun = "free";
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.json.topics, stored.topics);
+  assertEquals(result.json.topics.length, 1);
+  assertEquals(result.json.access.limited, true);
+  assertEquals(result.modelRequests, []);
 });
 
 Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／模型", async () => {
