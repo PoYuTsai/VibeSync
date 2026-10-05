@@ -52,19 +52,35 @@
   - 4b 的路由：基本模式改用 v2.3 與 `buildNewTopicTwoStageUserPrompt`，`topicContext` 傳 null。
   - telemetry：`promptVariant` 改成 `basic`／`advanced`，並加 `promptVersion`。
   - 品質稽核擴及基本模式。
+  - commit 1：`planNewTopicPrompt`（`new_topic_prompt_plan.ts`）。回傳提示詞、今天、外洩守門、grounding、是否套紅燈收尾與版本；handler 與評測工具都呼叫它。
+  - commit 3（主審第 1 輪補件）：評測工具改成改前 vs 改後成對評測，與 §6.1 的差異在下面另列。
   - ADR #51。
-- **commit 0（CI）**：新話題與解釋欄測試已由 #91 先加進 CI；這次補上 `tools/new-topic-two-stage-eval/run_test.ts`。
+- **commit 0（CI）**：新話題與解釋欄測試已由 #91 先加進 CI；這次補上 `tools/new-topic-two-stage-eval/run_test.ts` 與 `new_topic_prompt_plan_test.ts`。
 - **另案**：
-  - commit 1 的 `planNewTopicPrompt` 抽出：handler 已直接用同一份提示詞，不再分流。
-  - commit 2 的六個字面計數。
-  - commit 3 的評測工具改版。
-  - 4.7 刪除舊版：舊版提示詞程式暫留給評測工具當「改前」基準。
+  - commit 2 的六個字面計數進 production 稽核（評測工具已經有）。
+  - 4.7 刪除舊版：舊版函式只剩評測工具的路由測試在用。
 
-付費評測照第 6 節，仍要 Eric 說「跑」。評測工具目前還不能評「v2.3＋沒帶 topicContext」（production 的基本模式），要先照 §6.1 改版，基準取 `7c5cc523`。
+**評測工具與 §6.1 的差異**：
+- **兩臂在同一次執行裡跑**（`base`／`cand`），不另做 `compare.ts`。盲測三份檔與解盲表由 `run.ts` 直接產生。
+  - `base`：用 `git archive` 取出 `7c5cc523` 的 `supabase/functions`，照當時 handler 路由。所以基準就是改前的真實行為，包括舊角度清單。
+  - `cand`：呼叫 `planNewTopicPrompt`，「今天」固定為 `2026-10-05T12:00:00+08:00`。
+- **配對**：同案例、同 requestId、同重複次數。
+- **模型參數照 production 主呼叫**：`run_test.ts` 攔下 `fallback.ts` 第一跳送出的 body 與 header 來比對。
+- **案例**：照 §6.2 共 22 組。
+- **門檻**：照 §6.5 不改。
+  - 第 5、6 項由 `summary.md` 自動判定。
+  - 第 1–4 項由 `tally.ts` 讀 Bruce 填好的盲測檔判定；任何一格沒填就拒絕。
+  - 為了第 2 項的「★ 尷尬」另加一個盲測欄，為了「Free 只看推薦一題」另加 `blind_star.md`。
+- **乾跑**（head `b8340e9b`）：
+  - 88 次呼叫，估一般 US$2.38、最壞 US$3.97。
+  - 系統提示詞 sha256：基準舊版 `81d49443…`、基準進階 v1 `0bcec3ec…`、候選 v2.3 `6e97775b…`。
+  - 案例 `2a3cd7ca…`，使用者提示詞 `220b096c…`。
+
+付費評測照第 6 節，要 Eric 當次說「跑」。真跑指令與守門見 `tools/new-topic-two-stage-eval/README.md`。
 
 **回退**：PR 會 squash 成一個 commit，第 7、8 節「只 revert 4b」做不到。回退＝revert 整個 PR，角度清單、「今天」段與 log 欄位也一起回去。
 
-**上線後看 log**：第 8 節的六個計數這次沒做，只看既有稽核欄位（空窗、禁用開場、邀約、道歉、多 emoji），以及 `new_topic_response_repaired`／`new_topic_response_invalid` 的比例。
+**上線後看 log**：第 8 節的六個計數這次沒進 production，只看既有稽核欄位（空窗、禁用開場、邀約、道歉、多 emoji），以及 `new_topic_response_repaired`／`new_topic_response_invalid` 的比例。這些只用來上線後監看，不能證明句子更自然或用戶願意直接傳；那要看 §6.5 的盲測。
 
 行號以 `7c5cc523` 為準；內文舊行號與程式不同時，以程式為準。
 

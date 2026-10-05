@@ -3,14 +3,44 @@
 - 分支 `claude/new-topic-v23`，base `7c5cc523`。程式由 Claude（Anthropic）撰寫。
 - Bruce 交辦原話：「實作這v2.3版 開PR」「請Eric做測試 並白話和他說明目前改動的重點」。
 - R2：AI 提示詞與 `analyze-chat` 生成路徑，影響 production 全部新話題。
-- **主審（關卡）**：待非 Claude 家族（例如 Codex）。
-- 下表只是同家族的對抗式預審，照 `docs/shared-agent-rules.md` 不算關卡。
+- **主審（關卡）**：Eric 方的獨立主審。
+  - 第 1 輪 BLOCKED，審查範圍 `7c5cc523 → ec6b926e`。
+  - 補件後由同一主審做第 2 輪差異複核。
+- 「預審」是同家族的對抗式預審，照 `docs/shared-agent-rules.md` 不算關卡。
 
 | 輪 | 類型 | 審查 head | 回覆 sha256 | 結論 |
 |---|---|---|---|---|
 | 預審 1 | Claude 子代理，對抗式、唯讀 | 845b570f | 09a9e3eab6a73c28f53d65b0088b6b53a6156fdb3e753acf17efbe2f4f529567 | APPROVED_WITH_RISK |
+| 主審 1 | Eric 方獨立主審（[PR #93 留言](https://github.com/PoYuTsai/VibeSync/pull/93#issuecomment-5987751198)） | ec6b926e | 9b80db8a522feff97be14b5cf6d1a8629af82740b2c270770e741f07a0afce36 | BLOCKED |
 
-回覆 sha256 以下方節錄區塊的內容計算（UTF-8，不含外框）。
+- 預審 1 的回覆 sha256 以下方節錄區塊的內容計算（UTF-8，不含外框）。
+- 主審 1 的兩個 sha256 照 PR 留言抄錄：
+  - 主審原文：`9b80db8a…`。
+  - packet manifest：`2963005fb422039bdceb215d4e29b1abe8428c499696f46ce588a39934982510`。
+
+## 主審 1 的補件對照
+
+主審 1 的結論：
+- 沒有新增 P0／P1 程式錯誤。
+- WSL 本機 244 個相關測試通過，三項必要 CI 全綠。
+- 扣費、重播、Free 投影與失敗保護沒有新增回歸。
+- P2：原訂的正式品質驗收還沒做。
+
+| 主審要求 | 處理 | 在哪裡 |
+|---|---|---|
+| 1-1 評測工具測不到 v2.3 基本模式：沒帶 `topicContext` 的案例被拒，legacy 臂走舊提示詞 | **已補**。候選臂呼叫 `planNewTopicPrompt`，跟 handler 是同一個函式，基本與進階都走 production 路由。案例照規格 §6.2 補到 22 組：<br>• 什麼都不選：B1、B2<br>• 只選狀況：B5、B6（B6 剛約完會）<br>• 沒有對象資料：B4<br>• 素材「幫我想」：N1、N2<br>• 有互虧依據：B3、J1<br>• 紅燈收尾：E2、W1 | `cdeb9b92`、`b8340e9b`；`cases.json` v2 |
+| 1-2 沒傳 `today`；參數要對齊正式路徑；要免費乾跑與相符性測試 | **已補**。<br>• 「今天」用 `--now` 固定，預設 `2026-10-05T12:00:00+08:00`。<br>• request body 照 `fallback.ts` 第一跳：`claude-sonnet-5`、`max_tokens` 3000、thinking 關閉、system 快取區塊、同一組 header。<br>• `run_test.ts` 攔下實際送出的 body 與 header 來比對。<br>• 乾跑數字見規格 §0.1。 | `b8340e9b` |
+| 1-3 基準取 `7c5cc523`、保留當時真實行為；同案例、requestId、重複次數配對 | **已補**。用 `git archive` 取出 `7c5cc523` 的 `supabase/functions`，照當時 handler 路由：沒帶 `topicContext` 走舊版，帶了走進階 v1，角度用舊清單。兩臂同案例、同 requestId、同重複次數。 | `b8340e9b` |
+| 2-1 乾跑、呼叫數與費用上限；付費前要 Eric 當次核准 | **乾跑完成，等 Eric 說「跑」**。<br>• 88 次呼叫。<br>• 估一般 US$2.38、最壞 US$3.97。<br>• 上限 `--max-calls=88 --budget-usd=4.5`。 | PR 留言 |
+| 2-2 可核對的證據：head、模型／參數、提示詞與案例 sha256、原始結果、usage／成本、盲測與解盲、逐項門檻；基本／進階分開；推薦題單列 | **工具已能產出；證據要付費評測跑完才有**。<br>• `manifest.json`、`system-prompts.json`、`prompts.json`<br>• `records.json`：含 usage 與快取<br>• `summary.md`：全部／基本／進階分開<br>• `blind_ab.md`<br>• `blind_star.md`：推薦題單列<br>• `explanations_blind.md`、`reveal-map.json`<br>• `acceptance.md`：`tally.ts` 產出 | `tools/new-topic-two-stage-eval/README.md` |
+| 2-3 六個 production 稽核計數另案的範圍；不能拿既有 log 當自然度的證明 | **範圍寫清楚**。<br>• 六個字面計數已在評測的 `summary.md`，對應 §6.5 第 5、6 項。<br>• 進 production 稽核仍另案。<br>• 自然度、願意直接傳、有趣只看盲測。<br>• 既有 log 只用來上線後監看。 | 規格 §0.1、ADR #51 |
+| 3-1 ADR #51、規格 §0.1、PR 寫進產品裁決、驗收方式與理由；主審狀態更新成本輪結果 | **已補**。<br>• ADR #51「產品裁決」三點：共用 v2.3、基本模式不建議約她、保留盲測當關卡。<br>• 規格 §0.1：已做／另案、評測工具與 §6.1 的差異、乾跑數字。<br>• 本紀錄與 PR 說明。 | 本 commit、PR 說明 |
+| 3-2 要改驗收門檻須另列 | **不改門檻**。<br>• 沒跑的項目不標通過。<br>• 盲測多一欄「★ 尷尬」與一份 `blind_star.md`，是為了判定原訂的第 2 項與 Free 只看推薦題，不是新門檻。 | 規格 §0.1 |
+| 3-3 推同一張 PR、最終 head 的必要 CI 通過、準備好再標 Ready、下一手換回 `next:eric-ai`、附補件對照 | 推同一張 PR，補件對照貼在 PR 留言。<br>• 付費評測還沒跑，所以維持 Draft。<br>• 下一手換成 `next:eric-ai`，請 Eric 決定要不要「跑」。<br>• 跑完：Bruce 做盲測，`tally.ts` 判門檻，結果補進 PR，再標 Ready 交第 2 輪。 | PR #93 |
+
+主審 1 對三個產品建議的處理：
+- 都由 Bruce＋Claude Code 裁決採用，理由寫在 ADR #51「產品裁決」。
+- 基本模式不建議約她（D9）：`summary.md` 計算 B1–B6 的邀約字眼；其中 B6（剛約完會）最容易出現。
 
 ## 預審 1 的處理
 
