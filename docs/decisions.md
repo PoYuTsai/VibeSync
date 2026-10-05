@@ -1250,9 +1250,9 @@
 
 **決定**:
 
-1. **所有方案都拿完整五題**（推薦在前），每次成功照常扣 3 則。Free 仍受 Free 額度約束：月 30 則、日 15 則，等於每天最多 5 次新話題。額度不足時一樣回 429 並開付費牆。
+1. **所有方案都拿完整五題**（推薦在前），每次成功照常扣 3 則。Free 仍受 Free 額度約束：月 30 則、日 15 則，與分析等功能共用；只用新話題的話，每月最多 10 次、每天最多 5 次。額度不足時一樣回 429 並開付費牆。
 2. **Free 的五題以 `starter` 投影落帳**。帳本 CHECK `new_topic_requests_result_state_consistency`、`validate_new_topic_result`、TS 的 ledger 驗證與已上架的 App 都只認「free＝一題」的形狀。用 starter 標籤就不必加 migration，舊版 App 不用更新就看得到五題，也不會出現「升級解鎖」卡。
-3. **log**：`new_topic_success` 的 `servedTier` 記投影（Free 用戶是 `starter`），另加 `subscriptionTier` 記真正方案。看各方案用量請用 `subscriptionTier`。
+3. **log**：`new_topic_success` 的 `servedTier` 記投影（Free 用戶是 `starter`），另加 `subscriptionTier`。`subscriptionTier` 記當次的有效方案（`effectiveTier` 正規化，測試帳號記 `essential`），`new_topic_replay_hit` 也帶。看各方案用量請用 `subscriptionTier`。
 4. **free 投影的程式與驗證留著**，與 DB CHECK 一致。改版前 24 小時內落帳的一題結果照常回放，不會變成 409 或 503。
 
 **不變**: 扣 3 則、額度關卡與 429、限流、模型、帳本與重放、結果格式、App、DB／migration。
@@ -1264,4 +1264,4 @@
 - 帳本裡的 `servedTier` 不再等於訂閱方案。帳本只留 24 小時；要分析方案請看 log 的 `subscriptionTier`。
 - App 的 Free 升級卡只剩舊結果回放時會出現，程式可另案清掉。
 
-**未決**: Eric 決定要不要開放；清掉 App 升級卡與 DB 的 free 分支另案。
+**未決**: Eric 決定要不要開放。另案：清掉 App 升級卡與 DB 的 free 分支，同時在 App 的 `NewTopicAccess.servedTier` 註明它描述的是結果形狀、不是訂閱方案，免得之後被拿來判斷權益。
