@@ -912,7 +912,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         if (_session.isResultStaleForCurrentConversation(s.toRunMetadata())) {
           setState(() {
             _isAnalyzing = false;
-            _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
+            _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用，請重新分析。';
             _streamErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
@@ -2794,7 +2794,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           setState(() {
             _isAnalyzing = false;
             _followLiveAnalysis = false;
-            _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用。請重新按「開始分析」。';
+            _streamErrorMessage = '你剛剛更新了本次片段，這份完整分析先不套用，請重新分析。';
             _streamErrorRetriesRemaining = 0;
             _quotaExceededInfo = null;
             _streamContents = const [];
@@ -4264,6 +4264,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 onRetry: _streamErrorRetriesRemaining > 0
                                     ? _retryStreamAnalysis
                                     : null,
+                                // 同一個 run 接不回來時，唯一出口是重新分析：
+                                // 走一般開始流程（額度確認照常）。
+                                onReanalyze: (_isAnalyzing || _isRecognizing)
+                                    ? null
+                                    : _runAnalysis,
                               ),
                           ],
 
