@@ -64,6 +64,7 @@ import {
   NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   newTopicPromptVariant,
+  newTopicTodayLabel,
   newTopicTwoStageTelemetry,
 } from "./new_topic_two_stage.ts";
 import { hasNewTopicTwoStagePromptLeak } from "./prompt_leak.ts";
@@ -164,6 +165,7 @@ export async function handleNewTopicRequest(
     user: summarizeUser(deps.userId),
     requestId: newTopicRequest.requestId,
     promptVariant: newTopicTwoStageTelemetry(newTopicContext).promptVariant,
+    promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
     elapsedMs: Date.now() - deps.requestStartedAtMs,
   });
   // 每次供應商呼叫記一筆（console＋ai_logs）。主呼叫與修復各開一個：主呼叫
@@ -185,6 +187,7 @@ export async function handleNewTopicRequest(
         {
           promptVariant:
             newTopicTwoStageTelemetry(newTopicContext).promptVariant,
+          promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
         },
       ),
     );
@@ -565,6 +568,8 @@ export async function handleNewTopicRequest(
     topicContext: newTopicContext,
     // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
     requestId: newTopicRequest.requestId,
+    // 不進重放指紋：同一筆跨日重試照常回放已落帳的結果。
+    today: newTopicTodayLabel(deps.requestStartedAtMs),
   });
   const newTopicGroundingPolicy = {
     allowSharedFrame: allowsNewTopicSharedFrame({

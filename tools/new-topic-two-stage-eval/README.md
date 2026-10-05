@@ -4,6 +4,10 @@
 
 預設是 dry-run：不打模型、不讀金鑰、不連網、不跑 git。要花錢的真跑，必須 Eric 說「跑」之後才下指令。
 
+> **2026-10-05（ADR #51）注意**：production 的基本模式（沒帶 `topicContext`）也改走 `NEW_TOPIC_TWO_STAGE_PROMPT`（v2.3）＋`buildNewTopicTwoStageUserPrompt`（`topicContext: null`，handler 另加「今天」段）。所以：
+> - 下面的 `legacy` 臂只是「改前」對照，不再是 production 路徑；而且角度清單是兩臂共用的，在這個版本上它也不是完整的改前基準。要拿真正的改前基準，請 checkout `7c5cc523` 跑。
+> - 兩臂都還沒有「v2.3＋沒帶 topicContext」這一條。要評基本模式，先照規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6.1 改版工具。
+
 ## 兩臂
 
 | 臂 | 系統提示詞 | 使用者提示詞 | 看得到什麼 |

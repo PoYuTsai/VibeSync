@@ -31,8 +31,8 @@ export function hasAnalyzeChatPromptLeak(
 }
 
 /**
- * 新話題進階路徑的 sentinel 只在進階路徑檢查：沒帶 topicContext 的請求與
- * 其他模式的守門維持原樣（legacy 不變）。
+ * 新話題提示詞（基本與進階共用，ADR #51）多一條自己的 sentinel；其他模式的
+ * 守門維持原樣。
  */
 export const NEW_TOPIC_TWO_STAGE_PROMPT_SENTINELS: readonly string[] = [
   "照類型決定主詞，不改主詞",

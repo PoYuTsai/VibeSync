@@ -272,6 +272,11 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走�
   assertEquals(result.modelRequests.length, 1);
   const [request] = result.modelRequests;
   assertEquals(request.system[0].text, NEW_TOPIC_TWO_STAGE_PROMPT);
+  // handler 帶台灣時間的「今天」；從實際送出的內容取出日期再比對整份。
+  const today = request.messages[0].content.match(
+    /## 今天（台灣時間）\n(\d{4} 年 \d{1,2} 月 \d{1,2} 日（週[一二三四五六日]）)。/,
+  )?.[1];
+  assert(today, "基本模式也要帶「今天」段");
   assertEquals(
     request.messages[0].content,
     buildNewTopicTwoStageUserPrompt({
@@ -280,6 +285,7 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走�
       situation: "went_cold",
       topicContext: null,
       requestId: REQUEST_ID,
+      today,
     }),
   );
   assertFalse(request.messages[0].content.includes("## 用戶手上的素材"));
@@ -293,6 +299,13 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走�
   assertEquals(audit.promptVersion, "new-topic-v2.3");
   assertEquals(audit.materialUsedInRecommended, null);
   assertEquals(audit.redCloseApplied, false);
+});
+
+Deno.test("handler：基本模式 settle 被先完成者搶先（回放）→ 不記品質稽核", async () => {
+  const result = await run(body(), undefined, false);
+  assertEquals(result.status, 200);
+  assert(result.logMetadata.has("new_topic_settlement_replayed"));
+  assertFalse(result.logMetadata.has("new_topic_two_stage_audit"));
 });
 
 Deno.test("handler：素材原文命中粗俗詞 → 422，不碰 DB／限流／模型", async () => {
@@ -706,6 +719,7 @@ Deno.test("handler：ai_logs 一次成功只記一列主呼叫，request_body �
     tier: "essential",
     usageComplete: false,
     promptVariant: "advanced",
+    promptVersion: "new-topic-v2.3",
   });
   const serialized = JSON.stringify(result.aiCallRows);
   assertFalse(serialized.includes("小雅"));
@@ -762,6 +776,7 @@ Deno.test("handler：修復後仍不合格 → 失敗事件帶 requestId、提�
   assert(invalid, "new_topic_response_invalid 必須記錄");
   assertEquals(invalid.requestId, REQUEST_ID);
   assertEquals(invalid.promptVariant, "advanced");
+  assertEquals(invalid.promptVersion, "new-topic-v2.3");
   assert(typeof invalid.elapsedMs === "number" && invalid.elapsedMs >= 0);
   const serialized = JSON.stringify(invalid);
   assertFalse("partnerSummary" in invalid);
@@ -805,6 +820,7 @@ Deno.test("handler：新話題 sentinel 基本與進階都擋（共用提示詞 
   assertEquals(basic.status, 502);
   assertEquals(basic.json.shouldChargeQuota, false);
   assertFalse(basic.dbCalls.includes("rpc:settle_new_topic_request"));
+  assert(basic.dbCalls.includes("rpc:release_new_topic_claim"));
   const advanced = await run(
     body({ topicContext: STORY }),
     "true",

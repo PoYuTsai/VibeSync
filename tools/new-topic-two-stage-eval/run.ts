@@ -241,7 +241,8 @@ export async function buildPlan(
           requestId,
           situation: c.situation,
           topicContext,
-          // 逐欄同 handler 的 newTopicGroundingPolicy：legacy 的 topicContext 是 null，所以也沒有素材豁免。
+          // 逐欄同 handler 的 newTopicGroundingPolicy：legacy 臂的 topicContext 是 null，所以也沒有素材豁免。
+          // ADR #51 起 production 基本模式也走 v2.3（two_stage 提示詞、topicContext null），legacy 臂只是「改前」對照。
           grounding: {
             allowSharedFrame: allowsNewTopicSharedFrame({
               partnerSummary: req.partnerSummary,
@@ -319,7 +320,7 @@ export type Inspection = {
 };
 
 export function inspectOutput(call: PlannedCall, raw: string): Inspection {
-  // 與 handler 同組：進階臂多查進階 sentinel（依臂判斷，兩臂都帶 topicContext 供稽核）。
+  // 進階臂多查新話題 sentinel（依臂判斷，兩臂都帶 topicContext 供稽核）；ADR #51 起 handler 兩種模式都查。
   const promptLeak = call.arm === "legacy"
     ? hasAnalyzeChatPromptLeak(raw)
     : hasNewTopicTwoStagePromptLeak(raw);
@@ -340,7 +341,7 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
       audit: null,
     };
   }
-  // 同 handler：只有進階路徑（兩段式臂）套紅燈收尾保證；legacy 照模型。
+  // 同 handler：只有帶 topicContext 的進階路徑（兩段式臂）套紅燈收尾保證；legacy 照模型。
   const enforced = call.arm === "two_stage"
     ? enforceNewTopicRedClose(normalized, {
       situation: call.situation,

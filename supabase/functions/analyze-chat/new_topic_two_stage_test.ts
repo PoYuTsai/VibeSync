@@ -31,6 +31,7 @@ import {
   NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   newTopicGapMentionAllowed,
+  newTopicTodayLabel,
   type NewTopicTopicContext,
   newTopicTwoStageTelemetry,
   sanitizeNewTopicTopicContext,
@@ -849,7 +850,7 @@ Deno.test("user prompt：素材段（類型標籤、規則行、有原文才有�
   assert(noMaterial.includes("## 本輪換個方向（可以不用，不得照抄）："));
   assert(
     noMaterial.includes(
-      "五題裡最多一題從這裡發想，而且要接得上她或用戶自己的日常；接不上就不用。",
+      "五題裡最多一題從這裡發想，而且要接得上她或用戶自己的日常；接不上就不用，也不編用戶在做、在聽或在追什麼。",
     ),
   );
   assert(
@@ -924,6 +925,66 @@ Deno.test("user prompt（基本模式）：沒帶 topicContext → 局面只有�
       }),
     );
   }
+});
+
+Deno.test("今天：台灣時間的日期與星期（跨午夜照台灣算）", () => {
+  // 2026-10-04 15:59 UTC＝台灣 10/4（週日）23:59；16:30 UTC＝台灣 10/5（週一）00:30。
+  assertEquals(
+    newTopicTodayLabel(Date.UTC(2026, 9, 4, 15, 59)),
+    "2026 年 10 月 4 日（週日）",
+  );
+  assertEquals(
+    newTopicTodayLabel(Date.UTC(2026, 9, 4, 16, 30)),
+    "2026 年 10 月 5 日（週一）",
+  );
+  assertEquals(
+    newTopicTodayLabel(Date.UTC(2027, 0, 1, 3, 0)),
+    "2027 年 1 月 1 日（週五）",
+  );
+});
+
+Deno.test("user prompt：給 today 才有「今天」段，放在局面與素材之後、換個方向之前", () => {
+  const input = {
+    partnerSummary: null,
+    effectiveStyleContext: null,
+    situation: "went_cold" as const,
+    topicContext: null,
+    requestId: REQUEST_ID,
+  };
+  const withToday = buildNewTopicTwoStageUserPrompt({
+    ...input,
+    today: "2026 年 10 月 5 日（週一）",
+  });
+  assert(
+    withToday.includes(
+      "\n\n## 今天（台灣時間）\n2026 年 10 月 5 日（週一）。提到季節、節日或星期幾要跟這天對得上；不必拿日期當開頭。\n",
+    ),
+  );
+  assert(
+    withToday.indexOf("## 這次的局面") < withToday.indexOf("## 今天"),
+  );
+  assert(
+    withToday.indexOf("## 今天") < withToday.indexOf("## 本輪換個方向"),
+  );
+  // 有素材原文時沒有換個方向段，「今天」接在素材段後面。
+  const withMaterial = buildNewTopicTwoStageUserPrompt({
+    ...input,
+    situation: "stuck",
+    topicContext: context(
+      { materialKind: "trigger", materialText: "一句筆記" },
+      "stuck",
+    ),
+    today: "2026 年 10 月 5 日（週一）",
+  });
+  assert(
+    withMaterial.indexOf("## 用戶手上的素材") < withMaterial.indexOf("## 今天"),
+  );
+  assertFalse(buildNewTopicTwoStageUserPrompt(input).includes("## 今天"));
+  assertFalse(
+    buildNewTopicTwoStageUserPrompt({ ...input, today: null }).includes(
+      "## 今天",
+    ),
+  );
 });
 
 Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () => {

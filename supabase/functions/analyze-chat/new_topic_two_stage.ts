@@ -573,6 +573,37 @@ function situationRules(
   }
 }
 
+const TAIPEI_DATE_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Taipei",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+});
+const WEEKDAY_LABELS: Record<string, string> = {
+  Mon: "一",
+  Tue: "二",
+  Wed: "三",
+  Thu: "四",
+  Fri: "五",
+  Sat: "六",
+  Sun: "日",
+};
+
+/**
+ * 使用者提示詞的「今天」（台灣時間）。提示詞要每句看得出為什麼現在說，模型
+ * 卻不知道日期，會從作戰板的最後互動日期猜季節（ADR #51 預審 P2-2）。
+ */
+export function newTopicTodayLabel(nowMs: number): string {
+  const parts: Record<string, string> = {};
+  for (const part of TAIPEI_DATE_PARTS.formatToParts(new Date(nowMs))) {
+    parts[part.type] = part.value;
+  }
+  return `${parts.year} 年 ${parts.month} 月 ${parts.day} 日（週${
+    WEEKDAY_LABELS[parts.weekday]
+  }）`;
+}
+
 /** 基本模式（請求沒帶 topicContext）＝兩題都沒答。 */
 const EMPTY_TOPIC_CONTEXT: NewTopicTopicContext = {
   coldDuration: null,
@@ -593,6 +624,8 @@ export function buildNewTopicTwoStageUserPrompt(input: {
   situation: NewTopicSituation | null;
   topicContext: NewTopicTopicContext | null;
   requestId: string;
+  /** newTopicTodayLabel 的結果；不給就不放「今天」段（評測工具、測試）。 */
+  today?: string | null;
 }): string {
   const situation = input.situation;
   const topicContext = input.topicContext ?? EMPTY_TOPIC_CONTEXT;
@@ -661,14 +694,23 @@ export function buildNewTopicTwoStageUserPrompt(input: {
     }
   }
 
+  if (input.today) {
+    lines.push(
+      "",
+      "## 今天（台灣時間）",
+      `${input.today}。提到季節、節日或星期幾要跟這天對得上；不必拿日期當開頭。`,
+    );
+  }
+
   if (materialText === null) {
     lines.push(
       "",
       `## 本輪換個方向（可以不用，不得照抄）：${
         pickNewTopicAngle(input.requestId)
       }`,
-      "五題裡最多一題從這裡發想，而且要接得上她或用戶自己的日常；接不上就不用。" +
-        "它只用來避免連續生成撞題，不是題目本身——不要把這個標題原樣寫進任何可見欄位。",
+      "五題裡最多一題從這裡發想，而且要接得上她或用戶自己的日常；接不上就不用，" +
+        "也不編用戶在做、在聽或在追什麼。它只用來避免連續生成撞題，" +
+        "不是題目本身——不要把這個標題原樣寫進任何可見欄位。",
     );
   }
 
