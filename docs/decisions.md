@@ -825,7 +825,7 @@
 
 ## ADR #31 — [2026-07-24] Opener Free 解鎖三型（contract v2）＋新話題破冰腦力（固定 3 則、exactly-once）
 
-**狀態**: 🟢 Active — 實作完成，待 Codex 審查與部署
+**狀態**: 🟢 Active — 實作完成，待 Codex 審查與部署；決定 2 的「Free 由 server 投影只回最推薦一題」由 ADR #52 取代（提案，Eric 核可後生效）
 
 **取代**: ADR #7 條目 4「Free 只有延展」的 Opener 部分（analyze 的 Free 兩型維持 2026-07-17 決定不變）。
 
@@ -1186,7 +1186,7 @@
 
 **做法**：請求選填 `topicContext`（冷了多久、怎麼停、她的投入程度、素材類型與一句原文）。沒有 `topicContext` 的請求（舊版 App、只選第一問或全部不選）走原本提示詞逐字不變；有的才走進階提示詞，每次只送跟答案有關的幾條規則。用戶那句不進 DB，只進既有 HMAC 重放指紋。新加的品質檢查（素材有沒有被用到、冷掉時提空窗、邀約、道歉、emoji）只記錄不擋。開關關時新版 App 提示改用基本模式，不丟掉用戶寫的那句。
 
-**不變**：DB／migration、帳本、扣費、結果格式、Free 只看推薦一題、限流、串流。
+**不變**：DB／migration、帳本、扣費、結果格式、Free 只看推薦一題（由 ADR #52 取代，提案中）、限流、串流。
 
 **未決**：Bruce 文案審閱；付費真模型實測（Eric 說「跑」才跑，先估價）；Bruce 盲測；iPhone 走四種狀況與至少三種素材。
 
@@ -1241,3 +1241,27 @@
 **付費規則**: 實作前不花錢。合併前的 P2 bakeoff 要先在 PR 列參數與預估金額，等 Eric 說「跑」才跑；P1、P3 這次不跑。
 
 **延後（另案）**: E（矛盾分類的淨值上限）、B2（保留小額提示獎勵）、C（分類器把 neutral 拆成兩種）、F2（Game 不套難度倍率）、G3～G5（App 顯示時機、原因、±0 顏色與「升溫 N」名稱）、嫌疑 4 的分類器 prompt、`questionPressureScore` 改成只看最近幾輪。
+
+## ADR #52 — [2026-10-05] 新話題對所有方案開放完整五題，照常每次扣 3 則
+
+**狀態**: 🟡 提案（Bruce 2026-10-05 交辦「開放免費用戶跟付費用戶一樣能用 Token 使用『新話題』的所有功能」），PR 待 Eric 審查與決定；這是付費與額度的決定，照 `AGENTS.md` 由 Eric 拍板。部分取代 ADR #31 決定 2 的「Free 由 server 投影只回最推薦一題」，以及 ADR #48「不變」清單的「Free 只看推薦一題」。
+
+**背景**: 新話題在各方案之間只差伺服器投影這一處。所有方案都生成五題、成功都扣 3 則，Free 只回推薦那一題，另外四題文字不出 server（ADR #31）。進階輸入（局面、素材）、限流（3 次／分、30 次／日）與模型都不分方案。這裡的 Token 就是訊息額度「則」，新話題沒有另外的 token 計費。
+
+**決定**:
+
+1. **所有方案都拿完整五題**（推薦在前），每次成功照常扣 3 則。Free 仍受 Free 額度約束：月 30 則、日 15 則，與分析等功能共用；只用新話題的話，每月最多 10 次、每天最多 5 次。額度不足時一樣回 429 並開付費牆。
+2. **Free 的五題以 `starter` 投影落帳**。帳本 CHECK `new_topic_requests_result_state_consistency`、`validate_new_topic_result`、TS 的 ledger 驗證與已上架的 App 都只認「free＝一題」的形狀。用 starter 標籤就不必加 migration，舊版 App 不用更新就看得到五題，也不會出現「升級解鎖」卡。
+3. **log**：`new_topic_success` 的 `servedTier` 記投影（Free 用戶是 `starter`），另加 `subscriptionTier`。`subscriptionTier` 記當次的有效方案（`effectiveTier` 正規化，測試帳號記 `essential`），`new_topic_replay_hit` 也帶。看各方案用量請用 `subscriptionTier`。
+4. **free 投影的程式與驗證留著**，與 DB CHECK 一致。改版前 24 小時內落帳的一題結果照常回放，不會變成 409 或 503。
+
+**不變**: 扣 3 則、額度關卡與 429、限流、模型、帳本與重放、結果格式、App、DB／migration。
+
+**代價與風險**:
+
+- 模型成本不變，本來就生成五題。
+- 付費誘因少一項（新話題的「升級可再解鎖另外 4 個話題」）。
+- 帳本裡的 `servedTier` 不再等於訂閱方案。帳本只留 24 小時；要分析方案請看 log 的 `subscriptionTier`。
+- App 的 Free 升級卡只剩舊結果回放時會出現，程式可另案清掉。
+
+**未決**: Eric 決定要不要開放。另案：清掉 App 升級卡與 DB 的 free 分支，同時在 App 的 `NewTopicAccess.servedTier` 註明它描述的是結果形狀、不是訂閱方案，免得之後被拿來判斷權益。
