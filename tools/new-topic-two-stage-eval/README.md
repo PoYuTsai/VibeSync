@@ -1,65 +1,62 @@
-# 新話題兩段式評測
+# 新話題成對評測（改前 vs 改後）
 
-比較同一組情境下，新話題的**舊版**（只送狀況）和**兩段式**（先問局面＋素材再生成）寫出來的五題。對應提案 `docs/plans/2026-09-29-new-topic-two-stage-plain.md` §10「怎麼算成功」。
+比較同一組情境下，**改前**（base）和**改後**（cand）的 production 寫出來的五題，給規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6 的盲測與驗收門檻用（ADR #51）。
 
-預設是 dry-run：不打模型、不讀金鑰、不連網、不跑 git。要花錢的真跑，必須 Eric 說「跑」之後才下指令。
-
-> **2026-10-05（ADR #51）注意**：production 的基本模式（沒帶 `topicContext`）也改走 `NEW_TOPIC_TWO_STAGE_PROMPT`（v2.3）＋`buildNewTopicTwoStageUserPrompt`（`topicContext: null`，handler 另加「今天」段）。所以：
-> - 下面的 `legacy` 臂只是「改前」對照，不再是 production 路徑；而且角度清單是兩臂共用的，在這個版本上它也不是完整的改前基準。要拿真正的改前基準，請 checkout `7c5cc523` 跑。
-> - 兩臂都還沒有「v2.3＋沒帶 topicContext」這一條。要評基本模式，先照規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6.1 改版工具。
+預設是 dry-run：不打模型、不讀金鑰、不連網；會跑 git（`rev-parse`、`archive`）取出改前版本。要花錢的真跑，必須 Eric 當次說「跑」之後才下指令。
 
 ## 兩臂
 
-| 臂 | 系統提示詞 | 使用者提示詞 | 看得到什麼 |
-|---|---|---|---|
-| `legacy` | `NEW_TOPIC_PROMPT` | `buildNewTopicUserPrompt` | 對象資料＋狀況（沒有局面追問、沒有素材） |
-| `two_stage` | `NEW_TOPIC_TWO_STAGE_PROMPT` | `buildNewTopicTwoStageUserPrompt` | 對象資料＋狀況＋局面＋素材 |
+| 臂 | 是什麼 | 提示詞從哪來 |
+|---|---|---|
+| `base` | 改前的 production，預設 `7c5cc523`（ADR #51 之前的 main） | 用 `git archive` 把那一版的 `supabase/functions` 取到暫存目錄，照當時 handler 的路由組：沒帶 `topicContext` 走 `NEW_TOPIC_PROMPT`＋`buildNewTopicUserPrompt`（外洩守門 `hasAnalyzeChatPromptLeak`、不套紅燈收尾），帶了走進階 v1 |
+| `cand` | 目前工作樹的 production | `planNewTopicPrompt`：handler 呼叫同一個函式，所以提示詞、今天的日期、外洩守門、grounding、紅燈收尾規則都跟線上一致；「今天」用 `--now` 固定時間 |
 
-- 預設兩臂都跑；`--arms=two_stage`（或 `legacy`）只跑一臂，呼叫數與費用跟著減半，沒有盲測。
-- 提示詞全部從 `supabase/functions/analyze-chat/` import，沒有複製；改 production 就是改這裡。
-- 每個案例先過 production 的 `sanitizeNewTopicRequest`，組合不合法（例如冷掉了卻帶燈號）會直接報錯。
-- 同一案例同一次重複的兩臂用同一個 requestId，所以拿到同一個「本輪內容素材」角度（兩段式有素材原文時不送角度，跟 production 一樣）。
-- 模型 `claude-sonnet-5`、`max_tokens` = `NEW_TOPIC_MAX_TOKENS`、thinking 關閉（production 對 Sonnet 5 的契約）、不用 prompt cache。
-- 整理結果走跟 handler 一樣的 `parseJsonObjectFromText` → `normalizeNewTopicModelPayload`（grounding policy 逐欄同 handler 的 `newTopicGroundingPolicy`：`allowsNewTopicSharedFrame`＋兩段式帶 `userMaterialText`＝素材原文，用戶自己寫的內部代碼字如 stuck 不算外洩；legacy 的 topicContext 是 null，沒有這個豁免）→ 外洩檢查 → 兩段式臂再套 production 的紅燈收尾保證 `enforceNewTopicRedClose`（還在聊／想更靠近＋她常只回哈哈、嗯時推薦固定第一題、理由換成固定句 `NEW_TOPIC_RED_CLOSE_REASON`；legacy 臂照模型）。records 的 `recommendationIndex` 是用戶實際看到的推薦，`modelRecommendationIndex` 是模型自己推的那題。**不做修格式那一次呼叫**，格式失敗就照實記失敗。
-- 不經 Edge、DB、串流、扣費；只有模型呼叫是真的。
+- 同一案例同一次重複的兩臂用**同一個 requestId**。角度照各自那一版的清單選，基準保留改前真實的角度清單。
+- 模型與參數照 production 主呼叫：`NEW_TOPIC_MODEL`、`maxTokensFor(...)`、`modelRequestParams(...)`（Sonnet 5 thinking 關閉）、system 用快取區塊、同一組 header。`run_test.ts` 會攔下 `fallback.ts` 第一跳實際送出的 body 和 header，跟 `requestBody` 比對。
+- 不做修格式那一次呼叫、不串流、不走備援，也不經 Edge、DB、扣費；格式失敗就照實記失敗，另外標出「只壞在解釋欄」的（production 修格式會逐字保留開場句）。
+- `--arms=base` 或 `--arms=cand` 可以只跑一臂（沒有盲測）。`--base-ref` 只收 commit SHA。
 
-## 案例（`cases.json`，12 組）
+## 案例（`cases.json` v2，22 組）
 
-E1–E3 是提案 §7 的三個例子；其餘每種狀況、各種燈號／冷掉追問、五種素材（含「沒有，幫我想」）都至少一組。對象資料用三份固定的人工作戰板，格式照 `NewTopicPartnerContextBuilder`；C3 刻意沒有對象資料。「關於我」已停用，一律不送。
+| 組 | 模式 | 看什麼 |
+|---|---|---|
+| B1、B2 | 基本，什麼都不選 | 最常見；B2 是工作資訊多、沒有互虧依據（最接近截圖） |
+| B3 | 基本，只選想更靠近 | 作戰板寫「聊天常互虧」：玩笑要還在 |
+| B4 | 基本，只選冷掉了 | 沒有對象資料、不提空窗 |
+| B5、B6 | 基本，只選狀況 | 還在聊接不下去；剛約完會（不編約會細節、不約下次） |
+| N1、N2 | 進階，素材「幫我想」 | 不硬編；投入普通時輕、好接 |
+| J1 | 進階，你們之間的梗 | 有依據時玩笑對抗仍可用 |
+| T1 | 進階，冷掉了＋看到想到她的東西 | 自然的問句不被改成判斷 |
+| E1–E3、C1–C5、S1、D1、D2、W1 | 進階 | 提案的例子、各種冷掉追問、燈號、五種素材；E2、W1 是紅燈收尾 |
+
+對象資料用三份固定的人工作戰板，格式照 `NewTopicPartnerContextBuilder`；B4、C3 沒有對象資料。「關於我」已停用，一律不送。每個案例都先過 production 的 `sanitizeNewTopicRequest` 與 `hasNewTopicMaterial`。
 
 ## dry-run（不花錢）
 
 在 repo 根目錄（WSL）執行：
 
 ```sh
-deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/out \
-  tools/new-topic-two-stage-eval/run.ts --repeat=1 --tag=dry-run-r1
+deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+  tools/new-topic-two-stage-eval/run.ts --tag=nt3-dry --repeat=2
 ```
 
-只跑兩段式臂、只看紅燈收尾兩組（E2、W1）重複兩次＝4 次呼叫：
+在 `out/<tag>/` 寫 `manifest.json`（兩臂的 HEAD、提示詞與案例 sha256、模型參數、估算）、`system-prompts.json`（每份系統提示詞全文，以 sha256 為鍵）、`prompts.json`（每次呼叫的使用者提示詞），最後印出呼叫數與費用估算。同名輸出目錄已存在會拒絕執行，不覆寫任何證據。
+
+**費用估算方式**（保守、不算快取折扣）：input＝（系統＋使用者提示詞字數）×1.5；output 一般每次 1,200、最壞每次 `max_tokens` 全滿。單價取 `_shared/model_pricing.ts` 的 `SONNET_5_PRICING`（$2/M in、$10/M out）。22 組 × 2 次 × 2 臂＝88 次呼叫，一般約 $2.38、最壞約 $3.97。
+
+## 真跑（要 Eric 當次說「跑」）
 
 ```sh
-deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/out \
-  tools/new-topic-two-stage-eval/run.ts --tag=dry-red --only=E2,W1 --repeat=2 --arms=two_stage
-```
-
-會印出兩份系統提示詞全文、每次呼叫的使用者提示詞全文，最後是呼叫數與費用估算；另在 `out/<tag>/` 寫 `manifest.json`、`prompts.json`。同名輸出目錄已存在會拒絕執行，不覆寫任何證據。
-
-**費用估算方式**（保守）：input＝（系統＋使用者提示詞字數）×1.5（本機估算對中文會少算 10–20%）；output 一般每次 1,200、最壞每次 `max_tokens` 全滿。單價取 `_shared/model_pricing.ts` 的 `SONNET_5_PRICING`（$2/M in、$10/M out）。1 次重複＝24 次呼叫，一般約 $0.61、最壞約 $1.04。
-
-## 真跑（要 Eric 說「跑」）
-
-```sh
-deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/out \
-  --allow-run=git --allow-env=HOME --allow-net=api.anthropic.com \
-  tools/new-topic-two-stage-eval/run.ts --tag=nt2-r1 --repeat=1 \
-  --run --confirm-paid --max-calls=24 --budget-usd=1.5
+deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+  --allow-env=HOME --allow-net=api.anthropic.com \
+  tools/new-topic-two-stage-eval/run.ts --tag=nt3 --repeat=2 \
+  --run --confirm-paid --max-calls=88 --budget-usd=4.5
 ```
 
 守門：
 
 - `--run --confirm-paid --max-calls --budget-usd` 少一個就拒絕啟動。這些是技術守門，不能取代 Eric 的授權。
-- 追蹤檔有未提交修改就拒絕（結果要能對應工程 HEAD）。
+- 追蹤檔有未提交修改就拒絕（結果要能對應工程 HEAD）。金鑰讀 `~/.config/anthropic/key`。
 - 每次送出前用最壞情況（字數×1.5＋`max_tokens` 全滿）預檢，超過預算或次數上限就整批停，剩下的記 `NOT_RUN_CAP_OR_STOP`。
 - API 失敗或沒回 usage：成本當最壞情況計入，並停止後續呼叫，不當免費。
 - 送出前後都寫 `requests.jsonl`，每次回來就重寫 `records.json`，中斷不會靜默重送。
@@ -68,33 +65,51 @@ deno run --no-prompt --allow-read --allow-write=tools/new-topic-two-stage-eval/o
 
 | 檔案 | 內容 |
 |---|---|
-| `records.json` | 每次呼叫的提示詞、模型原文、usage、費用、整理結果、稽核數字 |
-| `summary.md` | 費用、§10 機械檢查表、紅燈收尾表 |
-| `blind_ab.md` | 給 Bruce 的盲測：每組兩版依 seed 打亂成甲／乙，只露五句 openingLine 和推薦星號 |
-| `reveal-map.json` | 解盲表（哪一版是甲、乙）；**不要跟 blind_ab.md 一起給 Bruce** |
-| `manifest.json` | 模型、HEAD、提示詞與案例的 sha256、單價、估算、參數 |
+| `records.json` | 每次呼叫的使用者提示詞、模型原文、usage（含快取）、費用、整理結果、字面計數 |
+| `summary.md` | 費用、兩臂（全部／基本／進階）的機械指標、規格 §6.5 第 5、6 項門檻 |
+| `blind_ab.md` | 給 Bruce：每組兩版依 seed 打亂成甲／乙，只露五句和 ★，附評分欄 |
+| `blind_star.md` | 給 Bruce：同一組只看 ★ 那一句（Free 只看得到這一句） |
+| `explanations_blind.md` | 給 Bruce：★ 那一題的標題、為什麼現在有效、她回了之後、推薦理由 |
+| `reveal-map.json` | 解盲表（哪一版是甲、乙）；**不要跟盲測檔一起給 Bruce** |
+| `manifest.json` | 跑完後另加實際呼叫數、費用與指標 |
 
-## §10 機械檢查
+## 盲測與驗收
 
-用 production 的 `auditNewTopicTwoStageTopics`（只記錄不擋的同一套字面規則）計數，只看兩段式是否過關；舊版用同一份用戶回答稽核，當對照基準：
+1. 把三份盲測檔給 Bruce，每個「＿」換成答案（甲乙之間用全形分號「；」）。全部填完才看 `reveal-map.json`。
+2. 執行 `deno run --allow-read --allow-write tools/new-topic-two-stage-eval/tally.ts --tag=nt3`。任何一格沒填或格式不對就拒絕，不會把沒填的當通過。
+3. `out/<tag>/acceptance.md` 會列出規格 §6.5 每一項：
+   - 第 1–4 項來自盲測：捏造／越界、尷尬句、★ 尷尬、願意直接傳、★ 會直接傳、有趣，以及 B3、J1、E3 必須有趣。
+   - 第 5、6 項來自 `records.json` 的機械計數。
+   - 第 1 項另要逐筆看 `records.json`。
 
-- 有寫素材時，推薦題用到素材 ≥ 90%：分母是這一臂**所有有素材的呼叫**，沒跑到、API 失敗、格式壞、外洩都算沒用到；分母 0 顯示「未評估」，不是過關。只看可交付輸出的條件比率另列一行，僅供參考、不判過關
-- 「她沒回我」：提到空窗的句子 0
-- 「我沒回她」：同一題 openingLine（可能分兩則傳）裡道歉詞（抱歉／不好意思／對不起／sorry）出現超過一次的題數 0；五題是備選、不是一起傳，所以不跨題加總
-- 紅燈：第一則邀約 0；冷掉了：第一則邀約 0
-- 「在嗎」「最近好嗎」這類 0
+## 機械指標
 
-## 紅燈收尾（規格 §9.4）
+只看可交付的輸出；失敗會列在「可交付／輸出」，也算進素材比率的分母，不從分母偷偷刪掉：
 
-只算還在聊／想更靠近＋她常只回哈哈、嗯（E2、W1）的可交付輸出：模型自己推第一題幾次、第一題 openingLine 有收尾字眼（先去忙｜晚點｜改天｜下次｜再跟妳／你｜先這樣｜報告｜先睡｜先忙｜回頭再｜有空再）幾次、伺服器改推第一題幾次。legacy 欄只當對照，不套伺服器保證。第一題讀起來像不像收尾、有沒有留下次可以接的點，要人工看 records。
+- **規格 §4.6 的六項字面計數**：問句、一則兩個以上問句、假設情境、安排角色、貼標籤或說她是哪種人、比能力。另外觀察宣告套話（「我有個…」「這點我不退讓」）。五題全算一次，★ 那一題另外算。
+- **開場句字數**：中位數、P90、超過 35 字的句數。
+- **近似重句**：同案例第 1、2 次之間的句子對，二字詞 Jaccard ≥ 0.5 算一對。
+- **★ 標題的手法字**、**★ 解釋夾英文**：素材或作戰板原本就有的英文名稱不算。
+- **production 稽核同一套規則**：推薦題用到素材、她沒回我提空窗、我沒回她同題道歉超過一次、紅燈／冷掉了／基本模式的邀約字眼（D9）、在嗎類開場、紅燈收尾（模型自己推第一題、伺服器改推）。
 
-這些是字面計數，不是語意正確率。失敗（格式壞、外洩）不算進句數，但會列在「可交付／模型有回」，也算進素材比率的分母，不從分母偷偷刪掉。「不捏造」「不加曖昧」「願意直接傳、最想傳不輸舊版」要靠 `blind_ab.md` 人工盲測。
+這些是字面計數，只看趨勢，不是語意判定；用戶講自己的句子也可能被算進去。「不捏造」「願意直接傳」「有趣」要靠盲測。
 
 ## 測試
 
 ```sh
-deno check tools/new-topic-two-stage-eval/run.ts
-deno test --allow-read tools/new-topic-two-stage-eval/run_test.ts
+deno check tools/new-topic-two-stage-eval/run.ts tools/new-topic-two-stage-eval/tally.ts
+deno test --allow-env --allow-read tools/new-topic-two-stage-eval/run_test.ts
 ```
 
-`run_test.ts` 只測純函式（參數守門、`--arms`、案例合法、兩臂提示詞、估算、§10 計數、紅燈收尾保證與計數、盲測打亂），不打模型、不寫檔。
+`run_test.ts` 不打模型、不跑 git、不寫檔。它測：
+- 參數守門。
+- 22 組案例都合法。
+- 候選路由等於 `planNewTopicPrompt`。
+- 基準路由照改前 handler（用工作樹裡還留著的舊版函式驗規則）。
+- 請求 body 與 header 等於 `fallback.ts` 實際送出的。
+- 外洩與紅燈收尾。
+- 只壞在解釋欄的判定。
+- 字面計數、近似重句、機械門檻。
+- 盲測打亂與計分。
+
+這支測試在 PR CI 的 Edge contract tests 裡。

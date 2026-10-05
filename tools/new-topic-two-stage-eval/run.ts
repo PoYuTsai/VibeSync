@@ -1,19 +1,28 @@
-// 新話題兩段式成對評測：舊版（只送狀況）vs 兩段式（局面＋素材）。local-only、付費。
+// 新話題成對評測（ADR #51）：改前（base）vs 改後（cand）。local-only、付費。
 //
-// 直接 import production 的 prompt 與純函式，不經 Edge／DB／串流／修格式；只有模型呼叫是真的。
-// 預設 dry-run：印出每次呼叫的完整 prompt 與保守費用估算；不讀金鑰、不連網、不跑 git。
-// 真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>，且 Eric 說「跑」之後才能下。
-// --arms=two_stage|legacy|both（預設 both）可以只跑一臂；兩段式臂套用 production 的紅燈收尾保證。
-// 指令與輸出說明見 README.md。
+// - base＝改前的 production（預設 7c5cc523）：用 git 取出那一版的 supabase/functions，照當時 handler 的
+//   路由組提示詞（沒帶 topicContext 走舊版提示詞、帶了走進階 v1；外洩守門與紅燈收尾也照當時）。
+// - cand＝目前工作樹的 production：提示詞、外洩守門、grounding 與紅燈收尾全部由 planNewTopicPrompt
+//   產生（handler 呼叫同一個函式）；「今天」用固定時間（--now），可重現。
+// - 兩臂同案例、同 requestId、同重複次數成對；模型、max_tokens、thinking 與 system 快取照 production
+//   主呼叫（requestBody 與 fallback.ts 送出的 body 相同，run_test 有比對）。不做修格式那一次呼叫。
+// 預設 dry-run：不打模型、不讀金鑰、不連網；會跑 git（rev-parse、archive）取出改前版本。
+// 真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>，且 Eric 當次說「跑」之後才能下。
+// 指令與輸出說明見 README.md；盲測填完後用 tally.ts 算驗收門檻。
 
 import catalog from "./cases.json" with { type: "json" };
+import { isPlainObject } from "../../supabase/functions/_shared/quota.ts";
+import {
+  maxTokensFor,
+  modelRequestParams,
+} from "../../supabase/functions/_shared/model_request_params.ts";
+import {
+  estimateCostUsd,
+  SONNET_5_PRICING,
+} from "../../supabase/functions/_shared/model_pricing.ts";
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
 import {
-  hasAnalyzeChatPromptLeak,
-  hasNewTopicTwoStagePromptLeak,
-} from "../../supabase/functions/analyze-chat/prompt_leak.ts";
-import {
-  allowsNewTopicSharedFrame,
+  hasNewTopicMaterial,
   type NewTopicGroundingPolicy,
   type NewTopicModelTopic,
   type NewTopicSituation,
@@ -21,41 +30,49 @@ import {
   sanitizeNewTopicRequest,
 } from "../../supabase/functions/analyze-chat/new_topic_payload.ts";
 import {
-  buildNewTopicUserPrompt,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
-  NEW_TOPIC_PROMPT,
+  NEW_TOPIC_MODEL,
 } from "../../supabase/functions/analyze-chat/new_topic_prompt.ts";
+import { planNewTopicPrompt } from "../../supabase/functions/analyze-chat/new_topic_prompt_plan.ts";
 import {
   auditNewTopicTwoStageTopics,
-  buildNewTopicTwoStageUserPrompt,
   enforceNewTopicRedClose,
   isNewTopicRedClose,
-  NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   type NewTopicTopicContext,
   type NewTopicTwoStageAudit,
 } from "../../supabase/functions/analyze-chat/new_topic_two_stage.ts";
-import {
-  estimateCostUsd,
-  SONNET_5_PRICING,
-} from "../../supabase/functions/_shared/model_pricing.ts";
+import { graphemeLength } from "../../supabase/functions/analyze-chat/opener_stage.ts";
 
-export type Arm = "legacy" | "two_stage";
-export const ARMS: readonly Arm[] = ["legacy", "two_stage"];
-export const MODEL = "claude-sonnet-5"; // 同 new_topic_handler.ts 的 newTopicModel
+export type Arm = "base" | "cand";
+export const ARMS: readonly Arm[] = ["base", "cand"];
+/** ADR #51 之前的 main：改前的真實行為（舊版基本模式提示詞、進階 v1、舊角度清單）。 */
+export const DEFAULT_BASE_REF = "7c5cc523";
+/** 候選的「今天」：固定時間才可重現（台灣時間 2026-10-05 週一中午）。 */
+export const DEFAULT_EVAL_NOW = "2026-10-05T12:00:00+08:00";
+export const MODEL = NEW_TOPIC_MODEL;
 // 本機字數估算對中文會少算 10–20%，所以 input 一律用「字數 × 1.5」保守估。
 export const CJK_TOKENS_PER_CHAR = 1.5;
 export const TYPICAL_OUTPUT_TOKENS = 1200;
 const API_TIMEOUT_MS = 60_000; // 同 handler 非串流路徑；超過 production 45 秒期限的另計
+/** 同 fallback.ts／streaming_fallback.ts 送出的 header。 */
+export const REQUEST_HEADERS = {
+  "content-type": "application/json",
+  "anthropic-version": "2023-06-01",
+  "anthropic-beta": "prompt-caching-2024-07-31",
+} as const;
+const REPO_ROOT = new URL("../../", import.meta.url);
 
 export type EvalCase = {
   id: string;
   source: string;
   label: string;
   partner: string | null;
-  situation: NewTopicSituation;
-  topicContext: Partial<Record<string, string>>;
+  /** null＝狀況沒選。 */
+  situation: NewTopicSituation | null;
+  /** null＝基本模式（請求不帶 topicContext）。 */
+  topicContext: Partial<Record<string, string>> | null;
 };
 export const CASES = catalog.cases as EvalCase[];
 export const PARTNERS = catalog.partners as Record<string, string>;
@@ -73,6 +90,9 @@ export type Options = {
   run: boolean;
   maxCalls: number | null;
   budgetUsd: number | null;
+  baseRef: string;
+  now: string;
+  nowMs: number;
 };
 
 const VALUE_FLAGS = [
@@ -83,6 +103,8 @@ const VALUE_FLAGS = [
   "arms",
   "max-calls",
   "budget-usd",
+  "base-ref",
+  "now",
 ];
 const BOOL_FLAGS = ["run", "confirm-paid"];
 
@@ -131,7 +153,24 @@ export function parseOptions(args: string[]): Options {
     ? ARMS
     : ARMS.filter((arm) => arm === armsRaw);
   if (arms.length === 0) {
-    throw new Error("--arms 只能是 two_stage、legacy 或 both");
+    throw new Error("--arms 只能是 base、cand 或 both");
+  }
+  // 基準只收 commit SHA：分支名會移動，結果就對不回真正的改前版本。
+  const baseRef = str("base-ref") ?? DEFAULT_BASE_REF;
+  if (!/^[0-9a-f]{7,40}$/.test(baseRef)) {
+    throw new Error("--base-ref 要是 7–40 位的 commit SHA");
+  }
+  // 時間要帶時區，「今天」才不會因為跑的機器不同而變。
+  const now = str("now") ?? DEFAULT_EVAL_NOW;
+  const nowMs = Date.parse(now);
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      now,
+    ) || !Number.isFinite(nowMs)
+  ) {
+    throw new Error(
+      "--now 要是帶時區的 ISO 時間，例如 2026-10-05T12:00:00+08:00",
+    );
   }
   const budgetRaw = str("budget-usd");
   const budgetUsd = budgetRaw === null ? null : Number(budgetRaw);
@@ -145,7 +184,7 @@ export function parseOptions(args: string[]): Options {
     (!values.has("confirm-paid") || maxCalls === null || budgetUsd === null)
   ) {
     throw new Error(
-      "真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>（Eric 授權後）",
+      "真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>（Eric 當次授權後）",
     );
   }
   return {
@@ -157,11 +196,215 @@ export function parseOptions(args: string[]): Options {
     run,
     maxCalls,
     budgetUsd,
+    baseRef,
+    now,
+    nowMs,
   };
 }
 
 // ---------------------------------------------------------------------------
-// 呼叫計畫：每案例 × 每次重複 × 選定的臂，prompt 全由 production 函式產生
+// 兩臂的路由：cand＝production 的 planNewTopicPrompt；base＝改前 handler 的路由
+// ---------------------------------------------------------------------------
+
+export type PlanInput = {
+  partnerSummary: string | null;
+  effectiveStyleContext: string | null;
+  situation: NewTopicSituation | null;
+  topicContext: NewTopicTopicContext | null;
+  requestId: string;
+};
+
+export type ArmPlan = {
+  system: string;
+  user: string;
+  hasPromptLeak: (text: string) => boolean;
+  grounding: NewTopicGroundingPolicy;
+  appliesRedClose: boolean;
+};
+
+export type ArmRouter = (input: PlanInput) => ArmPlan;
+
+/** 候選：handler 呼叫的同一個函式，只把「現在」換成固定時間。 */
+export function candRouter(nowMs: number): ArmRouter {
+  return (input) => {
+    const plan = planNewTopicPrompt({ ...input, nowMs });
+    return {
+      system: plan.system,
+      user: plan.user,
+      hasPromptLeak: (text) => plan.hasPromptLeak(text),
+      grounding: plan.grounding,
+      appliesRedClose: plan.appliesRedClose,
+    };
+  };
+}
+
+/** 改前那一版要用到的 export（從 git 取出的檔案動態載入）。 */
+export type BaseModules = {
+  NEW_TOPIC_PROMPT: string;
+  buildNewTopicUserPrompt: (input: {
+    partnerSummary: string | null;
+    effectiveStyleContext: string | null;
+    situation: NewTopicSituation | null;
+    requestId?: string;
+  }) => string;
+  NEW_TOPIC_TWO_STAGE_PROMPT: string;
+  buildNewTopicTwoStageUserPrompt: (input: {
+    partnerSummary: string | null;
+    effectiveStyleContext: string | null;
+    situation: NewTopicSituation | null;
+    topicContext: NewTopicTopicContext;
+    requestId: string;
+  }) => string;
+  hasAnalyzeChatPromptLeak: (text: string) => boolean;
+  hasNewTopicTwoStagePromptLeak: (text: string) => boolean;
+  allowsNewTopicSharedFrame: (input: {
+    partnerSummary: string | null;
+    situation: NewTopicSituation | null;
+    topicContext?: NewTopicTopicContext | null;
+  }) => boolean;
+};
+
+/**
+ * 7c5cc523 的 handler 路由（new_topic_handler.ts@7c5cc523：提示詞 :562-580、grounding :581-589、
+ * 外洩守門 :616-620、紅燈收尾 :761-770）：沒帶 topicContext 走舊版提示詞與 analyze-chat 共用的
+ * 外洩守門、不套紅燈收尾；帶了走進階 v1。
+ */
+export function baseRouter(m: BaseModules): ArmRouter {
+  return (input) => {
+    const grounding: NewTopicGroundingPolicy = {
+      allowSharedFrame: m.allowsNewTopicSharedFrame({
+        partnerSummary: input.partnerSummary,
+        situation: input.situation,
+        topicContext: input.topicContext,
+      }),
+      userMaterialText: input.topicContext?.materialText ?? null,
+    };
+    if (input.topicContext === null) {
+      return {
+        system: m.NEW_TOPIC_PROMPT,
+        user: m.buildNewTopicUserPrompt({
+          partnerSummary: input.partnerSummary,
+          effectiveStyleContext: input.effectiveStyleContext,
+          situation: input.situation,
+          requestId: input.requestId,
+        }),
+        hasPromptLeak: m.hasAnalyzeChatPromptLeak,
+        grounding,
+        appliesRedClose: false,
+      };
+    }
+    return {
+      system: m.NEW_TOPIC_TWO_STAGE_PROMPT,
+      user: m.buildNewTopicTwoStageUserPrompt({
+        partnerSummary: input.partnerSummary,
+        effectiveStyleContext: input.effectiveStyleContext,
+        situation: input.situation,
+        topicContext: input.topicContext,
+        requestId: input.requestId,
+      }),
+      hasPromptLeak: m.hasNewTopicTwoStagePromptLeak,
+      grounding,
+      appliesRedClose: true,
+    };
+  };
+}
+
+function requireExport<T>(
+  mod: Record<string, unknown>,
+  name: string,
+  kind: "string" | "function",
+): T {
+  const value = mod[name];
+  if (typeof value !== kind) {
+    throw new Error(`改前版本少了 ${name}（${kind}）：基準 ref 不對？`);
+  }
+  return value as T;
+}
+
+/** 從 materializeRef 取出的目錄載入改前模組。 */
+export async function loadBaseModules(root: URL): Promise<BaseModules> {
+  const dir = new URL("supabase/functions/analyze-chat/", root);
+  const load = (name: string) =>
+    import(new URL(name, dir).href) as Promise<Record<string, unknown>>;
+  const [prompt, twoStage, leak, payload] = await Promise.all([
+    load("new_topic_prompt.ts"),
+    load("new_topic_two_stage.ts"),
+    load("prompt_leak.ts"),
+    load("new_topic_payload.ts"),
+  ]);
+  return {
+    NEW_TOPIC_PROMPT: requireExport(prompt, "NEW_TOPIC_PROMPT", "string"),
+    buildNewTopicUserPrompt: requireExport(
+      prompt,
+      "buildNewTopicUserPrompt",
+      "function",
+    ),
+    NEW_TOPIC_TWO_STAGE_PROMPT: requireExport(
+      twoStage,
+      "NEW_TOPIC_TWO_STAGE_PROMPT",
+      "string",
+    ),
+    buildNewTopicTwoStageUserPrompt: requireExport(
+      twoStage,
+      "buildNewTopicTwoStageUserPrompt",
+      "function",
+    ),
+    hasAnalyzeChatPromptLeak: requireExport(
+      leak,
+      "hasAnalyzeChatPromptLeak",
+      "function",
+    ),
+    hasNewTopicTwoStagePromptLeak: requireExport(
+      leak,
+      "hasNewTopicTwoStagePromptLeak",
+      "function",
+    ),
+    allowsNewTopicSharedFrame: requireExport(
+      payload,
+      "allowsNewTopicSharedFrame",
+      "function",
+    ),
+  };
+}
+
+async function git(args: string[]): Promise<string> {
+  const result = await new Deno.Command("git", {
+    args,
+    cwd: REPO_ROOT,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (!result.success) {
+    throw new Error(`git ${args[0]} 失敗（exit ${result.code}）`);
+  }
+  return new TextDecoder().decode(result.stdout).trim();
+}
+
+/** 用 git archive 把那一版的 supabase/functions 取到暫存目錄（唯讀，不動工作樹）。 */
+export async function materializeRef(
+  ref: string,
+): Promise<{ sha: string; root: URL }> {
+  const sha = await git(["rev-parse", "--verify", `${ref}^{commit}`]);
+  const tmp = await Deno.makeTempDir({
+    prefix: `new-topic-eval-base-${sha.slice(0, 8)}-`,
+  });
+  const tarPath = `${tmp}/src.tar`;
+  await git([
+    "archive",
+    "--format=tar",
+    `--output=${tarPath}`,
+    sha,
+    "supabase/functions",
+  ]);
+  const untar = await new Deno.Command("tar", {
+    args: ["-xf", tarPath, "-C", tmp],
+  }).output();
+  if (!untar.success) throw new Error(`tar 失敗（exit ${untar.code}）`);
+  return { sha, root: new URL(`file://${tmp}/`) };
+}
+
+// ---------------------------------------------------------------------------
+// 呼叫計畫：每案例 × 每次重複 × 選定的臂
 // ---------------------------------------------------------------------------
 
 export type PlannedCall = {
@@ -169,13 +412,17 @@ export type PlannedCall = {
   caseId: string;
   attempt: number;
   arm: Arm;
+  mode: "basic" | "advanced";
   requestId: string;
-  situation: NewTopicSituation;
-  /** 用戶真實的回答（兩臂共用）；legacy 看不到，但稽核用同一份對照。 */
-  topicContext: NewTopicTopicContext;
+  situation: NewTopicSituation | null;
+  /** 用戶真實的回答；基本模式是 null。 */
+  topicContext: NewTopicTopicContext | null;
+  partnerSummary: string | null;
   grounding: NewTopicGroundingPolicy;
+  appliesRedClose: boolean;
   system: string;
   user: string;
+  hasPromptLeak: (text: string) => boolean;
 };
 
 export async function sha256(text: string): Promise<string> {
@@ -187,76 +434,72 @@ export async function sha256(text: string): Promise<string> {
     .join("");
 }
 
-/** 固定 requestId：同案例同次重複的兩臂拿到同一個本輪內容素材（角度），可重現。 */
-async function requestIdFor(caseId: string, attempt: number): Promise<string> {
+/** 固定 requestId：同案例同次重複的兩臂拿到同一個 requestId（角度跟著各版的清單），可重現。 */
+export async function requestIdFor(
+  caseId: string,
+  attempt: number,
+): Promise<string> {
   const h = await sha256(`new-topic-two-stage-eval:${caseId}:${attempt}`);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${
     h.slice(16, 20)
   }-${h.slice(20, 32)}`;
 }
 
+/** 走 production 的請求驗證：案例組合不合法（例如冷掉了卻帶燈號）直接拒絕。 */
+export function sanitizeCase(c: EvalCase, requestId: string) {
+  const partnerSummary = c.partner === null ? null : PARTNERS[c.partner];
+  if (partnerSummary === undefined) {
+    throw new Error(`案例 ${c.id} 的 partner 不存在`);
+  }
+  const body: Record<string, unknown> = { requestId };
+  if (partnerSummary !== null) body.partnerSummary = partnerSummary;
+  if (c.situation !== null) body.situation = c.situation;
+  if (c.topicContext !== null) body.topicContext = c.topicContext;
+  const sanitized = sanitizeNewTopicRequest(body);
+  if (!sanitized.ok) {
+    throw new Error(`案例 ${c.id} 不是合法請求：${sanitized.reason}`);
+  }
+  if ((c.topicContext === null) !== (sanitized.request.topicContext === null)) {
+    throw new Error(`案例 ${c.id} 的 topicContext 正規化後模式不對`);
+  }
+  if (!hasNewTopicMaterial(sanitized.request)) {
+    throw new Error(`案例 ${c.id} 沒有任何素材（production 會回 422）`);
+  }
+  return sanitized.request;
+}
+
 export async function buildPlan(
   cases: EvalCase[],
   repeat: number,
+  routers: Partial<Record<Arm, ArmRouter>>,
   arms: readonly Arm[] = ARMS,
 ): Promise<PlannedCall[]> {
   const plan: PlannedCall[] = [];
   for (const c of cases) {
-    const partnerSummary = c.partner === null ? null : PARTNERS[c.partner];
-    if (partnerSummary === undefined) {
-      throw new Error(`案例 ${c.id} 的 partner 不存在`);
-    }
     for (let attempt = 1; attempt <= repeat; attempt++) {
       const requestId = await requestIdFor(c.id, attempt);
-      // 走 production 的請求驗證：案例組合不合法（例如冷掉了卻帶燈號）直接拒絕。
-      const body = { requestId, partnerSummary, situation: c.situation };
-      const full = sanitizeNewTopicRequest({
-        ...body,
-        topicContext: c.topicContext,
-      });
-      const legacy = sanitizeNewTopicRequest(body);
-      if (!full.ok || !legacy.ok || full.request.topicContext === null) {
-        throw new Error(
-          `案例 ${c.id} 不是合法請求：${
-            full.ok
-              ? (legacy.ok ? "topicContext 空白" : legacy.reason)
-              : full.reason
-          }`,
-        );
-      }
-      const topicContext = full.request.topicContext;
+      const request = sanitizeCase(c, requestId);
       for (const arm of arms) {
-        const req = arm === "legacy" ? legacy.request : full.request;
-        const shared = {
-          partnerSummary: req.partnerSummary,
-          effectiveStyleContext: req.effectiveStyleContext,
-          situation: req.situation,
-          requestId: req.requestId,
-        };
+        const router = routers[arm];
+        if (!router) throw new Error(`沒有 ${arm} 臂的路由`);
+        const armPlan = router({
+          partnerSummary: request.partnerSummary,
+          effectiveStyleContext: request.effectiveStyleContext,
+          situation: request.situation,
+          topicContext: request.topicContext,
+          requestId,
+        });
         plan.push({
           key: `${c.id}.${attempt}.${arm}`,
           caseId: c.id,
           attempt,
           arm,
+          mode: request.topicContext === null ? "basic" : "advanced",
           requestId,
-          situation: c.situation,
-          topicContext,
-          // 逐欄同 handler 的 newTopicGroundingPolicy：legacy 臂的 topicContext 是 null，所以也沒有素材豁免。
-          // ADR #51 起 production 基本模式也走 v2.3（two_stage 提示詞、topicContext null），legacy 臂只是「改前」對照。
-          grounding: {
-            allowSharedFrame: allowsNewTopicSharedFrame({
-              partnerSummary: req.partnerSummary,
-              situation: req.situation,
-              topicContext: req.topicContext,
-            }),
-            userMaterialText: req.topicContext?.materialText ?? null,
-          },
-          system: arm === "legacy"
-            ? NEW_TOPIC_PROMPT
-            : NEW_TOPIC_TWO_STAGE_PROMPT,
-          user: arm === "legacy"
-            ? buildNewTopicUserPrompt(shared)
-            : buildNewTopicTwoStageUserPrompt({ ...shared, topicContext }),
+          situation: request.situation,
+          topicContext: request.topicContext,
+          partnerSummary: request.partnerSummary,
+          ...armPlan,
         });
       }
     }
@@ -264,8 +507,23 @@ export async function buildPlan(
   return plan;
 }
 
+/** production 主呼叫的 request body（同 fallback.ts 第一跳；不含串流與備援）。 */
+export function requestBody(call: Pick<PlannedCall, "system" | "user">) {
+  return {
+    model: MODEL,
+    max_tokens: maxTokensFor(MODEL, NEW_TOPIC_MAX_TOKENS),
+    system: [{
+      type: "text",
+      text: call.system,
+      cache_control: { type: "ephemeral" },
+    }],
+    messages: [{ role: "user", content: call.user }],
+    ...modelRequestParams(MODEL),
+  };
+}
+
 // ---------------------------------------------------------------------------
-// 費用估算
+// 費用估算（保守：不算快取折扣）
 // ---------------------------------------------------------------------------
 
 export function estimateInputTokens(
@@ -276,16 +534,21 @@ export function estimateInputTokens(
   );
 }
 
-export function usd(inputTokens: number, outputTokens: number): number {
+export function usd(
+  inputTokens: number,
+  outputTokens: number,
+  cacheReadInputTokens = 0,
+  cacheCreationInputTokens = 0,
+): number {
   return estimateCostUsd({
     inputTokens,
     outputTokens,
-    cacheReadInputTokens: 0,
-    cacheCreationInputTokens: 0,
+    cacheReadInputTokens,
+    cacheCreationInputTokens,
   }, SONNET_5_PRICING);
 }
 
-export function estimatePlan(plan: PlannedCall[]) {
+export function estimatePlan(plan: Pick<PlannedCall, "system" | "user">[]) {
   const inputTokens = plan.reduce(
     (n, call) => n + estimateInputTokens(call),
     0,
@@ -301,6 +564,100 @@ export function estimatePlan(plan: PlannedCall[]) {
 }
 
 // ---------------------------------------------------------------------------
+// 字面計數（規格 §4.6 的六項＋宣告套話；只看趨勢，不判單筆對錯）
+// ---------------------------------------------------------------------------
+
+export const LINE_PATTERNS = {
+  questionLines: /[?？]/u,
+  hypotheticalLines:
+    /如果(?:要|有一天|現在|我們|妳是|讓妳|給妳)|假如|假設|要是(?:妳|我們|讓妳)/u,
+  roleAssignLines: /妳負責|妳扮演|妳來演|派妳|分配給妳/u,
+  labelJudgmentLines:
+    /真實身分|另一個身分|分身|人設|妳(?:感覺|應該|一定|絕對|肯定|根本)(?:是|就是)|妳是哪一?種|哪種人|那種人/u,
+  abilityRankLines: /擅長|比較會|哪個比較強|誰比較厲害/u,
+  declarationLines:
+    /我有個|我只有一個原則|不退讓|不接受反駁|我站.{0,8}(?:這邊|那邊)|我投.{0,12}一票|沒得商量/u,
+} as const;
+
+export type LineCounts = Record<keyof typeof LINE_PATTERNS, number> & {
+  multiQuestionLines: number;
+};
+
+export function emptyLineCounts(): LineCounts {
+  return {
+    questionLines: 0,
+    multiQuestionLines: 0,
+    hypotheticalLines: 0,
+    roleAssignLines: 0,
+    labelJudgmentLines: 0,
+    abilityRankLines: 0,
+    declarationLines: 0,
+  };
+}
+
+export function countLines(lines: string[]): LineCounts {
+  const counts = emptyLineCounts();
+  for (const line of lines) {
+    for (const [key, pattern] of Object.entries(LINE_PATTERNS)) {
+      if (pattern.test(line)) counts[key as keyof typeof LINE_PATTERNS]++;
+    }
+    // 連續問號算一段（同 opener_pick.ts 的 questionCount）。
+    if ((line.match(/[?？]+/g) ?? []).length >= 2) counts.multiQuestionLines++;
+  }
+  return counts;
+}
+
+/** 規格 §6.5 第 5 項的四種尷尬句型。 */
+export function awkwardPatternLines(counts: LineCounts): number {
+  return counts.hypotheticalLines + counts.roleAssignLines +
+    counts.labelJudgmentLines + counts.abilityRankLines;
+}
+
+const STAR_TITLE_TECHNIQUE =
+  /分配|安排(?:她|一個)|讓她(?:反駁|澄清)|反差|測試她|角色/u;
+
+/** 解釋欄裡、輸入沒有的英文字（素材或作戰板原本就有的英文名稱不算）。 */
+export function explanationEnglish(
+  texts: string[],
+  inputText: string,
+): string[] {
+  const allowed = new Set(
+    (inputText.match(/[A-Za-z]{2,}/g) ?? []).map((w) => w.toLowerCase()),
+  );
+  return texts.flatMap((t) => t.match(/[A-Za-z]{2,}/g) ?? []).filter((w) =>
+    !allowed.has(w.toLowerCase())
+  );
+}
+
+/**
+ * 只有解釋欄不合格：把標題、whyItWorks、nextMove 換成佔位字、拿掉推薦理由再驗一次；過了代表
+ * production 修格式會逐字保留這五句開場句（mergeNewTopicRepairWithPrimaryOpeningLines）。
+ */
+export function explanationOnlyFailure(
+  parsed: unknown,
+  grounding: NewTopicGroundingPolicy,
+): boolean {
+  if (!isPlainObject(parsed) || !Array.isArray(parsed.topics)) return false;
+  const topics = parsed.topics.map((topic, i) =>
+    isPlainObject(topic)
+      ? {
+        ...topic,
+        direction: `方向${i + 1}`,
+        whyItWorks: "說明",
+        nextMove: "說明",
+      }
+      : topic
+  );
+  const recommendation = isPlainObject(parsed.recommendation)
+    ? { index: parsed.recommendation.index }
+    : parsed.recommendation;
+  return normalizeNewTopicModelPayload(
+    { ...parsed, topics, recommendation },
+    grounding,
+  ).ok;
+}
+
+// ---------------------------------------------------------------------------
 // 結果整理（同 handler：parse → normalize＋grounding → 外洩檢查 → 紅燈收尾保證；不做修格式）
 // ---------------------------------------------------------------------------
 
@@ -308,77 +665,123 @@ export type Inspection = {
   deliverable: boolean;
   promptLeak: boolean;
   normalizeReason: string | null;
+  /** 格式不合格，但只壞在解釋欄（production 修格式會保留開場句）。 */
+  explanationOnlyFailure: boolean;
   topics: NewTopicModelTopic[] | null;
-  /** 用戶實際看到的推薦（兩段式臂已套紅燈收尾保證，同 production）。 */
+  /** 用戶實際看到的推薦（帶 topicContext 時已套紅燈收尾保證，同 production）。 */
   recommendationIndex: number | null;
   recommendationReason: string | null;
   /** 模型自己推的那題（套保證之前）。 */
   modelRecommendationIndex: number | null;
-  /** 伺服器把推薦改成第一題（只有兩段式臂會發生）。 */
   redCloseOverridden: boolean;
+  /** 量測用：兩臂都用目前的稽核函式（不是行為）。 */
   audit: NewTopicTwoStageAudit | null;
+  lines: LineCounts | null;
+  /** 只算推薦那一題（Free 只看得到這一題）。 */
+  star: LineCounts | null;
+  openingLengths: number[] | null;
+  starTitleTechnique: boolean | null;
+  starExplanationEnglish: string[] | null;
 };
 
 export function inspectOutput(call: PlannedCall, raw: string): Inspection {
-  // 進階臂多查新話題 sentinel（依臂判斷，兩臂都帶 topicContext 供稽核）；ADR #51 起 handler 兩種模式都查。
-  const promptLeak = call.arm === "legacy"
-    ? hasAnalyzeChatPromptLeak(raw)
-    : hasNewTopicTwoStagePromptLeak(raw);
-  const normalized = normalizeNewTopicModelPayload(
-    parseJsonObjectFromText(raw),
-    call.grounding,
-  );
+  const promptLeak = call.hasPromptLeak(raw);
+  const parsed = parseJsonObjectFromText(raw);
+  const normalized = normalizeNewTopicModelPayload(parsed, call.grounding);
   if (!normalized.ok) {
     return {
       deliverable: false,
       promptLeak,
       normalizeReason: normalized.reason,
+      explanationOnlyFailure: !promptLeak &&
+        explanationOnlyFailure(parsed, call.grounding),
       topics: null,
       recommendationIndex: null,
       recommendationReason: null,
       modelRecommendationIndex: null,
       redCloseOverridden: false,
       audit: null,
+      lines: null,
+      star: null,
+      openingLengths: null,
+      starTitleTechnique: null,
+      starExplanationEnglish: null,
     };
   }
-  // 同 handler：只有帶 topicContext 的進階路徑（兩段式臂）套紅燈收尾保證；legacy 照模型。
-  const enforced = call.arm === "two_stage"
+  const enforced = call.appliesRedClose
     ? enforceNewTopicRedClose(normalized, {
       situation: call.situation,
       topicContext: call.topicContext,
     })
     : { normalized, overridden: false };
   const served = enforced.normalized;
+  const star = served.topics[served.recommendationIndex];
+  const inputText = `${call.partnerSummary ?? ""}\n${
+    call.topicContext?.materialText ?? ""
+  }`;
   return {
     deliverable: !promptLeak,
     promptLeak,
     normalizeReason: null,
+    explanationOnlyFailure: false,
     topics: served.topics,
     recommendationIndex: served.recommendationIndex,
     recommendationReason: served.recommendationReason,
     modelRecommendationIndex: normalized.recommendationIndex,
     redCloseOverridden: enforced.overridden,
-    // 兩臂都用用戶真實的回答稽核；只有 two_stage 算過關，legacy 是對照基準。
     audit: auditNewTopicTwoStageTopics({
       topics: served.topics,
       recommendationIndex: served.recommendationIndex,
       topicContext: call.topicContext,
       situation: call.situation,
     }),
+    lines: countLines(served.topics.map((t) => t.openingLine)),
+    star: countLines([star.openingLine]),
+    openingLengths: served.topics.map((t) =>
+      graphemeLength(t.openingLine.replace(/\n/g, ""))
+    ),
+    starTitleTechnique: STAR_TITLE_TECHNIQUE.test(star.direction),
+    starExplanationEnglish: explanationEnglish(
+      [star.whyItWorks, star.nextMove, served.recommendationReason ?? ""],
+      inputText,
+    ),
   };
 }
 
-export type EvalRecord = Omit<PlannedCall, "system"> & {
-  status: string;
-  inspection: Inspection | null;
-  raw?: string;
-  stopReason?: string | null;
-  usage?: { inputTokens: number; outputTokens: number } | null;
-  costUsd?: number;
-  costKnown?: boolean;
-  elapsedMs?: number;
-  error?: string;
-};
+export type EvalRecord =
+  & Omit<PlannedCall, "system" | "hasPromptLeak" | "partnerSummary">
+  & {
+    status: string;
+    inspection: Inspection | null;
+    raw?: string;
+    stopReason?: string | null;
+    usage?: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadInputTokens: number;
+      cacheCreationInputTokens: number;
+    } | null;
+    costUsd?: number;
+    costKnown?: boolean;
+    elapsedMs?: number;
+    error?: string;
+  };
+
+export function baseRecord(
+  call: PlannedCall,
+): Omit<EvalRecord, "status" | "inspection"> {
+  const {
+    system: _system,
+    hasPromptLeak: _leak,
+    partnerSummary: _partner,
+    ...rest
+  } = call;
+  return rest;
+}
+
+// ---------------------------------------------------------------------------
+// 機械指標（每臂；可再依基本／進階切）
+// ---------------------------------------------------------------------------
 
 // 同 new_topic_two_stage.ts 的 APOLOGY_PATTERN（未 export），改成 g 旗標數次數。
 const APOLOGY_WORDS = /抱歉|不好意思|對不起|sorry/gi;
@@ -388,16 +791,55 @@ export function apologyCount(openingLine: string): number {
   return openingLine.match(APOLOGY_WORDS)?.length ?? 0;
 }
 
-/** 提案 §10 能機械判定的幾條；句數只算可交付的輸出，素材比率的分母連失敗一起算。 */
-export function proposalChecks(records: EvalRecord[]) {
-  const result = {} as Record<Arm, ReturnType<typeof armChecks>>;
-  for (const arm of ARMS) {
-    result[arm] = armChecks(records.filter((r) => r.arm === arm));
-  }
-  return result;
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)];
 }
 
-function armChecks(rows: EvalRecord[]) {
+function cjkBigrams(text: string): Set<string> {
+  const bigrams = new Set<string>();
+  for (const run of text.match(/\p{Script=Han}+/gu) ?? []) {
+    const chars = [...run];
+    for (let i = 0; i + 1 < chars.length; i++) {
+      bigrams.add(chars[i] + chars[i + 1]);
+    }
+  }
+  return bigrams;
+}
+
+export function jaccard(a: string, b: string): number {
+  const x = cjkBigrams(a), y = cjkBigrams(b);
+  if (x.size === 0 && y.size === 0) return 0;
+  let shared = 0;
+  for (const bigram of x) if (y.has(bigram)) shared++;
+  return shared / (x.size + y.size - shared);
+}
+
+/** 同案例第 1、2 次之間的近似重句對數（二字詞 Jaccard ≥ 0.5）。 */
+export function nearDuplicatePairs(rows: EvalRecord[]): number {
+  let pairs = 0;
+  const byCase = new Map<string, EvalRecord[]>();
+  for (const row of rows) {
+    if (!row.inspection?.deliverable || !row.inspection.topics) continue;
+    byCase.set(row.caseId, [...(byCase.get(row.caseId) ?? []), row]);
+  }
+  for (const group of byCase.values()) {
+    const sorted = [...group].sort((a, b) => a.attempt - b.attempt);
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        for (const a of sorted[i].inspection!.topics!) {
+          for (const b of sorted[j].inspection!.topics!) {
+            if (jaccard(a.openingLine, b.openingLine) >= 0.5) pairs++;
+          }
+        }
+      }
+    }
+  }
+  return pairs;
+}
+
+export function armMetrics(rows: EvalRecord[]) {
   const ok = rows.flatMap((r) =>
     r.inspection?.deliverable && r.inspection.audit
       ? [{ r, a: r.inspection.audit }]
@@ -405,64 +847,83 @@ function armChecks(rows: EvalRecord[]) {
   );
   const sum = (xs: typeof ok, f: (x: typeof ok[number]) => number) =>
     xs.reduce((n, x) => n + f(x), 0);
-  // 分母＝這一臂所有有素材的呼叫；沒跑到、API 失敗、格式壞、外洩都算沒用到。
-  // 紅燈收尾（規格 §9.4）推薦的是收尾句，素材只是可順帶：不進這項驗收，另列觀察值。
+  const addCounts = (pick: (i: Inspection) => LineCounts | null) => {
+    const total = emptyLineCounts();
+    for (const { r } of ok) {
+      const counts = pick(r.inspection!);
+      if (!counts) continue;
+      for (const key of Object.keys(total) as (keyof LineCounts)[]) {
+        total[key] += counts[key];
+      }
+    }
+    return total;
+  };
+  const lengths = ok.flatMap(({ r }) => r.inspection!.openingLengths ?? []);
   const redClose = (r: EvalRecord) =>
     isNewTopicRedClose(r.situation, r.topicContext);
-  const total =
-    rows.filter((r) => r.topicContext.materialText !== null && !redClose(r))
+  // 分母＝這一臂所有有素材的呼叫；沒跑到、API 失敗、格式壞、外洩都算沒用到。
+  const materialTotal =
+    rows.filter((r) => r.topicContext?.materialText != null && !redClose(r))
       .length;
-  const deliverableWithMaterial = ok.filter((x) =>
-    x.a.materialUsedInRecommended !== null && !redClose(x.r)
-  );
-  const redCloseWithMaterial = ok.filter((x) =>
-    x.a.materialUsedInRecommended !== null && redClose(x.r)
-  );
-  const hit =
-    deliverableWithMaterial.filter((x) => x.a.materialUsedInRecommended).length;
+  const materialHit =
+    ok.filter((x) => x.a.materialUsedInRecommended === true && !redClose(x.r))
+      .length;
   const red = ok.filter((x) => x.a.redCloseApplied);
+  const lines = addCounts((i) => i.lines);
   return {
     outputs: rows.length,
     modelReturned: rows.filter((r) => r.inspection !== null).length,
     deliverable: ok.length,
+    explanationOnlyFailures:
+      rows.filter((r) => r.inspection?.explanationOnlyFailure === true).length,
+    lines,
+    star: addCounts((i) => i.star),
+    awkwardPatternLines: awkwardPatternLines(lines),
+    nearDuplicatePairs: nearDuplicatePairs(rows),
+    openingLength: {
+      median: percentile(lengths, 0.5),
+      p90: percentile(lengths, 0.9),
+      over35: lengths.filter((n) => n > 35).length,
+    },
+    starTitleTechnique: ok.filter(({ r }) => r.inspection!.starTitleTechnique)
+      .length,
+    starExplanationEnglish: sum(
+      ok,
+      ({ r }) => r.inspection!.starExplanationEnglish?.length ?? 0,
+    ),
     materialInRecommended: {
-      hit,
-      total,
+      hit: materialHit,
+      total: materialTotal,
       /** null＝分母 0、未評估（不是過關）。 */
-      pass: total === 0 ? null : hit / total >= 0.9,
-      /** 只看可交付輸出的條件比率；僅供參考，不判過關。 */
-      deliverableOnly: { hit, total: deliverableWithMaterial.length },
-      /** 紅燈收尾的推薦（收尾句）有沒有順帶用到素材：觀察值，不判過關。 */
-      redCloseObserved: {
-        hit: redCloseWithMaterial.filter((x) => x.a.materialUsedInRecommended)
-          .length,
-        total: redCloseWithMaterial.length,
-      },
+      pass: materialTotal === 0 ? null : materialHit / materialTotal >= 0.9,
     },
     sheNoReplyGapLines: sum(
-      ok.filter((x) => x.r.topicContext.coldStop === "she_no_reply"),
+      ok.filter((x) => x.r.topicContext?.coldStop === "she_no_reply"),
       (x) => x.a.gapMentionLines,
     ),
     // 五題是五個備選，不是一起傳；規則是「同一題（可能兩則）裡道歉不超過一次」。
     iNoReplyTopicsOverOneApology: sum(
-      ok.filter((x) => x.r.topicContext.coldStop === "i_no_reply"),
+      ok.filter((x) => x.r.topicContext?.coldStop === "i_no_reply"),
       (x) =>
         x.r.inspection!.topics!.filter((t) => apologyCount(t.openingLine) > 1)
           .length,
     ),
     redInviteLines: sum(
-      ok.filter((x) => x.r.topicContext.engagement === "red"),
+      ok.filter((x) => x.r.topicContext?.engagement === "red"),
       (x) => x.a.inviteLines,
     ),
     coldInviteLines: sum(
       ok.filter((x) => x.r.situation === "went_cold"),
       (x) => x.a.inviteLines,
     ),
+    /** 基本模式一律不建議約（D9）：基本模式所有句子的邀約字眼。 */
+    basicInviteLines: sum(
+      ok.filter((x) => x.r.mode === "basic"),
+      (x) => x.a.inviteLines,
+    ),
     bannedOpenerLines: sum(ok, (x) => x.a.bannedOpenerLines),
-    // 紅燈收尾（還在聊／想更靠近＋她常只回哈哈、嗯）：只看可交付的輸出。
     redClose: {
-      calls: rows.filter((r) => isNewTopicRedClose(r.situation, r.topicContext))
-        .length,
+      calls: rows.filter((r) => redClose(r)).length,
       deliverable: red.length,
       modelPickedFirst:
         red.filter((x) => x.r.inspection!.modelRecommendationIndex === 0)
@@ -473,8 +934,73 @@ function armChecks(rows: EvalRecord[]) {
   };
 }
 
+export type ArmMetrics = ReturnType<typeof armMetrics>;
+
+export function metricsByArm(records: EvalRecord[]) {
+  const result = {} as Record<
+    Arm,
+    { all: ArmMetrics; basic: ArmMetrics; advanced: ArmMetrics }
+  >;
+  for (const arm of ARMS) {
+    const rows = records.filter((r) => r.arm === arm);
+    result[arm] = {
+      all: armMetrics(rows),
+      basic: armMetrics(rows.filter((r) => r.mode === "basic")),
+      advanced: armMetrics(rows.filter((r) => r.mode === "advanced")),
+    };
+  }
+  return result;
+}
+
+/** 規格 §6.5 第 5、6 項：能機械判定的門檻（null＝沒有資料可判）。 */
+export function mechanicalAcceptance(
+  m: Record<Arm, { all: ArmMetrics }>,
+) {
+  const base = m.base.all, cand = m.cand.all;
+  const rate = (x: ArmMetrics) =>
+    x.outputs === 0 ? null : x.deliverable / x.outputs;
+  const baseRate = rate(base), candRate = rate(cand);
+  return {
+    deliverableRate: {
+      base: baseRate,
+      cand: candRate,
+      pass: baseRate === null || candRate === null
+        ? null
+        : candRate >= baseRate,
+    },
+    multiQuestionLines: {
+      cand: cand.lines.multiQuestionLines,
+      pass: cand.lines.multiQuestionLines === 0,
+    },
+    awkwardPatternLines: {
+      base: base.awkwardPatternLines,
+      cand: cand.awkwardPatternLines,
+      pass: cand.awkwardPatternLines < base.awkwardPatternLines ||
+        (base.awkwardPatternLines === 0 && cand.awkwardPatternLines === 0),
+    },
+    nearDuplicatePairs: {
+      base: base.nearDuplicatePairs,
+      cand: cand.nearDuplicatePairs,
+      pass: cand.nearDuplicatePairs <= base.nearDuplicatePairs * 1.5,
+    },
+    over35: {
+      base: base.openingLength.over35,
+      cand: cand.openingLength.over35,
+      pass: cand.openingLength.over35 <= base.openingLength.over35,
+    },
+    starTitleTechnique: {
+      cand: cand.starTitleTechnique,
+      pass: cand.starTitleTechnique === 0,
+    },
+    starExplanationEnglish: {
+      cand: cand.starExplanationEnglish,
+      pass: cand.starExplanationEnglish === 0,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
-// 盲測（給 Bruce）：每組兩版依 seed 打亂成甲／乙，只露五句＋推薦星號；解盲表另存
+// 盲測（給 Bruce）：每組兩版依 seed 打亂成甲／乙；解盲表另存
 // ---------------------------------------------------------------------------
 
 /** mulberry32：同 seed 同順序。 */
@@ -488,21 +1014,27 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-export function blindAB(
-  records: EvalRecord[],
-  cases: EvalCase[],
-  seed: number,
-) {
-  const rand = seededRandom(seed);
-  const reveal: Record<string, { 甲: Arm; 乙: Arm }> = {};
+/** 盲測欄位（tally.ts 照這些前綴解析；改字要一起改）。 */
+export const BLIND_FIELDS = {
+  willingToSend: "- 願意直接傳（0–5）：",
+  awkward: "- 尷尬句數（要猜意思、莫名被評斷或被安排角色、硬編情境）：",
+  fabricated:
+    "- 捏造或越界句數（編她的事、你們的共同經歷或用戶經歷；性化、施壓、冷掉時約她）：",
+  starSend: "- ★ 那句你會直接傳嗎（是／否）：",
+  starAwkward: "- ★ 那句讀起來尷尬嗎（是／否）：",
+  fun: "- 至少一句有趣或有個性（是／否）：",
+  favorite: "- 十句裡最想傳（例：乙3）：",
+  starBetter:
+    "- Free 只看得到 ★ 這句：哪句比較好接、又像本人（甲／乙／差不多）：",
+  titleTopic: "- 標題是在說「聊什麼」，不是「怎麼對她」（是／否）：",
+  reasonUseful: "- 理由說得出她可以回什麼，該有的條件有寫（是／否）：",
+  predictsHer: "- 預告她一定會怎樣，或拿「短、隨意、沒企圖心」當理由（處數）：",
+  mixedEnglish: "- 中英夾雜（處數，素材原本就有的英文名稱不算）：",
+} as const;
+
+function pairedCodes(records: EvalRecord[], cases: EvalCase[]) {
+  const pairs: Array<{ c: EvalCase; attempt: number; pair: EvalRecord[] }> = [];
   const unpaired: string[] = [];
-  const lines = [
-    "# 新話題盲測（每組兩版、順序已依 seed 打亂；評完再看 reveal-map.json）",
-    "",
-    "每組請填：甲、乙各有幾句你願意直接傳出去（0–5）；十句裡你最想傳的是哪一句（例：乙3）。",
-    "★＝該版推薦的那一句；⏎＝分成兩則傳。",
-    "",
-  ];
   for (const c of cases) {
     const attempts = [
       ...new Set(
@@ -510,78 +1042,259 @@ export function blindAB(
       ),
     ].sort((a, b) => a - b);
     for (const attempt of attempts) {
-      const code = `${c.id}#${attempt}`;
       const pair = ARMS.map((arm) =>
         records.find((r) =>
           r.caseId === c.id && r.attempt === attempt && r.arm === arm
         )
       );
       if (pair.some((r) => !r || r.inspection === null)) {
-        unpaired.push(code);
+        unpaired.push(`${c.id}#${attempt}`);
         continue;
       }
-      const order = rand() < 0.5 ? pair : [pair[1], pair[0]];
-      reveal[code] = { 甲: order[0]!.arm, 乙: order[1]!.arm };
-      lines.push(
-        `## ${code}`,
-        "",
-        "對象資料：",
-        "```",
-        c.partner === null ? "（沒有對象資料）" : PARTNERS[c.partner],
-        "```",
-      );
-      lines.push(`用戶的回答：${c.label}`);
-      if (c.topicContext.materialText) {
-        lines.push(`用戶寫的那句：「${c.topicContext.materialText}」`);
-      }
-      lines.push("");
-      for (const [i, name] of (["甲", "乙"] as const).entries()) {
-        const ins = order[i]!.inspection!;
-        lines.push(`### ${name}`);
-        if (!ins.deliverable || !ins.topics) {
-          lines.push("（這一版沒有產出可用的五題）");
-        } else {ins.topics.forEach((t, n) =>
-            lines.push(
-              `${n + 1}. ${t.openingLine.replace(/\n/g, " ⏎ ")}${
-                n === ins.recommendationIndex ? " ★" : ""
-              }`,
-            )
-          );}
-        lines.push("");
-      }
-      lines.push("- 願意直接傳：甲＿句／乙＿句；最想傳：＿", "");
+      pairs.push({ c, attempt, pair: pair as EvalRecord[] });
     }
   }
-  return { markdown: lines.join("\n"), reveal, unpaired };
+  return { pairs, unpaired };
+}
+
+function caseHeader(c: EvalCase): string[] {
+  const lines = [
+    "對象資料：",
+    "```",
+    c.partner === null ? "（沒有對象資料）" : PARTNERS[c.partner],
+    "```",
+    `用戶的回答：${c.label}`,
+  ];
+  if (c.topicContext?.materialText) {
+    lines.push(`用戶寫的那句：「${c.topicContext.materialText}」`);
+  }
+  return lines;
+}
+
+export function blindAB(
+  records: EvalRecord[],
+  cases: EvalCase[],
+  seed: number,
+) {
+  const rand = seededRandom(seed);
+  const reveal: Record<string, { 甲: Arm; 乙: Arm }> = {};
+  const { pairs, unpaired } = pairedCodes(records, cases);
+  const ab = [
+    "# 新話題盲測：五句（每組兩版、順序已依 seed 打亂；全部評完再看 reveal-map.json）",
+    "",
+    "★＝該版推薦的那一句；⏎＝分成兩則傳。每個「＿」換成你的答案，甲乙之間用全形分號「；」。",
+    "",
+  ];
+  const star = [
+    "# 新話題盲測：只看推薦那一句（Free 用戶只看得到 ★）",
+    "",
+    "組別、甲乙順序與 blind_ab.md 相同。每個「＿」換成你的答案。",
+    "",
+  ];
+  const explanations = [
+    "# 新話題盲測：推薦那一題的解釋（標題、為什麼現在有效、她回了之後、推薦理由）",
+    "",
+    "組別、甲乙順序與 blind_ab.md 相同。每個「＿」換成你的答案，甲乙之間用全形分號「；」。",
+    "",
+  ];
+  for (const { c, attempt, pair } of pairs) {
+    const code = `${c.id}#${attempt}`;
+    const order = rand() < 0.5 ? pair : [pair[1], pair[0]];
+    reveal[code] = { 甲: order[0].arm, 乙: order[1].arm };
+    ab.push(`## ${code}`, "", ...caseHeader(c), "");
+    star.push(`## ${code}`, "", `用戶的回答：${c.label}`, "");
+    explanations.push(`## ${code}`, "", `用戶的回答：${c.label}`, "");
+    for (const [i, name] of (["甲", "乙"] as const).entries()) {
+      const ins = order[i].inspection!;
+      ab.push(`### ${name}`);
+      if (!ins.deliverable || !ins.topics) {
+        ab.push("（這一版沒有產出可用的五題）", "");
+        star.push(`- ${name}：（沒有可用結果）`);
+        explanations.push(`### ${name}`, "（沒有可用結果）", "");
+        continue;
+      }
+      ins.topics.forEach((t, n) =>
+        ab.push(
+          `${n + 1}. ${t.openingLine.replace(/\n/g, " ⏎ ")}${
+            n === ins.recommendationIndex ? " ★" : ""
+          }`,
+        )
+      );
+      ab.push("");
+      const s = ins.topics[ins.recommendationIndex!];
+      star.push(`- ${name}：${s.openingLine.replace(/\n/g, " ⏎ ")}`);
+      explanations.push(
+        `### ${name}`,
+        `- 標題：${s.direction}`,
+        `- 為什麼現在有效：${s.whyItWorks}`,
+        `- 她回了之後：${s.nextMove}`,
+        `- 推薦理由：${ins.recommendationReason ?? "（沒有）"}`,
+        "",
+      );
+    }
+    ab.push(
+      `${BLIND_FIELDS.willingToSend}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.awkward}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.fabricated}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.starSend}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.starAwkward}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.fun}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.favorite}＿`,
+      "",
+    );
+    star.push("", `${BLIND_FIELDS.starBetter}＿`, "");
+    explanations.push(
+      `${BLIND_FIELDS.titleTopic}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.reasonUseful}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.predictsHer}甲 ＿；乙 ＿`,
+      `${BLIND_FIELDS.mixedEnglish}甲 ＿；乙 ＿`,
+      "",
+    );
+  }
+  return {
+    markdown: ab.join("\n"),
+    starMarkdown: star.join("\n"),
+    explanationsMarkdown: explanations.join("\n"),
+    reveal,
+    unpaired,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// summary
+// ---------------------------------------------------------------------------
+
+const mark = (pass: boolean | null) =>
+  pass === null ? "未評估" : pass ? "✓" : "✗";
+const pct = (x: number | null) => x === null ? "—" : `${(x * 100).toFixed(0)}%`;
+
+export function summaryMarkdown(input: {
+  tag: string;
+  candidateHead: string;
+  baseSha: string | null;
+  now: string;
+  calls: number;
+  planned: number;
+  spentUsd: number;
+  budgetUsd: number | null;
+  stopped: boolean;
+  records: EvalRecord[];
+  unpaired: string[];
+}): string {
+  const m = metricsByArm(input.records);
+  const acc = mechanicalAcceptance(m);
+  const row = (
+    label: string,
+    f: (x: ArmMetrics) => string | number,
+  ) =>
+    `| ${label} | ${f(m.base.all)} | ${f(m.cand.all)} | ${f(m.base.basic)} | ${
+      f(m.cand.basic)
+    } | ${f(m.base.advanced)} | ${f(m.cand.advanced)} |`;
+  const overDeadline =
+    input.records.filter((r) =>
+      (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS
+    ).length;
+  return [
+    `# 新話題成對評測 · ${input.tag} · ${MODEL}`,
+    "",
+    `- 候選 HEAD ${input.candidateHead}（提示詞 ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${input.now}）；基準 ${
+      input.baseSha ?? "（沒跑基準臂）"
+    }。`,
+    `- 實際呼叫 ${input.calls}／規劃 ${input.planned}；計入費用 $${
+      input.spentUsd.toFixed(3)
+    }（上限 $${input.budgetUsd}；含成本未知的最壞情況）；提前停止：${
+      input.stopped ? "是" : "否"
+    }；超過 production 45 秒期限 ${overDeadline} 次。`,
+    "",
+    "## 機械指標（base＝改前、cand＝改後；只看可交付輸出）",
+    "",
+    "| 指標 | base 全部 | cand 全部 | base 基本 | cand 基本 | base 進階 | cand 進階 |",
+    "|---|---|---|---|---|---|---|",
+    row("可交付／輸出", (x) => `${x.deliverable}/${x.outputs}`),
+    row("只壞在解釋欄（修格式會保留開場句）", (x) => x.explanationOnlyFailures),
+    row("問句", (x) => x.lines.questionLines),
+    row("一則兩個以上問句", (x) => x.lines.multiQuestionLines),
+    row("假設情境", (x) => x.lines.hypotheticalLines),
+    row("安排角色", (x) => x.lines.roleAssignLines),
+    row("貼標籤／說她是哪種人", (x) => x.lines.labelJudgmentLines),
+    row("比能力", (x) => x.lines.abilityRankLines),
+    row("四種尷尬句型合計", (x) => x.awkwardPatternLines),
+    row("宣告套話（觀察）", (x) => x.lines.declarationLines),
+    row(
+      "★ 問句／尷尬句型",
+      (x) => `${x.star.questionLines}／${awkwardPatternLines(x.star)}`,
+    ),
+    row("同案例兩次之間的近似重句對", (x) => x.nearDuplicatePairs),
+    row(
+      "開場句字數 中位數／P90／超過 35",
+      (x) =>
+        `${x.openingLength.median ?? "—"}／${
+          x.openingLength.p90 ?? "—"
+        }／${x.openingLength.over35}`,
+    ),
+    row("★ 標題有手法字", (x) => x.starTitleTechnique),
+    row("★ 解釋夾英文（處）", (x) => x.starExplanationEnglish),
+    row(
+      "推薦題用到素材（分母含失敗）",
+      (x) => `${x.materialInRecommended.hit}/${x.materialInRecommended.total}`,
+    ),
+    row("她沒回我：提空窗", (x) => x.sheNoReplyGapLines),
+    row("我沒回她：同題道歉超過一次", (x) => x.iNoReplyTopicsOverOneApology),
+    row("紅燈：邀約字眼", (x) => x.redInviteLines),
+    row("冷掉了：邀約字眼", (x) => x.coldInviteLines),
+    row("基本模式：邀約字眼（D9）", (x) => x.basicInviteLines),
+    row("在嗎／最近好嗎類", (x) => x.bannedOpenerLines),
+    row(
+      "紅燈收尾：模型推第一題／伺服器改推",
+      (x) =>
+        `${x.redClose.modelPickedFirst}／${x.redClose.overridden}（共 ${x.redClose.deliverable}）`,
+    ),
+    "",
+    "## 規格 §6.5 驗收門檻",
+    "",
+    "| 門檻 | 結果 |",
+    "|---|---|",
+    "| 1. 候選 0 件捏造／越界（硬性） | 待 Bruce 盲測＋逐筆看 records（tally.ts） |",
+    "| 2. 尷尬句：候選 ≤ 基準一半；★ 尷尬候選 ≤ 基準、且至多 1 組 | 待 Bruce 盲測（tally.ts） |",
+    "| 3. 願意直接傳總數、★ 會直接傳的組數：候選 ≥ 基準 | 待 Bruce 盲測（tally.ts） |",
+    "| 4. 有趣／有個性組數：候選 ≥ 基準八成；B3、J1、E3 候選都要「是」 | 待 Bruce 盲測（tally.ts） |",
+    `| 5a. 可交付率候選 ≥ 基準 | ${mark(acc.deliverableRate.pass)} ${
+      pct(acc.deliverableRate.cand)
+    } vs ${pct(acc.deliverableRate.base)} |`,
+    `| 5b. 一則兩個以上問句：候選 0 | ${
+      mark(acc.multiQuestionLines.pass)
+    } ${acc.multiQuestionLines.cand} |`,
+    `| 5c. 四種尷尬句型合計：候選 < 基準 | ${
+      mark(acc.awkwardPatternLines.pass)
+    } ${acc.awkwardPatternLines.cand} vs ${acc.awkwardPatternLines.base} |`,
+    `| 5d. 近似重句：候選 ≤ 基準 × 1.5 | ${
+      mark(acc.nearDuplicatePairs.pass)
+    } ${acc.nearDuplicatePairs.cand} vs ${acc.nearDuplicatePairs.base} |`,
+    `| 5e. 超過 35 字：候選 ≤ 基準 | ${
+      mark(acc.over35.pass)
+    } ${acc.over35.cand} vs ${acc.over35.base} |`,
+    `| 6a. ★ 標題手法字：候選 0（命中要人工確認） | ${
+      mark(acc.starTitleTechnique.pass)
+    } ${acc.starTitleTechnique.cand} |`,
+    `| 6b. ★ 解釋夾英文：候選 0（命中要人工確認） | ${
+      mark(acc.starExplanationEnglish.pass)
+    } ${acc.starExplanationEnglish.cand} |`,
+    "",
+    "字面計數只看趨勢，不是語意判定；用戶講自己的句子也可能被算到。",
+    input.unpaired.length
+      ? `未成對、沒進盲測：${input.unpaired.join("、")}`
+      : "所有組都已成對進盲測。",
+    "",
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
 // 執行
 // ---------------------------------------------------------------------------
 
-function baseRecord(call: PlannedCall): Omit<PlannedCall, "system"> {
-  const { system: _system, ...rest } = call;
-  return rest;
-}
-
-async function git(args: string[]): Promise<string> {
-  const result = await new Deno.Command("git", {
-    args,
-    cwd: new URL("../../", import.meta.url),
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-  if (!result.success) {
-    throw new Error(`git ${args[0]} 失敗（exit ${result.code}）`);
-  }
-  return new TextDecoder().decode(result.stdout).trim();
-}
-
 async function main(args: string[]): Promise<void> {
   const opts = parseOptions(args);
   const selected = CASES.filter((c) => !opts.only || opts.only.includes(c.id));
-  const plan = await buildPlan(selected, opts.repeat, opts.arms);
-  const estimate = estimatePlan(plan);
   const out = new URL(`./out/${opts.tag}/`, import.meta.url);
   // 不覆寫任何既有證據（dry-run 或付費）。
   try {
@@ -591,17 +1304,27 @@ async function main(args: string[]): Promise<void> {
     if (!(error instanceof Deno.errors.NotFound)) throw error;
   }
 
-  let engineeringHead: string | null = null;
+  const candidateHead = await git(["rev-parse", "HEAD"]);
+  const dirty =
+    (await git(["status", "--porcelain", "--untracked-files=no"])).length > 0;
+  if (opts.run && dirty) {
+    throw new Error(
+      "真跑前要先 commit：追蹤檔有未提交修改，結果無法對應工程版本",
+    );
+  }
+  const routers: Partial<Record<Arm, ArmRouter>> = {};
+  let baseSha: string | null = null;
+  if (opts.arms.includes("base")) {
+    const base = await materializeRef(opts.baseRef);
+    baseSha = base.sha;
+    routers.base = baseRouter(await loadBaseModules(base.root));
+  }
+  if (opts.arms.includes("cand")) routers.cand = candRouter(opts.nowMs);
+  const plan = await buildPlan(selected, opts.repeat, routers, opts.arms);
+  const estimate = estimatePlan(plan);
+
   let apiKey = "";
   if (opts.run) {
-    engineeringHead = await git(["rev-parse", "HEAD"]);
-    if (
-      (await git(["status", "--porcelain", "--untracked-files=no"])).length > 0
-    ) {
-      throw new Error(
-        "真跑前要先 commit：追蹤檔有未提交修改，結果無法對應工程版本",
-      );
-    }
     apiKey =
       (await Deno.readTextFile(`${Deno.env.get("HOME")}/.config/anthropic/key`))
         .trim();
@@ -614,55 +1337,54 @@ async function main(args: string[]): Promise<void> {
       new URL(name, out),
       typeof value === "string" ? value : JSON.stringify(value, null, 2) + "\n",
     );
+  const systemPrompts: Record<string, string> = {};
+  for (const call of plan) {
+    systemPrompts[await sha256(call.system)] = call.system;
+  }
+  const sampleBody = requestBody({ system: "<system>", user: "<user>" });
   const manifest = {
     status: opts.run ? "RUNNING" : "DRY_RUN_NO_MODEL",
     startedAt: new Date().toISOString(),
-    engineeringHead,
+    candidateHead,
+    candidateDirty: dirty,
+    baseRef: opts.baseRef,
+    baseSha,
+    now: opts.now,
     model: MODEL,
-    maxTokens: NEW_TOPIC_MAX_TOKENS,
-    thinking: "disabled（同 production 對 Sonnet 5 的契約）",
-    promptCache: "none",
-    repairCalls: 0,
-    twoStagePromptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+    request: {
+      headers: REQUEST_HEADERS,
+      bodyShape: sampleBody,
+      note:
+        "同 production 主呼叫（fallback.ts 第一跳）；不做修格式、不串流、不走備援",
+    },
+    candidatePromptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
     sha256: {
-      legacySystemPrompt: await sha256(NEW_TOPIC_PROMPT),
-      twoStageSystemPrompt: await sha256(NEW_TOPIC_TWO_STAGE_PROMPT),
       cases: await sha256(JSON.stringify(catalog)),
+      systemPrompts: Object.keys(systemPrompts),
+      userPrompts: await sha256(
+        JSON.stringify(plan.map((call) => [call.key, call.user])),
+      ),
     },
     pricing: SONNET_5_PRICING,
     estimate: {
       ...estimate,
       method:
-        `input＝字數×${CJK_TOKENS_PER_CHAR}；output 一般 ${TYPICAL_OUTPUT_TOKENS}／最壞 ${NEW_TOPIC_MAX_TOKENS}（max_tokens 全滿）`,
+        `input＝字數×${CJK_TOKENS_PER_CHAR}，不算快取折扣；output 一般 ${TYPICAL_OUTPUT_TOKENS}／最壞 ${NEW_TOPIC_MAX_TOKENS}（max_tokens 全滿）`,
     },
-    options: opts,
+    options: { ...opts, nowMs: undefined },
   };
   await write("manifest.json", manifest);
+  await write("system-prompts.json", systemPrompts);
+  await write(
+    "prompts.json",
+    await Promise.all(plan.map(async (call) => ({
+      ...baseRecord(call),
+      systemPromptSha256: await sha256(call.system),
+      estInputTokens: estimateInputTokens(call),
+    }))),
+  );
 
   if (!opts.run) {
-    console.log(
-      `=== 系統提示詞 legacy：NEW_TOPIC_PROMPT（${NEW_TOPIC_PROMPT.length} 字）===\n${NEW_TOPIC_PROMPT}\n`,
-    );
-    console.log(
-      `=== 系統提示詞 two_stage：NEW_TOPIC_TWO_STAGE_PROMPT（${NEW_TOPIC_TWO_STAGE_PROMPT.length} 字）===\n${NEW_TOPIC_TWO_STAGE_PROMPT}\n`,
-    );
-    for (const call of plan) {
-      console.log(
-        `=== ${call.key}（requestId ${call.requestId}；估 input ${
-          estimateInputTokens(call)
-        } tokens）===\n${call.user}\n`,
-      );
-    }
-    await write(
-      "prompts.json",
-      plan.map((call) => ({
-        ...baseRecord(call),
-        systemPrompt: call.arm === "legacy"
-          ? "NEW_TOPIC_PROMPT"
-          : "NEW_TOPIC_TWO_STAGE_PROMPT",
-        estInputTokens: estimateInputTokens(call),
-      })),
-    );
     const caps = opts.budgetUsd === null
       ? ""
       : `；--budget-usd=${opts.budgetUsd} ${
@@ -684,6 +1406,8 @@ async function main(args: string[]): Promise<void> {
     );
     console.log(JSON.stringify({
       status: "DRY_RUN_NO_MODEL",
+      candidateHead,
+      baseSha,
       cases: selected.length,
       repeat: opts.repeat,
       arms: opts.arms,
@@ -732,18 +1456,8 @@ async function main(args: string[]): Promise<void> {
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: NEW_TOPIC_MAX_TOKENS,
-          thinking: { type: "disabled" },
-          system: call.system,
-          messages: [{ role: "user", content: call.user }],
-        }),
+        headers: { ...REQUEST_HEADERS, "x-api-key": apiKey },
+        body: JSON.stringify(requestBody(call)),
         signal: AbortSignal.timeout(API_TIMEOUT_MS),
       });
       const data = await response.json().catch(() => null);
@@ -758,17 +1472,26 @@ async function main(args: string[]): Promise<void> {
         ) => b.text ?? "").join("")
         : "";
       const u = data.usage;
+      const int = (value: unknown) =>
+        Number.isInteger(value) ? value as number : 0;
       const usage =
         Number.isInteger(u?.input_tokens) && Number.isInteger(u?.output_tokens)
           ? {
             inputTokens: u.input_tokens as number,
             outputTokens: u.output_tokens as number,
+            cacheReadInputTokens: int(u.cache_read_input_tokens),
+            cacheCreationInputTokens: int(u.cache_creation_input_tokens),
           }
           : null;
       // usage 缺漏＝成本未知：以最壞情況計入並停止，不當免費。
       if (!usage) stopped = true;
       const costUsd = usage
-        ? usd(usage.inputTokens, usage.outputTokens)
+        ? usd(
+          usage.inputTokens,
+          usage.outputTokens,
+          usage.cacheReadInputTokens,
+          usage.cacheCreationInputTokens,
+        )
         : reservation;
       spentUsd += costUsd;
       record = {
@@ -805,79 +1528,28 @@ async function main(args: string[]): Promise<void> {
     await write("records.json", records);
   }
 
-  const checks = proposalChecks(records);
   const blind = blindAB(records, selected, opts.seed);
   await write("records.json", records);
   await write("blind_ab.md", blind.markdown);
+  await write("blind_star.md", blind.starMarkdown);
+  await write("explanations_blind.md", blind.explanationsMarkdown);
   await write("reveal-map.json", blind.reveal);
-  const t = checks.two_stage, l = checks.legacy;
-  const mark = (
-    pass: boolean | null,
-  ) => (pass === null ? "未評估" : pass ? "✓" : "✗");
-  const overDeadline =
-    records.filter((r) => (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS)
-      .length;
   const status = stopped
     ? "STOPPED_BY_CAP_OR_FAILURE"
     : "FINISHED_QUALITY_UNREVIEWED";
-  const summary = [
-    `# 新話題兩段式成對評測 · ${opts.tag} · ${MODEL}`,
-    "",
-    `工程 HEAD ${engineeringHead}；兩段式 prompt ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}；案例 ${selected.length} × 重複 ${opts.repeat} × ${opts.arms.length} 臂（${
-      opts.arms.join("、")
-    }）。`,
-    ...(opts.arms.length < ARMS.length
-      ? [`本次只跑 ${opts.arms.join("、")}：沒跑的那一欄是 0/0，不是結果。`]
-      : []),
-    `實際呼叫 ${calls}／規劃 ${plan.length}；計入費用 $${
-      spentUsd.toFixed(3)
-    }（上限 $${opts.budgetUsd}；含成本未知的最壞情況）；提前停止：${
-      stopped ? "是" : "否"
-    }；超過 production 45 秒期限 ${overDeadline} 次。`,
-    "",
-    "## 提案 §10 機械檢查（two_stage 判過關；legacy 只當對照）",
-    "",
-    "| 檢查 | two_stage | legacy（對照） |",
-    "|---|---|---|",
-    `| 可交付／模型有回 | ${t.deliverable}/${t.modelReturned} | ${l.deliverable}/${l.modelReturned} |`,
-    `| 推薦題用到素材 ≥90%（分母＝有素材的全部呼叫，失敗算沒用到） | ${
-      mark(t.materialInRecommended.pass)
-    } ${t.materialInRecommended.hit}/${t.materialInRecommended.total} | ${l.materialInRecommended.hit}/${l.materialInRecommended.total} |`,
-    `| 　只看可交付的條件比率（參考，不判過關） | ${t.materialInRecommended.deliverableOnly.hit}/${t.materialInRecommended.deliverableOnly.total} | ${l.materialInRecommended.deliverableOnly.hit}/${l.materialInRecommended.deliverableOnly.total} |`,
-    `| 　紅燈收尾的收尾句順帶用到素材（觀察，不判過關、不計入上一列） | ${t.materialInRecommended.redCloseObserved.hit}/${t.materialInRecommended.redCloseObserved.total} | ${l.materialInRecommended.redCloseObserved.hit}/${l.materialInRecommended.redCloseObserved.total} |`,
-    `| 她沒回我：提空窗 0 句 | ${
-      mark(t.sheNoReplyGapLines === 0)
-    } ${t.sheNoReplyGapLines} | ${l.sheNoReplyGapLines} |`,
-    `| 我沒回她：同一題道歉超過一次的題數 0 | ${
-      mark(t.iNoReplyTopicsOverOneApology === 0)
-    } ${t.iNoReplyTopicsOverOneApology} | ${l.iNoReplyTopicsOverOneApology} |`,
-    `| 紅燈：第一則邀約 0 句 | ${
-      mark(t.redInviteLines === 0)
-    } ${t.redInviteLines} | ${l.redInviteLines} |`,
-    `| 冷掉了：第一則邀約 0 句 | ${
-      mark(t.coldInviteLines === 0)
-    } ${t.coldInviteLines} | ${l.coldInviteLines} |`,
-    `| 在嗎／最近好嗎類 0 句 | ${
-      mark(t.bannedOpenerLines === 0)
-    } ${t.bannedOpenerLines} | ${l.bannedOpenerLines} |`,
-    "",
-    "## 紅燈收尾（還在聊／想更靠近＋她常只回哈哈、嗯；規格 §9.4）",
-    "",
-    "| 檢查 | two_stage | legacy（對照，不套伺服器保證） |",
-    "|---|---|---|",
-    `| 可交付／紅燈呼叫 | ${t.redClose.deliverable}/${t.redClose.calls} | ${l.redClose.deliverable}/${l.redClose.calls} |`,
-    `| 模型自己推第一題 | ${t.redClose.modelPickedFirst}/${t.redClose.deliverable} | ${l.redClose.modelPickedFirst}/${l.redClose.deliverable} |`,
-    `| 第一題有收尾字眼（先去忙、晚點、下次…） | ${t.redClose.closeCueInFirst}/${t.redClose.deliverable} | ${l.redClose.closeCueInFirst}/${l.redClose.deliverable} |`,
-    `| 伺服器改推第一題 | ${t.redClose.overridden}/${t.redClose.deliverable} | — |`,
-    "",
-    "這些是字面規則計數（同 production 只記錄不擋的稽核），不是語意正確率；不捏造事實、不加曖昧、願意直接傳要靠 blind_ab.md 人工盲測。",
-    opts.arms.length < ARMS.length
-      ? "只跑一臂，沒有盲測。"
-      : blind.unpaired.length
-      ? `未成對、沒進盲測：${blind.unpaired.join("、")}`
-      : "所有組都已成對進盲測。",
-    "",
-  ].join("\n");
+  const summary = summaryMarkdown({
+    tag: opts.tag,
+    candidateHead,
+    baseSha,
+    now: opts.now,
+    calls,
+    planned: plan.length,
+    spentUsd,
+    budgetUsd: opts.budgetUsd,
+    stopped,
+    records,
+    unpaired: blind.unpaired,
+  });
   await write("summary.md", summary);
   await write("manifest.json", {
     ...manifest,
@@ -885,7 +1557,7 @@ async function main(args: string[]): Promise<void> {
     finishedAt: new Date().toISOString(),
     modelCallsMade: calls,
     spentUsd,
-    checks,
+    metrics: metricsByArm(records),
   });
   console.log(summary);
   console.log(
