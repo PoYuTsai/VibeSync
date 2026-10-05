@@ -8,17 +8,22 @@
 //   主呼叫（requestBody 與 fallback.ts 送出的 body 相同，run_test 有比對）。不做修格式那一次呼叫。
 // 預設 dry-run：不打模型、不讀金鑰、不連網；會跑 git（rev-parse、archive）取出改前版本。
 // 真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>，且 Eric 當次說「跑」之後才能下。
-// 指令與輸出說明見 README.md；盲測填完後用 tally.ts 算驗收門檻。
+// 預算守門用估計的 token 數，不是嚴格上限（見 README「真跑」）。
+// 指令與輸出說明見 README.md；盲測填完後用 tally.ts 算驗收門檻（資料不完整不能通過）。
 
 import catalog from "./cases.json" with { type: "json" };
 import { isPlainObject } from "../../supabase/functions/_shared/quota.ts";
 import {
   maxTokensFor,
   modelRequestParams,
+  SONNET_5_5_MODEL,
+  SONNET_5_MODEL,
 } from "../../supabase/functions/_shared/model_request_params.ts";
 import {
   estimateCostUsd,
+  SONNET_5_5_PRICING,
   SONNET_5_PRICING,
+  type TokenPricing,
 } from "../../supabase/functions/_shared/model_pricing.ts";
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
 import {
@@ -52,9 +57,32 @@ export const DEFAULT_BASE_REF = "7c5cc523";
 /** 候選的「今天」：固定時間才可重現（台灣時間 2026-10-05 週一中午）。 */
 export const DEFAULT_EVAL_NOW = "2026-10-05T12:00:00+08:00";
 export const MODEL = NEW_TOPIC_MODEL;
-// 本機字數估算對中文會少算 10–20%，所以 input 一律用「字數 × 1.5」保守估。
+/** 實際送出的 max_tokens（同 requestBody）：output 最壞就是全滿。 */
+export const MAX_OUTPUT_TOKENS = maxTokensFor(MODEL, NEW_TOPIC_MAX_TOKENS);
+// 本機沒有 tokenizer：input 先用「字數 × 1.5」估；真跑時若實測每字 token 數更高，之後的預留改用實測值。
 export const CJK_TOKENS_PER_CHAR = 1.5;
 export const TYPICAL_OUTPUT_TOKENS = 1200;
+
+/** 預估、預留與實付都用同一組單價；換模型沒有單價就直接失敗，不默默用錯價。 */
+const PRICING_BY_MODEL: Record<string, TokenPricing> = {
+  [SONNET_5_MODEL]: SONNET_5_PRICING,
+  [SONNET_5_5_MODEL]: SONNET_5_5_PRICING,
+};
+function pricingFor(model: string): TokenPricing {
+  const pricing = PRICING_BY_MODEL[model];
+  if (!pricing) throw new Error(`沒有 ${model} 的單價`);
+  return pricing;
+}
+export const PRICING = pricingFor(MODEL);
+/**
+ * 四種 input 單價裡最高的（system 開了 ephemeral 快取，第一次寫入是 1.25 倍）。預估與預留的 input
+ * 一律用這個價：不管 usage 怎麼分到一般／快取寫入／快取讀取，實付都不會因為單價高於預留。
+ */
+export const MAX_INPUT_PER_MTOK = Math.max(
+  PRICING.inputPerMTok,
+  PRICING.cacheWritePerMTok,
+  PRICING.cacheReadPerMTok,
+);
 const API_TIMEOUT_MS = 60_000; // 同 handler 非串流路徑；超過 production 45 秒期限的另計
 /** 同 fallback.ts／streaming_fallback.ts 送出的 header。 */
 export const REQUEST_HEADERS = {
@@ -76,6 +104,8 @@ export type EvalCase = {
 };
 export const CASES = catalog.cases as EvalCase[];
 export const PARTNERS = catalog.partners as Record<string, string>;
+/** 正式驗收：22 組全跑、每組 2 次、兩臂都有（規格 §6.3）。 */
+export const FORMAL_REPEAT = 2;
 
 // ---------------------------------------------------------------------------
 // 參數
@@ -315,7 +345,10 @@ function requireExport<T>(
   kind: "string" | "function",
 ): T {
   const value = mod[name];
-  if (typeof value !== kind) {
+  const ok = kind === "string"
+    ? typeof value === "string"
+    : typeof value === "function";
+  if (!ok) {
     throw new Error(`改前版本少了 ${name}（${kind}）：基準 ref 不對？`);
   }
   return value as T;
@@ -434,6 +467,11 @@ export async function sha256(text: string): Promise<string> {
     .join("");
 }
 
+/** 案例檔的 sha256（manifest 記下；tally 用來確認案例檔沒換過）。 */
+export async function catalogSha256(): Promise<string> {
+  return await sha256(JSON.stringify(catalog));
+}
+
 /** 固定 requestId：同案例同次重複的兩臂拿到同一個 requestId（角度跟著各版的清單），可重現。 */
 export async function requestIdFor(
   caseId: string,
@@ -511,7 +549,7 @@ export async function buildPlan(
 export function requestBody(call: Pick<PlannedCall, "system" | "user">) {
   return {
     model: MODEL,
-    max_tokens: maxTokensFor(MODEL, NEW_TOPIC_MAX_TOKENS),
+    max_tokens: MAX_OUTPUT_TOKENS,
     system: [{
       type: "text",
       text: call.system,
@@ -523,17 +561,24 @@ export function requestBody(call: Pick<PlannedCall, "system" | "user">) {
 }
 
 // ---------------------------------------------------------------------------
-// 費用估算（保守：不算快取折扣）
+// 費用：預估、每次送出前的預留、實付都用同一組單價（PRICING）
 // ---------------------------------------------------------------------------
 
-export function estimateInputTokens(
+export function promptChars(
   call: Pick<PlannedCall, "system" | "user">,
 ): number {
-  return Math.ceil(
-    (call.system.length + call.user.length) * CJK_TOKENS_PER_CHAR,
-  );
+  return call.system.length + call.user.length;
 }
 
+/** 估 input token：字數 × 每字 token 數（預設 1.5；真跑時用實測過的最大值）。 */
+export function estimateInputTokens(
+  call: Pick<PlannedCall, "system" | "user">,
+  tokensPerChar = CJK_TOKENS_PER_CHAR,
+): number {
+  return Math.ceil(promptChars(call) * tokensPerChar);
+}
+
+/** 實付：照 usage 的四格 token 計價。 */
 export function usd(
   inputTokens: number,
   outputTokens: number,
@@ -545,7 +590,55 @@ export function usd(
     outputTokens,
     cacheReadInputTokens,
     cacheCreationInputTokens,
-  }, SONNET_5_PRICING);
+  }, PRICING);
+}
+
+/** 保守計價：input 全部用最高的 input 單價（快取寫入）。預估與每次送出前的預留都用這個。 */
+export function conservativeUsd(
+  inputTokens: number,
+  outputTokens: number,
+): number {
+  return (inputTokens * MAX_INPUT_PER_MTOK +
+    outputTokens * PRICING.outputPerMTok) / 1_000_000;
+}
+
+/** 每次送出前的預留：input 估計 token 全用快取寫入單價、output 用 max_tokens 全滿。 */
+export function reservationUsd(
+  call: Pick<PlannedCall, "system" | "user">,
+  tokensPerChar = CJK_TOKENS_PER_CHAR,
+): number {
+  return conservativeUsd(
+    estimateInputTokens(call, tokensPerChar),
+    MAX_OUTPUT_TOKENS,
+  );
+}
+
+/** 回來的 usage 換算每字 token 數，取目前與實測的較大值（之後的預留跟著變大，不會變小）。 */
+export function calibratedTokensPerChar(
+  current: number,
+  call: Pick<PlannedCall, "system" | "user">,
+  usage: {
+    inputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+  },
+): number {
+  const actual = usage.inputTokens + usage.cacheReadInputTokens +
+    usage.cacheCreationInputTokens;
+  return Math.max(current, actual / promptChars(call));
+}
+
+/** 送出前的守門：已停、到次數上限，或已花費＋這次預留超過預算，就不送。 */
+export function stopBeforeCall(input: {
+  stopped: boolean;
+  calls: number;
+  maxCalls: number;
+  spentUsd: number;
+  reservationUsd: number;
+  budgetUsd: number;
+}): boolean {
+  return input.stopped || input.calls >= input.maxCalls ||
+    input.spentUsd + input.reservationUsd > input.budgetUsd;
 }
 
 export function estimatePlan(plan: Pick<PlannedCall, "system" | "user">[]) {
@@ -557,9 +650,12 @@ export function estimatePlan(plan: Pick<PlannedCall, "system" | "user">[]) {
     calls: plan.length,
     inputTokens,
     typicalOutputTokens: plan.length * TYPICAL_OUTPUT_TOKENS,
-    worstOutputTokens: plan.length * NEW_TOPIC_MAX_TOKENS,
-    typicalUsd: usd(inputTokens, plan.length * TYPICAL_OUTPUT_TOKENS),
-    worstUsd: usd(inputTokens, plan.length * NEW_TOPIC_MAX_TOKENS),
+    worstOutputTokens: plan.length * MAX_OUTPUT_TOKENS,
+    typicalUsd: conservativeUsd(
+      inputTokens,
+      plan.length * TYPICAL_OUTPUT_TOKENS,
+    ),
+    worstUsd: conservativeUsd(inputTokens, plan.length * MAX_OUTPUT_TOKENS),
   };
 }
 
@@ -630,14 +726,17 @@ export function explanationEnglish(
 }
 
 /**
- * 只有解釋欄不合格：把標題、whyItWorks、nextMove 換成佔位字、拿掉推薦理由再驗一次；過了代表
+ * 把標題、whyItWorks、nextMove 換成佔位字、拿掉推薦理由再驗一次。過了代表只有解釋欄不合格：
  * production 修格式會逐字保留這五句開場句（mergeNewTopicRepairWithPrimaryOpeningLines）。
+ * 回傳的 topics 解釋欄是佔位字，只能拿開場句與推薦位置來用。
  */
-export function explanationOnlyFailure(
+export function normalizeOpeningsOnly(
   parsed: unknown,
   grounding: NewTopicGroundingPolicy,
-): boolean {
-  if (!isPlainObject(parsed) || !Array.isArray(parsed.topics)) return false;
+) {
+  if (!isPlainObject(parsed) || !Array.isArray(parsed.topics)) {
+    return normalizeNewTopicModelPayload(parsed, grounding);
+  }
   const topics = parsed.topics.map((topic, i) =>
     isPlainObject(topic)
       ? {
@@ -654,7 +753,15 @@ export function explanationOnlyFailure(
   return normalizeNewTopicModelPayload(
     { ...parsed, topics, recommendation },
     grounding,
-  ).ok;
+  );
+}
+
+export function explanationOnlyFailure(
+  parsed: unknown,
+  grounding: NewTopicGroundingPolicy,
+): boolean {
+  return !normalizeNewTopicModelPayload(parsed, grounding).ok &&
+    normalizeOpeningsOnly(parsed, grounding).ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -662,13 +769,23 @@ export function explanationOnlyFailure(
 // ---------------------------------------------------------------------------
 
 export type Inspection = {
+  /** 不用修格式就能交付（格式合格、沒有外洩）。 */
   deliverable: boolean;
+  /**
+   * 開場句可評：可交付，或只壞在解釋欄（production 修格式會逐字保留這五句，用戶看得到）。
+   * 盲測與開場句的機械指標都算這些；可交付率只算 deliverable。
+   */
+  openingsEvaluable: boolean;
   promptLeak: boolean;
   normalizeReason: string | null;
   /** 格式不合格，但只壞在解釋欄（production 修格式會保留開場句）。 */
   explanationOnlyFailure: boolean;
+  /** 開場句可評時才有；只壞在解釋欄時，標題與解釋是佔位字，不能拿來評解釋。 */
   topics: NewTopicModelTopic[] | null;
-  /** 用戶實際看到的推薦（帶 topicContext 時已套紅燈收尾保證，同 production）。 */
+  /**
+   * 用戶實際看到的推薦（帶 topicContext 時已套紅燈收尾保證，同 production）。只壞在解釋欄時用主呼叫
+   * 自己的推薦：production 修格式那一次會重選，可能不同。
+   */
   recommendationIndex: number | null;
   recommendationReason: string | null;
   /** 模型自己推的那題（套保證之前）。 */
@@ -680,6 +797,7 @@ export type Inspection = {
   /** 只算推薦那一題（Free 只看得到這一題）。 */
   star: LineCounts | null;
   openingLengths: number[] | null;
+  /** 解釋欄的兩項只算可交付的輸出（只壞在解釋欄的，解釋是佔位字）。 */
   starTitleTechnique: boolean | null;
   starExplanationEnglish: string[] | null;
 };
@@ -688,13 +806,20 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
   const promptLeak = call.hasPromptLeak(raw);
   const parsed = parseJsonObjectFromText(raw);
   const normalized = normalizeNewTopicModelPayload(parsed, call.grounding);
-  if (!normalized.ok) {
+  // 外洩一律不可用；格式不合格時再看是不是只壞在解釋欄。
+  const openings = promptLeak
+    ? null
+    : normalized.ok
+    ? normalized
+    : normalizeOpeningsOnly(parsed, call.grounding);
+  const normalizeReason = normalized.ok ? null : normalized.reason;
+  if (openings === null || !openings.ok) {
     return {
       deliverable: false,
+      openingsEvaluable: false,
       promptLeak,
-      normalizeReason: normalized.reason,
-      explanationOnlyFailure: !promptLeak &&
-        explanationOnlyFailure(parsed, call.grounding),
+      normalizeReason,
+      explanationOnlyFailure: false,
       topics: null,
       recommendationIndex: null,
       recommendationReason: null,
@@ -708,26 +833,28 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
       starExplanationEnglish: null,
     };
   }
+  const deliverable = normalized.ok;
   const enforced = call.appliesRedClose
-    ? enforceNewTopicRedClose(normalized, {
+    ? enforceNewTopicRedClose(openings, {
       situation: call.situation,
       topicContext: call.topicContext,
     })
-    : { normalized, overridden: false };
+    : { normalized: openings, overridden: false };
   const served = enforced.normalized;
   const star = served.topics[served.recommendationIndex];
   const inputText = `${call.partnerSummary ?? ""}\n${
     call.topicContext?.materialText ?? ""
   }`;
   return {
-    deliverable: !promptLeak,
+    deliverable,
+    openingsEvaluable: true,
     promptLeak,
-    normalizeReason: null,
-    explanationOnlyFailure: false,
+    normalizeReason,
+    explanationOnlyFailure: !deliverable,
     topics: served.topics,
     recommendationIndex: served.recommendationIndex,
-    recommendationReason: served.recommendationReason,
-    modelRecommendationIndex: normalized.recommendationIndex,
+    recommendationReason: deliverable ? served.recommendationReason : null,
+    modelRecommendationIndex: openings.recommendationIndex,
     redCloseOverridden: enforced.overridden,
     audit: auditNewTopicTwoStageTopics({
       topics: served.topics,
@@ -740,11 +867,15 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
     openingLengths: served.topics.map((t) =>
       graphemeLength(t.openingLine.replace(/\n/g, ""))
     ),
-    starTitleTechnique: STAR_TITLE_TECHNIQUE.test(star.direction),
-    starExplanationEnglish: explanationEnglish(
-      [star.whyItWorks, star.nextMove, served.recommendationReason ?? ""],
-      inputText,
-    ),
+    starTitleTechnique: deliverable
+      ? STAR_TITLE_TECHNIQUE.test(star.direction)
+      : null,
+    starExplanationEnglish: deliverable
+      ? explanationEnglish(
+        [star.whyItWorks, star.nextMove, served.recommendationReason ?? ""],
+        inputText,
+      )
+      : null,
   };
 }
 
@@ -763,6 +894,9 @@ export type EvalRecord =
     } | null;
     costUsd?: number;
     costKnown?: boolean;
+    /** 送出前預留的金額；實付超過它代表 token 估少了（之後的預留已用實測比例調高）。 */
+    reservationUsd?: number;
+    costExceededReservation?: boolean;
     elapsedMs?: number;
     error?: string;
   };
@@ -816,12 +950,12 @@ export function jaccard(a: string, b: string): number {
   return shared / (x.size + y.size - shared);
 }
 
-/** 同案例第 1、2 次之間的近似重句對數（二字詞 Jaccard ≥ 0.5）。 */
+/** 同案例第 1、2 次之間的近似重句對數（二字詞 Jaccard ≥ 0.5；開場句可評的輸出）。 */
 export function nearDuplicatePairs(rows: EvalRecord[]): number {
   let pairs = 0;
   const byCase = new Map<string, EvalRecord[]>();
   for (const row of rows) {
-    if (!row.inspection?.deliverable || !row.inspection.topics) continue;
+    if (!row.inspection?.openingsEvaluable || !row.inspection.topics) continue;
     byCase.set(row.caseId, [...(byCase.get(row.caseId) ?? []), row]);
   }
   for (const group of byCase.values()) {
@@ -840,11 +974,13 @@ export function nearDuplicatePairs(rows: EvalRecord[]): number {
 }
 
 export function armMetrics(rows: EvalRecord[]) {
+  // 開場句的指標算「開場句可評」（可交付＋只壞在解釋欄：用戶看得到這五句）；★ 解釋的兩項只算可交付。
   const ok = rows.flatMap((r) =>
-    r.inspection?.deliverable && r.inspection.audit
+    r.inspection?.openingsEvaluable && r.inspection.audit
       ? [{ r, a: r.inspection.audit }]
       : []
   );
+  const deliverable = ok.filter(({ r }) => r.inspection!.deliverable);
   const sum = (xs: typeof ok, f: (x: typeof ok[number]) => number) =>
     xs.reduce((n, x) => n + f(x), 0);
   const addCounts = (pick: (i: Inspection) => LineCounts | null) => {
@@ -873,7 +1009,8 @@ export function armMetrics(rows: EvalRecord[]) {
   return {
     outputs: rows.length,
     modelReturned: rows.filter((r) => r.inspection !== null).length,
-    deliverable: ok.length,
+    deliverable: deliverable.length,
+    openingsEvaluable: ok.length,
     explanationOnlyFailures:
       rows.filter((r) => r.inspection?.explanationOnlyFailure === true).length,
     lines,
@@ -885,10 +1022,10 @@ export function armMetrics(rows: EvalRecord[]) {
       p90: percentile(lengths, 0.9),
       over35: lengths.filter((n) => n > 35).length,
     },
-    starTitleTechnique: ok.filter(({ r }) => r.inspection!.starTitleTechnique)
-      .length,
+    starTitleTechnique:
+      deliverable.filter(({ r }) => r.inspection!.starTitleTechnique).length,
     starExplanationEnglish: sum(
-      ok,
+      deliverable,
       ({ r }) => r.inspection!.starExplanationEnglish?.length ?? 0,
     ),
     materialInRecommended: {
@@ -952,6 +1089,87 @@ export function metricsByArm(records: EvalRecord[]) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// 正式驗收的完整度：缺、重複、多出來、沒跑到的都要列出來；有任何一項就不能通過
+// ---------------------------------------------------------------------------
+
+export function expectedCodes(
+  cases: EvalCase[] = CASES,
+  repeat = FORMAL_REPEAT,
+): string[] {
+  return cases.flatMap((c) =>
+    Array.from({ length: repeat }, (_, i) => `${c.id}#${i + 1}`)
+  );
+}
+
+export function expectedKeys(
+  cases: EvalCase[] = CASES,
+  repeat = FORMAL_REPEAT,
+): string[] {
+  return expectedCodes(cases, repeat).flatMap((code) => {
+    const [id, attempt] = code.split("#");
+    return ARMS.map((arm) => `${id}.${attempt}.${arm}`);
+  });
+}
+
+/** 清單太長只列前幾個。 */
+export function listSome(items: string[], max = 8): string {
+  return items.length <= max
+    ? items.join("、")
+    : `${items.slice(0, max).join("、")}…等 ${items.length} 個`;
+}
+
+/** 找出缺少、多出來與重複的項目（重複＝出現超過一次）。 */
+export function setProblems(
+  label: string,
+  got: string[],
+  expected: string[],
+): string[] {
+  const want = new Set(expected);
+  const seen = new Map<string, number>();
+  for (const item of got) seen.set(item, (seen.get(item) ?? 0) + 1);
+  const missing = expected.filter((item) => !seen.has(item));
+  const extra = [...seen.keys()].filter((item) => !want.has(item));
+  const duplicate = [...seen].filter(([, n]) => n > 1).map(([item]) => item);
+  return [
+    ...(missing.length
+      ? [`${label}少了 ${missing.length} 個：${listSome(missing)}`]
+      : []),
+    ...(extra.length
+      ? [`${label}多出 ${extra.length} 個：${listSome(extra)}`]
+      : []),
+    ...(duplicate.length
+      ? [`${label}重複 ${duplicate.length} 個：${listSome(duplicate)}`]
+      : []),
+  ];
+}
+
+/**
+ * records 能不能當正式驗收：每個（案例, 第幾次, 臂）剛好一筆，而且模型都有回（格式壞掉也算有回，
+ * 會照實算進可交付率）。回傳問題清單；空的才算完整。
+ */
+export function recordProblems(
+  records: EvalRecord[],
+  cases: EvalCase[] = CASES,
+  repeat = FORMAL_REPEAT,
+): string[] {
+  const notReturned = records.filter((r) => r.status !== "MODEL_RETURNED");
+  return [
+    ...setProblems(
+      "records ",
+      records.map((r) => r.key),
+      expectedKeys(cases, repeat),
+    ),
+    ...(notReturned.length
+      ? [
+        `模型沒有回的呼叫 ${notReturned.length} 個：${
+          listSome(notReturned.map((r) => `${r.key}（${r.status}）`))
+        }`,
+      ]
+      : []),
+  ];
+}
+
 /** 規格 §6.5 第 5、6 項：能機械判定的門檻（null＝沒有資料可判）。 */
 export function mechanicalAcceptance(
   m: Record<Arm, { all: ArmMetrics }>,
@@ -972,6 +1190,7 @@ export function mechanicalAcceptance(
       cand: cand.lines.multiQuestionLines,
       pass: cand.lines.multiQuestionLines === 0,
     },
+    // 候選 < 基準；基準已是 0 時候選也是 0 就算過（嚴格小於做不到；ADR #51 產品裁決 4）。
     awkwardPatternLines: {
       base: base.awkwardPatternLines,
       cand: cand.awkwardPatternLines,
@@ -1095,6 +1314,7 @@ export function blindAB(
     "# 新話題盲測：推薦那一題的解釋（標題、為什麼現在有效、她回了之後、推薦理由）",
     "",
     "組別、甲乙順序與 blind_ab.md 相同。每個「＿」換成你的答案，甲乙之間用全形分號「；」。",
+    "某一版寫「沒有可評的解釋」時，那一版的是／否填「否」、處數填 0。",
     "",
   ];
   for (const { c, attempt, pair } of pairs) {
@@ -1107,10 +1327,10 @@ export function blindAB(
     for (const [i, name] of (["甲", "乙"] as const).entries()) {
       const ins = order[i].inspection!;
       ab.push(`### ${name}`);
-      if (!ins.deliverable || !ins.topics) {
+      if (!ins.openingsEvaluable || !ins.topics) {
         ab.push("（這一版沒有產出可用的五題）", "");
         star.push(`- ${name}：（沒有可用結果）`);
-        explanations.push(`### ${name}`, "（沒有可用結果）", "");
+        explanations.push(`### ${name}`, "（沒有可評的解釋）", "");
         continue;
       }
       ins.topics.forEach((t, n) =>
@@ -1123,6 +1343,11 @@ export function blindAB(
       ab.push("");
       const s = ins.topics[ins.recommendationIndex!];
       star.push(`- ${name}：${s.openingLine.replace(/\n/g, " ⏎ ")}`);
+      // 只壞在解釋欄：開場句照樣評，解釋是佔位字、不列（production 修格式會重寫）。
+      if (!ins.deliverable) {
+        explanations.push(`### ${name}`, "（沒有可評的解釋）", "");
+        continue;
+      }
       explanations.push(
         `### ${name}`,
         `- 標題：${s.direction}`,
@@ -1164,8 +1389,14 @@ export function blindAB(
 // summary
 // ---------------------------------------------------------------------------
 
-const mark = (pass: boolean | null) =>
-  pass === null ? "未評估" : pass ? "✓" : "✗";
+/** 資料不完整時一律標「未完成」，不管數字看起來過不過。 */
+export function acceptanceMark(
+  pass: boolean | null,
+  complete: boolean,
+): string {
+  if (!complete) return "未完成";
+  return pass === null ? "未評估" : pass ? "✓" : "✗";
+}
 const pct = (x: number | null) => x === null ? "—" : `${(x * 100).toFixed(0)}%`;
 
 export function summaryMarkdown(input: {
@@ -1183,6 +1414,11 @@ export function summaryMarkdown(input: {
 }): string {
   const m = metricsByArm(input.records);
   const acc = mechanicalAcceptance(m);
+  const problems = recordProblems(input.records);
+  const complete = problems.length === 0;
+  const mark = (pass: boolean | null) => acceptanceMark(pass, complete);
+  const overReservation =
+    input.records.filter((r) => r.costExceededReservation === true).length;
   const row = (
     label: string,
     f: (x: ArmMetrics) => string | number,
@@ -1202,15 +1438,21 @@ export function summaryMarkdown(input: {
     }。`,
     `- 實際呼叫 ${input.calls}／規劃 ${input.planned}；計入費用 $${
       input.spentUsd.toFixed(3)
-    }（上限 $${input.budgetUsd}；含成本未知的最壞情況）；提前停止：${
+    }（預算 $${input.budgetUsd}，依估計 token 守門、不是嚴格上限；含成本未知的最壞情況）；實付超過預留 ${overReservation} 次；提前停止：${
       input.stopped ? "是" : "否"
     }；超過 production 45 秒期限 ${overDeadline} 次。`,
+    complete
+      ? "- 正式驗收資格：資料完整（22 組 × 2 次 × 兩臂，模型都有回）。"
+      : `- **正式驗收資格：未完成，不能當正式驗收。** ${problems.join("；")}`,
     "",
-    "## 機械指標（base＝改前、cand＝改後；只看可交付輸出）",
+    "## 機械指標（base＝改前、cand＝改後）",
+    "",
+    "開場句的指標算「開場句可評」的輸出（可交付＋只壞在解釋欄：用戶看得到這五句）；★ 解釋兩項只算可交付。",
     "",
     "| 指標 | base 全部 | cand 全部 | base 基本 | cand 基本 | base 進階 | cand 進階 |",
     "|---|---|---|---|---|---|---|",
     row("可交付／輸出", (x) => `${x.deliverable}/${x.outputs}`),
+    row("開場句可評／輸出", (x) => `${x.openingsEvaluable}/${x.outputs}`),
     row("只壞在解釋欄（修格式會保留開場句）", (x) => x.explanationOnlyFailures),
     row("問句", (x) => x.lines.questionLines),
     row("一則兩個以上問句", (x) => x.lines.multiQuestionLines),
@@ -1264,7 +1506,7 @@ export function summaryMarkdown(input: {
     `| 5b. 一則兩個以上問句：候選 0 | ${
       mark(acc.multiQuestionLines.pass)
     } ${acc.multiQuestionLines.cand} |`,
-    `| 5c. 四種尷尬句型合計：候選 < 基準 | ${
+    `| 5c. 四種尷尬句型合計：候選 < 基準（基準已是 0 時候選也要 0） | ${
       mark(acc.awkwardPatternLines.pass)
     } ${acc.awkwardPatternLines.cand} vs ${acc.awkwardPatternLines.base} |`,
     `| 5d. 近似重句：候選 ≤ 基準 × 1.5 | ${
@@ -1280,7 +1522,7 @@ export function summaryMarkdown(input: {
       mark(acc.starExplanationEnglish.pass)
     } ${acc.starExplanationEnglish.cand} |`,
     "",
-    "字面計數只看趨勢，不是語意判定；用戶講自己的句子也可能被算到。",
+    "字面計數只看趨勢，不是語意判定；用戶講自己的句子也可能被算到。只壞在解釋欄的那一版，★ 用主呼叫自己的推薦（production 修格式那一次會重選，可能不同）。",
     input.unpaired.length
       ? `未成對、沒進盲測：${input.unpaired.join("、")}`
       : "所有組都已成對進盲測。",
@@ -1359,17 +1601,19 @@ async function main(args: string[]): Promise<void> {
     },
     candidatePromptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
     sha256: {
-      cases: await sha256(JSON.stringify(catalog)),
+      cases: await catalogSha256(),
       systemPrompts: Object.keys(systemPrompts),
       userPrompts: await sha256(
         JSON.stringify(plan.map((call) => [call.key, call.user])),
       ),
     },
-    pricing: SONNET_5_PRICING,
+    pricing: PRICING,
     estimate: {
       ...estimate,
       method:
-        `input＝字數×${CJK_TOKENS_PER_CHAR}，不算快取折扣；output 一般 ${TYPICAL_OUTPUT_TOKENS}／最壞 ${NEW_TOPIC_MAX_TOKENS}（max_tokens 全滿）`,
+        `input＝字數×${CJK_TOKENS_PER_CHAR}（估計，不是 tokenizer），全部用最高的 input 單價 $${MAX_INPUT_PER_MTOK}/M（快取寫入）；output 一般 ${TYPICAL_OUTPUT_TOKENS}／最壞 ${MAX_OUTPUT_TOKENS}（max_tokens 全滿）`,
+      guard:
+        "每次送出前預留＝估計 input×最高 input 單價＋max_tokens 全滿；已花費＋預留超過 --budget-usd 就整批停。真跑時每字 token 數取 1.5 與實測的較大值。token 是估的，預算不是嚴格上限。",
     },
     options: { ...opts, nowMs: undefined },
   };
@@ -1402,7 +1646,7 @@ async function main(args: string[]): Promise<void> {
     console.log(
       `預估費用 一般 $${estimate.typicalUsd.toFixed(2)}／最壞 $${
         estimate.worstUsd.toFixed(2)
-      }（${MODEL}：$${SONNET_5_PRICING.inputPerMTok}/M in、$${SONNET_5_PRICING.outputPerMTok}/M out）`,
+      }（${MODEL}：input 全部用快取寫入價 $${MAX_INPUT_PER_MTOK}/M、output $${PRICING.outputPerMTok}/M；token 是字數估的，不是嚴格上限）`,
     );
     console.log(JSON.stringify({
       status: "DRY_RUN_NO_MODEL",
@@ -1422,6 +1666,8 @@ async function main(args: string[]): Promise<void> {
 
   const records: EvalRecord[] = [];
   let calls = 0, spentUsd = 0, stopped = false;
+  // 每字 token 數：先用 1.5，每次回來用實測更新（只會變大），之後的預留跟著變大。
+  let tokensPerChar = CJK_TOKENS_PER_CHAR;
   const log = (value: unknown) =>
     Deno.writeTextFile(
       new URL("requests.jsonl", out),
@@ -1430,11 +1676,17 @@ async function main(args: string[]): Promise<void> {
     );
   for (const call of plan) {
     const base = baseRecord(call);
-    // 每次送出前用最壞情況（字數×1.5＋max_tokens 全滿）預檢；超過上限就整批停，不再送新呼叫。
-    const reservation = usd(estimateInputTokens(call), NEW_TOPIC_MAX_TOKENS);
+    // 每次送出前預留最壞情況（估計 input×快取寫入價＋max_tokens 全滿）；超過上限就整批停，不再送新呼叫。
+    const reservation = reservationUsd(call, tokensPerChar);
     if (
-      stopped || calls >= opts.maxCalls! ||
-      spentUsd + reservation > opts.budgetUsd!
+      stopBeforeCall({
+        stopped,
+        calls,
+        maxCalls: opts.maxCalls!,
+        spentUsd,
+        reservationUsd: reservation,
+        budgetUsd: opts.budgetUsd!,
+      })
     ) {
       stopped = true;
       records.push({
@@ -1449,6 +1701,7 @@ async function main(args: string[]): Promise<void> {
       key: call.key,
       call: calls,
       reservationUsd: reservation,
+      tokensPerChar,
       state: "SENDING",
     });
     const started = Date.now();
@@ -1485,6 +1738,7 @@ async function main(args: string[]): Promise<void> {
           : null;
       // usage 缺漏＝成本未知：以最壞情況計入並停止，不當免費。
       if (!usage) stopped = true;
+      else tokensPerChar = calibratedTokensPerChar(tokensPerChar, call, usage);
       const costUsd = usage
         ? usd(
           usage.inputTokens,
@@ -1501,6 +1755,8 @@ async function main(args: string[]): Promise<void> {
         usage,
         costUsd,
         costKnown: usage !== null,
+        reservationUsd: reservation,
+        costExceededReservation: costUsd > reservation,
         elapsedMs: Date.now() - started,
         raw,
         inspection: inspectOutput(call, raw),
@@ -1514,6 +1770,7 @@ async function main(args: string[]): Promise<void> {
         error: String(error).slice(0, 300),
         costUsd: reservation,
         costKnown: false,
+        reservationUsd: reservation,
         elapsedMs: Date.now() - started,
         inspection: null,
       };
@@ -1524,6 +1781,7 @@ async function main(args: string[]): Promise<void> {
       call: calls,
       state: record.status,
       costUsd: record.costUsd,
+      costExceededReservation: record.costExceededReservation ?? false,
     });
     await write("records.json", records);
   }
@@ -1537,6 +1795,7 @@ async function main(args: string[]): Promise<void> {
   const status = stopped
     ? "STOPPED_BY_CAP_OR_FAILURE"
     : "FINISHED_QUALITY_UNREVIEWED";
+  const formalProblems = recordProblems(records);
   const summary = summaryMarkdown({
     tag: opts.tag,
     candidateHead,
@@ -1557,6 +1816,9 @@ async function main(args: string[]): Promise<void> {
     finishedAt: new Date().toISOString(),
     modelCallsMade: calls,
     spentUsd,
+    finalTokensPerChar: tokensPerChar,
+    formalComplete: formalProblems.length === 0,
+    formalProblems,
     metrics: metricsByArm(records),
   });
   console.log(summary);

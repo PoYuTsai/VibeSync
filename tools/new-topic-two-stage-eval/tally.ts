@@ -1,15 +1,26 @@
 // 盲測填完之後算規格 §6.5 驗收門檻（不打模型、不連網）。
 //
-// 讀 out/<tag>/ 的 blind_ab.md、blind_star.md、explanations_blind.md（Bruce 填好的）、reveal-map.json
-// 與 records.json，寫出 acceptance.md。任何一格還是「＿」或格式不對就整個拒絕，不會把沒填的當通過。
+// 讀 out/<tag>/ 的 blind_ab.md、blind_star.md、explanations_blind.md（Bruce 填好的）、reveal-map.json、
+// records.json 與 manifest.json，寫出 acceptance.md。
+// - 任何一格還是「＿」或格式不對就整個拒絕，不會把沒填的當通過。
+// - 五份檔要一起對得上完整的 22 組 × 2 次 × 兩臂：缺、重複、多出來、沒跑到、只跑部分案例或沒跑完，
+//   報告都標「未完成」，不能當正式驗收，指令也以失敗結束。
 // 用法：deno run --allow-read --allow-write tools/new-topic-two-stage-eval/tally.ts --tag=<tag>
 
 import {
+  acceptanceMark,
   type Arm,
+  ARMS,
   BLIND_FIELDS,
+  catalogSha256,
   type EvalRecord,
+  expectedCodes,
+  expectedKeys,
+  FORMAL_REPEAT,
   mechanicalAcceptance,
   metricsByArm,
+  recordProblems,
+  setProblems,
 } from "./run.ts";
 
 type BlindKey = keyof typeof BLIND_FIELDS;
@@ -32,12 +43,22 @@ const PAIR_KEYS = new Set<BlindKey>([
   "mixedEnglish",
 ]);
 
+const BLIND_HEADING = /^## (\S+#\d+)\s*$/;
+
+/** 盲測檔裡所有組別代碼（照出現順序，重複的也列出來）。 */
+export function blindCodes(markdown: string): string[] {
+  return markdown.split("\n").flatMap((line) => {
+    const heading = BLIND_HEADING.exec(line);
+    return heading ? [heading[1]] : [];
+  });
+}
+
 /** 解析一份盲測檔：每個「## 代碼」段落裡，照 BLIND_FIELDS 的前綴取答案。 */
 export function parseBlind(markdown: string): BlindAnswers {
   const answers: BlindAnswers = new Map();
   let code: string | null = null;
   for (const line of markdown.split("\n")) {
-    const heading = /^## (\S+#\d+)\s*$/.exec(line);
+    const heading = BLIND_HEADING.exec(line);
     if (heading) {
       code = heading[1];
       answers.set(code, {});
@@ -94,8 +115,8 @@ export type ArmTotals = {
   /** 有一次 ★ 尷尬的案例（同案例兩次算一組）。 */
   starAwkwardCases: string[];
   fun: number;
-  /** 這一臂在哪些案例有一次以上「不有趣」。 */
-  notFunCases: string[];
+  /** 每組（代碼）這一臂有沒有被評為有趣。 */
+  funByCode: Record<string, boolean>;
   favorite: number;
   starBetter: number;
   titleTopic: number;
@@ -114,7 +135,7 @@ function emptyTotals(): ArmTotals {
     starAwkward: 0,
     starAwkwardCases: [],
     fun: 0,
-    notFunCases: [],
+    funByCode: {},
     favorite: 0,
     starBetter: 0,
     titleTopic: 0,
@@ -124,7 +145,10 @@ function emptyTotals(): ArmTotals {
   };
 }
 
-/** 把三份盲測與解盲表合成每臂總計；缺任何一格就拒絕。 */
+/**
+ * 把三份盲測與解盲表合成每臂總計；有出現的組別缺任何一格就拒絕。三份檔都找不到的組別跳過不算，
+ * 由 completenessProblems 列成「未完成」。
+ */
 export function tally(input: {
   ab: string;
   star: string;
@@ -137,7 +161,7 @@ export function tally(input: {
   const totals = { base: emptyTotals(), cand: emptyTotals() };
   for (const [code, arms] of Object.entries(input.reveal)) {
     const a = ab.get(code), s = star.get(code), e = explanations.get(code);
-    if (!a || !s || !e) throw new Error(`${code} 在盲測檔裡找不到`);
+    if (!a || !s || !e) continue;
     const caseId = code.split("#")[0];
     const need = (answers: typeof a, key: BlindKey) => {
       const value = answers[key];
@@ -165,8 +189,9 @@ export function tally(input: {
           t.starAwkwardCases.push(caseId);
         }
       }
-      if (yes(code, "有趣或有個性", pair(a, "fun"))) t.fun++;
-      else if (!t.notFunCases.includes(caseId)) t.notFunCases.push(caseId);
+      const fun = yes(code, "有趣或有個性", pair(a, "fun"));
+      if (fun) t.fun++;
+      t.funByCode[code] = fun;
       if (yes(code, "標題在說聊什麼", pair(e, "titleTopic"))) t.titleTopic++;
       if (yes(code, "理由說得出她可以回什麼", pair(e, "reasonUseful"))) {
         t.reasonUseful++;
@@ -192,16 +217,107 @@ export function tally(input: {
 /** 有互虧依據、規格要求候選一定要「有趣」的案例。 */
 export const MUST_BE_FUN = ["B3", "J1", "E3"] as const;
 
+/**
+ * 正式驗收的完整度：manifest、records、解盲表與三份盲測要一起對得上完整的 22 組 × 2 次 × 兩臂。
+ * 回傳問題清單；空的才算完整。
+ */
+export function completenessProblems(input: {
+  manifest: unknown;
+  casesSha256: string;
+  records: EvalRecord[];
+  reveal: Record<string, { 甲: Arm; 乙: Arm }>;
+  ab: string;
+  star: string;
+  explanations: string;
+}): string[] {
+  const problems: string[] = [];
+  const m = input.manifest as {
+    status?: unknown;
+    candidateDirty?: unknown;
+    modelCallsMade?: unknown;
+    sha256?: { cases?: unknown };
+    options?: { repeat?: unknown; only?: unknown; arms?: unknown };
+  } | null;
+  if (typeof m !== "object" || m === null) {
+    problems.push("manifest.json 格式不對");
+  } else {
+    if (m.status !== "FINISHED_QUALITY_UNREVIEWED") {
+      problems.push(`評測沒有跑完（manifest status＝${String(m.status)}）`);
+    }
+    if (m.options?.repeat !== FORMAL_REPEAT) {
+      problems.push(
+        `每組跑了 ${
+          String(m.options?.repeat)
+        } 次，正式驗收要 ${FORMAL_REPEAT} 次`,
+      );
+    }
+    if (m.options?.only !== null) {
+      problems.push(`只跑了部分案例（--only=${String(m.options?.only)}）`);
+    }
+    if (JSON.stringify(m.options?.arms) !== JSON.stringify(ARMS)) {
+      problems.push(`只跑了 ${String(m.options?.arms)} 臂，正式驗收要兩臂`);
+    }
+    if (m.sha256?.cases !== input.casesSha256) {
+      problems.push("案例檔跟評測當時不同（cases.json 的 sha256 對不上）");
+    }
+    if (m.candidateDirty !== false) {
+      problems.push("評測時工作樹有未提交修改，結果對不回工程版本");
+    }
+    if (m.modelCallsMade !== expectedKeys().length) {
+      problems.push(
+        `模型呼叫 ${
+          String(m.modelCallsMade)
+        } 次，正式驗收要 ${expectedKeys().length} 次`,
+      );
+    }
+  }
+  problems.push(...recordProblems(input.records));
+  const codes = expectedCodes();
+  problems.push(
+    ...setProblems("解盲表的組別", Object.keys(input.reveal), codes),
+  );
+  const badReveal = Object.entries(input.reveal).filter(([, arms]) =>
+    !(
+      (arms.甲 === "base" && arms.乙 === "cand") ||
+      (arms.甲 === "cand" && arms.乙 === "base")
+    )
+  ).map(([code]) => code);
+  if (badReveal.length) {
+    problems.push(
+      `解盲表的甲乙不是一邊基準、一邊候選：${badReveal.join("、")}`,
+    );
+  }
+  for (
+    const [name, markdown] of [
+      ["blind_ab.md", input.ab],
+      ["blind_star.md", input.star],
+      ["explanations_blind.md", input.explanations],
+    ] as const
+  ) {
+    problems.push(
+      ...setProblems(`${name} 的組別`, blindCodes(markdown), codes),
+    );
+  }
+  return problems;
+}
+
 export function acceptanceMarkdown(input: {
   tag: string;
   totals: Record<Arm, ArmTotals>;
   records: EvalRecord[];
+  /** completenessProblems 的結果；有任何一項，整份報告都是「未完成」。 */
+  problems: string[];
 }): string {
   const { base, cand } = input.totals;
   const acc = mechanicalAcceptance(metricsByArm(input.records));
-  const mark = (pass: boolean | null) =>
-    pass === null ? "未評估" : pass ? "✓" : "✗";
-  const funMissing = MUST_BE_FUN.filter((id) => cand.notFunCases.includes(id));
+  const complete = input.problems.length === 0;
+  const mark = (pass: boolean | null) => acceptanceMark(pass, complete);
+  // B3、J1、E3 每一次都要有候選的評分，而且是「有趣」；缺一組也不算過。
+  const mustBeFun = MUST_BE_FUN.flatMap((id) =>
+    Array.from({ length: FORMAL_REPEAT }, (_, i) => `${id}#${i + 1}`)
+  );
+  const funMissing = mustBeFun.filter((code) => !(code in cand.funByCode));
+  const funFailed = mustBeFun.filter((code) => cand.funByCode[code] === false);
   const rows: Array<[string, boolean | null, string]> = [
     [
       "1. 候選 0 件捏造／越界（盲測計數；另要逐筆看 records 確認）",
@@ -237,8 +353,11 @@ export function acceptanceMarkdown(input: {
     ],
     [
       "4b. B3、J1、E3 候選每次都「有趣」",
-      funMissing.length === 0,
-      funMissing.length === 0 ? "都是" : `沒做到：${funMissing.join("、")}`,
+      funMissing.length === 0 && funFailed.length === 0,
+      funMissing.length === 0 && funFailed.length === 0 ? "都是" : [
+        funFailed.length ? `沒做到：${funFailed.join("、")}` : "",
+        funMissing.length ? `沒有評分：${funMissing.join("、")}` : "",
+      ].filter(Boolean).join("；"),
     ],
     [
       "5a. 可交付率：候選 ≥ 基準",
@@ -251,7 +370,7 @@ export function acceptanceMarkdown(input: {
       `候選 ${acc.multiQuestionLines.cand}`,
     ],
     [
-      "5c. 四種尷尬句型合計：候選 < 基準",
+      "5c. 四種尷尬句型合計：候選 < 基準（基準已是 0 時候選也要 0）",
       acc.awkwardPatternLines.pass,
       `候選 ${acc.awkwardPatternLines.cand}、基準 ${acc.awkwardPatternLines.base}`,
     ],
@@ -276,14 +395,22 @@ export function acceptanceMarkdown(input: {
       `候選 ${acc.starExplanationEnglish.cand}`,
     ],
   ];
-  const allPass = rows.every(([, pass]) => pass === true);
+  const allPass = complete && rows.every(([, pass]) => pass === true);
   return [
     `# 新話題驗收（規格 §6.5）· ${input.tag}`,
     "",
-    `整體：${
-      allPass ? "全部通過" : "有未通過或未評估的項目"
-    }。第 1 項另要逐筆看 records.json 確認沒有捏造或越界。`,
+    complete
+      ? `整體：${
+        allPass ? "全部通過" : "有未通過或未評估的項目"
+      }。第 1 項另要逐筆看 records.json 確認沒有捏造或越界。`
+      : "整體：**未完成**——資料不完整，不能當正式驗收。下面的數字只是部分資料，每一項都標「未完成」。",
     "",
+    ...(complete ? [] : [
+      "## 資料不完整",
+      "",
+      ...input.problems.map((problem) => `- ${problem}`),
+      "",
+    ]),
     "| 門檻 | 結果 | 數字 |",
     "|---|---|---|",
     ...rows.map(([label, pass, detail]) =>
@@ -313,16 +440,28 @@ async function main(args: string[]): Promise<void> {
   }
   const out = new URL(`./out/${tag}/`, import.meta.url);
   const read = (name: string) => Deno.readTextFile(new URL(name, out));
-  const totals = tally({
+  const blind = {
     ab: await read("blind_ab.md"),
     star: await read("blind_star.md"),
     explanations: await read("explanations_blind.md"),
     reveal: JSON.parse(await read("reveal-map.json")),
-  });
+  };
+  const totals = tally(blind);
   const records = JSON.parse(await read("records.json")) as EvalRecord[];
-  const markdown = acceptanceMarkdown({ tag, totals, records });
+  const problems = completenessProblems({
+    ...blind,
+    manifest: JSON.parse(await read("manifest.json")),
+    casesSha256: await catalogSha256(),
+    records,
+  });
+  const markdown = acceptanceMarkdown({ tag, totals, records, problems });
   await Deno.writeTextFile(new URL("acceptance.md", out), markdown);
   console.log(markdown);
+  if (problems.length) {
+    throw new Error(
+      `資料不完整（${problems.length} 項），acceptance.md 已標「未完成」，不能當正式驗收`,
+    );
+  }
 }
 
 if (import.meta.main) await main(Deno.args);
