@@ -1,7 +1,8 @@
-// 新話題進階路徑（先問兩題再生成，2026-10-01 實作規格 §1／§4）。
+// 新話題提示詞（2026-10-01 進階路徑實作規格 §1／§4；2026-10-05 起基本模式
+// 也走這裡，提示詞 v2.3，見 ADR #51）。
 //
-// 純 helper：不 import server、不碰 DB。請求沒有 topicContext 時一律走
-// legacy（new_topic_prompt.ts），這裡的提示詞與規則都不會被用到。
+// 純 helper：不 import server、不碰 DB。有沒有帶 topicContext 都用同一份系統
+// 提示詞；沒帶（基本模式）時「這次的局面」只有狀況那幾行，沒有素材段。
 // 提示詞裡只出現中文標籤，絕不出現 enum 代碼；素材原文不進 log。
 
 import { isPlainObject } from "../_shared/quota.ts";
@@ -14,7 +15,7 @@ import {
 import { pickNewTopicAngle } from "./new_topic_prompt.ts";
 import { graphemeLength } from "./opener_stage.ts";
 
-export const NEW_TOPIC_TWO_STAGE_PROMPT_VERSION = "new-topic-two-stage-v1";
+export const NEW_TOPIC_TWO_STAGE_PROMPT_VERSION = "new-topic-v2.3";
 export const NEW_TOPIC_MATERIAL_TEXT_MAX_GRAPHEMES = 150;
 /** grapheme 上限擋不住一個字疊幾百個組合符號／ZWJ：另外以 UTF-16 長度封頂。 */
 export const NEW_TOPIC_MATERIAL_TEXT_MAX_CODE_UNITS = 1500;
@@ -184,12 +185,20 @@ export function newTopicGapMentionAllowed(
     topicContext.coldStop !== "she_cold";
 }
 
+/** 基本模式＝請求沒帶 topicContext；兩種模式用同一份系統提示詞。 */
+export function newTopicPromptVariant(
+  topicContext: NewTopicTopicContext | null,
+): "basic" | "advanced" {
+  return topicContext === null ? "basic" : "advanced";
+}
+
 /** telemetry 只記答案代碼與字數，絕不記原文。 */
 export function newTopicTwoStageTelemetry(
   topicContext: NewTopicTopicContext | null,
 ) {
   return {
-    promptVariant: topicContext === null ? "legacy" : "two_stage_v1",
+    promptVariant: newTopicPromptVariant(topicContext),
+    promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
     coldDuration: topicContext?.coldDuration ?? null,
     coldStop: topicContext?.coldStop ?? null,
     engagement: topicContext?.engagement ?? null,
@@ -201,13 +210,14 @@ export function newTopicTwoStageTelemetry(
 }
 
 // ---------------------------------------------------------------------------
-// 系統提示詞（規格 §4.1 逐字；不放任何示範訊息）
+// 系統提示詞 v2.3（docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md
+// 附錄 A 逐字；不放任何示範訊息）
 // ---------------------------------------------------------------------------
 
 export const NEW_TOPIC_TWO_STAGE_PROMPT =
   `你是 VibeSync 的聊天教練，幫用戶想「重新開話題」的訊息。對象是已經聊過、但現在需要一個新台階的人——不是陌生開場。
 
-**怎麼讀這份指引**：下面是判準不是填空題。真人傳訊不是每句都正確——可以隨口、可以不完整、可以只有四個字。五題裡有一兩題有點意外、卻讓她忍不住想接，比五題都合格有用；**規則會讓句子失去體溫時，選體溫**。唯一不能鬆的是安全與 grounding：不虛構她的事、不越界、不油。
+**怎麼讀這份指引**：下面是判準不是填空題。一則好訊息先做到三件事：她一眼看懂在聊什麼、看得出用戶為什麼現在說、她不用費力就能接。做到之後，要聽得出用戶這個人：有自己的喜好和看法、敢跟她不一樣、可以帶點玩笑，不討好；用平常講話的口氣帶出來，不靠宣告或技巧，也不能拿來換掉這三件事。**規則會讓句子失去體溫時，選體溫**。可以隨口、可以很短，但不能短到她要猜意思。重新開話題不是一次表現：不用證明用戶很會聊，讓她願意一起聊下去才是目的。唯一不能鬆的是安全與 grounding：不虛構她的事、不越界、不油。
 
 ## 素材與 grounding（最重要）
 輸入分四段，權限完全不同：
@@ -232,14 +242,23 @@ export const NEW_TOPIC_TWO_STAGE_PROMPT =
 2. 裡面有用戶自己：他的反應、看法或一件小事，不是只有問題。
 3. 她一句話就能回，而且回完還能往下聊。
 沒有素材原文時，「為什麼是現在」用剛想到的事、一個看法或觀察，不編用戶沒說過的經歷或事件。
-問她的事只問兩種：她選哪個、看重什麼，或是事情後來怎樣。不問幾天、幾點、當初怎麼開始——那是查戶口。一則最多一個問題，不一次問兩件事。
+她怎麼接都算接住：回答、補充、分享她自己的、笑一下、回嘴都可以。可以讓她有得反駁，但反駁的是用戶的看法或小猜測，一句就回得了；不要讓她得先替自己辯解或配合演出。
+問句或陳述都可以，看哪個自然，不需要每題都問。問她的事要具體、好回答、答案聊得下去：她會怎麼選、怎麼看，或是素材／作戰板寫過的事後來怎樣。讓她選的時候，選項要是具體的生活場景或偏好，最好帶上用戶自己選哪個；不拿來評她的能力或個性。不問幾天、幾點、當初怎麼開始——那是查戶口。一則最多一個問題，不一次問兩件事。
 不寫：在嗎、嗨、最近好嗎、最近在幹嘛、怎麼都沒消息、說「有件事想跟妳說」卻不說、冷掉時的「最近一直想到妳」。冷掉時第一則不約。
 例外：「這次的局面」說第一題是收尾句時，那一題照局面寫成收尾，不受上面三件事與問句的規定約束。
 
+## 猜她、玩笑與假設
+- 不替她的個性、身分、能力下判斷或分類（「妳感覺是那種…的人」「妳一定是…」）。
+- 作戰板或素材寫到的興趣，可以順著猜她一個小選擇或小習慣，讓她好認也好反駁；沒寫到的不猜，直接問或先講用戶自己的。
+- 互虧、安排角色、誇張逗她這類比較大膽的玩笑，只在有互虧依據時用：素材是你們之間的梗，或作戰板寫明你們會互虧；只寫她個性愛吐槽、幽默不算。有依據時，五題裡至少一題用你們互虧的口吻（仍要一眼看得懂、她接得住）；沒有依據時不拿她開玩笑，好笑的部分拿用戶自己或一件事開。
+- 假設情境五題最多一題，而且要接得上素材、作戰板或當下的事；不為了新鮮硬編情境。
+- 開玩笑只拿她自己也能笑的點，像跟她一起笑，不是指著她笑；不碰外貌、能力、前任、家庭。她沒接玩笑就回正常對話。
+
 ## 想題
 - 「用戶手上的素材」有原文時：推薦的那一題一定要用到它（「這次的局面」規定第一題是收尾句時，照局面的素材做法）；五題裡至少三題從它出發（切法彼此不同：接後續、給反應、給她一個好回的小問題），另外兩題給不同方向，讓用戶有得選。
-- 沒有素材原文時：先往遠處想、再貼回她身上——暫時放下她的興趣清單，想 8 個語意距離很遠的方向，再挑 5 個最合這次局面的，用作戰板線索寫成她的語言。目標是七成新東西、三成她已知的世界。
-- 五題不得全部繞同一個已知興趣。五題的句式也要彼此不同：「A 但 B」「妳感覺是那種…的人」「通常有兩種人 妳是哪種」這類前提＋轉折骨架最多一題。不要用她自介或備註的原句當開頭——線索要消化成你的觀察。寧可有一題隨口、只有六個字，也不要五題都工整。
+- 沒有素材原文時，照這個順序找題：作戰板裡她的興趣、個性或備註中一個現在聊得起來的點＞用戶可以自然分享的一個看法或日常觀察（不編經歷）＞一個低假設、好回答的日常小題目。每題都要有來由、她接得住；五題要彼此不同，但不為了不同而硬編情境或身分題。
+- 五題不得全部繞同一個已知興趣。五題的句式也要彼此不同：同一種骨架（例如「A 但 B」、讓她二選一、猜她會怎樣、先講自己再用「妳呢？」「妳是哪一派？」收尾、宣告式表態（「我有個…」「這點我不退讓」））最多一題；「突然想到」「剛剛在想」「剛看到」這類開頭五題最多一題，來由要寫成具體的事。不要用她自介或備註的原句當開頭——線索要消化成你的觀察。
+- 五題不用每題都在逗她或表態，也可以有平常的分享或真心好奇的一問。
 
 ## 深淺跟著局面走
 - 她投入越少，訊息越輕、越短、越不需要她費力。她不夠熱時自動降一級：先恢復互動，再讓聊天好玩，再加個人感，最後才是曖昧與見面。
@@ -247,23 +266,21 @@ export const NEW_TOPIC_TWO_STAGE_PROMPT =
 - 局面沒說的部分，當作剛重新接上：寧可淺，不要越級。
 
 ## 她回覆之後（nextMove 的寫法）
-順序固定：先接住她的話→再加一點用戶的料（判斷、玩笑或小故事）→最後才給她一個好接的點。不要一直問問題，連問就是採訪。她丟出一個關於自己的說法時，接一個從那句話長出來、帶點誇張的具體畫面，讓她想回「才不是，我其實…」。
+順序固定：先接住她的話→再加一點用戶的料（看法、玩笑或小故事；不用句句附和她）→最後才給她一個好接的點。不要一直問問題，連問就是採訪。照她實際回的內容接：她認真回答就認真接、再分享用戶自己的；她語氣在玩、接了玩笑，才順著誇張一點逗她；她回嘴就笑著接住、守一點自己的看法，再接她的說法。不預設她會怎麼回。
 見面：只有「這次的局面」明說可以提時，nextMove 才可以寫聊熱了再從話題帶出見面、她說好才約時間；其他情況 nextMove 不建議約她。
 
 ## 產出規格
 固定產出**恰好五個**新話題，每個包含四欄：
-- direction 是客戶看到的卡片標題：只說這張卡要聊什麼，不寫「切角」「選項」「方法」或生成過程（一句話，≤35 字）。
-- openingLine：可以**直接傳出去**的第一則訊息（繁體中文、台灣自然語感）。**10-25 字，超過 30 就是在寫作文，上限 35**——長度本身就透露姿態，要像順手丟的。陳述句收尾優先；五題至多兩題以問號收尾。**預設一則**；只有真的有兩個獨立動作（觸發點→反應、觀察→小問題）才用真換行分成兩則（不可用「｜」「/」代替），每則 6-15 字。標點照自然語感。不是教練說明、不是模板、不含「你可以說……」這類框架語。
+- direction 是客戶看到的卡片標題：只寫這張卡要聊的內容（一件事、一個習慣或一個看法），不寫要怎麼對她（安排角色、讓她反駁、製造反差這類寫法），也不寫「切角」「選項」「方法」或生成過程（一句話，≤35 字）。
+- openingLine：可以**直接傳出去**的第一則訊息（繁體中文、台灣自然語感）。**多數 10-25 字，上限 35**：像順手傳的口語，但要一眼看懂在說什麼；需要交代來由時寧可多幾個字，不要為了短把來由省掉。**預設一則**；只有真的有兩個獨立動作（觸發點→反應、觀察→小問題）才用真換行分成兩則（不可用「｜」「/」代替），每則 6-15 字。標點照自然語感。不是教練說明、不是模板、不含「你可以說……」這類框架語。
 - emoji：一則最多一個，而且拿掉之後句子仍然成立；不用也可以。不能用表情符號把有壓力的句子偽裝成玩笑。
-- whyItWorks 與 nextMove 都用一般人看得懂的話：whyItWorks 說明她為什麼好接；nextMove 說她回了之後具體怎麼延續。不得出現內部方法名、欄位名、狀態代碼、公式名稱或生成過程。nextMove 要可執行、具體、不情勒。
-五題方向要彼此不同，其中恰好一題是你最推薦的。
-每題送出前自檢：①它是在索取資料還是在給她東西反應？只是「妳喜歡什麼」的換皮就重寫。②她能不能反駁或一句話接住？③刪掉表情符號後，看起來像不像在討答案？像就重寫。
-**問句只在真的好奇時才用**：這個問題換一個人問就不成立了嗎？不成立才是真好奇；問誰都成立的就是索取資料，改寫成陳述或觀察。
+- whyItWorks 與 nextMove 都用一般人看得懂的中文，不夾英文單字（她或用戶原本就用的英文名稱除外）：whyItWorks 說這句接的是哪個線索或用戶的哪件事、她可以怎麼回；需要條件時寫出來（例如你們已經會互虧才適合）；不預告她一定會有的反應，也不拿「短、隨意、沒企圖心」當理由。nextMove 說她回了之後具體怎麼延續。不得出現內部方法名、欄位名、狀態代碼、公式名稱或生成過程。nextMove 要可執行、具體、不情勒。
+五題方向要彼此不同，其中恰好一題是你最推薦的：推薦她最好接、又聽得出用戶這個人的那題——一眼看得懂、一句就能回，不只是在問她；要靠默契才成立的玩笑，只有局面、素材或作戰板已經給了那份默契時才推薦，有這份默契時優先推薦用你們互虧口吻、她一句就能笑著認或回嘴的那題；「用戶手上的素材」有原文時，從用到它的題目裡挑。recommendation.reason 說這題接的是什麼、她可以怎麼回。
+每題送出前自檢：①她一眼看得懂在聊什麼、看得出為什麼現在說嗎？②她回一句就接得住嗎，還是得先替自己辯解或配合演出？③有沒有替她下沒根據的判斷、硬安排角色或硬編情境？④只是「妳喜歡什麼」的換皮，或刪掉表情符號後像在討答案？⑤像本人隨手會傳的，還是像在套公式？有任何一項就重寫。
 
 ## 分寸
 - 不性化、不露骨、不歧視、不施壓、不情緒勒索。
-- 開玩笑只拿她自己也能笑的點；不碰外貌、能力、前任、家庭。她沒接玩笑就回正常對話。
-- 不自貶、不暴露等待焦慮或需索感：自嘲是為了好笑，不是告訴她「我很廢」；對方回得慢或冷，只拿來放慢節奏，不拿來討安撫或試探她在不在乎。
+- 不自貶、不暴露等待焦慮或需索感：自嘲是為了好笑，不是告訴她「我很廢」；對方回得慢或冷，只拿來放慢節奏，不拿來討安撫或試探她在不在乎，也不先道歉或交代自己多想聊。
 - 可見文字不出現內部技巧術語、公式名稱或教學標籤；也不得出現 went_cold / after_date / stuck / warm_up / new_topic 這類內部代碼。
 
 ## 輸出格式
@@ -333,7 +350,7 @@ const COLD_DURATION_RULES = {
   // 「我沒回她」已經有一句帶過：空窗只能併進那一句，不能再多一句。
   monthPlusIDidNotReply:
     "一個月以上沒聊：「帶過」那一句可以順帶承認有陣子沒聊，整則只能有這一句鋪陳，接著直接講內容；不一上來就曖昧。",
-  unknown: "沒說多久：有內容、低壓力、不追討。",
+  unknown: "沒說多久：有內容、低壓力、不追討；不提很久沒聊。",
 } as const;
 // faded 不加行。
 const COLD_STOP_RULES: Partial<Record<NewTopicColdStop, string>> = {
@@ -434,7 +451,7 @@ const MATERIAL_RULES: Record<NewTopicMaterialKind, string> = {
   inside_joke:
     "用梗原本的說法，放進一個新情境。只拿她自己也能笑的點開玩笑，不碰外貌、能力、前任、家庭。",
   none:
-    "出一個她會有意見的小題目：選邊、當裁判、輕假設、生活看法，或從她的興趣延伸；假設題最多一題，不要像心理測驗。",
+    "從她的興趣、作戰板線索或用戶自己的一個看法，找一個現在聊得起來的小題目：可以是好回答的問題、讓她選邊或當裁判（選項是具體的生活場景）；假設題最多一題而且要有來由；不要像心理測驗，也不評她的個性或能力。",
 };
 const MATERIAL_TEXT_RULE =
   "推薦的那一題一定要用到這個素材；五題裡至少三題從它出發，另外兩題給不同方向。";
@@ -556,18 +573,29 @@ function situationRules(
   }
 }
 
+/** 基本模式（請求沒帶 topicContext）＝兩題都沒答。 */
+const EMPTY_TOPIC_CONTEXT: NewTopicTopicContext = {
+  coldDuration: null,
+  coldStop: null,
+  engagement: null,
+  materialKind: null,
+  materialText: null,
+};
+
 /**
- * 進階路徑使用者提示詞：作戰板→關於我→這次的局面→用戶手上的素材→
- * （沒有素材原文時）本輪內容素材。缺席段落沿用 legacy 的「沒有提供」寫法。
+ * 使用者提示詞：作戰板→關於我→這次的局面→用戶手上的素材→
+ * （沒有素材原文時）本輪換個方向。基本模式 topicContext 傳 null：局面只有
+ * 狀況那幾行、沒有素材段。缺席段落沿用舊版的「沒有提供」寫法。
  */
 export function buildNewTopicTwoStageUserPrompt(input: {
   partnerSummary: string | null;
   effectiveStyleContext: string | null;
   situation: NewTopicSituation | null;
-  topicContext: NewTopicTopicContext;
+  topicContext: NewTopicTopicContext | null;
   requestId: string;
 }): string {
-  const { situation, topicContext } = input;
+  const situation = input.situation;
+  const topicContext = input.topicContext ?? EMPTY_TOPIC_CONTEXT;
   const { coldDuration, coldStop, engagement, materialKind, materialText } =
     topicContext;
   const lines = [
@@ -636,11 +664,11 @@ export function buildNewTopicTwoStageUserPrompt(input: {
   if (materialText === null) {
     lines.push(
       "",
-      `## 本輪內容素材（只供發想，不得照抄）：${
+      `## 本輪換個方向（可以不用，不得照抄）：${
         pickNewTopicAngle(input.requestId)
       }`,
-      "五題裡至少兩題從這個素材發展，其餘自由。它只用來避免連續生成撞題，" +
-        "不是題目本身——不要把這個素材名稱寫進任何可見欄位。",
+      "五題裡最多一題從這裡發想，而且要接得上她或用戶自己的日常；接不上就不用。" +
+        "它只用來避免連續生成撞題，不是題目本身——不要把這個標題原樣寫進任何可見欄位。",
     );
   }
 
@@ -709,10 +737,11 @@ function englishWords(text: string): Set<string> {
 export function auditNewTopicTwoStageTopics(input: {
   topics: NewTopicModelTopic[];
   recommendationIndex: number;
-  topicContext: NewTopicTopicContext;
+  topicContext: NewTopicTopicContext | null;
   situation: NewTopicSituation | null;
 }): NewTopicTwoStageAudit {
-  const { topics, topicContext } = input;
+  const { topics } = input;
+  const topicContext = input.topicContext ?? EMPTY_TOPIC_CONTEXT;
   const count = (pattern: RegExp) =>
     topics.filter((topic) => pattern.test(topic.openingLine)).length;
 

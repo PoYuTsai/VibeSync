@@ -1,5 +1,10 @@
 // 新話題（破冰腦力）prompts（2026-07-24 計畫 §10.3）。
 //
+// 2026-10-05 起（ADR #51）production 基本與進階都改用 new_topic_two_stage.ts
+// 的提示詞 v2.3。這裡的 NEW_TOPIC_PROMPT／buildNewTopicUserPrompt 已不在生成
+// 路徑上，暫留給 tools/new-topic-two-stage-eval 當「改前」基準，評測做完另案
+// 刪除；修格式提示詞、期限常數與切入角度仍是 production 共用。
+//
 // Grounding 鐵律：只有「對方作戰板」段落可以被當成對方的事實；「關於我」
 // 只能拿來做自然的自我揭露，絕不可改寫成對方也喜歡、共同興趣或已知事實。
 // 兩個 prompt 常數都納入 production prompt blocking scan（new_topic_prompt_test）。
@@ -148,10 +153,10 @@ export const NEW_TOPIC_ANGLES = [
   "花錢的習慣",
   "小時候與長大的地方",
   "住的環境與鄰居",
-  "工作以外的身分",
+  "下班或週末的固定行程",
   "收集癖或怪習慣",
-  "對某件小事的偏激意見",
-  "無厘頭的假設情境",
+  "對某件小事的堅持",
+  "最近在聽的歌或在追的劇",
   "最近一件蠢事",
 ] as const;
 

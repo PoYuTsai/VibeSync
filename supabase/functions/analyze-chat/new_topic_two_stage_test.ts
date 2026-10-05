@@ -1,4 +1,5 @@
-// 新話題進階路徑（2026-10-01 規格 §3／§4／§6）：指紋、提示詞、稽核、telemetry。
+// 新話題提示詞（2026-10-01 規格 §3／§4／§6；v2.3 起基本模式共用，ADR #51）：
+// 指紋、提示詞、稽核、telemetry。
 import {
   assert,
   assertEquals,
@@ -194,7 +195,7 @@ Deno.test("hash：有 topicContext 時尾端多固定順序陣列，不同答案
 // ---------------------------------------------------------------------------
 
 Deno.test("system prompt：版本、保密指示收尾、四段素材與 grounding 錨點", () => {
-  assertEquals(NEW_TOPIC_TWO_STAGE_PROMPT_VERSION, "new-topic-two-stage-v1");
+  assertEquals(NEW_TOPIC_TWO_STAGE_PROMPT_VERSION, "new-topic-v2.3");
   assert(NEW_TOPIC_TWO_STAGE_PROMPT.endsWith(PROMPT_LEAK_DEFENSE_DIRECTIVE));
   for (
     const anchor of [
@@ -236,6 +237,59 @@ Deno.test("system prompt：版本、保密指示收尾、四段素材與 groundi
       PROMPT_CONTRACT_TERMS,
     ),
   );
+});
+
+Deno.test("system prompt v2.3：好懂好接優先、態度從內容來、可以回嘴、推薦帶用戶的看法", () => {
+  for (
+    const anchor of [
+      "一則好訊息先做到三件事：她一眼看懂在聊什麼、看得出用戶為什麼現在說、她不用費力就能接。",
+      "要聽得出用戶這個人：有自己的喜好和看法、敢跟她不一樣、可以帶點玩笑，不討好；用平常講話的口氣帶出來，不靠宣告或技巧",
+      "她怎麼接都算接住：回答、補充、分享她自己的、笑一下、回嘴都可以。",
+      "可以讓她有得反駁，但反駁的是用戶的看法或小猜測，一句就回得了；不要讓她得先替自己辯解或配合演出。",
+      "不需要每題都問",
+      "## 猜她、玩笑與假設",
+      "不替她的個性、身分、能力下判斷或分類",
+      "作戰板或素材寫到的興趣，可以順著猜她一個小選擇或小習慣，讓她好認也好反駁；沒寫到的不猜",
+      "只在有互虧依據時用",
+      "只寫她個性愛吐槽、幽默不算",
+      "像跟她一起笑，不是指著她笑",
+      "五題不用每題都在逗她或表態",
+      "宣告式表態（「我有個…」「這點我不退讓」）",
+      "不用句句附和她",
+      "她回嘴就笑著接住、守一點自己的看法，再接她的說法。",
+      "推薦她最好接、又聽得出用戶這個人的那題——一眼看得懂、一句就能回，不只是在問她",
+      "有這份默契時優先推薦用你們互虧口吻、她一句就能笑著認或回嘴的那題",
+      "「用戶手上的素材」有原文時，從用到它的題目裡挑。",
+      "⑤像本人隨手會傳的，還是像在套公式？",
+      "也不先道歉或交代自己多想聊",
+      "不夾英文單字",
+      "不要為了短把來由省掉",
+    ]
+  ) {
+    assert(NEW_TOPIC_TWO_STAGE_PROMPT.includes(anchor), anchor);
+  }
+  // 2026-08-19 舊規則（陳述句優先、問號配額、硬要她反駁、要意外、姿態式
+  // 句長）與 v2.2 草案的套話範例都不得回來（ADR #51）。
+  for (
+    const removed of [
+      "陳述句收尾優先",
+      "至多兩題以問號收尾",
+      "換一個人問就不成立",
+      "才不是，我其實",
+      "能不能反駁",
+      "七成新東西",
+      "8 個語意距離很遠",
+      "有點意外",
+      "可以不完整",
+      "寧可有一題隨口",
+      "超過 30 就是在寫作文",
+      "推薦最穩的那題",
+      "我賭妳會先",
+      "這點我欣賞，但",
+    ]
+  ) {
+    assertFalse(NEW_TOPIC_TWO_STAGE_PROMPT.includes(removed), removed);
+  }
 });
 
 Deno.test("system prompt：看不到對話紀錄的鐵律、沒素材不編經歷、「我們」照局面", () => {
@@ -295,8 +349,12 @@ Deno.test("system＋user 總長與 legacy 相差 ±25% 內（同一份輸入）"
     const ratio = twoStage / legacy;
     assert(ratio >= 0.75 && ratio <= 1.25, `${situation}: ${ratio}`);
   }
-  // 提案 §8 在意成本不增加：逐字系統提示詞不比 legacy 長。
-  assert(NEW_TOPIC_TWO_STAGE_PROMPT.length <= NEW_TOPIC_PROMPT.length);
+  // 提案 §8 在意成本：v2.3 本文 4,435 字，比舊版 4,339 多 96 字（ADR #51
+  // 接受，每次呼叫成本增加不到 0.1 美分）。上限釘在 4,450，再長要另案決定。
+  assert(
+    NEW_TOPIC_TWO_STAGE_PROMPT.length <=
+      4450 + PROMPT_LEAK_DEFENSE_DIRECTIVE.length,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -764,8 +822,8 @@ Deno.test("user prompt：素材段（類型標籤、規則行、有原文才有�
     assert(prompt.includes("- 原文：「一句筆記」"), materialKind);
     assert(prompt.includes(`做法：\n- ${rule}`), materialKind);
     assert(prompt.includes(extra), materialKind);
-    // 有原文時沒有「本輪內容素材」段。
-    assertFalse(prompt.includes("本輪內容素材"), materialKind);
+    // 有原文時沒有「本輪換個方向」段。
+    assertFalse(prompt.includes("本輪換個方向"), materialKind);
   }
   assert(
     promptFor("after_date", {
@@ -777,17 +835,95 @@ Deno.test("user prompt：素材段（類型標籤、規則行、有原文才有�
 
   const none = promptFor("stuck", { materialKind: "none" });
   assert(none.includes("- 類型：沒有，請教練想"));
-  assert(none.includes("做法：\n- 出一個她會有意見的小題目"));
+  assert(
+    none.includes(
+      "做法：\n- 從她的興趣、作戰板線索或用戶自己的一個看法，找一個現在聊得起來的小題目",
+    ),
+  );
   assertFalse(none.includes("- 原文："));
   assertFalse(none.includes(extra));
-  assert(none.includes("## 本輪內容素材（只供發想，不得照抄）："));
+  assert(none.includes("## 本輪換個方向（可以不用，不得照抄）："));
 
   const noMaterial = promptFor("stuck", { engagement: "green" });
   assertFalse(noMaterial.includes("## 用戶手上的素材"));
-  assert(noMaterial.includes("## 本輪內容素材（只供發想，不得照抄）："));
+  assert(noMaterial.includes("## 本輪換個方向（可以不用，不得照抄）："));
   assert(
-    noMaterial.indexOf("## 這次的局面") < noMaterial.indexOf("## 本輪內容素材"),
+    noMaterial.includes(
+      "五題裡最多一題從這裡發想，而且要接得上她或用戶自己的日常；接不上就不用。",
+    ),
   );
+  assert(
+    noMaterial.indexOf("## 這次的局面") < noMaterial.indexOf("## 本輪換個方向"),
+  );
+});
+
+Deno.test("user prompt（基本模式）：沒帶 topicContext → 局面只有狀況那幾行、沒有素材段、有換個方向段", () => {
+  const meet = "見面：五題的第一則都不約，nextMove 也不建議約她。";
+  const expected: Array<[NewTopicSituation | null, string, string[]]> = [
+    [null, "沒有選", [
+      "沒選狀況：當作日常重啟，自然、低壓、好接。",
+      meet,
+      SHARED_FRAME_DENIED_LINE,
+    ]],
+    ["went_cold", "冷掉了，想重新聊", [
+      "冷掉了：低壓重啟。不責問對方消失、不陰陽怪氣、不討拍；openingLine 收在 30 字內，像順手丟的。",
+      "沒說多久：有內容、低壓力、不追討；不提很久沒聊。",
+      meet,
+      "nextMove 多寫一句：她沒回就別追，只回很短就自然收掉。",
+      SHARED_FRAME_DENIED_LINE,
+    ]],
+    ["stuck", "還在聊，但接不下去", [
+      "還在聊但接不下去：換一個角度或場景，一次只開一條線，不像面試連環問，不重複舊話題。",
+      meet,
+      SHARED_FRAME_DENIED_LINE,
+    ]],
+    ["after_date", "剛約完會", [
+      "剛約完會：承接約會的餘溫，不急著約第二次，不索取評價（不問她覺得你怎樣）。",
+      meet,
+      SHARED_FRAME_ALLOWED_LINE,
+    ]],
+    ["warm_up", "聊得不錯，想更靠近", [
+      "聊得不錯想更靠近：可以多一點個人感，但不突然告白、不越界。",
+      meet,
+      SHARED_FRAME_DENIED_LINE,
+    ]],
+  ];
+  for (const [situation, label, rules] of expected) {
+    const prompt = buildNewTopicTwoStageUserPrompt({
+      partnerSummary: "[對象作戰板：Miya]\n- 興趣：咖啡、爬山",
+      effectiveStyleContext: null,
+      situation,
+      topicContext: null,
+      requestId: REQUEST_ID,
+    });
+    assert(
+      prompt.includes(
+        `## 這次的局面（用戶自己說的現況，照這裡的做法寫）\n- 狀況：${label}\n做法：\n`,
+      ),
+    );
+    assertEquals(situationRules(prompt), rules, String(situation));
+    assertFalse(prompt.includes("## 用戶手上的素材"), String(situation));
+    assertFalse(prompt.includes("- 多久沒聊："), String(situation));
+    assert(prompt.includes("## 本輪換個方向（可以不用，不得照抄）："));
+    assert(prompt.endsWith("請依系統規則產出恰好五個新話題的 JSON。"));
+    // 全 null 的答案與沒帶 topicContext 產出相同的提示詞。
+    assertEquals(
+      prompt,
+      buildNewTopicTwoStageUserPrompt({
+        partnerSummary: "[對象作戰板：Miya]\n- 興趣：咖啡、爬山",
+        effectiveStyleContext: null,
+        situation,
+        topicContext: {
+          coldDuration: null,
+          coldStop: null,
+          engagement: null,
+          materialKind: null,
+          materialText: null,
+        },
+        requestId: REQUEST_ID,
+      }),
+    );
+  }
 });
 
 Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () => {
@@ -866,7 +1002,46 @@ Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () =
       }
     }
   }
-  assertEquals(checked, 193);
+  // 基本模式（沒帶 topicContext）五種狀況走同一組檢查。
+  for (
+    const situation of [
+      null,
+      "went_cold",
+      "stuck",
+      "after_date",
+      "warm_up",
+    ] as const
+  ) {
+    const prompt = buildNewTopicTwoStageUserPrompt({
+      partnerSummary: null,
+      effectiveStyleContext: null,
+      situation,
+      topicContext: null,
+      requestId: REQUEST_ID,
+    });
+    assertFalse(codes.test(prompt), prompt);
+    assertFalse(
+      prompt.includes("推薦固定是第一題（recommendation.index 填 0）"),
+      prompt,
+    );
+    assertFalse(
+      hasCustomerExplanationLeak(prompt, PROMPT_CONTRACT_TERMS),
+      prompt,
+    );
+    assertFalse(prompt.includes("球"), prompt);
+    assertEquals(
+      situationRules(prompt).at(-1),
+      allowsNewTopicSharedFrame({
+          partnerSummary: null,
+          situation,
+          topicContext: null,
+        })
+        ? SHARED_FRAME_ALLOWED_LINE
+        : SHARED_FRAME_DENIED_LINE,
+    );
+    checked++;
+  }
+  assertEquals(checked, 198);
 });
 
 // ---------------------------------------------------------------------------
@@ -981,6 +1156,30 @@ Deno.test("audit：gapMentionAllowed 跟提示詞同一套判準", () => {
   );
 });
 
+Deno.test("audit：基本模式（沒帶 topicContext）也能記，素材相關欄位為 null、不是紅燈收尾", () => {
+  const result = auditNewTopicTwoStageTopics({
+    topics: topics(["好久沒聊了吧", ...PLAIN_LINES.slice(1)]),
+    recommendationIndex: 0,
+    topicContext: null,
+    situation: "went_cold",
+  });
+  assertEquals(result.materialUsedInRecommended, null);
+  assertEquals(result.topicsUsingMaterial, null);
+  assertEquals(result.gapMentionLines, 1);
+  assertFalse(result.gapMentionAllowed);
+  assertFalse(result.redCloseApplied);
+  assertEquals(result.redCloseCueInFirst, null);
+  assertEquals(
+    auditNewTopicTwoStageTopics({
+      topics: topics(PLAIN_LINES),
+      recommendationIndex: 0,
+      topicContext: null,
+      situation: "stuck",
+    }).redCloseApplied,
+    false,
+  );
+});
+
 Deno.test("audit：回傳只有數字／布林／null，不含原文", () => {
   const result = audit(PLAIN_LINES, {
     materialKind: "my_story",
@@ -997,9 +1196,10 @@ Deno.test("audit：回傳只有數字／布林／null，不含原文", () => {
 // §4.7 telemetry
 // ---------------------------------------------------------------------------
 
-Deno.test("telemetry：legacy 與進階欄位，只記代碼與字數不記原文", () => {
+Deno.test("telemetry：基本與進階欄位，只記代碼與字數不記原文", () => {
   assertEquals(newTopicTwoStageTelemetry(null), {
-    promptVariant: "legacy",
+    promptVariant: "basic",
+    promptVersion: "new-topic-v2.3",
     coldDuration: null,
     coldStop: null,
     engagement: null,
@@ -1018,7 +1218,8 @@ Deno.test("telemetry：legacy 與進階欄位，只記代碼與字數不記原�
     ),
   );
   assertEquals(fields, {
-    promptVariant: "two_stage_v1",
+    promptVariant: "advanced",
+    promptVersion: "new-topic-v2.3",
     coldDuration: "weeks",
     coldStop: "faded",
     engagement: null,

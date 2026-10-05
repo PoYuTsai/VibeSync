@@ -176,6 +176,25 @@ Deno.test("角度輪替：同 requestId 穩定、不同 requestId 會換、都�
   assertEquals(seen.size, NEW_TOPIC_ANGLES.length);
 });
 
+Deno.test("角度清單（ADR #51）：仍是十個、同位置換掉會引出身分題／挑釁判斷／沒來由假設的三個", () => {
+  assertEquals(NEW_TOPIC_ANGLES.length, 10);
+  for (
+    const removed of [
+      "工作以外的身分",
+      "對某件小事的偏激意見",
+      "無厘頭的假設情境",
+    ]
+  ) {
+    assertFalse(
+      (NEW_TOPIC_ANGLES as readonly string[]).includes(removed),
+      removed,
+    );
+  }
+  assertEquals(NEW_TOPIC_ANGLES[5], "下班或週末的固定行程");
+  assertEquals(NEW_TOPIC_ANGLES[7], "對某件小事的堅持");
+  assertEquals(NEW_TOPIC_ANGLES[8], "最近在聽的歌或在追的劇");
+});
+
 Deno.test("buildNewTopicUserPrompt：給 requestId 才附發想素材，且不暴露「切入角度」標籤", () => {
   const base = {
     partnerSummary: "對象：小雅。興趣：爬山。",
@@ -198,8 +217,9 @@ Deno.test("buildNewTopicUserPrompt：給 requestId 才附發想素材，且不�
   );
 });
 
-// 進階路徑上線不得動到 legacy（規格 §0／§8）：舊版 App 與「全部不選」的
-// 新版 App 拿到的提示詞必須逐字不變。golden 取自 38ebd30d。
+// 舊版提示詞已不在 production 生成路徑上（ADR #51），只留給評測工具當「改前」
+// 基準，所以仍鎖逐字不變。golden 取自 38ebd30d；角度清單與 v2.3 共用，
+// 2026-10-05 起索引 7 換成「對某件小事的堅持」。
 const LEGACY_USER_PROMPT_GOLDEN = [
   "## 對方作戰板（唯一可當對方事實的來源）",
   "對象：小雅。興趣：爬山。",
@@ -210,7 +230,7 @@ const LEGACY_USER_PROMPT_GOLDEN = [
   "## 目前狀況（只影響節奏與語氣）",
   "聊天冷掉了（對方最近回得少或已讀）",
   "",
-  "## 本輪內容素材（只供發想，不得照抄）：對某件小事的偏激意見",
+  "## 本輪內容素材（只供發想，不得照抄）：對某件小事的堅持",
   "五題裡至少兩題從這個素材發展，其餘自由。它只用來避免連續生成撞題，不是題目本身——不要把這個素材名稱寫進任何可見欄位。",
   "",
   "請依系統規則產出恰好五個新話題的 JSON。",

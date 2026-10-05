@@ -52,10 +52,8 @@ import {
 } from "./new_topic_payload.ts";
 import {
   buildNewTopicRepairPrompt,
-  buildNewTopicUserPrompt,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
-  NEW_TOPIC_PROMPT,
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
 } from "./new_topic_prompt.ts";
@@ -65,12 +63,10 @@ import {
   enforceNewTopicRedClose,
   NEW_TOPIC_TWO_STAGE_PROMPT,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+  newTopicPromptVariant,
   newTopicTwoStageTelemetry,
 } from "./new_topic_two_stage.ts";
-import {
-  hasAnalyzeChatPromptLeak,
-  hasNewTopicTwoStagePromptLeak,
-} from "./prompt_leak.ts";
+import { hasNewTopicTwoStagePromptLeak } from "./prompt_leak.ts";
 import {
   getErrorMessage,
   logError,
@@ -559,25 +555,17 @@ export async function handleNewTopicRequest(
   // 8. 45 秒 generation deadline 內完成 primary／outage fallback。
   //    refusal、max_tokens、格式錯誤不走 outage fallback（fallback.ts
   //    既有分類）；deadline 前提早爆的 DEADLINE_EXCEEDED 也在這裡收。
-  // 有 topicContext 才走進階提示詞；沒有就是 legacy，逐字不變。
-  const newTopicSystemPrompt = newTopicContext === null
-    ? NEW_TOPIC_PROMPT
-    : NEW_TOPIC_TWO_STAGE_PROMPT;
-  const newTopicUserPrompt = newTopicContext === null
-    ? buildNewTopicUserPrompt({
-      partnerSummary: newTopicRequest.partnerSummary,
-      effectiveStyleContext: newTopicRequest.effectiveStyleContext,
-      situation: newTopicRequest.situation,
-      // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
-      requestId: newTopicRequest.requestId,
-    })
-    : buildNewTopicTwoStageUserPrompt({
-      partnerSummary: newTopicRequest.partnerSummary,
-      effectiveStyleContext: newTopicRequest.effectiveStyleContext,
-      situation: newTopicRequest.situation,
-      topicContext: newTopicContext,
-      requestId: newTopicRequest.requestId,
-    });
+  // 基本與進階共用提示詞 v2.3（ADR #51）：沒帶 topicContext（基本模式）時
+  // 「這次的局面」只有狀況那幾行、沒有素材段。
+  const newTopicSystemPrompt = NEW_TOPIC_TWO_STAGE_PROMPT;
+  const newTopicUserPrompt = buildNewTopicTwoStageUserPrompt({
+    partnerSummary: newTopicRequest.partnerSummary,
+    effectiveStyleContext: newTopicRequest.effectiveStyleContext,
+    situation: newTopicRequest.situation,
+    topicContext: newTopicContext,
+    // 切入角度由 requestId 決定：同次 replay 一致、不同次生成才換。
+    requestId: newTopicRequest.requestId,
+  });
   const newTopicGroundingPolicy = {
     allowSharedFrame: allowsNewTopicSharedFrame({
       partnerSummary: newTopicRequest.partnerSummary,
@@ -613,11 +601,9 @@ export async function handleNewTopicRequest(
   // 從這裡起的解析／repair／tier 投影／settle 與 legacy 共用同一個
   // completeNewTopicRequest（內部邏輯零改動，shim 同名變數），
   // exactly-once settle 語義不變。
-  // 進階路徑多查一條自己的 sentinel；legacy 與其他模式守門不變。
+  // 新話題提示詞多查一條自己的 sentinel；其他模式的守門不變。
   const newTopicPromptLeak = (text: string): boolean =>
-    newTopicContext !== null
-      ? hasNewTopicTwoStagePromptLeak(text)
-      : hasAnalyzeChatPromptLeak(text);
+    hasNewTopicTwoStagePromptLeak(text);
   const completeNewTopicRequest = async (modelOutput: {
     rawText: string;
     model: string;
@@ -832,13 +818,14 @@ export async function handleNewTopicRequest(
         ...newTopicTwoStageTelemetry(newTopicContext),
         // §8 telemetry：只記數量絕不記內容。
       });
-      // 進階路徑品質稽核：只記錄、不擋、不改扣費（規格 §4.6）。
+      // 品質稽核（基本與進階都記）：只記錄、不擋、不改扣費（規格 §4.6）。
       // replayed 時用戶看到的是先完成那筆，本地候選不代表結果，略過。
-      if (newTopicContext !== null && !newTopicSettlementReplayed) {
+      if (!newTopicSettlementReplayed) {
         try {
           logInfo("new_topic_two_stage_audit", {
             user: summarizeUser(deps.userId),
             requestId: newTopicRequest.requestId,
+            promptVariant: newTopicPromptVariant(newTopicContext),
             promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
             ...auditNewTopicTwoStageTopics({
               topics: newTopicNormalized.topics,
