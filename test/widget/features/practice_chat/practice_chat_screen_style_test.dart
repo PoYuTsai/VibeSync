@@ -30,6 +30,7 @@ import 'package:vibesync/features/subscription/data/providers/subscription_provi
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
+import 'package:vibesync/shared/widgets/chat_bubble.dart';
 
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
@@ -449,6 +450,7 @@ void main() {
 
   testWidgets('renders practice bubbles on the light conversation workspace',
       (tester) async {
+    final semantics = tester.ensureSemantics();
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -494,15 +496,150 @@ void main() {
     );
     final decoration = workspace.decoration! as BoxDecoration;
 
-    expect(decoration.color, Colors.white.withValues(alpha: 0.96));
-    expect(find.text('我說'), findsOneWidget);
-    expect(find.text('她說'), findsOneWidget);
+    expect(decoration.color, AppColors.transcriptBoard);
+    expect(decoration.border, isNull);
+    expect(find.text('我說'), findsNothing);
+    expect(find.text('她說'), findsNothing);
+    expect(find.bySemanticsLabel('我說\n今天好無聊\n已讀'), findsOneWidget);
+    expect(find.bySemanticsLabel('她說\n認真的嗎？我今天事情多到爆炸，超想喊假的。'), findsOneWidget);
     expect(find.text('今天好無聊'), findsOneWidget);
     expect(find.textContaining('認真的嗎'), findsOneWidget);
 
     final userText = tester.widget<Text>(find.text('今天好無聊'));
     expect(userText.style?.color, AppColors.glassTextPrimary);
+    semantics.dispose();
   });
+
+  testWidgets(
+      'shared bubbles keep reveal timing and accessible visible text at 320',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        practiceChatControllerProvider
+            .overrideWith((ref) => _SeededPracticeChatController(
+                  repository: repo,
+                  seed: PracticeChatState(
+                    sessionId: 'shared-bubble-reveal',
+                    personaId: 'slow_worker',
+                    personaLabel: '慢熱上班族',
+                    difficulty: 'normal',
+                    difficultyLabel: '一般',
+                    createdAt: DateTime(2026, 10, 5),
+                    girl: practiceGirlProfiles.first,
+                    aiReplyCount: 1,
+                    messages: [
+                      const PracticeMessage(role: 'user', text: '好'),
+                      PracticeMessage(
+                        role: 'ai',
+                        text: '先喝杯水\n等一下再聊',
+                        sentAt: DateTime(2026, 10, 5, 15, 26),
+                      ),
+                    ],
+                  ),
+                )),
+        subscriptionProvider.overrideWith((ref) => _SeededSubscriptionNotifier(
+              const SubscriptionState(
+                tier: SubscriptionTierHelper.starter,
+                monthlyLimit: 100,
+                dailyLimit: 30,
+              ),
+            )),
+      ],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.3),
+          ),
+          child: child!,
+        ),
+        home: const PracticeChatScreen(),
+      ),
+    ));
+    expect(find.text('先喝杯水'), findsOneWidget);
+    expect(find.text('等一下再聊'), findsNothing);
+    expect(find.bySemanticsLabel('她說\n先喝杯水\n下午 3:26'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('practice-bubble-avatar')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('practice-profile-avatar')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 999));
+    expect(find.text('等一下再聊'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.text('等一下再聊'), findsOneWidget);
+    expect(find.bySemanticsLabel('她說\n先喝杯水\n等一下再聊\n下午 3:26'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('practice-bubble-avatar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-message-time')), findsOneWidget);
+    final first =
+        find.ancestor(of: find.text('先喝杯水'), matching: find.byType(ChatBubble));
+    final second = find.ancestor(
+        of: find.text('等一下再聊'), matching: find.byType(ChatBubble));
+    expect(tester.widget<ChatBubble>(first).tail, isTrue);
+    expect(tester.widget<ChatBubble>(second).tail, isFalse);
+    expect(tester.getTopLeft(second).dx, tester.getTopLeft(first).dx);
+    expect(tester.getTopLeft(second).dy - tester.getBottomLeft(first).dy, 2);
+    expect(tester.getSize(first).width, lessThanOrEqualTo(320 * .7));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    semantics.dispose();
+  });
+
+  for (final profileId in <String?>[
+    null,
+    'retired-profile',
+    'practice_girl_005'
+  ]) {
+    testWidgets('history bubble avatars handle profile $profileId',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await repo.save(PracticeSession(
+        id: 'shared-bubble-history',
+        closed: true,
+        createdAt: DateTime(2026, 10, 5),
+        profileId: profileId,
+        aiReplyCount: 2,
+        messages: const [
+          PracticeMessage(role: 'user', text: '泡泡回顧測試'),
+          PracticeMessage(role: 'ai', text: '第一段\n第二段'),
+          PracticeMessage(role: 'ai', text: '接著說'),
+        ],
+      ));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+        ],
+        child: const MaterialApp(home: PracticeChatScreen()),
+      ));
+      await tester.tap(find.byIcon(Icons.history));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('泡泡回顧測試').last);
+      await tester.pumpAndSettle();
+      final known = profileId == 'practice_girl_005';
+      expect(find.byKey(const ValueKey('practice-bubble-avatar')),
+          known ? findsOneWidget : findsNothing);
+      expect(find.byType(ChatAvatarGutter),
+          known ? findsNWidgets(3) : findsNothing);
+      final first = find.ancestor(
+          of: find.text('第一段'), matching: find.byType(ChatBubble));
+      final second = find.ancestor(
+          of: find.text('第二段'), matching: find.byType(ChatBubble));
+      final next = find.ancestor(
+          of: find.text('接著說'), matching: find.byType(ChatBubble));
+      expect(tester.widget<ChatBubble>(first).tail, isTrue);
+      expect(tester.widget<ChatBubble>(second).tail, isFalse);
+      expect(tester.widget<ChatBubble>(next).tail, isFalse);
+      expect(tester.getTopLeft(next).dx, tester.getTopLeft(first).dx);
+      expect(tester.getTopLeft(next).dy - tester.getBottomLeft(second).dy, 4);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('進房沒有 session/draft → locked 翻牌入口，不顯示任何對象', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));

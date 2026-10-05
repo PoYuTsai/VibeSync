@@ -16,14 +16,12 @@ const kAllowedRadii = {18, 22, 23, 24, 99, 999};
 const kAllowedRadiiByFile = <String, Set<int>>{
   // DESIGN.md §10: physical miniature photo/contact cards on a 64-unit canvas.
   'lib/shared/widgets/brand/opener_entry_icon.dart': {3, 6},
-  // 聊天泡泡「尾巴」5（DESIGN.md §4）：分則氣泡群組最後一顆的貼合角。
-  'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart':
-      {5},
+  // 共用聊天泡泡尾巴 5（DESIGN.md §4／§7）：每組第一顆的上角。
+  'lib/shared/widgets/chat_bubble.dart': {5},
   // Sydney 視窗開場泡泡的尾巴 5（DESIGN.md §7）：同一套泡泡尾巴語彙。
   'lib/features/coach_chat/presentation/screens/global_coach_screen.dart': {5},
-  // 分析片段泡泡（DESIGN.md §4／§7）：每組第一顆的尾巴 5，加引用小卡的
-  // 微圓角 6（外圓角 18 的 1/3）。
-  'lib/features/conversation/presentation/widgets/message_bubble.dart': {5, 6},
+  // 分析片段引用小卡（DESIGN.md §4／§7）：微圓角 6（外圓角 18 的 1/3）。
+  'lib/features/conversation/presentation/widgets/message_bubble.dart': {6},
 };
 
 /// 彩色陰影白名單：DESIGN.md §7 刻意保留登記表的檔案。
