@@ -316,7 +316,9 @@ export function acceptanceMarkdown(input: {
   const mustBeFun = MUST_BE_FUN.flatMap((id) =>
     Array.from({ length: FORMAL_REPEAT }, (_, i) => `${id}#${i + 1}`)
   );
-  const funMissing = mustBeFun.filter((code) => !(code in cand.funByCode));
+  const funMissing = mustBeFun.filter((code) =>
+    !Object.hasOwn(cand.funByCode, code)
+  );
   const funFailed = mustBeFun.filter((code) => cand.funByCode[code] === false);
   const rows: Array<[string, boolean | null, string]> = [
     [
