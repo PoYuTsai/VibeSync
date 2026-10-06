@@ -164,6 +164,12 @@ Deno.test("參數：預設 dry-run、兩臂、基準 7c5cc523、固定今天；�
     [false, 1, ARMS, DEFAULT_BASE_REF, DEFAULT_EVAL_NOW],
   );
   assertEquals(defaults.nowMs, Date.parse("2026-10-05T04:00:00Z"));
+  // 甲乙順序的 seed 預設隨機（nt3 的位置已公開）；要重現時才用 --seed 指定。
+  assert(
+    Number.isInteger(defaults.seed) && defaults.seed >= 1 &&
+      defaults.seed <= 0xffffffff,
+  );
+  assertEquals(parseOptions(["--seed=7"]).seed, 7);
   for (
     const args of [
       ["--run"],

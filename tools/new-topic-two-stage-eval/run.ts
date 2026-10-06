@@ -140,6 +140,15 @@ const VALUE_FLAGS = [
 ];
 const BOOL_FLAGS = ["run", "confirm-paid"];
 
+/**
+ * 甲乙順序只由 seed 決定，跟模型輸出無關：固定的預設值等於公開了解盲表。預設每次隨機（記在
+ * manifest，評完才給評分的人）；nt3 用的舊預設 20261001 位置已公開，不能再用。
+ */
+function randomSeed(): number {
+  const [value] = crypto.getRandomValues(new Uint32Array(1));
+  return value === 0 ? 1 : value;
+}
+
 export function parseOptions(args: string[]): Options {
   const values = new Map<string, string | true>();
   for (const arg of args) {
@@ -222,7 +231,7 @@ export function parseOptions(args: string[]): Options {
   return {
     tag,
     repeat: int("repeat", 1, 5),
-    seed: int("seed", 20261001, 0xffffffff),
+    seed: int("seed", randomSeed(), 0xffffffff),
     only,
     arms,
     run,
