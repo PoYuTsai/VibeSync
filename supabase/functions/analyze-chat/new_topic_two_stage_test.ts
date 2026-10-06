@@ -196,7 +196,7 @@ Deno.test("hash：有 topicContext 時尾端多固定順序陣列，不同答案
 // ---------------------------------------------------------------------------
 
 Deno.test("system prompt：版本、保密指示收尾、四段素材與 grounding 錨點", () => {
-  assertEquals(NEW_TOPIC_TWO_STAGE_PROMPT_VERSION, "new-topic-v2.3");
+  assertEquals(NEW_TOPIC_TWO_STAGE_PROMPT_VERSION, "new-topic-v2.4");
   assert(NEW_TOPIC_TWO_STAGE_PROMPT.endsWith(PROMPT_LEAK_DEFENSE_DIRECTIVE));
   for (
     const anchor of [
@@ -240,7 +240,7 @@ Deno.test("system prompt：版本、保密指示收尾、四段素材與 groundi
   );
 });
 
-Deno.test("system prompt v2.3：好懂好接優先、態度從內容來、可以回嘴、推薦帶用戶的看法", () => {
+Deno.test("system prompt v2.3／v2.4：好懂好接優先、態度從內容來、可以回嘴、推薦挑可直接傳的", () => {
   for (
     const anchor of [
       "一則好訊息先做到三件事：她一眼看懂在聊什麼、看得出用戶為什麼現在說、她不用費力就能接。",
@@ -258,8 +258,11 @@ Deno.test("system prompt v2.3：好懂好接優先、態度從內容來、可以
       "宣告式表態（「我有個…」「這點我不退讓」）",
       "不用句句附和她",
       "她回嘴就笑著接住、守一點自己的看法，再接她的說法。",
-      "推薦她最好接、又聽得出用戶這個人的那題——一眼看得懂、一句就能回，不只是在問她",
-      "有這份默契時優先推薦用你們互虧口吻、她一句就能笑著認或回嘴的那題",
+      // v2.4（nt3 盲測 B）：推薦挑用戶會照原樣傳的，態度是加分不是條件。
+      "推薦用戶最可能照原樣直接傳、她最容易接的那題——一眼看得懂、一句就能回、不靠默契也不會尷尬。",
+      "聽得出用戶這個人是加分，不是條件：一題平實好接、一題比較有態度卻有點硬（像在考她、激她或要她表態）時，推薦平實那題。",
+      "要靠默契才成立的玩笑，只有局面、素材或作戰板已經給了那份默契、而且一樣好接時才推薦",
+      "推薦前再想一次：用戶會猶豫要不要傳，就換一題。",
       "「用戶手上的素材」有原文時，從用到它的題目裡挑。",
       "⑤像本人隨手會傳的，還是像在套公式？",
       "也不先道歉或交代自己多想聊",
@@ -287,6 +290,9 @@ Deno.test("system prompt v2.3：好懂好接優先、態度從內容來、可以
       "推薦最穩的那題",
       "我賭妳會先",
       "這點我欣賞，但",
+      // v2.3 的推薦規則（態度優先、互虧口吻優先）在 nt3 盲測把好傳的句子擠掉。
+      "又聽得出用戶這個人的那題",
+      "優先推薦用你們互虧口吻",
     ]
   ) {
     assertFalse(NEW_TOPIC_TWO_STAGE_PROMPT.includes(removed), removed);
@@ -307,10 +313,25 @@ Deno.test("system prompt：看不到對話紀錄的鐵律、沒素材不編經�
   ) {
     assert(NEW_TOPIC_TWO_STAGE_PROMPT.includes(anchor), anchor);
   }
-  // 兩條新鐵律接在原本四條後面，仍在同一段。
+  // v2.3 的兩條接在原本四條後面；v2.4 的興趣邊界接在第一條後面，仍在同一段。
   const ironRules = NEW_TOPIC_TWO_STAGE_PROMPT.split("鐵律：\n")[1]
     .split("\n\n")[0].split("\n");
-  assertEquals(ironRules.length, 6);
+  assertEquals(ironRules.length, 7);
+  assert(ironRules[1].startsWith("- 興趣只代表她喜歡這類東西"));
+});
+
+Deno.test("system prompt v2.4：興趣不寫成她的經歷或發言、素材原文的主詞照原文（nt3 盲測 A）", () => {
+  for (
+    const anchor of [
+      "- 興趣只代表她喜歡這類東西：可以聊這件事本身、分享用戶的相關經驗，或猜她在這件事上的偏好；不寫成她擁有什麼、正在做什麼、做過什麼、說過什麼，或以前發生過什麼。\n",
+      "照類型決定主詞，不改主詞；原文裡的「我」是用戶、「她」是對象，誰說的、誰做的、被虧的是誰都照原文。",
+      // 原本的鐵律都還在。
+      "作戰板備註不得改寫成「妳之前說……」「妳上次提到……」。",
+      "不編約會裡發生的事。",
+    ]
+  ) {
+    assert(NEW_TOPIC_TWO_STAGE_PROMPT.includes(anchor), anchor);
+  }
 });
 
 Deno.test("system＋user 總長與 legacy 相差 ±25% 內（同一份輸入）", () => {
@@ -350,11 +371,12 @@ Deno.test("system＋user 總長與 legacy 相差 ±25% 內（同一份輸入）"
     const ratio = twoStage / legacy;
     assert(ratio >= 0.75 && ratio <= 1.25, `${situation}: ${ratio}`);
   }
-  // 提案 §8 在意成本：v2.3 本文 4,435 字，比舊版 4,339 多 96 字（ADR #51
-  // 接受，每次呼叫成本增加不到 0.1 美分）。上限釘在 4,450，再長要另案決定。
+  // 提案 §8 在意成本：v2.3 本文 4,435 字（比舊版 4,339 多 96 字）；v2.4 依 nt3
+  // 盲測補興趣邊界、主詞與推薦規則，本文 4,613 字（再多 178 字；系統提示詞走快取，
+  // 每次呼叫增加不到 0.1 美分，ADR #51）。上限釘在 4,650，再長要另案決定。
   assert(
     NEW_TOPIC_TWO_STAGE_PROMPT.length <=
-      4450 + PROMPT_LEAK_DEFENSE_DIRECTIVE.length,
+      4650 + PROMPT_LEAK_DEFENSE_DIRECTIVE.length,
   );
 });
 
@@ -406,7 +428,11 @@ Deno.test("user prompt：狀況基本行（有選送一條、沒選送日常重�
   const cases: Array<[NewTopicSituation | null, string]> = [
     ["went_cold", "冷掉了：低壓重啟。"],
     ["stuck", "還在聊但接不下去："],
-    ["after_date", "剛約完會：承接約會的餘溫"],
+    // 沒有寫約會裡的事的素材：只知道剛約完（nt3 盲測 B6）。
+    [
+      "after_date",
+      "剛約完會：你只知道剛約完，不知道去了哪、做了什麼、聊了什麼",
+    ],
     ["warm_up", "聊得不錯想更靠近："],
     [null, "沒選狀況：當作日常重啟"],
   ];
@@ -471,17 +497,21 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
     rulesFor({ coldDuration: "weeks", coldStop: "faded" }).length,
     5,
   );
-  // 一個月以上＋我沒回她：空窗只能併進「帶過」那一句，不能再多一句。
+  // 一個月以上＋我沒回她：不解釋、不道歉，也不提很久沒聊（ADR #51 產品裁決 5）。
   const monthIDidNotReply = rulesFor({
     coldDuration: "month_plus",
     coldStop: "i_no_reply",
   });
   assert(monthIDidNotReply.includes(
-    "一個月以上沒聊：「帶過」那一句可以順帶承認有陣子沒聊，整則只能有這一句鋪陳，接著直接講內容；不一上來就曖昧。",
+    "上次是用戶沒回她：直接傳一個新內容，像平常聊天；不解釋為什麼沒回、不道歉、不替自己辯解，也不提很久沒聊。",
+  ));
+  assert(monthIDidNotReply.includes(
+    "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊；不一上來就曖昧。",
   ));
   assertFalse(
     hasRule(monthIDidNotReply, "一個月以上沒聊：可以用一句輕鬆承認有陣子沒聊"),
   );
+  assertFalse(monthIDidNotReply.some((rule) => rule.includes("帶過")));
   assertFalse(
     hasRule(
       situationRules(promptFor("stuck", { materialKind: "none" })),
@@ -496,7 +526,7 @@ Deno.test("user prompt：gapMentionAllowed 真值表", () => {
     null: true,
     faded: true,
     she_no_reply: false,
-    i_no_reply: true,
+    i_no_reply: false,
     she_cold: false,
   };
   for (const coldStop of [null, ...NEW_TOPIC_COLD_STOPS]) {
@@ -509,14 +539,10 @@ Deno.test("user prompt：gapMentionAllowed 真值表", () => {
     const rules = situationRules(
       promptFor("went_cold", { coldDuration: "month_plus", coldStop }),
     );
-    // 我沒回她：允許提空窗，但改用併進「帶過」那一句的寫法。
+    // 我沒回她也不提空窗（ADR #51 產品裁決 5）。
     assertEquals(
       hasRule(rules, "一個月以上沒聊：可以用一句輕鬆承認有陣子沒聊"),
-      allowed && coldStop !== "i_no_reply",
-    );
-    assertEquals(
-      hasRule(rules, "一個月以上沒聊：「帶過」那一句可以順帶承認有陣子沒聊"),
-      coldStop === "i_no_reply",
+      allowed,
     );
     assertEquals(
       hasRule(rules, "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊"),
@@ -623,6 +649,16 @@ Deno.test("user prompt：沒有共同經歷的素材時不叫模型接上次／�
       promptFor("went_cold", { coldDuration: "days", ...material }),
     );
     assert(days.includes(sharedHistory ? daysShared : daysFresh), label);
+    // 剛約完會的基本行也一樣：素材沒寫約會裡的事，就只知道剛約完（nt3 盲測 B6）。
+    const afterDateBase = situationRules(
+      promptFor("after_date", { materialKind: "none", ...material }),
+    )[0];
+    assert(
+      afterDateBase.startsWith(
+        sharedHistory ? "剛約完會：承接約會的餘溫" : "剛約完會：你只知道剛約完",
+      ),
+      `${label}/after_date`,
+    );
     for (const engagement of ["green", "yellow"] as const) {
       const rules = situationRules(
         promptFor("after_date", { engagement, ...material }),
@@ -810,7 +846,11 @@ Deno.test("user prompt：素材段（類型標籤、規則行、有原文才有�
     ["past_topic", "之前聊過的事（她提過的）", "接那件事的後續或新進展"],
     ["trigger", "看到想到她的東西", "寫成：看到什麼＋用戶的反應"],
     ["my_story", "用戶最近遇到的事", "先把這件事分享給她"],
-    ["inside_joke", "你們之間的梗", "用梗原本的說法，放進一個新情境"],
+    [
+      "inside_joke",
+      "你們之間的梗",
+      "用梗原本的說法和原本的主詞，放進一個新情境",
+    ],
   ];
   const extra =
     "- 推薦的那一題一定要用到這個素材；五題裡至少三題從它出發，另外兩題給不同方向。";
@@ -879,7 +919,7 @@ Deno.test("user prompt（基本模式）：沒帶 topicContext → 局面只有�
       SHARED_FRAME_DENIED_LINE,
     ]],
     ["after_date", "剛約完會", [
-      "剛約完會：承接約會的餘溫，不急著約第二次，不索取評價（不問她覺得你怎樣）。",
+      "剛約完會：你只知道剛約完，不知道去了哪、做了什麼、聊了什麼——不寫地點、店家、當時的互動或她的反應；餘溫只用一句不帶細節的話，或直接帶一個新東西。不急著約第二次，不索取評價（不問她覺得你怎樣）。",
       meet,
       SHARED_FRAME_ALLOWED_LINE,
     ]],
@@ -1260,7 +1300,7 @@ Deno.test("audit：回傳只有數字／布林／null，不含原文", () => {
 Deno.test("telemetry：基本與進階欄位，只記代碼與字數不記原文", () => {
   assertEquals(newTopicTwoStageTelemetry(null), {
     promptVariant: "basic",
-    promptVersion: "new-topic-v2.3",
+    promptVersion: "new-topic-v2.4",
     coldDuration: null,
     coldStop: null,
     engagement: null,
@@ -1280,7 +1320,7 @@ Deno.test("telemetry：基本與進階欄位，只記代碼與字數不記原文
   );
   assertEquals(fields, {
     promptVariant: "advanced",
-    promptVersion: "new-topic-v2.3",
+    promptVersion: "new-topic-v2.4",
     coldDuration: "weeks",
     coldStop: "faded",
     engagement: null,

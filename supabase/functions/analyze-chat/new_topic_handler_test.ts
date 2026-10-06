@@ -312,7 +312,7 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走�
     unknown
   >;
   assertEquals(audit.promptVariant, "basic");
-  assertEquals(audit.promptVersion, "new-topic-v2.3");
+  assertEquals(audit.promptVersion, "new-topic-v2.4");
   assertEquals(audit.materialUsedInRecommended, null);
   assertEquals(audit.redCloseApplied, false);
 });
@@ -833,7 +833,7 @@ Deno.test("handler：ai_logs 一次成功只記一列主呼叫，request_body �
     tier: "essential",
     usageComplete: false,
     promptVariant: "advanced",
-    promptVersion: "new-topic-v2.3",
+    promptVersion: "new-topic-v2.4",
   });
   const serialized = JSON.stringify(result.aiCallRows);
   assertFalse(serialized.includes("小雅"));
@@ -890,7 +890,7 @@ Deno.test("handler：修復後仍不合格 → 失敗事件帶 requestId、提�
   assert(invalid, "new_topic_response_invalid 必須記錄");
   assertEquals(invalid.requestId, REQUEST_ID);
   assertEquals(invalid.promptVariant, "advanced");
-  assertEquals(invalid.promptVersion, "new-topic-v2.3");
+  assertEquals(invalid.promptVersion, "new-topic-v2.4");
   assert(typeof invalid.elapsedMs === "number" && invalid.elapsedMs >= 0);
   const serialized = JSON.stringify(invalid);
   assertFalse("partnerSummary" in invalid);
