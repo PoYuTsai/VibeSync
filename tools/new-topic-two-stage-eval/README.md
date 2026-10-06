@@ -1,6 +1,6 @@
 # 新話題成對評測（改前 vs 改後）
 
-比較同一組情境下，**改前**（base）和**改後**（cand）的 production 寫出來的五題，給規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6 的盲測與驗收門檻用（ADR #51）。
+比較同一組情境下，**改前**（base）和**改後**（cand）的 production 寫出來的五題，給規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6 的盲測與驗收門檻用（ADR #51）。nt3 之後（2026-10-06）盲測改成一份逐句勾選的表 `blind.md`（規格 §6.4）。
 
 預設是 dry-run：不打模型、不讀金鑰、不連網；會跑 git（`rev-parse`、`archive`）取出改前版本。要花錢的真跑，必須 Eric 當次說「跑」之後才下指令。
 
@@ -15,8 +15,7 @@
 - 模型與參數照 production 主呼叫：`NEW_TOPIC_MODEL`、`maxTokensFor(...)`、`modelRequestParams(...)`（Sonnet 5 thinking 關閉）、system 用快取區塊、同一組 header。`run_test.ts` 會攔下 `fallback.ts` 第一跳實際送出的 body 和 header，跟 `requestBody` 比對。
 - 不做修格式那一次呼叫、不串流、不走備援，也不經 Edge、DB、扣費。格式失敗照實記成「不可交付」。
 - **只壞在解釋欄**（標題、為什麼現在有效、她回了之後、推薦理由不合格，開場句本身沒問題）：production 修格式會逐字保留這五句開場句，用戶看得到，所以：
-  - 五句與 ★ 照樣進盲測；★ 用主呼叫自己的推薦（production 修格式那一次會重選，可能不同）。
-  - 解釋那份盲測標「沒有可評的解釋」。
+  - 五句照樣進盲測；★ 用主呼叫自己的推薦（production 修格式那一次會重選，可能不同）。
   - 可交付率不算它；開場句的機械指標算它。
 - `--arms=base` 或 `--arms=cand` 可以只跑一臂（沒有盲測）。`--base-ref` 只收 commit SHA。
 
@@ -41,7 +40,7 @@
 
 ```sh
 deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
-  tools/new-topic-two-stage-eval/run.ts --tag=nt3-dry --repeat=2
+  tools/new-topic-two-stage-eval/run.ts --tag=nt4-dry --repeat=2
 ```
 
 在 `out/<tag>/` 寫 `manifest.json`（兩臂的 HEAD、提示詞與案例 sha256、模型參數、估算）、`system-prompts.json`（每份系統提示詞全文，以 sha256 為鍵）、`prompts.json`（每次呼叫的使用者提示詞），最後印出呼叫數與費用估算。同名輸出目錄已存在會拒絕執行，不覆寫任何證據。
@@ -51,14 +50,14 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 - input 全部用四種 input 單價裡最高的「快取寫入」價計算（system 開了 ephemeral 快取，第一次寫入是一般 input 的 1.25 倍）。
 - output 一般每次 1,200，最壞每次 `max_tokens`（3,000）全滿。
 - 單價取 `_shared/model_pricing.ts` 的 `SONNET_5_PRICING`：input $2/M、快取寫入 $2.5/M、output $10/M。
-- 22 組 × 2 次 × 2 臂＝88 次呼叫：一般約 $2.71、最壞約 $4.30。
+- 22 組 × 2 次 × 2 臂＝88 次呼叫：一般約 $2.75、最壞約 $4.33（提示詞 v2.4）。
 
 ## 真跑（要 Eric 當次說「跑」）
 
 ```sh
 deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
   --allow-env=HOME --allow-net=api.anthropic.com \
-  tools/new-topic-two-stage-eval/run.ts --tag=nt3 --repeat=2 \
+  tools/new-topic-two-stage-eval/run.ts --tag=nt4 --repeat=2 \
   --run --confirm-paid --max-calls=88 --budget-usd=4.5
 ```
 
@@ -80,29 +79,52 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 |---|---|
 | `records.json` | 每次呼叫的使用者提示詞、模型原文、usage（含快取）、預留與實付、整理結果、字面計數 |
 | `summary.md` | 費用、正式驗收資格（資料完不完整）、兩臂（全部／基本／進階）的機械指標、規格 §6.5 第 5、6 項門檻 |
-| `blind_ab.md` | 給 Bruce：每組兩版依 seed 打亂成甲／乙，只露五句和 ★，附評分欄 |
-| `blind_star.md` | 給 Bruce：同一組只看 ★ 那一句（Free 只看得到這一句） |
-| `explanations_blind.md` | 給 Bruce：★ 那一題的標題、為什麼現在有效、她回了之後、推薦理由 |
-| `reveal-map.json` | 解盲表（哪一版是甲、乙）；**不要跟盲測檔一起給 Bruce** |
+| `blind.md` | 給 Bruce 的盲測表：每組兩版依 seed 打亂成甲／乙，附對象資料與用戶的回答；逐句勾選，不標 ★ |
+| `reveal-map.json` | 解盲表（哪一版是甲、乙）；**不要跟盲測表一起給 Bruce** |
 | `manifest.json` | 跑完後另加實際呼叫數、費用、校正後的每字 token 數、正式驗收資格與指標 |
 
 ## 盲測與驗收
 
-1. 把三份盲測檔給 Bruce，每個「＿」換成答案（甲乙之間用全形分號「；」）。全部填完才看 `reveal-map.json`。
-2. 執行 `deno run --allow-read --allow-write tools/new-topic-two-stage-eval/tally.ts --tag=nt3`。任何一格沒填或格式不對就拒絕，不會把沒填的當通過。
-3. **完整度**：`manifest.json`、`records.json`、`reveal-map.json` 與三份盲測檔要一起對得上完整的 22 組 × 2 次 × 兩臂。下列任何一種都列進「資料不完整」：
+### 盲測表（`blind.md`）
+
+每組是同一個情境的兩版（甲、乙），各五句，上面附對象資料、用戶的回答與用戶寫的那句（「不實」要對照它）。Bruce 只改方框和「＿」：
+
+```text
+### 甲
+- 甲1 [x]會傳 [ ]尷尬 [ ]不實｜剛路過一家超浮誇的甜點店，第一個想到妳
+- 甲2 [ ]會傳 [x]尷尬 [ ]不實｜…
+…
+- [x] 甲有一句有趣或有個性
+
+- 十句裡最想傳（填代號如「乙3」；都不想傳填「都不要」）：甲1
+- [x] 這組評完了（沒勾＝未評，整組不計分）
+```
+
+- 每一句三格各自判斷：**會傳**（照原樣直接傳）、**尷尬**、**不實**（寫了資料沒有的事、主詞或誰說誰做弄反，或越界）。
+- 「沒有」和「未評」分開：評完的組裡沒勾＝沒有；沒勾「這組評完了」的整組算未評，不計分，正式驗收就是「未完成」。
+- 表上不標 ★：推薦句的會傳、尷尬，解盲後由 tally 從逐句勾選取，位置用 records 裡用戶看到的推薦（紅燈收尾改推第一題的，取改推後的）。評分時不知道哪句被推薦，不會被影響。
+- ★ 解釋（標題、理由）的人工評分這輪暫緩、未評（Eric 2026-10-06）；6a、6b 的機械檢查照常。
+
+### 計分與完整度
+
+1. 把 `blind.md` 給 Bruce 填。全部評完才看 `reveal-map.json`。
+2. 執行 `deno run --allow-read --allow-write tools/new-topic-two-stage-eval/tally.ts --tag=nt4`。方框或「最想傳」看不懂、勾了評完卻沒填最想傳，就整個拒絕，不會猜。
+3. **完整度**：`manifest.json`、`records.json`、`reveal-map.json` 與 `blind.md` 要一起對得上完整的 22 組 × 2 次 × 兩臂。下列任何一種都列進「資料不完整」：
    - 評測沒跑完、只跑部分案例或一臂、每組不是 2 次。
    - 案例檔換過、評測時工作樹不乾淨。
    - 模型呼叫不是 88 次；有呼叫沒跑到或 API 失敗。
-   - records、解盲表或任一份盲測檔的組別缺少、重複或多出來。
+   - records、解盲表或盲測表的組別缺少、重複或多出來。
    - 解盲表的甲乙不是一邊基準、一邊候選。
+   - 有組沒評完；表上的句子跟 records 不一樣（改過字或拿錯表，那組不計分）。
 
    資料不完整時，`acceptance.md` 整份標「未完成」（每一項都不給 ✓／✗），指令以失敗結束，不能當正式驗收。
-4. `out/<tag>/acceptance.md` 會列出規格 §6.5 每一項：
-   - 第 1–4 項來自盲測：捏造／越界、尷尬句、★ 尷尬、願意直接傳、★ 會直接傳、有趣。
-   - B3、J1、E3 兩次都要有候選的評分而且「有趣」；缺一組也不算過。
-   - 第 5、6 項來自 `records.json` 的機械計數。
-   - 第 1 項另要逐筆看 `records.json`。
+4. `out/<tag>/acceptance.md` 列出規格 §6.5 每一項，數字都附分母：
+   - 1：候選 0 句不實。被勾不實的候選句子逐句列出，要對照輸入確認。
+   - 2a：尷尬句數候選 ≤ 基準一半。2b：★ 尷尬次數（44 次產出）候選 ≤ 基準，而且至多 1 個情境（22 個情境，同情境兩次任一次算）。
+   - 3a、3b：會傳句數、★ 會傳次數候選 ≥ 基準。3c：基本、進階分開看，任一邊退步就標「需交代」，不能寫「全部通過」。
+   - 4a：有一句有趣的版本數候選 ≥ 基準八成。4b：B3、J1、E3 兩次都要有候選的評分，而且有一句有趣；缺一組也不算過。
+   - 5、6：`records.json` 的機械計數。
+   - 參考：全部／基本／進階分開的會傳、尷尬、不實、★、有趣、最想傳，以及十句都不想傳的組數。
 
 ## 機械指標
 
@@ -113,9 +135,10 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 - **四種尷尬句型合計**（第 5 項）：候選要小於基準；基準已是 0 時，候選也是 0 就算過（ADR #51 產品裁決 4）。
 - **近似重句**：同案例第 1、2 次之間的句子對，二字詞 Jaccard ≥ 0.5 算一對。
 - **★ 標題的手法字**、**★ 解釋夾英文**：素材或作戰板原本就有的英文名稱不算。
-- **production 稽核同一套規則**：推薦題用到素材、她沒回我提空窗、我沒回她同題道歉超過一次、紅燈／冷掉了／基本模式的邀約字眼（D9）、在嗎類開場、紅燈收尾（模型自己推第一題、伺服器改推）。
+- **production 稽核同一套規則**：推薦題用到素材、她沒回我提空窗、紅燈／冷掉了／基本模式的邀約字眼（D9）、在嗎類開場、紅燈收尾（模型自己推第一題、伺服器改推）。
+- **我沒回她：道歉、解釋或提空窗的句子**（ADR #51 產品裁決 5，這三種都不寫）：道歉、提空窗用 production 稽核的樣式，另加「斷線」「比較忙」「晚回」這類解釋。
 
-這些是字面計數，只看趨勢，不是語意判定；用戶講自己的句子也可能被算進去。「不捏造」「願意直接傳」「有趣」要靠盲測。
+這些是字面計數，只看趨勢，不是語意判定；用戶講自己的句子也可能被算進去。「不實」「會傳」「有趣」要靠盲測。
 
 ## 測試
 
@@ -132,9 +155,11 @@ deno test --allow-env --allow-read tools/new-topic-two-stage-eval/run_test.ts
 - 請求 body 與 header 等於 `fallback.ts` 實際送出的。
 - 估算與預留：快取寫入價、usage 怎麼分都不超過預留、每字 token 數校正、送出前守門。
 - 外洩與紅燈收尾。
-- 只壞在解釋欄：五句與 ★ 進盲測、不算可交付。
-- 字面計數、近似重句、機械門檻（含基準為 0）。
-- 盲測打亂與計分。
-- 完整度：只跑一部分時「未完成」；全部齊才可能通過；缺、重複、多出、只跑部分都列出來。
+- nt3 失分的案例（E1、C5、B6、D2、E3、J1、T1）都帶到 v2.4 的對應規則。這只證明規則送到了，模型照不照做要看盲測。
+- 只壞在解釋欄：五句進盲測、★ 用主呼叫自己的推薦、不算可交付。
+- 字面計數、近似重句、我沒回她的道歉／解釋、機械門檻（含基準為 0）。
+- 盲測表：打亂、不露臂名、不標 ★；逐句勾選的解析（看不懂就拒絕）、未評和沒有分開、★ 從 records 取（含紅燈收尾）、句子對不上 records。
+- 門檻：★ 尷尬的兩個分母、基本／進階退步標「需交代」。
+- 完整度：只跑一部分時「未完成」；全部齊、每組評完才可能通過；缺、重複、多出、未評、只跑部分都列出來。
 
 這支測試在 PR CI 的 Edge contract tests 裡。

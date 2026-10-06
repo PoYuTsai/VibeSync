@@ -41,8 +41,10 @@ import {
 } from "../../supabase/functions/analyze-chat/new_topic_prompt.ts";
 import { planNewTopicPrompt } from "../../supabase/functions/analyze-chat/new_topic_prompt_plan.ts";
 import {
+  APOLOGY_PATTERN,
   auditNewTopicTwoStageTopics,
   enforceNewTopicRedClose,
+  GAP_MENTION_PATTERN,
   isNewTopicRedClose,
   NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
   type NewTopicTopicContext,
@@ -917,12 +919,17 @@ export function baseRecord(
 // 機械指標（每臂；可再依基本／進階切）
 // ---------------------------------------------------------------------------
 
-// 同 new_topic_two_stage.ts 的 APOLOGY_PATTERN（未 export），改成 g 旗標數次數。
-const APOLOGY_WORDS = /抱歉|不好意思|對不起|sorry/gi;
+/** 解釋為什麼沒回的字眼（道歉、提空窗用 production 稽核的樣式）。 */
+const SILENCE_EXPLANATION_PATTERN =
+  /斷線|失聯|消失|失蹤|沒回妳|沒回你|晚回|太忙|比較忙|忙到|忙翻|忙瘋/;
 
-/** 一則 openingLine（可能分兩則傳）裡出現幾次道歉。 */
-export function apologyCount(openingLine: string): number {
-  return openingLine.match(APOLOGY_WORDS)?.length ?? 0;
+/**
+ * 我沒回她（ADR #51 產品裁決 5）：一句開場句（可能分兩則傳）有沒有道歉、解釋為什麼沒回，或提空窗。
+ * 字面計數只看趨勢。
+ */
+export function explainsSilence(openingLine: string): boolean {
+  return [APOLOGY_PATTERN, GAP_MENTION_PATTERN, SILENCE_EXPLANATION_PATTERN]
+    .some((pattern) => pattern.test(openingLine));
 }
 
 function percentile(values: number[], p: number): number | null {
@@ -1038,11 +1045,11 @@ export function armMetrics(rows: EvalRecord[]) {
       ok.filter((x) => x.r.topicContext?.coldStop === "she_no_reply"),
       (x) => x.a.gapMentionLines,
     ),
-    // 五題是五個備選，不是一起傳；規則是「同一題（可能兩則）裡道歉不超過一次」。
-    iNoReplyTopicsOverOneApology: sum(
+    // 我沒回她：道歉、解釋為什麼沒回、提空窗都不寫（ADR #51 產品裁決 5）；五題各算一句。
+    iNoReplyExplainLines: sum(
       ok.filter((x) => x.r.topicContext?.coldStop === "i_no_reply"),
       (x) =>
-        x.r.inspection!.topics!.filter((t) => apologyCount(t.openingLine) > 1)
+        x.r.inspection!.topics!.filter((t) => explainsSilence(t.openingLine))
           .length,
     ),
     redInviteLines: sum(
@@ -1219,7 +1226,7 @@ export function mechanicalAcceptance(
 }
 
 // ---------------------------------------------------------------------------
-// 盲測（給 Bruce）：每組兩版依 seed 打亂成甲／乙；解盲表另存
+// 盲測（給 Bruce）：一份表，每組兩版依 seed 打亂成甲／乙、逐句勾選；解盲表另存
 // ---------------------------------------------------------------------------
 
 /** mulberry32：同 seed 同順序。 */
@@ -1233,23 +1240,42 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-/** 盲測欄位（tally.ts 照這些前綴解析；改字要一起改）。 */
-export const BLIND_FIELDS = {
-  willingToSend: "- 願意直接傳（0–5）：",
-  awkward: "- 尷尬句數（要猜意思、莫名被評斷或被安排角色、硬編情境）：",
-  fabricated:
-    "- 捏造或越界句數（編她的事、你們的共同經歷或用戶經歷；性化、施壓、冷掉時約她）：",
-  starSend: "- ★ 那句你會直接傳嗎（是／否）：",
-  starAwkward: "- ★ 那句讀起來尷尬嗎（是／否）：",
-  fun: "- 至少一句有趣或有個性（是／否）：",
-  favorite: "- 十句裡最想傳（例：乙3）：",
-  starBetter:
-    "- Free 只看得到 ★ 這句：哪句比較好接、又像本人（甲／乙／差不多）：",
-  titleTopic: "- 標題是在說「聊什麼」，不是「怎麼對她」（是／否）：",
-  reasonUseful: "- 理由說得出她可以回什麼，該有的條件有寫（是／否）：",
-  predictsHer: "- 預告她一定會怎樣，或拿「短、隨意、沒企圖心」當理由（處數）：",
-  mixedEnglish: "- 中英夾雜（處數，素材原本就有的英文名稱不算）：",
+/** 盲測表的固定字（tally.ts 照這些字解析；改字要一起改）。 */
+export const BLIND_FORM = {
+  willing: "會傳",
+  awkward: "尷尬",
+  untrue: "不實",
+  fun: "有一句有趣或有個性",
+  favorite: "- 十句裡最想傳（填代號如「乙3」；都不想傳填「都不要」）：",
+  favoriteNone: "都不要",
+  done: "這組評完了",
+  noOutput: "（這一版沒有產出可用的五題）",
 } as const;
+
+/** 表上的一句：分兩則傳的用 ⏎ 接起來（tally.ts 用它核對表上的句子跟 records 一樣）。 */
+export function blindLineText(openingLine: string): string {
+  return openingLine.replace(/\n/g, " ⏎ ");
+}
+
+const BLIND_INTRO = [
+  "# 新話題盲測",
+  "",
+  "每組是同一個情境的兩版：甲、乙（順序已打亂），各五句開場句。全部評完再看解盲表。",
+  "",
+  "**怎麼填**：把「[ ]」改成「[x]」，沒勾＝沒有。",
+  "",
+  "- 每一句三格，各自判斷：",
+  `  - ${BLIND_FORM.willing}：你會照原樣直接傳給她。`,
+  `  - ${BLIND_FORM.awkward}：讀起來尷尬，例如要猜意思、莫名被評斷或被安排角色、硬編情境。`,
+  `  - ${BLIND_FORM.untrue}：寫了上面資料沒有的事，或越界。例如把她的興趣寫成她做過、說過、擁有的事；編你們之間或約會時發生的事；把誰說的、誰做的、被虧的是誰弄反；性化、施壓、冷掉時約她。`,
+  `- 每一版：五句裡至少一句有趣或有個性，就勾「${BLIND_FORM.fun}」。`,
+  "- 每一組最後：",
+  `  - 「十句裡最想傳」填一句的代號（例：乙3）；都不想傳就填「${BLIND_FORM.favoriteNone}」。`,
+  `  - 整組看完、勾完，再勾「${BLIND_FORM.done}」。沒勾的組算「未評」，不計分，也不會當成「沒有」。`,
+  "- ⏎＝分成兩則傳。表上不標推薦句：推薦句的會傳、尷尬，解盲後從你的逐句勾選算。",
+  "- 只改方框和「＿」，不要改句子、組別或甲乙順序。",
+  "",
+];
 
 function pairedCodes(records: EvalRecord[], cases: EvalCase[]) {
   const pairs: Array<{ c: EvalCase; attempt: number; pair: EvalRecord[] }> = [];
@@ -1290,7 +1316,7 @@ function caseHeader(c: EvalCase): string[] {
   return lines;
 }
 
-export function blindAB(
+export function blindForm(
   records: EvalRecord[],
   cases: EvalCase[],
   seed: number,
@@ -1298,91 +1324,38 @@ export function blindAB(
   const rand = seededRandom(seed);
   const reveal: Record<string, { 甲: Arm; 乙: Arm }> = {};
   const { pairs, unpaired } = pairedCodes(records, cases);
-  const ab = [
-    "# 新話題盲測：五句（每組兩版、順序已依 seed 打亂；全部評完再看 reveal-map.json）",
-    "",
-    "★＝該版推薦的那一句；⏎＝分成兩則傳。每個「＿」換成你的答案，甲乙之間用全形分號「；」。",
-    "",
-  ];
-  const star = [
-    "# 新話題盲測：只看推薦那一句（Free 用戶只看得到 ★）",
-    "",
-    "組別、甲乙順序與 blind_ab.md 相同。每個「＿」換成你的答案。",
-    "",
-  ];
-  const explanations = [
-    "# 新話題盲測：推薦那一題的解釋（標題、為什麼現在有效、她回了之後、推薦理由）",
-    "",
-    "組別、甲乙順序與 blind_ab.md 相同。每個「＿」換成你的答案，甲乙之間用全形分號「；」。",
-    "某一版寫「沒有可評的解釋」時，那一版的是／否填「否」、處數填 0。",
-    "",
-  ];
+  const form = [...BLIND_INTRO];
   for (const { c, attempt, pair } of pairs) {
     const code = `${c.id}#${attempt}`;
     const order = rand() < 0.5 ? pair : [pair[1], pair[0]];
     reveal[code] = { 甲: order[0].arm, 乙: order[1].arm };
-    ab.push(`## ${code}`, "", ...caseHeader(c), "");
-    star.push(`## ${code}`, "", `用戶的回答：${c.label}`, "");
-    explanations.push(`## ${code}`, "", `用戶的回答：${c.label}`, "");
+    form.push(`## ${code}`, "", ...caseHeader(c), "");
     for (const [i, name] of (["甲", "乙"] as const).entries()) {
       const ins = order[i].inspection!;
-      ab.push(`### ${name}`);
+      form.push(`### ${name}`);
+      // 只壞在解釋欄的照樣列五句（production 修格式會逐字保留）；推薦位置由 tally 取 records。
       if (!ins.openingsEvaluable || !ins.topics) {
-        ab.push("（這一版沒有產出可用的五題）", "");
-        star.push(`- ${name}：（沒有可用結果）`);
-        explanations.push(`### ${name}`, "（沒有可評的解釋）", "");
+        form.push(BLIND_FORM.noOutput, "");
         continue;
       }
       ins.topics.forEach((t, n) =>
-        ab.push(
-          `${n + 1}. ${t.openingLine.replace(/\n/g, " ⏎ ")}${
-            n === ins.recommendationIndex ? " ★" : ""
+        form.push(
+          `- ${name}${
+            n + 1
+          } [ ]${BLIND_FORM.willing} [ ]${BLIND_FORM.awkward} [ ]${BLIND_FORM.untrue}｜${
+            blindLineText(t.openingLine)
           }`,
         )
       );
-      ab.push("");
-      const s = ins.topics[ins.recommendationIndex!];
-      star.push(`- ${name}：${s.openingLine.replace(/\n/g, " ⏎ ")}`);
-      // 只壞在解釋欄：開場句照樣評，解釋是佔位字、不列（production 修格式會重寫）。
-      if (!ins.deliverable) {
-        explanations.push(`### ${name}`, "（沒有可評的解釋）", "");
-        continue;
-      }
-      explanations.push(
-        `### ${name}`,
-        `- 標題：${s.direction}`,
-        `- 為什麼現在有效：${s.whyItWorks}`,
-        `- 她回了之後：${s.nextMove}`,
-        `- 推薦理由：${ins.recommendationReason ?? "（沒有）"}`,
-        "",
-      );
+      form.push(`- [ ] ${name}${BLIND_FORM.fun}`, "");
     }
-    ab.push(
-      `${BLIND_FIELDS.willingToSend}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.awkward}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.fabricated}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.starSend}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.starAwkward}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.fun}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.favorite}＿`,
-      "",
-    );
-    star.push("", `${BLIND_FIELDS.starBetter}＿`, "");
-    explanations.push(
-      `${BLIND_FIELDS.titleTopic}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.reasonUseful}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.predictsHer}甲 ＿；乙 ＿`,
-      `${BLIND_FIELDS.mixedEnglish}甲 ＿；乙 ＿`,
+    form.push(
+      `${BLIND_FORM.favorite}＿`,
+      `- [ ] ${BLIND_FORM.done}（沒勾＝未評，整組不計分）`,
       "",
     );
   }
-  return {
-    markdown: ab.join("\n"),
-    starMarkdown: star.join("\n"),
-    explanationsMarkdown: explanations.join("\n"),
-    reveal,
-    unpaired,
-  };
+  return { markdown: form.join("\n"), reveal, unpaired };
 }
 
 // ---------------------------------------------------------------------------
@@ -1481,7 +1454,7 @@ export function summaryMarkdown(input: {
       (x) => `${x.materialInRecommended.hit}/${x.materialInRecommended.total}`,
     ),
     row("她沒回我：提空窗", (x) => x.sheNoReplyGapLines),
-    row("我沒回她：同題道歉超過一次", (x) => x.iNoReplyTopicsOverOneApology),
+    row("我沒回她：道歉、解釋或提空窗", (x) => x.iNoReplyExplainLines),
     row("紅燈：邀約字眼", (x) => x.redInviteLines),
     row("冷掉了：邀約字眼", (x) => x.coldInviteLines),
     row("基本模式：邀約字眼（D9）", (x) => x.basicInviteLines),
@@ -1496,10 +1469,10 @@ export function summaryMarkdown(input: {
     "",
     "| 門檻 | 結果 |",
     "|---|---|",
-    "| 1. 候選 0 件捏造／越界（硬性） | 待 Bruce 盲測＋逐筆看 records（tally.ts） |",
-    "| 2. 尷尬句：候選 ≤ 基準一半；★ 尷尬候選 ≤ 基準、且至多 1 組 | 待 Bruce 盲測（tally.ts） |",
-    "| 3. 願意直接傳總數、★ 會直接傳的組數：候選 ≥ 基準 | 待 Bruce 盲測（tally.ts） |",
-    "| 4. 有趣／有個性組數：候選 ≥ 基準八成；B3、J1、E3 候選都要「是」 | 待 Bruce 盲測（tally.ts） |",
+    "| 1. 不實（捏造、主詞弄反、越界）：候選 0 句（硬性） | 待 Bruce 盲測＋逐句對照輸入（tally.ts） |",
+    "| 2. 尷尬句數：候選 ≤ 基準一半；★ 尷尬：候選次數 ≤ 基準、且至多 1 個情境 | 待 Bruce 盲測（tally.ts） |",
+    "| 3. 會傳句數、★ 會傳次數：候選 ≥ 基準；基本、進階分開看，任一邊退步要交代 | 待 Bruce 盲測（tally.ts） |",
+    "| 4. 有一句有趣的版本數：候選 ≥ 基準八成；B3、J1、E3 候選每次都要有 | 待 Bruce 盲測（tally.ts） |",
     `| 5a. 可交付率候選 ≥ 基準 | ${mark(acc.deliverableRate.pass)} ${
       pct(acc.deliverableRate.cand)
     } vs ${pct(acc.deliverableRate.base)} |`,
@@ -1786,11 +1759,9 @@ async function main(args: string[]): Promise<void> {
     await write("records.json", records);
   }
 
-  const blind = blindAB(records, selected, opts.seed);
+  const blind = blindForm(records, selected, opts.seed);
   await write("records.json", records);
-  await write("blind_ab.md", blind.markdown);
-  await write("blind_star.md", blind.starMarkdown);
-  await write("explanations_blind.md", blind.explanationsMarkdown);
+  await write("blind.md", blind.markdown);
   await write("reveal-map.json", blind.reveal);
   const status = stopped
     ? "STOPPED_BY_CAP_OR_FAILURE"

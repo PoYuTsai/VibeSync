@@ -748,12 +748,13 @@ export type NewTopicTwoStageAudit = {
   redCloseCueInFirst: number | null;
 };
 
-const GAP_MENTION_PATTERN =
+// 提空窗、道歉兩組樣式另給評測工具算「我沒回她」的句子（tools/new-topic-two-stage-eval）。
+export const GAP_MENTION_PATTERN =
   /好久|很久沒|一陣子沒|有陣子沒|這陣子沒|最近都沒|怎麼沒回|沒消息/;
 const BANNED_OPENER_PATTERN =
   /在嗎|最近好嗎|最近在幹嘛|最近在忙什麼|有件事想跟妳說|有件事想跟你說/;
 const INVITE_PATTERN = /約妳|約你|見面|出來吃|出來喝|出來玩|一起去/;
-const APOLOGY_PATTERN = /抱歉|不好意思|對不起|sorry/i;
+export const APOLOGY_PATTERN = /抱歉|不好意思|對不起|sorry/i;
 const RED_CLOSE_CUE_PATTERN =
   /先去忙|晚點|改天|下次|再跟妳|再跟你|先這樣|報告|先睡|先忙|回頭再|有空再/;
 const EMOJI_GRAPHEME = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;

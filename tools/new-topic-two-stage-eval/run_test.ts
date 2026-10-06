@@ -9,8 +9,8 @@ import {
   ARMS,
   awkwardPatternLines,
   baseRouter,
-  BLIND_FIELDS,
-  blindAB,
+  BLIND_FORM,
+  blindForm,
   buildPlan,
   calibratedTokensPerChar,
   candRouter,
@@ -24,6 +24,7 @@ import {
   estimatePlan,
   type EvalRecord,
   expectedKeys,
+  explainsSilence,
   explanationEnglish,
   explanationOnlyFailure,
   inspectOutput,
@@ -50,6 +51,7 @@ import {
   blindCodes,
   completenessProblems,
   parseBlind,
+  type Reveal,
   tally,
 } from "./tally.ts";
 import { callClaudeWithFallback } from "../../supabase/functions/analyze-chat/fallback.ts";
@@ -257,6 +259,41 @@ Deno.test("候選路由＝planNewTopicPrompt（handler 呼叫同一個函式）�
     assertEquals(call.appliesRedClose, expected.appliesRedClose, call.key);
     assert(call.user.includes("2026 年 10 月 5 日（週一）"), call.key);
     assert(call.hasPromptLeak(TWO_STAGE_SENTINEL), call.key);
+  }
+});
+
+Deno.test("候選提示詞：nt3 失分的案例都帶到對應修正（只證明規則送到，模型照不照做要看下一輪盲測）", async () => {
+  const plan = await planFor(["E1", "C5", "B6", "D2", "E3", "J1", "T1"]);
+  const cand = (id: string) => plan.find((p) => p.key === `${id}.1.cand`)!;
+  // 系統提示詞（v2.4）：興趣邊界、主詞照原文、推薦挑會照原樣傳的。
+  for (const id of ["E1", "B6", "T1"]) {
+    const system = cand(id).system;
+    assert(system.includes("- 興趣只代表她喜歡這類東西"), id);
+    assert(system.includes("誰說的、誰做的、被虧的是誰都照原文"), id);
+    assert(
+      system.includes("推薦用戶最可能照原樣直接傳、她最容易接的那題"),
+      id,
+    );
+  }
+  // C（E1、C5 我沒回她）：不道歉、不解釋，也不提很久沒聊。
+  for (const id of ["E1", "C5"]) {
+    const user = cand(id).user;
+    assert(
+      user.includes(
+        "不解釋為什麼沒回、不道歉、不替自己辯解，也不提很久沒聊。",
+      ),
+      id,
+    );
+    assertFalse(user.includes("帶過"), id);
+    assertFalse(user.includes("可以用一句輕鬆承認有陣子沒聊"), id);
+  }
+  // A（B6 只選剛約完會）：不知道約會裡的事；D2 素材寫了約會裡的梗，才承接餘溫。
+  assert(cand("B6").user.includes("剛約完會：你只知道剛約完"));
+  assertFalse(cand("B6").user.includes("承接約會的餘溫"));
+  assert(cand("D2").user.includes("剛約完會：承接約會的餘溫"));
+  // A（E3「她說我的五分鐘都是半小時」被虧的是用戶）：梗照原本的主詞。
+  for (const id of ["E3", "D2", "J1", "C5"]) {
+    assert(cand(id).user.includes("用梗原本的說法和原本的主詞"), id);
   }
 });
 
@@ -482,16 +519,27 @@ Deno.test("整理：只壞在解釋欄的，五句開場句與推薦照樣進盲
     null,
     null,
   ]);
-  // 盲測：五句與 ★ 都在；解釋那份標「沒有可評的解釋」。
+  // 盲測：五句都在；推薦位置不標在表上，tally 取 records 裡主呼叫自己的推薦（第 3 句）。
   const records = plan.map((p) =>
     record(p, p.arm === "cand" ? badExplanation : payload())
   );
-  const blind = blindAB(records, CASES, 7);
-  for (const line of lines) assert(blind.markdown.includes(line), line);
-  assert(blind.markdown.includes("3. 路上看到一隻胖貓 ★"));
-  assert(blind.starMarkdown.includes("路上看到一隻胖貓"));
-  assertFalse(blind.markdown.includes("沒有產出可用的五題"));
-  assert(blind.explanationsMarkdown.includes("（沒有可評的解釋）"));
+  const blind = blindForm(records, CASES, 7);
+  for (const line of lines) {
+    assert(blind.markdown.includes(`[ ]不實｜${line}`), line);
+  }
+  assertFalse(blind.markdown.includes(BLIND_FORM.noOutput));
+  const candName = blind.reveal["B1#1"].甲 === "cand" ? "甲" : "乙";
+  const filled = fillForm(blind.markdown, {
+    sentence: (_code, name, n) => ({ willing: name === candName && n === 3 }),
+    fun: () => false,
+    favorite: () => `${candName}3`,
+    done: () => true,
+  });
+  assertEquals(
+    tally({ form: filled, reveal: blind.reveal, records }).totals.all.cand
+      .starWilling,
+    1,
+  );
   // 指標：可交付不算，開場句可評算；開場句計數照算。
   const m = metricsByArm(records);
   assertEquals(
@@ -629,78 +677,114 @@ Deno.test("門檻 5c：候選 < 基準；基準已是 0 時候選也是 0 才算
   assertEquals(with5c(2, 1), true);
 });
 
+Deno.test("指標：我沒回她——道歉、解釋為什麼沒回、提空窗的句子都算（ADR #51 產品裁決 5）", async () => {
+  for (
+    const line of [
+      "抱歉前陣子斷線了 ⏎ 路過一家甜點店",
+      "最近比較忙，剛看到一家甜點店",
+      "好久沒聊，剛路過甜點店",
+      "不好意思這麼晚回",
+    ]
+  ) {
+    assert(explainsSilence(line), line);
+  }
+  for (
+    const line of [
+      "剛路過一家很浮誇的甜點店",
+      "妳最近在追哪部韓劇",
+      "人體氣象台今天預報：下午有雨",
+    ]
+  ) {
+    assertFalse(explainsSilence(line), line);
+  }
+  const plan = await planFor(["E1", "T1"]);
+  const lines = [
+    "抱歉前陣子斷線了，路過一家甜點店想到妳",
+    "最近比較忙，剛看到一家甜點店",
+    "好久沒聊，剛路過甜點店",
+    "剛路過一家很浮誇的甜點店",
+    "週末想去爬山",
+  ];
+  const m = metricsByArm(plan.map((call) => record(call, payload({ lines }))));
+  // 只算我沒回她（E1）；T1 是聊著聊著就停了，不算。
+  assertEquals(m.cand.all.openingsEvaluable, 2);
+  assertEquals(
+    [m.cand.all.iNoReplyExplainLines, m.base.all.iNoReplyExplainLines],
+    [3, 3],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // 盲測與計分
 // ---------------------------------------------------------------------------
 
-async function blindFixture() {
-  const plan = await planFor(["B1", "J1"]);
-  const records = plan.map((call) => record(call, payload()));
-  return { records, blind: blindAB(records, CASES, 7) };
+type Name = "甲" | "乙";
+type Marks = { willing?: boolean; awkward?: boolean; untrue?: boolean };
+type Filler = {
+  sentence: (code: string, name: Name, n: number) => Marks;
+  fun: (code: string, name: Name) => boolean;
+  favorite: (code: string) => string;
+  done: (code: string) => boolean;
+};
+
+async function blindFixture(
+  ids = ["B1", "J1"],
+  raw: (call: PlannedCall) => string = () => payload(),
+) {
+  const plan = await planFor(ids);
+  const records = plan.map((call) => record(call, raw(call)));
+  return { records, blind: blindForm(records, CASES, 7) };
 }
 
-function fill(
-  markdown: string,
-  pick: (field: string, code: string) => string,
-): string {
+const tick = (on: boolean | undefined) => on ? "[x]" : "[ ]";
+
+/** 照 filler 填盲測表：只改方框和「＿」，跟 Bruce 填的方式一樣。 */
+function fillForm(markdown: string, filler: Filler): string {
   let code = "";
   return markdown.split("\n").map((line) => {
-    const heading = /^## (\S+#\d+)/.exec(line);
+    const heading = /^## (\S+#\d+)$/.exec(line);
     if (heading) code = heading[1];
-    for (const prefix of Object.values(BLIND_FIELDS)) {
-      if (line.startsWith(prefix)) return prefix + pick(prefix, code);
+    const sentence = /^- (甲|乙)([1-5]) \[ \]會傳 \[ \]尷尬 \[ \]不實｜(.*)$/
+      .exec(line);
+    if (sentence) {
+      const name = sentence[1] as Name;
+      const m = filler.sentence(code, name, Number(sentence[2]));
+      return `- ${name}${sentence[2]} ${tick(m.willing)}會傳 ${
+        tick(m.awkward)
+      }尷尬 ${tick(m.untrue)}不實｜${sentence[3]}`;
+    }
+    const fun = /^- \[ \] (甲|乙)有一句有趣或有個性$/.exec(line);
+    if (fun) {
+      return `- ${tick(filler.fun(code, fun[1] as Name))} ${
+        fun[1]
+      }有一句有趣或有個性`;
+    }
+    if (line === `${BLIND_FORM.favorite}＿`) {
+      return BLIND_FORM.favorite + filler.favorite(code);
+    }
+    if (line.startsWith("- [ ] 這組評完了")) {
+      return line.replace("[ ]", tick(filler.done(code)));
     }
     return line;
   }).join("\n");
 }
 
-Deno.test("盲測：同 seed 同順序、不露臂名、三份檔同一組代碼、解盲表涵蓋每組", async () => {
-  const a = await blindFixture();
-  const b = await blindFixture();
-  assertEquals(a.blind.reveal, b.blind.reveal);
-  assertEquals(Object.keys(a.blind.reveal), ["B1#1", "J1#1"]);
-  for (
-    const text of [
-      a.blind.markdown,
-      a.blind.starMarkdown,
-      a.blind.explanationsMarkdown,
-    ]
-  ) {
-    assertFalse(/\bbase\b|\bcand\b|改前|改後|候選|基準/.test(text));
-    assert(text.includes("## B1#1") && text.includes("## J1#1"));
-  }
-  assert(a.blind.markdown.includes(`${BLIND_FIELDS.starAwkward}甲 ＿；乙 ＿`));
-});
-
-/** 每組都讓「cand」那一版比較好的填法。 */
-function candWins(reveal: Record<string, { 甲: string; 乙: string }>) {
-  const candIs = (code: string) => reveal[code].甲 === "cand" ? "甲" : "乙";
-  const pairAnswer = (good: string, bad: string) => (code: string) =>
-    candIs(code) === "甲" ? `甲 ${good}；乙 ${bad}` : `甲 ${bad}；乙 ${good}`;
-  const answers: Record<string, (code: string) => string> = {
-    [BLIND_FIELDS.willingToSend]: pairAnswer("4", "1"),
-    [BLIND_FIELDS.awkward]: pairAnswer("0", "3"),
-    [BLIND_FIELDS.fabricated]: pairAnswer("0", "1"),
-    [BLIND_FIELDS.starSend]: pairAnswer("是", "否"),
-    [BLIND_FIELDS.starAwkward]: pairAnswer("否", "是"),
-    [BLIND_FIELDS.fun]: pairAnswer("是", "否"),
-    [BLIND_FIELDS.favorite]: (code) => `${candIs(code)}2`,
-    [BLIND_FIELDS.starBetter]: (code) => candIs(code),
-    [BLIND_FIELDS.titleTopic]: pairAnswer("是", "否"),
-    [BLIND_FIELDS.reasonUseful]: pairAnswer("是", "否"),
-    [BLIND_FIELDS.predictsHer]: pairAnswer("0", "2"),
-    [BLIND_FIELDS.mixedEnglish]: pairAnswer("0", "1"),
-  };
-  return (field: string, code: string) => answers[field](code);
-}
-
-function filledBlind(blind: ReturnType<typeof blindAB>) {
-  const pick = candWins(blind.reveal);
+/**
+ * 候選每句都會傳、有一句有趣；基準第 1 句尷尬（payload 推的就是第 1 句）、第 2 句會傳、第 3、4 句尷尬、
+ * 第 5 句不實、沒有有趣的一句。
+ */
+function candWins(reveal: Reveal): Filler {
+  const isCand = (code: string, name: Name) => reveal[code][name] === "cand";
   return {
-    ab: fill(blind.markdown, pick),
-    star: fill(blind.starMarkdown, pick),
-    explanations: fill(blind.explanationsMarkdown, pick),
-    reveal: blind.reveal,
+    sentence: (code, name, n) =>
+      isCand(code, name) ? { willing: true } : {
+        willing: n === 2,
+        awkward: n === 1 || n === 3 || n === 4,
+        untrue: n === 5,
+      },
+    fun: isCand,
+    favorite: (code) => `${isCand(code, "甲") ? "甲" : "乙"}2`,
+    done: () => true,
   };
 }
 
@@ -715,61 +799,263 @@ async function finishedManifest(overrides: Record<string, unknown> = {}) {
   };
 }
 
-Deno.test("計分：沒填完就拒絕；填完照解盲表加總；只有兩組就是「未完成」，B3、E3 沒評分不算過", async () => {
-  const { records, blind } = await blindFixture();
-  assertThrows(() =>
-    tally({
-      ab: blind.markdown,
-      star: blind.starMarkdown,
-      explanations: blind.explanationsMarkdown,
-      reveal: blind.reveal,
-    })
+Deno.test("盲測表：同 seed 同順序、不露臂名、不標推薦句；逐句三格、每版一格有趣、最想傳、評完了", async () => {
+  const a = await blindFixture();
+  const b = await blindFixture();
+  assertEquals(a.blind.reveal, b.blind.reveal);
+  assertEquals(Object.keys(a.blind.reveal), ["B1#1", "J1#1"]);
+  const form = a.blind.markdown;
+  assertFalse(/\bbase\b|\bcand\b|改前|改後|候選|基準/.test(form));
+  assertFalse(form.includes("★"));
+  assertEquals(blindCodes(form), ["B1#1", "J1#1"]);
+  for (const name of ["甲", "乙"]) {
+    assert(
+      form.includes(`- ${name}1 [ ]會傳 [ ]尷尬 [ ]不實｜今天吃到超酸的檸檬`),
+    );
+    assertEquals(form.split(`- [ ] ${name}有一句有趣或有個性`).length, 3);
+  }
+  assertEquals(
+    form.match(/^- (甲|乙)[1-5] \[ \]會傳 \[ \]尷尬 \[ \]不實｜/gm)?.length,
+    20,
   );
-  const filled = filledBlind(blind);
-  assertEquals(parseBlind(filled.ab).size, 2);
-  const totals = tally(filled);
-  assertEquals(totals.cand.willingToSend, 8);
-  assertEquals(totals.base.willingToSend, 2);
-  assertEquals(totals.cand.fabricated, 0);
-  assertEquals(totals.base.starAwkwardCases, ["B1", "J1"]);
-  assertEquals(totals.cand.favorite, 2);
-  assertEquals(totals.cand.funByCode, { "B1#1": true, "J1#1": true });
+  assertEquals(form.split(`${BLIND_FORM.favorite}＿`).length, 3);
+  assertEquals(
+    form.split("- [ ] 這組評完了（沒勾＝未評，整組不計分）").length,
+    3,
+  );
+  // 「不實」要對照輸入：對象資料與用戶寫的那句照樣附上。
+  assert(form.includes("用戶寫的那句：「她說我每次點飲料都點最怪的口味」"));
+  assert(form.includes("[對象作戰板：安安]"));
+  // 還沒填的表：每組都是「未評」，不是「沒有」。
+  const empty = tally({ form, reveal: a.blind.reveal, records: a.records });
+  assertEquals(empty.unrated, ["B1#1", "J1#1"]);
+  assertEquals(empty.rated, []);
+  assertEquals(empty.totals.all.cand.versions, 0);
+});
+
+Deno.test("計分：逐句勾選照解盲表加總、基本／進階分開；未評的組不計分，評完沒勾才是「沒有」", async () => {
+  const { records, blind } = await blindFixture();
+  const filled = fillForm(blind.markdown, candWins(blind.reveal));
+  const result = tally({ form: filled, reveal: blind.reveal, records });
+  assertEquals(result.rated, ["B1#1", "J1#1"]);
+  assertEquals(result.unrated, []);
+  assertEquals(result.mismatches, []);
+  const { cand, base } = result.totals.all;
+  assertEquals(
+    [cand.versions, cand.sentences, cand.willing, cand.awkward, cand.untrue],
+    [2, 10, 10, 0, 0],
+  );
+  assertEquals([base.willing, base.awkward, base.untrue], [2, 6, 2]);
+  // payload 推第 1 句：候選的第 1 句會傳，基準的第 1 句尷尬。
+  assertEquals([cand.starWilling, cand.starAwkward], [2, 0]);
+  assertEquals([base.starWilling, base.starAwkward], [0, 2]);
+  assertEquals(base.starAwkwardCases, ["B1", "J1"]);
+  assertEquals(cand.funByCode, { "B1#1": true, "J1#1": true });
+  assertEquals([cand.favorite, base.favorite], [2, 0]);
+  assertEquals(base.untrueLines.length, 2);
+  assert(base.untrueLines[0].endsWith("5：週末想去看海"), base.untrueLines[0]);
+  // B1 是基本模式、J1 是進階。
+  assertEquals(result.totals.basic.cand.willing, 5);
+  assertEquals(result.totals.advanced.base.awkward, 3);
+
+  // J1 沒勾「這組評完了」：未評，不計分，也不當成「沒有」。
+  const partial = tally({
+    form: fillForm(blind.markdown, {
+      ...candWins(blind.reveal),
+      done: (code) => code !== "J1#1",
+    }),
+    reveal: blind.reveal,
+    records,
+  });
+  assertEquals([partial.rated, partial.unrated], [["B1#1"], ["J1#1"]]);
+  assertEquals(partial.totals.all.cand.versions, 1);
+  assertEquals(partial.totals.advanced.cand.versions, 0);
+
+  // 評完但一格都沒勾、都不想傳：算「沒有」，分母照算。
+  const none = tally({
+    form: fillForm(blind.markdown, {
+      sentence: () => ({}),
+      fun: () => false,
+      favorite: () => "都不要",
+      done: () => true,
+    }),
+    reveal: blind.reveal,
+    records,
+  });
+  assertEquals(none.rated.length, 2);
+  assertEquals(none.favoriteNone, 2);
+  const c = none.totals.all.cand;
+  assertEquals([c.versions, c.sentences, c.willing, c.fun, c.favorite], [
+    2,
+    10,
+    0,
+    0,
+    0,
+  ]);
+});
+
+Deno.test("計分：★ 取用戶看到的推薦——推第 4 句就看第 4 句；紅燈收尾改推第 1 句就看第 1 句", async () => {
+  const { records, blind } = await blindFixture(
+    ["B1", "E2"],
+    () => payload({ index: 3 }),
+  );
+  const filled = fillForm(blind.markdown, {
+    sentence: (_code, _name, n) => ({ willing: n === 1, awkward: n === 4 }),
+    fun: () => true,
+    favorite: () => "甲1",
+    done: () => true,
+  });
+  const { totals } = tally({ form: filled, reveal: blind.reveal, records });
+  for (const arm of ARMS) {
+    // B1（基本）：推第 4 句。
+    assertEquals(
+      [totals.basic[arm].starWilling, totals.basic[arm].starAwkward],
+      [0, 1],
+      arm,
+    );
+    // E2 是紅燈收尾：用戶看到的推薦改成第 1 句。
+    assertEquals(
+      [totals.advanced[arm].starWilling, totals.advanced[arm].starAwkward],
+      [1, 0],
+      arm,
+    );
+  }
+});
+
+Deno.test("計分：看不懂就拒絕，不猜；全形方框、大寫 X、v、✓ 都算勾，空的都算沒勾", async () => {
+  const parsed = parseBlind([
+    "## B1#1",
+    "對象資料：",
+    "```",
+    "- 甲1 這行在程式碼區塊裡，不看",
+    "```",
+    "### 甲",
+    "- 甲1 ［ｘ］會傳 [X]尷尬 [v]不實｜一",
+    "- 甲2 [ ]會傳 [　]尷尬 []不實｜二",
+    "- [✓] 甲有一句有趣或有個性",
+    "### 乙",
+    BLIND_FORM.noOutput,
+    `${BLIND_FORM.favorite}甲２`,
+    "- [x] 這組評完了（沒勾＝未評，整組不計分）",
+  ].join("\n")).get("B1#1")!;
+  assertEquals(
+    parsed.甲.sentences.map((s) => [s.willing, s.awkward, s.untrue, s.text]),
+    [[true, true, true, "一"], [false, false, false, "二"]],
+  );
+  assertEquals([parsed.甲.fun, parsed.乙.fun], [true, null]);
+  assertEquals(parsed.乙.sentences, []);
+  assertEquals([parsed.favorite, parsed.done], ["甲2", true]);
+
+  const rejects = (label: string, lines: string[]) =>
+    assertThrows(() => parseBlind(["## B1#1", ...lines].join("\n")), label);
+  rejects("方框看不懂", ["### 甲", "- 甲1 [?]會傳 [ ]尷尬 [ ]不實｜一"]);
+  rejects("方框被改壞", ["### 甲", "- 甲1 x]會傳 [ ]尷尬 [ ]不實｜一"]);
+  rejects("句子放錯版", ["### 乙", "- 甲1 [ ]會傳 [ ]尷尬 [ ]不實｜一"]);
+  rejects("句子順序不對", ["### 甲", "- 甲2 [ ]會傳 [ ]尷尬 [ ]不實｜二"]);
+  rejects("有趣那格放錯版", ["### 甲", "- [x] 乙有一句有趣或有個性"]);
+  rejects("最想傳看不懂", [`${BLIND_FORM.favorite}乙9`]);
+  rejects("評完了那格看不懂", ["- [好] 這組評完了（沒勾＝未評，整組不計分）"]);
+
+  const { records, blind } = await blindFixture();
+  const good = fillForm(blind.markdown, candWins(blind.reveal));
+  const run = (form: string) => tally({ form, reveal: blind.reveal, records });
+  // 勾了評完，卻沒填最想傳，或少了有趣那一行：拒絕。
+  assertThrows(() =>
+    run(fillForm(blind.markdown, {
+      ...candWins(blind.reveal),
+      favorite: () => "＿",
+    }))
+  );
+  assertThrows(() =>
+    run(good.replace(/^- \[[ x]\] 甲有一句有趣或有個性\n/m, ""))
+  );
+
+  // 沒有可用五題的那一版：最想傳不能指到它；版本照算（分母不偷刪）、句子 0、★ 不算會傳。
+  const broken = await blindFixture(
+    ["B1"],
+    (call) => call.arm === "cand" ? "不是 JSON" : payload(),
+  );
+  assert(broken.blind.markdown.includes(BLIND_FORM.noOutput));
+  const candName = broken.blind.reveal["B1#1"].甲 === "cand" ? "甲" : "乙";
+  const baseName = candName === "甲" ? "乙" : "甲";
+  const fillBroken = (favorite: string) =>
+    tally({
+      form: fillForm(broken.blind.markdown, {
+        sentence: () => ({ willing: true }),
+        fun: () => true,
+        favorite: () => favorite,
+        done: () => true,
+      }),
+      reveal: broken.blind.reveal,
+      records: broken.records,
+    });
+  assertThrows(() => fillBroken(`${candName}3`));
+  const c = fillBroken(`${baseName}1`).totals.all.cand;
+  assertEquals([c.versions, c.sentences, c.starWilling, c.fun], [1, 0, 0, 0]);
+});
+
+Deno.test("計分：表上的句子跟 records 不一樣（改過字、拿錯表），那組不計分，整份未完成", async () => {
+  const { records, blind } = await blindFixture();
+  const filled = fillForm(blind.markdown, candWins(blind.reveal));
+  const edited = filled.replace("｜今天吃到超酸的檸檬", "｜今天吃到超甜的檸檬");
+  const result = tally({ form: edited, reveal: blind.reveal, records });
+  assertEquals(result.mismatches, ["B1#1 甲"]);
+  assertEquals(result.rated, ["J1#1"]);
   const problems = completenessProblems({
-    ...filled,
+    manifest: await finishedManifest(),
+    casesSha256: await catalogSha256(),
+    records,
+    reveal: blind.reveal,
+    form: edited,
+    result,
+  });
+  assert(
+    problems.some((p) =>
+      p.startsWith("表上的句子跟 records 不一樣（這些組不計分）1 處：B1#1 甲")
+    ),
+    problems.join(" | "),
+  );
+});
+
+Deno.test("計分：只有兩組就是「未完成」，B3、E3 沒評分不算過", async () => {
+  const { records, blind } = await blindFixture();
+  const form = fillForm(blind.markdown, candWins(blind.reveal));
+  const result = tally({ form, reveal: blind.reveal, records });
+  const problems = completenessProblems({
     manifest: await finishedManifest({
       modelCallsMade: 4,
       options: { repeat: 1, only: ["B1", "J1"], arms: ["base", "cand"] },
     }),
     casesSha256: await catalogSha256(),
     records,
+    reveal: blind.reveal,
+    form,
+    result,
   });
   assert(problems.length > 0);
-  const markdown = acceptanceMarkdown({ tag: "t", totals, records, problems });
+  const markdown = acceptanceMarkdown({ tag: "t", result, records, problems });
   assert(markdown.includes("整體：**未完成**"));
   assertFalse(markdown.includes("全部通過"));
   assertFalse(markdown.includes("✓"));
   assert(
     markdown.includes(
-      "| 3a. 願意直接傳總數：候選 ≥ 基準 | 未完成 | 候選 8、基準 2 |",
+      "| 3a. 會傳句數：候選 ≥ 基準 | 未完成 | 候選 10、基準 2（基本 候選 5、基準 1；進階 候選 5、基準 1） |",
     ),
+    markdown,
   );
   // 缺案例不算過：B3、E3 沒有評分，J1 只有第 1 次。
   assert(
     markdown.includes(
-      "| 4b. B3、J1、E3 候選每次都「有趣」 | 未完成 | 沒有評分：B3#1、B3#2、J1#2、E3#1、E3#2 |",
+      "| 4b. B3、J1、E3 候選每次都有一句有趣 | 未完成 | 沒有評分：B3#1、B3#2、J1#2、E3#1、E3#2 |",
     ),
   );
-  // 格式錯（願意直接傳超過 5）也拒絕。
-  const pick = candWins(blind.reveal);
-  assertThrows(() =>
-    tally({
-      ...filled,
-      ab: fill(blind.markdown, (field, code) =>
-        field === BLIND_FIELDS.willingToSend
-          ? "甲 9；乙 1"
-          : pick(field, code)),
-    })
+  // 不實的句子解盲後逐句列出來（候選沒有）。
+  assert(
+    markdown.includes(
+      "## 候選被勾「不實」的句子（逐句對照輸入確認）\n\n- 沒有",
+    ),
   );
+  assert(markdown.includes("★ 解釋的人工評分：這輪暫緩、未評"));
 });
 
 Deno.test("完整度（主審預檢反例）：88 筆只有 B1 一對成功、其餘沒跑到，填完盲測也不能「全部通過」", async () => {
@@ -780,19 +1066,21 @@ Deno.test("完整度（主審預檢反例）：88 筆只有 B1 一對成功、�
       ? record(call, payload())
       : record(call, null, "NOT_RUN_CAP_OR_STOP")
   );
-  const blind = blindAB(records, CASES, 7);
+  const blind = blindForm(records, CASES, 7);
   assertEquals(Object.keys(blind.reveal), ["B1#1"]);
   assertEquals(blind.unpaired.length, 43);
-  const filled = filledBlind(blind);
-  const totals = tally(filled);
+  const form = fillForm(blind.markdown, candWins(blind.reveal));
+  const result = tally({ form, reveal: blind.reveal, records });
   const problems = completenessProblems({
-    ...filled,
     manifest: await finishedManifest({
       status: "STOPPED_BY_CAP_OR_FAILURE",
       modelCallsMade: 2,
     }),
     casesSha256: await catalogSha256(),
     records,
+    reveal: blind.reveal,
+    form,
+    result,
   });
   for (
     const expected of [
@@ -800,21 +1088,19 @@ Deno.test("完整度（主審預檢反例）：88 筆只有 B1 一對成功、�
       "模型呼叫 2 次，正式驗收要 88 次",
       "模型沒有回的呼叫 86 個",
       "解盲表的組別少了 43 個",
-      "blind_ab.md 的組別少了 43 個",
-      "blind_star.md 的組別少了 43 個",
-      "explanations_blind.md 的組別少了 43 個",
+      "blind.md 的組別少了 43 個",
     ]
   ) {
     assert(problems.some((p) => p.startsWith(expected)), expected);
   }
-  const markdown = acceptanceMarkdown({ tag: "t", totals, records, problems });
+  const markdown = acceptanceMarkdown({ tag: "t", result, records, problems });
   assert(markdown.includes("整體：**未完成**"));
   assertFalse(markdown.includes("全部通過"));
-  assertFalse(markdown.includes("都是"));
+  assertFalse(markdown.includes("| 都有 |"));
   assert(markdown.includes("## 資料不完整"));
 });
 
-Deno.test("完整度：22 組 × 2 次 × 兩臂都齊、盲測都填完才可能「全部通過」；缺、重複、多出、只跑部分都列出來", async () => {
+Deno.test("完整度：22 組 × 2 次 × 兩臂都齊、每組評完才可能「全部通過」；缺、重複、多出、未評、只跑部分都列出來", async () => {
   const plan = await planFor(CASES.map((c) => c.id), 2);
   const awkwardBase = payload({
     lines: [
@@ -830,47 +1116,136 @@ Deno.test("完整度：22 組 × 2 次 × 兩臂都齊、盲測都填完才可�
   );
   assertEquals(recordProblems(records), []);
   assertEquals(records.map((r) => r.key).sort(), expectedKeys().sort());
-  const blind = blindAB(records, CASES, 7);
+  const blind = blindForm(records, CASES, 7);
   assertEquals(Object.keys(blind.reveal).length, 44);
-  const filled = filledBlind(blind);
-  const totals = tally(filled);
+  const form = fillForm(blind.markdown, candWins(blind.reveal));
+  const result = tally({ form, reveal: blind.reveal, records });
+  assertEquals(result.rated.length, 44);
   const casesSha256 = await catalogSha256();
   const base = {
-    ...filled,
     manifest: await finishedManifest(),
     casesSha256,
     records,
+    reveal: blind.reveal,
+    form,
+    result,
   };
   assertEquals(completenessProblems(base), []);
   const markdown = acceptanceMarkdown({
     tag: "t",
-    totals,
+    result,
     records,
     problems: [],
   });
   assert(markdown.includes("整體：全部通過"), markdown);
   assert(
-    markdown.includes("| 4b. B3、J1、E3 候選每次都「有趣」 | ✓ | 都是 |"),
+    markdown.includes("| 4b. B3、J1、E3 候選每次都有一句有趣 | ✓ | 都有 |"),
+  );
+  // ★ 尷尬分兩個分母列：44 次產出、22 個情境。
+  assert(
+    markdown.includes(
+      "| 2b. ★ 尷尬：候選次數 ≤ 基準，且至多 1 個情境（同情境兩次任一次算） | ✓ | 候選 0／44 次、0／22 個情境（無）；基準 44／44 次、22／22 個情境 |",
+    ),
+    markdown,
+  );
+
+  // ★ 尷尬次數比基準少，但落在兩個情境：2b 不過。
+  const wins = candWins(blind.reveal);
+  const twoSituations = tally({
+    form: fillForm(blind.markdown, {
+      ...wins,
+      sentence: (code, name, n) =>
+        blind.reveal[code][name] === "cand" && n === 1 &&
+          (code === "B1#1" || code === "J1#1")
+          ? { awkward: true }
+          : wins.sentence(code, name, n),
+    }),
+    reveal: blind.reveal,
+    records,
+  });
+  assert(
+    acceptanceMarkdown({
+      tag: "t",
+      result: twoSituations,
+      records,
+      problems: [],
+    }).includes(
+      "| 2b. ★ 尷尬：候選次數 ≤ 基準，且至多 1 個情境（同情境兩次任一次算） | ✗ | 候選 2／44 次、2／22 個情境（B1、J1）",
+    ),
+  );
+
+  // 進階退步、靠基本拉高總數：總數過關，但 3c 標「需交代」，不能寫全部通過。
+  const advanced = (code: string) =>
+    CASES.find((c) => c.id === code.split("#")[0])!.topicContext !== null;
+  const regress = tally({
+    form: fillForm(blind.markdown, {
+      ...wins,
+      sentence: (code, name, n) =>
+        advanced(code)
+          ? {
+            willing: blind.reveal[code][name] === "cand"
+              ? n === 3
+              : n === 2 || n === 3,
+          }
+          : wins.sentence(code, name, n),
+    }),
+    reveal: blind.reveal,
+    records,
+  });
+  const regressMarkdown = acceptanceMarkdown({
+    tag: "t",
+    result: regress,
+    records,
+    problems: [],
+  });
+  assert(
+    regressMarkdown.includes(
+      "| 3a. 會傳句數：候選 ≥ 基準 | ✓ | 候選 92、基準 76",
+    ),
+    regressMarkdown,
+  );
+  assert(
+    regressMarkdown.includes(
+      "| 3c. 3a、3b 基本與進階分開看：任一邊退步要交代 | 需交代 | 進階會傳句數 候選 32 < 基準 64 |",
+    ),
+    regressMarkdown,
+  );
+  assert(
+    regressMarkdown.includes("整體：有未通過、未評估或需交代的項目"),
   );
 
   // 每一種不完整都會列出來。
-  const firstCode = Object.keys(filled.reveal)[0];
+  const firstCode = Object.keys(blind.reveal)[0];
   const section = (markdown: string) =>
     markdown.slice(markdown.indexOf(`## ${firstCode}`)).split("\n## ")[0];
   const cases: Array<[string, Record<string, unknown>, string]> = [
     [
       "重跑一組",
-      { ab: filled.ab + "\n" + section(filled.ab) },
-      "blind_ab.md 的組別重複 1 個",
+      { form: form + "\n" + section(form) },
+      "blind.md 的組別重複 1 個",
     ],
     [
       "多一組",
-      { star: filled.star + "\n## Z9#1\n" },
-      "blind_star.md 的組別多出 1 個：Z9#1",
+      { form: form + "\n## Z9#1\n" },
+      "blind.md 的組別多出 1 個：Z9#1",
+    ],
+    [
+      "一組沒評完",
+      {
+        result: tally({
+          form: fillForm(blind.markdown, {
+            ...wins,
+            done: (code) => code !== firstCode,
+          }),
+          reveal: blind.reveal,
+          records,
+        }),
+      },
+      `未評（沒勾「這組評完了」）1 組：${firstCode}`,
     ],
     [
       "解盲表甲乙同一臂",
-      { reveal: { ...filled.reveal, [firstCode]: { 甲: "cand", 乙: "cand" } } },
+      { reveal: { ...blind.reveal, [firstCode]: { 甲: "cand", 乙: "cand" } } },
       `解盲表的甲乙不是一邊基準、一邊候選：${firstCode}`,
     ],
     [
@@ -919,5 +1294,5 @@ Deno.test("完整度：22 組 × 2 次 × 兩臂都齊、盲測都填完才可�
       `${label}：${problems.join(" | ")}`,
     );
   }
-  assertEquals(blindCodes(filled.ab).length, 44);
+  assertEquals(blindCodes(form).length, 44);
 });
