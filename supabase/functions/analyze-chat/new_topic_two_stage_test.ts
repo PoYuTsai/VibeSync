@@ -255,7 +255,7 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
   assert(
     hasRule(
       rulesFor({ coldDuration: "month_plus", coldStop: "she_cold" }),
-      "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊",
+      "一個月以上沒聊：不提很久沒聊",
     ),
   );
   assert(hasRule(rulesFor({ coldStop: "faded" }), "沒說多久："));
@@ -303,7 +303,7 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
     "上次是用戶沒回她：直接傳一個新內容，像平常聊天；不解釋為什麼沒回、不道歉、不替自己辯解，也不提很久沒聊。",
   ));
   assert(monthIDidNotReply.includes(
-    "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊；不一上來就曖昧。",
+    "一個月以上沒聊：不提很久沒聊，也不一上來就曖昧。",
   ));
   assertFalse(
     hasRule(monthIDidNotReply, "一個月以上沒聊：可以用一句輕鬆承認有陣子沒聊"),
@@ -342,7 +342,7 @@ Deno.test("user prompt：gapMentionAllowed 真值表", () => {
       allowed,
     );
     assertEquals(
-      hasRule(rules, "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊"),
+      hasRule(rules, "一個月以上沒聊：不提很久沒聊"),
       !allowed,
     );
   }
@@ -378,7 +378,7 @@ Deno.test("user prompt：投入程度 3×3 規則行＋標題，沒選不加行"
       red: ["還沒回或很冷淡", "約完她還沒回或很冷淡："],
     },
     warm_up: {
-      green: ["會反問、聊很多", "她很投入：可以加個人感"],
+      green: ["會反問、聊很多", "她很投入：可以多一點個人感"],
       yellow: ["有回，但很短", "她有回但普通："],
       red: [
         "常只回哈哈、嗯",
@@ -424,7 +424,7 @@ Deno.test("user prompt：沒有共同經歷的素材時不叫模型接上次／�
   const daysShared =
     "幾天到一週沒聊：直接接素材裡那件事，像昨天才聊過；不說好久沒聊。";
   const daysFresh =
-    "幾天到一週沒聊：像昨天才聊過一樣自然，直接帶一個新東西；不說好久沒聊，也不假裝接上次的話題。";
+    "幾天到一週沒聊：像昨天才聊過一樣自然；不說好久沒聊，也不假裝接上次的話題。";
   const afterDate = {
     green: [
       "約完她主動傳訊息或說開心：用約會裡的事或梗延續，可以輕提「下次」，但不約時間。",
@@ -432,7 +432,7 @@ Deno.test("user prompt：沒有共同經歷的素材時不叫模型接上次／�
     ],
     yellow: [
       "約完她反應普通：用約會裡一件小事輕輕接，不問她覺得你怎樣，先不約下次。",
-      "約完她反應普通：輕輕帶一個新東西，不問她覺得你怎樣，先不約下次；不編約會裡發生的事。",
+      "約完她反應普通：輕輕的就好，不問她覺得你怎樣，先不約下次；不編約會裡發生的事。",
     ],
   } as const;
   for (
@@ -484,7 +484,7 @@ Deno.test("user prompt：想更靠近＋她很投入，只有寫了你們的梗�
     }),
   );
   assert(joke.includes(
-    "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像、輕輕回勾你們的曖昧梗；不突然告白、不越界。",
+    "她很投入：可以多一點個人感、「我們」一起做某件事的小想像、輕輕回勾你們的曖昧梗；不突然告白、不越界。",
   ));
   for (
     const material of [
@@ -498,7 +498,7 @@ Deno.test("user prompt：想更靠近＋她很投入，只有寫了你們的梗�
     );
     assert(
       rules.includes(
-        "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像；不突然告白、不越界。",
+        "她很投入：可以多一點個人感、「我們」一起做某件事的小想像；不突然告白、不越界。",
       ),
       JSON.stringify(material),
     );
@@ -631,18 +631,18 @@ Deno.test("user prompt（基本模式）：沒帶 topicContext → 局面只有�
     ]],
     ["went_cold", "冷掉了，想重新聊", [
       "冷掉了：低壓重啟。不責問對方消失、不陰陽怪氣、不討拍；openingLine 收在 30 字內，像順手丟的。",
-      "沒說多久：有內容、低壓力、不追討；不提很久沒聊。",
+      "沒說多久：低壓力、不追討；不提很久沒聊。",
       meet,
       "nextMove 多寫一句：她沒回就別追，只回很短就自然收掉。",
       SHARED_FRAME_DENIED_LINE,
     ]],
     ["stuck", "還在聊，但接不下去", [
-      "還在聊但接不下去：換一個角度或場景，一次只開一條線，不像面試連環問，不重複舊話題。",
+      "還在聊但接不下去：一次只開一條線，不像面試連環問。",
       meet,
       SHARED_FRAME_DENIED_LINE,
     ]],
     ["after_date", "剛約完會", [
-      "剛約完會：你只知道剛約完，不知道去了哪、做了什麼、聊了什麼——不寫地點、店家、當時的互動或她的反應；餘溫只用一句不帶細節的話，或直接帶一個新東西。不急著約第二次，不索取評價（不問她覺得你怎樣）。",
+      "剛約完會：你只知道剛約完，不知道去了哪、做了什麼、聊了什麼——不寫地點、店家、當時的互動或她的反應。不急著約第二次，不索取評價（不問她覺得你怎樣）。",
       meet,
       SHARED_FRAME_ALLOWED_LINE,
     ]],
@@ -1048,7 +1048,7 @@ Deno.test("user prompt：她常只回哈哈、嗯（stuck／warm_up 紅燈）第
   // 其他燈號與約完會的紅燈不變。
   assertEquals(
     situationRules(promptFor("stuck", { engagement: "yellow" }))[1],
-    "她有回但很短：不加長、不連問，給好回的小題目（選邊、當裁判）。",
+    "她有回但很短：不加長、不連問，每題都要好回。",
   );
   assertEquals(
     situationRules(promptFor("warm_up", { engagement: "yellow" }))[1],

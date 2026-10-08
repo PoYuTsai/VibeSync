@@ -230,8 +230,7 @@ const SITUATION_LABELS: Record<NewTopicSituation, string> = {
 const SITUATION_RULES: Record<NewTopicSituation, string> = {
   went_cold:
     "冷掉了：低壓重啟。不責問對方消失、不陰陽怪氣、不討拍；openingLine 收在 30 字內，像順手丟的。",
-  stuck:
-    "還在聊但接不下去：換一個角度或場景，一次只開一條線，不像面試連環問，不重複舊話題。",
+  stuck: "還在聊但接不下去：一次只開一條線，不像面試連環問。",
   after_date:
     "剛約完會：承接約會的餘溫，不急著約第二次，不索取評價（不問她覺得你怎樣）。",
   warm_up: "聊得不錯想更靠近：可以多一點個人感，但不突然告白、不越界。",
@@ -239,7 +238,7 @@ const SITUATION_RULES: Record<NewTopicSituation, string> = {
 // 剛約完會但素材沒寫約會裡的事（基本模式一定是這樣）：只知道約完會，地點、
 // 過程、聊了什麼都不知道（nt3 盲測 B6 編了約會附近的店和「笑了好幾次」）。
 const AFTER_DATE_NO_DETAILS_RULE =
-  "剛約完會：你只知道剛約完，不知道去了哪、做了什麼、聊了什麼——不寫地點、店家、當時的互動或她的反應；餘溫只用一句不帶細節的話，或直接帶一個新東西。不急著約第二次，不索取評價（不問她覺得你怎樣）。";
+  "剛約完會：你只知道剛約完，不知道去了哪、做了什麼、聊了什麼——不寫地點、店家、當時的互動或她的反應。不急著約第二次，不索取評價（不問她覺得你怎樣）。";
 const NO_SITUATION_RULE = "沒選狀況：當作日常重啟，自然、低壓、好接。";
 
 const COLD_DURATION_LABELS: Record<NewTopicColdDuration, string> = {
@@ -259,14 +258,12 @@ const COLD_DURATION_RULES = {
   daysSharedHistory:
     "幾天到一週沒聊：直接接素材裡那件事，像昨天才聊過；不說好久沒聊。",
   days:
-    "幾天到一週沒聊：像昨天才聊過一樣自然，直接帶一個新東西；不說好久沒聊，也不假裝接上次的話題。",
-  weeks:
-    "一到四週沒聊：帶一個新東西出現（看到的、遇到的，或一個她會有意見的小題目）；不檢討「我們怎麼都沒聊了」。",
+    "幾天到一週沒聊：像昨天才聊過一樣自然；不說好久沒聊，也不假裝接上次的話題。",
+  weeks: "一到四週沒聊：輕鬆出現就好，不檢討「我們怎麼都沒聊了」。",
   monthPlusGapAllowed:
     "一個月以上沒聊：可以用一句輕鬆承認有陣子沒聊（只能一句，不檢討、不問原因），接著直接講內容；不一上來就曖昧。",
-  monthPlusNoGap:
-    "一個月以上沒聊：帶著一個具體的新東西出現，不提很久沒聊；不一上來就曖昧。",
-  unknown: "沒說多久：有內容、低壓力、不追討；不提很久沒聊。",
+  monthPlusNoGap: "一個月以上沒聊：不提很久沒聊，也不一上來就曖昧。",
+  unknown: "沒說多久：低壓力、不追討；不提很久沒聊。",
 } as const;
 // faded 不加行。
 const COLD_STOP_RULES: Partial<Record<NewTopicColdStop, string>> = {
@@ -305,8 +302,8 @@ const ENGAGEMENT_RULES: Record<
   Record<NewTopicEngagement, string>
 > = {
   stuck: {
-    green: "她有在投入：接住她、加一點用戶的看法或故事，可以開點小玩笑。",
-    yellow: "她有回但很短：不加長、不連問，給好回的小題目（選邊、當裁判）。",
+    green: "她有在投入：可以多一點用戶的看法，開點小玩笑。",
+    yellow: "她有回但很短：不加長、不連問，每題都要好回。",
     // 紅燈收尾：第一題的任務就是收尾句（new_topic_slots.ts），推薦由伺服器固定第一題。
     red: "她常只回哈哈、嗯：其他題也都很輕、很短，不連問、不加曖昧。",
   },
@@ -320,7 +317,7 @@ const ENGAGEMENT_RULES: Record<
   },
   warm_up: {
     green:
-      "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像；不突然告白、不越界。",
+      "她很投入：可以多一點個人感、「我們」一起做某件事的小想像；不突然告白、不越界。",
     yellow: "她有回但普通：先讓聊天重新好玩，不加曖昧。",
     red: "她常只回哈哈、嗯：現在不升溫，其他題也只給輕的；不加曖昧、不約。",
   },
@@ -332,10 +329,10 @@ const AFTER_DATE_NO_HISTORY_RULES: Partial<Record<NewTopicEngagement, string>> =
     green:
       "約完她主動傳訊息或說開心：延續約會的好心情，可以輕提「下次」，但不約時間；你不知道約會細節，不編約會裡發生的事。",
     yellow:
-      "約完她反應普通：輕輕帶一個新東西，不問她覺得你怎樣，先不約下次；不編約會裡發生的事。",
+      "約完她反應普通：輕輕的就好，不問她覺得你怎樣，先不約下次；不編約會裡發生的事。",
   };
 const WARM_UP_GREEN_INSIDE_JOKE_RULE =
-  "她很投入：可以加個人感——具體稱讚、「我們」一起做某件事的小想像、輕輕回勾你們的曖昧梗；不突然告白、不越界。";
+  "她很投入：可以多一點個人感、「我們」一起做某件事的小想像、輕輕回勾你們的曖昧梗；不突然告白、不越界。";
 
 const MEET_ALLOWED_RULE =
   "見面：nextMove 可以提「聊熱了再從話題帶出見面，她說好才約時間」；第一則仍然不約。";
