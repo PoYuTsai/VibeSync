@@ -126,6 +126,7 @@ jobs:
           supabase/functions/analyze-chat/new_topic_two_stage_test.ts
           supabase/functions/analyze-chat/customer_explanation_test.ts
           tools/new-topic-two-stage-eval/run_test.ts
+          tools/new-topic-two-stage-eval/review_check_test.ts
           supabase/functions/analyze-chat/ndjson_response_test.ts
           supabase/functions/analyze-chat/request_shape_test.ts
           supabase/functions/analyze-chat/tier_sync_contract_test.ts

@@ -119,6 +119,15 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 - `summary.md` 多一節「時間與費用（每臂）」：送出、有回、API 失敗的次數，停止原因（end_turn／max_tokens／refusal），等待的算術中位數、最慢與超過 45 秒（算所有實際送出的請求，含逾時失敗），output token、實付；機械指標照常列，不列 §6.5 門檻表。
 - 不實、主詞與邏輯、尷尬、推薦能不能原樣傳，要看 `records.json` 逐句判斷。
 
+## 結構方案的程式核對原型（`review_check.ts`，Eric 2026-10-08）
+
+PR #93 結構方案（生成候選 → 獨立審稿 → 程式核對）裡「程式」那兩步的原型，只在評測工具裡，**沒有接進 handler**：
+- `buildSourcePack`：從正式的使用者提示詞取出原始來源，原文照抄、編 ID（作戰板 `P*`、關於我 `U*`、局面 `S*`、素材 `M1`、今天 `T1`）。缺的就是缺；節奏分數和作戰板最後那行規則不當來源。
+- `checkReview`：核對審稿輸出。每段都要有標記；標成事實的段要附來源 ID 和原文，原文要逐字出現在那個來源裡；有問題代碼就剔除；選的 5 句都要通過、★ 在其中，否則整筆失敗、程式不換句；交付的句子依 ID 從候選原樣複製。
+- `preReviewProblems`：審稿前刷掉亂碼、控制字元、一句兩問。
+
+`review_check_test.ts` 用 Eric 列的 nt5-model 正反例當測資，審稿輸出是手寫的。它只證明程式核對的流程；審稿模型會不會這樣標，要付費的審稿回測才知道。測試也記下程式擋不住的兩種錯：審稿把事件標成看法，或拿「每次」的習慣當「今天」的證據。
+
 ## 盲測與驗收
 
 ### 盲測表（`blind.md`）
@@ -180,8 +189,8 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 ## 測試
 
 ```sh
-deno check tools/new-topic-two-stage-eval/run.ts tools/new-topic-two-stage-eval/tally.ts
-deno test --allow-env --allow-read tools/new-topic-two-stage-eval/run_test.ts
+deno check tools/new-topic-two-stage-eval/run.ts tools/new-topic-two-stage-eval/tally.ts tools/new-topic-two-stage-eval/review_check.ts
+deno test --allow-env --allow-read tools/new-topic-two-stage-eval/run_test.ts tools/new-topic-two-stage-eval/review_check_test.ts
 ```
 
 `run_test.ts` 不打模型、不跑 git、不寫檔。它測：
