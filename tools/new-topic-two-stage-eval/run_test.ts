@@ -9,6 +9,7 @@ import {
   armModel,
   ARMS,
   awkwardPatternLines,
+  type BaseModules,
   baseRouter,
   BLIND_FORM,
   blindForm,
@@ -67,21 +68,12 @@ import {
 import { callClaudeWithFallback } from "../../supabase/functions/analyze-chat/fallback.ts";
 import { allowsNewTopicSharedFrame } from "../../supabase/functions/analyze-chat/new_topic_payload.ts";
 import {
-  buildNewTopicUserPrompt,
   NEW_TOPIC_MAX_TOKENS,
   NEW_TOPIC_MODEL,
-  NEW_TOPIC_PROMPT,
 } from "../../supabase/functions/analyze-chat/new_topic_prompt.ts";
 import { planNewTopicPrompt } from "../../supabase/functions/analyze-chat/new_topic_prompt_plan.ts";
-import {
-  buildNewTopicTwoStageUserPrompt,
-  NEW_TOPIC_RED_CLOSE_REASON,
-  NEW_TOPIC_TWO_STAGE_PROMPT,
-} from "../../supabase/functions/analyze-chat/new_topic_two_stage.ts";
-import {
-  hasAnalyzeChatPromptLeak,
-  hasNewTopicTwoStagePromptLeak,
-} from "../../supabase/functions/analyze-chat/prompt_leak.ts";
+import { NEW_TOPIC_RED_CLOSE_REASON } from "../../supabase/functions/analyze-chat/new_topic_two_stage.ts";
+import { hasAnalyzeChatPromptLeak } from "../../supabase/functions/analyze-chat/prompt_leak.ts";
 
 const NOW_MS = Date.parse(DEFAULT_EVAL_NOW);
 const TWO_STAGE_SENTINEL = "照類型決定主詞，不改主詞";
@@ -89,16 +81,25 @@ const TWO_STAGE_SENTINEL = "照類型決定主詞，不改主詞";
 const SLOTS_SENTINEL = "這次的五題已經由教練排好";
 
 /**
- * 測試用的「改前」模組：舊版提示詞與函式目前還在工作樹裡，用來鎖住改前路由規則
- * （真正跑評測時 base 臂是從 git 取出 7c5cc523 那一版，見 run.ts materializeRef）。
+ * 測試用的「改前」模組替身：舊版提示詞與組裝函式 2026-10-09 已從工作樹移除，這裡用
+ * 替身鎖住改前路由規則（基本模式走舊版提示詞與 analyze-chat 守門、帶 topicContext
+ * 走進階並查進階 sentinel）。真正跑評測時 base 臂是從 git 取出 7c5cc523 那一版
+ * （見 run.ts materializeRef／loadBaseModules）。
  */
-const baseModules = {
-  NEW_TOPIC_PROMPT,
-  buildNewTopicUserPrompt,
-  NEW_TOPIC_TWO_STAGE_PROMPT,
-  buildNewTopicTwoStageUserPrompt,
+const baseModules: BaseModules = {
+  NEW_TOPIC_PROMPT: "舊版提示詞（測試替身）",
+  buildNewTopicUserPrompt: (input) =>
+    `舊版使用者提示詞（測試替身）：${
+      input.situation ?? "沒有選"
+    }／${input.requestId}`,
+  NEW_TOPIC_TWO_STAGE_PROMPT: `進階提示詞（測試替身）${TWO_STAGE_SENTINEL}`,
+  buildNewTopicTwoStageUserPrompt: (input) =>
+    `進階使用者提示詞（測試替身）：${
+      input.situation ?? "沒有選"
+    }／${input.requestId}`,
   hasAnalyzeChatPromptLeak,
-  hasNewTopicTwoStagePromptLeak,
+  hasNewTopicTwoStagePromptLeak: (text) =>
+    hasAnalyzeChatPromptLeak(text) || text.includes(TWO_STAGE_SENTINEL),
   allowsNewTopicSharedFrame,
 };
 const routers = {
@@ -346,10 +347,10 @@ Deno.test("基準路由＝改前 handler：基本模式走舊版提示詞與 ana
   const plan = await planFor(["B1", "E2"]);
   const b1 = plan.find((p) => p.key === "B1.1.base")!;
   assertEquals(b1.mode, "basic");
-  assertEquals(b1.system, NEW_TOPIC_PROMPT);
+  assertEquals(b1.system, baseModules.NEW_TOPIC_PROMPT);
   assertEquals(
     b1.user,
-    buildNewTopicUserPrompt({
+    baseModules.buildNewTopicUserPrompt({
       partnerSummary: b1.partnerSummary,
       effectiveStyleContext: null,
       situation: null,
@@ -360,7 +361,7 @@ Deno.test("基準路由＝改前 handler：基本模式走舊版提示詞與 ana
   assertFalse(b1.hasPromptLeak(TWO_STAGE_SENTINEL));
   assertEquals(b1.grounding.userMaterialText, null);
   const e2 = plan.find((p) => p.key === "E2.1.base")!;
-  assertEquals(e2.system, NEW_TOPIC_TWO_STAGE_PROMPT);
+  assertEquals(e2.system, baseModules.NEW_TOPIC_TWO_STAGE_PROMPT);
   assert(e2.appliesRedClose);
   assert(e2.hasPromptLeak(TWO_STAGE_SENTINEL));
   // 兩臂同 requestId。

@@ -19,7 +19,6 @@ import {
   NEW_TOPIC_RED_CLOSE_REASON,
   type NewTopicMaterialKind,
   newTopicMaterialLabel,
-  type NewTopicRedCloseRules,
   newTopicSituationLines,
   type NewTopicTopicContext,
 } from "./new_topic_two_stage.ts";
@@ -381,12 +380,6 @@ export const NEW_TOPIC_SLOTS_SYSTEM_PROMPT =
 {"topics":[{"direction":"...","openingLine":"...","whyItWorks":"...","nextMove":"..."}],"recommendation":{"index":0}}
 topics 恰好五個，照任務順序；recommendation 固定寫 {"index":0}。${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 
-/** 結構刀的紅燈那一行：收尾句已經是第一題的任務，這裡只管其他題的輕重。 */
-const SLOTS_RED_CLOSE_RULES: NewTopicRedCloseRules = {
-  stuck: "她常只回哈哈、嗯：其他題也都很輕、很短，不連問、不加曖昧。",
-  warm_up: "她常只回哈哈、嗯：現在不升溫，其他題也只給輕的；不加曖昧、不約。",
-};
-
 function quoteUserText(text: string): string {
   return `「${text.replace(/「/g, "『").replace(/」/g, "』")}」`;
 }
@@ -443,7 +436,6 @@ export function buildNewTopicSlotsUserPrompt(input: {
       partnerSummary: input.partnerSummary,
       situation: input.situation,
       topicContext: input.topicContext,
-      redCloseRules: SLOTS_RED_CLOSE_RULES,
     }),
     "",
     "## 五題的任務（topics 照這個順序，一題一個任務）",

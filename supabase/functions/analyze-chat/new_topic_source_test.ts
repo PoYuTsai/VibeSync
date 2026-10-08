@@ -229,7 +229,7 @@ Deno.test("index：進階路徑 telemetry、稽核與兩條模型呼叫都接上
   assertFalse(branch.includes("system: NEW_TOPIC_PROMPT,"));
 });
 
-Deno.test("handler：提示詞路由只走 planNewTopicPrompt（評測工具共用同一個函式，ADR #51）", () => {
+Deno.test("handler：提示詞路由只走 planNewTopicPrompt、推薦由伺服器固定第一題（評測工具共用同一個函式，ADR #53）", () => {
   const branch = newTopicHandlerSource;
   assertEquals(branch.match(/planNewTopicPrompt\(/g)?.length, 1);
   assert(branch.includes("    nowMs: deps.requestStartedAtMs,\n  });"));
@@ -248,6 +248,13 @@ Deno.test("handler：提示詞路由只走 planNewTopicPrompt（評測工具共�
   assertFalse(branch.includes("buildNewTopicTwoStageUserPrompt"));
   assertFalse(branch.includes("NEW_TOPIC_TWO_STAGE_PROMPT,"));
   assertFalse(branch.includes("newTopicTodayLabel"));
+  // 推薦：一律第一題，理由用路由給的固定句；不再只在紅燈收尾時改推。
+  assert(
+    branch.includes(
+      "enforceNewTopicFirstSlotRecommendation(\n      newTopicNormalized,\n      newTopicPromptPlan.recommendationReason,\n    );",
+    ),
+  );
+  assertFalse(branch.includes("enforceNewTopicRedClose("));
 });
 
 Deno.test("migration：claim/settle/release/cleanup/contract marker 俱全", () => {

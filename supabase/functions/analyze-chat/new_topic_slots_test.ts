@@ -26,7 +26,7 @@ import {
   parseNewTopicInterests,
   planNewTopicSlots,
 } from "./new_topic_slots.ts";
-import { NEW_TOPIC_ANGLES, NEW_TOPIC_MAX_TOKENS } from "./new_topic_prompt.ts";
+import { NEW_TOPIC_MAX_TOKENS } from "./new_topic_prompt.ts";
 import {
   NEW_TOPIC_RED_CLOSE_REASON,
   type NewTopicTopicContext,
@@ -70,6 +70,19 @@ function kinds(input: {
 }
 
 const ASK: NewTopicSlotKind = "ask_interest";
+/** 2026-10-09 移除的隨機角度（抽到用戶自己的事就容易被編）；不得再出現在提示詞。 */
+const REMOVED_ANGLES = [
+  "作息與睡眠",
+  "食物與口味的固執",
+  "花錢的習慣",
+  "小時候與長大的地方",
+  "住的環境與鄰居",
+  "下班或週末的固定行程",
+  "收集癖或怪習慣",
+  "對某件小事的堅持",
+  "最近在聽的歌或在追的劇",
+  "最近一件蠢事",
+];
 
 // ---------------------------------------------------------------------------
 // 作戰板
@@ -322,7 +335,7 @@ Deno.test("任務：不再有隨機角度；生活小題都是問她，不是用
     }),
     today: null,
   });
-  for (const angle of NEW_TOPIC_ANGLES) {
+  for (const angle of REMOVED_ANGLES) {
     assertFalse(prompt.includes(angle), angle);
   }
   for (const focus of NEW_TOPIC_EVERYDAY_FOCI) {
