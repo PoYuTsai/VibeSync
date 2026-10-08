@@ -346,7 +346,7 @@ Deno.test("Eric 列的 6 句：審稿照規則標，程式全部剔除；J1.1 �
   assertEquals(k1.reasons, ["fact_without_source:2", "issue:加細節"]);
 });
 
-Deno.test("審稿把事件標成看法：句子有時間詞、「我每次／我一定要」或「我家」就照樣剔除", async () => {
+Deno.test("審稿把事件標成看法：句子有時間詞、「我每次／我一定要」或「我家、我養」就照樣剔除", async () => {
   const j1 = group("J1");
   // 「我今天又點了…」「這次是我自己都有點後悔…」標成看法。
   const asOpinion = await verdict(
@@ -394,7 +394,27 @@ Deno.test("審稿把事件標成看法：句子有時間詞、「我每次／我
       "看法",
       "看法",
     ])).reasons,
-    ["claim_not_fact:1:我家"],
+    ["claim_not_fact:1:擁有"],
+  );
+  // 「我養了」「我有一隻」一樣是在講事實；「我有個問題」只是開場，不硬擋。
+  for (
+    const text of [
+      "我養了一隻貓",
+      "我們家有一隻貓",
+      "我也養了一隻貓",
+      "我自己養了一隻貓",
+      "我有一隻貓",
+    ]
+  ) {
+    assertEquals(
+      (await single("B4", text, ["看法"])).reasons,
+      ["claim_not_fact:1:擁有"],
+      text,
+    );
+  }
+  assertEquals(
+    (await single("B4", "欸我有個問題想問妳", ["招呼語氣"])).reasons,
+    [],
   );
 });
 
@@ -539,6 +559,128 @@ Deno.test("原文沒寫明的關係不能升級：看到撐不起擁有，想做
     ])).reasons,
     [],
   );
+});
+
+Deno.test("擁有要原文逐字寫出同一個關係：我家附近、我家樓下、朋友養的，都撐不起我家有、我養", () => {
+  const me = (text: string): SourceItem => ({ id: "U1", kind: "關於我", text });
+  const nearby = me("我家附近常有一隻貓");
+  const downstairs = me("我家樓下有一隻貓");
+  const friend = me("我有一個朋友養了一隻貓");
+  // GPT 第三輪的例子：原文有「我家」「我有」，關係卻不是擁有。改標狀態也一樣擋。
+  for (
+    const [source, text] of [
+      [nearby, "我家有一隻貓"],
+      [downstairs, "我家有一隻貓"],
+      [friend, "我養了一隻貓"],
+      [friend, "我有一隻貓"],
+    ] as const
+  ) {
+    for (const scope of ["擁有", "狀態"]) {
+      assertEquals(
+        withSources([source], text, [[scope, "U1", source.text]]).reasons,
+        ["possession_not_in_quote:1"],
+        `${scope}：${source.text} → ${text}`,
+      );
+    }
+  }
+  // 「我有一個朋友」也是擁有：原文沒寫的「超愛貓」跟著擋下。
+  assertEquals(
+    withSources([friend], "我有一個朋友超愛貓", [["狀態", "U1", friend.text]])
+      .reasons,
+    ["possession_not_in_quote:1"],
+  );
+  // 她的也一樣：「她家附近有一隻貓」撐不起「妳家有一隻貓」，標成說過也擋。
+  const herNearby: SourceItem = {
+    id: "M1",
+    kind: "素材",
+    label: "之前聊過的事（她提過的）",
+    text: "她說她家附近有一隻貓",
+  };
+  assertEquals(
+    withSources([herNearby], "原來妳家有一隻貓", [[
+      "說過",
+      "M1",
+      "她家附近有一隻貓",
+    ]]).reasons,
+    ["possession_not_in_quote:1"],
+  );
+  // 標成擁有、句子卻沒有「我家、我養…」這種寫法：程式核對不了，剔除。
+  assertEquals(
+    withSources([nearby], "我的那隻貓超黏人", [["擁有", "U1", nearby.text]])
+      .reasons,
+    ["possession_not_in_quote:1"],
+  );
+  // 改寫成「我家那隻貓」也剔除：寧可少一句，也不放行原文沒寫明的關係。
+  assertEquals(
+    withSources([me("我家有一隻貓")], "我家那隻貓超黏人", [[
+      "擁有",
+      "U1",
+      "我家有一隻貓",
+    ]]).reasons,
+    ["possession_not_in_quote:1"],
+  );
+  // 原文照寫就可以；句尾語氣詞和表情不算。
+  assertEquals(
+    withSources([downstairs], "我家樓下有一隻貓", [[
+      "狀態",
+      "U1",
+      downstairs.text,
+    ]]).reasons,
+    [],
+  );
+  assertEquals(
+    withSources([nearby], "我家附近常有一隻貓啦😂", [[
+      "狀態",
+      "U1",
+      nearby.text,
+    ]]).reasons,
+    [],
+  );
+});
+
+Deno.test("原文是想做或假設的：附的原文沒截到「想」「準備」「如果」，程式照樣看得到", async () => {
+  // D1「她說一直想學衝浪」只附「學衝浪」。
+  assertEquals(
+    (await single("D1", "妳後來去學衝浪了", [["狀態", "M1", "學衝浪"]]))
+      .reasons,
+    ["wish_as_done:1"],
+  );
+  // C1「她說在準備潛水證照」只附「潛水證照」。
+  assertEquals(
+    (await single("C1", "聽說妳考到潛水證照了", [["狀態", "M1", "潛水證照"]]))
+      .reasons,
+    ["wish_as_done:1"],
+  );
+  // 原文是假設：「如果我家有一隻貓就好了」撐不起「我家有一隻貓」。
+  const wishCat: SourceItem = {
+    id: "U1",
+    kind: "關於我",
+    text: "如果我家有一隻貓就好了",
+  };
+  assertEquals(
+    withSources([wishCat], "我家有一隻貓", [["擁有", "U1", "我家有一隻貓"]])
+      .reasons,
+    ["wish_as_done:1"],
+  );
+  // 只看同一小句：D1 後半句「但怕曬黑」前面沒有「想」。
+  assertEquals(
+    (await single("D1", "妳那天說怕曬黑", [["說過", "M1", "怕曬黑"]])).reasons,
+    [],
+  );
+  // 「想到」「主要是」不是想做或假設。
+  for (
+    const text of ["突然想到她說過的那家店", "她說主要是她說過的那家店太遠"]
+  ) {
+    assertEquals(
+      withSources(
+        [{ id: "M1", kind: "素材", label: "之前聊過的事（她提過的）", text }],
+        "妳說過的那家店",
+        [["說過", "M1", "她說過的那家店"]],
+      ).reasons,
+      [],
+      text,
+    );
+  }
 });
 
 Deno.test("時間詞的正當用法：日期、真的在問、素材本來就寫了時間", async () => {

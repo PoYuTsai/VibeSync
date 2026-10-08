@@ -10,10 +10,11 @@
  *   跟這一段講的是同一件事，而且那類來源撐得起這個範圍；有問題代碼就剔除；
  *   選的 5 句都要通過、★ 在其中；交付的句子依 ID 從候選原樣複製，審稿改不到。
  *
- * 句子裡有時間詞（今天、剛、這次…）、「我每次／我一定要…」或「我家」時，
- * 一定是在講事實：審稿標成看法、猜測、一般話題或招呼，程式照樣剔除；時間詞
- * 也要出現在附的原文裡。原文沒寫明的關係也不能升級：「看到一隻貓」撐不起
- * 「我家有一隻貓」，「她說想學衝浪」撐不起「她去學了」。
+ * 句子裡有時間詞（今天、剛、這次…）、「我每次／我一定要…」或用戶自己的
+ * 「我家、我養…」時，一定是在講事實：審稿標成看法、猜測、一般話題或招呼，
+ * 程式照樣剔除；時間詞也要出現在附的原文裡。原文沒寫明的關係也不能升級：
+ * 講誰有什麼，原文要逐字寫出同一個關係（「我家附近常有一隻貓」撐不起「我家
+ * 有一隻貓」）；原文是想做或假設的事，句子就不能寫成做了、有了。
  *
  * 這幾道是字面規則，擋得住的有限；「兩個字連著相同」只是初篩，不代表原文
  * 撐得起這段。沒有這些字的事件或習慣被標成看法，或附的原文跟這段有關、卻
@@ -177,9 +178,18 @@ function scopeAllows(scope: string, source: SourceItem): boolean {
   }
 }
 
+/** 擁有者後面可以隔「們、自己、也、還、都」：我們家、我也養、她還有一隻。 */
+const OWNER_GAP = "們?(?:自己)?[也還都]?";
+const NUMBER = "[一二兩三四五六七八九十幾]?";
+/** 寵物、車、植物的量詞：「我有一隻貓」一定是擁有。 */
+const OWNED = "[隻台臺輛匹盆株棵]";
+/** 一般量詞：「我有一個朋友」是擁有，「我有個問題」只是開場。 */
+const COUNTED = "[個件位條張雙顆座棟間]";
+
 /**
  * 句子裡有這些字，就是在講一件事實：只能標成事實（範圍要對），或真的在問。
- * 「剛」也抓「剛好」：剛好聽到、剛好路過一樣是事件。
+ * 「剛」也抓「剛好」：剛好聽到、剛好路過一樣是事件。擁有只抓用戶自己的
+ * 「我家、我養、我有一隻…」；「我有個問題」太常見，不硬當成事實。
  */
 const CLAIM_MARKERS = [
   {
@@ -192,23 +202,67 @@ const CLAIM_MARKERS = [
     pattern: /我[^，,。！!？?、\s]{0,3}(?:每次|總是|固定|一定要|都會|習慣)/gu,
     scopes: ["習慣"],
   },
-  { name: "我家", pattern: /我家/gu, scopes: ["擁有", "狀態"] },
+  {
+    name: "擁有",
+    pattern: new RegExp(
+      `我${OWNER_GAP}(?:家|有?養|有(?=${NUMBER}${OWNED}))`,
+      "gu",
+    ),
+    scopes: ["擁有", "狀態"],
+  },
 ] as const;
 
-/** 擁有要原文明寫，主詞也要對上：「看到一隻貓」撐不起「我家有一隻貓」。 */
-const USER_POSSESSION = /我家|我有|我養/u;
-const HER_POSSESSION = /她家|她有|她養/u;
-const ANY_POSSESSION = /我家|我有|我養|她家|她有|她養/u;
+/**
+ * 講誰有什麼：「我家」「妳養」「她有一隻…」。「有」要接數量才算，「我有看到」
+ * 「妳有說過」不是擁有。
+ */
+const POSSESSION = new RegExp(
+  `[我妳她]${OWNER_GAP}(?:家|有?養|有(?=${NUMBER}(?:${OWNED}|${COUNTED})))`,
+  "u",
+);
 
-function possessionInQuote(segment: string): RegExp {
-  if (USER_POSSESSION.test(segment)) return USER_POSSESSION;
-  if (/妳家|妳有|妳養|她家|她有|她養/u.test(segment)) return HER_POSSESSION;
-  return ANY_POSSESSION;
+/** 句尾語氣詞：「我家有一隻貓啦」跟「我家有一隻貓」是同一個說法。 */
+const TRAILING_PARTICLES = /[啦喔哦耶欸誒啊呀吧嘛囉哈嘿]+$/u;
+
+/** 比對前只留文字，句子稱呼對方的「妳」換成來源用的「她」。 */
+function asSource(text: string): string {
+  return compactForQuote(text).replaceAll("妳", "她");
 }
 
-/** 原文是想做、打算做的事，句子就不能寫成做了（假設句除外）。 */
-const WISH = /想|打算|計畫|準備/u;
-const HYPOTHETICAL = /如果|要是|假如|萬一/u;
+/**
+ * 擁有要原文逐字寫出同一個關係：從擁有者那個字到這段結尾，都要在附的原文裡。
+ * 「我家附近常有一隻貓」撐不起「我家有一隻貓」，「我有一個朋友養了一隻貓」撐
+ * 不起「我養了一隻貓」。改寫成「我家那隻貓」也會剔除：寧可少一句，也不放行
+ * 原文沒寫明的關係。
+ */
+function possessionSpan(segment: string): string | null {
+  const found = POSSESSION.exec(segment);
+  return found
+    ? asSource(segment.slice(found.index)).replace(TRAILING_PARTICLES, "")
+    : null;
+}
+
+/** 想做、打算做或假設的事（「想到」「想起」「主要是」不算）。 */
+const FRAME =
+  /想(?![到起])|打算|計畫|準備|希望|如果|(?<![主只])要是|假如|萬一/u;
+
+/**
+ * 附的原文在來源那一小句（不跨標點）裡前面的字：審稿只附「學衝浪」，也看得到
+ * 「她說一直想學衝浪」的「想」。
+ */
+function clauseBefore(sourceText: string, quote: string): string {
+  const clauses = sourceText
+    .split(/[，,。．.！!？?；;…～~\n]+/u)
+    .map(compactForQuote);
+  const at = clauses.join("").indexOf(compactForQuote(quote));
+  if (at === -1) return "";
+  let start = 0;
+  for (const clause of clauses) {
+    if (at < start + clause.length) return clause.slice(0, at - start);
+    start += clause.length;
+  }
+  return "";
+}
 
 /** 有問號，或以「嗎」「呢」收尾，才算真的在問。 */
 function isQuestion(segment: string): boolean {
@@ -361,13 +415,22 @@ function segmentProblems(
   if (!scopeAllows(label.scope, source)) {
     problems.add(`scope_source_mismatch:${at}`);
   }
+  // 講到擁有就核對，不管標成哪個範圍：改標狀態或說過繞不過去。標成擁有、
+  // 句子卻沒有「我家、妳養、她有一隻…」這種寫法（例如「我的貓」），程式核對
+  // 不了，也剔除。
+  const span = possessionSpan(segment);
   if (
-    label.scope === "擁有" && !possessionInQuote(segment).test(label.quote)
+    span === null
+      ? label.scope === "擁有"
+      : !asSource(label.quote).includes(span)
   ) {
     problems.add(`possession_not_in_quote:${at}`);
   }
+  // 原文是想做、打算做或假設的事，句子就不能寫成做了、有了（句子本身也是想或
+  // 假設的除外）。
   if (
-    WISH.test(label.quote) && !WISH.test(segment) && !HYPOTHETICAL.test(segment)
+    FRAME.test(clauseBefore(source.text, label.quote) + quote) &&
+    !FRAME.test(segment)
   ) {
     problems.add(`wish_as_done:${at}`);
   }
