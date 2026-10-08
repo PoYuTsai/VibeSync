@@ -141,6 +141,53 @@ Deno.test("興趣：App 格式與舊格式都拆得出來；去重、過長不�
   assertEquals(parseNewTopicInterests(null), []);
 });
 
+Deno.test("興趣：空著的興趣行不跨行讀下一行；性格行過濾後不會變成興趣；CRLF 也照拆（Codex 主審第 1 輪 P2）", () => {
+  for (
+    const next of [
+      "- 性格：慢熟、愛吐槽",
+      "- 過往備註：回覆慢但都會回",
+      "- 使用者確認的對方資料：在設計公司上班",
+    ]
+  ) {
+    for (const blank of ["- 興趣：", "- 興趣：   ", "- 興趣：　"]) {
+      assertEquals(
+        parseNewTopicInterests(`[對象作戰板：小雯]\n${blank}\n${next}`),
+        [],
+        `${JSON.stringify(blank)} → ${next}`,
+      );
+      assertEquals(
+        parseNewTopicInterests(`[對象作戰板：小雯]\r\n${blank}\r\n${next}`),
+        [],
+        `CRLF ${JSON.stringify(blank)} → ${next}`,
+      );
+    }
+  }
+  // 性格行排在興趣行前面、而且也寫了「興趣：」字樣，一樣不會被讀進來。
+  assertEquals(
+    parseNewTopicInterests(
+      "[對象作戰板：小雯]\n- 性格：興趣：慢熟\n- 興趣：甜點、爬山",
+    ),
+    ["甜點", "爬山"],
+  );
+  assertEquals(
+    parseNewTopicInterests(
+      "[對象作戰板：小雯]\r\n- 興趣：甜點、爬山\r\n- 性格：慢熟",
+    ),
+    ["甜點", "爬山"],
+  );
+  // 排任務也不會把性格當成要問她的興趣。
+  const slots = planNewTopicSlots({
+    situation: "stuck",
+    topicContext: null,
+    interests: parseNewTopicInterests(
+      "[對象作戰板：小雯]\n- 興趣：\n- 性格：慢熟、愛吐槽",
+    ),
+    requestId: REQUEST_ID,
+  });
+  assertFalse(slots.some((slot) => slot.kind === ASK));
+  assertFalse(JSON.stringify(slots).includes("慢熟"));
+});
+
 // ---------------------------------------------------------------------------
 // 五題的任務
 // ---------------------------------------------------------------------------

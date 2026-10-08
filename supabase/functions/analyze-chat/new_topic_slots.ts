@@ -66,18 +66,23 @@ export function filterNewTopicPartnerFacts(
 }
 
 // App 格式是「- 興趣：a、b、c」；舊格式或手動資料可能寫成「興趣：a。」。取第一個
-// 「興趣：」到換行或句號為止。
-const INTERESTS_PATTERN = /興趣[：:]\s*([^\n。]*)/;
+// 「興趣：」到同一行結尾或句號為止。只吃同一行的空白：「- 興趣：」空著時不能跨行
+// 把下一行（例如性格）讀成興趣（Codex 主審第 1 輪 P2）。
+const INTERESTS_PATTERN = /興趣[：:][ \t\u3000]*([^\r\n。]*)/;
 const TRUNCATION_MARKER = "... [truncated]";
 const MAX_INTERESTS = 8;
 const MAX_INTEREST_GRAPHEMES = 20;
 
-/** 作戰板的興趣拆成清單（去重、去空白、過長的不要）；只拿來排「問她」的題目。 */
+/**
+ * 作戰板的興趣拆成清單（去重、去空白、過長的不要）；只拿來排「問她」的題目。
+ * 從過濾後的作戰板解析：不給寫手的行（性格等）也不會變成任務裡的興趣。
+ */
 export function parseNewTopicInterests(
   partnerSummary: string | null,
 ): string[] {
-  if (partnerSummary === null) return [];
-  const match = partnerSummary.match(INTERESTS_PATTERN);
+  const facts = filterNewTopicPartnerFacts(partnerSummary);
+  if (facts === null) return [];
+  const match = facts.match(INTERESTS_PATTERN);
   if (match === null) return [];
   const body = match[1].replace(TRUNCATION_MARKER, "");
   const seen = new Set<string>();
