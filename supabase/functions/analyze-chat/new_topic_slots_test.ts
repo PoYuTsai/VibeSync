@@ -411,6 +411,24 @@ Deno.test("任務：一定五題；同一次的興趣不重複、問法不重複
   }
 });
 
+Deno.test("任務：連按幾次的排法夠分散（興趣與問法各自打散，3 個興趣至少有數十種排法）", () => {
+  const plans = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    const slots = planNewTopicSlots({
+      situation: null,
+      topicContext: null,
+      interests: INTERESTS,
+      requestId: `req-${i}`,
+    });
+    plans.add(
+      JSON.stringify(
+        slots.filter((s) => s.kind === ASK).map((s) => [s.focus, s.shape]),
+      ),
+    );
+  }
+  assert(plans.size >= 60, String(plans.size));
+});
+
 Deno.test("任務：不再有隨機角度；生活小題都是問她，不是用戶自己的事", () => {
   const prompt = buildNewTopicSlotsUserPrompt({
     partnerSummary: null,

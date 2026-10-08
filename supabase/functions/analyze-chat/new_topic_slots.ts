@@ -179,10 +179,22 @@ export function newTopicSlotSeed(requestId: string): number {
   return hash;
 }
 
-function rotate<T>(items: readonly T[], by: number): T[] {
-  if (items.length === 0) return [];
-  const start = by % items.length;
-  return [...items.slice(start), ...items.slice(0, start)];
+/** 以 seed 決定的打散（mulberry32＋Fisher–Yates）：同一個 requestId 永遠同一個順序。 */
+function seededShuffle<T>(items: readonly T[], seed: number): T[] {
+  let state = seed >>> 0;
+  const next = () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 /**
@@ -207,12 +219,14 @@ export function planNewTopicSlots(input: {
   const seed = newTopicSlotSeed(input.requestId);
   // 素材已經在聊的興趣不再另問一題（素材寫甜點店，就不再問她甜點），五題才分得開。
   const materialText = topicContext?.materialText ?? "";
-  const interests = rotate(
+  // 興趣、問法與生活主題各自用不同的 seed 打散：連按幾次排到同一組的機會變小
+  // （輪替只有「興趣數 × 4」種排法，2026-10-09 黑箱兩次之間常撞同一組）。
+  const interests = seededShuffle(
     input.interests.filter((interest) => !materialText.includes(interest)),
     seed,
   );
-  const shapes = rotate(NEW_TOPIC_QUESTION_SHAPES, seed >>> 8);
-  const everyday = rotate(NEW_TOPIC_EVERYDAY_FOCI, seed >>> 16);
+  const shapes = seededShuffle(NEW_TOPIC_QUESTION_SHAPES, seed ^ 0x9e3779b9);
+  const everyday = seededShuffle(NEW_TOPIC_EVERYDAY_FOCI, seed ^ 0x85ebca6b);
   let nextShape = 0;
   let nextInterest = 0;
   let nextEveryday = 0;
@@ -297,7 +311,8 @@ const SLOT_JOBS: Record<
     "從她提過的那件事延伸一個好回答的小問題：不是問進度，也不重問她已經說過的答案。",
   joke_callback:
     "接你們之間的梗：照梗原本的說法和主詞（原文是她虧用戶，就由用戶自己承認、自嘲或回嘴），只對梗本身表態，不演出新的一次，也不加今天發生的事。",
-  joke_to_her: "用那個梗問她一句，或請她當裁判，一句就能回。",
+  joke_to_her:
+    "用那個梗問她一句，或請她當裁判，一句就能回；只對梗本身發問，不演出新的一次，也不加最近或今天發生的事。",
   after_date_warm:
     "一句不帶細節的約會餘溫，例如謝謝她今天出來或說你很開心；不寫地點、店家或當時發生的事，也不約下次。",
   red_close:
