@@ -1,6 +1,6 @@
 # 新話題成對評測（改前 vs 改後）
 
-比較同一組情境下，**改前**（base）和**改後**（cand）的 production 寫出來的五題，給規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6 的盲測與驗收門檻用（ADR #51）。nt3 之後（2026-10-06）盲測改成一份逐句勾選的表 `blind.md`（規格 §6.4）。
+比較同一組情境下，**改前**（base）和**改後**（cand）的 production 寫出來的五題，給規格 `docs/plans/2026-10-02-new-topic-natural-lines-implementation-spec.md` §6 的盲測與驗收門檻用（ADR #51）。nt3 之後（2026-10-06）盲測改成一份逐句勾選的表 `blind.md`（規格 §6.4）。2026-10-09 起候選是結構刀（ADR #53）：伺服器排好五題任務、AI 只寫句子、推薦固定第一題。
 
 預設是 dry-run：不打模型、不讀金鑰、不連網；會跑 git（`rev-parse`、`archive`）取出改前版本。要花錢的真跑，必須 Eric 當次說「跑」之後才下指令。
 
@@ -9,13 +9,13 @@
 | 臂 | 是什麼 | 提示詞從哪來 |
 |---|---|---|
 | `base` | 改前的 production，預設 `7c5cc523`（ADR #51 之前的 main） | 用 `git archive` 把那一版的 `supabase/functions` 取到暫存目錄，照當時 handler 的路由組：沒帶 `topicContext` 走 `NEW_TOPIC_PROMPT`＋`buildNewTopicUserPrompt`（外洩守門 `hasAnalyzeChatPromptLeak`、不套紅燈收尾），帶了走進階 v1 |
-| `cand` | 目前工作樹的 production | `planNewTopicPrompt`：handler 呼叫同一個函式，所以提示詞、今天的日期、外洩守門、grounding、紅燈收尾規則都跟線上一致；「今天」用 `--now` 固定時間 |
+| `cand` | 目前工作樹的 production | `planNewTopicPrompt`：handler 呼叫同一個函式，所以五題任務、提示詞、今天的日期、外洩守門、grounding 與推薦規則（一律第一題、伺服器的固定理由）都跟線上一致；「今天」用 `--now` 固定時間 |
 
-- 同一案例同一次重複的兩臂用**同一個 requestId**。角度照各自那一版的清單選，基準保留改前真實的角度清單。
+- 同一案例同一次重複的兩臂用**同一個 requestId**。基準照改前的角度清單選角度；候選用 requestId 輪替她的興趣與問法（結構刀沒有角度）。
 - 模型與參數照 production 主呼叫：`NEW_TOPIC_MODEL`、`maxTokensFor(...)`、`modelRequestParams(...)`（Sonnet 5 thinking 關閉）、system 用快取區塊、同一組 header。`run_test.ts` 會攔下 `fallback.ts` 第一跳實際送出的 body 和 header，跟 `requestBody` 比對。
 - 不做修格式那一次呼叫、不串流、不走備援，也不經 Edge、DB、扣費。格式失敗照實記成「不可交付」。
 - **只壞在解釋欄**（標題、為什麼現在有效、她回了之後、推薦理由不合格，開場句本身沒問題）：production 修格式會逐字保留這五句開場句，用戶看得到，所以：
-  - 五句照樣進盲測；★ 用主呼叫自己的推薦（production 修格式那一次會重選，可能不同）。
+  - 五句照樣進盲測；★ 照各版的規則：候選一律第一題，基準用主呼叫自己的推薦（production 修格式那一次會重選，可能不同）。
   - 可交付率不算它；開場句的機械指標算它。
 - `--arms=base` 或 `--arms=cand` 可以只跑一臂（沒有盲測）。`--base-ref` 只收 commit SHA。
 
@@ -50,7 +50,7 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 - input 全部用四種 input 單價裡最高的「快取寫入」價計算（system 開了 ephemeral 快取，第一次寫入是一般 input 的 1.25 倍）。
 - output 一般每次 1,200，最壞每次 `max_tokens`（3,000）全滿。
 - 單價取 `_shared/model_pricing.ts` 的 `SONNET_5_PRICING`：input $2/M、快取寫入 $2.5/M、output $10/M。
-- 22 組 × 2 次 × 2 臂＝88 次呼叫：一般約 $2.75、最壞約 $4.33（提示詞 v2.4）。
+- 22 組 × 2 次 × 2 臂＝88 次呼叫：一般約 $2.17、最壞約 $3.75（候選是結構刀，2026-10-09 乾跑）；只跑候選 44 次：一般約 $0.89、最壞約 $1.68。nt4 實付 88 次 US$1.16，估算偏保守。
 
 ## 真跑（要 Eric 當次說「跑」）
 
