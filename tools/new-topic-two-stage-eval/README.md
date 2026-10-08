@@ -94,7 +94,7 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 |---|---|---|
 | thinking | `{"type":"disabled"}` | `{"type":"adaptive","display":"omitted"}` |
 | `output_config` | 不送 | `{"effort":"low"}` |
-| `max_tokens` | 3,000 | 7,000（可見預算一樣 3,000，另加 4,000 給思考） |
+| `max_tokens` | 3,000 | 7,000：思考和可見文字共用的總上限（helper 在 3,000 上加 4,000，API 不會分開限制兩者） |
 | temperature | 不送 | 不送（5.5 送非預設值會 400） |
 | system 快取、header | 同 production | 同 production |
 
@@ -116,7 +116,7 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
   --run --confirm-paid --max-calls=24 --budget-usd=2
 ```
 
-- `summary.md` 多一節「時間與費用（每臂）」：送出、停止原因（end_turn／max_tokens／refusal）、等待中位數與最慢、超過 45 秒、output token、實付；機械指標照常列，不列 §6.5 門檻表。
+- `summary.md` 多一節「時間與費用（每臂）」：送出、有回、API 失敗的次數，停止原因（end_turn／max_tokens／refusal），等待的算術中位數、最慢與超過 45 秒（算所有實際送出的請求，含逾時失敗），output token、實付；機械指標照常列，不列 §6.5 門檻表。
 - 不實、主詞與邏輯、尷尬、推薦能不能原樣傳，要看 `records.json` 逐句判斷。
 
 ## 盲測與驗收

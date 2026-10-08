@@ -1035,10 +1035,21 @@ export function explainsSilence(openingLine: string): boolean {
     .some((pattern) => pattern.test(openingLine));
 }
 
+/** 最近秩的百分位（P90 用）；中位數請用 median。 */
 function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)];
+}
+
+/** 算術中位數：偶數筆取中間兩筆的平均（12 秒、14 秒是 13 秒）。 */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function cjkBigrams(text: string): Set<string> {
@@ -1128,7 +1139,7 @@ export function armMetrics(rows: EvalRecord[]) {
     awkwardPatternLines: awkwardPatternLines(lines),
     nearDuplicatePairs: nearDuplicatePairs(rows),
     openingLength: {
-      median: percentile(lengths, 0.5),
+      median: median(lengths),
       p90: percentile(lengths, 0.9),
       over35: lengths.filter((n) => n > 35).length,
     },
@@ -1203,7 +1214,8 @@ export function metricsByArm(records: EvalRecord[]) {
 export function armRuntime(rows: EvalRecord[]) {
   const sent = rows.filter((r) => r.status !== "NOT_RUN_CAP_OR_STOP");
   const returned = rows.filter((r) => r.status === "MODEL_RETURNED");
-  const elapsed = returned.flatMap((r) =>
+  // 時間算所有實際送出的請求：API 失敗（例如 60 秒逾時）也有耗時，只算有回的會漏掉最慢那幾次。
+  const elapsed = sent.flatMap((r) =>
     r.elapsedMs === undefined ? [] : [r.elapsedMs]
   );
   const output = returned.flatMap((r) => r.usage ? [r.usage.outputTokens] : []);
@@ -1217,13 +1229,12 @@ export function armRuntime(rows: EvalRecord[]) {
     stopEndTurn: stop("end_turn"),
     stopMaxTokens: stop("max_tokens"),
     stopRefusal: stop("refusal"),
-    elapsedMedianMs: percentile(elapsed, 0.5),
+    elapsedMedianMs: median(elapsed),
     elapsedMaxMs: elapsed.length ? Math.max(...elapsed) : null,
     overDeadline:
-      returned.filter((r) =>
-        (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS
-      ).length,
-    outputTokensMedian: percentile(output, 0.5),
+      sent.filter((r) => (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS)
+        .length,
+    outputTokensMedian: median(output),
     outputTokensMax: output.length ? Math.max(...output) : null,
     /** 含成本未知時計入的最壞預留。 */
     costUsd: sent.reduce((n, r) => n + (r.costUsd ?? 0), 0),
@@ -1596,7 +1607,7 @@ export function summaryMarkdown(input: {
       (x) => `${x.stopEndTurn}／${x.stopMaxTokens}／${x.stopRefusal}`,
     ),
     runtimeRow(
-      "等待 中位數／最慢／超過 45 秒",
+      "等待（所有送出的請求）中位數／最慢／超過 45 秒",
       (x) =>
         `${seconds(x.elapsedMedianMs)}／${
           seconds(x.elapsedMaxMs)

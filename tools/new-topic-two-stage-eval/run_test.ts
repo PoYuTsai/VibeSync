@@ -32,6 +32,7 @@ import {
   MAX_INPUT_PER_MTOK,
   MAX_OUTPUT_TOKENS,
   mechanicalAcceptance,
+  median,
   metricsByArm,
   nearDuplicatePairs,
   parseOptions,
@@ -1519,7 +1520,7 @@ Deno.test("模型對照：摘要列每臂時間、停止原因與實付，寫明
       runtime.base.elapsedMaxMs,
       runtime.base.outputTokensMax,
     ],
-    [2, 12_000, 14_000, 2000],
+    [2, 13_000, 14_000, 2000],
   );
   assertEquals(
     [
@@ -1559,9 +1560,57 @@ Deno.test("模型對照：摘要列每臂時間、停止原因與實付，寫明
     summary,
   );
   assert(
-    summary.includes("| 等待 中位數／最慢／超過 45 秒 | 12.0 秒／14.0 秒／0 |"),
+    summary.includes(
+      "| 等待（所有送出的請求）中位數／最慢／超過 45 秒 | 13.0 秒／14.0 秒／0 |",
+    ),
   );
   const promptSummary = summaryMarkdown(input);
   assert(promptSummary.includes("## 規格 §6.5 驗收門檻"));
   assert(promptSummary.includes("## 時間與費用（每臂）"));
+});
+
+Deno.test("時間統計：API 逾時失敗也算進最慢與超過 45 秒；有回、失敗分開數；中位數是算術中位數", async () => {
+  const plan = await modelComparePlan(["E1"], 2);
+  // 順序：E1.1.base、E1.1.cand、E1.2.base、E1.2.cand（最後一筆 60 秒逾時失敗）。
+  const records: EvalRecord[] = plan.map((call, i) =>
+    i === 3
+      ? {
+        ...record(call, null),
+        elapsedMs: 60_000,
+        costUsd: 0.09,
+        costKnown: false,
+      }
+      : {
+        ...record(call, payload()),
+        stopReason: "end_turn",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 1000,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+        costUsd: 0.01,
+        costKnown: true,
+        elapsedMs: [12_000, 20_000, 14_000][i],
+      }
+  );
+  const runtime = runtimeByArm(records);
+  assertEquals(
+    [runtime.cand.sent, runtime.cand.returned, runtime.cand.apiFailed],
+    [2, 1, 1],
+  );
+  assertEquals(
+    [
+      runtime.cand.elapsedMaxMs,
+      runtime.cand.overDeadline,
+      runtime.cand.elapsedMedianMs,
+      runtime.cand.costUnknown,
+    ],
+    [60_000, 1, 40_000, 1],
+  );
+  assertEquals(runtime.base.elapsedMedianMs, 13_000);
+  assertEquals(
+    [median([]), median([3]), median([14, 12]), median([1, 5, 3])],
+    [null, 3, 13, 3],
+  );
 });
