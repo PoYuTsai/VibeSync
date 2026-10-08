@@ -1,17 +1,20 @@
 // 新話題 handler 行為測試（2026-10-01 規格 §2／§4.7）：正式 handler，只替換
 // supabase 與模型 fetch 邊界。鎖住進階開關、擋字發生在任何 DB／限流／模型
-// 之前，以及基本、進階都用提示詞 v2.3（ADR #51）。
+// 之前，以及基本、進階都走結構刀（ADR #53）：伺服器排五題任務、推薦固定第一題。
 import {
   assert,
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
+import { NEW_TOPIC_RED_CLOSE_REASON } from "./new_topic_two_stage.ts";
 import {
-  buildNewTopicTwoStageUserPrompt,
-  NEW_TOPIC_RED_CLOSE_REASON,
-  NEW_TOPIC_TWO_STAGE_PROMPT,
-} from "./new_topic_two_stage.ts";
+  buildNewTopicSlotsUserPrompt,
+  NEW_TOPIC_SLOTS_SYSTEM_PROMPT,
+  newTopicSlotsRecommendationReason,
+  parseNewTopicInterests,
+  planNewTopicSlots,
+} from "./new_topic_slots.ts";
 import { computeNewTopicInputHash } from "./new_topic_billing.ts";
 import {
   ModelCallBudget,
@@ -281,30 +284,40 @@ Deno.test("handler：開關沒開時，已落帳的同一筆進階請求照常�
   assertEquals(replayHit.subscriptionTier, "essential");
 });
 
-Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走提示詞 v2.3，局面只有狀況那幾行", async () => {
+Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走結構刀，素材段明說沒有、局面只有狀況那幾行", async () => {
   const result = await run(body(), undefined);
   assertEquals(result.status, 200);
   assertEquals(result.json.usage, { cost: 3 });
   assertEquals(result.modelRequests.length, 1);
   const [request] = result.modelRequests;
-  assertEquals(request.system[0].text, NEW_TOPIC_TWO_STAGE_PROMPT);
+  assertEquals(request.system[0].text, NEW_TOPIC_SLOTS_SYSTEM_PROMPT);
   // handler 帶台灣時間的「今天」；從實際送出的內容取出日期再比對整份。
   const today = request.messages[0].content.match(
-    /## 今天（台灣時間）\n(\d{4} 年 \d{1,2} 月 \d{1,2} 日（週[一二三四五六日]）)。/,
+    /### 今天（台灣時間）\n(\d{4} 年 \d{1,2} 月 \d{1,2} 日（週[一二三四五六日]）)。/,
   )?.[1];
   assert(today, "基本模式也要帶「今天」段");
+  const partnerSummary = "對象：小雅。興趣：爬山。";
   assertEquals(
     request.messages[0].content,
-    buildNewTopicTwoStageUserPrompt({
-      partnerSummary: "對象：小雅。興趣：爬山。",
+    buildNewTopicSlotsUserPrompt({
+      partnerSummary,
       effectiveStyleContext: null,
       situation: "went_cold",
       topicContext: null,
-      requestId: REQUEST_ID,
+      slots: planNewTopicSlots({
+        situation: "went_cold",
+        topicContext: null,
+        interests: parseNewTopicInterests(partnerSummary),
+        requestId: REQUEST_ID,
+      }),
       today,
     }),
   );
-  assertFalse(request.messages[0].content.includes("## 用戶手上的素材"));
+  assert(
+    request.messages[0].content.includes(
+      "（沒有：這次不寫用戶做過、看過或遇過的事）",
+    ),
+  );
   assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
   // 基本模式也記品質稽核（只記錄、不擋），標成 basic。
   const audit = result.logMetadata.get("new_topic_two_stage_audit") as Record<
@@ -312,7 +325,7 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走�
     unknown
   >;
   assertEquals(audit.promptVariant, "basic");
-  assertEquals(audit.promptVersion, "new-topic-v2.4");
+  assertEquals(audit.promptVersion, "new-topic-slots-v1");
   assertEquals(audit.materialUsedInRecommended, null);
   assertEquals(audit.redCloseApplied, false);
 });
@@ -482,20 +495,26 @@ Deno.test("handler：只選「沒有，幫我想」且沒有其他素材 → 422
   assertEquals(result.dbCalls, []);
 });
 
-Deno.test("handler：開關開＋有 topicContext → 進階 system＋含局面段的 user prompt", async () => {
+Deno.test("handler：開關開＋有 topicContext → 結構刀 system＋含局面段與五題任務的 user prompt", async () => {
   const result = await run(body({ topicContext: STORY }), "true");
   assertEquals(result.status, 200);
   assertEquals(result.json.usage, { cost: 3 });
   assertEquals(result.modelRequests.length, 1);
   const [request] = result.modelRequests;
-  assertEquals(request.system[0].text, NEW_TOPIC_TWO_STAGE_PROMPT);
+  assertEquals(request.system[0].text, NEW_TOPIC_SLOTS_SYSTEM_PROMPT);
   const userPrompt = request.messages[0].content;
   assert(
     userPrompt.includes("## 這次的局面（用戶自己說的現況，照這裡的做法寫）"),
   );
   assert(userPrompt.includes("- 多久沒聊：一到四週"));
   assert(userPrompt.includes("- 原文：「信心滿滿走進店裡，才發現走錯分店」"));
+  assert(
+    userPrompt.includes("## 五題的任務（topics 照這個順序，一題一個任務）"),
+  );
+  // 用戶的事只出現在分享素材的任務：第一題就是照素材直接講。
+  assert(userPrompt.includes("\n1. 把用戶寫的那件事直接講給她聽"));
   assert(!userPrompt.includes("本輪內容素材"));
+  assert(!userPrompt.includes("本輪換個方向"));
   assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
 });
 
@@ -511,7 +530,7 @@ Deno.test("handler：只有素材原文（沒選狀況、沒作戰板）也能�
   assertEquals(result.status, 200);
   assertEquals(
     result.modelRequests[0].system[0].text,
-    NEW_TOPIC_TWO_STAGE_PROMPT,
+    NEW_TOPIC_SLOTS_SYSTEM_PROMPT,
   );
 });
 
@@ -833,7 +852,7 @@ Deno.test("handler：ai_logs 一次成功只記一列主呼叫，request_body �
     tier: "essential",
     usageComplete: false,
     promptVariant: "advanced",
-    promptVersion: "new-topic-v2.4",
+    promptVersion: "new-topic-slots-v1",
   });
   const serialized = JSON.stringify(result.aiCallRows);
   assertFalse(serialized.includes("小雅"));
@@ -890,7 +909,7 @@ Deno.test("handler：修復後仍不合格 → 失敗事件帶 requestId、提�
   assert(invalid, "new_topic_response_invalid 必須記錄");
   assertEquals(invalid.requestId, REQUEST_ID);
   assertEquals(invalid.promptVariant, "advanced");
-  assertEquals(invalid.promptVersion, "new-topic-v2.4");
+  assertEquals(invalid.promptVersion, "new-topic-slots-v1");
   assert(typeof invalid.elapsedMs === "number" && invalid.elapsedMs >= 0);
   const serialized = JSON.stringify(invalid);
   assertFalse("partnerSummary" in invalid);
@@ -906,7 +925,7 @@ Deno.test("handler：修復輸出也要過整包外洩檢查，命中就不交�
   const leakedRepair = {
     ...MODEL_PAYLOAD,
     topics: MODEL_PAYLOAD.topics.map((topic, index) =>
-      index === 0 ? { ...topic, whyItWorks: "照類型決定主詞，不改主詞" } : topic
+      index === 0 ? { ...topic, whyItWorks: "這次的五題已經由教練排好" } : topic
     ),
   };
   const result = await run(
@@ -923,11 +942,11 @@ Deno.test("handler：修復輸出也要過整包外洩檢查，命中就不交�
   assertFalse(result.dbCalls.includes("rpc:settle_new_topic_request"));
 });
 
-Deno.test("handler：新話題 sentinel 基本與進階都擋（共用提示詞 v2.3），擋下不扣", async () => {
+Deno.test("handler：新話題 sentinel 基本與進階都擋（共用結構刀提示詞），擋下不扣", async () => {
   const withPhrase = {
     ...MODEL_PAYLOAD,
     topics: MODEL_PAYLOAD.topics.map((topic, index) =>
-      index === 0 ? { ...topic, whyItWorks: "照類型決定主詞，不改主詞" } : topic
+      index === 0 ? { ...topic, whyItWorks: "這次的五題已經由教練排好" } : topic
     ),
   };
   const basic = await run(body(), undefined, true, withPhrase);
@@ -1022,7 +1041,7 @@ Deno.test("handler：紅燈收尾模型自己推第一題 → 不算改推，但
   assertEquals(audit.redCloseOverridden, false);
 });
 
-Deno.test("handler：紅燈收尾以外（基本模式沒帶 topicContext、進階黃燈）推薦照模型", async () => {
+Deno.test("handler：紅燈收尾以外（基本模式、進階黃燈）推薦也固定第一題、理由換伺服器的固定句；模型推別題記改推", async () => {
   const picked2 = {
     ...MODEL_PAYLOAD,
     recommendation: { index: 2, reason: "理由" },
@@ -1031,28 +1050,43 @@ Deno.test("handler：紅燈收尾以外（基本模式沒帶 topicContext、進�
   assertEquals(basic.status, 200);
   assertEquals(
     basic.modelRequests[0].system[0].text,
-    NEW_TOPIC_TWO_STAGE_PROMPT,
+    NEW_TOPIC_SLOTS_SYSTEM_PROMPT,
   );
-  assertEquals(basic.json.recommendation, { topicId: "nt_3", reason: "理由" });
+  const basicSlots = planNewTopicSlots({
+    situation: "stuck",
+    topicContext: null,
+    interests: parseNewTopicInterests("對象：小雅。興趣：爬山。"),
+    requestId: REQUEST_ID,
+  });
+  // 舊格式的「興趣：爬山。」也拆得出來：第一題問她爬山。
+  assertEquals(basicSlots[0].kind, "ask_interest");
+  assertEquals(basicSlots[0].focus, "爬山");
+  assertEquals(basic.json.recommendation, {
+    topicId: "nt_1",
+    reason: newTopicSlotsRecommendationReason(basicSlots[0], null),
+  });
   const basicAudit = basic.logMetadata.get(
     "new_topic_two_stage_audit",
   ) as Record<string, unknown>;
   assertEquals(basicAudit.promptVariant, "basic");
   assertEquals(basicAudit.redCloseApplied, false);
   assertEquals(basicAudit.redCloseOverridden, false);
+  assertEquals(basicAudit.recommendationOverridden, true);
 
   const yellow = await run(
     body({ situation: "stuck", topicContext: { engagement: "yellow" } }),
     "true",
     true,
-    picked2,
+    MODEL_PAYLOAD,
   );
   assertEquals(yellow.status, 200);
-  assertEquals(yellow.json.recommendation, { topicId: "nt_3", reason: "理由" });
+  assertEquals(yellow.json.recommendation.topicId, "nt_1");
+  assertFalse(yellow.json.recommendation.reason === "理由");
   const audit = yellow.logMetadata.get("new_topic_two_stage_audit") as Record<
     string,
     unknown
   >;
   assertEquals(audit.redCloseApplied, false);
   assertEquals(audit.redCloseOverridden, false);
+  assertEquals(audit.recommendationOverridden, false);
 });

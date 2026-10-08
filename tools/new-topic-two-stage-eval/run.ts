@@ -2,8 +2,9 @@
 //
 // - base＝改前的 production（預設 7c5cc523）：用 git 取出那一版的 supabase/functions，照當時 handler 的
 //   路由組提示詞（沒帶 topicContext 走舊版提示詞、帶了走進階 v1；外洩守門與紅燈收尾也照當時）。
-// - cand＝目前工作樹的 production：提示詞、外洩守門、grounding 與紅燈收尾全部由 planNewTopicPrompt
-//   產生（handler 呼叫同一個函式）；「今天」用固定時間（--now），可重現。
+// - cand＝目前工作樹的 production：提示詞、外洩守門、grounding 與推薦規則全部由 planNewTopicPrompt
+//   產生（handler 呼叫同一個函式；2026-10-09 起是結構刀，推薦固定第一題）；「今天」用固定時間
+//   （--now），可重現。
 // - 兩臂同案例、同 requestId、同重複次數成對；模型、max_tokens、thinking 與 system 快取照 production
 //   主呼叫（requestBody 與 fallback.ts 送出的 body 相同，run_test 有比對）。不做修格式那一次呼叫。
 // - --compare=model（Eric 2026-10-08）：兩臂都用目前工作樹的提示詞（同 cand），只換模型：base＝production
@@ -45,13 +46,14 @@ import {
   NEW_TOPIC_MODEL,
 } from "../../supabase/functions/analyze-chat/new_topic_prompt.ts";
 import { planNewTopicPrompt } from "../../supabase/functions/analyze-chat/new_topic_prompt_plan.ts";
+import { enforceNewTopicFirstSlotRecommendation } from "../../supabase/functions/analyze-chat/new_topic_slots.ts";
 import {
   APOLOGY_PATTERN,
   auditNewTopicTwoStageTopics,
   enforceNewTopicRedClose,
   GAP_MENTION_PATTERN,
   isNewTopicRedClose,
-  NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+  NEW_TOPIC_PROMPT_VERSION,
   type NewTopicTopicContext,
   type NewTopicTwoStageAudit,
 } from "../../supabase/functions/analyze-chat/new_topic_two_stage.ts";
@@ -307,6 +309,11 @@ export type ArmPlan = {
   hasPromptLeak: (text: string) => boolean;
   grounding: NewTopicGroundingPolicy;
   appliesRedClose: boolean;
+  /**
+   * 伺服器固定的推薦理由：有值＝推薦一律第一題、理由換成這句（結構刀，ADR #53）；
+   * null＝照該版當時的規則（只有紅燈收尾固定第一題）。
+   */
+  recommendationReason: string | null;
 };
 
 export type ArmRouter = (input: PlanInput) => ArmPlan;
@@ -321,6 +328,7 @@ export function candRouter(nowMs: number): ArmRouter {
       hasPromptLeak: (text) => plan.hasPromptLeak(text),
       grounding: plan.grounding,
       appliesRedClose: plan.appliesRedClose,
+      recommendationReason: plan.recommendationReason,
     };
   };
 }
@@ -378,6 +386,7 @@ export function baseRouter(m: BaseModules): ArmRouter {
         hasPromptLeak: m.hasAnalyzeChatPromptLeak,
         grounding,
         appliesRedClose: false,
+        recommendationReason: null,
       };
     }
     return {
@@ -392,6 +401,7 @@ export function baseRouter(m: BaseModules): ArmRouter {
       hasPromptLeak: m.hasNewTopicTwoStagePromptLeak,
       grounding,
       appliesRedClose: true,
+      recommendationReason: null,
     };
   };
 }
@@ -512,6 +522,8 @@ export type PlannedCall = {
   partnerSummary: string | null;
   grounding: NewTopicGroundingPolicy;
   appliesRedClose: boolean;
+  /** 見 ArmPlan.recommendationReason。 */
+  recommendationReason: string | null;
   system: string;
   user: string;
   hasPromptLeak: (text: string) => boolean;
@@ -895,7 +907,10 @@ export type Inspection = {
   recommendationReason: string | null;
   /** 模型自己推的那題（套保證之前）。 */
   modelRecommendationIndex: number | null;
+  /** 紅燈收尾把模型推的別題改成第一題。 */
   redCloseOverridden: boolean;
+  /** 伺服器規則把模型推的那題改掉（結構刀一律第一題；改前只有紅燈收尾會改）。 */
+  recommendationOverridden: boolean;
   /** 量測用：兩臂都用目前的稽核函式（不是行為）。 */
   audit: NewTopicTwoStageAudit | null;
   lines: LineCounts | null;
@@ -930,6 +945,7 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
       recommendationReason: null,
       modelRecommendationIndex: null,
       redCloseOverridden: false,
+      recommendationOverridden: false,
       audit: null,
       lines: null,
       star: null,
@@ -939,7 +955,12 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
     };
   }
   const deliverable = normalized.ok;
-  const enforced = call.appliesRedClose
+  const enforced = call.recommendationReason !== null
+    ? enforceNewTopicFirstSlotRecommendation(
+      openings,
+      call.recommendationReason,
+    )
+    : call.appliesRedClose
     ? enforceNewTopicRedClose(openings, {
       situation: call.situation,
       topicContext: call.topicContext,
@@ -960,7 +981,8 @@ export function inspectOutput(call: PlannedCall, raw: string): Inspection {
     recommendationIndex: served.recommendationIndex,
     recommendationReason: deliverable ? served.recommendationReason : null,
     modelRecommendationIndex: openings.recommendationIndex,
-    redCloseOverridden: enforced.overridden,
+    redCloseOverridden: call.appliesRedClose && enforced.overridden,
+    recommendationOverridden: enforced.overridden,
     audit: auditNewTopicTwoStageTopics({
       topics: served.topics,
       recommendationIndex: served.recommendationIndex,
@@ -1579,8 +1601,8 @@ export function summaryMarkdown(input: {
       : `# 新話題成對評測 · ${input.tag} · ${MODEL}`,
     "",
     modelCompare
-      ? `- 兩臂同一份提示詞：HEAD ${input.candidateHead}（${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${input.now}），只差模型與模型參數（model_request_params）。`
-      : `- 候選 HEAD ${input.candidateHead}（提示詞 ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${input.now}）；基準 ${
+      ? `- 兩臂同一份提示詞：HEAD ${input.candidateHead}（${NEW_TOPIC_PROMPT_VERSION}，今天＝${input.now}），只差模型與模型參數（model_request_params）。`
+      : `- 候選 HEAD ${input.candidateHead}（提示詞 ${NEW_TOPIC_PROMPT_VERSION}，今天＝${input.now}）；基準 ${
         input.baseSha ?? "（沒跑基準臂）"
       }。`,
     `- 實際呼叫 ${input.calls}／規劃 ${input.planned}；計入費用 $${
@@ -1789,7 +1811,7 @@ async function main(args: string[]): Promise<void> {
     return [arm, {
       model,
       prompt: opts.compare === "model" || arm === "cand"
-        ? `HEAD planNewTopicPrompt（${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${opts.now}）`
+        ? `HEAD planNewTopicPrompt（${NEW_TOPIC_PROMPT_VERSION}，今天＝${opts.now}）`
         : `基準 ${baseSha} 的 handler 路由（git archive）`,
       bodyShape: requestBody({ system: "<system>", user: "<user>", model }),
       pricing: pricingFor(model),
@@ -1814,7 +1836,7 @@ async function main(args: string[]): Promise<void> {
       note:
         "同 production 主呼叫（fallback.ts 第一跳）；每次只送一次：不重試、不修格式、不串流、不走備援；API 失敗照最壞預留計費並整批停",
     },
-    candidatePromptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+    candidatePromptVersion: NEW_TOPIC_PROMPT_VERSION,
     sha256: {
       cases: await catalogSha256(),
       systemPrompts: Object.keys(systemPrompts),

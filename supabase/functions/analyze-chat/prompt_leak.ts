@@ -38,6 +38,21 @@ export const NEW_TOPIC_TWO_STAGE_PROMPT_SENTINELS: readonly string[] = [
   "照類型決定主詞，不改主詞",
 ];
 
+/** 新話題結構刀（ADR #53）的系統提示詞片段；正常輸出不會出現。 */
+export const NEW_TOPIC_SLOTS_PROMPT_SENTINELS: readonly string[] = [
+  "這次的五題已經由教練排好",
+  "一題一個任務各寫一題",
+];
+
+export function hasNewTopicSlotsPromptLeak(
+  text: string | null | undefined,
+): boolean {
+  return containsPromptLeak(text, [
+    ...ANALYZE_CHAT_PROMPT_SENTINELS,
+    ...NEW_TOPIC_SLOTS_PROMPT_SENTINELS,
+  ]);
+}
+
 export function hasNewTopicTwoStagePromptLeak(
   text: string | null | undefined,
 ): boolean {

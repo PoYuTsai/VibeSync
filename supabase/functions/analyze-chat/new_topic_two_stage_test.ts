@@ -1300,7 +1300,7 @@ Deno.test("audit：回傳只有數字／布林／null，不含原文", () => {
 Deno.test("telemetry：基本與進階欄位，只記代碼與字數不記原文", () => {
   assertEquals(newTopicTwoStageTelemetry(null), {
     promptVariant: "basic",
-    promptVersion: "new-topic-v2.4",
+    promptVersion: "new-topic-slots-v1",
     coldDuration: null,
     coldStop: null,
     engagement: null,
@@ -1320,7 +1320,7 @@ Deno.test("telemetry：基本與進階欄位，只記代碼與字數不記原文
   );
   assertEquals(fields, {
     promptVariant: "advanced",
-    promptVersion: "new-topic-v2.4",
+    promptVersion: "new-topic-slots-v1",
     coldDuration: "weeks",
     coldStop: "faded",
     engagement: null,

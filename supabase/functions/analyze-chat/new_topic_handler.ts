@@ -60,12 +60,12 @@ import {
 } from "./new_topic_prompt.ts";
 import {
   auditNewTopicTwoStageTopics,
-  enforceNewTopicRedClose,
-  NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+  NEW_TOPIC_PROMPT_VERSION,
   newTopicPromptVariant,
   newTopicTwoStageTelemetry,
 } from "./new_topic_two_stage.ts";
 import { planNewTopicPrompt } from "./new_topic_prompt_plan.ts";
+import { enforceNewTopicFirstSlotRecommendation } from "./new_topic_slots.ts";
 import {
   getErrorMessage,
   logError,
@@ -163,7 +163,7 @@ export async function handleNewTopicRequest(
     user: summarizeUser(deps.userId),
     requestId: newTopicRequest.requestId,
     promptVariant: newTopicTwoStageTelemetry(newTopicContext).promptVariant,
-    promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+    promptVersion: NEW_TOPIC_PROMPT_VERSION,
     elapsedMs: Date.now() - deps.requestStartedAtMs,
   });
   // 每次供應商呼叫記一筆（console＋ai_logs）。主呼叫與修復各開一個：主呼叫
@@ -185,7 +185,7 @@ export async function handleNewTopicRequest(
         {
           promptVariant:
             newTopicTwoStageTelemetry(newTopicContext).promptVariant,
-          promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+          promptVersion: NEW_TOPIC_PROMPT_VERSION,
         },
       ),
     );
@@ -558,9 +558,9 @@ export async function handleNewTopicRequest(
   // 8. 45 秒 generation deadline 內完成 primary／outage fallback。
   //    refusal、max_tokens、格式錯誤不走 outage fallback（fallback.ts
   //    既有分類）；deadline 前提早爆的 DEADLINE_EXCEEDED 也在這裡收。
-  // 基本與進階共用提示詞 v2.3（ADR #51）。路由在 planNewTopicPrompt，評測工具
-  // 呼叫同一個函式：提示詞、今天的日期、外洩守門、grounding 與紅燈收尾規則
-  // 都跟這裡一致。
+  // 基本與進階共用結構刀（ADR #53）：伺服器排好五題任務、AI 只寫句子。路由在
+  // planNewTopicPrompt，評測工具呼叫同一個函式：提示詞、今天的日期、外洩守門、
+  // grounding 與推薦規則都跟這裡一致。
   const newTopicPromptPlan = planNewTopicPrompt({
     partnerSummary: newTopicRequest.partnerSummary,
     effectiveStyleContext: newTopicRequest.effectiveStyleContext,
@@ -740,16 +740,13 @@ export async function handleNewTopicRequest(
       }, 502);
     }
 
-    // 紅燈收尾（規格 §9.4）：只在進階路徑；推薦固定第一題、理由換固定句。
-    const newTopicRedClose = newTopicPromptPlan.appliesRedClose
-      ? enforceNewTopicRedClose(newTopicNormalized, {
-        situation: newTopicRequest.situation,
-        topicContext: newTopicContext,
-      })
-      : null;
-    if (newTopicRedClose !== null) {
-      newTopicNormalized = newTopicRedClose.normalized;
-    }
+    // 推薦（ADR #53）：第一題的任務就是推薦題，伺服器固定第一題、理由換成依
+    // 任務的固定句（紅燈收尾時第一題是收尾句，理由沿用規格 §9.4 的固定句）。
+    const newTopicRecommendation = enforceNewTopicFirstSlotRecommendation(
+      newTopicNormalized,
+      newTopicPromptPlan.recommendationReason,
+    );
+    newTopicNormalized = newTopicRecommendation.normalized;
 
     // 10. 投影：2026-10-05 起新話題所有方案都拿完整五題、照常扣 3 則
     //     （ADR #52）。帳本 CHECK、ledger 驗證與已上架的 App 都只認「free＝
@@ -827,14 +824,16 @@ export async function handleNewTopicRequest(
             user: summarizeUser(deps.userId),
             requestId: newTopicRequest.requestId,
             promptVariant: newTopicPromptVariant(newTopicContext),
-            promptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
+            promptVersion: NEW_TOPIC_PROMPT_VERSION,
             ...auditNewTopicTwoStageTopics({
               topics: newTopicNormalized.topics,
               recommendationIndex: newTopicNormalized.recommendationIndex,
               topicContext: newTopicContext,
               situation: newTopicRequest.situation,
             }),
-            redCloseOverridden: newTopicRedClose?.overridden ?? false,
+            redCloseOverridden: newTopicPromptPlan.appliesRedClose &&
+              newTopicRecommendation.overridden,
+            recommendationOverridden: newTopicRecommendation.overridden,
           });
         } catch (error) {
           logWarn("new_topic_two_stage_audit_failed", {

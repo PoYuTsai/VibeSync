@@ -85,6 +85,8 @@ import {
 
 const NOW_MS = Date.parse(DEFAULT_EVAL_NOW);
 const TWO_STAGE_SENTINEL = "照類型決定主詞，不改主詞";
+/** 結構刀（ADR #53）系統提示詞的外洩 sentinel。 */
+const SLOTS_SENTINEL = "這次的五題已經由教練排好";
 
 /**
  * 測試用的「改前」模組：舊版提示詞與函式目前還在工作樹裡，用來鎖住改前路由規則
@@ -258,7 +260,7 @@ Deno.test("案例：22 組都過 production 請求驗證；涵蓋基本／進階
 // 路由：候選就是 production；基準照改前 handler
 // ---------------------------------------------------------------------------
 
-Deno.test("候選路由＝planNewTopicPrompt（handler 呼叫同一個函式）：提示詞、今天、外洩守門、grounding、紅燈收尾規則", async () => {
+Deno.test("候選路由＝planNewTopicPrompt（handler 呼叫同一個函式）：提示詞、今天、外洩守門、grounding、推薦規則", async () => {
   const plan = await planFor(["B1", "T1", "E2"]);
   for (const call of plan.filter((p) => p.arm === "cand")) {
     const expected = planNewTopicPrompt({
@@ -273,25 +275,36 @@ Deno.test("候選路由＝planNewTopicPrompt（handler 呼叫同一個函式）�
     assertEquals(call.user, expected.user, call.key);
     assertEquals(call.grounding, expected.grounding, call.key);
     assertEquals(call.appliesRedClose, expected.appliesRedClose, call.key);
+    assertEquals(
+      call.recommendationReason,
+      expected.recommendationReason,
+      call.key,
+    );
     assert(call.user.includes("2026 年 10 月 5 日（週一）"), call.key);
-    assert(call.hasPromptLeak(TWO_STAGE_SENTINEL), call.key);
+    assert(call.hasPromptLeak(SLOTS_SENTINEL), call.key);
   }
 });
 
-Deno.test("候選提示詞：nt3 失分的案例都帶到對應修正（只證明規則送到，模型照不照做要看下一輪盲測）", async () => {
-  const plan = await planFor(["E1", "C5", "B6", "D2", "E3", "J1", "T1"]);
+Deno.test("候選提示詞（結構刀）：盲測失分的案例都由任務與資料處理，不再靠堆規則", async () => {
+  const plan = await planFor(["E1", "C5", "B6", "B4", "D2", "E3", "J1", "T1"]);
   const cand = (id: string) => plan.find((p) => p.key === `${id}.1.cand`)!;
-  // 系統提示詞（v2.4）：興趣邊界、主詞照原文、推薦挑會照原樣傳的。
-  for (const id of ["E1", "B6", "T1"]) {
-    const system = cand(id).system;
-    assert(system.includes("- 興趣只代表她喜歡這類東西"), id);
-    assert(system.includes("誰說的、誰做的、被虧的是誰都照原文"), id);
+  for (const id of ["E1", "C5", "B6", "B4", "D2", "E3", "J1", "T1"]) {
+    const { system, user } = cand(id);
+    // 興趣邊界、主詞照原文寫在系統提示詞；不再有隨機角度。
+    assert(system.includes("她的資料寫到哪就用到哪"), id);
+    assert(system.includes("誰說的、誰做的、被虧的是誰，照原文"), id);
     assert(
-      system.includes("推薦用戶最可能照原樣直接傳、她最容易接的那題"),
+      user.includes("## 五題的任務（topics 照這個順序，一題一個任務）"),
       id,
     );
+    assertFalse(user.includes("本輪換個方向"), id);
+    // 作戰板的性格行不給寫手（盲測裡評斷她的句子多半從這行來）。
+    assertFalse(user.includes("- 性格："), id);
   }
-  // C（E1、C5 我沒回她）：不道歉、不解釋，也不提很久沒聊。
+  // 作戰板的興趣與備註照樣給。
+  assert(cand("E1").user.includes("- 興趣：甜點、爬山、韓劇"));
+  assertFalse(cand("E1").user.includes("慢熟"));
+  // 我沒回她（E1、C5）：不道歉、不解釋，也不提很久沒聊。
   for (const id of ["E1", "C5"]) {
     const user = cand(id).user;
     assert(
@@ -300,16 +313,32 @@ Deno.test("候選提示詞：nt3 失分的案例都帶到對應修正（只證�
       ),
       id,
     );
-    assertFalse(user.includes("帶過"), id);
     assertFalse(user.includes("可以用一句輕鬆承認有陣子沒聊"), id);
   }
-  // A（B6 只選剛約完會）：不知道約會裡的事；D2 素材寫了約會裡的梗，才承接餘溫。
+  // 沒素材（B6 只選剛約完會、B4 沒有對象資料）：明說這次不寫用戶的事，任務只有問她。
+  for (const id of ["B6", "B4"]) {
+    const user = cand(id).user;
+    assert(user.includes("（沒有：這次不寫用戶做過、看過或遇過的事）"), id);
+    assertFalse(user.includes("把用戶寫的那件事直接講給她聽"), id);
+  }
   assert(cand("B6").user.includes("剛約完會：你只知道剛約完"));
-  assertFalse(cand("B6").user.includes("承接約會的餘溫"));
+  assert(cand("B6").user.includes("\n2. 一句不帶細節的約會餘溫"));
+  assert(cand("B4").user.includes("（沒有提供：不要猜她的興趣、工作或生活）"));
+  // 素材寫了約會裡的梗（D2）才承接約會餘溫。
   assert(cand("D2").user.includes("剛約完會：承接約會的餘溫"));
-  // A（E3「她說我的五分鐘都是半小時」被虧的是用戶）：梗照原本的主詞。
+  // 你們的梗（E3、D2、J1、C5）：第一題接梗、照原本的主詞，不寫成又發生一次。
   for (const id of ["E3", "D2", "J1", "C5"]) {
-    assert(cand(id).user.includes("用梗原本的說法和原本的主詞"), id);
+    assert(
+      cand(id).user.includes(
+        "\n1. 接你們之間的梗：照梗原本的說法和主詞",
+      ),
+      id,
+    );
+  }
+  // 看到想到她的東西（E1、T1）：第一題照素材直接講，推薦固定第一題。
+  for (const id of ["E1", "T1"]) {
+    assert(cand(id).user.includes("\n1. 把用戶寫的那件事直接講給她聽"), id);
+    assert(cand(id).recommendationReason?.startsWith("這句直接講你看到"), id);
   }
 });
 
@@ -474,9 +503,9 @@ Deno.test("預留：實測每字 token 數比 1.5 高就調高之後的預留（
   assert(stopBeforeCall({ ...guard, stopped: true }));
 });
 
-Deno.test("整理：外洩各臂照各自的守門；紅燈收尾只在帶 topicContext 時改推第一題", async () => {
+Deno.test("整理：外洩各臂照各自的守門；候選的推薦一律第一題，改前只有紅燈收尾改推第一題", async () => {
   const plan = await planFor(["B1", "E2"]);
-  const leaked = payload({ why: TWO_STAGE_SENTINEL });
+  const leaked = payload({ why: SLOTS_SENTINEL });
   // 改前的基本模式不查進階 sentinel；改後兩種模式都查。
   assert(
     inspectOutput(plan.find((p) => p.key === "B1.1.base")!, leaked).deliverable,
@@ -495,12 +524,22 @@ Deno.test("整理：外洩各臂照各自的守門；紅燈收尾只在帶 topic
   assertEquals(red.recommendationReason, NEW_TOPIC_RED_CLOSE_REASON);
   assertEquals(red.modelRecommendationIndex, 3);
   assert(red.redCloseOverridden);
+  assert(red.recommendationOverridden);
   const basic = inspectOutput(
     plan.find((p) => p.key === "B1.1.cand")!,
     payload({ index: 3 }),
   );
-  assertEquals(basic.recommendationIndex, 3);
+  assertEquals(basic.recommendationIndex, 0);
+  assertEquals(basic.modelRecommendationIndex, 3);
   assertFalse(basic.redCloseOverridden);
+  assert(basic.recommendationOverridden);
+  // 改前的基本模式照模型推的那題。
+  const baseBasic = inspectOutput(
+    plan.find((p) => p.key === "B1.1.base")!,
+    payload({ index: 3 }),
+  );
+  assertEquals(baseBasic.recommendationIndex, 3);
+  assertFalse(baseBasic.recommendationOverridden);
 });
 
 Deno.test("整理：只壞在解釋欄的，五句開場句與推薦照樣進盲測與開場句指標，但不算可交付", async () => {
@@ -529,13 +568,15 @@ Deno.test("整理：只壞在解釋欄的，五句開場句與推薦照樣進盲
   assert(ins.explanationOnlyFailure);
   assert(ins.openingsEvaluable);
   assertEquals(ins.topics?.map((t) => t.openingLine), lines);
-  assertEquals(ins.recommendationIndex, 2);
+  // 結構刀的推薦一律第一題（production 修格式之後也一樣）。
+  assertEquals(ins.recommendationIndex, 0);
+  assertEquals(ins.modelRecommendationIndex, 2);
   assertEquals(ins.recommendationReason, null);
   assertEquals([ins.starTitleTechnique, ins.starExplanationEnglish], [
     null,
     null,
   ]);
-  // 盲測：五句都在；推薦位置不標在表上，tally 取 records 裡主呼叫自己的推薦（第 3 句）。
+  // 盲測：五句都在；推薦位置不標在表上，tally 取 records 裡用戶看到的推薦（第 1 句）。
   const records = plan.map((p) =>
     record(p, p.arm === "cand" ? badExplanation : payload())
   );
@@ -546,9 +587,9 @@ Deno.test("整理：只壞在解釋欄的，五句開場句與推薦照樣進盲
   assertFalse(blind.markdown.includes(BLIND_FORM.noOutput));
   const candName = blind.reveal["B1#1"].甲 === "cand" ? "甲" : "乙";
   const filled = fillForm(blind.markdown, {
-    sentence: (_code, name, n) => ({ willing: name === candName && n === 3 }),
+    sentence: (_code, name, n) => ({ willing: name === candName && n === 1 }),
     fun: () => false,
-    favorite: () => `${candName}3`,
+    favorite: () => `${candName}1`,
     done: () => true,
   });
   assertEquals(
@@ -910,7 +951,7 @@ Deno.test("計分：逐句勾選照解盲表加總、基本／進階分開；未
   ]);
 });
 
-Deno.test("計分：★ 取用戶看到的推薦——推第 4 句就看第 4 句；紅燈收尾改推第 1 句就看第 1 句", async () => {
+Deno.test("計分：★ 取用戶看到的推薦——改前推第 4 句就看第 4 句；結構刀與紅燈收尾都看第 1 句", async () => {
   const { records, blind } = await blindFixture(
     ["B1", "E2"],
     () => payload({ index: 3 }),
@@ -923,10 +964,10 @@ Deno.test("計分：★ 取用戶看到的推薦——推第 4 句就看第 4 �
   });
   const { totals } = tally({ form: filled, reveal: blind.reveal, records });
   for (const arm of ARMS) {
-    // B1（基本）：推第 4 句。
+    // B1（基本）：改前推第 4 句；結構刀固定第 1 句。
     assertEquals(
       [totals.basic[arm].starWilling, totals.basic[arm].starAwkward],
-      [0, 1],
+      arm === "base" ? [0, 1] : [1, 0],
       arm,
     );
     // E2 是紅燈收尾：用戶看到的推薦改成第 1 句。
