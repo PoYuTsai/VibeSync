@@ -235,6 +235,49 @@ Deno.test("任務：沒素材（基本模式、幫我想）只有問她的題目
   ]);
 });
 
+Deno.test("任務：當季那題只接這五題沒問到的興趣，都問過了就不扯興趣", () => {
+  for (let i = 0; i < 40; i++) {
+    for (
+      const [situation, topicContext, interests] of [
+        [null, null, ["甜點", "爬山", "韓劇"]],
+        [null, null, ["甜點", "爬山", "韓劇", "咖啡", "貓"]],
+        [
+          "stuck",
+          context({ engagement: "red", materialKind: "none" }, "stuck"),
+          [
+            "咖啡",
+            "底片攝影",
+            "貓",
+            "路跑",
+          ],
+        ],
+        [null, null, []],
+      ] as const
+    ) {
+      const slots = planNewTopicSlots({
+        situation,
+        topicContext,
+        interests: [...interests],
+        requestId: `req-${i}`,
+      });
+      const asked = slots.flatMap((s) => s.kind === ASK ? [s.focus] : []);
+      for (const slot of slots.filter((s) => s.kind === "seasonal")) {
+        if (slot.focus !== null) {
+          assertFalse(asked.includes(slot.focus), String(slot.focus));
+          assert((interests as readonly string[]).includes(slot.focus));
+        } else {
+          assertEquals(
+            interests.filter((x) => !asked.includes(x)).length,
+            0,
+            JSON.stringify(slots),
+          );
+        }
+        assert(newTopicSlotJob(slot).startsWith("從今天的日期、星期或季節"));
+      }
+    }
+  }
+});
+
 Deno.test("任務：剛約完會沒有約會素材 → 第二題是不帶細節的餘溫；約會聊到的事或梗不另加", () => {
   assertEquals(kinds({ situation: "after_date" }), [
     ASK,

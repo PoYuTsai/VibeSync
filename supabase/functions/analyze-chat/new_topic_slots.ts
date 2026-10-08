@@ -119,18 +119,21 @@ export type NewTopicSlotKind =
 
 export type NewTopicSlot = {
   kind: NewTopicSlotKind;
-  /** ask_interest 的興趣、everyday 的生活主題；其他任務沒有。 */
+  /** ask_interest 與 seasonal 的興趣、everyday 的生活主題；其他任務沒有。 */
   focus: string | null;
   /** 問句的形狀（ask_interest、everyday 輪替，避免五題都是二選一）。 */
   shape: string | null;
 };
 
-/** 問她的題目輪替這幾種問法；同一次生成裡不重複。 */
+/**
+ * 問她的題目輪替這幾種問法；同一次生成裡不重複。每種都只會寫出一個問題
+ * （2026-10-09 黑箱：「有沒有在做、做得怎樣」會寫成「有在追嗎？追得怎樣？」兩問）。
+ */
 export const NEW_TOPIC_QUESTION_SHAPES = [
   "讓她在兩個具體的選項裡選一個",
-  "問她最近有沒有在做這件事、做得怎樣",
+  "問她在這件事裡心中的第一名，或最想做的那一個",
   "問她在這件事上的一個小偏好或小習慣",
-  "先說一句用戶的看法（只說看法，不說用戶做過什麼），再問她怎麼看",
+  "先說一句用戶的看法（只說看法，不說用戶做過什麼），再問她站哪邊",
 ] as const;
 
 /** 沒有興趣可問時輪替的生活主題：都是問她，不是用戶自己的事。 */
@@ -258,19 +261,29 @@ export function planNewTopicSlots(input: {
   if (isNewTopicRedClose(input.situation, topicContext)) {
     slots.unshift({ kind: "red_close", focus: null, shape: null });
   }
-  return slots.slice(0, SLOT_COUNT);
+  const planned = slots.slice(0, SLOT_COUNT);
+  // 當季那題只接這五題沒問到的興趣；都問過了就不扯興趣（黑箱裡同一組出現兩題爬山）。
+  const asked = new Set(
+    planned.flatMap((slot) => slot.kind === "ask_interest" ? [slot.focus] : []),
+  );
+  const unusedInterest = interests.find((interest) => !asked.has(interest)) ??
+    null;
+  for (const slot of planned) {
+    if (slot.kind === "seasonal") slot.focus = unusedInterest;
+  }
+  return planned;
 }
 
 const SLOT_JOBS: Record<
-  Exclude<NewTopicSlotKind, "ask_interest" | "everyday">,
+  Exclude<NewTopicSlotKind, "ask_interest" | "everyday" | "seasonal">,
   string
 > = {
   share_material:
-    "把用戶寫的那件事直接講給她聽：盡量用用戶自己的說法，只潤成平常傳訊息的口氣，可以帶一句想到她；不加用戶沒寫的細節、結果或人物。",
+    "把用戶寫的那件事直接講給她聽：盡量用用戶自己的說法，只潤成平常傳訊息的口氣，可以帶一句想到她；時間照用戶寫的（沒寫就不寫），不加用戶沒寫的細節、結果或人物。",
   share_material_ask:
-    "先用一句帶到用戶寫的那件事，再問她一個跟它有關、一句就能回的小問題。",
+    "先用一句帶到用戶寫的那件事（時間照用戶寫的，不加細節），再問她一個跟它有關、一句就能回的小問題。",
   material_light:
-    "同一件事換個輕鬆的說法：用戶自己的反應或一點自嘲，好笑但不貶低自己；不加新的細節或結果。",
+    "同一件事換個輕鬆的說法：只加用戶對這件事的反應（驚訝、好笑、傻眼），不加用戶的其他事，也不加新的時間、細節或結果。",
   follow_up_her:
     "問她提過的那件事後來怎樣，像朋友順口關心；照用戶寫的程度，不假設已經有結果。",
   react_to_her:
@@ -278,10 +291,8 @@ const SLOT_JOBS: Record<
   her_topic_more:
     "從她提過的那件事延伸一個好回答的小問題：不是問進度，也不重問她已經說過的答案。",
   joke_callback:
-    "接你們之間的梗：照梗原本的說法和主詞（原文是她虧用戶，就由用戶自己接梗、自嘲或回嘴），不寫成這件事又發生了一次。",
+    "接你們之間的梗：照梗原本的說法和主詞（原文是她虧用戶，就由用戶自己承認、自嘲或回嘴），只對梗本身表態，不演出新的一次，也不加今天發生的事。",
   joke_to_her: "用那個梗問她一句，或請她當裁判，一句就能回。",
-  seasonal:
-    "從今天的日期、星期或季節帶出一個她好回答的小問題，可以接她的興趣；不寫成用戶今天做了什麼。",
   after_date_warm:
     "一句不帶細節的約會餘溫，例如謝謝她今天出來或說你很開心；不寫地點、店家或當時發生的事，也不約下次。",
   red_close:
@@ -292,6 +303,11 @@ const SLOT_JOBS: Record<
 export function newTopicSlotJob(slot: NewTopicSlot): string {
   if (slot.kind === "ask_interest") {
     return `問她跟「${slot.focus}」有關的一個具體、好回答的小問題，問法：${slot.shape}；不寫成她擁有什麼、正在做什麼或做過什麼。`;
+  }
+  if (slot.kind === "seasonal") {
+    return slot.focus === null
+      ? "從今天的日期、星期或季節帶出一個她好回答的生活小問題，不扯到上面幾題問過的興趣；不寫成用戶今天做了什麼。"
+      : `從今天的日期、星期或季節帶出一個跟「${slot.focus}」有關、她好回答的小問題；不寫成用戶今天做了什麼。`;
   }
   if (slot.kind === "everyday") {
     return `問她一個關於「${slot.focus}」、不用任何背景也好回答的小問題，問法：${slot.shape}；不出奇怪的假設題。`;
