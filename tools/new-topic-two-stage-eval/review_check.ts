@@ -5,17 +5,24 @@
  * handler，不影響正式路徑。對應方案的兩步：
  * - A（buildSourcePack）：從正式的使用者提示詞取出原始來源，原文照抄、編 ID；
  *   缺的就是缺。
- * - D（checkReview）：核對審稿輸出。每段都要有標記；標成事實的段要附來源 ID
- *   與原文，原文要逐字出現在那個來源裡；有問題代碼就剔除；選的 5 句都要通過、
- *   ★ 在其中；交付的句子依 ID 從候選原樣複製，審稿改不到。
+ * - D（checkReview）：核對審稿輸出。每段標記要對得回程式切出的那一段；
+ *   標成事實的段要附範圍、來源 ID 與原文，原文要逐字出現在那個來源裡、
+ *   跟這一段講的是同一件事，而且那類來源撐得起這個範圍；有問題代碼就剔除；
+ *   選的 5 句都要通過、★ 在其中；交付的句子依 ID 從候選原樣複製，審稿改不到。
  *
- * 程式擋不住兩種錯：審稿把事件標成看法，或拿「每次」的習慣當「今天」的證據
- * （原文逐字存在，但撐不起這句）。這兩種要靠付費的審稿回測量。
+ * 句子裡有時間詞（今天、剛、這次…）、「我每次／我一定要…」或「我家」時，
+ * 一定是在講事實：審稿標成看法、猜測、一般話題或招呼，程式照樣剔除；時間詞
+ * 也要出現在附的原文裡。這幾道是字面規則，擋得住的有限：沒有這些字的事件或
+ * 習慣被標成看法，或附的原文跟這段有關、卻撐不起多加的細節，程式核對不出來，
+ * 要靠付費的審稿回測量。
  */
 import { NEW_TOPIC_TOPIC_COUNT } from "../../supabase/functions/analyze-chat/new_topic_payload.ts";
 
+export type SourceKind = "作戰板" | "關於我" | "局面" | "素材" | "今天";
+
 export type SourceItem = {
   id: string;
+  kind: SourceKind;
   text: string;
   /** 素材類型（例如「你們之間的梗」）；只有 M1 有。 */
   label?: string;
@@ -29,6 +36,16 @@ export const REVIEW_SEGMENT_KINDS = [
   "一般話題",
   "招呼語氣",
   "事實",
+] as const;
+
+/** 事實的範圍：決定哪類來源撐得起它。「習慣」包括喜好和想做的事。 */
+export const REVIEW_FACT_SCOPES = [
+  "事件",
+  "習慣",
+  "擁有",
+  "說過",
+  "狀態",
+  "日期",
 ] as const;
 
 /** 任何一個都會讓這句剔除。 */
@@ -45,7 +62,16 @@ export const REVIEW_ISSUE_CODES = [
   "教練語",
 ] as const;
 
-export type ReviewSegment = { kind: string; source?: string; quote?: string };
+export type ReviewSegment = {
+  /** 第幾段（從 1 起），對應 splitSegments 切出的順序。 */
+  index: number;
+  /** 那一段的原文，程式拿來確認標記沒有錯位。 */
+  text: string;
+  kind: string;
+  scope?: string;
+  source?: string;
+  quote?: string;
+};
 export type ReviewLineCheck = {
   id: string;
   segments: ReviewSegment[];
@@ -92,6 +118,80 @@ export function splitSegments(text: string): string[] {
 /** 比對原文前只留文字與數字：空白、標點、表情和全半形差異都不算。 */
 function compactForQuote(text: string): string {
   return text.normalize("NFKC").replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/** 附的原文要跟這一段講同一件事：至少有兩個字連在一起相同。 */
+function sharesWords(segment: string, quote: string): boolean {
+  const a = compactForQuote(segment);
+  const b = compactForQuote(quote);
+  if (a.includes(b) || b.includes(a)) return true;
+  const pairs = new Set<string>();
+  for (let i = 0; i + 1 < b.length; i++) pairs.add(b.slice(i, i + 2));
+  for (let i = 0; i + 1 < a.length; i++) {
+    if (pairs.has(a.slice(i, i + 2))) return true;
+  }
+  return false;
+}
+
+/** 用戶自己的事件只能來自「用戶最近遇到的事」「看到想到她的東西」。 */
+const EVENT_MATERIALS = new Set(["用戶最近遇到的事", "看到想到她的東西"]);
+const SAID_MATERIALS = new Set([
+  "之前聊過的事（她提過的）",
+  "約會時聊到的事",
+  "你們之間的梗",
+]);
+const STATE_MATERIALS = new Set([
+  "之前聊過的事（她提過的）",
+  "約會時聊到的事",
+]);
+
+/**
+ * 哪類來源撐得起哪個範圍：習慣撐不起單次事件，日期撐不起天氣或季節；
+ * 「她說過」只能來自素材，作戰板不能冒充她說過的話。
+ */
+function scopeAllows(scope: string, source: SourceItem): boolean {
+  const material = source.kind === "素材" ? source.label ?? "" : null;
+  switch (scope) {
+    case "事件":
+      return material !== null && EVENT_MATERIALS.has(material);
+    case "習慣":
+      return source.kind === "作戰板" || source.kind === "關於我" ||
+        material === "你們之間的梗";
+    case "擁有":
+      return source.kind === "關於我" || material !== null;
+    case "說過":
+      return material !== null && SAID_MATERIALS.has(material);
+    case "狀態":
+      return source.kind === "局面" || source.kind === "關於我" ||
+        (material !== null && STATE_MATERIALS.has(material));
+    case "日期":
+      return source.kind === "今天";
+    default:
+      return false;
+  }
+}
+
+/**
+ * 句子裡有這些字，就是在講一件事實：只能標成事實（範圍要對），或真的在問。
+ * 「剛」也抓「剛好」：剛好聽到、剛好路過一樣是事件。
+ */
+const CLAIM_MARKERS = [
+  {
+    name: "時間",
+    pattern: /今天|今早|今晚|剛|昨天|昨晚|前天|這次|這幾天/gu,
+    scopes: ["事件", "日期"],
+  },
+  {
+    name: "習慣",
+    pattern: /我[^，,。！!？?、\s]{0,3}(?:每次|總是|固定|一定要|都會|習慣)/gu,
+    scopes: ["習慣"],
+  },
+  { name: "我家", pattern: /我家/gu, scopes: ["擁有", "狀態"] },
+] as const;
+
+/** 有問號，或以「嗎」「呢」收尾，才算真的在問。 */
+function isQuestion(segment: string): boolean {
+  return /[？?]/u.test(segment) || /[嗎呢][^\p{L}\p{N}]*$/u.test(segment);
 }
 
 function sectionLines(userPrompt: string): Map<string, string[]> {
@@ -157,17 +257,20 @@ function situationItems(lines: string[]): string[] {
 export function buildSourcePack(userPrompt: string): SourceItem[] {
   const sections = sectionLines(userPrompt);
   const items: SourceItem[] = [];
-  const push = (prefix: string, texts: string[]) =>
-    texts.forEach((text, i) => items.push({ id: `${prefix}${i + 1}`, text }));
+  const push = (prefix: string, kind: SourceKind, texts: string[]) =>
+    texts.forEach((text, i) =>
+      items.push({ id: `${prefix}${i + 1}`, kind, text })
+    );
 
-  push("P", boardItems(linesOf(sections, "對方作戰板")));
+  push("P", "作戰板", boardItems(linesOf(sections, "對方作戰板")));
   push(
     "U",
+    "關於我",
     linesOf(sections, "關於我")
       .map((line) => line.replace(/^- /, "").trim())
       .filter((line) => line.length > 0 && !line.startsWith("（沒有提供")),
   );
-  push("S", situationItems(linesOf(sections, "這次的局面")));
+  push("S", "局面", situationItems(linesOf(sections, "這次的局面")));
 
   const material = bullets(linesOf(sections, "用戶手上的素材"));
   const kind = material.find((line) => line.startsWith("類型："));
@@ -176,13 +279,16 @@ export function buildSourcePack(userPrompt: string): SourceItem[] {
   if (quoted) {
     items.push({
       id: "M1",
+      kind: "素材",
       text: quoted[1],
       label: kind?.slice("類型：".length),
     });
   }
 
   const today = linesOf(sections, "今天").find((line) => line.trim());
-  if (today) items.push({ id: "T1", text: today.split("。")[0].trim() });
+  if (today) {
+    items.push({ id: "T1", kind: "今天", text: today.split("。")[0].trim() });
+  }
   return items;
 }
 
@@ -198,6 +304,59 @@ export function preReviewProblems(text: string): string[] {
   return problems;
 }
 
+/** 一段標記的問題。理由用代碼，「:第幾段」方便評測統計。 */
+function segmentProblems(
+  label: ReviewSegment,
+  segment: string,
+  at: number,
+  sourceById: Map<string, SourceItem>,
+): string[] {
+  const kinds: readonly string[] = REVIEW_SEGMENT_KINDS;
+  const scopes: readonly string[] = REVIEW_FACT_SCOPES;
+  if (!kinds.includes(label.kind)) return [`unknown_kind:${at}`];
+  const markers = CLAIM_MARKERS.flatMap((marker) =>
+    (segment.match(marker.pattern) ?? []).map((hit) => ({ ...marker, hit }))
+  );
+
+  if (label.kind !== "事實") {
+    const asked = label.kind === "問題" && isQuestion(segment);
+    return markers.length > 0 && !asked
+      ? [`claim_not_fact:${at}:${markers[0].name}`]
+      : [];
+  }
+
+  if (!label.source || !label.quote) return [`fact_without_source:${at}`];
+  const source = sourceById.get(label.source);
+  if (!source) return [`unknown_source:${at}`];
+  const quote = compactForQuote(label.quote);
+  if (quote.length < 2 || !compactForQuote(source.text).includes(quote)) {
+    return [`quote_not_in_source:${at}`];
+  }
+  if (!label.scope) return [`fact_without_scope:${at}`];
+  if (!scopes.includes(label.scope)) return [`unknown_scope:${at}`];
+
+  const problems = new Set<string>();
+  if (!sharesWords(segment, label.quote)) problems.add(`quote_unrelated:${at}`);
+  if (!scopeAllows(label.scope, source)) {
+    problems.add(`scope_source_mismatch:${at}`);
+  }
+  for (const marker of markers) {
+    const scopesForMarker: readonly string[] = marker.scopes;
+    if (!scopesForMarker.includes(label.scope)) {
+      problems.add(`marker_scope:${at}:${marker.name}`);
+    }
+    // 時間詞要出現在附的原文裡；「今天」可由「今天」這個來源撐（範圍是日期）。
+    const todayFromDate = marker.hit === "今天" && source.kind === "今天";
+    if (
+      marker.name === "時間" && !label.quote.includes(marker.hit) &&
+      !todayFromDate
+    ) {
+      problems.add(`time_not_in_quote:${at}`);
+    }
+  }
+  return [...problems];
+}
+
 /** D：核對審稿輸出。逐句的理由用代碼，方便評測統計。 */
 export function checkReview(input: {
   sources: SourceItem[];
@@ -209,7 +368,6 @@ export function checkReview(input: {
   for (const check of input.review.checks) {
     checks.set(check.id, [...(checks.get(check.id) ?? []), check]);
   }
-  const kinds: readonly string[] = REVIEW_SEGMENT_KINDS;
   const issueCodes: readonly string[] = REVIEW_ISSUE_CODES;
 
   const lines = input.candidates.map((candidate): LineVerdict => {
@@ -220,30 +378,34 @@ export function checkReview(input: {
     const reasons: string[] = [];
     if (found.length > 1) reasons.push("duplicate_check");
     const check = found[0];
-    if (check.segments.length !== splitSegments(candidate.text).length) {
-      reasons.push("segment_count_mismatch");
+    const segments = splitSegments(candidate.text);
+
+    // 標記照段號對回程式切出的段，段號重複、超出或原文對不上都算錯位。
+    const byIndex = new Map<number, ReviewSegment>();
+    for (const label of check.segments) {
+      if (
+        !Number.isInteger(label.index) || label.index < 1 ||
+        label.index > segments.length
+      ) {
+        reasons.push(`segment_unknown:${label.index}`);
+      } else if (byIndex.has(label.index)) {
+        reasons.push(`segment_duplicate:${label.index}`);
+      } else {
+        byIndex.set(label.index, label);
+      }
     }
-    check.segments.forEach((segment, i) => {
+    segments.forEach((segment, i) => {
       const at = i + 1;
-      if (!kinds.includes(segment.kind)) {
-        reasons.push(`unknown_kind:${at}`);
-        return;
-      }
-      if (segment.kind !== "事實") return;
-      if (!segment.source || !segment.quote) {
-        reasons.push(`fact_without_source:${at}`);
-        return;
-      }
-      const source = sourceById.get(segment.source);
-      if (!source) {
-        reasons.push(`unknown_source:${at}`);
-        return;
-      }
-      const quote = compactForQuote(segment.quote);
-      if (quote.length < 2 || !compactForQuote(source.text).includes(quote)) {
-        reasons.push(`quote_not_in_source:${at}`);
+      const label = byIndex.get(at);
+      if (!label) {
+        reasons.push(`segment_missing:${at}`);
+      } else if (compactForQuote(label.text) !== compactForQuote(segment)) {
+        reasons.push(`segment_mismatch:${at}`);
+      } else {
+        reasons.push(...segmentProblems(label, segment, at, sourceById));
       }
     });
+
     for (const issue of check.issues) {
       reasons.push(
         issueCodes.includes(issue)
