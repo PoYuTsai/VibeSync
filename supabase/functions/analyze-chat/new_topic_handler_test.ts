@@ -1,6 +1,6 @@
 // 新話題 handler 行為測試（2026-10-01 規格 §2／§4.7）：正式 handler，只替換
 // supabase 與模型 fetch 邊界。鎖住進階開關、擋字發生在任何 DB／限流／模型
-// 之前，以及開關開時兩段提示詞真的換成進階版。
+// 之前，以及基本、進階都用提示詞 v2.3（ADR #51）。
 import {
   assert,
   assertEquals,
@@ -8,10 +8,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { handleNewTopicRequest } from "./new_topic_handler.ts";
 import {
-  buildNewTopicUserPrompt,
-  NEW_TOPIC_PROMPT,
-} from "./new_topic_prompt.ts";
-import {
+  buildNewTopicTwoStageUserPrompt,
   NEW_TOPIC_RED_CLOSE_REASON,
   NEW_TOPIC_TWO_STAGE_PROMPT,
 } from "./new_topic_two_stage.ts";
@@ -284,23 +281,47 @@ Deno.test("handler：開關沒開時，已落帳的同一筆進階請求照常�
   assertEquals(replayHit.subscriptionTier, "essential");
 });
 
-Deno.test("handler：開關沒開＋沒有 topicContext → 照舊走 legacy 提示詞", async () => {
+Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走提示詞 v2.3，局面只有狀況那幾行", async () => {
   const result = await run(body(), undefined);
   assertEquals(result.status, 200);
   assertEquals(result.json.usage, { cost: 3 });
   assertEquals(result.modelRequests.length, 1);
   const [request] = result.modelRequests;
-  assertEquals(request.system[0].text, NEW_TOPIC_PROMPT);
+  assertEquals(request.system[0].text, NEW_TOPIC_TWO_STAGE_PROMPT);
+  // handler 帶台灣時間的「今天」；從實際送出的內容取出日期再比對整份。
+  const today = request.messages[0].content.match(
+    /## 今天（台灣時間）\n(\d{4} 年 \d{1,2} 月 \d{1,2} 日（週[一二三四五六日]）)。/,
+  )?.[1];
+  assert(today, "基本模式也要帶「今天」段");
   assertEquals(
     request.messages[0].content,
-    buildNewTopicUserPrompt({
+    buildNewTopicTwoStageUserPrompt({
       partnerSummary: "對象：小雅。興趣：爬山。",
       effectiveStyleContext: null,
       situation: "went_cold",
+      topicContext: null,
       requestId: REQUEST_ID,
+      today,
     }),
   );
+  assertFalse(request.messages[0].content.includes("## 用戶手上的素材"));
   assert(result.dbCalls.includes("rpc:settle_new_topic_request"));
+  // 基本模式也記品質稽核（只記錄、不擋），標成 basic。
+  const audit = result.logMetadata.get("new_topic_two_stage_audit") as Record<
+    string,
+    unknown
+  >;
+  assertEquals(audit.promptVariant, "basic");
+  assertEquals(audit.promptVersion, "new-topic-v2.4");
+  assertEquals(audit.materialUsedInRecommended, null);
+  assertEquals(audit.redCloseApplied, false);
+});
+
+Deno.test("handler：基本模式 settle 被先完成者搶先（回放）→ 不記品質稽核", async () => {
+  const result = await run(body(), undefined, false);
+  assertEquals(result.status, 200);
+  assert(result.logMetadata.has("new_topic_settlement_replayed"));
+  assertFalse(result.logMetadata.has("new_topic_two_stage_audit"));
 });
 
 // ---------------------------------------------------------------------------
@@ -811,7 +832,8 @@ Deno.test("handler：ai_logs 一次成功只記一列主呼叫，request_body �
     operation: REQUEST_ID,
     tier: "essential",
     usageComplete: false,
-    promptVariant: "two_stage_v1",
+    promptVariant: "advanced",
+    promptVersion: "new-topic-v2.4",
   });
   const serialized = JSON.stringify(result.aiCallRows);
   assertFalse(serialized.includes("小雅"));
@@ -867,7 +889,8 @@ Deno.test("handler：修復後仍不合格 → 失敗事件帶 requestId、提�
     | undefined;
   assert(invalid, "new_topic_response_invalid 必須記錄");
   assertEquals(invalid.requestId, REQUEST_ID);
-  assertEquals(invalid.promptVariant, "two_stage_v1");
+  assertEquals(invalid.promptVariant, "advanced");
+  assertEquals(invalid.promptVersion, "new-topic-v2.4");
   assert(typeof invalid.elapsedMs === "number" && invalid.elapsedMs >= 0);
   const serialized = JSON.stringify(invalid);
   assertFalse("partnerSummary" in invalid);
@@ -900,15 +923,18 @@ Deno.test("handler：修復輸出也要過整包外洩檢查，命中就不交�
   assertFalse(result.dbCalls.includes("rpc:settle_new_topic_request"));
 });
 
-Deno.test("handler：進階路徑的 sentinel 只在進階路徑擋，legacy 守門不變", async () => {
+Deno.test("handler：新話題 sentinel 基本與進階都擋（共用提示詞 v2.3），擋下不扣", async () => {
   const withPhrase = {
     ...MODEL_PAYLOAD,
     topics: MODEL_PAYLOAD.topics.map((topic, index) =>
       index === 0 ? { ...topic, whyItWorks: "照類型決定主詞，不改主詞" } : topic
     ),
   };
-  const legacy = await run(body(), undefined, true, withPhrase);
-  assertEquals(legacy.status, 200);
+  const basic = await run(body(), undefined, true, withPhrase);
+  assertEquals(basic.status, 502);
+  assertEquals(basic.json.shouldChargeQuota, false);
+  assertFalse(basic.dbCalls.includes("rpc:settle_new_topic_request"));
+  assert(basic.dbCalls.includes("rpc:release_new_topic_claim"));
   const advanced = await run(
     body({ topicContext: STORY }),
     "true",
@@ -996,16 +1022,24 @@ Deno.test("handler：紅燈收尾模型自己推第一題 → 不算改推，但
   assertEquals(audit.redCloseOverridden, false);
 });
 
-Deno.test("handler：紅燈收尾以外（legacy 沒帶 topicContext、進階黃燈）推薦照模型", async () => {
+Deno.test("handler：紅燈收尾以外（基本模式沒帶 topicContext、進階黃燈）推薦照模型", async () => {
   const picked2 = {
     ...MODEL_PAYLOAD,
     recommendation: { index: 2, reason: "理由" },
   };
-  const legacy = await run(body({ situation: "stuck" }), "true", true, picked2);
-  assertEquals(legacy.status, 200);
-  assertEquals(legacy.modelRequests[0].system[0].text, NEW_TOPIC_PROMPT);
-  assertEquals(legacy.json.recommendation, { topicId: "nt_3", reason: "理由" });
-  assertFalse(legacy.logMetadata.has("new_topic_two_stage_audit"));
+  const basic = await run(body({ situation: "stuck" }), "true", true, picked2);
+  assertEquals(basic.status, 200);
+  assertEquals(
+    basic.modelRequests[0].system[0].text,
+    NEW_TOPIC_TWO_STAGE_PROMPT,
+  );
+  assertEquals(basic.json.recommendation, { topicId: "nt_3", reason: "理由" });
+  const basicAudit = basic.logMetadata.get(
+    "new_topic_two_stage_audit",
+  ) as Record<string, unknown>;
+  assertEquals(basicAudit.promptVariant, "basic");
+  assertEquals(basicAudit.redCloseApplied, false);
+  assertEquals(basicAudit.redCloseOverridden, false);
 
   const yellow = await run(
     body({ situation: "stuck", topicContext: { engagement: "yellow" } }),

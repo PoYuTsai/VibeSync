@@ -1,6 +1,6 @@
 {
-  "version": "new-topic-two-stage-eval-cases-v1",
-  "note": "人工示例，不是真用戶資料。partners 的格式照 NewTopicPartnerContextBuilder 產出（關於我已停用，一律 null）。topicContext 沒寫的欄位＝用戶沒選。E1–E3 是提案 §7 的三個例子。",
+  "version": "new-topic-eval-cases-v2",
+  "note": "人工示例，不是真用戶資料。partners 的格式照 NewTopicPartnerContextBuilder 產出（關於我已停用，一律 null）。situation 是 null＝狀況沒選；topicContext 是 null＝基本模式（請求不帶 topicContext：什麼都不選或只選狀況，舊版 App 也是這樣）；topicContext 沒寫的欄位＝用戶沒選。E1–E3 是提案 §7 的三個例子；B1–B6、N1、N2、J1、T1 是 2026-10-02 規格 §6.2 加的案例。",
   "partners": {
     "xiaowen": "[對象作戰板：小雯]\n- 累計對話：4 段，最後互動 2026-09-14\n- 最近互動投入：58（只調整節奏，不是關係階段或長期特質）\n- 興趣：甜點、爬山、韓劇\n- 性格：慢熟、愛吐槽\n- 過往備註：回覆慢但都會回；週末常跟朋友去郊外\n- 只可使用以上明確紀錄；手動資料不能冒充她說過的話，也不得猜補未列出的興趣",
     "ivy": "[對象作戰板：Ivy]\n- 累計對話：2 段，最後互動 2026-09-20\n- 最近互動投入：32（只調整節奏，不是關係階段或長期特質）\n- 興趣：咖啡、底片攝影、貓\n- 性格：理性、獨立\n- 使用者確認的對方資料：在設計公司上班，常加班\n- 只可使用以上明確紀錄；手動資料不能冒充她說過的話，也不得猜補未列出的興趣",
@@ -102,6 +102,86 @@
       "partner": "ivy",
       "situation": "warm_up",
       "topicContext": { "engagement": "red", "materialKind": "my_story", "materialText": "這週被主管拉去跑公司接力賽，跑完腳直接廢掉" }
+    },
+    {
+      "id": "B1",
+      "source": "規格 §6.2 基本（什麼都不選，最常見）",
+      "label": "什麼都沒選（基本模式）",
+      "partner": "xiaowen",
+      "situation": null,
+      "topicContext": null
+    },
+    {
+      "id": "B2",
+      "source": "規格 §6.2 基本（工作資訊多、沒有互虧依據，最接近截圖）",
+      "label": "什麼都沒選（基本模式）",
+      "partner": "ivy",
+      "situation": null,
+      "topicContext": null
+    },
+    {
+      "id": "B3",
+      "source": "規格 §6.2 基本（作戰板寫聊天常互虧：玩笑要還在）",
+      "label": "聊得不錯，想更靠近（基本模式，只選狀況）",
+      "partner": "anan",
+      "situation": "warm_up",
+      "topicContext": null
+    },
+    {
+      "id": "B4",
+      "source": "規格 §6.2 基本（沒有對象資料、不提空窗）",
+      "label": "冷掉了，想重新聊（基本模式，只選狀況；沒有對象資料）",
+      "partner": null,
+      "situation": "went_cold",
+      "topicContext": null
+    },
+    {
+      "id": "B5",
+      "source": "規格 §6.2 基本（只選狀況）",
+      "label": "還在聊，但接不下去（基本模式，只選狀況）",
+      "partner": "ivy",
+      "situation": "stuck",
+      "topicContext": null
+    },
+    {
+      "id": "B6",
+      "source": "規格 §6.2 基本（不編約會細節、不約下次）",
+      "label": "剛約完會（基本模式，只選狀況）",
+      "partner": "xiaowen",
+      "situation": "after_date",
+      "topicContext": null
+    },
+    {
+      "id": "N1",
+      "source": "規格 §6.2 進階（幫我想時不硬編）",
+      "label": "還在聊，但接不下去・會反問、聊很多｜沒有，幫我想",
+      "partner": "ivy",
+      "situation": "stuck",
+      "topicContext": { "engagement": "green", "materialKind": "none" }
+    },
+    {
+      "id": "N2",
+      "source": "規格 §6.2 進階（投入普通時輕、好接）",
+      "label": "聊得不錯，想更靠近・有回，但很短｜沒有，幫我想",
+      "partner": "xiaowen",
+      "situation": "warm_up",
+      "topicContext": { "engagement": "yellow", "materialKind": "none" }
+    },
+    {
+      "id": "J1",
+      "source": "規格 §6.2 進階（有依據時玩笑對抗仍可用）",
+      "label": "還在聊，但接不下去・會反問、聊很多｜我們之間的梗",
+      "partner": "anan",
+      "situation": "stuck",
+      "topicContext": { "engagement": "green", "materialKind": "inside_joke", "materialText": "她說我每次點飲料都點最怪的口味" }
+    },
+    {
+      "id": "T1",
+      "source": "規格 §6.2 進階（自然的問句不被改成判斷）",
+      "label": "冷掉了・幾天到一週・聊著聊著就停了｜看到想到她的東西",
+      "partner": "ivy",
+      "situation": "went_cold",
+      "topicContext": { "coldDuration": "days", "coldStop": "faded", "materialKind": "trigger", "materialText": "她常去的那種咖啡廳出了新的淺焙豆" }
     }
   ]
 }

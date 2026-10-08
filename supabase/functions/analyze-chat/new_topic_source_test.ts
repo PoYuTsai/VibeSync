@@ -229,6 +229,27 @@ Deno.test("index：進階路徑 telemetry、稽核與兩條模型呼叫都接上
   assertFalse(branch.includes("system: NEW_TOPIC_PROMPT,"));
 });
 
+Deno.test("handler：提示詞路由只走 planNewTopicPrompt（評測工具共用同一個函式，ADR #51）", () => {
+  const branch = newTopicHandlerSource;
+  assertEquals(branch.match(/planNewTopicPrompt\(/g)?.length, 1);
+  assert(branch.includes("    nowMs: deps.requestStartedAtMs,\n  });"));
+  assert(
+    branch.includes(
+      "const newTopicSystemPrompt = newTopicPromptPlan.system;",
+    ),
+  );
+  assert(
+    branch.includes(
+      "const newTopicPromptLeak = newTopicPromptPlan.hasPromptLeak;",
+    ),
+  );
+  assert(branch.includes("const newTopicModel = NEW_TOPIC_MODEL;"));
+  // handler 不再自己組提示詞：路由只有一份，評測才測得到 production。
+  assertFalse(branch.includes("buildNewTopicTwoStageUserPrompt"));
+  assertFalse(branch.includes("NEW_TOPIC_TWO_STAGE_PROMPT,"));
+  assertFalse(branch.includes("newTopicTodayLabel"));
+});
+
 Deno.test("migration：claim/settle/release/cleanup/contract marker 俱全", () => {
   const claim = migrationSource.indexOf("claim_new_topic_request");
   const settle = migrationSource.indexOf("settle_new_topic_request");
