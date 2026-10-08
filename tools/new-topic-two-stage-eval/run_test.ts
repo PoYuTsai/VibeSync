@@ -6,6 +6,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  armModel,
   ARMS,
   awkwardPatternLines,
   baseRouter,
@@ -36,16 +37,24 @@ import {
   parseOptions,
   type PlannedCall,
   PRICING,
+  pricingFor,
   promptChars,
   recordProblems,
   REQUEST_HEADERS,
   requestBody,
   reservationUsd,
+  runtimeByArm,
   sanitizeCase,
+  SONNET_5_5_TYPICAL_THINKING_TOKENS,
   stopBeforeCall,
   summaryMarkdown,
+  TYPICAL_OUTPUT_TOKENS,
   usd,
 } from "./run.ts";
+import {
+  SONNET_5_5_MODEL,
+  SONNET_5_5_THINKING_HEADROOM_TOKENS,
+} from "../../supabase/functions/_shared/model_request_params.ts";
 import {
   acceptanceMarkdown,
   blindCodes,
@@ -1292,6 +1301,21 @@ Deno.test("完整度：22 組 × 2 次 × 兩臂都齊、每組評完才可能�
       { manifest: await finishedManifest({ candidateDirty: true }) },
       "評測時工作樹有未提交修改",
     ],
+    [
+      "模型對照（同一份提示詞換模型）",
+      {
+        manifest: await finishedManifest({
+          comparison: "model",
+          options: {
+            repeat: 2,
+            only: null,
+            arms: ["base", "cand"],
+            compare: "model",
+          },
+        }),
+      },
+      "這是模型對照（--compare=model），不是 §6.5 驗收",
+    ],
   ];
   for (const [label, override, expected] of cases) {
     const problems = completenessProblems({ ...base, ...override });
@@ -1301,4 +1325,243 @@ Deno.test("完整度：22 組 × 2 次 × 兩臂都齊、每組評完才可能�
     );
   }
   assertEquals(blindCodes(form).length, 44);
+});
+
+// ---------------------------------------------------------------------------
+// 模型對照（Eric 2026-10-08：同一份提示詞，Sonnet 5 vs 5.5）
+// ---------------------------------------------------------------------------
+
+const MODEL_COMPARE_CASES = ["B4", "E3", "J1", "S1", "D1", "C2"];
+
+async function modelComparePlan(ids: string[], repeat: number) {
+  const cand = candRouter(NOW_MS);
+  return await buildPlan(
+    CASES.filter((c) => ids.includes(c.id)),
+    repeat,
+    { base: cand, cand },
+    ARMS,
+    "model",
+  );
+}
+
+/** 用 production 的 fallback.ts 送一跳（不備援），抓下實際送出的 body。 */
+async function firstHopBody(model: string, call: PlannedCall) {
+  let captured: unknown = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+    captured = JSON.parse(String(init?.body));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: "{}" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+  try {
+    await callClaudeWithFallback(
+      {
+        model,
+        max_tokens: NEW_TOPIC_MAX_TOKENS,
+        system: call.system,
+        messages: [{ role: "user", content: call.user }],
+      },
+      "test-key",
+      { timeout: 5000, maxRetries: 1, allowModelFallback: false },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return captured;
+}
+
+Deno.test("模型對照：--compare=model 兩臂同一份提示詞、同 requestId，只換模型；不收 --base-ref", async () => {
+  assertEquals(parseOptions([]).compare, "prompt");
+  const opts = parseOptions([
+    "--compare=model",
+    `--only=${MODEL_COMPARE_CASES.join(",")}`,
+    "--repeat=2",
+  ]);
+  assertEquals([opts.compare, opts.repeat, opts.only], [
+    "model",
+    2,
+    MODEL_COMPARE_CASES,
+  ]);
+  assertThrows(() => parseOptions(["--compare=both"]));
+  assertThrows(() => parseOptions(["--compare=model", "--base-ref=7c5cc523"]));
+
+  const plan = await modelComparePlan(MODEL_COMPARE_CASES, 2);
+  assertEquals(plan.length, 24);
+  assertEquals(
+    [...new Set(plan.filter((c) => c.arm === "base").map((c) => c.model))],
+    [NEW_TOPIC_MODEL],
+  );
+  assertEquals(
+    [...new Set(plan.filter((c) => c.arm === "cand").map((c) => c.model))],
+    [SONNET_5_5_MODEL],
+  );
+  for (const b of plan.filter((c) => c.arm === "base")) {
+    const c = plan.find((x) =>
+      x.arm === "cand" && x.caseId === b.caseId && x.attempt === b.attempt
+    )!;
+    assertEquals(
+      [c.system, c.user, c.requestId, c.grounding, c.appliesRedClose],
+      [b.system, b.user, b.requestId, b.grounding, b.appliesRedClose],
+    );
+  }
+  // 提示詞對照（預設）兩臂都是 production 的模型。
+  assertEquals((await planFor(["E1"])).map((c) => c.model), [
+    NEW_TOPIC_MODEL,
+    NEW_TOPIC_MODEL,
+  ]);
+  assertEquals(armModel("prompt", "cand"), NEW_TOPIC_MODEL);
+  assertEquals(armModel("model", "cand"), SONNET_5_5_MODEL);
+});
+
+Deno.test("模型對照：5.5 的 body 跟 fallback.ts 送 5.5 那一跳一樣（adaptive 思考不回傳、effort low、max_tokens 多 4000、不送 temperature）", async () => {
+  const [call] = await planFor(["T1"]);
+  const five = requestBody(call) as Record<string, unknown>;
+  assertEquals([five.model, five.max_tokens, five.thinking], [
+    NEW_TOPIC_MODEL,
+    NEW_TOPIC_MAX_TOKENS,
+    { type: "disabled" },
+  ]);
+  assertFalse("output_config" in five);
+  assertEquals(await firstHopBody(NEW_TOPIC_MODEL, call), five);
+
+  const fiveFive = requestBody({ ...call, model: SONNET_5_5_MODEL }) as Record<
+    string,
+    unknown
+  >;
+  assertEquals(fiveFive.model, SONNET_5_5_MODEL);
+  assertEquals(
+    fiveFive.max_tokens,
+    NEW_TOPIC_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS,
+  );
+  assertEquals(fiveFive.thinking, { type: "adaptive", display: "omitted" });
+  assertEquals(fiveFive.output_config, { effort: "low" });
+  assertFalse("temperature" in fiveFive);
+  assertEquals(fiveFive.system, five.system);
+  assertEquals(fiveFive.messages, five.messages);
+  assertEquals(await firstHopBody(SONNET_5_5_MODEL, call), fiveFive);
+});
+
+Deno.test("模型對照：估算與預留照各自模型——5.5 最壞是 max_tokens 7000 全滿、一般另加 1000 思考", async () => {
+  const plan = await modelComparePlan(["E1"], 1);
+  const base = plan.find((c) => c.arm === "base")!;
+  const cand = plan.find((c) => c.arm === "cand")!;
+  const input = estimateInputTokens(base);
+  assertEquals(estimateInputTokens(cand), input);
+  assertEquals(
+    reservationUsd(base),
+    conservativeUsd(input, NEW_TOPIC_MAX_TOKENS),
+  );
+  assertEquals(
+    reservationUsd(cand),
+    conservativeUsd(
+      input,
+      NEW_TOPIC_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS,
+      SONNET_5_5_MODEL,
+    ),
+  );
+  assert(reservationUsd(cand) > reservationUsd(base));
+  const estimate = estimatePlan(plan);
+  assertEquals(
+    [
+      estimate.byArm.base!.typicalOutputTokens,
+      estimate.byArm.base!.worstOutputTokens,
+    ],
+    [TYPICAL_OUTPUT_TOKENS, NEW_TOPIC_MAX_TOKENS],
+  );
+  assertEquals(
+    [
+      estimate.byArm.cand!.typicalOutputTokens,
+      estimate.byArm.cand!.worstOutputTokens,
+    ],
+    [
+      TYPICAL_OUTPUT_TOKENS + SONNET_5_5_TYPICAL_THINKING_TOKENS,
+      NEW_TOPIC_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS,
+    ],
+  );
+  assertEquals(
+    estimate.worstUsd,
+    estimate.byArm.base!.worstUsd + estimate.byArm.cand!.worstUsd,
+  );
+  // 兩個模型同價（_shared/model_pricing.ts）；實付照各自的單價算。
+  assertEquals(pricingFor(SONNET_5_5_MODEL), PRICING);
+  assertEquals(usd(100, 200, 0, 0, SONNET_5_5_MODEL), usd(100, 200));
+});
+
+Deno.test("模型對照：摘要列每臂時間、停止原因與實付，寫明不是 §6.5 驗收；提示詞對照照舊有門檻表", async () => {
+  const plan = await modelComparePlan(["E1"], 2);
+  // 順序：E1.1.base、E1.1.cand、E1.2.base、E1.2.cand。
+  const records: EvalRecord[] = plan.map((call, i) => ({
+    ...record(call, payload()),
+    stopReason: i === 3 ? "max_tokens" : "end_turn",
+    usage: {
+      inputTokens: 100,
+      outputTokens: 1000 + i * 500,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    },
+    costUsd: 0.01 * (i + 1),
+    costKnown: true,
+    elapsedMs: [12_000, 30_000, 14_000, 46_000][i],
+  }));
+  const runtime = runtimeByArm(records);
+  assertEquals(
+    [
+      runtime.base.sent,
+      runtime.base.elapsedMedianMs,
+      runtime.base.elapsedMaxMs,
+      runtime.base.outputTokensMax,
+    ],
+    [2, 12_000, 14_000, 2000],
+  );
+  assertEquals(
+    [
+      runtime.cand.overDeadline,
+      runtime.cand.stopMaxTokens,
+      runtime.cand.stopEndTurn,
+    ],
+    [1, 1, 1],
+  );
+  assertEquals(Number(runtime.cand.costUsd.toFixed(4)), 0.06);
+  const input = {
+    tag: "m",
+    candidateHead: "h",
+    baseSha: null,
+    now: DEFAULT_EVAL_NOW,
+    calls: 4,
+    planned: 4,
+    spentUsd: 0.1,
+    budgetUsd: 2,
+    stopped: false,
+    records,
+    unpaired: [],
+  };
+  const summary = summaryMarkdown({ ...input, comparison: "model" });
+  assert(
+    summary.includes(
+      `# 新話題模型對照 · m · ${NEW_TOPIC_MODEL} vs ${SONNET_5_5_MODEL}`,
+    ),
+    summary,
+  );
+  assert(summary.includes("不是 §6.5 驗收"));
+  assertFalse(summary.includes("## 規格 §6.5 驗收門檻"));
+  assert(
+    summary.includes(
+      "| 停止原因 end_turn／max_tokens／refusal | 2／0／0 | 1／1／0 |",
+    ),
+    summary,
+  );
+  assert(
+    summary.includes("| 等待 中位數／最慢／超過 45 秒 | 12.0 秒／14.0 秒／0 |"),
+  );
+  const promptSummary = summaryMarkdown(input);
+  assert(promptSummary.includes("## 規格 §6.5 驗收門檻"));
+  assert(promptSummary.includes("## 時間與費用（每臂）"));
 });

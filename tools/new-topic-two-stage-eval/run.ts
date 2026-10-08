@@ -6,6 +6,10 @@
 //   產生（handler 呼叫同一個函式）；「今天」用固定時間（--now），可重現。
 // - 兩臂同案例、同 requestId、同重複次數成對；模型、max_tokens、thinking 與 system 快取照 production
 //   主呼叫（requestBody 與 fallback.ts 送出的 body 相同，run_test 有比對）。不做修格式那一次呼叫。
+// - --compare=model（Eric 2026-10-08）：兩臂都用目前工作樹的提示詞（同 cand），只換模型：base＝production
+//   的 NEW_TOPIC_MODEL（Sonnet 5）、cand＝Sonnet 5.5；thinking／effort／max_tokens 由 model_request_params
+//   依模型決定（同 fallback.ts 每一跳）。這是已知問題的小型診斷，tally.ts 不會把它當 §6.5 驗收。
+// 每次呼叫只送一次：不重試、不修格式、不走備援、不串流；API 失敗照最壞預留計費並整批停。
 // 預設 dry-run：不打模型、不讀金鑰、不連網；會跑 git（rev-parse、archive）取出改前版本。
 // 真跑必須同時帶 --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>，且 Eric 當次說「跑」之後才能下。
 // 預算守門用估計的 token 數，不是嚴格上限（見 README「真跑」）。
@@ -25,6 +29,7 @@ import {
   SONNET_5_PRICING,
   type TokenPricing,
 } from "../../supabase/functions/_shared/model_pricing.ts";
+import { extractClaudeText } from "../../supabase/functions/analyze-chat/fallback.ts";
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
 import {
   hasNewTopicMaterial,
@@ -70,7 +75,7 @@ const PRICING_BY_MODEL: Record<string, TokenPricing> = {
   [SONNET_5_MODEL]: SONNET_5_PRICING,
   [SONNET_5_5_MODEL]: SONNET_5_5_PRICING,
 };
-function pricingFor(model: string): TokenPricing {
+export function pricingFor(model: string): TokenPricing {
   const pricing = PRICING_BY_MODEL[model];
   if (!pricing) throw new Error(`沒有 ${model} 的單價`);
   return pricing;
@@ -80,11 +85,41 @@ export const PRICING = pricingFor(MODEL);
  * 四種 input 單價裡最高的（system 開了 ephemeral 快取，第一次寫入是 1.25 倍）。預估與預留的 input
  * 一律用這個價：不管 usage 怎麼分到一般／快取寫入／快取讀取，實付都不會因為單價高於預留。
  */
-export const MAX_INPUT_PER_MTOK = Math.max(
-  PRICING.inputPerMTok,
-  PRICING.cacheWritePerMTok,
-  PRICING.cacheReadPerMTok,
-);
+export function maxInputPerMTok(pricing: TokenPricing): number {
+  return Math.max(
+    pricing.inputPerMTok,
+    pricing.cacheWritePerMTok,
+    pricing.cacheReadPerMTok,
+  );
+}
+export const MAX_INPUT_PER_MTOK = maxInputPerMTok(PRICING);
+
+/** prompt＝改前 vs 改後提示詞（同模型）；model＝同一份提示詞，只換模型。 */
+export type Comparison = "prompt" | "model";
+export const COMPARISONS: readonly Comparison[] = ["prompt", "model"];
+/** 模型對照的 cand 模型（Eric 2026-10-08：先比 Sonnet 5／5.5，再決定要不要加審稿呼叫）。 */
+export const MODEL_COMPARE_CANDIDATE = SONNET_5_5_MODEL;
+
+/** 這一臂送哪個模型：提示詞對照兩臂都是 production 的模型；模型對照只有 cand 換。 */
+export function armModel(compare: Comparison, arm: Arm): string {
+  return compare === "model" && arm === "cand"
+    ? MODEL_COMPARE_CANDIDATE
+    : MODEL;
+}
+
+/** 這個模型實際送出的 max_tokens（5.5 多給思考餘裕）：output 最壞就是全滿。 */
+export function maxOutputTokensFor(model: string): number {
+  return maxTokensFor(model, NEW_TOPIC_MAX_TOKENS);
+}
+
+/** 5.5 的思考 token 算在 output 裡；effort low 在新話題實際用多少還沒量過，估價先多抓這麼多。 */
+export const SONNET_5_5_TYPICAL_THINKING_TOKENS = 1000;
+
+export function typicalOutputTokensFor(model: string): number {
+  return model === SONNET_5_5_MODEL
+    ? TYPICAL_OUTPUT_TOKENS + SONNET_5_5_TYPICAL_THINKING_TOKENS
+    : TYPICAL_OUTPUT_TOKENS;
+}
 const API_TIMEOUT_MS = 60_000; // 同 handler 非串流路徑；超過 production 45 秒期限的另計
 /** 同 fallback.ts／streaming_fallback.ts 送出的 header。 */
 export const REQUEST_HEADERS = {
@@ -119,6 +154,7 @@ export type Options = {
   seed: number;
   only: string[] | null;
   arms: readonly Arm[];
+  compare: Comparison;
   run: boolean;
   maxCalls: number | null;
   budgetUsd: number | null;
@@ -133,6 +169,7 @@ const VALUE_FLAGS = [
   "seed",
   "only",
   "arms",
+  "compare",
   "max-calls",
   "budget-usd",
   "base-ref",
@@ -196,6 +233,14 @@ export function parseOptions(args: string[]): Options {
   if (arms.length === 0) {
     throw new Error("--arms 只能是 base、cand 或 both");
   }
+  const compare = (str("compare") ?? "prompt") as Comparison;
+  if (!COMPARISONS.includes(compare)) {
+    throw new Error("--compare 只能是 prompt 或 model");
+  }
+  // 模型對照兩臂都用目前工作樹的提示詞；收了 --base-ref 會讓人以為有比到改前版本。
+  if (compare === "model" && values.has("base-ref")) {
+    throw new Error("--compare=model 兩臂都用目前的提示詞，不收 --base-ref");
+  }
   // 基準只收 commit SHA：分支名會移動，結果就對不回真正的改前版本。
   const baseRef = str("base-ref") ?? DEFAULT_BASE_REF;
   if (!/^[0-9a-f]{7,40}$/.test(baseRef)) {
@@ -234,6 +279,7 @@ export function parseOptions(args: string[]): Options {
     seed: int("seed", randomSeed(), 0xffffffff),
     only,
     arms,
+    compare,
     run,
     maxCalls,
     budgetUsd,
@@ -456,6 +502,8 @@ export type PlannedCall = {
   caseId: string;
   attempt: number;
   arm: Arm;
+  /** 這次呼叫送的模型（armModel）。 */
+  model: string;
   mode: "basic" | "advanced";
   requestId: string;
   situation: NewTopicSituation | null;
@@ -522,6 +570,7 @@ export async function buildPlan(
   repeat: number,
   routers: Partial<Record<Arm, ArmRouter>>,
   arms: readonly Arm[] = ARMS,
+  compare: Comparison = "prompt",
 ): Promise<PlannedCall[]> {
   const plan: PlannedCall[] = [];
   for (const c of cases) {
@@ -543,6 +592,7 @@ export async function buildPlan(
           caseId: c.id,
           attempt,
           arm,
+          model: armModel(compare, arm),
           mode: request.topicContext === null ? "basic" : "advanced",
           requestId,
           situation: request.situation,
@@ -556,18 +606,25 @@ export async function buildPlan(
   return plan;
 }
 
-/** production 主呼叫的 request body（同 fallback.ts 第一跳；不含串流與備援）。 */
-export function requestBody(call: Pick<PlannedCall, "system" | "user">) {
+/** 有模型就照模型算、沒有就是 production 的模型（舊呼叫端與 production 主呼叫一樣）。 */
+type ModelCall = Pick<PlannedCall, "system" | "user"> & { model?: string };
+
+/**
+ * production 主呼叫的 request body（同 fallback.ts 第一跳；不含串流與備援）。thinking／effort／
+ * max_tokens 照 model_request_params 依模型決定，跟 fallback.ts 每一跳送的一樣。
+ */
+export function requestBody(call: ModelCall) {
+  const model = call.model ?? MODEL;
   return {
-    model: MODEL,
-    max_tokens: MAX_OUTPUT_TOKENS,
+    model,
+    max_tokens: maxOutputTokensFor(model),
     system: [{
       type: "text",
       text: call.system,
       cache_control: { type: "ephemeral" },
     }],
     messages: [{ role: "user", content: call.user }],
-    ...modelRequestParams(MODEL),
+    ...modelRequestParams(model),
   };
 }
 
@@ -589,38 +646,43 @@ export function estimateInputTokens(
   return Math.ceil(promptChars(call) * tokensPerChar);
 }
 
-/** 實付：照 usage 的四格 token 計價。 */
+/** 實付：照 usage 的四格 token 計價（單價依模型）。 */
 export function usd(
   inputTokens: number,
   outputTokens: number,
   cacheReadInputTokens = 0,
   cacheCreationInputTokens = 0,
+  model: string = MODEL,
 ): number {
   return estimateCostUsd({
     inputTokens,
     outputTokens,
     cacheReadInputTokens,
     cacheCreationInputTokens,
-  }, PRICING);
+  }, pricingFor(model));
 }
 
 /** 保守計價：input 全部用最高的 input 單價（快取寫入）。預估與每次送出前的預留都用這個。 */
 export function conservativeUsd(
   inputTokens: number,
   outputTokens: number,
+  model: string = MODEL,
 ): number {
-  return (inputTokens * MAX_INPUT_PER_MTOK +
-    outputTokens * PRICING.outputPerMTok) / 1_000_000;
+  const pricing = pricingFor(model);
+  return (inputTokens * maxInputPerMTok(pricing) +
+    outputTokens * pricing.outputPerMTok) / 1_000_000;
 }
 
-/** 每次送出前的預留：input 估計 token 全用快取寫入單價、output 用 max_tokens 全滿。 */
+/** 每次送出前的預留：input 估計 token 全用快取寫入單價、output 用這個模型的 max_tokens 全滿。 */
 export function reservationUsd(
-  call: Pick<PlannedCall, "system" | "user">,
+  call: ModelCall,
   tokensPerChar = CJK_TOKENS_PER_CHAR,
 ): number {
+  const model = call.model ?? MODEL;
   return conservativeUsd(
     estimateInputTokens(call, tokensPerChar),
-    MAX_OUTPUT_TOKENS,
+    maxOutputTokensFor(model),
+    model,
   );
 }
 
@@ -652,22 +714,54 @@ export function stopBeforeCall(input: {
     input.spentUsd + input.reservationUsd > input.budgetUsd;
 }
 
-export function estimatePlan(plan: Pick<PlannedCall, "system" | "user">[]) {
-  const inputTokens = plan.reduce(
-    (n, call) => n + estimateInputTokens(call),
-    0,
-  );
-  return {
-    calls: plan.length,
-    inputTokens,
-    typicalOutputTokens: plan.length * TYPICAL_OUTPUT_TOKENS,
-    worstOutputTokens: plan.length * MAX_OUTPUT_TOKENS,
-    typicalUsd: conservativeUsd(
-      inputTokens,
-      plan.length * TYPICAL_OUTPUT_TOKENS,
-    ),
-    worstUsd: conservativeUsd(inputTokens, plan.length * MAX_OUTPUT_TOKENS),
+export type PlanEstimate = {
+  calls: number;
+  inputTokens: number;
+  typicalOutputTokens: number;
+  worstOutputTokens: number;
+  typicalUsd: number;
+  worstUsd: number;
+};
+
+/** 同一個模型的 token 先加總再計價（單一模型時跟整批一起算一樣）。 */
+function estimateCalls(plan: ModelCall[]): PlanEstimate {
+  const byModel = new Map<string, { calls: number; input: number }>();
+  for (const call of plan) {
+    const model = call.model ?? MODEL;
+    const entry = byModel.get(model) ?? { calls: 0, input: 0 };
+    entry.calls++;
+    entry.input += estimateInputTokens(call);
+    byModel.set(model, entry);
+  }
+  const total: PlanEstimate = {
+    calls: 0,
+    inputTokens: 0,
+    typicalOutputTokens: 0,
+    worstOutputTokens: 0,
+    typicalUsd: 0,
+    worstUsd: 0,
   };
+  for (const [model, { calls, input }] of byModel) {
+    const typical = calls * typicalOutputTokensFor(model);
+    const worst = calls * maxOutputTokensFor(model);
+    total.calls += calls;
+    total.inputTokens += input;
+    total.typicalOutputTokens += typical;
+    total.worstOutputTokens += worst;
+    total.typicalUsd += conservativeUsd(input, typical, model);
+    total.worstUsd += conservativeUsd(input, worst, model);
+  }
+  return total;
+}
+
+/** 整批估算，另附每一臂的估算（模型對照兩臂的 max_tokens 與一般 output 不同）。 */
+export function estimatePlan(plan: (ModelCall & { arm?: Arm })[]) {
+  const byArm: Partial<Record<Arm, PlanEstimate>> = {};
+  for (const arm of ARMS) {
+    const calls = plan.filter((call) => call.arm === arm);
+    if (calls.length) byArm[arm] = estimateCalls(calls);
+  }
+  return { ...estimateCalls(plan), byArm };
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,6 +1199,47 @@ export function metricsByArm(records: EvalRecord[]) {
   return result;
 }
 
+/** 每臂的等待時間、停止原因、output token 與實付（模型對照要比的機械項目）。 */
+export function armRuntime(rows: EvalRecord[]) {
+  const sent = rows.filter((r) => r.status !== "NOT_RUN_CAP_OR_STOP");
+  const returned = rows.filter((r) => r.status === "MODEL_RETURNED");
+  const elapsed = returned.flatMap((r) =>
+    r.elapsedMs === undefined ? [] : [r.elapsedMs]
+  );
+  const output = returned.flatMap((r) => r.usage ? [r.usage.outputTokens] : []);
+  const stop = (reason: string) =>
+    returned.filter((r) => r.stopReason === reason).length;
+  return {
+    sent: sent.length,
+    returned: returned.length,
+    apiFailed: rows.filter((r) => r.status === "API_FAILED_COST_UNKNOWN")
+      .length,
+    stopEndTurn: stop("end_turn"),
+    stopMaxTokens: stop("max_tokens"),
+    stopRefusal: stop("refusal"),
+    elapsedMedianMs: percentile(elapsed, 0.5),
+    elapsedMaxMs: elapsed.length ? Math.max(...elapsed) : null,
+    overDeadline:
+      returned.filter((r) =>
+        (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS
+      ).length,
+    outputTokensMedian: percentile(output, 0.5),
+    outputTokensMax: output.length ? Math.max(...output) : null,
+    /** 含成本未知時計入的最壞預留。 */
+    costUsd: sent.reduce((n, r) => n + (r.costUsd ?? 0), 0),
+    costUnknown: sent.filter((r) => r.costKnown === false).length,
+  };
+}
+
+export type ArmRuntime = ReturnType<typeof armRuntime>;
+
+export function runtimeByArm(records: EvalRecord[]): Record<Arm, ArmRuntime> {
+  return {
+    base: armRuntime(records.filter((r) => r.arm === "base")),
+    cand: armRuntime(records.filter((r) => r.arm === "cand")),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 正式驗收的完整度：缺、重複、多出來、沒跑到的都要列出來；有任何一項就不能通過
 // ---------------------------------------------------------------------------
@@ -1393,8 +1528,12 @@ export function summaryMarkdown(input: {
   stopped: boolean;
   records: EvalRecord[];
   unpaired: string[];
+  comparison?: Comparison;
 }): string {
+  const comparison = input.comparison ?? "prompt";
+  const modelCompare = comparison === "model";
   const m = metricsByArm(input.records);
+  const runtime = runtimeByArm(input.records);
   const acc = mechanicalAcceptance(m);
   const problems = recordProblems(input.records);
   const complete = problems.length === 0;
@@ -1408,26 +1547,74 @@ export function summaryMarkdown(input: {
     `| ${label} | ${f(m.base.all)} | ${f(m.cand.all)} | ${f(m.base.basic)} | ${
       f(m.cand.basic)
     } | ${f(m.base.advanced)} | ${f(m.cand.advanced)} |`;
+  const runtimeRow = (
+    label: string,
+    f: (x: ArmRuntime) => string | number,
+  ) => `| ${label} | ${f(runtime.base)} | ${f(runtime.cand)} |`;
+  const seconds = (ms: number | null) =>
+    ms === null ? "—" : `${(ms / 1000).toFixed(1)} 秒`;
   const overDeadline =
     input.records.filter((r) =>
       (r.elapsedMs ?? 0) > NEW_TOPIC_GENERATION_DEADLINE_MS
     ).length;
+  const baseModel = armModel(comparison, "base");
+  const candModel = armModel(comparison, "cand");
+  const armNames = modelCompare
+    ? `base＝${baseModel}、cand＝${candModel}，同一份提示詞`
+    : "base＝改前、cand＝改後";
   return [
-    `# 新話題成對評測 · ${input.tag} · ${MODEL}`,
+    modelCompare
+      ? `# 新話題模型對照 · ${input.tag} · ${baseModel} vs ${candModel}`
+      : `# 新話題成對評測 · ${input.tag} · ${MODEL}`,
     "",
-    `- 候選 HEAD ${input.candidateHead}（提示詞 ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${input.now}）；基準 ${
-      input.baseSha ?? "（沒跑基準臂）"
-    }。`,
+    modelCompare
+      ? `- 兩臂同一份提示詞：HEAD ${input.candidateHead}（${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${input.now}），只差模型與模型參數（model_request_params）。`
+      : `- 候選 HEAD ${input.candidateHead}（提示詞 ${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${input.now}）；基準 ${
+        input.baseSha ?? "（沒跑基準臂）"
+      }。`,
     `- 實際呼叫 ${input.calls}／規劃 ${input.planned}；計入費用 $${
       input.spentUsd.toFixed(3)
     }（預算 $${input.budgetUsd}，依估計 token 守門、不是嚴格上限；含成本未知的最壞情況）；實付超過預留 ${overReservation} 次；提前停止：${
       input.stopped ? "是" : "否"
     }；超過 production 45 秒期限 ${overDeadline} 次。`,
-    complete
+    modelCompare
+      ? "- **這是已知問題的小型診斷（--compare=model），不是 §6.5 驗收，也不是沒看過的案例測試。** 不實、主詞與邏輯、尷尬、推薦能不能原樣傳，要看 records 逐句判斷。"
+      : complete
       ? "- 正式驗收資格：資料完整（22 組 × 2 次 × 兩臂，模型都有回）。"
       : `- **正式驗收資格：未完成，不能當正式驗收。** ${problems.join("；")}`,
     "",
-    "## 機械指標（base＝改前、cand＝改後）",
+    "## 時間與費用（每臂）",
+    "",
+    `| 項目 | base（${baseModel}） | cand（${candModel}） |`,
+    "|---|---|---|",
+    runtimeRow(
+      "送出／模型有回／API 失敗",
+      (x) => `${x.sent}／${x.returned}／${x.apiFailed}`,
+    ),
+    runtimeRow(
+      "停止原因 end_turn／max_tokens／refusal",
+      (x) => `${x.stopEndTurn}／${x.stopMaxTokens}／${x.stopRefusal}`,
+    ),
+    runtimeRow(
+      "等待 中位數／最慢／超過 45 秒",
+      (x) =>
+        `${seconds(x.elapsedMedianMs)}／${
+          seconds(x.elapsedMaxMs)
+        }／${x.overDeadline}`,
+    ),
+    runtimeRow(
+      "output token 中位數／最多（5.5 含思考）",
+      (x) => `${x.outputTokensMedian ?? "—"}／${x.outputTokensMax ?? "—"}`,
+    ),
+    runtimeRow(
+      "實付合計／平均每次（成本未知筆數）",
+      (x) =>
+        `$${x.costUsd.toFixed(4)}／$${
+          x.sent ? (x.costUsd / x.sent).toFixed(4) : "—"
+        }（${x.costUnknown}）`,
+    ),
+    "",
+    `## 機械指標（${armNames}）`,
     "",
     "開場句的指標算「開場句可評」的輸出（可交付＋只壞在解釋欄：用戶看得到這五句）；★ 解釋兩項只算可交付。",
     "",
@@ -1474,35 +1661,43 @@ export function summaryMarkdown(input: {
         `${x.redClose.modelPickedFirst}／${x.redClose.overridden}（共 ${x.redClose.deliverable}）`,
     ),
     "",
-    "## 規格 §6.5 驗收門檻",
-    "",
-    "| 門檻 | 結果 |",
-    "|---|---|",
-    "| 1. 不實（捏造、主詞弄反、越界）：候選 0 句（硬性） | 待 Bruce 盲測＋逐句對照輸入（tally.ts） |",
-    "| 2. 尷尬句數：候選 ≤ 基準一半；★ 尷尬：候選次數 ≤ 基準、且至多 1 個情境 | 待 Bruce 盲測（tally.ts） |",
-    "| 3. 會傳句數、★ 會傳次數：候選 ≥ 基準；基本、進階分開看，任一邊退步要交代 | 待 Bruce 盲測（tally.ts） |",
-    "| 4. 有一句有趣的版本數：候選 ≥ 基準八成；B3、J1、E3 候選每次都要有 | 待 Bruce 盲測（tally.ts） |",
-    `| 5a. 可交付率候選 ≥ 基準 | ${mark(acc.deliverableRate.pass)} ${
-      pct(acc.deliverableRate.cand)
-    } vs ${pct(acc.deliverableRate.base)} |`,
-    `| 5b. 一則兩個以上問句：候選 0 | ${
-      mark(acc.multiQuestionLines.pass)
-    } ${acc.multiQuestionLines.cand} |`,
-    `| 5c. 四種尷尬句型合計：候選 < 基準（基準已是 0 時候選也要 0） | ${
-      mark(acc.awkwardPatternLines.pass)
-    } ${acc.awkwardPatternLines.cand} vs ${acc.awkwardPatternLines.base} |`,
-    `| 5d. 近似重句：候選 ≤ 基準 × 1.5 | ${
-      mark(acc.nearDuplicatePairs.pass)
-    } ${acc.nearDuplicatePairs.cand} vs ${acc.nearDuplicatePairs.base} |`,
-    `| 5e. 超過 35 字：候選 ≤ 基準 | ${
-      mark(acc.over35.pass)
-    } ${acc.over35.cand} vs ${acc.over35.base} |`,
-    `| 6a. ★ 標題手法字：候選 0（命中要人工確認） | ${
-      mark(acc.starTitleTechnique.pass)
-    } ${acc.starTitleTechnique.cand} |`,
-    `| 6b. ★ 解釋夾英文：候選 0（命中要人工確認） | ${
-      mark(acc.starExplanationEnglish.pass)
-    } ${acc.starExplanationEnglish.cand} |`,
+    ...(modelCompare
+      ? [
+        "## 這份不判定門檻",
+        "",
+        "模型對照不套 §6.5，也不能取代合併驗收。上面的可交付、字面計數、時間與費用只是機械項目；哪一臂比較好，由 Eric 方看 records 逐句判斷，再決定要不要安排人評。",
+      ]
+      : [
+        "## 規格 §6.5 驗收門檻",
+        "",
+        "| 門檻 | 結果 |",
+        "|---|---|",
+        "| 1. 不實（捏造、主詞弄反、越界）：候選 0 句（硬性） | 待 Bruce 盲測＋逐句對照輸入（tally.ts） |",
+        "| 2. 尷尬句數：候選 ≤ 基準一半；★ 尷尬：候選次數 ≤ 基準、且至多 1 個情境 | 待 Bruce 盲測（tally.ts） |",
+        "| 3. 會傳句數、★ 會傳次數：候選 ≥ 基準；基本、進階分開看，任一邊退步要交代 | 待 Bruce 盲測（tally.ts） |",
+        "| 4. 有一句有趣的版本數：候選 ≥ 基準八成；B3、J1、E3 候選每次都要有 | 待 Bruce 盲測（tally.ts） |",
+        `| 5a. 可交付率候選 ≥ 基準 | ${mark(acc.deliverableRate.pass)} ${
+          pct(acc.deliverableRate.cand)
+        } vs ${pct(acc.deliverableRate.base)} |`,
+        `| 5b. 一則兩個以上問句：候選 0 | ${
+          mark(acc.multiQuestionLines.pass)
+        } ${acc.multiQuestionLines.cand} |`,
+        `| 5c. 四種尷尬句型合計：候選 < 基準（基準已是 0 時候選也要 0） | ${
+          mark(acc.awkwardPatternLines.pass)
+        } ${acc.awkwardPatternLines.cand} vs ${acc.awkwardPatternLines.base} |`,
+        `| 5d. 近似重句：候選 ≤ 基準 × 1.5 | ${
+          mark(acc.nearDuplicatePairs.pass)
+        } ${acc.nearDuplicatePairs.cand} vs ${acc.nearDuplicatePairs.base} |`,
+        `| 5e. 超過 35 字：候選 ≤ 基準 | ${
+          mark(acc.over35.pass)
+        } ${acc.over35.cand} vs ${acc.over35.base} |`,
+        `| 6a. ★ 標題手法字：候選 0（命中要人工確認） | ${
+          mark(acc.starTitleTechnique.pass)
+        } ${acc.starTitleTechnique.cand} |`,
+        `| 6b. ★ 解釋夾英文：候選 0（命中要人工確認） | ${
+          mark(acc.starExplanationEnglish.pass)
+        } ${acc.starExplanationEnglish.cand} |`,
+      ]),
     "",
     "字面計數只看趨勢，不是語意判定；用戶講自己的句子也可能被算到。只壞在解釋欄的那一版，★ 用主呼叫自己的推薦（production 修格式那一次會重選，可能不同）。",
     input.unpaired.length
@@ -1538,13 +1733,24 @@ async function main(args: string[]): Promise<void> {
   }
   const routers: Partial<Record<Arm, ArmRouter>> = {};
   let baseSha: string | null = null;
-  if (opts.arms.includes("base")) {
-    const base = await materializeRef(opts.baseRef);
-    baseSha = base.sha;
-    routers.base = baseRouter(await loadBaseModules(base.root));
+  if (opts.compare === "model") {
+    // 模型對照：兩臂同一份提示詞（目前工作樹的 planNewTopicPrompt），不取改前版本。
+    for (const arm of opts.arms) routers[arm] = candRouter(opts.nowMs);
+  } else {
+    if (opts.arms.includes("base")) {
+      const base = await materializeRef(opts.baseRef);
+      baseSha = base.sha;
+      routers.base = baseRouter(await loadBaseModules(base.root));
+    }
+    if (opts.arms.includes("cand")) routers.cand = candRouter(opts.nowMs);
   }
-  if (opts.arms.includes("cand")) routers.cand = candRouter(opts.nowMs);
-  const plan = await buildPlan(selected, opts.repeat, routers, opts.arms);
+  const plan = await buildPlan(
+    selected,
+    opts.repeat,
+    routers,
+    opts.arms,
+    opts.compare,
+  );
   const estimate = estimatePlan(plan);
 
   let apiKey = "";
@@ -1566,20 +1772,36 @@ async function main(args: string[]): Promise<void> {
     systemPrompts[await sha256(call.system)] = call.system;
   }
   const sampleBody = requestBody({ system: "<system>", user: "<user>" });
+  // 每一臂實際送出的 body 形狀（system／user 換成佔位）：模型對照兩臂只差 model 與模型參數。
+  const armRequests = Object.fromEntries(opts.arms.map((arm) => {
+    const model = armModel(opts.compare, arm);
+    return [arm, {
+      model,
+      prompt: opts.compare === "model" || arm === "cand"
+        ? `HEAD planNewTopicPrompt（${NEW_TOPIC_TWO_STAGE_PROMPT_VERSION}，今天＝${opts.now}）`
+        : `基準 ${baseSha} 的 handler 路由（git archive）`,
+      bodyShape: requestBody({ system: "<system>", user: "<user>", model }),
+      pricing: pricingFor(model),
+      typicalOutputTokens: typicalOutputTokensFor(model),
+      maxOutputTokens: maxOutputTokensFor(model),
+    }];
+  }));
   const manifest = {
     status: opts.run ? "RUNNING" : "DRY_RUN_NO_MODEL",
     startedAt: new Date().toISOString(),
     candidateHead,
     candidateDirty: dirty,
-    baseRef: opts.baseRef,
+    comparison: opts.compare,
+    baseRef: opts.compare === "model" ? null : opts.baseRef,
     baseSha,
     now: opts.now,
     model: MODEL,
+    armRequests,
     request: {
       headers: REQUEST_HEADERS,
       bodyShape: sampleBody,
       note:
-        "同 production 主呼叫（fallback.ts 第一跳）；不做修格式、不串流、不走備援",
+        "同 production 主呼叫（fallback.ts 第一跳）；每次只送一次：不重試、不修格式、不串流、不走備援；API 失敗照最壞預留計費並整批停",
     },
     candidatePromptVersion: NEW_TOPIC_TWO_STAGE_PROMPT_VERSION,
     sha256: {
@@ -1593,11 +1815,16 @@ async function main(args: string[]): Promise<void> {
     estimate: {
       ...estimate,
       method:
-        `input＝字數×${CJK_TOKENS_PER_CHAR}（估計，不是 tokenizer），全部用最高的 input 單價 $${MAX_INPUT_PER_MTOK}/M（快取寫入）；output 一般 ${TYPICAL_OUTPUT_TOKENS}／最壞 ${MAX_OUTPUT_TOKENS}（max_tokens 全滿）`,
+        `input＝字數×${CJK_TOKENS_PER_CHAR}（估計，不是 tokenizer），全部用該模型最高的 input 單價（快取寫入）；output 一般＝${TYPICAL_OUTPUT_TOKENS}（5.5 另加思考 ${SONNET_5_5_TYPICAL_THINKING_TOKENS}，未實測）、最壞＝該模型 max_tokens 全滿`,
       guard:
-        "每次送出前預留＝估計 input×最高 input 單價＋max_tokens 全滿；已花費＋預留超過 --budget-usd 就整批停。真跑時每字 token 數取 1.5 與實測的較大值。token 是估的，預算不是嚴格上限。",
+        "每次送出前預留＝估計 input×最高 input 單價＋該模型 max_tokens 全滿；已花費＋預留超過 --budget-usd 就整批停。真跑時每字 token 數取 1.5 與實測的較大值。token 是估的，預算不是嚴格上限。",
     },
-    options: { ...opts, nowMs: undefined },
+    options: {
+      ...opts,
+      nowMs: undefined,
+      // 模型對照沒有用到改前版本，不記預設的基準 ref，免得看起來像有比到。
+      baseRef: opts.compare === "model" ? null : opts.baseRef,
+    },
   };
   await write("manifest.json", manifest);
   await write("system-prompts.json", systemPrompts);
@@ -1618,20 +1845,37 @@ async function main(args: string[]): Promise<void> {
       }最壞情況`;
     console.log(`=== 估算（dry-run，實際模型呼叫 0）===`);
     console.log(
-      `案例 ${selected.length} × 重複 ${opts.repeat} × ${opts.arms.length} 臂（${
+      `${
+        opts.compare === "model" ? "模型對照（兩臂同一份提示詞）" : "提示詞對照"
+      }：案例 ${selected.length} × 重複 ${opts.repeat} × ${opts.arms.length} 臂（${
         opts.arms.join("、")
       }）= ${estimate.calls} 次呼叫${caps}`,
     );
+    for (const arm of opts.arms) {
+      const armEstimate = estimate.byArm[arm]!;
+      const { system: _system, messages: _messages, ...params } =
+        armRequests[arm].bodyShape;
+      console.log(
+        `${arm}（${
+          armRequests[arm].model
+        }）：${armEstimate.calls} 次；送出參數 ${
+          JSON.stringify(params)
+        }；預估 一般 $${armEstimate.typicalUsd.toFixed(2)}／最壞 $${
+          armEstimate.worstUsd.toFixed(2)
+        }`,
+      );
+    }
     console.log(
       `預估 input ${estimate.inputTokens} tokens；output 一般 ${estimate.typicalOutputTokens}／最壞 ${estimate.worstOutputTokens}`,
     );
     console.log(
       `預估費用 一般 $${estimate.typicalUsd.toFixed(2)}／最壞 $${
         estimate.worstUsd.toFixed(2)
-      }（${MODEL}：input 全部用快取寫入價 $${MAX_INPUT_PER_MTOK}/M、output $${PRICING.outputPerMTok}/M；token 是字數估的，不是嚴格上限）`,
+      }（input 全部用該模型的快取寫入價、output 照該模型單價；token 是字數估的，不是嚴格上限）`,
     );
     console.log(JSON.stringify({
       status: "DRY_RUN_NO_MODEL",
+      comparison: opts.compare,
       candidateHead,
       baseSha,
       cases: selected.length,
@@ -1701,11 +1945,8 @@ async function main(args: string[]): Promise<void> {
           `HTTP ${response.status} ${data?.error?.type ?? ""}`.trim(),
         );
       }
-      const raw = Array.isArray(data.content)
-        ? data.content.filter((b: { type?: string }) => b.type === "text").map((
-          b: { text?: string },
-        ) => b.text ?? "").join("")
-        : "";
+      // 取文字同 production 一般路徑（5.5 的思考區塊不算進來）。
+      const raw = extractClaudeText(data);
       const u = data.usage;
       const int = (value: unknown) =>
         Number.isInteger(value) ? value as number : 0;
@@ -1727,6 +1968,7 @@ async function main(args: string[]): Promise<void> {
           usage.outputTokens,
           usage.cacheReadInputTokens,
           usage.cacheCreationInputTokens,
+          call.model,
         )
         : reservation;
       spentUsd += costUsd;
@@ -1788,6 +2030,7 @@ async function main(args: string[]): Promise<void> {
     stopped,
     records,
     unpaired: blind.unpaired,
+    comparison: opts.compare,
   });
   await write("summary.md", summary);
   await write("manifest.json", {
@@ -1797,9 +2040,11 @@ async function main(args: string[]): Promise<void> {
     modelCallsMade: calls,
     spentUsd,
     finalTokensPerChar: tokensPerChar,
-    formalComplete: formalProblems.length === 0,
+    // 模型對照不是正式驗收（tally.ts 也會擋）。
+    formalComplete: opts.compare === "prompt" && formalProblems.length === 0,
     formalProblems,
     metrics: metricsByArm(records),
+    runtime: runtimeByArm(records),
   });
   console.log(summary);
   console.log(

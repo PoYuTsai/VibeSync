@@ -368,12 +368,22 @@ export function completenessProblems(input: {
     status?: unknown;
     candidateDirty?: unknown;
     modelCallsMade?: unknown;
+    comparison?: unknown;
     sha256?: { cases?: unknown };
-    options?: { repeat?: unknown; only?: unknown; arms?: unknown };
+    options?: {
+      repeat?: unknown;
+      only?: unknown;
+      arms?: unknown;
+      compare?: unknown;
+    };
   } | null;
   if (typeof m !== "object" || m === null) {
     problems.push("manifest.json 格式不對");
   } else {
+    // 模型對照（同一份提示詞換模型）是小型診斷，不能當改前改後的 §6.5 驗收。
+    if (m.comparison === "model" || m.options?.compare === "model") {
+      problems.push("這是模型對照（--compare=model），不是 §6.5 驗收");
+    }
     if (m.status !== "FINISHED_QUALITY_UNREVIEWED") {
       problems.push(`評測沒有跑完（manifest status＝${String(m.status)}）`);
     }

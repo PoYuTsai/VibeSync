@@ -83,6 +83,42 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 | `reveal-map.json` | 解盲表（哪一版是甲、乙）；**不要跟盲測表一起給 Bruce** |
 | `manifest.json` | 跑完後另加實際呼叫數、費用、校正後的每字 token 數、正式驗收資格與指標 |
 
+## 模型對照（`--compare=model`，Eric 2026-10-08）
+
+同一份提示詞只換模型，先看 Sonnet 5.5 能不能處理已知問題，再決定要不要加第二次審稿呼叫。這是已知問題的小型診斷，**不是 §6.5 驗收，也不是沒看過的案例測試**；`tally.ts` 會把它列為不能驗收。
+
+- 兩臂都用目前工作樹的 `planNewTopicPrompt`（同 `cand`，「今天」用 `--now` 固定），同案例、同 requestId、同重複次數。不取改前版本，所以不收 `--base-ref`。
+- `base`＝production 的 `NEW_TOPIC_MODEL`；`cand`＝Sonnet 5.5。模型參數由 `_shared/model_request_params.ts` 依模型決定，跟 `fallback.ts` 每一跳送的一樣（`run_test.ts` 兩個模型都比對）：
+
+| | `base`（`claude-sonnet-5`） | `cand`（`claude-sonnet-5-5`） |
+|---|---|---|
+| thinking | `{"type":"disabled"}` | `{"type":"adaptive","display":"omitted"}` |
+| `output_config` | 不送 | `{"effort":"low"}` |
+| `max_tokens` | 3,000 | 7,000（可見預算一樣 3,000，另加 4,000 給思考） |
+| temperature | 不送 | 不送（5.5 送非預設值會 400） |
+| system 快取、header | 同 production | 同 production |
+
+- 每次只送一次：不重試、不修格式、不走備援、不串流。拒答、`max_tokens` 截斷、格式壞都照實記錄、繼續下一筆；API 失敗或沒回 usage 就照預留計費並整批停。
+- 費用估算：5.5 的思考 token 算在 output 裡，effort low 在新話題用多少還沒量過，一般多抓 1,000；最壞照 7,000 全滿。
+- 六個案例 B4、E3、J1、S1、D1、C2 各兩次、兩臂＝24 次（dry-run 保守估計一般約 $0.92、最壞約 $1.71）：
+
+```sh
+# dry-run（不花錢）
+deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+  tools/new-topic-two-stage-eval/run.ts --tag=nt5-model-dry \
+  --compare=model --only=B4,E3,J1,S1,D1,C2 --repeat=2
+
+# 真跑（要 Eric 當次說「跑」）
+deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+  --allow-env=HOME --allow-net=api.anthropic.com \
+  tools/new-topic-two-stage-eval/run.ts --tag=nt5-model \
+  --compare=model --only=B4,E3,J1,S1,D1,C2 --repeat=2 \
+  --run --confirm-paid --max-calls=24 --budget-usd=2
+```
+
+- `summary.md` 多一節「時間與費用（每臂）」：送出、停止原因（end_turn／max_tokens／refusal）、等待中位數與最慢、超過 45 秒、output token、實付；機械指標照常列，不列 §6.5 門檻表。
+- 不實、主詞與邏輯、尷尬、推薦能不能原樣傳，要看 `records.json` 逐句判斷。
+
 ## 盲測與驗收
 
 ### 盲測表（`blind.md`）
@@ -158,6 +194,7 @@ deno test --allow-env --allow-read tools/new-topic-two-stage-eval/run_test.ts
 - 外洩與紅燈收尾。
 - nt3 失分的案例（E1、C5、B6、D2、E3、J1、T1）都帶到 v2.4 的對應規則。這只證明規則送到了，模型照不照做要看盲測。
 - 只壞在解釋欄：五句進盲測、★ 用主呼叫自己的推薦、不算可交付。
+- 模型對照：兩臂同一份提示詞只換模型、不收 `--base-ref`；5.5 的 body 等於 `fallback.ts` 送 5.5 那一跳；估算與預留照各自模型的 `max_tokens`；摘要寫明不是 §6.5 驗收；`tally.ts` 把它列為不能驗收。
 - 字面計數、近似重句、我沒回她的道歉／解釋、機械門檻（含基準為 0）。
 - 盲測表：打亂、不露臂名、不標 ★；逐句勾選的解析（看不懂就拒絕）、未評和沒有分開、★ 從 records 取（含紅燈收尾）、句子對不上 records。
 - 門檻：★ 尷尬的兩個分母、基本／進階退步標「需交代」。
