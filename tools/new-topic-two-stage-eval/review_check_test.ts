@@ -475,6 +475,72 @@ Deno.test("原文沒有的時間細節、日期撐天氣，都剔除", async () 
   ]);
 });
 
+/** 自備來源測單句：測原文寫了什麼才撐得起哪種說法。 */
+function withSources(sources: SourceItem[], text: string, labels: Label[]) {
+  return checkReview({
+    sources,
+    candidates: [{ id: "x", text }],
+    review: {
+      checks: [checkOf({ id: "x", text, labels })],
+      selected: [],
+      recommended: "",
+    },
+  }).lines[0];
+}
+
+Deno.test("原文沒寫明的關係不能升級：看到撐不起擁有，想做撐不起做了", async () => {
+  const sawCat: SourceItem = {
+    id: "M1",
+    kind: "素材",
+    label: "用戶最近遇到的事",
+    text: "在公園看到一隻貓",
+  };
+  // 「看到一隻貓」撐不起「我家有一隻貓」。
+  assertEquals(
+    withSources([sawCat], "我家有一隻貓", [["擁有", "M1", "看到一隻貓"]])
+      .reasons,
+    ["possession_not_in_quote:1"],
+  );
+  // 原文明寫「我家有」才行。
+  const ownCat: SourceItem = { id: "U1", kind: "關於我", text: "我家有一隻貓" };
+  assertEquals(
+    withSources([ownCat], "我家有一隻貓", [["擁有", "U1", "我家有一隻貓"]])
+      .reasons,
+    [],
+  );
+  // 主詞要對上：她家的貓撐不起我家的貓，撐得起妳家的貓。
+  const herCat: SourceItem = {
+    id: "M1",
+    kind: "素材",
+    label: "之前聊過的事（她提過的）",
+    text: "她說她家有一隻貓",
+  };
+  assertEquals(
+    withSources([herCat], "我家有一隻貓", [["擁有", "M1", "她家有一隻貓"]])
+      .reasons,
+    ["possession_not_in_quote:1"],
+  );
+  assertEquals(
+    withSources([herCat], "原來妳家有一隻貓", [["擁有", "M1", "她家有一隻貓"]])
+      .reasons,
+    [],
+  );
+
+  // D1：「她說一直想學衝浪」撐不起「她去學了」，撐得起「還想學衝浪」。
+  assertEquals(
+    (await single("D1", "妳後來去學衝浪了", [["狀態", "M1", "想學衝浪"]]))
+      .reasons,
+    ["wish_as_done:1"],
+  );
+  assertEquals(
+    (await single("D1", "怕曬黑還想學衝浪，妳這矛盾也太可愛", [
+      ["說過", "M1", "想學衝浪"],
+      "看法",
+    ])).reasons,
+    [],
+  );
+});
+
 Deno.test("時間詞的正當用法：日期、真的在問、素材本來就寫了時間", async () => {
   assertEquals(
     (await single("B4", "今天週一，妳靠什麼撐過去？", [

@@ -12,9 +12,12 @@
  *
  * 句子裡有時間詞（今天、剛、這次…）、「我每次／我一定要…」或「我家」時，
  * 一定是在講事實：審稿標成看法、猜測、一般話題或招呼，程式照樣剔除；時間詞
- * 也要出現在附的原文裡。這幾道是字面規則，擋得住的有限：沒有這些字的事件或
- * 習慣被標成看法，或附的原文跟這段有關、卻撐不起多加的細節，程式核對不出來，
- * 要靠付費的審稿回測量。
+ * 也要出現在附的原文裡。原文沒寫明的關係也不能升級：「看到一隻貓」撐不起
+ * 「我家有一隻貓」，「她說想學衝浪」撐不起「她去學了」。
+ *
+ * 這幾道是字面規則，擋得住的有限；「兩個字連著相同」只是初篩，不代表原文
+ * 撐得起這段。沒有這些字的事件或習慣被標成看法，或附的原文跟這段有關、卻
+ * 撐不起多加的細節，程式核對不出來，要靠付費的審稿回測量。
  */
 import { NEW_TOPIC_TOPIC_COUNT } from "../../supabase/functions/analyze-chat/new_topic_payload.ts";
 
@@ -120,7 +123,10 @@ function compactForQuote(text: string): string {
   return text.normalize("NFKC").replace(/[^\p{L}\p{N}]/gu, "");
 }
 
-/** 附的原文要跟這一段講同一件事：至少有兩個字連在一起相同。 */
+/**
+ * 初篩：附的原文跟這一段至少有兩個字連在一起相同。只擋得住完全無關的引用，
+ * 不代表原文撐得起這段。
+ */
 function sharesWords(segment: string, quote: string): boolean {
   const a = compactForQuote(segment);
   const b = compactForQuote(quote);
@@ -188,6 +194,21 @@ const CLAIM_MARKERS = [
   },
   { name: "我家", pattern: /我家/gu, scopes: ["擁有", "狀態"] },
 ] as const;
+
+/** 擁有要原文明寫，主詞也要對上：「看到一隻貓」撐不起「我家有一隻貓」。 */
+const USER_POSSESSION = /我家|我有|我養/u;
+const HER_POSSESSION = /她家|她有|她養/u;
+const ANY_POSSESSION = /我家|我有|我養|她家|她有|她養/u;
+
+function possessionInQuote(segment: string): RegExp {
+  if (USER_POSSESSION.test(segment)) return USER_POSSESSION;
+  if (/妳家|妳有|妳養|她家|她有|她養/u.test(segment)) return HER_POSSESSION;
+  return ANY_POSSESSION;
+}
+
+/** 原文是想做、打算做的事，句子就不能寫成做了（假設句除外）。 */
+const WISH = /想|打算|計畫|準備/u;
+const HYPOTHETICAL = /如果|要是|假如|萬一/u;
 
 /** 有問號，或以「嗎」「呢」收尾，才算真的在問。 */
 function isQuestion(segment: string): boolean {
@@ -339,6 +360,16 @@ function segmentProblems(
   if (!sharesWords(segment, label.quote)) problems.add(`quote_unrelated:${at}`);
   if (!scopeAllows(label.scope, source)) {
     problems.add(`scope_source_mismatch:${at}`);
+  }
+  if (
+    label.scope === "擁有" && !possessionInQuote(segment).test(label.quote)
+  ) {
+    problems.add(`possession_not_in_quote:${at}`);
+  }
+  if (
+    WISH.test(label.quote) && !WISH.test(segment) && !HYPOTHETICAL.test(segment)
+  ) {
+    problems.add(`wish_as_done:${at}`);
   }
   for (const marker of markers) {
     const scopesForMarker: readonly string[] = marker.scopes;
