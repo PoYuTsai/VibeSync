@@ -133,12 +133,12 @@ abstract final class NewTopicTwoStageCopy {
   static String materialInputHint(String? kind) => switch (kind) {
         'past_topic' => '一句就好，例如：她說在準備潛水證照',
         'trigger' => '例如：路過一家超浮誇的甜點店，她說過愛吃甜（也可以是她發的限動）',
-        'my_story' => '例如：信心滿滿走進店裡，才發現走錯分店',
-        'inside_joke' => '例如：她說我的五分鐘都是半小時',
+        'my_story' => '例如：今天信心滿滿走進常去的店，結果是別間分店，超糗',
+        'inside_joke' => '例如：我每次說五分鐘到都遲到，她就虧我「你的五分鐘都是半小時」',
         _ => '',
       };
 
-  static const materialHelper = '寫給教練看的就好，不用寫成要傳給她的句子。';
+  static const materialHelper = '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼、哪裡好笑。';
   static const materialMaxGraphemes = 150;
   static const materialMaxUtf16 = 1500;
   static const materialMissingHint = '寫一句你手上的素材，或改選「沒有，幫我想」。';
