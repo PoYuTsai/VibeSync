@@ -138,7 +138,13 @@ abstract final class NewTopicTwoStageCopy {
         _ => '',
       };
 
-  static const materialHelper = '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼、哪裡好笑。';
+  /// 梗和最近遇到的事有好笑的點，多提醒寫出哪裡好笑；另外兩種只要寫清楚誰、做了什麼。
+  static String materialHelper(String? kind) => switch (kind) {
+        'my_story' || 'inside_joke' =>
+          '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼、哪裡好笑。',
+        _ => '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼。',
+      };
+
   static const materialMaxGraphemes = 150;
   static const materialMaxUtf16 = 1500;
   static const materialMissingHint = '寫一句你手上的素材，或改選「沒有，幫我想」。';

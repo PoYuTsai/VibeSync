@@ -243,10 +243,6 @@ void main() {
           '例如：我每次說五分鐘到都遲到，她就虧我「你的五分鐘都是半小時」');
       expect(NewTopicTwoStageCopy.materialInputHint('my_story'),
           '例如：今天信心滿滿走進常去的店，結果是別間分店，超糗');
-      expect(NewTopicTwoStageCopy.materialInputHint('inside_joke'),
-          isNot('例如：她說我的五分鐘都是半小時'));
-      expect(NewTopicTwoStageCopy.materialInputHint('my_story'),
-          isNot('例如：信心滿滿走進店裡，才發現走錯分店'));
     });
 
     test('之前聊過的事與看到想到她的東西不變；沒選或「沒有，幫我想」沒有範例', () {
@@ -258,9 +254,15 @@ void main() {
       expect(NewTopicTwoStageCopy.materialInputHint(null), '');
     });
 
-    test('輸入框下的提示：寫給教練看的就好，再補一句寫清楚誰、做了什麼、哪裡好笑', () {
-      expect(NewTopicTwoStageCopy.materialHelper,
-          '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼、哪裡好笑。');
+    test('輸入框下的提示：梗和最近遇到的事多一句哪裡好笑，另外兩種只寫清楚誰、做了什麼', () {
+      for (final kind in ['inside_joke', 'my_story']) {
+        expect(NewTopicTwoStageCopy.materialHelper(kind),
+            '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼、哪裡好笑。');
+      }
+      for (final kind in ['past_topic', 'trigger']) {
+        expect(NewTopicTwoStageCopy.materialHelper(kind),
+            '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼。');
+      }
     });
   });
 }
