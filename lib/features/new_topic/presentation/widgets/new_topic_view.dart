@@ -914,8 +914,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         ),
         const SizedBox(height: 4),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Expanded(
-              child: Text(NewTopicTwoStageCopy.materialHelper,
+          Expanded(
+              child: Text(NewTopicTwoStageCopy.materialHelper(_materialKind),
                   style: OpenerHomeStyle.helper)),
           const SizedBox(width: 8),
           Flexible(

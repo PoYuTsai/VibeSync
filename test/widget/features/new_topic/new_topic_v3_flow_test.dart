@@ -660,7 +660,8 @@ void main() {
     expect(find.text('她之前提過什麼？'), findsOneWidget);
     expect(find.bySemanticsLabel(RegExp('她之前提過什麼')), findsWidgets);
     expect(find.bySemanticsLabel('之前聊過的事'), findsOneWidget);
-    expect(find.text(NewTopicTwoStageCopy.materialHelper), findsOneWidget);
+    expect(find.text(NewTopicTwoStageCopy.materialHelper('past_topic')),
+        findsOneWidget);
     expect(find.text('0 / 150'), findsOneWidget);
     expect(_button(t).onPressed, isNull);
     expect(find.text(NewTopicTwoStageCopy.materialMissingHint), findsOneWidget);
@@ -686,6 +687,9 @@ void main() {
     expect(_chipSelected(t, 'new-topic-material-none'), isFalse);
     await _tapVisible(t, _key('new-topic-material-my_story'));
     expect(find.text('發生什麼事？'), findsOneWidget);
+    expect(find.text(NewTopicTwoStageCopy.materialHelper('my_story')),
+        findsOneWidget,
+        reason: '提示跟著素材類型換');
     expect(_materialText(t), '她說在準備潛水證照', reason: '換素材類型保留文字');
     expect(_service.calls, isEmpty);
   });
