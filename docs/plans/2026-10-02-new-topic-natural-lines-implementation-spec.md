@@ -5,6 +5,7 @@
 > 風險等級：R2（AI 提示詞與成本行為、Edge `analyze-chat`；不動 DB、扣費、結果格式）
 > 產品依據：`docs/plans/reference-reopen-flirt-formula-library.md`（以下稱「公式庫」）、`docs/decisions.md` ADR #48
 > 狀態：2026-10-05 實作為 **v2.3**（§0.1 記與 v2 的差異與實作範圍；附錄 A 已換成 v2.3 全文；ADR #51）。產品決定以 Eric 的核可為準（`AGENTS.md`）；每一次付費評測都要 Eric 當次說「跑」；每次 push、merge、Actions 與部署照 `AGENTS.md` 逐次核准。
+> 2026-10-11：本規格的 v2.3／v2.4 提示詞已由 ADR #53 結構刀取代並刪除，留作背景與評測依據；§6.5 的正式盲測關卡由 Eric 2026-10-11 取消（見 ADR #53 狀態）。
 
 ---
 
