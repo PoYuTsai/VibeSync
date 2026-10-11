@@ -1,3 +1,5 @@
+// 新話題的期限常數、修格式提示詞與 production prompt blocking scan。
+// 生成提示詞（結構刀，ADR #53）的結構測試在 new_topic_slots_test.ts。
 import {
   assert,
   assertEquals,
@@ -5,17 +7,13 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildNewTopicRepairPrompt,
-  buildNewTopicUserPrompt,
-  NEW_TOPIC_ANGLES,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
-  NEW_TOPIC_PROMPT,
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
   NEW_TOPIC_SETTLEMENT_RESERVE_MS,
-  pickNewTopicAngle,
 } from "./new_topic_prompt.ts";
-import { NEW_TOPIC_TWO_STAGE_PROMPT } from "./new_topic_two_stage.ts";
+import { NEW_TOPIC_SLOTS_SYSTEM_PROMPT } from "./new_topic_slots.ts";
 
 Deno.test("deadline 常數符合拍板規格（50s/45s/5s reserve、3000 tokens）", () => {
   assertEquals(NEW_TOPIC_MAX_TOKENS, 3000);
@@ -52,9 +50,8 @@ Deno.test("new topic prompts 過三層線 blocking 掃描（同 opener 黑名單
   ];
   for (
     const [name, prompt] of [
-      ["NEW_TOPIC_PROMPT", NEW_TOPIC_PROMPT],
+      ["NEW_TOPIC_SLOTS_SYSTEM_PROMPT", NEW_TOPIC_SLOTS_SYSTEM_PROMPT],
       ["NEW_TOPIC_REPAIR_PROMPT", NEW_TOPIC_REPAIR_PROMPT],
-      ["NEW_TOPIC_TWO_STAGE_PROMPT", NEW_TOPIC_TWO_STAGE_PROMPT],
     ] as const
   ) {
     for (const word of banned) {
@@ -62,47 +59,6 @@ Deno.test("new topic prompts 過三層線 blocking 掃描（同 opener 黑名單
     }
     assertFalse(/IO[ID]/.test(prompt), `IOI/IOD 殘留於 ${name}`);
   }
-});
-
-Deno.test("NEW_TOPIC_PROMPT grounding 鐵律錨點", () => {
-  // 作戰板＝唯一對方事實源；About Me 只做自我揭露。
-  assert(NEW_TOPIC_PROMPT.includes("唯一可以當成**對方事實**的來源"));
-  assert(NEW_TOPIC_PROMPT.includes("只能用來做自然的自我揭露"));
-  assert(
-    NEW_TOPIC_PROMPT.includes("絕不能寫成對方也喜歡、你們的共同興趣"),
-  );
-  assert(NEW_TOPIC_PROMPT.includes("不得虛構對方的興趣"));
-  assert(NEW_TOPIC_PROMPT.includes("用開放式、低假設的問題"));
-  assert(NEW_TOPIC_PROMPT.includes("不假裝有共同經驗"));
-});
-
-Deno.test("NEW_TOPIC_PROMPT situation 節奏規則四條俱全", () => {
-  assert(NEW_TOPIC_PROMPT.includes("went_cold"));
-  assert(NEW_TOPIC_PROMPT.includes("不責問對方消失"));
-  assert(NEW_TOPIC_PROMPT.includes("after_date"));
-  assert(NEW_TOPIC_PROMPT.includes("不急著推進第二次邀約"));
-  assert(NEW_TOPIC_PROMPT.includes("stuck"));
-  assert(NEW_TOPIC_PROMPT.includes("不像面試連環問"));
-  assert(NEW_TOPIC_PROMPT.includes("warm_up"));
-  assert(NEW_TOPIC_PROMPT.includes("不突然告白"));
-});
-
-Deno.test("NEW_TOPIC_PROMPT 產出規格：恰好五題＋四欄＋可直接傳", () => {
-  assert(NEW_TOPIC_PROMPT.includes("恰好五個"));
-  assert(NEW_TOPIC_PROMPT.includes("direction"));
-  assert(NEW_TOPIC_PROMPT.includes("openingLine"));
-  assert(NEW_TOPIC_PROMPT.includes("whyItWorks"));
-  assert(NEW_TOPIC_PROMPT.includes("nextMove"));
-  assert(NEW_TOPIC_PROMPT.includes("直接傳出去"));
-  assert(NEW_TOPIC_PROMPT.includes("不情勒"));
-  assert(NEW_TOPIC_PROMPT.includes("不性化"));
-  assert(NEW_TOPIC_PROMPT.includes("recommendation.index 是 0-4 的整數"));
-  assert(NEW_TOPIC_PROMPT.includes("不要 code fence"));
-  assert(NEW_TOPIC_PROMPT.includes("direction 是客戶看到的卡片標題"));
-  assert(
-    NEW_TOPIC_PROMPT.includes("whyItWorks 與 nextMove 都用一般人看得懂的話"),
-  );
-  assert(NEW_TOPIC_PROMPT.includes("不得出現內部方法名"));
 });
 
 Deno.test("REPAIR prompt：只修格式、不重新發想、五題 schema", () => {
@@ -118,35 +74,6 @@ Deno.test("REPAIR prompt：只修格式、不重新發想、五題 schema", () =
   assert(NEW_TOPIC_REPAIR_PROMPT.includes("只改寫客戶看到的解釋"));
 });
 
-Deno.test("buildNewTopicUserPrompt：三段分隔明確、缺席走低假設 fallback", () => {
-  const full = buildNewTopicUserPrompt({
-    partnerSummary: "對象：小雅。興趣：爬山。",
-    effectiveStyleContext: "- 語氣：輕鬆",
-    situation: "after_date",
-  });
-  assert(full.includes("## 對方作戰板"));
-  assert(full.includes("對象：小雅。興趣：爬山。"));
-  assert(full.includes("## 關於我"));
-  assert(full.includes("- 語氣：輕鬆"));
-  assert(full.includes("## 目前狀況"));
-  assert(full.includes("剛約完會"));
-  // 段落順序：作戰板 → 關於我 → 目前狀況。
-  assert(
-    full.indexOf("## 對方作戰板") < full.indexOf("## 關於我") &&
-      full.indexOf("## 關於我") < full.indexOf("## 目前狀況"),
-  );
-
-  const empty = buildNewTopicUserPrompt({
-    partnerSummary: null,
-    effectiveStyleContext: null,
-    situation: null,
-  });
-  assert(empty.includes("沒有提供對方資料"));
-  assert(empty.includes("不要猜測對方的興趣"));
-  assert(empty.includes("不要編造用戶的個人素材"));
-  assert(empty.includes("當作日常重啟"));
-});
-
 Deno.test("buildNewTopicRepairPrompt：夾帶原文並裁 7000", () => {
   const prompt = buildNewTopicRepairPrompt("原始輸出 ```json broken```");
   assert(prompt.includes("原始回覆："));
@@ -156,84 +83,4 @@ Deno.test("buildNewTopicRepairPrompt：夾帶原文並裁 7000", () => {
   assert(long.length < 7600, "原文必須裁到 7000 以內");
 
   assert(buildNewTopicRepairPrompt("   ").includes("(empty)"));
-});
-
-Deno.test("角度輪替：同 requestId 穩定、不同 requestId 會換、都在清單內", () => {
-  const a = "123e4567-e89b-42d3-a456-426614174000";
-  const b = "9f8e7d6c-5b4a-4321-8765-0fedcba98765";
-  // replay 契約：同一次生成必須拿到同一個角度。
-  assertEquals(pickNewTopicAngle(a), pickNewTopicAngle(a));
-  assert(
-    (NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(a)),
-  );
-  assert(
-    (NEW_TOPIC_ANGLES as readonly string[]).includes(pickNewTopicAngle(b)),
-  );
-
-  // 十個角度都取得到（否則輪替等於沒輪）。
-  const seen = new Set<string>();
-  for (let i = 0; i < 400; i++) seen.add(pickNewTopicAngle(`req-${i}`));
-  assertEquals(seen.size, NEW_TOPIC_ANGLES.length);
-});
-
-Deno.test("buildNewTopicUserPrompt：給 requestId 才附發想素材，且不暴露「切入角度」標籤", () => {
-  const base = {
-    partnerSummary: "對象：小雅。興趣：爬山。",
-    effectiveStyleContext: null,
-    situation: null,
-  };
-  assert(!buildNewTopicUserPrompt(base).includes("本輪內容素材"));
-
-  const withAngle = buildNewTopicUserPrompt({
-    ...base,
-    requestId: "123e4567-e89b-42d3-a456-426614174000",
-  });
-  assert(withAngle.includes("## 本輪內容素材（只供發想，不得照抄）："));
-  assertFalse(withAngle.includes("切入角度"));
-  assert(withAngle.includes("不要把這個素材名稱寫進任何可見欄位"));
-  // 角度區塊要排在作戰板之後、產出指令之前。
-  assert(
-    withAngle.indexOf("## 對方作戰板") < withAngle.indexOf("## 本輪內容素材") &&
-      withAngle.indexOf("## 本輪內容素材") < withAngle.indexOf("請依系統規則"),
-  );
-});
-
-// 進階路徑上線不得動到 legacy（規格 §0／§8）：舊版 App 與「全部不選」的
-// 新版 App 拿到的提示詞必須逐字不變。golden 取自 38ebd30d。
-const LEGACY_USER_PROMPT_GOLDEN = [
-  "## 對方作戰板（唯一可當對方事實的來源）",
-  "對象：小雅。興趣：爬山。",
-  "",
-  "## 關於我（用戶本人的風格與興趣，只能做自我揭露）",
-  "- 語氣：輕鬆",
-  "",
-  "## 目前狀況（只影響節奏與語氣）",
-  "聊天冷掉了（對方最近回得少或已讀）",
-  "",
-  "## 本輪內容素材（只供發想，不得照抄）：對某件小事的偏激意見",
-  "五題裡至少兩題從這個素材發展，其餘自由。它只用來避免連續生成撞題，不是題目本身——不要把這個素材名稱寫進任何可見欄位。",
-  "",
-  "請依系統規則產出恰好五個新話題的 JSON。",
-].join("\n");
-
-Deno.test("legacy：NEW_TOPIC_PROMPT 與 buildNewTopicUserPrompt 逐字不變", async () => {
-  const digest = new Uint8Array(
-    await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(NEW_TOPIC_PROMPT),
-    ),
-  );
-  assertEquals(
-    Array.from(digest).map((b) => b.toString(16).padStart(2, "0")).join(""),
-    "81d49443da0ecf20eccec3ef39a9524d783ccd5b341bab9b4685e5244ff982cb",
-  );
-  assertEquals(
-    buildNewTopicUserPrompt({
-      partnerSummary: "對象：小雅。興趣：爬山。",
-      effectiveStyleContext: "- 語氣：輕鬆",
-      situation: "went_cold",
-      requestId: "123e4567-e89b-42d3-a456-426614174000",
-    }),
-    LEGACY_USER_PROMPT_GOLDEN,
-  );
 });
