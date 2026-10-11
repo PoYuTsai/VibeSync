@@ -236,4 +236,31 @@ void main() {
           '153 / 150，超過 3 字，請縮短後再生成');
     });
   });
+
+  group('輸入框範例', () {
+    test('梗和最近遇到的事寫清楚誰、做了什麼、哪裡好笑，舊的沒頭沒尾範例不回來', () {
+      expect(NewTopicTwoStageCopy.materialInputHint('inside_joke'),
+          '例如：我每次說五分鐘到都遲到，她就虧我「你的五分鐘都是半小時」');
+      expect(NewTopicTwoStageCopy.materialInputHint('my_story'),
+          '例如：今天信心滿滿走進常去的店，結果是別間分店，超糗');
+      expect(NewTopicTwoStageCopy.materialInputHint('inside_joke'),
+          isNot('例如：她說我的五分鐘都是半小時'));
+      expect(NewTopicTwoStageCopy.materialInputHint('my_story'),
+          isNot('例如：信心滿滿走進店裡，才發現走錯分店'));
+    });
+
+    test('之前聊過的事與看到想到她的東西不變；沒選或「沒有，幫我想」沒有範例', () {
+      expect(NewTopicTwoStageCopy.materialInputHint('past_topic'),
+          '一句就好，例如：她說在準備潛水證照');
+      expect(NewTopicTwoStageCopy.materialInputHint('trigger'),
+          '例如：路過一家超浮誇的甜點店，她說過愛吃甜（也可以是她發的限動）');
+      expect(NewTopicTwoStageCopy.materialInputHint('none'), '');
+      expect(NewTopicTwoStageCopy.materialInputHint(null), '');
+    });
+
+    test('輸入框下的提示：寫給教練看的就好，再補一句寫清楚誰、做了什麼、哪裡好笑', () {
+      expect(NewTopicTwoStageCopy.materialHelper,
+          '寫給教練看的就好，不用寫成要傳給她的句子。寫清楚誰、做了什麼、哪裡好笑。');
+    });
+  });
 }
