@@ -3,12 +3,20 @@
 // This mirrors fallback.ts request headers and prompt caching, but asks Claude
 // for SSE streaming output and exposes only text deltas to the caller.
 
-import { type ModelCallBudget, readProviderUsage, type ProviderUsage } from "./model_call_budget.ts";
+import {
+  type ModelCallBudget,
+  type ProviderAttemptFailure,
+  readProviderUsage,
+  readRefusalCategory,
+  type ProviderUsage,
+} from "./model_call_budget.ts";
+import {
+  nextFallbackModel as nextModelInChain,
+  providerMaxAttempts,
+} from "./model_fallback_chain.ts";
 import {
   maxTokensFor,
   modelRequestParams,
-  SONNET_5_5_MODEL,
-  SONNET_5_MODEL,
 } from "../_shared/model_request_params.ts";
 
 type ClaudeMessageContent =
@@ -52,6 +60,8 @@ export interface ClaudeStreamTokenUsage {
 export interface AiStreamingServiceErrorMetadata {
   status?: number;
   timeoutMs?: number;
+  /// 拒答的安全過濾類別（stop_details.category）；只給 ai_logs，不給 App。
+  refusalCategory?: string;
 }
 
 export class AiStreamingServiceError extends Error {
@@ -71,20 +81,10 @@ const DEFAULT_OPTIONS: ClaudeStreamingOptions = {
   fetchImpl: fetch,
 };
 
-// ADR #24／#28／#49：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5。
-const MODEL_FALLBACK_CHAIN: Readonly<Record<string, string | undefined>> = {
-  [SONNET_5_5_MODEL]: SONNET_5_MODEL,
-  [SONNET_5_MODEL]: "claude-sonnet-4-6",
-  "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
-};
-
 /// 這個主模型最多打幾次 provider（備援鏈長度，含自己）；ai_logs 記這個值。
+/// 鏈由主模型決定，跟 fallback.ts 共用 model_fallback_chain.ts（ADR #55）。
 export function streamingProviderMaxAttempts(model: string): number {
-  let attempts = 1;
-  for (let m = MODEL_FALLBACK_CHAIN[model]; m; m = MODEL_FALLBACK_CHAIN[m]) {
-    attempts++;
-  }
-  return attempts;
+  return providerMaxAttempts(model);
 }
 
 const PRE_STREAM_FALLBACK_CODES = new Set([
@@ -158,12 +158,23 @@ function httpResponseError(response: Response): AiStreamingServiceError {
 }
 
 function nextFallbackModel(
+  originalModel: string,
   currentModel: string,
   error: AiStreamingServiceError,
   eligibleCodes: ReadonlySet<string> = PRE_STREAM_FALLBACK_CODES,
 ): string | undefined {
   if (!eligibleCodes.has(error.code)) return undefined;
-  return MODEL_FALLBACK_CHAIN[currentModel];
+  return nextModelInChain(originalModel, currentModel);
+}
+
+/// 交給 ModelCallBudget 記進這次呼叫的 ai_logs 列。
+function attemptFailureOf(
+  error: AiStreamingServiceError,
+): ProviderAttemptFailure {
+  return {
+    failureCode: error.code,
+    refusalCategory: error.metadata.refusalCategory,
+  };
 }
 
 async function* prependFirstChunk(
@@ -192,6 +203,7 @@ function streamProviderFailure(errorType: unknown): AiStreamingServiceError {
 
 function terminalStopFailure(
   stopReason: unknown,
+  stopDetails: unknown,
 ): AiStreamingServiceError | undefined {
   switch (stopReason) {
     case "max_tokens":
@@ -206,12 +218,15 @@ function terminalStopFailure(
         "STREAM_CONTEXT_WINDOW_EXCEEDED",
         false,
       );
-    case "refusal":
+    case "refusal": {
+      const refusalCategory = readRefusalCategory(stopDetails);
       return new AiStreamingServiceError(
         "AI declined to generate this response.",
         "STREAM_MODEL_REFUSAL",
         false,
+        refusalCategory === undefined ? {} : { refusalCategory },
       );
+    }
     default:
       return undefined;
   }
@@ -230,7 +245,12 @@ function extractStreamEvent(dataLines: string[]): {
 
   let parsed: {
     type?: string;
-    delta?: { type?: string; text?: string; stop_reason?: unknown };
+    delta?: {
+      type?: string;
+      text?: string;
+      stop_reason?: unknown;
+      stop_details?: unknown;
+    };
     error?: { type?: unknown; message?: unknown };
     message?: {
       usage?: {
@@ -300,8 +320,9 @@ function extractStreamEvent(dataLines: string[]): {
     }
   }
 
+  // 拒答的 stop_details 跟 stop_reason 一起在 message_delta 的 delta 裡。
   const failure = parsed.type === "message_delta"
-    ? terminalStopFailure(parsed.delta?.stop_reason)
+    ? terminalStopFailure(parsed.delta?.stop_reason, parsed.delta?.stop_details)
     : undefined;
   if (usage || failure) return { done: false, usage, failure };
 
@@ -389,32 +410,36 @@ export async function* parseAnthropicSse(
 
 async function* cleanupOnStreamEnd(
   source: AsyncGenerator<string>,
-  cleanup: (success: boolean) => void,
+  cleanup: (success: boolean, failure?: AiStreamingServiceError) => void,
   timeoutMs: number,
 ): AsyncGenerator<string> {
   let success = false;
+  let failure: AiStreamingServiceError | undefined;
   try {
     for await (const text of source) {
       yield text;
     }
     success = true;
   } catch (error) {
-    if (error instanceof AiStreamingServiceError) throw error;
-    if (isAbortError(error)) {
-      throw new AiStreamingServiceError(
+    if (error instanceof AiStreamingServiceError) {
+      failure = error;
+    } else if (isAbortError(error)) {
+      failure = new AiStreamingServiceError(
         "Claude streaming request timed out.",
         "TIMEOUT",
         true,
         { timeoutMs },
       );
+    } else {
+      failure = new AiStreamingServiceError(
+        "AI streaming connection was interrupted.",
+        "STREAM_CONNECTION_ERROR",
+        true,
+      );
     }
-    throw new AiStreamingServiceError(
-      "AI streaming connection was interrupted.",
-      "STREAM_CONNECTION_ERROR",
-      true,
-    );
+    throw failure;
   } finally {
-    cleanup(success);
+    cleanup(success, failure);
   }
 }
 
@@ -472,13 +497,13 @@ export async function callClaudeStreaming(
       });
     } catch (error) {
       clearTimeout(timeoutId);
-      providerAttempt?.finish("failed");
       const mapped = preStreamFetchError(
         error,
         controller.signal,
         opts.timeout,
       );
-      const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(currentModel, mapped);
+      providerAttempt?.finish("failed", attemptFailureOf(mapped));
+      const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(originalModel, currentModel, mapped);
       if (nextModel) {
         currentModel = nextModel;
         continue;
@@ -512,8 +537,8 @@ export async function callClaudeStreaming(
         await response.body.cancel().catch(() => undefined);
       }
       clearTimeout(timeoutId);
-      providerAttempt?.finish("failed");
-      const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(currentModel, preStreamError);
+      providerAttempt?.finish("failed", attemptFailureOf(preStreamError));
+      const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(originalModel, currentModel, preStreamError);
       if (nextModel) {
         currentModel = nextModel;
         continue;
@@ -529,9 +554,12 @@ export async function callClaudeStreaming(
     };
     const textStream = cleanupOnStreamEnd(
       parseAnthropicSse(response.body!, usage, providerAttempt?.observe),
-      (success) => {
+      (success, failure) => {
         clearTimeout(timeoutId);
-        providerAttempt?.finish(success ? "success" : "failed");
+        providerAttempt?.finish(
+          success ? "success" : "failed",
+          failure && attemptFailureOf(failure),
+        );
       },
       opts.timeout,
     );
@@ -543,6 +571,7 @@ export async function callClaudeStreaming(
     } catch (error) {
       if (error instanceof AiStreamingServiceError) {
         const nextModel: string | undefined = opts.allowModelFallback === false ? undefined : nextFallbackModel(
+          originalModel,
           currentModel,
           error,
           PRE_CONTENT_STREAM_FALLBACK_CODES,

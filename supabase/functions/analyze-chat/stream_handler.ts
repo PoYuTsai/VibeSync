@@ -277,6 +277,8 @@ export function handleStreamAnalysisRequest(
     let chargedContentEmitted = false;
     let pendingDone: StreamOutputEvent | null = null;
     let pendingError: StreamOutputEvent | null = null;
+    // 只進 ai_logs、不送給 App 的上游失敗細節（例如拒答的安全過濾類別）。
+    let pendingErrorLogDetails: Record<string, unknown> = {};
 
     const emitReframed = (event: StreamOutputEvent) => {
       if (event.type === "analysis.done") {
@@ -340,6 +342,7 @@ export function handleStreamAnalysisRequest(
         await reframer.drain();
         if (!pendingError) {
           pendingError = buildUpstreamError(error, chargedContentEmitted);
+          pendingErrorLogDetails = upstreamLogDetails(error);
         }
       }
 
@@ -349,13 +352,19 @@ export function handleStreamAnalysisRequest(
     } catch (error) {
       if (!pendingError) {
         pendingError = buildUpstreamError(error, chargedContentEmitted);
+        pendingErrorLogDetails = upstreamLogDetails(error);
       }
     } finally {
       stopHeartbeat();
     }
 
     if (pendingError) {
-      await markFailedAndEmit(options, emit, pendingError);
+      await markFailedAndEmit(
+        options,
+        emit,
+        pendingError,
+        pendingErrorLogDetails,
+      );
       close();
       return;
     }
@@ -453,10 +462,11 @@ async function markFailedAndEmit(
   options: StreamAnalysisHandlerOptions,
   emit: NdjsonEmit,
   event: StreamOutputEvent,
+  logDetails: Record<string, unknown> = {},
 ) {
   const code = stringField(event.code) || "STREAM_FAILED";
   try {
-    await options.markFailed(code, { event });
+    await options.markFailed(code, { ...logDetails, event });
   } catch (error) {
     emit({
       type: "analysis.progress",
@@ -466,6 +476,13 @@ async function markFailedAndEmit(
     });
   }
   emit(event);
+}
+
+function upstreamLogDetails(error: unknown): Record<string, unknown> {
+  return error instanceof AiStreamingServiceError &&
+      error.metadata.refusalCategory !== undefined
+    ? { refusalCategory: error.metadata.refusalCategory }
+    : {};
 }
 
 function buildUpstreamError(
