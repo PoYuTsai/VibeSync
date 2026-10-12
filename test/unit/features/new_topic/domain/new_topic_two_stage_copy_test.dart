@@ -74,9 +74,25 @@ void main() {
       ));
     });
 
-    test('只選怎麼停（非 faded）就只有那一行', () {
-      expect(_tip('went_cold', stop: 'i_no_reply'),
-          (open: '這次怎麼開：一句帶過就好，接著直接進內容。', avoid: '先避開：長篇解釋、過度道歉'));
+    test('只選怎麼停（非 faded）就只有那一行；我沒回她對齊 ADR #51 裁決 5', () {
+      expect(_tip('went_cold', stop: 'i_no_reply'), (
+        open: '這次怎麼開：不用解釋為什麼沒回，像平常聊天一樣直接帶新的內容。',
+        avoid: '先避開：解釋或道歉、提很久沒聊',
+      ));
+    });
+
+    test('我沒回她＋幾天：不接回上次那條線（等於補回覆），只留不解釋那行', () {
+      expect(_tip('went_cold', duration: 'days', stop: 'i_no_reply'), (
+        open: '這次怎麼開：不用解釋為什麼沒回，像平常聊天一樣直接帶新的內容。',
+        avoid: '先避開：解釋或道歉、提很久沒聊',
+      ));
+    });
+
+    test('我沒回她＋一到四週：帶一個新東西那行＋不解釋那行', () {
+      expect(_tip('went_cold', duration: 'weeks', stop: 'i_no_reply'), (
+        open: '這次怎麼開：帶一個新東西出現：看到的、遇到的，或一個她會有意見的小題目。不用解釋為什麼沒回，像平常聊天一樣直接帶新的內容。',
+        avoid: '先避開：檢討關係、解釋或道歉、提很久沒聊',
+      ));
     });
 
     test('一個月以上：自然停了或沒選 → 可以輕鬆說一句', () {
@@ -96,9 +112,11 @@ void main() {
       ));
     });
 
-    test('例外：一個月以上＋我沒回她只顯示一句帶過那行', () {
-      expect(_tip('went_cold', duration: 'month_plus', stop: 'i_no_reply'),
-          (open: '這次怎麼開：一句帶過就好，接著直接進內容。', avoid: '先避開：長篇解釋、過度道歉'));
+    test('例外：一個月以上＋我沒回她不提空窗，只留不解釋那行', () {
+      expect(_tip('went_cold', duration: 'month_plus', stop: 'i_no_reply'), (
+        open: '這次怎麼開：不用解釋為什麼沒回，像平常聊天一樣直接帶新的內容。',
+        avoid: '先避開：解釋或道歉、提很久沒聊',
+      ));
     });
 
     test('其他三種：3×4 表含沒選欄', () {

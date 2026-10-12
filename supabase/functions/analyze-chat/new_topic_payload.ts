@@ -249,11 +249,12 @@ export type NewTopicModelNormalizeResult =
 export type NewTopicGroundingPolicy = {
   allowSharedFrame: boolean;
   /**
-   * 進階路徑用戶寫的素材原文（已正規化）。只用來放行「用戶自己寫過的字」
-   * 撞到內部術語的情況（例：人間失格、雙球冰淇淋、One Direction、stuck）；
-   * 沒給就跟以前一模一樣。
+   * 用戶給我們的原文：對象作戰板摘要（她的興趣、性格、備註）、關於我、進階
+   * 路徑的素材原文。只用來放行「用戶給的字」撞到內部術語的情況（例：她迷
+   * One Direction、在讀人間失格、素材寫了雙球冰淇淋或 stuck）；沒給就跟以前
+   * 一模一樣。
    */
-  userMaterialText?: string | null;
+  userProvidedText?: string | null;
 };
 
 const INTERNAL_VISIBLE_TOKENS =
@@ -290,15 +291,15 @@ function internalTokens(text: string): string[] {
   );
 }
 
-/** 用戶素材原文裡本來就有的內部代碼字（例：英文 stuck）不算外洩。 */
+/** 用戶給的原文裡本來就有的內部代碼字（例：英文 stuck）不算外洩。 */
 function sanitizeModelVisibleText(
   value: unknown,
   maxLen: number,
-  userMaterialText: string | null = null,
+  userProvidedText: string | null = null,
 ): string | null {
   const sanitized = sanitizeVisibleText(value, maxLen);
   if (sanitized === null) return null;
-  const allowed = new Set(internalTokens(userMaterialText ?? ""));
+  const allowed = new Set(internalTokens(userProvidedText ?? ""));
   if (internalTokens(sanitized).some((token) => !allowed.has(token))) {
     return null;
   }
@@ -361,7 +362,7 @@ export function normalizeNewTopicModelPayload(
     return { ok: false, reason: `topics_count:${rawTopics.length}` };
   }
 
-  const userMaterialText = policy.userMaterialText ?? null;
+  const userProvidedText = policy.userProvidedText ?? null;
   const topics: NewTopicModelTopic[] = [];
   const directionKeys = new Set<string>();
   const openingKeys = new Set<string>();
@@ -372,24 +373,24 @@ export function normalizeNewTopicModelPayload(
     const direction = sanitizeCustomerExplanationText(
       rawTopic.direction,
       NEW_TOPIC_FIELD_CAPS.direction,
-      userMaterialText,
+      userProvidedText,
     );
     const openingLine = normalizeOutgoingMessageText(
       sanitizeModelVisibleText(
         rawTopic.openingLine,
         NEW_TOPIC_FIELD_CAPS.openingLine,
-        userMaterialText,
+        userProvidedText,
       ),
     );
     const whyItWorks = sanitizeCustomerExplanationText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,
-      userMaterialText,
+      userProvidedText,
     );
     const nextMove = sanitizeCustomerExplanationText(
       rawTopic.nextMove,
       NEW_TOPIC_FIELD_CAPS.nextMove,
-      userMaterialText,
+      userProvidedText,
     );
     if (!direction || !openingLine || !whyItWorks || !nextMove) {
       return { ok: false, reason: "topic_field_invalid" };
@@ -428,7 +429,7 @@ export function normalizeNewTopicModelPayload(
     recommendationReason = sanitizeCustomerExplanationText(
       rawRecommendation.reason,
       NEW_TOPIC_FIELD_CAPS.recommendationReason,
-      userMaterialText,
+      userProvidedText,
     );
     if (recommendationReason === null) {
       return { ok: false, reason: "recommendation_reason_invalid" };
@@ -452,7 +453,7 @@ export function normalizeNewTopicModelPayload(
 export function mergeNewTopicRepairWithPrimaryOpeningLines(
   primaryParsed: unknown,
   repairedParsed: unknown,
-  userMaterialText: string | null = null,
+  userProvidedText: string | null = null,
 ): unknown {
   if (!isPlainObject(primaryParsed) || !isPlainObject(repairedParsed)) {
     return repairedParsed;
@@ -477,7 +478,7 @@ export function mergeNewTopicRepairWithPrimaryOpeningLines(
       sanitizeModelVisibleText(
         primaryTopic.openingLine,
         NEW_TOPIC_FIELD_CAPS.openingLine,
-        userMaterialText,
+        userProvidedText,
       ),
     );
     return primaryOpeningLine === null

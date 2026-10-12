@@ -41,6 +41,20 @@ export type NewTopicPromptPlan = {
   promptVersion: string;
 };
 
+/** 用戶給我們、也進了提示詞的原文：對象作戰板摘要、關於我、素材原文。 */
+function newTopicUserProvidedText(input: {
+  partnerSummary: string | null;
+  effectiveStyleContext: string | null;
+  topicContext: NewTopicTopicContext | null;
+}): string | null {
+  const parts = [
+    input.partnerSummary,
+    input.effectiveStyleContext,
+    input.topicContext?.materialText ?? null,
+  ].filter((part): part is string => part !== null && part.trim() !== "");
+  return parts.length === 0 ? null : parts.join("\n");
+}
+
 export function planNewTopicPrompt(input: {
   partnerSummary: string | null;
   effectiveStyleContext: string | null;
@@ -78,8 +92,9 @@ export function planNewTopicPrompt(input: {
         situation: input.situation,
         topicContext: input.topicContext,
       }),
-      // 只有進階路徑會有；用戶自己寫的字撞到內部術語時不算外洩。
-      userMaterialText: input.topicContext?.materialText ?? null,
+      // 用戶給的字撞到內部術語不算外洩：她的興趣是 One Direction、在讀人間失格時，
+      // 說明欄提到它很正常，修格式也救不回（2026-10-12 唯讀評估 P2）。
+      userProvidedText: newTopicUserProvidedText(input),
     },
     appliesRedClose: isNewTopicRedClose(input.situation, input.topicContext),
     slots,

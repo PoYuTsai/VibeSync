@@ -2,6 +2,17 @@
 // dispatch 存在、generic 月日 gate 排除、串流分支 transport-only、旗標閘門。
 import { assert, assertFalse } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { classifyAnalyzeChatRequest } from "./request_shape.ts";
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
+import {
+  hasOpenerFlowPromptLeak,
+  OPENER_ANALYZE_PROMPT,
+  OPENER_FLOW_PROMPT_SENTINELS,
+  OPENER_FLOW_REPAIR_PROMPT,
+  OPENER_GENERATE_PROMPT,
+  OPENER_GENERATE_REPAIR_PROMPT,
+} from "./opener_flow_prompt.ts";
+import { OPENER_PLAN_PROMPT } from "./opener_plan.ts";
+import { buildOpenerWritePrompt, OPENER_REWRITE_PROMPT } from "./opener_write.ts";
 
 const indexSource = await Deno.readTextFile(new URL("./analyze_chat_handler.ts", import.meta.url));
 const handlerSource = await Deno.readTextFile(new URL("./opener_flow_handler.ts", import.meta.url));
@@ -55,4 +66,46 @@ Deno.test("handler：新局旗標與 DB 能力標記只擋第一段；第二段�
   // 扣費只發生在 settle RPC（SQL 內），handler 沒有任何直接 increment_usage 呼叫。
   assertFalse(handlerSource.includes("increment_usage"));
   assertFalse(handlerSource.includes("chargeOpenerQuota"));
+});
+
+Deno.test("外洩守門：兩段式每一份提示詞被吐出來都擋得到，拿掉結尾的保密指示也一樣", () => {
+  const prompts: Record<string, string> = {
+    analyze: OPENER_ANALYZE_PROMPT,
+    generate: OPENER_GENERATE_PROMPT,
+    generateRepair: OPENER_GENERATE_REPAIR_PROMPT,
+    flowRepair: OPENER_FLOW_REPAIR_PROMPT,
+    plan: OPENER_PLAN_PROMPT,
+    writerFree: buildOpenerWritePrompt("free"),
+    writerStyles: buildOpenerWritePrompt("styles"),
+    rewrite: OPENER_REWRITE_PROMPT,
+  };
+  for (const [name, prompt] of Object.entries(prompts)) {
+    assert(hasOpenerFlowPromptLeak(prompt), name);
+    const body = prompt.replace(PROMPT_LEAK_DEFENSE_DIRECTIVE, "");
+    assert(hasOpenerFlowPromptLeak(body), `${name}：沒有保密指示的本文`);
+    // 只吐出開頭第一段（身分句）也算。
+    assert(hasOpenerFlowPromptLeak(body.split("\n")[0]), `${name}：開頭一行`);
+  }
+  // 片段表的每一條都要真的出自某一份提示詞，改提示詞時這裡會提醒同步。
+  const all = Object.values(prompts).join("\n");
+  for (const sentinel of OPENER_FLOW_PROMPT_SENTINELS) {
+    assert(all.includes(sentinel), sentinel);
+  }
+});
+
+Deno.test("外洩守門：正常的分析與開場白輸出不誤擋", () => {
+  const normal = [
+    JSON.stringify({
+      profileDigest: "自介：有養一隻狗，假日會去河堤",
+      approach: { mode: "anchor_hooks", summary: "她的自介有兩三個可接的點，先確認你想聊哪個", avoid: [] },
+    }),
+    JSON.stringify({
+      openers: { extend: "妳家狗散步會自己選路嗎", coldRead: "我最近也在找河堤的散步路線，妳都從哪一段開始走" },
+      cardReasons: { extend: "直接問你想知道的事，她一句就能回" },
+      pioneerPlan: { ifCold: "先停一下，別連發", handoff: "她回了就貼回分析" },
+      directions: { coldRead: "先講一點你自己的散步習慣，再問她" },
+    }),
+    "這一段寫得很好，事實都有來源，規劃也很清楚",
+  ];
+  for (const text of normal) assertFalse(hasOpenerFlowPromptLeak(text), text);
 });

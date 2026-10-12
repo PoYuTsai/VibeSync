@@ -39,6 +39,19 @@ class SubscriptionTierHelper {
     }
   }
 
+  /// 給用戶看的方案名（同設定頁、付費牆）；不要直接顯示 free 這類代碼。
+  static String displayName(String? tier) {
+    switch (normalizeTier(tier)) {
+      case starter:
+        return 'Starter';
+      case essential:
+        return 'Essential';
+      case free:
+      default:
+        return 'Free';
+    }
+  }
+
   static SubscriptionTierLimits limitsFor(String? tier) {
     switch (normalizeTier(tier)) {
       case starter:

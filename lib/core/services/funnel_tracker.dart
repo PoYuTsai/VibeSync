@@ -45,6 +45,7 @@ class FunnelTracker {
       'has_custom_topics',
     ],
     'about_me_cleared': [],
+    'new_topic_copied': ['is_recommended'],
   };
 
   final FunnelUploadInvoker _invoke;

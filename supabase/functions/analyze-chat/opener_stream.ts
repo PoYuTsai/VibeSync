@@ -31,7 +31,7 @@ export const OPENER_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"tease"', phase: "style_tease", label: "開場白 3/5：調情" },
   { marker: '"humor"', phase: "style_humor", label: "開場白 4/5：幽默" },
   { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：冷讀" },
-  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
+  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備她回了之後的接法" },
   { marker: '"recommendation"', phase: "recommendation", label: "挑選最適推薦" },
 ];
 
@@ -53,7 +53,7 @@ export const OPENER_GENERATE_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"humor"', phase: "style_humor", label: "開場白 4/5：幽默" },
   { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：冷讀" },
   { marker: '"rankedPicks"', phase: "recommendation", label: "依你的想法挑選推薦" },
-  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
+  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備她回了之後的接法" },
 ];
 
 /** 一句推薦＋四句備選（新版 App openerCardSet=2）：同一組 phase，標籤對齊 App 新卡片標籤。 */
@@ -66,7 +66,7 @@ export const OPENER_CARDSET2_GENERATE_STREAM_STAGES: StreamStageSpec[] = [
   { marker: '"humor"', phase: "style_humor", label: "開場白 4/5：輕鬆一點" },
   { marker: '"coldRead"', phase: "style_coldRead", label: "開場白 5/5：帶到自己" },
   { marker: '"rankedPicks"', phase: "recommendation", label: "依你的想法挑選推薦" },
-  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備先鋒備案" },
+  { marker: '"pioneerPlan"', phase: "pioneer", label: "準備她回了之後的接法" },
 ];
 
 export const NEW_TOPIC_STREAM_STAGES: StreamStageSpec[] = [

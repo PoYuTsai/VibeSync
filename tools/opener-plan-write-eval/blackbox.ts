@@ -4,10 +4,11 @@
 //   OLD ＝ 旗標關（f80b59bd 舊路徑，同一份程式碼逐位元組）
 //
 // 用法（在 repo 根目錄）：
-//   deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=B [--repeats=3] [--cases=F1,H01] [--tier=paid|free]
-//        [--cap-usd=2.0] [--out=tools/opener-plan-write-eval/out/<runId>] [--live]
-// 沒有 --live＝dry run：假模型、不連網、零費用，檢查管線與請求大小。
-// --live 會讀 ~/.config/anthropic/key 真的付費呼叫 claude-sonnet-5：只在 Eric 說「跑」之後使用。
+//   deno run -A tools/opener-plan-write-eval/blackbox.ts --arm=B [--model=claude-sonnet-5|claude-sonnet-5-5]
+//        [--repeats=3] [--cases=F1,H01] [--tier=paid|free] [--cap-usd=2.0] [--out=tools/opener-plan-write-eval/out/<runId>] [--live]
+// 沒有 --live＝dry run：假模型、不連網、零費用，檢查管線與請求大小，最後印這組設定真跑的估價。
+// --model 照 production 開關 OPENER_SONNET_55 切換結構刀的模型（只有 B 臂會用到）；預設 Sonnet 5。
+// --live 會讀 ~/.config/anthropic/key 真的付費呼叫：只在 Eric 說「跑」之後使用。
 
 import {
   handleOpenerAnalyzeRequest,
@@ -17,6 +18,7 @@ import {
 } from "../../supabase/functions/analyze-chat/opener_flow_handler.ts";
 import { OPENER_ANALYZE_PROMPT } from "../../supabase/functions/analyze-chat/opener_flow_prompt.ts";
 import { OPENER_PLAN_PROMPT } from "../../supabase/functions/analyze-chat/opener_plan.ts";
+import { SONNET_5_5_MODEL, SONNET_5_MODEL } from "../../supabase/functions/_shared/model_request_params.ts";
 import {
   analysisJsonFor,
   type CapturedCall,
@@ -26,7 +28,9 @@ import {
   installFetchCapture,
   loadCases,
   parseArgs,
+  quoteGenerations,
   readApiKey,
+  reserveUsdFor,
   supabaseFor,
   USER_ID,
   uuidFor,
@@ -37,23 +41,28 @@ const args = parseArgs(Deno.args);
 const arm = String(args.arm ?? "A") as Arm;
 // 旗標開時只有新版 App（openerCardSet=2＝B）走結構刀；A 已不會走到結構刀，量的其實是舊路徑（2026-09-26）。
 if (!["B", "OLD"].includes(arm)) throw new Error("--arm must be B or OLD (A no longer reaches plan-write)");
+const model = String(args.model ?? SONNET_5_MODEL);
+if (![SONNET_5_MODEL, SONNET_5_5_MODEL].includes(model)) throw new Error(`--model must be ${SONNET_5_MODEL} or ${SONNET_5_5_MODEL}`);
+// 舊路徑不吃 5.5 開關（production 一樣），選了 5.5 量到的仍是 Sonnet 5。
+if (arm === "OLD" && model !== SONNET_5_MODEL) throw new Error("--arm=OLD always runs Sonnet 5; drop --model");
 const repeats = Number(args.repeats ?? 3);
 /** --repeat=N 只跑第 N 次（多個程序並行，各自有上限與資料庫）。 */
 const onlyRepeat = args.repeat === undefined ? null : Number(args.repeat);
 const tier = String(args.tier ?? "paid");
 const live = args.live === true;
 const capUsd = Number(args["cap-usd"] ?? 2.0);
-/** 單次生成的最壞預留（三次 Sonnet 5 呼叫）：預留不足就不送。 */
-const RESERVE_USD = 0.08;
-const runId = String(args.out ?? `${EVAL_DIR}out/${live ? "live" : "dry"}-${arm}-${tier}`);
+/** 單次生成的最壞預留（規劃＋寫手＋一次額外呼叫，output 全滿；5.5 另加思考餘裕）：預留不足就不送。 */
+const RESERVE_USD = reserveUsdFor(model);
+const runId = String(args.out ?? `${EVAL_DIR}out/${live ? "live" : "dry"}-${arm}-${tier}${model === SONNET_5_MODEL ? "" : "-sonnet55"}`);
 const allCases = await loadCases();
 const wanted = typeof args.cases === "string" ? new Set(String(args.cases).split(",")) : null;
 const cases = allCases.filter((c) => !wanted || wanted.has(c.id));
 await Deno.mkdir(runId, { recursive: true });
 
-const env: Record<string, string> = arm === "OLD"
-  ? { OPENER_PLAN_WRITE: "false" }
-  : { OPENER_PLAN_WRITE: "true" };
+const env: Record<string, string> = {
+  OPENER_PLAN_WRITE: arm === "OLD" ? "false" : "true",
+  OPENER_SONNET_55: model === SONNET_5_5_MODEL ? "true" : "false",
+};
 const apiKey = live ? await readApiKey() : "dry-run-key";
 const db = await createDatabase();
 const supabase = supabaseFor(db);
@@ -111,6 +120,7 @@ function dryModel(c: EvalCase, sink: CapturedCall[]) {
 let spent = 0;
 let index = 0;
 const summary: Array<Record<string, unknown>> = [];
+const dryCalls: CapturedCall[][] = [];
 for (let repeat = 1; repeat <= repeats; repeat++) {
   if (onlyRepeat !== null && repeat !== onlyRepeat) continue;
   for (const c of cases) {
@@ -169,12 +179,16 @@ for (let repeat = 1; repeat <= repeats; repeat++) {
     }
     const cost = calls.reduce((sum, call) => sum + (call.costUsd ?? 0), 0);
     spent += cost;
-    const row = { key, caseId: c.id, arm, tier, repeat, status, elapsedMs: Date.now() - started, costUsd: cost, calls: calls.length };
+    if (!live) dryCalls.push(calls);
+    // model＝這組設定；實際每一跳送了哪個模型看 calls[].model（5.5 掛掉會退 Sonnet 5）。
+    const row = { key, caseId: c.id, arm, model, tier, repeat, status, elapsedMs: Date.now() - started, costUsd: cost, calls: calls.length };
     summary.push(row);
     await Deno.writeTextFile(`${runId}/${key}.json`, JSON.stringify({ ...row, case: c, body, calls }, null, 1));
     console.log(JSON.stringify({ ...row, spentUsd: Number(spent.toFixed(6)) }));
   }
 }
-await Deno.writeTextFile(`${runId}/summary${onlyRepeat ? `.r${onlyRepeat}` : ""}.json`, JSON.stringify({ arm, tier, live, repeats, capUsd, spentUsd: spent, rows: summary }, null, 1));
+const quote = live ? null : quoteGenerations(dryCalls, model);
+await Deno.writeTextFile(`${runId}/summary${onlyRepeat ? `.r${onlyRepeat}` : ""}.json`, JSON.stringify({ arm, model, tier, live, repeats, capUsd, reserveUsd: RESERVE_USD, spentUsd: spent, quote, rows: summary }, null, 1));
 await db.close();
-console.log(`done ${arm}/${tier}: ${summary.length} rows, spent US$${spent.toFixed(4)} → ${runId}`);
+console.log(`done ${arm}/${model}/${tier}: ${summary.length} rows, spent US$${spent.toFixed(4)} → ${runId}`);
+if (quote) console.log(`真跑估價（${model}）：${quote.generations} 次生成、一般 ${quote.typicalCalls} 次呼叫 US$${quote.typicalUsd.toFixed(2)}；最壞 ${quote.worstCalls} 次呼叫 US$${quote.worstUsd.toFixed(2)}（單次預留 US$${RESERVE_USD.toFixed(3)}）`);

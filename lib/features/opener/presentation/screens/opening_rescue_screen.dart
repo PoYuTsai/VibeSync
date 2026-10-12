@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
@@ -781,14 +780,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           : _analysisSectionKey.currentContext;
       if (targetContext == null) return;
       _pendingScroll = false;
-      Scrollable.ensureVisible(
-        targetContext,
-        alignment: 0.04,
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : AppMotion.scroll,
-        curve: AppMotion.easeOut,
-      );
+      snapSectionTopIntoView(targetContext);
     });
   }
 
@@ -1235,7 +1227,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   : retry
                       ? '重新分析'
                       : '分析開場方向',
-      hint: input.hasContent ? '看完分析，再決定要不要生成回覆。' : '先加入截圖或輸入她的資料',
+      hint: input.hasContent ? '看完分析，再決定要不要生成開場白。' : '先加入截圖或輸入她的資料',
       onPressed: _inputLocked ||
               !input.hasContent ||
               _initialNoteTooLong ||
@@ -1406,7 +1398,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     AppTypography.bodyMedium.copyWith(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
-              if (state.failedOperation != null &&
+              // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給升級入口。
+              if (state.quotaError != null && !state.isBusy)
+                TextButton(
+                  key: const ValueKey('opener-upgrade-button'),
+                  onPressed: AppHaptics.onPress(
+                      () => unawaited(_showPaywallAndRefresh())),
+                  child: const Text('升級方案'),
+                )
+              else if (state.failedOperation != null &&
                   !state.isBusy &&
                   state.analysis != null)
                 TextButton(
@@ -1842,7 +1842,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         MediaQuery.textScalerOf(context).scale(15) > 20;
 
     // 2026-08-18 呈現精修（減法拍板）：預設展開的只留「5 張卡＋推薦理由＋
-    // 對方資料解讀／先鋒備案／下一步收成一行標題，點開才展。
+    // 對方資料解讀／她回了之後／下一步收成一行標題，點開才展。
     return Column(
       key: _resultsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2064,7 +2064,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
+              '開場救星只負責第一句：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.45,
@@ -2174,7 +2174,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return _CollapsibleBrandCard(
       icon: Icons.flag_outlined,
-      title: '先鋒備案',
+      title: '她回了之後',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -135,6 +135,14 @@ void main() {
       );
     });
 
+    test('displayName 給用戶看的方案名，未知或空值當 Free', () {
+      expect(SubscriptionTierHelper.displayName('free'), 'Free');
+      expect(SubscriptionTierHelper.displayName('starter'), 'Starter');
+      expect(SubscriptionTierHelper.displayName('essential'), 'Essential');
+      expect(SubscriptionTierHelper.displayName(null), 'Free');
+      expect(SubscriptionTierHelper.displayName('legacy_tier'), 'Free');
+    });
+
     test('isDowngrade returns true only when moving to lower tier', () {
       expect(
         SubscriptionTierHelper.isDowngrade(
