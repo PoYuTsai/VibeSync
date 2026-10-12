@@ -693,7 +693,7 @@ export async function handleNewTopicRequest(
         const repairedParsed = mergeNewTopicRepairWithPrimaryOpeningLines(
           newTopicPrimaryParsed,
           parseJsonObjectFromText(repairedText),
-          newTopicMaterialText,
+          newTopicGroundingPolicy.userProvidedText ?? null,
         );
         const repairedNormalized = normalizeNewTopicModelPayload(
           repairedParsed,

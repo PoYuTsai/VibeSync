@@ -372,7 +372,8 @@ export function baseRouter(m: BaseModules): ArmRouter {
         situation: input.situation,
         topicContext: input.topicContext,
       }),
-      userMaterialText: input.topicContext?.materialText ?? null,
+      // 7c5cc523 只放行素材原文（當時欄名 userMaterialText）。
+      userProvidedText: input.topicContext?.materialText ?? null,
     };
     if (input.topicContext === null) {
       return {

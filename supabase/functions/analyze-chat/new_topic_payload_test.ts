@@ -710,7 +710,7 @@ Deno.test("normalize：用戶素材原文裡本來就有的詞撞到內部術語
     };
     const result = normalizeNewTopicModelPayload(payload, {
       allowSharedFrame: false,
-      userMaterialText: material,
+      userProvidedText: material,
     });
     assert(result.ok, material);
     for (const [field, value] of Object.entries(topic)) {
@@ -743,7 +743,7 @@ Deno.test("normalize：素材原文只放行它自己有的詞，其他內部術
     assertFalse(
       normalizeNewTopicModelPayload(
         { topics, recommendation: { index: 0 } },
-        { allowSharedFrame: true, userMaterialText: material },
+        { allowSharedFrame: true, userProvidedText: material },
       ).ok,
       JSON.stringify(leak),
     );
@@ -764,7 +764,7 @@ Deno.test("repair merge：素材裡的 stuck 不會讓 primary 可直接傳句�
   );
   const result = normalizeNewTopicModelPayload(merged, {
     allowSharedFrame: true,
-    userMaterialText: material,
+    userProvidedText: material,
   });
   assert(result.ok);
   assertEquals(result.topics[0].openingLine, "報告卡在第一段，整個 stuck 住");

@@ -359,7 +359,7 @@ Deno.test("基準路由＝改前 handler：基本模式走舊版提示詞與 ana
   );
   assertFalse(b1.appliesRedClose);
   assertFalse(b1.hasPromptLeak(TWO_STAGE_SENTINEL));
-  assertEquals(b1.grounding.userMaterialText, null);
+  assertEquals(b1.grounding.userProvidedText, null);
   const e2 = plan.find((p) => p.key === "E2.1.base")!;
   assertEquals(e2.system, baseModules.NEW_TOPIC_TWO_STAGE_PROMPT);
   assert(e2.appliesRedClose);

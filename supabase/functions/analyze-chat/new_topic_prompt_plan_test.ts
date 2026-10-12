@@ -4,7 +4,10 @@ import {
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { allowsNewTopicSharedFrame } from "./new_topic_payload.ts";
+import {
+  allowsNewTopicSharedFrame,
+  normalizeNewTopicModelPayload,
+} from "./new_topic_payload.ts";
 import { planNewTopicPrompt } from "./new_topic_prompt_plan.ts";
 import { hasNewTopicSlotsPromptLeak } from "./prompt_leak.ts";
 import {
@@ -25,7 +28,7 @@ const PARTNER = "[對象作戰板：Miya]\n- 興趣：咖啡、爬山";
 // 台灣時間 2026-10-05（週一）12:00。
 const NOW_MS = Date.UTC(2026, 9, 5, 4, 0);
 
-Deno.test("plan：基本模式（沒帶 topicContext）走結構刀、帶今天、沒有素材豁免；推薦固定第一題", () => {
+Deno.test("plan：基本模式（沒帶 topicContext）走結構刀、帶今天、外洩豁免只放用戶給的資料；推薦固定第一題", () => {
   const plan = planNewTopicPrompt({
     partnerSummary: PARTNER,
     effectiveStyleContext: null,
@@ -63,7 +66,7 @@ Deno.test("plan：基本模式（沒帶 topicContext）走結構刀、帶今天�
       situation: "after_date",
       topicContext: null,
     }),
-    userMaterialText: null,
+    userProvidedText: PARTNER,
   });
   assertFalse(plan.appliesRedClose);
   assertEquals(
@@ -107,7 +110,10 @@ Deno.test("plan：進階模式帶素材 → 素材原文進提示詞與 groundin
     }),
   );
   assert(plan.user.includes("- 原文：「這週被拉去跑接力賽」"));
-  assertEquals(plan.grounding.userMaterialText, "這週被拉去跑接力賽");
+  assertEquals(
+    plan.grounding.userProvidedText,
+    `${PARTNER}\n這週被拉去跑接力賽`,
+  );
   assert(plan.appliesRedClose);
   assertEquals(plan.slots.map((s) => s.kind), [
     "red_close",
@@ -118,6 +124,46 @@ Deno.test("plan：進階模式帶素材 → 素材原文進提示詞與 groundin
   ]);
   assertEquals(plan.recommendationReason, NEW_TOPIC_RED_CLOSE_REASON);
   assertEquals(plan.promptVariant, "advanced");
+});
+
+Deno.test("plan：她的興趣或備註撞到內部用語不算外洩，用戶資料沒有的術語照擋", () => {
+  const partner = [
+    "[對象作戰板：Miya]",
+    "- 興趣：One Direction、日本文學",
+    "- 使用者確認的對方資料：最近在重看人間失格",
+  ].join("\n");
+  const plan = planNewTopicPrompt({
+    partnerSummary: partner,
+    effectiveStyleContext: null,
+    situation: "stuck",
+    topicContext: null,
+    requestId: REQUEST_ID,
+    nowMs: NOW_MS,
+  });
+  const topics = [1, 2, 3, 4, 5].map((n) => ({
+    direction: `她提過的事 ${n}`,
+    openingLine: `妳最近還有在看第 ${n} 集嗎`,
+    whyItWorks: "從她說過的事接，她好回",
+    nextMove: "她回了就順著聊",
+  }));
+  topics[0] = {
+    direction: "她高中迷 One Direction",
+    openingLine: "妳現在還會聽 One Direction 嗎",
+    whyItWorks: "她寫了迷 One Direction，聊那段很自然",
+    nextMove: "她回了就問她最喜歡哪首",
+  };
+  topics[1] = { ...topics[1], whyItWorks: "她在重看人間失格，接後續最好回" };
+  const payload = () => ({ topics, recommendation: { index: 0 } });
+  assert(normalizeNewTopicModelPayload(payload(), plan.grounding).ok);
+  // 改版前只放行素材原文：同一份輸出整次失敗。
+  assertFalse(
+    normalizeNewTopicModelPayload(payload(), {
+      ...plan.grounding,
+      userProvidedText: null,
+    }).ok,
+  );
+  topics[2] = { ...topics[2], whyItWorks: "人間失格這題用旁路冷讀" };
+  assertFalse(normalizeNewTopicModelPayload(payload(), plan.grounding).ok);
 });
 
 Deno.test("plan：同一個 requestId 排出同一組任務（重放一致），換 requestId 才換興趣順序", () => {
