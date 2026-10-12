@@ -111,8 +111,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   bool _showDetails = false;
   bool _pendingScroll = false;
   bool _confirmPending = false;
-  // 伺服器明確回過「額度不足」的那一筆：沒有落帳，同一筆再按只會再被擋。
-  bool _quotaRejected = false;
+  // 伺服器明確回過「額度不足」的那一筆（請求編號）：沒有落帳，同一筆再按只會再被擋。
+  // 只綁那一筆：換對象或答案後別的待重試請求（可能已落帳）照常可以取回。
+  String? _quotaRejectedRequestId;
   int _inputVersion = 0;
   String? get _owner =>
       NewTopicView.debugOwnerIdOverride?.call() ??
@@ -404,7 +405,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _preparing = true;
       _error = null;
-      _quotaRejected = false;
+      _quotaRejectedRequestId = null;
     });
     try {
       if (pending == null) {
@@ -506,7 +507,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!current()) return;
       setState(() {
         _error = e.message;
-        _quotaRejected = true;
+        _quotaRejectedRequestId = requestSession
+            .pendingFor(
+                partnerId: partnerId,
+                situation: situation,
+                topicContext: topicContext)
+            ?.requestId;
       });
       if (widget.isActive) await _showPaywallAndRefresh();
     } on NewTopicRequestInProgressException catch (e) {
@@ -706,7 +712,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
             usage.dailyRemaining < kNewTopicQuotaCost);
     // 待重試的那筆可能已落帳（重試只回放、不扣），平常照樣讓它重試；伺服器明確回過
     // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給升級入口。
-    final quotaBlocked = quotaShort && (pending == null || _quotaRejected);
+    final quotaBlocked = quotaShort &&
+        (pending == null || pending.requestId == _quotaRejectedRequestId);
     final helper = validPartnerId == null
         ? '先選擇聊天對象，再補充目前情境。'
         : readiness == NewTopicReadiness.dataQualityBlocked
