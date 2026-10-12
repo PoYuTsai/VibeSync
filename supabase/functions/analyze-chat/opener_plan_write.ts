@@ -3,7 +3,8 @@
 //
 // 呼叫預算：規劃 1（不重試、不 fallback；失敗或逾時退「只用她的資料」計畫，拒答例外）＋
 // 寫手 1（可 fallback）＋額外 1 ＝ ModelCallBudget 上限 3 不變。所有失敗都回給 handler 走
-// 既有 release＋不扣費路徑；這裡不碰 claim／settle。
+// 既有 release＋不扣費路徑；這裡不碰 claim／settle。任何一步被模型拒答（ADR #54）都整次失敗，
+// 不退回、不拿掉卡片照交付。
 
 import type { OpenerFlowModelInvoker, OpenerFlowModelOutput } from "./opener_flow_handler.ts";
 import type { OpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
@@ -322,6 +323,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         if (visibleMissing(repaired).length === 0) parsed = repaired;
       }
     } catch (error) {
+      if (deps.isRefusalError?.(error)) return fail("refusal", "format_repair", plan, writerRaw);
       if (deps.isDeadlineError(error) || now() >= deps.deadlineAtMs) return fail("deadline", "format_repair", plan, writerRaw);
     }
   }
@@ -402,7 +404,9 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
           telemetry.rewrittenStyles.push(style);
         }
       }
-    } catch {
+    } catch (error) {
+      // 拒答：整次失敗，不拿掉那張卡照交付（那樣會照扣）。
+      if (deps.isRefusalError?.(error)) return fail("refusal", "rewrite", plan, writerRaw);
       // 改寫失敗或逾時（自己的截止）：照原句判定，踩紅線的卡下面拿掉；整個請求到期才算失敗。
       if (now() >= deps.deadlineAtMs) return fail("deadline", "rewrite", plan, writerRaw);
     }

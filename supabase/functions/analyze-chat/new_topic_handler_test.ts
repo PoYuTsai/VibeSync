@@ -65,6 +65,8 @@ let responseModeForNextRun: "legacy" | "stream" | null = null;
 let stopReasonForNextRun: string | null = null;
 /** 下一次 run 額外設的 env（run 結束就還原），例如 OPENER_STREAM_ENABLED、NEW_TOPIC_SONNET_55。 */
 let envForNextRun: Record<string, string> = {};
+/** 下一次 run 依第幾次模型呼叫（0 起算）決定 stop_reason（run 結束就清掉）；優先於 stopReasonForNextRun。 */
+let stopReasonForCallNextRun: ((index: number) => string | null) | null = null;
 
 /** Anthropic SSE：一段文字＋結束原因（照 streaming_fallback 解析的事件格式）。 */
 function sseResponse(text: string, stopReason: string): Response {
@@ -215,15 +217,17 @@ async function run(
     const text = typeof payload === "string"
       ? payload
       : JSON.stringify(payload);
+    const callStopReason =
+      stopReasonForCallNextRun?.(modelRequests.length - 1) ?? stopReason;
     if (request.stream === true) {
-      return Promise.resolve(sseResponse(text, stopReason));
+      return Promise.resolve(sseResponse(text, callStopReason));
     }
     return Promise.resolve(
       new Response(
         JSON.stringify({
           content: [{ type: "text", text }],
           usage: { input_tokens: 10, output_tokens: 10 },
-          stop_reason: stopReason,
+          stop_reason: callStopReason,
         }),
         { status: 200 },
       ),
@@ -285,6 +289,7 @@ async function run(
     effectiveTierForNextRun = null;
     responseModeForNextRun = null;
     stopReasonForNextRun = null;
+    stopReasonForCallNextRun = null;
     envForNextRun = {};
     globalThis.fetch = originalFetch;
     console.log = originalLog;
@@ -1325,4 +1330,21 @@ Deno.test("她的興趣是 One Direction、備註在讀人間失格：說明欄�
   const texts = JSON.stringify(result.json.topics);
   assert(texts.includes("One Direction"));
   assert(texts.includes("人間失格"));
+});
+
+Deno.test("拒答：主輸出格式壞掉、修格式被拒答 → 422 請調整內容、釋放、不結算", async () => {
+  stopReasonForCallNextRun = (index) => index === 1 ? "refusal" : null;
+  const result = await run(
+    body(),
+    undefined,
+    true,
+    "這不是 JSON",
+    0,
+    MODEL_PAYLOAD,
+  );
+  assertEquals(result.status, 422);
+  assertEquals(result.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+  assertEquals(result.modelRequests.length, 2, "主呼叫＋修格式");
+  assert(result.dbCalls.includes("rpc:release_new_topic_claim"));
+  assertEquals(result.settleCalls, []);
 });

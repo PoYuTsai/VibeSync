@@ -279,6 +279,7 @@ function releaseFailedResponse(): Response {
 /** 模型拒答（5.5 安全過濾等）：422、不扣、不給重試；App 只顯示訊息。 */
 const OPENER_CONTENT_REFUSED = "OPENER_CONTENT_REFUSED";
 const OPENER_GENERATE_REFUSED_MESSAGE = "AI 沒辦法依這次的內容生成開場白，請換個說法寫補充，或重新分析後再試；本次不會扣額度。";
+const OPENER_ANALYZE_REFUSED_MESSAGE = "AI 沒辦法分析這份資料，請換張截圖或調整資料後再試；本次不會扣額度。";
 
 function buildClaudeMessages(images: unknown, text: string): OpenerFlowModelMessage[] {
   if (Array.isArray(images) && images.length > 0) {
@@ -555,9 +556,9 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
         if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         if (isModelRefusalError(error)) {
           // 拒答（ADR #28／#49）：同一份資料重送一樣會被擋，請用戶換資料，不給「稍後再試」。
-          logWarn("opener_analyze_model_refused", { user, imageCount });
+          logWarn("opener_analyze_model_refused", { user, imageCount, stage: "model" });
           if (!await release()) return releaseFailedResponse();
-          return flowError(OPENER_CONTENT_REFUSED, "AI 沒辦法分析這份資料，請換張截圖或調整資料後再試；本次不會扣額度。", 422);
+          return flowError(OPENER_CONTENT_REFUSED, OPENER_ANALYZE_REFUSED_MESSAGE, 422);
         }
         logWarn("opener_analyze_api_error", { user, error: getErrorMessage(error), imageCount });
         if (!await release()) return releaseFailedResponse();
@@ -596,6 +597,11 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
           }
         } catch (error) {
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("repair");
+          if (isModelRefusalError(error)) {
+            logWarn("opener_analyze_model_refused", { user, imageCount, stage: "repair" });
+            if (!await release()) return releaseFailedResponse();
+            return flowError(OPENER_CONTENT_REFUSED, OPENER_ANALYZE_REFUSED_MESSAGE, 422);
+          }
           logWarn("opener_analyze_repair_error", { user, error: getErrorMessage(error) });
         }
       }
@@ -956,7 +962,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       } catch (error) {
         if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         if (isModelRefusalError(error)) {
-          logWarn("opener_generate_model_refused", { user, path: "single" });
+          logWarn("opener_generate_model_refused", { user, path: "single", stage: "model" });
           return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
         }
         logWarn("opener_generate_api_error", { user, error: getErrorMessage(error) });
@@ -1013,6 +1019,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           }
         } catch (error) {
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("format_repair");
+          if (isModelRefusalError(error)) {
+            logWarn("opener_generate_model_refused", { user, path: "single", stage: "format_repair" });
+            return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
+          }
           logWarn("opener_generate_repair_error", { user, error: getErrorMessage(error) });
         }
       }
@@ -1062,6 +1072,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           }
         } catch (error) {
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("content_correction");
+          if (isModelRefusalError(error)) {
+            logWarn("opener_generate_model_refused", { user, path: "single", stage: "content_correction" });
+            return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
+          }
           logWarn("opener_generate_correction_error", { user, error: getErrorMessage(error) });
         }
       }

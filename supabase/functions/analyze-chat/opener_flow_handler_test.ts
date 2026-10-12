@@ -1876,3 +1876,66 @@ Deno.test("5.5 開關：OPENER_SONNET_55=true 只讓結構刀的規劃與寫手�
     await h.db.close();
   }
 });
+
+Deno.test("拒答：結構刀的改寫、舊路徑的內容修正、第一段的修格式被拒答 → 422 不扣、不結算（不拿掉卡片照交付）", async () => {
+  const h = await harness();
+  const refused = () => new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false);
+  try {
+    // 第一段：主輸出格式壞掉，修格式被拒答。
+    const analyzeRepairRefused = (req: OpenerFlowModelRequest) =>
+      req.system === OPENER_ANALYZE_PROMPT
+        ? Promise.resolve({ rawText: "這不是 JSON", model: "claude-sonnet-5", inputTokens: 1, outputTokens: 1 })
+        : Promise.reject(refused());
+    const analyzeRefused = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 }), { invokeModel: analyzeRepairRefused }));
+    assertEquals(analyzeRefused.status, 422);
+    assertEquals((await json(analyzeRefused)).code, "OPENER_CONTENT_REFUSED");
+    const sessions = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state <> 'released'`);
+    assertEquals(sessions.rows[0].n, 0);
+
+    await passOneMinute(h.db);
+    h.env.OPENER_PLAN_WRITE = "true";
+    const script = { calls: [] as OpenerFlowModelRequest[] };
+    const base = planWriteInvoker(script);
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: base }));
+    const sessionId = String((await json(analysis)).sessionId);
+
+    // 結構刀：她說不要聊狗，寫手的卡片都提到狗 → 改寫 → 改寫被拒答。
+    await passOneMinute(h.db);
+    const noDog = (req: OpenerFlowModelRequest) => {
+      if (req.system === OPENER_PLAN_PROMPT) {
+        script.calls.push(req);
+        const plan = { ...PLAN_JSON, spans: [{ quote: "不要聊狗", role: "restriction", term: "狗" }], questionTarget: null };
+        return Promise.resolve({ rawText: JSON.stringify(plan), model: "claude-sonnet-5", inputTokens: 1, outputTokens: 1 });
+      }
+      if (req.purpose === "rewrite") {
+        script.calls.push(req);
+        return Promise.reject(refused());
+      }
+      return base(req);
+    };
+    const rewriteRefused = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, { state: "answered", freeText: "不要聊狗" }, { openerCardSet: 2 }), { invokeModel: noDog }));
+    assertEquals(rewriteRefused.status, 422);
+    assertEquals((await json(rewriteRefused)).code, "OPENER_CONTENT_REFUSED");
+    assert(script.calls.some((c) => c.purpose === "rewrite"), "真的走到改寫");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(await runCount(h.db), 0);
+
+    // 舊路徑：硬錯誤要內容修正，修正被拒答。
+    await passOneMinute(h.db);
+    const correctionRefused = (req: OpenerFlowModelRequest) => {
+      const userText = typeof req.messages[0]?.content === "string" ? req.messages[0].content : "";
+      if (req.system === OPENER_GENERATE_PROMPT && userText.startsWith("以下這組開場白有可確定的錯誤")) return Promise.reject(refused());
+      if (req.system === OPENER_GENERATE_PROMPT) {
+        const body = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, resonate: "我也養狗，妳那隻會帶路嗎" } };
+        return Promise.resolve({ rawText: JSON.stringify(body), model: "claude-sonnet-5", inputTokens: 1, outputTokens: 1 });
+      }
+      return base(req);
+    };
+    h.tier = "essential";
+    const single = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, CURIOUS), { invokeModel: correctionRefused }));
+    assertEquals(single.status, 422);
+    assertEquals((await json(single)).code, "OPENER_CONTENT_REFUSED");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(await runCount(h.db), 0);
+  } finally { await h.db.close(); }
+});

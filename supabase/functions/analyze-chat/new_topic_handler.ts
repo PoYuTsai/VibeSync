@@ -594,8 +594,8 @@ export async function handleNewTopicRequest(
   };
   // 拒答（ADR #28／#49）：當失敗、不換模型。settle 尚未開始，release 安全；同一份
   // 內容重送一樣會被擋，所以回 422 請用戶調整內容，不給「稍後再試」。
-  const rejectNewTopicRefusal = async (): Promise<Response> => {
-    logWarn("new_topic_model_refused", newTopicLogFields());
+  const rejectNewTopicRefusal = async (stage: string): Promise<Response> => {
+    logWarn("new_topic_model_refused", { ...newTopicLogFields(), stage });
     if (!await releaseNewTopicCurrentClaim()) {
       return newTopicReleaseFailedResponse();
     }
@@ -731,6 +731,10 @@ export async function handleNewTopicRequest(
           Date.now() >= newTopicGenerationDeadlineAtMs
         ) {
           return await rejectNewTopicDeadline("format_repair");
+        }
+        // 修格式被拒答也整次失敗（ADR #54），回「請調整內容」而不是「重新生成」。
+        if (isModelRefusalError(repairError)) {
+          return await rejectNewTopicRefusal("format_repair");
         }
         logWarn("new_topic_repair_error", {
           ...newTopicLogFields(),
@@ -1025,7 +1029,7 @@ export async function handleNewTopicRequest(
                 "primary_or_fallback",
               );
             } else if (isModelRefusalError(streamError)) {
-              failureResponse = await rejectNewTopicRefusal();
+              failureResponse = await rejectNewTopicRefusal("primary");
             } else {
               logWarn("new_topic_api_error", {
                 ...newTopicLogFields(),
@@ -1104,7 +1108,7 @@ export async function handleNewTopicRequest(
       return await rejectNewTopicDeadline("primary_or_fallback");
     }
     if (isModelRefusalError(apiError)) {
-      return await rejectNewTopicRefusal();
+      return await rejectNewTopicRefusal("primary");
     }
     logWarn("new_topic_api_error", {
       ...newTopicLogFields(),
