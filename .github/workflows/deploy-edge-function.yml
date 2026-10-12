@@ -24,6 +24,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: v2.x
+
+      # Pre-deploy gate (2026-10-03 health audit decision 1, approved by Eric
+      # 2026-10-12). Owner pushes to main skip PR CI, so this is the only test
+      # gate before Edge code reaches production. Any failing test stops the
+      # whole generic deploy; an urgent fix must also fix or revert the test.
+      # The test list lives only in tools/ci/edge-contract-tests.sh, shared
+      # with flutter-ci.yml. It runs before any production secret is touched.
+      - name: Run Edge contract tests
+        run: bash tools/ci/edge-contract-tests.sh
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2
         with:
