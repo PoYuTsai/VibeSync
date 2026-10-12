@@ -11,6 +11,7 @@ This folder only contains plans that a new agent session should read directly.
 | `2026-05-07-spec6-coach-1on1-design.md` | Active | Spec 6 Coach 1:1 and session-state design |
 | `2026-05-07-spec6-coach-1on1-6a-impl.md` | Active | Spec 6A implementation history |
 | `2026-05-07-spec6b-coach-dialogue-loop-impl.md` | Active | Spec 6B dialogue loop implementation history |
+| `2026-10-12-analyze-chat-redesign.md` | Design approved, not implemented | Analyze-chat redesign: three-layer result page, present-only knowledge points, situational reply types, Sonnet 5.5 migration, phased plan |
 
 ## Archive
 
