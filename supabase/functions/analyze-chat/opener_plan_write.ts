@@ -11,7 +11,7 @@ import type { OpenerMaterialSet } from "./opener_material.ts";
 import { type OpenerType, sanitizeOpenerText } from "./opener_payload.ts";
 import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stage.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
-import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
+import { hasOpenerFlowPromptLeak } from "./opener_flow_prompt.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -218,7 +218,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "plan",
       });
-      if (hasAnalyzeChatPromptLeak(out.rawText)) {
+      if (hasOpenerFlowPromptLeak(out.rawText)) {
         plan = profileOnlyPlan(planCtx, ["plan.leak"]);
         telemetry.planError = "leak";
       } else {
@@ -270,7 +270,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     return fail("provider", "model", plan, null);
   }
   telemetry.writeElapsedMs = now() - writeStarted;
-  if (hasAnalyzeChatPromptLeak(writerRaw)) return fail("leak", "writer", plan, writerRaw);
+  if (hasOpenerFlowPromptLeak(writerRaw)) return fail("leak", "writer", plan, writerRaw);
 
   let extraCallsRemaining = 1;
   let parsed = parseJsonObjectFromText(writerRaw);
@@ -308,7 +308,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "repair",
       });
-      if (!hasAnalyzeChatPromptLeak(repair.rawText)) {
+      if (!hasOpenerFlowPromptLeak(repair.rawText)) {
         const repaired = parseJsonObjectFromText(repair.rawText);
         if (visibleMissing(repaired).length === 0) parsed = repaired;
       }
@@ -374,7 +374,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "rewrite",
       });
-      const json = hasAnalyzeChatPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
+      const json = hasOpenerFlowPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
       const rewritten = json && isPlainObject(json.openers) ? json.openers : {};
       for (const style of targets) {
         // 改寫回覆也可能把這張標成範例（改寫對象不含要求的方向＋範例卡）：新句子不當一般卡，整張不交付。

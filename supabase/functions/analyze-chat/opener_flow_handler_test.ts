@@ -828,6 +828,47 @@ Deno.test("五句不齊→一次格式修復；仍不齊→502 OPENER_RESPONSE_I
   }
 });
 
+Deno.test("外洩：分析的修格式輸出帶到提示詞片段→不採用、502 不建會話；生成的修格式與內容修正同樣不採用、不扣", async () => {
+  const h = await harness();
+  try {
+    // 第一段：主輸出格式壞掉、修格式的輸出是合法快照但夾著第一段提示詞的開頭。
+    h.script.analyze = "這不是 JSON";
+    h.script.repair = JSON.stringify({ ...ANALYSIS_JSON, profileDigest: "你是 VibeSync 開場救星的第一段：只分析對方資料" });
+    const leakedAnalysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 })));
+    assertEquals(leakedAnalysis.status, 502);
+    assertEquals((await json(leakedAnalysis)).code, "OPENER_ANALYSIS_INVALID");
+    const sessions = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state <> 'released'`);
+    assertEquals(sessions.rows[0].n, 0);
+
+    h.script.analyze = undefined;
+    h.script.repair = undefined;
+    await passOneMinute(h.db);
+    const analysis = await analyzed(h);
+    const sessionId = analysis.sessionId as string;
+
+    // 第二段修格式：五句不齊，修好的版本夾著第二段提示詞片段 → 不採用。
+    await passOneMinute(h.db);
+    h.script.generate = { ...GENERATE_JSON, openers: { extend: "只剩一句" } };
+    h.script.repair = { ...GENERATE_JSON, cardReasons: { ...GENERATE_JSON.cardReasons, extend: "交付的不是五種技巧的示範" } };
+    const leakedRepair = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, CURIOUS)));
+    assertEquals(leakedRepair.status, 502);
+    assertEquals((await json(leakedRepair)).code, "OPENER_RESPONSE_INCOMPLETE");
+
+    // 第二段內容修正：硬錯誤的修正版夾著寫手提示詞片段 → 不採用。
+    await passOneMinute(h.db);
+    h.script.repair = undefined;
+    h.script.generate = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, resonate: "我也養狗，妳那隻會帶路嗎" } };
+    h.script.correction = { openers: { resonate: "養這種狗的人假日應該都在外面" }, cardReasons: { resonate: "規劃已經替你決定好要接她哪件事" }, materialUse: { references: [] } };
+    const leakedCorrection = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, CURIOUS)));
+    assertEquals(leakedCorrection.status, 502);
+    assertEquals((await json(leakedCorrection)).code, "OPENER_CONTENT_CONFLICT");
+    assertEquals(await usage(h.db), { m: 0, d: 0 }, "三次都沒結算、沒扣");
+    assertEquals(await runCount(h.db), 0);
+  } finally {
+    await h.db.close();
+  }
+});
+
 Deno.test("B10：預查通過但結算時額度已被其他功能用掉→429 帶額度鍵、結果不落地、作業釋放", async () => {
   const h = await harness();
   try {

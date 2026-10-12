@@ -39,7 +39,6 @@ import {
 import { hasOpenerProfileSubstance, normalizeOpenerProfileInfo } from "./opener_profile.ts";
 import { validateOpenerImages } from "./opener_image_validation.ts";
 import { type ImageData } from "./analysis_input_compiler.ts";
-import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
 import { getErrorMessage, logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
@@ -83,6 +82,7 @@ import {
   OPENER_GENERATE_MAX_TOKENS,
   OPENER_GENERATE_PROMPT,
   OPENER_GENERATE_SCHEMA_HINT,
+  hasOpenerFlowPromptLeak,
 } from "./opener_flow_prompt.ts";
 import {
   planWriteEnabled,
@@ -551,7 +551,7 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時分析失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
       }
-      if (hasAnalyzeChatPromptLeak(output.rawText)) {
+      if (hasOpenerFlowPromptLeak(output.rawText)) {
         logWarn("prompt_leak_blocked", { user, surface: "opener_analyze", textLength: output.rawText.length });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新分析一次；本次不會扣額度。", 502);
@@ -575,8 +575,13 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
             allowModelFallback: false,
             purpose: "repair",
           });
-          snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
-          repaired = snapshot !== null;
+          // 修格式的輸出也要過整包外洩檢查：命中就不用它，照格式異常回失敗、不扣。
+          if (hasOpenerFlowPromptLeak(repair.rawText)) {
+            logWarn("prompt_leak_blocked", { user, surface: "opener_analyze_repair", textLength: repair.rawText.length });
+          } else {
+            snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
+            repaired = snapshot !== null;
+          }
         } catch (error) {
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("repair");
           logWarn("opener_analyze_repair_error", { user, error: getErrorMessage(error) });
@@ -939,7 +944,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
       }
       onFinalizing?.();
-      if (hasAnalyzeChatPromptLeak(output.rawText)) {
+      if (hasOpenerFlowPromptLeak(output.rawText)) {
         logWarn("prompt_leak_blocked", { user, surface: "opener_generate", textLength: output.rawText.length });
         return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
       }
@@ -975,12 +980,16 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             purpose: "repair",
           });
           addUsage(repair);
-          const repairedJson = parseJsonObjectFromText(repair.rawText);
-          const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials, true);
-          if (repairedNormalized.ok) {
-            parsedJson = repairedJson;
-            normalized = repairedNormalized;
-            repaired = true;
+          if (hasOpenerFlowPromptLeak(repair.rawText)) {
+            logWarn("prompt_leak_blocked", { user, surface: "opener_generate_repair", textLength: repair.rawText.length });
+          } else {
+            const repairedJson = parseJsonObjectFromText(repair.rawText);
+            const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials, true);
+            if (repairedNormalized.ok) {
+              parsedJson = repairedJson;
+              normalized = repairedNormalized;
+              repaired = true;
+            }
           }
         } catch (error) {
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("format_repair");
@@ -1015,16 +1024,20 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             purpose: "correction",
           });
           addUsage(correction);
-          const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
-          const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace, reconsiderSelection ? materials : undefined);
-          const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials, true);
-          if (mergedNormalized.ok) {
-            const mergedFlags = contentFlags(mergedNormalized.value);
-            if (hardFlags(mergedFlags).length === 0) {
-              parsedJson = merged;
-              normalized = mergedNormalized;
-              flags = mergedFlags;
-              corrected = true;
+          if (hasOpenerFlowPromptLeak(correction.rawText)) {
+            logWarn("prompt_leak_blocked", { user, surface: "opener_generate_correction", textLength: correction.rawText.length });
+          } else {
+            const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
+            const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace, reconsiderSelection ? materials : undefined);
+            const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials, true);
+            if (mergedNormalized.ok) {
+              const mergedFlags = contentFlags(mergedNormalized.value);
+              if (hardFlags(mergedFlags).length === 0) {
+                parsedJson = merged;
+                normalized = mergedNormalized;
+                flags = mergedFlags;
+                corrected = true;
+              }
             }
           }
         } catch (error) {
