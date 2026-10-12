@@ -26,7 +26,7 @@ export interface TokenPricing {
 
 /**
  * Anthropic 官方 prompt cache 的標準乘數：讀 0.1×base input、5 分鐘 ephemeral
- * 寫 1.25×base input。`supabase/functions/analyze-chat/logger.ts` 的
+ * 寫 1.25×base input（Opus 5.5／Sonnet 5.5 的讀是 0.05×，見各自常數）。`supabase/functions/analyze-chat/logger.ts` 的
  * `TOKEN_COSTS` 只有 input／output 兩格，沒有算這兩格。
  */
 export const CACHE_READ_MULTIPLIER = 0.1;
@@ -65,9 +65,46 @@ export const SONNET_5_PRICING: TokenPricing = withCacheTiers(2, 10);
 
 /**
  * Sonnet 5.5（`claude-sonnet-5-5`）：與 Sonnet 5 同價 $2／$10 每 M，
- * cache read $0.20、cache write $2.50（2026-10-02 對拍官方 pricing 頁）。
+ * cache write $2.50；cache read 是 0.05x＝$0.10（2026-10-12 對拍
+ * platform.claude.com 的 pricing 頁；10-02 記的 0.1x＝$0.20 已修）。
  */
-export const SONNET_5_5_PRICING: TokenPricing = withCacheTiers(2, 10);
+export const SONNET_5_5_PRICING: TokenPricing = {
+  inputPerMTok: 2,
+  outputPerMTok: 10,
+  cacheReadPerMTok: 0.1,
+  cacheWritePerMTok: 2.5,
+};
+
+/**
+ * Opus 5.5（`claude-opus-5-5`）：$4／$20 每 M，cache write $5，
+ * cache read 0.05x＝$0.20（2026-10-12 對拍官方 pricing 頁）。
+ */
+export const OPUS_5_5_PRICING: TokenPricing = {
+  inputPerMTok: 4,
+  outputPerMTok: 20,
+  cacheReadPerMTok: 0.2,
+  cacheWritePerMTok: 5,
+};
+
+/**
+ * Haiku 5.5（`claude-haiku-5-5`）依整次 prompt 長度分兩級（input＋快取讀寫
+ * 都算）：10 萬 token 以內 $0.10／$0.50、cache write $0.125、read $0.01；
+ * 超過整次改用 `HAIKU_5_5_LONG_CONTEXT_PRICING`（2026-10-12 對拍官方 pricing 頁）。
+ */
+export const HAIKU_5_5_PRICING: TokenPricing = {
+  inputPerMTok: 0.1,
+  outputPerMTok: 0.5,
+  cacheReadPerMTok: 0.01,
+  cacheWritePerMTok: 0.125,
+};
+
+/** Haiku 5.5 prompt 超過 10 萬 token 的那一級：$0.50／$2.50、write $0.625、read $0.05。 */
+export const HAIKU_5_5_LONG_CONTEXT_PRICING: TokenPricing = {
+  inputPerMTok: 0.5,
+  outputPerMTok: 2.5,
+  cacheReadPerMTok: 0.05,
+  cacheWritePerMTok: 0.625,
+};
 
 /** `callClaude` 的 `onUsage` 回呼形狀（四格 token 數）。 */
 export interface TokenUsage {

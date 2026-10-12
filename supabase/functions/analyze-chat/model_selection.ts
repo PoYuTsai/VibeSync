@@ -1,11 +1,13 @@
 // AnalyzeChat 模型選擇：production 一律 Sonnet 5（舊模型只活在 outage
 // fallback chain）；forceModel 只開放測試帳號／TEST_MODE 的基準測試。
-// 位元組以 fc8bbe84 基準 hash 鎖定（baseline_contract_test.ts）。
+// 5.5 進白名單是讓黑箱能指定它（ADR #55）；一般用戶帶了也不採用。
+// 位元組以 baseline_contract_test.ts 的 hash 鎖定。
 
 const VALID_FORCE_MODELS = new Set([
   "claude-haiku-4-5-20251001",
   "claude-sonnet-4-6",
   "claude-sonnet-5",
+  "claude-sonnet-5-5",
 ]);
 
 // 模型選擇函數 (設計規格 4.9)
