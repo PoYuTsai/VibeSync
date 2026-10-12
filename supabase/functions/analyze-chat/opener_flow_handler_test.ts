@@ -12,11 +12,14 @@ import {
   type OpenerFlowModelRequest,
 } from "./opener_flow_handler.ts";
 import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
-import { OPENER_PLAN_PROMPT } from "./opener_plan.ts";
-import { buildOpenerWritePrompt } from "./opener_write.ts";
+import { OPENER_PLAN_MAX_TOKENS, OPENER_PLAN_PROMPT } from "./opener_plan.ts";
+import { buildOpenerWritePrompt, OPENER_WRITE_MAX_TOKENS } from "./opener_write.ts";
+import { SONNET_5_5_THINKING_HEADROOM_TOKENS } from "../_shared/model_request_params.ts";
 import { computeOpenerGenerationInputHash, OPENER_FLOW_PREVIOUS_PROMPT_VERSION, parseOpenerGenerateRequest } from "./opener_stage.ts";
 import { readPreviousPromptReplay } from "./opener_session.ts";
 import type { ProviderAttemptLogEntry } from "./model_call_budget.ts";
+import { AiServiceError } from "./fallback.ts";
+import { AiStreamingServiceError } from "./streaming_fallback.ts";
 
 const MIGRATIONS = [
   "20260702120000_increment_usage_atomic_quota.sql",
@@ -1746,4 +1749,130 @@ Deno.test("GPT 預審 R3：回給客戶端的投影（重播與結算出口共�
   assertEquals(resultForClient(stored, true), stored);
   const plain = { ...stored, access: { ...stored.access, directions: undefined } } as typeof stored;
   assertEquals(resultForClient(plain, false), plain);
+});
+
+Deno.test("拒答：第一段被模型拒答 → 422 OPENER_CONTENT_REFUSED、作業釋放；不說「稍後再試」", async () => {
+  const h = await harness();
+  try {
+    const refusing = (req: OpenerFlowModelRequest) => {
+      h.script.calls.push(req);
+      return Promise.reject(new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false));
+    };
+    const refused = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: refusing }));
+    assertEquals(refused.status, 422);
+    const body = await json(refused);
+    assertEquals(body.code, "OPENER_CONTENT_REFUSED");
+    assertEquals(body.shouldChargeQuota, false);
+    assertEquals(body.retryable, undefined);
+    const rows = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state <> 'released'`);
+    assertEquals(rows.rows[0].n, 0);
+  } finally { await h.db.close(); }
+});
+
+Deno.test("拒答：結構刀規劃被拒答 → 422 不扣、不占次數、不呼叫寫手（不退成只用她的資料偷偷交付）；舊路徑寫手被拒答一樣", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const script = { calls: [] as OpenerFlowModelRequest[] };
+    const base = planWriteInvoker(script);
+    const refusingPlanner = (req: OpenerFlowModelRequest) => {
+      if (req.system !== OPENER_PLAN_PROMPT) return base(req);
+      script.calls.push(req);
+      return Promise.reject(new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false));
+    };
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: base }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const contribution = { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" };
+    const refused = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, contribution, { openerCardSet: 2 }), { invokeModel: refusingPlanner }));
+    assertEquals(refused.status, 422);
+    const body = await json(refused);
+    assertEquals(body.code, "OPENER_CONTENT_REFUSED");
+    assertEquals(body.shouldChargeQuota, false);
+    assertEquals(script.calls.map((c) => c.purpose ?? "analyze"), ["analyze", "plan"], "規劃被拒答就不呼叫寫手");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(await runCount(h.db), 0);
+
+    // 舊版 App（沒帶 openerCardSet＝舊路徑）：串流寫手被拒答一樣 422、不扣。
+    await passOneMinute(h.db);
+    const refusingWriter = (req: OpenerFlowModelRequest) => {
+      if (req.system !== OPENER_GENERATE_PROMPT) return base(req);
+      return Promise.reject(new AiStreamingServiceError("AI declined to generate this response.", "STREAM_MODEL_REFUSAL", false));
+    };
+    const single = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution), { invokeModel: refusingWriter }));
+    assertEquals(single.status, 422);
+    assertEquals((await json(single)).code, "OPENER_CONTENT_REFUSED");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+
+    // 換一筆照常生成、扣一次。
+    await passOneMinute(h.db);
+    const ok = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_3, contribution, { openerCardSet: 2 }), { invokeModel: base }));
+    assertEquals(ok.status, 200);
+    assertEquals(await usage(h.db), { m: 3, d: 3 });
+  } finally { await h.db.close(); }
+});
+
+Deno.test("5.5 開關：OPENER_SONNET_55=true 只讓結構刀的規劃與寫手用 5.5（參數照共用層）；分析與舊路徑維持 Sonnet 5；每次請求讀", async () => {
+  const h = await harness();
+  const original = globalThis.fetch;
+  const sent: Array<Record<string, unknown>> = [];
+  const productionDeps = (body: Record<string, unknown>) => {
+    const deps = h.deps(body);
+    delete (deps as Partial<OpenerFlowHandlerDeps>).invokeModel;
+    return deps;
+  };
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    h.env.OPENER_SONNET_55 = "true";
+    globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      sent.push(body);
+      const system = Array.isArray(body.system) ? body.system.map((b: { text?: string }) => b.text ?? "").join("") : String(body.system ?? "");
+      const payload = system === OPENER_ANALYZE_PROMPT
+        ? ANALYSIS_JSON
+        : system === OPENER_PLAN_PROMPT
+        ? PLAN_JSON
+        : system === OPENER_GENERATE_PROMPT
+        ? GENERATE_JSON
+        : WRITE_JSON;
+      return Promise.resolve(new Response(JSON.stringify({
+        id: "msg_test", type: "message", role: "assistant", model: body.model, stop_reason: "end_turn",
+        content: [{ type: "text", text: JSON.stringify(payload) }],
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    };
+    const analysis = await handleOpenerAnalyzeRequest(productionDeps(analyzeBody()));
+    assertEquals(analysis.status, 200);
+    const sessionId = String((await json(analysis)).sessionId);
+    assertEquals(sent.map((b) => b.model), ["claude-sonnet-5"], "第一段分析維持 Sonnet 5");
+    assertEquals(sent[0].thinking, { type: "disabled" });
+
+    await passOneMinute(h.db);
+    const planWrite = await handleOpenerGenerateRequest(productionDeps(generateBody(sessionId, GEN_1, CURIOUS, { openerCardSet: 2 })));
+    assertEquals(planWrite.status, 200);
+    const [plan, write] = sent.slice(1);
+    assertEquals([plan.model, write.model], ["claude-sonnet-5-5", "claude-sonnet-5-5"]);
+    for (const request of [plan, write]) {
+      assertEquals(request.thinking, { type: "adaptive", display: "omitted" });
+      assertEquals((request.output_config as Record<string, unknown>).effort, "low");
+      assertEquals("temperature" in request, false);
+    }
+    assertEquals(plan.max_tokens, OPENER_PLAN_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS);
+    assertEquals(write.max_tokens, OPENER_WRITE_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS);
+
+    // 舊版 App（沒帶 openerCardSet＝舊路徑）：開關開著也維持 Sonnet 5。
+    await passOneMinute(h.db);
+    const single = await handleOpenerGenerateRequest(productionDeps(generateBody(sessionId, GEN_2, CURIOUS)));
+    assertEquals(single.status, 200);
+    assertEquals(sent.slice(3).map((b) => b.model), ["claude-sonnet-5"]);
+
+    // 關掉開關立即回 Sonnet 5（每次請求讀，不用重新部署）。
+    h.env.OPENER_SONNET_55 = "false";
+    await passOneMinute(h.db);
+    const off = await handleOpenerGenerateRequest(productionDeps(generateBody(sessionId, GEN_3, CURIOUS, { openerCardSet: 2 })));
+    assertEquals(off.status, 200);
+    assertEquals(sent.slice(4).map((b) => b.model), ["claude-sonnet-5", "claude-sonnet-5"]);
+  } finally {
+    globalThis.fetch = original;
+    await h.db.close();
+  }
 });

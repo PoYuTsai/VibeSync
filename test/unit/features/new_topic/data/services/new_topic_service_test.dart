@@ -171,6 +171,27 @@ void main() {
         )),
       );
     });
+
+    test('422 NEW_TOPIC_CONTENT_REFUSED（模型拒答）→ 顯示 server 訊息、不留同一筆重試', () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => const NewTopicInvokeResponse(
+          status: 422,
+          data: {
+            'code': 'NEW_TOPIC_CONTENT_REFUSED',
+            'message': 'AI 沒辦法依這次的內容生成新話題，請調整你寫的素材或對象資料後再試；本次不會扣額度。',
+            'retryable': false,
+            'shouldChargeQuota': false,
+          },
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(requestId: _requestId),
+        throwsA(isA<NewTopicMaterialBlockedException>()
+            .having((e) => e.message, 'message', contains('請調整你寫的素材或對象資料'))
+            .having((e) => e.retrySameRequest, 'retry', isFalse)),
+      );
+    });
   });
 
   group('NewTopicService success parsing', () {

@@ -2,6 +2,7 @@
 // 原料再生成。獨立於舊單段 OPENER_PROMPT（舊 mode: opener 原合約不動）；
 // 這裡刻意不放示範句——實測示範句會被逐字抄成罐頭。
 
+import { SONNET_5_5_MODEL } from "../_shared/model_request_params.ts";
 import { containsPromptLeak } from "../_shared/prompt_leak_guard.ts";
 import { ANALYZE_CHAT_PROMPT_SENTINELS, PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
 import { approachStillApplies, type OpenerAnalysisSnapshot } from "./opener_stage.ts";
@@ -15,6 +16,15 @@ export const OPENER_ANALYZE_DEADLINE_MS = 45_000;
 export const OPENER_GENERATE_MAX_TOKENS = 2800;
 export const OPENER_GENERATE_DEADLINE_MS = 50_000;
 export const OPENER_FLOW_MODEL = "claude-sonnet-5";
+
+/**
+ * 結構刀第二段（規劃、寫手、修格式、改寫）換 Sonnet 5.5 的開關（ADR #54）：secret `OPENER_SONNET_55`
+ * 是 "true" 才用 5.5，每次請求讀，關掉就回 Sonnet 5，不用重新部署。第一段分析（含截圖辨識）、
+ * 舊版 App 走的舊路徑與舊單段開場都維持 Sonnet 5：5.5 對照片與舊提示詞的表現沒有量過。
+ */
+export function selectOpenerPlanWriteModel(env: (name: string) => string | undefined): string {
+  return env("OPENER_SONNET_55") === "true" ? SONNET_5_5_MODEL : OPENER_FLOW_MODEL;
+}
 
 const SHARED_GROUNDING = `## 事實與來源的鐵則
 - 她的資料只用可見的：文字欄位原文、截圖上看得到的場景、物件、活動、文字。不推人格、不評比外貌或身體部位、不猜感情狀態或收入。有來源的穿搭物件、運動或共同情境可以聊，不把它改成身材評論。

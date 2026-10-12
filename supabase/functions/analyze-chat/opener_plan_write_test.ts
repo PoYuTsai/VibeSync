@@ -8,6 +8,9 @@ import { digestOpenerPlan, OPENER_PLAN_PROMPT, type OpenerPlanContext, parseOpen
 import { buildOpenerWritePrompt, buildOpenerWriteUserContent, OPENER_REWRITE_PROMPT } from "./opener_write.ts";
 import { HANDLING_NOTE, handlingNoteFor, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard, withoutEmoji } from "./opener_pick.ts";
 import { isDirectionExample, runOpenerPlanWrite } from "./opener_plan_write.ts";
+import { AiServiceError } from "./fallback.ts";
+import { AiStreamingServiceError } from "./streaming_fallback.ts";
+import { isModelRefusalError } from "./model_refusal.ts";
 import type { OpenerType } from "./opener_payload.ts";
 
 const SNAPSHOT: OpenerAnalysisSnapshot = {
@@ -395,6 +398,34 @@ Deno.test("執行：規劃失敗不擋交付，退只用她的資料並提示補
   assertEquals(out.telemetry.planError, "error");
   assertEquals(out.result.materialUse.handlingNote, HANDLING_NOTE.unread);
   assertEquals(Object.keys(out.result.openers).sort(), ["extend", "humor", "tease"], "Free 只投影可見卡");
+});
+
+Deno.test("執行：規劃被拒答 → 整次失敗、不呼叫寫手（不退只用她的資料）；寫手被拒答 → refusal；一般錯誤照舊退", async () => {
+  const withRefusal = (script: Script, calls: OpenerFlowModelRequest[]) => ({ ...deps(script, calls), isRefusalError: isModelRefusalError });
+  const calls: OpenerFlowModelRequest[] = [];
+  const planRefused = await runOpenerPlanWrite(
+    input("隨便聊聊", FREE),
+    withRefusal({ plan: new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false), write: WRITE_OK }, calls),
+  );
+  assertEquals(planRefused.kind === "fail" && [planRefused.reason, planRefused.stage], ["refusal", "plan"]);
+  assertEquals(planRefused.telemetry.planError, "refusal");
+  assertEquals(calls.length, 1, "規劃被拒答就不呼叫寫手");
+
+  const writeRefused = await runOpenerPlanWrite(
+    input(null, FREE),
+    withRefusal({ write: new AiStreamingServiceError("AI declined to generate this response.", "STREAM_MODEL_REFUSAL", false) }, []),
+  );
+  assertEquals(writeRefused.kind === "fail" && [writeRefused.reason, writeRefused.stage], ["refusal", "model"]);
+
+  const degraded = await runOpenerPlanWrite(input("隨便聊聊", FREE), withRefusal({ plan: new Error("boom"), write: WRITE_OK }, []));
+  assertEquals(degraded.kind, "ok");
+  assertEquals(degraded.telemetry.planError, "error");
+  // 沒給拒答判斷的呼叫端（評測舊版本等）：照舊退只用她的資料。
+  const legacy = await runOpenerPlanWrite(
+    input("隨便聊聊", FREE),
+    deps({ plan: new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false), write: WRITE_OK }, []),
+  );
+  assertEquals(legacy.kind, "ok");
 });
 
 Deno.test("執行：可見卡缺漏用唯一額外呼叫修格式；修不好就不交付", async () => {

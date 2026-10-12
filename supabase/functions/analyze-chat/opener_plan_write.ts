@@ -1,8 +1,8 @@
 // 開場救星結構刀管線（需求凍結 §4.1）：規劃 → 寫手 → 格式修復或定點改寫（共用唯一
 // 額外呼叫）→ 另外挑 → 投影。handler 與付費評測共用這一個函式，評測不再鏡像 handler。
 //
-// 呼叫預算：規劃 1（不重試、不 fallback；失敗或逾時退「只用她的資料」計畫）＋寫手 1
-// （可 fallback）＋額外 1 ＝ ModelCallBudget 上限 3 不變。所有失敗都回給 handler 走
+// 呼叫預算：規劃 1（不重試、不 fallback；失敗或逾時退「只用她的資料」計畫，拒答例外）＋
+// 寫手 1（可 fallback）＋額外 1 ＝ ModelCallBudget 上限 3 不變。所有失敗都回給 handler 走
 // 既有 release＋不扣費路徑；這裡不碰 claim／settle。
 
 import type { OpenerFlowModelInvoker, OpenerFlowModelOutput } from "./opener_flow_handler.ts";
@@ -70,6 +70,8 @@ export interface PlanWriteDeps {
   deadlineAtMs: number;
   /** handler 的 OpenerFlowDeadlineError 判斷（避免循環匯入 class）。 */
   isDeadlineError: (error: unknown) => boolean;
+  /** 模型拒答判斷（model_refusal.ts）；沒給就當成一般失敗。 */
+  isRefusalError?: (error: unknown) => boolean;
   now?: () => number;
   onChunk?: (chunk: string) => void;
 }
@@ -115,7 +117,7 @@ export type PlanWriteOutcome =
   | { kind: "ok"; result: OpenerGenerateLedgerResult; telemetry: PlanWriteTelemetry; plan: OpenerPlan; writerRaw: string }
   | {
     kind: "fail";
-    reason: "deadline" | "provider" | "leak" | "incomplete" | "no_deliverable";
+    reason: "deadline" | "provider" | "refusal" | "leak" | "incomplete" | "no_deliverable";
     stage: string;
     telemetry: PlanWriteTelemetry;
     plan: OpenerPlan | null;
@@ -225,7 +227,13 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         plan = parseOpenerPlan(parseJsonObjectFromText(out.rawText), planCtx);
       }
     } catch (error) {
-      // 規劃只是讓寫手拿到更好的輸入：失敗不擋交付，退回只用她的資料。
+      // 拒答（ADR #28／#49）當失敗：退回只用她的資料會默默丟掉用戶的補充，卻照扣。
+      if (deps.isRefusalError?.(error)) {
+        telemetry.planError = "refusal";
+        telemetry.planElapsedMs = now() - planStarted;
+        return fail("refusal", "plan", null, null);
+      }
+      // 規劃只是讓寫手拿到更好的輸入：其他失敗不擋交付，退回只用她的資料。
       plan = profileOnlyPlan(planCtx, ["plan.error"]);
       telemetry.planError = deps.isDeadlineError(error) ? "timeout" : "error";
     }
@@ -267,6 +275,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
   } catch (error) {
     telemetry.writeElapsedMs = now() - writeStarted;
     if (deps.isDeadlineError(error) || now() >= deps.deadlineAtMs) return fail("deadline", "model", plan, null);
+    if (deps.isRefusalError?.(error)) return fail("refusal", "model", plan, null);
     return fail("provider", "model", plan, null);
   }
   telemetry.writeElapsedMs = now() - writeStarted;

@@ -18,6 +18,7 @@ import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import { AiServiceError, callClaudeWithFallback, type ClaudeMessageContent, extractClaudeText } from "./fallback.ts";
 import { AiStreamingServiceError, callClaudeStreaming } from "./streaming_fallback.ts";
+import { isModelRefusalError } from "./model_refusal.ts";
 import { ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamStageTracker,
@@ -83,6 +84,7 @@ import {
   OPENER_GENERATE_PROMPT,
   OPENER_GENERATE_SCHEMA_HINT,
   hasOpenerFlowPromptLeak,
+  selectOpenerPlanWriteModel,
 } from "./opener_flow_prompt.ts";
 import {
   planWriteEnabled,
@@ -161,13 +163,13 @@ export interface OpenerFlowHandlerDeps {
   recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
-const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlowModelInvoker => async (req) => {
+const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget, model = OPENER_FLOW_MODEL): OpenerFlowModelInvoker => async (req) => {
   const remainingMs = req.deadlineAtMs - Date.now();
   if (remainingMs <= 0) throw new OpenerFlowDeadlineError("before_model");
   if (req.onChunk) {
     try {
       const claude = await callClaudeStreaming(
-        { model: OPENER_FLOW_MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
+        { model, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
         apiKey,
         { timeout: remainingMs, absoluteDeadlineAtMs: req.deadlineAtMs, budget,
           purpose: req.purpose, allowModelFallback: req.allowModelFallback },
@@ -192,7 +194,7 @@ const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlow
   }
   try {
     const result = await callClaudeWithFallback(
-      { model: OPENER_FLOW_MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
+      { model, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
       apiKey,
       {
         timeout: Math.min(60000, remainingMs),
@@ -273,6 +275,10 @@ function rpcFailureResponse(
 function releaseFailedResponse(): Response {
   return flowError("OPENER_CLAIM_RELEASE_RETRYABLE", "請求狀態暫時無法釋放，請稍後用同一筆請求重試。", 503, { retryable: true });
 }
+
+/** 模型拒答（5.5 安全過濾等）：422、不扣、不給重試；App 只顯示訊息。 */
+const OPENER_CONTENT_REFUSED = "OPENER_CONTENT_REFUSED";
+const OPENER_GENERATE_REFUSED_MESSAGE = "AI 沒辦法依這次的內容生成開場白，請換個說法寫補充，或重新分析後再試；本次不會扣額度。";
 
 function buildClaudeMessages(images: unknown, text: string): OpenerFlowModelMessage[] {
   if (Array.isArray(images) && images.length > 0) {
@@ -547,6 +553,12 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
         output = await invokeModel({ system: OPENER_ANALYZE_PROMPT, messages, maxTokens: OPENER_ANALYZE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
       } catch (error) {
         if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
+        if (isModelRefusalError(error)) {
+          // 拒答（ADR #28／#49）：同一份資料重送一樣會被擋，請用戶換資料，不給「稍後再試」。
+          logWarn("opener_analyze_model_refused", { user, imageCount });
+          if (!await release()) return releaseFailedResponse();
+          return flowError(OPENER_CONTENT_REFUSED, "AI 沒辦法分析這份資料，請換張截圖或調整資料後再試；本次不會扣額度。", 422);
+        }
         logWarn("opener_analyze_api_error", { user, error: getErrorMessage(error), imageCount });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時分析失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
@@ -806,7 +818,9 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
   const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
     attemptReporter("opener_provider_attempt", "opener_generate", deps.recordAiCall, { path: usePlanWrite ? "plan_write" : "single" }));
-  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
+  // 5.5 開關只管結構刀（新版 App）；舊路徑維持 Sonnet 5。
+  const generateModel = usePlanWrite ? selectOpenerPlanWriteModel(env) : OPENER_FLOW_MODEL;
+  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget, generateModel);
   const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
     logWarn("opener_generate_deadline_exceeded", { user, stage });
@@ -903,7 +917,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           servedTier,
           contractVersion,
           arm: writerArmFromRequest(body),
-        }, { invokeModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, onChunk });
+        }, { invokeModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, isRefusalError: isModelRefusalError, onChunk });
         onFinalizing?.();
         // telemetry 只有代碼與計數，不含用戶原文。
         const { verdicts, ...planWriteLog } = outcome.telemetry;
@@ -922,6 +936,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             case "provider":
               if (!await release()) return releaseFailedResponse();
               return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
+            case "refusal":
+              return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
             case "leak":
               logWarn("prompt_leak_blocked", { user, surface: "opener_generate_plan_write" });
               return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
@@ -939,6 +955,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
         output = await invokeModel({ system: OPENER_GENERATE_PROMPT, messages: [{ role: "user", content: userContent }], maxTokens: OPENER_GENERATE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
       } catch (error) {
         if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
+        if (isModelRefusalError(error)) {
+          logWarn("opener_generate_model_refused", { user, path: "single" });
+          return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
+        }
         logWarn("opener_generate_api_error", { user, error: getErrorMessage(error) });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });

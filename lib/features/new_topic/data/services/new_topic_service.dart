@@ -98,7 +98,7 @@ class NewTopicAdvancedUnavailableException extends NewTopicException {
   const NewTopicAdvancedUnavailableException(super.message);
 }
 
-/// 素材原文被 server 擋字（422）：同一句重送一定再被擋，View 不留 pending。
+/// 素材原文被 server 擋字或模型拒答（422）：同一句重送一定再被擋，View 不留 pending。
 class NewTopicMaterialBlockedException extends NewTopicException {
   const NewTopicMaterialBlockedException(super.message);
 }
@@ -427,6 +427,13 @@ class NewTopicService {
     if (code == 'NEW_TOPIC_MATERIAL_BLOCKED') {
       throw NewTopicMaterialBlockedException(
         serverMessage ?? '你寫的那句含有不適合的字眼，請改寫後再生成。本次不會扣額度。',
+      );
+    }
+
+    // 模型拒答：同一份內容重送一樣會被擋，跟粗俗詞一樣不留 pending、不給「重試」。
+    if (code == 'NEW_TOPIC_CONTENT_REFUSED') {
+      throw NewTopicMaterialBlockedException(
+        serverMessage ?? 'AI 沒辦法依這次的內容生成新話題，請調整你寫的素材或對象資料後再試；本次不會扣額度。',
       );
     }
 
