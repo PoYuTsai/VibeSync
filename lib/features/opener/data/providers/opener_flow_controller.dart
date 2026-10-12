@@ -386,6 +386,12 @@ class OpenerFlowController extends ChangeNotifier {
       _set(_state.copyWith(phase: OpenerFlowPhase.editing, error: e.message, quotaError: e, failedOperation: OpenerFlowFailedOperation.analyze));
     } on OpenerFlowException catch (e) {
       if (!_isCurrent(op)) return;
+      if (e.isContentRefused) {
+        // 模型拒答：同一份資料重送一樣會被擋，不留「分析中」的紀錄（重開草稿會自動續分析、再花一次費用）。
+        _discardAnalyzingRecord();
+        _set(_state.copyWith(phase: OpenerFlowPhase.editing, error: e.message, flowError: e, clearFailedOperation: true));
+        return;
+      }
       if (e.isUnsupported || e.isUnavailable) {
         _discardAnalyzingRecord();
         _set(OpenerFlowState(
@@ -637,9 +643,9 @@ class OpenerFlowController extends ChangeNotifier {
         _set(_state.copyWith(phase: OpenerFlowPhase.expired, error: e.message, flowError: e));
         return;
       }
-      if (e.isSessionInvalid || e.code == OpenerFlowErrorCode.inputMismatch) {
-        // 同一個 generationId 重送只會一樣失敗（伺服器在 claim 前就擋、沒扣）：丟掉送出快照、
-        // 草稿退出 generating（重開不再自動重送），下次按生成換新 ID。
+      if (e.isSessionInvalid || e.code == OpenerFlowErrorCode.inputMismatch || e.isContentRefused) {
+        // 同一個 generationId 重送只會一樣失敗（伺服器沒扣；拒答是模型擋下、已釋放）：丟掉送出快照、
+        // 草稿退出 generating（重開不再自動重送、不再花模型費用），下次按生成換新 ID。
         _pendingGeneration = null;
         _generationSession.markSuccess();
         await _persistFlow(existingDraftId: _state.draftId, flow: _currentFlow(analysis));

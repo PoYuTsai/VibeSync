@@ -33,6 +33,9 @@ abstract final class OpenerFlowErrorCode {
   static const flowUnavailable = 'OPENER_FLOW_UNAVAILABLE';
   static const wrongSurface = 'OPENER_WRONG_SURFACE';
 
+  /// 模型拒答（422，不扣）：同一份內容重送一樣會被擋，不重送、不自動續做。
+  static const contentRefused = 'OPENER_CONTENT_REFUSED';
+
   /// App 端合成：舊 Edge 不認識兩段式 mode（400 卻沒有 code）。
   static const flowUnsupported = 'OPENER_FLOW_UNSUPPORTED';
 }
@@ -62,6 +65,7 @@ class OpenerFlowException implements Exception {
   bool get isUnavailable => code == OpenerFlowErrorCode.flowUnavailable;
   bool get isRateLimited => code == OpenerFlowErrorCode.modelRateLimited;
   bool get isLimitReached => code == OpenerFlowErrorCode.generationLimitReached;
+  bool get isContentRefused => code == OpenerFlowErrorCode.contentRefused;
   bool get isPending =>
       code == OpenerFlowErrorCode.generationPending ||
       code == OpenerFlowErrorCode.analysisPending ||
