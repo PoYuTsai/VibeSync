@@ -2499,7 +2499,8 @@ Deno.test({
     );
 
     // 順序：非法請求（無圖 400）不佔名額 → RPC 在 requires images 之後；
-    // 成本保護 → gate 在 AI 護欄 checkInput 之前（更在 Claude 呼叫前）。
+    // 成本保護 → gate 在組 prompt（對話記憶策略）之前，更在 Claude 呼叫前。
+    // 原本的錨點是輸入關鍵字閘門 checkInput，已隨 F01 刪除（2026-10-12）。
     // RPC 本體在 recognize_flow.ts；index 端以 call site 鎖順序。
     const indexOnly = await Deno.readTextFile(
       new URL("./analyze_chat_handler.ts", import.meta.url),
@@ -2508,14 +2509,14 @@ Deno.test({
     const requiresImagesAt = indexOnly.indexOf(
       "recognizeOnly requires images",
     );
-    const checkInputAt = indexOnly.indexOf("checkInput(messages)");
-    assert(requiresImagesAt >= 0 && checkInputAt >= 0);
+    const promptFlowAt = indexOnly.indexOf("const MAX_RECENT_MESSAGES = 30;");
+    assert(requiresImagesAt >= 0 && promptFlowAt >= 0);
     assert(
       gateAt > requiresImagesAt,
       "限流 gate 必須在圖片驗證（400 拒絕）之後，非法請求不得佔名額",
     );
     assert(
-      gateAt < checkInputAt,
+      gateAt < promptFlowAt,
       "限流 gate 必須在 prompt/Claude 流程之前（preflight）",
     );
 

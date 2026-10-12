@@ -375,29 +375,7 @@ export function checkAiOutput(result: AnalysisResult): AnalysisResult {
   return checkOptimizedMessage(result);
 }
 
-// 檢查輸入是否包含敏感內容
-export function checkInput(messages: Array<{ content: string }>): {
-  safe: boolean;
-  reason?: string;
-} {
-  const combinedText = messages.map((m) => m.content).join(" ");
-
-  // 檢查是否詢問如何騷擾/跟蹤
-  const dangerousPatterns = [
-    /如何.*跟蹤/i,
-    /怎麼.*強迫/i,
-    /她不願意.*怎麼/i,
-    /拒絕.*還是想/i,
-  ];
-
-  for (const pattern of dangerousPatterns) {
-    if (pattern.test(combinedText)) {
-      return {
-        safe: false,
-        reason: "偵測到不當意圖，無法提供建議",
-      };
-    }
-  }
-
-  return { safe: true };
-}
+// 2026-10-12 刪除輸入端關鍵字閘門 checkInput（健檢 F01，唯一 P1）：它把雙方訊息
+// 串起來比對四條正規式，「她不願意吃辣，晚餐怎麼辦」這類正常對話會被擋成
+// 400 UNSAFE_INPUT，App 又不給重試。界線與拒絕改由模型的「先別回」決策處理；
+// 輸出端守門（checkAiOutput）不變。回歸測試：input_gate_removed_test.ts。

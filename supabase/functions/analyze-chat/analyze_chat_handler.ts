@@ -8,7 +8,6 @@ import {
 import {
   type AnalysisResult as GuardrailAnalysisResult,
   checkAiOutput,
-  checkInput,
 } from "./guardrails.ts";
 import { postProcessAnalysisResult } from "./post_process.ts";
 import {
@@ -908,16 +907,9 @@ async function handleAnalyzeChat(
       if (ocrLimited !== null) return ocrLimited;
     }
 
-    // Check input for safety (AI 護欄)
+    // 輸入端不再做關鍵字閘門（F01 已刪，見 guardrails.ts 註解）：界線與拒絕
+    // 交給模型的「先別回」決策，輸出端守門照舊。
     if (!recognizeOnly) {
-      const inputCheck = checkInput(messages);
-      if (!inputCheck.safe) {
-        return jsonResponse({
-          error: inputCheck.reason,
-          code: "UNSAFE_INPUT",
-        }, 400);
-      }
-
       if (analyzeMode === "my_message") {
         const myMessageShapeResponse = validateMyMessageShape(messages);
         if (myMessageShapeResponse !== null) return myMessageShapeResponse;
