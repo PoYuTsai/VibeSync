@@ -5,8 +5,22 @@
 // 基準從 git 取 7c5cc523，不靠這裡。修格式提示詞納入 production prompt blocking
 // scan（new_topic_prompt_test）。
 
+import { SONNET_5_5_MODEL } from "../_shared/model_request_params.ts";
+
 /** 新話題主呼叫的模型（備援鏈由 fallback.ts 決定）；評測工具也用這個常數。 */
 export const NEW_TOPIC_MODEL = "claude-sonnet-5";
+
+/**
+ * 換 Sonnet 5.5 的開關（ADR #54）：secret `NEW_TOPIC_SONNET_55` 是 "true" 才用 5.5，每次請求讀，
+ * 關掉就回 Sonnet 5，不用重新部署。5.5 的思考參數、max_tokens 餘裕與備援順序由共用呼叫層處理。
+ */
+export function selectNewTopicModel(
+  env: (name: string) => string | undefined,
+): string {
+  return env("NEW_TOPIC_SONNET_55") === "true"
+    ? SONNET_5_5_MODEL
+    : NEW_TOPIC_MODEL;
+}
 export const NEW_TOPIC_MAX_TOKENS = 3000;
 export const NEW_TOPIC_REQUEST_DEADLINE_MS = 50_000;
 export const NEW_TOPIC_GENERATION_DEADLINE_MS = 45_000;

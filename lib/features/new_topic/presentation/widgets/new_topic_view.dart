@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
@@ -60,6 +61,9 @@ class NewTopicView extends ConsumerStatefulWidget {
     '還在整理最適合先試的方向，請保持連線…',
   ];
 
+  /// 額度不足（生成前看到、或伺服器回過額度不足）時，主按鈕直接開升級頁。
+  static const upgradeButtonLabel = '升級方案';
+
   static const freeUpsellHeadline = '免費版先看最推薦的 1 個完整方案';
   static const freeUpsellBody = '升級可再解鎖另外 4 個話題';
 
@@ -75,9 +79,15 @@ class NewTopicView extends ConsumerStatefulWidget {
 
 class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _scrollController = ScrollController();
-  // 2026-08-18 呈現精修：完成後定格在「新話題建議」標題，不再捲到底
-  // 略過 5 張題卡。
+  // 2026-08-18 呈現精修：完成後定格在結果區頂端（這組根據、新話題建議），不再
+  // 捲到底略過 5 張題卡。
   final _resultsSectionKey = GlobalKey();
+  // 生成中那一行狀態：生成鈕固定在底部，按下後要捲到看得到（2026-10-12）。
+  final _progressKey = GlobalKey();
+  // 正在跑「捲到看得到進度」的動畫：那不是用戶在捲，結果到時照樣定格。新動畫會取消舊的、
+  // 舊的 Future 仍會完成，所以只有最新那次（編號相同）可以清掉旗標。
+  bool _revealingProgress = false;
+  int _revealGeneration = 0;
   final _situationKey = GlobalKey();
   final _materialController = TextEditingController();
 
@@ -103,6 +113,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   bool _showDetails = false;
   bool _pendingScroll = false;
   bool _confirmPending = false;
+  // 伺服器明確回過「額度不足」的那一筆（請求編號）：沒有落帳，同一筆再按只會再被擋。
+  // 只綁那一筆：換對象或答案後別的待重試請求（可能已落帳）照常可以取回。
+  String? _quotaRejectedRequestId;
   int _inputVersion = 0;
   String? get _owner =>
       NewTopicView.debugOwnerIdOverride?.call() ??
@@ -140,18 +153,35 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!mounted ||
           !widget.isActive ||
           !_pendingScroll &&
+              !_revealingProgress &&
               _scrollController.position.isScrollingNotifier.value) {
         return;
       }
       final target = _resultsSectionKey.currentContext;
       if (target == null) return;
       _pendingScroll = false;
+      snapSectionTopIntoView(target);
+    });
+  }
+
+  /// 生成鈕固定在底部，進度那一行常落在它後面：開始生成、串流第一個事件到時，
+  /// 捲到它剛好露出（只在看不到時捲）。
+  void _revealProgress() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.isActive || !_isGenerating) return;
+      final target = _progressKey.currentContext;
+      if (target == null) return;
+      final generation = ++_revealGeneration;
+      _revealingProgress = true;
       Scrollable.ensureVisible(target,
-          alignment: 0.04,
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : AppMotion.scroll,
-          curve: AppMotion.easeOut);
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : AppMotion.scroll,
+              curve: AppMotion.easeOut)
+          .whenComplete(() {
+        if (generation == _revealGeneration) _revealingProgress = false;
+      });
     });
   }
 
@@ -380,6 +410,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _preparing = true;
       _error = null;
+      _quotaRejectedRequestId = null;
     });
     try {
       if (pending == null) {
@@ -445,6 +476,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _streamProgress.clear();
         _completedStreamPhases.clear();
       });
+      _revealProgress();
       final service =
           NewTopicView.debugServiceFactory?.call() ?? NewTopicService();
       final result = await service.generateTopicsStreaming(
@@ -457,10 +489,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         revenueCatAppUserId: attempt.revenueCatAppUserId,
         onProgress: (label, phase) {
           if (!current() || !_isGenerating || phase == 'heartbeat') return;
+          final first = _streamProgress.isEmpty;
           setState(() {
             _streamProgress.add(label);
             if (phase != null) _completedStreamPhases.add(phase);
           });
+          // 本地輪播換成串流狀態列，位置會變：再確認一次看得到。
+          if (first) _revealProgress();
         },
       );
       if (!current()) return;
@@ -475,7 +510,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       unawaited(_refreshUsageAfterResult());
     } on NewTopicQuotaExceededException catch (e) {
       if (!current()) return;
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        _quotaRejectedRequestId = requestSession
+            .pendingFor(
+                partnerId: partnerId,
+                situation: situation,
+                topicContext: topicContext)
+            ?.requestId;
+      });
       if (widget.isActive) await _showPaywallAndRefresh();
     } on NewTopicRequestInProgressException catch (e) {
       if (!current()) return;
@@ -506,6 +549,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     } on NewTopicMaterialBlockedException catch (e) {
       if (!current()) return;
       // 同一句重送一定再被擋：不留 pending，按鈕回到「生成新話題」。
+      requestSession.markSuccess();
+      setState(() => _error = e.message);
+    } on NewTopicReplayMismatchException catch (e) {
+      if (!current()) return;
+      // 同一個編號再送只會再撞：丟掉 pending，下次按生成換新編號。
       requestSession.markSuccess();
       setState(() => _error = e.message);
     } on NewTopicException catch (e) {
@@ -556,6 +604,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   void _copyOpeningLine(NewTopicIdea idea) {
     AppHaptics.light();
     Clipboard.setData(ClipboardData(text: idea.openingLine));
+    // 去識別化：只記有複製、是不是推薦那題，不含句子（量新話題有沒有被拿去傳）。
+    unawaited(ref.read(funnelTrackerProvider).track('new_topic_copied',
+        properties: {
+          'is_recommended': idea.id == _result?.recommendation.topicId,
+        }));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -658,11 +711,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         situation: null,
         hasMaterialText: hasMaterialText);
     final usage = ref.watch(subscriptionProvider);
-    final quotaBlocked = pending == null &&
-        !usage.isLoading &&
+    final quotaShort = !usage.isLoading &&
         usage.error == null &&
         (usage.monthlyRemaining < kNewTopicQuotaCost ||
             usage.dailyRemaining < kNewTopicQuotaCost);
+    // 待重試的那筆可能已落帳（重試只回放、不扣），平常照樣讓它重試；伺服器明確回過
+    // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給升級入口。
+    final quotaBlocked = quotaShort &&
+        (pending == null || pending.requestId == _quotaRejectedRequestId);
     final helper = validPartnerId == null
         ? '先選擇聊天對象，再補充目前情境。'
         : readiness == NewTopicReadiness.dataQualityBlocked
@@ -678,11 +734,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           ? '正在準備…'
           : _isGenerating
               ? '生成中…'
-              : _confirmPending && pending != null
-                  ? '確認本次結果'
-                  : pending != null
-                      ? '重試'
-                      : '生成新話題',
+              : quotaBlocked
+                  ? NewTopicView.upgradeButtonLabel
+                  : _confirmPending && pending != null
+                      ? '確認本次結果'
+                      : pending != null
+                          ? '重試'
+                          : '生成新話題',
       hint: quotaBlocked
           ? '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。'
           : materialHint != null && validPartnerId != null
@@ -692,9 +750,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                   : validPartnerId == null
                       ? '先選擇聊天對象'
                       : '',
-      onPressed: _busy || !ready || quotaBlocked || materialHint != null
+      onPressed: _busy
           ? null
-          : _generate,
+          : quotaBlocked
+              ? () => unawaited(_showPaywallAndRefresh())
+              : !ready || materialHint != null
+                  ? null
+                  : _generate,
       onQuota: () => showOpenerQuotaSheet(context, newTopic: true),
     );
     return ScrollCardTicks(
@@ -744,7 +806,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StreamProgressTicker(labels: _streamProgress),
+                          KeyedSubtree(
+                              key: _progressKey,
+                              child: StreamProgressTicker(
+                                  labels: _streamProgress)),
                           if (!_completedStreamPhases
                               .contains('finalizing')) ...[
                             const SizedBox(height: 12),
@@ -754,9 +819,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                           ],
                         ],
                       )
-                    : const Center(
-                        child: OpenerGenerationProgress(
-                          phrases: NewTopicView.progressPhrases,
+                    : KeyedSubtree(
+                        key: _progressKey,
+                        child: const Center(
+                          child: OpenerGenerationProgress(
+                            phrases: NewTopicView.progressPhrases,
+                          ),
                         ),
                       ),
               if (_error != null)

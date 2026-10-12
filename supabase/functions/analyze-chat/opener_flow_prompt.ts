@@ -2,7 +2,9 @@
 // 原料再生成。獨立於舊單段 OPENER_PROMPT（舊 mode: opener 原合約不動）；
 // 這裡刻意不放示範句——實測示範句會被逐字抄成罐頭。
 
-import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
+import { SONNET_5_5_MODEL } from "../_shared/model_request_params.ts";
+import { containsPromptLeak } from "../_shared/prompt_leak_guard.ts";
+import { ANALYZE_CHAT_PROMPT_SENTINELS, PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
 import { approachStillApplies, type OpenerAnalysisSnapshot } from "./opener_stage.ts";
 import type { NormalizedOpenerProfile } from "./opener_profile.ts";
 import { type OpenerMaterialSet, renderMaterialsForPrompt } from "./opener_material.ts";
@@ -14,6 +16,15 @@ export const OPENER_ANALYZE_DEADLINE_MS = 45_000;
 export const OPENER_GENERATE_MAX_TOKENS = 2800;
 export const OPENER_GENERATE_DEADLINE_MS = 50_000;
 export const OPENER_FLOW_MODEL = "claude-sonnet-5";
+
+/**
+ * 結構刀第二段（規劃、寫手、修格式、改寫）換 Sonnet 5.5 的開關（ADR #54）：secret `OPENER_SONNET_55`
+ * 是 "true" 才用 5.5，每次請求讀，關掉就回 Sonnet 5，不用重新部署。第一段分析（含截圖辨識）、
+ * 舊版 App 走的舊路徑與舊單段開場都維持 Sonnet 5：5.5 對照片與舊提示詞的表現沒有量過。
+ */
+export function selectOpenerPlanWriteModel(env: (name: string) => string | undefined): string {
+  return env("OPENER_SONNET_55") === "true" ? SONNET_5_5_MODEL : OPENER_FLOW_MODEL;
+}
 
 const SHARED_GROUNDING = `## 事實與來源的鐵則
 - 她的資料只用可見的：文字欄位原文、截圖上看得到的場景、物件、活動、文字。不推人格、不評比外貌或身體部位、不猜感情狀態或收入。有來源的穿搭物件、運動或共同情境可以聊，不把它改成身材評論。
@@ -151,6 +162,29 @@ export const OPENER_FLOW_REPAIR_PROMPT = `你是 VibeSync 開場救星的 JSON �
 // and affected cards together, rather than inventing a decision from old output.
 export const OPENER_GENERATE_REPAIR_PROMPT = `${OPENER_GENERATE_PROMPT}
 這次是同一份生成結果的有界修復：補齊合法 JSON、五張卡及完整 materialReading.usage。只依當次素材與對方資料判斷；同步修正受取捨影響的句子、理由、引用與備案，其餘正確内容保留。不新增事實、不改變用戶正常意圖或限制。`;
+
+// 兩段式各步驟提示詞的片段（舊單段 OPENER_PROMPT 的片段在 prompt_leak.ts）：模型把系統指示
+// 整段或大段吐出來、沒帶到結尾的保密指示時也擋得到。都是內部說明的長片段，正常輸出不會出現。
+// 規劃與寫手的提示詞在 opener_plan.ts、opener_write.ts；opener_flow_source_test 逐一核對每份提示詞都抓得到。
+export const OPENER_FLOW_PROMPT_SENTINELS: readonly string[] = [
+  "你是 VibeSync 開場救星的第一段",
+  "這一段要回答的三件事",
+  "你是 VibeSync 開場救星的第二段",
+  "不是五種技巧的示範",
+  "資料順序與優先權",
+  "事實與來源的鐵則",
+  "你是 VibeSync 開場救星的 JSON 格式修復器",
+  "你是 VibeSync 開場救星的「規劃」步驟",
+  "用戶補充怎麼分段",
+  "你是 VibeSync 開場救星的寫手",
+  "規劃已經替你決定好要接她哪件事",
+  "你是 VibeSync 開場救星的改寫器",
+];
+
+/** 開場救星兩段式的整包外洩檢查：命中就不交付、不扣。 */
+export function hasOpenerFlowPromptLeak(text: string | null | undefined): boolean {
+  return containsPromptLeak(text, [...ANALYZE_CHAT_PROMPT_SENTINELS, ...OPENER_FLOW_PROMPT_SENTINELS]);
+}
 
 export function buildOpenerFlowRepairPrompt(schemaHint: string, rawText: string): string {
   return [

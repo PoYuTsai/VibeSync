@@ -19,7 +19,7 @@
   - 可交付率不算它；開場句的機械指標算它。
 - `--arms=base` 或 `--arms=cand` 可以只跑一臂（沒有盲測）。`--base-ref` 只收 commit SHA。
 
-## 案例（`cases.json` v2，22 組）
+## 案例（`cases.json` v2，22 組；另有 `probes.json` 4 組探針，見「模型對照」）
 
 | 組 | 模式 | 看什麼 |
 |---|---|---|
@@ -115,6 +115,19 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
   --compare=model --only=B4,E3,J1,S1,D1,C2 --repeat=2 \
   --run --confirm-paid --max-calls=24 --budget-usd=2
 ```
+
+### 換 5.5 上線前的全量對照（ADR #54，2026-10-12）
+
+ADR #54 讓新話題可以用 `NEW_TOPIC_SONNET_55` 換 5.5，打開前跑一次全量模型對照：正式的 22 組加 4 組尺度邊緣探針（`probes.json` 的 P1–P4：喝醉的梗、約會後在她家、夜生活與刺青、犯罪紀錄片），量 5.5 會不會把正常的交友內容當成要拒答。探針不屬正式驗收，只有 `--only` 點名才跑；對象資料併進 `PARTNERS`。
+
+```sh
+# dry-run（不花錢）：26 組 × 2 次 × 2 臂＝104 次，2026-10-12 估一般 $2.62、最壞 $6.05
+deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+  tools/new-topic-two-stage-eval/run.ts --tag=nt55-dry --compare=model --repeat=2 \
+  --only=E1,E2,E3,C1,C2,C3,C4,C5,S1,D1,D2,W1,B1,B2,B3,B4,B5,B6,N1,N2,J1,T1,P1,P2,P3,P4
+```
+
+真跑照上面的指令加 `--allow-env=HOME --allow-net=api.anthropic.com` 與 `--run --confirm-paid --max-calls=104 --budget-usd=<上限>`，要 Eric 當次說「跑」。
 
 - `summary.md` 多一節「時間與費用（每臂）」：送出、有回、API 失敗的次數，停止原因（end_turn／max_tokens／refusal），等待的算術中位數、最慢與超過 45 秒（算所有實際送出的請求，含逾時失敗），output token、實付；機械指標照常列，不列 §6.5 門檻表。
 - 不實、主詞與邏輯、尷尬、推薦能不能原樣傳，要看 `records.json` 逐句判斷。

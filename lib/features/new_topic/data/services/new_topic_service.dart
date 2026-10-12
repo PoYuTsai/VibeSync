@@ -98,9 +98,14 @@ class NewTopicAdvancedUnavailableException extends NewTopicException {
   const NewTopicAdvancedUnavailableException(super.message);
 }
 
-/// 素材原文被 server 擋字（422）：同一句重送一定再被擋，View 不留 pending。
+/// 素材原文被 server 擋字或模型拒答（422）：同一句重送一定再被擋，View 不留 pending。
 class NewTopicMaterialBlockedException extends NewTopicException {
   const NewTopicMaterialBlockedException(super.message);
+}
+
+/// 這個請求編號已用於不同內容（409）：同一個編號重送一定再撞，View 丟掉 pending、下次換新編號。
+class NewTopicReplayMismatchException extends NewTopicException {
+  const NewTopicReplayMismatchException(super.message);
 }
 
 class NewTopicService {
@@ -430,6 +435,13 @@ class NewTopicService {
       );
     }
 
+    // 模型拒答：同一份內容重送一樣會被擋，跟粗俗詞一樣不留 pending、不給「重試」。
+    if (code == 'NEW_TOPIC_CONTENT_REFUSED') {
+      throw NewTopicMaterialBlockedException(
+        serverMessage ?? 'AI 沒辦法依這次的內容生成新話題，請調整你寫的素材或對象資料後再試；本次不會扣額度。',
+      );
+    }
+
     // Edge worker 被平台中止時，handler 可能來不及釋放 claim 或回傳結算
     // 結果。沿用同一 requestId，交給既有有限重試查回 pending/replay，
     // 不能把結果未知說成「本次不扣額度」，也不能重建一筆請求。
@@ -462,6 +474,12 @@ class NewTopicService {
         monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
         dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
         quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),
+      );
+    }
+
+    if (code == 'NEW_TOPIC_REQUEST_REPLAY_MISMATCH') {
+      throw NewTopicReplayMismatchException(
+        serverMessage ?? '這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。',
       );
     }
 

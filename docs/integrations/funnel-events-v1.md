@@ -37,6 +37,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `about_me_opened` | `source` (enum: `checklist` / `card` / `settings`) | AboutMeScreen.initState |
 | `about_me_saved` | `has_style` (bool), `goals_count` (int), `seeds_count` (int), `has_notes` (bool), `has_custom_topics` (bool) | AboutMeScreen 儲存成功後 |
 | `about_me_cleared` | — | AboutMeScreen 清除成功後 |
+| `new_topic_copied` | `is_recommended` (bool) | NewTopicView 複製開場句（2026-10-12：量新話題有沒有被拿去傳；只記是不是推薦那題，不含句子） |
 
 值域限制（server 端強制）：
 
@@ -45,7 +46,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - `seeds_count`：0–5 的整數。
 - `item`：上表 enum 之一，其他值剝除整鍵。
 - `source`：上表 enum 之一，其他值剝除整鍵。
-- bool 鍵只收 true/false。
+- bool 鍵只收 true/false（`has_partner`、`has_style`、`has_notes`、`has_custom_topics`、`is_recommended`）。
 - 任何 string 值長度上限 40 字元，超長截斷。
 
 ## once-flag 去重

@@ -39,7 +39,7 @@ Deno.test("tracker：opener 各 stage 首見各發一次，重掃不重發", () 
     "開場白 3/5：調情",
     "開場白 4/5：幽默",
     "開場白 5/5：冷讀",
-    "準備先鋒備案",
+    "準備她回了之後的接法",
     "挑選最適推薦",
   ]);
   assert(events.every((e) => e["type"] === "opener.progress"));

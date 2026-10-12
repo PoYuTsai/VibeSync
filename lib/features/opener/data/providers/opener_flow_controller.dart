@@ -22,7 +22,7 @@ enum OpenerFlowPhase {
   editing,
   analyzing,
 
-  /// 看分析、選方向、補一句或略過；按「生成回覆」才進第二段。
+  /// 看分析、選方向、補一句或略過；按「生成開場白」才進第二段。
   contributing,
   generating,
   result,
@@ -386,6 +386,12 @@ class OpenerFlowController extends ChangeNotifier {
       _set(_state.copyWith(phase: OpenerFlowPhase.editing, error: e.message, quotaError: e, failedOperation: OpenerFlowFailedOperation.analyze));
     } on OpenerFlowException catch (e) {
       if (!_isCurrent(op)) return;
+      if (e.isContentRefused) {
+        // 模型拒答：同一份資料重送一樣會被擋，不留「分析中」的紀錄（重開草稿會自動續分析、再花一次費用）。
+        _discardAnalyzingRecord();
+        _set(_state.copyWith(phase: OpenerFlowPhase.editing, error: e.message, flowError: e, clearFailedOperation: true));
+        return;
+      }
       if (e.isUnsupported || e.isUnavailable) {
         _discardAnalyzingRecord();
         _set(OpenerFlowState(
@@ -511,7 +517,7 @@ class OpenerFlowController extends ChangeNotifier {
 
   // ── 第二段 ─────────────────────────────────────────────────────────────
 
-  /// 按「生成回覆」。[fresh] 為 true＝不改回答也要新的一次主動生成
+  /// 按「生成開場白」。[fresh] 為 true＝不改回答也要新的一次主動生成
   ///（新 generationId、占一組）；預設同回答只沿用同 ID（斷線重試取回同組）。
   Future<void> generate({bool fresh = false}) async {
     final analysis = _state.analysis;
@@ -521,7 +527,7 @@ class OpenerFlowController extends ChangeNotifier {
       return;
     }
     if (_state.generationsRemaining <= 0) {
-      _set(_state.copyWith(error: '這局的三組回覆已用完；重新分析可開始新的一局（3 則）。'));
+      _set(_state.copyWith(error: '這次分析的三組開場白已用完；重新分析就能再生成（3 則）。'));
       return;
     }
     if (_state.freeTextTooLong) {
@@ -637,9 +643,9 @@ class OpenerFlowController extends ChangeNotifier {
         _set(_state.copyWith(phase: OpenerFlowPhase.expired, error: e.message, flowError: e));
         return;
       }
-      if (e.isSessionInvalid || e.code == OpenerFlowErrorCode.inputMismatch) {
-        // 同一個 generationId 重送只會一樣失敗（伺服器在 claim 前就擋、沒扣）：丟掉送出快照、
-        // 草稿退出 generating（重開不再自動重送），下次按生成換新 ID。
+      if (e.isSessionInvalid || e.code == OpenerFlowErrorCode.inputMismatch || e.isContentRefused) {
+        // 同一個 generationId 重送只會一樣失敗（伺服器沒扣；拒答是模型擋下、已釋放）：丟掉送出快照、
+        // 草稿退出 generating（重開不再自動重送、不再花模型費用），下次按生成換新 ID。
         _pendingGeneration = null;
         _generationSession.markSuccess();
         await _persistFlow(existingDraftId: _state.draftId, flow: _currentFlow(analysis));
