@@ -173,7 +173,8 @@ abstract final class NewTopicTwoStageCopy {
   static const _coldNoDuration = ('有內容、低壓力、不追討。', ['「在嗎」式空敲門']);
   static const _coldStop = {
     'she_no_reply': ('不追上一則；有新的東西，再傳一則全新的內容。', ['「在嗎」「妳怎麼沒回」']),
-    'i_no_reply': ('一句帶過就好，接著直接進內容。', ['長篇解釋', '過度道歉']),
+    // ADR #51 產品裁決 5：不解釋、不道歉，也不提很久沒聊（同 server）。
+    'i_no_reply': ('不用解釋為什麼沒回，像平常聊天一樣直接帶新的內容。', ['解釋或道歉', '提很久沒聊']),
     'she_cold': ('先降低頻率和強度：一則就好，看她會不會主動多聊。', ['連續補話題', '硬約']),
   };
 
@@ -206,8 +207,10 @@ abstract final class NewTopicTwoStageCopy {
     final lines = <(String, List<String>)>[];
     if (situation == 'went_cold') {
       final duration = answers.coldDuration, stop = answers.coldStop;
-      if (duration == 'month_plus' && stop == 'i_no_reply') {
-        // 例外：免得出現兩次「帶過」。
+      if (stop == 'i_no_reply' &&
+          (duration == 'month_plus' || duration == 'days')) {
+        // 同 server：我沒回她就不提空窗，一個月以上的「說一句有陣子沒聊」不給；
+        // 幾天的「接回上次那條線」等於補回覆，也不給。只留不解釋、直接帶新內容這行。
         lines.add(_coldStop['i_no_reply']!);
       } else {
         if (duration == 'month_plus') {

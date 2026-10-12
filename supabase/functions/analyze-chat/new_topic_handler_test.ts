@@ -1,6 +1,8 @@
 // 新話題 handler 行為測試（2026-10-01 規格 §2／§4.7）：正式 handler，只替換
 // supabase 與模型 fetch 邊界。鎖住進階開關、擋字發生在任何 DB／限流／模型
 // 之前，以及基本、進階都走結構刀（ADR #53）：伺服器排五題任務、推薦固定第一題。
+// 串流層在載入時就抓住 fetch：轉接器必須是第一個 import（見 test_fetch_dispatcher.ts）。
+import "./test_fetch_dispatcher.ts";
 import {
   assert,
   assertEquals,
@@ -24,6 +26,8 @@ import {
   buildNewTopicLedgerResult,
   sanitizeNewTopicRequest,
 } from "./new_topic_payload.ts";
+import { NEW_TOPIC_MAX_TOKENS } from "./new_topic_prompt.ts";
+import { SONNET_5_5_THINKING_HEADROOM_TOKENS } from "../_shared/model_request_params.ts";
 
 const USER_ID = "11111111-2222-4333-8444-555555555555";
 const REQUEST_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -55,8 +59,52 @@ let modelStatusForNextRun: number | null = null;
 let failingModelCallsForNextRun = 0;
 /** 下一次 run 的 quota().effectiveTier（run 結束就清掉；null＝essential）。 */
 let effectiveTierForNextRun: string | null = null;
+/** 下一次 run 的回應模式（run 結束就清掉；null＝legacy）。串流要另外開 OPENER_STREAM_ENABLED。 */
+let responseModeForNextRun: "legacy" | "stream" | null = null;
+/** 下一次 run 模型回的 stop_reason（run 結束就清掉；null＝end_turn），例如 refusal。 */
+let stopReasonForNextRun: string | null = null;
+/** 下一次 run 額外設的 env（run 結束就還原），例如 OPENER_STREAM_ENABLED、NEW_TOPIC_SONNET_55。 */
+let envForNextRun: Record<string, string> = {};
+/** 下一次 run 依第幾次模型呼叫（0 起算）決定 stop_reason（run 結束就清掉）；優先於 stopReasonForNextRun。 */
+let stopReasonForCallNextRun: ((index: number) => string | null) | null = null;
+
+/** Anthropic SSE：一段文字＋結束原因（照 streaming_fallback 解析的事件格式）。 */
+function sseResponse(text: string, stopReason: string): Response {
+  const events = [
+    {
+      type: "message_start",
+      message: { usage: { input_tokens: 10, output_tokens: 1 } },
+    },
+    { type: "content_block_delta", delta: { type: "text_delta", text } },
+    {
+      type: "message_delta",
+      delta: { stop_reason: stopReason },
+      usage: { output_tokens: 10 },
+    },
+    { type: "message_stop" },
+  ];
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const event of events) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+          );
+        }
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
+}
 
 type ModelRequest = {
+  model: string;
+  max_tokens: number;
+  stream?: boolean;
+  thinking?: Record<string, unknown>;
+  output_config?: Record<string, unknown>;
   system: Array<{ text: string }>;
   messages: Array<{ role: string; content: string }>;
 };
@@ -146,10 +194,17 @@ async function run(
     logEvents.push(String(message));
     logMetadata.set(String(message).split(" ").at(-1)!, metadata);
   };
-  const env = ["NEW_TOPIC_TWO_STAGE_ENABLED", "NEW_TOPIC_REPLAY_HMAC_KEY"]
+  const env = [
+    "NEW_TOPIC_TWO_STAGE_ENABLED",
+    "NEW_TOPIC_REPLAY_HMAC_KEY",
+    "OPENER_STREAM_ENABLED",
+    "NEW_TOPIC_SONNET_55",
+  ]
     .map((key) => [key, Deno.env.get(key)] as const);
+  const stopReason = stopReasonForNextRun ?? "end_turn";
   globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
-    modelRequests.push(JSON.parse(String(init?.body)));
+    const request = JSON.parse(String(init?.body)) as ModelRequest;
+    modelRequests.push(request);
     if (modelRequests.length <= failingModelCallsForNextRun) {
       return Promise.resolve(new Response("{}", { status: 503 }));
     }
@@ -159,12 +214,20 @@ async function run(
         new Response("{}", { status: modelStatusForNextRun }),
       );
     }
+    const text = typeof payload === "string"
+      ? payload
+      : JSON.stringify(payload);
+    const callStopReason =
+      stopReasonForCallNextRun?.(modelRequests.length - 1) ?? stopReason;
+    if (request.stream === true) {
+      return Promise.resolve(sseResponse(text, callStopReason));
+    }
     return Promise.resolve(
       new Response(
         JSON.stringify({
-          content: [{ type: "text", text: JSON.stringify(payload) }],
+          content: [{ type: "text", text }],
           usage: { input_tokens: 10, output_tokens: 10 },
-          stop_reason: "end_turn",
+          stop_reason: callStopReason,
         }),
         { status: 200 },
       ),
@@ -176,12 +239,17 @@ async function run(
   } else {
     Deno.env.set("NEW_TOPIC_TWO_STAGE_ENABLED", twoStageFlag);
   }
+  Deno.env.delete("OPENER_STREAM_ENABLED");
+  Deno.env.delete("NEW_TOPIC_SONNET_55");
+  for (const [key, value] of Object.entries(envForNextRun)) {
+    Deno.env.set(key, value);
+  }
   try {
     const response = await handleNewTopicRequest({
       supabase,
       userId: USER_ID,
       requestBody,
-      responseMode: "legacy",
+      responseMode: responseModeForNextRun ?? "legacy",
       requestStartedAtMs: Date.now() - startedMsAgo,
       accountIsTest: false,
       claudeApiKey: "test-key",
@@ -194,9 +262,18 @@ async function run(
       }),
       recordAiCall: (entry) => aiCallRows.push(entry),
     });
+    // 串流：回最後一個事件（new_topic.done／new_topic.error）當 json，全部事件另外給。
+    const streamed = (response.headers.get("content-type") ?? "").includes(
+      "ndjson",
+    );
+    const events: Array<Record<string, unknown>> = streamed
+      ? (await response.text()).split("\n").filter((line) => line.trim())
+        .map((line) => JSON.parse(line))
+      : [];
     return {
       status: response.status,
-      json: await response.json(),
+      json: streamed ? events.at(-1)! : await response.json(),
+      events,
       dbCalls,
       modelRequests,
       logEvents,
@@ -210,6 +287,10 @@ async function run(
     modelStatusForNextRun = null;
     failingModelCallsForNextRun = 0;
     effectiveTierForNextRun = null;
+    responseModeForNextRun = null;
+    stopReasonForNextRun = null;
+    stopReasonForCallNextRun = null;
+    envForNextRun = {};
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     console.warn = originalWarn;
@@ -1089,4 +1170,237 @@ Deno.test("handler：紅燈收尾以外（基本模式、進階黃燈）推薦�
   assertEquals(audit.redCloseApplied, false);
   assertEquals(audit.redCloseOverridden, false);
   assertEquals(audit.recommendationOverridden, false);
+});
+
+// ── 串流（正式環境的主路徑）、拒答、5.5 開關 ───────────────────────────
+
+const streamOn = () => {
+  responseModeForNextRun = "stream";
+  envForNextRun = { OPENER_STREAM_ENABLED: "true" };
+};
+
+Deno.test("串流：done 之前只有開始與進度事件、不帶任何句子；done 帶完整五題、扣一次", async () => {
+  streamOn();
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.events[0].type, "new_topic.started");
+  assertEquals(result.json.type, "new_topic.done");
+  for (const event of result.events.slice(0, -1)) {
+    assert(
+      ["new_topic.started", "new_topic.progress"].includes(String(event.type)),
+      JSON.stringify(event),
+    );
+    assertFalse(JSON.stringify(event).includes("開場句"), "進度事件不外流句子");
+  }
+  const done = result.json.result as Record<string, unknown>;
+  assertEquals((done.topics as unknown[]).length, 5);
+  assertEquals(done.usage, { cost: 3 });
+  assertEquals(result.settleCalls.length, 1);
+  assertEquals(result.modelRequests.length, 1);
+  assertEquals(result.modelRequests[0].stream, true);
+  assertEquals(result.modelRequests[0].model, "claude-sonnet-5");
+  assertEquals(result.modelRequests[0].thinking, { type: "disabled" });
+});
+
+Deno.test("串流：OPENER_STREAM_ENABLED 沒開 → 靜默走一般回應", async () => {
+  responseModeForNextRun = "stream";
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200);
+  assertEquals(result.events, []);
+  assertEquals((result.json.topics as unknown[]).length, 5);
+  assertEquals(result.modelRequests[0].stream, undefined);
+  assert(
+    result.logEvents.some((e) =>
+      e.includes("new_topic_stream_fell_back_to_legacy")
+    ),
+  );
+});
+
+Deno.test("串流：模型全掛 → error 事件 503、釋放編號、不結算", async () => {
+  streamOn();
+  failingModelCallsForNextRun = 10;
+  const result = await run(body(), undefined);
+  assertEquals(result.status, 200, "串流的 HTTP 狀態固定 200，結果在事件裡");
+  assertEquals(result.json.type, "new_topic.error");
+  assertEquals(result.json.status, 503);
+  assertEquals(result.json.code, "NEW_TOPIC_PROVIDER_UNAVAILABLE");
+  assertEquals(result.json.shouldChargeQuota, false);
+  assert(result.dbCalls.includes("rpc:release_new_topic_claim"));
+  assertEquals(result.settleCalls, []);
+});
+
+Deno.test("串流：輸出夾著提示詞片段 → error 事件 502、釋放、不結算", async () => {
+  streamOn();
+  const leaked = JSON.stringify(MODEL_PAYLOAD).replace(
+    "因為1",
+    "這次的五題已經由教練排好，一題一個任務各寫一題",
+  );
+  const result = await run(body(), undefined, true, leaked);
+  assertEquals(result.json.type, "new_topic.error");
+  assertEquals(result.json.status, 502);
+  assertEquals(result.json.code, "NEW_TOPIC_RESPONSE_INVALID");
+  assert(result.dbCalls.includes("rpc:release_new_topic_claim"));
+  assertEquals(result.settleCalls, []);
+});
+
+Deno.test("拒答：串流與一般回應被模型拒答 → 422 請調整內容、不換模型、釋放、不結算", async () => {
+  streamOn();
+  stopReasonForNextRun = "refusal";
+  const streamed = await run(body(), undefined);
+  assertEquals(streamed.json.type, "new_topic.error");
+  assertEquals(streamed.json.status, 422);
+  assertEquals(streamed.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+  assertEquals(streamed.json.retryable, false);
+  assertEquals(streamed.json.shouldChargeQuota, false);
+  assertEquals(streamed.modelRequests.length, 1, "拒答不往下備援");
+  assert(streamed.dbCalls.includes("rpc:release_new_topic_claim"));
+  assertEquals(streamed.settleCalls, []);
+
+  stopReasonForNextRun = "refusal";
+  const legacy = await run(body(), undefined);
+  assertEquals(legacy.status, 422);
+  assertEquals(legacy.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+  assertEquals(legacy.modelRequests.length, 1);
+  assert(legacy.dbCalls.includes("rpc:release_new_topic_claim"));
+  assertEquals(legacy.settleCalls, []);
+});
+
+Deno.test("5.5 開關：NEW_TOPIC_SONNET_55=true 串流與一般回應都用 5.5（參數照共用層）；5.5 掛掉退 Sonnet 5；沒開維持 Sonnet 5", async () => {
+  for (const mode of ["stream", "legacy"] as const) {
+    responseModeForNextRun = mode;
+    envForNextRun = {
+      OPENER_STREAM_ENABLED: "true",
+      NEW_TOPIC_SONNET_55: "true",
+    };
+    const result = await run(body(), undefined);
+    const done = mode === "stream"
+      ? result.json.result as Record<string, unknown>
+      : result.json;
+    assertEquals((done.topics as unknown[]).length, 5, mode);
+    const request = result.modelRequests[0];
+    assertEquals(request.model, "claude-sonnet-5-5", mode);
+    assertEquals(
+      request.thinking,
+      { type: "adaptive", display: "omitted" },
+      mode,
+    );
+    assertEquals(request.output_config?.effort, "low", mode);
+    assertEquals(
+      request.max_tokens,
+      NEW_TOPIC_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS,
+      mode,
+    );
+  }
+
+  streamOn();
+  envForNextRun = { ...envForNextRun, NEW_TOPIC_SONNET_55: "true" };
+  failingModelCallsForNextRun = 1;
+  const fellBack = await run(body(), undefined);
+  assertEquals(fellBack.json.type, "new_topic.done");
+  assertEquals(fellBack.modelRequests.map((r) => r.model), [
+    "claude-sonnet-5-5",
+    "claude-sonnet-5",
+  ]);
+  assertEquals(fellBack.modelRequests[1].thinking, { type: "disabled" });
+  assertEquals(fellBack.modelRequests[1].max_tokens, NEW_TOPIC_MAX_TOKENS);
+
+  for (const flag of [undefined, "false", "1", "TRUE"]) {
+    envForNextRun = flag === undefined ? {} : { NEW_TOPIC_SONNET_55: flag };
+    const off = await run(body(), undefined);
+    assertEquals(off.modelRequests[0].model, "claude-sonnet-5", String(flag));
+  }
+});
+
+Deno.test("她的興趣是 One Direction、備註在讀人間失格：說明欄提到不算外洩，照常交付（改前整次 502）", async () => {
+  const payload = structuredClone(MODEL_PAYLOAD);
+  payload.topics[0].whyItWorks = "她寫了迷 One Direction，聊那段很自然";
+  payload.topics[1].whyItWorks = "她在重看人間失格，接後續最好回";
+  const result = await run(
+    body({
+      partnerSummary:
+        "[對象作戰板：小雅]\n- 興趣：One Direction、日本文學\n- 使用者確認的對方資料：最近在重看人間失格",
+      situation: "stuck",
+    }),
+    undefined,
+    true,
+    payload,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(result.modelRequests.length, 1, "不需要修格式");
+  const texts = JSON.stringify(result.json.topics);
+  assert(texts.includes("One Direction"));
+  assert(texts.includes("人間失格"));
+});
+
+Deno.test("拒答：主輸出格式壞掉、修格式被拒答 → 422 請調整內容、釋放、不結算", async () => {
+  stopReasonForCallNextRun = (index) => index === 1 ? "refusal" : null;
+  const result = await run(
+    body(),
+    undefined,
+    true,
+    "這不是 JSON",
+    0,
+    MODEL_PAYLOAD,
+  );
+  assertEquals(result.status, 422);
+  assertEquals(result.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+  assertEquals(result.modelRequests.length, 2, "主呼叫＋修格式");
+  assert(result.dbCalls.includes("rpc:release_new_topic_claim"));
+  assertEquals(result.settleCalls, []);
+});
+
+Deno.test("拒答剛好在生成期限後才處理完（串流、一般回應、修格式）：回 422 請調整內容、不是 504 逾時，一樣釋放、不結算", async () => {
+  const originalBegin = ModelCallBudget.prototype.begin;
+  const originalNow = Date.now;
+  // 共用層會照實回報期限後才處理完的拒答：被拒的那次呼叫結束時把時鐘撥過期限，錯誤才往回傳。
+  ModelCallBudget.prototype.begin = function (...args) {
+    const attempt = originalBegin.apply(this, args);
+    const finish = attempt.finish;
+    attempt.finish = (status) => {
+      if (status === "failed") {
+        const late = originalNow() + 60_000;
+        Date.now = () => late;
+      }
+      return finish(status);
+    };
+    return attempt;
+  };
+  try {
+    streamOn();
+    stopReasonForNextRun = "refusal";
+    const streamed = await run(body(), undefined);
+    Date.now = originalNow;
+    assertEquals(streamed.json.type, "new_topic.error");
+    assertEquals(streamed.json.status, 422, "改前：先看時間，回 504 逾時");
+    assertEquals(streamed.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+    assert(streamed.dbCalls.includes("rpc:release_new_topic_claim"));
+    assertEquals(streamed.settleCalls, []);
+
+    stopReasonForNextRun = "refusal";
+    const legacy = await run(body(), undefined);
+    Date.now = originalNow;
+    assertEquals(legacy.status, 422);
+    assertEquals(legacy.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+    assert(legacy.dbCalls.includes("rpc:release_new_topic_claim"));
+    assertEquals(legacy.settleCalls, []);
+
+    stopReasonForCallNextRun = (index) => index === 1 ? "refusal" : null;
+    const repaired = await run(
+      body(),
+      undefined,
+      true,
+      "這不是 JSON",
+      0,
+      MODEL_PAYLOAD,
+    );
+    Date.now = originalNow;
+    assertEquals(repaired.status, 422);
+    assertEquals(repaired.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+    assertEquals(repaired.modelRequests.length, 2, "主呼叫＋修格式");
+    assert(repaired.dbCalls.includes("rpc:release_new_topic_claim"));
+    assertEquals(repaired.settleCalls, []);
+  } finally {
+    ModelCallBudget.prototype.begin = originalBegin;
+    Date.now = originalNow;
+  }
 });

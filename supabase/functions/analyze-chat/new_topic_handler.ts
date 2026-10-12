@@ -25,6 +25,7 @@ import {
   ModelCallBudget,
   type ProviderAttemptLogEntry,
 } from "./model_call_budget.ts";
+import { isModelRefusalError } from "./model_refusal.ts";
 import { ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamStageTracker,
@@ -54,9 +55,9 @@ import {
   buildNewTopicRepairPrompt,
   NEW_TOPIC_GENERATION_DEADLINE_MS,
   NEW_TOPIC_MAX_TOKENS,
-  NEW_TOPIC_MODEL,
   NEW_TOPIC_REPAIR_PROMPT,
   NEW_TOPIC_REQUEST_DEADLINE_MS,
+  selectNewTopicModel,
 } from "./new_topic_prompt.ts";
 import {
   auditNewTopicTwoStageTopics,
@@ -591,6 +592,22 @@ export async function handleNewTopicRequest(
       shouldChargeQuota: false,
     }, 504);
   };
+  // 拒答（ADR #28／#49）：當失敗、不換模型。settle 尚未開始，release 安全；同一份
+  // 內容重送一樣會被擋，所以回 422 請用戶調整內容，不給「稍後再試」。
+  const rejectNewTopicRefusal = async (stage: string): Promise<Response> => {
+    logWarn("new_topic_model_refused", { ...newTopicLogFields(), stage });
+    if (!await releaseNewTopicCurrentClaim()) {
+      return newTopicReleaseFailedResponse();
+    }
+    return jsonResponse({
+      error: "NEW_TOPIC_CONTENT_REFUSED",
+      code: "NEW_TOPIC_CONTENT_REFUSED",
+      message:
+        "AI 沒辦法依這次的內容生成新話題，請調整你寫的素材或對象資料後再試；本次不會扣額度。",
+      retryable: false,
+      shouldChargeQuota: false,
+    }, 422);
+  };
 
   // ── 2026-08-18 new_topic 串流（transport-only）───────────────────
   // 與 opener 同策略：模型輸出契約不變，stream 只改逐塊接收＋進度事件。
@@ -693,7 +710,7 @@ export async function handleNewTopicRequest(
         const repairedParsed = mergeNewTopicRepairWithPrimaryOpeningLines(
           newTopicPrimaryParsed,
           parseJsonObjectFromText(repairedText),
-          newTopicMaterialText,
+          newTopicGroundingPolicy.userProvidedText ?? null,
         );
         const repairedNormalized = normalizeNewTopicModelPayload(
           repairedParsed,
@@ -708,6 +725,11 @@ export async function handleNewTopicRequest(
           });
         }
       } catch (repairError) {
+        // 修格式被拒答也整次失敗（ADR #54），回「請調整內容」而不是「重新生成」；
+        // 拒答先認，剛好過了期限也一樣（兩條路都釋放、不扣）。
+        if (isModelRefusalError(repairError)) {
+          return await rejectNewTopicRefusal("format_repair");
+        }
         if (
           (repairError instanceof AiServiceError &&
             repairError.code === "DEADLINE_EXCEEDED") ||
@@ -918,7 +940,7 @@ export async function handleNewTopicRequest(
     }, 500);
   };
 
-  const newTopicModel = NEW_TOPIC_MODEL;
+  const newTopicModel = selectNewTopicModel((name) => Deno.env.get(name));
   if (newTopicStreamRequested) {
     logInfo("new_topic_stream_started", {
       user: summarizeUser(deps.userId),
@@ -999,7 +1021,10 @@ export async function handleNewTopicRequest(
             // （owner-bound release）；其他 → release 後 503。此時
             // complete 尚未跑、settle 必然未開始，release 是安全的；
             // release 失敗回 retryable 不宣稱不扣。
-            if (
+            if (isModelRefusalError(streamError)) {
+              // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容。
+              failureResponse = await rejectNewTopicRefusal("primary");
+            } else if (
               (streamError instanceof AiStreamingServiceError &&
                 streamError.code === "TIMEOUT") ||
               Date.now() >= newTopicGenerationDeadlineAtMs
@@ -1077,6 +1102,10 @@ export async function handleNewTopicRequest(
       },
     );
   } catch (apiError) {
+    // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容；兩條路都釋放、不扣。
+    if (isModelRefusalError(apiError)) {
+      return await rejectNewTopicRefusal("primary");
+    }
     if (
       (apiError instanceof AiServiceError &&
         apiError.code === "DEADLINE_EXCEEDED") ||

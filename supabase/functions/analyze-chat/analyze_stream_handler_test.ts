@@ -1257,13 +1257,41 @@ function sseResponse(texts: string[]): Response {
   );
 }
 
-/// Provider 請求 body 與 ai_logs 列；`failFirst` 讓第一次 provider 呼叫 529。
+function refusalSseResponse(stopDetails: unknown): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            `data: ${
+              JSON.stringify({
+                type: "message_delta",
+                delta: { stop_reason: "refusal", stop_details: stopDetails },
+                usage: { output_tokens: 2 },
+              })
+            }\n\n`,
+          ),
+        );
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  );
+}
+
+/// Provider 請求 body、ai_logs 列與送給 App 的串流；`failFirst` 讓第一次
+/// provider 呼叫 529，`refusalStopDetails` 讓模型直接拒答。
 async function runThroughProvider(
   selectedModel: string,
-  options: { failFirst?: boolean; effectiveTier?: string } = {},
+  options: {
+    failFirst?: boolean;
+    effectiveTier?: string;
+    refusalStopDetails?: unknown;
+  } = {},
 ): Promise<{
   bodies: Array<Record<string, unknown>>;
   aiLogs: Array<Record<string, unknown>>;
+  clientText: string;
 }> {
   const bodies: Array<Record<string, unknown>> = [];
   const aiLogs: Array<Record<string, unknown>> = [];
@@ -1285,6 +1313,8 @@ async function runThroughProvider(
           return Promise.resolve(
             options.failFirst && bodies.length === 1
               ? new Response("overloaded", { status: 529 })
+              : options.refusalStopDetails !== undefined
+              ? refusalSseResponse(options.refusalStopDetails)
               : sseResponse(DEFAULT_MODEL_CHUNKS),
           );
         },
@@ -1303,12 +1333,13 @@ async function runThroughProvider(
       }),
     );
   };
+  let clientText = "";
   try {
-    await (await handleAnalyzeStream(deps)).text();
+    clientText = await (await handleAnalyzeStream(deps)).text();
   } finally {
     globalThis.fetch = originalFetch;
   }
-  return { bodies, aiLogs };
+  return { bodies, aiLogs, clientText };
 }
 
 Deno.test("analyzeStreamModel reads ANALYZE_STREAM_SONNET_55 per request; forceModel wins", () => {
@@ -1402,8 +1433,8 @@ Deno.test("flag on: the stream request is Sonnet 5.5 configuration C and ai_logs
   const requestBody = aiLogs[0].request_body as Record<string, unknown>;
   assertEquals(requestBody.maxOutputTokens, 8500);
   assertEquals(requestBody.thinkingDisabled, false);
-  // 5.5→5→4.6→Haiku：最多 4 次 provider 呼叫。
-  assertEquals(requestBody.providerMaxAttempts, 4);
+  // ADR #55：5.5→5→4.6，最多 3 次 provider 呼叫。
+  assertEquals(requestBody.providerMaxAttempts, 3);
 });
 
 Deno.test("flag on, 5.5 overloaded: the Sonnet 5 fallback sends its own params and base max_tokens; ai_logs records Sonnet 5", async () => {
@@ -1424,5 +1455,30 @@ Deno.test("flag on, 5.5 overloaded: the Sonnet 5 fallback sends its own params a
   const requestBody = aiLogs[0].request_body as Record<string, unknown>;
   assertEquals(requestBody.maxOutputTokens, 4500);
   assertEquals(requestBody.thinkingDisabled, true);
-  assertEquals(requestBody.providerMaxAttempts, 4);
+  assertEquals(requestBody.providerMaxAttempts, 3);
+});
+
+Deno.test("flag on, 5.5 refuses: the safety category goes to ai_logs only, never to the client stream", async () => {
+  const { bodies, aiLogs, clientText } = await runThroughProvider(
+    withFlag("true", () => analyzeStreamModel("claude-sonnet-5", false, true)),
+    {
+      refusalStopDetails: {
+        type: "refusal",
+        category: "general_harms",
+        explanation: "SENTINEL_EXPLANATION",
+      },
+    },
+  );
+  // 拒答不換模型（ADR #28）。
+  assertEquals(bodies.map((b) => b.model), ["claude-sonnet-5-5"]);
+  assertEquals(aiLogs.length, 1);
+  assertEquals(aiLogs[0].status, "failed");
+  assertEquals(aiLogs[0].error_code, "STREAM_MODEL_REFUSAL");
+  const responseBody = aiLogs[0].response_body as Record<string, unknown>;
+  assertEquals(responseBody.refusalCategory, "general_harms");
+  assertFalse(JSON.stringify(aiLogs).includes("SENTINEL_EXPLANATION"));
+  assert(clientText.includes("STREAM_MODEL_REFUSAL"));
+  assertFalse(clientText.includes("general_harms"));
+  assertFalse(clientText.includes("refusalCategory"));
+  assertFalse(clientText.includes("SENTINEL_EXPLANATION"));
 });

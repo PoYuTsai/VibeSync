@@ -8,6 +8,9 @@ import { digestOpenerPlan, OPENER_PLAN_PROMPT, type OpenerPlanContext, parseOpen
 import { buildOpenerWritePrompt, buildOpenerWriteUserContent, OPENER_REWRITE_PROMPT } from "./opener_write.ts";
 import { HANDLING_NOTE, handlingNoteFor, inviteDeferralNote, judgeOpenerCard, longestProfileCopy, pickOpenerCard, withoutEmoji } from "./opener_pick.ts";
 import { isDirectionExample, runOpenerPlanWrite } from "./opener_plan_write.ts";
+import { AiServiceError } from "./fallback.ts";
+import { AiStreamingServiceError } from "./streaming_fallback.ts";
+import { isModelRefusalError } from "./model_refusal.ts";
 import type { OpenerType } from "./opener_payload.ts";
 
 const SNAPSHOT: OpenerAnalysisSnapshot = {
@@ -397,6 +400,50 @@ Deno.test("執行：規劃失敗不擋交付，退只用她的資料並提示補
   assertEquals(Object.keys(out.result.openers).sort(), ["extend", "humor", "tease"], "Free 只投影可見卡");
 });
 
+Deno.test("執行：規劃被拒答 → 整次失敗、不呼叫寫手（不退只用她的資料）；寫手、修格式、改寫被拒答 → refusal；一般錯誤照舊退", async () => {
+  const withRefusal = (script: Script, calls: OpenerFlowModelRequest[]) => ({ ...deps(script, calls), isRefusalError: isModelRefusalError });
+  const calls: OpenerFlowModelRequest[] = [];
+  const planRefused = await runOpenerPlanWrite(
+    input("隨便聊聊", FREE),
+    withRefusal({ plan: new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false), write: WRITE_OK }, calls),
+  );
+  assertEquals(planRefused.kind === "fail" && [planRefused.reason, planRefused.stage], ["refusal", "plan"]);
+  assertEquals(planRefused.telemetry.planError, "refusal");
+  assertEquals(calls.length, 1, "規劃被拒答就不呼叫寫手");
+
+  const writeRefused = await runOpenerPlanWrite(
+    input(null, FREE),
+    withRefusal({ write: new AiStreamingServiceError("AI declined to generate this response.", "STREAM_MODEL_REFUSAL", false) }, []),
+  );
+  assertEquals(writeRefused.kind === "fail" && [writeRefused.reason, writeRefused.stage], ["refusal", "model"]);
+
+  // 修格式、改寫被拒答也整次失敗：不拿掉卡片照交付（那樣會照扣）。
+  const repairRefused = await runOpenerPlanWrite(
+    input(null, FREE),
+    withRefusal({ write: { openers: { extend: "半馬賽前最怕哪一段？" } }, repair: new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false) }, []),
+  );
+  assertEquals(repairRefused.kind === "fail" && [repairRefused.reason, repairRefused.stage], ["refusal", "format_repair"]);
+  const rewriteRefused = await runOpenerPlanWrite(
+    input("不要聊半馬", FREE),
+    withRefusal({
+      plan: { spans: [{ quote: "不要聊半馬", role: "restriction", term: "半馬" }] },
+      write: WRITE_OK,
+      rewrite: new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false),
+    }, []),
+  );
+  assertEquals(rewriteRefused.kind === "fail" && [rewriteRefused.reason, rewriteRefused.stage], ["refusal", "rewrite"]);
+
+  const degraded = await runOpenerPlanWrite(input("隨便聊聊", FREE), withRefusal({ plan: new Error("boom"), write: WRITE_OK }, []));
+  assertEquals(degraded.kind, "ok");
+  assertEquals(degraded.telemetry.planError, "error");
+  // 沒給拒答判斷的呼叫端（評測舊版本等）：照舊退只用她的資料。
+  const legacy = await runOpenerPlanWrite(
+    input("隨便聊聊", FREE),
+    deps({ plan: new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false), write: WRITE_OK }, []),
+  );
+  assertEquals(legacy.kind, "ok");
+});
+
 Deno.test("執行：可見卡缺漏用唯一額外呼叫修格式；修不好就不交付", async () => {
   const partial = { ...WRITE_OK, openers: { extend: "半馬賽前最怕哪一段？" } };
   const calls: OpenerFlowModelRequest[] = [];
@@ -424,6 +471,51 @@ Deno.test("執行：紅線卡定點改寫一次；仍踩就拿掉那張，其他
   assertEquals(out.telemetry.droppedStyles, ["humor"]);
   assertEquals(out.result.materialUse.handlingNote, HANDLING_NOTE.blockedWithIdeas, "還有採用的想法，不說只照她的資料");
   assertFalse(JSON.stringify(out.result).includes("她好醜"));
+});
+
+Deno.test("執行：給了規劃專用的呼叫器（5.5 開關打開時是 Sonnet 5），只有規劃走它；寫手、修格式、改寫都走主呼叫器，用量照算", async () => {
+  const plan = { spans: [{ quote: "她好醜", role: "hostile" }, { quote: "想問半馬", role: "question" }], anchorCueIds: ["cue_2"], nominatedStyle: "extend" };
+  const bad = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "她好醜但半馬加油", humor: "她好醜哈哈" } };
+  const rewriteScript = { plan, write: bad, rewrite: { openers: { extend: "半馬練到哪一段了？" } } };
+  const planCalls: OpenerFlowModelRequest[] = [];
+  const mainCalls: OpenerFlowModelRequest[] = [];
+  const rewritten = await runOpenerPlanWrite(input("她好醜 想問半馬", FREE), { ...deps(rewriteScript, mainCalls), invokePlanModel: fakeModel(rewriteScript, planCalls) });
+  assertEquals(rewritten.kind, "ok");
+  if (rewritten.kind !== "ok") return;
+  assertEquals(planCalls.map((c) => c.system), [OPENER_PLAN_PROMPT]);
+  assertEquals(mainCalls.length, 2, "寫手＋改寫");
+  assertEquals(mainCalls[1].system, OPENER_REWRITE_PROMPT);
+  assertFalse(mainCalls.some((c) => c.system === OPENER_PLAN_PROMPT));
+  assertEquals(rewritten.result.openers.extend, "半馬練到哪一段了？");
+  assertEquals([rewritten.telemetry.invokerCalls, rewritten.telemetry.modelAttempts, rewritten.telemetry.usageComplete], [3, 3, true]);
+
+  const partial = { ...WRITE_OK, openers: { extend: "半馬賽前最怕哪一段？" } };
+  const planCalls2: OpenerFlowModelRequest[] = [];
+  const mainCalls2: OpenerFlowModelRequest[] = [];
+  const repaired = await runOpenerPlanWrite(input(null, FREE), { ...deps({ write: partial, repair: WRITE_OK }, mainCalls2), invokePlanModel: fakeModel({}, planCalls2) });
+  assertEquals(repaired.kind, "ok");
+  assertEquals(planCalls2.map((c) => c.system), [OPENER_PLAN_PROMPT]);
+  assertEquals(mainCalls2.length, 2, "寫手＋修格式");
+  assertEquals(mainCalls2[1].purpose, "repair");
+  assertFalse(mainCalls2.some((c) => c.system === OPENER_PLAN_PROMPT));
+});
+
+Deno.test("執行：寫手的拒答剛好在整個請求到期後才處理完 → 仍是 refusal（請用戶調整內容），不是 deadline", async () => {
+  let clock = Date.now();
+  const deadlineAtMs = clock + 50_000;
+  const calls: OpenerFlowModelRequest[] = [];
+  const base = fakeModel({}, calls);
+  const out = await runOpenerPlanWrite(input(null, FREE), {
+    ...deps({}, calls, deadlineAtMs),
+    now: () => clock,
+    isRefusalError: isModelRefusalError,
+    invokeModel: (req: OpenerFlowModelRequest) => {
+      if (req.system === OPENER_PLAN_PROMPT) return base(req);
+      clock = deadlineAtMs + 1_000;
+      return Promise.reject(new AiStreamingServiceError("AI declined to generate this response.", "STREAM_MODEL_REFUSAL", false));
+    },
+  });
+  assertEquals(out.kind === "fail" && [out.reason, out.stage], ["refusal", "model"], "改前：先看時間，回 deadline");
 });
 
 Deno.test("說明一致：推薦卡被改寫就不宣稱採用、邀約說明用通用句；有想法時處理提示不說只照她資料", async () => {

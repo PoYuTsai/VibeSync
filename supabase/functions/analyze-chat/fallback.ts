@@ -1,4 +1,10 @@
-import { type ModelCallBudget, readProviderUsage } from "./model_call_budget.ts";
+import {
+  type ModelCallBudget,
+  type ProviderAttemptFailure,
+  readProviderUsage,
+  readRefusalCategory,
+} from "./model_call_budget.ts";
+import { nextFallbackModel } from "./model_fallback_chain.ts";
 import {
   maxTokensFor,
   modelRequestParams,
@@ -75,23 +81,19 @@ const DEFAULT_OPTIONS: CallOptions = {
   allowModelFallback: true,
 };
 
-// ADR #24／#28／#49：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5。
-const MODEL_FALLBACK_CHAIN: Record<string, string | null> = {
-  "claude-sonnet-5-5": "claude-sonnet-5",
-  "claude-sonnet-5": "claude-sonnet-4-6",
-  "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
-  "claude-haiku-4-5-20251001": null,
-};
-
 function validateSuccessfulResponse(data: unknown): void {
   if (typeof data !== "object" || data === null) return;
 
   const stopReason = (data as { stop_reason?: unknown }).stop_reason;
   if (stopReason === "refusal") {
+    const refusalCategory = readRefusalCategory(
+      (data as { stop_details?: unknown }).stop_details,
+    );
     throw new AiServiceError(
       "AI declined to generate this response.",
       "MODEL_REFUSAL",
       false,
+      refusalCategory === undefined ? {} : { refusalCategory },
     );
   }
 
@@ -146,6 +148,8 @@ export interface AiServiceErrorMetadata {
   lastFailureCode?: string;
   timeoutMs?: number;
   deadlineAtMs?: number;
+  /// 拒答的安全過濾類別（stop_details.category）；只給 ai_logs，不給 App。
+  refusalCategory?: string;
 }
 
 export class AiServiceError extends Error {
@@ -158,6 +162,21 @@ export class AiServiceError extends Error {
     super(message);
     this.name = "AiServiceError";
   }
+}
+
+/// 交給 ModelCallBudget 記進這次呼叫的 ai_logs 列。
+function attemptFailureOf(error: unknown): ProviderAttemptFailure {
+  if (error instanceof AiServiceError) {
+    return {
+      failureCode: error.code,
+      refusalCategory: error.metadata.refusalCategory,
+    };
+  }
+  return {
+    failureCode: error instanceof Error && error.name === "AbortError"
+      ? "TIMEOUT"
+      : "UNKNOWN_ERROR",
+  };
 }
 
 export async function callClaudeWithFallback(
@@ -237,6 +256,7 @@ export async function callClaudeWithFallback(
       const providerAttempt = opts.budget?.begin(currentModel, opts.purpose ?? "primary",
         currentModel !== originalModel ? "fallback" : attempt > 1 ? "retry" : "primary");
       let providerSucceeded = false;
+      let attemptFailure: ProviderAttemptFailure | undefined;
       const controller = new AbortController();
       const timeoutId = setTimeout(
         () => controller.abort(),
@@ -330,6 +350,7 @@ export async function callClaudeWithFallback(
         };
       } catch (error) {
         totalRetries++;
+        attemptFailure = attemptFailureOf(error);
 
         if (
           error instanceof AiServiceError &&
@@ -337,7 +358,12 @@ export async function callClaudeWithFallback(
         ) {
           throw error;
         }
+        // 已辨識的拒答是模型對內容的判斷，不是時間問題：處理完時就算已過期限，
+        // 也照拒答往下丟（不重試、不換模型），類別才記得到（ADR #55）。
+        const refused = error instanceof AiServiceError &&
+          error.code === "MODEL_REFUSAL";
         if (
+          !refused &&
           absoluteDeadlineAtMs !== undefined &&
           (Date.now() >= absoluteDeadlineAtMs ||
             (attemptBoundedByDeadline &&
@@ -388,8 +414,8 @@ export async function callClaudeWithFallback(
 
         if (attempt === opts.maxRetries) {
           const nextModel = opts.allowModelFallback
-            ? MODEL_FALLBACK_CHAIN[currentModel]
-            : null;
+            ? nextFallbackModel(originalModel, currentModel)
+            : undefined;
           if (nextModel) {
             throwIfDeadlineExceeded();
             logInfo("falling_back_model", {
@@ -419,7 +445,10 @@ export async function callClaudeWithFallback(
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         await waitForRetryDelay(delay);
       } finally {
-        providerAttempt?.finish(providerSucceeded ? "success" : "failed");
+        providerAttempt?.finish(
+          providerSucceeded ? "success" : "failed",
+          attemptFailure,
+        );
         clearTimeout(timeoutId);
       }
     }

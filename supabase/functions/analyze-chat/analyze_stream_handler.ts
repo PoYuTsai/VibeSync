@@ -473,7 +473,7 @@ export async function handleAnalyzeStream(
 
   let streamModel = deps.selectedModel;
   // STREAM_PROVIDER_MAX_ATTEMPTS（baseline 鎖住）是 Sonnet 5 鏈的 3 次；
-  // 5.5 多一跳（5.5→5→4.6→Haiku），照備援鏈實際長度記。
+  // 5.5 照它自己的鏈長度記（5.5→5→4.6，ADR #55 起也是 3 次）。
   const streamProviderMaxAttempts = deps.selectedModel === SONNET_5_5_MODEL
     ? streamingProviderMaxAttempts(SONNET_5_5_MODEL)
     : STREAM_PROVIDER_MAX_ATTEMPTS;
@@ -835,6 +835,10 @@ export async function handleAnalyzeStream(
           streamRunStatus: "failed",
           event,
           retryable: event.recoverable ?? true,
+          // 拒答的安全過濾類別只記在這裡，不在送給 App 的事件裡。
+          ...(typeof details?.refusalCategory === "string"
+            ? { refusalCategory: details.refusalCategory }
+            : {}),
         },
       });
     },

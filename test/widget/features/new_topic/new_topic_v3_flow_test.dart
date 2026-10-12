@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/new_topic/data/providers/new_topic_providers.dart';
 import 'package:vibesync/features/new_topic/data/services/new_topic_service.dart';
@@ -30,6 +32,10 @@ class _Sub extends SubscriptionNotifier {
     state =
         const SubscriptionState(tier: 'free', monthlyLimit: 30, dailyLimit: 15);
   }
+
+  /// 伺服器回額度不足後，刷新拿到的用量：今日只剩 1 則。
+  void exhaustDaily() => state = const SubscriptionState(
+      tier: 'free', monthlyLimit: 30, dailyLimit: 15, dailyMessagesUsed: 14);
 }
 
 class _FakeService extends NewTopicService {
@@ -101,12 +107,44 @@ bool refreshFails = false;
 Completer<void>? refreshGate;
 Future<String?> Function()? styleLoader;
 
+/// 有 /paywall 路由時（[_pump] 的 paywallRoute）記開了幾次付費牆。
+int paywallOpens = 0;
+
+/// 送出的去識別化漏斗事件（submit-feedback 的 body）。
+final funnelBodies = <Map<String, dynamic>>[];
+
 Future<ProviderContainer> _pump(WidgetTester t,
     {String? selected = 'p',
     double scale = 1,
-    Size size = const Size(390, 844)}) async {
+    Size size = const Size(390, 844),
+    bool paywallRoute = false}) async {
   await t.binding.setSurfaceSize(size);
   addTearDown(() => t.binding.setSurfaceSize(null));
+  Widget app(Widget home) => paywallRoute
+      ? MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'AppTC'),
+          routerConfig: GoRouter(routes: [
+            GoRoute(path: '/', builder: (_, __) => home),
+            GoRoute(
+                path: '/paywall',
+                builder: (context, __) {
+                  paywallOpens++;
+                  return Scaffold(
+                      body: Center(
+                          child: TextButton(
+                              onPressed: () => context.pop(),
+                              child: const Text('關閉付費牆'))));
+                }),
+          ]))
+      : MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'AppTC'),
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!),
+          home: home);
   await t.pumpWidget(ProviderScope(
       overrides: [
         authConversationScopeProvider.overrideWith((_) => ownerEvents.stream),
@@ -122,6 +160,11 @@ Future<ProviderContainer> _pump(WidgetTester t,
         newTopicStyleContextProvider.overrideWith(
             (_, id) => styleLoader?.call() ?? Future.value(style)),
         subscriptionProvider.overrideWith((_) => _Sub()),
+        funnelTrackerProvider.overrideWithValue(
+            FunnelTracker(invoker: (_, {required body}) async {
+          funnelBodies.add(body);
+          return 200;
+        })),
         subscriptionScreenRefreshProvider.overrideWith((_) => () async {
               if (refreshFails) throw StateError('offline');
               await refreshGate?.future;
@@ -129,29 +172,22 @@ Future<ProviderContainer> _pump(WidgetTester t,
       ],
       child: RepaintBoundary(
           key: _root,
-          child: MaterialApp(
-              debugShowCheckedModeBanner: false,
-              theme: ThemeData(fontFamily: 'AppTC'),
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  backgroundColor: OpenerHomeStyle.canvas,
-                  body: SafeArea(
-                      child: ValueListenableBuilder<bool>(
-                          valueListenable: _active,
-                          builder: (_, active, __) =>
-                              IndexedStack(index: active ? 0 : 1, children: [
-                                ValueListenableBuilder<bool>(
-                                    valueListenable: _visible,
-                                    builder: (_, visible, __) => visible
-                                        ? NewTopicView(
-                                            initialPartnerId: selected,
-                                            isActive: active)
-                                        : const SizedBox.shrink()),
-                                const Center(child: Text('另一個模式'))
-                              ]))))))));
+          child: app(Scaffold(
+              backgroundColor: OpenerHomeStyle.canvas,
+              body: SafeArea(
+                  child: ValueListenableBuilder<bool>(
+                      valueListenable: _active,
+                      builder: (_, active, __) =>
+                          IndexedStack(index: active ? 0 : 1, children: [
+                            ValueListenableBuilder<bool>(
+                                valueListenable: _visible,
+                                builder: (_, visible, __) => visible
+                                    ? NewTopicView(
+                                        initialPartnerId: selected,
+                                        isActive: active)
+                                    : const SizedBox.shrink()),
+                            const Center(child: Text('另一個模式'))
+                          ]))))))));
   await t.pump(const Duration(milliseconds: 250));
   ownerEvents.add(owner);
   await t.pump();
@@ -204,6 +240,8 @@ Future<void> _capture(WidgetTester t, String name) async {
 void main() {
   setUpAll(loadProofFonts);
   setUp(() {
+    paywallOpens = 0;
+    funnelBodies.clear();
     owner = 'a';
     partners = [_partner('p')];
     style = null;
@@ -226,6 +264,163 @@ void main() {
     NewTopicView.debugServiceFactory = null;
     AiDataSharingConsent.debugUserIdOverride = null;
     await ownerEvents.close();
+  });
+
+
+  testWidgets('額度不足：伺服器回過額度不足的那筆不再顯示「重試／將使用 3 則」，主按鈕改成升級方案', (t) async {
+    style = '有效風格';
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    _service.replies.single.completeError(const NewTopicQuotaExceededException(
+        message: '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        dailyRemaining: 1,
+        quotaNeeded: 3));
+    // 伺服器擋下後會自動開一次付費牆；刷新拿到今日只剩 1 則。
+    (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
+    await t.pumpAndSettle();
+    expect(paywallOpens, 1);
+    await t.tap(find.text('關閉付費牆'));
+    await t.pumpAndSettle();
+    expect(find.text('今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。'), findsOneWidget);
+    expect(find.text('重試'), findsNothing);
+    expect(find.text('將使用 3 則額度'), findsNothing);
+    expect(find.text(NewTopicView.upgradeButtonLabel), findsOneWidget);
+    expect(find.text('本次需要 3 則，目前可用額度不足。'), findsOneWidget);
+    expect(_button(t).onPressed, isNotNull);
+    await _tapGenerate(t);
+    await t.pumpAndSettle();
+    expect(paywallOpens, 2, reason: '升級方案直接開付費牆');
+    expect(_service.calls, hasLength(1), reason: '不會再送同一筆去撞額度');
+  });
+
+  testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    final first = _service.calls.single['id'];
+    _service.replies.single.completeError(const NewTopicReplayMismatchException(
+        '這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。'), findsOneWidget);
+    expect(find.text('重試'), findsNothing);
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(_service.calls.last['id'], isNot(first));
+  });
+
+  testWidgets('複製開場句送出去識別化事件：只記是不是推薦那題，不含句子', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    _service.replies.single.complete(_result(_service.calls.single['id']!));
+    await t.pump(const Duration(milliseconds: 600));
+    await t.ensureVisible(find.text('複製').first);
+    await t.tap(find.text('複製').first);
+    await t.pump(const Duration(milliseconds: 300));
+    final copied = funnelBodies
+        .map((b) => b['event'] as Map<String, dynamic>)
+        .where((e) => e['event'] == 'new_topic_copied')
+        .toList();
+    expect(copied, hasLength(1));
+    expect(copied.single['properties'], {'is_recommended': true});
+    expect(jsonEncode(funnelBodies).contains('最近有找到喜歡的散步路線嗎'), isFalse);
+  });
+
+  testWidgets('串流第一個事件與結果緊接著到：兩段「捲到進度」動畫重疊，結果照樣定格', (t) async {
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    // 第一段動畫還在跑時串流事件到：第二段動畫取消第一段。
+    _service.progress?.call('開始寫五個新話題', 'topics');
+    await t.pump();
+    // 第二段還在跑時結果到。
+    final id = _service.calls.single['id']!;
+    _service.replies.single.complete(NewTopicResult(
+        topics: [
+          for (var n = 1; n <= 5; n++)
+            NewTopicIdea(
+                id: 'nt_$n',
+                direction: '第 $n 個方向',
+                openingLine: '第 $n 句可以直接傳的開場，長一點才會把結果區撐得比畫面高',
+                whyItWorks: '為什麼現在有效的說明，寫兩行左右的長度，讓卡片有正常的高度。',
+                nextMove: '她回了之後怎麼接的說明，也寫兩行左右的長度，讓卡片有正常的高度。')
+        ],
+        recommendation: const NewTopicRecommendation(topicId: 'nt_1'),
+        access: const NewTopicAccess(
+            servedTier: 'starter',
+            limited: false,
+            totalCount: 5,
+            unlockedCount: 5,
+            lockedCount: 0),
+        costUsed: 3,
+        requestId: id));
+    for (var i = 0; i < 8; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    final viewport = t.getRect(find.byType(SingleChildScrollView).first);
+    final adjust = t.getRect(_key('new-topic-adjust'));
+    expect(adjust.top, greaterThanOrEqualTo(viewport.top), reason: '$adjust / $viewport');
+    expect(adjust.top, lessThan(viewport.top + 80), reason: '定格在結果區頂端，不是停在原地');
+  });
+
+  testWidgets('生成中：按下後捲到看得到進度，串流狀態列出現時也看得到', (t) async {
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    await t.pump(const Duration(milliseconds: 400));
+    final viewport = t.getRect(find.byType(SingleChildScrollView).first);
+    // 生成鈕固定在底部，捲動區的下緣就在它上面；進度那一行要整行在捲動區裡。
+    final local = t.getRect(find.text(NewTopicView.progressPhrases.first));
+    expect(local.bottom, lessThanOrEqualTo(viewport.bottom), reason: '$local / $viewport');
+    _service.progress?.call('開始寫五個新話題', 'topics');
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    final ticker = t.getRect(find.byKey(const ValueKey('stream-progress-ticker')));
+    expect(ticker.bottom, lessThanOrEqualTo(viewport.bottom), reason: '$ticker / $viewport');
+    expect(ticker.top, greaterThanOrEqualTo(viewport.top));
+  });
+
+  testWidgets('完成後定格在結果區頂端：五張題卡比畫面高也不會把「這組根據／調整狀況」捲過頭', (t) async {
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    // 結果在「捲到看得到進度」的動畫還沒跑完就回來（例如重播）：那不是用戶在捲，照樣定格。
+    final id = _service.calls.single['id']!;
+    _service.replies.single.complete(NewTopicResult(
+        topics: [
+          for (var n = 1; n <= 5; n++)
+            NewTopicIdea(
+                id: 'nt_$n',
+                direction: '第 $n 個方向',
+                openingLine: '第 $n 句可以直接傳的開場，長一點才會把結果區撐得比畫面高',
+                whyItWorks: '為什麼現在有效的說明，寫兩行左右的長度，讓卡片有正常的高度。',
+                nextMove: '她回了之後怎麼接的說明，也寫兩行左右的長度，讓卡片有正常的高度。')
+        ],
+        recommendation: const NewTopicRecommendation(topicId: 'nt_1'),
+        access: const NewTopicAccess(
+            servedTier: 'starter',
+            limited: false,
+            totalCount: 5,
+            unlockedCount: 5,
+            lockedCount: 0),
+        costUsed: 3,
+        requestId: id));
+    for (var i = 0; i < 6; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    final viewport = t.getRect(find.byType(SingleChildScrollView).first);
+    final adjust = t.getRect(_key('new-topic-adjust'));
+    expect(adjust.top, greaterThanOrEqualTo(viewport.top), reason: '$adjust / $viewport');
+    expect(adjust.top, lessThan(viewport.top + 80), reason: '定格在結果區頂端，不是停在原地');
   });
 
   testWidgets('生成中離開並重建畫面，同答案送出相同 requestId', (t) async {
@@ -914,7 +1109,10 @@ void main() {
       await t.tap(find.text('額度說明'));
       await t.pumpAndSettle();
       expect(find.textContaining('回看與複製已取得的話題'), findsOneWidget);
-      expect(find.textContaining('包含 3 組'), findsNothing);
+      expect(find.textContaining('可以生成 3 組開場白'), findsNothing);
+      // 方案名給用戶看的名字，不顯示 free 這類代碼。
+      expect(find.text('目前方案：Free'), findsOneWidget);
+      expect(find.text('目前方案：free'), findsNothing);
       await _capture(t, 'topic-quota-$scale');
     });
   }

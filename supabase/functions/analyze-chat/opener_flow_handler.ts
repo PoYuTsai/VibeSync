@@ -18,6 +18,7 @@ import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import { AiServiceError, callClaudeWithFallback, type ClaudeMessageContent, extractClaudeText } from "./fallback.ts";
 import { AiStreamingServiceError, callClaudeStreaming } from "./streaming_fallback.ts";
+import { isModelRefusalError } from "./model_refusal.ts";
 import { ndjsonStreamResponse } from "./ndjson_response.ts";
 import {
   createStreamStageTracker,
@@ -39,7 +40,6 @@ import {
 import { hasOpenerProfileSubstance, normalizeOpenerProfileInfo } from "./opener_profile.ts";
 import { validateOpenerImages } from "./opener_image_validation.ts";
 import { type ImageData } from "./analysis_input_compiler.ts";
-import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
 import { getErrorMessage, logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
 import { corsHeaders, jsonResponse } from "./http_response.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
@@ -83,6 +83,8 @@ import {
   OPENER_GENERATE_MAX_TOKENS,
   OPENER_GENERATE_PROMPT,
   OPENER_GENERATE_SCHEMA_HINT,
+  hasOpenerFlowPromptLeak,
+  selectOpenerPlanWriteModel,
 } from "./opener_flow_prompt.ts";
 import {
   planWriteEnabled,
@@ -120,7 +122,14 @@ export interface OpenerFlowModelRequest {
   system: string;
   messages: OpenerFlowModelMessage[];
   maxTokens: number;
+  /** 整個請求的期限：過了就算整個請求逾時（釋放、不扣）。 */
   deadlineAtMs: number;
+  /**
+   * 這一步自己的時間上限（規劃、改寫）：到了只中止這次呼叫、當一般失敗。共用呼叫層過了
+   * 期限會把拒答也報成逾時，所以期限一律用整個請求的，這一步的上限另外給；拒答只有在整個
+   * 請求到期時才可能被蓋掉，那時一律不扣（ADR #54、主審 2）。
+   */
+  timeoutMs?: number;
   allowModelFallback: boolean;
   purpose?: string;
   onChunk?: (chunk: string) => void;
@@ -161,15 +170,16 @@ export interface OpenerFlowHandlerDeps {
   recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
 }
 
-const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlowModelInvoker => async (req) => {
+const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget, model = OPENER_FLOW_MODEL): OpenerFlowModelInvoker => async (req) => {
   const remainingMs = req.deadlineAtMs - Date.now();
   if (remainingMs <= 0) throw new OpenerFlowDeadlineError("before_model");
+  const limitMs = Math.min(remainingMs, req.timeoutMs ?? remainingMs);
   if (req.onChunk) {
     try {
       const claude = await callClaudeStreaming(
-        { model: OPENER_FLOW_MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
+        { model, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
         apiKey,
-        { timeout: remainingMs, absoluteDeadlineAtMs: req.deadlineAtMs, budget,
+        { timeout: limitMs, absoluteDeadlineAtMs: req.deadlineAtMs, budget,
           purpose: req.purpose, allowModelFallback: req.allowModelFallback },
       );
       let fullText = "";
@@ -192,10 +202,10 @@ const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget): OpenerFlow
   }
   try {
     const result = await callClaudeWithFallback(
-      { model: OPENER_FLOW_MODEL, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
+      { model, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
       apiKey,
       {
-        timeout: Math.min(60000, remainingMs),
+        timeout: Math.min(60000, limitMs),
         maxRetries: 1,
         allowModelFallback: req.allowModelFallback,
         budget, purpose: req.purpose,
@@ -245,16 +255,16 @@ function rpcFailureResponse(
       case "OPENER_OPERATION_INPUT_MISMATCH":
         return flowError("OPENER_OPERATION_INPUT_MISMATCH", "這次輸入已改變，請重新送出。本次不會扣額度。", 409);
       case "OPENER_GENERATION_LIMIT_REACHED":
-        return flowError("OPENER_GENERATION_LIMIT_REACHED", "這局的三組回覆已用完；重新分析可開始新的一局。", 409, {
+        return flowError("OPENER_GENERATION_LIMIT_REACHED", "這次分析的三組開場白已用完；重新分析就能再生成。", 409, {
           includedGenerationCount: OPENER_INCLUDED_GENERATION_COUNT,
           newSessionCost: OPENER_FIRST_GENERATION_COST,
         });
       case "OPENER_OPERATION_OWNER_MISMATCH":
-        return flowError("OPENER_GENERATION_PENDING", "這組回覆還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: 1500 });
+        return flowError("OPENER_GENERATION_PENDING", "這組開場白還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: 1500 });
       case "OPENER_OPERATION_LEASE_EXPIRED":
         // R1 fencing：本作業租約已過期（可能已被同局其他 ID 接手），本地結果丟棄；
         // 用同一筆請求重試會重新 claim（若同局已有有效工作則回 busy）。
-        return flowError("OPENER_GENERATION_PENDING", "這組回覆已逾時，請用同一筆請求再試一次；本次不會扣額度。", 409, { retryable: true, retryAfterMs: 1500 });
+        return flowError("OPENER_GENERATION_PENDING", "這組開場白已逾時，請用同一筆請求再試一次；本次不會扣額度。", 409, { retryable: true, retryAfterMs: 1500 });
       case "OPENER_SUBSCRIPTION_MISSING":
         return flowError("OPENER_SETTLEMENT_FAILED", "找不到訂閱資料，請重新登入後再試；本次不會扣額度。", 500);
     }
@@ -273,6 +283,11 @@ function rpcFailureResponse(
 function releaseFailedResponse(): Response {
   return flowError("OPENER_CLAIM_RELEASE_RETRYABLE", "請求狀態暫時無法釋放，請稍後用同一筆請求重試。", 503, { retryable: true });
 }
+
+/** 模型拒答（5.5 安全過濾等）：422、不扣、不給重試；App 只顯示訊息。 */
+const OPENER_CONTENT_REFUSED = "OPENER_CONTENT_REFUSED";
+const OPENER_GENERATE_REFUSED_MESSAGE = "AI 沒辦法依這次的內容生成開場白，請換個說法寫補充，或重新分析後再試；本次不會扣額度。";
+const OPENER_ANALYZE_REFUSED_MESSAGE = "AI 沒辦法分析這份資料，請換張截圖或調整資料後再試；本次不會扣額度。";
 
 function buildClaudeMessages(images: unknown, text: string): OpenerFlowModelMessage[] {
   if (Array.isArray(images) && images.length > 0) {
@@ -546,12 +561,19 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
       try {
         output = await invokeModel({ system: OPENER_ANALYZE_PROMPT, messages, maxTokens: OPENER_ANALYZE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
       } catch (error) {
+        if (isModelRefusalError(error)) {
+          // 拒答（ADR #28／#49）：同一份資料重送一樣會被擋，請用戶換資料，不給「稍後再試」。
+          // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容；兩條路都釋放、不扣。
+          logWarn("opener_analyze_model_refused", { user, imageCount, stage: "model" });
+          if (!await release()) return releaseFailedResponse();
+          return flowError(OPENER_CONTENT_REFUSED, OPENER_ANALYZE_REFUSED_MESSAGE, 422);
+        }
         if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         logWarn("opener_analyze_api_error", { user, error: getErrorMessage(error), imageCount });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時分析失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
       }
-      if (hasAnalyzeChatPromptLeak(output.rawText)) {
+      if (hasOpenerFlowPromptLeak(output.rawText)) {
         logWarn("prompt_leak_blocked", { user, surface: "opener_analyze", textLength: output.rawText.length });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新分析一次；本次不會扣額度。", 502);
@@ -575,9 +597,19 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
             allowModelFallback: false,
             purpose: "repair",
           });
-          snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
-          repaired = snapshot !== null;
+          // 修格式的輸出也要過整包外洩檢查：命中就不用它，照格式異常回失敗、不扣。
+          if (hasOpenerFlowPromptLeak(repair.rawText)) {
+            logWarn("prompt_leak_blocked", { user, surface: "opener_analyze_repair", textLength: repair.rawText.length });
+          } else {
+            snapshot = buildOpenerAnalysisSnapshot({ parsed: parseJsonObjectFromText(repair.rawText), rawProfileInfo: body.profileInfo, imageCount, initialUserNote: request.initialUserNote });
+            repaired = snapshot !== null;
+          }
         } catch (error) {
+          if (isModelRefusalError(error)) {
+            logWarn("opener_analyze_model_refused", { user, imageCount, stage: "repair" });
+            if (!await release()) return releaseFailedResponse();
+            return flowError(OPENER_CONTENT_REFUSED, OPENER_ANALYZE_REFUSED_MESSAGE, 422);
+          }
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("repair");
           logWarn("opener_analyze_repair_error", { user, error: getErrorMessage(error) });
         }
@@ -716,9 +748,9 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           showsExamples,
         }));
       case "pending":
-        return flowError("OPENER_GENERATION_PENDING", "這組回覆還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs });
+        return flowError("OPENER_GENERATION_PENDING", "這組開場白還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs });
       case "session_busy":
-        return flowError("OPENER_GENERATION_PENDING", "這局已有一組回覆正在生成，請等它完成。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs, activeGenerationId: claim.generationId });
+        return flowError("OPENER_GENERATION_PENDING", "這次分析已有一組開場白正在生成，請等它完成。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs, activeGenerationId: claim.generationId });
       case "error":
         return rpcFailureResponse(claim.failure, "generate_claim", deps.userId);
     }
@@ -801,7 +833,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
   const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
     attemptReporter("opener_provider_attempt", "opener_generate", deps.recordAiCall, { path: usePlanWrite ? "plan_write" : "single" }));
-  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget);
+  // 5.5 開關只管結構刀（新版 App）的寫手、修格式、改寫；規劃與舊路徑維持 Sonnet 5（ADR #54）。
+  const generateModel = usePlanWrite ? selectOpenerPlanWriteModel(env) : OPENER_FLOW_MODEL;
+  const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget, generateModel);
+  const invokePlanModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget, OPENER_FLOW_MODEL);
   const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
     logWarn("opener_generate_deadline_exceeded", { user, stage });
@@ -885,7 +920,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     prefix: "opener_generate",
     stages: usePlanWrite ? OPENER_CARDSET2_GENERATE_STREAM_STAGES : OPENER_GENERATE_STREAM_STAGES,
     etaSeconds: 20,
-    startedLabel: "開始整理你的想法並生成回覆",
+    startedLabel: "開始整理你的想法並生成開場白",
     run: async (onChunk, onFinalizing) => {
       if (usePlanWrite) {
         const servedTier = quota().effectiveTier;
@@ -898,7 +933,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           servedTier,
           contractVersion,
           arm: writerArmFromRequest(body),
-        }, { invokeModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, onChunk });
+        }, { invokeModel, invokePlanModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, isRefusalError: isModelRefusalError, onChunk });
         onFinalizing?.();
         // telemetry 只有代碼與計數，不含用戶原文。
         const { verdicts, ...planWriteLog } = outcome.telemetry;
@@ -917,6 +952,8 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             case "provider":
               if (!await release()) return releaseFailedResponse();
               return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
+            case "refusal":
+              return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
             case "leak":
               logWarn("prompt_leak_blocked", { user, surface: "opener_generate_plan_write" });
               return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
@@ -933,13 +970,18 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       try {
         output = await invokeModel({ system: OPENER_GENERATE_PROMPT, messages: [{ role: "user", content: userContent }], maxTokens: OPENER_GENERATE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
       } catch (error) {
+        if (isModelRefusalError(error)) {
+          // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容；兩條路都釋放、不扣。
+          logWarn("opener_generate_model_refused", { user, path: "single", stage: "model" });
+          return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
+        }
         if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         logWarn("opener_generate_api_error", { user, error: getErrorMessage(error) });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
       }
       onFinalizing?.();
-      if (hasAnalyzeChatPromptLeak(output.rawText)) {
+      if (hasOpenerFlowPromptLeak(output.rawText)) {
         logWarn("prompt_leak_blocked", { user, surface: "opener_generate", textLength: output.rawText.length });
         return await failNoCharge("OPENER_RESPONSE_BLOCKED", "這次 AI 回傳格式異常，請重新生成一次；本次不會扣額度。", 502);
       }
@@ -975,14 +1017,22 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             purpose: "repair",
           });
           addUsage(repair);
-          const repairedJson = parseJsonObjectFromText(repair.rawText);
-          const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials, true);
-          if (repairedNormalized.ok) {
-            parsedJson = repairedJson;
-            normalized = repairedNormalized;
-            repaired = true;
+          if (hasOpenerFlowPromptLeak(repair.rawText)) {
+            logWarn("prompt_leak_blocked", { user, surface: "opener_generate_repair", textLength: repair.rawText.length });
+          } else {
+            const repairedJson = parseJsonObjectFromText(repair.rawText);
+            const repairedNormalized = normalizeOpenerGenerateOutput(repairedJson, materials, true);
+            if (repairedNormalized.ok) {
+              parsedJson = repairedJson;
+              normalized = repairedNormalized;
+              repaired = true;
+            }
           }
         } catch (error) {
+          if (isModelRefusalError(error)) {
+            logWarn("opener_generate_model_refused", { user, path: "single", stage: "format_repair" });
+            return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
+          }
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("format_repair");
           logWarn("opener_generate_repair_error", { user, error: getErrorMessage(error) });
         }
@@ -1015,19 +1065,27 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             purpose: "correction",
           });
           addUsage(correction);
-          const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
-          const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace, reconsiderSelection ? materials : undefined);
-          const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials, true);
-          if (mergedNormalized.ok) {
-            const mergedFlags = contentFlags(mergedNormalized.value);
-            if (hardFlags(mergedFlags).length === 0) {
-              parsedJson = merged;
-              normalized = mergedNormalized;
-              flags = mergedFlags;
-              corrected = true;
+          if (hasOpenerFlowPromptLeak(correction.rawText)) {
+            logWarn("prompt_leak_blocked", { user, surface: "opener_generate_correction", textLength: correction.rawText.length });
+          } else {
+            const stylesToReplace = [...new Set(hardBefore.map((flag) => flag.style).filter((s): s is string => typeof s === "string"))];
+            const merged = mergeOpenerCorrection(parsedJson, parseJsonObjectFromText(correction.rawText), stylesToReplace, reconsiderSelection ? materials : undefined);
+            const mergedNormalized = normalizeOpenerGenerateOutput(merged, materials, true);
+            if (mergedNormalized.ok) {
+              const mergedFlags = contentFlags(mergedNormalized.value);
+              if (hardFlags(mergedFlags).length === 0) {
+                parsedJson = merged;
+                normalized = mergedNormalized;
+                flags = mergedFlags;
+                corrected = true;
+              }
             }
           }
         } catch (error) {
+          if (isModelRefusalError(error)) {
+            logWarn("opener_generate_model_refused", { user, path: "single", stage: "content_correction" });
+            return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
+          }
           if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("content_correction");
           logWarn("opener_generate_correction_error", { user, error: getErrorMessage(error) });
         }

@@ -243,7 +243,12 @@ Deno.test("handler：提示詞路由只走 planNewTopicPrompt、推薦由伺服�
       "const newTopicPromptLeak = newTopicPromptPlan.hasPromptLeak;",
     ),
   );
-  assert(branch.includes("const newTopicModel = NEW_TOPIC_MODEL;"));
+  // 模型每次請求依 NEW_TOPIC_SONNET_55 選（ADR #54），沒開就是 NEW_TOPIC_MODEL。
+  assert(
+    branch.includes(
+      "const newTopicModel = selectNewTopicModel((name) => Deno.env.get(name));",
+    ),
+  );
   // handler 不再自己組提示詞：路由只有一份，評測才測得到 production。
   assertFalse(branch.includes("buildNewTopicTwoStageUserPrompt"));
   assertFalse(branch.includes("NEW_TOPIC_TWO_STAGE_PROMPT,"));

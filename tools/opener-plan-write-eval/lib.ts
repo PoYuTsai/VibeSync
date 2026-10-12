@@ -9,6 +9,10 @@ import { PGlite } from "npm:@electric-sql/pglite@0.3.14";
 import { calculateCost } from "../../supabase/functions/analyze-chat/logger.ts";
 import type { OpenerAnalysisSnapshot } from "../../supabase/functions/analyze-chat/opener_stage.ts";
 import { buildOpenerAnalysisSnapshot } from "../../supabase/functions/analyze-chat/opener_stage.ts";
+import { OPENER_PLAN_MAX_TOKENS, OPENER_PLAN_PROMPT } from "../../supabase/functions/analyze-chat/opener_plan.ts";
+import { OPENER_WRITE_MAX_TOKENS } from "../../supabase/functions/analyze-chat/opener_write.ts";
+import { maxTokensFor, SONNET_5_5_MODEL, SONNET_5_MODEL } from "../../supabase/functions/_shared/model_request_params.ts";
+import { SONNET_5_5_PRICING, SONNET_5_PRICING, type TokenPricing } from "../../supabase/functions/_shared/model_pricing.ts";
 
 export const EVAL_DIR = new URL(".", import.meta.url).pathname;
 export const USER_ID = "11111111-2222-3333-4444-555555555555";
@@ -209,4 +213,86 @@ export function parseArgs(args: string[]): Record<string, string | boolean> {
     if (m) out[m[1]] = m[2] ?? true;
   }
   return out;
+}
+
+// ── 估價（同新話題評測的保守算法）────────────────────────────────────────
+// input＝（系統＋使用者提示詞字數）×1.5，全用快取寫入單價；output 一般值照下表、最壞照 max_tokens
+// 全滿（5.5 另加思考餘裕）。一次生成一般兩次呼叫（規劃＋寫手），最壞三次（再加一次修格式或改寫，
+// input 以寫手輸入＋上一次輸出 8000 字估）。本機沒有 tokenizer，這是估計值，不是實數。
+
+const CJK_TOKENS_PER_CHAR = 1.5;
+const TYPICAL_OUTPUT_TOKENS = { plan: 500, write: 900 } as const;
+const SONNET_5_5_TYPICAL_THINKING_TOKENS = 1000;
+const EXTRA_CALL_PREVIOUS_OUTPUT_CHARS = 8000;
+/** 單次預留用的 input 上限估計（每次呼叫）：比乾跑量到的最大值寬。 */
+const RESERVE_INPUT_TOKENS_PER_CALL = 9000;
+
+const PRICING_BY_MODEL: Record<string, TokenPricing> = {
+  [SONNET_5_MODEL]: SONNET_5_PRICING,
+  [SONNET_5_5_MODEL]: SONNET_5_5_PRICING,
+};
+
+function pricingFor(model: string): TokenPricing {
+  const pricing = PRICING_BY_MODEL[model];
+  if (!pricing) throw new Error(`沒有 ${model} 的單價`);
+  return pricing;
+}
+
+function usdFor(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = pricingFor(model);
+  return (inputTokens * pricing.cacheWritePerMTok + outputTokens * pricing.outputPerMTok) / 1_000_000;
+}
+
+const thinkingTokens = (model: string) => (model === SONNET_5_5_MODEL ? SONNET_5_5_TYPICAL_THINKING_TOKENS : 0);
+
+/** 一次生成的最壞預留：三次呼叫、input 用寬鬆上限、output 全滿。 */
+export function reserveUsdFor(model: string): number {
+  const output = maxTokensFor(model, OPENER_PLAN_MAX_TOKENS) + 2 * maxTokensFor(model, OPENER_WRITE_MAX_TOKENS);
+  return usdFor(model, 3 * RESERVE_INPUT_TOKENS_PER_CALL, output);
+}
+
+export interface GenerationQuote {
+  generations: number;
+  typicalCalls: number;
+  worstCalls: number;
+  typicalUsd: number;
+  worstUsd: number;
+  /** 乾跑量到的單次生成最壞值（應小於 reserveUsdFor）。 */
+  maxWorstPerGenerationUsd: number;
+}
+
+/** 依乾跑攔到的請求（每次生成一組：規劃＋寫手）估真跑費用。 */
+export function quoteGenerations(generations: CapturedCall[][], model: string): GenerationQuote {
+  const quote: GenerationQuote = { generations: generations.length, typicalCalls: 0, worstCalls: 0, typicalUsd: 0, worstUsd: 0, maxWorstPerGenerationUsd: 0 };
+  for (const calls of generations) {
+    let worst = 0;
+    let writeInput = 0;
+    for (const call of calls) {
+      const input = Math.ceil((call.system.length + call.user.length) * CJK_TOKENS_PER_CHAR);
+      const isPlan = call.system === OPENER_PLAN_PROMPT;
+      const base = isPlan ? OPENER_PLAN_MAX_TOKENS : OPENER_WRITE_MAX_TOKENS;
+      if (!isPlan) writeInput = Math.max(writeInput, input);
+      quote.typicalCalls += 1;
+      quote.typicalUsd += usdFor(model, input, (isPlan ? TYPICAL_OUTPUT_TOKENS.plan : TYPICAL_OUTPUT_TOKENS.write) + thinkingTokens(model));
+      worst += usdFor(model, input, maxTokensFor(model, base));
+    }
+    // 最壞再加一次修格式（寫手的輸入＋上一次輸出）。
+    worst += usdFor(model, writeInput + Math.ceil(EXTRA_CALL_PREVIOUS_OUTPUT_CHARS * CJK_TOKENS_PER_CHAR), maxTokensFor(model, OPENER_WRITE_MAX_TOKENS));
+    quote.worstCalls += calls.length + 1;
+    quote.worstUsd += worst;
+    quote.maxWorstPerGenerationUsd = Math.max(quote.maxWorstPerGenerationUsd, worst);
+  }
+  return quote;
+}
+
+/** 評審估價：每組一次呼叫，一般 output 400、最壞 maxTokens 全滿。 */
+export function quoteJudgeCalls(system: string, users: string[], model: string, maxTokens: number) {
+  let typicalUsd = 0;
+  let worstUsd = 0;
+  for (const user of users) {
+    const input = Math.ceil((system.length + user.length) * CJK_TOKENS_PER_CHAR);
+    typicalUsd += usdFor(model, input, 400);
+    worstUsd += usdFor(model, input, maxTokens);
+  }
+  return { calls: users.length, typicalUsd, worstUsd };
 }

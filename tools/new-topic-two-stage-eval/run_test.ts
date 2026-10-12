@@ -40,10 +40,12 @@ import {
   type PlannedCall,
   PRICING,
   pricingFor,
+  PROBE_CASES,
   promptChars,
   recordProblems,
   REQUEST_HEADERS,
   requestBody,
+  requestIdFor,
   reservationUsd,
   runtimeByArm,
   sanitizeCase,
@@ -57,6 +59,10 @@ import {
   SONNET_5_5_MODEL,
   SONNET_5_5_THINKING_HEADROOM_TOKENS,
 } from "../../supabase/functions/_shared/model_request_params.ts";
+import {
+  SONNET_5_5_PRICING,
+  SONNET_5_PRICING,
+} from "../../supabase/functions/_shared/model_pricing.ts";
 import {
   acceptanceMarkdown,
   blindCodes,
@@ -257,6 +263,19 @@ Deno.test("案例：22 組都過 production 請求驗證；涵蓋基本／進階
   assertEquals(plan.length, 22 * 2 * 2);
 });
 
+Deno.test("探針：probes.json 不在正式 22 組裡、只有 --only 點名才跑；每組都過 production 請求驗證", async () => {
+  assertEquals(PROBE_CASES.map((c) => c.id), ["P1", "P2", "P3", "P4"]);
+  for (const c of PROBE_CASES) {
+    assertFalse(CASES.some((x) => x.id === c.id), c.id);
+    const request = sanitizeCase(c, await requestIdFor(c.id, 1));
+    assert(request.topicContext !== null, c.id);
+  }
+  assertEquals(parseOptions(["--only=P1,B1"]).only, ["P1", "B1"]);
+  assertThrows(() => parseOptions(["--only=P9"]));
+  // 探針的對象資料併進 PARTNERS，可以跟正式案例的對象重用。
+  assertEquals(PROBE_CASES.find((c) => c.id === "P3")!.partner, "mia");
+});
+
 // ---------------------------------------------------------------------------
 // 路由：候選就是 production；基準照改前 handler
 // ---------------------------------------------------------------------------
@@ -359,7 +378,7 @@ Deno.test("基準路由＝改前 handler：基本模式走舊版提示詞與 ana
   );
   assertFalse(b1.appliesRedClose);
   assertFalse(b1.hasPromptLeak(TWO_STAGE_SENTINEL));
-  assertEquals(b1.grounding.userMaterialText, null);
+  assertEquals(b1.grounding.userProvidedText, null);
   const e2 = plan.find((p) => p.key === "E2.1.base")!;
   assertEquals(e2.system, baseModules.NEW_TOPIC_TWO_STAGE_PROMPT);
   assert(e2.appliesRedClose);
@@ -1533,9 +1552,12 @@ Deno.test("模型對照：估算與預留照各自模型——5.5 最壞是 max_
     estimate.worstUsd,
     estimate.byArm.base!.worstUsd + estimate.byArm.cand!.worstUsd,
   );
-  // 兩個模型同價（_shared/model_pricing.ts）；實付照各自的單價算。
-  assertEquals(pricingFor(SONNET_5_5_MODEL), PRICING);
+  // 實付照各自的單價算（_shared/model_pricing.ts）：input／output 同價，
+  // 5.5 的快取讀取是 0.05x、比 Sonnet 5 便宜（ADR #55）。
+  assertEquals(PRICING, SONNET_5_PRICING);
+  assertEquals(pricingFor(SONNET_5_5_MODEL), SONNET_5_5_PRICING);
   assertEquals(usd(100, 200, 0, 0, SONNET_5_5_MODEL), usd(100, 200));
+  assert(usd(100, 200, 1000, 0, SONNET_5_5_MODEL) < usd(100, 200, 1000, 0));
 });
 
 Deno.test("模型對照：摘要列每臂時間、停止原因與實付，寫明不是 §6.5 驗收；提示詞對照照舊有門檻表", async () => {

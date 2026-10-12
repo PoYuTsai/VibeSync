@@ -323,6 +323,44 @@ void main() {
     expect(service.calls.last.args['generationId'], isNot(id));
   });
 
+  test('422 模型拒答：不給同 ID 重試，草稿退出 generating、重開不自動重送，下次生成換新 generationId', () async {
+    await controller.analyze(input: _input, initialNote: null);
+    service.generateError = const OpenerFlowException(
+        code: OpenerFlowErrorCode.contentRefused,
+        message: 'AI 沒辦法依這次的內容生成開場白，請換個說法寫補充，或重新分析後再試；本次不會扣額度。',
+        status: 422);
+    await controller.generate();
+    expect(controller.state.error, contains('AI 沒辦法依這次的內容'));
+    expect(controller.state.failedOperation, isNull, reason: '同一份內容再試只會再被擋');
+    expect(controller.hasPendingGeneration, isFalse);
+    final draft = cache.loadDrafts().single;
+    expect(draft.flow!.stage, isNot(OpenerDraftFlowStage.generating));
+    final rebuilt = OpenerFlowController(service: service, cache: cache, ownerIdResolver: () => owner, now: () => now);
+    rebuilt.restoreDraft(draft);
+    expect(rebuilt.hasPendingGeneration, isFalse, reason: '重開草稿不自動重送、不再花模型費用');
+    final id = service.calls.last.args['generationId'];
+    service.generateError = null;
+    await controller.generate();
+    expect(controller.state.phase, OpenerFlowPhase.result);
+    expect(service.calls.last.args['generationId'], isNot(id));
+  });
+
+  test('422 模型拒答（第一段）：不留「分析中」紀錄，重開不自動續分析', () async {
+    service.analyzeError = const OpenerFlowException(
+        code: OpenerFlowErrorCode.contentRefused,
+        message: 'AI 沒辦法分析這份資料，請換張截圖或調整資料後再試；本次不會扣額度。',
+        status: 422);
+    await controller.analyze(input: _input, initialNote: '初稿');
+    expect(controller.state.phase, OpenerFlowPhase.editing);
+    expect(controller.state.error, contains('AI 沒辦法分析'));
+    expect(controller.state.failedOperation, isNull);
+    expect(controller.hasPendingAnalysis, isFalse);
+    for (var i = 0; i < 200 && cache.loadDrafts().isNotEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(cache.loadDrafts().where((d) => d.flow?.stage == OpenerDraftFlowStage.analyzing), isEmpty);
+  });
+
   test('404 分析不存在：清掉送出快照，草稿不是 generating，重開不自動重送', () async {
     await controller.analyze(input: _input, initialNote: null);
     service.generateError = const OpenerFlowException(code: OpenerFlowErrorCode.sessionInvalid, message: '找不到這份分析', status: 404);

@@ -1,9 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../../core/services/app_haptics.dart';
+import '../../../core/theme/app_motion.dart';
 import '../pressable_scale.dart';
 import '../../../core/theme/opener_home_style.dart';
 export '../../../core/theme/opener_home_style.dart';
+
+/// 把一個區塊的「頂端」捲到捲動區頂端往下 [gap] 的位置（結果出來時定格用）。
+///
+/// `Scrollable.ensureVisible(alignment: 0.04)` 是對整個區塊算對齊：區塊比畫面高時
+/// （五張題卡的新話題結果、開場白結果）會多捲一段，把最上面那列（這組根據、調整狀況、
+/// 開場白建議）藏到上面（2026-10-12 介面審查）。這裡只看區塊頂端，捲動距離照常
+/// 夾在可捲範圍內。
+void snapSectionTopIntoView(BuildContext target, {double gap = 24}) {
+  final renderObject = target.findRenderObject();
+  if (renderObject == null || !renderObject.attached) return;
+  final viewport = RenderAbstractViewport.maybeOf(renderObject);
+  final position = Scrollable.maybeOf(target)?.position;
+  if (viewport == null || position == null) return;
+  final top = viewport.getOffsetToReveal(renderObject, 0).offset;
+  final to =
+      (top - gap).clamp(position.minScrollExtent, position.maxScrollExtent);
+  if (MediaQuery.disableAnimationsOf(target)) {
+    position.jumpTo(to);
+  } else {
+    position.animateTo(to,
+        duration: AppMotion.scroll, curve: AppMotion.easeOut);
+  }
+}
 
 class OpenerHomePanel extends StatelessWidget {
   const OpenerHomePanel(

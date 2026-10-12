@@ -1,9 +1,10 @@
 // 開場救星結構刀管線（需求凍結 §4.1）：規劃 → 寫手 → 格式修復或定點改寫（共用唯一
 // 額外呼叫）→ 另外挑 → 投影。handler 與付費評測共用這一個函式，評測不再鏡像 handler。
 //
-// 呼叫預算：規劃 1（不重試、不 fallback；失敗或逾時退「只用她的資料」計畫）＋寫手 1
-// （可 fallback）＋額外 1 ＝ ModelCallBudget 上限 3 不變。所有失敗都回給 handler 走
-// 既有 release＋不扣費路徑；這裡不碰 claim／settle。
+// 呼叫預算：規劃 1（不重試、不 fallback；失敗或逾時退「只用她的資料」計畫，拒答例外）＋
+// 寫手 1（可 fallback）＋額外 1 ＝ ModelCallBudget 上限 3 不變。所有失敗都回給 handler 走
+// 既有 release＋不扣費路徑；這裡不碰 claim／settle。任何一步被模型拒答（ADR #54）都整次失敗，
+// 不退回、不拿掉卡片照交付。
 
 import type { OpenerFlowModelInvoker, OpenerFlowModelOutput } from "./opener_flow_handler.ts";
 import type { OpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
@@ -11,7 +12,7 @@ import type { OpenerMaterialSet } from "./opener_material.ts";
 import { type OpenerType, sanitizeOpenerText } from "./opener_payload.ts";
 import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stage.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
-import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
+import { hasOpenerFlowPromptLeak } from "./opener_flow_prompt.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
@@ -67,9 +68,16 @@ export interface PlanWriteInput {
 
 export interface PlanWriteDeps {
   invokeModel: OpenerFlowModelInvoker;
+  /**
+   * 規劃用的呼叫器；沒給就用 invokeModel。OPENER_SONNET_55 打開時規劃維持 Sonnet 5、寫手才換 5.5
+   * （ADR #54：2026-10-12 黑箱裡 5.5 規劃在自介只有防備話、沒線索時，替寫手編出「問她喜歡哪種開場」的題目）。
+   */
+  invokePlanModel?: OpenerFlowModelInvoker;
   deadlineAtMs: number;
   /** handler 的 OpenerFlowDeadlineError 判斷（避免循環匯入 class）。 */
   isDeadlineError: (error: unknown) => boolean;
+  /** 模型拒答判斷（model_refusal.ts）；沒給就當成一般失敗。 */
+  isRefusalError?: (error: unknown) => boolean;
   now?: () => number;
   onChunk?: (chunk: string) => void;
 }
@@ -115,7 +123,7 @@ export type PlanWriteOutcome =
   | { kind: "ok"; result: OpenerGenerateLedgerResult; telemetry: PlanWriteTelemetry; plan: OpenerPlan; writerRaw: string }
   | {
     kind: "fail";
-    reason: "deadline" | "provider" | "leak" | "incomplete" | "no_deliverable";
+    reason: "deadline" | "provider" | "refusal" | "leak" | "incomplete" | "no_deliverable";
     stage: string;
     telemetry: PlanWriteTelemetry;
     plan: OpenerPlan | null;
@@ -184,10 +192,13 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     }
   };
   // 每次呼叫都經過這裡：失敗（拋錯）的嘗試不知道用量，不能再說用量完整（GPT 主審 F2）。
-  const invoke = async (req: Parameters<OpenerFlowModelInvoker>[0]): Promise<OpenerFlowModelOutput> => {
+  const invoke = async (
+    req: Parameters<OpenerFlowModelInvoker>[0],
+    invoker: OpenerFlowModelInvoker = deps.invokeModel,
+  ): Promise<OpenerFlowModelOutput> => {
     telemetry.invokerCalls += 1;
     try {
-      const out = await deps.invokeModel(req);
+      const out = await invoker(req);
       addUsage(out);
       return out;
     } catch (error) {
@@ -213,21 +224,30 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         system: OPENER_PLAN_PROMPT,
         messages: [{ role: "user", content: buildOpenerPlanUserContent(planCtx) }],
         maxTokens: OPENER_PLAN_MAX_TOKENS,
-        deadlineAtMs: planStarted + planBudgetMs,
+        // 期限用整個請求的、規劃自己的上限另給：上限到了只是規劃失敗（退回只用她的資料），
+        // 拒答不會被共用呼叫層蓋成逾時（主審 2）。
+        deadlineAtMs: deps.deadlineAtMs,
+        timeoutMs: planBudgetMs,
         // 只試一次、不換模型（fallback.ts 的 maxRetries 是「嘗試次數」，預設 1＝不重試）。
         allowModelFallback: false,
         purpose: "plan",
-      });
-      if (hasAnalyzeChatPromptLeak(out.rawText)) {
+      }, deps.invokePlanModel ?? deps.invokeModel);
+      if (hasOpenerFlowPromptLeak(out.rawText)) {
         plan = profileOnlyPlan(planCtx, ["plan.leak"]);
         telemetry.planError = "leak";
       } else {
         plan = parseOpenerPlan(parseJsonObjectFromText(out.rawText), planCtx);
       }
     } catch (error) {
-      // 規劃只是讓寫手拿到更好的輸入：失敗不擋交付，退回只用她的資料。
+      // 拒答（ADR #28／#49）當失敗：退回只用她的資料會默默丟掉用戶的補充，卻照扣。
+      if (deps.isRefusalError?.(error)) {
+        telemetry.planError = "refusal";
+        telemetry.planElapsedMs = now() - planStarted;
+        return fail("refusal", "plan", null, null);
+      }
+      // 規劃只是讓寫手拿到更好的輸入：其他失敗不擋交付，退回只用她的資料。
       plan = profileOnlyPlan(planCtx, ["plan.error"]);
-      telemetry.planError = deps.isDeadlineError(error) ? "timeout" : "error";
+      telemetry.planError = deps.isDeadlineError(error) || now() - planStarted >= planBudgetMs ? "timeout" : "error";
     }
   }
   telemetry.planElapsedMs = now() - planStarted;
@@ -266,11 +286,12 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     writerRaw = out.rawText;
   } catch (error) {
     telemetry.writeElapsedMs = now() - writeStarted;
+    if (deps.isRefusalError?.(error)) return fail("refusal", "model", plan, null);
     if (deps.isDeadlineError(error) || now() >= deps.deadlineAtMs) return fail("deadline", "model", plan, null);
     return fail("provider", "model", plan, null);
   }
   telemetry.writeElapsedMs = now() - writeStarted;
-  if (hasAnalyzeChatPromptLeak(writerRaw)) return fail("leak", "writer", plan, writerRaw);
+  if (hasOpenerFlowPromptLeak(writerRaw)) return fail("leak", "writer", plan, writerRaw);
 
   let extraCallsRemaining = 1;
   let parsed = parseJsonObjectFromText(writerRaw);
@@ -308,11 +329,12 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         allowModelFallback: false,
         purpose: "repair",
       });
-      if (!hasAnalyzeChatPromptLeak(repair.rawText)) {
+      if (!hasOpenerFlowPromptLeak(repair.rawText)) {
         const repaired = parseJsonObjectFromText(repair.rawText);
         if (visibleMissing(repaired).length === 0) parsed = repaired;
       }
     } catch (error) {
+      if (deps.isRefusalError?.(error)) return fail("refusal", "format_repair", plan, writerRaw);
       if (deps.isDeadlineError(error) || now() >= deps.deadlineAtMs) return fail("deadline", "format_repair", plan, writerRaw);
     }
   }
@@ -370,11 +392,13 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
           }),
         }],
         maxTokens: OPENER_REWRITE_MAX_TOKENS,
-        deadlineAtMs: deps.deadlineAtMs - REWRITE_DEADLINE_MARGIN_MS,
+        // 同規劃：期限用整個請求的，改寫自己的上限另給（比整個請求早 3 秒收手）。
+        deadlineAtMs: deps.deadlineAtMs,
+        timeoutMs: deps.deadlineAtMs - REWRITE_DEADLINE_MARGIN_MS - now(),
         allowModelFallback: false,
         purpose: "rewrite",
       });
-      const json = hasAnalyzeChatPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
+      const json = hasOpenerFlowPromptLeak(rewrite.rawText) ? null : parseJsonObjectFromText(rewrite.rawText);
       const rewritten = json && isPlainObject(json.openers) ? json.openers : {};
       for (const style of targets) {
         // 改寫回覆也可能把這張標成範例（改寫對象不含要求的方向＋範例卡）：新句子不當一般卡，整張不交付。
@@ -393,7 +417,9 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
           telemetry.rewrittenStyles.push(style);
         }
       }
-    } catch {
+    } catch (error) {
+      // 拒答：整次失敗，不拿掉那張卡照交付（那樣會照扣）。
+      if (deps.isRefusalError?.(error)) return fail("refusal", "rewrite", plan, writerRaw);
       // 改寫失敗或逾時（自己的截止）：照原句判定，踩紅線的卡下面拿掉；整個請求到期才算失敗。
       if (now() >= deps.deadlineAtMs) return fail("deadline", "rewrite", plan, writerRaw);
     }

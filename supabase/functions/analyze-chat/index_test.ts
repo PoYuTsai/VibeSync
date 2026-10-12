@@ -16,6 +16,7 @@ import {
   validateOpenerImages,
 } from "./opener_image_validation.ts";
 import { callClaudeWithFallback, extractClaudeText } from "./fallback.ts";
+import { nextFallbackModel } from "./model_fallback_chain.ts";
 import { selectModel } from "./model_selection.ts";
 import { SYSTEM_PROMPT } from "./analyze_prompt/system_prompt.ts";
 
@@ -343,16 +344,24 @@ Deno.test({
   name: "Sonnet 5 keeps the ordered 4.6 then Haiku fallback chain",
   permissions: { read: true },
   fn: async () => {
-    const source = await Deno.readTextFile(
-      new URL("./fallback.ts", import.meta.url),
+    assertEquals(
+      nextFallbackModel("claude-sonnet-5", "claude-sonnet-5"),
+      "claude-sonnet-4-6",
     );
-
-    assert(source.includes(
-      '"claude-sonnet-5": "claude-sonnet-4-6"',
-    ));
-    assert(source.includes(
-      '"claude-sonnet-4-6": "claude-haiku-4-5-20251001"',
-    ));
+    assertEquals(
+      nextFallbackModel("claude-sonnet-5", "claude-sonnet-4-6"),
+      "claude-haiku-4-5-20251001",
+    );
+    assertEquals(
+      nextFallbackModel("claude-sonnet-5", "claude-haiku-4-5-20251001"),
+      undefined,
+    );
+    // ADR #55：兩條呼叫路徑都從同一份依主模型的鏈取下一跳。
+    for (const file of ["./fallback.ts", "./streaming_fallback.ts"]) {
+      const source = await Deno.readTextFile(new URL(file, import.meta.url));
+      assert(source.includes('from "./model_fallback_chain.ts"'), file);
+      assertFalse(source.includes("MODEL_FALLBACK_CHAIN"), file);
+    }
   },
 });
 
@@ -2589,5 +2598,30 @@ Deno.test({
     if (!accessSource.includes("if (!sameUtcMonth(now, monthlyResetAt))")) {
       throw new Error("monthly reset gate missing");
     }
+  },
+});
+
+Deno.test({
+  name: "non-stream upstream failures log the refusal category to ai_logs only, never to the client",
+  permissions: { read: true },
+  fn: async () => {
+    const source = await Deno.readTextFile(
+      new URL("./analyze_chat_handler.ts", import.meta.url),
+    );
+    const logStart = source.indexOf('failureStage: "upstream_request"');
+    assert(logStart >= 0);
+    const logBlock = source.slice(logStart, source.indexOf("});", logStart));
+    assert(
+      logBlock.includes("refusalCategory: error.metadata.refusalCategory"),
+    );
+    // 回給 App 的 502 只帶 error／code／retryable。
+    const responseStart = source.indexOf("return jsonResponse({", logStart);
+    const responseBlock = source.slice(
+      responseStart,
+      source.indexOf("}, 502);", responseStart),
+    );
+    assert(responseBlock.includes("code: error.code"));
+    assertFalse(responseBlock.includes("refusalCategory"));
+    assertFalse(responseBlock.includes("metadata"));
   },
 });

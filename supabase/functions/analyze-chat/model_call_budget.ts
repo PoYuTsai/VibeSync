@@ -22,6 +22,29 @@ export function readProviderUsage(data: unknown): ProviderUsage {
   return usage;
 }
 
+/// 拒答的安全過濾類別（`stop_details.category`）。官方值是 cyber、bio、
+/// frontier_llm、reasoning_extraction、general_harms，對不到類別時是 null。
+/// 只收短的識別字；`explanation` 這類自由文字一律不記。
+export function readRefusalCategory(stopDetails: unknown): string | undefined {
+  const category = (stopDetails as { category?: unknown } | null | undefined)
+    ?.category;
+  return typeof category === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(category)
+    ? category
+    : undefined;
+}
+
+/// 一次失敗的 provider 呼叫：錯誤代碼；拒答另附安全過濾類別。
+export interface ProviderAttemptFailure {
+  failureCode: string;
+  refusalCategory?: string;
+}
+
+function failureFields(failure: ProviderAttemptFailure): ProviderAttemptFailure {
+  return failure.refusalCategory === undefined
+    ? { failureCode: failure.failureCode }
+    : { failureCode: failure.failureCode, refusalCategory: failure.refusalCategory };
+}
+
 export class ModelCallBudgetError extends Error {
   constructor(public readonly code: "PROVIDER_CALL_LIMIT" | "DEADLINE_EXCEEDED") {
     super(code);
@@ -49,13 +72,14 @@ export class ModelCallBudget {
     let finished = false;
     return {
       observe: (observed: ProviderUsage) => Object.assign(usage, observed),
-      finish: (status: "success" | "failed") => {
+      finish: (status: "success" | "failed", failure?: ProviderAttemptFailure) => {
         if (finished) return;
         finished = true;
         const complete = [usage.inputTokens, usage.cacheCreationTokens,
           usage.cacheReadTokens, usage.outputTokens].every((v) => v !== undefined);
         this.report({
           ...this.context, model, attempt, purpose, route, status,
+          ...(status === "failed" && failure ? failureFields(failure) : {}),
           elapsedMs: Date.now() - started,
           inputTokens: usage.inputTokens ?? null,
           cacheCreationTokens: usage.cacheCreationTokens ?? null,
@@ -78,6 +102,7 @@ export type ProviderAttemptLogEntry = Omit<LogEntry, "userId">;
 // ai_logs 一列＝一次供應商呼叫（含 fallback 跳轉與修復）。request_body 只收
 // 白名單：用途、路由、識別與版本；絕不放 profile、圖片、素材原文或模型輸出，
 // user 摘要也不放（user_id 有自己的欄位）。快取 token 沒有欄位，只進 cost_usd。
+// 失敗的那一列另在 response_body 記失敗代碼，拒答再加安全過濾類別。
 const ATTEMPT_LOG_BODY_KEYS = [
   "purpose", "route", "attempt", "stage", "operation", "flowVersion", "tier",
   "usageComplete", "responseMode",
@@ -106,6 +131,16 @@ export function providerAttemptLogEntry(
       ...Object.fromEntries(ATTEMPT_LOG_BODY_KEYS.filter((key) => key in record).map((key) => [key, record[key]])),
       ...extra,
     },
+    ...(failed && typeof record.failureCode === "string"
+      ? {
+        responseBody: failureFields({
+          failureCode: record.failureCode,
+          refusalCategory: typeof record.refusalCategory === "string"
+            ? record.refusalCategory
+            : undefined,
+        }),
+      }
+      : {}),
   };
 }
 

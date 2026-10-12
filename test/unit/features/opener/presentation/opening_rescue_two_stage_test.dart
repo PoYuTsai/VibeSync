@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -68,6 +69,7 @@ class _FakeOpenerService extends OpenerService {
   void Function(String, String?)? generationProgress;
   String? lastFreeText;
   String? lastState;
+  Object? generateError;
 
   @override
   Future<OpenerAnalysis> analyzeProfileStreaming({
@@ -149,6 +151,7 @@ class _FakeOpenerService extends OpenerService {
     lastState = contribution.stateWire;
     generationProgress = onProgress;
     await generateGate?.future;
+    if (generateError != null) throw generateError!;
     return OpenerGeneration.fromServerBody({
       'sessionId': sessionId,
       'generationId': generationId,
@@ -231,6 +234,30 @@ Future<void> _pumpManual(WidgetTester tester) async {
   // 畫布拉高到不需要捲動：捲動動畫在有長駐動畫的頁面等不到完成（會死鎖）。
   await tester.binding.setSurfaceSize(const Size(390, 4200));
   await tester.pumpWidget(MaterialApp(home: _screen()));
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.tap(find.text('手動輸入'));
+  await tester.pumpAndSettle();
+}
+
+/// 有 /paywall 路由的版本：記開了幾次付費牆，付費牆有一顆關閉鈕。
+int _paywallOpens = 0;
+
+Future<void> _pumpManualWithPaywall(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(390, 4200));
+  await tester.pumpWidget(MaterialApp.router(
+      routerConfig: GoRouter(routes: [
+    GoRoute(path: '/', builder: (_, __) => _screen()),
+    GoRoute(
+        path: '/paywall',
+        builder: (context, __) {
+          _paywallOpens++;
+          return Scaffold(
+              body: Center(
+                  child: TextButton(
+                      onPressed: () => context.pop(),
+                      child: const Text('關閉付費牆'))));
+        }),
+  ])));
   await tester.pump(const Duration(milliseconds: 600));
   await tester.tap(find.text('手動輸入'));
   await tester.pumpAndSettle();
@@ -537,9 +564,31 @@ void main() {
     final field = tester
         .widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
     expect(field.controller!.text, '沒養過，只想知道牠散步會不會自己選路', reason: '保留上次的文字');
-    expect(find.textContaining('本局已扣費'), findsOneWidget);
+    expect(find.textContaining('這次分析已扣過'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-skip-button')), findsNothing,
         reason: '調整模式不提供略過');
+  });
+
+  testWidgets('額度不足：生成被伺服器擋下、關掉付費牆後，錯誤下方給「升級方案」不給「再試一次」', (tester) async {
+    _paywallOpens = 0;
+    await _pumpManualWithPaywall(tester);
+    await _analyze(tester);
+    service.generateError = const OpenerQuotaExceededException(
+        message: '本月額度不足，升級方案可取得更多開場與分析額度。', monthlyRemaining: 0);
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-generate-button')),
+        until: find.text('關閉付費牆'));
+    expect(_paywallOpens, 1, reason: '伺服器擋下後自動開一次付費牆');
+    await tester.tap(find.text('關閉付費牆'));
+    await _settleBounded(tester);
+    expect(find.text('本月額度不足，升級方案可取得更多開場與分析額度。'), findsOneWidget);
+    expect(find.byKey(const ValueKey('opener-retry-button')), findsNothing,
+        reason: '同一筆再試只會再被擋');
+    expect(find.byKey(const ValueKey('opener-upgrade-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('opener-upgrade-button')));
+    await _settleBounded(tester);
+    expect(_paywallOpens, 2);
+    expect(service.generateCalls, 1);
   });
 
   testWidgets('略過，直接生成：送出 skipped、結果沒有採用說明', (tester) async {

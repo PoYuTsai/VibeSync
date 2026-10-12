@@ -90,6 +90,7 @@ void main() {
         'has_custom_topics',
       ],
       'about_me_cleared': <String>[],
+      'new_topic_copied': ['is_recommended'],
     });
   });
 

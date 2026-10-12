@@ -7,6 +7,8 @@ import { longestProfileCopy } from "../../supabase/functions/analyze-chat/opener
 interface Row {
   key: string;
   arm: string;
+  /** 結構刀用的模型（blackbox --model）；舊輸出沒有這欄＝Sonnet 5。 */
+  model?: string;
   caseId: string;
   repeat: number;
   status: number;
@@ -22,7 +24,8 @@ interface Row {
 }
 
 const judged = JSON.parse(await Deno.readTextFile(Deno.args[0])) as { rows: Row[] };
-const rows = judged.rows;
+// 換模型對照：同一臂不同模型分開列（B、B·5.5）。
+const rows = judged.rows.map((r) => ({ ...r, arm: r.model === "claude-sonnet-5-5" ? `${r.arm}·5.5` : r.arm }));
 const pct = (n: number, d: number) => d ? `${n}/${d}` : "—";
 const quantile = (xs: number[], q: number) => {
   if (!xs.length) return null;

@@ -899,13 +899,20 @@ Deno.test("audit：素材使用（≥2 個中文二字詞或 ≥1 個英文字�
   assertEquals(noText.topicsUsingMaterial, null);
 });
 
-Deno.test("audit：空窗、禁用開場、邀約、道歉、多 emoji 各自計數", () => {
+Deno.test("audit：空窗、禁用開場、邀約、道歉、多 emoji、一句兩問各自計數", () => {
   const clean = audit(PLAIN_LINES);
   assertEquals(clean.gapMentionLines, 0);
   assertEquals(clean.bannedOpenerLines, 0);
   assertEquals(clean.inviteLines, 0);
   assertEquals(clean.apologyLines, 0);
   assertEquals(clean.multiEmojiLines, 0);
+  assertEquals(clean.multiQuestionLines, 0);
+  // 一句兩問：連續的問號算一個。
+  assertEquals(
+    audit(["妳週末都去哪？跟誰去？", "真的假的？？", ...PLAIN_LINES.slice(2)])
+      .multiQuestionLines,
+    1,
+  );
 
   const dirty = audit([
     "好久沒聊了欸",

@@ -5,7 +5,7 @@ import '../../core/theme/app_typography.dart';
 
 /// 串流生成狀態列（2026-08-19 v2 精修）：一行「AI 即時生成中 · 目前階段」。
 /// v1 的多行打勾清單改由骨架卡承擔「一塊一塊完成」的體感；這行只負責
-/// 顯示沒有骨架卡對應的階段（解讀對方資料／先鋒備案／公式…）與活著的訊號。
+/// 顯示沒有骨架卡對應的階段（解讀對方資料／她回了之後／公式…）與活著的訊號。
 /// heartbeat 雜訊由呼叫端過濾，不進 [labels]。
 class StreamProgressTicker extends StatelessWidget {
   const StreamProgressTicker({

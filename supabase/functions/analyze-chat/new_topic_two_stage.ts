@@ -576,6 +576,8 @@ export type NewTopicTwoStageAudit = {
   inviteLines: number;
   apologyLines: number;
   multiEmojiLines: number;
+  /** 一句裡有兩個以上問句的開場句數（連續的問號算一個；評測工具的「一句兩問」同算法）。 */
+  multiQuestionLines: number;
   /** 這筆是紅燈收尾（還在聊／想更靠近＋她常只回哈哈、嗯）。 */
   redCloseApplied: boolean;
   /** 紅燈收尾時第一題 openingLine 有沒有收尾字眼（0／1）；不是紅燈收尾為 null。 */
@@ -666,6 +668,10 @@ export function auditNewTopicTwoStageTopics(input: {
     apologyLines: count(APOLOGY_PATTERN),
     multiEmojiLines:
       topics.filter((topic) => emojiCount(topic.openingLine) >= 2).length,
+    multiQuestionLines:
+      topics.filter((topic) =>
+        (topic.openingLine.match(/[?？]+/gu) ?? []).length >= 2
+      ).length,
     redCloseApplied,
     redCloseCueInFirst: redCloseApplied
       ? Number(RED_CLOSE_CUE_PATTERN.test(topics[0].openingLine))

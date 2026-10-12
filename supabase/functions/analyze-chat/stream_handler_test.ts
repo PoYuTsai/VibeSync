@@ -532,6 +532,52 @@ Deno.test("stream handler preserves sanitized upstream code and retryability", a
   );
 });
 
+Deno.test("stream handler keeps the first error code but still logs a later refusal category", async () => {
+  const failures: Array<[string, Record<string, unknown> | undefined]> = [];
+  const response = handleStreamAnalysisRequest(createOptions({
+    chargeResult: {
+      charged: false,
+      code: "STREAM_CHARGE_FAILED",
+      message: "額度扣除失敗，請稍後重新分析。",
+      recoverable: true,
+    },
+    callClaude: () =>
+      Promise.resolve({
+        textStream: failingChunks(
+          [
+            line({
+              type: "analysis.recommendation",
+              selectedStyle: "resonate",
+              message: "我懂，你先慢慢說，我在。",
+              reason: "先接住對方情緒，不急著推進。",
+              quotedContext: "我最近壓力很大",
+            }),
+          ],
+          new AiStreamingServiceError(
+            "AI declined to generate this response.",
+            "STREAM_MODEL_REFUSAL",
+            false,
+            { refusalCategory: "general_harms" },
+          ),
+        ),
+      }),
+    markFailed: (code, details) => {
+      failures.push([code, details]);
+    },
+  }));
+
+  const events = await collectEvents(response);
+
+  assertEquals(
+    failures.map(([code, details]) => [code, details?.refusalCategory]),
+    [["STREAM_CHARGE_FAILED", "general_harms"]],
+  );
+  assertEquals(events.at(-1)?.type, "analysis.error");
+  assertEquals(events.at(-1)?.code, "STREAM_CHARGE_FAILED");
+  assertEquals(JSON.stringify(events).includes("general_harms"), false);
+  assertEquals(JSON.stringify(events).includes("refusalCategory"), false);
+});
+
 Deno.test("stream handler does not leak decision content when decision charge fails", async () => {
   let chargeCalls = 0;
   const failedCodes: string[] = [];

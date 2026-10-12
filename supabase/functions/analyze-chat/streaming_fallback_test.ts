@@ -10,6 +10,7 @@ import {
   parseAnthropicSse,
   streamingProviderMaxAttempts,
 } from "./streaming_fallback.ts";
+import { ModelCallBudget } from "./model_call_budget.ts";
 
 function streamFromChunks(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -357,8 +358,9 @@ Deno.test(
         timeout: 5000,
         fetchImpl: (_input, init) => {
           bodies.push(JSON.parse(String(init?.body)));
+          // ADR #55：5.5 的鏈只到 4.6，最後一跳在這裡成功。
           return Promise.resolve(
-            bodies.length < 4
+            bodies.length < 3
               ? new Response("overloaded", { status: 529 })
               : successfulStream("fallback"),
           );
@@ -395,15 +397,8 @@ Deno.test(
         output_config: undefined,
         temperature: undefined,
       },
-      {
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1536,
-        thinking: undefined,
-        output_config: undefined,
-        temperature: undefined,
-      },
     ]);
-    assertEquals(result.model, "claude-haiku-4-5-20251001");
+    assertEquals(result.model, "claude-sonnet-4-6");
   },
 );
 
@@ -822,8 +817,144 @@ for (
 }
 
 Deno.test("streamingProviderMaxAttempts is the fallback chain length for the primary model", () => {
-  assertEquals(streamingProviderMaxAttempts("claude-sonnet-5-5"), 4);
+  // ADR #55：5.5 只走 5.5 → 5 → 4.6，含主模型 3 次，等於每請求的呼叫上限。
+  assertEquals(streamingProviderMaxAttempts("claude-sonnet-5-5"), 3);
   assertEquals(streamingProviderMaxAttempts("claude-sonnet-5"), 3);
   assertEquals(streamingProviderMaxAttempts("claude-sonnet-4-6"), 2);
   assertEquals(streamingProviderMaxAttempts("claude-haiku-4-5-20251001"), 1);
+});
+
+function overloadedStream(): Response {
+  return new Response(
+    streamFromChunks([
+      'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+    ]),
+    { status: 200 },
+  );
+}
+
+function refusalStream(stopDetails: unknown): Response {
+  return new Response(
+    streamFromChunks([
+      `data: ${
+        JSON.stringify({
+          type: "message_delta",
+          delta: {
+            stop_reason: "refusal",
+            stop_sequence: null,
+            stop_details: stopDetails,
+          },
+          usage: { output_tokens: 3 },
+        })
+      }\n\n`,
+    ]),
+    { status: 200 },
+  );
+}
+
+Deno.test("callClaudeStreaming with a Sonnet 5.5 primary stops after Sonnet 4.6 and never reaches Haiku", async () => {
+  const models: unknown[] = [];
+  const error = await assertRejects(
+    () =>
+      callClaudeStreaming(
+        streamingRequest("claude-sonnet-5-5"),
+        "test-api-key",
+        {
+          timeout: 5000,
+          fetchImpl: (_input, init) => {
+            models.push(JSON.parse(String(init?.body)).model);
+            return Promise.resolve(overloadedStream());
+          },
+        },
+      ),
+    AiStreamingServiceError,
+  );
+
+  assertEquals(models, [
+    "claude-sonnet-5-5",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+  ]);
+  assertEquals(error.code, "STREAM_OVERLOADED");
+});
+
+Deno.test("parseAnthropicSse reads the refusal category from message_delta.delta.stop_details, never the explanation", async () => {
+  const cases: Array<[stopDetails: unknown, expected: string | undefined]> = [
+    [
+      { type: "refusal", category: "general_harms", explanation: "free text" },
+      "general_harms",
+    ],
+    [{ type: "refusal", category: null, explanation: null }, undefined],
+    [null, undefined],
+    [{ type: "refusal", category: "free text with spaces" }, undefined],
+  ];
+  for (const [stopDetails, expected] of cases) {
+    const response = refusalStream(stopDetails);
+    const error = await assertRejects(
+      () => collect(parseAnthropicSse(response.body!)),
+      AiStreamingServiceError,
+    );
+    assertEquals(error.code, "STREAM_MODEL_REFUSAL");
+    assertEquals(error.retryable, false);
+    assertEquals(
+      error.metadata.refusalCategory,
+      expected,
+      JSON.stringify(stopDetails),
+    );
+    assertEquals(JSON.stringify(error.metadata).includes("free text"), false);
+  }
+});
+
+Deno.test("a streaming refusal is reported to the call budget with its failure code and category", async () => {
+  const records: Array<Record<string, unknown>> = [];
+  const budget = new ModelCallBudget(
+    Date.now() + 60_000,
+    { stage: "test" },
+    (record) => records.push(record),
+  );
+  let calls = 0;
+
+  const error = await assertRejects(
+    () =>
+      callClaudeStreaming(
+        streamingRequest("claude-sonnet-5-5"),
+        "test-api-key",
+        {
+          timeout: 5000,
+          budget,
+          fetchImpl: () =>
+            Promise.resolve(
+              ++calls === 1
+                ? new Response("overloaded", { status: 529 })
+                : refusalStream({ type: "refusal", category: "cyber" }),
+            ),
+        },
+      ),
+    AiStreamingServiceError,
+  );
+
+  assertEquals(error.code, "STREAM_MODEL_REFUSAL");
+  assertEquals(error.metadata.refusalCategory, "cyber");
+  assertEquals(
+    records.map(({ model, status, failureCode, refusalCategory }) => ({
+      model,
+      status,
+      failureCode,
+      refusalCategory,
+    })),
+    [
+      {
+        model: "claude-sonnet-5-5",
+        status: "failed",
+        failureCode: "SERVER_ERROR",
+        refusalCategory: undefined,
+      },
+      {
+        model: "claude-sonnet-5",
+        status: "failed",
+        failureCode: "STREAM_MODEL_REFUSAL",
+        refusalCategory: "cyber",
+      },
+    ],
+  );
 });
