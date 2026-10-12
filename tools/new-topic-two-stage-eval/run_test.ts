@@ -40,10 +40,12 @@ import {
   type PlannedCall,
   PRICING,
   pricingFor,
+  PROBE_CASES,
   promptChars,
   recordProblems,
   REQUEST_HEADERS,
   requestBody,
+  requestIdFor,
   reservationUsd,
   runtimeByArm,
   sanitizeCase,
@@ -255,6 +257,19 @@ Deno.test("案例：22 組都過 production 請求驗證；涵蓋基本／進階
   assertEquals(byId("W1").topicContext?.engagement, "red");
   const plan = await planFor(CASES.map((c) => c.id), 2);
   assertEquals(plan.length, 22 * 2 * 2);
+});
+
+Deno.test("探針：probes.json 不在正式 22 組裡、只有 --only 點名才跑；每組都過 production 請求驗證", async () => {
+  assertEquals(PROBE_CASES.map((c) => c.id), ["P1", "P2", "P3", "P4"]);
+  for (const c of PROBE_CASES) {
+    assertFalse(CASES.some((x) => x.id === c.id), c.id);
+    const request = sanitizeCase(c, await requestIdFor(c.id, 1));
+    assert(request.topicContext !== null, c.id);
+  }
+  assertEquals(parseOptions(["--only=P1,B1"]).only, ["P1", "B1"]);
+  assertThrows(() => parseOptions(["--only=P9"]));
+  // 探針的對象資料併進 PARTNERS，可以跟正式案例的對象重用。
+  assertEquals(PROBE_CASES.find((c) => c.id === "P3")!.partner, "mia");
 });
 
 // ---------------------------------------------------------------------------

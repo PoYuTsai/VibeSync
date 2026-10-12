@@ -9,8 +9,14 @@
 
 import { callClaudeWithFallback } from "../../supabase/functions/analyze-chat/fallback.ts";
 import { parseJsonObjectFromText } from "../../supabase/functions/analyze-chat/json_text.ts";
-import { OPENER_FLOW_MODEL } from "../../supabase/functions/analyze-chat/opener_flow_prompt.ts";
-import { type CapturedCall, EVAL_DIR, installFetchCapture, parseArgs, readApiKey } from "./lib.ts";
+import { SONNET_5_MODEL } from "../../supabase/functions/_shared/model_request_params.ts";
+import { type CapturedCall, EVAL_DIR, installFetchCapture, parseArgs, quoteJudgeCalls, readApiKey } from "./lib.ts";
+
+/**
+ * 評審固定 Sonnet 5：校準（Bruce 9/23 作答）是用這個模型做的。生成模型換 5.5 時評審不能跟著換，
+ * 否則兩臂的分數不是同一把尺，校準也失效。
+ */
+export const JUDGE_MODEL = SONNET_5_MODEL;
 
 export const JUDGE_CODES = [
   "known_answer",
@@ -92,7 +98,7 @@ async function callJudge(apiKey: string, user: string, calls: CapturedCall[]): P
   const restore = installFetchCapture(calls);
   try {
     const result = await callClaudeWithFallback(
-      { model: OPENER_FLOW_MODEL, max_tokens: 900, system: JUDGE_PROMPT, messages: [{ role: "user", content: user }] },
+      { model: JUDGE_MODEL, max_tokens: 900, system: JUDGE_PROMPT, messages: [{ role: "user", content: user }] },
       apiKey,
       { timeout: 30_000, maxRetries: 1, allowModelFallback: false, purpose: "judge", absoluteDeadlineAtMs: Date.now() + 60_000 },
     );
@@ -174,13 +180,14 @@ if (import.meta.main) {
     const out = `${EVAL_DIR}out/${live ? "live" : "dry"}-judged`;
     await Deno.mkdir(out, { recursive: true });
     const rows: Array<Record<string, unknown>> = [];
+    const judgeUsers: string[] = [];
     for (const dir of String(args.runs).split(",")) {
       for await (const entry of Deno.readDir(dir)) {
         if (!entry.name.endsWith(".json") || entry.name.startsWith("summary")) continue;
         const run = JSON.parse(await Deno.readTextFile(`${dir}/${entry.name}`));
         const body = run.body as Record<string, unknown>;
         if (run.status !== 200 || !body?.openers) {
-          rows.push({ key: run.key, arm: run.arm, caseId: run.caseId, repeat: run.repeat, status: run.status, elapsedMs: run.elapsedMs, costUsd: run.costUsd });
+          rows.push({ key: run.key, arm: run.arm, model: run.model ?? SONNET_5_MODEL, caseId: run.caseId, repeat: run.repeat, status: run.status, elapsedMs: run.elapsedMs, costUsd: run.costUsd });
           continue;
         }
         const openers = body.openers as Record<string, string>;
@@ -189,6 +196,7 @@ if (import.meta.main) {
         const styles = Object.keys(openers).sort((a, b) => (hash(run.key + a) - hash(run.key + b)));
         const sentences = styles.map((s) => openers[s]);
         const user = buildJudgeUser({ profile: run.case.profileInfo.bio ?? "", supplement: run.case.contribution.freeText, sentences });
+        judgeUsers.push(user);
         let parsed = null;
         let raw: string | null = null;
         if (live && spent + 0.02 <= capUsd) {
@@ -199,7 +207,7 @@ if (import.meta.main) {
         }
         const pickIndex = styles.indexOf(pick);
         const row = {
-          key: run.key, arm: run.arm, caseId: run.caseId, repeat: run.repeat, status: run.status, bio: run.case.profileInfo.bio ?? "",
+          key: run.key, arm: run.arm, model: run.model ?? SONNET_5_MODEL, caseId: run.caseId, repeat: run.repeat, status: run.status, bio: run.case.profileInfo.bio ?? "",
           elapsedMs: run.elapsedMs, costUsd: run.costUsd, calls: run.calls,
           pick, pickText: openers[pick], pickWilling: parsed ? parsed.cards[pickIndex].willing : null,
           pickCodes: parsed ? parsed.cards[pickIndex].codes : null,
@@ -210,8 +218,9 @@ if (import.meta.main) {
         rows.push(row);
       }
     }
-    await Deno.writeTextFile(`${out}/judged.json`, JSON.stringify({ live, spentUsd: spent, rows }, null, 1));
-    console.log(JSON.stringify({ live, spentUsd: spent, rows: rows.length }));
+    const quote = live ? null : quoteJudgeCalls(JUDGE_PROMPT, judgeUsers, JUDGE_MODEL, 900);
+    await Deno.writeTextFile(`${out}/judged.json`, JSON.stringify({ live, judgeModel: JUDGE_MODEL, spentUsd: spent, quote, rows }, null, 1));
+    console.log(JSON.stringify({ live, judgeModel: JUDGE_MODEL, spentUsd: spent, rows: rows.length, quote }));
   }
 }
 

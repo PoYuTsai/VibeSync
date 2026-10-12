@@ -17,6 +17,7 @@
 // 指令與輸出說明見 README.md；盲測填完後用 tally.ts 算驗收門檻（資料不完整不能通過）。
 
 import catalog from "./cases.json" with { type: "json" };
+import probeCatalog from "./probes.json" with { type: "json" };
 import { isPlainObject } from "../../supabase/functions/_shared/quota.ts";
 import {
   maxTokensFor,
@@ -142,7 +143,17 @@ export type EvalCase = {
   topicContext: Partial<Record<string, string>> | null;
 };
 export const CASES = catalog.cases as EvalCase[];
-export const PARTNERS = catalog.partners as Record<string, string>;
+/**
+ * 尺度邊緣探針（probes.json，2026-10-12）：量 5.5 會不會把正常的交友內容當成要拒答。不屬
+ * 正式驗收的 22 組，只有 --only 點名才跑；對象資料併進 PARTNERS。
+ */
+export const PROBE_CASES = probeCatalog.cases as EvalCase[];
+/** --only 可以點名的全部案例。 */
+export const SELECTABLE_CASES: readonly EvalCase[] = [...CASES, ...PROBE_CASES];
+export const PARTNERS = {
+  ...catalog.partners,
+  ...probeCatalog.partners,
+} as Record<string, string>;
 /** 正式驗收：22 組全跑、每組 2 次、兩臂都有（規格 §6.3）。 */
 export const FORMAL_REPEAT = 2;
 
@@ -224,7 +235,7 @@ export function parseOptions(args: string[]): Options {
   if (
     only &&
     (new Set(only).size !== only.length ||
-      only.some((id) => !CASES.some((c) => c.id === id)))
+      only.some((id) => !SELECTABLE_CASES.some((c) => c.id === id)))
   ) {
     throw new Error("--only 有重複或不存在的案例 ID");
   }
@@ -1747,7 +1758,9 @@ export function summaryMarkdown(input: {
 
 async function main(args: string[]): Promise<void> {
   const opts = parseOptions(args);
-  const selected = CASES.filter((c) => !opts.only || opts.only.includes(c.id));
+  const selected = SELECTABLE_CASES.filter((c) =>
+    opts.only ? opts.only.includes(c.id) : !PROBE_CASES.includes(c)
+  );
   const out = new URL(`./out/${opts.tag}/`, import.meta.url);
   // 不覆寫任何既有證據（dry-run 或付費）。
   try {
@@ -1840,6 +1853,7 @@ async function main(args: string[]): Promise<void> {
     candidatePromptVersion: NEW_TOPIC_PROMPT_VERSION,
     sha256: {
       cases: await catalogSha256(),
+      probes: await sha256(JSON.stringify(probeCatalog)),
       systemPrompts: Object.keys(systemPrompts),
       userPrompts: await sha256(
         JSON.stringify(plan.map((call) => [call.key, call.user])),
