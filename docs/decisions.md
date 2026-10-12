@@ -1430,6 +1430,6 @@ v2.4 修正三項。做法是把「誰說、誰做、資料支持到哪」寫成
 4. **白名單**：`VALID_FORCE_MODELS` 加 `claude-sonnet-5-5`，讓測試帳號的黑箱能指定 5.5。一般用戶帶了也不採用：以前回 400，現在忽略。
 5. **價格表**：照 2026-10-12 官方 pricing 頁補 Opus 5.5（$4／$20，快取讀取 0.05x）與 Haiku 5.5（prompt 10 萬 token 以內 $0.10／$0.50，超過整次 $0.50／$2.50，快取讀寫也算進 prompt 長度）；Sonnet 5.5 的快取讀取改成 0.05x（$0.10／M）。`analyze-chat/logger.ts` 與 `_shared/model_pricing.ts` 兩份一致。只影響成本記錄與黑箱估價，不影響扣額度。
 
-**驗證**: analyze-chat 與 `_shared` 整個測試目錄 1445 條全過（main `38ab7dbb` 基準 1423 條，新增 22 條）；新增的行為測試在 main 的舊程式上會失敗。沒有付費呼叫。
+**驗證**: 併入 main `0ffd8b60` 後，analyze-chat 與 `_shared` 整個測試目錄 1465 條全過（同指令 main 基準 1442 條，新增 23 條）；新增的行為測試在舊程式上會失敗。Codex 唯讀主審兩輪 APPROVED，紀錄見 `docs/reviews/2026-10-12-shared-model-55-review-record.md`。沒有付費呼叫。
 
 **回退**: revert 這一刀的 commit 後推 main，重新部署 analyze-chat。
