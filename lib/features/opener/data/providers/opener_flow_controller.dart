@@ -22,7 +22,7 @@ enum OpenerFlowPhase {
   editing,
   analyzing,
 
-  /// 看分析、選方向、補一句或略過；按「生成回覆」才進第二段。
+  /// 看分析、選方向、補一句或略過；按「生成開場白」才進第二段。
   contributing,
   generating,
   result,
@@ -511,7 +511,7 @@ class OpenerFlowController extends ChangeNotifier {
 
   // ── 第二段 ─────────────────────────────────────────────────────────────
 
-  /// 按「生成回覆」。[fresh] 為 true＝不改回答也要新的一次主動生成
+  /// 按「生成開場白」。[fresh] 為 true＝不改回答也要新的一次主動生成
   ///（新 generationId、占一組）；預設同回答只沿用同 ID（斷線重試取回同組）。
   Future<void> generate({bool fresh = false}) async {
     final analysis = _state.analysis;
@@ -521,7 +521,7 @@ class OpenerFlowController extends ChangeNotifier {
       return;
     }
     if (_state.generationsRemaining <= 0) {
-      _set(_state.copyWith(error: '這局的三組回覆已用完；重新分析可開始新的一局（3 則）。'));
+      _set(_state.copyWith(error: '這次分析的三組開場白已用完；重新分析就能再生成（3 則）。'));
       return;
     }
     if (_state.freeTextTooLong) {

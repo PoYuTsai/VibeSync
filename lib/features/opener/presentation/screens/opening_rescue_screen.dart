@@ -1227,7 +1227,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   : retry
                       ? '重新分析'
                       : '分析開場方向',
-      hint: input.hasContent ? '看完分析，再決定要不要生成回覆。' : '先加入截圖或輸入她的資料',
+      hint: input.hasContent ? '看完分析，再決定要不要生成開場白。' : '先加入截圖或輸入她的資料',
       onPressed: _inputLocked ||
               !input.hasContent ||
               _initialNoteTooLong ||
@@ -1842,7 +1842,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         MediaQuery.textScalerOf(context).scale(15) > 20;
 
     // 2026-08-18 呈現精修（減法拍板）：預設展開的只留「5 張卡＋推薦理由＋
-    // 對方資料解讀／先鋒備案／下一步收成一行標題，點開才展。
+    // 對方資料解讀／她回了之後／下一步收成一行標題，點開才展。
     return Column(
       key: _resultsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2064,7 +2064,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '開場救星只是「先鋒」：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
+              '開場救星只負責第一句：先複製一則去送出，等她真的回覆後，再幫她建一張對象卡分析後續。',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary,
                 height: 1.45,
@@ -2174,7 +2174,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
     return _CollapsibleBrandCard(
       icon: Icons.flag_outlined,
-      title: '先鋒備案',
+      title: '她回了之後',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -427,7 +427,7 @@ void main() {
       haptics.clear();
       await t.tap(find.text('額度說明'));
       await t.pumpAndSettle();
-      expect(find.textContaining('包含 3 組'), findsOneWidget);
+      expect(find.textContaining('可以生成 3 組開場白'), findsOneWidget);
       expect(haptics, ['HapticFeedbackType.mediumImpact'],
           reason: 'a nested button must still activate exactly once');
       expect(t.takeException(), isNull);
@@ -474,7 +474,7 @@ void main() {
     expect(find.text('暫時無法載入額度說明'), findsOneWidget);
     expect(find.textContaining('本月可用'), findsNothing);
     expect(find.textContaining('每日最多 5'), findsNothing);
-    expect(find.textContaining('包含 3 組'), findsOneWidget);
+    expect(find.textContaining('可以生成 3 組開場白'), findsOneWidget);
     await capture(t, 'opener-quota-error');
     await t.tap(find.text('重試'));
     await t.pumpAndSettle();

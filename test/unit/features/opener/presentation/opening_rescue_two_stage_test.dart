@@ -564,7 +564,7 @@ void main() {
     final field = tester
         .widget<TextField>(find.byKey(const ValueKey('opener-free-text')));
     expect(field.controller!.text, '沒養過，只想知道牠散步會不會自己選路', reason: '保留上次的文字');
-    expect(find.textContaining('本局已扣費'), findsOneWidget);
+    expect(find.textContaining('這次分析已扣過'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-skip-button')), findsNothing,
         reason: '調整模式不提供略過');
   });

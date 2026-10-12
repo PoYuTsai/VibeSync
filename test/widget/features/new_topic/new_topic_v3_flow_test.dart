@@ -1042,7 +1042,10 @@ void main() {
       await t.tap(find.text('額度說明'));
       await t.pumpAndSettle();
       expect(find.textContaining('回看與複製已取得的話題'), findsOneWidget);
-      expect(find.textContaining('包含 3 組'), findsNothing);
+      expect(find.textContaining('可以生成 3 組開場白'), findsNothing);
+      // 方案名給用戶看的名字，不顯示 free 這類代碼。
+      expect(find.text('目前方案：Free'), findsOneWidget);
+      expect(find.text('目前方案：free'), findsNothing);
       await _capture(t, 'topic-quota-$scale');
     });
   }

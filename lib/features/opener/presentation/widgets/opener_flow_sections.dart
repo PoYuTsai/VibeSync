@@ -135,7 +135,7 @@ class OpenerAnalysisCard extends StatelessWidget {
 }
 
 /// 回答區：最多一題（不預選）、自由補充（300 字）、可修改的一行摘要、
-/// 伺服器報價，與「生成回覆」「略過，直接生成」。
+/// 伺服器報價，與「生成開場白」「略過，直接生成」。
 class OpenerContributionCard extends StatelessWidget {
   const OpenerContributionCard({
     super.key,
@@ -174,12 +174,12 @@ class OpenerContributionCard extends StatelessWidget {
     required int includedGenerationCount,
   }) {
     if (quotaCharged) {
-      return '本局已扣費，還可以再生成 $generationsRemaining 組（共 $includedGenerationCount 組），不會再扣額度';
+      return '這次分析已扣過，還可以再生成 $generationsRemaining 組（共 $includedGenerationCount 組），不會再扣額度';
     }
     if (firstGenerationCost <= 0) {
-      return '對方資料不足，這局不扣額度；共 $includedGenerationCount 組回覆';
+      return '她的資料不足，這次不扣額度；共可生成 $includedGenerationCount 組開場白';
     }
-    return '第一次生成扣 $firstGenerationCost 則，這局共 $includedGenerationCount 組回覆（改想法再生成不再扣）';
+    return '第一次生成扣 $firstGenerationCost 則，這次分析共可生成 $includedGenerationCount 組開場白（改想法再生成不再扣）';
   }
 
   @override
@@ -289,7 +289,7 @@ class OpenerContributionCard extends StatelessWidget {
           BrandPrimaryButton(
             openerStyle: true,
             key: const ValueKey('opener-generate-button'),
-            label: busy ? '生成中…' : (isRegenerating ? '用這個想法再生成' : '生成回覆'),
+            label: busy ? '生成中…' : (isRegenerating ? '用這個想法再生成' : '生成開場白'),
             isLoading: false,
             onPressed: busy || generationsRemaining <= 0 || tooLong
                 ? null
@@ -367,8 +367,8 @@ class OpenerRegenerateBar extends StatelessWidget {
   static String remainingLabel(
       {required int remaining, required int included}) {
     return remaining > 0
-        ? '這局還可以再生成 $remaining 組（共 $included 組，不再扣額度）'
-        : '這局的 $included 組回覆已用完；重新分析可開始新的一局（3 則）';
+        ? '這次分析還可以再生成 $remaining 組（共 $included 組，不再扣額度）'
+        : '這次分析的 $included 組開場白已用完；重新分析就能再生成（3 則）';
   }
 
   @override

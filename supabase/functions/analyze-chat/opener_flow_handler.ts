@@ -247,16 +247,16 @@ function rpcFailureResponse(
       case "OPENER_OPERATION_INPUT_MISMATCH":
         return flowError("OPENER_OPERATION_INPUT_MISMATCH", "這次輸入已改變，請重新送出。本次不會扣額度。", 409);
       case "OPENER_GENERATION_LIMIT_REACHED":
-        return flowError("OPENER_GENERATION_LIMIT_REACHED", "這局的三組回覆已用完；重新分析可開始新的一局。", 409, {
+        return flowError("OPENER_GENERATION_LIMIT_REACHED", "這次分析的三組開場白已用完；重新分析就能再生成。", 409, {
           includedGenerationCount: OPENER_INCLUDED_GENERATION_COUNT,
           newSessionCost: OPENER_FIRST_GENERATION_COST,
         });
       case "OPENER_OPERATION_OWNER_MISMATCH":
-        return flowError("OPENER_GENERATION_PENDING", "這組回覆還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: 1500 });
+        return flowError("OPENER_GENERATION_PENDING", "這組開場白還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: 1500 });
       case "OPENER_OPERATION_LEASE_EXPIRED":
         // R1 fencing：本作業租約已過期（可能已被同局其他 ID 接手），本地結果丟棄；
         // 用同一筆請求重試會重新 claim（若同局已有有效工作則回 busy）。
-        return flowError("OPENER_GENERATION_PENDING", "這組回覆已逾時，請用同一筆請求再試一次；本次不會扣額度。", 409, { retryable: true, retryAfterMs: 1500 });
+        return flowError("OPENER_GENERATION_PENDING", "這組開場白已逾時，請用同一筆請求再試一次；本次不會扣額度。", 409, { retryable: true, retryAfterMs: 1500 });
       case "OPENER_SUBSCRIPTION_MISSING":
         return flowError("OPENER_SETTLEMENT_FAILED", "找不到訂閱資料，請重新登入後再試；本次不會扣額度。", 500);
     }
@@ -733,9 +733,9 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           showsExamples,
         }));
       case "pending":
-        return flowError("OPENER_GENERATION_PENDING", "這組回覆還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs });
+        return flowError("OPENER_GENERATION_PENDING", "這組開場白還在生成，請稍候用同一筆請求重試。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs });
       case "session_busy":
-        return flowError("OPENER_GENERATION_PENDING", "這局已有一組回覆正在生成，請等它完成。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs, activeGenerationId: claim.generationId });
+        return flowError("OPENER_GENERATION_PENDING", "這次分析已有一組開場白正在生成，請等它完成。", 409, { retryable: true, retryAfterMs: claim.retryAfterMs, activeGenerationId: claim.generationId });
       case "error":
         return rpcFailureResponse(claim.failure, "generate_claim", deps.userId);
     }
@@ -904,7 +904,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
     prefix: "opener_generate",
     stages: usePlanWrite ? OPENER_CARDSET2_GENERATE_STREAM_STAGES : OPENER_GENERATE_STREAM_STAGES,
     etaSeconds: 20,
-    startedLabel: "開始整理你的想法並生成回覆",
+    startedLabel: "開始整理你的想法並生成開場白",
     run: async (onChunk, onFinalizing) => {
       if (usePlanWrite) {
         const servedTier = quota().effectiveTier;
