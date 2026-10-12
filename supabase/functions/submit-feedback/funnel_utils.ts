@@ -37,6 +37,7 @@ const PROP_SPECS: Record<string, PropSpec> = {
   has_custom_topics: { kind: "bool" },
   item: { kind: "enum", values: CHECKLIST_ITEMS },
   source: { kind: "enum", values: ABOUT_ME_SOURCES },
+  is_recommended: { kind: "bool" },
 };
 
 /** event → 允許的 properties 鍵。字典外 event 一律 400。 */
@@ -62,6 +63,7 @@ export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
     "has_custom_topics",
   ],
   about_me_cleared: [],
+  new_topic_copied: ["is_recommended"],
 };
 
 export interface FunnelRow {

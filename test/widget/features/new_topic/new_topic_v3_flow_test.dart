@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/new_topic/data/providers/new_topic_providers.dart';
 import 'package:vibesync/features/new_topic/data/services/new_topic_service.dart';
@@ -109,6 +110,9 @@ Future<String?> Function()? styleLoader;
 /// 有 /paywall 路由時（[_pump] 的 paywallRoute）記開了幾次付費牆。
 int paywallOpens = 0;
 
+/// 送出的去識別化漏斗事件（submit-feedback 的 body）。
+final funnelBodies = <Map<String, dynamic>>[];
+
 Future<ProviderContainer> _pump(WidgetTester t,
     {String? selected = 'p',
     double scale = 1,
@@ -156,6 +160,11 @@ Future<ProviderContainer> _pump(WidgetTester t,
         newTopicStyleContextProvider.overrideWith(
             (_, id) => styleLoader?.call() ?? Future.value(style)),
         subscriptionProvider.overrideWith((_) => _Sub()),
+        funnelTrackerProvider.overrideWithValue(
+            FunnelTracker(invoker: (_, {required body}) async {
+          funnelBodies.add(body);
+          return 200;
+        })),
         subscriptionScreenRefreshProvider.overrideWith((_) => () async {
               if (refreshFails) throw StateError('offline');
               await refreshGate?.future;
@@ -232,6 +241,7 @@ void main() {
   setUpAll(loadProofFonts);
   setUp(() {
     paywallOpens = 0;
+    funnelBodies.clear();
     owner = 'a';
     partners = [_partner('p')];
     style = null;
@@ -296,6 +306,24 @@ void main() {
     await _tapGenerate(t);
     expect(_service.calls, hasLength(2));
     expect(_service.calls.last['id'], isNot(first));
+  });
+
+  testWidgets('複製開場句送出去識別化事件：只記是不是推薦那題，不含句子', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    _service.replies.single.complete(_result(_service.calls.single['id']!));
+    await t.pump(const Duration(milliseconds: 600));
+    await t.ensureVisible(find.text('複製').first);
+    await t.tap(find.text('複製').first);
+    await t.pump(const Duration(milliseconds: 300));
+    final copied = funnelBodies
+        .map((b) => b['event'] as Map<String, dynamic>)
+        .where((e) => e['event'] == 'new_topic_copied')
+        .toList();
+    expect(copied, hasLength(1));
+    expect(copied.single['properties'], {'is_recommended': true});
+    expect(jsonEncode(funnelBodies).contains('最近有找到喜歡的散步路線嗎'), isFalse);
   });
 
   testWidgets('生成中：按下後捲到看得到進度，串流狀態列出現時也看得到', (t) async {

@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
@@ -587,6 +588,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   void _copyOpeningLine(NewTopicIdea idea) {
     AppHaptics.light();
     Clipboard.setData(ClipboardData(text: idea.openingLine));
+    // 去識別化：只記有複製、是不是推薦那題，不含句子（量新話題有沒有被拿去傳）。
+    unawaited(ref.read(funnelTrackerProvider).track('new_topic_copied',
+        properties: {
+          'is_recommended': idea.id == _result?.recommendation.topicId,
+        }));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()

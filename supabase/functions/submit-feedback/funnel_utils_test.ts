@@ -197,5 +197,23 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
       "has_custom_topics",
     ],
     about_me_cleared: [],
+    new_topic_copied: ["is_recommended"],
   });
+});
+
+Deno.test("new_topic_copied：只收 is_recommended 布林，字串或其他鍵剝除", () => {
+  const ok = buildFunnelRow("u1", {
+    event: "new_topic_copied",
+    properties: { is_recommended: true, openingLine: "不該上傳的句子" },
+  });
+  assertEquals(ok.ok, true);
+  if (!ok.ok) return;
+  assertEquals(ok.row.properties, { is_recommended: true });
+  const bad = buildFunnelRow("u1", {
+    event: "new_topic_copied",
+    properties: { is_recommended: "true" },
+  });
+  assertEquals(bad.ok, true);
+  if (!bad.ok) return;
+  assertEquals(bad.row.properties, {});
 });
