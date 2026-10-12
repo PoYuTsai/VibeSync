@@ -84,8 +84,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _resultsSectionKey = GlobalKey();
   // 生成中那一行狀態：生成鈕固定在底部，按下後要捲到看得到（2026-10-12）。
   final _progressKey = GlobalKey();
-  // 正在跑「捲到看得到進度」的動畫：那不是用戶在捲，結果到時照樣定格。
+  // 正在跑「捲到看得到進度」的動畫：那不是用戶在捲，結果到時照樣定格。新動畫會取消舊的、
+  // 舊的 Future 仍會完成，所以只有最新那次（編號相同）可以清掉旗標。
   bool _revealingProgress = false;
+  int _revealGeneration = 0;
   final _situationKey = GlobalKey();
   final _materialController = TextEditingController();
 
@@ -169,6 +171,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!mounted || !widget.isActive || !_isGenerating) return;
       final target = _progressKey.currentContext;
       if (target == null) return;
+      final generation = ++_revealGeneration;
       _revealingProgress = true;
       Scrollable.ensureVisible(target,
               alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
@@ -176,7 +179,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                   ? Duration.zero
                   : AppMotion.scroll,
               curve: AppMotion.easeOut)
-          .whenComplete(() => _revealingProgress = false);
+          .whenComplete(() {
+        if (generation == _revealGeneration) _revealingProgress = false;
+      });
     });
   }
 

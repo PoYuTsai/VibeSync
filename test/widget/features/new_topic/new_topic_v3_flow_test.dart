@@ -326,6 +326,46 @@ void main() {
     expect(jsonEncode(funnelBodies).contains('最近有找到喜歡的散步路線嗎'), isFalse);
   });
 
+  testWidgets('串流第一個事件與結果緊接著到：兩段「捲到進度」動畫重疊，結果照樣定格', (t) async {
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    // 第一段動畫還在跑時串流事件到：第二段動畫取消第一段。
+    _service.progress?.call('開始寫五個新話題', 'topics');
+    await t.pump();
+    // 第二段還在跑時結果到。
+    final id = _service.calls.single['id']!;
+    _service.replies.single.complete(NewTopicResult(
+        topics: [
+          for (var n = 1; n <= 5; n++)
+            NewTopicIdea(
+                id: 'nt_$n',
+                direction: '第 $n 個方向',
+                openingLine: '第 $n 句可以直接傳的開場，長一點才會把結果區撐得比畫面高',
+                whyItWorks: '為什麼現在有效的說明，寫兩行左右的長度，讓卡片有正常的高度。',
+                nextMove: '她回了之後怎麼接的說明，也寫兩行左右的長度，讓卡片有正常的高度。')
+        ],
+        recommendation: const NewTopicRecommendation(topicId: 'nt_1'),
+        access: const NewTopicAccess(
+            servedTier: 'starter',
+            limited: false,
+            totalCount: 5,
+            unlockedCount: 5,
+            lockedCount: 0),
+        costUsed: 3,
+        requestId: id));
+    for (var i = 0; i < 8; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    final viewport = t.getRect(find.byType(SingleChildScrollView).first);
+    final adjust = t.getRect(_key('new-topic-adjust'));
+    expect(adjust.top, greaterThanOrEqualTo(viewport.top), reason: '$adjust / $viewport');
+    expect(adjust.top, lessThan(viewport.top + 80), reason: '定格在結果區頂端，不是停在原地');
+  });
+
   testWidgets('生成中：按下後捲到看得到進度，串流狀態列出現時也看得到', (t) async {
     await _pump(t);
     await _tapVisible(t, find.text('冷掉了，想重新聊'));
