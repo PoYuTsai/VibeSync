@@ -172,6 +172,27 @@ void main() {
       );
     });
 
+    test('409 NEW_TOPIC_REQUEST_REPLAY_MISMATCH → 換新編號的例外、顯示 server 訊息',
+        () async {
+      final service = NewTopicService(
+        invoker: (_, {required body}) async => const NewTopicInvokeResponse(
+          status: 409,
+          data: {
+            'code': 'NEW_TOPIC_REQUEST_REPLAY_MISMATCH',
+            'message': '這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。',
+            'shouldChargeQuota': false,
+          },
+        ),
+      );
+
+      await expectLater(
+        service.generateTopics(requestId: _requestId),
+        throwsA(isA<NewTopicReplayMismatchException>()
+            .having((e) => e.message, 'message', contains('請重新生成一次'))
+            .having((e) => e.retrySameRequest, 'retry', isFalse)),
+      );
+    });
+
     test('422 NEW_TOPIC_CONTENT_REFUSED（模型拒答）→ 顯示 server 訊息、不留同一筆重試', () async {
       final service = NewTopicService(
         invoker: (_, {required body}) async => const NewTopicInvokeResponse(

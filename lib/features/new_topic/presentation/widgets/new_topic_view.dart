@@ -60,6 +60,9 @@ class NewTopicView extends ConsumerStatefulWidget {
     '還在整理最適合先試的方向，請保持連線…',
   ];
 
+  /// 額度不足（生成前看到、或伺服器回過額度不足）時，主按鈕直接開升級頁。
+  static const upgradeButtonLabel = '升級方案';
+
   static const freeUpsellHeadline = '免費版先看最推薦的 1 個完整方案';
   static const freeUpsellBody = '升級可再解鎖另外 4 個話題';
 
@@ -105,6 +108,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   bool _showDetails = false;
   bool _pendingScroll = false;
   bool _confirmPending = false;
+  // 伺服器明確回過「額度不足」的那一筆：沒有落帳，同一筆再按只會再被擋。
+  bool _quotaRejected = false;
   int _inputVersion = 0;
   String? get _owner =>
       NewTopicView.debugOwnerIdOverride?.call() ??
@@ -393,6 +398,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _preparing = true;
       _error = null;
+      _quotaRejected = false;
     });
     try {
       if (pending == null) {
@@ -492,7 +498,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       unawaited(_refreshUsageAfterResult());
     } on NewTopicQuotaExceededException catch (e) {
       if (!current()) return;
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        _quotaRejected = true;
+      });
       if (widget.isActive) await _showPaywallAndRefresh();
     } on NewTopicRequestInProgressException catch (e) {
       if (!current()) return;
@@ -523,6 +532,11 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     } on NewTopicMaterialBlockedException catch (e) {
       if (!current()) return;
       // 同一句重送一定再被擋：不留 pending，按鈕回到「生成新話題」。
+      requestSession.markSuccess();
+      setState(() => _error = e.message);
+    } on NewTopicReplayMismatchException catch (e) {
+      if (!current()) return;
+      // 同一個編號再送只會再撞：丟掉 pending，下次按生成換新編號。
       requestSession.markSuccess();
       setState(() => _error = e.message);
     } on NewTopicException catch (e) {
@@ -675,11 +689,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         situation: null,
         hasMaterialText: hasMaterialText);
     final usage = ref.watch(subscriptionProvider);
-    final quotaBlocked = pending == null &&
-        !usage.isLoading &&
+    final quotaShort = !usage.isLoading &&
         usage.error == null &&
         (usage.monthlyRemaining < kNewTopicQuotaCost ||
             usage.dailyRemaining < kNewTopicQuotaCost);
+    // 待重試的那筆可能已落帳（重試只回放、不扣），平常照樣讓它重試；伺服器明確回過
+    // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給升級入口。
+    final quotaBlocked = quotaShort && (pending == null || _quotaRejected);
     final helper = validPartnerId == null
         ? '先選擇聊天對象，再補充目前情境。'
         : readiness == NewTopicReadiness.dataQualityBlocked
@@ -695,11 +711,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           ? '正在準備…'
           : _isGenerating
               ? '生成中…'
-              : _confirmPending && pending != null
-                  ? '確認本次結果'
-                  : pending != null
-                      ? '重試'
-                      : '生成新話題',
+              : quotaBlocked
+                  ? NewTopicView.upgradeButtonLabel
+                  : _confirmPending && pending != null
+                      ? '確認本次結果'
+                      : pending != null
+                          ? '重試'
+                          : '生成新話題',
       hint: quotaBlocked
           ? '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。'
           : materialHint != null && validPartnerId != null
@@ -709,9 +727,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                   : validPartnerId == null
                       ? '先選擇聊天對象'
                       : '',
-      onPressed: _busy || !ready || quotaBlocked || materialHint != null
+      onPressed: _busy
           ? null
-          : _generate,
+          : quotaBlocked
+              ? () => unawaited(_showPaywallAndRefresh())
+              : !ready || materialHint != null
+                  ? null
+                  : _generate,
       onQuota: () => showOpenerQuotaSheet(context, newTopic: true),
     );
     return ScrollCardTicks(

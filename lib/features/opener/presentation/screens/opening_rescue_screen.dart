@@ -1398,7 +1398,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     AppTypography.bodyMedium.copyWith(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
-              if (state.failedOperation != null &&
+              // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給升級入口。
+              if (state.quotaError != null && !state.isBusy)
+                TextButton(
+                  key: const ValueKey('opener-upgrade-button'),
+                  onPressed: AppHaptics.onPress(
+                      () => unawaited(_showPaywallAndRefresh())),
+                  child: const Text('升級方案'),
+                )
+              else if (state.failedOperation != null &&
                   !state.isBusy &&
                   state.analysis != null)
                 TextButton(

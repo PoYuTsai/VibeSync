@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/new_topic/data/providers/new_topic_providers.dart';
@@ -30,6 +31,10 @@ class _Sub extends SubscriptionNotifier {
     state =
         const SubscriptionState(tier: 'free', monthlyLimit: 30, dailyLimit: 15);
   }
+
+  /// 伺服器回額度不足後，刷新拿到的用量：今日只剩 1 則。
+  void exhaustDaily() => state = const SubscriptionState(
+      tier: 'free', monthlyLimit: 30, dailyLimit: 15, dailyMessagesUsed: 14);
 }
 
 class _FakeService extends NewTopicService {
@@ -101,12 +106,41 @@ bool refreshFails = false;
 Completer<void>? refreshGate;
 Future<String?> Function()? styleLoader;
 
+/// 有 /paywall 路由時（[_pump] 的 paywallRoute）記開了幾次付費牆。
+int paywallOpens = 0;
+
 Future<ProviderContainer> _pump(WidgetTester t,
     {String? selected = 'p',
     double scale = 1,
-    Size size = const Size(390, 844)}) async {
+    Size size = const Size(390, 844),
+    bool paywallRoute = false}) async {
   await t.binding.setSurfaceSize(size);
   addTearDown(() => t.binding.setSurfaceSize(null));
+  Widget app(Widget home) => paywallRoute
+      ? MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'AppTC'),
+          routerConfig: GoRouter(routes: [
+            GoRoute(path: '/', builder: (_, __) => home),
+            GoRoute(
+                path: '/paywall',
+                builder: (context, __) {
+                  paywallOpens++;
+                  return Scaffold(
+                      body: Center(
+                          child: TextButton(
+                              onPressed: () => context.pop(),
+                              child: const Text('關閉付費牆'))));
+                }),
+          ]))
+      : MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'AppTC'),
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!),
+          home: home);
   await t.pumpWidget(ProviderScope(
       overrides: [
         authConversationScopeProvider.overrideWith((_) => ownerEvents.stream),
@@ -129,29 +163,22 @@ Future<ProviderContainer> _pump(WidgetTester t,
       ],
       child: RepaintBoundary(
           key: _root,
-          child: MaterialApp(
-              debugShowCheckedModeBanner: false,
-              theme: ThemeData(fontFamily: 'AppTC'),
-              builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!),
-              home: Scaffold(
-                  backgroundColor: OpenerHomeStyle.canvas,
-                  body: SafeArea(
-                      child: ValueListenableBuilder<bool>(
-                          valueListenable: _active,
-                          builder: (_, active, __) =>
-                              IndexedStack(index: active ? 0 : 1, children: [
-                                ValueListenableBuilder<bool>(
-                                    valueListenable: _visible,
-                                    builder: (_, visible, __) => visible
-                                        ? NewTopicView(
-                                            initialPartnerId: selected,
-                                            isActive: active)
-                                        : const SizedBox.shrink()),
-                                const Center(child: Text('另一個模式'))
-                              ]))))))));
+          child: app(Scaffold(
+              backgroundColor: OpenerHomeStyle.canvas,
+              body: SafeArea(
+                  child: ValueListenableBuilder<bool>(
+                      valueListenable: _active,
+                      builder: (_, active, __) =>
+                          IndexedStack(index: active ? 0 : 1, children: [
+                            ValueListenableBuilder<bool>(
+                                valueListenable: _visible,
+                                builder: (_, visible, __) => visible
+                                    ? NewTopicView(
+                                        initialPartnerId: selected,
+                                        isActive: active)
+                                    : const SizedBox.shrink()),
+                            const Center(child: Text('另一個模式'))
+                          ]))))))));
   await t.pump(const Duration(milliseconds: 250));
   ownerEvents.add(owner);
   await t.pump();
@@ -204,6 +231,7 @@ Future<void> _capture(WidgetTester t, String name) async {
 void main() {
   setUpAll(loadProofFonts);
   setUp(() {
+    paywallOpens = 0;
     owner = 'a';
     partners = [_partner('p')];
     style = null;
@@ -228,6 +256,47 @@ void main() {
     await ownerEvents.close();
   });
 
+
+  testWidgets('額度不足：伺服器回過額度不足的那筆不再顯示「重試／將使用 3 則」，主按鈕改成升級方案', (t) async {
+    style = '有效風格';
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    _service.replies.single.completeError(const NewTopicQuotaExceededException(
+        message: '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        dailyRemaining: 1,
+        quotaNeeded: 3));
+    // 伺服器擋下後會自動開一次付費牆；刷新拿到今日只剩 1 則。
+    (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
+    await t.pumpAndSettle();
+    expect(paywallOpens, 1);
+    await t.tap(find.text('關閉付費牆'));
+    await t.pumpAndSettle();
+    expect(find.text('今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。'), findsOneWidget);
+    expect(find.text('重試'), findsNothing);
+    expect(find.text('將使用 3 則額度'), findsNothing);
+    expect(find.text(NewTopicView.upgradeButtonLabel), findsOneWidget);
+    expect(find.text('本次需要 3 則，目前可用額度不足。'), findsOneWidget);
+    expect(_button(t).onPressed, isNotNull);
+    await _tapGenerate(t);
+    await t.pumpAndSettle();
+    expect(paywallOpens, 2, reason: '升級方案直接開付費牆');
+    expect(_service.calls, hasLength(1), reason: '不會再送同一筆去撞額度');
+  });
+
+  testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {
+    style = '有效風格';
+    await _pump(t);
+    await _tapGenerate(t);
+    final first = _service.calls.single['id'];
+    _service.replies.single.completeError(const NewTopicReplayMismatchException(
+        '這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。'));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。'), findsOneWidget);
+    expect(find.text('重試'), findsNothing);
+    await _tapGenerate(t);
+    expect(_service.calls, hasLength(2));
+    expect(_service.calls.last['id'], isNot(first));
+  });
 
   testWidgets('生成中：按下後捲到看得到進度，串流狀態列出現時也看得到', (t) async {
     await _pump(t);

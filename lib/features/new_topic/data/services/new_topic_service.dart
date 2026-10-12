@@ -103,6 +103,11 @@ class NewTopicMaterialBlockedException extends NewTopicException {
   const NewTopicMaterialBlockedException(super.message);
 }
 
+/// 這個請求編號已用於不同內容（409）：同一個編號重送一定再撞，View 丟掉 pending、下次換新編號。
+class NewTopicReplayMismatchException extends NewTopicException {
+  const NewTopicReplayMismatchException(super.message);
+}
+
 class NewTopicService {
   NewTopicService({
     NewTopicInvoker? invoker,
@@ -469,6 +474,12 @@ class NewTopicService {
         monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
         dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
         quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),
+      );
+    }
+
+    if (code == 'NEW_TOPIC_REQUEST_REPLAY_MISMATCH') {
+      throw NewTopicReplayMismatchException(
+        serverMessage ?? '這筆請求編號已用於不同內容，請重新生成一次。本次不會扣額度。',
       );
     }
 
