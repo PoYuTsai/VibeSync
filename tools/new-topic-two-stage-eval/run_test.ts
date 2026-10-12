@@ -60,6 +60,10 @@ import {
   SONNET_5_5_THINKING_HEADROOM_TOKENS,
 } from "../../supabase/functions/_shared/model_request_params.ts";
 import {
+  SONNET_5_5_PRICING,
+  SONNET_5_PRICING,
+} from "../../supabase/functions/_shared/model_pricing.ts";
+import {
   acceptanceMarkdown,
   blindCodes,
   completenessProblems,
@@ -1548,9 +1552,12 @@ Deno.test("模型對照：估算與預留照各自模型——5.5 最壞是 max_
     estimate.worstUsd,
     estimate.byArm.base!.worstUsd + estimate.byArm.cand!.worstUsd,
   );
-  // 兩個模型同價（_shared/model_pricing.ts）；實付照各自的單價算。
-  assertEquals(pricingFor(SONNET_5_5_MODEL), PRICING);
+  // 實付照各自的單價算（_shared/model_pricing.ts）：input／output 同價，
+  // 5.5 的快取讀取是 0.05x、比 Sonnet 5 便宜（ADR #55）。
+  assertEquals(PRICING, SONNET_5_PRICING);
+  assertEquals(pricingFor(SONNET_5_5_MODEL), SONNET_5_5_PRICING);
   assertEquals(usd(100, 200, 0, 0, SONNET_5_5_MODEL), usd(100, 200));
+  assert(usd(100, 200, 1000, 0, SONNET_5_5_MODEL) < usd(100, 200, 1000, 0));
 });
 
 Deno.test("模型對照：摘要列每臂時間、停止原因與實付，寫明不是 §6.5 驗收；提示詞對照照舊有門檻表", async () => {
