@@ -725,16 +725,17 @@ export async function handleNewTopicRequest(
           });
         }
       } catch (repairError) {
+        // 修格式被拒答也整次失敗（ADR #54），回「請調整內容」而不是「重新生成」；
+        // 拒答先認，剛好過了期限也一樣（兩條路都釋放、不扣）。
+        if (isModelRefusalError(repairError)) {
+          return await rejectNewTopicRefusal("format_repair");
+        }
         if (
           (repairError instanceof AiServiceError &&
             repairError.code === "DEADLINE_EXCEEDED") ||
           Date.now() >= newTopicGenerationDeadlineAtMs
         ) {
           return await rejectNewTopicDeadline("format_repair");
-        }
-        // 修格式被拒答也整次失敗（ADR #54），回「請調整內容」而不是「重新生成」。
-        if (isModelRefusalError(repairError)) {
-          return await rejectNewTopicRefusal("format_repair");
         }
         logWarn("new_topic_repair_error", {
           ...newTopicLogFields(),
@@ -1020,7 +1021,10 @@ export async function handleNewTopicRequest(
             // （owner-bound release）；其他 → release 後 503。此時
             // complete 尚未跑、settle 必然未開始，release 是安全的；
             // release 失敗回 retryable 不宣稱不扣。
-            if (
+            if (isModelRefusalError(streamError)) {
+              // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容。
+              failureResponse = await rejectNewTopicRefusal("primary");
+            } else if (
               (streamError instanceof AiStreamingServiceError &&
                 streamError.code === "TIMEOUT") ||
               Date.now() >= newTopicGenerationDeadlineAtMs
@@ -1028,8 +1032,6 @@ export async function handleNewTopicRequest(
               failureResponse = await rejectNewTopicDeadline(
                 "primary_or_fallback",
               );
-            } else if (isModelRefusalError(streamError)) {
-              failureResponse = await rejectNewTopicRefusal("primary");
             } else {
               logWarn("new_topic_api_error", {
                 ...newTopicLogFields(),
@@ -1100,15 +1102,16 @@ export async function handleNewTopicRequest(
       },
     );
   } catch (apiError) {
+    // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容；兩條路都釋放、不扣。
+    if (isModelRefusalError(apiError)) {
+      return await rejectNewTopicRefusal("primary");
+    }
     if (
       (apiError instanceof AiServiceError &&
         apiError.code === "DEADLINE_EXCEEDED") ||
       Date.now() >= newTopicGenerationDeadlineAtMs
     ) {
       return await rejectNewTopicDeadline("primary_or_fallback");
-    }
-    if (isModelRefusalError(apiError)) {
-      return await rejectNewTopicRefusal("primary");
     }
     logWarn("new_topic_api_error", {
       ...newTopicLogFields(),

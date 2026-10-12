@@ -561,13 +561,14 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
       try {
         output = await invokeModel({ system: OPENER_ANALYZE_PROMPT, messages, maxTokens: OPENER_ANALYZE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
       } catch (error) {
-        if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         if (isModelRefusalError(error)) {
           // 拒答（ADR #28／#49）：同一份資料重送一樣會被擋，請用戶換資料，不給「稍後再試」。
+          // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容；兩條路都釋放、不扣。
           logWarn("opener_analyze_model_refused", { user, imageCount, stage: "model" });
           if (!await release()) return releaseFailedResponse();
           return flowError(OPENER_CONTENT_REFUSED, OPENER_ANALYZE_REFUSED_MESSAGE, 422);
         }
+        if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         logWarn("opener_analyze_api_error", { user, error: getErrorMessage(error), imageCount });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時分析失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
@@ -604,12 +605,12 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
             repaired = snapshot !== null;
           }
         } catch (error) {
-          if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("repair");
           if (isModelRefusalError(error)) {
             logWarn("opener_analyze_model_refused", { user, imageCount, stage: "repair" });
             if (!await release()) return releaseFailedResponse();
             return flowError(OPENER_CONTENT_REFUSED, OPENER_ANALYZE_REFUSED_MESSAGE, 422);
           }
+          if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("repair");
           logWarn("opener_analyze_repair_error", { user, error: getErrorMessage(error) });
         }
       }
@@ -969,11 +970,12 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
       try {
         output = await invokeModel({ system: OPENER_GENERATE_PROMPT, messages: [{ role: "user", content: userContent }], maxTokens: OPENER_GENERATE_MAX_TOKENS, deadlineAtMs, allowModelFallback: true, onChunk });
       } catch (error) {
-        if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         if (isModelRefusalError(error)) {
+          // 拒答先認（ADR #54）：剛好過了期限也請用戶調整內容；兩條路都釋放、不扣。
           logWarn("opener_generate_model_refused", { user, path: "single", stage: "model" });
           return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
         }
+        if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("model");
         logWarn("opener_generate_api_error", { user, error: getErrorMessage(error) });
         if (!await release()) return releaseFailedResponse();
         return flowError("OPENER_PROVIDER_UNAVAILABLE", "AI 暫時生成失敗，請稍後再試；本次不會扣額度。", 503, { retryable: true });
@@ -1027,11 +1029,11 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             }
           }
         } catch (error) {
-          if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("format_repair");
           if (isModelRefusalError(error)) {
             logWarn("opener_generate_model_refused", { user, path: "single", stage: "format_repair" });
             return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
           }
+          if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("format_repair");
           logWarn("opener_generate_repair_error", { user, error: getErrorMessage(error) });
         }
       }
@@ -1080,11 +1082,11 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
             }
           }
         } catch (error) {
-          if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("content_correction");
           if (isModelRefusalError(error)) {
             logWarn("opener_generate_model_refused", { user, path: "single", stage: "content_correction" });
             return await failNoCharge(OPENER_CONTENT_REFUSED, OPENER_GENERATE_REFUSED_MESSAGE, 422);
           }
+          if (error instanceof OpenerFlowDeadlineError || Date.now() >= deadlineAtMs) return await rejectDeadline("content_correction");
           logWarn("opener_generate_correction_error", { user, error: getErrorMessage(error) });
         }
       }

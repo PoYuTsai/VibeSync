@@ -500,6 +500,24 @@ Deno.test("執行：給了規劃專用的呼叫器（5.5 開關打開時是 Sonn
   assertFalse(mainCalls2.some((c) => c.system === OPENER_PLAN_PROMPT));
 });
 
+Deno.test("執行：寫手的拒答剛好在整個請求到期後才處理完 → 仍是 refusal（請用戶調整內容），不是 deadline", async () => {
+  let clock = Date.now();
+  const deadlineAtMs = clock + 50_000;
+  const calls: OpenerFlowModelRequest[] = [];
+  const base = fakeModel({}, calls);
+  const out = await runOpenerPlanWrite(input(null, FREE), {
+    ...deps({}, calls, deadlineAtMs),
+    now: () => clock,
+    isRefusalError: isModelRefusalError,
+    invokeModel: (req: OpenerFlowModelRequest) => {
+      if (req.system === OPENER_PLAN_PROMPT) return base(req);
+      clock = deadlineAtMs + 1_000;
+      return Promise.reject(new AiStreamingServiceError("AI declined to generate this response.", "STREAM_MODEL_REFUSAL", false));
+    },
+  });
+  assertEquals(out.kind === "fail" && [out.reason, out.stage], ["refusal", "model"], "改前：先看時間，回 deadline");
+});
+
 Deno.test("說明一致：推薦卡被改寫就不宣稱採用、邀約說明用通用句；有想法時處理提示不說只照她資料", async () => {
   const text = "她好醜 想約她跑半馬";
   const plan = { spans: [{ quote: "她好醜", role: "hostile" }, { quote: "想約她跑半馬", role: "invite_request", topicPart: "跑半馬" }], anchorCueIds: ["cue_2"], nominatedStyle: "extend" };

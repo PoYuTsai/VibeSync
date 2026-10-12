@@ -286,8 +286,8 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     writerRaw = out.rawText;
   } catch (error) {
     telemetry.writeElapsedMs = now() - writeStarted;
-    if (deps.isDeadlineError(error) || now() >= deps.deadlineAtMs) return fail("deadline", "model", plan, null);
     if (deps.isRefusalError?.(error)) return fail("refusal", "model", plan, null);
+    if (deps.isDeadlineError(error) || now() >= deps.deadlineAtMs) return fail("deadline", "model", plan, null);
     return fail("provider", "model", plan, null);
   }
   telemetry.writeElapsedMs = now() - writeStarted;

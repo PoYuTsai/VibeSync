@@ -1811,6 +1811,83 @@ Deno.test("拒答：結構刀規劃被拒答 → 422 不扣、不占次數、不
   } finally { await h.db.close(); }
 });
 
+Deno.test("拒答剛好在整個請求到期後才處理完：第一段、結構刀寫手、舊路徑生成都回 422 請調整內容（不是逾時），一樣釋放、不扣", async () => {
+  const h = await harness();
+  const originalNow = Date.now;
+  // 共用層會照實回報期限後才處理完的拒答：模型邊界先把時鐘撥過整個請求的期限再丟拒答。
+  const refuseLate = (error: Error) => {
+    const late = originalNow() + 60_000;
+    Date.now = () => late;
+    return Promise.reject(error);
+  };
+  const refusal = () => new AiServiceError("AI declined to generate this response.", "MODEL_REFUSAL", false);
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const base = planWriteInvoker({ calls: [] });
+    const analyzeRefused = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4 }), { invokeModel: () => refuseLate(refusal()) }));
+    Date.now = originalNow;
+    assertEquals(analyzeRefused.status, 422, "改前：先看時間，回 504 逾時");
+    assertEquals((await json(analyzeRefused)).code, "OPENER_CONTENT_REFUSED");
+    const brokenThenLate = (system: string) => (req: OpenerFlowModelRequest) =>
+      req.system === system
+        ? Promise.resolve({ rawText: "這不是 JSON", model: "claude-sonnet-5", inputTokens: 1, outputTokens: 1 })
+        : refuseLate(refusal());
+    const analyzeRepairRefused = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e06" }), { invokeModel: brokenThenLate(OPENER_ANALYZE_PROMPT) }));
+    Date.now = originalNow;
+    assertEquals(analyzeRepairRefused.status, 422, "第一段的修格式");
+    assertEquals((await json(analyzeRepairRefused)).code, "OPENER_CONTENT_REFUSED");
+
+    await passOneMinute(h.db);
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: base }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const contribution = { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" };
+    const writerRefusesLate = (req: OpenerFlowModelRequest) =>
+      req.system === OPENER_PLAN_PROMPT ? base(req) : refuseLate(new AiStreamingServiceError("AI declined to generate this response.", "STREAM_MODEL_REFUSAL", false));
+    const planWrite = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_1, contribution, { openerCardSet: 2 }), { invokeModel: writerRefusesLate }));
+    Date.now = originalNow;
+    assertEquals(planWrite.status, 422);
+    assertEquals((await json(planWrite)).code, "OPENER_CONTENT_REFUSED");
+
+    await passOneMinute(h.db);
+    const singleRefusesLate = (req: OpenerFlowModelRequest) => req.system === OPENER_GENERATE_PROMPT ? refuseLate(refusal()) : base(req);
+    const single = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_2, contribution), { invokeModel: singleRefusesLate }));
+    Date.now = originalNow;
+    assertEquals(single.status, 422);
+    assertEquals((await json(single)).code, "OPENER_CONTENT_REFUSED");
+
+    // 舊路徑的修格式：主輸出壞掉，修格式的拒答到期後才處理完。
+    await passOneMinute(h.db);
+    const repairLate = (req: OpenerFlowModelRequest) =>
+      req.system === OPENER_GENERATE_PROMPT || req.system === OPENER_GENERATE_REPAIR_PROMPT ? brokenThenLate(OPENER_GENERATE_PROMPT)(req) : base(req);
+    const repairRefused = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, GEN_3, contribution), { invokeModel: repairLate }));
+    Date.now = originalNow;
+    assertEquals(repairRefused.status, 422, "舊路徑的修格式");
+    assertEquals((await json(repairRefused)).code, "OPENER_CONTENT_REFUSED");
+
+    // 舊路徑的內容修正：硬錯誤要修正，修正的拒答到期後才處理完。
+    await passOneMinute(h.db);
+    const correctionLate = (req: OpenerFlowModelRequest) => {
+      const userText = typeof req.messages[0]?.content === "string" ? req.messages[0].content : "";
+      if (req.system === OPENER_GENERATE_PROMPT && userText.startsWith("以下這組開場白有可確定的錯誤")) return refuseLate(refusal());
+      if (req.system === OPENER_GENERATE_PROMPT) {
+        const body = { ...GENERATE_JSON, openers: { ...GENERATE_JSON.openers, resonate: "我也養狗，妳那隻會帶路嗎" } };
+        return Promise.resolve({ rawText: JSON.stringify(body), model: "claude-sonnet-5", inputTokens: 1, outputTokens: 1 });
+      }
+      return base(req);
+    };
+    h.tier = "essential";
+    const correctionRefused = await handleOpenerGenerateRequest(h.deps(generateBody(sessionId, "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e05", CURIOUS), { invokeModel: correctionLate }));
+    Date.now = originalNow;
+    assertEquals(correctionRefused.status, 422, "舊路徑的內容修正");
+    assertEquals((await json(correctionRefused)).code, "OPENER_CONTENT_REFUSED");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(await runCount(h.db), 0);
+  } finally {
+    Date.now = originalNow;
+    await h.db.close();
+  }
+});
+
 Deno.test("5.5 開關：OPENER_SONNET_55=true 只讓結構刀的寫手用 5.5（參數照共用層）；規劃、分析與舊路徑維持 Sonnet 5；每次請求讀", async () => {
   const h = await harness();
   const original = globalThis.fetch;

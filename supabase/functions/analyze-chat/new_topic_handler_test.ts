@@ -1348,3 +1348,59 @@ Deno.test("拒答：主輸出格式壞掉、修格式被拒答 → 422 請調整
   assert(result.dbCalls.includes("rpc:release_new_topic_claim"));
   assertEquals(result.settleCalls, []);
 });
+
+Deno.test("拒答剛好在生成期限後才處理完（串流、一般回應、修格式）：回 422 請調整內容、不是 504 逾時，一樣釋放、不結算", async () => {
+  const originalBegin = ModelCallBudget.prototype.begin;
+  const originalNow = Date.now;
+  // 共用層會照實回報期限後才處理完的拒答：被拒的那次呼叫結束時把時鐘撥過期限，錯誤才往回傳。
+  ModelCallBudget.prototype.begin = function (...args) {
+    const attempt = originalBegin.apply(this, args);
+    const finish = attempt.finish;
+    attempt.finish = (status) => {
+      if (status === "failed") {
+        const late = originalNow() + 60_000;
+        Date.now = () => late;
+      }
+      return finish(status);
+    };
+    return attempt;
+  };
+  try {
+    streamOn();
+    stopReasonForNextRun = "refusal";
+    const streamed = await run(body(), undefined);
+    Date.now = originalNow;
+    assertEquals(streamed.json.type, "new_topic.error");
+    assertEquals(streamed.json.status, 422, "改前：先看時間，回 504 逾時");
+    assertEquals(streamed.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+    assert(streamed.dbCalls.includes("rpc:release_new_topic_claim"));
+    assertEquals(streamed.settleCalls, []);
+
+    stopReasonForNextRun = "refusal";
+    const legacy = await run(body(), undefined);
+    Date.now = originalNow;
+    assertEquals(legacy.status, 422);
+    assertEquals(legacy.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+    assert(legacy.dbCalls.includes("rpc:release_new_topic_claim"));
+    assertEquals(legacy.settleCalls, []);
+
+    stopReasonForCallNextRun = (index) => index === 1 ? "refusal" : null;
+    const repaired = await run(
+      body(),
+      undefined,
+      true,
+      "這不是 JSON",
+      0,
+      MODEL_PAYLOAD,
+    );
+    Date.now = originalNow;
+    assertEquals(repaired.status, 422);
+    assertEquals(repaired.json.code, "NEW_TOPIC_CONTENT_REFUSED");
+    assertEquals(repaired.modelRequests.length, 2, "主呼叫＋修格式");
+    assert(repaired.dbCalls.includes("rpc:release_new_topic_claim"));
+    assertEquals(repaired.settleCalls, []);
+  } finally {
+    ModelCallBudget.prototype.begin = originalBegin;
+    Date.now = originalNow;
+  }
+});
