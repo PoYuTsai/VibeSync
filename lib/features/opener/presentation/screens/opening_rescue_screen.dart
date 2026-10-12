@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
@@ -781,14 +780,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           : _analysisSectionKey.currentContext;
       if (targetContext == null) return;
       _pendingScroll = false;
-      Scrollable.ensureVisible(
-        targetContext,
-        alignment: 0.04,
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : AppMotion.scroll,
-        curve: AppMotion.easeOut,
-      );
+      snapSectionTopIntoView(targetContext);
     });
   }
 

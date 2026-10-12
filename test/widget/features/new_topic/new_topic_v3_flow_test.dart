@@ -228,6 +228,65 @@ void main() {
     await ownerEvents.close();
   });
 
+
+  testWidgets('生成中：按下後捲到看得到進度，串流狀態列出現時也看得到', (t) async {
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    await t.pump(const Duration(milliseconds: 400));
+    final viewport = t.getRect(find.byType(SingleChildScrollView).first);
+    // 生成鈕固定在底部，捲動區的下緣就在它上面；進度那一行要整行在捲動區裡。
+    final local = t.getRect(find.text(NewTopicView.progressPhrases.first));
+    expect(local.bottom, lessThanOrEqualTo(viewport.bottom), reason: '$local / $viewport');
+    _service.progress?.call('開始寫五個新話題', 'topics');
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    final ticker = t.getRect(find.byKey(const ValueKey('stream-progress-ticker')));
+    expect(ticker.bottom, lessThanOrEqualTo(viewport.bottom), reason: '$ticker / $viewport');
+    expect(ticker.top, greaterThanOrEqualTo(viewport.top));
+  });
+
+  testWidgets('完成後定格在結果區頂端：五張題卡比畫面高也不會把「這組根據／調整狀況」捲過頭', (t) async {
+    await _pump(t);
+    await _tapVisible(t, find.text('冷掉了，想重新聊'));
+    await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
+    await _tapVisible(t, _key('new-topic-material-trigger'));
+    await _typeMaterial(t, '路過一家甜點店');
+    await _tapGenerate(t);
+    // 等「捲到看得到進度」的動畫結束（真機上生成要十幾秒）；捲動中不搶用戶的捲動。
+    await t.pump(const Duration(milliseconds: 400));
+    final id = _service.calls.single['id']!;
+    _service.replies.single.complete(NewTopicResult(
+        topics: [
+          for (var n = 1; n <= 5; n++)
+            NewTopicIdea(
+                id: 'nt_$n',
+                direction: '第 $n 個方向',
+                openingLine: '第 $n 句可以直接傳的開場，長一點才會把結果區撐得比畫面高',
+                whyItWorks: '為什麼現在有效的說明，寫兩行左右的長度，讓卡片有正常的高度。',
+                nextMove: '她回了之後怎麼接的說明，也寫兩行左右的長度，讓卡片有正常的高度。')
+        ],
+        recommendation: const NewTopicRecommendation(topicId: 'nt_1'),
+        access: const NewTopicAccess(
+            servedTier: 'starter',
+            limited: false,
+            totalCount: 5,
+            unlockedCount: 5,
+            lockedCount: 0),
+        costUsed: 3,
+        requestId: id));
+    for (var i = 0; i < 6; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    final viewport = t.getRect(find.byType(SingleChildScrollView).first);
+    final adjust = t.getRect(_key('new-topic-adjust'));
+    expect(adjust.top, greaterThanOrEqualTo(viewport.top), reason: '$adjust / $viewport');
+    expect(adjust.top, lessThan(viewport.top + 80), reason: '定格在結果區頂端，不是停在原地');
+  });
+
   testWidgets('生成中離開並重建畫面，同答案送出相同 requestId', (t) async {
     style = '有效風格';
     await _pump(t);

@@ -75,9 +75,11 @@ class NewTopicView extends ConsumerStatefulWidget {
 
 class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _scrollController = ScrollController();
-  // 2026-08-18 呈現精修：完成後定格在「新話題建議」標題，不再捲到底
-  // 略過 5 張題卡。
+  // 2026-08-18 呈現精修：完成後定格在結果區頂端（這組根據、新話題建議），不再
+  // 捲到底略過 5 張題卡。
   final _resultsSectionKey = GlobalKey();
+  // 生成中那一行狀態：生成鈕固定在底部，按下後要捲到看得到（2026-10-12）。
+  final _progressKey = GlobalKey();
   final _situationKey = GlobalKey();
   final _materialController = TextEditingController();
 
@@ -146,8 +148,19 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       final target = _resultsSectionKey.currentContext;
       if (target == null) return;
       _pendingScroll = false;
+      snapSectionTopIntoView(target);
+    });
+  }
+
+  /// 生成鈕固定在底部，進度那一行常落在它後面：開始生成、串流第一個事件到時，
+  /// 捲到它剛好露出（只在看不到時捲）。
+  void _revealProgress() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.isActive || !_isGenerating) return;
+      final target = _progressKey.currentContext;
+      if (target == null) return;
       Scrollable.ensureVisible(target,
-          alignment: 0.04,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
           duration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
               : AppMotion.scroll,
@@ -445,6 +458,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         _streamProgress.clear();
         _completedStreamPhases.clear();
       });
+      _revealProgress();
       final service =
           NewTopicView.debugServiceFactory?.call() ?? NewTopicService();
       final result = await service.generateTopicsStreaming(
@@ -457,10 +471,13 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         revenueCatAppUserId: attempt.revenueCatAppUserId,
         onProgress: (label, phase) {
           if (!current() || !_isGenerating || phase == 'heartbeat') return;
+          final first = _streamProgress.isEmpty;
           setState(() {
             _streamProgress.add(label);
             if (phase != null) _completedStreamPhases.add(phase);
           });
+          // 本地輪播換成串流狀態列，位置會變：再確認一次看得到。
+          if (first) _revealProgress();
         },
       );
       if (!current()) return;
@@ -744,7 +761,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StreamProgressTicker(labels: _streamProgress),
+                          KeyedSubtree(
+                              key: _progressKey,
+                              child: StreamProgressTicker(
+                                  labels: _streamProgress)),
                           if (!_completedStreamPhases
                               .contains('finalizing')) ...[
                             const SizedBox(height: 12),
@@ -754,9 +774,12 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                           ],
                         ],
                       )
-                    : const Center(
-                        child: OpenerGenerationProgress(
-                          phrases: NewTopicView.progressPhrases,
+                    : KeyedSubtree(
+                        key: _progressKey,
+                        child: const Center(
+                          child: OpenerGenerationProgress(
+                            phrases: NewTopicView.progressPhrases,
+                          ),
                         ),
                       ),
               if (_error != null)
