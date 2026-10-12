@@ -832,9 +832,10 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   const deadlineAtMs = deps.requestStartedAtMs + OPENER_GENERATE_DEADLINE_MS;
   const budget = new ModelCallBudget(deadlineAtMs, { user, stage: "generate", operation: request.generationId, tier: deps.quota().effectiveTier, flowVersion: OPENER_FLOW_VERSION },
     attemptReporter("opener_provider_attempt", "opener_generate", deps.recordAiCall, { path: usePlanWrite ? "plan_write" : "single" }));
-  // 5.5 開關只管結構刀（新版 App）；舊路徑維持 Sonnet 5。
+  // 5.5 開關只管結構刀（新版 App）的寫手、修格式、改寫；規劃與舊路徑維持 Sonnet 5（ADR #54）。
   const generateModel = usePlanWrite ? selectOpenerPlanWriteModel(env) : OPENER_FLOW_MODEL;
   const invokeModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget, generateModel);
+  const invokePlanModel = deps.invokeModel ?? defaultInvokeModel(deps.claudeApiKey, budget, OPENER_FLOW_MODEL);
   const userContent = buildOpenerGenerateUserContent({ snapshot: activeSession.snapshot, materials, currentFreeText: request.contribution.freeText });
   const rejectDeadline = async (stage: string): Promise<Response> => {
     logWarn("opener_generate_deadline_exceeded", { user, stage });
@@ -931,7 +932,7 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
           servedTier,
           contractVersion,
           arm: writerArmFromRequest(body),
-        }, { invokeModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, isRefusalError: isModelRefusalError, onChunk });
+        }, { invokeModel, invokePlanModel, deadlineAtMs, isDeadlineError: (error) => error instanceof OpenerFlowDeadlineError, isRefusalError: isModelRefusalError, onChunk });
         onFinalizing?.();
         // telemetry 只有代碼與計數，不含用戶原文。
         const { verdicts, ...planWriteLog } = outcome.telemetry;

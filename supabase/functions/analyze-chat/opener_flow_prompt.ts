@@ -18,9 +18,10 @@ export const OPENER_GENERATE_DEADLINE_MS = 50_000;
 export const OPENER_FLOW_MODEL = "claude-sonnet-5";
 
 /**
- * 結構刀第二段（規劃、寫手、修格式、改寫）換 Sonnet 5.5 的開關（ADR #54）：secret `OPENER_SONNET_55`
- * 是 "true" 才用 5.5，每次請求讀，關掉就回 Sonnet 5，不用重新部署。第一段分析（含截圖辨識）、
- * 舊版 App 走的舊路徑與舊單段開場都維持 Sonnet 5：5.5 對照片與舊提示詞的表現沒有量過。
+ * 結構刀第二段的寫手、修格式、改寫換 Sonnet 5.5 的開關（ADR #54）：secret `OPENER_SONNET_55`
+ * 是 "true" 才用 5.5，每次請求讀，關掉就回 Sonnet 5，不用重新部署。規劃維持 Sonnet 5：2026-10-12
+ * 黑箱裡 5.5 規劃在自介只有防備話時替寫手編出「問她喜歡哪種開場」的題目，五張卡全歪。第一段分析
+ * （含截圖辨識）、舊版 App 走的舊路徑與舊單段開場也維持 Sonnet 5：5.5 對照片與舊提示詞沒有量過。
  */
 export function selectOpenerPlanWriteModel(env: (name: string) => string | undefined): string {
   return env("OPENER_SONNET_55") === "true" ? SONNET_5_5_MODEL : OPENER_FLOW_MODEL;

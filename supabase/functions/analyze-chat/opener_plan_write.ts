@@ -68,6 +68,11 @@ export interface PlanWriteInput {
 
 export interface PlanWriteDeps {
   invokeModel: OpenerFlowModelInvoker;
+  /**
+   * 規劃用的呼叫器；沒給就用 invokeModel。OPENER_SONNET_55 打開時規劃維持 Sonnet 5、寫手才換 5.5
+   * （ADR #54：2026-10-12 黑箱裡 5.5 規劃在自介只有防備話、沒線索時，替寫手編出「問她喜歡哪種開場」的題目）。
+   */
+  invokePlanModel?: OpenerFlowModelInvoker;
   deadlineAtMs: number;
   /** handler 的 OpenerFlowDeadlineError 判斷（避免循環匯入 class）。 */
   isDeadlineError: (error: unknown) => boolean;
@@ -187,10 +192,13 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     }
   };
   // 每次呼叫都經過這裡：失敗（拋錯）的嘗試不知道用量，不能再說用量完整（GPT 主審 F2）。
-  const invoke = async (req: Parameters<OpenerFlowModelInvoker>[0]): Promise<OpenerFlowModelOutput> => {
+  const invoke = async (
+    req: Parameters<OpenerFlowModelInvoker>[0],
+    invoker: OpenerFlowModelInvoker = deps.invokeModel,
+  ): Promise<OpenerFlowModelOutput> => {
     telemetry.invokerCalls += 1;
     try {
-      const out = await deps.invokeModel(req);
+      const out = await invoker(req);
       addUsage(out);
       return out;
     } catch (error) {
@@ -223,7 +231,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         // 只試一次、不換模型（fallback.ts 的 maxRetries 是「嘗試次數」，預設 1＝不重試）。
         allowModelFallback: false,
         purpose: "plan",
-      });
+      }, deps.invokePlanModel ?? deps.invokeModel);
       if (hasOpenerFlowPromptLeak(out.rawText)) {
         plan = profileOnlyPlan(planCtx, ["plan.leak"]);
         telemetry.planError = "leak";

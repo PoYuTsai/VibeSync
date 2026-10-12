@@ -32,7 +32,7 @@ deno run -A tools/opener-plan-write-eval/report.ts <judged.json>
 
 ## 換 Sonnet 5.5 對照（ADR #54，2026-10-12）
 
-- `blackbox.ts --model=claude-sonnet-5-5` 等於 production 開了 `OPENER_SONNET_55`：結構刀的規劃、寫手、修格式、改寫都用 5.5，思考參數與 max_tokens 餘裕照共用呼叫層；5.5 掛掉會退 Sonnet 5（每一跳實際送的模型看輸出檔 `calls[].model`）。`--arm=OLD` 不吃這個開關。
+- `blackbox.ts --model=claude-sonnet-5-5` 等於 production 開了 `OPENER_SONNET_55`：結構刀的寫手、修格式、改寫用 5.5，規劃維持 Sonnet 5（ADR #54 決定 6），思考參數與 max_tokens 餘裕照共用呼叫層；5.5 掛掉會退 Sonnet 5（每一跳實際送的模型看輸出檔 `calls[].model`）。`--arm=OLD` 不吃這個開關。
 - 評審固定 Sonnet 5（`judge.ts` 的 `JUDGE_MODEL`）：校準是用它做的，生成換模型時評審不跟著換。`report.ts` 把 5.5 的輸出列成 `B·5.5`。
 - R01–R06 是尺度邊緣探針（喝酒夜生活、想稱讚身材、她寫了不約炮、犯罪紀錄片、想撩、離婚單親）：量 5.5 會不會把正常的交友內容當成要拒答。拒答的生成回 422 `OPENER_CONTENT_REFUSED`，在報表逐題清單顯示為「（422）」。
 - 乾跑（沒有 `--live`）最後會印這組設定真跑的估價：input＝提示詞字數×1.5、全用快取寫入單價；一般 output 規劃 500、寫手 900，5.5 每次另加約 1000 思考 token；最壞每次 output 全滿，再加一次修格式。`judge.ts --runs=` 乾跑也會印評審估價。估算偏保守。

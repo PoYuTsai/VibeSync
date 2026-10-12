@@ -1811,7 +1811,7 @@ Deno.test("拒答：結構刀規劃被拒答 → 422 不扣、不占次數、不
   } finally { await h.db.close(); }
 });
 
-Deno.test("5.5 開關：OPENER_SONNET_55=true 只讓結構刀的規劃與寫手用 5.5（參數照共用層）；分析與舊路徑維持 Sonnet 5；每次請求讀", async () => {
+Deno.test("5.5 開關：OPENER_SONNET_55=true 只讓結構刀的寫手用 5.5（參數照共用層）；規劃、分析與舊路徑維持 Sonnet 5；每次請求讀", async () => {
   const h = await harness();
   const original = globalThis.fetch;
   const sent: Array<Record<string, unknown>> = [];
@@ -1850,13 +1850,14 @@ Deno.test("5.5 開關：OPENER_SONNET_55=true 只讓結構刀的規劃與寫手�
     const planWrite = await handleOpenerGenerateRequest(productionDeps(generateBody(sessionId, GEN_1, CURIOUS, { openerCardSet: 2 })));
     assertEquals(planWrite.status, 200);
     const [plan, write] = sent.slice(1);
-    assertEquals([plan.model, write.model], ["claude-sonnet-5-5", "claude-sonnet-5-5"]);
-    for (const request of [plan, write]) {
-      assertEquals(request.thinking, { type: "adaptive", display: "omitted" });
-      assertEquals((request.output_config as Record<string, unknown>).effort, "low");
-      assertEquals("temperature" in request, false);
-    }
-    assertEquals(plan.max_tokens, OPENER_PLAN_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS);
+    // 規劃維持 Sonnet 5（ADR #54）：5.5 規劃在自介只有防備話時會替寫手編出「問她喜歡哪種開場」的題目。
+    assertEquals([plan.model, write.model], ["claude-sonnet-5", "claude-sonnet-5-5"]);
+    assertEquals(plan.thinking, { type: "disabled" });
+    assertEquals("output_config" in plan, false);
+    assertEquals(plan.max_tokens, OPENER_PLAN_MAX_TOKENS);
+    assertEquals(write.thinking, { type: "adaptive", display: "omitted" });
+    assertEquals((write.output_config as Record<string, unknown>).effort, "low");
+    assertEquals("temperature" in write, false);
     assertEquals(write.max_tokens, OPENER_WRITE_MAX_TOKENS + SONNET_5_5_THINKING_HEADROOM_TOKENS);
 
     // 舊版 App（沒帶 openerCardSet＝舊路徑）：開關開著也維持 Sonnet 5。

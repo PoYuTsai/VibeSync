@@ -473,6 +473,33 @@ Deno.test("執行：紅線卡定點改寫一次；仍踩就拿掉那張，其他
   assertFalse(JSON.stringify(out.result).includes("她好醜"));
 });
 
+Deno.test("執行：給了規劃專用的呼叫器（5.5 開關打開時是 Sonnet 5），只有規劃走它；寫手、修格式、改寫都走主呼叫器，用量照算", async () => {
+  const plan = { spans: [{ quote: "她好醜", role: "hostile" }, { quote: "想問半馬", role: "question" }], anchorCueIds: ["cue_2"], nominatedStyle: "extend" };
+  const bad = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: "她好醜但半馬加油", humor: "她好醜哈哈" } };
+  const rewriteScript = { plan, write: bad, rewrite: { openers: { extend: "半馬練到哪一段了？" } } };
+  const planCalls: OpenerFlowModelRequest[] = [];
+  const mainCalls: OpenerFlowModelRequest[] = [];
+  const rewritten = await runOpenerPlanWrite(input("她好醜 想問半馬", FREE), { ...deps(rewriteScript, mainCalls), invokePlanModel: fakeModel(rewriteScript, planCalls) });
+  assertEquals(rewritten.kind, "ok");
+  if (rewritten.kind !== "ok") return;
+  assertEquals(planCalls.map((c) => c.system), [OPENER_PLAN_PROMPT]);
+  assertEquals(mainCalls.length, 2, "寫手＋改寫");
+  assertEquals(mainCalls[1].system, OPENER_REWRITE_PROMPT);
+  assertFalse(mainCalls.some((c) => c.system === OPENER_PLAN_PROMPT));
+  assertEquals(rewritten.result.openers.extend, "半馬練到哪一段了？");
+  assertEquals([rewritten.telemetry.invokerCalls, rewritten.telemetry.modelAttempts, rewritten.telemetry.usageComplete], [3, 3, true]);
+
+  const partial = { ...WRITE_OK, openers: { extend: "半馬賽前最怕哪一段？" } };
+  const planCalls2: OpenerFlowModelRequest[] = [];
+  const mainCalls2: OpenerFlowModelRequest[] = [];
+  const repaired = await runOpenerPlanWrite(input(null, FREE), { ...deps({ write: partial, repair: WRITE_OK }, mainCalls2), invokePlanModel: fakeModel({}, planCalls2) });
+  assertEquals(repaired.kind, "ok");
+  assertEquals(planCalls2.map((c) => c.system), [OPENER_PLAN_PROMPT]);
+  assertEquals(mainCalls2.length, 2, "寫手＋修格式");
+  assertEquals(mainCalls2[1].purpose, "repair");
+  assertFalse(mainCalls2.some((c) => c.system === OPENER_PLAN_PROMPT));
+});
+
 Deno.test("說明一致：推薦卡被改寫就不宣稱採用、邀約說明用通用句；有想法時處理提示不說只照她資料", async () => {
   const text = "她好醜 想約她跑半馬";
   const plan = { spans: [{ quote: "她好醜", role: "hostile" }, { quote: "想約她跑半馬", role: "invite_request", topicPart: "跑半馬" }], anchorCueIds: ["cue_2"], nominatedStyle: "extend" };
