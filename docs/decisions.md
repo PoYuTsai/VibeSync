@@ -1401,8 +1401,8 @@ v2.4 修正三項。做法是把「誰說、誰做、資料支持到哪」寫成
 
 **決定**:
 
-1. **備援鏈依主模型決定**：`fallback.ts` 與 `streaming_fallback.ts` 共用 `model_fallback_chain.ts`。主模型是 5.5 時只走 5.5 → Sonnet 5 → 4.6，含主模型共 3 次，等於呼叫上限；Sonnet 5 當主模型時照舊 5 → 4.6 → Haiku。這取代 ADR #49 決定 3 的四跳順序；ai_logs 的 `providerMaxAttempts` 在 5.5 從 4 變 3。
-2. **拒答記類別**：拒答照 ADR #28 當失敗，不換模型、不重試。共用呼叫層從 `stop_details.category` 讀安全過濾類別，只收短的識別字，`explanation` 不記。有呼叫預算的路徑（開場救星、新話題）記在每次呼叫那一列 ai_logs 的 response_body，跟失敗代碼一起記；對話分析的串流與非串流失敗列也記在 response_body。類別不送給 App。
+1. **備援鏈依主模型決定**：`fallback.ts` 與 `streaming_fallback.ts` 共用 `model_fallback_chain.ts`。主模型是 5.5 時只走 5.5 → Sonnet 5 → 4.6；Sonnet 5 當主模型時照舊 5 → 4.6 → Haiku。每個模型只試一次時（正式呼叫點都設 `maxRetries: 1`，串流本來就不重試），含主模型共 3 次，等於呼叫上限；呼叫端若設更多重試，沒有呼叫預算的非串流路徑會多打，有呼叫預算的會在第 3 次後停，可能還沒走到 4.6。這取代 ADR #49 決定 3 的四跳順序；ai_logs 的 `providerMaxAttempts` 在 5.5 從 4 變 3。
+2. **拒答記類別**：拒答照 ADR #28 當失敗，不換模型、不重試。共用呼叫層從 `stop_details.category` 讀安全過濾類別，只收短的識別字，`explanation` 不記。有呼叫預算的路徑（開場救星、新話題）記在每次呼叫那一列 ai_logs 的 response_body，跟失敗代碼一起記；對話分析的串流與非串流失敗列也記在 response_body；串流若已先有別的錯誤，錯誤代碼照舊用先到的那個，之後才到的拒答類別仍會記。類別不送給 App。
 3. **拒答先於逾時**：已辨識的拒答，處理完時就算已過整個請求的期限，仍回拒答，不改報逾時。成功回應超過期限照舊算逾時；單次逾時比剩餘期限短時，中止照舊算這一步逾時，不是整個請求逾時。
 4. **白名單**：`VALID_FORCE_MODELS` 加 `claude-sonnet-5-5`，讓測試帳號的黑箱能指定 5.5。一般用戶帶了也不採用：以前回 400，現在忽略。
 5. **價格表**：照 2026-10-12 官方 pricing 頁補 Opus 5.5（$4／$20，快取讀取 0.05x）與 Haiku 5.5（prompt 10 萬 token 以內 $0.10／$0.50，超過整次 $0.50／$2.50，快取讀寫也算進 prompt 長度）；Sonnet 5.5 的快取讀取改成 0.05x（$0.10／M）。`analyze-chat/logger.ts` 與 `_shared/model_pricing.ts` 兩份一致。只影響成本記錄與黑箱估價，不影響扣額度。

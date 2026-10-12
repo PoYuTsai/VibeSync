@@ -1,7 +1,8 @@
 // 依主模型決定的備援鏈（fallback.ts 與 streaming_fallback.ts 共用）。
 // ADR #24／#28／#49／#55：4.6 留在 Sonnet 5 之後；5.5 先退回 Sonnet 5。
-// 主模型是 5.5 時只走 5.5 → Sonnet 5 → 4.6，含主模型共 3 次，等於
-// ModelCallBudget 每請求的呼叫上限；Sonnet 5 當主模型的鏈不變。
+// 主模型是 5.5 時只走 5.5 → Sonnet 5 → 4.6；每個模型只試一次時（正式呼叫點
+// 都設 maxRetries 1）含主模型共 3 次，等於 ModelCallBudget 每請求的呼叫上限。
+// Sonnet 5 當主模型的鏈不變。
 // 鏈只看主模型：退到 Sonnet 5 之後不會接上 Sonnet 5 自己那條鏈的 Haiku。
 
 import {

@@ -340,9 +340,13 @@ export function handleStreamAnalysisRequest(
         }
       } catch (error) {
         await reframer.drain();
+        // 先到的錯誤照舊優先；之後才到的拒答類別仍要記進 ai_logs。
+        pendingErrorLogDetails = {
+          ...pendingErrorLogDetails,
+          ...upstreamLogDetails(error),
+        };
         if (!pendingError) {
           pendingError = buildUpstreamError(error, chargedContentEmitted);
-          pendingErrorLogDetails = upstreamLogDetails(error);
         }
       }
 
@@ -350,9 +354,12 @@ export function handleStreamAnalysisRequest(
         await reframer.flush();
       }
     } catch (error) {
+      pendingErrorLogDetails = {
+        ...pendingErrorLogDetails,
+        ...upstreamLogDetails(error),
+      };
       if (!pendingError) {
         pendingError = buildUpstreamError(error, chargedContentEmitted);
-        pendingErrorLogDetails = upstreamLogDetails(error);
       }
     } finally {
       stopHeartbeat();
