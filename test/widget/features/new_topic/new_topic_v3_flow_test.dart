@@ -353,8 +353,7 @@ void main() {
     await _tapVisible(t, _key('new-topic-material-trigger'));
     await _typeMaterial(t, '路過一家甜點店');
     await _tapGenerate(t);
-    // 等「捲到看得到進度」的動畫結束（真機上生成要十幾秒）；捲動中不搶用戶的捲動。
-    await t.pump(const Duration(milliseconds: 400));
+    // 結果在「捲到看得到進度」的動畫還沒跑完就回來（例如重播）：那不是用戶在捲，照樣定格。
     final id = _service.calls.single['id']!;
     _service.replies.single.complete(NewTopicResult(
         topics: [

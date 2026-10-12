@@ -84,6 +84,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final _resultsSectionKey = GlobalKey();
   // 生成中那一行狀態：生成鈕固定在底部，按下後要捲到看得到（2026-10-12）。
   final _progressKey = GlobalKey();
+  // 正在跑「捲到看得到進度」的動畫：那不是用戶在捲，結果到時照樣定格。
+  bool _revealingProgress = false;
   final _situationKey = GlobalKey();
   final _materialController = TextEditingController();
 
@@ -148,6 +150,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!mounted ||
           !widget.isActive ||
           !_pendingScroll &&
+              !_revealingProgress &&
               _scrollController.position.isScrollingNotifier.value) {
         return;
       }
@@ -165,12 +168,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!mounted || !widget.isActive || !_isGenerating) return;
       final target = _progressKey.currentContext;
       if (target == null) return;
+      _revealingProgress = true;
       Scrollable.ensureVisible(target,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : AppMotion.scroll,
-          curve: AppMotion.easeOut);
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : AppMotion.scroll,
+              curve: AppMotion.easeOut)
+          .whenComplete(() => _revealingProgress = false);
     });
   }
 
