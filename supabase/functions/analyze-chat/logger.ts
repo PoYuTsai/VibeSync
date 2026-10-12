@@ -1,14 +1,33 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
+interface TokenCost {
+  // USD per 1K tokens.
+  input: number;
+  output: number;
+  /// 快取讀取對 input 的倍率；官方預設 0.1，Opus 5.5／Sonnet 5.5 是 0.05。
+  cacheRead?: number;
+  /// prompt（input＋快取讀寫）超過門檻時，整次改用這組單價（Haiku 5.5）。
+  longContext?: { overPromptTokens: number; input: number; output: number };
+}
+
+// 2026-10-12 對拍 platform.claude.com/docs/en/about-claude/pricing。
+const TOKEN_COSTS: Record<string, TokenCost> = {
   // Sonnet 5 standard pricing (USD per 1K tokens).
   "claude-sonnet-5": { input: 0.002, output: 0.010 },
-  // Sonnet 5.5 同價（2026-10-02 官方牌價 $2／$10）。
-  "claude-sonnet-5-5": { input: 0.002, output: 0.010 },
+  // Sonnet 5.5 同價 $2／$10，但快取讀取是 0.05x（$0.10／M）。
+  "claude-sonnet-5-5": { input: 0.002, output: 0.010, cacheRead: 0.05 },
   "claude-sonnet-4-6": { input: 0.003, output: 0.015 },
   // 舊版 Sonnet 4 保留：歷史 log / 在途請求計價用（2026-06-12 升級 4.6）
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
   "claude-haiku-4-5-20251001": { input: 0.001, output: 0.005 },
+  // Opus 5.5：$4／$20，快取讀取 0.05x（$0.20／M）。
+  "claude-opus-5-5": { input: 0.004, output: 0.020, cacheRead: 0.05 },
+  // Haiku 5.5：prompt 10 萬 token 以內 $0.10／$0.50，超過整次 $0.50／$2.50。
+  "claude-haiku-5-5": {
+    input: 0.0001,
+    output: 0.0005,
+    longContext: { overPromptTokens: 100_000, input: 0.0005, output: 0.0025 },
+  },
 };
 
 const MAX_STORED_TEXT_LENGTH = 500;
@@ -58,10 +77,15 @@ function calculateCost(
 ): number {
   // Unknown/new model IDs must never silently fall back to the cheapest rate.
   const costs = TOKEN_COSTS[model] || TOKEN_COSTS["claude-sonnet-4-6"];
-  return (inputTokens / 1000) * costs.input +
-    (cacheCreationTokens / 1000) * costs.input * 1.25 +
-    (cacheReadTokens / 1000) * costs.input * 0.1 +
-    (outputTokens / 1000) * costs.output;
+  const promptTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
+  const tier = costs.longContext &&
+      promptTokens > costs.longContext.overPromptTokens
+    ? costs.longContext
+    : costs;
+  return (inputTokens / 1000) * tier.input +
+    (cacheCreationTokens / 1000) * tier.input * 1.25 +
+    (cacheReadTokens / 1000) * tier.input * (costs.cacheRead ?? 0.1) +
+    (outputTokens / 1000) * tier.output;
 }
 
 function truncateText(

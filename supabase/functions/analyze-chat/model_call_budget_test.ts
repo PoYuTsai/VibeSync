@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { attemptReporter, ModelCallBudget, ModelCallBudgetError, providerAttemptLogEntry } from "./model_call_budget.ts";
+import { attemptReporter, ModelCallBudget, ModelCallBudgetError, providerAttemptLogEntry, readRefusalCategory } from "./model_call_budget.ts";
 import { calculateCost } from "./logger.ts";
 import { AiServiceError, callClaudeWithFallback } from "./fallback.ts";
 import { AiStreamingServiceError, callClaudeStreaming } from "./streaming_fallback.ts";
@@ -117,4 +117,33 @@ Deno.test("K3: unknown usage writes zero tokens; retry route counts one retry", 
   const entry = providerAttemptLogEntry("new_topic", { model: "claude-sonnet-5", route: "retry", status: "success", elapsedMs: 12, inputTokens: null, outputTokens: null });
   assertEquals([entry.inputTokens, entry.outputTokens, entry.cacheCreationTokens, entry.cacheReadTokens], [0, 0, 0, 0]);
   assertEquals([entry.retryCount, entry.fallbackUsed, entry.latencyMs], [1, false, 12]);
+});
+
+Deno.test("refusal category: only short identifiers from stop_details.category are kept", () => {
+  for (const category of ["cyber", "bio", "frontier_llm", "reasoning_extraction", "general_harms"]) {
+    assertEquals(readRefusalCategory({ type: "refusal", category, explanation: "free text" }), category);
+  }
+  for (const stopDetails of [null, undefined, "general_harms", {}, { category: null }, { category: 42 }, { category: "" },
+    { category: "free text with spaces" }, { category: "x".repeat(65) }]) {
+    assertEquals(readRefusalCategory(stopDetails), undefined, JSON.stringify(stopDetails));
+  }
+});
+
+Deno.test("K3: a failed attempt writes its failure code and refusal category to response_body; success writes none", async () => {
+  const entries: ReturnType<typeof providerAttemptLogEntry>[] = [];
+  const budget = new ModelCallBudget(Date.now() + 1000, { stage: "generate" },
+    attemptReporter("opener_provider_attempt", "opener_generate", (e) => entries.push(e)));
+  budget.begin("claude-sonnet-5-5", "primary", "primary").finish("failed", { failureCode: "SERVER_ERROR" });
+  budget.begin("claude-sonnet-5", "primary", "fallback").finish("failed", { failureCode: "MODEL_REFUSAL", refusalCategory: "general_harms" });
+  // finish 只算第一次；已失敗的那一列不會被改寫。
+  const attempt = budget.begin("claude-sonnet-4-6", "repair", "primary");
+  attempt.finish("success", { failureCode: "IGNORED_ON_SUCCESS" });
+  attempt.finish("failed", { failureCode: "LATE" });
+  assertEquals(entries.map((e) => [e.status, e.errorCode, e.responseBody]), [
+    ["failed", "PROVIDER_ATTEMPT_FAILED", { failureCode: "SERVER_ERROR" }],
+    ["failed", "PROVIDER_ATTEMPT_FAILED", { failureCode: "MODEL_REFUSAL", refusalCategory: "general_harms" }],
+    ["success", undefined, undefined],
+  ]);
+  const legacy = providerAttemptLogEntry("opener", { model: "claude-sonnet-5", route: "primary", status: "failed", elapsedMs: 3 });
+  assertEquals([legacy.errorCode, legacy.responseBody], ["PROVIDER_ATTEMPT_FAILED", undefined]);
 });

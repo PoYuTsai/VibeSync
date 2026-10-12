@@ -76,7 +76,7 @@
       "file": "model_selection.ts",
       "start": "const VALID_FORCE_MODELS = new Set([",
       "end": "\n]);",
-      "sha256": "9dc87a429271afa449b7b0d76286237cd701197153467f6a7a6d97a6214ec38f"
+      "sha256": "2feedfba7b2e33f34aaa5108b7b3846811eff490e3b76ab469f18d9384e6ce4f"
     },
     "OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT": {
       "file": "ocr_recognition_prompt.ts",

@@ -1782,6 +1782,10 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             retries: error.metadata.retries ?? 0,
             fallbackUsed: error.metadata.fallbackUsed ?? false,
             lastModel: error.metadata.lastModel ?? selectedModel,
+            // 拒答的安全過濾類別只記在 ai_logs，回給 App 的錯誤不帶。
+            ...(error.metadata.refusalCategory === undefined
+              ? {}
+              : { refusalCategory: error.metadata.refusalCategory }),
             ...upstreamGuardrails,
           },
         });
