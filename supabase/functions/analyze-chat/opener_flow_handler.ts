@@ -122,7 +122,14 @@ export interface OpenerFlowModelRequest {
   system: string;
   messages: OpenerFlowModelMessage[];
   maxTokens: number;
+  /** 整個請求的期限：過了就算整個請求逾時（釋放、不扣）。 */
   deadlineAtMs: number;
+  /**
+   * 這一步自己的時間上限（規劃、改寫）：到了只中止這次呼叫、當一般失敗。共用呼叫層過了
+   * 期限會把拒答也報成逾時，所以期限一律用整個請求的，這一步的上限另外給；拒答只有在整個
+   * 請求到期時才可能被蓋掉，那時一律不扣（ADR #54、主審 2）。
+   */
+  timeoutMs?: number;
   allowModelFallback: boolean;
   purpose?: string;
   onChunk?: (chunk: string) => void;
@@ -166,12 +173,13 @@ export interface OpenerFlowHandlerDeps {
 const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget, model = OPENER_FLOW_MODEL): OpenerFlowModelInvoker => async (req) => {
   const remainingMs = req.deadlineAtMs - Date.now();
   if (remainingMs <= 0) throw new OpenerFlowDeadlineError("before_model");
+  const limitMs = Math.min(remainingMs, req.timeoutMs ?? remainingMs);
   if (req.onChunk) {
     try {
       const claude = await callClaudeStreaming(
         { model, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
         apiKey,
-        { timeout: remainingMs, absoluteDeadlineAtMs: req.deadlineAtMs, budget,
+        { timeout: limitMs, absoluteDeadlineAtMs: req.deadlineAtMs, budget,
           purpose: req.purpose, allowModelFallback: req.allowModelFallback },
       );
       let fullText = "";
@@ -197,7 +205,7 @@ const defaultInvokeModel = (apiKey: string, budget: ModelCallBudget, model = OPE
       { model, max_tokens: req.maxTokens, system: req.system, messages: req.messages },
       apiKey,
       {
-        timeout: Math.min(60000, remainingMs),
+        timeout: Math.min(60000, limitMs),
         maxRetries: 1,
         allowModelFallback: req.allowModelFallback,
         budget, purpose: req.purpose,

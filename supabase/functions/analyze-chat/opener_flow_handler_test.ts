@@ -11,9 +11,9 @@ import {
   type OpenerFlowHandlerDeps,
   type OpenerFlowModelRequest,
 } from "./opener_flow_handler.ts";
-import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
+import { OPENER_ANALYZE_PROMPT, OPENER_FLOW_REPAIR_PROMPT, OPENER_GENERATE_DEADLINE_MS, OPENER_GENERATE_PROMPT, OPENER_GENERATE_REPAIR_PROMPT } from "./opener_flow_prompt.ts";
 import { OPENER_PLAN_MAX_TOKENS, OPENER_PLAN_PROMPT } from "./opener_plan.ts";
-import { buildOpenerWritePrompt, OPENER_WRITE_MAX_TOKENS } from "./opener_write.ts";
+import { buildOpenerWritePrompt, OPENER_REWRITE_PROMPT, OPENER_WRITE_MAX_TOKENS } from "./opener_write.ts";
 import { SONNET_5_5_THINKING_HEADROOM_TOKENS } from "../_shared/model_request_params.ts";
 import { computeOpenerGenerationInputHash, OPENER_FLOW_PREVIOUS_PROMPT_VERSION, parseOpenerGenerateRequest } from "./opener_stage.ts";
 import { readPreviousPromptReplay } from "./opener_session.ts";
@@ -1938,4 +1938,73 @@ Deno.test("拒答：結構刀的改寫、舊路徑的內容修正、第一段的
     assertEquals(await usage(h.db), { m: 0, d: 0 });
     assertEquals(await runCount(h.db), 0);
   } finally { await h.db.close(); }
+});
+
+/** 正式呼叫層用的替身回應：依 system 判斷是哪一步；delayMs 期間不理會中止訊號（模擬回應剛好在期限前後才到）。 */
+function stubAnthropic(route: (system: string) => { body: unknown; stopReason?: string; delayMs?: number }) {
+  return async (_input: string | URL | Request, init?: RequestInit) => {
+    const req = JSON.parse(String(init?.body ?? "{}"));
+    const system = Array.isArray(req.system) ? req.system.map((b: { text?: string }) => b.text ?? "").join("") : String(req.system ?? "");
+    const { body, stopReason, delayMs } = route(system);
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return new Response(JSON.stringify({
+      id: "msg_test", type: "message", role: "assistant", model: req.model, stop_reason: stopReason ?? "end_turn",
+      content: stopReason === "refusal" ? [] : [{ type: "text", text: JSON.stringify(body) }],
+      usage: { input_tokens: 100, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+}
+
+async function refusalAfterStepLimit(caseName: "plan" | "rewrite"): Promise<void> {
+  const h = await harness();
+  const original = globalThis.fetch;
+  const productionDeps = (body: Record<string, unknown>, startedMsAgo: number) => {
+    const deps = h.deps(body, { requestStartedAtMs: Date.now() - startedMsAgo });
+    delete (deps as Partial<OpenerFlowHandlerDeps>).invokeModel;
+    return deps;
+  };
+  try {
+    h.env.OPENER_PLAN_WRITE = "true";
+    const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker({ calls: [] }) }));
+    const sessionId = String((await json(analysis)).sessionId);
+    const writer = buildOpenerWritePrompt("free");
+    await passOneMinute(h.db);
+    let response: Response;
+    if (caseName === "plan") {
+      // 整個請求剩約 31.5 秒，規劃自己的上限約 3.5 秒；拒答在上限後約 0.3 秒才回來。
+      globalThis.fetch = stubAnthropic((system) =>
+        system === OPENER_PLAN_PROMPT ? { body: {}, stopReason: "refusal", delayMs: 3_800 } : { body: WRITE_JSON }
+      ) as typeof fetch;
+      response = await handleOpenerGenerateRequest(productionDeps(
+        generateBody(sessionId, GEN_1, { state: "answered", freeText: "沒養過，只想知道牠散步會不會自己選路" }, { openerCardSet: 2 }),
+        OPENER_GENERATE_DEADLINE_MS - 31_500,
+      ));
+    } else {
+      // 整個請求剩約 8.7 秒（規劃跳過），改寫自己的上限約 5.6 秒；拒答在上限後才回來。
+      globalThis.fetch = stubAnthropic((system) => {
+        if (system === OPENER_REWRITE_PROMPT) return { body: {}, stopReason: "refusal", delayMs: 5_900 };
+        if (system === writer) return { body: { ...WRITE_JSON, openers: { ...WRITE_JSON.openers, extend: "妳養狗多久了？" } } };
+        return { body: WRITE_JSON };
+      }) as typeof fetch;
+      response = await handleOpenerGenerateRequest(productionDeps(
+        generateBody(sessionId, GEN_2, { state: "answered", freeText: "不要聊養狗" }, { openerCardSet: 2 }),
+        OPENER_GENERATE_DEADLINE_MS - 8_700,
+      ));
+    }
+    assertEquals(response.status, 422, "改前：這一步的期限一到，拒答被報成逾時，照交付、照扣");
+    assertEquals((await json(response)).code, "OPENER_CONTENT_REFUSED");
+    assertEquals(await usage(h.db), { m: 0, d: 0 });
+    assertEquals(await runCount(h.db), 0);
+  } finally {
+    globalThis.fetch = original;
+    await h.db.close();
+  }
+}
+
+Deno.test("拒答剛好在規劃自己的時限之後才回來：仍當拒答整次失敗、不扣（主審 2；走正式呼叫層）", async () => {
+  await refusalAfterStepLimit("plan");
+});
+
+Deno.test("拒答剛好在改寫自己的時限之後才回來：仍當拒答整次失敗、不扣（主審 2；走正式呼叫層）", async () => {
+  await refusalAfterStepLimit("rewrite");
 });

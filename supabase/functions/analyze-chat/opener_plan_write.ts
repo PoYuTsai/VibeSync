@@ -216,7 +216,10 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         system: OPENER_PLAN_PROMPT,
         messages: [{ role: "user", content: buildOpenerPlanUserContent(planCtx) }],
         maxTokens: OPENER_PLAN_MAX_TOKENS,
-        deadlineAtMs: planStarted + planBudgetMs,
+        // 期限用整個請求的、規劃自己的上限另給：上限到了只是規劃失敗（退回只用她的資料），
+        // 拒答不會被共用呼叫層蓋成逾時（主審 2）。
+        deadlineAtMs: deps.deadlineAtMs,
+        timeoutMs: planBudgetMs,
         // 只試一次、不換模型（fallback.ts 的 maxRetries 是「嘗試次數」，預設 1＝不重試）。
         allowModelFallback: false,
         purpose: "plan",
@@ -236,7 +239,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
       }
       // 規劃只是讓寫手拿到更好的輸入：其他失敗不擋交付，退回只用她的資料。
       plan = profileOnlyPlan(planCtx, ["plan.error"]);
-      telemetry.planError = deps.isDeadlineError(error) ? "timeout" : "error";
+      telemetry.planError = deps.isDeadlineError(error) || now() - planStarted >= planBudgetMs ? "timeout" : "error";
     }
   }
   telemetry.planElapsedMs = now() - planStarted;
@@ -381,7 +384,9 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
           }),
         }],
         maxTokens: OPENER_REWRITE_MAX_TOKENS,
-        deadlineAtMs: deps.deadlineAtMs - REWRITE_DEADLINE_MARGIN_MS,
+        // 同規劃：期限用整個請求的，改寫自己的上限另給（比整個請求早 3 秒收手）。
+        deadlineAtMs: deps.deadlineAtMs,
+        timeoutMs: deps.deadlineAtMs - REWRITE_DEADLINE_MARGIN_MS - now(),
         allowModelFallback: false,
         purpose: "rewrite",
       });
