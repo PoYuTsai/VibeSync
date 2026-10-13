@@ -167,9 +167,10 @@ deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
 （2026-10-02 起預設 dry-run、評審固定 Sonnet 5、輸出檔已存在就拒絕。）
 
 對 artifact 的 send 案只審「選中卡」：證據＝語料訊息＋重建的盤點／決策／計畫（只帶
-用到的枝）＋3c guard 碼；rubric 在 `_shared/social/semantic_critic.ts`（Coach 九碼改成
-回覆卡語境＋Analyze 十三碼＋繁中句型＋Alpha Guard 判準）。輸出每案 verdict／violations／
-token／延遲與 tally；不重跑主分析、不動 runtime。每案一次真呼叫，跑前要 Eric 明確授權。
+用到的枝）＋3c guard 碼；rubric 在 `_shared/social/semantic_critic.ts`（2026-10-12 起是
+Bruce 的最後一關審核，四組十二碼；在這之前的 critic 結果用的是舊的 22 碼 rubric，不能直接
+比）。輸出每案 verdict／violations／token／延遲與 tally；不重跑主分析、不動 runtime。每案
+一次真呼叫，跑前要 Eric 明確授權。
 production 影子（`analyze-chat/critic_shadow.ts`）預設關閉，觸發條件／模型待 Eric 定。
 
 首輪結果（2026-09-03，Sonnet 5，`out/2026-09-03-critic-sonnet5-run12.json`／`-run13.json`）：

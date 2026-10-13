@@ -284,7 +284,7 @@ function runner(overrides: Record<string, unknown> = {}) {
         content: [{
           type: "text",
           text:
-            '{"verdict":"rewrite","violations":["generic_hook","beta_pattern"]}',
+            '{"verdict":"rewrite","violations":["try_hard","beta_pattern"]}',
         }],
         usage: { input_tokens: 900, output_tokens: 30 },
       }),
@@ -312,7 +312,7 @@ Deno.test("critic shadow runner: a verdict is logged with tokens and recorded as
   assertEquals(metadata.model, "critic-m");
   assertEquals(metadata.trigger, ["guard:question_budget"]);
   assertEquals(metadata.verdict, "rewrite");
-  assertEquals(metadata.violations, ["generic_hook", "beta_pattern"]);
+  assertEquals(metadata.violations, ["try_hard", "beta_pattern"]);
   assertEquals(metadata.inputTokens, 900);
   assertEquals(metadata.outputTokens, 30);
   assert(typeof metadata.latencyMs === "number");

@@ -1143,7 +1143,7 @@ Deno.test("Phase 3d critic shadow：done 之後排進背景，只審選中卡，
 
   assertEquals(criticCalls.length, 1);
   assertEquals(criticCalls[0].model, "critic-model");
-  assert(criticCalls[0].prompt.includes("gender_heuristic"));
+  assert(criticCalls[0].prompt.includes("window_missed"));
   assert(criticCalls[0].prompt.includes("REPLY_SECRET?"));
   assert(!criticCalls[0].prompt.includes("不急著問"), "只審選中卡");
 
