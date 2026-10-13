@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ebook-1-bottleneck",
-  "contentVersion": 3,
+  "contentVersion": 4,
   "number": 1,
   "unit": "ultimateGuide",
   "title": "診斷 · 配對開場",
@@ -71,7 +71,7 @@
               "verdictText": "配對不是問題，開場才是。最常見的死因是制式訊息——「嗨」「在幹嘛」向對方索取資訊，卻沒給任何可以接的東西。練「具體引用她檔案裡的東西＋你自己的一句狀態＋一個好回的開口」。",
               "targetBookId": "ebook-1-bottleneck",
               "targetChapterId": "ebook-1-chapter-4",
-              "targetLabel": "前往 1.4 開場：She／Me／Us"
+              "targetLabel": "前往 1.4 開場：聊她／聊我／聊我們"
             },
             {
               "id": "ebook-1-c1-funnel-1-s2",
@@ -476,10 +476,10 @@
               "id": "ebook-1-c4-cmp11-s",
               "stance": "strong",
               "label": "有效",
-              "text": "我主業是做網路的，副業……這個等見面再說"
+              "text": "我主業做網路，副業是一個有點好笑的興趣，妳猜猜看？"
             }
           ],
-          "caption": "「你猜」那種留白製造的是負擔，不是好奇，而且把工作丟給對方。"
+          "caption": "沒給線索的「你猜」，留白製造的是負擔，不是好奇，而且把工作丟給對方。"
         },
         {
           "type": "bulletList",

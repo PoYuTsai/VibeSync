@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ebook-2-conversation",
-  "contentVersion": 6,
+  "contentVersion": 7,
   "number": 2,
   "unit": "ultimateGuide",
   "title": "續航 · 讓對話活下去",
@@ -1623,7 +1623,7 @@
                   "id": "ebook-2-c5-lib-e9-note2",
                   "tone": "info",
                   "title": "這段發生了什麼",
-                  "text": "後續規則：她主動回來 → 綠燈，直接約／過一陣子她還是沒動靜 → 你可以輕度重啟一次／再沒有 → 結束。這是紅燈。"
+                  "text": "後續規則：她主動回來 → 綠燈，直接約／她沒有主動回來 → 先接受；之後互動仍然雙向，才隔一段時間再看。這是紅燈。"
                 }
               ],
               "summary": "她主動回來就直接約；過一陣子還沒動靜，輕度重啟一次，再沒有就結束"
@@ -1902,7 +1902,7 @@
                       "id": "ebook-2-c5-lib-e13-dlg1-l3",
                       "speaker": "other",
                       "text": "對啊我朋友上禮拜才去，說要平日去才有位子",
-                      "annotation": "🟢 綠燈 · 她不只知道，還提供了「怎麼去比較好」——她在腦中已經模擬過去那裡這件事"
+                      "annotation": "🟢 綠燈 · 她不只知道，還提供了「怎麼去比較好」"
                     },
                     {
                       "id": "ebook-2-c5-lib-e13-dlg1-l4",
@@ -1958,7 +1958,7 @@
                     {
                       "id": "ebook-2-c5-lib-e14-dlg1-l3",
                       "speaker": "other",
-                      "text": "對啊聽說不錯",
+                      "text": "對啊聽說不錯，我也一直想吃吃看",
                       "annotation": "🟢 綠燈。這裡就該具體化"
                     },
                     {

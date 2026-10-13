@@ -570,7 +570,7 @@ void main() {
 
   test('第 4、7 冊用同一句定義種子', () {
     // 規格 §5.4／§12.3 第 10 條：兩冊的邀約流程要能用同一條說明。
-    const seed = '種子是先提一個具體活動，暫時不定時間，看看她想不想接';
+    const seed = '種子是先模糊邀約：提一個具體活動，用陳述句、不加問號，暫時不定時間，看看她想不想接';
     for (final bookId in const ['ebook-4-meeting', 'ebook-7-chat']) {
       final book = catalog.findBook(bookId)!;
       expect(
@@ -711,8 +711,8 @@ void main() {
       }
     });
 
-    test('第 2 冊 contentVersion 跟著這次改寫升到 6', () {
-      expect(catalog.findBook('ebook-2-conversation')!.contentVersion, 6);
+    test('第 2 冊 contentVersion 跟著這次改寫升到 7', () {
+      expect(catalog.findBook('ebook-2-conversation')!.contentVersion, 7);
     });
   });
 
