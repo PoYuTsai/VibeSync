@@ -41,6 +41,8 @@ const flag = (name: string) =>
   Deno.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 // --refusal-probe：只跑 C 臂（production 5.5）、只跑曖昧／邀約案（corpus.ts REFUSAL_PROBE_IDS）。
 const PROBE = Deno.args.includes("--refusal-probe");
+// --keep-raw：每案另存模型原始輸出全文（rawText），給重播測試錄音用；rawLines 只留部分事件。
+const KEEP_RAW = Deno.args.includes("--keep-raw");
 const ARM_IDS: ArmId[] = PROBE ? ["C"] : parseArms(flag("arms"));
 // --repeat=N 或 --repeat=A:2,B:2,C:1；--only=a,b 只跑指定案。
 const REPEAT = parseRepeat(flag("repeat"), ARM_IDS);
@@ -507,6 +509,7 @@ async function runCase(
     logNames: [...new Set(logs.map((e) => String(e[0])))],
     // 完整 client NDJSON：外洩判定要能被獨立複核。
     clientText: text,
+    ...(KEEP_RAW ? { rawText } : {}),
     // 模型原始 JSONL（評審 run_critic 靠它重建選中卡）。
     rawLines: rawText.split("\n").filter((l) => l.trim()).map((l) => {
       try {
