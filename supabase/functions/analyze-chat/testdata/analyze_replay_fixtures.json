@@ -27,6 +27,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "fa74a367d618625212588ed927f9a7cc65e7731c0209c85c26b96cdb494e7689",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "接下她的下次，不急著敲時間",
+       "reason": "輕鬆接受她請客的提議，順勢留住下次見面的空間",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接住下次，輕鬆收線",
+        "nextStepBody": "接下她的下次，不急著敲時間",
+        "doThis": "輕鬆接受她請客的提議，順勢留住下次見面的空間",
+        "avoidThis": "不要馬上逼定時間，也不要長篇客套",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "到了 今天謝謝你",
+          "disposition": "併",
+          "reason": "到家確認加道謝，併進同一個收尾回應"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "那家店真的很好吃 下次換我請",
+          "disposition": "接",
+          "reason": "她主動提出下次再約，是最有價值的窗口"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -473,15 +522,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -491,8 +540,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -582,6 +631,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "fe326181a5d28f874f6d36db3f7c03634826301cce74d91d7fba94b99bd19d22",
+      "recommendation": {
+       "decisionKind": "acknowledge_and_stop",
+       "selectedStyle": null,
+       "action": "stop",
+       "reason": "她明確說現在不想談感情，只想先當朋友，這是清楚的界線；此時再推進、追問原因或說服都會變成壓力。",
+       "stopCondition": "除非她之後自己主動找你聊、延伸話題或提出見面，否則不再主動推進感情，也不要追問她為什麼。",
+       "closingMessage": "好，謝謝妳直接告訴我，那我們就當朋友，輕鬆聊就好。",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "acknowledge_and_stop",
+        "action": "stop",
+        "reason": "她明確說現在不想談感情，只想先當朋友，這是清楚的界線；此時再推進、追問原因或說服都會變成壓力。",
+        "stopCondition": "除非她之後自己主動找你聊、延伸話題或提出見面，否則不再主動推進感情，也不要追問她為什麼。",
+        "closingMessage": "好，謝謝妳直接告訴我，那我們就當朋友，輕鬆聊就好。"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "stop",
+        "reason": "她明確說現在不想談感情，只想先當朋友，這是清楚的界線；此時再推進、追問原因或說服都會變成壓力。",
+        "stopCondition": "除非她之後自己主動找你聊、延伸話題或提出見面，否則不再主動推進感情，也不要追問她為什麼。",
+        "closingMessage": "好，謝謝妳直接告訴我，那我們就當朋友，輕鬆聊就好。"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "我也覺得你人很好",
+          "disposition": "併",
+          "reason": "禮貌的前置緩衝，併入拒絕訊息一起讀"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "不過我現在還不太想談感情 我們先當朋友可以嗎",
+          "disposition": "接",
+          "reason": "明確界線與朋友定位，需要體面收尾"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -779,15 +884,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -797,8 +902,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -843,6 +948,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "f57484acc7d94440e60cd59fe08b02129eab676c428be34564ba514b333e2051",
+      "recommendation": {
+       "decisionKind": "do_not_send",
+       "selectedStyle": null,
+       "action": "pause",
+       "reason": "她連續三輪只回「沒」「躺著」「還好」，沒有反問也沒有延伸；我方剛問了興趣題，她以「還好」帶過，再追問只會變成查戶口、替對話續命",
+       "stopCondition": "等她主動丟出新話題、反問你，或回得比單字更長再接",
+       "closingMessage": "那你先好好躺著，晚點再聊",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "do_not_send",
+        "action": "pause",
+        "reason": "她連續三輪只回「沒」「躺著」「還好」，沒有反問也沒有延伸；我方剛問了興趣題，她以「還好」帶過，再追問只會變成查戶口、替對話續命",
+        "stopCondition": "等她主動丟出新話題、反問你，或回得比單字更長再接",
+        "closingMessage": "那你先好好躺著，晚點再聊"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "do_not_send",
+        "replyMode": "none",
+        "action": "pause",
+        "reason": "她連續三輪只回「沒」「躺著」「還好」，沒有反問也沒有延伸；我方剛問了興趣題，她以「還好」帶過，再追問只會變成查戶口、替對話續命",
+        "stopCondition": "等她主動丟出新話題、反問你，或回得比單字更長再接",
+        "closingMessage": "那你先好好躺著，晚點再聊"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "還好",
+          "disposition": "略",
+          "reason": "對興趣問題的單字敷衍回應，沒有新內容也沒有延伸"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -1024,15 +1178,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -1042,8 +1196,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -1076,6 +1230,63 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "65dbfc3eb776a0384e5349f88b6a9467e98447771c2d2f2db66d0aeedfbf1808",
+      "recommendation": {
+       "decisionKind": "acknowledge_and_stop",
+       "selectedStyle": null,
+       "action": "pause",
+       "reason": "她說週末已有約，並把邀約延後成「之後再看看」，沒有給替代時間；現在再約或追問會變成壓力",
+       "stopCondition": "等她主動提出可行的時間，或主動聊回這個展，再考慮重新約",
+       "closingMessage": "好啊，那週末玩開心，展覽之後有機會再說",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "acknowledge_and_stop",
+        "action": "pause",
+        "reason": "她說週末已有約，並把邀約延後成「之後再看看」，沒有給替代時間；現在再約或追問會變成壓力",
+        "stopCondition": "等她主動提出可行的時間，或主動聊回這個展，再考慮重新約",
+        "closingMessage": "好啊，那週末玩開心，展覽之後有機會再說",
+        "confidence": "high"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她說週末已有約，並把邀約延後成「之後再看看」，沒有給替代時間；現在再約或追問會變成壓力",
+        "stopCondition": "等她主動提出可行的時間，或主動聊回這個展，再考慮重新約",
+        "closingMessage": "好啊，那週末玩開心，展覽之後有機會再說"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "好像不錯",
+          "disposition": "略",
+          "reason": "對展本身的輕度正面評價，不需獨立回"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "不過我這週末已經約了朋友 之後再看看好了",
+          "disposition": "略",
+          "reason": "婉拒本週末並延後，沒有提出替代時間，不需要再追問"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -1264,15 +1475,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -1282,8 +1493,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -1316,6 +1527,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "e8d4f2b649552e3f67af69c00cddad7e6b92be2648c39c135bd001d076bc717f",
+      "recommendation": {
+       "decisionKind": "acknowledge_and_stop",
+       "selectedStyle": null,
+       "action": "pause",
+       "reason": "她回「最近有點忙」加「再說吧」，是延後又沒給替代時間，投入偏低，再追問只會變成壓力",
+       "stopCondition": "等她主動提出可行的時間，或主動找你聊天、延伸話題，再重新考慮邀約",
+       "closingMessage": "好，那妳先忙，有空再聊。",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "acknowledge_and_stop",
+        "action": "pause",
+        "reason": "她回「最近有點忙」加「再說吧」，是延後又沒給替代時間，投入偏低，再追問只會變成壓力",
+        "stopCondition": "等她主動提出可行的時間，或主動找你聊天、延伸話題，再重新考慮邀約",
+        "closingMessage": "好，那妳先忙，有空再聊。"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她回「最近有點忙」加「再說吧」，是延後又沒給替代時間，投入偏低，再追問只會變成壓力",
+        "stopCondition": "等她主動提出可行的時間，或主動找你聊天、延伸話題，再重新考慮邀約",
+        "closingMessage": "好，那妳先忙，有空再聊。"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "最近有點忙欸",
+          "disposition": "略",
+          "reason": "婉轉說明沒空，沒有提供替代時間，不需獨立接球"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "再說吧",
+          "disposition": "略",
+          "reason": "延後且含糊的回應，沒有給任何時間或意願"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -1492,15 +1759,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -1510,8 +1777,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -1544,6 +1811,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "497fc7efb3d34206de2cc9517c7180b48feae6b7e5c952a56f1c05da234c29f2",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "接住週日，直接給時間地點選項",
+       "reason": "先體諒加班，再用明確時間與餐廳類型敲定週日",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "確認週日，帶領敲定",
+        "nextStepBody": "接住週日，直接給時間地點選項",
+        "doThis": "先體諒加班，再用明確時間與餐廳類型敲定週日",
+        "avoidThis": "不要再多問一輪「妳想吃什麼」，也不要一直客套讓她決定",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "禮拜五要加班耶",
+          "disposition": "併",
+          "reason": "婉拒週五的背景，與提出替代時間同屬一個回應"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "禮拜天可以嗎",
+          "disposition": "接",
+          "reason": "她主動給出替代時間，是可以確認邀約的窗口"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -1985,15 +2301,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -2003,8 +2319,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -2085,6 +2401,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "78061b44c6645e58d78e5f80725eedf3687870e015c794c52672714acc4c8b8c",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "先答地點，輕鬆丟回一個小問題",
+       "reason": "誠實說地點，補一句當下感受，再問她想去的地方",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "簡短回答再丟小球",
+        "nextStepBody": "先答地點，輕鬆丟回一個小問題",
+        "doThis": "誠實說地點，補一句當下感受，再問她想去的地方",
+        "avoidThis": "不要編造地點細節，也不要急著跳邀約",
+        "confidence": "medium"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "嗨 你的照片是在哪拍的呀",
+          "disposition": "接",
+          "reason": "真問題，需要簡短回答"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "好美",
+          "disposition": "併",
+          "reason": "稱讚，併進照片問題一起接"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -2531,15 +2896,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -2549,8 +2914,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -2643,6 +3008,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "c84e7d784c1c9d6e9431c5b4918b81e8b583c5a4cfb80191f36d76de7b569bff",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "聊底片入門，先不急著邀約",
+       "reason": "接她糊掉的失落感，再誠實回答推薦問題，不假裝是專家",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "先接底片，再回推薦",
+        "nextStepBody": "聊底片入門，先不急著邀約",
+        "doThis": "接她糊掉的失落感，再誠實回答推薦問題，不假裝是專家",
+        "avoidThis": "不要編造自己的底片經驗，也不要長篇機型教學",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "我最近在學底片 沖出來都糊掉哈哈",
+          "disposition": "接",
+          "reason": "她主動分享正在學的事，有失敗的畫面和輕鬆情緒"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "你有推薦的入門機嗎",
+          "disposition": "接",
+          "reason": "真問題，也是她給的小投入邀請"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -3172,15 +3586,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -3190,8 +3604,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -3280,6 +3694,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "77041cfa7921fec4d0b71f6d4e32b38d73b6183fc448a050de811236b13e92cd",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "確認時間地點，不用多聊",
+       "reason": "輕鬆接受晚十分鐘，約定週六見",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "確認邀約並收線",
+        "nextStepBody": "確認時間地點，不用多聊",
+        "doThis": "輕鬆接受晚十分鐘，約定週六見",
+        "avoidThis": "不要追問拿什麼東西，也不要過度道歉或加碼要求",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "好啊",
+          "disposition": "接",
+          "reason": "她同意邀約，需要確認並收線"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "我可能會晚十分鐘 要先去拿東西",
+          "disposition": "併",
+          "reason": "同屬赴約確認，補充可能晚到的時間"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -3726,15 +4189,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -3744,8 +4207,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -3978,6 +4441,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "b80e8e8f7247db917a3c64c6138a2bef0e406530819a727bd0c6ce5562949106",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "回答咖啡廳，順勢約週末一起去",
+       "reason": "先回地點，再輕輕提一起去，選擇權留給她",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接住她的窗口",
+        "nextStepBody": "回答咖啡廳，順勢約週末一起去",
+        "doThis": "先回地點，再輕輕提一起去，選擇權留給她",
+        "avoidThis": "別再連環查戶口，也別編造店名或細節",
+        "confidence": "medium"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "欸 對了",
+          "disposition": "略",
+          "reason": "只是話題轉換語氣"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "你上次說的那家咖啡廳在哪",
+          "disposition": "接",
+          "reason": "她主動追問的真問題，也是記得你說過的話"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "我這週末想去",
+          "disposition": "接",
+          "reason": "她給出時間窗口，是最值得接的推進球"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -4534,15 +5053,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -4552,8 +5071,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -4635,6 +5154,56 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "cef863ca858d293d454583f6203db826667e1ce69cbc8618434c18ad2f26721e",
+      "recommendation": {
+       "decisionKind": "acknowledge_and_stop",
+       "selectedStyle": null,
+       "action": "stop",
+       "reason": "她第一則回覆就說明有男友，是清楚的界線。第三方關係已明確，繼續推進曖昧或追問都不合適，也不值得再投入時間。",
+       "stopCondition": "除非她主動找你聊天，而且你們是單純朋友的互動，否則不要再主動推進或追問。",
+       "closingMessage": "好的，謝謝妳直接說，祝妳一切順利。",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "acknowledge_and_stop",
+        "action": "stop",
+        "reason": "她第一則回覆就說明有男友，是清楚的界線。第三方關係已明確，繼續推進曖昧或追問都不合適，也不值得再投入時間。",
+        "stopCondition": "除非她主動找你聊天，而且你們是單純朋友的互動，否則不要再主動推進或追問。",
+        "closingMessage": "好的，謝謝妳直接說，祝妳一切順利。",
+        "confidence": "high"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "stop",
+        "reason": "她第一則回覆就說明有男友，是清楚的界線。第三方關係已明確，繼續推進曖昧或追問都不合適，也不值得再投入時間。",
+        "stopCondition": "除非她主動找你聊天，而且你們是單純朋友的互動，否則不要再主動推進或追問。",
+        "closingMessage": "好的，謝謝妳直接說，祝妳一切順利。"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "不好意思 我有男友了",
+          "disposition": "接",
+          "reason": "她清楚表明有伴侶，這是界線訊號，需要一句體面收尾"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -4805,15 +5374,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -4823,8 +5392,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -4857,6 +5426,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "cf27159b14981fd6058a4b46c0667f979b333e76d50545add6604bfdbed9aea2",
+      "recommendation": {
+       "selectedStyle": "resonate",
+       "message": "先同理，再問她在意什麼",
+       "reason": "先說你理解兩邊都有拉力，再問她最在意哪一塊",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "resonate",
+        "nextStepTitle": "先接住她的糾結",
+        "nextStepBody": "先同理，再問她在意什麼",
+        "doThis": "先說你理解兩邊都有拉力，再問她最在意哪一塊",
+        "avoidThis": "不要直接下結論替她決定，也不要急著把話題拉到自己身上",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "我在考慮要不要換工作",
+          "disposition": "併",
+          "reason": "同一個換工作決定的背景"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "新的薪水高很多 但要搬去新竹",
+          "disposition": "併",
+          "reason": "同一決定的利弊細節"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "你覺得呢",
+          "disposition": "接",
+          "reason": "她明確問意見，是真問題，也是信任訊號"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "resonate",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -5316,15 +5941,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -5334,8 +5959,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -5430,6 +6055,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "9dc202ac62a96c2295d368e1ad63c2b4d6664c21e9d80025a4e3f9f9cc05bb8c",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "先接貓，再簡答工作，不查戶口",
+       "reason": "貓一句、工作一句、出差承認一半並反問她",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接貓、答工作、回她的觀察",
+        "nextStepBody": "先接貓，再簡答工作，不查戶口",
+        "doThis": "貓一句、工作一句、出差承認一半並反問她",
+        "avoidThis": "不要編造職業細節，也不要連問多題",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "哈哈牠很黏人",
+          "disposition": "接",
+          "reason": "貓的延續球，她主動分享細節"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "對了 你是做什麼工作的啊",
+          "disposition": "接",
+          "reason": "真問題，需要簡短回答"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "感覺你很常出差",
+          "disposition": "接",
+          "reason": "她的觀察，可承認一半再補畫面"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -6055,15 +6736,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -6073,8 +6754,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -6167,6 +6848,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "5679f5ee96dbb9bc138f053a462568af660519f0d77486f2cb68ba94b5cecabe",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "接住拉麵分享，輕鬆延伸，先不邀約",
+       "reason": "承接她照推薦去吃這件事，接稱讚不自謙，再丟一個低壓小問題",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接住她吃拉麵的回饋",
+        "nextStepBody": "接住拉麵分享，輕鬆延伸，先不邀約",
+        "doThis": "承接她照推薦去吃這件事，接稱讚不自謙，再丟一個低壓小問題",
+        "avoidThis": "不要急著約她再去吃，也不要編造沒說過的細節",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "好～",
+          "disposition": "略",
+          "reason": "只是回應我去洗澡，不需獨立回"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "欸 我剛想到 你上次說的那家拉麵我今天去吃了",
+          "disposition": "接",
+          "reason": "她照我上次推薦去吃，是延續球，也是主動分享"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "真的超好吃 你品味不錯欸",
+          "disposition": "併",
+          "reason": "同一拉麵球的評價與稱讚，併進同一段"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -6627,15 +7364,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -6645,8 +7382,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -6735,6 +7472,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "b6a37a574c203fedc91b35bb75996fb8c6b927eb4f14684f47b5f862c4b80dad",
+      "recommendation": {
+       "selectedStyle": "resonate",
+       "message": "表達興趣並順勢確認週五細節",
+       "reason": "明確說有興趣，讚她記得，再問週五時間",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "resonate",
+        "nextStepTitle": "接下邀約",
+        "nextStepBody": "表達興趣並順勢確認週五細節",
+        "doThis": "明確說有興趣，讚她記得，再問週五時間",
+        "avoidThis": "不要裝忙、反問太多或過度客套推託",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "我朋友給了我兩張週五的演唱會票",
+          "disposition": "接",
+          "reason": "她主動帶來的邀約窗口，有具體時間"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "你有興趣嗎",
+          "disposition": "接",
+          "reason": "真問題，需要明確回答"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "是那個你之前說喜歡的樂團",
+          "disposition": "接",
+          "reason": "她記得我說過的話，是延續球"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "resonate",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -7365,15 +8158,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -7383,8 +8176,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -7478,6 +8271,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "8266d333434f06bb045bfef2f7cdf9737c6ee6eddaa101432590392641fa786c",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "先接她忙完的鬆口氣，再簡答近況",
+       "reason": "不怪她晚回，接她忙完的感覺，再簡短回答她的問題",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "輕鬆接住，簡短回答",
+        "nextStepBody": "先接她忙完的鬆口氣，再簡答近況",
+        "doThis": "不怪她晚回，接她忙完的感覺，再簡短回答她的問題",
+        "avoidThis": "不要追問為什麼沒回，也不要急著邀約或長篇報告",
+        "confidence": "medium"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "抱歉之前太忙沒回",
+          "disposition": "併",
+          "reason": "道歉與解釋，併進她忙完案子這件事一起接，不需追究"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "這陣子在趕案子 現在終於結束了",
+          "disposition": "接",
+          "reason": "她剛忙完的狀態，有情緒可接"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "你最近怎樣",
+          "disposition": "接",
+          "reason": "她主動回問，是真問題，要簡短回答"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -8020,15 +8869,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -8038,8 +8887,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -8120,6 +8969,62 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "75fdacca89b26160bb1ef8a4905f2620efbe5993bfa443db838112595391ecf9",
+      "recommendation": {
+       "selectedStyle": "resonate",
+       "message": "先同理委屈，不急著給建議",
+       "reason": "先說懂她的丟臉與委屈，再輕問想不想說",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "resonate",
+        "nextStepTitle": "先接住情緒",
+        "nextStepBody": "先同理委屈，不急著給建議",
+        "doThis": "先說懂她的丟臉與委屈，再輕問想不想說",
+        "avoidThis": "不要急著分析主管、給解法或講大道理",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "今天被主管當眾罵 超級丟臉",
+          "disposition": "接",
+          "reason": "核心情緒球：被當眾罵的丟臉"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "明明不是我的錯",
+          "disposition": "併",
+          "reason": "同一事件的委屈補充，併進丟臉那顆一起接"
+         },
+         {
+          "sourceIndex": 3,
+          "sourceMessage": "覺得好累",
+          "disposition": "接",
+          "reason": "獨立的疲憊情緒，需要被接住而不是解題"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "resonate",
+        "inventorySourceIndices": [
+         1,
+         2,
+         3
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -8671,15 +9576,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -8689,8 +9594,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -8770,6 +9675,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "35f52e91cbe554f8f6103cd793f87a0efbbaaa4ceb08ae78e78190badf95edb8",
+      "recommendation": {
+       "selectedStyle": "humor",
+       "message": "接住玩笑，不自證，維持輕鬆互動",
+       "reason": "承認一半玩笑，再補一個跑步的小畫面",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "humor",
+        "nextStepTitle": "順著玩笑接球",
+        "nextStepBody": "接住玩笑，不自證，維持輕鬆互動",
+        "doThis": "承認一半玩笑，再補一個跑步的小畫面",
+        "avoidThis": "不要急著自證或貼出配速數據",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "哇 這麼厲害",
+          "disposition": "併",
+          "reason": "稱讚語氣，與玩笑同一片段，併入玩笑球一起接"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "該不會是跑去便利商店然後回來吧 哈哈",
+          "disposition": "接",
+          "reason": "輕鬆吐槽玩笑，有互動感，要順著玩並補一個具體畫面"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "humor",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -9211,15 +10165,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -9229,8 +10183,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -9334,6 +10288,65 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "3f6e20bad275392f0a0bcc4390934e207851e3c9dad9beb3a165adba3b63e5bd",
+      "recommendation": {
+       "decisionKind": "acknowledge_and_stop",
+       "selectedStyle": null,
+       "action": "pause",
+       "reason": "她用「這週有點忙」加「下次再看看」回覆邀約，沒有提出替代時間，也沒有反問或延伸。這是委婉延後，不是明確邀請你再約。此時再追問或換句話硬約，會變成壓力。",
+       "stopCondition": "等她主動提出具體時間，或主動延伸話題、反問你，再考慮重新約。",
+       "closingMessage": "好啊，妳先忙，有空再說～",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "acknowledge_and_stop",
+        "action": "pause",
+        "reason": "她用「這週有點忙」加「下次再看看」回覆邀約，沒有提出替代時間，也沒有反問或延伸。這是委婉延後，不是明確邀請你再約。此時再追問或換句話硬約，會變成壓力。",
+        "stopCondition": "等她主動提出具體時間，或主動延伸話題、反問你，再考慮重新約。",
+        "closingMessage": "好啊，妳先忙，有空再說～",
+        "nextStepTitle": "先收住邀約",
+        "nextStepBody": "不追問，等她自己給窗口",
+        "confidence": "high"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "acknowledge_and_stop",
+        "replyMode": "single",
+        "action": "pause",
+        "reason": "她用「這週有點忙」加「下次再看看」回覆邀約，沒有提出替代時間，也沒有反問或延伸。這是委婉延後，不是明確邀請你再約。此時再追問或換句話硬約，會變成壓力。",
+        "stopCondition": "等她主動提出具體時間，或主動延伸話題、反問你，再考慮重新約。",
+        "closingMessage": "好啊，妳先忙，有空再說～"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "這週有點忙耶",
+          "disposition": "略",
+          "reason": "婉拒本週邀約，沒有提供替代時間"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "下次再看看",
+          "disposition": "略",
+          "reason": "模糊延後，沒有具體時間，不需要再追"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -9527,15 +10540,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -9545,8 +10558,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -9575,6 +10588,48 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "26bdfbc145ea3078f1af71d9c5b6aceb97dfb0f3c9d48f28d5bb0a4b56ed93fe",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "簡短接話，先不邀約",
+       "reason": "用一句生活小問題接住招呼",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "輕鬆起個頭",
+        "nextStepBody": "簡短接話，先不邀約",
+        "doThis": "用一句生活小問題接住招呼",
+        "avoidThis": "不要連問多題或急著約",
+        "confidence": "medium"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "哈囉",
+          "disposition": "接",
+          "reason": "她回了招呼，是唯一的球，輕接即可"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -10008,15 +11063,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -10026,8 +11081,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -10106,6 +11161,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "10ee45b55237ae91550760c4267470bc560bd77fc3ea7eedcf3b17c0f8ce8891",
+      "recommendation": {
+       "decisionKind": "do_not_send",
+       "selectedStyle": null,
+       "action": "pause",
+       "reason": "她只回「嗯 還可以 謝謝」，沒有延伸也沒反問；而且你已連發三則關心，再追只會加重她的回應壓力",
+       "stopCondition": "等她主動提到簡報後續、問你問題或開新話題再接",
+       "closingMessage": "那就好，你先忙",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "do_not_send",
+        "action": "pause",
+        "reason": "她只回「嗯 還可以 謝謝」，沒有延伸也沒反問；而且你已連發三則關心，再追只會加重她的回應壓力",
+        "stopCondition": "等她主動提到簡報後續、問你問題或開新話題再接",
+        "closingMessage": "那就好，你先忙"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "do_not_send",
+        "replyMode": "none",
+        "action": "pause",
+        "reason": "她只回「嗯 還可以 謝謝」，沒有延伸也沒反問；而且你已連發三則關心，再追只會加重她的回應壓力",
+        "stopCondition": "等她主動提到簡報後續、問你問題或開新話題再接",
+        "closingMessage": "那就好，你先忙"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "嗯 還可以 謝謝",
+          "disposition": "略",
+          "reason": "低投入的禮貌收尾，沒有新內容也沒有問句"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -10278,15 +11382,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -10296,8 +11400,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -10326,6 +11430,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "a2be1dbd3d11b94e0962db4de737b5b8f605a32403bdacc8ed46cd62c0ac4d1f",
+      "recommendation": {
+       "decisionKind": "do_not_send",
+       "selectedStyle": null,
+       "action": "pause",
+       "reason": "最後一則是你已回的「好，等妳忙完」，球在她手上，再傳就是連發；她也已說明晚點會主動回來聊",
+       "stopCondition": "等她開完會主動回來聊今天那件事",
+       "closingMessage": "不急，妳先忙",
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "do_not_send",
+        "action": "pause",
+        "reason": "最後一則是你已回的「好，等妳忙完」，球在她手上，再傳就是連發；她也已說明晚點會主動回來聊",
+        "stopCondition": "等她開完會主動回來聊今天那件事",
+        "closingMessage": "不急，妳先忙"
+       },
+       "analysisDecisionV2": {
+        "schemaVersion": 2,
+        "messageDecision": "do_not_send",
+        "replyMode": "none",
+        "action": "pause",
+        "reason": "最後一則是你已回的「好，等妳忙完」，球在她手上，再傳就是連發；她也已說明晚點會主動回來聊",
+        "stopCondition": "等她開完會主動回來聊今天那件事",
+        "closingMessage": "不急，妳先忙"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "我正在開會，晚點結束再跟你聊今天那件事",
+          "disposition": "略",
+          "reason": "她說明在忙、晚點再聊，不需要追加回覆"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "inventorySourceIndices": [
+         1
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -10486,15 +11639,15 @@
         ]
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -10504,8 +11657,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },
@@ -10542,6 +11695,55 @@
    "expected": {
     "status": 200,
     "charged": true,
+    "charges": [
+     {
+      "conversationHash": "0689fad89c8e3d443f5ee37e2460521d178b89a27cf1d5548a310ffcbca63591",
+      "recommendation": {
+       "selectedStyle": "extend",
+       "message": "先回答再推薦，維持輕鬆片單互動",
+       "reason": "簡短回答平常看什麼，再丟一部推薦並問她的口味",
+       "quotedContext": "analysis.decision",
+       "warnings": [],
+       "raw": {
+        "type": "analysis.decision",
+        "messageDecision": "send",
+        "selectedStyle": "extend",
+        "nextStepTitle": "接推薦請求",
+        "nextStepBody": "先回答再推薦，維持輕鬆片單互動",
+        "doThis": "簡短回答平常看什麼，再丟一部推薦並問她的口味",
+        "avoidThis": "不要編造沒看過的片，也不要急著跳邀約",
+        "confidence": "high"
+       },
+       "analysisInventory": {
+        "type": "analysis.inventory",
+        "balls": [
+         {
+          "sourceIndex": 1,
+          "sourceMessage": "你平常都看這種的嗎？還是有別的推薦",
+          "disposition": "接",
+          "reason": "真問題加請求推薦，直接回答並給推薦"
+         },
+         {
+          "sourceIndex": 2,
+          "sourceMessage": "我最近有點片荒",
+          "disposition": "併",
+          "reason": "是推薦請求的背景，併進同一段"
+         }
+        ]
+       },
+       "analysisEvidenceLinkage": {
+        "schemaVersion": 1,
+        "selectedStyle": "extend",
+        "inventorySourceIndices": [
+         1,
+         2
+        ]
+       }
+      },
+      "chargeQuota": true,
+      "messageCount": 1
+     }
+    ],
     "events": [
      {
       "type": "analysis.started",
@@ -10983,15 +12185,15 @@
         }
        },
        "usage": {
-        "messagesUsed": 0,
+        "messagesUsed": 1,
         "estimatedMessages": 1,
-        "monthlyRemaining": 999999,
-        "dailyRemaining": 999999,
+        "monthlyRemaining": 998,
+        "dailyRemaining": 998,
         "model": "claude-sonnet-5-5",
         "tierUsed": "essential",
-        "isTestAccount": true,
+        "isTestAccount": false,
         "requestType": "analyze",
-        "shouldChargeQuota": false,
+        "shouldChargeQuota": true,
         "quotaReason": "analyze_message_based",
         "quotaUnit": "messages"
        },
@@ -11001,8 +12203,8 @@
         "serverAiLatencyMs": 0,
         "timeoutMs": 120000,
         "model": "claude-sonnet-5-5",
-        "shouldChargeQuota": false,
-        "chargedMessageCount": 0,
+        "shouldChargeQuota": true,
+        "chargedMessageCount": 1,
         "estimatedMessageCount": 1
        }
       },

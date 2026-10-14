@@ -28,6 +28,8 @@ export interface ReplayOutcome {
   status: number;
   events: Record<string, unknown>[];
   charged: boolean;
+  /// 每次扣額度呼叫的參數（扣不扣、扣幾則、扣費錨點），不只記有沒有呼叫。
+  charges: Record<string, unknown>[];
   markDoneFinal: Record<string, unknown> | null;
 }
 
@@ -51,18 +53,22 @@ function buildUserPrompt(messages: ReplayMessage[]): string {
   ].join("\n\n");
 }
 
+/**
+ * 錄音切成一行一個 chunk，換行留在行尾；原文最後一行沒有換行就照樣沒有、空行也照送，
+ * 接起來跟原文一字不差，串流結尾的處理才會照正式情況走到。
+ */
+export function replayChunks(rawText: string): string[] {
+  return rawText.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+}
+
 async function* replayLines(rawText: string): AsyncGenerator<string> {
-  // 一行一個 chunk，模擬串流逐行到達；reframer 要能處理任意切法。
-  for (const line of rawText.split("\n")) {
-    if (line.trim() === "") continue;
-    yield `${line}\n`;
-  }
+  for (const chunk of replayChunks(rawText)) yield chunk;
 }
 
 export async function replayAnalyzeStream(
   replayCase: ReplayCase,
 ): Promise<ReplayOutcome> {
-  let charged = false;
+  const charges: Record<string, unknown>[] = [];
   let markDoneFinal: Record<string, unknown> | null = null;
   const run = {
     id: `run-${replayCase.name}`,
@@ -78,8 +84,10 @@ export async function replayAnalyzeStream(
       getRun: () => Promise.resolve(run),
       reserveRetry: () => Promise.resolve(run),
       createPendingRun: () => Promise.resolve(run),
-      chargeRun: () => {
-        charged = true;
+      chargeRun: (args: Record<string, unknown>) => {
+        // runId、userId 是固定值，不記。
+        const { runId: _runId, userId: _userId, ...rest } = args;
+        charges.push(JSON.parse(JSON.stringify(rest)));
         return Promise.resolve();
       },
       markDone: (args: { finalResult: Record<string, unknown> }) => {
@@ -94,7 +102,8 @@ export async function replayAnalyzeStream(
     analyzeMode: "normal",
     expectedTier: "essential",
     effectiveTier: "essential",
-    accountIsTest: true,
+    // 照一般付費用戶：測試帳號本來就免扣，扣額度的參數比對不到。
+    accountIsTest: false,
     allowedFeatures: styles,
     noSendDecisions: true,
     quotaUsage: {
@@ -154,7 +163,13 @@ export async function replayAnalyzeStream(
     const events = text.split("\n")
       .filter((line) => line.trim() !== "")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
-    return { status: response.status, events, charged, markDoneFinal };
+    return {
+      status: response.status,
+      events,
+      charged: charges.length > 0,
+      charges,
+      markDoneFinal,
+    };
   } finally {
     [console.log, console.warn, console.error, console.info] = quiet;
   }
@@ -221,6 +236,7 @@ export const SAME_AS_FINAL_RESULT = "<same as finalResult>";
 export function normalizeReplayOutcome(outcome: ReplayOutcome): {
   status: number;
   charged: boolean;
+  charges: unknown;
   events: Record<string, unknown>[];
   markDoneFinal: unknown;
 } {
@@ -244,6 +260,7 @@ export function normalizeReplayOutcome(outcome: ReplayOutcome): {
   return {
     status: outcome.status,
     charged: outcome.charged,
+    charges: zeroTimings(outcome.charges),
     events,
     markDoneFinal,
   };
