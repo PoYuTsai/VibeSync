@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ebook-2-conversation",
-  "contentVersion": 7,
+  "contentVersion": 8,
   "number": 2,
   "unit": "ultimateGuide",
   "title": "續航 · 讓對話活下去",
@@ -1912,8 +1912,8 @@
                     {
                       "id": "ebook-2-c5-lib-e13-dlg1-l5",
                       "speaker": "you",
-                      "text": "那我們平日去？妳可以的話，我看週四",
-                      "annotation": "接著她的建議提具體提案，留一個好回答的確認口·她答應了再敲時間，不把她的建議當成已經同意"
+                      "text": "那我們平日去？我看週四",
+                      "annotation": "接著她的建議提具體提案，由你帶、直接給一個時間·她答應了再敲幾點，不把她的建議當成已經同意"
                     },
                     {
                       "id": "ebook-2-c5-lib-e13-dlg1-l6",

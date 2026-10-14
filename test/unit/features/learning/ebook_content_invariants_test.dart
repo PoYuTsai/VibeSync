@@ -711,8 +711,11 @@ void main() {
       }
     });
 
-    test('第 2 冊 contentVersion 跟著這次改寫升到 7', () {
-      expect(catalog.findBook('ebook-2-conversation')!.contentVersion, 7);
+    test('第 2 冊 contentVersion 至少是這次改寫升到的 7（之後再改會往上升）', () {
+      expect(
+        catalog.findBook('ebook-2-conversation')!.contentVersion,
+        greaterThanOrEqualTo(7),
+      );
     });
   });
 
