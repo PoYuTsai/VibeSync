@@ -759,6 +759,12 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 - 產生器的紙聲來源原本釘在第二刀分支的 `e0f534e`，squash merge 之後 main 上不會有那個 commit；改釘 main 上的 `2aae192`（同一個檔，重跑產出逐位元相同）。
 - §4.1、§5.1、§13、§14.2 第 10 條原本還寫著 R0 停咻聲、分稀有度的三條配樂，改成和 §8 一致。
 
+第二輪審查（另一個工作階段）後修正：
+
+- 第一刀、第二刀的修正一起合進來（§16.1、§16.2）。
+- bed 與收卡音的預載邏輯合成一份（`_ReplayablePlayer`），行為不變。
+- F3 起就不播的 `practice_draw_waiting_loop.wav` 移出 bundle（git 歷史保留），翻牌音效資產 351 KB → 197 KB（§13.3）。
+
 ---
 
 ## 17. 不做的事與後續可選
