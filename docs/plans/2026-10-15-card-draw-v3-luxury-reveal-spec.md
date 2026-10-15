@@ -1,6 +1,6 @@
 # 抽卡揭曉動畫 V3「全息典藏揭曉」實作規格（2026-10-15）
 
-> **狀態**：§1 的 D1–D9 於 2026-10-15 全部照建議定案（Gate-1）。第一刀（結構）已實作，見 §16 的實作紀錄；第二刀起照本規格接著做。
+> **狀態**：§1 的 D1–D9 於 2026-10-15 全部照建議定案（Gate-1）。第一刀（結構）與第二刀（外觀）已實作，見 §16.1、§16.2；第三刀（聲音）開工前先再確認 D3。
 > **基準**：HEAD `2aae192`；`lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart`（3556 行，V2：10 秒兩段升階）。
 > **參考**：
 > 1. 夥伴提供的參考片 `gemini_generated_video_11D7DA2F.mp4`（1280×720、24fps、240 幀、10.005 s、AAC 48 kHz 立體聲；下稱「參考片」）。
@@ -675,6 +675,31 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 還沒做：背景模糊、稀有度染色與新卡背、光刃、星塵、全息掃光、膠囊稀有度牌、兩行資訊欄與星星逐顆點亮（第二刀）；N／R／SR 三條配樂與收卡音（第三刀；v4 時 Bruce 要求 SR／R／N 聲音一致，D3 改成分稀有度，開工前再確認一次）。
 - 審查：一般 PR，一位非作者模型的獨立 AI reviewer；Eric 做正式 GitHub review 與合併決定。
 - 實作分派由 Eric 決定（2026-07-05 曾把 SR 專屬大特效分給 Codex，見 `docs/plans/2026-07-05-practice-rarity-gacha-design.md`）。
+
+### 16.2 第二刀實作紀錄（2026-10-15）
+
+做了：
+
+- 色票 `lib/core/theme/practice_reveal_palette.dart`、稀有度主題 `practice_reveal_theme.dart`（§7，含卡背染色當下的顏色插值）；卡片元件 `practice_reveal_card.dart`、特效 painter `practice_reveal_painters.dart`；時間軸補上染色、光刃、掃光、烙印、星星、收卡變光與星點的純函式。
+- 卡背素材四張（§6.5）：`tools/practice-draw-card-back-v3/make_card_back_v3.py` 從原卡背離線產出，合計約 234 KB。執行時遮罩用 ShaderMask 套主題漸層，光暈圖染色墊在線條下面；SR 金階加全息彩虹描邊。
+- 背景：BackdropFilter 模糊 σ 0→24＋暗化 0.85＋暗角，不包 Opacity。
+- 卡背：等待呼吸（±3 px、1.010、±2°、徽記 0.30–0.45）、蓄力增亮、N 銀光脈衝、R／SR 染藍、SR 染金＋白色爆閃；環境光與環境星塵跟著染色走。
+- 翻牌峰值：光刃（SR 加十字）＋爆發星塵。
+- 卡面：1.5 px 漸層倒角框＋外光＋內層高光、照片緩縮、全息掃光（SR 加兩道細彩邊）、膠囊稀有度牌（2.0 s 前不存在）、兩行毛玻璃資訊欄（照片副本模糊，不用 BackdropFilter）、只畫亮星並逐顆點亮；卡面文字放大上限 1.3。
+- 收卡：資訊 80 ms 淡出、卡面變成稀有度色光、光球改用主題 orb 色並沿途灑 8 顆星點；圖鑑那一格的發光也改成同一色。
+- 觸覺補上：R 染藍 `light()`、SR 染藍 `tap()`＋染金 `light()`、烙印 `tap()`（單一常數可關）、亮星 `tick()`。
+- 等待字樣與提示字照 §6.8；卡片位置 `Alignment(0, −0.08)`，等待字樣在卡片下方 24。
+- 錄製器改掛圖鑑頁、N／R／SR 各錄一支；卡背靜態圖出 N／R／SR 三張。
+
+和原規劃不同的地方：
+
+- 爆發星塵畫在卡片前面，不在卡片後面（L2）：照原數值（初速 120–260 px/s、阻尼 2.5）最遠只飛約 100 px，卡片轉正後幾乎全被卡面擋住。改成畫在前面、往兩側噴（縱向壓到 0.65）、初速 160–320 px/s、阻尼 2.0，很快離開臉的位置。壽命改成 900–1300 ms（原 900–1400），停住前全部燃盡，停住畫面才是乾淨的靜止。環境星塵仍在卡片後面，鋪滿整個畫面。
+- 舊的徑向白閃由光刃取代，舊卡背、舊卡面一起刪掉。只剩測試 seam 在用的 V2 painter（神秘卡背、賽博外框、星光場）與舊卡背 PNG，留到第四刀清理。
+- 掃光在柔光（softLight）之外再疊一層很淡的 screen 光帶：只用柔光時，暗部幾乎看不到光帶。
+- 錄製器原本用 `setSurfaceSize` 定 390×844，但 MediaQuery 仍是測試預設的 800×600：卡片被算小，圖鑑捲動估算也會算錯（遠處的卡收卡時找不到格子）。改用 `tester.view` 定尺寸。這是錄製器的問題，app 本身的估算是對的。
+- 測試沒有另開 §13.2 列的 `practice_draw_reveal_v3_test.dart` 與 `test/visual_proof/practice_draw_v3_proof_test.dart`：儀式行為接著寫在既有的 `practice_chat_screen_style_test.dart`，純函式在 `practice_reveal_timing_test.dart`、`practice_reveal_visuals_test.dart`；改前／改後對照圖由錄製器逐幀輸出再合成。
+
+還沒做：N／R／SR 三條配樂與收卡音（第三刀，開工前先確認 D3）；V2 painter、舊卡背 PNG 與相關測試的清理（第四刀）。真機要特別看模糊背景與資訊欄毛玻璃的效能（§12；卡頓才做 Plan B）。
 
 ---
 
