@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -3825,6 +3826,8 @@ void main() {
         hasTapAction: true,
       ),
     );
+    // 只有儀式這一層會主動唸（資訊欄不設 liveRegion），不會連唸兩次。
+    expect(find.semantics.byFlag(SemanticsFlag.isLiveRegion), findsOne);
 
     await finishCeremony(tester);
     handle.dispose();

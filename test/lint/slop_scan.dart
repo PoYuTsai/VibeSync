@@ -29,8 +29,6 @@ const kColoredShadowAllowedFiles = {
   'lib/features/practice_chat/presentation/widgets/practice_room_entry_card.dart',
   'lib/features/practice_chat/presentation/screens/practice_collection_screen.dart',
   'lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart',
-  // 抽卡揭曉 V3 的卡面外光（DESIGN.md §7）
-  'lib/features/practice_chat/presentation/widgets/practice_reveal_card.dart',
   'lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart',
   // 輸入框聚焦瞬態光（DESIGN.md §7）
   'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart',

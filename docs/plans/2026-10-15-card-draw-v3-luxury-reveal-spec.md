@@ -1,6 +1,6 @@
 # 抽卡揭曉動畫 V3「全息典藏揭曉」實作規格（2026-10-15）
 
-> **狀態**：§1 的 D1–D9 於 2026-10-15 定案（Gate-1；D3 後來改成三種稀有度同一條配樂）。第一刀（結構）、第二刀（外觀）、第三刀（聲音）已實作，見 §16.1–§16.3；剩第四刀（清理）。
+> **狀態**：§1 的 D1–D9 於 2026-10-15 由 PR 作者照「建議」欄先定，待 Eric 在 PR review 確認（Gate-1；D3 後來改成三種稀有度同一條配樂）。第一刀（結構）、第二刀（外觀）、第三刀（聲音）已實作，見 §16.1–§16.3；剩第四刀（清理）。
 > **基準**：HEAD `2aae192`；`lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart`（3556 行，V2：10 秒兩段升階）。
 > **參考**：
 > 1. 夥伴提供的參考片 `gemini_generated_video_11D7DA2F.mp4`（1280×720、24fps、240 幀、10.005 s、AAC 48 kHz 立體聲；下稱「參考片」）。
@@ -30,7 +30,7 @@
 
 ---
 
-## 1. 拍板項目（Gate-1：2026-10-15 全部照「建議」欄定案）
+## 1. 拍板項目（Gate-1：2026-10-15 PR 作者照「建議」欄先定，待 Eric 確認）
 
 | # | 題目 | 選項 | 建議 |
 |---|---|---|---|
@@ -271,7 +271,7 @@ dispose：停所有聲音、dispose 所有 controller；dispose 之後不得再�
 | 開著稀有度 filter、新卡被濾掉 | `onRevealTarget` 先收 filter（現有邏輯搬過來） |
 | SR 翻牌券 | 和一般 SR 同一條路 |
 | 文字放大（Dynamic Type） | 卡面用 `MediaQuery.withClampedTextScaling(maxScaleFactor: 1.3)`，名字與基本資訊單行省略 |
-| VoiceOver | 停住時整層是一個按鈕：label「已抽到 {名字}，{稀有度} 卡」、hint「點兩下收進圖鑑」；資訊欄設 `liveRegion` |
+| VoiceOver | 停住時整層是一個按鈕：label「已抽到 {名字}，{稀有度} 卡」、hint「點兩下收進圖鑑」；資訊欄不設 `liveRegion`（停住時整層已主動唸出抽到誰，兩邊都設會連唸兩次）。儀式不是 hidden 時整層包 `BlockSemantics`（比照 ModalBarrier），讀屏碰不到底下的翻牌鈕與返回鍵 |
 | Android 返回鍵 | 依 §4.4；用 `PopScope(canPop: false)`，只在 revealing／holding／archiving 生效 |
 
 **稀有度誠實規則**：染色只會升到真實稀有度。N 全程銀；R 只會出現銀→藍；SR 才會出現金。不做「先金後退回藍」之類的假動作。這條要有測試釘住（§14）。
@@ -536,7 +536,7 @@ final ValueChanged<String>? onArchived;
 |---|---|
 | 全螢幕只有一個 `BackdropFilter` | 資訊欄的毛玻璃用照片副本＋`ImageFiltered`，不讀 backdrop |
 | 逐幀 painter 不用 `MaskFilter.blur` | 光暈一律用漸層或預先模糊好的素材 |
-| 只有階段切換才 `setState` | 逐幀只重建 `Transform`／`Opacity`／`CustomPaint`；照片、文字、卡背圖片以 `child` 傳進 builder（plan 014 的做法） |
+| 只有階段切換才 `setState` | 階段內由 `AnimatedBuilder` 逐幀重建疊加層。原本打算把照片、文字、卡背圖片當 `child` 傳進 builder（plan 014 的做法），實作後揭曉 2.7 s 內幾乎每一層每幀都在變（照片緩縮、徽記亮度、染色、資訊欄透明度、星星），能省的只有 widget 重建、不是重畫，所以沒有照做（見 §16.2）；停住期間零動畫幀。真機若卡，先看 raster（全螢幕模糊與資訊欄毛玻璃），處理順序見 Plan B |
 | `RepaintBoundary` | Card3D、BokehDust、Backdrop 各一個 |
 | holding 零動畫幀 | 全螢幕模糊在有動畫時每幀都要重算，停住期間可能長達十幾秒 |
 | 預快取 | drawing 開始 `precacheImage` 卡背四張；R0 `precacheImage` 照片（距離正面出現還有 1350 ms） |
@@ -689,6 +689,13 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 - 圖鑑的 +1 要等抽卡流程存完草稿才到，比揭曉起點晚一兩幀，原本捲動估算用它未解鎖時的位置、光球找不到目標；改成揭曉中的這張卡先當成已解鎖排序（§5.4）。
 - reduce-motion 抽中時沒有配樂接手，咻聲的暖尾巴原本會留在圖鑑上；改成抽中當下一起收掉（§5.1）。
 
+第二輪審查（另一個工作階段）後修正：
+
+- 儀式蓋住整頁時擋掉底下的讀屏節點（§5.4）：原本停住時 VoiceOver 還能按到底下的翻牌鈕與返回鍵，付費用戶會直接再抽一次、用掉免費換人。
+- 揭曉配樂起播不再多等一次 setVolume：收卡淡出走完就把音量設回，只有淡出被新的一抽打斷時才在起播前補設。
+- D1–D9 改寫成「作者照建議先定、待 Eric 確認」（標頭、§1）。
+- 補一個 reduce-motion 下圖鑑 +1 晚到的測試（上面「先當成已解鎖排序」也走這條路）。
+
 ### 16.2 第二刀實作紀錄（2026-10-15）
 
 做了：
@@ -718,6 +725,15 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 
 - 點擊提示原本只有淡入，補上 §4.3 的上浮 6 px（和淡入共用同一條曲線，停住與收卡時定在原位）。
 - 抽牌中離開圖鑑又回來、由揭曉接著走卡背入場時，比照按下翻牌那一刻先解碼四張卡背素材。
+
+第二輪審查（另一個工作階段）後修正：
+
+- 第一刀的修正一起合進來：儀式擋掉底下的讀屏節點、配樂起播少等一次 setVolume（§16.1）。
+- 資訊欄不再設 `liveRegion`，VoiceOver 停住時只唸一次（§5.4）。
+- slop 白名單拿掉 `practice_reveal_card.dart`：它的陰影本來就不會被抓，先開豁免只會讓棘輪漏報。
+- 收卡星點的灑出時間先算成常數表（`kPracticeArchiveSparkleSpawnMs`），painter 不再每幀二分反解。
+- §12「圖片、文字以 child 傳進 builder」沒有照做，改成記錄原因（§12）；效能以真機為準。
+- DESIGN.md 的 D1–D9 改寫成作者先定、待 Eric 確認。
 
 ### 16.3 第三刀實作紀錄（2026-10-15）
 

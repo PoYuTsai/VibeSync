@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1186,6 +1187,58 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
     });
 
+    testWidgets('儀式蓋住整頁時，讀屏碰不到底下的翻牌鈕與返回鍵；收掉後恢復', (tester) async {
+      final handle = tester.ensureSemantics();
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          collectionNotifier: notifier,
+          subscription: _paidSubscription,
+        ),
+      );
+      // 付費、今天還有免費換人：底下的翻牌鈕一被觸發就會直接再抽一次（不跳確認）。
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      controller.debugSetState(revealedWith(mia).copyWith(
+        drawFreeAllowance: 3,
+        drawFreeRemaining: 2,
+        drawExtraCost: 5,
+      ));
+      notifier.add(mia.profileId);
+      await tester.pumpAndSettle(); // 揭曉走完、停住
+      expect(find.byKey(frontKey), findsOneWidget);
+
+      bool reachable(Finder finder) {
+        final node = tester.getSemantics(finder);
+        return node.attached &&
+            node.getSemanticsData().hasAction(SemanticsAction.tap);
+      }
+
+      final drawButton = find.byKey(const ValueKey('collection-draw-button'));
+      final backButton = find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(IconButton),
+      );
+      expect(reachable(drawButton), isFalse, reason: '停住時不能再抽一次');
+      expect(reachable(backButton), isFalse, reason: '返回鍵在儀式底下');
+      expect(find.bySemanticsLabel(RegExp('已抽到')), findsOneWidget);
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle(); // 收卡完成、儀式收掉
+      expect(reachable(drawButton), isTrue);
+      expect(reachable(backButton), isTrue);
+      handle.dispose();
+    });
+
     testWidgets('集滿後抽到重複角色：一樣捲到原本那一格，收卡後發光', (tester) async {
       final alice = practiceGirlProfiles.first;
       final notifier = _SeededCollection({alice.profileId});
@@ -1377,6 +1430,51 @@ void main() {
       expect(debugArchiveOrbTarget(orb.painter!), tester.getRect(highlight));
 
       await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('reduce-motion＋圖鑑 +1 晚一幀才到：一樣捲到那一格，捲動到位才亮', (tester) async {
+      final last = practiceGirlProfiles.last;
+      final notifier =
+          _SeededCollection({practiceGirlProfiles.first.profileId});
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(
+            controller: controller,
+            collectionNotifier: notifier,
+          ),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(revealedWith(last));
+      await tester.pump(); // 抽中當下：掛上高亮、捲動起跑（這張卡先排進已解鎖那段）
+      notifier.add(last.profileId); // 圖鑑 +1 晚到（草稿存完才解鎖）
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400)); // 捲動走完 → 補亮
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final highlightKey = ValueKey('collection-highlight-${last.profileId}');
+      expect(find.byKey(highlightKey), findsOneWidget, reason: '那一格要在畫面內');
+      expect(highlightBorderAlpha(tester, last.profileId), greaterThan(0));
+
+      await tester.pumpAndSettle();
+      expect(find.byKey(highlightKey), findsNothing);
       await tester.pump(const Duration(milliseconds: 250));
     });
 
