@@ -709,9 +709,14 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 - 舊的徑向白閃由光刃取代，舊卡背、舊卡面一起刪掉。只剩測試 seam 在用的 V2 painter（神秘卡背、賽博外框、星光場）與舊卡背 PNG，留到第四刀清理。
 - 掃光在柔光（softLight）之外再疊一層很淡的 screen 光帶：只用柔光時，暗部幾乎看不到光帶。
 - 錄製器原本用 `setSurfaceSize` 定 390×844，但 MediaQuery 仍是測試預設的 800×600：卡片被算小，圖鑑捲動估算也會算錯（遠處的卡收卡時找不到格子）。改用 `tester.view` 定尺寸。這是錄製器的問題，app 本身的估算是對的。
-- 測試沒有另開 §13.2 列的 `practice_draw_reveal_v3_test.dart` 與 `test/visual_proof/practice_draw_v3_proof_test.dart`：儀式行為接著寫在既有的 `practice_chat_screen_style_test.dart`，純函式在 `practice_reveal_timing_test.dart`、`practice_reveal_visuals_test.dart`；改前／改後對照圖由錄製器逐幀輸出再合成。
+- 測試沒有另開 §13.2 列的 `test/visual_proof/practice_draw_v3_proof_test.dart`（儀式行為照第一刀接著寫在既有檔）：純函式在 `practice_reveal_timing_test.dart`、`practice_reveal_visuals_test.dart`；改前／改後對照圖由錄製器逐幀輸出再合成。
 
 還沒做：N／R／SR 三條配樂與收卡音（第三刀，開工前先確認 D3）；V2 painter、舊卡背 PNG 與相關測試的清理（第四刀）。真機要特別看模糊背景與資訊欄毛玻璃的效能（§12；卡頓才做 Plan B）。
+
+審查後補修（2026-10-15）：
+
+- 點擊提示原本只有淡入，補上 §4.3 的上浮 6 px（和淡入共用同一條曲線，停住與收卡時定在原位）。
+- 抽牌中離開圖鑑又回來、由揭曉接著走卡背入場時，比照按下翻牌那一刻先解碼四張卡背素材。
 
 ---
 
