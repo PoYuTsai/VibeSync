@@ -309,12 +309,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _sfx.playWhoosh();
     // 揭曉配樂先載好：server 回來時從頭 resume，bed 裡的重音才對得上畫面。
     _sfx.preloadReveal();
-    // 卡背四張素材先解碼好，入場第一幀就有卡背。
-    for (final asset in kPracticeRevealBackAssets) {
-      unawaited(
-        precacheImage(AssetImage(asset), context, onError: (_, __) {}),
-      );
-    }
+    _precacheBack();
     _reveal
       ..stop()
       ..value = 0;
@@ -371,8 +366,18 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     if (_phase == _CeremonyPhase.hidden || _fadingOut) {
       _fadingOut = false;
       _sfx.preloadReveal();
+      _precacheBack();
       setState(() => _phase = _CeremonyPhase.drawing);
       _intro.forward();
+    }
+  }
+
+  /// 卡背四張素材先解碼好，入場第一幀就有卡背。
+  void _precacheBack() {
+    for (final asset in kPracticeRevealBackAssets) {
+      unawaited(
+        precacheImage(AssetImage(asset), context, onError: (_, __) {}),
+      );
     }
   }
 
