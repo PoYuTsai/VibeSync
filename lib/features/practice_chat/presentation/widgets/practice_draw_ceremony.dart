@@ -285,6 +285,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
     if (!wasDrawing) return; // 以下都只處理「抽牌中 → 結果」的收斂。
 
+    // 抽牌中的其他狀態更新（例如練習室還在跑的提示、拆解剛好回來）不是結果：不理，
+    // 否則會被當成失敗淡出，真正的結果回來時已經沒有儀式可接。
+    if (next.isDrawing) return;
+
     // 抽牌成功揭曉：revealed 且沒有錯誤訊息（換一位失敗會回 revealed 但帶錯誤）。
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
@@ -306,12 +310,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _sfx.playWhoosh();
     // 揭曉配樂先載好：server 回來時從頭 resume，bed 裡的重音才對得上畫面。
     _sfx.preloadReveal();
-    // 卡背四張素材先解碼好，入場第一幀就有卡背。
-    for (final asset in kPracticeRevealBackAssets) {
-      unawaited(
-        precacheImage(AssetImage(asset), context, onError: (_, __) {}),
-      );
-    }
+    _precacheBack();
     _reveal
       ..stop()
       ..value = 0;
@@ -352,14 +351,34 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       }
       widget.onRevealTarget?.call(girl);
       widget.onArchived?.call(girl.profileId);
+      // 沒有儀式也就沒有配樂可以交棒：咻聲的暖尾巴跟著收掉，不留在圖鑑上。
+      _sfx.stopWhoosh();
       _toHidden();
       return;
     }
     _revealGirl = girl;
     if (_intro.isCompleted) {
       _beginReveal();
-    } else {
-      _pendingReveal = true; // 保證卡背入場走完才開始蓄力。
+      return;
+    }
+    _pendingReveal = true; // 保證卡背入場走完才開始蓄力。
+    // 卡背入場沒有在往前走：抽牌中離開圖鑑又回來（這個儀式還是 hidden），或正在淡出。
+    // 接著把入場走完再揭曉，不重播咻聲與觸覺（那是按下翻牌那一刻的事）。
+    if (_phase == _CeremonyPhase.hidden || _fadingOut) {
+      _fadingOut = false;
+      _sfx.preloadReveal();
+      _precacheBack();
+      setState(() => _phase = _CeremonyPhase.drawing);
+      _intro.forward();
+    }
+  }
+
+  /// 卡背四張素材先解碼好，入場第一幀就有卡背。
+  void _precacheBack() {
+    for (final asset in kPracticeRevealBackAssets) {
+      unawaited(
+        precacheImage(AssetImage(asset), context, onError: (_, __) {}),
+      );
     }
   }
 
@@ -600,6 +619,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   static const Alignment _stageAlignment = Alignment(0, -0.08);
   static const double _hintMaxOpacity = 0.72;
 
+  /// 提示字淡入時同步上浮的距離（規格 §4：translateY +6 → 0）。
+  static const double _hintRise = 6;
+
   Widget _buildOverlay(Size size) {
     final cardSize = practiceCeremonyCardSize(MediaQuery.sizeOf(context));
     final stageSize = Size(
@@ -790,16 +812,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             right: 16,
             bottom: MediaQuery.paddingOf(context).bottom + 24,
             child: IgnorePointer(
-              child: Opacity(
-                opacity: hint,
-                child: Text(
-                  '點擊任意處繼續',
-                  key: const ValueKey('practice-draw-ceremony-hint'),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 2,
+              child: Transform.translate(
+                offset: Offset(0, _hintDy()),
+                child: Opacity(
+                  opacity: hint,
+                  child: Text(
+                    '點擊任意處繼續',
+                    key: const ValueKey('practice-draw-ceremony-hint'),
+                    textAlign: TextAlign.center,
+                    style: AppTypography.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 2,
+                    ),
                   ),
                 ),
               ),
@@ -859,6 +884,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         return 0;
     }
   }
+
+  /// 提示字的上浮位移：跟著淡入一起從下方 6 px 浮到原位；停住、收卡時定在原位。
+  double _hintDy() => _phase == _CeremonyPhase.revealing
+      ? _hintRise * (1 - practiceRevealHintIn(_revealMs))
+      : 0;
 
   double _hintOpacity() {
     switch (_phase) {

@@ -3585,6 +3585,40 @@ void main() {
     await finishCeremony(tester);
   });
 
+  testWidgets('V3：點擊提示 2.4 s 起淡入、同時從下方 6 px 浮上來，停住時定在原位', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
+
+    double hintDy() => tester
+        .widget<Transform>(
+          find
+              .ancestor(
+                of: find.byKey(_ceremonyHintKey),
+                matching: find.byType(Transform),
+              )
+              .first,
+        )
+        .transform
+        .getTranslation()
+        .y;
+
+    await tester.pump(revealAt(PracticeRevealTiming.hintStartMs + 60));
+    expect(hintDy(), inExclusiveRange(0, 6)); // 還在下方，正往上浮
+    expect(
+      opacityAbove(tester, find.byKey(_ceremonyHintKey)),
+      inExclusiveRange(0, 0.72),
+    );
+
+    await tester.pumpAndSettle(); // 揭曉走完：停住
+    expect(hintDy(), 0);
+    expect(opacityAbove(tester, find.byKey(_ceremonyHintKey)), 0.72);
+
+    await finishCeremony(tester);
+  });
+
   testWidgets('V3：稀有度牌 2.0 s 才烙上（之前不存在），出現第一幀就是正確稀有度', (tester) async {
     final girl = practiceGirlProfiles
         .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
