@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1184,6 +1185,58 @@ void main() {
         findsNothing,
       );
       await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('儀式蓋住整頁時，讀屏碰不到底下的翻牌鈕與返回鍵；收掉後恢復', (tester) async {
+      final handle = tester.ensureSemantics();
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          collectionNotifier: notifier,
+          subscription: _paidSubscription,
+        ),
+      );
+      // 付費、今天還有免費換人：底下的翻牌鈕一被觸發就會直接再抽一次（不跳確認）。
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      controller.debugSetState(revealedWith(mia).copyWith(
+        drawFreeAllowance: 3,
+        drawFreeRemaining: 2,
+        drawExtraCost: 5,
+      ));
+      notifier.add(mia.profileId);
+      await tester.pumpAndSettle(); // 揭曉走完、停住
+      expect(find.byKey(frontKey), findsOneWidget);
+
+      bool reachable(Finder finder) {
+        final node = tester.getSemantics(finder);
+        return node.attached &&
+            node.getSemanticsData().hasAction(SemanticsAction.tap);
+      }
+
+      final drawButton = find.byKey(const ValueKey('collection-draw-button'));
+      final backButton = find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(IconButton),
+      );
+      expect(reachable(drawButton), isFalse, reason: '停住時不能再抽一次');
+      expect(reachable(backButton), isFalse, reason: '返回鍵在儀式底下');
+      expect(find.bySemanticsLabel(RegExp('已抽到')), findsOneWidget);
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle(); // 收卡完成、儀式收掉
+      expect(reachable(drawButton), isTrue);
+      expect(reachable(backButton), isTrue);
+      handle.dispose();
     });
 
     testWidgets('集滿後抽到重複角色：一樣捲到原本那一格，收卡後發光', (tester) async {

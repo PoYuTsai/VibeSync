@@ -525,20 +525,24 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final blocksPop = _phase == _CeremonyPhase.revealing ||
         _phase == _CeremonyPhase.holding ||
         _phase == _CeremonyPhase.archiving;
-    return PopScope(
-      canPop: !blocksPop,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _onOverlayTap();
-      },
-      // 掛在 Scaffold 之外：自備透明 Material，文字才不會出現除錯底線。
-      child: Material(
-        type: MaterialType.transparency,
-        // 疊加層整棵包 RepaintBoundary 與底下頁面隔離；動畫幀由 AnimatedBuilder 訂閱
-        // 五條 controller 驅動。
-        child: RepaintBoundary(
-          child: AnimatedBuilder(
-            animation: _ceremonyMotion,
-            builder: (context, _) => _buildOverlay(),
+    // 儀式蓋住整頁時，讀屏也碰不到底下的圖鑑（翻牌鈕、AppBar 返回鍵），比照
+    // ModalBarrier：觸控由全螢幕點擊層吞掉，讀屏節點由這裡擋掉。
+    return BlockSemantics(
+      child: PopScope(
+        canPop: !blocksPop,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _onOverlayTap();
+        },
+        // 掛在 Scaffold 之外：自備透明 Material，文字才不會出現除錯底線。
+        child: Material(
+          type: MaterialType.transparency,
+          // 疊加層整棵包 RepaintBoundary 與底下頁面隔離；動畫幀由 AnimatedBuilder 訂閱
+          // 五條 controller 驅動。
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _ceremonyMotion,
+              builder: (context, _) => _buildOverlay(),
+            ),
           ),
         ),
       ),
