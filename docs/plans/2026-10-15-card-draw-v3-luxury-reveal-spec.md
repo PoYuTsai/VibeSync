@@ -271,7 +271,7 @@ dispose：停所有聲音、dispose 所有 controller；dispose 之後不得再�
 | 開著稀有度 filter、新卡被濾掉 | `onRevealTarget` 先收 filter（現有邏輯搬過來） |
 | SR 翻牌券 | 和一般 SR 同一條路 |
 | 文字放大（Dynamic Type） | 卡面用 `MediaQuery.withClampedTextScaling(maxScaleFactor: 1.3)`，名字與基本資訊單行省略 |
-| VoiceOver | 停住時整層是一個按鈕：label「已抽到 {名字}，{稀有度} 卡」、hint「點兩下收進圖鑑」；資訊欄設 `liveRegion`。儀式不是 hidden 時整層包 `BlockSemantics`（比照 ModalBarrier），讀屏碰不到底下的翻牌鈕與返回鍵 |
+| VoiceOver | 停住時整層是一個按鈕：label「已抽到 {名字}，{稀有度} 卡」、hint「點兩下收進圖鑑」；資訊欄不設 `liveRegion`（停住時整層已主動唸出抽到誰，兩邊都設會連唸兩次）。儀式不是 hidden 時整層包 `BlockSemantics`（比照 ModalBarrier），讀屏碰不到底下的翻牌鈕與返回鍵 |
 | Android 返回鍵 | 依 §4.4；用 `PopScope(canPop: false)`，只在 revealing／holding／archiving 生效 |
 
 **稀有度誠實規則**：染色只會升到真實稀有度。N 全程銀；R 只會出現銀→藍；SR 才會出現金。不做「先金後退回藍」之類的假動作。這條要有測試釘住（§14）。
