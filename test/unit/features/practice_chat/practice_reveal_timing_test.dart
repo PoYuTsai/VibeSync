@@ -379,6 +379,15 @@ void main() {
       }
     });
 
+    test('星點灑出時間表先算好，和逐顆反解的結果一致', () {
+      expect(kPracticeArchiveSparkleSpawnMs,
+          hasLength(PracticeRevealTiming.sparkleCount));
+      for (var i = 1; i <= PracticeRevealTiming.sparkleCount; i++) {
+        expect(kPracticeArchiveSparkleSpawnMs[i - 1],
+            practiceArchiveSparkleSpawnMs(i));
+      }
+    });
+
     test('貝茲切線：起點朝控制點、終點從控制點出來', () {
       const p0 = Offset(0, 0);
       const p1 = Offset(100, 0);

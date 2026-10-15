@@ -570,7 +570,7 @@ class PracticeRevealOrbPainter extends CustomPainter {
 
     // 沿途星點：光球經過 t＝0.1·i 時灑出，向外漂 20 px、300 ms 淡掉。
     for (var i = 1; i <= PracticeRevealTiming.sparkleCount; i++) {
-      final age = ms - practiceArchiveSparkleSpawnMs(i);
+      final age = ms - kPracticeArchiveSparkleSpawnMs[i - 1];
       if (age <= 0 || age >= PracticeRevealTiming.sparkleLifeMs) continue;
       final ti = 0.1 * i;
       final tangent = practiceQuadBezierTangent(origin, control, end, ti);
