@@ -618,6 +618,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   static const Alignment _stageAlignment = Alignment(0, -0.08);
   static const double _hintMaxOpacity = 0.72;
 
+  /// 提示字淡入時同步上浮的距離（規格 §4：translateY +6 → 0）。
+  static const double _hintRise = 6;
+
   Widget _buildOverlay(Size size) {
     final cardSize = practiceCeremonyCardSize(MediaQuery.sizeOf(context));
     final stageSize = Size(
@@ -808,16 +811,19 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             right: 16,
             bottom: MediaQuery.paddingOf(context).bottom + 24,
             child: IgnorePointer(
-              child: Opacity(
-                opacity: hint,
-                child: Text(
-                  '點擊任意處繼續',
-                  key: const ValueKey('practice-draw-ceremony-hint'),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 2,
+              child: Transform.translate(
+                offset: Offset(0, _hintDy()),
+                child: Opacity(
+                  opacity: hint,
+                  child: Text(
+                    '點擊任意處繼續',
+                    key: const ValueKey('practice-draw-ceremony-hint'),
+                    textAlign: TextAlign.center,
+                    style: AppTypography.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 2,
+                    ),
                   ),
                 ),
               ),
@@ -877,6 +883,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         return 0;
     }
   }
+
+  /// 提示字的上浮位移：跟著淡入一起從下方 6 px 浮到原位；停住、收卡時定在原位。
+  double _hintDy() => _phase == _CeremonyPhase.revealing
+      ? _hintRise * (1 - practiceRevealHintIn(_revealMs))
+      : 0;
 
   double _hintOpacity() {
     switch (_phase) {
