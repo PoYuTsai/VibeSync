@@ -218,8 +218,9 @@ holding 期間**零動畫幀**（D7=A）：整個畫面靜止，直到使用者�
 | 從 | 條件 | 到 | 動作 |
 |---|---|---|---|
 | hidden | `!prev.isDrawing && next.isDrawing` | drawing | 觸覺 `light()`、`playWhoosh()`、`preloadReveal()`、`_intro.forward(from: 0)`、`_caption.forward(from: 0)`、`_waiting.repeat()`。reduce-motion：`_intro.value = 1`、`_caption.value = 1`（背景直接定在 σ24／α0.85、等待字樣直接顯示），不跑 `_waiting` |
-| drawing | 抽成功（`isRevealed && errorMessage == null && girl != null`），非 reduce-motion | revealing | 若 `_intro` 尚未完成，先記 `_pendingReveal`，等 `_intro` completed 再開始；開始時抓等待姿態與等待字樣當下的透明度、`_waiting.stop()`、`_caption.stop()`、`stopWhoosh()`、`playRevealBed(girl.rarity)`、`precacheImage(照片)`、`onRevealTarget(girl)`、`_reveal.forward(from: 0)` |
-| drawing | 抽成功，reduce-motion | hidden | 觸覺（SR `celebrate()`，其餘 `medium()`，沿用現有）、`onRevealTarget(girl)`、`onArchived(id)`、`_toHidden()` |
+| drawing | 仍是 drawing 的其他狀態更新（練習室的提示、拆解剛好回來） | drawing | 不理：不是結果，不能當成失敗淡出 |
+| drawing | 抽成功（`isRevealed && errorMessage == null && girl != null`），非 reduce-motion | revealing | 若 `_intro` 尚未完成，先記 `_pendingReveal`，等 `_intro` completed 再開始（儀式還是 hidden 時——抽牌中離開圖鑑又回來——接著 `_intro.forward()` 把入場走完，不重播咻聲與觸覺）；開始時抓等待姿態與等待字樣當下的透明度、`_waiting.stop()`、`_caption.stop()`、`stopWhoosh()`、`playRevealBed(girl.rarity)`、`precacheImage(照片)`、`onRevealTarget(girl)`、`_reveal.forward(from: 0)` |
+| drawing | 抽成功，reduce-motion | hidden | 觸覺（SR `celebrate()`，其餘 `medium()`，沿用現有）、`onRevealTarget(girl)`、`onArchived(id)`、`stopWhoosh()`（沒有配樂可以交棒）、`_toHidden()` |
 | drawing／revealing | 失敗（error／402／429／換一位失敗） | hidden | 停 `_waiting`、`_caption`；`stopWhoosh()`、`stopRevealBed()`；清 `_pendingReveal`；`_intro.reverse()`（最長 500 ms 淡出；reduce-motion 或 `_intro` 為 0 時直接 `_toHidden()`） |
 | revealing | `_reveal` completed | holding | 只 `setState` 一次 |
 | holding | 點擊／返回鍵 | archiving | 解析目標格、`playArchive()`、`_archive.forward(from: 0)` |
@@ -263,6 +264,8 @@ dispose：停所有聲音、dispose 所有 controller；dispose 之後不得再�
 | server 比卡背入場還快回來 | 等 `_intro` 完成（500 ms）才開始揭曉，保證有入場 |
 | server 很慢 | 卡背持續呼吸；900 ms 後出現等待字樣 |
 | 揭曉或停住中離開頁面 | dispose 收掉聲音；不呼叫 callback |
+| 抽牌中離開圖鑑又回來 | 新掛上的儀式還是 hidden；結果回來時接著把卡背入場走完再揭曉，不重播咻聲與觸覺 |
+| 圖鑑的 +1 比揭曉起點晚一兩幀 | 揭曉中的這張卡先當成已解鎖來排序，捲動估算與光球目標都指向它解鎖後的位置 |
 | 同一頁連續抽 | 收卡完成回到 hidden 才能再按翻牌（overlay 期間攔住所有點擊） |
 | 目標格不在畫面內 | 原地收束（§4.5） |
 | 開著稀有度 filter、新卡被濾掉 | `onRevealTarget` 先收 filter（現有邏輯搬過來） |
@@ -610,6 +613,7 @@ final ValueChanged<String>? onArchived;
 11. **入場保底**：server 立即回來時，揭曉等卡背入場完成才開始。
 12. **圖鑑頁**：重複角色也會捲動並發光；重新整理圖鑑不會觸發高亮。
 13. **純函式**：`practiceRevealPose(1350)` 的 yaw = 90、`(1800)` = 180；各段邊界連續；粒子同一時間點兩次計算結果相同；貝茲曲線 t=0／1 落在端點。
+14. **抽牌中的邊界**：仍是 drawing 的狀態更新不讓儀式淡出；抽牌中離開圖鑑又回來，結果回來照樣揭曉；圖鑑 +1 晚一兩幀才到，光球仍飛向那一格；reduce-motion 抽中時咻聲收掉。
 
 注意：`AppHaptics.tick()` 用真實時間節流，widget test 不要斷言 tick 次數；`celebrate()` 內部有 `Future.delayed`，測試結尾照現有慣例 `pump(250 ms)`。
 
@@ -655,6 +659,8 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 | D 清理 | 刪 V2 painter、素材、測試；更新錄製器 | 套件變小、測試只剩 V3 |
 
 - 一個目的一個 PR 的規則下，可以是一個 PR 四個 commit（每個 commit 一件事），也可以拆成四個 PR；由 Eric 決定。
+- 審查：一般 PR，一位非作者模型的獨立 AI reviewer；Eric 做正式 GitHub review 與合併決定。
+- 實作分派由 Eric 決定（2026-07-05 曾把 SR 專屬大特效分給 Codex，見 `docs/plans/2026-07-05-practice-rarity-gacha-design.md`）。
 
 ### 16.1 第一刀實作紀錄（2026-10-15）
 
@@ -671,10 +677,16 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 
 - 只屬於 V2 雙翻時間軸的特效（軌道光環、能量邊框、霓虹描框、框邊粒子、粒子綻放、體積光爆、屏息暗角、落定脈衝、玻璃掃光、收尾光澤、餘暉、全幅爆點疊圖與其素材）在第一刀就刪掉：它們的啟動曲線只對 10 s 雙翻成立，留著也是死碼。卡背、正面卡、資訊欄、星光、閃光保留舊皮，第二刀再換。
 - 染色觸覺（R／SR）、烙印與星星的 tick 等第二刀和它們的畫面一起上。
+- 儀式行為的測試併進既有的 `practice_chat_screen_style_test.dart` 與 `practice_collection_screen_test.dart`（§14.1 本來就要大改），沒有另開 `practice_draw_reveal_v3_test.dart`。
 
 還沒做：背景模糊、稀有度染色與新卡背、光刃、星塵、全息掃光、膠囊稀有度牌、兩行資訊欄與星星逐顆點亮（第二刀）；N／R／SR 三條配樂與收卡音（第三刀；v4 時 Bruce 要求 SR／R／N 聲音一致，D3 改成分稀有度，開工前再確認一次）。
-- 審查：一般 PR，一位非作者模型的獨立 AI reviewer；Eric 做正式 GitHub review 與合併決定。
-- 實作分派由 Eric 決定（2026-07-05 曾把 SR 專屬大特效分給 Codex，見 `docs/plans/2026-07-05-practice-rarity-gacha-design.md`）。
+
+審查後補修（2026-10-15，自審找到的邊界）：
+
+- 抽牌中仍是 drawing 的狀態更新（練習室的提示、拆解剛好回來）原本被當成失敗把卡背淡掉；改成不理（§5.1）。
+- 抽牌中離開圖鑑又回來，新掛上的儀式還是 hidden，原本結果回來時揭曉整個掉了；改成接著把卡背入場走完再揭曉（§5.4）。
+- 圖鑑的 +1 要等抽卡流程存完草稿才到，比揭曉起點晚一兩幀，原本捲動估算用它未解鎖時的位置、光球找不到目標；改成揭曉中的這張卡先當成已解鎖排序（§5.4）。
+- reduce-motion 抽中時沒有配樂接手，咻聲的暖尾巴原本會留在圖鑑上；改成抽中當下一起收掉（§5.1）。
 
 ---
 
