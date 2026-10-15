@@ -1023,8 +1023,8 @@ void main() {
         _revealedSeed().copyWith(girl: girl, personaId: girl.personaId);
 
     /// 抽牌 → 卡背入場走完 → server 回來（揭曉起點：onRevealTarget 捲動起跑）。
-    /// [unlockInto]：比照 production，抽中當下同一輪（microtask）就寫進圖鑑集合，
-    /// 下一幀的捲動定位才看得到這張卡已解鎖（已解鎖置頂）。
+    /// [unlockInto]：抽中當下同一輪就寫進圖鑑集合。production 的 +1 要等草稿存完才到、
+    /// 可能晚一兩幀；晚到的情況見「解鎖晚到」那一條。
     Future<void> drawAndReveal(
       WidgetTester tester,
       _DrawSpyController controller,
@@ -1334,6 +1334,47 @@ void main() {
       expect(find.byKey(frontKey), findsOneWidget); // 揭曉、停住
 
       await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('解鎖晚一兩幀才到：那一格仍先排進已解鎖那段，收卡光球飛向它', (tester) async {
+      // 用 view 定尺寸（430 寬的大螢幕 iPhone）：捲動估算讀 MediaQuery，要和實際版面一致。
+      tester.view.physicalSize = const Size(1290, 2796);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      // 已解鎖 12 張；目標在鎖卡段的第 28 張。還沒解鎖時排第 40 格（第 20 列），
+      // 解鎖後排第 12 格（第 6 列）：估算若用舊排序，會捲到離它十幾列外的地方。
+      final target = practiceGirlProfiles[40];
+      final notifier = _SeededCollection({
+        for (final g in practiceGirlProfiles.take(12)) g.profileId,
+      });
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.pumpWidget(
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600)); // 入場走完
+      controller.debugSetState(revealedWith(target)); // R0：捲動起跑，還沒解鎖
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16)); // 過了一幀
+      notifier.add(target.profileId); // 圖鑑 +1 晚到
+      await tester.pumpAndSettle(); // 揭曉走完停住
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump(); // 收卡起飛
+      final orb = tester.widget<CustomPaint>(find.byKey(orbKey));
+      final highlight =
+          find.byKey(ValueKey('collection-highlight-${target.profileId}'));
+      expect(debugArchiveOrbTarget(orb.painter!), isNotNull,
+          reason: '那一格要在畫面內，光球才不會原地收掉');
+      expect(debugArchiveOrbTarget(orb.painter!), tester.getRect(highlight));
+
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 250));
     });

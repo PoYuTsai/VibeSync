@@ -140,7 +140,12 @@ class _PracticeCollectionScreenState
   /// 目前 filter 下 grid 實際顯示的清單（build 與捲動估算共用）。
   /// 已解鎖置頂、鎖卡沉底，兩組內都維持 catalog 原序。
   List<PracticeGirlProfile> _visibleProfiles() {
-    final unlocked = ref.read(practiceUnlockedProfileIdsProvider);
+    final unlocked = {
+      ...ref.read(practiceUnlockedProfileIdsProvider),
+      // 揭曉中的這張卡已經抽中，但圖鑑的樂觀 +1 要等抽卡流程存完草稿才到，可能晚一兩幀。
+      // 先把它排進已解鎖那一段，捲動估算與收卡光球的目標才不會指到它還沒解鎖時的位置。
+      if (_highlightProfileId != null) _highlightProfileId!,
+    };
     final filtered = _filter == null
         ? practiceGirlProfiles
         : practiceGirlProfiles.where((p) => p.rarity == _filter);
