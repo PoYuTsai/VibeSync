@@ -535,7 +535,7 @@ final ValueChanged<String>? onArchived;
 |---|---|
 | 全螢幕只有一個 `BackdropFilter` | 資訊欄的毛玻璃用照片副本＋`ImageFiltered`，不讀 backdrop |
 | 逐幀 painter 不用 `MaskFilter.blur` | 光暈一律用漸層或預先模糊好的素材 |
-| 只有階段切換才 `setState` | 逐幀只重建 `Transform`／`Opacity`／`CustomPaint`；照片、文字、卡背圖片以 `child` 傳進 builder（plan 014 的做法） |
+| 只有階段切換才 `setState` | 階段內由 `AnimatedBuilder` 逐幀重建疊加層。原本打算把照片、文字、卡背圖片當 `child` 傳進 builder（plan 014 的做法），實作後揭曉 2.7 s 內幾乎每一層每幀都在變（照片緩縮、徽記亮度、染色、資訊欄透明度、星星），能省的只有 widget 重建、不是重畫，所以沒有照做（見 §16.2）；停住期間零動畫幀。真機若卡，先看 raster（全螢幕模糊與資訊欄毛玻璃），處理順序見 Plan B |
 | `RepaintBoundary` | Card3D、BokehDust、Backdrop 各一個 |
 | holding 零動畫幀 | 全螢幕模糊在有動畫時每幀都要重算，停住期間可能長達十幾秒 |
 | 預快取 | drawing 開始 `precacheImage` 卡背四張；R0 `precacheImage` 照片（距離正面出現還有 1350 ms） |
@@ -724,6 +724,15 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 
 - 點擊提示原本只有淡入，補上 §4.3 的上浮 6 px（和淡入共用同一條曲線，停住與收卡時定在原位）。
 - 抽牌中離開圖鑑又回來、由揭曉接著走卡背入場時，比照按下翻牌那一刻先解碼四張卡背素材。
+
+第二輪審查（另一個工作階段）後修正：
+
+- 第一刀的修正一起合進來：儀式擋掉底下的讀屏節點、配樂起播少等一次 setVolume（§16.1）。
+- 資訊欄不再設 `liveRegion`，VoiceOver 停住時只唸一次（§5.4）。
+- slop 白名單拿掉 `practice_reveal_card.dart`：它的陰影本來就不會被抓，先開豁免只會讓棘輪漏報。
+- 收卡星點的灑出時間先算成常數表（`kPracticeArchiveSparkleSpawnMs`），painter 不再每幀二分反解。
+- §12「圖片、文字以 child 傳進 builder」沒有照做，改成記錄原因（§12）；效能以真機為準。
+- DESIGN.md 的 D1–D9 改寫成作者先定、待 Eric 確認。
 
 ---
 
