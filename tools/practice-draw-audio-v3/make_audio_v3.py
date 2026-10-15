@@ -29,9 +29,9 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / 'assets/audio/practice_draw'
 SR = 48000
 
-# 來源（git 歷史）：bed v4 在 2aae192 之前都在；紙聲最後一次在 e0f534e（第二刀）。
+# 來源（git 歷史）：bed v4 與紙聲都取 main 上的 2aae192（V3 開工基準）；兩個檔之後都已從 repo 移除。
 BED_V4_REV = '2aae192:assets/audio/practice_draw/practice_draw_reveal_bed.mp3'
-SNAP_REV = 'e0f534e:assets/audio/practice_draw/practice_draw_flip_snap_1.wav'
+SNAP_REV = '2aae192:assets/audio/practice_draw/practice_draw_flip_snap_1.wav'
 
 # bed：和 v5 同一段、同樣的淡入淡出。
 BED_START_S = 4.95

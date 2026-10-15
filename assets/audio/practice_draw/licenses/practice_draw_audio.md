@@ -145,7 +145,7 @@ VibeSync 專用內容），加上 Claude Code 程式合成的長音。沒有使�
 
 第三刀開工前確認：N／R／SR 用**同一條**揭曉配樂（沿用 v4「SR／R／N 聲音一致」），染色與星星不另外出聲，
 稀有度差別只靠畫面與震動；另加一個收卡音。兩個檔都由 `tools/practice-draw-audio-v3/make_audio_v3.py`
-產出（從 git 取 bed v4 `2aae192` 與紙聲 `e0f534e`，重跑結果逐位元相同）。
+產出（bed v4 與紙聲都從 git 取 main 上的 `2aae192`，重跑結果逐位元相同）。
 
 **bed v6（`practice_draw_reveal_bed_v6.m4a`，取代 bed v5）**：素材性質同 v5（bed v4 的片段：夥伴以 Gemini
 生成的 VibeSync 專用內容＋Claude Code 程式合成長音），再混入本專案原創的翻牌紙聲；沒有加任何新的音。
