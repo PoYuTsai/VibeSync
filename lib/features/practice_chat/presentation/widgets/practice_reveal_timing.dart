@@ -11,6 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter/animation.dart';
 
 import '../../../../core/theme/app_motion.dart';
+import '../../domain/entities/practice_girl_rarity.dart';
 
 abstract final class PracticeRevealTiming {
   // ── drawing（以按下翻牌為 0）──
@@ -34,25 +35,60 @@ abstract final class PracticeRevealTiming {
   /// 蓄力三下輕震（第一下在 R0）。
   static const double chargeTick1Ms = 200;
   static const double chargeTick2Ms = 400;
+
+  /// 卡背染色只升到真實稀有度。R／SR 第一段：銀 → 電光藍，徽記亮度衝到 1.0。
+  static const double dyeBlueMs = 600;
+  static const double dyeBlueEndMs = 720;
+
+  /// N 不變色，只做一次銀光脈衝（0.80 → 1.00 → 0.85）。
+  static const double silverPulsePeakMs = 700;
+  static const double silverPulseEndMs = 800;
+
+  /// SR 第二段：藍 → 香檳金，徽記白色爆閃 120 ms，外框疊上全息彩邊。
+  static const double dyeGoldMs = 850;
+  static const double dyeGoldEndMs = 1000;
+  static const double goldFlashMs = 120;
   static const double flipStartMs = 1100;
 
   /// SR 的 celebrate 三下共 200 ms，提前起手讓第三下重擊落在翻牌峰值。
   static const double srBuildMs = 1150;
 
-  /// 卡片正好側立（yaw 90°）：換面＋閃光＋最重的一下觸覺。
+  /// 卡片正好側立（yaw 90°）：換面＋光刃＋星塵爆發＋最重的一下觸覺。
   static const double flipPeakMs = 1350;
   static const double flipEndMs = 1800;
+
+  /// 光刃：外暈前 60 ms 張開、之後 190 ms 收掉；SR 另加一道 180 ms 的橫向十字。
+  static const double bladeOpenMs = 60;
+  static const double bladeMs = 250;
+  static const double crossMs = 180;
 
   /// 翻牌落定前點擊一律不理；落定後點擊＝快轉到資訊全部落位。
   static const double skipFromMs = 1800;
   static const Duration skip = Duration(milliseconds: 180);
   static const double photoZoomStartMs = 1500;
+
+  /// 全息斜向掃光：光帶從卡片左外側（−120%）掃到右外側（+120%）。
+  static const double sheenStartMs = 1700;
+  static const double sheenEndMs = 2400;
   static const double infoStartMs = 1850;
   static const double infoEndMs = 2150;
+
+  /// 稀有度牌烙印：在這之前牌根本不存在（不先掛別的稀有度）。
+  static const double stampStartMs = 2000;
+  static const double stampEndMs = 2250;
+  static const double stampFadeMs = 100;
+
+  /// 星星逐顆點亮（只畫亮星）：第 i 顆從 2150＋80·i 起跳，每顆 220 ms。
+  static const double starsStartMs = 2150;
+  static const double starStaggerMs = 80;
+  static const double starPopMs = 220;
   static const double hintStartMs = 2400;
 
   // ── archiving（以點擊收卡為 0）──
   static const Duration archive = Duration(milliseconds: 550);
+
+  /// 收卡第一拍：資訊欄、稀有度牌、星星在 80 ms 內淡掉（同時卡面開始變成光）。
+  static const double archiveInfoOutMs = 80;
   static const double collapseEndMs = 150;
   static const double cardFadeStartMs = 60;
   static const double orbAppearStartMs = 90;
@@ -68,6 +104,10 @@ abstract final class PracticeRevealTiming {
   /// 找不到目標格時，光球在原地縮到 0 的結束點。
   static const double implodeEndMs = 350;
 
+  /// 收卡路上灑出的星點：各自向外漂 20 px、300 ms 淡掉。
+  static const int sparkleCount = 8;
+  static const double sparkleLifeMs = 300;
+
   static double get revealMs => reveal.inMilliseconds.toDouble();
   static double get introMs => intro.inMilliseconds.toDouble();
   static double get captionMs => caption.inMilliseconds.toDouble();
@@ -82,6 +122,11 @@ abstract final class PracticeRevealTiming {
 
   /// 翻牌後半：高阻尼減速；肉眼與提案的 cubic-bezier(0.16, 1, 0.3, 1) 幾乎一樣。
   static const Curve settle = AppMotion.easeOut;
+
+  /// 稀有度牌的撞擊感：略微壓過 1.0 再回彈（DESIGN.md §6：彈感只准 celebrate 檔，
+  /// 烙印與星星屬於慶祝時刻）。
+  static const Curve stamp = AppMotion.celebrateCurve;
+  static const Curve sheen = Curves.easeInOut;
   static const Curve flight = Curves.easeInOutCubic;
 }
 
@@ -122,7 +167,7 @@ double practiceRevealSeg(double ms, double from, double to) =>
   return (yaw: 90 + 90 * out, pitch: 6 * (1 - out), scale: 0.92 + 0.08 * out);
 }
 
-/// yaw 超過 90° 才畫正面；剛好 90° 卡片側立看不見，由閃光遮住換面。
+/// yaw 超過 90° 才畫正面；剛好 90° 卡片側立看不見，由光刃遮住換面。
 bool practiceRevealShowsFront(double ms) => practiceRevealPose(ms).yaw > 90;
 
 /// 蓄力亮度（0..1）：蓄力段漸亮，之後維持滿。
@@ -131,10 +176,197 @@ double practiceRevealChargeGlow(double ms) =>
       practiceRevealSeg(ms, 0, PracticeRevealTiming.chargeEndMs),
     );
 
-/// 翻牌峰值閃光：以側立那一刻為中心的窄鐘形。
-double practiceRevealFlipFlash(double ms) {
-  final d = (ms - PracticeRevealTiming.flipPeakMs) / 110;
-  return math.exp(-d * d);
+/// 卡背染色進度：`blue`＝銀 → 電光藍，`gold`＝藍 → 香檳金。只升到真實稀有度：
+/// N 兩個都恆 0（全程銀）、R 的 `gold` 恆 0；不做「先金後退回藍」的假動作。
+({double blue, double gold}) practiceRevealDye(
+  double ms,
+  PracticeGirlRarity rarity,
+) {
+  if (rarity == PracticeGirlRarity.n) return (blue: 0.0, gold: 0.0);
+  final blue = PracticeRevealTiming.enter.transform(
+    practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.dyeBlueMs,
+      PracticeRevealTiming.dyeBlueEndMs,
+    ),
+  );
+  if (rarity == PracticeGirlRarity.r) return (blue: blue, gold: 0.0);
+  final gold = PracticeRevealTiming.enter.transform(
+    practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.dyeGoldMs,
+      PracticeRevealTiming.dyeGoldEndMs,
+    ),
+  );
+  return (blue: blue, gold: gold);
+}
+
+/// 卡背徽記亮度（0..1）：蓄力 0.35 → 0.80；N 再做一次 0.80 → 1.00 → 0.85 的銀光
+/// 脈衝；R／SR 染藍時衝到 1.0 並維持。
+double practiceRevealEmblemGlow(double ms, PracticeGirlRarity rarity) {
+  final charged = 0.35 + 0.45 * practiceRevealChargeGlow(ms);
+  if (ms < PracticeRevealTiming.dyeBlueMs) return charged;
+  if (rarity == PracticeGirlRarity.n) {
+    if (ms < PracticeRevealTiming.silverPulsePeakMs) {
+      return 0.80 +
+          0.20 *
+              Curves.easeOut.transform(
+                practiceRevealSeg(
+                  ms,
+                  PracticeRevealTiming.dyeBlueMs,
+                  PracticeRevealTiming.silverPulsePeakMs,
+                ),
+              );
+    }
+    return 1.0 -
+        0.15 *
+            Curves.easeIn.transform(
+              practiceRevealSeg(
+                ms,
+                PracticeRevealTiming.silverPulsePeakMs,
+                PracticeRevealTiming.silverPulseEndMs,
+              ),
+            );
+  }
+  return 0.80 +
+      0.20 *
+          PracticeRevealTiming.enter.transform(
+            practiceRevealSeg(
+              ms,
+              PracticeRevealTiming.dyeBlueMs,
+              PracticeRevealTiming.dyeBlueEndMs,
+            ),
+          );
+}
+
+/// 卡背外框亮度（0..1）：蓄力 0.25 → 0.60，之後維持。
+double practiceRevealFrameGlow(double ms) =>
+    0.25 + 0.35 * practiceRevealChargeGlow(ms);
+
+/// SR 染金那一刻的徽記白色爆閃（0..1）：120 ms，前 30% 衝滿、之後退掉。N／R 恆 0。
+double practiceRevealGoldFlash(double ms, PracticeGirlRarity rarity) {
+  if (rarity != PracticeGirlRarity.sr) return 0;
+  final t = practiceRevealSeg(
+    ms,
+    PracticeRevealTiming.dyeGoldMs,
+    PracticeRevealTiming.dyeGoldMs + PracticeRevealTiming.goldFlashMs,
+  );
+  if (t <= 0 || t >= 1) return 0;
+  return t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
+}
+
+/// 卡片背後環境光的放大倍率：1.00 →（染藍）1.15 →（染金）1.35。
+double practiceRevealAmbientScale(double ms, PracticeGirlRarity rarity) {
+  final dye = practiceRevealDye(ms, rarity);
+  return 1 + 0.15 * dye.blue + 0.20 * dye.gold;
+}
+
+/// 光刃外暈寬度（0..1，乘上卡寬的一半）：卡片側立後 60 ms 張開、190 ms 收掉。
+double practiceRevealBladeWidth(double ms) {
+  final t = ms - PracticeRevealTiming.flipPeakMs;
+  if (t <= 0 || t >= PracticeRevealTiming.bladeMs) return 0;
+  if (t < PracticeRevealTiming.bladeOpenMs) {
+    return PracticeRevealTiming.enter
+        .transform(t / PracticeRevealTiming.bladeOpenMs);
+  }
+  return 1 -
+      Curves.easeIn.transform(
+        (t - PracticeRevealTiming.bladeOpenMs) /
+            (PracticeRevealTiming.bladeMs - PracticeRevealTiming.bladeOpenMs),
+      );
+}
+
+/// 光刃白色核心的粗細（px）：2 → 1；光刃時段外回 0。
+double practiceRevealBladeCore(double ms) {
+  final t = ms - PracticeRevealTiming.flipPeakMs;
+  if (t < 0 || t >= PracticeRevealTiming.bladeMs) return 0;
+  return 2 - t / PracticeRevealTiming.bladeMs;
+}
+
+/// 光刃白色核心的不透明度：最後 50 ms 淡掉，不會一刀切。
+double practiceRevealBladeCoreAlpha(double ms) {
+  final t = ms - PracticeRevealTiming.flipPeakMs;
+  if (t < 0 || t >= PracticeRevealTiming.bladeMs) return 0;
+  return 1 -
+      practiceRevealSeg(
+        t,
+        PracticeRevealTiming.bladeMs - 50,
+        PracticeRevealTiming.bladeMs,
+      );
+}
+
+/// SR 的橫向十字光（0..1）：卡片側立起 180 ms 的鐘形。N／R 恆 0。
+double practiceRevealCross(double ms, PracticeGirlRarity rarity) {
+  if (rarity != PracticeGirlRarity.sr) return 0;
+  final t =
+      (ms - PracticeRevealTiming.flipPeakMs) / PracticeRevealTiming.crossMs;
+  if (t <= 0 || t >= 1) return 0;
+  return math.sin(math.pi * t);
+}
+
+/// 全息掃光的光帶位置（以卡寬為單位，−1.2 → +1.2）。時段外回 null＝不畫。
+double? practiceRevealSheenX(double ms) {
+  if (ms <= PracticeRevealTiming.sheenStartMs ||
+      ms >= PracticeRevealTiming.sheenEndMs) {
+    return null;
+  }
+  return -1.2 +
+      2.4 *
+          PracticeRevealTiming.sheen.transform(
+            practiceRevealSeg(
+              ms,
+              PracticeRevealTiming.sheenStartMs,
+              PracticeRevealTiming.sheenEndMs,
+            ),
+          );
+}
+
+/// 稀有度牌已經烙上（在這之前牌不存在）。
+bool practiceRevealStamped(double ms) =>
+    ms >= PracticeRevealTiming.stampStartMs;
+
+/// 稀有度牌縮放：1.6 → 1.0，略微壓過 1.0 再回彈。
+double practiceRevealStampScale(double ms) =>
+    1.6 -
+    0.6 *
+        PracticeRevealTiming.stamp.transform(
+          practiceRevealSeg(
+            ms,
+            PracticeRevealTiming.stampStartMs,
+            PracticeRevealTiming.stampEndMs,
+          ),
+        );
+
+/// 稀有度牌不透明度：烙印的前 100 ms 淡入。
+double practiceRevealStampOpacity(double ms) => practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.stampStartMs,
+      PracticeRevealTiming.stampStartMs + PracticeRevealTiming.stampFadeMs,
+    );
+
+/// 第 [index] 顆星的起跳時間。
+double practiceRevealStarStartMs(int index) =>
+    PracticeRevealTiming.starsStartMs +
+    PracticeRevealTiming.starStaggerMs * index;
+
+double _starT(double ms, int index) {
+  final start = practiceRevealStarStartMs(index);
+  return practiceRevealSeg(ms, start, start + PracticeRevealTiming.starPopMs);
+}
+
+/// 第 [index] 顆星的縮放：0 → 1.25（前 60%）→ 1.00（後 40%）；起跳前 0＝不畫。
+double practiceRevealStarScale(double ms, int index) {
+  final t = _starT(ms, index);
+  if (t <= 0) return 0;
+  if (t < 0.6) return 1.25 * Curves.easeOut.transform(t / 0.6);
+  return 1.25 - 0.25 * Curves.easeInOut.transform((t - 0.6) / 0.4);
+}
+
+/// 第 [index] 顆星點亮時的一次發光脈衝（0..1）。
+double practiceRevealStarPulse(double ms, int index) {
+  final t = _starT(ms, index);
+  if (t <= 0 || t >= 1) return 0;
+  return math.sin(math.pi * t);
 }
 
 /// 照片緩縮倍率：翻開時 1.08，1500 ms 起緩縮到 1.00（揭曉結束）。
@@ -196,6 +428,15 @@ double practiceCaptionIn(double ms) => practiceRevealSeg(
       PracticeRevealTiming.captionMs,
     );
 
+/// 收卡：資訊欄、稀有度牌、星星先淡掉（1 → 0）。
+double practiceArchiveInfoOpacity(double ms) =>
+    1 - practiceRevealSeg(ms, 0, PracticeRevealTiming.archiveInfoOutMs);
+
+/// 收卡：卡面疊上的稀有度色徑向光（0 → 1），像整張卡變成光。
+double practiceArchiveCardLight(double ms) => Curves.easeInCubic.transform(
+      practiceRevealSeg(ms, 0, PracticeRevealTiming.collapseEndMs),
+    );
+
 /// 收卡：卡片縮小倍率（1 → 0.15）。
 double practiceArchiveCardScale(double ms) =>
     1 -
@@ -234,6 +475,42 @@ double practiceArchiveFlightT(double ms) =>
       ),
     );
 
+/// 收卡：光球核心半徑（px）。90–150 ms 在卡片中心從 14 長到 18，飛行中縮到 10。
+double practiceArchiveOrbRadius(double ms) {
+  if (ms < PracticeRevealTiming.orbAppearStartMs) return 0;
+  if (ms < PracticeRevealTiming.flightStartMs) {
+    return 14 +
+        4 *
+            PracticeRevealTiming.enter.transform(
+              practiceRevealSeg(
+                ms,
+                PracticeRevealTiming.orbAppearStartMs,
+                PracticeRevealTiming.flightStartMs,
+              ),
+            );
+  }
+  return 18 - 8 * practiceArchiveFlightT(ms);
+}
+
+/// 收卡：第 [index] 顆星點（1..8）灑出的時間＝光球的路徑參數 t 經過 0.1·index 那一刻。
+double practiceArchiveSparkleSpawnMs(int index) {
+  final target = 0.1 * index;
+  // 飛行曲線單調遞增：二分法反解線性進度，再換回毫秒。
+  var lo = 0.0;
+  var hi = 1.0;
+  for (var i = 0; i < 24; i++) {
+    final mid = (lo + hi) / 2;
+    if (PracticeRevealTiming.flight.transform(mid) < target) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return PracticeRevealTiming.flightStartMs +
+      (PracticeRevealTiming.landMs - PracticeRevealTiming.flightStartMs) *
+          ((lo + hi) / 2);
+}
+
 /// 收卡弧線的控制點：弦的中點沿法向量偏 0.35×弦長，取水平方向較靠近畫面中線的
 /// 那一側（弧線不會飛出螢幕），再夾在畫面內縮 24 px 的範圍內。
 Offset practiceArchiveControlPoint(Offset p0, Offset p2, Size stage) {
@@ -258,3 +535,7 @@ Offset practiceQuadBezier(Offset p0, Offset p1, Offset p2, double t) {
   final u = 1 - t;
   return p0 * (u * u) + p1 * (2 * u * t) + p2 * (t * t);
 }
+
+/// 二次貝茲曲線在參數 [t] 的切線方向（未正規化）。
+Offset practiceQuadBezierTangent(Offset p0, Offset p1, Offset p2, double t) =>
+    (p1 - p0) * (2 * (1 - t)) + (p2 - p1) * (2 * t);

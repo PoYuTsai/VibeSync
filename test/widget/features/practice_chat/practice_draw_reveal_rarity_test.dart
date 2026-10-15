@@ -1,6 +1,6 @@
-// 翻牌揭曉「結果卡」的稀有度呈現（邊框／光暈／badge／星等）。
+// 翻牌揭曉「結果卡」的稀有度呈現（V3：外框光暈／膠囊稀有度牌／只畫亮星）。
 //
-// 紅線：只驗結果卡的靜態裝飾，不碰翻牌演出時間軸（beat 常數／controller 皆不涉入）。
+// 紅線：只驗結果卡停住時的靜態裝飾，不碰翻牌演出時間軸（beat 常數／controller 皆不涉入）。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
@@ -8,6 +8,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_pr
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_rarity_style.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_theme.dart';
 
 void main() {
   // 錨點與 catalog 指定同步：004=SR、010=R、001=N（見 practice_persona.ts）。
@@ -19,10 +20,10 @@ void main() {
     test('SR 金／R 青藍／N 中性銀灰（與圖鑑 _rarityColor 同一真相）', () {
       // 2026-08-09 改版：N 去藍味退成銀灰、R 改青藍（暗紫背景上與 N 拉開），
       // 階梯＝銀灰→藍→金。
-      expect(practiceRarityColor(PracticeGirlRarity.sr),
-          const Color(0xFFFFB34D));
-      expect(practiceRarityColor(PracticeGirlRarity.n),
-          const Color(0xFFA9B0B8));
+      expect(
+          practiceRarityColor(PracticeGirlRarity.sr), const Color(0xFFFFB34D));
+      expect(
+          practiceRarityColor(PracticeGirlRarity.n), const Color(0xFFA9B0B8));
       // R 用 AppColors.cold 青藍；只驗三色互異避免鎖死主題常數。
       expect(
         practiceRarityColor(PracticeGirlRarity.r),
@@ -44,7 +45,7 @@ void main() {
         home: Scaffold(
           backgroundColor: Colors.black,
           body: Center(
-            child: debugCeremonyGrandCardFront(
+            child: debugCeremonyCardFront(
               girl: girl,
               width: 300,
               height: 450,
@@ -56,8 +57,8 @@ void main() {
     await tester.pump();
   }
 
-  group('揭曉結果卡（grand）稀有度呈現', () {
-    testWidgets('SR 卡：badge 顯 SR、4 亮星 1 空星', (tester) async {
+  group('揭曉結果卡稀有度呈現（停住時）', () {
+    testWidgets('SR 卡：稀有度牌顯 SR、只畫 4 顆亮星（D6=A 不畫空星）', (tester) async {
       expect(sr.rarity, PracticeGirlRarity.sr); // 錨點保險
       await pumpGrandCard(tester, sr);
 
@@ -79,7 +80,7 @@ void main() {
       expect(
         find.descendant(
             of: stars, matching: find.byIcon(Icons.star_outline_rounded)),
-        findsNWidgets(1),
+        findsNothing,
       );
     });
 
@@ -100,7 +101,7 @@ void main() {
       );
     });
 
-    testWidgets('N 卡：badge 顯 N、2 亮星；邊框光暈用 N 冷灰藍', (tester) async {
+    testWidgets('N 卡：稀有度牌顯 N、2 顆亮星；外光用 N 主題的銀', (tester) async {
       expect(n.rarity, PracticeGirlRarity.n);
       await pumpGrandCard(tester, n);
       final badge =
@@ -116,21 +117,54 @@ void main() {
         findsNWidgets(2),
       );
 
-      // 邊框/光暈套 rarity 色：结果卡外框 Container 的 boxShadow 帶 N 色。
+      // 外框外光套揭曉主題色：結果卡外框 Container 的 boxShadow 帶 N 主題的銀。
       final front = tester.widget<Container>(
         find.byKey(const ValueKey('practice-draw-ceremony-front')),
       );
       final deco = front.decoration! as BoxDecoration;
-      final nColor = practiceRarityColor(PracticeGirlRarity.n);
+      final nGlow = PracticeRevealTheme.of(PracticeGirlRarity.n).glow;
       expect(
         deco.boxShadow!.any(
           (s) =>
               (s.color.toARGB32() & 0x00FFFFFF) ==
-              (nColor.toARGB32() & 0x00FFFFFF),
+              (nGlow.toARGB32() & 0x00FFFFFF),
         ),
         isTrue,
-        reason: 'grand 卡光暈應套 N 稀有度色',
+        reason: '結果卡外光應套 N 主題色',
       );
+    });
+
+    testWidgets('剛翻開落定（還沒烙印）時沒有稀有度牌、星星還沒點亮', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: debugCeremonyCardFront(
+                girl: sr,
+                width: 300,
+                height: 450,
+                settled: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-rarity-badge')),
+        findsNothing,
+      );
+      final scales = tester
+          .widgetList<Transform>(
+            find.descendant(
+              of: find
+                  .byKey(const ValueKey('practice-draw-ceremony-rarity-stars')),
+              matching: find.byType(Transform),
+            ),
+          )
+          .map((t) => t.transform.entry(0, 0));
+      expect(scales, everyElement(0));
     });
   });
 }

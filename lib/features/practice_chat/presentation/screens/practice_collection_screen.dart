@@ -23,6 +23,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../widgets/practice_draw_ceremony.dart';
 import '../widgets/practice_rarity_style.dart';
+import '../widgets/practice_reveal_theme.dart';
 
 /// 新卡那一格的發光長度（亮起→停留→淡出）。由儀式收卡的光球落位那一刻起跑，
 /// 不再固定等一段時間（V3 停多久由使用者決定）。
@@ -805,9 +806,9 @@ class _OnboardingGuideOverlay extends StatelessWidget {
   }
 }
 
-/// 揭曉後新卡的單次微光高亮：邊框金光亮起→淡出，由單一 forward-only controller
-/// 驅動（走完由 screen 清掉高亮 id，本 widget 隨之卸載，絕不常駐）。強度映射
-/// 見 [collectionHighlightIntensityAt]（等待段恆 0＝儀式 scrim 蓋著時不白亮）。
+/// 揭曉後新卡的單次微光高亮：光球落進來那一刻邊框亮起→淡出，由單一 forward-only
+/// controller 驅動（走完由 screen 清掉高亮 id，本 widget 隨之卸載，絕不常駐）。強度映射
+/// 見 [collectionHighlightIntensityAt]；顏色和收卡光球同一色（稀有度主題的 orb）。
 class _UnlockHighlight extends StatelessWidget {
   const _UnlockHighlight({
     required this.profileId,
@@ -825,13 +826,15 @@ class _UnlockHighlight extends StatelessWidget {
       animation: glow,
       builder: (context, inner) {
         final intensity = collectionHighlightIntensityAt(glow.value);
+        final orb =
+            PracticeRevealTheme.of(practiceGirlRarityFor(profileId)).orb;
         return Container(
           key: ValueKey('collection-highlight-$profileId'),
           foregroundDecoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               width: 2,
-              color: const Color(0xFFFFC24D).withValues(alpha: 0.9 * intensity),
+              color: orb.withValues(alpha: 0.9 * intensity),
             ),
           ),
           decoration: intensity <= 0.001
@@ -840,8 +843,7 @@ class _UnlockHighlight extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.brandFlame
-                          .withValues(alpha: 0.5 * intensity),
+                      color: orb.withValues(alpha: 0.5 * intensity),
                       blurRadius: 20,
                       spreadRadius: 2,
                     ),

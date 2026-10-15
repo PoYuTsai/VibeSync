@@ -63,6 +63,7 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | LiquidBeam 入口光暈 | `practice_room_entry_card.dart`（練習室入口用 1.6 / 10 / .5 微光）＋建立對象卡（維持 `LiquidBeamEntryPreset` 2.4 / 18 / 1） | Eric 2026-08-12 拍板：Hero 退成貼邊微光，建立對象卡不跟著弱化；兩者速度維持 6800ms |
 | 首頁頭像 flow | 首頁對象卡頭像流光 | 同上，角速度已對齊 beam |
 | 抽卡儀式 glow | `practice_collection_screen.dart` 抽卡/翻牌 `brandFlame` 呼吸光暈 | 儀式性場景，慶祝時刻 |
+| 抽卡揭曉 V3 光效 | `practice_draw_ceremony.dart`、`practice_reveal_card.dart`、`practice_reveal_painters.dart`：卡背依稀有度染色光（銀→藍→金）、卡面外光、全息掃光、光刃、星塵、收卡光球；圖鑑那一格的落位光（`practice_collection_screen.dart`，和收卡光球同色）。色值集中在 `lib/core/theme/practice_reveal_palette.dart` | 揭曉是儀式時刻，稀有度靠光色分級；規格 `docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md` §6–§7（2026-10-15 D1–D9 定案） |
 | shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式 |
 | 動畫 bokeh 背景 | `gradient_background.dart`——只掛首頁（MainShell）與登入頁 | 品牌記憶點＋入場儀式（S12 拍板）；其他頁一律靜態 `BrandPageBackground` |
 | splash 開屏儀式 | wordmark 紫暈（2 層）＋環境光＋暗角＋載入圓點脈光 | 開屏儀式時刻；浮動光球已拆（S12） |
