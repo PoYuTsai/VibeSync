@@ -5,7 +5,8 @@ Date: 2026-06-27
 Scope:
 - `assets/audio/practice_draw/practice_draw_reveal_bed_v5.m4a`（2026-10-15 起取代 `practice_draw_reveal_bed.mp3`：同一素材剪出的片段，見 `assets/audio/practice_draw/licenses/practice_draw_audio.md` 的 bed v5）
 - `assets/images/practice/practice_draw_card_back_base.png`
-- `assets/images/practice/practice_draw_card_back_neon.png`
+- `assets/images/practice/practice_draw_card_back_neon.png`（2026-10-15 起 app 不再使用，V3 上線且真機通過後的清理刀再刪）
+- `assets/images/practice/practice_draw_card_back_v3_base.webp`、`practice_draw_card_back_v3_emblem_mask.webp`、`practice_draw_card_back_v3_frame_mask.webp`、`practice_draw_card_back_v3_glow.webp`（2026-10-15，V3 卡背：由上面的 `practice_draw_card_back_base.png` 以 `tools/practice-draw-card-back-v3/make_card_back_v3.py` 離線去色成石墨銀、拆出徽記與外框遮罩、預先模糊光暈；構圖與徽記不變，來源與授權同下）
 
 Removed:
 - `assets/images/practice/practice_draw_explosion_reference.webp`（2026-10-15，V3 單次翻牌拿掉第二次翻牌的爆點疊圖，檔案移除）
