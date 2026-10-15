@@ -221,10 +221,9 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   int preload = 0;
   int waitingStart = 0;
   int waitingStop = 0;
-  int chime = 0;
   int bedStart = 0;
   int bedStop = 0;
-  int flipSnap = 0;
+  int archive = 0;
   final List<String> calls = [];
 
   /// start 次數多於 stop ⇒ loop 仍在播（用來驗證離開 drawing 後必為 false）。
@@ -264,12 +263,6 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   }
 
   @override
-  void playRevealChime() {
-    chime++;
-    calls.add('chime');
-  }
-
-  @override
   void playRevealBed() {
     bedStart++;
     calls.add('bedStart');
@@ -282,9 +275,9 @@ class _SpyPracticeDrawSfx implements PracticeDrawSfx {
   }
 
   @override
-  void playFlipSnap() {
-    flipSnap++;
-    calls.add('flipSnap');
+  void playArchive() {
+    archive++;
+    calls.add('archive');
   }
 }
 
@@ -3854,7 +3847,7 @@ void main() {
 
     expect(spy.whoosh, 1);
     expect(spy.waitingStart, 0); // F3：等待期保持安靜，不再播細碎 shimmer。
-    expect(spy.chime, 0); // 尚未揭曉
+    expect(spy.archive, 0); // 尚未收卡
     expect(spy.looping, isFalse);
 
     // 收尾：成功揭曉、收卡收掉 overlay（避免殘留 ticker）。
@@ -3911,8 +3904,8 @@ void main() {
     expect(spy.whoosh, 1);
     expect(spy.waitingStart, 0);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
-    expect(spy.chime, 0); // 舊 reveal chime 不再疊在 master audio 上
     expect(spy.bedStart, 1); // 主音軌接管揭曉音效
+    expect(spy.archive, 0); // 停住時還沒收卡，收卡音不會先響
     expect(spy.looping, isFalse); // 等待 loop 已停、不殘留
 
     await finishCeremony(tester);
@@ -3933,8 +3926,8 @@ void main() {
 
     expect(spy.waitingStart, 0); // F3：drawing 等待期固定靜音
     expect(spy.waitingStop, greaterThanOrEqualTo(1)); // 相容 stop 仍安全收斂
-    expect(spy.chime, 0); // 402 不慶祝
-    expect(spy.flipSnap, 0); // 沒有翻面就沒有翻牌紙聲
+    expect(spy.bedStart, 0); // 402 不慶祝：沒有配樂（翻牌紙聲也在配樂裡）
+    expect(spy.archive, 0); // 沒有揭曉就沒有收卡音
     expect(spy.whooshStop, 1); // 咻聲尾巴不帶到付費牆
     expect(spy.looping, isFalse);
   });
@@ -3952,8 +3945,8 @@ void main() {
 
     expect(spy.waitingStart, 0);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
-    expect(spy.chime, 0); // 429 不慶祝
-    expect(spy.flipSnap, 0); // 沒有翻面就沒有翻牌紙聲
+    expect(spy.bedStart, 0); // 429 不慶祝：沒有配樂（翻牌紙聲也在配樂裡）
+    expect(spy.archive, 0); // 沒有揭曉就沒有收卡音
     expect(spy.whooshStop, 1); // 咻聲尾巴不帶到錯誤提示
     expect(spy.looping, isFalse);
   });
@@ -4035,8 +4028,7 @@ void main() {
     await tester.pump(kPracticeDrawRequestTimeout + const Duration(seconds: 1));
   });
 
-  testWidgets('音效（reset）：normal-motion 不疊舊 chime、master bed 從 reveal 起播',
-      (tester) async {
+  testWidgets('音效（V3）：揭曉期間只有一條 bed（翻牌紙聲在裡面），收卡音只在點擊收卡時播一次', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -4044,35 +4036,33 @@ void main() {
 
     await drawToReveal(tester,
         completer: completer, girl: practiceGirlProfiles[2]);
-
-    // server 剛回應、卡片尚未翻開；音效由 master bed 起播，不再疊舊叮聲。
-    expect(spy.chime, 0);
     expect(spy.bedStart, 1);
+    final atReveal = spy.calls.length;
 
-    // 跨過翻牌峰值也不補舊 chime，避免兩套音效契約並存。
-    await tester.pump(revealAt(PracticeRevealTiming.flipEndMs));
-    expect(spy.chime, 0);
+    // 跨過翻牌峰值、走到停住：不另外起任何音效（紙聲已混在 bed 的 1.35 s）。
+    await tester.pumpAndSettle();
+    expect(find.byKey(_ceremonyHintKey), findsOneWidget); // 停住
+    expect(spy.calls.length, atReveal);
+    expect(spy.archive, 0);
 
-    // 走完整條、收卡也不觸發舊 chime。
-    await finishCeremony(tester);
-    expect(spy.chime, 0);
+    // 點擊收卡：先起收卡音，再淡出配樂與咻聲尾巴。
+    await tester.tap(find.byKey(_ceremonyContinueKey));
+    await tester.pump();
+    expect(spy.calls.sublist(atReveal), ['archive', 'bedStop', 'whooshStop']);
+
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(spy.archive, 1); // 整條收完仍只有一次
   });
 
-  testWidgets('音效（reset）：reduce-motion 跳翻面 → 不播舊 chime（不靠 reveal edge）',
-      (tester) async {
+  testWidgets('音效（V3）：reduce-motion 沒有儀式畫面，也沒有收卡音', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
     await pumpLockedWithSfx(tester, api: api, sfx: spy, reduceMotion: true);
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing
-    await tester.pump(); // draw 完成 → reduce-motion：直接收掉 overlay
-
-    // reduce-motion 沒有 reveal 動畫；舊 chime 不再補播，避免和 master audio 分裂。
-    expect(spy.chime, 0);
-
     await tester.pumpAndSettle();
-    expect(spy.chime, 0);
+    expect(spy.archive, 0);
     await tester.pump(const Duration(milliseconds: 250));
   });
 
@@ -4113,13 +4103,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await finishCeremony(tester);
     expect(spy.bedStart, 1);
-    expect(spy.flipSnap, 1);
+    expect(spy.archive, 1);
 
     // 再抽一次（Task 5 後換人入口在圖鑑；host 測試鈕直呼 draw）。
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await finishCeremony(tester);
     expect(spy.bedStart, 2); // 第二次揭曉重起一條
-    expect(spy.flipSnap, 2); // 對拍點每次揭曉重新觸發一輪
+    expect(spy.archive, 2); // 每次收卡各一聲
     expect(spy.bedPlaying, isFalse);
   });
 
@@ -4165,14 +4155,14 @@ void main() {
     await tester.pump(); // drawing
     await tester.pump(); // draw 完成 → reduce-motion 直接收掉 overlay
     expect(spy.bedStart, 0); // reduce-motion 無 _reveal 時間軸 → 不起配樂
-    expect(spy.flipSnap, 0); // 也沒有翻面對拍
+    expect(spy.archive, 0); // 也沒有收卡音
     expect(spy.bedPlaying, isFalse);
 
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 250));
   });
 
-  // ── 對拍：翻牌紙聲與觸覺跟著畫面撞擊格 ──────────────────────────────────────
+  // ── 對拍：觸覺跟著畫面撞擊格（翻牌紙聲已混在 bed 裡）────────────────────────
   // 觸覺從系統 channel 攔：tap＝lightImpact、light＝mediumImpact、medium＝heavyImpact，
   // celebrate＝light→medium→heavy（共 200 ms）、tick＝selectionClick。
   List<String> recordHaptics(WidgetTester tester) {
@@ -4195,36 +4185,18 @@ void main() {
   List<String> withoutTicks(List<String> vibrates) =>
       vibrates.where((v) => v != tickHaptic).toList();
 
-  // 一次成功揭曉＋收卡的完整音效序列：SR／R／N 必須完全相同（稀有度一致）。
+  // 一次成功揭曉＋收卡的完整音效序列：SR／R／N 必須完全相同（規格 D3：同一條配樂）。
   const revealSfxSequence = [
     'whoosh',
     'preload',
     'waitingStop',
     'bedStart',
-    'flipSnap',
+    'archive', // 點擊收卡：收卡音
     'bedStop', // 點擊收卡：bed 淡出
     'whooshStop', // 點擊收卡：咻聲尾巴淡出
     'waitingStop', // 收掉 overlay
     'bedStop',
   ];
-
-  testWidgets('對拍（V3）：翻牌紙聲在卡片側立（1.35 s）播一次', (tester) async {
-    final spy = _SpyPracticeDrawSfx();
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLockedWithSfx(tester, api: api, sfx: spy);
-    await drawToReveal(tester,
-        completer: completer, girl: practiceGirlProfiles[2]);
-
-    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs - 10));
-    expect(spy.flipSnap, 0); // 1.34 s：還沒側立
-    await tester.pump(const Duration(milliseconds: 20));
-    expect(spy.flipSnap, 1); // 1.36 s：剛好一次
-
-    await finishCeremony(tester);
-    expect(spy.flipSnap, 1); // 整條跑完仍只有一次
-    expect(spy.chime, 0); // 舊 reveal chime 不回來
-  });
 
   testWidgets('對拍（V3）：N 不變色不震，翻牌峰值重擊、烙印一下、落位一下', (tester) async {
     final vibrates = recordHaptics(tester);
@@ -4297,7 +4269,7 @@ void main() {
     expect(spy.calls, revealSfxSequence); // 聲音和 N 完全一樣
   });
 
-  testWidgets('對拍（v4）：reduce-motion 沒有儀式，觸覺留在抽中當下、沒有紙聲', (tester) async {
+  testWidgets('對拍（v4）：reduce-motion 沒有儀式，觸覺留在抽中當下、沒有配樂與收卡音', (tester) async {
     final vibrates = recordHaptics(tester);
     final spy = _SpyPracticeDrawSfx();
     final n = practiceGirlProfiles
@@ -4311,7 +4283,8 @@ void main() {
       'HapticFeedbackType.mediumImpact', // 抽牌
       'HapticFeedbackType.heavyImpact', // 抽中當下
     ]);
-    expect(spy.flipSnap, 0);
+    expect(spy.bedStart, 0);
+    expect(spy.archive, 0);
   });
 
   group('E1 卡尺寸 responsive', () {

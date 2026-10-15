@@ -14,30 +14,34 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('揭曉音檔（bed v5＋咻聲 v2）', () {
+  group('揭曉音檔（bed v6＋收卡音＋咻聲 v2）', () {
     test('reveal bed 音檔實際 bundle 在 assets（避免 runtime 找不到 asset）', () {
       final bed =
-          File('assets/audio/practice_draw/practice_draw_reveal_bed_v5.m4a');
+          File('assets/audio/practice_draw/practice_draw_reveal_bed_v6.m4a');
       expect(bed.existsSync(), isTrue,
           reason: 'reveal bed m4a 必須存在於 assets/audio/practice_draw/');
       // 非空（真音檔，不是 0-byte 佔位）；3.3 s AAC 應有數十 KB。
       expect(bed.lengthSync(), greaterThan(10000));
     });
 
-    test('reveal bed 鎖定 v5（v4 的 4.95–8.25 s 片段，高潮對齊 V3 單次翻牌）；v4 已移除', () {
+    test('reveal bed 鎖定 v6（N／R／SR 同一條，翻牌紙聲混在 1.35 s）；v4／v5 已移除', () {
       final bed =
-          File('assets/audio/practice_draw/practice_draw_reveal_bed_v5.m4a');
+          File('assets/audio/practice_draw/practice_draw_reveal_bed_v6.m4a');
 
       expect(
         sha256.convert(bed.readAsBytesSync()).toString(),
-        'fb7a0208d66923a07626b5acccfa99725e95b1777d80ee09b0da7d0345f8223a',
+        'f49e9de1c45c432c606b6b71ce939c1e9044184754dc4026ba6ccef00ebf8b72',
       );
-      expect(
-        File('assets/audio/practice_draw/practice_draw_reveal_bed.mp3')
-            .existsSync(),
-        isFalse,
-        reason: 'v4 已由 v5 取代，不要兩份 bed 並存',
-      );
+      for (final old in [
+        'practice_draw_reveal_bed.mp3',
+        'practice_draw_reveal_bed_v5.m4a',
+      ]) {
+        expect(
+          File('assets/audio/practice_draw/$old').existsSync(),
+          isFalse,
+          reason: '$old 已由 v6 取代，不要兩份 bed 並存',
+        );
+      }
     });
 
     test('咻聲 v2 改成 m4a（含等待尾巴）並鎖定 master；舊 wav 已移除', () {
@@ -57,21 +61,30 @@ void main() {
       );
     });
 
-    test('翻牌紙聲三個變體都 bundle 並鎖定 master', () {
-      const expected = {
-        'practice_draw_flip_snap_1.wav':
-            'b07529562f0d14f889c23195b67f4ffcc08ac378e5e70007117a03f7be36a9e5',
-        'practice_draw_flip_snap_2.wav':
-            '489f005df644cad6272be0953a697f94487e0f0343a1ef445c684bfc0cfdbeaa',
-        'practice_draw_flip_snap_3.wav':
-            '5a1074b789ea273555abf896d5874f9954d2401b8724401f92f442b7de9c96ca',
-      };
-      expected.forEach((name, hash) {
-        final snap = File('assets/audio/practice_draw/$name');
-        expect(snap.existsSync(), isTrue, reason: '$name 必須存在');
-        expect(sha256.convert(snap.readAsBytesSync()).toString(), hash,
-            reason: name);
-      });
+    test('收卡音 bundle 並鎖定 master', () {
+      final archive =
+          File('assets/audio/practice_draw/practice_draw_archive_v3.m4a');
+      expect(archive.existsSync(), isTrue,
+          reason: '收卡音 m4a 必須存在於 assets/audio/practice_draw/');
+      expect(
+        sha256.convert(archive.readAsBytesSync()).toString(),
+        '4a1b490e8b1c1950d4bad19bdc06194270e263c1655eec796063c2bb9fcba23e',
+      );
+    });
+
+    test('翻牌紙聲已混進 bed、舊 reveal chime 已退役：檔案都不再 bundle', () {
+      for (final old in [
+        'practice_draw_flip_snap_1.wav',
+        'practice_draw_flip_snap_2.wav',
+        'practice_draw_flip_snap_3.wav',
+        'practice_draw_reveal_chime.wav',
+      ]) {
+        expect(
+          File('assets/audio/practice_draw/$old').existsSync(),
+          isFalse,
+          reason: '$old 已沒有呼叫點',
+        );
+      }
     });
   });
 
@@ -104,16 +117,15 @@ void main() {
       expect(AudioPlayersPracticeDrawSfx.new, returnsNormally);
     });
 
-    test('八個呼叫點在無 platform 下皆靜默不丟', () async {
+    test('七個呼叫點在無 platform 下皆靜默不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
       expect(() {
         sfx.playWhoosh();
         sfx.preloadReveal();
-        sfx.playFlipSnap();
         sfx.playWaitingLoop();
-        sfx.playRevealChime();
         sfx.playRevealBed();
+        sfx.playArchive();
         sfx.stopRevealBed();
         sfx.stopWaitingLoop();
       }, returnsNormally);
@@ -164,14 +176,14 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
 
-    test('playFlipSnap：預載前後、連續多次（三個變體輪流）皆不丟', () async {
+    test('playArchive：預載前後、連續多次（從頭重起）皆不丟', () async {
       final sfx = AudioPlayersPracticeDrawSfx();
 
       expect(() {
-        sfx.playFlipSnap(); // 沒預載也安全：會先預載
+        sfx.playArchive(); // 沒預載也安全：會先預載
         sfx.preloadReveal();
-        for (var i = 0; i < 4; i++) {
-          sfx.playFlipSnap(); // 輪過一圈再回到第一個變體
+        for (var i = 0; i < 3; i++) {
+          sfx.playArchive(); // 連續收卡：每次從頭重起
         }
       }, returnsNormally);
 
@@ -260,11 +272,10 @@ void main() {
       expect(() {
         sfx.playWhoosh();
         sfx.preloadReveal();
-        sfx.playFlipSnap();
         sfx.playWaitingLoop();
         sfx.stopWaitingLoop();
-        sfx.playRevealChime();
         sfx.playRevealBed();
+        sfx.playArchive();
         sfx.stopRevealBed();
       }, returnsNormally);
 

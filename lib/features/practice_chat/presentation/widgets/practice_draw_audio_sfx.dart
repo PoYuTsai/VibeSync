@@ -7,15 +7,15 @@ import 'practice_draw_sfx.dart';
 
 // ── 音量常數（集中於此，方便真機調整）─────────────────────────────────────
 // 真機目檢時直接調這三個值即可，不必動播放邏輯。
-// 咻聲 v2 母帶到 true peak −1.2 dBTP、bed v4 母帶到 −18 LUFS（v5 是它的片段，樣本不變），音量由參考混音反推：
+// 咻聲 v2 母帶到 true peak −1.2 dBTP、bed v4 母帶到 −18 LUFS（v6 是它的片段＋紙聲，響度不變），
+// 音量由參考混音反推：
 // - 咻聲：手機上比揭曉高潮小 8 dB（舊版反而大 8.5 dB）。調大不要超過約 0.27，
 //   高潮至少要比咻聲大 6 dB。
-// - bed：翻牌後和舊版（F2 × 0.75）一樣大聲。
+// - bed：翻牌後和舊版（F2 × 0.75）一樣大聲；紙聲已照原本的比例混在檔裡。
+// - 收卡音：落點那一聲比揭曉高潮小約 6 dB（比咻聲大一點）。
 const double _kWhooshVolume = 0.22;
-const double _kRevealChimeVolume = 0.8; // 揭曉叮聲：建議 0.7–0.9。
 const double _kRevealBedVolume = 0.74;
-// - 翻牌紙聲：比 F2 自己的翻牌重音小 11 dB，只補紙的「啪」，不搶重音。
-const double _kFlipSnapVolume = 0.25;
+const double _kArchiveVolume = 0.42;
 
 // 咻聲停止（抽牌失敗／離開畫面）：正在出聲時 0.5 秒淡出再停，不一刀切，跟畫面遮罩的
 // 淡出（約 0.5 秒）同步。20 步，每步 25 ms，音量差很小，聽不出階梯。
@@ -25,23 +25,18 @@ const int _kWhooshFadeSteps = 20;
 // ── 音檔路徑（相對 AudioCache 預設 prefix `assets/`）────────────────────────
 // 咻聲 v2：實心起手，加一段一次性的暖尾巴（C–G 長音，最長 5.5 s）接住等待 server 的空檔。
 const String _kWhooshAsset = 'audio/practice_draw/practice_draw_whoosh.m4a';
-const String _kRevealChimeAsset =
-    'audio/practice_draw/practice_draw_reveal_chime.wav';
-// bed v5（V3 第一刀過渡版）：bed v4 從 4.95 s 剪到 8.25 s（120 ms 淡入、尾段 0.4 s 淡出），
-// 讓 v4 的 6.3 s 高潮落在 V3 單次翻牌（揭曉 1.35 s），並在 v4 的 8.5 s 落定重擊之前收掉，
-// 停住等點擊時不會突然一聲。正式的 N／R／SR 三條揭曉配樂在第三刀換上。
+// bed v6：N／R／SR 同一條（規格 D3）。bed v4 從 4.95 s 剪到 8.25 s（120 ms 淡入、尾段 0.4 s
+// 淡出），v4 的高潮落在 V3 單次翻牌（揭曉 1.35 s），翻牌紙聲也直接混在 1.35 s，和音樂同一個
+// player、不會各自延遲；在 v4 的 8.5 s 落定重擊之前收掉，停住等點擊時不會突然一聲。
 const String _kRevealBedAsset =
-    'audio/practice_draw/practice_draw_reveal_bed_v5.m4a';
+    'audio/practice_draw/practice_draw_reveal_bed_v6.m4a';
+// 收卡音：0.8 s，0.45 s（光球落進那一格）一聲水晶鈴。
+const String _kArchiveAsset =
+    'audio/practice_draw/practice_draw_archive_v3.m4a';
 
 // 揭曉配樂停止（點擊收卡／離開畫面）：正在出聲時 0.25 秒淡出再停，跟收卡光球同步。
 const Duration _kRevealBedFadeOut = Duration(milliseconds: 250);
 const int _kRevealBedFadeSteps = 10;
-// 翻牌紙聲：三個變體輪流（沒有音高，離線做變體取代即時變速）。
-const List<String> _kFlipSnapAssets = [
-  'audio/practice_draw/practice_draw_flip_snap_1.wav',
-  'audio/practice_draw/practice_draw_flip_snap_2.wav',
-  'audio/practice_draw/practice_draw_flip_snap_3.wav',
-];
 
 /// 翻牌音效的全域 AudioContext：尊重靜音鍵、不打斷使用者的背景音樂。
 ///
@@ -91,9 +86,9 @@ Future<void> fadeOutThenStop({
 ///   播放時才建立。所有 play／stop／context 設定都吞掉同步與 async 例外，因此在 headless
 ///   ／widget-test 環境（無 audio platform channel）一律靜默、絕不丟例外、絕不留未監聽的
 ///   create 失敗。真機才會真的發聲。
-/// - **獨立 player**：whoosh／reveal chime／揭曉配樂 bed 各自一個 player，避免互相截斷。
-///   whoosh／chime 是一次性（`ReleaseMode.release`）；bed 與三個翻牌紙聲由 [preloadReveal]
-///   先載好（`ReleaseMode.stop`，停止後保留音源），播放時從頭 resume，降低起播延遲。
+/// - **獨立 player**：whoosh／揭曉配樂 bed／收卡音各自一個 player，避免互相截斷。
+///   whoosh 是一次性（`ReleaseMode.release`）；bed 與收卡音由 [preloadReveal] 先載好
+///   （`ReleaseMode.stop`，停止後保留音源），播放時從頭 resume，降低起播延遲。
 /// - **咻聲停止**：[stopWhoosh] 在咻聲正在出聲時 0.5 秒淡出再停，還沒出聲就直接停。淡出用
 ///   Dart 計時器，只有 player 真的在播（真機）才會啟動；headless／widget test 裡 player 從未
 ///   進入播放狀態，所以不會留下計時器。
@@ -109,16 +104,13 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   int _whooshGeneration = 0;
   // 正在淡出的那一輪：同一輪重複 stopWhoosh 不重來，音量才不會跳回去。
   int? _whooshFadingGeneration;
-  AudioPlayer? _chimePlayer;
   AudioPlayer? _bedPlayer;
   // bed 預載：完成為 true；失敗會清掉，下一次預載或播放再試。
   Future<bool>? _bedReady;
   // 每次 playRevealBed 遞增；預載期間被停掉或重起時，只讓最後一次起播。
   int _bedGeneration = 0;
-  // 翻牌紙聲：每個變體一個預載好的 player，輪流播。
-  final List<AudioPlayer> _snapPlayers = [];
-  Future<bool>? _snapReady;
-  int _nextSnap = 0;
+  AudioPlayer? _archivePlayer;
+  Future<bool>? _archiveReady;
 
   bool _bedActive = false;
   bool _contextConfigured = false;
@@ -203,12 +195,6 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   }
 
   @override
-  void playRevealChime() {
-    final player = _chimePlayer ??= _create(ReleaseMode.release);
-    _playOneShot(player, _kRevealChimeAsset, _kRevealChimeVolume);
-  }
-
-  @override
   void playWaitingLoop() {
     // F3：刻意固定靜音。勿重新接回舊 asset；見 docs/bug-log.md 2026-07-16。
   }
@@ -222,7 +208,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   void preloadReveal() {
     try {
       _ensureBedPrepared();
-      _ensureSnapsPrepared();
+      _ensureArchivePrepared();
     } catch (_) {
       // 預載失敗不丟；播放時會再試。
     }
@@ -253,33 +239,25 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     }
   }
 
-  /// 同 [_ensureBedPrepared]，給三個翻牌紙聲。
-  Future<bool> _ensureSnapsPrepared() {
-    final current = _snapReady;
+  /// 同 [_ensureBedPrepared]，給收卡音。
+  Future<bool> _ensureArchivePrepared() {
+    final current = _archiveReady;
     if (current != null) return current;
-    final next = _prepareSnaps();
-    _snapReady = next;
+    final next = _prepareArchive();
+    _archiveReady = next;
     unawaited(
       next.then((ok) {
-        if (!ok && identical(_snapReady, next)) _snapReady = null;
+        if (!ok && identical(_archiveReady, next)) _archiveReady = null;
       }),
     );
     return next;
   }
 
-  /// 建立三個紙聲 player 並載好音源。成功回 true；失敗回 false、不丟。
-  Future<bool> _prepareSnaps() async {
+  /// 建立收卡音 player 並載好音源。成功回 true；失敗回 false、不丟。
+  Future<bool> _prepareArchive() async {
     try {
-      if (_snapPlayers.isEmpty) {
-        _snapPlayers.addAll(
-          List.generate(_kFlipSnapAssets.length, (_) => AudioPlayer()),
-        );
-      }
-      await Future.wait([
-        for (var i = 0; i < _kFlipSnapAssets.length; i++)
-          _loadForReplay(
-              _snapPlayers[i], _kFlipSnapAssets[i], _kFlipSnapVolume),
-      ]);
+      final player = _archivePlayer ??= AudioPlayer();
+      await _loadForReplay(player, _kArchiveAsset, _kArchiveVolume);
       return true;
     } catch (_) {
       return false;
@@ -331,22 +309,20 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   }
 
   @override
-  void playFlipSnap() {
+  void playArchive() {
     try {
       _ensureContext();
-      final variant = _nextSnap;
-      // 三個變體輪流，連續兩次不重複。
-      _nextSnap = (_nextSnap + 1) % _kFlipSnapAssets.length;
-      unawaited(_startSnap(_ensureSnapsPrepared(), variant));
+      unawaited(_startArchive(_ensureArchivePrepared()));
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。
     }
   }
 
-  Future<void> _startSnap(Future<bool> ready, int variant) async {
+  Future<void> _startArchive(Future<bool> ready) async {
     try {
       if (!await ready) return;
-      final player = _snapPlayers[variant];
+      final player = _archivePlayer;
+      if (player == null) return;
       await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
       await player.resume();
     } catch (_) {
