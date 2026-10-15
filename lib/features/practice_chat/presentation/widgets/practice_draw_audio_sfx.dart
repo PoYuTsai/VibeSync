@@ -7,7 +7,7 @@ import 'practice_draw_sfx.dart';
 
 // ── 音量常數（集中於此，方便真機調整）─────────────────────────────────────
 // 真機目檢時直接調這三個值即可，不必動播放邏輯。
-// 咻聲 v2 母帶到 true peak −1.2 dBTP、bed v4 母帶到 −18 LUFS，音量由參考混音反推：
+// 咻聲 v2 母帶到 true peak −1.2 dBTP、bed v4 母帶到 −18 LUFS（v5 是它的片段，樣本不變），音量由參考混音反推：
 // - 咻聲：手機上比揭曉高潮小 8 dB（舊版反而大 8.5 dB）。調大不要超過約 0.27，
 //   高潮至少要比咻聲大 6 dB。
 // - bed：翻牌後和舊版（F2 × 0.75）一樣大聲。
@@ -27,9 +27,15 @@ const int _kWhooshFadeSteps = 20;
 const String _kWhooshAsset = 'audio/practice_draw/practice_draw_whoosh.m4a';
 const String _kRevealChimeAsset =
     'audio/practice_draw/practice_draw_reveal_chime.wav';
-// bed v4：F2 整首提前 0.37 s 對齊畫面＋低頻整理；翻牌前與屏息補 C–G 長音，翻牌後回到原曲。
+// bed v5（V3 第一刀過渡版）：bed v4 從 4.95 s 剪到 8.25 s（120 ms 淡入、尾段 0.4 s 淡出），
+// 讓 v4 的 6.3 s 高潮落在 V3 單次翻牌（揭曉 1.35 s），並在 v4 的 8.5 s 落定重擊之前收掉，
+// 停住等點擊時不會突然一聲。正式的 N／R／SR 三條揭曉配樂在第三刀換上。
 const String _kRevealBedAsset =
-    'audio/practice_draw/practice_draw_reveal_bed.mp3';
+    'audio/practice_draw/practice_draw_reveal_bed_v5.m4a';
+
+// 揭曉配樂停止（點擊收卡／離開畫面）：正在出聲時 0.25 秒淡出再停，跟收卡光球同步。
+const Duration _kRevealBedFadeOut = Duration(milliseconds: 250);
+const int _kRevealBedFadeSteps = 10;
 // 翻牌紙聲：三個變體輪流（沒有音高，離線做變體取代即時變速）。
 const List<String> _kFlipSnapAssets = [
   'audio/practice_draw/practice_draw_flip_snap_1.wav',
@@ -291,9 +297,9 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     await player.setSource(AssetSource(asset));
   }
 
-  // 揭曉配樂 bed：與 `_reveal`（10 s）同長同步的連續配樂，揭曉起始播一次。v4 的三個重音
-  // 都在 bed 裡，所以用預載好的 player 從頭 resume；同一個 player 先 stop 歸零再播，
-  // 換一位時若上一條還沒播完也不會疊兩條。
+  // 揭曉配樂 bed：與 `_reveal` 對好拍的配樂，揭曉起始播一次。高潮重音在 bed 裡，所以用
+  // 預載好的 player 從頭 resume；同一個 player 先 stop 歸零再播，換一位時若上一條還沒播完
+  // 也不會疊兩條。
   @override
   void playRevealBed() {
     try {
@@ -314,6 +320,9 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
       final player = _bedPlayer;
       if (player == null || !stillWanted()) return; // 預載期間已被停掉或重起。
       await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
+      if (!stillWanted()) return;
+      // 上一次收卡的淡出可能把音量留在 0：起播前一律設回來。
+      await player.setVolume(_kRevealBedVolume);
       if (!stillWanted()) return;
       await player.resume();
     } catch (_) {
@@ -345,13 +354,30 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     }
   }
 
+  /// 停止揭曉配樂：正在出聲時 0.25 秒淡出再停（點擊收卡時不一刀切），還沒出聲就直接停。
+  /// 淡出途中又開始新的一抽（[playRevealBed] 遞增 generation）就收手，不動新的那條。
   @override
   void stopRevealBed() {
     final player = _bedPlayer;
     if (player == null || !_bedActive) return; // 未建立／未播放 → idempotent no-op。
     _bedActive = false;
+    final generation = _bedGeneration;
     try {
-      unawaited(player.stop().catchError((Object _) {}));
+      if (player.state != PlayerState.playing) {
+        unawaited(player.stop().catchError((Object _) {}));
+        return;
+      }
+      unawaited(
+        fadeOutThenStop(
+          from: _kRevealBedVolume,
+          duration: _kRevealBedFadeOut,
+          steps: _kRevealBedFadeSteps,
+          stillWanted: () => generation == _bedGeneration,
+          setVolume: (volume) =>
+              unawaited(player.setVolume(volume).catchError((Object _) {})),
+          stop: () => unawaited(player.stop().catchError((Object _) {})),
+        ).catchError((Object _) {}),
+      );
     } catch (_) {
       // 停止失敗也不丟。
     }

@@ -14,23 +14,29 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('揭曉音檔 v4（bed＋咻聲 v2）', () {
+  group('揭曉音檔（bed v5＋咻聲 v2）', () {
     test('reveal bed 音檔實際 bundle 在 assets（避免 runtime 找不到 asset）', () {
       final bed =
-          File('assets/audio/practice_draw/practice_draw_reveal_bed.mp3');
+          File('assets/audio/practice_draw/practice_draw_reveal_bed_v5.m4a');
       expect(bed.existsSync(), isTrue,
-          reason: 'reveal bed mp3 必須存在於 assets/audio/practice_draw/');
-      // 非空（真音檔，不是 0-byte 佔位）；~10s mp3 應有數十 KB 以上。
+          reason: 'reveal bed m4a 必須存在於 assets/audio/practice_draw/');
+      // 非空（真音檔，不是 0-byte 佔位）；3.3 s AAC 應有數十 KB。
       expect(bed.lengthSync(), greaterThan(10000));
     });
 
-    test('reveal bed 鎖定 v4 master（F2 提前 0.37 s 對齊畫面＋補洞；避免誤換回 F2）', () {
+    test('reveal bed 鎖定 v5（v4 的 4.95–8.25 s 片段，高潮對齊 V3 單次翻牌）；v4 已移除', () {
       final bed =
-          File('assets/audio/practice_draw/practice_draw_reveal_bed.mp3');
+          File('assets/audio/practice_draw/practice_draw_reveal_bed_v5.m4a');
 
       expect(
         sha256.convert(bed.readAsBytesSync()).toString(),
-        'f211ee0f1755b072ca3b0c27f665bc53b035e5602c13682c6d70630e71b11c07',
+        'fb7a0208d66923a07626b5acccfa99725e95b1777d80ee09b0da7d0345f8223a',
+      );
+      expect(
+        File('assets/audio/practice_draw/practice_draw_reveal_bed.mp3')
+            .existsSync(),
+        isFalse,
+        reason: 'v4 已由 v5 取代，不要兩份 bed 並存',
       );
     });
 

@@ -117,7 +117,28 @@ VibeSync 專用內容），加上 Claude Code 程式合成的長音。沒有使�
 
 **播放**：進入抽牌等待時 `preloadReveal()` 先把 bed 與三個紙聲載入 player（`ReleaseMode.stop`），播放時
 從頭 resume，降低起播延遲；v4 的三個重音都在 bed 裡，bed 晚播重音就一起晚。紙聲在揭曉 3.3 s（第一次翻面
-中點）由 ceremony 的對拍點觸發一次，三個變體輪流。
+中點）由 ceremony 的對拍點觸發一次，三個變體輪流。（V3 起的播放方式見下一節。）
+
+### bed v5：V3 第一刀過渡版（2026-10-15）
+
+翻牌揭曉改成 V3（單次翻牌、停住等點擊、收卡飛行；規格
+`docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md`）後，揭曉從 10 s 縮成 2.7 s，v4 的高潮
+（6.3 s）會落在卡片已經翻開之後。正式的 N／R／SR 三條揭曉配樂在第三刀才做，這一刀先用 v4 剪一段過渡：
+
+**bed v5（`practice_draw_reveal_bed_v5.m4a`，取代 `practice_draw_reveal_bed.mp3`）**：bed v4 的片段，
+素材性質同 v4（夥伴以 Gemini 生成的 VibeSync 專用內容＋Claude Code 程式合成長音），沒有加任何新的音。
+
+- 來源 bed v4（SHA-256 `f211ee0f1755b072ca3b0c27f665bc53b035e5602c13682c6d70630e71b11c07`，
+  git `2aae192` 版）剪 4.95–8.25 s：v4 的高潮（約 6.3 s）落在揭曉 1.35 s 的單次翻牌；在 v4 的 8.5 s
+  落定重擊之前收掉，停住等點擊時不會突然一聲。
+- 開頭 120 ms 淡入（從曲中切入不爆音）、尾段 2.9–3.3 s 淡出。
+- 輸出 AAC 160 kbps／48 kHz／stereo、3.3 s、69KB，−17.2 LUFS、true peak −3.9 dBTP，程式播放音量
+  沿用 0.74（樣本與 v4 相同，高潮音量不變）。
+  SHA-256 `fb7a0208d66923a07626b5acccfa99725e95b1777d80ee09b0da7d0345f8223a`。
+- 重現：`ffmpeg -ss 4.95 -t 3.3 -i practice_draw_reveal_bed.mp3 -af "afade=t=in:st=0:d=0.12,afade=t=out:st=2.9:d=0.4" -c:a aac -b:a 160k -ar 48000 -ac 2 -movflags +faststart practice_draw_reveal_bed_v5.m4a`
+
+**播放（V3）**：揭曉起點（server 回來且卡背入場完成）播 bed v5，咻聲尾巴不停、交棒給 bed；紙聲改在揭曉
+1.35 s（卡片側立）觸發一次；點擊收卡時 bed 0.25 s 淡出、咻聲 0.5 s 淡出。v4 檔已從 repo 移除（git 歷史保留）。
 
 ## 授權鐵則（放音檔進來前必過）
 
@@ -134,8 +155,8 @@ VibeSync 專用內容），加上 Claude Code 程式合成的長音。沒有使�
 | `playWhoosh()` 抽牌咻聲（一次性：主體 ~0.5s＋暖尾巴，最長 5.5s） | `practice_draw_whoosh.m4a`（v2，110KB） | —（v1 為 `A_romantic_magic_01_whoosh.wav`） | Claude Code 原創程式化合成（for VibeSync） | 專案原創（非 CC0） | 2026-10-01 | 否 |
 | `playWaitingLoop()` 等待 shimmer loop（F3 已退役，不播放） | `practice_draw_waiting_loop.wav`（僅留歷史 provenance） | `A_romantic_magic_02_waiting_loop.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
 | `playRevealChime()` 揭曉 chime/sparkle（一次性，~0.6–1s） | `practice_draw_reveal_chime.wav` | `B_gacha_sss_03_reveal_chime.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
-| `playFlipSnap()` 翻牌紙聲（一次性，0.58s，揭曉 3.3s 對拍；三個變體輪流） | `practice_draw_flip_snap_{1,2,3}.wav`（各 111KB） | — | Claude Code 原創程式化合成（for VibeSync） | 專案原創（非 CC0） | 2026-10-01 | 否 |
-| `playRevealBed()` 揭曉配樂 bed（一次性，10.0s，與 `_reveal` 同步） | `practice_draw_reveal_bed.mp3`（v4，241KB） | F2 master 衍生：提前 0.37s＋低頻整理＋補洞 | 夥伴提供素材（F2）＋Claude Code 程式合成長音與後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-10-01 | 否 |
+| `playFlipSnap()` 翻牌紙聲（一次性，0.58s，揭曉 1.35s 卡片側立時對拍；三個變體輪流） | `practice_draw_flip_snap_{1,2,3}.wav`（各 111KB） | — | Claude Code 原創程式化合成（for VibeSync） | 專案原創（非 CC0） | 2026-10-01 | 否 |
+| `playRevealBed()` 揭曉配樂 bed（一次性，3.3s，高潮對齊 V3 單次翻牌） | `practice_draw_reveal_bed_v5.m4a`（v5，69KB） | bed v4 的 4.95–8.25s 片段（v4 已移除，見上節） | 夥伴提供素材（F2）＋Claude Code 程式合成長音與後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-10-15 | 否 |
 
 > ~~`playRiser()`／`playSettle()`（D4，`practice_draw_riser.wav`／`practice_draw_settle.wav`）已於 E2 退役並移除。~~
 

@@ -30,9 +30,11 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 
 final _outDir = '${Directory.current.path}/build/card_draw_preview/frames';
 
-// 24fps × 10.0s = 240 frames，對齊參考片（音檔.mp4 720×1280 24fps 10.000s）。
+// V3（單次翻牌＋停住＋收卡）：24fps × 5.0s = 120 frames。從抽牌入場後段起錄：
+// 入場剩約 0.45s → 揭曉 2.7s → 停住約 1.0s → 第 [_tapFrame] 幀點擊收卡 → 收卡 0.55s → 尾巴。
 const int _fps = 24;
-const int _frameCount = 240;
+const int _frameCount = 120;
+const int _tapFrame = 100;
 const double _dpr = 2.0; // 390×844 → 780×1688（偶數，ffmpeg 友善）
 
 // Windows 內建繁中字型 → 預覽影片不出現 tofu（測試環境無 CJK 字型）。
@@ -40,6 +42,10 @@ const _cjkFontCandidates = <String>[
   'C:/Windows/Fonts/NotoSansTC-VF.ttf',
   'C:/Windows/Fonts/msjh.ttc',
   '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf',
+  // Linux（CI 與雲端環境）：系統的文泉驛優先（實測逐幀不掉字），沒有再用 CI 裝的
+  // Noto CJK 單檔。
+  '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
 ];
 const _materialIconsFontCandidates = <String>[
   'build/unit_test_assets/fonts/MaterialIcons-Regular.otf',
@@ -219,6 +225,12 @@ void main() {
     const step = Duration(microseconds: 1000000 ~/ _fps);
 
     for (var i = 0; i < _frameCount; i++) {
+      if (i == _tapFrame) {
+        // 停住等點擊：點一下收卡，光球飛走。
+        await tester.tap(
+          find.byKey(const ValueKey('practice-draw-ceremony-continue')),
+        );
+      }
       await tester.runAsync(() async {
         final image = await boundary.toImage(pixelRatio: _dpr);
         final data = await image.toByteData(format: ui.ImageByteFormat.png);

@@ -1,6 +1,6 @@
 # 抽卡揭曉動畫 V3「全息典藏揭曉」實作規格（2026-10-15）
 
-> **狀態**：§1 的 D1–D9 於 2026-10-15 全部照建議定案（Gate-1），照 §16 的切片開始實作。
+> **狀態**：§1 的 D1–D9 於 2026-10-15 全部照建議定案（Gate-1）。第一刀（結構）已實作，見 §16 的實作紀錄；第二刀起照本規格接著做。
 > **基準**：HEAD `2aae192`；`lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart`（3556 行，V2：10 秒兩段升階）。
 > **參考**：
 > 1. 夥伴提供的參考片 `gemini_generated_video_11D7DA2F.mp4`（1280×720、24fps、240 幀、10.005 s、AAC 48 kHz 立體聲；下稱「參考片」）。
@@ -656,6 +656,25 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 
 - 一個目的一個 PR 的規則下，可以是一個 PR 四個 commit（每個 commit 一件事），也可以拆成四個 PR；由 Eric 決定。
 
+### 16.1 第一刀實作紀錄（2026-10-15）
+
+做了：
+
+- `practice_reveal_timing.dart`：§4 的時間軸常數與純函式（姿態、各層進度、收卡路徑），widget 與測試共用。
+- 儀式狀態機改成 hidden → drawing → revealing → holding → archiving；五個 controller（§5.2）；server 比入場快時等入場走完；單次翻牌；停住零動畫；1.8 s 後可跳過；返回鍵依 §4.4；停住時整層是 VoiceOver 按鈕。
+- 收卡：卡片坍縮 → 簡單金色光球沿弧線飛向目標格 → 落位光環；找不到目標格就原地收束。
+- 圖鑑頁：儀式移到 Scaffold 之上（蓋住 AppBar）；三個 callback；發光改成光球落位才亮（捲動未到位就等到位）；拿掉「集合變大就高亮」的監聽；重複角色也會標記。
+- 觸覺：抽牌、蓄力三下、翻牌峰值（N／R 重擊、SR 提前 200 ms celebrate）、光球落位。
+- 聲音（過渡）：v4 bed 剪成 bed v5（4.95–8.25 s，高潮落在單次翻牌），v4 檔移除；翻牌紙聲改在卡片側立時播；收卡時 bed 0.25 s 淡出、咻聲 0.5 s 淡出。
+
+和原規劃不同的地方：
+
+- 只屬於 V2 雙翻時間軸的特效（軌道光環、能量邊框、霓虹描框、框邊粒子、粒子綻放、體積光爆、屏息暗角、落定脈衝、玻璃掃光、收尾光澤、餘暉、全幅爆點疊圖與其素材）在第一刀就刪掉：它們的啟動曲線只對 10 s 雙翻成立，留著也是死碼。卡背、正面卡、資訊欄、星光、閃光保留舊皮，第二刀再換。
+- 染色觸覺（R／SR）、烙印與星星的 tick 等第二刀和它們的畫面一起上。
+
+還沒做：背景模糊、稀有度染色與新卡背、光刃、星塵、全息掃光、膠囊稀有度牌、兩行資訊欄與星星逐顆點亮（第二刀）；N／R／SR 三條配樂與收卡音（第三刀；v4 時 Bruce 要求 SR／R／N 聲音一致，D3 改成分稀有度，開工前再確認一次）。
+- 審查：一般 PR，一位非作者模型的獨立 AI reviewer；Eric 做正式 GitHub review 與合併決定。
+- 實作分派由 Eric 決定（2026-07-05 曾把 SR 專屬大特效分給 Codex，見 `docs/plans/2026-07-05-practice-rarity-gacha-design.md`）。
 
 ---
 
