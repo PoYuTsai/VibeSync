@@ -1433,6 +1433,51 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
     });
 
+    testWidgets('reduce-motion＋圖鑑 +1 晚一幀才到：一樣捲到那一格，捲動到位才亮', (tester) async {
+      final last = practiceGirlProfiles.last;
+      final notifier =
+          _SeededCollection({practiceGirlProfiles.first.profileId});
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(
+            controller: controller,
+            collectionNotifier: notifier,
+          ),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(revealedWith(last));
+      await tester.pump(); // 抽中當下：掛上高亮、捲動起跑（這張卡先排進已解鎖那段）
+      notifier.add(last.profileId); // 圖鑑 +1 晚到（草稿存完才解鎖）
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400)); // 捲動走完 → 補亮
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final highlightKey = ValueKey('collection-highlight-${last.profileId}');
+      expect(find.byKey(highlightKey), findsOneWidget, reason: '那一格要在畫面內');
+      expect(highlightBorderAlpha(tester, last.profileId), greaterThan(0));
+
+      await tester.pumpAndSettle();
+      expect(find.byKey(highlightKey), findsNothing);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
     testWidgets('reduce-motion 抽中：沒有儀式，咻聲的暖尾巴跟著收掉', (tester) async {
       final sfx = _SfxRecorder();
       final controller = _DrawSpyController(_lockedSeed());
