@@ -1287,5 +1287,55 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 250));
     });
+
+    testWidgets('抽牌中離開圖鑑又回來：結果回來時照樣揭曉（接著走完卡背入場）', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      final showPage = ValueNotifier(true);
+      addTearDown(showPage.dispose);
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(controller: controller),
+          child: MaterialApp(
+            home: ValueListenableBuilder<bool>(
+              valueListenable: showPage,
+              builder: (context, show, _) => show
+                  ? const PracticeCollectionScreen()
+                  // 離開圖鑑時上一頁（練習室）仍在聽 controller，它不會被 dispose。
+                  : Consumer(
+                      builder: (context, ref, _) {
+                        ref.watch(practiceChatControllerProvider);
+                        return const SizedBox.expand();
+                      },
+                    ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      showPage.value = false; // 抽牌中離開圖鑑：儀式卸載
+      await tester.pump();
+      showPage.value = true; // server 回來前又回到圖鑑：新的儀式還是 hidden
+      await tester.pump();
+      expect(find.byKey(backKey), findsNothing);
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(backKey), findsOneWidget); // 接著走卡背入場
+      await tester.pumpAndSettle();
+      expect(find.byKey(frontKey), findsOneWidget); // 揭曉、停住
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
   });
 }

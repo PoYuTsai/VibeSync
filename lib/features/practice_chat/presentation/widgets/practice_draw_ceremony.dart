@@ -317,8 +317,16 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _revealGirl = girl;
     if (_intro.isCompleted) {
       _beginReveal();
-    } else {
-      _pendingReveal = true; // 保證卡背入場走完才開始蓄力。
+      return;
+    }
+    _pendingReveal = true; // 保證卡背入場走完才開始蓄力。
+    // 卡背入場沒有在往前走：抽牌中離開圖鑑又回來（這個儀式還是 hidden），或正在淡出。
+    // 接著把入場走完再揭曉，不重播咻聲與觸覺（那是按下翻牌那一刻的事）。
+    if (_phase == _CeremonyPhase.hidden || _fadingOut) {
+      _fadingOut = false;
+      _sfx.preloadReveal();
+      setState(() => _phase = _CeremonyPhase.drawing);
+      _intro.forward();
     }
   }
 
