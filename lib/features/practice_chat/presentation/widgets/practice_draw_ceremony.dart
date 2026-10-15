@@ -246,6 +246,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
     if (!wasDrawing) return; // 以下都只處理「抽牌中 → 結果」的收斂。
 
+    // 抽牌中的其他狀態更新（例如練習室還在跑的提示、拆解剛好回來）不是結果：不理，
+    // 否則會被當成失敗淡出，真正的結果回來時已經沒有儀式可接。
+    if (next.isDrawing) return;
+
     // 抽牌成功揭曉：revealed 且沒有錯誤訊息（換一位失敗會回 revealed 但帶錯誤）。
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;

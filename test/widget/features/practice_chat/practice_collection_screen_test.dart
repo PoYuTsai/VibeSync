@@ -1263,5 +1263,29 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 250));
     });
+
+    testWidgets('抽牌中其他狀態更新（仍是 drawing）不會讓儀式淡出，結果回來照常揭曉', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+      final drawing =
+          _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing);
+
+      controller.debugSetState(drawing);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600)); // 入場走完
+      // 練習室還在跑的提示剛好回來：狀態變了，但仍在抽牌中。
+      controller.debugSetState(drawing.copyWith(hintUsedCount: 1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600)); // 淡出要 0.5 s
+      expect(find.byKey(backKey), findsOneWidget, reason: '卡背不該被當成失敗淡掉');
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pumpAndSettle();
+      expect(find.byKey(frontKey), findsOneWidget); // 照常揭曉、停住
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
   });
 }
