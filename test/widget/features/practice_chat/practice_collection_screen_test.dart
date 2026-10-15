@@ -13,6 +13,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_ra
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
@@ -1378,5 +1379,51 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 250));
     });
+
+    testWidgets('reduce-motion 抽中：沒有儀式，咻聲的暖尾巴跟著收掉', (tester) async {
+      final sfx = _SfxRecorder();
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ..._collectionOverrides(controller: controller),
+            practiceDrawSfxProvider.overrideWithValue(sfx),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      expect(sfx.calls, contains(#playWhoosh));
+      expect(sfx.calls, isNot(contains(#stopWhoosh)));
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pump();
+      expect(find.byKey(frontKey), findsNothing); // 沒有儀式畫面
+      expect(sfx.calls, contains(#stopWhoosh));
+
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
   });
+}
+
+/// 只記下儀式呼叫了哪些音效方法（不綁介面細節：介面增減方法時不用跟著改）。
+class _SfxRecorder implements PracticeDrawSfx {
+  final List<Symbol> calls = [];
+
+  @override
+  void noSuchMethod(Invocation invocation) => calls.add(invocation.memberName);
 }

@@ -311,6 +311,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       }
       widget.onRevealTarget?.call(girl);
       widget.onArchived?.call(girl.profileId);
+      // 沒有儀式也就沒有配樂可以交棒：咻聲的暖尾巴跟著收掉，不留在圖鑑上。
+      _sfx.stopWhoosh();
       _toHidden();
       return;
     }
