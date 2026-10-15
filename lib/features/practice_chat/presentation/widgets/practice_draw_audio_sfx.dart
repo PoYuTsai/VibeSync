@@ -121,6 +121,10 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   int _nextSnap = 0;
 
   bool _bedActive = false;
+
+  /// bed 最後一次被設的音量。預載時設成 [_kRevealBedVolume]；收卡淡出會一路降到 0，
+  /// 淡出走完再設回來。
+  double _bedVolume = _kRevealBedVolume;
   bool _contextConfigured = false;
   bool _contextPending = false;
 
@@ -321,9 +325,13 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
       if (player == null || !stillWanted()) return; // 預載期間已被停掉或重起。
       await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
       if (!stillWanted()) return;
-      // 上一次收卡的淡出可能把音量留在 0：起播前一律設回來。
-      await player.setVolume(_kRevealBedVolume);
-      if (!stillWanted()) return;
+      // 收卡淡出走完時就會把音量設回（[_stopAndRestoreBedVolume]），平常起播不必多等
+      // 一次 setVolume。只有淡出被新的一抽打斷、音量停在半路時，才要先設回來。
+      if (_bedVolume != _kRevealBedVolume) {
+        await player.setVolume(_kRevealBedVolume);
+        _bedVolume = _kRevealBedVolume;
+        if (!stillWanted()) return;
+      }
       await player.resume();
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。
@@ -373,13 +381,27 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
           duration: _kRevealBedFadeOut,
           steps: _kRevealBedFadeSteps,
           stillWanted: () => generation == _bedGeneration,
-          setVolume: (volume) =>
-              unawaited(player.setVolume(volume).catchError((Object _) {})),
-          stop: () => unawaited(player.stop().catchError((Object _) {})),
+          setVolume: (volume) {
+            _bedVolume = volume;
+            unawaited(player.setVolume(volume).catchError((Object _) {}));
+          },
+          stop: () => unawaited(_stopAndRestoreBedVolume(player)),
         ).catchError((Object _) {}),
       );
     } catch (_) {
       // 停止失敗也不丟。
+    }
+  }
+
+  /// 收卡淡出走完：停掉，再把音量設回起播音量（不在下一次起播的關鍵路徑上）。設回失敗
+  /// 就讓 [_bedVolume] 留在淡出後的值，下一次起播會自己先補設。
+  Future<void> _stopAndRestoreBedVolume(AudioPlayer player) async {
+    try {
+      await player.stop();
+      await player.setVolume(_kRevealBedVolume);
+      _bedVolume = _kRevealBedVolume;
+    } catch (_) {
+      // 音效非關鍵路徑：失敗不丟。
     }
   }
 }
