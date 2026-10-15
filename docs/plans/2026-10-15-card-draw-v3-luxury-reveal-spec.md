@@ -1,6 +1,6 @@
 # 抽卡揭曉動畫 V3「全息典藏揭曉」實作規格（2026-10-15）
 
-> **狀態**：§1 的 D1–D9 於 2026-10-15 全部照建議定案（Gate-1）。第一刀（結構）與第二刀（外觀）已實作，見 §16.1、§16.2；第三刀（聲音）開工前先再確認 D3。
+> **狀態**：§1 的 D1–D9 於 2026-10-15 定案（Gate-1；D3 後來改成三種稀有度同一條配樂）。第一刀（結構）、第二刀（外觀）、第三刀（聲音）已實作，見 §16.1–§16.3；剩第四刀（清理）。
 > **基準**：HEAD `2aae192`；`lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart`（3556 行，V2：10 秒兩段升階）。
 > **參考**：
 > 1. 夥伴提供的參考片 `gemini_generated_video_11D7DA2F.mp4`（1280×720、24fps、240 幀、10.005 s、AAC 48 kHz 立體聲；下稱「參考片」）。
@@ -36,7 +36,7 @@
 |---|---|---|---|
 | D1 | 節奏 | A 文字提案：server 回來後 2.7 s 全部落位（按下到可點最快 3.2 s）／B 照參考片：從蓄力到全部落位約 5.5 s | **A**。參考片在藍→金之間多轉一次、資訊分三段慢慢進，這兩處正是要修的地方 |
 | D2 | 卡背素材 | A 拿現有卡背調色成中性石墨銀，另外做發光遮罩，執行時依稀有度染色（構圖、徽記不變）／B 重新生成一張 | **A**。現有卡背是金框紫徽記，一開始就像 SR，做不出「銀→藍→金」 |
-| D3 | 音效來源 | A 依新時間軸重做 N／R／SR 三條揭曉配樂＋一個收卡音（自製或授權）／B 從這支參考片的音軌剪（授權要比照 `音檔.mp4` 再確認一次；時間點要整個重排） | **A**；B 可以先拿來做 Gate-2 預覽片 |
+| D3 | 音效來源 | A 依新時間軸重做 N／R／SR 三條揭曉配樂＋一個收卡音（自製或授權）／B 從這支參考片的音軌剪（授權要比照 `音檔.mp4` 再確認一次；時間點要整個重排） | ~~A~~ **改定（2026-10-15 第三刀開工前，PR 作者在工作階段確認）：N／R／SR 同一條**，沿用 v4「SR／R／N 聲音一致」：一條配樂通用，染色與星星不另外出聲，稀有度差別只靠畫面與震動；另加一個收卡音（§8） |
 | D4 | 集滿後再抽到重複角色 | A 一樣飛進原本那一格並發光／B 原地收掉不飛 | **A**（現在重複角色不會捲動也不會發光） |
 | D5 | 稀有度牌形狀 | A 金屬膠囊（文字提案；和圖鑑卡同一套語彙）／B 六角銘牌（參考片） | **A** |
 | D6 | 資訊欄排版 | A 兩行：名字／基本資訊＋右側星星，只顯示亮星（參考片）／B 三行＋5 格含空星（文字提案＋現行圖鑑卡） | **A**。揭曉當下 N 卡出現 3 顆空星，觀感偏負面；圖鑑卡維持現狀 |
@@ -406,28 +406,29 @@ Transform(
 
 ### 8.1 架構
 
+D3 改定後：N／R／SR 同一條配樂，稀有度差別只靠畫面與觸覺。
+
 | 時點 | 呼叫 | 說明 |
 |---|---|---|
-| 點擊翻牌 | `playWhoosh()`、`preloadReveal()` | 咻聲沿用現有 v2 檔；預載三條稀有度配樂＋收卡音 |
-| R0 | `stopWhoosh()`、`playRevealBed(rarity)` | 咻聲有最長 5.5 s 的暖尾巴，V3 揭曉只有 2.7 s，不淡掉會糊在一起；`stopWhoosh()` 已內建 0.5 s 淡出 |
-| A0 | `playArchive()`、`stopRevealBed()` | `stopRevealBed()` 改成播放中 250 ms 淡出再停（比照 `stopWhoosh()` 的做法） |
-| hidden／失敗／dispose | `stopRevealBed()`、`stopWhoosh()` | 沿用現有出口 |
+| 點擊翻牌 | `playWhoosh()`、`preloadReveal()` | 咻聲沿用現有 v2 檔；預載揭曉配樂＋收卡音 |
+| R0 | `playRevealBed()` | 三種稀有度同一條；咻聲尾巴不停，交棒給 bed（第一刀的決定） |
+| A0 | `playArchive()`、`stopRevealBed()`、`stopWhoosh()` | 收卡音；bed 250 ms、咻聲 500 ms 淡出 |
+| hidden／失敗／dispose | `stopRevealBed()`、`stopWhoosh()` | 沿用現有出口；收卡音只有 0.8 s，不另設停止 |
 
-為什麼每個稀有度一條 bed、而不是每個重音各播一個短音效：audioplayers 起播延遲每次不一樣（數十 ms），80 ms 間隔的星星琶音用短音效一定會糊；V2 也是因此改成一條預先對好拍的 bed。
+為什麼翻牌紙聲要混進 bed、不各自播：audioplayers 起播延遲每次不一樣（數十 ms），紙聲另開 player 會和音樂各自延遲；V2 也是因此改成一條預先對好拍的 bed。
 
-### 8.2 素材規格（D3=A）
+### 8.2 素材規格
 
-| 檔案 | 長度 | 重音時點（ms） |
+| 檔案 | 長度 | 內容 |
 |---|---|---|
-| `practice_draw_reveal_v3_n.m4a` | ≤ 4.0 s | 0 起蓄力 → 1350 翻牌（輕）→ 2000 烙印 → 2150／2230 星星 → 2700 後殘響 ≤ 1.3 s |
-| `practice_draw_reveal_v3_r.m4a` | ≤ 4.0 s | 同上，加 600 染藍；1350 中等；星星 3 顆 |
-| `practice_draw_reveal_v3_sr.m4a` | ≤ 4.0 s | 同上，加 600 染藍、850 金色升級、1350 最大；星星 4 顆；殘響較長 |
-| `practice_draw_archive_v3.m4a` | ≤ 0.8 s | 0 起輕柔上升 → 450 晶亮落點 |
+| `practice_draw_reveal_bed_v6.m4a` | 3.3 s | bed v5 的同一段音樂（v4 的 4.95–8.25 s，高潮落在 1.35 s 的單次翻牌），翻牌紙聲直接混在 1.35 s；N／R／SR 共用 |
+| `practice_draw_archive_v3.m4a` | 0.8 s | 0–450 ms 從 G4 輕輕滑到 G5 → 450 ms（光球落位）水晶鈴 G5＋C6＋E6 與一點低頻落點 → 0.8 s 收完 |
 
-- 蓄力用**有音高的上升音**，以中低頻為主。文字提案寫「高頻聚氣音效」，這和 `docs/bug-log.md` 2026-07-16 衝突（寬頻高頻顆粒聲就是「西西簌簌」的來源，F2 用 2.1 kHz crossover 濾掉）。可以有清脆的鐘聲泛音，不可以有沙沙聲。
+- 原本規劃的 N／R／SR 三條（含 600 染藍、850 金色升級、星星琶音的重音）隨 D3 改定作廢。
+- 收卡音只用有音高的正弦疊加、7 kHz 以上低通，沒有噪聲：`docs/bug-log.md` 2026-07-16 的「西西簌簌」就是寬頻高頻顆粒聲。可以有清脆的鐘聲泛音，不可以有沙沙聲。
 - 等待 server 期間除了一次性咻聲之外不得有任何聲音（同一條 bug-log）。
-- 響度：比照 bed v4 母帶 −18 LUFS、true peak ≤ −1 dBTP；總大小 < 500 KB（沿用授權文件的預算）。
-- 授權與來源寫進 `assets/audio/practice_draw/licenses/practice_draw_audio.md`。
+- 響度：bed 與 v4 母帶同為約 −18 LUFS、true peak ≤ −1 dBTP；總大小 < 500 KB（沿用授權文件的預算）。
+- 產生器 `tools/practice-draw-audio-v3/make_audio_v3.py`；授權與來源寫進 `assets/audio/practice_draw/licenses/practice_draw_audio.md`。
 
 ### 8.3 介面變更（`PracticeDrawSfx`）
 
@@ -435,12 +436,12 @@ Transform(
 abstract class PracticeDrawSfx {
   void playWhoosh();
   void stopWhoosh();
-  void preloadReveal();                          // 改：預載 N／R／SR 三條＋收卡音
-  void playRevealBed(PracticeGirlRarity rarity); // 改：帶稀有度
-  void stopRevealBed();                          // 改：播放中 250 ms 淡出再停
-  void playArchive();                            // 新增
-  void playWaitingLoop();                        // 不動：固定 no-op（bug-log 防回歸）
-  void stopWaitingLoop();                        // 不動
+  void preloadReveal();   // 改：預載 bed＋收卡音
+  void playRevealBed();   // 不帶稀有度：三種同一條
+  void stopRevealBed();   // 播放中 250 ms 淡出再停（第一刀已做）
+  void playArchive();     // 新增
+  void playWaitingLoop(); // 不動：固定 no-op（bug-log 防回歸）
+  void stopWaitingLoop(); // 不動
   // 移除：playFlipSnap()（紙聲併進 bed）、playRevealChime()（已無呼叫點）
 }
 ```
@@ -578,7 +579,7 @@ final ValueChanged<String>? onArchived;
 ### 13.3 刪除（最後一刀，V3 上線且真機通過後）
 
 - 儀式檔內 V2 專用的 painter 與函式：`_OrbitalHaloPainter`、`_EnergyBorderPainter`、`_NeonTraceFramePainter`、`_FrameParticleFlowPainter`、`_FrameParticleSprayPainter`、`_ParticleBloomPainter`、`_VolumetricBurstPainter`、`_BreathHoldVignettePainter`、`_GlassWipePainter`、`_FinalPolishPainter`、`_AfterglowPainter`、`_SettlePulsePainter`、`_ReferenceRimGlowPainter`、`_MysticBackPainter`、`_CyberFramePainter`、`_StarfieldPainter`、`kPracticeRevealFlip1Start…HoldEnd`、全部 `practiceCeremony*()` 曲線函式與 `debug*Painter` seam、`PracticeHaloHalf`。
-- 素材：`practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`、`practice_draw_explosion_reference.webp`（約 2.4 MB）；`practice_draw_reveal_bed.mp3`、`practice_draw_flip_snap_{1,2,3}.wav`、`practice_draw_reveal_chime.wav`。
+- 素材：`practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`、`practice_draw_explosion_reference.webp`（約 2.4 MB）；`practice_draw_reveal_bed.mp3`、`practice_draw_flip_snap_{1,2,3}.wav`、`practice_draw_reveal_chime.wav`。（爆點疊圖與 bed v4 在第一刀、紙聲與 chime 在第三刀隨介面變更先刪了。）
 - `kCollectionHighlightWait`；`kPracticeRevealDuration`（改用 `PracticeRevealTiming.reveal`，圖鑑頁不再需要知道儀式多長）。
 
 ---
@@ -651,7 +652,7 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 |---|---|---|
 | A 結構 | 五階段狀態機、單次翻牌、停住／點擊／跳過、收卡飛行（先用現有素材與簡單光球）、圖鑑頁新契約、測試 | 行為全對，外觀還是舊皮 |
 | B 視覺 | 背景模糊、稀有度主題、新卡背素材＋染色、光刃、星塵、掃光、稀有度牌、資訊欄、星星；DESIGN.md §7、lint 白名單；對照 PNG | Gate-2 預覽片 |
-| C 聲音觸覺 | 三條 bed＋收卡音、介面變更、觸覺對拍、授權文件 | 預覽片含聲音 |
+| C 聲音觸覺 | 同一條 bed（D3 改定）＋收卡音、介面變更、觸覺對拍、授權文件 | 預覽片含聲音 |
 | D 清理 | 刪 V2 painter、素材、測試；更新錄製器 | 套件變小、測試只剩 V3 |
 
 - 一個目的一個 PR 的規則下，可以是一個 PR 四個 commit（每個 commit 一件事），也可以拆成四個 PR；由 Eric 決定。
@@ -700,6 +701,26 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 - 測試沒有另開 §13.2 列的 `practice_draw_reveal_v3_test.dart` 與 `test/visual_proof/practice_draw_v3_proof_test.dart`：儀式行為接著寫在既有的 `practice_chat_screen_style_test.dart`，純函式在 `practice_reveal_timing_test.dart`、`practice_reveal_visuals_test.dart`；改前／改後對照圖由錄製器逐幀輸出再合成。
 
 還沒做：N／R／SR 三條配樂與收卡音（第三刀，開工前先確認 D3）；V2 painter、舊卡背 PNG 與相關測試的清理（第四刀）。真機要特別看模糊背景與資訊欄毛玻璃的效能（§12；卡頓才做 Plan B）。
+
+
+### 16.3 第三刀實作紀錄（2026-10-15）
+
+開工前確認 D3：改成 N／R／SR 同一條配樂（沿用 v4「SR／R／N 聲音一致」），染色與星星不另外出聲，稀有度差別只靠畫面與震動。
+
+做了：
+
+- bed v6：bed v5 的同一段音樂，把翻牌紙聲（原 flip snap 1）照原本的播放比例（0.25 ÷ 0.74）混進 1.35 s，和音樂同一個 player。響度與 v5 相同（約 −17.2 LUFS），true peak −1.4 dBTP。
+- 收卡音 `practice_draw_archive_v3.m4a`：程式合成，0.8 s，0.45 s 光球落位時一聲水晶鈴；6 kHz 以上能量 0%、頻譜平坦度 0.00025（純音高、沒有噪聲）。播放音量 0.42：落點比揭曉高潮小約 6 dB。
+- 介面：`playArchive()` 新增並預載；`playFlipSnap()`、`playRevealChime()` 移除；三個紙聲檔、舊 chime、bed v5 移出 bundle（git 歷史保留），翻牌音效資料夾從 772 KB 降到 351 KB。
+- 產生器 `tools/practice-draw-audio-v3/make_audio_v3.py`（從 git 取 bed v4 與紙聲，重跑結果逐位元相同）。
+- 觸覺對拍在第二刀已和畫面一起上，這一刀沒再改。
+
+和原規劃不同的地方：
+
+- D3 改定，原本的三條配樂與染色、星星重音都不做。
+- 沒有加烙印重音：同一條配樂照 v4 的原曲，只多混了本來就有的紙聲。
+
+還沒做：第四刀清理（V2 painter、舊卡背 PNG、相關測試）。真機要聽：紙聲是否仍對在翻牌那一下、收卡音的大小與質感（不合適就調 `_kArchiveVolume` 或重跑產生器）。
 
 ---
 
