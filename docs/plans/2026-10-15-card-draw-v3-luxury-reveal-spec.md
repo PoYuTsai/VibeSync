@@ -582,7 +582,7 @@ final ValueChanged<String>? onArchived;
 ### 13.3 刪除（最後一刀，V3 上線且真機通過後）
 
 - 儀式檔內 V2 專用的 painter 與函式：`_OrbitalHaloPainter`、`_EnergyBorderPainter`、`_NeonTraceFramePainter`、`_FrameParticleFlowPainter`、`_FrameParticleSprayPainter`、`_ParticleBloomPainter`、`_VolumetricBurstPainter`、`_BreathHoldVignettePainter`、`_GlassWipePainter`、`_FinalPolishPainter`、`_AfterglowPainter`、`_SettlePulsePainter`、`_ReferenceRimGlowPainter`、`_MysticBackPainter`、`_CyberFramePainter`、`_StarfieldPainter`、`kPracticeRevealFlip1Start…HoldEnd`、全部 `practiceCeremony*()` 曲線函式與 `debug*Painter` seam、`PracticeHaloHalf`。
-- 素材：`practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`、`practice_draw_explosion_reference.webp`（約 2.4 MB）；`practice_draw_reveal_bed.mp3`、`practice_draw_flip_snap_{1,2,3}.wav`、`practice_draw_reveal_chime.wav`。（爆點疊圖與 bed v4 在第一刀、紙聲與 chime 在第三刀隨介面變更先刪了。）
+- 素材：`practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`、`practice_draw_explosion_reference.webp`（約 2.4 MB）；`practice_draw_reveal_bed.mp3`、`practice_draw_flip_snap_{1,2,3}.wav`、`practice_draw_reveal_chime.wav`。（爆點疊圖與 bed v4 在第一刀、紙聲與 chime 在第三刀隨介面變更先刪了；F3 起就不播的 `practice_draw_waiting_loop.wav`（約 154 KB）在第三刀審查後也先移出 bundle，git 歷史保留，`playWaitingLoop()` 仍是 no-op。）
 - `kCollectionHighlightWait`；`kPracticeRevealDuration`（改用 `PracticeRevealTiming.reveal`，圖鑑頁不再需要知道儀式多長）。
 
 ---
