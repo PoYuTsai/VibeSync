@@ -95,12 +95,20 @@ function baseRun(over: Partial<AnalysisStreamRun> = {}): AnalysisStreamRun {
   };
 }
 
-async function* chunks(parts: string[], failAfter?: Error) {
+async function* chunks(
+  parts: string[],
+  failAfter?: Error,
+  endGate?: { reached: () => void; release: Promise<void> },
+) {
   for (const part of parts) {
     // 一張卡拆成兩段送，確認是等整行到了才處理。
     const mid = Math.floor(part.length / 2);
     yield part.slice(0, mid);
     yield part.slice(mid);
+  }
+  if (endGate) {
+    endGate.reached();
+    await endGate.release;
   }
   if (failAfter) throw failAfter;
 }
@@ -116,6 +124,12 @@ function harness(opts: {
   chargeErrorButCommitted?: boolean;
   /// 扣費卡在這裡，直到測試放行。
   chargeGate?: Promise<void>;
+  /// 讀局面卡在這裡，直到測試放行。
+  readGate?: Promise<void>;
+  /// 讀回 run 也失敗（扣費狀態不明）。
+  getRunError?: Error;
+  /// 寫卡串流送完 writeParts 之後通知 reached、卡在 release，直到測試放行才結束。
+  writeEndGate?: { reached: () => void; release: Promise<void> };
   markDoneError?: Error;
   accountIsTest?: boolean;
   analysisRunId?: string | null;
@@ -143,6 +157,7 @@ function harness(opts: {
       store: {
         getRun: () => {
           calls.push("getRun");
+          if (opts.getRunError) return Promise.reject(opts.getRunError);
           return Promise.resolve(run);
         },
         createPendingRun: (args) => {
@@ -208,8 +223,9 @@ function harness(opts: {
       dailyLimit: 50,
       subMonthlyUsed: 10,
       subDailyUsed: 3,
-      callRead: () => {
+      callRead: async () => {
         calls.push("read");
+        if (opts.readGate) await opts.readGate;
         if (opts.readError) return Promise.reject(opts.readError);
         const t = opts.readTags ?? tags();
         return Promise.resolve({
@@ -225,6 +241,7 @@ function harness(opts: {
           textStream: chunks(
             opts.writeParts ?? FOUR_CARDS,
             opts.writeFailAfter,
+            opts.writeEndGate,
           ),
         });
       },
@@ -430,6 +447,79 @@ Deno.test("扣費回應掉了但其實已扣：讀回 run 確認後照常送卡"
   assert(
     h.logs.some((l) => l.event === "guide_v3_charge_confirmed_after_error"),
   );
+});
+
+Deno.test("扣費丟錯、讀回 run 也失敗（狀態不明）：不送卡、不記 failed，交給續看", async () => {
+  const h = harness({
+    chargeError: new Error("network reset"),
+    chargeErrorButCommitted: true,
+    getRunError: new Error("db unreachable"),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "GUIDE_V3_CHARGE_UNCONFIRMED");
+  assertEquals(evs[2].recoverable, true);
+  assertEquals(h.failed, [], "可能已扣費的 run 不能被記成 failed");
+  assertEquals(h.done.length, 0);
+});
+
+Deno.test("先別回扣費狀態不明：同樣不記 failed", async () => {
+  const h = harness({
+    messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
+    chargeError: new Error("network reset"),
+    getRunError: new Error("db unreachable"),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs.at(-1)!.code, "GUIDE_V3_CHARGE_UNCONFIRMED");
+  assertEquals(h.failed, []);
+});
+
+Deno.test("扣費內容記實際扣了幾則：一般帳號是扣費字數，測試帳號與自傷關心是 0", async () => {
+  const paid = harness();
+  await events(await handleGuideV3Stream(paid.deps));
+  assertEquals(paid.charges[0].recommendationJson.chargedMessageCount, 2);
+  const test = harness({ accountIsTest: true });
+  await events(await handleGuideV3Stream(test.deps));
+  assertEquals(test.charges[0].recommendationJson.chargedMessageCount, 0);
+  const care = harness({ readTags: tags({ selfHarmSignal: true }) });
+  await events(await handleGuideV3Stream(care.deps));
+  assertEquals(care.charges[0].recommendationJson.chargedMessageCount, 0);
+});
+
+Deno.test("讀局面期間 App 就斷線：不開始寫卡、不扣", async () => {
+  let release!: () => void;
+  const h = harness({ readGate: new Promise((r) => release = r) });
+  const response = await handleGuideV3Stream(h.deps);
+  const reader = response.body!.getReader();
+  await reader.read(); // analysis.started
+  await reader.cancel();
+  release();
+  await Promise.all(h.tasks);
+  assertEquals(h.calls.includes("write"), false);
+  assertEquals(h.charges.length, 0);
+  assertEquals(h.failed, ["GUIDE_V3_CLIENT_GONE"]);
+});
+
+Deno.test("最後一行沒換行、串流結束前 App 斷線：處理那一行時不扣", async () => {
+  let release!: () => void;
+  let reached!: () => void;
+  const allChunksSent = new Promise<void>((r) => reached = r);
+  const h = harness({
+    writeParts: [FOUR_CARDS[0].trimEnd()],
+    writeEndGate: { reached, release: new Promise((r) => release = r) },
+  });
+  const reader = (await handleGuideV3Stream(h.deps)).body!.getReader();
+  // 每段都已經過了「這一段先檢查斷線」，只剩最後沒換行的那一行要在結束時處理。
+  await allChunksSent;
+  await reader.cancel();
+  release();
+  await Promise.all(h.tasks);
+  assertEquals(h.charges.length, 0);
+  assertEquals(h.failed, ["GUIDE_V3_CLIENT_GONE"]);
 });
 
 Deno.test("App 在第一張卡前斷線：不扣、停止生成、run 記失敗", async () => {
@@ -652,6 +742,7 @@ Deno.test("續看：扣過費卻一直沒結案（原請求被終止）→ 重�
         guideVersion: GUIDE_V3_VERSION,
         read: { decision: "send", judgment: "輕鬆" },
         firstCard,
+        chargedMessageCount: 2,
       },
       request_context: {
         guideVersion: GUIDE_V3_VERSION,
@@ -665,6 +756,37 @@ Deno.test("續看：扣過費卻一直沒結案（原請求被終止）→ 重�
   assertEquals(result.cards, [firstCard]);
   assertEquals(result.partial, true);
   assertEquals(result.recovered, true);
+  assertEquals(result.usage, { messagesUsed: 2, shouldChargeQuota: true });
+});
+
+Deno.test("續看：自傷關心的 run 被終止後重組，不會錯報扣費", async () => {
+  const h = harness({
+    analysisRunId: "run-1",
+    now: T0 + GUIDE_V3_STALE_AFTER_MS,
+    existingRun: baseRun({
+      status: "charged",
+      decision_kind: "do_not_send",
+      charged_at: new Date(T0).toISOString(),
+      recommendation_json: {
+        decisionKind: "do_not_send",
+        action: "care",
+        reason: "對話裡有自傷訊號",
+        stopCondition: STOP_CONDITION_CARE,
+        guideVersion: GUIDE_V3_VERSION,
+        read: { decision: "care", careMessage: CARE_MESSAGE },
+        chargedMessageCount: 0,
+      },
+      request_context: {
+        guideVersion: GUIDE_V3_VERSION,
+        chargedMessageCount: 2,
+      },
+    }),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  const done = evs.find((e) => e.type === "analysis.done")!;
+  const result = done.finalResult as Record<string, unknown>;
+  assertEquals(result.cards, []);
+  assertEquals(result.usage, { messagesUsed: 0, shouldChargeQuota: false });
 });
 
 Deno.test("續看：一直停在 pending 的 v3 run 當失敗、不可重試", async () => {

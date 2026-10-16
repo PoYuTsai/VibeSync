@@ -429,7 +429,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -863,7 +864,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -1136,7 +1138,8 @@
                 "judgment": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
                 "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
                 "plannedCards": []
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -1444,7 +1447,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -1777,7 +1781,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -2322,7 +2327,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -2845,7 +2851,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": true
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -3456,7 +3463,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -4118,7 +4126,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -4906,7 +4915,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": true
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -5340,7 +5350,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -5891,7 +5902,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -6466,7 +6478,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": true
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -7065,7 +7078,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -7720,7 +7734,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -8263,7 +8278,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": true
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -8760,7 +8776,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -9360,7 +9377,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -9814,7 +9832,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -10259,7 +10278,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -10740,7 +10760,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -11040,7 +11061,8 @@
                 "judgment": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
                 "waitFor": "等她開完會，自己回來接著聊今天那件事。",
                 "plannedCards": []
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2
@@ -11554,7 +11576,8 @@
                 ],
                 "hasInventedDetail": false,
                 "hasBlank": false
-              }
+              },
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
             "messageCount": 2

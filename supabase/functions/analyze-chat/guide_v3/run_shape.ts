@@ -41,10 +41,9 @@ export function recoveredGuideV3Result(
   if (run.card_task) {
     if (!isCardView(firstCard)) return null;
   }
-  const chargedMessageCount = record(run.request_context)
-    ?.chargedMessageCount;
-  const messagesUsed = typeof chargedMessageCount === "number"
-    ? chargedMessageCount
+  // 實際扣了幾則記在扣費內容裡（自傷關心是 0）；建立 run 時的預估不能用。
+  const messagesUsed = typeof stored.chargedMessageCount === "number"
+    ? stored.chargedMessageCount
     : 0;
   return {
     guideVersion: stored.guideVersion,
@@ -66,7 +65,10 @@ export function guideV3ResumeSnapshot(
   let finalResult = run.final_result_json;
   let status = run.status;
   let lastErrorCode = run.last_error_code;
-  if (!finalResult && stale && run.status === "charged") {
+  // charged 卻記成 failed 也重組（v3 扣過費的 run 不該被記 failed，萬一有就照扣費內容給）。
+  const chargedWithoutResult = run.charged_at !== null &&
+    (run.status === "charged" || run.status === "failed");
+  if (!finalResult && stale && chargedWithoutResult) {
     finalResult = recoveredGuideV3Result(run);
     if (!finalResult) {
       status = "failed";

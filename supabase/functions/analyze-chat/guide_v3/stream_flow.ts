@@ -290,6 +290,9 @@ class GuideV3Flow {
   private writeModel: string | undefined;
   /// 這個 run 已經寫進扣費紀錄（包含自傷關心的免扣紀錄）。
   private charged = false;
+  /// 扣費丟錯、讀回也失敗：可能已經扣了。這種 run 不記 failed，交給續看在逾時後
+  /// 從扣費內容重組或判失敗（run_shape.ts）。
+  private chargeUnknown = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -414,56 +417,82 @@ class GuideV3Flow {
     event: ErrorEvent,
     details: Record<string, unknown>,
   ): Promise<void> {
-    try {
-      await this.deps.store.markFailed({ ...this.key, code: event.code });
-    } catch (error) {
-      this.deps.log("guide_v3_mark_failed_failed", {
-        analysisRunId: this.runId,
-        error: errorText(error),
-      }, "error");
+    // 已扣費、或扣費狀態不明的 run 不記 failed：failed 會蓋掉可以續看的狀態。
+    if (!this.charged && !this.chargeUnknown) {
+      try {
+        await this.deps.store.markFailed({ ...this.key, code: event.code });
+      } catch (error) {
+        this.deps.log("guide_v3_mark_failed_failed", {
+          analysisRunId: this.runId,
+          error: errorText(error),
+        }, "error");
+      }
     }
     this.deps.log("guide_v3_outcome", {
       analysisRunId: this.runId,
       outcome: "failed",
       code: event.code,
-      charged: false,
+      charged: this.charged,
+      chargeUnknown: this.chargeUnknown,
       latencyMs: this.now() - this.startedAt,
       ...details,
     });
     emit(event);
   }
 
-  /// 扣費（v3 RPC）。丟錯時先讀回 run：其實已扣（回應掉了）就當成功。
+  /// 扣費（v3 RPC）。扣費內容另記實際扣了幾則（chargedMessageCount），續看重組時用。
+  /// 丟錯時先讀回 run：其實已扣（回應掉了）就當成功；讀回也失敗就是「不明」。
   private async charge(
     input: Omit<
       ChargeStreamRunV3Input,
       "runId" | "userId" | "conversationHash"
     >,
   ): Promise<{ ok: true } | { ok: false; event: ErrorEvent }> {
+    const recorded = {
+      ...input,
+      recommendationJson: {
+        ...input.recommendationJson,
+        chargedMessageCount: input.chargeQuota ? input.messageCount : 0,
+      },
+    };
     try {
-      await this.deps.store.chargeRunV3({ ...this.key, ...input });
+      await this.deps.store.chargeRunV3({ ...this.key, ...recorded });
       this.charged = true;
       return { ok: true };
     } catch (error) {
+      let state: "charged" | "not_charged" | "unknown" = "unknown";
       try {
         const run = await this.deps.store.getRun(this.key);
-        if (run.charged_at !== null && isGuideV3Run(run)) {
-          this.deps.log("guide_v3_charge_confirmed_after_error", {
-            analysisRunId: this.runId,
-            error: errorText(error),
-          }, "error");
-          this.charged = true;
-          return { ok: true };
-        }
+        state = run.charged_at !== null ? "charged" : "not_charged";
       } catch {
-        // 讀不回來就照扣費失敗處理。
+        // 讀不回來：狀態不明。
+      }
+      if (state === "charged") {
+        this.deps.log("guide_v3_charge_confirmed_after_error", {
+          analysisRunId: this.runId,
+          error: errorText(error),
+        }, "error");
+        this.charged = true;
+        return { ok: true };
       }
       const mapped = mapStreamChargeFailure(error);
       this.deps.log("guide_v3_charge_failed", {
         analysisRunId: this.runId,
         code: mapped.code,
+        state,
         error: errorText(error),
       }, "error");
+      if (state === "unknown") {
+        this.chargeUnknown = true;
+        return {
+          ok: false,
+          event: errorEvent(
+            "GUIDE_V3_CHARGE_UNCONFIRMED",
+            "分析結果還在確認，請稍後重新整理。",
+            true,
+          ),
+        };
+      }
       return {
         ok: false,
         event: errorEvent(mapped.code, mapped.message, true),
@@ -586,6 +615,7 @@ class GuideV3Flow {
           stopCondition: STOP_CONDITION_CARE,
           guideVersion: GUIDE_V3_VERSION,
           read: view,
+          chargedMessageCount: 0,
         },
         chargeQuota: false,
         messageCount: 0,
@@ -761,6 +791,14 @@ class GuideV3Flow {
       return true;
     };
 
+    // 「送到才扣」：讀局面期間 App 就斷線了，不扣、也不開始寫卡。
+    if (isClosed()) {
+      return await this.fail(
+        emit,
+        errorEvent("GUIDE_V3_CLIENT_GONE", "連線已中斷。", true),
+        { stage: "before_write", decision: plan.decision },
+      );
+    }
     try {
       const write = await this.deps.callWrite({
         runId: this.runId,
@@ -778,6 +816,12 @@ class GuideV3Flow {
       const splitter = createLineSplitter();
       let keepGoing = true;
       for await (const chunk of write.textStream) {
+        // 第一張卡扣費前 App 就斷線：停止讀串流（取消上游），不扣。
+        if (delivered.length === 0 && isClosed()) {
+          state.stop = { kind: "client_gone" };
+          keepGoing = false;
+          break;
+        }
         for (const line of splitter.push(chunk)) {
           keepGoing = await handleLine(line);
           if (!keepGoing) break;

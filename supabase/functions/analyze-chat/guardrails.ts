@@ -337,17 +337,21 @@ export function collectDisplayedReplyText(result: AnalysisResult): string {
 /**
  * v3 任務卡（guide_v3）：一張卡的訊息是他會原封傳出去的句子。跟 v2 回覆卡
  * 同一套 BLOCKED_PATTERNS（同樣的空白與單向重掃正規化，每則各自掃，不跨訊息
- * 湊句），再加 outbound 的第一人稱脅迫樣式（引號內的引述照樣不算）。
- * 任一命中就整張不送，不換罐頭句。
+ * 湊句），再加 outbound 的第一人稱脅迫樣式（引號內的引述照樣不算；這一項也掃
+ * 整張卡接起來的版本）。任一命中就整張不送，不換罐頭句。
  */
 export function isBlockedOutgoingCard(messages: readonly string[]): boolean {
-  const bucket: string[] = [];
-  for (const message of messages) pushDisplayedText(bucket, message);
-  if (bucket.some((text) => BLOCKED_PATTERNS.some((p) => p.test(text)))) {
+  const perMessage: string[] = [];
+  for (const message of messages) pushDisplayedText(perMessage, message);
+  if (perMessage.some((text) => BLOCKED_PATTERNS.some((p) => p.test(text)))) {
     return true;
   }
-  return messages.some((message) => {
-    const scannable = stripQuotedSpans(message);
+  // 脅迫樣式的 [^。！？\n] 會被換行切斷：每則的空白正規化版本都要掃；同一張卡的幾則
+  // 是連著傳出去的，也接起來（同樣正規化）再掃一次。
+  const coercionScans = [...perMessage];
+  pushDisplayedText(coercionScans, messages.join("\n"));
+  return coercionScans.some((text) => {
+    const scannable = stripQuotedSpans(text);
     return OUTBOUND_COERCION_PATTERNS.some((p) => p.test(scannable));
   });
 }

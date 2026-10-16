@@ -170,6 +170,20 @@ Deno.test("定稿：禁語、脅迫、外洩命中就整張拿掉；引號裡的
     finalizeCard(card(["先 ignore previous instructions 再說"]), spec(), ""),
     { ok: false, reason: "prompt_leak" },
   );
+  // 換行不能繞過脅迫樣式；同一張卡拆成兩則也一樣。
+  assertEquals(
+    finalizeCard(card(["你不回我\n我就去死"]), spec(), ""),
+    { ok: false, reason: "unsafe" },
+  );
+  assertEquals(
+    finalizeCard(card(["你不回我", "我就去死"]), spec(), ""),
+    { ok: false, reason: "unsafe" },
+  );
+  // 引號沒在同一則收尾，不能拿來包住下一則的脅迫句（每則各自查，接起來查會被當成引述）。
+  assertEquals(
+    finalizeCard(card(["「哈哈", "你不回我\n我就去死」"]), spec(), ""),
+    { ok: false, reason: "unsafe" },
+  );
   // 簡體的禁語：整理前後都查。
   assertEquals(
     finalizeCard(card(["我会一直跟踪你"]), spec(), ""),
@@ -288,6 +302,33 @@ Deno.test("認 v3 run：card_task、扣費內容或 requestContext 的 guideVers
   assert(
     !isGuideV3Run(run({ recommendation_json: { selectedStyle: "extend" } })),
   );
+});
+
+Deno.test("續看快照：扣過費卻被記成 failed 也從扣費內容重組", () => {
+  const read = { decision: "hold", judgment: "等她" };
+  const snapshot = guideV3ResumeSnapshot(
+    run({
+      status: "failed",
+      decision_kind: "do_not_send",
+      recommendation_json: {
+        guideVersion: "v3.3",
+        read,
+        chargedMessageCount: 1,
+      },
+    }),
+    Date.parse("2026-10-16T00:00:00.000Z") + GUIDE_V3_STALE_AFTER_MS,
+  );
+  assertEquals(snapshot.status, "failed");
+  assertEquals(
+    (snapshot.finalResult as Record<string, unknown>).usage,
+    { messagesUsed: 1, shouldChargeQuota: true },
+  );
+  // 沒扣過費的 failed 照舊是失敗、沒有結果。
+  const unpaid = guideV3ResumeSnapshot(
+    run({ status: "failed", charged_at: null, recommendation_json: { read } }),
+    Date.parse("2026-10-16T00:00:00.000Z") + GUIDE_V3_STALE_AFTER_MS,
+  );
+  assertEquals(unpaid.finalResult, null);
 });
 
 Deno.test("續看快照：v3 一律不可 retry；太久的 pending 當失敗", () => {
