@@ -20,13 +20,28 @@ export function shouldUseGuideV3(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
-/// F04：協定版本 ≥3 時，扣費字數與超額確認雜湊不算對話最後面連續的「他」的訊息。
-export function billingMessagesFor<T extends { readonly isFromMe: boolean }>(
-  messages: readonly T[],
-  contractVersion: number,
-): T[] {
+/// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
+/// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
+/// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。
+export const F04_MAX_EXCLUDED_MESSAGES = 5;
+export const F04_MAX_EXCLUDED_CHARS = 300;
+
+/// F04：協定版本 ≥3 時，扣費字數與超額確認雜湊不算對話最後面連續的「他」的訊息
+///（在上限內）。
+export function billingMessagesFor<
+  T extends { readonly isFromMe: boolean; readonly content: string },
+>(messages: readonly T[], contractVersion: number): T[] {
   if (contractVersion < ANALYSIS_CONTRACT_VERSION_V3) return [...messages];
   let end = messages.length;
   while (end > 0 && messages[end - 1].isFromMe) end--;
+  const excluded = messages.slice(end);
+  const excludedChars = excluded.reduce(
+    (total, m) => total + m.content.trim().length,
+    0,
+  );
+  if (
+    end === 0 || excluded.length > F04_MAX_EXCLUDED_MESSAGES ||
+    excludedChars > F04_MAX_EXCLUDED_CHARS
+  ) return [...messages];
   return messages.slice(0, end);
 }

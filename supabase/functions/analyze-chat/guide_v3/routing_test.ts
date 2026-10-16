@@ -2,6 +2,8 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   billingMessagesFor,
+  F04_MAX_EXCLUDED_CHARS,
+  F04_MAX_EXCLUDED_MESSAGES,
   guideV3Mode,
   shouldUseGuideV3,
 } from "./routing.ts";
@@ -33,8 +35,29 @@ Deno.test("F04：協定 3 不算她最後一則之後他連續傳的；協定 2 
   const him = { isFromMe: true, content: "他" };
   assertEquals(billingMessagesFor([him, her, him, him], 3), [him, her]);
   assertEquals(billingMessagesFor([him, her], 3), [him, her]);
-  assertEquals(billingMessagesFor([him, him], 3), []);
   assertEquals(billingMessagesFor([], 3), []);
   assertEquals(billingMessagesFor([him, her, him], 2), [him, her, him]);
   assertEquals(billingMessagesFor([him, her, him], 1), [him, her, him]);
+});
+
+Deno.test("F04 上限：超過 5 則或 300 字、或整段都是他的，就照舊全算", () => {
+  const her = { isFromMe: false, content: "她" };
+  const him = (n: number) => ({ isFromMe: true, content: "字".repeat(n) });
+  const five = Array.from({ length: F04_MAX_EXCLUDED_MESSAGES }, () => him(1));
+  assertEquals(billingMessagesFor([her, ...five], 3), [her]);
+  const six = [...five, him(1)];
+  assertEquals(billingMessagesFor([her, ...six], 3), [her, ...six]);
+  const atCap = [him(F04_MAX_EXCLUDED_CHARS)];
+  assertEquals(billingMessagesFor([her, ...atCap], 3), [her]);
+  // trim 後才算字數（照 billing.ts）。
+  assertEquals(
+    billingMessagesFor([her, {
+      isFromMe: true,
+      content: `  ${"字".repeat(F04_MAX_EXCLUDED_CHARS)}  `,
+    }], 3).length,
+    1,
+  );
+  const overCap = [him(F04_MAX_EXCLUDED_CHARS + 1)];
+  assertEquals(billingMessagesFor([her, ...overCap], 3), [her, ...overCap]);
+  assertEquals(billingMessagesFor([him(1), him(1)], 3), [him(1), him(1)]);
 });
