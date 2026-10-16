@@ -814,6 +814,75 @@ Deno.test("stream resume：done run 直接回放 stored result，不重打模型
   assert(text.includes("回放結果"));
 });
 
+// v3 任務卡的 run（guide_v3）走到 v2 handler：協定 <3 不可續看；協定 3（開關關著時）
+// 只能附掛重播；一律不進 retry。
+const V3_DONE_RUN = makeRun({
+  status: "done",
+  card_task: "accept",
+  charged_at: "2026-10-16T00:00:00.000Z",
+  created_at: new Date().toISOString(),
+  final_result_json: {
+    guideVersion: "v3.3",
+    read: { decision: "send" },
+    cards: [{ slot: 1, task: "accept", messages: ["v3 卡"] }],
+    guideV3Trace: { tags: "server-only" },
+  },
+});
+
+Deno.test("v3 run：協定 <3 的 App 續看一律不可續看，不重播 v3 形狀", async () => {
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: V3_DONE_RUN,
+  });
+  const response = await handleAnalyzeStream({
+    ...deps,
+    noSendDecisions: true,
+  });
+  assertEquals(response.status, 409);
+  assert(!(await response.text()).includes("v3 卡"));
+  assert(!calls.includes("reserveRetry"));
+});
+
+Deno.test("v3 run：協定 3 的 App 在開關關著時可以附掛重播，伺服器專用欄位剝掉", async () => {
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: V3_DONE_RUN,
+  });
+  const response = await handleAnalyzeStream({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  const text = await response.text();
+  assert(text.includes("v3 卡"));
+  assert(!text.includes("server-only"));
+  assert(!calls.includes("callModel"));
+});
+
+Deno.test("v3 run 失敗後：v2 handler 不 retry（不佔 lease、不打模型）", async () => {
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: makeRun({
+      status: "failed",
+      request_context: { guideVersion: "v3.3" },
+    }),
+  });
+  const response = await handleAnalyzeStream({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  assertEquals(response.status, 409);
+  assert(!calls.includes("reserveRetry"));
+  assert(!calls.includes("callModel"));
+});
+
 Deno.test("stream v2 request injects selected situation knowledge; v1 stays untouched", async () => {
   const v2Systems: string[] = [];
   await runWithStubbedFetch({
