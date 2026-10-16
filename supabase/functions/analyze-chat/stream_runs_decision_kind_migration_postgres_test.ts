@@ -22,7 +22,7 @@ const MIGRATIONS = [
   "20260902160000_retention_cleanup_schedules.sql",
   // 第 3 階段第 0 片（v3 任務卡）。放進同一份清單：上面 v1、v2、retry lease 的測試
   // 因此也在套上它之後重跑，證明它沒改到舊行為。
-  "20261016120000_analysis_stream_runs_card_task.sql",
+  "20261016171939_analysis_stream_runs_card_task.sql",
 ];
 
 const migrationSql = await Promise.all(
@@ -594,7 +594,7 @@ Deno.test("v2 charge RPC is service-role only", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 第 3 階段第 0 片：v3 任務卡（migration 20261016120000）
+// 第 3 階段第 0 片：v3 任務卡（migration 20261016171939）
 
 const V3_SEND_RECOMMENDATION: Record<string, unknown> = {
   decisionKind: "send",

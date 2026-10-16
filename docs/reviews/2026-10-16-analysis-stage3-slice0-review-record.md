@@ -1,7 +1,7 @@
 # 審查紀錄：對話分析第 3 階段第 0 片「扣費紀錄可以記 v3 任務卡」
 
 - 日期：2026-10-16
-- 範圍：migration `supabase/migrations/20261016120000_analysis_stream_runs_card_task.sql` 與 PGlite 契約測試 `supabase/functions/analyze-chat/stream_runs_decision_kind_migration_postgres_test.ts`
+- 範圍：migration `supabase/migrations/20261016120000_analysis_stream_runs_card_task.sql`（2026-10-17 套用到正式資料庫時，帳本版本是 `20261016171939`，檔名已改成 `20261016171939_analysis_stream_runs_card_task.sql`，SQL 內容不變）與 PGlite 契約測試 `supabase/functions/analyze-chat/stream_runs_decision_kind_migration_postgres_test.ts`
 - 風險等級：R3（正式資料庫、扣費）
 - 撰寫：Claude（Anthropic）；主審：Codex（OpenAI，唯讀）；反向預審：獨立 Claude 子代理（唯讀，不是主審）
 
@@ -42,4 +42,14 @@
 
 ## 狀態
 
-- 已審查，本機 commit，沒推送，還沒套用到任何資料庫。Edge 程式還沒有地方呼叫 v3 RPC（第 2 片才接）；第 2 片推 main 前要先照 `docs/shared-agent-rules.md` 套這份 migration、核對 ledger 與 schema。
+- 已審查。2026-10-17 經 Eric 核准，用 Supabase MCP `apply_migration` 套用到正式資料庫（UTC 17:19，避開每小時第 17 分的清理排程）。
+- 套用前的唯讀檢查：
+  - 沒有超過 10 秒的交易，表上沒有其他鎖。
+  - 正式環境的約束定義跟 repo 一致。
+  - `card_task` 欄位、v3 RPC 都還沒有，帳本裡也還沒有這一支。
+- 套用後核對：
+  - `card_task` 欄位已建立。
+  - 4 條約束都在，而且是 NOT VALID。
+  - v3 RPC 的參數、SECURITY DEFINER、search_path 都跟檔案一致，函式本體 md5 跟檔案相同（`8c59da81a8b2bf74064c5f83517d8bc9`）。
+  - 只有 service_role 能執行 v3 RPC。
+  - 帳本版本是 `20261016171939`，本地檔名已對齊。

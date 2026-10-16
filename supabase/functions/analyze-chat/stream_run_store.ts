@@ -23,7 +23,7 @@ export interface AnalysisStreamRun {
   selected_style: StreamStyle | null;
   // Phase 1a column; absent on rows returned by older driver mocks.
   decision_kind?: string | null;
-  // v3 task of the first (charged) card (migration 20261016120000); absent on
+  // v3 task of the first (charged) card (migration 20261016171939); absent on
   // rows returned by older driver mocks.
   card_task?: string | null;
   recommendation_json: Record<string, unknown> | null;
@@ -89,7 +89,7 @@ export interface ChargeStreamRunDriverInput {
   messageCount: number;
 }
 
-/// v3 任務卡的扣費代碼（migration 20261016120000 的 card_task）。
+/// v3 任務卡的扣費代碼（migration 20261016171939 的 card_task）。
 export const V3_CARD_TASK_CODES = [
   "accept",
   "resonate",

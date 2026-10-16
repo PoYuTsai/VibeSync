@@ -9,7 +9,7 @@ import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
 export const GUIDE_V3_READ_EVENT = "analysis.read";
 export const GUIDE_V3_CARD_EVENT = "analysis.card";
 
-/// 卡片任務 → 扣費紀錄與 App 用的代碼（migration 20261016120000 的 card_task）。
+/// 卡片任務 → 扣費紀錄與 App 用的代碼（migration 20261016171939 的 card_task）。
 export const TASK_CODE: Readonly<Record<Task, V3CardTaskCode>> = {
   接住: "accept",
   共鳴: "resonate",
