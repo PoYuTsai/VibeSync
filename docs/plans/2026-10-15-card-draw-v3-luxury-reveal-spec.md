@@ -769,7 +769,7 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 
 做了：
 
-- 刪掉儀式檔最後三個 V2 painter（神秘卡背、賽博外框、星光場）與它們的測試 seam，連同只給它們用的十個寫死色值（儀式檔 1641 → 1076 行），以及 7 個只測這三個 painter 的 smoke test。
+- 刪掉儀式檔最後三個 V2 painter（神秘卡背、賽博外框、星光場）與它們的測試 seam，連同只給它們用的十個寫死色值（以第三刀審查後的版本算，儀式檔 1644 → 1080 行），以及 7 個只測這三個 painter 的 smoke test。
 - 儀式檔不再有寫死色碼：slop 基準重產、鎖緊棘輪；彩色陰影白名單拿掉早已沒有陰影的儀式檔。
 - 兩張 V2 卡背 PNG（1,741,880 bytes）移出 app 套件，`assets/images/practice/` 剩 360 KB。
 - 一個測試名與註解還寫著 V2 的紫水晶卡背，改成 V3 的說法。
