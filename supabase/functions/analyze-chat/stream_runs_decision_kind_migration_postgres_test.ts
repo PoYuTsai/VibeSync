@@ -17,6 +17,9 @@ const MIGRATIONS = [
   "20260603120200_stream_analysis_retry_budget.sql",
   "20260813003000_stream_analysis_retry_lease.sql",
   "20260902120000_analysis_stream_runs_decision_kind.sql",
+  // 正式環境的 cleanup 是這份 retention 版本（扣費 30 天後清），測試要驗的是它
+  // （第 0 片審查第 1 輪）。pg_cron 排程靠下面的 GUC 在 PGlite 跳過。
+  "20260902160000_retention_cleanup_schedules.sql",
   // 第 3 階段第 0 片（v3 任務卡）。放進同一份清單：上面 v1、v2、retry lease 的測試
   // 因此也在套上它之後重跑，證明它沒改到舊行為。
   "20261016120000_analysis_stream_runs_card_task.sql",
@@ -79,7 +82,12 @@ async function createDatabase(
     RETURNS VOID LANGUAGE sql AS $$
       INSERT INTO usage_calls (user_id, message_count) VALUES (p_user_id, p_message_count);
     $$;
+    -- retention migration 會改寫 ai_logs 的清理函式：照 retention 測試放替身。
+    CREATE TABLE public.ai_logs (id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+    CREATE OR REPLACE FUNCTION cleanup_old_ai_logs()
+    RETURNS void AS $$ BEGIN DELETE FROM ai_logs WHERE created_at < NOW() - INTERVAL '30 days'; END; $$ LANGUAGE plpgsql;
   `);
+  await db.exec("SET app.allow_missing_pg_cron = 'pglite-contract-test'");
   for (const sql of migrations) {
     await db.exec(sql);
   }
@@ -658,32 +666,25 @@ Deno.test("card_task migration leaves v1, v2, retry lease and cleanup function b
   }
 });
 
-Deno.test("charged CHECK admits v3 send rows with a task card and keeps card_task off styled and no-send rows", async () => {
+Deno.test("charged CHECK admits v3 send rows with a matching task card and keeps card_task off styled and no-send rows", async () => {
   const db = await createDatabase();
   try {
     const insert = (
       style: string | null,
       kind: string | null,
       task: string | null,
-      charged = true,
+      recommendation: unknown = { x: 1 },
     ) =>
       db.query(
         `INSERT INTO public.analysis_stream_runs
            (user_id, conversation_hash, status, charged_at, recommendation_json,
             selected_style, decision_kind, card_task)
-         VALUES ($1, $2, $3, $4, '{"x":1}'::jsonb, $5, $6, $7)`,
-        [
-          USER_ID,
-          HASH,
-          charged ? "charged" : "pending",
-          charged ? new Date().toISOString() : null,
-          style,
-          kind,
-          task,
-        ],
+         VALUES ($1, $2, 'charged', now(), $3::jsonb, $4, $5, $6)`,
+        [USER_ID, HASH, JSON.stringify(recommendation), style, kind, task],
       );
-    // v3 送出型：沒有風格、有任務卡。
-    await insert(null, "send", "push");
+    const v3 = (task: string) => ({ decisionKind: "send", cardTask: task });
+    // v3 送出型：沒有風格、有任務卡、內容一致。
+    await insert(null, "send", "push", v3("push"));
     // 舊列照舊合法。
     await insert("extend", null, null);
     await insert(null, "do_not_send", null);
@@ -695,25 +696,43 @@ Deno.test("charged CHECK admits v3 send rows with a task card and keeps card_tas
     );
     // 任務卡不能跟風格並存、不能在不送型或舊的 NULL 決策上、不能是未知值。
     await assertRejects(
-      () => insert("extend", "send", "accept"),
+      () => insert("extend", "send", "accept", v3("accept")),
       Error,
       "analysis_stream_runs_card_task_send_only",
     );
     await assertRejects(
-      () => insert(null, "do_not_send", "accept"),
+      () => insert(null, "do_not_send", "accept", v3("accept")),
       Error,
       "analysis_stream_runs_card_task_send_only",
     );
     await assertRejects(
-      () => insert(null, null, "accept"),
+      () => insert(null, null, "accept", v3("accept")),
       Error,
       "analysis_stream_runs_card_task_send_only",
     );
     await assertRejects(
-      () => insert(null, "send", "flirt"),
+      () => insert(null, "send", "flirt", v3("flirt")),
       Error,
       "analysis_stream_runs_card_task_check",
     );
+    // 第 0 片審查第 1 輪：任務卡列的內容要跟欄位一致（缺欄位、JSON null、不是物件都擋）。
+    for (
+      const bad of [
+        { x: 1 },
+        { decisionKind: "send" },
+        { cardTask: "push" },
+        { decisionKind: "do_not_send", cardTask: "push" },
+        { decisionKind: "send", cardTask: "accept" },
+        null,
+        ["send", "push"],
+      ]
+    ) {
+      await assertRejects(
+        () => insert(null, "send", "push", bad),
+        Error,
+        "analysis_stream_runs_card_task_recommendation",
+      );
+    }
   } finally {
     await db.close();
   }
@@ -966,6 +985,217 @@ Deno.test("v3 charge RPC is service-role only", async () => {
       Object.fromEntries(privileges.rows.map((row) => [row.role, row.allowed])),
       { anon: false, authenticated: false, service_role: true },
     );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("legacy rows present before the card_task migration stay untouched; its CHECKs skip the old rows but bind new writes", async () => {
+  const db = await createDatabase(migrationSql.slice(0, -1));
+  try {
+    const legacy = await createPendingRun(db);
+    await db.query(
+      `SELECT * FROM public.charge_stream_analysis_run($1, $2, $3, $4, 'extend', 1, true)`,
+      [legacy, USER_ID, HASH, JSON.stringify(SEND_RECOMMENDATION)],
+    );
+    const noSend = await createPendingRun(db);
+    await chargeV2(db, {
+      runId: noSend,
+      recommendation: NO_SEND_RECOMMENDATION,
+      decisionKind: "do_not_send",
+    });
+    const pending = await createPendingRun(db);
+    const snapshot = async () =>
+      (await db.query(
+        `SELECT id, status, selected_style, decision_kind, charged_at::text AS charged_at,
+                recommendation_json
+           FROM public.analysis_stream_runs ORDER BY id`,
+      )).rows;
+    const before = await snapshot();
+    assertEquals(before.length, 3);
+
+    await db.exec(migrationSql[migrationSql.length - 1]);
+
+    assertEquals(await snapshot(), before);
+    assertEquals((await getRun(db, pending)).status, "pending");
+    const constraints = await db.query<
+      { conname: string; convalidated: boolean }
+    >(
+      `SELECT conname, convalidated FROM pg_constraint
+        WHERE conrelid = 'public.analysis_stream_runs'::regclass
+          AND conname IN ('analysis_stream_runs_card_task_check',
+                          'analysis_stream_runs_card_task_send_only',
+                          'analysis_stream_runs_card_task_recommendation',
+                          'analysis_stream_runs_charged_has_recommendation')
+        ORDER BY conname`,
+    );
+    assertEquals(constraints.rows.map((r) => [r.conname, r.convalidated]), [
+      ["analysis_stream_runs_card_task_check", false],
+      ["analysis_stream_runs_card_task_recommendation", false],
+      ["analysis_stream_runs_card_task_send_only", false],
+      ["analysis_stream_runs_charged_has_recommendation", false],
+    ]);
+    // NOT VALID 只是不掃舊列；之後的寫入照樣擋（哪一條任務卡 CHECK 先報都算）。
+    await assertRejects(
+      () =>
+        db.query(
+          `UPDATE public.analysis_stream_runs SET card_task = 'accept' WHERE id = $1`,
+          [legacy],
+        ),
+      Error,
+      'violates check constraint "analysis_stream_runs_card_task',
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("v3 replay keys on charged_at, ignores an invalid second payload and still checks owner and hash first", async () => {
+  const db = await createDatabase();
+  try {
+    const runId = await createPendingRun(db);
+    await chargeV3(db, {
+      runId,
+      recommendation: V3_SEND_RECOMMENDATION,
+      decisionKind: "send",
+      cardTask: "accept",
+    });
+    // 第二次帶不合法的內容：照回已存的列，不驗證、不再扣。
+    const replay = await chargeV3(db, {
+      runId,
+      recommendation: null,
+      decisionKind: "hold",
+      cardTask: "flirt",
+      messageCount: 0,
+    });
+    assertEquals(replay.rows[0].card_task, "accept");
+    assertEquals(await usageCalls(db), 1);
+    // 扣過費之後就算 status 變成 failed，也是照回（看 charged_at，不看 status）。
+    await markFailed(db, runId);
+    const afterFail = await chargeV3(db, {
+      runId,
+      recommendation: V3_SEND_RECOMMENDATION,
+      decisionKind: "send",
+      cardTask: "accept",
+    });
+    assertEquals(afterFail.rows[0].status, "failed");
+    assertEquals(await usageCalls(db), 1);
+    // 照回之前先查擁有者與對話：別人拿到 run id 也讀不到。
+    await assertRejects(
+      () =>
+        chargeV3(db, {
+          runId,
+          userId: OTHER_USER_ID,
+          recommendation: V3_SEND_RECOMMENDATION,
+          decisionKind: "send",
+          cardTask: "accept",
+        }),
+      Error,
+      "STREAM_RUN_OWNER_MISMATCH",
+    );
+    await assertRejects(
+      () =>
+        chargeV3(db, {
+          runId,
+          hash: "other-hash",
+          recommendation: V3_SEND_RECOMMENDATION,
+          decisionKind: "send",
+          cardTask: "accept",
+        }),
+      Error,
+      "RUN_CONVERSATION_MISMATCH",
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("v3 payload keys: send must name decisionKind and no selectedStyle; no-send must not name a cardTask", async () => {
+  const db = await createDatabase();
+  try {
+    const runId = await createPendingRun(db);
+    const reject = (args: Omit<Parameters<typeof chargeV3>[1], "runId">) =>
+      assertRejects(
+        () => chargeV3(db, { runId, ...args }),
+        Error,
+        "STREAM_MALFORMED_RECOMMENDATION",
+      );
+    await reject({
+      recommendation: { cardTask: "accept" },
+      decisionKind: "send",
+      cardTask: "accept",
+    });
+    await reject({
+      recommendation: { ...V3_SEND_RECOMMENDATION, selectedStyle: "extend" },
+      decisionKind: "send",
+      cardTask: "accept",
+    });
+    await reject({
+      recommendation: { ...NO_SEND_RECOMMENDATION, cardTask: "accept" },
+      decisionKind: "do_not_send",
+    });
+    assertEquals(await usageCalls(db), 0);
+    assertEquals((await getRun(db, runId)).status, "pending");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("v3 no-send runs follow the v2 retry lease; production cleanup purges v3 rows 30 days after charge", async () => {
+  const db = await createDatabase();
+  try {
+    const noSend = await createPendingRun(db);
+    await chargeV3(db, {
+      runId: noSend,
+      recommendation: NO_SEND_RECOMMENDATION,
+      decisionKind: "do_not_send",
+    });
+    await markFailed(db, noSend);
+    assertEquals((await reserveRetry(db, noSend)).rows[0].retry_count, 1);
+
+    const old = await createPendingRun(db);
+    const recent = await createPendingRun(db);
+    for (const runId of [old, recent]) {
+      await chargeV3(db, {
+        runId,
+        recommendation: V3_SEND_RECOMMENDATION,
+        decisionKind: "send",
+        cardTask: "accept",
+      });
+    }
+    await db.query(
+      `UPDATE public.analysis_stream_runs SET charged_at = now() - interval '31 days' WHERE id = $1`,
+      [old],
+    );
+    await db.query(
+      `UPDATE public.analysis_stream_runs SET charged_at = now() - interval '29 days' WHERE id = $1`,
+      [recent],
+    );
+    const deleted = await db.query<{ n: number }>(
+      `SELECT public.cleanup_expired_analysis_stream_runs() AS n`,
+    );
+    assertEquals(deleted.rows[0].n, 1);
+    assertEquals(await getRun(db, old), undefined);
+    assertEquals((await getRun(db, recent)).card_task, "accept");
+  } finally {
+    await db.close();
+  }
+});
+
+Deno.test("v3 charge RPC takes the row lock before deciding (PGlite has one connection, so pin it in the definition)", async () => {
+  // 真併發要兩條連線，PGlite 測不到；第 0 片反向預審在 Postgres 16 上驗過拿掉 FOR UPDATE 會雙扣。
+  const db = await createDatabase();
+  try {
+    const def = await db.query<{ def: string }>(
+      `SELECT pg_get_functiondef(
+         'public.charge_stream_analysis_run_v3(uuid, uuid, text, jsonb, text, text, integer, boolean)'::regprocedure
+       ) AS def`,
+    );
+    const body = def.rows[0].def;
+    const lock = body.indexOf("FOR UPDATE");
+    assert(lock > 0, "v3 RPC 要先鎖住 run 這一列");
+    assert(lock < body.indexOf("IF stream_run.charged_at IS NOT NULL"));
+    assert(lock < body.indexOf("PERFORM public.increment_usage"));
   } finally {
     await db.close();
   }

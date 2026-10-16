@@ -16,6 +16,18 @@
 --   the retry lease keeps refusing them without any change;
 -- - Edge v3 code must not ship to main before this migration is verified on
 --   production.
+--
+-- Locking (review round 1): every ALTER below takes ACCESS EXCLUSIVE until
+-- commit, so a long-lived open transaction must not stall analyze traffic
+-- behind this migration: give up after 5s instead (same pattern as
+-- 20260729000000). The CHECKs are added NOT VALID, so no existing row is
+-- scanned while the lock is held. That is safe here because every existing row
+-- already satisfies them: card_task is a brand-new column that is NULL on every
+-- existing row, and the rewritten charged CHECK only adds an OR branch to the
+-- validated one it replaces. NOT VALID CHECKs are still enforced on every
+-- INSERT and UPDATE. A later migration may VALIDATE them under a weaker lock.
+
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.analysis_stream_runs
   ADD COLUMN IF NOT EXISTS card_task TEXT;
@@ -27,7 +39,7 @@ ALTER TABLE public.analysis_stream_runs
   CHECK (
     card_task IS NULL
     OR card_task IN ('accept', 'resonate', 'tension', 'push', 'close')
-  );
+  ) NOT VALID;
 
 -- A task card only ever belongs to a send run without a reply style; NULL
 -- decision_kind (legacy v1) must read as FALSE here.
@@ -38,7 +50,24 @@ ALTER TABLE public.analysis_stream_runs
   CHECK (
     card_task IS NULL
     OR (selected_style IS NULL AND COALESCE(decision_kind = 'send', FALSE))
-  );
+  ) NOT VALID;
+
+-- A task card row must carry the send recommendation it was charged with
+-- (review round 1): decisionKind 'send' and the same cardTask. A missing key,
+-- a JSON null or a non-object reads as NULL and is rejected via COALESCE.
+ALTER TABLE public.analysis_stream_runs
+  DROP CONSTRAINT IF EXISTS analysis_stream_runs_card_task_recommendation;
+ALTER TABLE public.analysis_stream_runs
+  ADD CONSTRAINT analysis_stream_runs_card_task_recommendation
+  CHECK (
+    card_task IS NULL
+    OR COALESCE(
+      jsonb_typeof(recommendation_json) = 'object'
+      AND recommendation_json->>'decisionKind' = 'send'
+      AND recommendation_json->>'cardTask' = card_task,
+      FALSE
+    )
+  ) NOT VALID;
 
 -- charged_at non-null => recommendation object AND (reply style OR no-send
 -- kind OR v3 task card). Existing rows satisfy this unchanged.
@@ -60,7 +89,7 @@ ALTER TABLE public.analysis_stream_runs
         OR card_task IS NOT NULL
       )
     )
-  );
+  ) NOT VALID;
 
 COMMENT ON COLUMN public.analysis_stream_runs.card_task IS
   'Analyze v3 task of the first (charged) card: accept, resonate, tension, push or close. Only on send runs without a reply style; NULL for legacy v1/v2 rows and no-send runs.';
@@ -147,6 +176,11 @@ BEGIN
     IF p_card_task IS NOT NULL THEN
       RAISE EXCEPTION 'STREAM_INVALID_CARD_TASK';
     END IF;
+    -- A no-send payload never names a card, so nothing downstream can mistake
+    -- it for one.
+    IF p_recommendation_json ? 'cardTask' THEN
+      RAISE EXCEPTION 'STREAM_MALFORMED_RECOMMENDATION';
+    END IF;
     IF p_recommendation_json->>'decisionKind' IS DISTINCT FROM p_decision_kind
        OR COALESCE(length(btrim(p_recommendation_json->>'action')), 0) = 0
        OR COALESCE(length(btrim(p_recommendation_json->>'reason')), 0) = 0
@@ -159,8 +193,10 @@ BEGIN
        OR p_card_task NOT IN ('accept', 'resonate', 'tension', 'push', 'close') THEN
       RAISE EXCEPTION 'STREAM_INVALID_CARD_TASK';
     END IF;
+    -- A v3 send payload never names a reply style.
     IF p_recommendation_json->>'decisionKind' IS DISTINCT FROM 'send'
-       OR p_recommendation_json->>'cardTask' IS DISTINCT FROM p_card_task THEN
+       OR p_recommendation_json->>'cardTask' IS DISTINCT FROM p_card_task
+       OR p_recommendation_json ? 'selectedStyle' THEN
       RAISE EXCEPTION 'STREAM_MALFORMED_RECOMMENDATION';
     END IF;
   END IF;
@@ -208,6 +244,6 @@ GRANT EXECUTE ON FUNCTION public.charge_stream_analysis_run_v3(
 
 COMMENT ON FUNCTION public.charge_stream_analysis_run_v3(
   UUID, UUID, TEXT, JSONB, TEXT, TEXT, INTEGER, BOOLEAN
-) IS 'Atomic charge for Analyze v3. send requires a task card (accept, resonate, tension, push, close) matching recommendation cardTask and never a reply style; no-send kinds follow the v2 contract with no card. Charged runs replay idempotently. Not leasable for retry.';
+) IS 'Atomic charge for Analyze v3. send requires a task card (accept, resonate, tension, push, close) matching recommendation cardTask and never a reply style; no-send kinds follow the v2 contract with no card and no cardTask key. Charged runs replay idempotently. v3 send runs are not leasable for retry; v3 no-send runs follow the v2 retry lease like any no-send run.';
 
 NOTIFY pgrst, 'reload schema';
