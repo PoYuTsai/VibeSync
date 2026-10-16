@@ -511,6 +511,13 @@ double practiceArchiveSparkleSpawnMs(int index) {
           ((lo + hi) / 2);
 }
 
+/// 收卡沿途星點（第 1..[PracticeRevealTiming.sparkleCount] 顆）灑出的時間表（ms）。
+/// 只看 index，先算好；光球 painter 每幀直接查表，不用每幀重跑二分反解。
+final List<double> kPracticeArchiveSparkleSpawnMs = List.unmodifiable([
+  for (var i = 1; i <= PracticeRevealTiming.sparkleCount; i++)
+    practiceArchiveSparkleSpawnMs(i),
+]);
+
 /// 收卡弧線的控制點：弦的中點沿法向量偏 0.35×弦長，取水平方向較靠近畫面中線的
 /// 那一側（弧線不會飛出螢幕），再夾在畫面內縮 24 px 的範圍內。
 Offset practiceArchiveControlPoint(Offset p0, Offset p2, Size stage) {

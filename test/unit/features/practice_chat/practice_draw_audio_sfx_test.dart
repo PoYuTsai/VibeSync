@@ -72,12 +72,13 @@ void main() {
       );
     });
 
-    test('翻牌紙聲已混進 bed、舊 reveal chime 已退役：檔案都不再 bundle', () {
+    test('翻牌紙聲已混進 bed、舊 reveal chime 與 waiting loop 已退役：檔案都不再 bundle', () {
       for (final old in [
         'practice_draw_flip_snap_1.wav',
         'practice_draw_flip_snap_2.wav',
         'practice_draw_flip_snap_3.wav',
         'practice_draw_reveal_chime.wav',
+        'practice_draw_waiting_loop.wav',
       ]) {
         expect(
           File('assets/audio/practice_draw/$old').existsSync(),

@@ -509,79 +509,76 @@ class PracticeRevealInfoBar extends StatelessWidget {
       if (girl.professionLabel.isNotEmpty) girl.professionLabel,
     ].join(' · ');
     final radius = BorderRadius.circular(18);
-    return Semantics(
-      liveRegion: true,
-      child: ClipRRect(
-        key: const ValueKey('practice-draw-ceremony-info'),
-        borderRadius: radius,
-        child: Stack(
-          children: [
-            // 資訊欄在卡面內左右下各內縮 12：照片副本反推回卡面照片的位置。
-            Positioned(
-              left: -12,
-              bottom: -12 + photoShift,
-              width: photoSize.width,
-              height: photoSize.height,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: photo,
-              ),
+    // 不設 liveRegion：停住時整層已主動唸出抽到誰（儀式的讀屏按鈕），這裡再唸會連唸兩次。
+    return ClipRRect(
+      key: const ValueKey('practice-draw-ceremony-info'),
+      borderRadius: radius,
+      child: Stack(
+        children: [
+          // 資訊欄在卡面內左右下各內縮 12：照片副本反推回卡面照片的位置。
+          Positioned(
+            left: -12,
+            bottom: -12 + photoShift,
+            width: photoSize.width,
+            height: photoSize.height,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: photo,
             ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color:
-                      PracticeRevealPalette.infoGlass.withValues(alpha: 0.68),
-                  borderRadius: radius,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: PracticeRevealPalette.infoGlass.withValues(alpha: 0.68),
+                borderRadius: radius,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    girl.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.titleLarge.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  girl.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.titleLarge.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          meta,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.caption.copyWith(
-                            color: Colors.white.withValues(alpha: 0.78),
-                            fontWeight: FontWeight.w600,
-                          ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption.copyWith(
+                          color: Colors.white.withValues(alpha: 0.78),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      PracticeRevealStars(
-                        count: girl.rarity.stars,
-                        color: theme.star,
-                        scales: starScales,
-                        pulses: starPulses,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                    const SizedBox(width: 8),
+                    PracticeRevealStars(
+                      count: girl.rarity.stars,
+                      color: theme.star,
+                      scales: starScales,
+                      pulses: starPulses,
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

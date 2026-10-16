@@ -65,7 +65,7 @@ Build 326 已確認包含 F2，但使用者在按下翻牌後約 2–5 秒仍聽
 
 - 正式儀式不再啟動 waiting loop；等待期間只保留視覺微動與起始 whoosh。
 - `playWaitingLoop()`／`stopWaitingLoop()` 為相容舊呼叫點暫留，但 production 固定 no-op。
-- `practice_draw_waiting_loop.wav` 僅留作歷史 provenance，不再由 App 播放。
+- `practice_draw_waiting_loop.wav` 當時僅留作歷史 provenance，不再由 App 播放；V3 第三刀已從 repo 移除（git 歷史保留）。
 - 揭曉成功後仍只播放 F2 `practice_draw_reveal_bed.mp3`，檔案與 SHA-256 不變。
 
 ### v4 改版：bed v4 與咻聲 v2（2026-10-01）
@@ -166,7 +166,8 @@ VibeSync 專用內容），加上 Claude Code 程式合成的長音。沒有使�
   小約 6 dB。SHA-256 `4a1b490e8b1c1950d4bad19bdc06194270e263c1655eec796063c2bb9fcba23e`。
 
 **移除**：`practice_draw_reveal_bed_v5.m4a`（由 v6 取代）、`practice_draw_flip_snap_{1,2,3}.wav`（紙聲已混進
-bed）、`practice_draw_reveal_chime.wav`（E2 起就沒在播，介面一併拿掉）。git 歷史保留。
+bed）、`practice_draw_reveal_chime.wav`（E2 起就沒在播，介面一併拿掉）、`practice_draw_waiting_loop.wav`（F3 起就沒在播，
+約 154KB；`playWaitingLoop()`／`stopWaitingLoop()` 仍固定 no-op）。git 歷史保留。
 
 **播放（V3 第三刀）**：揭曉起點播 bed v6（三種稀有度同一條），咻聲尾巴不停、交棒給 bed；點擊收卡時先播收卡音，
 同時 bed 0.25 s、咻聲 0.5 s 淡出。收卡音只有 0.8 s，不另設停止。
@@ -176,21 +177,22 @@ bed）、`practice_draw_reveal_chime.wav`（E2 起就沒在播，介面一併拿
 - **僅可用**：本專案原創生成、CC0、自製、買斷、或授權條款明確允許「商用 app bundling」的素材。
 - **禁用**：NonCommercial / 授權不明 / 從遊戲或影片擷取 / 可辨識到第三方原聲（如神魔之塔、寶可夢等）的素材。
 - 授權文字只存在本 repo 文件，**不**塞進 app UI。
-- 目標：優先小檔案；V3 第三刀後整組翻牌音效資產約 **351KB**（bed v6 約 69KB、收卡音約 17KB、咻聲 m4a 約
-  110KB；已退役的 waiting loop 約 154KB 仍留在資料夾作 provenance）。
+- 目標：優先小檔案；V3 第三刀後整組翻牌音效資產約 **197KB**（bed v6 約 69KB、收卡音約 17KB、咻聲 m4a 約
+  110KB；已退役的 waiting loop 約 154KB 已移除，git 歷史保留）。
 
 ## 音檔清單
 
 | 用途（呼叫點） | bundled 檔名 | 原始候選檔 | 來源／作者 | 授權 | 生成日期 | 需署名 |
 |---|---|---|---|---|---|---|
 | `playWhoosh()` 抽牌咻聲（一次性：主體 ~0.5s＋暖尾巴，最長 5.5s） | `practice_draw_whoosh.m4a`（v2，110KB） | —（v1 為 `A_romantic_magic_01_whoosh.wav`） | Claude Code 原創程式化合成（for VibeSync） | 專案原創（非 CC0） | 2026-10-01 | 否 |
-| `playWaitingLoop()` 等待 shimmer loop（F3 已退役，不播放） | `practice_draw_waiting_loop.wav`（僅留歷史 provenance） | `A_romantic_magic_02_waiting_loop.wav` | Codex 原創程式化 synthesis（for VibeSync） | 專案原創（非 CC0） | 2026-06-26 | 否 |
 | `playRevealBed()` 揭曉配樂 bed（一次性，3.3s，N／R／SR 同一條；高潮與翻牌紙聲對齊 V3 單次翻牌 1.35s） | `practice_draw_reveal_bed_v6.m4a`（v6，69KB） | bed v4 的 4.95–8.25s 片段＋翻牌紙聲（v4、v5、紙聲檔已移除，見上節） | 夥伴提供素材（F2）＋Claude Code 程式合成長音、紙聲與後製 | 專案原創（AI/自製後製，非第三方 sample） | 2026-10-15 | 否 |
 | `playArchive()` 收卡音（一次性，0.8s，0.45s 光球落位時一聲水晶鈴） | `practice_draw_archive_v3.m4a`（17KB） | — | Claude Code 原創程式化合成（for VibeSync） | 專案原創（非 CC0） | 2026-10-15 | 否 |
 
 > ~~`playRiser()`／`playSettle()`（D4，`practice_draw_riser.wav`／`practice_draw_settle.wav`）已於 E2 退役並移除。~~
 
-> 歷史選定組合：whoosh＋waiting loop 原取 A_romantic_magic；waiting loop 已於 F3 退役。
+> 歷史選定組合：whoosh＋waiting loop 原取 A_romantic_magic；waiting loop 已於 F3 退役（`playWaitingLoop()` 固定 no-op）。
+> V3 第三刀把 `practice_draw_waiting_loop.wav`（原始候選檔 `A_romantic_magic_02_waiting_loop.wav`，Codex 原創程式化
+> synthesis，2026-06-26，專案原創、非 CC0、不需署名）從 repo 移除，git 歷史保留。
 > reveal chime 原取 B_gacha_sss，但 E2 起揭曉由單一 master bed 接管，production 不疊放舊 chime；V3 第三刀
 > 連同 `playRevealChime()`、`playFlipSnap()`（紙聲併進 bed）一起移除。
 
@@ -199,7 +201,7 @@ bed）、`practice_draw_reveal_chime.wav`（E2 起就沒在播，介面一併拿
 1. 播放套件：`audioplayers`（短音效與 reveal bed，iOS 支援成熟）。
 2. 實作：`AudioPlayersPracticeDrawSfx`（`lib/features/practice_chat/presentation/widgets/practice_draw_audio_sfx.dart`）。
    - whoosh：一次性（`ReleaseMode.release`）；bed 與收卡音各自一個預載好的 player，避免互相截斷。
-   - waiting loop：F3 已退役；相容 API 固定 no-op，不建立 player。
+   - waiting loop：F3 已退役；相容 API 固定 no-op，不建立 player（音檔已於 V3 第三刀移除）。
    - AudioContext：iOS 直接用 `ambient`（尊重靜音鍵、與其他 App 混音，不中斷使用者背景音樂），不再明確加
      `mixWithOthers`：audioplayers 不允許這個組合，被 iOS 拒絕時 session 會停在 `playback`。Android 不變。
      見 `buildPracticeDrawAudioContext()`。

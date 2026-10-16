@@ -104,15 +104,19 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   int _whooshGeneration = 0;
   // 正在淡出的那一輪：同一輪重複 stopWhoosh 不重來，音量才不會跳回去。
   int? _whooshFadingGeneration;
-  AudioPlayer? _bedPlayer;
-  // bed 預載：完成為 true；失敗會清掉，下一次預載或播放再試。
-  Future<bool>? _bedReady;
+  // 揭曉配樂 bed 與收卡音：都預載成可重播（stop 歸零再 resume），預載邏輯共用。
+  final _ReplayablePlayer _bed =
+      _ReplayablePlayer(_kRevealBedAsset, _kRevealBedVolume);
   // 每次 playRevealBed 遞增；預載期間被停掉或重起時，只讓最後一次起播。
   int _bedGeneration = 0;
-  AudioPlayer? _archivePlayer;
-  Future<bool>? _archiveReady;
+  final _ReplayablePlayer _archive =
+      _ReplayablePlayer(_kArchiveAsset, _kArchiveVolume);
 
   bool _bedActive = false;
+
+  /// bed 最後一次被設的音量。預載時設成 [_kRevealBedVolume]；收卡淡出會一路降到 0，
+  /// 淡出走完再設回來。
+  double _bedVolume = _kRevealBedVolume;
   bool _contextConfigured = false;
   bool _contextPending = false;
 
@@ -207,72 +211,11 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   @override
   void preloadReveal() {
     try {
-      _ensureBedPrepared();
-      _ensureArchivePrepared();
+      _bed.ensurePrepared();
+      _archive.ensurePrepared();
     } catch (_) {
       // 預載失敗不丟；播放時會再試。
     }
-  }
-
-  /// 共用同一次預載：預載中再呼叫拿到同一個 future；失敗後清掉，下一次再試。
-  Future<bool> _ensureBedPrepared() {
-    final current = _bedReady;
-    if (current != null) return current;
-    final next = _prepareBed();
-    _bedReady = next;
-    unawaited(
-      next.then((ok) {
-        if (!ok && identical(_bedReady, next)) _bedReady = null;
-      }),
-    );
-    return next;
-  }
-
-  /// 建立 bed player 並載好音源。成功回 true；失敗（測試／無 platform）回 false、不丟。
-  Future<bool> _prepareBed() async {
-    try {
-      final player = _bedPlayer ??= AudioPlayer();
-      await _loadForReplay(player, _kRevealBedAsset, _kRevealBedVolume);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// 同 [_ensureBedPrepared]，給收卡音。
-  Future<bool> _ensureArchivePrepared() {
-    final current = _archiveReady;
-    if (current != null) return current;
-    final next = _prepareArchive();
-    _archiveReady = next;
-    unawaited(
-      next.then((ok) {
-        if (!ok && identical(_archiveReady, next)) _archiveReady = null;
-      }),
-    );
-    return next;
-  }
-
-  /// 建立收卡音 player 並載好音源。成功回 true；失敗回 false、不丟。
-  Future<bool> _prepareArchive() async {
-    try {
-      final player = _archivePlayer ??= AudioPlayer();
-      await _loadForReplay(player, _kArchiveAsset, _kArchiveVolume);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// 預載成可重播的 player：`ReleaseMode.stop` 停止後保留音源，下一次 stop 歸零再 resume。
-  Future<void> _loadForReplay(
-    AudioPlayer player,
-    String asset,
-    double volume,
-  ) async {
-    await player.setReleaseMode(ReleaseMode.stop);
-    await player.setVolume(volume);
-    await player.setSource(AssetSource(asset));
   }
 
   // 揭曉配樂 bed：與 `_reveal` 對好拍的配樂，揭曉起始播一次。高潮重音在 bed 裡，所以用
@@ -284,7 +227,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
       _ensureContext();
       _bedActive = true;
       final generation = ++_bedGeneration;
-      unawaited(_startBed(_ensureBedPrepared(), generation));
+      unawaited(_startBed(_bed.ensurePrepared(), generation));
     } catch (_) {
       // 啟動失敗也不丟；bed 視為未啟動。
       _bedActive = false;
@@ -295,13 +238,17 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     bool stillWanted() => _bedActive && generation == _bedGeneration;
     try {
       if (!await ready) return;
-      final player = _bedPlayer;
+      final player = _bed.player;
       if (player == null || !stillWanted()) return; // 預載期間已被停掉或重起。
       await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
       if (!stillWanted()) return;
-      // 上一次收卡的淡出可能把音量留在 0：起播前一律設回來。
-      await player.setVolume(_kRevealBedVolume);
-      if (!stillWanted()) return;
+      // 收卡淡出走完時就會把音量設回（[_stopAndRestoreBedVolume]），平常起播不必多等
+      // 一次 setVolume。只有淡出被新的一抽打斷、音量停在半路時，才要先設回來。
+      if (_bedVolume != _kRevealBedVolume) {
+        await player.setVolume(_kRevealBedVolume);
+        _bedVolume = _kRevealBedVolume;
+        if (!stillWanted()) return;
+      }
       await player.resume();
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。
@@ -312,7 +259,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   void playArchive() {
     try {
       _ensureContext();
-      unawaited(_startArchive(_ensureArchivePrepared()));
+      unawaited(_startArchive(_archive.ensurePrepared()));
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。
     }
@@ -321,7 +268,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   Future<void> _startArchive(Future<bool> ready) async {
     try {
       if (!await ready) return;
-      final player = _archivePlayer;
+      final player = _archive.player;
       if (player == null) return;
       await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
       await player.resume();
@@ -334,7 +281,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   /// 淡出途中又開始新的一抽（[playRevealBed] 遞增 generation）就收手，不動新的那條。
   @override
   void stopRevealBed() {
-    final player = _bedPlayer;
+    final player = _bed.player;
     if (player == null || !_bedActive) return; // 未建立／未播放 → idempotent no-op。
     _bedActive = false;
     final generation = _bedGeneration;
@@ -349,13 +296,67 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
           duration: _kRevealBedFadeOut,
           steps: _kRevealBedFadeSteps,
           stillWanted: () => generation == _bedGeneration,
-          setVolume: (volume) =>
-              unawaited(player.setVolume(volume).catchError((Object _) {})),
-          stop: () => unawaited(player.stop().catchError((Object _) {})),
+          setVolume: (volume) {
+            _bedVolume = volume;
+            unawaited(player.setVolume(volume).catchError((Object _) {}));
+          },
+          stop: () => unawaited(_stopAndRestoreBedVolume(player)),
         ).catchError((Object _) {}),
       );
     } catch (_) {
       // 停止失敗也不丟。
+    }
+  }
+
+  /// 收卡淡出走完：停掉，再把音量設回起播音量（不在下一次起播的關鍵路徑上）。設回失敗
+  /// 就讓 [_bedVolume] 留在淡出後的值，下一次起播會自己先補設。
+  Future<void> _stopAndRestoreBedVolume(AudioPlayer player) async {
+    try {
+      await player.stop();
+      await player.setVolume(_kRevealBedVolume);
+      _bedVolume = _kRevealBedVolume;
+    } catch (_) {
+      // 音效非關鍵路徑：失敗不丟。
+    }
+  }
+}
+
+/// 預載成可重播的 player：`ReleaseMode.stop` 停止後保留音源，下一次 stop 歸零再 resume。
+/// 同一次預載共用一個 future（預載中再呼叫拿到同一個）；失敗就清掉，下一次預載或播放再試。
+/// bed 與收卡音各一個，這套邏輯只寫一份。
+class _ReplayablePlayer {
+  _ReplayablePlayer(this.asset, this.volume);
+
+  final String asset;
+  final double volume;
+
+  /// 第一次預載時才建立（lazy：建構不碰 platform channel）。
+  AudioPlayer? player;
+  Future<bool>? _ready;
+
+  Future<bool> ensurePrepared() {
+    final current = _ready;
+    if (current != null) return current;
+    final next = _prepare();
+    _ready = next;
+    unawaited(
+      next.then((ok) {
+        if (!ok && identical(_ready, next)) _ready = null;
+      }),
+    );
+    return next;
+  }
+
+  /// 建立 player 並載好音源。成功回 true；失敗（測試／無 platform）回 false、不丟。
+  Future<bool> _prepare() async {
+    try {
+      final p = player ??= AudioPlayer();
+      await p.setReleaseMode(ReleaseMode.stop);
+      await p.setVolume(volume);
+      await p.setSource(AssetSource(asset));
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 }
