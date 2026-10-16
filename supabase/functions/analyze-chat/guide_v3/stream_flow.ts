@@ -749,8 +749,9 @@ class GuideV3Flow {
         }
         state.firstCardMs = this.now() - this.startedAt;
       }
-      emit(cardEvent(shown));
+      // 先記成已送出再送：送出那一步就算出錯，扣過費的這張也會進結果。
       delivered.push(shown);
+      emit(cardEvent(shown));
       if (out.scoringWords.length > 0) {
         scoring.push({ slot: card.card, words: out.scoringWords });
       }

@@ -7,6 +7,10 @@ import {
   normalizeOutgoingScript,
 } from "../outgoing_message_text.ts";
 import { hasAnalyzeChatPromptLeak } from "../prompt_leak.ts";
+import {
+  hasPromptInjection,
+  hasUnsafeRecommendation,
+} from "../stream_recommendation_guardrail.ts";
 import { stripUnexpectedForeignClauses } from "../unexpected_foreign_text.ts";
 import { applyVoice, scoringWords, type WrittenCard } from "./cards.ts";
 import { GUIDE_V3_SECTIONS } from "./guide_text.ts";
@@ -79,9 +83,17 @@ export function finalizeCard(
   const scanned = [...cleaned, ...card.messages].map((m) =>
     m.replaceAll("妳", "你")
   );
-  if (isBlockedOutgoingCard(scanned)) return { ok: false, reason: "unsafe" };
+  // v2 推薦卡的英文樣式（跟蹤、施壓、提示詞注入）也一併查。
+  if (
+    isBlockedOutgoingCard(scanned) ||
+    scanned.some((m) => hasUnsafeRecommendation(m))
+  ) return { ok: false, reason: "unsafe" };
   const joined = cleaned.join("\n");
-  if (leaksPrompt(joined) || leaksPrompt(card.messages.join("\n"))) {
+  const rawJoined = card.messages.join("\n");
+  if (
+    leaksPrompt(joined) || leaksPrompt(rawJoined) ||
+    hasPromptInjection(joined) || hasPromptInjection(rawJoined)
+  ) {
     return { ok: false, reason: "prompt_leak" };
   }
   // 只拿掉「整則是英文」的卡：沒有漢字、又有兩個以上沒來源的英文詞。夾在中文裡的
