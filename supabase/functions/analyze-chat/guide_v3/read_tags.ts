@@ -39,6 +39,8 @@ export interface ReadTags {
   readonly explicitRejection: boolean;
   readonly blocked: boolean;
   readonly risk: boolean;
+  /// 自傷訊號（Eric 10/16）：有就不出卡，改顯示固定的關心訊息、不扣額度。
+  readonly selfHarmSignal: boolean;
   readonly needsHisFacts: boolean;
   readonly identityQuestion: boolean;
   readonly hisStatedFacts: readonly string[];
@@ -63,6 +65,7 @@ const BOOL_FIELDS = [
   "explicitRejection",
   "blocked",
   "risk",
+  "selfHarmSignal",
   "needsHisFacts",
   "identityQuestion",
   "hasHisVoiceSample",

@@ -9,6 +9,32 @@ export interface WrittenCard {
   readonly expectedReaction: string;
 }
 
+/// 一行一張卡的 JSON；不是合法的卡回 null。
+export function parseWrittenCardLine(raw: string): WrittenCard | null {
+  const line = raw.trim();
+  if (!line) return null;
+  try {
+    // deno-lint-ignore no-explicit-any
+    const v: any = JSON.parse(line);
+    const messages = Array.isArray(v?.messages)
+      ? v.messages.filter((m: unknown) =>
+        typeof m === "string" && m.trim() !== ""
+      )
+      : [];
+    if (!Number.isInteger(v?.card) || messages.length === 0) return null;
+    return {
+      card: v.card,
+      messages,
+      hasInventedDetail: v.hasInventedDetail === true,
+      expectedReaction: typeof v.expectedReaction === "string"
+        ? v.expectedReaction
+        : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 /// 一行一張卡的 JSON；壞掉的行略過（記在 invalidLines）。
 export function parseWrittenCards(
   text: string,
@@ -16,34 +42,34 @@ export function parseWrittenCards(
   const cards: WrittenCard[] = [];
   let invalidLines = 0;
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    try {
-      // deno-lint-ignore no-explicit-any
-      const v: any = JSON.parse(line);
-      const messages = Array.isArray(v.messages)
-        ? v.messages.filter((m: unknown) =>
-          typeof m === "string" && m.trim() !== ""
-        )
-        : [];
-      if (!Number.isInteger(v.card) || messages.length === 0) {
-        invalidLines++;
-        continue;
-      }
-      cards.push({
-        card: v.card,
-        messages,
-        hasInventedDetail: v.hasInventedDetail === true,
-        expectedReaction: typeof v.expectedReaction === "string"
-          ? v.expectedReaction
-          : "",
-      });
-    } catch {
-      invalidLines++;
-    }
+    if (!raw.trim()) continue;
+    const card = parseWrittenCardLine(raw);
+    if (card) cards.push(card);
+    else invalidLines++;
   }
   cards.sort((a, b) => a.card - b.card);
   return { cards, invalidLines };
+}
+
+/// 串流用：把文字片段切成完整的行；最後沒換行的那段由 flush 交出。
+export function createLineSplitter(): {
+  push(chunk: string): string[];
+  flush(): string[];
+} {
+  let buffer = "";
+  return {
+    push(chunk) {
+      buffer += chunk;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      return lines.filter((line) => line.trim() !== "");
+    },
+    flush() {
+      const rest = buffer;
+      buffer = "";
+      return rest.trim() ? [rest] : [];
+    },
+  };
 }
 
 /// v3 A5：預設口吻的稱呼一律用「你」。模型常照對話寫成「妳」（10/14 第一輪 41/108 張），

@@ -63,6 +63,7 @@ function tags(over: Partial<ReadTags> = {}): ReadTags {
     explicitRejection: false,
     blocked: false,
     risk: false,
+    selfHarmSignal: false,
     needsHisFacts: false,
     identityQuestion: false,
     hisStatedFacts: [],

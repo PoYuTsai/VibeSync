@@ -17,6 +17,7 @@ const READ_FIELD_NOTES = `## 要輸出的欄位
 - explicitRejection：她明確拒絕（說法客氣、但意思明確也算）。「先當朋友」「最近不想談感情」不算；她只是說自己有男友也不算（照情境條目 B18 接）。
 - blocked：用戶說了被封鎖，或對話看得出來。
 - risk：上面說的風險（剛認識就熱得不合理，或只在要他花錢、送禮、幫忙時才熱）。
+- selfHarmSignal：對話裡有人（她或他）認真表達想自殺、自傷或不想活了；「笑死」「累死了」「熱到想死」這類誇張說法不算。
 - retreating：她有沒有在退、說不或要放慢。
 - needsHisFacts：要回好這一輪，需要他本人的事實。
 - identityQuestion：她問的是工作、年紀、身高、感情狀態、住哪。
@@ -45,8 +46,53 @@ export function readSystemPrompt(
   ].join("\n\n");
 }
 
-export function readUserPrompt(turns: readonly Turn[]): string {
-  return `## 對話\n${transcriptByTurn(turns)}`;
+/// App 送來的背景（A3：都不是她這次說的話，只拿來判斷局面）。空的欄位不放。
+export interface GuideV3Background {
+  readonly meetingContext?: string;
+  readonly duration?: string;
+  readonly goal?: string;
+  readonly targetDescription?: string;
+  readonly analysisContextNote?: string;
+  readonly partnerSummary?: string;
+  readonly conversationSummary?: string;
+}
+
+function filled(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function backgroundSections(
+  background: GuideV3Background | undefined,
+): string[] {
+  if (!background) return [];
+  const tagLines = ([
+    ["怎麼認識", background.meetingContext],
+    ["認識多久", background.duration],
+    ["他的目標", background.goal],
+    ["對象描述", background.targetDescription],
+    ["他補充的情況", background.analysisContextNote],
+  ] as const).flatMap(([label, value]) => {
+    const text = filled(value);
+    return text ? [`- ${label}：${text}`] : [];
+  });
+  const partner = filled(background.partnerSummary);
+  const earlier = filled(background.conversationSummary);
+  return [
+    ...(tagLines.length > 0 ? [`## 作戰板標籤\n${tagLines.join("\n")}`] : []),
+    ...(partner ? [`## 對象背景\n${partner}`] : []),
+    ...(earlier ? [`## 更早的對話摘要\n${earlier}`] : []),
+  ];
+}
+
+export function readUserPrompt(
+  turns: readonly Turn[],
+  background?: GuideV3Background,
+): string {
+  return [
+    ...backgroundSections(background),
+    `## 對話\n${transcriptByTurn(turns)}`,
+  ].join("\n\n");
 }
 
 export const WRITE_OUTPUT_FORMAT = `## 輸出格式
@@ -103,6 +149,7 @@ export function writeUserPrompt(args: {
   readonly tags: ReadTags;
   readonly entries: readonly GuideV3Entry[];
   readonly cards: readonly CardSpec[];
+  readonly background?: GuideV3Background;
 }): string {
   const facts = args.tags.hisStatedFacts.length > 0
     ? args.tags.hisStatedFacts.map((f) => `- ${f}`).join("\n")
@@ -113,6 +160,7 @@ export function writeUserPrompt(args: {
     )
     : "（這一輪沒有）";
   return [
+    ...backgroundSections(args.background),
     `## 對話\n${transcriptByTurn(args.turns)}`,
     `## 他在對話裡說過的自己的事\n${facts}`,
     `## 這一輪的情境做法\n${entries}`,

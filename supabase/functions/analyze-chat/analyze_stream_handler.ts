@@ -33,6 +33,7 @@ import {
   offeredNoSendDecisions,
 } from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
+import { mapStreamChargeFailure } from "./stream_charge_failure.ts";
 import {
   calibratePhase0EvidenceLinkage,
   emitPhase0Observability,
@@ -202,29 +203,6 @@ function phase0Record(value: unknown): Record<string, unknown> | null {
   return isPlainObject(value) && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function mapStreamChargeFailure(error: unknown): {
-  code: string;
-  message: string;
-} {
-  const message = getErrorMessage(error);
-  const normalized = message.toUpperCase();
-  if (
-    normalized.includes("QUOTA") ||
-    normalized.includes("LIMIT") ||
-    normalized.includes("INSUFFICIENT")
-  ) {
-    return {
-      code: "QUOTA_EXHAUSTED",
-      message: "額度已用完，請升級或下個週期再試。",
-    };
-  }
-
-  return {
-    code: "STREAM_CHARGE_FAILED",
-    message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
-  };
 }
 
 function optionalRecordFrom(

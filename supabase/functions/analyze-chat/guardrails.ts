@@ -334,6 +334,24 @@ export function collectDisplayedReplyText(result: AnalysisResult): string {
   return bucket.join("\n");
 }
 
+/**
+ * v3 任務卡（guide_v3）：一張卡的訊息是他會原封傳出去的句子。跟 v2 回覆卡
+ * 同一套 BLOCKED_PATTERNS（同樣的空白與單向重掃正規化，每則各自掃，不跨訊息
+ * 湊句），再加 outbound 的第一人稱脅迫樣式（引號內的引述照樣不算）。
+ * 任一命中就整張不送，不換罐頭句。
+ */
+export function isBlockedOutgoingCard(messages: readonly string[]): boolean {
+  const bucket: string[] = [];
+  for (const message of messages) pushDisplayedText(bucket, message);
+  if (bucket.some((text) => BLOCKED_PATTERNS.some((p) => p.test(text)))) {
+    return true;
+  }
+  return messages.some((message) => {
+    const scannable = stripQuotedSpans(message);
+    return OUTBOUND_COERCION_PATTERNS.some((p) => p.test(scannable));
+  });
+}
+
 // 檢查 AI 輸出是否安全
 export function checkAiOutput(result: AnalysisResult): AnalysisResult {
   if (!result) return result;
