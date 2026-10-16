@@ -883,6 +883,130 @@ Deno.test("v3 run 失敗後：v2 handler 不 retry（不佔 lease、不打模型
   assert(!calls.includes("callModel"));
 });
 
+Deno.test("v3 run 被終止（扣過費、120 秒沒結案）：續看重組判讀＋第一張卡，用量照扣費紀錄", async () => {
+  const firstCard = {
+    slot: 1,
+    task: "accept",
+    method: "reaction",
+    voice: "default",
+    messages: ["腿斷了還能打字"],
+    hasInventedDetail: false,
+    hasBlank: false,
+  };
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: makeRun({
+      status: "charged",
+      card_task: "accept",
+      decision_kind: "send",
+      charged_at: "2026-10-16T00:00:00.000Z",
+      created_at: new Date(Date.now() - 121_000).toISOString(),
+      recommendation_json: {
+        decisionKind: "send",
+        cardTask: "accept",
+        guideVersion: "v3.3",
+        read: { decision: "send", judgment: "輕鬆" },
+        firstCard,
+        chargedMessageCount: 2,
+      },
+    }),
+  });
+  const { text } = await runWithStubbedFetch({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  const done = text.split("\n").filter(Boolean).map((l) => JSON.parse(l))
+    .find((e) => e.type === "analysis.done");
+  assertEquals(done.finalResult.cards, [firstCard]);
+  assertEquals(done.finalResult.partial, true);
+  assertEquals(done.finalResult.usage, {
+    messagesUsed: 2,
+    shouldChargeQuota: true,
+  });
+  assert(!calls.includes("reserveRetry"));
+  assert(!calls.includes("callModel"));
+});
+
+Deno.test("v3 自傷關心的 run 被終止後重組：用量是 0，不會錯報扣費", async () => {
+  const deps = makeDeps({
+    calls: [],
+    analysisRunId: "run-1",
+    getRunResult: makeRun({
+      status: "charged",
+      decision_kind: "do_not_send",
+      charged_at: "2026-10-16T00:00:00.000Z",
+      created_at: new Date(Date.now() - 121_000).toISOString(),
+      request_context: { guideVersion: "v3.3", chargedMessageCount: 2 },
+      recommendation_json: {
+        decisionKind: "do_not_send",
+        action: "care",
+        reason: "對話裡有自傷訊號",
+        stopCondition: "先確認安全",
+        guideVersion: "v3.3",
+        read: { decision: "care" },
+        chargedMessageCount: 0,
+      },
+    }),
+  });
+  const { text } = await runWithStubbedFetch({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  const done = text.split("\n").filter(Boolean).map((l) => JSON.parse(l))
+    .find((e) => e.type === "analysis.done");
+  assertEquals(done.finalResult.usage, {
+    messagesUsed: 0,
+    shouldChargeQuota: false,
+  });
+});
+
+Deno.test("v3 run 一直停在 pending（原請求沒扣費就被終止）：續看當失敗、不可重試", async () => {
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: makeRun({
+      status: "pending",
+      request_context: { guideVersion: "v3.3" },
+      created_at: new Date(Date.now() - 121_000).toISOString(),
+    }),
+  });
+  const { text } = await runWithStubbedFetch({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  const error = text.split("\n").filter(Boolean).map((l) => JSON.parse(l))
+    .find((e) => e.type === "analysis.error");
+  assertEquals(error.code, "STREAM_RUN_RETRY_UNAVAILABLE");
+  assertEquals(error.recoverable, false);
+  assert(!calls.includes("reserveRetry"));
+});
+
+Deno.test("協定 3 的 App 續看開關打開前建立的 v2 run：照 v2 正常重播", async () => {
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: makeRun({
+      status: "done",
+      selected_style: "extend",
+      final_result_json: { finalRecommendation: { content: "v2 的結果" } },
+    }),
+  });
+  const { text } = await runWithStubbedFetch({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  assert(text.includes("v2 的結果"));
+  assert(!calls.includes("callModel"));
+});
+
 Deno.test("stream v2 request injects selected situation knowledge; v1 stays untouched", async () => {
   const v2Systems: string[] = [];
   await runWithStubbedFetch({

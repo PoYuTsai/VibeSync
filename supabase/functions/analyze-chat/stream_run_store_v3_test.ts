@@ -183,3 +183,66 @@ Deno.test("Supabase driver calls charge_stream_analysis_run_v3 with the migratio
     "charge_stream_analysis_run_v3 failed",
   );
 });
+
+Deno.test("markFailedIfPending：只改 pending 而且沒扣過費的列；沒改到回 null；driver 不支援就丟錯", async () => {
+  const filters: [string, string, unknown][] = [];
+  let updated: Record<string, unknown> | null = null;
+  const builder = (row: AnalysisStreamRun | null) => {
+    const b = {
+      eq: (col: string, val: unknown) => {
+        filters.push(["eq", col, val]);
+        return b;
+      },
+      is: (col: string, val: unknown) => {
+        filters.push(["is", col, val]);
+        return b;
+      },
+      select: () => b,
+      maybeSingle: () => Promise.resolve({ data: row, error: null }),
+      single: unused,
+    };
+    return b;
+  };
+  let nextRow: AnalysisStreamRun | null = { ...ROW, status: "failed" };
+  const driver = createSupabaseAnalysisStreamRunDriver(
+    {
+      from: () => ({
+        update: (values: Record<string, unknown>) => {
+          updated = values;
+          return builder(nextRow);
+        },
+        select: unused,
+        insert: unused,
+      }),
+      rpc: unused,
+    } as unknown as Parameters<typeof createSupabaseAnalysisStreamRunDriver>[0],
+  );
+  const store = new AnalysisStreamRunStore(driver);
+  const input = {
+    runId: "run-1",
+    userId: "user-1",
+    conversationHash: "hash-1",
+    code: "QUOTA_EXHAUSTED",
+  };
+  assertEquals((await store.markFailedIfPending(input))?.status, "failed");
+  assertEquals(updated, {
+    status: "failed",
+    last_error_code: "QUOTA_EXHAUSTED",
+  });
+  assertEquals(filters, [
+    ["eq", "id", "run-1"],
+    ["eq", "user_id", "user-1"],
+    ["eq", "conversation_hash", "hash-1"],
+    ["eq", "status", "pending"],
+    ["is", "charged_at", null],
+  ]);
+  nextRow = null;
+  assertEquals(await store.markFailedIfPending(input), null);
+
+  const { markFailedIfPending: _drop, ...legacy } = driverWithV3([]);
+  assertThrows(
+    () => new AnalysisStreamRunStore(legacy).markFailedIfPending(input),
+    Error,
+    "driver does not support conditional failures",
+  );
+});

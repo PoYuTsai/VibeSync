@@ -33,6 +33,7 @@ const READ_FIELD_NOTES = `## 要輸出的欄位
 export function readSystemPrompt(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
+  leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
 ): string {
   const triggers = entries.filter((e) => e.enabled).map((e) =>
     `- ${e.id}：${e.trigger}`
@@ -43,6 +44,8 @@ export function readSystemPrompt(
     sections.A4,
     READ_FIELD_NOTES,
     `## 情境條目的觸發（只回符合的編號）\n${triggers}`,
+    // readForUser、waitFor 是直接給用戶看的文字。
+    leakDirective.trim(),
   ].join("\n\n");
 }
 

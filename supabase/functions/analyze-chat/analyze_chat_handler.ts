@@ -84,6 +84,7 @@ import { handleGuideV3Stream } from "./guide_v3/stream_flow.ts";
 import { createGuideV3ModelCalls } from "./guide_v3/model_calls.ts";
 import {
   billingMessagesFor,
+  guideV3MaxCards,
   guideV3Mode,
   shouldUseGuideV3,
 } from "./guide_v3/routing.ts";
@@ -1077,7 +1078,12 @@ ${recentText}`;
     // 需確認）/ 4001+ reject。詳見 billing.ts。
     // F04（Eric 10/16）：協定版本 ≥3 的 App 會把她最後一則之後他傳的訊息也送來
     // 給分析看，但那幾則不算進扣費字數與超額確認雜湊（App 端照同一規則算）。
-    const billingMessages = billingMessagesFor(messages, contractParse.value);
+    // 只用在一般文字的串流分析（跟下面 streamSupported 同一組條件）。
+    const billingMessages = billingMessagesFor(messages, {
+      contractVersion: contractParse.value,
+      plainStreamAnalysis: responseMode === "stream" && !hasImages &&
+        !recognizeOnly && !isMyMessageMode && !isOptimizeMessageMode,
+    });
     const billing = resolveBilling({
       messages: billingMessages,
       billingProtocolVersion,
@@ -1673,6 +1679,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3")),
         contractVersion: contractParse.value,
         accountIsTest,
+        isResume: analysisRunId !== null,
       })
     ) {
       return await handleGuideV3Stream({
@@ -1700,6 +1707,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         dailyLimit,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
+        maxCards: guideV3MaxCards(effectiveTier),
         ...createGuideV3ModelCalls({
           apiKey: CLAUDE_API_KEY,
           requestType,

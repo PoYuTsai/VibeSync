@@ -351,7 +351,10 @@ export function isBlockedOutgoingCard(messages: readonly string[]): boolean {
   const coercionScans = [...perMessage];
   pushDisplayedText(coercionScans, messages.join("\n"));
   return coercionScans.some((text) => {
-    const scannable = stripQuotedSpans(text);
+    // 引號內算引述（她說過的話）的前提是引號外還有他自己的話；整則只有引號，就是他
+    // 要原封傳出去的句子，照樣掃。
+    const stripped = stripQuotedSpans(text);
+    const scannable = /[\p{L}\p{N}]/u.test(stripped) ? stripped : text;
     return OUTBOUND_COERCION_PATTERNS.some((p) => p.test(scannable));
   });
 }

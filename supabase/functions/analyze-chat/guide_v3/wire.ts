@@ -50,8 +50,13 @@ export interface GuideV3ReadView {
   readonly judgment: string;
   readonly waitFor?: string;
   readonly careMessage?: string;
-  /// 預定的卡（照順序）；送出的張數可能比較少（被檢查拿掉）。
-  readonly plannedCards: readonly { slot: number; task: V3CardTaskCode }[];
+  /// 預定的卡（照順序）；送出的張數可能比較少（被檢查拿掉）。locked＝這個方案看
+  /// 不到（免費方案只送前幾張），伺服器不會寫也不會送那幾張。
+  readonly plannedCards: readonly {
+    slot: number;
+    task: V3CardTaskCode;
+    locked: boolean;
+  }[];
 }
 
 export interface GuideV3CardView {
@@ -68,6 +73,7 @@ export interface GuideV3CardView {
 export function readView(
   plan: GuideV3Plan,
   light: typeof LIGHTS[number],
+  maxCards: number | null = null,
 ): GuideV3ReadView {
   return {
     guideVersion: GUIDE_V3_VERSION,
@@ -79,6 +85,7 @@ export function readView(
     plannedCards: plan.specs.map((spec, i) => ({
       slot: i + 1,
       task: TASK_CODE[spec.task],
+      locked: maxCards !== null && i >= maxCards,
     })),
   };
 }

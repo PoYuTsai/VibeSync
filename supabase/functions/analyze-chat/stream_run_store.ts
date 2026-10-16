@@ -124,6 +124,12 @@ export interface AnalysisStreamRunDriver {
   /// v3（charge_stream_analysis_run_v3）。選填：只有正式的 Supabase driver 有，
   /// 舊的測試替身不用跟著改；store 呼叫時沒有就丟錯。
   chargeRunV3?(input: ChargeStreamRunV3Input): Promise<AnalysisStreamRun>;
+  /// v3：只有還在 pending、而且沒扣過費才改成 failed；回傳改到的列，沒改到回 null。
+  /// 扣費交易還沒結束時，這個 UPDATE 會等那一列的鎖，交易提交後重新判斷條件，所以
+  /// 不會蓋掉剛扣好費的列。選填，理由同 chargeRunV3。
+  markFailedIfPending?(
+    input: MarkStreamRunFailedInput,
+  ): Promise<AnalysisStreamRun | null>;
 }
 
 export class AnalysisStreamRunStore {
@@ -247,6 +253,23 @@ export class AnalysisStreamRunStore {
     requireNonEmpty(input.code, "code");
     return this.driver.markFailed(input);
   }
+
+  /// v3 的失敗寫入：絕不蓋掉扣過費的列（v2 的 retry 需要能把扣過費的列記 failed，
+  /// 所以不改共用的 markFailed）。
+  markFailedIfPending(
+    input: MarkStreamRunFailedInput,
+  ): Promise<AnalysisStreamRun | null> {
+    requireNonEmpty(input.runId, "runId");
+    requireNonEmpty(input.userId, "userId");
+    requireNonEmpty(input.conversationHash, "conversationHash");
+    requireNonEmpty(input.code, "code");
+    if (!this.driver.markFailedIfPending) {
+      throw new Error(
+        "markFailedIfPending: driver does not support conditional failures",
+      );
+    }
+    return this.driver.markFailedIfPending(input);
+  }
 }
 
 function requireNonEmpty(value: string, name: string): string {
@@ -303,6 +326,7 @@ interface SupabaseSelectBuilder<T> {
 
 interface SupabaseFilterBuilder<T> {
   eq(col: string, val: string): SupabaseFilterBuilder<T>;
+  is(col: string, val: null): SupabaseFilterBuilder<T>;
   single(): Promise<DbResult<T>>;
   maybeSingle(): Promise<DbResult<T>>;
   select(cols?: string): SupabaseSingleBuilder<T>;
@@ -478,6 +502,32 @@ export function createSupabaseAnalysisStreamRunDriver(
         );
       }
       return data;
+    },
+
+    async markFailedIfPending(
+      input: MarkStreamRunFailedInput,
+    ): Promise<AnalysisStreamRun | null> {
+      const { data, error } = await supabase
+        .from("analysis_stream_runs")
+        .update({
+          status: "failed",
+          last_error_code: input.code,
+        })
+        .eq("id", input.runId)
+        .eq("user_id", input.userId)
+        .eq("conversation_hash", input.conversationHash)
+        .eq("status", "pending")
+        .is("charged_at", null)
+        .select("*")
+        .maybeSingle();
+      if (error) {
+        throw new Error(
+          `analysis_stream_runs conditional mark failed failed: ${
+            JSON.stringify(error)
+          }`,
+        );
+      }
+      return data ?? null;
     },
 
     async markFailed(

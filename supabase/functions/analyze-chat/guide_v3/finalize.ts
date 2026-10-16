@@ -14,6 +14,7 @@ import {
 import { stripUnexpectedForeignClauses } from "../unexpected_foreign_text.ts";
 import { applyVoice, scoringWords, type WrittenCard } from "./cards.ts";
 import { GUIDE_V3_SECTIONS } from "./guide_text.ts";
+import { type GuideV3Plan, HOLD_WAIT_FALLBACK } from "./plan.ts";
 import type { CardSpec } from "./rules.ts";
 
 export type CardRemovalReason =
@@ -53,9 +54,16 @@ export const GUIDE_V3_SENTINELS: readonly string[] = Object.values(
 
 const HAN = /\p{Script=Han}/u;
 
+/// 哨兵也做一份跟卡片同樣的簡轉繁（會改詞，例如「用戶」→「使用者」）：模型用簡體
+/// 照抄時，原文對不上繁體哨兵、整理後又被改詞，要拿整理後的哨兵比。
+const GUIDE_V3_SENTINELS_NORMALIZED: readonly string[] = GUIDE_V3_SENTINELS.map(
+  (s) => normalizeOutgoingScript(s) ?? s,
+);
+
 function leaksPrompt(text: string): boolean {
   return hasAnalyzeChatPromptLeak(text) ||
-    GUIDE_V3_SENTINELS.some((s) => text.includes(s));
+    GUIDE_V3_SENTINELS.some((s) => text.includes(s)) ||
+    GUIDE_V3_SENTINELS_NORMALIZED.some((s) => text.includes(s));
 }
 
 function cleanMessage(message: string): string | null {
@@ -96,14 +104,10 @@ export function finalizeCard(
   ) {
     return { ok: false, reason: "prompt_leak" };
   }
-  // 只拿掉「整則是英文」的卡：沒有漢字、又有兩個以上沒來源的英文詞。夾在中文裡的
-  // 英文詞（相機型號、offer）在過去 896 張黑箱卡裡有 10 張，全是正常的卡，只記錄。
+  // 只拿掉「整張卡是英文」的：一個漢字都沒有、又有兩個以上沒來源的英文詞。夾在中文裡
+  // 的英文詞（相機型號、offer），或中文卡後面加一則「Good night~」，都是正常的卡，只記錄。
   const latin = findUnsupportedLatinTokens(joined, sourceText);
-  if (
-    cleaned.some((m) =>
-      !HAN.test(m) && findUnsupportedLatinTokens(m, sourceText).length >= 2
-    )
-  ) {
+  if (!cleaned.some((m) => HAN.test(m)) && latin.length >= 2) {
     return { ok: false, reason: "language_drift", detail: latin };
   }
   const changed = cleaned.length !== card.messages.length ||
@@ -117,4 +121,45 @@ export function finalizeCard(
     scoringWords: scoringWords(joined),
     unsupportedLatin: latin,
   };
+}
+
+/// 給用戶看的教練文字（判讀、要等她做什麼）：比照 v2 不送型決定的檢查（提示詞注入、
+/// 英文的不安全樣式），再加外洩哨兵；整理前後都查。不掃 BLOCKED_PATTERNS：那是給
+/// 可以照傳的句子，拿去掃描述會誤傷正確的說明（同 guardrails.ts 的理由）。
+export function vetCoachText(
+  text: string,
+): { ok: true; text: string } | { ok: false } {
+  const cleaned =
+    (normalizeOutgoingScript(normalizeOutgoingPunctuation(text)) ??
+      "").trim();
+  for (const t of [text, cleaned]) {
+    if (leaksPrompt(t) || hasPromptInjection(t) || hasUnsafeRecommendation(t)) {
+      return { ok: false };
+    }
+  }
+  return { ok: true, text: cleaned };
+}
+
+/// 判讀命中就不給（空字串）；要等她做什麼命中或清完是空的，就用預設那句（扣費紀錄
+/// 的 stopCondition 不能是空的）。
+export function vetPlanText(
+  plan: GuideV3Plan,
+  onRemoved: (field: "judgment" | "waitFor") => void,
+): GuideV3Plan {
+  let judgment = plan.judgment;
+  if (judgment) {
+    const vetted = vetCoachText(judgment);
+    judgment = vetted.ok ? vetted.text : "";
+    if (!vetted.ok) onRemoved("judgment");
+  }
+  let waitFor = plan.waitFor;
+  if (waitFor) {
+    const vetted = vetCoachText(waitFor);
+    if (vetted.ok && vetted.text) waitFor = vetted.text;
+    else {
+      waitFor = HOLD_WAIT_FALLBACK;
+      onRemoved("waitFor");
+    }
+  }
+  return { ...plan, judgment, waitFor };
 }

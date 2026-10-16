@@ -9,15 +9,14 @@ import { jsonResponse } from "../http_response.ts";
 import { type NdjsonEmit, ndjsonStreamResponse } from "../ndjson_response.ts";
 import { stripClientHiddenFinalResult } from "../divergence_contract.ts";
 import { mapStreamChargeFailure } from "../stream_charge_failure.ts";
-import { handleStreamAnalysisResume } from "../stream_handler.ts";
 import type {
   AnalysisStreamRun,
   ChargeStreamRunV3Input,
 } from "../stream_run_store.ts";
 import { createLineSplitter, parseWrittenCardLine } from "./cards.ts";
-import { finalizeCard } from "./finalize.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { type GuideV3Plan, planTurn } from "./plan.ts";
+import { finalizeCard, vetPlanText } from "./finalize.ts";
 import {
   type GuideV3Background,
   readSystemPrompt,
@@ -26,7 +25,6 @@ import {
   writeUserPrompt,
 } from "./prompts.ts";
 import { parseReadTags, READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
-import { guideV3ResumeSnapshot, isGuideV3Run } from "./run_shape.ts";
 import { type GuideMessage, toTurns, type Turn } from "./turns.ts";
 import {
   cardEvent,
@@ -64,12 +62,13 @@ export interface GuideV3RunPort {
     conversationHash: string;
     finalResult: Record<string, unknown>;
   }): Promise<unknown>;
-  markFailed(args: {
+  /// 只有還在 pending、而且沒扣過費才改成 failed；沒改到回 null（見 stream_run_store）。
+  markFailedIfPending(args: {
     runId: string;
     userId: string;
     conversationHash: string;
     code: string;
-  }): Promise<unknown>;
+  }): Promise<AnalysisStreamRun | null>;
 }
 
 export interface GuideV3ReadRequest {
@@ -126,10 +125,10 @@ export interface GuideV3StreamDeps {
   headers?: HeadersInit;
   now?: () => number;
   heartbeatIntervalMs?: number;
-  resumePollIntervalMs?: number;
-  resumeMaxWaitMs?: number;
   /// 讓 runtime 在 App 斷線後仍把這次流程跑完（production：EdgeRuntime.waitUntil）。
   waitUntil?: (task: Promise<unknown>) => void;
+  /// 這個方案最多送幾張（免費方案；null＝全部）。照排好的順序取前面幾張。
+  maxCards?: number | null;
 }
 
 type ErrorEvent = Record<string, unknown> & {
@@ -192,7 +191,13 @@ function parseTagsText(text: string): ReadTags | null {
 export async function handleGuideV3Stream(
   deps: GuideV3StreamDeps,
 ): Promise<Response> {
-  if (deps.analysisRunId) return await resumeGuideV3(deps, deps.analysisRunId);
+  // 續看（帶 analysisRunId）一律交給 v2 handler：它認得 v3 的 run（只重播、不 retry），
+  // 也接得住開關剛打開前建立的 v2 run。
+  if (deps.analysisRunId) {
+    throw new Error(
+      "handleGuideV3Stream: resume requests belong to the v2 handler",
+    );
+  }
   const shouldCharge = deps.quotaUsage.shouldChargeQuota && !deps.accountIsTest;
   let run: AnalysisStreamRun;
   try {
@@ -232,57 +237,6 @@ export async function handleGuideV3Stream(
   }, deps.headers);
 }
 
-async function resumeGuideV3(
-  deps: GuideV3StreamDeps,
-  runId: string,
-): Promise<Response> {
-  const now = deps.now ?? Date.now;
-  const key = {
-    runId,
-    userId: deps.userId,
-    conversationHash: deps.conversationHash,
-  };
-  let run: AnalysisStreamRun;
-  try {
-    run = await deps.store.getRun(key);
-    if (Date.parse(run.expires_at) <= now()) {
-      throw new Error("STREAM_RUN_EXPIRED");
-    }
-    // v2 的 run（開關剛打開前建立的）不在這裡重播：形狀不同，請 App 重新分析。
-    if (!isGuideV3Run(run)) throw new Error("STREAM_RUN_NOT_RETRYABLE");
-    if (run.status === "done" && !run.final_result_json) {
-      throw new Error("STREAM_DONE_RESULT_MISSING");
-    }
-  } catch (error) {
-    deps.log("guide_v3_resume_unavailable", {
-      analysisRunId: runId,
-      error: errorText(error),
-    });
-    return jsonResponse({
-      error: "STREAM_RUN_RETRY_UNAVAILABLE",
-      code: "STREAM_RUN_RETRY_UNAVAILABLE",
-      message: "這次串流分析無法接續，請重新分析。",
-      retryable: false,
-    }, 409);
-  }
-  return handleStreamAnalysisResume({
-    runId,
-    conversationHash: deps.conversationHash,
-    headers: deps.headers,
-    initialRun: guideV3ResumeSnapshot(run, now()),
-    loadRun: async () =>
-      guideV3ResumeSnapshot(await deps.store.getRun(key), now()),
-    pollIntervalMs: deps.resumePollIntervalMs,
-    maxWaitMs: deps.resumeMaxWaitMs,
-    onOutcome: (outcome, details) =>
-      deps.log("guide_v3_resume_outcome", {
-        analysisRunId: runId,
-        outcome,
-        ...details,
-      }),
-  });
-}
-
 class GuideV3Flow {
   private readonly now: () => number;
   private readonly startedAt: number;
@@ -290,9 +244,11 @@ class GuideV3Flow {
   private writeModel: string | undefined;
   /// 這個 run 已經寫進扣費紀錄（包含自傷關心的免扣紀錄）。
   private charged = false;
-  /// 扣費丟錯、讀回也失敗：可能已經扣了。這種 run 不記 failed，交給續看在逾時後
-  /// 從扣費內容重組或判失敗（run_shape.ts）。
+  /// 扣費丟錯、失敗寫入與讀回都失敗：可能已經扣了（只記 log；續看在逾時後從扣費
+  /// 內容重組或判失敗，見 run_shape.ts）。
   private chargeUnknown = false;
+  /// 扣費出錯時已經用條件式寫入記成 failed，fail() 不用再寫一次。
+  private markedFailed = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -352,8 +308,15 @@ class GuideV3Flow {
           { stage: "read" },
         );
       }
-      const plan = planTurn(turns, tags);
-      const view = readView(plan, tags.light);
+      const plan = vetPlanText(
+        planTurn(turns, tags),
+        (field) =>
+          this.deps.log("guide_v3_coach_text_removed", {
+            analysisRunId: this.runId,
+            field,
+          }, "error"),
+      );
+      const view = readView(plan, tags.light, this.deps.maxCards ?? null);
       switch (plan.decision) {
         case "care":
           return await this.care(emit, plan, view, tags);
@@ -417,10 +380,20 @@ class GuideV3Flow {
     event: ErrorEvent,
     details: Record<string, unknown>,
   ): Promise<void> {
-    // 已扣費、或扣費狀態不明的 run 不記 failed：failed 會蓋掉可以續看的狀態。
-    if (!this.charged && !this.chargeUnknown) {
+    // 寫入只在 pending 而且沒扣過費時生效，不會蓋掉扣過費、可以續看的列；扣費狀態
+    // 不明時也照寫，等於再確認一次（扣過的就寫不進去）。
+    if (!this.charged && !this.markedFailed) {
       try {
-        await this.deps.store.markFailed({ ...this.key, code: event.code });
+        const failed = await this.deps.store.markFailedIfPending({
+          ...this.key,
+          code: event.code,
+        });
+        if (!failed) {
+          this.deps.log("guide_v3_mark_failed_skipped", {
+            analysisRunId: this.runId,
+            code: event.code,
+          }, "error");
+        }
       } catch (error) {
         this.deps.log("guide_v3_mark_failed_failed", {
           analysisRunId: this.runId,
@@ -441,7 +414,7 @@ class GuideV3Flow {
   }
 
   /// 扣費（v3 RPC）。扣費內容另記實際扣了幾則（chargedMessageCount），續看重組時用。
-  /// 丟錯時先讀回 run：其實已扣（回應掉了）就當成功；讀回也失敗就是「不明」。
+  /// 丟錯時先用條件式寫入記失敗；沒寫到就讀回：其實已扣就當成功，都不成就是「不明」。
   private async charge(
     input: Omit<
       ChargeStreamRunV3Input,
@@ -460,12 +433,28 @@ class GuideV3Flow {
       this.charged = true;
       return { ok: true };
     } catch (error) {
+      const mapped = mapStreamChargeFailure(error);
+      // 先用條件式寫入把 run 記成失敗：寫到了＝確定沒扣，之後也扣不到（扣費要
+      // pending）；沒寫到＝已經扣了（或交易剛提交），讀回確認。
       let state: "charged" | "not_charged" | "unknown" = "unknown";
       try {
-        const run = await this.deps.store.getRun(this.key);
-        state = run.charged_at !== null ? "charged" : "not_charged";
+        const failed = await this.deps.store.markFailedIfPending({
+          ...this.key,
+          code: mapped.code,
+        });
+        if (failed) {
+          state = "not_charged";
+          this.markedFailed = true;
+        } else {
+          const run = await this.deps.store.getRun(this.key);
+          state = run.charged_at !== null
+            ? "charged"
+            : run.status === "pending"
+            ? "unknown"
+            : "not_charged";
+        }
       } catch {
-        // 讀不回來：狀態不明。
+        // 資料庫連不上：狀態不明。
       }
       if (state === "charged") {
         this.deps.log("guide_v3_charge_confirmed_after_error", {
@@ -475,7 +464,6 @@ class GuideV3Flow {
         this.charged = true;
         return { ok: true };
       }
-      const mapped = mapStreamChargeFailure(error);
       this.deps.log("guide_v3_charge_failed", {
         analysisRunId: this.runId,
         code: mapped.code,
@@ -716,7 +704,10 @@ class GuideV3Flow {
     deadlineAtMs: number,
     isClosed: () => boolean,
   ): Promise<void> {
-    emit(readEvent(view));
+    // 免費方案只寫、只送排好順序的前幾張（伺服器端把關，跟 v2 只給兩種風格同理）。
+    const deliverable = this.deps.maxCards
+      ? plan.specs.slice(0, this.deps.maxCards)
+      : plan.specs;
     const sourceText = this.deps.messages.map((m) => m.content).join("\n");
     const delivered: GuideV3CardView[] = [];
     const removed: { slot: number; reason: string }[] = [];
@@ -735,7 +726,7 @@ class GuideV3Flow {
     /// 回 false＝停止讀串流（扣費失敗或 App 已斷線）。
     const handleLine = async (line: string): Promise<boolean> => {
       const card = parseWrittenCardLine(line);
-      const spec = card ? plan.specs[card.card - 1] : undefined;
+      const spec = card ? deliverable[card.card - 1] : undefined;
       if (!card || !spec || seen.has(card.card)) {
         state.invalidLines++;
         return true;
@@ -778,6 +769,8 @@ class GuideV3Flow {
           return false;
         }
         state.firstCardMs = this.now() - this.startedAt;
+        // 判讀跟第一張卡一起、在扣費之後才送：一張卡都沒有就不會白拿判讀。
+        emit(readEvent(view));
       }
       // 先記成已送出再送：送出那一步就算出錯，扣過費的這張也會進結果。
       delivered.push(shown);
@@ -807,7 +800,7 @@ class GuideV3Flow {
           turns,
           tags,
           entries: plan.entries,
-          cards: plan.specs,
+          cards: deliverable,
           background: this.deps.background,
         }),
         deadlineAtMs,
@@ -870,7 +863,7 @@ class GuideV3Flow {
       return await this.fail(emit, event, {
         stage: "write",
         decision: plan.decision,
-        cardsPlanned: plan.specs.length,
+        cardsPlanned: deliverable.length,
         cardsRemoved: removed.length,
         removedReasons: removed.map((r) => r.reason),
         invalidLines,
@@ -882,7 +875,7 @@ class GuideV3Flow {
       ? undefined
       : upstreamErrorEvent(upstreamError).code;
     const partial = upstreamError !== null ||
-      delivered.length < plan.specs.length;
+      delivered.length < deliverable.length;
     await this.finish(
       emit,
       finalResult({
@@ -896,7 +889,7 @@ class GuideV3Flow {
             ? this.deps.quotaUsage.chargedMessageCount
             : 0,
           firstCardMs,
-          cardsPlanned: plan.specs.length,
+          cardsPlanned: deliverable.length,
           cardsDelivered: delivered.length,
           ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         }),
@@ -906,7 +899,7 @@ class GuideV3Flow {
         decision: plan.decision,
         charged: this.shouldCharge,
         firstCardMs,
-        cardsPlanned: plan.specs.length,
+        cardsPlanned: deliverable.length,
         cardsDelivered: delivered.length,
         cardsRemoved: removed.length,
         removedReasons: removed.map((r) => r.reason),

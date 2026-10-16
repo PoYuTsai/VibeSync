@@ -30,16 +30,31 @@ Deno.test("v3 入口排在所有不打模型的關卡之後、v2 串流分派之
   assert(subscription < claim && claim < rateLimit && rateLimit < v3Gate);
   assert(v3Gate < v3Call && v3Call < v2Dispatch);
   assertEquals(source.split("handleGuideV3Stream(").length - 1, 1);
+  const gate = source.slice(v3Gate, v3Call);
+  assert(gate.includes('mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3"))'));
+  // 續看一律交給 v2 handler。
+  assert(gate.includes("isResume: analysisRunId !== null"));
+  // 免費方案的張數在伺服器端把關。
   assert(
-    source.slice(v3Gate, v3Call).includes(
-      'mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3"))',
+    source.slice(v3Call, v2Dispatch).includes(
+      "maxCards: guideV3MaxCards(effectiveTier),",
     ),
   );
 });
 
-Deno.test("F04：計費與超額確認雜湊都用排除後的訊息", () => {
+Deno.test("F04：只用在一般文字串流分析，計費與超額確認雜湊都用排除後的訊息", () => {
   const billingMessages = at(
-    "const billingMessages = billingMessagesFor(messages, contractParse.value);",
+    "const billingMessages = billingMessagesFor(messages, {",
+  );
+  const call = source.slice(
+    billingMessages,
+    at("const billing = resolveBilling({"),
+  );
+  assert(call.includes("contractVersion: contractParse.value,"));
+  assert(
+    call.includes(
+      'plainStreamAnalysis: responseMode === "stream" && !hasImages &&\n        !recognizeOnly && !isMyMessageMode && !isOptimizeMessageMode,',
+    ),
   );
   assert(billingMessages < at("messages: billingMessages,"));
   assert(

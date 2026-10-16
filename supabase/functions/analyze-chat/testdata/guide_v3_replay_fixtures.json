@@ -43,23 +43,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -141,23 +146,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -262,23 +272,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -398,23 +413,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -446,23 +466,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -690,7 +715,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -720,7 +746,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -777,7 +804,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -849,7 +877,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -881,7 +910,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -1273,7 +1303,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -1303,7 +1334,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -1360,7 +1392,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -1432,7 +1465,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -1464,7 +1498,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -1607,7 +1642,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -1637,7 +1673,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -1694,7 +1731,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -1766,7 +1804,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -1798,7 +1837,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -1941,23 +1981,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -2039,23 +2084,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -2160,23 +2210,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -2296,23 +2351,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -2344,23 +2404,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -2575,15 +2640,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -2638,15 +2706,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -2726,15 +2797,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -2829,15 +2903,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -2868,15 +2945,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -3077,23 +3157,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -3175,23 +3260,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -3296,23 +3386,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -3432,23 +3527,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -3480,23 +3580,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -3740,23 +3845,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -3838,23 +3948,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -3959,23 +4074,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -4095,23 +4215,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -4143,23 +4268,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -4526,23 +4656,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -4625,23 +4760,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -4747,23 +4887,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -4884,23 +5029,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -4932,23 +5082,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -5180,7 +5335,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -5209,7 +5365,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -5265,7 +5422,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -5336,7 +5494,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -5367,7 +5526,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -5516,23 +5676,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -5614,23 +5779,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -5735,23 +5905,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -5871,23 +6046,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -5919,23 +6099,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -6198,15 +6383,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -6262,15 +6450,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -6351,15 +6542,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -6455,15 +6649,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -6495,15 +6692,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -6698,23 +6898,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -6794,23 +6999,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -6913,23 +7123,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -7047,23 +7262,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -7095,23 +7315,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -7348,23 +7573,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -7446,23 +7676,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -7567,23 +7802,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -7703,23 +7943,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "push"
+                    "task": "push",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   }
                 ]
               },
@@ -7751,23 +7996,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "push"
+                "task": "push",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               }
             ]
           },
@@ -7998,15 +8248,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -8062,15 +8315,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -8151,15 +8407,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -8255,15 +8514,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -8295,15 +8557,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -8496,15 +8761,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "resonate"
+                "task": "resonate",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "resonate"
+                "task": "resonate",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "resonate"
+                "task": "resonate",
+                "locked": false
               }
             ]
           },
@@ -8560,15 +8828,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   }
                 ]
               },
@@ -8649,15 +8920,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   }
                 ]
               },
@@ -8753,15 +9027,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "resonate"
+                    "task": "resonate",
+                    "locked": false
                   }
                 ]
               },
@@ -8793,15 +9070,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "resonate"
+                "task": "resonate",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "resonate"
+                "task": "resonate",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "resonate"
+                "task": "resonate",
+                "locked": false
               }
             ]
           },
@@ -8991,23 +9271,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -9089,23 +9374,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -9210,23 +9500,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -9346,23 +9641,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -9394,23 +9694,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -9658,7 +9963,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -9688,7 +9994,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -9745,7 +10052,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -9817,7 +10125,8 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "close"
+                    "task": "close",
+                    "locked": false
                   }
                 ]
               },
@@ -9849,7 +10158,8 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "close"
+                "task": "close",
+                "locked": false
               }
             ]
           },
@@ -9998,15 +10308,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -10062,15 +10375,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -10151,15 +10467,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -10255,15 +10574,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -10295,15 +10617,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -10490,15 +10815,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -10551,15 +10879,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -10637,15 +10968,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -10738,15 +11072,18 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -10777,15 +11114,18 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -11190,23 +11530,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },
@@ -11288,23 +11633,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -11409,23 +11759,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -11545,23 +11900,28 @@
                 "plannedCards": [
                   {
                     "slot": 1,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 2,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 3,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   },
                   {
                     "slot": 4,
-                    "task": "tension"
+                    "task": "tension",
+                    "locked": false
                   },
                   {
                     "slot": 5,
-                    "task": "accept"
+                    "task": "accept",
+                    "locked": false
                   }
                 ]
               },
@@ -11593,23 +11953,28 @@
             "plannedCards": [
               {
                 "slot": 1,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 2,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 3,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               },
               {
                 "slot": 4,
-                "task": "tension"
+                "task": "tension",
+                "locked": false
               },
               {
                 "slot": 5,
-                "task": "accept"
+                "task": "accept",
+                "locked": false
               }
             ]
           },

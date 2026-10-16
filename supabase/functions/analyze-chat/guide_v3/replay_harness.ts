@@ -86,9 +86,13 @@ export async function replayGuideV3(
         markDoneFinal = args.finalResult;
         return Promise.resolve(run);
       },
-      markFailed: (args) => {
-        calls.push(`markFailed:${args.code}`);
+      markFailedIfPending: (args) => {
+        calls.push(`markFailedIfPending:${args.code}`);
+        if (run.status !== "pending" || run.charged_at !== null) {
+          return Promise.resolve(null);
+        }
         failedCodes.push(args.code);
+        run = { ...run, status: "failed", last_error_code: args.code };
         return Promise.resolve(run);
       },
     },

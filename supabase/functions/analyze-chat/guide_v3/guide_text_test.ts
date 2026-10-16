@@ -76,6 +76,8 @@ Deno.test("真說明書組成的提示詞：讀局面帶 47 條觸發、不帶�
   }
   assert(read.includes(GUIDE_V3_SECTIONS.A4));
   assert(!read.includes(GUIDE_V3_SECTIONS.A5));
+  // 讀局面的 readForUser、waitFor 直接給用戶看，也帶外洩指令。
+  assert(read.includes(PROMPT_LEAK_DEFENSE_DIRECTIVE.trim()));
   const write = writeSystemPrompt();
   for (const id of ["A1", "A2", "A3", "A5", "A6"] as const) {
     assert(write.includes(GUIDE_V3_SECTIONS[id]), id);
