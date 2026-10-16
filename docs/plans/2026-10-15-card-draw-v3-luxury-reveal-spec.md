@@ -1,6 +1,6 @@
 # 抽卡揭曉動畫 V3「全息典藏揭曉」實作規格（2026-10-15）
 
-> **狀態**：§1 的 D1–D9 於 2026-10-15 定案（Gate-1；D3 後來改成三種稀有度同一條配樂）。第一刀（結構）、第二刀（外觀）、第三刀（聲音）已實作，見 §16.1–§16.3；剩第四刀（清理）。
+> **狀態**：§1 的 D1–D9 於 2026-10-15 定案（Gate-1；D3 後來改成三種稀有度同一條配樂）。第一刀（結構）、第二刀（外觀）、第三刀（聲音）已實作，見 §16.1–§16.3；第四刀（清理）已備好，等 V3 真機通過才合併，見 §16.4。
 > **基準**：HEAD `2aae192`；`lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart`（3556 行，V2：10 秒兩段升階）。
 > **參考**：
 > 1. 夥伴提供的參考片 `gemini_generated_video_11D7DA2F.mp4`（1280×720、24fps、240 幀、10.005 s、AAC 48 kHz 立體聲；下稱「參考片」）。
@@ -582,7 +582,7 @@ final ValueChanged<String>? onArchived;
 ### 13.3 刪除（最後一刀，V3 上線且真機通過後）
 
 - 儀式檔內 V2 專用的 painter 與函式：`_OrbitalHaloPainter`、`_EnergyBorderPainter`、`_NeonTraceFramePainter`、`_FrameParticleFlowPainter`、`_FrameParticleSprayPainter`、`_ParticleBloomPainter`、`_VolumetricBurstPainter`、`_BreathHoldVignettePainter`、`_GlassWipePainter`、`_FinalPolishPainter`、`_AfterglowPainter`、`_SettlePulsePainter`、`_ReferenceRimGlowPainter`、`_MysticBackPainter`、`_CyberFramePainter`、`_StarfieldPainter`、`kPracticeRevealFlip1Start…HoldEnd`、全部 `practiceCeremony*()` 曲線函式與 `debug*Painter` seam、`PracticeHaloHalf`。
-- 素材：`practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`、`practice_draw_explosion_reference.webp`（約 2.4 MB）；`practice_draw_reveal_bed.mp3`、`practice_draw_flip_snap_{1,2,3}.wav`、`practice_draw_reveal_chime.wav`。（爆點疊圖與 bed v4 在第一刀、紙聲與 chime 在第三刀隨介面變更先刪了。）
+- 素材：`practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`、`practice_draw_explosion_reference.webp`（約 2.4 MB）；`practice_draw_reveal_bed.mp3`、`practice_draw_flip_snap_{1,2,3}.wav`、`practice_draw_reveal_chime.wav`。（爆點疊圖與 bed v4 在第一刀、紙聲與 chime 在第三刀隨介面變更先刪了；兩張 V2 卡背 PNG 第四刀改成移出 app 套件、不刪，見 §16.4。）
 - `kCollectionHighlightWait`；`kPracticeRevealDuration`（改用 `PracticeRevealTiming.reveal`，圖鑑頁不再需要知道儀式多長）。
 
 ---
@@ -742,6 +742,22 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 
 - 產生器的紙聲來源原本釘在第二刀分支的 `e0f534e`，squash merge 之後 main 上不會有那個 commit；改釘 main 上的 `2aae192`（同一個檔，重跑產出逐位元相同）。
 - §4.1、§5.1、§13、§14.2 第 10 條原本還寫著 R0 停咻聲、分稀有度的三條配樂，改成和 §8 一致。
+
+### 16.4 第四刀實作紀錄（2026-10-16）
+
+做了：
+
+- 刪掉儀式檔最後三個 V2 painter（神秘卡背、賽博外框、星光場）與它們的測試 seam，連同只給它們用的十個寫死色值（儀式檔 1641 → 1076 行），以及 7 個只測這三個 painter 的 smoke test。
+- 儀式檔不再有寫死色碼：slop 基準重產、鎖緊棘輪；彩色陰影白名單拿掉早已沒有陰影的儀式檔。
+- 兩張 V2 卡背 PNG（1,741,880 bytes）移出 app 套件，`assets/images/practice/` 剩 360 KB。
+- 一個測試名與註解還寫著 V2 的紫水晶卡背，改成 V3 的說法。
+
+和原規劃不同的地方：
+
+- §13.3 原本要直接刪兩張 V2 卡背 PNG。但 `practice_draw_card_back_base.png` 是 V3 卡背產生器的來源，兩張也是 2026-08 宣傳片企劃的後製參考，所以改成從整個打包進 app 的 `assets/images/practice/` 移到 `docs/archive/practice-draw-v2/`（附 README）：app 一樣少 1.7 MB，產生器改讀新位置、重跑四張 webp 逐位元相同；授權紀錄與兩份寫了完整路徑的企劃文件跟著改。要直接刪也可以，刪之前產生器要改成從 git 歷史取來源（同音效產生器的做法）。
+- 錄製器在第二刀已改好，這一刀不用動。§13.3 列的其他 V2 painter、曲線函式、時間常數、`kCollectionHighlightWait`、`kPracticeRevealDuration`、爆點疊圖與舊音檔，前三刀已經隨改動刪掉。
+
+合併時機：照 §13.3，前三刀上線、Eric 真機通過後才合併；在那之前保持 Draft。
 
 ---
 
