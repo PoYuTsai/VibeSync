@@ -930,6 +930,49 @@ Deno.test("v3 run 被終止（扣過費、120 秒沒結案）：續看重組判�
   assert(!calls.includes("callModel"));
 });
 
+Deno.test("v3 run 扣過費卻被記成 failed：續看附掛並重組第一張卡，不回 409、不 retry", async () => {
+  const firstCard = {
+    slot: 1,
+    task: "accept",
+    method: "reaction",
+    voice: "default",
+    messages: ["腿斷了還能打字"],
+    hasInventedDetail: false,
+    hasBlank: false,
+  };
+  const calls: string[] = [];
+  const deps = makeDeps({
+    calls,
+    analysisRunId: "run-1",
+    getRunResult: makeRun({
+      status: "failed",
+      card_task: "accept",
+      decision_kind: "send",
+      charged_at: "2026-10-16T00:00:00.000Z",
+      created_at: new Date().toISOString(),
+      recommendation_json: {
+        decisionKind: "send",
+        cardTask: "accept",
+        guideVersion: "v3.3",
+        read: { decision: "send", judgment: "輕鬆" },
+        firstCard,
+        chargedMessageCount: 2,
+      },
+    }),
+  });
+  const { response, text } = await runWithStubbedFetch({
+    ...deps,
+    noSendDecisions: true,
+    acceptsGuideV3Results: true,
+  });
+  assertEquals(response.status, 200);
+  const done = text.split("\n").filter(Boolean).map((l) => JSON.parse(l))
+    .find((e) => e.type === "analysis.done");
+  assertEquals(done.finalResult.cards, [firstCard]);
+  assert(!calls.includes("reserveRetry"));
+  assert(!calls.includes("callModel"));
+});
+
 Deno.test("v3 自傷關心的 run 被終止後重組：用量是 0，不會錯報扣費", async () => {
   const deps = makeDeps({
     calls: [],

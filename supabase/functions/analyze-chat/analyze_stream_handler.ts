@@ -377,7 +377,9 @@ export async function handleAnalyzeStream(
         streamRun.final_result_json ||
         streamRun.status === "done" ||
         streamRun.status === "pending" ||
-        streamRun.status === "charged"
+        streamRun.status === "charged" ||
+        // 扣過費卻被記成 failed 的 v3 run：附掛重播，由快照從扣費內容重組。
+        (guideV3Run && streamRun.charged_at !== null)
       ) {
         logInfo("stream_run_resume_attached", {
           user: summarizeUser(deps.userId),

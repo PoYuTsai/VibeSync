@@ -65,10 +65,11 @@ export function guideV3ResumeSnapshot(
   let finalResult = run.final_result_json;
   let status = run.status;
   let lastErrorCode = run.last_error_code;
-  // charged 卻記成 failed 也重組（v3 扣過費的 run 不該被記 failed，萬一有就照扣費內容給）。
-  const chargedWithoutResult = run.charged_at !== null &&
-    (run.status === "charged" || run.status === "failed");
-  if (!finalResult && stale && chargedWithoutResult) {
+  // 扣過費卻沒有結果：還在 charged 的要等逾時（原請求可能還在寫）；被記成 failed 的
+  // 已經沒有人在寫，馬上重組（v3 扣過費的 run 不該被記 failed，萬一有就照扣費內容給）。
+  const recoverNow = !finalResult && run.charged_at !== null &&
+    (run.status === "failed" || (run.status === "charged" && stale));
+  if (recoverNow) {
     finalResult = recoveredGuideV3Result(run);
     if (!finalResult) {
       status = "failed";

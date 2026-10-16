@@ -538,3 +538,43 @@ Deno.test("判讀事件：免費方案的張數之外標 locked", () => {
     false,
   );
 });
+
+Deno.test("定稿第 3 輪：換行或空白夾在關鍵詞中間照擋；原文與整理後各自掃，不湊出假威脅", () => {
+  for (
+    const threat of [
+      "你不回我我\n就去死",
+      "你不回我我 就去死",
+      "你不回\n我我就\n去死",
+    ]
+  ) {
+    assertEquals(
+      finalizeCard(card([threat]), spec(), ""),
+      { ok: false, reason: "unsafe" },
+      threat,
+    );
+  }
+  // 安撫句：單獨掃不會命中，原文與整理後放在一起掃才會湊出「你不…照片…傳出去」。
+  assert(finalizeCard(card(["我不會把照片傳出去，你不用擔心"]), spec(), "").ok);
+  assert(!isBlockedOutgoingCard(["我不會把照片傳出去，你不用擔心"]));
+});
+
+Deno.test("續看快照：扣過費卻被記成 failed，不用等 120 秒就重組（已經沒有人在寫）", () => {
+  const created = Date.parse("2026-10-16T00:00:00.000Z");
+  const snapshot = guideV3ResumeSnapshot(
+    run({
+      status: "failed",
+      card_task: "accept",
+      recommendation_json: {
+        guideVersion: "v3.3",
+        read: { decision: "send" },
+        firstCard: { slot: 1, task: "accept", messages: ["嗨"] },
+        chargedMessageCount: 2,
+      },
+    }),
+    created + 1_000,
+  );
+  assertEquals(
+    (snapshot.finalResult as Record<string, unknown>).cards,
+    [{ slot: 1, task: "accept", messages: ["嗨"] }],
+  );
+});

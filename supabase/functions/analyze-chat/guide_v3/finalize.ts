@@ -87,14 +87,16 @@ export function finalizeCard(
     return { ok: false, reason: "empty_after_cleanup" };
   }
   // 檢查整理前後兩份：簡轉繁會改詞（「用戶」→「使用者」），可能讓原文的禁語或
-  // 外洩片段對不上。脅迫樣式只認「你」，照他口吻的卡可能寫「妳」，掃描時一併換掉。
-  const scanned = [...cleaned, ...card.messages].map((m) =>
-    m.replaceAll("妳", "你")
-  );
+  // 外洩片段對不上。兩份各自整張掃，不能放在一起掃（接起來會湊出不存在的句子）。
+  // 脅迫樣式只認「你」，照他口吻的卡可能寫「妳」，掃描時一併換掉。
+  const asYou = (ms: readonly string[]) =>
+    ms.map((m) => m.replaceAll("妳", "你"));
+  const versions = [asYou(cleaned), asYou(card.messages)];
   // v2 推薦卡的英文樣式（跟蹤、施壓、提示詞注入）也一併查。
   if (
-    isBlockedOutgoingCard(scanned) ||
-    scanned.some((m) => hasUnsafeRecommendation(m))
+    versions.some((ms) =>
+      isBlockedOutgoingCard(ms) || ms.some((m) => hasUnsafeRecommendation(m))
+    )
   ) return { ok: false, reason: "unsafe" };
   const joined = cleaned.join("\n");
   const rawJoined = card.messages.join("\n");
