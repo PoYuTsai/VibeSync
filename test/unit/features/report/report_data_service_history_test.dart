@@ -234,6 +234,55 @@ void main() {
         isFalse,
       );
     });
+
+    test('別的對象有 v3 不影響這位：A 只有 v2、B 有 v3', () {
+      final events = [
+        _analyze('a1', 'c-a', '小雲', 61, DateTime(2026, 10, 1)),
+        AnalysisHistoryEvent.analyze(
+          id: 'b1',
+          createdAt: DateTime(2026, 10, 18),
+          conversationId: 'c-b',
+          subjectName: '安安',
+        ),
+      ];
+      final conversations = [
+        _conversation('c-a', 'p-a', '小雲'),
+        _conversation('c-b', 'p-b', '安安', snapshotJson: v3Snapshot),
+      ];
+
+      expect(
+        service.subjectHasGuideV3Analysis(events, 'p-a', conversations),
+        isFalse,
+      );
+      expect(
+        service.subjectHasGuideV3Analysis(events, 'p-b', conversations),
+        isTrue,
+      );
+    });
+
+    test('對話改指定給新對象：看對話現在的對象，舊對象不算', () {
+      final events = [
+        AnalysisHistoryEvent.analyze(
+          id: 'a1',
+          createdAt: DateTime(2026, 10, 18),
+          conversationId: 'c-1',
+          partnerId: 'p-old',
+          subjectName: '小雲',
+        ),
+      ];
+      final conversations = [
+        _conversation('c-1', 'p-new', '小雲', snapshotJson: v3Snapshot),
+      ];
+
+      expect(
+        service.subjectHasGuideV3Analysis(events, 'p-new', conversations),
+        isTrue,
+      );
+      expect(
+        service.subjectHasGuideV3Analysis(events, 'p-old', conversations),
+        isFalse,
+      );
+    });
   });
 
   group('subjectTrendPoints', () {
