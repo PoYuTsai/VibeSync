@@ -8,6 +8,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   fakeModelResponse,
+  type RefineHarnessFreeAllowance,
   type RefineHarnessOutcome,
   runRefineThroughHandler,
 } from "./guide_v3/refine_harness.ts";
@@ -25,6 +26,7 @@ const PUSH_CARD = { task: "push", voice: "default", method: "reaction" };
 async function run(
   body: Record<string, unknown>,
   optimized: string,
+  freeAllowance: RefineHarnessFreeAllowance = "available",
 ): Promise<RefineHarnessOutcome & { models: Record<string, unknown>[] }> {
   const models: Record<string, unknown>[] = [];
   const out = await runRefineThroughHandler(
@@ -45,6 +47,7 @@ async function run(
         },
       })));
     },
+    freeAllowance,
   );
   return { ...out, models };
 }
@@ -128,6 +131,34 @@ Deno.test("任務卡的再調：兩則被併成一則就整次不給，同樣不
   assertEquals(out.json.code, "OPTIMIZE_MESSAGE_RESULT_INVALID");
   assertEquals(out.json.shouldChargeQuota, false);
   assertEquals(rpcNames(out), ["increment_model_usage"]);
+});
+
+Deno.test("任務卡的再調：今天免費次數用完時照回覆微調扣 1 則（只在結果通過之後）", async () => {
+  const out = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+    "exhausted",
+  );
+  assertEquals(out.status, 200);
+  assertEquals(rpcNames(out), [
+    "increment_model_usage",
+    "consume_refine_free_allowance",
+    "settle_optimize_message_request",
+  ]);
+  assertEquals(out.rpcs[2].args.p_charge_quota, true);
+  const usage = out.json.usage as Record<string, unknown>;
+  assertEquals(usage.messagesUsed, 1);
+  assertEquals(usage.quotaReason, "refine_reply_fixed_1");
+  assertEquals(usage.refineFreeRemaining, 0);
+
+  // 同樣用完的情況下被擋：照樣不扣、不結算。
+  const blocked = await run(
+    { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
+    "就週六\n遲到算妳欠我一杯",
+    "exhausted",
+  );
+  assertEquals(blocked.status, 502);
+  assertEquals(rpcNames(blocked), ["increment_model_usage"]);
 });
 
 Deno.test("任務卡規格不合法：400、0 扣費，不打模型、不碰額度", async () => {

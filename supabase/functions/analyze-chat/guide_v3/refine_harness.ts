@@ -1,5 +1,5 @@
 // 任務卡「再調一下」的整條路徑工具：用假 Supabase 跑正式 handler（訂閱、帳本、免費次數、
-// 限流都是假的，額度一律還有、免費次數一律授權），模型呼叫交給呼叫端決定——測試給假回覆，
+// 限流都是假的，額度一律還有；免費次數預設授權，也可以設成今天已用完），模型呼叫交給呼叫端決定——測試給假回覆，
 // 黑箱工具在付費閘內放行真的 API。其他對外連線（ai_logs）一律回成功、不連網。
 // 給 refine_guide_v3_handler_test.ts 與 tools/v3-card-refine-blackbox 共用；入口不載入，
 // 不隨函式部署。
@@ -25,8 +25,15 @@ export type RefineHarnessModel = (
   init: RequestInit | undefined,
 ) => Promise<Response>;
 
-function fakeSupabase(rpcs: RefineHarnessRpc[]) {
+/// 今天的免費微調：還有（預設）或已經用完（之後每次 1 則）。
+export type RefineHarnessFreeAllowance = "available" | "exhausted";
+
+function fakeSupabase(
+  rpcs: RefineHarnessRpc[],
+  freeAllowance: RefineHarnessFreeAllowance,
+) {
   const nowIso = new Date().toISOString();
+  const exhausted = freeAllowance === "exhausted";
   const subscription = {
     tier: "free",
     monthly_messages_used: 0,
@@ -35,9 +42,13 @@ function fakeSupabase(rpcs: RefineHarnessRpc[]) {
     monthly_reset_at: nowIso,
   };
   const query = (table: string) => {
-    // 訂閱有一列；重播帳本與免費次數都還沒有紀錄（第一次、今天還沒用過）。
+    // 訂閱有一列；重播帳本沒有紀錄（第一次）；免費次數今天還沒用過，或已經用滿 10 次。
     const result = {
-      data: table === "subscriptions" ? subscription : null,
+      data: table === "subscriptions"
+        ? subscription
+        : table === "refine_free_allowance" && exhausted
+        ? { day_utc: nowIso.slice(0, 10), used_count: 10 }
+        : null,
       error: null,
     };
     // deno-lint-ignore no-explicit-any
@@ -69,17 +80,21 @@ function fakeSupabase(rpcs: RefineHarnessRpc[]) {
       rpcs.push({ fn, args });
       if (fn === "consume_refine_free_allowance") {
         return Promise.resolve({
-          data: { granted: true, used: 1, remaining: 9 },
+          data: exhausted
+            ? { granted: false, used: 10, remaining: 0 }
+            : { granted: true, used: 1, remaining: 9 },
           error: null,
         });
       }
       if (fn === "settle_optimize_message_request") {
+        // 帳本照呼叫端要求扣或不扣（p_charge_quota），跟正式函式一樣。
+        const charged = args.p_charge_quota === true;
         return Promise.resolve({
           data: {
             result: args.p_result_json,
-            charged: false,
-            monthlyUsed: 0,
-            dailyUsed: 0,
+            charged,
+            monthlyUsed: charged ? 1 : 0,
+            dailyUsed: charged ? 1 : 0,
           },
           error: null,
         });
@@ -94,10 +109,11 @@ function fakeSupabase(rpcs: RefineHarnessRpc[]) {
 export async function runRefineThroughHandler(
   body: Record<string, unknown>,
   model: RefineHarnessModel,
+  freeAllowance: RefineHarnessFreeAllowance = "available",
 ): Promise<RefineHarnessOutcome> {
   const rpcs: RefineHarnessRpc[] = [];
   const handler = createAnalyzeChatHandler({
-    createSupabaseClient: () => fakeSupabase(rpcs),
+    createSupabaseClient: () => fakeSupabase(rpcs, freeAllowance),
   });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
