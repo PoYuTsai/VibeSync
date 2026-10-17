@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter, PathMetric;
+import 'dart:ui' show ImageFilter, PathMetric, lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,220 +14,15 @@ import '../../domain/entities/practice_girl_rarity.dart';
 import 'practice_draw_sfx.dart';
 import 'practice_girl_photo.dart';
 import 'practice_rarity_style.dart';
+import 'practice_reveal_timing.dart';
 
 const String _kReferenceCardBackBaseAsset =
     'assets/images/practice/practice_draw_card_back_base.png';
 const String _kReferenceCardBackNeonAsset =
     'assets/images/practice/practice_draw_card_back_neon.png';
-const String _kReferenceExplosionAsset =
-    'assets/images/practice/practice_draw_explosion_reference.webp';
 
-/// 翻牌揭曉時間軸（公開供 widget 與 widget test 共用單一真相）。
-/// fraction = ms / kPracticeRevealDuration。詳見 _buildStage 兩段升階分支。
-// 第4輪 storyboard 重定時：總長 = 參考片「音檔.mp4」實測 10.000s（720×1280 24fps
-// 240 幀）。錨定音軌實測三爆點＋屏息低谷（fraction = 絕對秒 / 10.0）：
-//   0.0–0.5s 亮 UI 靜置卡背 → 0.5–1.0 轉暗星空升起 → 1.0–3.0 蓄力 neon 循環
-//   → 3.0s **PEAK#1** 卡背立直→白卡預覽翻出 → 3.5–4.75 預覽懸停
-//   → 5.0s **屏息**（−77dB 最深谷）預覽收最小 → 5.25–6.0 翻回卡背再蓄力
-//   → 6.0–7.25 flip-explosion（6.5s **PEAK#2** 高潮）→ 7.25–8.0 grand 典藏卡
-//   → 8.25–8.75 grand 縮、UI 淡回（8.5s **PEAK#3** 落定）→ 8.75–10.0 settle 亮 UI。
-// 揭曉總長是跨檔正式 API（圖鑑頁新卡微光等儀式收場才點亮，共用此常數），
-// 不掛 @visibleForTesting；其餘 beat 常數仍只給測試推導時間點用。
-const Duration kPracticeRevealDuration = Duration(milliseconds: 10000);
-@visibleForTesting
-const double kPracticeRevealFlip1Start = 0.30; // 3.0s PEAK#1：卡背立直→翻面起手
-@visibleForTesting
-const double kPracticeRevealFlip1End = 0.36; // 3.6s：卡背→白卡預覽翻面落定
-@visibleForTesting
-const double kPracticeRevealPreviewEnd = 0.50; // 5.0s 屏息：預覽收最小、之後翻回卡背
-@visibleForTesting
-const double kPracticeRevealRechargeEnd = 0.60; // 6.0s：翻回卡背蓄力完成（爆裂起手）
-@visibleForTesting
-const double kPracticeRevealHaloClimax = 0.65; // 6.5s PEAK#2：軌道光環爆裂高潮
-@visibleForTesting
-const double kPracticeRevealGrandFlipEnd = 0.725; // 7.25s：高潮翻面→金框典藏卡落定
-@visibleForTesting
-const double kPracticeRevealHoldEnd = 0.82; // 8.2s：典藏卡停留結束→settle（8.5 落定）
-
-/// 聲音與觸覺的對拍點（`_reveal` 的進度，0–1）。由上面的視覺常數換算，視覺不動。
-enum _RevealBeat {
-  /// 3.3 s：第一次翻面中點閃光。翻牌紙聲＋tap。
-  flip((kPracticeRevealFlip1Start + kPracticeRevealFlip1End) / 2),
-
-  /// 6.3 s：只有 SR 呼叫 celebrate()（三下共 200 ms），第三下重擊落在 6.5 s。
-  srBuild(kPracticeRevealHaloClimax - 0.02),
-
-  /// 6.5 s：爆裂。非 SR 的 medium()。
-  burst(kPracticeRevealHaloClimax),
-
-  /// 8.5 s：落定脈衝（[kPracticeRevealHoldEnd] 之後 0.3 s）。tap。
-  settle(kPracticeRevealHoldEnd + 0.03);
-
-  const _RevealBeat(this.at);
-
-  final double at;
-}
-
-/// 揭曉舞台暗化程度（0＝亮 UI 全透出，1＝全暗聚焦）。隨 reveal 進度起落以復刻參考片
-/// 「亮 UI→暗星空→亮 UI」的開收對稱：beat0（0–0.5s）亮 UI＋卡背 → beat1 轉暗 →
-/// 中段全暗儀式 → beat9–10（8.2–10s）暗化退回、亮 UI 重現。drawing 等待期＝柔和聚焦。
-/// widget 與 widget test 共用單一真相（改暗化曲線不會讓測試落點失準）。
-@visibleForTesting
-double practiceCeremonyDim({
-  required bool drawing,
-  required double revealFraction,
-}) {
-  if (drawing) return 0.45; // 等待 server：柔和聚焦，底下 UI 仍隱約可見。
-  final f = revealFraction;
-  const open = 0.12; // 開場/收場暗化底（亮 UI 透出的殘留 vignette）
-  if (f < 0.05) return open; // beat0：亮 UI 靜置卡背
-  if (f < 0.13) return open + (1 - open) * ((f - 0.05) / 0.08); // beat1：轉暗星空
-  if (f < kPracticeRevealHoldEnd) return 1.0; // 中段：全暗儀式
-  // beat9–10：暗化退回，亮 UI 重現（與 content 末段淡出同步交棒給底下 hero）。
-  return (1 - (f - kPracticeRevealHoldEnd) / (1 - kPracticeRevealHoldEnd))
-      .clamp(0.0, 1.0);
-}
-
-/// 爆裂高潮 burst：在 PEAK#2（[kPracticeRevealHaloClimax]＝6.5s）達峰的窄鐘形脈衝
-/// （半寬 ≈ 0.45s），灌進全螢幕 flash／星爆／光環亮度，做出參考片 6.5s「光束 climax」
-/// 的爆發感。0..1，遠離 climax 迅速歸零。widget 與 widget test 共用單一真相。
-@visibleForTesting
-double practiceCeremonyClimaxBurst(double revealFraction) {
-  final d = (revealFraction - kPracticeRevealHaloClimax) / 0.045;
-  return math.exp(-d * d);
-}
-
-@visibleForTesting
-double practiceCeremonyIntroTilt(double revealFraction) {
-  final t = (revealFraction / kPracticeRevealFlip1Start).clamp(0.0, 1.0);
-  if (t <= 0 || t >= 1) return 0;
-  return -0.18 * math.sin(math.pi * t);
-}
-
-@visibleForTesting
-double practiceCeremonySettlePulse(double revealFraction) {
-  final d = (revealFraction - 0.85) / 0.045;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyRimIntensity(double revealFraction) {
-  final introT = (revealFraction / kPracticeRevealFlip1Start).clamp(0.0, 1.0);
-  final intro = revealFraction < kPracticeRevealFlip1Start
-      ? Curves.easeOutCubic.transform(introT)
-      : 0.0;
-  final rechargeT = ((revealFraction - kPracticeRevealRechargeEnd) /
-          (kPracticeRevealHaloClimax - kPracticeRevealRechargeEnd))
-      .clamp(0.0, 1.0);
-  final recharge = revealFraction >= kPracticeRevealRechargeEnd &&
-          revealFraction < kPracticeRevealGrandFlipEnd
-      ? rechargeT
-      : 0.0;
-  final settle = practiceCeremonySettlePulse(revealFraction) * 0.85;
-  return math.max(intro, math.max(recharge, settle)).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyTumbleSpin(double revealFraction) {
-  const start = 0.045;
-  const end = 0.155;
-  if (revealFraction <= start || revealFraction >= end) return 0;
-  final t = ((revealFraction - start) / (end - start)).clamp(0.0, 1.0);
-  return math.sin(math.pi * t).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyParticleBloom(double revealFraction) {
-  final d = (revealFraction - 0.20) / 0.115;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyNeonFrameTrace(double revealFraction) {
-  final rise = ((revealFraction - 0.075) / 0.055).clamp(0.0, 1.0);
-  final fall = (1 - ((revealFraction - 0.34) / 0.16).clamp(0.0, 1.0));
-  return Curves.easeOutCubic.transform(rise) * fall;
-}
-
-@visibleForTesting
-double practiceCeremonyNeonFrameProgress(double revealFraction) {
-  return Curves.easeInOutCubic
-      .transform(((revealFraction - 0.075) / 0.125).clamp(0.0, 1.0));
-}
-
-@visibleForTesting
-double practiceCeremonyNeonParticleWall(double revealFraction) {
-  final rise = ((revealFraction - 0.145) / 0.055).clamp(0.0, 1.0);
-  final fall = (1 - ((revealFraction - 0.34) / 0.14).clamp(0.0, 1.0));
-  return practiceCeremonyParticleBloom(revealFraction) *
-      Curves.easeOutCubic.transform(rise) *
-      fall;
-}
-
-@visibleForTesting
-double practiceCeremonyFrameParticleFlow(double revealFraction) {
-  final rise = ((revealFraction - 0.125) / 0.05).clamp(0.0, 1.0);
-  final fall = (1 - ((revealFraction - 0.31) / 0.075).clamp(0.0, 1.0));
-  final bloom = practiceCeremonyParticleBloom(revealFraction).clamp(0.0, 1.0);
-  return Curves.easeOutCubic.transform(rise) * fall * bloom;
-}
-
-@visibleForTesting
-double practiceCeremonyVolumetricBurst(double revealFraction) {
-  if (revealFraction <= 0.585 || revealFraction >= 0.745) return 0;
-  final fadeIn = ((revealFraction - 0.585) / 0.065).clamp(0.0, 1.0);
-  final fadeOut = ((0.745 - revealFraction) / 0.095).clamp(0.0, 1.0);
-  final envelope = math.min(fadeIn, fadeOut);
-  final peak = practiceCeremonyClimaxBurst(revealFraction);
-  return (envelope * (0.46 + 0.54 * peak)).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyBreathHoldVignette(double revealFraction) {
-  final d = (revealFraction - 0.50) / 0.034;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyPreviewRecede(double revealFraction) {
-  if (revealFraction <= 0.40 || revealFraction >= 0.54) return 0;
-  final d = (revealFraction - 0.48) / 0.045;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyGlassWipe(double revealFraction) {
-  final d = (revealFraction - 0.825) / 0.042;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyFinalPolish(double revealFraction) {
-  final d = (revealFraction - 0.835) / 0.034;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-@visibleForTesting
-double practiceCeremonyAfterglow(double revealFraction) {
-  final d = (revealFraction - 0.86) / 0.035;
-  return math.exp(-d * d).clamp(0.0, 1.0);
-}
-
-double _referenceExplosionOpacity(double revealFraction) {
-  if (revealFraction <= kPracticeRevealRechargeEnd ||
-      revealFraction >= kPracticeRevealGrandFlipEnd) {
-    return 0;
-  }
-  final fadeIn = ((revealFraction - kPracticeRevealRechargeEnd) /
-          (kPracticeRevealHaloClimax - kPracticeRevealRechargeEnd))
-      .clamp(0.0, 1.0);
-  final fadeOut = ((kPracticeRevealGrandFlipEnd - revealFraction) /
-          (kPracticeRevealGrandFlipEnd - kPracticeRevealHaloClimax))
-      .clamp(0.0, 1.0);
-  final envelope = math.min(fadeIn, fadeOut);
-  final pulse = 0.44 + 0.56 * practiceCeremonyClimaxBurst(revealFraction);
-  return (envelope * pulse).clamp(0.0, 1.0);
-}
+/// 蓄力三下輕震（規格 D8：先全開，真機嫌吵就關這一個開關）。
+const bool _kChargeTicksEnabled = true;
 
 /// 揭曉卡片尺寸（G2 放大／復刻 音檔.mp4 的近滿版高卡）：寬 ≈ 0.84×螢幕寬、直式 2:3
 /// （高 = 寬 × 1.5，比舊 4/3 更高更主導，貼合參考片塔羅卡比例）。大螢幕（平板）寬封頂
@@ -254,55 +50,97 @@ Size practiceCeremonyCardSize(Size screen) {
   return Size(w, h);
 }
 
-/// 每日翻牌「揭曉儀式」全螢幕 overlay（Batch 4 → 4.5 高還原 → 4.6 等待微動）。
+/// 每日翻牌「揭曉儀式」全螢幕 overlay（V3 第一刀：單次翻牌＋停住等點擊＋收卡飛行）。
 ///
-/// 純原生視覺實作（無 lottie/rive）：抽牌中浮現一張**神秘卡背**（深紫＋金框＋圖騰
-/// ＋星光，不顯名字／照片），server 抽中後以兩段升階 `Transform`(rotateY) 做 3D 翻面
-/// （白卡預覽→收回蓄力→盛大典藏卡），高潮配 flash／**軌道彗星 halo** 揭曉今日對象，
-/// 短暫停留後整片淡出露出底下 hero。
+/// 規格：`docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md`。這一刀只換結構與
+/// 節奏；卡背、正面卡、資訊欄仍是 V2 的外觀，稀有度染色、新卡背、全息掃光與新配樂在
+/// 後續刀次。
 ///
-/// 設計鐵則（Batch 4.6 仍嚴守）：
+/// 流程：hidden → drawing（卡背入場＋等待呼吸）→ revealing（蓄力 → 單次翻牌 → 資訊浮出，
+/// 共 2.7 s）→ holding（畫面靜止，等使用者點）→ archiving（縮成光球飛進圖鑑那一格，
+/// 0.55 s）→ hidden。各節點見 [PracticeRevealTiming]。
+///
+/// 設計鐵則（沿用 V2）：
 /// - 只靠單一 `drawStatus` 狀態機驅動，**不**新增任何計費／網路行為。
 /// - 只有「真的進過 drawing 又成功 reveal 一位新對象」才慶祝；換一位失敗會回到
 ///   `revealed` 但帶 `errorMessage`，這種情況只做兜底淡出、不翻面慶祝。
-/// - **零 `Timer`／零 `Future.delayed`**：揭曉時間軸（卡背浮現、星光、軌道彗星 halo、
-///   flash、翻面、資訊落位、淡出）一律由 [_intro]／[_reveal] 兩條**有限**
-///   `AnimationController` 的進度推導。唯一會 `repeat()` 的是 [_waiting]（抽牌等待
-///   server 期間的持續微動），且嚴格 gate：只在 drawing 且非 reduce-motion 啟動，
-///   reveal／error／hidden／dispose 一律明確 `stop()`。故 `pumpAndSettle` 仍必收斂、
-///   widget test 不 hang；三條 controller 都在 dispose 先收。
-/// - reduce-motion（`MediaQuery.disableAnimations`）：跳過 3D 翻面與強動畫，抽牌中
-///   定住靜態卡背、reveal 直接收掉 overlay 露出 hero；haptic／一次性咻聲仍照觸發。
-/// - haptic 走 [AppHaptics]：抽牌 light；揭曉時跟著畫面對拍（3.3 s tap、6.5 s 爆裂 medium，
-///   SR 改在 6.3 s 起 celebrate、8.5 s tap），reduce-motion 沒有儀式則留在抽中當下。音效走
-///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入真實音效）。F3 起 server 等待期不跑
-///   循環音效；v4 的咻聲檔自帶一段一次性的暖尾巴接住等待，成功 reveal 由預載好的 bed 接手。
+/// - **零 `Timer`／零 `Future.delayed`**：時間軸一律由有限 `AnimationController` 推導。唯一
+///   會 `repeat()` 的是 [_waiting]（抽牌等待 server 期間的持續微動），只在 drawing 且非
+///   reduce-motion 啟動，其他出口一律 `stop()`。holding 期間沒有任何動畫，所以
+///   `pumpAndSettle` 會停在 holding 收斂；要點「繼續」才收掉。
+/// - reduce-motion（`MediaQuery.disableAnimations`）：沒有儀式畫面；抽中當下給觸覺，並立刻
+///   通知圖鑑頁捲動與點亮那一格。
+/// - haptic 走 [AppHaptics]（翻牌峰值重擊，SR 改成 celebrate 三連、第三下落在峰值）；音效走
+///   [PracticeDrawSfx]（由 [practiceDrawSfxProvider] 注入）。等待期不跑循環音效。
 ///
-/// 由角色圖鑑頁（PracticeCollectionScreen，翻牌入口所在地）以 `Positioned.fill`
-/// 疊在內容最上層；idle 時整片透明且 `IgnorePointer`，不攔截底下的點擊。
+/// 由角色圖鑑頁以 `Positioned.fill` 疊在整頁（含 AppBar）最上層；idle 時整片透明且
+/// `IgnorePointer`，不攔截底下的點擊。
 class PracticeDrawCeremony extends ConsumerStatefulWidget {
-  const PracticeDrawCeremony({super.key});
+  const PracticeDrawCeremony({
+    super.key,
+    this.onRevealTarget,
+    this.archiveTargetRect,
+    this.onArchived,
+  });
+
+  /// 揭曉開始（reduce-motion 為抽中當下）：圖鑑頁收 filter、標記並捲到這張卡。
+  /// 新卡與重複角色都會呼叫。
+  final ValueChanged<PracticeGirlProfile>? onRevealTarget;
+
+  /// 收卡起飛前查目標格的 global rect；回 null 或不在畫面內 → 光球原地收束。
+  final Rect? Function(String profileId)? archiveTargetRect;
+
+  /// 光球落位（收卡 450 ms；reduce-motion 為抽中當下）：圖鑑頁點亮那一格。
+  final ValueChanged<String>? onArchived;
 
   @override
   ConsumerState<PracticeDrawCeremony> createState() =>
       _PracticeDrawCeremonyState();
 }
 
-enum _CeremonyPhase { hidden, drawing, revealing }
+enum _CeremonyPhase { hidden, drawing, revealing, holding, archiving }
+
+/// 揭曉對拍點（`_reveal` 經過的毫秒）。配樂重音都在 bed 裡，這裡只補翻牌紙聲與觸覺。
+enum _RevealBeat {
+  chargeTick0(0),
+  chargeTick1(PracticeRevealTiming.chargeTick1Ms),
+  chargeTick2(PracticeRevealTiming.chargeTick2Ms),
+
+  /// 只有 SR：celebrate 三下共 200 ms，第三下重擊落在翻牌峰值。
+  srBuild(PracticeRevealTiming.srBuildMs),
+
+  /// 卡片正好側立：翻牌紙聲；N／R 的重擊。
+  flipPeak(PracticeRevealTiming.flipPeakMs);
+
+  const _RevealBeat(this.ms);
+
+  final double ms;
+}
+
+/// 卡片在等待呼吸中的姿態；揭曉起手時抓下來，前 150 ms 混到蓄力姿態，避免跳格。
+@immutable
+class _CardPose {
+  const _CardPose({required this.dy, required this.scale, required this.glow});
+
+  static const rest = _CardPose(dy: 0, scale: 1, glow: 0.6);
+
+  final double dy;
+  final double scale;
+  final double glow;
+}
 
 class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     with TickerProviderStateMixin {
-  // 卡背浮現（淡入＋微放大＋入場星光）；失敗時 reverse 當作淡出。
+  // 卡背入場（背景暗化＋卡背浮現）；失敗時 reverse 當作淡出。
   late final AnimationController _intro = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 520),
+    duration: PracticeRevealTiming.intro,
   );
 
-  // 兩段升階揭曉時間軸（白卡預覽→收回蓄力→盛大典藏卡→淡出），全部塞進這一條
-  // forward-only controller（無 Timer/repeat）。退役舊 `_flip`（單段 2400ms）。
-  late final AnimationController _reveal = AnimationController(
+  // 等待字樣：server 超過 900 ms 還沒回來才淡入。
+  late final AnimationController _caption = AnimationController(
     vsync: this,
-    duration: kPracticeRevealDuration,
+    duration: PracticeRevealTiming.caption,
   );
 
   // 抽牌「等待 server 回應」期間的持續蓄力微動（上下浮動＋金光呼吸＋星光閃爍）。
@@ -314,171 +152,347 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     duration: const Duration(milliseconds: 2600),
   );
 
-  // 翻牌音效（咻／揭曉配樂）。等待期只保留視覺微動，不再播放 shimmer loop；測試以
-  // [practiceDrawSfxProvider] override 注入 spy。於 initState 以 `ref.read` 鎖定實例
-  // （Provider 無 async／context 依賴，initState read 安全），故 dispose 取用時純欄位
-  // 讀取、不再碰 ref。
+  // 揭曉：蓄力 → 單次翻牌 → 資訊浮出（forward-only，走完進 holding）。
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: PracticeRevealTiming.reveal,
+  );
+
+  // 收卡：縮成光球飛進圖鑑那一格（forward-only，走完收掉 overlay）。
+  late final AnimationController _archive = AnimationController(
+    vsync: this,
+    duration: PracticeRevealTiming.archive,
+  );
+
+  // 翻牌音效（咻／揭曉配樂）。於 initState 以 `ref.read` 鎖定實例（Provider 無 async／
+  // context 依賴），故 dispose 取用時純欄位讀取、不再碰 ref。
   late final PracticeDrawSfx _sfx;
+
+  /// 五條 controller 的合併訊號：疊加層由 AnimatedBuilder 訂閱它重繪，State.build
+  /// 只在階段轉換時重跑。
+  late final Listenable _ceremonyMotion =
+      Listenable.merge([_intro, _caption, _waiting, _reveal, _archive]);
+
+  /// 卡片舞台：收卡時用來取卡片中心（光球起點）。
+  final GlobalKey _stageKey = GlobalKey();
 
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
-  // 已觸發的對拍點：`_reveal` 是有限 forward-only controller，每幀 tick 比對門檻，
-  // 這個集合確保每一拍在一次揭曉裡只觸發一次。揭曉起播前與收掉 overlay 時清空。
+  /// server 比卡背入場還快回來：等 `_intro` 走完才開始揭曉。
+  bool _pendingReveal = false;
+
+  /// 失敗兜底淡出中：`_intro` 倒轉到 0 就收掉 overlay。
+  bool _fadingOut = false;
+
+  /// 收卡的光球已落位（`onArchived` 只呼叫一次）。
+  bool _landed = false;
+
+  _CardPose _startPose = _CardPose.rest;
+  double _captionAtRevealStart = 0;
+  Offset _archiveOrigin = Offset.zero;
+  Offset _archiveControl = Offset.zero;
+  Rect? _archiveTarget;
+
+  // 已觸發的對拍點：`_reveal` 每幀 tick 比對門檻，這個集合確保每一拍在一次揭曉裡
+  // 只觸發一次。揭曉起播前與收掉 overlay 時清空；跳過時一次標滿（不補震、不補聲）。
   final Set<_RevealBeat> _firedBeats = {};
+
+  double get _introMs => _intro.value * PracticeRevealTiming.introMs;
+  double get _captionMs => _caption.value * PracticeRevealTiming.captionMs;
+  double get _revealMs => _reveal.value * PracticeRevealTiming.revealMs;
+  double get _archiveMs => _archive.value * PracticeRevealTiming.archiveMs;
+
+  bool get _reduceMotion =>
+      MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
   @override
   void initState() {
     super.initState();
     _sfx = ref.read(practiceDrawSfxProvider);
-    _reveal.addListener(_onRevealEdge);
+    _reveal.addListener(_onRevealTick);
     _reveal.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
+      if (status == AnimationStatus.completed &&
+          _phase == _CeremonyPhase.revealing) {
+        setState(() => _phase = _CeremonyPhase.holding);
+      }
+    });
+    _archive.addListener(_onArchiveTick);
+    _archive.addStatusListener((status) {
+      if (status == AnimationStatus.completed &&
+          _phase == _CeremonyPhase.archiving) {
         _toHidden();
       }
     });
     _intro.addStatusListener((status) {
-      // 失敗兜底淡出（reverse）走完 → 收掉 overlay。
-      if (status == AnimationStatus.dismissed &&
-          _phase != _CeremonyPhase.hidden &&
-          !_reveal.isAnimating) {
+      if (status == AnimationStatus.completed && _pendingReveal) {
+        _pendingReveal = false;
+        _beginReveal();
+      } else if (status == AnimationStatus.dismissed && _fadingOut) {
         _toHidden();
       }
     });
   }
-
-  /// 三條 controller 的合併訊號：疊加層由 AnimatedBuilder 訂閱它重繪，
-  /// 不再 setState-per-tick 重跑整個 State.build（含 ref.listen 重掛）。
-  late final Listenable _ceremonyMotion =
-      Listenable.merge([_intro, _reveal, _waiting]);
-
-  /// 揭曉時間軸的對拍：跨過門檻就觸發一次（測試一次 pump 跳過門檻也用 `>=`）。只播
-  /// 音效、給觸覺——不 setState（重繪由 [_ceremonyMotion] 的 AnimatedBuilder 負責）。
-  /// 配樂 bed 在揭曉起始就起播，重音都在 bed 裡；這裡只補翻牌紙聲與觸覺，舊 reveal
-  /// chime 不再播。
-  void _onRevealEdge() {
-    if (_phase != _CeremonyPhase.revealing) return;
-    for (final beat in _RevealBeat.values) {
-      if (_reveal.value >= beat.at && _firedBeats.add(beat)) _fireBeat(beat);
-    }
-  }
-
-  void _fireBeat(_RevealBeat beat) {
-    final isSr = _revealGirl?.rarity == PracticeGirlRarity.sr;
-    switch (beat) {
-      case _RevealBeat.flip:
-        _sfx.playFlipSnap();
-        AppHaptics.tap();
-      case _RevealBeat.srBuild:
-        if (isSr) AppHaptics.celebrate();
-      case _RevealBeat.burst:
-        if (!isSr) AppHaptics.medium();
-      case _RevealBeat.settle:
-        AppHaptics.tap();
-    }
-  }
-
-  void _toHidden() {
-    if (!mounted) return;
-    setState(() {
-      _phase = _CeremonyPhase.hidden;
-      _revealGirl = null;
-    });
-    _waiting.stop();
-    _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／翻面完成／淡出完成）一律停等待 loop。
-    _sfx.stopRevealBed(); // E2：揭曉結束／收掉 overlay → 配樂 bed 不殘留。
-    _firedBeats.clear();
-    _reveal.value = 0;
-    // intro 一併歸零：成功揭曉會把它留在終點，下一抽 `forward(from: 0)` 會先發出
-    // dismissed，被上面的收場 listener 當成「淡出走完」，把剛開始的第二抽收掉（卡背
-    // 不見、失敗兜底被跳過）。phase 已先設 hidden，這裡觸發的 dismissed 不會再進來。
-    _intro.value = 0;
-  }
-
-  bool get _reduceMotion =>
-      MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
   /// 監看 `drawStatus` 轉場驅動儀式。只在「曾進入 drawing」後才有反應，避免進房就
   /// 已是 revealed（草稿／續玩還原）誤觸發。
   void _onStateChange(PracticeChatState? prev, PracticeChatState next) {
     final wasDrawing = prev?.isDrawing ?? false;
 
-    // 進入抽牌：浮現神秘卡背，輕觸覺＋咻聲掛勾。
     if (!wasDrawing && next.isDrawing) {
-      AppHaptics.light();
-      _sfx.playWhoosh();
-      // 揭曉配樂先載好：server 回來時從頭 resume，bed 裡的重音才對得上畫面。
-      _sfx.preloadReveal();
-      setState(() {
-        _phase = _CeremonyPhase.drawing;
-        _revealGirl = null;
-      });
-      _reveal
-        ..stop()
-        ..value = 0;
-      if (_reduceMotion) {
-        _intro.value = 1; // 不做淡入動畫，直接定住卡背。
-        _waiting.stop(); // reduce-motion：等待期間靜止，不啟動持續微動。
-        _sfx.stopWaitingLoop(); // reduce-motion：不啟動等待 loop（防殘留）。
-      } else {
-        _intro.forward(from: 0);
-        _waiting.repeat(); // 等待 server 期間持續蓄力微動。
-        // F3：等待 server 期間不跑循環音效。舊 shimmer loop 就是 build 326 仍可聽見的
-        // 「西西簌簌」來源。v4 只有咻聲檔自帶的一次性暖尾巴接住等待；揭曉成功後由 bed 接手。
-      }
+      _startDrawing();
       return;
     }
 
     if (!wasDrawing) return; // 以下都只處理「抽牌中 → 結果」的收斂。
 
+    // 抽牌中的其他狀態更新（例如練習室還在跑的提示、拆解剛好回來）不是結果：不理，
+    // 否則會被當成失敗淡出，真正的結果回來時已經沒有儀式可接。
+    if (next.isDrawing) return;
+
     // 抽牌成功揭曉：revealed 且沒有錯誤訊息（換一位失敗會回 revealed 但帶錯誤）。
     final drawSucceeded =
         next.isRevealed && next.errorMessage == null && next.girl != null;
     if (drawSucceeded) {
-      // 即時停等待 loop（兩條路徑都不等翻面跑完）。
-      _sfx.stopWaitingLoop();
-      if (_reduceMotion) {
-        // reduce-motion：跳過 3D 翻面，也就沒有對拍點，觸覺留在抽中當下。稀有（SR）給
-        // 漸強慶祝，一般給單發重震——稀有的手感必須不一樣（文件觸感 7）。
-        // 不疊舊 chime，避免與 master audio 語意分裂。
-        if (next.girl!.rarity == PracticeGirlRarity.sr) {
-          AppHaptics.celebrate();
-        } else {
-          AppHaptics.medium();
-        }
-        _toHidden();
-        return;
-      }
-      setState(() {
-        _phase = _CeremonyPhase.revealing;
-        _revealGirl = next.girl;
-      });
-      _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
-      _intro.value = 1;
-      _sfx.playRevealBed(); // 揭曉起始播一條與 `_reveal`（10 s）同長同步的配樂 bed（已預載）。
-      // 翻牌紙聲與觸覺跟著畫面對拍（_onRevealEdge）：揭曉時的觸覺從抽中當下移到撞擊格，
-      // SR 的手感仍不一樣（6.3 s 起 celebrate）。
-      _firedBeats.clear();
-      _reveal.forward(from: 0);
+      _onDrawSucceeded(next.girl!);
       return;
     }
 
     // 失敗兜底（error / locked / 換一位失敗回 revealed 帶錯誤）：淡出，不慶祝。
     if (_phase == _CeremonyPhase.drawing ||
         _phase == _CeremonyPhase.revealing) {
-      _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
-      _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
-      _sfx.stopRevealBed(); // 失敗兜底：配樂 bed 一律收掉（防殘留）。
-      _sfx.stopWhoosh(); // 失敗兜底：咻聲尾巴淡出，不帶到付費牆／錯誤提示上。
-      _reveal
-        ..stop()
-        ..value = 0;
-      if (_reduceMotion || _intro.value == 0) {
-        _toHidden();
-      } else {
-        _intro.reverse();
-      }
+      _failOut();
     }
+  }
+
+  void _startDrawing() {
+    // 進入抽牌：浮現神秘卡背，觸覺＋咻聲。
+    AppHaptics.light();
+    _sfx.playWhoosh();
+    // 揭曉配樂先載好：server 回來時從頭 resume，bed 裡的重音才對得上畫面。
+    _sfx.preloadReveal();
+    _reveal
+      ..stop()
+      ..value = 0;
+    _archive
+      ..stop()
+      ..value = 0;
+    _firedBeats.clear();
+    _pendingReveal = false;
+    _fadingOut = false;
+    _landed = false;
+    setState(() {
+      _phase = _CeremonyPhase.drawing;
+      _revealGirl = null;
+      _archiveTarget = null;
+    });
+    if (_reduceMotion) {
+      _intro.value = 1; // 不做入場動畫，直接定住卡背。
+      _caption.value = 1;
+      _waiting.stop(); // reduce-motion：等待期間靜止，不啟動持續微動。
+      _sfx.stopWaitingLoop(); // reduce-motion：不啟動等待 loop（防殘留）。
+    } else {
+      _intro.forward(from: 0);
+      _caption.forward(from: 0);
+      _waiting.repeat(); // 等待 server 期間持續蓄力微動。
+      // F3：等待 server 期間不跑循環音效；只有咻聲檔自帶的一次性暖尾巴接住等待。
+    }
+  }
+
+  void _onDrawSucceeded(PracticeGirlProfile girl) {
+    _sfx.stopWaitingLoop();
+    if (_reduceMotion) {
+      // reduce-motion：沒有翻面也就沒有對拍點，觸覺留在抽中當下。稀有（SR）給漸強慶祝，
+      // 一般給單發重震——稀有的手感必須不一樣。
+      if (girl.rarity == PracticeGirlRarity.sr) {
+        unawaited(AppHaptics.celebrate());
+      } else {
+        AppHaptics.medium();
+      }
+      widget.onRevealTarget?.call(girl);
+      widget.onArchived?.call(girl.profileId);
+      // 沒有儀式也就沒有配樂可以交棒：咻聲的暖尾巴跟著收掉，不留在圖鑑上。
+      _sfx.stopWhoosh();
+      _toHidden();
+      return;
+    }
+    _revealGirl = girl;
+    if (_intro.isCompleted) {
+      _beginReveal();
+      return;
+    }
+    _pendingReveal = true; // 保證卡背入場走完才開始蓄力。
+    // 卡背入場沒有在往前走：抽牌中離開圖鑑又回來（這個儀式還是 hidden），或正在淡出。
+    // 接著把入場走完再揭曉，不重播咻聲與觸覺（那是按下翻牌那一刻的事）。
+    if (_phase == _CeremonyPhase.hidden || _fadingOut) {
+      _fadingOut = false;
+      _sfx.preloadReveal();
+      setState(() => _phase = _CeremonyPhase.drawing);
+      _intro.forward();
+    }
+  }
+
+  void _beginReveal() {
+    final girl = _revealGirl;
+    if (!mounted || girl == null) return;
+    _startPose = _waitingPose();
+    _captionAtRevealStart = _captionOpacity(); // 還在 drawing：取等待字樣當下透明度。
+    _waiting.stop(); // 揭曉接管：停掉等待微動，避免與翻面疊動。
+    _caption.stop();
+    // 正面在 1.35 s 才露出：先把照片解碼好，翻開那一刻不會空白。
+    unawaited(
+      precacheImage(
+        AssetImage(girl.photoAssetPath),
+        context,
+        onError: (_, __) {},
+      ),
+    );
+    // 揭曉起始播一條與 `_reveal` 對好拍的配樂 bed（已預載）；咻聲尾巴不停，交棒給 bed。
+    _sfx.playRevealBed();
+    widget.onRevealTarget?.call(girl);
+    _firedBeats.clear();
+    setState(() => _phase = _CeremonyPhase.revealing);
+    _reveal.forward(from: 0);
+  }
+
+  /// 揭曉時間軸的對拍：跨過門檻就觸發一次（測試一次 pump 跳過門檻也用 `>=`）。只播
+  /// 音效、給觸覺——不 setState（重繪由 [_ceremonyMotion] 的 AnimatedBuilder 負責）。
+  void _onRevealTick() {
+    if (_phase != _CeremonyPhase.revealing) return;
+    final ms = _revealMs;
+    for (final beat in _RevealBeat.values) {
+      if (ms >= beat.ms && _firedBeats.add(beat)) _fireBeat(beat);
+    }
+  }
+
+  void _fireBeat(_RevealBeat beat) {
+    final isSr = _revealGirl?.rarity == PracticeGirlRarity.sr;
+    switch (beat) {
+      case _RevealBeat.chargeTick0:
+      case _RevealBeat.chargeTick1:
+      case _RevealBeat.chargeTick2:
+        if (_kChargeTicksEnabled) AppHaptics.tick();
+      case _RevealBeat.srBuild:
+        if (isSr) unawaited(AppHaptics.celebrate());
+      case _RevealBeat.flipPeak:
+        _sfx.playFlipSnap();
+        if (!isSr) AppHaptics.medium();
+    }
+  }
+
+  /// 全螢幕點擊（含 Android 返回鍵）：翻牌落定前不理；落定後跳到資訊全部落位；停住時收卡。
+  void _onOverlayTap() {
+    switch (_phase) {
+      case _CeremonyPhase.revealing:
+        if (_revealMs < PracticeRevealTiming.skipFromMs) return;
+        // 跳過：剩下的對拍點不補震、不補聲，直接快轉到落定。
+        _firedBeats.addAll(_RevealBeat.values);
+        _reveal.animateTo(
+          1,
+          duration: PracticeRevealTiming.skip,
+          curve: Curves.easeOut,
+        );
+      case _CeremonyPhase.holding:
+        _startArchive();
+      case _CeremonyPhase.hidden:
+      case _CeremonyPhase.drawing:
+      case _CeremonyPhase.archiving:
+        break;
+    }
+  }
+
+  void _startArchive() {
+    final box = context.findRenderObject();
+    final size =
+        box is RenderBox && box.hasSize ? box.size : MediaQuery.sizeOf(context);
+    final origin = _stageCenter(box) ?? size.center(Offset.zero);
+    final girl = _revealGirl;
+    final target =
+        girl == null ? null : _resolveArchiveTarget(box, girl.profileId);
+    // 收卡：配樂與咻聲尾巴都淡出，不帶到圖鑑頁。
+    _sfx.stopRevealBed();
+    _sfx.stopWhoosh();
+    _landed = false;
+    setState(() {
+      _phase = _CeremonyPhase.archiving;
+      _archiveOrigin = origin;
+      _archiveTarget = target;
+      _archiveControl = target == null
+          ? origin
+          : practiceArchiveControlPoint(origin, target.center, size);
+    });
+    _archive.forward(from: 0);
+  }
+
+  /// 卡片中心（overlay 本地座標）＝光球起點。
+  Offset? _stageCenter(RenderObject? box) {
+    final stage = _stageKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || stage is! RenderBox) return null;
+    if (!box.hasSize || !stage.hasSize) return null;
+    return box.globalToLocal(
+      stage.localToGlobal(stage.size.center(Offset.zero)),
+    );
+  }
+
+  /// 圖鑑頁回報的目標格（global）轉成 overlay 本地座標；中心不在畫面內就當作沒有。
+  Rect? _resolveArchiveTarget(RenderObject? box, String profileId) {
+    final global = widget.archiveTargetRect?.call(profileId);
+    if (global == null || box is! RenderBox || !box.hasSize) return null;
+    final local = box.globalToLocal(global.topLeft) & global.size;
+    return (Offset.zero & box.size).contains(local.center) ? local : null;
+  }
+
+  void _onArchiveTick() {
+    if (_phase != _CeremonyPhase.archiving || _landed) return;
+    if (_archiveMs < PracticeRevealTiming.landMs) return;
+    _landed = true;
+    AppHaptics.light();
+    final id = _revealGirl?.profileId;
+    if (id != null) widget.onArchived?.call(id);
+  }
+
+  void _failOut() {
+    _waiting.stop(); // 失敗兜底：先停等待微動，兩條淡出路徑都不殘留 repeat。
+    _caption.stop();
+    _pendingReveal = false;
+    _sfx.stopWaitingLoop(); // 失敗兜底（error／402／429）：同步停等待 loop，不播叮聲。
+    _sfx.stopRevealBed(); // 失敗兜底：配樂 bed 一律收掉（防殘留）。
+    _sfx.stopWhoosh(); // 失敗兜底：咻聲尾巴淡出，不帶到付費牆／錯誤提示上。
+    _reveal
+      ..stop()
+      ..value = 0;
+    if (_reduceMotion || _intro.value == 0) {
+      _toHidden();
+      return;
+    }
+    _fadingOut = true;
+    setState(() {
+      _phase = _CeremonyPhase.drawing;
+      _revealGirl = null;
+    });
+    _intro.reverse();
+  }
+
+  void _toHidden() {
+    if (!mounted) return;
+    // 旗標先歸零：下面把 controller 歸零時發出的 dismissed／completed 都不會再進來。
+    _pendingReveal = false;
+    _fadingOut = false;
+    _landed = false;
+    setState(() {
+      _phase = _CeremonyPhase.hidden;
+      _revealGirl = null;
+      _archiveTarget = null;
+    });
+    _waiting.stop();
+    _caption.stop();
+    _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／收卡完成／淡出完成）一律停等待 loop。
+    _sfx.stopRevealBed(); // 揭曉結束／收掉 overlay → 配樂 bed 不殘留。
+    _firedBeats.clear();
+    _reveal.value = 0;
+    _archive.value = 0;
+    _intro.value = 0;
+    _caption.value = 0;
   }
 
   @override
@@ -487,8 +501,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _sfx.stopRevealBed(); // 卸載儀式：確保配樂 bed 不在背景殘留。
     _sfx.stopWhoosh(); // 卸載儀式：抽牌中離開畫面，咻聲尾巴淡出，不帶到下一頁。
     _intro.dispose();
-    _reveal.dispose();
+    _caption.dispose();
     _waiting.dispose();
+    _reveal.dispose();
+    _archive.dispose();
     super.dispose();
   }
 
@@ -505,127 +521,209 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       );
     }
 
-    // 疊加層整棵包 RepaintBoundary 與底下 practice room 隔離；動畫幀由
-    // AnimatedBuilder 訂閱三條 controller 驅動，State.build 只在 phase 轉換時重跑。
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _ceremonyMotion,
-        builder: (context, _) => _buildOverlay(),
+    // 揭曉起返回鍵＝點擊（跳過／收卡），不讓使用者在儀式中途被帶離頁面。
+    final blocksPop = _phase == _CeremonyPhase.revealing ||
+        _phase == _CeremonyPhase.holding ||
+        _phase == _CeremonyPhase.archiving;
+    // 儀式蓋住整頁時，讀屏也碰不到底下的圖鑑（翻牌鈕、AppBar 返回鍵），比照
+    // ModalBarrier：觸控由全螢幕點擊層吞掉，讀屏節點由這裡擋掉。
+    return BlockSemantics(
+      child: PopScope(
+        canPop: !blocksPop,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _onOverlayTap();
+        },
+        // 掛在 Scaffold 之外：自備透明 Material，文字才不會出現除錯底線。
+        child: Material(
+          type: MaterialType.transparency,
+          // 疊加層整棵包 RepaintBoundary 與底下頁面隔離；動畫幀由 AnimatedBuilder 訂閱
+          // 五條 controller 驅動。
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _ceremonyMotion,
+              builder: (context, _) => _buildOverlay(),
+            ),
+          ),
+        ),
       ),
     );
   }
 
+  // ── 疊加層 ──
+  // 卡周圍留給星光／閃光的 padding；stage 寬再夾進螢幕寬，避免大卡溢出。
+  static const double _stagePadding = 132;
+  static const Alignment _stageAlignment = Alignment(0, -0.06);
+  static const double _hintMaxOpacity = 0.72;
+
   Widget _buildOverlay() {
-    // 卡片／特效內容不透明度：抽牌時跟著卡背浮現；reveal 末段（HoldEnd→1）淡出交棒。
-    final base = _intro.value;
-    double revealFade = 1;
-    final revealing = _phase == _CeremonyPhase.revealing;
-    if (revealing) {
-      final t = ((_reveal.value - kPracticeRevealHoldEnd) /
-              (1 - kPracticeRevealHoldEnd))
-          .clamp(0.0, 1.0);
-      revealFade = 1 - Curves.easeIn.transform(t);
+    final screen = MediaQuery.sizeOf(context);
+    final cardSize = practiceCeremonyCardSize(screen);
+    final stageW = math.min(cardSize.width + _stagePadding, screen.width);
+    final stageH = cardSize.height + _stagePadding;
+    final holding = _phase == _CeremonyPhase.holding;
+    final girl = _revealGirl;
+    final hint = _hintOpacity();
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 全螢幕點擊層：drawing 只吞點擊（背景看不清，不讓誤點穿透到圖鑑）；揭曉起處理
+        // 跳過與收卡。其餘圖層一律 IgnorePointer，點擊都落到這一層。
+        // VoiceOver：停住時整層是一個按鈕並主動唸出抽到誰；之前只說正在翻牌。
+        Semantics(
+          container: true,
+          button: holding,
+          liveRegion: holding,
+          label: holding && girl != null
+              ? '已抽到 ${girl.displayName}，${girl.rarity.label} 卡'
+              : '正在翻牌',
+          hint: holding ? '點兩下收進圖鑑' : null,
+          child: GestureDetector(
+            key: const ValueKey('practice-draw-ceremony-continue'),
+            behavior: HitTestBehavior.opaque,
+            onTap: _onOverlayTap,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        // 暗化舞台背景：中心微透紫光暈、邊緣近黑，像一方聚光的翻牌檯。
+        IgnorePointer(
+          child: Opacity(
+            opacity: _backdropOpacity(),
+            child: const DecoratedBox(
+              key: ValueKey('practice-draw-ceremony-dim'),
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(0, -0.12),
+                  radius: 1.1,
+                  colors: [
+                    Color(0xD22A1248), // _kStageGlow @ ~0.82
+                    Color(0xE6000000), // black @ ~0.9
+                  ],
+                  stops: [0.0, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+        IgnorePointer(
+          child: Align(
+            alignment: _stageAlignment,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                KeyedSubtree(
+                  key: _stageKey,
+                  child: SizedBox(
+                    width: stageW,
+                    height: stageH,
+                    child: _phase == _CeremonyPhase.drawing
+                        ? _buildWaitingStage(cardSize)
+                        : _buildRevealStage(cardSize),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Opacity(opacity: _captionOpacity(), child: _buildCaption()),
+              ],
+            ),
+          ),
+        ),
+        if (hint > 0.001)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.paddingOf(context).bottom + 24,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: hint,
+                child: Text(
+                  '點擊任意處繼續',
+                  key: const ValueKey('practice-draw-ceremony-hint'),
+                  textAlign: TextAlign.center,
+                  style: AppTypography.caption.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (_phase == _CeremonyPhase.archiving)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                key: const ValueKey('practice-draw-ceremony-archive-orb'),
+                painter: _ArchiveOrbPainter(
+                  ms: _archiveMs,
+                  origin: _archiveOrigin,
+                  control: _archiveControl,
+                  target: _archiveTarget,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  double _backdropOpacity() {
+    switch (_phase) {
+      case _CeremonyPhase.drawing:
+        return practiceIntroBackdrop(_introMs);
+      case _CeremonyPhase.revealing:
+      case _CeremonyPhase.holding:
+        return 1;
+      case _CeremonyPhase.archiving:
+        return practiceArchiveBackdrop(_archiveMs);
+      case _CeremonyPhase.hidden:
+        return 0;
     }
-    final contentOpacity = (base * revealFade).clamp(0.0, 1.0);
+  }
 
-    // 暗化背景與卡片**分層**：背景暗化隨 reveal 進度起落（開場/收場亮 UI 透出），
-    // 卡片始終在自己的 beat 內全亮，兩者各自有獨立不透明度。復刻參考片亮→暗→亮。
-    final dim = practiceCeremonyDim(
-      drawing: _phase == _CeremonyPhase.drawing,
-      revealFraction: revealing ? _reveal.value : 0,
-    );
-    final bgOpacity = (dim * base).clamp(0.0, 1.0);
+  double _captionOpacity() {
+    switch (_phase) {
+      case _CeremonyPhase.drawing:
+        return practiceCaptionIn(_captionMs) *
+            practiceIntroCardOpacity(_introMs);
+      case _CeremonyPhase.revealing:
+        return _captionAtRevealStart *
+            (1 -
+                practiceRevealSeg(
+                  _revealMs,
+                  0,
+                  PracticeRevealTiming.captionOutMs,
+                ));
+      case _CeremonyPhase.hidden:
+      case _CeremonyPhase.holding:
+      case _CeremonyPhase.archiving:
+        return 0;
+    }
+  }
 
-    // PEAK#2（6.5s）全螢幕爆裂 flash：在 stage-confined flash 之外再加一層**滿版**
-    // 徑向爆光，做出參考片高潮「光束 climax」鋪滿螢幕的爆發感。reduce-motion 不跑
-    // _reveal → burst≈0 → 不渲染（守鐵則）。
-    final climaxFlash =
-        revealing ? practiceCeremonyClimaxBurst(_reveal.value) : 0.0;
-    final referenceExplosion =
-        revealing ? _referenceExplosionOpacity(_reveal.value) : 0.0;
-
-    return IgnorePointer(
-      ignoring: false,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 暗化舞台背景：中心微透紫光暈、邊緣近黑，像一方聚光的翻牌檯。
-          // 開場（beat0）/收場（beat10）暗化低 → 底下亮 UI（practice room）透出。
-          IgnorePointer(
-            child: Opacity(
-              opacity: bgOpacity,
-              child: const DecoratedBox(
-                key: ValueKey('practice-draw-ceremony-dim'),
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(0, -0.12),
-                    radius: 1.1,
-                    colors: [
-                      Color(0xD22A1248), // _kStageGlow @ ~0.82
-                      Color(0xE6000000), // black @ ~0.9
-                    ],
-                    stops: [0.0, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // 卡片＋星光＋光環＋能量邊框＋flash：始終在各自 beat 全亮。
-          Opacity(
-            opacity: contentOpacity,
-            child: Align(
-              alignment: const Alignment(0, -0.06),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildStage(),
-                  const SizedBox(height: 24),
-                  _buildCaption(),
-                ],
-              ),
-            ),
-          ),
-          if (referenceExplosion > 0.01)
-            Positioned.fill(
-              key: const ValueKey(
-                'practice-draw-ceremony-reference-explosion',
-              ),
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: contentOpacity * referenceExplosion * 0.82,
-                  child: Image.asset(
-                    _kReferenceExplosionAsset,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
-                  ),
-                ),
-              ),
-            ),
-          // 滿版爆裂 flash（PEAK#2）：疊在最上，金白徑向爆光washes 過整個螢幕。
-          if (climaxFlash > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-climax-flash'),
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: contentOpacity,
-                  child: CustomPaint(
-                    painter: _RevealFlashPainter(intensity: climaxFlash * 0.6),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
+  double _hintOpacity() {
+    switch (_phase) {
+      case _CeremonyPhase.revealing:
+        return _hintMaxOpacity * practiceRevealHintIn(_revealMs);
+      case _CeremonyPhase.holding:
+        return _hintMaxOpacity;
+      case _CeremonyPhase.archiving:
+        return _hintMaxOpacity *
+            (1 -
+                practiceRevealSeg(
+                  _archiveMs,
+                  0,
+                  PracticeRevealTiming.hintOutEndMs,
+                ));
+      case _CeremonyPhase.hidden:
+      case _CeremonyPhase.drawing:
+        return 0;
+    }
   }
 
   Widget _buildCaption() {
-    final isReveal = _phase == _CeremonyPhase.revealing && _reveal.value > 0.05;
-    final text = isReveal ? '今日對象登場' : '正在為你翻牌…';
     return Text(
       key: const ValueKey('practice-draw-ceremony-caption'),
-      text,
+      '正在為你翻牌…',
       style: AppTypography.titleSmall.copyWith(
         color: Colors.white.withValues(alpha: 0.94),
         fontWeight: FontWeight.w700,
@@ -637,451 +735,135 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     );
   }
 
-  // ── 翻牌舞台：卡片 ＋ 星光 ＋ 光環 sweep ＋ flash，全部疊在一個 Stack ──
-  // 卡周圍留給星光／光環／能量邊框的 padding；stage 寬再夾進螢幕寬，避免大卡溢出。
-  static const double _stagePadding = 132;
+  /// 等待呼吸中的卡片姿態（入場＋上下浮動＋呼吸縮放＋金光）。全由 [_intro] 與
+  /// [_waiting] 的單一 sin 週期推導；reduce-motion／已停時 `_waiting.value` 不前進＝靜止。
+  _CardPose _waitingPose() {
+    final enter = practiceIntroCard(_introMs);
+    final wphase = _waiting.value * 2 * math.pi;
+    // 入場未完成時壓低等待微動，避免和入場位移互相打架。
+    final settle = Curves.easeIn.transform(_intro.value.clamp(0.0, 1.0));
+    final breath = 0.5 + 0.5 * math.sin(wphase); // 0..1 呼吸相位
+    return _CardPose(
+      dy: math.sin(wphase) * 3.6 * settle + 30 * (1 - enter),
+      scale: (0.85 + 0.15 * enter) * (1 + 0.013 * breath * settle),
+      glow: (0.52 + 0.26 * breath).clamp(0.0, 1.0),
+    );
+  }
 
-  Widget _buildStage() {
-    final screen = MediaQuery.sizeOf(context);
-    final cardSize = practiceCeremonyCardSize(screen);
-    final cardW = cardSize.width;
-    final cardH = cardSize.height;
-    final stageW = math.min(cardW + _stagePadding, screen.width);
-    final stageH = cardH + _stagePadding;
-
-    // 抽牌中：神秘卡背＋微放大入場＋（等待 server 期間）持續蓄力微動。
-    if (_phase == _CeremonyPhase.drawing) {
-      final intro = Curves.easeOutBack.transform(_intro.value.clamp(0.0, 1.0));
-      final introScale = (0.84 + 0.16 * intro).clamp(0.0, 1.06);
-
-      // 等待蓄力微動：全由 [_waiting] 的單一 sin 週期推導。reduce-motion／已停時
-      // `_waiting.value` 不前進＝靜止（floatDy 恆 0、scale/glow 恆定）。入場未完成
-      // 時用 `settle` 壓低幅度，避免和 easeOutBack 的入場彈跳互相打架。
-      final w = _waiting.value;
-      final wphase = w * 2 * math.pi;
-      final settle = Curves.easeIn.transform(_intro.value.clamp(0.0, 1.0));
-      final breath = 0.5 + 0.5 * math.sin(wphase); // 0..1 呼吸相位
-      final floatDy = math.sin(wphase) * 3.6 * settle; // 上下浮動 ±3.6px
-      final breathScale = 1 + 0.013 * breath * settle; // 極克制的呼吸縮放
-      final breathGlow = (0.52 + 0.26 * breath).clamp(0.0, 1.0); // 金光呼吸
-
-      return SizedBox(
-        width: stageW,
-        height: stageH,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // 星光：入場由 intro 浮現，之後改由等待相位持續閃爍（reduce-motion 靜止）。
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _StarfieldPainter(
-                    twinkle: _intro.value + w,
-                    intensity: 0.55 + 0.45 * _intro.value,
-                  ),
-                ),
-              ),
+  // 抽牌中：神秘卡背入場＋（等待 server 期間）持續蓄力微動。
+  Widget _buildWaitingStage(Size cardSize) {
+    final pose = _waitingPose();
+    final opacity = practiceIntroCardOpacity(_introMs);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // 星光：入場浮現，之後改由等待相位持續閃爍（reduce-motion 靜止）。
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _StarfieldPainter(
+              twinkle: _intro.value + _waiting.value,
+              intensity: (0.55 + 0.45 * _intro.value) * opacity,
             ),
-            Transform.translate(
-              key: const ValueKey('practice-draw-ceremony-waiting-motion'),
-              offset: Offset(0, floatDy),
-              child: Transform.scale(
-                scale: introScale * breathScale,
-                child: _CeremonyCardBack(
-                  width: cardW,
-                  height: cardH,
-                  glow: breathGlow,
-                  rimIntensity: breathGlow,
-                  rimProgress: w,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      );
-    }
+        Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            key: const ValueKey('practice-draw-ceremony-waiting-motion'),
+            offset: Offset(0, pose.dy),
+            child: Transform.scale(
+              scale: pose.scale,
+              child: _CeremonyCardBack(
+                width: cardSize.width,
+                height: cardSize.height,
+                glow: pose.glow,
+                rimIntensity: pose.glow,
+                rimProgress: _waiting.value,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
-    // ── 兩段升階揭曉：白卡預覽 → 收回蓄力 → 盛大典藏卡 → 淡出 ──
-    final f = _reveal.value;
-    double seg(double from, double to) =>
-        ((f - from) / (to - from)).clamp(0.0, 1.0);
+  // 揭曉／停住／收卡：蓄力 → 單次翻牌（側立那一刻閃光遮住換面）→ 正面落定。
+  Widget _buildRevealStage(Size cardSize) {
+    final ms = _revealMs;
+    final pose = practiceRevealPose(ms);
+    final blend = practiceRevealSeg(ms, 0, PracticeRevealTiming.poseBlendMs);
+    final charge = practiceRevealChargeGlow(ms);
+    final flash = practiceRevealFlipFlash(ms);
+    final archiving = _phase == _CeremonyPhase.archiving;
+    final archiveMs = _archiveMs;
+    final cardOpacity = archiving ? practiceArchiveCardOpacity(archiveMs) : 1.0;
+    final collapse = archiving ? practiceArchiveCardScale(archiveMs) : 1.0;
+    final fadeOut = archiving ? practiceArchiveBackdrop(archiveMs) : 1.0;
+    final dy = lerpDouble(_startPose.dy, 0, blend)!;
+    final scale =
+        pose.scale * lerpDouble(_startPose.scale, 1, blend)! * collapse;
+    final glow = lerpDouble(_startPose.glow, 0.6 + 0.4 * charge, blend)!;
+    final girl = _revealGirl;
 
-    double angle; // rotateY 角度
-    bool showFront; // 過半才換正面
-    double frontAppear = 1; // 正面資訊浮出
-    double frontDepart = 0; // 落位下沉
-    double backGlow = 0.6; // 卡背金光
-    double haloIntensity = 0; // 軌道彗星 halo 強度（只在蓄力→高潮亮）
-    double energyIntensity = 0; // 能量邊框強度（只在蓄力 recharge→climax 亮）
-    double energyProgress = 0; // 能量彗星沿卡框周長的位置（0..1）
-    double beamProgress = 0; // 橫掃光束位置（只在高潮翻面段 0→1 掃一道）
-    double flashCenter = -1; // 觸發 flash 的旋轉中點（rot 0..1）；<0 不畫
-    double introRoll = 0;
-    double cardRoll = 0;
-    double cardScale = 1;
-    double cardDy = 0;
-
-    if (f < kPracticeRevealFlip1Start) {
-      // 卡背蓄力：對齊音樂第一爆點前的 build。卡背持續、金光漸亮，先不翻面。
-      final intro = seg(0, kPracticeRevealFlip1Start);
-      final introTilt = practiceCeremonyIntroTilt(f);
-      final tumble = practiceCeremonyTumbleSpin(f);
-      const tumbleStart = 0.045;
-      const tumbleEnd = 0.135;
-      final tumbleT =
-          ((f - tumbleStart) / (tumbleEnd - tumbleStart)).clamp(0.0, 1.0);
-      final tumbleTurn = Curves.easeInOutCubic.transform(tumbleT);
-      angle = introTilt + tumbleTurn * math.pi * 2;
-      introRoll = introTilt * 0.42 + tumble * 0.46;
-      showFront = false;
-      backGlow = math.max(0.6 + 0.25 * intro, practiceCeremonyRimIntensity(f));
-    } else if (f < kPracticeRevealFlip1End) {
-      // 第一段：卡背→白卡預覽（rotateY 0→π），落在第一爆點。halo 尚未啟動（留給高潮）。
-      final rot = seg(kPracticeRevealFlip1Start, kPracticeRevealFlip1End);
-      angle = rot * math.pi;
-      showFront = angle > math.pi / 2;
-      frontAppear = 0;
-      flashCenter = rot;
-    } else if (f < kPracticeRevealPreviewEnd) {
-      // 白卡停留、資訊浮出（屏息）。
-      angle = math.pi;
-      showFront = true;
-      frontAppear = Curves.easeOut
-          .transform(seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd));
-      final previewT = seg(kPracticeRevealFlip1End, kPracticeRevealPreviewEnd);
-      final recede = practiceCeremonyPreviewRecede(f);
-      cardScale = 1 - 0.09 * recede;
-      cardDy = -18 * recede;
-      cardRoll = (-0.04 + 0.07 * previewT) * (0.45 + 0.55 * recede);
-    } else if (f < kPracticeRevealRechargeEnd) {
-      // 翻回卡背（蓄力重啟），rotateY π→0。
-      final rot =
-          1 - seg(kPracticeRevealPreviewEnd, kPracticeRevealRechargeEnd);
-      angle = rot * math.pi;
-      showFront = angle > math.pi / 2;
-      frontAppear = 1;
-      flashCenter = rot;
-      final recede = practiceCeremonyPreviewRecede(f);
-      cardScale = 1 - 0.08 * recede;
-      cardDy = -16 * recede;
-    } else if (f < kPracticeRevealHaloClimax) {
-      // 卡背發亮、軌道彗星 halo 衝高潮（Batch B：兩夾層 _OrbitalHaloPainter）。
-      final climb = seg(kPracticeRevealRechargeEnd, kPracticeRevealHaloClimax);
-      angle = 0;
-      showFront = false;
-      backGlow = 0.6 + 0.4 * climb;
-      haloIntensity = climb;
-      energyIntensity = climb; // 能量邊框與 halo 同步在蓄力段灌入卡牌
-      energyProgress = climb;
-    } else if (f < kPracticeRevealGrandFlipEnd) {
-      // 高潮翻面：卡背→典藏卡（Batch A 仍用現有正面，Batch C 換金框）。halo 隨翻面
-      // 淡出。
-      final rot = seg(kPracticeRevealHaloClimax, kPracticeRevealGrandFlipEnd);
-      angle = rot * math.pi;
-      showFront = angle > math.pi / 2;
-      frontAppear = 0;
-      backGlow = 1;
-      flashCenter = rot;
-      haloIntensity = 1 - rot;
-      beamProgress = rot; // 翻面同時一道光束由上而下橫掃
-    } else if (f < kPracticeRevealHoldEnd) {
-      // 典藏卡停留、資訊落位、光環 settle。
-      angle = math.pi;
-      showFront = true;
-      frontAppear = Curves.easeOut
-          .transform(seg(kPracticeRevealGrandFlipEnd, kPracticeRevealHoldEnd));
-    } else {
-      // 淡出，露出底下 hero。
-      angle = math.pi;
-      showFront = true;
-      frontAppear = 1;
-      frontDepart = seg(kPracticeRevealHoldEnd, 1);
-    }
-
-    // 軌道彗星繞行進度：蓄力→高潮窗內掃一圈（halo 亮時才用）。
-    final haloProgress = ((f - kPracticeRevealRechargeEnd) /
-            (kPracticeRevealGrandFlipEnd - kPracticeRevealRechargeEnd))
-        .clamp(0.0, 1.0);
-
-    final flipFlash = flashCenter < 0
-        ? 0.0
-        : math.exp(-math.pow((flashCenter - 0.5) / 0.16, 2).toDouble());
-    // 翻面中點的柔 flash 與 PEAK#2 爆裂 burst 取大者：6.5s 高潮一道強閃。
-    final climaxBurst = practiceCeremonyClimaxBurst(f);
-    final flash = math.max(flipFlash, climaxBurst);
-    final settlePulse = practiceCeremonySettlePulse(f) * (1 - frontDepart);
-    final particleBloom = practiceCeremonyParticleBloom(f) * (1 - frontDepart);
-    final neonTrace = practiceCeremonyNeonFrameTrace(f) * (1 - frontDepart);
-    final neonTraceProgress = practiceCeremonyNeonFrameProgress(f);
-    final neonParticleWall =
-        practiceCeremonyNeonParticleWall(f) * (1 - frontDepart);
-    final frameParticleFlow =
-        practiceCeremonyFrameParticleFlow(f) * (1 - frontDepart);
-    final volumetricBurst =
-        practiceCeremonyVolumetricBurst(f) * (1 - frontDepart);
-    final breathHold =
-        practiceCeremonyBreathHoldVignette(f) * (1 - frontDepart);
-    final glassWipe = practiceCeremonyGlassWipe(f) * (1 - frontDepart);
-    final finalPolish = practiceCeremonyFinalPolish(f) * (1 - frontDepart);
-    final afterglow = practiceCeremonyAfterglow(f) * (1 - frontDepart);
-
-    // 正面卡升階：高潮翻面前的白卡用 preview，高潮起換金框典藏卡 grand。
-    final cardVariant = f < kPracticeRevealHaloClimax
-        ? _CeremonyCardVariant.preview
-        : _CeremonyCardVariant.grand;
-
-    final Widget face = showFront
+    final Widget face = pose.yaw > 90 && girl != null
         ? Transform(
             alignment: Alignment.center,
-            transform: Matrix4.identity()..rotateY(math.pi),
+            transform: Matrix4.rotationY(math.pi),
             child: _CeremonyCardFront(
-              girl: _revealGirl,
-              width: cardW,
-              height: cardH,
-              variant: cardVariant,
-              appear: frontAppear,
-              depart: frontDepart,
+              girl: girl,
+              width: cardSize.width,
+              height: cardSize.height,
+              appear: practiceRevealInfoAppear(ms),
+              photoScale: practiceRevealPhotoScale(ms),
             ),
           )
         : _CeremonyCardBack(
-            width: cardW,
-            height: cardH,
-            glow: backGlow,
-            rimIntensity: practiceCeremonyRimIntensity(f),
-            rimProgress: f,
+            width: cardSize.width,
+            height: cardSize.height,
+            glow: glow,
+            rimIntensity: (0.5 + 0.5 * charge).clamp(0.0, 1.0),
+            rimProgress: ms / 1700,
           );
 
-    return SizedBox(
-      width: stageW,
-      height: stageH,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 後半弧 halo（投影 z<0）：畫在卡片**下方**，做繞到卡背的景深。
-          if (haloIntensity > 0.01)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-halo-back'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _OrbitalHaloPainter(
-                    progress: haloProgress,
-                    intensity: haloIntensity,
-                    half: PracticeHaloHalf.back,
-                  ),
-                ),
-              ),
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _StarfieldPainter(
+              twinkle: ms / PracticeRevealTiming.revealMs,
+              intensity: ((0.45 + 0.25 * charge + 0.6 * flash) * fadeOut)
+                  .clamp(0.0, 1.0),
             ),
-          Transform.translate(
-            offset: Offset(0, cardDy),
-            child: Transform.scale(
-              scale: cardScale,
-              child: Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
-                  ..rotateZ(introRoll + cardRoll)
-                  ..rotateY(angle),
-                child: Stack(
-                  clipBehavior: Clip.none,
+          ),
+        ),
+        if (cardOpacity > 0.001)
+          Opacity(
+            opacity: cardOpacity,
+            child: Transform.translate(
+              offset: Offset(0, dy),
+              child: Transform.scale(
+                scale: scale,
+                child: Transform(
+                  key: const ValueKey('practice-draw-ceremony-card-3d'),
                   alignment: Alignment.center,
-                  children: [
-                    face,
-                    if (neonTrace > 0.02)
-                      SizedBox(
-                        key: const ValueKey(
-                          'practice-draw-ceremony-neon-trace-frame',
-                        ),
-                        width: cardW,
-                        height: cardH,
-                        child: IgnorePointer(
-                          child: CustomPaint(
-                            painter: _NeonTraceFramePainter(
-                              progress: f,
-                              intensity: neonTrace,
-                              traceProgress: neonTraceProgress,
-                              particleIntensity: neonParticleWall,
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (frameParticleFlow > 0.03)
-                      SizedBox(
-                        key: const ValueKey(
-                          'practice-draw-ceremony-frame-particle-flow',
-                        ),
-                        width: cardW,
-                        height: cardH,
-                        child: IgnorePointer(
-                          child: CustomPaint(
-                            painter: _FrameParticleFlowPainter(
-                              progress: f,
-                              intensity: frameParticleFlow,
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (frameParticleFlow > 0.08)
-                      SizedBox(
-                        key: const ValueKey(
-                          'practice-draw-ceremony-frame-particle-spray',
-                        ),
-                        width: cardW,
-                        height: cardH,
-                        child: IgnorePointer(
-                          child: CustomPaint(
-                            painter: _FrameParticleSprayPainter(
-                              progress: f,
-                              intensity: frameParticleFlow,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 1 / 1200)
+                    ..rotateX(pose.pitch * math.pi / 180)
+                    ..rotateY(pose.yaw * math.pi / 180),
+                  child: face,
                 ),
               ),
             ),
           ),
-          if (particleBloom > 0.06)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-particle-bloom'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _ParticleBloomPainter(
-                    progress: f,
-                    intensity: particleBloom * 0.22,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          // 能量邊框：蓄力段沿卡框描邊掃動＋底邊噴火花，緊貼卡上方做「能量灌入」感。
-          if (energyIntensity > 0.01)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-energy-border'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _EnergyBorderPainter(
-                    progress: energyProgress,
-                    intensity: energyIntensity,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          // 前半弧 halo（投影 z>0）：畫在卡片**上方**，與後半夾出彗星繞行卡片。
-          if (haloIntensity > 0.01)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-halo-front'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _OrbitalHaloPainter(
-                    progress: haloProgress,
-                    intensity: haloIntensity,
-                    half: PracticeHaloHalf.front,
-                  ),
-                ),
-              ),
-            ),
-          if (volumetricBurst > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-volumetric-burst'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _VolumetricBurstPainter(
-                    progress: f,
-                    intensity: volumetricBurst,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          if (breathHold > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-breath-hold'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _BreathHoldVignettePainter(intensity: breathHold),
-                ),
-              ),
-            ),
+        if (flash > 0.02)
           Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _StarfieldPainter(
-                  twinkle: f,
-                  // PEAK#2 burst 額外灌入星爆亮度，做出 6.5s 高潮的爆發。
-                  intensity: (particleBloom * 0.55 +
-                          haloIntensity * 0.7 +
-                          flash * 0.6 +
-                          climaxBurst * 0.7) *
-                      (1 - frontDepart),
-                  beam: beamProgress,
-                ),
-              ),
+            child: CustomPaint(
+              key: const ValueKey('practice-draw-ceremony-flip-flash'),
+              painter: _RevealFlashPainter(intensity: flash),
             ),
           ),
-          if (settlePulse > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-settle-pulse'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _SettlePulsePainter(
-                    progress: f,
-                    intensity: settlePulse,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          if (glassWipe > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-glass-wipe'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _GlassWipePainter(
-                    progress: f,
-                    intensity: glassWipe,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          if (finalPolish > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-final-polish'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _FinalPolishPainter(
-                    progress: f,
-                    intensity: finalPolish,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          if (afterglow > 0.02)
-            Positioned.fill(
-              key: const ValueKey('practice-draw-ceremony-afterglow'),
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _AfterglowPainter(
-                    progress: f,
-                    intensity: afterglow,
-                    cardSize: Size(cardW, cardH),
-                  ),
-                ),
-              ),
-            ),
-          if (flash > 0.02)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _RevealFlashPainter(intensity: flash),
-                ),
-              ),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1098,9 +880,8 @@ const Color _kMagenta = Color(0xFFB773D6); // 徽記底段洋紫
 const Color _kNeonCyan = Color(0xFF45DCF7); // 霓虹框上緣 cyan bloom
 const Color _kPanelHi = Color(0xFF1B1822); // 背景斜向拉絲面板較亮灰
 const Color _kPanelLo = Color(0xFF09080E); // 背景斜向拉絲面板較暗灰
-const Color _kCardMatte = Color(0xFFFDF2F6); // 正面卡白／粉系鑲邊
-const Color _kTeal = Color(0xFF4FE0C8); // grand 典藏卡 teal accent（Batch C 目檢可退純金）
-const Color _kGrandGlass = Color(0xCC0E0A1C); // grand frosted 深色玻璃資訊欄底
+const Color _kTeal = Color(0xFF4FE0C8); // 典藏卡 teal accent
+const Color _kGrandGlass = Color(0xCC0E0A1C); // 典藏卡 frosted 深色玻璃資訊欄底
 
 /// 神秘卡背：深紫漸層 ＋ 金色雙鑲邊 ＋ 中央發光圖騰 ＋ 角落金飾，刻意不顯任何
 /// 身份線索。`glow` 控制外圈金光強度（抽牌中柔光、翻面前漸亮）。
@@ -1279,110 +1060,89 @@ class _ReferenceRimGlowPainter extends CustomPainter {
       old.progress != progress || old.intensity != intensity;
 }
 
-/// 正面卡兩態（Batch C）：[preview] 第一段白／粉預覽卡（近原樣）、[grand] 第二段
-/// 高潮金框典藏卡（金漸層厚框＋frosted 深色玻璃資訊欄＋teal accent）。同照片同欄位。
-enum _CeremonyCardVariant { preview, grand }
+/// 正面卡的外框厚度與圓角：內圓角＝外圓角−框厚，四角保持同心。
+const double _kFrontRadius = 24;
+const double _kFrontFrameWidth = 4;
 
-/// 翻開後的正面：今日對象照片 ＋ 卡框 ＋ 名字 ＋（年齡·城市·職業）。
-/// 名字單獨成行、meta 用 `·` 串接，**刻意避開** hero 的「名字，年齡」精確字串，
-/// 完整資訊仍由底下 hero 呈現。`appear` 讓資訊浮出、`depart` 讓卡片往 hero 落位。
-/// `variant` 控制白卡預覽 vs 金框典藏卡兩態（見 [_CeremonyCardVariant]）。
+/// 翻開後的正面（沿用 V2 金框典藏卡外觀）：今日對象照片 ＋ 稀有度色邊框 ＋ badge ＋
+/// frosted 資訊欄（名字、年齡·城市·職業、星等）。名字單獨成行、meta 用 `·` 串接，
+/// **刻意避開** 練習室 hero 的「名字，年齡」精確字串。`appear` 讓資訊浮出、
+/// `photoScale` 讓照片從 1.08 緩縮到 1.00。
 class _CeremonyCardFront extends StatelessWidget {
   const _CeremonyCardFront({
     required this.girl,
     required this.width,
     required this.height,
-    this.variant = _CeremonyCardVariant.preview,
     this.appear = 1,
-    this.depart = 0,
+    this.photoScale = 1,
   });
 
   final PracticeGirlProfile? girl;
   final double width;
   final double height;
-  final _CeremonyCardVariant variant;
   final double appear;
-  final double depart;
+  final double photoScale;
 
   @override
   Widget build(BuildContext context) {
-    final isGrand = variant == _CeremonyCardVariant.grand;
-    // 結果卡稀有度呈現（純靜態裝飾，不動任何演出時間軸）：grand 典藏卡的
-    // 邊框／光暈套 rarity 色（SR 金近似原金框、R 紫、N 冷灰藍），badge＋星等
-    // 沿用圖鑑元件。girl 未知（理論上 grand 必有）兜底原金色。
-    final PracticeGirlRarity? rarity = isGrand ? girl?.rarity : null;
+    // 結果卡稀有度呈現：邊框／光暈套 rarity 色（SR 金、R 青藍、N 銀灰），badge＋星等
+    // 沿用圖鑑元件。girl 未知（理論上必有）兜底原金色。
+    final PracticeGirlRarity? rarity = girl?.rarity;
     final Color frameColor =
         rarity == null ? _kGold : practiceRarityColor(rarity);
     final Color frameDeep = rarity == null
         ? _kGoldDeep
         : Color.lerp(frameColor, Colors.black, 0.35)!;
-    final radius = BorderRadius.circular(24);
+    final radius = BorderRadius.circular(_kFrontRadius);
+    final innerRadius =
+        BorderRadius.circular(_kFrontRadius - _kFrontFrameWidth);
     // 揭曉後資訊「浮出」：自下方 14px 上升到定位。
     final infoRise = (1 - Curves.easeOutCubic.transform(appear)) * 14;
-    // 淡出時整張卡微縮＋下沉，像把資訊交棒給底下 hero。
-    final departE = Curves.easeIn.transform(depart);
     final infoOpacity = Curves.easeOut.transform(appear).clamp(0.0, 1.0);
-    final innerRadius = BorderRadius.circular(isGrand ? 20 : 18);
 
-    // 卡框：preview = 白／粉 matte＋金粉外光；grand = 金漸層厚框＋teal 染光，讀起來
-    // 像一張盛大的典藏角色牌。
-    final BoxDecoration frame = isGrand
-        ? BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [frameColor, frameDeep, frameColor],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-            borderRadius: radius,
-            boxShadow: [
-              BoxShadow(
-                color: frameColor.withValues(alpha: 0.46 + 0.32 * appear),
-                blurRadius: 46,
-                spreadRadius: 2,
-              ),
-              BoxShadow(
-                color: _kTeal.withValues(alpha: 0.20),
-                blurRadius: 34,
-                spreadRadius: 1,
-              ),
-            ],
-          )
-        : BoxDecoration(
-            color: _kCardMatte,
-            borderRadius: radius,
-            boxShadow: [
-              BoxShadow(
-                color: _kGold.withValues(alpha: 0.4 + 0.25 * appear),
-                blurRadius: 36,
-                spreadRadius: 1,
-              ),
-              BoxShadow(
-                color: AppColors.brandBlush.withValues(alpha: 0.22),
-                blurRadius: 30,
-                spreadRadius: 1,
-              ),
-            ],
-          );
-
-    final card = Container(
+    return Container(
       key: const ValueKey('practice-draw-ceremony-front'),
       width: width,
       height: height,
-      // padding 即卡框厚度：grand 金框稍薄讓金邊銳利、preview matte 維持原樣。
-      padding: EdgeInsets.all(isGrand ? 4 : 6),
-      decoration: frame,
+      // padding 即卡框厚度：金框稍薄讓金邊銳利。
+      padding: const EdgeInsets.all(_kFrontFrameWidth),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [frameColor, frameDeep, frameColor],
+          stops: const [0.0, 0.5, 1.0],
+        ),
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: frameColor.withValues(alpha: 0.46 + 0.32 * appear),
+            blurRadius: 46,
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: _kTeal.withValues(alpha: 0.20),
+            blurRadius: 34,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
       child: ClipRRect(
         borderRadius: innerRadius,
         child: Stack(
           fit: StackFit.expand,
           children: [
             if (girl != null)
-              PracticeGirlPhoto(
-                profile: girl!,
-                width: width,
-                height: height,
-                borderRadius: innerRadius,
+              // 照片緩縮只作用在照片本身（clip 內），卡框不動。
+              Transform.scale(
+                scale: photoScale,
+                alignment: const Alignment(0, -0.3),
+                child: PracticeGirlPhoto(
+                  profile: girl!,
+                  width: width,
+                  height: height,
+                  borderRadius: innerRadius,
+                ),
               )
             else
               const ColoredBox(color: AppColors.brandSurface2),
@@ -1397,19 +1157,17 @@ class _CeremonyCardFront extends StatelessWidget {
                 ),
               ),
             ),
-            // 細內框，呼應卡背的鑲邊語彙（grand 略強＋套 rarity 色）。
+            // 細內框，呼應卡背的鑲邊語彙（套 rarity 色）。
             DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: innerRadius,
                 border: Border.all(
-                  color: isGrand
-                      ? frameColor.withValues(alpha: 0.72)
-                      : _kGold.withValues(alpha: 0.55),
-                  width: isGrand ? 1.4 : 1,
+                  color: frameColor.withValues(alpha: 0.72),
+                  width: 1.4,
                 ),
               ),
             ),
-            // 稀有度 badge（沿用圖鑑樣式）：只上 grand 結果卡，preview 白卡不標。
+            // 稀有度 badge（沿用圖鑑樣式）：翻開第一幀就是正確稀有度。
             if (rarity != null)
               Positioned(
                 top: 10,
@@ -1421,29 +1179,19 @@ class _CeremonyCardFront extends StatelessWidget {
               ),
             if (girl != null)
               Positioned(
-                left: isGrand ? 12 : 14,
-                right: isGrand ? 12 : 14,
-                bottom: isGrand ? 12 : 14,
+                left: 12,
+                right: 12,
+                bottom: 12,
                 child: Transform.translate(
                   offset: Offset(0, infoRise),
                   child: Opacity(
                     opacity: infoOpacity,
-                    child: isGrand
-                        ? _GrandInfoBar(girl: girl!)
-                        : _FrontInfo(girl: girl!),
+                    child: _GrandInfoBar(girl: girl!),
                   ),
                 ),
               ),
           ],
         ),
-      ),
-    );
-
-    return Transform.translate(
-      offset: Offset(0, 10 * departE),
-      child: Transform.scale(
-        scale: 1 - 0.05 * departE,
-        child: card,
       ),
     );
   }
@@ -1465,17 +1213,17 @@ class _GrandInfoBar extends StatelessWidget {
         key: const ValueKey('practice-draw-ceremony-grand-info'),
         borderRadius: BorderRadius.circular(18),
         child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: _kGrandGlass,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: _kTeal.withValues(alpha: 0.42),
-              width: 1,
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: _kGrandGlass,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: _kTeal.withValues(alpha: 0.42),
+                width: 1,
+              ),
             ),
-          ),
             child: _FrontInfo(girl: girl, accent: _kTeal, rarity: girl.rarity),
           ),
         ),
@@ -1544,28 +1292,21 @@ class _FrontInfo extends StatelessWidget {
   }
 }
 
-/// 卡背圖騰／光環／角飾畫筆：放射光芒、雙同心金環、四角金飾。靜態（隨 `glow`
-/// 微亮），不自體動畫。
 /// 測試用 seam：建立 [_MysticBackPainter]（painter 本體 library-private，與其他
 /// painter 一致；僅此 seam 對 widget test 暴露具名建構）。
 @visibleForTesting
 CustomPainter debugMysticBackPainter({required double glow}) =>
     _MysticBackPainter(glow: glow);
 
-/// 揭曉「結果卡」（grand 典藏卡）的 test/preview seam：免跑整條儀式時間軸即可
-/// 單獨渲染結果卡，驗稀有度邊框／badge／星等（動畫本體不在此 seam 範圍）。
+/// 揭曉「結果卡」的 test/preview seam：免跑整條儀式時間軸即可單獨渲染結果卡，
+/// 驗稀有度邊框／badge／星等（動畫本體不在此 seam 範圍）。
 @visibleForTesting
 Widget debugCeremonyGrandCardFront({
   required PracticeGirlProfile girl,
   required double width,
   required double height,
 }) =>
-    _CeremonyCardFront(
-      girl: girl,
-      width: width,
-      height: height,
-      variant: _CeremonyCardVariant.grand,
-    );
+    _CeremonyCardFront(girl: girl, width: width, height: height);
 
 /// 卡背整體（背景＋賽博金框＋羅盤紋章）的 test/preview seam：讓 still-recorder 與
 /// widget test 免跑整條儀式即可單獨渲染、目檢卡背還原度。
@@ -1576,6 +1317,12 @@ Widget debugCeremonyCardBack({
   double glow = 0.6,
 }) =>
     _CeremonyCardBack(width: width, height: height, glow: glow);
+
+/// 收卡光球的目標格（overlay 本地座標）：widget test 驗「光球飛向剛抽到的那一格」。
+/// 沒有目標（原地收束）或不是收卡光球的 painter 都回 null。
+@visibleForTesting
+Rect? debugArchiveOrbTarget(CustomPainter painter) =>
+    painter is _ArchiveOrbPainter ? painter.target : null;
 
 /// 神秘卡背（G2 第2刀：Eric Gate-fail 後改「疊半透明 overlay 逐幀 trace」復刻
 /// `音檔.mp4` t≈2.5s 卡背，非文字描述 redesign）：
@@ -2034,215 +1781,6 @@ class _CyberFramePainter extends CustomPainter {
   bool shouldRepaint(_CyberFramePainter old) => old.glow != glow;
 }
 
-/// 軌道彗星 halo 的夾層：`back` = 投影深度 z<0 的後半弧（畫在卡片**下方**）；
-/// `front` = z>0 的前半弧（畫在卡片**上方**）。兩層夾出彗星繞行卡片的 3D 景深。
-@visibleForTesting
-enum PracticeHaloHalf { back, front }
-
-/// 測試用 seam：建立 [_OrbitalHaloPainter]（painter 本體 library-private，與其他
-/// painter 一致；僅此 seam 對 widget test 暴露具名建構）。
-@visibleForTesting
-CustomPainter debugOrbitalHaloPainter({
-  required double progress,
-  required double intensity,
-  required PracticeHaloHalf half,
-}) =>
-    _OrbitalHaloPainter(progress: progress, intensity: intensity, half: half);
-
-/// 高潮段「軌道彗星」halo：[_ringCount] 條繞 X 軸傾斜不同角度 θ 的 3D 圓軌，各帶
-/// 一顆彗星 head＋遞減拖尾，沿 φ 繞行（[progress] 0..1 → φ 掃一圈）。3D 取樣點
-/// (r·cosφ, r·sinφ·cosθ, r·sinφ·sinθ) 投影成 2D 橢圓，深度 z=r·sinφ·sinθ 決定該點
-/// 屬於前半（卡上）或後半（卡下）夾層，並做近大遠小／近亮遠暗的景深縮放。
-///
-/// **確定性、零 Random**：軌道傾角／半徑／相位偏移全由環 index 查表決定，重建穩定
-/// （`shouldRepaint` 只認 progress/intensity/half）。[intensity]<=0 早退不畫。
-class _OrbitalHaloPainter extends CustomPainter {
-  _OrbitalHaloPainter({
-    required this.progress,
-    required this.intensity,
-    required this.half,
-  });
-
-  /// 彗星沿軌道繞行進度（0..1 → φ 掃一圈）。
-  final double progress;
-
-  /// 整體強度（0..1；≤0 不畫）。
-  final double intensity;
-
-  /// 夾層：後半弧（z<0、卡下）或前半弧（z>0、卡上）。
-  final PracticeHaloHalf half;
-
-  static const int _ringCount = 3;
-  static const int _trailSteps = 16; // 拖尾取樣點數
-  static const double _trailArc = 1.5; // 拖尾掃過的弧長（rad）
-
-  // 各軌參數（確定性查表，index 對應一條軌道）：
-  static const List<double> _tilt = [1.12, 0.74, 1.36]; // 繞 X 軸傾角 θ
-  static const List<double> _radiusRatio = [
-    0.52,
-    0.46,
-    0.58
-  ]; // 相對 shortestSide
-  static const List<double> _phaseOffset = [0.0, 2.3, 4.1]; // 彗星起始相位錯開
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final center = Offset(size.width / 2, size.height / 2);
-    final base = size.shortestSide;
-    final wantFront = half == PracticeHaloHalf.front;
-
-    for (var ring = 0; ring < _ringCount; ring++) {
-      final theta = _tilt[ring];
-      final cosT = math.cos(theta);
-      final sinT = math.sin(theta);
-      final r = base * _radiusRatio[ring];
-      final headPhi = progress * 2 * math.pi + _phaseOffset[ring];
-
-      for (var s = 0; s < _trailSteps; s++) {
-        final frac = s / _trailSteps; // 0=head → 1=尾端
-        final phi = headPhi - frac * _trailArc;
-
-        // 3D → 2D 橢圓投影；z 為朝向觀者的深度。
-        final z = r * math.sin(phi) * sinT;
-        final isFrontPoint = z >= 0;
-        if (isFrontPoint != wantFront) continue; // 只畫本夾層的弧段
-
-        final px = center.dx + r * math.cos(phi);
-        final py = center.dy + r * math.sin(phi) * cosT;
-
-        // 景深：近（z 大）→ 大且亮；遠（z 小／負）→ 小且暗。
-        final depth = sinT == 0 ? 0.0 : (z / (r * sinT)).clamp(-1.0, 1.0);
-        final depthScale = 0.6 + 0.4 * ((depth + 1) / 2); // 0.6..1.0
-        final taper = 1 - frac; // 拖尾遞減
-
-        final dotR = (1.3 + 2.9 * taper) * depthScale;
-        final alpha = taper * taper * 0.92 * depthScale * intensity;
-        if (alpha <= 0.02) continue;
-
-        // head 白熱、拖尾轉金，隨 frac 漸層。
-        final color = Color.lerp(Colors.white, _kGold, frac)!
-            .withValues(alpha: alpha.clamp(0.0, 1.0));
-
-        // 柔光暈 + 亮核。
-        canvas.drawCircle(
-          Offset(px, py),
-          dotR * 2.0,
-          Paint()
-            ..color = color.withValues(alpha: (alpha * 0.35).clamp(0.0, 1.0))
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-        );
-        canvas.drawCircle(Offset(px, py), dotR, Paint()..color = color);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_OrbitalHaloPainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.half != half;
-}
-
-/// 測試用 seam：建立 [_EnergyBorderPainter]（painter 本體 library-private）。
-/// 與 [debugOrbitalHaloPainter] 同手法，讓 widget test 免 harness 純驗 painter。
-@visibleForTesting
-CustomPainter debugEnergyBorderPainter({
-  required double progress,
-  required double intensity,
-  required Size cardSize,
-}) =>
-    _EnergyBorderPainter(
-        progress: progress, intensity: intensity, cardSize: cardSize);
-
-/// 能量邊框（Batch C）：沿典藏卡矩形描邊掃動的 teal→gold 彗星光 ＋ 底邊
-/// golden-angle 確定性火花。只在蓄力段（recharge→halo climax）由 [_buildStage]
-/// 點亮，給「能量灌進卡牌」的蓄勢感。確定性：零 Random，火花靠 golden-angle 佈點＋
-/// progress 推升相位。
-class _EnergyBorderPainter extends CustomPainter {
-  _EnergyBorderPainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress; // 0..1 彗星 head 沿周長的位置
-  final double intensity; // 0..1 整體強度（蓄力 climb）
-  final Size cardSize; // 卡牌尺寸（在 canvas 置中描邊）
-
-  static const double _goldenAngle = 2.399963229728653; // 黃金角（弧度）
-  static const int _sparkCount = 14;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final i = intensity.clamp(0.0, 1.0);
-
-    final rect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height / 2),
-      width: cardSize.width,
-      height: cardSize.height,
-    );
-    final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(24)));
-
-    // 整圈 teal 底光描邊。
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = _kTeal.withValues(alpha: 0.16 * i)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-    );
-
-    // 彗星掃動：沿周長取一段亮弧，head 在 progress 處、teal→gold 漸亮（單一 blur
-    // Paint 重用，只變色與半徑，控制低階機繪製成本）。
-    final comet = Paint()
-      ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    for (final metric in path.computeMetrics()) {
-      final len = metric.length;
-      final head = (progress % 1.0) * len;
-      final tailLen = len * 0.26; // 拖尾占周長比例
-      const steps = 16;
-      for (var s = 0; s < steps; s++) {
-        final frac = s / (steps - 1); // 0=拖尾末端 .. 1=head
-        final tan =
-            metric.getTangentForOffset((head - tailLen * (1 - frac)) % len);
-        if (tan == null) continue;
-        comet.color = Color.lerp(_kTeal, _kGold, frac)!
-            .withValues(alpha: ((0.10 + 0.55 * frac) * i).clamp(0.0, 1.0));
-        canvas.drawCircle(tan.position, 1.6 + 2.6 * frac, comet);
-      }
-    }
-
-    // 底邊火花：golden-angle 確定性佈點，沿底邊噴起後淡出。
-    final spark = Paint()..style = PaintingStyle.fill;
-    for (var k = 0; k < _sparkCount; k++) {
-      final a = (k * _goldenAngle) % (2 * math.pi);
-      final along = math.sin(a) * 0.5 + 0.5; // 0..1 沿底邊位置（確定）
-      final phase = ((progress * 1.3) + a / (2 * math.pi)) % 1.0; // 上升相位
-      final rise = phase * 26; // 噴起高度
-      final fade = 1 - phase; // 越高越淡
-      spark.color = Color.lerp(_kGold, _kTeal, along)!
-          .withValues(alpha: (0.6 * fade * i).clamp(0.0, 1.0));
-      canvas.drawCircle(
-        Offset(
-            rect.left + 12 + along * (rect.width - 24), rect.bottom - 2 - rise),
-        1.2 + 1.4 * fade,
-        spark,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_EnergyBorderPainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
-}
-
 /// 中點揭曉 flash：白金徑向爆光，遮住翻面接縫，給「眼睛一亮」的揭曉瞬間。
 class _RevealFlashPainter extends CustomPainter {
   _RevealFlashPainter({required this.intensity});
@@ -2270,1202 +1808,128 @@ class _RevealFlashPainter extends CustomPainter {
   bool shouldRepaint(_RevealFlashPainter old) => old.intensity != intensity;
 }
 
-class _NeonTraceFramePainter extends CustomPainter {
-  _NeonTraceFramePainter({
-    required this.progress,
-    required this.intensity,
-    required this.traceProgress,
-    required this.particleIntensity,
+/// 收卡光球：卡片縮成金色光球，沿二次貝茲弧線飛進圖鑑那一格（拖尾＝沿路徑回推的
+/// 殘影），落位時擴一圈光環。沒有目標格時在原地縮到 0。全由 [ms] 解析計算、零 Random。
+class _ArchiveOrbPainter extends CustomPainter {
+  _ArchiveOrbPainter({
+    required this.ms,
+    required this.origin,
+    required this.control,
+    required this.target,
   });
 
-  final double progress;
-  final double intensity;
-  final double traceProgress;
-  final double particleIntensity;
+  final double ms;
+  final Offset origin;
+  final Offset control;
+  final Rect? target;
+
+  static const double _startRadius = 18;
+  static const double _endRadius = 10;
+  static const int _trailCount = 10;
+  static const double _trailStep = 0.035;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (intensity <= 0.01) return;
-
-    final rect = (Offset.zero & size).inflate(size.width * 0.022);
-    final left = rect.left;
-    final right = rect.right;
-    final top = rect.top;
-    final bottom = rect.bottom;
-    final w = rect.width;
-    final h = rect.height;
-    final corner = size.width * 0.085;
-    final midX = rect.center.dx;
-
-    final glow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.030);
-    final core = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..blendMode = BlendMode.plus;
-
-    void drawTrace(
-      Offset a,
-      Offset b,
-      Color color,
-      double start,
-      double end, {
-      double weight = 1.0,
-    }) {
-      final local = ((traceProgress - start) / (end - start)).clamp(0.0, 1.0);
-      if (local <= 0.0) return;
-      final target = Offset.lerp(a, b, Curves.easeOutCubic.transform(local))!;
-
-      glow
-        ..strokeWidth = size.width * 0.030 * weight
-        ..color = color.withValues(alpha: intensity * 0.48);
-      core
-        ..strokeWidth = size.width * 0.010 * weight
-        ..color = color.withValues(alpha: intensity * 0.9);
-      canvas.drawLine(a, target, glow);
-      canvas.drawLine(a, target, core);
-
-      final head = Paint()
-        ..blendMode = BlendMode.plus
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.018)
-        ..color = color.withValues(alpha: intensity * 0.72);
-      canvas.drawCircle(target, size.width * 0.016 * weight, head);
-    }
-
-    drawTrace(
-      Offset(left + corner, top),
-      Offset(midX - corner * 0.35, top),
-      _kGold,
-      0.00,
-      0.54,
-      weight: 1.05,
-    );
-    drawTrace(
-      Offset(right - corner, top),
-      Offset(midX + corner * 0.35, top),
-      _kNeonCyan,
-      0.04,
-      0.66,
-      weight: 1.05,
-    );
-    drawTrace(
-      Offset(left, top + corner),
-      Offset(left, top + h * 0.40),
-      _kGold,
-      0.00,
-      0.48,
-    );
-    drawTrace(
-      Offset(left, bottom - corner),
-      Offset(left, top + h * 0.42),
-      _kNeonCyan,
-      0.10,
-      0.78,
-      weight: 1.08,
-    );
-    drawTrace(
-      Offset(right, top + corner),
-      Offset(right, top + h * 0.58),
-      _kNeonCyan,
-      0.02,
-      0.62,
-      weight: 1.08,
-    );
-    drawTrace(
-      Offset(right, bottom - corner),
-      Offset(right, top + h * 0.60),
-      _kGold,
-      0.14,
-      0.82,
-    );
-    drawTrace(
-      Offset(left + corner, bottom),
-      Offset(midX - corner * 0.35, bottom),
-      _kNeonCyan,
-      0.12,
-      0.76,
-      weight: 1.05,
-    );
-    drawTrace(
-      Offset(right - corner, bottom),
-      Offset(midX + corner * 0.35, bottom),
-      _kGold,
-      0.08,
-      0.72,
-      weight: 1.05,
-    );
-
-    final wall = (particleIntensity * intensity).clamp(0.0, 1.0);
-    if (wall <= 0.03) return;
-
-    final sparkGlow = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.016);
-    final sparkDot = Paint()..blendMode = BlendMode.plus;
-
-    void spark(Offset p, Color color, double r, double alpha) {
-      final a = alpha.clamp(0.0, 1.0);
-      if (a <= 0.01) return;
-      sparkGlow.color = color.withValues(alpha: a * 0.40);
-      sparkDot.color = color.withValues(alpha: a * 0.88);
-      canvas.drawCircle(p, r * 3.3, sparkGlow);
-      canvas.drawCircle(p, r, sparkDot);
-    }
-
-    for (var i = 0; i < 520; i++) {
-      final side = i % 4;
-      final u = (i * 0.61803398875 + progress * 0.18) % 1.0;
-      final jitterAlong =
-          math.sin(i * 1.71 + progress * 31) * size.width * 0.012;
-      final jitterOut = math.cos(i * 2.13 + progress * 37) * size.width * 0.030;
-      final shimmer = 0.50 + 0.50 * math.sin(i * 1.37 + progress * 49);
-      late final Offset p;
-      late final Color color;
-      switch (side) {
-        case 0:
-          color = Color.lerp(_kGold, _kNeonCyan, u)!;
-          p = Offset(
-            left + w * u + jitterAlong,
-            top - size.width * 0.026 + jitterOut,
-          );
-          break;
-        case 1:
-          color = u < 0.38
-              ? Color.lerp(_kGold, Colors.white, u * 0.55)!
-              : Color.lerp(_kNeonCyan, Colors.white, (u - 0.38) * 0.22)!;
-          p = Offset(
-            left - size.width * 0.026 + jitterOut,
-            top + h * u + jitterAlong,
-          );
-          break;
-        case 2:
-          color = u < 0.58
-              ? Color.lerp(_kNeonCyan, Colors.white, u * 0.18)!
-              : Color.lerp(_kGold, Colors.white, (u - 0.58) * 0.32)!;
-          p = Offset(
-            right + size.width * 0.026 + jitterOut,
-            top + h * u + jitterAlong,
-          );
-          break;
-        default:
-          color = Color.lerp(_kNeonCyan, _kGold, u)!;
-          p = Offset(
-            left + w * u + jitterAlong,
-            bottom + size.width * 0.026 + jitterOut,
-          );
-          break;
-      }
-      final r = size.width * (0.0036 + (i % 5) * 0.0011);
-      spark(p, color, r, wall * shimmer * (0.72 + 0.36 * traceProgress));
-    }
-  }
-
-  @override
-  bool shouldRepaint(_NeonTraceFramePainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.traceProgress != traceProgress ||
-      old.particleIntensity != particleIntensity;
-}
-
-class _FrameParticleFlowPainter extends CustomPainter {
-  _FrameParticleFlowPainter({
-    required this.progress,
-    required this.intensity,
-  });
-
-  final double progress;
-  final double intensity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0.01) return;
-
-    final rect = (Offset.zero & size).inflate(size.width * 0.040);
-    final center = rect.center;
-    final rrect = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(size.width * 0.095),
-    );
-    final path = Path()..addRRect(rrect);
-    final metrics = path.computeMetrics().toList();
-    if (metrics.isEmpty) return;
-    final metric = metrics.first;
-    final len = metric.length;
-
-    final railGlow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..blendMode = BlendMode.plus
-      ..strokeWidth = size.width * 0.017
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.012)
-      ..shader = SweepGradient(
-        colors: [
-          _kGold.withValues(alpha: 0.30 * intensity),
-          _kNeonCyan.withValues(alpha: 0.38 * intensity),
-          _kGold.withValues(alpha: 0.34 * intensity),
-          _kNeonCyan.withValues(alpha: 0.36 * intensity),
-          _kGold.withValues(alpha: 0.30 * intensity),
-        ],
-        stops: const [0.0, 0.24, 0.50, 0.76, 1.0],
-        transform: GradientRotation(progress * math.pi * 5.2),
-      ).createShader(rect.inflate(size.width * 0.12));
-    canvas.drawPath(path, railGlow);
-
-    final railCore = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..blendMode = BlendMode.plus
-      ..strokeWidth = size.width * 0.006
-      ..color = Colors.white.withValues(alpha: 0.08 * intensity);
-    canvas.drawPath(path, railCore);
-
-    final glow = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.014);
-    final dot = Paint()..blendMode = BlendMode.plus;
-    final streak = Paint()
-      ..blendMode = BlendMode.plus
-      ..strokeCap = StrokeCap.round;
-
-    void spark(Offset p, Offset dir, Color color, double r, double alpha) {
-      final a = alpha.clamp(0.0, 1.0);
-      if (a <= 0.012) return;
-      glow.color = color.withValues(alpha: a * 0.22);
-      dot.color = color.withValues(alpha: a * 0.82);
-      streak
-        ..strokeWidth = r * 0.92
-        ..color = color.withValues(alpha: a * 0.24);
-      canvas.drawLine(p - dir * (size.width * 0.026), p, streak);
-      canvas.drawCircle(p, r * 3.0, glow);
-      canvas.drawCircle(p, r, dot);
-    }
-
-    for (var i = 0; i < 560; i++) {
-      final lane = i % 5;
-      final travel = (i * 0.0137 + progress * (1.55 + lane * 0.08)) % 1.0;
-      final tangent = metric.getTangentForOffset(travel * len);
-      if (tangent == null) continue;
-      final outward = tangent.position - center;
-      final outLen = outward.distance;
-      final normal = outLen == 0 ? Offset.zero : outward / outLen;
-      final dir = tangent.vector;
-      final jitterOut = (lane - 2) * size.width * 0.014 +
-          math.sin(i * 1.43 + progress * 42) * size.width * 0.018;
-      final jitterAlong =
-          math.cos(i * 2.17 + progress * 37) * size.width * 0.006;
-      final p = tangent.position + normal * jitterOut + dir * jitterAlong;
-
-      final xMix = ((p.dx - rect.left) / rect.width).clamp(0.0, 1.0);
-      final yMix = ((p.dy - rect.top) / rect.height).clamp(0.0, 1.0);
-      final isSideWall =
-          xMix < 0.16 || xMix > 0.84 || yMix < 0.15 || yMix > 0.85;
-      final sideBoost = isSideWall ? 0.70 : 0.38;
-      final colorBias = (0.62 * xMix + 0.38 * (1 - yMix)).clamp(0.0, 1.0);
-      final base = Color.lerp(_kGold, _kNeonCyan, colorBias)!;
-      final shimmer = 0.46 + 0.54 * math.sin(i * 1.71 + progress * 68);
-      final r = size.width * (0.0032 + (i % 7) * 0.00072);
-      spark(
-        p,
-        dir,
-        i % 41 == 0 ? Color.lerp(Colors.white, base, 0.65)! : base,
-        r,
-        intensity * shimmer * sideBoost,
-      );
-    }
-
-    for (var i = 0; i < 72; i++) {
-      final t = (i * 0.027 + progress * 2.4) % 1.0;
-      final tangent = metric.getTangentForOffset(t * len);
-      if (tangent == null) continue;
-      final outward = tangent.position - center;
-      final normal =
-          outward.distance == 0 ? Offset.zero : outward / outward.distance;
-      final pulse = math.exp(-math.pow(((i % 24) / 24 - 0.5) / 0.34, 2));
-      final color = i.isEven ? _kGold : _kNeonCyan;
-      spark(
-        tangent.position + normal * size.width * 0.056,
-        tangent.vector,
-        color,
-        size.width * (0.0048 + 0.0022 * pulse),
-        intensity * (0.16 + 0.40 * pulse),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_FrameParticleFlowPainter old) =>
-      old.progress != progress || old.intensity != intensity;
-}
-
-class _FrameParticleSprayPainter extends CustomPainter {
-  _FrameParticleSprayPainter({
-    required this.progress,
-    required this.intensity,
-  });
-
-  final double progress;
-  final double intensity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0.01) return;
-    final rect = (Offset.zero & size).inflate(size.width * 0.090);
-    final center = rect.center;
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          rect,
-          Radius.circular(size.width * 0.115),
-        ),
-      );
-    final metrics = path.computeMetrics().toList();
-    if (metrics.isEmpty) return;
-    final metric = metrics.first;
-    final len = metric.length;
-    final glow = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.010);
-    final dot = Paint()..blendMode = BlendMode.plus;
-
-    for (var i = 0; i < 360; i++) {
-      final travel = (i * 0.0179 + progress * (1.85 + (i % 3) * 0.10)) % 1.0;
-      final tangent = metric.getTangentForOffset(travel * len);
-      if (tangent == null) continue;
-      final outward = tangent.position - center;
-      final normal =
-          outward.distance == 0 ? Offset.zero : outward / outward.distance;
-      final sideNoise = math.sin(i * 1.91 + progress * 52);
-      final p = tangent.position +
-          normal * (size.width * (0.018 + 0.060 * ((i % 7) / 6))) +
-          tangent.vector * (sideNoise * size.width * 0.010);
-      final xMix = ((p.dx - rect.left) / rect.width).clamp(0.0, 1.0);
-      final yMix = ((p.dy - rect.top) / rect.height).clamp(0.0, 1.0);
-      final cyanSide = xMix > 0.52 || yMix < 0.24;
-      final base = cyanSide ? _kNeonCyan : _kGold;
-      final mixed = Color.lerp(
-        base,
-        Colors.white,
-        i % 23 == 0 ? 0.42 : 0.12,
-      )!;
-      final twinkle = 0.40 + 0.60 * math.sin(i * 2.13 + progress * 74);
-      final alpha =
-          (intensity * twinkle * (0.34 + 0.36 * (i % 5) / 4)).clamp(0.0, 1.0);
-      if (alpha <= 0.018) continue;
-      final radius = size.width * (0.0025 + (i % 6) * 0.00058);
-      glow.color = mixed.withValues(alpha: alpha * 0.30);
-      dot.color = mixed.withValues(alpha: alpha * 0.90);
-      canvas.drawCircle(p, radius * 3.0, glow);
-      canvas.drawCircle(p, radius, dot);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_FrameParticleSprayPainter old) =>
-      old.progress != progress || old.intensity != intensity;
-}
-
-class _ParticleBloomPainter extends CustomPainter {
-  _ParticleBloomPainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress;
-  final double intensity;
-  final Size cardSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final center = size.center(Offset.zero);
-    final cardRect = Rect.fromCenter(
-      center: center,
-      width: cardSize.width,
-      height: cardSize.height,
-    );
-    final field = cardRect.inflate(cardSize.width * 0.32);
-    final glow = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
-    final dot = Paint()..blendMode = BlendMode.plus;
-
-    void spark(Offset p, Color color, double radius, double alpha) {
-      final a = alpha.clamp(0.0, 1.0);
-      if (a <= 0.01) return;
-      glow.color = color.withValues(alpha: a * 0.72);
-      dot.color = color.withValues(alpha: a * 0.92);
-      canvas.drawCircle(p, radius * 3.2, glow);
-      canvas.drawCircle(p, radius, dot);
-    }
-
-    for (var i = 0; i < 280; i++) {
-      final side = i % 4;
-      final phase = (i * 0.61803398875 + progress * 0.22) % 1.0;
-      final shimmer = 0.56 + 0.44 * math.sin(i * 1.73 + progress * 36);
-      final radius = 0.58 + (i % 6) * 0.14;
-      final jitter =
-          math.sin(i * 2.31 + progress * 18) * cardSize.width * 0.075;
-      late final Offset p;
-      late final Color color;
-      var sideWeight = 1.95;
-      switch (side) {
-        case 0:
-          color = Color.lerp(_kGold, Colors.white, (i % 5) / 9)!;
-          p = Offset(
-              field.left - jitter.abs(), field.top + field.height * phase);
-          break;
-        case 1:
-          color = Color.lerp(_kNeonCyan, Colors.white, (i % 5) / 10)!;
-          p = Offset(
-              field.right + jitter.abs(), field.top + field.height * phase);
-          break;
-        case 2:
-          color = Color.lerp(_kGold, _kNeonCyan, phase)!;
-          sideWeight = 1.42;
-          p = Offset(
-            field.left +
-                field.width * phase +
-                math.sin(i * 1.11 + progress * 21) * cardSize.width * 0.045,
-            field.top +
-                math.cos(i * 1.47 + progress * 29) * cardSize.height * 0.055,
-          );
-          break;
-        default:
-          color = Color.lerp(_kGold, _kNeonCyan, 1 - phase)!;
-          sideWeight = 1.18;
-          p = Offset(
-            field.left +
-                field.width * phase +
-                math.cos(i * 1.23 + progress * 19) * cardSize.width * 0.04,
-            field.bottom +
-                math.sin(i * 1.63 + progress * 27) * cardSize.height * 0.05,
-          );
-          break;
-      }
-      spark(p, color, radius, intensity * shimmer * sideWeight);
-    }
-
-    for (var i = 0; i < 96; i++) {
-      final angle = i * 2.399963229728653 + progress * 5.2;
-      final orbit = 0.60 + (i % 9) * 0.04;
-      final p = center +
-          Offset(
-            math.cos(angle) * cardSize.width * orbit,
-            math.sin(angle) * cardSize.height * orbit * 0.56,
-          );
-      final twinkle = 0.45 + 0.55 * math.sin(angle * 1.4 + progress * 40);
-      spark(
-        p,
-        Color.lerp(Colors.white, _kNeonCyan, (i % 4) / 3)!,
-        0.54 + 1.0 * twinkle,
-        intensity * twinkle * 0.88,
-      );
-    }
-
-    for (var i = 0; i < 240; i++) {
-      final angle = i * 2.399963229728653 + progress * 2.8;
-      final side = math.cos(angle).abs();
-      final haloBand = 0.58 + 0.36 * ((i * 7) % 13) / 12;
-      final x = center.dx +
-          math.cos(angle) * cardSize.width * haloBand +
-          math.sin(i * 1.19 + progress * 17) * cardSize.width * 0.08;
-      final y = center.dy +
-          math.sin(angle) * cardSize.height * (0.42 + 0.22 * side) +
-          math.cos(i * 1.73 + progress * 13) * cardSize.height * 0.04;
-      final shimmer = 0.45 + 0.55 * math.sin(i * 1.67 + progress * 44);
-      final color = i % 11 == 0
-          ? Colors.white
-          : (math.cos(angle) < 0
-              ? Color.lerp(_kGold, Colors.white, (i % 5) / 12)!
-              : Color.lerp(_kNeonCyan, Colors.white, (i % 5) / 12)!);
-      spark(
-        Offset(x, y),
-        color,
-        0.42 + shimmer * 0.86,
-        intensity * shimmer * (0.20 + 0.66 * side),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ParticleBloomPainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
-}
-
-class _VolumetricBurstPainter extends CustomPainter {
-  _VolumetricBurstPainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress;
-  final double intensity;
-  final Size cardSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0.01) return;
-    final center = size.center(Offset.zero);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: cardSize.width,
-      height: cardSize.height,
-    );
-    final phase = ((progress - 0.585) / 0.16).clamp(0.0, 1.0);
-    final peak = practiceCeremonyClimaxBurst(progress).clamp(0.0, 1.0);
-    final i = intensity.clamp(0.0, 1.0);
-
-    final radial = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = RadialGradient(
-        colors: [
-          Colors.white.withValues(alpha: 0.34 * i),
-          _kGold.withValues(alpha: 0.26 * i),
-          _kNeonCyan.withValues(alpha: 0.16 * i),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.24, 0.56, 1.0],
-      ).createShader(
-        Rect.fromCircle(
-          center: center,
-          radius: cardSize.width * (0.66 + 0.18 * peak),
-        ),
-      );
-    canvas.drawCircle(center, cardSize.width * (0.72 + 0.24 * peak), radial);
-
-    void beam(double angle, double width, double alpha, Color color) {
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(angle);
-      final beamRect = Rect.fromCenter(
-        center: Offset.zero,
-        width: cardSize.width * 2.25,
-        height: width,
-      );
-      final paint = Paint()
-        ..blendMode = BlendMode.plus
-        ..shader = LinearGradient(
-          colors: [
-            Colors.transparent,
-            color.withValues(alpha: 0.18 * alpha * i),
-            Colors.white.withValues(alpha: 0.58 * alpha * i),
-            color.withValues(alpha: 0.18 * alpha * i),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.28, 0.50, 0.72, 1.0],
-        ).createShader(beamRect);
-      canvas.drawRect(beamRect, paint);
-      canvas.restore();
-    }
-
-    beam(-0.48 + phase * 0.08, cardSize.width * 0.26, 0.92, _kGold);
-    beam(0.34 - phase * 0.06, cardSize.width * 0.21, 0.78, _kNeonCyan);
-    beam(math.pi / 2 - 0.16, cardSize.width * 0.12, 0.44, Colors.white);
-
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.018);
-    for (var r = 0; r < 4; r++) {
-      final t = (phase + r * 0.18).clamp(0.0, 1.0);
-      final oval = Rect.fromCenter(
-        center: center,
-        width: cardSize.width * (0.86 + r * 0.18 + t * 0.36),
-        height: cardSize.height * (0.33 + r * 0.05 + t * 0.08),
-      );
-      ringPaint
-        ..strokeWidth = cardSize.width * (0.006 + r * 0.001)
-        ..color = Color.lerp(_kGold, _kNeonCyan, r / 3)!
-            .withValues(alpha: i * (0.42 - r * 0.055));
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(-0.40 + r * 0.22 + phase * 0.22);
-      canvas.translate(-center.dx, -center.dy);
-      canvas.drawArc(oval, -math.pi * 0.04, math.pi * 1.28, false, ringPaint);
-      canvas.restore();
-    }
-
-    final sparkle = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.2);
-    for (var k = 0; k < 132; k++) {
-      final a = k * 2.399963229728653 + phase * 3.8;
-      final lane = 0.22 + (k % 11) / 10 * 0.76;
-      final spread = cardSize.width * (0.28 + lane * (0.62 + 0.18 * peak));
-      final p = center +
-          Offset(
-            math.cos(a) * spread,
-            math.sin(a) * spread * (0.52 + 0.24 * math.sin(a + phase)),
-          );
-      final tw = 0.45 + 0.55 * math.sin(k * 1.83 + progress * 72);
-      final color = k % 7 == 0
-          ? Colors.white
-          : Color.lerp(_kGold, _kNeonCyan, (k % 9) / 8)!;
-      sparkle.color = color.withValues(alpha: i * tw * 0.70);
-      canvas.drawCircle(p, 0.9 + 2.4 * tw * i, sparkle);
-    }
-
-    final edge = Paint()
-      ..style = PaintingStyle.stroke
-      ..blendMode = BlendMode.plus
-      ..strokeWidth = cardSize.width * 0.010
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.015)
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          _kGold.withValues(alpha: 0.66 * i),
-          Colors.white.withValues(alpha: 0.78 * i),
-          _kNeonCyan.withValues(alpha: 0.62 * i),
-        ],
-      ).createShader(rect.inflate(cardSize.width * 0.08));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        rect.inflate(cardSize.width * 0.030),
-        Radius.circular(cardSize.width * 0.088),
+    final appear = PracticeRevealTiming.enter.transform(
+      practiceRevealSeg(
+        ms,
+        PracticeRevealTiming.orbAppearStartMs,
+        PracticeRevealTiming.flightStartMs,
       ),
-      edge,
     );
-  }
+    if (appear <= 0) return;
 
-  @override
-  bool shouldRepaint(_VolumetricBurstPainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
-}
-
-class _BreathHoldVignettePainter extends CustomPainter {
-  _BreathHoldVignettePainter({required this.intensity});
-
-  final double intensity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0.01) return;
-    final center = size.center(Offset.zero);
-    final i = intensity.clamp(0.0, 1.0);
-
-    final veil = Paint()
-      ..color = const Color(0xFF05020D).withValues(alpha: 0.18 * i);
-    canvas.drawRect(Offset.zero & size, veil);
-
-    final vignette = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.transparent,
-          const Color(0xFF100726).withValues(alpha: 0.10 * i),
-          Colors.black.withValues(alpha: 0.34 * i),
-        ],
-        stops: const [0.0, 0.58, 1.0],
-      ).createShader(
-        Rect.fromCircle(center: center, radius: size.shortestSide * 0.72),
+    final goal = target;
+    if (goal == null) {
+      // 找不到目標格：不飛到別的卡上誤導，原地縮掉。
+      final shrink = practiceRevealSeg(
+        ms,
+        PracticeRevealTiming.flightStartMs,
+        PracticeRevealTiming.implodeEndMs,
       );
-    canvas.drawRect(Offset.zero & size, vignette);
-
-    final hush = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.transparent,
-          _kGold.withValues(alpha: 0.035 * i),
-          _kNeonCyan.withValues(alpha: 0.025 * i),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.44, 0.58, 1.0],
-      ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, hush);
-  }
-
-  @override
-  bool shouldRepaint(_BreathHoldVignettePainter old) =>
-      old.intensity != intensity;
-}
-
-class _GlassWipePainter extends CustomPainter {
-  _GlassWipePainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress;
-  final double intensity;
-  final Size cardSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final center = size.center(Offset.zero);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: cardSize.width,
-      height: cardSize.height,
-    );
-    final rrect = RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(cardSize.width * 0.075),
-    );
-    final sweepT = ((progress - 0.765) / 0.15).clamp(0.0, 1.0);
-
-    canvas.save();
-    canvas.clipRRect(rrect);
-
-    final veil = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Colors.white.withValues(alpha: 0.00),
-          Colors.white.withValues(alpha: 0.10 * intensity),
-          _kTeal.withValues(alpha: 0.04 * intensity),
-          Colors.white.withValues(alpha: 0.00),
-        ],
-        stops: const [0.0, 0.42, 0.58, 1.0],
-      ).createShader(rect);
-    canvas.drawRect(rect, veil);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(-0.42);
-    final sweepX = -cardSize.width * 0.94 + cardSize.width * 1.88 * sweepT;
-    final bandRect = Rect.fromCenter(
-      center: Offset(sweepX, 0),
-      width: cardSize.width * 0.48,
-      height: cardSize.height * 1.72,
-    );
-    final band = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          Colors.transparent,
-          Colors.white.withValues(alpha: 0.16 * intensity),
-          Colors.white.withValues(alpha: 0.46 * intensity),
-          _kGold.withValues(alpha: 0.14 * intensity),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.32, 0.50, 0.68, 1.0],
-      ).createShader(bandRect);
-    canvas.drawRect(bandRect, band);
-
-    final edge = Paint()
-      ..blendMode = BlendMode.plus
-      ..color = Colors.white.withValues(alpha: 0.36 * intensity)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    canvas.drawRect(
-      Rect.fromCenter(
-        center: Offset(sweepX - cardSize.width * 0.13, 0),
-        width: 2.2,
-        height: cardSize.height * 1.55,
-      ),
-      edge,
-    );
-    canvas.drawRect(
-      Rect.fromCenter(
-        center: Offset(sweepX + cardSize.width * 0.15, 0),
-        width: 1.4,
-        height: cardSize.height * 1.38,
-      ),
-      edge..color = _kGold.withValues(alpha: 0.36 * intensity),
-    );
-
-    final bead = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-    for (var i = 0; i < 18; i++) {
-      final y = -cardSize.height * 0.68 +
-          cardSize.height * 1.36 * ((i * 0.61803398875 + sweepT) % 1.0);
-      final x =
-          sweepX + math.sin(i * 1.91 + progress * 26) * cardSize.width * 0.20;
-      final shimmer = 0.42 + 0.58 * math.sin(i * 2.2 + progress * 38);
-      bead.color = Color.lerp(Colors.white, _kGold, (i % 3) / 2)!
-          .withValues(alpha: intensity * shimmer * 0.72);
-      canvas.drawCircle(Offset(x, y), 1.2 + shimmer * 1.8, bead);
-    }
-    canvas.restore();
-
-    final bottomGloss = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.transparent,
-          Colors.white.withValues(alpha: 0.08 * intensity),
-          _kGold.withValues(alpha: 0.05 * intensity),
-        ],
-      ).createShader(rect);
-    canvas.drawRect(rect, bottomGloss);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_GlassWipePainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
-}
-
-class _FinalPolishPainter extends CustomPainter {
-  _FinalPolishPainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress;
-  final double intensity;
-  final Size cardSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0.01) return;
-    final center = size.center(Offset.zero);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: cardSize.width,
-      height: cardSize.height,
-    );
-    final radius = Radius.circular(cardSize.width * 0.075);
-    final rrect = RRect.fromRectAndRadius(rect, radius);
-    final phase = ((progress - 0.785) / 0.105).clamp(0.0, 1.0);
-    final i = intensity.clamp(0.0, 1.0);
-
-    canvas.save();
-    canvas.clipRRect(rrect);
-
-    final mist = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = RadialGradient(
-        center: const Alignment(-0.18, -0.36),
-        radius: 0.96,
-        colors: [
-          Colors.white.withValues(alpha: 0.08 * i),
-          _kGold.withValues(alpha: 0.05 * i),
-          _kNeonCyan.withValues(alpha: 0.03 * i),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.28, 0.58, 1.0],
-      ).createShader(rect);
-    canvas.drawRect(rect, mist);
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(-0.50);
-    final sweepX = -cardSize.width * 0.74 + cardSize.width * 1.58 * phase;
-    for (var lane = 0; lane < 3; lane++) {
-      final offset = (lane - 1) * cardSize.width * 0.105;
-      final bandRect = Rect.fromCenter(
-        center: Offset(sweepX + offset, 0),
-        width: cardSize.width * (0.18 + lane * 0.08),
-        height: cardSize.height * 1.66,
-      );
-      final band = Paint()
-        ..blendMode = BlendMode.plus
-        ..shader = LinearGradient(
-          colors: [
-            Colors.transparent,
-            Colors.white.withValues(alpha: i * (0.08 + lane * 0.035)),
-            (lane == 1 ? Colors.white : _kGold)
-                .withValues(alpha: i * (0.22 + lane * 0.05)),
-            Colors.white.withValues(alpha: i * (0.08 + lane * 0.03)),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.30, 0.50, 0.70, 1.0],
-        ).createShader(bandRect);
-      canvas.drawRect(bandRect, band);
+      _paintOrb(
+          canvas, origin, _startRadius * appear * (1 - shrink), 1 - shrink);
+      return;
     }
 
-    final razor = Paint()
-      ..blendMode = BlendMode.plus
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = cardSize.width * 0.006
-      ..color = Colors.white.withValues(alpha: 0.48 * i)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-    canvas.drawLine(
-      Offset(sweepX - cardSize.width * 0.045, -cardSize.height * 0.76),
-      Offset(sweepX + cardSize.width * 0.20, cardSize.height * 0.76),
-      razor,
+    final end = goal.center;
+    final t = practiceArchiveFlightT(ms);
+    final vanish = practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.landMs,
+      PracticeRevealTiming.landMs + PracticeRevealTiming.orbVanishMs,
     );
-    canvas.restore();
-
-    final bead = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
-    for (var k = 0; k < 72; k++) {
-      final t = (k * 0.61803398875 + phase * 0.62) % 1.0;
-      final edge = k % 4;
-      late final Offset p;
-      switch (edge) {
-        case 0:
-          p = Offset(rect.left + rect.width * t, rect.top + 4);
-          break;
-        case 1:
-          p = Offset(rect.right - 4, rect.top + rect.height * t);
-          break;
-        case 2:
-          p = Offset(rect.left + rect.width * t, rect.bottom - 4);
-          break;
-        default:
-          p = Offset(rect.left + 4, rect.top + rect.height * t);
-          break;
-      }
-      final tw = 0.44 + 0.56 * math.sin(k * 1.91 + progress * 80);
-      final color = k % 5 == 0
-          ? Colors.white
-          : Color.lerp(_kGold, _kNeonCyan, (edge + 1) / 5)!;
-      bead.color = color.withValues(alpha: i * tw * 0.46);
-      canvas.drawCircle(p, 0.9 + 1.8 * tw * i, bead);
-    }
-    canvas.restore();
-
-    final rim = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = cardSize.width * 0.014
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.026)
-      ..shader = SweepGradient(
-        colors: [
-          _kGold.withValues(alpha: 0.12 * i),
-          Colors.white.withValues(alpha: 0.54 * i),
-          _kNeonCyan.withValues(alpha: 0.34 * i),
-          _kGold.withValues(alpha: 0.36 * i),
-          _kGold.withValues(alpha: 0.12 * i),
-        ],
-        stops: const [0.0, 0.30, 0.50, 0.76, 1.0],
-        transform: GradientRotation(-math.pi * 0.24 + phase * math.pi * 0.55),
-      ).createShader(rect.inflate(cardSize.width * 0.12));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect.inflate(cardSize.width * 0.022), radius),
-      rim,
-    );
-
-    final star = Paint()
-      ..blendMode = BlendMode.plus
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = cardSize.width * 0.006
-      ..color = Colors.white.withValues(alpha: 0.54 * i)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
-    final starP = rect.topLeft +
-        Offset(cardSize.width * (0.22 + 0.46 * phase), cardSize.height * 0.18);
-    canvas.drawLine(
-      starP - Offset(cardSize.width * 0.065, 0),
-      starP + Offset(cardSize.width * 0.065, 0),
-      star,
-    );
-    canvas.drawLine(
-      starP - Offset(0, cardSize.width * 0.065),
-      starP + Offset(0, cardSize.width * 0.065),
-      star,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_FinalPolishPainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
-}
-
-class _AfterglowPainter extends CustomPainter {
-  _AfterglowPainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress;
-  final double intensity;
-  final Size cardSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final center = size.center(Offset.zero);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: cardSize.width,
-      height: cardSize.height,
-    );
-    final rrect = RRect.fromRectAndRadius(
-      rect.inflate(cardSize.width * 0.035),
-      Radius.circular(cardSize.width * 0.09),
-    );
-    final phase = ((progress - 0.80) / 0.12).clamp(0.0, 1.0);
-
-    final rim = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = cardSize.width * (0.01 + 0.01 * intensity)
-      ..blendMode = BlendMode.plus
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.025)
-      ..shader = SweepGradient(
-        startAngle: -math.pi * 0.65,
-        endAngle: math.pi * 1.35,
-        colors: [
-          _kGold.withValues(alpha: 0),
-          _kGold.withValues(alpha: 0.54 * intensity),
-          Colors.white.withValues(alpha: 0.70 * intensity),
-          _kTeal.withValues(alpha: 0.44 * intensity),
-          _kGold.withValues(alpha: 0),
-        ],
-        stops: const [0.0, 0.24, 0.42, 0.63, 1.0],
-        transform: GradientRotation(progress * math.pi * 2.2),
-      ).createShader(rect.inflate(cardSize.width * 0.2));
-    canvas.drawRRect(rrect, rim);
-
-    final membrane = Paint()
-      ..blendMode = BlendMode.plus
-      ..shader = RadialGradient(
-        center: const Alignment(0.18, -0.28),
-        radius: 0.78,
-        colors: [
-          Colors.white.withValues(alpha: 0.18 * intensity),
-          _kGold.withValues(alpha: 0.07 * intensity),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.42, 1.0],
-      ).createShader(rect);
-    canvas.save();
-    canvas.clipRRect(RRect.fromRectAndRadius(
-      rect,
-      Radius.circular(cardSize.width * 0.075),
-    ));
-    canvas.drawRect(rect, membrane);
-    canvas.restore();
-
-    final spark = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
-    for (var i = 0; i < 52; i++) {
-      final lane = (i % 5) / 4;
-      final fall = (phase + i * 0.071) % 1.0;
-      final x = rect.left +
-          cardSize.width * (0.04 + 0.92 * ((i * 0.61803398875) % 1.0)) +
-          math.sin(i * 1.37 + progress * 28) * cardSize.width * 0.035;
-      final y =
-          rect.top - cardSize.height * 0.10 + cardSize.height * 1.18 * fall;
-      final edgeBoost = (lane == 0 || lane == 1) ? 1.0 : 0.58;
-      final twinkle = 0.42 + 0.58 * math.sin(i * 2.03 + progress * 42);
-      final color = Color.lerp(_kGold, _kNeonCyan, lane)!;
-      spark.color = color.withValues(
-        alpha: intensity * twinkle * edgeBoost * (1 - 0.45 * phase),
-      );
+    for (var k = _trailCount; k >= 1; k--) {
+      final tk = t - k * _trailStep;
+      if (tk <= 0) continue;
+      final fade = math.pow(1 - k / _trailCount, 2).toDouble() * (1 - vanish);
       canvas.drawCircle(
-        Offset(x, y),
-        0.9 + 1.9 * twinkle * intensity,
-        spark,
+        practiceQuadBezier(origin, control, end, tk),
+        _radiusAt(tk) * (1 - k / 12),
+        Paint()..color = _kGold.withValues(alpha: 0.5 * fade),
       );
     }
+    _paintOrb(
+      canvas,
+      practiceQuadBezier(origin, control, end, t),
+      _radiusAt(t) * appear * (1 - vanish),
+      1 - vanish,
+    );
 
-    final flare = Paint()
-      ..blendMode = BlendMode.plus
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7)
-      ..color = Colors.white.withValues(alpha: 0.20 * intensity);
-    for (var i = 0; i < 5; i++) {
-      final a = -math.pi * 0.72 + i * math.pi * 0.36 + progress * 0.7;
-      final p = center +
-          Offset(
-            math.cos(a) * cardSize.width * 0.62,
-            math.sin(a) * cardSize.height * 0.42,
-          );
-      canvas.drawCircle(p, cardSize.width * (0.014 + i * 0.002), flare);
+    final ring = practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.landMs,
+      PracticeRevealTiming.archiveMs,
+    );
+    if (ring > 0) {
+      final maxRadius = Offset(goal.width, goal.height).distance * 0.6;
+      canvas.drawCircle(
+        end,
+        maxRadius * Curves.easeOut.transform(ring),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = _kGold.withValues(alpha: 0.9 * (1 - ring)),
+      );
     }
   }
 
-  @override
-  bool shouldRepaint(_AfterglowPainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
-}
+  double _radiusAt(double t) => lerpDouble(_startRadius, _endRadius, t)!;
 
-class _SettlePulsePainter extends CustomPainter {
-  _SettlePulsePainter({
-    required this.progress,
-    required this.intensity,
-    required this.cardSize,
-  });
-
-  final double progress;
-  final double intensity;
-  final Size cardSize;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (intensity <= 0) return;
-    final center = size.center(Offset.zero);
-    final rect = Rect.fromCenter(
-      center: center,
-      width: cardSize.width,
-      height: cardSize.height,
+  void _paintOrb(Canvas canvas, Offset center, double radius, double alpha) {
+    if (radius <= 0.1 || alpha <= 0) return;
+    final glowRadius = radius * 2.6;
+    canvas.drawCircle(
+      center,
+      glowRadius,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            _kGold.withValues(alpha: 0.55 * alpha),
+            _kGold.withValues(alpha: 0),
+          ],
+        ).createShader(Rect.fromCircle(center: center, radius: glowRadius)),
     );
-    final phase =
-        ((progress - kPracticeRevealHoldEnd) / (1 - kPracticeRevealHoldEnd))
-            .clamp(0.0, 1.0);
-    final inflate = 8 + 18 * Curves.easeOutCubic.transform(phase);
-    final rrect = RRect.fromRectAndRadius(
-      rect.inflate(inflate),
-      Radius.circular(cardSize.width * 0.09),
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Colors.white.withValues(alpha: alpha),
+            _kGold.withValues(alpha: 0.9 * alpha),
+          ],
+          stops: const [0.35, 1.0],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
     );
-
-    final halo = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = cardSize.width * (0.018 + 0.008 * phase)
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          _kGold.withValues(alpha: 0.0),
-          Colors.white.withValues(alpha: 0.52 * intensity),
-          _kTeal.withValues(alpha: 0.46 * intensity),
-          _kGold.withValues(alpha: 0.0),
-        ],
-        stops: const [0.0, 0.42, 0.68, 1.0],
-      ).createShader(rect.inflate(36))
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, cardSize.width * 0.035);
-    canvas.drawRRect(rrect, halo);
-
-    final core = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = cardSize.width * 0.006
-      ..color = Colors.white.withValues(alpha: 0.42 * intensity)
-      ..strokeCap = StrokeCap.round;
-    canvas.drawRRect(rrect.deflate(cardSize.width * 0.012), core);
-
-    final spark = Paint()..style = PaintingStyle.fill;
-    for (var i = 0; i < 24; i++) {
-      final a = i * 2.399963229728653 + phase * math.pi * 1.7;
-      final side = i.isEven ? 1.0 : -1.0;
-      final rx = cardSize.width * (0.52 + 0.10 * phase);
-      final ry = cardSize.height * (0.52 + 0.06 * phase);
-      final pos = center +
-          Offset(math.cos(a) * rx, math.sin(a) * ry * 0.58 + side * 10);
-      final twinkle = 0.55 + 0.45 * math.sin(a * 1.7 + progress * 24);
-      spark.color = Color.lerp(_kGold, _kTeal, i / 24)!
-          .withValues(alpha: intensity * twinkle * 0.76);
-      canvas.drawCircle(pos, 1.2 + 1.8 * twinkle * intensity, spark);
-    }
   }
 
   @override
-  bool shouldRepaint(_SettlePulsePainter old) =>
-      old.progress != progress ||
-      old.intensity != intensity ||
-      old.cardSize != cardSize;
+  bool shouldRepaint(_ArchiveOrbPainter old) =>
+      old.ms != ms ||
+      old.origin != origin ||
+      old.control != control ||
+      old.target != target;
 }
 
 /// 星光粒子場：環繞卡牌一圈的金／白閃爍點（halo 佈點，避開中央照片區）。

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,10 +9,12 @@ import 'package:vibesync/features/practice_chat/data/providers/practice_chat_pro
 import 'package:vibesync/features/practice_chat/data/repositories/practice_session_repository.dart';
 import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
+import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
@@ -1005,9 +1008,11 @@ void main() {
     });
   });
 
-  group('儀式 overlay 掛圖鑑＋揭曉後新卡高亮（Task 4b）', () {
+  group('翻牌儀式掛圖鑑＋收卡飛進那一格（V3）', () {
     const backKey = ValueKey('practice-draw-ceremony-back');
     const frontKey = ValueKey('practice-draw-ceremony-front');
+    const continueKey = ValueKey('practice-draw-ceremony-continue');
+    const orbKey = ValueKey('practice-draw-ceremony-archive-orb');
 
     Future<void> pumpApp(WidgetTester tester, Widget app) async {
       await tester.binding.setSurfaceSize(const Size(500, 1600));
@@ -1016,7 +1021,29 @@ void main() {
       await tester.pump();
     }
 
-    // 高亮 wrapper 邊框的實際 alpha（微光強度 proxy；等待段＝0、微光段>0）。
+    PracticeChatState revealedWith(PracticeGirlProfile girl) =>
+        _revealedSeed().copyWith(girl: girl, personaId: girl.personaId);
+
+    /// 抽牌 → 卡背入場走完 → server 回來（揭曉起點：onRevealTarget 捲動起跑）。
+    /// [unlockInto]：抽中當下同一輪就寫進圖鑑集合。production 的 +1 要等草稿存完才到、
+    /// 可能晚一兩幀；晚到的情況見「解鎖晚到」那一條。
+    Future<void> drawAndReveal(
+      WidgetTester tester,
+      _DrawSpyController controller,
+      PracticeGirlProfile girl, {
+      _SeededCollection? unlockInto,
+    }) async {
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      controller.debugSetState(revealedWith(girl));
+      unlockInto?.add(girl.profileId);
+      await tester.pump();
+    }
+
+    // 高亮 wrapper 邊框的實際 alpha（發光強度 proxy；落位前＝0、落位後>0）。
     double highlightBorderAlpha(WidgetTester tester, String profileId) {
       final container = tester.widget<Container>(
         find.byKey(ValueKey('collection-highlight-$profileId')),
@@ -1026,57 +1053,107 @@ void main() {
       return border?.top.color.a ?? 0;
     }
 
-    test('微光時間軸：等待段＝整條儀式 reveal 總長，收場前恆 0、收場後才亮、走完歸 0', () {
-      // 等待段與儀式 reveal 共用同一常數：儀式重定時不會讓微光搶跑。
-      expect(kCollectionHighlightWait, kPracticeRevealDuration);
-
-      final totalMs =
-          (kCollectionHighlightWait + kCollectionHighlightGlow).inMilliseconds;
-      final glowStart = kCollectionHighlightWait.inMilliseconds / totalMs;
+    test('發光時間軸：前 8% 快速亮起接住光球、停到 40%、之後淡出，收尾歸 0', () {
       expect(collectionHighlightIntensityAt(0), 0);
-      expect(collectionHighlightIntensityAt(glowStart * 0.5), 0);
-      expect(collectionHighlightIntensityAt(glowStart), 0); // 收場瞬間仍 0
-      expect(collectionHighlightIntensityAt(glowStart + 0.02), greaterThan(0));
+      expect(collectionHighlightIntensityAt(0.04), closeTo(0.5, 1e-9));
+      expect(collectionHighlightIntensityAt(0.08), 1);
+      expect(collectionHighlightIntensityAt(0.4), 1);
+      expect(collectionHighlightIntensityAt(0.7), inExclusiveRange(0, 1));
       expect(collectionHighlightIntensityAt(1), 0); // 收尾歸 0，不殘留
     });
 
-    testWidgets('主路徑時序：儀式 scrim 蓋著期間微光強度 0，過整條 reveal 時間軸後才亮起', (tester) async {
-      final notifier = _SeededCollection(const {});
-      await pumpApp(tester, collectionApp(collectionNotifier: notifier));
+    testWidgets('儀式掛在整頁最上層（Scaffold 之外）：揭曉時連 AppBar 一起蓋住', (tester) async {
+      await pumpApp(tester, collectionApp());
 
-      notifier.add('practice_girl_004');
-      await tester.pump(); // 掛上高亮（等待段）、post-frame 捲動起跑
-      await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
-      await tester
-          .pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
-      await tester.pump(const Duration(milliseconds: 16)); // 微光 ticker 定基準
-
-      // 解鎖通知＝reveal 時間軸起點；中段（scrim 全黑）微光必須還沒亮。
-      await tester.pump(const Duration(seconds: 5));
-      expect(highlightBorderAlpha(tester, 'practice_girl_004'), 0);
-
-      // 過了整條 kPracticeRevealDuration（儀式收場交棒）：微光亮起、使用者看得到。
-      await tester.pump(const Duration(seconds: 6));
+      final ceremony = find.byType(PracticeDrawCeremony);
+      expect(ceremony, findsOneWidget);
       expect(
-        highlightBorderAlpha(tester, 'practice_girl_004'),
-        greaterThan(0),
-      );
-
-      // 單次 forward 收尾：settle 收斂、高亮移除不殘留。
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('collection-highlight-practice_girl_004')),
+        find.ancestor(of: ceremony, matching: find.byType(Scaffold)),
         findsNothing,
       );
     });
 
-    testWidgets('reduce-motion：無儀式時間軸，微光直接進微光段即時亮起', (tester) async {
+    testWidgets('idle 休眠、drawing 浮卡背、揭曉後停住，點擊收卡後收掉', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      // idle：全透明無卡。
+      expect(find.byKey(backKey), findsNothing);
+      expect(find.byKey(frontKey), findsNothing);
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 160)); // 入場推進
+
+      expect(find.byKey(backKey), findsOneWidget);
+      expect(find.byKey(frontKey), findsNothing);
+
+      // 抽牌成功 → 有限揭曉時間軸走完停住（含停掉翻牌鈕脈動）：pumpAndSettle 收斂。
+      controller.debugSetState(_revealedSeed());
+      await tester.pumpAndSettle();
+      expect(find.byKey(frontKey), findsOneWidget);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      expect(find.byKey(backKey), findsNothing);
+      expect(find.byKey(frontKey), findsNothing);
+    });
+
+    testWidgets('主路徑：揭曉開始就捲到那一格；停住時不亮，光球落進那一格才亮，走完移除', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+
+      await drawAndReveal(tester, controller, mia, unlockInto: notifier);
+
+      const highlightKey = ValueKey('collection-highlight-practice_girl_004');
+      expect(find.byKey(highlightKey), findsOneWidget);
+      expect(highlightBorderAlpha(tester, mia.profileId), 0);
+
+      await tester.pumpAndSettle(); // 揭曉走完停住：圖鑑那一格還不亮
+      expect(find.byKey(frontKey), findsOneWidget);
+      expect(highlightBorderAlpha(tester, mia.profileId), 0);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump(); // 收卡起飛
+      // 光球飛向剛抽到的那一格（儀式滿版在原點：本地座標＝global）。
+      final orb = tester.widget<CustomPaint>(find.byKey(orbKey));
+      expect(debugArchiveOrbTarget(orb.painter!),
+          tester.getRect(find.byKey(highlightKey)));
+
+      await tester.pump(const Duration(milliseconds: 300)); // 落位前
+      expect(highlightBorderAlpha(tester, mia.profileId), 0);
+      await tester.pump(const Duration(milliseconds: 200)); // 過 0.45 s：落位、起跑
+      await tester.pump(const Duration(milliseconds: 50)); // 發光第一幀
+      expect(highlightBorderAlpha(tester, mia.profileId), greaterThan(0));
+
+      // 單次 forward 收尾：settle 收斂、高亮移除不殘留。
+      await tester.pumpAndSettle();
+      expect(find.byKey(highlightKey), findsNothing);
+      expect(find.byKey(frontKey), findsNothing);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('reduce-motion：沒有儀式畫面，抽中當下捲到那一格、捲動到位就亮', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
       final notifier = _SeededCollection(const {});
+      final controller = _DrawSpyController(_lockedSeed());
       await tester.binding.setSurfaceSize(const Size(500, 1600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         ProviderScope(
-          overrides: _collectionOverrides(collectionNotifier: notifier),
+          overrides: _collectionOverrides(
+            controller: controller,
+            collectionNotifier: notifier,
+          ),
           child: MaterialApp(
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context).copyWith(disableAnimations: true),
@@ -1088,82 +1165,134 @@ void main() {
       );
       await tester.pump();
 
-      notifier.add('practice_girl_004');
-      await tester.pump(); // 掛上高亮、post-frame 捲動起跑
-      await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
-      await tester
-          .pump(const Duration(milliseconds: 300)); // 捲動走完 → forward 已呼叫
-      await tester.pump(const Duration(milliseconds: 16)); // 微光 ticker 定基準
-      await tester.pump(const Duration(milliseconds: 300)); // 微光段推進
-
-      expect(
-        highlightBorderAlpha(tester, 'practice_girl_004'),
-        greaterThan(0),
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
       );
+      await tester.pump();
+      controller.debugSetState(revealedWith(mia));
+      notifier.add(mia.profileId);
+      await tester.pump(); // 抽中當下：掛上高亮、post-frame 捲動起跑
+      expect(find.byKey(frontKey), findsNothing); // 沒有揭曉畫面
+      await tester.pump(const Duration(milliseconds: 100)); // 捲動 ticker 定基準
+      await tester.pump(const Duration(milliseconds: 400)); // 捲動走完 → 補亮
+      await tester.pump(const Duration(milliseconds: 100)); // 發光段推進
+
+      expect(highlightBorderAlpha(tester, mia.profileId), greaterThan(0));
 
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('collection-highlight-practice_girl_004')),
         findsNothing,
       );
+      await tester.pump(const Duration(milliseconds: 250));
     });
 
-    testWidgets('儀式 overlay 掛在圖鑑頁：idle 休眠、drawing 浮卡背、揭曉走完收掉', (tester) async {
+    testWidgets('儀式蓋住整頁時，讀屏碰不到底下的翻牌鈕與返回鍵；收掉後恢復', (tester) async {
+      final handle = tester.ensureSemantics();
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
       final controller = _DrawSpyController(_lockedSeed());
-      await pumpApp(tester, collectionApp(controller: controller));
-
-      // 唯一掛載點：圖鑑頁 body 疊 ceremony；idle 全透明無卡。
-      expect(find.byType(PracticeDrawCeremony), findsOneWidget);
-      expect(find.byKey(backKey), findsNothing);
-      expect(find.byKey(frontKey), findsNothing);
-
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          collectionNotifier: notifier,
+          subscription: _paidSubscription,
+        ),
+      );
+      // 付費、今天還有免費換人：底下的翻牌鈕一被觸發就會直接再抽一次（不跳確認）。
       controller.debugSetState(
         _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
       );
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80)); // intro 入場推進
+      await tester.pump(const Duration(milliseconds: 600));
+      controller.debugSetState(revealedWith(mia).copyWith(
+        drawFreeAllowance: 3,
+        drawFreeRemaining: 2,
+        drawExtraCost: 5,
+      ));
+      notifier.add(mia.profileId);
+      await tester.pumpAndSettle(); // 揭曉走完、停住
+      expect(find.byKey(frontKey), findsOneWidget);
 
-      expect(find.byKey(backKey), findsOneWidget);
-      expect(find.byKey(frontKey), findsNothing);
+      bool reachable(Finder finder) {
+        final node = tester.getSemantics(finder);
+        return node.attached &&
+            node.getSemanticsData().hasAction(SemanticsAction.tap);
+      }
 
-      // 抽牌成功 → 有限 reveal 時間軸走完必收斂（含停掉翻牌鈕脈動）。
-      controller.debugSetState(_revealedSeed());
-      await tester.pumpAndSettle();
-      expect(find.byKey(backKey), findsNothing);
-      expect(find.byKey(frontKey), findsNothing);
+      final drawButton = find.byKey(const ValueKey('collection-draw-button'));
+      final backButton = find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(IconButton),
+      );
+      expect(reachable(drawButton), isFalse, reason: '停住時不能再抽一次');
+      expect(reachable(backButton), isFalse, reason: '返回鍵在儀式底下');
+      expect(find.bySemanticsLabel(RegExp('已抽到')), findsOneWidget);
+      expect(controller.drawCalls, 0);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle(); // 收卡完成、儀式收掉
+      expect(reachable(drawButton), isTrue);
+      expect(reachable(backButton), isTrue);
+      handle.dispose();
     });
 
-    testWidgets('翻牌解鎖 → 新卡微光高亮，單次 forward 走完自動移除（settle 收斂）', (tester) async {
+    testWidgets('集滿後抽到重複角色：一樣捲到原本那一格，收卡後發光', (tester) async {
+      final alice = practiceGirlProfiles.first;
+      final notifier = _SeededCollection({alice.profileId});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+
+      await drawAndReveal(tester, controller, alice); // 集合不變（重複）
+      final highlightKey = ValueKey('collection-highlight-${alice.profileId}');
+      expect(find.byKey(highlightKey), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500)); // 落位、起跑
+      await tester.pump(const Duration(milliseconds: 50)); // 發光第一幀
+      expect(highlightBorderAlpha(tester, alice.profileId), greaterThan(0));
+
+      await tester.pumpAndSettle();
+      expect(find.byKey(highlightKey), findsNothing);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('重新整理圖鑑（集合變大）不會觸發捲動或高亮', (tester) async {
       final notifier = _SeededCollection({'practice_girl_001'});
       await pumpApp(tester, collectionApp(collectionNotifier: notifier));
 
       notifier.add('practice_girl_004');
-      await tester.pump(); // 集合新增 → listener 掛上高亮
-
-      const highlightKey = ValueKey('collection-highlight-practice_girl_004');
-      expect(find.byKey(highlightKey), findsOneWidget);
-
-      await tester.pump(const Duration(milliseconds: 800)); // 微光中段仍在
-      expect(find.byKey(highlightKey), findsOneWidget);
-
-      // 單次 forward 終結：settle 必收斂、高亮 wrapper 移除不殘留。
       await tester.pumpAndSettle();
-      expect(find.byKey(highlightKey), findsNothing);
+
+      expect(
+        find.byKey(const ValueKey('collection-highlight-practice_girl_004')),
+        findsNothing,
+      );
       expect(
         find.byKey(const ValueKey('collection-card-practice_girl_004')),
         findsOneWidget,
       );
     });
 
-    testWidgets('filter 開著時解鎖遠端新卡 → 收 filter、捲動到新卡進視野', (tester) async {
+    testWidgets('filter 開著時抽到被濾掉的遠端卡 → 收 filter、捲動到那一格進視野', (tester) async {
       final notifier = _SeededCollection(const {});
-      await pumpApp(tester, collectionApp(collectionNotifier: notifier));
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
 
-      // 開一個會把新卡濾掉的稀有度 filter。
+      // 開一個會把這張卡濾掉的稀有度 filter。
       final last = practiceGirlProfiles.last;
-      final lastRarity = last.rarity;
       final otherRarity =
-          PracticeGirlRarity.values.firstWhere((r) => r != lastRarity);
+          PracticeGirlRarity.values.firstWhere((r) => r != last.rarity);
       await tester.tap(find.byKey(
           ValueKey('collection-filter-${otherRarity.label.toLowerCase()}')));
       await tester.pump();
@@ -1171,20 +1300,228 @@ void main() {
           find.byKey(ValueKey('collection-card-${last.profileId}'));
       expect(cardFinder, findsNothing);
 
-      notifier.add(last.profileId);
-      await tester.pump();
-      await tester.pumpAndSettle(); // 收 filter＋捲動＋微光全走完
+      await drawAndReveal(tester, controller, last, unlockInto: notifier);
+      await tester.pumpAndSettle(); // 收 filter＋捲動走完，儀式停住
 
       // builder 惰性 grid：catalog 尾端的卡沒捲近絕不 build → 找得到＝已定位。
       expect(cardFinder, findsOneWidget);
       final rect = tester.getRect(cardFinder);
       expect(rect.bottom, greaterThan(0));
       expect(rect.top, lessThan(1600));
-      // 高亮已走完移除。
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle(); // 收卡＋發光走完
       expect(
         find.byKey(ValueKey('collection-highlight-${last.profileId}')),
         findsNothing,
       );
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('抽牌中其他狀態更新（仍是 drawing）不會讓儀式淡出，結果回來照常揭曉', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(tester, collectionApp(controller: controller));
+      final drawing =
+          _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing);
+
+      controller.debugSetState(drawing);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600)); // 入場走完
+      // 練習室還在跑的提示剛好回來：狀態變了，但仍在抽牌中。
+      controller.debugSetState(drawing.copyWith(hintUsedCount: 1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600)); // 淡出要 0.5 s
+      expect(find.byKey(backKey), findsOneWidget, reason: '卡背不該被當成失敗淡掉');
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pumpAndSettle();
+      expect(find.byKey(frontKey), findsOneWidget); // 照常揭曉、停住
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('抽牌中離開圖鑑又回來：結果回來時照樣揭曉（接著走完卡背入場）', (tester) async {
+      final controller = _DrawSpyController(_lockedSeed());
+      final showPage = ValueNotifier(true);
+      addTearDown(showPage.dispose);
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(controller: controller),
+          child: MaterialApp(
+            home: ValueListenableBuilder<bool>(
+              valueListenable: showPage,
+              builder: (context, show, _) => show
+                  ? const PracticeCollectionScreen()
+                  // 離開圖鑑時上一頁（練習室）仍在聽 controller，它不會被 dispose。
+                  : Consumer(
+                      builder: (context, ref, _) {
+                        ref.watch(practiceChatControllerProvider);
+                        return const SizedBox.expand();
+                      },
+                    ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      showPage.value = false; // 抽牌中離開圖鑑：儀式卸載
+      await tester.pump();
+      showPage.value = true; // server 回來前又回到圖鑑：新的儀式還是 hidden
+      await tester.pump();
+      expect(find.byKey(backKey), findsNothing);
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(backKey), findsOneWidget); // 接著走卡背入場
+      await tester.pumpAndSettle();
+      expect(find.byKey(frontKey), findsOneWidget); // 揭曉、停住
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('解鎖晚一兩幀才到：那一格仍先排進已解鎖那段，收卡光球飛向它', (tester) async {
+      // 用 view 定尺寸（430 寬的大螢幕 iPhone）：捲動估算讀 MediaQuery，要和實際版面一致。
+      tester.view.physicalSize = const Size(1290, 2796);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      // 已解鎖 12 張；目標在鎖卡段的第 28 張。還沒解鎖時排第 40 格（第 20 列），
+      // 解鎖後排第 12 格（第 6 列）：估算若用舊排序，會捲到離它十幾列外的地方。
+      final target = practiceGirlProfiles[40];
+      final notifier = _SeededCollection({
+        for (final g in practiceGirlProfiles.take(12)) g.profileId,
+      });
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.pumpWidget(
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600)); // 入場走完
+      controller.debugSetState(revealedWith(target)); // R0：捲動起跑，還沒解鎖
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16)); // 過了一幀
+      notifier.add(target.profileId); // 圖鑑 +1 晚到
+      await tester.pumpAndSettle(); // 揭曉走完停住
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump(); // 收卡起飛
+      final orb = tester.widget<CustomPaint>(find.byKey(orbKey));
+      final highlight =
+          find.byKey(ValueKey('collection-highlight-${target.profileId}'));
+      expect(debugArchiveOrbTarget(orb.painter!), isNotNull,
+          reason: '那一格要在畫面內，光球才不會原地收掉');
+      expect(debugArchiveOrbTarget(orb.painter!), tester.getRect(highlight));
+
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('reduce-motion＋圖鑑 +1 晚一幀才到：一樣捲到那一格，捲動到位才亮', (tester) async {
+      final last = practiceGirlProfiles.last;
+      final notifier =
+          _SeededCollection({practiceGirlProfiles.first.profileId});
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(
+            controller: controller,
+            collectionNotifier: notifier,
+          ),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(revealedWith(last));
+      await tester.pump(); // 抽中當下：掛上高亮、捲動起跑（這張卡先排進已解鎖那段）
+      notifier.add(last.profileId); // 圖鑑 +1 晚到（草稿存完才解鎖）
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400)); // 捲動走完 → 補亮
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final highlightKey = ValueKey('collection-highlight-${last.profileId}');
+      expect(find.byKey(highlightKey), findsOneWidget, reason: '那一格要在畫面內');
+      expect(highlightBorderAlpha(tester, last.profileId), greaterThan(0));
+
+      await tester.pumpAndSettle();
+      expect(find.byKey(highlightKey), findsNothing);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('reduce-motion 抽中：沒有儀式，咻聲的暖尾巴跟著收掉', (tester) async {
+      final sfx = _SfxRecorder();
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ..._collectionOverrides(controller: controller),
+            practiceDrawSfxProvider.overrideWithValue(sfx),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      expect(sfx.calls, contains(#playWhoosh));
+      expect(sfx.calls, isNot(contains(#stopWhoosh)));
+
+      controller.debugSetState(_revealedSeed());
+      await tester.pump();
+      expect(find.byKey(frontKey), findsNothing); // 沒有儀式畫面
+      expect(sfx.calls, contains(#stopWhoosh));
+
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
     });
   });
+}
+
+/// 只記下儀式呼叫了哪些音效方法（不綁介面細節：介面增減方法時不用跟著改）。
+class _SfxRecorder implements PracticeDrawSfx {
+  final List<Symbol> calls = [];
+
+  @override
+  void noSuchMethod(Invocation invocation) => calls.add(invocation.memberName);
 }

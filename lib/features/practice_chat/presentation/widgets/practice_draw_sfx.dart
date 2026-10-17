@@ -39,21 +39,22 @@ abstract class PracticeDrawSfx {
   void playRevealChime();
 
   /// 揭曉前預載：進入抽牌等待時與 [playWhoosh] 一起呼叫，先把揭曉配樂 bed 與翻牌紙聲
-  /// 載入 player，server 回來時 [playRevealBed]／[playFlipSnap] 只需從頭 resume。v4 的
-  /// 三個重音都在 bed 裡，bed 晚播重音就一起晚。可重複呼叫：預載中或已載好時 no-op。
+  /// 載入 player，server 回來時 [playRevealBed]／[playFlipSnap] 只需從頭 resume。高潮重音
+  /// 在 bed 裡，bed 晚播重音就一起晚。可重複呼叫：預載中或已載好時 no-op。
   void preloadReveal();
 
-  /// 揭曉配樂 bed：一條與 `_reveal`（10 s）同長同步的連續配樂。v4 以 F2 為底：整首提前
-  /// 0.37 s 對齊畫面，翻牌前與屏息補 C–G 長音，翻牌後回到 F2 原曲。在揭曉時間軸起始
+  /// 揭曉配樂 bed：與 `_reveal`（2.7 s）對好拍的配樂，高潮落在單次翻牌（揭曉 1.35 s）。
+  /// v5 是 v4 的 4.95–8.25 s 片段（V3 第一刀過渡版）。在揭曉時間軸起始
   /// （`_reveal.forward(from:0)`）播一次。可重複呼叫＝從頭重起（同時只一條、不重疊）。
   void playRevealBed();
 
-  /// 第一次翻牌（揭曉 3.3 s）的紙聲：比 F2 自己的翻牌重音小 11 dB，只補紙的「啪」。
+  /// 翻牌峰值（揭曉 1.35 s，卡片側立）的紙聲：比 bed 的高潮重音小 11 dB，只補紙的「啪」。
   /// 三個變體輪流，連續兩次不重複；只有 0.58 s，不另設停止方法。
   void playFlipSnap();
 
-  /// 停止揭曉配樂 bed。reveal 完成／hidden／失敗兜底／dispose 一律呼叫；idempotent
-  /// （未播放／重複呼叫皆 no-op）。與 [stopWaitingLoop] 的離開出口一一對應。
+  /// 停止揭曉配樂 bed：正在出聲時短暫淡出再停。點擊收卡／hidden／失敗兜底／dispose
+  /// 一律呼叫；idempotent（未播放／重複呼叫皆 no-op）。與 [stopWaitingLoop] 的離開出口
+  /// 一一對應。
   void stopRevealBed();
 }
 

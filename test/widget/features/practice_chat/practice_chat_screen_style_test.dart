@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,6 +25,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_tempera
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
@@ -424,21 +424,29 @@ class _CeremonyTestHost extends ConsumerWidget {
   }
 }
 
-void main() {
-  // 兩段升階揭曉時間軸：測試的 pump 時間點全由 widget 公開的 beat 常數推導，
-  // 與 _PracticeDrawCeremonyState 共用單一真相（重新調 beat 不會讓測試落點失準）。
-  Duration atFraction(double f) => Duration(
-      milliseconds: (f * kPracticeRevealDuration.inMilliseconds).round());
-  // 白卡預覽段中點
-  final previewAt =
-      atFraction((kPracticeRevealFlip1End + kPracticeRevealPreviewEnd) / 2);
-  // 高潮蓄力段中點（卡背朝前、front 已收）
-  final backAt =
-      atFraction((kPracticeRevealRechargeEnd + kPracticeRevealHaloClimax) / 2);
-  // 典藏卡停留段中點
-  final grandHoldAt =
-      atFraction((kPracticeRevealGrandFlipEnd + kPracticeRevealHoldEnd) / 2);
+// ── V3 翻牌揭曉（規格 docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md）──
+const _ceremonyBackKey = ValueKey('practice-draw-ceremony-back');
+const _ceremonyFrontKey = ValueKey('practice-draw-ceremony-front');
+const _ceremonyHintKey = ValueKey('practice-draw-ceremony-hint');
+const _ceremonyContinueKey = ValueKey('practice-draw-ceremony-continue');
 
+/// 揭曉時間軸上的一段時長（pump 用）：節點一律由 [PracticeRevealTiming] 推導，
+/// 與儀式 widget 共用單一真相（重新調節點不會讓測試落點失準）。
+Duration revealAt(double ms) => Duration(milliseconds: ms.round());
+
+/// 揭曉走完會停在 holding（畫面靜止）；點「繼續」收卡、收掉 overlay。結尾再推
+/// 250 ms：SR celebrate 等觸覺內部的 Future.delayed 不留 pending timer。
+Future<void> finishCeremony(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  final continueButton = find.byKey(_ceremonyContinueKey);
+  if (continueButton.evaluate().isNotEmpty) {
+    await tester.tap(continueButton);
+    await tester.pumpAndSettle();
+  }
+  await tester.pump(const Duration(milliseconds: 250));
+}
+
+void main() {
   late PracticeSessionRepository repo;
   late InMemoryPracticeDrawDraftStore draftStore;
 
@@ -3204,14 +3212,8 @@ void main() {
     );
 
     // 進房就是 revealed（草稿還原情境）：儀式不得誤觸發。
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+    expect(find.byKey(_ceremonyBackKey), findsNothing);
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
@@ -3247,10 +3249,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     // 抽牌中：本頁不再浮現儀式卡背（儀式只在圖鑑頁揭曉）。
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsNothing,
-    );
+    expect(find.byKey(_ceremonyBackKey), findsNothing);
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pumpAndSettle();
@@ -3295,13 +3294,10 @@ void main() {
     expect(controller.currentState.drawStatus, PracticeDrawStatus.drawing);
     expect(find.byKey(const ValueKey('practice-locked-entry')), findsNothing);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsOneWidget,
-    );
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
 
     completer.complete(_drawResultFor(nextGirl));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
     expect(controller.currentState.girl!.profileId, nextGirl.profileId);
   });
 
@@ -3312,20 +3308,14 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 60)); // intro 入場推進
+    await tester.pump(const Duration(milliseconds: 160)); // 入場推進（0.1 s 起淡入）
 
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
 
-    // 收尾：完成抽牌、settle 收掉 overlay，避免殘留 ticker。
+    // 收尾：完成抽牌、收卡收掉 overlay，避免殘留 ticker。
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
   });
 
   testWidgets('儀式（E3）：抽牌中卡背改 CustomPaint 紫水晶、不再用金幣 auto_awesome 圖示',
@@ -3336,9 +3326,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 60)); // intro 入場推進
+    await tester.pump(const Duration(milliseconds: 160)); // 入場推進
 
-    final back = find.byKey(const ValueKey('practice-draw-ceremony-back'));
+    final back = find.byKey(_ceremonyBackKey);
     expect(back, findsOneWidget);
     // gap #2：金幣星芒（auto_awesome）退場，卡背中心改 CustomPaint 紫水晶六角。
     expect(
@@ -3347,54 +3337,42 @@ void main() {
     );
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
   });
 
-  testWidgets('儀式：reveal 動畫走完 → overlay 收掉、露出 hero（名字不重複）', (tester) async {
+  testWidgets('儀式（V3）：揭曉走完停住等點擊，點擊收卡後 overlay 收掉、露出 hero（名字不重複）',
+      (tester) async {
     final zoe = practiceGirlProfiles[2];
     final api = _DrawApi(() async => _drawResultFor(zoe));
     await pumpLocked(tester, api: api);
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(); // 揭曉走完：停在 holding（畫面靜止，pumpAndSettle 收斂）
 
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
-    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    expect(find.byKey(_ceremonyFrontKey), findsOneWidget);
+    expect(find.byKey(_ceremonyHintKey), findsOneWidget);
+    expect(find.text('點擊任意處繼續'), findsOneWidget);
     // 名字只在 hero 出現一處（儀式正面不得用「名字，年齡」精確字串撞測試）。
     expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
-  });
 
-  testWidgets('儀式：reveal 成功後正面卡會暫留，讓使用者看清楚特效', (tester) async {
-    final zoe = practiceGirlProfiles[2];
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLocked(tester, api: api);
+    // 停住不會自己收掉：再等 10 秒正面卡仍在。
+    await tester.pump(const Duration(seconds: 10));
+    expect(find.byKey(_ceremonyFrontKey), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.tap(find.byKey(_ceremonyContinueKey));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 600));
-
-    completer.complete(_drawResultFor(zoe));
-    await tester.pump();
-    await tester.pump(previewAt); // 白卡預覽段（beat 推導，對齊重定時）
-
     expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      find.byKey(const ValueKey('practice-draw-ceremony-archive-orb')),
       findsOneWidget,
     );
-
     await tester.pumpAndSettle();
+
+    expect(find.byKey(_ceremonyBackKey), findsNothing);
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
     expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+        find.byKey(const ValueKey('practice-draw-ceremony-dim')), findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    expect(find.text('${zoe.displayName}，${zoe.age}'), findsOneWidget);
   });
 
   testWidgets('儀式：reduce-motion 跳過 3D 翻面、reveal 直接露出 hero', (tester) async {
@@ -3424,12 +3402,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pumpAndSettle();
 
-    // 跳過翻面：正面卡不出現，直接露出 hero。
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+    // 跳過翻面：正面卡不出現、不停住，直接露出 hero。
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
+    expect(find.byKey(_ceremonyContinueKey), findsNothing);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
   // ── 抽牌等待期間卡背持續微動（Batch 4.6）────────────────────────────────
@@ -3458,22 +3435,13 @@ void main() {
     // 等待期間卡背確實在浮動（兩個取樣時間的 float 位移明顯不同）。
     expect((y1 - y2).abs(), greaterThan(0.5));
     // 等待期間只顯卡背、絕不洩漏正面身份。
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
 
-    // 收尾：成功揭曉、settle 收掉 overlay（等待微動須已停，pumpAndSettle 才收斂）。
+    // 收尾：成功揭曉、收卡收掉 overlay（等待微動須已停，pumpAndSettle 才收斂）。
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsNothing,
-    );
+    await finishCeremony(tester);
+    expect(find.byKey(_ceremonyBackKey), findsNothing);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
   });
 
@@ -3496,10 +3464,8 @@ void main() {
     // 若等待微動沒被停掉，這個 pumpAndSettle 會因 repeat 永不收斂而 timeout。
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
+    expect(find.byKey(_ceremonyContinueKey), findsNothing);
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsNothing);
     expect(find.byKey(const ValueKey('practice-draw-upgrade')), findsOneWidget);
   });
@@ -3534,20 +3500,15 @@ void main() {
 
     // reduce-motion：不啟動持續微動，float 位移恆定（靜止）。
     expect(y1, equals(y2));
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
-  // ── 兩段升階儀式骨架（Batch A）──────────────────────────────────────────
+  // ── V3 單次翻牌（第一刀：結構與節奏）────────────────────────────────────
   Future<void> drawToReveal(
     WidgetTester tester, {
     required Completer<PracticeDrawResult> completer,
@@ -3555,177 +3516,188 @@ void main() {
   }) async {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
+    await tester.pump(const Duration(milliseconds: 600)); // 卡背入場走完、等待微動
     completer.complete(_drawResultFor(girl));
     await tester.pump(); // 進入 revealing：_reveal.forward(from:0)
   }
 
-  testWidgets('兩段升階：第一段翻出白卡預覽（~3.5s 顯正面卡、不顯卡背）', (tester) async {
+  double opacityAbove(WidgetTester tester, Finder finder) => tester
+      .widget<Opacity>(
+        find.ancestor(of: finder, matching: find.byType(Opacity)).first,
+      )
+      .opacity;
+
+  testWidgets('V3：全程只翻一次——翻牌峰值前只有卡背，正面出現後卡背不再回來', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
     await drawToReveal(tester,
         completer: completer, girl: practiceGirlProfiles[2]);
 
-    await tester.pump(previewAt); // 白卡預覽段
+    var elapsed = 0.0;
+    var sawFront = false;
+    while (elapsed <= PracticeRevealTiming.revealMs) {
+      final back = find.byKey(_ceremonyBackKey).evaluate().isNotEmpty;
+      final front = find.byKey(_ceremonyFrontKey).evaluate().isNotEmpty;
+      expect(back != front, isTrue, reason: '同一時間只畫一面（$elapsed ms）');
+      if (front) {
+        sawFront = true;
+      } else {
+        expect(sawFront, isFalse, reason: '正面出現後又翻回卡背（$elapsed ms）');
+      }
+      if (elapsed < PracticeRevealTiming.flipPeakMs - 50) {
+        expect(back, isTrue, reason: '翻牌峰值前只有卡背（$elapsed ms）');
+      }
+      await tester.pump(const Duration(milliseconds: 50));
+      elapsed += 50;
+    }
+    expect(sawFront, isTrue);
+    await finishCeremony(tester);
+  });
+
+  testWidgets('V3：蓄力段（0.6 s）仍是卡背，不立即翻面', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
+
+    await tester.pump(revealAt(PracticeRevealTiming.chargeEndMs));
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
+
+    await finishCeremony(tester);
+  });
+
+  testWidgets('V3：資訊欄等翻牌落定後才浮出（1.85 s 前透明）', (tester) async {
+    final girl = practiceGirlProfiles[2];
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester, completer: completer, girl: girl);
+
+    const infoKey = ValueKey('practice-draw-ceremony-grand-info');
+    await tester.pump(revealAt(PracticeRevealTiming.flipEndMs));
+    expect(find.byKey(_ceremonyFrontKey), findsOneWidget);
+    expect(opacityAbove(tester, find.byKey(infoKey)), 0);
+
+    await tester.pump(revealAt(
+        PracticeRevealTiming.infoEndMs - PracticeRevealTiming.flipEndMs + 20));
+    expect(opacityAbove(tester, find.byKey(infoKey)), 1);
+    // 稀有度 badge 翻開第一幀就在、而且是正確稀有度。
     expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      find.descendant(
+        of: find.byKey(const ValueKey('practice-draw-ceremony-rarity-badge')),
+        matching: find.text(girl.rarity.label),
+      ),
       findsOneWidget,
     );
+    // 資訊欄仍不得用 hero 的「名字，年齡」精確字串（仍只在 hero 一處）。
+    expect(find.text('${girl.displayName}，${girl.age}'), findsOneWidget);
+
+    await finishCeremony(tester);
+  });
+
+  testWidgets('V3：翻牌閃光只在卡片側立附近出現', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
+    const flashKey = ValueKey('practice-draw-ceremony-flip-flash');
+
+    await tester.pump(revealAt(1000));
+    expect(find.byKey(flashKey), findsNothing);
+    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs - 1000));
+    expect(find.byKey(flashKey), findsOneWidget);
+    await tester.pump(revealAt(
+        PracticeRevealTiming.flipEndMs - PracticeRevealTiming.flipPeakMs));
+    expect(find.byKey(flashKey), findsNothing);
+
+    await finishCeremony(tester);
+  });
+
+  testWidgets('V3：翻牌落定前點擊無效；落定後點一下快轉到停住，再點一下才收卡', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
+
+    // 1.0 s（蓄力中）點擊：不理，仍是卡背。
+    await tester.pump(revealAt(1000));
+    await tester.tap(find.byKey(_ceremonyContinueKey));
+    await tester.pump(revealAt(100));
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
+
+    // 落定後（約 2.0 s）點擊：快轉到資訊全部落位＝停住（提示字全亮）。
+    await tester.pump(revealAt(900));
+    expect(find.byKey(_ceremonyHintKey), findsNothing); // 提示 2.4 s 才淡入
+    await tester.tap(find.byKey(_ceremonyContinueKey));
+    await tester.pump(); // animateTo 起跑
+    await tester
+        .pump(PracticeRevealTiming.skip + const Duration(milliseconds: 20));
+    expect(find.byKey(_ceremonyFrontKey), findsOneWidget);
+    expect(opacityAbove(tester, find.byKey(_ceremonyHintKey)), 0.72);
     expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
+      find.byKey(const ValueKey('practice-draw-ceremony-archive-orb')),
       findsNothing,
     );
+
+    // 停住時再點一下：收卡。
+    await tester.tap(find.byKey(_ceremonyContinueKey));
     await tester.pumpAndSettle();
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
-  testWidgets('兩段升階：高潮蓄力段顯卡背（不顯正面）', (tester) async {
+  testWidgets('V3：Android 返回鍵——揭曉中吞掉，停住時等於點擊收卡', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
     await drawToReveal(tester,
         completer: completer, girl: practiceGirlProfiles[2]);
 
-    await tester.pump(backAt); // 高潮蓄力段
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
-    await tester.pumpAndSettle();
-  });
+    await tester.pump(revealAt(800));
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget); // 還在蓄力，沒被帶走
 
-  testWidgets('兩段升階：高潮後典藏卡停留（~8.3s 顯正面卡）', (tester) async {
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLocked(tester, api: api);
-    await drawToReveal(tester,
-        completer: completer, girl: practiceGirlProfiles[2]);
-
-    await tester.pump(grandHoldAt); // 典藏卡停留段
+    await tester.pumpAndSettle(); // 停住
+    await tester.binding.handlePopRoute();
+    await tester.pump();
     expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      find.byKey(const ValueKey('practice-draw-ceremony-archive-orb')),
       findsOneWidget,
     );
     await tester.pumpAndSettle();
+    expect(find.byKey(_ceremonyFrontKey), findsNothing);
+    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
-  testWidgets('Batch C：grand 金框典藏資訊欄只在高潮典藏段出現（preview 段用白卡）', (tester) async {
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLocked(tester, api: api);
-    await drawToReveal(tester,
-        completer: completer, girl: practiceGirlProfiles[2]);
-
-    // 白卡預覽段：正面卡在場，但 grand 金框 frosted 資訊欄尚未升階出現。
-    await tester.pump(previewAt);
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-grand-info')),
-      findsNothing,
-    );
-
-    // 高潮典藏段：升階成金框＋frosted 深色玻璃資訊欄。
-    await tester.pump(grandHoldAt - previewAt);
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-grand-info')),
-      findsOneWidget,
-    );
-
-    // 升階仍不得用 hero 的「名字，年齡」精確字串（仍只在 hero 一處）。
-    expect(
-      find.text(
-          '${practiceGirlProfiles[2].displayName}，${practiceGirlProfiles[2].age}'),
-      findsOneWidget,
-    );
-
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('兩段升階：整條 ~9s 時間軸 pumpAndSettle 收斂、最終露 hero', (tester) async {
-    final zoe = practiceGirlProfiles[2];
-    final api = _DrawApi(() async => _drawResultFor(zoe));
+  testWidgets('V3：停住時整層是可點的按鈕，讀得出抽到誰（VoiceOver）', (tester) async {
+    final handle = tester.ensureSemantics();
+    final girl = practiceGirlProfiles[2];
+    final api = _DrawApi(() async => _drawResultFor(girl));
     await pumpLocked(tester, api: api);
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pumpAndSettle(); // 整條走完必收斂
+    await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
+      tester.getSemantics(find.byKey(_ceremonyContinueKey)),
+      isSemantics(
+        label: '已抽到 ${girl.displayName}，${girl.rarity.label} 卡',
+        hint: '點兩下收進圖鑑',
+        isButton: true,
+        hasTapAction: true,
+      ),
     );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsNothing,
-    );
-    expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
-  });
 
-  testWidgets('兩段升階：軌道彗星 halo 只在蓄力→高潮段亮（preview／hold 不亮）', (tester) async {
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLocked(tester, api: api);
-    await drawToReveal(tester,
-        completer: completer, girl: practiceGirlProfiles[2]);
-
-    // 白卡預覽段：halo 尚未啟動。
-    await tester.pump(previewAt);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-back')),
-        findsNothing);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-front')),
-        findsNothing);
-
-    // 高潮蓄力段：前後兩夾層 halo 都亮。
-    await tester.pump(backAt - previewAt);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-back')),
-        findsOneWidget);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-front')),
-        findsOneWidget);
-
-    // 典藏卡停留段：halo settle 收掉。
-    await tester.pump(grandHoldAt - backAt);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-back')),
-        findsNothing);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-halo-front')),
-        findsNothing);
-
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('Batch C：能量邊框只在蓄力段（recharge→climax）描邊，preview／典藏停留不亮',
-      (tester) async {
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLocked(tester, api: api);
-    await drawToReveal(tester,
-        completer: completer, girl: practiceGirlProfiles[2]);
-
-    // 白卡預覽段：能量邊框尚未啟動。
-    await tester.pump(previewAt);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-energy-border')),
-        findsNothing);
-
-    // 高潮蓄力段（卡背發亮）：能量邊框描邊掃動。
-    await tester.pump(backAt - previewAt);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-energy-border')),
-        findsOneWidget);
-
-    // 典藏卡停留段：能量邊框收掉（蓄力結束）。
-    await tester.pump(grandHoldAt - backAt);
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-energy-border')),
-        findsNothing);
-
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
+    handle.dispose();
   });
 
   // ── 翻牌音效掛勾（Batch 4.7）：plumbing-only，spy 驗證呼叫時機 ──────────────
@@ -3782,9 +3754,29 @@ void main() {
     expect(spy.chime, 0); // 尚未揭曉
     expect(spy.looping, isFalse);
 
-    // 收尾：成功揭曉、settle 收掉 overlay（避免殘留 ticker）。
+    // 收尾：成功揭曉、收卡收掉 overlay（避免殘留 ticker）。
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
+  });
+
+  testWidgets('音效：入場保底——server 立即回來也等卡背入場走完才起播 bed', (tester) async {
+    final spy = _SpyPracticeDrawSfx();
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await tester.pump(); // drawing
+    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
+    await tester.pump(); // 抽成功，但卡背入場還沒走完
+    expect(spy.bedStart, 0);
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(spy.bedStart, 0);
+    await tester.pump(const Duration(milliseconds: 250)); // 過 0.5 s：入場完成
+    expect(spy.bedStart, 1);
+
+    await finishCeremony(tester);
   });
 
   testWidgets('音效（v4）：抽牌啟動時預載揭曉音效一次，揭曉直接起播 bed、不停咻聲', (tester) async {
@@ -3793,19 +3785,15 @@ void main() {
     final api = _DrawApi(() => completer.future);
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
 
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // 進入 drawing
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
     expect(spy.whoosh, 1);
     expect(spy.preload, 1); // 與咻聲同時預載，server 回來前就載好
-    expect(spy.bedStart, 0);
-
-    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pump(); // revealing
     expect(spy.bedStart, 1);
-    expect(spy.preload, 1); // 揭曉時不重複預載
     expect(spy.whooshStop, 0); // 揭曉起始不停咻聲：尾巴交棒給 bed
 
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
+    expect(spy.preload, 1); // 揭曉與收卡都不重複預載
   });
 
   testWidgets('音效：揭曉成功 → waiting loop 未啟動、playRevealBed', (tester) async {
@@ -3821,8 +3809,10 @@ void main() {
     expect(spy.waitingStart, 0);
     expect(spy.waitingStop, greaterThanOrEqualTo(1));
     expect(spy.chime, 0); // 舊 reveal chime 不再疊在 master audio 上
-    expect(spy.bedStart, 1); // 完整參考片主音軌接管揭曉音效
+    expect(spy.bedStart, 1); // 主音軌接管揭曉音效
     expect(spy.looping, isFalse); // 等待 loop 已停、不殘留
+
+    await finishCeremony(tester);
   });
 
   testWidgets('音效：抽牌 402 → waiting loop 未啟動、不播揭曉叮聲、停掉咻聲', (tester) async {
@@ -3865,7 +3855,7 @@ void main() {
     expect(spy.looping, isFalse);
   });
 
-  testWidgets('音效：成功揭曉後同頁再抽 → 卡背照常出現，第二抽 402 停掉咻聲', (tester) async {
+  testWidgets('音效：收卡後同頁再抽 → 卡背照常出現，第二抽 402 停掉咻聲', (tester) async {
     // 回歸：成功揭曉把 intro 留在終點時，下一抽 forward(from: 0) 會發出 dismissed，
     // 收場 listener 把剛開始的第二抽收成 hidden → 卡背不見、失敗兜底被跳過。
     final spy = _SpyPracticeDrawSfx();
@@ -3880,8 +3870,8 @@ void main() {
     await tester.pump(); // 第一抽 drawing
     expect(dim, findsOneWidget); // 對照：第一抽等待時卡背遮罩在
     first.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pumpAndSettle(); // 成功揭曉、收掉 overlay
-    expect(spy.whooshStop, 0);
+    await finishCeremony(tester); // 成功揭曉、收卡收掉 overlay
+    expect(spy.whooshStop, 1); // 收卡時咻聲尾巴淡出，不帶到圖鑑頁
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pump(); // 第二抽 drawing
@@ -3894,7 +3884,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(spy.whooshStop, 1); // 第二抽失敗也不把尾巴帶到付費牆
+    expect(spy.whooshStop, 2); // 第二抽失敗也不把尾巴帶到付費牆
     expect(dim, findsNothing);
     expect(spy.looping, isFalse);
   });
@@ -3914,6 +3904,7 @@ void main() {
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
   testWidgets('音效：drawing 中卸載儀式 → waiting loop 從未啟動、停掉咻聲', (tester) async {
@@ -3948,22 +3939,19 @@ void main() {
     final api = _DrawApi(() => completer.future);
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
 
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 600)); // 等待微動
-    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pump(); // 進入 revealing（_reveal.forward(from:0)，value≈0）
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
-    // server 剛回應、白卡尚未翻出；音效由 master bed 起播，不再疊舊叮聲。
+    // server 剛回應、卡片尚未翻開；音效由 master bed 起播，不再疊舊叮聲。
     expect(spy.chime, 0);
     expect(spy.bedStart, 1);
 
-    // 跨白卡預覽翻面（kFlip1End 之後）也不補舊 chime，避免兩套音效契約並存。
-    await tester.pump(previewAt);
+    // 跨過翻牌峰值也不補舊 chime，避免兩套音效契約並存。
+    await tester.pump(revealAt(PracticeRevealTiming.flipEndMs));
     expect(spy.chime, 0);
 
-    // 走完整條也不觸發舊 chime。
-    await tester.pumpAndSettle();
+    // 走完整條、收卡也不觸發舊 chime。
+    await finishCeremony(tester);
     expect(spy.chime, 0);
   });
 
@@ -3982,12 +3970,11 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(spy.chime, 0);
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
-  // ── E2：揭曉配樂 bed（復刻 音檔.mp4 音軌）取代離散 riser/settle ────────────────
-  // 一條與 `_reveal`（~9s）同長同步的連續配樂：揭曉起始播一次、每個離開出口收掉、
-  // 失敗／reduce-motion 不起。spy 以 bedStart/bedStop 推導「不殘留」。
-  testWidgets('音效（E2）：揭曉開始播一條配樂 bed、走完整條後收掉（不殘留）', (tester) async {
+  // ── 揭曉配樂 bed：揭曉起始播一次、每個離開出口收掉、失敗／reduce-motion 不起 ────
+  testWidgets('音效（V3）：揭曉開始播一條 bed；停住時仍在，點擊收卡後收掉（不殘留）', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -4003,9 +3990,16 @@ void main() {
     expect(spy.bedStart, 1); // 揭曉起始播一次配樂 bed
     expect(spy.bedPlaying, isTrue);
 
-    await tester.pumpAndSettle(); // 走完整條揭曉 → 收掉 overlay
+    await tester.pumpAndSettle(); // 停住：bed 不提早收
+    expect(spy.bedPlaying, isTrue);
+
+    await tester.tap(find.byKey(_ceremonyContinueKey));
+    await tester.pump();
+    expect(spy.bedPlaying, isFalse); // 點擊收卡當下就淡出
+    await tester.pumpAndSettle();
     expect(spy.bedStop, greaterThanOrEqualTo(1));
     expect(spy.bedPlaying, isFalse); // 配樂不殘留
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
   testWidgets('音效（E2）：再抽一次 → 配樂 bed 重起一次（每次揭曉各一條，不殘留）', (tester) async {
@@ -4014,13 +4008,13 @@ void main() {
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
     expect(spy.bedStart, 1);
     expect(spy.flipSnap, 1);
 
     // 再抽一次（Task 5 後換人入口在圖鑑；host 測試鈕直呼 draw）。
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
     expect(spy.bedStart, 2); // 第二次揭曉重起一條
     expect(spy.flipSnap, 2); // 對拍點每次揭曉重新觸發一輪
     expect(spy.bedPlaying, isFalse);
@@ -4048,11 +4042,8 @@ void main() {
     final api = _DrawApi(() => completer.future);
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
 
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 600));
-    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pump(); // revealing：配樂起
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
     expect(spy.bedPlaying, isTrue);
 
     // 整個 PracticeChatScreen 子樹卸載 → 儀式 dispose 必收掉配樂。
@@ -4075,11 +4066,12 @@ void main() {
     expect(spy.bedPlaying, isFalse);
 
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 250));
   });
 
-  // ── v4 對拍：翻牌紙聲與觸覺跟著畫面撞擊格 ──────────────────────────────────
+  // ── 對拍：翻牌紙聲與觸覺跟著畫面撞擊格 ──────────────────────────────────────
   // 觸覺從系統 channel 攔：tap＝lightImpact、light＝mediumImpact、medium＝heavyImpact，
-  // celebrate＝light→medium→heavy（共 200 ms）。
+  // celebrate＝light→medium→heavy（共 200 ms）、tick＝selectionClick。
   List<String> recordHaptics(WidgetTester tester) {
     final vibrates = <String>[];
     final messenger = tester.binding.defaultBinaryMessenger;
@@ -4095,70 +4087,68 @@ void main() {
     return vibrates;
   }
 
-  // 一次成功揭曉的完整音效序列：SR／R／N 必須完全相同（稀有度一致）。
+  // 蓄力三下 tick 用真實時間節流（70 ms），widget test 次數不穩定：另外只驗上限。
+  const tickHaptic = 'HapticFeedbackType.selectionClick';
+  List<String> withoutTicks(List<String> vibrates) =>
+      vibrates.where((v) => v != tickHaptic).toList();
+
+  // 一次成功揭曉＋收卡的完整音效序列：SR／R／N 必須完全相同（稀有度一致）。
   const revealSfxSequence = [
     'whoosh',
     'preload',
     'waitingStop',
     'bedStart',
     'flipSnap',
-    'waitingStop',
+    'bedStop', // 點擊收卡：bed 淡出
+    'whooshStop', // 點擊收卡：咻聲尾巴淡出
+    'waitingStop', // 收掉 overlay
     'bedStop',
   ];
-  final flipAt =
-      atFraction((kPracticeRevealFlip1Start + kPracticeRevealFlip1End) / 2);
 
-  testWidgets('對拍（v4）：翻牌紙聲在第一次翻面中點（3.3 s）播一次', (tester) async {
+  testWidgets('對拍（V3）：翻牌紙聲在卡片側立（1.35 s）播一次', (tester) async {
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
 
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing
-    completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pump(); // revealing（value≈0）
-
-    await tester.pump(flipAt - const Duration(milliseconds: 10));
-    expect(spy.flipSnap, 0); // 3.29 s：還沒到翻面中點
+    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs - 10));
+    expect(spy.flipSnap, 0); // 1.34 s：還沒側立
     await tester.pump(const Duration(milliseconds: 20));
-    expect(spy.flipSnap, 1); // 3.31 s：剛好一次
+    expect(spy.flipSnap, 1); // 1.36 s：剛好一次
 
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
     expect(spy.flipSnap, 1); // 整條跑完仍只有一次
     expect(spy.chime, 0); // 舊 reveal chime 不回來
   });
 
-  testWidgets('對拍（v4）：N 的觸覺從抽中當下移到撞擊格（3.3 tap／6.5 medium／8.5 tap）',
-      (tester) async {
+  testWidgets('對拍（V3）：N 抽中當下不震，翻牌峰值重擊、落位一下', (tester) async {
     final vibrates = recordHaptics(tester);
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
-
-    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pump(); // drawing：抽牌 light
     final n = practiceGirlProfiles
         .firstWhere((g) => g.rarity == PracticeGirlRarity.n);
-    completer.complete(_drawResultFor(n));
-    await tester.pump(); // revealing
-    expect(vibrates, ['HapticFeedbackType.mediumImpact']); // 抽中當下不再震
 
-    await tester.pump(flipAt + const Duration(milliseconds: 10));
-    expect(vibrates.last, 'HapticFeedbackType.lightImpact'); // 翻牌 tap
+    await drawToReveal(tester, completer: completer, girl: n);
+    expect(withoutTicks(vibrates), ['HapticFeedbackType.mediumImpact']); // 只有抽牌
 
-    await tester.pumpAndSettle();
-    expect(vibrates, [
+    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs + 10));
+    expect(withoutTicks(vibrates).last, 'HapticFeedbackType.heavyImpact');
+
+    await finishCeremony(tester);
+    expect(withoutTicks(vibrates), [
       'HapticFeedbackType.mediumImpact', // 抽牌
-      'HapticFeedbackType.lightImpact', // 3.3 s 翻牌
-      'HapticFeedbackType.heavyImpact', // 6.5 s 爆裂
-      'HapticFeedbackType.lightImpact', // 8.5 s 落定
+      'HapticFeedbackType.heavyImpact', // 1.35 s 翻牌峰值
+      'HapticFeedbackType.mediumImpact', // 收卡光球落位
     ]);
+    expect(vibrates.where((v) => v == tickHaptic).length, lessThanOrEqualTo(3));
     expect(spy.calls, revealSfxSequence);
   });
 
-  testWidgets('對拍（v4）：SR 在 6.3 s 起 celebrate、第三下落在爆裂；音效序列與 N 相同',
+  testWidgets('對拍（V3）：SR 在 1.15 s 起 celebrate、第三下落在翻牌峰值；音效序列與 N 相同',
       (tester) async {
     final vibrates = recordHaptics(tester);
     final spy = _SpyPracticeDrawSfx();
@@ -4168,14 +4158,13 @@ void main() {
     await pumpLockedWithSfx(tester, api: api, sfx: spy);
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-    await tester.pumpAndSettle();
-    expect(vibrates, [
+    await finishCeremony(tester);
+    expect(withoutTicks(vibrates), [
       'HapticFeedbackType.mediumImpact', // 抽牌
-      'HapticFeedbackType.lightImpact', // 3.3 s 翻牌
-      'HapticFeedbackType.lightImpact', // 6.3 s celebrate 第一下
+      'HapticFeedbackType.lightImpact', // 1.15 s celebrate 第一下
       'HapticFeedbackType.mediumImpact',
-      'HapticFeedbackType.heavyImpact', // 6.5 s 爆裂
-      'HapticFeedbackType.lightImpact', // 8.5 s 落定
+      'HapticFeedbackType.heavyImpact', // 1.35 s 翻牌峰值
+      'HapticFeedbackType.mediumImpact', // 收卡光球落位
     ]);
     expect(spy.calls, revealSfxSequence); // 聲音和 N 完全一樣
   });
@@ -4195,530 +4184,6 @@ void main() {
       'HapticFeedbackType.heavyImpact', // 抽中當下
     ]);
     expect(spy.flipSnap, 0);
-  });
-
-  // ── E1：揭曉時間軸對齊參考音軌「音檔.mp4」＋放大卡（復刻）──────────────────────
-  // 第4輪 storyboard 重定時：總長 10.0s，錨定三爆點（3.0/6.5/8.5）＋屏息（5.0）。
-  group('E1 時間軸對齊音軌', () {
-    test('揭曉總長 = 10 秒（對齊參考片 音檔.mp4 720×1280 24fps 10.000s）', () {
-      expect(kPracticeRevealDuration, const Duration(milliseconds: 10000));
-    });
-
-    test('beat 錨定音軌三爆點＋屏息（10s）：peak#1 3.0／屏息 5.0／peak#2 6.5／落定 8.5', () {
-      // peak#1 ~3.0s/10 → 卡背立直、白卡預覽翻出。
-      expect(kPracticeRevealFlip1Start, inInclusiveRange(0.28, 0.33));
-      expect(kPracticeRevealFlip1End, inInclusiveRange(0.33, 0.40));
-      // 屏息低谷 ~5.0s/10 → 預覽卡收到最靜點，之後翻回卡背蓄力。
-      expect(kPracticeRevealPreviewEnd, inInclusiveRange(0.48, 0.55));
-      expect(kPracticeRevealRechargeEnd, inInclusiveRange(0.57, 0.63));
-      // peak#2 ~6.5s/10 → 翻面爆裂高潮（halo climax）。
-      expect(kPracticeRevealHaloClimax, inInclusiveRange(0.62, 0.68));
-      // 典藏卡落定 ~7.25s/10、peak#3 ~8.5s/10 settle 收尾。
-      expect(kPracticeRevealGrandFlipEnd, inInclusiveRange(0.70, 0.76));
-      expect(kPracticeRevealHoldEnd, inInclusiveRange(0.79, 0.87));
-    });
-
-    test('beat 常數嚴格單調遞增（時間軸不交錯）', () {
-      final beats = <double>[
-        kPracticeRevealFlip1Start,
-        kPracticeRevealFlip1End,
-        kPracticeRevealPreviewEnd,
-        kPracticeRevealRechargeEnd,
-        kPracticeRevealHaloClimax,
-        kPracticeRevealGrandFlipEnd,
-        kPracticeRevealHoldEnd,
-      ];
-      for (var i = 1; i < beats.length; i++) {
-        expect(beats[i], greaterThan(beats[i - 1]),
-            reason: 'beat[$i] 必須大於 beat[${i - 1}]');
-      }
-      expect(beats.first, greaterThan(0));
-      expect(beats.last, lessThan(1));
-    });
-  });
-
-  // ── E4：開場/收場亮 UI（暗化隨 reveal 進度起落，復刻參考片亮→暗→亮）──────────
-  group('E4 開場/收場亮 UI', () {
-    test('beat0 開場暗化低（亮 UI＋卡背）、中段全暗、settle 收場暗化退回', () {
-      // beat0（0–0.5s 亮 UI 靜置卡背）：暗化低，底下亮 UI 透出。
-      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.02),
-          lessThan(0.3));
-      // beat1 後（轉暗星空）→ 中段儀式：全暗聚焦。
-      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.40),
-          greaterThan(0.9));
-      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.65),
-          greaterThan(0.9));
-      // settle 收場（beat10 8.75–10s）：暗化退回、亮 UI 重現。
-      expect(practiceCeremonyDim(drawing: false, revealFraction: 0.97),
-          lessThan(0.3));
-    });
-
-    test('暗化在 beat0→beat1 單調遞增、settle 段單調遞減', () {
-      // 開場淡入暗：0.02 < 0.13。
-      expect(
-          practiceCeremonyDim(drawing: false, revealFraction: 0.13),
-          greaterThan(
-              practiceCeremonyDim(drawing: false, revealFraction: 0.02)));
-      // 收場淡出暗：0.97 < 0.82。
-      expect(
-          practiceCeremonyDim(drawing: false, revealFraction: 0.82),
-          greaterThan(
-              practiceCeremonyDim(drawing: false, revealFraction: 0.97)));
-    });
-
-    test('drawing 等待期：柔和聚焦暗化（非全暗、非全亮）', () {
-      final d = practiceCeremonyDim(drawing: true, revealFraction: 0);
-      expect(d, inExclusiveRange(0.1, 0.8));
-    });
-  });
-
-  // ── E4：爆裂高潮 burst（PEAK#2 6.5s 達峰的脈衝，灌進 flash／星爆／光束）──────────
-  group('E4 爆裂高潮 burst', () {
-    test('burst 在 PEAK#2（HaloClimax 6.5s/0.65）達峰', () {
-      final atClimax = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax);
-      expect(atClimax, greaterThan(0.95));
-    });
-
-    test('burst 在蓄力前（屏息 5.0s）與落定後（grand 8s）幾乎為 0', () {
-      expect(practiceCeremonyClimaxBurst(0.50), lessThan(0.1));
-      expect(practiceCeremonyClimaxBurst(0.80), lessThan(0.1));
-    });
-
-    test('burst 對稱遞減：離 climax 越遠越小', () {
-      final near =
-          practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.02);
-      final far = practiceCeremonyClimaxBurst(kPracticeRevealHaloClimax - 0.05);
-      expect(near, greaterThan(far));
-      expect(practiceCeremonyClimaxBurst(0).clamp(0.0, 1.0),
-          inInclusiveRange(0.0, 1.0));
-    });
-
-    testWidgets('PEAK#2 全螢幕爆裂 flash：6.5s 出現、開場 1.0s 不在', (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      // 開場（f≈0.1，1.0s）：尚無爆裂 flash。
-      await tester.pump(atFraction(0.1));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-climax-flash')),
-        findsNothing,
-      );
-
-      // 推進到 PEAK#2（累積 f≈0.65，6.5s）：全螢幕爆裂 flash 出現。
-      await tester.pump(atFraction(0.55));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-climax-flash')),
-        findsOneWidget,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('PEAK#2 參考片爆點 overlay：只在 flip-explosion 窗內出現', (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-reference-explosion'),
-        ),
-        findsNothing,
-      );
-
-      await tester.pump(atFraction(kPracticeRevealHaloClimax));
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-reference-explosion'),
-        ),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.10));
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-reference-explosion'),
-        ),
-        findsNothing,
-      );
-    });
-
-    testWidgets('reduce-motion：不跑 reveal 時間軸 → 無爆裂 flash', (tester) async {
-      final api = _DrawApi(() async => _drawResultFor(practiceGirlProfiles[2]));
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            practiceSessionRepositoryProvider.overrideWithValue(repo),
-            practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
-            practiceChatApiServiceProvider.overrideWithValue(api),
-          ],
-          child: MaterialApp(
-            builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: child!,
-            ),
-            home: const _CeremonyTestHost(),
-          ),
-        ),
-      );
-      await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-climax-flash')),
-        findsNothing,
-      );
-    });
-  });
-
-  group('E5 精修：前奏翻轉／框光／settle 尾韻', () {
-    test('0–3s 前奏有小幅 rotateY，3.0s 前回正準備第一段翻面', () {
-      expect(practiceCeremonyIntroTilt(0), closeTo(0, 0.001));
-      expect(practiceCeremonyIntroTilt(0.16).abs(), greaterThan(0.08));
-      expect(practiceCeremonyIntroTilt(kPracticeRevealFlip1Start),
-          closeTo(0, 0.001));
-    });
-
-    test('框光前奏逐步點亮，8.5s settle 再打一個尾韻 pulse', () {
-      expect(practiceCeremonyRimIntensity(0.20),
-          greaterThan(practiceCeremonyRimIntensity(0.02)));
-      expect(practiceCeremonySettlePulse(0.85), greaterThan(0.85));
-      expect(practiceCeremonySettlePulse(0.75), lessThan(0.2));
-      expect(practiceCeremonySettlePulse(0.95), lessThan(0.2));
-    });
-
-    testWidgets('8.5s settle pulse：典藏卡落定後出現、收尾後消失', (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.85));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-settle-pulse')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.10));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-settle-pulse')),
-        findsNothing,
-      );
-    });
-  });
-
-  group('F1 reference-timed motion accents', () {
-    test('intro tumble, side particles, preview recede, glass wipe are timed',
-        () {
-      expect(practiceCeremonyTumbleSpin(0), closeTo(0, 0.001));
-      expect(practiceCeremonyTumbleSpin(0.085), greaterThan(0.9));
-      expect(practiceCeremonyTumbleSpin(0.11), greaterThan(0.9));
-      expect(practiceCeremonyTumbleSpin(0.16), closeTo(0, 0.001));
-
-      expect(practiceCeremonyParticleBloom(0.20), greaterThan(0.8));
-      expect(practiceCeremonyParticleBloom(0.30), greaterThan(0.25));
-      expect(practiceCeremonyParticleBloom(0.34), greaterThan(0.18));
-      expect(practiceCeremonyParticleBloom(0.04), lessThan(0.2));
-      expect(practiceCeremonyParticleBloom(0.40), lessThan(0.2));
-
-      expect(practiceCeremonyNeonFrameTrace(0.11), greaterThan(0.6));
-      expect(practiceCeremonyNeonFrameProgress(0.11), greaterThan(0.1));
-      expect(practiceCeremonyNeonParticleWall(0.11), lessThan(0.1));
-      expect(practiceCeremonyNeonParticleWall(0.20), greaterThan(0.8));
-
-      expect(practiceCeremonyBreathHoldVignette(0.50), greaterThan(0.85));
-      expect(practiceCeremonyBreathHoldVignette(0.42), lessThan(0.1));
-      expect(practiceCeremonyBreathHoldVignette(0.58), lessThan(0.1));
-
-      expect(practiceCeremonyPreviewRecede(0.48), greaterThan(0.65));
-      expect(practiceCeremonyPreviewRecede(0.36), closeTo(0, 0.001));
-      expect(practiceCeremonyPreviewRecede(0.58), lessThan(0.1));
-
-      expect(practiceCeremonyGlassWipe(0.84), greaterThan(0.85));
-      expect(practiceCeremonyGlassWipe(0.76), lessThan(0.1));
-      expect(practiceCeremonyGlassWipe(0.96), lessThan(0.1));
-
-      expect(practiceCeremonyAfterglow(0.86), greaterThan(0.75));
-      expect(practiceCeremonyAfterglow(0.78), lessThan(0.1));
-      expect(practiceCeremonyAfterglow(0.94), lessThan(0.2));
-      expect(practiceCeremonyAfterglow(0.99), lessThan(0.05));
-    });
-
-    testWidgets('2s particle bloom appears around the card, then clears',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.20));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-particle-bloom')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.20));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-particle-bloom')),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('2s frame particle flow hugs the neon rim, then clears',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.20));
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-frame-particle-flow'),
-        ),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.22));
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-frame-particle-flow'),
-        ),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('2s separated particle spray sits outside the neon frame',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.20));
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-frame-particle-spray'),
-        ),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.22));
-      expect(
-        find.byKey(
-          const ValueKey('practice-draw-ceremony-frame-particle-spray'),
-        ),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('1.1s neon frame trace appears before the 2s particle wall',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.04));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
-        findsNothing,
-      );
-
-      await tester.pump(atFraction(0.07));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.09));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-neon-trace-frame')),
-        findsOneWidget,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('5s breath-hold vignette tightens the quiet transition',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.50));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-breath-hold')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.12));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-breath-hold')),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('8-9s glass wipe appears over the grand card, then clears',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.865));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-glass-wipe')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.10));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-glass-wipe')),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('6.5s volumetric burst sits on the flip explosion peak',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.65));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-volumetric-burst')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.15));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-volumetric-burst')),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('8-9s afterglow keeps a final sparkle layer after glass wipe',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.86));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.10));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-afterglow')),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('8.5s final polish aligns with the settle beat, then clears',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.85));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-final-polish')),
-        findsOneWidget,
-      );
-
-      await tester.pump(atFraction(0.12));
-      expect(
-        find.byKey(const ValueKey('practice-draw-ceremony-final-polish')),
-        findsNothing,
-      );
-
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets(
-        '0-3s card stays hero-sized instead of shrinking during preview',
-        (tester) async {
-      final completer = Completer<PracticeDrawResult>();
-      final api = _DrawApi(() => completer.future);
-      await pumpLocked(tester, api: api);
-      await drawToReveal(tester,
-          completer: completer, girl: practiceGirlProfiles[2]);
-
-      await tester.pump(atFraction(0.20));
-
-      final cardScale = tester
-          .widgetList<Transform>(
-            find.ancestor(
-              of: find.byKey(const ValueKey('practice-draw-ceremony-back')),
-              matching: find.byType(Transform),
-            ),
-          )
-          .map((t) => t.transform.storage[0])
-          .where((x) => x > 0.0 && x <= 1.0)
-          .reduce(math.min);
-
-      expect(cardScale, greaterThanOrEqualTo(0.97));
-
-      await tester.pumpAndSettle();
-    });
-  });
-
-  testWidgets('E1：揭曉開場卡背先蓄力、不立即翻面（對齊第一爆點前的 build）', (tester) async {
-    final completer = Completer<PracticeDrawResult>();
-    final api = _DrawApi(() => completer.future);
-    await pumpLocked(tester, api: api);
-    await drawToReveal(tester,
-        completer: completer, girl: practiceGirlProfiles[2]);
-
-    // 揭曉早期（f≈0.2，第一爆點之前）：仍是神秘卡背蓄力、白卡尚未翻出。
-    await tester.pump(atFraction(0.2));
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-back')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('practice-draw-ceremony-front')),
-      findsNothing,
-    );
-
-    await tester.pumpAndSettle();
   });
 
   group('E1 卡尺寸 responsive', () {
@@ -4751,99 +4216,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 60)); // intro 入場
+    await tester.pump(const Duration(milliseconds: 160)); // intro 入場
 
-    final backSize = tester
-        .getSize(find.byKey(const ValueKey('practice-draw-ceremony-back')));
+    final backSize = tester.getSize(find.byKey(_ceremonyBackKey));
     expect(backSize.width, greaterThan(214));
     // G2：卡比例改直式 2:3（高 = 寬 × 1.5，較舊 4/3 更高更主導，貼合參考片塔羅卡）。
     expect(backSize.height, closeTo(backSize.width * 1.5, 1.0));
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
-    await tester.pumpAndSettle();
+    await finishCeremony(tester);
   });
 
-  // ── 軌道彗星 halo painter（Batch B）：純 painter smoke，免 widget harness ──
+  // ── painter smoke：純 painter，免 widget harness ──
   void paintHaloOnce(CustomPainter painter) {
     final recorder = ui.PictureRecorder();
     painter.paint(ui.Canvas(recorder), const Size(360, 480));
     recorder.endRecording().dispose();
   }
-
-  group('軌道彗星 halo painter（Batch B）', () {
-    test('建構＋paint：front/back 兩夾層都不丟例外', () {
-      for (final half in PracticeHaloHalf.values) {
-        final painter = debugOrbitalHaloPainter(
-          progress: 0.4,
-          intensity: 0.85,
-          half: half,
-        );
-        expect(() => paintHaloOnce(painter), returnsNormally);
-      }
-    });
-
-    test('intensity<=0 早退、paint 不丟', () {
-      final painter = debugOrbitalHaloPainter(
-        progress: 0.4,
-        intensity: 0,
-        half: PracticeHaloHalf.back,
-      );
-      expect(() => paintHaloOnce(painter), returnsNormally);
-    });
-
-    test('shouldRepaint 對 progress／intensity 敏感、同值不重畫', () {
-      final base = debugOrbitalHaloPainter(
-          progress: 0.3, intensity: 0.8, half: PracticeHaloHalf.back);
-      final same = debugOrbitalHaloPainter(
-          progress: 0.3, intensity: 0.8, half: PracticeHaloHalf.back);
-      final diffProgress = debugOrbitalHaloPainter(
-          progress: 0.55, intensity: 0.8, half: PracticeHaloHalf.back);
-      final diffIntensity = debugOrbitalHaloPainter(
-          progress: 0.3, intensity: 0.4, half: PracticeHaloHalf.back);
-
-      expect(base.shouldRepaint(same), isFalse);
-      expect(base.shouldRepaint(diffProgress), isTrue);
-      expect(base.shouldRepaint(diffIntensity), isTrue);
-    });
-  });
-
-  group('能量邊框 painter（Batch C）', () {
-    test('建構＋paint：各 progress 都不丟例外', () {
-      for (final p in [0.0, 0.3, 0.7, 1.0]) {
-        final painter = debugEnergyBorderPainter(
-          progress: p,
-          intensity: 0.8,
-          cardSize: const Size(220, 320),
-        );
-        expect(() => paintHaloOnce(painter), returnsNormally);
-      }
-    });
-
-    test('intensity<=0 早退、paint 不丟', () {
-      final painter = debugEnergyBorderPainter(
-        progress: 0.4,
-        intensity: 0,
-        cardSize: const Size(220, 320),
-      );
-      expect(() => paintHaloOnce(painter), returnsNormally);
-    });
-
-    test('shouldRepaint 對 progress／intensity 敏感、同值不重畫', () {
-      const cardSize = Size(220, 320);
-      final base = debugEnergyBorderPainter(
-          progress: 0.3, intensity: 0.8, cardSize: cardSize);
-      final same = debugEnergyBorderPainter(
-          progress: 0.3, intensity: 0.8, cardSize: cardSize);
-      final diffProgress = debugEnergyBorderPainter(
-          progress: 0.6, intensity: 0.8, cardSize: cardSize);
-      final diffIntensity = debugEnergyBorderPainter(
-          progress: 0.3, intensity: 0.5, cardSize: cardSize);
-
-      expect(base.shouldRepaint(same), isFalse);
-      expect(base.shouldRepaint(diffProgress), isTrue);
-      expect(base.shouldRepaint(diffIntensity), isTrue);
-    });
-  });
 
   group('星空＋橫掃光束 painter（Batch C）', () {
     test('beam>0 建構＋paint 不丟例外', () {
@@ -4911,8 +4300,7 @@ void main() {
         ),
       ),
     );
-    expect(find.byKey(const ValueKey('practice-draw-ceremony-back')),
-        findsOneWidget);
+    expect(find.byKey(_ceremonyBackKey), findsOneWidget);
   });
 
   testWidgets(

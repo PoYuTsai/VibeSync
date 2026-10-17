@@ -3,10 +3,13 @@
 Date: 2026-06-27
 
 Scope:
-- `assets/audio/practice_draw/practice_draw_reveal_bed.mp3`
+- `assets/audio/practice_draw/practice_draw_reveal_bed_v5.m4a`（2026-10-15 起取代 `practice_draw_reveal_bed.mp3`：同一素材剪出的片段，見 `assets/audio/practice_draw/licenses/practice_draw_audio.md` 的 bed v5）
 - `assets/images/practice/practice_draw_card_back_base.png`
 - `assets/images/practice/practice_draw_card_back_neon.png`
-- `assets/images/practice/practice_draw_explosion_reference.webp`
+
+Removed:
+- `assets/images/practice/practice_draw_explosion_reference.webp`（2026-10-15，V3 單次翻牌拿掉第二次翻牌的爆點疊圖，檔案移除）
+- `assets/audio/practice_draw/practice_draw_reveal_bed.mp3`（2026-10-15，由 bed v5 取代，git 歷史保留）
 
 Source:
 - Derived from Eric-provided `音檔.mp4`.

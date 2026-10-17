@@ -24,27 +24,19 @@ import '../../../../shared/widgets/pressable_scale.dart';
 import '../widgets/practice_draw_ceremony.dart';
 import '../widgets/practice_rarity_style.dart';
 
-/// 揭曉後新卡微光的等待段：等整條儀式 reveal 時間軸走完才點亮（儀式 scrim 中段
-/// 全黑，蓋著點了也看不到）。與儀式共用同一常數＝儀式重定時不會讓微光搶跑。
-@visibleForTesting
-const Duration kCollectionHighlightWait = kPracticeRevealDuration;
-
-/// 揭曉後新卡微光的微光段長度（亮起→停留→淡出）。
+/// 新卡那一格的發光長度（亮起→停留→淡出）。由儀式收卡的光球落位那一刻起跑，
+/// 不再固定等一段時間（V3 停多久由使用者決定）。
 @visibleForTesting
 const Duration kCollectionHighlightGlow = Duration(milliseconds: 1500);
 
-/// 高亮時間軸（0→1）映微光強度：等待段（儀式收場前）恆 0；進微光段後
-/// 快亮起（前 18%）→ 停留 → 淡出（後 38%），收尾歸 0 不殘留。
+/// 發光時間軸（0→1）映強度：前 8%（約 120 ms）快速亮起，接住光球落位那一下 →
+/// 停留到 40% → 淡出，收尾歸 0 不殘留。
 @visibleForTesting
 double collectionHighlightIntensityAt(double t) {
-  final totalMs =
-      (kCollectionHighlightWait + kCollectionHighlightGlow).inMilliseconds;
-  final glowStart = kCollectionHighlightWait.inMilliseconds / totalMs;
-  if (t <= glowStart) return 0;
-  final g = ((t - glowStart) / (1 - glowStart)).clamp(0.0, 1.0);
-  if (g < 0.18) return g / 0.18;
-  if (g < 0.62) return 1;
-  return (1 - (g - 0.62) / 0.38).clamp(0.0, 1.0);
+  final g = t.clamp(0.0, 1.0);
+  if (g < 0.08) return g / 0.08;
+  if (g < 0.4) return 1;
+  return (1 - (g - 0.4) / 0.6).clamp(0.0, 1.0);
 }
 
 /// 鎖卡剪影：灰階×0.07 近全黑，只留人形輪廓隱約可辨。
@@ -111,34 +103,31 @@ class _PracticeCollectionScreenState
     duration: const Duration(milliseconds: 1400),
   );
 
-  /// 揭曉後新卡的邊框微光：**單次** forward，時間軸＝「等待段＋微光段」
-  /// （[kCollectionHighlightWait] + [kCollectionHighlightGlow]）。
+  /// 剛抽到那一格的邊框發光：**單次** forward（[kCollectionHighlightGlow]）。
   ///
-  /// 等待段的存在理由：解鎖通知在抽牌成功當下發＝儀式 reveal 時間軸起點，而儀式
-  /// scrim 中段全黑不透明會把圖鑑整頁蓋死——微光若即時點亮，交棒時早已走完、
-  /// 使用者根本看不到。故非 reduce-motion 從 0 起跑（前段強度恆 0，等儀式收場才
-  /// 亮）；reduce-motion 沒有儀式時間軸，直接從微光段起跑。等待用 controller 幀
-  /// 驅動而非 `Future.delayed`：不留 pending Timer（pumpAndSettle 可推完收斂）。
+  /// 由儀式收卡的光球落位（[_onCeremonyArchived]）起跑——儀式停多久由使用者決定，
+  /// 不能再固定等一段時間。捲動還沒到位時先記著，到位才亮，免得亮在畫面外。
   /// 走完即在 status listener 清掉 [_highlightProfileId]，絕不 repeat。
   late final AnimationController _highlight = AnimationController(
     vsync: this,
-    duration: kCollectionHighlightWait + kCollectionHighlightGlow,
+    duration: kCollectionHighlightGlow,
   )..addStatusListener((status) {
       if (status == AnimationStatus.completed && mounted) {
         setState(() => _highlightProfileId = null);
       }
     });
 
-  /// 微光段在整條高亮時間軸上的起點 fraction（reduce-motion 的 forward 起點）。
-  static final double _glowStartFraction =
-      kCollectionHighlightWait.inMilliseconds /
-          (kCollectionHighlightWait + kCollectionHighlightGlow).inMilliseconds;
-
   final ScrollController _scrollController = ScrollController();
 
-  /// 新解鎖待高亮的卡；掛 [GlobalKey] 供 ensureVisible 精準定位。
+  /// 揭曉中的這張卡；掛 [GlobalKey] 供捲動定位與收卡光球找目標格。
   String? _highlightProfileId;
   final GlobalKey _highlightCardKey = GlobalKey();
+
+  /// 捲到這張卡的兩段捲動還在跑。
+  bool _scrollingToHighlight = false;
+
+  /// 光球已落位但捲動還沒到位：到位後才亮。
+  bool _glowPending = false;
 
   @override
   void dispose() {
@@ -151,7 +140,12 @@ class _PracticeCollectionScreenState
   /// 目前 filter 下 grid 實際顯示的清單（build 與捲動估算共用）。
   /// 已解鎖置頂、鎖卡沉底，兩組內都維持 catalog 原序。
   List<PracticeGirlProfile> _visibleProfiles() {
-    final unlocked = ref.read(practiceUnlockedProfileIdsProvider);
+    final unlocked = {
+      ...ref.read(practiceUnlockedProfileIdsProvider),
+      // 揭曉中的這張卡已經抽中，但圖鑑的樂觀 +1 要等抽卡流程存完草稿才到，可能晚一兩幀。
+      // 先把它排進已解鎖那一段，捲動估算與收卡光球的目標才不會指到它還沒解鎖時的位置。
+      if (_highlightProfileId != null) _highlightProfileId!,
+    };
     final filtered = _filter == null
         ? practiceGirlProfiles
         : practiceGirlProfiles.where((p) => p.rarity == _filter);
@@ -161,55 +155,87 @@ class _PracticeCollectionScreenState
     ];
   }
 
-  /// 集合新增（翻牌解鎖）→ 收掉會濾掉新卡的稀有度 filter、捲動定位＋微光高亮。
-  void _onProfileUnlocked(PracticeGirlProfile profile) {
+  /// 儀式揭曉開始（reduce-motion 為抽中當下）：收掉會濾掉這張卡的稀有度 filter、
+  /// 標記並捲動到位。新卡與集滿後抽到的重複角色都走這裡；發光等光球落位。
+  void _onRevealTarget(PracticeGirlProfile profile) {
+    if (!mounted) return;
     setState(() {
       if (_filter != null && profile.rarity != _filter) {
-        _filter = null; // filter 開著時新卡可能不在 visible 清單：先收掉。
+        _filter = null; // filter 開著時這張卡可能不在 visible 清單：先收掉。
       }
       _highlightProfileId = profile.profileId;
     });
     _highlight
       ..stop()
       ..value = 0;
-    // 等 filter／highlight 的重建落地後才捲（新卡要先進 visible 清單）。
+    _glowPending = false;
+    _scrollingToHighlight = true;
+    // 等 filter／highlight 的重建落地後才捲（這張卡要先進 visible 清單）。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToHighlight(profile.profileId);
+      unawaited(_scrollToHighlight(profile.profileId));
     });
   }
 
-  /// 兩段捲動定位：builder 惰性 grid 裡遠處的新卡尚未 build（拿不到 context），
-  /// 先用版面常數估算 offset 捲近，讓卡片 build 出來後再 ensureVisible 精準對齊，
-  /// 最後才點亮單次微光。
-  Future<void> _scrollToHighlight(String profileId) async {
+  /// 收卡光球落位：點亮那一格。捲動還沒到位就先記著，到位再亮（reduce-motion 在
+  /// 抽中當下就會呼叫，這時捲動通常還在跑）。
+  void _onCeremonyArchived(String profileId) {
     if (!mounted || _highlightProfileId != profileId) return;
-    if (_highlightCardKey.currentContext == null &&
-        _scrollController.hasClients) {
-      final estimated = _estimatedCardOffset(profileId);
-      if (estimated != null) {
-        await _scrollController.animateTo(
-          estimated.clamp(0.0, _scrollController.position.maxScrollExtent),
+    if (_scrollingToHighlight) {
+      _glowPending = true;
+      return;
+    }
+    _highlight.forward(from: 0);
+  }
+
+  /// 收卡光球的目標格（global rect）：這張卡已建出來、而且中心在畫面內才回，
+  /// 否則回 null，光球在原地收束（不飛到別張卡上誤導）。
+  Rect? _archiveTargetRect(String profileId) {
+    if (_highlightProfileId != profileId) return null;
+    final card = _highlightCardKey.currentContext?.findRenderObject();
+    final page = context.findRenderObject();
+    if (card is! RenderBox || page is! RenderBox) return null;
+    if (!card.attached || !card.hasSize || !page.hasSize) return null;
+    final rect = card.localToGlobal(Offset.zero) & card.size;
+    final pageRect = page.localToGlobal(Offset.zero) & page.size;
+    return pageRect.contains(rect.center) ? rect : null;
+  }
+
+  /// 兩段捲動定位：builder 惰性 grid 裡遠處的卡尚未 build（拿不到 context），
+  /// 先用版面常數估算 offset 捲近，讓卡片 build 出來後再 ensureVisible 精準對齊。
+  /// 捲動在儀式背景下進行；光球落位時若捲動已到位就直接亮，否則到位後補亮。
+  Future<void> _scrollToHighlight(String profileId) async {
+    try {
+      if (!mounted || _highlightProfileId != profileId) return;
+      if (_highlightCardKey.currentContext == null &&
+          _scrollController.hasClients) {
+        final estimated = _estimatedCardOffset(profileId);
+        if (estimated != null) {
+          await _scrollController.animateTo(
+            estimated.clamp(0.0, _scrollController.position.maxScrollExtent),
+            duration: AppMotion.scroll,
+            curve: AppMotion.easeOut,
+          );
+        }
+      }
+      if (!mounted || _highlightProfileId != profileId) return;
+      final cardContext = _highlightCardKey.currentContext;
+      if (cardContext != null && cardContext.mounted) {
+        await Scrollable.ensureVisible(
+          cardContext,
+          alignment: 0.35,
           duration: AppMotion.scroll,
           curve: AppMotion.easeOut,
         );
       }
+    } finally {
+      if (mounted && _highlightProfileId == profileId) {
+        _scrollingToHighlight = false;
+        if (_glowPending) {
+          _glowPending = false;
+          _highlight.forward(from: 0);
+        }
+      }
     }
-    if (!mounted || _highlightProfileId != profileId) return;
-    final cardContext = _highlightCardKey.currentContext;
-    if (cardContext != null && cardContext.mounted) {
-      await Scrollable.ensureVisible(
-        cardContext,
-        alignment: 0.35,
-        duration: AppMotion.scroll,
-        curve: AppMotion.easeOut,
-      );
-    }
-    if (!mounted || _highlightProfileId != profileId) return;
-    // 非 reduce-motion：儀式 scrim 還蓋在圖鑑上（捲動照舊即時做沒差，收掉時卡
-    // 已在視野內），微光從等待段起跑、儀式收場才亮；reduce-motion 直接進微光段。
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    _highlight.forward(from: reduceMotion ? _glowStartFraction : 0);
   }
 
   /// 由捲動 metrics 反推新卡所在 row 的 offset：
@@ -492,21 +518,41 @@ class _PracticeCollectionScreenState
       }
     });
 
-    // 揭曉後新卡高亮定位：集合新增（翻牌解鎖）時取新 id 捲動＋微光。
-    ref.listen<Set<String>>(practiceUnlockedProfileIdsProvider, (prev, next) {
-      if (prev == null || next.length <= prev.length) return;
-      final added = next.difference(prev);
-      for (final profile in practiceGirlProfiles) {
-        if (added.contains(profile.profileId)) {
-          _onProfileUnlocked(profile);
-          break;
-        }
-      }
-    });
+    // 剛抽到那張卡的捲動與發光改由翻牌儀式通知（onRevealTarget／onArchived），
+    // 不再監聽集合變大：重新整理圖鑑不會亂捲亂亮，集滿後抽到重複角色也標得到。
 
     final total = practiceGirlProfiles.length;
     final visible = _visibleProfiles();
 
+    // 翻牌揭曉儀式疊在整頁（含 AppBar）最上層：揭曉期間標題列與返回鍵都被蓋住，
+    // idle 時透明＋IgnorePointer，不影響底下互動。全 app 唯一掛載點。
+    return Stack(
+      children: [
+        _buildScaffold(
+          chatState: chatState,
+          unlocked: unlocked,
+          unlockedCount: unlockedCount,
+          total: total,
+          visible: visible,
+        ),
+        Positioned.fill(
+          child: PracticeDrawCeremony(
+            onRevealTarget: _onRevealTarget,
+            archiveTargetRect: _archiveTargetRect,
+            onArchived: _onCeremonyArchived,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildScaffold({
+    required PracticeChatState chatState,
+    required Set<String> unlocked,
+    required int unlockedCount,
+    required int total,
+    required List<PracticeGirlProfile> visible,
+  }) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
@@ -665,9 +711,6 @@ class _PracticeCollectionScreenState
               ),
             ),
           ),
-          // 翻牌揭曉儀式 overlay：idle 時透明＋IgnorePointer，不影響底下互動。
-          // 全 app 唯一掛載點（Task 4b 由練習室搬來：翻牌入口在本頁，儀式就地揭曉）。
-          const Positioned.fill(child: PracticeDrawCeremony()),
           if (_guideVisible)
             Positioned.fill(
               child: _OnboardingGuideOverlay(
