@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -3314,8 +3313,7 @@ void main() {
     await finishCeremony(tester);
   });
 
-  testWidgets('儀式（E3）：抽牌中卡背改 CustomPaint 紫水晶、不再用金幣 auto_awesome 圖示',
-      (tester) async {
+  testWidgets('儀式（E3）：抽牌中卡背不再用金幣 auto_awesome 圖示', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
@@ -3326,7 +3324,7 @@ void main() {
 
     final back = find.byKey(_ceremonyBackKey);
     expect(back, findsOneWidget);
-    // gap #2：金幣星芒（auto_awesome）退場，卡背中心改 CustomPaint 紫水晶六角。
+    // gap #2：金幣星芒（auto_awesome）退場；V3 卡背是四張素材依稀有度疊色，不用圖示。
     expect(
       find.descendant(of: back, matching: find.byIcon(Icons.auto_awesome)),
       findsNothing,
@@ -4363,71 +4361,6 @@ void main() {
 
     completer.complete(_drawResultFor(practiceGirlProfiles[2]));
     await finishCeremony(tester);
-  });
-
-  // ── painter smoke：純 painter，免 widget harness ──
-  void paintHaloOnce(CustomPainter painter) {
-    final recorder = ui.PictureRecorder();
-    painter.paint(ui.Canvas(recorder), const Size(360, 480));
-    recorder.endRecording().dispose();
-  }
-
-  group('星空＋橫掃光束 painter（Batch C）', () {
-    test('beam>0 建構＋paint 不丟例外', () {
-      final painter =
-          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.5);
-      expect(() => paintHaloOnce(painter), returnsNormally);
-    });
-
-    test('beam<=0（預設）建構＋paint 不丟（無光束）', () {
-      final painter = debugStarfieldPainter(twinkle: 0.3, intensity: 0.8);
-      expect(() => paintHaloOnce(painter), returnsNormally);
-    });
-
-    test('shouldRepaint 對 beam 敏感（twinkle／intensity 同、beam 不同要重畫）', () {
-      final base =
-          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.2);
-      final sameBeam =
-          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.2);
-      final diffBeam =
-          debugStarfieldPainter(twinkle: 0.3, intensity: 0.8, beam: 0.7);
-
-      expect(base.shouldRepaint(sameBeam), isFalse);
-      expect(base.shouldRepaint(diffBeam), isTrue);
-    });
-  });
-
-  group('神秘卡背 painter（G2 黑塔羅卡背）', () {
-    test('各 glow 建構＋paint 不丟例外（近黑底＋金羅盤＋立方徽記）', () {
-      for (final g in [0.0, 0.4, 1.0]) {
-        final painter = debugMysticBackPainter(glow: g);
-        expect(() => paintHaloOnce(painter), returnsNormally);
-      }
-    });
-
-    test('shouldRepaint 對 glow 敏感、同值不重畫', () {
-      final base = debugMysticBackPainter(glow: 0.4);
-      final same = debugMysticBackPainter(glow: 0.4);
-      final diff = debugMysticBackPainter(glow: 0.8);
-
-      expect(base.shouldRepaint(same), isFalse);
-      expect(base.shouldRepaint(diff), isTrue);
-    });
-  });
-
-  group('賽博金框 painter（G2 卡背外框）', () {
-    test('各 glow 建構＋paint 不丟例外（圓角金框＋倒角＋上下 bracket＋ticks）', () {
-      for (final g in [0.0, 0.4, 1.0]) {
-        final painter = debugCyberFramePainter(glow: g);
-        expect(() => paintHaloOnce(painter), returnsNormally);
-      }
-    });
-
-    test('shouldRepaint 對 glow 敏感、同值不重畫', () {
-      final base = debugCyberFramePainter(glow: 0.4);
-      expect(base.shouldRepaint(debugCyberFramePainter(glow: 0.4)), isFalse);
-      expect(base.shouldRepaint(debugCyberFramePainter(glow: 0.8)), isTrue);
-    });
   });
 
   testWidgets('卡背整體（debugCeremonyCardBack）建構不丟、含卡背 key', (tester) async {

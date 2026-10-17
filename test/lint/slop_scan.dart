@@ -28,7 +28,6 @@ const kAllowedRadiiByFile = <String, Set<int>>{
 const kColoredShadowAllowedFiles = {
   'lib/features/practice_chat/presentation/widgets/practice_room_entry_card.dart',
   'lib/features/practice_chat/presentation/screens/practice_collection_screen.dart',
-  'lib/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart',
   'lib/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart',
   // 輸入框聚焦瞬態光（DESIGN.md §7）
   'lib/features/practice_chat/presentation/screens/practice_chat_screen.dart',
