@@ -203,6 +203,37 @@ Deno.test("定稿：禁語、脅迫、外洩命中就整張拿掉；引號裡的
   );
 });
 
+Deno.test("定稿：C5「欠」組（欠我、欠著、你欠）整張拿掉；欠缺、欠自己的覺照送", () => {
+  assertEquals(
+    finalizeCard(
+      card(["先說好，我只等十分鐘", "多一分鐘就當你欠我一杯飲料"]),
+      spec(),
+      "",
+    ),
+    { ok: false, reason: "debt_frame", detail: ["欠我", "你欠"] },
+  );
+  // 照他口吻的「妳」也算。
+  assertEquals(
+    finalizeCard(card(["算妳欠我一杯"]), spec({ voice: "照他" }), ""),
+    { ok: false, reason: "debt_frame", detail: ["欠我", "你欠"] },
+  );
+  assertEquals(
+    finalizeCard(card(["推薦費可以先欠著"]), spec(), ""),
+    { ok: false, reason: "debt_frame", detail: ["欠著"] },
+  );
+  assertEquals(
+    finalizeCard(card(["這杯就算妳欠的，下次還"]), spec({ voice: "照他" }), ""),
+    { ok: false, reason: "debt_frame", detail: ["你欠"] },
+  );
+  // 跟她無關的「欠」不擋。
+  assert(finalizeCard(card(["我這週剛好在補之前欠自己的覺"]), spec(), "").ok);
+  assert(finalizeCard(card(["你欠缺的只是一個好的週末"]), spec(), "").ok);
+  // 只記錄的 C5 九個字眼照舊不擋。
+  const scoring = finalizeCard(card(["這點加分"]), spec(), "");
+  assert(scoring.ok);
+  assertEquals(scoring.scoringWords, ["加分"]);
+});
+
 Deno.test("定稿：整則英文才拿掉；夾在中文裡的品牌名、對話裡出現過的英文都留著", () => {
   const english = finalizeCard(card(["Sounds good to me"]), spec(), "");
   assertEquals(english.ok, false);

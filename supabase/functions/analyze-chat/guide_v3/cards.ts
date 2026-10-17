@@ -105,3 +105,13 @@ export function scoringWords(text: string): string[] {
   const t = text.replaceAll("妳", "你");
   return SCORING_WORDS.filter((w) => t.includes(w));
 }
+
+/// C5 的「欠」組（Bruce 第 6 節不收「欠我」「欠著」；Eric 2026-10-18 決定這組改成不送）：
+/// 卡片讓她欠他一杯、先欠著，就拿掉那一張，其他卡照送。黑箱量過：舊版 1,799 張與 v3 1,401 張
+/// 裡擋對 11 張、誤擋 0。「欠缺」「欠自己的覺」不算。照他口吻的「妳」比對前換成「你」。
+export const DEBT_FRAME_WORDS = ["欠我", "欠著", "你欠"] as const;
+
+export function debtFrameHits(text: string): string[] {
+  const t = text.replaceAll("妳", "你").replaceAll("你欠缺", "");
+  return DEBT_FRAME_WORDS.filter((w) => t.includes(w));
+}

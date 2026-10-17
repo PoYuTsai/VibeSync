@@ -12,7 +12,12 @@ import {
   hasUnsafeRecommendation,
 } from "../stream_recommendation_guardrail.ts";
 import { stripUnexpectedForeignClauses } from "../unexpected_foreign_text.ts";
-import { applyVoice, scoringWords, type WrittenCard } from "./cards.ts";
+import {
+  applyVoice,
+  debtFrameHits,
+  scoringWords,
+  type WrittenCard,
+} from "./cards.ts";
 import { GUIDE_V3_SECTIONS } from "./guide_text.ts";
 import { type GuideV3Plan, HOLD_WAIT_FALLBACK } from "./plan.ts";
 import type { CardSpec } from "./rules.ts";
@@ -21,7 +26,8 @@ export type CardRemovalReason =
   | "empty_after_cleanup"
   | "unsafe"
   | "prompt_leak"
-  | "language_drift";
+  | "language_drift"
+  | "debt_frame";
 
 export type FinalizedCard =
   | {
@@ -106,6 +112,11 @@ export function finalizeCard(
   ) {
     return { ok: false, reason: "prompt_leak" };
   }
+  // C5「欠」組不送（Eric 10/18）：整理前後兩份都查，只拿掉這一張。
+  const debt = [
+    ...new Set([...debtFrameHits(joined), ...debtFrameHits(rawJoined)]),
+  ];
+  if (debt.length > 0) return { ok: false, reason: "debt_frame", detail: debt };
   // 只拿掉「整張卡是英文」的：一個漢字都沒有、又有兩個以上沒來源的英文詞。夾在中文裡
   // 的英文詞（相機型號、offer），或中文卡後面加一則「Good night~」，都是正常的卡，只記錄。
   const latin = findUnsupportedLatinTokens(joined, sourceText);
