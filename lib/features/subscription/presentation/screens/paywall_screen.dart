@@ -94,8 +94,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterMonthlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '五種風格全開 + 完整回覆比較',
-          '雷達圖五維度剖析',
+          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
           '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
@@ -110,8 +109,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '五種風格全開 + 完整回覆比較',
-          '雷達圖五維度剖析',
+          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
           '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
@@ -126,8 +124,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialMonthlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '五種風格全開 + 完整回覆比較',
-          '雷達圖 + 對話健檢 + 訊息優化',
+          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
+          '對話健檢 + 訊息優化',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -142,8 +140,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '五種風格全開 + 完整回覆比較',
-          '雷達圖 + 對話健檢 + 訊息優化',
+          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
+          '對話健檢 + 訊息優化',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -591,12 +589,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 12),
           _buildComparisonHeader(),
           _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
-          _buildComparisonRow(
-            '回覆風格',
-            '延展＋調情 2 種',
-            '全部 5 種',
-            '全部 5 種',
-          ),
+          // 對話分析 v3（Eric 2026-10-17）：伺服器照局面排 3–5 張回覆卡，免費
+          // 只寫只送前 2 張（routing.ts 的 GUIDE_V3_FREE_CARD_LIMIT）。
+          _buildComparisonRow('每次回覆卡', '前 2 張', '全部 3–5 張', '全部 3–5 張'),
           // 鏡像 server 真相源 practice-chat/draw_decision.ts：free=0（只剩
           // 起步清單一次性贈抽）；付費數字吃 AppConstants，改額度不用改文案。
           _buildComparisonRow(
@@ -615,7 +610,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           _buildComparisonRow('互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊'),
           _buildComparisonRow('聊天測驗', '免費關卡', '全部關卡', '全部關卡'),
           _buildComparisonRow('夜市實戰影片', '第一段', '第一段', '完整流程＋復盤'),
-          _buildComparisonRow('雷達圖', '未開放', '可用', '可用'),
           _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
           _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),
           _buildComparisonRow(
