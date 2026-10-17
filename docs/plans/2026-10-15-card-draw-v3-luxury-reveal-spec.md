@@ -765,6 +765,10 @@ flutter test test/unit/features/practice_chat/ test/widget/features/practice_cha
 - bed 與收卡音的預載邏輯合成一份（`_ReplayablePlayer`），行為不變。
 - F3 起就不播的 `practice_draw_waiting_loop.wav` 移出 bundle（git 歷史保留），翻牌音效資產 351 KB → 197 KB（§13.3）。
 
+Codex 獨立審查（2026-10-17，P2）後修正：
+
+- 收卡音原本預載好就一定會播：預載失敗、點擊收卡時重載又太慢，可能在儀式收掉之後、甚至下一抽才冒出來。改成只在收卡動畫（550 ms）走完前起播，新的一抽也會讓還沒起播的那一聲作廢；已經起播的照常播完。判斷寫成 `replayIfStillWanted`，等預載與歸零之後各問一次，測試用假的預載與播放鎖住。
+
 ---
 
 ## 17. 不做的事與後續可選
