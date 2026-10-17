@@ -5,6 +5,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:convert';
 
 import '../../../../core/services/revenuecat_service.dart';
@@ -44,6 +45,19 @@ Future<String?> defaultAnalysisRevenueCatAppUserId() async {
       onTimeout: () => null,
     );
     return RevenueCatService.getRevenueCatAppUserId(customerInfo);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// App 的 build 號（iOS 的 CFBundleVersion），給 analyze-chat 的最低版本閘門
+/// 比對（Eric 2026-10-18）。讀不到或不是正整數就回 null，請求就不帶 clientBuild。
+/// 它只放在 request body，不進任何冪等或重播雜湊。
+Future<int?> defaultAnalysisClientBuild() async {
+  try {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final build = int.tryParse(packageInfo.buildNumber.trim());
+    return build != null && build > 0 ? build : null;
   } catch (_) {
     return null;
   }
