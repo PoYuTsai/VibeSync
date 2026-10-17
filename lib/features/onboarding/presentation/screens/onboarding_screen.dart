@@ -59,12 +59,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     },
     {
       'title': '即時看懂她的訊號',
-      'description': '對方這次的投入度 0-90 一目瞭然\n讀懂她這輪話裡的訊號',
+      'description': '一個燈號告訴你：該回、先別回，還是收尾\n讀懂她這輪話裡的訊號',
       'imagePath': 'analyze',
     },
     {
-      'title': '五種風格，選最對的那句',
-      'description': '延展、共鳴、調情、幽默、冷讀\n每句都幫你控制字數，不會顯得太黏或太急',
+      // 對話分析 v3（Eric 2026-10-17）：付費頁同一天改成同一個說法。
+      'title': '每次 3–5 張回覆，依局面搭配',
+      'description': '接住、共鳴、推進，照她這輪的狀況排好\n每句都幫你控制字數，不會顯得太黏或太急',
       'imagePath': 'reply',
     },
     // 練習室＋學習專區（2026-08-18 Eric 指示）：讓「還沒有對象」的用戶
@@ -276,10 +277,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     final page = _pages[
                         index < _questionnairePageIndex ? index : index - 1];
                     // 轉化診斷 Tier 1-1：第 2、3 頁掛零 API 示範卡，
-                    // 讓「投入度」「五種風格」用演的不是用講的。
+                    // 讓「燈號判讀」「任務卡」用演的不是用講的。
                     final demo = switch (page['imagePath']) {
                       'analyze' => const DemoSignalPreview(),
-                      'reply' => const DemoStylesPreview(),
+                      'reply' => const DemoCardsPreview(),
                       _ => null,
                     };
                     return OnboardingPage(

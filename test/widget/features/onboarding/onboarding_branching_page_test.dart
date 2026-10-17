@@ -81,15 +81,17 @@ void main() {
   });
 
   group('onboarding 第 5 頁分流頁（案 3）', () {
-    testWidgets('第 2 頁將分數限定為對方這次的投入度', (tester) async {
+    // 對話分析 v3（Eric 2026-10-17）：新流程沒有投入度分數，第 2 頁改講燈號。
+    testWidgets('第 2 頁用燈號講她的訊號，不再寫投入度分數', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToNextPage(tester);
 
       expect(find.text('即時看懂她的訊號'), findsOneWidget);
       expect(
-        find.text('對方這次的投入度 0-90 一目瞭然\n讀懂她這輪話裡的訊號'),
+        find.text('一個燈號告訴你：該回、先別回，還是收尾\n讀懂她這輪話裡的訊號'),
         findsOneWidget,
       );
+      expect(find.textContaining('投入度'), findsNothing);
       expect(find.textContaining('熱度分析'), findsNothing);
     });
 

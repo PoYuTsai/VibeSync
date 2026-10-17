@@ -1,5 +1,6 @@
 // test/unit/onboarding_test.dart
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/onboarding/data/demo_conversation.dart';
 
 void main() {
@@ -17,30 +18,22 @@ void main() {
       }
     });
 
-    test('demoResult has valid enthusiasm', () {
-      expect(DemoConversation.demoResult.enthusiasmScore, 72);
-      expect(DemoConversation.demoResult.enthusiasmLevel.label, '投入明顯');
+    // 對話分析 v3（Eric 2026-10-17）：示範是燈號＋局面判讀＋任務卡，
+    // 沒有熱度、階段、雷達，也不再是五種風格。
+    test('demo shows a green light with a judgment', () {
+      expect(DemoConversation.demoLight, GuideV3Light.green);
+      expect(DemoConversation.demoJudgment.isNotEmpty, true);
     });
 
-    test('demoResult has all reply types', () {
-      final replies = DemoConversation.demoResult.replies;
-      expect(replies.containsKey('extend'), true);
-      expect(replies.containsKey('resonate'), true);
-      expect(replies.containsKey('tease'), true);
-      expect(replies.containsKey('humor'), true);
-      expect(replies.containsKey('coldRead'), true);
-    });
-
-    test('demoResult has valid final recommendation', () {
-      final rec = DemoConversation.demoResult.finalRecommendation;
-      expect(rec.pick, 'tease');
-      expect(rec.content.isNotEmpty, true);
-      expect(rec.reason.isNotEmpty, true);
-      expect(rec.psychology.isNotEmpty, true);
-    });
-
-    test('demoResult has reminder', () {
-      expect(DemoConversation.demoResult.reminder.isNotEmpty, true);
+    test('demo has three task cards in order', () {
+      expect(
+        DemoConversation.demoCards.map((c) => c.task).toList(),
+        [GuideV3Task.accept, GuideV3Task.resonate, GuideV3Task.push],
+      );
+      for (final card in DemoConversation.demoCards) {
+        expect(card.text.isNotEmpty, true);
+        expect(guideV3TextHasBlank(card.text), false);
+      }
     });
   });
 }
