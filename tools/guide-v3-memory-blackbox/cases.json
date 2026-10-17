@@ -1,0 +1,487 @@
+{
+  "version": 1,
+  "note": "對象記憶黑箱的人工案例（2026-10-18 自寫）。expected：她用文字講過、應該記住的事；value＋evidence 是過得了出處檢查的寫法，match 是給真模型輸出比對的關鍵字。optional：記了算對、沒記不扣分。traps：不該記的（他說的、她否定的、貼圖媒體、只在背景、引用裡他的話、一次性的事、別人說她的）。background 只當陷阱說明：正式流程不把背景送給記憶。",
+  "cases": [
+    {
+      "id": "weekend_hiking",
+      "messages": [
+        { "isFromMe": true, "content": "週末通常都在幹嘛" },
+        { "isFromMe": false, "content": "我每個週末都會去爬山" },
+        { "isFromMe": false, "content": "最近在學攝影，想把山上的風景拍下來" },
+        { "isFromMe": true, "content": "好酷，我平常喜歡打籃球" },
+        { "isFromMe": false, "content": "那你應該體力很好哈哈" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "爬山",
+          "evidence": "我每個週末都會去爬山",
+          "match": ["爬山"]
+        },
+        {
+          "kinds": ["interests", "notes"],
+          "value": "攝影",
+          "evidence": "最近在學攝影，想把山上的風景拍下來",
+          "match": ["攝影"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "his",
+          "kinds": ["interests"],
+          "value": "籃球",
+          "evidence": "好酷，我平常喜歡打籃球",
+          "match": ["籃球"]
+        }
+      ]
+    },
+    {
+      "id": "cat_and_slow_to_warm",
+      "messages": [
+        { "isFromMe": true, "content": "妳頭貼那隻是妳的貓嗎" },
+        { "isFromMe": false, "content": "對啊，我養了一隻貓叫 Mochi" },
+        { "isFromMe": false, "content": "[貼圖]" },
+        { "isFromMe": true, "content": "好可愛，妳看起來很好聊" },
+        { "isFromMe": false, "content": "其實我很慢熱啦，熟了才會比較吵" }
+      ],
+      "expected": [
+        {
+          "kinds": ["notes"],
+          "value": "養了一隻貓叫 Mochi",
+          "evidence": "對啊，我養了一隻貓叫 Mochi",
+          "match": ["mochi"]
+        },
+        {
+          "kinds": ["traits"],
+          "value": "慢熱",
+          "evidence": "其實我很慢熱啦，熟了才會比較吵",
+          "match": ["慢熱"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "sticker",
+          "kinds": ["notes"],
+          "value": "傳了貼圖",
+          "evidence": "[貼圖]",
+          "match": ["貼圖"]
+        },
+        {
+          "type": "his",
+          "kinds": ["traits"],
+          "value": "好聊",
+          "evidence": "好可愛，妳看起來很好聊",
+          "match": ["好聊"]
+        }
+      ]
+    },
+    {
+      "id": "no_work_talk_ramen",
+      "messages": [
+        { "isFromMe": true, "content": "妳做什麼工作的啊" },
+        { "isFromMe": false, "content": "行銷，但我下班後不太喜歡聊工作" },
+        { "isFromMe": false, "content": "我比較喜歡聊吃的" },
+        { "isFromMe": true, "content": "那妳喜歡吃什麼" },
+        { "isFromMe": false, "content": "我超愛吃拉麵，每週至少吃兩次" }
+      ],
+      "expected": [
+        {
+          "kinds": ["notes"],
+          "value": "不喜歡聊工作",
+          "evidence": "行銷，但我下班後不太喜歡聊工作",
+          "match": ["聊工作"]
+        },
+        {
+          "kinds": ["interests", "notes"],
+          "value": "拉麵",
+          "evidence": "我超愛吃拉麵，每週至少吃兩次",
+          "match": ["拉麵"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "行銷",
+          "evidence": "行銷，但我下班後不太喜歡聊工作",
+          "match": ["行銷"],
+          "optional": true
+        }
+      ],
+      "traps": [
+        {
+          "type": "negation",
+          "kinds": ["interests"],
+          "value": "聊工作",
+          "evidence": "行銷，但我下班後不太喜歡聊工作",
+          "match": ["工作"]
+        }
+      ]
+    },
+    {
+      "id": "his_facts_only",
+      "messages": [
+        { "isFromMe": true, "content": "我在台中當工程師，週末都會去衝浪" },
+        { "isFromMe": false, "content": "哇" },
+        { "isFromMe": true, "content": "我還養了兩隻狗" },
+        { "isFromMe": false, "content": "好喔" },
+        { "isFromMe": false, "content": "哈哈" }
+      ],
+      "expected": [],
+      "traps": [
+        {
+          "type": "his",
+          "kinds": ["interests"],
+          "value": "衝浪",
+          "evidence": "我在台中當工程師，週末都會去衝浪",
+          "match": ["衝浪"]
+        },
+        {
+          "type": "his",
+          "kinds": ["notes"],
+          "value": "養了兩隻狗",
+          "evidence": "我還養了兩隻狗",
+          "match": ["狗"]
+        },
+        {
+          "type": "his",
+          "kinds": ["notes"],
+          "value": "在台中當工程師",
+          "evidence": "我在台中當工程師，週末都會去衝浪",
+          "match": ["工程師", "台中"]
+        }
+      ]
+    },
+    {
+      "id": "negations_movies",
+      "messages": [
+        { "isFromMe": true, "content": "要不要週末去夜店" },
+        { "isFromMe": false, "content": "我不喜歡夜店，太吵了" },
+        { "isFromMe": false, "content": "我比較喜歡在家看電影" },
+        { "isFromMe": true, "content": "那妳都看什麼類型" },
+        { "isFromMe": false, "content": "恐怖片我完全不敢看，我通常看動畫" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "看電影",
+          "evidence": "我比較喜歡在家看電影",
+          "match": ["電影"]
+        },
+        {
+          "kinds": ["interests", "notes"],
+          "value": "動畫",
+          "evidence": "恐怖片我完全不敢看，我通常看動畫",
+          "match": ["動畫"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "不喜歡夜店",
+          "evidence": "我不喜歡夜店，太吵了",
+          "match": ["夜店"],
+          "optional": true
+        },
+        {
+          "kinds": ["notes"],
+          "value": "恐怖片不敢看",
+          "evidence": "恐怖片我完全不敢看，我通常看動畫",
+          "match": ["恐怖片"],
+          "optional": true
+        }
+      ],
+      "traps": [
+        {
+          "type": "negation",
+          "kinds": ["interests"],
+          "value": "夜店",
+          "evidence": "我不喜歡夜店，太吵了",
+          "match": ["夜店"]
+        },
+        {
+          "type": "negation",
+          "kinds": ["interests"],
+          "value": "恐怖片",
+          "evidence": "恐怖片我完全不敢看，我通常看動畫",
+          "match": ["恐怖片"]
+        }
+      ]
+    },
+    {
+      "id": "background_only_lunch",
+      "background": "- 興趣：潛水、咖啡\n- 筆記：在醫院當護理師",
+      "messages": [
+        { "isFromMe": true, "content": "午餐吃了嗎" },
+        { "isFromMe": false, "content": "剛吃完，今天吃了牛肉麵" },
+        { "isFromMe": false, "content": "好飽想睡" },
+        { "isFromMe": true, "content": "下午還要上班嗎" },
+        { "isFromMe": false, "content": "對啊還有兩個會要開" }
+      ],
+      "expected": [],
+      "traps": [
+        {
+          "type": "background",
+          "kinds": ["interests"],
+          "value": "潛水",
+          "evidence": "- 興趣：潛水、咖啡",
+          "match": ["潛水"]
+        },
+        {
+          "type": "background",
+          "kinds": ["interests"],
+          "value": "咖啡",
+          "evidence": "- 興趣：潛水、咖啡",
+          "match": ["咖啡"]
+        },
+        {
+          "type": "background",
+          "kinds": ["notes"],
+          "value": "在醫院當護理師",
+          "evidence": "- 筆記：在醫院當護理師",
+          "match": ["護理師", "醫院"]
+        },
+        {
+          "type": "oneoff",
+          "kinds": ["interests"],
+          "value": "牛肉麵",
+          "evidence": "剛吃完，今天吃了牛肉麵",
+          "match": ["牛肉麵"]
+        }
+      ]
+    },
+    {
+      "id": "quoted_his_swimming",
+      "messages": [
+        { "isFromMe": true, "content": "我最近每天早上都去游泳" },
+        {
+          "isFromMe": false,
+          "content": "這麼早起！我就沒辦法",
+          "quotedReplyPreview": "我最近每天早上都去游泳"
+        },
+        { "isFromMe": false, "content": "我是夜貓子，通常兩點才睡" }
+      ],
+      "expected": [
+        {
+          "kinds": ["traits", "notes"],
+          "value": "夜貓子",
+          "evidence": "我是夜貓子，通常兩點才睡",
+          "match": ["夜貓子"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "通常兩點才睡",
+          "evidence": "我是夜貓子，通常兩點才睡",
+          "match": ["兩點"],
+          "optional": true
+        }
+      ],
+      "traps": [
+        {
+          "type": "quoted",
+          "kinds": ["interests"],
+          "value": "游泳",
+          "evidence": "我最近每天早上都去游泳",
+          "match": ["游泳"]
+        }
+      ]
+    },
+    {
+      "id": "bookstores_and_travel",
+      "messages": [
+        { "isFromMe": true, "content": "妳上次說的那間咖啡廳是在哪" },
+        { "isFromMe": false, "content": "在赤峰街！我很常去那邊看書" },
+        { "isFromMe": false, "content": "我平常很喜歡逛獨立書店" },
+        { "isFromMe": true, "content": "我也很愛看書，最近在看村上春樹" },
+        { "isFromMe": false, "content": "我比較少看小說欸" },
+        {
+          "isFromMe": false,
+          "content": "我平常都看旅遊書，每年都會自己出國一次"
+        },
+        { "isFromMe": true, "content": "一個人出國喔？好勇敢" },
+        { "isFromMe": false, "content": "習慣了，我其實很獨立" },
+        { "isFromMe": false, "content": "[照片]" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "逛獨立書店",
+          "evidence": "我平常很喜歡逛獨立書店",
+          "match": ["書店"]
+        },
+        {
+          "kinds": ["interests", "notes"],
+          "value": "旅遊書",
+          "evidence": "我平常都看旅遊書，每年都會自己出國一次",
+          "match": ["旅遊書"]
+        },
+        {
+          "kinds": ["notes", "interests"],
+          "value": "每年都會自己出國一次",
+          "evidence": "我平常都看旅遊書，每年都會自己出國一次",
+          "match": ["出國"]
+        },
+        {
+          "kinds": ["traits"],
+          "value": "獨立",
+          "evidence": "習慣了，我其實很獨立",
+          "match": ["獨立"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "赤峰街",
+          "evidence": "在赤峰街！我很常去那邊看書",
+          "match": ["赤峰街"],
+          "optional": true
+        }
+      ],
+      "traps": [
+        {
+          "type": "his",
+          "kinds": ["interests"],
+          "value": "村上春樹",
+          "evidence": "我也很愛看書，最近在看村上春樹",
+          "match": ["村上春樹"]
+        },
+        {
+          "type": "negation",
+          "kinds": ["interests"],
+          "value": "小說",
+          "evidence": "我比較少看小說欸",
+          "match": ["小說"]
+        },
+        {
+          "type": "media",
+          "kinds": ["notes"],
+          "value": "傳了照片",
+          "evidence": "[照片]",
+          "match": ["照片"]
+        }
+      ]
+    },
+    {
+      "id": "boundary_and_schedule",
+      "messages": [
+        { "isFromMe": true, "content": "明天晚上要不要打電話" },
+        { "isFromMe": false, "content": "我平日晚上都要在補習班上課到十點" },
+        { "isFromMe": false, "content": "而且我不太喜歡講電話，打字比較自在" },
+        { "isFromMe": true, "content": "了解，那週末呢" },
+        { "isFromMe": false, "content": "週末我通常在家陪家人" }
+      ],
+      "expected": [
+        {
+          "kinds": ["notes"],
+          "value": "平日晚上在補習班上課到十點",
+          "evidence": "我平日晚上都要在補習班上課到十點",
+          "match": ["補習班", "十點"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "不喜歡講電話",
+          "evidence": "而且我不太喜歡講電話，打字比較自在",
+          "match": ["講電話"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "週末通常在家陪家人",
+          "evidence": "週末我通常在家陪家人",
+          "match": ["陪家人"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "打字比較自在",
+          "evidence": "而且我不太喜歡講電話，打字比較自在",
+          "match": ["打字"],
+          "optional": true
+        }
+      ],
+      "traps": [
+        {
+          "type": "negation",
+          "kinds": ["interests"],
+          "value": "講電話",
+          "evidence": "而且我不太喜歡講電話，打字比較自在",
+          "match": ["電話"]
+        }
+      ]
+    },
+    {
+      "id": "stickers_and_hometown",
+      "messages": [
+        { "isFromMe": true, "content": "今天去哪玩" },
+        { "isFromMe": false, "content": "[照片]" },
+        { "isFromMe": false, "content": "😆😆" },
+        { "isFromMe": false, "content": "[貼圖]" },
+        { "isFromMe": true, "content": "這是哪裡" },
+        { "isFromMe": false, "content": "宜蘭！我家在宜蘭" }
+      ],
+      "expected": [
+        {
+          "kinds": ["notes"],
+          "value": "家在宜蘭",
+          "evidence": "宜蘭！我家在宜蘭",
+          "match": ["宜蘭"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "media",
+          "kinds": ["notes"],
+          "value": "傳了照片",
+          "evidence": "[照片]",
+          "match": ["照片"]
+        },
+        {
+          "type": "sticker",
+          "kinds": ["traits"],
+          "value": "很開心",
+          "evidence": "😆😆",
+          "match": ["開心"]
+        },
+        {
+          "type": "sticker",
+          "kinds": ["notes"],
+          "value": "傳了貼圖",
+          "evidence": "[貼圖]",
+          "match": ["貼圖"]
+        }
+      ]
+    },
+    {
+      "id": "self_described_shy",
+      "messages": [
+        { "isFromMe": true, "content": "妳講話好好笑" },
+        { "isFromMe": false, "content": "哈哈哈我朋友都說我很瘋" },
+        { "isFromMe": false, "content": "但我其實很怕生，第一次見面會很安靜" },
+        { "isFromMe": true, "content": "看不出來欸" },
+        { "isFromMe": false, "content": "真的啦，熟了才會放開" }
+      ],
+      "expected": [
+        {
+          "kinds": ["traits"],
+          "value": "怕生",
+          "evidence": "但我其實很怕生，第一次見面會很安靜",
+          "match": ["怕生"]
+        },
+        {
+          "kinds": ["notes"],
+          "value": "第一次見面會很安靜",
+          "evidence": "但我其實很怕生，第一次見面會很安靜",
+          "match": ["安靜"],
+          "optional": true
+        }
+      ],
+      "traps": [
+        {
+          "type": "tone",
+          "kinds": ["traits"],
+          "value": "幽默",
+          "evidence": "妳講話好好笑",
+          "match": ["幽默", "好笑"]
+        },
+        {
+          "type": "hearsay",
+          "kinds": ["traits"],
+          "value": "瘋",
+          "evidence": "哈哈哈我朋友都說我很瘋",
+          "match": ["瘋"]
+        }
+      ]
+    }
+  ]
+}
