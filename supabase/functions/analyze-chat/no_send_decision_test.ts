@@ -28,12 +28,13 @@ const DO_NOT_SEND = {
   modelJunk: "SHOULD_NOT_LEAK",
 };
 
-Deno.test("analysisContractVersion parses strictly: absent=1, 1|2 ok, junk rejected", () => {
+Deno.test("analysisContractVersion parses strictly: absent=1, 1|2|3 ok, junk rejected", () => {
   assertEquals(parseAnalysisContractVersion(undefined), { ok: true, value: 1 });
   assertEquals(parseAnalysisContractVersion(null), { ok: true, value: 1 });
   assertEquals(parseAnalysisContractVersion(1), { ok: true, value: 1 });
   assertEquals(parseAnalysisContractVersion(2), { ok: true, value: 2 });
-  for (const junk of [0, 3, 1.5, "2", true, {}]) {
+  assertEquals(parseAnalysisContractVersion(3), { ok: true, value: 3 });
+  for (const junk of [0, 4, 1.5, "2", "3", true, {}]) {
     assertEquals(
       parseAnalysisContractVersion(junk),
       { ok: false },

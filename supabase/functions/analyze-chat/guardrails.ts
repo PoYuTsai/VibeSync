@@ -334,6 +334,47 @@ export function collectDisplayedReplyText(result: AnalysisResult): string {
   return bucket.join("\n");
 }
 
+/**
+ * v3 任務卡（guide_v3）：一張卡的訊息是他會原封傳出去的句子。跟 v2 回覆卡
+ * 同一套 BLOCKED_PATTERNS（同樣的空白與單向重掃正規化，每則各自掃，不跨訊息
+ * 湊句），再加 outbound 的第一人稱脅迫樣式（引號內的引述照樣不算；這一項也掃
+ * 整張卡接起來的版本）。任一命中就整張不送，不換罐頭句。
+ */
+export function isBlockedOutgoingCard(messages: readonly string[]): boolean {
+  const perMessage = messages.flatMap(outgoingCardScanVariants);
+  if (perMessage.some((text) => BLOCKED_PATTERNS.some((p) => p.test(text)))) {
+    return true;
+  }
+  // 同一張卡的幾則是連著傳出去的：脅迫樣式另外掃整張卡接起來的版本。
+  const coercionScans = [
+    ...perMessage,
+    ...outgoingCardScanVariants(messages.join("\n")),
+  ];
+  return coercionScans.some((text) => {
+    // 引號內算引述（她說過的話）的前提是引號外還有他自己的話；整則只有引號，就是他
+    // 要原封傳出去的句子，照樣掃。
+    const stripped = stripQuotedSpans(text);
+    const scannable = /[\p{L}\p{N}]/u.test(stripped) ? stripped : text;
+    return OUTBOUND_COERCION_PATTERNS.some((p) => p.test(scannable));
+  });
+}
+
+/// v3 任務卡的掃描版本：原文、空白壓成一格、空白全部拿掉（換行或空白夾在關鍵詞
+/// 中間也掃得到，例如「我⏎就去死」），以及各自拿掉單向重掃字元的版本。不動 v2 共用
+/// 的 pushDisplayedText。
+function outgoingCardScanVariants(value: string): string[] {
+  const variants = new Set<string>();
+  for (
+    const base of [value, value.replace(ONE_WAY_SAFETY_RESCAN_REMOVALS, "")]
+  ) {
+    if (!base.trim()) continue;
+    variants.add(base);
+    variants.add(base.replace(/\s+/gu, " "));
+    variants.add(base.replace(/\s+/gu, ""));
+  }
+  return [...variants];
+}
+
 // 檢查 AI 輸出是否安全
 export function checkAiOutput(result: AnalysisResult): AnalysisResult {
   if (!result) return result;

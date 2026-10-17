@@ -33,6 +33,8 @@ import {
   offeredNoSendDecisions,
 } from "./no_send_decision.ts";
 import { isStreamStyle } from "./stream_events.ts";
+import { mapStreamChargeFailure } from "./stream_charge_failure.ts";
+import { guideV3ResumeSnapshot, isGuideV3Run } from "./guide_v3/run_shape.ts";
 import {
   calibratePhase0EvidenceLinkage,
   emitPhase0Observability,
@@ -149,6 +151,9 @@ export interface AnalyzeStreamDeps {
   /// Phase 1b: client declared analysisContractVersion >= 2, so the model may
   /// answer with a no-send decision (zero reply cards) instead of options.
   noSendDecisions?: boolean;
+  /// 協定版本 ≥3 的 App 看得懂 v3 任務卡的結果。v3 的 run 只有這種 App 能附掛
+  /// 重播（開關關著時才會走到 v2 這裡），而且一律不 retry。
+  acceptsGuideV3Results?: boolean;
   /// 「資料不夠」（need_context）免扣的資格：不在長分析帶（>2000 字）。
   /// 省略或 false＝照常扣。
   needContextWaiverEligible?: boolean;
@@ -202,29 +207,6 @@ function phase0Record(value: unknown): Record<string, unknown> | null {
   return isPlainObject(value) && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function mapStreamChargeFailure(error: unknown): {
-  code: string;
-  message: string;
-} {
-  const message = getErrorMessage(error);
-  const normalized = message.toUpperCase();
-  if (
-    normalized.includes("QUOTA") ||
-    normalized.includes("LIMIT") ||
-    normalized.includes("INSUFFICIENT")
-  ) {
-    return {
-      code: "QUOTA_EXHAUSTED",
-      message: "額度已用完，請升級或下個週期再試。",
-    };
-  }
-
-  return {
-    code: "STREAM_CHARGE_FAILED",
-    message: "額度扣除失敗，請稍後再試。本次不會扣額度。",
-  };
 }
 
 function optionalRecordFrom(
@@ -313,13 +295,20 @@ function isNoSendStreamRun(run: AnalysisStreamRun): boolean {
 
 function streamResumeSnapshotFromRun(
   run: AnalysisStreamRun,
-  options: { noSendDecisions: boolean },
+  options: { noSendDecisions: boolean; acceptsGuideV3Results: boolean },
 ): StreamAnalysisResumeSnapshot {
   // The capability gate is re-applied on every resume poll: a v1 client that
   // attached while the run was still pending must not receive a no-send
   // result that a v2 request settles later. Surface it as a non-retryable
-  // failure instead of a replay.
-  if (!options.noSendDecisions && isNoSendStreamRun(run)) {
+  // failure instead of a replay. v3 task-card runs follow the same rule for
+  // clients below contract 3, and replay with the v3 snapshot otherwise.
+  const guideV3Run = isGuideV3Run(run);
+  if (guideV3Run && options.acceptsGuideV3Results) {
+    return guideV3ResumeSnapshot(run, Date.now());
+  }
+  if (
+    guideV3Run || (!options.noSendDecisions && isNoSendStreamRun(run))
+  ) {
     return {
       status: "failed",
       finalResult: null,
@@ -369,8 +358,13 @@ export async function handleAnalyzeStream(
       }
       // Capability gate also covers resume/retry: a request without
       // analysisContractVersion 2 never receives a no-send shape, not even by
-      // attaching to a run a v2 client created.
+      // attaching to a run a v2 client created. Same for v3 task-card runs
+      // and clients below contract 3.
       if (!deps.noSendDecisions && isNoSendStreamRun(streamRun)) {
+        throw new Error("STREAM_RUN_NOT_RETRYABLE");
+      }
+      const guideV3Run = isGuideV3Run(streamRun);
+      if (guideV3Run && deps.acceptsGuideV3Results !== true) {
         throw new Error("STREAM_RUN_NOT_RETRYABLE");
       }
       if (
@@ -383,7 +377,9 @@ export async function handleAnalyzeStream(
         streamRun.final_result_json ||
         streamRun.status === "done" ||
         streamRun.status === "pending" ||
-        streamRun.status === "charged"
+        streamRun.status === "charged" ||
+        // 扣過費卻被記成 failed 的 v3 run：附掛重播，由快照從扣費內容重組。
+        (guideV3Run && streamRun.charged_at !== null)
       ) {
         logInfo("stream_run_resume_attached", {
           user: summarizeUser(deps.userId),
@@ -397,6 +393,7 @@ export async function handleAnalyzeStream(
           headers: corsHeaders,
           initialRun: streamResumeSnapshotFromRun(streamRun, {
             noSendDecisions: deps.noSendDecisions === true,
+            acceptsGuideV3Results: deps.acceptsGuideV3Results === true,
           }),
           loadRun: async () => {
             const currentRun = await deps.store.getRun({
@@ -406,6 +403,7 @@ export async function handleAnalyzeStream(
             });
             return streamResumeSnapshotFromRun(currentRun, {
               noSendDecisions: deps.noSendDecisions === true,
+              acceptsGuideV3Results: deps.acceptsGuideV3Results === true,
             });
           },
           onOutcome: (outcome, details) => {
@@ -418,6 +416,8 @@ export async function handleAnalyzeStream(
           },
         });
       }
+      // v3 的 run 不重生（第一版以已送出的卡結案），不進 v2 的 retry。
+      if (guideV3Run) throw new Error("STREAM_RUN_NOT_RETRYABLE");
       streamRun = await deps.store.reserveRetry({
         runId: analysisRunId,
         userId: deps.userId,

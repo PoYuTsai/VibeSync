@@ -67,8 +67,11 @@ const BRANCH_KEYS = new Set<string>(DIVERGENCE_BRANCH_FIELDS);
 
 /// finalResult 裡持久化但絕不送 client 的 key：計畫含從她訊息推出的
 /// threadFrame／idea／associationPath，只給 DB 與 telemetry 用。
+/// guideV3Trace：v3 的讀局面標記、卡片規格與被拿掉的卡（guide_v3/wire.ts），
+/// 兩條續看路徑都靠這裡剝掉。
 export const CLIENT_HIDDEN_FINAL_RESULT_KEYS = [
   "analysisDivergencePlan",
+  "guideV3Trace",
 ] as const;
 
 export function stripClientHiddenFinalResult<T>(finalResult: T): T {

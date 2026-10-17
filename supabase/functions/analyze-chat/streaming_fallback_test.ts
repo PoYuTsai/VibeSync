@@ -106,6 +106,69 @@ Deno.test("parseAnthropicSse parses events split across stream chunks", async ()
   assertEquals(chunks, ["hello"]);
 });
 
+Deno.test("parseAnthropicSse cancels the upstream body when the caller stops early, and only then", async () => {
+  const encoder = new TextEncoder();
+  const delta = (text: string) =>
+    encoder.encode(
+      `data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"${text}"}}\n\n`,
+    );
+  let cancelled = 0;
+  const endless = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.enqueue(delta("x"));
+    },
+    cancel() {
+      cancelled++;
+    },
+  });
+  const early = parseAnthropicSse(endless);
+  assertEquals((await early.next()).value, "x");
+  await early.return(undefined);
+  assertEquals(cancelled, 1);
+
+  let finishedCancelled = 0;
+  const finite = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(delta("a"));
+      controller.close();
+    },
+    cancel() {
+      finishedCancelled++;
+    },
+  });
+  assertEquals(await collect(parseAnthropicSse(finite)), ["a"]);
+  assertEquals(finishedCancelled, 0);
+});
+
+Deno.test("callClaudeStreaming: stopping the returned textStream early cancels the provider response", async () => {
+  const encoder = new TextEncoder();
+  let cancelled = 0;
+  const result = await callClaudeStreaming(streamingRequest(), "test-key", {
+    timeout: 5_000,
+    fetchImpl: () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(encoder.encode(
+                'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"x"}}\n\n',
+              ));
+            },
+            cancel() {
+              cancelled++;
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+  });
+  for await (const text of result.textStream) {
+    assertEquals(text, "x");
+    break;
+  }
+  assertEquals(cancelled, 1);
+});
+
 Deno.test("parseAnthropicSse fails on malformed Claude SSE data", async () => {
   const error = await assertRejects(
     () =>
