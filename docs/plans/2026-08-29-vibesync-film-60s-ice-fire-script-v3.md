@@ -113,7 +113,7 @@ Prompt 見 `2026-08-29-vibesync-film-boards-b9-b12-prompts-v3.md`。
 ## 6. 資產職責（v2 之外的變動）
 
 - `@TANK`：**取代 `@LAKE`**。缸的單體圖：橫式長方形玻璃、金斜切角框、左青右金暈光、中央淡等角立方體徽記、缸內金色暖光；只定義建築與燈光，不定義人物。
-- `@CARD_BACK`：真實 PNG `assets/images/practice/practice_draw_card_back_neon.png`——B12 後製用，不餵生成當人物參考。
+- `@CARD_BACK`：真實 PNG `docs/archive/practice-draw-v2/practice_draw_card_back_neon.png`（2026-10 抽卡 V3 起移出 app，原路徑 `assets/images/practice/`）——B12 後製用，不餵生成當人物參考。
 - `@GIRL_FG01`～`@GIRL_FG20`：從 `assets/images/practice_girls/` 選定 20 位真實 App 練習女孩，各自建立角色 Element。Element 只鎖臉、髮型、年齡感與體態；**不靠 Element 學微表情或姿勢**。
 - `@TANK_CAST_FRAME`：先做一張乾淨群像首幀，把 20 位 Hero Girls 固定在前兩排 FG01～FG20 的座位、晚禮服、手勢與眼線起點。這張圖才是 B10 image-to-video 的 start frame；沒有通過身份／手／座位／號碼檢查，不進動態。
 - `@TANK_CROWD`：後排群像只負責「很多人」與縱深，無逐人 Element；臉不能清楚到與前景搶戲。
