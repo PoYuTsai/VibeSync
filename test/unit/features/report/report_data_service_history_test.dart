@@ -104,6 +104,73 @@ void main() {
     });
   });
 
+  group('subjectLatestAnalysisIsGuideV3', () {
+    AnalysisHistoryEvent v3(String id, String conversationId, DateTime at) =>
+        AnalysisHistoryEvent.analyze(
+          id: id,
+          createdAt: at,
+          conversationId: conversationId,
+          subjectName: '小雲',
+        );
+
+    test('最近一筆 analyze 沒有分數＝改用新版', () {
+      expect(
+        service.subjectLatestAnalysisIsGuideV3(
+          [
+            _analyze('a1', 'c-1', '小雲', 61, DateTime(2026, 10, 1)),
+            v3('a2', 'c-1', DateTime(2026, 10, 18)),
+          ],
+          'c-1',
+          const [],
+        ),
+        isTrue,
+      );
+    });
+
+    test('最近一筆有分數、沒有事件、或是別的對象：不算', () {
+      expect(
+        service.subjectLatestAnalysisIsGuideV3(
+          [
+            v3('a1', 'c-1', DateTime(2026, 10, 1)),
+            _analyze('a2', 'c-1', '小雲', 61, DateTime(2026, 10, 18)),
+          ],
+          'c-1',
+          const [],
+        ),
+        isFalse,
+      );
+      expect(
+        service.subjectLatestAnalysisIsGuideV3(const [], 'c-1', const []),
+        isFalse,
+      );
+      expect(
+        service.subjectLatestAnalysisIsGuideV3(
+          [v3('b1', 'c-2', DateTime(2026, 10, 18))],
+          'c-1',
+          const [],
+        ),
+        isFalse,
+      );
+    });
+
+    test('partner scope 看同一位對象所有對話裡最近的一筆', () {
+      expect(
+        service.subjectLatestAnalysisIsGuideV3(
+          [
+            _analyze('a1', 'c-1', '小雲', 61, DateTime(2026, 10, 1)),
+            v3('a2', 'c-2', DateTime(2026, 10, 18)),
+          ],
+          'p-1',
+          [
+            _conversation('c-1', 'p-1', '小雲'),
+            _conversation('c-2', 'p-1', '小雲'),
+          ],
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('subjectTrendPoints', () {
     test('單對象、createdAt 升序、跳過 null 分數', () {
       final points = service.subjectTrendPoints(

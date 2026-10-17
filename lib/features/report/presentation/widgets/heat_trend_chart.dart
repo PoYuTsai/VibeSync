@@ -23,12 +23,21 @@ class HeatTrendChart extends StatelessWidget {
   final String? contextLabel;
   final String emptyMessage;
 
+  /// 只有一筆時的「再分析 1 次就能形成趨勢」。對象改用 v3 之後分析不再產生
+  /// 分數，這句永遠不會成真，呼叫端要關掉。
+  final bool showTrendHint;
+
+  /// 圖下方的一行補充（例如：這裡只有舊版分析的紀錄）。
+  final String? footnote;
+
   const HeatTrendChart({
     super.key,
     required this.trendPoints,
     this.subjectId,
     this.contextLabel,
     this.emptyMessage = '尚無這位對象的分析紀錄',
+    this.showTrendHint = true,
+    this.footnote,
   });
 
   @override
@@ -66,6 +75,17 @@ class HeatTrendChart extends StatelessWidget {
             _buildSinglePointState(context, summary.points.single)
           else
             _buildChart(summary),
+          if (footnote != null && summary.points.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              footnote!,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -261,14 +281,17 @@ class HeatTrendChart extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '再分析 1 次就能形成趨勢',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+            if (showTrendHint) ...[
+              const SizedBox(height: 4),
+              Text(
+                '再分析 1 次就能形成趨勢',
+                style: TextStyle(
+                  fontSize: 12,
+                  color:
+                      AppColors.onBackgroundSecondary.withValues(alpha: 0.70),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

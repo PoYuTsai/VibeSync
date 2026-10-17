@@ -206,6 +206,31 @@ class ReportDataService {
     return sortHeatTrendPoints(points);
   }
 
+  /// 這位對象最近一次分析是不是 v3（任務卡）。v2 的分析一定有投入度分數
+  /// （AnalysisResult 缺值補 50），v3 一律沒有（Eric 2026-10-17）：最近一筆
+  /// analyze 事件沒有分數，就是改用新流程了，投入度趨勢之後不會再長點。
+  bool subjectLatestAnalysisIsGuideV3(
+    List<AnalysisHistoryEvent> events,
+    String subjectId,
+    List<Conversation> conversations,
+  ) {
+    final id = AnalysisHistoryEvent.normalizeScope(subjectId);
+    if (id == null) return false;
+    final conversationsById = {
+      for (final conversation in conversations)
+        conversation.id.trim(): conversation,
+    };
+    AnalysisHistoryEvent? latest;
+    for (final event in events) {
+      if (event.kind != AnalysisHistoryKind.analyze) continue;
+      if (_subjectIdFor(event, conversationsById) != id) continue;
+      if (latest == null || event.createdAt.isAfter(latest.createdAt)) {
+        latest = event;
+      }
+    }
+    return latest != null && latest.enthusiasmScore == null;
+  }
+
   String? _subjectIdFor(
     AnalysisHistoryEvent event,
     Map<String, Conversation> conversationsById,

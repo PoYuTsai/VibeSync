@@ -48,6 +48,15 @@ final subjectHeatTrendProvider =
       );
 });
 
+final subjectLatestIsGuideV3Provider =
+    Provider.autoDispose.family<bool, String>((ref, subjectId) {
+  return ref.watch(reportDataServiceProvider).subjectLatestAnalysisIsGuideV3(
+        ref.watch(analysisHistoryEventsProvider),
+        subjectId,
+        ref.watch(conversationsProvider),
+      );
+});
+
 final practiceTemperatureTrendProvider =
     Provider.autoDispose<List<HeatTrendPoint>>((ref) {
   return ref.watch(reportDataServiceProvider).practiceTemperaturePoints(

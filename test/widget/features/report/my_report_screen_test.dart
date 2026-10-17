@@ -158,6 +158,8 @@ void main() {
 
     // 既有 Free gating：鎖卡仍在。
     expect(find.text('我的報告會在 Starter 解鎖'), findsOneWidget);
+    // v3 之後哪裡都沒有雷達圖了，升級說明不能再拿它當賣點。
+    expect(find.textContaining('雷達'), findsNothing);
     expect(find.byType(LiquidMotionFrame), findsOneWidget);
     expect(
       find.byKey(const ValueKey('report-upgrade-liquid-frame')),

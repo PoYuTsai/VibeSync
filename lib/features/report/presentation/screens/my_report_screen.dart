@@ -76,6 +76,8 @@ class MyReportScreen extends ConsumerWidget {
     final subjectPoints = selectedSubject == null
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
+    final subjectUsesGuideV3 = selectedSubject != null &&
+        ref.watch(subjectLatestIsGuideV3Provider(selectedSubject));
     final practicePoints = ref.watch(practiceTemperatureTrendProvider);
     // 歷史事件與 Conversation 最新快照是兩條合法資料流：只要任一條有資料，
     // 報告就應顯示。舊邏輯只看 Conversation，會把「只有練習紀錄」或仍保留
@@ -144,11 +146,19 @@ class MyReportScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
             ],
+            // 改用 v3 的對象不再產生投入度（Eric 2026-10-17）：別叫他「再多分析
+            // 幾次」，舊點也要講明只是舊版的紀錄。
             HeatTrendChart(
               trendPoints: subjectPoints,
               subjectId: selectedSubject,
               contextLabel: selectedSubjectName,
-              emptyMessage: '再多分析幾次，就能比較對方每次互動的投入度',
+              emptyMessage: subjectUsesGuideV3
+                  ? '新版分析看的是每次的燈號，不算投入度分數。'
+                  : '再多分析幾次，就能比較對方每次互動的投入度',
+              showTrendHint: !subjectUsesGuideV3,
+              footnote: subjectUsesGuideV3
+                  ? '新版分析不算投入度分數，這裡只有舊版分析的紀錄。'
+                  : null,
             ),
           ],
           const SizedBox(height: 32),
@@ -226,7 +236,7 @@ class MyReportScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '升級後可以看互動雷達圖、歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
+              '升級後可以看歷史趨勢與不同對話的比較，知道自己哪裡正在進步。',
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
                 height: 1.45,

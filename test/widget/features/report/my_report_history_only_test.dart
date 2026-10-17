@@ -124,6 +124,68 @@ void main() {
     expect(find.text('還沒有分析數據'), findsNothing);
   });
 
+  testWidgets('對象只用新版分析過：不叫他再多分析幾次', (tester) async {
+    await _pump(tester, [
+      AnalysisHistoryEvent.analyze(
+        id: 'a1',
+        createdAt: DateTime(2026, 10, 18),
+        conversationId: 'c1',
+        subjectName: '小雲',
+      ),
+    ]);
+
+    expect(find.text('新版分析看的是每次的燈號，不算投入度分數。'), findsOneWidget);
+    expect(find.text('再多分析幾次，就能比較對方每次互動的投入度'), findsNothing);
+    // 沒有點時不放「只有舊版紀錄」的補充。
+    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsNothing);
+  });
+
+  testWidgets('舊版有一筆、之後改用新版：不說再分析 1 次就有趨勢', (tester) async {
+    await _pump(tester, [
+      AnalysisHistoryEvent.analyze(
+        id: 'a1',
+        createdAt: DateTime(2026, 10, 1),
+        conversationId: 'c1',
+        subjectName: '小雲',
+        enthusiasmScore: 61,
+        gameStageLabel: 'premise',
+      ),
+      AnalysisHistoryEvent.analyze(
+        id: 'a2',
+        createdAt: DateTime(2026, 10, 18),
+        conversationId: 'c1',
+        subjectName: '小雲',
+      ),
+    ]);
+
+    final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+    expect(chart.trendPoints.map((p) => p.score), [61]);
+    expect(find.text('再分析 1 次就能形成趨勢'), findsNothing);
+    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsOneWidget);
+  });
+
+  testWidgets('新版之後又有舊版分數（舊 App）：照舊顯示提示', (tester) async {
+    await _pump(tester, [
+      AnalysisHistoryEvent.analyze(
+        id: 'a1',
+        createdAt: DateTime(2026, 10, 1),
+        conversationId: 'c1',
+        subjectName: '小雲',
+      ),
+      AnalysisHistoryEvent.analyze(
+        id: 'a2',
+        createdAt: DateTime(2026, 10, 18),
+        conversationId: 'c1',
+        subjectName: '小雲',
+        enthusiasmScore: 61,
+        gameStageLabel: 'premise',
+      ),
+    ]);
+
+    expect(find.text('再分析 1 次就能形成趨勢'), findsOneWidget);
+    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsNothing);
+  });
+
   testWidgets('舊用戶沒有事件時不把缺資料顯示成平均 0', (tester) async {
     await _pump(tester, const [], report: _legacyConversationReport);
 
