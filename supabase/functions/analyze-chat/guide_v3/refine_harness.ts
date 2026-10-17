@@ -18,9 +18,11 @@ export interface RefineHarnessOutcome {
   readonly rpcs: readonly RefineHarnessRpc[];
 }
 
-/// 模型那一跳：收到 fallback.ts 送出的 body，回 Anthropic 的 Response。
+/// 模型那一跳：收到 fallback.ts 送出的 body（與原本的 init，真跑時原樣轉送），回
+/// Anthropic 的 Response。
 export type RefineHarnessModel = (
   body: Record<string, unknown>,
+  init: RequestInit | undefined,
 ) => Promise<Response>;
 
 function fakeSupabase(rpcs: RefineHarnessRpc[]) {
@@ -105,7 +107,7 @@ export async function runRefineThroughHandler(
       ? input.href
       : input.url;
     if (url.startsWith("https://api.anthropic.com/")) {
-      return model(JSON.parse(String(init?.body)));
+      return model(JSON.parse(String(init?.body)), init);
     }
     return Promise.resolve(new Response("{}", { status: 201 }));
   }) as typeof fetch;
