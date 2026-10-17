@@ -23,8 +23,8 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-Deno.test("說明書 A 段：v3.3 六節逐字鎖住，各節以自己的標題開頭", async () => {
-  assertEquals(GUIDE_V3_VERSION, "v3.3");
+Deno.test("說明書 A 段：v3.4 六節逐字鎖住，各節以自己的標題開頭", async () => {
+  assertEquals(GUIDE_V3_VERSION, "v3.4");
   for (const id of GUIDE_V3_SECTION_IDS) {
     assert(GUIDE_V3_SECTIONS[id].startsWith(`### ${id} `), id);
   }
@@ -53,7 +53,7 @@ Deno.test("說明書 B 段：B01–B47 連號、全部啟用、觸發與寫法�
   ).join("\n");
   assertEquals(
     await sha256Hex(canonical),
-    "2bab59e3894f928be9d36ad7a813a1655dd433e2873130c2cf21a8cf784b65e4",
+    "dd700780953c8be3e0838ea171439e42c98f8b6e0b9f784d2349eda273f445ca",
   );
 });
 

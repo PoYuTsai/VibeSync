@@ -441,6 +441,8 @@ Deno.test("v3.3：B47 只出換地方的推進和先不約的收，判斷由程�
   assertEquals(cards.map((c) => c.task), ["推進", "收", "推進"]);
   assertEquals(cards[2].angle, cards[0].method === cards[2].method ? 1 : 0);
   assert(cardSpecLine(cards[0], 1).includes("不答應去那家"));
+  // Bruce 10/16：換地方的卡只約別的地方，之後也不答應去她那家。
+  assert(cardSpecLine(cards[0], 1).includes("也不答應之後再去那家"));
   assertEquals(judgmentFor(t), SCAM_VENUE_WARNING);
   assert(SCAM_VENUE_WARNING.includes("酒托或飯托"));
   // 讀局面把「她不肯換地方」也標成婉拒時，B47 仍照常出卡，不只回一張收尾。
