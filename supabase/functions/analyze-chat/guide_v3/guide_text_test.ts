@@ -23,18 +23,18 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-Deno.test("說明書 A 段：v3.4 六節逐字鎖住，各節以自己的標題開頭", async () => {
-  assertEquals(GUIDE_V3_VERSION, "v3.4");
+Deno.test("說明書 A 段：v3.5 六節逐字鎖住，各節以自己的標題開頭", async () => {
+  assertEquals(GUIDE_V3_VERSION, "v3.5");
   for (const id of GUIDE_V3_SECTION_IDS) {
     assert(GUIDE_V3_SECTIONS[id].startsWith(`### ${id} `), id);
   }
   const joined = GUIDE_V3_SECTION_IDS.map((id) => GUIDE_V3_SECTIONS[id]).join(
     "\n\n",
   );
-  assertEquals(joined.length, 5268);
+  assertEquals(joined.length, 5272);
   assertEquals(
     await sha256Hex(joined),
-    "7680c722ff6c0636e3fa9d46fdf735adfe7c16c3fd01ddda5c6da0b09b2d4cac",
+    "e4ef742392d5ccd50b2b786b0145bfca5ba6a34b6018eb0d04d48a5ff5486c49",
   );
 });
 
@@ -53,8 +53,27 @@ Deno.test("說明書 B 段：B01–B47 連號、全部啟用、觸發與寫法�
   ).join("\n");
   assertEquals(
     await sha256Hex(canonical),
-    "dd700780953c8be3e0838ea171439e42c98f8b6e0b9f784d2349eda273f445ca",
+    "c6cf056fd2407b7c4a39322b6d727bcf9e39e52ec0faf2f3885fc0022b3b6a7e",
   );
+});
+
+Deno.test("v3.5：A 段不出現「加分」（Bruce 10/17：A 每次都送給模型）", () => {
+  for (const id of GUIDE_V3_SECTION_IDS) {
+    assert(!GUIDE_V3_SECTIONS[id].includes("加分"), id);
+  }
+  assert(
+    GUIDE_V3_SECTIONS.A4.includes(
+      "同一句話，在她熱的時候說能升溫，在她冷的時候說不恰當。",
+    ),
+  );
+});
+
+Deno.test("v3.5：B47 要他已經提議換地方、她還是不肯；只指定店家不算", () => {
+  const b47 = GUIDE_V3_ENTRIES.find((e) => e.id === "B47")!;
+  assert(b47.trigger.includes("他已經提議換地方，她還是不肯"));
+  assert(b47.trigger.includes("她只是指定店家、他還沒提換地方，不算"));
+  // 讀局面看得到整句觸發（含「不算」的但書），才分得出只是指定店家。
+  assert(readSystemPrompt().includes(`- B47：${b47.trigger}`));
 });
 
 Deno.test("只放送進模型的部分：A 段裡沒有 B、C、D 段的內容", () => {
