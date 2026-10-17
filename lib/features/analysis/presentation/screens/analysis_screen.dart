@@ -2199,7 +2199,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final conversation = ref.read(conversationProvider(widget.conversationId));
     // 增量 = 字數差：billing baseline 用 lastAnalyzedCharCount（ADR #19
     // 規格 #1 欄位職責分離——lastAnalyzedMessageCount 只留給 stale/UI 判斷）。
-    final preview = MessageCalculator.previewConversation(
+    // F04：她最後一則之後他傳的（上限內）送去分析但不算費，預覽與超額確認
+    // 雜湊都照伺服器只算計費那一段。
+    final preview = MessageCalculator.previewAnalysisRequest(
       requestMessages,
       previousAnalyzedCharCount: conversation?.lastAnalyzedCharCount ?? 0,
     );
@@ -2233,9 +2235,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return (
         confirmed: true,
         overcharge: OverchargeConfirmationPayload(
-          payloadHash: MessageCalculator.computeBillingPayloadHash(
-            requestMessages.map((message) => message.content).toList(),
-          ),
+          payloadHash:
+              MessageCalculator.analysisRequestPayloadHash(requestMessages),
           billableChars: preview.billableChars,
           confirmationId: const Uuid().v4(),
         ),

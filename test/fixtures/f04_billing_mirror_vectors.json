@@ -1,0 +1,270 @@
+{
+  "_comment": "F04（Eric 2026-10-16）JS/Dart 扣費鏡像共用樣本：協定 3 的一般文字串流分析，對話最後面連續的「他」的訊息（最多 5 則、合計 300 字）不算扣費字數與超額確認雜湊。由 tools/billing/gen_f04_fixture.ts 以伺服器 guide_v3/routing.ts 生成；兩端測試（guide_v3/f04_billing_mirror_test.ts / message_calculator_test.dart）必須同時讀本檔。",
+  "vectors": [
+    {
+      "name": "ends_with_hers",
+      "messages": [
+        {
+          "content": "在嗎",
+          "isFromMe": false
+        },
+        {
+          "content": "在啊",
+          "isFromMe": true
+        },
+        {
+          "content": "好",
+          "isFromMe": false
+        }
+      ],
+      "billingCount": 3,
+      "billingChars": 5,
+      "billingSha256": "faad3c3a68db77212c121019b220366b89835bebc526bf2ce40e1e37e591d6a1"
+    },
+    {
+      "name": "one_trailing_his",
+      "messages": [
+        {
+          "content": "週末要幹嘛",
+          "isFromMe": false
+        },
+        {
+          "content": "還沒想耶",
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 1,
+      "billingChars": 5,
+      "billingSha256": "e325012daedbbe0d30b7c4e5c071c555f4dcb7b6c38191d5d685eec7cd97b399"
+    },
+    {
+      "name": "five_trailing_his",
+      "messages": [
+        {
+          "content": "妳呢",
+          "isFromMe": false
+        },
+        {
+          "content": "a",
+          "isFromMe": true
+        },
+        {
+          "content": "b",
+          "isFromMe": true
+        },
+        {
+          "content": "c",
+          "isFromMe": true
+        },
+        {
+          "content": "d",
+          "isFromMe": true
+        },
+        {
+          "content": "e",
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 1,
+      "billingChars": 2,
+      "billingSha256": "6cc65b0de20e60d39887a7756437cad5cda4bf9dfde4b855ee31103512d39c07"
+    },
+    {
+      "name": "six_trailing_his_bills_all",
+      "messages": [
+        {
+          "content": "妳呢",
+          "isFromMe": false
+        },
+        {
+          "content": "a",
+          "isFromMe": true
+        },
+        {
+          "content": "b",
+          "isFromMe": true
+        },
+        {
+          "content": "c",
+          "isFromMe": true
+        },
+        {
+          "content": "d",
+          "isFromMe": true
+        },
+        {
+          "content": "e",
+          "isFromMe": true
+        },
+        {
+          "content": "f",
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 7,
+      "billingChars": 8,
+      "billingSha256": "488614f8d211410da6affc88e478574d6947c18422d1cc05eb00203e64768fd9"
+    },
+    {
+      "name": "trailing_his_exactly_300",
+      "messages": [
+        {
+          "content": "嗯嗯",
+          "isFromMe": false
+        },
+        {
+          "content": {
+            "repeat": "好",
+            "times": 300
+          },
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 1,
+      "billingChars": 2,
+      "billingSha256": "63aff16927ed7802af4ae7e472589bff3d2a53d0340ad6b93881228b85bf97d4"
+    },
+    {
+      "name": "trailing_his_301_bills_all",
+      "messages": [
+        {
+          "content": "嗯嗯",
+          "isFromMe": false
+        },
+        {
+          "content": {
+            "repeat": "好",
+            "times": 301
+          },
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 2,
+      "billingChars": 303,
+      "billingSha256": "20a69662cd16e400cfd73a6794fff6b58749d9af9a288f04942eddd3b152ae6d"
+    },
+    {
+      "name": "trailing_his_split_301_bills_all",
+      "messages": [
+        {
+          "content": "嗯嗯",
+          "isFromMe": false
+        },
+        {
+          "content": {
+            "repeat": "a",
+            "times": 150
+          },
+          "isFromMe": true
+        },
+        {
+          "content": {
+            "repeat": "b",
+            "times": 151
+          },
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 3,
+      "billingChars": 303,
+      "billingSha256": "033340413544dce5be23347ea7153b295817f5b6b6fcee2d232692e3d12a74cd"
+    },
+    {
+      "name": "trailing_his_trimmed",
+      "messages": [
+        {
+          "content": "哈哈",
+          "isFromMe": false
+        },
+        {
+          "content": "  在幹嘛  ",
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 1,
+      "billingChars": 2,
+      "billingSha256": "7a655569d7aab2029ca20b72aea1237bb7852fc2a5b4a297e9a49b4fed453b2a"
+    },
+    {
+      "name": "trailing_his_emoji_300_units",
+      "messages": [
+        {
+          "content": "哈哈",
+          "isFromMe": false
+        },
+        {
+          "content": {
+            "repeat": "😀",
+            "times": 150
+          },
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 1,
+      "billingChars": 2,
+      "billingSha256": "7a655569d7aab2029ca20b72aea1237bb7852fc2a5b4a297e9a49b4fed453b2a"
+    },
+    {
+      "name": "trailing_his_emoji_302_units_bills_all",
+      "messages": [
+        {
+          "content": "哈哈",
+          "isFromMe": false
+        },
+        {
+          "content": {
+            "repeat": "😀",
+            "times": 151
+          },
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 2,
+      "billingChars": 304,
+      "billingSha256": "819bf8e1ab66985925858c791aa3b27c0817dc64c5c3c9f227ca36a87545716f"
+    },
+    {
+      "name": "all_his_bills_all",
+      "messages": [
+        {
+          "content": "嗨",
+          "isFromMe": true
+        },
+        {
+          "content": "在嗎",
+          "isFromMe": true
+        }
+      ],
+      "billingCount": 2,
+      "billingChars": 3,
+      "billingSha256": "fd8a7855c720543aa28d28b0a9ea4d2f9fbcaea1e842525c3d50064f157660e6"
+    },
+    {
+      "name": "his_in_middle_not_trailing",
+      "messages": [
+        {
+          "content": "嗨",
+          "isFromMe": false
+        },
+        {
+          "content": "嗨嗨",
+          "isFromMe": true
+        },
+        {
+          "content": "今天好累",
+          "isFromMe": false
+        }
+      ],
+      "billingCount": 3,
+      "billingChars": 7,
+      "billingSha256": "d92476b1ced1f728071d048fc0a59d997666da406d2443fc1f36a0d1f8a0765f"
+    },
+    {
+      "name": "empty",
+      "messages": [],
+      "billingCount": 0,
+      "billingChars": 0,
+      "billingSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

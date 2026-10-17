@@ -71,8 +71,7 @@ void main() {
   });
 
   group('countPayloadChars', () {
-    test('trims each message, sums UTF-16 lengths, ignores quoted preview',
-        () {
+    test('trims each message, sums UTF-16 lengths, ignores quoted preview', () {
       final messages = [
         Message(
           id: 'q',
@@ -193,6 +192,68 @@ void main() {
           reason: '$name: hash（兩端綁定 hash 必須 byte-for-byte 一致）',
         );
       }
+    });
+  });
+
+  group('F04：她最後一則之後他傳的不算費（鏡像 guide_v3/routing.ts）', () {
+    Message msg(String content, {required bool fromMe}) => Message(
+          id: 'm-${content.hashCode}-$fromMe',
+          content: content,
+          isFromMe: fromMe,
+          timestamp: DateTime(2026, 10, 17),
+        );
+
+    test('上限跟伺服器一樣：最多 5 則、合計 300 字', () {
+      expect(MessageCalculator.f04MaxExcludedMessages, 5);
+      expect(MessageCalculator.f04MaxExcludedChars, 300);
+    });
+
+    test('Dart 端跟伺服器產生的共用樣本一致', () {
+      final fixtureFile = File('test/fixtures/f04_billing_mirror_vectors.json');
+      expect(fixtureFile.existsSync(), isTrue);
+      final fixture =
+          jsonDecode(fixtureFile.readAsStringSync()) as Map<String, dynamic>;
+      final vectors = fixture['vectors'] as List<dynamic>;
+      expect(vectors.length, greaterThan(10));
+      for (final raw in vectors) {
+        final vector = raw as Map<String, dynamic>;
+        final name = vector['name'] as String;
+        final messages = (vector['messages'] as List<dynamic>).map((m) {
+          final spec = m as Map<String, dynamic>;
+          final content = spec['content'];
+          final text = content is String
+              ? content
+              : ((content as Map<String, dynamic>)['repeat'] as String) *
+                  (content['times'] as int);
+          return msg(text, fromMe: spec['isFromMe'] as bool);
+        }).toList();
+        final billing = MessageCalculator.billingMessagesForAnalysis(messages);
+        expect(billing.length, vector['billingCount'], reason: '$name: 則數');
+        expect(
+          MessageCalculator.countPayloadChars(billing),
+          vector['billingChars'],
+          reason: '$name: 字數',
+        );
+        expect(
+          MessageCalculator.analysisRequestPayloadHash(messages),
+          vector['billingSha256'],
+          reason: '$name: 超額確認雜湊',
+        );
+      }
+    });
+
+    test('預覽只算計費那一段；字數基準照計費那一段扣', () {
+      final messages = [
+        msg('a' * 50, fromMe: false),
+        msg('我先回了', fromMe: true),
+      ];
+      final preview = MessageCalculator.previewAnalysisRequest(
+        messages,
+        previousAnalyzedCharCount: 10,
+      );
+      expect(preview.payloadChars, 50);
+      expect(preview.billableChars, 40);
+      expect(preview.band.units, 1);
     });
   });
 }

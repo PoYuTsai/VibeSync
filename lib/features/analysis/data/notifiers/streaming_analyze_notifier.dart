@@ -306,10 +306,10 @@ class StreamingAnalyzeNotifier
   // 避免同一組卡出現兩次。
   bool _replaceKeptStreamContents = false;
 
-  /// ADR #19 規格 #8：最近一次 [start] 實際送出 payload 的計費字數。
-  /// 分析成功後由 screen 持久化為 conversation.lastAnalyzedCharCount
-  /// （baseline 必須對應送出的 requestMessages，不是完成時 repository
-  /// 裡的最新 messages）。
+  /// ADR #19 規格 #8：最近一次 [start] 實際送出 payload 的計費字數（F04：
+  /// 不含最後面他傳的、上限內的那幾則）。分析成功後由 screen 持久化為
+  /// conversation.lastAnalyzedCharCount（baseline 必須對應送出的
+  /// requestMessages，不是完成時 repository 裡的最新 messages）。
   int? get lastPayloadCharCount => _cachedPayloadCharCount;
 
   @override
@@ -364,8 +364,11 @@ class StreamingAnalyzeNotifier
     _cachedIsReconnectContext = isReconnectContext;
     _cachedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
     _cachedConfirmedOvercharge = confirmedOvercharge;
-    // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages。
-    _cachedPayloadCharCount = MessageCalculator.countPayloadChars(messages);
+    // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages 的計費字數；
+    // F04：最後面他傳的（上限內）不算費，也不進 baseline（照伺服器）。
+    _cachedPayloadCharCount = MessageCalculator.countPayloadChars(
+      MessageCalculator.billingMessagesForAnalysis(messages),
+    );
     _replaceKeptStreamContents = false;
 
     state = StreamingAnalysisState(

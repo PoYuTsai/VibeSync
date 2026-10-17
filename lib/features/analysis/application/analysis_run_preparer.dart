@@ -327,16 +327,13 @@ class AnalysisRunPreparer {
     return null;
   }
 
+  /// 要有她的訊息才分析。F04（Eric 2026-10-16，協定 3）：她最後一則之後他傳的
+  /// 也一起送（v3 的「他是最後一則」、已讀不回都要看到）；這幾則在上限內不算費，
+  /// 扣費預覽與字數基準見 MessageCalculator.billingMessagesForAnalysis。
   List<Message>? _buildMessagesForReplyAnalysis(List<Message> messages) {
     if (messages.isEmpty) return null;
-
-    final lastIncomingIndex =
-        messages.lastIndexWhere((message) => !message.isFromMe);
-    if (lastIncomingIndex == -1) {
-      return null;
-    }
-
-    return messages.sublist(0, lastIncomingIndex + 1);
+    if (!messages.any((message) => !message.isFromMe)) return null;
+    return messages;
   }
 
   int _analysisFragmentStartIndex({
@@ -367,9 +364,12 @@ class AnalysisRunPreparer {
         : baseMessages.length;
     // Exact-boundary reruns (or an outgoing-only delta) have no new incoming
     // boundary. Reuse the latest contiguous incoming run instead of scoring
-    // the whole history or emitting an empty fragment.
-    if (sourceStart >= baseMessages.length) {
-      sourceStart = baseMessages.length - 1;
+    // the whole history or emitting an empty fragment. F04：最後面可能是他傳的，
+    // 所以錨在她最後一則（她最後一則就是最後一則時，跟原本一模一樣）。
+    final lastIncomingIndex =
+        baseMessages.lastIndexWhere((message) => !message.isFromMe);
+    if (lastIncomingIndex >= 0 && sourceStart > lastIncomingIndex) {
+      sourceStart = lastIncomingIndex;
       while (sourceStart > 0 && !baseMessages[sourceStart - 1].isFromMe) {
         sourceStart--;
       }

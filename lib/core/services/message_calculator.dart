@@ -80,6 +80,50 @@ class MessageCalculator {
     return sha256.convert(utf8.encode(joined)).toString();
   }
 
+  /// F04（Eric 2026-10-16）不算費的上限：伺服器 guide_v3/routing.ts 的
+  /// F04_MAX_EXCLUDED_MESSAGES／F04_MAX_EXCLUDED_CHARS。
+  static const f04MaxExcludedMessages = 5;
+  static const f04MaxExcludedChars = 300;
+
+  /// F04 鏡像伺服器 `billingMessagesFor`：協定 3 的一般文字串流分析，對話最後面
+  /// 連續的「他」的訊息送去分析、但不算扣費字數，也不進超額確認雜湊與存檔的
+  /// 字數基準。上限內才不算（最多 5 則、trim 後合計 300 字）；超過、或整段都是
+  /// 他的，就照舊全部算——不然可以把大段內容標成「他傳的」放在最後免費分析。
+  /// 主分析一律是協定 3 的一般文字串流（截圖先辨識成文字），所以這裡不帶條件。
+  /// 兩端對拍樣本：test/fixtures/f04_billing_mirror_vectors.json。
+  static List<Message> billingMessagesForAnalysis(List<Message> messages) {
+    var end = messages.length;
+    while (end > 0 && messages[end - 1].isFromMe) {
+      end--;
+    }
+    final excluded = messages.sublist(end);
+    if (end == 0 ||
+        excluded.length > f04MaxExcludedMessages ||
+        countPayloadChars(excluded) > f04MaxExcludedChars) {
+      return List<Message>.of(messages);
+    }
+    return messages.sublist(0, end);
+  }
+
+  /// 主分析送出前的計費預覽：只算計費那一段（F04，見
+  /// [billingMessagesForAnalysis]）。
+  static MessagePreview previewAnalysisRequest(
+    List<Message> requestMessages, {
+    int previousAnalyzedCharCount = 0,
+  }) =>
+      previewConversation(
+        billingMessagesForAnalysis(requestMessages),
+        previousAnalyzedCharCount: previousAnalyzedCharCount,
+      );
+
+  /// 主分析超額確認要綁的雜湊：跟伺服器一樣只綁計費那一段（F04）。
+  static String analysisRequestPayloadHash(List<Message> requestMessages) =>
+      computeBillingPayloadHash(
+        billingMessagesForAnalysis(requestMessages)
+            .map((message) => message.content)
+            .toList(),
+      );
+
   /// 對「即將送出的 requestMessages」建立計費預覽。
   ///
   /// [previousAnalyzedCharCount] = conversation.lastAnalyzedCharCount

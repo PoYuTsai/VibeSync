@@ -291,6 +291,24 @@ void main() {
       expect(state.retriesRemaining, 1);
     });
 
+    test('F04：存檔用的字數基準不含最後面他傳的（上限內）', () async {
+      final client = _ScriptedClient([
+        [Completer<void>()],
+      ]);
+      final container = _container(client);
+      addTearDown(container.dispose);
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+      unawaited(notifier.start(messages: [
+        _msg('週末要幹嘛'),
+        _msg('還沒想耶', fromMe: true),
+      ]));
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.lastPayloadCharCount, 5);
+      expect(client.requests.single.messages, hasLength(2),
+          reason: '他傳的照樣送去分析');
+    });
+
     test('新的一次分析清掉上一次的 v3 狀態', () async {
       final client = _ScriptedClient([
         [

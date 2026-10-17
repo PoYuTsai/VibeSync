@@ -346,4 +346,89 @@ void main() {
 
     expect(preparation.analysisFragmentStartIndex, 2);
   });
+
+  group('F04：她最後一則之後他傳的也送進分析', () {
+    Message his(String id, int minute) => Message(
+          id: id,
+          content: '他說 $id',
+          isFromMe: true,
+          timestamp: DateTime(2026, 8, 22, 0, minute),
+        );
+    Message hers(String id, int minute) => Message(
+          id: id,
+          content: '她說 $id',
+          isFromMe: false,
+          timestamp: DateTime(2026, 8, 22, 0, minute),
+        );
+    AnalysisRunPreparer preparer() => AnalysisRunPreparer(
+          memory: _NoopMemory(),
+          resolvePartnerSummary: (_) => null,
+          resolveEffectiveStyleContext: (_) => null,
+        );
+
+    test('不再砍掉最後面他傳的；分析則數照全部算', () async {
+      final conversation = _conversation()
+        ..messages.addAll([his('m2', 1), hers('m3', 2), his('m4', 3)]);
+      final runPreparer = preparer();
+      final gate = runPreparer.gate(conversation: conversation);
+      expect(gate.failure, isNull);
+      expect(
+          gate.messagesForAnalysis!.map((m) => m.id), ['m1', 'm2', 'm3', 'm4']);
+      expect(gate.analyzedMessageCount, 4);
+      final preparation = await runPreparer.assemble(
+        conversation: conversation,
+        gate: gate,
+      );
+      expect(preparation.requestMessages.last.id, 'm4');
+      expect(preparation.analysisFragmentStartIndex, 0);
+    });
+
+    test('同內容重跑、最後是他傳的：片段起點錨在她最後一組', () async {
+      final conversation = _conversation()
+        ..messages.addAll([
+          his('m2', 1),
+          hers('m3', 2),
+          hers('m4', 3),
+          his('m5', 4),
+        ])
+        ..lastAnalyzedMessageCount = 5;
+      final runPreparer = preparer();
+      final preparation = await runPreparer.assemble(
+        conversation: conversation,
+        gate: runPreparer.gate(conversation: conversation),
+      );
+      expect(preparation.analysisFragmentStartIndex, 2);
+    });
+
+    test('上次之後只多了他傳的：起點退回她最後一組（跟原本砍尾巴時一樣）', () async {
+      final conversation = _conversation()
+        ..messages.addAll([
+          his('m2', 1),
+          hers('m3', 2),
+          his('m4', 3),
+          his('m5', 4),
+        ])
+        ..lastAnalyzedMessageCount = 4;
+      final runPreparer = preparer();
+      final preparation = await runPreparer.assemble(
+        conversation: conversation,
+        gate: runPreparer.gate(conversation: conversation),
+      );
+      expect(preparation.analysisFragmentStartIndex, 2);
+    });
+
+    test('整段都是他的：還是不分析', () {
+      final conversation = Conversation(
+        id: 'c-2',
+        name: '小雲',
+        messages: [his('m1', 0), his('m2', 1)],
+        createdAt: DateTime(2026, 8, 22),
+        updatedAt: DateTime(2026, 8, 22),
+      );
+      expect(
+        preparer().gate(conversation: conversation).failure,
+        AnalysisRunPrepareFailure.noIncomingReply,
+      );
+    });
+  });
 }
