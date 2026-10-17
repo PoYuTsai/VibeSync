@@ -204,6 +204,9 @@ class PartnerListCard extends StatelessWidget {
         ? null
         : clampVisibleInvestmentScore(aggregate.latestHeat!);
     final level = heat != null ? EnthusiasmLevel.fromScore(heat) : null;
+    // v3 分析過的對象沒有熱度可放：列表不顯示（Eric 2026-10-17），也不能
+    // 因為沒有分數就寫成「待分析」——他剛分析完。
+    final showStatusPill = heat != null || !aggregate.latestIsGuideV3;
     final date = _formatDate(aggregate.lastInteraction);
 
     return Material(
@@ -257,8 +260,10 @@ class PartnerListCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 6),
-                        _buildStatusPill(level, heat),
+                        if (showStatusPill) ...[
+                          const SizedBox(height: 6),
+                          _buildStatusPill(level, heat),
+                        ],
                         if (tags.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(

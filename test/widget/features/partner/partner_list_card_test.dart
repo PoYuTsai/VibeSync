@@ -20,6 +20,7 @@ PartnerAggregateView _agg({
   int? heat,
   int rounds = 0,
   DateTime? lastInteraction,
+  bool latestIsGuideV3 = false,
 }) => PartnerAggregateView(
   unionInterests: interests,
   unionTraits: traits,
@@ -28,6 +29,7 @@ PartnerAggregateView _agg({
   totalRounds: rounds,
   totalMessages: 0,
   lastInteraction: lastInteraction,
+  latestIsGuideV3: latestIsGuideV3,
 );
 
 Future<void> _pump(WidgetTester t, Widget child) async {
@@ -124,6 +126,26 @@ void main() {
 
     expect(find.byIcon(Icons.insights_rounded), findsOneWidget);
     expect(find.text('待分析'), findsOneWidget);
+  });
+
+  testWidgets('v3 分析過的對象不顯示熱度膠囊，也不寫「待分析」', (t) async {
+    await _pump(
+      t,
+      PartnerListCard(
+        partner: _p('a', 'Alice'),
+        aggregate: _agg(
+          interests: const ['咖啡'],
+          latestIsGuideV3: true,
+        ),
+        onTap: () {},
+      ),
+    );
+
+    expect(find.text('待分析'), findsNothing);
+    expect(find.textContaining('本次投入'), findsNothing);
+    expect(find.byIcon(Icons.insights_rounded), findsNothing);
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.text('咖啡'), findsOneWidget);
   });
 
   testWidgets(

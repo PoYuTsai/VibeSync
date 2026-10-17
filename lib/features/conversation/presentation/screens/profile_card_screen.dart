@@ -20,6 +20,7 @@ import '../../data/providers/conversation_providers.dart';
 import '../../domain/entities/conversation.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
+import '../../../analysis/domain/entities/guide_v3_result.dart';
 
 class ProfileCardScreen extends ConsumerWidget {
   final String conversationId;
@@ -99,7 +100,10 @@ class ProfileCardScreen extends ConsumerWidget {
                       '目前階段',
                       _stageLabel(conversation.currentGameStage),
                     ),
-                    _buildHeatRow(conversation.lastEnthusiasmScore),
+                    // v3 沒有熱度（Eric 2026-10-17）：不放一行「本次投入 --」。
+                    if (conversation.lastEnthusiasmScore != null ||
+                        !_lastAnalysisIsGuideV3(conversation))
+                      _buildHeatRow(conversation.lastEnthusiasmScore),
                   ],
                 ),
               ),
@@ -142,6 +146,16 @@ class ProfileCardScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  bool _lastAnalysisIsGuideV3(Conversation conversation) {
+    final snapshotJson = conversation.lastAnalysisSnapshotJson;
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) return false;
+    try {
+      return isGuideV3Payload(jsonDecode(snapshotJson));
+    } catch (_) {
+      return false;
+    }
   }
 
   Map<String, dynamic>? _extractTargetProfile(Conversation conversation) {

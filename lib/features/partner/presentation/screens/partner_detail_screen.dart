@@ -298,6 +298,10 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 const SizedBox(height: 16),
                 _PartnerExpandableDetailSection(
                   expanded: _detailTraitsExpanded,
+                  // v3 沒有雷達（Eric 2026-10-17），展開後也看不到：說明別再提雷達圖。
+                  subtitle: _latestAnalysisIsGuideV3(conversations)
+                      ? '長期資料，給想確認依據時展開。'
+                      : '長期資料與雷達圖，給想確認依據時展開。',
                   onToggle: () => setState(
                     () => _detailTraitsExpanded = !_detailTraitsExpanded,
                   ),
@@ -1651,11 +1655,13 @@ class _LockedFeatureCard extends StatelessWidget {
 // _detailTraitsExpanded 的註解——lazy ListView 回收會清掉本地 State）。
 class _PartnerExpandableDetailSection extends StatelessWidget {
   final bool expanded;
+  final String subtitle;
   final VoidCallback onToggle;
   final Widget child;
 
   const _PartnerExpandableDetailSection({
     required this.expanded,
+    required this.subtitle,
     required this.onToggle,
     required this.child,
   });
@@ -1700,7 +1706,7 @@ class _PartnerExpandableDetailSection extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '長期資料與雷達圖，給想確認依據時展開。',
+                          subtitle,
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.onBackgroundSecondary,
                             height: 1.35,

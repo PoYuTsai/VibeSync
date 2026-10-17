@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 
@@ -12,6 +13,10 @@ class PartnerAggregateView {
   final int totalMessages;
   final DateTime? lastInteraction;
 
+  /// 最近更新那段對話的分析是 v3（任務卡）。v3 沒有熱度，[latestHeat] 是 null
+  /// 不代表還沒分析：顯示端要分開「沒分析過」跟「分析過但不算熱度」。
+  final bool latestIsGuideV3;
+
   const PartnerAggregateView({
     required this.unionInterests,
     required this.unionTraits,
@@ -20,6 +25,7 @@ class PartnerAggregateView {
     required this.totalRounds,
     required this.totalMessages,
     required this.lastInteraction,
+    this.latestIsGuideV3 = false,
   });
 
   factory PartnerAggregateView.empty() => const PartnerAggregateView(
@@ -71,7 +77,18 @@ extension PartnerAggregates on Partner {
       totalRounds: totalRounds,
       totalMessages: totalMessages,
       lastInteraction: descByDate.first.updatedAt,
+      latestIsGuideV3:
+          _isGuideV3Snapshot(descByDate.first.lastAnalysisSnapshotJson),
     );
+  }
+}
+
+bool _isGuideV3Snapshot(String? jsonStr) {
+  if (jsonStr == null || jsonStr.trim().isEmpty) return false;
+  try {
+    return isGuideV3Payload(jsonDecode(jsonStr));
+  } catch (_) {
+    return false;
   }
 }
 

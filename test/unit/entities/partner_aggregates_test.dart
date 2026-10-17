@@ -119,6 +119,43 @@ void main() {
       expect(view.latestHeat, isNull);
     });
 
+    test('latestIsGuideV3 只看最近那段對話的快照是不是 v3', () {
+      final v3Snapshot = jsonEncode({
+        'guideVersion': 'v3.5',
+        'read': {'light': 'green', 'decision': 'send'},
+        'cards': const [],
+      });
+      final v3Latest = _partner().aggregateOver([
+        _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 1, 1),
+            lastEnthusiasmScore: 80,
+            snapshotJson: _snapshot(interests: const ['咖啡'])),
+        _convo(
+            id: 'c2', updatedAt: DateTime(2026, 5, 1), snapshotJson: v3Snapshot),
+      ]);
+      expect(v3Latest.latestIsGuideV3, isTrue);
+      expect(v3Latest.latestHeat, isNull);
+
+      // 最近那段還沒分析（沒有快照）：照舊是「待分析」的情況。
+      final unanalyzedLatest = _partner().aggregateOver([
+        _convo(
+            id: 'c1', updatedAt: DateTime(2026, 1, 1), snapshotJson: v3Snapshot),
+        _convo(id: 'c2', updatedAt: DateTime(2026, 5, 1)),
+      ]);
+      expect(unanalyzedLatest.latestIsGuideV3, isFalse);
+
+      final v2Latest = _partner().aggregateOver([
+        _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 5, 1),
+            lastEnthusiasmScore: 64,
+            snapshotJson: _snapshot(traits: const ['慢熱'])),
+      ]);
+      expect(v2Latest.latestIsGuideV3, isFalse);
+      expect(PartnerAggregateView.empty().latestIsGuideV3, isFalse);
+    });
+
     test('lastInteraction = max(updatedAt) across conversations', () {
       final view = _partner().aggregateOver([
         _convo(id: 'c1', updatedAt: DateTime(2026, 1, 1)),

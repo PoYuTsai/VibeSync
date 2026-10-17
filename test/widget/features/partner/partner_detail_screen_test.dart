@@ -861,6 +861,11 @@ void main() {
     expect(find.textContaining('本次投入'), findsNothing);
     expect(find.text('先分析最近一段互動，這裡會冒出可接的話題抓手。'), findsNothing);
     expect(find.byType(PartnerConversationTile), findsOneWidget);
+
+    // v3 沒有雷達：摺疊面板的說明不再提雷達圖。
+    await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
+    expect(find.text('長期資料，給想確認依據時展開。'), findsOneWidget);
+    expect(find.textContaining('雷達'), findsNothing);
   });
 
   testWidgets('conversation records sit between heat score and next step',
