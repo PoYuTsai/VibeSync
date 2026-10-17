@@ -60,7 +60,10 @@ import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/guide_v3_result.dart';
 import '../../domain/entities/persistable_analysis.dart';
+import '../sections/guide_v3_result_section.dart';
+import '../widgets/guide_v3_task_card.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -200,6 +203,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   // Analyze V2 一級決策（Phase 1c）；null＝v1 結果，走本地備援。
   AnalysisDecisionV2? _decision;
+
+  // 對話分析 v3（任務卡）：判讀、已送到的卡、最終結果、伺服器 runId（複製紀錄
+  // 的 key：卡在 done 之前就能複製）。跟上面 v2 的欄位不會同時有值。
+  GuideV3Read? _v3Read;
+  List<GuideV3Card> _v3Cards = const [];
+  GuideV3Result? _v3Result;
+  String? _v3RunId;
+
+  /// 他填過空格或改過的卡（key＝runId:slot），只在這個畫面裡。
+  final Map<String, List<String>> _v3Edited = {};
+
+  /// 這一輪已經捲到結果區過（判讀和第一張卡一到就捲一次）。
+  bool _v3Snapped = false;
+  final _guideV3SectionKey = GlobalKey();
+
+  /// 有完成的分析（v2 有熱度；v3 有最終結果）。
+  bool get _hasAnalysisResult => _enthusiasmScore != null || _v3Result != null;
 
   // 反饋相關
   bool _feedbackSubmitted = false;
@@ -371,6 +391,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   CoachChatAnalysisSnapshot _buildCoachChatAnalysisSnapshot() {
+    // v3 沒有熱度、階段：給教練判讀與要等她做什麼。
+    final guideV3 = _v3Result;
+    if (guideV3 != null) {
+      final judgment = guideV3.read.judgment;
+      return CoachChatAnalysisSnapshot(
+        summary: guideV3.isCare || judgment.isEmpty ? null : judgment,
+        nextStep: guideV3.read.waitFor,
+      );
+    }
     final subscription = ref.read(subscriptionProvider);
     final keySignals = <String>[
       if (_psychology?.subtext.trim().isNotEmpty == true)
@@ -481,6 +510,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   bool _analysisNeedsReplyRefresh(SubscriptionState subscription) {
+    // v3：免費方案只寫排好的前 2 張，其餘 locked；升級後照 v2 做法重新整理一次。
+    final guideV3 = _v3Result;
+    if (guideV3 != null) {
+      return subscription.isPremium &&
+          guideV3.read.hasLockedCards &&
+          _analysisTierUsed() == SubscriptionTierHelper.free;
+    }
     const freeReplyStyles = {'extend', 'tease'};
     if (!subscription.isPremium ||
         _replies == null ||
@@ -649,10 +685,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 要的是可以直接抄的回覆。只掛在 live 完成轉場
   /// （[_onStreamingAnalyzeStateChanged] 的 done case）；回頁 hydrate 不捲，
   /// 免得使用者一回來就被跳位。使用者手指還在拖動時跳過。
-  void _scheduleSnapToReplyZone() {
+  void _scheduleSnapToReplyZone() => _scheduleSnapTo(_replyZoneSectionKey);
+
+  /// v3 的判讀和第一張卡一起到（扣費成功後），一到就捲過去一次。
+  void _maybeSnapToGuideV3() {
+    if (_v3Snapped || _v3Read == null) return;
+    _v3Snapped = true;
+    _scheduleSnapTo(_guideV3SectionKey);
+  }
+
+  void _scheduleSnapTo(GlobalKey anchorKey) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _userDragInProgress) return;
-      final replyZoneContext = _replyZoneSectionKey.currentContext;
+      final replyZoneContext = anchorKey.currentContext;
       if (replyZoneContext == null || !replyZoneContext.mounted) return;
       unawaited(Scrollable.ensureVisible(
         replyZoneContext,
@@ -667,7 +712,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final conversation = ref.read(
       conversationProvider(widget.conversationId),
     );
-    return _enthusiasmScore != null ||
+    return _hasAnalysisResult ||
         (conversation != null &&
             AnalysisFragmentPolicy.hasCompletedAnalysis(conversation));
   }
@@ -891,6 +936,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _activeAnalysisMessageCount =
               s.analyzedMessageCount ?? s.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+          _mirrorLiveGuideV3(s);
         });
         break;
       case StreamingAnalyzePhase.streamingReport:
@@ -905,11 +951,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _activeAnalysisMessageCount =
               s.analyzedMessageCount ?? s.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+          _mirrorLiveGuideV3(s);
+          // 回到畫面時卡已經在了，不再捲動。
+          _v3Snapped = true;
         });
         break;
       case StreamingAnalyzePhase.done:
-        final result = s.result;
-        if (result == null) return;
+        final guideV3 = s.guideV3Result;
+        final v2OrNull = s.result;
+        if (v2OrNull == null && guideV3 == null) return;
         if (_session.isResultStaleForCurrentConversation(s.toRunMetadata())) {
           setState(() {
             _isAnalyzing = false;
@@ -923,6 +973,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           });
           return;
         }
+        if (guideV3 != null) {
+          setState(() {
+            _isAnalyzing = false;
+            _streamErrorMessage = null;
+            _streamErrorRetriesRemaining = 0;
+            _quotaExceededInfo = null;
+            _streamProgressLabel = null;
+            _streamProgressDetail = null;
+            _streamContents = const [];
+            _activeAnalysisMessageCount = null;
+            _applyGuideV3Result(guideV3, runId: s.analysisRunId);
+            _v3Snapped = true;
+          });
+          _maybePersistAndSyncOnHydrate(
+            s,
+            PersistableAnalysis.fromGuideV3(
+              guideV3,
+              analysisRunId: s.analysisRunId,
+            ),
+          );
+          break;
+        }
+        final result = v2OrNull!;
         setState(() {
           _isAnalyzing = false;
           _streamErrorMessage = null;
@@ -955,7 +1028,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // streamingReport and the done transition arrived off-screen). If the
         // listener already wrote this exact snapshot, the dedup signal below
         // short-circuits to avoid double-writes (I-P2-e/f, Codex round-2).
-        _maybePersistAndSyncOnHydrate(s, result);
+        _maybePersistAndSyncOnHydrate(
+          s,
+          PersistableAnalysis.fromResult(result),
+        );
         break;
       case StreamingAnalyzePhase.failedAfterRecommendation:
         // 額度用盡才震（一般格式失敗不是付費牆時刻，不給錯誤觸覺）。
@@ -971,6 +1047,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _activeAnalysisMessageCount =
               s.analyzedMessageCount ?? s.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+          _mirrorLiveGuideV3(s);
+          _v3Snapped = true;
         });
         break;
       case StreamingAnalyzePhase.failedBeforeRecommendation:
@@ -1019,7 +1097,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// but the snapshot + usage were never written.
   void _maybePersistAndSyncOnHydrate(
     StreamingAnalysisState s,
-    AnalysisResult result,
+    PersistableAnalysis analysis,
   ) {
     final repository = ref.read(conversationRepositoryProvider);
     final conv = repository.getConversation(widget.conversationId);
@@ -1029,7 +1107,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     final persisted = _session.persistHydratedResultIfNeeded(
       s.toRunMetadata(),
-      PersistableAnalysis.fromResult(result),
+      analysis,
       expectedAnalyzedCount: expectedAnalyzedCount,
       conversation: conv,
     );
@@ -1040,7 +1118,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _lastAnalyzedMessageCount = expectedAnalyzedCount;
       });
     }
-    _syncSubscriptionUsageFromResult(result);
+    _syncSubscriptionUsageFromRaw(analysis.rawResponse);
   }
 
   /// Wipe the local mirrors of a *previous* completed analysis so the render
@@ -1050,6 +1128,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// tree would keep showing the stale detailed analysis (I-P1-c, Codex
   /// round-2). Must be called inside the caller's `setState`.
   void _clearDetailedAnalysisStateForStreamingAnalyzePartial() {
+    _v3Result = null;
+    _v3Read = null;
+    _v3Cards = const [];
+    _v3RunId = null;
     _enthusiasmScore = null;
     _dimensionScores = null;
     _strategy = null;
@@ -1123,7 +1205,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (conversation.lastAnalyzedMessageCount != null) {
       return conversation.lastAnalyzedMessageCount!;
     }
-    final hasVisibleAnalysis = _enthusiasmScore != null ||
+    final hasVisibleAnalysis = _hasAnalysisResult ||
         conversation.lastAnalysisSnapshotJson?.trim().isNotEmpty == true;
     return hasVisibleAnalysis ? conversation.messages.length : 0;
   }
@@ -1483,10 +1565,34 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 串流中（含續看、失敗後留著的）v3 判讀與卡，從 notifier 鏡射。必須在
+  /// [_clearDetailedAnalysisStateForStreamingAnalyzePartial] 之後呼叫。
+  void _mirrorLiveGuideV3(StreamingAnalysisState s) {
+    _v3Read = s.guideV3Read;
+    _v3Cards = s.guideV3Cards;
+    _v3RunId = s.isGuideV3Run ? s.analysisRunId : null;
+  }
+
+  /// 套用 v3 最終結果（新分析完成、續看、重開畫面還原）。v2 欄位一律清掉。
+  void _applyGuideV3Result(GuideV3Result result, {required String? runId}) {
+    _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+    _analysisRunKey = const Uuid().v4();
+    _v3Result = result;
+    _v3Read = result.read;
+    _v3Cards = result.cards;
+    _v3RunId = runId;
+    // 用量常駐行與方案判斷讀這份（跟 v2 一樣隨快照保存）。
+    _lastAiResponse = result.rawResponse;
+  }
+
   void _applyAnalysisResult(
     AnalysisResult result, {
     bool resetFeedbackState = true,
   }) {
+    _v3Result = null;
+    _v3Read = null;
+    _v3Cards = const [];
+    _v3RunId = null;
     _analysisRunKey = const Uuid().v4();
     _enthusiasmScore = result.enthusiasmScore;
     _dimensionScores = result.dimensionScores;
@@ -1569,6 +1675,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void _restorePersistedAnalysis({bool repairRecord = true}) {
     final outcome = _persistence.restore(repairRecord: repairRecord);
     if (outcome == null) return;
+    final guideV3 = outcome.guideV3;
+    if (guideV3 != null) {
+      _lastAnalyzedMessageCount = outcome.analyzedMessageCount;
+      _applyGuideV3Result(guideV3, runId: outcome.analysisRunId);
+      // 還原的不捲動。
+      _v3Snapped = true;
+      return;
+    }
     final result = outcome.result;
     if (result == null) return;
     _lastAnalyzedMessageCount = outcome.analyzedMessageCount;
@@ -2064,7 +2178,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       goal: dialogResult.goal,
       analysisContextNote: dialogResult.analysisContextNote,
       recognized: recognized,
-      hasLoadedAnalysisResult: _enthusiasmScore != null,
+      hasLoadedAnalysisResult: _hasAnalysisResult,
     );
 
     switch (commit.kind) {
@@ -2253,8 +2367,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     AnalysisResult result, {
     bool showChargeToast = false,
     String chargeActionLabel = '分析',
+  }) =>
+      _syncSubscriptionUsageFromRaw(
+        result.rawResponse,
+        showChargeToast: showChargeToast,
+        chargeActionLabel: chargeActionLabel,
+      );
+
+  void _syncSubscriptionUsageFromRaw(
+    Map<String, dynamic>? rawResponse, {
+    bool showChargeToast = false,
+    String chargeActionLabel = '分析',
   }) {
-    final usage = result.rawResponse?['usage'];
+    final usage = rawResponse?['usage'];
     if (usage is! Map) {
       return;
     }
@@ -2713,6 +2838,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _streamProgressDetail = '正在建立串流連線。';
         _streamContents = const [];
         _activeAnalysisMessageCount = analyzedMessageCount;
+        _v3Snapped = false;
+        _v3Edited.clear();
       });
 
       // Fire-and-forget（waitForCompletion 之外）。notifier 快取 payload 供
@@ -2753,7 +2880,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         prev?.result == next.result &&
         prev?.streamProgressLabel == next.streamProgressLabel &&
         prev?.streamProgressDetail == next.streamProgressDetail &&
-        prev?.streamContents == next.streamContents) {
+        prev?.streamContents == next.streamContents &&
+        prev?.guideV3Read == next.guideV3Read &&
+        prev?.guideV3Cards == next.guideV3Cards &&
+        prev?.guideV3Result == next.guideV3Result) {
       return;
     }
     switch (next.phase) {
@@ -2769,6 +2899,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _activeAnalysisMessageCount =
               next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+          _mirrorLiveGuideV3(next);
           _resetErrorState();
         });
         break;
@@ -2788,11 +2919,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _activeAnalysisMessageCount =
               next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+          _mirrorLiveGuideV3(next);
         });
+        _maybeSnapToGuideV3();
         break;
       case StreamingAnalyzePhase.done:
-        final result = next.result;
-        if (result == null) return;
+        final guideV3 = next.guideV3Result;
+        final v2OrNull = next.result;
+        if (v2OrNull == null && guideV3 == null) return;
         if (_session
             .isResultStaleForCurrentConversation(next.toRunMetadata())) {
           setState(() {
@@ -2815,6 +2949,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         final analyzedMessageCount = next.analyzedMessageCount ??
             next.conversationMessageCount ??
             conv?.messages.length;
+        if (guideV3 != null) {
+          setState(() {
+            _isAnalyzing = false;
+            _followLiveAnalysis = false;
+            _streamErrorMessage = null;
+            _streamErrorRetriesRemaining = 0;
+            _quotaExceededInfo = null;
+            _streamProgressLabel = null;
+            _streamProgressDetail = null;
+            _streamContents = const [];
+            _activeAnalysisMessageCount = null;
+            if (conv != null && analyzedMessageCount != null) {
+              _lastAnalyzedMessageCount = analyzedMessageCount;
+            }
+            _applyGuideV3Result(guideV3, runId: next.analysisRunId);
+          });
+          _session.persistCompletedRun(
+            next.toRunMetadata(),
+            PersistableAnalysis.fromGuideV3(
+              guideV3,
+              analysisRunId: next.analysisRunId,
+            ),
+            analyzedMessageCount: analyzedMessageCount,
+            allowArchivedRecordRefresh: _isRefreshingPremiumReplies,
+          );
+          _syncSubscriptionUsageFromRaw(
+            guideV3.rawResponse,
+            showChargeToast: true,
+          );
+          // 先別回／停／關心只有判讀，跟 done 幾乎同時到：沒捲過就捲一次。
+          _maybeSnapToGuideV3();
+          break;
+        }
+        final result = v2OrNull!;
         setState(() {
           _isAnalyzing = false;
           _followLiveAnalysis = false;
@@ -2871,6 +3039,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _activeAnalysisMessageCount =
               next.analyzedMessageCount ?? next.conversationMessageCount;
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
+          // 已經送到的 v3 卡留著（扣過費的內容不能消失）。
+          _mirrorLiveGuideV3(next);
         });
         break;
       case StreamingAnalyzePhase.failedBeforeRecommendation:
@@ -3233,6 +3403,27 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     buffer.writeln('');
 
     // AI 分析結果
+    final guideV3 = _v3Result;
+    if (guideV3 != null) {
+      final read = guideV3.read;
+      buffer.writeln('--- AI 分析結果 ---');
+      buffer.writeln(guideV3DecisionTitle(read.decision));
+      if (guideV3.isCare) {
+        buffer.writeln(read.careMessage ?? '');
+      } else {
+        if (read.light != null) buffer.writeln('燈號: ${read.light!.label}');
+        if (read.judgment.isNotEmpty) buffer.writeln(read.judgment);
+        if (read.waitFor != null) buffer.writeln('要等她: ${read.waitFor}');
+      }
+      if (guideV3.cards.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('--- 建議回覆 ---');
+        for (final card in guideV3.cards) {
+          final messages = _guideV3EditedFor(card) ?? card.messages;
+          buffer.writeln('[${card.task.label}] ${messages.join(' / ')}');
+        }
+      }
+    }
     if (_enthusiasmScore != null) {
       buffer.writeln('--- AI 分析結果 ---');
       final visibleScore = clampVisibleInvestmentScore(_enthusiasmScore!);
@@ -3601,6 +3792,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       'schemaVersion': 1,
     };
 
+    final guideV3 = _v3Result;
+    if (guideV3 != null) {
+      payload['guideV3'] = {
+        'guideVersion': guideV3.read.guideVersion,
+        'decision': guideV3.read.decision.wire,
+        if (guideV3.read.light != null) 'light': guideV3.read.light!.wire,
+        'cardTasks': [for (final card in guideV3.cards) card.task.wire],
+      };
+    }
+
     if (_enthusiasmScore != null) {
       payload['enthusiasmScore'] = _enthusiasmScore;
     }
@@ -3635,9 +3836,55 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   String? _analyzeAdviceId(String cardKey) {
-    final runKey = cardKey == 'polish' ? _polishRunKey : _analysisRunKey;
+    // v3 的卡在 done 之前就能複製：key 用伺服器 runId（存進快照，重開不變）。
+    final runKey = cardKey == 'polish'
+        ? _polishRunKey
+        : cardKey.startsWith(_guideV3CardKeyPrefix)
+            ? (_v3RunId ?? _analysisRunKey)
+            : _analysisRunKey;
     if (runKey == null) return null;
     return 'analyze:${widget.conversationId}:$runKey:$cardKey';
+  }
+
+  static const _guideV3CardKeyPrefix = 'v3:';
+
+  /// 成效紀錄的卡片 key：v3:slot:任務（adviceType 上限 48 字，這裡很短）。
+  String _guideV3CardKey(GuideV3Card card) =>
+      '$_guideV3CardKeyPrefix${card.slot}:${card.task.wire}';
+
+  String _guideV3EditKey(GuideV3Card card) => '${_v3RunId ?? ''}:${card.slot}';
+
+  List<String>? _guideV3EditedFor(GuideV3Card card) =>
+      _v3Edited[_guideV3EditKey(card)];
+
+  void _copyGuideV3Card(GuideV3Card card, String text, String toast) {
+    Clipboard.setData(ClipboardData(text: text));
+    unawaited(
+      _recordAnalysisCopy(cardKey: _guideV3CardKey(card), copiedText: text),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$toast，發出後記得回來回報結果'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// 填空／改成自己的說法；改好就直接複製改好的版本。
+  Future<void> _editGuideV3Card(GuideV3Card card) async {
+    final key = _guideV3EditKey(card);
+    final edited = await showGuideV3EditSheet(
+      context,
+      messages: _v3Edited[key] ?? card.messages,
+    );
+    if (edited == null || !mounted) return;
+    setState(() => _v3Edited[key] = edited);
+    AppHaptics.light();
+    _copyGuideV3Card(
+      card,
+      edited.join('\n'),
+      edited.length == 1 ? '已複製這句' : '已複製這組訊息',
+    );
   }
 
   Future<void> _recordAnalysisCopy({
@@ -3793,7 +4040,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _isShowingPendingAnalysisFragment(conversation);
     final hasCompletedAnalysisEvidence =
         AnalysisFragmentPolicy.hasCompletedAnalysis(conversation) ||
-            _enthusiasmScore != null;
+            _hasAnalysisResult;
     final isCompletedAnalysisFragment =
         !isPendingAnalysisFragment && hasCompletedAnalysisEvidence;
 
@@ -3824,9 +4071,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     // 空白新片段（對標示意稿 2026-08-14）：整頁走深色平鋪，不再用白卡框住。
     final isEmptyFragmentSetup =
         isScreenshotOnlyEmptyState && analysisFragmentMessages.isEmpty;
-    final showStreamInterruptedAction = !_isAnalyzing &&
-        _enthusiasmScore == null &&
-        _streamErrorMessage != null;
+    final showStreamInterruptedAction =
+        !_isAnalyzing && !_hasAnalysisResult && _streamErrorMessage != null;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
@@ -3835,7 +4081,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       floatingActionButton: buildAnalysisFloatingOverlay(
         showStartAction: showFloatingAnalysisAction,
         isAnalyzing: _isAnalyzing,
-        analysisCompleted: _enthusiasmScore != null,
+        analysisCompleted: _hasAnalysisResult,
         onStart: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
         onFollowProgress: _jumpToCurrentAnalysis,
         isFollowing: _followLiveAnalysis,
@@ -4049,7 +4295,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 的「尚未開始分析」提示。重新讀圖會清空 _enthusiasmScore
                           // （見 _recognizeAndAddToConversation），卡片即正確重現。
                           if (!_isAnalyzing &&
-                              _enthusiasmScore == null &&
+                              !_hasAnalysisResult &&
                               _recognizedConversation != null &&
                               _recognizedConversation!.messageCount > 0) ...[
                             RecognizedConversationCard(
@@ -4149,6 +4395,36 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ],
                           ],
 
+                          // 對話分析 v3（任務卡）：燈號＋判讀＋任務卡，卡一到就
+                          // 畫、就能複製（Eric 2026-10-17：不留雷達、熱度、階段）。
+                          if (_v3Read != null) ...[
+                            GuideV3ResultSection(
+                              anchorKey: _guideV3SectionKey,
+                              read: _v3Read!,
+                              cards: _v3Cards,
+                              isStreaming: _isAnalyzing && _v3Result == null,
+                              isFinal: _v3Result != null,
+                              partial: _v3Result?.partial ?? false,
+                              recovered: _v3Result?.recovered ?? false,
+                              editedMessagesFor: _guideV3EditedFor,
+                              onCopy: _copyGuideV3Card,
+                              onEdit: (card) =>
+                                  unawaited(_editGuideV3Card(card)),
+                              onUpgrade: () => unawaited(_showPaywall(context)),
+                              footerFor: (card) => _buildAnalysisOutcomeBar(
+                                cardKey: _guideV3CardKey(card),
+                                label: card.task.label,
+                              ),
+                              showUpgradeRefresh:
+                                  _analysisNeedsReplyRefresh(subscription),
+                              refreshBusy:
+                                  _isAnalyzing || _isRefreshingPremiumReplies,
+                              onRefreshAfterUpgrade: () =>
+                                  unawaited(_refreshPremiumReplies()),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
                           // 回覆區合併（Bruce dogfood 2026-08-08 拍板）：
                           // AI 推薦回覆是橫滑卡組第一張，右滑接其他風格；
                           // 回覆不再藏在詳細分析折疊裡。
@@ -4177,7 +4453,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               ],
                             ),
 
-                          if (_enthusiasmScore != null) ...[
+                          if (_hasAnalysisResult) ...[
                             // 實扣顯示常駐行（smoke P2 fix 2026-06-11）：
                             // 隨快照持久化，回看也顯示；SnackBar 保留即時感知。
                             AnalysisUsageSummaryLine(
@@ -4189,9 +4465,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           // 完成後首屏留給「下一步＋回覆建議」。2026-08-15 拍板：
                           // 內嵌 CoachSurface 退場，改 CTA 卡直達 Sydney 視窗
                           // （conversation scope＋分析快照隨行）。
-                          if (_enthusiasmScore != null &&
-                              _gameStage != null &&
-                              _finalRecommendation != null) ...[
+                          if ((_enthusiasmScore != null &&
+                                  _gameStage != null &&
+                                  _finalRecommendation != null) ||
+                              (_v3Result != null && !_v3Result!.isCare)) ...[
                             CoachCtaCard(
                               buttonKey: const Key('analysis_coach_cta'),
                               onTap: _openCoachQuestion,
@@ -4228,7 +4505,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               ),
                           ],
 
-                          if (_isAnalyzing && _enthusiasmScore == null) ...[
+                          // v3 判讀一到就換成結果區（還沒到的卡顯示「正在寫」）。
+                          if (_isAnalyzing &&
+                              _enthusiasmScore == null &&
+                              _v3Read == null) ...[
                             Center(
                               child: StreamingAnalysisLoader(
                                 label: _streamProgressLabel,
@@ -4286,7 +4566,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // 草稿潤飾：獨立面板入口（2026-08-16 Bruce 回饋，
                           // 從收合卡升級成整頁式）。判斷/策略仍交給 Coach 1:1。
-                          if (_enthusiasmScore != null) ...[
+                          if (_hasAnalysisResult &&
+                              !(_v3Result?.isCare ?? false)) ...[
                             const SizedBox(height: 24),
                             DraftPolishEntryCard(
                               onOpen: _openDraftPolishSheet,
@@ -4305,7 +4586,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           // 反饋區塊 (有分析結果時顯示)
-                          if (_enthusiasmScore != null) ...[
+                          if (_hasAnalysisResult) ...[
                             const SizedBox(height: 24),
                             AnalysisFeedbackSection(
                               submitted: _feedbackSubmitted,
@@ -4373,7 +4654,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     // 待分析片段的內容在前一頁一次建立；OCR 重新選圖也只會整批
     // 取代。這裡不再提供逐則追加入口，避免把零散聊天拼成逐字稿。
-    if (_enthusiasmScore == null && !hasCompletedAnalysisEvidence) {
+    if (!_hasAnalysisResult && !hasCompletedAnalysisEvidence) {
       return const SizedBox.shrink();
     }
 

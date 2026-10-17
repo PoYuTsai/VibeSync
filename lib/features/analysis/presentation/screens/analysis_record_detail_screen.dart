@@ -17,6 +17,8 @@ import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/entities/guide_v3_result.dart';
+import '../sections/guide_v3_result_section.dart';
+import '../widgets/guide_v3_task_card.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/swipe_hint_nudge.dart';
@@ -51,7 +53,21 @@ class AnalysisRecordDetailScreen extends StatefulWidget {
 class _AnalysisRecordDetailScreenState
     extends State<AnalysisRecordDetailScreen> {
   late final AnalysisResult? _result = _parseResult();
+  late final GuideV3Result? _guideV3 = _parseGuideV3();
   bool _deleting = false;
+
+  /// v3（任務卡）紀錄：照形狀解析，不交給 AnalysisResult。
+  GuideV3Result? _parseGuideV3() {
+    try {
+      final decoded = jsonDecode(widget.record.analysisSnapshotJson);
+      if (!isGuideV3Payload(decoded)) return null;
+      return GuideV3Result.fromJson(
+        (decoded as Map).map((key, value) => MapEntry(key.toString(), value)),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 
   AnalysisResult? _parseResult() {
     try {
@@ -219,7 +235,12 @@ class _AnalysisRecordDetailScreenState
               const SizedBox(height: 24),
               const _DetailSectionTitle(title: '當次分析'),
               const SizedBox(height: 8),
-              if (_result == null)
+              if (_guideV3 != null)
+                _SavedGuideV3Card(
+                  result: _guideV3,
+                  onCopy: _copyRecommendation,
+                )
+              else if (_result == null)
                 const _UnavailableAnalysisCard()
               else
                 _SavedAnalysisCard(
@@ -242,6 +263,51 @@ class _AnalysisRecordDetailScreenState
           ),
         ),
       ),
+    );
+  }
+}
+
+/// v3 紀錄的判讀與任務卡（唯讀；複製不記成效，跟 v2 紀錄一樣）。空格一樣要
+/// 填好才能複製。
+class _SavedGuideV3Card extends StatefulWidget {
+  const _SavedGuideV3Card({required this.result, required this.onCopy});
+
+  final GuideV3Result result;
+  final Future<void> Function(String content, {String message}) onCopy;
+
+  @override
+  State<_SavedGuideV3Card> createState() => _SavedGuideV3CardState();
+}
+
+class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
+  final _edited = <int, List<String>>{};
+
+  Future<void> _edit(GuideV3Card card) async {
+    final edited = await showGuideV3EditSheet(
+      context,
+      messages: _edited[card.slot] ?? card.messages,
+    );
+    if (edited == null || !mounted) return;
+    setState(() => _edited[card.slot] = edited);
+    await widget.onCopy(
+      edited.join('\n'),
+      message: edited.length == 1 ? '已複製這句' : '已複製這組訊息',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final result = widget.result;
+    return GuideV3ResultSection(
+      read: result.read,
+      cards: result.cards,
+      isStreaming: false,
+      isFinal: true,
+      partial: result.partial,
+      recovered: result.recovered,
+      editedMessagesFor: (card) => _edited[card.slot],
+      onCopy: (card, text, toast) => widget.onCopy(text, message: toast),
+      onEdit: (card) => _edit(card),
     );
   }
 }

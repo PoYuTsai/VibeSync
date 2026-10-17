@@ -127,6 +127,70 @@ AnalysisRecord _guideV3Record({required String id, required DateTime at}) {
 }
 
 void main() {
+  testWidgets('新流程紀錄詳情：判讀與任務卡，沒有熱度卡；有空格要先填', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final base = _guideV3Record(id: 'v3-detail', at: DateTime(2026, 10, 17));
+    final record = AnalysisRecord(
+      id: base.id,
+      ownerUserId: base.ownerUserId,
+      conversationId: base.conversationId,
+      partnerId: base.partnerId,
+      subjectName: base.subjectName,
+      segmentStart: base.segmentStart,
+      segmentEnd: base.segmentEnd,
+      createdAt: base.createdAt,
+      messages: base.messages,
+      analysisSnapshotJson: jsonEncode({
+        'guideVersion': 'v3.4',
+        'read': {
+          'guideVersion': 'v3.4',
+          'decision': 'send',
+          'light': 'yellow',
+          'judgment': '她在問你的事，先接住再說。',
+          'plannedCards': [
+            {'slot': 1, 'task': 'accept', 'locked': false},
+          ],
+        },
+        'cards': [
+          {
+            'slot': 1,
+            'task': 'accept',
+            'method': 'blank',
+            'voice': 'default',
+            'messages': ['我是做＿＿的'],
+            'hasInventedDetail': false,
+            'hasBlank': true,
+          },
+        ],
+        'partial': false,
+      }),
+      analyzedContentRevision: base.analyzedContentRevision,
+      completionKey: base.completionKey,
+      sourcePlatform: base.sourcePlatform,
+      enthusiasmScore: null,
+      gameStageLabel: '',
+      guideVersion: 'v3.4',
+      guideV3Light: 'yellow',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const ValueKey('analysis-record-score-card')), findsNothing);
+    expect(find.text('局面判讀'), findsOneWidget);
+    expect(find.text('黃燈'), findsOneWidget);
+    expect(find.text('她在問你的事，先接住再說。'), findsOneWidget);
+    expect(find.text('接住'), findsOneWidget);
+    expect(find.text('填好空格再複製'), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
+    expect(find.text('這筆分析內容暫時無法顯示，但上方聊天片段仍完整保留。'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('新流程紀錄在列表顯示燈號，不顯示熱度（Eric 2026-10-17）', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));

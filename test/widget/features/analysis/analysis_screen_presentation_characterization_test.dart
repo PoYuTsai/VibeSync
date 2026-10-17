@@ -16,12 +16,14 @@ import 'package:vibesync/features/analysis/data/services/analyze_stream_client.d
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/sections/analysis_banners_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/reply_style_card.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/swipe_hint_nudge.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_usage_summary_line.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
@@ -791,6 +793,169 @@ void main() {
       expect(find.text('先承接情緒，再自然延伸。'), findsOneWidget);
       expect(find.byIcon(Icons.route_outlined), findsOneWidget);
       expect(find.byIcon(Icons.chat_bubble_outline), findsWidgets);
+    });
+  });
+
+  group('對話分析 v3（任務卡）：燈號＋判讀＋任務卡取代熱度與五種風格', () {
+    Map<String, dynamic> readJson({
+      String decision = 'send',
+      List<Map<String, dynamic>>? planned,
+      String? careMessage,
+    }) =>
+        {
+          'guideVersion': 'v3.4',
+          'decision': decision,
+          'light': 'green',
+          'judgment': decision == 'care' ? '' : '她有在接你的話，可以往前一步。',
+          if (careMessage != null) 'careMessage': careMessage,
+          'plannedCards': planned ??
+              [
+                {'slot': 1, 'task': 'accept', 'locked': false},
+                {'slot': 2, 'task': 'push', 'locked': false},
+                {'slot': 3, 'task': 'tension', 'locked': true},
+              ],
+        };
+    Map<String, dynamic> cardJson(int slot, String task, String text) => {
+          'slot': slot,
+          'task': task,
+          'method': 'reaction',
+          'voice': 'default',
+          'messages': [text],
+          'hasInventedDetail': false,
+          'hasBlank': false,
+        };
+    GuideV3Result finalResult({
+      String decision = 'send',
+      List<Map<String, dynamic>>? cards,
+      String? careMessage,
+    }) =>
+        GuideV3Result.fromJson({
+          'guideVersion': 'v3.4',
+          'read': readJson(
+            decision: decision,
+            planned: decision == 'send' ? null : const [],
+            careMessage: careMessage,
+          ),
+          'cards': cards ??
+              [
+                cardJson(1, 'accept', '那家我也想吃吃看'),
+                cardJson(2, 'push', '週六下午一起去？我來找位子'),
+              ],
+          'partial': false,
+          'usage': {
+            'messagesUsed': decision == 'care' ? 0 : 1,
+            'monthlyRemaining': 29,
+            'dailyRemaining': 4,
+            'tierUsed': 'free',
+          },
+        })!;
+    /// 首次進頁的「長按訊息泡泡」提示會蓋住整頁，點擊前先關掉。
+    Future<void> dismissEditCoachMark(WidgetTester tester) async {
+      await tester.tap(find.text('知道了'));
+      await tester.pump();
+    }
+
+    StreamingAnalysisState doneSeed(GuideV3Result result) =>
+        StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.done,
+          analysisRunId: 'run_v3',
+          isGuideV3Run: true,
+          guideV3Read: result.read,
+          guideV3Cards: result.cards,
+          guideV3Result: result,
+        );
+
+    testWidgets('完成：沒有熱度、五種風格、詳細分析；複製用伺服器 runId 記成效', (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final outcomes = MemoryCoachingOutcomeRepository();
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult()),
+        outcomes: outcomes,
+      );
+      await dismissEditCoachMark(tester);
+
+      expect(find.text('局面判讀'), findsOneWidget);
+      expect(find.text('綠燈'), findsOneWidget);
+      expect(find.text('接住'), findsOneWidget);
+      expect(find.text('推進'), findsOneWidget);
+      expect(find.text('升級後才看得到這張'), findsOneWidget);
+      expect(find.byKey(const ValueKey('analysis-reply-zone')), findsNothing);
+      expect(find.byType(ReplyStyleCard), findsNothing);
+      expect(find.textContaining('本次投入'), findsNothing);
+      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('guide-v3-card-1-copy')),
+      );
+      await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
+      await tester.pump();
+      expect(copied, ['那家我也想吃吃看']);
+      final event = outcomes.listRecent().single;
+      expect(event.id, 'analyze:$_conversationId:run_v3:v3:1:accept');
+      expect(event.adviceType, 'v3:1:accept');
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('串流中：第一張卡已能複製，還沒到的卡顯示正在寫，不顯示大的載入動畫', (tester) async {
+      final outcomes = MemoryCoachingOutcomeRepository();
+      final read = GuideV3Read.fromJson(readJson())!;
+      final first = GuideV3Card.fromJson(cardJson(1, 'accept', '那家我也想吃吃看'))!;
+      await _pumpScreen(
+        tester,
+        seed: StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.streamingReport,
+          analysisRunId: 'run_v3',
+          isGuideV3Run: true,
+          guideV3Read: read,
+          guideV3Cards: [first],
+        ),
+        outcomes: outcomes,
+      );
+      await dismissEditCoachMark(tester);
+
+      expect(find.byType(StreamingAnalysisLoader), findsNothing);
+      expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('guide-v3-card-1-copy')),
+      );
+      await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
+      await tester.pump();
+      expect(
+        outcomes.listRecent().single.id,
+        'analyze:$_conversationId:run_v3:v3:1:accept',
+      );
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('關心：只有關心文案，沒有問教練、潤飾與扣費行', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(
+          decision: 'care',
+          cards: const [],
+          careMessage: '先把安全放在第一位。',
+        )),
+      );
+      expect(find.text('先關心安全'), findsOneWidget);
+      expect(find.text('先把安全放在第一位。'), findsOneWidget);
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
+      expect(find.textContaining('本次分析使用'), findsNothing);
+      expect(find.text('潤飾草稿'), findsNothing);
     });
   });
 
