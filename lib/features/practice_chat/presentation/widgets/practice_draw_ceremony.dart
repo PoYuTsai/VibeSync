@@ -61,7 +61,8 @@ Size practiceCeremonyCardSize(Size screen) {
 /// 規格：`docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md`。第二刀換上 V3 外觀：
 /// 背景模糊、銀色卡背依稀有度染色（銀 → 藍 → 金，只升到真實稀有度）、光刃與星塵、
 /// 全息掃光、膠囊稀有度牌、兩行毛玻璃資訊欄與亮星；卡片元件在 `practice_reveal_card.dart`，
-/// 特效 painter 在 `practice_reveal_painters.dart`。三條稀有度配樂在後續刀次。
+/// 特效 painter 在 `practice_reveal_painters.dart`。聲音（第三刀）：N／R／SR 同一條揭曉配樂
+/// （翻牌紙聲混在裡面），點擊收卡時一聲收卡音；稀有度差別只靠畫面與觸覺（規格 D3）。
 ///
 /// 流程：hidden → drawing（卡背入場＋等待呼吸）→ revealing（蓄力 → 單次翻牌 → 資訊浮出，
 /// 共 2.7 s）→ holding（畫面靜止，等使用者點）→ archiving（縮成光球飛進圖鑑那一格，
@@ -107,8 +108,8 @@ class PracticeDrawCeremony extends ConsumerStatefulWidget {
 
 enum _CeremonyPhase { hidden, drawing, revealing, holding, archiving }
 
-/// 揭曉對拍點（`_reveal` 經過的毫秒，規格 §5.3）。配樂重音都在 bed 裡，這裡只補翻牌
-/// 紙聲與觸覺。
+/// 揭曉對拍點（`_reveal` 經過的毫秒，規格 §5.3）。配樂重音與翻牌紙聲都在 bed 裡，這裡
+/// 只負責觸覺。
 enum _RevealBeat {
   chargeTick0(0),
   chargeTick1(PracticeRevealTiming.chargeTick1Ms),
@@ -123,7 +124,7 @@ enum _RevealBeat {
   /// 只有 SR：celebrate 三下共 200 ms，第三下重擊落在翻牌峰值。
   srBuild(PracticeRevealTiming.srBuildMs),
 
-  /// 卡片正好側立：翻牌紙聲；N／R 的重擊。
+  /// 卡片正好側立：N／R 的重擊（翻牌紙聲已混在配樂 bed 的 1.35 s）。
   flipPeak(PracticeRevealTiming.flipPeakMs),
 
   /// 稀有度牌烙上：一下 tap。
@@ -431,7 +432,6 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       case _RevealBeat.srBuild:
         if (isSr) unawaited(AppHaptics.celebrate());
       case _RevealBeat.flipPeak:
-        _sfx.playFlipSnap();
         if (!isSr) AppHaptics.medium();
       case _RevealBeat.stamp:
         if (_kStampTapEnabled) AppHaptics.tap();
@@ -474,7 +474,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final girl = _revealGirl;
     final target =
         girl == null ? null : _resolveArchiveTarget(box, girl.profileId);
-    // 收卡：配樂與咻聲尾巴都淡出，不帶到圖鑑頁。
+    // 收卡：播收卡音；配樂與咻聲尾巴都淡出，不帶到圖鑑頁。
+    _sfx.playArchive();
     _sfx.stopRevealBed();
     _sfx.stopWhoosh();
     _landed = false;
