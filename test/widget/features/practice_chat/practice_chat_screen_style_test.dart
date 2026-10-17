@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/core/theme/practice_reveal_palette.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_game_intro_store.dart';
@@ -25,6 +27,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_tempera
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -3576,7 +3579,7 @@ void main() {
     await pumpLocked(tester, api: api);
     await drawToReveal(tester, completer: completer, girl: girl);
 
-    const infoKey = ValueKey('practice-draw-ceremony-grand-info');
+    const infoKey = ValueKey('practice-draw-ceremony-info');
     await tester.pump(revealAt(PracticeRevealTiming.flipEndMs));
     expect(find.byKey(_ceremonyFrontKey), findsOneWidget);
     expect(opacityAbove(tester, find.byKey(infoKey)), 0);
@@ -3584,35 +3587,170 @@ void main() {
     await tester.pump(revealAt(
         PracticeRevealTiming.infoEndMs - PracticeRevealTiming.flipEndMs + 20));
     expect(opacityAbove(tester, find.byKey(infoKey)), 1);
-    // 稀有度 badge 翻開第一幀就在、而且是正確稀有度。
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('practice-draw-ceremony-rarity-badge')),
-        matching: find.text(girl.rarity.label),
-      ),
-      findsOneWidget,
-    );
     // 資訊欄仍不得用 hero 的「名字，年齡」精確字串（仍只在 hero 一處）。
     expect(find.text('${girl.displayName}，${girl.age}'), findsOneWidget);
 
     await finishCeremony(tester);
   });
 
-  testWidgets('V3：翻牌閃光只在卡片側立附近出現', (tester) async {
+  testWidgets('V3：點擊提示 2.4 s 起淡入、同時從下方 6 px 浮上來，停住時定在原位', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
     await pumpLocked(tester, api: api);
     await drawToReveal(tester,
         completer: completer, girl: practiceGirlProfiles[2]);
-    const flashKey = ValueKey('practice-draw-ceremony-flip-flash');
+
+    double hintDy() => tester
+        .widget<Transform>(
+          find
+              .ancestor(
+                of: find.byKey(_ceremonyHintKey),
+                matching: find.byType(Transform),
+              )
+              .first,
+        )
+        .transform
+        .getTranslation()
+        .y;
+
+    await tester.pump(revealAt(PracticeRevealTiming.hintStartMs + 60));
+    expect(hintDy(), inExclusiveRange(0, 6)); // 還在下方，正往上浮
+    expect(
+      opacityAbove(tester, find.byKey(_ceremonyHintKey)),
+      inExclusiveRange(0, 0.72),
+    );
+
+    await tester.pumpAndSettle(); // 揭曉走完：停住
+    expect(hintDy(), 0);
+    expect(opacityAbove(tester, find.byKey(_ceremonyHintKey)), 0.72);
+
+    await finishCeremony(tester);
+  });
+
+  testWidgets('V3：稀有度牌 2.0 s 才烙上（之前不存在），出現第一幀就是正確稀有度', (tester) async {
+    final girl = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester, completer: completer, girl: girl);
+    const badgeKey = ValueKey('practice-draw-ceremony-rarity-badge');
+
+    // 翻開後到烙印前每 50 ms 取樣：正面在、牌不在（不先掛別的稀有度）。
+    await tester.pump(revealAt(PracticeRevealTiming.flipEndMs));
+    for (var ms = PracticeRevealTiming.flipEndMs;
+        ms < PracticeRevealTiming.stampStartMs;
+        ms += 50) {
+      expect(find.byKey(_ceremonyFrontKey), findsOneWidget);
+      expect(find.byKey(badgeKey), findsNothing, reason: '$ms ms');
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(
+      find.descendant(
+        of: find.byKey(badgeKey),
+        matching: find.text(girl.rarity.label),
+      ),
+      findsOneWidget,
+    );
+
+    await finishCeremony(tester);
+  });
+
+  testWidgets('V3：光刃只在卡片側立那一刻（1.35–1.6 s）出現', (tester) async {
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester,
+        completer: completer, girl: practiceGirlProfiles[2]);
+    const bladeKey = ValueKey('practice-draw-ceremony-light-blade');
 
     await tester.pump(revealAt(1000));
-    expect(find.byKey(flashKey), findsNothing);
-    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs - 1000));
-    expect(find.byKey(flashKey), findsOneWidget);
-    await tester.pump(revealAt(
-        PracticeRevealTiming.flipEndMs - PracticeRevealTiming.flipPeakMs));
-    expect(find.byKey(flashKey), findsNothing);
+    expect(find.byKey(bladeKey), findsNothing);
+    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs - 1000 + 40));
+    expect(find.byKey(bladeKey), findsOneWidget);
+    await tester.pump(revealAt(PracticeRevealTiming.bladeMs));
+    expect(find.byKey(bladeKey), findsNothing);
+
+    await finishCeremony(tester);
+  });
+
+  // 卡背染色取樣：同色＝三個通道差距總和很小（lerp 的浮點誤差不算變色）。
+  bool nearColor(Color a, Color b) =>
+      (a.r - b.r).abs() + (a.g - b.g).abs() + (a.b - b.b).abs() < 0.01;
+
+  for (final rarity in PracticeGirlRarity.values) {
+    testWidgets('V3：稀有度誠實（${rarity.label}）——卡背每 50 ms 取樣，只升到真實稀有度',
+        (tester) async {
+      final girl = practiceGirlProfiles.firstWhere((g) => g.rarity == rarity);
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api);
+      await drawToReveal(tester, completer: completer, girl: girl);
+
+      var sawBlue = false;
+      var sawGold = false;
+      for (var ms = 0.0; ms < PracticeRevealTiming.flipPeakMs; ms += 50) {
+        final back = tester.widget<PracticeRevealCardBack>(
+          find.byType(PracticeRevealCardBack),
+        );
+        final tint = back.colors.tint;
+        sawBlue |= nearColor(tint, PracticeRevealPalette.rBackTint);
+        sawGold |= nearColor(tint, PracticeRevealPalette.srBackTint);
+        if (rarity == PracticeGirlRarity.n) {
+          expect(nearColor(tint, PracticeRevealPalette.nBackTint), isTrue,
+              reason: 'N 全程銀（$ms ms）');
+        }
+        if (rarity != PracticeGirlRarity.sr) {
+          expect(sawGold, isFalse, reason: '${rarity.label} 不會出現金（$ms ms）');
+          expect(back.colors.holo, 0);
+          expect(back.goldFlash, 0);
+        }
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(sawBlue, rarity != PracticeGirlRarity.n);
+      expect(sawGold, rarity == PracticeGirlRarity.sr);
+
+      await finishCeremony(tester);
+    });
+  }
+
+  testWidgets('V3：停住時稀有度牌與資訊欄都在卡片內、星星在資訊欄內、只畫亮星', (tester) async {
+    final girl = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester, completer: completer, girl: girl);
+    await tester.pumpAndSettle(); // 揭曉走完、停住
+
+    bool inside(Rect outer, Rect inner) {
+      final bounds = outer.inflate(0.5);
+      return bounds.contains(inner.topLeft) &&
+          bounds.contains(inner.bottomRight);
+    }
+
+    final card = tester.getRect(find.byKey(_ceremonyFrontKey));
+    final badge = tester.getRect(
+        find.byKey(const ValueKey('practice-draw-ceremony-rarity-badge')));
+    final info = tester
+        .getRect(find.byKey(const ValueKey('practice-draw-ceremony-info')));
+    const starsKey = ValueKey('practice-draw-ceremony-rarity-stars');
+    final stars = tester.getRect(find.byKey(starsKey));
+    expect(inside(card, badge), isTrue, reason: '牌 $badge 超出卡片 $card');
+    expect(inside(card, info), isTrue, reason: '資訊欄 $info 超出卡片 $card');
+    expect(inside(info, stars), isTrue, reason: '星星 $stars 超出資訊欄 $info');
+    expect(badge.overlaps(info), isFalse);
+    expect(
+      find.descendant(
+          of: find.byKey(starsKey), matching: find.byIcon(Icons.star_rounded)),
+      findsNWidgets(girl.rarity.stars),
+    );
+    expect(
+      find.descendant(
+          of: find.byKey(starsKey),
+          matching: find.byIcon(Icons.star_outline_rounded)),
+      findsNothing,
+    );
 
     await finishCeremony(tester);
   });
@@ -3695,6 +3833,8 @@ void main() {
         hasTapAction: true,
       ),
     );
+    // 只有儀式這一層會主動唸（資訊欄不設 liveRegion），不會連唸兩次。
+    expect(find.semantics.byFlag(SemanticsFlag.isLiveRegion), findsOne);
 
     await finishCeremony(tester);
     handle.dispose();
@@ -4123,7 +4263,7 @@ void main() {
     expect(spy.chime, 0); // 舊 reveal chime 不回來
   });
 
-  testWidgets('對拍（V3）：N 抽中當下不震，翻牌峰值重擊、落位一下', (tester) async {
+  testWidgets('對拍（V3）：N 不變色不震，翻牌峰值重擊、烙印一下、落位一下', (tester) async {
     final vibrates = recordHaptics(tester);
     final spy = _SpyPracticeDrawSfx();
     final completer = Completer<PracticeDrawResult>();
@@ -4142,13 +4282,35 @@ void main() {
     expect(withoutTicks(vibrates), [
       'HapticFeedbackType.mediumImpact', // 抽牌
       'HapticFeedbackType.heavyImpact', // 1.35 s 翻牌峰值
+      'HapticFeedbackType.lightImpact', // 2.0 s 稀有度牌烙印
       'HapticFeedbackType.mediumImpact', // 收卡光球落位
     ]);
-    expect(vibrates.where((v) => v == tickHaptic).length, lessThanOrEqualTo(3));
+    // 蓄力 3 下＋亮星 2 下（真實時間節流，只驗上限）。
+    expect(vibrates.where((v) => v == tickHaptic).length, lessThanOrEqualTo(5));
     expect(spy.calls, revealSfxSequence);
   });
 
-  testWidgets('對拍（V3）：SR 在 1.15 s 起 celebrate、第三下落在翻牌峰值；音效序列與 N 相同',
+  testWidgets('對拍（V3）：R 染藍一下，翻牌峰值重擊、烙印一下、落位一下', (tester) async {
+    final vibrates = recordHaptics(tester);
+    final spy = _SpyPracticeDrawSfx();
+    final r = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.r);
+    final api = _DrawApi(() async => _drawResultFor(r));
+    await pumpLockedWithSfx(tester, api: api, sfx: spy);
+
+    await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
+    await finishCeremony(tester);
+    expect(withoutTicks(vibrates), [
+      'HapticFeedbackType.mediumImpact', // 抽牌
+      'HapticFeedbackType.mediumImpact', // 0.6 s 染藍
+      'HapticFeedbackType.heavyImpact', // 1.35 s 翻牌峰值
+      'HapticFeedbackType.lightImpact', // 2.0 s 稀有度牌烙印
+      'HapticFeedbackType.mediumImpact', // 收卡光球落位
+    ]);
+    expect(spy.calls, revealSfxSequence);
+  });
+
+  testWidgets('對拍（V3）：SR 染藍、染金各一下，1.15 s 起 celebrate、第三下落在翻牌峰值；音效序列與 N 相同',
       (tester) async {
     final vibrates = recordHaptics(tester);
     final spy = _SpyPracticeDrawSfx();
@@ -4161,9 +4323,12 @@ void main() {
     await finishCeremony(tester);
     expect(withoutTicks(vibrates), [
       'HapticFeedbackType.mediumImpact', // 抽牌
+      'HapticFeedbackType.lightImpact', // 0.6 s 染藍
+      'HapticFeedbackType.mediumImpact', // 0.85 s 染金
       'HapticFeedbackType.lightImpact', // 1.15 s celebrate 第一下
       'HapticFeedbackType.mediumImpact',
       'HapticFeedbackType.heavyImpact', // 1.35 s 翻牌峰值
+      'HapticFeedbackType.lightImpact', // 2.0 s 稀有度牌烙印
       'HapticFeedbackType.mediumImpact', // 收卡光球落位
     ]);
     expect(spy.calls, revealSfxSequence); // 聲音和 N 完全一樣

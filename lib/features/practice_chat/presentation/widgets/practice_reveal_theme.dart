@@ -1,0 +1,177 @@
+// 抽卡揭曉 V3 的稀有度主題（規格 docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md §7）。
+// 色值本體在 lib/core/theme/practice_reveal_palette.dart；這裡只負責「哪個稀有度用哪組」，
+// 以及卡背染色當下（銀 → 藍 → 金）的顏色插值。圖鑑卡的配色（practice_rarity_style.dart）不動。
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+
+import '../../../../core/theme/practice_reveal_palette.dart';
+import '../../domain/entities/practice_girl_rarity.dart';
+import 'practice_reveal_timing.dart';
+
+@immutable
+class PracticeRevealTheme {
+  const PracticeRevealTheme._({
+    required this.backTint,
+    required this.backTintDeep,
+    required this.frameLight,
+    required this.frameDeep,
+    required this.glow,
+    required this.ambientAlpha,
+    required this.burstCount,
+    required this.sheenStrength,
+    required this.badgeLight,
+    required this.badgeDeep,
+    required this.star,
+    required this.orb,
+    required this.holo,
+  });
+
+  /// 卡背徽記與外框的染色漸層（左上 → 右下）。
+  final Color backTint;
+  final Color backTintDeep;
+
+  /// 卡面外框的 135° 漸層（亮 → 深 → 亮）。
+  final Color frameLight;
+  final Color frameDeep;
+
+  /// 環境光、卡面外光、光刃外暈的顏色。
+  final Color glow;
+
+  /// 卡片背後環境光的不透明度。
+  final double ambientAlpha;
+
+  /// 翻牌峰值爆發的星塵顆數。
+  final int burstCount;
+
+  /// 全息掃光強度。
+  final double sheenStrength;
+
+  /// 稀有度牌的底色漸層（上 → 下）。
+  final Color badgeLight;
+  final Color badgeDeep;
+
+  /// 亮星顏色；星塵也用它（另一半是白）。
+  final Color star;
+
+  /// 收卡光球、落點光環、圖鑑那一格發光的顏色。
+  final Color orb;
+
+  /// SR 才有：卡背外框的全息彩邊、卡面掃光的兩道細彩邊、粉色星塵。
+  final bool holo;
+
+  static const PracticeRevealTheme n = PracticeRevealTheme._(
+    backTint: PracticeRevealPalette.nBackTint,
+    backTintDeep: PracticeRevealPalette.nBackTintDeep,
+    frameLight: PracticeRevealPalette.nFrameLight,
+    frameDeep: PracticeRevealPalette.nFrameDeep,
+    glow: PracticeRevealPalette.nGlow,
+    ambientAlpha: 0.22,
+    burstCount: 20,
+    sheenStrength: 0.35,
+    badgeLight: PracticeRevealPalette.nBadgeLight,
+    badgeDeep: PracticeRevealPalette.nBadgeDeep,
+    star: PracticeRevealPalette.nStar,
+    orb: PracticeRevealPalette.nOrb,
+    holo: false,
+  );
+
+  static const PracticeRevealTheme r = PracticeRevealTheme._(
+    backTint: PracticeRevealPalette.rBackTint,
+    backTintDeep: PracticeRevealPalette.rBackTintDeep,
+    frameLight: PracticeRevealPalette.rFrameLight,
+    frameDeep: PracticeRevealPalette.rFrameDeep,
+    glow: PracticeRevealPalette.rGlow,
+    ambientAlpha: 0.32,
+    burstCount: 26,
+    sheenStrength: 0.55,
+    badgeLight: PracticeRevealPalette.rBadgeLight,
+    badgeDeep: PracticeRevealPalette.rBadgeDeep,
+    star: PracticeRevealPalette.rStar,
+    orb: PracticeRevealPalette.rOrb,
+    holo: false,
+  );
+
+  static const PracticeRevealTheme sr = PracticeRevealTheme._(
+    backTint: PracticeRevealPalette.srBackTint,
+    backTintDeep: PracticeRevealPalette.srBackTintDeep,
+    frameLight: PracticeRevealPalette.srFrameLight,
+    frameDeep: PracticeRevealPalette.srFrameDeep,
+    glow: PracticeRevealPalette.srGlow,
+    ambientAlpha: 0.45,
+    burstCount: 34,
+    sheenStrength: 0.85,
+    badgeLight: PracticeRevealPalette.srBadgeLight,
+    badgeDeep: PracticeRevealPalette.srBadgeDeep,
+    star: PracticeRevealPalette.srStar,
+    orb: PracticeRevealPalette.srOrb,
+    holo: true,
+  );
+
+  static PracticeRevealTheme of(PracticeGirlRarity rarity) {
+    switch (rarity) {
+      case PracticeGirlRarity.n:
+        return n;
+      case PracticeGirlRarity.r:
+        return r;
+      case PracticeGirlRarity.sr:
+        return sr;
+    }
+  }
+}
+
+/// 卡背在染色時間軸上當下的顏色。等待期與 N 全程是銀；R 只會銀 → 藍；SR 才會再
+/// 藍 → 金（[practiceRevealDye] 保證只升到真實稀有度）。
+@immutable
+class PracticeRevealBackColors {
+  const PracticeRevealBackColors({
+    required this.tint,
+    required this.tintDeep,
+    required this.glow,
+    required this.ambientAlpha,
+    required this.holo,
+  });
+
+  /// 還沒染色的銀（等待期、N）。
+  static final PracticeRevealBackColors silver = PracticeRevealBackColors(
+    tint: PracticeRevealTheme.n.backTint,
+    tintDeep: PracticeRevealTheme.n.backTintDeep,
+    glow: PracticeRevealTheme.n.glow,
+    ambientAlpha: PracticeRevealTheme.n.ambientAlpha,
+    holo: 0,
+  );
+
+  /// [ms]＝揭曉經過的毫秒。
+  factory PracticeRevealBackColors.at(double ms, PracticeGirlRarity rarity) {
+    final dye = practiceRevealDye(ms, rarity);
+    const silverTheme = PracticeRevealTheme.n;
+    const blueTheme = PracticeRevealTheme.r;
+    const goldTheme = PracticeRevealTheme.sr;
+    Color mix(Color a, Color b, Color c) =>
+        Color.lerp(Color.lerp(a, b, dye.blue), c, dye.gold)!;
+    double mixD(double a, double b, double c) =>
+        (a + (b - a) * dye.blue) * (1 - dye.gold) + c * dye.gold;
+    return PracticeRevealBackColors(
+      tint: mix(silverTheme.backTint, blueTheme.backTint, goldTheme.backTint),
+      tintDeep: mix(
+        silverTheme.backTintDeep,
+        blueTheme.backTintDeep,
+        goldTheme.backTintDeep,
+      ),
+      glow: mix(silverTheme.glow, blueTheme.glow, goldTheme.glow),
+      ambientAlpha: mixD(
+        silverTheme.ambientAlpha,
+        blueTheme.ambientAlpha,
+        goldTheme.ambientAlpha,
+      ),
+      holo: dye.gold,
+    );
+  }
+
+  final Color tint;
+  final Color tintDeep;
+  final Color glow;
+  final double ambientAlpha;
+
+  /// SR 全息彩邊的強度（0..1，跟著染金走）。
+  final double holo;
+}
