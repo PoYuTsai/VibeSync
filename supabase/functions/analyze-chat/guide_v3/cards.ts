@@ -76,7 +76,7 @@ export function createLineSplitter(): {
 /// 由程式換掉；照他的卡跟他，不動。原文另存在 rawMessages。
 export function applyVoice(
   card: WrittenCard,
-  spec: CardSpec | undefined,
+  spec: Pick<CardSpec, "voice"> | undefined,
 ): WrittenCard & { rawMessages?: readonly string[] } {
   if (spec?.voice !== "預設" || !card.messages.some((m) => m.includes("妳"))) {
     return card;

@@ -152,6 +152,67 @@ Deno.test("舊 client 的未結算 pending 在新版 server 仍命中 replay", a
   );
 });
 
+// 2026-10-18 任務卡的再調上線前、帶指令的微調實際算出的值：沒帶卡的微調
+// hash 必須一字不差，7 天窗內的 pending 才 replay 得回來。
+const REFINE_GOLDEN_HASH =
+  "cb767ed559fcf30d955387dfbe15e53ae06a407fbb51c09d6a119355f2816826";
+
+Deno.test("任務卡規格進 hash；沒帶卡的微調 hash 跟上線前完全相同", async () => {
+  const refine = {
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    refineInstruction: "再幽默一點",
+  };
+  assertEquals(
+    await computeOptimizeMessageInputHash(refine),
+    REFINE_GOLDEN_HASH,
+  );
+  for (const absent of [null, undefined]) {
+    assertEquals(
+      await computeOptimizeMessageInputHash({ ...refine, guideV3Card: absent }),
+      REFINE_GOLDEN_HASH,
+    );
+  }
+  // 潤飾也一樣：沒帶卡就是 2026-07-28 的金值。
+  assertEquals(
+    await computeOptimizeMessageInputHash({
+      ...LEGACY_GOLDEN_FULL_INPUT,
+      guideV3Card: null,
+    }),
+    LEGACY_GOLDEN_FULL_HASH,
+  );
+
+  const card = { task: "push", voice: "default", method: "reaction" };
+  const withCard = await computeOptimizeMessageInputHash({
+    ...refine,
+    guideV3Card: card,
+  });
+  assert(withCard !== REFINE_GOLDEN_HASH);
+  // key 順序不影響（伺服器自己排固定順序）。
+  assertEquals(
+    await computeOptimizeMessageInputHash({
+      ...refine,
+      guideV3Card: { method: "reaction", voice: "default", task: "push" },
+    }),
+    withCard,
+  );
+  for (
+    const other of [
+      { ...card, task: "tension" },
+      { ...card, voice: "his" },
+      { ...card, method: "blank" },
+    ]
+  ) {
+    assert(
+      await computeOptimizeMessageInputHash({
+        ...refine,
+        guideV3Card: other,
+      }) !==
+        withCard,
+      JSON.stringify(other),
+    );
+  }
+});
+
 Deno.test("optimize-message replay preflight returns cached result or mismatch", () => {
   const result = { optimizedMessage: { optimized: "要不要一起喝咖啡？" } };
   assertEquals(

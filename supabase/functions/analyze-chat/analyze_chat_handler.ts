@@ -37,10 +37,11 @@ import {
 } from "./refine_allowance.ts";
 import { validateRefineInstruction } from "./refine_instruction.ts";
 import {
+  buildRefineSystemPrompt,
   buildRefineUserSection,
-  REFINE_REPLY_SYSTEM_PROMPT,
   sanitizeRefineInstructionForPrompt,
 } from "./refine_prompt.ts";
+import { parseGuideV3RefineCard } from "./guide_v3/refine_card.ts";
 import {
   computeBillingPayloadHash,
   MAX_BILLABLE_CHARS,
@@ -329,6 +330,7 @@ async function handleAnalyzeChat(
       userDraft: rawUserDraft,
       refineInstruction: rawRefineInstruction,
       refineAnchorText: rawRefineAnchorText,
+      guideV3Card: rawGuideV3Card,
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
       recognizeOnly: rawRecognizeOnly,
@@ -812,6 +814,23 @@ async function handleAnalyzeChat(
       ? rawRefineAnchorText.trim().slice(0, MAX_USER_DRAFT_LENGTH)
       : undefined;
 
+    // 任務卡的再調（Eric 2026-10-18）：只在微調時看；帶了就要是出卡用的代碼，
+    // 否則 400、0 扣費。潤飾請求帶了也不理（不進 hash、不進提示詞）。
+    const guideV3CardParse = refineInstruction === undefined
+      ? { kind: "absent" as const }
+      : parseGuideV3RefineCard(rawGuideV3Card);
+    if (guideV3CardParse.kind === "error") {
+      return jsonResponse({
+        error: "Invalid guideV3Card",
+        code: "INVALID_GUIDE_V3_CARD",
+        message: "這張卡的資料格式有誤，請更新 App 後再試。本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 400);
+    }
+    const guideV3Card = guideV3CardParse.kind === "ok"
+      ? guideV3CardParse.card
+      : null;
+
     const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
     if (sessionContextValidation.error) {
       return jsonResponse({ error: sessionContextValidation.error }, 400);
@@ -1064,6 +1083,7 @@ ${recentText}`;
           knownContactName,
           forceModel: typeof forceModel === "string" ? forceModel : null,
           refineInstruction: refineInstruction ?? null,
+          guideV3Card,
         },
       });
       if (optimizeIdentity.kind === "response") {
@@ -1447,7 +1467,7 @@ ${recentText}`;
     const systemPrompt = recognizeOnly
       ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
       : (isRefineReplyMode
-        ? REFINE_REPLY_SYSTEM_PROMPT
+        ? buildRefineSystemPrompt(guideV3Card)
         : (isOptimizeMessageMode
           ? OPTIMIZE_MESSAGE_PROMPT
           : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT)));
@@ -1548,6 +1568,7 @@ ${recentText}`;
             draft: userDraft.trim(),
             instruction: refineInstruction!,
             anchorText: refineAnchorText,
+            cardMessages: guideV3Card !== null,
           }),
         )
         : joinPromptSections(
@@ -1620,6 +1641,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
       // 只記「有沒有帶指令」與「打模型前剩幾次免費」，指令文字絕不進 ai_logs。
       hasRefineInstruction: isRefineReplyMode,
+      // 任務卡的再調只記任務代碼（固定值、不含字）；一般微調是 null。
+      guideV3RefineTask: guideV3Card?.task ?? null,
       refineFreeRemainingBefore: refineFreeProjection?.remaining ?? null,
       imageCount: hasImages ? images.length : 0,
       totalImageBytes: Math.round(totalImageBytes),
@@ -2131,15 +2154,18 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // optimize_refine_flow.ts；含 unusable 亂碼防呆、client shape、
     // 微調輸出過長與安全守門專屬文案。
     if (isOptimizeMessageMode) {
-      const optimizeOutcomeResponse = validateOptimizeOutcome({
+      const optimizeOutcome = validateOptimizeOutcome({
         result,
         isRefineReplyMode,
         userDraft,
         requestId: optimizeRequestId,
         userId: user.id,
         actualModel,
+        guideV3Card,
+        sourceText: messages.map((m) => m.content).join("\n"),
       });
-      if (optimizeOutcomeResponse !== null) return optimizeOutcomeResponse;
+      if (optimizeOutcome.kind === "response") return optimizeOutcome.response;
+      result = optimizeOutcome.result;
     }
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {
