@@ -1,11 +1,14 @@
 // lib/features/report/data/services/report_data_service.dart
 
+import 'dart:convert';
+
 import '../../../analysis/domain/services/partner_stage_resolver.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
+import '../../../analysis/domain/entities/guide_v3_result.dart';
 import '../../domain/entities/report_models.dart';
 
 class ReportDataService {
@@ -206,16 +209,37 @@ class ReportDataService {
     return sortHeatTrendPoints(points);
   }
 
-  /// 這位對象最近一次分析是不是 v3（任務卡）。v2 的分析一定有投入度分數
-  /// （AnalysisResult 缺值補 50），v3 一律沒有（Eric 2026-10-17）：最近一筆
-  /// analyze 事件沒有分數，就是改用新流程了，投入度趨勢之後不會再長點。
-  bool subjectLatestAnalysisIsGuideV3(
+  /// 這位對象有沒有改用 v3（任務卡）分析。v3 不產生投入度分數（Eric
+  /// 2026-10-17），改用之後投入度趨勢不會再長點。
+  ///
+  /// 以每段對話目前存的分析為準：同內容重跑會沿用舊事件的日期（
+  /// analysis_persistence_coordinator 保留 createdAt），只比事件日期會把剛用
+  /// v3 重跑的對話排在別段對話的舊 v2 事件後面。只要有一段對話最近一次是
+  /// v3 分析的就算。對話都刪了、只剩事件時，才退回看最近一筆 analyze 事件
+  /// 有沒有分數（v2 一定有，AnalysisResult 缺值補 50）。
+  bool subjectHasGuideV3Analysis(
     List<AnalysisHistoryEvent> events,
     String subjectId,
     List<Conversation> conversations,
   ) {
     final id = AnalysisHistoryEvent.normalizeScope(subjectId);
     if (id == null) return false;
+    var hasConversation = false;
+    for (final conversation in conversations) {
+      final conversationId =
+          AnalysisHistoryEvent.normalizeScope(conversation.id);
+      if (conversationId == null) continue;
+      final subject =
+          AnalysisHistoryEvent.normalizeScope(conversation.partnerId) ??
+              conversationId;
+      if (subject != id) continue;
+      hasConversation = true;
+      if (_snapshotIsGuideV3(conversation.lastAnalysisSnapshotJson)) {
+        return true;
+      }
+    }
+    if (hasConversation) return false;
+
     final conversationsById = {
       for (final conversation in conversations)
         conversation.id.trim(): conversation,
@@ -229,6 +253,15 @@ class ReportDataService {
       }
     }
     return latest != null && latest.enthusiasmScore == null;
+  }
+
+  bool _snapshotIsGuideV3(String? snapshotJson) {
+    if (snapshotJson == null || snapshotJson.trim().isEmpty) return false;
+    try {
+      return isGuideV3Payload(jsonDecode(snapshotJson));
+    } catch (_) {
+      return false;
+    }
   }
 
   String? _subjectIdFor(

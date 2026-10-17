@@ -77,7 +77,7 @@ class MyReportScreen extends ConsumerWidget {
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
     final subjectUsesGuideV3 = selectedSubject != null &&
-        ref.watch(subjectLatestIsGuideV3Provider(selectedSubject));
+        ref.watch(subjectHasGuideV3AnalysisProvider(selectedSubject));
     final practicePoints = ref.watch(practiceTemperatureTrendProvider);
     // 歷史事件與 Conversation 最新快照是兩條合法資料流：只要任一條有資料，
     // 報告就應顯示。舊邏輯只看 Conversation，會把「只有練習紀錄」或仍保留

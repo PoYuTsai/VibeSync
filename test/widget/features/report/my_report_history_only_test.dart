@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/report/data/providers/report_providers.dart';
 import 'package:vibesync/features/report/domain/entities/report_models.dart';
@@ -48,6 +51,7 @@ Future<void> _pump(
   WidgetTester tester,
   List<AnalysisHistoryEvent> events, {
   ReportData report = _emptyReport,
+  List<Conversation> conversations = const [],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -57,7 +61,7 @@ Future<void> _pump(
         subscriptionProvider.overrideWith((ref) => _PaidSubscription()),
         reportDataProvider.overrideWithValue(report),
         analysisHistoryEventsProvider.overrideWithValue(events),
-        conversationsProvider.overrideWithValue(const []),
+        conversationsProvider.overrideWithValue(conversations),
         partnerListProvider.overrideWithValue(const []),
         userProfileControllerProvider.overrideWith(_NullProfile.new),
       ],
@@ -160,6 +164,64 @@ void main() {
 
     final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
     expect(chart.trendPoints.map((p) => p.score), [61]);
+    expect(find.text('再分析 1 次就能形成趨勢'), findsNothing);
+    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsOneWidget);
+  });
+
+  testWidgets('多個舊點、其中一段用 v3 重跑（沿用舊日期）：留舊點、加補充', (tester) async {
+    Conversation conversation(String id, {String? snapshotJson}) =>
+        Conversation(
+          id: id,
+          name: '小雲',
+          messages: const [],
+          createdAt: DateTime(2026, 9, 1),
+          updatedAt: DateTime(2026, 10, 18),
+          partnerId: 'p1',
+          lastAnalysisSnapshotJson: snapshotJson,
+        );
+
+    await _pump(
+      tester,
+      [
+        // c1 10/1 的事件被 v3 重跑覆寫：日期留著、分數變空。
+        AnalysisHistoryEvent.analyze(
+          id: 'a1',
+          createdAt: DateTime(2026, 10, 1),
+          conversationId: 'c1',
+          subjectName: '小雲',
+        ),
+        AnalysisHistoryEvent.analyze(
+          id: 'a2',
+          createdAt: DateTime(2026, 10, 2),
+          conversationId: 'c2',
+          subjectName: '小雲',
+          enthusiasmScore: 70,
+          gameStageLabel: 'premise',
+        ),
+        AnalysisHistoryEvent.analyze(
+          id: 'a3',
+          createdAt: DateTime(2026, 10, 5),
+          conversationId: 'c2',
+          subjectName: '小雲',
+          enthusiasmScore: 65,
+          gameStageLabel: 'premise',
+        ),
+      ],
+      conversations: [
+        conversation(
+          'c1',
+          snapshotJson: jsonEncode({
+            'guideVersion': 'v3.5',
+            'read': {'light': 'green', 'decision': 'send'},
+            'cards': const [],
+          }),
+        ),
+        conversation('c2'),
+      ],
+    );
+
+    final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+    expect(chart.trendPoints.map((p) => p.score), [70, 65]);
     expect(find.text('再分析 1 次就能形成趨勢'), findsNothing);
     expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsOneWidget);
   });
