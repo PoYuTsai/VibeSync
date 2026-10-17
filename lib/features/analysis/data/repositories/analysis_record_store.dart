@@ -6,6 +6,7 @@ import 'package:hive_ce/hive_ce.dart';
 import '../../../conversation/data/repositories/conversation_archive_store.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../domain/entities/analysis_record.dart';
+import '../../domain/entities/guide_v3_result.dart';
 
 enum AnalysisRecordSaveStatus {
   createdCurrent,
@@ -97,7 +98,7 @@ abstract class AnalysisRecordStore {
     required int analyzedMessageCount,
     required String analyzedContentRevision,
     required String analysisSnapshotJson,
-    required int enthusiasmScore,
+    required int? enthusiasmScore,
     required String gameStageLabel,
     bool allowArchivedRefresh = false,
     String? sourcePlatform,
@@ -402,7 +403,7 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     required int analyzedMessageCount,
     required String analyzedContentRevision,
     required String analysisSnapshotJson,
-    required int enthusiasmScore,
+    required int? enthusiasmScore,
     required String gameStageLabel,
     bool allowArchivedRefresh = false,
     String? sourcePlatform,
@@ -446,6 +447,13 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
     if (analysisSnapshotJson.trim().isEmpty) {
       return const AnalysisRecordSaveResult.rejected(
         'analysis_snapshot_is_blank',
+      );
+    }
+    // v3（任務卡）紀錄從快照認出來：沒有熱度，另記燈號給列表用。v2 一定要有熱度。
+    final guideV3 = _guideV3Markers(analysisSnapshotJson);
+    if (enthusiasmScore == null && guideV3 == null) {
+      return const AnalysisRecordSaveResult.rejected(
+        'enthusiasm_score_missing',
       );
     }
     final snapshotDigest = _snapshotDigest(analysisSnapshotJson);
@@ -614,8 +622,10 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       analyzedContentRevision: revision,
       completionKey: completion,
       sourcePlatform: selectedSource,
-      enthusiasmScore: enthusiasmScore.clamp(0, 100),
+      enthusiasmScore: guideV3 == null ? enthusiasmScore?.clamp(0, 100) : null,
       gameStageLabel: gameStageLabel,
+      guideVersion: guideV3?.guideVersion,
+      guideV3Light: guideV3?.light,
     );
     final nextState = _AnalysisRecordState(
       currentRecordId: record.id,
@@ -935,7 +945,27 @@ class HiveAnalysisRecordStore implements AnalysisRecordStore {
       sourcePlatform: sourcePlatform,
       enthusiasmScore: record.enthusiasmScore,
       gameStageLabel: record.gameStageLabel,
+      guideVersion: record.guideVersion,
+      guideV3Light: record.guideV3Light,
     );
+  }
+
+  /// 快照是 v3 任務卡結果時回說明書版本與燈號；不是（或壞掉）回 null。
+  static ({String guideVersion, String? light})? _guideV3Markers(
+    String snapshotJson,
+  ) {
+    try {
+      final decoded = jsonDecode(snapshotJson);
+      if (!isGuideV3Payload(decoded)) return null;
+      final json = decoded as Map;
+      final version = (json['guideVersion'] as String).trim();
+      final read = json['read'];
+      final light =
+          read is Map ? GuideV3Light.fromWire(read['light'])?.wire : null;
+      return (guideVersion: version.isEmpty ? 'v3' : version, light: light);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

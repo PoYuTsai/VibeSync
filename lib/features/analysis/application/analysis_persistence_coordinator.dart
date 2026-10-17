@@ -24,16 +24,25 @@ import '../../conversation/domain/services/conversation_content_revision.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/analysis_record.dart';
 import '../domain/entities/game_stage.dart';
+import '../domain/entities/guide_v3_result.dart';
+import '../domain/entities/persistable_analysis.dart';
 import 'ports/analysis_record_port.dart';
 import 'ports/conversation_write_ports.dart';
 
 /// [AnalysisPersistenceCoordinator.restore] 的結果：畫面據此套用本地鏡像。
+/// [result]（v2）與 [guideV3]（v3 任務卡）恰好一個非 null。
 class AnalysisRestoreOutcome {
-  final AnalysisResult result;
+  final AnalysisResult? result;
+  final GuideV3Result? guideV3;
+
+  /// v3 快照存的伺服器 runId（複製紀錄的 key 要跟分析當下一樣）。
+  final String? analysisRunId;
   final int analyzedMessageCount;
 
   const AnalysisRestoreOutcome({
-    required this.result,
+    this.result,
+    this.guideV3,
+    this.analysisRunId,
     required this.analyzedMessageCount,
   });
 }
@@ -45,6 +54,8 @@ class AnalysisPersistenceCoordinator {
   static const _snapshotHistoryEventIdKey = 'historyEventId';
   static const _snapshotIsReconnectKey = 'isReconnect';
   static const _snapshotSessionContextKey = 'sessionContext';
+  static const _snapshotRunIdKey = 'analysisRunId';
+  static const _targetProfileKey = 'targetProfile';
 
   AnalysisPersistenceCoordinator({
     required this.conversationId,
@@ -156,13 +167,29 @@ class AnalysisPersistenceCoordinator {
 
       final analysisPayload = Map<String, dynamic>.from(snapshot)
         ..remove(_snapshotClientMetaKey);
-      final restoredResult = AnalysisResult.fromJson(analysisPayload);
+      // v3 快照只認形狀，不交給 AnalysisResult（它會把缺的熱度補成 50）。
+      AnalysisResult? restoredResult;
+      GuideV3Result? restoredGuideV3;
+      String? restoredRunId;
+      final PersistableAnalysis persistable;
+      if (isGuideV3Payload(analysisPayload)) {
+        restoredGuideV3 = GuideV3Result.fromJson(analysisPayload);
+        if (restoredGuideV3 == null) return null;
+        restoredRunId = _snapshotRunId(snapshot);
+        persistable = PersistableAnalysis.fromGuideV3(
+          restoredGuideV3,
+          analysisRunId: restoredRunId,
+        );
+      } else {
+        restoredResult = AnalysisResult.fromJson(analysisPayload);
+        persistable = PersistableAnalysis.fromResult(restoredResult);
+      }
       if (repairRecord) {
         final analyzedCount = conversation.lastAnalyzedMessageCount!;
         final current = currentRecordFor(conversation);
         scheduleRecordRepair(
           conversation: conversation,
-          result: restoredResult,
+          analysis: persistable,
           completionKey: null,
           previousAnalyzedCount: current?.segmentEnd ?? 0,
           analyzedMessageCount: analyzedCount,
@@ -171,6 +198,8 @@ class AnalysisPersistenceCoordinator {
       }
       return AnalysisRestoreOutcome(
         result: restoredResult,
+        guideV3: restoredGuideV3,
+        analysisRunId: restoredRunId,
         analyzedMessageCount: conversation.lastAnalyzedMessageCount!,
       );
     } catch (error) {
@@ -187,7 +216,7 @@ class AnalysisPersistenceCoordinator {
   /// 把一次紀錄修復排進追蹤佇列並記為當前 repairFuture。
   void scheduleRecordRepair({
     required Conversation conversation,
-    required AnalysisResult result,
+    required PersistableAnalysis analysis,
     required String? completionKey,
     required int? previousAnalyzedCount,
     required int analyzedMessageCount,
@@ -196,7 +225,7 @@ class AnalysisPersistenceCoordinator {
     _recordRepairFuture = _trackTask(
       _repairAnalysisRecord(
         conversation: conversation,
-        result: result,
+        analysis: analysis,
         completionKey: completionKey,
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
@@ -263,6 +292,7 @@ class AnalysisPersistenceCoordinator {
     bool? isReconnect,
     SessionContext? sessionContext,
     bool freezeSessionContext = false,
+    String? analysisRunId,
   }) {
     if (rawResponse == null || rawResponse.isEmpty) {
       return null;
@@ -273,6 +303,7 @@ class AnalysisPersistenceCoordinator {
         _snapshotMessageCountKey: messageCount,
         _snapshotHistoryEventIdKey: historyEventId,
         if (isReconnect != null) _snapshotIsReconnectKey: isReconnect,
+        if (analysisRunId != null) _snapshotRunIdKey: analysisRunId,
         if (freezeSessionContext)
           _snapshotSessionContextKey: sessionContext == null
               ? null
@@ -370,6 +401,44 @@ class AnalysisPersistenceCoordinator {
     }
   }
 
+  String? _snapshotRunId(Map<String, dynamic> snapshot) {
+    final rawMeta = snapshot[_snapshotClientMetaKey];
+    final rawId = rawMeta is Map ? rawMeta[_snapshotRunIdKey] : null;
+    if (rawId is! String || rawId.trim().isEmpty) return null;
+    return rawId.trim();
+  }
+
+  /// v3 沒有對象檔案（targetProfile：興趣、個性、筆記），快照整份換掉會讓這個
+  /// 對話的對象記憶消失（對象卡、新話題、教練都在用）。所以 v3 存檔時沿用上一份
+  /// 快照裡有出處的那一份（provenanceVersion 1，跟 partner_aggregates 同一條件）。
+  /// 新分析、續看補寫、紀錄修復都先過這裡，存下去的跟比對用的才會是同一份。
+  PersistableAnalysis withCarriedPartnerMemory(
+    PersistableAnalysis analysis, {
+    required String? previousSnapshotJson,
+  }) {
+    final rawResponse = analysis.rawResponse;
+    if (!analysis.isGuideV3 ||
+        rawResponse == null ||
+        rawResponse.containsKey(_targetProfileKey) ||
+        previousSnapshotJson == null ||
+        previousSnapshotJson.trim().isEmpty) {
+      return analysis;
+    }
+    try {
+      final previous = _normalizeJsonMap(jsonDecode(previousSnapshotJson));
+      final profile = previous?[_targetProfileKey];
+      if (profile is! Map || profile['provenanceVersion'] != 1) {
+        return analysis;
+      }
+      return analysis.withRawResponse(<String, dynamic>{
+        ...rawResponse,
+        _targetProfileKey: profile,
+      });
+    } catch (_) {
+      return analysis;
+    }
+  }
+
   bool? _snapshotIsReconnect(String? snapshotJson) {
     if (snapshotJson == null || snapshotJson.trim().isEmpty) return null;
     try {
@@ -440,7 +509,7 @@ class AnalysisPersistenceCoordinator {
   }
 
   Future<void> persistLatestSnapshot(
-    AnalysisResult result, {
+    PersistableAnalysis analysis, {
     String? completionKey,
     int? previousAnalyzedCount,
     int? analyzedMessageCount,
@@ -452,7 +521,7 @@ class AnalysisPersistenceCoordinator {
   }) {
     return _trackTask(
       _runPersistLatestAnalysisSnapshot(
-        result,
+        analysis,
         completionKey: completionKey,
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
@@ -496,7 +565,7 @@ class AnalysisPersistenceCoordinator {
   }
 
   Future<void> _runPersistLatestAnalysisSnapshot(
-    AnalysisResult result, {
+    PersistableAnalysis analysis, {
     String? completionKey,
     int? previousAnalyzedCount,
     int? analyzedMessageCount,
@@ -510,7 +579,7 @@ class AnalysisPersistenceCoordinator {
     _notifyStateChanged();
     try {
       await _persistLatestAnalysisSnapshotCore(
-        result,
+        analysis,
         completionKey: completionKey,
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
@@ -529,7 +598,7 @@ class AnalysisPersistenceCoordinator {
   }
 
   Future<void> _persistLatestAnalysisSnapshotCore(
-    AnalysisResult result, {
+    PersistableAnalysis incoming, {
     String? completionKey,
     int? previousAnalyzedCount,
     int? analyzedMessageCount,
@@ -560,6 +629,11 @@ class AnalysisPersistenceCoordinator {
       gameStage: conv.currentGameStage,
       snapshotJson: conv.lastAnalysisSnapshotJson,
     );
+    final analysis = withCarriedPartnerMemory(
+      incoming,
+      previousSnapshotJson: previousAnalysis.snapshotJson,
+    );
+    final validStage = analysis.validStage;
     final targetAnalyzedMessageCount =
         analyzedMessageCount ?? conv.messages.length;
     final targetPrefixRevision = conversationContentRevision(
@@ -607,32 +681,33 @@ class AnalysisPersistenceCoordinator {
         (conv.sessionContext?.meetingContext ==
             MeetingContext.committedPartner);
     final targetSnapshotJson = _encodeAnalysisSnapshot(
-      result.rawResponse,
+      analysis.rawResponse,
       contentRevision: targetPrefixRevision,
       messageCount: targetAnalyzedMessageCount,
       historyEventId: historyEventId,
       isReconnect: frozenReconnectContext,
       sessionContext: analyzedSessionContext,
       freezeSessionContext: analyzedIsReconnect != null,
+      analysisRunId: analysis.analysisRunId,
     );
 
-    conv.lastEnthusiasmScore = result.enthusiasmScore;
+    // v3 沒有熱度：清掉，列表與對象頁就不顯示（Eric 2026-10-17）。
+    conv.lastEnthusiasmScore = analysis.enthusiasmScore;
     conv.lastAnalyzedMessageCount = targetAnalyzedMessageCount;
     // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
     //（notifier 在 start 時計），不是完成時 repository 裡的最新 messages
     //（避免分析中新進訊息造成 baseline 漂移）。
     final payloadCharCount = _lastPayloadCharCount();
-    // 「資料不夠」免扣時不推進字數 baseline：補完資料那次要對整段計費，
-    // 不然免扣的片段永遠不會被收到費。
-    final usage = result.rawResponse?['usage'];
-    final quotaWaived = usage is Map && usage['quotaWaivedReason'] != null;
-    if (payloadCharCount != null && !quotaWaived) {
+    // 「資料不夠」免扣、v3 自傷關心不扣時不推進字數 baseline：補完資料那次
+    // 要對整段計費，不然免扣的片段永遠不會被收到費。
+    if (payloadCharCount != null && !analysis.waivesCharBaseline) {
       conv.lastAnalyzedCharCount = payloadCharCount;
     }
     // 對象卡互動階段閉環規則 9：缺少或非法 stage 不得寫入新 stage
     // snapshot，保留上一個有效階段；從未有有效階段則維持 null（問號）。
-    if (result.gameStage.hasValidStage) {
-      conv.currentGameStage = result.gameStage.current.name;
+    // v3 沒有階段，同樣保留上一個（Eric 2026-10-17）。
+    if (validStage != null) {
+      conv.currentGameStage = validStage.name;
     }
     conv.lastAnalysisSnapshotJson = targetSnapshotJson;
 
@@ -674,7 +749,7 @@ class AnalysisPersistenceCoordinator {
 
     final recordSaved = await _ensureAnalysisRecord(
       conversation: conv,
-      result: result,
+      analysis: analysis,
       completionKey: completionKey,
       previousAnalyzedCount: previousAnalyzedCount,
       analyzedMessageCount: targetAnalyzedMessageCount,
@@ -702,12 +777,10 @@ class AnalysisPersistenceCoordinator {
           }
         }
       }
-      final eventStageLabel = result.gameStage.hasValidStage
-          ? result.gameStage.current.name
-          : rerunEvent?.gameStageLabel;
-      final eventIsReconnect = result.gameStage.hasValidStage
-          ? result.gameStage.current == GameStage.opening &&
-              frozenReconnectContext
+      final eventStageLabel =
+          validStage != null ? validStage.name : rerunEvent?.gameStageLabel;
+      final eventIsReconnect = validStage != null
+          ? validStage == GameStage.opening && frozenReconnectContext
           : rerunEvent?.isReconnect;
       await historyRepository.append(
         AnalysisHistoryEvent.analyze(
@@ -716,7 +789,7 @@ class AnalysisPersistenceCoordinator {
           conversationId: conversationId,
           partnerId: conv.partnerId,
           subjectName: conv.name,
-          enthusiasmScore: result.enthusiasmScore,
+          enthusiasmScore: analysis.enthusiasmScore,
           gameStageLabel: eventStageLabel,
           isReconnect: eventStageLabel == null ? null : eventIsReconnect,
         ),
@@ -743,7 +816,7 @@ class AnalysisPersistenceCoordinator {
 
   Future<void> _repairAnalysisRecord({
     required Conversation conversation,
-    required AnalysisResult result,
+    required PersistableAnalysis analysis,
     required String? completionKey,
     required int? previousAnalyzedCount,
     required int analyzedMessageCount,
@@ -759,7 +832,7 @@ class AnalysisPersistenceCoordinator {
               messageCount: analyzedMessageCount,
             )
           : null;
-      final rawResponse = result.rawResponse;
+      final rawResponse = analysis.rawResponse;
       final current = currentRecordFor(conversation);
       final canonicalSnapshotMatches = snapshotMatches(
         conversation: conversation,
@@ -785,7 +858,7 @@ class AnalysisPersistenceCoordinator {
       }
       final saved = await _ensureAnalysisRecord(
         conversation: conversation,
-        result: result,
+        analysis: analysis,
         completionKey: completionKey,
         previousAnalyzedCount: previousAnalyzedCount,
         analyzedMessageCount: analyzedMessageCount,
@@ -805,7 +878,7 @@ class AnalysisPersistenceCoordinator {
 
   Future<bool> _ensureAnalysisRecord({
     required Conversation conversation,
-    required AnalysisResult result,
+    required PersistableAnalysis analysis,
     required String? completionKey,
     required int? previousAnalyzedCount,
     required int analyzedMessageCount,
@@ -814,7 +887,8 @@ class AnalysisPersistenceCoordinator {
     bool allowArchivedRefresh = false,
   }) async {
     final ownerUserId = recordOwnerFor(conversation);
-    final rawResponse = result.rawResponse;
+    final rawResponse = analysis.rawResponse;
+    final validStage = analysis.validStage;
     if (ownerUserId == null ||
         rawResponse == null ||
         rawResponse.isEmpty ||
@@ -846,20 +920,23 @@ class AnalysisPersistenceCoordinator {
         analyzedMessageCount: analyzedMessageCount,
         analyzedContentRevision: analyzedPrefixRevision,
         analysisSnapshotJson: snapshotJson,
-        enthusiasmScore: result.enthusiasmScore,
+        enthusiasmScore: analysis.enthusiasmScore,
         // Missing/unknown model output must not leak the display fallback
         // opening into durable records. Reuse only the conversation's latest
-        // strictly valid stage; otherwise persist a blank label.
-        gameStageLabel: result.gameStage.hasValidStage
-            ? _visibleRecordStageLabel(
-                conversation,
-                result.gameStage.current,
-                isReconnectOverride: analyzedIsReconnect,
-              )
-            : _visibleStoredRecordStageLabel(
-                conversation,
-                isReconnectOverride: analyzedIsReconnect,
-              ),
+        // strictly valid stage; otherwise persist a blank label. v3 沒有階段，
+        // 紀錄不沿用舊流程的階段（那不是這一次的判斷）。
+        gameStageLabel: analysis.isGuideV3
+            ? ''
+            : validStage != null
+                ? _visibleRecordStageLabel(
+                    conversation,
+                    validStage,
+                    isReconnectOverride: analyzedIsReconnect,
+                  )
+                : _visibleStoredRecordStageLabel(
+                    conversation,
+                    isReconnectOverride: analyzedIsReconnect,
+                  ),
         allowArchivedRefresh: allowArchivedRefresh,
         sourcePlatform: _recordPort.conversationSource(
           ownerUserId: ownerUserId,

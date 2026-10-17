@@ -72,6 +72,72 @@ void main() {
     expect(AnalysisRecord.tryDecode('not-json{'), isNull);
   });
 
+  test('v3 紀錄沒有熱度、帶說明書版本與燈號，來回編碼不變', () {
+    final v2 = _record();
+    final v3 = AnalysisRecord(
+      id: v2.id,
+      ownerUserId: v2.ownerUserId,
+      conversationId: v2.conversationId,
+      partnerId: v2.partnerId,
+      subjectName: v2.subjectName,
+      segmentStart: v2.segmentStart,
+      segmentEnd: v2.segmentEnd,
+      createdAt: v2.createdAt,
+      messages: v2.messages,
+      analysisSnapshotJson: '{"guideVersion":"v3.4","cards":[]}',
+      analyzedContentRevision: v2.analyzedContentRevision,
+      completionKey: v2.completionKey,
+      sourcePlatform: v2.sourcePlatform,
+      enthusiasmScore: null,
+      gameStageLabel: '',
+      guideVersion: 'v3.4',
+      guideV3Light: 'yellow',
+    );
+    final decoded = AnalysisRecord.tryDecode(v3.encode())!;
+    expect(decoded.enthusiasmScore, isNull);
+    expect(decoded.isGuideV3, isTrue);
+    expect(decoded.guideVersion, 'v3.4');
+    expect(decoded.light?.label, '黃燈');
+    // v2 紀錄沒有這兩個欄位，編碼也不多寫。
+    final v2Json = jsonDecode(v2.encode()) as Map<String, dynamic>;
+    expect(v2Json.containsKey('guideVersion'), isFalse);
+    expect(v2Json.containsKey('guideV3Light'), isFalse);
+    expect(AnalysisRecord.tryDecode(v2.encode())!.isGuideV3, isFalse);
+  });
+
+  test('熱度只有 v3 紀錄可以沒有；版本欄位型別不對照壞資料處理', () {
+    final json = jsonDecode(_record().encode()) as Map<String, dynamic>;
+    expect(
+      AnalysisRecord.tryDecode(jsonEncode({...json, 'enthusiasmScore': null})),
+      isNull,
+    );
+    expect(
+      AnalysisRecord.tryDecode(jsonEncode({
+        ...json,
+        'enthusiasmScore': null,
+        'guideVersion': 'v3.4',
+      }))!
+          .enthusiasmScore,
+      isNull,
+    );
+    expect(
+      AnalysisRecord.tryDecode(jsonEncode({...json, 'guideVersion': 3})),
+      isNull,
+    );
+    expect(
+      AnalysisRecord.tryDecode(jsonEncode({...json, 'guideVersion': ' '})),
+      isNull,
+    );
+    expect(
+      AnalysisRecord.tryDecode(jsonEncode({
+        ...json,
+        'guideVersion': 'v3.4',
+        'guideV3Light': 1,
+      })),
+      isNull,
+    );
+  });
+
   test('preview prefers latest incoming message and truncates long text', () {
     final longRecord = AnalysisRecord(
       id: 'record-2',

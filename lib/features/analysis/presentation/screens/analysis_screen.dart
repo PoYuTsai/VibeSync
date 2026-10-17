@@ -60,6 +60,7 @@ import '../../data/services/analysis_telemetry_guardrail_helper.dart';
 import '../../data/services/optimize_message_request_session.dart';
 import '../../domain/coach/coach_action_policy.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/persistable_analysis.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -1028,7 +1029,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     final persisted = _session.persistHydratedResultIfNeeded(
       s.toRunMetadata(),
-      result,
+      PersistableAnalysis.fromResult(result),
       expectedAnalyzedCount: expectedAnalyzedCount,
       conversation: conv,
     );
@@ -1568,8 +1569,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   void _restorePersistedAnalysis({bool repairRecord = true}) {
     final outcome = _persistence.restore(repairRecord: repairRecord);
     if (outcome == null) return;
+    final result = outcome.result;
+    if (result == null) return;
     _lastAnalyzedMessageCount = outcome.analyzedMessageCount;
-    _applyAnalysisResult(outcome.result);
+    _applyAnalysisResult(result);
   }
 
   @override
@@ -2846,7 +2849,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         });
         _session.persistCompletedRun(
           next.toRunMetadata(),
-          result,
+          PersistableAnalysis.fromResult(result),
           analyzedMessageCount: analyzedMessageCount,
           allowArchivedRecordRefresh: _isRefreshingPremiumReplies,
         );

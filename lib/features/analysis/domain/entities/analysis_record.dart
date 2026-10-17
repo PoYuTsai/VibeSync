@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../../conversation/domain/entities/message.dart';
+import 'guide_v3_result.dart';
 
 /// A durable, independent analyze-chat case.
 ///
@@ -23,6 +24,8 @@ class AnalysisRecord {
     required this.sourcePlatform,
     required this.enthusiasmScore,
     required this.gameStageLabel,
+    this.guideVersion,
+    this.guideV3Light,
   });
 
   final String id;
@@ -46,8 +49,20 @@ class AnalysisRecord {
   /// `LINE`). Null means the source has not been labelled yet; OCR never
   /// guesses it.
   final String? sourcePlatform;
-  final int enthusiasmScore;
+
+  /// v2 的熱度；v3（任務卡）沒有熱度，是 null（Eric 2026-10-17）。
+  final int? enthusiasmScore;
   final String gameStageLabel;
+
+  /// v3 的說明書版本；非 null 就是 v3 紀錄（存檔時從快照認出來）。
+  final String? guideVersion;
+
+  /// v3 的燈號（wire 字串）；列表用它取代熱度。
+  final String? guideV3Light;
+
+  bool get isGuideV3 => guideVersion != null;
+
+  GuideV3Light? get light => GuideV3Light.fromWire(guideV3Light);
 
   AnalysisRecordMessage? get _previewMessage {
     final incoming = messages.where((message) => !message.isFromMe);
@@ -92,6 +107,8 @@ class AnalysisRecord {
         'sourcePlatform': sourcePlatform,
         'enthusiasmScore': enthusiasmScore,
         'gameStageLabel': gameStageLabel,
+        if (guideVersion != null) 'guideVersion': guideVersion,
+        if (guideV3Light != null) 'guideV3Light': guideV3Light,
       };
 
   String encode() => jsonEncode(toJson());
@@ -118,6 +135,15 @@ class AnalysisRecord {
       final enthusiasmScore = json['enthusiasmScore'];
       final gameStageLabel = json['gameStageLabel'];
       final rawMessages = json['messages'];
+      final guideVersionRaw = json['guideVersion'];
+      final guideV3LightRaw = json['guideV3Light'];
+      final guideVersion =
+          guideVersionRaw is String && guideVersionRaw.trim().isNotEmpty
+              ? guideVersionRaw.trim()
+              : null;
+      // 熱度只有 v3 紀錄可以沒有；v2 紀錄缺熱度照壞資料處理。
+      final scoreIsValid = enthusiasmScore is int ||
+          (guideVersion != null && enthusiasmScore == null);
       if (schemaVersion != 1 ||
           id is! String ||
           id.trim().isEmpty ||
@@ -135,7 +161,9 @@ class AnalysisRecord {
           contentRevision.trim().isEmpty ||
           completionKey is! String ||
           completionKey.trim().isEmpty ||
-          enthusiasmScore is! int ||
+          !scoreIsValid ||
+          (guideVersionRaw != null && guideVersion == null) ||
+          (guideV3LightRaw != null && guideV3LightRaw is! String) ||
           gameStageLabel is! String ||
           rawMessages is! List) {
         return null;
@@ -175,8 +203,10 @@ class AnalysisRecord {
             sourcePlatformRaw is String && sourcePlatformRaw.trim().isNotEmpty
                 ? sourcePlatformRaw.trim()
                 : null,
-        enthusiasmScore: enthusiasmScore.clamp(0, 100),
+        enthusiasmScore: (enthusiasmScore as int?)?.clamp(0, 100),
         gameStageLabel: gameStageLabel,
+        guideVersion: guideVersion,
+        guideV3Light: guideV3LightRaw as String?,
       );
     } catch (_) {
       return null;

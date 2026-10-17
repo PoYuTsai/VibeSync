@@ -43,6 +43,7 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/presentation/dialogs/conversation_reassign_picker.dart';
 import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../analysis/domain/entities/analysis_models.dart';
+import '../../../analysis/domain/entities/guide_v3_result.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -1015,6 +1016,25 @@ class _PartnerLatestInsight {
     this.analyzedAt,
   });
 
+  /// v3（任務卡）：判讀當最近的洞察、要等她做什麼當下一步、第一張卡當互動
+  /// 建議。自傷關心不放到對象頁（只留分析時間）。
+  factory _PartnerLatestInsight.fromGuideV3(
+    GuideV3Result? result, {
+    required DateTime analyzedAt,
+  }) {
+    if (result == null || result.isCare) {
+      return _PartnerLatestInsight(analyzedAt: analyzedAt);
+    }
+    return _PartnerLatestInsight(
+      nextStep: _firstNonEmpty([result.read.waitFor]),
+      recentInsight: _firstNonEmpty([result.read.judgment]),
+      interactionAction: result.cards.isEmpty
+          ? null
+          : _firstNonEmpty([result.cards.first.copyText]),
+      analyzedAt: analyzedAt,
+    );
+  }
+
   factory _PartnerLatestInsight.fromConversations(
     List<Conversation> conversations,
   ) {
@@ -1027,6 +1047,14 @@ class _PartnerLatestInsight {
       try {
         final decoded = jsonDecode(raw);
         if (decoded is! Map) continue;
+        if (isGuideV3Payload(decoded)) {
+          return _PartnerLatestInsight.fromGuideV3(
+            GuideV3Result.fromJson(
+              decoded.map((key, value) => MapEntry(key.toString(), value)),
+            ),
+            analyzedAt: conversation.updatedAt,
+          );
+        }
         final result = AnalysisResult.fromJson(
           decoded.map((key, value) => MapEntry(key.toString(), value)),
         );

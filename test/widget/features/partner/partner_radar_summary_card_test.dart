@@ -68,6 +68,23 @@ void main() {
     expect(find.text('最新對話尚未分析'), findsOneWidget);
   });
 
+  testWidgets('v3 任務卡結果沒有雷達：整張不顯示，也不說尚未分析', (t) async {
+    final snapshot = jsonEncode({
+      'guideVersion': 'v3.4',
+      'read': {'decision': 'send', 'light': 'green', 'judgment': '她有在接'},
+      'cards': [],
+      'partial': false,
+    });
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerRadarSummaryCard(
+            latestConversation: _conv(snapshot: snapshot)),
+      ),
+    ));
+    expect(find.text('最新對話尚未分析'), findsNothing);
+    expect(find.byType(RadarChart), findsNothing);
+  });
+
   testWidgets('malformed snapshot → fallback (no throw)', (t) async {
     await t.pumpWidget(MaterialApp(
       home: Scaffold(

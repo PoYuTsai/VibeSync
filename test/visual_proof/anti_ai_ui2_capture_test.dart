@@ -90,7 +90,7 @@ class _MemoryAnalysisRecordStore implements AnalysisRecordStore {
     required int analyzedMessageCount,
     required String analyzedContentRevision,
     required String analysisSnapshotJson,
-    required int enthusiasmScore,
+    required int? enthusiasmScore,
     required String gameStageLabel,
     bool allowArchivedRefresh = false,
     String? sourcePlatform,

@@ -10,8 +10,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/services/conversation_content_revision.dart';
-import '../domain/entities/analysis_models.dart';
 import '../domain/entities/overcharge_confirmation.dart';
+import '../domain/entities/persistable_analysis.dart';
 import 'analysis_persistence_coordinator.dart';
 import 'analysis_run_metadata.dart';
 import 'analysis_run_preparer.dart';
@@ -134,13 +134,13 @@ class AnalysisSessionController {
   /// 不得變成 unhandled future）。
   void persistCompletedRun(
     AnalysisRunMetadata run,
-    AnalysisResult result, {
+    PersistableAnalysis analysis, {
     required int? analyzedMessageCount,
     required bool allowArchivedRecordRefresh,
   }) {
     _persistence
         .persistLatestSnapshot(
-      result,
+      analysis,
       completionKey: run.runId,
       previousAnalyzedCount: run.previousAnalyzedCount,
       analyzedMessageCount: analyzedMessageCount,
@@ -160,14 +160,19 @@ class AnalysisSessionController {
   /// 本地 count 鏡像與 usage 同步。
   bool persistHydratedResultIfNeeded(
     AnalysisRunMetadata run,
-    AnalysisResult result, {
+    PersistableAnalysis incoming, {
     required int expectedAnalyzedCount,
     required Conversation conversation,
   }) {
+    // 跟存檔時同一份（v3 沿用上一份快照的對象檔案），比對才不會一直不相等。
+    final analysis = _persistence.withCarriedPartnerMemory(
+      incoming,
+      previousSnapshotJson: conversation.lastAnalysisSnapshotJson,
+    );
     final alreadyPersisted = _persistence.snapshotMatches(
       conversation: conversation,
       snapshotJson: conversation.lastAnalysisSnapshotJson,
-      rawResponse: result.rawResponse,
+      rawResponse: analysis.rawResponse,
       messageCount: expectedAnalyzedCount,
       analyzedContentRevision: run.contentRevision,
       analyzedPartnerId: run.conversationPartnerId,
@@ -176,7 +181,7 @@ class AnalysisSessionController {
     if (alreadyPersisted) {
       _persistence.scheduleRecordRepair(
         conversation: conversation,
-        result: result,
+        analysis: analysis,
         completionKey: run.runId,
         previousAnalyzedCount: run.previousAnalyzedCount,
         analyzedMessageCount: expectedAnalyzedCount,
@@ -187,7 +192,7 @@ class AnalysisSessionController {
 
     _persistence
         .persistLatestSnapshot(
-      result,
+      analysis,
       completionKey: run.runId,
       previousAnalyzedCount: run.previousAnalyzedCount,
       analyzedMessageCount: expectedAnalyzedCount,

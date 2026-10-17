@@ -98,7 +98,64 @@ AnalysisRecord _record({
   );
 }
 
+AnalysisRecord _guideV3Record({required String id, required DateTime at}) {
+  final base = _record(id: id, createdAt: at, preview: '新流程的片段');
+  return AnalysisRecord(
+    id: base.id,
+    ownerUserId: base.ownerUserId,
+    conversationId: base.conversationId,
+    partnerId: base.partnerId,
+    subjectName: base.subjectName,
+    segmentStart: base.segmentStart,
+    segmentEnd: base.segmentEnd,
+    createdAt: base.createdAt,
+    messages: base.messages,
+    analysisSnapshotJson: jsonEncode({
+      'guideVersion': 'v3.4',
+      'read': {'decision': 'send', 'light': 'yellow', 'judgment': '她有在接'},
+      'cards': [],
+      'partial': false,
+    }),
+    analyzedContentRevision: base.analyzedContentRevision,
+    completionKey: base.completionKey,
+    sourcePlatform: base.sourcePlatform,
+    enthusiasmScore: null,
+    gameStageLabel: '',
+    guideVersion: 'v3.4',
+    guideV3Light: 'yellow',
+  );
+}
+
 void main() {
+  testWidgets('新流程紀錄在列表顯示燈號，不顯示熱度（Eric 2026-10-17）', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final v2 = _record(
+      id: 'v2',
+      createdAt: DateTime(2026, 10, 16, 21),
+      preview: '舊流程的片段',
+    );
+    final v3 = _guideV3Record(id: 'v3', at: DateTime(2026, 10, 17, 21));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PartnerAnalysisRecordsScreen(
+          subjectName: '小雲',
+          metVia: null,
+          records: [v2, v3],
+          platformForRecord: (record) => record.sourcePlatform,
+          onSetMetVia: (_) {},
+          onDelete: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 則訊息 · 黃燈'), findsOneWidget);
+    expect(find.textContaining('本次投入'), findsOneWidget, reason: '只有舊流程那筆');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('平台 picker 提供常用平台、暫不設定與自訂值', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));

@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/application/analysis_persistence_coordinator.dart';
 import 'package:vibesync/features/analysis/application/ports/analysis_record_port.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/entities/persistable_analysis.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
@@ -91,7 +93,7 @@ class _ThrowingAnalysisRecordPort implements AnalysisRecordPort {
     required int analyzedMessageCount,
     required String analyzedContentRevision,
     required String analysisSnapshotJson,
-    required int enthusiasmScore,
+    required int? enthusiasmScore,
     required String gameStageLabel,
     bool allowArchivedRefresh = false,
     String? sourcePlatform,
@@ -132,7 +134,7 @@ class _RecordingAnalysisRecordPort implements AnalysisRecordPort {
     required int analyzedMessageCount,
     required String analyzedContentRevision,
     required String analysisSnapshotJson,
-    required int enthusiasmScore,
+    required int? enthusiasmScore,
     required String gameStageLabel,
     bool allowArchivedRefresh = false,
     String? sourcePlatform,
@@ -155,6 +157,95 @@ class _RecordingAnalysisRecordPort implements AnalysisRecordPort {
   }) =>
       null;
 }
+
+/// 記下每次紀錄寫入的熱度、階段與快照（v3 測試用）。
+class _CapturingAnalysisRecordPort implements AnalysisRecordPort {
+  final saves = <({int? score, String stage, String snapshot})>[];
+
+  @override
+  AnalysisRecord? currentFor({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      null;
+
+  @override
+  Future<AnalysisRecordSaveOutcome> saveSuccessfulAnalysis({
+    required String ownerUserId,
+    required Conversation conversation,
+    required String completionKey,
+    required int runStartPreviousCount,
+    required int analyzedMessageCount,
+    required String analyzedContentRevision,
+    required String analysisSnapshotJson,
+    required int? enthusiasmScore,
+    required String gameStageLabel,
+    bool allowArchivedRefresh = false,
+    String? sourcePlatform,
+  }) async {
+    saves.add((
+      score: enthusiasmScore,
+      stage: gameStageLabel,
+      snapshot: analysisSnapshotJson,
+    ));
+    return const AnalysisRecordSaveOutcome(accepted: true);
+  }
+
+  @override
+  Future<bool> archiveCurrentRecord({
+    required String ownerUserId,
+    required String conversationId,
+  }) async =>
+      true;
+
+  @override
+  String? conversationSource({
+    required String ownerUserId,
+    required String conversationId,
+  }) =>
+      null;
+}
+
+/// 形狀照伺服器 guide_v3/wire.ts 的 finalResult（已剝掉伺服器專用欄位）。
+Map<String, dynamic> _guideV3Json({String decision = 'send'}) => {
+      'guideVersion': 'v3.4',
+      'read': {
+        'guideVersion': 'v3.4',
+        'decision': decision,
+        'light': 'green',
+        'judgment': decision == 'care' ? '' : '她有在接你的話。',
+        if (decision == 'care') 'careMessage': '先把安全放在第一位。',
+        'plannedCards': decision == 'send'
+            ? [
+                {'slot': 1, 'task': 'accept', 'locked': false},
+              ]
+            : [],
+      },
+      'cards': decision == 'send'
+          ? [
+              {
+                'slot': 1,
+                'task': 'accept',
+                'method': 'reaction',
+                'voice': 'default',
+                'messages': ['那家我也想吃吃看'],
+                'hasInventedDetail': false,
+                'hasBlank': false,
+              },
+            ]
+          : [],
+      'partial': false,
+      'usage': {
+        'messagesUsed': decision == 'care' ? 0 : 1,
+        'shouldChargeQuota': decision != 'care',
+      },
+    };
+
+PersistableAnalysis _guideV3({String decision = 'send', String? runId}) =>
+    PersistableAnalysis.fromGuideV3(
+      GuideV3Result.fromJson(_guideV3Json(decision: decision))!,
+      analysisRunId: runId,
+    );
 
 class _FailOnceAnalysisHistoryRepository
     extends MemoryAnalysisHistoryRepository {
@@ -237,7 +328,7 @@ void main() {
     final outcome = harness.coordinator.restore(repairRecord: true);
     expect(outcome, isNotNull);
     expect(outcome!.analyzedMessageCount, 1);
-    expect(outcome.result.strategy, '保持沉穩');
+    expect(outcome.result!.strategy, '保持沉穩');
 
     // 修復已排程；owner 缺席 → 不碰 store、標記待修復，等待可落定。
     expect(harness.coordinator.recordRepairFuture, isNotNull);
@@ -266,7 +357,7 @@ void main() {
     final harness = _Harness(conversation: _conversation());
 
     await harness.coordinator.persistLatestSnapshot(
-      AnalysisResult.fromJson(_resultJson()),
+      PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
       completionKey: 'run-1',
       previousAnalyzedCount: 0,
       analyzedMessageCount: 1,
@@ -302,7 +393,7 @@ void main() {
     final revision = conversationContentRevision(harness.conversation);
 
     await harness.coordinator.persistLatestSnapshot(
-      AnalysisResult.fromJson(_resultJson()),
+      PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
       completionKey: 'run-1',
       previousAnalyzedCount: 0,
       analyzedMessageCount: 1,
@@ -351,14 +442,14 @@ void main() {
     final revision = conversationContentRevision(harness.conversation);
 
     await harness.coordinator.persistLatestSnapshot(
-      AnalysisResult.fromJson({
+      PersistableAnalysis.fromResult(AnalysisResult.fromJson({
         ..._resultJson(),
         'usage': {
           'messagesUsed': 0,
           'shouldChargeQuota': false,
           'quotaWaivedReason': 'need_context_waived',
         },
-      }),
+      })),
       completionKey: 'run-waived',
       previousAnalyzedCount: 0,
       analyzedMessageCount: 1,
@@ -384,7 +475,8 @@ void main() {
       final revision = conversationContentRevision(harness.conversation);
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(_resultJson()), // gameStage.current = premise
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(
+            _resultJson())), // gameStage.current = premise
         completionKey: 'run-1',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -419,7 +511,7 @@ void main() {
       (json['gameStage'] as Map<String, dynamic>)['current'] = 'opening';
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(json),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(json)),
         completionKey: 'run-reconnect',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -448,7 +540,7 @@ void main() {
       (json['gameStage'] as Map<String, dynamic>)['current'] = 'vibing hard';
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(json),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(json)),
         completionKey: 'run-1',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -474,7 +566,7 @@ void main() {
       final revision = conversationContentRevision(harness.conversation);
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         completionKey: 'run-1',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -494,7 +586,7 @@ void main() {
           'nextStep': '敲時間',
         };
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(rerunJson),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(rerunJson)),
         completionKey: 'run-2-retry',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -519,7 +611,7 @@ void main() {
       );
       final newRevision = conversationContentRevision(harness.conversation);
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         completionKey: 'run-3',
         previousAnalyzedCount: 1,
         analyzedMessageCount: 2,
@@ -549,7 +641,7 @@ void main() {
       final revision = conversationContentRevision(harness.conversation);
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         completionKey: 'run-write-fails',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -574,7 +666,7 @@ void main() {
           'nextStep': '敲時間',
         };
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(rerunJson),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(rerunJson)),
         completionKey: 'run-retry',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -646,7 +738,7 @@ void main() {
         };
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(rerunJson),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(rerunJson)),
         completionKey: 'rerun-legacy-meta',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -680,7 +772,7 @@ void main() {
       final revision = conversationContentRevision(conversation);
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         completionKey: 'run-started-on-a',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -719,7 +811,7 @@ void main() {
       final revision = conversationContentRevision(conversation);
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         completionKey: 'run-reassigned-during-save',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -754,7 +846,7 @@ void main() {
       final json = _resultJson()..remove('gameStage');
 
       await harness.coordinator.persistLatestSnapshot(
-        AnalysisResult.fromJson(json),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(json)),
         completionKey: 'run-1',
         previousAnalyzedCount: 0,
         analyzedMessageCount: 1,
@@ -765,6 +857,165 @@ void main() {
       expect(harness.conversation.currentGameStage, isNull);
       expect(harness.history.listRecent().single.gameStageLabel, isNull);
       expect(recordPort.savedStageLabels, ['']);
+    });
+  });
+  group('v3 任務卡存檔（Eric 2026-10-17：新流程沒有熱度）', () {
+    test('熱度清掉、階段保留、字數基準推進、快照記 runId；紀錄與歷史事件都沒有熱度', () async {
+      final conversation =
+          _conversation(currentGameStage: 'premise', ownerUserId: 'owner-1')
+            ..lastEnthusiasmScore = 70
+            ..lastAnalyzedCharCount = 3;
+      final port = _CapturingAnalysisRecordPort();
+      final harness = _Harness(
+        conversation: conversation,
+        recordPort: port,
+        recordOwnerUserId: 'owner-1',
+      );
+
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(runId: 'run_v3'),
+        completionKey: 'run_v3',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+
+      expect(conversation.lastEnthusiasmScore, isNull);
+      expect(conversation.currentGameStage, 'premise');
+      expect(conversation.lastAnalyzedCharCount, 42);
+      final snapshot = jsonDecode(conversation.lastAnalysisSnapshotJson!)
+          as Map<String, dynamic>;
+      expect(
+        (snapshot['__vibesync_snapshot_meta_v1'] as Map)['analysisRunId'],
+        'run_v3',
+      );
+      expect(isGuideV3Payload(snapshot), isTrue);
+      final save = port.saves.single;
+      expect(save.score, isNull);
+      expect(save.stage, '', reason: 'v3 紀錄不沿用舊流程的階段');
+      final event = harness.history.listByConversation(_conversationId).single;
+      expect(event.enthusiasmScore, isNull);
+      expect(event.gameStageLabel, isNull);
+    });
+
+    test('自傷關心沒扣費：字數基準不推進', () async {
+      final conversation = _conversation()..lastAnalyzedCharCount = 3;
+      final harness = _Harness(conversation: conversation);
+
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(decision: 'care'),
+        completionKey: 'run_care',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+
+      expect(conversation.lastAnalyzedCharCount, 3);
+      expect(conversation.lastEnthusiasmScore, isNull);
+    });
+
+    test('沿用上一份快照有出處的對象檔案，新話題與對象卡的記憶不會被洗掉', () async {
+      final previous = _resultJson()
+        ..['targetProfile'] = {
+          'provenanceVersion': 1,
+          'interests': ['爬山'],
+          'traits': ['慢熟'],
+          'notes': <String>[],
+        };
+      final conversation = _conversation(snapshotJson: jsonEncode(previous));
+      final harness = _Harness(conversation: conversation);
+
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(runId: 'run_v3'),
+        completionKey: 'run_v3',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+
+      final snapshot = jsonDecode(conversation.lastAnalysisSnapshotJson!)
+          as Map<String, dynamic>;
+      expect((snapshot['targetProfile'] as Map)['interests'], ['爬山']);
+      // 續看補寫時比對用的是同一份，不會一直判成沒存過。
+      final hydrated = harness.coordinator.withCarriedPartnerMemory(
+        _guideV3(runId: 'run_v3'),
+        previousSnapshotJson: conversation.lastAnalysisSnapshotJson,
+      );
+      expect(
+        harness.coordinator.snapshotMatches(
+          conversation: conversation,
+          snapshotJson: conversation.lastAnalysisSnapshotJson,
+          rawResponse: hydrated.rawResponse,
+          messageCount: 1,
+          analyzedContentRevision: conversationContentRevision(conversation),
+        ),
+        isTrue,
+      );
+    });
+
+    test('沒有出處的舊對象檔案不沿用', () {
+      final previous = _resultJson()
+        ..['targetProfile'] = {
+          'interests': ['舊標籤'],
+        };
+      final harness = _Harness(conversation: _conversation());
+      final carried = harness.coordinator.withCarriedPartnerMemory(
+        _guideV3(),
+        previousSnapshotJson: jsonEncode(previous),
+      );
+      expect(carried.rawResponse!.containsKey('targetProfile'), isFalse);
+      // v2 結果不動。
+      final v2 = PersistableAnalysis.fromResult(
+        AnalysisResult.fromJson(_resultJson()),
+      );
+      expect(
+        identical(
+          harness.coordinator.withCarriedPartnerMemory(
+            v2,
+            previousSnapshotJson: jsonEncode(previous),
+          ),
+          v2,
+        ),
+        isTrue,
+      );
+    });
+
+    test('restore 認得 v3 快照：不補熱度、帶回 runId', () {
+      final base = _conversation();
+      final snapshot = _guideV3Json()
+        ..['__vibesync_snapshot_meta_v1'] = {
+          'contentRevision': conversationContentRevision(base, messageCount: 1),
+          'messageCount': 1,
+          'analysisRunId': 'run_v3',
+        };
+      final harness = _Harness(
+        conversation: _conversation(
+          snapshotJson: jsonEncode(snapshot),
+          analyzedCount: 1,
+        ),
+      );
+
+      final outcome = harness.coordinator.restore(repairRecord: false)!;
+      expect(outcome.result, isNull);
+      expect(outcome.guideV3!.cards.single.messages, ['那家我也想吃吃看']);
+      expect(outcome.analysisRunId, 'run_v3');
+    });
+
+    test('v3 快照壞掉就不還原（不退回成五種風格）', () {
+      final base = _conversation();
+      final snapshot = _guideV3Json()
+        ..['read'] = {'decision': 'unknown'}
+        ..['__vibesync_snapshot_meta_v1'] = {
+          'contentRevision': conversationContentRevision(base, messageCount: 1),
+          'messageCount': 1,
+        };
+      final harness = _Harness(
+        conversation: _conversation(
+          snapshotJson: jsonEncode(snapshot),
+          analyzedCount: 1,
+        ),
+      );
+      expect(harness.coordinator.restore(repairRecord: false), isNull);
     });
   });
 }

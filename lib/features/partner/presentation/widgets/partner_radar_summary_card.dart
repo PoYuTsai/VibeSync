@@ -17,6 +17,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../analysis/domain/entities/analysis_models.dart'
     show AnalysisResult;
+import '../../../analysis/domain/entities/guide_v3_result.dart'
+    show isGuideV3Payload;
 import '../../../conversation/domain/entities/conversation.dart';
 
 class PartnerRadarSummaryCard extends StatelessWidget {
@@ -25,6 +27,8 @@ class PartnerRadarSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // v3（任務卡）沒有五維雷達（Eric 2026-10-17）：不顯示，也不說「尚未分析」。
+    if (_latestIsGuideV3(latestConversation)) return const SizedBox.shrink();
     final dims = _parseDimensions(latestConversation);
     if (dims == null) {
       return _GlassShell(
@@ -109,6 +113,16 @@ class PartnerRadarSummaryCard extends StatelessWidget {
   /// `_parseDimensions` inside `analysis_models.dart`. Catching here ensures a
   /// malformed snapshot string degrades to the "尚未分析" fallback rather than
   /// crashing the detail screen.
+  static bool _latestIsGuideV3(Conversation? c) {
+    final raw = c?.lastAnalysisSnapshotJson;
+    if (raw == null || raw.trim().isEmpty) return false;
+    try {
+      return isGuideV3Payload(jsonDecode(raw));
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Map<String, int>? _parseDimensions(Conversation? c) {
     final raw = c?.lastAnalysisSnapshotJson;
     if (raw == null || raw.trim().isEmpty) return null;

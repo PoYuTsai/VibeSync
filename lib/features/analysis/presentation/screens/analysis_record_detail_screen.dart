@@ -16,6 +16,7 @@ import '../sections/analysis_banners_section.dart';
 import '../../domain/entities/analysis_record.dart';
 import '../../domain/entities/enthusiasm_level.dart';
 import '../../domain/entities/game_stage.dart';
+import '../../domain/entities/guide_v3_result.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/swipe_hint_nudge.dart';
@@ -56,6 +57,8 @@ class _AnalysisRecordDetailScreenState
     try {
       final decoded = jsonDecode(widget.record.analysisSnapshotJson);
       if (decoded is! Map) return null;
+      // v3 的快照不能交給 AnalysisResult（會補出熱度 50 的空殼）。
+      if (isGuideV3Payload(decoded)) return null;
       final json = decoded.map(
         (key, value) => MapEntry(key.toString(), value),
       );
@@ -201,11 +204,15 @@ class _AnalysisRecordDetailScreenState
                 messageCount: record.messages.length,
               ),
               const SizedBox(height: 12),
-              _ScoreSnapshotCard(
-                score: record.enthusiasmScore,
-                stage: record.gameStageLabel,
-              ),
-              const SizedBox(height: 24),
+              // v3（任務卡）沒有熱度：不顯示分數卡，判讀在「當次分析」。
+              if (record.enthusiasmScore != null) ...[
+                _ScoreSnapshotCard(
+                  score: record.enthusiasmScore!,
+                  stage: record.gameStageLabel,
+                ),
+                const SizedBox(height: 24),
+              ] else
+                const SizedBox(height: 12),
               const _DetailSectionTitle(title: '保存的對話片段'),
               const SizedBox(height: 8),
               _ConversationSnapshotCard(record: record),

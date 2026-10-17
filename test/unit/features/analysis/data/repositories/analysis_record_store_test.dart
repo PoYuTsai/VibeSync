@@ -79,6 +79,51 @@ void main() {
       await box.deleteFromDisk();
     });
 
+    test('v3 快照：沒有熱度也收，從快照記下說明書版本與燈號', () async {
+      final conversation = _conversation(id: 'conv-v3');
+      final result = await store.saveSuccessfulAnalysis(
+        ownerUserId: 'owner-1',
+        conversation: conversation,
+        completionKey: 'run_v3',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 2,
+        analyzedContentRevision:
+            conversationContentRevision(conversation, messageCount: 2),
+        analysisSnapshotJson: jsonEncode({
+          'guideVersion': 'v3.4',
+          'read': {'decision': 'send', 'light': 'red', 'judgment': ''},
+          'cards': [],
+        }),
+        // 就算呼叫端帶了分數，v3 紀錄也不存熱度。
+        enthusiasmScore: 50,
+        gameStageLabel: '',
+      );
+      expect(result.accepted, isTrue);
+      final current =
+          store.currentFor(ownerUserId: 'owner-1', conversationId: 'conv-v3')!;
+      expect(current.enthusiasmScore, isNull);
+      expect(current.guideVersion, 'v3.4');
+      expect(current.light?.label, '紅燈');
+    });
+
+    test('v2 快照沒有熱度不收', () async {
+      final conversation = _conversation(id: 'conv-v2-null');
+      final result = await store.saveSuccessfulAnalysis(
+        ownerUserId: 'owner-1',
+        conversation: conversation,
+        completionKey: 'run_v2',
+        runStartPreviousCount: 0,
+        analyzedMessageCount: 2,
+        analyzedContentRevision:
+            conversationContentRevision(conversation, messageCount: 2),
+        analysisSnapshotJson: '{"finalRecommendation":"先接住她的話題"}',
+        enthusiasmScore: null,
+        gameStageLabel: '',
+      );
+      expect(result.accepted, isFalse);
+      expect(result.rejectionReason, 'enthusiasm_score_missing');
+    });
+
     test('first success creates current from 0 even on same-count hydrate',
         () async {
       final conversation = _conversation(id: 'conversation-1');

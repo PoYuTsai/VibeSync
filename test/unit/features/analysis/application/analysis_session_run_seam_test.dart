@@ -12,6 +12,7 @@ import 'package:vibesync/features/analysis/application/analysis_run_preparer.dar
 import 'package:vibesync/features/analysis/application/ports/analysis_record_port.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/entities/persistable_analysis.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_run_metadata_mapping.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -344,7 +345,7 @@ void main() {
         isReconnectContext: false,
         analyzedSessionContext: sentContext,
       ),
-      AnalysisResult.fromJson(_resultJson()),
+      PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
       analyzedMessageCount: 1,
       allowArchivedRecordRefresh: false,
     );
@@ -369,7 +370,7 @@ void main() {
 
       final persisted = harness.session.persistHydratedResultIfNeeded(
         AnalysisRunMetadata(runId: 'run-1', contentRevision: revision),
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         expectedAnalyzedCount: 1,
         conversation: harness.conversation,
       );
@@ -393,7 +394,7 @@ void main() {
 
       final persisted = harness.session.persistHydratedResultIfNeeded(
         AnalysisRunMetadata(runId: 'run-1', contentRevision: revision),
-        AnalysisResult.fromJson(_resultJson()),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
         expectedAnalyzedCount: 1,
         conversation: harness.conversation,
       );

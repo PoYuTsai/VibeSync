@@ -922,10 +922,14 @@ class _AnalysisRecordTile extends StatelessWidget {
     final localDate = record.createdAt.toLocal();
     final accent = _platformAccent(platform);
     final stage = record.gameStageLabel.trim();
-    final visibleScore = clampVisibleInvestmentScore(record.enthusiasmScore);
-    final metadata = StringBuffer(
-      '${record.messages.length} 則訊息 · 本次投入 $visibleScore',
-    );
+    final score = record.enthusiasmScore;
+    final metadata = StringBuffer('${record.messages.length} 則訊息');
+    if (score != null) {
+      metadata.write(' · 本次投入 ${clampVisibleInvestmentScore(score)}');
+    } else if (record.light != null) {
+      // v3（任務卡）沒有熱度，列表改顯示燈號（Eric 2026-10-17）。
+      metadata.write(' · ${record.light!.label}');
+    }
     if (stage.isNotEmpty) metadata.write(' · $stage');
 
     return Material(
