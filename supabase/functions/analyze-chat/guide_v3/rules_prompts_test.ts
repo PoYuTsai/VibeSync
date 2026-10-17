@@ -461,3 +461,65 @@ Deno.test("v3.3：B47 只出換地方的推進和先不約的收，判斷由程�
     "B47",
   );
 });
+
+Deno.test("規則先後：B47 蓋過 B46、她直接問他、B43–B46；拒絕、他最後一則、自傷在 B47 之前", () => {
+  const b47Turns = toTurns([
+    her("就約那家酒吧"),
+    me("換一家咖啡店？"),
+    her("不要，就那家，你要來嗎"),
+  ]);
+  // 她直接問他（「你要來嗎」）＋B47：不排接住，照樣換地方、收、推進。
+  for (
+    const extra of [
+      { herMove: "問他的事" as const },
+      { matchedEntries: ["B47", "B46"] },
+      { matchedEntries: ["B47", "B43", "B44"] },
+    ]
+  ) {
+    const t = tags({ matchedEntries: ["B47"], ...extra });
+    const push = decidePush(b47Turns, t);
+    assertEquals(push, "換地方", JSON.stringify(extra));
+    assertEquals(
+      arrangeCards(decideReply(b47Turns, t), push, t).map((c) => c.task),
+      ["推進", "收", "推進"],
+      JSON.stringify(extra),
+    );
+  }
+  // 拒絕、封鎖、他是最後一則都在 B47 之前。
+  assertEquals(
+    decideReply(b47Turns, tags({ matchedEntries: ["B47"], blocked: true }))
+      .kind,
+    "stop",
+  );
+  const hisLast = toTurns([her("就約那家"), me("那家我不去")]);
+  assertEquals(
+    decideReply(hisLast, tags({ matchedEntries: ["B47"] })).kind,
+    "hold",
+  );
+});
+
+Deno.test("規則先後：B46 蓋過「她給了機會至少一張推進」；B43–B46 蓋過「綠燈至少一張帶張力」", () => {
+  const turns = toTurns([me("a"), her("b"), me("c"), her("週末要不要見面")]);
+  // 她自己提見面本來排具體邀約；標到 B46 就不排推進。
+  assertEquals(
+    decidePush(turns, tags({ inviteReadiness: "她自己提見面" })),
+    "具體邀約",
+  );
+  const b46 = tags({
+    inviteReadiness: "她自己提見面",
+    matchedEntries: ["B46"],
+  });
+  assertEquals(decidePush(turns, b46), null);
+  assert(
+    arrangeCards({ kind: "send" }, null, b46).every((c) => c.task !== "推進"),
+  );
+  // 綠燈、好幾顆球本來至少一張帶張力；B43–B46 任一條都改排接住。
+  for (const id of ["B43", "B44", "B45", "B46"]) {
+    const cards = arrangeCards(
+      { kind: "send" },
+      null,
+      tags({ worthyBallCount: 2, matchedEntries: [id] }),
+    );
+    assert(cards.every((c) => c.task !== "帶張力"), id);
+  }
+});

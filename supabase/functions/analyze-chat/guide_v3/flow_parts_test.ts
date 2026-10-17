@@ -87,6 +87,12 @@ const card = (messages: string[], hasInventedDetail = false) => ({
 });
 
 Deno.test("自傷訊號優先於其他所有判斷：不排卡、不帶條目", () => {
+  // 也蓋過 B47（規則先後第 1 條）。
+  assertEquals(
+    planTurn(herLast, tags({ selfHarmSignal: true, matchedEntries: ["B47"] }))
+      .decision,
+    "care",
+  );
   const plan = planTurn(
     herLast,
     tags({ selfHarmSignal: true, explicitRejection: true }),
