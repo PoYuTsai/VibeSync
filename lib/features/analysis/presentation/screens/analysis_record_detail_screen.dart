@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -308,6 +309,9 @@ class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
       editedMessagesFor: (card) => _edited[card.slot],
       onCopy: (card, text, toast) => widget.onCopy(text, message: toast),
       onEdit: (card) => _edit(card),
+      // 紀錄是當時的快照，升級不會補寫這一筆；入口照樣給（主審第 1 輪 P2-3）。
+      lockedMessage: guideV3LockedArchivedMessage,
+      onUpgrade: () => context.push('/paywall'),
     );
   }
 }

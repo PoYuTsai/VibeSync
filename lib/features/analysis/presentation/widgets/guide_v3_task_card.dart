@@ -17,6 +17,12 @@ import '../../domain/entities/guide_v3_result.dart';
 /// 照樣寫＋標示的提醒（設計文件第 5 節的字）。
 const guideV3InventedNotice = '有編的細節，請改成你的';
 
+/// 結果頁的鎖住卡：升級後會自動重新整理，看得到這張。
+const guideV3LockedLiveMessage = '升級後才看得到這張';
+
+/// 分析紀錄的鎖住卡：紀錄是當時的快照，升級不會補寫這一筆。
+const guideV3LockedArchivedMessage = '付費方案才有這張';
+
 Color guideV3TaskColor(GuideV3Task task) => switch (task) {
       GuideV3Task.accept => AppColors.info,
       GuideV3Task.resonate => AppColors.coachAccentBright,
@@ -149,7 +155,9 @@ class GuideV3TaskCard extends StatelessWidget {
               onTap: onCopy == null
                   ? null
                   : () {
-                      if (guideV3TextHasBlank(messages[i])) {
+                      // 整張卡有空格就先填：一張卡的幾則是一起傳的，不能先
+                      // 拿走沒空格的那幾則（主審第 1 輪 P2-2）。
+                      if (_needsFill) {
                         onEdit?.call();
                         return;
                       }
@@ -246,10 +254,19 @@ class GuideV3TaskCard extends StatelessWidget {
 
 /// 免費方案看不到的卡：只給任務標籤與升級入口（伺服器本來就沒寫這張）。
 class GuideV3LockedCard extends StatelessWidget {
-  const GuideV3LockedCard({super.key, required this.planned, this.onUpgrade});
+  const GuideV3LockedCard({
+    super.key,
+    required this.planned,
+    this.onUpgrade,
+    this.message = guideV3LockedLiveMessage,
+  });
 
   final GuideV3PlannedCard planned;
   final VoidCallback? onUpgrade;
+
+  /// 結果頁：升級後會重新整理，看得到這張；分析紀錄是當時的快照，升級也
+  /// 不會補寫，所以紀錄頁用不承諾解鎖的說法。
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +288,7 @@ class GuideV3LockedCard extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '升級後才看得到這張',
+              message,
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary,
               ),

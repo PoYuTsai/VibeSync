@@ -150,6 +150,7 @@ void main() {
           'judgment': '她在問你的事，先接住再說。',
           'plannedCards': [
             {'slot': 1, 'task': 'accept', 'locked': false},
+            {'slot': 2, 'task': 'push', 'locked': true},
           ],
         },
         'cards': [
@@ -187,6 +188,10 @@ void main() {
     expect(find.text('接住'), findsOneWidget);
     expect(find.text('填好空格再複製'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
+    // 免費方案當時沒寫的卡：紀錄裡也有升級入口，但說法不承諾補寫這一筆。
+    expect(find.text('付費方案才有這張'), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-locked-2-upgrade')),
+        findsOneWidget);
     expect(find.text('這筆分析內容暫時無法顯示，但上方聊天片段仍完整保留。'), findsNothing);
     expect(tester.takeException(), isNull);
   });

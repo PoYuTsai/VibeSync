@@ -169,6 +169,7 @@ class GuideV3ResultSection extends StatelessWidget {
     required this.onCopy,
     required this.onEdit,
     this.onUpgrade,
+    this.lockedMessage = guideV3LockedLiveMessage,
     this.footerFor,
     this.anchorKey,
     this.showUpgradeRefresh = false,
@@ -192,6 +193,9 @@ class GuideV3ResultSection extends StatelessWidget {
   final void Function(GuideV3Card card, String text, String toast) onCopy;
   final void Function(GuideV3Card card) onEdit;
   final VoidCallback? onUpgrade;
+
+  /// 鎖住卡的說法（結果頁與分析紀錄不同，見 [GuideV3LockedCard.message]）。
+  final String lockedMessage;
   final Widget? Function(GuideV3Card card)? footerFor;
 
   /// 分析完成時捲動定位用（第一張卡一到就捲到這裡）。
@@ -224,7 +228,11 @@ class GuideV3ResultSection extends StatelessWidget {
           shownSlots.add(card.slot);
           slots.add(_taskCard(card));
         } else if (plan.locked) {
-          slots.add(GuideV3LockedCard(planned: plan, onUpgrade: onUpgrade));
+          slots.add(GuideV3LockedCard(
+            planned: plan,
+            onUpgrade: onUpgrade,
+            message: lockedMessage,
+          ));
         } else if (isStreaming) {
           slots.add(GuideV3PendingCard(planned: plan));
         }

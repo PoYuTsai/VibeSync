@@ -38,6 +38,8 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_ar
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 import 'package:vibesync/shared/widgets/scroll_card_ticks.dart';
 
@@ -52,6 +54,35 @@ class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 
   @override
   StreamingAnalysisState build(String conversationId) => seed;
+}
+
+/// 已付費（Essential）的訂閱狀態；任何同步都維持原樣。
+class _PremiumSubscriptionNotifier extends SubscriptionNotifier {
+  _PremiumSubscriptionNotifier() {
+    final limits =
+        SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+    state = SubscriptionState(
+      tier: SubscriptionTierHelper.essential,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
+    );
+  }
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  Future<void> syncWithRevenueCat() async {}
+
+  @override
+  Future<void> ensureServerEntitlementSyncedForAnalysis() async {}
+
+  @override
+  void syncUsageFromServer({
+    required int monthlyRemaining,
+    required int dailyRemaining,
+    bool isTestAccount = false,
+  }) {}
 }
 
 class _InertAnalyzeStreamClient extends AnalyzeStreamClient {
@@ -225,6 +256,7 @@ Future<void> _pumpScreen(
   MemoryCoachingOutcomeRepository? outcomes,
   // 非空時改用 GoRouter 掛 AnalysisScreen 於 '/'，讓導航目的地可被攔截。
   List<RouteBase> extraRoutes = const [],
+  List<Override> extraOverrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -250,6 +282,7 @@ Future<void> _pumpScreen(
             .overrideWithValue(const []),
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
+        ...extraOverrides,
       ],
       child: extraRoutes.isEmpty
           ? const MaterialApp(
@@ -941,6 +974,32 @@ void main() {
       );
       await tester.pump(const Duration(seconds: 5));
       await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('續看重組的免費結果沒有 tierUsed：升級後照樣提示重新整理完整卡片', (tester) async {
+      final recovered = GuideV3Result.fromJson({
+        'guideVersion': 'v3.4',
+        'read': readJson(),
+        'cards': [cardJson(1, 'accept', '那家我也想吃吃看')],
+        'partial': true,
+        'recovered': true,
+        // run_shape.ts 的重組結果只有這兩個欄位。
+        'usage': {'messagesUsed': 1, 'shouldChargeQuota': true},
+      })!;
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(recovered),
+        extraOverrides: [
+          subscriptionProvider.overrideWith(
+            (ref) => _PremiumSubscriptionNotifier(),
+          ),
+        ],
+      );
+      expect(
+        find.byKey(const ValueKey('guide-v3-upgrade-refresh')),
+        findsOneWidget,
+      );
+      expect(find.text('連線中斷過，先給你已經寫好的卡。'), findsOneWidget);
     });
 
     testWidgets('關心：只有關心文案，沒有問教練、潤飾與扣費行', (tester) async {

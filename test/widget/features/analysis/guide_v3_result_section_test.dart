@@ -133,11 +133,10 @@ void main() {
     expect(find.text('填好空格再複製'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-message-0')));
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-fill')));
-    expect(calls.copies, isEmpty);
-    expect(calls.edits, [1, 1]);
-    // 不含空格的那一則可以單獨複製。
+    // 整張有空格就先填：點沒有空格的那一則也一樣去填空，不能先拿走。
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-message-1')));
-    expect(calls.copies, ['妳呢']);
+    expect(calls.copies, isEmpty);
+    expect(calls.edits, [1, 1, 1]);
 
     calls = await _pump(
       tester,
@@ -152,6 +151,34 @@ void main() {
     expect(find.text('已改成你的'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
     expect(calls.copies, ['我是做設計的\n妳呢']);
+  });
+
+  testWidgets('分析紀錄的鎖住卡：說法不承諾補寫，升級入口照樣有', (tester) async {
+    var upgrades = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: GuideV3ResultSection(
+            read: _read(),
+            cards: [
+              _card(1, 'accept', ['那家我也想吃吃看']),
+              _card(2, 'tension', ['妳這樣說我會當真喔']),
+            ],
+            isStreaming: false,
+            isFinal: true,
+            editedMessagesFor: (_) => null,
+            onCopy: (_, __, ___) {},
+            onEdit: (_) {},
+            onUpgrade: () => upgrades++,
+            lockedMessage: guideV3LockedArchivedMessage,
+          ),
+        ),
+      ),
+    ));
+    expect(find.text('付費方案才有這張'), findsOneWidget);
+    expect(find.text('升級後才看得到這張'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-3-upgrade')));
+    expect(upgrades, 1);
   });
 
   testWidgets('照樣寫＋標示：提醒改成你的，可以直接複製也可以改', (tester) async {
