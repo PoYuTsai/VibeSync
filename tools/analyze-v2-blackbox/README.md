@@ -171,7 +171,7 @@ deno run --allow-env --allow-read --allow-write=tools/analyze-v2-blackbox/out \
 Bruce 的最後一關審核，四組十二碼；在這之前的 critic 結果用的是舊的 22 碼 rubric，不能直接
 比）。輸出每案 verdict／violations／token／延遲與 tally；不重跑主分析、不動 runtime。每案
 一次真呼叫，跑前要 Eric 明確授權。
-production 影子（`analyze-chat/critic_shadow.ts`）預設關閉，觸發條件／模型待 Eric 定。
+production 影子（`analyze-chat/critic_shadow.ts`）是開著的：Eric 2026-09-03 說「開」，每次都審、模型 Sonnet 5（`ANALYZE_CRITIC_SHADOW`）；只審推薦卡、事後記錄、不擋。
 
 首輪結果（2026-09-03，Sonnet 5，`out/2026-09-03-critic-sonnet5-run12.json`／`-run13.json`）：
 run12 14 案 5 rewrite、run13 16 案 4 rewrite，invalid 0，延遲 1.2–4.4s，每案約 2k 輸入 token

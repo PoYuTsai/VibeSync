@@ -196,7 +196,7 @@ export interface AnalyzeStreamDeps {
   supabaseServiceKey: string;
   /// 測試注入用；預設走 callClaudeStreaming（含 outage fallback 鏈）。
   callModel?: typeof callClaudeStreaming;
-  /// Phase 3d critic 影子：預設 ANALYZE_CRITIC_SHADOW（關閉）；測試注入。
+  /// Phase 3d critic 影子：預設 ANALYZE_CRITIC_SHADOW（開著，見 critic_shadow.ts）；測試注入。
   criticShadow?: AnalyzeCriticShadowConfig;
   callCritic?: (args: SemanticCriticCallArgs) => Promise<unknown>;
   /// 背景排程；production 走 EdgeRuntime.waitUntil（critic_shadow 內退路）。

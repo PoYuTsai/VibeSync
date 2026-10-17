@@ -4,7 +4,8 @@
 // 絕不整條 fail-closed）。只審最終選中的那一張卡，跑在 analysis.done 之後的
 // 背景（EdgeRuntime.waitUntil），永遠不改結果、不擋、不 throw；只出
 // `stream_semantic_critic` telemetry 與 ai_logs 成本紀錄。
-// 觸發條件與模型是產品／成本決定（ANALYZE_CRITIC_SHADOW），預設關閉。
+// 觸發條件與模型是產品／成本決定（ANALYZE_CRITIC_SHADOW）：Eric 2026-09-03 說「開」，
+// 目前是開著的（每次都審、Sonnet 5）；沒有背景排程器（本機測試）就不啟動。
 
 import {
   ANALYZE_CRITIC_VIOLATIONS,
