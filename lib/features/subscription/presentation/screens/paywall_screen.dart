@@ -125,7 +125,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
-          '對話健檢 + 訊息優化',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -141,7 +140,6 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
           '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
-          '對話健檢 + 訊息優化',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -610,8 +608,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           _buildComparisonRow('互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊'),
           _buildComparisonRow('聊天測驗', '免費關卡', '全部關卡', '全部關卡'),
           _buildComparisonRow('夜市實戰影片', '第一段', '第一段', '完整流程＋復盤'),
-          _buildComparisonRow('對話健檢', '未開放', '未開放', '可用'),
-          _buildComparisonRow('訊息優化', '未開放', '未開放', '可用'),
+          // 不再列「對話健檢」「訊息優化」：健檢只有舊版詳細分析才有，新流程
+          // 不產生（Eric 2026-10-17）；訊息優化 7/29 起所有方案都能用（D-4）。
+          // 兩個都不是 Essential 專屬，列在這裡等於要人付錢買拿不到或本來就有的東西。
           _buildComparisonRow(
             '每日額度',
             '${AppConstants.freeDailyLimit} 則',

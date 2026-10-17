@@ -172,14 +172,18 @@ void main() {
       expect(find.text('雷達圖'), findsNothing);
       expect(find.text('延展＋調情 2 種'), findsNothing);
       expect(find.text('全部 5 種'), findsNothing);
-      expect(find.text('可用'), findsNWidgets(2));
-      expect(find.text('未開放'), findsNWidgets(4));
+      // 對話健檢（新流程沒有）與訊息優化（D-4 起全方案）都不再是 Essential 專屬。
+      expect(find.text('對話健檢'), findsNothing);
+      expect(find.text('訊息優化'), findsNothing);
+      expect(find.text('可用'), findsNothing);
+      expect(find.text('未開放'), findsNothing);
       // 方案卡的重點也不再寫五種風格或雷達圖。
       expect(
         find.text('每次 3–5 張回覆，依局面搭配；免費看前 2 張'),
         findsNWidgets(4),
       );
-      expect(find.text('對話健檢 + 訊息優化'), findsNWidgets(2));
+      expect(find.textContaining('對話健檢'), findsNothing);
+      expect(find.textContaining('訊息優化'), findsNothing);
       expect(find.textContaining('五種風格'), findsNothing);
       expect(find.textContaining('雷達'), findsNothing);
       expect(find.text('120 則'), findsOneWidget);
