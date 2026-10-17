@@ -103,7 +103,7 @@ void main() {
 
       expect(find.text('不只教你回這句'), findsOneWidget);
       expect(
-        find.text('它認得你聊的每一個她——聊到哪、什麼時候該約\n教練帶你從曖昧一路走到約出來'),
+        find.text('它認得你聊的每一個她——聊到哪、她現在冷還熱、什麼時候該約\n教練帶你從曖昧一路走到約出來'),
         findsOneWidget,
       );
       expect(find.textContaining('熱度多少'), findsNothing);

@@ -86,7 +86,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     // 對話分析 v3（2026-10-17）不產生熱度數字，這頁不再寫「熱度多少」。
     {
       'title': '不只教你回這句',
-      'description': '它認得你聊的每一個她——聊到哪、什麼時候該約\n教練帶你從曖昧一路走到約出來',
+      'description': '它認得你聊的每一個她——聊到哪、她現在冷還熱、什麼時候該約\n教練帶你從曖昧一路走到約出來',
       'imagePath': 'coach',
     },
     // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意
