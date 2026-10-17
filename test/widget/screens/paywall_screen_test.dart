@@ -177,8 +177,9 @@ void main() {
       // 方案卡的重點也不再寫五種風格或雷達圖。
       expect(
         find.text('每次 3–5 張回覆，依局面搭配；免費看前 2 張'),
-        findsWidgets,
+        findsNWidgets(4),
       );
+      expect(find.text('對話健檢 + 訊息優化'), findsNWidgets(2));
       expect(find.textContaining('五種風格'), findsNothing);
       expect(find.textContaining('雷達'), findsNothing);
       expect(find.text('120 則'), findsOneWidget);

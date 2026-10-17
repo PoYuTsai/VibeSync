@@ -60,5 +60,12 @@ void main() {
     await tester.tap(find.text('下一步'));
     await tester.pumpAndSettle();
     expect(find.byType(DemoCardsPreview), findsOneWidget);
+    expect(find.text('每次 3–5 張回覆，依局面搭配'), findsOneWidget);
+    expect(
+      find.text('接住、共鳴、推進，照她這輪的狀況排好\n每句都幫你控制字數，不會顯得太黏或太急'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('五種風格'), findsNothing);
+    expect(find.textContaining('冷讀'), findsNothing);
   });
 }

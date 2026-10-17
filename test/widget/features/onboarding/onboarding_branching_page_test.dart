@@ -95,6 +95,20 @@ void main() {
       expect(find.textContaining('熱度分析'), findsNothing);
     });
 
+    testWidgets('第 6 頁不再寫「熱度多少」（對話分析 v3 不產生熱度）', (tester) async {
+      await _pumpOnboarding(tester);
+      for (var i = 0; i < 5; i++) {
+        await _swipeToNextPage(tester);
+      }
+
+      expect(find.text('不只教你回這句'), findsOneWidget);
+      expect(
+        find.text('它認得你聊的每一個她——聊到哪、什麼時候該約\n教練帶你從曖昧一路走到約出來'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('熱度多少'), findsNothing);
+    });
+
     testWidgets('分流頁顯示標題＋兩顆按鈕，底部「下一步」隱藏、指示點 9 顆', (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);

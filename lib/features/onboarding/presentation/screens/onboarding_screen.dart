@@ -83,9 +83,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     // 定位頁（2026-08-18 定位拍板，docs/positioning.md）：功能演示後
     // 把自我介紹從「回這句」抬到品類差異化——教練帶完整段；
     // 記憶不寫「有記憶」，寫成利益句「認得你聊的每一個她」。
+    // 對話分析 v3（2026-10-17）不產生熱度數字，這頁不再寫「熱度多少」。
     {
       'title': '不只教你回這句',
-      'description': '它認得你聊的每一個她——聊到哪、熱度多少、什麼時候該約\n教練帶你從曖昧一路走到約出來',
+      'description': '它認得你聊的每一個她——聊到哪、什麼時候該約\n教練帶你從曖昧一路走到約出來',
       'imagePath': 'coach',
     },
     // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意

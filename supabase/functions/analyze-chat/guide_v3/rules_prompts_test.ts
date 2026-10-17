@@ -4,7 +4,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { applyVoice, parseWrittenCards, scoringWords } from "./cards.ts";
-import type { GuideV3Entry } from "./entries.ts";
+import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import type { GuideV3SectionId } from "./guide_text.ts";
 import {
   cardSpecLine,
@@ -462,6 +462,25 @@ Deno.test("v3.3：B47 只出換地方的推進和先不約的收，判斷由程�
     )[0],
     "B47",
   );
+});
+
+Deno.test("v3.5：B47 命中時，寫卡提示詞帶真的 B47 觸發（含只指定店家不算）與寫法", () => {
+  const b47 = GUIDE_V3_ENTRIES.find((e) => e.id === "B47")!;
+  const t = tags({ matchedEntries: ["B47"], risk: true });
+  const turns = toTurns([
+    her("就約那家酒吧"),
+    me("換一家咖啡店？"),
+    her("不要，就那家"),
+  ]);
+  const user = writeUserPrompt({
+    turns,
+    tags: t,
+    entries: [b47],
+    cards: arrangeCards({ kind: "send" }, decidePush(turns, t), t),
+  });
+  // 寫卡看到的條目是「編號（觸發）：寫法」，跟 B47 觸發實驗用的原型同一個格式。
+  assert(user.includes(`- B47（${b47.trigger}）：${b47.writing}`));
+  assert(user.includes("她只是指定店家、他還沒提換地方，不算"));
 });
 
 Deno.test("規則先後：B47 蓋過 B46、她直接問他、B43–B46；拒絕、他最後一則、自傷在 B47 之前", () => {
