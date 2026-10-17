@@ -8,6 +8,7 @@ library;
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
+import '../../domain/entities/guide_v3_result.dart';
 import '../../domain/entities/optimize_message_pending_request.dart';
 
 class OptimizeBillingOutcome {
@@ -28,7 +29,7 @@ class OptimizeBillingOutcome {
 
 abstract class OptimizeBillingPort {
   /// 同一份輸入的決定論 fingerprint；指令必須參與（同稿不同指令不得
-  /// 共用 requestId）。
+  /// 共用 requestId），任務卡的卡片規格也是。
   String fingerprintFor({
     required List<Message> messages,
     required String userDraft,
@@ -38,6 +39,7 @@ abstract class OptimizeBillingPort {
     String? effectiveStyleContext,
     String? knownContactName,
     String? refineInstruction,
+    GuideV3RefineSpec? guideV3Card,
   });
 
   Future<OptimizeBillingOutcome> run({

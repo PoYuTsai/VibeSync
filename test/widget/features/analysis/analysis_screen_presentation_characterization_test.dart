@@ -976,6 +976,43 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
+    testWidgets('再調一下：最終結果每張送到的卡都有，鎖住的卡沒有', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('guide-v3-card-2-refine')),
+      );
+      expect(
+        find.byKey(const ValueKey('guide-v3-card-1-refine')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('guide-v3-card-2-refine')),
+        findsOneWidget,
+      );
+      expect(
+          find.byKey(const ValueKey('guide-v3-card-3-refine')), findsNothing);
+    });
+
+    testWidgets('再調一下：還在串流時不給（卡已經能複製）', (tester) async {
+      final read = GuideV3Read.fromJson(readJson())!;
+      final first = GuideV3Card.fromJson(cardJson(1, 'accept', '那家我也想吃吃看'))!;
+      await _pumpScreen(
+        tester,
+        seed: StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.streamingReport,
+          analysisRunId: 'run_v3',
+          isGuideV3Run: true,
+          guideV3Read: read,
+          guideV3Cards: [first],
+        ),
+      );
+      expect(
+          find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('guide-v3-card-1-refine')), findsNothing);
+    });
+
     testWidgets('續看重組的免費結果沒有 tierUsed：升級後照樣提示重新整理完整卡片', (tester) async {
       final recovered = GuideV3Result.fromJson({
         'guideVersion': 'v3.4',

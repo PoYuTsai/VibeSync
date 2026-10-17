@@ -27,6 +27,7 @@ class OptimizeBillingAdapter implements OptimizeBillingPort {
     effectiveStyleContext,
     knownContactName,
     refineInstruction,
+    guideV3Card,
   }) {
     return OptimizeMessageRequestIdSession.fingerprintFor(
       messages: messages,
@@ -37,6 +38,7 @@ class OptimizeBillingAdapter implements OptimizeBillingPort {
       effectiveStyleContext: effectiveStyleContext,
       knownContactName: knownContactName,
       refineInstruction: refineInstruction,
+      guideV3Card: guideV3Card,
     );
   }
 

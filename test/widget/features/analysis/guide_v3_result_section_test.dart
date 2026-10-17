@@ -46,6 +46,7 @@ GuideV3Card _card(
 class _Calls {
   final copies = <String>[];
   final edits = <int>[];
+  final refines = <int>[];
   var upgrades = 0;
 }
 
@@ -58,6 +59,8 @@ Future<_Calls> _pump(
   bool partial = false,
   bool recovered = false,
   Map<int, List<String>> edited = const {},
+  Map<int, List<String>> refined = const {},
+  bool withRefine = false,
 }) async {
   final calls = _Calls();
   await tester.binding.setSurfaceSize(const Size(430, 1600));
@@ -75,6 +78,8 @@ Future<_Calls> _pump(
           editedMessagesFor: (card) => edited[card.slot],
           onCopy: (card, text, toast) => calls.copies.add(text),
           onEdit: (card) => calls.edits.add(card.slot),
+          refinedMessagesFor: (card) => refined[card.slot],
+          onRefine: withRefine ? (card) => calls.refines.add(card.slot) : null,
           onUpgrade: () => calls.upgrades++,
         ),
       ),
@@ -289,6 +294,124 @@ void main() {
     expect(find.text('先把安全放在第一位。\n情況緊急，打 110 或 119。'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-light')), findsNothing);
     expect(find.text('不該出現'), findsNothing);
+  });
+
+  testWidgets('再調一下：畫面給了才出現，每張送到的卡各一個；鎖住、正在寫的卡沒有', (tester) async {
+    final calls = await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔', '週末給妳機會證明']),
+      ],
+      withRefine: true,
+    );
+    expect(find.text('再調一下'), findsNWidgets(2));
+    expect(
+        find.byKey(const ValueKey('guide-v3-card-1-refine')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('guide-v3-card-2-refine')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-card-3-refine')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-2-refine')));
+    expect(calls.refines, [2]);
+    expect(calls.copies, isEmpty, reason: '按再調不會複製');
+
+    // 結果頁沒給（串流中、分析紀錄）：一顆都沒有。
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+      ],
+      isStreaming: true,
+      isFinal: false,
+    );
+    expect(find.text('再調一下'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
+  });
+
+  testWidgets('再調一下：舊快照帶不出卡片規格的卡不給', (tester) async {
+    final old = GuideV3Card.fromJson({
+      'slot': 1,
+      'task': 'accept',
+      'messages': ['那家我也想吃吃看'],
+      'hasInventedDetail': false,
+    })!;
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [old],
+      withRefine: true,
+    );
+    expect(find.byKey(const ValueKey('guide-v3-card-1-refine')), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+  });
+
+  testWidgets('再調過的版本：顯示調過的字，編的細節提醒照留，不算「已改成你的」', (tester) async {
+    final calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'resonate', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'resonate', ['我上週也剛去爬了七星山'], invented: true),
+      ],
+      refined: {
+        1: ['我上週也去爬七星山', '腿現在還在痠'],
+      },
+      withRefine: true,
+    );
+    expect(find.text('我上週也去爬七星山'), findsOneWidget);
+    expect(find.text('我上週也剛去爬了七星山'), findsNothing);
+    expect(find.text(guideV3RefinedLabel), findsOneWidget);
+    expect(find.text('已改成你的'), findsNothing);
+    expect(find.text(guideV3InventedNotice), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
+    expect(calls.copies, ['我上週也去爬七星山\n腿現在還在痠']);
+  });
+
+  testWidgets('再調過的版本還有＿＿：一樣要先填才能複製；自己改過就以改過的為準', (tester) async {
+    var calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的', '妳呢']),
+      ],
+      refined: {
+        1: ['我做＿＿', '換你說'],
+      },
+      withRefine: true,
+    );
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
+    expect(find.text('填好空格再複製'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-message-1')));
+    expect(calls.copies, isEmpty);
+    expect(calls.edits, [1]);
+
+    calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的', '妳呢']),
+      ],
+      edited: {
+        1: ['我做設計', '換你說'],
+      },
+      refined: {
+        1: ['我做＿＿', '換你說'],
+      },
+      withRefine: true,
+    );
+    expect(find.text('已改成你的'), findsOneWidget);
+    expect(find.text(guideV3RefinedLabel), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
+    expect(calls.copies, ['我做設計\n換你說']);
   });
 
   testWidgets('填空：還有＿＿就不能複製，填好才回傳', (tester) async {

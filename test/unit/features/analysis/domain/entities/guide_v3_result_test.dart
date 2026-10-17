@@ -146,6 +146,42 @@ void main() {
       expect(card.raw['method'], 'reaction');
     });
 
+    test('再調用的卡片規格：任務、口吻、做法都是伺服器的代碼；舊快照缺欄位就不給', () {
+      final card = GuideV3Card.fromJson(_card(1, task: 'push'))!;
+      expect(
+        card.refineSpec,
+        const GuideV3RefineSpec(
+          task: 'push',
+          voice: 'default',
+          method: 'reaction',
+        ),
+      );
+      expect(card.refineSpec!.toJson(), {
+        'task': 'push',
+        'voice': 'default',
+        'method': 'reaction',
+      });
+      final his = GuideV3Card.fromJson({
+        ..._card(2, task: 'tension'),
+        'voice': 'his',
+        'method': 'blank',
+      })!;
+      expect(his.refineSpec!.voice, 'his');
+      expect(his.refineSpec!.method, 'blank');
+      for (final broken in [
+        {'voice': null},
+        {'method': null},
+        {'voice': '照他'},
+        {'method': '留空格'},
+        {'method': 3},
+      ]) {
+        final raw = {..._card(3), ...broken}
+          ..removeWhere((_, value) => value == null);
+        expect(GuideV3Card.fromJson(raw)!.refineSpec, isNull,
+            reason: '$broken');
+      }
+    });
+
     test('形狀不對就不收', () {
       expect(GuideV3Card.fromJson(_card(0)), isNull);
       expect(GuideV3Card.fromJson(_card(1, task: 'coldRead')), isNull);

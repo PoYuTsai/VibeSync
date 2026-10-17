@@ -11,6 +11,7 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_telemetry.dart';
+import '../../domain/entities/guide_v3_result.dart';
 
 export '../../domain/entities/analysis_telemetry.dart';
 import 'analysis_exceptions.dart';
@@ -166,12 +167,14 @@ class AnalysisAuxiliaryClient {
     );
   }
 
-  /// 回覆微調：同一條 optimize-message 計費路徑，多帶指令與多輪漂移錨。
+  /// 回覆微調：同一條 optimize-message 計費路徑，多帶指令與多輪漂移錨；
+  /// 任務卡的再調另帶卡片規格（[guideV3Card]）。
   Future<AnalysisResult> refineReply({
     required List<Message> messages,
     required String userDraft,
     required String refineInstruction,
     String? refineAnchorText,
+    GuideV3RefineSpec? guideV3Card,
     SessionContext? sessionContext,
     String? conversationSummary,
     String? partnerSummary,
@@ -190,6 +193,7 @@ class AnalysisAuxiliaryClient {
       userDraft: userDraft,
       refineInstruction: refineInstruction,
       refineAnchorText: refineAnchorText,
+      guideV3Card: guideV3Card,
       requestId: requestId,
       onTelemetry: onTelemetry,
     );
@@ -206,6 +210,7 @@ class AnalysisAuxiliaryClient {
     String? userDraft,
     String? refineInstruction,
     String? refineAnchorText,
+    GuideV3RefineSpec? guideV3Card,
     String? requestId,
     bool recognizeOnly = false,
     AnalysisProgressCallback? onProgress,
@@ -258,6 +263,7 @@ class AnalysisAuxiliaryClient {
           userDraft: userDraft,
           refineInstruction: refineInstruction,
           refineAnchorText: refineAnchorText,
+          guideV3Card: guideV3Card,
           requestId: logicalRequestId,
           recognizeOnly: recognizeOnly,
           onProgress: onProgress,
@@ -308,6 +314,7 @@ class AnalysisAuxiliaryClient {
     String? userDraft,
     String? refineInstruction,
     String? refineAnchorText,
+    GuideV3RefineSpec? guideV3Card,
     String? requestId,
     required bool recognizeOnly,
     AnalysisProgressCallback? onProgress,
@@ -396,6 +403,9 @@ class AnalysisAuxiliaryClient {
         if (hasUserDraft) 'userDraft': userDraft.trim(),
         if (hasRefineInstruction) 'refineInstruction': trimmedRefineInstruction,
         if (hasRefineAnchor) 'refineAnchorText': trimmedRefineAnchor,
+        // 任務卡的再調：只跟指令一起送（舊 Edge 不認得會忽略，退回一般微調）。
+        if (hasRefineInstruction && guideV3Card != null)
+          'guideV3Card': guideV3Card.toJson(),
         if (requestId != null) 'requestId': requestId,
         if (recognizeOnly) 'recognizeOnly': true,
         // ADR #19 定案 #6 capability contract：所有 analyze 請求必送。

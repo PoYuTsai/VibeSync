@@ -169,6 +169,40 @@ class GuideV3Read {
   }
 }
 
+/// 伺服器 `VOICE_CODE`／`METHOD_CODE`（照他、預設；只用反應、用他說過的、留空格、照樣寫＋標示）。
+const _guideV3VoiceWires = {'his', 'default'};
+const _guideV3MethodWires = {'reaction', 'his_facts', 'blank', 'invented'};
+
+/// 「再調一下」帶給伺服器的卡片規格：任務、口吻、「有他」做法（伺服器
+/// `guide_v3/refine_card.ts` 只收出卡用的代碼，用來保住這張卡的任務與口吻）。
+class GuideV3RefineSpec {
+  const GuideV3RefineSpec({
+    required this.task,
+    required this.voice,
+    required this.method,
+  });
+
+  final String task;
+  final String voice;
+  final String method;
+
+  Map<String, String> toJson() => {
+        'task': task,
+        'voice': voice,
+        'method': method,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is GuideV3RefineSpec &&
+      other.task == task &&
+      other.voice == voice &&
+      other.method == method;
+
+  @override
+  int get hashCode => Object.hash(task, voice, method);
+}
+
 /// 一張任務卡（`analysis.card` 事件，也在最終結果的 `cards`）。
 class GuideV3Card {
   const GuideV3Card({
@@ -197,6 +231,19 @@ class GuideV3Card {
 
   /// 整張複製：跟 v2 回覆卡同樣用換行接起來。
   String get copyText => messages.join('\n');
+
+  /// 「再調一下」要帶的規格；舊快照缺口吻或做法、或代碼不認得就回 null（不給再調）。
+  GuideV3RefineSpec? get refineSpec {
+    final voice = raw['voice'];
+    final method = raw['method'];
+    if (voice is! String ||
+        method is! String ||
+        !_guideV3VoiceWires.contains(voice) ||
+        !_guideV3MethodWires.contains(method)) {
+      return null;
+    }
+    return GuideV3RefineSpec(task: task.wire, voice: voice, method: method);
+  }
 
   static GuideV3Card? fromJson(Object? json) {
     if (json is! Map) return null;

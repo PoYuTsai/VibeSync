@@ -92,6 +92,7 @@ import '../sections/streaming_content_section.dart';
 import '../sections/telemetry_diagnostics_section.dart';
 import '../helpers/analysis_run_metadata_mapping.dart';
 import '../helpers/analysis_usage_copy.dart';
+import '../helpers/guide_v3_card_versions.dart';
 import '../widgets/analysis_action_widgets.dart';
 import '../widgets/streaming_analysis_loading_widgets.dart';
 import '../../../learning/presentation/screens/ebook_detail_screen.dart'
@@ -211,8 +212,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   GuideV3Result? _v3Result;
   String? _v3RunId;
 
-  /// 他填過空格或改過的卡（key＝runId:slot），只在這個畫面裡。
-  final Map<String, List<String>> _v3Edited = {};
+  /// 他填過空格、改過，或「再調一下」選定的版本（key＝runId:slot），只在這個畫面裡。
+  final _v3Versions = GuideV3CardVersions();
 
   /// 這一輪已經捲到結果區過（判讀和第一張卡一到就捲一次）。
   bool _v3Snapped = false;
@@ -2839,7 +2840,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _streamContents = const [];
         _activeAnalysisMessageCount = analyzedMessageCount;
         _v3Snapped = false;
-        _v3Edited.clear();
+        _v3Versions.clear();
       });
 
       // Fire-and-forget（waitForCompletion 之外）。notifier 快取 payload 供
@@ -3229,9 +3230,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   ///
   /// 微調對象一律是**單一則回覆**，不是整組合併後的文字：整組的「短一點」語意
   /// 不清，而且多輪迭代很快就會撞到 server 的 userDraft 長度上限。
+  ///
+  /// v3 任務卡另外帶 [guideV3Card]（伺服器保住任務並跑出卡的檢查）、自己的
+  /// [quickInstructions]，並用 [onAdopted] 接手選定的版本（不直接進剪貼簿）。
   Future<void> _refineReply({
     required String originText,
     required String originCardKey,
+    GuideV3RefineSpec? guideV3Card,
+    List<String> quickInstructions = kRefineQuickInstructions,
+    Future<void> Function(ReplyRefineSheetResult result)? onAdopted,
   }) async {
     final origin = originText.trim();
     if (origin.isEmpty) return;
@@ -3262,6 +3269,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       restoredText: restored?.refinedText,
       restoredRequestId: restored?.requestId,
       freeRemaining: _replyIteration.refineFreeRemaining,
+      quickInstructions: quickInstructions,
       onRefine: ({required currentText, required instruction}) async {
         final round = await _replyIteration.runRefineRound(
           ownerUserId: ownerUserId,
@@ -3284,6 +3292,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             );
           },
           onTelemetry: _handleAnalysisTelemetry,
+          guideV3Card: guideV3Card,
         );
         if (round == null) return null;
 
@@ -3308,6 +3317,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
 
     if (!mounted || sheetResult == null || !sheetResult.isRefined) return;
+    if (onAdopted != null) {
+      await onAdopted(sheetResult);
+      return;
+    }
     AppHaptics.light();
     await Clipboard.setData(ClipboardData(text: sheetResult.adoptedText));
     unawaited(
@@ -3421,7 +3434,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         buffer.writeln('');
         buffer.writeln('--- 建議回覆 ---');
         for (final card in guideV3.cards) {
-          final messages = _guideV3EditedFor(card) ?? card.messages;
+          final messages =
+              _v3Versions.displayed(_guideV3EditKey(card), card.messages);
           buffer.writeln('[${card.task.label}] ${messages.join(' / ')}');
         }
       }
@@ -3857,12 +3871,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   String _guideV3EditKey(GuideV3Card card) => '${_v3RunId ?? ''}:${card.slot}';
 
   List<String>? _guideV3EditedFor(GuideV3Card card) =>
-      _v3Edited[_guideV3EditKey(card)];
+      _v3Versions.editedFor(_guideV3EditKey(card));
+
+  List<String>? _guideV3RefinedFor(GuideV3Card card) =>
+      _v3Versions.refinedFor(_guideV3EditKey(card))?.messages;
 
   void _copyGuideV3Card(GuideV3Card card, String text, String toast) {
     Clipboard.setData(ClipboardData(text: text));
+    // 再調過的卡（之後自己填空也算）記成那一輪微調的獨立事件，不落回原卡。
+    final refined = _v3Versions.refinedFor(_guideV3EditKey(card));
     unawaited(
-      _recordAnalysisCopy(cardKey: _guideV3CardKey(card), copiedText: text),
+      refined != null
+          ? _recordRefineCopy(
+              originCardKey: _guideV3CardKey(card),
+              requestId: refined.requestId,
+              copiedText: text,
+            )
+          : _recordAnalysisCopy(
+              cardKey: _guideV3CardKey(card),
+              copiedText: text,
+            ),
     );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -3872,20 +3900,61 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// 填空／改成自己的說法；改好就直接複製改好的版本。
+  /// 填空／改成自己的說法（從卡上現在顯示的那一份開始）；改好就直接複製改好的版本。
   Future<void> _editGuideV3Card(GuideV3Card card) async {
     final key = _guideV3EditKey(card);
     final edited = await showGuideV3EditSheet(
       context,
-      messages: _v3Edited[key] ?? card.messages,
+      messages: _v3Versions.displayed(key, card.messages),
     );
     if (edited == null || !mounted) return;
-    setState(() => _v3Edited[key] = edited);
+    setState(() => _v3Versions.saveEdit(key, edited));
     AppHaptics.light();
     _copyGuideV3Card(
       card,
       edited.join('\n'),
       edited.length == 1 ? '已複製這句' : '已複製這組訊息',
+    );
+  }
+
+  /// v3 任務卡的「再調一下」（Eric 2026-10-18）：沿用 [_refineReply] 的面板、同意書、
+  /// 計費與冪等，帶卡片規格讓伺服器保住任務、跑出卡的檢查；幾則照舊是幾則。選定的
+  /// 版本不直接進剪貼簿：先存成這張卡的再調版本（編的細節提醒照留），再照卡片的
+  /// 複製規則走（還有「＿」就先填）。
+  Future<void> _refineGuideV3Card(GuideV3Card card) async {
+    final spec = card.refineSpec;
+    if (spec == null) return;
+    final key = _guideV3EditKey(card);
+    await _refineReply(
+      originText: _v3Versions.displayed(key, card.messages).join('\n'),
+      originCardKey: _guideV3CardKey(card),
+      guideV3Card: spec,
+      quickInstructions: kGuideV3RefineQuickInstructions,
+      onAdopted: (result) async {
+        final version = GuideV3RefinedVersion.fromAdoptedText(
+          result.adoptedText,
+          requestId: result.requestId,
+        );
+        if (version.messages.isEmpty || !mounted) return;
+        setState(() => _v3Versions.adoptRefined(key, version));
+        await _copyGuideV3CardAsShown(card);
+      },
+    );
+  }
+
+  /// 照卡片的複製規則複製卡上現在顯示的那一份：還有「＿」就先開填空，填好才複製。
+  Future<void> _copyGuideV3CardAsShown(GuideV3Card card) async {
+    final messages =
+        _v3Versions.displayed(_guideV3EditKey(card), card.messages);
+    if (messages.any(guideV3TextHasBlank)) {
+      await _editGuideV3Card(card);
+      return;
+    }
+    AppHaptics.light();
+    _copyGuideV3Card(
+      card,
+      messages.join('\n'),
+      messages.length == 1 ? '已複製這句' : '已複製這組訊息',
     );
   }
 
@@ -4412,6 +4481,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               onCopy: _copyGuideV3Card,
                               onEdit: (card) =>
                                   unawaited(_editGuideV3Card(card)),
+                              // 再調只給最終結果（串流中、分析紀錄都不給）。
+                              refinedMessagesFor: _guideV3RefinedFor,
+                              onRefine: _v3Result == null
+                                  ? null
+                                  : (card) =>
+                                      unawaited(_refineGuideV3Card(card)),
                               onUpgrade: () => unawaited(_showPaywall(context)),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),
