@@ -20,6 +20,19 @@ Future<void> pumpAvatar(WidgetTester t, String? path) async {
   await t.pumpAndSettle();
 }
 
+/// [pumpAvatar] 之後一直等到讀檔結果出來、畫出圖片為止（最多約 5 秒）。
+/// LocalAvatar 讀頭像是真的檔案 I/O：全套測試跑到一半、機器忙的時候，固定的 80 ms 偶爾不夠，
+/// 圖片還沒出來就斷言會失敗。
+Future<void> waitForImage(WidgetTester t) async {
+  await t.runAsync(() async {
+    for (var i = 0; i < 250 && find.byType(Image).evaluate().isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await t.pump();
+    }
+  });
+  await t.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
       'local avatar renders real local bytes then clears old image on path change',
@@ -38,6 +51,7 @@ void main() {
       picture.dispose();
     });
     await pumpAvatar(t, file.path);
+    await waitForImage(t);
     expect(find.byType(Image), findsOneWidget);
     expect(t.widget<Image>(find.byType(Image)).image, isA<MemoryImage>());
     expect(find.byKey(const ValueKey('avatar-fallback')), findsNothing);
