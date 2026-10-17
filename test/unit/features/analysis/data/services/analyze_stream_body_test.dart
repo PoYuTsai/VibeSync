@@ -65,9 +65,10 @@ void main() {
     // 驗收 18：關於我不進 AnalyzeChat——buildForAnalysis 恆為 null，
     // wire payload 不得帶 effectiveStyleContext。
     expect(body.containsKey('effectiveStyleContext'), isFalse);
-    // Phase 1c：宣告 Analyze V2 合約，後端才會開不回決策的閘門。
-    expect(body['analysisContractVersion'], 2);
-    expect(AnalyzeStreamClient.analysisContractVersion, 2);
+    // 宣告協定 3：不回決策（2）＋v3 任務卡與 F04（3）。伺服器開關關著時
+    // 協定 3 照樣走 v2；續看 v3 的 run 也要 3 才接得上。
+    expect(body['analysisContractVersion'], 3);
+    expect(AnalyzeStreamClient.analysisContractVersion, 3);
   });
 
   test('上次有效階段（弱先驗）隨 wire payload 送出；缺值不帶 key', () {

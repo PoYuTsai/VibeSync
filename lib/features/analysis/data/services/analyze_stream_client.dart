@@ -20,6 +20,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 
 import '../../domain/entities/analysis_recommendation_preview.dart';
+import '../../domain/entities/guide_v3_result.dart';
 import 'analysis_exceptions.dart';
 import 'analysis_transport_support.dart';
 
@@ -100,6 +101,15 @@ enum AnalysisStreamUpdateKind {
   progress,
   content,
   recommendation,
+
+  /// v3：局面判讀（扣費成功後才送，緊接著第一張卡）。
+  guideV3Read,
+
+  /// v3：一張定稿過的任務卡，到了就能複製。
+  guideV3Card,
+
+  /// v2 帶 [AnalysisStreamUpdate.result]；v3 帶
+  /// [AnalysisStreamUpdate.guideV3Result]。
   done,
 }
 
@@ -112,6 +122,12 @@ class AnalysisStreamUpdate {
   final AnalysisStreamContent? content;
   final AnalysisRecommendationPreview? recommendationPreview;
   final AnalysisResult? result;
+
+  /// v3 新分析的 `analysis.started` 帶說明書版本；續看與 v2 沒有。
+  final String? guideVersion;
+  final GuideV3Read? guideV3Read;
+  final GuideV3Card? guideV3Card;
+  final GuideV3Result? guideV3Result;
   final Map<String, dynamic>? rawEvent;
 
   const AnalysisStreamUpdate._({
@@ -123,6 +139,10 @@ class AnalysisStreamUpdate {
     this.content,
     this.recommendationPreview,
     this.result,
+    this.guideVersion,
+    this.guideV3Read,
+    this.guideV3Card,
+    this.guideV3Result,
     this.rawEvent,
   });
 
@@ -131,6 +151,7 @@ class AnalysisStreamUpdate {
     String? label,
     String? detail,
     int? etaSeconds,
+    String? guideVersion,
     Map<String, dynamic>? rawEvent,
   }) : this._(
           kind: AnalysisStreamUpdateKind.started,
@@ -138,6 +159,7 @@ class AnalysisStreamUpdate {
           label: label,
           detail: detail,
           etaSeconds: etaSeconds,
+          guideVersion: guideVersion,
           rawEvent: rawEvent,
         );
 
@@ -206,6 +228,51 @@ class AnalysisStreamUpdate {
           result: result,
           rawEvent: rawEvent,
         );
+
+  const AnalysisStreamUpdate.guideV3Read({
+    required GuideV3Read read,
+    String? runId,
+    String? label,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.guideV3Read,
+          runId: runId,
+          label: label,
+          etaSeconds: etaSeconds,
+          guideV3Read: read,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.guideV3Card({
+    required GuideV3Card card,
+    String? runId,
+    String? label,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.guideV3Card,
+          runId: runId,
+          label: label,
+          etaSeconds: etaSeconds,
+          guideV3Card: card,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.guideV3Done({
+    required GuideV3Result result,
+    String? runId,
+    String? label,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.done,
+          runId: runId,
+          label: label,
+          etaSeconds: etaSeconds,
+          guideV3Result: result,
+          rawEvent: rawEvent,
+        );
 }
 
 /// User-facing copy for a streaming `analysis.error` event.
@@ -226,6 +293,15 @@ String _friendlyStreamErrorMessage(String? rawMessage) {
   }
   return '這次分析沒順利完成，請稍後再試一次。';
 }
+
+/// v3 新分析的錯誤裡，只有這兩種可能已經扣費、結果還在確認：續看同一個 run
+/// （伺服器約 2 分鐘內從扣費內容重組結果，或回「請重新分析」）。其餘 v3 錯誤都
+/// 沒扣費、run 已記失敗，續看只會拿到 STREAM_RUN_RETRY_UNAVAILABLE，所以只給
+/// 「重新分析」。v3 的錯誤事件不帶 retriesRemaining（伺服器 stream_flow.ts）。
+const Set<String> guideV3ResumableErrorCodes = {
+  'GUIDE_V3_CHARGE_UNCONFIRMED',
+  'GUIDE_V3_INTERNAL_ERROR',
+};
 
 /// AnalyzeChat 主分析的唯一 client。生命週期：connect 45s 圍籬、
 /// 事件間 idle 120s 圍籬；非 200 走共用錯誤對映（429 先判額度）。
@@ -272,6 +348,8 @@ class AnalyzeStreamClient {
     String? runId;
     int? etaSeconds;
     var sawDone = false;
+    // 新分析走 v3 時 started 帶 guideVersion；續看（v2 handler 重播）不帶。
+    var isGuideV3Run = false;
 
     try {
       final httpRequest = http.Request(
@@ -349,6 +427,8 @@ class AnalyzeStreamClient {
 
         switch (type) {
           case 'analysis.started':
+            final guideVersion = _stringField(event['guideVersion']);
+            if (guideVersion != null) isGuideV3Run = true;
             yield AnalysisStreamUpdate.started(
               runId: runId,
               label: _displayMapper.displayText(
@@ -358,6 +438,36 @@ class AnalyzeStreamClient {
               detail: _displayMapper.displayText(
                 event['detail'],
               ),
+              etaSeconds: etaSeconds,
+              guideVersion: guideVersion,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.read':
+            final read = GuideV3Read.fromJson(event);
+            if (read == null) {
+              // 判讀也在最終結果裡；中途這一則讀不懂就跳過，等 done。
+              analysisDebugLog('[analyze.stream] unreadable analysis.read');
+              break;
+            }
+            yield AnalysisStreamUpdate.guideV3Read(
+              read: read,
+              runId: runId,
+              label: '局面判讀完成',
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.card':
+            final card = GuideV3Card.fromJson(event);
+            if (card == null) {
+              analysisDebugLog('[analyze.stream] unreadable analysis.card');
+              break;
+            }
+            yield AnalysisStreamUpdate.guideV3Card(
+              card: card,
+              runId: runId,
+              label: '第 ${card.slot} 張卡已送到',
               etaSeconds: etaSeconds,
               rawEvent: event,
             );
@@ -419,6 +529,18 @@ class AnalyzeStreamClient {
               );
             }
             sawDone = true;
+            // v3 的結果（新分析或續看重播）只認形狀，不交給 AnalysisResult
+            //（它會把缺的熱度補成 50）。
+            if (isGuideV3Payload(finalResult)) {
+              yield AnalysisStreamUpdate.guideV3Done(
+                result: _parseGuideV3Result(finalResult),
+                runId: runId,
+                label: '完整分析完成',
+                etaSeconds: etaSeconds,
+                rawEvent: event,
+              );
+              return;
+            }
             yield AnalysisStreamUpdate.done(
               result: _parseStreamAnalysisResult(finalResult),
               runId: runId,
@@ -433,6 +555,19 @@ class AnalyzeStreamClient {
             if (rawErrorMessage != null) {
               analysisDebugLog(
                 '[analyze.stream] analysis.error raw message: $rawErrorMessage',
+              );
+            }
+            if (isGuideV3Run) {
+              final code = _stringField(event['code']) ?? 'STREAM_FAILED';
+              final resumable = guideV3ResumableErrorCodes.contains(code);
+              throw StreamModeException(
+                _friendlyStreamErrorMessage(rawErrorMessage),
+                code: code,
+                recoverable: resumable,
+                retriesRemaining: resumable ? 1 : 0,
+                suggestedAction: recoverable
+                    ? AnalysisErrorAction.retry
+                    : AnalysisErrorAction.wait,
               );
             }
             throw StreamModeException(
@@ -480,8 +615,10 @@ class AnalyzeStreamClient {
   /// Wire payload builder（公開 seam）：情境接線測試據此驗證
   /// `sessionContext.meetingContext` 等欄位實際送出的值。
   /// 與 supabase/functions/analyze-chat/no_send_decision.ts 的
-  /// ANALYSIS_CONTRACT_VERSION_V2 對齊。
-  static const analysisContractVersion = 2;
+  /// ANALYSIS_CONTRACT_VERSION_V3 對齊：能吃 v3 任務卡（伺服器開關打開時才會
+  /// 收到），也宣告 F04（她最後一則之後他傳的訊息送進來、不算費）。續看也送 3，
+  /// 不然伺服器不讓接 v3 的 run。
+  static const analysisContractVersion = 3;
 
   static Map<String, dynamic> buildStreamBody(
     AnalyzeStreamRequest request,
@@ -525,8 +662,8 @@ class AnalyzeStreamClient {
         'previousAnalyzedCount': previousAnalyzedCount,
       // ADR #19 定案 #6 capability contract：所有 analyze 請求必送。
       'billingProtocolVersion': MessageCalculator.billingProtocolVersion,
-      // Analyze V2（Phase 1c）：宣告能處理不回決策（messageDecision）。
-      // 後端只對送 2 的 client 開閘；缺省＝v1 五風格合約。
+      // 2＝能處理不回決策（messageDecision）；3＝再加 v3 任務卡與 F04。
+      // 缺省＝v1 五風格合約。
       'analysisContractVersion': AnalyzeStreamClient.analysisContractVersion,
       if (previousAnalyzedCharCount != null && previousAnalyzedCharCount > 0)
         'previousAnalyzedCharCount': previousAnalyzedCharCount,
@@ -589,6 +726,18 @@ class AnalyzeStreamClient {
         suggestedAction: AnalysisErrorAction.retry,
       );
     }
+  }
+
+  GuideV3Result _parseGuideV3Result(Map<String, dynamic> payload) {
+    final result = GuideV3Result.fromJson(payload);
+    if (result == null) {
+      throw AnalysisException(
+        '這次分析沒順利完成，請重新分析一次。',
+        code: 'INVALID_STREAM_RESULT',
+        suggestedAction: AnalysisErrorAction.retry,
+      );
+    }
+    return result;
   }
 
   AnalysisRecommendationPreview _streamRecommendationPreview(

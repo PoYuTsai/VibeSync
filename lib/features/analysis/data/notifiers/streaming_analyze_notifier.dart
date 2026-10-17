@@ -11,6 +11,7 @@ import '../services/analysis_service.dart';
 import '../services/analyze_stream_client.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_recommendation_preview.dart';
+import '../../domain/entities/guide_v3_result.dart';
 
 /// Phases of the analyze flow.
 ///
@@ -96,6 +97,19 @@ class StreamingAnalysisState {
   /// 非 null 表示這次失敗是額度不足（429），UI 必須走升級卡分流。
   final QuotaExceededInfo? quotaExceeded;
 
+  /// v3（任務卡）：這個 run 是新流程（started 帶 guideVersion）。續看的 started
+  /// 不帶，所以只會從 false 變 true，不會被續看清掉。
+  final bool isGuideV3Run;
+
+  /// v3 局面判讀；扣費成功後才送，跟第一張卡一起到。
+  final GuideV3Read? guideV3Read;
+
+  /// v3 已送到的任務卡（照 slot），到了就能複製；done 時換成最終結果的卡。
+  final List<GuideV3Card> guideV3Cards;
+
+  /// v3 最終結果；v2 的最終結果在 [result]。兩者不會同時非 null。
+  final GuideV3Result? guideV3Result;
+
   const StreamingAnalysisState({
     required this.phase,
     this.recommendationPreview,
@@ -117,9 +131,16 @@ class StreamingAnalysisState {
     this.isReconnectContext,
     this.analyzedSessionContext,
     this.quotaExceeded,
+    this.isGuideV3Run = false,
+    this.guideV3Read,
+    this.guideV3Cards = const [],
+    this.guideV3Result,
   });
 
   const StreamingAnalysisState.idle() : this(phase: StreamingAnalyzePhase.idle);
+
+  /// 用戶已經看到 v3 的判讀或卡（失敗時要留著、續看不能清掉）。
+  bool get hasShownGuideV3 => guideV3Read != null || guideV3Cards.isNotEmpty;
 
   /// Sentinel used by [copyWith] to distinguish "not provided" from "set to
   /// null". Without this, `param ?? this.param` silently ignores explicit nulls,
@@ -148,6 +169,10 @@ class StreamingAnalysisState {
     Object? isReconnectContext = _unset,
     Object? analyzedSessionContext = _unset,
     Object? quotaExceeded = _unset,
+    bool? isGuideV3Run,
+    Object? guideV3Read = _unset,
+    List<GuideV3Card>? guideV3Cards,
+    Object? guideV3Result = _unset,
   }) {
     return StreamingAnalysisState(
       phase: phase ?? this.phase,
@@ -206,6 +231,14 @@ class StreamingAnalysisState {
       quotaExceeded: identical(quotaExceeded, _unset)
           ? this.quotaExceeded
           : quotaExceeded as QuotaExceededInfo?,
+      isGuideV3Run: isGuideV3Run ?? this.isGuideV3Run,
+      guideV3Read: identical(guideV3Read, _unset)
+          ? this.guideV3Read
+          : guideV3Read as GuideV3Read?,
+      guideV3Cards: guideV3Cards ?? this.guideV3Cards,
+      guideV3Result: identical(guideV3Result, _unset)
+          ? this.guideV3Result
+          : guideV3Result as GuideV3Result?,
     );
   }
 }
@@ -417,14 +450,57 @@ class StreamingAnalyzeNotifier
           case AnalysisStreamUpdateKind.started:
           case AnalysisStreamUpdateKind.progress:
             state = state.copyWith(
-              phase: state.recommendationPreview == null
-                  ? StreamingAnalyzePhase.connecting
-                  : StreamingAnalyzePhase.streamingReport,
+              phase:
+                  state.recommendationPreview == null && !state.hasShownGuideV3
+                      ? StreamingAnalyzePhase.connecting
+                      : StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
               streamProgressLabel: update.label,
               streamProgressDetail: update.detail,
               conversationMessageCount: conversationMessageCount,
               analyzedMessageCount: analyzedMessageCount,
+              isGuideV3Run: state.isGuideV3Run || update.guideVersion != null,
+            );
+            break;
+          case AnalysisStreamUpdateKind.guideV3Read:
+            final read = update.guideV3Read;
+            if (read == null) break;
+            state = state.copyWith(
+              phase: StreamingAnalyzePhase.streamingReport,
+              analysisRunId: update.runId ?? state.analysisRunId,
+              streamErrorMessage: null,
+              streamErrorCode: null,
+              streamProgressLabel: update.label,
+              streamProgressDetail: null,
+              retriesRemaining: 0,
+              conversationMessageCount: conversationMessageCount,
+              analyzedMessageCount: analyzedMessageCount,
+              quotaExceeded: null,
+              isGuideV3Run: true,
+              guideV3Read: read,
+            );
+            break;
+          case AnalysisStreamUpdateKind.guideV3Card:
+            final card = update.guideV3Card;
+            if (card == null) break;
+            // 同一個 slot 只留第一次送到的（伺服器不會重送；保險）。
+            final cards = state.guideV3Cards.any((c) => c.slot == card.slot)
+                ? state.guideV3Cards
+                : ([...state.guideV3Cards, card]
+                  ..sort((a, b) => a.slot.compareTo(b.slot)));
+            state = state.copyWith(
+              phase: StreamingAnalyzePhase.streamingReport,
+              analysisRunId: update.runId ?? state.analysisRunId,
+              streamErrorMessage: null,
+              streamErrorCode: null,
+              streamProgressLabel: update.label,
+              streamProgressDetail: null,
+              retriesRemaining: 0,
+              conversationMessageCount: conversationMessageCount,
+              analyzedMessageCount: analyzedMessageCount,
+              quotaExceeded: null,
+              isGuideV3Run: true,
+              guideV3Cards: List<GuideV3Card>.unmodifiable(cards),
             );
             break;
           case AnalysisStreamUpdateKind.content:
@@ -471,6 +547,32 @@ class StreamingAnalyzeNotifier
             );
             break;
           case AnalysisStreamUpdateKind.done:
+            final guideV3Result = update.guideV3Result;
+            if (guideV3Result != null) {
+              // 續看重組只帶回第一張卡：這個 run 畫面上已經送到的卡補回來，
+              // 不讓用戶看過的卡消失（存檔也存合併後的）。
+              final merged = guideV3Result.recovered
+                  ? guideV3Result.withShownCards(state.guideV3Cards)
+                  : guideV3Result;
+              state = state.copyWith(
+                phase: StreamingAnalyzePhase.done,
+                result: null,
+                analysisRunId: update.runId ?? state.analysisRunId,
+                streamErrorMessage: null,
+                streamErrorCode: null,
+                streamProgressLabel: null,
+                streamProgressDetail: null,
+                retriesRemaining: 0,
+                conversationMessageCount: conversationMessageCount,
+                analyzedMessageCount: analyzedMessageCount,
+                quotaExceeded: null,
+                isGuideV3Run: true,
+                guideV3Read: merged.read,
+                guideV3Cards: merged.cards,
+                guideV3Result: merged,
+              );
+              return;
+            }
             final result = update.result;
             if (result == null) {
               throw AnalysisException(
@@ -510,8 +612,10 @@ class StreamingAnalyzeNotifier
           _shouldAutomaticallyRecoverStream(e)) {
         stopLocalProgress();
         final hasShownContents = state.streamContents.isNotEmpty;
-        final hasPartialResult =
-            state.recommendationPreview != null || hasShownContents;
+        final hasPartialResult = state.recommendationPreview != null ||
+            hasShownContents ||
+            state.hasShownGuideV3;
+        // v3 的 run 續看只重播最終結果、不重生，已送到的卡一直留著。
         _replaceKeptStreamContents = hasShownContents;
         state = state.copyWith(
           phase: hasPartialResult
@@ -557,6 +661,7 @@ class StreamingAnalyzeNotifier
       final quotaExceeded = QuotaExceededInfo.fromException(e);
       final recommendationPreview = state.recommendationPreview;
       final hasStreamContent = state.streamContents.isNotEmpty;
+      final hasShownGuideV3 = state.hasShownGuideV3;
       final hasRecoverableRun = state.analysisRunId != null &&
           quotaExceeded == null &&
           _shouldKeepRunRetryable(e);
@@ -566,11 +671,13 @@ class StreamingAnalyzeNotifier
               e,
               hasRecommendation: recommendationPreview != null ||
                   hasStreamContent ||
+                  hasShownGuideV3 ||
                   hasRecoverableRun,
             );
 
       if (recommendationPreview != null ||
           hasStreamContent ||
+          hasShownGuideV3 ||
           hasRecoverableRun) {
         state = state.copyWith(
           phase: StreamingAnalyzePhase.failedAfterRecommendation,
