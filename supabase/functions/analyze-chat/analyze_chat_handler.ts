@@ -79,8 +79,18 @@ import {
   analyzeStreamModel,
   handleAnalyzeStream,
 } from "./analyze_stream_handler.ts";
+import { hashConversation } from "./conversation_hash.ts";
+import { handleGuideV3Stream } from "./guide_v3/stream_flow.ts";
+import { createGuideV3ModelCalls } from "./guide_v3/model_calls.ts";
+import {
+  billingMessagesFor,
+  guideV3MaxCards,
+  guideV3Mode,
+  shouldUseGuideV3,
+} from "./guide_v3/routing.ts";
 import {
   ANALYSIS_CONTRACT_VERSION_V2,
+  ANALYSIS_CONTRACT_VERSION_V3,
   parseAnalysisContractVersion,
 } from "./no_send_decision.ts";
 import { selectModel, VALID_FORCE_MODELS } from "./model_selection.ts";
@@ -1066,8 +1076,16 @@ ${recentText}`;
     // ADR #19 r3：全對話字數合併計費。    // ADR #19 r3：全對話字數合併計費。增量 = 字數差（三層 compat fallback）、
     // 分段帶 1~40=1 / 41~400=ceil/40 / 401~2000=10 / 2001~4000=20（新 client
     // 需確認）/ 4001+ reject。詳見 billing.ts。
+    // F04（Eric 10/16）：協定版本 ≥3 的 App 會把她最後一則之後他傳的訊息也送來
+    // 給分析看，但那幾則不算進扣費字數與超額確認雜湊（App 端照同一規則算）。
+    // 只用在一般文字的串流分析（跟下面 streamSupported 同一組條件）。
+    const billingMessages = billingMessagesFor(messages, {
+      contractVersion: contractParse.value,
+      plainStreamAnalysis: responseMode === "stream" && !hasImages &&
+        !recognizeOnly && !isMyMessageMode && !isOptimizeMessageMode,
+    });
     const billing = resolveBilling({
-      messages,
+      messages: billingMessages,
       billingProtocolVersion,
       previousAnalyzedCharCount,
       previousAnalyzedCount: rawPreviousAnalyzedCount,
@@ -1299,7 +1317,9 @@ ${recentText}`;
       quotaUsage.shouldChargeQuota &&
       !isStreamRetryMode
     ) {
-      const serverPayloadHash = await computeBillingPayloadHash(messages);
+      const serverPayloadHash = await computeBillingPayloadHash(
+        billingMessages,
+      );
       const confirmationValidity = validateOverchargeConfirmation({
         confirmation: confirmedOvercharge,
         serverPayloadHash,
@@ -1638,6 +1658,76 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // Retired quick/full and plain legacy requests were rejected before
     // subscription, quota, prompt, DB-run, or model work.
     // 唯一 AnalyzeStreamHandler：analyze_stream_handler.ts（narrow ports）。
+    const streamHashInput = {
+      messages,
+      userDraft,
+      partnerSummary,
+      sessionContext,
+      conversationSummary,
+      effectiveStyleContext: effectiveStyleContextForHash,
+      knownContactName,
+      previousStage: isMyMessageMode ? undefined : previousStage ?? undefined,
+      analysisFragmentStartIndex: isMyMessageMode
+        ? undefined
+        : providedAnalysisFragmentStartIndex,
+    };
+    // 對話分析 v3（第 3 階段）：開關 ANALYZE_GUIDE_V3（off／test／on，每次請求
+    // 讀）＋App 宣告協定版本 3 才走；其他照舊走 v2。
+    if (
+      responseMode === "stream" &&
+      shouldUseGuideV3({
+        mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3")),
+        contractVersion: contractParse.value,
+        accountIsTest,
+        isResume: analysisRunId !== null,
+      })
+    ) {
+      return await handleGuideV3Stream({
+        store: new AnalysisStreamRunStore(
+          createSupabaseAnalysisStreamRunDriver(
+            supabase as unknown as Parameters<
+              typeof createSupabaseAnalysisStreamRunDriver
+            >[0],
+          ),
+        ),
+        userId: user.id,
+        analysisRunId,
+        conversationHash: await hashConversation(streamHashInput),
+        messages,
+        background: {
+          ...sessionContext,
+          partnerSummary,
+          conversationSummary,
+        },
+        requestType,
+        effectiveTier,
+        accountIsTest,
+        quotaUsage,
+        monthlyLimit,
+        dailyLimit,
+        subMonthlyUsed: sub.monthly_messages_used,
+        subDailyUsed: sub.daily_messages_used,
+        maxCards: guideV3MaxCards(effectiveTier),
+        ...createGuideV3ModelCalls({
+          apiKey: CLAUDE_API_KEY,
+          requestType,
+          tier: effectiveTier,
+          recordAiCall,
+        }),
+        log: (event, metadata, level) =>
+          (level === "error" ? logError : logInfo)(event, {
+            user: summarizeUser(user.id),
+            ...metadata,
+          }),
+        headers: corsHeaders,
+        waitUntil: (task) => {
+          scheduleAnalyzeCriticShadow(
+            undefined,
+            () => task.then(() => undefined),
+          );
+        },
+      });
+    }
     if (responseMode === "stream") {
       return await handleAnalyzeStream({
         store: new AnalysisStreamRunStore(
@@ -1656,6 +1746,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         accountIsTest,
         allowedFeatures,
         noSendDecisions,
+        acceptsGuideV3Results:
+          contractParse.value >= ANALYSIS_CONTRACT_VERSION_V3,
         // 長分析帶（>2000 字：新 client 確認扣 20、舊 client 封頂 10）不免扣。
         needContextWaiverEligible: billing.outcome === "charge" &&
           !billing.legacyOver2000Capped,
@@ -1674,21 +1766,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         userMessageContent,
         requestObservability,
         messages,
-        hashInput: {
-          messages,
-          userDraft,
-          partnerSummary,
-          sessionContext,
-          conversationSummary,
-          effectiveStyleContext: effectiveStyleContextForHash,
-          knownContactName,
-          previousStage: isMyMessageMode
-            ? undefined
-            : previousStage ?? undefined,
-          analysisFragmentStartIndex: isMyMessageMode
-            ? undefined
-            : providedAnalysisFragmentStartIndex,
-        },
+        hashInput: streamHashInput,
         claudeApiKey: CLAUDE_API_KEY,
         supabaseUrl: SUPABASE_URL,
         supabaseServiceKey: SUPABASE_SERVICE_KEY,
