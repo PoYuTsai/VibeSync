@@ -238,6 +238,8 @@ Future<_ScriptedHttp> _pumpScreen(
     accessTokenProvider: () => 'proof-token',
     expectedTierProvider: () => SubscriptionTierHelper.essential,
     revenueCatAppUserIdProvider: () async => null,
+    // 預設會走 PackageInfo 外掛，widget 測試裡等不到回應，請求就送不出去。
+    clientBuildProvider: () async => null,
   );
   final theme = AppTheme.darkTheme;
   await tester.pumpWidget(

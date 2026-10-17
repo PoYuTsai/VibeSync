@@ -52,10 +52,13 @@ Future<String?> defaultAnalysisRevenueCatAppUserId() async {
 
 /// App 的 build 號（iOS 的 CFBundleVersion），給 analyze-chat 的最低版本閘門
 /// 比對（Eric 2026-10-18）。讀不到或不是正整數就回 null，請求就不帶 clientBuild。
-/// 它只放在 request body，不進任何冪等或重播雜湊。
+/// 它只放在 request body，不進任何冪等或重播雜湊。Web 版要另外抓 version.json，
+/// 所以跟 RevenueCat 查詢一樣設 3 秒上限：等不到就當讀不到，不讓分析卡在送出前。
 Future<int?> defaultAnalysisClientBuild() async {
   try {
-    final packageInfo = await PackageInfo.fromPlatform();
+    final packageInfo = await PackageInfo.fromPlatform().timeout(
+      const Duration(seconds: 3),
+    );
     final build = int.tryParse(packageInfo.buildNumber.trim());
     return build != null && build > 0 ? build : null;
   } catch (_) {
