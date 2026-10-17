@@ -821,6 +821,48 @@ void main() {
     );
   });
 
+  testWidgets('最新一段是新流程（任務卡）分析的：不放熱度卡，不顯示待分析', (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    final conversation = _conv('v3')
+      ..lastAnalysisSnapshotJson = jsonEncode({
+        'guideVersion': 'v3.4',
+        'read': {
+          'guideVersion': 'v3.4',
+          'decision': 'send',
+          'light': 'green',
+          'judgment': '她有在接你的話。',
+          'plannedCards': const [],
+        },
+        'cards': const [],
+        'partial': false,
+      });
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [conversation]),
+      ],
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.byType(PartnerHeatHeroCard), findsNothing);
+    expect(find.text('待分析'), findsNothing);
+    expect(find.textContaining('最近一次：'), findsNothing);
+    expect(find.textContaining('本次投入'), findsNothing);
+    expect(find.text('先分析最近一段互動，這裡會冒出可接的話題抓手。'), findsNothing);
+    expect(find.byType(PartnerConversationTile), findsOneWidget);
+  });
+
   testWidgets('conversation records sit between heat score and next step',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));

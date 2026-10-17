@@ -254,12 +254,16 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   onNameIntroEnd: () => _nameIntroPlayed = true,
                 ),
                 const SizedBox(height: 16),
-                PartnerHeatHeroCard(
-                  heat: aggregate.latestHeat,
-                  animate: !_heatIntroPlayed,
-                  onCountUpEnd: () => _heatIntroPlayed = true,
-                ),
-                const SizedBox(height: 12),
+                // v3（任務卡）沒有熱度（Eric 2026-10-17：清掉不顯示）：最新一段
+                // 是新流程分析的，就不放熱度卡，免得顯示「待分析」。
+                if (!_latestAnalysisIsGuideV3(conversations)) ...[
+                  PartnerHeatHeroCard(
+                    heat: aggregate.latestHeat,
+                    animate: !_heatIntroPlayed,
+                    onCountUpEnd: () => _heatIntroPlayed = true,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 PartnerMindMapEntryCard(
                   map: buildPartnerMindMap(
                     partnerName: partner.name,
@@ -1008,12 +1012,16 @@ class _PartnerLatestInsight {
   final String? coachMicroMove;
   final DateTime? analyzedAt;
 
+  /// 最近一次分析是 v3（任務卡）：沒有熱度可顯示（Eric 2026-10-17）。
+  final bool isGuideV3;
+
   const _PartnerLatestInsight({
     this.nextStep,
     this.recentInsight,
     this.interactionAction,
     this.coachMicroMove,
     this.analyzedAt,
+    this.isGuideV3 = false,
   });
 
   /// v3（任務卡）：判讀當最近的洞察、要等她做什麼當下一步、第一張卡當互動
@@ -1022,16 +1030,29 @@ class _PartnerLatestInsight {
     GuideV3Result? result, {
     required DateTime analyzedAt,
   }) {
-    if (result == null || result.isCare) {
-      return _PartnerLatestInsight(analyzedAt: analyzedAt);
+    if (result == null) {
+      return _PartnerLatestInsight(analyzedAt: analyzedAt, isGuideV3: true);
+    }
+    if (result.isCare) {
+      // 自傷關心不把判讀放到對象頁；只說這次沒有回覆建議（關心文案的最後一句）。
+      return _PartnerLatestInsight(
+        nextStep: '這次不提供回覆建議',
+        analyzedAt: analyzedAt,
+        isGuideV3: true,
+      );
     }
     return _PartnerLatestInsight(
-      nextStep: _firstNonEmpty([result.read.waitFor]),
+      nextStep: _firstNonEmpty([
+        result.read.waitFor,
+        // 停：伺服器扣費紀錄的停止條件同一句。
+        if (result.decision == GuideV3Decision.stop) '先停在這裡，不再主動傳訊息',
+      ]),
       recentInsight: _firstNonEmpty([result.read.judgment]),
       interactionAction: result.cards.isEmpty
           ? null
           : _firstNonEmpty([result.cards.first.copyText]),
       analyzedAt: analyzedAt,
+      isGuideV3: true,
     );
   }
 
@@ -1102,6 +1123,22 @@ class _PartnerLatestInsight {
   }
 }
 
+/// 熱度卡取的是最近更新那段對話的熱度（partner_aggregates 的 latestHeat）；
+/// 那段的分析是 v3 的話就沒有熱度可放。
+bool _latestAnalysisIsGuideV3(List<Conversation> conversations) {
+  if (conversations.isEmpty) return false;
+  final latest = conversations.reduce(
+    (a, b) => b.updatedAt.isAfter(a.updatedAt) ? b : a,
+  );
+  final raw = latest.lastAnalysisSnapshotJson;
+  if (raw == null || raw.trim().isEmpty) return false;
+  try {
+    return isGuideV3Payload(jsonDecode(raw));
+  } catch (_) {
+    return false;
+  }
+}
+
 String? _replySegmentAction(List<ReplySegment> segments) {
   for (final segment in segments) {
     final reply = segment.reply.trim();
@@ -1156,10 +1193,15 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = PartnerHeatMessaging.labelFor(aggregate.latestHeat);
+    // v3（任務卡）沒有熱度：不顯示熱度狀態（不然會變成「待分析」），也沒有
+    // 「接法」（v3 不產生 microMove），建議在下一步卡。
+    final isGuideV3 = latestInsight.isGuideV3;
+    final state =
+        isGuideV3 ? null : PartnerHeatMessaging.labelFor(aggregate.latestHeat);
     // 「接法」只能顯示本輪 coachActionHint.microMove。特質＋興趣是對象
     // 線索，不是策略；把兩者拼起來會讓 UI 對使用者宣稱 AI 給了不存在的接法。
-    final hook = latestInsight.coachMicroMove ?? _emptyHook(conversations);
+    final hook = latestInsight.coachMicroMove ??
+        (isGuideV3 ? null : _emptyHook(conversations));
     final tags = _highValueTags(aggregate, state);
 
     return _PartnerDetailSection(
@@ -1188,18 +1230,20 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
                       animate: animateName,
                       onEnd: onNameIntroEnd,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '最近一次：$state',
-                      style: AppTypography.titleSmall.copyWith(
-                        color: AppColors.onBackgroundPrimary,
-                        fontWeight: FontWeight.w700,
+                    if (state != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '最近一次：$state',
+                        style: AppTypography.titleSmall.copyWith(
+                          color: AppColors.onBackgroundPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-              _StateBadge(label: state),
+              if (state != null) _StateBadge(label: state),
             ],
           ),
           const SizedBox(height: 16),
@@ -1208,12 +1252,14 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
             label: '最近互動',
             value: _formatInteractionTime(aggregate.lastInteraction),
           ),
-          const SizedBox(height: 8),
-          _SummaryLine(
-            icon: Icons.tips_and_updates_outlined,
-            label: '接法',
-            value: hook,
-          ),
+          if (hook != null) ...[
+            const SizedBox(height: 8),
+            _SummaryLine(
+              icon: Icons.tips_and_updates_outlined,
+              label: '接法',
+              value: hook,
+            ),
+          ],
           if (tags.isNotEmpty) ...[
             const SizedBox(height: 16),
             Wrap(
@@ -1236,9 +1282,9 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
 
   static List<String> _highValueTags(
     PartnerAggregateView aggregate,
-    String state,
+    String? state,
   ) {
-    final result = <String>['本次投入：$state'];
+    final result = <String>[if (state != null) '本次投入：$state'];
     final maxLength =
         aggregate.unionInterests.length > aggregate.unionTraits.length
             ? aggregate.unionInterests.length
