@@ -2,9 +2,10 @@
 //
 // 設定 RECORD_CEREMONY=1 才會跑；平常 `flutter test` 全量會 skip，不寫檔不拖慢。
 //   RECORD_CEREMONY=1 flutter test test/tools/ceremony_preview_recorder_test.dart
-// 驅動真實 PracticeChatScreen 的揭曉儀式，從 _reveal t=0 起，以固定步長 pump、
-// 逐幀 RenderRepaintBoundary.toImage 截圖到 scratchpad/cardrep/frames/，
-// 之後由 ffmpeg 組 mp4 + mux master audio + 與參考片 side-by-side。
+// 只錄某個稀有度：再加 RECORD_RARITY=n|r|sr（預設三個都錄）。
+// 掛真實的角色圖鑑頁（儀式蓋在整頁最上層、底下是模糊的圖鑑），從按下翻牌起以固定
+// 步長 pump、逐幀 RenderRepaintBoundary.toImage 截圖到 build/card_draw_preview/<稀有度>/，
+// 之後由 ffmpeg 組 mp4（可再 mux 配樂、和參考片並排）。
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -24,15 +25,19 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_pr
 import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
-import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
-import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
+import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 
-final _outDir = '${Directory.current.path}/build/card_draw_preview/frames';
+String _outDir(String rarity) =>
+    '${Directory.current.path}/build/card_draw_preview/$rarity';
 
-// 24fps × 10.0s = 240 frames，對齊參考片（音檔.mp4 720×1280 24fps 10.000s）。
+// V3（單次翻牌＋停住＋收卡）：24fps × 5.25s = 126 frames。從按下翻牌起錄：
+// 卡背入場 0.5s → 揭曉 2.7s → 停住約 1.0s → 第 [_tapFrame] 幀點擊收卡 → 收卡 0.55s → 尾巴。
 const int _fps = 24;
-const int _frameCount = 240;
+const int _frameCount = 126;
+const int _tapFrame = 101;
 const double _dpr = 2.0; // 390×844 → 780×1688（偶數，ffmpeg 友善）
 
 // Windows 內建繁中字型 → 預覽影片不出現 tofu（測試環境無 CJK 字型）。
@@ -40,6 +45,10 @@ const _cjkFontCandidates = <String>[
   'C:/Windows/Fonts/NotoSansTC-VF.ttf',
   'C:/Windows/Fonts/msjh.ttc',
   '/mnt/c/Windows/Fonts/NotoSansTC-VF.ttf',
+  // Linux（CI 與雲端環境）：系統的文泉驛優先（實測逐幀不掉字），沒有再用 CI 裝的
+  // Noto CJK 單檔。
+  '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
 ];
 const _materialIconsFontCandidates = <String>[
   'build/unit_test_assets/fonts/MaterialIcons-Regular.otf',
@@ -47,6 +56,21 @@ const _materialIconsFontCandidates = <String>[
 ];
 
 class _UnusedBox extends Fake implements Box<PracticeSession> {}
+
+class _SeededCollection extends PracticeCollectionNotifier {
+  _SeededCollection(this._ids);
+
+  final Set<String> _ids;
+
+  @override
+  Future<Set<String>> build() async => _ids;
+}
+
+class _SeededSubscription extends SubscriptionNotifier {
+  _SeededSubscription() {
+    state = const SubscriptionState();
+  }
+}
 
 class _MemoryRepo extends PracticeSessionRepository {
   _MemoryRepo() : super(_UnusedBox());
@@ -144,95 +168,121 @@ Future<void> _loadFirstAvailableFont(
 
 void main() {
   final record = Platform.environment['RECORD_CEREMONY'] == '1';
+  final only = Platform.environment['RECORD_RARITY'];
 
-  testWidgets('record ceremony reveal → frames', (tester) async {
-    final captureKey = GlobalKey();
-    final girl = practiceGirlProfiles.firstWhere(
-      (g) => g.nameId == 'emily',
-      orElse: () => practiceGirlProfiles[2],
-    );
+  // 錨點與 catalog 指定同步：001=N、010=R、004=SR（見 practice_persona.ts）。
+  final girls = <String, PracticeGirlProfile>{
+    'n': practiceGirlProfiles.first,
+    'r': practiceGirlProfiles[9],
+    'sr': practiceGirlProfiles[3],
+  };
 
-    // 載入繁中字型，讓預覽影片文字正常顯示（否則 test 環境 CJK → tofu）。
-    await _loadFirstAvailableFont('NotoTC', _cjkFontCandidates);
-    await _loadFirstAvailableFont(
-      'MaterialIcons',
-      _materialIconsFontCandidates,
-    );
+  for (final MapEntry(key: rarity, value: girl) in girls.entries) {
+    testWidgets('record ceremony $rarity → frames', (tester) async {
+      expect(girl.rarity.label.toLowerCase(), rarity); // 錨點保險
+      final captureKey = GlobalKey();
 
-    await tester.binding.setSurfaceSize(const Size(390, 844));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+      // 載入繁中字型，讓預覽影片文字正常顯示（否則 test 環境 CJK → tofu）。
+      await _loadFirstAvailableFont('NotoTC', _cjkFontCandidates);
+      await _loadFirstAvailableFont(
+        'MaterialIcons',
+        _materialIconsFontCandidates,
+      );
 
-    final api = _DrawApi(() async => _drawResultFor(girl));
+      // 用 view 定尺寸（不是 setSurfaceSize）：MediaQuery 才會是 390×844，卡片尺寸與
+      // 圖鑑捲動估算才和真機一致。
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          practiceSessionRepositoryProvider.overrideWithValue(_MemoryRepo()),
-          practiceDrawDraftStoreProvider
-              .overrideWithValue(InMemoryPracticeDrawDraftStore()),
-          practiceChatApiServiceProvider.overrideWithValue(api),
-          // 測試環境無 audio platform channel → 用 no-op 免 MissingPluginException。
-          practiceDrawSfxProvider
-              .overrideWithValue(const NoopPracticeDrawSfx()),
-        ],
-        child: MaterialApp(
-          theme: ThemeData(fontFamily: 'NotoTC'),
-          // Task 4b 後儀式掛在圖鑑頁；錄製器自行疊 overlay（時間軸與掛載頁無關）。
-          home: RepaintBoundary(
-            key: captureKey,
-            child: const Stack(
-              children: [
-                PracticeChatScreen(),
-                Positioned.fill(child: PracticeDrawCeremony()),
-              ],
+      final api = _DrawApi(() async => _drawResultFor(girl));
+      // 圖鑑先解鎖幾張（底下的格子有真照片），剛抽到的那一格也在裡面。
+      final unlocked = {
+        for (final g in practiceGirlProfiles.take(8)) g.profileId,
+        girl.profileId,
+      };
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceSessionRepositoryProvider.overrideWithValue(_MemoryRepo()),
+            practiceDrawDraftStoreProvider
+                .overrideWithValue(InMemoryPracticeDrawDraftStore()),
+            practiceChatApiServiceProvider.overrideWithValue(api),
+            // 測試環境無 audio platform channel → 用 no-op 免 MissingPluginException。
+            practiceDrawSfxProvider
+                .overrideWithValue(const NoopPracticeDrawSfx()),
+            practiceCollectionProvider
+                .overrideWith(() => _SeededCollection(unlocked)),
+            subscriptionProvider.overrideWith((ref) => _SeededSubscription()),
+            subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(fontFamily: 'NotoTC'),
+            home: RepaintBoundary(
+              key: captureKey,
+              child: const PracticeCollectionScreen(),
             ),
           ),
         ),
-      ),
-    );
+      );
+      await tester.pump();
 
-    // 嘗試預載真實照片（測試環境 asset 可載則前面卡顯真人；不可載則 fallback 初始字）。
-    final ctx = tester.element(find.byType(PracticeChatScreen));
-    await tester.runAsync(() async {
-      try {
-        await precacheImage(AssetImage(girl.photoAssetPath), ctx);
-      } catch (_) {}
-    });
-
-    // 抽牌 → drawing → 立即完成 → revealing（_reveal.forward(from:0)）。
-    // Task 5 後練習室已無翻牌觸發點（入口全收斂圖鑑）：直呼 controller。
-    unawaited(
-      ProviderScope.containerOf(ctx)
-          .read(practiceChatControllerProvider.notifier)
-          .drawNewPracticeGirl(),
-    );
-    await tester.pump(); // drawing
-    await tester.pump(const Duration(milliseconds: 50)); // 入場推進
-    await tester.pump(); // draw 完成 → 進 revealing（value≈0）
-
-    final dir = Directory(_outDir);
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-    dir.createSync(recursive: true);
-
-    final boundary =
-        captureKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-    const step = Duration(microseconds: 1000000 ~/ _fps);
-
-    for (var i = 0; i < _frameCount; i++) {
+      // 預載照片與卡背素材（測試環境 asset 可載則顯真圖；不可載則 fallback 初始字）。
+      final ctx = tester.element(find.byType(PracticeCollectionScreen));
       await tester.runAsync(() async {
-        final image = await boundary.toImage(pixelRatio: _dpr);
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        final bytes = data!.buffer.asUint8List();
-        File('$_outDir/frame_${i.toString().padLeft(4, '0')}.png')
-            .writeAsBytesSync(Uint8List.fromList(bytes));
-        image.dispose();
+        for (final asset in [
+          ...kPracticeRevealBackAssets,
+          for (final g in practiceGirlProfiles.take(8)) g.photoAssetPath,
+          girl.photoAssetPath,
+        ]) {
+          try {
+            await precacheImage(AssetImage(asset), ctx);
+          } catch (_) {}
+        }
       });
-      await tester.pump(step);
-    }
+      await tester.pump();
 
-    final n = dir.listSync().whereType<File>().length;
-    expect(n, _frameCount, reason: 'should record all frames');
-    // ignore: avoid_print
-    print('RECORDED $n frames → $_outDir');
-  }, skip: !record);
+      final dir = Directory(_outDir(rarity));
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+      dir.createSync(recursive: true);
+
+      final boundary = captureKey.currentContext!.findRenderObject()!
+          as RenderRepaintBoundary;
+      const step = Duration(microseconds: 1000000 ~/ _fps);
+
+      // 按下翻牌：drawing（卡背入場）→ server 立即回來 → 入場走完才開始揭曉。
+      unawaited(
+        ProviderScope.containerOf(ctx)
+            .read(practiceChatControllerProvider.notifier)
+            .drawNewPracticeGirl(),
+      );
+      await tester.pump();
+
+      for (var i = 0; i < _frameCount; i++) {
+        if (i == _tapFrame) {
+          // 停住等點擊：點一下收卡，光球飛進那一格。
+          await tester.tap(
+            find.byKey(const ValueKey('practice-draw-ceremony-continue')),
+          );
+        }
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: _dpr);
+          final data = await image.toByteData(format: ui.ImageByteFormat.png);
+          final bytes = data!.buffer.asUint8List();
+          File('${dir.path}/frame_${i.toString().padLeft(4, '0')}.png')
+              .writeAsBytesSync(Uint8List.fromList(bytes));
+          image.dispose();
+        });
+        await tester.pump(step);
+      }
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      final n = dir.listSync().whereType<File>().length;
+      expect(n, _frameCount, reason: 'should record all frames');
+      // ignore: avoid_print
+      print('RECORDED $n frames → ${dir.path}');
+    }, skip: !record || (only != null && only != rarity));
+  }
 }
