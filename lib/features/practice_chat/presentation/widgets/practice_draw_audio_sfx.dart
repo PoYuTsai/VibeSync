@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'practice_draw_sfx.dart';
+import 'practice_reveal_timing.dart';
 
 // ── 音量常數（集中於此，方便真機調整）─────────────────────────────────────
 // 真機目檢時直接調這三個值即可，不必動播放邏輯。
@@ -78,6 +79,21 @@ Future<void> fadeOutThenStop({
   if (stillWanted()) stop();
 }
 
+/// 預載好就歸零重播。等預載與歸零之後各問一次 [stillWanted]；變成 false（例如儀式已經收掉、
+/// 又開始新的一抽）就不播。已經開始播的不在這裡管，照常播完。
+@visibleForTesting
+Future<void> replayIfStillWanted({
+  required Future<bool> ready,
+  required bool Function() stillWanted,
+  required Future<void> Function() rewind,
+  required Future<void> Function() play,
+}) async {
+  if (!await ready || !stillWanted()) return;
+  await rewind();
+  if (!stillWanted()) return;
+  await play();
+}
+
 /// 每日翻牌音效的真實實作（Batch 4.7B：把 4.7A 的 [NoopPracticeDrawSfx] 換成會真的
 /// 播放的版本）。背後用 `audioplayers`。
 ///
@@ -111,6 +127,8 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   int _bedGeneration = 0;
   final _ReplayablePlayer _archive =
       _ReplayablePlayer(_kArchiveAsset, _kArchiveVolume);
+  // 每次 playArchive 遞增，新的一抽（playWhoosh）也遞增：還沒起播的那一聲就作廢。
+  int _archiveGeneration = 0;
 
   bool _bedActive = false;
 
@@ -165,6 +183,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   @override
   void playWhoosh() {
     _whooshGeneration++; // 新的一抽：取消進行中的淡出（play 會把音量設回來）。
+    _archiveGeneration++; // 上一張還沒起播的收卡音作廢，不會在這一抽才冒出來。
     final player = _whooshPlayer ??= _create(ReleaseMode.release);
     _playOneShot(player, _kWhooshAsset, _kWhooshVolume);
   }
@@ -259,19 +278,34 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
   void playArchive() {
     try {
       _ensureContext();
-      unawaited(_startArchive(_archive.ensurePrepared()));
+      final generation = ++_archiveGeneration;
+      final sinceTap = Stopwatch()..start();
+      unawaited(
+        _startArchive(_archive.ensurePrepared(), generation, sinceTap),
+      );
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。
     }
   }
 
-  Future<void> _startArchive(Future<bool> ready) async {
+  /// 收卡音只在收卡動畫（[PracticeRevealTiming.archive]）走完前起播：預載失敗、點擊時重載
+  /// 又太慢，寧可不出聲，也不在儀式收掉之後、甚至下一抽才冒出來。
+  Future<void> _startArchive(
+    Future<bool> ready,
+    int generation,
+    Stopwatch sinceTap,
+  ) async {
     try {
-      if (!await ready) return;
-      final player = _archive.player;
-      if (player == null) return;
-      await player.stop(); // 位置歸零、音源保留（ReleaseMode.stop）。
-      await player.resume();
+      await replayIfStillWanted(
+        ready: ready,
+        stillWanted: () =>
+            _archive.player != null &&
+            generation == _archiveGeneration &&
+            sinceTap.elapsed < PracticeRevealTiming.archive,
+        // 位置歸零、音源保留（ReleaseMode.stop）。
+        rewind: () => _archive.player!.stop(),
+        play: () => _archive.player!.resume(),
+      );
     } catch (_) {
       // 音效非關鍵路徑：失敗不丟。
     }

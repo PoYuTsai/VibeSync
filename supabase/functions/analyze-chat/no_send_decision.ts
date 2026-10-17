@@ -29,9 +29,12 @@ export const ANALYSIS_ACTIONS = [
   "pause",
 ] as const;
 
-/// Newest analysis contract a client may declare. 1 (or absent) is the v1
-/// five-style contract; 2 adds no-send decisions and replyMode none/single.
+/// Analysis contracts a client may declare. 1 (or absent) is the v1
+/// five-style contract; 2 adds no-send decisions and replyMode none/single;
+/// 3 adds the v3 task-card stream (guide_v3/, behind ANALYZE_GUIDE_V3) and
+/// also accepts everything 2 does, because the flag may route it to v2.
 export const ANALYSIS_CONTRACT_VERSION_V2 = 2;
+export const ANALYSIS_CONTRACT_VERSION_V3 = 3;
 
 /// 「資料不夠」免扣的標記：跟錨點一起存進 recommendation_json，retry 重建
 /// 錨點時一起帶回，最終 usage／telemetry 才會照樣標免扣。
@@ -95,14 +98,14 @@ export function replyModeForDecision(
 }
 
 /// Strict request capability parse, same policy as billingProtocolVersion:
-/// absent => v1; anything that is not integer 1 or 2 => 400.
+/// absent => v1; anything that is not integer 1, 2 or 3 => 400.
 export function parseAnalysisContractVersion(
   raw: unknown,
 ): { ok: true; value: number } | { ok: false } {
   if (raw == null) return { ok: true, value: 1 };
   if (
     typeof raw !== "number" || !Number.isInteger(raw) || raw < 1 ||
-    raw > ANALYSIS_CONTRACT_VERSION_V2
+    raw > ANALYSIS_CONTRACT_VERSION_V3
   ) {
     return { ok: false };
   }

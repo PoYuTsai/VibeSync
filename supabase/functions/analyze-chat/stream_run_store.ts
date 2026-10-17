@@ -23,6 +23,9 @@ export interface AnalysisStreamRun {
   selected_style: StreamStyle | null;
   // Phase 1a column; absent on rows returned by older driver mocks.
   decision_kind?: string | null;
+  // v3 task of the first (charged) card (migration 20261016171939); absent on
+  // rows returned by older driver mocks.
+  card_task?: string | null;
   recommendation_json: Record<string, unknown> | null;
   final_result_json: Record<string, unknown> | null;
   charged_at: string | null;
@@ -86,6 +89,29 @@ export interface ChargeStreamRunDriverInput {
   messageCount: number;
 }
 
+/// v3 任務卡的扣費代碼（migration 20261016171939 的 card_task）。
+export const V3_CARD_TASK_CODES = [
+  "accept",
+  "resonate",
+  "tension",
+  "push",
+  "close",
+] as const;
+export type V3CardTaskCode = typeof V3_CARD_TASK_CODES[number];
+
+export interface ChargeStreamRunV3Input {
+  runId: string;
+  userId: string;
+  conversationHash: string;
+  recommendationJson: Record<string, unknown>;
+  /// send：第一張卡送出前扣；不送型（先別回、停、自傷關心）在讀局面後扣。
+  decisionKind: "send" | NoSendDecisionKind;
+  /// send 必填、不送型一定是 null。
+  cardTask: V3CardTaskCode | null;
+  chargeQuota: boolean;
+  messageCount: number;
+}
+
 export interface AnalysisStreamRunDriver {
   createPendingRun(
     input: CreatePendingStreamRunInput,
@@ -95,6 +121,15 @@ export interface AnalysisStreamRunDriver {
   chargeRun(input: ChargeStreamRunDriverInput): Promise<AnalysisStreamRun>;
   markDone(input: MarkStreamRunDoneInput): Promise<AnalysisStreamRun>;
   markFailed(input: MarkStreamRunFailedInput): Promise<AnalysisStreamRun>;
+  /// v3（charge_stream_analysis_run_v3）。選填：只有正式的 Supabase driver 有，
+  /// 舊的測試替身不用跟著改；store 呼叫時沒有就丟錯。
+  chargeRunV3?(input: ChargeStreamRunV3Input): Promise<AnalysisStreamRun>;
+  /// v3：只有還在 pending、而且沒扣過費才改成 failed；回傳改到的列，沒改到回 null。
+  /// 扣費交易還沒結束時，這個 UPDATE 會等那一列的鎖，交易提交後重新判斷條件，所以
+  /// 不會蓋掉剛扣好費的列。選填，理由同 chargeRunV3。
+  markFailedIfPending?(
+    input: MarkStreamRunFailedInput,
+  ): Promise<AnalysisStreamRun | null>;
 }
 
 export class AnalysisStreamRunStore {
@@ -163,6 +198,47 @@ export class AnalysisStreamRunStore {
     });
   }
 
+  /// v3 扣費：先在這裡擋掉 RPC 也會擋的形狀，錯誤訊息比較早、也比較好懂。
+  chargeRunV3(input: ChargeStreamRunV3Input): Promise<AnalysisStreamRun> {
+    requireNonEmpty(input.runId, "runId");
+    requireNonEmpty(input.userId, "userId");
+    requireNonEmpty(input.conversationHash, "conversationHash");
+    if (
+      input.chargeQuota &&
+      (!Number.isInteger(input.messageCount) || input.messageCount <= 0)
+    ) {
+      throw new Error(
+        "chargeRunV3: messageCount must be a positive integer when chargeQuota=true",
+      );
+    }
+    const rec = input.recommendationJson;
+    if (input.decisionKind === "send") {
+      if (
+        input.cardTask === null ||
+        !(V3_CARD_TASK_CODES as readonly string[]).includes(input.cardTask)
+      ) {
+        throw new Error("chargeRunV3: send requires a v3 card task");
+      }
+      if (
+        rec.decisionKind !== "send" || rec.cardTask !== input.cardTask ||
+        "selectedStyle" in rec
+      ) {
+        throw new Error("chargeRunV3: send recommendation does not match");
+      }
+    } else {
+      if (input.cardTask !== null || "cardTask" in rec) {
+        throw new Error("chargeRunV3: no-send must not carry a card task");
+      }
+      if (rec.decisionKind !== input.decisionKind) {
+        throw new Error("chargeRunV3: no-send recommendation does not match");
+      }
+    }
+    if (!this.driver.chargeRunV3) {
+      throw new Error("chargeRunV3: driver does not support v3 charges");
+    }
+    return this.driver.chargeRunV3(input);
+  }
+
   markDone(input: MarkStreamRunDoneInput): Promise<AnalysisStreamRun> {
     requireNonEmpty(input.runId, "runId");
     requireNonEmpty(input.userId, "userId");
@@ -176,6 +252,23 @@ export class AnalysisStreamRunStore {
     requireNonEmpty(input.conversationHash, "conversationHash");
     requireNonEmpty(input.code, "code");
     return this.driver.markFailed(input);
+  }
+
+  /// v3 的失敗寫入：絕不蓋掉扣過費的列（v2 的 retry 需要能把扣過費的列記 failed，
+  /// 所以不改共用的 markFailed）。
+  markFailedIfPending(
+    input: MarkStreamRunFailedInput,
+  ): Promise<AnalysisStreamRun | null> {
+    requireNonEmpty(input.runId, "runId");
+    requireNonEmpty(input.userId, "userId");
+    requireNonEmpty(input.conversationHash, "conversationHash");
+    requireNonEmpty(input.code, "code");
+    if (!this.driver.markFailedIfPending) {
+      throw new Error(
+        "markFailedIfPending: driver does not support conditional failures",
+      );
+    }
+    return this.driver.markFailedIfPending(input);
   }
 }
 
@@ -233,6 +326,7 @@ interface SupabaseSelectBuilder<T> {
 
 interface SupabaseFilterBuilder<T> {
   eq(col: string, val: string): SupabaseFilterBuilder<T>;
+  is(col: string, val: null): SupabaseFilterBuilder<T>;
   single(): Promise<DbResult<T>>;
   maybeSingle(): Promise<DbResult<T>>;
   select(cols?: string): SupabaseSingleBuilder<T>;
@@ -359,6 +453,32 @@ export function createSupabaseAnalysisStreamRunDriver(
       return data;
     },
 
+    async chargeRunV3(
+      input: ChargeStreamRunV3Input,
+    ): Promise<AnalysisStreamRun> {
+      const { data, error } = await supabase.rpc(
+        "charge_stream_analysis_run_v3",
+        {
+          p_run_id: input.runId,
+          p_user_id: input.userId,
+          p_conversation_hash: input.conversationHash,
+          p_recommendation_json: input.recommendationJson,
+          p_decision_kind: input.decisionKind,
+          p_card_task: input.cardTask,
+          p_message_count: input.messageCount,
+          p_charge_quota: input.chargeQuota,
+        },
+      );
+      if (error || !data) {
+        throw new Error(
+          `charge_stream_analysis_run_v3 failed: ${
+            error ? JSON.stringify(error) : "no row returned"
+          }`,
+        );
+      }
+      return data;
+    },
+
     async markDone(
       input: MarkStreamRunDoneInput,
     ): Promise<AnalysisStreamRun> {
@@ -382,6 +502,32 @@ export function createSupabaseAnalysisStreamRunDriver(
         );
       }
       return data;
+    },
+
+    async markFailedIfPending(
+      input: MarkStreamRunFailedInput,
+    ): Promise<AnalysisStreamRun | null> {
+      const { data, error } = await supabase
+        .from("analysis_stream_runs")
+        .update({
+          status: "failed",
+          last_error_code: input.code,
+        })
+        .eq("id", input.runId)
+        .eq("user_id", input.userId)
+        .eq("conversation_hash", input.conversationHash)
+        .eq("status", "pending")
+        .is("charged_at", null)
+        .select("*")
+        .maybeSingle();
+      if (error) {
+        throw new Error(
+          `analysis_stream_runs conditional mark failed failed: ${
+            JSON.stringify(error)
+          }`,
+        );
+      }
+      return data ?? null;
     },
 
     async markFailed(

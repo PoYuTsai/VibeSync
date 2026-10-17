@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -252,6 +253,68 @@ void main() {
 
       expect(volumes, hasLength(2));
       expect(stops, 0);
+    });
+  });
+
+  // Codex 獨立審查（2026-10-17）P2：預載失敗、點擊收卡時重載又太慢，收卡音不能在儀式收掉
+  // 之後、甚至下一抽才冒出來。
+  group('收卡音：已經不需要就不起播', () {
+    test('預載好、仍需要 → 歸零後播一次', () async {
+      final calls = <String>[];
+      await replayIfStillWanted(
+        ready: Future.value(true),
+        stillWanted: () => true,
+        rewind: () async => calls.add('rewind'),
+        play: () async => calls.add('play'),
+      );
+
+      expect(calls, ['rewind', 'play']);
+    });
+
+    test('預載拖到不需要之後才好（收卡動畫已走完或又開始新的一抽）→ 不歸零也不播', () async {
+      final ready = Completer<bool>();
+      var wanted = true;
+      final calls = <String>[];
+      final pending = replayIfStillWanted(
+        ready: ready.future,
+        stillWanted: () => wanted,
+        rewind: () async => calls.add('rewind'),
+        play: () async => calls.add('play'),
+      );
+
+      wanted = false;
+      ready.complete(true);
+      await pending;
+
+      expect(calls, isEmpty);
+    });
+
+    test('歸零途中變成不需要 → 不播', () async {
+      var wanted = true;
+      final calls = <String>[];
+      await replayIfStillWanted(
+        ready: Future.value(true),
+        stillWanted: () => wanted,
+        rewind: () async {
+          calls.add('rewind');
+          wanted = false;
+        },
+        play: () async => calls.add('play'),
+      );
+
+      expect(calls, ['rewind']);
+    });
+
+    test('預載失敗 → 什麼都不做', () async {
+      final calls = <String>[];
+      await replayIfStillWanted(
+        ready: Future.value(false),
+        stillWanted: () => true,
+        rewind: () async => calls.add('rewind'),
+        play: () async => calls.add('play'),
+      );
+
+      expect(calls, isEmpty);
     });
   });
 
