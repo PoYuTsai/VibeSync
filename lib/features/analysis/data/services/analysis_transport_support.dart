@@ -436,6 +436,9 @@ AnalysisException mapAnalysisHttpError({
         code: errorCode ?? 'PAYLOAD_TOO_LARGE',
         suggestedAction: AnalysisErrorAction.shortenInput,
       );
+    case 426:
+      // 最低 App 版本閘門（Eric 2026-10-18）：只能更新，不當內容錯誤、不給重試。
+      return AppUpdateRequiredException();
     case 429:
       // 免費 OCR（recognizeOnly）限流：6/分、60/天。payload 不帶
       // monthlyLimit/dailyLimit 鍵，所以不會被 quotaExceptionFrom429

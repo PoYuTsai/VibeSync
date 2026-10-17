@@ -565,6 +565,12 @@ class AnalyzeStreamClient {
                 '[analyze.stream] analysis.error raw message: $rawErrorMessage',
               );
             }
+            // 讀不到 build 號（沒帶 clientBuild）時，最低版本閘門改用串流錯誤
+            // 擋（伺服器 client_build_gate.ts）；跟 426 一樣只能更新、不給重試。
+            if (_stringField(event['code']) ==
+                AppUpdateRequiredException.errorCode) {
+              throw AppUpdateRequiredException();
+            }
             if (isGuideV3Run) {
               final code = _stringField(event['code']) ?? 'STREAM_FAILED';
               final resumable = guideV3ResumableErrorCodes.contains(code);
