@@ -25,7 +25,8 @@ void main() {
       final guide = buildArticlePracticeGuide(_article('21'));
 
       expect(guide.category, '推進與邀約');
-      expect(guide.practicePrompt, contains('可拒絕空間'));
+      expect(guide.practicePrompt, contains('一個時間'));
+      expect(guide.practicePrompt, isNot(contains('可拒絕空間')));
       expect(guide.mistakeExample, contains('到底要不要'));
     });
 
