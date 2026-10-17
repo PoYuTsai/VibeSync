@@ -849,6 +849,7 @@ void main() {
             'tierUsed': 'free',
           },
         })!;
+
     /// 首次進頁的「長按訊息泡泡」提示會蓋住整頁，點擊前先關掉。
     Future<void> dismissEditCoachMark(WidgetTester tester) async {
       await tester.tap(find.text('知道了'));
@@ -956,6 +957,9 @@ void main() {
       expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
       expect(find.textContaining('本次分析使用'), findsNothing);
       expect(find.text('潤飾草稿'), findsNothing);
+      expect(find.text('問教練：我現在該怎麼做？'), findsNothing);
+      expect(find.text('這個建議有幫助嗎？'), findsNothing);
+      expect(find.text('分析新片段'), findsOneWidget);
     });
   });
 

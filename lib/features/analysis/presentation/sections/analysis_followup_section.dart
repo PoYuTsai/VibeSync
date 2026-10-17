@@ -81,7 +81,8 @@ class ConversationContinuationBar extends StatelessWidget {
     required this.onNewFragment,
   });
 
-  final VoidCallback onAskCoach;
+  /// null＝這次不給問教練入口（v3 自傷關心只顯示固定文案）。
+  final VoidCallback? onAskCoach;
   final VoidCallback onNewFragment;
 
   @override
@@ -100,20 +101,22 @@ class ConversationContinuationBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: AppHaptics.onPress(onAskCoach),
-                icon: const Icon(Icons.forum_outlined),
-                label: const Text('問教練：我現在該怎麼做？'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppColors.ctaStart,
-                  foregroundColor: AppColors.onCta,
+            if (onAskCoach != null) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: AppHaptics.onPress(onAskCoach!),
+                  icon: const Icon(Icons.forum_outlined),
+                  label: const Text('問教練：我現在該怎麼做？'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: AppColors.ctaStart,
+                    foregroundColor: AppColors.onCta,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(

@@ -95,7 +95,7 @@ class GuideV3ReadPanel extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: accent.withValues(alpha: 0.32)),
       ),
       child: Column(
@@ -141,10 +141,10 @@ class GuideV3ReadPanel extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppColors.surface.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
-                '要等她：$waitFor',
+                '等到這時候再回：$waitFor',
                 key: const ValueKey('guide-v3-wait-for'),
                 style: bodyStyle,
               ),
@@ -290,7 +290,7 @@ class GuideV3ResultSection extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.ctaStart.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.ctaStart.withValues(alpha: 0.3)),
       ),
       child: Column(

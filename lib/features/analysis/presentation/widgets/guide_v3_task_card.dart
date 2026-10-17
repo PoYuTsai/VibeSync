@@ -78,7 +78,7 @@ Widget _blankAwareText(String text, TextStyle style) {
 
 BoxDecoration _cardDecoration({Color? border}) => BoxDecoration(
       color: AppColors.brandInk.withValues(alpha: 0.45),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(22),
       border: Border.all(
         color: border ?? Colors.white.withValues(alpha: 0.12),
       ),
@@ -145,7 +145,7 @@ class GuideV3TaskCard extends StatelessWidget {
             if (i > 0) const SizedBox(height: 8),
             InkWell(
               key: ValueKey('guide-v3-card-${card.slot}-message-$i'),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               onTap: onCopy == null
                   ? null
                   : () {
@@ -167,7 +167,7 @@ class GuideV3TaskCard extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.surface.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: _blankAwareText(messages[i], textStyle),
               ),
@@ -426,7 +426,7 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
                               fillColor:
                                   AppColors.brandInk.withValues(alpha: 0.45),
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(18),
                               ),
                             ),
                           ),
@@ -448,6 +448,10 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
                     height: 46,
                     child: FilledButton.icon(
                       key: const ValueKey('guide-v3-edit-copy'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.ctaStart,
+                        foregroundColor: AppColors.onCta,
+                      ),
                       onPressed: _ready
                           ? () => Navigator.of(context).pop(
                                 [for (final c in _controllers) c.text.trim()],

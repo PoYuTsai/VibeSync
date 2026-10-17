@@ -225,7 +225,7 @@ void main() {
     expect(find.text('先別回'), findsOneWidget);
     expect(find.text('黃燈'), findsOneWidget);
     expect(find.text('你剛連傳兩則，球在她那邊。'), findsOneWidget);
-    expect(find.text('要等她：等她回你，再看她怎麼接'), findsOneWidget);
+    expect(find.text('等到這時候再回：等她回你，再看她怎麼接'), findsOneWidget);
     expect(find.text('可以這樣回'), findsNothing);
   });
 

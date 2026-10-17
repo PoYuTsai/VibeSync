@@ -3413,7 +3413,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       } else {
         if (read.light != null) buffer.writeln('燈號: ${read.light!.label}');
         if (read.judgment.isNotEmpty) buffer.writeln(read.judgment);
-        if (read.waitFor != null) buffer.writeln('要等她: ${read.waitFor}');
+        if (read.waitFor != null) {
+          buffer.writeln('等到這時候再回: ${read.waitFor}');
+        }
       }
       if (guideV3.cards.isNotEmpty) {
         buffer.writeln('');
@@ -4585,8 +4587,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             ReminderBanner(text: _reminder!),
                           ],
 
-                          // 反饋區塊 (有分析結果時顯示)
-                          if (_hasAnalysisResult) ...[
+                          // 反饋區塊 (有分析結果時顯示；v3 自傷關心沒有建議，不問)
+                          if (_hasAnalysisResult &&
+                              !(_v3Result?.isCare ?? false)) ...[
                             const SizedBox(height: 24),
                             AnalysisFeedbackSection(
                               submitted: _feedbackSubmitted,
@@ -4659,7 +4662,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     return ConversationContinuationBar(
-      onAskCoach: _openCoachQuestion,
+      // v3 自傷關心：只顯示固定的關心文案，不把這段帶去問教練。
+      onAskCoach: (_v3Result?.isCare ?? false) ? null : _openCoachQuestion,
       onNewFragment: _openNewConversationSheet,
     );
   }
