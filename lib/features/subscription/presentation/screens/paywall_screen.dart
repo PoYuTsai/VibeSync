@@ -591,6 +591,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           //（routing.ts 的 GUIDE_V3_FREE_CARD_LIMIT）。不寫「每次」：收尾只有 1 張、
           // 先別回和停沒有卡（Eric 2026-10-18）。
           _buildComparisonRow('回覆卡', '前 2 張', '全部', '全部'),
+          // 對象頁的燈號紀錄＋邀約進度（Eric 2026-10-18：Starter 主打，免費只看最新一次；
+          // partner_light_history_card.dart）。
+          _buildComparisonRow('燈號紀錄與邀約進度', '只看最新一次', '完整紀錄', '完整紀錄'),
           // 鏡像 server 真相源 practice-chat/draw_decision.ts：free=0（只剩
           // 起步清單一次性贈抽）；付費數字吃 AppConstants，改額度不用改文案。
           _buildComparisonRow(

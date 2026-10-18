@@ -191,6 +191,20 @@ void main() {
       expect(find.text('800 則'), findsOneWidget);
     });
 
+    testWidgets('比較表有燈號紀錄與邀約進度：免費只看最新一次、兩個付費方案完整紀錄，排在回覆卡下面', (tester) async {
+      await pumpPaywall(tester);
+
+      // Eric 2026-10-18：Starter 主打燈號紀錄＋邀約進度，免費只看最新一次。
+      expect(find.text('燈號紀錄與邀約進度'), findsOneWidget);
+      expect(find.text('只看最新一次'), findsOneWidget);
+      expect(find.text('完整紀錄'), findsNWidgets(2));
+      final cardsRow = tester.getTopLeft(find.text('回覆卡')).dy;
+      final historyRow = tester.getTopLeft(find.text('燈號紀錄與邀約進度')).dy;
+      final drawRow = tester.getTopLeft(find.text('陪練女孩翻牌')).dy;
+      expect(historyRow, greaterThan(cardsRow));
+      expect(historyRow, lessThan(drawRow));
+    });
+
     testWidgets('comparison table includes practice girl and model copy',
         (tester) async {
       await pumpPaywall(tester);
