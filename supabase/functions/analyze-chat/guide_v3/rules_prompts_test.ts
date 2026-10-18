@@ -3,7 +3,13 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { applyVoice, parseWrittenCards, scoringWords } from "./cards.ts";
+import {
+  applyVoice,
+  cardChecks,
+  charCount,
+  parseWrittenCards,
+  scoringWords,
+} from "./cards.ts";
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import type { GuideV3SectionId } from "./guide_text.ts";
 import {
@@ -401,6 +407,26 @@ Deno.test("v3.2 C5：打分或考題字眼只記錄；照他口吻的「妳」�
   assertEquals(scoringWords("OK 加分，不過住宿應該有先訂吧"), ["加分"]);
   assertEquals(scoringWords("給妳一次機會重答"), ["重答", "給你一次機會"]);
   assertEquals(scoringWords("有啊，願意踩雷這點我很欣賞"), []);
+});
+
+Deno.test("C5 只記錄的檢查：半形問號、你呢後面接表情、照抄他時忽略空白", () => {
+  const his = (voice: "照他" | "預設") => ({ voice });
+  const c = cardChecks(2, ["真的嗎? 那你呢😊"], his("預設"), []);
+  assertEquals(
+    [c.slot, c.questions, c.endsWithNiNe, c.emoji, c.copiesHim],
+    [2, 1, true, 1, null],
+  );
+  assertEquals(charCount("真的 嗎\n好"), 4);
+  // 他的原話跟卡片中間的空白不同，照樣算照抄；不到 8 個字不算。
+  assert(
+    cardChecks(1, ["我 週末 都在家打電動"], his("照他"), ["我週末都在家打電動"])
+      .copiesHim,
+  );
+  assertEquals(
+    cardChecks(1, ["週末都在家"], his("照他"), ["我週末都在家打電動"])
+      .copiesHim,
+    false,
+  );
 });
 
 Deno.test("v3.2：B44、B45（她直接問他）排在一般條目前面", () => {

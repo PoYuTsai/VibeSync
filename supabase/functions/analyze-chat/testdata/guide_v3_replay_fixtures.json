@@ -673,7 +673,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 27,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 23,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 20
           }
         },
         "failedCodes": []
@@ -1015,7 +1058,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 29
           }
         },
         "failedCodes": []
@@ -1603,7 +1657,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 27,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 23
           }
         },
         "failedCodes": []
@@ -1943,7 +2008,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 15,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 9
           }
         },
         "failedCodes": []
@@ -2611,7 +2687,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 30,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 26,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 30,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 37,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 13
           }
         },
         "failedCodes": []
@@ -3117,7 +3236,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 41,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 13
           }
         },
         "failedCodes": []
@@ -3810,7 +3956,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 59,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 60,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 54,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 56,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 66,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 24
           }
         },
         "failedCodes": []
@@ -4478,7 +4667,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 31,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 22,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 16
           }
         },
         "failedCodes": []
@@ -5306,7 +5538,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 25,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 63,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 21
           }
         },
         "failedCodes": []
@@ -5644,7 +5919,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 9
           }
         },
         "failedCodes": []
@@ -6348,7 +6634,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 50,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 51,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 46,
+                "copiesHim": null
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 58,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 54,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 27
           }
         },
         "failedCodes": []
@@ -6864,7 +7193,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 50,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 45,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 24
           }
         },
         "failedCodes": []
@@ -7544,7 +7900,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 26,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 9,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 33
           }
         },
         "failedCodes": []
@@ -8216,7 +8615,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 33,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 41,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 33,
+                "copiesHim": null
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 43,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 43,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 32
           }
         },
         "failedCodes": []
@@ -8734,7 +9176,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 46,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 51,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 27
           }
         },
         "failedCodes": []
@@ -9245,7 +9714,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 43,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 41,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 52,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 23
           }
         },
         "failedCodes": []
@@ -9926,7 +10422,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 36,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 33,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 22
           }
         },
         "failedCodes": []
@@ -10288,7 +10827,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 30,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 11
           }
         },
         "failedCodes": []
@@ -10788,7 +11338,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 37,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 31,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 2
           }
         },
         "failedCodes": []
@@ -11283,7 +11860,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 16,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 16,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 9,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 6
           }
         },
         "failedCodes": []
@@ -12198,7 +12802,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 61,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 47,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 39,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 52,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 24
           }
         },
         "failedCodes": []

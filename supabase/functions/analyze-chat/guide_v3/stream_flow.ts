@@ -15,7 +15,13 @@ import type {
   AnalysisStreamRun,
   ChargeStreamRunV3Input,
 } from "../stream_run_store.ts";
-import { createLineSplitter, parseWrittenCardLine } from "./cards.ts";
+import {
+  type CardChecks,
+  cardChecks,
+  charCount,
+  createLineSplitter,
+  parseWrittenCardLine,
+} from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { type GuideV3Plan, planTurn, planWithoutRead } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
@@ -207,6 +213,15 @@ export function guideMessagesFrom(
       content: quoted ? `（引用：「${quoted}」）${m.content}` : m.content,
     };
   });
+}
+
+/// 她最後一輪（最後面連續幾則她的訊息）的字數，不算空白；最後一則是他的就是 0。
+function herLastTurnChars(messages: readonly GuideV3Message[]): number {
+  let total = 0;
+  for (let i = messages.length - 1; i >= 0 && !messages[i].isFromMe; i--) {
+    total += charCount(messages[i].content);
+  }
+  return total;
 }
 
 function parseTagsText(text: string): ReadTags | null {
@@ -877,10 +892,14 @@ class GuideV3Flow {
       ? plan.specs.slice(0, this.deps.maxCards)
       : plan.specs;
     const sourceText = this.deps.messages.map((m) => m.content).join("\n");
+    const hisMessages = this.deps.messages.filter((m) => m.isFromMe).map((m) =>
+      m.content
+    );
     const delivered: GuideV3CardView[] = [];
-    const removed: { slot: number; reason: string }[] = [];
+    const removed: GuideV3Trace["removed"][number][] = [];
     const scoring: { slot: number; words: readonly string[] }[] = [];
     const raws: { slot: number; messages: readonly string[] }[] = [];
+    const checks: CardChecks[] = [];
     const seen = new Set<number>();
     const state: {
       invalidLines: number;
@@ -902,7 +921,13 @@ class GuideV3Flow {
       seen.add(card.card);
       const out = finalizeCard(card, spec, sourceText);
       if (!out.ok) {
-        removed.push({ slot: card.card, reason: out.reason });
+        // 原文留在伺服器紀錄，誤擋時查得到；outcome log 只記原因。
+        removed.push({
+          slot: card.card,
+          reason: out.reason,
+          messages: card.messages,
+          ...(out.detail ? { detail: out.detail } : {}),
+        });
         return true;
       }
       const shown = cardView(
@@ -949,6 +974,7 @@ class GuideV3Flow {
       if (out.rawMessages) {
         raws.push({ slot: card.card, messages: out.rawMessages });
       }
+      checks.push(cardChecks(card.card, out.messages, spec, hisMessages));
       return true;
     };
 
@@ -999,12 +1025,15 @@ class GuideV3Flow {
     }
 
     const { invalidLines, firstCardMs, stop, upstreamError } = state;
+    const herChars = herLastTurnChars(this.deps.messages);
     const traceExtra = {
       removed,
       invalidLines,
       scoringWords: scoring,
       rawMessages: raws,
       firstCardMs,
+      checks,
+      herLastTurnChars: herChars,
     };
     if (stop?.kind === "charge_failed") {
       return await this.fail(emit, stop.event, {
@@ -1079,6 +1108,9 @@ class GuideV3Flow {
         removedReasons: removed.map((r) => r.reason),
         invalidLines,
         scoringWordCards: scoring.length,
+        // C5 只記錄的檢查：數字與真假，不放卡片或她的字。
+        cardChecks: checks,
+        herLastTurnChars: herChars,
         ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         ...(memory.trace ? { memory: memory.trace } : {}),
       },

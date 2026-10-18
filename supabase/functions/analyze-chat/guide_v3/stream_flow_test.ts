@@ -439,7 +439,76 @@ Deno.test("第一張卡被檢查拿掉：扣費改在第二張、只扣一次，
   assertEquals(done.type, "analysis.done");
   assertEquals((done.finalResult as Record<string, unknown>).partial, true);
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
-  assertEquals(trace.removed, [{ slot: 1, reason: "unsafe" }]);
+  // 被拿掉的卡原文留在伺服器紀錄（誤擋時查得到）；outcome log 只有原因。
+  assertEquals(trace.removed, [{
+    slot: 1,
+    reason: "unsafe",
+    messages: ["我會一直跟蹤你到你答應"],
+  }]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.removedReasons, ["unsafe"]);
+  assert(!JSON.stringify(outcome.metadata).includes("跟蹤"));
+});
+
+Deno.test("C5 只記錄的檢查：每張送出的卡記問句、你呢、表情、字數、照抄他，加她最後一輪字數；log 沒有文字", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "我週末都在家打電動" },
+      { isFromMe: false, content: "真的假的 我也是😂" },
+    ],
+    readTags: tags({ hasHisVoiceSample: true }),
+    writeParts: [
+      line(1, ["我週末都在家打電動啊", "妳都玩什麼？"]),
+      line(2, ["那下次一起連線？？", "妳呢"]),
+      line(3, ["好巧😂😂"]),
+      line(4, ["看來我們週末的行程一樣"]),
+    ],
+  });
+  await events(await handleGuideV3Stream(h.deps));
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.herLastTurnChars, 8);
+  assertEquals(trace.checks, [
+    // 第 1 張照他口吻、照抄他說過的「我週末都在家打電動」。
+    {
+      slot: 1,
+      questions: 1,
+      endsWithNiNe: false,
+      emoji: 0,
+      chars: 16,
+      copiesHim: true,
+    },
+    // 第 2 張預設口吻：不檢查照抄；連在一起的問號算一個。
+    {
+      slot: 2,
+      questions: 1,
+      endsWithNiNe: true,
+      emoji: 0,
+      chars: 11,
+      copiesHim: null,
+    },
+    {
+      slot: 3,
+      questions: 0,
+      endsWithNiNe: false,
+      emoji: 2,
+      chars: 4,
+      copiesHim: false,
+    },
+    {
+      slot: 4,
+      questions: 0,
+      endsWithNiNe: false,
+      emoji: 0,
+      chars: 11,
+      copiesHim: null,
+    },
+  ]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.cardChecks, trace.checks);
+  assertEquals(outcome.metadata.herLastTurnChars, 8);
+  for (const text of ["打電動", "連線", "好巧", "行程", "我也是"]) {
+    assert(!JSON.stringify(outcome.metadata).includes(text), text);
+  }
 });
 
 Deno.test("每張都被拿掉：不扣、run 記失敗、送錯誤事件", async () => {

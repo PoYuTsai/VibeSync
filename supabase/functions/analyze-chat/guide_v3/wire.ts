@@ -1,6 +1,7 @@
 // v3 送給 App 的事件與結果形狀（只給協定版本 3）。v2 的事件型別表
 // （stream_events.ts）是模型輸出的解析白名單，v3 事件由伺服器自己產生，不放進去。
 import type { V3CardTaskCode } from "../stream_run_store.ts";
+import type { CardChecks } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type { GuideV3MemoryTrace } from "./memory.ts";
 import type {
@@ -143,7 +144,14 @@ export interface GuideV3Trace {
   readonly push: string | null;
   readonly specs: readonly CardSpec[];
   readonly entries: readonly string[];
-  readonly removed: readonly { slot: number; reason: string }[];
+  /// 被定稿檢查拿掉的卡：原因，加上模型寫的原文（跟送出的卡同一類資料、同樣保存 30 天，
+  /// 誤擋時才查得到；Eric 2026-10-18）。
+  readonly removed: readonly {
+    slot: number;
+    reason: string;
+    messages?: readonly string[];
+    detail?: readonly string[];
+  }[];
   readonly invalidLines: number;
   readonly scoringWords: readonly { slot: number; words: readonly string[] }[];
   readonly rawMessages: readonly {
@@ -152,6 +160,9 @@ export interface GuideV3Trace {
   }[];
   readonly models: { read?: string; write?: string };
   readonly firstCardMs: number | null;
+  /// 有寫卡才有：送出的每張卡的 C5 檢查（cards.ts，只有數字與真假），以及她最後一輪的字數。
+  readonly checks?: readonly CardChecks[];
+  readonly herLastTurnChars?: number;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;
   /// care 才有：哪一種固定訊息、誰判出來的；讀局面失敗才靠關鍵字給的，記失敗的錯誤碼。
