@@ -139,6 +139,10 @@ class _PracticeCollectionScreenState
   /// 新數字並跳一下。null＝照實際數字顯示。
   int? _heldUnlockedCount;
 
+  /// 這次抽到的新角色已經落位、但她的解鎖還沒到（存草稿比儀式慢）：解鎖到的那一刻才跳。
+  /// 只等這一位；別的角色造成的數字變化只更新、不跳。
+  String? _bumpOnUnlockProfileId;
+
   /// 「已收集」數字落位時跳一下：放大到 1.25 倍再回來、顏色閃一下那張卡的光色。單次
   /// forward，不 repeat；長度用 AppMotion 的慶祝檔。
   late final AnimationController _countBump = AnimationController(
@@ -202,21 +206,31 @@ class _PracticeCollectionScreenState
     return !before.contains(profileId);
   }
 
-  /// 標題數字換回實際值；數字真的變大才跳一下（重複角色不跳，reduce-motion 不動）。
+  /// 標題數字換回實際值。只有這次抽到的是新角色、而且她的解鎖已經到了才跳一下；解鎖晚到
+  /// 就等到的那一刻再跳。重複角色、別的角色造成的數字變化只更新、不跳。
   void _releaseHeldCount(String profileId) {
-    final held = _heldUnlockedCount;
+    final isNew = _isNewProfile(profileId) ?? false;
     _unlockedAtDrawStart = null;
-    if (held == null) return;
+    if (_heldUnlockedCount == null) return;
+    setState(() => _heldUnlockedCount = null);
+    if (!isNew) return;
+    if (ref.read(practiceUnlockedProfileIdsProvider).contains(profileId)) {
+      _bumpCount(profileId);
+    } else {
+      _bumpOnUnlockProfileId = profileId;
+    }
+  }
+
+  /// 「已收集」數字跳一下，顏色閃那張卡的光色（reduce-motion 不跳）。
+  void _bumpCount(String profileId) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return;
     setState(() {
-      _heldUnlockedCount = null;
       _countBumpColor =
           PracticeRevealTheme.of(practiceGirlRarityFor(profileId)).orb;
     });
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (!reduceMotion && ref.read(unlockedPracticeGirlCountProvider) > held) {
-      _countBump.forward(from: 0);
-    }
+    _countBump.forward(from: 0);
   }
 
   /// 收卡光球落位：標題數字 +1、點亮那一格。捲動還沒到位就先記著，到位再亮
@@ -555,6 +569,7 @@ class _PracticeCollectionScreenState
         _unlockedAtDrawStart = loaded?.toSet();
         _heldUnlockedCount =
             loaded == null ? null : ref.read(unlockedPracticeGirlCountProvider);
+        _bumpOnUnlockProfileId = null; // 上一抽還沒等到的跳動不留到這一抽
         return;
       }
       if (prev == null || !prev.isDrawing || next.isDrawing) return;
@@ -578,6 +593,14 @@ class _PracticeCollectionScreenState
         AppHaptics.failure();
         _showDrawSnackBar(next.errorMessage ?? '翻牌失敗了，再試一次。');
       }
+    });
+
+    // 這次抽到的新角色落位時解鎖還沒到：解鎖到的那一刻才 +1 並跳（V3.1 規格 §5.14）。
+    ref.listen(practiceUnlockedProfileIdsProvider, (prev, next) {
+      final pending = _bumpOnUnlockProfileId;
+      if (pending == null || !next.contains(pending)) return;
+      _bumpOnUnlockProfileId = null;
+      _bumpCount(pending);
     });
 
     // 剛抽到那張卡的捲動與發光改由翻牌儀式通知（onRevealTarget／onArchived），
