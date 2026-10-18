@@ -35,6 +35,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -707,6 +714,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "close",
@@ -1295,6 +1309,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "close",
@@ -1634,6 +1655,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "close",
@@ -1971,6 +1999,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -2632,6 +2667,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -3147,6 +3189,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -3835,6 +3884,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -4648,6 +4704,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -5327,6 +5390,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "close",
@@ -5666,6 +5736,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -6375,6 +6452,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -6888,6 +6972,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -7565,6 +7656,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -8240,6 +8338,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -8753,6 +8858,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "send",
@@ -9261,6 +9373,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -9955,6 +10074,13 @@
             "guideVersion": "v3.5"
           },
           {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
+          },
+          {
             "type": "analysis.read",
             "guideVersion": "v3.5",
             "decision": "close",
@@ -10298,6 +10424,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -10805,6 +10938,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",
@@ -11520,6 +11660,13 @@
             "conversationHash": "replay-hash",
             "etaSeconds": 6,
             "guideVersion": "v3.5"
+          },
+          {
+            "type": "analysis.progress",
+            "phase": "writing",
+            "runId": "replay-run",
+            "conversationHash": "replay-hash",
+            "label": "看完了，正在寫回覆"
           },
           {
             "type": "analysis.read",

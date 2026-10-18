@@ -56,6 +56,8 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 /// 停（明確拒絕或封鎖）與自傷關心存進扣費紀錄的 stopCondition（RPC 要非空）。
 export const STOP_CONDITION_STOP = "不再主動傳訊息";
 export const STOP_CONDITION_CARE = "先確認安全";
+/// 讀完局面、開始寫卡前的中性進度（只有出卡、收尾才有；不帶判讀、不動扣費）。
+export const GUIDE_V3_WRITING_LABEL = "看完了，正在寫回覆";
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -904,6 +906,15 @@ class GuideV3Flow {
         { stage: "before_write", decision: plan.decision },
       );
     }
+    // 讀完到第一張卡還要約 2 秒、中間沒有事件：先送一則中性進度，App 照常顯示
+    // 進度文字（Eric 2026-10-18）。判讀照舊等第一張卡扣費後才送。
+    emit({
+      type: "analysis.progress",
+      phase: "writing",
+      runId: this.runId,
+      conversationHash: this.deps.conversationHash,
+      label: GUIDE_V3_WRITING_LABEL,
+    });
     try {
       const write = await this.deps.callWrite({
         runId: this.runId,
