@@ -1135,7 +1135,7 @@ void main() {
 
     expect(
       tester.getSemantics(find.byKey(const ValueKey('guide-v3-card-1-copy'))),
-      containsSemantics(
+      isSemantics(
         label: '複製這句（接住）',
         isButton: true,
         hasTapAction: true,
@@ -1143,12 +1143,12 @@ void main() {
     );
     expect(
       tester.getSemantics(find.byKey(const ValueKey('guide-v3-card-2-copy'))),
-      containsSemantics(label: '複製第 1 則（帶張力）', isButton: true),
+      isSemantics(label: '複製第 1 則（帶張力）', isButton: true),
     );
     expect(
       tester.getSemantics(
           find.byKey(const ValueKey('guide-v3-card-1-message-0'))),
-      containsSemantics(
+      isSemantics(
         label: '那家我也想吃吃看',
         hint: '點兩下複製這句',
         isButton: true,
@@ -1158,7 +1158,7 @@ void main() {
     expect(
       tester.getSemantics(
           find.byKey(const ValueKey('guide-v3-card-2-message-1'))),
-      containsSemantics(
+      isSemantics(
         label: '週末給妳機會證明',
         hint: '點兩下只複製這一則',
         isButton: true,
@@ -1166,7 +1166,7 @@ void main() {
     );
     expect(
       tester.getSemantics(find.byKey(const ValueKey('guide-v3-task-chip-1'))),
-      containsSemantics(
+      isSemantics(
         label: '任務：接住',
         hint: '點兩下看這張卡在做什麼',
         isButton: true,
@@ -1175,7 +1175,7 @@ void main() {
     );
     expect(
       tester.getSemantics(find.byKey(const ValueKey('guide-v3-light'))),
-      containsSemantics(
+      isSemantics(
         label: '燈號：綠燈',
         hint: '點兩下看燈號的意思',
         isButton: true,
@@ -1196,11 +1196,11 @@ void main() {
     expect(
       tester.getSemantics(
           find.byKey(const ValueKey('guide-v3-card-1-message-0'))),
-      containsSemantics(hint: '點兩下先填空格', isButton: true),
+      isSemantics(hint: '點兩下先填空格', isButton: true),
     );
     expect(
       tester.getSemantics(find.byKey(const ValueKey('guide-v3-card-1-fill'))),
-      containsSemantics(label: '填好空格再複製（接住）', isButton: true),
+      isSemantics(label: '填好空格再複製（接住）', isButton: true),
     );
     handle.dispose();
   });
