@@ -2,6 +2,7 @@
 //
 // 紅線：只驗結果卡停住時的靜態裝飾，不碰翻牌演出時間軸（beat 常數／controller 皆不涉入）。
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
@@ -210,6 +211,58 @@ void main() {
 
       expect(find.byKey(newTag), findsNothing);
       expect(find.textContaining(RegExp(r' · 已收藏$')), findsOneWidget);
+    });
+
+    testWidgets('重複角色：小螢幕＋字放大時先省略基本資訊，「已收藏」整個看得到', (tester) async {
+      // 最擠的組合：iPhone SE 的卡寬、卡面字級上限 1.3 倍、SR 四顆星＋最長的職業。
+      const screen = Size(375, 667);
+      final nina = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_008'); // 牙醫診所助理
+      final card = practiceCeremonyCardSize(screen);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: screen,
+              textScaler: TextScaler.linear(1.3),
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.black,
+              body: Center(
+                child: debugCeremonyCardFront(
+                  girl: nina,
+                  width: card.width,
+                  height: card.height,
+                  isNew: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final collected = find.text(' · 已收藏');
+      expect(
+        tester.renderObject<RenderParagraph>(collected).didExceedMaxLines,
+        isFalse,
+      );
+      expect(
+        tester
+            .renderObject<RenderParagraph>(
+              find.textContaining(nina.professionLabel),
+            )
+            .didExceedMaxLines,
+        isTrue,
+      );
+      final info = tester.getRect(
+        find.byKey(const ValueKey('practice-draw-ceremony-info')),
+      );
+      final tag = tester.getRect(collected);
+      expect(
+        info.contains(tag.topLeft) && info.contains(tag.bottomRight),
+        isTrue,
+      );
     });
 
     testWidgets('不知道新舊（沒有抽牌前的紀錄）：NEW、「已收藏」都不畫', (tester) async {

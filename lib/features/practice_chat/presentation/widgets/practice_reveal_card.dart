@@ -523,7 +523,8 @@ class PracticeRevealInfoBar extends StatelessWidget {
   final PracticeGirlProfile girl;
   final PracticeRevealTheme theme;
 
-  /// 重複角色：基本資訊那行最後加「已收藏」（V3.1 規格 §5.14）。
+  /// 重複角色：基本資訊那行最後加「已收藏」（V3.1 規格 §5.14）。基本資訊太長時
+  /// （小螢幕、系統字放大）先省略前面，「已收藏」一定整個看得到。
   final bool collected;
 
   /// 和卡面同一張、同緩縮的照片（模糊後當毛玻璃底）。
@@ -541,8 +542,11 @@ class PracticeRevealInfoBar extends StatelessWidget {
       '${girl.age}',
       if (girl.city.isNotEmpty) girl.city,
       if (girl.professionLabel.isNotEmpty) girl.professionLabel,
-      if (collected) '已收藏',
     ].join(' · ');
+    final metaStyle = AppTypography.caption.copyWith(
+      color: Colors.white.withValues(alpha: 0.78),
+      fontWeight: FontWeight.w600,
+    );
     final radius = BorderRadius.circular(18);
     // 不設 liveRegion：停住時整層已主動唸出抽到誰（儀式的讀屏按鈕），這裡再唸會連唸兩次。
     return ClipRRect(
@@ -591,14 +595,19 @@ class PracticeRevealInfoBar extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        meta,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.caption.copyWith(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              meta,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: metaStyle,
+                            ),
+                          ),
+                          if (collected)
+                            Text(' · 已收藏', maxLines: 1, style: metaStyle),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 8),
