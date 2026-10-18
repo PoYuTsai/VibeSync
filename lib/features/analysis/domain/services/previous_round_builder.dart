@@ -1,7 +1,7 @@
 /// 新片段的上一輪脈絡（previousRound，Eric 2026-10-18）：從手機上已經有的資料挑出
-/// 「上一輪」，也就是同一個對象的其他片段裡、在這個片段建立之前最近一次的 v3 結果，
-/// 再裁成伺服器 `guide_v3/previous_round.ts` 的形狀與上限。不加新的儲存；什麼都
-/// 沒有就回 null（請求不帶這個欄位）。
+/// 「上一輪」，也就是同一個對象的其他片段裡、在這個片段建立之前最近一次的分析；
+/// 它是 v3 結果（不是自傷關心）才裁成伺服器 `guide_v3/previous_round.ts` 的形狀與
+/// 上限。不加新的儲存；什麼都沒有就回 null（請求不帶這個欄位）。
 library;
 
 import 'dart:convert';
@@ -51,9 +51,8 @@ class PreviousRoundBuilder {
         continue;
       }
       final snapshot =
-          _GuideV3Snapshot.tryParse(conversation.lastAnalysisSnapshotJson);
-      // 自傷關心那一輪只有固定文案，不帶。
-      if (snapshot == null || snapshot.result.isCare) continue;
+          _AnalyzedSnapshot.tryParse(conversation.lastAnalysisSnapshotJson);
+      if (snapshot == null) continue;
       // 分析時間看歷史事件（之後的存檔不會改到它）；找不到才退回 updatedAt。
       final analyzedAt = analyzedAtByEventId[snapshot.historyEventId] ??
           conversation.updatedAt;
@@ -63,15 +62,20 @@ class PreviousRoundBuilder {
         latest = _Candidate(conversation, snapshot, analyzedAt);
       }
     }
-    return latest == null ? null : _contextFrom(latest, outcomesFor);
+    final result = latest?.snapshot.guideV3;
+    // 上一輪是 v2 或自傷關心（只有固定文案）就不帶，也不跳去更早的那段：更早的那段
+    // 已經不是上一輪了。
+    if (latest == null || result == null || result.isCare) return null;
+    return _contextFrom(latest, result, outcomesFor);
   }
 
   PreviousRoundContext? _contextFrom(
     _Candidate candidate,
+    GuideV3Result result,
     List<CoachingOutcomeEvent> Function(String conversationId) outcomesFor,
   ) {
     final conversation = candidate.conversation;
-    final read = candidate.snapshot.result.read;
+    final read = result.read;
     final judgment = _capped(read.judgment);
     final sentCard = _capped(_copiedCard(candidate, outcomesFor) ?? '');
     final analyzedCount = (candidate.snapshot.messageCount ??
@@ -160,25 +164,26 @@ class _Candidate {
   const _Candidate(this.conversation, this.snapshot, this.analyzedAt);
 
   final Conversation conversation;
-  final _GuideV3Snapshot snapshot;
+  final _AnalyzedSnapshot snapshot;
   final DateTime analyzedAt;
 }
 
-/// 對話快照裡的 v3 結果與存檔時的 meta（歷史事件 id、伺服器 runId、分析了幾則）。
-class _GuideV3Snapshot {
-  const _GuideV3Snapshot({
-    required this.result,
+/// 對話快照（v2 或 v3）與存檔時的 meta（歷史事件 id、伺服器 runId、分析了幾則）。
+/// [guideV3] 只有 v3 結果才有；v2、或認不出來的 v3 是 null。
+class _AnalyzedSnapshot {
+  const _AnalyzedSnapshot({
+    required this.guideV3,
     required this.historyEventId,
     required this.runId,
     required this.messageCount,
   });
 
-  final GuideV3Result result;
+  final GuideV3Result? guideV3;
   final String? historyEventId;
   final String? runId;
   final int? messageCount;
 
-  static _GuideV3Snapshot? tryParse(String? snapshotJson) {
+  static _AnalyzedSnapshot? tryParse(String? snapshotJson) {
     if (snapshotJson == null || snapshotJson.trim().isEmpty) return null;
     try {
       final decoded = jsonDecode(snapshotJson);
@@ -187,16 +192,16 @@ class _GuideV3Snapshot {
         (key, value) => MapEntry(key.toString(), value),
       );
       final meta = payload.remove(PreviousRoundBuilder._snapshotClientMetaKey);
-      if (!isGuideV3Payload(payload)) return null;
-      final result = GuideV3Result.fromJson(payload);
-      if (result == null) return null;
+      if (payload.isEmpty) return null;
+      final result =
+          isGuideV3Payload(payload) ? GuideV3Result.fromJson(payload) : null;
       String? text(Object? value) =>
           value is String && value.trim().isNotEmpty ? value.trim() : null;
       final rawCount = meta is Map
           ? meta[PreviousRoundBuilder._snapshotMessageCountKey]
           : null;
-      return _GuideV3Snapshot(
-        result: result,
+      return _AnalyzedSnapshot(
+        guideV3: result,
         historyEventId: meta is Map
             ? text(meta[PreviousRoundBuilder._snapshotHistoryEventIdKey])
             : null,

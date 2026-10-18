@@ -244,6 +244,50 @@ void main() {
     );
   });
 
+  test('上一輪是 v2 或自傷關心：不帶，也不跳去更早那段 v3', () {
+    final olderV3 = _segment(
+      id: 'older',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: '更早的'), historyEventId: 'e-v3'),
+    );
+    final latestV2 = _segment(
+      id: 'v2',
+      snapshotJson: jsonEncode({
+        'enthusiasm': {'score': 70},
+        'replies': {'extend': 'a'},
+        '__vibesync_snapshot_meta_v1': {'historyEventId': 'e-v2'},
+      }),
+    );
+    final latestCare = _segment(
+      id: 'care',
+      snapshotJson: _snapshot(
+        _v3Result(decision: 'care', judgment: ''),
+        historyEventId: 'e-care',
+      ),
+    );
+    final events = [
+      _event('e-v3', _t0.add(const Duration(minutes: 10))),
+      _event('e-v2', _t0.add(const Duration(minutes: 20))),
+      _event('e-care', _t0.add(const Duration(minutes: 20))),
+    ];
+    expect(
+      _build(current: newSegment, others: [olderV3, latestV2], events: events),
+      isNull,
+    );
+    expect(
+      _build(
+        current: newSegment,
+        others: [olderV3, latestCare],
+        events: events,
+      ),
+      isNull,
+    );
+    expect(
+      _build(current: newSegment, others: [olderV3], events: events)!.judgment,
+      '更早的',
+    );
+  });
+
   test('只認這個片段建立之前分析完的、同一個對象、同一個帳號，不認自己', () {
     final self = _segment(
       id: 'new',
