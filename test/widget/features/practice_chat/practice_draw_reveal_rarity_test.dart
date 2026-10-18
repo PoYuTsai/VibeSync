@@ -192,7 +192,8 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('新角色：稀有度牌右邊掛 NEW、在卡片內，資訊欄沒有「已收藏」', (tester) async {
+    testWidgets('新角色：六角牌右邊 6 px 掛 NEW、跟牌垂直置中（一起壓在卡片上緣），資訊欄沒有「已收藏」',
+        (tester) async {
       await pumpCard(tester, isNew: true);
 
       expect(find.byKey(newTag), findsOneWidget);
@@ -200,9 +201,17 @@ void main() {
         find.byKey(const ValueKey('practice-draw-ceremony-front')),
       );
       final tag = tester.getRect(find.byKey(newTag));
-      expect(tag.left, greaterThan(tester.getRect(find.byKey(badge)).right));
+      final badgeRect = tester.getRect(find.byKey(badge));
+      expect(tag.left - badgeRect.right, closeTo(6, 0.5));
+      expect(tag.center.dy, closeTo(badgeRect.center.dy, 0.5));
+      // 跟牌一樣跨在卡片上緣：一半以上在卡片內，不會整個飄在卡片外面。
+      expect(tag.center.dy, greaterThan(card.top));
+      expect(tag.right, lessThan(card.right));
       expect(
-          card.contains(tag.topLeft) && card.contains(tag.bottomRight), isTrue);
+        tag.overlaps(tester.getRect(
+            find.byKey(const ValueKey('practice-draw-ceremony-info')))),
+        isFalse,
+      );
       expect(find.textContaining('已收藏'), findsNothing);
     });
 

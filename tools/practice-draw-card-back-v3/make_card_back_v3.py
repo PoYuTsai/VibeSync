@@ -8,6 +8,8 @@
 - `practice_draw_card_back_v3_emblem_mask.webp`：徽記與星軌線條的白色遮罩（透明底）。
 - `practice_draw_card_back_v3_frame_mask.webp`：外框（四角、側邊、上下飾板與框線）遮罩。
 - `practice_draw_card_back_v3_glow.webp`：預先模糊好的徽記＋外框光暈（白，透明底）。
+- `practice_draw_card_back_v3_lines_mask.webp`：外框內的線路圖案（直線、斜向走線、圓環、菱形、
+  徽記輪廓）遮罩，V3.1 規格 §5.3 整張卡染色用。原本四張的算法不動、逐位元相同。
 
 全部預先做好，app 只染色、不在逐幀 painter 裡做模糊（規格 §12）。
 
@@ -45,6 +47,12 @@ BASE_GAMMA = 1.15
 GLOW_NEAR_RADIUS = 14
 GLOW_FAR_RADIUS = 40
 GLOW_FRAME_WEIGHT = 0.55
+
+# 線路遮罩（V3.1）：亮度減掉 5 px（以卡寬 904 為基準）高斯模糊後的亮度，只留下細而亮的
+# 結構；拉絲底是大片緩變，扣完幾乎是 0。
+LINES_TOPHAT_RADIUS = 5
+LINES_LO = 0.05
+LINES_HI = 0.14
 
 
 def smoothstep(e0: float, e1: float, x: np.ndarray) -> np.ndarray:
@@ -103,12 +111,17 @@ def main() -> None:
     glow = glow / max(float(glow.max()), 1e-6)
     glow = np.clip(glow, 0, 1) * alpha
 
+    # 5) 線路遮罩（V3.1 §5.3）：外框帶以內的細線，染色時跟外框、徽記一起發光。
+    tophat = np.clip(value - blur(value, LINES_TOPHAT_RADIUS * scale), 0, 1)
+    lines_mask = smoothstep(LINES_LO, LINES_HI, tophat) * alpha * (1.0 - band)
+
     args.out.mkdir(parents=True, exist_ok=True)
     outputs = {
         'practice_draw_card_back_v3_base.webp': (to_rgba(base_rgb, alpha), dict(quality=88, method=6)),
         'practice_draw_card_back_v3_emblem_mask.webp': (white_mask(emblem), dict(lossless=True, method=6)),
         'practice_draw_card_back_v3_frame_mask.webp': (white_mask(frame), dict(lossless=True, method=6)),
         'practice_draw_card_back_v3_glow.webp': (white_mask(glow), dict(quality=80, alpha_quality=80, method=6)),
+        'practice_draw_card_back_v3_lines_mask.webp': (white_mask(lines_mask), dict(lossless=True, method=6)),
     }
     total = 0
     for name, (image, options) in outputs.items():
