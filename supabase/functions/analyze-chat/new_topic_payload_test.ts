@@ -683,6 +683,41 @@ Deno.test("repair merge：只修解釋時保留 primary 可直接傳句子", () 
   );
 });
 
+Deno.test("空格收成「＿＿」後再量長度：剛好 180 字的句子收完變 181 就不合格，修格式也不換回去（主審 P2-2）", () => {
+  const atCap = "妳" + "好".repeat(178) + "＿";
+  assertEquals(atCap.length, 180);
+  const topics = modelTopics();
+  topics[0] = { ...topics[0], openingLine: atCap };
+  const direct = normalizeNewTopicModelPayload({
+    topics,
+    recommendation: { index: 0, reason: "最貼近她的近況" },
+  });
+  assertFalse(direct.ok, "結算前就判不合格，走修格式，不在結算才失敗");
+
+  // 收短的照收：四個＿收成兩個。
+  const shrink = modelTopics();
+  shrink[0] = { ...shrink[0], openingLine: "我住＿＿＿＿附近，妳呢" };
+  const shrunk = normalizeNewTopicModelPayload({
+    topics: shrink,
+    recommendation: { index: 0, reason: "最貼近她的近況" },
+  });
+  assert(shrunk.ok);
+  assertEquals(shrunk.topics[0].openingLine, "我住＿＿附近，妳呢");
+
+  // 修格式那次：主呼叫的句子收完會超過上限，就留修格式的句子，不換回去。
+  const primaryTopics = modelTopics();
+  primaryTopics[0].openingLine = atCap;
+  const repairedTopics = modelTopics();
+  repairedTopics[0].openingLine = "妳最近有在追什麼劇嗎";
+  const merged = mergeNewTopicRepairWithPrimaryOpeningLines(
+    { topics: primaryTopics, recommendation: { index: 0 } },
+    { topics: repairedTopics, recommendation: { index: 0 } },
+  );
+  const result = normalizeNewTopicModelPayload(merged);
+  assert(result.ok);
+  assertEquals(result.topics[0].openingLine, "妳最近有在追什麼劇嗎");
+});
+
 Deno.test("normalize：用戶素材原文裡本來就有的詞撞到內部術語不算外洩", () => {
   const cases: Array<{
     material: string;

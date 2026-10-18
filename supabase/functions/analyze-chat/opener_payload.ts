@@ -224,6 +224,9 @@ export function buildOpenerAccess(opts: {
   };
 }
 
+/** 一張開場卡的字數上限（opener_flow_payload.ts 的結算檢查也是 180）。 */
+export const OPENER_TEXT_MAX_CHARS = 180;
+
 export function sanitizeOpenerText(value: unknown): string | null {
   let text: string | null = null;
 
@@ -267,7 +270,7 @@ export function sanitizeOpenerText(value: unknown): string | null {
 
   // Opening lines are short by contract. A very long value is usually a model
   // explanation or malformed JSON that would be embarrassing to show.
-  if (trimmed.length > 180) return null;
+  if (trimmed.length > OPENER_TEXT_MAX_CHARS) return null;
 
   // 拒答說明不是開場白（2026-08-19 真機實錄：聊天截圖誤餵 opener，模型把
   // 「截圖資訊不足，無法生成開場白，請提供…」寫進五張卡照常渲染）。第一層

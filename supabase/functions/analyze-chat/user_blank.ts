@@ -18,6 +18,18 @@ export function normalizeUserBlanks(text: string): string {
   return text.replace(BLANK_VARIANTS, USER_BLANK);
 }
 
+/**
+ * 收成「＿＿」之後再量一次長度：一個「＿」補成兩個會多一個字，剛好在上限的句子會超過
+ * （主審第 1 輪 P2-2）。超過就回 null，讓呼叫端照「這一欄不合格」處理。
+ */
+export function normalizeUserBlanksWithin(
+  text: string,
+  maxLength: number,
+): string | null {
+  const normalized = normalizeUserBlanks(text);
+  return normalized.length <= maxLength ? normalized : null;
+}
+
 /** 句子裡有沒有留給用戶填的空格（「＿」連著算一段，跟 App 的判斷一致）。 */
 export function hasUserBlank(text: string): boolean {
   return text.includes("＿");

@@ -64,18 +64,22 @@ class _BlankFillSheetState extends State<BlankFillSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final blanksLeft = guideV3TextHasBlank(_controller.text);
-    return FractionallySizedBox(
-      heightFactor: 0.6,
+    // 高度跟著內容走、整個可以捲：小螢幕跳出鍵盤時，標題、輸入框與複製鍵都還在
+    // 鍵盤上方（主審第 1 輪 P2-1：固定 60% 再扣鍵盤高度，320×568 只剩約 100 px）。
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
+      ),
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BrandPageBackground(
           child: SafeArea(
             top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomInset),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Align(
@@ -104,32 +108,25 @@ class _BlankFillSheetState extends State<BlankFillSheet> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        TextField(
-                          key: const ValueKey('blank-fill-field'),
-                          controller: _controller,
-                          autofocus: true,
-                          minLines: 1,
-                          maxLines: 5,
-                          onChanged: (_) => setState(() {}),
-                          style: AppTypography.bodyLarge.copyWith(
-                            color: AppColors.onBackgroundPrimary,
-                          ),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor:
-                                AppColors.brandInk.withValues(alpha: 0.45),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                        ),
-                      ],
+                  TextField(
+                    key: const ValueKey('blank-fill-field'),
+                    controller: _controller,
+                    autofocus: true,
+                    minLines: 1,
+                    maxLines: 5,
+                    onChanged: (_) => setState(() {}),
+                    style: AppTypography.bodyLarge.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: AppColors.brandInk.withValues(alpha: 0.45),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   if (blanksLeft) ...[
                     Text(
                       '還有＿＿沒填',

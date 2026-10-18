@@ -9,12 +9,12 @@
 import type { OpenerFlowModelInvoker, OpenerFlowModelOutput } from "./opener_flow_handler.ts";
 import type { OpenerGenerateLedgerResult } from "./opener_flow_payload.ts";
 import type { OpenerMaterialSet } from "./opener_material.ts";
-import { type OpenerType, sanitizeOpenerText } from "./opener_payload.ts";
+import { OPENER_TEXT_MAX_CHARS, type OpenerType, sanitizeOpenerText } from "./opener_payload.ts";
 import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stage.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import { hasOpenerFlowPromptLeak } from "./opener_flow_prompt.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
-import { hasUserBlank, normalizeUserBlanks } from "./user_blank.ts";
+import { hasUserBlank, normalizeUserBlanksWithin } from "./user_blank.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
   buildOpenerPlanUserContent,
@@ -354,9 +354,10 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
       continue;
     }
     const sanitized = sanitizeOpenerText(rawOpeners[type]);
-    const text = sanitized ? withoutEmoji(sanitized) : null;
-    // 留給用戶填的空格統一成「＿＿」（Bruce 2026-10-18 #97）。
-    if (text) openers[type] = normalizeUserBlanks(text);
+    const emojiFree = sanitized ? withoutEmoji(sanitized) : null;
+    // 留給用戶填的空格統一成「＿＿」（Bruce 2026-10-18 #97）；收完再量一次上限（主審 P2-2）。
+    const text = emojiFree ? normalizeUserBlanksWithin(emojiFree, OPENER_TEXT_MAX_CHARS) : null;
+    if (text) openers[type] = text;
     const reason = customerText(rawReasons[type], 200);
     if (reason) cardReasons[type] = reason;
   }
@@ -414,9 +415,10 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
           continue;
         }
         const sanitized = sanitizeOpenerText(rewritten[style]);
-        const text = sanitized ? withoutEmoji(sanitized) : null;
+        const emojiFree = sanitized ? withoutEmoji(sanitized) : null;
+        const text = emojiFree ? normalizeUserBlanksWithin(emojiFree, OPENER_TEXT_MAX_CHARS) : null;
         if (text) {
-          openers[style] = normalizeUserBlanks(text);
+          openers[style] = text;
           delete cardReasons[style];
           telemetry.rewrittenStyles.push(style);
         }

@@ -8,7 +8,7 @@
 // code fence 修不回，都必須整份失敗；不可丟掉壞題後照樣扣 3。
 
 import { normalizeOutgoingMessageText } from "./outgoing_message_text.ts";
-import { normalizeUserBlanks } from "./user_blank.ts";
+import { normalizeUserBlanksWithin } from "./user_blank.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import {
   type NewTopicTopicContext,
@@ -376,17 +376,10 @@ export function normalizeNewTopicModelPayload(
       NEW_TOPIC_FIELD_CAPS.direction,
       userProvidedText,
     );
-    const outgoingLine = normalizeOutgoingMessageText(
-      sanitizeModelVisibleText(
-        rawTopic.openingLine,
-        NEW_TOPIC_FIELD_CAPS.openingLine,
-        userProvidedText,
-      ),
+    const openingLine = finalNewTopicOpeningLine(
+      rawTopic.openingLine,
+      userProvidedText,
     );
-    // 留給用戶填的空格統一成「＿＿」（Bruce 2026-10-18 #97）；App 沒填完不讓複製。
-    const openingLine = outgoingLine === null
-      ? null
-      : normalizeUserBlanks(outgoingLine);
     const whyItWorks = sanitizeCustomerExplanationText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,
@@ -455,6 +448,26 @@ export function normalizeNewTopicModelPayload(
  * array position so that format/explanation repair cannot silently rewrite the
  * customer’s sendable copy. Invalid/missing primary lines are still repairable.
  */
+/**
+ * 開場句最後給用戶的樣子：可見文字守門 → 傳訊息的正規化 → 留給他填的空格統一成「＿＿」
+ * （Bruce 2026-10-18 #97；App 沒填完不讓複製）→ 再量一次上限（收空格可能多一個字）。
+ */
+function finalNewTopicOpeningLine(
+  value: unknown,
+  userProvidedText: string | null,
+): string | null {
+  const outgoing = normalizeOutgoingMessageText(
+    sanitizeModelVisibleText(
+      value,
+      NEW_TOPIC_FIELD_CAPS.openingLine,
+      userProvidedText,
+    ),
+  );
+  return outgoing === null
+    ? null
+    : normalizeUserBlanksWithin(outgoing, NEW_TOPIC_FIELD_CAPS.openingLine);
+}
+
 export function mergeNewTopicRepairWithPrimaryOpeningLines(
   primaryParsed: unknown,
   repairedParsed: unknown,
@@ -479,12 +492,11 @@ export function mergeNewTopicRepairWithPrimaryOpeningLines(
     if (!isPlainObject(repairedTopic) || !isPlainObject(primaryTopic)) {
       return repairedTopic;
     }
-    const primaryOpeningLine = normalizeOutgoingMessageText(
-      sanitizeModelVisibleText(
-        primaryTopic.openingLine,
-        NEW_TOPIC_FIELD_CAPS.openingLine,
-        userProvidedText,
-      ),
+    // 修格式那次換回主呼叫的開場句：照最後的樣子（空格收好、長度再量）判，放回去才不會
+    // 讓結果在結算時才不合格（主審第 1 輪 P2-2）。
+    const primaryOpeningLine = finalNewTopicOpeningLine(
+      primaryTopic.openingLine,
+      userProvidedText,
     );
     return primaryOpeningLine === null
       ? repairedTopic

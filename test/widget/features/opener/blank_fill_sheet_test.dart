@@ -69,6 +69,45 @@ void main() {
     expect(result, '我最近都在河濱夜跑，妳都跑哪？');
   });
 
+  // 主審第 1 輪 P2-1：320×568、鍵盤 216、字放大 1.3 時，標題、輸入框、提醒與複製鍵都在鍵盤上方、
+  // 沒有溢出；內容太多時整個可以捲。
+  testWidgets('小螢幕跳出鍵盤、字放大：複製鍵仍在鍵盤上方，沒有溢出', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 216);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: const TextScaler.linear(1.3)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showBlankFillSheet(
+              context,
+              text: '我最近＿＿，妳都跑哪？',
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final copy = find.byKey(const ValueKey('blank-fill-copy'));
+    await tester.ensureVisible(copy);
+    await tester.pumpAndSettle();
+    final keyboardTop = 568.0 - 216.0;
+    expect(tester.getRect(copy).bottom, lessThanOrEqualTo(keyboardTop));
+    expect(
+      tester.getRect(find.byKey(const ValueKey('blank-fill-field'))).top,
+      greaterThanOrEqualTo(0),
+    );
+  });
+
   testWidgets('清空也不能複製', (tester) async {
     await openSheet(tester, '我住＿＿附近');
     await tester.enterText(find.byKey(const ValueKey('blank-fill-field')), '  ');

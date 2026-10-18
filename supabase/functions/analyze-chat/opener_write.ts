@@ -61,7 +61,7 @@ const FREE_CARDS = `## 五則（一句推薦＋四句備選；App 標籤照括�
     沒有自述、資料裡也沒有【帶到自己】那一行時：先問她，再說自己對這件事的好奇，不編經歷、不給 directions。
     資料裡有【帶到自己】那一行時才改寫「方向＋範例」（Bruce 的標準格式）：
     directions.coldRead＝給用戶的一句方向（25 字內），例：可以先分享自己夜跑的經驗
-    openers.coldRead＝範例那一則訊息本身，用戶把空格填好再傳：用「我最近…」帶一個跟這次話題有關的小經驗，再問她。他自己的事（去哪、做了什麼、細節）不替他編，用「${USER_BLANK}」留給他填，至少留一個；她的事和問她的那句照寫。例：我最近都在${USER_BLANK}夜跑，妳都跑哪？
+    openers.coldRead＝範例那一則訊息本身，用戶把空格填好再傳：先用「我最近…」帶到他自己跟這次話題有關的經驗，再問她。他做過什麼、去哪、多常做都不知道：這段經驗整段留「${USER_BLANK}」給他填，不要寫成他做過、常做或喜歡什麼；她的事和問她的那句照寫。例：我最近${USER_BLANK}，妳都跑哪？
     範例要是真的一則訊息，不是說明；話題跟這次有關，不照抄上面的例子。其他四則仍不寫用戶自己的經歷，也不留空格。`;
 
 const OUTPUT_SPEC = `## 輸出（只輸出 JSON，不要 code fence）
@@ -131,7 +131,7 @@ export function buildOpenerWriteUserContent(input: OpenerWriteInput): string {
       : "【用戶自述】沒有：不要寫任何用戶自己的經歷或習慣。",
   );
   if (writesDirectionExample(input.arm, digest)) {
-    out.push(`【帶到自己】用戶沒給自述：coldRead 寫「方向＋範例」——directions.coldRead 是給用戶的一句方向，openers.coldRead 是範例那一則訊息本身（「我最近…」帶一個跟這次話題有關的小經驗，他自己的事用「${USER_BLANK}」留給他填，再問她）。`);
+    out.push(`【帶到自己】用戶沒給自述：coldRead 寫「方向＋範例」——directions.coldRead 是給用戶的一句方向，openers.coldRead 是範例那一則訊息本身（「我最近…」帶到他自己的經驗，那段經驗整段用「${USER_BLANK}」留給他填，再問她）。`);
   }
   if (digest.noExperienceLabels.length) {
     out.push(`【用戶沒有經驗的話題】${digest.noExperienceLabels.join("、")}：只能說好奇，不寫成他做過、養過或常去。`);
