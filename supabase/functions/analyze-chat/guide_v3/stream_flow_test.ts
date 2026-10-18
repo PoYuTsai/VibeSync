@@ -1088,29 +1088,36 @@ Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照
     minorWords: false,
     selfHarmWords: false,
     wantsToDie: true,
-    money: false,
   });
 });
 
-Deno.test("她要他借錢（模型沒標風險）：照常出卡扣一次，判讀換成固定提醒、沒有推進卡", async () => {
-  const h = harness({
-    messages: [
-      { isFromMe: true, content: "週末要不要去看展" },
-      { isFromMe: false, content: "好啊！不過可以先借我五千嗎，下個月還你" },
-    ],
-    readTags: tags({ herMove: "開窗" }),
-  });
-  const evs = await events(await handleGuideV3Stream(h.deps));
-  const read = evs.find((e) => e.type === "analysis.read")!;
-  assertEquals(read.decision, "send");
-  assertEquals(read.judgment, MONEY_RISK_WARNING);
+Deno.test("她要他借錢：模型沒標風險就照常（不掃關鍵字）；標了風險才換成固定提醒、拿掉推進卡", async () => {
+  const messages = [
+    { isFromMe: true, content: "週末要不要去看展" },
+    { isFromMe: false, content: "好啊！不過可以先借我五千嗎，下個月還你" },
+  ];
+  const plain = harness({ messages, readTags: tags({ herMove: "開窗" }) });
+  const e1 = await events(await handleGuideV3Stream(plain.deps));
+  const read1 = e1.find((e) => e.type === "analysis.read")!;
+  assertEquals(read1.judgment, "她在分享日常，氣氛輕鬆。");
   assert(
-    (read.plannedCards as { task: string }[]).every((c) => c.task !== "push"),
+    (read1.plannedCards as { task: string }[]).some((c) => c.task === "push"),
   );
-  assertEquals(h.charges.length, 1);
-  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
-  assertEquals((trace.keywordHits as Record<string, unknown>).money, true);
-  assertEquals(trace.push, null);
+  const trace1 = plain.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals("keywordHits" in trace1, false);
+
+  const risky = harness({
+    messages,
+    readTags: tags({ herMove: "開窗", risk: true }),
+  });
+  const e2 = await events(await handleGuideV3Stream(risky.deps));
+  const read2 = e2.find((e) => e.type === "analysis.read")!;
+  assertEquals(read2.decision, "send");
+  assertEquals(read2.judgment, MONEY_RISK_WARNING);
+  assert(
+    (read2.plannedCards as { task: string }[]).every((c) => c.task !== "push"),
+  );
+  assertEquals(risky.charges.length, 1);
 });
 
 Deno.test("自傷訊號但紀錄寫不進資料庫：關心訊息照樣顯示，不呼叫 markDone", async () => {

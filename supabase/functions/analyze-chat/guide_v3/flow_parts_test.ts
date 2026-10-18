@@ -29,7 +29,11 @@ import {
 import { READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
 import type { CardSpec } from "./rules.ts";
 import { MONEY_RISK_WARNING, SCAM_VENUE_WARNING } from "./rules.ts";
-import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
+import {
+  NO_SAFETY_HITS,
+  type SafetyKeywordHits,
+  scanSafetyKeywords,
+} from "./safety.ts";
 import {
   GUIDE_V3_STALE_AFTER_MS,
   guideV3ResumeSnapshot,
@@ -253,41 +257,36 @@ Deno.test("送出型與 B47：判讀換成固定提醒，排推進、收、推�
   assertEquals(plan.entries.map((e) => e.id), ["B47"]);
 });
 
-Deno.test("她要錢的關鍵字跟風險標記同樣處理：照常出卡、不排推進、判讀換成固定提醒；B47 不受影響", () => {
+Deno.test("金錢、詐騙只看讀局面的風險標記：照常出卡、不排推進、判讀換成固定提醒；B47 不受影響", () => {
   const long = toTurns([
     { isFromMe: true, content: "a" },
     { isFromMe: false, content: "b" },
     { isFromMe: true, content: "c" },
     { isFromMe: false, content: "d" },
   ]);
-  for (
-    const [t, h] of [
-      [tags({ herMove: "開窗" }), hits({ money: true })],
-      [tags({ herMove: "開窗", risk: true }), NO_SAFETY_HITS],
-    ] as const
-  ) {
-    const plan = planTurn(long, t, h);
-    assertEquals(plan.decision, "send");
-    assertEquals(plan.judgment, MONEY_RISK_WARNING);
-    assertEquals(plan.push, null);
-    assert(plan.specs.length > 0);
-    assert(plan.specs.every((s) => s.task !== "推進"));
-  }
-  // 沒命中照常推進（開窗）、判讀用模型的。
-  const plain = planTurn(long, tags({ herMove: "開窗" }));
+  const risky = planTurn(long, tags({ herMove: "開窗", risk: true }));
+  assertEquals(risky.decision, "send");
+  assertEquals(risky.judgment, MONEY_RISK_WARNING);
+  assertEquals(risky.push, null);
+  assert(risky.specs.length > 0);
+  assert(risky.specs.every((s) => s.task !== "推進"));
+  // 模型沒標風險：她說要借錢也照常推進、判讀用模型的（不掃關鍵字，主審第 1 輪）。
+  const words = scanSafetyKeywords([
+    {
+      isFromMe: false,
+      content: "可以先借我五千嗎，我是理專，沒有零風險的投資喔",
+    },
+  ]);
+  const plain = planTurn(long, tags({ herMove: "開窗" }), words);
   assertEquals(plain.push, "具體邀約");
   assertEquals(plain.judgment, "她在分享日常。");
   // B47 有自己的提醒與換地方的卡。
-  const b47 = planTurn(
-    herLast,
-    tags({ matchedEntries: ["B47"] }),
-    hits({ money: true }),
-  );
+  const b47 = planTurn(herLast, tags({ matchedEntries: ["B47"], risk: true }));
   assertEquals(b47.judgment, SCAM_VENUE_WARNING);
   assertEquals(b47.push, "換地方");
   // 先別回、停也換成提醒（判讀照樣給用戶看）。
   assertEquals(
-    planTurn(hisLast, tags(), hits({ money: true })).judgment,
+    planTurn(hisLast, tags({ risk: true })).judgment,
     MONEY_RISK_WARNING,
   );
 });

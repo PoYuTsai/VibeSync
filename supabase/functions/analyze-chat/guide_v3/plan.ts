@@ -88,13 +88,10 @@ export function planTurn(
     return carePlan("self_harm", tags.selfHarmSignal, hits.selfHarmWords);
   }
   if (tags.minorSignal) return carePlan("minor", true, false);
-  // 她要他借錢、轉帳、投資或下載 App（程式關鍵字）跟讀局面的風險標記同樣處理：不排推進、
-  // 判讀換成固定提醒（B47 的做法；Eric 2026-10-18）。trace 另記模型原本的標記與關鍵字命中。
-  const ruled = hits.money && !tags.risk ? { ...tags, risk: true } : tags;
-  const reply = decideReply(turns, ruled);
-  const push = reply.kind === "send" ? decidePush(turns, ruled) : null;
-  const specs = arrangeCards(reply, push, ruled);
-  const judgment = judgmentFor(ruled);
+  const reply = decideReply(turns, tags);
+  const push = reply.kind === "send" ? decidePush(turns, tags) : null;
+  const specs = arrangeCards(reply, push, tags);
+  const judgment = judgmentFor(tags);
   switch (reply.kind) {
     case "hold":
       return {

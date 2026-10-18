@@ -129,60 +129,19 @@ Deno.test("自傷：只掃她的訊息", () => {
   assertEquals([h.selfHarmWords, h.wantsToDie], [false, false]);
 });
 
-function moneyIn(...lines: string[]): boolean {
-  return scanSafetyKeywords(lines.map(her)).money;
-}
-
-Deno.test("金錢：她要他借錢、轉帳、代付儲值，拉他投資，或叫他下載 App 又講到錢", () => {
+Deno.test("金錢不掃關鍵字：主審找到的借東西、理專講投資，單獨出現都不會觸發任何東西", () => {
   for (
     const line of [
-      "可以先借我五千嗎，下個月還你",
-      "我想跟你借點錢",
-      "借我2000就好",
-      "你可以轉帳給我嗎",
-      "先匯給我，我明天就還",
-      "幫我儲值一下遊戲點數",
-      "我舅舅是分析師，可以帶你一起投資",
-      "這個平台穩賺不賠",
-      "你先入金一萬試試看",
-      "我都換成USDT轉過去",
-      "下載這個APP，我教你怎麼操作獲利",
-      "加入我們的投資群組，裡面老師會報明牌",
-      // 簡體。
-      "可以借我钱吗",
-      "你转账给我就好",
+      "可以借我5分鐘嗎",
+      "跟你借1支筆",
+      "我是理專，沒有零風險的投資喔",
+      "可以先借我五千嗎",
     ]
   ) {
-    assert(moneyIn(line), line);
+    assertEquals(scanSafetyKeywords([her(line)]), {
+      minorWords: false,
+      selfHarmWords: false,
+      wantsToDie: false,
+    }, line);
   }
-});
-
-Deno.test("金錢：分帳、她自己在金融業上班、聊她的工作、單純換 LINE 都不算", () => {
-  for (
-    const line of [
-      "AA就好，我轉帳給你",
-      "晚餐我先付，你那份轉帳給我就好",
-      "我們分帳吧，等等匯給我一半",
-      "我轉給你了喔",
-      "我在銀行上班，每天都在幫客戶處理投資",
-      "我是理專，最近很多人問基金",
-      "我在券商上班，今天客戶一直問入金的問題",
-      "公司下單系統又當機了",
-      "我做跨境電商，每天都在跟單",
-      "我們換LINE聊吧",
-      "下載這個App可以看我拍的照片",
-      "借我看一下你的照片",
-      "可以借我充電器嗎",
-      "可以跟你借個充電器嗎",
-      "借我一點時間想一下",
-      "我最近在學投資理財",
-    ]
-  ) {
-    assert(!moneyIn(line), line);
-  }
-  // 只掃她的訊息：他自己說要借她錢不算。
-  assertEquals(
-    scanSafetyKeywords([me("要不要我借妳錢"), her("不用啦")]).money,
-    false,
-  );
 });
