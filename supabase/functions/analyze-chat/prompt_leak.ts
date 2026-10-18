@@ -8,6 +8,19 @@ import {
 
 export { PROMPT_LEAK_DEFENSE_DIRECTIVE };
 
+/// 對話分析 v3 讀局面、寫卡提示詞（guide_v3/prompts.ts）的片段（Eric 2026-10-18 盤點）：
+/// 舊清單沒有 v3 的；說明書每節第一行另有哨兵（guide_v3/finalize.ts）。都是給模型的角色與
+/// 輸出格式指示，不含「用戶」這類簡轉繁會改的詞；prompt_leak_test 鎖住它們都在提示詞裡、
+/// 重播錄音的卡與判讀一句都不會中。
+export const GUIDE_V3_PROMPT_SENTINELS: readonly string[] = [
+  "你是 VibeSync 對話分析的「讀局面」步驟",
+  "你是 VibeSync 對話分析的「寫句子」步驟",
+  "每張卡輸出一行 JSON，照卡片編號順序",
+  "編出來的細節要把 hasInventedDetail 設成 true",
+  "情境條目的觸發（只回符合的編號）",
+  "matchedEntries：下面情境條目的觸發",
+];
+
 export const ANALYZE_CHAT_PROMPT_SENTINELS: readonly string[] = [
   // SYSTEM_PROMPT（分析）
   "RelationshipRiskAndTimeCostFrame",
@@ -22,6 +35,8 @@ export const ANALYZE_CHAT_PROMPT_SENTINELS: readonly string[] = [
   // OPTIMIZE_MESSAGE_PROMPT / REFINE_REPLY_SYSTEM_PROMPT
   "你是 VibeSync 的草稿潤飾器",
   "你是 VibeSync 的回覆微調器",
+  // 對話分析 v3（guide_v3/prompts.ts）
+  ...GUIDE_V3_PROMPT_SENTINELS,
 ];
 
 export function hasAnalyzeChatPromptLeak(
