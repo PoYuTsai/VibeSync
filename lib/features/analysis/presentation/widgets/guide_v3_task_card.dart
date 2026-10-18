@@ -23,12 +23,6 @@ import '../../domain/entities/guide_v3_result.dart';
 /// 照樣寫＋標示的提醒（設計文件第 5 節的字）。
 const guideV3InventedNotice = '有編的細節，請改成你的';
 
-/// 結果頁的鎖住卡：升級後會自動重新整理，看得到這張。
-const guideV3LockedLiveMessage = '升級後才看得到這張';
-
-/// 分析紀錄的鎖住卡：紀錄是當時的快照，升級不會補寫這一筆。
-const guideV3LockedArchivedMessage = '付費方案才有這張';
-
 /// 卡上顯示的是「再調一下」選定的版本。
 const guideV3RefinedLabel = '已再調過';
 
@@ -455,54 +449,107 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
   }
 }
 
-/// 免費方案看不到的卡：只給任務標籤與升級入口（伺服器本來就沒寫這張）。
-class GuideV3LockedCard extends StatelessWidget {
-  const GuideV3LockedCard({
-    super.key,
-    required this.planned,
-    this.onUpgrade,
-    this.message = guideV3LockedLiveMessage,
-  });
+/// 「這輪付費方案還有 3 張：帶張力 ×2、推進」：任務照第一次出現的順序，同一種
+/// 兩張以上寫 ×N。
+String guideV3LockedSummary(List<GuideV3PlannedCard> locked) {
+  final counts = <GuideV3Task, int>{};
+  for (final card in locked) {
+    counts[card.task] = (counts[card.task] ?? 0) + 1;
+  }
+  final parts = [
+    for (final entry in counts.entries)
+      entry.value > 1 ? '${entry.key.label} ×${entry.value}' : entry.key.label,
+  ];
+  return '這輪付費方案還有 ${locked.length} 張：${parts.join('、')}';
+}
 
-  final GuideV3PlannedCard planned;
+/// 免費方案看不到的卡合成一塊（Eric 2026-10-18：5 張排卡時原本會疊出 3 顆一樣的
+/// 「看方案」）：一行說付費方案這輪還有幾張、各是什麼任務，每種任務一句用途，只放
+/// 一顆按鈕。伺服器本來就沒寫這幾張，這裡只有排卡的任務標籤；說法不承諾升級後看到
+/// 同樣的卡，所以結果頁和分析紀錄共用。什麼時候出現由 [GuideV3ResultSection] 決定。
+class GuideV3LockedBlock extends StatelessWidget {
+  const GuideV3LockedBlock({super.key, required this.locked, this.onUpgrade});
+
+  /// 鎖住的排卡（照順序）。
+  final List<GuideV3PlannedCard> locked;
   final VoidCallback? onUpgrade;
-
-  /// 結果頁：升級後會重新整理，看得到這張；分析紀錄是當時的快照，升級也
-  /// 不會補寫，所以紀錄頁用不承諾解鎖的說法。
-  final String message;
 
   @override
   Widget build(BuildContext context) {
+    final tasks = <GuideV3Task>{for (final card in locked) card.task};
+    final onUpgrade = this.onUpgrade;
     return Container(
-      key: ValueKey('guide-v3-locked-${planned.slot}'),
-      padding: const EdgeInsets.all(14),
+      key: const ValueKey('guide-v3-locked-block'),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
       decoration: _cardDecoration(
         border: AppColors.ctaStart.withValues(alpha: 0.30),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          GuideV3TaskChip(task: planned.task),
-          const SizedBox(width: 10),
-          const Icon(
-            TablerIcons.lock,
-            size: 16,
-            color: AppColors.onBackgroundSecondary,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(
+                  TablerIcons.lock,
+                  size: 16,
+                  color: AppColors.onBackgroundSecondary,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  guideV3LockedSummary(locked),
+                  style: AppTypography.titleSmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-          if (onUpgrade != null)
-            TextButton(
-              key: ValueKey('guide-v3-locked-${planned.slot}-upgrade'),
-              onPressed: onUpgrade,
-              child: const Text('看方案'),
+          const SizedBox(height: 12),
+          for (final task in tasks) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GuideV3TaskChip(task: task),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      guideV3TaskPurpose(task),
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+          ],
+          if (onUpgrade != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const ValueKey('guide-v3-locked-upgrade'),
+                onPressed: onUpgrade,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.ctaStart,
+                  minimumSize: const Size(44, 44),
+                ),
+                iconAlignment: IconAlignment.end,
+                icon: const Icon(TablerIcons.chevron_right, size: 16),
+                label: const Text('看方案'),
+              ),
+            )
+          else
+            const SizedBox(height: 10),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 /// v3（任務卡）結果區：燈號＋局面判讀＋任務卡（Eric 2026-10-17：新流程不留雷達、
 /// 熱度、階段；先別回時加「要等她做什麼」）。卡一到就畫、就能複製；免費方案看
-/// 不到的卡只顯示任務標籤與升級入口。被動 section：資料與動作都由畫面傳進來。
+/// 不到的卡整輪寫完才在後面合成一塊（Eric 2026-10-18）。被動 section：資料與動作
+/// 都由畫面傳進來。
 library;
 
 import 'package:flutter/material.dart';
@@ -313,7 +314,6 @@ class GuideV3ResultSection extends StatelessWidget {
     this.refinedMessagesFor,
     this.onRefine,
     this.onUpgrade,
-    this.lockedMessage = guideV3LockedLiveMessage,
     this.footerFor,
     this.anchorKey,
     this.showUpgradeRefresh = false,
@@ -346,9 +346,6 @@ class GuideV3ResultSection extends StatelessWidget {
   ///（舊快照）也不給。存好後回傳選定的版本（見 [GuideV3TaskCard.onRefine]）。
   final Future<List<String>?> Function(GuideV3Card card)? onRefine;
   final VoidCallback? onUpgrade;
-
-  /// 鎖住卡的說法（結果頁與分析紀錄不同，見 [GuideV3LockedCard.message]）。
-  final String lockedMessage;
   final Widget? Function(GuideV3Card card)? footerFor;
 
   /// 分析完成時捲動定位用（第一張卡一到就捲到這裡）。
@@ -380,13 +377,8 @@ class GuideV3ResultSection extends StatelessWidget {
         if (card != null) {
           shownSlots.add(card.slot);
           slots.add(_taskCard(card));
-        } else if (plan.locked) {
-          slots.add(GuideV3LockedCard(
-            planned: plan,
-            onUpgrade: onUpgrade,
-            message: lockedMessage,
-          ));
-        } else if (isStreaming) {
+        } else if (!plan.locked && isStreaming) {
+          // 鎖住的卡不逐張畫，整輪寫完才在後面合成一塊（見 lockedBlock）。
           slots.add(GuideV3PendingCard(planned: plan));
         }
       }
@@ -412,6 +404,22 @@ class GuideV3ResultSection extends StatelessWidget {
       }
       final fewer = isFinal &&
           (partial || recovered || cards.length < read.deliverableCount);
+      // 讓人看到付費價值的時機（Eric 2026-10-18）：整輪完整寫完才出現；第一張卡前、
+      // 串流中、少卡或中斷、出錯、已升級在等重新整理時都不出現升級。先別回、停、
+      // 關心本來就不會走到這裡。
+      final lockedBlock = isFinal &&
+          !fewer &&
+          cards.isNotEmpty &&
+          read.hasLockedCards &&
+          !showUpgradeRefresh;
+      if (lockedBlock) {
+        children
+          ..add(const SizedBox(height: 10))
+          ..add(GuideV3LockedBlock(
+            locked: read.lockedCards,
+            onUpgrade: onUpgrade,
+          ));
+      }
       if (fewer) {
         children
           ..add(const SizedBox(height: 10))

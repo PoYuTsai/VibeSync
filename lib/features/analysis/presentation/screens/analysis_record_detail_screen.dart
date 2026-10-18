@@ -12,6 +12,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../sections/analysis_banners_section.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -309,8 +310,9 @@ class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
       onCopy: (card, text, toast) => widget.onCopy(text, message: toast),
       onEdit: (card) => _edit(card),
       // 紀錄是當時的快照，升級不會補寫這一筆；入口照樣給（主審第 1 輪 P2-3）。
-      lockedMessage: guideV3LockedArchivedMessage,
-      onUpgrade: () => context.push('/paywall'),
+      // 鎖卡區塊的說法不承諾補寫，跟結果頁共用；付費頁用鎖卡的大標（Eric 2026-10-18）。
+      onUpgrade: () =>
+          context.push('/paywall', extra: PaywallEntry.lockedCards),
     );
   }
 }

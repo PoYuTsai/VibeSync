@@ -190,10 +190,11 @@ void main() {
     expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
     // 「再調一下」只在結果頁的最終結果給，紀錄頁不給（Eric 2026-10-18）。
     expect(find.text('再調一下'), findsNothing);
-    // 免費方案當時沒寫的卡：紀錄裡也有升級入口，但說法不承諾補寫這一筆。
-    expect(find.text('付費方案才有這張'), findsOneWidget);
-    expect(find.byKey(const ValueKey('guide-v3-locked-2-upgrade')),
-        findsOneWidget);
+    // 免費方案當時沒寫的卡：紀錄裡也是同一塊（只說付費方案這輪還有幾張，不承諾補寫
+    // 這一筆），升級入口照樣有（Eric 2026-10-18）。
+    expect(find.text('這輪付費方案還有 1 張：推進'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('guide-v3-locked-upgrade')), findsOneWidget);
     expect(find.text('這筆分析內容暫時無法顯示，但上方聊天片段仍完整保留。'), findsNothing);
     expect(tester.takeException(), isNull);
   });

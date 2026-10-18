@@ -41,6 +41,8 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
+import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 import 'package:vibesync/shared/widgets/scroll_card_ticks.dart';
 
@@ -923,7 +925,7 @@ void main() {
       expect(find.text('綠燈'), findsOneWidget);
       expect(find.text('接住'), findsOneWidget);
       expect(find.text('推進'), findsOneWidget);
-      expect(find.text('升級後才看得到這張'), findsOneWidget);
+      expect(find.text('這輪付費方案還有 1 張：帶張力'), findsOneWidget);
       expect(find.byKey(const ValueKey('analysis-reply-zone')), findsNothing);
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
@@ -1328,6 +1330,33 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('coach-route'), findsOneWidget);
       expect(snapshot!.summary, '她有在接你的話，可以往前一步。');
+    });
+
+    testWidgets('鎖住的卡（Eric 2026-10-18）：點「看方案」打開付費頁，大標是鎖卡那一句', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult()),
+        extraRoutes: [
+          GoRoute(
+            path: '/paywall',
+            // 跟 lib/app/routes.dart 一樣從 extra 取入口。
+            builder: (_, state) => PaywallScreen(
+              entry: PaywallEntry.fromRouteExtra(state.extra),
+            ),
+          ),
+        ],
+        extraOverrides: [
+          subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+        ],
+      );
+      await dismissEditCoachMark(tester);
+      expect(find.text('看方案'), findsOneWidget);
+      final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
+      await tester.ensureVisible(upgrade);
+      await tester.tap(upgrade);
+      await tester.pumpAndSettle();
+      expect(find.text(PaywallEntry.lockedCards.headline), findsOneWidget);
+      expect(find.text(PaywallEntry.general.headline), findsNothing);
     });
 
     testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {

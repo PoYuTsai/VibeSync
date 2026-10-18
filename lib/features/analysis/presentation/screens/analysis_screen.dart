@@ -104,6 +104,7 @@ import '../../../opener/presentation/screens/opening_rescue_screen.dart'
     show OpeningRescueScreen;
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
@@ -354,13 +355,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// paywall 入口，快速連點不得 push 多個 paywall route。
   bool _isPaywallInFlight = false;
 
-  Future<void> _showPaywall(BuildContext context) async {
+  /// [entry]：從哪裡打開，付費頁的大標跟著換（Eric 2026-10-18）。
+  Future<void> _showPaywall(
+    BuildContext context, {
+    PaywallEntry entry = PaywallEntry.general,
+  }) async {
     if (_isPaywallInFlight) return;
     _isPaywallInFlight = true;
     _clearAnalysisSnackBarsBeforePush();
     final String? unlockedTier;
     try {
-      unlockedTier = await context.push<String>('/paywall');
+      unlockedTier = await context.push<String>('/paywall', extra: entry);
     } finally {
       _isPaywallInFlight = false;
     }
@@ -4601,7 +4606,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   kGuideV3CardRefineEnabled && _v3Result != null
                                       ? _refineGuideV3Card
                                       : null,
-                              onUpgrade: () => unawaited(_showPaywall(context)),
+                              onUpgrade: () => unawaited(_showPaywall(
+                                context,
+                                entry: PaywallEntry.lockedCards,
+                              )),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),
                                 label: card.task.label,
