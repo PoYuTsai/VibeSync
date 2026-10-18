@@ -267,7 +267,10 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
   assert(hasRule(daysNoReply, "她沒回上一則："));
   assertFalse(hasRule(daysNoReply, "幾天到一週沒聊："));
   assert(hasRule(daysNoReply, "見面："));
-  assert(hasRule(daysNoReply, "nextMove 多寫一句："));
+  // 冷掉停手算兩次（Bruce 2026-10-18 #97）：她沒回上一則，這則就是第二次主動，
+  // 換成「再沒回就先停手」那行，不再同時給一般的偏冷補充。
+  assert(hasRule(daysNoReply, "這是用戶第二次主動找她"));
+  assertFalse(hasRule(daysNoReply, "nextMove 多寫一句："));
   assert(
     hasRule(
       rulesFor({ coldDuration: "days", coldStop: "she_cold" }),
@@ -294,6 +297,23 @@ Deno.test("user prompt：冷掉了的多久／怎麼停各條件", () => {
     rulesFor({ coldDuration: "weeks", coldStop: "faded" }).length,
     5,
   );
+  // 第二次主動那行只給「她沒回」「她最近都回很冷」；聊著聊著停了、用戶沒回她照舊給一般的偏冷補充。
+  for (const coldStop of ["she_no_reply", "she_cold"]) {
+    const rules = rulesFor({ coldDuration: "weeks", coldStop });
+    assert(
+      hasRule(
+        rules,
+        "這是用戶第二次主動找她（上一則她沒回或回很冷）：nextMove 寫明她這則還是沒回或只回很短，就先停手、等她主動，不要再傳第三則。",
+      ),
+      coldStop,
+    );
+    assertFalse(hasRule(rules, "nextMove 多寫一句："), coldStop);
+  }
+  for (const coldStop of ["faded", "i_no_reply"]) {
+    const rules = rulesFor({ coldDuration: "weeks", coldStop });
+    assert(hasRule(rules, "nextMove 多寫一句："), coldStop);
+    assertFalse(hasRule(rules, "這是用戶第二次主動找她"), coldStop);
+  }
   // 一個月以上＋我沒回她：不解釋、不道歉，也不提很久沒聊（ADR #51 產品裁決 5）。
   const monthIDidNotReply = rulesFor({
     coldDuration: "month_plus",

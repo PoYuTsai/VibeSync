@@ -60,7 +60,7 @@ void main() {
 
     test('多久＋怎麼停兩行都顯示，先避開依序合併', () {
       expect(_tip('went_cold', duration: 'days', stop: 'she_cold'), (
-        open: '這次怎麼開：話題還熱，直接把上次那條線接回來。先降低頻率和強度：一則就好，看她會不會主動多聊。',
+        open: '這次怎麼開：話題還熱，直接把上次那條線接回來。先降低頻率和強度：一則就好，看她會不會主動多聊。這是第二次主動了，她再沒回或還是很冷，就先停手，等她主動。',
         avoid: '先避開：正式說「好久沒聊」、連續補話題、硬約',
       ));
       expect(_tip('went_cold', duration: 'weeks', stop: 'she_cold')!.avoid,
@@ -69,8 +69,8 @@ void main() {
 
     test('同 server：幾天到一週＋她沒回我 → 不接上次那條線，只留她沒回那行', () {
       expect(_tip('went_cold', duration: 'days', stop: 'she_no_reply'), (
-        open: '這次怎麼開：不追上一則；有新的東西，再傳一則全新的內容。',
-        avoid: '先避開：「在嗎」「妳怎麼沒回」',
+        open: '這次怎麼開：不追上一則；有新的東西，再傳一則全新的內容。這是第二次主動了，她再沒回或還是很冷，就先停手，等她主動。',
+        avoid: '先避開：「在嗎」「妳怎麼沒回」、傳第三則',
       ));
     });
 
@@ -105,11 +105,29 @@ void main() {
     test('一個月以上＋她沒回我／她最近都回很冷 → 隔很久了那行＋怎麼停那行', () {
       expect(
           _tip('went_cold', duration: 'month_plus', stop: 'she_no_reply')!.open,
-          '這次怎麼開：隔很久了，這次帶著一個具體的新東西出現。不追上一則；有新的東西，再傳一則全新的內容。');
+          '這次怎麼開：隔很久了，這次帶著一個具體的新東西出現。不追上一則；有新的東西，再傳一則全新的內容。這是第二次主動了，她再沒回或還是很冷，就先停手，等她主動。');
       expect(_tip('went_cold', duration: 'month_plus', stop: 'she_cold'), (
-        open: '這次怎麼開：隔很久了，這次帶著一個具體的新東西出現。先降低頻率和強度：一則就好，看她會不會主動多聊。',
+        open: '這次怎麼開：隔很久了，這次帶著一個具體的新東西出現。先降低頻率和強度：一則就好，看她會不會主動多聊。這是第二次主動了，她再沒回或還是很冷，就先停手，等她主動。',
         avoid: '先避開：一上來就曖昧、連續補話題、硬約',
       ));
+    });
+
+    test('冷掉停手算兩次（Bruce 2026-10-18 #97）：只有她沒回、她最近都回很冷才加第二次主動那句', () {
+      const secondTry = '這是第二次主動了，她再沒回或還是很冷，就先停手，等她主動。';
+      for (final stop in ['she_no_reply', 'she_cold']) {
+        for (final duration in [null, 'days', 'weeks', 'month_plus']) {
+          expect(_tip('went_cold', duration: duration, stop: stop)!.open,
+              endsWith(secondTry),
+              reason: '$stop/$duration');
+        }
+      }
+      for (final stop in [null, 'faded', 'i_no_reply']) {
+        for (final duration in [null, 'days', 'weeks', 'month_plus']) {
+          expect(_tip('went_cold', duration: duration, stop: stop)!.open,
+              isNot(contains('第二次主動')),
+              reason: '$stop/$duration');
+        }
+      }
     });
 
     test('例外：一個月以上＋我沒回她不提空窗，只留不解釋那行', () {

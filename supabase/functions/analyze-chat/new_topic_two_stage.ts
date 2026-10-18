@@ -339,6 +339,10 @@ const MEET_ALLOWED_RULE =
 const MEET_DEFAULT_RULE = "見面：五題的第一則都不約，nextMove 也不建議約她。";
 const COOL_NEXT_MOVE_RULE =
   "nextMove 多寫一句：她沒回就別追，只回很短就自然收掉。";
+// Bruce 2026-10-18（#97）：冷掉停手算兩次，跟對話分析 C1「他連續主動兩次、她都敷衍就先別回」一致。
+// 她沒回上一則、或最近都回很冷，這則就是他第二次主動；App 的教練提醒（new_topic_two_stage_copy.dart）同一句。
+const COLD_SECOND_TRY_RULE =
+  "這是用戶第二次主動找她（上一則她沒回或回很冷）：nextMove 寫明她這則還是沒回或只回很短，就先停手、等她主動，不要再傳第三則。";
 // 與輸出守門同一個判準（allowsNewTopicSharedFrame），提示詞與守門不打架。
 const SHARED_FRAME_ALLOWED_RULE =
   "「我們」：可以寫你們一起的事或一起做某件事的小想像，但不越級。";
@@ -462,7 +466,12 @@ function situationRules(
       situation === "went_cold" || engagement === "yellow" ||
       engagement === "red"
     ) {
-      rules.push(COOL_NEXT_MOVE_RULE);
+      rules.push(
+        situation === "went_cold" &&
+          (coldStop === "she_no_reply" || coldStop === "she_cold")
+          ? COLD_SECOND_TRY_RULE
+          : COOL_NEXT_MOVE_RULE,
+      );
     }
     rules.push(
       sharedFrameAllowed ? SHARED_FRAME_ALLOWED_RULE : SHARED_FRAME_DENIED_RULE,

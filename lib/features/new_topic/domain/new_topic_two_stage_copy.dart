@@ -171,11 +171,20 @@ abstract final class NewTopicTwoStageCopy {
   static const _coldMonthSoft = ('可以輕鬆說一句有陣子沒聊，接著直接帶內容。', ['一上來就曖昧']);
   static const _coldMonthHard = ('隔很久了，這次帶著一個具體的新東西出現。', ['一上來就曖昧']);
   static const _coldNoDuration = ('有內容、低壓力、不追討。', ['「在嗎」式空敲門']);
+  // 冷掉停手算兩次（Bruce 2026-10-18 #97，跟對話分析「他連續主動兩次、她都敷衍就先別回」一致）：
+  // 她沒回上一則、或最近都回很冷，這則就是第二次主動（同 server 的 COLD_SECOND_TRY_RULE）。
+  static const _secondTry = '這是第二次主動了，她再沒回或還是很冷，就先停手，等她主動。';
   static const _coldStop = {
-    'she_no_reply': ('不追上一則；有新的東西，再傳一則全新的內容。', ['「在嗎」「妳怎麼沒回」']),
+    'she_no_reply': (
+      '不追上一則；有新的東西，再傳一則全新的內容。$_secondTry',
+      ['「在嗎」「妳怎麼沒回」', '傳第三則']
+    ),
     // ADR #51 產品裁決 5：不解釋、不道歉，也不提很久沒聊（同 server）。
     'i_no_reply': ('不用解釋為什麼沒回，像平常聊天一樣直接帶新的內容。', ['解釋或道歉', '提很久沒聊']),
-    'she_cold': ('先降低頻率和強度：一則就好，看她會不會主動多聊。', ['連續補話題', '硬約']),
+    'she_cold': (
+      '先降低頻率和強度：一則就好，看她會不會主動多聊。$_secondTry',
+      ['連續補話題', '硬約']
+    ),
   };
 
   /// situation → engagement（沒選＝null 鍵）→（這次怎麼開, 先避開）。
