@@ -4,6 +4,8 @@
 //   RECORD_CEREMONY=1 flutter test test/tools/ceremony_preview_recorder_test.dart
 // 只錄某個稀有度：再加 RECORD_RARITY=n|r|sr（預設三個都錄）。
 // 預設錄新角色（NEW、收集數字落位 +1）；RECORD_DUPLICATE=1 改錄重複角色（「已收藏」）。
+// RECORD_WAIT_MS=1500 讓 server 晚 1.5 s 才回來，錄得到等待姿態與等待心跳（V3.1 §5.15）；
+// 錄影長度與點擊收卡的那一幀跟著往後挪。
 // 掛真實的角色圖鑑頁（儀式蓋在整頁最上層、底下是模糊的圖鑑），從按下翻牌起以固定
 // 步長 pump、逐幀 RenderRepaintBoundary.toImage 截圖到 build/card_draw_preview/<稀有度>/，
 // 之後由 ffmpeg 組 mp4（可再 mux 配樂、和參考片並排）。
@@ -35,7 +37,7 @@ String _outDir(String rarity) =>
     '${Directory.current.path}/build/card_draw_preview/$rarity';
 
 // V3（單次翻牌＋停住＋收卡）：24fps × 5.25s = 126 frames。從按下翻牌起錄：
-// 卡背入場 0.5s → 揭曉 2.7s → 停住約 1.0s → 第 [_tapFrame] 幀點擊收卡 → 收卡 0.55s → 尾巴。
+// 卡背入場 0.5s → 揭曉 2.7s → 停住約 1.0s → 第 [_tapFrame] 幀點擊收卡 → 收卡 0.7s → 尾巴。
 const int _fps = 24;
 const int _frameCount = 126;
 const int _tapFrame = 101;
@@ -171,6 +173,9 @@ void main() {
   final record = Platform.environment['RECORD_CEREMONY'] == '1';
   final only = Platform.environment['RECORD_RARITY'];
   final duplicate = Platform.environment['RECORD_DUPLICATE'] == '1';
+  final waitMs =
+      int.tryParse(Platform.environment['RECORD_WAIT_MS'] ?? '') ?? 0;
+  final extraFrames = (waitMs * _fps / 1000).round();
 
   // 錨點與 catalog 指定同步：001=N、010=R、004=SR（見 practice_persona.ts）。
   final girls = <String, PracticeGirlProfile>{
@@ -197,7 +202,12 @@ void main() {
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
 
-      final api = _DrawApi(() async => _drawResultFor(girl));
+      final api = _DrawApi(() async {
+        if (waitMs > 0) {
+          await Future<void>.delayed(Duration(milliseconds: waitMs));
+        }
+        return _drawResultFor(girl);
+      });
       // 圖鑑先解鎖幾張（底下的格子有真照片）。預設錄「新角色」：剛抽到的那位不在裡面，
       // 抽中後才 +1（看得到 NEW 與收集數字落位跳動）；RECORD_DUPLICATE=1 改錄重複角色。
       final unlocked = {
@@ -263,8 +273,8 @@ void main() {
       );
       await tester.pump();
 
-      for (var i = 0; i < _frameCount; i++) {
-        if (i == _tapFrame) {
+      for (var i = 0; i < _frameCount + extraFrames; i++) {
+        if (i == _tapFrame + extraFrames) {
           // 停住等點擊：點一下收卡，光球飛進那一格。
           await tester.tap(
             find.byKey(const ValueKey('practice-draw-ceremony-continue')),
@@ -284,7 +294,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
 
       final n = dir.listSync().whereType<File>().length;
-      expect(n, _frameCount, reason: 'should record all frames');
+      expect(n, _frameCount + extraFrames, reason: 'should record all frames');
       // ignore: avoid_print
       print('RECORDED $n frames → ${dir.path}');
     }, skip: !record || (only != null && only != rarity));
