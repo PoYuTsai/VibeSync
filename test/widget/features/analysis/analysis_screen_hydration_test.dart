@@ -1450,6 +1450,7 @@ void main() {
     Future<_HydrationHarness> pumpOrbScreen(
       WidgetTester tester, {
       required SubscriptionState subscription,
+      Conversation? conversation,
     }) async {
       SharedPreferences.setMockInitialValues({
         AiDataSharingConsent.acceptedKeyForTesting: true,
@@ -1458,7 +1459,7 @@ void main() {
       final harness = await _pumpHydratedAnalysisScreenWithRepo(
         tester,
         seed: const StreamingAnalysisState.idle(),
-        conversation: _conversation(),
+        conversation: conversation ?? _conversation(),
         extraOverrides: [
           analysisRunPreparerProvider.overrideWithValue(
             AnalysisRunPreparer(
@@ -1534,6 +1535,73 @@ void main() {
 
         expect(find.text('開始分析前'), findsOneWidget);
         expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    // 最後一則是他傳的（Eric 2026-10-18）：開始前先問，先不要就什麼都不送。
+    Conversation endsWithHisMessage() => _conversation(extraMessages: [
+          Message(
+            id: 'm2',
+            content: '那要不要早點睡',
+            isFromMe: true,
+            timestamp: DateTime(2026, 5, 28, 12, 1),
+          ),
+        ]);
+
+    testWidgets(
+      '最後一則是他傳的：按分析先跳「最後一則是你傳的」，先不要就不送出、也不跳確認框',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: endsWithHisMessage(),
+        );
+        await tapOrb(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('最後一則是你傳的'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('his-last-message-cancel')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.text('最後一則是你傳的'), findsNothing);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      '最後一則是他傳的：還是要分析就照常開始（額度夠的一般長度一樣不跳確認框）',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: endsWithHisMessage(),
+        );
+        await tapOrb(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester
+            .tap(find.byKey(const ValueKey('his-last-message-proceed')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+        expect(harness.recorder.streamMessages!.last.isFromMe, isTrue,
+            reason: '他傳的那則照樣送去分析');
+      },
+    );
+
+    testWidgets(
+      '最後一則是她傳的：不問，直接照一般流程',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+        );
+        await tapOrb(tester);
+        expect(find.text('最後一則是你傳的'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
       },
     );
 

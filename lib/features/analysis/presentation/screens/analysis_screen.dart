@@ -74,6 +74,7 @@ import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/app_update_required_dialog.dart';
 import '../widgets/draft_polish_sheet.dart';
+import '../widgets/his_last_message_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
@@ -2854,6 +2855,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
       });
       return;
+    }
+
+    // 最後一則是他傳的（Eric 2026-10-18）：v3 多半判先別回、扣 1 則，開始前先問；
+    // 「先不要」就什麼都不送、不扣。升級後的重新整理（skipPreview）不問。
+    final analysisMessages = runGate.messagesForAnalysis;
+    if (!skipPreview &&
+        analysisMessages != null &&
+        analysisMessages.isNotEmpty &&
+        analysisMessages.last.isFromMe) {
+      final proceed = await showHisLastMessageSheet(context);
+      if (!proceed || !mounted) return;
     }
 
     try {
