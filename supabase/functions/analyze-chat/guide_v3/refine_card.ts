@@ -159,7 +159,7 @@ function blankRuns(message: string): number {
 }
 
 /// 調完的字定稿：拆成幾則，跟出卡同一套 finalizeCard（口吻、整理、簡轉繁、禁語與脅迫、
-/// 外洩、「欠」組、語言漂移），再查任務卡規則有沒有被照抄，以及兩件結構上的事——則數
+/// 外洩、語言漂移），再查任務卡規則有沒有被照抄，以及兩件結構上的事——則數
 /// 跟原本一樣（多則卡不被併成一則），每一則的空格段數也跟原本一樣（身分空格不能被填成
 /// 編的、挪到別則，也不能多編一個；主審第 1 輪 P2-5 改成逐則比）。
 export function finalizeRefinedCard(args: {
@@ -200,8 +200,9 @@ export function finalizeRefinedCard(args: {
 }
 
 /// 會被當成內容問題（引導他換方向再調）的原因；其他當成這次沒調好（請他再試一次）。
+///「欠」組 10/18 起跟出卡一樣只記錄、不擋（Bruce 10/18，Eric 2026-10-19）。
 export function isGuideV3RefineSafetyRejection(
   reason: GuideV3RefineRejection | null,
 ): boolean {
-  return reason === "unsafe" || reason === "debt_frame";
+  return reason === "unsafe";
 }

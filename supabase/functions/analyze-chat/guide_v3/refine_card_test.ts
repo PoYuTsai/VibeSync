@@ -156,14 +156,14 @@ Deno.test("定稿：則數照舊、預設口吻換成「你」、簡體轉繁體
   });
 });
 
-Deno.test("定稿：「欠」組整次不給；禁語、脅迫、外洩、整則英文照出卡的規則擋", () => {
+Deno.test("定稿：「欠」組照給（Bruce 10/18 改回只記錄）；禁語、脅迫、外洩、整則英文照出卡的規則擋", () => {
   assertEquals(refined("週六見", "週六見，遲到就算你欠我一杯"), {
-    ok: false,
-    reason: "debt_frame",
+    ok: true,
+    messages: ["週六見，遲到就算你欠我一杯"],
   });
-  assertEquals(refined("週六見", "週六見\n先欠著也行"), {
-    ok: false,
-    reason: "debt_frame",
+  assertEquals(refined("好啊\n週六見", "好啊\n先欠著也行"), {
+    ok: true,
+    messages: ["好啊", "先欠著也行"],
   });
   assertEquals(refined("週六見", "你不來我就去死"), {
     ok: false,
@@ -343,9 +343,8 @@ Deno.test("定稿重跑不變：已經定稿過的卡再過一次照樣通過、
   assertEquals(checked, 73);
 });
 
-Deno.test("內容問題（引導換方向）只有禁語脅迫與「欠」組；其他當成這次沒調好", () => {
+Deno.test("內容問題（引導換方向）只有禁語脅迫；其他當成這次沒調好（「欠」組 10/18 起不擋）", () => {
   assert(isGuideV3RefineSafetyRejection("unsafe"));
-  assert(isGuideV3RefineSafetyRejection("debt_frame"));
   for (
     const reason of [
       "prompt_leak",

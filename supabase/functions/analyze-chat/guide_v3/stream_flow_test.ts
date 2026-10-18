@@ -668,6 +668,32 @@ Deno.test("C5 只記錄的檢查（10/18 補）：推進卡請求句、條目編
   }
 });
 
+Deno.test("C5「欠」組只記錄、不擋（Bruce 10/18）：卡照送，命中跟其他打分字眼一起記在 trace 與 outcome log", async () => {
+  const h = harness({
+    writeParts: [
+      line(1, ["腿斷了還能打字，看來還撐得住"]),
+      line(2, ["下次爬山我等妳，遲到就算妳欠我一杯"]),
+      line(3, ["哪座山？下次我也想去"]),
+      line(4, ["這點加分，妳體力不錯"]),
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(
+    evs.filter((e) => e.type === "analysis.card").map((e) => e.slot),
+    [1, 2, 3, 4],
+  );
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.removed, []);
+  assertEquals(trace.scoringWords, [
+    { slot: 2, words: ["欠我", "你欠"] },
+    { slot: 4, words: ["加分"] },
+  ]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.scoringWordCards, 2);
+  assertEquals(outcome.metadata.cardsRemoved, 0);
+  assertEquals(outcome.metadata.removedReasons, []);
+});
+
 Deno.test("每張都被拿掉：不扣、run 記失敗、送錯誤事件", async () => {
   const h = harness({
     writeParts: [
