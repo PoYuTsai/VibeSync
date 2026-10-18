@@ -395,10 +395,14 @@ Future<void> _startAnalysis(
   await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
-  if (previewShot != null) await _shot(tester, previewShot);
-  await tester.tap(find.text('開始分析').last);
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 400));
+  // 額度夠的一般長度不再跳確認框（Eric 2026-10-18）：有框才拍、才按。
+  final confirm = find.text('開始分析');
+  if (confirm.evaluate().isNotEmpty) {
+    if (previewShot != null) await _shot(tester, previewShot);
+    await tester.tap(confirm.last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
   if (consentShot != null) await _shot(tester, consentShot);
   final accept = find.text('同意並繼續');
   if (accept.evaluate().isNotEmpty) {
