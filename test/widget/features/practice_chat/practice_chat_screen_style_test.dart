@@ -3715,7 +3715,6 @@ void main() {
         if (rarity != PracticeGirlRarity.sr) {
           expect(sawGold, isFalse, reason: '${rarity.label} 不會出現金（$ms ms）');
           expect(back.colors.holo, 0);
-          expect(back.goldFlash, 0);
           expect(back.goldWash, 0, reason: '${rarity.label} 底圖不變金（$ms ms）');
         }
         sawGoldWash |= back.goldWash > 0.99;

@@ -67,10 +67,10 @@ abstract final class PracticeRevealTiming {
   static const double silverPulsePeakMs = 700;
   static const double silverPulseEndMs = 800;
 
-  /// SR 第二段：藍 → 香檳金，徽記白色爆閃 120 ms，外框疊上全息彩邊。
+  /// SR 第二段：藍 → 香檳金，外框疊上全息彩邊。V3 這一刻的徽記白色爆閃已拿掉：徽記白光
+  /// （600）、染金、翻牌三下擠在 1 s 內，就超過閃光上限（V3.1 §3，#107 P2-1）。
   static const double dyeGoldMs = 850;
   static const double dyeGoldEndMs = 1000;
-  static const double goldFlashMs = 120;
   static const double flipStartMs = 1100;
 
   /// SR 的 celebrate 三下共 200 ms，提前起手讓第三下重擊落在翻牌峰值。
@@ -86,6 +86,10 @@ abstract final class PracticeRevealTiming {
   static const double bladeMs = 280;
   static const double bladeSrMs = 350;
   static const double crossMs = 400;
+
+  /// 前層泛光（V3.1 §5.1）：卡片側立前這麼久起亮、側立最亮，之後 [bloomFrontFadeMs] 退掉。
+  static const double bloomFrontLeadMs = 50;
+  static const double bloomFrontFadeMs = 300;
 
   /// 翻牌峰值的衝擊波光環（V3.1 §5.6）：R 一圈 400 ms；SR 兩圈各 500 ms、相隔 120 ms。
   static const double shockRMs = 400;
@@ -318,18 +322,6 @@ double practiceRevealFrameGlow(
     ),
   );
   return charged + (1 - charged) * dye;
-}
-
-/// SR 染金那一刻的徽記白色爆閃（0..1）：120 ms，前 30% 衝滿、之後退掉。N／R 恆 0。
-double practiceRevealGoldFlash(double ms, PracticeGirlRarity rarity) {
-  if (rarity != PracticeGirlRarity.sr) return 0;
-  final t = practiceRevealSeg(
-    ms,
-    PracticeRevealTiming.dyeGoldMs,
-    PracticeRevealTiming.dyeGoldMs + PracticeRevealTiming.goldFlashMs,
-  );
-  if (t <= 0 || t >= 1) return 0;
-  return t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
 }
 
 /// 卡片背後環境光的放大倍率：1.00 →（染藍）1.15 →（染金）1.35。
@@ -774,22 +766,25 @@ double practiceRevealBloomBack(double ms, PracticeGirlRarity rarity) {
   ]);
 }
 
-/// 卡片前層泛光（V3.1 §5.1）：只在翻牌峰值前後 300 ms 出現的鐘形，峰值 N 0.15、R 0.25、
-/// SR 0.35（≤ 0.35，免得蓋掉照片）。
+/// 卡片前層泛光（V3.1 §5.1）：卡片轉到側立前 [PracticeRevealTiming.bloomFrontLeadMs] 才起亮
+/// （easeIn，跟著卡片變窄補上徽記變窄的暗），側立（翻牌峰值）最亮，之後 300 ms 退掉；峰值
+/// N 0.15、R 0.25、SR 0.35（≤ 0.35，免得蓋掉照片）。不提早亮：疊在亮的卡背上會先把卡面
+/// 提亮，卡片側立一暗、光刃再一亮，就多出一次閃光（#107 P2-1）。
 double practiceRevealBloomFront(double ms, PracticeGirlRarity rarity) {
-  final t = practiceRevealSeg(
-    ms,
-    PracticeRevealTiming.flipPeakMs - 300,
-    PracticeRevealTiming.flipPeakMs + 300,
-  );
-  if (t <= 0 || t >= 1) return 0;
+  const peakMs = PracticeRevealTiming.flipPeakMs;
+  const start = peakMs - PracticeRevealTiming.bloomFrontLeadMs;
+  const end = peakMs + PracticeRevealTiming.bloomFrontFadeMs;
+  if (ms <= start || ms >= end) return 0;
   final peak = switch (rarity) {
     PracticeGirlRarity.n => 0.15,
     PracticeGirlRarity.r => 0.25,
     PracticeGirlRarity.sr => 0.35,
   };
-  final bell = math.sin(math.pi * t);
-  return peak * bell * bell;
+  if (ms < peakMs) {
+    return peak * Curves.easeIn.transform(practiceRevealSeg(ms, start, peakMs));
+  }
+  return peak *
+      (1 - Curves.easeOut.transform(practiceRevealSeg(ms, peakMs, end)));
 }
 
 /// 徽記白光（V3.1 §5.2，0..1）：560 → 600 衝到 0.95，720 退掉。三種稀有度都一樣。

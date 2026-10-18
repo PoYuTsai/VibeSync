@@ -973,7 +973,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             ),
           ),
         ),
-        // L3b 前層泛光（V3.1 §5.1）：只在翻牌峰值前後 300 ms，α ≤ 0.35，不蓋掉照片。
+        // L3b 前層泛光（V3.1 §5.1）：側立前 50 ms 起亮、之後 300 ms 退掉，α ≤ 0.35，不蓋掉
+        // 照片。
         if (bloomFront > 0.005)
           IgnorePointer(
             child: CustomPaint(
@@ -1411,7 +1412,6 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               blend,
             )!,
             frameGlow: practiceRevealFrameGlow(ms, rarity),
-            goldFlash: practiceRevealGoldFlash(ms, rarity),
             linesGlow: practiceRevealLinesGlow(ms, rarity),
             emblemWhite: practiceRevealEmblemWhite(ms),
             goldWash: practiceRevealDye(ms, rarity).gold,

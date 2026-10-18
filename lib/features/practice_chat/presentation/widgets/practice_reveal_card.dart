@@ -90,7 +90,6 @@ class PracticeRevealCardBack extends StatelessWidget {
     required this.colors,
     required this.emblemGlow,
     required this.frameGlow,
-    this.goldFlash = 0,
     this.linesGlow = 0,
     this.emblemWhite = 0,
     this.goldWash = 0,
@@ -117,9 +116,6 @@ class PracticeRevealCardBack extends StatelessWidget {
 
   /// 外框亮度（0..1）。
   final double frameGlow;
-
-  /// SR 染金那一刻的徽記白色爆閃（0..1）。
-  final double goldFlash;
 
   @override
   Widget build(BuildContext context) {
@@ -181,11 +177,10 @@ class PracticeRevealCardBack extends StatelessWidget {
                 kPracticeRevealBackLinesMaskAsset,
                 color: colors.glow.withValues(alpha: linesGlow),
               ),
-            if (math.max(goldFlash, emblemWhite) > 0.01)
+            if (emblemWhite > 0.01)
               _layer(
                 kPracticeRevealBackEmblemMaskAsset,
-                color: Colors.white
-                    .withValues(alpha: math.max(goldFlash, emblemWhite)),
+                color: Colors.white.withValues(alpha: emblemWhite),
               ),
             if (emblemWhite > 0.01)
               Center(

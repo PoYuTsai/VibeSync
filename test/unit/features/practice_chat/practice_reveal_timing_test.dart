@@ -310,18 +310,6 @@ void main() {
       }
     });
 
-    test('白色爆閃只有 SR、只在染金那 120 ms', () {
-      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
-        expect(practiceRevealGoldFlash(ms, n), 0);
-        expect(practiceRevealGoldFlash(ms, r), 0);
-        final inWindow = ms > 850 && ms < 970;
-        if (!inWindow) {
-          expect(practiceRevealGoldFlash(ms, sr), 0, reason: '$ms');
-        }
-      }
-      expect(practiceRevealGoldFlash(886, sr), closeTo(1, 1e-9));
-    });
-
     test('環境光 1.00 → 藍 1.15 → 金 1.35', () {
       expect(practiceRevealAmbientScale(2000, n), 1);
       expect(practiceRevealAmbientScale(2000, r), closeTo(1.15, 1e-9));
@@ -583,13 +571,26 @@ void main() {
       expect(practiceRevealBloomBack(1350, sr), closeTo(0.9, 1e-9));
     });
 
-    test('前層只在翻牌峰值前後 300 ms：峰值 N 0.15／R 0.25／SR 0.35，最多 0.35', () {
-      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
-        final inWindow = ms > 1050 && ms < 1650;
-        for (final rarity in PracticeGirlRarity.values) {
+    test('前層：側立前 50 ms 才起亮（只升）、側立最亮（N 0.15／R 0.25／SR 0.35），之後 300 ms 退掉（只降）',
+        () {
+      const start = PracticeRevealTiming.flipPeakMs -
+          PracticeRevealTiming.bloomFrontLeadMs;
+      const end = PracticeRevealTiming.flipPeakMs +
+          PracticeRevealTiming.bloomFrontFadeMs;
+      expect(start, 1300);
+      expect(end, 1650);
+      for (final rarity in PracticeGirlRarity.values) {
+        var last = 0.0;
+        for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 1) {
           final v = practiceRevealBloomFront(ms, rarity);
           expect(v, lessThanOrEqualTo(0.35), reason: '$ms');
-          if (!inWindow) expect(v, 0, reason: '$ms');
+          if (ms <= start || ms >= end) expect(v, 0, reason: '$ms');
+          if (ms > start && ms <= PracticeRevealTiming.flipPeakMs) {
+            expect(v, greaterThanOrEqualTo(last), reason: '側立前只升（$ms）');
+          } else if (ms > PracticeRevealTiming.flipPeakMs) {
+            expect(v, lessThanOrEqualTo(last), reason: '側立後只降（$ms）');
+          }
+          last = v;
         }
       }
       expect(practiceRevealBloomFront(1350, n), closeTo(0.15, 1e-9));
@@ -627,25 +628,49 @@ void main() {
       }
     });
 
-    test('閃光安全：任一 1 s 窗內的閃光峰最多 2 個（徽記白光＋SR 染金爆閃）', () {
-      for (final rarity in PracticeGirlRarity.values) {
-        final peaks = <double>[];
-        var prev = 0.0;
+    test('閃光安全（曲線）：翻牌前卡背只有徽記白光一下；側立前 50 ms 之前卡面前面不疊光；翻牌的光各亮一次', () {
+      // 閃光次數要量畫面（tools/practice-reveal-flash-check，V3.1 §3、§12.2）：光刃、
+      // 泛光、衝擊波疊上去之後只看曲線數不出來。這裡守住量測結果靠的三件事：
+      // 1. 翻牌前卡背的白光只有徽記白光一下（V3 SR 染金那一下白色爆閃已拿掉，不然 SR
+      //    是白光、金、翻牌三下）。
+      // 2. 卡片側立前 [PracticeRevealTiming.bloomFrontLeadMs] 之前，卡面前面不疊任何光：
+      //    前層泛光提早亮會先把卡面提亮，側立一暗、光刃再一亮，就多一次閃光。
+      // 3. 前層泛光、光刃、十字光各自只亮一次（先升後降，不重複閃）。
+      int peaks(double Function(double ms) light, double from) {
+        var count = 0;
+        var prev = light(from);
         var rising = false;
-        for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 1) {
-          final v = math.max(
-            practiceRevealEmblemWhite(ms),
-            practiceRevealGoldFlash(ms, rarity),
-          );
-          if (v < prev && rising) peaks.add(ms - 1);
-          rising = v > prev;
+        for (var ms = from + 1; ms <= PracticeRevealTiming.revealMs; ms += 1) {
+          final v = light(ms);
+          if (v < prev - 1e-12 && rising) count++;
+          if (v > prev + 1e-12) rising = true;
+          if (v < prev - 1e-12) rising = false;
           prev = v;
         }
-        for (final start in peaks) {
-          final inWindow = peaks.where((p) => p >= start && p < start + 1000);
-          expect(inWindow.length, lessThanOrEqualTo(2), reason: '$rarity');
+        return count;
+      }
+
+      const lead = PracticeRevealTiming.flipPeakMs -
+          PracticeRevealTiming.bloomFrontLeadMs;
+      expect(
+        peaks((ms) => ms < lead ? practiceRevealEmblemWhite(ms) : 0, 0),
+        1,
+      );
+      for (final rarity in PracticeGirlRarity.values) {
+        for (var ms = 0.0; ms <= lead; ms += 1) {
+          expect(practiceRevealBloomFront(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealBladeWidth(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealBladeCore(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealCross(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealShockwaves(ms, rarity, 450), isEmpty);
         }
-        expect(peaks, isNotEmpty);
+        for (final light in <double Function(double)>[
+          (ms) => practiceRevealBloomFront(ms, rarity),
+          (ms) => practiceRevealBladeWidth(ms, rarity),
+          (ms) => practiceRevealCross(ms, rarity),
+        ]) {
+          expect(peaks(light, lead), lessThanOrEqualTo(1), reason: '$rarity');
+        }
       }
     });
   });
