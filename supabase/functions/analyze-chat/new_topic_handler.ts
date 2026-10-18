@@ -483,7 +483,10 @@ export async function handleNewTopicRequest(
         0,
         quota().dailyLimit - quota().sub.daily_messages_used,
       );
-      const message = monthlyRemaining < newTopicCost
+      // quotaScope：哪個額度擋下，App 照它說本月或今日、開哪個付費頁入口（Eric
+      // 2026-10-18）；跟 message 同一個條件：先看本月、再看今天。只加欄位。
+      const quotaScope = monthlyRemaining < newTopicCost ? "monthly" : "daily";
+      const message = quotaScope === "monthly"
         ? "本月額度不足，升級方案可取得更多新話題與分析額度。"
         : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。";
       logWarn("new_topic_quota_exceeded", {
@@ -495,6 +498,7 @@ export async function handleNewTopicRequest(
       return jsonResponse({
         error: "額度不足",
         message,
+        quotaScope,
         quotaNeeded: newTopicCost,
         monthlyRemaining,
         dailyRemaining,
@@ -889,11 +893,17 @@ export async function handleNewTopicRequest(
         ...newTopicLogFields(),
         reason: settlement.reason,
       });
+      // 剩餘數是預查時的舊值（看起來可能還夠），哪個額度擋下只看 RPC 的超限原因；
+      // App 照 quotaScope 說本月或今日（Eric 2026-10-18）。
+      const quotaScope = settlement.reason === "monthly_limit_exceeded"
+        ? "monthly"
+        : "daily";
       return jsonResponse({
         error: "額度不足",
-        message: settlement.reason === "monthly_limit_exceeded"
+        message: quotaScope === "monthly"
           ? "本月額度不足，升級方案可取得更多新話題與分析額度。"
           : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。",
+        quotaScope,
         quotaNeeded: newTopicCost,
         monthlyRemaining,
         dailyRemaining,

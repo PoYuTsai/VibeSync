@@ -365,12 +365,18 @@ export async function handleOpenerRequest(
         0,
         quota().dailyLimit - quota().sub.daily_messages_used,
       );
-      const message = monthlyRemaining < upfrontGateCost
+      // quotaScope：哪個額度擋下，App 照它說本月或今日、開哪個付費頁入口（Eric
+      // 2026-10-18）；跟 message 同一個條件：先看本月、再看今天。只加欄位。
+      const quotaScope = monthlyRemaining < upfrontGateCost
+        ? "monthly"
+        : "daily";
+      const message = quotaScope === "monthly"
         ? "本月額度不足，升級方案可取得更多開場與分析額度。"
         : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。";
       return jsonResponse({
         error: "額度不足",
         message,
+        quotaScope,
         quotaNeeded: upfrontGateCost,
         monthlyRemaining,
         dailyRemaining,
@@ -742,14 +748,21 @@ export async function handleOpenerRequest(
         user: summarizeUser(deps.userId),
         reason: chargeOutcome.reason,
       });
+      // 剩餘數是預查時的舊值，哪個額度擋下只看 RPC 的超限原因（quotaScope，
+      // Eric 2026-10-18）。
       return jsonResponse(
-        buildQuotaExceededPayload({
-          sub: quota().sub,
-          cost: effectiveOpenerCost,
-          reason: chargeOutcome.reason,
-          monthlyLimit: quota().monthlyLimit,
-          dailyLimit: quota().dailyLimit,
-        }),
+        {
+          ...buildQuotaExceededPayload({
+            sub: quota().sub,
+            cost: effectiveOpenerCost,
+            reason: chargeOutcome.reason,
+            monthlyLimit: quota().monthlyLimit,
+            dailyLimit: quota().dailyLimit,
+          }),
+          quotaScope: chargeOutcome.reason === "monthly_limit_exceeded"
+            ? "monthly"
+            : "daily",
+        },
         429,
       );
     }

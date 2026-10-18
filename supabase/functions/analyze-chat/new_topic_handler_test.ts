@@ -67,6 +67,8 @@ let stopReasonForNextRun: string | null = null;
 let envForNextRun: Record<string, string> = {};
 /** 下一次 run 依第幾次模型呼叫（0 起算）決定 stop_reason（run 結束就清掉）；優先於 stopReasonForNextRun。 */
 let stopReasonForCallNextRun: ((index: number) => string | null) | null = null;
+/** 下一次 run 預查看到的已用額度（run 結束就清掉；null＝都還沒用）。 */
+let quotaUsedForNextRun: { monthly: number; daily: number } | null = null;
 
 /** Anthropic SSE：一段文字＋結束原因（照 streaming_fallback 解析的事件格式）。 */
 function sseResponse(text: string, stopReason: string): Response {
@@ -255,7 +257,11 @@ async function run(
       claudeApiKey: "test-key",
       refreshTierFromRevenueCat: () => Promise.resolve("not_paid"),
       quota: () => ({
-        sub: { monthly_messages_used: 0, daily_messages_used: 0, tier: "free" },
+        sub: {
+          monthly_messages_used: quotaUsedForNextRun?.monthly ?? 0,
+          daily_messages_used: quotaUsedForNextRun?.daily ?? 0,
+          tier: "free",
+        },
         monthlyLimit: 100,
         dailyLimit: 30,
         effectiveTier: effectiveTierForNextRun ?? "essential",
@@ -290,6 +296,7 @@ async function run(
     responseModeForNextRun = null;
     stopReasonForNextRun = null;
     stopReasonForCallNextRun = null;
+    quotaUsedForNextRun = null;
     envForNextRun = {};
     globalThis.fetch = originalFetch;
     console.log = originalLog;
@@ -735,6 +742,68 @@ Deno.test("handler：settle／release／逾時／模型失敗各分支的狀態�
       );
     }
   }
+});
+
+// 額度 429 帶結構化 quotaScope（Eric 2026-10-18）：App 照它說本月或今日、開哪個付費頁入口。
+// 結算競態回的剩餘數是預查時的舊值（看起來還夠），只有 quotaScope 分得出是哪個額度擋下。
+Deno.test("handler：額度 429 預查與結算競態都帶 quotaScope；競態的剩餘數是預查舊值，message 照舊", async () => {
+  const cases: Array<{
+    name: string;
+    used?: { monthly: number; daily: number };
+    raise?: string;
+    scope: "monthly" | "daily";
+  }> = [
+    {
+      name: "預查：本月不夠",
+      used: { monthly: 98, daily: 0 },
+      scope: "monthly",
+    },
+    {
+      name: "預查：本月夠、今天不夠",
+      used: { monthly: 0, daily: 28 },
+      scope: "daily",
+    },
+    {
+      name: "結算競態：本月",
+      raise: "QUOTA_EXCEEDED_MONTHLY",
+      scope: "monthly",
+    },
+    { name: "結算競態：今天", raise: "QUOTA_EXCEEDED_DAILY", scope: "daily" },
+  ];
+  for (const c of cases) {
+    quotaUsedForNextRun = c.used ?? null;
+    const raise = c.raise;
+    settleRpcForNextRun = raise === undefined
+      ? null
+      : () => ({ data: null, error: { message: raise, code: "P0001" } });
+    const result = await run(body(), undefined);
+    assertEquals(result.status, 429, c.name);
+    assertEquals(result.json.quotaScope, c.scope, c.name);
+    assert(
+      String(result.json.message).startsWith(
+        c.scope === "monthly" ? "本月" : "今日",
+      ),
+      c.name,
+    );
+    if (raise !== undefined) {
+      assert(
+        result.json.monthlyRemaining >= result.json.quotaNeeded &&
+          result.json.dailyRemaining >= result.json.quotaNeeded,
+        `${c.name}：預查舊值看起來還夠`,
+      );
+    }
+  }
+  // 串流：error 事件把 body 攤平，quotaScope 一起帶到 App。
+  responseModeForNextRun = "stream";
+  envForNextRun = { OPENER_STREAM_ENABLED: "true" };
+  settleRpcForNextRun = () => ({
+    data: null,
+    error: { message: "QUOTA_EXCEEDED_MONTHLY", code: "P0001" },
+  });
+  const streamed = await run(body(), undefined);
+  assertEquals(streamed.json.type, "new_topic.error");
+  assertEquals(streamed.json.status, 429);
+  assertEquals(streamed.json.quotaScope, "monthly");
 });
 
 Deno.test("handler：時間剛好在 budget.begin() 跨過生成期限 → 主呼叫與修復都走 504 逾時並 release", async () => {

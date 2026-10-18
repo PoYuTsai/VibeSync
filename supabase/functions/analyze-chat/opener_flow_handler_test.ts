@@ -889,6 +889,43 @@ Deno.test("B10：預查通過但結算時額度已被其他功能用掉→429 �
   }
 });
 
+// 額度 429 帶結構化 quotaScope（Eric 2026-10-18）：App 照它說本月或今日、開哪個付費頁入口。
+// 結算競態回的剩餘數是預查時的舊值（看起來還夠），只有 quotaScope 分得出是哪個額度擋下。
+for (const scope of ["monthly", "daily"] as const) {
+  Deno.test(`B10／quotaScope：結算時${scope === "monthly" ? "本月" : "今天"}額度已被用掉，429 帶 quotaScope=${scope}，剩餘數是預查舊值`, async () => {
+    const h = await harness();
+    try {
+      const analysis = await analyzed(h);
+      await h.db.query(`UPDATE public.subscriptions SET ${scope}_messages_used = $2 WHERE user_id = $1`, [USER_ID, scope === "monthly" ? 28 : 8]);
+      const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, CURIOUS)));
+      assertEquals(response.status, 429);
+      const body = await json(response);
+      assertEquals(body.quotaScope, scope);
+      assert((body.monthlyRemaining as number) >= (body.quotaNeeded as number), "預查舊值：本月看起來還夠");
+      assert((body.dailyRemaining as number) >= (body.quotaNeeded as number), "預查舊值：今天看起來也還夠");
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  Deno.test(`額度預查擋下：${scope === "monthly" ? "本月" : "本月夠、今天"}不夠，429 帶 quotaScope=${scope}，message 照舊`, async () => {
+    const h = await harness();
+    try {
+      const analysis = await analyzed(h);
+      if (scope === "monthly") h.sub.monthly_messages_used = 28;
+      else h.sub.daily_messages_used = 8;
+      const response = await handleOpenerGenerateRequest(h.deps(generateBody(analysis.sessionId as string, GEN_1, CURIOUS)));
+      assertEquals(response.status, 429);
+      const body = await json(response);
+      assertEquals(body.quotaScope, scope);
+      assert(String(body.message).startsWith(scope === "monthly" ? "本月" : "今日"));
+      assertEquals(await runCount(h.db), 0);
+    } finally {
+      await h.db.close();
+    }
+  });
+}
+
 Deno.test("B11：已扣費的同局，其他功能把額度用完後剩餘生成仍可用、不再要求付費", async () => {
   const h = await harness();
   try {
