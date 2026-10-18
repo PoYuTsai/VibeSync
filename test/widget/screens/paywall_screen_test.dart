@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
 
@@ -667,6 +668,51 @@ void main() {
       expect(purchasingOverlay(), findsNothing);
       expect(find.textContaining('同步逾時'), findsOneWidget);
       await flushSnackBars(tester);
+    });
+  });
+
+  // 付費頁標題依入口換（Eric 2026-10-18）：鎖住的卡、額度用完、其他入口照舊。
+  group('付費頁入口', () {
+    test('每個入口有自己的標題；一般入口沿用定位句', () {
+      final headlines = {
+        for (final entry in PaywallEntry.values) entry.headline,
+      };
+      expect(headlines, hasLength(PaywallEntry.values.length));
+      expect(PaywallEntry.general.headline, '完整教練帶路\n把她約出來更有把握');
+    });
+
+    test('路由 extra 沒帶或帶錯都當一般入口', () {
+      expect(PaywallEntry.fromRouteExtra(null), PaywallEntry.general);
+      expect(PaywallEntry.fromRouteExtra('lockedCards'), PaywallEntry.general);
+      for (final entry in PaywallEntry.values) {
+        expect(PaywallEntry.fromRouteExtra(entry), entry);
+      }
+    });
+
+    testWidgets('從鎖住的卡、額度用完打開：標題跟著換，其他內容照舊', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final entry in [
+        PaywallEntry.lockedCards,
+        PaywallEntry.quotaExhausted,
+      ]) {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              subscriptionScreenRefreshProvider.overrideWithValue(
+                () async {},
+              ),
+            ],
+            child: MaterialApp(home: PaywallScreen(entry: entry)),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text(entry.headline), findsOneWidget);
+        expect(find.text(PaywallEntry.general.headline), findsNothing);
+        expect(find.text('方案與額度'), findsOneWidget);
+        expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
+      }
     });
   });
 }
