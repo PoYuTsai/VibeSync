@@ -2,6 +2,7 @@
 // （stream_events.ts）是模型輸出的解析白名單，v3 事件由伺服器自己產生，不放進去。
 import type { V3CardTaskCode } from "../stream_run_store.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
+import type { GuideV3MemoryTrace } from "./memory.ts";
 import type { GuideV3Decision, GuideV3Plan } from "./plan.ts";
 import type { LIGHTS } from "./read_tags.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
@@ -131,6 +132,8 @@ export interface GuideV3Trace {
   }[];
   readonly models: { read?: string; write?: string };
   readonly firstCardMs: number | null;
+  /// 有打對象記憶才有（只有計數，見 memory.ts）。
+  readonly memory?: GuideV3MemoryTrace;
 }
 
 export function finalResult(args: {
@@ -141,6 +144,8 @@ export function finalResult(args: {
   readonly telemetry: Record<string, unknown>;
   readonly trace: GuideV3Trace;
   readonly recovered?: boolean;
+  /// 對象記憶（形狀同 v2，provenanceVersion 1）；沒有就不放，App 沿用上一份。
+  readonly targetProfile?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     guideVersion: GUIDE_V3_VERSION,
@@ -150,6 +155,7 @@ export function finalResult(args: {
     ...(args.recovered ? { recovered: true } : {}),
     usage: args.usage,
     telemetry: args.telemetry,
+    ...(args.targetProfile ? { targetProfile: args.targetProfile } : {}),
     guideV3Trace: args.trace,
   };
 }

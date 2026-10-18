@@ -86,6 +86,7 @@ import {
   billingMessagesFor,
   guideV3MaxCards,
   guideV3Mode,
+  shouldExtractGuideV3Memory,
   shouldUseGuideV3,
 } from "./guide_v3/routing.ts";
 import {
@@ -1731,6 +1732,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           requestType,
           tier: effectiveTier,
           recordAiCall,
+          // 對象記憶另一個開關（off／test／on，每次請求讀）；沒開就不多打。
+          memory: shouldExtractGuideV3Memory({
+            mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_MEMORY")),
+            accountIsTest,
+          }),
         }),
         log: (event, metadata, level) =>
           (level === "error" ? logError : logInfo)(event, {

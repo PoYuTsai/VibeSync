@@ -1,5 +1,6 @@
 // v3 串流分析（協定版本 3、開關 ANALYZE_GUIDE_V3 允許時）：讀局面（非串流＋
-// json_schema）→ 程式排卡 → 串流寫卡，一行一張、每張各自定稿。
+// json_schema）→ 程式排卡 → 串流寫卡，一行一張、每張各自定稿。開關
+// ANALYZE_GUIDE_V3_MEMORY 開時，讀完另打一次對象記憶（memory.ts），不擋判讀與出卡。
 //
 // 扣費（Eric 10/16）：第一張卡定稿、確定要送的那一刻扣一次；一張都沒送出不扣；
 // 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型）；自傷關心不扣。
@@ -17,6 +18,15 @@ import { createLineSplitter, parseWrittenCardLine } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { type GuideV3Plan, planTurn } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
+import {
+  type GuideV3MemoryTrace,
+  MEMORY_SCHEMA,
+  memorySystemPrompt,
+  memoryUserPrompt,
+  type PartnerMemory,
+  partnerMemoryFrom,
+  zeroMemoryCounts,
+} from "./memory.ts";
 import {
   type GuideV3Background,
   readSystemPrompt,
@@ -39,6 +49,9 @@ import {
 
 /// 讀局面＋寫卡共用的模型期限（從請求開始算）。
 export const GUIDE_V3_DEADLINE_MS = 90_000;
+/// 結果其他部分都好了之後，最多再等對象記憶多久。出卡時記憶跟寫卡同時跑，到這裡
+/// 早就好了；先別回、停只有讀局面，判讀先送出，done 最多晚這麼久。
+export const GUIDE_V3_MEMORY_WAIT_MS = 2_500;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 /// 停（明確拒絕或封鎖）與自傷關心存進扣費紀錄的 stopCondition（RPC 要非空）。
 export const STOP_CONDITION_STOP = "不再主動傳訊息";
@@ -86,6 +99,9 @@ export interface GuideV3WriteRequest {
   readonly deadlineAtMs: number;
 }
 
+/// 對象記憶：跟讀局面一樣是非串流＋json_schema，提示詞與 schema 在 memory.ts。
+export type GuideV3ExtractRequest = GuideV3ReadRequest;
+
 export interface GuideV3Message {
   readonly isFromMe: boolean;
   readonly content: string;
@@ -117,6 +133,12 @@ export interface GuideV3StreamDeps {
   callWrite(
     req: GuideV3WriteRequest,
   ): Promise<{ model: string; textStream: AsyncIterable<string> }>;
+  /// 對象記憶（開關 ANALYZE_GUIDE_V3_MEMORY）；沒給就不多打這一次，結果也不帶。
+  callExtract?(
+    req: GuideV3ExtractRequest,
+  ): Promise<{ text: string; model: string }>;
+  /// 預設 GUIDE_V3_MEMORY_WAIT_MS（測試縮短用）。
+  memoryWaitMs?: number;
   log(
     event: string,
     metadata: Record<string, unknown>,
@@ -249,6 +271,8 @@ class GuideV3Flow {
   private chargeUnknown = false;
   /// 扣費出錯時已經用條件式寫入記成 failed，fail() 不用再寫一次。
   private markedFailed = false;
+  /// 對象記憶那一次呼叫（沒開或自傷關心就是 null）；永遠不會 reject。
+  private memory: Promise<PartnerMemory & { latencyMs: number }> | null = null;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -317,6 +341,8 @@ class GuideV3Flow {
           }, "error"),
       );
       const view = readView(plan, tags.light, this.deps.maxCards ?? null);
+      // 自傷訊號要讀完才知道，所以記憶在讀局面之後才開始；關心訊息不打這一次。
+      if (plan.decision !== "care") this.startMemory(turns, deadlineAtMs);
       switch (plan.decision) {
         case "care":
           return await this.care(emit, plan, view, tags);
@@ -546,6 +572,81 @@ class GuideV3Flow {
     };
   }
 
+  /// 對象記憶跟寫卡（或不送型的扣費）同時跑；結案前才用 settleMemory 等。
+  private startMemory(turns: readonly Turn[], deadlineAtMs: number): void {
+    const callExtract = this.deps.callExtract;
+    if (!callExtract) return;
+    const startedAt = this.now();
+    // 用 executor 包起來：callExtract 同步丟錯也變成 reject，交給下面的 catch。
+    const task = new Promise<{ text: string; model: string }>((resolve) =>
+      resolve(callExtract({
+        runId: this.runId,
+        system: memorySystemPrompt(),
+        user: memoryUserPrompt(turns),
+        schema: MEMORY_SCHEMA,
+        deadlineAtMs,
+      }))
+    )
+      // 出處只認 App 送來的原始訊息，不是帶引用前綴的對話稿。
+      .then((res) => partnerMemoryFrom(res.text, this.deps.messages))
+      .catch((error): PartnerMemory => {
+        const code = (error as { code?: unknown })?.code;
+        this.deps.log("guide_v3_memory_failed", {
+          analysisRunId: this.runId,
+          code: typeof code === "string" ? code : "UNKNOWN",
+        });
+        return {
+          ok: false,
+          kept: zeroMemoryCounts(),
+          dropped: zeroMemoryCounts(),
+        };
+      })
+      .then((memory) => ({ ...memory, latencyMs: this.now() - startedAt }));
+    this.memory = task;
+    // 等不到就先結案，但這次呼叫還是要跑完、寫完 ai_logs。
+    this.deps.waitUntil?.(task);
+  }
+
+  /// 最多再等 memoryWaitMs；等不到、失敗或沒有通過檢查的項目，結果就不帶 targetProfile
+  ///（App 沿用上一份）。trace 只放計數。
+  private async settleMemory(): Promise<{
+    targetProfile?: Record<string, unknown>;
+    trace?: GuideV3MemoryTrace;
+  }> {
+    if (!this.memory) return {};
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(
+        () => resolve(null),
+        this.deps.memoryWaitMs ?? GUIDE_V3_MEMORY_WAIT_MS,
+      );
+    });
+    const memory = await Promise.race([this.memory, late]).finally(() =>
+      clearTimeout(timer)
+    );
+    if (!memory) {
+      return {
+        trace: {
+          ok: false,
+          timedOut: true,
+          latencyMs: null,
+          kept: zeroMemoryCounts(),
+          dropped: zeroMemoryCounts(),
+        },
+      };
+    }
+    return {
+      ...(memory.targetProfile ? { targetProfile: memory.targetProfile } : {}),
+      trace: {
+        ok: memory.ok,
+        timedOut: false,
+        latencyMs: memory.latencyMs,
+        kept: memory.kept,
+        dropped: memory.dropped,
+      },
+    };
+  }
+
   /// 寫進 DB（失敗只記 log；persist=false 時不寫），再把剝掉伺服器專用欄位的
   /// 結果送給 App。
   private async finish(
@@ -675,6 +776,8 @@ class GuideV3Flow {
       });
     }
     emit(readEvent(view));
+    // 判讀已經送出，記憶只會讓 done 晚一點（最多 memoryWaitMs）。
+    const memory = await this.settleMemory();
     await this.finish(
       emit,
       finalResult({
@@ -688,9 +791,18 @@ class GuideV3Flow {
             ? this.deps.quotaUsage.chargedMessageCount
             : 0,
         }),
-        trace: this.trace(tags, plan),
+        trace: this.trace(
+          tags,
+          plan,
+          memory.trace ? { memory: memory.trace } : {},
+        ),
+        targetProfile: memory.targetProfile,
       }),
-      { decision: plan.decision, charged: this.shouldCharge },
+      {
+        decision: plan.decision,
+        charged: this.shouldCharge,
+        ...(memory.trace ? { memory: memory.trace } : {}),
+      },
     );
   }
 
@@ -876,6 +988,8 @@ class GuideV3Flow {
       : upstreamErrorEvent(upstreamError).code;
     const partial = upstreamError !== null ||
       delivered.length < deliverable.length;
+    // 卡都送完了才等記憶（通常早就好了）。
+    const memory = await this.settleMemory();
     await this.finish(
       emit,
       finalResult({
@@ -893,7 +1007,11 @@ class GuideV3Flow {
           cardsDelivered: delivered.length,
           ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         }),
-        trace: this.trace(tags, plan, traceExtra),
+        trace: this.trace(tags, plan, {
+          ...traceExtra,
+          ...(memory.trace ? { memory: memory.trace } : {}),
+        }),
+        targetProfile: memory.targetProfile,
       }),
       {
         decision: plan.decision,
@@ -906,6 +1024,7 @@ class GuideV3Flow {
         invalidLines,
         scoringWordCards: scoring.length,
         ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
+        ...(memory.trace ? { memory: memory.trace } : {}),
       },
     );
   }
