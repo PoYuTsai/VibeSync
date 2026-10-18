@@ -25,6 +25,12 @@ String guideV3DecisionTitle(GuideV3Decision decision) => switch (decision) {
       GuideV3Decision.care => '先關心安全',
     };
 
+/// 判讀區的標題：涉及未成年的固定訊息另用一個標題（Eric 2026-10-18），其他照決定。
+String guideV3ReadTitle(GuideV3Read read) =>
+    read.careKind == GuideV3CareKind.minor
+        ? '這段不提供建議'
+        : guideV3DecisionTitle(read.decision);
+
 class GuideV3LightChip extends StatelessWidget {
   const GuideV3LightChip({super.key, required this.light});
 
@@ -79,6 +85,8 @@ class GuideV3ReadPanel extends StatelessWidget {
       _ => AppColors.coachAccent,
     };
     final icon = switch (decision) {
+      GuideV3Decision.care when read.careKind == GuideV3CareKind.minor =>
+        TablerIcons.info_circle,
       GuideV3Decision.care => TablerIcons.heart_handshake,
       GuideV3Decision.hold || GuideV3Decision.stop => TablerIcons.hand_stop,
       _ => TablerIcons.compass,
@@ -107,7 +115,7 @@ class GuideV3ReadPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  guideV3DecisionTitle(decision),
+                  guideV3ReadTitle(read),
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     fontWeight: FontWeight.w800,
@@ -168,6 +176,8 @@ class GuideV3ResultSection extends StatelessWidget {
     required this.editedMessagesFor,
     required this.onCopy,
     required this.onEdit,
+    this.refinedMessagesFor,
+    this.onRefine,
     this.onUpgrade,
     this.lockedMessage = guideV3LockedLiveMessage,
     this.footerFor,
@@ -191,7 +201,16 @@ class GuideV3ResultSection extends StatelessWidget {
   final bool recovered;
   final List<String>? Function(GuideV3Card card) editedMessagesFor;
   final void Function(GuideV3Card card, String text, String toast) onCopy;
-  final void Function(GuideV3Card card) onEdit;
+
+  /// 填空／改寫：存好後回傳他確認的每一則（見 [GuideV3TaskCard.onEdit]）。
+  final Future<List<String>?> Function(GuideV3Card card) onEdit;
+
+  /// 「再調一下」選定的版本；null＝這個畫面沒有再調。
+  final List<String>? Function(GuideV3Card card)? refinedMessagesFor;
+
+  /// 「再調一下」：只有結果頁的最終結果給（分析紀錄不給）；帶不出卡片規格的卡
+  ///（舊快照）也不給。存好後回傳選定的版本（見 [GuideV3TaskCard.onRefine]）。
+  final Future<List<String>?> Function(GuideV3Card card)? onRefine;
   final VoidCallback? onUpgrade;
 
   /// 鎖住卡的說法（結果頁與分析紀錄不同，見 [GuideV3LockedCard.message]）。
@@ -284,10 +303,16 @@ class GuideV3ResultSection extends StatelessWidget {
   }
 
   Widget _taskCard(GuideV3Card card) => GuideV3TaskCard(
+        // 卡片自己記著下一則要複製第幾則：用 slot 當 key，前後的卡變動也不會弄丟。
+        key: ValueKey('guide-v3-task-card-${card.slot}'),
         card: card,
         editedMessages: editedMessagesFor(card),
+        refinedMessages: refinedMessagesFor?.call(card),
         onCopy: (text, toast) => onCopy(card, text, toast),
         onEdit: () => onEdit(card),
+        onRefine: onRefine != null && card.refineSpec != null
+            ? () => onRefine!(card)
+            : null,
         footer: footerFor?.call(card),
       );
 

@@ -3,7 +3,13 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { applyVoice, parseWrittenCards, scoringWords } from "./cards.ts";
+import {
+  applyVoice,
+  cardChecks,
+  charCount,
+  parseWrittenCards,
+  scoringWords,
+} from "./cards.ts";
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import type { GuideV3SectionId } from "./guide_text.ts";
 import {
@@ -20,6 +26,7 @@ import {
   decidePush,
   decideReply,
   judgmentFor,
+  MONEY_RISK_WARNING,
   perfunctoryStreak,
   pickEntries,
   SCAM_VENUE_WARNING,
@@ -64,6 +71,7 @@ function tags(over: Partial<ReadTags> = {}): ReadTags {
     blocked: false,
     risk: false,
     selfHarmSignal: false,
+    minorSignal: false,
     needsHisFacts: false,
     identityQuestion: false,
     hisStatedFacts: [],
@@ -108,6 +116,31 @@ Deno.test("C1：他最後一則先別回；封鎖或明確拒絕就停", () => {
   );
 });
 
+Deno.test("規則先後：封鎖或明確拒絕比「他最後一則」先判，是停不是先別回", () => {
+  // 被封鎖時最常見的就是他最後一則（傳了訊息才發現被封鎖）。
+  const blockedHisLast = toTurns([
+    her("好啊"),
+    me("那週六見？"),
+    me("怎麼訊息都送不出去了"),
+  ]);
+  assertEquals(
+    decideReply(blockedHisLast, tags({ blocked: true })),
+    { kind: "stop", reason: "明確拒絕或封鎖" },
+  );
+  // 她明確拒絕後他又追問一次。
+  const refusedThenFollowUp = toTurns([
+    me("週末要不要去看展？"),
+    her("謝謝，不過我對你沒有那種感覺"),
+    me("那吃個飯就好呢？"),
+  ]);
+  assertEquals(
+    decideReply(refusedThenFollowUp, tags({ explicitRejection: true })).kind,
+    "stop",
+  );
+  // 沒有拒絕或封鎖，他最後一則照舊先別回。
+  assertEquals(decideReply(refusedThenFollowUp, tags()).kind, "hold");
+});
+
 Deno.test("C1：連續主動兩次、她兩次都敷衍才先別回；只冷一次照常回", () => {
   const turns = toTurns([
     her("今天去看展超好看"),
@@ -148,13 +181,15 @@ Deno.test("C1：她婉拒就一句收尾；她取消不是只收尾（交給推�
   );
 });
 
-Deno.test("C3：開窗具體邀約；綠燈聊開兩輪以上才種；情緒差、紅燈、婉拒過、猶豫不推進", () => {
+Deno.test("C3：開窗具體邀約；聊開兩輪以上才種（綠燈、黃燈都可以）；情緒差、紅燈、婉拒過、猶豫不推進", () => {
   const short = toTurns([me("嗨"), her("哈囉")]);
   const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
   assertEquals(decidePush(short, tags({ herMove: "開窗" })), "具體邀約");
   assertEquals(decidePush(short, tags()), null);
   assertEquals(decidePush(long, tags()), "種子");
-  assertEquals(decidePush(long, tags({ light: "yellow" })), null);
+  // 種子不用等綠燈（Bruce 10/13）；黃燈沒聊開仍不推進（不做「黃燈偏綠提小提案」）。
+  assertEquals(decidePush(long, tags({ light: "yellow" })), "種子");
+  assertEquals(decidePush(short, tags({ light: "yellow" })), null);
   assertEquals(decidePush(long, tags({ herMoodBad: true })), null);
   assertEquals(decidePush(long, tags({ light: "red" })), null);
   assertEquals(decidePush(long, tags({ inviteReadiness: "婉拒過" })), null);
@@ -374,6 +409,26 @@ Deno.test("v3.2 C5：打分或考題字眼只記錄；照他口吻的「妳」�
   assertEquals(scoringWords("有啊，願意踩雷這點我很欣賞"), []);
 });
 
+Deno.test("C5 只記錄的檢查：半形問號、你呢後面接表情、照抄他時忽略空白", () => {
+  const his = (voice: "照他" | "預設") => ({ voice });
+  const c = cardChecks(2, ["真的嗎? 那你呢😊"], his("預設"), []);
+  assertEquals(
+    [c.slot, c.questions, c.endsWithNiNe, c.emoji, c.copiesHim],
+    [2, 1, true, 1, null],
+  );
+  assertEquals(charCount("真的 嗎\n好"), 4);
+  // 他的原話跟卡片中間的空白不同，照樣算照抄；不到 8 個字不算。
+  assert(
+    cardChecks(1, ["我 週末 都在家打電動"], his("照他"), ["我週末都在家打電動"])
+      .copiesHim,
+  );
+  assertEquals(
+    cardChecks(1, ["週末都在家"], his("照他"), ["我週末都在家打電動"])
+      .copiesHim,
+    false,
+  );
+});
+
 Deno.test("v3.2：B44、B45（她直接問他）排在一般條目前面", () => {
   const e = (id: string) => ({ id, trigger: "t", writing: "w", enabled: true });
   const entries = ["B01", "B43", "B44", "B45", "B46"].map(e);
@@ -403,6 +458,34 @@ Deno.test("v3.3：標到 B46 不排推進（就算綠燈、聊開了也不種子
   const turns = toTurns([me("a"), her("b"), me("c"), her("d")]);
   assertEquals(decidePush(turns, tags()), "種子");
   assertEquals(decidePush(turns, tags({ matchedEntries: ["B46"] })), null);
+});
+
+Deno.test("C3：黃燈的種子卡排在 3 張裡、不帶問號；帶張力照舊只在綠燈", () => {
+  const t = tags({ light: "yellow" });
+  const cards = arrangeCards({ kind: "send" }, "種子", t);
+  assertEquals(cards.map((c) => c.task), ["推進", "接住", "接住"]);
+  assertEquals(cards[0].push, "種子");
+  assertEquals(cards[0].questionBudget, 0);
+});
+
+Deno.test("B33（兩次提案都被帶過）：不排推進；她自己提見面或明確答應照常推進", () => {
+  const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
+  const b33 = (over: Partial<ReadTags> = {}) =>
+    tags({ matchedEntries: ["B33"], ...over });
+  assertEquals(decidePush(long, b33()), null);
+  assertEquals(decidePush(long, b33({ herMove: "開窗" })), null);
+  assertEquals(decidePush(long, b33({ inviteReadiness: "含糊答應" })), null);
+  assertEquals(decidePush(long, b33({ inviteReadiness: "她取消了" })), null);
+  assertEquals(
+    decidePush(long, b33({ inviteReadiness: "她自己提見面" })),
+    "具體邀約",
+  );
+  assertEquals(decidePush(long, b33({ inviteReadiness: "明確答應" })), "說定");
+  assert(
+    arrangeCards({ kind: "send" }, decidePush(long, b33()), b33()).every((c) =>
+      c.task !== "推進"
+    ),
+  );
 });
 
 Deno.test("v3.3：她直接問他時第一張排接住、推進放後面；沒直接問照原樣推進在前", () => {
@@ -462,6 +545,28 @@ Deno.test("v3.3：B47 只出換地方的推進和先不約的收，判斷由程�
     )[0],
     "B47",
   );
+});
+
+Deno.test("金錢、詐騙：標到風險時判讀換成固定提醒、不推進；B47 照它自己的提醒與換地方", () => {
+  const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
+  const risky = tags({
+    risk: true,
+    herMove: "開窗",
+    readForUser: "她很熱情。",
+  });
+  assertEquals(judgmentFor(risky), MONEY_RISK_WARNING);
+  assertEquals(decidePush(long, risky), null);
+  assert(
+    arrangeCards({ kind: "send" }, null, risky).every((c) => c.task !== "推進"),
+  );
+  const b47 = tags({ risk: true, matchedEntries: ["B47"] });
+  assertEquals(judgmentFor(b47), SCAM_VENUE_WARNING);
+  assertEquals(decidePush(long, b47), "換地方");
+  // 提醒兩句以內，講到借錢、投資、下載 App，叫他先別轉帳。
+  assert(MONEY_RISK_WARNING.split("。").filter(Boolean).length <= 2);
+  for (const word of ["借錢", "投資", "下載 App", "不要轉帳"]) {
+    assert(MONEY_RISK_WARNING.includes(word), word);
+  }
 });
 
 Deno.test("v3.5：B47 命中時，寫卡提示詞帶真的 B47 觸發（含只指定店家不算）與寫法", () => {

@@ -13,15 +13,27 @@ import {
   vetCoachText,
   vetPlanText,
 } from "./finalize.ts";
-import { HOLD_WAIT_FALLBACK, planTurn } from "./plan.ts";
+import {
+  HOLD_WAIT_FALLBACK,
+  planTurn,
+  planWithoutRead,
+  STOP_REASON_CARE,
+  STOP_REASON_MINOR,
+} from "./plan.ts";
 import {
   backgroundSections,
+  readSystemPrompt,
   readUserPrompt,
   writeUserPrompt,
 } from "./prompts.ts";
 import { READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
 import type { CardSpec } from "./rules.ts";
-import { SCAM_VENUE_WARNING } from "./rules.ts";
+import { MONEY_RISK_WARNING, SCAM_VENUE_WARNING } from "./rules.ts";
+import {
+  NO_SAFETY_HITS,
+  type SafetyKeywordHits,
+  scanSafetyKeywords,
+} from "./safety.ts";
 import {
   GUIDE_V3_STALE_AFTER_MS,
   guideV3ResumeSnapshot,
@@ -30,7 +42,13 @@ import {
 } from "./run_shape.ts";
 import { guideMessagesFrom, upstreamErrorEvent } from "./stream_flow.ts";
 import { toTurns } from "./turns.ts";
-import { cardView, CARE_MESSAGE, readView, TASK_CODE } from "./wire.ts";
+import {
+  cardView,
+  CARE_MESSAGE,
+  MINOR_MESSAGE,
+  readView,
+  TASK_CODE,
+} from "./wire.ts";
 
 function tags(over: Partial<ReadTags> = {}): ReadTags {
   return {
@@ -46,6 +64,7 @@ function tags(over: Partial<ReadTags> = {}): ReadTags {
     blocked: false,
     risk: false,
     selfHarmSignal: false,
+    minorSignal: false,
     needsHisFacts: false,
     identityQuestion: false,
     hisStatedFacts: [],
@@ -68,6 +87,12 @@ const hisLast = toTurns([
   { isFromMe: false, content: "爬山" },
   { isFromMe: true, content: "哪座山" },
 ]);
+
+/// 程式關鍵字的命中（沒寫到的都是 false）。
+const hits = (over: Partial<SafetyKeywordHits>): SafetyKeywordHits => ({
+  ...NO_SAFETY_HITS,
+  ...over,
+});
 
 const spec = (over: Partial<CardSpec> = {}): CardSpec => ({
   task: "接住",
@@ -103,6 +128,114 @@ Deno.test("自傷訊號優先於其他所有判斷：不排卡、不帶條目", 
   assertEquals(plan.judgment, "");
 });
 
+Deno.test("未成年：讀局面成功時只看模型標記（關鍵字不蓋過模型），讀局面失敗才看關鍵字；自傷排在前面", () => {
+  const byModel = planTurn(herLast, tags({ minorSignal: true }));
+  assertEquals(byModel.decision, "care");
+  assertEquals(byModel.careKind, "minor");
+  assertEquals(byModel.careTrigger, "model");
+  assertEquals(byModel.reason, STOP_REASON_MINOR);
+  assertEquals(byModel.specs, []);
+  assertEquals(byModel.entries, []);
+  assertEquals(byModel.judgment, "");
+  // 模型沒標：就算有「高中」這類字也照常出卡（主審第 1 輪：老師、講以前的事被誤擋）。
+  const wordsOnly = planTurn(herLast, tags(), hits({ minorWords: true }));
+  assertEquals(wordsOnly.decision, "send");
+  assert(wordsOnly.specs.length > 0);
+  // 自傷關心排在未成年前面（專線比「不提供建議」重要）。
+  const both = planTurn(
+    herLast,
+    tags({ selfHarmSignal: true, minorSignal: true }),
+  );
+  assertEquals([both.careKind, both.reason], ["self_harm", STOP_REASON_CARE]);
+  // 蓋過 B47、停、先別回：一律固定說明。
+  for (
+    const [turns, over] of [
+      [herLast, { matchedEntries: ["B47"] }],
+      [herLast, { explicitRejection: true }],
+      [hisLast, {}],
+    ] as const
+  ) {
+    const plan = planTurn(turns, tags({ ...over, minorSignal: true }));
+    assertEquals(plan.careKind, "minor", JSON.stringify(over));
+  }
+  // 讀局面失敗時只看關鍵字；沒命中就照原本的錯誤處理。
+  assertEquals(planWithoutRead(hits({ minorWords: true }))?.careKind, "minor");
+  assertEquals(
+    planWithoutRead(hits({ minorWords: true }))?.careTrigger,
+    "keyword",
+  );
+  assertEquals(planWithoutRead(NO_SAFETY_HITS), null);
+});
+
+Deno.test("自傷字眼：讀局面成功、模型沒標也一律關心（Eric 2026-10-18）；想死只在讀局面失敗時用", () => {
+  const words = hits({ selfHarmWords: true });
+  const forced = planTurn(herLast, tags(), words);
+  assertEquals(
+    [forced.decision, forced.careKind, forced.careTrigger],
+    ["care", "self_harm", "keyword"],
+  );
+  assertEquals(
+    planTurn(herLast, tags({ selfHarmSignal: true }), words).careTrigger,
+    "both",
+  );
+  // 自傷先於未成年，關鍵字的也一樣。
+  assertEquals(
+    planTurn(herLast, tags({ minorSignal: true }), words).careKind,
+    "self_harm",
+  );
+  // 只有「想死」：讀局面成功時照模型的判斷。
+  assertEquals(
+    planTurn(herLast, tags(), hits({ wantsToDie: true })).decision,
+    "send",
+  );
+  // 讀局面失敗：想死也給關心訊息，而且排在未成年前面。
+  assertEquals(
+    planWithoutRead(hits({ wantsToDie: true }))?.careKind,
+    "self_harm",
+  );
+  assertEquals(
+    planWithoutRead(hits({ selfHarmWords: true, minorWords: true }))?.careKind,
+    "self_harm",
+  );
+});
+
+Deno.test("未成年的判讀事件：固定說明、careKind，沒有排卡；說明一兩句、講明不扣", () => {
+  const view = readView(
+    planTurn(herLast, tags({ minorSignal: true })),
+    "green",
+  );
+  assertEquals(view.decision, "care");
+  assertEquals(view.careKind, "minor");
+  assertEquals(view.careMessage, MINOR_MESSAGE);
+  assertEquals(view.plannedCards, []);
+  // 自傷關心的 careKind 是 self_harm，文案不變。
+  const care = readView(
+    planTurn(herLast, tags({ selfHarmSignal: true })),
+    "red",
+  );
+  assertEquals([care.careKind, care.careMessage], ["self_harm", CARE_MESSAGE]);
+  // 讀局面失敗、只靠關鍵字時沒有燈號。
+  assertEquals(
+    readView(planWithoutRead(hits({ minorWords: true }))!, null).light,
+    null,
+  );
+  assert(MINOR_MESSAGE.split("。").filter(Boolean).length <= 2);
+  for (const word of ["18 歲", "不提供回覆建議", "不扣額度"]) {
+    assert(MINOR_MESSAGE.includes(word), word);
+  }
+});
+
+Deno.test("讀局面標記的 schema 有未成年欄位，而且是必填；提示詞有欄位說明", () => {
+  assert((READ_TAGS_SCHEMA.required as string[]).includes("minorSignal"));
+  assertEquals(
+    (READ_TAGS_SCHEMA.properties as Record<string, unknown>).minorSignal,
+    { type: "boolean" },
+  );
+  const prompt = readSystemPrompt();
+  assert(prompt.includes("- minorSignal："));
+  assert(prompt.includes("「我高中的時候」"));
+});
+
 Deno.test("先別回：模型沒寫要等什麼時用預設；有寫就用模型的", () => {
   assertEquals(planTurn(hisLast, tags()).waitFor, HOLD_WAIT_FALLBACK);
   assertEquals(
@@ -122,6 +255,40 @@ Deno.test("送出型與 B47：判讀換成固定提醒，排推進、收、推�
     "push",
   ]);
   assertEquals(plan.entries.map((e) => e.id), ["B47"]);
+});
+
+Deno.test("金錢、詐騙只看讀局面的風險標記：照常出卡、不排推進、判讀換成固定提醒；B47 不受影響", () => {
+  const long = toTurns([
+    { isFromMe: true, content: "a" },
+    { isFromMe: false, content: "b" },
+    { isFromMe: true, content: "c" },
+    { isFromMe: false, content: "d" },
+  ]);
+  const risky = planTurn(long, tags({ herMove: "開窗", risk: true }));
+  assertEquals(risky.decision, "send");
+  assertEquals(risky.judgment, MONEY_RISK_WARNING);
+  assertEquals(risky.push, null);
+  assert(risky.specs.length > 0);
+  assert(risky.specs.every((s) => s.task !== "推進"));
+  // 模型沒標風險：她說要借錢也照常推進、判讀用模型的（不掃關鍵字，主審第 1 輪）。
+  const words = scanSafetyKeywords([
+    {
+      isFromMe: false,
+      content: "可以先借我五千嗎，我是理專，沒有零風險的投資喔",
+    },
+  ]);
+  const plain = planTurn(long, tags({ herMove: "開窗" }), words);
+  assertEquals(plain.push, "具體邀約");
+  assertEquals(plain.judgment, "她在分享日常。");
+  // B47 有自己的提醒與換地方的卡。
+  const b47 = planTurn(herLast, tags({ matchedEntries: ["B47"], risk: true }));
+  assertEquals(b47.judgment, SCAM_VENUE_WARNING);
+  assertEquals(b47.push, "換地方");
+  // 先別回、停也換成提醒（判讀照樣給用戶看）。
+  assertEquals(
+    planTurn(hisLast, tags({ risk: true })).judgment,
+    MONEY_RISK_WARNING,
+  );
 });
 
 Deno.test("讀局面標記的 schema 有自傷欄位，而且是必填", () => {

@@ -76,7 +76,7 @@ export function createLineSplitter(): {
 /// 由程式換掉；照他的卡跟他，不動。原文另存在 rawMessages。
 export function applyVoice(
   card: WrittenCard,
-  spec: CardSpec | undefined,
+  spec: Pick<CardSpec, "voice"> | undefined,
 ): WrittenCard & { rawMessages?: readonly string[] } {
   if (spec?.voice !== "預設" || !card.messages.some((m) => m.includes("妳"))) {
     return card;
@@ -114,4 +114,67 @@ export const DEBT_FRAME_WORDS = ["欠我", "欠著", "你欠"] as const;
 export function debtFrameHits(text: string): string[] {
   const t = text.replaceAll("妳", "你").replaceAll("你欠缺", "");
   return DEBT_FRAME_WORDS.filter((w) => t.includes(w));
+}
+
+/// C5 只記錄、不擋的卡片檢查（Eric 2026-10-18 補齊 C5 要記的項目）：只有數字與真假，不放
+/// 文字，存進 trace 與 outcome log。
+export interface CardChecks {
+  readonly slot: number;
+  /// 問句數（連在一起的問號算一個）。
+  readonly questions: number;
+  /// 最後一則用「你呢」收尾。
+  readonly endsWithNiNe: boolean;
+  readonly emoji: number;
+  /// 字數（各則加總，不算空白）；跟她最後一輪的字數比，看份量相不相當。
+  readonly chars: number;
+  /// 照他口吻的卡有沒有照抄他說過的話（連續 8 字以上）；預設口吻的卡不檢查，是 null。
+  readonly copiesHim: boolean | null;
+}
+
+const EMOJI = /\p{Extended_Pictographic}/gu;
+const ENDS_WITH_NI_NE = /[你妳]呢[？?！!～~。…\s]*$/u;
+const COPY_RUN = 8;
+
+/// 字數：不算空白。
+export function charCount(text: string): number {
+  return [...text.replace(/\s+/gu, "")].length;
+}
+
+function copiesAny(
+  messages: readonly string[],
+  source: readonly string[],
+): boolean {
+  const pool = source.map((m) => m.replace(/\s+/gu, "")).filter((m) =>
+    [...m].length >= COPY_RUN
+  );
+  if (pool.length === 0) return false;
+  return messages.some((message) => {
+    const chars = [...message.replace(/\s+/gu, "")];
+    for (let i = 0; i + COPY_RUN <= chars.length; i++) {
+      const run = chars.slice(i, i + COPY_RUN).join("");
+      if (pool.some((m) => m.includes(run))) return true;
+    }
+    return false;
+  });
+}
+
+/// hisMessages：他在對話裡傳過的原始訊息（不含引用前綴）。
+export function cardChecks(
+  slot: number,
+  messages: readonly string[],
+  spec: Pick<CardSpec, "voice">,
+  hisMessages: readonly string[],
+): CardChecks {
+  const last = (messages.at(-1) ?? "").replace(EMOJI, "").trim();
+  return {
+    slot,
+    questions: messages.reduce(
+      (n, m) => n + (m.match(/[？?]+/g)?.length ?? 0),
+      0,
+    ),
+    endsWithNiNe: ENDS_WITH_NI_NE.test(last),
+    emoji: messages.reduce((n, m) => n + (m.match(EMOJI)?.length ?? 0), 0),
+    chars: messages.reduce((n, m) => n + charCount(m), 0),
+    copiesHim: spec.voice === "照他" ? copiesAny(messages, hisMessages) : null,
+  };
 }

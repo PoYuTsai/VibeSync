@@ -90,3 +90,6 @@ tools/opener-repair-replay/out/
 
 # 結構刀評測輸出（含模型原文；證據另存 Codex 工作資料夾）
 tools/opener-plan-write-eval/out/
+
+# 任務卡「再調一下」黑箱輸出（含模型原文）
+tools/v3-card-refine-blackbox/out/

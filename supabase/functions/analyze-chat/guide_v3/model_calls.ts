@@ -1,6 +1,7 @@
 // v3 兩段的正式模型呼叫：讀局面走非串流＋json_schema（callClaudeWithFallback），
 // 寫卡走串流（callClaudeStreaming）。兩段各一個 ModelCallBudget（各最多 3 次
 // provider 呼叫），每次呼叫交一列 ai_logs 給 recordAiCall（背景寫入，不擋回應）。
+// 對象記憶（開關開才有）另一個 ModelCallBudget，只打一次、不換模型。
 import { SONNET_5_5_MODEL } from "../../_shared/model_request_params.ts";
 import { callClaudeWithFallback, extractClaudeText } from "../fallback.ts";
 import {
@@ -11,6 +12,7 @@ import {
 import { callClaudeStreaming } from "../streaming_fallback.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type {
+  GuideV3ExtractRequest,
   GuideV3ReadRequest,
   GuideV3StreamDeps,
   GuideV3WriteRequest,
@@ -23,15 +25,33 @@ export const GUIDE_V3_READ_MAX_TOKENS = 1500;
 export const GUIDE_V3_WRITE_MAX_TOKENS = 2500;
 const READ_ATTEMPT_TIMEOUT_MS = 30_000;
 
+/// 對象記憶用 Haiku 5.5：每個候選都要對到她的原句才留，模型弱只會少記、不會記錯。
+/// 單價在 logger.ts 與 _shared/model_pricing.ts 都有；備援鏈沒有 Haiku 5.5，也不需要。
+export const GUIDE_V3_MEMORY_MODEL = "claude-haiku-5-5";
+/// 三類各 5 項、每項 2 句原句加兩個判斷欄位，上限大約 1400 token；超過就是這次沒有記憶。
+export const GUIDE_V3_MEMORY_MAX_TOKENS = 1500;
+/// ai_logs 的 request_type：跟分析本身的那幾列分開算成本。
+export const GUIDE_V3_MEMORY_REQUEST_TYPE = "analyze_memory";
+const MEMORY_ATTEMPT_TIMEOUT_MS = 15_000;
+
 export function createGuideV3ModelCalls(args: {
   readonly apiKey: string;
   readonly requestType: string;
   readonly tier: string;
   readonly recordAiCall?: (entry: ProviderAttemptLogEntry) => void;
   readonly model?: string;
-}): Pick<GuideV3StreamDeps, "callRead" | "callWrite"> {
+  /// 開關 ANALYZE_GUIDE_V3_MEMORY 允許時才給 callExtract；沒給就不會多打這一次。
+  readonly memory?: boolean;
+  /// 黑箱比較模型用；正式路徑一律 GUIDE_V3_MEMORY_MODEL。
+  readonly memoryModel?: string;
+}): Pick<GuideV3StreamDeps, "callRead" | "callWrite" | "callExtract"> {
   const model = args.model ?? GUIDE_V3_MODEL;
-  const budget = (stage: "read" | "write", runId: string, deadline: number) =>
+  const budget = (
+    stage: "read" | "write" | "memory",
+    runId: string,
+    deadline: number,
+    requestType = args.requestType,
+  ) =>
     new ModelCallBudget(
       deadline,
       {
@@ -42,11 +62,43 @@ export function createGuideV3ModelCalls(args: {
       },
       attemptReporter(
         "guide_v3_provider_attempt",
-        args.requestType,
+        requestType,
         args.recordAiCall,
         { responseMode: "stream" },
       ),
     );
+  const callExtract = async (req: GuideV3ExtractRequest) => {
+    const result = await callClaudeWithFallback(
+      {
+        model: args.memoryModel ?? GUIDE_V3_MEMORY_MODEL,
+        max_tokens: GUIDE_V3_MEMORY_MAX_TOKENS,
+        system: req.system,
+        messages: [{ role: "user", content: req.user }],
+        output_config: {
+          format: { type: "json_schema", schema: req.schema },
+        },
+      },
+      args.apiKey,
+      {
+        timeout: Math.max(
+          1,
+          Math.min(MEMORY_ATTEMPT_TIMEOUT_MS, req.deadlineAtMs - Date.now()),
+        ),
+        maxRetries: 1,
+        // 記憶是附加的：失敗就這次沒有，不重試、不換模型（最多一次 provider 呼叫）。
+        allowModelFallback: false,
+        budget: budget(
+          "memory",
+          req.runId,
+          req.deadlineAtMs,
+          GUIDE_V3_MEMORY_REQUEST_TYPE,
+        ),
+        purpose: "guide_v3_memory",
+        absoluteDeadlineAtMs: req.deadlineAtMs,
+      },
+    );
+    return { text: extractClaudeText(result.data), model: result.model };
+  };
   return {
     async callRead(req: GuideV3ReadRequest) {
       const result = await callClaudeWithFallback(
@@ -92,5 +144,6 @@ export function createGuideV3ModelCalls(args: {
       );
       return { model: claude.model, textStream: claude.textStream };
     },
+    ...(args.memory ? { callExtract } : {}),
   };
 }

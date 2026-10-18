@@ -10,7 +10,11 @@ import {
   GUIDE_V3_SECTIONS,
   GUIDE_V3_VERSION,
 } from "./guide_text.ts";
-import { readSystemPrompt, writeSystemPrompt } from "./prompts.ts";
+import {
+  readSystemPrompt,
+  WRITE_SAFETY_FLOOR,
+  writeSystemPrompt,
+} from "./prompts.ts";
 import { SAFETY_RULES } from "../guardrails.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
 
@@ -87,7 +91,21 @@ Deno.test("只放送進模型的部分：A 段裡沒有 B、C、D 段的內容",
   }
 });
 
-Deno.test("真說明書組成的提示詞：讀局面帶 47 條觸發、不帶寫法；寫卡帶安全規則與外洩指令", () => {
+Deno.test("寫卡的安全底線：v3 自己的三條（未成年、拒絕後施壓、騷擾跟蹤威脅），不帶 v2 舊段落", () => {
+  const write = writeSystemPrompt();
+  assert(write.includes(WRITE_SAFETY_FLOOR));
+  // v2 的舊段落還在講熱度（說明書 C6：舊段落不能跟新的並存）。
+  assert(!write.includes(SAFETY_RULES.trim()));
+  assert(!write.includes("熱度"));
+  assertEquals(WRITE_SAFETY_FLOOR.split("\n").length, 4);
+  for (
+    const word of ["18 歲", "國中、高中", "明確拒絕", "騷擾", "跟蹤", "威脅"]
+  ) {
+    assert(WRITE_SAFETY_FLOOR.includes(word), word);
+  }
+});
+
+Deno.test("真說明書組成的提示詞：讀局面帶 47 條觸發、不帶寫法；寫卡帶安全底線與外洩指令", () => {
   const read = readSystemPrompt();
   for (const e of GUIDE_V3_ENTRIES) {
     assert(read.includes(`- ${e.id}：${e.trigger}`), e.id);
@@ -102,6 +120,6 @@ Deno.test("真說明書組成的提示詞：讀局面帶 47 條觸發、不帶�
     assert(write.includes(GUIDE_V3_SECTIONS[id]), id);
   }
   assert(!write.includes(GUIDE_V3_SECTIONS.A4));
-  assert(write.includes(SAFETY_RULES.trim()));
+  assert(write.includes(WRITE_SAFETY_FLOOR));
   assert(write.includes(PROMPT_LEAK_DEFENSE_DIRECTIVE.trim()));
 });

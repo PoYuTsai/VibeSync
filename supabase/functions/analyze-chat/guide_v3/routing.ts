@@ -24,6 +24,16 @@ export function shouldUseGuideV3(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// v3 分析順便更新對象記憶（targetProfile）：開關 ANALYZE_GUIDE_V3_MEMORY，跟
+/// ANALYZE_GUIDE_V3 一樣 off／test／on（test＝測試帳號）。沒開就不多打這一次模型
+///（Eric 2026-10-18）。
+export function shouldExtractGuideV3Memory(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// 免費方案看排好順序的前 2 張（計畫第五節第 5 項的預設；v2 的免費方案也只有延展、
 /// 調情兩種風格）。伺服器只寫、只送這幾張。
 export const GUIDE_V3_FREE_CARD_LIMIT = 2;

@@ -152,6 +152,39 @@ Deno.test("舊 client 的未結算 pending 在新版 server 仍命中 replay", a
   );
 });
 
+// 2026-10-18 任務卡的再調上線前、帶指令的微調實際算出的值。
+const REFINE_GOLDEN_HASH =
+  "cb767ed559fcf30d955387dfbe15e53ae06a407fbb51c09d6a119355f2816826";
+
+Deno.test("任務卡規格不進伺服器 hash：帶不帶 guideV3Card 都是上線前那一顆", async () => {
+  // 主審第 2 輪：新舊 Edge 對同一次請求要算出同一個 hash，兩個方向的重試才都能
+  // replay；不同卡片規格不會共用 requestId，靠的是 App 的 fingerprint。
+  const refine = {
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    refineInstruction: "再幽默一點",
+  };
+  const withCard = {
+    ...refine,
+    guideV3Card: { task: "push", voice: "default", method: "reaction" },
+  };
+  assertEquals(
+    await computeOptimizeMessageInputHash(refine),
+    REFINE_GOLDEN_HASH,
+  );
+  assertEquals(
+    await computeOptimizeMessageInputHash(withCard),
+    REFINE_GOLDEN_HASH,
+  );
+  const polishWithCard = {
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    guideV3Card: { task: "push", voice: "default", method: "reaction" },
+  };
+  assertEquals(
+    await computeOptimizeMessageInputHash(polishWithCard),
+    LEGACY_GOLDEN_FULL_HASH,
+  );
+});
+
 Deno.test("optimize-message replay preflight returns cached result or mismatch", () => {
   const result = { optimizedMessage: { optimized: "要不要一起喝咖啡？" } };
   assertEquals(

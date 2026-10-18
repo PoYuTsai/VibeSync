@@ -30,6 +30,12 @@ import {
   utcDayString,
 } from "./refine_allowance.ts";
 import { hasOutboundSafetyWarning } from "./guardrails.ts";
+import {
+  finalizeRefinedCard,
+  type GuideV3RefineCard,
+  type GuideV3RefineOutcome,
+  isGuideV3RefineSafetyRejection,
+} from "./guide_v3/refine_card.ts";
 import { buildQuotaExceededPayload } from "../_shared/quota.ts";
 import { jsonResponse } from "./http_response.ts";
 import { logError, logInfo, logWarn, summarizeUser } from "./logger.ts";
@@ -301,8 +307,13 @@ export async function projectRefineFreeAllowanceForUser(args: {
   });
 }
 
+export type OptimizeOutcomeValidation =
+  | { kind: "response"; response: Response }
+  | { kind: "ok"; result: Record<string, unknown> };
+
 /// 有效結果後的守門：unusable 亂碼防呆（只限草稿潤飾）、client shape、
-/// 微調輸出過長、安全守門專屬文案。全部不扣費。
+/// 微調輸出過長、任務卡的再調定稿、安全守門專屬文案。全部不扣費。
+/// 任務卡的再調通過時，回傳的 result 換成定稿後的字（一則一行）。
 export function validateOptimizeOutcome(args: {
   result: Record<string, unknown>;
   isRefineReplyMode: boolean;
@@ -310,7 +321,13 @@ export function validateOptimizeOutcome(args: {
   requestId: string | null;
   userId: string;
   actualModel: string;
-}): Response | null {
+  /// 任務卡的再調（只有微調會帶）。
+  guideV3Card?: GuideV3RefineCard | null;
+  /// 對話全文（她跟他傳過的字），任務卡定稿的英文詞檢查用。
+  sourceText?: string;
+  /// 重播（帳本裡的那一份）：不查微調輸出長度（見 refineOutputTooLong）。
+  replay?: boolean;
+}): OptimizeOutcomeValidation {
   // 亂碼防呆：模型宣告 userDraft 無法理解（unusable: true）。必須在
   // hasUsableOptimizedMessage 之前攔——模型可能違規把說明文字塞進
   // optimized，讓結果看起來「可用」而被當成潤飾成果渲染。
@@ -321,26 +338,50 @@ export function validateOptimizeOutcome(args: {
       model: args.actualModel,
       requestId: args.requestId,
     });
-    return jsonResponse({
-      error: "OPTIMIZE_MESSAGE_DRAFT_UNREADABLE",
-      code: "OPTIMIZE_MESSAGE_DRAFT_UNREADABLE",
-      message: "看不懂這段草稿，請換成想傳的訊息再試一次。本次不會扣額度。",
-      shouldChargeQuota: false,
-    }, 502);
+    return {
+      kind: "response",
+      response: jsonResponse({
+        error: "OPTIMIZE_MESSAGE_DRAFT_UNREADABLE",
+        code: "OPTIMIZE_MESSAGE_DRAFT_UNREADABLE",
+        message: "看不懂這段草稿，請換成想傳的訊息再試一次。本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 502),
+    };
   }
   const optimizeClientShapeViolations = findClientShapeViolations(args.result);
-  // 只作用於微調。草稿潤飾的輸出長度行為一個字不改。
-  const refineOutputTooLong = args.isRefineReplyMode &&
+  // 只作用於微調。草稿潤飾的輸出長度行為一個字不改。重播不查：那一份當初已經過關
+  // （定稿整理成繁體可能多幾個字），不能因此擋掉已經付過費的結果。
+  const refineOutputTooLong = args.isRefineReplyMode && !args.replay &&
     hasUsableOptimizedMessage(args.result) &&
     exceedsRefineOutputLimit({
       sourceDraft: args.userDraft ?? "",
       optimized: (args.result.optimizedMessage as Record<string, unknown>)
         .optimized as string,
     });
+  // 任務卡的再調：前面都過了才定稿（guide_v3/refine_card.ts）。沒過一樣走下面
+  // 不扣費的路；這裡在授權免費額度與結算之前，所以也不佔免費次數。
+  let guideV3Refine: GuideV3RefineOutcome | null = null;
+  if (
+    args.isRefineReplyMode && args.guideV3Card &&
+    hasUsableOptimizedMessage(args.result) &&
+    optimizeClientShapeViolations.length === 0 && !refineOutputTooLong
+  ) {
+    guideV3Refine = finalizeRefinedCard({
+      draft: args.userDraft ?? "",
+      optimized: (args.result.optimizedMessage as Record<string, unknown>)
+        .optimized as string,
+      card: args.guideV3Card,
+      sourceText: args.sourceText ?? "",
+    });
+  }
+  const guideV3Rejection = guideV3Refine !== null && !guideV3Refine.ok
+    ? guideV3Refine.reason
+    : null;
   if (
     !hasUsableOptimizedMessage(args.result) ||
     optimizeClientShapeViolations.length > 0 ||
-    refineOutputTooLong
+    refineOutputTooLong ||
+    guideV3Rejection !== null
   ) {
     logWarn("optimize_message_result_invalid_no_charge", {
       user: summarizeUser(args.userId),
@@ -358,26 +399,90 @@ export function validateOptimizeOutcome(args: {
       refineMaxOutputChars: args.isRefineReplyMode
         ? refineMaxOutputChars(args.userDraft ?? "")
         : null,
+      // 任務卡的再調被哪一項擋下（只記原因代碼，不記字）；replay＝帳本裡的那一份。
+      guideV3RefineRejected: guideV3Rejection,
+      replay: args.replay === true,
     });
     // 安全守門攔下要有專屬文案（2026-08-16 Eric 拍板）：通用的「請稍後
     // 再試」會誤導使用者原句重送——這不是暫時性失敗，是內容問題。
-    if (hasOutboundSafetyWarning(args.result)) {
-      return jsonResponse({
-        error: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
-        code: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
-        message:
-          "這段內容帶有施壓或威脅的說法，安全守門已攔下，不提供結果。請改成尊重對方意願的說法。本次不會扣額度。",
-        shouldChargeQuota: false,
-      }, 502);
+    // 任務卡的禁語、脅迫與「欠」組同理。
+    if (
+      hasOutboundSafetyWarning(args.result) ||
+      isGuideV3RefineSafetyRejection(guideV3Rejection)
+    ) {
+      return {
+        kind: "response",
+        response: jsonResponse({
+          error: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
+          code: "OPTIMIZE_MESSAGE_SAFETY_BLOCKED",
+          message:
+            "這段內容帶有施壓或威脅的說法，安全守門已攔下，不提供結果。請改成尊重對方意願的說法。本次不會扣額度。",
+          shouldChargeQuota: false,
+        }, 502),
+      };
     }
-    return jsonResponse({
-      error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
-      code: "OPTIMIZE_MESSAGE_RESULT_INVALID",
-      message: "這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。",
-      shouldChargeQuota: false,
-    }, 502);
+    return {
+      kind: "response",
+      response: jsonResponse({
+        error: "OPTIMIZE_MESSAGE_RESULT_INVALID",
+        code: "OPTIMIZE_MESSAGE_RESULT_INVALID",
+        message: "這次沒有產生可用的潤飾結果，請稍後再試。本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 502),
+    };
   }
-  return null;
+  if (guideV3Refine?.ok) {
+    const optimizedMessage = args.result.optimizedMessage as Record<
+      string,
+      unknown
+    >;
+    return {
+      kind: "ok",
+      result: {
+        ...args.result,
+        optimizedMessage: {
+          ...optimizedMessage,
+          optimized: guideV3Refine.messages.join("\n"),
+        },
+      },
+    };
+  }
+  return { kind: "ok", result: args.result };
+}
+
+/// 任務卡的再調交給 App 前的最後一關（主審第 2 輪）：帳本裡的那一份（預檢重播，或結算時
+/// 拿回別次請求寫的那一列）可能是還沒升版的 Edge 給的、沒跑過任務卡定稿，所以照這次的
+/// 卡片規格再過一次守門與定稿；沒過回跟新結果一樣的擋下碼（重播本來就不扣）。通過才標
+/// guideV3CardChecked：App 只把有標記的結果給採用、存成任務卡的稿，舊 Edge 回的結果
+/// 因此不會被直接用掉。
+export function checkGuideV3RefineDelivery(args: {
+  result: Record<string, unknown>;
+  guideV3Card: GuideV3RefineCard;
+  userDraft: string | undefined;
+  requestId: string | null;
+  userId: string;
+  actualModel: string;
+  sourceText: string;
+  /// 這次剛定稿、剛交給結算的字：結算拿回的就是它，直接標記（不必再定稿一次）。
+  alreadyCheckedText?: string | null;
+}): OptimizeOutcomeValidation {
+  const { alreadyCheckedText, ...rest } = args;
+  const optimized = (args.result.optimizedMessage as
+    | Record<string, unknown>
+    | undefined)?.optimized;
+  if (alreadyCheckedText != null && optimized === alreadyCheckedText) {
+    return { kind: "ok", result: { ...args.result, guideV3CardChecked: true } };
+  }
+  const outcome = validateOptimizeOutcome({
+    ...rest,
+    isRefineReplyMode: true,
+    replay: true,
+  });
+  if (outcome.kind === "response") return outcome;
+  return {
+    kind: "ok",
+    result: { ...outcome.result, guideV3CardChecked: true },
+  };
 }
 
 export interface RefineFreeConsumptionOutcome {

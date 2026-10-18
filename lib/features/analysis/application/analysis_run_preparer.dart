@@ -169,6 +169,18 @@ class AnalysisRunPreparer {
     );
   }
 
+  /// 分析鈕旁那一行的同步預覽（主審 r1 P2）：跟 [assemble] 同一套訊息切片（有歷史
+  /// 摘要時只送最近幾輪），但不產生摘要文字。用它算的計費則數就是實際送出的則數。
+  List<Message> previewRequestMessages({
+    required Conversation conversation,
+    required AnalysisRunGate gate,
+  }) {
+    final baseMessages = gate.messagesForAnalysis!;
+    return _expectsHistoricalSummary(conversation)
+        ? _clipToRecentRounds(baseMessages)
+        : baseMessages;
+  }
+
   /// 主分析請求組裝（通過 [gate] 之後）：摘要感知訊息切片＋脈絡解析。
   Future<AnalysisRunPreparation> assemble({
     required Conversation conversation,
@@ -380,6 +392,23 @@ class AnalysisRunPreparer {
         .toInt();
   }
 
+  /// 會不會帶歷史摘要（只送最近幾輪）：已存的摘要，或更早的輪數夠做一段。後者的
+  /// 摘要是本機規則產生、一定不是空的，所以同步預覽與實際組請求都看這裡就一致。
+  bool _expectsHistoricalSummary(Conversation conversation) {
+    final persistedSummary = _memory.persistedHistoricalSummary(conversation);
+    if (persistedSummary != null && persistedSummary.isNotEmpty) return true;
+    return conversation.currentRound - _memory.maxRecentRounds >=
+        _memory.minRoundsPerSummary;
+  }
+
+  List<Message> _clipToRecentRounds(List<Message> baseMessages) {
+    final clipped = _memory.clipToRecentRounds(
+      baseMessages,
+      _memory.maxRecentRounds,
+    );
+    return clipped.isEmpty ? baseMessages : clipped;
+  }
+
   Future<String?> _buildHistoricalContextSummary(
     Conversation conversation,
   ) async {
@@ -387,11 +416,11 @@ class AnalysisRunPreparer {
     if (persistedSummary != null && persistedSummary.isNotEmpty) {
       return persistedSummary;
     }
-
-    final olderRounds = conversation.currentRound - _memory.maxRecentRounds;
-    if (olderRounds < _memory.minRoundsPerSummary) {
+    if (!_expectsHistoricalSummary(conversation)) {
       return null;
     }
+
+    final olderRounds = conversation.currentRound - _memory.maxRecentRounds;
 
     final formattedSummary = await _memory.formatEphemeralSummary(
       conversation,
@@ -417,13 +446,8 @@ class AnalysisRunPreparer {
       );
     }
 
-    final requestMessages = _memory.clipToRecentRounds(
-      baseMessages,
-      _memory.maxRecentRounds,
-    );
-
     return (
-      requestMessages: requestMessages.isEmpty ? baseMessages : requestMessages,
+      requestMessages: _clipToRecentRounds(baseMessages),
       conversationSummary: conversationSummary,
     );
   }

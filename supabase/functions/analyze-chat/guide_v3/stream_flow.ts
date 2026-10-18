@@ -1,8 +1,10 @@
 // v3 串流分析（協定版本 3、開關 ANALYZE_GUIDE_V3 允許時）：讀局面（非串流＋
-// json_schema）→ 程式排卡 → 串流寫卡，一行一張、每張各自定稿。
+// json_schema）→ 程式排卡 → 串流寫卡，一行一張、每張各自定稿。開關
+// ANALYZE_GUIDE_V3_MEMORY 開時，讀完另打一次對象記憶（memory.ts），不擋判讀與出卡。
 //
 // 扣費（Eric 10/16）：第一張卡定稿、確定要送的那一刻扣一次；一張都沒送出不扣；
-// 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型）；自傷關心不扣。
+// 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型），固定 1 則（Eric 2026-10-18）；
+// 固定訊息（自傷關心、涉及未成年）不扣。
 // run：pending →（扣費）charged → done；沒扣費就 failed。扣過費一定以 done 結案
 //（寫卡中途出錯就用已送出的卡）。不重生、不 retry；續看只重播（run_shape.ts）。
 import { jsonResponse } from "../http_response.ts";
@@ -13,10 +15,30 @@ import type {
   AnalysisStreamRun,
   ChargeStreamRunV3Input,
 } from "../stream_run_store.ts";
-import { createLineSplitter, parseWrittenCardLine } from "./cards.ts";
+import {
+  type CardChecks,
+  cardChecks,
+  charCount,
+  createLineSplitter,
+  parseWrittenCardLine,
+} from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
-import { type GuideV3Plan, planTurn } from "./plan.ts";
+import { type GuideV3Plan, planTurn, planWithoutRead } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
+import {
+  NO_SAFETY_HITS,
+  type SafetyKeywordHits,
+  scanSafetyKeywords,
+} from "./safety.ts";
+import {
+  type GuideV3MemoryTrace,
+  MEMORY_SCHEMA,
+  memorySystemPrompt,
+  memoryUserPrompt,
+  type PartnerMemory,
+  partnerMemoryFrom,
+  zeroMemoryCounts,
+} from "./memory.ts";
 import {
   type GuideV3Background,
   readSystemPrompt,
@@ -39,10 +61,19 @@ import {
 
 /// 讀局面＋寫卡共用的模型期限（從請求開始算）。
 export const GUIDE_V3_DEADLINE_MS = 90_000;
+/// 結果其他部分都好了之後，最多再等對象記憶多久。出卡時記憶跟寫卡同時跑，到這裡
+/// 早就好了；先別回、停只有讀局面，判讀先送出，done 最多晚這麼久。
+export const GUIDE_V3_MEMORY_WAIT_MS = 2_500;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
-/// 停（明確拒絕或封鎖）與自傷關心存進扣費紀錄的 stopCondition（RPC 要非空）。
+/// 停（明確拒絕或封鎖）、自傷關心與未成年存進扣費紀錄的 stopCondition（RPC 要非空）。
 export const STOP_CONDITION_STOP = "不再主動傳訊息";
 export const STOP_CONDITION_CARE = "先確認安全";
+export const STOP_CONDITION_MINOR = "涉及未成年，不給建議";
+/// 先別回、停固定扣 1 則（Eric 2026-10-18，推翻 10/16 的照字數扣）：沒有卡卻照字數扣，
+/// 容易被當成付錢沒拿到東西。扣費 RPC 收任何正整數（migration 20261016171939）。
+export const NO_SEND_MESSAGE_COUNT = 1;
+/// 讀完局面、開始寫卡前的中性進度（只有出卡、收尾才有；不帶判讀、不動扣費）。
+export const GUIDE_V3_WRITING_LABEL = "看完了，正在寫回覆";
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -86,6 +117,9 @@ export interface GuideV3WriteRequest {
   readonly deadlineAtMs: number;
 }
 
+/// 對象記憶：跟讀局面一樣是非串流＋json_schema，提示詞與 schema 在 memory.ts。
+export type GuideV3ExtractRequest = GuideV3ReadRequest;
+
 export interface GuideV3Message {
   readonly isFromMe: boolean;
   readonly content: string;
@@ -117,6 +151,12 @@ export interface GuideV3StreamDeps {
   callWrite(
     req: GuideV3WriteRequest,
   ): Promise<{ model: string; textStream: AsyncIterable<string> }>;
+  /// 對象記憶（開關 ANALYZE_GUIDE_V3_MEMORY）；沒給就不多打這一次，結果也不帶。
+  callExtract?(
+    req: GuideV3ExtractRequest,
+  ): Promise<{ text: string; model: string }>;
+  /// 預設 GUIDE_V3_MEMORY_WAIT_MS（測試縮短用）。
+  memoryWaitMs?: number;
   log(
     event: string,
     metadata: Record<string, unknown>,
@@ -178,6 +218,15 @@ export function guideMessagesFrom(
       content: quoted ? `（引用：「${quoted}」）${m.content}` : m.content,
     };
   });
+}
+
+/// 她最後一輪（最後面連續幾則她的訊息）的字數，不算空白；最後一則是他的就是 0。
+function herLastTurnChars(messages: readonly GuideV3Message[]): number {
+  let total = 0;
+  for (let i = messages.length - 1; i >= 0 && !messages[i].isFromMe; i--) {
+    total += charCount(messages[i].content);
+  }
+  return total;
 }
 
 function parseTagsText(text: string): ReadTags | null {
@@ -249,6 +298,10 @@ class GuideV3Flow {
   private chargeUnknown = false;
   /// 扣費出錯時已經用條件式寫入記成 failed，fail() 不用再寫一次。
   private markedFailed = false;
+  /// 對象記憶那一次呼叫（沒開或自傷關心就是 null）；永遠不會 reject。
+  private memory: Promise<PartnerMemory & { latencyMs: number }> | null = null;
+  /// 程式關鍵字掃到的安全訊號（run 一開始就掃）。
+  private hits: SafetyKeywordHits = NO_SAFETY_HITS;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -279,6 +332,8 @@ class GuideV3Flow {
     const stopHeartbeat = this.startHeartbeat(emit);
     try {
       const turns = toTurns(guideMessagesFrom(this.deps.messages));
+      // 程式自己掃的安全訊號（safety.ts）：讀局面失敗或拒答時也要用，所以先掃。
+      this.hits = scanSafetyKeywords(this.deps.messages, this.deps.background);
       let text: string;
       try {
         const read = await this.deps.callRead({
@@ -291,13 +346,28 @@ class GuideV3Flow {
         text = read.text;
         this.readModel = read.model;
       } catch (error) {
-        return await this.fail(emit, upstreamErrorEvent(error), {
+        const event = upstreamErrorEvent(error);
+        // 讀局面失敗或拒答，但程式關鍵字看得出要給固定訊息：給固定訊息，不給錯誤。
+        const fallback = planWithoutRead(this.hits);
+        if (fallback) {
+          return await this.care(emit, fallback, null, {
+            code: event.code,
+            error: errorText(error),
+          });
+        }
+        return await this.fail(emit, event, {
           stage: "read",
           error: errorText(error),
         });
       }
       const tags = parseTagsText(text);
       if (!tags) {
+        const fallback = planWithoutRead(this.hits);
+        if (fallback) {
+          return await this.care(emit, fallback, null, {
+            code: "GUIDE_V3_READ_INVALID",
+          });
+        }
         return await this.fail(
           emit,
           errorEvent(
@@ -309,7 +379,7 @@ class GuideV3Flow {
         );
       }
       const plan = vetPlanText(
-        planTurn(turns, tags),
+        planTurn(turns, tags, this.hits),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
             analysisRunId: this.runId,
@@ -317,9 +387,11 @@ class GuideV3Flow {
           }, "error"),
       );
       const view = readView(plan, tags.light, this.deps.maxCards ?? null);
+      // 自傷訊號要讀完才知道，所以記憶在讀局面之後才開始；關心訊息不打這一次。
+      if (plan.decision !== "care") this.startMemory(turns, deadlineAtMs);
       switch (plan.decision) {
         case "care":
-          return await this.care(emit, plan, view, tags);
+          return await this.care(emit, plan, tags);
         case "hold":
         case "stop":
           return await this.noSend(emit, plan, view, tags, isClosed);
@@ -488,10 +560,8 @@ class GuideV3Flow {
     }
   }
 
-  private usage(charged: boolean): Record<string, unknown> {
-    const used = charged && this.shouldCharge
-      ? this.deps.quotaUsage.chargedMessageCount
-      : 0;
+  /// used：這次實際扣的則數（出卡照字數、先別回與停 1 則、固定訊息 0）。
+  private usage(used: number): Record<string, unknown> {
     return {
       messagesUsed: used,
       estimatedMessages: this.deps.quotaUsage.estimatedMessageCount,
@@ -527,7 +597,7 @@ class GuideV3Flow {
   }
 
   private trace(
-    tags: ReadTags,
+    tags: ReadTags | null,
     plan: GuideV3Plan,
     extra: Partial<GuideV3Trace> = {},
   ): GuideV3Trace {
@@ -542,7 +612,85 @@ class GuideV3Flow {
       rawMessages: [],
       models: { read: this.readModel, write: this.writeModel },
       firstCardMs: null,
+      ...(Object.values(this.hits).some(Boolean)
+        ? { keywordHits: this.hits }
+        : {}),
       ...extra,
+    };
+  }
+
+  /// 對象記憶跟寫卡（或不送型的扣費）同時跑；結案前才用 settleMemory 等。
+  private startMemory(turns: readonly Turn[], deadlineAtMs: number): void {
+    const callExtract = this.deps.callExtract;
+    if (!callExtract) return;
+    const startedAt = this.now();
+    // 用 executor 包起來：callExtract 同步丟錯也變成 reject，交給下面的 catch。
+    const task = new Promise<{ text: string; model: string }>((resolve) =>
+      resolve(callExtract({
+        runId: this.runId,
+        system: memorySystemPrompt(),
+        user: memoryUserPrompt(turns),
+        schema: MEMORY_SCHEMA,
+        deadlineAtMs,
+      }))
+    )
+      // 出處只認 App 送來的原始訊息，不是帶引用前綴的對話稿。
+      .then((res) => partnerMemoryFrom(res.text, this.deps.messages))
+      .catch((error): PartnerMemory => {
+        const code = (error as { code?: unknown })?.code;
+        this.deps.log("guide_v3_memory_failed", {
+          analysisRunId: this.runId,
+          code: typeof code === "string" ? code : "UNKNOWN",
+        });
+        return {
+          ok: false,
+          kept: zeroMemoryCounts(),
+          dropped: zeroMemoryCounts(),
+        };
+      })
+      .then((memory) => ({ ...memory, latencyMs: this.now() - startedAt }));
+    this.memory = task;
+    // 等不到就先結案，但這次呼叫還是要跑完、寫完 ai_logs。
+    this.deps.waitUntil?.(task);
+  }
+
+  /// 最多再等 memoryWaitMs；等不到、失敗或沒有通過檢查的項目，結果就不帶 targetProfile
+  ///（App 沿用上一份）。trace 只放計數。
+  private async settleMemory(): Promise<{
+    targetProfile?: Record<string, unknown>;
+    trace?: GuideV3MemoryTrace;
+  }> {
+    if (!this.memory) return {};
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(
+        () => resolve(null),
+        this.deps.memoryWaitMs ?? GUIDE_V3_MEMORY_WAIT_MS,
+      );
+    });
+    const memory = await Promise.race([this.memory, late]).finally(() =>
+      clearTimeout(timer)
+    );
+    if (!memory) {
+      return {
+        trace: {
+          ok: false,
+          timedOut: true,
+          latencyMs: null,
+          kept: zeroMemoryCounts(),
+          dropped: zeroMemoryCounts(),
+        },
+      };
+    }
+    return {
+      ...(memory.targetProfile ? { targetProfile: memory.targetProfile } : {}),
+      trace: {
+        ok: memory.ok,
+        timedOut: false,
+        latencyMs: memory.latencyMs,
+        kept: memory.kept,
+        dropped: memory.dropped,
+      },
     };
   }
 
@@ -582,13 +730,25 @@ class GuideV3Flow {
     });
   }
 
-  /// 自傷訊號：不出卡、不扣額度，顯示固定的關心訊息。存不進資料庫也照樣顯示。
+  /// 不出卡、不扣額度，顯示固定訊息：自傷關心，或涉及未成年（plan.careKind）。讀局面失敗、
+  /// 只靠程式關鍵字判出來時 tags 是 null（沒有燈號），readFailure 記失敗的原因。存不進
+  /// 資料庫也照樣顯示。
   private async care(
     emit: NdjsonEmit,
     plan: GuideV3Plan,
-    view: GuideV3ReadView,
-    tags: ReadTags,
+    tags: ReadTags | null,
+    readFailure?: { code: string; error?: string },
   ): Promise<void> {
+    const view = readView(
+      plan,
+      tags?.light ?? null,
+      this.deps.maxCards ?? null,
+    );
+    const care = {
+      kind: plan.careKind ?? "self_harm",
+      trigger: plan.careTrigger ?? "model",
+      ...(readFailure ? { readFailedCode: readFailure.code } : {}),
+    } as const;
     let recorded = true;
     try {
       // CHECK：done 一定要有 charged_at，所以走不扣額度的不送型扣費紀錄。
@@ -600,7 +760,11 @@ class GuideV3Flow {
           decisionKind: "do_not_send",
           action: "care",
           reason: plan.reason,
-          stopCondition: STOP_CONDITION_CARE,
+          stopCondition: care.kind === "minor"
+            ? STOP_CONDITION_MINOR
+            : STOP_CONDITION_CARE,
+          careKind: care.kind,
+          careTrigger: care.trigger,
           guideVersion: GUIDE_V3_VERSION,
           read: view,
           chargedMessageCount: 0,
@@ -623,19 +787,30 @@ class GuideV3Flow {
         read: view,
         cards: [],
         partial: false,
-        usage: this.usage(false),
+        usage: this.usage(0),
         telemetry: this.telemetry({
           shouldChargeQuota: false,
           chargedMessageCount: 0,
         }),
-        trace: this.trace(tags, plan),
+        trace: this.trace(tags, plan, { care }),
       }),
-      { decision: "care", charged: false },
+      {
+        decision: "care",
+        careKind: care.kind,
+        careTrigger: care.trigger,
+        charged: false,
+        ...(readFailure
+          ? {
+            readFailedCode: readFailure.code,
+            ...(readFailure.error ? { readError: readFailure.error } : {}),
+          }
+          : {}),
+      },
       recorded,
     );
   }
 
-  /// 先別回、停：讀完就扣一次（不送型），沒有卡。
+  /// 先別回、停：讀完就扣一次（不送型），固定 1 則，沒有卡。
   private async noSend(
     emit: NdjsonEmit,
     plan: GuideV3Plan,
@@ -652,6 +827,7 @@ class GuideV3Flow {
     }
     const hold = plan.decision === "hold";
     const decisionKind = hold ? "do_not_send" : "acknowledge_and_stop";
+    const messageCount = this.shouldCharge ? NO_SEND_MESSAGE_COUNT : 0;
     const charged = await this.charge({
       decisionKind,
       cardTask: null,
@@ -664,9 +840,7 @@ class GuideV3Flow {
         read: view,
       },
       chargeQuota: this.shouldCharge,
-      messageCount: this.shouldCharge
-        ? this.deps.quotaUsage.chargedMessageCount
-        : 0,
+      messageCount,
     });
     if (!charged.ok) {
       return await this.fail(emit, charged.event, {
@@ -675,22 +849,32 @@ class GuideV3Flow {
       });
     }
     emit(readEvent(view));
+    // 判讀已經送出，記憶只會讓 done 晚一點（最多 memoryWaitMs）。
+    const memory = await this.settleMemory();
     await this.finish(
       emit,
       finalResult({
         read: view,
         cards: [],
         partial: false,
-        usage: this.usage(true),
+        usage: this.usage(messageCount),
         telemetry: this.telemetry({
           shouldChargeQuota: this.shouldCharge,
-          chargedMessageCount: this.shouldCharge
-            ? this.deps.quotaUsage.chargedMessageCount
-            : 0,
+          chargedMessageCount: messageCount,
         }),
-        trace: this.trace(tags, plan),
+        trace: this.trace(
+          tags,
+          plan,
+          memory.trace ? { memory: memory.trace } : {},
+        ),
+        targetProfile: memory.targetProfile,
       }),
-      { decision: plan.decision, charged: this.shouldCharge },
+      {
+        decision: plan.decision,
+        charged: this.shouldCharge,
+        chargedMessageCount: messageCount,
+        ...(memory.trace ? { memory: memory.trace } : {}),
+      },
     );
   }
 
@@ -709,10 +893,14 @@ class GuideV3Flow {
       ? plan.specs.slice(0, this.deps.maxCards)
       : plan.specs;
     const sourceText = this.deps.messages.map((m) => m.content).join("\n");
+    const hisMessages = this.deps.messages.filter((m) => m.isFromMe).map((m) =>
+      m.content
+    );
     const delivered: GuideV3CardView[] = [];
-    const removed: { slot: number; reason: string }[] = [];
+    const removed: GuideV3Trace["removed"][number][] = [];
     const scoring: { slot: number; words: readonly string[] }[] = [];
     const raws: { slot: number; messages: readonly string[] }[] = [];
+    const checks: CardChecks[] = [];
     const seen = new Set<number>();
     const state: {
       invalidLines: number;
@@ -734,7 +922,13 @@ class GuideV3Flow {
       seen.add(card.card);
       const out = finalizeCard(card, spec, sourceText);
       if (!out.ok) {
-        removed.push({ slot: card.card, reason: out.reason });
+        // 原文留在伺服器紀錄，誤擋時查得到；outcome log 只記原因。
+        removed.push({
+          slot: card.card,
+          reason: out.reason,
+          messages: card.messages,
+          ...(out.detail ? { detail: out.detail } : {}),
+        });
         return true;
       }
       const shown = cardView(
@@ -781,6 +975,7 @@ class GuideV3Flow {
       if (out.rawMessages) {
         raws.push({ slot: card.card, messages: out.rawMessages });
       }
+      checks.push(cardChecks(card.card, out.messages, spec, hisMessages));
       return true;
     };
 
@@ -792,6 +987,15 @@ class GuideV3Flow {
         { stage: "before_write", decision: plan.decision },
       );
     }
+    // 讀完到第一張卡還要約 2 秒、中間沒有事件：先送一則中性進度，App 照常顯示
+    // 進度文字（Eric 2026-10-18）。判讀照舊等第一張卡扣費後才送。
+    emit({
+      type: "analysis.progress",
+      phase: "writing",
+      runId: this.runId,
+      conversationHash: this.deps.conversationHash,
+      label: GUIDE_V3_WRITING_LABEL,
+    });
     try {
       const write = await this.deps.callWrite({
         runId: this.runId,
@@ -831,12 +1035,15 @@ class GuideV3Flow {
     }
 
     const { invalidLines, firstCardMs, stop, upstreamError } = state;
+    const herChars = herLastTurnChars(this.deps.messages);
     const traceExtra = {
       removed,
       invalidLines,
       scoringWords: scoring,
       rawMessages: raws,
       firstCardMs,
+      checks,
+      herLastTurnChars: herChars,
     };
     if (stop?.kind === "charge_failed") {
       return await this.fail(emit, stop.event, {
@@ -876,13 +1083,17 @@ class GuideV3Flow {
       : upstreamErrorEvent(upstreamError).code;
     const partial = upstreamError !== null ||
       delivered.length < deliverable.length;
+    // 卡都送完了才等記憶（通常早就好了）。
+    const memory = await this.settleMemory();
     await this.finish(
       emit,
       finalResult({
         read: view,
         cards: delivered,
         partial,
-        usage: this.usage(true),
+        usage: this.usage(
+          this.shouldCharge ? this.deps.quotaUsage.chargedMessageCount : 0,
+        ),
         telemetry: this.telemetry({
           shouldChargeQuota: this.shouldCharge,
           chargedMessageCount: this.shouldCharge
@@ -893,7 +1104,11 @@ class GuideV3Flow {
           cardsDelivered: delivered.length,
           ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         }),
-        trace: this.trace(tags, plan, traceExtra),
+        trace: this.trace(tags, plan, {
+          ...traceExtra,
+          ...(memory.trace ? { memory: memory.trace } : {}),
+        }),
+        targetProfile: memory.targetProfile,
       }),
       {
         decision: plan.decision,
@@ -905,7 +1120,11 @@ class GuideV3Flow {
         removedReasons: removed.map((r) => r.reason),
         invalidLines,
         scoringWordCards: scoring.length,
+        // C5 只記錄的檢查：數字與真假，不放卡片或她的字。
+        cardChecks: checks,
+        herLastTurnChars: herChars,
         ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
+        ...(memory.trace ? { memory: memory.trace } : {}),
       },
     );
   }

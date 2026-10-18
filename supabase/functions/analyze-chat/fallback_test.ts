@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
@@ -341,6 +342,60 @@ Deno.test("provider 4xx response body never reaches the error", async () => {
     assertEquals(error.message.includes("user-private-text"), false);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("an unparseable 200 body never reaches the logs, the error, or the attempt record", async () => {
+  // V8 的 JSON 解析錯誤會帶出錯位置附近的原文（例如對象的原話）；只能記代碼與長度。
+  const body = "SENTINEL-我每週都會去爬山 not json";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response(body, { status: 200 }));
+  const records: Array<Record<string, unknown>> = [];
+  const budget = new ModelCallBudget(
+    Date.now() + 60_000,
+    { stage: "test" },
+    (record) => records.push(record),
+  );
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+  const originalConsole = methods.map((m) => console[m]);
+  const logged: string[] = [];
+  for (const m of methods) {
+    console[m] = (...args: unknown[]) => {
+      logged.push(
+        args.map((a) => typeof a === "string" ? a : JSON.stringify(a)).join(
+          " ",
+        ),
+      );
+    };
+  }
+
+  let error: AiServiceError;
+  try {
+    error = await assertRejects(
+      () =>
+        callClaudeWithFallback(baseRequest(), "test-key", {
+          timeout: 1000,
+          maxRetries: 1,
+          allowModelFallback: false,
+          budget,
+        }),
+      AiServiceError,
+    );
+  } finally {
+    methods.forEach((m, i) => console[m] = originalConsole[i]);
+    globalThis.fetch = originalFetch;
+  }
+
+  assertEquals(error.code, "PARSE_ERROR");
+  assert(
+    logged.some((line) =>
+      line.includes("claude_response_parse_failed") &&
+      line.includes(`"responseLength":${body.length}`)
+    ),
+    "解析失敗照樣記一筆（代碼與長度）",
+  );
+  for (const text of [...logged, error.message, JSON.stringify(records)]) {
+    assertEquals(text.includes("SENTINEL"), false, text);
   }
 });
 

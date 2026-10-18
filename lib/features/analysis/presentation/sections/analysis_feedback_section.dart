@@ -4,6 +4,7 @@ import '../../../../core/services/app_haptics.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../helpers/analysis_feedback_payload.dart';
 
 /// 反饋區的動作介面：section 只發出使用者意圖，狀態變更、觸覺回饋與
 /// 送出流程全由 screen 實作。
@@ -15,6 +16,15 @@ abstract interface class AnalysisFeedbackActions {
   void submitNegativeFeedback();
   void dismissKeyboard();
 }
+
+/// 舊版（五種風格回覆）結果的負評分類。
+const _kReplyStyleFeedbackCategories = <(String, String)>[
+  ('too_direct', '太直接'),
+  ('unnatural', '不自然'),
+  ('too_long', '回覆太長'),
+  ('wrong_style', '不符合我的風格'),
+  ('other', '其他'),
+];
 
 /// 分析完成後的「這個建議有幫助嗎？」反饋區：讚/倒讚、倒讚展開的
 /// 分類表單與補充欄，以及已送出的致謝態。
@@ -28,6 +38,7 @@ class AnalysisFeedbackSection extends StatelessWidget {
     required this.includeContext,
     required this.commentController,
     required this.actions,
+    this.guideV3 = false,
   });
 
   final bool submitted;
@@ -38,14 +49,17 @@ class AnalysisFeedbackSection extends StatelessWidget {
   final TextEditingController commentController;
   final AnalysisFeedbackActions actions;
 
+  /// v3（任務卡）結果用 v3 的分類（Eric 2026-10-18）；舊快照照舊。
+  final bool guideV3;
+
   @override
   Widget build(BuildContext context) {
     if (submitted) {
       return Center(
         child: Text(
           '已收到你的回饋',
-          style: AppTypography.bodyMedium
-              .copyWith(color: AppColors.textSecondary),
+          style:
+              AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
         ),
       );
     }
@@ -100,11 +114,10 @@ class AnalysisFeedbackSection extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _categoryChip('too_direct', '太直接'),
-                    _categoryChip('unnatural', '不自然'),
-                    _categoryChip('too_long', '回覆太長'),
-                    _categoryChip('wrong_style', '不符合我的風格'),
-                    _categoryChip('other', '其他'),
+                    for (final (value, label) in guideV3
+                        ? kGuideV3FeedbackCategories
+                        : _kReplyStyleFeedbackCategories)
+                      _categoryChip(value, label),
                   ],
                 ),
                 const SizedBox(height: 16),

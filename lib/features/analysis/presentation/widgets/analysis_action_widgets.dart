@@ -21,6 +21,7 @@ Widget? buildAnalysisFloatingOverlay({
   required VoidCallback? onFollowProgress,
   bool isFollowing = false,
   bool streamInterrupted = false,
+  String? quotaLine,
 }) {
   if ((isAnalyzing && !analysisCompleted) || streamInterrupted) {
     return AnalysisScrollHint(
@@ -30,7 +31,7 @@ Widget? buildAnalysisFloatingOverlay({
     );
   }
   if (showStartAction) {
-    return FloatingAnalysisActionButton(onPressed: onStart);
+    return FloatingAnalysisActionButton(onPressed: onStart, caption: quotaLine);
   }
   return null;
 }
@@ -80,12 +81,18 @@ class AnalysisSideCenterFabLocation extends FloatingActionButtonLocation {
 class FloatingAnalysisActionButton extends StatefulWidget {
   static const buttonKey = ValueKey('floating-analysis-action');
   static const orbKey = ValueKey('floating-analysis-orb');
+  static const captionKey = ValueKey('floating-analysis-caption');
 
   final VoidCallback? onPressed;
+
+  /// 圓鈕下面的一行字（額度夠時寫「這次會用 N 則，剩 M 則」，按下去就直接開始，
+  /// 不再跳確認框；Eric 2026-10-18）。null＝不顯示。
+  final String? caption;
 
   const FloatingAnalysisActionButton({
     super.key,
     required this.onPressed,
+    this.caption,
   });
 
   @override
@@ -134,7 +141,7 @@ class _FloatingAnalysisActionButtonState
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
 
-    return Semantics(
+    final orb = Semantics(
       button: true,
       enabled: enabled,
       label: '使用目前對話開始分析',
@@ -284,6 +291,35 @@ class _FloatingAnalysisActionButtonState
           ),
         ),
       ),
+    );
+    final caption = widget.caption;
+    if (caption == null) return orb;
+    // 圓鈕貼著右緣，字從右邊對齊往左長，不壓到圓鈕。這行只是說明：點擊直接穿過
+    // 去，不擋住底下的訊息或按鈕。
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        orb,
+        IgnorePointer(
+          child: Container(
+            key: FloatingAnalysisActionButton.captionKey,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.brandInk.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            ),
+            child: Text(
+              caption,
+              style: AppTypography.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

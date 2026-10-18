@@ -283,17 +283,16 @@ class _SavedGuideV3Card extends StatefulWidget {
 class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
   final _edited = <int, List<String>>{};
 
-  Future<void> _edit(GuideV3Card card) async {
-    final edited = await showGuideV3EditSheet(
-      context,
-      messages: _edited[card.slot] ?? card.messages,
-    );
-    if (edited == null || !mounted) return;
-    setState(() => _edited[card.slot] = edited);
-    await widget.onCopy(
-      edited.join('\n'),
-      message: edited.length == 1 ? '已複製這句' : '已複製這組訊息',
-    );
+  /// 存好回傳每一則；複製哪一則由卡片決定（兩則以上從第 1 則開始）。
+  Future<List<String>?> _edit(GuideV3Card card) async {
+    final shown = _edited[card.slot] ?? card.messages;
+    final edited = await showGuideV3EditSheet(context, messages: shown);
+    if (edited == null || !mounted) return null;
+    // 沒改字就直接複製：不標「已改成你的」，編的細節提醒照留。
+    if (guideV3EditChanged(shown, edited)) {
+      setState(() => _edited[card.slot] = edited);
+    }
+    return edited;
   }
 
   @override

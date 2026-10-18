@@ -37,10 +37,11 @@ import {
 } from "./refine_allowance.ts";
 import { validateRefineInstruction } from "./refine_instruction.ts";
 import {
+  buildRefineSystemPrompt,
   buildRefineUserSection,
-  REFINE_REPLY_SYSTEM_PROMPT,
   sanitizeRefineInstructionForPrompt,
 } from "./refine_prompt.ts";
+import { parseGuideV3RefineCard } from "./guide_v3/refine_card.ts";
 import {
   computeBillingPayloadHash,
   MAX_BILLABLE_CHARS,
@@ -86,6 +87,7 @@ import {
   billingMessagesFor,
   guideV3MaxCards,
   guideV3Mode,
+  shouldExtractGuideV3Memory,
   shouldUseGuideV3,
 } from "./guide_v3/routing.ts";
 import {
@@ -93,6 +95,7 @@ import {
   ANALYSIS_CONTRACT_VERSION_V3,
   parseAnalysisContractVersion,
 } from "./no_send_decision.ts";
+import { checkClientBuildGate } from "./client_build_gate.ts";
 import { selectModel, VALID_FORCE_MODELS } from "./model_selection.ts";
 import {
   enforceMyMessageEssentialGate,
@@ -106,6 +109,7 @@ import {
 } from "./recognize_flow.ts";
 import {
   buildOptimizeReplayResponse,
+  checkGuideV3RefineDelivery,
   consumeRefineFreeAllowanceForUser,
   projectRefineFreeAllowanceForUser,
   resolveOptimizeIdentity,
@@ -168,14 +172,15 @@ import {
 } from "./tier_sync_contract.ts";
 
 // 訊息制額度
-const TIER_MONTHLY_LIMITS: Record<string, number> = {
-  free: 30,
+export const TIER_MONTHLY_LIMITS: Record<string, number> = {
+  // 跟 _shared/quota.ts 同步：免費 50／20（Eric 2026-10-18）；tier_limits_parity_test.ts 鎖住兩份一致。
+  free: 50,
   starter: 300,
   essential: 800,
 };
 
-const TIER_DAILY_LIMITS: Record<string, number> = {
-  free: 15,
+export const TIER_DAILY_LIMITS: Record<string, number> = {
+  free: 20,
   starter: 50,
   essential: 120,
 };
@@ -329,6 +334,7 @@ async function handleAnalyzeChat(
       userDraft: rawUserDraft,
       refineInstruction: rawRefineInstruction,
       refineAnchorText: rawRefineAnchorText,
+      guideV3Card: rawGuideV3Card,
       forceModel: rawForceModel,
       analyzeMode: rawAnalyzeMode,
       recognizeOnly: rawRecognizeOnly,
@@ -448,6 +454,23 @@ async function handleAnalyzeChat(
     );
     if (!contractParse.ok) {
       return jsonResponse({ error: "Invalid analysisContractVersion" }, 400);
+    }
+    // 最低 App 版本閘門（Eric 2026-10-18，MIN_CLIENT_BUILD 沒設＝關）：只擋對話
+    // 分析的新分析，開場救星、新話題、潤飾／微調、我說、截圖辨識、續看都放行。
+    // 放在任何訂閱／額度／模型工作之前，擋下不扣費；細節見 client_build_gate.ts。
+    const clientBuildGate = checkClientBuildGate({
+      minClientBuild: Deno.env.get("MIN_CLIENT_BUILD"),
+      clientBuild: requestBody.clientBuild,
+      isNewChatAnalysis: plainAnalyzeRequest && !isStreamRetryMode,
+      streaming: responseMode === "stream",
+    });
+    if (clientBuildGate.blocked) {
+      logInfo("client_build_gate_blocked", {
+        user: summarizeUser(user.id),
+        minClientBuild: clientBuildGate.minClientBuild,
+        clientBuild: clientBuildGate.clientBuild,
+      });
+      return clientBuildGate.response;
     }
     const noSendDecisions = contractParse.value >=
       ANALYSIS_CONTRACT_VERSION_V2;
@@ -811,6 +834,28 @@ async function handleAnalyzeChat(
     const refineAnchorText = typeof rawRefineAnchorText === "string"
       ? rawRefineAnchorText.trim().slice(0, MAX_USER_DRAFT_LENGTH)
       : undefined;
+
+    // 任務卡的再調（Eric 2026-10-18）：只在微調時看；帶了就要是出卡用的代碼，
+    // 否則 400、0 扣費。潤飾請求帶了也不理。卡片規格不進伺服器 input hash
+    // （新舊 Edge 同一次請求同一個 hash，見 optimize_message_billing.ts）。
+    const guideV3CardParse = refineInstruction === undefined
+      ? { kind: "absent" as const }
+      : parseGuideV3RefineCard(rawGuideV3Card);
+    if (guideV3CardParse.kind === "error") {
+      return jsonResponse({
+        error: "Invalid guideV3Card",
+        code: "INVALID_GUIDE_V3_CARD",
+        message: "這張卡的資料格式有誤，請更新 App 後再試。本次不會扣額度。",
+        shouldChargeQuota: false,
+      }, 400);
+    }
+    const guideV3Card = guideV3CardParse.kind === "ok"
+      ? guideV3CardParse.card
+      : null;
+    // 任務卡定稿的英文詞檢查要對話全文（她跟他傳過的字）。
+    const guideV3SourceText = guideV3Card
+      ? messages.map((m) => m.content).join("\n")
+      : "";
 
     const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
     if (sessionContextValidation.error) {
@@ -1248,12 +1293,28 @@ ${recentText}`;
     // so this block now only handles usage sync and returning the stored
     // result without re-charging.
     if (isOptimizeMessageMode && optimizeReplayResult !== null) {
+      let replayResult = optimizeReplayResult;
+      // 任務卡的再調（主審第 2 輪）：帳本裡的那一份可能是還沒升版的 Edge 給的，照這次的
+      // 卡片規格再定稿、通過才標記；沒過回跟新結果一樣的擋下碼，重播不扣。
+      if (isRefineReplyMode && guideV3Card) {
+        const delivered = checkGuideV3RefineDelivery({
+          result: replayResult,
+          guideV3Card,
+          userDraft,
+          requestId: optimizeRequestId,
+          userId: user.id,
+          actualModel: model,
+          sourceText: guideV3SourceText,
+        });
+        if (delivered.kind === "response") return delivered.response;
+        replayResult = delivered.result;
+      }
       return await buildOptimizeReplayResponse({
         supabase,
         userId: user.id,
         accountIsTest,
         requestId: optimizeRequestId,
-        replayResult: optimizeReplayResult,
+        replayResult,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
         monthlyLimit,
@@ -1447,7 +1508,7 @@ ${recentText}`;
     const systemPrompt = recognizeOnly
       ? OCR_RECOGNIZE_ONLY_SYSTEM_PROMPT
       : (isRefineReplyMode
-        ? REFINE_REPLY_SYSTEM_PROMPT
+        ? buildRefineSystemPrompt(guideV3Card)
         : (isOptimizeMessageMode
           ? OPTIMIZE_MESSAGE_PROMPT
           : (isMyMessageMode ? MY_MESSAGE_PROMPT : SYSTEM_PROMPT)));
@@ -1548,6 +1609,7 @@ ${recentText}`;
             draft: userDraft.trim(),
             instruction: refineInstruction!,
             anchorText: refineAnchorText,
+            cardMessages: guideV3Card !== null,
           }),
         )
         : joinPromptSections(
@@ -1620,6 +1682,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         !!(userDraft && typeof userDraft === "string" && userDraft.trim()),
       // 只記「有沒有帶指令」與「打模型前剩幾次免費」，指令文字絕不進 ai_logs。
       hasRefineInstruction: isRefineReplyMode,
+      // 任務卡的再調只記任務代碼（固定值、不含字）；一般微調是 null。
+      guideV3RefineTask: guideV3Card?.task ?? null,
       refineFreeRemainingBefore: refineFreeProjection?.remaining ?? null,
       imageCount: hasImages ? images.length : 0,
       totalImageBytes: Math.round(totalImageBytes),
@@ -1713,6 +1777,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           requestType,
           tier: effectiveTier,
           recordAiCall,
+          // 對象記憶另一個開關（off／test／on，每次請求讀）；沒開就不多打。
+          memory: shouldExtractGuideV3Memory({
+            mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_MEMORY")),
+            accountIsTest,
+          }),
         }),
         log: (event, metadata, level) =>
           (level === "error" ? logError : logInfo)(event, {
@@ -2131,16 +2200,23 @@ Return \`optimizedMessage\` in the structured JSON response.`,
     // optimize_refine_flow.ts；含 unusable 亂碼防呆、client shape、
     // 微調輸出過長與安全守門專屬文案。
     if (isOptimizeMessageMode) {
-      const optimizeOutcomeResponse = validateOptimizeOutcome({
+      const optimizeOutcome = validateOptimizeOutcome({
         result,
         isRefineReplyMode,
         userDraft,
         requestId: optimizeRequestId,
         userId: user.id,
         actualModel,
+        guideV3Card,
+        sourceText: guideV3SourceText,
       });
-      if (optimizeOutcomeResponse !== null) return optimizeOutcomeResponse;
+      if (optimizeOutcome.kind === "response") return optimizeOutcome.response;
+      result = optimizeOutcome.result;
     }
+    // 任務卡的再調：剛定稿、要交給結算的那一份（結算拿回的若不是它，就是帳本裡別次寫的）。
+    const guideV3CheckedText = isRefineReplyMode && guideV3Card
+      ? (result.optimizedMessage as Record<string, unknown>).optimized as string
+      : null;
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {
         warnings?: Array<{ type?: string }>;
@@ -2260,6 +2336,23 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       optimizeSettledReportedCharge = settlementOutcome.reportedCharge;
       optimizeSettledMonthlyUsed = settlementOutcome.monthlyUsed;
       optimizeSettledDailyUsed = settlementOutcome.dailyUsed;
+      // 任務卡的再調：結算拿回的就是剛定稿的那一份就直接標記；不一樣的話是並行重試時
+      // 別次請求寫進帳本的那一列（可能是還沒升版的 Edge），照這次的規格再定稿——沒過回
+      // 擋下的碼，這次沒有另外扣（帳本已有那一列，結算不會再扣）。
+      if (isRefineReplyMode && guideV3Card) {
+        const delivered = checkGuideV3RefineDelivery({
+          result,
+          guideV3Card,
+          userDraft,
+          requestId: optimizeRequestId,
+          userId: user.id,
+          actualModel,
+          sourceText: guideV3SourceText,
+          alreadyCheckedText: guideV3CheckedText,
+        });
+        if (delivered.kind === "response") return delivered.response;
+        result = delivered.result;
+      }
     }
 
     // Update usage count（測試帳號、純識別模式不扣額度）。Streaming

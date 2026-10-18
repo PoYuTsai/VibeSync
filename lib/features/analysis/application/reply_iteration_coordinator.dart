@@ -12,6 +12,7 @@ library;
 import '../../conversation/domain/entities/session_context.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/analysis_telemetry.dart';
+import '../domain/entities/guide_v3_result.dart';
 import '../domain/entities/optimize_message_pending_request.dart';
 import '../domain/errors/analysis_exceptions.dart';
 import 'analysis_run_preparer.dart';
@@ -148,20 +149,27 @@ class ReplyIterationCoordinator {
   }
 
   /// 讀回同一原句最近一次微調稿。讀失敗就當作沒有草稿：這只是方便用的
-  /// 快取，不能為了它擋住面板。
+  /// 快取，不能為了它擋住面板。任務卡只讀同一個卡片規格存的稿。
   Future<ReplyRefineDraftSnapshot?> restoreRefineDraft({
     required String ownerUserId,
     required String originText,
+    GuideV3RefineSpec? guideV3Card,
   }) async {
     try {
       return await _draftStore.loadFor(
         ownerUserId: ownerUserId,
         originText: originText,
+        scope: _draftScope(guideV3Card),
       );
     } catch (_) {
       return null;
     }
   }
+
+  /// 草稿分區：任務卡依卡片規格（任務、口吻、做法）分開，跟一般微調也分開。
+  static String? _draftScope(GuideV3RefineSpec? card) => card == null
+      ? null
+      : 'guide_v3:${card.task}:${card.voice}:${card.method}';
 
   /// 回覆微調一輪：與潤飾共用同一條 exactly-once 帳本；指令進 fingerprint，
   /// 同一句話的兩種指令不會共用同一顆 requestId 而 replay 出上一輪結果。
@@ -169,6 +177,9 @@ class ReplyIterationCoordinator {
   /// 順序不能反：先把已付費結果落到本機暫存，成功了才輪到畫面在可見幀後
   /// markSuccess。存檔失敗時保留 pending（restorable=false），同一份輸入的
   /// 下一次送出會走 replay 拿回同一個結果，不重複扣費。
+  ///
+  /// [guideV3Card]＝任務卡的再調：卡片規格跟指令一樣進 fingerprint 與請求，
+  /// 計費照回覆微調。
   Future<RefineRoundResult?> runRefineRound({
     required String ownerUserId,
     required AuxiliaryAnalysisContext context,
@@ -178,6 +189,7 @@ class ReplyIterationCoordinator {
     required String anchorText,
     required Future<bool> Function() onReadyToSend,
     required AnalysisTelemetryCallback onTelemetry,
+    GuideV3RefineSpec? guideV3Card,
   }) async {
     final fingerprint = _billing.fingerprintFor(
       messages: context.requestMessages,
@@ -188,6 +200,7 @@ class ReplyIterationCoordinator {
       effectiveStyleContext: context.effectiveStyleContext,
       knownContactName: context.knownContactName,
       refineInstruction: instruction,
+      guideV3Card: guideV3Card,
     );
     final outcome = await _billing.run(
       ownerUserId: ownerUserId,
@@ -206,11 +219,22 @@ class ReplyIterationCoordinator {
           // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
           // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
           refineAnchorText: anchorText,
+          guideV3Card: guideV3Card,
           requestId: pending.requestId,
           onTelemetry: onTelemetry,
         );
         final refined = result.optimizedMessage?.optimized.trim();
-        if (refined == null || refined.isEmpty) {
+        // 任務卡：只收伺服器標了「已過任務卡定稿」的結果（主審第 2 輪；還沒升版的 Edge
+        // 不會標），原稿有空格時也要照則留住空格。擋下用的錯誤碼不在 runner 的換身分
+        // 清單裡：同一份輸入再按帶同一顆 requestId，伺服器 replay、不再扣。
+        if (refined == null ||
+            refined.isEmpty ||
+            (guideV3Card != null &&
+                (result.rawResponse?['guideV3CardChecked'] != true ||
+                    !guideV3RefineKeepsBlanks(
+                      _cardLines(currentText),
+                      _cardLines(refined),
+                    )))) {
           throw AnalysisException(
             '這次沒有調出可用的版本，請再試一次。',
             code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
@@ -238,6 +262,7 @@ class ReplyIterationCoordinator {
         originText: anchorText,
         refinedText: refinedText,
         requestId: pending.requestId,
+        scope: _draftScope(guideV3Card),
       );
       restorable = true;
     } catch (_) {}
@@ -252,6 +277,13 @@ class ReplyIterationCoordinator {
       restorable: restorable,
     );
   }
+
+  /// 任務卡的幾則用換行接成一段送（伺服器回來也是一則一行）。
+  static List<String> _cardLines(String text) => text
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
 
   /// 微調後複製的獨立事件 key。原卡的 adviceId 是決定論的，覆寫它污染的
   /// 不只是統計：outcome digest 會回注 coach prompt，教練會以為你送出的是

@@ -324,14 +324,16 @@ export async function callClaudeWithFallback(
         let data;
         try {
           data = JSON.parse(responseText);
-        } catch (parseError) {
+        } catch {
+          // 解析錯誤的訊息會帶出錯位置附近的原文（可能是用戶或對象的話）：
+          // 紀錄與錯誤訊息都只放固定代碼與長度。
           logWarn("claude_response_parse_failed", {
             model: currentModel,
             responseLength: responseText.length,
-            error: getErrorMessage(parseError),
+            code: "PARSE_ERROR",
           });
           throw new AiServiceError(
-            `Failed to parse Claude response: ${getErrorMessage(parseError)}`,
+            `Failed to parse Claude response (${responseText.length} chars).`,
             "PARSE_ERROR",
             false,
           );

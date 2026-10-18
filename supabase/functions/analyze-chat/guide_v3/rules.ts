@@ -2,11 +2,12 @@
 // 挑情境條目，以及給用戶看的判斷。函式不用 C1–C4 命名（測試裡的「C1–C4」已被畫面重構用掉）。
 //
 // 規則先後（前面的蓋過後面的；rules_prompts_test.ts「規則先後」逐組釘住）：
-// 1. 自傷訊號：關心訊息，不出卡（plan.ts，比這裡所有規則都先）。
-// 2. 他是最後一則：先別回。
-// 3. 明確拒絕或封鎖：停。
+// 1. 自傷訊號、涉及未成年：固定訊息，不出卡（plan.ts，比這裡所有規則都先；自傷再先於未成年）。
+// 2. 明確拒絕或封鎖：停（被封鎖時最常是他最後一則，要先判，不能落到先別回；Eric 2026-10-18）。
+// 3. 他是最後一則：先別回。
 // 4. B47（指定店家、換地方不肯）：照常出卡，只排「推進（換地方）、收、推進」，判斷換成固定提醒；
-//    不受 B46 不排推進、她直接問他時第一張排接住、婉拒收尾影響。
+//    不受 B46 不排推進、她直接問他時第一張排接住、婉拒收尾影響。沒有 B47 時，讀局面標到風險就
+//    不排推進，判斷換成金錢、詐騙的固定提醒。
 // 5. 他連續主動兩次、她都只回敷衍的字：先別回。
 // 6. 她取消約會：照常出卡（推進：改天或說定）；婉拒或界線：一張收尾。
 // 7. 排卡：B46 不排推進，蓋過「她給了機會至少一張推進」；B43–B46 帶張力改排接住，
@@ -39,18 +40,19 @@ export function perfunctoryStreak(
   return count;
 }
 
-/// C1 要不要回。v3 的順序：他是最後一則先別回；明確拒絕或封鎖就停；他連續主動兩次、
-/// 她都只回敷衍的字就先別回（不附備用句）；她取消約會不是只回收尾（交給推進）；
-/// 她婉拒或說了界線就一句中性收尾；其他照常回（她只冷一次也照常回）。
+/// C1 要不要回。v3 的順序：明確拒絕或封鎖就停（她拒絕後他又追問、或被封鎖時他是最後
+/// 一則，也是停）；他是最後一則先別回；他連續主動兩次、她都只回敷衍的字就先別回（不附
+/// 備用句）；她取消約會不是只回收尾（交給推進）；她婉拒或說了界線就一句中性收尾；其他
+/// 照常回（她只冷一次也照常回）。
 export function decideReply(
   turns: readonly Turn[],
   tags: ReadTags,
 ): ReplyDecision {
-  if (turns.length === 0 || turns.at(-1)!.fromMe) {
-    return { kind: "hold", reason: "他的訊息是最後一則" };
-  }
   if (tags.blocked || tags.explicitRejection) {
     return { kind: "stop", reason: "明確拒絕或封鎖" };
+  }
+  if (turns.length === 0 || turns.at(-1)!.fromMe) {
+    return { kind: "hold", reason: "他的訊息是最後一則" };
   }
   // B47（v3.3 第一輪：讀局面會把「她不肯換地方」也標成婉拒，結果只剩一張收尾）：
   // 不當婉拒收尾，照 Bruce 出「堅持換地方」和「這次先不約」兩種卡。
@@ -77,6 +79,9 @@ export const NO_TENSION_ENTRIES: readonly string[] = [
 ];
 /// 標到 B46（她對自己的投入不好意思）時不排推進。
 export const NO_PUSH_ENTRIES: readonly string[] = ["B46"];
+/// B33（兩次提案都被帶過）：不再排推進，照常聊（Bruce 已定的規格，Eric 2026-10-18 要程式照做）。
+/// 她自己提見面或明確答應時照常推進：B33 的寫法本來就是等她自己開口。
+export const BRUSHED_OFF_TWICE_ENTRY = "B33";
 /// B47：她約第一次見面指定某家酒吧或餐廳，他提議換地方她不肯。
 export const SCAM_VENUE_ENTRY = "B47";
 export const SCAM_VENUE_WARNING =
@@ -105,6 +110,11 @@ export function decidePush(
     tags.herMoodBad || tags.drunkOrLateNight || tags.retreating || tags.risk ||
     tags.light === "red"
   ) return null;
+  if (
+    matched.has(BRUSHED_OFF_TWICE_ENTRY) &&
+    tags.inviteReadiness !== "她自己提見面" &&
+    tags.inviteReadiness !== "明確答應"
+  ) return null;
   switch (tags.inviteReadiness) {
     case "明確答應":
       return "說定";
@@ -120,7 +130,8 @@ export function decidePush(
   if (tags.herMove === "開窗") return "具體邀約";
   const hisTurns = turns.filter((t) => t.fromMe).length;
   const herTurns = turns.length - hisTurns;
-  if (tags.light === "green" && hisTurns >= 2 && herTurns >= 2) return "種子";
+  // 種子不用等綠燈（Bruce 10/13）：黃燈聊開了也種；紅燈上面已經擋掉。
+  if (hisTurns >= 2 && herTurns >= 2) return "種子";
   return null;
 }
 
@@ -319,12 +330,20 @@ export function pickEntries(
     .map((id) => enabled.get(id)!);
 }
 
+/// 金錢、詐騙的固定提醒（Eric 2026-10-18 盤點預設）：讀局面標到風險（剛認識就熱得不合理，
+/// 或只在要他花錢、送禮、幫忙時才熱）時顯示，所以用「例如」列常見的訊號；推進卡由
+/// decidePush 拿掉。只看模型的標記：關鍵字會把「借我 5 分鐘」「理專講投資」誤判（主審第 1 輪），
+/// 10/18 黑箱裡模型的 risk 5/5 都判對。
+export const MONEY_RISK_WARNING =
+  "這段對話有感情詐騙常見的訊號，例如剛認識就很熱絡，或聊到借錢、匯款、投資、下載 App。先不要轉帳或儲值，也別照她給的連結或 App 操作。";
+
 /// 給用戶看的局面判讀；標到 B47 時整段換成固定的酒托、飯托提醒，不用模型寫的
-/// （v3.3 第一輪：模型的判讀兩次寫「順著她的選擇比較穩」，跟提醒互相矛盾）。
+/// （v3.3 第一輪：模型的判讀兩次寫「順著她的選擇比較穩」，跟提醒互相矛盾）。標到風險時
+/// 同樣整段換成金錢、詐騙的固定提醒（B47 優先，它有自己的提醒與換地方的卡）。
 export function judgmentFor(
-  tags: Pick<ReadTags, "readForUser" | "matchedEntries">,
+  tags: Pick<ReadTags, "readForUser" | "matchedEntries" | "risk">,
 ): string {
-  return matchedSet(tags).has(SCAM_VENUE_ENTRY)
-    ? SCAM_VENUE_WARNING
-    : tags.readForUser.trim();
+  if (matchedSet(tags).has(SCAM_VENUE_ENTRY)) return SCAM_VENUE_WARNING;
+  if (tags.risk) return MONEY_RISK_WARNING;
+  return tags.readForUser.trim();
 }

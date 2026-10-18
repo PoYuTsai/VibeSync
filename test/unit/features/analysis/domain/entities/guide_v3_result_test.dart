@@ -9,6 +9,7 @@ Map<String, dynamic> _read({
   List<Object?>? plannedCards,
   String? waitFor,
   String? careMessage,
+  String? careKind,
 }) {
   return {
     'guideVersion': 'v3.4',
@@ -17,6 +18,7 @@ Map<String, dynamic> _read({
     'judgment': judgment,
     if (waitFor != null) 'waitFor': waitFor,
     if (careMessage != null) 'careMessage': careMessage,
+    if (careKind != null) 'careKind': careKind,
     'plannedCards': plannedCards ??
         [
           {'slot': 1, 'task': 'accept', 'locked': false},
@@ -99,6 +101,21 @@ void main() {
       expect(care.decision.hasCards, isFalse);
     });
 
+    test('固定訊息的種類：未成年另外認；沒帶（舊快照）或認不得都當自傷關心；不是 care 就沒有', () {
+      GuideV3Read care(String? kind) => GuideV3Read.fromJson(_read(
+            decision: 'care',
+            plannedCards: const [],
+            careMessage: '固定文案',
+            careKind: kind,
+          ))!;
+      expect(care('minor').careKind, GuideV3CareKind.minor);
+      expect(care('self_harm').careKind, GuideV3CareKind.selfHarm);
+      expect(care(null).careKind, GuideV3CareKind.selfHarm);
+      expect(care('other').careKind, GuideV3CareKind.selfHarm);
+      final send = GuideV3Read.fromJson(_read(careKind: 'minor'))!;
+      expect(send.careKind, isNull);
+    });
+
     test('讀不懂的決定整個不收；讀不懂的燈號只是不顯示', () {
       expect(GuideV3Read.fromJson(_read(decision: 'maybe')), isNull);
       expect(GuideV3Read.fromJson('not a map'), isNull);
@@ -146,6 +163,68 @@ void main() {
       expect(card.raw['method'], 'reaction');
     });
 
+    test('再調用的卡片規格：任務、口吻、做法都是伺服器的代碼；舊快照缺欄位就不給', () {
+      final card = GuideV3Card.fromJson(_card(1, task: 'push'))!;
+      expect(
+        card.refineSpec,
+        const GuideV3RefineSpec(
+          task: 'push',
+          voice: 'default',
+          method: 'reaction',
+        ),
+      );
+      expect(card.refineSpec!.toJson(), {
+        'task': 'push',
+        'voice': 'default',
+        'method': 'reaction',
+      });
+      final his = GuideV3Card.fromJson({
+        ..._card(2, task: 'tension'),
+        'voice': 'his',
+        'method': 'blank',
+      })!;
+      expect(his.refineSpec!.voice, 'his');
+      expect(his.refineSpec!.method, 'blank');
+      for (final broken in [
+        {'voice': null},
+        {'method': null},
+        {'voice': '照他'},
+        {'method': '留空格'},
+        {'method': 3},
+      ]) {
+        final raw = {..._card(3), ...broken}
+          ..removeWhere((_, value) => value == null);
+        expect(GuideV3Card.fromJson(raw)!.refineSpec, isNull,
+            reason: '$broken');
+      }
+    });
+
+    test('再調結果要照則留住空格：原稿有空格才查，則數與每一則的段數都要一樣', () {
+      expect(guideV3BlankRuns('我做＿＿，住＿和＿＿'), 3);
+      expect(guideV3BlankRuns('沒有空格'), 0);
+      // 原稿沒有空格：不查（多出空格的話，卡片的複製規則會要他先填）。
+      expect(guideV3RefineKeepsBlanks(['好啊'], ['好啊，週末去＿＿']), isTrue);
+      expect(
+        guideV3RefineKeepsBlanks(['我做＿＿', '住＿＿'], ['我做＿＿啦', '住＿＿附近']),
+        isTrue,
+      );
+      // 空格被填成編的。
+      expect(
+        guideV3RefineKeepsBlanks(['我是＿＿', '週末常去＿＿'], ['我是工程師', '週末常爬山']),
+        isFalse,
+      );
+      // 總數一樣、但挪了則（主審第 1 輪 P2-5 的例子）。
+      expect(
+        guideV3RefineKeepsBlanks(['我做＿＿', '住＿＿'], ['我做設計', '住＿＿，週末去＿＿']),
+        isFalse,
+      );
+      // 兩則被併成一則。
+      expect(
+        guideV3RefineKeepsBlanks(['我做＿＿', '住＿＿'], ['我做＿＿，住＿＿']),
+        isFalse,
+      );
+    });
+
     test('形狀不對就不收', () {
       expect(GuideV3Card.fromJson(_card(0)), isNull);
       expect(GuideV3Card.fromJson(_card(1, task: 'coldRead')), isNull);
@@ -187,6 +266,20 @@ void main() {
 
     test('判讀壞掉整個結果不收', () {
       expect(GuideV3Result.fromJson(_final(read: {'decision': 'x'})), isNull);
+    });
+
+    test('潤飾入口只在出卡與收尾給：先別回、停、固定訊息都不給', () {
+      bool offers(String decision) => GuideV3Result.fromJson({
+            'guideVersion': 'v3.5',
+            'read': _read(decision: decision, plannedCards: const []),
+            'cards': const [],
+          })!
+              .offersDraftPolish;
+      expect(offers('send'), isTrue);
+      expect(offers('close'), isTrue);
+      expect(offers('hold'), isFalse);
+      expect(offers('stop'), isFalse);
+      expect(offers('care'), isFalse);
     });
 
     test('關心沒有卡、不扣費', () {

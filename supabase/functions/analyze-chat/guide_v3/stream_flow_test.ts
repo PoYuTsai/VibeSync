@@ -8,14 +8,24 @@ import type {
   ChargeStreamRunV3Input,
 } from "../stream_run_store.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
+import { MEMORY_SCHEMA, memorySystemPrompt } from "./memory.ts";
 import type { ReadTags } from "./read_tags.ts";
-import { HOLD_WAIT_FALLBACK } from "./plan.ts";
 import {
+  HOLD_WAIT_FALLBACK,
+  STOP_REASON_CARE,
+  STOP_REASON_MINOR,
+} from "./plan.ts";
+import type { GuideV3Background } from "./prompts.ts";
+import { MONEY_RISK_WARNING } from "./rules.ts";
+import {
+  GUIDE_V3_WRITING_LABEL,
+  type GuideV3ExtractRequest,
   type GuideV3StreamDeps,
   handleGuideV3Stream,
   STOP_CONDITION_CARE,
+  STOP_CONDITION_MINOR,
 } from "./stream_flow.ts";
-import { CARE_MESSAGE } from "./wire.ts";
+import { CARE_MESSAGE, MINOR_MESSAGE } from "./wire.ts";
 
 const T0 = Date.parse("2026-10-16T00:00:00.000Z");
 
@@ -33,6 +43,7 @@ function tags(over: Partial<ReadTags> = {}): ReadTags {
     blocked: false,
     risk: false,
     selfHarmSignal: false,
+    minorSignal: false,
     needsHisFacts: false,
     identityQuestion: false,
     hisStatedFacts: [],
@@ -118,7 +129,11 @@ function harness(opts: {
   /// 寫卡請求的提示詞（測試看送了幾張卡的規格）。
   writeRequests?: { user: string }[];
   readError?: Error;
-  messages?: { isFromMe: boolean; content: string }[];
+  messages?: {
+    isFromMe: boolean;
+    content: string;
+    quotedReplyPreview?: string;
+  }[];
   writeParts?: string[];
   writeError?: Error;
   writeFailAfter?: Error;
@@ -143,6 +158,14 @@ function harness(opts: {
   analysisRunId?: string | null;
   existingRun?: AnalysisStreamRun;
   now?: number;
+  background?: GuideV3Background;
+  /// 對象記憶的替身（開關開）；沒給＝開關沒開，不會有這個呼叫。
+  extract?: (req: GuideV3ExtractRequest) => Promise<{
+    text: string;
+    model: string;
+  }>;
+  extractRequests?: GuideV3ExtractRequest[];
+  memoryWaitMs?: number;
 } = {}): Harness {
   const calls: string[] = [];
   const charges: ChargeStreamRunV3Input[] = [];
@@ -276,6 +299,19 @@ function harness(opts: {
       heartbeatIntervalMs: 0,
       waitUntil: (task) => tasks.push(task),
       maxCards: opts.maxCards ?? null,
+      ...(opts.background ? { background: opts.background } : {}),
+      ...(opts.extract
+        ? {
+          callExtract: (req: GuideV3ExtractRequest) => {
+            calls.push("extract");
+            opts.extractRequests?.push(req);
+            return opts.extract!(req);
+          },
+        }
+        : {}),
+      ...(opts.memoryWaitMs !== undefined
+        ? { memoryWaitMs: opts.memoryWaitMs }
+        : {}),
     },
   };
   return h;
@@ -295,6 +331,7 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
   const evs = await events(await handleGuideV3Stream(h.deps));
   assertEquals(types(evs), [
     "analysis.started",
+    "analysis.progress",
     "analysis.read",
     "analysis.card",
     "analysis.card",
@@ -319,7 +356,7 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
     (charge.recommendationJson.firstCard as { messages: string[] }).messages,
     ["腿斷了還能打字，看來還撐得住"],
   );
-  const read = evs[1];
+  const read = evs[2];
   assertEquals(read.decision, "send");
   assertEquals(read.plannedCards, [
     { slot: 1, task: "accept", locked: false },
@@ -328,8 +365,8 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
     { slot: 4, task: "tension", locked: false },
   ]);
   // 預設口吻：妳 → 你。
-  assertEquals(evs[5].messages, ["你這樣說我反而想看你爬山的樣子"]);
-  const client = evs[6].finalResult as Record<string, unknown>;
+  assertEquals(evs[6].messages, ["你這樣說我反而想看你爬山的樣子"]);
+  const client = evs[7].finalResult as Record<string, unknown>;
   assertEquals((client.cards as unknown[]).length, 4);
   assertEquals(client.partial, false);
   assert(!("guideV3Trace" in client), "伺服器專用欄位不送 App");
@@ -343,13 +380,40 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
   }]);
 });
 
-Deno.test("扣費還沒完成時，判讀和卡都還沒送出", async () => {
+Deno.test("寫卡前的中性進度：只有固定的字，不帶判讀、燈號或卡；不寫卡的決定沒有這則", async () => {
+  const h = harness();
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1], {
+    type: "analysis.progress",
+    phase: "writing",
+    runId: "run-1",
+    conversationHash: "hash-1",
+    label: "看完了，正在寫回覆",
+  });
+  assertEquals(GUIDE_V3_WRITING_LABEL, "看完了，正在寫回覆");
+  for (
+    const opts of [
+      { messages: [...CHAT, { isFromMe: true, content: "哪座山" }] },
+      { readTags: tags({ explicitRejection: true }) },
+      { readTags: tags({ selfHarmSignal: true }) },
+    ]
+  ) {
+    const other = await events(await handleGuideV3Stream(harness(opts).deps));
+    assertEquals(types(other).includes("analysis.progress"), false);
+  }
+});
+
+Deno.test("扣費還沒完成時，判讀和卡都還沒送出（只有開始和寫卡進度）", async () => {
   let release!: () => void;
   const h = harness({ chargeGate: new Promise((r) => release = r) });
   const reader = (await handleGuideV3Stream(h.deps)).body!.getReader();
   const decoder = new TextDecoder();
-  const first = decoder.decode((await reader.read()).value);
-  assert(first.includes('"analysis.started"'));
+  let head = "";
+  while (!head.includes('"analysis.progress"')) {
+    head += decoder.decode((await reader.read()).value);
+  }
+  assert(head.includes('"analysis.started"'));
+  assert(!head.includes('"analysis.read"'));
   while (h.charges.length === 0) await new Promise((r) => setTimeout(r, 0));
   // 扣費卡住時讀不到任何東西；這個讀取在放行後才會拿到判讀。
   const nextRead = reader.read().then((r) => decoder.decode(r.value));
@@ -382,8 +446,10 @@ Deno.test("收尾（她婉拒或說了界線）：一張收尾卡，扣費的任
     writeParts: [line(1, ["好，那妳先忙"])],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(evs[1].decision, "close");
-  assertEquals(evs[1].plannedCards, [{
+  // 收尾也要寫卡：一樣先送寫卡進度。
+  assertEquals(evs[1].type, "analysis.progress");
+  assertEquals(evs[2].decision, "close");
+  assertEquals(evs[2].plannedCards, [{
     slot: 1,
     task: "close",
     locked: false,
@@ -404,7 +470,76 @@ Deno.test("第一張卡被檢查拿掉：扣費改在第二張、只扣一次，
   assertEquals(done.type, "analysis.done");
   assertEquals((done.finalResult as Record<string, unknown>).partial, true);
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
-  assertEquals(trace.removed, [{ slot: 1, reason: "unsafe" }]);
+  // 被拿掉的卡原文留在伺服器紀錄（誤擋時查得到）；outcome log 只有原因。
+  assertEquals(trace.removed, [{
+    slot: 1,
+    reason: "unsafe",
+    messages: ["我會一直跟蹤你到你答應"],
+  }]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.removedReasons, ["unsafe"]);
+  assert(!JSON.stringify(outcome.metadata).includes("跟蹤"));
+});
+
+Deno.test("C5 只記錄的檢查：每張送出的卡記問句、你呢、表情、字數、照抄他，加她最後一輪字數；log 沒有文字", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "我週末都在家打電動" },
+      { isFromMe: false, content: "真的假的 我也是😂" },
+    ],
+    readTags: tags({ hasHisVoiceSample: true }),
+    writeParts: [
+      line(1, ["我週末都在家打電動啊", "妳都玩什麼？"]),
+      line(2, ["那下次一起連線？？", "妳呢"]),
+      line(3, ["好巧😂😂"]),
+      line(4, ["看來我們週末的行程一樣"]),
+    ],
+  });
+  await events(await handleGuideV3Stream(h.deps));
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.herLastTurnChars, 8);
+  assertEquals(trace.checks, [
+    // 第 1 張照他口吻、照抄他說過的「我週末都在家打電動」。
+    {
+      slot: 1,
+      questions: 1,
+      endsWithNiNe: false,
+      emoji: 0,
+      chars: 16,
+      copiesHim: true,
+    },
+    // 第 2 張預設口吻：不檢查照抄；連在一起的問號算一個。
+    {
+      slot: 2,
+      questions: 1,
+      endsWithNiNe: true,
+      emoji: 0,
+      chars: 11,
+      copiesHim: null,
+    },
+    {
+      slot: 3,
+      questions: 0,
+      endsWithNiNe: false,
+      emoji: 2,
+      chars: 4,
+      copiesHim: false,
+    },
+    {
+      slot: 4,
+      questions: 0,
+      endsWithNiNe: false,
+      emoji: 0,
+      chars: 11,
+      copiesHim: null,
+    },
+  ]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.cardChecks, trace.checks);
+  assertEquals(outcome.metadata.herLastTurnChars, 8);
+  for (const text of ["打電動", "連線", "好巧", "行程", "我也是"]) {
+    assert(!JSON.stringify(outcome.metadata).includes(text), text);
+  }
 });
 
 Deno.test("每張都被拿掉：不扣、run 記失敗、送錯誤事件", async () => {
@@ -417,8 +552,12 @@ Deno.test("每張都被拿掉：不扣、run 記失敗、送錯誤事件", async
     ],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(types(evs), ["analysis.started", "analysis.error"]);
-  assertEquals(evs[1].code, "GUIDE_V3_NO_CARDS");
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "GUIDE_V3_NO_CARDS");
   assertEquals(h.charges.length, 0);
   assertEquals(h.failed, ["GUIDE_V3_NO_CARDS"]);
 });
@@ -455,8 +594,12 @@ Deno.test("寫卡中途斷掉、已送出 2 張：以送出的卡結案，算一
 Deno.test("扣費失敗（額度不足）：判讀和卡都不送、run 記失敗、額度訊息", async () => {
   const h = harness({ chargeError: new Error("QUOTA_EXCEEDED_DAILY") });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(types(evs), ["analysis.started", "analysis.error"]);
-  assertEquals(evs[1].code, "QUOTA_EXHAUSTED");
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "QUOTA_EXHAUSTED");
   assertEquals(h.failed, ["QUOTA_EXHAUSTED"]);
   assertEquals(h.done.length, 0);
 });
@@ -495,13 +638,17 @@ Deno.test("扣費丟錯、失敗寫入也連不上（狀態不明）：不送卡
     markFailedError: new Error("db unreachable"),
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(types(evs), ["analysis.started", "analysis.error"]);
-  assertEquals(evs[1].code, "GUIDE_V3_CHARGE_UNCONFIRMED");
-  assertEquals(evs[1].recoverable, true);
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "GUIDE_V3_CHARGE_UNCONFIRMED");
+  assertEquals(evs[2].recoverable, true);
   assertEquals(h.failed, []);
   assertEquals(h.done.length, 0);
   // 「不明」時不能說本次不會扣額度。
-  assert(!String(evs[1].message).includes("不會扣額度"));
+  assert(!String(evs[2].message).includes("不會扣額度"));
 });
 
 Deno.test("扣費已提交、回應掉了、讀回也失敗：不記 failed、不說沒扣", async () => {
@@ -660,6 +807,57 @@ Deno.test("先別回（他是最後一則）：不寫卡，讀完扣一次不送
   assertEquals("cardTask" in c.recommendationJson, false);
 });
 
+Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的用量與剩餘都是 1；測試帳號 0", async () => {
+  const noSendCases: [string, Parameters<typeof harness>[0]][] = [
+    ["先別回", {
+      messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
+    }],
+    ["停", { readTags: tags({ explicitRejection: true }) }],
+  ];
+  for (const [label, opts] of noSendCases) {
+    const h = harness(opts);
+    const evs = await events(await handleGuideV3Stream(h.deps));
+    const c = h.charges[0];
+    assertEquals([c.chargeQuota, c.messageCount], [true, 1], label);
+    assertEquals(c.recommendationJson.chargedMessageCount, 1, label);
+    const result = evs.at(-1)!.finalResult as Record<string, unknown>;
+    const usage = result.usage as Record<string, unknown>;
+    // 這次照字數是 2 則（harness 的 chargedMessageCount）；先別回、停只扣 1。
+    assertEquals(usage.messagesUsed, 1, label);
+    assertEquals(usage.shouldChargeQuota, true, label);
+    assertEquals(usage.dailyRemaining, 50 - 3 - 1, label);
+    assertEquals(usage.monthlyRemaining, 300 - 10 - 1, label);
+    assertEquals(
+      (result.telemetry as Record<string, unknown>).chargedMessageCount,
+      1,
+      label,
+    );
+    const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+    assertEquals(outcome.metadata.chargedMessageCount, 1, label);
+  }
+  // 出卡照舊照字數扣。
+  const send = harness();
+  await events(await handleGuideV3Stream(send.deps));
+  assertEquals(send.charges[0].messageCount, 2);
+  // 測試帳號：照樣寫扣費紀錄、不扣。
+  const test = harness({
+    accountIsTest: true,
+    readTags: tags({ explicitRejection: true }),
+  });
+  const evs = await events(await handleGuideV3Stream(test.deps));
+  assertEquals([test.charges[0].chargeQuota, test.charges[0].messageCount], [
+    false,
+    0,
+  ]);
+  assertEquals(
+    ((evs.at(-1)!.finalResult as Record<string, unknown>).usage as Record<
+      string,
+      unknown
+    >).messagesUsed,
+    0,
+  );
+});
+
 Deno.test("先別回但扣費失敗：判讀不送出、run 記失敗", async () => {
   const h = harness({
     messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
@@ -677,6 +875,18 @@ Deno.test("停（明確拒絕）：acknowledge_and_stop、不寫卡", async () =
   assertEquals(evs[1].decision, "stop");
   assertEquals(h.charges[0].decisionKind, "acknowledge_and_stop");
   assertEquals(h.charges[0].recommendationJson.action, "stop");
+  assertEquals(h.calls.includes("write"), false);
+});
+
+Deno.test("封鎖、他是最後一則：判成停（不是先別回），不寫卡", async () => {
+  const h = harness({
+    messages: [...CHAT, { isFromMe: true, content: "怎麼訊息都送不出去" }],
+    readTags: tags({ blocked: true, waitFor: "等她回你" }),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].decision, "stop");
+  assertEquals("waitFor" in evs[1], false);
+  assertEquals(h.charges[0].decisionKind, "acknowledge_and_stop");
   assertEquals(h.calls.includes("write"), false);
 });
 
@@ -704,6 +914,253 @@ Deno.test("自傷訊號：不寫卡、不扣額度、顯示固定關心訊息", 
   >;
   assertEquals(usage.messagesUsed, 0);
   assertEquals(usage.shouldChargeQuota, false);
+});
+
+Deno.test("未成年（模型標記）：不寫卡、不扣額度、不打記憶，固定說明；紀錄分得出來", async () => {
+  const h = harness({
+    readTags: tags({ minorSignal: true }),
+    extract: () => Promise.resolve({ text: "{}", model: "claude-haiku-5-5" }),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(evs[1].decision, "care");
+  assertEquals(evs[1].careKind, "minor");
+  assertEquals(evs[1].careMessage, MINOR_MESSAGE);
+  assertEquals(evs[1].plannedCards, []);
+  assertEquals(h.calls.includes("write"), false);
+  assertEquals(h.calls.includes("extract"), false);
+  const c = h.charges[0];
+  assertEquals([c.chargeQuota, c.messageCount], [false, 0]);
+  assertEquals(c.decisionKind, "do_not_send");
+  assertEquals(c.recommendationJson.action, "care");
+  assertEquals(c.recommendationJson.careKind, "minor");
+  assertEquals(c.recommendationJson.careTrigger, "model");
+  assertEquals(c.recommendationJson.reason, STOP_REASON_MINOR);
+  assertEquals(c.recommendationJson.stopCondition, STOP_CONDITION_MINOR);
+  const usage = (evs[2].finalResult as Record<string, unknown>).usage as Record<
+    string,
+    unknown
+  >;
+  assertEquals(usage.messagesUsed, 0);
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.care, { kind: "minor", trigger: "model" });
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.careKind, "minor");
+  assertEquals(outcome.metadata.charged, false);
+});
+
+Deno.test("讀局面成功、模型沒標未成年：照模型出卡（關鍵字不蓋過模型），trace 記關鍵字命中", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "妳有在運動嗎" },
+      { isFromMe: false, content: "以前我讀高中，很愛打球" },
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs.find((e) => e.type === "analysis.read")!.decision, "send");
+  assertEquals(h.calls.includes("write"), true);
+  assertEquals(h.charges[0].decisionKind, "send");
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals((trace.keywordHits as Record<string, unknown>).minorWords, true);
+});
+
+Deno.test("讀局面逾時、背景寫她高二：給未成年說明，不給錯誤、不扣", async () => {
+  const timeout = Object.assign(new Error("deadline"), {
+    code: "DEADLINE_EXCEEDED",
+  });
+  const h = harness({
+    background: { targetDescription: "高二學妹" },
+    readError: timeout,
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].careKind, "minor");
+  assertEquals(h.charges[0].chargeQuota, false);
+  assertEquals(h.failed, []);
+  assertEquals(
+    (h.done[0].guideV3Trace as { care: { readFailedCode: string } }).care
+      .readFailedCode,
+    "DEADLINE_EXCEEDED",
+  );
+});
+
+Deno.test("讀局面拒答或格式壞掉，但關鍵字看得出未成年：給固定說明，不給錯誤、不扣", async () => {
+  const messages = [
+    { isFromMe: true, content: "妳幾歲" },
+    { isFromMe: false, content: "人家才16歲" },
+  ];
+  const refusal = Object.assign(new Error("refused"), {
+    code: "MODEL_REFUSAL",
+  });
+  const h1 = harness({ messages, readError: refusal });
+  const e1 = await events(await handleGuideV3Stream(h1.deps));
+  assertEquals(types(e1), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(e1[1].careKind, "minor");
+  assertEquals(e1[1].light, null);
+  assertEquals(h1.failed, []);
+  assertEquals(h1.charges[0].chargeQuota, false);
+  const trace = h1.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.tags, null);
+  assertEquals(trace.care, {
+    kind: "minor",
+    trigger: "keyword",
+    readFailedCode: "MODEL_REFUSAL",
+  });
+  const outcome = h1.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.readFailedCode, "MODEL_REFUSAL");
+
+  const h2 = harness({ messages, readTags: '{"light":"blue"}' });
+  const e2 = await events(await handleGuideV3Stream(h2.deps));
+  assertEquals(e2[1].careKind, "minor");
+  assertEquals(
+    (h2.done[0].guideV3Trace as { care: { readFailedCode: string } }).care
+      .readFailedCode,
+    "GUIDE_V3_READ_INVALID",
+  );
+});
+
+Deno.test("讀局面拒答，但她明講不想活了：給關心訊息（附專線），不給「請調整內容」、不扣", async () => {
+  const refusal = Object.assign(new Error("refused"), {
+    code: "MODEL_REFUSAL",
+  });
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "最近還好嗎" },
+      { isFromMe: false, content: "我真的不想活了" },
+    ],
+    readError: refusal,
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(evs[1].careKind, "self_harm");
+  assertEquals(evs[1].careMessage, CARE_MESSAGE);
+  assertEquals(h.failed, []);
+  assertEquals([h.charges[0].chargeQuota, h.charges[0].messageCount], [
+    false,
+    0,
+  ]);
+  assertEquals(h.charges[0].recommendationJson.reason, STOP_REASON_CARE);
+  assertEquals((h.done[0].guideV3Trace as { care: unknown }).care, {
+    kind: "self_harm",
+    trigger: "keyword",
+    readFailedCode: "MODEL_REFUSAL",
+  });
+});
+
+Deno.test("讀局面失敗時，「我好想死」也給關心訊息；只有「熱死了」照舊是可重試的錯誤", async () => {
+  const hit = harness({
+    messages: [{ isFromMe: false, content: "我好想死" }],
+    readError: new Error("overloaded"),
+  });
+  const e1 = await events(await handleGuideV3Stream(hit.deps));
+  assertEquals(e1[1].careKind, "self_harm");
+  assertEquals(hit.failed, []);
+  const miss = harness({
+    messages: [{ isFromMe: false, content: "今天熱死了" }],
+    readError: new Error("overloaded"),
+  });
+  const e2 = await events(await handleGuideV3Stream(miss.deps));
+  assertEquals(types(e2), ["analysis.started", "analysis.error"]);
+  assertEquals(e2[1].code, "GUIDE_V3_UPSTREAM_FAILED");
+  assertEquals(miss.failed, ["GUIDE_V3_UPSTREAM_FAILED"]);
+});
+
+Deno.test("讀局面成功、模型沒標自傷，但她說想自殺：一律給關心訊息（Eric 2026-10-18）", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "怎麼這麼晚還沒睡" },
+      { isFromMe: false, content: "睡不著，一直在想自殺的事" },
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].careKind, "self_harm");
+  assertEquals(h.calls.includes("write"), false);
+  assertEquals(h.charges[0].chargeQuota, false);
+  assertEquals(h.charges[0].recommendationJson.careTrigger, "keyword");
+});
+
+Deno.test("主審漏掉的自傷說法：「我打算自殘」讀局面成功、模型沒標也關心；「我現在想死」只在讀局面失敗時關心", async () => {
+  const plan = harness({
+    messages: [
+      { isFromMe: true, content: "妳還好嗎" },
+      { isFromMe: false, content: "不太好，我打算自殘" },
+    ],
+  });
+  const e1 = await events(await handleGuideV3Stream(plan.deps));
+  assertEquals(e1[1].careKind, "self_harm");
+  assertEquals(plan.calls.includes("write"), false);
+  const dieMessages = [
+    { isFromMe: true, content: "怎麼了" },
+    { isFromMe: false, content: "我現在想死" },
+  ];
+  const readOk = harness({ messages: dieMessages });
+  const e2 = await events(await handleGuideV3Stream(readOk.deps));
+  assertEquals(e2.find((e) => e.type === "analysis.read")!.decision, "send");
+  const readFailed = harness({
+    messages: dieMessages,
+    readError: new Error("overloaded"),
+  });
+  const e3 = await events(await handleGuideV3Stream(readFailed.deps));
+  assertEquals(e3[1].careKind, "self_harm");
+  assertEquals(readFailed.failed, []);
+});
+
+Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照模型的判斷出卡，trace 記關鍵字命中", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "明天考試準備好了嗎" },
+      { isFromMe: false, content: "還沒，我好想死喔" },
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs.find((e) => e.type === "analysis.read")!.decision, "send");
+  assertEquals(h.charges[0].decisionKind, "send");
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.keywordHits, {
+    minorWords: false,
+    selfHarmWords: false,
+    wantsToDie: true,
+  });
+});
+
+Deno.test("她要他借錢：模型沒標風險就照常（不掃關鍵字）；標了風險才換成固定提醒、拿掉推進卡", async () => {
+  const messages = [
+    { isFromMe: true, content: "週末要不要去看展" },
+    { isFromMe: false, content: "好啊！不過可以先借我五千嗎，下個月還你" },
+  ];
+  const plain = harness({ messages, readTags: tags({ herMove: "開窗" }) });
+  const e1 = await events(await handleGuideV3Stream(plain.deps));
+  const read1 = e1.find((e) => e.type === "analysis.read")!;
+  assertEquals(read1.judgment, "她在分享日常，氣氛輕鬆。");
+  assert(
+    (read1.plannedCards as { task: string }[]).some((c) => c.task === "push"),
+  );
+  const trace1 = plain.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals("keywordHits" in trace1, false);
+
+  const risky = harness({
+    messages,
+    readTags: tags({ herMove: "開窗", risk: true }),
+  });
+  const e2 = await events(await handleGuideV3Stream(risky.deps));
+  const read2 = e2.find((e) => e.type === "analysis.read")!;
+  assertEquals(read2.decision, "send");
+  assertEquals(read2.judgment, MONEY_RISK_WARNING);
+  assert(
+    (read2.plannedCards as { task: string }[]).every((c) => c.task !== "push"),
+  );
+  assertEquals(risky.charges.length, 1);
 });
 
 Deno.test("自傷訊號但紀錄寫不進資料庫：關心訊息照樣顯示，不呼叫 markDone", async () => {
@@ -824,4 +1281,355 @@ Deno.test("判讀外洩：判讀不給、記 log；要等她做什麼壞了用�
     h2.charges[0].recommendationJson.stopCondition,
     HOLD_WAIT_FALLBACK,
   );
+});
+
+// ── 對象記憶（開關 ANALYZE_GUIDE_V3_MEMORY；Eric 2026-10-18）──
+
+/// 她說了穩定的興趣，最後一輪是她：照常出卡。
+const HIKING = "我每個週末都會去爬山";
+const MEMORY_CHAT = [
+  { isFromMe: true, content: "週末都在幹嘛" },
+  { isFromMe: false, content: HIKING },
+  { isFromMe: false, content: "今天腿快斷了" },
+];
+const ZERO = { interests: 0, traits: 0, notes: 0 };
+
+const memoryOut = (over: Record<string, unknown> = {}) => ({
+  text: JSON.stringify({ interests: [], traits: [], notes: [], ...over }),
+  model: "claude-haiku-5-5",
+});
+/// 模型標成她自己陳述的項目（subject her、evidenceIsHerOwnStatement true）。
+const own = (value: string, ...evidence: string[]) => ({
+  value,
+  evidence,
+  subject: "her",
+  evidenceIsHerOwnStatement: true,
+});
+const hiking = () => memoryOut({ interests: [own("爬山", HIKING)] });
+
+function trace(h: Harness): Record<string, unknown> {
+  return h.done[0].guideV3Trace as Record<string, unknown>;
+}
+
+function clientResult(evs: Record<string, unknown>[]): Record<string, unknown> {
+  return evs.at(-1)!.finalResult as Record<string, unknown>;
+}
+
+async function readUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  text: string,
+  needle: string | null,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  while (needle === null || !text.includes(needle)) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+  }
+  return text;
+}
+
+const parse = (text: string) =>
+  text.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+
+Deno.test("對象記憶：她自己的原句撐得住，App 的 done 與 DB 都帶 targetProfile，扣費不變", async () => {
+  const extractRequests: GuideV3ExtractRequest[] = [];
+  const h = harness({
+    messages: MEMORY_CHAT,
+    extract: () => Promise.resolve(hiking()),
+    extractRequests,
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(h.calls, [
+    "createPendingRun",
+    "read",
+    "extract",
+    "write",
+    "charge:send:accept",
+    "markDone",
+  ]);
+  const expected = {
+    provenanceVersion: 1,
+    interests: ["爬山"],
+    traits: [],
+    notes: [],
+    evidence: {
+      interests: [{ value: "爬山", sourceMessages: [HIKING] }],
+      traits: [],
+      notes: [],
+    },
+  };
+  assertEquals(clientResult(evs).targetProfile, expected);
+  assertEquals(h.done[0].targetProfile, expected);
+  assertEquals(trace(h).memory, {
+    ok: true,
+    timedOut: false,
+    latencyMs: 0,
+    kept: { interests: 1, traits: 0, notes: 0 },
+    dropped: ZERO,
+  });
+  // 記憶自己的提示詞與 schema；對話稿跟讀局面同一份。
+  assertEquals(extractRequests[0].system, memorySystemPrompt());
+  assertEquals(extractRequests[0].schema, MEMORY_SCHEMA);
+  assert(extractRequests[0].user.includes(`- ${HIKING}`));
+  // 扣費與額度跟沒開記憶時一模一樣。
+  const base = harness({ messages: MEMORY_CHAT });
+  const baseEvs = await events(await handleGuideV3Stream(base.deps));
+  assertEquals(h.charges, base.charges);
+  assertEquals(clientResult(evs).usage, clientResult(baseEvs).usage);
+});
+
+Deno.test("對象記憶：他說的、只在背景出現的都擋下、不帶；背景也不送給記憶", async () => {
+  const extractRequests: GuideV3ExtractRequest[] = [];
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: HIKING },
+      { isFromMe: false, content: "真的假的，好健康" },
+    ],
+    background: { partnerSummary: "- 興趣：潛水" },
+    extract: () =>
+      Promise.resolve(memoryOut({
+        interests: [
+          own("爬山", HIKING),
+          own("潛水", "- 興趣：潛水"),
+        ],
+      })),
+    extractRequests,
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs).at(-1), "analysis.done");
+  assertEquals("targetProfile" in clientResult(evs), false);
+  assertEquals("targetProfile" in h.done[0], false);
+  assertEquals(trace(h).memory, {
+    ok: true,
+    timedOut: false,
+    latencyMs: 0,
+    kept: ZERO,
+    dropped: { interests: 2, traits: 0, notes: 0 },
+  });
+  assert(!extractRequests[0].user.includes("潛水"), "對象背景不送給記憶");
+});
+
+Deno.test("對象記憶的出處對 App 送來的原始訊息：她引用他的話，不算她說的", async () => {
+  const extractRequests: GuideV3ExtractRequest[] = [];
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "我每週都會去游泳" },
+      {
+        isFromMe: false,
+        content: "哈哈真的假的",
+        quotedReplyPreview: "我每週都會去游泳",
+      },
+    ],
+    extract: () =>
+      Promise.resolve(memoryOut({
+        interests: [own("游泳", "我每週都會去游泳")],
+      })),
+    extractRequests,
+  });
+  await events(await handleGuideV3Stream(h.deps));
+  // 模型看到的對話稿跟讀局面一樣帶引用前綴，出處檢查只認她的原文。
+  assert(
+    extractRequests[0].user.includes(
+      "（引用：「我每週都會去游泳」）哈哈真的假的",
+    ),
+  );
+  assertEquals("targetProfile" in h.done[0], false);
+});
+
+Deno.test("對象記憶：模型回空的，不帶 targetProfile，trace 記成功、0 項", async () => {
+  const h = harness({
+    messages: MEMORY_CHAT,
+    extract: () => Promise.resolve(memoryOut()),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals("targetProfile" in clientResult(evs), false);
+  assertEquals("targetProfile" in h.done[0], false);
+  assertEquals(trace(h).memory, {
+    ok: true,
+    timedOut: false,
+    latencyMs: 0,
+    kept: ZERO,
+    dropped: ZERO,
+  });
+});
+
+Deno.test("對象記憶：自傷關心不打記憶、不帶 targetProfile", async () => {
+  const h = harness({
+    messages: MEMORY_CHAT,
+    readTags: tags({ selfHarmSignal: true }),
+    extract: () => Promise.resolve(hiking()),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].decision, "care");
+  assertEquals(h.calls.includes("extract"), false);
+  assertEquals("targetProfile" in clientResult(evs), false);
+  assertEquals("targetProfile" in h.done[0], false);
+  assertEquals("memory" in trace(h), false);
+});
+
+Deno.test("對象記憶開關沒開：不打，結果與 trace 都沒有記憶欄位", async () => {
+  const h = harness({ messages: MEMORY_CHAT });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(h.calls.includes("extract"), false);
+  assertEquals("targetProfile" in clientResult(evs), false);
+  assertEquals("targetProfile" in h.done[0], false);
+  assertEquals("memory" in trace(h), false);
+});
+
+Deno.test("對象記憶還沒好：判讀與第一張卡照常先到；寫完卡時好了就帶進結果", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => release = r);
+  const h = harness({
+    messages: MEMORY_CHAT,
+    extract: () => gate.then(hiking),
+  });
+  const reader = (await handleGuideV3Stream(h.deps)).body!.getReader();
+  // 記憶卡著也拿得到第一張卡：出卡不等記憶。
+  let text = await readUntil(reader, "", '"analysis.card"');
+  assert(text.includes('"analysis.read"'));
+  assert(!text.includes('"analysis.done"'));
+  release();
+  text = await readUntil(reader, text, null);
+  const evs = parse(text);
+  assertEquals(types(evs).filter((t) => t === "analysis.card").length, 4);
+  assertEquals(
+    (clientResult(evs).targetProfile as Record<string, unknown>).interests,
+    ["爬山"],
+  );
+});
+
+Deno.test("對象記憶等不到：done 照常送出、不帶；晚到的結果不改已存的結果", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => release = r);
+  const h = harness({
+    messages: MEMORY_CHAT,
+    extract: () => gate.then(hiking),
+    memoryWaitMs: 20,
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs).filter((t) => t === "analysis.card").length, 4);
+  assertEquals(types(evs).at(-1), "analysis.done");
+  assertEquals("targetProfile" in clientResult(evs), false);
+  assertEquals(trace(h).memory, {
+    ok: false,
+    timedOut: true,
+    latencyMs: null,
+    kept: ZERO,
+    dropped: ZERO,
+  });
+  release();
+  await Promise.all(h.tasks);
+  assertEquals(h.calls.filter((c) => c === "markDone").length, 1);
+  assertEquals("targetProfile" in h.done[0], false);
+});
+
+Deno.test("對象記憶：先別回時判讀先送出，記憶好了才結案並帶進結果", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => release = r);
+  const h = harness({
+    messages: [...MEMORY_CHAT, { isFromMe: true, content: "哪座山" }],
+    extract: () => gate.then(hiking),
+  });
+  const reader = (await handleGuideV3Stream(h.deps)).body!.getReader();
+  let text = await readUntil(reader, "", '"analysis.read"');
+  assert(!text.includes('"analysis.done"'));
+  release();
+  text = await readUntil(reader, text, null);
+  const evs = parse(text);
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(evs[1].decision, "hold");
+  assertEquals(h.charges[0].decisionKind, "do_not_send");
+  assertEquals(
+    (clientResult(evs).targetProfile as Record<string, unknown>).interests,
+    ["爬山"],
+  );
+  assertEquals(
+    (h.done[0].targetProfile as Record<string, unknown>).interests,
+    ["爬山"],
+  );
+});
+
+Deno.test("對象記憶：停（明確拒絕）也帶", async () => {
+  const h = harness({
+    messages: MEMORY_CHAT,
+    readTags: tags({ explicitRejection: true }),
+    extract: () => Promise.resolve(hiking()),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].decision, "stop");
+  assertEquals(
+    (clientResult(evs).targetProfile as Record<string, unknown>).interests,
+    ["爬山"],
+  );
+});
+
+Deno.test("對象記憶出錯、拒答、格式壞掉、同步丟錯：分析照常完成、照常扣一次，不帶", async () => {
+  const refusal = Object.assign(new Error("refused"), {
+    code: "MODEL_REFUSAL",
+  });
+  const failures: GuideV3StreamDeps["callExtract"][] = [
+    () => Promise.reject(refusal),
+    () => Promise.resolve({ text: "不是 JSON", model: "claude-haiku-5-5" }),
+    () => {
+      throw new Error("boom");
+    },
+  ];
+  for (const extract of failures) {
+    const h = harness({ messages: MEMORY_CHAT, extract: extract! });
+    const evs = await events(await handleGuideV3Stream(h.deps));
+    assertEquals(types(evs).filter((t) => t === "analysis.card").length, 4);
+    assertEquals(types(evs).at(-1), "analysis.done");
+    assertEquals(h.charges.length, 1);
+    assertEquals("targetProfile" in clientResult(evs), false);
+    assertEquals(trace(h).memory, {
+      ok: false,
+      timedOut: false,
+      latencyMs: 0,
+      kept: ZERO,
+      dropped: ZERO,
+    });
+  }
+  const refused = harness({
+    messages: MEMORY_CHAT,
+    extract: () => Promise.reject(refusal),
+  });
+  await events(await handleGuideV3Stream(refused.deps));
+  const log = refused.logs.find((l) => l.event === "guide_v3_memory_failed");
+  assertEquals(log?.metadata, {
+    analysisRunId: "run-1",
+    code: "MODEL_REFUSAL",
+  });
+});
+
+Deno.test("對象記憶的 trace 與 log 只有計數：沒有她的原句或候選的值", async () => {
+  const h = harness({
+    messages: MEMORY_CHAT,
+    extract: () =>
+      Promise.resolve(memoryOut({
+        interests: [own("爬山", HIKING)],
+        notes: [own("愛吃辣", "你說的那家很辣")],
+      })),
+  });
+  await events(await handleGuideV3Stream(h.deps));
+  const memory = trace(h).memory as Record<string, unknown>;
+  assertEquals(Object.keys(memory).sort(), [
+    "dropped",
+    "kept",
+    "latencyMs",
+    "ok",
+    "timedOut",
+  ]);
+  const stored = JSON.stringify(trace(h));
+  for (const s of [HIKING, "愛吃辣", "你說的那家很辣"]) {
+    assert(!stored.includes(s), s);
+  }
+  const outcome = h.logs.find((l) =>
+    l.event === "guide_v3_outcome" && l.metadata.outcome === "done"
+  )!;
+  assertEquals(outcome.metadata.memory, memory);
 });

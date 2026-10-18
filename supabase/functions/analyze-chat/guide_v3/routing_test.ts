@@ -7,6 +7,7 @@ import {
   GUIDE_V3_FREE_CARD_LIMIT,
   guideV3MaxCards,
   guideV3Mode,
+  shouldExtractGuideV3Memory,
   shouldUseGuideV3,
 } from "./routing.ts";
 
@@ -39,6 +40,30 @@ Deno.test("走 v3：要協定版本 3、而且是新的分析；test 只給測�
   for (const [args, expected] of cases) {
     assertEquals(shouldUseGuideV3(args), expected, JSON.stringify(args));
   }
+});
+
+Deno.test("對象記憶開關：沒設或打錯都不抽；test 只給測試帳號；on 誰都抽", () => {
+  for (const raw of [undefined, "", "true", "offf"]) {
+    for (const accountIsTest of [true, false]) {
+      assertEquals(
+        shouldExtractGuideV3Memory({ mode: guideV3Mode(raw), accountIsTest }),
+        false,
+        `${raw}/${accountIsTest}`,
+      );
+    }
+  }
+  assertEquals(
+    shouldExtractGuideV3Memory({ mode: "test", accountIsTest: true }),
+    true,
+  );
+  assertEquals(
+    shouldExtractGuideV3Memory({ mode: "test", accountIsTest: false }),
+    false,
+  );
+  assertEquals(
+    shouldExtractGuideV3Memory({ mode: "on", accountIsTest: false }),
+    true,
+  );
 });
 
 Deno.test("免費方案最多 2 張，付費方案不限", () => {

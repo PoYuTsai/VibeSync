@@ -953,6 +953,84 @@ void main() {
       );
     });
 
+    test('v3 結果自己帶對象檔案（伺服器的對象記憶）：存的是這一份，不沿用舊的', () async {
+      final previous = _resultJson()
+        ..['targetProfile'] = {
+          'provenanceVersion': 1,
+          'interests': ['爬山'],
+          'traits': ['慢熟'],
+          'notes': <String>[],
+        };
+      final conversation = _conversation(snapshotJson: jsonEncode(previous));
+      final harness = _Harness(conversation: conversation);
+      final serverProfile = <String, dynamic>{
+        'provenanceVersion': 1,
+        'interests': ['潛水'],
+        'traits': <String>[],
+        'notes': ['週末通常在家'],
+        'evidence': {
+          'interests': [
+            {
+              'value': '潛水',
+              'sourceMessages': ['我最近每週都去潛水'],
+            },
+          ],
+          'traits': <Map<String, dynamic>>[],
+          'notes': [
+            {
+              'value': '週末通常在家',
+              'sourceMessages': ['我週末通常在家'],
+            },
+          ],
+        },
+      };
+      final analysis = PersistableAnalysis.fromGuideV3(
+        GuideV3Result.fromJson(
+          _guideV3Json()..['targetProfile'] = serverProfile,
+        )!,
+        analysisRunId: 'run_v3',
+      );
+      // 有伺服器那份就不沿用（新存檔、續看補寫、紀錄修復都先過這裡）。
+      expect(
+        identical(
+          harness.coordinator.withCarriedPartnerMemory(
+            analysis,
+            previousSnapshotJson: jsonEncode(previous),
+          ),
+          analysis,
+        ),
+        isTrue,
+      );
+
+      await harness.coordinator.persistLatestSnapshot(
+        analysis,
+        completionKey: 'run_v3',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+
+      final snapshot = jsonDecode(conversation.lastAnalysisSnapshotJson!)
+          as Map<String, dynamic>;
+      expect(snapshot['targetProfile'], serverProfile);
+      // 續看補寫時比對用的也是伺服器那份。
+      expect(
+        harness.coordinator.snapshotMatches(
+          conversation: conversation,
+          snapshotJson: conversation.lastAnalysisSnapshotJson,
+          rawResponse: harness.coordinator
+              .withCarriedPartnerMemory(
+                analysis,
+                previousSnapshotJson: conversation.lastAnalysisSnapshotJson,
+              )
+              .rawResponse,
+          messageCount: 1,
+          analyzedContentRevision: conversationContentRevision(conversation),
+        ),
+        isTrue,
+      );
+    });
+
     test('沒有出處的舊對象檔案不沿用', () {
       final previous = _resultJson()
         ..['targetProfile'] = {

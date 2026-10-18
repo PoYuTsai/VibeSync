@@ -2430,7 +2430,7 @@ Deno.test({
     const source = await readAnalyzeChatScanCorpus();
 
     // 異常 tier 字串（如 " Starter "、"STARTER"）直接查表會 fallback 成
-    // free 30/15 提早 429；所有查表都必須先過 normalizeTier。
+    // free 50/20 提早 429；所有查表都必須先過 normalizeTier。
     // （mode handler 的 refresh 重算已由 applyRefreshedSub 統一，
     // 查表點收斂為 2：初始上限計算與 applyRefreshedSub。）
     assertEquals(
