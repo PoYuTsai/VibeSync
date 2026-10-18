@@ -245,3 +245,83 @@ Deno.test("buildDiscordNotificationContent labels Batch E coach category", () =>
   assertEquals(content.includes("Category: Should not send"), true);
   assertEquals(content.startsWith("👎 沒幫助回饋 — 問教練"), true);
 });
+
+Deno.test("sanitizeFeedbackAiResponse 保留對話分析 v3 的短欄位與 runId（Eric 2026-10-18）", () => {
+  assertEquals(
+    sanitizeFeedbackAiResponse({
+      schemaVersion: 1,
+      guideV3: {
+        guideVersion: "v3.5",
+        decision: "send",
+        light: "green",
+        cardTasks: ["accept", "push", "accept", "tension", "push", "accept"],
+        runId: "6f0c2c1e-4d5b-4d2f-9a8e-1b2c3d4e5f60",
+        feedbackCategory: "testing_her",
+        cards: [{ messages: ["不該存"] }],
+      },
+    }),
+    {
+      schemaVersion: 1,
+      guideV3: {
+        guideVersion: "v3.5",
+        decision: "send",
+        light: "green",
+        runId: "6f0c2c1e-4d5b-4d2f-9a8e-1b2c3d4e5f60",
+        cardTasks: ["accept", "push", "accept", "tension", "push"],
+        feedbackCategory: "testing_her",
+      },
+    },
+  );
+});
+
+Deno.test("sanitizeFeedbackAiResponse 丟掉不認得的 v3 分類（含原型上的名字）", () => {
+  for (const feedbackCategory of ["arbitrary", "constructor", "toString", 7]) {
+    assertEquals(
+      sanitizeFeedbackAiResponse({
+        guideV3: { decision: "hold", feedbackCategory },
+      }),
+      { schemaVersion: 1, guideV3: { decision: "hold" } },
+    );
+  }
+  assertEquals(
+    sanitizeFeedbackAiResponse({ guideV3: "not an object" }),
+    undefined,
+  );
+});
+
+Deno.test("buildDiscordNotificationContent 標出 v3 的分類、判讀與 runId", () => {
+  const negative = buildDiscordNotificationContent(
+    {
+      userEmail: "vibesync.test@gmail.com",
+      userTier: "free",
+      rating: "negative",
+      category: "other",
+      aiResponse: {
+        guideV3: {
+          decision: "send",
+          light: "yellow",
+          runId: "run-123",
+          feedbackCategory: "testing_her",
+        },
+      },
+      modelUsed: "claude-sonnet-5-5",
+    },
+    { timestamp: "2026-10-18T00:00:00.000Z" },
+  );
+  assertEquals(negative.includes("Category: Testing / scoring her"), true);
+  assertEquals(negative.includes("Category: Other"), false);
+  assertEquals(negative.includes("v3: send / yellow run run-123"), true);
+  assertEquals(negative.startsWith("👎 沒幫助回饋 — 分析頁"), true);
+
+  const positive = buildDiscordNotificationContent(
+    {
+      userEmail: "vibesync.test@gmail.com",
+      userTier: "free",
+      rating: "positive",
+      aiResponse: { guideV3: { decision: "hold", light: "red" } },
+    },
+    { timestamp: "2026-10-18T00:00:00.000Z" },
+  );
+  assertEquals(positive.includes("Category:"), false);
+  assertEquals(positive.includes("v3: hold / red\n"), true);
+});
