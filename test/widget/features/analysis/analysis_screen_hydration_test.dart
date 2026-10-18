@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -1544,6 +1546,15 @@ void main() {
       return harness;
     }
 
+    /// 免費方案（[SubscriptionState] 預設值）用掉 [units] 則之後剩幾則：本月、今日取少的。
+    /// 照額度常數算，免費額度再調整（例：30／15 → 50／20，Eric 2026-10-18）也不用改測試。
+    int freeLeftAfter({int dailyUsed = 0, required int units}) =>
+        math.min(
+          AppConstants.freeMonthlyLimit,
+          AppConstants.freeDailyLimit - dailyUsed,
+        ) -
+        units;
+
     Future<void> tapOrb(WidgetTester tester) async {
       await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
       for (var i = 0; i < 6; i++) {
@@ -1559,8 +1570,11 @@ void main() {
           subscription: const SubscriptionState(dailyMessagesUsed: 3),
         );
 
-        // 「今天加班好累喔」7 字 → 1 則；本月剩 30、今日剩 12 → 用完剩 11。
-        expect(find.text('這次會用 1 則，剩 11 則'), findsOneWidget);
+        // 「今天加班好累喔」7 字 → 1 則；今天已用 3 則，用完再少 1 則。
+        expect(
+          find.text('這次會用 1 則，剩 ${freeLeftAfter(dailyUsed: 3, units: 1)} 則'),
+          findsOneWidget,
+        );
         await tapOrb(tester);
 
         expect(find.text('開始分析前'), findsNothing);
@@ -1573,7 +1587,9 @@ void main() {
       (tester) async {
         final harness = await pumpOrbScreen(
           tester,
-          subscription: const SubscriptionState(dailyMessagesUsed: 15),
+          subscription: const SubscriptionState(
+            dailyMessagesUsed: AppConstants.freeDailyLimit,
+          ),
         );
 
         expect(
@@ -1647,8 +1663,11 @@ void main() {
           conversation: roundsConversation(25),
           memory: ConversationMemoryAdapter(),
         );
-        // 今日剩 15 則：用 8 則剩 7 則（照整段算會寫成 10 則、剩 5 則）。
-        expect(find.text('這次會用 8 則，剩 7 則'), findsOneWidget);
+        // 用 8 則（照整段算會寫成 10 則）。
+        expect(
+          find.text('這次會用 8 則，剩 ${freeLeftAfter(units: 8)} 則'),
+          findsOneWidget,
+        );
         await tapOrb(tester);
         expect(find.text('開始分析前'), findsNothing);
         expect(harness.recorder.streamCalls, 1);
@@ -1665,7 +1684,10 @@ void main() {
           conversation: roundsConversation(25),
           memory: _EmptySummaryMemory(),
         );
-        expect(find.text('這次會用 8 則，剩 7 則'), findsOneWidget);
+        expect(
+          find.text('這次會用 8 則，剩 ${freeLeftAfter(units: 8)} 則'),
+          findsOneWidget,
+        );
         await tapOrb(tester);
         expect(find.text('開始分析前'), findsOneWidget);
         expect(find.text('10 則'), findsOneWidget, reason: '確認框寫實際的則數');
@@ -1690,7 +1712,10 @@ void main() {
           ),
           onSubscription: (notifier) => subscription = notifier,
         );
-        expect(find.text('這次會用 1 則，剩 11 則'), findsOneWidget);
+        expect(
+          find.text('這次會用 1 則，剩 ${freeLeftAfter(dailyUsed: 3, units: 1)} 則'),
+          findsOneWidget,
+        );
         // 還沒重畫就按：圓鈕帶的是剛才那一行。
         subscription.state = const SubscriptionState(
           dailyMessagesUsed: 3,
@@ -1755,7 +1780,10 @@ void main() {
           subscription: const SubscriptionState(),
           consentAccepted: false,
         );
-        expect(find.text('這次會用 1 則，剩 14 則'), findsOneWidget);
+        expect(
+          find.text('這次會用 1 則，剩 ${freeLeftAfter(units: 1)} 則'),
+          findsOneWidget,
+        );
         await tapOrb(tester);
         expect(find.text('開始分析前'), findsNothing);
         expect(find.text('同意並繼續'), findsOneWidget);
