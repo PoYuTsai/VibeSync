@@ -11,7 +11,8 @@
 // Sentinel 挑選原則：取自 system prompt 的「內部行話長片段」（≥8 字、
 // 正常輸出絕不會自然出現），比對前做 NFKC＋去空白正規化，擋簡單的
 // 空白/換行規避；原樣對不上時，兩邊再換成同一種寫法比一次，擋簡體照抄
-// （見 canonicalForLeakScan）。誤殺率設計為趨近零：寧可漏掉改寫式外洩（模型用自己的話
+// （見 canonicalForLeakScan），還對不上再逐字換寫法比一次（見 perCharacterForLeakScan）。
+// 誤殺率設計為趨近零：寧可漏掉改寫式外洩（模型用自己的話
 // 描述規則，無法用字串比對抓），也不誤殺正常回覆。
 import OpenCC from "npm:opencc-js@1.4.1/t2cn";
 import { toTraditionalChinese } from "./traditional_chinese.ts";
@@ -42,9 +43,40 @@ function canonicalForLeakScan(compact: string): string {
   return taiwanToSimplified(toTraditionalChinese(compact));
 }
 
+// 第三關逐字比對（主審 r2 P2，Eric 2026-10-18：「開第 3 輪，加逐字比對」）：上面是整句轉，
+// 前後的字跟哨兵頭尾湊成詞時會換掉頭尾的字（「留着」後面接「作为」讀成「著作」，「着」換成「著」）。
+// 這裡每個字各自用同一套轉換換掉，跟前後的字無關。
+// 只記漢字：非漢字整套轉換一個都不改（全部 Unicode 實測），直接原樣；漢字 NFKC 後約九萬八千個，
+// 最多記三萬個，超過的照轉、不記，記憶體有上限。
+const HAN_CHAR = /\p{Script=Han}/u;
+const MAX_CACHED_CHARS = 30_000;
+const charForms = new Map<string, string>();
+
+function charForm(char: string): string {
+  if (!HAN_CHAR.test(char)) return char;
+  let form = charForms.get(char);
+  if (form === undefined) {
+    form = canonicalForLeakScan(char);
+    if (charForms.size < MAX_CACHED_CHARS) charForms.set(char, form);
+  }
+  return form;
+}
+
+function perCharacterOfCompact(compact: string): string {
+  let form = "";
+  for (const char of compact) form += charForm(char);
+  return form;
+}
+
+/// 逐字換成同一種寫法：NFKC、去空白，再一個字一個字換（export 給測試驗跟前後的字無關）。
+export function perCharacterForLeakScan(text: string): string {
+  return perCharacterOfCompact(compactForLeakScan(text));
+}
+
 interface SentinelForms {
   readonly compact: string;
   readonly canonical: string;
+  readonly perCharacter: string;
 }
 
 /// 清單都是固定的常數，換好的寫法算一次就記下來。
@@ -54,7 +86,11 @@ function formsOf(sentinel: string): SentinelForms {
   let forms = sentinelForms.get(sentinel);
   if (!forms) {
     const compact = compactForLeakScan(sentinel);
-    forms = { compact, canonical: canonicalForLeakScan(compact) };
+    forms = {
+      compact,
+      canonical: canonicalForLeakScan(compact),
+      perCharacter: perCharacterOfCompact(compact),
+    };
     sentinelForms.set(sentinel, forms);
   }
   return forms;
@@ -62,7 +98,8 @@ function formsOf(sentinel: string): SentinelForms {
 
 /// 輸出文字是否含系統指示片段。sentinels 為各功能自己的 prompt 獨特片段；
 /// directive sentinel 一律附帶檢查。短於 8 字的 sentinel 忽略（防誤殺），長度照去空白後的原文算。
-/// 先照原樣比（跟以前一字不差，原本抓得到的照樣抓得到），對不上再把兩邊換成同一種寫法比一次。
+/// 先照原樣比（跟以前一字不差，原本抓得到的照樣抓得到），對不上再把兩邊換成同一種寫法比一次，
+/// 還對不上再兩邊逐字換寫法比一次。
 export function containsPromptLeak(
   text: string | null | undefined,
   sentinels: readonly string[],
@@ -74,5 +111,7 @@ export function containsPromptLeak(
     .filter((forms) => forms.compact.length >= 8);
   if (checked.some((forms) => compact.includes(forms.compact))) return true;
   const canonical = canonicalForLeakScan(compact);
-  return checked.some((forms) => canonical.includes(forms.canonical));
+  if (checked.some((forms) => canonical.includes(forms.canonical))) return true;
+  const perCharacter = perCharacterOfCompact(compact);
+  return checked.some((forms) => perCharacter.includes(forms.perCharacter));
 }

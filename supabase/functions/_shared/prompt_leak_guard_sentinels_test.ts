@@ -1,6 +1,7 @@
 // 每一份外洩哨兵清單的每一句（主審兩輪 P2，Eric 2026-10-18）：原樣、每個字後面插空白、簡體、
-// 簡體插空白、簡體轉回繁體、轉回繁體再插空白，夾在一般句子裡都要抓得到；一般聊天與 repo 裡錄到的
-// 模型輸出一句都不能中。不呼叫模型、不連網。
+// 簡體插空白、簡體轉回繁體、轉回繁體再插空白，夾在一般句子裡、後面緊接著能跟最後一個字湊成詞的字、
+// 或詞組跨過頭尾，都要抓得到（主審 r2 P2）；一般聊天與 repo 裡錄到的模型輸出一句都不能中。
+// 不呼叫模型、不連網。
 import {
   assert,
   assertEquals,
@@ -12,65 +13,40 @@ import v3Fixtures from "../analyze-chat/testdata/guide_v3_replay_fixtures.json" 
   type: "json",
 };
 import { parseWrittenCardLine } from "../analyze-chat/guide_v3/cards.ts";
+import { compactForLeakScan, containsPromptLeak } from "./prompt_leak_guard.ts";
 import {
-  GUIDE_V3_SENTINELS,
-  GUIDE_V3_SENTINELS_NORMALIZED,
-} from "../analyze-chat/guide_v3/finalize.ts";
-import {
-  GUIDE_V3_REFINE_SENTINELS,
-  GUIDE_V3_REFINE_SENTINELS_NORMALIZED,
-} from "../analyze-chat/guide_v3/refine_card.ts";
-import { OPENER_FLOW_PROMPT_SENTINELS } from "../analyze-chat/opener_flow_prompt.ts";
-import {
-  ANALYZE_CHAT_PROMPT_SENTINELS,
-  NEW_TOPIC_SLOTS_PROMPT_SENTINELS,
-} from "../analyze-chat/prompt_leak.ts";
-import { COACH_PROMPT_LEAK_SENTINELS } from "../coach-chat/validate.ts";
-import { MOMENT_PROMPT_SENTINELS } from "../practice-chat/moments_prompt.ts";
-import {
-  compactForLeakScan,
-  containsPromptLeak,
-  DIRECTIVE_SENTINEL,
-} from "./prompt_leak_guard.ts";
-import {
+  copyForms,
   LEAK_CONTEXTS,
   leakVariants,
   ORDINARY_CHAT,
+  phraseStraddles,
+  phraseTails,
+  SENTINEL_LISTS,
   spaced,
 } from "./prompt_leak_harness.ts";
 
-const LISTS: Readonly<Record<string, readonly string[]>> = {
-  // 對話分析（含 v3 讀局面、寫卡）
-  ANALYZE_CHAT_PROMPT_SENTINELS,
-  NEW_TOPIC_SLOTS_PROMPT_SENTINELS,
-  OPENER_FLOW_PROMPT_SENTINELS,
-  // v3 說明書每一節的第一行，和它整理（簡轉繁）過的那一份
-  GUIDE_V3_SENTINELS,
-  GUIDE_V3_SENTINELS_NORMALIZED,
-  // 再調一下，和它整理過的那一份
-  GUIDE_V3_REFINE_SENTINELS,
-  GUIDE_V3_REFINE_SENTINELS_NORMALIZED,
-  COACH_PROMPT_LEAK_SENTINELS,
-  // 練習室動態
-  MOMENT_PROMPT_SENTINELS,
-  // 保密指示的片段：每次都會比
-  DIRECTIVE: [DIRECTIVE_SENTINEL],
-};
+const ALL_SENTINELS = Object.values(SENTINEL_LISTS).flat();
 
-const ALL_SENTINELS = Object.values(LISTS).flat();
-
-Deno.test("每一份清單的每一句哨兵：各種照抄寫法夾在一般句子裡都抓得到", () => {
+Deno.test("每一份清單的每一句哨兵：各種照抄寫法夾在一般句子裡、後面接上能湊成詞的字，都抓得到", () => {
   let checks = 0;
+  let withPhraseTail = 0;
   const missed: string[] = [];
-  for (const [name, list] of Object.entries(LISTS)) {
+  for (const [name, list] of Object.entries(SENTINEL_LISTS)) {
     assert(list.length > 0, name);
     for (const sentinel of list) {
       // 短於 8 字的哨兵不比（防誤殺），放進清單等於沒放。
       assert(compactForLeakScan(sentinel).length >= 8, `${name}：${sentinel}`);
       for (const variant of leakVariants(sentinel)) {
-        for (const inContext of LEAK_CONTEXTS) {
+        // 主審 r2 P2：後面緊接的字跟最後一個字湊成詞（「留着」接「作为」讀成「著作」），
+        // 整句轉換會換掉最後一個字；每一個能湊的詞都試。
+        const tails = phraseTails(variant);
+        if (tails.length > 0) withPhraseTail++;
+        const texts = [
+          ...LEAK_CONTEXTS.map((inContext) => inContext(variant)),
+          ...tails.map((tail) => `好啊，${variant}${tail}`),
+        ];
+        for (const text of texts) {
           checks++;
-          const text = inContext(variant);
           if (!containsPromptLeak(text, [sentinel])) {
             missed.push(`${name}：${JSON.stringify(text)}`);
           }
@@ -79,8 +55,28 @@ Deno.test("每一份清單的每一句哨兵：各種照抄寫法夾在一般句
     }
   }
   assertEquals(missed, []);
-  // 確認真的跑過每一份清單，不是空迴圈。
-  assert(checks > 1000, String(checks));
+  // 確認真的跑過每一份清單，也真的接到能湊成詞的字，不是空迴圈。
+  assert(checks > 5000, String(checks));
+  assert(withPhraseTail > 200, String(withPhraseTail));
+});
+
+Deno.test("詞組跨過哨兵頭尾也抓得到：轉換路徑上每一本詞組字典的每個詞，切開接在每一種照抄寫法前後", () => {
+  let checks = 0;
+  const missed: string[] = [];
+  for (const [name, list] of Object.entries(SENTINEL_LISTS)) {
+    for (const sentinel of list) {
+      for (const copy of copyForms(sentinel)) {
+        for (const text of phraseStraddles(copy)) {
+          checks++;
+          if (!containsPromptLeak(text, [sentinel])) {
+            missed.push(`${name}：${JSON.stringify(text)}`);
+          }
+        }
+      }
+    }
+  }
+  assertEquals(missed, []);
+  assert(checks > 5000, String(checks));
 });
 
 Deno.test("一般聊天（繁體、簡體、插空白）一句都不中", () => {
