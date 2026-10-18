@@ -696,4 +696,111 @@ void main() {
     await open(const ['我上週也剛去爬了七星山']);
     expect(field(0).widget.focusNode.hasFocus, isFalse);
   });
+
+  // ── 為什麼（Eric 2026-10-18）：任務標籤、燈號點一下看說明，不花模型費 ──
+  test('每種任務都有一句自己的用途', () {
+    final purposes = {
+      for (final task in GuideV3Task.values) guideV3TaskPurpose(task),
+    };
+    expect(purposes, hasLength(GuideV3Task.values.length));
+    expect(purposes.every((p) => p.trim().isNotEmpty), isTrue);
+  });
+
+  testWidgets('點任務標籤：只展開那張卡的用途句，再點收起', (tester) async {
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔']),
+      ],
+    );
+    final accept = guideV3TaskPurpose(GuideV3Task.accept);
+    final tension = guideV3TaskPurpose(GuideV3Task.tension);
+    expect(find.text(accept), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-task-chip-1')));
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('guide-v3-card-1')),
+        matching: find.text(accept),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(tension), findsNothing, reason: '只展開點的那張');
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-task-chip-1')));
+    await tester.pump();
+    expect(find.text(accept), findsNothing);
+  });
+
+  testWidgets('點燈號：三種燈各一行，最後一行說只看這一輪；再點收起', (tester) async {
+    await _pump(
+      tester,
+      read: _read(light: 'yellow'),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+      ],
+    );
+    final explanation =
+        find.byKey(const ValueKey('guide-v3-light-explanation'));
+    expect(explanation, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-light')));
+    await tester.pump();
+    expect(explanation, findsOneWidget);
+    for (final light in GuideV3Light.values) {
+      expect(
+        find.descendant(
+          of: explanation,
+          matching: find.text('${light.label}：${guideV3LightMeaning(light)}'),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.descendant(
+          of: explanation, matching: find.text(guideV3LightRoundNote)),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-light')));
+    await tester.pump();
+    expect(explanation, findsNothing);
+  });
+
+  testWidgets('先別回也能點燈號看說明；關心沒有燈號就沒有說明', (tester) async {
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'hold',
+        light: 'red',
+        judgment: '你剛連傳兩則，球在她那邊。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    await tester.tap(find.byKey(const ValueKey('guide-v3-light')));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('guide-v3-light-explanation')),
+      findsOneWidget,
+    );
+
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'care',
+        careMessage: '先把安全放在第一位。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect(find.byKey(const ValueKey('guide-v3-light')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('guide-v3-light-explanation')),
+      findsNothing,
+    );
+  });
 }

@@ -45,26 +45,82 @@ Color guideV3TaskColor(GuideV3Task task) => switch (task) {
       GuideV3Task.close => AppColors.onBackgroundSecondary,
     };
 
+/// 任務標籤點開的一句用途（Eric 2026-10-18：開場救星、新話題都有推薦理由，v3 補上
+/// 「這張卡在做什麼」；固定說明、不花模型費）。鎖住的卡也用同一句。
+String guideV3TaskPurpose(GuideV3Task task) => switch (task) {
+      GuideV3Task.accept => '先接她剛說的話，讓她知道你有在聽。',
+      GuideV3Task.resonate => '站在她的感受這邊，讓她覺得你懂她。',
+      GuideV3Task.tension => '用輕鬆的玩笑逗她一下，讓聊天多點火花。',
+      GuideV3Task.push => '往見面靠近一步，例如提個想一起做的事，或約好時間。',
+      GuideV3Task.close => '讓這輪自然收個尾，不用硬聊下去。',
+    };
+
 class GuideV3TaskChip extends StatelessWidget {
-  const GuideV3TaskChip({super.key, required this.task});
+  const GuideV3TaskChip({
+    super.key,
+    required this.task,
+    this.onTap,
+    this.expanded = false,
+  });
 
   final GuideV3Task task;
+
+  /// 點了展開用途句（Eric 2026-10-18）；null＝只是標籤（正在寫、鎖住的卡）。
+  final VoidCallback? onTap;
+
+  /// 用途句開著（VoiceOver 念「已展開」）。
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     final color = guideV3TaskColor(task);
-    return Container(
+    final onTap = this.onTap;
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
-      child: Text(
-        task.label,
-        style: AppTypography.labelMedium.copyWith(
-          color: color,
-          fontWeight: FontWeight.w700,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            task.label,
+            style: AppTypography.labelMedium.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          // 小 i 告訴他這個標籤點得開。
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(TablerIcons.info_circle, size: 14, color: color),
+          ],
+        ],
+      ),
+    );
+    if (onTap == null) {
+      return Semantics(
+        label: '任務：${task.label}',
+        child: ExcludeSemantics(child: chip),
+      );
+    }
+    // 標籤本身很小，點擊區撐到 44 高（iOS 建議的最小點擊區）。
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      label: '任務：${task.label}',
+      hint: expanded ? '點兩下收起說明' : '點兩下看這張卡在做什麼',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.centerLeft,
+          child: chip,
         ),
       ),
     );
@@ -150,6 +206,9 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
   /// [_next] 算的是哪一份字；卡上的字換了（改過、再調過）就從第 1 則重新開始。
   List<String>? _progressOf;
 
+  /// 任務標籤點開的用途句（Eric 2026-10-18）。
+  bool _purposeOpen = false;
+
   List<String> get _messages =>
       widget.editedMessages ?? widget.refinedMessages ?? widget.card.messages;
 
@@ -214,14 +273,21 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
     );
     return Container(
       key: ValueKey('guide-v3-card-${card.slot}'),
-      padding: const EdgeInsets.all(14),
+      // 標籤的點擊區是 44 高：上緣少留 10、標籤下面不再另外空一行，標籤和泡泡
+      // 的位置跟以前一樣。
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              GuideV3TaskChip(task: card.task),
+              GuideV3TaskChip(
+                key: ValueKey('guide-v3-task-chip-${card.slot}'),
+                task: card.task,
+                expanded: _purposeOpen,
+                onTap: () => setState(() => _purposeOpen = !_purposeOpen),
+              ),
               const Spacer(),
               if (edited || refined)
                 Text(
@@ -232,7 +298,18 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          if (_purposeOpen)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                guideV3TaskPurpose(card.task),
+                key: ValueKey('guide-v3-card-${card.slot}-purpose'),
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
           for (var i = 0; i < messages.length; i++) ...[
             if (i > 0) const SizedBox(height: 8),
             InkWell(

@@ -17,6 +17,16 @@ Color guideV3LightColor(GuideV3Light light) => switch (light) {
       GuideV3Light.red => AppColors.error,
     };
 
+/// 燈號點開的說明（Eric 2026-10-18）：只講她這一輪的樣子，不講他該怎麼做——燈號跟
+/// 要不要回是分開算的（黃燈也可能是先別回），說法不能跟判讀打架。
+String guideV3LightMeaning(GuideV3Light light) => switch (light) {
+      GuideV3Light.green => '她聊得投入，會主動接話或延伸。',
+      GuideV3Light.yellow => '她有接話，但沒有多延伸。',
+      GuideV3Light.red => '她回得越來越冷，或在拉開距離。',
+    };
+
+const guideV3LightRoundNote = '燈號只看她這一輪的回應，不代表整段關係，也不等於要不要回。';
+
 String guideV3DecisionTitle(GuideV3Decision decision) => switch (decision) {
       GuideV3Decision.send => '局面判讀',
       GuideV3Decision.close => '這輪收個尾',
@@ -32,14 +42,26 @@ String guideV3ReadTitle(GuideV3Read read) =>
         : guideV3DecisionTitle(read.decision);
 
 class GuideV3LightChip extends StatelessWidget {
-  const GuideV3LightChip({super.key, required this.light});
+  const GuideV3LightChip({
+    super.key,
+    required this.light,
+    this.onTap,
+    this.expanded = false,
+  });
 
   final GuideV3Light light;
+
+  /// 點了展開燈號說明（Eric 2026-10-18）；null＝只顯示。
+  final VoidCallback? onTap;
+
+  /// 說明開著（VoiceOver 念「已展開」）。
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     final color = guideV3LightColor(light);
-    return Container(
+    final onTap = this.onTap;
+    final chip = Container(
       key: const ValueKey('guide-v3-light'),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -63,6 +85,91 @@ class GuideV3LightChip extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(TablerIcons.info_circle, size: 14, color: color),
+          ],
+        ],
+      ),
+    );
+    if (onTap == null) return chip;
+    // 點擊區撐到 44 高（iOS 建議的最小點擊區）。
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      label: '燈號：${light.label}',
+      hint: expanded ? '點兩下收起說明' : '點兩下看燈號的意思',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.center,
+          child: chip,
+        ),
+      ),
+    );
+  }
+}
+
+/// 燈號說明：三種燈各一行，這次的燈標粗；最後一行說只看這一輪。
+class GuideV3LightExplanation extends StatelessWidget {
+  const GuideV3LightExplanation({super.key, required this.current});
+
+  final GuideV3Light current;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTypography.bodySmall.copyWith(height: 1.4);
+    return Container(
+      key: const ValueKey('guide-v3-light-explanation'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final light in GuideV3Light.values) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: guideV3LightColor(light),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${light.label}：${guideV3LightMeaning(light)}',
+                    style: style.copyWith(
+                      color: light == current
+                          ? AppColors.onBackgroundPrimary
+                          : AppColors.onBackgroundSecondary,
+                      fontWeight: light == current ? FontWeight.w700 : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            guideV3LightRoundNote,
+            style: style.copyWith(color: AppColors.onBackgroundSecondary),
+          ),
         ],
       ),
     );
@@ -70,13 +177,22 @@ class GuideV3LightChip extends StatelessWidget {
 }
 
 /// 燈號＋判讀（＋要等她做什麼／關心文案）。結果頁與分析紀錄共用。
-class GuideV3ReadPanel extends StatelessWidget {
+class GuideV3ReadPanel extends StatefulWidget {
   const GuideV3ReadPanel({super.key, required this.read});
 
   final GuideV3Read read;
 
   @override
+  State<GuideV3ReadPanel> createState() => _GuideV3ReadPanelState();
+}
+
+class _GuideV3ReadPanelState extends State<GuideV3ReadPanel> {
+  /// 燈號點開的說明（Eric 2026-10-18）。
+  bool _lightOpen = false;
+
+  @override
   Widget build(BuildContext context) {
+    final read = widget.read;
     final decision = read.decision;
     final isCare = decision == GuideV3Decision.care;
     final accent = switch (decision) {
@@ -98,9 +214,13 @@ class GuideV3ReadPanel extends StatelessWidget {
     final light = read.light;
     final waitFor = read.waitFor;
     final careMessage = read.careMessage;
+    // 關心只給固定文案，不放燈號與判讀。
+    final showLight = light != null && !isCare;
     return Container(
       key: const ValueKey('guide-v3-read'),
-      padding: const EdgeInsets.all(16),
+      // 標題列至少 44 高（燈號的點擊區）：上緣少留 8、標題列下面只留 2，字的位置
+      // 跟以前差不多。
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(22),
@@ -109,25 +229,36 @@ class GuideV3ReadPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: accent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  guideV3ReadTitle(read),
-                  style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.onBackgroundPrimary,
-                    fontWeight: FontWeight.w800,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    guideV3ReadTitle(read),
+                    style: AppTypography.titleMedium.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
-              // 關心只給固定文案，不放燈號與判讀。
-              if (light != null && !isCare) GuideV3LightChip(light: light),
-            ],
+                if (light != null && !isCare)
+                  GuideV3LightChip(
+                    light: light,
+                    expanded: _lightOpen,
+                    onTap: () => setState(() => _lightOpen = !_lightOpen),
+                  ),
+              ],
+            ),
           ),
+          if (light != null && !isCare && _lightOpen) ...[
+            const SizedBox(height: 2),
+            GuideV3LightExplanation(current: light),
+          ],
           if (isCare && careMessage != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 2),
             Text(
               careMessage,
               key: const ValueKey('guide-v3-care-message'),
@@ -135,7 +266,7 @@ class GuideV3ReadPanel extends StatelessWidget {
             ),
           ],
           if (!isCare && read.judgment.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: showLight && _lightOpen ? 12 : 2),
             Text(
               read.judgment,
               key: const ValueKey('guide-v3-judgment'),
