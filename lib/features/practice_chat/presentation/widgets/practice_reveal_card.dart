@@ -4,6 +4,7 @@
 // - 卡面：漸層倒角框、照片緩縮、全息掃光、膠囊稀有度牌（烙印前不存在）、兩行毛玻璃
 //   資訊欄、只畫亮星。
 // 動畫狀態全部由呼叫端算好傳進來（[PracticeRevealFaceState]），這裡只負責畫。
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -674,6 +675,7 @@ const double _kIntroPaddingH = 14;
 const double _kIntroPaddingV = 8;
 const double _kIntroFontSize = 13;
 const double _kIntroLineHeight = 1.4;
+const double _kIntroRadius = 18;
 
 /// 卡片下緣到提示字之間的 [available] 高度放得下幾行第一句話：0＝不顯示，最多 2 行
 /// （V3.1 規格 §5.13）。字級跟著系統字級放大，行高用 [scaler] 換算。
@@ -683,7 +685,8 @@ int practiceIntroBubbleLines(double available, TextScaler scaler) {
   return ((available - chrome) / line).floor().clamp(0, 2);
 }
 
-/// 角色第一句話（V3.1 規格 §5.13）：卡片下方的半透明深色小對話框，上緣尖角指向卡片。
+/// 角色第一句話（V3.1 規格 §5.13）：卡片下方的半透明深色小對話框，上緣尖角指向卡片；
+/// 外框跟資訊欄同一圈淡白邊，N／R 的深色背景上才看得出是對話框。
 /// 逐字打出時整句先排好、還沒打到的字透明，換行位置從頭到尾不跳。讀屏不另外唸：
 /// 停住時儀式的讀屏按鈕已經接上這句話。
 class PracticeRevealIntroBubble extends StatelessWidget {
@@ -704,71 +707,84 @@ class PracticeRevealIntroBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final chars = text.characters;
     final shown = (typed * chars.length).ceil().clamp(0, chars.length);
-    final fill = PracticeRevealPalette.infoGlass.withValues(alpha: 0.82);
     return ExcludeSemantics(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CustomPaint(
-            size: const Size(_kIntroNibWidth, _kIntroNibHeight),
-            painter: _IntroNibPainter(fill),
+      child: CustomPaint(
+        painter: const _IntroBubblePainter(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            _kIntroPaddingH,
+            _kIntroNibHeight + _kIntroPaddingV,
+            _kIntroPaddingH,
+            _kIntroPaddingV,
           ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: fill,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: _kIntroPaddingH,
-                vertical: _kIntroPaddingV,
-              ),
-              child: Text.rich(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: chars.take(shown).toString()),
                 TextSpan(
-                  children: [
-                    TextSpan(text: chars.take(shown).toString()),
-                    TextSpan(
-                      text: chars.skip(shown).toString(),
-                      style: const TextStyle(color: Colors.transparent),
-                    ),
-                  ],
+                  text: chars.skip(shown).toString(),
+                  style: const TextStyle(color: Colors.transparent),
                 ),
-                key: const ValueKey('practice-draw-ceremony-intro-text'),
-                maxLines: maxLines,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: AppTypography.bodySmall.copyWith(
-                  fontSize: _kIntroFontSize,
-                  height: _kIntroLineHeight,
-                  color: Colors.white.withValues(alpha: 0.92),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              ],
+            ),
+            key: const ValueKey('practice-draw-ceremony-intro-text'),
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: AppTypography.bodySmall.copyWith(
+              fontSize: _kIntroFontSize,
+              height: _kIntroLineHeight,
+              color: Colors.white.withValues(alpha: 0.92),
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-/// 對話框上緣的小尖角（朝上指向卡片）。
-class _IntroNibPainter extends CustomPainter {
-  const _IntroNibPainter(this.color);
-
-  final Color color;
+/// 對話框外形：圓角框加上緣置中的小尖角畫成同一條路徑，先填色再描邊，
+/// 尖角跟框之間不會有接縫線。
+class _IntroBubblePainter extends CustomPainter {
+  const _IntroBubblePainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 底邊往下多畫 1 px 壓進對話框，接縫不會透出一條線。
+    final w = size.width;
+    final h = size.height;
+    const top = _kIntroNibHeight;
+    // 一行字時框高不到 36，圓角收成一半高（膠囊），跟 BoxDecoration 的圓角一樣。
+    final r = math.min(_kIntroRadius, math.min((h - top) / 2, w / 2));
+    final corner = Radius.circular(r);
+    final cx = w / 2;
+    final nib = math.min(_kIntroNibWidth / 2, math.max(0.0, cx - r));
     final path = Path()
-      ..moveTo(size.width / 2, 0)
-      ..lineTo(size.width, size.height + 1)
-      ..lineTo(0, size.height + 1)
+      ..moveTo(cx - nib, top)
+      ..lineTo(cx, 0)
+      ..lineTo(cx + nib, top)
+      ..lineTo(w - r, top)
+      ..arcToPoint(Offset(w, top + r), radius: corner)
+      ..lineTo(w, h - r)
+      ..arcToPoint(Offset(w - r, h), radius: corner)
+      ..lineTo(r, h)
+      ..arcToPoint(Offset(0, h - r), radius: corner)
+      ..lineTo(0, top + r)
+      ..arcToPoint(Offset(r, top), radius: corner)
       ..close();
-    canvas.drawPath(path, Paint()..color = color);
+    canvas.drawPath(
+      path,
+      Paint()..color = PracticeRevealPalette.infoGlass.withValues(alpha: 0.82),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.12),
+    );
   }
 
   @override
-  bool shouldRepaint(_IntroNibPainter old) => old.color != color;
+  bool shouldRepaint(_IntroBubblePainter old) => false;
 }
