@@ -78,6 +78,9 @@ export const NO_TENSION_ENTRIES: readonly string[] = [
 ];
 /// 標到 B46（她對自己的投入不好意思）時不排推進。
 export const NO_PUSH_ENTRIES: readonly string[] = ["B46"];
+/// B33（兩次提案都被帶過）：不再排推進，照常聊（Bruce 已定的規格，Eric 2026-10-18 要程式照做）。
+/// 她自己提見面或明確答應時照常推進：B33 的寫法本來就是等她自己開口。
+export const BRUSHED_OFF_TWICE_ENTRY = "B33";
 /// B47：她約第一次見面指定某家酒吧或餐廳，他提議換地方她不肯。
 export const SCAM_VENUE_ENTRY = "B47";
 export const SCAM_VENUE_WARNING =
@@ -106,6 +109,11 @@ export function decidePush(
     tags.herMoodBad || tags.drunkOrLateNight || tags.retreating || tags.risk ||
     tags.light === "red"
   ) return null;
+  if (
+    matched.has(BRUSHED_OFF_TWICE_ENTRY) &&
+    tags.inviteReadiness !== "她自己提見面" &&
+    tags.inviteReadiness !== "明確答應"
+  ) return null;
   switch (tags.inviteReadiness) {
     case "明確答應":
       return "說定";
@@ -121,7 +129,8 @@ export function decidePush(
   if (tags.herMove === "開窗") return "具體邀約";
   const hisTurns = turns.filter((t) => t.fromMe).length;
   const herTurns = turns.length - hisTurns;
-  if (tags.light === "green" && hisTurns >= 2 && herTurns >= 2) return "種子";
+  // 種子不用等綠燈（Bruce 10/13）：黃燈聊開了也種；紅燈上面已經擋掉。
+  if (hisTurns >= 2 && herTurns >= 2) return "種子";
   return null;
 }
 

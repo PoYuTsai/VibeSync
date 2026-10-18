@@ -173,13 +173,15 @@ Deno.test("C1：她婉拒就一句收尾；她取消不是只收尾（交給推�
   );
 });
 
-Deno.test("C3：開窗具體邀約；綠燈聊開兩輪以上才種；情緒差、紅燈、婉拒過、猶豫不推進", () => {
+Deno.test("C3：開窗具體邀約；聊開兩輪以上才種（綠燈、黃燈都可以）；情緒差、紅燈、婉拒過、猶豫不推進", () => {
   const short = toTurns([me("嗨"), her("哈囉")]);
   const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
   assertEquals(decidePush(short, tags({ herMove: "開窗" })), "具體邀約");
   assertEquals(decidePush(short, tags()), null);
   assertEquals(decidePush(long, tags()), "種子");
-  assertEquals(decidePush(long, tags({ light: "yellow" })), null);
+  // 種子不用等綠燈（Bruce 10/13）；黃燈沒聊開仍不推進（不做「黃燈偏綠提小提案」）。
+  assertEquals(decidePush(long, tags({ light: "yellow" })), "種子");
+  assertEquals(decidePush(short, tags({ light: "yellow" })), null);
   assertEquals(decidePush(long, tags({ herMoodBad: true })), null);
   assertEquals(decidePush(long, tags({ light: "red" })), null);
   assertEquals(decidePush(long, tags({ inviteReadiness: "婉拒過" })), null);
@@ -428,6 +430,34 @@ Deno.test("v3.3：標到 B46 不排推進（就算綠燈、聊開了也不種子
   const turns = toTurns([me("a"), her("b"), me("c"), her("d")]);
   assertEquals(decidePush(turns, tags()), "種子");
   assertEquals(decidePush(turns, tags({ matchedEntries: ["B46"] })), null);
+});
+
+Deno.test("C3：黃燈的種子卡排在 3 張裡、不帶問號；帶張力照舊只在綠燈", () => {
+  const t = tags({ light: "yellow" });
+  const cards = arrangeCards({ kind: "send" }, "種子", t);
+  assertEquals(cards.map((c) => c.task), ["推進", "接住", "接住"]);
+  assertEquals(cards[0].push, "種子");
+  assertEquals(cards[0].questionBudget, 0);
+});
+
+Deno.test("B33（兩次提案都被帶過）：不排推進；她自己提見面或明確答應照常推進", () => {
+  const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
+  const b33 = (over: Partial<ReadTags> = {}) =>
+    tags({ matchedEntries: ["B33"], ...over });
+  assertEquals(decidePush(long, b33()), null);
+  assertEquals(decidePush(long, b33({ herMove: "開窗" })), null);
+  assertEquals(decidePush(long, b33({ inviteReadiness: "含糊答應" })), null);
+  assertEquals(decidePush(long, b33({ inviteReadiness: "她取消了" })), null);
+  assertEquals(
+    decidePush(long, b33({ inviteReadiness: "她自己提見面" })),
+    "具體邀約",
+  );
+  assertEquals(decidePush(long, b33({ inviteReadiness: "明確答應" })), "說定");
+  assert(
+    arrangeCards({ kind: "send" }, decidePush(long, b33()), b33()).every((c) =>
+      c.task !== "推進"
+    ),
+  );
 });
 
 Deno.test("v3.3：她直接問他時第一張排接住、推進放後面；沒直接問照原樣推進在前", () => {
