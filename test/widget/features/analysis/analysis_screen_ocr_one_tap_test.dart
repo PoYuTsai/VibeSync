@@ -1,6 +1,7 @@
 // 截圖辨識確認後一鍵「加入並開始分析」（Eric 2026-10-18）：先照今天匯入，再走分析鈕
 // 同一個入口——開始鎖、最後一則提示、額度不足、超過 2000 字確認都照舊；
 // 「先存起來，晚點再分析」維持今天的匯入、不送分析。確認框上那一行跟分析鈕同一套算法。
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,8 +22,10 @@ import 'package:vibesync/features/analysis/data/services/ocr_recognition_cache_s
 import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/analysis/domain/errors/analysis_exceptions.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/sections/analysis_error_card.dart';
 import 'package:vibesync/features/analysis/presentation/sections/screenshot_intake_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
@@ -160,8 +163,12 @@ class _StubConversationRepository extends ConversationRepository {
 
   Conversation _conversation;
 
-  /// 開了就當存檔寫不進去：匯入那次存檔丟例外。
+  /// 開了就當存檔寫不進去：匯入那次存檔丟 [saveError]。
   bool failUpdates = false;
+  Object saveError = const FileSystemException('save failed');
+
+  /// 有給就先等它：存檔卡在半路，測「還沒回來就離開這頁」。
+  Future<void>? pendingSave;
 
   @override
   Conversation? getConversation(String id) =>
@@ -169,8 +176,10 @@ class _StubConversationRepository extends ConversationRepository {
 
   @override
   Future<void> updateConversation(Conversation c) async {
+    final pending = pendingSave;
+    if (pending != null) await pending;
     if (failUpdates) {
-      throw const FileSystemException('save failed');
+      throw saveError;
     }
     _conversation = c;
   }
@@ -502,6 +511,33 @@ Future<void> _repickAndRecognize(WidgetTester tester) async {
   expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
 }
 
+/// 先取消確認框，再從卡片「繼續確認本次內容」打開同一個確認框。
+Future<void> _cancelThenResume(WidgetTester tester) async {
+  await _tapInDialog(tester, '取消');
+  final resume = find.text('繼續確認本次內容');
+  await tester.ensureVisible(resume);
+  await tester.tap(resume);
+  await tester.pumpAndSettle();
+  expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
+}
+
+/// 匯入存檔失敗、不是分析錯誤時，錯誤卡上的訊息。
+const _recognitionFailedMessage = '截圖辨識暫時失敗，請稍後再試。';
+
+/// 截圖辨識那一種錯誤卡（初次辨識與續看用同一個檢查）：訊息、主按鈕照傳進來的；
+/// 來源是辨識才有「強制重新辨識」那顆（這幾條路都有上一批圖可以重跑）。
+void _expectRecognitionErrorCard(
+  WidgetTester tester, {
+  required String message,
+  required String primaryActionLabel,
+}) {
+  expect(find.byType(AnalysisErrorCard), findsOneWidget);
+  final card = tester.widget<AnalysisErrorCard>(find.byType(AnalysisErrorCard));
+  expect(card.message, message);
+  expect(card.primaryActionLabel, primaryActionLabel);
+  expect(card.showForceReRecognize, isTrue, reason: '錯誤來源是截圖辨識');
+}
+
 /// 分析開始之後有輪播動畫，不能 settle：固定推幾格。
 Future<void> _pumpFrames(WidgetTester tester, {int count = 8}) async {
   for (var i = 0; i < count; i++) {
@@ -820,7 +856,11 @@ void main() {
         await _tapInDialog(tester, label);
 
         expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
-        expect(find.text('截圖辨識暫時失敗，請稍後再試。'), findsOneWidget);
+        _expectRecognitionErrorCard(
+          tester,
+          message: _recognitionFailedMessage,
+          primaryActionLabel: '重新辨識',
+        );
         expect(find.text('最後一則是你傳的'), findsNothing);
         expect(find.text('開始分析前'), findsNothing);
         expect(harness.recorder.streamCalls, 0);
@@ -829,6 +869,86 @@ void main() {
             reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
       });
     }
+
+    // 續看卡那條路（主審 P3；Eric 2026-10-18「不接受，先處理」）：存檔失敗以前例外直接漏掉、
+    // 畫面什麼都沒說；要跟初次辨識同一張錯誤卡。畫面那份訊息與續看卡照今天不動。
+    // 例外沒接住的話，測試框架會判這條失敗。
+    for (final label in [_importOnlyLabel, _analyzeLabel]) {
+      testWidgets('從「繼續確認本次內容」匯入、存檔失敗（按「$label」）：跟初次辨識同一張錯誤卡，一次都不送',
+          (tester) async {
+        final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+        final harness =
+            await _pumpOcrScreen(tester, recognizedMessages: messages);
+        await _recognize(tester);
+        await _cancelThenResume(tester);
+        harness.repository.failUpdates = true;
+
+        await _tapInDialog(tester, label);
+
+        expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+        _expectRecognitionErrorCard(
+          tester,
+          message: _recognitionFailedMessage,
+          primaryActionLabel: '重新辨識',
+        );
+        expect(find.text('最後一則是你傳的'), findsNothing);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 0);
+        expect(_contents(harness.conversation.messages),
+            _recognizedContents(messages),
+            reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
+        expect(find.text('繼續確認本次內容'), findsOneWidget, reason: '照今天：續看卡還在');
+      });
+    }
+
+    testWidgets('從「繼續確認本次內容」按「加入並開始分析」、存檔丟出分析錯誤：錯誤卡照那個錯誤的訊息和動作，一次都不送',
+        (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      await _cancelThenResume(tester);
+      // 動作挑一個不是重試的，才看得出是照錯誤帶的、不是寫死。
+      harness.repository
+        ..failUpdates = true
+        ..saveError = AnalysisException(
+          '測試用：存檔被擋下',
+          suggestedAction: AnalysisErrorAction.shortenInput,
+        );
+
+      await _tapInDialog(tester, _analyzeLabel);
+
+      _expectRecognitionErrorCard(
+        tester,
+        message: '測試用：存檔被擋下',
+        primaryActionLabel: '調整內容',
+      );
+      expect(find.text(_recognitionFailedMessage), findsNothing);
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+    });
+
+    testWidgets('從「繼續確認本次內容」匯入、存檔還沒回來就離開這頁：之後存檔失敗也不碰已關掉的畫面，一次都不送',
+        (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      await _cancelThenResume(tester);
+      final save = Completer<void>();
+      harness.repository
+        ..failUpdates = true
+        ..pendingSave = save.future;
+
+      await _tapInDialog(tester, _analyzeLabel);
+      await tester.pumpWidget(const SizedBox());
+      save.complete();
+      await tester.pump();
+
+      // 關掉的畫面再 setState 會丟錯，測試框架會判這條失敗。
+      expect(find.byType(AnalysisScreen), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+    });
 
     testWidgets('按下去時換了帳號、新帳號還沒同意：暫不同意就不送，匯入的內容留著', (tester) async {
       final messages = [_her(_chars('好')), _her(_chars('嗯'))];

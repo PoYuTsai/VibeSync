@@ -2319,9 +2319,35 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    await _applyRecognitionImport(
-      dialogResult: dialogResult,
-      recognized: recognized,
+    try {
+      await _applyRecognitionImport(
+        dialogResult: dialogResult,
+        recognized: recognized,
+      );
+    } catch (e) {
+      // 續看卡送出後存檔失敗（Eric 2026-10-18；主審 P3）：以前例外直接漏掉、畫面沒說，
+      // 現在跟初次辨識同一張錯誤卡。訊息與續看卡照舊；存檔沒成功本來就不會開始分析。
+      _debugLog('[Recognize] Resume import failed: $e');
+      if (!mounted) return;
+      setState(() => _applyRecognitionErrorState(e));
+    }
+  }
+
+  /// 截圖辨識或匯入出錯時錯誤卡的內容：初次辨識與「繼續確認本次內容」共用這一份，
+  /// 呼叫端自己包 setState。
+  void _applyRecognitionErrorState(Object error) {
+    if (error is AnalysisException) {
+      _applyErrorState(
+        message: error.message,
+        action: error.suggestedAction,
+        origin: _AnalysisErrorOrigin.recognition,
+      );
+      return;
+    }
+    _applyErrorState(
+      message: '截圖辨識暫時失敗，請稍後再試。',
+      action: AnalysisErrorAction.retry,
+      origin: _AnalysisErrorOrigin.recognition,
     );
   }
 
@@ -2817,11 +2843,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       }
       setState(() {
         _isRecognizing = false;
-        _applyErrorState(
-          message: e.message,
-          action: e.suggestedAction,
-          origin: _AnalysisErrorOrigin.recognition,
-        );
+        _applyRecognitionErrorState(e);
       });
     } catch (e) {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
@@ -2830,11 +2852,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _debugLog('錯誤詳情: $e');
       setState(() {
         _isRecognizing = false;
-        _applyErrorState(
-          message: '截圖辨識暫時失敗，請稍後再試。',
-          action: AnalysisErrorAction.retry,
-          origin: _AnalysisErrorOrigin.recognition,
-        );
+        _applyRecognitionErrorState(e);
       });
     }
   }
