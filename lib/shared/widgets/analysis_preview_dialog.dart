@@ -7,6 +7,9 @@
 //   顯示精確「本次將使用 20 則」。額度檢查先於確認（定案 #4）：額度不足
 //   時 caller 已走額度不足路徑，這裡的 canProceed 只是防禦層。
 // - reject 帶（4001+）：caller 在呼叫本 dialog 前就擋下，不會進來。
+// - [AnalysisQuotaLine]：額度夠、又是一般長度時不跳本 dialog，改在分析鈕旁寫一行。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/services/message_calculator.dart';
@@ -14,6 +17,36 @@ import '../../core/services/usage_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/services/app_haptics.dart';
+
+/// 額度夠、又是一般長度（≤2000 字、最多 10 則）時不跳確認框，分析鈕旁改寫一行
+/// 「這次會用 N 則，剩 M 則」（Eric 2026-10-18）。超過 2000 字或額度不夠照舊跳框。
+class AnalysisQuotaLine {
+  const AnalysisQuotaLine._({
+    required this.units,
+    required this.remainingAfter,
+  });
+
+  /// 這次會用幾則（跟確認框同一個算法）。
+  final int units;
+
+  /// 用完之後剩幾則：本月、今日取少的。先別回只扣 1 則，實際只會更多。
+  final int remainingAfter;
+
+  String get text => '這次會用 $units 則，剩 $remainingAfter 則';
+
+  /// null＝要跳確認框（超過 2000 字、或額度不夠）。
+  static AnalysisQuotaLine? of(
+    MessagePreview preview, {
+    required int monthlyRemaining,
+    required int dailyRemaining,
+  }) {
+    if (preview.band.kind != BillingBandKind.standard) return null;
+    final units = preview.band.units ?? 0;
+    final remaining = math.min(monthlyRemaining, dailyRemaining);
+    if (units <= 0 || remaining < units) return null;
+    return AnalysisQuotaLine._(units: units, remainingAfter: remaining - units);
+  }
+}
 
 /// Dialog shown before analysis to preview billed usage.
 class AnalysisPreviewDialog extends StatelessWidget {

@@ -249,6 +249,34 @@ void main() {
     });
   });
 
+  group('AnalysisQuotaLine（Eric 2026-10-18：額度夠的一般長度不跳框）', () {
+    AnalysisQuotaLine? line(int chars, {int monthly = 30, int daily = 15}) =>
+        AnalysisQuotaLine.of(
+          _preview(chars),
+          monthlyRemaining: monthly,
+          dailyRemaining: daily,
+        );
+
+    test('額度夠、一般長度：這次會用 N 則，剩下本月與今日取少的扣掉 N', () {
+      final today = line(100, daily: 11)!;
+      expect(today.units, 3);
+      expect(today.remainingAfter, 8);
+      expect(today.text, '這次會用 3 則，剩 8 則');
+      expect(line(40, monthly: 5)!.text, '這次會用 1 則，剩 4 則');
+    });
+
+    test('剛好用完也不跳框：剩 0 則', () {
+      expect(line(450, daily: 10)!.text, '這次會用 10 則，剩 0 則');
+    });
+
+    test('額度不夠、超過 2000 字或超過上限：照舊跳確認框', () {
+      expect(line(450, daily: 9), isNull);
+      expect(line(450, monthly: 9), isNull);
+      expect(line(2500, monthly: 300, daily: 50), isNull);
+      expect(line(4500, monthly: 300, daily: 50), isNull);
+    });
+  });
+
   group('showAnalysisPreviewDialog helper', () {
     testWidgets('returns true when confirmed', (tester) async {
       bool? result;

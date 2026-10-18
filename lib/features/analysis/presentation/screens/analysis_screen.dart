@@ -2321,13 +2321,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 分析鈕旁那一行（Eric 2026-10-18）：跟按下去時同一套算法，用的是沒裁成最近
+  /// 幾輪的訊息，所以只會比實際送出的多、不會少。null＝按下去會跳確認框。
+  /// 在 build 裡算：只用已訂閱的方案狀態，不讀本機用量；方案還在載入就不寫。
+  AnalysisQuotaLine? _analysisQuotaLine(
+    Conversation conversation,
+    SubscriptionState subscription,
+  ) {
+    if (subscription.isLoading) return null;
+    final gate =
+        ref.read(analysisRunPreparerProvider).gate(conversation: conversation);
+    final messages = gate.messagesForAnalysis;
+    if (messages == null) return null;
+    final preview = MessageCalculator.previewAnalysisRequest(
+      messages,
+      previousAnalyzedCharCount: conversation.lastAnalyzedCharCount ?? 0,
+    );
+    return AnalysisQuotaLine.of(
+      preview,
+      monthlyRemaining: subscription.monthlyRemaining,
+      dailyRemaining: subscription.dailyRemaining,
+    );
+  }
+
   /// ADR #19 r3 分析前確認流程。
   ///
   /// 順序（定案 #4）：算出本次計費字數/則數 → 4001+ 先擋（請分批，不送出）
   /// → 額度檢查（preview dialog 內建，不足時無法確認、給升級 CTA）→
   /// >2000 確認框（同一 dialog 的 overcharge 變體，顯示精確 20 則）。
+  /// [shownQuotaUnits]：按鈕旁那一行寫的則數；額度夠、一般長度、實際不超過那一行
+  /// 就不跳框（Eric 2026-10-18）。沒有那一行的入口（重新分析、錯誤重試）照舊跳框。
   Future<({bool confirmed, OverchargeConfirmationPayload? overcharge})>
-      _confirmAnalysisPreview(List<Message> requestMessages) async {
+      _confirmAnalysisPreview(
+    List<Message> requestMessages, {
+    int? shownQuotaUnits,
+  }) async {
     if (!mounted) {
       return (confirmed: false, overcharge: null);
     }
@@ -2350,10 +2378,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return (confirmed: false, overcharge: null);
     }
 
+    final usage = _buildPreviewUsageData();
+    final line = AnalysisQuotaLine.of(
+      preview,
+      monthlyRemaining: usage.monthlyRemaining,
+      dailyRemaining: usage.dailyRemaining,
+    );
+    if (line != null &&
+        shownQuotaUnits != null &&
+        line.units <= shownQuotaUnits) {
+      return (confirmed: true, overcharge: null);
+    }
+
     final confirmed = await showAnalysisPreviewDialog(
       context: context,
       preview: preview,
-      usage: _buildPreviewUsageData(),
+      usage: usage,
       onUpgrade: () {
         Navigator.of(context, rootNavigator: true).pop(false);
         _showPaywall(context);
@@ -2724,6 +2764,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     bool waitForCompletion = false,
     int? analysisMessageLimit,
     bool allowPendingOutgoingRefresh = false,
+    int? shownQuotaUnits,
   }) async {
     final pendingRecordRepair = _persistence.recordRepairFuture;
     if (pendingRecordRepair != null) {
@@ -2834,6 +2875,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       } else {
         previewDecision = await _confirmAnalysisPreview(
           preparation.requestMessages,
+          shownQuotaUnits: shownQuotaUnits,
         );
       }
       if (!previewDecision.confirmed || !mounted) {
@@ -4151,6 +4193,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isScreenshotOnlyEmptyState && analysisFragmentMessages.isEmpty;
     final showStreamInterruptedAction =
         !_isAnalyzing && !_hasAnalysisResult && _streamErrorMessage != null;
+    // 額度夠的一般長度：圓鈕下寫這次會用幾則，按下去不再跳確認框。
+    final quotaLine = showFloatingAnalysisAction
+        ? _analysisQuotaLine(conversation, subscription)
+        : null;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
@@ -4160,10 +4206,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         showStartAction: showFloatingAnalysisAction,
         isAnalyzing: _isAnalyzing,
         analysisCompleted: _hasAnalysisResult,
-        onStart: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
+        onStart: (_isAnalyzing || _isRecognizing)
+            ? null
+            : () => unawaited(_runAnalysis(shownQuotaUnits: quotaLine?.units)),
         onFollowProgress: _jumpToCurrentAnalysis,
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
+        quotaLine: quotaLine?.text,
       ),
       floatingActionButtonLocation: showFloatingAnalysisAction
           ? const AnalysisSideCenterFabLocation()

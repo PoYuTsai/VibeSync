@@ -1446,6 +1446,97 @@ void main() {
       },
     );
 
+    // 分析圓鈕（Eric 2026-10-18）：額度夠的一般長度不跳確認框，圓鈕下寫一行。
+    Future<_HydrationHarness> pumpOrbScreen(
+      WidgetTester tester, {
+      required SubscriptionState subscription,
+    }) async {
+      SharedPreferences.setMockInitialValues({
+        AiDataSharingConsent.acceptedKeyForTesting: true,
+      });
+      late final _SeededSubscriptionNotifier notifier;
+      final harness = await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        conversation: _conversation(),
+        extraOverrides: [
+          analysisRunPreparerProvider.overrideWithValue(
+            AnalysisRunPreparer(
+              memory: _NoopConversationMemory(),
+              resolvePartnerSummary: (_) => null,
+              resolveEffectiveStyleContext: (_) => null,
+            ),
+          ),
+          partnerContextResolverProvider.overrideWithValue(
+            _emptyPartnerContextResolver(),
+          ),
+          subscriptionProvider.overrideWith((ref) {
+            notifier = _SeededSubscriptionNotifier(subscription);
+            return notifier;
+          }),
+          // 確認流程照舊讀本機用量（只拿重置時間；方案載好時數字以方案為準）。
+          usageDataProvider.overrideWithValue(
+            UsageData(
+              monthlyUsed: subscription.monthlyMessagesUsed,
+              monthlyLimit: subscription.monthlyLimit,
+              dailyUsed: subscription.dailyMessagesUsed,
+              dailyLimit: subscription.dailyLimit,
+              dailyResetAt: DateTime(2026, 10, 19),
+            ),
+          ),
+        ],
+      );
+      notifier.restoreSeed();
+      await tester.pump();
+      final dismissCoachMark = find.text('知道了');
+      if (dismissCoachMark.evaluate().isNotEmpty) {
+        await tester.tap(dismissCoachMark);
+        await tester.pump();
+      }
+      return harness;
+    }
+
+    Future<void> tapOrb(WidgetTester tester) async {
+      await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets(
+      '分析圓鈕：額度夠的一般長度，圓鈕下寫這次會用幾則，按下去不跳確認框直接開始',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(dailyMessagesUsed: 3),
+        );
+
+        // 「今天加班好累喔」7 字 → 1 則；本月剩 30、今日剩 12 → 用完剩 11。
+        expect(find.text('這次會用 1 則，剩 11 則'), findsOneWidget);
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '分析圓鈕：今天額度不夠就不寫那一行，按下去照舊跳確認框、不送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(dailyMessagesUsed: 15),
+        );
+
+        expect(
+            find.byKey(FloatingAnalysisActionButton.captionKey), findsNothing);
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
     testWidgets(
       'F13：片段更新後的過期結果 → 顯示原因與能按的「重新分析」',
       (tester) async {
