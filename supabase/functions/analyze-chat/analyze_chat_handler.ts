@@ -623,7 +623,10 @@ async function handleAnalyzeChat(
         "monthly_limit_exceeded",
       );
       const refreshed = refreshStatus === "applied";
-      if (!(refreshed && sub.monthly_messages_used < monthlyLimit)) {
+      if (
+        !(refreshed && sub.monthly_messages_used < monthlyLimit) &&
+        !routeToQuotaCare("monthly_limit_exceeded")
+      ) {
         logWarn("monthly_limit_exceeded", {
           user: summarizeUser(user.id),
           tier: sub.tier,
@@ -651,6 +654,7 @@ async function handleAnalyzeChat(
 
     // Check daily limit（測試帳號與 stream retry 跳過，同上）。
     if (
+      !careOnlyFromQuota &&
       !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOpenerFlowMode &&
       !isOptimizeMessageRequestShape &&
@@ -661,7 +665,10 @@ async function handleAnalyzeChat(
         "daily_limit_exceeded",
       );
       const refreshed = refreshStatus === "applied";
-      if (!(refreshed && sub.daily_messages_used < dailyLimit)) {
+      if (
+        !(refreshed && sub.daily_messages_used < dailyLimit) &&
+        !routeToQuotaCare("daily_limit_exceeded")
+      ) {
         logWarn("daily_limit_exceeded", {
           user: summarizeUser(user.id),
           tier: sub.tier,
@@ -1247,6 +1254,7 @@ ${recentText}`;
     let projectedDailyUsage = sub.daily_messages_used +
       quotaUsage.chargedMessageCount;
     if (
+      !careOnlyFromQuota &&
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       optimizeReplayResult === null &&
       !isStreamRetryMode &&

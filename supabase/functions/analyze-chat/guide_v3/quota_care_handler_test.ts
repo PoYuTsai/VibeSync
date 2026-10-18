@@ -636,3 +636,109 @@ Deno.test("剩的不夠、她說不想活了，其他關卡照舊：模型限流
   assertEquals(rejected.fake.inserts, []);
   assertEquals(rejected.modelCalls, 0);
 });
+
+// ── 已經用完（剩 0）：最前面那兩道關卡（還沒讀訊息就擋）也一樣，App 在這時跳的是同一個
+// 額度不足框。
+/// 照舊 429：已用完那兩道關卡的回應內容（跟改版前一字不差）。
+function assertUsedUp429(
+  out: Outcome,
+  expected: {
+    kind: "monthly" | "daily";
+    monthlyUsed: number;
+    dailyUsed: number;
+  },
+  label: string,
+) {
+  const monthlyRemaining = Math.max(0, FREE_MONTHLY - expected.monthlyUsed);
+  const dailyRemaining = Math.max(0, FREE_DAILY - expected.dailyUsed);
+  const body = expected.kind === "monthly"
+    ? {
+      error: "Monthly limit exceeded",
+      message: "本月額度已用完，升級方案可取得更多分析額度。",
+      monthlyLimit: FREE_MONTHLY,
+      used: expected.monthlyUsed,
+      quotaNeeded: 1,
+      monthlyRemaining,
+      dailyRemaining,
+    }
+    : {
+      error: "Daily limit exceeded",
+      message: "今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。",
+      dailyLimit: FREE_DAILY,
+      used: expected.dailyUsed,
+      resetAt: "tomorrow",
+      quotaNeeded: 1,
+      monthlyRemaining,
+      dailyRemaining,
+    };
+  assertEquals(out.status, 429, `${label}: status ${out.text}`);
+  assertEquals(out.text, JSON.stringify(body), label);
+  assertEquals(out.fake.inserts, [], `${label}: 不建 run`);
+  assertEquals(out.modelCalls, 0, `${label}: 不打模型`);
+  assertEquals(out.fake.rpc, [], `${label}: 不動額度、不限流`);
+}
+
+function careGates(out: Outcome): unknown[] {
+  return out.logs
+    .filter((l) => l.event === "quota_exceeded_self_harm_care")
+    .map((l) => l.metadata.gate);
+}
+
+Deno.test("本月或今天已經用完（剩 0）、她說不想活了：同樣直接給關心訊息，不打模型、不扣", async () => {
+  const monthly = await analyze(chatAnalysis(HER_SELF_HARM), {
+    monthlyUsed: FREE_MONTHLY,
+  });
+  assertQuotaCare(monthly, "本月用完");
+  assertEquals(careGates(monthly), ["monthly_limit_exceeded"]);
+
+  const daily = await analyze(chatAnalysis(HER_SELF_HARM), {
+    dailyUsed: FREE_DAILY,
+  });
+  assertQuotaCare(daily, "今天用完");
+  assertEquals(careGates(daily), ["daily_limit_exceeded"]);
+
+  // 兩個都用完：只判斷一次，後面的額度關卡不再跑。
+  const both = await analyze(chatAnalysis(HER_SELF_HARM), {
+    monthlyUsed: FREE_MONTHLY,
+    dailyUsed: FREE_DAILY,
+  });
+  assertQuotaCare(both, "都用完");
+  assertEquals(careGates(both), ["monthly_limit_exceeded"]);
+});
+
+Deno.test("已經用完、沒有那五個字或只在他的訊息、或走 v2：照舊 429，一字不差", async () => {
+  const cases: [string, Msg[], string][] = [
+    ["沒有自傷字眼", HER_PLAIN, "on"],
+    ["只有想死", HER_WANTS_TO_DIE, "on"],
+    ["只有未成年", HER_MINOR, "on"],
+    ["只在他的訊息", HIS_SELF_HARM_ONLY, "on"],
+    ["只在她引用的內容", HER_QUOTES_HIS, "on"],
+    ["開關關閉", HER_SELF_HARM, "off"],
+  ];
+  for (const [label, messages, guideV3] of cases) {
+    assertUsedUp429(
+      await analyze(chatAnalysis(messages), {
+        monthlyUsed: FREE_MONTHLY,
+        guideV3,
+      }),
+      { kind: "monthly", monthlyUsed: FREE_MONTHLY, dailyUsed: 0 },
+      `本月用完、${label}`,
+    );
+    assertUsedUp429(
+      await analyze(chatAnalysis(messages), {
+        dailyUsed: FREE_DAILY,
+        guideV3,
+      }),
+      { kind: "daily", monthlyUsed: 0, dailyUsed: FREE_DAILY },
+      `今天用完、${label}`,
+    );
+  }
+  assertUsedUp429(
+    await analyze(
+      chatAnalysis(HER_SELF_HARM, { analysisContractVersion: 2 }),
+      { monthlyUsed: FREE_MONTHLY },
+    ),
+    { kind: "monthly", monthlyUsed: FREE_MONTHLY, dailyUsed: 0 },
+    "本月用完、協定版本 2",
+  );
+});
