@@ -318,15 +318,17 @@ void main() {
   });
 
   group('翻牌峰值：光刃與十字（V3.1 §5.5）', () {
-    test('光刃 N／R 280 ms、SR 350 ms：60 ms 張到最寬，後段快收', () {
+    test('光刃 N／R 280 ms、SR 350 ms：20 ms 張到最寬，後段快收', () {
+      expect(PracticeRevealTiming.bladeOpenMs, 20);
       for (final rarity in PracticeGirlRarity.values) {
         final total = practiceRevealBladeMs(rarity);
         expect(practiceRevealBladeWidth(1300, rarity), 0);
         expect(practiceRevealBladeWidth(1350, rarity), 0);
-        expect(practiceRevealBladeWidth(1410, rarity), closeTo(1, 1e-9));
+        expect(practiceRevealBladeWidth(1360, rarity), greaterThan(0.5));
+        expect(practiceRevealBladeWidth(1370, rarity), closeTo(1, 1e-9));
         expect(practiceRevealBladeWidth(1350 + total, rarity), 0);
         // 先快後慢：收的那段走到一半時外暈已經只剩不到 20%，照片很快露出來。
-        final half = 1410 + (total - 60) / 2;
+        final half = 1370 + (total - 20) / 2;
         expect(practiceRevealBladeWidth(half, rarity), lessThan(0.2));
         expect(practiceRevealBladeCore(1349, rarity), 0);
         expect(practiceRevealBladeCore(1350, rarity), closeTo(3, 1e-9));
