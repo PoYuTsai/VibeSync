@@ -72,6 +72,7 @@ import '../../domain/services/screenshot_recognition_helper.dart';
 import '../../domain/services/screenshot_session_context_defaults.dart';
 import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
+import '../widgets/app_update_required_dialog.dart';
 import '../widgets/draft_polish_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
@@ -581,6 +582,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         return _selectedImages.isNotEmpty
             ? '先把截圖辨識成文字並確認為本次片段；若沒有她的訊息，請重新選擇包含她回覆的截圖。'
             : '一般分析至少需要一則對方訊息；請重新選擇包含她回覆的聊天截圖。';
+      case AnalysisErrorAction.updateApp:
+        return '更新後回來重新分析就好，本次不會扣額度。';
       case null:
         return null;
     }
@@ -607,6 +610,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           return '先辨識截圖';
         }
         return _hasCompletedCurrentFragment ? '分析新片段' : '重新選擇截圖';
+      case AnalysisErrorAction.updateApp:
+        return '前往更新';
     }
   }
 
@@ -832,7 +837,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         }
         await _openReplacementInput();
         return;
+      case AnalysisErrorAction.updateApp:
+        // 卡片留著：沒更新就回來，分析照樣會被擋。
+        await openAppStoreForUpdate(ref.read(appStoreLauncherProvider));
+        return;
     }
+  }
+
+  /// 新分析還沒拿到任何內容就失敗時，錯誤卡的主按鈕：額度不足看方案、
+  /// 版本太舊去更新（最低版本閘門，Eric 2026-10-18），其他重新分析。
+  AnalysisErrorAction _failedBeforeRecommendationAction(String? code) {
+    if (code == AppUpdateRequiredException.errorCode) {
+      return AnalysisErrorAction.updateApp;
+    }
+    return code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED'
+        ? AnalysisErrorAction.upgrade
+        : AnalysisErrorAction.retry;
   }
 
   // 記錄已分析的訊息數量，用於判斷是否需要重新分析
@@ -1053,9 +1073,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         break;
       case StreamingAnalyzePhase.failedBeforeRecommendation:
         final hydrateQuotaInfo = s.quotaExceeded;
-        final isQuotaError =
-            s.recommendationPreviewErrorCode == 'DAILY_LIMIT_EXCEEDED' ||
-                s.recommendationPreviewErrorCode == 'MONTHLY_LIMIT_EXCEEDED';
         setState(() {
           _isAnalyzing = false;
           _streamProgressLabel = null;
@@ -1070,15 +1087,16 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           } else {
             _applyErrorState(
               message: s.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。',
-              action: isQuotaError
-                  ? AnalysisErrorAction.upgrade
-                  : AnalysisErrorAction.retry,
+              action: _failedBeforeRecommendationAction(
+                s.recommendationPreviewErrorCode,
+              ),
               origin: _AnalysisErrorOrigin.analysis,
             );
           }
           _clearDetailedAnalysisStateForStreamingAnalyzePartial();
         });
-        // Skip _showPaywall — already opened on the original transition.
+        // Skip _showPaywall and the update dialog — already opened on the
+        // original transition.
         break;
       case StreamingAnalyzePhase.idle:
         break;
@@ -3048,8 +3066,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         final message =
             next.recommendationPreviewErrorMessage ?? '分析暫時失敗，請稍後再試。';
         final liveQuotaInfo = next.quotaExceeded;
-        final isQuotaError =
-            code == 'DAILY_LIMIT_EXCEEDED' || code == 'MONTHLY_LIMIT_EXCEEDED';
+        final action = _failedBeforeRecommendationAction(code);
         setState(() {
           _isAnalyzing = false;
           _followLiveAnalysis = false;
@@ -3065,15 +3082,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           } else {
             _applyErrorState(
               message: message,
-              action: isQuotaError
-                  ? AnalysisErrorAction.upgrade
-                  : AnalysisErrorAction.retry,
+              action: action,
               origin: _AnalysisErrorOrigin.analysis,
             );
           }
         });
-        if (isQuotaError) {
+        if (action == AnalysisErrorAction.upgrade) {
           unawaited(_showPaywall(context));
+        } else if (action == AnalysisErrorAction.updateApp) {
+          unawaited(showAppUpdateRequiredDialog(
+            context,
+            launchStore: ref.read(appStoreLauncherProvider),
+          ));
         }
         break;
       case StreamingAnalyzePhase.idle:

@@ -93,6 +93,7 @@ import {
   ANALYSIS_CONTRACT_VERSION_V3,
   parseAnalysisContractVersion,
 } from "./no_send_decision.ts";
+import { checkClientBuildGate } from "./client_build_gate.ts";
 import { selectModel, VALID_FORCE_MODELS } from "./model_selection.ts";
 import {
   enforceMyMessageEssentialGate,
@@ -448,6 +449,23 @@ async function handleAnalyzeChat(
     );
     if (!contractParse.ok) {
       return jsonResponse({ error: "Invalid analysisContractVersion" }, 400);
+    }
+    // 最低 App 版本閘門（Eric 2026-10-18，MIN_CLIENT_BUILD 沒設＝關）：只擋對話
+    // 分析的新分析，開場救星、新話題、潤飾／微調、我說、截圖辨識、續看都放行。
+    // 放在任何訂閱／額度／模型工作之前，擋下不扣費；細節見 client_build_gate.ts。
+    const clientBuildGate = checkClientBuildGate({
+      minClientBuild: Deno.env.get("MIN_CLIENT_BUILD"),
+      clientBuild: requestBody.clientBuild,
+      isNewChatAnalysis: plainAnalyzeRequest && !isStreamRetryMode,
+      streaming: responseMode === "stream",
+    });
+    if (clientBuildGate.blocked) {
+      logInfo("client_build_gate_blocked", {
+        user: summarizeUser(user.id),
+        minClientBuild: clientBuildGate.minClientBuild,
+        clientBuild: clientBuildGate.clientBuild,
+      });
+      return clientBuildGate.response;
     }
     const noSendDecisions = contractParse.value >=
       ANALYSIS_CONTRACT_VERSION_V2;

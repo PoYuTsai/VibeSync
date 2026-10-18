@@ -314,6 +314,7 @@ class AnalyzeStreamClient {
   final String? Function() _accessTokenProvider;
   final String? Function() _expectedTierProvider;
   final Future<String?> Function() _revenueCatAppUserIdProvider;
+  final Future<int?> Function() _clientBuildProvider;
 
   AnalyzeStreamClient({
     required AnalysisStreamDisplayMapper displayMapper,
@@ -321,6 +322,7 @@ class AnalyzeStreamClient {
     String? Function()? accessTokenProvider,
     String? Function()? expectedTierProvider,
     Future<String?> Function()? revenueCatAppUserIdProvider,
+    Future<int?> Function()? clientBuildProvider,
   })  : _displayMapper = displayMapper,
         _clientFactory = clientFactory ?? http.Client.new,
         _accessTokenProvider =
@@ -328,7 +330,9 @@ class AnalyzeStreamClient {
         _expectedTierProvider =
             expectedTierProvider ?? defaultAnalysisExpectedTier,
         _revenueCatAppUserIdProvider =
-            revenueCatAppUserIdProvider ?? defaultAnalysisRevenueCatAppUserId;
+            revenueCatAppUserIdProvider ?? defaultAnalysisRevenueCatAppUserId,
+        _clientBuildProvider =
+            clientBuildProvider ?? defaultAnalysisClientBuild;
 
   Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) async* {
     final accessToken = _accessTokenProvider();
@@ -344,6 +348,7 @@ class AnalyzeStreamClient {
       expectedTierProvider: _expectedTierProvider,
       revenueCatAppUserIdProvider: _revenueCatAppUserIdProvider,
     );
+    final clientBuild = await _clientBuildProvider();
     final client = _clientFactory();
     String? runId;
     int? etaSeconds;
@@ -361,7 +366,10 @@ class AnalyzeStreamClient {
           'Authorization': 'Bearer $accessToken',
           'apikey': AppConfig.supabaseAnonKey,
         })
-        ..body = jsonEncode(buildStreamBody(request, entitlementContext));
+        ..body = jsonEncode(
+          buildStreamBody(request, entitlementContext,
+              clientBuild: clientBuild),
+        );
 
       final response =
           await client.send(httpRequest).timeout(_streamConnectTimeout);
@@ -557,6 +565,12 @@ class AnalyzeStreamClient {
                 '[analyze.stream] analysis.error raw message: $rawErrorMessage',
               );
             }
+            // 讀不到 build 號（沒帶 clientBuild）時，最低版本閘門改用串流錯誤
+            // 擋（伺服器 client_build_gate.ts）；跟 426 一樣只能更新、不給重試。
+            if (_stringField(event['code']) ==
+                AppUpdateRequiredException.errorCode) {
+              throw AppUpdateRequiredException();
+            }
             if (isGuideV3Run) {
               final code = _stringField(event['code']) ?? 'STREAM_FAILED';
               final resumable = guideV3ResumableErrorCodes.contains(code);
@@ -622,8 +636,9 @@ class AnalyzeStreamClient {
 
   static Map<String, dynamic> buildStreamBody(
     AnalyzeStreamRequest request,
-    AnalysisEntitlementContext entitlementContext,
-  ) {
+    AnalysisEntitlementContext entitlementContext, {
+    int? clientBuild,
+  }) {
     final sessionContext = request.sessionContext;
     final conversationSummary = request.conversationSummary;
     final partnerSummary = request.partnerSummary;
@@ -665,6 +680,8 @@ class AnalyzeStreamClient {
       // 2＝能處理不回決策（messageDecision）；3＝再加 v3 任務卡與 F04。
       // 缺省＝v1 五風格合約。
       'analysisContractVersion': AnalyzeStreamClient.analysisContractVersion,
+      // 最低 App 版本閘門比對用（Eric 2026-10-18）；讀不到 build 號就不帶。
+      if (clientBuild != null) 'clientBuild': clientBuild,
       if (previousAnalyzedCharCount != null && previousAnalyzedCharCount > 0)
         'previousAnalyzedCharCount': previousAnalyzedCharCount,
       if (request.confirmedOvercharge != null)

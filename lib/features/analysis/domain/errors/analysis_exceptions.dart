@@ -12,6 +12,9 @@ enum AnalysisErrorAction {
   upgrade,
   wait,
   addIncomingMessage,
+
+  /// 最低 App 版本閘門擋下：只能去更新，重送只會再被擋一次。
+  updateApp,
 }
 
 class AnalysisException implements Exception {
@@ -40,6 +43,22 @@ class StreamModeException extends AnalysisException {
     required this.recoverable,
     required this.retriesRemaining,
   });
+}
+
+/// 伺服器的最低 App 版本閘門擋下這次分析（Eric 2026-10-18）：HTTP 426，或串流
+/// analysis.error 帶 APP_UPDATE_REQUIRED。不是內容錯誤、也不能重試；伺服器擋在
+/// 扣費之前，這次沒有扣額度。
+class AppUpdateRequiredException extends AnalysisException {
+  static const errorCode = 'APP_UPDATE_REQUIRED';
+  static const userMessage =
+      '這個版本已經停止支援，請到 App Store 更新到最新版（TestFlight 測試者請到 TestFlight 更新）。';
+
+  AppUpdateRequiredException()
+      : super(
+          userMessage,
+          code: errorCode,
+          suggestedAction: AnalysisErrorAction.updateApp,
+        );
 }
 
 class DailyLimitExceededException extends AnalysisException {

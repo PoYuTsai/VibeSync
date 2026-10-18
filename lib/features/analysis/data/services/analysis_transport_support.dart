@@ -5,6 +5,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:convert';
 
 import '../../../../core/services/revenuecat_service.dart';
@@ -44,6 +45,22 @@ Future<String?> defaultAnalysisRevenueCatAppUserId() async {
       onTimeout: () => null,
     );
     return RevenueCatService.getRevenueCatAppUserId(customerInfo);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// App 的 build 號（iOS 的 CFBundleVersion），給 analyze-chat 的最低版本閘門
+/// 比對（Eric 2026-10-18）。讀不到或不是正整數就回 null，請求就不帶 clientBuild。
+/// 它只放在 request body，不進任何冪等或重播雜湊。Web 版要另外抓 version.json，
+/// 所以跟 RevenueCat 查詢一樣設 3 秒上限：等不到就當讀不到，不讓分析卡在送出前。
+Future<int?> defaultAnalysisClientBuild() async {
+  try {
+    final packageInfo = await PackageInfo.fromPlatform().timeout(
+      const Duration(seconds: 3),
+    );
+    final build = int.tryParse(packageInfo.buildNumber.trim());
+    return build != null && build > 0 ? build : null;
   } catch (_) {
     return null;
   }
@@ -422,6 +439,9 @@ AnalysisException mapAnalysisHttpError({
         code: errorCode ?? 'PAYLOAD_TOO_LARGE',
         suggestedAction: AnalysisErrorAction.shortenInput,
       );
+    case 426:
+      // 最低 App 版本閘門（Eric 2026-10-18）：只能更新，不當內容錯誤、不給重試。
+      return AppUpdateRequiredException();
     case 429:
       // 免費 OCR（recognizeOnly）限流：6/分、60/天。payload 不帶
       // monthlyLimit/dailyLimit 鍵，所以不會被 quotaExceptionFrom429

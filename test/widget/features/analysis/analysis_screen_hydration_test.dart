@@ -28,7 +28,9 @@ import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/screens/partner_analysis_records_screen.dart';
+import 'package:vibesync/features/analysis/presentation/sections/analysis_error_card.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/app_update_required_dialog.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
@@ -894,6 +896,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
   required StreamingAnalysisState seed,
   required Conversation conversation,
   _MemoryConversationArchiveStore? archiveStore,
+  List<Override> extraOverrides = const <Override>[],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -926,6 +929,7 @@ Future<_MutableHydrationHarness> _pumpMutableAnalysisScreenWithRepo(
           notifier = _MutableStreamingAnalyzeNotifier(seed);
           return notifier;
         }),
+        ...extraOverrides,
       ],
       child: const MaterialApp(
         home: AnalysisScreen(conversationId: _conversationId),
@@ -3026,6 +3030,114 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1));
 
       expect(harness.history.events, isEmpty);
+    });
+  });
+
+  // 最低 App 版本閘門（Eric 2026-10-18）：被擋是「只能更新」，不是內容錯誤，
+  // 也不給重新分析；更新視窗只在當下的轉場跳一次。
+  group('最低 App 版本閘門（APP_UPDATE_REQUIRED）', () {
+    const updateMessage =
+        '這個版本已經停止支援，請到 App Store 更新到最新版（TestFlight 測試者請到 TestFlight 更新）。';
+
+    StreamingAnalysisState blocked(Conversation conversation) {
+      return StreamingAnalysisState(
+        phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+        recommendationPreviewErrorMessage: updateMessage,
+        recommendationPreviewErrorCode: 'APP_UPDATE_REQUIRED',
+        conversationMessageCount: conversation.messages.length,
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: conversation.messages.length,
+        conversationContentRevision: conversationContentRevision(conversation),
+      );
+    }
+
+    testWidgets('新分析被擋 → 跳更新視窗；錯誤卡只給前往更新，不給重新分析', (tester) async {
+      final launched = <Uri>[];
+      final conversation = _conversation();
+      final harness = await _pumpMutableAnalysisScreenWithRepo(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        conversation: conversation,
+        extraOverrides: [
+          appStoreLauncherProvider.overrideWithValue((uri) async {
+            launched.add(uri);
+            return true;
+          }),
+        ],
+      );
+
+      // 開畫面時會先蓋上「可以改訊息」的提示（debug 一律顯示，而且疊在
+      // 對話框上面）；真實使用時按下分析前早就關掉了，這裡先關。
+      await tester.pump();
+      final coachMarkGotIt = find.text('知道了');
+      if (coachMarkGotIt.evaluate().isNotEmpty) {
+        await tester.tap(coachMarkGotIt);
+        await tester.pump();
+      }
+
+      harness.notifier.emit(blocked(conversation));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final dialog = find.byType(AlertDialog);
+      expect(dialog, findsOneWidget);
+      expect(
+        find.descendant(of: dialog, matching: find.text('請更新 VibeSync')),
+        findsOneWidget,
+      );
+      final card = find.byType(AnalysisErrorCard);
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text(updateMessage)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('前往更新')),
+        findsOneWidget,
+      );
+      expect(find.text('重新分析'), findsNothing);
+
+      await tester.tap(
+        find.descendant(of: dialog, matching: find.text('前往更新')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(launched, [Uri.parse(appStoreUpdateUrl)]);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      // 卡片留著；按卡片上的前往更新也直接開商店，不會重送分析。
+      final cardButton = find.descendant(of: card, matching: find.text('前往更新'));
+      await tester.ensureVisible(cardButton);
+      await tester.tap(cardButton);
+      await tester.pump();
+      expect(launched, hasLength(2));
+      expect(find.byType(AnalysisErrorCard), findsOneWidget);
+      expect(harness.recorder.streamCalls, 0);
+    });
+
+    testWidgets('回到畫面（hydrate）只顯示錯誤卡，不再跳視窗', (tester) async {
+      final conversation = _conversation();
+      await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: blocked(conversation),
+        conversation: conversation,
+        extraOverrides: [
+          appStoreLauncherProvider.overrideWithValue((_) async => true),
+        ],
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(AlertDialog), findsNothing);
+      final card = find.byType(AnalysisErrorCard);
+      expect(
+        find.descendant(of: card, matching: find.text(updateMessage)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: card, matching: find.text('前往更新')),
+        findsOneWidget,
+      );
+      expect(find.text('重新分析'), findsNothing);
     });
   });
 }
