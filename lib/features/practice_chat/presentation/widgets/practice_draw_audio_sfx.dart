@@ -4,7 +4,6 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'practice_draw_sfx.dart';
-import 'practice_reveal_timing.dart';
 
 // ── 音量常數（集中於此，方便真機調整）─────────────────────────────────────
 // 真機目檢時直接調這三個值即可，不必動播放邏輯。
@@ -34,6 +33,16 @@ const String _kRevealBedAsset =
 // 收卡音：0.8 s，0.45 s（光球落進那一格）一聲水晶鈴。
 const String _kArchiveAsset =
     'audio/practice_draw/practice_draw_archive_v3.m4a';
+
+/// 收卡音最晚在點擊後這麼久之內起播（V3 收卡長度）。V3.1 把收卡動畫拉長到 700 ms 給落位
+/// 爆光，這個期限不跟著拉長：再晚起播，0.45 s 的水晶鈴會落在光球落進那一格之後很久。
+@visibleForTesting
+const Duration kPracticeArchiveSfxDeadline = Duration(milliseconds: 550);
+
+/// 點擊收卡後過了 [sinceTap]，收卡音還來得及起播。
+@visibleForTesting
+bool practiceArchiveSfxInTime(Duration sinceTap) =>
+    sinceTap < kPracticeArchiveSfxDeadline;
 
 // 揭曉配樂停止（點擊收卡／離開畫面）：正在出聲時 0.25 秒淡出再停，跟收卡光球同步。
 const Duration _kRevealBedFadeOut = Duration(milliseconds: 250);
@@ -288,8 +297,8 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
     }
   }
 
-  /// 收卡音只在收卡動畫（[PracticeRevealTiming.archive]）走完前起播：預載失敗、點擊時重載
-  /// 又太慢，寧可不出聲，也不在儀式收掉之後、甚至下一抽才冒出來。
+  /// 收卡音只在點擊後 [kPracticeArchiveSfxDeadline] 內起播：預載失敗、點擊時重載又太慢，
+  /// 寧可不出聲，也不讓水晶鈴晚於光球落位很久、甚至在下一抽才冒出來。
   Future<void> _startArchive(
     Future<bool> ready,
     int generation,
@@ -301,7 +310,7 @@ class AudioPlayersPracticeDrawSfx implements PracticeDrawSfx {
         stillWanted: () =>
             _archive.player != null &&
             generation == _archiveGeneration &&
-            sinceTap.elapsed < PracticeRevealTiming.archive,
+            practiceArchiveSfxInTime(sinceTap.elapsed),
         // 位置歸零、音源保留（ReleaseMode.stop）。
         rewind: () => _archive.player!.stop(),
         play: () => _archive.player!.resume(),
