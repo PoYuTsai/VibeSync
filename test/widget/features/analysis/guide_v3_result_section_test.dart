@@ -620,4 +620,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(result, ['我是做設計的', '妳呢']);
   });
+
+  testWidgets('填空（Eric 2026-10-18）：一打開就停在第一個空格、整段＿＿先選好；沒有空格不搶焦點',
+      (tester) async {
+    Future<void> open(List<String> messages) async {
+      // 上一次開的面板還在：整棵重建，才點得到 open。
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () =>
+                  showGuideV3EditSheet(context, messages: messages),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    EditableTextState field(int i) => tester.state<EditableTextState>(
+          find.descendant(
+            of: find.byKey(ValueKey('guide-v3-edit-field-$i')),
+            matching: find.byType(EditableText),
+          ),
+        );
+
+    // 空格在第二則：焦點在第二則，選好「＿＿」那一段。
+    await open(const ['好啊', '我是做＿＿的']);
+    expect(field(0).widget.focusNode.hasFocus, isFalse);
+    expect(field(1).widget.focusNode.hasFocus, isTrue);
+    expect(
+      field(1).widget.controller.selection,
+      const TextSelection(baseOffset: 3, extentOffset: 5),
+    );
+
+    // 改成我的（沒有空格）：照舊不自動跳鍵盤。
+    await open(const ['我上週也剛去爬了七星山']);
+    expect(field(0).widget.focusNode.hasFocus, isFalse);
+  });
 }

@@ -490,6 +490,26 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
   ];
   late final bool _hadBlank = widget.messages.any(guideV3TextHasBlank);
 
+  /// 第一個有空格的那一則；沒有空格就是 null。
+  int? _firstBlankField;
+
+  @override
+  void initState() {
+    super.initState();
+    // 先選好第一個空格：打字就直接換掉＿＿，不用自己點到底線再刪（Eric 2026-10-18）。
+    final blank = RegExp('$guideV3BlankMark+');
+    for (var i = 0; i < _controllers.length; i++) {
+      final match = blank.firstMatch(_controllers[i].text);
+      if (match == null) continue;
+      _controllers[i].selection = TextSelection(
+        baseOffset: match.start,
+        extentOffset: match.end,
+      );
+      _firstBlankField = i;
+      break;
+    }
+  }
+
   @override
   void dispose() {
     for (final controller in _controllers) {
@@ -553,6 +573,7 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
                           TextField(
                             key: ValueKey('guide-v3-edit-field-$i'),
                             controller: _controllers[i],
+                            autofocus: i == _firstBlankField,
                             minLines: 1,
                             maxLines: 5,
                             onChanged: (_) => setState(() {}),
