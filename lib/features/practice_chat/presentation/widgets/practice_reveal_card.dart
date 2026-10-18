@@ -4,6 +4,7 @@
 // - 卡面：漸層倒角框、照片緩縮、全息掃光、膠囊稀有度牌（烙印前不存在）、兩行毛玻璃
 //   資訊欄、只畫亮星。
 // 動畫狀態全部由呼叫端算好傳進來（[PracticeRevealFaceState]），這裡只負責畫。
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../../../../core/theme/practice_reveal_palette.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
 import 'practice_girl_photo.dart';
+import 'practice_new_badge.dart';
 import 'practice_reveal_painters.dart';
 import 'practice_reveal_theme.dart';
 import 'practice_reveal_timing.dart';
@@ -179,6 +181,7 @@ class PracticeRevealFaceState {
     required this.stamped,
     required this.stampScale,
     required this.stampOpacity,
+    required this.newTagAppear,
     required this.starScales,
     required this.starPulses,
     required this.overlayOpacity,
@@ -194,6 +197,7 @@ class PracticeRevealFaceState {
       stamped: practiceRevealStamped(revealMs),
       stampScale: practiceRevealStampScale(revealMs),
       stampOpacity: practiceRevealStampOpacity(revealMs),
+      newTagAppear: practiceRevealNewTagAppear(revealMs),
       starScales: [
         for (var i = 0; i < _kMaxStars; i++)
           practiceRevealStarScale(revealMs, i),
@@ -225,6 +229,9 @@ class PracticeRevealFaceState {
   final double stampScale;
   final double stampOpacity;
 
+  /// NEW 小標浮現（0..1）；只有新卡會畫。
+  final double newTagAppear;
+
   /// 每顆亮星的縮放與點亮脈衝（只取前 `rarity.stars` 顆）。
   final List<double> starScales;
   final List<double> starPulses;
@@ -245,12 +252,17 @@ class PracticeRevealCardFront extends StatelessWidget {
     required this.width,
     required this.height,
     required this.state,
+    this.isNew,
   });
 
   final PracticeGirlProfile girl;
   final double width;
   final double height;
   final PracticeRevealFaceState state;
+
+  /// 這次抽到的是不是新角色（V3.1 規格 §5.14）：true 在稀有度牌旁掛 NEW；false＝重複
+  /// 角色，資訊欄寫「已收藏」；null＝不知道（抽牌中離開圖鑑又回來），兩個都不畫。
+  final bool? isNew;
 
   @override
   Widget build(BuildContext context) {
@@ -302,15 +314,32 @@ class PracticeRevealCardFront extends StatelessWidget {
                 Positioned(
                   top: 16,
                   left: 16,
-                  child: Opacity(
-                    opacity: state.stampOpacity * state.overlayOpacity,
-                    child: Transform.scale(
-                      scale: state.stampScale,
-                      child: PracticeRevealRarityBadge(
-                        rarity: girl.rarity,
-                        theme: theme,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Opacity(
+                        opacity: state.stampOpacity * state.overlayOpacity,
+                        child: Transform.scale(
+                          scale: state.stampScale,
+                          child: PracticeRevealRarityBadge(
+                            rarity: girl.rarity,
+                            theme: theme,
+                          ),
+                        ),
                       ),
-                    ),
+                      if (isNew == true && state.newTagAppear > 0) ...[
+                        const SizedBox(width: 6),
+                        Opacity(
+                          opacity: state.newTagAppear * state.overlayOpacity,
+                          child: Transform.scale(
+                            scale: 0.6 + 0.4 * state.newTagAppear,
+                            child: const PracticeNewBadge(
+                              key: ValueKey('practice-draw-ceremony-new-tag'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               Positioned(
@@ -329,6 +358,7 @@ class PracticeRevealCardFront extends StatelessWidget {
                       photoShift: infoRise,
                       starScales: state.starScales,
                       starPulses: state.starPulses,
+                      collected: isNew == false,
                     ),
                   ),
                 ),
@@ -487,10 +517,15 @@ class PracticeRevealInfoBar extends StatelessWidget {
     required this.photoShift,
     required this.starScales,
     required this.starPulses,
+    this.collected = false,
   });
 
   final PracticeGirlProfile girl;
   final PracticeRevealTheme theme;
+
+  /// 重複角色：基本資訊那行最後加「已收藏」（V3.1 規格 §5.14）。基本資訊太長時
+  /// （小螢幕、系統字放大）先省略前面，「已收藏」一定整個看得到。
+  final bool collected;
 
   /// 和卡面同一張、同緩縮的照片（模糊後當毛玻璃底）。
   final Widget photo;
@@ -508,6 +543,10 @@ class PracticeRevealInfoBar extends StatelessWidget {
       if (girl.city.isNotEmpty) girl.city,
       if (girl.professionLabel.isNotEmpty) girl.professionLabel,
     ].join(' · ');
+    final metaStyle = AppTypography.caption.copyWith(
+      color: Colors.white.withValues(alpha: 0.78),
+      fontWeight: FontWeight.w600,
+    );
     final radius = BorderRadius.circular(18);
     // 不設 liveRegion：停住時整層已主動唸出抽到誰（儀式的讀屏按鈕），這裡再唸會連唸兩次。
     return ClipRRect(
@@ -556,14 +595,19 @@ class PracticeRevealInfoBar extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        meta,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.caption.copyWith(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              meta,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: metaStyle,
+                            ),
+                          ),
+                          if (collected)
+                            Text(' · 已收藏', maxLines: 1, style: metaStyle),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -631,4 +675,224 @@ class PracticeRevealStars extends StatelessWidget {
       ],
     );
   }
+}
+
+// 角色第一句話對話框的尺寸（版面計算與 widget 共用單一真相）。字級用內文 15
+// （`AppTypography.bodyMedium`，行高 1.4），內距照 DESIGN.md §3、§5 的尺度。
+const double _kIntroNibWidth = 14;
+const double _kIntroNibHeight = 6;
+const double _kIntroPaddingH = 16;
+const double _kIntroPaddingV = 8;
+const double _kIntroRadius = 18;
+const TextStyle _kIntroTextStyle = AppTypography.bodyMedium;
+
+/// 卡片下緣到提示字之間的 [available] 高度放得下幾行第一句話：0＝不顯示，最多 2 行
+/// （V3.1 規格 §5.13）。字級跟著系統字級放大，行高用 [scaler] 換算。
+int practiceIntroBubbleLines(double available, TextScaler scaler) {
+  final line =
+      scaler.scale(_kIntroTextStyle.fontSize!) * _kIntroTextStyle.height!;
+  final chrome = _kIntroNibHeight + 2 * _kIntroPaddingV;
+  return ((available - chrome) / line).floor().clamp(0, 2);
+}
+
+/// 兩行時把字的寬度收到「還是兩行」的最窄寬度：兩行差不多長，不會只剩一兩個字掉到第二行
+/// （同 CSS 的 `text-wrap: balance`）。一行放得下，或兩行也放不下要省略時，照 [maxWidth]。
+/// [style]、[locale] 要跟實際畫字的 `Text` 一樣（合併過 DefaultTextStyle），折行才會一致。
+double practiceIntroBalancedWidth({
+  required String text,
+  required TextStyle style,
+  required TextScaler textScaler,
+  required TextDirection textDirection,
+  required int maxLines,
+  required double maxWidth,
+  Locale? locale,
+}) {
+  if (maxLines < 2 || !maxWidth.isFinite) return maxWidth;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textAlign: TextAlign.center,
+    textDirection: textDirection,
+    textScaler: textScaler,
+    maxLines: maxLines,
+    locale: locale,
+  );
+  try {
+    painter.layout(maxWidth: maxWidth);
+    final lines = painter.computeLineMetrics().length;
+    if (lines < 2 || painter.didExceedMaxLines) return maxWidth;
+    // 寬度砍半一定排不下（整句比 maxWidth 長才會折行），在兩者之間找最窄的寬度。
+    var narrow = maxWidth / lines;
+    var wide = maxWidth;
+    while (wide - narrow > 0.5) {
+      final mid = (narrow + wide) / 2;
+      painter.layout(maxWidth: mid);
+      if (painter.didExceedMaxLines ||
+          painter.computeLineMetrics().length > lines) {
+        narrow = mid;
+      } else {
+        wide = mid;
+      }
+    }
+    // 多留 1 px，逐字打出時兩段文字排版的些微誤差不會讓它多折一行。
+    return math.min(wide + 1, maxWidth);
+  } finally {
+    painter.dispose();
+  }
+}
+
+/// 角色第一句話（V3.1 規格 §5.13）：卡片下方的半透明深色小對話框，上緣尖角指向卡片；
+/// 外框跟資訊欄同一圈淡白邊，N／R 的深色背景上才看得出是對話框。
+/// 逐字打出時整句先排好、還沒打到的字透明，換行位置從頭到尾不跳；兩行時兩行等長。
+/// 讀屏不另外唸：停住時儀式的讀屏按鈕已經接上這句話。
+class PracticeRevealIntroBubble extends StatefulWidget {
+  const PracticeRevealIntroBubble({
+    super.key,
+    required this.text,
+    required this.typed,
+    required this.maxLines,
+  });
+
+  final String text;
+
+  /// 打出來的比例（0..1），以字形叢集計，emoji 不會被切半。
+  final double typed;
+  final int maxLines;
+
+  @override
+  State<PracticeRevealIntroBubble> createState() =>
+      _PracticeRevealIntroBubbleState();
+}
+
+class _PracticeRevealIntroBubbleState extends State<PracticeRevealIntroBubble> {
+  static final TextStyle _style = _kIntroTextStyle.copyWith(
+    color: Colors.white.withValues(alpha: 0.92),
+    fontWeight: FontWeight.w600,
+  );
+
+  // 逐字打出時每一幀都會重建；兩行等長的寬度只在字、可用寬度、字樣或行數變了才重算。
+  Object? _widthKey;
+  double _textWidth = 0;
+
+  double _balancedWidth(BuildContext context, double maxWidth) {
+    // 跟底下的 Text 取一樣的字樣、字級縮放、方向與語系（含系統「粗體文字」）。
+    var style = DefaultTextStyle.of(context).style.merge(_style);
+    if (MediaQuery.boldTextOf(context)) {
+      style = style.merge(const TextStyle(fontWeight: FontWeight.bold));
+    }
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final key = (
+      widget.text,
+      maxWidth,
+      style,
+      scaler,
+      direction,
+      locale,
+      widget.maxLines
+    );
+    if (key != _widthKey) {
+      _widthKey = key;
+      _textWidth = practiceIntroBalancedWidth(
+        text: widget.text,
+        style: style,
+        textScaler: scaler,
+        textDirection: direction,
+        maxLines: widget.maxLines,
+        maxWidth: maxWidth,
+        locale: locale,
+      );
+    }
+    return _textWidth;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chars = widget.text.characters;
+    final shown = (widget.typed * chars.length).ceil().clamp(0, chars.length);
+    return ExcludeSemantics(
+      child: LayoutBuilder(
+        builder: (context, constraints) => CustomPaint(
+          painter: const _IntroBubblePainter(),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              _kIntroPaddingH,
+              _kIntroNibHeight + _kIntroPaddingV,
+              _kIntroPaddingH,
+              _kIntroPaddingV,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: _balancedWidth(
+                  context,
+                  math.max(0.0, constraints.maxWidth - 2 * _kIntroPaddingH),
+                ),
+              ),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: chars.take(shown).toString()),
+                    TextSpan(
+                      text: chars.skip(shown).toString(),
+                      style: const TextStyle(color: Colors.transparent),
+                    ),
+                  ],
+                ),
+                key: const ValueKey('practice-draw-ceremony-intro-text'),
+                maxLines: widget.maxLines,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: _style,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 對話框外形：圓角框加上緣置中的小尖角畫成同一條路徑，先填色再描邊，
+/// 尖角跟框之間不會有接縫線。
+class _IntroBubblePainter extends CustomPainter {
+  const _IntroBubblePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    const top = _kIntroNibHeight;
+    // 一行字時框高不到 36，圓角收成一半高（膠囊），跟 BoxDecoration 的圓角一樣。
+    final r = math.min(_kIntroRadius, math.min((h - top) / 2, w / 2));
+    final corner = Radius.circular(r);
+    final cx = w / 2;
+    final nib = math.min(_kIntroNibWidth / 2, math.max(0.0, cx - r));
+    final path = Path()
+      ..moveTo(cx - nib, top)
+      ..lineTo(cx, 0)
+      ..lineTo(cx + nib, top)
+      ..lineTo(w - r, top)
+      ..arcToPoint(Offset(w, top + r), radius: corner)
+      ..lineTo(w, h - r)
+      ..arcToPoint(Offset(w - r, h), radius: corner)
+      ..lineTo(r, h)
+      ..arcToPoint(Offset(0, h - r), radius: corner)
+      ..lineTo(0, top + r)
+      ..arcToPoint(Offset(r, top), radius: corner)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()..color = PracticeRevealPalette.infoGlass.withValues(alpha: 0.82),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.12),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_IntroBubblePainter old) => false;
 }

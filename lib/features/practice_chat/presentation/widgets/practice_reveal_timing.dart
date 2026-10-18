@@ -84,6 +84,16 @@ abstract final class PracticeRevealTiming {
   static const double starPopMs = 220;
   static const double hintStartMs = 2400;
 
+  /// NEW 小標（V3.1 規格 §5.14）：只有新卡才有，跟著稀有度牌、晚 150 ms 浮現。
+  static const double newTagStartMs = 2150;
+  static const double newTagEndMs = 2300;
+
+  /// 角色第一句話（V3.1 規格 §5.13）：資訊欄浮出後對話框 100 ms 淡入，逐字打到 2650，
+  /// 停住前打完。
+  static const double introLineStartMs = 2150;
+  static const double introLineFadeMs = 100;
+  static const double introLineEndMs = 2650;
+
   // ── archiving（以點擊收卡為 0）──
   static const Duration archive = Duration(milliseconds: 550);
 
@@ -389,6 +399,31 @@ double practiceRevealInfoAppear(double ms) =>
         PracticeRevealTiming.infoStartMs,
         PracticeRevealTiming.infoEndMs,
       ),
+    );
+
+/// NEW 小標浮現（0..1）。
+double practiceRevealNewTagAppear(double ms) =>
+    PracticeRevealTiming.enter.transform(
+      practiceRevealSeg(
+        ms,
+        PracticeRevealTiming.newTagStartMs,
+        PracticeRevealTiming.newTagEndMs,
+      ),
+    );
+
+/// 角色第一句話的對話框淡入（0..1）。
+double practiceRevealIntroLineOpacity(double ms) => practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.introLineStartMs,
+      PracticeRevealTiming.introLineStartMs +
+          PracticeRevealTiming.introLineFadeMs,
+    );
+
+/// 角色第一句話打出來的比例（0..1）：等速逐字，揭曉結束前打完。
+double practiceRevealIntroLineTyped(double ms) => practiceRevealSeg(
+      ms,
+      PracticeRevealTiming.introLineStartMs,
+      PracticeRevealTiming.introLineEndMs,
     );
 
 /// 「點擊任意處繼續」淡入（0..1），揭曉結束時正好全亮。
