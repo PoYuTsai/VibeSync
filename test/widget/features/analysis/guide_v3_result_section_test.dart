@@ -621,6 +621,15 @@ void main() {
     expect(result, ['我是做設計的', '妳呢']);
   });
 
+  test('填空框帶回來的字：跟打開前一樣（去掉頭尾空白後）就算沒改', () {
+    expect(guideV3EditChanged(const ['那家我也想吃吃看'], const ['那家我也想吃吃看']), isFalse);
+    expect(
+        guideV3EditChanged(const ['那家我也想吃吃看 '], const ['那家我也想吃吃看']), isFalse);
+    expect(guideV3EditChanged(const ['那家我也想吃吃看'], const ['那家我也想去']), isTrue);
+    expect(guideV3EditChanged(const ['我是做＿＿的', '妳呢'], const ['我是做設計的', '妳呢']),
+        isTrue);
+  });
+
   testWidgets('填空（Eric 2026-10-18）：一打開就停在第一個空格、整段＿＿先選好；沒有空格不搶焦點',
       (tester) async {
     Future<void> open(List<String> messages) async {

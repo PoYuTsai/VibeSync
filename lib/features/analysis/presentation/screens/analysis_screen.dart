@@ -3928,12 +3928,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 一則由卡片決定（兩則以上從第 1 則開始）。
   Future<List<String>?> _editGuideV3Card(GuideV3Card card) async {
     final key = _guideV3EditKey(card);
-    final edited = await showGuideV3EditSheet(
-      context,
-      messages: _v3Versions.displayed(key, card.messages),
-    );
+    final shown = _v3Versions.displayed(key, card.messages);
+    final edited = await showGuideV3EditSheet(context, messages: shown);
     if (edited == null || !mounted) return null;
-    setState(() => _v3Versions.saveEdit(key, edited));
+    // 沒改字就直接複製：不標「已改成你的」，編的細節提醒照留。
+    if (guideV3EditChanged(shown, edited)) {
+      setState(() => _v3Versions.saveEdit(key, edited));
+    }
     return edited;
   }
 

@@ -461,6 +461,11 @@ class GuideV3PendingCard extends StatelessWidget {
   }
 }
 
+/// 填空框帶回來的字有沒有改（Eric 2026-10-18：沒改就不算「已改成你的」，編的細節
+/// 提醒照留）。填空框回傳的是去掉頭尾空白的字，比之前一樣先去掉。
+bool guideV3EditChanged(List<String> before, List<String> after) =>
+    !listEquals([for (final message in before) message.trim()], after);
+
 /// 填空／改成自己的說法。回傳改好的每一則；他關掉就回 null。空格（「＿」）
 /// 還在或有一則清空時不能按複製。
 Future<List<String>?> showGuideV3EditSheet(
