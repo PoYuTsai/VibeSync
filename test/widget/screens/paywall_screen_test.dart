@@ -164,11 +164,12 @@ void main() {
       expect(find.text('先試手感'), findsOneWidget);
       expect(find.text('穩定練習'), findsOneWidget);
       expect(find.text('深度打磨'), findsOneWidget);
-      // 對話分析 v3（Eric 2026-10-17）：每次 3–5 張回覆卡、免費前 2 張；
-      // 新流程沒有雷達圖，比較表不再列。
-      expect(find.text('每次回覆卡'), findsOneWidget);
+      // 對話分析 v3：付費全部的卡、免費前 2 張；不寫「每次 3–5 張」（收尾 1 張、
+      // 先別回和停沒有卡，Eric 2026-10-18）。新流程沒有雷達圖，比較表不再列。
+      expect(find.text('回覆卡'), findsOneWidget);
       expect(find.text('前 2 張'), findsOneWidget);
-      expect(find.text('全部 3–5 張'), findsNWidgets(2));
+      expect(find.text('全部'), findsNWidgets(2));
+      expect(find.text('每次回覆卡'), findsNothing);
       expect(find.text('雷達圖'), findsNothing);
       expect(find.text('延展＋調情 2 種'), findsNothing);
       expect(find.text('全部 5 種'), findsNothing);
@@ -179,7 +180,7 @@ void main() {
       expect(find.text('未開放'), findsNothing);
       // 方案卡的重點也不再寫五種風格或雷達圖。
       expect(
-        find.text('每次 3–5 張回覆，依局面搭配；免費看前 2 張'),
+        find.text('該回的時候給你 3–5 張回覆；免費看前 2 張'),
         findsNWidgets(4),
       );
       expect(find.textContaining('對話健檢'), findsNothing);
