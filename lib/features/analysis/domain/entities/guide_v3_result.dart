@@ -371,7 +371,7 @@ class GuideV3Card {
 
 /// 這次送到的比預定的少：伺服器標 partial（有卡被檢查拿掉，或寫到一半斷了）、續看時從扣費
 /// 內容重組（recovered，原請求中途被終止），或送到的卡比這個方案預定的少。結果頁「這次比預定
-/// 的少幾張」與對象頁燈號紀錄（這時不推升級；主審第 1 輪 P2）共用這一個判斷。
+/// 的少幾張」用這個判斷（對象頁燈號紀錄 10/19 起不推升級，不再用它）。
 bool guideV3DeliveredFewer({
   required bool partial,
   required bool recovered,

@@ -46,7 +46,6 @@ import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/guide_v3_result.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
-import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../../user_profile/domain/services/name_candidate_extractor.dart';
@@ -173,11 +172,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     final latestInsight = _PartnerLatestInsight.fromConversations(
       conversations,
     );
-    // 燈號紀錄＋邀約進度（Eric 2026-10-18）：Starter 以上看完整紀錄、免費只看最新一次，
-    // 只差顯示。沒有 v3 紀錄就不讀方案。
+    // 燈號紀錄＋邀約進度（Eric 2026-10-18）：不分方案都看完整紀錄（Bruce PR #97，
+    // Eric 2026-10-19）。
     final lightHistory = ref.watch(partnerLightHistoryProvider(partnerId));
-    final fullLightHistory = lightHistory.isNotEmpty &&
-        ref.watch(subscriptionProvider.select((s) => s.isPremium));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -268,12 +265,10 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   _PartnerDetailSection(
                     child: PartnerLightHistoryCard(
                       entries: lightHistory,
-                      fullHistory: fullLightHistory,
                       expanded: _lightHistoryExpanded,
                       onToggleExpanded: () => setState(
                         () => _lightHistoryExpanded = !_lightHistoryExpanded,
                       ),
-                      onUpgrade: () => context.push('/paywall'),
                     ),
                   ),
                   const SizedBox(height: 16),

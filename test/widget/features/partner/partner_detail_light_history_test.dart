@@ -1,14 +1,13 @@
 // test/widget/features/partner/partner_detail_light_history_test.dart
 //
-// 對象頁的燈號紀錄（Eric 2026-10-18：Starter 主打「燈號紀錄＋邀約進度」，免費只看最新
-// 一次）。走真的接線：分析紀錄 → partnerLightHistoryProvider → 卡片；方案用訂閱狀態判斷，
-// 只差顯示。
+// 對象頁的燈號紀錄（Eric 2026-10-18）。10/19 起不分方案都看完整紀錄（Bruce PR #97，Eric
+// 照他決定），不再有鎖住的預覽與升級鈕。走真的接線：分析紀錄 → partnerLightHistoryProvider
+// → 卡片。
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 
 import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
@@ -35,6 +34,7 @@ import 'package:vibesync/features/user_profile/domain/entities/partner_style_ove
 import '../../../helpers/motion_free_app.dart';
 import '../../../helpers/memory_coach_chat_repository.dart';
 
+/// 已經拿掉的升級鈕（測試確認它不會回來）。
 const _upgradeLabel = '升級 Starter 看完整走勢';
 
 Partner _p() => Partner(
@@ -239,7 +239,9 @@ Future<void> _pumpScreen(
 }) async {
   await t.binding.setSurfaceSize(const Size(400, 2400));
   addTearDown(() => t.binding.setSurfaceSize(null));
+  // 每次換新的 ProviderScope：同一個 scope 重建時，方案的 override 不會換掉。
   await t.pumpWidget(ProviderScope(
+    key: UniqueKey(),
     overrides: _overrides(tier: tier, records: records),
     child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
   ));
@@ -249,24 +251,31 @@ Future<void> _pumpScreen(
 Finder _row(String id) => find.byKey(ValueKey('partner-light-history-row-$id'));
 
 void main() {
-  testWidgets('免費、三次分析：對象頁只看最新一次，下面鎖住的預覽和一顆升級鈕', (t) async {
-    await _pumpScreen(
-      t,
-      tier: SubscriptionTierHelper.free,
-      records: _threeRecords,
-    );
+  testWidgets('不分方案（Eric 2026-10-19）：三次分析都看完整紀錄與變化提示，沒有鎖住的預覽與升級鈕', (t) async {
+    for (final tier in [
+      SubscriptionTierHelper.free,
+      SubscriptionTierHelper.starter,
+      SubscriptionTierHelper.essential,
+    ]) {
+      await _pumpScreen(t, tier: tier, records: _threeRecords);
 
-    expect(find.byType(PartnerLightHistoryCard), findsOneWidget);
-    expect(_row('r3'), findsOneWidget);
-    expect(_row('r2'), findsNothing);
-    expect(_row('r1'), findsNothing);
-    expect(find.text('邀約進度：她自己提見面'), findsOneWidget);
-    expect(
-        find.text('完整走勢還有更早的 ${_threeRecords.length - 1} 次'), findsOneWidget);
-    expect(find.text(_upgradeLabel), findsOneWidget);
+      expect(find.byType(PartnerLightHistoryCard), findsOneWidget,
+          reason: tier);
+      for (final record in _threeRecords) {
+        expect(_row(record.id), findsOneWidget, reason: '$tier ${record.id}');
+      }
+      expect(find.text('邀約進度：她自己提見面'), findsOneWidget, reason: tier);
+      expect(find.text('黃 → 綠'), findsOneWidget, reason: tier);
+      expect(find.text('先別回 · 邀約進度：猶豫'), findsOneWidget, reason: tier);
+      expect(find.byKey(const ValueKey('partner-light-history-locked')),
+          findsNothing,
+          reason: tier);
+      expect(find.textContaining('完整走勢'), findsNothing, reason: tier);
+      expect(find.text(_upgradeLabel), findsNothing, reason: tier);
+    }
   });
 
-  testWidgets('免費、只有一次分析：沒有預覽也沒有升級鈕', (t) async {
+  testWidgets('只有一次分析：列出那一次，沒有預覽也沒有升級鈕', (t) async {
     await _pumpScreen(
       t,
       tier: SubscriptionTierHelper.free,
@@ -277,22 +286,6 @@ void main() {
     expect(find.byKey(const ValueKey('partner-light-history-locked')),
         findsNothing);
     expect(find.text(_upgradeLabel), findsNothing);
-  });
-
-  testWidgets('Starter 與 Essential：完整紀錄與變化提示，沒有升級鈕', (t) async {
-    for (final tier in [
-      SubscriptionTierHelper.starter,
-      SubscriptionTierHelper.essential,
-    ]) {
-      await _pumpScreen(t, tier: tier, records: _threeRecords);
-
-      for (final record in _threeRecords) {
-        expect(_row(record.id), findsOneWidget, reason: '$tier ${record.id}');
-      }
-      expect(find.text('黃 → 綠'), findsOneWidget, reason: tier);
-      expect(find.text('先別回 · 邀約進度：猶豫'), findsOneWidget, reason: tier);
-      expect(find.text(_upgradeLabel), findsNothing, reason: tier);
-    }
   });
 
   testWidgets('沒有 v3 分析紀錄：不放燈號紀錄', (t) async {
@@ -306,12 +299,11 @@ void main() {
     expect(find.text('燈號紀錄'), findsNothing);
   });
 
-  testWidgets('免費：最新一次少卡（partial）或斷線後重組（recovered），照真的存檔路徑存完回對象頁，不推升級',
-      (t) async {
+  testWidgets('免費：照真的存檔路徑存完回對象頁，最新一次少卡、斷線後重組或送滿都看完整紀錄，沒有升級鈕', (t) async {
     await t.binding.setSurfaceSize(const Size(400, 2400));
     addTearDown(() => t.binding.setSurfaceSize(null));
 
-    /// 伺服器 finalResult 送到 App 的樣子（免費方案排 4 張、只寫前 2 張）。
+    /// 伺服器 finalResult 送到 App 的樣子（伺服器改之前的免費結果：排 4 張、只寫前 2 張）。
     Map<String, dynamic> serverResult({
       required int delivered,
       bool partial = false,
@@ -348,7 +340,6 @@ void main() {
           'usage': {'messagesUsed': 2, 'shouldChargeQuota': true},
         };
 
-    // 第三種是對照組：最新一次送滿，同一套接線要看得到升級鈕。
     final latestByVariant = <String, GuideV3Result>{
       // 原定 2 張、實際只送到 1 張（主審第 1 輪 P2 的情境）。
       'partial':
@@ -409,50 +400,15 @@ void main() {
         await t.pumpAndSettle();
 
         expect(_row(newest.recordId), findsOneWidget, reason: variant);
-        expect(_row(older.recordId), findsNothing, reason: variant);
-        if (variant == 'complete') {
-          expect(find.text(_upgradeLabel), findsOneWidget, reason: variant);
-        } else {
-          expect(find.byKey(const ValueKey('partner-light-history-locked')),
-              findsNothing,
-              reason: variant);
-          expect(find.text(_upgradeLabel), findsNothing, reason: variant);
-        }
+        expect(_row(older.recordId), findsOneWidget, reason: variant);
+        expect(find.byKey(const ValueKey('partner-light-history-locked')),
+            findsNothing,
+            reason: variant);
+        expect(find.text(_upgradeLabel), findsNothing, reason: variant);
       } finally {
         await t.pumpWidget(const SizedBox.shrink());
         await t.runAsync(() => box.deleteFromDisk());
       }
     }
-  });
-
-  testWidgets('升級鈕打開付費頁', (t) async {
-    await t.binding.setSurfaceSize(const Size(400, 2400));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-    final router = GoRouter(
-      initialLocation: '/partner/p1',
-      routes: [
-        GoRoute(
-          path: '/partner/:id',
-          builder: (_, state) =>
-              PartnerDetailScreen(partnerId: state.pathParameters['id']!),
-        ),
-        GoRoute(
-          path: '/paywall',
-          builder: (_, __) => const Scaffold(body: Text('paywall-stub')),
-        ),
-      ],
-    );
-    await t.pumpWidget(ProviderScope(
-      overrides: _overrides(
-        tier: SubscriptionTierHelper.free,
-        records: _threeRecords,
-      ),
-      child: motionFreeRouterApp(routerConfig: router),
-    ));
-    await t.pumpAndSettle();
-
-    await t.tap(find.text(_upgradeLabel));
-    await t.pumpAndSettle();
-    expect(find.text('paywall-stub'), findsOneWidget);
   });
 }
