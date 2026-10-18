@@ -441,4 +441,59 @@ void main() {
       isNull,
     );
   });
+
+  test(
+      'A 10:00 分析、B 11:00 建立、A 12:00 升級刷新、B 13:00 分析：A 的快照比 B 新，不帶（主審第 1 輪 P2）',
+      () {
+    final day = DateTime(2026, 10, 18);
+    DateTime at(int hour, [int minute = 0]) =>
+        day.add(Duration(hours: hour, minutes: minute));
+    final events = [
+      _event('e-a', at(10)),
+      _event('e-older', at(9)),
+    ];
+    // 刷新會覆寫快照、重存對話（updatedAt），歷史事件留第一次分析的時間。
+    Conversation segmentA({required DateTime savedAt}) => _segment(
+          id: 'a',
+          snapshotJson: _snapshot(
+            _v3Result(judgment: 'A 刷新後的判讀'),
+            historyEventId: 'e-a',
+          ),
+          createdAt: at(9, 50),
+          updatedAt: savedAt,
+        );
+    final older = _segment(
+      id: 'older',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: '更早那段'), historyEventId: 'e-older'),
+      createdAt: at(8),
+      updatedAt: at(9),
+    );
+    // B 在 13:00 分析時，B 是 11:00 建立的。
+    final b = _segment(id: 'b', createdAt: at(11));
+
+    expect(
+      _build(current: b, others: [segmentA(savedAt: at(12))], events: events),
+      isNull,
+    );
+    // 也不跳去更早那段。
+    expect(
+      _build(
+        current: b,
+        others: [older, segmentA(savedAt: at(12))],
+        events: events,
+      ),
+      isNull,
+    );
+    // 刷新在 B 建立之前就完成了：照常帶刷新後那一次。
+    expect(
+      _build(
+        current: b,
+        others: [older, segmentA(savedAt: at(10, 30))],
+        events: events,
+      )!
+          .judgment,
+      'A 刷新後的判讀',
+    );
+  });
 }

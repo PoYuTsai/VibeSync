@@ -52,19 +52,25 @@ class PreviousRoundBuilder {
       final snapshot =
           _AnalyzedSnapshot.tryParse(conversation.lastAnalysisSnapshotJson);
       if (snapshot == null) continue;
-      // 分析時間看歷史事件（之後的存檔不會改到它）；找不到才退回 updatedAt。
+      // 哪段最近看第一次分析的時間（歷史事件；之後的存檔不會改到它），找不到才退回
+      // updatedAt。
       final analyzedAt = analyzedAtByEventId[snapshot.historyEventId] ??
           conversation.updatedAt;
-      // 只認這個片段建立之前就分析完的：比它晚才分析的那段不是「上一輪」。
+      // 只認這個片段建立之前就分析過的：比它晚才分析的那段不是「上一輪」。
       if (!analyzedAt.isBefore(current.createdAt)) continue;
       if (latest == null || analyzedAt.isAfter(latest.analyzedAt)) {
         latest = _Candidate(conversation, snapshot, analyzedAt);
       }
     }
-    final result = latest?.snapshot.guideV3;
+    if (latest == null) return null;
+    // 快照本身的完成時間沒有可靠來源：升級後重新分析會覆寫快照、重存對話，歷史事件卻留
+    // 第一次的時間。只要那段對話在這個片段建立之後又存過，快照就可能比這個片段新，不帶，
+    // 也不跳去更早那段（主審第 1 輪 P2）。之後改名之類的存檔也會讓這次不帶，寧可少帶。
+    if (!latest.conversation.updatedAt.isBefore(current.createdAt)) return null;
+    final result = latest.snapshot.guideV3;
     // 上一輪是 v2 或自傷關心（只有固定文案）就不帶，也不跳去更早的那段：更早的那段
     // 已經不是上一輪了。
-    if (latest == null || result == null || result.isCare) return null;
+    if (result == null || result.isCare) return null;
     // 那次分析的紀錄被刪了（舊制多筆、部分紀錄刪除時對話本身還在），或紀錄跟快照不是
     // 同一次：不帶，也不跳去更早那段（主審第 1 輪 P2）。訊息只取那筆紀錄自己的片段，
     // 同一段對話裡被刪掉的較早紀錄不會混進來。
