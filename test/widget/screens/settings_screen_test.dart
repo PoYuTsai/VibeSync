@@ -331,8 +331,8 @@ void main() {
       expect(find.text('目前方案：Free'), findsOneWidget);
       expect(find.text('本月剩餘'), findsNWidgets(2));
       expect(find.text('今日剩餘'), findsNWidgets(2));
-      expect(find.text('30/30'), findsNWidgets(2));
-      expect(find.text('15/15'), findsNWidgets(2));
+      expect(find.text('50/50'), findsNWidgets(2));
+      expect(find.text('20/20'), findsNWidgets(2));
     });
 
     testWidgets('點「關於我」導去 /profile/about-me', (tester) async {
@@ -351,7 +351,7 @@ void main() {
       expect(find.text('方案與帳號'), findsOneWidget);
       expect(find.text('目前方案'), findsOneWidget);
       expect(find.text('本月已使用'), findsOneWidget);
-      expect(find.text('0/30'), findsOneWidget);
+      expect(find.text('0/50'), findsOneWidget);
       expect(find.text('帳號'), findsOneWidget);
       expect(find.text('尚未登入'), findsOneWidget);
       expect(find.text('管理訂閱'), findsOneWidget);
