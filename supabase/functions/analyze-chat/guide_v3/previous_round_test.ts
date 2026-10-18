@@ -395,14 +395,25 @@ Deno.test("帶上一輪那次的 trace：標記用白名單，自由文字只留
     push: null,
     specs: CARDS,
     entries: ["B05"],
-    removed: [{ slot: 2, reason: "unsafe" }],
+    // 安全分支讓被拿掉的卡留原文與命中的字（併 main 才遇到）：帶上一輪那次都不能留。
+    removed: [{
+      slot: 2,
+      reason: "language_drift",
+      messages: ["上一輪的原句"],
+      detail: ["上一輪的原句"],
+    }],
     invalidLines: 0,
     scoringWords: [],
     rawMessages: [{ slot: 1, messages: ["上一輪的原句", "妳好"] }],
     models: { read: "m", write: "m" },
     firstCardMs: 10,
+    checks: [],
+    keywordHits: { minorWords: false, selfHarmWords: true, wantsToDie: false },
+    previousRound: { messages: 2, chars: 30, judgment: true },
   } satisfies GuideV3Trace;
-  const out = traceWithoutText(trace, tags);
+  // 之後才加的頂層欄位：沒列進白名單就不進 trace。
+  const withFuture = { ...trace, futureNote: "上一輪的原句" } as GuideV3Trace;
+  const out = traceWithoutText(withFuture, tags);
   assertEquals(JSON.stringify(out).includes("上一輪的原句"), false);
   const kept = out.tags as Record<string, unknown>;
   assertEquals(kept.minorSignal, true);
@@ -415,7 +426,36 @@ Deno.test("帶上一輪那次的 trace：標記用白名單，自由文字只留
   assertEquals(kept.readForUserChars, "判讀裡抄了上一輪的原句".length);
   assertEquals(kept.waitForChars, 0);
   assertEquals(out.rawMessages, [{ slot: 1, messageCount: 2 }]);
-  // 其他欄位原樣。
-  assertEquals(out.removed, trace.removed);
+  assertEquals(out.removed, [{ slot: 2, reason: "language_drift" }]);
+  assertEquals("futureNote" in out, false);
+  // 程式產生的欄位原樣。
   assertEquals(out.specs, CARDS);
+  assertEquals(out.entries, ["B05"]);
+  assertEquals(out.checks, []);
+  assertEquals(out.keywordHits, trace.keywordHits);
+  assertEquals(out.previousRound, trace.previousRound);
+  assertEquals(out.firstCardMs, 10);
+});
+
+Deno.test("帶上一輪那次、讀局面失敗靠關鍵字給關心：trace 沒有標記，其他欄位照白名單", () => {
+  const trace = {
+    tags: null,
+    push: null,
+    specs: [],
+    entries: [],
+    removed: [],
+    invalidLines: 0,
+    scoringWords: [],
+    rawMessages: [],
+    models: { read: "m" },
+    firstCardMs: null,
+    care: { kind: "self_harm", trigger: "keyword", readFailedCode: "timeout" },
+    keywordHits: { minorWords: false, selfHarmWords: true, wantsToDie: false },
+    previousRound: { messages: 1, chars: 12, judgment: false },
+  } as unknown as GuideV3Trace;
+  const out = traceWithoutText(trace, null);
+  assertEquals(out.tags, null);
+  assertEquals(out.care, trace.care);
+  assertEquals(out.keywordHits, trace.keywordHits);
+  assertEquals(out.previousRound, trace.previousRound);
 });

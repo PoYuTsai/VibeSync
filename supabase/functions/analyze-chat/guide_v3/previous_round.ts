@@ -161,20 +161,37 @@ function tagsWithoutText(tags: ReadTags): Record<string, unknown> {
 /// 帶了上一輪的那次，存進資料庫的 trace 不放任何模型寫的字（主審第 1 輪 P1）：模型可能把
 /// 上一輪的原句抄進讀局面的自由文字欄位（他說過的事要逐字摘錄），或抄進卡片。標記只留
 /// 旗標、數字、固定選項與條目編號，自由文字改成筆數或字數；卡片原文只留第幾張與則數。
-/// 給用戶看的判讀、要等什麼與送出的卡是產品輸出，照存在結果裡，不在這裡處理。用白名單：
-/// 之後新增的字串欄位預設不進 trace。
+/// 給用戶看的判讀、要等什麼與送出的卡是產品輸出，照存在結果裡，不在這裡處理。整份 trace
+/// 都用白名單（不是只有標記）：被拿掉的卡只留第幾張與原因（不留原文與命中的字），之後新增的
+/// 選填欄位預設不進 trace，要進得在這裡明列（整合時發現安全分支加的被拿掉卡原文會漏進來）。
 export function traceWithoutText(
   trace: GuideV3Trace,
   tags: ReadTags | null,
 ): GuideV3Trace {
   return {
-    ...trace,
     // 讀局面失敗時沒有標記（main 的安全後援：關鍵字直接給關心）。
     tags: tags ? tagsWithoutText(tags) : null,
+    // 以下都是程式產生的代碼、數字或固定字表（scoringWords 只會是 cards.ts 的固定詞）。
+    push: trace.push,
+    specs: trace.specs,
+    entries: trace.entries,
+    removed: trace.removed.map((r) => ({ slot: r.slot, reason: r.reason })),
+    invalidLines: trace.invalidLines,
+    scoringWords: trace.scoringWords,
     rawMessages: trace.rawMessages.map((raw) => ({
       slot: raw.slot,
       messageCount: "messages" in raw ? raw.messages.length : raw.messageCount,
     })),
+    models: trace.models,
+    firstCardMs: trace.firstCardMs,
+    ...(trace.checks ? { checks: trace.checks } : {}),
+    ...(trace.herLastTurnChars !== undefined
+      ? { herLastTurnChars: trace.herLastTurnChars }
+      : {}),
+    ...(trace.memory ? { memory: trace.memory } : {}),
+    ...(trace.care ? { care: trace.care } : {}),
+    ...(trace.keywordHits ? { keywordHits: trace.keywordHits } : {}),
+    ...(trace.previousRound ? { previousRound: trace.previousRound } : {}),
   };
 }
 
