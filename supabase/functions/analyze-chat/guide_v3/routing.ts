@@ -34,6 +34,16 @@ export function shouldExtractGuideV3Memory(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// v3 分析帶上一輪脈絡（previousRound，見 previous_round.ts）：開關
+/// ANALYZE_GUIDE_V3_PREV_ROUND，跟 ANALYZE_GUIDE_V3 一樣 off／test／on。沒開就不讀
+/// 這個欄位，兩段提示詞一字不變（Eric 2026-10-18）。
+export function shouldUseGuideV3PreviousRound(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// 免費方案看排好順序的前 2 張（計畫第五節第 5 項的預設；v2 的免費方案也只有延展、
 /// 調情兩種風格）。伺服器只寫、只送這幾張。
 export const GUIDE_V3_FREE_CARD_LIMIT = 2;

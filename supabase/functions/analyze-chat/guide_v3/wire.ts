@@ -4,6 +4,7 @@ import type { V3CardTaskCode } from "../stream_run_store.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type { GuideV3MemoryTrace } from "./memory.ts";
 import type { GuideV3Decision, GuideV3Plan } from "./plan.ts";
+import type { GuideV3PreviousRoundTrace } from "./previous_round.ts";
 import type { LIGHTS } from "./read_tags.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
 
@@ -134,6 +135,8 @@ export interface GuideV3Trace {
   readonly firstCardMs: number | null;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;
+  /// 有帶上一輪脈絡才有（只有數量，見 previous_round.ts）。
+  readonly previousRound?: GuideV3PreviousRoundTrace;
 }
 
 export function finalResult(args: {

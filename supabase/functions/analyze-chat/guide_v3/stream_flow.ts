@@ -28,6 +28,11 @@ import {
   zeroMemoryCounts,
 } from "./memory.ts";
 import {
+  type GuideV3PreviousRound,
+  type GuideV3PreviousRoundTrace,
+  previousRoundTrace,
+} from "./previous_round.ts";
+import {
   type GuideV3Background,
   readSystemPrompt,
   readUserPrompt,
@@ -115,6 +120,9 @@ export interface GuideV3StreamDeps {
   conversationHash: string;
   messages: readonly GuideV3Message[];
   background?: GuideV3Background;
+  /// 上一輪脈絡：開關 ANALYZE_GUIDE_V3_PREV_ROUND 允許、格式也對才有（handler 把關）；
+  /// 沒有就跟今天一模一樣。
+  previousRound?: GuideV3PreviousRound;
   requestType: string;
   effectiveTier: string;
   accountIsTest: boolean;
@@ -291,6 +299,15 @@ class GuideV3Flow {
     };
   }
 
+  /// 有帶上一輪脈絡時，trace 與 outcome log 只記數量（不放任何字）。
+  private get previousRoundCounts(): {
+    previousRound?: GuideV3PreviousRoundTrace;
+  } {
+    return this.deps.previousRound
+      ? { previousRound: previousRoundTrace(this.deps.previousRound) }
+      : {};
+  }
+
   async run(emit: NdjsonEmit, isClosed: () => boolean): Promise<void> {
     const deadlineAtMs = this.startedAt + GUIDE_V3_DEADLINE_MS;
     emit({
@@ -308,7 +325,11 @@ class GuideV3Flow {
         const read = await this.deps.callRead({
           runId: this.runId,
           system: readSystemPrompt(),
-          user: readUserPrompt(turns, this.deps.background),
+          user: readUserPrompt(
+            turns,
+            this.deps.background,
+            this.deps.previousRound,
+          ),
           schema: READ_TAGS_SCHEMA,
           deadlineAtMs,
         });
@@ -434,6 +455,7 @@ class GuideV3Flow {
       charged: this.charged,
       chargeUnknown: this.chargeUnknown,
       latencyMs: this.now() - this.startedAt,
+      ...this.previousRoundCounts,
       ...details,
     });
     emit(event);
@@ -568,6 +590,7 @@ class GuideV3Flow {
       rawMessages: [],
       models: { read: this.readModel, write: this.writeModel },
       firstCardMs: null,
+      ...this.previousRoundCounts,
       ...extra,
     };
   }
@@ -672,6 +695,7 @@ class GuideV3Flow {
       outcome: "done",
       persisted,
       latencyMs: this.now() - this.startedAt,
+      ...this.previousRoundCounts,
       ...outcome,
     });
     const client = stripClientHiddenFinalResult(result);
@@ -914,6 +938,7 @@ class GuideV3Flow {
           entries: plan.entries,
           cards: deliverable,
           background: this.deps.background,
+          previousRound: this.deps.previousRound,
         }),
         deadlineAtMs,
       });
