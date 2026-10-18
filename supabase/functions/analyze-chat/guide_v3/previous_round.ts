@@ -8,8 +8,10 @@
 //   就當沒送，兩段提示詞一字不變。
 // - 不算計費字數（獨立欄位，計費只看 messages），也不進對話雜湊：v3 續看只重播、
 //   不重寫，上一輪脈絡不影響續看的結果。
-// - 格式不對或超過上限就整份不用，不擋分析；log 與 trace 只記數量和原因代碼。
-import { LIGHTS } from "./read_tags.ts";
+// - 格式不對或超過上限就整份不用，不擋分析；log 與 trace 只記數量和原因代碼。帶了上一輪
+//   的那次，trace 也不放任何模型寫的字（traceWithoutText）。
+import { LIGHTS, type ReadTags } from "./read_tags.ts";
+import type { GuideV3Trace } from "./wire.ts";
 
 /// 上限（App 端照同一組數字裁好再送）：每段文字 120、最多 4 則、全部合計 600。
 /// 字數照現有驗證的算法：trim 之後的字串長度。
@@ -121,6 +123,53 @@ export function parsePreviousRound(raw: unknown): PreviousRoundParse {
       ...(judgment ? { judgment } : {}),
       messages,
     },
+  };
+}
+
+/// 讀局面標記裡只有這幾個字串欄位是固定選項（parseReadTags 逐一檢查過），其他字串都可能
+/// 是模型寫的字。
+const TRACE_ENUM_TAGS: ReadonlySet<string> = new Set([
+  "light",
+  "herMove",
+  "inviteReadiness",
+  "replyWillingness",
+]);
+const ENTRY_ID = /^B\d{2}$/;
+
+/// 帶了上一輪的那次，存進資料庫的 trace 不放任何模型寫的字（主審第 1 輪 P1）：模型可能把
+/// 上一輪的原句抄進讀局面的自由文字欄位（他說過的事要逐字摘錄），或抄進卡片。標記只留
+/// 旗標、數字、固定選項與條目編號，自由文字改成筆數或字數；卡片原文只留第幾張與則數。
+/// 給用戶看的判讀、要等什麼與送出的卡是產品輸出，照存在結果裡，不在這裡處理。用白名單：
+/// 之後新增的字串欄位預設不進 trace。
+export function traceWithoutText(
+  trace: GuideV3Trace,
+  tags: ReadTags,
+): GuideV3Trace {
+  const kept: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(tags)) {
+    if (typeof value === "boolean" || typeof value === "number") {
+      kept[key] = value;
+    } else if (typeof value === "string" && TRACE_ENUM_TAGS.has(key)) {
+      kept[key] = value;
+    }
+  }
+  return {
+    ...trace,
+    tags: {
+      ...kept,
+      herTurnsPerfunctory: tags.herTurnsPerfunctory.map((t) => ({
+        turn: t.turn,
+        perfunctory: t.perfunctory,
+      })),
+      matchedEntries: tags.matchedEntries.filter((id) => ENTRY_ID.test(id)),
+      hisStatedFactsCount: tags.hisStatedFacts.length,
+      readForUserChars: tags.readForUser.length,
+      waitForChars: tags.waitFor.length,
+    },
+    rawMessages: trace.rawMessages.map((raw) => ({
+      slot: raw.slot,
+      messageCount: "messages" in raw ? raw.messages.length : raw.messageCount,
+    })),
   };
 }
 

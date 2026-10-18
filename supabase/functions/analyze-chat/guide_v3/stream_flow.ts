@@ -31,6 +31,7 @@ import {
   type GuideV3PreviousRound,
   type GuideV3PreviousRoundTrace,
   previousRoundTrace,
+  traceWithoutText,
 } from "./previous_round.ts";
 import {
   type GuideV3Background,
@@ -579,7 +580,7 @@ class GuideV3Flow {
     plan: GuideV3Plan,
     extra: Partial<GuideV3Trace> = {},
   ): GuideV3Trace {
-    return {
+    const trace: GuideV3Trace = {
       tags,
       push: plan.push,
       specs: plan.specs,
@@ -593,6 +594,8 @@ class GuideV3Flow {
       ...this.previousRoundCounts,
       ...extra,
     };
+    // 帶了上一輪的那次，trace 不放任何模型寫的字（主審第 1 輪 P1，previous_round.ts）。
+    return this.deps.previousRound ? traceWithoutText(trace, tags) : trace;
   }
 
   /// 對象記憶跟寫卡（或不送型的扣費）同時跑；結案前才用 settleMemory 等。

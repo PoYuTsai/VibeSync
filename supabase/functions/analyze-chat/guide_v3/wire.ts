@@ -127,10 +127,12 @@ export interface GuideV3Trace {
   readonly removed: readonly { slot: number; reason: string }[];
   readonly invalidLines: number;
   readonly scoringWords: readonly { slot: number; words: readonly string[] }[];
-  readonly rawMessages: readonly {
-    slot: number;
-    messages: readonly string[];
-  }[];
+  /// 預設口吻的「妳」被換掉時留的原文；帶了上一輪的那次只留第幾張與則數
+  ///（previous_round.ts 的 traceWithoutText）。
+  readonly rawMessages: readonly (
+    | { slot: number; messages: readonly string[] }
+    | { slot: number; messageCount: number }
+  )[];
   readonly models: { read?: string; write?: string };
   readonly firstCardMs: number | null;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。

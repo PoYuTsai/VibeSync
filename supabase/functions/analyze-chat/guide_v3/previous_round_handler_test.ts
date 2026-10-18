@@ -299,3 +299,79 @@ Deno.test("上一輪只接在 v3 入口：開關讀一次，不進對話雜湊�
   );
   assertEquals(billing.includes("previousRound"), false);
 });
+
+Deno.test("上一輪開關 on：模型把上一輪原句抄進讀局面標記、判讀與卡片，trace 也不放任何字（主審第 1 輪 P1）", async () => {
+  const quote = "我在竹科做夜班";
+  const previousRound = {
+    decision: "send",
+    light: "green",
+    judgment: "他講了自己的工作，她有興趣。",
+    messages: [
+      { isFromMe: true, content: quote },
+      { isFromMe: false, content: "難怪你都這麼晚回" },
+    ],
+  };
+  // 假模型把上一輪那句抄進每一個自由文字欄位，卡片也抄（含「妳」，預設口吻會留原文）。
+  const echoTags = {
+    ...TAGS,
+    hisStatedFacts: [quote],
+    matchedEntries: [quote, "B05"],
+    readForUser: `他上次說${quote}，她現在約下午。`,
+    waitFor: `等她回${quote}`,
+  };
+  const echoCards = [1, 2, 3, 4, 5].map((card) =>
+    JSON.stringify({
+      card,
+      messages: [`妳記得${quote}這件事啊（${card}）`],
+      hasInventedDetail: false,
+    })
+  );
+  const runEcho = (previous?: Record<string, unknown>) =>
+    runGuideV3StreamThroughHandler({
+      createHandler: createAnalyzeChatHandler,
+      body: body(previous ? { previousRound: previous } : {}),
+      env: {
+        ANALYZE_GUIDE_V3: "on",
+        ANALYZE_GUIDE_V3_MEMORY: undefined,
+        [FLAG]: "on",
+      },
+      model: (modelBody) =>
+        Promise.resolve(
+          modelBody.stream === true
+            ? fakeWriteResponse(echoCards)
+            : fakeReadResponse(echoTags),
+        ),
+    });
+
+  const withField = await runEcho(previousRound);
+  assertDone(withField);
+  const trace = withField.finalResult?.guideV3Trace as Record<string, unknown>;
+  assertEquals(JSON.stringify(trace).includes("竹科"), false);
+  const tags = trace.tags as Record<string, unknown>;
+  for (const key of ["hisStatedFacts", "readForUser", "waitFor"]) {
+    assertEquals(key in tags, false, key);
+  }
+  assertEquals(tags.hisStatedFactsCount, 1);
+  assertEquals(tags.matchedEntries, ["B05"]);
+  assertEquals(tags.light, "green");
+  const raws = trace.rawMessages as Record<string, unknown>[];
+  assert(raws.length > 0, "預設口吻的卡要有原文紀錄");
+  for (const raw of raws) {
+    assertEquals(Object.keys(raw).sort(), ["messageCount", "slot"]);
+  }
+  // 給用戶看的判讀與卡是產品輸出，照存在結果裡。
+  const read = withField.finalResult?.read as { judgment: string };
+  assert(read.judgment.includes("竹科"));
+  const cards = withField.finalResult?.cards as { messages: string[] }[];
+  assert(cards.some((c) => c.messages.join("").includes("竹科")));
+
+  // 沒帶上一輪：trace 跟今天一樣保留完整標記與原文。
+  const without = await runEcho();
+  const plain = without.finalResult?.guideV3Trace as Record<string, unknown>;
+  assertEquals((plain.tags as Record<string, unknown>).hisStatedFacts, [quote]);
+  assert(
+    (plain.rawMessages as { messages?: string[] }[]).every((r) =>
+      Array.isArray(r.messages)
+    ),
+  );
+});

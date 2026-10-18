@@ -16,12 +16,14 @@ import {
   previousRoundReadSection,
   previousRoundTrace,
   previousRoundWriteSection,
+  traceWithoutText,
 } from "./previous_round.ts";
 import { readUserPrompt, writeUserPrompt } from "./prompts.ts";
 import type { ReadTags } from "./read_tags.ts";
 import { guideV3Mode, shouldUseGuideV3PreviousRound } from "./routing.ts";
 import type { CardSpec } from "./rules.ts";
 import { toTurns } from "./turns.ts";
+import type { GuideV3Trace } from "./wire.ts";
 
 const FULL = {
   decision: "hold",
@@ -373,4 +375,46 @@ Deno.test("上一輪不帶他複製的那張：舊版 App 送來也不收、不�
     "judgment",
     "messages",
   ]);
+});
+
+Deno.test("帶上一輪那次的 trace：標記用白名單，自由文字只留數量，卡片原文只留則數（主審第 1 輪 P1）", () => {
+  const tags = {
+    ...TAGS,
+    hisStatedFacts: ["上一輪的原句", "第二句"],
+    matchedEntries: ["B05", "上一輪的原句"],
+    readForUser: "判讀裡抄了上一輪的原句",
+    waitFor: "",
+    herTurnsPerfunctory: [{ turn: 2, perfunctory: true }],
+    // 之後才加的欄位：旗標照留，字串一律不留。
+    minorSignal: true,
+    note: "上一輪的原句",
+  } as unknown as ReadTags;
+  const trace = {
+    tags,
+    push: null,
+    specs: CARDS,
+    entries: ["B05"],
+    removed: [{ slot: 2, reason: "unsafe" }],
+    invalidLines: 0,
+    scoringWords: [],
+    rawMessages: [{ slot: 1, messages: ["上一輪的原句", "妳好"] }],
+    models: { read: "m", write: "m" },
+    firstCardMs: 10,
+  } satisfies GuideV3Trace;
+  const out = traceWithoutText(trace, tags);
+  assertEquals(JSON.stringify(out).includes("上一輪的原句"), false);
+  const kept = out.tags as Record<string, unknown>;
+  assertEquals(kept.minorSignal, true);
+  assertEquals("note" in kept, false);
+  assertEquals(kept.light, "green");
+  assertEquals(kept.herMove, "問他的事");
+  assertEquals(kept.matchedEntries, ["B05"]);
+  assertEquals(kept.herTurnsPerfunctory, [{ turn: 2, perfunctory: true }]);
+  assertEquals(kept.hisStatedFactsCount, 2);
+  assertEquals(kept.readForUserChars, "判讀裡抄了上一輪的原句".length);
+  assertEquals(kept.waitForChars, 0);
+  assertEquals(out.rawMessages, [{ slot: 1, messageCount: 2 }]);
+  // 其他欄位原樣。
+  assertEquals(out.removed, trace.removed);
+  assertEquals(out.specs, CARDS);
 });
