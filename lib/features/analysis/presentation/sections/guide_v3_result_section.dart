@@ -370,11 +370,19 @@ class GuideV3ResultSection extends StatelessWidget {
                 ),
             ];
       final shownSlots = <int>{};
+      // 第一張畫出來的卡是推薦（Bruce PR #97，Eric 2026-10-19）：伺服器排卡時第一張就是
+      // 照局面最自然的那一步（rules.ts 的 arrangeCards）。正在寫的卡不算。
+      GuideV3Card? recommended;
+      Widget taskCard(GuideV3Card card) {
+        recommended ??= card;
+        return _taskCard(card, recommended: identical(recommended, card));
+      }
+
       for (final plan in planned) {
         final card = bySlot[plan.slot];
         if (card != null) {
           shownSlots.add(card.slot);
-          slots.add(_taskCard(card));
+          slots.add(taskCard(card));
         } else if (!plan.locked && isStreaming) {
           // 免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：只有伺服器改之前的舊結果
           // 會標 locked，那幾張不會送來，不畫「正在寫」，也不畫鎖卡或升級。
@@ -383,8 +391,9 @@ class GuideV3ResultSection extends StatelessWidget {
       }
       // 排卡裡沒有的卡（不該發生）也照樣顯示，不吃掉已送到的內容。
       for (final card in cards) {
-        if (!shownSlots.contains(card.slot)) slots.add(_taskCard(card));
+        if (!shownSlots.contains(card.slot)) slots.add(taskCard(card));
       }
+      final first = recommended;
       if (slots.isNotEmpty) {
         children
           ..add(const SizedBox(height: 16))
@@ -395,6 +404,11 @@ class GuideV3ResultSection extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ));
+        if (first != null) {
+          children
+            ..add(const SizedBox(height: 8))
+            ..add(_recommendationReason(first.task));
+        }
         for (final slot in slots) {
           children
             ..add(const SizedBox(height: 10))
@@ -432,10 +446,12 @@ class GuideV3ResultSection extends StatelessWidget {
     );
   }
 
-  Widget _taskCard(GuideV3Card card) => GuideV3TaskCard(
+  Widget _taskCard(GuideV3Card card, {required bool recommended}) =>
+      GuideV3TaskCard(
         // 卡片自己記著下一則要複製第幾則：用 slot 當 key，前後的卡變動也不會弄丟。
         key: ValueKey('guide-v3-task-card-${card.slot}'),
         card: card,
+        recommended: recommended,
         editedMessages: editedMessagesFor(card),
         refinedMessages: refinedMessagesFor?.call(card),
         onCopy: (text, toast) => onCopy(card, text, toast),
@@ -444,6 +460,31 @@ class GuideV3ResultSection extends StatelessWidget {
             ? () => onRefine!(card)
             : null,
         footer: footerFor?.call(card),
+      );
+
+  /// 推薦理由：跟開場救星、新話題同一個樣子（燈泡＋「AI 推薦理由：」，樣式照抄、不共用
+  /// 元件）。理由是第一張卡任務的固定說明（[guideV3TaskPurpose]），不花模型費、不寫新句子
+  ///（Eric 2026-10-19）。
+  Widget _recommendationReason(GuideV3Task task) => Row(
+        key: const ValueKey('guide-v3-recommendation-reason'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.lightbulb_outline_rounded,
+            size: 18,
+            color: AppColors.coachRecommendation,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'AI 推薦理由：${guideV3TaskPurpose(task)}',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       );
 
   /// 已升級但看的是免費版結果（沿用 v2 的「重新產生完整分析」文案）。

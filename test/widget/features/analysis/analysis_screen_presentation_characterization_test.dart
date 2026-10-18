@@ -1418,6 +1418,31 @@ void main() {
       expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
     });
 
+    testWidgets('第一張卡標「AI 推薦」，卡片列表上面一行推薦理由（Bruce PR #97，Eric 2026-10-19）',
+        (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('guide-v3-card-1')),
+          matching: find.text('AI 推薦'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('AI 推薦'), findsOneWidget);
+      expect(
+        find.text('AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.accept)}'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('先別回沒有卡：不出「AI 推薦」與推薦理由', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(noSendResult('hold')));
+      expect(find.text('AI 推薦'), findsNothing);
+      expect(find.textContaining('AI 推薦理由'), findsNothing);
+    });
+
     testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {
       await _pumpScreen(tester, seed: doneSeed(noSendResult('hold')));
       expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);

@@ -164,6 +164,7 @@ class GuideV3TaskCard extends StatefulWidget {
     this.onEdit,
     this.onRefine,
     this.footer,
+    this.recommended = false,
   });
 
   final GuideV3Card card;
@@ -188,6 +189,10 @@ class GuideV3TaskCard extends StatefulWidget {
 
   /// 卡片下方（例如複製後的成效回報列）。
   final Widget? footer;
+
+  /// 這一輪的第一張卡：標「AI 推薦」（Bruce PR #97，Eric 2026-10-19）。理由寫在卡片列表
+  /// 上面那一行，由 [GuideV3ResultSection] 放。
+  final bool recommended;
 
   @override
   State<GuideV3TaskCard> createState() => _GuideV3TaskCardState();
@@ -283,6 +288,37 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                 expanded: _purposeOpen,
                 onTap: () => setState(() => _purposeOpen = !_purposeOpen),
               ),
+              // 跟開場救星、新話題同一個「AI 推薦」膠囊（樣式照 opening_rescue_screen 抄，
+              // 不共用元件；Eric 2026-10-19）。
+              if (widget.recommended) ...[
+                const SizedBox(width: 6),
+                Container(
+                  key: ValueKey('guide-v3-card-${card.slot}-recommended'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.coachRecommendation.withValues(
+                      alpha: 0.16,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppColors.coachRecommendation.withValues(
+                        alpha: 0.64,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    'AI 推薦',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.coachRecommendation,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
               const Spacer(),
               if (edited || refined)
                 Text(
