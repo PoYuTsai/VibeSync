@@ -154,12 +154,18 @@ class _StubConversationRepository extends ConversationRepository {
 
   Conversation _conversation;
 
+  /// 開了就當存檔寫不進去：匯入那次存檔丟例外。
+  bool failUpdates = false;
+
   @override
   Conversation? getConversation(String id) =>
       id == _conversation.id ? _conversation : null;
 
   @override
   Future<void> updateConversation(Conversation c) async {
+    if (failUpdates) {
+      throw const FileSystemException('save failed');
+    }
     _conversation = c;
   }
 }
@@ -259,12 +265,15 @@ class _Harness {
   _Harness({
     required this.recorder,
     required this.conversation,
+    required this.repository,
   });
 
   final _RecordingAnalyzeStreamClient recorder;
 
   /// 畫面讀的同一個物件：匯入是就地整批取代，看它就知道匯入了沒。
   final Conversation conversation;
+
+  final _StubConversationRepository repository;
 }
 
 RecognizedConversation _recognized(List<RecognizedMessage> messages) =>
@@ -377,6 +386,7 @@ Future<_Harness> _pumpOcrScreen(
     updatedAt: DateTime(2026, 10, 18),
   );
   final recorder = _RecordingAnalyzeStreamClient();
+  final repository = _StubConversationRepository(conversation);
   late final _SeededSubscriptionNotifier subscriptionNotifier;
 
   await tester.pumpWidget(
@@ -388,8 +398,7 @@ Future<_Harness> _pumpOcrScreen(
             .overrideWithValue(MemoryAnalysisHistoryRepository()),
         conversationArchiveStoreProvider
             .overrideWithValue(_MemoryConversationArchiveStore()),
-        conversationRepositoryProvider
-            .overrideWithValue(_StubConversationRepository(conversation)),
+        conversationRepositoryProvider.overrideWithValue(repository),
         conversationProvider(_conversationId).overrideWithValue(conversation),
         analyzeStreamClientProvider.overrideWithValue(recorder),
         coachChatRepositoryProvider
@@ -440,7 +449,11 @@ Future<_Harness> _pumpOcrScreen(
   await tester.pump();
   subscriptionNotifier.restoreSeed();
   await tester.pump();
-  return _Harness(recorder: recorder, conversation: conversation);
+  return _Harness(
+    recorder: recorder,
+    conversation: conversation,
+    repository: repository,
+  );
 }
 
 /// 選一張圖、按辨識：快取命中後跳出確認框。
@@ -480,6 +493,17 @@ List<String> _contents(List<Message> messages) =>
 
 List<String> _recognizedContents(List<RecognizedMessage> messages) =>
     [for (final message in messages) message.content];
+
+/// 三則合計剛好比一般長度多 1 字（照常數切）。
+List<RecognizedMessage> _justOverSoftCap() {
+  const total = MessageCalculator.softCapBandMaxChars + 1;
+  final first = total ~/ 3;
+  return [
+    _her('好' * first),
+    _her('嗯' * first),
+    _her('喔' * (total - first * 2)),
+  ];
+}
 
 void main() {
   group('截圖確認框：加入並開始分析（Eric 2026-10-18）', () {
@@ -539,14 +563,7 @@ void main() {
     });
 
     testWidgets('超過 2000 字：匯入後跳「內容較長」確認框，確認前不送出', (tester) async {
-      // 三則合計剛好比一般長度多 1 字（照常數切）。
-      const total = MessageCalculator.softCapBandMaxChars + 1;
-      final first = total ~/ 3;
-      final messages = [
-        _her('好' * first),
-        _her('嗯' * first),
-        _her('喔' * (total - first * 2)),
-      ];
+      final messages = _justOverSoftCap();
       final harness = await _pumpOcrScreen(
         tester,
         recognizedMessages: messages,
@@ -718,6 +735,80 @@ void main() {
 
       expect(find.text('開始分析前'), findsOneWidget);
       expect(harness.recorder.streamCalls, 0);
+    });
+  });
+
+  // 主審 P3 補測（Eric 2026-10-18「不接受，先處理」）：按了「加入並開始分析」、分析卻沒
+  // 開始的幾條路。扣額只在送出的那一次請求，所以「沒送」就是「沒扣」。
+  group('加入並開始分析：分析沒開始的路', () {
+    // 兩個鈕同一套期待：「先存起來」就是今天的匯入失敗，「加入並開始分析」要跟它一樣。
+    for (final label in [_importOnlyLabel, _analyzeLabel]) {
+      testWidgets('匯入存檔失敗（按「$label」）：照今天的匯入失敗顯示，一次都不送', (tester) async {
+        final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+        final harness =
+            await _pumpOcrScreen(tester, recognizedMessages: messages);
+        await _recognize(tester);
+        harness.repository.failUpdates = true;
+
+        await _tapInDialog(tester, label);
+
+        expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+        expect(find.text('截圖辨識暫時失敗，請稍後再試。'), findsOneWidget);
+        expect(find.text('最後一則是你傳的'), findsNothing);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 0);
+        expect(_contents(harness.conversation.messages),
+            _recognizedContents(messages),
+            reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
+      });
+    }
+
+    testWidgets('按下去時換了帳號、新帳號還沒同意：暫不同意就不送，匯入的內容留著', (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      // 辨識前已同意；同意是帳號級，確認框開著時換了帳號，開始分析前要重新問。
+      AiDataSharingConsent.debugUserIdOverride = () => 'another-account';
+      addTearDown(() => AiDataSharingConsent.debugUserIdOverride = null);
+
+      await _tapInDialog(tester, _analyzeLabel);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('資料使用說明'), findsOneWidget);
+
+      await tester.tap(find.text('暫不同意'));
+      await _pumpFrames(tester);
+
+      expect(find.text('資料使用說明'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+      expect(_contents(harness.conversation.messages),
+          _recognizedContents(messages),
+          reason: '匯入照樣留著');
+    });
+
+    testWidgets('超過 2000 字：確認框按「取消」就不送，匯入的內容留著', (tester) async {
+      final messages = _justOverSoftCap();
+      final harness = await _pumpOcrScreen(
+        tester,
+        recognizedMessages: messages,
+        subscription: _essentialPlan(),
+      );
+      await _recognize(tester);
+
+      await _tapInDialog(tester, _analyzeLabel);
+      expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+
+      await tester.tap(find.descendant(
+        of: find.byType(AnalysisPreviewDialog),
+        matching: find.text('取消'),
+      ));
+      await _pumpFrames(tester);
+
+      expect(find.text('內容較長，確認後才會扣'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+      expect(_contents(harness.conversation.messages),
+          _recognizedContents(messages),
+          reason: '匯入照樣留著');
     });
   });
 }
