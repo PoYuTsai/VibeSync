@@ -2,12 +2,17 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_record_detail_screen.dart';
 import 'package:vibesync/features/analysis/presentation/screens/partner_analysis_records_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_platform_picker.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 
 String _snapshot() => jsonEncode({
       'enthusiasm': {'score': 72, 'level': 'warm'},
@@ -126,7 +131,162 @@ AnalysisRecord _guideV3Record({required String id, required DateTime at}) {
   );
 }
 
+/// 目前方案（紀錄頁看「現在」的方案決定推不推升級，主審 r1 P2-1）；[upgradeTo] 模擬在
+/// 付費頁買完回來。
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(String tier) {
+    upgradeTo(tier);
+  }
+
+  void upgradeTo(String tier) {
+    final limits = SubscriptionTierHelper.limitsFor(tier);
+    state = SubscriptionState(
+      tier: tier,
+      monthlyLimit: limits.monthly,
+      dailyLimit: limits.daily,
+    );
+  }
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  Future<void> syncWithRevenueCat() async {}
+}
+
+/// 免費時存的 v3 紀錄：排了 3 張，只寫了第 1 張，後兩張鎖住。
+AnalysisRecord _freeLockedGuideV3Record() {
+  final base = _guideV3Record(id: 'v3-free-locked', at: DateTime(2026, 10, 17));
+  return AnalysisRecord(
+    id: base.id,
+    ownerUserId: base.ownerUserId,
+    conversationId: base.conversationId,
+    partnerId: base.partnerId,
+    subjectName: base.subjectName,
+    segmentStart: base.segmentStart,
+    segmentEnd: base.segmentEnd,
+    createdAt: base.createdAt,
+    messages: base.messages,
+    analysisSnapshotJson: jsonEncode({
+      'guideVersion': 'v3.5',
+      'read': {
+        'guideVersion': 'v3.5',
+        'decision': 'send',
+        'light': 'green',
+        'judgment': '她主動分享週末的事，可以往前一步。',
+        'plannedCards': [
+          {'slot': 1, 'task': 'accept', 'locked': false},
+          {'slot': 2, 'task': 'tension', 'locked': true},
+          {'slot': 3, 'task': 'push', 'locked': true},
+        ],
+      },
+      'cards': [
+        {
+          'slot': 1,
+          'task': 'accept',
+          'method': 'reaction',
+          'voice': 'default',
+          'messages': ['哪一家？我也想去吃吃看'],
+          'hasInventedDetail': false,
+          'hasBlank': false,
+        },
+      ],
+      'partial': false,
+    }),
+    analyzedContentRevision: base.analyzedContentRevision,
+    completionKey: base.completionKey,
+    sourcePlatform: base.sourcePlatform,
+    enthusiasmScore: null,
+    gameStageLabel: '',
+    guideVersion: 'v3.5',
+    guideV3Light: 'green',
+  );
+}
+
 void main() {
+  // ── 已付費回看免費時的紀錄（主審 r1 P2-1）：照「現在」的方案決定推不推升級，紀錄本身不動 ──
+  testWidgets('已付費回看免費時的紀錄：不出鎖卡區塊、不推升級，看得到的卡照樣能用', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final tier in [
+      SubscriptionTierHelper.starter,
+      SubscriptionTierHelper.essential,
+    ]) {
+      final record = _freeLockedGuideV3Record();
+      final snapshotBefore = record.analysisSnapshotJson;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          subscriptionProvider.overrideWith(
+            (ref) => _SeededSubscriptionNotifier(tier),
+          ),
+        ],
+        child: MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing,
+          reason: tier);
+      expect(find.text('看方案'), findsNothing, reason: tier);
+      expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget,
+          reason: tier);
+      expect(record.analysisSnapshotJson, snapshotBefore, reason: '紀錄不改');
+    }
+  });
+
+  testWidgets('免費時在紀錄頁打開付費頁、買完回來：鎖卡區塊跟著收掉', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final subscription =
+        _SeededSubscriptionNotifier(SubscriptionTierHelper.free);
+    final paywallExtras = <Object?>[];
+    final record = _freeLockedGuideV3Record();
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, __) => AnalysisRecordDetailScreen(record: record),
+        ),
+        GoRoute(
+          path: '/paywall',
+          builder: (context, state) {
+            paywallExtras.add(state.extra);
+            return Scaffold(
+              body: TextButton(
+                onPressed: () {
+                  subscription.upgradeTo(SubscriptionTierHelper.starter);
+                  context.pop(SubscriptionTierHelper.starter);
+                },
+                child: const Text('假的購買成功'),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        subscriptionProvider.overrideWith((ref) => subscription),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ));
+    await tester.pumpAndSettle();
+
+    final block = find.byKey(const ValueKey('guide-v3-locked-block'));
+    expect(block, findsOneWidget);
+    final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
+    await tester.ensureVisible(upgrade);
+    await tester.tap(upgrade);
+    await tester.pumpAndSettle();
+    expect(paywallExtras, [PaywallEntry.lockedCards]);
+
+    await tester.tap(find.text('假的購買成功'));
+    await tester.pumpAndSettle();
+    expect(block, findsNothing);
+    expect(find.text('看方案'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+  });
+
   testWidgets('新流程紀錄詳情：判讀與任務卡，沒有熱度卡；有空格要先填', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -175,9 +335,15 @@ void main() {
       guideV3Light: 'yellow',
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
-    );
+    // 紀錄頁照目前方案決定推不推升級（主審 r1 P2-1）：這裡是免費。
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        subscriptionProvider.overrideWith(
+          (ref) => _SeededSubscriptionNotifier(SubscriptionTierHelper.free),
+        ),
+      ],
+      child: MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    ));
     await tester.pumpAndSettle();
 
     expect(
