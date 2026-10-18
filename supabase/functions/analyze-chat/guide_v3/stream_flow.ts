@@ -3,8 +3,8 @@
 // ANALYZE_GUIDE_V3_MEMORY 開時，讀完另打一次對象記憶（memory.ts），不擋判讀與出卡。
 //
 // 扣費（Eric 10/16）：第一張卡定稿、確定要送的那一刻扣一次；一張都沒送出不扣；
-// 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型）；固定訊息（自傷關心、
-// 涉及未成年）不扣。
+// 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型），固定 1 則（Eric 2026-10-18）；
+// 固定訊息（自傷關心、涉及未成年）不扣。
 // run：pending →（扣費）charged → done；沒扣費就 failed。扣過費一定以 done 結案
 //（寫卡中途出錯就用已送出的卡）。不重生、不 retry；續看只重播（run_shape.ts）。
 import { jsonResponse } from "../http_response.ts";
@@ -69,6 +69,9 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 export const STOP_CONDITION_STOP = "不再主動傳訊息";
 export const STOP_CONDITION_CARE = "先確認安全";
 export const STOP_CONDITION_MINOR = "涉及未成年，不給建議";
+/// 先別回、停固定扣 1 則（Eric 2026-10-18，推翻 10/16 的照字數扣）：沒有卡卻照字數扣，
+/// 容易被當成付錢沒拿到東西。扣費 RPC 收任何正整數（migration 20261016171939）。
+export const NO_SEND_MESSAGE_COUNT = 1;
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -555,10 +558,8 @@ class GuideV3Flow {
     }
   }
 
-  private usage(charged: boolean): Record<string, unknown> {
-    const used = charged && this.shouldCharge
-      ? this.deps.quotaUsage.chargedMessageCount
-      : 0;
+  /// used：這次實際扣的則數（出卡照字數、先別回與停 1 則、固定訊息 0）。
+  private usage(used: number): Record<string, unknown> {
     return {
       messagesUsed: used,
       estimatedMessages: this.deps.quotaUsage.estimatedMessageCount,
@@ -784,7 +785,7 @@ class GuideV3Flow {
         read: view,
         cards: [],
         partial: false,
-        usage: this.usage(false),
+        usage: this.usage(0),
         telemetry: this.telemetry({
           shouldChargeQuota: false,
           chargedMessageCount: 0,
@@ -807,7 +808,7 @@ class GuideV3Flow {
     );
   }
 
-  /// 先別回、停：讀完就扣一次（不送型），沒有卡。
+  /// 先別回、停：讀完就扣一次（不送型），固定 1 則，沒有卡。
   private async noSend(
     emit: NdjsonEmit,
     plan: GuideV3Plan,
@@ -824,6 +825,7 @@ class GuideV3Flow {
     }
     const hold = plan.decision === "hold";
     const decisionKind = hold ? "do_not_send" : "acknowledge_and_stop";
+    const messageCount = this.shouldCharge ? NO_SEND_MESSAGE_COUNT : 0;
     const charged = await this.charge({
       decisionKind,
       cardTask: null,
@@ -836,9 +838,7 @@ class GuideV3Flow {
         read: view,
       },
       chargeQuota: this.shouldCharge,
-      messageCount: this.shouldCharge
-        ? this.deps.quotaUsage.chargedMessageCount
-        : 0,
+      messageCount,
     });
     if (!charged.ok) {
       return await this.fail(emit, charged.event, {
@@ -855,12 +855,10 @@ class GuideV3Flow {
         read: view,
         cards: [],
         partial: false,
-        usage: this.usage(true),
+        usage: this.usage(messageCount),
         telemetry: this.telemetry({
           shouldChargeQuota: this.shouldCharge,
-          chargedMessageCount: this.shouldCharge
-            ? this.deps.quotaUsage.chargedMessageCount
-            : 0,
+          chargedMessageCount: messageCount,
         }),
         trace: this.trace(
           tags,
@@ -872,6 +870,7 @@ class GuideV3Flow {
       {
         decision: plan.decision,
         charged: this.shouldCharge,
+        chargedMessageCount: messageCount,
         ...(memory.trace ? { memory: memory.trace } : {}),
       },
     );
@@ -1081,7 +1080,9 @@ class GuideV3Flow {
         read: view,
         cards: delivered,
         partial,
-        usage: this.usage(true),
+        usage: this.usage(
+          this.shouldCharge ? this.deps.quotaUsage.chargedMessageCount : 0,
+        ),
         telemetry: this.telemetry({
           shouldChargeQuota: this.shouldCharge,
           chargedMessageCount: this.shouldCharge

@@ -764,6 +764,57 @@ Deno.test("先別回（他是最後一則）：不寫卡，讀完扣一次不送
   assertEquals("cardTask" in c.recommendationJson, false);
 });
 
+Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的用量與剩餘都是 1；測試帳號 0", async () => {
+  const noSendCases: [string, Parameters<typeof harness>[0]][] = [
+    ["先別回", {
+      messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
+    }],
+    ["停", { readTags: tags({ explicitRejection: true }) }],
+  ];
+  for (const [label, opts] of noSendCases) {
+    const h = harness(opts);
+    const evs = await events(await handleGuideV3Stream(h.deps));
+    const c = h.charges[0];
+    assertEquals([c.chargeQuota, c.messageCount], [true, 1], label);
+    assertEquals(c.recommendationJson.chargedMessageCount, 1, label);
+    const result = evs.at(-1)!.finalResult as Record<string, unknown>;
+    const usage = result.usage as Record<string, unknown>;
+    // 這次照字數是 2 則（harness 的 chargedMessageCount）；先別回、停只扣 1。
+    assertEquals(usage.messagesUsed, 1, label);
+    assertEquals(usage.shouldChargeQuota, true, label);
+    assertEquals(usage.dailyRemaining, 50 - 3 - 1, label);
+    assertEquals(usage.monthlyRemaining, 300 - 10 - 1, label);
+    assertEquals(
+      (result.telemetry as Record<string, unknown>).chargedMessageCount,
+      1,
+      label,
+    );
+    const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+    assertEquals(outcome.metadata.chargedMessageCount, 1, label);
+  }
+  // 出卡照舊照字數扣。
+  const send = harness();
+  await events(await handleGuideV3Stream(send.deps));
+  assertEquals(send.charges[0].messageCount, 2);
+  // 測試帳號：照樣寫扣費紀錄、不扣。
+  const test = harness({
+    accountIsTest: true,
+    readTags: tags({ explicitRejection: true }),
+  });
+  const evs = await events(await handleGuideV3Stream(test.deps));
+  assertEquals([test.charges[0].chargeQuota, test.charges[0].messageCount], [
+    false,
+    0,
+  ]);
+  assertEquals(
+    ((evs.at(-1)!.finalResult as Record<string, unknown>).usage as Record<
+      string,
+      unknown
+    >).messagesUsed,
+    0,
+  );
+});
+
 Deno.test("先別回但扣費失敗：判讀不送出、run 記失敗", async () => {
   const h = harness({
     messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
