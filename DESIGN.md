@@ -64,6 +64,7 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | 首頁頭像 flow | 首頁對象卡頭像流光 | 同上，角速度已對齊 beam |
 | 抽卡儀式 glow | `practice_collection_screen.dart` 抽卡/翻牌 `brandFlame` 呼吸光暈 | 儀式性場景，慶祝時刻 |
 | 抽卡揭曉 V3 光效 | `practice_draw_ceremony.dart`、`practice_reveal_card.dart`、`practice_reveal_painters.dart`：卡背依稀有度染色光（銀→藍→金）、卡面外光、全息掃光、光刃、星塵、收卡光球；圖鑑那一格的落位光（`practice_collection_screen.dart`，和收卡光球同色）。色值集中在 `lib/core/theme/practice_reveal_palette.dart` | 揭曉是儀式時刻，稀有度靠光色分級；規格 `docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md` §6–§7（2026-10-15 D1–D9 由 PR 作者照建議先定，待 Eric 確認） |
+| 抽卡揭曉 V3.1 光效（第一刀） | 同上三檔＋`practice_reveal_theme.dart`：卡片前後兩層泛光、徽記白光、整張卡染色（線路遮罩跟外框、徽記一起發光）、升階光點、衝擊波光環、加強的光刃與 SR 橫跨螢幕的十字光、星星點亮的四芒星光與小光點、收卡細線發光與弧線光尾、落位四芒星爆光與兩圈光環；六角金屬稀有度牌（銀色金屬漸層＋一道反光，SR 倒角帶金）與卡片厚度邊是金屬面、不發光。光暈一律用預先模糊好的貼圖（`tools/practice-reveal-sprites/`）或漸層畫，不做逐幀模糊；色值仍集中在 `practice_reveal_palette.dart` | 規格 `docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md` §5（K1–K7 Eric 2026-10-18 照建議定案）；粒子量照 §9 檔位（目前中檔）；停住時全部結束，畫面靜止 |
 | shimmer 掃光 | `splash_screen.dart`、`ebook_shelf_section.dart`（白色掃光，非漸層文字） | 品牌 wordmark 儀式 |
 | 動畫 bokeh 背景 | `gradient_background.dart`——只掛首頁（MainShell）與登入頁 | 品牌記憶點＋入場儀式（S12 拍板）；其他頁一律靜態 `BrandPageBackground` |
 | splash 開屏儀式 | wordmark 紫暈（2 層）＋環境光＋暗角＋載入圓點脈光 | 開屏儀式時刻；浮動光球已拆（S12） |
