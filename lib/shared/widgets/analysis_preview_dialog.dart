@@ -1,8 +1,8 @@
 // lib/shared/widgets/analysis_preview_dialog.dart
 //
 // ADR #19 r3 分析前預覽：
-// - standard 帶（≤2000 字）：靜態區間文案「依對話複雜度使用 1–10 則」，
-//   不報精確值（分析後才顯示 server 實扣）。
+// - standard 帶（≤2000 字）：顯示算出的精確則數（Eric 2026-10-18：算法跟伺服器
+//   對拍過，不再只報「1–10 則」的區間；分析後照樣顯示 server 實扣）。
 // - overcharge 帶（2001~4000 字）：本 dialog 即是「>2000 字確認框」，
 //   顯示精確「本次將使用 20 則」。額度檢查先於確認（定案 #4）：額度不足
 //   時 caller 已走額度不足路徑，這裡的 canProceed 只是防禦層。
@@ -38,7 +38,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 額度檢查用實際算出的則數（定案 #4），但 standard 帶的 UI 只報區間。
+    // 額度檢查與顯示都用實際算出的則數（定案 #4）。
     final canProceed = preview.band.kind != BillingBandKind.reject &&
         usage.monthlyRemaining >= _requiredUnits &&
         usage.dailyRemaining >= _requiredUnits;
@@ -58,7 +58,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
             const SizedBox(height: 12),
             _buildRow('新增內容長度', '約 ${preview.billableChars} 字'),
           ] else
-            _buildRow('預計使用', '依對話複雜度 1–10 則'),
+            _buildRow('預計使用', '$_requiredUnits 則'),
           const SizedBox(height: 12),
           _buildRow(
             '本月剩餘',

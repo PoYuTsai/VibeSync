@@ -1,7 +1,7 @@
 // ADR #19 r3 分析前預覽 dialog 測試。
 //
 // 契約：
-// - standard 帶：靜態區間文案「依對話複雜度 1–10 則」，不報精確值。
+// - standard 帶：顯示算出的精確則數（Eric 2026-10-18，不再只報 1–10 則）。
 // - overcharge 帶（2001~4000 字）：本 dialog 即「>2000 字確認框」，
 //   顯示精確「本次將使用 20 則」；額度不足時確認鈕停用（定案 #4 防禦層）。
 // - reject 帶由 caller 在呼叫前擋下，dialog 不處理。
@@ -53,19 +53,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('AnalysisPreviewDialog — standard 帶（靜態區間）', () {
-    testWidgets('shows static range copy, never an exact unit count',
+  group('AnalysisPreviewDialog — standard 帶（精確則數）', () {
+    testWidgets('shows the exact unit count from the billing mirror',
         (tester) async {
       await tester.pumpWidget(buildTestWidget(
-        preview: _preview(100), // 3 則，但 UI 不報精確值
+        preview: _preview(100), // ceil(100/40) = 3 則
         usage: UsageData.free(),
       ));
       await openDialog(tester);
 
       expect(find.text('開始分析前'), findsOneWidget);
       expect(find.text('預計使用'), findsOneWidget);
-      expect(find.text('依對話複雜度 1–10 則'), findsOneWidget);
-      expect(find.text('3 則'), findsNothing);
+      expect(find.text('3 則'), findsOneWidget);
+      expect(find.text('依對話複雜度 1–10 則'), findsNothing);
     });
 
     testWidgets('displays monthly and daily usage', (tester) async {
