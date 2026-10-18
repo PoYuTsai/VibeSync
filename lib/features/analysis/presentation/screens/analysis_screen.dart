@@ -391,25 +391,23 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
   }
 
-  String _currentPlanLabel() {
-    switch (ref.read(subscriptionProvider).tier) {
-      case SubscriptionTierHelper.starter:
-        return 'Starter';
-      case SubscriptionTierHelper.essential:
-        return 'Essential';
-      case SubscriptionTierHelper.free:
-      default:
-        return 'Free';
-    }
-  }
+  // 潤飾、微調撞到額度的說明照目前方案：Essential 不叫他升級，只說什麼時候恢復
+  // （Eric 2026-10-18）。
+  String _dailyQuotaExceededMessage(DailyLimitExceededException e) =>
+      polishQuotaMessage(
+        tier: ref.read(subscriptionProvider).tier,
+        isMonthly: false,
+        used: e.used,
+        limit: e.dailyLimit,
+      );
 
-  String _dailyQuotaExceededMessage(DailyLimitExceededException e) {
-    return '目前方案 ${_currentPlanLabel()}：今日額度已用完 (${e.used}/${e.dailyLimit})，每天早上 8 點恢復；升級方案可取得更多額度。';
-  }
-
-  String _monthlyQuotaExceededMessage(MonthlyLimitExceededException e) {
-    return '目前方案 ${_currentPlanLabel()}：本月額度已用完 (${e.used}/${e.monthlyLimit})，升級方案可取得更多分析額度。';
-  }
+  String _monthlyQuotaExceededMessage(MonthlyLimitExceededException e) =>
+      polishQuotaMessage(
+        tier: ref.read(subscriptionProvider).tier,
+        isMonthly: true,
+        used: e.used,
+        limit: e.monthlyLimit,
+      );
 
   CoachChatAnalysisSnapshot _buildCoachChatAnalysisSnapshot() {
     // v3 沒有熱度、階段：給教練判讀與要等她做什麼。
@@ -3468,29 +3466,46 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       freeRemaining: _replyIteration.refineFreeRemaining,
       quickInstructions: quickInstructions,
       onRefine: ({required currentText, required instruction}) async {
-        final round = await _replyIteration.runRefineRound(
-          ownerUserId: ownerUserId,
-          context: analysisContext,
-          sessionContext: conversation.sessionContext,
-          currentText: currentText,
-          instruction: instruction,
-          // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
-          // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
-          anchorText: origin,
-          onReadyToSend: () async {
-            if (!mounted) return false;
-            return AiDataSharingConsent.ensure(
-              context,
-              featureLabel: '回覆微調',
-              consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
-              dataDescription:
-                  AiDataSharingConsent.optimizeReplayDataDescription,
-              purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
-            );
-          },
-          onTelemetry: _handleAnalysisTelemetry,
-          guideV3Card: guideV3Card,
-        );
+        final RefineRoundResult? round;
+        try {
+          round = await _replyIteration.runRefineRound(
+            ownerUserId: ownerUserId,
+            context: analysisContext,
+            sessionContext: conversation.sessionContext,
+            currentText: currentText,
+            instruction: instruction,
+            // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
+            // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
+            anchorText: origin,
+            onReadyToSend: () async {
+              if (!mounted) return false;
+              return AiDataSharingConsent.ensure(
+                context,
+                featureLabel: '回覆微調',
+                consentKey: AiDataSharingConsent.optimizeReplayConsentKey,
+                dataDescription:
+                    AiDataSharingConsent.optimizeReplayDataDescription,
+                purposeText: AiDataSharingConsent.optimizeReplayPurposeText,
+              );
+            },
+            onTelemetry: _handleAnalysisTelemetry,
+            guideV3Card: guideV3Card,
+          );
+        } on DailyLimitExceededException catch (e) {
+          // 面板原樣顯示例外的字：額度不夠換成跟潤飾同一句，照目前方案說
+          // （Essential 不叫他升級，Eric 2026-10-18）。
+          throw AnalysisException(
+            _dailyQuotaExceededMessage(e),
+            code: e.code,
+            suggestedAction: e.suggestedAction,
+          );
+        } on MonthlyLimitExceededException catch (e) {
+          throw AnalysisException(
+            _monthlyQuotaExceededMessage(e),
+            code: e.code,
+            suggestedAction: e.suggestedAction,
+          );
+        }
         if (round == null) return null;
 
         _syncSubscriptionUsageFromResult(
@@ -4818,6 +4833,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                             if (_quotaExceededInfo != null)
                               QuotaExceededUpgradeCard(
                                 isMonthly: _quotaExceededInfo!.isMonthly,
+                                // Essential 不叫他升級，只說什麼時候恢復
+                                // （Eric 2026-10-18）。
+                                tier: subscription.tier,
                                 remaining: _quotaExceededInfo!.remaining,
                                 quotaNeeded: _quotaExceededInfo!.quotaNeeded,
                                 onViewPlans: () => _showPaywall(

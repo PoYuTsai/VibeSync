@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_quota_hints.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
 Widget _wrap(Widget child) {
   return MaterialApp(home: Scaffold(body: child));
@@ -129,6 +130,7 @@ void main() {
       var viewed = 0;
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: true,
+        tier: SubscriptionTierHelper.free,
         remaining: 2,
         quotaNeeded: 5,
         onViewPlans: () => viewed++,
@@ -148,6 +150,7 @@ void main() {
     testWidgets('daily：每天早上 8 點恢復 + 升級文案', (tester) async {
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: false,
+        tier: SubscriptionTierHelper.free,
         remaining: 0,
         quotaNeeded: 3,
         onViewPlans: () {},
@@ -164,6 +167,7 @@ void main() {
         (tester) async {
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: true,
+        tier: SubscriptionTierHelper.free,
         remaining: null,
         quotaNeeded: null,
         onViewPlans: () {},
@@ -180,6 +184,7 @@ void main() {
         (tester) async {
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: false,
+        tier: SubscriptionTierHelper.free,
         remaining: 0,
         quotaNeeded: 3,
         onViewPlans: () {},
@@ -190,11 +195,112 @@ void main() {
 
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: false,
+        tier: SubscriptionTierHelper.free,
         remaining: 0,
         quotaNeeded: 3,
         onViewPlans: () {},
       )));
       expect(find.text(starterCapacityLine()), findsNothing);
+    });
+  });
+
+  group('QuotaExceededUpgradeCard：說法照目前方案（Eric 2026-10-18）', () {
+    Future<void> pumpCard(
+      WidgetTester tester, {
+      required String tier,
+      required bool isMonthly,
+      int? remaining,
+      int? quotaNeeded,
+    }) =>
+        tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
+          isMonthly: isMonthly,
+          tier: tier,
+          remaining: remaining,
+          quotaNeeded: quotaNeeded,
+          onViewPlans: () {},
+        )));
+
+    testWidgets('Essential 這個月不夠：不叫他升級，只說每月 1 號早上 8 點恢復', (tester) async {
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.essential,
+        isMonthly: true,
+        remaining: 2,
+        quotaNeeded: 5,
+      );
+      expect(
+        find.text('本月額度剩 2 則，這次分析需要 5 則。每月 1 號早上 8 點恢復。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('升級'), findsNothing);
+
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.essential,
+        isMonthly: true,
+      );
+      expect(find.text('本月額度不足，每月 1 號早上 8 點恢復。'), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
+    });
+
+    testWidgets('Essential 今天不夠：只說每天早上 8 點恢復', (tester) async {
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.essential,
+        isMonthly: false,
+        remaining: 0,
+        quotaNeeded: 3,
+      );
+      expect(
+        find.text('今日額度剩 0 則，這次分析需要 3 則。每天早上 8 點恢復。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('升級'), findsNothing);
+
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.essential,
+        isMonthly: false,
+      );
+      expect(find.text('今日額度不足，每天早上 8 點恢復。'), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
+      // 查看方案照舊在（付費頁大標也只說什麼時候恢復）。
+      expect(find.text('查看方案'), findsOneWidget);
+    });
+
+    testWidgets('Starter 這個月不夠：只叫他升級 Essential，不叫他升級到 Starter', (tester) async {
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.starter,
+        isMonthly: true,
+        remaining: 2,
+        quotaNeeded: 5,
+      );
+      expect(
+        find.text('本月額度剩 2 則，這次分析需要 5 則。升級至 Essential 繼續分析。'),
+        findsOneWidget,
+      );
+
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.starter,
+        isMonthly: true,
+      );
+      expect(find.text('本月額度不足，升級至 Essential 繼續分析。'), findsOneWidget);
+    });
+
+    testWidgets('Starter 今天不夠：每天早上 8 點恢復，也可以升級', (tester) async {
+      await pumpCard(
+        tester,
+        tier: SubscriptionTierHelper.starter,
+        isMonthly: false,
+        remaining: 1,
+        quotaNeeded: 3,
+      );
+      expect(
+        find.text('今日額度剩 1 則，這次分析需要 3 則。每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
     });
   });
 }
