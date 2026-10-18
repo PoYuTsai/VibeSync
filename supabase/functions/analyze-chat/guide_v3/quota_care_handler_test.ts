@@ -17,6 +17,7 @@ import {
 } from "../../_shared/quota.ts";
 import { bandForBillableChars, countPayloadChars } from "../billing.ts";
 import { OPTIMIZE_MESSAGE_COST } from "../optimize_message_billing.ts";
+import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { CARE_MESSAGE } from "./wire.ts";
 
 const FAKE_SUPABASE_URL = "http://supabase.test";
@@ -208,6 +209,8 @@ async function analyze(
     dailyUsed?: number;
     guideV3?: string;
     rateLimited?: boolean;
+    // 資料庫裡已經有的那一筆 run（續看用）。
+    existingRun?: Record<string, unknown>;
   } = {},
 ): Promise<Outcome> {
   const fake: Fake = {
@@ -219,7 +222,7 @@ async function analyze(
     rateLimited: opts.rateLimited,
     rpc: [],
     inserts: [],
-    run: null,
+    run: opts.existingRun ?? null,
   };
   let modelCalls = 0;
   const logs: Outcome["logs"] = [];
@@ -741,4 +744,100 @@ Deno.test("已經用完、沒有那五個字或只在他的訊息、或走 v2：
     { kind: "monthly", monthlyUsed: FREE_MONTHLY, dailyUsed: 0 },
     "本月用完、協定版本 2",
   );
+});
+
+// ── 續看（主審 P3，Eric 2026-10-18）：帶著一次已經完成的一般分析 run 回來接，額度剩 0、
+// 她的訊息有自傷字眼，也不能被額度不夠的關心接走：照舊重播存好的結果。
+/// 一次已經完成、扣過費的一般 v3 分析（用掉最後幾則，之後額度剩 0）。
+function normalDoneRun(): Record<string, unknown> {
+  const nowIso = new Date().toISOString();
+  const units = unitsFor(HER_SELF_HARM);
+  const read = {
+    decision: "send",
+    light: "green",
+    readForUser: "她在說工作壓力，先接住她的累。",
+  };
+  const card = {
+    slot: 1,
+    task: "accept",
+    messages: ["聽起來這陣子真的撐得很辛苦，想說的時候我都在"],
+  };
+  return {
+    id: "run-normal-done",
+    user_id: USER_ID,
+    conversation_hash: "hash-of-this-conversation",
+    status: "done",
+    selected_style: null,
+    decision_kind: "send",
+    card_task: card.task,
+    recommendation_json: {
+      decisionKind: "send",
+      cardTask: card.task,
+      guideVersion: GUIDE_V3_VERSION,
+      read,
+      firstCard: card,
+    },
+    final_result_json: {
+      guideVersion: GUIDE_V3_VERSION,
+      read,
+      cards: [card],
+      partial: false,
+      usage: {
+        messagesUsed: units,
+        monthlyRemaining: 0,
+        dailyRemaining: FREE_DAILY - units,
+        shouldChargeQuota: true,
+      },
+      guideV3Trace: { decision: "send" },
+    },
+    charged_at: nowIso,
+    last_error_code: null,
+    retry_count: 0,
+    request_context: { guideVersion: GUIDE_V3_VERSION },
+    created_at: nowIso,
+    expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+  };
+}
+
+Deno.test("額度剩 0、她說不想活了，帶著已完成的一般分析 run 續看：重播存好的結果，不建關心 run、不打模型、不扣", async () => {
+  const cases: [string, { monthlyUsed?: number; dailyUsed?: number }][] = [
+    ["本月用完", { monthlyUsed: FREE_MONTHLY }],
+    ["今天用完", { dailyUsed: FREE_DAILY }],
+  ];
+  for (const [label, used] of cases) {
+    const stored = normalDoneRun();
+    const before = structuredClone(stored);
+    const out = await analyze(
+      chatAnalysis(HER_SELF_HARM, { analysisRunId: stored.id }),
+      { ...used, existingRun: stored },
+    );
+    assertEquals(out.status, 200, `${label}: status ${out.text}`);
+    assert(out.contentType.includes("ndjson"), `${label}: 要是串流`);
+    const evs = events(out.text);
+    const [started] = byType(evs, "analysis.started");
+    assertEquals(started.resumed, true, label);
+    assertEquals(byType(evs, "analysis.read"), [], `${label}: 不出關心判讀`);
+    assertEquals(byType(evs, "analysis.card"), [], label);
+    assertEquals(byType(evs, "analysis.error"), [], label);
+    const [done] = byType(evs, "analysis.done");
+    assertEquals(done.recovered, true, label);
+    // 存的是什麼就重播什麼，只剝掉伺服器專用的 guideV3Trace。
+    const { guideV3Trace: _serverOnly, ...clientView } = stored
+      .final_result_json as Record<string, unknown>;
+    assertEquals(done.finalResult, clientView, label);
+
+    assertEquals(out.modelCalls, 0, `${label}: 不打模型`);
+    assertEquals(out.fake.inserts, [], `${label}: 不建新的 run`);
+    assertEquals(
+      out.fake.rpc.map((r) => r.fn),
+      ["increment_model_usage"],
+      `${label}: 只有模型限流計數，沒有任何扣費`,
+    );
+    assertEquals(out.fake.run, before, `${label}: 原本那筆 run 一個欄位都沒動`);
+    assertEquals(careGates(out), [], `${label}: 沒走額度不夠的關心`);
+    const resumed = out.logs.find((l) =>
+      l.event === "stream_run_resume_outcome"
+    );
+    assertEquals(resumed?.metadata.outcome, "result_replayed", label);
+  }
 });
