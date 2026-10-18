@@ -27,6 +27,11 @@ const guideV3LockedArchivedMessage = '付費方案才有這張';
 /// 卡上顯示的是「再調一下」選定的版本。
 const guideV3RefinedLabel = '已再調過';
 
+/// 結果頁的任務卡要不要給「再調一下」入口（只管畫面給不給 onRefine；伺服器、v2 回覆的
+/// 再調一下與草稿潤飾都不受影響）。
+/// Eric 2026-10-18 停損：主審第 3 輪 APPROVED_WITH_RISK，今天先隱藏入口，明天再決定。
+const bool kGuideV3CardRefineEnabled = false;
+
 Color guideV3TaskColor(GuideV3Task task) => switch (task) {
       GuideV3Task.accept => AppColors.info,
       GuideV3Task.resonate => AppColors.coachAccentBright,

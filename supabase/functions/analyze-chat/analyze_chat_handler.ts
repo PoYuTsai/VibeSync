@@ -109,6 +109,7 @@ import {
 } from "./recognize_flow.ts";
 import {
   buildOptimizeReplayResponse,
+  checkGuideV3RefineDelivery,
   consumeRefineFreeAllowanceForUser,
   projectRefineFreeAllowanceForUser,
   resolveOptimizeIdentity,
@@ -835,7 +836,8 @@ async function handleAnalyzeChat(
       : undefined;
 
     // 任務卡的再調（Eric 2026-10-18）：只在微調時看；帶了就要是出卡用的代碼，
-    // 否則 400、0 扣費。潤飾請求帶了也不理（不進 hash、不進提示詞）。
+    // 否則 400、0 扣費。潤飾請求帶了也不理。卡片規格不進伺服器 input hash
+    // （新舊 Edge 同一次請求同一個 hash，見 optimize_message_billing.ts）。
     const guideV3CardParse = refineInstruction === undefined
       ? { kind: "absent" as const }
       : parseGuideV3RefineCard(rawGuideV3Card);
@@ -850,6 +852,10 @@ async function handleAnalyzeChat(
     const guideV3Card = guideV3CardParse.kind === "ok"
       ? guideV3CardParse.card
       : null;
+    // 任務卡定稿的英文詞檢查要對話全文（她跟他傳過的字）。
+    const guideV3SourceText = guideV3Card
+      ? messages.map((m) => m.content).join("\n")
+      : "";
 
     const sessionContextValidation = sanitizeSessionContext(rawSessionContext);
     if (sessionContextValidation.error) {
@@ -1085,7 +1091,6 @@ ${recentText}`;
       isRefineReplyMode;
     let optimizeRequestId: string | null = null;
     let optimizeInputHash: string | null = null;
-    let optimizeLegacyInputHash: string | null = null;
     let optimizeReplayResult: Record<string, unknown> | null = null;
 
     if (isOptimizeMessageMode) {
@@ -1104,7 +1109,6 @@ ${recentText}`;
           knownContactName,
           forceModel: typeof forceModel === "string" ? forceModel : null,
           refineInstruction: refineInstruction ?? null,
-          guideV3Card,
         },
       });
       if (optimizeIdentity.kind === "response") {
@@ -1112,7 +1116,6 @@ ${recentText}`;
       }
       optimizeRequestId = optimizeIdentity.requestId;
       optimizeInputHash = optimizeIdentity.inputHash;
-      optimizeLegacyInputHash = optimizeIdentity.legacyInputHash;
       optimizeReplayResult = optimizeIdentity.replayResult;
     }
     // ADR #19 r3：全對話字數合併計費。    // ADR #19 r3：全對話字數合併計費。增量 = 字數差（三層 compat fallback）、
@@ -1290,12 +1293,28 @@ ${recentText}`;
     // so this block now only handles usage sync and returning the stored
     // result without re-charging.
     if (isOptimizeMessageMode && optimizeReplayResult !== null) {
+      let replayResult = optimizeReplayResult;
+      // 任務卡的再調（主審第 2 輪）：帳本裡的那一份可能是還沒升版的 Edge 給的，照這次的
+      // 卡片規格再定稿、通過才標記；沒過回跟新結果一樣的擋下碼，重播不扣。
+      if (isRefineReplyMode && guideV3Card) {
+        const delivered = checkGuideV3RefineDelivery({
+          result: replayResult,
+          guideV3Card,
+          userDraft,
+          requestId: optimizeRequestId,
+          userId: user.id,
+          actualModel: model,
+          sourceText: guideV3SourceText,
+        });
+        if (delivered.kind === "response") return delivered.response;
+        replayResult = delivered.result;
+      }
       return await buildOptimizeReplayResponse({
         supabase,
         userId: user.id,
         accountIsTest,
         requestId: optimizeRequestId,
-        replayResult: optimizeReplayResult,
+        replayResult,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
         monthlyLimit,
@@ -2189,11 +2208,15 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         userId: user.id,
         actualModel,
         guideV3Card,
-        sourceText: messages.map((m) => m.content).join("\n"),
+        sourceText: guideV3SourceText,
       });
       if (optimizeOutcome.kind === "response") return optimizeOutcome.response;
       result = optimizeOutcome.result;
     }
+    // 任務卡的再調：剛定稿、要交給結算的那一份（結算拿回的若不是它，就是帳本裡別次寫的）。
+    const guideV3CheckedText = isRefineReplyMode && guideV3Card
+      ? (result.optimizedMessage as Record<string, unknown>).optimized as string
+      : null;
     const warnings = Array.isArray((result as { warnings?: unknown }).warnings)
       ? ((result as {
         warnings?: Array<{ type?: string }>;
@@ -2300,7 +2323,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         refineFreeGranted,
         requestId: optimizeRequestId,
         inputHash: optimizeInputHash,
-        legacyInputHash: optimizeLegacyInputHash,
         result,
         userDraft,
         monthlyLimit,
@@ -2314,6 +2336,23 @@ Return \`optimizedMessage\` in the structured JSON response.`,
       optimizeSettledReportedCharge = settlementOutcome.reportedCharge;
       optimizeSettledMonthlyUsed = settlementOutcome.monthlyUsed;
       optimizeSettledDailyUsed = settlementOutcome.dailyUsed;
+      // 任務卡的再調：結算拿回的就是剛定稿的那一份就直接標記；不一樣的話是並行重試時
+      // 別次請求寫進帳本的那一列（可能是還沒升版的 Edge），照這次的規格再定稿——沒過回
+      // 擋下的碼，這次沒有另外扣（帳本已有那一列，結算不會再扣）。
+      if (isRefineReplyMode && guideV3Card) {
+        const delivered = checkGuideV3RefineDelivery({
+          result,
+          guideV3Card,
+          userDraft,
+          requestId: optimizeRequestId,
+          userId: user.id,
+          actualModel,
+          sourceText: guideV3SourceText,
+          alreadyCheckedText: guideV3CheckedText,
+        });
+        if (delivered.kind === "response") return delivered.response;
+        result = delivered.result;
+      }
     }
 
     // Update usage count（測試帳號、純識別模式不扣額度）。Streaming

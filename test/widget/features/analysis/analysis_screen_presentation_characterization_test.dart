@@ -19,6 +19,7 @@ import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/guide_v3_task_card.dart';
 import 'package:vibesync/features/analysis/presentation/sections/analysis_banners_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/reply_style_card.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/swipe_hint_nudge.dart';
@@ -976,22 +977,32 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
-    testWidgets('再調一下：最終結果每張送到的卡都有，鎖住的卡沒有', (tester) async {
+    testWidgets('再調一下：入口開關關著時，最終結果的每張卡都沒有入口（卡照樣能複製）', (tester) async {
+      // 入口由 guide_v3_task_card.dart 的 kGuideV3CardRefineEnabled 控制（Eric 2026-10-18
+      // 停損：主審第 3 輪 APPROVED_WITH_RISK，今天先隱藏入口）。打開開關時，這裡改回斷言
+      // 每張送到的卡都有 guide-v3-card-N-refine、鎖住的卡沒有。
       await _pumpScreen(tester, seed: doneSeed(finalResult()));
       await dismissEditCoachMark(tester);
       await tester.ensureVisible(
-        find.byKey(const ValueKey('guide-v3-card-2-refine')),
+        find.byKey(const ValueKey('guide-v3-card-2-copy')),
       );
       expect(
-        find.byKey(const ValueKey('guide-v3-card-1-refine')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('guide-v3-card-2-refine')),
-        findsOneWidget,
-      );
-      expect(
-          find.byKey(const ValueKey('guide-v3-card-3-refine')), findsNothing);
+          find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+      for (final slot in [1, 2, 3]) {
+        expect(
+          find.byKey(ValueKey('guide-v3-card-$slot-refine')),
+          findsNothing,
+        );
+      }
+    });
+
+    testWidgets('再調一下入口先隱藏：v3 最終結果整頁沒有「再調一下」，草稿潤飾入口照舊', (tester) async {
+      // 開關見 guide_v3_task_card.dart 的 kGuideV3CardRefineEnabled（Eric 2026-10-18 停損）。
+      expect(kGuideV3CardRefineEnabled, isFalse);
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+      expect(find.text('再調一下'), findsNothing);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsOneWidget);
     });
 
     testWidgets('再調一下：還在串流時不給（卡已經能複製）', (tester) async {

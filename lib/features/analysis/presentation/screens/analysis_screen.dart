@@ -4502,12 +4502,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               onCopy: _copyGuideV3Card,
                               onEdit: (card) =>
                                   unawaited(_editGuideV3Card(card)),
-                              // 再調只給最終結果（串流中、分析紀錄都不給）。
+                              // 再調只給最終結果（串流中、分析紀錄都不給），而且要
+                              // kGuideV3CardRefineEnabled 打開（Eric 2026-10-18 停損，
+                              // 今天先隱藏入口）。
                               refinedMessagesFor: _guideV3RefinedFor,
-                              onRefine: _v3Result == null
-                                  ? null
-                                  : (card) =>
-                                      unawaited(_refineGuideV3Card(card)),
+                              onRefine:
+                                  kGuideV3CardRefineEnabled && _v3Result != null
+                                      ? (card) =>
+                                          unawaited(_refineGuideV3Card(card))
+                                      : null,
                               onUpgrade: () => unawaited(_showPaywall(context)),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),

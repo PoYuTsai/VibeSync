@@ -302,6 +302,47 @@ Deno.test("外洩哨兵不誤擋：v3 錄音裡 73 張卡的字都不會中", as
   }
 });
 
+Deno.test("定稿重跑不變：已經定稿過的卡再過一次照樣通過、字也不變（重播再定稿靠這個）", async () => {
+  const fixtures = JSON.parse(
+    await Deno.readTextFile(
+      new URL("../testdata/guide_v3_replay_fixtures.json", import.meta.url),
+    ),
+  ) as {
+    cases: {
+      messages: { content: string }[];
+      expected: { events: Record<string, unknown>[] };
+    }[];
+  };
+  let checked = 0;
+  for (const c of fixtures.cases) {
+    const sourceText = c.messages.map((m) => m.content).join("\n");
+    for (const e of c.expected.events) {
+      if (e.type !== "analysis.card") continue;
+      const card = e as unknown as {
+        task: string;
+        voice: string;
+        method: string;
+        messages: string[];
+      };
+      const text = card.messages.join("\n");
+      const parsed = parseGuideV3RefineCard(card);
+      assert(parsed.kind === "ok", text);
+      assertEquals(
+        finalizeRefinedCard({
+          draft: text,
+          optimized: text,
+          card: parsed.card,
+          sourceText,
+        }),
+        { ok: true, messages: splitCardMessages(text) },
+        text,
+      );
+      checked++;
+    }
+  }
+  assertEquals(checked, 73);
+});
+
 Deno.test("內容問題（引導換方向）只有禁語脅迫與「欠」組；其他當成這次沒調好", () => {
   assert(isGuideV3RefineSafetyRejection("unsafe"));
   assert(isGuideV3RefineSafetyRejection("debt_frame"));

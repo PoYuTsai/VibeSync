@@ -275,7 +275,10 @@ void main() {
     });
 
     test('任務卡的再調：卡片規格上 wire、進 fingerprint；多則草稿用換行接著送', () async {
-      final h = _harness();
+      final h = _harness(
+        responseBody: Map<String, dynamic>.from(_successBody)
+          ..['guideV3CardChecked'] = true,
+      );
       final messages = [_msg('最近有空嗎？')];
       const spec = GuideV3RefineSpec(
         task: 'push',
@@ -309,7 +312,7 @@ void main() {
       expect(
         v3!.pending.requestId,
         isNot(plain!.pending.requestId),
-        reason: '卡片規格會改伺服器的提示詞，不能跟一般微調共用帳本列',
+        reason: '卡片規格會改伺服器的提示詞；伺服器 hash 不含規格，靠 fingerprint 分開 requestId',
       );
     });
 
@@ -319,7 +322,8 @@ void main() {
             ..['optimizedMessage'] = {
               'original': '原稿',
               'optimized': optimized,
-            };
+            }
+            ..['guideV3CardChecked'] = true;
       const spec = GuideV3RefineSpec(
         task: 'accept',
         voice: 'default',
@@ -400,7 +404,8 @@ void main() {
             ..['optimizedMessage'] = {
               'original': origin,
               'optimized': optimized,
-            },
+            }
+            ..['guideV3CardChecked'] = true,
           draftPort: draftPort,
         );
         await h.coordinator.runRefineRound(
@@ -463,6 +468,61 @@ void main() {
             ?.refinedText,
         '星期六一起喝咖啡，好嗎？',
       );
+    });
+
+    test('任務卡的再調：伺服器沒標「已過任務卡檢查」（還沒升版的 Edge）就不給採用、不存稿、不換身分', () async {
+      final draftPort =
+          ReplyRefineDraftAdapter(store: InMemoryReplyRefineDraftStore());
+      final h = _harness(
+        responseBody: Map<String, dynamic>.from(_successBody)
+          ..['optimizedMessage'] = {
+            'original': '那就週六',
+            'optimized': '那就週六，我來訂位',
+          },
+        draftPort: draftPort,
+      );
+      const spec = GuideV3RefineSpec(
+        task: 'push',
+        voice: 'default',
+        method: 'reaction',
+      );
+      Future<RefineRoundResult?> round({GuideV3RefineSpec? card}) =>
+          h.coordinator.runRefineRound(
+            ownerUserId: owner,
+            context: _contextWith([_msg('週末要幹嘛')]),
+            sessionContext: null,
+            currentText: '那就週六',
+            instruction: '短一點',
+            anchorText: '那就週六',
+            onReadyToSend: () async => true,
+            onTelemetry: (_) {},
+            guideV3Card: card,
+          );
+
+      await expectLater(
+        round(card: spec),
+        throwsA(
+          isA<AnalysisException>()
+              .having((e) => e.code, 'code', 'OPTIMIZE_MESSAGE_RESULT_INVALID')
+              .having((e) => e.message, 'message', '這次沒有調出可用的版本，請再試一次。'),
+        ),
+      );
+      // 不換身分：再按一次帶的還是同一顆 requestId（伺服器 replay、不再扣）。
+      await expectLater(round(card: spec), throwsA(isA<AnalysisException>()));
+      expect(h.bodies, hasLength(2));
+      expect(h.bodies[1]['requestId'], h.bodies[0]['requestId']);
+      // 沒標記的結果不存成任務卡的稿。
+      expect(
+        await h.coordinator.restoreRefineDraft(
+          ownerUserId: owner,
+          originText: '那就週六',
+          guideV3Card: spec,
+        ),
+        isNull,
+      );
+      // 一般微調不看這個標記。
+      final plain = await round();
+      expect(plain!.refinedText, '那就週六，我來訂位');
     });
 
     test('durable 暫存先落地才 restorable，restoreRefineDraft 讀得回同一版', () async {
