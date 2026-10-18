@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
 import 'package:vibesync/features/opener/domain/opener_access.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 
 void main() {
   group('OpenerService', () {
@@ -449,16 +451,90 @@ void main() {
         },
       );
 
+      // 伺服器的 message 不分方案，app 照方案自己組句（Eric 2026-10-18）：本月剩 1、
+      // 這次要 3 → 本月擋下；沒帶方案當免費。
       await expectLater(
         service.generateOpeners(name: 'Candy'),
         throwsA(
           isA<OpenerQuotaExceededException>()
-              .having((e) => e.message, 'message', '額度不足，請先升級方案。')
+              .having((e) => e.message, 'message', '本月額度不足，升級方案可取得更多開場與分析額度。')
+              .having((e) => e.isMonthly, 'isMonthly', isTrue)
+              .having((e) => e.canUpgrade, 'canUpgrade', isTrue)
               .having((e) => e.monthlyRemaining, 'monthlyRemaining', 1)
               .having((e) => e.dailyRemaining, 'dailyRemaining', 1)
               .having((e) => e.quotaNeeded, 'quotaNeeded', 3),
         ),
       );
+    });
+
+    // 額度說法照這次請求帶的方案（Eric 2026-10-18）：Essential 不叫他升級，只說
+    // 什麼時候恢復；免費、Starter 照舊說升級，不點名升級到 Starter。
+    group('額度說法照方案', () {
+      OpenerService serviceReturning(Map<String, dynamic> data) =>
+          OpenerService(
+            invoker: (_, {required body}) async =>
+                OpenerInvokeResponse(status: 429, data: data),
+          );
+      const daily = {
+        'error': '額度不足',
+        'message': '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'monthlyLimit': 800,
+        'dailyLimit': 50,
+        'monthlyRemaining': 500,
+        'dailyRemaining': 1,
+        'quotaNeeded': 3,
+      };
+      const monthly = {
+        'error': '額度不足',
+        'message': '本月額度不足，升級方案可取得更多開場與分析額度。',
+        'monthlyLimit': 800,
+        'dailyLimit': 50,
+        'monthlyRemaining': 1,
+        'dailyRemaining': 20,
+        'quotaNeeded': 3,
+      };
+
+      Future<OpenerQuotaExceededException> quotaError(
+          Map<String, dynamic> data, String tier) async {
+        try {
+          await serviceReturning(data)
+              .generateOpeners(name: 'Candy', expectedTier: tier);
+        } on OpenerQuotaExceededException catch (e) {
+          return e;
+        }
+        fail('應該是額度例外');
+      }
+
+      test('Essential：只說什麼時候恢復，鈕不提升級', () async {
+        final dailyError =
+            await quotaError(daily, SubscriptionTierHelper.essential);
+        expect(dailyError.message, contains(kDailyQuotaResetLine));
+        expect(dailyError.message, isNot(contains('升級')));
+        expect(dailyError.isMonthly, isFalse);
+        expect(dailyError.remaining, 1);
+        expect(dailyError.canUpgrade, isFalse);
+        final monthlyError =
+            await quotaError(monthly, SubscriptionTierHelper.essential);
+        expect(monthlyError.message, contains(kMonthlyQuotaResetLine));
+        expect(monthlyError.message, isNot(contains('升級')));
+        expect(monthlyError.isMonthly, isTrue);
+        expect(monthlyError.remaining, 1);
+      });
+
+      test('免費、Starter：照舊說升級，不點名升級到 Starter', () async {
+        for (final tier in [
+          SubscriptionTierHelper.free,
+          SubscriptionTierHelper.starter,
+        ]) {
+          final dailyError = await quotaError(daily, tier);
+          expect(
+              dailyError.message, '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
+          expect(dailyError.canUpgrade, isTrue);
+          final monthlyError = await quotaError(monthly, tier);
+          expect(monthlyError.message, '本月額度不足，升級方案可取得更多開場與分析額度。');
+          expect(monthlyError.message, isNot(contains('Starter')));
+        }
+      });
     });
 
     test('maps generic monthly 429 to user-facing quota message', () async {

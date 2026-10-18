@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 import 'package:vibesync/features/new_topic/data/services/new_topic_service.dart';
 import 'package:vibesync/features/new_topic/domain/entities/new_topic_result.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 
 const _requestId = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -319,6 +321,65 @@ void main() {
               .having((e) => e.monthlyRemaining, 'monthlyRemaining', 1),
         ),
       );
+    });
+
+    // 額度說法照這次請求帶的方案（Eric 2026-10-18）：伺服器的 message 不分方案；
+    // Essential 只說什麼時候恢復，免費、Starter 照舊說升級，不點名升級到 Starter。
+    group('額度說法照方案', () {
+      Future<NewTopicQuotaExceededException> quotaError(
+          {required bool monthly, required String tier}) async {
+        final service = NewTopicService(
+          invoker: (_, {required body}) async => NewTopicInvokeResponse(
+            status: 429,
+            data: {
+              'error': '額度不足',
+              'message': monthly
+                  ? '本月額度不足，升級方案可取得更多新話題與分析額度。'
+                  : '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+              'monthlyLimit': 800,
+              'dailyLimit': 50,
+              'quotaNeeded': 3,
+              'monthlyRemaining': monthly ? 2 : 500,
+              'dailyRemaining': monthly ? 20 : 1,
+            },
+          ),
+        );
+        try {
+          await service.generateTopics(
+              requestId: _requestId, expectedTier: tier);
+        } on NewTopicQuotaExceededException catch (e) {
+          return e;
+        }
+        fail('應該是額度例外');
+      }
+
+      test('Essential：只說什麼時候恢復', () async {
+        final daily = await quotaError(
+            monthly: false, tier: SubscriptionTierHelper.essential);
+        expect(daily.message, contains(kDailyQuotaResetLine));
+        expect(daily.message, isNot(contains('升級')));
+        expect(daily.isMonthly, isFalse);
+        expect(daily.remaining, 1);
+        final monthly = await quotaError(
+            monthly: true, tier: SubscriptionTierHelper.essential);
+        expect(monthly.message, contains(kMonthlyQuotaResetLine));
+        expect(monthly.message, isNot(contains('升級')));
+        expect(monthly.isMonthly, isTrue);
+        expect(monthly.remaining, 2);
+      });
+
+      test('免費、Starter：照舊說升級，不點名升級到 Starter', () async {
+        for (final tier in [
+          SubscriptionTierHelper.free,
+          SubscriptionTierHelper.starter,
+        ]) {
+          final daily = await quotaError(monthly: false, tier: tier);
+          expect(daily.message, '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
+          final monthly = await quotaError(monthly: true, tier: tier);
+          expect(monthly.message, '本月額度不足，升級方案可取得更多新話題與分析額度。');
+          expect(monthly.message, isNot(contains('Starter')));
+        }
+      });
     });
 
     test('MODEL_RATE_LIMITED 429 絕不當 quota 例外（不誤開 paywall）', () async {

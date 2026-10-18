@@ -18,6 +18,7 @@ import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
@@ -455,7 +456,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     if (quotaError != null && !identical(quotaError, _handledQuotaError)) {
       _handledQuotaError = quotaError;
       if (_mode == OpeningRescueMode.opener) {
-        unawaited(_showPaywallAndRefresh());
+        unawaited(_showPaywallAndRefresh(entry: _quotaEntryFor(quotaError)));
       }
     }
     if (state.phase == OpenerFlowPhase.result &&
@@ -612,7 +613,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
 
     if (mounted) {
-      await _showPaywallAndRefresh();
+      // 跟伺服器一樣先看本月、再看今天，付費頁照這個換大標（Eric 2026-10-18）。
+      final usage = _currentUsageSnapshot();
+      final isMonthly = usage.monthlyRemaining < cost;
+      await _showPaywallAndRefresh(
+        entry: PaywallEntry.forQuota(
+          isMonthly: isMonthly,
+          remaining: isMonthly ? usage.monthlyRemaining : usage.dailyRemaining,
+        ),
+      );
       if (_currentUsageSnapshot().canAfford(cost)) {
         return true;
       }
@@ -620,11 +629,22 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return false;
   }
 
-  Future<void> _showPaywallAndRefresh() async {
+  /// 伺服器回額度不足時開付費頁的入口：每月或每日、用完或只是不夠，跟分析頁
+  /// 同一套大標（Eric 2026-10-18）。
+  PaywallEntry _quotaEntryFor(OpenerQuotaExceededException error) =>
+      PaywallEntry.forQuota(
+        isMonthly: error.isMonthly,
+        remaining: error.remaining,
+      );
+
+  /// [entry]：從哪裡打開，付費頁的大標跟著換；鎖卡等非額度入口照舊一般入口。
+  Future<void> _showPaywallAndRefresh({
+    PaywallEntry entry = PaywallEntry.general,
+  }) async {
     if (!mounted || _mode != OpeningRescueMode.opener) return;
     if (!mounted) return;
 
-    final unlockedTier = await context.push<String>('/paywall');
+    final unlockedTier = await context.push<String>('/paywall', extra: entry);
     if (!mounted) return;
 
     if (unlockedTier != null && unlockedTier.isNotEmpty) {
@@ -991,7 +1011,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             _error = e.message;
             _isGenerating = false;
           });
-          await _showPaywallAndRefresh();
+          await _showPaywallAndRefresh(entry: _quotaEntryFor(e));
         }
       } catch (e) {
         if (current()) {
@@ -1398,13 +1418,15 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                     AppTypography.bodyMedium.copyWith(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
-              // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給升級入口。
+              // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給付費頁入口。
+              // Essential 已經是最高方案，鈕只寫「查看方案」（Eric 2026-10-18）。
               if (state.quotaError != null && !state.isBusy)
                 TextButton(
                   key: const ValueKey('opener-upgrade-button'),
-                  onPressed: AppHaptics.onPress(
-                      () => unawaited(_showPaywallAndRefresh())),
-                  child: const Text('升級方案'),
+                  onPressed: AppHaptics.onPress(() => unawaited(
+                      _showPaywallAndRefresh(
+                          entry: _quotaEntryFor(state.quotaError!)))),
+                  child: Text(state.quotaError!.canUpgrade ? '升級方案' : '查看方案'),
                 )
               else if (state.failedOperation != null &&
                   !state.isBusy &&

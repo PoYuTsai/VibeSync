@@ -13,6 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vibesync/core/constants/app_constants.dart';
@@ -28,6 +30,8 @@ import 'package:vibesync/features/opener/presentation/screens/opening_rescue_scr
 import 'package:vibesync/features/opener/presentation/widgets/opener_flow_sections.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 import '../../../../visual_proof/proof_support.dart';
@@ -55,8 +59,15 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
+/// 有設就讓生成走真的 OpenerService 傳輸（伺服器回這個 client 給的回應），
+/// 錯誤對映與說法從真的 service 一路走到畫面。
+http.Client? _generateTransport;
+
 class _FakeOpenerService extends OpenerService {
-  _FakeOpenerService() : super(accessTokenProvider: () => 'token');
+  _FakeOpenerService()
+      : super(
+            accessTokenProvider: () => 'token',
+            streamClientFactory: () => _generateTransport!);
 
   int analyzeCalls = 0;
   String? lastAnalysisRequestId;
@@ -150,6 +161,17 @@ class _FakeOpenerService extends OpenerService {
     lastFreeText = contribution.freeText;
     lastState = contribution.stateWire;
     generationProgress = onProgress;
+    if (_generateTransport != null) {
+      return super.generateFromAnalysisStreaming(
+        sessionId: sessionId,
+        analysisRevision: analysisRevision,
+        generationId: generationId,
+        contribution: contribution,
+        expectedTier: expectedTier,
+        revenueCatAppUserId: revenueCatAppUserId,
+        onProgress: onProgress,
+      );
+    }
     await generateGate?.future;
     if (generateError != null) throw generateError!;
     return OpenerGeneration.fromServerBody({
@@ -212,7 +234,7 @@ class _FakeOpenerService extends OpenerService {
   }
 }
 
-Widget _screen() => ProviderScope(
+Widget _screen({String tier = SubscriptionTierHelper.free}) => ProviderScope(
       overrides: [
         authConversationScopeProvider.overrideWith((_) => const Stream.empty()),
         partnerListProvider.overrideWith((_) => const []),
@@ -220,10 +242,7 @@ Widget _screen() => ProviderScope(
         coachingOutcomeEventProvider.overrideWith((ref, id) => null),
         subscriptionProvider.overrideWith(
           (ref) => _SeededSubscriptionNotifier(
-            const SubscriptionState(
-                tier: SubscriptionTierHelper.free,
-                monthlyLimit: 30,
-                dailyLimit: 10),
+            SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 10),
           ),
         ),
       ],
@@ -239,18 +258,21 @@ Future<void> _pumpManual(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// 有 /paywall 路由的版本：記開了幾次付費牆，付費牆有一顆關閉鈕。
+/// 有 /paywall 路由的版本：記開了幾次付費牆、依序帶的入口，付費牆有一顆關閉鈕。
 int _paywallOpens = 0;
+final _paywallExtras = <Object?>[];
 
-Future<void> _pumpManualWithPaywall(WidgetTester tester) async {
+Future<void> _pumpManualWithPaywall(WidgetTester tester,
+    {String tier = SubscriptionTierHelper.free}) async {
   await tester.binding.setSurfaceSize(const Size(390, 4200));
   await tester.pumpWidget(MaterialApp.router(
       routerConfig: GoRouter(routes: [
-    GoRoute(path: '/', builder: (_, __) => _screen()),
+    GoRoute(path: '/', builder: (_, __) => _screen(tier: tier)),
     GoRoute(
         path: '/paywall',
-        builder: (context, __) {
+        builder: (context, state) {
           _paywallOpens++;
+          _paywallExtras.add(state.extra);
           return Scaffold(
               body: Center(
                   child: TextButton(
@@ -391,6 +413,8 @@ void main() {
     OpeningRescueScreen.debugOwnerIdOverride = null;
     OpenerResultCacheService.debugDefaultOwnerIdOverride = null;
     AiDataSharingConsent.debugUserIdOverride = null;
+    _generateTransport = null;
+    _paywallExtras.clear();
   });
 
   tearDownAll(() async {
@@ -590,6 +614,94 @@ void main() {
     expect(_paywallOpens, 2);
     expect(service.generateCalls, 1);
   });
+
+  // 額度說法照方案（Eric 2026-10-18）：生成走真的 OpenerService 傳輸，伺服器回額度
+  // 429（它的 message 不分方案、一律叫人升級），畫面要照目前方案說。
+  Map<String, dynamic> quota429({required bool monthly}) => {
+        'error': '額度不足',
+        'message': monthly
+            ? '本月額度不足，升級方案可取得更多開場與分析額度。'
+            : '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'quotaNeeded': 3,
+        'monthlyRemaining': monthly ? 1 : 500,
+        'dailyRemaining': monthly ? 20 : 1,
+        'monthlyLimit': 800,
+        'dailyLimit': 50,
+      };
+
+  Future<String> generateIntoQuota(WidgetTester tester,
+      {required String tier, required bool monthly}) async {
+    _paywallOpens = 0;
+    await _pumpManualWithPaywall(tester, tier: tier);
+    await _analyze(tester);
+    _generateTransport = MockClient.streaming((request, bodyStream) async {
+      await bodyStream.drain<void>();
+      return http.StreamedResponse(
+          Stream.value(utf8.encode(jsonEncode(quota429(monthly: monthly)))),
+          429,
+          headers: {'content-type': 'application/json'});
+    });
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-generate-button')),
+        until: find.text('關閉付費牆'));
+    expect(_paywallOpens, 1, reason: '伺服器擋下後自動開一次付費牆');
+    await tester.tap(find.text('關閉付費牆'));
+    await _settleBounded(tester);
+    return tester
+        .widget<Text>(find.byKey(const ValueKey('opener-flow-error')))
+        .data!;
+  }
+
+  String quotaButtonLabel(WidgetTester tester) => tester
+      .widget<Text>(find.descendant(
+          of: find.byKey(const ValueKey('opener-upgrade-button')),
+          matching: find.byType(Text)))
+      .data!;
+
+  /// 錯誤下方的鈕再開一次付費頁；兩次都照每月或每日換大標。本月或今日都還剩 1 則、
+  /// 不夠這次的 3 則：付費頁說「不夠這次用」。
+  Future<void> reopenPaywall(WidgetTester tester,
+      {required bool monthly}) async {
+    await tester.tap(find.byKey(const ValueKey('opener-upgrade-button')));
+    await _settleBounded(tester);
+    final entry = PaywallEntry.forQuota(isMonthly: monthly, remaining: 1);
+    expect(_paywallExtras, [entry, entry]);
+  }
+
+  for (final monthly in [false, true]) {
+    final period = monthly ? '本月' : '今日';
+    final resetLine = monthly ? kMonthlyQuotaResetLine : kDailyQuotaResetLine;
+    final otherResetLine =
+        monthly ? kDailyQuotaResetLine : kMonthlyQuotaResetLine;
+    testWidgets('$period額度不足：Essential 不叫他升級，只說什麼時候恢復，鈕寫「查看方案」',
+        (tester) async {
+      final message = await generateIntoQuota(tester,
+          tier: SubscriptionTierHelper.essential, monthly: monthly);
+      expect(message, isNot(contains('升級')));
+      expect(message, contains(resetLine));
+      expect(message, isNot(contains(otherResetLine)));
+      expect(quotaButtonLabel(tester), '查看方案');
+      await reopenPaywall(tester, monthly: monthly);
+    });
+
+    for (final tier in [
+      SubscriptionTierHelper.free,
+      SubscriptionTierHelper.starter,
+    ]) {
+      testWidgets('$period額度不足：$tier 照舊說升級能多用，不點名升級到 Starter', (tester) async {
+        final message =
+            await generateIntoQuota(tester, tier: tier, monthly: monthly);
+        expect(
+            message,
+            monthly
+                ? '本月額度不足，升級方案可取得更多開場與分析額度。'
+                : '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
+        expect(message, isNot(contains('Starter')));
+        expect(quotaButtonLabel(tester), '升級方案');
+        await reopenPaywall(tester, monthly: monthly);
+      });
+    }
+  }
 
   testWidgets('略過，直接生成：送出 skipped、結果沒有採用說明', (tester) async {
     await _pumpManual(tester);

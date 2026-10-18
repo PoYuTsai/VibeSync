@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/opener/data/services/opener_service.dart';
 import 'package:vibesync/features/opener/domain/opener_flow_models.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 
 Map<String, dynamic> _analyzeResult() => {
       'stage': 'analyze',
@@ -158,6 +160,37 @@ void main() {
     await expectLater(
       () => _service(limited).generateFromAnalysisStreaming(sessionId: 's', analysisRevision: 1, generationId: 'g', contribution: _contribution),
       throwsA(isA<OpenerFlowException>().having((e) => e.isRateLimited, 'isRateLimited', isTrue)),
+    );
+  });
+
+  // 額度說法照這次請求帶的方案（Eric 2026-10-18）。結算競態的 429 用共用額度 payload：
+  // error 寫明 Monthly，剩餘數是舊快照（看起來還夠），照 error 判成本月。
+  test('兩段式生成撞到額度：Essential 只說每月幾號恢復，不叫他升級', () async {
+    final race = _ndjson([
+      {
+        'type': 'opener_generate.error',
+        'status': 429,
+        'error': 'Monthly limit exceeded',
+        'message': '本月額度已用完，升級方案可取得更多分析與教練額度。',
+        'monthlyLimit': 800,
+        'dailyLimit': 50,
+        'monthlyRemaining': 5,
+        'dailyRemaining': 20,
+        'quotaNeeded': 3,
+      },
+    ]);
+    await expectLater(
+      () => _service(race).generateFromAnalysisStreaming(
+          sessionId: 's',
+          analysisRevision: 1,
+          generationId: 'g',
+          contribution: _contribution,
+          expectedTier: SubscriptionTierHelper.essential),
+      throwsA(isA<OpenerQuotaExceededException>()
+          .having((e) => e.isMonthly, 'isMonthly', isTrue)
+          .having((e) => e.message, 'message', contains(kMonthlyQuotaResetLine))
+          .having((e) => e.message, 'message', isNot(contains('升級')))
+          .having((e) => e.canUpgrade, 'canUpgrade', isFalse)),
     );
   });
 

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../domain/entities/new_topic_result.dart';
 
 /// Server 端 request deadline 50s＋settlement reserve；client 70s 讓
@@ -34,12 +35,19 @@ class NewTopicQuotaExceededException implements Exception {
   final int? dailyRemaining;
   final int? quotaNeeded;
 
+  /// 擋下的是本月額度（不然是今日）：付費頁照這個換大標（Eric 2026-10-18）。
+  final bool isMonthly;
+
   const NewTopicQuotaExceededException({
     required this.message,
     this.monthlyRemaining,
     this.dailyRemaining,
     this.quotaNeeded,
+    this.isMonthly = true,
   });
+
+  /// 擋下的那個額度還剩幾則。
+  int? get remaining => isMonthly ? monthlyRemaining : dailyRemaining;
 
   @override
   String toString() => message;
@@ -170,7 +178,7 @@ class NewTopicService {
       return _parseSuccessData(response.data, requestId: requestId);
     }
     _throwForErrorResponse(response.status, response.data,
-        sentTopicContext: topicContext != null);
+        sentTopicContext: topicContext != null, tier: expectedTier);
   }
 
   /// 串流版生成（2026-08-18 呈現精修第 2 包）：`responseMode: 'stream'`，
@@ -307,7 +315,7 @@ class NewTopicService {
         }
         if (response.statusCode != 200) {
           _throwForErrorResponse(response.statusCode, decoded,
-              sentTopicContext: topicContext != null);
+              sentTopicContext: topicContext != null, tier: expectedTier);
         }
         return _parseSuccessData(decoded, requestId: requestId);
       }
@@ -341,7 +349,7 @@ class NewTopicService {
           case 'new_topic.error':
             final status = (decoded['status'] as num?)?.round() ?? 500;
             _throwForErrorResponse(status, decoded,
-                sentTopicContext: topicContext != null);
+                sentTopicContext: topicContext != null, tier: expectedTier);
           default:
             continue; // 未知事件型別向前相容：忽略。
         }
@@ -411,9 +419,10 @@ class NewTopicService {
     return result;
   }
 
-  /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。
+  /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。[tier] 是這次
+  /// 請求帶的 expectedTier，額度說法照它換。
   Never _throwForErrorResponse(int status, dynamic data,
-      {bool sentTopicContext = false}) {
+      {bool sentTopicContext = false, String? tier}) {
     final errorData = data is Map ? data : const {};
     final code = errorData['code']?.toString();
     final serverMessage = _localizedMessage(errorData['message']);
@@ -469,11 +478,19 @@ class NewTopicService {
           retrySameRequest: true,
         );
       }
+      // 說法照方案自己組（Eric 2026-10-18）：伺服器的 message 不分方案、一律叫人
+      // 升級；Essential 已經是最高方案，只說什麼時候恢復。
+      final isMonthly = quotaPayloadIsMonthly(errorData);
       throw NewTopicQuotaExceededException(
-        message: serverMessage ?? '額度不足，請先升級方案。',
+        message: quotaShortMessage(
+          tier: tier,
+          isMonthly: isMonthly,
+          feature: '新話題',
+        ),
         monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
         dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
         quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),
+        isMonthly: isMonthly,
       );
     }
 

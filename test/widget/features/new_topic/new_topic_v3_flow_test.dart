@@ -24,18 +24,27 @@ import 'package:vibesync/shared/widgets/brand/opener_home_components.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import '../../../visual_proof/proof_support.dart';
 
+/// 這次測試的方案（預設免費）。
+String subTier = 'free';
+
 class _Sub extends SubscriptionNotifier {
   _Sub() {
-    state =
-        const SubscriptionState(tier: 'free', monthlyLimit: 30, dailyLimit: 15);
+    state = SubscriptionState(tier: subTier, monthlyLimit: 30, dailyLimit: 15);
   }
 
   /// 伺服器回額度不足後，刷新拿到的用量：今日只剩 1 則。
-  void exhaustDaily() => state = const SubscriptionState(
-      tier: 'free', monthlyLimit: 30, dailyLimit: 15, dailyMessagesUsed: 14);
+  void exhaustDaily() => state = SubscriptionState(
+      tier: subTier, monthlyLimit: 30, dailyLimit: 15, dailyMessagesUsed: 14);
+
+  /// 同上，換成本月只剩 2 則。
+  void exhaustMonthly() => state = SubscriptionState(
+      tier: subTier, monthlyLimit: 30, dailyLimit: 15, monthlyMessagesUsed: 28);
 }
 
 class _FakeService extends NewTopicService {
@@ -107,8 +116,9 @@ bool refreshFails = false;
 Completer<void>? refreshGate;
 Future<String?> Function()? styleLoader;
 
-/// 有 /paywall 路由時（[_pump] 的 paywallRoute）記開了幾次付費牆。
+/// 有 /paywall 路由時（[_pump] 的 paywallRoute）記開了幾次付費牆、依序帶的入口。
 int paywallOpens = 0;
+final paywallExtras = <Object?>[];
 
 /// 送出的去識別化漏斗事件（submit-feedback 的 body）。
 final funnelBodies = <Map<String, dynamic>>[];
@@ -128,8 +138,9 @@ Future<ProviderContainer> _pump(WidgetTester t,
             GoRoute(path: '/', builder: (_, __) => home),
             GoRoute(
                 path: '/paywall',
-                builder: (context, __) {
+                builder: (context, state) {
                   paywallOpens++;
+                  paywallExtras.add(state.extra);
                   return Scaffold(
                       body: Center(
                           child: TextButton(
@@ -241,6 +252,8 @@ void main() {
   setUpAll(loadProofFonts);
   setUp(() {
     paywallOpens = 0;
+    paywallExtras.clear();
+    subTier = 'free';
     funnelBodies.clear();
     owner = 'a';
     partners = [_partner('p')];
@@ -292,6 +305,108 @@ void main() {
     expect(paywallOpens, 2, reason: '升級方案直接開付費牆');
     expect(_service.calls, hasLength(1), reason: '不會再送同一筆去撞額度');
   });
+
+  // 額度說法照方案（Eric 2026-10-18）：生成走真的 NewTopicService 傳輸，伺服器回額度
+  // 429（它的 message 不分方案、一律叫人升級），畫面照目前方案說。
+  Map<String, dynamic> quota429({required bool monthly}) => {
+        'error': '額度不足',
+        'message': monthly
+            ? '本月額度不足，升級方案可取得更多新話題與分析額度。'
+            : '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'quotaNeeded': 3,
+        'monthlyRemaining': monthly ? 2 : 500,
+        'dailyRemaining': monthly ? 10 : 1,
+        'monthlyLimit': 800,
+        'dailyLimit': 50,
+      };
+
+  var quotaRequests = 0;
+
+  /// 生成撞到伺服器額度 429、關掉自動開的付費牆後，回傳畫面上的額度說明。
+  Future<String> generateIntoQuota(WidgetTester t,
+      {required String tier, required bool monthly}) async {
+    subTier = tier;
+    style = '有效風格';
+    quotaRequests = 0;
+    NewTopicView.debugServiceFactory = () => NewTopicService(
+          accessTokenProvider: () => 'token',
+          streamClientFactory: () =>
+              MockClient.streaming((request, bodyStream) async {
+            await bodyStream.drain<void>();
+            quotaRequests++;
+            return http.StreamedResponse(
+                Stream.value(
+                    utf8.encode(jsonEncode(quota429(monthly: monthly)))),
+                429,
+                headers: {'content-type': 'application/json'});
+          }),
+        );
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    // 伺服器擋下後會自動開一次付費牆；刷新拿到的用量也不夠這次的 3 則。
+    final sub = container.read(subscriptionProvider.notifier) as _Sub;
+    monthly ? sub.exhaustMonthly() : sub.exhaustDaily();
+    await t.pumpAndSettle();
+    expect(paywallOpens, 1);
+    // 說明在付費牆滑上來之前就寫好了；付費方案關掉付費牆後這行會收掉（既有行為），
+    // 所以趁付費牆還蓋著時讀。
+    final message =
+        t.widget<Text>(find.textContaining('額度不足，', skipOffstage: false)).data!;
+    await t.tap(find.text('關閉付費牆'));
+    await t.pumpAndSettle();
+    return message;
+  }
+
+  String quotaButtonLabel(WidgetTester t) => t
+      .widget<Text>(find.descendant(
+          of: find.byKey(const ValueKey('new-topic-generate')),
+          matching: find.byType(Text)))
+      .data!;
+
+  /// 額度不夠時主按鈕再開付費頁。兩次的入口：伺服器擋下那次照它回的剩餘、按鈕那次照
+  /// 刷新後的用量（先看本月、再看今天）；本月剩 2 則、或今日剩 1 則，都說「不夠這次用」。
+  Future<void> tapQuotaButton(WidgetTester t, {required bool monthly}) async {
+    await _tapGenerate(t);
+    await t.pumpAndSettle();
+    final entry =
+        PaywallEntry.forQuota(isMonthly: monthly, remaining: monthly ? 2 : 1);
+    expect(paywallExtras, [entry, entry]);
+    expect(quotaRequests, 1, reason: '不會再送同一筆去撞額度');
+  }
+
+  for (final monthly in [false, true]) {
+    final period = monthly ? '本月' : '今日';
+    final resetLine = monthly ? kMonthlyQuotaResetLine : kDailyQuotaResetLine;
+    final otherResetLine =
+        monthly ? kDailyQuotaResetLine : kMonthlyQuotaResetLine;
+    testWidgets('$period額度不足：Essential 不叫他升級，只說什麼時候恢復，主按鈕寫「查看方案」', (t) async {
+      final message = await generateIntoQuota(t,
+          tier: SubscriptionTierHelper.essential, monthly: monthly);
+      expect(message, isNot(contains('升級')));
+      expect(message, contains(resetLine));
+      expect(message, isNot(contains(otherResetLine)));
+      expect(quotaButtonLabel(t), '查看方案');
+      await tapQuotaButton(t, monthly: monthly);
+    });
+
+    for (final tier in [
+      SubscriptionTierHelper.free,
+      SubscriptionTierHelper.starter,
+    ]) {
+      testWidgets('$period額度不足：$tier 照舊說升級能多用，不點名升級到 Starter', (t) async {
+        final message =
+            await generateIntoQuota(t, tier: tier, monthly: monthly);
+        expect(
+            message,
+            monthly
+                ? '本月額度不足，升級方案可取得更多新話題與分析額度。'
+                : '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
+        expect(message, isNot(contains('Starter')));
+        expect(quotaButtonLabel(t), NewTopicView.upgradeButtonLabel);
+        await tapQuotaButton(t, monthly: monthly);
+      });
+    }
+  }
 
   testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {
     style = '有效風格';

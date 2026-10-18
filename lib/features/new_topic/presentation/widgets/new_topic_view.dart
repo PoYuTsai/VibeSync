@@ -27,6 +27,8 @@ import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../partner/presentation/widgets/partner_picker_sheet.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../data/providers/new_topic_providers.dart';
 import '../../data/services/new_topic_service.dart';
 import '../../domain/entities/new_topic_result.dart';
@@ -61,8 +63,10 @@ class NewTopicView extends ConsumerStatefulWidget {
     '還在整理最適合先試的方向，請保持連線…',
   ];
 
-  /// 額度不足（生成前看到、或伺服器回過額度不足）時，主按鈕直接開升級頁。
+  /// 額度不足（生成前看到、或伺服器回過額度不足）時，主按鈕直接開付費頁：免費、
+  /// Starter 寫升級；Essential 已經是最高方案，只寫查看方案（Eric 2026-10-18）。
   static const upgradeButtonLabel = '升級方案';
+  static const viewPlansButtonLabel = '查看方案';
 
   static const freeUpsellHeadline = '免費版先看最推薦的 1 個完整方案';
   static const freeUpsellBody = '升級可再解鎖另外 4 個話題';
@@ -443,7 +447,10 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           (subscriptionSnapshot.monthlyRemaining < kNewTopicQuotaCost ||
               subscriptionSnapshot.dailyRemaining < kNewTopicQuotaCost)) {
         setState(() => _error = '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。');
-        if (widget.isActive) await _showPaywallAndRefresh();
+        if (widget.isActive) {
+          await _showPaywallAndRefresh(
+              entry: _quotaEntryFor(subscriptionSnapshot));
+        }
         return;
       }
       var expectedTier = pending?.expectedTier ?? subscriptionSnapshot.tier;
@@ -519,7 +526,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 topicContext: topicContext)
             ?.requestId;
       });
-      if (widget.isActive) await _showPaywallAndRefresh();
+      if (widget.isActive) {
+        await _showPaywallAndRefresh(
+          entry: PaywallEntry.forQuota(
+            isMonthly: e.isMonthly,
+            remaining: e.remaining,
+          ),
+        );
+      }
     } on NewTopicRequestInProgressException catch (e) {
       if (!current()) return;
       setState(() {
@@ -583,10 +597,23 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     }
   }
 
-  Future<void> _showPaywallAndRefresh() async {
+  /// 額度不夠時開付費頁的入口：跟伺服器一樣先看本月、再看今天，付費頁照每月或
+  /// 每日、用完或只是不夠換大標（Eric 2026-10-18）。
+  PaywallEntry _quotaEntryFor(SubscriptionState usage) {
+    final isMonthly = usage.monthlyRemaining < kNewTopicQuotaCost;
+    return PaywallEntry.forQuota(
+      isMonthly: isMonthly,
+      remaining: isMonthly ? usage.monthlyRemaining : usage.dailyRemaining,
+    );
+  }
+
+  /// [entry]：從哪裡打開，付費頁的大標跟著換；免費的鎖卡入口照舊一般入口。
+  Future<void> _showPaywallAndRefresh({
+    PaywallEntry entry = PaywallEntry.general,
+  }) async {
     if (!mounted || !widget.isActive) return;
     final owner = _owner;
-    await context.push<String>('/paywall');
+    await context.push<String>('/paywall', extra: entry);
     if (owner != _owner) return;
     if (!mounted) return;
     try {
@@ -716,7 +743,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         (usage.monthlyRemaining < kNewTopicQuotaCost ||
             usage.dailyRemaining < kNewTopicQuotaCost);
     // 待重試的那筆可能已落帳（重試只回放、不扣），平常照樣讓它重試；伺服器明確回過
-    // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給升級入口。
+    // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給付費頁入口。
     final quotaBlocked = quotaShort &&
         (pending == null || pending.requestId == _quotaRejectedRequestId);
     final helper = validPartnerId == null
@@ -735,7 +762,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           : _isGenerating
               ? '生成中…'
               : quotaBlocked
-                  ? NewTopicView.upgradeButtonLabel
+                  ? (canUpgradeQuota(usage.tier)
+                      ? NewTopicView.upgradeButtonLabel
+                      : NewTopicView.viewPlansButtonLabel)
                   : _confirmPending && pending != null
                       ? '確認本次結果'
                       : pending != null
@@ -753,7 +782,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       onPressed: _busy
           ? null
           : quotaBlocked
-              ? () => unawaited(_showPaywallAndRefresh())
+              ? () => unawaited(
+                  _showPaywallAndRefresh(entry: _quotaEntryFor(usage)))
               : !ready || materialHint != null
                   ? null
                   : _generate,
