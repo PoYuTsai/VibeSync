@@ -90,6 +90,7 @@ import {
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
 } from "./guide_v3/routing.ts";
+import { scanSafetyKeywords } from "./guide_v3/safety.ts";
 import {
   ANALYSIS_CONTRACT_VERSION_V2,
   ANALYSIS_CONTRACT_VERSION_V3,
@@ -576,6 +577,39 @@ async function handleAnalyzeChat(
         }, 409);
       }
     }
+    // 額度不夠時的自傷關心（Eric 2026-10-18）：會走 v3 的一般文字分析（串流、沒有圖與
+    // 草稿、不是續看）、她的訊息有自殺、自殘、割腕、輕生、不想活任一個字，額度關卡就不回
+    // 429，改由 v3 直接給關心訊息與專線（不打模型、不扣）。只在額度真的不夠時才判斷；不
+    // 符合就照舊 429，回應一字不變。模型限流與 4000 字上限照舊。
+    let careOnlyFromQuota = false;
+    let quotaCareEligible: boolean | undefined;
+    const routeToQuotaCare = (gate: string): boolean => {
+      quotaCareEligible ??= responseMode === "stream" &&
+        requestShape.kind === "plain_analyze" &&
+        !(Array.isArray(images) && images.length > 0) &&
+        isStreamingAllowed({
+          email: user.email,
+          flagOn: STREAM_ANALYZE_ENABLED,
+          whitelist: STREAM_WHITELIST,
+          tier: effectiveTier,
+        }) &&
+        shouldUseGuideV3({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3")),
+          contractVersion: contractParse.value,
+          accountIsTest,
+          isResume: analysisRunId !== null,
+        }) &&
+        scanSafetyKeywords(sanitizeMessages(rawMessages ?? []).messages ?? [])
+          .selfHarmWords;
+      if (!quotaCareEligible) return false;
+      careOnlyFromQuota = true;
+      logInfo("quota_exceeded_self_harm_care", {
+        user: summarizeUser(user.id),
+        gate,
+      });
+      return true;
+    };
+
     // A stream retry already charged the recommendation on its original run,
     // so it resumes by run id without being blocked by a now-exhausted quota.
     if (
@@ -1224,7 +1258,10 @@ ${recentText}`;
       const refreshed = refreshStatus === "applied";
       projectedMonthlyUsage = sub.monthly_messages_used +
         quotaUsage.chargedMessageCount;
-      if (!(refreshed && projectedMonthlyUsage <= monthlyLimit)) {
+      if (
+        !(refreshed && projectedMonthlyUsage <= monthlyLimit) &&
+        !routeToQuotaCare("monthly_limit_projected_exceeded")
+      ) {
         logWarn("monthly_limit_projected_exceeded", {
           user: summarizeUser(user.id),
           tier: sub.tier,
@@ -1245,6 +1282,7 @@ ${recentText}`;
       }
     }
     if (
+      !careOnlyFromQuota &&
       quotaUsage.shouldChargeQuota && !recognizeOnly && !accountIsTest &&
       optimizeReplayResult === null &&
       !isStreamRetryMode &&
@@ -1256,7 +1294,10 @@ ${recentText}`;
       const refreshed = refreshStatus === "applied";
       projectedDailyUsage = sub.daily_messages_used +
         quotaUsage.chargedMessageCount;
-      if (!(refreshed && projectedDailyUsage <= dailyLimit)) {
+      if (
+        !(refreshed && projectedDailyUsage <= dailyLimit) &&
+        !routeToQuotaCare("daily_limit_projected_exceeded")
+      ) {
         logWarn("daily_limit_projected_exceeded", {
           user: summarizeUser(user.id),
           tier: sub.tier,
@@ -1371,12 +1412,14 @@ ${recentText}`;
     // 順序（定案 #4）：算出則數 → 額度/每日上限檢查（上方 429，額度不足
     // 不出確認框）→ 功能權限（403）→ 才輪到本閘。
     // 只在真的會扣費時生效：recognizeOnly / 測試帳號（shouldChargeQuota
-    // 已為 false）、stream retry（原始 stream 已扣）都不進閘。
+    // 已為 false）、stream retry（原始 stream 已扣）都不進閘；額度不夠只給
+    // 自傷關心（careOnlyFromQuota）什麼都不扣，也不進閘。
     if (
       billing.outcome === "requires_confirmation" &&
       !isOptimizeMessageMode &&
       quotaUsage.shouldChargeQuota &&
-      !isStreamRetryMode
+      !isStreamRetryMode &&
+      !careOnlyFromQuota
     ) {
       const serverPayloadHash = await computeBillingPayloadHash(
         billingMessages,
@@ -1772,6 +1815,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
         maxCards: guideV3MaxCards(effectiveTier),
+        careOnlyFromQuota,
         ...createGuideV3ModelCalls({
           apiKey: CLAUDE_API_KEY,
           requestType,
@@ -1796,6 +1840,11 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           );
         },
       });
+    }
+    // 關心訊息只有 v3 給得出來：額度不夠走關心的請求萬一沒進 v3（判斷條件跟上面同一組，
+    // 不該發生），寧可回錯，也不讓它免費跑後面的分析。
+    if (careOnlyFromQuota) {
+      throw new Error("careOnlyFromQuota must take the guide v3 route");
     }
     if (responseMode === "stream") {
       return await handleAnalyzeStream({
