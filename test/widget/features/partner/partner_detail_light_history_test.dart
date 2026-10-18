@@ -9,11 +9,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_ce/hive_ce.dart';
 
+import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
+import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
+import 'package:vibesync/features/analysis/domain/entities/persistable_analysis.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
@@ -160,9 +166,11 @@ class _SeededSubscription extends SubscriptionNotifier {
   Future<void> syncWithRevenueCat() async {}
 }
 
+/// [records] 是 null 時不蓋 partnerAnalysisRecordsProvider（走真的存檔讀回）。
 List<Override> _overrides({
   required String tier,
-  required List<AnalysisRecord> records,
+  List<AnalysisRecord>? records,
+  List<Conversation>? conversations,
 }) =>
     [
       partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
@@ -174,11 +182,55 @@ List<Override> _overrides({
       dataQualityFlagProvider('p1')
           .overrideWith((_) => const DataQualityFlag.unflagged()),
       conversationsByPartnerProvider('p1')
-          .overrideWith((_) => [_latestConversation()]),
+          .overrideWith((_) => conversations ?? [_latestConversation()]),
       partnerListProvider.overrideWith((_) => [_p()]),
-      partnerAnalysisRecordsProvider('p1').overrideWith((_) => records),
+      if (records != null)
+        partnerAnalysisRecordsProvider('p1').overrideWith((_) => records),
       subscriptionProvider.overrideWith((_) => _SeededSubscription(tier)),
     ];
+
+/// 照 App 存檔的路徑存一筆 v3 分析：PersistableAnalysis.fromGuideV3，分析紀錄存它的
+/// rawResponse 原樣（analysis_persistence_coordinator 的 _ensureAnalysisRecord），寫進真的
+/// Hive 紀錄庫。回傳那段對話與紀錄庫給的紀錄 id。
+Future<({Conversation conversation, String recordId})> _saveLikeTheApp(
+  HiveAnalysisRecordStore store, {
+  required String id,
+  required DateTime at,
+  required GuideV3Result result,
+}) async {
+  final persistable =
+      PersistableAnalysis.fromGuideV3(result, analysisRunId: 'run-$id');
+  final snapshot = jsonEncode(persistable.rawResponse);
+  final conversation = Conversation(
+    id: 'c-$id',
+    name: 'Alice',
+    messages: [
+      Message(id: 'm-$id', content: '好啊', isFromMe: false, timestamp: at),
+    ],
+    createdAt: at,
+    updatedAt: at,
+    ownerUserId: 'u1',
+    partnerId: 'p1',
+    lastAnalysisSnapshotJson: snapshot,
+  );
+  final saved = await store.saveSuccessfulAnalysis(
+    ownerUserId: 'u1',
+    conversation: conversation,
+    completionKey: 'run-$id',
+    runStartPreviousCount: 0,
+    analyzedMessageCount: conversation.messages.length,
+    analyzedContentRevision: conversationContentRevision(
+      conversation,
+      messageCount: conversation.messages.length,
+    ),
+    analysisSnapshotJson: snapshot,
+    enthusiasmScore: persistable.enthusiasmScore,
+    gameStageLabel: '',
+    completedAt: at,
+  );
+  expect(saved.accepted, isTrue, reason: saved.rejectionReason);
+  return (conversation: conversation, recordId: saved.record!.id);
+}
 
 Future<void> _pumpScreen(
   WidgetTester t, {
@@ -251,6 +303,125 @@ void main() {
 
     expect(find.byType(PartnerLightHistoryCard), findsNothing);
     expect(find.text('燈號紀錄'), findsNothing);
+  });
+
+  testWidgets('免費：最新一次少卡（partial）或斷線後重組（recovered），照真的存檔路徑存完回對象頁，不推升級',
+      (t) async {
+    await t.binding.setSurfaceSize(const Size(400, 2400));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+
+    /// 伺服器 finalResult 送到 App 的樣子（免費方案排 4 張、只寫前 2 張）。
+    Map<String, dynamic> serverResult({
+      required int delivered,
+      bool partial = false,
+      bool recovered = false,
+    }) =>
+        {
+          'guideVersion': 'v3.5',
+          'read': {
+            'guideVersion': 'v3.5',
+            'decision': 'send',
+            'light': 'green',
+            'judgment': '她有在接你的話。',
+            'inviteReadiness': 'none',
+            'cold': {'c1': false, 'herPerfunctoryStreak': 0},
+            'plannedCards': [
+              for (var slot = 1; slot <= 4; slot++)
+                {'slot': slot, 'task': 'accept', 'locked': slot > 2},
+            ],
+          },
+          'cards': [
+            for (var slot = 1; slot <= delivered; slot++)
+              {
+                'slot': slot,
+                'task': 'accept',
+                'method': 'reaction',
+                'voice': 'default',
+                'messages': ['那家我也想吃吃看'],
+                'hasInventedDetail': false,
+                'hasBlank': false,
+              },
+          ],
+          'partial': partial,
+          if (recovered) 'recovered': true,
+          'usage': {'messagesUsed': 2, 'shouldChargeQuota': true},
+        };
+
+    // 第三種是對照組：最新一次送滿，同一套接線要看得到升級鈕。
+    final latestByVariant = <String, GuideV3Result>{
+      // 原定 2 張、實際只送到 1 張（主審第 1 輪 P2 的情境）。
+      'partial':
+          GuideV3Result.fromJson(serverResult(delivered: 1, partial: true))!,
+      // 續看重組只帶回第一張，App 再把畫面上已經送到的第 2 張補回去再存
+      //（streaming_analyze_notifier 的 withShownCards）。
+      'recovered': GuideV3Result.fromJson(
+        serverResult(delivered: 1, partial: true, recovered: true),
+      )!
+          .withShownCards([
+        GuideV3Card.fromJson(
+          (serverResult(delivered: 2)['cards'] as List).last,
+        )!,
+      ]),
+      'complete': GuideV3Result.fromJson(serverResult(delivered: 2))!,
+    };
+
+    for (final MapEntry(key: variant, value: latest)
+        in latestByVariant.entries) {
+      late Box<dynamic> box;
+      late HiveAnalysisRecordStore store;
+      late ({Conversation conversation, String recordId}) older;
+      late ({Conversation conversation, String recordId}) newest;
+      await t.runAsync(() async {
+        Hive.init('./.dart_tool/test_hive_partner_light_history');
+        box = await Hive.openBox<dynamic>(
+          'partner_light_history_${variant}_'
+          '${DateTime.now().microsecondsSinceEpoch}',
+        );
+        store = HiveAnalysisRecordStore(() => box);
+        older = await _saveLikeTheApp(
+          store,
+          id: 'older',
+          at: DateTime(2026, 10, 17, 20),
+          result: GuideV3Result.fromJson(serverResult(delivered: 2))!,
+        );
+        newest = await _saveLikeTheApp(
+          store,
+          id: 'latest',
+          at: DateTime(2026, 10, 18, 21, 5),
+          result: latest,
+        );
+      });
+      try {
+        await t.pumpWidget(ProviderScope(
+          overrides: [
+            // 不蓋 partnerAnalysisRecordsProvider：走真的 recordsFor（存檔 → 讀回）。
+            ..._overrides(
+              tier: SubscriptionTierHelper.free,
+              conversations: [older.conversation, newest.conversation],
+            ),
+            analysisRecordStoreProvider.overrideWithValue(store),
+            analysisRecordOwnerProvider.overrideWithValue('u1'),
+          ],
+          child:
+              motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
+        ));
+        await t.pumpAndSettle();
+
+        expect(_row(newest.recordId), findsOneWidget, reason: variant);
+        expect(_row(older.recordId), findsNothing, reason: variant);
+        if (variant == 'complete') {
+          expect(find.text(_upgradeLabel), findsOneWidget, reason: variant);
+        } else {
+          expect(find.byKey(const ValueKey('partner-light-history-locked')),
+              findsNothing,
+              reason: variant);
+          expect(find.text(_upgradeLabel), findsNothing, reason: variant);
+        }
+      } finally {
+        await t.pumpWidget(const SizedBox.shrink());
+        await t.runAsync(() => box.deleteFromDisk());
+      }
+    }
   });
 
   testWidgets('升級鈕打開付費頁', (t) async {

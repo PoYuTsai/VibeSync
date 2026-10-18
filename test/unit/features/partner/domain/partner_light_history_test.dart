@@ -149,6 +149,71 @@ void main() {
     expect(old.inviteReadiness, isNull);
   });
 
+  test('每筆留住這次的完整度：少卡、斷線後重組都算「比預定的少」（跟結果頁同一個判斷）', () {
+    String saved({
+      required int deliverable,
+      required int delivered,
+      bool partial = false,
+      bool recovered = false,
+    }) =>
+        jsonEncode({
+          'guideVersion': 'v3.5',
+          'read': {
+            'guideVersion': 'v3.5',
+            'decision': 'send',
+            'light': 'green',
+            'judgment': '',
+            // 免費方案：排了 4 張、只送前 deliverable 張。
+            'plannedCards': [
+              for (var slot = 1; slot <= 4; slot++)
+                {'slot': slot, 'task': 'accept', 'locked': slot > deliverable},
+            ],
+          },
+          'cards': [
+            for (var slot = 1; slot <= delivered; slot++)
+              {
+                'slot': slot,
+                'task': 'accept',
+                'messages': ['好啊'],
+              },
+          ],
+          'partial': partial,
+          if (recovered) 'recovered': true,
+        });
+    PartnerLightHistoryEntry entry(String snapshot) => buildPartnerLightHistory(
+          [
+            _v3Record('x', DateTime(2026, 10, 18),
+                decision: 'send', snapshotOverride: snapshot),
+          ],
+        ).single;
+
+    final complete = entry(saved(deliverable: 2, delivered: 2));
+    expect(complete.deliveredFewer, isFalse);
+    expect([complete.deliveredCards, complete.deliverableCards], [2, 2]);
+    expect([complete.partial, complete.recovered], [false, false]);
+
+    final partial = entry(saved(deliverable: 2, delivered: 1, partial: true));
+    expect(partial.partial, isTrue);
+    expect([partial.deliveredCards, partial.deliverableCards], [1, 2]);
+    expect(partial.deliveredFewer, isTrue);
+
+    // 續看重組後把畫面上已經送到的卡補回來：張數夠了，但還是斷過線。
+    final recovered = entry(
+        saved(deliverable: 2, delivered: 2, partial: true, recovered: true));
+    expect(recovered.recovered, isTrue);
+    expect(recovered.deliveredFewer, isTrue);
+
+    // 沒有旗標但送到的比這個方案預定的少，也算。
+    expect(entry(saved(deliverable: 2, delivered: 1)).deliveredFewer, isTrue);
+    // 先別回、停沒有卡也沒有預定的卡：不算少。
+    expect(
+      buildPartnerLightHistory([
+        _v3Record('h', DateTime(2026, 10, 18), decision: 'hold', light: 'red'),
+      ]).single.deliveredFewer,
+      isFalse,
+    );
+  });
+
   test('沒有 v3 紀錄就是空清單', () {
     expect(buildPartnerLightHistory(const []), isEmpty);
     expect(

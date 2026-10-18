@@ -17,6 +17,10 @@ PartnerLightHistoryEntry _entry(
   GuideV3InviteReadiness? invite,
   GuideV3CareKind? careKind,
   GuideV3Light? previousLight,
+  bool partial = false,
+  bool recovered = false,
+  int deliveredCards = 0,
+  int deliverableCards = 0,
 }) =>
     PartnerLightHistoryEntry(
       recordId: id,
@@ -26,6 +30,10 @@ PartnerLightHistoryEntry _entry(
       light: light,
       inviteReadiness: invite,
       previousLight: previousLight,
+      partial: partial,
+      recovered: recovered,
+      deliveredCards: deliveredCards,
+      deliverableCards: deliverableCards,
     );
 
 /// 新到舊三筆：黃（先別回，從綠變黃）、綠（出卡，含糊答應）、綠（收尾，沒機會）。
@@ -163,6 +171,39 @@ void main() {
           reason: latest.recordId);
       expect(find.text(_upgradeLabel), findsNothing, reason: latest.recordId);
     }
+  });
+
+  testWidgets('免費：最新一次比預定的少（少卡、斷線後重組）也不放升級；送滿才放', (t) async {
+    final fewer = {
+      'partial': _entry('partial', DateTime(2026, 10, 19),
+          partial: true, deliveredCards: 1, deliverableCards: 2),
+      'recovered': _entry('recovered', DateTime(2026, 10, 19),
+          partial: true,
+          recovered: true,
+          deliveredCards: 2,
+          deliverableCards: 2),
+      'short': _entry('short', DateTime(2026, 10, 19),
+          deliveredCards: 1, deliverableCards: 2),
+    };
+    for (final MapEntry(key: name, value: latest) in fewer.entries) {
+      await _pump(t, [latest, ..._three], fullHistory: false);
+      expect(_row(latest.recordId), findsOneWidget, reason: name);
+      expect(find.byKey(const ValueKey('partner-light-history-locked')),
+          findsNothing,
+          reason: name);
+      expect(find.text(_upgradeLabel), findsNothing, reason: name);
+    }
+
+    await _pump(
+      t,
+      [
+        _entry('full', DateTime(2026, 10, 19),
+            deliveredCards: 2, deliverableCards: 2),
+        ..._three,
+      ],
+      fullHistory: false,
+    );
+    expect(find.text(_upgradeLabel), findsOneWidget);
   });
 
   testWidgets('Starter／Essential：完整紀錄，相鄰燈號不同標「綠 → 黃」，舊的每筆帶邀約進度', (t) async {

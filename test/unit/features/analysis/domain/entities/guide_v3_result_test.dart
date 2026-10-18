@@ -308,6 +308,34 @@ void main() {
   });
 
   group('GuideV3Result', () {
+    test('比預定的少：partial、recovered、送到的比這個方案預定的少都算；免費鎖住的不算', () {
+      // _read 預設排 3 張、第 3 張鎖住（免費方案只送前 2 張）。
+      final complete = GuideV3Result.fromJson(_final())!;
+      expect(complete.read.deliverableCount, 2);
+      expect(complete.deliveredFewer, isFalse);
+      expect(GuideV3Result.fromJson(_final(partial: true))!.deliveredFewer,
+          isTrue);
+      expect(GuideV3Result.fromJson(_final(recovered: true))!.deliveredFewer,
+          isTrue);
+      expect(GuideV3Result.fromJson(_final(cards: [_card(1)]))!.deliveredFewer,
+          isTrue);
+      // 先別回沒有卡也沒有預定的卡。
+      final hold = GuideV3Result.fromJson(_final(
+        read: _read(decision: 'hold', plannedCards: const []),
+        cards: const [],
+      ))!;
+      expect(hold.deliveredFewer, isFalse);
+      expect(
+        guideV3DeliveredFewer(
+          partial: false,
+          recovered: false,
+          deliveredCards: 2,
+          deliverableCards: 2,
+        ),
+        isFalse,
+      );
+    });
+
     test('認形狀照伺服器 isGuideV3FinalResult', () {
       expect(isGuideV3Payload(_final()), isTrue);
       expect(isGuideV3Payload({'guideVersion': 3, 'cards': []}), isFalse);

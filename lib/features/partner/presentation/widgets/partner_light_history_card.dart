@@ -1,7 +1,8 @@
 /// 對象頁的燈號紀錄卡（Eric 2026-10-18）：每次 v3 分析的燈號、決定與邀約進度，新到舊。
 /// Starter 以上看完整紀錄，相鄰兩筆燈號不同時標「綠 → 黃」；免費只看最新一次，有兩次以上
 /// 時下面放鎖住的預覽和一顆升級鈕。三個方案的分析一樣，只差這裡顯示多少。最新一次是先別回、
-/// 停或關心時不放升級：這些時刻不推銷（盤點報告的升級時機）。
+/// 停、關心，或這次比預定的少（少卡、斷線後重組）時不放升級：這些時刻不推銷（盤點報告的
+/// 升級時機）。
 library;
 
 import 'dart:math' as math;
@@ -73,8 +74,11 @@ class PartnerLightHistoryCard extends StatelessWidget {
         : collapsible && !expanded
             ? entries.take(kPartnerLightHistoryCollapsedRows).toList()
             : entries;
-    final showLocked =
-        !fullHistory && olderCount > 0 && (latest.decision?.hasCards ?? false);
+    // 最新一次比預定的少（少卡、斷線後重組）也跟先別回、停、關心一樣不推升級（主審第 1 輪 P2）。
+    final showLocked = !fullHistory &&
+        olderCount > 0 &&
+        (latest.decision?.hasCards ?? false) &&
+        !latest.deliveredFewer;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
