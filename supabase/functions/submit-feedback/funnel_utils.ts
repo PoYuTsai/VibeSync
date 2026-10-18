@@ -38,6 +38,13 @@ const PAID_TIERS = new Set([
   "essential",
 ]);
 
+// 只拿來比對、不落庫的鍵（主審 r2 P2；Eric 2026-10-18 核准）：購買事件帶開始購買
+// 時的帳號。認證權杖在送出當下才取，付款確認期間換了帳號，事件就會用到別人的登入；
+// 跟登入的不同就整筆拒絕。row 的 user_id 本來就是帳號，驗完不存。
+const PURCHASER_KEY = "purchaser";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // int 的 min 沒寫就是 0。
 type PropSpec =
   | { kind: "int"; min?: number; max: number }
@@ -89,7 +96,7 @@ export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
   about_me_cleared: [],
   new_topic_copied: ["is_recommended"],
   paywall_opened: ["entry"],
-  paywall_purchase_completed: ["tier", "entry"],
+  paywall_purchase_completed: ["tier", "entry", PURCHASER_KEY],
   locked_cards_upgrade_tap: ["locked_count"],
 };
 
@@ -127,7 +134,8 @@ function sanitizeValue(spec: PropSpec, value: unknown): unknown {
 
 /**
  * 從信任的 userId + 不信任的 client rawEvent 建出可 insert 的 funnel row。
- * 字典外 event → 拒絕；properties 只留該 event 白名單內且值合規的鍵。
+ * 字典外 event → 拒絕；購買事件的 purchaser 不是登入帳號 → 拒絕；
+ * properties 只留該 event 白名單內且值合規的鍵（purchaser 不存）。
  */
 export function buildFunnelRow(
   userId: string,
@@ -148,8 +156,22 @@ export function buildFunnelRow(
   const rawProps = isPlainObject(rawEvent.properties)
     ? rawEvent.properties
     : {};
+  if (allowedKeys.includes(PURCHASER_KEY)) {
+    const purchaser = Object.hasOwn(rawProps, PURCHASER_KEY)
+      ? rawProps[PURCHASER_KEY]
+      : undefined;
+    if (
+      typeof purchaser !== "string" ||
+      !UUID_PATTERN.test(purchaser) ||
+      purchaser !== userId
+    ) {
+      return { ok: false, error: "Funnel purchaser mismatch" };
+    }
+  }
+
   const properties: Record<string, unknown> = {};
   for (const key of allowedKeys) {
+    if (key === PURCHASER_KEY) continue; // 只比對，不落庫
     if (!Object.hasOwn(rawProps, key)) continue;
     if (!Object.hasOwn(PROP_SPECS, key)) continue;
     const spec = PROP_SPECS[key];

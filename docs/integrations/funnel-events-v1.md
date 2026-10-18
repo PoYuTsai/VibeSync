@@ -13,6 +13,8 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 ## 隱私鐵則（照案 1 批 3 outcome_events 前例）
 
 - payload 只有 `event` 名＋下表白名單鍵；**絕不**帶對話內容、對象名、自由文字。
+- 只拿來驗證、不落庫的鍵：`purchaser`（見值域限制）。server 驗完就剝掉，row 只有
+  `user_id`（本來就是登入帳號）。
 - client＋server 雙層白名單：client 只送白名單鍵；server 對事件名 enum 硬擋
   （字典外一律 400）、對 properties 剝除白名單外鍵、值超長截斷。
 - best-effort 上傳：失敗吞掉、絕不 block UI、絕不重試風暴。
@@ -39,7 +41,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `about_me_cleared` | — | AboutMeScreen 清除成功後 |
 | `new_topic_copied` | `is_recommended` (bool) | NewTopicView 複製開場句（2026-10-12：量新話題有沒有被拿去傳；只記是不是推薦那題，不含句子） |
 | `paywall_opened` | `entry` (enum: `general` / `locked_cards` / `quota_exhausted`) | PaywallScreen.initState：每開一次一筆。入口是 go_router extra 帶來的 PaywallEntry，沒帶算 `general`；額度不夠的四種入口（今天／這個月、用完／不夠這次用）都記 `quota_exhausted`（2026-10-18：量從哪裡打開付費頁） |
-| `paywall_purchase_completed` | `tier` (enum: `starter` / `essential`), `entry` (同上 enum) | PaywallScreen._subscribe：RevenueCat 回成功才記；`tier` 是買的商品對應的方案。取消、失敗、逾時、例外、排程降級、恢復購買都不記；不帶價格、商品 id、收據 |
+| `paywall_purchase_completed` | `tier` (enum: `starter` / `essential`), `entry` (同上 enum), `purchaser` (UUID，只驗證、不落庫) | PaywallScreen._subscribe：RevenueCat 回成功才記；`tier` 是買的商品對應的方案。取消、失敗、逾時、例外、排程降級、恢復購買都不記；不帶價格、商品 id、收據。`purchaser` 是開始購買時的登入帳號，付款確認回來時已換帳號或登出就不送 |
 | `locked_cards_upgrade_tap` | `locked_count` (int) | GuideV3LockedBlock「看方案」：結果頁與分析紀錄共用同一塊，張數就是區塊寫的「還有 N 張」 |
 
 值域限制（server 端強制）：
@@ -52,6 +54,10 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - `source`：上表 enum 之一，其他值剝除整鍵。
 - `entry`：上表 enum 之一，其他值剝除整鍵。
 - `tier`：`starter` / `essential` 之一（`free` 不是購買結果），其他值剝除整鍵。
+- `purchaser`：只有 `paywall_purchase_completed` 收。必須是 UUID 而且等於登入帳號的
+  `user.id`；缺少、格式不對或不同，**整筆拒絕**（400，不寫入）。驗完剝掉、不落庫。
+  其他事件帶了一律剝掉（2026-10-18 主審 r2：認證權杖在 HTTP 送出當下才取，付款確認
+  期間換帳號時，事件會用到別人的登入；Eric 核准由 server 比對擋下）。
 - bool 鍵只收 true/false（`has_partner`、`has_style`、`has_notes`、`has_custom_topics`、`is_recommended`）。
 - 任何 string 值長度上限 40 字元，超長截斷。
 
@@ -59,6 +65,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 
 - server 白名單要先部署，app 送的這三個事件才收得到；舊 server 回 400，client 吞掉，資料就少了那段。
 - 結果頁的「看方案」連點時付費頁只開一次（防重入），所以 `locked_cards_upgrade_tap` 可能比 `entry=locked_cards` 的 `paywall_opened` 多。
+- 付款確認期間換帳號或登出，那筆購買事件會被丟掉（寧可少記，不記到別人身上）。
 - 免費看幾張卡的決定（audit 三層方案）：累積二到四週，比 `entry=locked_cards` 開了幾次付費頁、其中幾次買了。
 
 ## once-flag 去重

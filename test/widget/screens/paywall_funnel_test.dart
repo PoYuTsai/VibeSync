@@ -5,7 +5,8 @@
 // - paywall_purchase_completed：RevenueCat 回成功才記；取消、失敗、例外、逾時、
 //   排程降級都不記。
 // - 埋點掛住或出錯，付費頁和購買流程都照常。
-// - 購買事件只記給發起購買的帳號：確認回來時換了帳號或登出就不記。
+// - 購買事件只記給發起購買的帳號：確認回來時換了帳號或登出就不記；事件另外帶
+//   開始購買時的帳號（purchaser），送出前才換帳號時由伺服器比對擋下。
 
 import 'dart:async';
 
@@ -32,6 +33,10 @@ const _wireEntry = {
   PaywallEntry.monthlyQuotaUsedUp: 'quota_exhausted',
   PaywallEntry.monthlyQuotaShort: 'quota_exhausted',
 };
+
+/// 帳號 id 是 UUID（伺服器只收 UUID 的 purchaser）。
+const _userA = '8f14e45f-ceea-4c6b-9a8e-3e4d4b5c6a7f';
+const _userB = '2b7c1d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e';
 
 User _fakeUser(String id) => User(
       id: id,
@@ -168,7 +173,7 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
   Future<SubscriptionPurchaseResult> Function()? onPurchaseStoreProduct,
   Future<bool> Function()? onRestore,
   SubscriptionState? seededState,
-  String? signedInAs = 'user-a',
+  String? signedInAs = _userA,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -342,7 +347,7 @@ void main() {
 
       expect(sent.names, ['paywall_opened', 'paywall_purchase_completed']);
       expect(sent.propsOf('paywall_purchase_completed'), [
-        {'tier': 'essential', 'entry': 'locked_cards'},
+        {'tier': 'essential', 'entry': 'locked_cards', 'purchaser': _userA},
       ]);
       // 成功流程照舊：慶祝訊息＋離開付費頁。
       expect(find.textContaining('方案已更新'), findsOneWidget);
@@ -370,7 +375,7 @@ void main() {
 
       expect(storeProductPurchases, 1, reason: '走的是 purchaseStoreProduct 那條');
       expect(sent.propsOf('paywall_purchase_completed'), [
-        {'tier': 'essential', 'entry': 'locked_cards'},
+        {'tier': 'essential', 'entry': 'locked_cards', 'purchaser': _userA},
       ]);
       await _flush(tester);
     });
@@ -423,7 +428,7 @@ void main() {
       await _tapSubscribe(tester, '訂閱 Starter');
 
       expect(sent.propsOf('paywall_purchase_completed'), [
-        {'tier': 'starter', 'entry': 'quota_exhausted'},
+        {'tier': 'starter', 'entry': 'quota_exhausted', 'purchaser': _userA},
       ]);
       await _flush(tester);
     });
@@ -521,7 +526,7 @@ void main() {
       await tester.pump();
 
       expect(sent.propsOf('paywall_purchase_completed'), [
-        {'tier': 'essential', 'entry': 'quota_exhausted'},
+        {'tier': 'essential', 'entry': 'quota_exhausted', 'purchaser': _userA},
       ]);
       expect(tester.takeException(), isNull);
       await _flush(tester);
@@ -530,7 +535,7 @@ void main() {
     // 付款確認要等一陣子，這段時間可能登出、換帳號；送事件用的是當下的登入，
     // 換了就不記，免得 A 買的算到 B（主審 r1 P2）。
     final accountChanges = <String, String?>{
-      '換成別的帳號': 'user-b',
+      '換成別的帳號': _userB,
       '登出': null,
     };
     for (final change in accountChanges.entries) {
@@ -561,6 +566,41 @@ void main() {
         await _flush(tester);
       });
     }
+
+    // 主審 r2 P2：認證權杖是送出當下才取（functions_client 先等 JSON 編碼，
+    // AuthHttpClient.send 才拿權杖），付費頁的檢查擋不住「檢查過了才換帳號」。
+    // 事件帶開始購買時的帳號，伺服器發現跟登入的不同就整筆丟掉。
+    testWidgets('檢查之後、送出前才換帳號：事件仍帶開始購買時的帳號', (tester) async {
+      final sent = _Sent();
+      final signedInAtSend = <String?>[];
+      await _pumpPaywall(
+        tester,
+        tracker: FunnelTracker(
+          invoker: (fn, {required body}) async {
+            final event = body['event'] as Map<String, dynamic>;
+            if (event['event'] == 'paywall_purchase_completed') {
+              // 傳輸層拿權杖之前換成 B。
+              _signInAs(_userB);
+            }
+            signedInAtSend.add(SupabaseService.currentUser?.id);
+            sent.events.add(event);
+            return 200;
+          },
+        ),
+        entry: PaywallEntry.lockedCards,
+        onPurchase: () async => _success(SubscriptionTierHelper.essential),
+        seededState: _stateWith('vibesync_essential_monthly', 'Essential'),
+      );
+
+      await _tapSubscribe(tester, '訂閱 Essential');
+
+      expect(sent.propsOf('paywall_purchase_completed'), [
+        {'tier': 'essential', 'entry': 'locked_cards', 'purchaser': _userA},
+      ]);
+      // 送出時已經是 B 的登入：伺服器拿 purchaser 比對，這筆整筆拒絕。
+      expect(signedInAtSend.last, _userB);
+      await _flush(tester);
+    });
 
     testWidgets('沒登入就開始的購買：不記（沒有帳號可以算）', (tester) async {
       final sent = _Sent();

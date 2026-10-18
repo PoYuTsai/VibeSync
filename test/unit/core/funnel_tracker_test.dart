@@ -92,7 +92,7 @@ void main() {
       'about_me_cleared': <String>[],
       'new_topic_copied': ['is_recommended'],
       'paywall_opened': ['entry'],
-      'paywall_purchase_completed': ['tier', 'entry'],
+      'paywall_purchase_completed': ['tier', 'entry', 'purchaser'],
       'locked_cards_upgrade_tap': ['locked_count'],
     });
   });
@@ -107,13 +107,17 @@ void main() {
       },
     );
 
+    // purchaser（開始購買時的帳號，給伺服器比對）只有購買事件帶得出去。
+    const buyer = '8f14e45f-ceea-4c6b-9a8e-3e4d4b5c6a7f';
     await tracker.track('paywall_opened', properties: {
       'entry': 'locked_cards',
       'route': '/paywall',
+      'purchaser': buyer,
     });
     await tracker.track('paywall_purchase_completed', properties: {
       'tier': 'essential',
       'entry': 'quota_exhausted',
+      'purchaser': buyer,
       'price': 590,
       'productId': 'vibesync_essential_monthly',
       'receipt': 'MIIT',
@@ -121,6 +125,7 @@ void main() {
     await tracker.track('locked_cards_upgrade_tap', properties: {
       'locked_count': 3,
       'tasks': ['push'],
+      'purchaser': buyer,
     });
 
     final names = [for (final e in sent) e['event']];
@@ -132,7 +137,7 @@ void main() {
     ]);
     expect(props, [
       {'entry': 'locked_cards'},
-      {'tier': 'essential', 'entry': 'quota_exhausted'},
+      {'tier': 'essential', 'entry': 'quota_exhausted', 'purchaser': buyer},
       {'locked_count': 3},
     ]);
   });

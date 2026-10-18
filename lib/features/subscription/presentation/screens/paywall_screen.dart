@@ -1115,8 +1115,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     setState(() => _isPurchasing = true);
     // 付款確認回來前他可能已經關掉這頁（之後不能再用 ref），成功照樣要記，先抓好。
-    // 帳號也先記下：事件用送出當下的登入，等確認時換了帳號或登出就不記，免得 A
-    // 買的算到 B（主審 r1 P2）。
+    // 帳號也在這裡記下、之後不再重讀，免得 A 買的算到 B（主審 r1、r2 P2）：確認回來時
+    // 換了帳號或登出就不送；送出的認證權杖是 HTTP 送出當下才取，檢查之後才換帳號這邊
+    // 擋不到，所以事件帶上這個帳號，伺服器發現跟登入的不同就整筆丟掉。
     final tracker = ref.read(funnelTrackerProvider);
     final entry = widget.entry;
     final purchaserId = SupabaseService.currentUser?.id;
@@ -1138,6 +1139,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             properties: {
               'tier': result.requestedTier,
               'entry': entry.funnelValue,
+              // 只給伺服器比對，不落庫。
+              'purchaser': purchaserId,
             },
           ),
         );
