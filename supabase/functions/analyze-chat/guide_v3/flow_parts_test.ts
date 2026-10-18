@@ -125,7 +125,7 @@ Deno.test("自傷訊號優先於其他所有判斷：不排卡、不帶條目", 
   assertEquals(plan.judgment, "");
 });
 
-Deno.test("未成年：模型標記或程式關鍵字任一個就不出卡、給固定說明；自傷排在前面", () => {
+Deno.test("未成年：讀局面成功時只看模型標記（關鍵字不蓋過模型），讀局面失敗才看關鍵字；自傷排在前面", () => {
   const byModel = planTurn(herLast, tags({ minorSignal: true }));
   assertEquals(byModel.decision, "care");
   assertEquals(byModel.careKind, "minor");
@@ -134,15 +134,10 @@ Deno.test("未成年：模型標記或程式關鍵字任一個就不出卡、給
   assertEquals(byModel.specs, []);
   assertEquals(byModel.entries, []);
   assertEquals(byModel.judgment, "");
-  assertEquals(
-    planTurn(herLast, tags(), hits({ minor: true })).careTrigger,
-    "keyword",
-  );
-  assertEquals(
-    planTurn(herLast, tags({ minorSignal: true }), hits({ minor: true }))
-      .careTrigger,
-    "both",
-  );
+  // 模型沒標：就算有「高中」這類字也照常出卡（主審第 1 輪：老師、講以前的事被誤擋）。
+  const wordsOnly = planTurn(herLast, tags(), hits({ minorWords: true }));
+  assertEquals(wordsOnly.decision, "send");
+  assert(wordsOnly.specs.length > 0);
   // 自傷關心排在未成年前面（專線比「不提供建議」重要）。
   const both = planTurn(
     herLast,
@@ -161,8 +156,11 @@ Deno.test("未成年：模型標記或程式關鍵字任一個就不出卡、給
     assertEquals(plan.careKind, "minor", JSON.stringify(over));
   }
   // 讀局面失敗時只看關鍵字；沒命中就照原本的錯誤處理。
-  assertEquals(planWithoutRead(hits({ minor: true }))?.careKind, "minor");
-  assertEquals(planWithoutRead(hits({ minor: true }))?.careTrigger, "keyword");
+  assertEquals(planWithoutRead(hits({ minorWords: true }))?.careKind, "minor");
+  assertEquals(
+    planWithoutRead(hits({ minorWords: true }))?.careTrigger,
+    "keyword",
+  );
   assertEquals(planWithoutRead(NO_SAFETY_HITS), null);
 });
 
@@ -194,7 +192,7 @@ Deno.test("自傷關鍵字：最明確的說法在模型沒標時也強制關心
     "self_harm",
   );
   assertEquals(
-    planWithoutRead(hits({ selfHarm: true, minor: true }))?.careKind,
+    planWithoutRead(hits({ selfHarm: true, minorWords: true }))?.careKind,
     "self_harm",
   );
 });
@@ -216,7 +214,7 @@ Deno.test("未成年的判讀事件：固定說明、careKind，沒有排卡；�
   assertEquals([care.careKind, care.careMessage], ["self_harm", CARE_MESSAGE]);
   // 讀局面失敗、只靠關鍵字時沒有燈號。
   assertEquals(
-    readView(planWithoutRead(hits({ minor: true }))!, null).light,
+    readView(planWithoutRead(hits({ minorWords: true }))!, null).light,
     null,
   );
   assert(MINOR_MESSAGE.split("。").filter(Boolean).length <= 2);

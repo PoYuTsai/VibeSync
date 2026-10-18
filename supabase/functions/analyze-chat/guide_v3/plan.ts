@@ -22,7 +22,7 @@ export type GuideV3Decision = "send" | "close" | "hold" | "stop" | "care";
 /// 照樣只顯示固定文案、不出卡，新版看這一欄換標題；分析看 reason 與這一欄分得開。
 export type GuideV3CareKind = "self_harm" | "minor";
 /// 誰判出來的：讀局面的模型標記、程式關鍵字（safety.ts），或兩者都有。只進伺服器紀錄，
-/// 用來量關鍵字的誤判。
+/// 用來看是哪一層判出來的。
 export type GuideV3CareTrigger = "model" | "keyword" | "both";
 
 export interface GuideV3Plan {
@@ -68,16 +68,17 @@ function carePlan(
 /// 照樣給關心訊息（盤點的提議預設，等 Eric 拍板；改成 false 就只在讀局面失敗時才看關鍵字）。
 export const FORCE_CARE_ON_EXPLICIT_SELF_HARM = true;
 
-/// 讀局面失敗或拒答時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心訊息
-/// （附專線），其次未成年；都看不出就 null，照原本的錯誤處理。
+/// 讀局面失敗、拒答或逾時時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心
+/// 訊息（附專線），其次未成年；都看不出就 null，照原本的錯誤處理。
 export function planWithoutRead(hits: SafetyKeywordHits): GuideV3Plan | null {
   if (hits.selfHarm) return carePlan("self_harm", false, true);
-  if (hits.minor) return carePlan("minor", false, true);
+  if (hits.minorWords) return carePlan("minor", false, true);
   return null;
 }
 
 /// 規則先後：自傷關心 → 未成年 → rules.ts 的 C 段規則。自傷排在未成年前面：兩個都有時，
-/// 專線比「不提供建議」重要。
+/// 專線比「不提供建議」重要。讀局面成功時，未成年只看模型的 minorSignal（主審第 1 輪：
+/// 句型關鍵字會把老師、講以前的事誤擋，模型在黑箱 6/6 都判對）。
 export function planTurn(
   turns: readonly Turn[],
   tags: ReadTags,
@@ -89,9 +90,7 @@ export function planTurn(
   if (tags.selfHarmSignal || explicitSelfHarm) {
     return carePlan("self_harm", tags.selfHarmSignal, explicitSelfHarm);
   }
-  if (tags.minorSignal || hits.minor) {
-    return carePlan("minor", tags.minorSignal, hits.minor);
-  }
+  if (tags.minorSignal) return carePlan("minor", true, false);
   // 她要他借錢、轉帳、投資或下載 App（程式關鍵字）跟讀局面的風險標記同樣處理：不排推進、
   // 判讀換成固定提醒（B47 的做法；Eric 2026-10-18）。trace 另記模型原本的標記與關鍵字命中。
   const ruled = hits.money && !tags.risk ? { ...tags, risk: true } : tags;

@@ -910,26 +910,38 @@ Deno.test("未成年（模型標記）：不寫卡、不扣額度、不打記憶
   assertEquals(outcome.metadata.charged, false);
 });
 
-Deno.test("未成年（只有程式關鍵字）：模型沒標也擋，trace 記關鍵字命中", async () => {
+Deno.test("讀局面成功、模型沒標未成年：照模型出卡（關鍵字不蓋過模型），trace 記關鍵字命中", async () => {
   const h = harness({
     messages: [
-      { isFromMe: true, content: "妳幾年級啊" },
-      { isFromMe: false, content: "我高二啦" },
+      { isFromMe: true, content: "妳有在運動嗎" },
+      { isFromMe: false, content: "以前我讀高中，很愛打球" },
     ],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(evs[1].careKind, "minor");
-  assertEquals(h.calls.includes("write"), false);
-  assertEquals(h.charges[0].recommendationJson.careTrigger, "keyword");
+  assertEquals(evs[1].decision, "send");
+  assertEquals(h.calls.includes("write"), true);
+  assertEquals(h.charges[0].decisionKind, "send");
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
-  assertEquals((trace.keywordHits as Record<string, unknown>).minor, true);
+  assertEquals((trace.keywordHits as Record<string, unknown>).minorWords, true);
 });
 
-Deno.test("未成年（背景寫她高二）：一樣不出卡", async () => {
-  const h = harness({ background: { targetDescription: "高二學妹" } });
+Deno.test("讀局面逾時、背景寫她高二：給未成年說明，不給錯誤、不扣", async () => {
+  const timeout = Object.assign(new Error("deadline"), {
+    code: "DEADLINE_EXCEEDED",
+  });
+  const h = harness({
+    background: { targetDescription: "高二學妹" },
+    readError: timeout,
+  });
   const evs = await events(await handleGuideV3Stream(h.deps));
   assertEquals(evs[1].careKind, "minor");
   assertEquals(h.charges[0].chargeQuota, false);
+  assertEquals(h.failed, []);
+  assertEquals(
+    (h.done[0].guideV3Trace as { care: { readFailedCode: string } }).care
+      .readFailedCode,
+    "DEADLINE_EXCEEDED",
+  );
 });
 
 Deno.test("讀局面拒答或格式壞掉，但關鍵字看得出未成年：給固定說明，不給錯誤、不扣", async () => {
@@ -1047,7 +1059,7 @@ Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照
   assertEquals(h.charges[0].decisionKind, "send");
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
   assertEquals(trace.keywordHits, {
-    minor: false,
+    minorWords: false,
     selfHarm: true,
     selfHarmExplicit: false,
     money: false,
