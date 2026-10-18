@@ -22,12 +22,17 @@ if (!sourcePath) {
   Deno.exit(2);
 }
 
-/// 錄音早於讀局面的自傷欄位（10/16 加）：補上 false，其他欄位一字不動。
-function withSelfHarmField(readText: string): string {
+/// 錄音早於讀局面後來加的欄位（自傷 10/16、未成年 10/18）：補上 false，其他欄位一字不動。
+const LATER_TAG_FIELDS = ["selfHarmSignal", "minorSignal"] as const;
+const LATER_FIELDS_NOTE =
+  "內建語料每案第 1 次；讀局面的 JSON 補了 selfHarmSignal:false、minorSignal:false（錄音早於這兩個欄位）。";
+function withLaterTagFields(readText: string): string {
   const tags = JSON.parse(readText);
-  return "selfHarmSignal" in tags
-    ? readText
-    : JSON.stringify({ ...tags, selfHarmSignal: false });
+  const missing = LATER_TAG_FIELDS.filter((f) => !(f in tags));
+  return missing.length === 0 ? readText : JSON.stringify({
+    ...tags,
+    ...Object.fromEntries(missing.map((f) => [f, false])),
+  });
 }
 
 const source = JSON.parse(await Deno.readTextFile(sourcePath));
@@ -41,8 +46,10 @@ type Input = {
 let inputs: Input[];
 let meta: Record<string, unknown>;
 if (Array.isArray(source.cases)) {
-  inputs = source.cases;
-  meta = source.meta;
+  inputs = (source.cases as (Input & { expected?: unknown })[]).map((
+    { expected: _expected, ...c },
+  ) => ({ ...c, readText: withLaterTagFields(c.readText) }));
+  meta = { ...source.meta, note: LATER_FIELDS_NOTE };
 } else {
   inputs = (source.records as {
     caseId: string;
@@ -58,15 +65,14 @@ if (Array.isArray(source.cases)) {
         isFromMe: m.isFromMe,
         content: m.content,
       })),
-      readText: withSelfHarmField(r.readText),
+      readText: withLaterTagFields(r.readText),
       writeText: r.writeText,
     }));
   meta = {
     source: String(source.meta?.tag ?? sourcePath.split("/").at(-2)),
     model: source.meta?.model ?? null,
     guideSha256: source.meta?.guideSha256 ?? null,
-    note:
-      "內建語料每案第 1 次；讀局面的 JSON 補了 selfHarmSignal:false（錄音早於這個欄位）。",
+    note: LATER_FIELDS_NOTE,
   };
 }
 inputs.sort((a, b) => a.name.localeCompare(b.name));

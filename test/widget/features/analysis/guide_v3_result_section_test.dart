@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/theme/app_icons.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/presentation/sections/guide_v3_result_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/guide_v3_task_card.dart';
@@ -11,6 +12,7 @@ GuideV3Read _read({
   List<Map<String, dynamic>>? planned,
   String? waitFor,
   String? careMessage,
+  String? careKind,
 }) =>
     GuideV3Read.fromJson({
       'guideVersion': 'v3.4',
@@ -19,6 +21,7 @@ GuideV3Read _read({
       'judgment': judgment,
       if (waitFor != null) 'waitFor': waitFor,
       if (careMessage != null) 'careMessage': careMessage,
+      if (careKind != null) 'careKind': careKind,
       'plannedCards': planned ??
           [
             {'slot': 1, 'task': 'accept', 'locked': false},
@@ -294,6 +297,29 @@ void main() {
     expect(find.text('先把安全放在第一位。\n情況緊急，打 110 或 119。'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-light')), findsNothing);
     expect(find.text('不該出現'), findsNothing);
+  });
+
+  testWidgets('涉及未成年：另一個標題與固定說明，沒有燈號、判讀與卡', (tester) async {
+    const message = '看起來對話裡有人未滿 18 歲或還在讀國中、高中，這類對話我們不提供回覆建議。這次不扣額度。';
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'care',
+        light: 'green',
+        judgment: '不該出現',
+        careMessage: message,
+        careKind: 'minor',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect(find.text('這段不提供建議'), findsOneWidget);
+    expect(find.text('先關心安全'), findsNothing);
+    expect(find.text(message), findsOneWidget);
+    expect(find.byIcon(TablerIcons.info_circle), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-light')), findsNothing);
+    expect(find.text('不該出現'), findsNothing);
+    expect(find.text('可以這樣回'), findsNothing);
   });
 
   testWidgets('再調一下：畫面給了才出現，每張送到的卡各一個；鎖住、正在寫的卡沒有', (tester) async {

@@ -25,6 +25,12 @@ String guideV3DecisionTitle(GuideV3Decision decision) => switch (decision) {
       GuideV3Decision.care => '先關心安全',
     };
 
+/// 判讀區的標題：涉及未成年的固定訊息另用一個標題（Eric 2026-10-18），其他照決定。
+String guideV3ReadTitle(GuideV3Read read) =>
+    read.careKind == GuideV3CareKind.minor
+        ? '這段不提供建議'
+        : guideV3DecisionTitle(read.decision);
+
 class GuideV3LightChip extends StatelessWidget {
   const GuideV3LightChip({super.key, required this.light});
 
@@ -79,6 +85,8 @@ class GuideV3ReadPanel extends StatelessWidget {
       _ => AppColors.coachAccent,
     };
     final icon = switch (decision) {
+      GuideV3Decision.care when read.careKind == GuideV3CareKind.minor =>
+        TablerIcons.info_circle,
       GuideV3Decision.care => TablerIcons.heart_handshake,
       GuideV3Decision.hold || GuideV3Decision.stop => TablerIcons.hand_stop,
       _ => TablerIcons.compass,
@@ -107,7 +115,7 @@ class GuideV3ReadPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  guideV3DecisionTitle(decision),
+                  guideV3ReadTitle(read),
                   style: AppTypography.titleMedium.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     fontWeight: FontWeight.w800,

@@ -3,7 +3,7 @@
     "source": "2026-10-15-v33-r1",
     "model": "claude-sonnet-5-5",
     "guideSha256": "6554211e5f25f7aae4f87091ff0479163335464716027be3380be48e1a1e908c",
-    "note": "內建語料每案第 1 次；讀局面的 JSON 補了 selfHarmSignal:false（錄音早於這個欄位）。"
+    "note": "內建語料每案第 1 次；讀局面的 JSON 補了 selfHarmSignal:false、minorSignal:false（錄音早於這兩個欄位）。"
   },
   "cases": [
     {
@@ -22,7 +22,7 @@
           "content": "那家店真的很好吃 下次換我請"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"她自己提見面\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B04\",\"B13\",\"B14\",\"B35\"],\"readForUser\":\"她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"她自己提見面\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B04\",\"B13\",\"B14\",\"B35\"],\"readForUser\":\"她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"不客氣，妳喜歡就好\",\"下次換妳請，那就下週找一天，我來訂位\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"你喜歡就好，我也吃得很開心\",\"下次就換你挑，我們週末找一天去，我來排時間\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"不客氣啊，妳開心就好\",\"那下次就期待妳請囉\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"這話我記下來了，下次你請\",\"先說好，我很會吃，你要有心理準備\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"好，這句我當承諾收下了\",\"妳請的話，我要點兩份甜點\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -614,7 +614,8 @@
               ],
               "readForUser": "她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": "具體邀約",
             "specs": [
@@ -672,7 +673,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 27,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 23,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 20
           }
         },
         "failedCodes": []
@@ -694,7 +738,7 @@
           "content": "不過我現在還不太想談感情 我們先當朋友可以嗎"
         }
       ],
-      "readText": "{\"light\":\"red\",\"herMove\":\"煞車\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":true,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[\"我覺得跟你聊天很開心 想多認識你\"],\"replyWillingness\":\"low\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B10\"],\"readForUser\":\"她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"red\",\"herMove\":\"煞車\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":true,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[\"我覺得跟你聊天很開心 想多認識你\"],\"replyWillingness\":\"low\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B10\"],\"readForUser\":\"她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\": 1, \"messages\": [\"謝謝妳直接跟我說，這樣很清楚。\", \"那就照妳的步調，有想聊的時候再聊。\"], \"hasInventedDetail\": false}",
       "expected": {
         "status": 200,
@@ -989,7 +1033,8 @@
               ],
               "readForUser": "她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -1013,7 +1058,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 29
           }
         },
         "failedCodes": []
@@ -1047,7 +1103,7 @@
           "content": "還好"
         }
       ],
-      "readText": "{\"light\":\"red\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":true},{\"turn\":4,\"perfunctory\":true},{\"turn\":6,\"perfunctory\":true}],\"matchedEntries\":[\"B06\"],\"readForUser\":\"她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。\",\"waitFor\":\"等她自己多說一點、反問你，或主動丟個話題再接。\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"red\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":true},{\"turn\":4,\"perfunctory\":true},{\"turn\":6,\"perfunctory\":true}],\"matchedEntries\":[\"B06\"],\"readForUser\":\"她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。\",\"waitFor\":\"等她自己多說一點、反問你，或主動丟個話題再接。\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "",
       "expected": {
         "status": 200,
@@ -1084,10 +1140,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 2,
+                "messagesUsed": 1,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 798,
-                "dailyRemaining": 118,
+                "monthlyRemaining": 799,
+                "dailyRemaining": 119,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -1104,7 +1160,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 2
+                "chargedMessageCount": 1
               }
             },
             "result": {
@@ -1120,10 +1176,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 2,
+                "messagesUsed": 1,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 798,
-                "dailyRemaining": 118,
+                "monthlyRemaining": 799,
+                "dailyRemaining": 119,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -1140,7 +1196,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 2
+                "chargedMessageCount": 1
               }
             }
           }
@@ -1169,10 +1225,10 @@
                 "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
                 "plannedCards": []
               },
-              "chargedMessageCount": 2
+              "chargedMessageCount": 1
             },
             "chargeQuota": true,
-            "messageCount": 2
+            "messageCount": 1
           }
         ],
         "markDoneFinal": {
@@ -1188,10 +1244,10 @@
           "cards": [],
           "partial": false,
           "usage": {
-            "messagesUsed": 2,
+            "messagesUsed": 1,
             "estimatedMessages": 2,
-            "monthlyRemaining": 798,
-            "dailyRemaining": 118,
+            "monthlyRemaining": 799,
+            "dailyRemaining": 119,
             "model": "claude-sonnet-5-5",
             "tierUsed": "essential",
             "isTestAccount": false,
@@ -1208,7 +1264,7 @@
             "readModel": "claude-sonnet-5-5",
             "estimatedMessageCount": 2,
             "shouldChargeQuota": true,
-            "chargedMessageCount": 2
+            "chargedMessageCount": 1
           },
           "guideV3Trace": {
             "tags": {
@@ -1248,7 +1304,8 @@
               ],
               "readForUser": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
               "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [],
@@ -1282,7 +1339,7 @@
           "content": "不過我這週末已經約了朋友 之後再看看好了"
         }
       ],
-      "readText": "{\"light\":\"yellow\",\"herMove\":\"試探\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B09\"],\"readForUser\":\"她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。\",\"waitFor\":\"等她自己提到有空或想去的時間，再順著接；現在不必追問或硬約。\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"yellow\",\"herMove\":\"試探\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B09\"],\"readForUser\":\"她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。\",\"waitFor\":\"等她自己提到有空或想去的時間，再順著接；現在不必追問或硬約。\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\": 1, \"messages\": [\"好，那週末你就好好跟朋友玩\", \"那個展我先記著，之後有空再說\"], \"hasInventedDetail\": false}",
       "expected": {
         "status": 200,
@@ -1575,7 +1632,8 @@
               ],
               "readForUser": "她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。",
               "waitFor": "等她自己提到有空或想去的時間，再順著接；現在不必追問或硬約。",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -1599,7 +1657,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 27,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 23
           }
         },
         "failedCodes": []
@@ -1621,7 +1690,7 @@
           "content": "再說吧"
         }
       ],
-      "readText": "{\"light\":\"red\",\"herMove\":\"試探\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":true,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":true}],\"matchedEntries\":[\"B09\"],\"readForUser\":\"她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。\",\"waitFor\":\"等她自己主動聊起來，或主動給出可以見面的時間再回應邀約。\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"red\",\"herMove\":\"試探\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":true,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":true}],\"matchedEntries\":[\"B09\"],\"readForUser\":\"她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。\",\"waitFor\":\"等她自己主動聊起來，或主動給出可以見面的時間再回應邀約。\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\": 1, \"messages\": [\"好，那妳先忙\", \"忙完有空再說，不急\"], \"hasInventedDetail\": false}",
       "expected": {
         "status": 200,
@@ -1914,7 +1983,8 @@
               ],
               "readForUser": "她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。",
               "waitFor": "等她自己主動聊起來，或主動給出可以見面的時間再回應邀約。",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -1938,7 +2008,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 15,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 9
           }
         },
         "failedCodes": []
@@ -1960,7 +2041,7 @@
           "content": "禮拜天可以嗎"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"她自己提見面\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B13\"],\"readForUser\":\"她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"她自己提見面\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B13\"],\"readForUser\":\"她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"禮拜天好，那就禮拜天\",\"晚上六點左右吧，我把餐廳訂好，妳只要負責人到\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"好啊，禮拜天晚上就這麼定了\",\"我來挑地方，晚一點把時間跟地點傳你\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"加班辛苦了，禮拜五先放過你\",\"禮拜天我等妳，晚上可以嗎？\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"禮拜五被加班搶走了，這筆我先記著\",\"禮拜天你可要空出一個很餓的胃\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"加班贏了這一局，不過禮拜天我不會讓它再贏\",\"那天晚上妳留給我，吃飯的地方我來找\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -2549,7 +2630,8 @@
               ],
               "readForUser": "她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": "具體邀約",
             "specs": [
@@ -2605,7 +2687,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 30,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 26,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 30,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 37,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 13
           }
         },
         "failedCodes": []
@@ -2619,7 +2744,7 @@
           "content": "嗨 你的照片是在哪拍的呀 好美"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B04\"],\"readForUser\":\"她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B04\"],\"readForUser\":\"她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"謝謝，那是在＿＿拍的，現場比照片還好看\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"謝啦，那天運氣好，剛好撞上日落前那十分鐘的光\",\"妳這麼認真看風景，是不是也很會挑地方？\"],\"hasInventedDetail\":true}\n{\"card\":3,\"messages\":[\"謝謝，妳眼光不錯\",\"那張我自己也滿喜歡的，妳是看到風景才點進來的嗎？\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -3055,7 +3180,8 @@
               ],
               "readForUser": "她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -3110,7 +3236,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 41,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 13
           }
         },
         "failedCodes": []
@@ -3136,7 +3289,7 @@
           "content": "你有推薦的入門機嗎"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"問他意見\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"對啊 但都是隨手拍\"],\"replyWillingness\":\"high\",\"worthyBallCount\":3,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false},{\"turn\":3,\"perfunctory\":false}],\"matchedEntries\":[\"B21\"],\"readForUser\":\"她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"問他意見\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"對啊 但都是隨手拍\"],\"replyWillingness\":\"high\",\"worthyBallCount\":3,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false},{\"turn\":3,\"perfunctory\":false}],\"matchedEntries\":[\"B21\"],\"readForUser\":\"她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"我也只是隨手拍，不太懂器材，所以推薦不了什麼專業的\",\"不過入門的話，我會先挑便宜好上手的傻瓜底片機，先拍再說，糊掉也算練習\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"糊掉其實也算一種風格啦，看起來很藝術的那種\",\"我以前入門是從二手的小傻瓜機開始，三百塊買的，拍壞也不心疼。妳預算大概抓多少？\"],\"hasInventedDetail\":true}\n{\"card\":3,\"messages\":[\"底片糊掉很正常吧，我覺得那是入門的必經過程\",\"入門機我會選簡單的全自動款，不用煩惱對焦跟光圈，先把拍的手感練出來\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"沖出來全糊掉，那應該是妳的底片在抗議\",\"我的建議是先買台簡單好上手的，不要一開始就挑太硬的手動機，不然糊掉的只會更多\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"我覺得入門不用太糾結機型，二手的全自動機就很夠了\",\"重點是先多拍幾卷，看看自己喜歡什麼感覺，再決定要不要升級。糊掉的那幾張我反而有點好奇\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -3731,7 +3884,8 @@
               ],
               "readForUser": "她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -3802,7 +3956,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 59,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 60,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 54,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 56,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 66,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 24
           }
         },
         "failedCodes": []
@@ -3824,7 +4021,7 @@
           "content": "我可能會晚十分鐘 要先去拿東西"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"明確答應\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B15\"],\"readForUser\":\"她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"明確答應\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B15\"],\"readForUser\":\"她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"好，那就週六三點，忠孝敦化三號出口\",\"妳到之前跟我說一聲，我在出口附近等\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"沒問題，十分鐘我等得起\",\"你慢慢拿，不用趕\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"十分鐘我記下了，妳到的時候要有拿到好東西的樣子\",\"不然我會有點失望\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"好，那我們三點十分在那邊碰頭\",\"路上小心，不用跑\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"晚十分鐘可以，但是你要先預告，拿的是什麼東西\",\"讓我有點期待\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -4413,7 +4610,8 @@
               ],
               "readForUser": "她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": "說定",
             "specs": [
@@ -4469,7 +4667,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 31,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 22,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 16
           }
         },
         "failedCodes": []
@@ -4635,7 +4876,7 @@
           "content": "我這週末想去"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"含糊答應\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":21,\"perfunctory\":false},{\"turn\":19,\"perfunctory\":false},{\"turn\":17,\"perfunctory\":false},{\"turn\":15,\"perfunctory\":false}],\"matchedEntries\":[\"B13\"],\"readForUser\":\"她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"含糊答應\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":21,\"perfunctory\":false},{\"turn\":19,\"perfunctory\":false},{\"turn\":17,\"perfunctory\":false},{\"turn\":15,\"perfunctory\":false}],\"matchedEntries\":[\"B13\"],\"readForUser\":\"她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"那家在＿＿，我也一直想再去\",\"週六下午我帶妳去，妳負責點喝的\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"那家在＿＿，週末我剛好有空\",\"週六下午一起去吧，我帶路，你負責挑位子\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"在＿＿，這週末去很剛好\",\"去了記得跟我說哪個位子最舒服\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"蛋炒飯專家突然問我咖啡廳，我懷疑你是來套情報的\",\"在＿＿，他們的招牌我上次喝完覺得還不錯\",\"週六我可以帶你去，順便看看專家挑咖啡的品味\"],\"hasInventedDetail\":true}\n{\"card\":5,\"messages\":[\"原來妳記得我上次說的咖啡廳，我有點開心\",\"在＿＿，週六下午我帶妳去，當作請專家開個會\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -5240,7 +5481,8 @@
               ],
               "readForUser": "她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": "具體邀約",
             "specs": [
@@ -5296,7 +5538,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 25,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 63,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 21
           }
         },
         "failedCodes": []
@@ -5314,7 +5599,7 @@
           "content": "不好意思 我有男友了"
         }
       ],
-      "readText": "{\"light\":\"red\",\"herMove\":\"煞車\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":true,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B18\"],\"readForUser\":\"她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"red\",\"herMove\":\"煞車\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":true,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B18\"],\"readForUser\":\"她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\": 1, \"messages\": [\"了解，謝謝妳直接說，那就祝妳聊得開心囉\"], \"hasInventedDetail\": false}",
       "expected": {
         "status": 200,
@@ -5602,7 +5887,8 @@
               ],
               "readForUser": "她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -5633,7 +5919,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 9
           }
         },
         "failedCodes": []
@@ -5655,7 +5952,7 @@
           "content": "你覺得呢"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"問他意見\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B21\"],\"readForUser\":\"她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"問他意見\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B21\"],\"readForUser\":\"她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"薪水高很多的話，我會偏向去試試看，這種機會不常有\",\"不過搬家是大事，妳自己最在意的是錢還是現在的生活圈？\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"薪水高很多還在猶豫，我猜問題根本不是錢，是新竹的風吧\",\"我的立場是：值得去，但妳要先確定自己不是被風吹跑的\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"我覺得可以先看這份工作本身，是不是妳真的想做的事\",\"如果是，搬去新竹就只是換個地方生活，不是壞事\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"如果妳真的去了新竹，我大概會先擔心妳回來吃不到喜歡的東西\",\"不過薪水高很多，這個代價感覺還撐得住，我投去的那票偏向試試看\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"聽起來妳已經想過很多了，我覺得不管選哪個，妳都會有自己的理由\",\"我自己是偏向換，但最後還是要看妳想過什麼樣的生活\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -6244,7 +6541,8 @@
               ],
               "readForUser": "她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -6336,7 +6634,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 50,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 51,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 46,
+                "copiesHim": null
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 58,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 54,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 27
           }
         },
         "failedCodes": []
@@ -6362,7 +6703,7 @@
           "content": "感覺你很常出差"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":true,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":3,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B02\"],\"readForUser\":\"她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":true,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":3,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B02\"],\"readForUser\":\"她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"黏人的貓最危險，被牠盯著根本沒辦法拒絕\",\"我是做＿＿的，出差沒妳想的那麼頻繁，不過妳怎麼會覺得我常出差？\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"我做＿＿的。妳這個猜法很像偵探，我很好奇妳是從哪條線索推出我常出差\",\"先說，我的貓沒有幫我作證\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"我是做＿＿的，出差的話＿＿\",\"妳這樣問，感覺是想先確認我有沒有時間陪貓？\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -6803,7 +7144,8 @@
               ],
               "readForUser": "她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -6851,7 +7193,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 50,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 45,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 24
           }
         },
         "failedCodes": []
@@ -6877,7 +7246,7 @@
           "content": "真的超好吃 你品味不錯欸"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"我先去洗澡 等等聊\"],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B04\"],\"readForUser\":\"她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"我先去洗澡 等等聊\"],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B04\"],\"readForUser\":\"她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"我洗好了，剛好聽到好消息\",\"那家我也覺得讚，妳點了什麼？\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"才發現我品味不錯喔，之前是在懷疑我嗎\",\"算了，這次先記妳一筆\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"對吧，我就說不會雷\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"那妳之後選餐廳可以先問我，我收費很合理\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"妳會特地跑去吃，我很開心\",\"湯頭有喝完嗎？\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -7460,7 +7829,8 @@
               ],
               "readForUser": "她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -7530,7 +7900,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 26,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 28,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 9,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 19,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 33
           }
         },
         "failedCodes": []
@@ -7552,7 +7965,7 @@
           "content": "是那個你之前說喜歡的樂團"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"她自己提見面\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B14\",\"B41\",\"B13\"],\"readForUser\":\"她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"開窗\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"她自己提見面\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B14\",\"B41\",\"B13\"],\"readForUser\":\"她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"當然有興趣，週五我空著，這場我跟你去\",\"你想先在哪碰面？我配合你的時間\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"你居然記得我說過喜歡這團，有被記住的感覺\",\"週五就這麼說定了，你定個集合時間，我準時到\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"哇，這個樂團你還記得，這張票來得太剛好了\",\"我要去，週五演唱會算我一個\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"兩張票剛好給我一張，這個朋友是不是早就幫你物色好人選了\",\"好啦，我收下這個任務，週五一起去\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"你這樣問我，我怎麼可能說沒興趣，根本是送分題\",\"週五我去，現場你負責帶路，我負責跟著大聲唱\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -8143,7 +8556,8 @@
               ],
               "readForUser": "她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": "具體邀約",
             "specs": [
@@ -8201,7 +8615,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 33,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 41,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 33,
+                "copiesHim": null
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 43,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 43,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 32
           }
         },
         "failedCodes": []
@@ -8227,7 +8684,7 @@
           "content": "你最近怎樣"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B02\",\"B08\"],\"readForUser\":\"她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B02\",\"B08\"],\"readForUser\":\"她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"沒事，忙完就好，案子結束應該可以鬆口氣了\",\"我最近＿＿，還算穩。妳這陣子是不是終於能好好睡一覺了\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"終於出關了，我還以為妳被案子綁架了\",\"我這週剛好在補之前欠自己的覺，睡到中午那種。妳結案後打算怎麼犒賞自己\"],\"hasInventedDetail\":true}\n{\"card\":3,\"messages\":[\"不用抱歉啦，趕案子本來就會這樣\",\"結束了真的值得慶祝一下，妳最想先做什麼\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -8669,7 +9126,8 @@
               ],
               "readForUser": "她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -8718,7 +9176,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 46,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 51,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 34,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 27
           }
         },
         "failedCodes": []
@@ -8740,7 +9225,7 @@
           "content": "覺得好累"
         }
       ],
-      "readText": "{\"light\":\"yellow\",\"herMove\":\"情緒\",\"herMoodBad\":true,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B01\"],\"readForUser\":\"她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"yellow\",\"herMove\":\"情緒\",\"herMoodBad\":true,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":false,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[\"B01\"],\"readForUser\":\"她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"當眾被罵已經夠丟臉了，還不是你的錯，這根本是雙重暴擊\",\"換我我也會氣到想把那天從日曆上刪掉\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"不是你的錯還要被當眾罵，這個主管的處理方式我先投不及格一票\",\"你今天撐到下班已經很夠了\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"聽起來你今天不只是累，是被冤枉加被圍觀的那種累\",\"先不用想怎麼處理，今天就當自己是被誤判的那一邊，我站你這邊\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -9181,7 +9666,8 @@
               ],
               "readForUser": "她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -9228,7 +9714,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 43,
+                "copiesHim": null
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 41,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 52,
+                "copiesHim": null
+              }
+            ],
+            "herLastTurnChars": 23
           }
         },
         "failedCodes": []
@@ -9250,7 +9763,7 @@
           "content": "該不會是跑去便利商店然後回來吧 哈哈"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"調侃\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"我週末跑了十公里\"],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[],\"readForUser\":\"她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"調侃\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"我週末跑了十公里\"],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[],\"readForUser\":\"她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"哈哈被妳看穿，中途還進去吹了冷氣\",\"不過十公里是真的，跑完腿軟到下樓梯都在抖\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"便利商店來回？那我至少要買杯冰美式獎勵自己\",\"妳這個質疑我收下了，下次跑步傳定位給妳\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"哈哈妳這樣講我反而想拍張路線給妳看\",\"十公里真的有跑，不是便利商店版的\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"妳這個懷疑很有畫面，我現在腦中都是我抱著關東煮跑回家\",\"這種誠信危機，我得用實力洗清\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"謝謝誇獎，我先收一半，另一半留給妳的便利商店假說\",\"妳平常會跑步嗎？\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -9839,7 +10352,8 @@
               "matchedEntries": [],
               "readForUser": "她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -9908,7 +10422,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 36,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 33,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 32,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 22
           }
         },
         "failedCodes": []
@@ -9942,7 +10499,7 @@
           "content": "下次再看看"
         }
       ],
-      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[\"通常會去爬山或找朋友吃飯\"],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false},{\"turn\":3,\"perfunctory\":false},{\"turn\":5,\"perfunctory\":false}],\"matchedEntries\":[\"B09\"],\"readForUser\":\"她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。\",\"waitFor\":\"等她主動聊起別的話題，或自己提到有空、想去哪，再接球。\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":true,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"婉拒過\",\"hisStatedFacts\":[\"通常會去爬山或找朋友吃飯\"],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false},{\"turn\":3,\"perfunctory\":false},{\"turn\":5,\"perfunctory\":false}],\"matchedEntries\":[\"B09\"],\"readForUser\":\"她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。\",\"waitFor\":\"等她主動聊起別的話題，或自己提到有空、想去哪，再接球。\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\": 1, \"messages\": [\"好，這週先放著，妳忙妳的\", \"義大利麵跑不掉，那家店也不會突然消失\"], \"hasInventedDetail\": false}",
       "expected": {
         "status": 200,
@@ -10245,7 +10802,8 @@
               ],
               "readForUser": "她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。",
               "waitFor": "等她主動聊起別的話題，或自己提到有空、想去哪，再接球。",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -10269,7 +10827,18 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 30,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 11
           }
         },
         "failedCodes": []
@@ -10287,7 +10856,7 @@
           "content": "哈囉"
         }
       ],
-      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":true}],\"matchedEntries\":[\"B23\"],\"readForUser\":\"才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":true}],\"matchedEntries\":[\"B23\"],\"readForUser\":\"才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"哈囉～剛剛打完嗨才發現我好像沒準備下一句\",\"現在在想要先問你哪個問題比較不無聊\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"你這個哈囉回得很乾脆，我喜歡\",\"那我也直接一點，你今天過得還順嗎？\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"兩個字的開場，感覺我們都很懂得省力氣\",\"這種默契我先收下，接下來看誰先撐不住開始閒聊\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -10728,7 +11297,8 @@
               ],
               "readForUser": "才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -10768,7 +11338,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 37,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 31,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 2
           }
         },
         "failedCodes": []
@@ -10794,7 +11391,7 @@
           "content": "嗯 還可以 謝謝"
         }
       ],
-      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B05\"],\"readForUser\":\"她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"low\",\"worthyBallCount\":1,\"herTurnsPerfunctory\":[{\"turn\":2,\"perfunctory\":false}],\"matchedEntries\":[\"B05\"],\"readForUser\":\"她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"還可以就好，那今天可以輕鬆一點了\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"過了就好，今天可以給自己放鬆一下\"],\"hasInventedDetail\":false}\n{\"card\":3,\"messages\":[\"那就好，不用客氣啦\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -11222,7 +11819,8 @@
               ],
               "readForUser": "她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -11262,7 +11860,34 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 16,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 16,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 9,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 6
           }
         },
         "failedCodes": []
@@ -11280,7 +11905,7 @@
           "content": "好，等妳忙完"
         }
       ],
-      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[],\"readForUser\":\"她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。\",\"waitFor\":\"等她開完會，自己回來接著聊今天那件事。\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"yellow\",\"herMove\":\"生活\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":false,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[],\"replyWillingness\":\"medium\",\"worthyBallCount\":0,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false}],\"matchedEntries\":[],\"readForUser\":\"她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。\",\"waitFor\":\"等她開完會，自己回來接著聊今天那件事。\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "",
       "expected": {
         "status": 200,
@@ -11317,10 +11942,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 2,
+                "messagesUsed": 1,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 798,
-                "dailyRemaining": 118,
+                "monthlyRemaining": 799,
+                "dailyRemaining": 119,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -11337,7 +11962,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 2
+                "chargedMessageCount": 1
               }
             },
             "result": {
@@ -11353,10 +11978,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 2,
+                "messagesUsed": 1,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 798,
-                "dailyRemaining": 118,
+                "monthlyRemaining": 799,
+                "dailyRemaining": 119,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -11373,7 +11998,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 2
+                "chargedMessageCount": 1
               }
             }
           }
@@ -11402,10 +12027,10 @@
                 "waitFor": "等她開完會，自己回來接著聊今天那件事。",
                 "plannedCards": []
               },
-              "chargedMessageCount": 2
+              "chargedMessageCount": 1
             },
             "chargeQuota": true,
-            "messageCount": 2
+            "messageCount": 1
           }
         ],
         "markDoneFinal": {
@@ -11421,10 +12046,10 @@
           "cards": [],
           "partial": false,
           "usage": {
-            "messagesUsed": 2,
+            "messagesUsed": 1,
             "estimatedMessages": 2,
-            "monthlyRemaining": 798,
-            "dailyRemaining": 118,
+            "monthlyRemaining": 799,
+            "dailyRemaining": 119,
             "model": "claude-sonnet-5-5",
             "tierUsed": "essential",
             "isTestAccount": false,
@@ -11441,7 +12066,7 @@
             "readModel": "claude-sonnet-5-5",
             "estimatedMessageCount": 2,
             "shouldChargeQuota": true,
-            "chargedMessageCount": 2
+            "chargedMessageCount": 1
           },
           "guideV3Trace": {
             "tags": {
@@ -11471,7 +12096,8 @@
               "matchedEntries": [],
               "readForUser": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
               "waitFor": "等她開完會，自己回來接著聊今天那件事。",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [],
@@ -11509,7 +12135,7 @@
           "content": "我最近有點片荒"
         }
       ],
-      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"第二幕那段我看兩次還是會抖\"],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false},{\"turn\":3,\"perfunctory\":false}],\"matchedEntries\":[\"B02\"],\"readForUser\":\"她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。\",\"waitFor\":\"\",\"selfHarmSignal\":false}",
+      "readText": "{\"light\":\"green\",\"herMove\":\"問他的事\",\"herMoodBad\":false,\"drunkOrLateNight\":false,\"cancelHasAlternative\":false,\"retreating\":false,\"declinedOrBoundary\":false,\"explicitRejection\":false,\"blocked\":false,\"risk\":false,\"needsHisFacts\":true,\"identityQuestion\":false,\"hasHisVoiceSample\":true,\"inviteReadiness\":\"沒機會\",\"hisStatedFacts\":[\"第二幕那段我看兩次還是會抖\"],\"replyWillingness\":\"high\",\"worthyBallCount\":2,\"herTurnsPerfunctory\":[{\"turn\":1,\"perfunctory\":false},{\"turn\":3,\"perfunctory\":false}],\"matchedEntries\":[\"B02\"],\"readForUser\":\"她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。\",\"waitFor\":\"\",\"selfHarmSignal\":false,\"minorSignal\":false}",
       "writeText": "{\"card\":1,\"messages\":[\"哈哈也不是都看這種啦，但恐怖片我會看兩次，第二幕那種抖法還蠻上癮的\",\"片荒的話，妳是怕完就不敢睡的那種，還是想要比較不嚇人的？\"],\"hasInventedDetail\":false}\n{\"card\":2,\"messages\":[\"我平常其實什麼都看，不過驚悚片我會留給週末晚上，關燈看\",\"妳被嚇到還會找片荒救援，膽子比妳說的大喔\"],\"hasInventedDetail\":true}\n{\"card\":3,\"messages\":[\"哈哈對，我偏愛這種會讓人後頸發涼的\",\"妳想繼續被嚇，還是換個口味？我可以照妳的心情挑\"],\"hasInventedDetail\":false}\n{\"card\":4,\"messages\":[\"妳被嚇到還來問我推薦，我是不是該有點責任感\",\"先說好，我推的片妳看完睡不著不能怪我\"],\"hasInventedDetail\":false}\n{\"card\":5,\"messages\":[\"片荒這種狀態我懂，最難的是想看的都看完了\",\"妳比較吃劇情反轉，還是氣氛慢慢壓上來的？選一個，我就從那邊挑給妳\"],\"hasInventedDetail\":false}",
       "expected": {
         "status": 200,
@@ -12104,7 +12730,8 @@
               ],
               "readForUser": "她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。",
               "waitFor": "",
-              "selfHarmSignal": false
+              "selfHarmSignal": false,
+              "minorSignal": false
             },
             "push": null,
             "specs": [
@@ -12175,7 +12802,50 @@
               "read": "claude-sonnet-5-5",
               "write": "claude-sonnet-5-5"
             },
-            "firstCardMs": 0
+            "firstCardMs": 0,
+            "checks": [
+              {
+                "slot": 1,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 61,
+                "copiesHim": false
+              },
+              {
+                "slot": 2,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 47,
+                "copiesHim": null
+              },
+              {
+                "slot": 3,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 40,
+                "copiesHim": false
+              },
+              {
+                "slot": 4,
+                "questions": 0,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 39,
+                "copiesHim": null
+              },
+              {
+                "slot": 5,
+                "questions": 1,
+                "endsWithNiNe": false,
+                "emoji": 0,
+                "chars": 52,
+                "copiesHim": false
+              }
+            ],
+            "herLastTurnChars": 24
           }
         },
         "failedCodes": []
