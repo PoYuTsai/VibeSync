@@ -1,5 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/core/theme/app_icons.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/presentation/sections/guide_v3_result_section.dart';
@@ -123,12 +127,12 @@ void main() {
     expect(find.text('可以這樣回'), findsOneWidget);
     expect(find.text('接住'), findsOneWidget);
     expect(find.text('帶張力'), findsOneWidget);
-    expect(find.text('推進'), findsOneWidget, reason: 'locked 卡只顯示任務標籤');
-    expect(find.text('升級後才看得到這張'), findsOneWidget);
+    expect(find.text('推進'), findsOneWidget, reason: '鎖住的卡只顯示任務標籤');
+    expect(find.text('這輪付費方案還有 1 張：推進'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing,
         reason: 'locked 不算比較少');
 
-    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-3-upgrade')));
+    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-upgrade')));
     expect(calls.upgrades, 1);
 
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
@@ -289,8 +293,132 @@ void main() {
     );
   });
 
-  testWidgets('分析紀錄的鎖住卡：說法不承諾補寫，升級入口照樣有', (tester) async {
-    var upgrades = 0;
+  testWidgets('鎖住的卡（Eric 2026-10-18）：免費 5 張排卡、送到 2 張，後面只有一塊，張數照任務數，一顆按鈕',
+      (tester) async {
+    final read = _read(planned: [
+      {'slot': 1, 'task': 'accept', 'locked': false},
+      {'slot': 2, 'task': 'accept', 'locked': false},
+      {'slot': 3, 'task': 'tension', 'locked': true},
+      {'slot': 4, 'task': 'tension', 'locked': true},
+      {'slot': 5, 'task': 'push', 'locked': true},
+    ]);
+    final calls = await _pump(
+      tester,
+      read: read,
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'accept', ['妳推薦哪道']),
+      ],
+    );
+    final block = find.byKey(const ValueKey('guide-v3-locked-block'));
+    expect(block, findsOneWidget);
+    expect(
+      find.descendant(
+        of: block,
+        matching: find.text(
+          '這輪付費方案還有 ${read.lockedCards.length} 張：帶張力 ×2、推進',
+        ),
+      ),
+      findsOneWidget,
+    );
+    // 每種任務一句用途（帶張力兩張也只寫一次）。
+    for (final task in [GuideV3Task.tension, GuideV3Task.push]) {
+      expect(
+        find.descendant(
+            of: block, matching: find.text(guideV3TaskPurpose(task))),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.descendant(
+        of: block,
+        matching: find.text(guideV3TaskPurpose(GuideV3Task.accept)),
+      ),
+      findsNothing,
+      reason: '看得到的任務不列',
+    );
+    expect(find.text('看方案'), findsOneWidget, reason: '整頁只有一顆');
+    // 區塊在看得到的卡後面。
+    expect(
+      tester.getTopLeft(block).dy,
+      greaterThan(tester
+          .getBottomLeft(find.byKey(const ValueKey('guide-v3-card-2')))
+          .dy),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-upgrade')));
+    expect(calls.upgrades, 1);
+  });
+
+  testWidgets('不出現升級的時機：第一張卡前、串流中、少卡、中斷、出錯、已升級等重新整理都沒有鎖卡區塊', (tester) async {
+    final block = find.byKey(const ValueKey('guide-v3-locked-block'));
+
+    // 串流中、第一張卡還沒到。
+    await _pump(
+      tester,
+      read: _read(),
+      cards: const [],
+      isStreaming: true,
+      isFinal: false,
+    );
+    expect(block, findsNothing);
+    expect(find.text('看方案'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-pending-1')), findsOneWidget);
+
+    // 串流中、第一張已到：鎖住的卡也還不出現。
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+      ],
+      isStreaming: true,
+      isFinal: false,
+    );
+    expect(block, findsNothing);
+    expect(find.text('看方案'), findsNothing);
+
+    // 最終結果比預定少、續看重組。
+    for (final recovered in [false, true]) {
+      await _pump(
+        tester,
+        read: _read(),
+        cards: [
+          _card(1, 'accept', ['那家我也想吃吃看']),
+        ],
+        partial: true,
+        recovered: recovered,
+      );
+      expect(block, findsNothing);
+      expect(find.text('看方案'), findsNothing);
+    }
+
+    // 少卡但沒有標 partial（例如被檢查拿掉）也不出。
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+      ],
+    );
+    expect(block, findsNothing);
+
+    // 中途出錯：不是串流中、也不是最終結果。
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔']),
+      ],
+      isFinal: false,
+    );
+    expect(block, findsNothing);
+    expect(find.text('看方案'), findsNothing);
+  });
+
+  testWidgets('目前已付費（主審 r1 P2-1）：offerUpgrade 關掉就不出鎖卡區塊與升級，卡照樣能複製',
+      (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
@@ -305,16 +433,65 @@ void main() {
             editedMessagesFor: (_) => null,
             onCopy: (_, __, ___) {},
             onEdit: (_) async => null,
-            onUpgrade: () => upgrades++,
-            lockedMessage: guideV3LockedArchivedMessage,
+            onUpgrade: () {},
+            offerUpgrade: false,
           ),
         ),
       ),
     ));
-    expect(find.text('付費方案才有這張'), findsOneWidget);
-    expect(find.text('升級後才看得到這張'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-3-upgrade')));
-    expect(upgrades, 1);
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
+    expect(find.text('看方案'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing,
+        reason: '鎖住的不算比較少');
+  });
+
+  testWidgets('先別回、停、關心：就算排卡裡有鎖住的也不出升級', (tester) async {
+    for (final decision in ['hold', 'stop', 'care']) {
+      await _pump(
+        tester,
+        read: _read(
+          decision: decision,
+          light: 'yellow',
+          careMessage: decision == 'care' ? '先把安全放在第一位。' : null,
+          planned: [
+            {'slot': 1, 'task': 'push', 'locked': true},
+          ],
+        ),
+        cards: const [],
+      );
+      expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing,
+          reason: decision);
+      expect(find.text('看方案'), findsNothing, reason: decision);
+    }
+  });
+
+  testWidgets('已升級、看的還是免費版：只給重新整理，不再叫他看方案', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: GuideV3ResultSection(
+            read: _read(),
+            cards: [
+              _card(1, 'accept', ['那家我也想吃吃看']),
+              _card(2, 'tension', ['妳這樣說我會當真喔']),
+            ],
+            isStreaming: false,
+            isFinal: true,
+            editedMessagesFor: (_) => null,
+            onCopy: (_, __, ___) {},
+            onEdit: (_) async => null,
+            onUpgrade: () {},
+            showUpgradeRefresh: true,
+            onRefreshAfterUpgrade: () {},
+          ),
+        ),
+      ),
+    ));
+    expect(
+        find.byKey(const ValueKey('guide-v3-upgrade-refresh')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
+    expect(find.text('看方案'), findsNothing);
   });
 
   testWidgets('照樣寫＋標示：提醒改成你的，可以直接複製也可以改', (tester) async {
@@ -347,6 +524,8 @@ void main() {
     expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
     expect(find.text('正在寫這張…'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-pending-3')), findsNothing,
+        reason: '鎖住的卡不顯示正在寫');
   });
 
   testWidgets('最終結果比預定少：標示這次比較少；續看重組另有說明', (tester) async {
@@ -390,6 +569,42 @@ void main() {
     expect(find.text('你剛連傳兩則，球在她那邊。'), findsOneWidget);
     expect(find.text('等到這時候再回：等她回你，再看她怎麼接'), findsOneWidget);
     expect(find.text('可以這樣回'), findsNothing);
+  });
+
+  testWidgets('先別回用琥珀色（Eric 2026-10-18）：黃燈不再放在紅框裡；停照舊是紅色', (tester) async {
+    BoxDecoration panel() => tester
+        .widget<Container>(find.byKey(const ValueKey('guide-v3-read')))
+        .decoration! as BoxDecoration;
+    Color iconColor() =>
+        tester.widget<Icon>(find.byIcon(TablerIcons.hand_stop)).color!;
+
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'hold',
+        light: 'yellow',
+        judgment: '你剛連傳兩則，球在她那邊。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect((panel().border! as Border).top.color,
+        AppColors.warning.withValues(alpha: 0.32));
+    expect(iconColor(), AppColors.warning);
+
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'stop',
+        light: 'red',
+        judgment: '她說了不要，這段先停。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect((panel().border! as Border).top.color,
+        AppColors.error.withValues(alpha: 0.32));
+    expect(iconColor(), AppColors.error);
   });
 
   testWidgets('停：判讀，沒有卡', (tester) async {
@@ -695,5 +910,327 @@ void main() {
     // 改成我的（沒有空格）：照舊不自動跳鍵盤。
     await open(const ['我上週也剛去爬了七星山']);
     expect(field(0).widget.focusNode.hasFocus, isFalse);
+  });
+
+  // ── 為什麼（Eric 2026-10-18）：任務標籤、燈號點一下看說明，不花模型費 ──
+  test('每種任務都有一句自己的用途', () {
+    final purposes = {
+      for (final task in GuideV3Task.values) guideV3TaskPurpose(task),
+    };
+    expect(purposes, hasLength(GuideV3Task.values.length));
+    expect(purposes.every((p) => p.trim().isNotEmpty), isTrue);
+  });
+
+  testWidgets('點任務標籤：只展開那張卡的用途句，再點收起', (tester) async {
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔']),
+      ],
+    );
+    final accept = guideV3TaskPurpose(GuideV3Task.accept);
+    final tension = guideV3TaskPurpose(GuideV3Task.tension);
+    expect(find.text(accept), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-task-chip-1')));
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('guide-v3-card-1')),
+        matching: find.text(accept),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(tension), findsNothing, reason: '只展開點的那張');
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-task-chip-1')));
+    await tester.pump();
+    expect(find.text(accept), findsNothing);
+  });
+
+  testWidgets('點燈號：三種燈各一行，最後一行說只看這一輪；再點收起', (tester) async {
+    await _pump(
+      tester,
+      read: _read(light: 'yellow'),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+      ],
+    );
+    final explanation =
+        find.byKey(const ValueKey('guide-v3-light-explanation'));
+    expect(explanation, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-light')));
+    await tester.pump();
+    expect(explanation, findsOneWidget);
+    for (final light in GuideV3Light.values) {
+      expect(
+        find.descendant(
+          of: explanation,
+          matching: find.text('${light.label}：${guideV3LightMeaning(light)}'),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.descendant(
+          of: explanation, matching: find.text(guideV3LightRoundNote)),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-light')));
+    await tester.pump();
+    expect(explanation, findsNothing);
+  });
+
+  testWidgets('先別回也能點燈號看說明；關心沒有燈號就沒有說明', (tester) async {
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'hold',
+        light: 'red',
+        judgment: '你剛連傳兩則，球在她那邊。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    await tester.tap(find.byKey(const ValueKey('guide-v3-light')));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('guide-v3-light-explanation')),
+      findsOneWidget,
+    );
+
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'care',
+        careMessage: '先把安全放在第一位。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect(find.byKey(const ValueKey('guide-v3-light')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('guide-v3-light-explanation')),
+      findsNothing,
+    );
+  });
+
+  // ── 可及性（Eric 2026-10-18，只動 v3 結果的元件，不改全域主題） ──
+  testWidgets('按鈕與可點的標籤都至少 44 高', (tester) async {
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+        {'slot': 2, 'task': 'tension', 'locked': false},
+        {'slot': 3, 'task': 'resonate', 'locked': false},
+        {'slot': 4, 'task': 'push', 'locked': true},
+      ]),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔', '週末給妳機會證明']),
+        _card(3, 'resonate', ['我上週也剛去爬了七星山'], invented: true),
+      ],
+      withRefine: true,
+    );
+    final targets = {
+      'copy': find.byKey(const ValueKey('guide-v3-card-1-copy')),
+      'copy-all': find.byKey(const ValueKey('guide-v3-card-2-copy-all')),
+      'edit': find.byKey(const ValueKey('guide-v3-card-3-edit')),
+      'refine': find.byKey(const ValueKey('guide-v3-card-1-refine')),
+      'locked-upgrade': find.byKey(const ValueKey('guide-v3-locked-upgrade')),
+      'task-chip': find.byKey(const ValueKey('guide-v3-task-chip-1')),
+      'light': find.ancestor(
+        of: find.byKey(const ValueKey('guide-v3-light')),
+        matching: find.byType(InkWell),
+      ),
+    };
+    for (final entry in targets.entries) {
+      expect(entry.value, findsOneWidget, reason: entry.key);
+      expect(tester.getSize(entry.value).height, greaterThanOrEqualTo(44),
+          reason: entry.key);
+    }
+
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的']),
+      ],
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('guide-v3-card-1-fill'))).height,
+      greaterThanOrEqualTo(44),
+    );
+  });
+
+  testWidgets('卡上的文字鈕對卡底至少 4.5:1（原本的主題紫約 3.2:1）', (tester) async {
+    double contrast(Color a, Color b) {
+      final la = a.computeLuminance();
+      final lb = b.computeLuminance();
+      return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+    }
+
+    // 卡底：brandInk@.45 疊在頁面漸層最亮的 brandSurface2 上（估計值；真機另量）。
+    final cardBg = Color.alphaBlend(
+      AppColors.brandInk.withValues(alpha: 0.45),
+      AppColors.brandSurface2,
+    );
+    Color textColor(Finder button, String label) => tester
+        .renderObject<RenderParagraph>(
+          find.descendant(of: button, matching: find.text(label)),
+        )
+        .text
+        .style!
+        .color!;
+
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看'], invented: true),
+        _card(2, 'tension', ['妳這樣說我會當真喔', '週末給妳機會證明']),
+      ],
+    );
+    final buttons = {
+      '改成我的': find.byKey(const ValueKey('guide-v3-card-1-edit')),
+      '看方案': find.byKey(const ValueKey('guide-v3-locked-upgrade')),
+      '複製整組': find.byKey(const ValueKey('guide-v3-card-2-copy-all')),
+    };
+    for (final entry in buttons.entries) {
+      expect(
+        contrast(textColor(entry.value, entry.key), cardBg),
+        greaterThanOrEqualTo(4.5),
+        reason: entry.key,
+      );
+    }
+
+    // 已升級、看的還是免費版：重新整理鈕放在橘色淡底上。
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: GuideV3ResultSection(
+            read: _read(),
+            cards: [
+              _card(1, 'accept', ['那家我也想吃吃看']),
+              _card(2, 'tension', ['妳這樣說我會當真喔']),
+            ],
+            isStreaming: false,
+            isFinal: true,
+            editedMessagesFor: (_) => null,
+            onCopy: (_, __, ___) {},
+            onEdit: (_) async => null,
+            showUpgradeRefresh: true,
+            onRefreshAfterUpgrade: () {},
+          ),
+        ),
+      ),
+    ));
+    final refreshBg = Color.alphaBlend(
+      AppColors.ctaStart.withValues(alpha: 0.1),
+      AppColors.brandSurface2,
+    );
+    final refresh = find.byKey(const ValueKey('guide-v3-upgrade-refresh'));
+    expect(
+      contrast(textColor(refresh, '重新產生完整分析'), refreshBg),
+      greaterThanOrEqualTo(4.5),
+    );
+    expect(
+      tester
+          .getSize(find.descendant(
+            of: refresh,
+            matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+          ))
+          .height,
+      greaterThanOrEqualTo(44),
+    );
+  });
+
+  testWidgets('VoiceOver：複製鈕帶任務、泡泡有點兩下的提示、任務標籤與燈號唸得出來', (tester) async {
+    final handle = tester.ensureSemantics();
+    await _pump(
+      tester,
+      read: _read(),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔', '週末給妳機會證明']),
+      ],
+    );
+
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('guide-v3-card-1-copy'))),
+      isSemantics(
+        label: '複製這句（接住）',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('guide-v3-card-2-copy'))),
+      isSemantics(label: '複製第 1 則（帶張力）', isButton: true),
+    );
+    expect(
+      tester.getSemantics(
+          find.byKey(const ValueKey('guide-v3-card-1-message-0'))),
+      isSemantics(
+        label: '那家我也想吃吃看',
+        hint: '點兩下複製這句',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(
+          find.byKey(const ValueKey('guide-v3-card-2-message-1'))),
+      isSemantics(
+        label: '週末給妳機會證明',
+        hint: '點兩下只複製這一則',
+        isButton: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('guide-v3-task-chip-1'))),
+      isSemantics(
+        label: '任務：接住',
+        hint: '點兩下看這張卡在做什麼',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('guide-v3-light'))),
+      isSemantics(
+        label: '燈號：綠燈',
+        hint: '點兩下看燈號的意思',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+
+    // 有空格的卡：點泡泡會先開填空。
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的']),
+      ],
+    );
+    expect(
+      tester.getSemantics(
+          find.byKey(const ValueKey('guide-v3-card-1-message-0'))),
+      isSemantics(hint: '點兩下先填空格', isButton: true),
+    );
+    expect(
+      tester.getSemantics(find.byKey(const ValueKey('guide-v3-card-1-fill'))),
+      isSemantics(label: '填好空格再複製（接住）', isButton: true),
+    );
+    handle.dispose();
   });
 }

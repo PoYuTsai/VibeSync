@@ -25,12 +25,16 @@ import '../../../../shared/widgets/pressable_scale.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
+import '../paywall_entry.dart';
 import '../subscription_diagnostics_gate.dart';
 import '../../../../core/services/app_haptics.dart';
 import 'purchase_error_message.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
-  const PaywallScreen({super.key});
+  const PaywallScreen({super.key, this.entry = PaywallEntry.general});
+
+  /// 從哪裡打開：只換最上面的大標（Eric 2026-10-18）。
+  final PaywallEntry entry;
 
   @override
   ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
@@ -281,7 +285,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               children: [
                 Text(
                   // 定位句（2026-08-18 拍板）：付費理由從「回覆」升到結果。
-                  '完整教練帶路\n把她約出來更有把握',
+                  // 從鎖住的卡、額度不夠打開時換成那個入口的說法；額度的說法照
+                  // 目前方案（Essential 不承諾升級，主審 r1 P2-3）。
+                  widget.entry.headlineFor(subscription.tier),
                   style: AppTypography.headlineLarge.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     height: 1.12,

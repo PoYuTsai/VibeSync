@@ -17,6 +17,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart'
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_quota_hints.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/guide_v3_task_card.dart';
@@ -41,6 +42,8 @@ import 'package:vibesync/features/conversation/domain/entities/conversation.dart
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
+import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/shared/widgets/image_picker_widget.dart';
 import 'package:vibesync/shared/widgets/scroll_card_ticks.dart';
 
@@ -55,6 +58,9 @@ class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 
   @override
   StreamingAnalysisState build(String conversationId) => seed;
+
+  /// 模擬分析途中狀態改變（走畫面的即時 listener，不是回頁 hydrate）。
+  void emit(StreamingAnalysisState next) => state = next;
 }
 
 /// 已付費（Essential）的訂閱狀態；任何同步都維持原樣。
@@ -258,6 +264,8 @@ Future<void> _pumpScreen(
   // 非空時改用 GoRouter 掛 AnalysisScreen 於 '/'，讓導航目的地可被攔截。
   List<RouteBase> extraRoutes = const [],
   List<Override> extraOverrides = const [],
+  // 拿到畫面用的 notifier（要模擬分析途中狀態改變時）。
+  void Function(_SeededStreamingAnalyzeNotifier notifier)? onNotifier,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -281,8 +289,11 @@ Future<void> _pumpScreen(
             .overrideWithValue(_EmptyCoachChatRepository()),
         coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
             .overrideWithValue(const []),
-        streamingAnalyzeProvider
-            .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
+        streamingAnalyzeProvider.overrideWith(() {
+          final notifier = _SeededStreamingAnalyzeNotifier(seed);
+          onNotifier?.call(notifier);
+          return notifier;
+        }),
         ...extraOverrides,
       ],
       child: extraRoutes.isEmpty
@@ -923,12 +934,13 @@ void main() {
       expect(find.text('綠燈'), findsOneWidget);
       expect(find.text('接住'), findsOneWidget);
       expect(find.text('推進'), findsOneWidget);
-      expect(find.text('升級後才看得到這張'), findsOneWidget);
+      expect(find.text('這輪付費方案還有 1 張：帶張力'), findsOneWidget);
       expect(find.byKey(const ValueKey('analysis-reply-zone')), findsNothing);
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
       expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
-      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+      // 有卡時問教練只留底部一個次要入口（Eric 2026-10-18，見下面的主次測試）。
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
 
       await tester.ensureVisible(
         find.byKey(const ValueKey('guide-v3-card-1-copy')),
@@ -1079,6 +1091,12 @@ void main() {
       expect(find.byType(StreamingAnalysisLoader), findsNothing);
       expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
       expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+      // 還在寫：鎖住的卡與升級都還不出現（Eric 2026-10-18）。
+      expect(
+        find.byKey(const ValueKey('guide-v3-locked-block')),
+        findsNothing,
+      );
+      expect(find.text('看方案'), findsNothing);
 
       await tester.ensureVisible(
         find.byKey(const ValueKey('guide-v3-card-1-copy')),
@@ -1290,6 +1308,261 @@ void main() {
         find.byKey(const ValueKey('guide-v3-hold-coach-link')),
         findsNothing,
       );
+    });
+
+    // ── 結果頁主次（Eric 2026-10-18）：有卡時主角是複製卡片 ──
+    testWidgets('有卡：問教練只出現一次，是底部的次要文字鈕，點了照樣直達問教練', (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult()),
+        extraRoutes: [
+          GoRoute(
+            path: '/coach',
+            builder: (_, state) {
+              snapshot = state.extra as CoachChatAnalysisSnapshot?;
+              return const Text('coach-route');
+            },
+          ),
+        ],
+      );
+      await dismissEditCoachMark(tester);
+
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
+      expect(find.text('問教練：我現在該怎麼做？'), findsNothing);
+      final coach = find.byKey(const ValueKey('analysis-continuation-coach'));
+      expect(coach, findsOneWidget);
+      expect(tester.widget(coach), isA<TextButton>());
+      expect(find.widgetWithText(TextButton, '問教練'), findsOneWidget);
+      expect(find.text('分析新片段'), findsOneWidget);
+      // 跟分析新片段排成一列；兩顆都至少 44 高。
+      final newFragment = find.widgetWithText(OutlinedButton, '分析新片段');
+      expect(tester.getCenter(coach).dy, tester.getCenter(newFragment).dy);
+      expect(tester.getSize(coach).height, greaterThanOrEqualTo(44));
+      expect(tester.getSize(newFragment).height, greaterThanOrEqualTo(44));
+
+      await tester.tap(coach);
+      await tester.pumpAndSettle();
+      expect(find.text('coach-route'), findsOneWidget);
+      expect(snapshot!.summary, '她有在接你的話，可以往前一步。');
+    });
+
+    testWidgets(
+        '鎖住的卡（Eric 2026-10-18）：免費 5 張排卡、送到 2 張，只有一塊、一顆「看方案」，點了打開付費頁的鎖卡大標',
+        (tester) async {
+      final free = GuideV3Result.fromJson({
+        'guideVersion': 'v3.5',
+        'read': {
+          ...readJson(),
+          'plannedCards': [
+            {'slot': 1, 'task': 'accept', 'locked': false},
+            {'slot': 2, 'task': 'push', 'locked': false},
+            {'slot': 3, 'task': 'tension', 'locked': true},
+            {'slot': 4, 'task': 'tension', 'locked': true},
+            {'slot': 5, 'task': 'push', 'locked': true},
+          ],
+        },
+        'cards': [
+          cardJson(1, 'accept', '那家我也想吃吃看'),
+          cardJson(2, 'push', '週六下午一起去？我來找位子'),
+        ],
+        'partial': false,
+        'usage': {
+          'messagesUsed': 1,
+          'monthlyRemaining': 29,
+          'dailyRemaining': 4,
+          'tierUsed': 'free',
+        },
+      })!;
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(free),
+        extraRoutes: [
+          GoRoute(
+            path: '/paywall',
+            // 跟 lib/app/routes.dart 一樣從 extra 取入口。
+            builder: (_, state) => PaywallScreen(
+              entry: PaywallEntry.fromRouteExtra(state.extra),
+            ),
+          ),
+        ],
+        extraOverrides: [
+          subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+        ],
+      );
+      await dismissEditCoachMark(tester);
+      expect(
+        find.byKey(const ValueKey('guide-v3-locked-block')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          '這輪付費方案還有 ${free.read.lockedCards.length} 張：帶張力 ×2、推進',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('看方案'), findsOneWidget);
+      final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
+      await tester.ensureVisible(upgrade);
+      await tester.tap(upgrade);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          PaywallEntry.lockedCards.headlineFor(SubscriptionTierHelper.free),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
+    });
+
+    testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(noSendResult('hold')));
+      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+      expect(find.text('問教練：我現在該怎麼做？'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-continuation-coach')),
+        findsNothing,
+      );
+
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(cards: const [])),
+      );
+      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+      expect(find.text('問教練：我現在該怎麼做？'), findsOneWidget);
+    });
+  });
+
+  // 額度提示與付費頁入口（Eric 2026-10-18）：數字照常數算，額度用完的入口用額度大標。
+  group('額度用完', () {
+    StreamingAnalysisState quotaFailed() => const StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+          recommendationPreviewErrorCode: 'DAILY_LIMIT_EXCEEDED',
+          recommendationPreviewErrorMessage: '今日額度已用完',
+          quotaExceeded: QuotaExceededInfo(
+            isMonthly: false,
+            remaining: 3,
+            quotaNeeded: 10,
+          ),
+        );
+    List<RouteBase> paywallRoute() => [
+          GoRoute(
+            path: '/paywall',
+            // 跟 lib/app/routes.dart 一樣從 extra 取入口。
+            builder: (_, state) => PaywallScreen(
+              entry: PaywallEntry.fromRouteExtra(state.extra),
+            ),
+          ),
+        ];
+    final paywallOverrides = <Override>[
+      subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+    ];
+
+    testWidgets('免費用戶的升級卡多一行 Starter 的量；點查看方案開付費頁的額度大標', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: quotaFailed(),
+        extraRoutes: paywallRoute(),
+        extraOverrides: paywallOverrides,
+      );
+      expect(find.byType(QuotaExceededUpgradeCard), findsOneWidget);
+      expect(find.text(starterCapacityLine()), findsOneWidget);
+
+      // 片段還能改：先關掉「長按訊息泡泡」的提示才點得到。
+      final gotIt = find.text('知道了');
+      if (gotIt.evaluate().isNotEmpty) {
+        await tester.tap(gotIt);
+        await tester.pump();
+      }
+      final viewPlans = find.text('查看方案');
+      await tester.ensureVisible(viewPlans);
+      await tester.tap(viewPlans);
+      await tester.pumpAndSettle();
+      // 剩 3 則、需要 10 則：是「不夠」不是「用完」；免費用戶升級後每天能用更多。
+      expect(
+        find.text(
+          PaywallEntry.dailyQuotaShort.headlineFor(SubscriptionTierHelper.free),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('已經是付費方案：升級卡不寫 Starter 的量', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: quotaFailed(),
+        extraOverrides: [
+          subscriptionProvider.overrideWith(
+            (ref) => _PremiumSubscriptionNotifier(),
+          ),
+        ],
+      );
+      expect(find.byType(QuotaExceededUpgradeCard), findsOneWidget);
+      expect(find.text(starterCapacityLine()), findsNothing);
+    });
+
+    testWidgets('分析途中撞到額度（429）：自動打開付費頁，大標是額度用完那一句', (tester) async {
+      late _SeededStreamingAnalyzeNotifier notifier;
+      await _pumpScreen(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        onNotifier: (created) => notifier = created,
+        extraRoutes: paywallRoute(),
+        extraOverrides: paywallOverrides,
+      );
+      final gotIt = find.text('知道了');
+      if (gotIt.evaluate().isNotEmpty) {
+        await tester.tap(gotIt);
+        await tester.pump();
+      }
+
+      notifier.emit(quotaFailed());
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          PaywallEntry.dailyQuotaShort.headlineFor(SubscriptionTierHelper.free),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Essential 今天用完（主審 r1 P2-3）：付費頁不承諾升級，只說每天早上 8 點恢復',
+        (tester) async {
+      late _SeededStreamingAnalyzeNotifier notifier;
+      await _pumpScreen(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        onNotifier: (created) => notifier = created,
+        extraRoutes: paywallRoute(),
+        extraOverrides: [
+          ...paywallOverrides,
+          subscriptionProvider.overrideWith(
+            (ref) => _PremiumSubscriptionNotifier(),
+          ),
+        ],
+      );
+      final gotIt = find.text('知道了');
+      if (gotIt.evaluate().isNotEmpty) {
+        await tester.tap(gotIt);
+        await tester.pump();
+      }
+
+      notifier.emit(const StreamingAnalysisState(
+        phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+        recommendationPreviewErrorCode: 'DAILY_LIMIT_EXCEEDED',
+        recommendationPreviewErrorMessage: '今日額度已用完',
+        quotaExceeded: QuotaExceededInfo(
+          isMonthly: false,
+          remaining: 0,
+          quotaNeeded: 10,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final headline = PaywallEntry.dailyQuotaUsedUp.headlineFor(
+        SubscriptionTierHelper.essential,
+      );
+      expect(find.text(headline), findsOneWidget);
+      expect(headline, isNot(contains('升級')));
     });
   });
 

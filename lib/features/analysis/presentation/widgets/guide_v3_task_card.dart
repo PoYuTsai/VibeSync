@@ -23,12 +23,6 @@ import '../../domain/entities/guide_v3_result.dart';
 /// 照樣寫＋標示的提醒（設計文件第 5 節的字）。
 const guideV3InventedNotice = '有編的細節，請改成你的';
 
-/// 結果頁的鎖住卡：升級後會自動重新整理，看得到這張。
-const guideV3LockedLiveMessage = '升級後才看得到這張';
-
-/// 分析紀錄的鎖住卡：紀錄是當時的快照，升級不會補寫這一筆。
-const guideV3LockedArchivedMessage = '付費方案才有這張';
-
 /// 卡上顯示的是「再調一下」選定的版本。
 const guideV3RefinedLabel = '已再調過';
 
@@ -45,26 +39,82 @@ Color guideV3TaskColor(GuideV3Task task) => switch (task) {
       GuideV3Task.close => AppColors.onBackgroundSecondary,
     };
 
+/// 任務標籤點開的一句用途（Eric 2026-10-18：開場救星、新話題都有推薦理由，v3 補上
+/// 「這張卡在做什麼」；固定說明、不花模型費）。鎖住的卡也用同一句。
+String guideV3TaskPurpose(GuideV3Task task) => switch (task) {
+      GuideV3Task.accept => '先接她剛說的話，讓她知道你有在聽。',
+      GuideV3Task.resonate => '站在她的感受這邊，讓她覺得你懂她。',
+      GuideV3Task.tension => '用輕鬆的玩笑逗她一下，讓聊天多點火花。',
+      GuideV3Task.push => '往見面靠近一步，例如提個想一起做的事，或約好時間。',
+      GuideV3Task.close => '讓這輪自然收個尾，不用硬聊下去。',
+    };
+
 class GuideV3TaskChip extends StatelessWidget {
-  const GuideV3TaskChip({super.key, required this.task});
+  const GuideV3TaskChip({
+    super.key,
+    required this.task,
+    this.onTap,
+    this.expanded = false,
+  });
 
   final GuideV3Task task;
+
+  /// 點了展開用途句（Eric 2026-10-18）；null＝只是標籤（正在寫、鎖住的卡）。
+  final VoidCallback? onTap;
+
+  /// 用途句開著（VoiceOver 念「已展開」）。
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     final color = guideV3TaskColor(task);
-    return Container(
+    final onTap = this.onTap;
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
-      child: Text(
-        task.label,
-        style: AppTypography.labelMedium.copyWith(
-          color: color,
-          fontWeight: FontWeight.w700,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            task.label,
+            style: AppTypography.labelMedium.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          // 小 i 告訴他這個標籤點得開。
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(TablerIcons.info_circle, size: 14, color: color),
+          ],
+        ],
+      ),
+    );
+    if (onTap == null) {
+      return Semantics(
+        label: '任務：${task.label}',
+        child: ExcludeSemantics(child: chip),
+      );
+    }
+    // 標籤本身很小，點擊區撐到 44 高（iOS 建議的最小點擊區）。
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      label: '任務：${task.label}',
+      hint: expanded ? '點兩下收起說明' : '點兩下看這張卡在做什麼',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.centerLeft,
+          child: chip,
         ),
       ),
     );
@@ -150,6 +200,9 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
   /// [_next] 算的是哪一份字；卡上的字換了（改過、再調過）就從第 1 則重新開始。
   List<String>? _progressOf;
 
+  /// 任務標籤點開的用途句（Eric 2026-10-18）。
+  bool _purposeOpen = false;
+
   List<String> get _messages =>
       widget.editedMessages ?? widget.refinedMessages ?? widget.card.messages;
 
@@ -208,20 +261,28 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
     final needsFill = _needsFill;
     final multi = messages.length > 1;
     final next = _next < messages.length ? _next : 0;
+    final copyLabel = multi ? '複製第 ${next + 1} 則' : '複製這句';
     final textStyle = AppTypography.bodyLarge.copyWith(
       color: AppColors.onBackgroundPrimary,
       height: 1.45,
     );
     return Container(
       key: ValueKey('guide-v3-card-${card.slot}'),
-      padding: const EdgeInsets.all(14),
+      // 標籤的點擊區是 44 高：上緣少留 10、標籤下面不再另外空一行，標籤和泡泡
+      // 的位置跟以前一樣。
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              GuideV3TaskChip(task: card.task),
+              GuideV3TaskChip(
+                key: ValueKey('guide-v3-task-chip-${card.slot}'),
+                task: card.task,
+                expanded: _purposeOpen,
+                onTap: () => setState(() => _purposeOpen = !_purposeOpen),
+              ),
               const Spacer(),
               if (edited || refined)
                 Text(
@@ -232,34 +293,57 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          if (_purposeOpen)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                guideV3TaskPurpose(card.task),
+                key: ValueKey('guide-v3-card-${card.slot}-purpose'),
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
           for (var i = 0; i < messages.length; i++) ...[
             if (i > 0) const SizedBox(height: 8),
-            InkWell(
-              key: ValueKey('guide-v3-card-${card.slot}-message-$i'),
-              borderRadius: BorderRadius.circular(18),
-              onTap: onCopy == null
+            // VoiceOver：點泡泡會複製（有空格先填），要唸得出來（Eric 2026-10-18）。
+            Semantics(
+              container: true,
+              button: onCopy != null,
+              hint: onCopy == null
                   ? null
-                  : () {
-                      // 整張卡有空格就先填：一張卡的幾則是一起傳的，不能先
-                      // 拿走沒空格的那幾則（主審第 1 輪 P2-2）。
-                      if (needsFill) {
-                        unawaited(_editThenCopy());
-                        return;
-                      }
-                      _copyAt(messages, i);
-                    },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                  : needsFill
+                      ? '點兩下先填空格'
+                      : multi
+                          ? '點兩下只複製這一則'
+                          : '點兩下複製這句',
+              child: InkWell(
+                key: ValueKey('guide-v3-card-${card.slot}-message-$i'),
+                borderRadius: BorderRadius.circular(18),
+                onTap: onCopy == null
+                    ? null
+                    : () {
+                        // 整張卡有空格就先填：一張卡的幾則是一起傳的，不能先
+                        // 拿走沒空格的那幾則（主審第 1 輪 P2-2）。
+                        if (needsFill) {
+                          unawaited(_editThenCopy());
+                          return;
+                        }
+                        _copyAt(messages, i);
+                      },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: _blankAwareText(messages[i], textStyle),
                 ),
-                decoration: BoxDecoration(
-                  color: AppColors.surface.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: _blankAwareText(messages[i], textStyle),
               ),
             ),
           ],
@@ -286,6 +370,11 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                   TextButton(
                     key: ValueKey('guide-v3-card-${card.slot}-edit'),
                     onPressed: () => unawaited(_editThenCopy()),
+                    // 主題紫在深色卡上只有約 3.2:1，換淺紫（約 6:1）；點擊區 44。
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primaryLight,
+                      minimumSize: const Size(44, 44),
+                    ),
                     child: const Text('改成我的'),
                   ),
               ],
@@ -293,9 +382,11 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
           ],
           if (onCopy != null) ...[
             const SizedBox(height: 10),
+            // 44：iOS 建議的最小點擊高度（原本 38）。VoiceOver 唸按鈕時帶上任務，
+            // 一頁好幾顆「複製這句」才分得出是哪張卡。
             SizedBox(
               width: double.infinity,
-              height: 38,
+              height: 44,
               child: needsFill
                   ? FilledButton.icon(
                       key: ValueKey('guide-v3-card-${card.slot}-fill'),
@@ -307,7 +398,10 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                         foregroundColor: AppColors.brandInk,
                       ),
                       icon: const Icon(TablerIcons.pencil, size: 16),
-                      label: const Text('填好空格再複製'),
+                      label: Text(
+                        '填好空格再複製',
+                        semanticsLabel: '填好空格再複製（${card.task.label}）',
+                      ),
                     )
                   : OutlinedButton.icon(
                       key: ValueKey('guide-v3-card-${card.slot}-copy'),
@@ -319,7 +413,10 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                       ),
                       onPressed: () => _copyAt(messages, multi ? next : 0),
                       icon: const Icon(TablerIcons.copy, size: 16),
-                      label: Text(multi ? '複製第 ${next + 1} 則' : '複製這句'),
+                      label: Text(
+                        copyLabel,
+                        semanticsLabel: '$copyLabel（${card.task.label}）',
+                      ),
                     ),
             ),
             // 兩則以上：提醒分開傳；整組複製放次要（貼到 LINE 會變成同一則）。
@@ -341,7 +438,7 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                       TextButton(
                         key: ValueKey('guide-v3-card-${card.slot}-copy-all'),
                         style: TextButton.styleFrom(
-                          minimumSize: const Size(0, 34),
+                          minimumSize: const Size(44, 44),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           foregroundColor: AppColors.onBackgroundSecondary,
@@ -362,7 +459,7 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
               padding: const EdgeInsets.only(top: 6),
               child: SizedBox(
                 width: double.infinity,
-                height: 34,
+                height: 44,
                 child: TextButton.icon(
                   key: ValueKey('guide-v3-card-${card.slot}-refine'),
                   onPressed: () => unawaited(_refineThenCopy()),
@@ -378,54 +475,107 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
   }
 }
 
-/// 免費方案看不到的卡：只給任務標籤與升級入口（伺服器本來就沒寫這張）。
-class GuideV3LockedCard extends StatelessWidget {
-  const GuideV3LockedCard({
-    super.key,
-    required this.planned,
-    this.onUpgrade,
-    this.message = guideV3LockedLiveMessage,
-  });
+/// 「這輪付費方案還有 3 張：帶張力 ×2、推進」：任務照第一次出現的順序，同一種
+/// 兩張以上寫 ×N。
+String guideV3LockedSummary(List<GuideV3PlannedCard> locked) {
+  final counts = <GuideV3Task, int>{};
+  for (final card in locked) {
+    counts[card.task] = (counts[card.task] ?? 0) + 1;
+  }
+  final parts = [
+    for (final entry in counts.entries)
+      entry.value > 1 ? '${entry.key.label} ×${entry.value}' : entry.key.label,
+  ];
+  return '這輪付費方案還有 ${locked.length} 張：${parts.join('、')}';
+}
 
-  final GuideV3PlannedCard planned;
+/// 免費方案看不到的卡合成一塊（Eric 2026-10-18：5 張排卡時原本會疊出 3 顆一樣的
+/// 「看方案」）：一行說付費方案這輪還有幾張、各是什麼任務，每種任務一句用途，只放
+/// 一顆按鈕。伺服器本來就沒寫這幾張，這裡只有排卡的任務標籤；說法不承諾升級後看到
+/// 同樣的卡，所以結果頁和分析紀錄共用。什麼時候出現由 [GuideV3ResultSection] 決定。
+class GuideV3LockedBlock extends StatelessWidget {
+  const GuideV3LockedBlock({super.key, required this.locked, this.onUpgrade});
+
+  /// 鎖住的排卡（照順序）。
+  final List<GuideV3PlannedCard> locked;
   final VoidCallback? onUpgrade;
-
-  /// 結果頁：升級後會重新整理，看得到這張；分析紀錄是當時的快照，升級也
-  /// 不會補寫，所以紀錄頁用不承諾解鎖的說法。
-  final String message;
 
   @override
   Widget build(BuildContext context) {
+    final tasks = <GuideV3Task>{for (final card in locked) card.task};
+    final onUpgrade = this.onUpgrade;
     return Container(
-      key: ValueKey('guide-v3-locked-${planned.slot}'),
-      padding: const EdgeInsets.all(14),
+      key: const ValueKey('guide-v3-locked-block'),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
       decoration: _cardDecoration(
         border: AppColors.ctaStart.withValues(alpha: 0.30),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          GuideV3TaskChip(task: planned.task),
-          const SizedBox(width: 10),
-          const Icon(
-            TablerIcons.lock,
-            size: 16,
-            color: AppColors.onBackgroundSecondary,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTypography.bodySmall.copyWith(
-                color: AppColors.onBackgroundSecondary,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(
+                  TablerIcons.lock,
+                  size: 16,
+                  color: AppColors.onBackgroundSecondary,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  guideV3LockedSummary(locked),
+                  style: AppTypography.titleSmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-          if (onUpgrade != null)
-            TextButton(
-              key: ValueKey('guide-v3-locked-${planned.slot}-upgrade'),
-              onPressed: onUpgrade,
-              child: const Text('看方案'),
+          const SizedBox(height: 12),
+          for (final task in tasks) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GuideV3TaskChip(task: task),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      guideV3TaskPurpose(task),
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+          ],
+          if (onUpgrade != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const ValueKey('guide-v3-locked-upgrade'),
+                onPressed: onUpgrade,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.ctaStart,
+                  minimumSize: const Size(44, 44),
+                ),
+                iconAlignment: IconAlignment.end,
+                icon: const Icon(TablerIcons.chevron_right, size: 16),
+                label: const Text('看方案'),
+              ),
+            )
+          else
+            const SizedBox(height: 10),
         ],
       ),
     );

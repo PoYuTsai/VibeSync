@@ -1740,6 +1740,56 @@ void main() {
       );
     }
 
+    // 額度提示（Eric 2026-10-18；主審 r1 P2-2）：用完這次之後剩的不到兩次一般長度
+    // 分析（每次最多扣 MessageCalculator.softCapUnits 則），那一行下面再寫一句，只說
+    // 保證做得到的。這裡的片段只扣 1 則，正好說明短的片段扣得少。
+    Future<void> pumpWithLeftAfter(WidgetTester tester, int leftAfter) async {
+      final limits =
+          SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+      // 「今天加班好累喔」7 字 → 1 則。
+      await pumpOrbScreen(
+        tester,
+        subscription: SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          dailyMessagesUsed: limits.daily - 1 - leftAfter,
+        ),
+      );
+      expect(find.text('這次會用 1 則，剩 $leftAfter 則'), findsOneWidget);
+    }
+
+    testWidgets('額度提示：用完這次後還夠兩次完整分析，不寫', (tester) async {
+      await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits * 2);
+      expect(
+        find.byKey(FloatingAnalysisActionButton.captionHintKey),
+        findsNothing,
+      );
+    });
+
+    testWidgets('額度提示：用完這次後夠一次一般長度，寫至少還能分析 1 次', (tester) async {
+      await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits * 2 - 1);
+      expect(
+        find.text(
+          '至少還能分析 1 次（${MessageCalculator.softCapBandMaxChars} 字以內）',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('額度提示：用完這次後不到一次一般長度，短的片段還能分析', (tester) async {
+      await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits - 1);
+      expect(find.text('短的片段還能分析，長一點的可能不夠'), findsOneWidget);
+    });
+
+    testWidgets('額度提示：用完這次後剩 0，那一行已經寫了，不另外寫', (tester) async {
+      await pumpWithLeftAfter(tester, 0);
+      expect(
+        find.byKey(FloatingAnalysisActionButton.captionHintKey),
+        findsNothing,
+      );
+    });
+
     testWidgets(
       '一般長度的上限：剛好 2000 字照樣一行就開始，不跳框',
       (tester) async {

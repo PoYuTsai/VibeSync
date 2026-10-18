@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -12,6 +13,8 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/dimension_radar_chart.dart';
 import '../../../../shared/widgets/scroll_card_ticks.dart';
 import '../../../../shared/widgets/game_stage_indicator.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../sections/analysis_banners_section.dart';
 import '../../domain/entities/analysis_record.dart';
@@ -270,17 +273,17 @@ class _AnalysisRecordDetailScreenState
 
 /// v3 紀錄的判讀與任務卡（唯讀；複製不記成效，跟 v2 紀錄一樣）。空格一樣要
 /// 填好才能複製。
-class _SavedGuideV3Card extends StatefulWidget {
+class _SavedGuideV3Card extends ConsumerStatefulWidget {
   const _SavedGuideV3Card({required this.result, required this.onCopy});
 
   final GuideV3Result result;
   final Future<void> Function(String content, {String message}) onCopy;
 
   @override
-  State<_SavedGuideV3Card> createState() => _SavedGuideV3CardState();
+  ConsumerState<_SavedGuideV3Card> createState() => _SavedGuideV3CardState();
 }
 
-class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
+class _SavedGuideV3CardState extends ConsumerState<_SavedGuideV3Card> {
   final _edited = <int, List<String>>{};
 
   /// 存好回傳每一則；複製哪一則由卡片決定（兩則以上從第 1 則開始）。
@@ -298,6 +301,11 @@ class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
   @override
   Widget build(BuildContext context) {
     final result = widget.result;
+    // 照「現在」的方案決定推不推升級（主審 r1 P2-1）：免費時存的紀錄，升級後回看
+    // （或在這頁買完回來）就不再出鎖卡區塊；紀錄快照不動。
+    final isPaid = ref.watch(
+      subscriptionProvider.select((subscription) => subscription.isPremium),
+    );
     return GuideV3ResultSection(
       read: result.read,
       cards: result.cards,
@@ -309,8 +317,10 @@ class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
       onCopy: (card, text, toast) => widget.onCopy(text, message: toast),
       onEdit: (card) => _edit(card),
       // 紀錄是當時的快照，升級不會補寫這一筆；入口照樣給（主審第 1 輪 P2-3）。
-      lockedMessage: guideV3LockedArchivedMessage,
-      onUpgrade: () => context.push('/paywall'),
+      // 鎖卡區塊的說法不承諾補寫，跟結果頁共用；付費頁用鎖卡的大標（Eric 2026-10-18）。
+      onUpgrade: () =>
+          context.push('/paywall', extra: PaywallEntry.lockedCards),
+      offerUpgrade: !isPaid,
     );
   }
 }

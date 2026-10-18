@@ -12,6 +12,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/app_haptics.dart';
+import '../helpers/analysis_quota_hints.dart';
 
 const List<String> kStreamingAnalysisLoadingPhrases = <String>[
   '正在讀取對話脈絡…',
@@ -127,12 +128,17 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
   final int? quotaNeeded;
   final VoidCallback? onViewPlans;
 
+  /// 免費用戶多寫一行 Starter 的量（每天幾則、大約幾次完整分析；Eric 2026-10-18），
+  /// 讓「升級」換算成看得懂的次數。已經是付費方案就不寫。
+  final bool showStarterCapacity;
+
   const QuotaExceededUpgradeCard({
     super.key,
     required this.isMonthly,
     this.remaining,
     this.quotaNeeded,
     this.onViewPlans,
+    this.showStarterCapacity = false,
   });
 
   String get _headline {
@@ -209,6 +215,20 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
               ),
             ],
           ),
+          if (showStarterCapacity) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 46),
+              child: Text(
+                starterCapacityLine(),
+                key: const ValueKey('quota-exceeded-starter-capacity'),
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             onPressed: AppHaptics.onPress(onViewPlans),

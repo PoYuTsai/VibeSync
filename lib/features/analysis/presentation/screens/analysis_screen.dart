@@ -82,6 +82,7 @@ import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_feedback_payload.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
+import '../helpers/analysis_quota_hints.dart';
 import '../sections/analysis_banners_section.dart';
 import '../sections/analysis_error_card.dart';
 import '../sections/analysis_followup_section.dart';
@@ -105,6 +106,7 @@ import '../../../opener/presentation/screens/opening_rescue_screen.dart'
     show OpeningRescueScreen;
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
@@ -232,6 +234,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 有完成的分析（v2 有熱度；v3 有最終結果）。
   bool get _hasAnalysisResult => _enthusiasmScore != null || _v3Result != null;
 
+  /// v3 最終結果有卡（Eric 2026-10-18）：主角是複製卡片，問教練只留底部一個次要
+  /// 入口；先別回、停、一張都沒送到時照舊醒目。
+  bool get _v3ShowsCards => _v3Result?.cards.isNotEmpty ?? false;
+
   // 反饋相關
   bool _feedbackSubmitted = false;
   bool _showFeedbackForm = false;
@@ -351,13 +357,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// paywall 入口，快速連點不得 push 多個 paywall route。
   bool _isPaywallInFlight = false;
 
-  Future<void> _showPaywall(BuildContext context) async {
+  /// [entry]：從哪裡打開，付費頁的大標跟著換（Eric 2026-10-18）。
+  Future<void> _showPaywall(
+    BuildContext context, {
+    PaywallEntry entry = PaywallEntry.general,
+  }) async {
     if (_isPaywallInFlight) return;
     _isPaywallInFlight = true;
     _clearAnalysisSnackBarsBeforePush();
     final String? unlockedTier;
     try {
-      unlockedTier = await context.push<String>('/paywall');
+      unlockedTier = await context.push<String>('/paywall', extra: entry);
     } finally {
       _isPaywallInFlight = false;
     }
@@ -3189,7 +3199,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           }
         });
         if (action == AnalysisErrorAction.upgrade) {
-          unawaited(_showPaywall(context));
+          // 這裡的 upgrade 只來自每日、每月額度不夠（見
+          // _failedBeforeRecommendationAction）：付費頁照每日或每月、用完或只是不夠
+          // 換大標（主審 r1 P2-3）。
+          unawaited(_showPaywall(
+            context,
+            entry: PaywallEntry.forQuota(
+              isMonthly:
+                  liveQuotaInfo?.isMonthly ?? code == 'MONTHLY_LIMIT_EXCEEDED',
+              remaining: liveQuotaInfo?.remaining,
+            ),
+          ));
         } else if (action == AnalysisErrorAction.updateApp) {
           unawaited(showAppUpdateRequiredDialog(
             context,
@@ -3281,12 +3301,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_dailyQuotaExceededMessage(e));
-      await _showPaywall(context);
+      await _showPaywall(
+        context,
+        entry: PaywallEntry.forQuota(
+          isMonthly: false,
+          remaining: e.remaining ?? e.dailyLimit - e.used,
+        ),
+      );
       return null;
     } on MonthlyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
-      await _showPaywall(context);
+      await _showPaywall(
+        context,
+        entry: PaywallEntry.forQuota(
+          isMonthly: true,
+          remaining: e.remaining ?? e.monthlyLimit - e.used,
+        ),
+      );
       return null;
     } on AnalysisException catch (e) {
       // 身分被伺服器否認時的 reset 由 OptimizeRequestRunner 負責，這裡只顯示文案。
@@ -4274,6 +4306,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
         quotaLine: quotaLine?.text,
+        // 用完這次之後剩的不到兩次一般長度分析時多寫一句，只說保證做得到的
+        //（Eric 2026-10-18；主審 r1 P2-2）。
+        quotaHint: quotaLine == null
+            ? null
+            : analysisRemainingHint(quotaLine.remainingAfter),
       ),
       floatingActionButtonLocation: showFloatingAnalysisAction
           ? const AnalysisSideCenterFabLocation()
@@ -4605,7 +4642,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   kGuideV3CardRefineEnabled && _v3Result != null
                                       ? _refineGuideV3Card
                                       : null,
-                              onUpgrade: () => unawaited(_showPaywall(context)),
+                              onUpgrade: () => unawaited(_showPaywall(
+                                context,
+                                entry: PaywallEntry.lockedCards,
+                              )),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),
                                 label: card.task.label,
@@ -4663,7 +4703,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if ((_enthusiasmScore != null &&
                                   _gameStage != null &&
                                   _finalRecommendation != null) ||
-                              (_v3Result != null && !_v3Result!.isCare)) ...[
+                              (_v3Result != null &&
+                                  !_v3Result!.isCare &&
+                                  !_v3ShowsCards)) ...[
                             CoachCtaCard(
                               buttonKey: const Key('analysis_coach_cta'),
                               onTap: _openCoachQuestion,
@@ -4734,7 +4776,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 isMonthly: _quotaExceededInfo!.isMonthly,
                                 remaining: _quotaExceededInfo!.remaining,
                                 quotaNeeded: _quotaExceededInfo!.quotaNeeded,
-                                onViewPlans: () => _showPaywall(context),
+                                onViewPlans: () => _showPaywall(
+                                  context,
+                                  entry: PaywallEntry.forQuota(
+                                    isMonthly: _quotaExceededInfo!.isMonthly,
+                                    remaining: _quotaExceededInfo!.remaining,
+                                  ),
+                                ),
+                                // 免費用戶才寫 Starter 的量（Eric 2026-10-18）。
+                                showStarterCapacity: subscription.isFreeUser,
                               )
                             else
                               StreamingAnalysisRetryCard(
@@ -4865,6 +4915,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // v3 自傷關心：只顯示固定的關心文案，不把這段帶去問教練。
       onAskCoach: (_v3Result?.isCare ?? false) ? null : _openCoachQuestion,
       onNewFragment: _openNewConversationSheet,
+      coachAsSecondary: _v3ShowsCards,
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
 
@@ -684,6 +685,156 @@ void main() {
       expect(purchasingOverlay(), findsNothing);
       expect(find.textContaining('同步逾時'), findsOneWidget);
       await flushSnackBars(tester);
+    });
+  });
+
+  // 付費頁標題依入口換（Eric 2026-10-18）：鎖住的卡、額度用完、其他入口照舊。
+  group('付費頁入口', () {
+    const tiers = [
+      SubscriptionTierHelper.free,
+      SubscriptionTierHelper.starter,
+      SubscriptionTierHelper.essential,
+    ];
+
+    test('一般、鎖卡入口的大標跟方案無關；一般入口沿用定位句', () {
+      for (final tier in tiers) {
+        expect(PaywallEntry.general.headlineFor(tier), '完整教練帶路\n把她約出來更有把握');
+        expect(PaywallEntry.lockedCards.headlineFor(tier), '每一輪的回覆卡\n全部看得到');
+      }
+    });
+
+    test('路由 extra 沒帶或帶錯都當一般入口', () {
+      expect(PaywallEntry.fromRouteExtra(null), PaywallEntry.general);
+      expect(PaywallEntry.fromRouteExtra('lockedCards'), PaywallEntry.general);
+      for (final entry in PaywallEntry.values) {
+        expect(PaywallEntry.fromRouteExtra(entry), entry);
+      }
+    });
+
+    // 主審 r1 P2-3：剩 0 則才叫用完；還有剩、或不知道剩幾則，只說不夠這次用。
+    test('額度入口：每日或每月、用完或只是不夠', () {
+      expect(
+        PaywallEntry.forQuota(isMonthly: false, remaining: 0),
+        PaywallEntry.dailyQuotaUsedUp,
+      );
+      expect(
+        PaywallEntry.forQuota(isMonthly: false, remaining: 3),
+        PaywallEntry.dailyQuotaShort,
+      );
+      expect(
+        PaywallEntry.forQuota(isMonthly: false),
+        PaywallEntry.dailyQuotaShort,
+      );
+      expect(
+        PaywallEntry.forQuota(isMonthly: true, remaining: 0),
+        PaywallEntry.monthlyQuotaUsedUp,
+      );
+      expect(
+        PaywallEntry.forQuota(isMonthly: true, remaining: 2),
+        PaywallEntry.monthlyQuotaShort,
+      );
+    });
+
+    // 主審 r1 P2-3：大標要給做得到的下一步。免費、Starter 升級後額度更多；Essential
+    // 已經是最高方案，不承諾升級，只說什麼時候恢復（伺服器照 UTC 換日、換月重算，
+    // 台灣是早上 8 點）；也不說換繳費週期會補額度。
+    test('額度大標照目前方案：免費、Starter 說升級後更多，Essential 說什麼時候恢復', () {
+      const upgradeable = {
+        PaywallEntry.dailyQuotaUsedUp: '今天的額度用完了\n升級後每天能用更多',
+        PaywallEntry.dailyQuotaShort: '今天的額度不夠這次用\n升級後每天能用更多',
+        PaywallEntry.monthlyQuotaUsedUp: '這個月的額度用完了\n升級後每月能用更多',
+        PaywallEntry.monthlyQuotaShort: '這個月的額度不夠這次用\n升級後每月能用更多',
+      };
+      const topTier = {
+        PaywallEntry.dailyQuotaUsedUp: '今天的額度用完了\n每天早上 8 點恢復',
+        PaywallEntry.dailyQuotaShort: '今天的額度不夠這次用\n每天早上 8 點恢復',
+        PaywallEntry.monthlyQuotaUsedUp: '這個月的額度用完了\n每月 1 號早上 8 點恢復',
+        PaywallEntry.monthlyQuotaShort: '這個月的額度不夠這次用\n每月 1 號早上 8 點恢復',
+      };
+      for (final tier in [
+        SubscriptionTierHelper.free,
+        SubscriptionTierHelper.starter,
+      ]) {
+        upgradeable.forEach((entry, headline) {
+          expect(entry.headlineFor(tier), headline, reason: '$tier $entry');
+        });
+      }
+      topTier.forEach((entry, headline) {
+        final text = entry.headlineFor(SubscriptionTierHelper.essential);
+        expect(text, headline, reason: '$entry');
+        expect(text, isNot(contains('升級')), reason: '$entry');
+      });
+      for (final tier in tiers) {
+        for (final entry in PaywallEntry.values) {
+          expect(entry.headlineFor(tier), isNot(matches(RegExp('繳|季|週期'))),
+              reason: '不提換繳費週期');
+        }
+      }
+    });
+
+    testWidgets('付費頁照目前方案換額度大標：免費、Starter、Essential，用完與不夠', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final tier in tiers) {
+        for (final entry in [
+          PaywallEntry.dailyQuotaUsedUp,
+          PaywallEntry.dailyQuotaShort,
+          PaywallEntry.monthlyQuotaUsedUp,
+          PaywallEntry.monthlyQuotaShort,
+        ]) {
+          final stub = _StubSubscriptionNotifier();
+          final limits = SubscriptionTierHelper.limitsFor(tier);
+          stub.seedState(SubscriptionState(
+            tier: tier,
+            monthlyLimit: limits.monthly,
+            dailyLimit: limits.daily,
+          ));
+          // 每一輪換新的 ProviderScope：同一個 scope 重建時 override 不會換掉。
+          await tester.pumpWidget(
+            ProviderScope(
+              key: ValueKey('$tier-$entry'),
+              overrides: [
+                subscriptionProvider.overrideWith((ref) => stub),
+                subscriptionScreenRefreshProvider.overrideWithValue(
+                  () async {},
+                ),
+              ],
+              child: MaterialApp(home: PaywallScreen(entry: entry)),
+            ),
+          );
+          await tester.pump();
+
+          expect(find.text(entry.headlineFor(tier)), findsOneWidget,
+              reason: '$tier $entry');
+          expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
+          expect(find.text('方案與額度'), findsOneWidget);
+        }
+      }
+    });
+
+    testWidgets('從鎖住的卡打開：標題跟著換，其他內容照舊', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          ],
+          child: const MaterialApp(
+            home: PaywallScreen(entry: PaywallEntry.lockedCards),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text(
+            PaywallEntry.lockedCards.headlineFor(SubscriptionTierHelper.free)),
+        findsOneWidget,
+      );
+      expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
+      expect(find.text('方案與額度'), findsOneWidget);
+      expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
     });
   });
 }
