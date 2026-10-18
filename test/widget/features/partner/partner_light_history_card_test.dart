@@ -7,7 +7,7 @@ import 'package:vibesync/features/partner/presentation/widgets/partner_light_his
 
 import '../../../helpers/motion_free_app.dart';
 
-const _upgradeLabel = '升級 Starter 看完整燈號紀錄';
+const _upgradeLabel = '升級 Starter 看完整走勢';
 
 PartnerLightHistoryEntry _entry(
   String id,
@@ -146,7 +146,7 @@ void main() {
     expect(find.text('黃 → 綠'), findsNothing);
     expect(find.byKey(const ValueKey('partner-light-history-locked')),
         findsOneWidget);
-    expect(find.text('還有 ${_three.length} 次更早的紀錄'), findsOneWidget);
+    expect(find.text('完整走勢還有更早的 ${_three.length} 次'), findsOneWidget);
     expect(find.text(_upgradeLabel), findsOneWidget);
 
     await t.tap(find.text(_upgradeLabel));

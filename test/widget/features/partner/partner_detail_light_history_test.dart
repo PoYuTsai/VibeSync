@@ -35,7 +35,7 @@ import 'package:vibesync/features/user_profile/domain/entities/partner_style_ove
 import '../../../helpers/motion_free_app.dart';
 import '../../../helpers/memory_coach_chat_repository.dart';
 
-const _upgradeLabel = '升級 Starter 看完整燈號紀錄';
+const _upgradeLabel = '升級 Starter 看完整走勢';
 
 Partner _p() => Partner(
       id: 'p1',
@@ -261,7 +261,8 @@ void main() {
     expect(_row('r2'), findsNothing);
     expect(_row('r1'), findsNothing);
     expect(find.text('邀約進度：她自己提見面'), findsOneWidget);
-    expect(find.text('還有 ${_threeRecords.length - 1} 次更早的紀錄'), findsOneWidget);
+    expect(
+        find.text('完整走勢還有更早的 ${_threeRecords.length - 1} 次'), findsOneWidget);
     expect(find.text(_upgradeLabel), findsOneWidget);
   });
 

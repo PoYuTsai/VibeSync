@@ -3,6 +3,9 @@
 /// 時下面放鎖住的預覽和一顆升級鈕。三個方案的分析一樣，只差這裡顯示多少。最新一次是先別回、
 /// 停、關心，或這次比預定的少（少卡、斷線後重組）時不放升級：這些時刻不推銷（盤點報告的
 /// 升級時機）。
+///
+/// 分析紀錄頁本來就逐筆列出燈號、不分方案（不收回既有內容是 Eric 的決定），所以升級文案講
+/// 的是這裡的「走勢」：變化提示、每筆的邀約進度、整段排在一起看（主審第 1 輪 P2）。
 library;
 
 import 'dart:math' as math;
@@ -317,7 +320,7 @@ class _LockedPreview extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                '還有 $olderCount 次更早的紀錄',
+                '完整走勢還有更早的 $olderCount 次',
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.onBackgroundSecondary,
                 ),
@@ -327,7 +330,7 @@ class _LockedPreview extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         BrandSecondaryButton(
-          label: '升級 Starter 看完整燈號紀錄',
+          label: '升級 Starter 看完整走勢',
           icon: Icons.workspace_premium_outlined,
           onPressed: onUpgrade,
         ),
