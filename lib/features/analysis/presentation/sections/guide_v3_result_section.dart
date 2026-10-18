@@ -277,7 +277,12 @@ class GuideV3ResultSection extends StatelessWidget {
         }
       }
       final fewer = isFinal &&
-          (partial || recovered || cards.length < read.deliverableCount);
+          guideV3DeliveredFewer(
+            partial: partial,
+            recovered: recovered,
+            deliveredCards: cards.length,
+            deliverableCards: read.deliverableCount,
+          );
       if (fewer) {
         children
           ..add(const SizedBox(height: 10))

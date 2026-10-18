@@ -107,6 +107,50 @@ enum GuideV3Light {
   }
 }
 
+/// 邀約進度（伺服器 `INVITE_READINESS_CODE`；Eric 2026-10-18 燈號紀錄＋邀約進度）。標籤先
+/// 沿用讀局面的類別名，Bruce 之後可能改字；App 只認代碼，不認得的當沒有。
+enum GuideV3InviteReadiness {
+  none('none', '沒機會'),
+  declined('declined', '婉拒過'),
+  vagueYes('vague_yes', '含糊答應'),
+  clearYes('clear_yes', '明確答應'),
+  sheProposed('she_proposed', '她自己提見面'),
+  sheCancelled('she_cancelled', '她取消了'),
+  hesitant('hesitant', '猶豫');
+
+  const GuideV3InviteReadiness(this.wire, this.label);
+
+  final String wire;
+  final String label;
+
+  static GuideV3InviteReadiness? fromWire(Object? value) {
+    for (final readiness in values) {
+      if (readiness.wire == value) return readiness;
+    }
+    return null;
+  }
+}
+
+/// 給新話題的冷訊號（伺服器 `cold`；不分方案，Eric 2026-10-18）。[c1]＝這一輪是 C1「他連續
+/// 主動兩次、她都只回敷衍的字」判的先別回；[herPerfunctoryStreak]＝她最近連續幾輪只回敷衍的字。
+class GuideV3ColdSignal {
+  const GuideV3ColdSignal({
+    required this.c1,
+    required this.herPerfunctoryStreak,
+  });
+
+  final bool c1;
+  final int herPerfunctoryStreak;
+
+  static GuideV3ColdSignal? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final c1 = json['c1'];
+    final streak = json['herPerfunctoryStreak'];
+    if (c1 is! bool || streak is! int || streak < 0) return null;
+    return GuideV3ColdSignal(c1: c1, herPerfunctoryStreak: streak);
+  }
+}
+
 /// 預定的一張卡（照順序）。locked＝這個方案看不到：免費方案只寫、只送前幾張，
 /// 其餘伺服器不寫也不送，App 只顯示任務標籤與升級提示。
 class GuideV3PlannedCard {
@@ -143,6 +187,8 @@ class GuideV3Read {
     this.waitFor,
     this.careMessage,
     this.careKind,
+    this.inviteReadiness,
+    this.cold,
     this.plannedCards = const [],
   });
 
@@ -163,6 +209,12 @@ class GuideV3Read {
 
   /// 固定訊息的種類；不是 care 就是 null。
   final GuideV3CareKind? careKind;
+
+  /// 邀約進度；care、舊快照（伺服器還沒送這欄）或不認得的代碼是 null。
+  final GuideV3InviteReadiness? inviteReadiness;
+
+  /// 冷訊號；care、舊快照或格式不對是 null。
+  final GuideV3ColdSignal? cold;
   final List<GuideV3PlannedCard> plannedCards;
 
   List<GuideV3PlannedCard> get lockedCards =>
@@ -203,6 +255,12 @@ class GuideV3Read {
       careKind: decision == GuideV3Decision.care
           ? GuideV3CareKind.fromWire(json['careKind'])
           : null,
+      inviteReadiness: decision == GuideV3Decision.care
+          ? null
+          : GuideV3InviteReadiness.fromWire(json['inviteReadiness']),
+      cold: decision == GuideV3Decision.care
+          ? null
+          : GuideV3ColdSignal.fromJson(json['cold']),
       plannedCards: List.unmodifiable(planned),
     );
   }
@@ -311,6 +369,17 @@ class GuideV3Card {
   }
 }
 
+/// 這次送到的比預定的少：伺服器標 partial（有卡被檢查拿掉，或寫到一半斷了）、續看時從扣費
+/// 內容重組（recovered，原請求中途被終止），或送到的卡比這個方案預定的少。結果頁「這次比預定
+/// 的少幾張」與對象頁燈號紀錄（這時不推升級；主審第 1 輪 P2）共用這一個判斷。
+bool guideV3DeliveredFewer({
+  required bool partial,
+  required bool recovered,
+  required int deliveredCards,
+  required int deliverableCards,
+}) =>
+    partial || recovered || deliveredCards < deliverableCards;
+
 /// 伺服器 `isGuideV3FinalResult`：字串 guideVersion＋cards 陣列。
 bool isGuideV3Payload(Object? json) =>
     json is Map && json['guideVersion'] is String && json['cards'] is List;
@@ -340,6 +409,14 @@ class GuideV3Result {
   final Map<String, dynamic> rawResponse;
 
   GuideV3Decision get decision => read.decision;
+
+  /// 見 [guideV3DeliveredFewer]。
+  bool get deliveredFewer => guideV3DeliveredFewer(
+        partial: partial,
+        recovered: recovered,
+        deliveredCards: cards.length,
+        deliverableCards: read.deliverableCount,
+      );
 
   Map<String, dynamic>? get usage {
     final raw = rawResponse['usage'];

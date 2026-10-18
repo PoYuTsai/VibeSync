@@ -46,6 +46,7 @@ import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/guide_v3_result.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/domain/entities/partner_data_quality_state.dart';
 import '../../../user_profile/domain/services/name_candidate_extractor.dart';
@@ -60,6 +61,7 @@ import '../utils/conversation_record_actions.dart';
 import '../widgets/partner_conversation_tile.dart';
 import '../widgets/partner_data_quality_banner.dart';
 import '../widgets/partner_heat_hero_card.dart';
+import '../widgets/partner_light_history_card.dart';
 import '../widgets/partner_mind_map_entry_card.dart';
 import '../widgets/partner_radar_summary_card.dart';
 import '../widgets/partner_traits_card.dart';
@@ -106,6 +108,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
   // 串觸覺回饋，變成捲動懲罰。
   bool _nameIntroPlayed = false;
   bool _heatIntroPlayed = false;
+
+  // 燈號紀錄「看全部」的展開狀態：同上，lazy ListView 回收會清掉卡片自己的 State。
+  bool _lightHistoryExpanded = false;
 
   @override
   void dispose() {
@@ -168,6 +173,11 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     final latestInsight = _PartnerLatestInsight.fromConversations(
       conversations,
     );
+    // 燈號紀錄＋邀約進度（Eric 2026-10-18）：Starter 以上看完整紀錄、免費只看最新一次，
+    // 只差顯示。沒有 v3 紀錄就不讀方案。
+    final lightHistory = ref.watch(partnerLightHistoryProvider(partnerId));
+    final fullLightHistory = lightHistory.isNotEmpty &&
+        ref.watch(subscriptionProvider.select((s) => s.isPremium));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -254,6 +264,20 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   onNameIntroEnd: () => _nameIntroPlayed = true,
                 ),
                 const SizedBox(height: 16),
+                if (lightHistory.isNotEmpty) ...[
+                  _PartnerDetailSection(
+                    child: PartnerLightHistoryCard(
+                      entries: lightHistory,
+                      fullHistory: fullLightHistory,
+                      expanded: _lightHistoryExpanded,
+                      onToggleExpanded: () => setState(
+                        () => _lightHistoryExpanded = !_lightHistoryExpanded,
+                      ),
+                      onUpgrade: () => context.push('/paywall'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 // v3（任務卡）沒有熱度（Eric 2026-10-17：清掉不顯示）：最新一段
                 // 是新流程分析的，就不放熱度卡，免得顯示「待分析」。
                 if (!_latestAnalysisIsGuideV3(conversations)) ...[

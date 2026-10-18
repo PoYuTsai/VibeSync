@@ -17,6 +17,10 @@ class PartnerAggregateView {
   /// 不代表還沒分析：顯示端要分開「沒分析過」跟「分析過但不算熱度」。
   final bool latestIsGuideV3;
 
+  /// 最近更新那段對話的 v3 訊號（燈號、決定、邀約進度、冷訊號）；那段不是 v3 或讀不懂就是
+  /// null。首頁卡的狀態與新話題都讀這份，不分方案（Eric 2026-10-18）。
+  final PartnerGuideV3Signals? latestGuideV3Signals;
+
   const PartnerAggregateView({
     required this.unionInterests,
     required this.unionTraits,
@@ -26,6 +30,7 @@ class PartnerAggregateView {
     required this.totalMessages,
     required this.lastInteraction,
     this.latestIsGuideV3 = false,
+    this.latestGuideV3Signals,
   });
 
   factory PartnerAggregateView.empty() => const PartnerAggregateView(
@@ -37,6 +42,39 @@ class PartnerAggregateView {
         totalMessages: 0,
         lastInteraction: null,
       );
+}
+
+/// 一次 v3 分析留給其他功能用的訊號（伺服器判讀的 decision／light／inviteReadiness／cold）。
+/// 關心（care）不帶燈號：畫面本來就不給 care 顯示燈號，邀約進度與冷訊號伺服器也不送。
+class PartnerGuideV3Signals {
+  final GuideV3Decision decision;
+  final GuideV3Light? light;
+  final GuideV3InviteReadiness? inviteReadiness;
+
+  /// 這一輪是 C1「他連續主動兩次、她都只回敷衍的字」判的先別回；舊快照是 null。
+  final bool? c1;
+
+  /// 她最近連續幾輪只回敷衍的字；舊快照是 null。
+  final int? herPerfunctoryStreak;
+
+  const PartnerGuideV3Signals({
+    required this.decision,
+    this.light,
+    this.inviteReadiness,
+    this.c1,
+    this.herPerfunctoryStreak,
+  });
+
+  factory PartnerGuideV3Signals.fromRead(GuideV3Read read) {
+    final isCare = read.decision == GuideV3Decision.care;
+    return PartnerGuideV3Signals(
+      decision: read.decision,
+      light: isCare ? null : read.light,
+      inviteReadiness: read.inviteReadiness,
+      c1: read.cold?.c1,
+      herPerfunctoryStreak: read.cold?.herPerfunctoryStreak,
+    );
+  }
 }
 
 const int _kMaxTags = 8;
@@ -68,6 +106,8 @@ extension PartnerAggregates on Partner {
         conversations.fold<int>(0, (s, c) => s + c.currentRound);
     final totalMessages =
         conversations.fold<int>(0, (s, c) => s + c.messages.length);
+    final latestGuideV3 =
+        _guideV3Snapshot(descByDate.first.lastAnalysisSnapshotJson);
 
     return PartnerAggregateView(
       unionInterests: unionInterests,
@@ -77,18 +117,24 @@ extension PartnerAggregates on Partner {
       totalRounds: totalRounds,
       totalMessages: totalMessages,
       lastInteraction: descByDate.first.updatedAt,
-      latestIsGuideV3:
-          _isGuideV3Snapshot(descByDate.first.lastAnalysisSnapshotJson),
+      latestIsGuideV3: latestGuideV3 != null,
+      latestGuideV3Signals: latestGuideV3?.signals,
     );
   }
 }
 
-bool _isGuideV3Snapshot(String? jsonStr) {
-  if (jsonStr == null || jsonStr.trim().isEmpty) return false;
+/// v3 快照（[isGuideV3Payload]）才回非 null；判讀讀不懂時 signals 是 null。
+({PartnerGuideV3Signals? signals})? _guideV3Snapshot(String? jsonStr) {
+  if (jsonStr == null || jsonStr.trim().isEmpty) return null;
   try {
-    return isGuideV3Payload(jsonDecode(jsonStr));
+    final decoded = jsonDecode(jsonStr);
+    if (!isGuideV3Payload(decoded)) return null;
+    final read = GuideV3Read.fromJson((decoded as Map)['read']);
+    return (
+      signals: read == null ? null : PartnerGuideV3Signals.fromRead(read)
+    );
   } catch (_) {
-    return false;
+    return null;
   }
 }
 
