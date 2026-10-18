@@ -214,7 +214,8 @@ class RevenueCatService {
 
   /// 取得目前訂閱狀態
   static Future<CustomerInfo?> getCustomerInfo() async {
-    final override = debugGetCustomerInfoOverride;
+    // 測試替身在 release 版一律不理（主審第 2 輪：@visibleForTesting 只是靜態檢查）。
+    final override = kReleaseMode ? null : debugGetCustomerInfoOverride;
     if (override != null) return override();
     if (!_isInitialized) return null;
 
