@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "note": "對象記憶黑箱的人工案例（2026-10-18 自寫）。expected：她用文字講過、應該記住的事；value＋evidence 是過得了出處檢查的寫法，match 是給真模型輸出比對的關鍵字。optional：記了算對、沒記不扣分。traps：不該記的（他說的、她否定的、貼圖媒體、只在背景、引用裡他的話、一次性的事、別人說她的）。background 只當陷阱說明：正式流程不把背景送給記憶。",
+  "version": 2,
+  "note": "對象記憶黑箱的人工案例（2026-10-18 自寫）。expected：她用文字講過、應該記住的事；value＋evidence 是過得了出處檢查的寫法，match 是給真模型輸出比對的關鍵字。optional：記了算對、沒記不扣分。traps：不該記的（他說的、她否定的、貼圖媒體、只在背景、引用裡他的話、一次性的事、別人說她的）。background 只當陷阱說明：正式流程不把背景送給記憶。subject／own：--fake 替身給的兩個判斷欄位（沒寫就是 her、true）；陷阱沒寫等於模型標錯的最壞情況，要靠出處檢查自己擋下，寫了 him、false 的陷阱只有模型判斷擋得下（主審第 2 輪的例子）。",
   "cases": [
     {
       "id": "weekend_hiking",
@@ -482,6 +482,147 @@
           "match": ["瘋"]
         }
       ]
+    },
+    {
+      "id": "retell_his_hiking",
+      "messages": [
+        { "isFromMe": true, "content": "我每週都會去爬山" },
+        { "isFromMe": false, "content": "原來你每週都會去爬山" },
+        { "isFromMe": false, "content": "我平常都在家追劇" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "追劇",
+          "evidence": "我平常都在家追劇",
+          "match": ["追劇"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "her_retell",
+          "kinds": ["interests"],
+          "value": "爬山",
+          "evidence": "原來你每週都會去爬山",
+          "match": ["爬山"],
+          "subject": "him",
+          "own": false
+        }
+      ]
+    },
+    {
+      "id": "asks_if_he_hikes",
+      "messages": [
+        { "isFromMe": true, "content": "週末剛爬完山，腿好痠" },
+        { "isFromMe": false, "content": "那你是不是每週都會去爬山" },
+        { "isFromMe": false, "content": "我週末通常在家睡到中午" }
+      ],
+      "expected": [
+        {
+          "kinds": ["notes"],
+          "value": "週末通常在家睡到中午",
+          "evidence": "我週末通常在家睡到中午",
+          "match": ["睡到中午"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "her_question",
+          "kinds": ["interests"],
+          "value": "爬山",
+          "evidence": "那你是不是每週都會去爬山",
+          "match": ["爬山"],
+          "subject": "him",
+          "own": false
+        }
+      ]
+    },
+    {
+      "id": "question_then_her_movies",
+      "messages": [
+        { "isFromMe": true, "content": "我週末都在山上" },
+        {
+          "isFromMe": false,
+          "content": "那你每週都會去爬山嗎，我比較喜歡看電影"
+        }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "看電影",
+          "evidence": "我比較喜歡看電影",
+          "match": ["電影"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "her_question",
+          "kinds": ["interests"],
+          "value": "爬山",
+          "evidence": "那你每週都會去爬山嗎，我比較喜歡看電影",
+          "match": ["爬山"],
+          "subject": "him",
+          "own": false
+        }
+      ]
+    },
+    {
+      "id": "bar_is_a_noun",
+      "messages": [
+        { "isFromMe": true, "content": "妳下班都做什麼" },
+        { "isFromMe": false, "content": "我每週都會去酒吧" },
+        { "isFromMe": false, "content": "跟朋友喝一杯放鬆一下" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "酒吧",
+          "evidence": "我每週都會去酒吧",
+          "match": ["酒吧"]
+        }
+      ],
+      "traps": []
+    },
+    {
+      "id": "ne_particle_statement",
+      "messages": [
+        { "isFromMe": true, "content": "週末有什麼計畫" },
+        { "isFromMe": false, "content": "我喜歡爬山呢" },
+        { "isFromMe": false, "content": "這週想去陽明山" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "爬山",
+          "evidence": "我喜歡爬山呢",
+          "match": ["爬山"]
+        }
+      ],
+      "traps": [
+        {
+          "type": "oneoff",
+          "kinds": ["interests"],
+          "value": "陽明山",
+          "evidence": "這週想去陽明山",
+          "match": ["陽明山"]
+        }
+      ]
+    },
+    {
+      "id": "statement_then_ne_question",
+      "messages": [
+        { "isFromMe": true, "content": "妳週末都去哪" },
+        { "isFromMe": false, "content": "我每週都會去爬山，你呢？" }
+      ],
+      "expected": [
+        {
+          "kinds": ["interests", "notes"],
+          "value": "爬山",
+          "evidence": "我每週都會去爬山，你呢？",
+          "match": ["爬山"]
+        }
+      ],
+      "traps": []
     }
   ]
 }

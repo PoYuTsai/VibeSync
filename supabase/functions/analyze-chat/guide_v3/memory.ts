@@ -11,7 +11,8 @@ export type MemoryKind = typeof MEMORY_KINDS[number];
 export type MemoryCounts = Readonly<Record<MemoryKind, number>>;
 
 /// 規則照搬 v2（analyze_prompt/report_contract.ts 的 targetProfile 段），只把「你」
-/// 改成對話裡的「他」，並說明引用前綴不算她的話。
+/// 改成對話裡的「他」，並說明引用前綴不算她的話。subject、evidenceIsHerOwnStatement
+/// 兩個欄位讓模型標出是誰的事（主審第 2 輪：句型規則認不準主詞與問句）。
 const MEMORY_RULES =
   `你是 VibeSync 對話分析的「對象記憶」步驟：只從對話裡她自己傳的文字，整理之後還用得到的長期資料。不寫回覆、不判斷局面。對話裡的「他」是使用者，「她」是對象。
 
@@ -22,8 +23,10 @@ const MEMORY_RULES =
 - notes：她用文字明講、下次仍有用的具體事實或界線（如「不喜歡聊工作」「週末通常在家」「養了一隻貓叫 Mochi」）。
 
 ## 每一項的格式
-每一類最多 5 項，每一項都要有 value 與 evidence；evidence 最多 2 句：
+每一類最多 5 項，每一項都要有 value、evidence、subject 與 evidenceIsHerOwnStatement；evidence 最多 2 句：
 - evidence 逐字複製她自己傳的訊息，不得摘要、改寫，也不得引用他的訊息或「（引用：…）」裡的內容。
+- subject：這件事是誰的。her＝她自己的事；him＝他的事（她在問他、猜他、複述他說過的，都算他的）；other＝別人的事，或看不出是誰的。
+- evidenceIsHerOwnStatement：引用的 evidence 是她在講她自己時才是 true；她在問他、猜他、複述或確認他的話，都是 false。
 - 貼圖、emoji、照片、影片、媒體佔位字或圖片裡出現的物件，單獨都不是文字證據。
 - value 儘量沿用 evidence 裡實際出現的詞，不要把一個場景抽象成「互動玩笑」「生活感」等標籤。
 - 沒有可核對的文字原句就不要寫；對話太短或沒有就回空陣列。`;
@@ -40,13 +43,17 @@ export function memoryUserPrompt(turns: readonly Turn[]): string {
   return `## 對話\n${transcriptByTurn(turns)}`;
 }
 
+export const MEMORY_SUBJECTS = ["her", "him", "other"] as const;
+
 const MEMORY_ITEM_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["value", "evidence"],
+  required: ["value", "evidence", "subject", "evidenceIsHerOwnStatement"],
   properties: {
     value: { type: "string" },
     evidence: { type: "array", items: { type: "string" } },
+    subject: { type: "string", enum: [...MEMORY_SUBJECTS] },
+    evidenceIsHerOwnStatement: { type: "boolean" },
   },
 };
 
@@ -85,60 +92,27 @@ export function zeroMemoryCounts(): MemoryCounts {
   return { interests: 0, traits: 0, notes: 0 };
 }
 
-/// 她問的話（句尾是問號，或是「嗎／呢／吧」，後面可接標點、表情），或用「你」開頭講他的
-/// 事，都不是她自己的事實（主審第 1 輪 P2）。v2 的出處檢查只看關鍵詞，認不出主詞與問句；
-/// 這裡寧可少記。
-export function isHerOwnStatement(line: string): boolean {
-  const text = line.trim();
-  const tail = text.match(/[^\p{L}\p{N}]*$/u)?.[0] ?? "";
-  const body = text.slice(0, text.length - tail.length);
-  if (/[?？]/.test(tail) || /[嗎呢吧]$/.test(body)) return false;
-  return !text.replace(/^[^\p{L}\p{N}]+/u, "").startsWith("你");
-}
-
-/// 依句號、驚嘆號、問號、刪節號與換行切句；標點留在句尾，問句檢查要看。
-function sentencesOf(text: string): string[] {
-  return (text.match(/[^。！？!?…\n]+[。！？!?…]*/g) ?? [])
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0);
-}
-
-/// 逐句只留她自己的陳述句：每句都是就原樣不動；有問句或講他的句子就只留陳述句（換行
-/// 隔開，分句還在）；一句都不剩回 null。同一則「那你也會去嗎？我不太喜歡運動」只認後半句。
-function ownStatementText(text: string): string | null {
-  const sentences = sentencesOf(text);
-  const own = sentences.filter(isHerOwnStatement);
-  if (own.length === 0) return null;
-  return own.length === sentences.length ? text : own.join("\n");
-}
-
-/// 候選的原句只留她自己的陳述句；一句都不剩就不要這個候選。
-function ownStatementCandidates(candidates: unknown): unknown {
-  if (!Array.isArray(candidates)) return candidates;
-  return candidates.flatMap((candidate) => {
-    const evidence = (candidate as { evidence?: unknown } | null)?.evidence;
-    if (
-      !candidate || typeof candidate !== "object" || !Array.isArray(evidence)
-    ) {
-      return [candidate];
-    }
-    const own = evidence.flatMap((line) => {
-      const text = typeof line === "string" ? ownStatementText(line) : null;
-      return text === null ? [] : [text];
-    });
-    return own.length > 0 ? [{ ...candidate, evidence: own }] : [];
-  });
-}
-
 function countsBy(count: (kind: MemoryKind) => number): MemoryCounts {
   return Object.fromEntries(
     MEMORY_KINDS.map((kind) => [kind, count(kind)]),
   ) as Record<MemoryKind, number>;
 }
 
-/// 模型輸出 → 通過出處檢查的對象記憶。出處只認 App 送來的原始訊息（不是帶引用前綴的
-/// 對話稿），跟 v2 同一道檢查；兩邊都逐句只認她自己的陳述句：候選原句裡的問句先拿掉，
-/// 出處也不給她的問句（剪掉一截再抄的問句就對不到）。不丟錯。
+/// 是誰的事交給模型判斷，程式只收 subject＝her 而且 evidenceIsHerOwnStatement＝true 的
+/// 項目；缺欄或值不對都不要。出處檢查只對得到「她傳過這句」，認不出她是在問他還是講自己。
+function herOwnCandidates(candidates: unknown): unknown {
+  if (!Array.isArray(candidates)) return candidates;
+  return candidates.filter((candidate) => {
+    const item = candidate as {
+      subject?: unknown;
+      evidenceIsHerOwnStatement?: unknown;
+    } | null;
+    return item?.subject === "her" && item.evidenceIsHerOwnStatement === true;
+  });
+}
+
+/// 模型輸出 → 通過出處檢查的對象記憶。先只留模型標成她自己陳述的項目，再過 v2 同一道
+/// 出處檢查；出處只認 App 送來的原始訊息（不是帶引用前綴的對話稿）。不丟錯。
 export function partnerMemoryFrom(
   text: string,
   messages: readonly { readonly isFromMe: boolean; readonly content: string }[],
@@ -159,15 +133,12 @@ export function partnerMemoryFrom(
   try {
     const profile = sanitizeTargetProfile({
       rawProfile: Object.fromEntries(
-        MEMORY_KINDS.map((kind) => [
-          kind,
-          ownStatementCandidates(proposed[kind]),
-        ]),
+        MEMORY_KINDS.map((kind) => [kind, herOwnCandidates(proposed[kind])]),
       ),
-      requestMessages: messages.flatMap((m) => {
-        const content = m.isFromMe ? null : ownStatementText(m.content);
-        return content === null ? [] : [{ isFromMe: false, content }];
-      }),
+      requestMessages: messages.map((m) => ({
+        isFromMe: m.isFromMe,
+        content: m.content,
+      })),
     });
     const kept = countsBy((kind) => {
       const values = profile?.[kind];

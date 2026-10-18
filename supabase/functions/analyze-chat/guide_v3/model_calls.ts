@@ -28,7 +28,7 @@ const READ_ATTEMPT_TIMEOUT_MS = 30_000;
 /// 對象記憶用 Haiku 5.5：每個候選都要對到她的原句才留，模型弱只會少記、不會記錯。
 /// 單價在 logger.ts 與 _shared/model_pricing.ts 都有；備援鏈沒有 Haiku 5.5，也不需要。
 export const GUIDE_V3_MEMORY_MODEL = "claude-haiku-5-5";
-/// 三類各 5 項、每項 2 句原句的上限大約 1200 token；超過就是這次沒有記憶。
+/// 三類各 5 項、每項 2 句原句加兩個判斷欄位，上限大約 1400 token；超過就是這次沒有記憶。
 export const GUIDE_V3_MEMORY_MAX_TOKENS = 1500;
 /// ai_logs 的 request_type：跟分析本身的那幾列分開算成本。
 export const GUIDE_V3_MEMORY_REQUEST_TYPE = "analyze_memory";
