@@ -261,6 +261,7 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
     final needsFill = _needsFill;
     final multi = messages.length > 1;
     final next = _next < messages.length ? _next : 0;
+    final copyLabel = multi ? '複製第 ${next + 1} 則' : '複製這句';
     final textStyle = AppTypography.bodyLarge.copyWith(
       color: AppColors.onBackgroundPrimary,
       height: 1.45,
@@ -306,31 +307,43 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
             ),
           for (var i = 0; i < messages.length; i++) ...[
             if (i > 0) const SizedBox(height: 8),
-            InkWell(
-              key: ValueKey('guide-v3-card-${card.slot}-message-$i'),
-              borderRadius: BorderRadius.circular(18),
-              onTap: onCopy == null
+            // VoiceOver：點泡泡會複製（有空格先填），要唸得出來（Eric 2026-10-18）。
+            Semantics(
+              container: true,
+              button: onCopy != null,
+              hint: onCopy == null
                   ? null
-                  : () {
-                      // 整張卡有空格就先填：一張卡的幾則是一起傳的，不能先
-                      // 拿走沒空格的那幾則（主審第 1 輪 P2-2）。
-                      if (needsFill) {
-                        unawaited(_editThenCopy());
-                        return;
-                      }
-                      _copyAt(messages, i);
-                    },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                  : needsFill
+                      ? '點兩下先填空格'
+                      : multi
+                          ? '點兩下只複製這一則'
+                          : '點兩下複製這句',
+              child: InkWell(
+                key: ValueKey('guide-v3-card-${card.slot}-message-$i'),
+                borderRadius: BorderRadius.circular(18),
+                onTap: onCopy == null
+                    ? null
+                    : () {
+                        // 整張卡有空格就先填：一張卡的幾則是一起傳的，不能先
+                        // 拿走沒空格的那幾則（主審第 1 輪 P2-2）。
+                        if (needsFill) {
+                          unawaited(_editThenCopy());
+                          return;
+                        }
+                        _copyAt(messages, i);
+                      },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: _blankAwareText(messages[i], textStyle),
                 ),
-                decoration: BoxDecoration(
-                  color: AppColors.surface.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: _blankAwareText(messages[i], textStyle),
               ),
             ),
           ],
@@ -357,6 +370,11 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                   TextButton(
                     key: ValueKey('guide-v3-card-${card.slot}-edit'),
                     onPressed: () => unawaited(_editThenCopy()),
+                    // 主題紫在深色卡上只有約 3.2:1，換淺紫（約 6:1）；點擊區 44。
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primaryLight,
+                      minimumSize: const Size(44, 44),
+                    ),
                     child: const Text('改成我的'),
                   ),
               ],
@@ -364,9 +382,11 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
           ],
           if (onCopy != null) ...[
             const SizedBox(height: 10),
+            // 44：iOS 建議的最小點擊高度（原本 38）。VoiceOver 唸按鈕時帶上任務，
+            // 一頁好幾顆「複製這句」才分得出是哪張卡。
             SizedBox(
               width: double.infinity,
-              height: 38,
+              height: 44,
               child: needsFill
                   ? FilledButton.icon(
                       key: ValueKey('guide-v3-card-${card.slot}-fill'),
@@ -378,7 +398,10 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                         foregroundColor: AppColors.brandInk,
                       ),
                       icon: const Icon(TablerIcons.pencil, size: 16),
-                      label: const Text('填好空格再複製'),
+                      label: Text(
+                        '填好空格再複製',
+                        semanticsLabel: '填好空格再複製（${card.task.label}）',
+                      ),
                     )
                   : OutlinedButton.icon(
                       key: ValueKey('guide-v3-card-${card.slot}-copy'),
@@ -390,7 +413,10 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                       ),
                       onPressed: () => _copyAt(messages, multi ? next : 0),
                       icon: const Icon(TablerIcons.copy, size: 16),
-                      label: Text(multi ? '複製第 ${next + 1} 則' : '複製這句'),
+                      label: Text(
+                        copyLabel,
+                        semanticsLabel: '$copyLabel（${card.task.label}）',
+                      ),
                     ),
             ),
             // 兩則以上：提醒分開傳；整組複製放次要（貼到 LINE 會變成同一則）。
@@ -412,7 +438,7 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
                       TextButton(
                         key: ValueKey('guide-v3-card-${card.slot}-copy-all'),
                         style: TextButton.styleFrom(
-                          minimumSize: const Size(0, 34),
+                          minimumSize: const Size(44, 44),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           foregroundColor: AppColors.onBackgroundSecondary,
@@ -433,7 +459,7 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
               padding: const EdgeInsets.only(top: 6),
               child: SizedBox(
                 width: double.infinity,
-                height: 34,
+                height: 44,
                 child: TextButton.icon(
                   key: ValueKey('guide-v3-card-${card.slot}-refine'),
                   onPressed: () => unawaited(_refineThenCopy()),

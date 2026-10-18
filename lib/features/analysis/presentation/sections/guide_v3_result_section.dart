@@ -483,6 +483,14 @@ class GuideV3ResultSection extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: refreshBusy ? null : onRefreshAfterUpgrade,
+              // 主題紫在這塊淡橘底上不到 4.5:1，跟上面那行一樣用橘色；點擊區 44。
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.ctaStart,
+                side: BorderSide(
+                  color: AppColors.ctaStart.withValues(alpha: 0.55),
+                ),
+                minimumSize: const Size(44, 44),
+              ),
               icon: refreshBusy
                   ? const SizedBox(
                       width: 16,
