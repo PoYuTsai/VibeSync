@@ -99,7 +99,7 @@ Deno.test("legacy opener charge failure does not promise no charge", async () =>
 
 Deno.test("legacy opener provider error does not leak upstream text", async () => {
   const original = globalThis.fetch;
-  // 非 JSON 200 → PARSE_ERROR，錯誤訊息會帶回應片段。
+  // 非 JSON 200 → PARSE_ERROR；錯誤訊息只帶長度、不帶回應片段（fallback.ts），回應裡也不能有上游文字。
   globalThis.fetch = (() => Promise.resolve(new Response("upstream-secret-xyz"))) as typeof fetch;
   try {
     const response = await handleOpenerRequest({
