@@ -23,6 +23,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
+import '../../../opener/domain/opener_access.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -605,6 +606,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           //（routing.ts 的 GUIDE_V3_FREE_CARD_LIMIT）。不寫「每次」：收尾只有 1 張、
           // 先別回和停沒有卡（Eric 2026-10-18）。
           _buildComparisonRow('回覆卡', '前 2 張', '全部', '全部'),
+          // 開場救星（Eric 2026-10-18）：免費只看得到其中幾句，兩個付費方案都看完整。
+          // 句數照開場權益契約（opener_access.dart，鏡像 server opener_payload.ts），
+          // 改契約不用回來改文案。
+          _buildComparisonRow(
+            '開場救星',
+            '${OpenerAccessContract.freeUnlockedOrder.length} 句',
+            '${OpenerAccessContract.canonicalPaidOrder.length} 句',
+            '${OpenerAccessContract.canonicalPaidOrder.length} 句',
+          ),
           // 對象頁的燈號紀錄＋邀約進度（Eric 2026-10-18：Starter 主打）。分析紀錄頁本來就列出
           // 每次的燈號、不分方案，分層的是對象頁的走勢（partner_light_history_card.dart），
           // 所以寫「走勢」、不寫「只看」（主審第 1 輪 P2）。

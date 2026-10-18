@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:vibesync/features/opener/domain/opener_access.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
@@ -207,6 +208,30 @@ void main() {
       final drawRow = tester.getTopLeft(find.text('陪練女孩翻牌')).dy;
       expect(historyRow, greaterThan(cardsRow));
       expect(historyRow, lessThan(drawRow));
+    });
+
+    testWidgets('比較表有開場救星：句數照開場權益契約，排在回覆卡下面', (tester) async {
+      await pumpPaywall(tester);
+
+      // Eric 2026-10-18：免費看 5 句裡的 3 句，兩個付費方案都看完整 5 句。數字從
+      // OpenerAccessContract 算，不寫死。
+      final freeLines = '${OpenerAccessContract.freeUnlockedOrder.length} 句';
+      final paidLines = '${OpenerAccessContract.canonicalPaidOrder.length} 句';
+      expect(find.text('開場救星'), findsOneWidget);
+      final row = find
+          .ancestor(of: find.text('開場救星'), matching: find.byType(Row))
+          .first;
+      final cells = tester
+          .widgetList<Text>(
+              find.descendant(of: row, matching: find.byType(Text)))
+          .map((text) => text.data)
+          .toList();
+      expect(cells, ['開場救星', freeLines, paidLines, paidLines]);
+      final cardsRow = tester.getTopLeft(find.text('回覆卡')).dy;
+      final openerRow = tester.getTopLeft(find.text('開場救星')).dy;
+      final historyRow = tester.getTopLeft(find.text('燈號走勢與邀約進度')).dy;
+      expect(openerRow, greaterThan(cardsRow));
+      expect(openerRow, lessThan(historyRow));
     });
 
     testWidgets('comparison table includes practice girl and model copy',
