@@ -17,6 +17,7 @@ import '../../core/services/usage_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/services/app_haptics.dart';
+import '../../features/subscription/presentation/quota_copy.dart';
 
 /// 額度夠、又是一般長度（≤2000 字、最多 10 則）時不跳確認框，分析鈕旁改寫一行
 /// 「這次會用 N 則，剩 M 則」（Eric 2026-10-18）。超過 2000 字或額度不夠照舊跳框。
@@ -86,6 +87,9 @@ class AnalysisPreviewDialog extends StatelessWidget {
     final canProceed = preview.band.kind != BillingBandKind.reject &&
         usage.monthlyRemaining >= _requiredUnits &&
         usage.dailyRemaining >= _requiredUnits;
+    // 額度不夠的說法照目前方案（Eric 2026-10-18）：Essential 已經是最高方案，不叫他
+    // 升級，只說什麼時候恢復（跟付費頁大標同一句），鈕也只寫「查看方案」。
+    final canUpgrade = canUpgradeQuota(usage.tier);
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
@@ -135,9 +139,15 @@ class AnalysisPreviewDialog extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           if (usage.monthlyRemaining < _requiredUnits)
-            _buildWarning('這個月的分析次數不夠了，升級後再繼續。')
+            _buildWarning(canUpgrade
+                ? '這個月的分析次數不夠了，升級後再繼續。'
+                : '這個月的分析次數不夠了，$kMonthlyQuotaResetLine。')
           else if (usage.dailyRemaining < _requiredUnits)
-            _buildWarning('今天的分析次數不夠了，明天再來或先升級方案。'),
+            // 台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」；跟額度卡
+            // 同一句（主審第 1 輪 P3）。
+            _buildWarning(canUpgrade
+                ? '今天的分析次數不夠了，$kDailyQuotaResetLine，也可以升級取得更多額度。'
+                : '今天的分析次數不夠了，$kDailyQuotaResetLine。'),
           const SizedBox(height: 12),
           if (_isOvercharge)
             Text(
@@ -170,7 +180,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
           TextButton(
             onPressed: onUpgrade,
             child: Text(
-              '查看升級方案',
+              canUpgrade ? '查看升級方案' : '查看方案',
               style: TextStyle(color: AppColors.primary),
             ),
           ),

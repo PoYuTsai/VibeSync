@@ -12,6 +12,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/app_haptics.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../helpers/analysis_quota_hints.dart';
 
 const List<String> kStreamingAnalysisLoadingPhrases = <String>[
@@ -128,6 +129,11 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
   final int? quotaNeeded;
   final VoidCallback? onViewPlans;
 
+  /// 目前方案（SubscriptionTierHelper 的代碼），決定怎麼說下一步（Eric 2026-10-18）：
+  /// Essential 已經是最高方案，只說什麼時候恢復；Starter 只會被叫去升級 Essential。
+  /// 必填：漏帶會讓 Essential 又看到升級。
+  final String? tier;
+
   /// 免費用戶多寫一行 Starter 的量（每天幾則、大約幾次完整分析；Eric 2026-10-18），
   /// 讓「升級」換算成看得懂的次數。已經是付費方案就不寫。
   final bool showStarterCapacity;
@@ -135,6 +141,7 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
   const QuotaExceededUpgradeCard({
     super.key,
     required this.isMonthly,
+    required this.tier,
     this.remaining,
     this.quotaNeeded,
     this.onViewPlans,
@@ -143,14 +150,19 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
 
   String get _headline {
     final hasNumbers = remaining != null && quotaNeeded != null;
+    final canUpgrade = canUpgradeQuota(tier);
     if (isMonthly) {
-      return hasNumbers
-          ? '本月額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。升級至 Starter 或 Essential 繼續分析。'
-          : '本月額度不足，升級至 Starter 或 Essential 繼續分析。';
+      final lead =
+          hasNumbers ? '本月額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。' : '本月額度不足，';
+      return canUpgrade
+          ? '$lead升級至 ${quotaUpgradeTargets(tier)} 繼續分析。'
+          : '$lead$kMonthlyQuotaResetLine。';
     }
-    return hasNumbers
-        ? '今日額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。每天早上 8 點恢復，也可以升級取得更多額度。'
-        : '今日額度不足，每天早上 8 點恢復，也可以升級取得更多額度。';
+    final lead =
+        hasNumbers ? '今日額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。' : '今日額度不足，';
+    return canUpgrade
+        ? '$lead$kDailyQuotaResetLine，也可以升級取得更多額度。'
+        : '$lead$kDailyQuotaResetLine。';
   }
 
   @override

@@ -45,4 +45,37 @@ void main() {
       'Starter 每天 $daily 則，至少能分析 ${daily ~/ full} 次（每次 $maxChars 字以內）',
     );
   });
+
+  group('潤飾、微調撞到額度的說明：照目前方案（Eric 2026-10-18）', () {
+    String message(String? tier, {required bool isMonthly}) =>
+        polishQuotaMessage(tier: tier, isMonthly: isMonthly, used: 9, limit: 9);
+
+    test('免費、Starter：每天的說恢復時間也說升級，每月的說升級', () {
+      expect(
+        message(SubscriptionTierHelper.free, isMonthly: false),
+        '目前方案 Free：今日額度已用完 (9/9)，每天早上 8 點恢復；升級方案可取得更多額度。',
+      );
+      expect(
+        message(SubscriptionTierHelper.starter, isMonthly: true),
+        '目前方案 Starter：本月額度已用完 (9/9)，升級方案可取得更多分析額度。',
+      );
+    });
+
+    test('Essential：不叫他升級，只說什麼時候恢復', () {
+      final daily = message(SubscriptionTierHelper.essential, isMonthly: false);
+      final monthly =
+          message(SubscriptionTierHelper.essential, isMonthly: true);
+      expect(daily, '目前方案 Essential：今日額度已用完 (9/9)，每天早上 8 點恢復。');
+      expect(monthly, '目前方案 Essential：本月額度已用完 (9/9)，每月 1 號早上 8 點恢復。');
+      expect(daily, isNot(contains('升級')));
+      expect(monthly, isNot(contains('升級')));
+    });
+
+    test('不認得的方案代碼當免費（跟方案名一樣）', () {
+      expect(
+        message(null, isMonthly: true),
+        message(SubscriptionTierHelper.free, isMonthly: true),
+      );
+    });
+  });
 }

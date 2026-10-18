@@ -6,6 +6,7 @@ library;
 
 import '../../../../core/services/message_calculator.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 
 /// 分析鈕那一行的補充：用完這次之後剩 [remainingAfter] 則、不到兩次一般長度分析時才寫；
 /// 還夠兩次以上、或剩 0（那一行已經寫「剩 0 則」）回 null。
@@ -28,4 +29,25 @@ String starterCapacityLine() {
   final runs = daily ~/ MessageCalculator.softCapUnits;
   return 'Starter 每天 $daily 則，至少能分析 $runs 次'
       '（每次 ${MessageCalculator.softCapBandMaxChars} 字以內）';
+}
+
+/// 草稿潤飾、回覆微調撞到額度時的說明（Eric 2026-10-18）：[tier] 是目前方案，免費、
+/// Starter 照舊說升級能多用；Essential 已經是最高方案，只說什麼時候恢復（跟付費頁
+/// 大標同一句）。[used]／[limit] 是伺服器 429 帶回來的那個額度。
+String polishQuotaMessage({
+  required String? tier,
+  required bool isMonthly,
+  required int used,
+  required int limit,
+}) {
+  final plan = SubscriptionTierHelper.displayName(tier);
+  final canUpgrade = canUpgradeQuota(tier);
+  if (isMonthly) {
+    final next = canUpgrade ? '升級方案可取得更多分析額度。' : '$kMonthlyQuotaResetLine。';
+    return '目前方案 $plan：本月額度已用完 ($used/$limit)，$next';
+  }
+  final next = canUpgrade
+      ? '$kDailyQuotaResetLine；升級方案可取得更多額度。'
+      : '$kDailyQuotaResetLine。';
+  return '目前方案 $plan：今日額度已用完 ($used/$limit)，$next';
 }

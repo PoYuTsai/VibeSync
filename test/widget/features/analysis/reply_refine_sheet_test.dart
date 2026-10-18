@@ -16,6 +16,7 @@ void main() {
     WidgetTester tester, {
     required ReplyRefineRequest onRefine,
     int? freeRemaining,
+    bool freeRemainingStale = false,
     String originalText = '這週要不要一起喝杯咖啡？',
     String? restoredText,
     String? restoredRequestId,
@@ -29,6 +30,7 @@ void main() {
           originalText: originalText,
           onRefine: onRefine,
           freeRemaining: freeRemaining,
+          freeRemainingStale: freeRemainingStale,
           restoredText: restoredText,
           restoredRequestId: restoredRequestId,
           quickInstructions: quickInstructions,
@@ -181,6 +183,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('今天還有 2 次免費微調。'), findsOneWidget);
+  });
+
+  testWidgets('上次失敗後關掉重開（呼叫端帶進待確認）：一打開就講待確認，成功帶回數字才換回來', (tester) async {
+    await pumpSheet(
+      tester,
+      freeRemaining: 1,
+      freeRemainingStale: true,
+      onRefine: ({required currentText, required instruction}) async =>
+          const ReplyRefineOutcome(
+        refinedText: '喝杯咖啡？',
+        requestId: 'req-1',
+        freeRemaining: 0,
+      ),
+    );
+
+    expect(find.text('今天還有 1 次免費微調。'), findsNothing);
+    expect(find.text('免費次數待確認，下一次微調可能會使用 1 則。'), findsOneWidget);
+
+    await tester.tap(_quick('短一點'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天的免費次數用完了，接下來每次微調使用 1 則。'), findsOneWidget);
   });
 
   testWidgets('自由指令長度上限與 server 對齊', (tester) async {

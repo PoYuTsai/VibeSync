@@ -588,7 +588,7 @@ void main() {
           _recognizedContents(messages),
           reason: '匯入照樣留著');
       expect(find.text('開始分析前'), findsOneWidget);
-      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
+      expect(find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'), findsOneWidget);
       final start = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, '開始分析'),
       );

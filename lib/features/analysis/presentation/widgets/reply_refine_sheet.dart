@@ -93,6 +93,7 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
   required String originalText,
   required ReplyRefineRequest onRefine,
   int? freeRemaining,
+  bool freeRemainingStale = false,
   int freeDailyLimit = kRefineFreeDailyLimit,
   String? restoredText,
   String? restoredRequestId,
@@ -106,6 +107,7 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
       originalText: originalText,
       onRefine: onRefine,
       freeRemaining: freeRemaining,
+      freeRemainingStale: freeRemainingStale,
       freeDailyLimit: freeDailyLimit,
       restoredText: restoredText,
       restoredRequestId: restoredRequestId,
@@ -120,6 +122,7 @@ class ReplyRefineSheet extends StatefulWidget {
     required this.originalText,
     required this.onRefine,
     this.freeRemaining,
+    this.freeRemainingStale = false,
     this.freeDailyLimit = kRefineFreeDailyLimit,
     this.restoredText,
     this.restoredRequestId,
@@ -135,6 +138,10 @@ class ReplyRefineSheet extends StatefulWidget {
 
   /// 已知的今日剩餘免費次數；null 代表今天還沒問過 server。
   final int? freeRemaining;
+
+  /// 上一輪微調失敗過、[freeRemaining] 不再可信（協調器記著）：關掉重開的面板
+  /// 一打開就標待確認（主審第 1 輪 P2）。
+  final bool freeRemainingStale;
   final int freeDailyLimit;
 
   /// 24 小時內對同一則回覆調過的最後一版。有的話直接接著調，不用重來。
@@ -177,12 +184,14 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
   /// server 有一條真實路徑會先授權免費額度、之後結算才失敗（額度表沒有退款
   /// 函式，這是已知取捨）。此時畫面上的「今天還有 N 次免費」已經是舊的，繼續
   /// 顯示它等於在扣費前給出錯誤的揭露：使用者以為下一次免費，實際會扣 1 則。
-  bool _freeRemainingStale = false;
+  /// 開面板時接著呼叫端記的狀態，上次失敗後關掉重開也一樣（主審第 1 輪 P2）。
+  late bool _freeRemainingStale;
 
   @override
   void initState() {
     super.initState();
     _freeRemaining = widget.freeRemaining;
+    _freeRemainingStale = widget.freeRemainingStale;
     final restored = widget.restoredText?.trim();
     if (restored != null &&
         restored.isNotEmpty &&

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/core/services/usage_service.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/shared/widgets/analysis_preview_dialog.dart';
 
 MessagePreview _preview(int billableChars) => MessagePreview(
@@ -139,7 +140,12 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
+      // 台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」（主審第 1 輪 P3）。
+      expect(
+        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('明天'), findsNothing);
     });
 
     testWidgets('confirm button enabled and fires when quota suffices',
@@ -242,7 +248,10 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
+      expect(
+        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
       final confirmButton = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, '確認使用 20 則'),
       );
@@ -263,6 +272,93 @@ void main() {
       await tester.tap(find.text('查看升級方案'));
       await tester.pumpAndSettle();
       expect(upgraded, isTrue);
+    });
+  });
+
+  group('AnalysisPreviewDialog — 額度不夠的說法照方案（Eric 2026-10-18）', () {
+    const starter = SubscriptionTierHelper.starter;
+    const essential = SubscriptionTierHelper.essential;
+
+    /// [tier] 方案，上限照方案常數；[monthlyUsed]／[dailyUsed] 是已用則數。
+    UsageData usageFor(String tier, {int monthlyUsed = 0, int dailyUsed = 0}) {
+      final limits = SubscriptionTierHelper.limitsFor(tier);
+      return UsageData(
+        monthlyUsed: monthlyUsed,
+        monthlyLimit: limits.monthly,
+        dailyUsed: dailyUsed,
+        dailyLimit: limits.daily,
+        dailyResetAt: DateTime(2026, 10, 19),
+        tier: tier,
+      );
+    }
+
+    testWidgets('Essential 這個月不夠：不叫他升級，只說每月 1 號早上 8 點恢復；鈕寫查看方案',
+        (tester) async {
+      var upgraded = false;
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(100), // 3 則
+        usage: usageFor(
+          essential,
+          monthlyUsed: SubscriptionTierHelper.limitsFor(essential).monthly,
+        ),
+        onUpgrade: () => upgraded = true,
+      ));
+      await openDialog(tester);
+
+      expect(find.text('這個月的分析次數不夠了，每月 1 號早上 8 點恢復。'), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
+      await tester.tap(find.text('查看方案'));
+      await tester.pumpAndSettle();
+      expect(upgraded, isTrue);
+    });
+
+    testWidgets('Essential 今天不夠：只說每天早上 8 點恢復', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(100),
+        usage: usageFor(
+          essential,
+          dailyUsed: SubscriptionTierHelper.limitsFor(essential).daily,
+        ),
+        onUpgrade: () {},
+      ));
+      await openDialog(tester);
+
+      expect(find.text('今天的分析次數不夠了，每天早上 8 點恢復。'), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
+      expect(find.text('查看方案'), findsOneWidget);
+    });
+
+    testWidgets('Starter 還能升級：今天不夠照舊叫他升級，鈕寫查看升級方案', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(100),
+        usage: usageFor(
+          starter,
+          dailyUsed: SubscriptionTierHelper.limitsFor(starter).daily,
+        ),
+        onUpgrade: () {},
+      ));
+      await openDialog(tester);
+
+      expect(
+        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
+      expect(find.text('查看升級方案'), findsOneWidget);
+    });
+
+    testWidgets('Starter 這個月不夠：照舊說升級後再繼續', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(100),
+        usage: usageFor(
+          starter,
+          monthlyUsed: SubscriptionTierHelper.limitsFor(starter).monthly,
+        ),
+        onUpgrade: () {},
+      ));
+      await openDialog(tester);
+
+      expect(find.text('這個月的分析次數不夠了，升級後再繼續。'), findsOneWidget);
+      expect(find.text('查看升級方案'), findsOneWidget);
     });
   });
 
