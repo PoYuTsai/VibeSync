@@ -376,7 +376,7 @@ void main() {
     );
     expect(find.text('AI 推薦'), findsOneWidget, reason: '只有第一張');
     final reason = find.text(
-      'AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.accept)}',
+      'AI 推薦理由：先接她剛說的話，\n讓她知道你有在聽。',
     );
     expect(reason, findsOneWidget);
     // 理由在標題和第一張卡之間。
@@ -429,10 +429,40 @@ void main() {
     expect(icon.size, 18);
     expect(icon.color, AppColors.coachRecommendation);
     final reason = tester.widget<Text>(
-      find.text('AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.push)}'),
+      find.text('AI 推薦理由：往見面靠近一步，\n例如提個想一起做的事，或約好時間。'),
     );
     expect(reason.style!.fontSize, 15);
     expect(reason.style!.color, AppColors.onBackgroundSecondary);
+  });
+
+  testWidgets('推薦理由在說明的第一個「，」後面換行，字跟任務標籤的說明一樣（五種任務）', (tester) async {
+    for (final task in GuideV3Task.values) {
+      await _pump(
+        tester,
+        read: _read(
+          decision: task == GuideV3Task.close ? 'close' : 'send',
+          planned: [
+            {'slot': 1, 'task': task.wire, 'locked': false},
+          ],
+        ),
+        cards: [
+          _card(1, task.wire, ['好啊']),
+        ],
+      );
+      final reason = tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('guide-v3-recommendation-reason')),
+              matching: find.byType(Text),
+            ),
+          )
+          .data!;
+      final purpose = guideV3TaskPurpose(task);
+      expect(reason.replaceAll('\n', ''), 'AI 推薦理由：$purpose',
+          reason: task.name);
+      expect('\n'.allMatches(reason).length, 1, reason: task.name);
+      expect(reason.indexOf('\n'), reason.indexOf('，') + 1, reason: task.name);
+    }
   });
 
   testWidgets('收尾只有一張也標推薦；第 1 張被拿掉時標第一張送到的卡', (tester) async {
@@ -448,7 +478,7 @@ void main() {
     expect(find.byKey(const ValueKey('guide-v3-card-1-recommended')),
         findsOneWidget);
     expect(
-      find.text('AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.close)}'),
+      find.text('AI 推薦理由：讓這輪自然收個尾，\n不用硬聊下去。'),
       findsOneWidget,
     );
 
@@ -467,7 +497,7 @@ void main() {
         findsOneWidget);
     expect(find.text('AI 推薦'), findsOneWidget);
     expect(
-      find.text('AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.resonate)}'),
+      find.text('AI 推薦理由：站在她的感受這邊，\n讓她覺得你懂她。'),
       findsOneWidget,
     );
   });
@@ -501,7 +531,7 @@ void main() {
         findsOneWidget);
     expect(find.text('AI 推薦'), findsOneWidget, reason: '正在寫的第 2 張不標');
     expect(
-      find.text('AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.accept)}'),
+      find.text('AI 推薦理由：先接她剛說的話，\n讓她知道你有在聽。'),
       findsOneWidget,
     );
   });

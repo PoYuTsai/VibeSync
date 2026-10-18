@@ -1432,7 +1432,7 @@ void main() {
       );
       expect(find.text('AI 推薦'), findsOneWidget);
       expect(
-        find.text('AI 推薦理由：${guideV3TaskPurpose(GuideV3Task.accept)}'),
+        find.text('AI 推薦理由：先接她剛說的話，\n讓她知道你有在聽。'),
         findsOneWidget,
       );
     });

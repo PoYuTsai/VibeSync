@@ -464,28 +464,36 @@ class GuideV3ResultSection extends StatelessWidget {
 
   /// 推薦理由：跟開場救星、新話題同一個樣子（燈泡＋「AI 推薦理由：」，樣式照抄、不共用
   /// 元件）。理由是第一張卡任務的固定說明（[guideV3TaskPurpose]），不花模型費、不寫新句子
-  ///（Eric 2026-10-19）。
-  Widget _recommendationReason(GuideV3Task task) => Row(
-        key: const ValueKey('guide-v3-recommendation-reason'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.lightbulb_outline_rounded,
-            size: 18,
-            color: AppColors.coachRecommendation,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'AI 推薦理由：${guideV3TaskPurpose(task)}',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.onBackgroundSecondary,
-                height: 1.4,
-              ),
+  ///（Eric 2026-10-19）。在說明的第一個「，」後面換行：手機上整句一行放不下，照字數自然斷
+  /// 會只剩「聽。」一兩個字在第二行（截圖自查，DESIGN.md §10）；字不變。
+  Widget _recommendationReason(GuideV3Task task) {
+    final purpose = guideV3TaskPurpose(task);
+    final comma = purpose.indexOf('，');
+    final body = comma < 0
+        ? purpose
+        : '${purpose.substring(0, comma + 1)}\n${purpose.substring(comma + 1)}';
+    return Row(
+      key: const ValueKey('guide-v3-recommendation-reason'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.lightbulb_outline_rounded,
+          size: 18,
+          color: AppColors.coachRecommendation,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'AI 推薦理由：$body',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.4,
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 
   /// 已升級但看的是免費版結果（沿用 v2 的「重新產生完整分析」文案）。
   Widget _upgradeRefreshNotice() {
