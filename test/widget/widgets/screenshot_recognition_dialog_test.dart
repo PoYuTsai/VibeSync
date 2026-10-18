@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
+import 'package:vibesync/shared/widgets/analysis_preview_dialog.dart';
 
 void main() {
   Widget buildDialogHost({
@@ -19,6 +22,8 @@ void main() {
     Conversation? currentConversation,
     String? expectedPartnerName,
     ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
+    AnalysisQuotaLine? Function(List<RecognizedMessage> messages)?
+        analyzeQuotaLineFor,
   }) {
     return MaterialApp(
       builder: (context, child) => reduceMotion
@@ -58,6 +63,7 @@ void main() {
                         updatedAt: DateTime(2026, 3, 24),
                       ),
                   expectedPartnerName: expectedPartnerName,
+                  analyzeQuotaLineFor: analyzeQuotaLineFor,
                 ),
               );
               onResult?.call(result);
@@ -1071,6 +1077,173 @@ void main() {
 
       expect(dialogResult, isNotNull);
       expect(dialogResult!.analysisContextNote, '她是我女友');
+    });
+  });
+
+  // 一鍵加入並開始分析（Eric 2026-10-18）：這次會用幾則由畫面算好傳進來，
+  // 確認框只負責照目前要匯入的訊息問、把看到的那一行原樣帶回去。
+  group('ScreenshotRecognitionDialog 加入並開始分析', () {
+    AnalysisQuotaLine? freeLineFor(List<RecognizedMessage> messages) =>
+        AnalysisQuotaLine.of(
+          MessageCalculator.previewAnalysisRequest([
+            for (final (index, message) in messages.indexed)
+              Message(
+                id: 'line-$index',
+                content: message.content,
+                isFromMe: message.isFromMe,
+                timestamp: DateTime(2026, 10, 18, 9, index),
+              ),
+          ]),
+          monthlyRemaining: AppConstants.freeMonthlyLimit,
+          dailyRemaining: AppConstants.freeDailyLimit,
+        );
+
+    final analyzeButton =
+        find.byKey(ScreenshotRecognitionDialog.analyzeButtonKey);
+    final importOnlyButton =
+        find.byKey(ScreenshotRecognitionDialog.importOnlyButtonKey);
+    final quotaLine = find.byKey(ScreenshotRecognitionDialog.quotaLineKey);
+
+    testWidgets('沒給算法：只有今天的「確認本次內容」', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(recognized: mixedConversation),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('確認本次內容'), findsOneWidget);
+      expect(analyzeButton, findsNothing);
+      expect(importOnlyButton, findsNothing);
+      expect(quotaLine, findsNothing);
+    });
+
+    testWidgets('有給算法：寫出那一行；主鈕帶回要分析與看到的那一行', (tester) async {
+      await _useTallSurface(tester);
+      List<RecognizedMessage>? asked;
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: (messages) {
+            asked = messages;
+            return freeLineFor(messages);
+          },
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      final expected = freeLineFor(mixedConversation.messages!)!;
+      expect(
+        [for (final message in asked!) message.content],
+        [for (final message in mixedConversation.messages!) message.content],
+      );
+      expect(tester.widget<Text>(quotaLine).data, expected.text);
+      expect(find.text('加入並開始分析'), findsOneWidget);
+      expect(find.text('先存起來，晚點再分析'), findsOneWidget);
+      expect(find.text('確認本次內容'), findsNothing);
+
+      await _tapVisible(tester, analyzeButton);
+
+      expect(results, hasLength(1));
+      expect(results.single!.startAnalysis, isTrue);
+      expect(results.single!.shownQuotaLine, expected);
+      expect(results.single!.messages, hasLength(3));
+    });
+
+    testWidgets('先存起來，晚點再分析：照今天的確認帶回，不分析、不帶那一行', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await _tapVisible(tester, importOnlyButton);
+
+      expect(results, hasLength(1));
+      expect(results.single!.startAnalysis, isFalse);
+      expect(results.single!.shownQuotaLine, isNull);
+      expect(results.single!.messages, hasLength(3));
+    });
+
+    testWidgets('算不出那一行（超過一般長度、額度不夠）：不寫，主鈕照樣能按、帶回 null', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: (_) => null,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(quotaLine, findsNothing);
+      await _tapVisible(tester, analyzeButton);
+
+      expect(results, hasLength(1));
+      expect(results.single!.startAnalysis, isTrue);
+      expect(results.single!.shownQuotaLine, isNull);
+    });
+
+    testWidgets('連點主鈕：只關一次、只帶回一次，底下的頁面還在', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(analyzeButton);
+      await tester.tap(analyzeButton);
+      await tester.tap(analyzeButton, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(results, hasLength(1));
+      expect(find.text('Open Dialog'), findsOneWidget);
+    });
+
+    testWidgets('同對象確認還沒勾：主鈕一樣擋下、不關', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognizedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+          currentConversation: Conversation(
+            id: 'partner-bound-placeholder',
+            name: '新對話',
+            partnerId: 'partner-xiaomei',
+            messages: const [],
+            createdAt: DateTime(2026, 7, 16),
+            updatedAt: DateTime(2026, 7, 16),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      expect(find.text('我確認這些截圖都是目前這位對象'), findsOneWidget);
+
+      await _tapVisible(tester, analyzeButton);
+
+      expect(results, isEmpty);
+      expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
+      expect(find.textContaining('請先勾選上方的確認格'), findsOneWidget);
     });
   });
 }

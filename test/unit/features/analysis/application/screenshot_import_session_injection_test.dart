@@ -518,4 +518,82 @@ void main() {
       expect(caught, isA<TimeoutException>());
     });
   });
+
+  // 確認框上「加入並開始分析」那一行（Eric 2026-10-18）：照整批取代後的樣子算，
+  // 但只是預覽——不存檔、不動畫面上那一份。
+  group('previewReplacedBatch', () {
+    const edited = [
+      RecognizedMessage(content: '嗨', isFromMe: false),
+      RecognizedMessage(content: '哈囉', isFromMe: true),
+    ];
+
+    test('跟 commitImport 整批取代的訊息一樣，原對話與存檔都不動', () async {
+      final conversation = _conversation();
+      final persisted = <Conversation>[];
+      final coordinator = _importCoordinator(
+        conversation: conversation,
+        persisted: persisted,
+      );
+
+      final preview = coordinator.previewReplacedBatch(
+        editedRecognizedMessages: edited,
+        hasLoadedAnalysisResult: false,
+      );
+
+      expect(preview, isNotNull);
+      expect(identical(preview, conversation), isFalse);
+      expect(
+        [
+          for (final message in preview!.messages)
+            (message.content, message.isFromMe),
+        ],
+        [('嗨', false), ('哈囉', true)],
+      );
+      expect(conversation.messages.single.content, '今天加班好累喔');
+      expect(persisted, isEmpty);
+
+      await coordinator.commitImport(
+        editedRecognizedMessages: edited,
+        newName: '',
+        meeting: null,
+        duration: null,
+        goal: null,
+        analysisContextNote: null,
+        recognized:
+            const RecognizedConversation(messageCount: 2, summary: '兩則'),
+        hasLoadedAnalysisResult: false,
+      );
+      expect(
+        [for (final message in persisted.single.messages) message.content],
+        [for (final message in preview.messages) message.content],
+      );
+    });
+
+    test('已完成分析或畫面已載入結果（會另開新片段）：回 null', () {
+      final completed = _conversation()..lastAnalyzedMessageCount = 1;
+      final coordinator = _importCoordinator(
+        conversation: completed,
+        persisted: <Conversation>[],
+      );
+      expect(
+        coordinator.previewReplacedBatch(
+          editedRecognizedMessages: edited,
+          hasLoadedAnalysisResult: false,
+        ),
+        isNull,
+      );
+
+      final pending = _importCoordinator(
+        conversation: _conversation(),
+        persisted: <Conversation>[],
+      );
+      expect(
+        pending.previewReplacedBatch(
+          editedRecognizedMessages: edited,
+          hasLoadedAnalysisResult: true,
+        ),
+        isNull,
+      );
+    });
+  });
 }

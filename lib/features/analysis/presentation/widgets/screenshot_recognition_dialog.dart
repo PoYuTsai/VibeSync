@@ -10,6 +10,7 @@ import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
+import '../../../../shared/widgets/analysis_preview_dialog.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 import '../../../../core/services/app_haptics.dart';
 
@@ -21,6 +22,12 @@ class ScreenshotRecognitionDialogResult {
   final String? analysisContextNote;
   final List<RecognizedMessage> messages;
 
+  /// 按的是「加入並開始分析」（Eric 2026-10-18）：匯入成功後接著走分析鈕同一個入口。
+  final bool startAnalysis;
+
+  /// 按下時確認框上寫的那一行（沒寫就是 null）：分析入口重算一樣才不跳確認框。
+  final AnalysisQuotaLine? shownQuotaLine;
+
   const ScreenshotRecognitionDialogResult({
     required this.name,
     required this.meetingContext,
@@ -28,10 +35,16 @@ class ScreenshotRecognitionDialogResult {
     required this.goal,
     required this.analysisContextNote,
     required this.messages,
+    this.startAnalysis = false,
+    this.shownQuotaLine,
   });
 }
 
 class ScreenshotRecognitionDialog extends StatefulWidget {
+  static const analyzeButtonKey = ValueKey('recognition-import-analyze');
+  static const importOnlyButtonKey = ValueKey('recognition-import-only');
+  static const quotaLineKey = ValueKey('recognition-import-quota-line');
+
   final RecognizedConversation recognized;
   final String? warningMessage;
   final String initialName;
@@ -41,6 +54,13 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final String initialAnalysisContextNote;
   final Conversation currentConversation;
   final String? expectedPartnerName;
+
+  /// 有給：主鈕換成「加入並開始分析」，原本的確認改成次要的「先存起來，晚點再分析」
+  /// （Eric 2026-10-18：辨識確認後一鍵接著分析）。用目前編輯中的訊息算這次會用
+  /// 幾則（跟分析鈕同一套）；回 null 就不寫那一行，按下去照舊跳確認框。
+  /// 沒給：只有今天的「確認本次內容」。
+  final AnalysisQuotaLine? Function(List<RecognizedMessage> messages)?
+      analyzeQuotaLineFor;
 
   const ScreenshotRecognitionDialog({
     super.key,
@@ -53,6 +73,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
     required this.initialAnalysisContextNote,
     required this.currentConversation,
     this.expectedPartnerName,
+    this.analyzeQuotaLineFor,
   });
 
   @override
@@ -74,6 +95,12 @@ class _ScreenshotRecognitionDialogState
   final _samePartnerBlockKey = GlobalKey();
   int _samePartnerFlashRequest = 0;
   bool _confirmedSamePartner = false;
+
+  /// 已經帶著結果關掉：連點時第二下不再 pop，不然會連底下的分析頁一起關掉。
+  bool _submitted = false;
+
+  /// 這次畫面上寫的那一行（build 時算）；按「加入並開始分析」時原樣帶回去比對。
+  AnalysisQuotaLine? _shownQuotaLine;
 
   static const _swipeTutorialEntryDelay = Duration(milliseconds: 650);
 
@@ -348,7 +375,8 @@ class _ScreenshotRecognitionDialogState
     return false;
   }
 
-  void _submit() {
+  void _submit({bool startAnalysis = false}) {
+    if (_submitted) return;
     if (_requiresSamePartnerConfirmation && !_confirmedSamePartner) {
       setState(() {
         _editValidationMessage = '請先勾選上方的確認格：這些截圖都是目前這位對象；如果是另一人，請取消後到正確對象再匯入。';
@@ -376,6 +404,7 @@ class _ScreenshotRecognitionDialogState
       return;
     }
 
+    _submitted = true;
     Navigator.of(context).pop(
       ScreenshotRecognitionDialogResult(
         name: _nameController.text.trim(),
@@ -386,6 +415,8 @@ class _ScreenshotRecognitionDialogState
             ? null
             : widget.initialAnalysisContextNote.trim(),
         messages: sanitizedMessages,
+        startAnalysis: startAnalysis,
+        shownQuotaLine: startAnalysis ? _shownQuotaLine : null,
       ),
     );
   }
@@ -1062,6 +1093,8 @@ class _ScreenshotRecognitionDialogState
   Widget build(BuildContext context) {
     final willReplaceCurrentBatch = _canReplaceCurrentDraft &&
         widget.currentConversation.messages.isNotEmpty;
+    // 改了文字、左右或刪掉一則都會重畫，那一行照目前要匯入的訊息重算。
+    _shownQuotaLine = widget.analyzeQuotaLineFor?.call(_sanitizedMessages());
 
     // 滿版底部 sheet 呈現（2026-08-14 對標夥伴示意稿）：拖把手＋大標＋
     // 底部固定動作列。仍走 showDialog 管線，僅換內部版型。
@@ -1304,46 +1337,124 @@ class _ScreenshotRecognitionDialogState
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
-                child: Row(
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(88, 52),
-                      ),
-                      child: const Text(
-                        '取消',
-                        style: TextStyle(color: AppColors.onBackgroundSecondary),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        // 沒勾同對象確認不再 disabled 裝死：一律可按，_submit
-                        // 內擋下並捲到確認格＋閃光＋紅字說明。
-                        onPressed: AppHaptics.onPress(_submit),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.ctaStart,
-                          foregroundColor: AppColors.onCta,
-                          minimumSize: const Size.fromHeight(52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                        child: Text(
-                          '確認本次內容',
-                          style: AppTypography.titleSmall.copyWith(
-                            color: AppColors.onCta,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: widget.analyzeQuotaLineFor == null
+                    ? _buildConfirmOnlyActions()
+                    : _buildImportAndAnalyzeActions(),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 不提供一鍵分析時（例如會另開新片段）：今天的「取消／確認本次內容」。
+  Widget _buildConfirmOnlyActions() {
+    return Row(
+      children: [
+        _buildCancelAction(minimumHeight: 52),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildPrimaryAction(label: '確認本次內容', onPressed: _submit),
+        ),
+      ],
+    );
+  }
+
+  /// 一鍵分析（Eric 2026-10-18）：上面寫這次會用幾則，主鈕加入並開始分析；
+  /// 次要的「先存起來，晚點再分析」就是今天的確認，不送分析。
+  Widget _buildImportAndAnalyzeActions() {
+    final quotaLine = _shownQuotaLine;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (quotaLine != null) ...[
+          Text(
+            quotaLine.text,
+            key: ScreenshotRecognitionDialog.quotaLineKey,
+            textAlign: TextAlign.center,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        _buildPrimaryAction(
+          key: ScreenshotRecognitionDialog.analyzeButtonKey,
+          label: '加入並開始分析',
+          onPressed: () => _submit(startAnalysis: true),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _buildCancelAction(minimumHeight: 48),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton(
+                key: ScreenshotRecognitionDialog.importOnlyButtonKey,
+                onPressed: AppHaptics.onPress(_submit),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.onBackgroundPrimary,
+                  minimumSize: const Size.fromHeight(48),
+                  side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.28),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: const Text('先存起來，晚點再分析'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCancelAction({required double minimumHeight}) {
+    return TextButton(
+      onPressed: () {
+        // 跟送出共用一次性旗標：同一格裡又按確認又按取消，也只關一次。
+        if (_submitted) return;
+        _submitted = true;
+        Navigator.of(context).pop();
+      },
+      style: TextButton.styleFrom(
+        minimumSize: Size(88, minimumHeight),
+      ),
+      child: const Text(
+        '取消',
+        style: TextStyle(color: AppColors.onBackgroundSecondary),
+      ),
+    );
+  }
+
+  /// 底部主鈕（橘底深墨字）。沒勾同對象確認不再 disabled 裝死：一律可按，
+  /// _submit 內擋下並捲到確認格＋閃光＋紅字說明。
+  Widget _buildPrimaryAction({
+    Key? key,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton(
+      key: key,
+      onPressed: AppHaptics.onPress(onPressed),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.ctaStart,
+        foregroundColor: AppColors.onCta,
+        minimumSize: const Size.fromHeight(52),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.titleSmall.copyWith(
+          color: AppColors.onCta,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
