@@ -20,13 +20,14 @@ class AppConstants {
   static const goldenRuleMultiplier = 1.8;
 
   // Subscription Tiers (訊息制)
-  // 免費 30／15 → 50／20（Eric 2026-10-18），跟伺服器 _shared/quota.ts 同步。
-  static const freeMonthlyLimit = 50;
+  // 免費每月 30、每日 15，跟伺服器 _shared/quota.ts 同步。10/18 曾放寬成 50／20，
+  // Bruce 在 PR #97 決定改回，Eric 2026-10-19 照他決定。
+  static const freeMonthlyLimit = 30;
   static const starterMonthlyLimit = 300;
   static const essentialMonthlyLimit = 800;
 
   // Daily Limits (每日上限)
-  static const freeDailyLimit = 20;
+  static const freeDailyLimit = 15;
   static const starterDailyLimit = 50;
   static const essentialDailyLimit = 120;
 

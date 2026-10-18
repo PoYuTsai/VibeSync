@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/opener/domain/opener_access.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -150,8 +151,39 @@ void main() {
       expect(find.text('目前方案：Free'), findsOneWidget);
       expect(find.text('本月剩餘'), findsOneWidget);
       expect(find.text('今日剩餘'), findsOneWidget);
-      expect(find.text('50/50'), findsOneWidget);
-      expect(find.text('20/20'), findsOneWidget);
+      // 免費額度照常數算，之後再調也不用改這裡。
+      const monthly = AppConstants.freeMonthlyLimit;
+      const daily = AppConstants.freeDailyLimit;
+      expect(find.text('$monthly/$monthly'), findsOneWidget);
+      expect(find.text('$daily/$daily'), findsOneWidget);
+    });
+
+    testWidgets('比較表的每日、每月額度三欄都照方案常數', (tester) async {
+      await pumpPaywall(tester);
+
+      List<String?> cellsOf(String feature) {
+        final row = find
+            .ancestor(of: find.text(feature), matching: find.byType(Row))
+            .first;
+        return tester
+            .widgetList<Text>(
+                find.descendant(of: row, matching: find.byType(Text)))
+            .map((text) => text.data)
+            .toList();
+      }
+
+      expect(cellsOf('每日額度'), [
+        '每日額度',
+        '${AppConstants.freeDailyLimit} 則',
+        '${AppConstants.starterDailyLimit} 則',
+        '${AppConstants.essentialDailyLimit} 則',
+      ]);
+      expect(cellsOf('每月額度'), [
+        '每月額度',
+        '${AppConstants.freeMonthlyLimit} 則',
+        '${AppConstants.starterMonthlyLimit} 則',
+        '${AppConstants.essentialMonthlyLimit} 則',
+      ]);
     });
 
     testWidgets('comparison table names tiers and uses human-readable values',
