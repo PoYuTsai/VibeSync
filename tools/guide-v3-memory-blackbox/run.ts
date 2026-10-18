@@ -5,6 +5,7 @@
 //
 // 預設 dry-run：不讀金鑰、不連網、不寫檔，只列次數與費用上限（在 repo 根目錄跑）：
 //   deno run --allow-read tools/guide-v3-memory-blackbox/run.ts [--models=haiku,sonnet] [--repeat=N] [--only=id,id]
+//   只跑 Haiku：--models=claude-haiku-5-5（也收 haiku、sonnet 這種簡稱）。
 // --fake：fetch 換成替身，「模型」照案例的標準答案回（期望的事實＋陷阱，各附原句），驗證案例寫得
 //   對（期望的都過得了出處檢查、陷阱都擋得下）、請求形狀與計價統計接得起來；有一項不對就 exit 1。
 //   deno run --allow-read tools/guide-v3-memory-blackbox/run.ts --fake
@@ -115,10 +116,24 @@ export function parseOptions(args: string[]): Options {
   for (const key of [...values.keys(), ...flags]) {
     if (!known.includes(key)) throw new Error(`沒有這個參數：--${key}`);
   }
-  const models = (values.get("models") ?? "haiku,sonnet").split(",");
-  for (const m of models) {
-    if (!(m in MODELS)) throw new Error(`--models 只收 haiku、sonnet：${m}`);
-  }
+  // 簡稱或完整的模型 ID 都收（--models=claude-haiku-5-5 就是只跑 Haiku）。
+  const models = [
+    ...new Set(
+      (values.get("models") ?? "haiku,sonnet").split(",").map((m) => {
+        const alias = m in MODELS
+          ? m
+          : Object.keys(MODELS).find((key) => MODELS[key] === m);
+        if (!alias) {
+          throw new Error(
+            `--models 只收 haiku、sonnet 或 ${
+              Object.values(MODELS).join("、")
+            }：${m}`,
+          );
+        }
+        return alias;
+      }),
+    ),
+  ];
   const repeat = Number(values.get("repeat") ?? "1");
   if (!Number.isInteger(repeat) || repeat < 1 || repeat > 5) {
     throw new Error("--repeat 要是 1–5 的整數");
@@ -620,7 +635,7 @@ async function main(args: string[]): Promise<number> {
         `  tools/guide-v3-memory-blackbox/run.ts${
           opts.models.join(",") === "haiku,sonnet"
             ? ""
-            : ` --models=${opts.models.join(",")}`
+            : ` --models=${opts.models.map((alias) => MODELS[alias]).join(",")}`
         }${opts.repeat === 1 ? "" : ` --repeat=${opts.repeat}`}${
           opts.only ? ` --only=${opts.only.join(",")}` : ""
         } \\`,
