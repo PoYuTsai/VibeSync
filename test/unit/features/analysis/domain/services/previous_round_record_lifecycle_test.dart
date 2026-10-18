@@ -8,6 +8,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
 import 'package:vibesync/features/analysis/domain/entities/previous_round_context.dart';
 import 'package:vibesync/features/analysis/domain/services/previous_round_builder.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
@@ -51,6 +52,7 @@ Message _message(int i) => Message(
 void main() {
   late Box<dynamic> box;
   late HiveAnalysisRecordStore store;
+  late List<AnalysisHistoryEvent> events;
 
   setUp(() async {
     Hive.init('./.dart_tool/test_hive_previous_round_lifecycle');
@@ -58,20 +60,32 @@ void main() {
       'previous_round_${DateTime.now().microsecondsSinceEpoch}',
     );
     store = HiveAnalysisRecordStore(() => box);
+    events = [];
   });
 
   tearDown(() async {
     await box.deleteFromDisk();
   });
 
-  /// 照持久化的做法：對話快照＝結果加 App meta；紀錄存結果原樣，存完就收起。
-  Future<String> analyze(Conversation c, String judgment) async {
+  /// 照持久化的做法：對話快照＝結果加 App meta（含歷史事件 id）並重存對話，記一筆歷史
+  /// 事件；紀錄存結果原樣，存完就收起。
+  Future<String> analyze(
+    Conversation c,
+    String judgment, {
+    required DateTime at,
+  }) async {
     final payload = _v3Payload(judgment);
+    final eventId = 'event-${c.id}-$judgment';
     c.lastAnalysisSnapshotJson = jsonEncode({
       ...payload,
-      '__vibesync_snapshot_meta_v1': {'messageCount': c.messages.length},
+      '__vibesync_snapshot_meta_v1': {
+        'messageCount': c.messages.length,
+        'historyEventId': eventId,
+      },
     });
     c.lastAnalyzedMessageCount = c.messages.length;
+    c.updatedAt = at;
+    events.add(AnalysisHistoryEvent.analyze(id: eventId, createdAt: at));
     final saved = await store.saveSuccessfulAnalysis(
       ownerUserId: _owner,
       conversation: c,
@@ -101,7 +115,7 @@ void main() {
       const PreviousRoundBuilder().build(
         current: current,
         partnerConversations: all,
-        historyEvents: const [],
+        historyEvents: events,
         liveRecordFor: (c) =>
             store.currentFor(ownerUserId: _owner, conversationId: c.id),
       );
@@ -119,7 +133,11 @@ void main() {
 
   test('刪掉上一段那筆紀錄（對話還在）：新片段就不帶上一輪', () async {
     final previous = conversation('prev', 2, _t0);
-    final recordId = await analyze(previous, '她很熱');
+    final recordId = await analyze(
+      previous,
+      '她很熱',
+      at: _t0.add(const Duration(minutes: 5)),
+    );
     final next = conversation('next', 1, _t0.add(const Duration(hours: 1)));
     expect(build(next, [previous, next])?.judgment, '她很熱');
 
@@ -138,10 +156,18 @@ void main() {
 
   test('舊制一段對話多筆紀錄：刪掉較早那筆，最後幾則只取現在那筆的片段；再刪現在那筆就不帶', () async {
     final legacy = conversation('legacy', 2, _t0);
-    final olderRecordId = await analyze(legacy, '第一次');
+    final olderRecordId = await analyze(
+      legacy,
+      '第一次',
+      at: _t0.add(const Duration(minutes: 5)),
+    );
     // 舊制：同一段對話之後又加了兩則再分析一次，紀錄往後接一筆。
     legacy.messages = [...legacy.messages, _message(2), _message(3)];
-    final currentRecordId = await analyze(legacy, '第二次');
+    final currentRecordId = await analyze(
+      legacy,
+      '第二次',
+      at: _t0.add(const Duration(minutes: 10)),
+    );
     expect(currentRecordId, isNot(olderRecordId));
 
     expect(

@@ -1,8 +1,8 @@
 /// 新片段的上一輪脈絡（previousRound，Eric 2026-10-18）：從手機上已經有的資料挑出
-/// 「上一輪」，也就是同一個對象的其他片段裡、在這個片段建立之前最近一次的分析；
-/// 它是 v3 結果（不是自傷關心）、而且那次的分析紀錄還在（沒被刪），才裁成伺服器
-/// `guide_v3/previous_round.ts` 的形狀與上限。不加新的儲存；什麼都沒有就回 null
-/// （請求不帶這個欄位）。
+/// 「上一輪」，也就是同一個對象裡、緊接在這個片段前面建立的那一段；那一段的分析
+/// 確定在這個片段建立之前完成、是 v3 結果（不是自傷關心）、分析紀錄也還在（沒被刪），
+/// 才裁成伺服器 `guide_v3/previous_round.ts` 的形狀與上限。任何一關不過就回 null
+/// （請求不帶這個欄位），絕不改拿更早的片段。不加新的儲存。
 library;
 
 import 'dart:convert';
@@ -37,49 +37,72 @@ class PreviousRoundBuilder {
   }) {
     final partnerId = _scope(current.partnerId);
     if (partnerId == null) return null;
-    final analyzedAtByEventId = <String, DateTime>{
-      for (final event in historyEvents)
-        if (event.kind == AnalysisHistoryKind.analyze)
-          event.id: event.createdAt,
-    };
-    _Candidate? latest;
+    // 片段的先後照建立時間排（建立之後不會變），不看分析時間：分析時間會被重新分析、
+    // 補寫的歷史事件改掉，拿它篩選會跳過真正的上一段、改送更早那段（主審第 2 輪 P2）。
+    // 沒有訊息的空白片段只是畫面的佔位（離開就刪），不算一段。
+    Conversation? previous;
+    var tied = false;
     for (final conversation in partnerConversations) {
       if (conversation.id == current.id ||
           _scope(conversation.partnerId) != partnerId ||
-          _ownerMismatch(current, conversation)) {
+          _ownerMismatch(current, conversation) ||
+          conversation.messages.isEmpty) {
         continue;
       }
-      final snapshot =
-          _AnalyzedSnapshot.tryParse(conversation.lastAnalysisSnapshotJson);
-      if (snapshot == null) continue;
-      // 哪段最近看第一次分析的時間（歷史事件；之後的存檔不會改到它），找不到才退回
-      // updatedAt。
-      final analyzedAt = analyzedAtByEventId[snapshot.historyEventId] ??
-          conversation.updatedAt;
-      // 只認這個片段建立之前就分析過的：比它晚才分析的那段不是「上一輪」。
-      if (!analyzedAt.isBefore(current.createdAt)) continue;
-      if (latest == null || analyzedAt.isAfter(latest.analyzedAt)) {
-        latest = _Candidate(conversation, snapshot, analyzedAt);
+      final createdAt = conversation.createdAt;
+      // 跟這個片段同一刻建立：分不出先後。
+      if (createdAt.isAtSameMomentAs(current.createdAt)) return null;
+      if (!createdAt.isBefore(current.createdAt)) continue;
+      if (previous == null || createdAt.isAfter(previous.createdAt)) {
+        previous = conversation;
+        tied = false;
+      } else if (createdAt.isAtSameMomentAs(previous.createdAt)) {
+        tied = true;
       }
     }
-    if (latest == null) return null;
-    // 快照本身的完成時間沒有可靠來源：升級後重新分析會覆寫快照、重存對話，歷史事件卻留
-    // 第一次的時間。只要那段對話在這個片段建立之後又存過，快照就可能比這個片段新，不帶，
-    // 也不跳去更早那段（主審第 1 輪 P2）。之後改名之類的存檔也會讓這次不帶，寧可少帶。
-    if (!latest.conversation.updatedAt.isBefore(current.createdAt)) return null;
-    final result = latest.snapshot.guideV3;
-    // 上一輪是 v2 或自傷關心（只有固定文案）就不帶，也不跳去更早的那段：更早的那段
-    // 已經不是上一輪了。
+    // 只驗這一段；下面任何一關不過就不帶，絕不往更早找。
+    if (previous == null || tied) return null;
+    final snapshot =
+        _AnalyzedSnapshot.tryParse(previous.lastAnalysisSnapshotJson);
+    // 上一段還沒分析過（例如有內容的草稿）。
+    if (snapshot == null) return null;
+    // 時間要確定在這個片段建立之前：那次分析的歷史事件要在，而且事件與那段對話最後一次
+    // 存檔（快照就是在那次寫的）都早於這個片段建立。重新分析會覆寫快照、重存對話，第一筆
+    // 事件沒寫進去時還會補寫成重新分析的時間；事件缺了或任一時間不早於這個片段，都當不
+    // 知道快照是不是這個片段之前的（主審第 1、2 輪 P2）。改名之類的存檔也會讓這次不帶，
+    // 寧可少帶。
+    final firstAnalyzedAt =
+        _analysisEventTime(historyEvents, snapshot.historyEventId);
+    if (firstAnalyzedAt == null ||
+        !firstAnalyzedAt.isBefore(current.createdAt) ||
+        !previous.updatedAt.isBefore(current.createdAt)) {
+      return null;
+    }
+    final result = snapshot.guideV3;
+    // 上一輪是 v2 或自傷關心（只有固定文案）。
     if (result == null || result.isCare) return null;
     // 那次分析的紀錄被刪了（舊制多筆、部分紀錄刪除時對話本身還在），或紀錄跟快照不是
-    // 同一次：不帶，也不跳去更早那段（主審第 1 輪 P2）。訊息只取那筆紀錄自己的片段，
-    // 同一段對話裡被刪掉的較早紀錄不會混進來。
-    final record = liveRecordFor(latest.conversation);
+    // 同一次（主審第 1 輪 P2）。訊息只取那筆紀錄自己的片段，同一段對話裡被刪掉的較早
+    // 紀錄不會混進來。
+    final record = liveRecordFor(previous);
     if (record == null ||
-        !_sameJson(record.analysisSnapshotJson, latest.snapshot.payload)) {
+        !_sameJson(record.analysisSnapshotJson, snapshot.payload)) {
       return null;
     }
     return _contextFrom(record, result);
+  }
+
+  DateTime? _analysisEventTime(
+    List<AnalysisHistoryEvent> events,
+    String? eventId,
+  ) {
+    if (eventId == null) return null;
+    for (final event in events) {
+      if (event.kind == AnalysisHistoryKind.analyze && event.id == eventId) {
+        return event.createdAt;
+      }
+    }
+    return null;
   }
 
   PreviousRoundContext? _contextFrom(
@@ -163,14 +186,6 @@ class PreviousRoundBuilder {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
-}
-
-class _Candidate {
-  const _Candidate(this.conversation, this.snapshot, this.analyzedAt);
-
-  final Conversation conversation;
-  final _AnalyzedSnapshot snapshot;
-  final DateTime analyzedAt;
 }
 
 /// 對話快照（v2 或 v3）、去掉 App meta 的分析結果原樣，以及存檔時的歷史事件 id。
