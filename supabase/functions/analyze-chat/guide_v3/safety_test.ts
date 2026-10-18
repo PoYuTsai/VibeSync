@@ -75,18 +75,17 @@ Deno.test("沒有背景、沒有訊息都不會出錯", () => {
   assertEquals(scanSafetyKeywords([her("")], {}).minorWords, false);
 });
 
-function selfHarmIn(...lines: string[]) {
-  return scanSafetyKeywords(lines.map(her));
+function selfHarmIn(line: string) {
+  return scanSafetyKeywords([her(line)]);
 }
 
-Deno.test("自傷：她明講想自殺、不想活了、割腕、自殘，是最明確的一層", () => {
+Deno.test("自傷字眼：她的訊息有自殺、自殘、割腕、輕生、不想活就一律關心，含主審找到的漏網句", () => {
   for (
     const line of [
+      "我要自殘了",
+      "我打算自殘",
       "我真的不想活了",
-      "我不想再活下去",
       "最近一直有自殺的念頭",
-      "我想自殺",
-      "我又自殘了",
       "以前割腕過",
       "有時候會想輕生",
       // 簡體也認得。
@@ -94,46 +93,40 @@ Deno.test("自傷：她明講想自殺、不想活了、割腕、自殘，是最
       "我想自杀",
     ]
   ) {
-    const h = selfHarmIn(line);
-    assert(h.selfHarmExplicit && h.selfHarm, line);
+    assert(selfHarmIn(line).selfHarmWords, line);
   }
 });
 
-Deno.test("自傷：「我好想死」只算後援層（讀局面失敗才用），不強制關心", () => {
-  for (const line of ["我好想死", "真的想死", "好想去死"]) {
-    const h = selfHarmIn(line);
-    assert(h.selfHarm && !h.selfHarmExplicit, line);
-  }
-});
-
-Deno.test("自傷：誇張說法、想念、講別人或電影、勸人的話都不算", () => {
+Deno.test("自傷字眼：否定、轉述新聞也算（Eric 2026-10-18 接受的誤判：寧可先關心）", () => {
   for (
     const line of [
-      "熱死了",
-      "笑死",
-      "累死了",
-      "熱到想死",
-      "笑到我想死",
-      "累得想死",
-      "想死你了",
-      "我好想死你喔",
-      "自殺小隊好看嗎",
-      "新聞說那個藝人輕生了",
-      "我不想自殺啦，只是累",
-      "不要自殺喔",
-      "這樣熬夜根本自殘",
+      "我沒有自殺的念頭",
+      "新聞說那個藝人想自殺",
+      "我沒有割腕啦",
       "不想活在別人的期待裡",
-      "沒有咖啡我活不下去",
     ]
   ) {
+    assert(selfHarmIn(line).selfHarmWords, line);
+  }
+});
+
+Deno.test("想死：只算後援層（讀局面失敗才用），不會一律關心", () => {
+  for (const line of ["我現在想死", "我好想死", "熱到想死", "想死你了"]) {
     const h = selfHarmIn(line);
-    assert(!h.selfHarm && !h.selfHarmExplicit, line);
+    assert(h.wantsToDie && !h.selfHarmWords, line);
+  }
+});
+
+Deno.test("自傷：沒有這些字的誇張說法都不算", () => {
+  for (const line of ["熱死了", "笑死", "累死了", "餓死了"]) {
+    const h = selfHarmIn(line);
+    assert(!h.wantsToDie && !h.selfHarmWords, line);
   }
 });
 
 Deno.test("自傷：只掃她的訊息", () => {
   const h = scanSafetyKeywords([me("我真的不想活了"), her("怎麼了？")]);
-  assertEquals([h.selfHarm, h.selfHarmExplicit], [false, false]);
+  assertEquals([h.selfHarmWords, h.wantsToDie], [false, false]);
 });
 
 function moneyIn(...lines: string[]): boolean {

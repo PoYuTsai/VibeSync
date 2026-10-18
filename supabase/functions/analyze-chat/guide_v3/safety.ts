@@ -11,12 +11,12 @@ export interface SafetyKeywordHits {
   /// 拒答或逾時時用（plan.ts 的 planWithoutRead）：那時本來就不出卡，誤判只是把錯誤換成
   /// 固定說明；讀局面成功時只看模型的 minorSignal。
   readonly minorWords: boolean;
-  /// 她明講想死、想自殺、不想活、自殘（只掃她的訊息）。後援層：讀局面失敗或拒答時，
-  /// 有這個就給關心訊息（附專線），不給錯誤。
-  readonly selfHarm: boolean;
-  /// 上面之中最不會是誇張說法的幾種（想自殺、不想活了、割腕、自殘）：讀局面成功但沒標
-  /// 自傷，也照樣給關心訊息（plan.ts 的 FORCE_CARE_ON_EXPLICIT_SELF_HARM）。
-  readonly selfHarmExplicit: boolean;
+  /// 她的訊息裡有自殺、自殘、割腕、輕生、不想活任一個字：就算讀局面成功、模型沒標，也一律
+  /// 改顯示關心訊息（Eric 2026-10-18：「代價是她在開玩笑或談別人的事時也會先關心」）。
+  readonly selfHarmWords: boolean;
+  /// 她的訊息裡有「想死」：只在讀局面失敗、拒答或逾時時算（跟上面一起），給關心訊息不給
+  /// 錯誤；讀局面成功時「熱到想死」「想死你了」交給模型判斷。
+  readonly wantsToDie: boolean;
   /// 她要他借錢、轉帳、代付，或拉他投資、叫他下載 App 或換地方聊又講到錢（只掃她的訊息）。
   /// 跟讀局面的風險標記同樣處理：不排推進、判讀換成固定提醒（plan.ts）。
   readonly money: boolean;
@@ -24,8 +24,8 @@ export interface SafetyKeywordHits {
 
 export const NO_SAFETY_HITS: SafetyKeywordHits = {
   minorWords: false,
-  selfHarm: false,
-  selfHarmExplicit: false,
+  selfHarmWords: false,
+  wantsToDie: false,
   money: false,
 };
 
@@ -38,20 +38,10 @@ export interface SafetyScanMessage {
 const MINOR_WORDS =
   /1[0-7]\s*歲|十[一二三四五六七]\s*歲|國中|高中|國[一二三]|高[一二三]|未成年/u;
 
-/// 最明確的自傷說法。「不想活在怨恨裡」「熱到不想活了」、「不要自殺」「自殺小隊」、新聞裡別人
-/// 輕生、「這樣熬夜根本自殘」都不算。
-const SELF_HARM_EXPLICIT = [
-  /(?<!不)(?:想|要|去|打算|準備)自殺|想過自殺|自殺的?念頭/u,
-  /(?<![到得])不想(?:再)?活(?:了|下去)/u,
-  /割腕/u,
-  /(?:我|有在|一直|又|會|常常|曾經)在?自殘|想自殘/u,
-  /(?<!不)想輕生|輕生的?念頭/u,
-];
-/// 只在讀局面失敗或拒答時才用：「我好想死」也可能是考試前的誇張說法，模型讀得出來；讀不出來
-/// 時寧可附專線。「熱到想死」「笑到想死」「想死你了」不算。
-const SELF_HARM_FALLBACK_ONLY = [
-  /(?<![到得])(?:我|好|真的|超|很)想去?死(?![你妳他她])/u,
-];
+/// 只看有沒有這些字（主審第 1 輪：句型比對漏掉「我要自殘了」、又把「我沒有自殺的念頭」算進來）。
+/// 否定、轉述、開玩笑也算，是 Eric 接受的代價。
+const SELF_HARM_WORDS = /自殺|自殘|割腕|輕生|不想活/u;
+const WANTS_TO_DIE = /想死/u;
 
 /// 跟他借錢、拉他投資。「借我看一下」「跟你借個充電器」、她自己做投資或在券商上班、聊她的工作
 /// （入金、下單、跟單都是常見的工作用語）都不算。
@@ -109,14 +99,13 @@ export function scanSafetyKeywords(
 ): SafetyKeywordHits {
   const all = messages.map((m) => m.content);
   const hers = messages.filter((m) => !m.isFromMe).map((m) => m.content);
-  const selfHarmExplicit = anyMatch(hers, SELF_HARM_EXPLICIT);
   return {
     minorWords: anyMatch(
       [...all, ...backgroundTexts(background)],
       [MINOR_WORDS],
     ),
-    selfHarm: selfHarmExplicit || anyMatch(hers, SELF_HARM_FALLBACK_ONLY),
-    selfHarmExplicit,
+    selfHarmWords: anyMatch(hers, [SELF_HARM_WORDS]),
+    wantsToDie: anyMatch(hers, [WANTS_TO_DIE]),
     money: hers.some((text) => variants(text).some(asksForMoney)),
   };
 }

@@ -1033,7 +1033,7 @@ Deno.test("讀局面失敗時，「我好想死」也給關心訊息；只有「
   assertEquals(miss.failed, ["GUIDE_V3_UPSTREAM_FAILED"]);
 });
 
-Deno.test("讀局面成功、模型沒標自傷，但她說想自殺：照樣給關心訊息（盤點預設，等 Eric 拍板）", async () => {
+Deno.test("讀局面成功、模型沒標自傷，但她說想自殺：一律給關心訊息（Eric 2026-10-18）", async () => {
   const h = harness({
     messages: [
       { isFromMe: true, content: "怎麼這麼晚還沒睡" },
@@ -1045,6 +1045,32 @@ Deno.test("讀局面成功、模型沒標自傷，但她說想自殺：照樣給
   assertEquals(h.calls.includes("write"), false);
   assertEquals(h.charges[0].chargeQuota, false);
   assertEquals(h.charges[0].recommendationJson.careTrigger, "keyword");
+});
+
+Deno.test("主審漏掉的自傷說法：「我打算自殘」讀局面成功、模型沒標也關心；「我現在想死」只在讀局面失敗時關心", async () => {
+  const plan = harness({
+    messages: [
+      { isFromMe: true, content: "妳還好嗎" },
+      { isFromMe: false, content: "不太好，我打算自殘" },
+    ],
+  });
+  const e1 = await events(await handleGuideV3Stream(plan.deps));
+  assertEquals(e1[1].careKind, "self_harm");
+  assertEquals(plan.calls.includes("write"), false);
+  const dieMessages = [
+    { isFromMe: true, content: "怎麼了" },
+    { isFromMe: false, content: "我現在想死" },
+  ];
+  const readOk = harness({ messages: dieMessages });
+  const e2 = await events(await handleGuideV3Stream(readOk.deps));
+  assertEquals(e2[1].decision, "send");
+  const readFailed = harness({
+    messages: dieMessages,
+    readError: new Error("overloaded"),
+  });
+  const e3 = await events(await handleGuideV3Stream(readFailed.deps));
+  assertEquals(e3[1].careKind, "self_harm");
+  assertEquals(readFailed.failed, []);
 });
 
 Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照模型的判斷出卡，trace 記關鍵字命中", async () => {
@@ -1060,8 +1086,8 @@ Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
   assertEquals(trace.keywordHits, {
     minorWords: false,
-    selfHarm: true,
-    selfHarmExplicit: false,
+    selfHarmWords: false,
+    wantsToDie: true,
     money: false,
   });
 });

@@ -14,7 +14,6 @@ import {
   vetPlanText,
 } from "./finalize.ts";
 import {
-  FORCE_CARE_ON_EXPLICIT_SELF_HARM,
   HOLD_WAIT_FALLBACK,
   planTurn,
   planWithoutRead,
@@ -164,35 +163,34 @@ Deno.test("未成年：讀局面成功時只看模型標記（關鍵字不蓋過
   assertEquals(planWithoutRead(NO_SAFETY_HITS), null);
 });
 
-Deno.test("自傷關鍵字：最明確的說法在模型沒標時也強制關心；後援層只在讀局面失敗時用", () => {
-  assert(FORCE_CARE_ON_EXPLICIT_SELF_HARM);
-  const explicit = hits({ selfHarm: true, selfHarmExplicit: true });
-  const forced = planTurn(herLast, tags(), explicit);
+Deno.test("自傷字眼：讀局面成功、模型沒標也一律關心（Eric 2026-10-18）；想死只在讀局面失敗時用", () => {
+  const words = hits({ selfHarmWords: true });
+  const forced = planTurn(herLast, tags(), words);
   assertEquals(
     [forced.decision, forced.careKind, forced.careTrigger],
     ["care", "self_harm", "keyword"],
   );
   assertEquals(
-    planTurn(herLast, tags({ selfHarmSignal: true }), explicit).careTrigger,
+    planTurn(herLast, tags({ selfHarmSignal: true }), words).careTrigger,
     "both",
   );
   // 自傷先於未成年，關鍵字的也一樣。
   assertEquals(
-    planTurn(herLast, tags({ minorSignal: true }), explicit).careKind,
+    planTurn(herLast, tags({ minorSignal: true }), words).careKind,
     "self_harm",
   );
-  // 只有後援層（「我好想死」）：讀局面成功時照模型的判斷。
+  // 只有「想死」：讀局面成功時照模型的判斷。
   assertEquals(
-    planTurn(herLast, tags(), hits({ selfHarm: true })).decision,
+    planTurn(herLast, tags(), hits({ wantsToDie: true })).decision,
     "send",
   );
-  // 讀局面失敗：後援層也給關心訊息，而且排在未成年前面。
+  // 讀局面失敗：想死也給關心訊息，而且排在未成年前面。
   assertEquals(
-    planWithoutRead(hits({ selfHarm: true }))?.careKind,
+    planWithoutRead(hits({ wantsToDie: true }))?.careKind,
     "self_harm",
   );
   assertEquals(
-    planWithoutRead(hits({ selfHarm: true, minorWords: true }))?.careKind,
+    planWithoutRead(hits({ selfHarmWords: true, minorWords: true }))?.careKind,
     "self_harm",
   );
 });

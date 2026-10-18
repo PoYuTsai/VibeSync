@@ -64,31 +64,28 @@ function carePlan(
   };
 }
 
-/// 讀局面成功、模型沒標自傷，但她講了最明確的自傷說法（safety.ts 的 selfHarmExplicit）時，
-/// 照樣給關心訊息（盤點的提議預設，等 Eric 拍板；改成 false 就只在讀局面失敗時才看關鍵字）。
-export const FORCE_CARE_ON_EXPLICIT_SELF_HARM = true;
-
 /// 讀局面失敗、拒答或逾時時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心
 /// 訊息（附專線），其次未成年；都看不出就 null，照原本的錯誤處理。
 export function planWithoutRead(hits: SafetyKeywordHits): GuideV3Plan | null {
-  if (hits.selfHarm) return carePlan("self_harm", false, true);
+  if (hits.selfHarmWords || hits.wantsToDie) {
+    return carePlan("self_harm", false, true);
+  }
   if (hits.minorWords) return carePlan("minor", false, true);
   return null;
 }
 
 /// 規則先後：自傷關心 → 未成年 → rules.ts 的 C 段規則。自傷排在未成年前面：兩個都有時，
-/// 專線比「不提供建議」重要。讀局面成功時，未成年只看模型的 minorSignal（主審第 1 輪：
-/// 句型關鍵字會把老師、講以前的事誤擋，模型在黑箱 6/6 都判對）。
+/// 專線比「不提供建議」重要。自傷：模型標了，或她的訊息有自殺、自殘、割腕、輕生、不想活
+/// 這些字，一律關心（Eric 2026-10-18）。讀局面成功時，未成年只看模型的 minorSignal（主審
+/// 第 1 輪：句型關鍵字會把老師、講以前的事誤擋，模型在黑箱 6/6 都判對）。
 export function planTurn(
   turns: readonly Turn[],
   tags: ReadTags,
   hits: SafetyKeywordHits = NO_SAFETY_HITS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
 ): GuideV3Plan {
-  const explicitSelfHarm = FORCE_CARE_ON_EXPLICIT_SELF_HARM &&
-    hits.selfHarmExplicit;
-  if (tags.selfHarmSignal || explicitSelfHarm) {
-    return carePlan("self_harm", tags.selfHarmSignal, explicitSelfHarm);
+  if (tags.selfHarmSignal || hits.selfHarmWords) {
+    return carePlan("self_harm", tags.selfHarmSignal, hits.selfHarmWords);
   }
   if (tags.minorSignal) return carePlan("minor", true, false);
   // 她要他借錢、轉帳、投資或下載 App（程式關鍵字）跟讀局面的風險標記同樣處理：不排推進、
