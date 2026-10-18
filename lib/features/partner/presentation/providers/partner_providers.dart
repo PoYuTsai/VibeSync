@@ -9,6 +9,7 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../../data/repositories/partner_repository.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
+import '../../domain/services/partner_light_history.dart';
 
 /// Single instance for the app lifecycle. Construction is cheap (just box
 /// references), no auth dependency.
@@ -77,6 +78,15 @@ final partnerAnalysisRecordsProvider =
     store: ref.read(analysisRecordStoreProvider),
     ownerUserId: ownerUserId,
     conversations: conversations,
+  );
+});
+
+/// 對象頁的燈號紀錄（每次 v3 分析一筆，新到舊；Eric 2026-10-18）。從分析紀錄的快照算一次，
+/// 頁面重建時不重解析；跟著紀錄一起 autoDispose。
+final partnerLightHistoryProvider = Provider.autoDispose
+    .family<List<PartnerLightHistoryEntry>, String>((ref, partnerId) {
+  return buildPartnerLightHistory(
+    ref.watch(partnerAnalysisRecordsProvider(partnerId)),
   );
 });
 
