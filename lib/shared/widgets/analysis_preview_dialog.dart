@@ -34,6 +34,17 @@ class AnalysisQuotaLine {
 
   String get text => '這次會用 $units 則，剩 $remainingAfter 則';
 
+  /// 按下去時重算的這一行跟畫面上那一行兩個數字都一樣，才算同一件事（主審 r1 P2：
+  /// 不一樣就照舊跳確認框，不論多算還是少算）。
+  @override
+  bool operator ==(Object other) =>
+      other is AnalysisQuotaLine &&
+      other.units == units &&
+      other.remainingAfter == remainingAfter;
+
+  @override
+  int get hashCode => Object.hash(units, remainingAfter);
+
   /// null＝要跳確認框（超過 2000 字、或額度不夠）。
   static AnalysisQuotaLine? of(
     MessagePreview preview, {

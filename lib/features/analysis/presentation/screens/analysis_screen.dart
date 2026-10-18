@@ -2329,20 +2329,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// 分析鈕旁那一行（Eric 2026-10-18）：跟按下去時同一套算法，用的是沒裁成最近
-  /// 幾輪的訊息，所以只會比實際送出的多、不會少。null＝按下去會跳確認框。
+  /// 分析鈕旁那一行（Eric 2026-10-18）：跟按下去時同一份請求算（有歷史摘要時只送
+  /// 最近幾輪，主審 r1 P2）。null＝按下去會跳確認框。
   /// 在 build 裡算：只用已訂閱的方案狀態，不讀本機用量；方案還在載入就不寫。
   AnalysisQuotaLine? _analysisQuotaLine(
     Conversation conversation,
     SubscriptionState subscription,
   ) {
     if (subscription.isLoading) return null;
-    final gate =
-        ref.read(analysisRunPreparerProvider).gate(conversation: conversation);
-    final messages = gate.messagesForAnalysis;
-    if (messages == null) return null;
+    final preparer = ref.read(analysisRunPreparerProvider);
+    final gate = preparer.gate(conversation: conversation);
+    if (gate.messagesForAnalysis == null) return null;
     final preview = MessageCalculator.previewAnalysisRequest(
-      messages,
+      preparer.previewRequestMessages(conversation: conversation, gate: gate),
       previousAnalyzedCharCount: conversation.lastAnalyzedCharCount ?? 0,
     );
     return AnalysisQuotaLine.of(
@@ -2357,12 +2356,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 順序（定案 #4）：算出本次計費字數/則數 → 4001+ 先擋（請分批，不送出）
   /// → 額度檢查（preview dialog 內建，不足時無法確認、給升級 CTA）→
   /// >2000 確認框（同一 dialog 的 overcharge 變體，顯示精確 20 則）。
-  /// [shownQuotaUnits]：按鈕旁那一行寫的則數；額度夠、一般長度、實際不超過那一行
-  /// 就不跳框（Eric 2026-10-18）。沒有那一行的入口（重新分析、錯誤重試）照舊跳框。
+  /// [shownQuotaLine]：按鈕旁那一行；用實際請求與用量重算出來的跟它完全一樣才不跳框
+  ///（Eric 2026-10-18；主審 r1 P2：多算少算都照舊跳框）。沒有那一行的入口（重新
+  /// 分析、錯誤重試）照舊跳框。
   Future<({bool confirmed, OverchargeConfirmationPayload? overcharge})>
       _confirmAnalysisPreview(
     List<Message> requestMessages, {
-    int? shownQuotaUnits,
+    AnalysisQuotaLine? shownQuotaLine,
   }) async {
     if (!mounted) {
       return (confirmed: false, overcharge: null);
@@ -2392,9 +2392,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       monthlyRemaining: usage.monthlyRemaining,
       dailyRemaining: usage.dailyRemaining,
     );
-    if (line != null &&
-        shownQuotaUnits != null &&
-        line.units <= shownQuotaUnits) {
+    if (line != null && line == shownQuotaLine) {
       return (confirmed: true, overcharge: null);
     }
 
@@ -2772,7 +2770,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     bool waitForCompletion = false,
     int? analysisMessageLimit,
     bool allowPendingOutgoingRefresh = false,
-    int? shownQuotaUnits,
+    AnalysisQuotaLine? shownQuotaLine,
   }) async {
     // 第一個等待之前同步拿鎖：已經在開始或已經在分析就不再開一次。
     if (_analysisStartLock != null || _isAnalyzing) return;
@@ -2789,7 +2787,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         waitForCompletion: waitForCompletion,
         analysisMessageLimit: analysisMessageLimit,
         allowPendingOutgoingRefresh: allowPendingOutgoingRefresh,
-        shownQuotaUnits: shownQuotaUnits,
+        shownQuotaLine: shownQuotaLine,
         onStarted: release,
       );
     } finally {
@@ -2803,7 +2801,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required bool waitForCompletion,
     required int? analysisMessageLimit,
     required bool allowPendingOutgoingRefresh,
-    required int? shownQuotaUnits,
+    required AnalysisQuotaLine? shownQuotaLine,
     required VoidCallback onStarted,
   }) async {
     final pendingRecordRepair = _persistence.recordRepairFuture;
@@ -2926,7 +2924,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       } else {
         previewDecision = await _confirmAnalysisPreview(
           preparation.requestMessages,
-          shownQuotaUnits: shownQuotaUnits,
+          shownQuotaLine: shownQuotaLine,
         );
       }
       if (!previewDecision.confirmed || !mounted) {
@@ -4262,7 +4260,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         analysisCompleted: _hasAnalysisResult,
         onStart: (_isAnalyzing || _isRecognizing)
             ? null
-            : () => unawaited(_runAnalysis(shownQuotaUnits: quotaLine?.units)),
+            : () => unawaited(_runAnalysis(shownQuotaLine: quotaLine)),
         onFollowProgress: _jumpToCurrentAnalysis,
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,

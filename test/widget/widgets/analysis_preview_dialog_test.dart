@@ -269,6 +269,13 @@ void main() {
       expect(line(450, daily: 10)!.text, '這次會用 10 則，剩 0 則');
     });
 
+    test('兩個數字都一樣才算同一行（主審 r1 P2：多算、少算、剩的不同都不算）', () {
+      expect(line(100, daily: 11), line(100, daily: 11));
+      expect(line(100, daily: 11), isNot(line(140, daily: 11)));
+      expect(line(100, daily: 11), isNot(line(60, daily: 11)));
+      expect(line(100, daily: 11), isNot(line(100, daily: 12)));
+    });
+
     test('額度不夠、超過 2000 字或超過上限：照舊跳確認框', () {
       expect(line(450, daily: 9), isNull);
       expect(line(450, monthly: 9), isNull);
