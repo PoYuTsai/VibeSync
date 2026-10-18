@@ -1,16 +1,21 @@
 import 'dart:math' as math;
-import 'dart:ui' show Offset, Size;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 
-/// V3 揭曉時間軸（規格 §4）：純函式，免 widget harness。
+/// V3 揭曉時間軸（規格 §4）與 V3.1 第一刀的光效曲線（V3.1 規格 §5）：純函式，免 widget
+/// harness。
 void main() {
+  const n = PracticeGirlRarity.n;
+  const r = PracticeGirlRarity.r;
+  const sr = PracticeGirlRarity.sr;
+
   group('時間軸常數', () {
-    test('揭曉 2.7 s、收卡 0.55 s、入場 0.5 s', () {
+    test('揭曉 2.7 s、收卡 0.7 s（V3.1 §4）、入場 0.5 s', () {
       expect(PracticeRevealTiming.reveal, const Duration(milliseconds: 2700));
-      expect(PracticeRevealTiming.archive, const Duration(milliseconds: 550));
+      expect(PracticeRevealTiming.archive, const Duration(milliseconds: 700));
       expect(PracticeRevealTiming.intro, const Duration(milliseconds: 500));
     });
 
@@ -38,10 +43,23 @@ void main() {
       expect(PracticeRevealTiming.skipFromMs, PracticeRevealTiming.flipEndMs);
     });
 
-    test('收卡節點依序：坍縮 → 起飛 → 落位 → 收掉', () {
+    test('收卡節點依序：細線 → 光球 → 起飛 → 落位（仍在 450）→ 落位光 → 收掉', () {
+      expect(
+        PracticeRevealTiming.archiveLineEndMs,
+        lessThan(PracticeRevealTiming.collapseEndMs),
+      );
       expect(
         PracticeRevealTiming.collapseEndMs,
         PracticeRevealTiming.flightStartMs,
+      );
+      expect(PracticeRevealTiming.landMs, 450);
+      expect(
+        PracticeRevealTiming.landMs + PracticeRevealTiming.landBurstMs,
+        lessThanOrEqualTo(PracticeRevealTiming.archiveMs),
+      );
+      expect(
+        PracticeRevealTiming.landRing1EndMs,
+        lessThanOrEqualTo(PracticeRevealTiming.archiveMs),
       );
       expect(
         PracticeRevealTiming.landMs,
@@ -59,7 +77,7 @@ void main() {
   });
 
   group('卡片姿態', () {
-    test('起點靜止、蓄力縮到 0.92 並後仰 6°、偏 −8°', () {
+    test('起點靜止、蓄力縮到 0.90 並後仰 9°、偏 −15°（V3.1 §5.9）', () {
       final start = practiceRevealPose(0);
       expect(start.yaw, closeTo(0, 1e-9));
       expect(start.pitch, closeTo(0, 1e-9));
@@ -67,9 +85,9 @@ void main() {
 
       for (final ms in [600.0, 900.0, 1100.0]) {
         final pose = practiceRevealPose(ms);
-        expect(pose.yaw, closeTo(-8, 1e-9), reason: '$ms');
-        expect(pose.pitch, closeTo(6, 1e-9), reason: '$ms');
-        expect(pose.scale, closeTo(0.92, 1e-9), reason: '$ms');
+        expect(pose.yaw, closeTo(-15, 1e-9), reason: '$ms');
+        expect(pose.pitch, closeTo(9, 1e-9), reason: '$ms');
+        expect(pose.scale, closeTo(0.90, 1e-9), reason: '$ms');
       }
     });
 
@@ -77,8 +95,8 @@ void main() {
       final anticipation = [
         for (var ms = 1110.0; ms < 1250; ms += 10) practiceRevealPose(ms).yaw,
       ].reduce((a, b) => a < b ? a : b);
-      expect(anticipation, lessThan(-12));
-      expect(anticipation, greaterThan(-20));
+      expect(anticipation, lessThan(-20));
+      expect(anticipation, greaterThan(-30));
     });
 
     test('峰值正好側立 90°，兩側連續', () {
@@ -173,11 +191,30 @@ void main() {
   });
 
   group('收卡', () {
-    test('卡片 0.15 s 內縮到 0.15 並淡出', () {
+    test('卡片 0.12 s 內轉成細線（0.7 倍），0.15 s 縮到 0.15 並淡出（V3.1 §5.12）', () {
       expect(practiceArchiveCardScale(0), 1);
+      expect(practiceArchiveCardScale(120), closeTo(0.7, 1e-9));
       expect(practiceArchiveCardScale(150), closeTo(0.15, 1e-9));
-      expect(practiceArchiveCardOpacity(60), 1);
+      var last = 2.0;
+      for (var ms = 0.0; ms <= 150; ms += 2) {
+        final scale = practiceArchiveCardScale(ms);
+        expect(scale, lessThanOrEqualTo(last), reason: '$ms');
+        last = scale;
+      }
+      expect(practiceArchiveCardOpacity(119), 1);
       expect(practiceArchiveCardOpacity(150), 0);
+    });
+
+    test('細線階段卡片單調轉向側面：0 → 80°（加在正面的 180° 上），之後停在 80°', () {
+      expect(practiceArchiveCardYaw(0), 0);
+      var last = -1.0;
+      for (var ms = 0.0; ms <= 120; ms += 2) {
+        final yaw = practiceArchiveCardYaw(ms);
+        expect(yaw, greaterThanOrEqualTo(last), reason: '$ms');
+        last = yaw;
+      }
+      expect(practiceArchiveCardYaw(120), closeTo(80, 1e-9));
+      expect(practiceArchiveCardYaw(450), closeTo(80, 1e-9));
     });
 
     test('背景 0.15–0.5 s 退場、光球 0.15–0.45 s 飛行', () {
@@ -187,42 +224,47 @@ void main() {
       expect(practiceArchiveFlightT(450), 1);
     });
 
-    test('控制點夾在畫面內縮 24 px 內，並往畫面中線那側鼓', () {
+    test('三次貝茲弧線的控制點：第一個在卡片左下外側、第二個在目標格外側，都夾在畫面內縮 24 px 內', () {
       const stage = Size(390, 844);
-      const p0 = Offset(195, 380);
-      for (final p2 in const [
-        Offset(100, 700),
-        Offset(300, 700),
-        Offset(20, 20),
-        Offset(370, 820),
+      const card = Size(300, 450);
+      const origin = Offset(195, 380);
+      for (final target in [
+        Rect.fromCenter(
+            center: const Offset(100, 700), width: 110, height: 150),
+        Rect.fromCenter(
+            center: const Offset(300, 700), width: 110, height: 150),
+        Rect.fromCenter(center: const Offset(20, 20), width: 110, height: 150),
+        Rect.fromCenter(
+            center: const Offset(370, 820), width: 110, height: 150),
       ]) {
-        final c = practiceArchiveControlPoint(p0, p2, stage);
-        expect(c.dx, inInclusiveRange(24, stage.width - 24), reason: '$p2');
-        expect(c.dy, inInclusiveRange(24, stage.height - 24), reason: '$p2');
+        final c = practiceArchiveControls(origin, target, card, stage);
+        for (final p in [c.c1, c.c2]) {
+          expect(p.dx, inInclusiveRange(24, stage.width - 24), reason: '$p');
+          expect(p.dy, inInclusiveRange(24, stage.height - 24), reason: '$p');
+        }
       }
-      // 目標在左下：弧線往右（中線那側）鼓。
-      final left =
-          practiceArchiveControlPoint(p0, const Offset(80, 700), stage);
-      final mid = (p0 + const Offset(80, 700)) / 2;
-      expect(left.dx, greaterThan(mid.dx));
-      // 起點與終點重合：退化成原點，不除以零。
-      expect(practiceArchiveControlPoint(p0, p0, stage), p0);
+      final target = Rect.fromCenter(
+          center: const Offset(300, 700), width: 110, height: 150);
+      final c = practiceArchiveControls(origin, target, card, stage);
+      // 第一個控制點在卡片中心的左下方：光球先往左下甩出去。
+      expect(c.c1.dx, lessThan(origin.dx));
+      expect(c.c1.dy, greaterThan(origin.dy));
+      // 目標在右半邊：第二個控制點在它右上外側，光球繞半圈從外側進那一格。
+      expect(c.c2.dx, greaterThan(target.right));
+      expect(c.c2.dy, lessThan(target.top));
     });
 
-    test('貝茲曲線兩端落在起點與終點', () {
+    test('三次貝茲曲線兩端落在起點與終點', () {
       const p0 = Offset(10, 20);
       const p1 = Offset(200, 50);
-      const p2 = Offset(300, 400);
-      expect(practiceQuadBezier(p0, p1, p2, 0), p0);
-      expect(practiceQuadBezier(p0, p1, p2, 1), p2);
+      const p2 = Offset(250, 300);
+      const p3 = Offset(300, 400);
+      expect(practiceCubicBezier(p0, p1, p2, p3, 0), p0);
+      expect(practiceCubicBezier(p0, p1, p2, p3, 1), p3);
     });
   });
 
   group('卡背染色（只升到真實稀有度）', () {
-    const n = PracticeGirlRarity.n;
-    const r = PracticeGirlRarity.r;
-    const sr = PracticeGirlRarity.sr;
-
     test('N 全程銀、R 不會出現金、SR 先藍再金；全程只升不退', () {
       var lastBlue = 0.0;
       var lastGold = 0.0;
@@ -260,18 +302,12 @@ void main() {
       }
       expect(practiceRevealFrameGlow(0), closeTo(0.25, 1e-9));
       expect(practiceRevealFrameGlow(600), closeTo(0.60, 1e-9));
-    });
-
-    test('白色爆閃只有 SR、只在染金那 120 ms', () {
-      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
-        expect(practiceRevealGoldFlash(ms, n), 0);
-        expect(practiceRevealGoldFlash(ms, r), 0);
-        final inWindow = ms > 850 && ms < 970;
-        if (!inWindow) {
-          expect(practiceRevealGoldFlash(ms, sr), 0, reason: '$ms');
-        }
+      // V3.1 §5.3：R／SR 染藍時外框跟徽記一起衝到 1.0；N 維持 0.60。
+      expect(practiceRevealFrameGlow(1200, n), closeTo(0.60, 1e-9));
+      for (final rarity in [r, sr]) {
+        expect(practiceRevealFrameGlow(599, rarity), closeTo(0.60, 1e-2));
+        expect(practiceRevealFrameGlow(720, rarity), closeTo(1.0, 1e-9));
       }
-      expect(practiceRevealGoldFlash(886, sr), closeTo(1, 1e-9));
     });
 
     test('環境光 1.00 → 藍 1.15 → 金 1.35', () {
@@ -281,32 +317,43 @@ void main() {
     });
   });
 
-  group('翻牌峰值：光刃與十字', () {
-    test('光刃只在側立後 250 ms 內：60 ms 張到最寬再收掉', () {
-      expect(practiceRevealBladeWidth(1350), 0);
-      expect(practiceRevealBladeWidth(1410), closeTo(1, 1e-9));
-      expect(practiceRevealBladeWidth(1600), 0);
-      expect(practiceRevealBladeWidth(1300), 0);
-      expect(practiceRevealBladeCore(1349), 0);
-      expect(practiceRevealBladeCore(1350), closeTo(2, 1e-9));
-      expect(practiceRevealBladeCore(1599), closeTo(1, 0.01));
-      expect(practiceRevealBladeCore(1600), 0);
-      expect(practiceRevealBladeCoreAlpha(1400), 1);
-      expect(practiceRevealBladeCoreAlpha(1575), closeTo(0.5, 1e-9));
+  group('翻牌峰值：光刃與十字（V3.1 §5.5）', () {
+    test('光刃 N／R 280 ms、SR 350 ms：60 ms 張到最寬，後段快收', () {
+      for (final rarity in PracticeGirlRarity.values) {
+        final total = practiceRevealBladeMs(rarity);
+        expect(practiceRevealBladeWidth(1300, rarity), 0);
+        expect(practiceRevealBladeWidth(1350, rarity), 0);
+        expect(practiceRevealBladeWidth(1410, rarity), closeTo(1, 1e-9));
+        expect(practiceRevealBladeWidth(1350 + total, rarity), 0);
+        // 先快後慢：收的那段走到一半時外暈已經只剩不到 20%，照片很快露出來。
+        final half = 1410 + (total - 60) / 2;
+        expect(practiceRevealBladeWidth(half, rarity), lessThan(0.2));
+        expect(practiceRevealBladeCore(1349, rarity), 0);
+        expect(practiceRevealBladeCore(1350, rarity), closeTo(3, 1e-9));
+        expect(practiceRevealBladeCore(1349 + total, rarity), closeTo(1, 0.02));
+        expect(practiceRevealBladeCore(1350 + total, rarity), 0);
+        expect(practiceRevealBladeCoreAlpha(1400, rarity), 1);
+        expect(
+          practiceRevealBladeCoreAlpha(1350 + total - 25, rarity),
+          closeTo(0.5, 1e-9),
+        );
+      }
+      expect(practiceRevealBladeMs(n), 280);
+      expect(practiceRevealBladeMs(r), 280);
+      expect(practiceRevealBladeMs(sr), 350);
     });
 
-    test('十字只有 SR、180 ms 鐘形', () {
-      for (var ms = 1300.0; ms <= 1700; ms += 5) {
-        expect(practiceRevealCross(ms, PracticeGirlRarity.n), 0);
-        expect(practiceRevealCross(ms, PracticeGirlRarity.r), 0);
+    test('十字只有 SR、400 ms 鐘形', () {
+      for (var ms = 1300.0; ms <= 1800; ms += 5) {
+        expect(practiceRevealCross(ms, n), 0);
+        expect(practiceRevealCross(ms, r), 0);
       }
-      expect(
-          practiceRevealCross(1440, PracticeGirlRarity.sr), closeTo(1, 1e-9));
-      expect(practiceRevealCross(1530, PracticeGirlRarity.sr), 0);
+      expect(practiceRevealCross(1550, sr), closeTo(1, 1e-9));
+      expect(practiceRevealCross(1750, sr), 0);
     });
   });
 
-  group('卡面：掃光、烙印、星星', () {
+  group('卡面：掃光、六角牌、星星', () {
     test('全息掃光 1.7–2.4 s 從卡片左外側掃到右外側', () {
       expect(practiceRevealSheenX(1700), isNull);
       expect(practiceRevealSheenX(2400), isNull);
@@ -319,21 +366,33 @@ void main() {
       }
     });
 
-    test('稀有度牌 2.0 s 前不存在；1.6 → 1.0 撞擊，略微壓過 1.0 再回彈', () {
-      expect(practiceRevealStamped(1999), isFalse);
-      expect(practiceRevealStamped(2000), isTrue);
-      expect(practiceRevealStampScale(2000), closeTo(1.6, 1e-9));
-      expect(practiceRevealStampScale(2250), closeTo(1.0, 1e-9));
+    test(
+        '六角牌 1.94 s 前不存在；120 ms 從畫面外飛到落點（easeIn、1.4 → 1.0），再 160 ms 回彈（V3.1 §5.10）',
+        () {
+      expect(practiceRevealStamped(1939), isFalse);
+      expect(practiceRevealStamped(1940), isTrue);
+      expect(practiceRevealStampFlight(1940), 0);
+      expect(practiceRevealStampFlight(2000), lessThan(0.5)); // 越飛越快＝砸下去
+      expect(practiceRevealStampFlight(2060), 1);
+      expect(practiceRevealStampFlight(2700), 1);
+      expect(practiceRevealStampScale(1940), closeTo(1.4, 1e-9));
+      expect(practiceRevealStampScale(2060), closeTo(1.0, 1e-9));
       var min = 2.0;
-      for (var ms = 2000.0; ms <= 2250; ms += 2) {
+      for (var ms = 2060.0; ms <= 2220; ms += 2) {
         min = math.min(min, practiceRevealStampScale(ms));
       }
       expect(min, lessThan(1.0));
-      expect(practiceRevealStampOpacity(2000), 0);
-      expect(practiceRevealStampOpacity(2100), 1);
+      expect(min, greaterThanOrEqualTo(0.95 - 1e-9));
+      expect(practiceRevealStampScale(2220), closeTo(1.0, 1e-9));
+      expect(practiceRevealStampScale(2700), closeTo(1.0, 1e-9));
+      // 牌落地到第一顆星隔 90 ms，兩下觸覺分得開。
+      expect(
+        PracticeRevealTiming.starsStartMs - PracticeRevealTiming.stampLandMs,
+        90,
+      );
     });
 
-    test('星星 2.15 s 起每 80 ms 一顆：0 → 1.25 → 1.00，停住前全部到位', () {
+    test('星星 2.15 s 起每 80 ms 一顆：0 → 1.35 → 1.00，停住前全部到位（V3.1 §5.11）', () {
       for (var i = 0; i < 4; i++) {
         final start = PracticeRevealTiming.starsStartMs + 80 * i;
         expect(practiceRevealStarStartMs(i), start);
@@ -341,7 +400,7 @@ void main() {
         expect(
           practiceRevealStarScale(
               start + 0.6 * PracticeRevealTiming.starPopMs, i),
-          closeTo(1.25, 1e-9),
+          closeTo(1.35, 1e-9),
         );
         expect(
             practiceRevealStarScale(start + PracticeRevealTiming.starPopMs, i),
@@ -351,10 +410,33 @@ void main() {
       }
     });
 
-    test('NEW 小標晚稀有度牌 150 ms 浮現，停住前到位（V3.1 §5.14）', () {
+    test('星星點亮時的四芒星光 250 ms（α 0.9 → 0、轉 30°）、小光點 300 ms，停住前都結束', () {
+      for (var i = 0; i < 4; i++) {
+        final start = practiceRevealStarStartMs(i);
+        expect(practiceRevealStarSparkle(start, i), isNull);
+        final early = practiceRevealStarSparkle(start + 1, i)!;
+        expect(early.alpha, closeTo(0.9, 0.01));
+        final late = practiceRevealStarSparkle(start + 249, i)!;
+        expect(late.turnDeg, closeTo(30, 0.2));
+        expect(late.alpha, lessThan(0.05));
+        expect(practiceRevealStarSparkle(start + 250, i), isNull);
+        for (var dot = 0; dot < PracticeRevealTiming.starDotCount; dot++) {
+          expect(practiceRevealStarDot(start, i, dot), isNull);
+          expect(practiceRevealStarDot(start + 150, i, dot), isNotNull);
+          expect(practiceRevealStarDot(start + 300, i, dot), isNull);
+          expect(
+            practiceRevealStarDot(start + 299, i, dot)!.offset.distance,
+            lessThanOrEqualTo(14),
+          );
+        }
+        expect(start + 300, lessThan(PracticeRevealTiming.revealMs));
+      }
+    });
+
+    test('NEW 小標在牌落地之後浮現（§4 時間軸 2150–2300），停住前到位（V3.1 §5.14）', () {
       expect(
-        PracticeRevealTiming.newTagStartMs - PracticeRevealTiming.stampStartMs,
-        150,
+        PracticeRevealTiming.newTagStartMs,
+        greaterThan(PracticeRevealTiming.stampLandMs),
       );
       expect(practiceRevealNewTagAppear(PracticeRevealTiming.newTagStartMs), 0);
       expect(practiceRevealNewTagAppear(PracticeRevealTiming.newTagEndMs), 1);
@@ -392,28 +474,29 @@ void main() {
   });
 
   group('收卡：變成光、光球、星點', () {
-    test('資訊 80 ms 內淡掉、卡面 150 ms 內變成光', () {
+    test('資訊 80 ms 內淡掉、卡面 120 ms 內變成光（細線發光）', () {
       expect(practiceArchiveInfoOpacity(0), 1);
       expect(practiceArchiveInfoOpacity(80), 0);
       expect(practiceArchiveCardLight(0), 0);
-      expect(practiceArchiveCardLight(150), 1);
+      expect(practiceArchiveCardLight(120), 1);
     });
 
-    test('光球 90 ms 起在卡片中心從 14 長到 18，飛行中縮到 10', () {
-      expect(practiceArchiveOrbRadius(89), 0);
-      expect(practiceArchiveOrbRadius(90), closeTo(14, 1e-9));
+    test('光球 120 ms 起在卡片中心從 14 長到 18，飛行中縮到 10', () {
+      expect(practiceArchiveOrbRadius(119), 0);
+      expect(practiceArchiveOrbRadius(120), closeTo(14, 1e-9));
       expect(practiceArchiveOrbRadius(150), closeTo(18, 1e-9));
       expect(practiceArchiveOrbRadius(450), closeTo(10, 1e-9));
     });
 
-    test('8 顆星點在光球經過 t＝0.1·i 時灑出', () {
+    test('14 顆星點在光球經過 t＝i/15 時灑出（V3.1 §5.12）', () {
+      expect(PracticeRevealTiming.sparkleCount, 14);
       var last = PracticeRevealTiming.flightStartMs;
       for (var i = 1; i <= PracticeRevealTiming.sparkleCount; i++) {
         final ms = practiceArchiveSparkleSpawnMs(i);
         expect(ms, greaterThan(last), reason: 'sparkle $i');
         expect(ms, lessThan(PracticeRevealTiming.landMs));
         // Flutter 的 Cubic 求值本身在 x 上只到 ±0.001，曲線中段斜率約 3。
-        expect(practiceArchiveFlightT(ms), closeTo(0.1 * i, 5e-3));
+        expect(practiceArchiveFlightT(ms), closeTo(i / 15, 5e-3));
         last = ms;
       }
     });
@@ -427,12 +510,262 @@ void main() {
       }
     });
 
-    test('貝茲切線：起點朝控制點、終點從控制點出來', () {
+    test('三次貝茲切線：起點朝第一個控制點、終點從第二個控制點出來', () {
       const p0 = Offset(0, 0);
       const p1 = Offset(100, 0);
       const p2 = Offset(100, 100);
-      expect(practiceQuadBezierTangent(p0, p1, p2, 0), const Offset(200, 0));
-      expect(practiceQuadBezierTangent(p0, p1, p2, 1), const Offset(0, 200));
+      const p3 = Offset(200, 100);
+      expect(
+        practiceCubicBezierTangent(p0, p1, p2, p3, 0),
+        const Offset(300, 0),
+      );
+      expect(
+        practiceCubicBezierTangent(p0, p1, p2, p3, 1),
+        const Offset(300, 0),
+      );
+    });
+
+    test('落位：大四芒星爆光 450 ms 起 250 ms、兩圈光環 450–650／500–700，收卡結束前都收完', () {
+      expect(practiceArchiveLandBurst(450), isNull);
+      final peak = practiceArchiveLandBurst(450 + 0.25 * 250)!;
+      expect(peak.alpha, closeTo(1, 1e-9));
+      expect(practiceArchiveLandBurst(449 + 250)!.scale, closeTo(1, 0.01));
+      expect(practiceArchiveLandBurst(700), isNull);
+      expect(practiceArchiveLandRing(450, 0), isNull);
+      expect(practiceArchiveLandRing(550, 0), closeTo(0.5, 1e-9));
+      expect(practiceArchiveLandRing(650, 0), isNull);
+      expect(practiceArchiveLandRing(499, 1), isNull);
+      expect(practiceArchiveLandRing(600, 1), closeTo(0.5, 1e-9));
+      expect(practiceArchiveLandRing(700, 1), isNull);
+    });
+  });
+
+  group('泛光（V3.1 §5.1）', () {
+    test(
+        '後層：蓄力 0 → 0.3；R／SR 染藍衝到 0.75；SR 染金 0.9；翻牌峰值 N 0.35／R 0.6／SR 0.9；400 ms 後退回 0.3 並停住',
+        () {
+      for (final rarity in PracticeGirlRarity.values) {
+        expect(practiceRevealBloomBack(0, rarity), 0);
+        expect(practiceRevealBloomBack(600, rarity), closeTo(0.3, 1e-9));
+        expect(
+          practiceRevealBloomBack(599.9, rarity),
+          closeTo(practiceRevealBloomBack(600, rarity), 1e-3),
+        );
+        expect(practiceRevealBloomBack(1750, rarity), closeTo(0.3, 1e-9));
+        // 停住時靜止：1.75 s 之後一直是 0.3。
+        for (var ms = 1750.0; ms <= PracticeRevealTiming.revealMs; ms += 50) {
+          expect(
+            practiceRevealBloomBack(ms, rarity),
+            closeTo(0.3, 1e-9),
+            reason: '$ms',
+          );
+        }
+      }
+      expect(practiceRevealBloomBack(720, r), closeTo(0.75, 1e-9));
+      expect(practiceRevealBloomBack(720, sr), closeTo(0.75, 1e-9));
+      expect(practiceRevealBloomBack(1000, sr), closeTo(0.9, 1e-9));
+      expect(practiceRevealBloomBack(1100, r), closeTo(0.45, 1e-9));
+      expect(practiceRevealBloomBack(1100, sr), closeTo(0.5, 1e-9));
+      expect(practiceRevealBloomBack(1350, n), closeTo(0.35, 1e-9));
+      expect(practiceRevealBloomBack(1350, r), closeTo(0.6, 1e-9));
+      expect(practiceRevealBloomBack(1350, sr), closeTo(0.9, 1e-9));
+    });
+
+    test('前層：側立前 50 ms 才起亮（只升）、側立最亮（N 0.15／R 0.25／SR 0.35），之後 300 ms 退掉（只降）',
+        () {
+      const start = PracticeRevealTiming.flipPeakMs -
+          PracticeRevealTiming.bloomFrontLeadMs;
+      const end = PracticeRevealTiming.flipPeakMs +
+          PracticeRevealTiming.bloomFrontFadeMs;
+      expect(start, 1300);
+      expect(end, 1650);
+      for (final rarity in PracticeGirlRarity.values) {
+        var last = 0.0;
+        for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 1) {
+          final v = practiceRevealBloomFront(ms, rarity);
+          expect(v, lessThanOrEqualTo(0.35), reason: '$ms');
+          if (ms <= start || ms >= end) expect(v, 0, reason: '$ms');
+          if (ms > start && ms <= PracticeRevealTiming.flipPeakMs) {
+            expect(v, greaterThanOrEqualTo(last), reason: '側立前只升（$ms）');
+          } else if (ms > PracticeRevealTiming.flipPeakMs) {
+            expect(v, lessThanOrEqualTo(last), reason: '側立後只降（$ms）');
+          }
+          last = v;
+        }
+      }
+      expect(practiceRevealBloomFront(1350, n), closeTo(0.15, 1e-9));
+      expect(practiceRevealBloomFront(1350, r), closeTo(0.25, 1e-9));
+      expect(practiceRevealBloomFront(1350, sr), closeTo(0.35, 1e-9));
+    });
+  });
+
+  group('徽記白光與整張卡染色（V3.1 §5.2、§5.3）', () {
+    test('徽記白光 560 → 600 衝到 0.95、720 退掉；三種稀有度共用同一條（不洩漏稀有度）', () {
+      expect(practiceRevealEmblemWhite(560), 0);
+      expect(practiceRevealEmblemWhite(600), closeTo(0.95, 1e-9));
+      expect(practiceRevealEmblemWhite(720), 0);
+      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
+        final v = practiceRevealEmblemWhite(ms);
+        expect(v, inInclusiveRange(0, 0.95), reason: '$ms');
+        if (ms <= 560 || ms >= 720) expect(v, 0, reason: '$ms');
+      }
+    });
+
+    test('線路發光：N 全程 0；R／SR 染藍 120 ms 亮到 0.85，藍色蓄力期間在 0.8–1.0 倍之間慢慢呼吸、不閃', () {
+      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
+        expect(practiceRevealLinesGlow(ms, n), 0, reason: '$ms');
+      }
+      for (final rarity in [r, sr]) {
+        expect(practiceRevealLinesGlow(599, rarity), 0);
+        expect(practiceRevealLinesGlow(720, rarity), closeTo(0.85, 1e-9));
+        var last = 1.0;
+        for (var ms = 720.0; ms <= 1100; ms += 10) {
+          final v = practiceRevealLinesGlow(ms, rarity);
+          expect(v, inInclusiveRange(0.8 * 0.85 - 1e-9, 0.85 + 1e-9));
+          expect(v, lessThanOrEqualTo(last + 1e-9), reason: '只退不閃（$ms）');
+          last = v;
+        }
+      }
+    });
+
+    test('閃光安全（曲線）：翻牌前卡背只有徽記白光一下；側立前 50 ms 之前卡面前面不疊光；翻牌的光各亮一次', () {
+      // 閃光次數要量畫面（tools/practice-reveal-flash-check，V3.1 §3、§12.2）：光刃、
+      // 泛光、衝擊波疊上去之後只看曲線數不出來。這裡守住量測結果靠的三件事：
+      // 1. 翻牌前卡背的白光只有徽記白光一下（V3 SR 染金那一下白色爆閃已拿掉，不然 SR
+      //    是白光、金、翻牌三下）。
+      // 2. 卡片側立前 [PracticeRevealTiming.bloomFrontLeadMs] 之前，卡面前面不疊任何光：
+      //    前層泛光提早亮會先把卡面提亮，側立一暗、光刃再一亮，就多一次閃光。
+      // 3. 前層泛光、光刃、十字光各自只亮一次（先升後降，不重複閃）。
+      int peaks(double Function(double ms) light, double from) {
+        var count = 0;
+        var prev = light(from);
+        var rising = false;
+        for (var ms = from + 1; ms <= PracticeRevealTiming.revealMs; ms += 1) {
+          final v = light(ms);
+          if (v < prev - 1e-12 && rising) count++;
+          if (v > prev + 1e-12) rising = true;
+          if (v < prev - 1e-12) rising = false;
+          prev = v;
+        }
+        return count;
+      }
+
+      const lead = PracticeRevealTiming.flipPeakMs -
+          PracticeRevealTiming.bloomFrontLeadMs;
+      expect(
+        peaks((ms) => ms < lead ? practiceRevealEmblemWhite(ms) : 0, 0),
+        1,
+      );
+      for (final rarity in PracticeGirlRarity.values) {
+        for (var ms = 0.0; ms <= lead; ms += 1) {
+          expect(practiceRevealBloomFront(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealBladeWidth(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealBladeCore(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealCross(ms, rarity), 0, reason: '$ms');
+          expect(practiceRevealShockwaves(ms, rarity, 450), isEmpty);
+        }
+        for (final light in <double Function(double)>[
+          (ms) => practiceRevealBloomFront(ms, rarity),
+          (ms) => practiceRevealBladeWidth(ms, rarity),
+          (ms) => practiceRevealCross(ms, rarity),
+        ]) {
+          expect(peaks(light, lead), lessThanOrEqualTo(1), reason: '$rarity');
+        }
+      }
+    });
+  });
+
+  group('衝擊波光環（V3.1 §5.6）', () {
+    const cardHeight = 450.0;
+
+    test('N 沒有；R 翻牌峰值 1 圈 400 ms 到 1.1×卡高；SR 2 圈（隔 120 ms、各 500 ms）到 1.3×卡高',
+        () {
+      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
+        expect(practiceRevealShockwaves(ms, n, cardHeight), isEmpty);
+        expect(practiceRevealBadgeRing(ms, n), isNull);
+        expect(practiceRevealBadgeRing(ms, r), isNull);
+      }
+      expect(practiceRevealShockwaves(1350, r, cardHeight), isEmpty);
+      expect(practiceRevealShockwaves(1500, r, cardHeight), hasLength(1));
+      expect(practiceRevealShockwaves(1750, r, cardHeight), isEmpty);
+      expect(practiceRevealShockwaves(1400, sr, cardHeight), hasLength(1));
+      expect(practiceRevealShockwaves(1500, sr, cardHeight), hasLength(2));
+      expect(practiceRevealShockwaves(1850, sr, cardHeight), hasLength(1));
+      expect(practiceRevealShockwaves(1970, sr, cardHeight), isEmpty);
+    });
+
+    test('半徑單調變大、線寬 12 → 1、α 0.85 → 0；停住前全部結束', () {
+      for (final (rarity, total, end) in [
+        (r, 400.0, 1.1 * cardHeight),
+        (sr, 500.0, 1.3 * cardHeight),
+      ]) {
+        var lastRadius = 0.0;
+        var lastWidth = 13.0;
+        var lastAlpha = 1.0;
+        for (var t = 1.0; t < total; t += 5) {
+          final ring =
+              practiceRevealShockwaves(1350 + t, rarity, cardHeight).first;
+          expect(ring.radius, greaterThan(lastRadius), reason: '$t');
+          expect(ring.radius, lessThanOrEqualTo(end));
+          expect(ring.width, lessThan(lastWidth));
+          expect(ring.alpha, lessThan(lastAlpha));
+          lastRadius = ring.radius;
+          lastWidth = ring.width;
+          lastAlpha = ring.alpha;
+        }
+        expect(lastRadius, closeTo(end, 1));
+        expect(lastWidth, closeTo(1, 0.2));
+        expect(lastAlpha, lessThan(0.02));
+      }
+      for (var ms = 2000.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
+        expect(practiceRevealShockwaves(ms, sr, cardHeight), isEmpty);
+      }
+    });
+
+    test('SR 牌落地的小光環：落地起 300 ms、半徑 20 → 60 px', () {
+      expect(practiceRevealBadgeRing(2060, sr), isNull);
+      expect(practiceRevealBadgeRing(2061, sr)!.radius, closeTo(20, 1));
+      expect(practiceRevealBadgeRing(2359, sr)!.radius, closeTo(60, 0.5));
+      expect(practiceRevealBadgeRing(2360, sr), isNull);
+    });
+  });
+
+  group('等待心跳（V3.1 §5.15）', () {
+    test('卡背入場走完（500）起每 900 ms 一組，兩下相隔 140 ms，最多 6 組', () {
+      expect(kPracticeHeartbeatBeats, 12);
+      expect(practiceHeartbeatBeatMs(0), 500);
+      expect(practiceHeartbeatBeatMs(1), 640);
+      expect(practiceHeartbeatBeatMs(2), 1400);
+      expect(practiceHeartbeatBeatMs(3), 1540);
+      expect(practiceHeartbeatBeatMs(11), 500 + 900 * 5 + 140);
+      // 一圈等待呼吸（2.7 s）正好三組。
+      expect(
+        practiceHeartbeatBeatMs(6) - practiceHeartbeatBeatMs(0),
+        2700,
+      );
+    });
+
+    test('畫面：第一下放大 1.2%、第二下 0.8%（60 ms 衝上、90 ms 回落），顫動 ±0.8 px，徽記加亮', () {
+      expect(practiceHeartbeatPulse(0), (scale: 1.0, dx: 0.0, emblem: 0.0));
+      expect(practiceHeartbeatPulse(499), (scale: 1.0, dx: 0.0, emblem: 0.0));
+      expect(practiceHeartbeatPulse(560).scale, closeTo(1.012, 1e-9));
+      expect(practiceHeartbeatPulse(560).emblem, closeTo(0.12, 1e-9));
+      expect(practiceHeartbeatPulse(700).scale, closeTo(1.008, 1e-9));
+      // 第二下在第一下快落回時接上（640）；兩組之間完全靜止。
+      expect(practiceHeartbeatPulse(1000), (scale: 1.0, dx: 0.0, emblem: 0.0));
+      for (var ms = 0.0; ms <= 6000; ms += 1) {
+        final pulse = practiceHeartbeatPulse(ms);
+        expect(pulse.dx.abs(), lessThanOrEqualTo(0.8), reason: '$ms');
+        expect(pulse.scale, inInclusiveRange(1, 1.012 + 1e-9), reason: '$ms');
+        expect(pulse.emblem, inInclusiveRange(0, 0.12 + 1e-9), reason: '$ms');
+      }
+      // 第 6 組之後全部歸零，不一直跳。
+      final afterLast = practiceHeartbeatBeatMs(11) + 150;
+      expect(
+        practiceHeartbeatPulse(afterLast),
+        (scale: 1.0, dx: 0.0, emblem: 0.0),
+      );
+      expect(practiceHeartbeatPulse(9000), (scale: 1.0, dx: 0.0, emblem: 0.0));
     });
   });
 }

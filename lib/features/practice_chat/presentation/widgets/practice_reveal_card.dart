@@ -1,8 +1,9 @@
 // 抽卡揭曉 V3 的卡片外觀（規格 docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md
 // §6.4–§6.6）：
-// - 卡背：中性石墨銀底圖＋執行時依稀有度染色的徽記／外框遮罩＋預先模糊好的光暈。
-// - 卡面：漸層倒角框、照片緩縮、全息掃光、膠囊稀有度牌（烙印前不存在）、兩行毛玻璃
-//   資訊欄、只畫亮星。
+// - 卡背：中性石墨銀底圖＋執行時依稀有度染色的徽記／外框／線路遮罩＋預先模糊好的光暈；
+//   V3.1 加徽記白光與整張卡染色（docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md §5.2、§5.3）。
+// - 卡面：漸層倒角框、照片緩縮、全息掃光、六角金屬稀有度牌（V3.1 §5.10：從畫面外飛進來，
+//   出現前不存在）、兩行毛玻璃資訊欄、只畫亮星（V3.1 §5.11 加四芒星光）。
 // 動畫狀態全部由呼叫端算好傳進來（[PracticeRevealFaceState]），這裡只負責畫。
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
@@ -29,13 +30,19 @@ const String kPracticeRevealBackFrameMaskAsset =
     'assets/images/practice/practice_draw_card_back_v3_frame_mask.webp';
 const String kPracticeRevealBackGlowAsset =
     'assets/images/practice/practice_draw_card_back_v3_glow.webp';
+const String kPracticeRevealBackLinesMaskAsset =
+    'assets/images/practice/practice_draw_card_back_v3_lines_mask.webp';
 
-/// 抽牌一開始就預快取的卡背素材。
+/// 抽牌一開始就預快取的卡背素材與光效貼圖。
 const List<String> kPracticeRevealBackAssets = [
   kPracticeRevealBackBaseAsset,
   kPracticeRevealBackEmblemMaskAsset,
   kPracticeRevealBackFrameMaskAsset,
   kPracticeRevealBackGlowAsset,
+  kPracticeRevealBackLinesMaskAsset,
+  kPracticeRevealBloomAsset,
+  kPracticeRevealSparkleAsset,
+  kPracticeRevealParticleAsset,
 ];
 
 /// 卡背、卡面的外圓角（DESIGN.md §4）。
@@ -48,6 +55,31 @@ const double _kPhotoRadius = 22;
 /// 揭曉當下最多幾顆亮星（SR 4 顆）。
 const int _kMaxStars = 4;
 
+/// 亮星大小與間距（V3.1 §5.11：16 → 20）。規格的間距寫 4 → 5，但 DESIGN.md §5 把 5 列為
+/// 噪音值（貼齊 4），間距維持 4。
+const double _kStarSize = 20;
+const double _kStarGap = 4;
+
+/// 星星點亮時的四芒星光直徑。
+const double _kStarSparkleSize = 28;
+
+/// 六角牌：寬是幾倍卡寬、高是幾倍牌寬；落點超出卡片左上角多少（V3.1 §5.10）。
+const double kPracticeRevealBadgeWidthFactor = 0.24;
+const double _kBadgeHeightFactor = 0.46;
+const double kPracticeRevealBadgeOverhang = 12;
+
+/// 六角牌落定時的中心點（相對卡片左上角）：SR 落地的小光環以它為圓心。
+Offset practiceRevealBadgeCenter(Size card) {
+  final width = card.width * kPracticeRevealBadgeWidthFactor;
+  return Offset(
+    -kPracticeRevealBadgeOverhang + width / 2,
+    -kPracticeRevealBadgeOverhang + width * _kBadgeHeightFactor / 2,
+  );
+}
+
+/// 徽記白光的泛光大小（相對卡寬）：徽記約 0.35×卡寬，泛光取 1.8 倍。
+const double _kEmblemBloomFactor = 0.63;
+
 /// 卡背：中性石墨銀底圖上，徽記與外框遮罩套稀有度漸層（亮度＝不透明度），光暈圖
 /// 染色後墊在線條下面。全部預先做好，執行時只染色、不做模糊（規格 §6.5、§12）。
 class PracticeRevealCardBack extends StatelessWidget {
@@ -58,7 +90,9 @@ class PracticeRevealCardBack extends StatelessWidget {
     required this.colors,
     required this.emblemGlow,
     required this.frameGlow,
-    this.goldFlash = 0,
+    this.linesGlow = 0,
+    this.emblemWhite = 0,
+    this.goldWash = 0,
   });
 
   final double width;
@@ -67,14 +101,21 @@ class PracticeRevealCardBack extends StatelessWidget {
   /// 染色當下的顏色（銀 → 藍 → 金）。
   final PracticeRevealBackColors colors;
 
+  /// 線路發光（0..1，V3.1 §5.3）：R／SR 染藍後線路跟外框、徽記一起發光；N 恆 0。
+  final double linesGlow;
+
+  /// 徽記白光（0..1，V3.1 §5.2）：徽記遮罩填白，再疊一張白色泛光。
+  final double emblemWhite;
+
+  /// SR 整張卡變香檳金（0..1，V3.1 §5.3）：底圖疊一層金色漸層（`BlendMode.color`，保留
+  /// 底圖的明暗、只換色相），構圖不變。N／R 恆 0。
+  final double goldWash;
+
   /// 徽記與星軌線條亮度（0..1）。
   final double emblemGlow;
 
   /// 外框亮度（0..1）。
   final double frameGlow;
-
-  /// SR 染金那一刻的徽記白色爆閃（0..1）。
-  final double goldFlash;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +129,24 @@ class PracticeRevealCardBack extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            _layer(kPracticeRevealBackBaseAsset),
+            if (goldWash > 0.01)
+              ShaderMask(
+                key: const ValueKey('practice-draw-ceremony-gold-wash'),
+                blendMode: BlendMode.color,
+                shaderCallback: (rect) => LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    PracticeRevealPalette.srBackTint
+                        .withValues(alpha: goldWash),
+                    PracticeRevealPalette.srBackTintDeep
+                        .withValues(alpha: goldWash),
+                  ],
+                ).createShader(rect),
+                child: _layer(kPracticeRevealBackBaseAsset),
+              )
+            else
+              _layer(kPracticeRevealBackBaseAsset),
             _layer(
               kPracticeRevealBackGlowAsset,
               color: colors.glow.withValues(alpha: glowAlpha),
@@ -114,10 +172,29 @@ class PracticeRevealCardBack extends StatelessWidget {
                 ],
               ),
             ),
-            if (goldFlash > 0.01)
+            if (linesGlow > 0.01)
+              _layer(
+                kPracticeRevealBackLinesMaskAsset,
+                color: colors.glow.withValues(alpha: linesGlow),
+              ),
+            if (emblemWhite > 0.01)
               _layer(
                 kPracticeRevealBackEmblemMaskAsset,
-                color: Colors.white.withValues(alpha: goldFlash),
+                color: Colors.white.withValues(alpha: emblemWhite),
+              ),
+            if (emblemWhite > 0.01)
+              Center(
+                child: Image.asset(
+                  kPracticeRevealBloomAsset,
+                  key: const ValueKey('practice-draw-ceremony-emblem-white'),
+                  width: width * _kEmblemBloomFactor,
+                  height: width * _kEmblemBloomFactor,
+                  fit: BoxFit.fill,
+                  gaplessPlayback: true,
+                  excludeFromSemantics: true,
+                  color: Colors.white.withValues(alpha: 0.9 * emblemWhite),
+                  colorBlendMode: BlendMode.srcIn,
+                ),
               ),
             if (colors.holo > 0.01)
               CustomPaint(painter: _HoloRimPainter(strength: colors.holo)),
@@ -180,23 +257,29 @@ class PracticeRevealFaceState {
     required this.sheenX,
     required this.stamped,
     required this.stampScale,
-    required this.stampOpacity,
+    required this.stampOffset,
     required this.newTagAppear,
     required this.starScales,
     required this.starPulses,
+    required this.starMs,
     required this.overlayOpacity,
     required this.light,
   });
 
-  /// [revealMs]＝揭曉經過的毫秒；收卡中再給 [archiveMs]。
-  factory PracticeRevealFaceState.at(double revealMs, {double? archiveMs}) {
+  /// [revealMs]＝揭曉經過的毫秒；收卡中再給 [archiveMs]。[stampFrom]＝稀有度牌飛入的起點
+  /// 相對落點的位移（卡片座標；儀式依螢幕位置算好傳進來，預設不飛）。
+  factory PracticeRevealFaceState.at(
+    double revealMs, {
+    double? archiveMs,
+    Offset stampFrom = Offset.zero,
+  }) {
     return PracticeRevealFaceState(
       photoScale: practiceRevealPhotoScale(revealMs),
       infoAppear: practiceRevealInfoAppear(revealMs),
       sheenX: practiceRevealSheenX(revealMs),
       stamped: practiceRevealStamped(revealMs),
       stampScale: practiceRevealStampScale(revealMs),
-      stampOpacity: practiceRevealStampOpacity(revealMs),
+      stampOffset: stampFrom * (1 - practiceRevealStampFlight(revealMs)),
       newTagAppear: practiceRevealNewTagAppear(revealMs),
       starScales: [
         for (var i = 0; i < _kMaxStars; i++)
@@ -206,6 +289,7 @@ class PracticeRevealFaceState {
         for (var i = 0; i < _kMaxStars; i++)
           practiceRevealStarPulse(revealMs, i),
       ],
+      starMs: revealMs,
       overlayOpacity:
           archiveMs == null ? 1 : practiceArchiveInfoOpacity(archiveMs),
       light: archiveMs == null ? 0 : practiceArchiveCardLight(archiveMs),
@@ -224,10 +308,12 @@ class PracticeRevealFaceState {
   /// 全息掃光位置；null＝不畫。
   final double? sheenX;
 
-  /// 稀有度牌已烙上（之前不存在）。
+  /// 稀有度牌已出現（之前不存在）。
   final bool stamped;
   final double stampScale;
-  final double stampOpacity;
+
+  /// 稀有度牌離落點還有多遠（飛行中；落地後是 0）。
+  final Offset stampOffset;
 
   /// NEW 小標浮現（0..1）；只有新卡會畫。
   final double newTagAppear;
@@ -235,6 +321,9 @@ class PracticeRevealFaceState {
   /// 每顆亮星的縮放與點亮脈衝（只取前 `rarity.stars` 顆）。
   final List<double> starScales;
   final List<double> starPulses;
+
+  /// 星星的四芒星光與小光點用的揭曉時間（ms）。
+  final double starMs;
 
   /// 收卡時資訊欄、稀有度牌、星星一起淡掉（1 → 0）。
   final double overlayOpacity;
@@ -245,6 +334,8 @@ class PracticeRevealFaceState {
 
 /// 卡面：1.5 px 漸層倒角框＋外光、照片緩縮、全息掃光、稀有度牌、毛玻璃資訊欄。
 /// 名字單獨成行、基本資訊用「 · 」串：刻意避開練習室 hero 的「名字，年齡」字串。
+/// 稀有度牌壓在卡片左上角、超出卡片 [kPracticeRevealBadgeOverhang]，飛入時從畫面外進來，
+/// 所以畫在卡片的圓角裁切外面。
 class PracticeRevealCardFront extends StatelessWidget {
   const PracticeRevealCardFront({
     super.key,
@@ -274,111 +365,131 @@ class PracticeRevealCardFront extends StatelessWidget {
 
     return MediaQuery.withClampedTextScaling(
       maxScaleFactor: 1.3,
-      child: Container(
-        key: const ValueKey('practice-draw-ceremony-front'),
-        width: width,
-        height: height,
-        padding: const EdgeInsets.all(_kFrameWidth),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(kPracticeRevealCardRadius),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [theme.frameLight, theme.frameDeep, theme.frameLight],
-            stops: const [0.0, 0.5, 1.0],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: theme.glow.withValues(alpha: 0.35),
-              blurRadius: 24,
-            ),
-          ],
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          _card(theme, inner, innerRadius, infoRise, infoOpacity),
+          if (state.stamped && state.overlayOpacity > 0) _stamp(),
+        ],
+      ),
+    );
+  }
+
+  Widget _card(
+    PracticeRevealTheme theme,
+    Size inner,
+    BorderRadius innerRadius,
+    double infoRise,
+    double infoOpacity,
+  ) {
+    return Container(
+      key: const ValueKey('practice-draw-ceremony-front'),
+      width: width,
+      height: height,
+      padding: const EdgeInsets.all(_kFrameWidth),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(kPracticeRevealCardRadius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [theme.frameLight, theme.frameDeep, theme.frameLight],
+          stops: const [0.0, 0.5, 1.0],
         ),
-        child: ClipRRect(
-          borderRadius: innerRadius,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _photo(inner, innerRadius),
-              const CustomPaint(painter: _InnerHighlightPainter()),
-              if (state.sheenX != null)
-                CustomPaint(
-                  key: const ValueKey('practice-draw-ceremony-sheen'),
-                  painter: PracticeRevealSheenPainter(
-                    x: state.sheenX!,
-                    strength: theme.sheenStrength,
-                    holo: theme.holo,
-                  ),
+        boxShadow: [
+          BoxShadow(
+            color: theme.glow.withValues(alpha: 0.35),
+            blurRadius: 24,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: innerRadius,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _photo(inner, innerRadius),
+            const CustomPaint(painter: _InnerHighlightPainter()),
+            if (state.sheenX != null)
+              CustomPaint(
+                key: const ValueKey('practice-draw-ceremony-sheen'),
+                painter: PracticeRevealSheenPainter(
+                  x: state.sheenX!,
+                  strength: theme.sheenStrength,
+                  holo: theme.holo,
                 ),
-              if (state.stamped && state.overlayOpacity > 0)
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Opacity(
-                        opacity: state.stampOpacity * state.overlayOpacity,
-                        child: Transform.scale(
-                          scale: state.stampScale,
-                          child: PracticeRevealRarityBadge(
-                            rarity: girl.rarity,
-                            theme: theme,
-                          ),
-                        ),
-                      ),
-                      if (isNew == true && state.newTagAppear > 0) ...[
-                        const SizedBox(width: 6),
-                        Opacity(
-                          opacity: state.newTagAppear * state.overlayOpacity,
-                          child: Transform.scale(
-                            scale: 0.6 + 0.4 * state.newTagAppear,
-                            child: const PracticeNewBadge(
-                              key: ValueKey('practice-draw-ceremony-new-tag'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
-                child: Transform.translate(
-                  offset: Offset(0, infoRise),
-                  child: Opacity(
-                    opacity: infoOpacity,
-                    child: PracticeRevealInfoBar(
-                      girl: girl,
-                      theme: theme,
-                      photo: _photo(inner, BorderRadius.zero),
-                      photoSize: inner,
-                      photoShift: infoRise,
-                      starScales: state.starScales,
-                      starPulses: state.starPulses,
-                      collected: isNew == false,
-                    ),
+              ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: Transform.translate(
+                offset: Offset(0, infoRise),
+                child: Opacity(
+                  opacity: infoOpacity,
+                  child: PracticeRevealInfoBar(
+                    girl: girl,
+                    theme: theme,
+                    photo: _photo(inner, BorderRadius.zero),
+                    photoSize: inner,
+                    photoShift: infoRise,
+                    starScales: state.starScales,
+                    starPulses: state.starPulses,
+                    starMs: state.starMs,
+                    collected: isNew == false,
                   ),
                 ),
               ),
-              if (state.light > 0.001)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      radius: 0.9,
-                      colors: [
-                        Colors.white.withValues(alpha: state.light),
-                        theme.orb.withValues(alpha: state.light),
-                        theme.glow.withValues(alpha: 0.85 * state.light),
-                      ],
-                      stops: const [0.0, 0.45, 1.0],
-                    ),
+            ),
+            if (state.light > 0.001)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    radius: 0.9,
+                    colors: [
+                      Colors.white.withValues(alpha: state.light),
+                      theme.orb.withValues(alpha: state.light),
+                      theme.glow.withValues(alpha: 0.85 * state.light),
+                    ],
+                    stops: const [0.0, 0.45, 1.0],
                   ),
                 ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 六角牌＋（新卡）NEW：飛行中帶著位移，落地後壓在卡片左上角；NEW 掛在牌右邊 6 px。
+  Widget _stamp() {
+    return Positioned(
+      left: -kPracticeRevealBadgeOverhang + state.stampOffset.dx,
+      top: -kPracticeRevealBadgeOverhang + state.stampOffset.dy,
+      child: Opacity(
+        opacity: state.overlayOpacity,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.scale(
+              scale: state.stampScale,
+              child: PracticeRevealRarityBadge(
+                rarity: girl.rarity,
+                width: width * kPracticeRevealBadgeWidthFactor,
+              ),
+            ),
+            if (isNew == true && state.newTagAppear > 0) ...[
+              const SizedBox(width: 6),
+              Opacity(
+                opacity: state.newTagAppear,
+                child: Transform.scale(
+                  scale: 0.6 + 0.4 * state.newTagAppear,
+                  child: const PracticeNewBadge(
+                    key: ValueKey('practice-draw-ceremony-new-tag'),
+                  ),
+                ),
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -425,83 +536,128 @@ class _InnerHighlightPainter extends CustomPainter {
   bool shouldRepaint(_InnerHighlightPainter old) => false;
 }
 
-/// 稀有度牌（D5=A 金屬膠囊）：高 24、左右內距 10、主題漸層底、上緣白色內高光、下緣
-/// 深色內陰影、黑色投影。
+/// 稀有度牌（V3.1 §5.10，K1、K2 定案 B）：銀色金屬六角牌，寬 0.24×卡寬；外圈是上亮下暗的
+/// 斜面倒角，牌面上緣一道反光，SR 的倒角帶金；深色粗字。用路徑與漸層畫，不加素材。
+/// 圖鑑卡的膠囊牌不動。
 class PracticeRevealRarityBadge extends StatelessWidget {
   const PracticeRevealRarityBadge({
     super.key,
     required this.rarity,
-    required this.theme,
+    required this.width,
   });
 
   final PracticeGirlRarity rarity;
-  final PracticeRevealTheme theme;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(999);
-    return Container(
+    final height = width * _kBadgeHeightFactor;
+    return SizedBox(
       key: const ValueKey('practice-draw-ceremony-rarity-badge'),
-      height: 24,
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+      width: width,
+      height: height,
+      child: CustomPaint(
+        painter: _HexBadgePainter(gold: rarity == PracticeGirlRarity.sr),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: height * 0.45),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                rarity.label,
+                style: AppTypography.titleLarge.copyWith(
+                  color: AppColors.brandInk,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                  height: 1,
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [theme.badgeLight, theme.badgeDeep],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 8,
-              right: 8,
-              height: 1,
-              child: ColoredBox(color: Colors.white.withValues(alpha: 0.55)),
-            ),
-            Positioned(
-              bottom: 0,
-              left: 8,
-              right: 8,
-              height: 1,
-              child: ColoredBox(color: Colors.black.withValues(alpha: 0.5)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Center(
-                widthFactor: 1,
-                child: Text(
-                  rarity.label,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.brandInk,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
   }
+}
+
+/// 牌左右兩個尖角往內收的距離（相對牌高）：0.3 讓尖角約 118°，接近正六角。
+const double _kHexPointInset = 0.3;
+
+/// 斜面倒角的寬度。
+const double _kHexBevel = 2.5;
+
+Path _hexPath(Rect r) {
+  final inset = r.height * _kHexPointInset;
+  return Path()
+    ..moveTo(r.left + inset, r.top)
+    ..lineTo(r.right - inset, r.top)
+    ..lineTo(r.right, r.center.dy)
+    ..lineTo(r.right - inset, r.bottom)
+    ..lineTo(r.left + inset, r.bottom)
+    ..lineTo(r.left, r.center.dy)
+    ..close();
+}
+
+class _HexBadgePainter extends CustomPainter {
+  const _HexBadgePainter({required this.gold});
+
+  /// SR：倒角改香檳金。
+  final bool gold;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final outer = Offset.zero & size;
+    final outerPath = _hexPath(outer);
+    canvas.drawShadow(outerPath, Colors.black, 3, false);
+    canvas.drawPath(
+      outerPath,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: gold
+              ? const [
+                  PracticeRevealPalette.srFrameLight,
+                  PracticeRevealPalette.srFrameDeep,
+                ]
+              : const [
+                  PracticeRevealPalette.badgeMetalLight,
+                  PracticeRevealPalette.badgeBevelDeep,
+                ],
+        ).createShader(outer),
+    );
+    final face = outer.deflate(_kHexBevel);
+    canvas.drawPath(
+      _hexPath(face),
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            PracticeRevealPalette.badgeMetalLight,
+            PracticeRevealPalette.badgeMetalMid,
+            PracticeRevealPalette.badgeMetalDeep,
+          ],
+          stops: [0.0, 0.55, 1.0],
+        ).createShader(face),
+    );
+    // 牌面上緣接光的那一道反光：左尖角 → 上緣 → 右尖角。
+    final inset = face.height * _kHexPointInset;
+    canvas.drawPath(
+      Path()
+        ..moveTo(face.left + 0.5, face.center.dy)
+        ..lineTo(face.left + inset, face.top + 0.5)
+        ..lineTo(face.right - inset, face.top + 0.5)
+        ..lineTo(face.right - 0.5, face.center.dy),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.85),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_HexBadgePainter old) => old.gold != gold;
 }
 
 /// 資訊欄（D6=A 兩行）：名字一行；基本資訊＋右側亮星一行。毛玻璃不用 BackdropFilter：
@@ -517,11 +673,15 @@ class PracticeRevealInfoBar extends StatelessWidget {
     required this.photoShift,
     required this.starScales,
     required this.starPulses,
+    this.starMs,
     this.collected = false,
   });
 
   final PracticeGirlProfile girl;
   final PracticeRevealTheme theme;
+
+  /// 揭曉經過的毫秒：給星星點亮時的四芒星光與小光點；null＝不畫。
+  final double? starMs;
 
   /// 重複角色：基本資訊那行最後加「已收藏」（V3.1 規格 §5.14）。基本資訊太長時
   /// （小螢幕、系統字放大）先省略前面，「已收藏」一定整個看得到。
@@ -549,86 +709,97 @@ class PracticeRevealInfoBar extends StatelessWidget {
     );
     final radius = BorderRadius.circular(18);
     // 不設 liveRegion：停住時整層已主動唸出抽到誰（儀式的讀屏按鈕），這裡再唸會連唸兩次。
-    return ClipRRect(
+    // 只有毛玻璃底裁在圓角裡；文字與星星不裁，星星點亮的星光可以略超出欄位。
+    return Stack(
       key: const ValueKey('practice-draw-ceremony-info'),
-      borderRadius: radius,
-      child: Stack(
-        children: [
-          // 資訊欄在卡面內左右下各內縮 12：照片副本反推回卡面照片的位置。
-          Positioned(
-            left: -12,
-            bottom: -12 + photoShift,
-            width: photoSize.width,
-            height: photoSize.height,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: photo,
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: PracticeRevealPalette.infoGlass.withValues(alpha: 0.68),
-                borderRadius: radius,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.12),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: radius,
+            child: Stack(
               children: [
-                Text(
-                  girl.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.titleLarge.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
+                // 資訊欄在卡面內左右下各內縮 12：照片副本反推回卡面照片的位置。
+                Positioned(
+                  left: -12,
+                  bottom: -12 + photoShift,
+                  width: photoSize.width,
+                  height: photoSize.height,
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                    child: photo,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              meta,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: metaStyle,
-                            ),
-                          ),
-                          if (collected)
-                            Text(' · 已收藏', maxLines: 1, style: metaStyle),
-                        ],
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: PracticeRevealPalette.infoGlass
+                          .withValues(alpha: 0.68),
+                      borderRadius: radius,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    PracticeRevealStars(
-                      count: girl.rarity.stars,
-                      color: theme.star,
-                      scales: starScales,
-                      pulses: starPulses,
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                girl.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.titleLarge.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: metaStyle,
+                          ),
+                        ),
+                        if (collected)
+                          Text(' · 已收藏', maxLines: 1, style: metaStyle),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  PracticeRevealStars(
+                    count: girl.rarity.stars,
+                    color: theme.star,
+                    scales: starScales,
+                    pulses: starPulses,
+                    ms: starMs,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// 亮星（只畫亮的，D6=A）：16 px、間距 4；每顆有自己的點亮縮放與發光脈衝。
+/// 亮星（只畫亮的，D6=A）：20 px、間距 4（V3.1 §5.11）；每顆有自己的點亮縮放與發光脈衝，
+/// 點亮時在星星後面閃一個四芒星光、往外噴 6 顆小光點。
 class PracticeRevealStars extends StatelessWidget {
   const PracticeRevealStars({
     super.key,
@@ -636,12 +807,16 @@ class PracticeRevealStars extends StatelessWidget {
     required this.color,
     required this.scales,
     required this.pulses,
+    this.ms,
   });
 
   final int count;
   final Color color;
   final List<double> scales;
   final List<double> pulses;
+
+  /// 揭曉經過的毫秒：給四芒星光與小光點；null＝不畫。
+  final double? ms;
 
   @override
   Widget build(BuildContext context) {
@@ -650,31 +825,103 @@ class PracticeRevealStars extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < count; i++) ...[
-          if (i > 0) const SizedBox(width: 4),
+          if (i > 0) const SizedBox(width: _kStarGap),
           SizedBox(
-            width: 16,
-            height: 16,
-            child: Transform.scale(
-              scale: i < scales.length ? scales[i] : 1,
-              child: Icon(
-                Icons.star_rounded,
-                size: 16,
-                color: color,
-                shadows: [
-                  Shadow(
-                    color: color.withValues(
-                      alpha: 0.45 + 0.45 * (i < pulses.length ? pulses[i] : 0),
+            width: _kStarSize,
+            height: _kStarSize,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                if (_sparkle(i) case final sparkle?)
+                  OverflowBox(
+                    maxWidth: _kStarSparkleSize,
+                    maxHeight: _kStarSparkleSize,
+                    child: Transform.rotate(
+                      angle: sparkle.turnDeg * math.pi / 180,
+                      child: Transform.scale(
+                        scale: sparkle.scale,
+                        child: Image.asset(
+                          kPracticeRevealSparkleAsset,
+                          key: ValueKey(
+                              'practice-draw-ceremony-star-sparkle-$i'),
+                          width: _kStarSparkleSize,
+                          height: _kStarSparkleSize,
+                          gaplessPlayback: true,
+                          excludeFromSemantics: true,
+                          color: color.withValues(alpha: sparkle.alpha),
+                          colorBlendMode: BlendMode.modulate,
+                        ),
+                      ),
                     ),
-                    blurRadius: 6 + 6 * (i < pulses.length ? pulses[i] : 0),
                   ),
-                ],
-              ),
+                Transform.scale(
+                  scale: i < scales.length ? scales[i] : 1,
+                  child: Icon(
+                    Icons.star_rounded,
+                    size: _kStarSize,
+                    color: color,
+                    shadows: [
+                      Shadow(
+                        color: color.withValues(
+                          alpha:
+                              0.45 + 0.45 * (i < pulses.length ? pulses[i] : 0),
+                        ),
+                        blurRadius: 6 + 6 * (i < pulses.length ? pulses[i] : 0),
+                      ),
+                    ],
+                  ),
+                ),
+                if (ms != null && practiceRevealStarDot(ms!, i, 0) != null)
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter:
+                          _StarDotsPainter(ms: ms!, index: i, color: color),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
       ],
     );
   }
+
+  ({double alpha, double turnDeg, double scale})? _sparkle(int index) {
+    final at = ms;
+    return at == null ? null : practiceRevealStarSparkle(at, index);
+  }
+}
+
+/// 星星點亮時往外噴的 6 顆小光點（直徑 3 px）。
+class _StarDotsPainter extends CustomPainter {
+  const _StarDotsPainter({
+    required this.ms,
+    required this.index,
+    required this.color,
+  });
+
+  final double ms;
+  final int index;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    for (var dot = 0; dot < PracticeRevealTiming.starDotCount; dot++) {
+      final d = practiceRevealStarDot(ms, index, dot);
+      if (d == null) continue;
+      canvas.drawCircle(
+        center + d.offset,
+        1.5,
+        Paint()..color = color.withValues(alpha: d.alpha),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StarDotsPainter old) =>
+      old.ms != ms || old.index != index || old.color != color;
 }
 
 // 角色第一句話對話框的尺寸（版面計算與 widget 共用單一真相）。字級用內文 15

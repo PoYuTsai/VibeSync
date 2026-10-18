@@ -21,13 +21,35 @@ void main() {
         ])
           PracticeRevealTheme.of(r),
       ];
-      expect(themes.map((t) => t.burstCount), [20, 26, 34]);
+      // V3.1 §5.7、§9：高檔 N 24、R 48、SR 160；中檔 SR 80；低檔上限 48。預設中檔。
+      expect(kPracticeRevealEffectTier, PracticeRevealEffectTier.medium);
+      expect(themes.map((t) => t.burstCounts), [
+        (high: 24, medium: 24, low: 24),
+        (high: 48, medium: 48, low: 48),
+        (high: 160, medium: 80, low: 48),
+      ]);
+      expect(themes.map((t) => t.burstCount), [24, 48, 80]);
+      expect(themes.map((t) => t.burstSpeed), [1.0, 1.2, 1.7]);
+      // V3.1 §5.5：光刃外暈最寬 N 0.6、R 0.7、SR 0.8×卡寬。
+      expect(themes.map((t) => t.bladeWidth), [0.6, 0.7, 0.8]);
       expect(themes.map((t) => t.ambientAlpha), [0.22, 0.32, 0.45]);
       expect(themes.map((t) => t.sheenStrength), [0.35, 0.55, 0.85]);
       expect(themes.map((t) => t.holo), [false, false, true]);
       // D9=A：揭曉的 R 用較亮的電光藍，和圖鑑的 #64B5F6 分開。
       expect(themes[1].backTint, PracticeRevealPalette.rBackTint);
       expect(themes[1].backTint, isNot(const Color(0xFF64B5F6)));
+    });
+
+    test('泛光層數：高、中檔前後兩層，低檔只畫後層（§9）；檔位可在測試覆寫', () {
+      expect(practiceRevealBloomLayers(PracticeRevealEffectTier.high), 2);
+      expect(practiceRevealBloomLayers(PracticeRevealEffectTier.medium), 2);
+      expect(practiceRevealBloomLayers(PracticeRevealEffectTier.low), 1);
+      expect(practiceRevealEffectTier, kPracticeRevealEffectTier);
+
+      debugPracticeRevealEffectTierOverride = PracticeRevealEffectTier.low;
+      addTearDown(() => debugPracticeRevealEffectTierOverride = null);
+      expect(practiceRevealEffectTier, PracticeRevealEffectTier.low);
+      expect(PracticeRevealTheme.of(PracticeGirlRarity.sr).burstCount, 48);
     });
   });
 
@@ -109,6 +131,84 @@ void main() {
         }
       }
       expect(bokeh, greaterThan(0), reason: '尺寸分布要有少量失焦大光斑');
+    });
+  });
+
+  group('升階光點（V3.1 §5.3）', () {
+    const card = Size(300, 450);
+
+    test('染藍後才出生、翻牌峰值前全部燃盡；1.5–3 px；同一時間點算兩次完全一樣', () {
+      var seen = 0;
+      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 10) {
+        for (var i = 0; i < kPracticeRevealRiseDotCount; i++) {
+          final p = practiceRevealRiseDot(i, ms, card);
+          final again = practiceRevealRiseDot(i, ms, card);
+          expect(p?.offset, again?.offset);
+          expect(p?.alpha, again?.alpha);
+          if (p == null) continue;
+          seen++;
+          expect(ms, greaterThan(PracticeRevealTiming.dyeBlueEndMs));
+          expect(ms, lessThan(PracticeRevealTiming.flipPeakMs));
+          expect(p.radius * 2, inInclusiveRange(1.5, 3.0));
+          expect(p.alpha, inInclusiveRange(0, 0.9));
+          // 繞著卡片四周（外擴 6 px）出生，往上飄、左右輕晃。
+          expect(p.offset.dx.abs(), lessThanOrEqualTo(card.width / 2 + 6 + 3));
+          expect(p.offset.dy, lessThanOrEqualTo(card.height / 2 + 6));
+          expect(p.offset.dy, greaterThan(-card.height / 2 - 6 - 40));
+        }
+      }
+      expect(seen, greaterThan(0));
+    });
+
+    test('不只左右邊：卡片上下兩邊也有光點出生', () {
+      var topOrBottom = 0;
+      for (var i = 0; i < kPracticeRevealRiseDotCount; i++) {
+        for (var ms = 721.0; ms < 1350; ms += 5) {
+          final p = practiceRevealRiseDot(i, ms, card);
+          if (p == null) continue;
+          if (p.offset.dx.abs() < card.width / 2) topOrBottom++;
+          break;
+        }
+      }
+      expect(topOrBottom, greaterThan(0));
+    });
+  });
+
+  group('每幀粒子合計（V3.1 §9）', () {
+    test('各檔位同一幀的粒子合計不超過上限：高 300、中 180、低 120', () {
+      // 升階光點只在翻牌峰值前、爆發星塵只在峰值後，兩者不會同一幀出現。
+      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 10) {
+        final rise = practiceRevealRiseDot(0, ms, const Size(300, 450));
+        if (ms >= PracticeRevealTiming.flipPeakMs) expect(rise, isNull);
+      }
+      final sr = PracticeRevealTheme.sr.burstCounts;
+      for (final (count, cap) in [
+        (sr.high, 300),
+        (sr.medium, 180),
+        (sr.low, 120),
+      ]) {
+        final perFrame = kPracticeRevealAmbientDustCount +
+            (count > kPracticeRevealRiseDotCount
+                ? count
+                : kPracticeRevealRiseDotCount);
+        expect(perFrame, lessThanOrEqualTo(cap), reason: '$count');
+      }
+      for (final theme in [PracticeRevealTheme.n, PracticeRevealTheme.r]) {
+        expect(theme.burstCounts.low, lessThanOrEqualTo(48));
+      }
+    });
+  });
+
+  group('收卡光尾（V3.1 §5.12）', () {
+    test('光球端 16 px、尾端 0，由粗到細', () {
+      expect(practiceArchiveTailWidth(0), 16);
+      expect(practiceArchiveTailWidth(1), 0);
+      var last = double.infinity;
+      for (var f = 0.0; f <= 1; f += 0.05) {
+        final w = practiceArchiveTailWidth(f);
+        expect(w, lessThan(last), reason: '$f');
+        last = w;
+      }
     });
   });
 

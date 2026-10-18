@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_audio_sfx.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 
 /// Batch 4.7B 真音效實裝的安全網：真實 [AudioPlayersPracticeDrawSfx] 在 headless／
 /// 測試環境（無 audio platform channel）必須可建立、可呼叫各方法皆不丟例外、也不留
@@ -313,6 +314,39 @@ void main() {
         rewind: () async => calls.add('rewind'),
         play: () async => calls.add('play'),
       );
+
+      expect(calls, isEmpty);
+    });
+
+    test('起播期限 550 ms，不跟著 700 ms 的收卡動畫拉長', () {
+      expect(kPracticeArchiveSfxDeadline, const Duration(milliseconds: 550));
+      expect(
+          kPracticeArchiveSfxDeadline, lessThan(PracticeRevealTiming.archive));
+      expect(
+        practiceArchiveSfxInTime(const Duration(milliseconds: 549)),
+        isTrue,
+      );
+      expect(
+        practiceArchiveSfxInTime(const Duration(milliseconds: 550)),
+        isFalse,
+      );
+    });
+
+    test('點擊後 600 ms 才預載好（收卡動畫還沒走完，但過了 550 ms）→ 不歸零也不播', () async {
+      final ready = Completer<bool>();
+      var sinceTap = Duration.zero;
+      final calls = <String>[];
+      final pending = replayIfStillWanted(
+        ready: ready.future,
+        stillWanted: () => practiceArchiveSfxInTime(sinceTap),
+        rewind: () async => calls.add('rewind'),
+        play: () async => calls.add('play'),
+      );
+
+      sinceTap = const Duration(milliseconds: 600);
+      expect(sinceTap, lessThan(PracticeRevealTiming.archive));
+      ready.complete(true);
+      await pending;
 
       expect(calls, isEmpty);
     });
