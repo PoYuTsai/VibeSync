@@ -1406,8 +1406,13 @@ void main() {
       await tester.ensureVisible(upgrade);
       await tester.tap(upgrade);
       await tester.pumpAndSettle();
-      expect(find.text(PaywallEntry.lockedCards.headline), findsOneWidget);
-      expect(find.text(PaywallEntry.general.headline), findsNothing);
+      expect(
+        find.text(
+          PaywallEntry.lockedCards.headlineFor(SubscriptionTierHelper.free),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
     });
 
     testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {
@@ -1473,7 +1478,13 @@ void main() {
       await tester.ensureVisible(viewPlans);
       await tester.tap(viewPlans);
       await tester.pumpAndSettle();
-      expect(find.text(PaywallEntry.quotaExhausted.headline), findsOneWidget);
+      // 剩 3 則、需要 10 則：是「不夠」不是「用完」；免費用戶升級後每天能用更多。
+      expect(
+        find.text(
+          PaywallEntry.dailyQuotaShort.headlineFor(SubscriptionTierHelper.free),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('已經是付費方案：升級卡不寫 Starter 的量', (tester) async {
@@ -1507,7 +1518,51 @@ void main() {
 
       notifier.emit(quotaFailed());
       await tester.pumpAndSettle();
-      expect(find.text(PaywallEntry.quotaExhausted.headline), findsOneWidget);
+      expect(
+        find.text(
+          PaywallEntry.dailyQuotaShort.headlineFor(SubscriptionTierHelper.free),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Essential 今天用完（主審 r1 P2-3）：付費頁不承諾升級，只說每天早上 8 點恢復',
+        (tester) async {
+      late _SeededStreamingAnalyzeNotifier notifier;
+      await _pumpScreen(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        onNotifier: (created) => notifier = created,
+        extraRoutes: paywallRoute(),
+        extraOverrides: [
+          ...paywallOverrides,
+          subscriptionProvider.overrideWith(
+            (ref) => _PremiumSubscriptionNotifier(),
+          ),
+        ],
+      );
+      final gotIt = find.text('知道了');
+      if (gotIt.evaluate().isNotEmpty) {
+        await tester.tap(gotIt);
+        await tester.pump();
+      }
+
+      notifier.emit(const StreamingAnalysisState(
+        phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+        recommendationPreviewErrorCode: 'DAILY_LIMIT_EXCEEDED',
+        recommendationPreviewErrorMessage: '今日額度已用完',
+        quotaExceeded: QuotaExceededInfo(
+          isMonthly: false,
+          remaining: 0,
+          quotaNeeded: 10,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final headline = PaywallEntry.dailyQuotaUsedUp.headlineFor(
+        SubscriptionTierHelper.essential,
+      );
+      expect(find.text(headline), findsOneWidget);
+      expect(headline, isNot(contains('升級')));
     });
   });
 
