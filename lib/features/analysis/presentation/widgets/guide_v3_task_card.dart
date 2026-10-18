@@ -11,8 +11,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 
 import '../../../../core/services/app_haptics.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -500,6 +502,24 @@ class GuideV3LockedBlock extends StatelessWidget {
   final List<GuideV3PlannedCard> locked;
   final VoidCallback? onUpgrade;
 
+  /// 漏斗：點「看方案」時鎖了幾張（Eric 2026-10-18，之後決定免費看幾張用）。結果頁和
+  /// 分析紀錄共用這塊，所以在這裡記，張數跟上面那行同一份。點的當下才找 tracker：
+  /// 找不到（只拿這塊來畫的測試）或出錯都略過，付費頁照開。
+  void _trackUpgradeTap(BuildContext context) {
+    try {
+      final tracker = ProviderScope.containerOf(context, listen: false)
+          .read(funnelTrackerProvider);
+      unawaited(
+        tracker.track(
+          'locked_cards_upgrade_tap',
+          properties: {'locked_count': locked.length},
+        ),
+      );
+    } catch (e) {
+      debugPrint('[GuideV3LockedBlock] funnel skipped: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tasks = <GuideV3Task>{for (final card in locked) card.task};
@@ -564,7 +584,10 @@ class GuideV3LockedBlock extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 key: const ValueKey('guide-v3-locked-upgrade'),
-                onPressed: onUpgrade,
+                onPressed: () {
+                  _trackUpgradeTap(context);
+                  onUpgrade();
+                },
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.ctaStart,
                   minimumSize: const Size(44, 44),
