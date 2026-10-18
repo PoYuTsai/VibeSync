@@ -70,6 +70,7 @@ import '../../domain/entities/analysis_record.dart';
 import '../../domain/services/analysis_fragment_policy.dart';
 import '../../domain/services/screenshot_recognition_helper.dart';
 import '../../domain/services/screenshot_session_context_defaults.dart';
+import '../../domain/services/self_harm_words.dart';
 import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/app_update_required_dialog.dart';
@@ -2393,6 +2394,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       dailyRemaining: usage.dailyRemaining,
     );
     if (line != null && line == shownQuotaLine) {
+      return (confirmed: true, overcharge: null);
+    }
+    // 額度不夠、她的訊息有自傷字眼（Eric 2026-10-18）：不跳額度不足的框，直接開始；伺服器
+    // 只回關心訊息與專線，不扣，也不用長內容確認。資料分享同意照舊在後面。
+    final units = preview.band.units ?? 0;
+    if ((usage.monthlyRemaining < units || usage.dailyRemaining < units) &&
+        SelfHarmWords.inHerMessages(requestMessages)) {
       return (confirmed: true, overcharge: null);
     }
 
