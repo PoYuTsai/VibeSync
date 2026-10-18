@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis/domain/entities/previous_round_context.dart';
 import 'package:vibesync/features/analysis/domain/services/previous_round_builder.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
@@ -96,15 +97,49 @@ Conversation _segment({
 AnalysisHistoryEvent _event(String id, DateTime createdAt) =>
     AnalysisHistoryEvent.analyze(id: id, createdAt: createdAt);
 
+/// 跟持久化一樣：紀錄存分析結果原樣（去掉 App meta），訊息是那次分析的片段。
+AnalysisRecord? _liveRecord(Conversation c, {int start = 0, int? end}) {
+  try {
+    final payload = Map<String, dynamic>.from(
+      jsonDecode(c.lastAnalysisSnapshotJson ?? '') as Map,
+    )..remove('__vibesync_snapshot_meta_v1');
+    final until = end ?? c.messages.length;
+    return AnalysisRecord(
+      id: 'record-${c.id}',
+      ownerUserId: c.ownerUserId ?? 'user-1',
+      conversationId: c.id,
+      partnerId: c.partnerId,
+      subjectName: c.name,
+      segmentStart: start,
+      segmentEnd: until,
+      createdAt: c.updatedAt,
+      messages: c.messages
+          .sublist(start, until)
+          .map(AnalysisRecordMessage.fromMessage)
+          .toList(),
+      analysisSnapshotJson: jsonEncode(payload),
+      analyzedContentRevision: 'rev',
+      completionKey: 'run-1',
+      sourcePlatform: null,
+      enthusiasmScore: null,
+      gameStageLabel: '',
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
 PreviousRoundContext? _build({
   required Conversation current,
   required List<Conversation> others,
   List<AnalysisHistoryEvent> events = const [],
+  AnalysisRecord? Function(Conversation c) liveRecordFor = _liveRecord,
 }) =>
     const PreviousRoundBuilder().build(
       current: current,
       partnerConversations: [current, ...others],
       historyEvents: events,
+      liveRecordFor: liveRecordFor,
     );
 
 void main() {
@@ -348,18 +383,62 @@ void main() {
     expect(judgment.length <= PreviousRoundBuilder.maxTextChars, isTrue);
   });
 
-  test('只取那次分析過的訊息（快照的 messageCount）', () {
+  test('訊息只取那筆紀錄自己的片段（同一段對話裡更早的紀錄不混進來）', () {
     final previous = _segment(
       id: 'prev',
-      snapshotJson: _snapshot(_v3Result(judgment: ''), messageCount: 2),
-      messages: [(true, '一'), (false, '二'), (true, '分析之後才加的')],
+      snapshotJson: _snapshot(_v3Result(judgment: '')),
+      messages: [(true, '一'), (false, '二'), (true, '三'), (false, '四')],
     );
     expect(
-      _build(current: newSegment, others: [previous])!
+      _build(
+        current: newSegment,
+        others: [previous],
+        liveRecordFor: (c) => _liveRecord(c, start: 2),
+      )!
           .messages
           .map((m) => m.content)
           .toList(),
-      ['一', '二'],
+      ['三', '四'],
+    );
+  });
+
+  test('那次分析的紀錄被刪了、或紀錄跟快照不是同一次：不帶，也不跳去更早那段（主審第 1 輪 P2）', () {
+    final older = _segment(
+      id: 'older',
+      snapshotJson: _snapshot(_v3Result(judgment: '更早的'), historyEventId: 'e1'),
+    );
+    final latest = _segment(
+      id: 'latest',
+      snapshotJson: _snapshot(_v3Result(judgment: '最近的'), historyEventId: 'e2'),
+    );
+    final events = [
+      _event('e1', _t0.add(const Duration(minutes: 10))),
+      _event('e2', _t0.add(const Duration(minutes: 20))),
+    ];
+    expect(
+      _build(current: newSegment, others: [older, latest], events: events)!
+          .judgment,
+      '最近的',
+    );
+    // 最近那段的紀錄被刪了（對話還在）。
+    expect(
+      _build(
+        current: newSegment,
+        others: [older, latest],
+        events: events,
+        liveRecordFor: (c) => c.id == 'latest' ? null : _liveRecord(c),
+      ),
+      isNull,
+    );
+    // 紀錄還是更早那次的結果（例如這次的紀錄沒存成功）。
+    expect(
+      _build(
+        current: newSegment,
+        others: [older, latest],
+        events: events,
+        liveRecordFor: (c) => c.id == 'latest' ? _liveRecord(older) : null,
+      ),
+      isNull,
     );
   });
 }

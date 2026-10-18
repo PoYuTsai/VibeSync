@@ -1,7 +1,8 @@
 /// 新片段的上一輪脈絡（previousRound，Eric 2026-10-18）：從手機上已經有的資料挑出
 /// 「上一輪」，也就是同一個對象的其他片段裡、在這個片段建立之前最近一次的分析；
-/// 它是 v3 結果（不是自傷關心）才裁成伺服器 `guide_v3/previous_round.ts` 的形狀與
-/// 上限。不加新的儲存；什麼都沒有就回 null（請求不帶這個欄位）。
+/// 它是 v3 結果（不是自傷關心）、而且那次的分析紀錄還在（沒被刪），才裁成伺服器
+/// `guide_v3/previous_round.ts` 的形狀與上限。不加新的儲存；什麼都沒有就回 null
+/// （請求不帶這個欄位）。
 library;
 
 import 'dart:convert';
@@ -10,6 +11,7 @@ import 'package:characters/characters.dart';
 
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../entities/analysis_record.dart';
 import '../entities/guide_v3_result.dart';
 import '../entities/previous_round_context.dart';
 
@@ -24,13 +26,14 @@ class PreviousRoundBuilder {
 
   static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
   static const _snapshotHistoryEventIdKey = 'historyEventId';
-  static const _snapshotMessageCountKey = 'messageCount';
   static const _truncationMark = '…';
 
   PreviousRoundContext? build({
     required Conversation current,
     required List<Conversation> partnerConversations,
     required List<AnalysisHistoryEvent> historyEvents,
+    // 那段對話現在的分析紀錄（紀錄庫的 currentFor）；被刪掉或沒有就是 null。
+    required AnalysisRecord? Function(Conversation conversation) liveRecordFor,
   }) {
     final partnerId = _scope(current.partnerId);
     if (partnerId == null) return null;
@@ -62,23 +65,25 @@ class PreviousRoundBuilder {
     // 上一輪是 v2 或自傷關心（只有固定文案）就不帶，也不跳去更早的那段：更早的那段
     // 已經不是上一輪了。
     if (latest == null || result == null || result.isCare) return null;
-    return _contextFrom(latest, result);
+    // 那次分析的紀錄被刪了（舊制多筆、部分紀錄刪除時對話本身還在），或紀錄跟快照不是
+    // 同一次：不帶，也不跳去更早那段（主審第 1 輪 P2）。訊息只取那筆紀錄自己的片段，
+    // 同一段對話裡被刪掉的較早紀錄不會混進來。
+    final record = liveRecordFor(latest.conversation);
+    if (record == null ||
+        !_sameJson(record.analysisSnapshotJson, latest.snapshot.payload)) {
+      return null;
+    }
+    return _contextFrom(record, result);
   }
 
   PreviousRoundContext? _contextFrom(
-    _Candidate candidate,
+    AnalysisRecord record,
     GuideV3Result result,
   ) {
-    final conversation = candidate.conversation;
     final read = result.read;
     final judgment = _capped(read.judgment);
-    final analyzedCount = (candidate.snapshot.messageCount ??
-            conversation.lastAnalyzedMessageCount ??
-            conversation.messages.length)
-        .clamp(0, conversation.messages.length)
-        .toInt();
     final recent = <PreviousRoundMessage>[
-      for (final message in conversation.messages.take(analyzedCount))
+      for (final message in record.messages)
         if (_capped(message.content) case final content?)
           PreviousRoundMessage(isFromMe: message.isFromMe, content: content),
     ];
@@ -116,6 +121,33 @@ class PreviousRoundBuilder {
     return '${buffer.toString().trimRight()}$_truncationMark';
   }
 
+  /// 紀錄存的是分析結果原樣的 JSON，對話快照是同一份再加上 App 的 meta；比內容不比字串。
+  bool _sameJson(String recordSnapshotJson, Map<String, dynamic> payload) {
+    try {
+      return _jsonEquals(jsonDecode(recordSnapshotJson), payload);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _jsonEquals(Object? a, Object? b) {
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_jsonEquals(a[key], b[key])) return false;
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_jsonEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
+  }
+
   bool _ownerMismatch(Conversation current, Conversation other) =>
       current.ownerUserId != null &&
       other.ownerUserId != null &&
@@ -135,18 +167,18 @@ class _Candidate {
   final DateTime analyzedAt;
 }
 
-/// 對話快照（v2 或 v3）與存檔時的 meta（歷史事件 id、分析了幾則）。
+/// 對話快照（v2 或 v3）、去掉 App meta 的分析結果原樣，以及存檔時的歷史事件 id。
 /// [guideV3] 只有 v3 結果才有；v2、或認不出來的 v3 是 null。
 class _AnalyzedSnapshot {
   const _AnalyzedSnapshot({
     required this.guideV3,
+    required this.payload,
     required this.historyEventId,
-    required this.messageCount,
   });
 
   final GuideV3Result? guideV3;
+  final Map<String, dynamic> payload;
   final String? historyEventId;
-  final int? messageCount;
 
   static _AnalyzedSnapshot? tryParse(String? snapshotJson) {
     if (snapshotJson == null || snapshotJson.trim().isEmpty) return null;
@@ -162,15 +194,12 @@ class _AnalyzedSnapshot {
           isGuideV3Payload(payload) ? GuideV3Result.fromJson(payload) : null;
       String? text(Object? value) =>
           value is String && value.trim().isNotEmpty ? value.trim() : null;
-      final rawCount = meta is Map
-          ? meta[PreviousRoundBuilder._snapshotMessageCountKey]
-          : null;
       return _AnalyzedSnapshot(
         guideV3: result,
+        payload: payload,
         historyEventId: meta is Map
             ? text(meta[PreviousRoundBuilder._snapshotHistoryEventIdKey])
             : null,
-        messageCount: rawCount is int ? rawCount : null,
       );
     } catch (_) {
       return null;
