@@ -72,9 +72,10 @@ class ReplyIterationCoordinator {
   /// 的數字，好讓下一次開面板時能在動手前就顯示；沒問過就是 null（不猜）。
   int? _refineFreeRemaining;
 
-  /// 上一輪微調丟出例外，[_refineFreeRemaining] 就不再可信：伺服器可能已用掉
-  /// 免費次數、結算才失敗。跟面板同一條規則，記在這裡是為了關掉重開的面板也標
-  /// 待確認，不會又說還有 N 次免費（主審第 1 輪 P2，Eric 2026-10-18）。
+  /// [_refineFreeRemaining] 不再可信：微調請求一送出就是（伺服器可能已用掉免費
+  /// 次數，結算也可能失敗），直到成功的回應帶回新數字；丟出例外也算。記在這裡是
+  /// 為了關掉重開的面板也標待確認，不會又說還有 N 次免費（主審第 1、2 輪 P2，
+  /// Eric 2026-10-18）。
   bool _refineFreeRemainingStale = false;
 
   /// 已產生但尚未在畫面上確認可見的付費潤飾結果身分。
@@ -216,6 +217,9 @@ class ReplyIterationCoordinator {
         fingerprint: fingerprint,
         onReadyToSend: onReadyToSend,
         send: (pending) async {
+          // 真的送出了才標：還在路上就關掉重開的面板也講待確認，成功帶回數字才清掉
+          // （主審第 2 輪 P2，Eric 2026-10-18）。送出前取消、同意書拒絕走不到這裡。
+          _refineFreeRemainingStale = true;
           final result = await _refineReply(
             messages: context.requestMessages,
             sessionContext: sessionContext,
@@ -254,8 +258,8 @@ class ReplyIterationCoordinator {
         },
       );
     } catch (_) {
-      // 丟出例外不代表沒用掉免費次數（伺服器可能先用掉、結算才失敗）：記成待確認。
-      // 取消回 null，什麼都沒送出，不動它。
+      // 跟面板同一條規則：丟出例外就記成待確認（送出前就失敗的也算）。取消回 null，
+      // 什麼都沒送出，不動它。
       _refineFreeRemainingStale = true;
       rethrow;
     }

@@ -4,8 +4,10 @@
 // - 每月額度：升級卡的查看方案、分析途中撞到每月額度自動打開。
 // - 草稿潤飾撞到每日／每月額度；回覆微調撞到額度時面板上的說明。
 // - Essential 已經是最高方案：不叫他升級，只說什麼時候恢復；免費、Starter 照舊有升級那句。
-// - 回覆微調上一輪失敗後關掉重開：免費次數照樣標待確認（主審第 1 輪 P2）。
+// - 回覆微調上一輪失敗、或送出後還沒回來就關掉重開：免費次數照樣標待確認（主審第 1、2 輪 P2）。
 // - 這個月和今天都不夠：跟伺服器一樣先看本月（主審第 1 輪 P3）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -135,8 +137,8 @@ class _FakeOptimizeTransport {
   AnalysisException? polishError;
   AnalysisException? refineError;
 
-  /// 依序給每一輪微調的結果（成功或丟出）；排完才看 [refineError]。
-  final refineRounds = <AnalysisResult Function()>[];
+  /// 依序給每一輪微調的結果（成功、丟出，或等放行才回）；排完才看 [refineError]。
+  final refineRounds = <FutureOr<AnalysisResult> Function()>[];
 
   Future<AnalysisResult> optimizeDraft({
     required List<Message> messages,
@@ -622,6 +624,13 @@ String _refineQuotaLine(WidgetTester tester) => tester
     .widget<Text>(find.byKey(const ValueKey('reply-refine-quota-line')))
     .data!;
 
+/// 跟使用者一樣點面板外面（上方空白處）關掉微調面板。
+Future<void> _closeRefineSheet(WidgetTester tester) async {
+  await tester.tapAt(const Offset(215, 40));
+  await tester.pumpAndSettle();
+  expect(find.byType(ReplyRefineSheet), findsNothing);
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -937,7 +946,7 @@ void main() {
     });
   });
 
-  group('回覆微調的免費次數：上一輪失敗後關掉重開，照樣標待確認（主審第 1 輪 P2）', () {
+  group('回覆微調的免費次數：關掉重開時照樣標待確認（主審第 1、2 輪 P2）', () {
     testWidgets('第 1 輪成功剩 1 次、第 2 輪失敗，關掉重開：講待確認，不再說今天還有 1 次免費', (tester) async {
       final harness = await _pumpScreen(
         tester,
@@ -969,13 +978,59 @@ void main() {
       expect(_refineQuotaLine(tester), staleLine);
 
       // 點面板外面關掉，再從同一個入口打開。
-      await tester.tapAt(const Offset(215, 40));
-      await tester.pumpAndSettle();
-      expect(find.byType(ReplyRefineSheet), findsNothing);
+      await _closeRefineSheet(tester);
       await _openRefineSheet(tester);
 
       expect(_refineQuotaLine(tester), staleLine);
       expect(find.text('今天還有 1 次免費微調。'), findsNothing);
+    });
+
+    testWidgets('送出後還沒回來就關掉重開：講待確認；那一輪後來成功剩 0 次，關掉再開就說免費次數用完了', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        seed: _doneSeed(),
+      );
+      final release = Completer<void>();
+      harness.transport.refineRounds.addAll([
+        () => AnalysisResult.fromJson(_refinedBody(freeRemaining: 1)),
+        () async {
+          await release.future;
+          return AnalysisResult.fromJson(_refinedBody(freeRemaining: 0));
+        },
+      ]);
+      const staleLine = '免費次數待確認，下一次微調可能會使用 1 則。';
+      const noFreeLine = '今天的免費次數用完了，接下來每次微調使用 1 則。';
+
+      await _polishDraft(tester);
+      await _openRefineSheet(tester);
+      await _tapRefineQuick(tester, kRefineQuickInstructions[1]);
+      expect(_refineQuotaLine(tester), '今天還有 1 次免費微調。');
+
+      // 換個指令再送（連點擋用真實時鐘，要真的等過那個窗）。還在路上就點外面關掉、
+      // 馬上再開；送出中會一直轉圈，這裡只推一幀，不等畫面靜止。
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 700)),
+      );
+      final quick = find.byKey(
+        ValueKey('reply-refine-quick-${kRefineQuickInstructions[2]}'),
+      );
+      await tester.ensureVisible(quick);
+      await tester.tap(quick);
+      await tester.pump();
+      expect(find.text('調整中…'), findsOneWidget);
+      await _closeRefineSheet(tester);
+      await _openRefineSheet(tester);
+
+      expect(_refineQuotaLine(tester), staleLine);
+
+      // 那一輪成功、伺服器說剩 0 次：關掉再開就照新的數字。
+      release.complete();
+      await tester.pumpAndSettle();
+      await _closeRefineSheet(tester);
+      await _openRefineSheet(tester);
+
+      expect(_refineQuotaLine(tester), noFreeLine);
     });
   });
 }

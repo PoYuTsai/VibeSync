@@ -2,6 +2,7 @@
 // source scan：以可執行行為釘住潤飾／微調的計費契約。走與 production
 // 相同的 data adapter（OptimizeBillingAdapter／ReplyRefineDraftAdapter）
 // 實作 application port，等於同時驗證 port adapter 的 exactly-once 語意。
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -98,11 +99,14 @@ AuxiliaryAnalysisContext _contextWith(List<Message> messages) {
   Map<String, dynamic>? responseBody,
   ReplyRefineDraftPort? draftPort,
   List<http.Response>? responses,
+  Future<void> Function()? beforeRespond,
 }) {
   final bodies = <Map<String, dynamic>>[];
   final client = AnalysisAuxiliaryClient(
     clientFactory: () => MockClient((request) async {
       bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+      // 有給 [beforeRespond] 就先等它：請求已經送到，回應還在路上。
+      await beforeRespond?.call();
       // 有給 [responses] 就依序回給每一次請求。
       if (responses != null) return responses.removeAt(0);
       return http.Response(
@@ -678,6 +682,76 @@ void main() {
       expect(await round(consent: false), isNull);
       expect(h.coordinator.refineFreeRemainingStale, isTrue);
       expect(h.bodies, hasLength(1));
+    });
+
+    test('請求一送出就記成待確認（還在路上就關掉重開也標）；帶數字成功才清掉，沒帶數字維持，送出前取消不動（主審第 2 輪 P2）',
+        () async {
+      var arrived = Completer<void>();
+      var release = Completer<void>();
+      final h = _harness(
+        responses: [
+          _refineOk(freeRemaining: 1),
+          _refineOk(),
+          _refineOk(freeRemaining: 0),
+        ],
+        beforeRespond: () {
+          arrived.complete();
+          return release.future;
+        },
+      );
+      Future<RefineRoundResult?> round(
+        String instruction, {
+        bool consent = true,
+      }) =>
+          h.coordinator.runRefineRound(
+            ownerUserId: owner,
+            context: _contextWith([_msg('hi')]),
+            sessionContext: null,
+            currentText: '要不要喝咖啡',
+            instruction: instruction,
+            anchorText: '要不要喝咖啡',
+            onReadyToSend: () async => consent,
+            onTelemetry: (_) {},
+          );
+
+      // 送出前取消（同意書拒絕）：什麼都沒送，不動它。
+      expect(await round('短一點', consent: false), isNull);
+      expect(h.coordinator.refineFreeRemainingStale, isFalse);
+      expect(h.bodies, isEmpty);
+
+      // 請求送到了、回應還沒回來：已經是待確認。
+      var inFlight = round('短一點');
+      await arrived.future;
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+      release.complete();
+      await inFlight;
+      expect(h.coordinator.refineFreeRemaining, 1);
+      expect(h.coordinator.refineFreeRemainingStale, isFalse);
+
+      // 成功但沒帶數字：送出時記的待確認維持。
+      arrived = Completer<void>();
+      release = Completer<void>();
+      inFlight = round('白話一點');
+      await arrived.future;
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+      release.complete();
+      await inFlight;
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+
+      // 已經是待確認時送出前取消：維持待確認。
+      expect(await round('語氣溫和一點', consent: false), isNull);
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+
+      // 帶數字成功才清掉。
+      arrived = Completer<void>();
+      release = Completer<void>();
+      inFlight = round('太油了，自然一點');
+      await arrived.future;
+      release.complete();
+      await inFlight;
+      expect(h.coordinator.refineFreeRemaining, 0);
+      expect(h.coordinator.refineFreeRemainingStale, isFalse);
+      expect(h.bodies, hasLength(3));
     });
 
     test('acknowledgeRefinePresented 結案後，同輸入下一輪鑄新身分', () async {
