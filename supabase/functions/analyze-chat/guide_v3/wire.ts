@@ -200,6 +200,8 @@ export interface GuideV3Trace {
   readonly firstCardMs: number | null;
   /// 有寫卡才有：送出的每張卡的 C5 檢查（cards.ts，只有數字與真假），以及她最後一輪的字數。
   readonly checks?: readonly CardChecks[];
+  /// 有寫卡才有：送出的卡裡，開頭跟前面某一張一樣的張數（cards.ts sameOpeningCount）。
+  readonly sameOpening?: number;
   readonly herLastTurnChars?: number;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;

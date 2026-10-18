@@ -713,7 +713,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 27,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -721,7 +724,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 34,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -729,7 +735,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 19,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -737,7 +746,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 28,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -745,9 +757,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 23,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 20
           }
         },
@@ -1130,9 +1146,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 32,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 29
           }
         },
@@ -1786,9 +1806,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 27,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 23
           }
         },
@@ -2169,9 +2193,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 15,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 9
           }
         },
@@ -2880,7 +2908,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 32,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -2888,7 +2919,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 30,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -2896,7 +2930,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 26,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -2904,7 +2941,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 30,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -2912,9 +2952,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 37,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 13
           }
         },
@@ -3461,7 +3505,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 19,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -3469,7 +3516,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 41,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -3477,9 +3527,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 32,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 13
           }
         },
@@ -4213,7 +4267,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 59,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -4221,7 +4278,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 60,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -4229,7 +4289,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 54,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -4237,7 +4300,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 56,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -4245,9 +4311,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 66,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 24
           }
         },
@@ -4956,7 +5026,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 34,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -4964,7 +5037,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 19,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -4972,7 +5048,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 31,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -4980,7 +5059,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 22,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -4988,9 +5070,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 28,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 16
           }
         },
@@ -5859,7 +5945,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 28,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -5867,7 +5956,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 32,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -5875,7 +5967,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 25,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -5883,7 +5978,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 63,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -5891,9 +5989,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 40,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 21
           }
         },
@@ -6272,9 +6374,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 19,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 9
           }
         },
@@ -7019,7 +7125,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 50,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -7027,7 +7136,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 51,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -7035,7 +7147,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 46,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -7043,7 +7158,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 58,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -7051,9 +7169,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 54,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 1,
             "herLastTurnChars": 27
           }
         },
@@ -7610,7 +7732,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 50,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -7618,7 +7743,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 45,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -7626,9 +7754,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 34,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 24
           }
         },
@@ -8349,7 +8481,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 26,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -8357,7 +8492,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 28,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -8365,7 +8503,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 9,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -8373,7 +8514,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 19,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -8381,9 +8525,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 19,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 33
           }
         },
@@ -9096,7 +9244,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 33,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -9104,7 +9255,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 41,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": false,
+                "hasRequest": false,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -9112,7 +9266,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 33,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -9120,7 +9277,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 43,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -9128,9 +9288,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 43,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 32
           }
         },
@@ -9689,7 +9853,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 46,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -9697,7 +9864,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 51,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -9705,9 +9875,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 34,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 27
           }
         },
@@ -10259,7 +10433,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 43,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -10267,7 +10444,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 41,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -10275,9 +10455,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 52,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 23
           }
         },
@@ -10999,7 +11183,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 36,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -11007,7 +11194,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 40,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -11015,7 +11205,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 33,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -11023,7 +11216,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 40,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -11031,9 +11227,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 32,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 22
           }
         },
@@ -11436,9 +11636,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 30,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 11
           }
         },
@@ -11979,7 +12183,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 37,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -11987,7 +12194,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 31,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -11995,9 +12205,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 40,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 2
           }
         },
@@ -12533,7 +12747,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 16,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -12541,7 +12758,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 16,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -12549,9 +12769,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 9,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 6
           }
         },
@@ -13532,7 +13756,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 61,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 2,
@@ -13540,7 +13767,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 47,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 3,
@@ -13548,7 +13778,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 40,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 4,
@@ -13556,7 +13789,10 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 39,
-                "copiesHim": null
+                "copiesHim": null,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               },
               {
                 "slot": 5,
@@ -13564,9 +13800,13 @@
                 "endsWithNiNe": false,
                 "emoji": 0,
                 "chars": 52,
-                "copiesHim": false
+                "copiesHim": false,
+                "endsWithRequest": null,
+                "hasRequest": null,
+                "internalIds": 0
               }
             ],
+            "sameOpening": 0,
             "herLastTurnChars": 24
           }
         },
