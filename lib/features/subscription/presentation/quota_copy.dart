@@ -18,6 +18,15 @@ bool canUpgradeQuota(String? tier) =>
     SubscriptionTierHelper.normalizeTier(tier) !=
     SubscriptionTierHelper.essential;
 
+/// 顯示額度說法用的方案（主審第 2 輪 P2-1）：訂閱方案跟畫面已經查到的 RevenueCat
+/// 方案取高。RevenueCat 已確認比訂閱快照高（快照還沒同步、刷新失敗）時照較高的說，
+/// 不叫已經是 Essential 的人升級；沒查到就照訂閱方案。只拿來顯示，不寫回訂閱狀態。
+String quotaDisplayTier(String? subscriptionTier, String? knownTier) =>
+    SubscriptionTierHelper.rankOf(knownTier) >
+            SubscriptionTierHelper.rankOf(subscriptionTier)
+        ? SubscriptionTierHelper.normalizeTier(knownTier)
+        : SubscriptionTierHelper.normalizeTier(subscriptionTier);
+
 /// 升級能選的方案：Starter 只剩 Essential，不叫他升級到 Starter。
 String quotaUpgradeTargets(String? tier) =>
     SubscriptionTierHelper.normalizeTier(tier) == SubscriptionTierHelper.starter
