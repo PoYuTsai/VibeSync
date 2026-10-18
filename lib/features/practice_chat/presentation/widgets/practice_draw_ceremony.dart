@@ -20,15 +20,22 @@ import 'practice_reveal_timing.dart';
 /// 蓄力三下輕震（規格 D8：先全開，真機嫌吵就關這一個開關）。
 const bool _kChargeTicksEnabled = true;
 
-/// 稀有度牌烙上那一下輕震（規格 D8：同上，單一開關）。
+/// 稀有度牌落地那一下（規格 D8：同上，單一開關）。V3.1 §8：從牌出現挪到落地；N／R
+/// `tap()`、SR `light()`（SR 落地有光環，手感要跟畫面一樣重）。
 const bool _kStampTapEnabled = true;
+
+/// 等待心跳的觸覺（V3.1 §5.15：真機嫌多就關這一個開關，畫面的心跳照留）。
+const bool _kHeartbeatEnabled = true;
 
 /// 揭曉背景：高斯模糊 σ 與暗化的最大值（規格 §6.2）。
 const double _kBackdropSigma = 24;
 const double _kBackdropDim = 0.85;
 
-/// 等待呼吸一圈的長度；環境星塵也以它為一圈。
-const Duration _kWaitingCycle = Duration(milliseconds: 2600);
+/// 等待呼吸一圈的長度；環境星塵也以它為一圈。V3.1 §5.15：2.7 s 一圈正好三組心跳。
+const Duration _kWaitingCycle = Duration(milliseconds: 2700);
+
+/// 泛光貼圖畫多大（相對卡片，V3.1 §5.1）。
+const double _kBloomScale = 1.6;
 
 /// 揭曉卡片尺寸（G2 放大／復刻 音檔.mp4 的近滿版高卡）：寬 ≈ 0.84×螢幕寬、直式 2:3
 /// （高 = 寬 × 1.5，比舊 4/3 更高更主導，貼合參考片塔羅卡比例）。大螢幕（平板）寬封頂
@@ -65,10 +72,13 @@ Size practiceCeremonyCardSize(Size screen) {
 /// （翻牌紙聲混在裡面），點擊收卡時一聲收卡音；稀有度差別只靠畫面與觸覺（規格 D3）。
 /// V3.1 第四刀（`docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md` §5.13–§5.14）：停住前
 /// 卡片下方浮出角色的第一句話；新角色在稀有度牌旁掛 NEW，重複角色的資訊欄寫「已收藏」。
+/// V3.1 第一刀（同規格 §5.1–§5.3、§5.5–§5.7、§5.9–§5.12、§5.15）：卡片前後兩層泛光、徽記白光、
+/// 整張卡染色與升階光點、衝擊波、更強的光刃與星塵、卡片斜放與厚度邊、六角金屬牌從畫面外
+/// 砸入、星星的四芒星光、收卡細線與三次貝茲弧線、等待心跳。
 ///
-/// 流程：hidden → drawing（卡背入場＋等待呼吸）→ revealing（蓄力 → 單次翻牌 → 資訊浮出，
-/// 共 2.7 s）→ holding（畫面靜止，等使用者點）→ archiving（縮成光球飛進圖鑑那一格，
-/// 0.55 s）→ hidden。各節點見 [PracticeRevealTiming]。
+/// 流程：hidden → drawing（卡背入場＋等待呼吸與心跳）→ revealing（蓄力 → 單次翻牌 → 資訊
+/// 浮出，共 2.7 s）→ holding（畫面靜止，等使用者點）→ archiving（轉成細線、化成光球沿弧線
+/// 飛進圖鑑那一格，0.7 s）→ hidden。各節點見 [PracticeRevealTiming]。
 ///
 /// 設計鐵則（沿用 V2）：
 /// - 只靠單一 `drawStatus` 狀態機驅動，**不**新增任何計費／網路行為。
@@ -134,8 +144,8 @@ enum _RevealBeat {
   /// 卡片正好側立：N／R 的重擊（翻牌紙聲已混在配樂 bed 的 1.35 s）。
   flipPeak(PracticeRevealTiming.flipPeakMs),
 
-  /// 稀有度牌烙上：一下 tap。
-  stamp(PracticeRevealTiming.stampStartMs),
+  /// 稀有度牌落地：N／R 一下 tap、SR 一下 light。
+  stamp(PracticeRevealTiming.stampLandMs),
 
   /// 星星逐顆點亮：只對亮星 tick（N 2、R 3、SR 4）。
   star0(PracticeRevealTiming.starsStartMs),
@@ -150,23 +160,37 @@ enum _RevealBeat {
   final double ms;
 }
 
-/// 卡片在等待呼吸中的姿態；揭曉起手時抓下來，前 150 ms 混到蓄力姿態，避免跳格。
+/// 卡片在等待呼吸中的姿態；揭曉起手時抓下來，接到蓄力姿態，避免跳格。
 @immutable
 class _CardPose {
   const _CardPose({
+    required this.dx,
     required this.dy,
     required this.scale,
     required this.yaw,
+    required this.pitch,
     required this.emblem,
   });
 
-  static const rest = _CardPose(dy: 0, scale: 1, yaw: 0, emblem: 0.35);
+  static const rest = _CardPose(
+    dx: 0,
+    dy: 0,
+    scale: 1,
+    yaw: PracticeRevealTiming.waitingYaw,
+    pitch: PracticeRevealTiming.waitingPitch,
+    emblem: 0.35,
+  );
 
+  /// 心跳的水平顫動（px）。
+  final double dx;
   final double dy;
   final double scale;
 
-  /// 左右微擺（度）。
+  /// 斜放角度加左右微擺（度）。
   final double yaw;
+
+  /// 後仰（度）。
+  final double pitch;
 
   /// 徽記銀光亮度。
   final double emblem;
@@ -237,11 +261,20 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CardPose _startPose = _CardPose.rest;
   double _captionAtRevealStart = 0;
 
+  /// 這次抽牌已經震過幾下等待心跳（最多 [kPracticeHeartbeatBeats]）。
+  int _heartbeatBeats = 0;
+
   /// 揭曉起手時環境星塵的相位：揭曉中接著往上漂，不跳格。
   double _dustPhaseAtRevealStart = 0;
   Offset _archiveOrigin = Offset.zero;
-  Offset _archiveControl = Offset.zero;
+  Offset _archiveControl1 = Offset.zero;
+  Offset _archiveControl2 = Offset.zero;
   Rect? _archiveTarget;
+
+  /// 光效貼圖（泛光、四芒星光、光點）：抽牌開始時跟卡背一起解碼；還沒好時 painter 用漸層代替。
+  PracticeRevealSprites _sprites = PracticeRevealSprites.none;
+  final List<ImageInfo> _spriteInfos = [];
+  bool _spritesRequested = false;
 
   // 已觸發的對拍點：`_reveal` 每幀 tick 比對門檻，這個集合確保每一拍在一次揭曉裡
   // 只觸發一次。揭曉起播前與收掉 overlay 時清空；跳過時一次標滿（不補震、不補聲）。
@@ -266,6 +299,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         setState(() => _phase = _CeremonyPhase.holding);
       }
     });
+    _waiting.addListener(_onWaitingTick);
     _archive.addListener(_onArchiveTick);
     _archive.addStatusListener((status) {
       if (status == AnimationStatus.completed &&
@@ -328,6 +362,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       ..stop()
       ..value = 0;
     _firedBeats.clear();
+    _heartbeatBeats = 0;
     _pendingReveal = false;
     _fadingOut = false;
     _landed = false;
@@ -384,13 +419,66 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     }
   }
 
-  /// 卡背四張素材先解碼好，入場第一幀就有卡背。
+  /// 卡背素材與光效貼圖先解碼好，入場第一幀就有卡背；painter 要的貼圖另外拿一份。
   void _precacheBack() {
     for (final asset in kPracticeRevealBackAssets) {
       unawaited(
         precacheImage(AssetImage(asset), context, onError: (_, __) {}),
       );
     }
+    _loadSprites();
+  }
+
+  /// painter 直接畫的三張貼圖：只載一次，各自留一份 [ImageInfo]，卸載時釋放。
+  void _loadSprites() {
+    if (_spritesRequested) return;
+    _spritesRequested = true;
+    final config = createLocalImageConfiguration(context);
+    void load(
+      String asset,
+      PracticeRevealSprites Function(PracticeRevealSprites, ImageInfo) apply,
+    ) {
+      final stream = AssetImage(asset).resolve(config);
+      late final ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (info, _) {
+          stream.removeListener(listener);
+          if (!mounted) {
+            info.dispose();
+            return;
+          }
+          _spriteInfos.add(info);
+          setState(() => _sprites = apply(_sprites, info));
+        },
+        onError: (_, __) => stream.removeListener(listener),
+      );
+      stream.addListener(listener);
+    }
+
+    load(
+      kPracticeRevealBloomAsset,
+      (s, info) => PracticeRevealSprites(
+        bloom: info.image,
+        sparkle: s.sparkle,
+        particle: s.particle,
+      ),
+    );
+    load(
+      kPracticeRevealSparkleAsset,
+      (s, info) => PracticeRevealSprites(
+        bloom: s.bloom,
+        sparkle: info.image,
+        particle: s.particle,
+      ),
+    );
+    load(
+      kPracticeRevealParticleAsset,
+      (s, info) => PracticeRevealSprites(
+        bloom: s.bloom,
+        sparkle: s.sparkle,
+        particle: info.image,
+      ),
+    );
   }
 
   void _beginReveal() {
@@ -417,6 +505,29 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _firedBeats.clear();
     setState(() => _phase = _CeremonyPhase.revealing);
     _reveal.forward(from: 0);
+  }
+
+  /// 等待心跳的觸覺（V3.1 §5.15）：以按下翻牌為 0，跨過門檻才震一下；一幀跳過好幾下也只
+  /// 震一下、不補。結果回來了（等入場走完就揭曉）或正在淡出就不再震；最多 6 組。畫面的
+  /// 心跳由 [_waitingPose] 自己算。
+  void _onWaitingTick() {
+    if (_phase != _CeremonyPhase.drawing ||
+        _revealGirl != null ||
+        _pendingReveal ||
+        _fadingOut) {
+      return;
+    }
+    final elapsed = _waiting.lastElapsedDuration;
+    if (elapsed == null) return;
+    final ms = elapsed.inMicroseconds / 1000;
+    var beats = _heartbeatBeats;
+    while (beats < kPracticeHeartbeatBeats &&
+        ms >= practiceHeartbeatBeatMs(beats)) {
+      beats++;
+    }
+    if (beats == _heartbeatBeats) return;
+    _heartbeatBeats = beats;
+    if (_kHeartbeatEnabled) AppHaptics.tick();
   }
 
   /// 揭曉時間軸的對拍：跨過門檻就觸發一次（測試一次 pump 跳過門檻也用 `>=`）。只播
@@ -447,7 +558,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       case _RevealBeat.flipPeak:
         if (!isSr) AppHaptics.medium();
       case _RevealBeat.stamp:
-        if (_kStampTapEnabled) AppHaptics.tap();
+        if (_kStampTapEnabled) isSr ? AppHaptics.light() : AppHaptics.tap();
       case _RevealBeat.star0:
       case _RevealBeat.star1:
       case _RevealBeat.star2:
@@ -492,13 +603,20 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _sfx.stopRevealBed();
     _sfx.stopWhoosh();
     _landed = false;
+    final controls = target == null
+        ? (c1: origin, c2: origin)
+        : practiceArchiveControls(
+            origin,
+            target,
+            practiceCeremonyCardSize(MediaQuery.sizeOf(context)),
+            size,
+          );
     setState(() {
       _phase = _CeremonyPhase.archiving;
       _archiveOrigin = origin;
       _archiveTarget = target;
-      _archiveControl = target == null
-          ? origin
-          : practiceArchiveControlPoint(origin, target.center, size);
+      _archiveControl1 = controls.c1;
+      _archiveControl2 = controls.c2;
     });
     _archive.forward(from: 0);
   }
@@ -585,6 +703,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _waiting.dispose();
     _reveal.dispose();
     _archive.dispose();
+    for (final info in _spriteInfos) {
+      info.dispose();
+    }
     super.dispose();
   }
 
@@ -691,10 +812,34 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         girl != null &&
         burstMs > 0 &&
         burstMs < kPracticeRevealBurstMaxLifeMs;
-    final bladeHalo = drawing ? 0.0 : practiceRevealBladeWidth(ms);
-    final bladeCore = drawing ? 0.0 : practiceRevealBladeCore(ms);
-    final cross = drawing ? 0.0 : practiceRevealCross(ms, rarity);
+    final revealed = !drawing && girl != null;
+    final bladeHalo = revealed ? practiceRevealBladeWidth(ms, rarity) : 0.0;
+    final bladeCore = revealed ? practiceRevealBladeCore(ms, rarity) : 0.0;
+    final cross = revealed ? practiceRevealCross(ms, rarity) : 0.0;
     final showBlade = bladeHalo > 0 || bladeCore > 0 || cross > 0;
+    // V3.1 第一刀的光效：泛光兩層、升階光點（R／SR）、衝擊波（R／SR）與 SR 牌落地的小光環。
+    final bloomSize = cardSize * (_kBloomScale * cardScale);
+    final bloomBack =
+        revealed ? practiceRevealBloomBack(ms, rarity) * cardPresence : 0.0;
+    final bloomFront =
+        revealed ? practiceRevealBloomFront(ms, rarity) * cardPresence : 0.0;
+    final showRiseDots = revealed &&
+        rarity != PracticeGirlRarity.n &&
+        ms > PracticeRevealTiming.dyeBlueEndMs &&
+        ms < PracticeRevealTiming.flipPeakMs;
+    final badgeCenter = cardCenter -
+        cardSize.center(Offset.zero) +
+        practiceRevealBadgeCenter(cardSize);
+    final rings = revealed
+        ? [
+            for (final ring
+                in practiceRevealShockwaves(ms, rarity, cardSize.height))
+              (center: cardCenter, ring: ring),
+            if (practiceRevealBadgeRing(ms, rarity) case final ring?)
+              (center: badgeCenter, ring: ring),
+          ]
+        : const <({Offset center, PracticeRevealRing ring})>[];
+    final thickness = _cardThickness(cardSize, cardCenter);
 
     return Stack(
       fit: StackFit.expand,
@@ -760,6 +905,20 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             ),
           ),
         ),
+        // L1b 後層泛光（V3.1 §5.1）：卡片後面的柔光，跟著卡背染色走。
+        if (bloomBack > 0.005)
+          IgnorePointer(
+            child: CustomPaint(
+              key: const ValueKey('practice-draw-ceremony-bloom-back'),
+              painter: PracticeRevealBloomPainter(
+                center: cardCenter,
+                size: bloomSize,
+                color: backColors.glow,
+                alpha: bloomBack,
+                sprite: _sprites.bloom,
+              ),
+            ),
+          ),
         // L2 環境星塵：慢慢往上漂；停住期間凍結。
         IgnorePointer(
           child: RepaintBoundary(
@@ -772,6 +931,28 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             ),
           ),
         ),
+        // L2b 升階光點（V3.1 §5.3，R／SR）：染藍後繞著卡片四周往上飄，翻牌前燃盡。
+        if (showRiseDots)
+          IgnorePointer(
+            child: CustomPaint(
+              key: const ValueKey('practice-draw-ceremony-rise-dots'),
+              painter: PracticeRevealRiseDotsPainter(
+                center: cardCenter,
+                cardSize: cardSize * cardScale,
+                ms: ms,
+                color: backColors.glow,
+                sprite: _sprites.particle,
+              ),
+            ),
+          ),
+        // L2c 卡片厚度邊（V3.1 §5.9）：畫在卡片後面，側立那一刻看得出卡片有厚度。
+        if (thickness != null)
+          IgnorePointer(
+            child: CustomPaint(
+              key: const ValueKey('practice-draw-ceremony-thickness'),
+              painter: thickness,
+            ),
+          ),
         // L3 卡片。
         Positioned(
           left: stageOrigin.dx,
@@ -782,12 +963,43 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
             child: KeyedSubtree(
               key: _stageKey,
               child: RepaintBoundary(
-                child: Center(child: _buildCard(cardSize)),
+                child: Center(
+                  child: _buildCard(
+                    cardSize,
+                    stampFrom: _stampFrom(size, cardCenter, cardSize),
+                  ),
+                ),
               ),
             ),
           ),
         ),
-        // 翻牌爆發星塵：從光刃噴出，畫在卡片前面；停住前全部燃盡。
+        // L3b 前層泛光（V3.1 §5.1）：只在翻牌峰值前後 300 ms，α ≤ 0.35，不蓋掉照片。
+        if (bloomFront > 0.005)
+          IgnorePointer(
+            child: CustomPaint(
+              key: const ValueKey('practice-draw-ceremony-bloom-front'),
+              painter: PracticeRevealBloomPainter(
+                center: cardCenter,
+                size: bloomSize,
+                color: backColors.glow,
+                alpha: bloomFront,
+                sprite: _sprites.bloom,
+              ),
+            ),
+          ),
+        // L3c 衝擊波光環（V3.1 §5.6）：R 翻牌峰值 1 圈、SR 2 圈＋牌落地的小光環；N 沒有。
+        if (rings.isNotEmpty)
+          IgnorePointer(
+            child: CustomPaint(
+              key: const ValueKey('practice-draw-ceremony-shockwave'),
+              painter: PracticeRevealShockwavePainter(
+                rings: rings,
+                tint: theme.backTint,
+              ),
+            ),
+          ),
+        // 翻牌爆發星塵：從光刃噴出，畫在卡片前面；停住前全部燃盡。V3.1 §5.7：顆數照檔位、
+        // SR 散得最遠，有光點貼圖時一次畫完。
         if (showBurst)
           IgnorePointer(
             child: CustomPaint(
@@ -798,11 +1010,13 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 count: theme.burstCount,
                 color: theme.star,
                 holo: theme.holo,
+                speed: theme.burstSpeed,
+                sprite: _sprites.particle,
                 opacity: cardPresence,
               ),
             ),
           ),
-        // L4 光刃：卡片側立那一刻（SR 加橫向十字）。
+        // L4 光刃：卡片側立那一刻（SR 加橫跨螢幕的十字光）。
         if (showBlade)
           IgnorePointer(
             child: CustomPaint(
@@ -812,9 +1026,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 cardSize: cardSize,
                 halo: bladeHalo,
                 core: bladeCore,
-                coreAlpha: practiceRevealBladeCoreAlpha(ms),
+                coreAlpha: practiceRevealBladeCoreAlpha(ms, rarity),
                 cross: cross,
                 tint: theme.glow,
+                haloMax: theme.bladeWidth,
               ),
             ),
           ),
@@ -872,9 +1087,11 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 painter: PracticeRevealOrbPainter(
                   ms: archiveMs,
                   origin: _archiveOrigin,
-                  control: _archiveControl,
+                  control1: _archiveControl1,
+                  control2: _archiveControl2,
                   target: _archiveTarget,
                   color: theme.orb,
+                  sparkle: _sprites.sparkle,
                 ),
               ),
             ),
@@ -1030,20 +1247,31 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     );
   }
 
-  /// 等待呼吸中的卡片姿態（入場＋上下浮動 ±3 px＋呼吸縮放 1.010＋左右微擺 ±2°＋徽記
-  /// 銀光 0.30–0.45）。全由 [_intro] 與 [_waiting] 的單一 sin 週期推導；reduce-motion／
-  /// 已停時 `_waiting.value` 不前進＝靜止。
+  /// 等待呼吸中的卡片姿態（V3.1 §5.9：斜放 yaw −10°、pitch 4°，左右微擺 ±4°、上下浮動
+  /// ±5 px；呼吸縮放 1.010；徽記銀光 0.30–0.45），再疊上 §5.15 的等待心跳（放大、水平
+  /// 顫動、徽記加亮）。全由 [_intro] 與 [_waiting] 推導；reduce-motion／已停時 `_waiting`
+  /// 不前進＝靜止、沒有心跳。
   _CardPose _waitingPose() {
     final enter = practiceIntroCard(_introMs);
     final wphase = _waiting.value * 2 * math.pi;
     // 入場未完成時壓低等待微動，避免和入場位移互相打架。
     final settle = Curves.easeIn.transform(_intro.value.clamp(0.0, 1.0));
     final breath = 0.5 + 0.5 * math.sin(wphase); // 0..1 呼吸相位
+    final elapsed = _waiting.lastElapsedDuration;
+    final beat = elapsed == null
+        ? null
+        : practiceHeartbeatPulse(elapsed.inMicroseconds / 1000);
     return _CardPose(
-      dy: math.sin(wphase) * 3 * settle + 30 * (1 - enter),
-      scale: (0.85 + 0.15 * enter) * (1 + 0.010 * breath * settle),
-      yaw: -2 * math.sin(wphase) * settle,
-      emblem: 0.30 + 0.15 * breath,
+      dx: beat?.dx ?? 0,
+      dy: math.sin(wphase) * PracticeRevealTiming.waitingBob * settle +
+          30 * (1 - enter),
+      scale: (0.85 + 0.15 * enter) *
+          (1 + 0.010 * breath * settle) *
+          (beat?.scale ?? 1),
+      yaw: PracticeRevealTiming.waitingYaw +
+          PracticeRevealTiming.waitingSway * math.sin(wphase) * settle,
+      pitch: PracticeRevealTiming.waitingPitch,
+      emblem: 0.30 + 0.15 * breath + (beat?.emblem ?? 0),
     );
   }
 
@@ -1052,9 +1280,76 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     ..rotateX(pitch * math.pi / 180)
     ..rotateY(yaw * math.pi / 180);
 
-  /// 卡片：抽牌中＝銀色卡背入場＋等待呼吸；揭曉後＝蓄力、染色、單次翻牌（側立那一刻
-  /// 光刃遮住換面）、正面落定；收卡＝縮小、變成光、淡出（光球接手）。
-  Widget _buildCard(Size cardSize) {
+  /// 揭曉中的卡片姿態（含從等待姿態接過來的那一段、收卡的細線轉向與縮小）。
+  ({double dx, double dy, double scale, double yaw, double pitch})
+      _revealPose() {
+    final ms = _revealMs;
+    final pose = practiceRevealPose(ms);
+    final blend = practiceRevealSeg(ms, 0, PracticeRevealTiming.poseBlendMs);
+    // 斜放角度與縮放跟著蓄力曲線從等待姿態接到蓄力姿態，中途不會先轉正再轉回去。
+    final charge = practiceRevealChargeGlow(ms);
+    final archiving = _phase == _CeremonyPhase.archiving;
+    final archiveMs = _archiveMs;
+    return (
+      dx: _startPose.dx * (1 - blend),
+      dy: lerpDouble(_startPose.dy, 0, blend)!,
+      scale: pose.scale *
+          lerpDouble(_startPose.scale, 1, charge)! *
+          (archiving ? practiceArchiveCardScale(archiveMs) : 1.0),
+      yaw: pose.yaw +
+          _startPose.yaw * (1 - charge) +
+          (archiving ? practiceArchiveCardYaw(archiveMs) : 0.0),
+      pitch: pose.pitch + _startPose.pitch * (1 - charge),
+    );
+  }
+
+  /// 卡片厚度邊（V3.1 §5.9）：只在揭曉與收卡、卡片轉到側面附近時畫。
+  PracticeRevealThicknessPainter? _cardThickness(
+    Size cardSize,
+    Offset cardCenter,
+  ) {
+    if (_revealGirl == null ||
+        (_phase != _CeremonyPhase.revealing &&
+            _phase != _CeremonyPhase.holding &&
+            _phase != _CeremonyPhase.archiving)) {
+      return null;
+    }
+    final pose = _revealPose();
+    final strength = practiceRevealThicknessStrength(pose.yaw);
+    if (strength <= 0.01) return null;
+    final opacity = _phase == _CeremonyPhase.archiving
+        ? practiceArchiveCardOpacity(_archiveMs)
+        : 1.0;
+    final transform = Matrix4.translationValues(
+      cardCenter.dx + pose.dx,
+      cardCenter.dy + pose.dy,
+      0,
+    )
+      ..multiply(Matrix4.diagonal3Values(pose.scale, pose.scale, 1))
+      ..multiply(_card3d(yaw: pose.yaw, pitch: pose.pitch));
+    return PracticeRevealThicknessPainter(
+      transform: transform,
+      cardSize: cardSize,
+      strength: strength * opacity,
+    );
+  }
+
+  /// 六角牌飛入的起點相對落點的位移（V3.1 §5.10）：起點在畫面左上外面（−0.5 螢幕寬、
+  /// −0.3 螢幕高），落點是卡片左上角往外 12 px。
+  Offset _stampFrom(Size size, Offset cardCenter, Size cardSize) {
+    final landing = cardCenter -
+        cardSize.center(Offset.zero) -
+        const Offset(
+          kPracticeRevealBadgeOverhang,
+          kPracticeRevealBadgeOverhang,
+        );
+    return Offset(-0.5 * size.width, -0.3 * size.height) - landing;
+  }
+
+  /// 卡片：抽牌中＝銀色卡背入場＋等待呼吸與心跳；揭曉後＝蓄力、染色、單次翻牌（側立那一刻
+  /// 光刃遮住換面）、正面落定、六角牌從畫面外砸入；收卡＝轉成細線、縮小、變成光、淡出
+  /// （光球接手）。[stampFrom] 見 [_stampFrom]。
+  Widget _buildCard(Size cardSize, {Offset stampFrom = Offset.zero}) {
     final girl = _revealGirl;
     if (_phase == _CeremonyPhase.drawing || girl == null) {
       final pose = _waitingPose();
@@ -1062,12 +1357,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         opacity: practiceIntroCardOpacity(_introMs),
         child: Transform.translate(
           key: const ValueKey('practice-draw-ceremony-waiting-motion'),
-          offset: Offset(0, pose.dy),
+          offset: Offset(pose.dx, pose.dy),
           child: Transform.scale(
             scale: pose.scale,
             child: Transform(
               alignment: Alignment.center,
-              transform: _card3d(yaw: pose.yaw),
+              transform: _card3d(yaw: pose.yaw, pitch: pose.pitch),
               child: PracticeRevealCardBack(
                 width: cardSize.width,
                 height: cardSize.height,
@@ -1083,17 +1378,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
     final ms = _revealMs;
     final rarity = girl.rarity;
-    final pose = practiceRevealPose(ms);
+    final pose = _revealPose();
     final blend = practiceRevealSeg(ms, 0, PracticeRevealTiming.poseBlendMs);
     final archiving = _phase == _CeremonyPhase.archiving;
     final archiveMs = _archiveMs;
     final cardOpacity = archiving ? practiceArchiveCardOpacity(archiveMs) : 1.0;
     if (cardOpacity <= 0.001) return const SizedBox.shrink();
-    final collapse = archiving ? practiceArchiveCardScale(archiveMs) : 1.0;
-    final dy = lerpDouble(_startPose.dy, 0, blend)!;
-    final scale =
-        pose.scale * lerpDouble(_startPose.scale, 1, blend)! * collapse;
-    final yaw = pose.yaw + _startPose.yaw * (1 - blend);
 
     final Widget face = practiceRevealShowsFront(ms)
         ? Transform(
@@ -1106,6 +1396,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               state: PracticeRevealFaceState.at(
                 ms,
                 archiveMs: archiving ? archiveMs : null,
+                stampFrom: stampFrom,
               ),
               isNew: _revealIsNew,
             ),
@@ -1119,20 +1410,23 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               practiceRevealEmblemGlow(ms, rarity),
               blend,
             )!,
-            frameGlow: practiceRevealFrameGlow(ms),
+            frameGlow: practiceRevealFrameGlow(ms, rarity),
             goldFlash: practiceRevealGoldFlash(ms, rarity),
+            linesGlow: practiceRevealLinesGlow(ms, rarity),
+            emblemWhite: practiceRevealEmblemWhite(ms),
+            goldWash: practiceRevealDye(ms, rarity).gold,
           );
 
     return Opacity(
       opacity: cardOpacity,
       child: Transform.translate(
-        offset: Offset(0, dy),
+        offset: Offset(pose.dx, pose.dy),
         child: Transform.scale(
-          scale: scale,
+          scale: pose.scale,
           child: Transform(
             key: const ValueKey('practice-draw-ceremony-card-3d'),
             alignment: Alignment.center,
-            transform: _card3d(yaw: yaw, pitch: pose.pitch),
+            transform: _card3d(yaw: pose.yaw, pitch: pose.pitch),
             child: face,
           ),
         ),
@@ -1177,7 +1471,12 @@ Widget debugCeremonyCardBack({
       colors:
           PracticeRevealBackColors.at(PracticeRevealTiming.flipStartMs, rarity),
       emblemGlow: glow,
-      frameGlow: practiceRevealFrameGlow(PracticeRevealTiming.flipStartMs),
+      frameGlow:
+          practiceRevealFrameGlow(PracticeRevealTiming.flipStartMs, rarity),
+      linesGlow:
+          practiceRevealLinesGlow(PracticeRevealTiming.flipStartMs, rarity),
+      goldWash:
+          practiceRevealDye(PracticeRevealTiming.flipStartMs, rarity).gold,
     );
 
 /// 收卡光球的目標格（overlay 本地座標）：widget test 驗「光球飛向剛抽到的那一格」。

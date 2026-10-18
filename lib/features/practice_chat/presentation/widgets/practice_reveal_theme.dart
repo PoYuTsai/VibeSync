@@ -8,6 +8,15 @@ import '../../../../core/theme/practice_reveal_palette.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
 import 'practice_reveal_timing.dart';
 
+/// 光效檔位（V3.1 規格 §9）：泛光層數與同一幀粒子上限。高＝V3 在真機上很順，中＝偶爾掉幀，
+/// 低＝V3 本身就會卡。
+enum PracticeRevealEffectTier { high, medium, low }
+
+/// 目前的檔位：Eric 2026-10-18 回報 TestFlight 536 的 V3「目前還行」，預設中檔，真機再調
+/// （只改這一行）。
+const PracticeRevealEffectTier kPracticeRevealEffectTier =
+    PracticeRevealEffectTier.medium;
+
 @immutable
 class PracticeRevealTheme {
   const PracticeRevealTheme._({
@@ -17,7 +26,9 @@ class PracticeRevealTheme {
     required this.frameDeep,
     required this.glow,
     required this.ambientAlpha,
-    required this.burstCount,
+    required this.burstCounts,
+    required this.burstSpeed,
+    required this.bladeWidth,
     required this.sheenStrength,
     required this.badgeLight,
     required this.badgeDeep,
@@ -40,8 +51,22 @@ class PracticeRevealTheme {
   /// 卡片背後環境光的不透明度。
   final double ambientAlpha;
 
-  /// 翻牌峰值爆發的星塵顆數。
-  final int burstCount;
+  /// 翻牌峰值爆發的星塵顆數，依檔位（高、中、低）：V3.1 §5.7 N 24、R 48、SR 160 是高檔，
+  /// 中檔 SR 80、低檔上限 48（§9）。
+  final ({int high, int medium, int low}) burstCounts;
+
+  /// 爆發星塵的初速倍率：SR 散得最遠（滿畫面）。
+  final double burstSpeed;
+
+  /// 光刃外暈最寬是幾倍卡寬（V3.1 §5.5：N 0.6、R 0.7、SR 0.8）。
+  final double bladeWidth;
+
+  /// 目前檔位的爆發星塵顆數。
+  int get burstCount => switch (kPracticeRevealEffectTier) {
+        PracticeRevealEffectTier.high => burstCounts.high,
+        PracticeRevealEffectTier.medium => burstCounts.medium,
+        PracticeRevealEffectTier.low => burstCounts.low,
+      };
 
   /// 全息掃光強度。
   final double sheenStrength;
@@ -66,7 +91,9 @@ class PracticeRevealTheme {
     frameDeep: PracticeRevealPalette.nFrameDeep,
     glow: PracticeRevealPalette.nGlow,
     ambientAlpha: 0.22,
-    burstCount: 20,
+    burstCounts: (high: 24, medium: 24, low: 24),
+    burstSpeed: 1.0,
+    bladeWidth: 0.6,
     sheenStrength: 0.35,
     badgeLight: PracticeRevealPalette.nBadgeLight,
     badgeDeep: PracticeRevealPalette.nBadgeDeep,
@@ -82,7 +109,9 @@ class PracticeRevealTheme {
     frameDeep: PracticeRevealPalette.rFrameDeep,
     glow: PracticeRevealPalette.rGlow,
     ambientAlpha: 0.32,
-    burstCount: 26,
+    burstCounts: (high: 48, medium: 48, low: 48),
+    burstSpeed: 1.2,
+    bladeWidth: 0.7,
     sheenStrength: 0.55,
     badgeLight: PracticeRevealPalette.rBadgeLight,
     badgeDeep: PracticeRevealPalette.rBadgeDeep,
@@ -98,7 +127,9 @@ class PracticeRevealTheme {
     frameDeep: PracticeRevealPalette.srFrameDeep,
     glow: PracticeRevealPalette.srGlow,
     ambientAlpha: 0.45,
-    burstCount: 34,
+    burstCounts: (high: 160, medium: 80, low: 48),
+    burstSpeed: 1.7,
+    bladeWidth: 0.8,
     sheenStrength: 0.85,
     badgeLight: PracticeRevealPalette.srBadgeLight,
     badgeDeep: PracticeRevealPalette.srBadgeDeep,

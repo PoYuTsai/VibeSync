@@ -53,4 +53,17 @@ abstract final class PracticeRevealPalette {
 
   /// 資訊欄毛玻璃的底色（疊在模糊照片上，×0.68）。
   static const Color infoGlass = Color(0xFF0F0E16);
+
+  // ── V3.1 六角金屬牌（規格 docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md §5.10）──
+  /// 銀色金屬面：上亮 → 中 → 下暗。
+  static const Color badgeMetalLight = Color(0xFFF8FAFC);
+  static const Color badgeMetalMid = Color(0xFFCBD5E1);
+  static const Color badgeMetalDeep = Color(0xFF8A94A6);
+
+  /// 斜面倒角的外緣（深色金屬）。
+  static const Color badgeBevelDeep = Color(0xFF475164);
+
+  // ── V3.1 卡片厚度邊（§5.9）：側立時看得到的深色金屬 ──
+  static const Color cardEdgeLight = Color(0xFF9AA3B2);
+  static const Color cardEdgeDeep = Color(0xFF242833);
 }
