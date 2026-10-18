@@ -943,6 +943,122 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
+    testWidgets('兩則一組（Eric 2026-10-18）：一則一則進剪貼簿，成效紀錄一張卡只記一次、記整張卡',
+        (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final outcomes = MemoryCoachingOutcomeRepository();
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(cards: [
+          {
+            ...cardJson(1, 'accept', ''),
+            'messages': ['那家我也想吃吃看', '妳推薦哪道'],
+          },
+          cardJson(2, 'push', '週六下午一起去？我來找位子'),
+        ])),
+        outcomes: outcomes,
+      );
+      await dismissEditCoachMark(tester);
+
+      final primary = find.byKey(const ValueKey('guide-v3-card-1-copy'));
+      await tester.ensureVisible(primary);
+      await tester.tap(primary);
+      await tester.pump();
+      await tester.tap(primary);
+      await tester.pump();
+      expect(copied, ['那家我也想吃吃看', '妳推薦哪道']);
+      final event = outcomes.listRecent().single;
+      expect(event.id, 'analyze:$_conversationId:run_v3:v3:1:accept');
+      expect(event.suggestedMoveSummary, '那家我也想吃吃看\n妳推薦哪道');
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('改成我的（Eric 2026-10-18）：沒改字就複製，不標已改成你的、編的細節提醒照留；真的改了才標',
+        (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(cards: [
+          {
+            ...cardJson(1, 'accept', '我上週也剛去爬了七星山'),
+            'method': 'invented',
+            'hasInventedDetail': true,
+          },
+          cardJson(2, 'push', '週六下午一起去？我來找位子'),
+        ])),
+      );
+      await dismissEditCoachMark(tester);
+
+      Future<void> editAndCopy({String? newText}) async {
+        final edit = find.byKey(const ValueKey('guide-v3-card-1-edit'));
+        await tester.ensureVisible(edit);
+        await tester.tap(edit);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        if (newText != null) {
+          await tester.enterText(
+            find.byKey(const ValueKey('guide-v3-edit-field-0')),
+            newText,
+          );
+          await tester.pump();
+        }
+        await tester.tap(find.byKey(const ValueKey('guide-v3-edit-copy')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+
+      await editAndCopy();
+      expect(copied, ['我上週也剛去爬了七星山']);
+      expect(find.text('已改成你的'), findsNothing);
+      expect(find.text('有編的細節，請改成你的'), findsOneWidget);
+
+      await editAndCopy(newText: '我上週也去爬了陽明山');
+      expect(copied.last, '我上週也去爬了陽明山');
+      expect(find.text('已改成你的'), findsOneWidget);
+      expect(find.text('有編的細節，請改成你的'), findsNothing);
+      // 兩次複製各有一則提示，排隊顯示：一格一格等到都收掉再結束。
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+    });
+
+    testWidgets('回饋（Eric 2026-10-18）：v3 結果的倒讚用 v3 的分類', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.thumb_down_outlined),
+          )
+          .onPressed!();
+      await tester.pump();
+
+      for (final label in ['判斷不準', '像在考她', '編了我的事', '太軟有客服感', '其他']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      for (final label in ['太直接', '不自然', '回覆太長', '不符合我的風格']) {
+        expect(find.text(label), findsNothing);
+      }
+    });
+
     testWidgets('串流中：第一張卡已能複製，還沒到的卡顯示正在寫，不顯示大的載入動畫', (tester) async {
       final outcomes = MemoryCoachingOutcomeRepository();
       final read = GuideV3Read.fromJson(readJson())!;

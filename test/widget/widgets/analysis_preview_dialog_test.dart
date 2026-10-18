@@ -1,7 +1,7 @@
 // ADR #19 r3 分析前預覽 dialog 測試。
 //
 // 契約：
-// - standard 帶：靜態區間文案「依對話複雜度 1–10 則」，不報精確值。
+// - standard 帶：顯示算出的精確則數（Eric 2026-10-18，不再只報 1–10 則）。
 // - overcharge 帶（2001~4000 字）：本 dialog 即「>2000 字確認框」，
 //   顯示精確「本次將使用 20 則」；額度不足時確認鈕停用（定案 #4 防禦層）。
 // - reject 帶由 caller 在呼叫前擋下，dialog 不處理。
@@ -53,19 +53,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('AnalysisPreviewDialog — standard 帶（靜態區間）', () {
-    testWidgets('shows static range copy, never an exact unit count',
+  group('AnalysisPreviewDialog — standard 帶（精確則數）', () {
+    testWidgets('shows the exact unit count from the billing mirror',
         (tester) async {
       await tester.pumpWidget(buildTestWidget(
-        preview: _preview(100), // 3 則，但 UI 不報精確值
+        preview: _preview(100), // ceil(100/40) = 3 則
         usage: UsageData.free(),
       ));
       await openDialog(tester);
 
       expect(find.text('開始分析前'), findsOneWidget);
       expect(find.text('預計使用'), findsOneWidget);
-      expect(find.text('依對話複雜度 1–10 則'), findsOneWidget);
-      expect(find.text('3 則'), findsNothing);
+      expect(find.text('3 則'), findsOneWidget);
+      expect(find.text('依對話複雜度 1–10 則'), findsNothing);
     });
 
     testWidgets('displays monthly and daily usage', (tester) async {
@@ -263,6 +263,41 @@ void main() {
       await tester.tap(find.text('查看升級方案'));
       await tester.pumpAndSettle();
       expect(upgraded, isTrue);
+    });
+  });
+
+  group('AnalysisQuotaLine（Eric 2026-10-18：額度夠的一般長度不跳框）', () {
+    AnalysisQuotaLine? line(int chars, {int monthly = 30, int daily = 15}) =>
+        AnalysisQuotaLine.of(
+          _preview(chars),
+          monthlyRemaining: monthly,
+          dailyRemaining: daily,
+        );
+
+    test('額度夠、一般長度：這次會用 N 則，剩下本月與今日取少的扣掉 N', () {
+      final today = line(100, daily: 11)!;
+      expect(today.units, 3);
+      expect(today.remainingAfter, 8);
+      expect(today.text, '這次會用 3 則，剩 8 則');
+      expect(line(40, monthly: 5)!.text, '這次會用 1 則，剩 4 則');
+    });
+
+    test('剛好用完也不跳框：剩 0 則', () {
+      expect(line(450, daily: 10)!.text, '這次會用 10 則，剩 0 則');
+    });
+
+    test('兩個數字都一樣才算同一行（主審 r1 P2：多算、少算、剩的不同都不算）', () {
+      expect(line(100, daily: 11), line(100, daily: 11));
+      expect(line(100, daily: 11), isNot(line(140, daily: 11)));
+      expect(line(100, daily: 11), isNot(line(60, daily: 11)));
+      expect(line(100, daily: 11), isNot(line(100, daily: 12)));
+    });
+
+    test('額度不夠、超過 2000 字或超過上限：照舊跳確認框', () {
+      expect(line(450, daily: 9), isNull);
+      expect(line(450, monthly: 9), isNull);
+      expect(line(2500, monthly: 300, daily: 50), isNull);
+      expect(line(4500, monthly: 300, daily: 50), isNull);
     });
   });
 

@@ -18,6 +18,7 @@ import {
 import type { GuideV3Background } from "./prompts.ts";
 import { MONEY_RISK_WARNING } from "./rules.ts";
 import {
+  GUIDE_V3_WRITING_LABEL,
   type GuideV3ExtractRequest,
   type GuideV3StreamDeps,
   handleGuideV3Stream,
@@ -330,6 +331,7 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
   const evs = await events(await handleGuideV3Stream(h.deps));
   assertEquals(types(evs), [
     "analysis.started",
+    "analysis.progress",
     "analysis.read",
     "analysis.card",
     "analysis.card",
@@ -354,7 +356,7 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
     (charge.recommendationJson.firstCard as { messages: string[] }).messages,
     ["腿斷了還能打字，看來還撐得住"],
   );
-  const read = evs[1];
+  const read = evs[2];
   assertEquals(read.decision, "send");
   assertEquals(read.plannedCards, [
     { slot: 1, task: "accept", locked: false },
@@ -363,8 +365,8 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
     { slot: 4, task: "tension", locked: false },
   ]);
   // 預設口吻：妳 → 你。
-  assertEquals(evs[5].messages, ["你這樣說我反而想看你爬山的樣子"]);
-  const client = evs[6].finalResult as Record<string, unknown>;
+  assertEquals(evs[6].messages, ["你這樣說我反而想看你爬山的樣子"]);
+  const client = evs[7].finalResult as Record<string, unknown>;
   assertEquals((client.cards as unknown[]).length, 4);
   assertEquals(client.partial, false);
   assert(!("guideV3Trace" in client), "伺服器專用欄位不送 App");
@@ -378,13 +380,40 @@ Deno.test("送出型：第一張卡扣費後才送判讀和卡，只扣一次，
   }]);
 });
 
-Deno.test("扣費還沒完成時，判讀和卡都還沒送出", async () => {
+Deno.test("寫卡前的中性進度：只有固定的字，不帶判讀、燈號或卡；不寫卡的決定沒有這則", async () => {
+  const h = harness();
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1], {
+    type: "analysis.progress",
+    phase: "writing",
+    runId: "run-1",
+    conversationHash: "hash-1",
+    label: "看完了，正在寫回覆",
+  });
+  assertEquals(GUIDE_V3_WRITING_LABEL, "看完了，正在寫回覆");
+  for (
+    const opts of [
+      { messages: [...CHAT, { isFromMe: true, content: "哪座山" }] },
+      { readTags: tags({ explicitRejection: true }) },
+      { readTags: tags({ selfHarmSignal: true }) },
+    ]
+  ) {
+    const other = await events(await handleGuideV3Stream(harness(opts).deps));
+    assertEquals(types(other).includes("analysis.progress"), false);
+  }
+});
+
+Deno.test("扣費還沒完成時，判讀和卡都還沒送出（只有開始和寫卡進度）", async () => {
   let release!: () => void;
   const h = harness({ chargeGate: new Promise((r) => release = r) });
   const reader = (await handleGuideV3Stream(h.deps)).body!.getReader();
   const decoder = new TextDecoder();
-  const first = decoder.decode((await reader.read()).value);
-  assert(first.includes('"analysis.started"'));
+  let head = "";
+  while (!head.includes('"analysis.progress"')) {
+    head += decoder.decode((await reader.read()).value);
+  }
+  assert(head.includes('"analysis.started"'));
+  assert(!head.includes('"analysis.read"'));
   while (h.charges.length === 0) await new Promise((r) => setTimeout(r, 0));
   // 扣費卡住時讀不到任何東西；這個讀取在放行後才會拿到判讀。
   const nextRead = reader.read().then((r) => decoder.decode(r.value));
@@ -417,8 +446,10 @@ Deno.test("收尾（她婉拒或說了界線）：一張收尾卡，扣費的任
     writeParts: [line(1, ["好，那妳先忙"])],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(evs[1].decision, "close");
-  assertEquals(evs[1].plannedCards, [{
+  // 收尾也要寫卡：一樣先送寫卡進度。
+  assertEquals(evs[1].type, "analysis.progress");
+  assertEquals(evs[2].decision, "close");
+  assertEquals(evs[2].plannedCards, [{
     slot: 1,
     task: "close",
     locked: false,
@@ -521,8 +552,12 @@ Deno.test("每張都被拿掉：不扣、run 記失敗、送錯誤事件", async
     ],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(types(evs), ["analysis.started", "analysis.error"]);
-  assertEquals(evs[1].code, "GUIDE_V3_NO_CARDS");
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "GUIDE_V3_NO_CARDS");
   assertEquals(h.charges.length, 0);
   assertEquals(h.failed, ["GUIDE_V3_NO_CARDS"]);
 });
@@ -559,8 +594,12 @@ Deno.test("寫卡中途斷掉、已送出 2 張：以送出的卡結案，算一
 Deno.test("扣費失敗（額度不足）：判讀和卡都不送、run 記失敗、額度訊息", async () => {
   const h = harness({ chargeError: new Error("QUOTA_EXCEEDED_DAILY") });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(types(evs), ["analysis.started", "analysis.error"]);
-  assertEquals(evs[1].code, "QUOTA_EXHAUSTED");
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "QUOTA_EXHAUSTED");
   assertEquals(h.failed, ["QUOTA_EXHAUSTED"]);
   assertEquals(h.done.length, 0);
 });
@@ -599,13 +638,17 @@ Deno.test("扣費丟錯、失敗寫入也連不上（狀態不明）：不送卡
     markFailedError: new Error("db unreachable"),
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(types(evs), ["analysis.started", "analysis.error"]);
-  assertEquals(evs[1].code, "GUIDE_V3_CHARGE_UNCONFIRMED");
-  assertEquals(evs[1].recoverable, true);
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.progress",
+    "analysis.error",
+  ]);
+  assertEquals(evs[2].code, "GUIDE_V3_CHARGE_UNCONFIRMED");
+  assertEquals(evs[2].recoverable, true);
   assertEquals(h.failed, []);
   assertEquals(h.done.length, 0);
   // 「不明」時不能說本次不會扣額度。
-  assert(!String(evs[1].message).includes("不會扣額度"));
+  assert(!String(evs[2].message).includes("不會扣額度"));
 });
 
 Deno.test("扣費已提交、回應掉了、讀回也失敗：不記 failed、不說沒扣", async () => {

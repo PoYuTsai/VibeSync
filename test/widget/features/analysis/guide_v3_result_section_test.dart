@@ -48,6 +48,7 @@ GuideV3Card _card(
 
 class _Calls {
   final copies = <String>[];
+  final toasts = <String>[];
   final edits = <int>[];
   final refines = <int>[];
   var upgrades = 0;
@@ -64,6 +65,9 @@ Future<_Calls> _pump(
   Map<int, List<String>> edited = const {},
   Map<int, List<String>> refined = const {},
   bool withRefine = false,
+  // 填空框、再調面板帶回來的字（null＝他關掉、沒選）。
+  List<String>? editResult,
+  List<String>? refineResult,
 }) async {
   final calls = _Calls();
   await tester.binding.setSurfaceSize(const Size(430, 1600));
@@ -79,10 +83,21 @@ Future<_Calls> _pump(
           partial: partial,
           recovered: recovered,
           editedMessagesFor: (card) => edited[card.slot],
-          onCopy: (card, text, toast) => calls.copies.add(text),
-          onEdit: (card) => calls.edits.add(card.slot),
+          onCopy: (card, text, toast) {
+            calls.copies.add(text);
+            calls.toasts.add(toast);
+          },
+          onEdit: (card) async {
+            calls.edits.add(card.slot);
+            return editResult;
+          },
           refinedMessagesFor: (card) => refined[card.slot],
-          onRefine: withRefine ? (card) => calls.refines.add(card.slot) : null,
+          onRefine: withRefine
+              ? (card) async {
+                  calls.refines.add(card.slot);
+                  return refineResult;
+                }
+              : null,
           onUpgrade: () => calls.upgrades++,
         ),
       ),
@@ -117,15 +132,67 @@ void main() {
     expect(calls.upgrades, 1);
 
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
+    await tester.pump();
+    // 點泡泡只複製那一則；主按鈕接著指到下一則（第 2 則之後回到第 1 則）。
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-2-message-1')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-2-copy')));
+    await tester.pump();
     expect(calls.copies, [
       '那家我也想吃吃看',
       '週末給妳機會證明',
-      '妳這樣說我會當真喔\n週末給妳機會證明',
+      '妳這樣說我會當真喔',
     ]);
+    expect(calls.toasts, ['已複製這句', '已複製第 2 則', '已複製第 1 則']);
     expect(find.text('複製這句'), findsOneWidget);
-    expect(find.text('複製整組'), findsOneWidget);
+    expect(find.text('複製整組'), findsOneWidget, reason: '只有兩則的卡有整組複製');
+  });
+
+  testWidgets('兩則一組（Eric 2026-10-18）：主按鈕先複製第 1 則、再第 2 則，提示分 2 則傳；整組複製在次要位置',
+      (tester) async {
+    final calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+        {'slot': 2, 'task': 'tension', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔', '週末給妳機會證明']),
+      ],
+    );
+    final primary = find.byKey(const ValueKey('guide-v3-card-2-copy'));
+    expect(find.text('分 2 則傳'), findsOneWidget);
+    expect(
+      find.descendant(of: primary, matching: find.text('複製第 1 則')),
+      findsOneWidget,
+    );
+    // 一則的卡跟以前一樣：沒有提示、沒有整組複製。
+    expect(
+        find.byKey(const ValueKey('guide-v3-card-1-split-hint')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('guide-v3-card-1-copy-all')), findsNothing);
+
+    await tester.tap(primary);
+    await tester.pump();
+    expect(
+      find.descendant(of: primary, matching: find.text('複製第 2 則')),
+      findsOneWidget,
+    );
+    await tester.tap(primary);
+    await tester.pump();
+    expect(calls.copies, ['妳這樣說我會當真喔', '週末給妳機會證明']);
+    expect(calls.toasts, ['已複製第 1 則', '已複製第 2 則']);
+    expect(
+      find.descendant(of: primary, matching: find.text('複製第 1 則')),
+      findsOneWidget,
+      reason: '傳完一輪回到第 1 則',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-2-copy-all')));
+    await tester.pump();
+    expect(calls.copies.last, '妳這樣說我會當真喔\n週末給妳機會證明');
+    expect(calls.toasts.last, '已複製這組訊息');
   });
 
   testWidgets('有空格：不給複製，要先填；填好之後才出現複製', (tester) async {
@@ -139,10 +206,16 @@ void main() {
     );
     expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
     expect(find.text('填好空格再複製'), findsOneWidget);
+    expect(find.text('分 2 則傳'), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy-all')), findsNothing,
+        reason: '有空格時整組複製也不給');
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-message-0')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-fill')));
+    await tester.pump();
     // 整張有空格就先填：點沒有空格的那一則也一樣去填空，不能先拿走。
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-message-1')));
+    await tester.pump();
     expect(calls.copies, isEmpty);
     expect(calls.edits, [1, 1, 1]);
 
@@ -158,7 +231,62 @@ void main() {
     );
     expect(find.text('已改成你的'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
-    expect(calls.copies, ['我是做設計的\n妳呢']);
+    expect(calls.copies, ['我是做設計的']);
+  });
+
+  testWidgets('填好空格回來：卡片接著複製第 1 則，主按鈕指到第 2 則', (tester) async {
+    final calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的', '妳呢']),
+      ],
+      editResult: const ['我是做設計的', '妳呢'],
+    );
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-fill')));
+    await tester.pump();
+    expect(calls.edits, [1]);
+    expect(calls.copies, ['我是做設計的']);
+    expect(calls.toasts, ['已複製第 1 則']);
+
+    // 呼叫端存好（卡上換成填好的字）：主按鈕接著指到第 2 則。
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的', '妳呢']),
+      ],
+      edited: {
+        1: ['我是做設計的', '妳呢'],
+      },
+    );
+    final primary = find.byKey(const ValueKey('guide-v3-card-1-copy'));
+    expect(
+      find.descendant(of: primary, matching: find.text('複製第 2 則')),
+      findsOneWidget,
+    );
+
+    // 之後卡上的字又換了（例如再調過）：從第 1 則重新開始。
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['我是做＿＿的', '妳呢']),
+      ],
+      refined: {
+        1: ['我做設計', '換你說'],
+      },
+    );
+    expect(
+      find.descendant(of: primary, matching: find.text('複製第 1 則')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('分析紀錄的鎖住卡：說法不承諾補寫，升級入口照樣有', (tester) async {
@@ -176,7 +304,7 @@ void main() {
             isFinal: true,
             editedMessagesFor: (_) => null,
             onCopy: (_, __, ___) {},
-            onEdit: (_) {},
+            onEdit: (_) async => null,
             onUpgrade: () => upgrades++,
             lockedMessage: guideV3LockedArchivedMessage,
           ),
@@ -395,7 +523,43 @@ void main() {
     expect(find.text('已改成你的'), findsNothing);
     expect(find.text(guideV3InventedNotice), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
-    expect(calls.copies, ['我上週也去爬七星山\n腿現在還在痠']);
+    expect(calls.copies, ['我上週也去爬七星山']);
+  });
+
+  testWidgets('再調選定的版本：卡片接著複製第 1 則；還有＿＿就先開填空', (tester) async {
+    var calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看', '妳推薦哪道']),
+      ],
+      withRefine: true,
+      refineResult: const ['那家我也想去', '妳最愛哪道'],
+    );
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-refine')));
+    await tester.pump();
+    expect(calls.refines, [1]);
+    expect(calls.edits, isEmpty);
+    expect(calls.copies, ['那家我也想去']);
+
+    calls = await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看', '妳推薦哪道']),
+      ],
+      withRefine: true,
+      refineResult: const ['我是做＿＿的', '妳呢'],
+      editResult: const ['我是做設計的', '妳呢'],
+    );
+    await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-refine')));
+    await tester.pump();
+    expect(calls.edits, [1], reason: '再調的版本還有空格：先填');
+    expect(calls.copies, ['我是做設計的']);
   });
 
   testWidgets('再調過的版本還有＿＿：一樣要先填才能複製；自己改過就以改過的為準', (tester) async {
@@ -437,7 +601,7 @@ void main() {
     expect(find.text('已改成你的'), findsOneWidget);
     expect(find.text(guideV3RefinedLabel), findsNothing);
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
-    expect(calls.copies, ['我做設計\n換你說']);
+    expect(calls.copies, ['我做設計']);
   });
 
   testWidgets('填空：還有＿＿就不能複製，填好才回傳', (tester) async {
@@ -464,6 +628,11 @@ void main() {
     expect(find.text('還有＿＿沒填'), findsOneWidget);
     final copyButton = find.byKey(const ValueKey('guide-v3-edit-copy'));
     expect(tester.widget<FilledButton>(copyButton).onPressed, isNull);
+    expect(
+      find.descendant(of: copyButton, matching: find.text('複製第 1 則')),
+      findsOneWidget,
+      reason: '兩則的卡從第 1 則開始傳',
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey('guide-v3-edit-field-0')),
@@ -476,5 +645,55 @@ void main() {
     await tester.tap(copyButton);
     await tester.pumpAndSettle();
     expect(result, ['我是做設計的', '妳呢']);
+  });
+
+  test('填空框帶回來的字：跟打開前一樣（去掉頭尾空白後）就算沒改', () {
+    expect(guideV3EditChanged(const ['那家我也想吃吃看'], const ['那家我也想吃吃看']), isFalse);
+    expect(
+        guideV3EditChanged(const ['那家我也想吃吃看 '], const ['那家我也想吃吃看']), isFalse);
+    expect(guideV3EditChanged(const ['那家我也想吃吃看'], const ['那家我也想去']), isTrue);
+    expect(guideV3EditChanged(const ['我是做＿＿的', '妳呢'], const ['我是做設計的', '妳呢']),
+        isTrue);
+  });
+
+  testWidgets('填空（Eric 2026-10-18）：一打開就停在第一個空格、整段＿＿先選好；沒有空格不搶焦點',
+      (tester) async {
+    Future<void> open(List<String> messages) async {
+      // 上一次開的面板還在：整棵重建，才點得到 open。
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () =>
+                  showGuideV3EditSheet(context, messages: messages),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    EditableTextState field(int i) => tester.state<EditableTextState>(
+          find.descendant(
+            of: find.byKey(ValueKey('guide-v3-edit-field-$i')),
+            matching: find.byType(EditableText),
+          ),
+        );
+
+    // 空格在第二則：焦點在第二則，選好「＿＿」那一段。
+    await open(const ['好啊', '我是做＿＿的']);
+    expect(field(0).widget.focusNode.hasFocus, isFalse);
+    expect(field(1).widget.focusNode.hasFocus, isTrue);
+    expect(
+      field(1).widget.controller.selection,
+      const TextSelection(baseOffset: 3, extentOffset: 5),
+    );
+
+    // 改成我的（沒有空格）：照舊不自動跳鍵盤。
+    await open(const ['我上週也剛去爬了七星山']);
+    expect(field(0).widget.focusNode.hasFocus, isFalse);
   });
 }

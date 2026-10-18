@@ -337,5 +337,67 @@ void main() {
       expect(state.guideV3Cards, isEmpty);
       expect(state.guideV3Result, isNull);
     });
+
+    test('等待（Eric 2026-10-18）：v3 的 started 不停在「開始完整分析」，改輪播 v3 的句子；寫卡進度到了就接手',
+        () async {
+      final readDone = Completer<void>();
+      final cardsReady = Completer<void>();
+      final client = _ScriptedClient([
+        [
+          // 伺服器的 started 沒帶字，客戶端補預設字（analyze_stream_client）。
+          const AnalysisStreamUpdate.started(
+            runId: 'run_v3',
+            label: '開始完整分析',
+            guideVersion: 'v3.4',
+          ),
+          readDone,
+          const AnalysisStreamUpdate.progress(
+            runId: 'run_v3',
+            label: '看完了，正在寫回覆',
+          ),
+          cardsReady,
+          AnalysisStreamUpdate.guideV3Read(read: _read(), runId: 'run_v3'),
+          AnalysisStreamUpdate.guideV3Done(result: _result(), runId: 'run_v3'),
+        ],
+      ]);
+      final container = _container(client);
+      addTearDown(container.dispose);
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      final run = notifier.start(messages: [_msg('哈囉')]);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      var state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.connecting);
+      expect(state.isGuideV3Run, isTrue);
+      expect(state.streamProgressLabel, '正在讀這段對話');
+      expect(state.streamProgressDetail, '看你們聊到哪、她最後怎麼接。');
+
+      await Future<void>.delayed(const Duration(milliseconds: 3200));
+      state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.streamProgressLabel, '正在看她現在冷還熱');
+      expect(
+        '${state.streamProgressLabel}${state.streamProgressDetail}',
+        isNot(contains('關係階段')),
+        reason: 'v3 沒有關係階段',
+      );
+
+      readDone.complete();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.streamProgressLabel, '看完了，正在寫回覆');
+      expect(state.streamProgressDetail, isNull);
+
+      await Future<void>.delayed(const Duration(milliseconds: 3200));
+      state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.streamProgressLabel, '看完了，正在寫回覆', reason: '伺服器的進度不會被本地輪播蓋掉');
+
+      cardsReady.complete();
+      await run;
+      state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.done);
+    });
   });
 }

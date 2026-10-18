@@ -262,6 +262,23 @@ const List<(String, String)> _streamPreludeProgress = <(String, String)>[
   ),
 ];
 
+/// v3（任務卡）的等待句（Eric 2026-10-18）：v3 沒有關係階段、投入分數，只講讀對話
+/// 與決定這輪怎麼回；伺服器讀完會送「看完了，正在寫回覆」接手。
+const List<(String, String)> _guideV3PreludeProgress = <(String, String)>[
+  (
+    '正在讀這段對話',
+    '看你們聊到哪、她最後怎麼接。',
+  ),
+  (
+    '正在看她現在冷還熱',
+    '再決定這輪該回、先等，還是收尾。',
+  ),
+  (
+    '還在看',
+    '對話比較長時會久一點。',
+  ),
+];
+
 const Duration _streamPreludeProgressInterval = Duration(seconds: 3);
 
 final streamingAnalyzeProvider = NotifierProvider.autoDispose
@@ -426,11 +443,12 @@ class StreamingAnalyzeNotifier
     bool? isReconnectContext,
     int automaticRecoveryAttempt = 0,
   }) async {
-    final stopLocalProgress = _startLocalStreamPreludeProgress(
+    final localProgress = _startLocalStreamPreludeProgress(
       generation: generation,
       conversationMessageCount: conversationMessageCount,
       analyzedMessageCount: analyzedMessageCount,
     );
+    final stopLocalProgress = localProgress.stop;
     try {
       await for (final update in _client.stream(AnalyzeStreamRequest(
         analysisRunId: analysisRunId,
@@ -446,7 +464,12 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         confirmedOvercharge: confirmedOvercharge,
       ))) {
-        stopLocalProgress();
+        // v3 新分析的 started 沒有字：本地輪播接著跑、換成 v3 的句子，等伺服器
+        // 送進度、判讀或卡才停（Eric 2026-10-18：不要停在「開始完整分析」）。
+        final guideV3Started =
+            update.kind == AnalysisStreamUpdateKind.started &&
+                update.guideVersion != null;
+        if (!guideV3Started) stopLocalProgress();
         if (generation != _generation) return;
 
         switch (update.kind) {
@@ -458,12 +481,15 @@ class StreamingAnalyzeNotifier
                       ? StreamingAnalyzePhase.connecting
                       : StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
-              streamProgressLabel: update.label,
-              streamProgressDetail: update.detail,
+              streamProgressLabel:
+                  guideV3Started ? state.streamProgressLabel : update.label,
+              streamProgressDetail:
+                  guideV3Started ? state.streamProgressDetail : update.detail,
               conversationMessageCount: conversationMessageCount,
               analyzedMessageCount: analyzedMessageCount,
               isGuideV3Run: state.isGuideV3Run || update.guideVersion != null,
             );
+            if (guideV3Started) localProgress.publishNow();
             break;
           case AnalysisStreamUpdateKind.guideV3Read:
             final read = update.guideV3Read;
@@ -714,13 +740,18 @@ class StreamingAnalyzeNotifier
     }
   }
 
-  void Function() _startLocalStreamPreludeProgress({
+  /// 伺服器還沒送字時的本地輪播。[publishNow]：馬上換下一句並重新計時（v3 的
+  /// started 一到就換成 v3 的句子，從第一句開始）。
+  ({void Function() stop, void Function() publishNow})
+      _startLocalStreamPreludeProgress({
     required int generation,
     int? conversationMessageCount,
     int? analyzedMessageCount,
   }) {
     var stopped = false;
     var tick = 0;
+    var guideV3 = false;
+    Timer? timer;
 
     void publish() {
       if (stopped || generation != _generation) return;
@@ -730,7 +761,12 @@ class StreamingAnalyzeNotifier
         return;
       }
 
-      final step = _streamPreludeProgress[tick % _streamPreludeProgress.length];
+      if (current.isGuideV3Run && !guideV3) {
+        guideV3 = true;
+        tick = 0;
+      }
+      final steps = guideV3 ? _guideV3PreludeProgress : _streamPreludeProgress;
+      final step = steps[tick % steps.length];
       tick += 1;
       state = current.copyWith(
         streamProgressLabel: step.$1,
@@ -740,16 +776,28 @@ class StreamingAnalyzeNotifier
       );
     }
 
-    scheduleMicrotask(publish);
-    final timer = Timer.periodic(
-      _streamPreludeProgressInterval,
-      (_) => publish(),
-    );
+    void schedule() {
+      timer?.cancel();
+      timer = Timer.periodic(
+        _streamPreludeProgressInterval,
+        (_) => publish(),
+      );
+    }
 
-    return () {
-      stopped = true;
-      timer.cancel();
-    };
+    scheduleMicrotask(publish);
+    schedule();
+
+    return (
+      stop: () {
+        stopped = true;
+        timer?.cancel();
+      },
+      publishNow: () {
+        if (stopped) return;
+        publish();
+        schedule();
+      },
+    );
   }
 
   int _streamRetriesRemaining(

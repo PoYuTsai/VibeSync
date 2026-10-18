@@ -22,6 +22,48 @@ export const VALID_FEEDBACK_CATEGORIES: ReadonlySet<string> = new Set([
   "missed_context",
 ]);
 
+/// 對話分析 v3 的負評分類（Eric 2026-10-18），存在 aiResponse.guideV3.feedbackCategory。
+/// 分類欄（VALID_FEEDBACK_CATEGORIES，跟資料庫 CHECK 同一份）還沒有「像在考她」，
+/// App 先送 other；確切分類靠這個欄位保留。
+const GUIDE_V3_FEEDBACK_CATEGORY_LABELS: ReadonlyMap<string, string> = new Map([
+  ["wrong_judgment", "Wrong judgment"],
+  ["testing_her", "Testing / scoring her"],
+  ["invented_detail", "Invented detail"],
+  ["too_beta", "Too soft / customer-service tone"],
+  ["other", "Other"],
+]);
+const GUIDE_V3_CARD_TASKS_MAX = 5;
+
+/// v3 回饋其他欄位的合法值（主審 r1 P2）：只收 analyze-chat 實際送給 App 的值，跟
+/// 來源的對拍在 feedback_utils_test.ts（guide_text.ts 的 GUIDE_V3_VERSION、plan.ts 的
+/// 決定、read_tags.ts 的 LIGHTS、stream_run_store.ts 的 V3_CARD_TASK_CODES）。不合法
+/// 的欄位整個丟掉，回饋照收。
+export const GUIDE_V3_FEEDBACK_VERSIONS: ReadonlySet<string> = new Set([
+  "v3.5",
+]);
+export const GUIDE_V3_FEEDBACK_DECISIONS: ReadonlySet<string> = new Set([
+  "send",
+  "close",
+  "hold",
+  "stop",
+  "care",
+]);
+export const GUIDE_V3_FEEDBACK_LIGHTS: ReadonlySet<string> = new Set([
+  "green",
+  "yellow",
+  "red",
+]);
+export const GUIDE_V3_FEEDBACK_CARD_TASKS: ReadonlySet<string> = new Set([
+  "accept",
+  "resonate",
+  "tension",
+  "push",
+  "close",
+]);
+/// 分析 run 的 id（analysis_stream_runs.id，gen_random_uuid）。
+const GUIDE_V3_RUN_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function normalizeOptionalString(
   value: unknown,
   maxLength: number,
@@ -179,11 +221,18 @@ export function buildDiscordNotificationContent(
     `User: ${maskedEmail} (${feedback.userTier})\n`,
   ];
 
+  // v3 欄位不管誰傳進來都再驗一次：通知裡只會有合法值，不會有自由文字。
+  const guideV3 = sanitizeGuideV3Feedback(feedback.aiResponse?.guideV3);
+  const guideV3Category = typeof guideV3?.feedbackCategory === "string"
+    ? GUIDE_V3_FEEDBACK_CATEGORY_LABELS.get(guideV3.feedbackCategory)
+    : undefined;
+
   // 分類是負評表單才有的概念；正評不放，避免每則都是無資訊的 Other。
   if (!isPositive) {
     messageParts.push(
       `Category: ${
-        categoryLabels[feedback.category || "other"] || feedback.category
+        guideV3Category ??
+          (categoryLabels[feedback.category || "other"] || feedback.category)
       }\n`,
     );
   }
@@ -210,6 +259,17 @@ export function buildDiscordNotificationContent(
       string
     >;
     messageParts.push(`\nAI recommendation:\n${rec.pick}: "${rec.content}"\n`);
+  }
+
+  // v3：哪一次分析（runId 對得回卡片與扣費紀錄）、判讀與燈號。
+  if (guideV3) {
+    const verdict = [guideV3.decision, guideV3.light]
+      .filter((value) => typeof value === "string")
+      .join(" / ");
+    const run = typeof guideV3.runId === "string"
+      ? ` run ${guideV3.runId}`
+      : "";
+    messageParts.push(`\nv3: ${verdict || "unknown"}${run}\n`);
   }
 
   let message = messageParts.join("");
@@ -322,5 +382,74 @@ export function sanitizeFeedbackAiResponse(
     );
   }
 
+  const guideV3 = sanitizeGuideV3Feedback(value.guideV3);
+  if (guideV3 != null) {
+    sanitized.guideV3 = guideV3;
+  }
+
   return Object.keys(sanitized).length > 1 ? sanitized : undefined;
+}
+
+/// 對話分析 v3 的回饋欄位（Eric 2026-10-18）：每個欄位都要是合法值（主審 r1 P2：
+/// 列舉值、UUID、任務代碼），不合法的那個欄位丟掉。runId 讓負評對得回是哪一次
+/// 分析；沒有卡片文字、沒有對話。
+function sanitizeGuideV3Feedback(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const guideV3: Record<string, unknown> = {};
+  const keepIfAllowed = (key: string, allowed: ReadonlySet<string>) => {
+    const field = value[key];
+    if (typeof field === "string" && allowed.has(field)) {
+      guideV3[key] = field;
+    }
+  };
+  keepIfAllowed("guideVersion", GUIDE_V3_FEEDBACK_VERSIONS);
+  keepIfAllowed("decision", GUIDE_V3_FEEDBACK_DECISIONS);
+  keepIfAllowed("light", GUIDE_V3_FEEDBACK_LIGHTS);
+
+  if (
+    typeof value.runId === "string" &&
+    GUIDE_V3_RUN_ID_PATTERN.test(value.runId)
+  ) {
+    guideV3.runId = value.runId;
+  }
+
+  // 一張卡一個任務、照卡片順序：有一個不認得或超過張數就整個不收，免得位置錯開。
+  const cardTasks = value.cardTasks;
+  if (
+    Array.isArray(cardTasks) &&
+    cardTasks.length > 0 &&
+    cardTasks.length <= GUIDE_V3_CARD_TASKS_MAX &&
+    cardTasks.every((task) =>
+      typeof task === "string" && GUIDE_V3_FEEDBACK_CARD_TASKS.has(task)
+    )
+  ) {
+    guideV3.cardTasks = [...cardTasks];
+  }
+
+  if (
+    typeof value.feedbackCategory === "string" &&
+    GUIDE_V3_FEEDBACK_CATEGORY_LABELS.has(value.feedbackCategory)
+  ) {
+    guideV3.feedbackCategory = value.feedbackCategory;
+  }
+
+  return Object.keys(guideV3).length > 0 ? guideV3 : undefined;
+}
+
+/// Discord 訊息本體（主審 r1 P2）：一律不解析 mentions，內容就算混進 @everyone 也
+/// 不會真的通知全頻道。
+export function buildDiscordMessageBody(
+  content: string,
+  username?: string,
+): Record<string, unknown> {
+  return {
+    content,
+    ...(username ? { username } : {}),
+    allowed_mentions: { parse: [] },
+  };
 }

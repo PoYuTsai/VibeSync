@@ -72,6 +72,8 @@ export const STOP_CONDITION_MINOR = "涉及未成年，不給建議";
 /// 先別回、停固定扣 1 則（Eric 2026-10-18，推翻 10/16 的照字數扣）：沒有卡卻照字數扣，
 /// 容易被當成付錢沒拿到東西。扣費 RPC 收任何正整數（migration 20261016171939）。
 export const NO_SEND_MESSAGE_COUNT = 1;
+/// 讀完局面、開始寫卡前的中性進度（只有出卡、收尾才有；不帶判讀、不動扣費）。
+export const GUIDE_V3_WRITING_LABEL = "看完了，正在寫回覆";
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -985,6 +987,15 @@ class GuideV3Flow {
         { stage: "before_write", decision: plan.decision },
       );
     }
+    // 讀完到第一張卡還要約 2 秒、中間沒有事件：先送一則中性進度，App 照常顯示
+    // 進度文字（Eric 2026-10-18）。判讀照舊等第一張卡扣費後才送。
+    emit({
+      type: "analysis.progress",
+      phase: "writing",
+      runId: this.runId,
+      conversationHash: this.deps.conversationHash,
+      label: GUIDE_V3_WRITING_LABEL,
+    });
     try {
       const write = await this.deps.callWrite({
         runId: this.runId,

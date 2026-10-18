@@ -58,13 +58,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       'heroImage': 'assets/images/coach/sydney_greeting.png',
     },
     {
+      // 燈號和要不要回是分開判的（Eric 2026-10-18）：燈號只講她現在多熱。
       'title': '即時看懂她的訊號',
-      'description': '一個燈號告訴你：該回、先別回，還是收尾\n讀懂她這輪話裡的訊號',
+      'description': '燈號看她現在有多熱\n教練再告訴你：該回、先別回，還是收尾',
       'imagePath': 'analyze',
     },
     {
-      // 對話分析 v3（Eric 2026-10-17）：付費頁同一天改成同一個說法。
-      'title': '每次 3–5 張回覆，依局面搭配',
+      // 對話分析 v3：付費頁用同一個說法。收尾只有 1 張、先別回和停沒有卡，
+      // 所以不寫「每次」（Eric 2026-10-18）。
+      'title': '該回的時候給你 3–5 張回覆',
       'description': '接住、共鳴、推進，照她這輪的狀況排好\n每句都幫你控制字數，不會顯得太黏或太急',
       'imagePath': 'reply',
     },
