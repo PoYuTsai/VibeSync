@@ -61,13 +61,22 @@ void main() {
         expect(message, isNot(contains('明天')));
         expect(
           CoachSurface.failureSubtitleFor(error, tier: _essential),
-          isNot(contains('升級')),
+          '這是額度限制，不是教練失敗。',
         );
         expect(
           CoachSurface.failureActionLabelFor(error, tier: _essential),
           '查看方案',
         );
       }
+      // 恢復時間自己一行：接在用量後面，手機寬度會把最後一兩個字擠到第二行。
+      expect(
+        CoachSurface.failureMessageFor(_daily(), tier: _essential),
+        '今日額度已用完（15/15）。\n$kDailyQuotaResetLine。',
+      );
+      expect(
+        CoachSurface.failureMessageFor(_monthly(), tier: _essential),
+        '本月額度已用完（120/120）。\n$kMonthlyQuotaResetLine。',
+      );
     });
 
     test('免費、Starter：每日說幾點恢復也能升級，每月說升級；不點名 Starter', () {

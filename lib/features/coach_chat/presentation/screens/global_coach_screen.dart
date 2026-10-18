@@ -284,10 +284,10 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
         const SizedBox(height: 8),
         Text(
           // Essential 已經是最高方案，不說會提醒升級；用完時額度卡會寫幾點恢復
-          // （Eric 2026-10-18）。
+          // （Eric 2026-10-18）。不比原句長，手機寬度一行放得下。
           canUpgradeQuota(ref.watch(subscriptionProvider).tier)
               ? '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。'
-              : '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會告訴你什麼時候恢復。',
+              : '幫教練釐清最多 3 次；正式建議扣 1 則，用完會說何時恢復。',
           style: AppTypography.caption.copyWith(
             color: AppColors.onBackgroundSecondary,
             height: 1.5,

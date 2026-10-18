@@ -1409,35 +1409,40 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       widgets.add(
         Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            children: [
-              Text(
-                _error!,
-                key: const ValueKey('opener-flow-error'),
-                style:
-                    AppTypography.bodyMedium.copyWith(color: AppColors.error),
-                textAlign: TextAlign.center,
-              ),
-              // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給付費頁入口。
-              // Essential 已經是最高方案，鈕只寫「查看方案」（Eric 2026-10-18）。
-              if (state.quotaError != null && !state.isBusy)
-                TextButton(
-                  key: const ValueKey('opener-upgrade-button'),
-                  onPressed: AppHaptics.onPress(() => unawaited(
-                      _showPaywallAndRefresh(
-                          entry: _quotaEntryFor(state.quotaError!)))),
-                  child: Text(state.quotaError!.canUpgrade ? '升級方案' : '查看方案'),
-                )
-              else if (state.failedOperation != null &&
-                  !state.isBusy &&
-                  state.analysis != null)
-                TextButton(
-                  key: const ValueKey('opener-retry-button'),
-                  onPressed: AppHaptics.onPress(
-                      () => unawaited(_flow.retryLastOperation())),
-                  child: const Text('再試一次'),
+          // 撐滿整行：一行放得下的短句（例如 Essential 的額度說明）才會跟按鈕一起
+          // 置中，不會縮在左邊。
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              children: [
+                Text(
+                  _error!,
+                  key: const ValueKey('opener-flow-error'),
+                  style:
+                      AppTypography.bodyMedium.copyWith(color: AppColors.error),
+                  textAlign: TextAlign.center,
                 ),
-            ],
+                // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給付費頁入口。
+                // Essential 已經是最高方案，鈕只寫「查看方案」（Eric 2026-10-18）。
+                if (state.quotaError != null && !state.isBusy)
+                  TextButton(
+                    key: const ValueKey('opener-upgrade-button'),
+                    onPressed: AppHaptics.onPress(() => unawaited(
+                        _showPaywallAndRefresh(
+                            entry: _quotaEntryFor(state.quotaError!)))),
+                    child: Text(state.quotaError!.canUpgrade ? '升級方案' : '查看方案'),
+                  )
+                else if (state.failedOperation != null &&
+                    !state.isBusy &&
+                    state.analysis != null)
+                  TextButton(
+                    key: const ValueKey('opener-retry-button'),
+                    onPressed: AppHaptics.onPress(
+                        () => unawaited(_flow.retryLastOperation())),
+                    child: const Text('再試一次'),
+                  ),
+              ],
+            ),
           ),
         ),
       );

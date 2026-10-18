@@ -674,7 +674,10 @@ void main() {
         tier: SubscriptionTierHelper.essential,
         quotaBody: coachQuota429(monthly: monthly),
       );
-      expect(textOf(tester, '幫教練釐清最多 3 次'), isNot(contains('升級')));
+      expect(
+        textOf(tester, '幫教練釐清最多 3 次'),
+        '幫教練釐清最多 3 次；正式建議扣 1 則，用完會說何時恢復。',
+      );
 
       await askIntoQuota(tester);
       final message = textOf(tester, '額度已用完（');
