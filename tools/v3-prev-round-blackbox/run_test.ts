@@ -61,19 +61,31 @@ Deno.test("規劃：每案兩邊緊接著跑，只有「帶」那邊有 previous
   assertEquals(without.analysisContractVersion, 3);
 });
 
-Deno.test("卡片檢查：用到上一輪的詞、重講他上次那句", () => {
+Deno.test("卡片檢查：用到上一輪的詞、照抄上一段的訊息", () => {
   const c = cases.cases.find((x) => x.id === "answered_reward_after_deadline")!;
   const checks = inspectCards(c, [
     { messages: ["月底交差那天就去泡！"] },
     { messages: ["北投哪一間？"] },
-    { messages: ["月底交完一定要好好犒賞自己，妳最想做什麼"] },
+    { messages: ["我們主管啊，說月底一定要交，那就交完去泡"] },
   ]);
   assertEquals(checks.contextHitCards, 2);
-  assertEquals(checks.repeatsSentCard, true);
+  assertEquals(checks.copiesPreviousMessage, true);
   assertEquals(
     inspectCards(c, [{ messages: ["好啊"] }]),
-    { contextHitCards: 0, repeatsSentCard: false },
+    { contextHitCards: 0, copiesPreviousMessage: false },
   );
+});
+
+Deno.test("案例檔不帶他複製的那張（App 已經不送）", () => {
+  const base = cases.cases[0];
+  const problems = validateCases({
+    version: 1,
+    cases: [
+      { ...base, previousRound: { ...base.previousRound, sentCard: "卡" } },
+      ...cases.cases.slice(1),
+    ],
+  });
+  assert(problems.some((p) => p.includes("不帶 sentCard")));
 });
 
 Deno.test("付費閘：真跑四個旗標缺一個就拒絕；dry-run 預設重複 2 次", () => {

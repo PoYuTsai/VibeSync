@@ -9,7 +9,6 @@ import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/storage_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../analysis_history/data/providers/analysis_history_providers.dart';
-import '../../../coaching_memory/data/providers/coaching_outcome_providers.dart';
 import '../../../conversation/data/providers/conversation_archive_providers.dart';
 import '../../../conversation/data/repositories/conversation_archive_store.dart'
     show ConversationArchiveStatus;
@@ -214,23 +213,20 @@ final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
           )
           ?.name;
     },
-    // 上一輪脈絡（Eric 2026-10-18）：同一個對象上一次的 v3 結果、他複製的那張、
-    // 上一段最後幾則。跟對象背景同一道資料品質閘門（被標記可能混到別人就不帶）；
+    // 上一輪脈絡（Eric 2026-10-18）：同一個對象上一次的 v3 結果（燈號、決定、判讀）
+    // 與上一段最後幾則。跟對象背景同一道資料品質閘門（被標記可能混到別人就不帶）；
     // 讀本機資料出錯就不帶，絕不擋分析。
     resolvePreviousRound: (conversation) {
       final partnerId = conversation.partnerId?.trim();
       if (partnerId == null || partnerId.isEmpty) return null;
       try {
         if (ref.read(dataQualityFlagProvider(partnerId)).isFlagged) return null;
-        final outcomes = ref.read(coachingOutcomeRepositoryProvider);
         return const PreviousRoundBuilder().build(
           current: conversation,
           partnerConversations:
               ref.read(conversationRepositoryProvider).listByPartner(partnerId),
           historyEvents:
               ref.read(analysisHistoryRepositoryProvider).listRecent(),
-          outcomesFor: (conversationId) =>
-              outcomes.listByConversation(conversationId),
         );
       } catch (_) {
         return null;

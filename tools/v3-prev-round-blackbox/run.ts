@@ -7,7 +7,8 @@
 // Anthropic（只放行 claude-sonnet-5-5，備援模型一律擋下、記失敗）。
 //
 // 每次記：決定、燈號、局面判讀、卡片任務與文字、扣了幾則（兩邊要一樣）、帶的那份有沒有真的進
-// 讀局面提示詞；卡片有沒有用到只出現在上一輪的詞（contextWords），有沒有重講他上次複製的那句。
+// 讀局面提示詞；卡片有沒有用到只出現在上一輪的詞（contextWords），有沒有照抄上一段的訊息。
+// 上一輪不帶「他複製的那張」（主審第 1 輪 P2）；他傳過的那句要讓模型看到，就照真實用法貼進新片段。
 // summary.md 列每案兩邊對照給人看。
 //
 // dry-run（不花錢、不連網、不讀金鑰；寫 out/<tag>/plan.json、manifest.json、records.json，印估價與
@@ -76,8 +77,9 @@ export interface CaseFile {
 }
 
 /// 案例檔的自我檢查：至少 10 案、id 不重複、四種形狀都有；上一輪要過伺服器的驗證
-///（不然真跑時那份會被整份丟掉，兩邊等於一樣）；新片段要有她的訊息；contextWords 不能
-/// 出現在新片段裡（不然「用到上一輪」的計數沒有意義）。回傳問題清單，空的就是過。
+///（不然真跑時那份會被整份丟掉，兩邊等於一樣），也不能帶 App 已經不送的「他複製的那張」；
+/// 新片段要有她的訊息；contextWords 不能出現在新片段裡（不然「用到上一輪」的計數沒有意義）。
+/// 回傳問題清單，空的就是過。
 export function validateCases(file: CaseFile): string[] {
   const problems: string[] = [];
   if (file.version !== 1) problems.push("version 要是 1");
@@ -90,6 +92,9 @@ export function validateCases(file: CaseFile): string[] {
     const parsed = parsePreviousRound(c.previousRound);
     if (parsed.kind !== "ok") {
       problems.push(`${c.id}：上一輪過不了伺服器驗證（${parsed.kind}）`);
+    }
+    if ("sentCard" in c.previousRound) {
+      problems.push(`${c.id}：上一輪不帶 sentCard`);
     }
     if (!c.now.some((m) => !m.isFromMe)) {
       problems.push(`${c.id}：新片段沒有她的訊息`);
@@ -153,29 +158,31 @@ function compact(text: string): string {
 export interface RunChecks {
   /// 用到只出現在上一輪的詞的卡片張數。
   readonly contextHitCards: number;
-  /// 有一則跟他上次複製的那句幾乎一樣（去掉標點後相同或包含）。
-  readonly repeatsSentCard: boolean;
+  /// 有一則照抄上一段的某則訊息（去掉標點後包含那一則，那則至少 6 字）。
+  readonly copiesPreviousMessage: boolean;
 }
 
 export function inspectCards(
   c: BlackboxCase,
   cards: readonly { readonly messages: readonly string[] }[],
 ): RunChecks {
-  const sent = typeof c.previousRound.sentCard === "string"
-    ? compact(c.previousRound.sentCard)
-    : "";
+  const previous =
+    (Array.isArray(c.previousRound.messages)
+      ? c.previousRound.messages as { content?: unknown }[]
+      : [])
+      .map((m) => compact(String(m.content ?? "")))
+      .filter((m) => m.length >= 6);
   return {
     contextHitCards:
       cards.filter((card) =>
         card.messages.some((m) => c.contextWords.some((w) => m.includes(w)))
       ).length,
-    repeatsSentCard: sent.length >= 6 &&
-      cards.some((card) =>
-        card.messages.some((m) => {
-          const message = compact(m);
-          return message === sent || message.includes(sent);
-        })
-      ),
+    copiesPreviousMessage: cards.some((card) =>
+      card.messages.some((m) => {
+        const message = compact(m);
+        return previous.some((p) => message.includes(p));
+      })
+    ),
   };
 }
 
@@ -549,9 +556,11 @@ function summarize(
     } | ${
       byArm("with").reduce((n, r) => n + (r.checks?.contextHitCards ?? 0), 0)
     } |`,
-    `| 重講他上次那句（次） | ${
-      count(byArm("without"), (r) => r.checks?.repeatsSentCard === true)
-    } | ${count(byArm("with"), (r) => r.checks?.repeatsSentCard === true)} |`,
+    `| 照抄上一段的訊息（次） | ${
+      count(byArm("without"), (r) => r.checks?.copiesPreviousMessage === true)
+    } | ${
+      count(byArm("with"), (r) => r.checks?.copiesPreviousMessage === true)
+    } |`,
     "",
     "## 每案對照（人工看 lookFor）",
   ];

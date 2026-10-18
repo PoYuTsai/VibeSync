@@ -27,7 +27,6 @@ const FULL = {
   decision: "hold",
   light: "yellow",
   judgment: "  她只回了貼圖，先等她多說一點。 ",
-  sentCard: "那週六去吃早午餐？\n我知道一間不錯的",
   messages: [
     { isFromMe: true, content: "週末有空嗎" },
     { isFromMe: false, content: " 應該在家耍廢 " },
@@ -55,13 +54,12 @@ Deno.test("上一輪：沒帶是 absent；帶了就 trim、丟掉不認得的欄
     decision: "hold",
     light: "yellow",
     judgment: "她只回了貼圖，先等她多說一點。",
-    sentCard: "那週六去吃早午餐？\n我知道一間不錯的",
     messages: [
       { isFromMe: true, content: "週末有空嗎" },
       { isFromMe: false, content: "應該在家耍廢" },
     ],
   });
-  // 燈號、判讀、複製的卡都可以沒有；空白當沒有。
+  // 燈號、判讀都可以沒有；空白當沒有。
   assertEquals(
     ok({
       decision: "send",
@@ -71,9 +69,9 @@ Deno.test("上一輪：沒帶是 absent；帶了就 trim、丟掉不認得的欄
     }),
     { decision: "send", messages: [{ isFromMe: false, content: "好啊" }] },
   );
-  assertEquals(ok({ decision: "stop", sentCard: "那改天" }), {
+  assertEquals(ok({ decision: "stop", judgment: "她說了不要" }), {
     decision: "stop",
-    sentCard: "那改天",
+    judgment: "她說了不要",
     messages: [],
   });
 });
@@ -86,7 +84,6 @@ Deno.test("上一輪：格式不對就整份不用，原因代碼對得上", () 
   assertEquals(reason({ ...FULL, decision: "care" }), "decision");
   assertEquals(reason({ ...FULL, light: "blue" }), "light");
   assertEquals(reason({ ...FULL, judgment: 3 }), "judgment");
-  assertEquals(reason({ ...FULL, sentCard: ["卡"] }), "sent_card");
   assertEquals(reason({ ...FULL, messages: "她：好" }), "messages");
   assertEquals(
     reason({ ...FULL, messages: [{ isFromMe: "yes", content: "好" }] }),
@@ -104,16 +101,21 @@ Deno.test("上一輪：上限是每段 120、最多 4 則、全部 600，剛好�
   assertEquals(PREVIOUS_ROUND_MAX_MESSAGES, 4);
   assertEquals(PREVIOUS_ROUND_MAX_CHARS, 600);
   const at = PREVIOUS_ROUND_MAX_TEXT_CHARS;
-  // 每段剛好 120：判讀＋卡＋3 則＝600。
+  // 每段剛好 120：判讀＋4 則＝600，也就是合計上限；合計那條只是之後改上限時的保險。
+  assertEquals(
+    PREVIOUS_ROUND_MAX_TEXT_CHARS * (PREVIOUS_ROUND_MAX_MESSAGES + 1),
+    PREVIOUS_ROUND_MAX_CHARS,
+  );
   const atLimit = {
     decision: "send",
     judgment: text(at),
-    sentCard: text(at),
-    messages: [0, 1, 2].map((i) => ({ isFromMe: i === 1, content: text(at) })),
+    messages: [0, 1, 2, 3].map((i) => ({
+      isFromMe: i % 2 === 0,
+      content: text(at),
+    })),
   };
   assertEquals(previousRoundTrace(ok(atLimit)).chars, 600);
   assertEquals(reason({ ...atLimit, judgment: text(at + 1) }), "judgment");
-  assertEquals(reason({ ...atLimit, sentCard: text(at + 1) }), "sent_card");
   assertEquals(
     reason({
       decision: "send",
@@ -127,21 +129,6 @@ Deno.test("上一輪：上限是每段 120、最多 4 則、全部 600，剛好�
       messages: [0, 1, 2, 3, 4].map(() => ({ isFromMe: false, content: "好" })),
     }),
     "messages",
-  );
-  // 4 則各 120 加判讀 120＝600 可以；再多 1 字就超過。
-  const fourMessages = [0, 1, 2, 3].map((i) => ({
-    isFromMe: i % 2 === 0,
-    content: text(at),
-  }));
-  ok({ decision: "send", judgment: text(at), messages: fourMessages });
-  assertEquals(
-    reason({
-      decision: "send",
-      judgment: text(at),
-      sentCard: "多",
-      messages: fourMessages,
-    }),
-    "too_long",
   );
   // 長度照 trim 之後算。
   ok({
@@ -163,11 +150,9 @@ Deno.test("上一輪：trace 只有數量，不放任何字", () => {
   const trace = previousRoundTrace(ok(FULL));
   assertEquals(trace, {
     messages: 2,
-    chars: "她只回了貼圖，先等她多說一點。".length +
-      "那週六去吃早午餐？\n我知道一間不錯的".length + "週末有空嗎".length +
+    chars: "她只回了貼圖，先等她多說一點。".length + "週末有空嗎".length +
       "應該在家耍廢".length,
     judgment: true,
-    sentCard: true,
   });
 });
 
@@ -316,7 +301,6 @@ Deno.test("帶上一輪：讀局面在對話前多一段，標明比較早、只
       "- 上一段最後幾則：",
       "  - 他：週末有空嗎",
       "  - 她：應該在家耍廢",
-      "- 他上次複製的建議（不一定原樣傳出）：「那週六去吃早午餐？」「我知道一間不錯的」",
     ].join("\n"),
   );
   // 上一輪不編輪次：「第 N 輪」只屬於這次的對話。
@@ -324,7 +308,7 @@ Deno.test("帶上一輪：讀局面在對話前多一段，標明比較早、只
   assert(withRound.read.indexOf(section) < withRound.read.indexOf("## 對話"));
 });
 
-Deno.test("帶上一輪：寫卡只放最後幾則與他複製的那張，不放燈號與判讀", () => {
+Deno.test("帶上一輪：寫卡只放最後幾則，不放燈號與判讀", () => {
   const round = ok(FULL);
   const without = prompts();
   const withRound = prompts(round);
@@ -334,7 +318,6 @@ Deno.test("帶上一輪：寫卡只放最後幾則與他複製的那張，不放
     without.write.replace("## 對話\n", `${section}\n\n## 對話\n`),
   );
   assertStringIncludes(section, "  - 她：應該在家耍廢");
-  assertStringIncludes(section, "「那週六去吃早午餐？」「我知道一間不錯的」");
   for (const hidden of ["黃燈", "先別回", "她只回了貼圖"]) {
     assert(!section.includes(hidden), hidden);
   }
@@ -345,8 +328,12 @@ Deno.test("帶上一輪：寫卡只放最後幾則與他複製的那張，不放
   );
   // 沒有燈號就只寫決定；沒有判讀就停在決定。
   assertEquals(
-    previousRoundReadSection(ok({ decision: "stop", sentCard: "那改天" }))[0]
-      .split("\n")[2],
+    previousRoundReadSection(
+      ok({
+        decision: "stop",
+        messages: [{ isFromMe: false, content: "不要再傳了" }],
+      }),
+    )[0].split("\n")[2],
     "- 上次的判讀：停，不再主動傳。",
   );
 });
@@ -362,4 +349,28 @@ Deno.test("帶上一輪：多餘的換行與空白壓成一行，不會打亂段
   );
   assertStringIncludes(section, "- 上次的判讀：綠燈，回她。她在 反問你");
   assertStringIncludes(section, "  - 她：好啊 那就週六");
+});
+
+Deno.test("上一輪不帶他複製的那張：舊版 App 送來也不收、不進提示詞、不記數量（主審第 1 輪 P2）", () => {
+  const round = ok({ ...FULL, sentCard: "那週六去吃早午餐？" });
+  assertEquals(Object.keys(round).sort(), [
+    "decision",
+    "judgment",
+    "light",
+    "messages",
+  ]);
+  for (
+    const section of [
+      ...previousRoundReadSection(round),
+      ...previousRoundWriteSection(round),
+    ]
+  ) {
+    assert(!section.includes("早午餐"), section);
+    assert(!section.includes("複製"), section);
+  }
+  assertEquals(Object.keys(previousRoundTrace(round)).sort(), [
+    "chars",
+    "judgment",
+    "messages",
+  ]);
 });

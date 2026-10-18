@@ -40,7 +40,6 @@ void main() {
     decision: 'hold',
     light: 'yellow',
     judgment: '她只回了貼圖',
-    sentCard: '那週六去吃早午餐？\n我知道一間不錯的',
     messages: [
       PreviousRoundMessage(isFromMe: true, content: '週末有空嗎'),
       PreviousRoundMessage(isFromMe: false, content: '應該在家耍廢'),
@@ -61,7 +60,6 @@ void main() {
       'decision': 'hold',
       'light': 'yellow',
       'judgment': '她只回了貼圖',
-      'sentCard': '那週六去吃早午餐？\n我知道一間不錯的',
       'messages': [
         {'isFromMe': true, 'content': '週末有空嗎'},
         {'isFromMe': false, 'content': '應該在家耍廢'},
@@ -70,7 +68,7 @@ void main() {
     expect(Map.of(withRound)..remove('previousRound'), without);
   });
 
-  test('沒有的欄位不送（燈號、判讀、複製的卡）', () {
+  test('沒有的欄位不送（燈號、判讀）；從來不送他複製的那張', () {
     const minimal = PreviousRoundContext(
       decision: 'send',
       messages: [PreviousRoundMessage(isFromMe: false, content: '你呢')],
@@ -82,7 +80,8 @@ void main() {
       ],
     });
     expect(minimal.charCount, 2);
-    expect(previousRound.charCount, 6 + 18 + 5 + 6);
+    expect(previousRound.charCount, 6 + 5 + 6);
+    expect(previousRound.toJson().containsKey('sentCard'), isFalse);
   });
 
   test('請求組裝器把上一輪原樣交出去；沒注入 resolver 就沒有', () async {

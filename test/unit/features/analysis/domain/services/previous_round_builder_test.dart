@@ -1,13 +1,12 @@
 // 上一輪脈絡（previousRound，Eric 2026-10-18）：只從同一個對象、這個片段建立之前
 // 最近一次的 v3 結果組；上限跟伺服器一樣（每段 120、最多 4 則、合計 600）；
-// 什麼都沒有就不帶。
+// 什麼都沒有就不帶。不帶「他複製的那張」（主審第 1 輪 P2）。
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/previous_round_context.dart';
 import 'package:vibesync/features/analysis/domain/services/previous_round_builder.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
-import 'package:vibesync/features/coaching_memory/domain/entities/coaching_outcome_event.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
@@ -49,7 +48,6 @@ Map<String, dynamic> _v3Result({
 String _snapshot(
   Map<String, dynamic> result, {
   String? historyEventId,
-  String? runId,
   int? messageCount,
 }) =>
     jsonEncode({
@@ -58,7 +56,7 @@ String _snapshot(
         'contentRevision': 'rev',
         if (messageCount != null) 'messageCount': messageCount,
         if (historyEventId != null) 'historyEventId': historyEventId,
-        if (runId != null) 'analysisRunId': runId,
+        'analysisRunId': 'run-1',
       },
     });
 
@@ -98,32 +96,15 @@ Conversation _segment({
 AnalysisHistoryEvent _event(String id, DateTime createdAt) =>
     AnalysisHistoryEvent.analyze(id: id, createdAt: createdAt);
 
-CoachingOutcomeEvent _copy(
-  String id,
-  String text, {
-  required DateTime at,
-  CoachingUserAction action = CoachingUserAction.sentAsIs,
-  CoachingOutcomeSource source = CoachingOutcomeSource.analyze,
-}) =>
-    CoachingOutcomeEvent.create(
-      id: id,
-      source: source,
-      suggestedMoveSummary: text,
-      userAction: action,
-      createdAt: at,
-    );
-
 PreviousRoundContext? _build({
   required Conversation current,
   required List<Conversation> others,
   List<AnalysisHistoryEvent> events = const [],
-  Map<String, List<CoachingOutcomeEvent>> outcomes = const {},
 }) =>
     const PreviousRoundBuilder().build(
       current: current,
       partnerConversations: [current, ...others],
       historyEvents: events,
-      outcomesFor: (id) => outcomes[id] ?? const [],
     );
 
 void main() {
@@ -133,11 +114,10 @@ void main() {
     createdAt: _t0.add(const Duration(hours: 2)),
   );
 
-  test('組出上次的燈號、決定、判讀、他複製的那張與上一段最後幾則', () {
+  test('組出上次的燈號、決定、判讀與上一段最後幾則；不帶他複製的那張', () {
     final previous = _segment(
       id: 'prev',
-      snapshotJson:
-          _snapshot(_v3Result(), historyEventId: 'e1', runId: 'run-1'),
+      snapshotJson: _snapshot(_v3Result(), historyEventId: 'e1'),
       messages: [(true, '週末有空嗎'), (false, '應該在家耍廢')],
       updatedAt: _t0.add(const Duration(hours: 1)),
     );
@@ -145,22 +125,12 @@ void main() {
       current: newSegment,
       others: [previous],
       events: [_event('e1', _t0.add(const Duration(minutes: 30)))],
-      outcomes: {
-        'prev': [
-          _copy(
-            'analyze:prev:run-1:v3:1:accept',
-            '那週六去吃早午餐？',
-            at: _t0.add(const Duration(minutes: 40)),
-          ),
-        ],
-      },
     );
     expect(context, isNotNull);
     expect(context!.toJson(), {
       'decision': 'send',
       'light': 'yellow',
       'judgment': '她只回了貼圖，先等她多說一點。',
-      'sentCard': '那週六去吃早午餐？',
       'messages': [
         {'isFromMe': true, 'content': '週末有空嗎'},
         {'isFromMe': false, 'content': '應該在家耍廢'},
@@ -325,103 +295,30 @@ void main() {
     );
   });
 
-  test('他複製的那張：只認那一次 run 的 v3 卡（含再調過的），回報沒送的不算，取最後一次', () {
-    final previous = _segment(
-      id: 'prev',
-      snapshotJson: _snapshot(_v3Result(), runId: 'run-1'),
-    );
-    String? sentCard(List<CoachingOutcomeEvent> events) => _build(
-          current: newSegment,
-          others: [previous],
-          outcomes: {'prev': events},
-        )!
-            .sentCard;
-
-    expect(sentCard(const []), isNull);
-    expect(
-      sentCard([
-        _copy('analyze:prev:run-1:v3:1:accept', '第一張', at: _t0),
-        _copy(
-          'refine:analyze:prev:run-1:v3:2:tension:req-9',
-          '再調過的第二張',
-          at: _t0.add(const Duration(minutes: 5)),
-        ),
-        // 別次 run、v2 的卡、別的來源都不算。
-        _copy(
-          'analyze:prev:run-0:v3:1:accept',
-          '別次的卡',
-          at: _t0.add(const Duration(minutes: 9)),
-        ),
-        _copy(
-          'analyze:prev:run-1:polish',
-          '潤飾',
-          at: _t0.add(const Duration(minutes: 9)),
-        ),
-        _copy(
-          'analyze:prev:run-1:v3:3:push',
-          '教練的',
-          at: _t0.add(const Duration(minutes: 9)),
-          source: CoachingOutcomeSource.coach,
-        ),
-      ]),
-      '再調過的第二張',
-    );
-    expect(
-      sentCard([
-        _copy('analyze:prev:run-1:v3:1:accept', '第一張', at: _t0),
-        _copy(
-          'analyze:prev:run-1:v3:2:tension',
-          '複製了但沒送',
-          at: _t0.add(const Duration(minutes: 5)),
-          action: CoachingUserAction.didNotSend,
-        ),
-      ]),
-      '第一張',
-    );
-    // 快照沒有 runId（舊資料）就對不回複製紀錄。
-    expect(
-      _build(
-        current: newSegment,
-        others: [_segment(id: 'prev', snapshotJson: _snapshot(_v3Result()))],
-        outcomes: {
-          'prev': [_copy('analyze:prev:run-1:v3:1:accept', '卡', at: _t0)],
-        },
-      )!
-          .sentCard,
-      isNull,
-    );
-  });
-
-  test('上限：每段超過 120 截到 119 加「…」、只取最後 4 則、合計超過 600 從最舊的一則拿掉', () {
+  test('上限：每段超過 120 截到 119 加「…」、只取最後 4 則，合計剛好 600', () {
     final long = '字' * 200;
     final previous = _segment(
       id: 'prev',
-      snapshotJson: _snapshot(_v3Result(judgment: long), runId: 'run-1'),
+      snapshotJson: _snapshot(_v3Result(judgment: long)),
       messages: [
         for (var i = 0; i < 6; i++) (i.isOdd, '第$i則${'話' * 150}'),
       ],
     );
-    final context = _build(
-      current: newSegment,
-      others: [previous],
-      outcomes: {
-        'prev': [_copy('analyze:prev:run-1:v3:1:accept', '卡' * 150, at: _t0)],
-      },
-    )!;
+    final context = _build(current: newSegment, others: [previous])!;
     expect(context.judgment!.length, PreviousRoundBuilder.maxTextChars);
     expect(context.judgment, '${'字' * 119}…');
-    expect(context.sentCard!.length, PreviousRoundBuilder.maxTextChars);
     for (final message in context.messages) {
       expect(message.content.length, PreviousRoundBuilder.maxTextChars);
     }
-    // 判讀 120＋卡 120＋最多 3 則 120＝600：最後 4 則裡最舊的那則被拿掉。
+    // 判讀 120＋最後 4 則各 120＝600，剛好是合計上限。
     expect(context.messages.map((m) => m.content.substring(0, 3)).toList(), [
+      '第2則',
       '第3則',
       '第4則',
       '第5則',
     ]);
     expect(context.charCount, PreviousRoundBuilder.maxChars);
-    // 沒有判讀與卡時，最後 4 則都留得下。
+    // 沒有判讀時也只取最後 4 則。
     final noExtras = _build(
       current: newSegment,
       others: [

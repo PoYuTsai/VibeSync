@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "自寫的兩輪對話（不是真人資料）。previousRound 是 App 會送的上一輪（照伺服器上限：每段 120、最多 4 則、合計 600）；now 是他在新片段貼的內容。contextWords 只出現在上一輪：卡片用到它，代表模型有接上上一輪（話題換掉的案例則是「被拉回舊話題」的參考數）。lookFor 給人看。",
+  "note": "自寫的兩輪對話（不是真人資料）。previousRound 是 App 會送的上一輪（照伺服器上限：每段 120、最多 4 則、合計 600；不帶他複製的那張）；now 是他在新片段貼的內容，他上次傳的那句要讓模型知道，就得貼在新片段裡。contextWords 只出現在上一輪：卡片用到它，代表模型有接上上一輪（話題換掉的案例則是「被拉回舊話題」的參考數）。lookFor 給人看。",
   "cases": [
     {
       "id": "answered_reward_after_deadline",
@@ -9,7 +9,6 @@
         "decision": "send",
         "light": "green",
         "judgment": "她主動抱怨工作、願意講細節，先接住她的累。",
-        "sentCard": "月底交完一定要好好犒賞自己，妳最想做什麼？",
         "messages": [
           { "isFromMe": false, "content": "這週連續加班四天，整個人快被榨乾" },
           { "isFromMe": true, "content": "誰這麼狠心" },
@@ -17,10 +16,14 @@
         ]
       },
       "now": [
+        {
+          "isFromMe": true,
+          "content": "交完一定要好好犒賞自己，妳最想做什麼？"
+        },
         { "isFromMe": false, "content": "想去泡溫泉！北投那種" }
       ],
-      "contextWords": ["月底", "加班", "主管", "犒賞", "交完"],
-      "lookFor": "她在回答他上次問的「交完最想做什麼」。有上一輪的卡應該把泡溫泉跟她月底交差連起來；沒有的只能就溫泉本身回。"
+      "contextWords": ["加班", "主管", "榨乾", "月底"],
+      "lookFor": "她在回答他問的「交完最想做什麼」。有上一輪的卡應該把泡溫泉跟她這週加班、月底交差連起來；沒有的只能就溫泉本身回。"
     },
     {
       "id": "answered_favorite_restaurant",
@@ -29,7 +32,6 @@
         "decision": "send",
         "light": "green",
         "judgment": "她分享最近的喜好，給了延伸的話題。",
-        "sentCard": "那妳心中的第一名是哪間？我來朝聖",
         "messages": [
           { "isFromMe": true, "content": "最近都吃什麼" },
           { "isFromMe": false, "content": "最近迷上韓式料理，一週吃三次" }
@@ -40,7 +42,7 @@
         { "isFromMe": false, "content": "信義區那間豆腐鍋，排隊也值得" }
       ],
       "contextWords": ["韓式", "一週吃三次"],
-      "lookFor": "他把自己上次傳的那句也貼了進來，上一輪的卡會跟對話重複。看有沒有因此重講他的問題，或把「一週吃三次」接成玩笑。"
+      "lookFor": "看有沒有把「一週吃三次」接成玩笑或延伸，而不是只回豆腐鍋本身。"
     },
     {
       "id": "answered_horror_movie",
@@ -49,7 +51,6 @@
         "decision": "send",
         "light": "green",
         "judgment": "她在分享昨晚的事，語氣輕鬆，可以帶點玩笑。",
-        "sentCard": "妳是那種會摀著眼睛看的人嗎",
         "messages": [
           { "isFromMe": false, "content": "昨天終於鼓起勇氣看了那部恐怖片" },
           { "isFromMe": false, "content": "看完不敢關燈睡" }
@@ -58,8 +59,8 @@
       "now": [
         { "isFromMe": false, "content": "才不是！我是會笑出來的那種" }
       ],
-      "contextWords": ["恐怖片", "摀", "關燈", "鬼"],
-      "lookFor": "沒有上一輪，「我是會笑出來的那種」幾乎看不懂在回什麼。有上一輪的卡應該接得上恐怖片和她說不敢關燈的反差。"
+      "contextWords": ["恐怖片", "關燈", "鬼"],
+      "lookFor": "他沒把自己上次的問題貼進來（只貼了她的回覆）。沒有上一輪，「我是會笑出來的那種」幾乎看不懂；有上一輪至少知道在講恐怖片，看卡片能不能接上她說不敢關燈的反差，又不亂猜他問了什麼。"
     },
     {
       "id": "topic_change_meteor_shower",
@@ -68,7 +69,6 @@
         "decision": "send",
         "light": "green",
         "judgment": "她分享新的興趣，可以順著問細節。",
-        "sentCard": "攀岩很吃手臂吧？妳練多久了",
         "messages": [
           { "isFromMe": false, "content": "我最近開始學攀岩" },
           { "isFromMe": false, "content": "昨天第一次爬到頂" }
@@ -77,8 +77,8 @@
       "now": [
         { "isFromMe": false, "content": "欸你知道下週有流星雨嗎" }
       ],
-      "contextWords": ["攀岩", "手臂", "爬到頂"],
-      "lookFor": "她跳過他上次的問題、改聊流星雨。好的卡跟著她的新話題走，不硬拉回攀岩；可以順手帶一點（例如上次爬到頂）但不能變成追問。"
+      "contextWords": ["攀岩", "爬到頂"],
+      "lookFor": "她改聊流星雨。好的卡跟著她的新話題走，不硬拉回攀岩；可以順手帶一點（例如上次爬到頂）但不能變成追問。"
     },
     {
       "id": "topic_change_after_hold",
@@ -106,17 +106,17 @@
         "decision": "send",
         "light": "green",
         "judgment": "她提到想去的店，等於開了窗，可以具體約。",
-        "sentCard": "那週六下午兩點，我們去吃",
         "messages": [
           { "isFromMe": true, "content": "最近有想吃什麼嗎" },
           { "isFromMe": false, "content": "東區新開的那間甜點店好像很好吃" }
         ]
       },
       "now": [
+        { "isFromMe": true, "content": "那週六下午兩點，我們去吃" },
         { "isFromMe": false, "content": "再看看" }
       ],
-      "contextWords": ["甜點", "週六", "東區", "兩點"],
-      "lookFor": "他上次直接約了週六，她只回「再看看」。有上一輪應該看得出這是對邀約的保留，不再推進；沒有上一輪，「再看看」單獨看很模糊。比較兩邊的燈號、決定與有沒有再出推進卡。"
+      "contextWords": ["甜點", "東區"],
+      "lookFor": "他上次約了週六，她只回「再看看」。上一輪的判讀是綠燈、可以約；看帶了上一輪會不會被那個綠燈拖住、又出一張推進卡，還是照這次的保留不再推。"
     },
     {
       "id": "cold_after_photo_request",
@@ -125,17 +125,17 @@
         "decision": "send",
         "light": "green",
         "judgment": "她主動分享自己的小改變，可以接住並帶點張力。",
-        "sentCard": "想看！傳張照片來",
         "messages": [
           { "isFromMe": false, "content": "今天去剪頭髮了，剪很短" },
           { "isFromMe": false, "content": "有點後悔" }
         ]
       },
       "now": [
+        { "isFromMe": true, "content": "想看！傳張照片來" },
         { "isFromMe": false, "content": "哈哈" }
       ],
-      "contextWords": ["剪", "頭髮", "照片", "後悔"],
-      "lookFor": "他上次要照片，她只回「哈哈」帶過。好的判讀不再要照片、換輕鬆的方向或先收；看有上一輪時是不是比較不會再要一次。"
+      "contextWords": ["剪", "頭髮", "後悔"],
+      "lookFor": "他要照片，她只回「哈哈」帶過。好的判讀不再要照片、換輕鬆的方向或先收；看帶了上一輪（她有點後悔剪短）會不會接得更體貼，又不再要一次。"
     },
     {
       "id": "cold_after_call_request",
@@ -144,17 +144,17 @@
         "decision": "send",
         "light": "green",
         "judgment": "聊得很順，她回得長，可以往前一步。",
-        "sentCard": "打字好慢，要不要今晚直接通個電話",
         "messages": [
           { "isFromMe": false, "content": "哈哈你很會聊欸" },
-          { "isFromMe": false, "content": "我朋友都說我打字超慢" }
+          { "isFromMe": false, "content": "我朋友都說我回訊息超慢" }
         ]
       },
       "now": [
+        { "isFromMe": true, "content": "打字好慢，要不要今晚直接通個電話" },
         { "isFromMe": false, "content": "我還是打字比較自在" }
       ],
-      "contextWords": ["電話", "通話", "今晚"],
-      "lookFor": "她婉轉拒絕了他上次提的通電話。好的卡尊重這條界線、不再提電話；沒有上一輪時看不出她在拒絕什麼。"
+      "contextWords": ["很會聊", "朋友", "回訊息"],
+      "lookFor": "她婉轉拒絕了通電話。好的卡尊重這條界線、不再提電話；看上一輪「可以往前一步」的判讀會不會讓帶的那邊更容易再推。"
     },
     {
       "id": "asked_him_weekend",
@@ -163,7 +163,6 @@
         "decision": "send",
         "light": "green",
         "judgment": "她分享週末計畫，可以順著問。",
-        "sentCard": "好健康！要爬哪座山？",
         "messages": [
           { "isFromMe": true, "content": "週末有什麼計畫" },
           { "isFromMe": false, "content": "我週末要去爬山" }
@@ -183,7 +182,6 @@
         "decision": "send",
         "light": "green",
         "judgment": "她講了自己的工作和辛苦，先接住。",
-        "sentCard": "輪班真的很辛苦，大夜班最難熬吧",
         "messages": [
           { "isFromMe": false, "content": "我在醫院當護理師" },
           { "isFromMe": false, "content": "輪班輪到生理時鐘都亂掉" }
@@ -192,8 +190,8 @@
       "now": [
         { "isFromMe": false, "content": "對啊😭 那你做什麼的？" }
       ],
-      "contextWords": ["護理師", "輪班", "大夜", "醫院", "生理時鐘"],
-      "lookFor": "她問他的工作（身分題要留空格）。有上一輪的卡可以把回答跟她的輪班連起來；「對啊😭」沒有上一輪幾乎沒有意思。"
+      "contextWords": ["護理師", "輪班", "醫院", "生理時鐘"],
+      "lookFor": "他沒把自己上次那句貼進來。她問他的工作（身分題要留空格）；有上一輪的卡可以把回答跟她的輪班連起來，「對啊😭」沒有上一輪幾乎沒有意思。"
     }
   ]
 }

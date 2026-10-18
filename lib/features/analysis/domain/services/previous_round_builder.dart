@@ -9,7 +9,6 @@ import 'dart:convert';
 import 'package:characters/characters.dart';
 
 import '../../../analysis_history/domain/entities/analysis_history_event.dart';
-import '../../../coaching_memory/domain/entities/coaching_outcome_event.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../entities/guide_v3_result.dart';
 import '../entities/previous_round_context.dart';
@@ -25,7 +24,6 @@ class PreviousRoundBuilder {
 
   static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
   static const _snapshotHistoryEventIdKey = 'historyEventId';
-  static const _snapshotRunIdKey = 'analysisRunId';
   static const _snapshotMessageCountKey = 'messageCount';
   static const _truncationMark = '…';
 
@@ -33,8 +31,6 @@ class PreviousRoundBuilder {
     required Conversation current,
     required List<Conversation> partnerConversations,
     required List<AnalysisHistoryEvent> historyEvents,
-    required List<CoachingOutcomeEvent> Function(String conversationId)
-        outcomesFor,
   }) {
     final partnerId = _scope(current.partnerId);
     if (partnerId == null) return null;
@@ -66,18 +62,16 @@ class PreviousRoundBuilder {
     // 上一輪是 v2 或自傷關心（只有固定文案）就不帶，也不跳去更早的那段：更早的那段
     // 已經不是上一輪了。
     if (latest == null || result == null || result.isCare) return null;
-    return _contextFrom(latest, result, outcomesFor);
+    return _contextFrom(latest, result);
   }
 
   PreviousRoundContext? _contextFrom(
     _Candidate candidate,
     GuideV3Result result,
-    List<CoachingOutcomeEvent> Function(String conversationId) outcomesFor,
   ) {
     final conversation = candidate.conversation;
     final read = result.read;
     final judgment = _capped(read.judgment);
-    final sentCard = _capped(_copiedCard(candidate, outcomesFor) ?? '');
     final analyzedCount = (candidate.snapshot.messageCount ??
             conversation.lastAnalyzedMessageCount ??
             conversation.messages.length)
@@ -91,47 +85,20 @@ class PreviousRoundBuilder {
     final messages = recent.length > maxMessages
         ? recent.sublist(recent.length - maxMessages)
         : recent;
-    // 超過合計上限就從最舊的一則拿掉：最新的幾則最接近她這次回的。
-    final fixed = (judgment?.length ?? 0) + (sentCard?.length ?? 0);
-    var total = fixed +
+    // 超過合計上限就從最舊的一則拿掉：最新的幾則最接近她這次回的（判讀＋4 則
+    // 各 120 剛好 600，這條是之後改上限時的保險）。
+    var total = (judgment?.length ?? 0) +
         messages.fold<int>(0, (sum, message) => sum + message.content.length);
     while (messages.isNotEmpty && total > maxChars) {
       total -= messages.removeAt(0).content.length;
     }
-    if (judgment == null && sentCard == null && messages.isEmpty) return null;
+    if (judgment == null && messages.isEmpty) return null;
     return PreviousRoundContext(
       decision: read.decision.wire,
       light: read.light?.wire,
       judgment: judgment,
-      sentCard: sentCard,
       messages: List.unmodifiable(messages),
     );
-  }
-
-  /// 他複製的那張：複製紀錄的 key 跟分析頁一樣是
-  /// `analyze:<片段>:<runId>:v3:<第幾張>:<任務>`，再調過的卡是 `refine:<那個 key>:…`。
-  /// 回報「沒送」的不算；複製過好幾張就取最後一次。
-  String? _copiedCard(
-    _Candidate candidate,
-    List<CoachingOutcomeEvent> Function(String conversationId) outcomesFor,
-  ) {
-    final runId = candidate.snapshot.runId;
-    if (runId == null) return null;
-    final conversationId = candidate.conversation.id;
-    final cardPrefix = 'analyze:$conversationId:$runId:v3:';
-    CoachingOutcomeEvent? latest;
-    for (final event in outcomesFor(conversationId)) {
-      if (event.source != CoachingOutcomeSource.analyze ||
-          event.userAction == CoachingUserAction.didNotSend ||
-          !(event.id.startsWith(cardPrefix) ||
-              event.id.startsWith('refine:$cardPrefix'))) {
-        continue;
-      }
-      if (latest == null || event.createdAt.isAfter(latest.createdAt)) {
-        latest = event;
-      }
-    }
-    return latest?.suggestedMoveSummary;
   }
 
   /// trim；空的回 null；超過 120 就照字（不切開 emoji）截到 119 再加「…」。
@@ -168,19 +135,17 @@ class _Candidate {
   final DateTime analyzedAt;
 }
 
-/// 對話快照（v2 或 v3）與存檔時的 meta（歷史事件 id、伺服器 runId、分析了幾則）。
+/// 對話快照（v2 或 v3）與存檔時的 meta（歷史事件 id、分析了幾則）。
 /// [guideV3] 只有 v3 結果才有；v2、或認不出來的 v3 是 null。
 class _AnalyzedSnapshot {
   const _AnalyzedSnapshot({
     required this.guideV3,
     required this.historyEventId,
-    required this.runId,
     required this.messageCount,
   });
 
   final GuideV3Result? guideV3;
   final String? historyEventId;
-  final String? runId;
   final int? messageCount;
 
   static _AnalyzedSnapshot? tryParse(String? snapshotJson) {
@@ -204,9 +169,6 @@ class _AnalyzedSnapshot {
         guideV3: result,
         historyEventId: meta is Map
             ? text(meta[PreviousRoundBuilder._snapshotHistoryEventIdKey])
-            : null,
-        runId: meta is Map
-            ? text(meta[PreviousRoundBuilder._snapshotRunIdKey])
             : null,
         messageCount: rawCount is int ? rawCount : null,
       );

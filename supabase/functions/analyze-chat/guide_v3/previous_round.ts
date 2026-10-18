@@ -1,6 +1,8 @@
 // 上一輪脈絡（previousRound）：分析完的片段就封存，她回了之後他只能另開新片段，
-// 模型原本看不到上一輪的判讀和他傳出去的那句。App 在新片段帶一份精簡的上一輪：
-// 上次的判讀、他複製的那張卡、上一段最後幾則（Eric 2026-10-18 拍板「新片段要帶」）。
+// 模型原本看不到上一輪。App 在新片段帶一份精簡的上一輪：上次的燈號、決定與判讀，
+// 加上一段最後幾則（Eric 2026-10-18 拍板「新片段要帶」）。不帶「他複製的那張」：
+// 手機上的複製紀錄記不準最後複製的是哪張、也不反映他改過的字（主審第 1 輪 P2），
+// 舊版 App 送來也不收。
 //
 // - 開關 ANALYZE_GUIDE_V3_PREV_ROUND（off／test／on，見 routing.ts）開著才讀；沒開
 //   就當沒送，兩段提示詞一字不變。
@@ -29,8 +31,6 @@ export interface GuideV3PreviousRound {
   readonly light?: typeof LIGHTS[number];
   /// 上次給用戶看的判讀；沒有就不放。
   readonly judgment?: string;
-  /// 他上次從那一輪複製的卡（可能是好幾則，用換行接起來）；沒複製過就不放。
-  readonly sentCard?: string;
   /// 上一段最後幾則（舊到新）。
   readonly messages: readonly {
     readonly isFromMe: boolean;
@@ -43,7 +43,6 @@ export type PreviousRoundIgnoredReason =
   | "decision"
   | "light"
   | "judgment"
-  | "sent_card"
   | "messages"
   | "message"
   | "too_long"
@@ -59,7 +58,6 @@ export interface GuideV3PreviousRoundTrace {
   readonly messages: number;
   readonly chars: number;
   readonly judgment: boolean;
-  readonly sentCard: boolean;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -93,8 +91,6 @@ export function parsePreviousRound(raw: unknown): PreviousRoundParse {
   }
   const judgment = optionalText(input.judgment);
   if (judgment === null) return ignored("judgment");
-  const sentCard = optionalText(input.sentCard);
-  if (sentCard === null) return ignored("sent_card");
   const rawMessages = input.messages ?? [];
   if (
     !Array.isArray(rawMessages) ||
@@ -112,7 +108,8 @@ export function parsePreviousRound(raw: unknown): PreviousRoundParse {
     ) return ignored("message");
     messages.push({ isFromMe: message.isFromMe, content });
   }
-  const chars = judgment.length + sentCard.length +
+  // 每段上限加起來剛好 600（判讀＋4 則）；這條是之後改上限時的保險。
+  const chars = judgment.length +
     messages.reduce((total, m) => total + m.content.length, 0);
   if (chars > PREVIOUS_ROUND_MAX_CHARS) return ignored("too_long");
   if (chars === 0) return ignored("empty");
@@ -122,7 +119,6 @@ export function parsePreviousRound(raw: unknown): PreviousRoundParse {
       decision,
       ...(light ? { light } : {}),
       ...(judgment ? { judgment } : {}),
-      ...(sentCard ? { sentCard } : {}),
       messages,
     },
   };
@@ -143,10 +139,9 @@ export function previousRoundTrace(
 ): GuideV3PreviousRoundTrace {
   return {
     messages: round.messages.length,
-    chars: (round.judgment?.length ?? 0) + (round.sentCard?.length ?? 0) +
+    chars: (round.judgment?.length ?? 0) +
       round.messages.reduce((total, m) => total + m.content.length, 0),
     judgment: Boolean(round.judgment),
-    sentCard: Boolean(round.sentCard),
   };
 }
 
@@ -178,21 +173,9 @@ function lastMessagesLines(round: GuideV3PreviousRound): string[] {
   ];
 }
 
-function sentCardLines(round: GuideV3PreviousRound): string[] {
-  const parts = (round.sentCard ?? "").split("\n").map(oneLine).filter(
-    Boolean,
-  );
-  if (parts.length === 0) return [];
-  return [
-    `- 他上次複製的建議（不一定原樣傳出）：${
-      parts.map((p) => `「${p}」`).join("")
-    }`,
-  ];
-}
-
 const SECTION_TITLE = "## 上一輪（比下面的對話早）";
 
-/// 讀局面：上次的判讀＋最後幾則＋他複製的那張。燈號只反映那一輪，這一輪照這次的
+/// 讀局面：上次的判讀＋最後幾則。燈號只反映那一輪，這一輪照這次的
 /// 對話重判（把上次的分數餵回去會錨定，見 App 的 PartnerSummaryBuilder）。
 export function previousRoundReadSection(
   round: GuideV3PreviousRound | undefined,
@@ -209,17 +192,16 @@ export function previousRoundReadSection(
       "上一段分析留下的紀錄，只當背景：不是她這次說的話，跟這次的對話對不上時以這次為準，燈號也照這次的對話重新判斷。",
       `- 上次的判讀：${labels}。${judgment}`,
       ...lastMessagesLines(round),
-      ...sentCardLines(round),
     ].join("\n"),
   ];
 }
 
-/// 寫卡：只放最後幾則＋他複製的那張（判讀對寫句子是雜訊）；兩樣都沒有就不放。
+/// 寫卡：只放最後幾則（判讀對寫句子是雜訊）；沒有就不放。
 export function previousRoundWriteSection(
   round: GuideV3PreviousRound | undefined,
 ): string[] {
   if (!round) return [];
-  const lines = [...lastMessagesLines(round), ...sentCardLines(round)];
+  const lines = lastMessagesLines(round);
   if (lines.length === 0) return [];
   return [
     [

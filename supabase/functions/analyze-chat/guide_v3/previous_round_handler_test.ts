@@ -60,11 +60,14 @@ const PREVIOUS_ROUND = {
     120,
     "。",
   ),
-  sentCard: "那週六去吃早午餐？我知道一間鬆餅很有名的".padEnd(120, "～"),
   messages: [
     { isFromMe: false, content: "最近好想吃鬆餅喔".padEnd(120, "～") },
     { isFromMe: true, content: "哪一種的？厚的還是薄的".padEnd(120, "？") },
     { isFromMe: false, content: "厚的！越厚越好".padEnd(120, "！") },
+    {
+      isFromMe: false,
+      content: "東區那間排隊名店我還沒去過".padEnd(120, "～"),
+    },
   ],
 };
 
@@ -170,7 +173,13 @@ Deno.test("上一輪開關沒開（沒設、off、打錯、test 但不是測試�
 
 Deno.test("上一輪開關 on：兩段提示詞各多一段標明的背景，系統提示詞不變", async () => {
   const without = await run(body(), "on");
-  const withField = await run(body({ previousRound: PREVIOUS_ROUND }), "on");
+  // 舊版 App 可能還帶「他複製的那張」：不收、不進提示詞（主審第 1 輪 P2）。
+  const withField = await run(
+    body({
+      previousRound: { ...PREVIOUS_ROUND, sentCard: "那週六去吃早午餐？" },
+    }),
+    "on",
+  );
   assertDone(without);
   assertDone(withField);
   const parsed = parsePreviousRound(PREVIOUS_ROUND);
@@ -211,14 +220,13 @@ Deno.test("上一輪開關 on：不算計費字數、不進對話雜湊，trace 
   assertEquals(usage.usage.messagesUsed, 3);
   const trace = withField.finalResult?.guideV3Trace as Record<string, unknown>;
   assertEquals(trace.previousRound, {
-    messages: 3,
+    messages: 4,
     chars: 600,
     judgment: true,
-    sentCard: true,
   });
   // 落帳的結果裡找不到上一輪的任何字。
   const stored = JSON.stringify(withField.finalResult);
-  for (const piece of ["好想吃鬆餅", "越厚越好", "鬆餅很有名", "給了很明確"]) {
+  for (const piece of ["好想吃鬆餅", "越厚越好", "排隊名店", "給了很明確"]) {
     assert(!stored.includes(piece), piece);
   }
 });
