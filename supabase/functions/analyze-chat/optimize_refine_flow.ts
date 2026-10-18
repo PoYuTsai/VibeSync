@@ -57,6 +57,8 @@ export type OptimizeIdentityResolution =
     kind: "ok";
     requestId: string | null;
     inputHash: string | null;
+    /// 任務卡的再調另算的「不含卡片規格」hash（見 resolveOptimizeIdentity）；其他是 null。
+    legacyInputHash: string | null;
     replayResult: Record<string, unknown> | null;
   }
   | { kind: "response"; response: Response };
@@ -122,10 +124,16 @@ export async function resolveOptimizeIdentity(args: {
     logWarn("optimize_message_request_id_missing_legacy", {
       user: summarizeUser(args.userId),
     });
-    return { kind: "ok", requestId, inputHash: null, replayResult: null };
+    return {
+      kind: "ok",
+      requestId,
+      inputHash: null,
+      legacyInputHash: null,
+      replayResult: null,
+    };
   }
 
-  const inputHash = await computeOptimizeMessageInputHash({
+  const hashInput = {
     messages: args.hashContext.messages,
     userDraft: args.userDraft,
     sessionContext: args.hashContext.sessionContext,
@@ -137,8 +145,17 @@ export async function resolveOptimizeIdentity(args: {
     // 指令必須綁進冪等鍵，否則同一句草稿的兩種不同微調會共用同一顆
     // request id 的帳本列，第二次會 replay 出第一次的結果。
     refineInstruction: args.hashContext.refineInstruction,
+  };
+  const inputHash = await computeOptimizeMessageInputHash({
+    ...hashInput,
     guideV3Card: args.hashContext.guideV3Card,
   });
+  // 跨版本重播（主審第 1 輪 P1）：新 App 打到還沒升版的 Edge 時，舊 Edge 不認卡片規格，
+  // 帳本列的 hash 不含卡。回應遺失、升版後用同一顆 requestId 重試，那一列就是同一次
+  // 請求：照 replay 給、不再扣。當成不一致的話，App 會換新身分，下一次再扣一次。
+  const legacyInputHash = args.hashContext.guideV3Card
+    ? await computeOptimizeMessageInputHash(hashInput)
+    : null;
   const { data: replayRow, error: replayReadError } = await args.supabase
     .from("optimize_message_requests")
     .select("input_hash, result_json, created_at")
@@ -167,6 +184,7 @@ export async function resolveOptimizeIdentity(args: {
   const replay = classifyOptimizeMessageReplayPreflight(
     replayRow as OptimizeMessageReplayRow | null,
     inputHash,
+    legacyInputHash,
   );
   if (replay.kind === "mismatch") {
     return {
@@ -206,9 +224,21 @@ export async function resolveOptimizeIdentity(args: {
         }, 500),
       };
     }
-    return { kind: "ok", requestId, inputHash, replayResult: hydratedReplay };
+    return {
+      kind: "ok",
+      requestId,
+      inputHash,
+      legacyInputHash,
+      replayResult: hydratedReplay,
+    };
   }
-  return { kind: "ok", requestId, inputHash, replayResult: null };
+  return {
+    kind: "ok",
+    requestId,
+    inputHash,
+    legacyInputHash,
+    replayResult: null,
+  };
 }
 
 /// 已付費 replay 的無扣費回應：同步權威用量後回 stored result。
@@ -526,6 +556,8 @@ export async function settleOptimizeMessage(args: {
   refineFreeGranted: boolean | null;
   requestId: string;
   inputHash: string;
+  /// 任務卡的再調另算的「不含卡片規格」hash；其他是 null。
+  legacyInputHash?: string | null;
   result: Record<string, unknown>;
   userDraft: string | undefined;
   monthlyLimit: number;
@@ -547,10 +579,11 @@ export async function settleOptimizeMessage(args: {
       }, 500),
     };
   }
-  const settlement = await settleOptimizeMessageRequest({
-    // deno-lint-ignore no-explicit-any
-    rpc: (fn: string, params: Record<string, unknown>): any =>
-      args.supabase.rpc(fn, params),
+  // deno-lint-ignore no-explicit-any
+  const rpc = (fn: string, params: Record<string, unknown>): any =>
+    args.supabase.rpc(fn, params);
+  let settlement = await settleOptimizeMessageRequest({
+    rpc,
     userId: args.userId,
     requestId: args.requestId,
     inputHash: args.inputHash,
@@ -559,6 +592,27 @@ export async function settleOptimizeMessage(args: {
     dailyLimit: args.dailyLimit,
     chargeQuota: args.quotaUsage.shouldChargeQuota && !args.accountIsTest,
   });
+  // 跨版本重播的並行版：還沒升版的 Edge 在預檢之後才用「不含卡」的 hash 寫進帳本。
+  // 同一次請求，改用那一份 hash 結算：帳本已有那一列就照原樣回、不再扣（不帶扣費）。
+  if (settlement.kind === "mismatch" && args.legacyInputHash) {
+    const legacy = await settleOptimizeMessageRequest({
+      rpc,
+      userId: args.userId,
+      requestId: args.requestId,
+      inputHash: args.legacyInputHash,
+      result: optimizeLedgerResult,
+      monthlyLimit: args.monthlyLimit,
+      dailyLimit: args.dailyLimit,
+      chargeQuota: false,
+    });
+    if (legacy.kind === "settled") {
+      logWarn("optimize_message_settled_on_legacy_hash", {
+        user: summarizeUser(args.userId),
+        requestId: args.requestId,
+      });
+      settlement = legacy;
+    }
+  }
   if (settlement.kind === "quota_exceeded") {
     const { data: authoritativeSub, error: authoritativeSubError } = await args
       .supabase

@@ -8,6 +8,7 @@ import {
 import { GUIDE_V3_SENTINELS } from "./finalize.ts";
 import {
   finalizeRefinedCard,
+  GUIDE_V3_REFINE_SENTINELS,
   type GuideV3RefineCard,
   guideV3RefineSection,
   isGuideV3RefineSafetyRejection,
@@ -202,23 +203,103 @@ Deno.test("定稿：則數變了整次不給（兩則併一則、一則拆兩則
   });
 });
 
-Deno.test("定稿：空格一個都不能少；多出空格可以（App 會要他先填）", () => {
+Deno.test("定稿：每一則的空格段數都要跟原本一樣（不能填掉、挪到別則或多編一個）", () => {
   assertEquals(refined("我是做＿＿的\n你呢", "我是做設計的\n你呢"), {
     ok: false,
-    reason: "blank_removed",
+    reason: "blank_changed",
+  });
+  // 總數一樣也不行：第一則的身分空格被填掉，第二則多一個（主審第 1 輪 P2-5）。
+  assertEquals(refined("我做＿＿\n住＿＿", "我做設計\n住＿＿，週末去＿＿"), {
+    ok: false,
+    reason: "blank_changed",
   });
   assertEquals(
     refined("我做＿＿，住＿＿", "我做＿＿的，住在＿", { method: "blank" }),
     { ok: true, messages: ["我做＿＿的，住在＿"] },
   );
+  assertEquals(refined("我做＿＿\n住＿＿", "我做＿＿啦\n住＿＿附近"), {
+    ok: true,
+    messages: ["我做＿＿啦", "住＿＿附近"],
+  });
   assertEquals(refined("我做＿＿，住＿＿", "我做＿＿，住哪就先不說"), {
     ok: false,
-    reason: "blank_removed",
+    reason: "blank_changed",
   });
   assertEquals(refined("週末去走走", "週末去＿＿走走"), {
-    ok: true,
-    messages: ["週末去＿＿走走"],
+    ok: false,
+    reason: "blank_changed",
   });
+});
+
+Deno.test("外洩哨兵：任務卡規則段落的每一行、每一條規則都有，至少 12 字", () => {
+  assert(GUIDE_V3_REFINE_SENTINELS.length > 20);
+  for (const sentinel of GUIDE_V3_REFINE_SENTINELS) {
+    assert(sentinel.length >= 12, sentinel);
+  }
+  // 每一種規格組出來的段落，標題以外的每一行都至少中一個哨兵。
+  for (const task of Object.values(TASK_CODE)) {
+    for (const voice of Object.values(VOICE_CODE)) {
+      for (const method of Object.values(METHOD_CODE)) {
+        const lines = guideV3RefineSection({ task, voice, method })
+          .split("\n").slice(1).filter((l) => l.trim());
+        for (const line of lines) {
+          assert(
+            GUIDE_V3_REFINE_SENTINELS.some((s) => line.includes(s)),
+            line,
+          );
+        }
+      }
+    }
+  }
+});
+
+Deno.test("定稿：模型把任務卡規則照抄成一則就整次不給（外洩）", () => {
+  const section = guideV3RefineSection(PUSH).split("\n");
+  // 主審第 1 輪 P2-4 的例子：段落開頭那一行。
+  assertEquals(refined("那就週六\n我來訂位", `那就週六\n${section[2]}`), {
+    ok: false,
+    reason: "prompt_leak",
+  });
+  // 規則句（推進那一條，去掉前面的項目符號）。
+  assertEquals(
+    refined(
+      "那就週六\n我來訂位",
+      "那就週六\n往前推的意思要留著：用陳述句，或當作已經說定的口氣",
+    ),
+    { ok: false, reason: "prompt_leak" },
+  );
+  // 口吻那一條，夾在一般句子裡也算。
+  assertEquals(
+    refined(
+      "好啊",
+      "好啊，稱呼對方一律用「你」，不用「妳」；語助詞和表情符號少用",
+    ),
+    { ok: false, reason: "prompt_leak" },
+  );
+  // 簡體照抄：整理後轉成繁體一樣抓得到。
+  assertEquals(
+    refined("好啊", "好啊，这一则是对话分析写好的任务卡。这一节优先于上面的"),
+    { ok: false, reason: "prompt_leak" },
+  );
+});
+
+Deno.test("外洩哨兵不誤擋：v3 錄音裡 73 張卡的字都不會中", async () => {
+  const fixtures = JSON.parse(
+    await Deno.readTextFile(
+      new URL("../testdata/guide_v3_replay_fixtures.json", import.meta.url),
+    ),
+  ) as { cases: { expected: { events: Record<string, unknown>[] } }[] };
+  const cards = fixtures.cases.flatMap((c) =>
+    c.expected.events.filter((e) => e.type === "analysis.card")
+  ) as { messages: string[] }[];
+  assertEquals(cards.length, 73);
+  for (const card of cards) {
+    const text = card.messages.join("\n");
+    assert(
+      !GUIDE_V3_REFINE_SENTINELS.some((s) => text.includes(s)),
+      text,
+    );
+  }
 });
 
 Deno.test("內容問題（引導換方向）只有禁語脅迫與「欠」組；其他當成這次沒調好", () => {
@@ -230,7 +311,7 @@ Deno.test("內容問題（引導換方向）只有禁語脅迫與「欠」組；
       "language_drift",
       "empty_after_cleanup",
       "message_count_changed",
-      "blank_removed",
+      "blank_changed",
       null,
     ] as const
   ) {

@@ -8,7 +8,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   fakeModelResponse,
-  type RefineHarnessFreeAllowance,
+  type RefineHarnessOptions,
   type RefineHarnessOutcome,
   runRefineThroughHandler,
 } from "./guide_v3/refine_harness.ts";
@@ -26,7 +26,7 @@ const PUSH_CARD = { task: "push", voice: "default", method: "reaction" };
 async function run(
   body: Record<string, unknown>,
   optimized: string,
-  freeAllowance: RefineHarnessFreeAllowance = "available",
+  options: RefineHarnessOptions = {},
 ): Promise<RefineHarnessOutcome & { models: Record<string, unknown>[] }> {
   const models: Record<string, unknown>[] = [];
   const out = await runRefineThroughHandler(
@@ -47,7 +47,7 @@ async function run(
         },
       })));
     },
-    freeAllowance,
+    options,
   );
   return { ...out, models };
 }
@@ -137,7 +137,7 @@ Deno.test("任務卡的再調：今天免費次數用完時照回覆微調扣 1 
   const out = await run(
     { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
     "就週六\n我來訂位",
-    "exhausted",
+    { freeAllowance: "exhausted" },
   );
   assertEquals(out.status, 200);
   assertEquals(rpcNames(out), [
@@ -155,7 +155,7 @@ Deno.test("任務卡的再調：今天免費次數用完時照回覆微調扣 1 
   const blocked = await run(
     { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
     "就週六\n遲到算妳欠我一杯",
-    "exhausted",
+    { freeAllowance: "exhausted" },
   );
   assertEquals(blocked.status, 502);
   assertEquals(rpcNames(blocked), ["increment_model_usage"]);
@@ -217,4 +217,108 @@ Deno.test("潤飾帶了卡片規格也不理：不進提示詞、不進 hash", a
     }),
   );
   assert(!rpcNames(out).includes("consume_refine_free_allowance"));
+});
+
+/// 還沒升版的 Edge 寫的帳本列：它不認 guideV3Card，hash 用的是不含卡的那一份。
+async function legacyHash(): Promise<string> {
+  return await computeOptimizeMessageInputHash({
+    messages: MESSAGES,
+    userDraft: DRAFT,
+    refineInstruction: "短一點",
+  });
+}
+
+const LEGACY_RESULT = {
+  optimizedMessage: { optimized: "那就週六，我來訂位", reason: "舊版調的" },
+};
+
+Deno.test("跨版本重播：舊 Edge 已結算的同一顆 requestId，升版後重試照 replay 給，不扣、不換身分", async () => {
+  const out = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "不該被呼叫",
+    { ledgerRow: { inputHash: await legacyHash(), result: LEGACY_RESULT } },
+  );
+  assertEquals(out.status, 200);
+  assertEquals(
+    (out.json.optimizedMessage as Record<string, unknown>).optimized,
+    "那就週六，我來訂位",
+  );
+  assertEquals(out.models.length, 0);
+  assert(!rpcNames(out).includes("consume_refine_free_allowance"));
+  assert(!rpcNames(out).includes("settle_optimize_message_request"));
+  const usage = out.json.usage as Record<string, unknown>;
+  assertEquals(usage.messagesUsed, 0);
+  assertEquals(usage.quotaReason, "optimize_message_idempotent_replay");
+});
+
+Deno.test("跨版本重播：舊 Edge 在預檢之後才寫進帳本（並行重試），結算改拿那一列、不再扣", async () => {
+  const out = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+    {
+      freeAllowance: "exhausted",
+      ledgerRow: {
+        inputHash: await legacyHash(),
+        result: LEGACY_RESULT,
+        appearsAtSettle: true,
+      },
+    },
+  );
+  assertEquals(out.status, 200);
+  assertEquals(
+    (out.json.optimizedMessage as Record<string, unknown>).optimized,
+    "那就週六，我來訂位",
+  );
+  const settles = out.rpcs.filter((call) =>
+    call.fn === "settle_optimize_message_request"
+  );
+  assertEquals(settles.length, 2);
+  assertEquals(settles[1].args.p_input_hash, await legacyHash());
+  assertEquals(settles[1].args.p_charge_quota, false);
+  assert(!rpcNames(out).includes("increment_usage"));
+  const usage = out.json.usage as Record<string, unknown>;
+  assertEquals(usage.messagesUsed, 0);
+});
+
+Deno.test("跨版本重播只認不含卡的那一份：帳本列是別的 hash 照舊回不一致", async () => {
+  const preflight = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "不該被呼叫",
+    { ledgerRow: { inputHash: "f".repeat(64), result: LEGACY_RESULT } },
+  );
+  assertEquals(preflight.status, 400);
+  assertEquals(preflight.json.code, "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH");
+  assertEquals(preflight.models.length, 0);
+
+  const atSettle = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+    {
+      ledgerRow: {
+        inputHash: "f".repeat(64),
+        result: LEGACY_RESULT,
+        appearsAtSettle: true,
+      },
+    },
+  );
+  assertEquals(atSettle.status, 409);
+  assertEquals(atSettle.json.code, "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH");
+
+  // 一般微調（沒帶卡）不另外認舊 hash：行為跟以前一樣。
+  const plain = await run(
+    { refineInstruction: "短一點" },
+    "不該被呼叫",
+    {
+      ledgerRow: {
+        inputHash: await computeOptimizeMessageInputHash({
+          messages: MESSAGES,
+          userDraft: DRAFT,
+          refineInstruction: "短一點",
+          guideV3Card: PUSH_CARD,
+        }),
+        result: LEGACY_RESULT,
+      },
+    },
+  );
+  assertEquals(plain.status, 400);
 });

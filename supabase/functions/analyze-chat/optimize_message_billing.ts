@@ -77,12 +77,20 @@ export type OptimizeMessageReplayPreflight =
   | { kind: "mismatch" }
   | { kind: "replay"; result: Record<string, unknown> };
 
+/// [legacyInputHash]＝任務卡的再調另算的「不含卡片規格」那一份：還沒升版的 Edge 不認
+/// guideV3Card，用它寫進帳本；同一顆 requestId 是同一次請求，照 replay 給，不算不一致。
 export function classifyOptimizeMessageReplayPreflight(
   row: OptimizeMessageReplayRow | null,
   inputHash: string,
+  legacyInputHash: string | null = null,
 ): OptimizeMessageReplayPreflight {
   if (!row) return { kind: "fresh" };
-  if (row.input_hash !== inputHash) return { kind: "mismatch" };
+  if (
+    row.input_hash !== inputHash &&
+    (legacyInputHash === null || row.input_hash !== legacyInputHash)
+  ) {
+    return { kind: "mismatch" };
+  }
   return { kind: "replay", result: row.result_json };
 }
 

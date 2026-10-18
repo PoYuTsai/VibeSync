@@ -140,8 +140,8 @@ export function splitLines(text: string): string[] {
   return text.split(/\r?\n/).map((m) => m.trim()).filter(Boolean);
 }
 
-function blankRuns(messages: readonly string[]): number {
-  return messages.reduce((n, m) => n + (m.match(/＿+/g)?.length ?? 0), 0);
+function blankRuns(message: string): number {
+  return message.match(/＿+/g)?.length ?? 0;
 }
 
 const PERMISSION_ASK =
@@ -183,7 +183,9 @@ export function inspect(
   const before = card.messages;
   return {
     countKept: after.length === before.length,
-    blanksKept: blankRuns(after) >= blankRuns(before),
+    // 跟伺服器 finalizeRefinedCard 同一條：每一則的空格段數都跟原本一樣。
+    blanksKept: after.length === before.length &&
+      before.every((m, i) => blankRuns(m) === blankRuns(after[i])),
     changed: after.join("\n") !== before.join("\n"),
     defaultVoiceHasNi: card.voice === "default" &&
       after.some((m) => m.includes("妳")),
