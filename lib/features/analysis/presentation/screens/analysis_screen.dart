@@ -2432,7 +2432,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       usage: usage,
       onUpgrade: () {
         Navigator.of(context, rootNavigator: true).pop(false);
-        _showPaywall(context);
+        // 額度不夠才有這顆鈕：跟伺服器一樣先看本月、再看今天，付費頁照每日或每月、
+        // 用完或只是不夠換大標，漏斗記 quota_exhausted（Eric 2026-10-18）。
+        final isMonthly = usage.monthlyRemaining < units;
+        _showPaywall(
+          context,
+          entry: PaywallEntry.forQuota(
+            isMonthly: isMonthly,
+            remaining:
+                isMonthly ? usage.monthlyRemaining : usage.dailyRemaining,
+          ),
+        );
       },
     );
     if (!confirmed || !mounted) {
