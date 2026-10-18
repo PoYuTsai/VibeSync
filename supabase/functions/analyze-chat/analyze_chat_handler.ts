@@ -171,14 +171,14 @@ import {
 } from "./tier_sync_contract.ts";
 
 // 訊息制額度
-const TIER_MONTHLY_LIMITS: Record<string, number> = {
-  // 跟 _shared/quota.ts 同步：免費 50／20（Eric 2026-10-18）。
+export const TIER_MONTHLY_LIMITS: Record<string, number> = {
+  // 跟 _shared/quota.ts 同步：免費 50／20（Eric 2026-10-18）；tier_limits_parity_test.ts 鎖住兩份一致。
   free: 50,
   starter: 300,
   essential: 800,
 };
 
-const TIER_DAILY_LIMITS: Record<string, number> = {
+export const TIER_DAILY_LIMITS: Record<string, number> = {
   free: 20,
   starter: 50,
   essential: 120,
