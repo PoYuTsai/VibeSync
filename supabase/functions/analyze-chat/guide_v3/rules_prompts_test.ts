@@ -682,6 +682,52 @@ Deno.test("黃燈照舊（Bruce 10/18）：接住為主，聊開了才加一張�
   ]);
 });
 
+Deno.test("黃燈遇到她大笑收尾（主審第 1 輪 P2）：一張收、不排帶張力，聊開了選的種子照樣排進卡；綠燈照 C4 原樣", () => {
+  // 主審的重現：聊了兩輪，她最後只回「哈哈哈哈笑死」，讀局面標黃燈＋大笑收尾，沒有連續兩次敷衍。
+  const turns = toTurns([
+    me("週末去哪"),
+    her("去爬山"),
+    me("哪座山"),
+    her("哈哈哈哈笑死"),
+  ]);
+  const laugh = (light: "green" | "yellow") =>
+    tags({
+      light,
+      herMove: "大笑收尾",
+      herTurnsPerfunctory: [
+        { turn: 2, perfunctory: false },
+        { turn: 4, perfunctory: true },
+      ],
+    });
+  const yellow = laugh("yellow");
+  const reply = decideReply(turns, yellow);
+  assertEquals(reply.kind, "send");
+  const push = decidePush(turns, yellow);
+  assertEquals(push, "種子");
+  const cards = arrangeCards(reply, push, yellow);
+  assertEquals(cards.map((c) => c.task), ["收", "推進", "接住"]);
+  assertEquals(cards.find((c) => c.task === "推進")?.push, "種子");
+  assertEquals(cards.find((c) => c.task === "推進")?.questionBudget, 0);
+  // 還沒聊開：不推進，一張收、其餘接住。
+  const short = toTurns([me("哪座山"), her("哈哈哈哈笑死")]);
+  assertEquals(decidePush(short, yellow), null);
+  assertEquals(
+    arrangeCards(decideReply(short, yellow), null, yellow).map((c) => c.task),
+    ["收", "接住", "接住"],
+  );
+  // 綠燈照 C4 原樣（Bruce 10/14）：一張收、一張帶張力讓他可以選擇繼續玩，其餘接住；
+  // 選了推進也不排（現狀，10/18 的答覆沒有改綠燈）。
+  const green = laugh("green");
+  const greenPush = decidePush(turns, green);
+  assertEquals(greenPush, "種子");
+  assertEquals(
+    arrangeCards(decideReply(turns, green), greenPush, green).map((c) =>
+      c.task
+    ),
+    ["收", "帶張力", "接住", "接住"],
+  );
+});
+
 Deno.test("含糊答應算答應（Bruce 10/18）：綠燈、黃燈都由他接著講具體（具體邀約）；明確答應就說定", () => {
   const long = toTurns([me("a"), her("b"), me("c"), her("聽起來不錯")]);
   for (const light of ["green", "yellow"] as const) {

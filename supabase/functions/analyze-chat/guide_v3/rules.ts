@@ -201,15 +201,18 @@ function tasksFor(tags: ReadTags, push: PushAction | null, n: number): Task[] {
   if (tags.drunkOrLateNight) {
     return Array.from({ length: n }, (_, i) => i % 2 === 0 ? "共鳴" : "接住");
   }
-  // 預設：紅燈只用接住和收；她大笑收尾時不出帶張力，一張收。
+  // 預設：紅燈只用接住和收（她大笑收尾也是這樣排）。
   if (tags.light === "red") {
     return [...Array(n - 1).fill("接住"), "收"];
   }
-  // 她大笑收尾：照 C4 原樣，一張收，另外還是要一張帶張力，讓他也可以選擇繼續玩（Bruce 10/14）。
-  if (tags.herMove === "大笑收尾") {
+  // 她大笑收尾：一張收。綠燈照 C4 原樣，另外還是要一張帶張力，讓他也可以選擇繼續玩
+  //（Bruce 10/14）。帶張力是綠燈的規則：黃燈的收之外照下面一般的排法，不排帶張力，聊開了
+  // 選的種子照樣排進來（Bruce 10/18 黃燈維持現在；主審第 1 輪 P2）。
+  const laughClose = tags.herMove === "大笑收尾";
+  if (laughClose && tags.light === "green") {
     return ["收", "帶張力", ...Array(n - 2).fill("接住")];
   }
-  const tasks: Task[] = [];
+  const tasks: Task[] = laughClose ? ["收"] : [];
   if (push) {
     tasks.push(...Array(n >= 5 && push === "具體邀約" ? 2 : 1).fill("推進"));
   }
