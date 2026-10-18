@@ -148,8 +148,8 @@ void main() {
       expect(find.text('目前方案：Free'), findsOneWidget);
       expect(find.text('本月剩餘'), findsOneWidget);
       expect(find.text('今日剩餘'), findsOneWidget);
-      expect(find.text('30/30'), findsOneWidget);
-      expect(find.text('15/15'), findsOneWidget);
+      expect(find.text('50/50'), findsOneWidget);
+      expect(find.text('20/20'), findsOneWidget);
     });
 
     testWidgets('comparison table names tiers and uses human-readable values',

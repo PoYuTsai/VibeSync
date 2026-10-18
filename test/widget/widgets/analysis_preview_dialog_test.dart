@@ -215,12 +215,29 @@ void main() {
     });
 
     testWidgets(
-        'Free tier daily 15 < 20 → confirm disabled（定案 #4：額度先於確認）',
+        'Free tier 今日剩 20 → 剛好夠 20 則，可以確認（免費 50／20，Eric 2026-10-18）',
         (tester) async {
-      // Free 日上限 15 永遠不夠 20 則 → 自然引導分批（跨日）或升級。
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(2500),
         usage: UsageData.free(),
+        onUpgrade: () {},
+      ));
+      await openDialog(tester);
+
+      final confirmButton = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, '確認使用 20 則'),
+      );
+      expect(confirmButton.onPressed, isNotNull);
+      expect(find.text('查看升級方案'), findsNothing);
+    });
+
+    testWidgets(
+        'Free tier daily remaining 19 < 20 → confirm disabled（定案 #4：額度先於確認）',
+        (tester) async {
+      // 今天已用 1 則，剩 19 不夠 20 則 → 引導分批（跨日）或升級。
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(2500),
+        usage: UsageData.free().copyWith(dailyUsed: 1),
         onUpgrade: () {},
       ));
       await openDialog(tester);
@@ -238,7 +255,7 @@ void main() {
       bool upgraded = false;
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(2500),
-        usage: UsageData.free(),
+        usage: UsageData.free().copyWith(dailyUsed: 1),
         onUpgrade: () => upgraded = true,
       ));
       await openDialog(tester);
