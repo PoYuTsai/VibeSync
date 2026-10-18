@@ -13,6 +13,10 @@ import v3Fixtures from "../analyze-chat/testdata/guide_v3_replay_fixtures.json" 
 };
 import { parseWrittenCardLine } from "../analyze-chat/guide_v3/cards.ts";
 import {
+  GUIDE_V3_SENTINELS,
+  GUIDE_V3_SENTINELS_NORMALIZED,
+} from "../analyze-chat/guide_v3/finalize.ts";
+import {
   GUIDE_V3_REFINE_SENTINELS,
   GUIDE_V3_REFINE_SENTINELS_NORMALIZED,
 } from "../analyze-chat/guide_v3/refine_card.ts";
@@ -40,7 +44,10 @@ const LISTS: Readonly<Record<string, readonly string[]>> = {
   ANALYZE_CHAT_PROMPT_SENTINELS,
   NEW_TOPIC_SLOTS_PROMPT_SENTINELS,
   OPENER_FLOW_PROMPT_SENTINELS,
-  // 再調一下，和它整理（簡轉繁）過的那一份
+  // v3 說明書每一節的第一行，和它整理（簡轉繁）過的那一份
+  GUIDE_V3_SENTINELS,
+  GUIDE_V3_SENTINELS_NORMALIZED,
+  // 再調一下，和它整理過的那一份
   GUIDE_V3_REFINE_SENTINELS,
   GUIDE_V3_REFINE_SENTINELS_NORMALIZED,
   COACH_PROMPT_LEAK_SENTINELS,
@@ -72,7 +79,7 @@ Deno.test("每一份清單的每一句哨兵：各種照抄寫法夾在一般句
     }
   }
   assertEquals(missed, []);
-  // 確認真的跑過每一份清單（去掉重複寫法後約 1,900 次）。
+  // 確認真的跑過每一份清單，不是空迴圈。
   assert(checks > 1000, String(checks));
 });
 
