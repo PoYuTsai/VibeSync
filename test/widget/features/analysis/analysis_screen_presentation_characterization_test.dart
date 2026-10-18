@@ -1091,6 +1091,12 @@ void main() {
       expect(find.byType(StreamingAnalysisLoader), findsNothing);
       expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
       expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+      // 還在寫：鎖住的卡與升級都還不出現（Eric 2026-10-18）。
+      expect(
+        find.byKey(const ValueKey('guide-v3-locked-block')),
+        findsNothing,
+      );
+      expect(find.text('看方案'), findsNothing);
 
       await tester.ensureVisible(
         find.byKey(const ValueKey('guide-v3-card-1-copy')),
@@ -1341,10 +1347,36 @@ void main() {
       expect(snapshot!.summary, '她有在接你的話，可以往前一步。');
     });
 
-    testWidgets('鎖住的卡（Eric 2026-10-18）：點「看方案」打開付費頁，大標是鎖卡那一句', (tester) async {
+    testWidgets(
+        '鎖住的卡（Eric 2026-10-18）：免費 5 張排卡、送到 2 張，只有一塊、一顆「看方案」，點了打開付費頁的鎖卡大標',
+        (tester) async {
+      final free = GuideV3Result.fromJson({
+        'guideVersion': 'v3.5',
+        'read': {
+          ...readJson(),
+          'plannedCards': [
+            {'slot': 1, 'task': 'accept', 'locked': false},
+            {'slot': 2, 'task': 'push', 'locked': false},
+            {'slot': 3, 'task': 'tension', 'locked': true},
+            {'slot': 4, 'task': 'tension', 'locked': true},
+            {'slot': 5, 'task': 'push', 'locked': true},
+          ],
+        },
+        'cards': [
+          cardJson(1, 'accept', '那家我也想吃吃看'),
+          cardJson(2, 'push', '週六下午一起去？我來找位子'),
+        ],
+        'partial': false,
+        'usage': {
+          'messagesUsed': 1,
+          'monthlyRemaining': 29,
+          'dailyRemaining': 4,
+          'tierUsed': 'free',
+        },
+      })!;
       await _pumpScreen(
         tester,
-        seed: doneSeed(finalResult()),
+        seed: doneSeed(free),
         extraRoutes: [
           GoRoute(
             path: '/paywall',
@@ -1359,6 +1391,16 @@ void main() {
         ],
       );
       await dismissEditCoachMark(tester);
+      expect(
+        find.byKey(const ValueKey('guide-v3-locked-block')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          '這輪付費方案還有 ${free.read.lockedCards.length} 張：帶張力 ×2、推進',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('看方案'), findsOneWidget);
       final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
       await tester.ensureVisible(upgrade);
