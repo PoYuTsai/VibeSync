@@ -19,11 +19,15 @@ import 'package:vibesync/features/subscription/domain/services/subscription_tier
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 
-/// 字典裡 entry 的值（docs/integrations/funnel-events-v1.md）；加入口要一起補。
+/// 字典裡 entry 的值（docs/integrations/funnel-events-v1.md）：額度不夠的四種都記
+/// quota_exhausted；加入口要一起補。
 const _wireEntry = {
   PaywallEntry.general: 'general',
   PaywallEntry.lockedCards: 'locked_cards',
-  PaywallEntry.quotaExhausted: 'quota_exhausted',
+  PaywallEntry.dailyQuotaUsedUp: 'quota_exhausted',
+  PaywallEntry.dailyQuotaShort: 'quota_exhausted',
+  PaywallEntry.monthlyQuotaUsedUp: 'quota_exhausted',
+  PaywallEntry.monthlyQuotaShort: 'quota_exhausted',
 };
 
 class _StubSubscriptionNotifier extends SubscriptionNotifier {
@@ -203,7 +207,7 @@ void main() {
       final (router, stub) = await _pumpPaywall(
         tester,
         tracker: _recordingTracker(sent),
-        entry: PaywallEntry.quotaExhausted,
+        entry: PaywallEntry.dailyQuotaUsedUp,
       );
 
       // 方案價格同步回來會重畫整頁。
@@ -240,7 +244,12 @@ void main() {
           tracker: tracker,
           entry: PaywallEntry.lockedCards,
         );
-        expect(find.text(PaywallEntry.lockedCards.headline), findsOneWidget);
+        expect(
+          find.text(
+            PaywallEntry.lockedCards.headlineFor(SubscriptionTierHelper.free),
+          ),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       }
     });
@@ -275,7 +284,7 @@ void main() {
       await _pumpPaywall(
         tester,
         tracker: _recordingTracker(sent),
-        entry: PaywallEntry.quotaExhausted,
+        entry: PaywallEntry.monthlyQuotaShort,
         onPurchase: () async => _success(SubscriptionTierHelper.starter),
         // 只有 Starter 有價格時，預設選取會換到 Starter。
         seededState: _stateWith('vibesync_starter_monthly', 'Starter'),
@@ -367,7 +376,7 @@ void main() {
       await _pumpPaywall(
         tester,
         tracker: _recordingTracker(sent),
-        entry: PaywallEntry.quotaExhausted,
+        entry: PaywallEntry.dailyQuotaShort,
         onPurchase: () => pending.future,
         seededState: _stateWith('vibesync_essential_monthly', 'Essential'),
       );

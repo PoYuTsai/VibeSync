@@ -417,6 +417,35 @@ void main() {
     expect(find.text('看方案'), findsNothing);
   });
 
+  testWidgets('目前已付費（主審 r1 P2-1）：offerUpgrade 關掉就不出鎖卡區塊與升級，卡照樣能複製',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: GuideV3ResultSection(
+            read: _read(),
+            cards: [
+              _card(1, 'accept', ['那家我也想吃吃看']),
+              _card(2, 'tension', ['妳這樣說我會當真喔']),
+            ],
+            isStreaming: false,
+            isFinal: true,
+            editedMessagesFor: (_) => null,
+            onCopy: (_, __, ___) {},
+            onEdit: (_) async => null,
+            onUpgrade: () {},
+            offerUpgrade: false,
+          ),
+        ),
+      ),
+    ));
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
+    expect(find.text('看方案'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing,
+        reason: '鎖住的不算比較少');
+  });
+
   testWidgets('先別回、停、關心：就算排卡裡有鎖住的也不出升級', (tester) async {
     for (final decision in ['hold', 'stop', 'care']) {
       await _pump(

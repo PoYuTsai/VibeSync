@@ -38,7 +38,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `about_me_saved` | `has_style` (bool), `goals_count` (int), `seeds_count` (int), `has_notes` (bool), `has_custom_topics` (bool) | AboutMeScreen 儲存成功後 |
 | `about_me_cleared` | — | AboutMeScreen 清除成功後 |
 | `new_topic_copied` | `is_recommended` (bool) | NewTopicView 複製開場句（2026-10-12：量新話題有沒有被拿去傳；只記是不是推薦那題，不含句子） |
-| `paywall_opened` | `entry` (enum: `general` / `locked_cards` / `quota_exhausted`) | PaywallScreen.initState：每開一次一筆。入口是 go_router extra 帶來的 PaywallEntry，沒帶算 `general`（2026-10-18：量從哪裡打開付費頁） |
+| `paywall_opened` | `entry` (enum: `general` / `locked_cards` / `quota_exhausted`) | PaywallScreen.initState：每開一次一筆。入口是 go_router extra 帶來的 PaywallEntry，沒帶算 `general`；額度不夠的四種入口（今天／這個月、用完／不夠這次用）都記 `quota_exhausted`（2026-10-18：量從哪裡打開付費頁） |
 | `paywall_purchase_completed` | `tier` (enum: `starter` / `essential`), `entry` (同上 enum) | PaywallScreen._subscribe：RevenueCat 回成功才記；`tier` 是買的商品對應的方案。取消、失敗、逾時、例外、排程降級、恢復購買都不記；不帶價格、商品 id、收據 |
 | `locked_cards_upgrade_tap` | `locked_count` (int) | GuideV3LockedBlock「看方案」：結果頁與分析紀錄共用同一塊，張數就是區塊寫的「還有 N 張」 |
 

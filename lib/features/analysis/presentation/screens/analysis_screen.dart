@@ -3191,11 +3191,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           }
         });
         if (action == AnalysisErrorAction.upgrade) {
-          // 這裡的 upgrade 只來自每日、每月額度用完（見
-          // _failedBeforeRecommendationAction）：付費頁用額度大標。
-          unawaited(
-            _showPaywall(context, entry: PaywallEntry.quotaExhausted),
-          );
+          // 這裡的 upgrade 只來自每日、每月額度不夠（見
+          // _failedBeforeRecommendationAction）：付費頁照每日或每月、用完或只是不夠
+          // 換大標（主審 r1 P2-3）。
+          unawaited(_showPaywall(
+            context,
+            entry: PaywallEntry.forQuota(
+              isMonthly:
+                  liveQuotaInfo?.isMonthly ?? code == 'MONTHLY_LIMIT_EXCEEDED',
+              remaining: liveQuotaInfo?.remaining,
+            ),
+          ));
         } else if (action == AnalysisErrorAction.updateApp) {
           unawaited(showAppUpdateRequiredDialog(
             context,
@@ -3287,12 +3293,24 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_dailyQuotaExceededMessage(e));
-      await _showPaywall(context, entry: PaywallEntry.quotaExhausted);
+      await _showPaywall(
+        context,
+        entry: PaywallEntry.forQuota(
+          isMonthly: false,
+          remaining: e.remaining ?? e.dailyLimit - e.used,
+        ),
+      );
       return null;
     } on MonthlyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
-      await _showPaywall(context, entry: PaywallEntry.quotaExhausted);
+      await _showPaywall(
+        context,
+        entry: PaywallEntry.forQuota(
+          isMonthly: true,
+          remaining: e.remaining ?? e.monthlyLimit - e.used,
+        ),
+      );
       return null;
     } on AnalysisException catch (e) {
       // 身分被伺服器否認時的 reset 由 OptimizeRequestRunner 負責，這裡只顯示文案。
@@ -4280,7 +4298,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
         quotaLine: quotaLine?.text,
-        // 用完這次之後大約只剩一次完整分析或更少時多寫一句（Eric 2026-10-18）。
+        // 用完這次之後剩的不到兩次一般長度分析時多寫一句，只說保證做得到的
+        //（Eric 2026-10-18；主審 r1 P2-2）。
         quotaHint: quotaLine == null
             ? null
             : analysisRemainingHint(quotaLine.remainingAfter),
@@ -4751,7 +4770,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 quotaNeeded: _quotaExceededInfo!.quotaNeeded,
                                 onViewPlans: () => _showPaywall(
                                   context,
-                                  entry: PaywallEntry.quotaExhausted,
+                                  entry: PaywallEntry.forQuota(
+                                    isMonthly: _quotaExceededInfo!.isMonthly,
+                                    remaining: _quotaExceededInfo!.remaining,
+                                  ),
                                 ),
                                 // 免費用戶才寫 Starter 的量（Eric 2026-10-18）。
                                 showStarterCapacity: subscription.isFreeUser,

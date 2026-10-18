@@ -95,7 +95,7 @@ class FloatingAnalysisActionButton extends StatefulWidget {
   /// 不再跳確認框；Eric 2026-10-18）。null＝不顯示。
   final String? caption;
 
-  /// [caption] 下面的第二行：用完這次之後大約只剩一次完整分析或更少時的提醒
+  /// [caption] 下面的第二行：用完這次之後剩的不到兩次一般長度分析時的提醒
   ///（Eric 2026-10-18）。null＝不顯示。
   final String? captionHint;
 

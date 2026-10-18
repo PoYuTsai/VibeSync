@@ -97,13 +97,13 @@ void main() {
         onStart: () {},
         onFollowProgress: () {},
         quotaLine: '這次會用 3 則，剩 12 則',
-        quotaHint: '大約還能完整分析 1 次',
+        quotaHint: '至少還能分析 1 次（2000 字以內）',
       )!));
       await tester.pump(const Duration(milliseconds: 500));
 
       final hint = find.byKey(FloatingAnalysisActionButton.captionHintKey);
       expect(hint, findsOneWidget);
-      expect(find.text('大約還能完整分析 1 次'), findsOneWidget);
+      expect(find.text('至少還能分析 1 次（2000 字以內）'), findsOneWidget);
       expect(
         tester.getRect(hint).top,
         greaterThanOrEqualTo(

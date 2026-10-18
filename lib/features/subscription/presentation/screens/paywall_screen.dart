@@ -293,8 +293,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               children: [
                 Text(
                   // 定位句（2026-08-18 拍板）：付費理由從「回覆」升到結果。
-                  // 從鎖住的卡、額度用完打開時換成那個入口的說法。
-                  widget.entry.headline,
+                  // 從鎖住的卡、額度不夠打開時換成那個入口的說法；額度的說法照
+                  // 目前方案（Essential 不承諾升級，主審 r1 P2-3）。
+                  widget.entry.headlineFor(subscription.tier),
                   style: AppTypography.headlineLarge.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     height: 1.12,
