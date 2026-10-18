@@ -231,6 +231,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 有完成的分析（v2 有熱度；v3 有最終結果）。
   bool get _hasAnalysisResult => _enthusiasmScore != null || _v3Result != null;
 
+  /// v3 最終結果有卡（Eric 2026-10-18）：主角是複製卡片，問教練只留底部一個次要
+  /// 入口；先別回、停、一張都沒送到時照舊醒目。
+  bool get _v3ShowsCards => _v3Result?.cards.isNotEmpty ?? false;
+
   // 反饋相關
   bool _feedbackSubmitted = false;
   bool _showFeedbackForm = false;
@@ -4655,7 +4659,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           if ((_enthusiasmScore != null &&
                                   _gameStage != null &&
                                   _finalRecommendation != null) ||
-                              (_v3Result != null && !_v3Result!.isCare)) ...[
+                              (_v3Result != null &&
+                                  !_v3Result!.isCare &&
+                                  !_v3ShowsCards)) ...[
                             CoachCtaCard(
                               buttonKey: const Key('analysis_coach_cta'),
                               onTap: _openCoachQuestion,
@@ -4857,6 +4863,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // v3 自傷關心：只顯示固定的關心文案，不把這段帶去問教練。
       onAskCoach: (_v3Result?.isCare ?? false) ? null : _openCoachQuestion,
       onNewFragment: _openNewConversationSheet,
+      coachAsSecondary: _v3ShowsCards,
     );
   }
 }

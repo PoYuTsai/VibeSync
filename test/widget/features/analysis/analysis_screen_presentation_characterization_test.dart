@@ -928,7 +928,8 @@ void main() {
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
       expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
-      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+      // 有卡時問教練只留底部一個次要入口（Eric 2026-10-18，見下面的主次測試）。
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
 
       await tester.ensureVisible(
         find.byKey(const ValueKey('guide-v3-card-1-copy')),
@@ -1290,6 +1291,60 @@ void main() {
         find.byKey(const ValueKey('guide-v3-hold-coach-link')),
         findsNothing,
       );
+    });
+
+    // ── 結果頁主次（Eric 2026-10-18）：有卡時主角是複製卡片 ──
+    testWidgets('有卡：問教練只出現一次，是底部的次要文字鈕，點了照樣直達問教練', (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult()),
+        extraRoutes: [
+          GoRoute(
+            path: '/coach',
+            builder: (_, state) {
+              snapshot = state.extra as CoachChatAnalysisSnapshot?;
+              return const Text('coach-route');
+            },
+          ),
+        ],
+      );
+      await dismissEditCoachMark(tester);
+
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
+      expect(find.text('問教練：我現在該怎麼做？'), findsNothing);
+      final coach = find.byKey(const ValueKey('analysis-continuation-coach'));
+      expect(coach, findsOneWidget);
+      expect(tester.widget(coach), isA<TextButton>());
+      expect(find.widgetWithText(TextButton, '問教練'), findsOneWidget);
+      expect(find.text('分析新片段'), findsOneWidget);
+      // 跟分析新片段排成一列；兩顆都至少 44 高。
+      final newFragment = find.widgetWithText(OutlinedButton, '分析新片段');
+      expect(tester.getCenter(coach).dy, tester.getCenter(newFragment).dy);
+      expect(tester.getSize(coach).height, greaterThanOrEqualTo(44));
+      expect(tester.getSize(newFragment).height, greaterThanOrEqualTo(44));
+
+      await tester.tap(coach);
+      await tester.pumpAndSettle();
+      expect(find.text('coach-route'), findsOneWidget);
+      expect(snapshot!.summary, '她有在接你的話，可以往前一步。');
+    });
+
+    testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(noSendResult('hold')));
+      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+      expect(find.text('問教練：我現在該怎麼做？'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('analysis-continuation-coach')),
+        findsNothing,
+      );
+
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(cards: const [])),
+      );
+      expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
+      expect(find.text('問教練：我現在該怎麼做？'), findsOneWidget);
     });
   });
 

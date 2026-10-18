@@ -195,9 +195,12 @@ class _GuideV3ReadPanelState extends State<GuideV3ReadPanel> {
     final read = widget.read;
     final decision = read.decision;
     final isCare = decision == GuideV3Decision.care;
+    // 先別回用琥珀色：只是等一下，不是她拒絕；紅色留給停（Eric 2026-10-18，黃燈
+    // 晶片放在紅框裡訊號打架）。
     final accent = switch (decision) {
       GuideV3Decision.care => AppColors.info,
-      GuideV3Decision.hold || GuideV3Decision.stop => AppColors.error,
+      GuideV3Decision.hold => AppColors.warning,
+      GuideV3Decision.stop => AppColors.error,
       _ => AppColors.coachAccent,
     };
     final icon = switch (decision) {

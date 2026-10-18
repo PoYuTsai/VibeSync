@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/core/theme/app_icons.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/presentation/sections/guide_v3_result_section.dart';
@@ -390,6 +391,42 @@ void main() {
     expect(find.text('你剛連傳兩則，球在她那邊。'), findsOneWidget);
     expect(find.text('等到這時候再回：等她回你，再看她怎麼接'), findsOneWidget);
     expect(find.text('可以這樣回'), findsNothing);
+  });
+
+  testWidgets('先別回用琥珀色（Eric 2026-10-18）：黃燈不再放在紅框裡；停照舊是紅色', (tester) async {
+    BoxDecoration panel() => tester
+        .widget<Container>(find.byKey(const ValueKey('guide-v3-read')))
+        .decoration! as BoxDecoration;
+    Color iconColor() =>
+        tester.widget<Icon>(find.byIcon(TablerIcons.hand_stop)).color!;
+
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'hold',
+        light: 'yellow',
+        judgment: '你剛連傳兩則，球在她那邊。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect((panel().border! as Border).top.color,
+        AppColors.warning.withValues(alpha: 0.32));
+    expect(iconColor(), AppColors.warning);
+
+    await _pump(
+      tester,
+      read: _read(
+        decision: 'stop',
+        light: 'red',
+        judgment: '她說了不要，這段先停。',
+        planned: const [],
+      ),
+      cards: const [],
+    );
+    expect((panel().border! as Border).top.color,
+        AppColors.error.withValues(alpha: 0.32));
+    expect(iconColor(), AppColors.error);
   });
 
   testWidgets('停：判讀，沒有卡', (tester) async {

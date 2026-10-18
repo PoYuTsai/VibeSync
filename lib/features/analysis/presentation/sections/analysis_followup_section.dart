@@ -107,15 +107,65 @@ class ConversationContinuationBar extends StatelessWidget {
     super.key,
     required this.onAskCoach,
     required this.onNewFragment,
+    this.coachAsSecondary = false,
   });
 
   /// null＝這次不給問教練入口（v3 自傷關心只顯示固定文案）。
   final VoidCallback? onAskCoach;
   final VoidCallback onNewFragment;
 
+  /// v3 有卡時（Eric 2026-10-18）：主角是複製卡片，問教練只留這一個、改成次要的
+  /// 文字鈕，跟分析新片段排成一列，底部也少佔一半高度。
+  final bool coachAsSecondary;
+
   @override
   Widget build(BuildContext context) {
+    final onAskCoach = this.onAskCoach;
+    final newFragment = OutlinedButton.icon(
+      onPressed: onNewFragment,
+      icon: const Icon(Icons.add_circle_outline),
+      label: const Text('分析新片段'),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        minimumSize: const Size(44, 44),
+        side: BorderSide(
+          color: AppColors.ctaStart.withValues(alpha: 0.45),
+        ),
+        foregroundColor: AppColors.ctaStart,
+      ),
+    );
     // 分析完成後關閉原片段；任何新內容都另開獨立片段。
+    if (coachAsSecondary && onAskCoach != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.brandSurface2,
+          border: Border(
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            children: [
+              Expanded(child: newFragment),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                key: const ValueKey('analysis-continuation-coach'),
+                onPressed: AppHaptics.onPress(onAskCoach),
+                icon: const Icon(Icons.forum_outlined, size: 18),
+                label: const Text('問教練'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.onBackgroundSecondary,
+                  minimumSize: const Size(44, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -133,7 +183,7 @@ class ConversationContinuationBar extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: AppHaptics.onPress(onAskCoach!),
+                  onPressed: AppHaptics.onPress(onAskCoach),
                   icon: const Icon(Icons.forum_outlined),
                   label: const Text('問教練：我現在該怎麼做？'),
                   style: FilledButton.styleFrom(
@@ -145,21 +195,7 @@ class ConversationContinuationBar extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onNewFragment,
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('分析新片段'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  side: BorderSide(
-                    color: AppColors.ctaStart.withValues(alpha: 0.45),
-                  ),
-                  foregroundColor: AppColors.ctaStart,
-                ),
-              ),
-            ),
+            SizedBox(width: double.infinity, child: newFragment),
           ],
         ),
       ),
