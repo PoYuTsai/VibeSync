@@ -143,8 +143,10 @@ class AnalysisPreviewDialog extends StatelessWidget {
                 ? '這個月的分析次數不夠了，升級後再繼續。'
                 : '這個月的分析次數不夠了，$kMonthlyQuotaResetLine。')
           else if (usage.dailyRemaining < _requiredUnits)
+            // 台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」；跟額度卡
+            // 同一句（主審第 1 輪 P3）。
             _buildWarning(canUpgrade
-                ? '今天的分析次數不夠了，明天再來或先升級方案。'
+                ? '今天的分析次數不夠了，$kDailyQuotaResetLine，也可以升級取得更多額度。'
                 : '今天的分析次數不夠了，$kDailyQuotaResetLine。'),
           const SizedBox(height: 12),
           if (_isOvercharge)

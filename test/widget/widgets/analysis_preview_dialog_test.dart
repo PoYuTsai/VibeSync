@@ -140,7 +140,12 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
+      // 台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」（主審第 1 輪 P3）。
+      expect(
+        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('明天'), findsNothing);
     });
 
     testWidgets('confirm button enabled and fires when quota suffices',
@@ -243,7 +248,10 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
+      expect(
+        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
       final confirmButton = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, '確認使用 20 則'),
       );
@@ -331,7 +339,10 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('今天的分析次數不夠了，明天再來或先升級方案。'), findsOneWidget);
+      expect(
+        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
       expect(find.text('查看升級方案'), findsOneWidget);
     });
 
