@@ -774,8 +774,11 @@ class _PracticeRevealIntroBubbleState extends State<PracticeRevealIntroBubble> {
   double _textWidth = 0;
 
   double _balancedWidth(BuildContext context, double maxWidth) {
-    // 跟底下的 Text 取一樣的字樣、字級縮放、方向與語系。
-    final style = DefaultTextStyle.of(context).style.merge(_style);
+    // 跟底下的 Text 取一樣的字樣、字級縮放、方向與語系（含系統「粗體文字」）。
+    var style = DefaultTextStyle.of(context).style.merge(_style);
+    if (MediaQuery.boldTextOf(context)) {
+      style = style.merge(const TextStyle(fontWeight: FontWeight.bold));
+    }
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
     final locale = Localizations.maybeLocaleOf(context);

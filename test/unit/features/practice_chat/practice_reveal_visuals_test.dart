@@ -215,10 +215,17 @@ void main() {
       expect(balanced(twoLines, maxLines: 1), maxWidth);
     });
 
-    testWidgets('對話框在 App 的字樣下排出來也是兩行等長、不被省略', (tester) async {
+    Future<RenderParagraph> pumpBubble(
+      WidgetTester tester, {
+      bool boldText = false,
+    }) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(boldText: boldText),
+            child: child!,
+          ),
+          home: const Scaffold(
             body: Align(
               alignment: Alignment.topCenter,
               child: SizedBox(
@@ -236,10 +243,20 @@ void main() {
           ),
         ),
       );
-
-      final paragraph = tester.renderObject<RenderParagraph>(
+      return tester.renderObject<RenderParagraph>(
         find.byKey(const ValueKey('practice-draw-ceremony-intro-text')),
       );
+    }
+
+    testWidgets('對話框在 App 的字樣下排出來也是兩行等長、不被省略', (tester) async {
+      final paragraph = await pumpBubble(tester);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.size.width, lessThan(maxWidth * 0.75));
+      expect(paragraph.size.height, closeTo(2 * 15 * 1.4, 0.5));
+    });
+
+    testWidgets('系統開了「粗體文字」也照樣兩行、不被省略', (tester) async {
+      final paragraph = await pumpBubble(tester, boldText: true);
       expect(paragraph.didExceedMaxLines, isFalse);
       expect(paragraph.size.width, lessThan(maxWidth * 0.75));
       expect(paragraph.size.height, closeTo(2 * 15 * 1.4, 0.5));
