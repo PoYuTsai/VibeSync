@@ -140,7 +140,7 @@ V3 §2.2 用 `astats` 量，絕對值比這次低約 3 dB，各段之間的落�
 | SR 落差 | SR 多出「金色段」和「SR 時刻」兩拍；同一支錄影裡，不看稀有度牌也分得出 SR 和 N |
 | 聲音（全頻） | SR 翻牌高潮比蓄力平台高 ≥ 17 dB（參考片 18.2）；N／R 維持現在約 12 dB，不要比 SR 響 |
 | 聲音（手機近似） | SR 高潮 ≥ +10 dB（現在 9.8）；牌落地比前一窗 ≥ +9 dB、每顆星 ≥ +12 dB（參考片 +9.8／+16.0）；染藍 ≥ +6 dB |
-| 閃光安全 | 任一 1 秒內的閃光（徽記白光、染金四芒星光、翻牌閃光合計）最多 2 次（WCAG 2.3.1 的門檻是 3 次）；全螢幕白色疊層峰值 α ≤ 0.25、每次揭曉最多 1 次；不用飽和紅色 |
+| 閃光安全 | 量實際畫面，所有亮光都算：徽記白光、染色、泛光、光刃、十字光、衝擊波、星光、翻牌閃光，以及收卡的細線、光球與落位爆光。照 WCAG 2.3.1 的閃光定義（相對亮度一升一降各 ≥ 0.1、暗的一端 < 0.8），面積門檻 0.006 sr 換算成手機的方框：25 cm 看是 116×116 pt，**任一 1 秒最多 2 次**（WCAG 的門檻是 3 次）；拿近到 20 cm（94×94 pt）最多 3 次。量法與指令見 §12.2、§12.3（`tools/practice-reveal-flash-check`，60 fps 錄影）。全螢幕白色疊層峰值 α ≤ 0.25、每次揭曉最多 1 次；不用飽和紅色 |
 | 停住 | 停住後零動畫幀（V3 D7 維持）；所有粒子、光環、打字效果都在停住前結束 |
 | 效能 | 預設中檔（§9）；沿用 V3 §12 的規則與驗收方式，新增的層照 §9 |
 | 無障礙 | reduce-motion 沒有儀式畫面，也沒有閃光、震畫面、數字跳動；VoiceOver 在停住時讀得到「新角色」與第一句話 |
@@ -189,7 +189,7 @@ N／R 沿用 V3 的節點，只在既有節點上加特效（牌的觸覺移到�
 
 - 新素材 `practice_reveal_bloom.webp`：512×512 白色柔光（離線高斯模糊）。畫在卡片後面與前面兩層，大小 1.6×卡片，依主題 `glow` 染色。
 - 後層 α：蓄力 0 → 0.3；染藍峰值 0.75（120 ms 內）→ 0.45；SR 金色段峰值 0.9 → 0.5；翻牌峰值 N 0.35／R 0.6／SR 0.9，之後 400 ms 退回 0.3。
-- 前層只在翻牌峰值前後 300 ms 出現，α ≤ 0.35，免得蓋掉照片。
+- 前層在卡片轉到側立前 50 ms 才起亮（easeIn，跟著卡片變窄補上徽記變窄的暗），側立時最亮，之後 300 ms 退掉；α ≤ 0.35，免得蓋掉照片。不提早亮：前層疊在亮的卡背上會先把卡面提亮，卡片側立一暗、光刃再一亮，就多一次閃光（第一刀原本照「峰值前後 300 ms」做，實際畫面量到每秒 3 次，§3）。
 
 ### 5.2 徽記白光
 
@@ -199,7 +199,7 @@ N／R 沿用 V3 的節點，只在既有節點上加特效（牌的觸覺移到�
 
 - 新素材 `practice_draw_card_back_v3_lines_mask.webp`：從卡背底圖抽出線路圖案的遮罩，由現有產生器 `tools/practice-draw-card-back-v3/make_card_back_v3.py` 一起產出（跟徽記、外框遮罩同一套做法）。
 - **藍（R、SR）**：600–720 ms 線路、外框、徽記一起染成電光藍並發光（疊加混色，線路 α 0.85、外框 1.0、徽記 1.0），卡外一圈藍色泛光。藍色蓄力期間緩慢呼吸（0.8–1.0），不閃。
-- **金（SR）**：1300–1450 ms 整張卡變香檳金：底圖疊一層金色漸層（`BlendMode.color`），線路與外框改金色發光。構圖與徽記不變（V3 D2）。
+- **金（SR）**：1300–1450 ms 整張卡變香檳金：底圖疊一層金色漸層（`BlendMode.color`），線路與外框改金色發光。構圖與徽記不變（V3 D2）。V3 染金那一下的徽記白色爆閃（120 ms）從第一刀起拿掉：徽記白光、染金、翻牌三下擠在 1 秒內會超過 §3；金色那一拍的光到第二刀由 §5.4 的四芒星光負責。
 - **升階光點**：R 720–1100、SR 720–2050，24 顆小光點繞著卡片四周（不只左右邊）慢慢往上飄，藍段藍、金段金，1.5–3 px，壽命 600–900 ms，時間解析計算、零 Random。時段指出生的時間；第一刀（標準時間軸）在 720–1070 出生，翻牌峰值前 100 ms 全部淡掉，不帶到正面。
 - N 全程銀：線路遮罩不亮，只有 §5.2 的白光與 V3 的銀光脈衝。
 
@@ -414,6 +414,7 @@ V3 的 Plan B（全螢幕模糊改成靜態截圖）仍是最後一步；檔位�
 | `assets/images/practice/practice_reveal_bloom.webp`、`practice_reveal_sparkle.webp`、`practice_reveal_particle.webp` | 泛光、四芒星光、粒子光點貼圖（程式離線產生） |
 | `assets/images/practice/practice_draw_card_back_v3_lines_mask.webp` | 卡背線路遮罩（§5.3） |
 | `tools/practice-reveal-sprites/make_sprites.py` | 三張貼圖的產生器 |
+| `tools/practice-reveal-flash-check/flash_check.py` | 閃光檢查：量錄影工具 60 fps 錄影的實際畫面（§3、§12.2）；錄影工具加 `RECORD_FPS` |
 | `assets/audio/practice_draw/practice_draw_reveal_bed_v7_{n,r,sr}.m4a` | §6.1 |
 | `tools/practice-draw-audio-v3/make_audio_v3_1.py` | §6.1–§6.2 的產生器 |
 
@@ -429,7 +430,7 @@ V3 的 Plan B（全螢幕模糊改成靜態截圖）仍是最後一步；檔位�
 
 **分工**（Eric 2026-10-18）：四刀由 Bruce 寫、每刀一張 PR；獨立審查用 Codex；CI 全綠後由 Eric 決定合併。
 
-每一刀都可以單獨合併、單獨驗證；每一刀都要重錄 N／R／SR 預覽（含聲音），並做兩種對照：
+每一刀都可以單獨合併、單獨驗證；每一刀都要重錄 N／R／SR 預覽（含聲音）、跑閃光檢查（§3、§12.2），並做兩種對照：
 
 - 我們自己的前後對照：照 DESIGN.md §10 放進 `docs/reviews/`。
 - 跟參考片的逐步對照：私下傳給 Eric，**不入庫**。
@@ -462,7 +463,7 @@ V3 的 Plan B（全螢幕模糊改成靜態截圖）仍是最後一步；檔位�
 1. **時間軸**：`standard` 與 `sr`（3.85 s）各自的節點嚴格依序、都在 `revealMs` 之內；`standard` 的值等於 V3。
 2. **只翻一次**：兩條時間軸都每 50 ms 取樣，正面出現後卡背不再出現（K4 維持時）。
 3. **稀有度誠實**：N 全程銀、線路遮罩不亮；R 不出現金；SR 先藍後金（兩條時間軸都驗）；徽記白光三種都一樣。
-4. **閃光安全**：任一 1 s 窗內閃光峰最多 2 個；翻牌閃光峰值 SR ≤ 0.25、R ≤ 0.12、N 恆 0；金色段的直光只長大一次、不重複閃。
+4. **閃光安全**：每一刀都用 60 fps 錄 N／R／SR，`tools/practice-reveal-flash-check` 量實際畫面（§3）：25 cm 任一秒 ≤ 2 次、20 cm ≤ 3 次，揭曉與收卡都算。單元測試守住量測靠的曲線條件：翻牌前卡背的白光只有徽記白光一下；卡片側立前 50 ms 之前，卡面前面不疊任何光；前層泛光、光刃、十字光各自只亮一次。翻牌閃光峰值 SR ≤ 0.25、R ≤ 0.12、N 恆 0；金色段的直光只長大一次、不重複閃。
 5. **停住靜止**：鏡頭 scale 在停住前回到 1.0、微震歸零；所有粒子、光環、打字效果在停住前結束；`pumpAndSettle` 收得了。
 6. **牌**：烙印前不存在、第一幀就是正確稀有度、回彈不小於 0.95、最後 1.0；最後位置超出卡片不超過 12 px、不出螢幕。
 7. **NEW**：只有新卡有；重複角色有「已收藏」、沒有 NEW；抽牌中離開又回來（沒有紀錄）不掛 NEW。
@@ -480,6 +481,9 @@ flutter analyze --no-fatal-infos
 flutter test test/unit/features/practice_chat/ test/widget/features/practice_chat/ test/lint/
 flutter test --concurrency=1   # 全套，與 CI 相同
 RECORD_CEREMONY=1 RECORD_RARITY=sr flutter test test/tools/ceremony_preview_recorder_test.dart   # 重錄預覽（n／r／sr 各一次）
+RECORD_CEREMONY=1 RECORD_FPS=60 flutter test test/tools/ceremony_preview_recorder_test.dart   # 閃光檢查用的 60 fps 錄影
+python3 tools/practice-reveal-flash-check/flash_check.py --fps 60 build/card_draw_preview/{n,r,sr}   # 25 cm：任一秒 ≤ 2
+python3 tools/practice-reveal-flash-check/flash_check.py --fps 60 --distance-cm 20 --cap 3 build/card_draw_preview/{n,r,sr}   # 20 cm：≤ 3
 ```
 
 ---
