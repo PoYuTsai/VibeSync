@@ -4280,7 +4280,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
         quotaLine: quotaLine?.text,
-        // 用完這次之後大約只剩一次完整分析或更少時多寫一句（Eric 2026-10-18）。
+        // 用完這次之後剩的不到兩次一般長度分析時多寫一句，只說保證做得到的
+        //（Eric 2026-10-18；主審 r1 P2-2）。
         quotaHint: quotaLine == null
             ? null
             : analysisRemainingHint(quotaLine.remainingAfter),

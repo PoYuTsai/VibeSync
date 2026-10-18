@@ -1738,8 +1738,9 @@ void main() {
       );
     }
 
-    // 額度提示（Eric 2026-10-18）：用完這次之後大約只剩一次完整分析或更少，那一行
-    // 下面再寫一句。邊界照常數算：一次完整分析＝MessageCalculator.softCapUnits 則。
+    // 額度提示（Eric 2026-10-18；主審 r1 P2-2）：用完這次之後剩的不到兩次一般長度
+    // 分析（每次最多扣 MessageCalculator.softCapUnits 則），那一行下面再寫一句，只說
+    // 保證做得到的。這裡的片段只扣 1 則，正好說明短的片段扣得少。
     Future<void> pumpWithLeftAfter(WidgetTester tester, int leftAfter) async {
       final limits =
           SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
@@ -1764,14 +1765,27 @@ void main() {
       );
     });
 
-    testWidgets('額度提示：用完這次後只夠一次多一點，寫大約還能完整分析 1 次', (tester) async {
+    testWidgets('額度提示：用完這次後夠一次一般長度，寫至少還能分析 1 次', (tester) async {
       await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits * 2 - 1);
-      expect(find.text('大約還能完整分析 1 次'), findsOneWidget);
+      expect(
+        find.text(
+          '至少還能分析 1 次（${MessageCalculator.softCapBandMaxChars} 字以內）',
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('額度提示：用完這次後不夠一次完整分析，直接說不夠', (tester) async {
+    testWidgets('額度提示：用完這次後不到一次一般長度，短的片段還能分析', (tester) async {
       await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits - 1);
-      expect(find.text('剩下的不夠一次完整分析'), findsOneWidget);
+      expect(find.text('短的片段還能分析，長一點的可能不夠'), findsOneWidget);
+    });
+
+    testWidgets('額度提示：用完這次後剩 0，那一行已經寫了，不另外寫', (tester) async {
+      await pumpWithLeftAfter(tester, 0);
+      expect(
+        find.byKey(FloatingAnalysisActionButton.captionHintKey),
+        findsNothing,
+      );
     });
 
     testWidgets(
