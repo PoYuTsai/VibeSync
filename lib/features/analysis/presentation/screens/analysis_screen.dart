@@ -79,6 +79,7 @@ import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
+import '../helpers/analysis_feedback_payload.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
 import '../sections/analysis_banners_section.dart';
 import '../sections/analysis_error_card.dart';
@@ -3628,7 +3629,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         'submit-feedback',
         body: {
           'rating': rating,
-          'category': _feedbackCategory,
+          'category': _v3Result != null
+              ? guideV3FeedbackStoredCategory(_feedbackCategory)
+              : _feedbackCategory,
           'comment': _feedbackCommentController.text.trim().isEmpty
               ? null
               : _feedbackCommentController.text.trim(),
@@ -3884,12 +3887,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     final guideV3 = _v3Result;
     if (guideV3 != null) {
-      payload['guideV3'] = {
-        'guideVersion': guideV3.read.guideVersion,
-        'decision': guideV3.read.decision.wire,
-        if (guideV3.read.light != null) 'light': guideV3.read.light!.wire,
-        'cardTasks': [for (final card in guideV3.cards) card.task.wire],
-      };
+      // 帶伺服器 runId：負評對得回是哪一次、哪一組卡（Eric 2026-10-18）。
+      payload['guideV3'] = guideV3FeedbackContext(
+        guideV3,
+        runId: _v3RunId,
+        category: _feedbackCategory,
+      );
     }
 
     if (_enthusiasmScore != null) {
@@ -4732,6 +4735,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               !(_v3Result?.isCare ?? false)) ...[
                             const SizedBox(height: 24),
                             AnalysisFeedbackSection(
+                              guideV3: _v3Result != null,
                               submitted: _feedbackSubmitted,
                               showForm: _showFeedbackForm,
                               isSubmitting: _isSubmittingFeedback,

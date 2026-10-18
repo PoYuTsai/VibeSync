@@ -1040,6 +1040,24 @@ void main() {
       }
     });
 
+    testWidgets('回饋（Eric 2026-10-18）：v3 結果的倒讚用 v3 的分類', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.thumb_down_outlined),
+          )
+          .onPressed!();
+      await tester.pump();
+
+      for (final label in ['判斷不準', '像在考她', '編了我的事', '太軟有客服感', '其他']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      for (final label in ['太直接', '不自然', '回覆太長', '不符合我的風格']) {
+        expect(find.text(label), findsNothing);
+      }
+    });
+
     testWidgets('串流中：第一張卡已能複製，還沒到的卡顯示正在寫，不顯示大的載入動畫', (tester) async {
       final outcomes = MemoryCoachingOutcomeRepository();
       final read = GuideV3Read.fromJson(readJson())!;
