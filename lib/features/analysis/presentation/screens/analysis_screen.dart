@@ -3260,6 +3260,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final restored = await _replyIteration.restoreRefineDraft(
       ownerUserId: ownerUserId,
       originText: origin,
+      guideV3Card: guideV3Card,
     );
     if (!mounted) return;
 
