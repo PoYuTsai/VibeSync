@@ -96,6 +96,22 @@ export function isHerOwnStatement(line: string): boolean {
   return !text.replace(/^[^\p{L}\p{N}]+/u, "").startsWith("你");
 }
 
+/// 依句號、驚嘆號、問號、刪節號與換行切句；標點留在句尾，問句檢查要看。
+function sentencesOf(text: string): string[] {
+  return (text.match(/[^。！？!?…\n]+[。！？!?…]*/g) ?? [])
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
+
+/// 逐句只留她自己的陳述句：每句都是就原樣不動；有問句或講他的句子就只留陳述句（換行
+/// 隔開，分句還在）；一句都不剩回 null。同一則「那你也會去嗎？我不太喜歡運動」只認後半句。
+function ownStatementText(text: string): string | null {
+  const sentences = sentencesOf(text);
+  const own = sentences.filter(isHerOwnStatement);
+  if (own.length === 0) return null;
+  return own.length === sentences.length ? text : own.join("\n");
+}
+
 /// 候選的原句只留她自己的陳述句；一句都不剩就不要這個候選。
 function ownStatementCandidates(candidates: unknown): unknown {
   if (!Array.isArray(candidates)) return candidates;
@@ -106,9 +122,10 @@ function ownStatementCandidates(candidates: unknown): unknown {
     ) {
       return [candidate];
     }
-    const own = evidence.filter((line) =>
-      typeof line === "string" && isHerOwnStatement(line)
-    );
+    const own = evidence.flatMap((line) => {
+      const text = typeof line === "string" ? ownStatementText(line) : null;
+      return text === null ? [] : [text];
+    });
     return own.length > 0 ? [{ ...candidate, evidence: own }] : [];
   });
 }
@@ -120,8 +137,8 @@ function countsBy(count: (kind: MemoryKind) => number): MemoryCounts {
 }
 
 /// 模型輸出 → 通過出處檢查的對象記憶。出處只認 App 送來的原始訊息（不是帶引用前綴的
-/// 對話稿），跟 v2 同一道檢查；兩邊都只認她自己的陳述句：候選的問句原句先拿掉，出處也
-/// 不給她的問句（剪掉一截再抄的問句就對不到）。不丟錯。
+/// 對話稿），跟 v2 同一道檢查；兩邊都逐句只認她自己的陳述句：候選原句裡的問句先拿掉，
+/// 出處也不給她的問句（剪掉一截再抄的問句就對不到）。不丟錯。
 export function partnerMemoryFrom(
   text: string,
   messages: readonly { readonly isFromMe: boolean; readonly content: string }[],
@@ -147,9 +164,10 @@ export function partnerMemoryFrom(
           ownStatementCandidates(proposed[kind]),
         ]),
       ),
-      requestMessages: messages
-        .filter((m) => !m.isFromMe && isHerOwnStatement(m.content))
-        .map((m) => ({ isFromMe: m.isFromMe, content: m.content })),
+      requestMessages: messages.flatMap((m) => {
+        const content = m.isFromMe ? null : ownStatementText(m.content);
+        return content === null ? [] : [{ isFromMe: false, content }];
+      }),
     });
     const kept = countsBy((kind) => {
       const values = profile?.[kind];

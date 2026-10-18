@@ -247,3 +247,60 @@ Deno.test("問句（？、?、嗎／呢／吧後面接標點或表情）或「�
     assertEquals("targetProfile" in memory, false, line);
   }
 });
+
+// 逐句看：同一則訊息裡有問句也有她的陳述時，只認陳述那幾句。
+function sourcesOf(
+  memory: ReturnType<typeof partnerMemoryFrom>,
+  kind: (typeof MEMORY_KINDS)[number],
+): string[][] {
+  return (memory.targetProfile?.evidence as Record<
+    string,
+    { sourceMessages: string[] }[]
+  >)[kind].map((e) => e.sourceMessages);
+}
+
+Deno.test("同一則先問他、再講自己：不收問句裡的「爬山」，陳述那句照樣撐得住筆記", () => {
+  const line = "那你每週都會去爬山嗎？我不太喜歡運動";
+  const memory = partnerMemoryFrom(
+    output({
+      interests: [item("爬山", line)],
+      notes: [item("不太喜歡運動", line)],
+    }),
+    [her(line)],
+  );
+  assertEquals(memory.targetProfile?.interests, []);
+  assertEquals(memory.targetProfile?.notes, ["不太喜歡運動"]);
+  assertEquals(sourcesOf(memory, "notes"), [["我不太喜歡運動"]]);
+});
+
+Deno.test("一則裡兩句都是她的陳述（句號或換行隔開）：照舊都撐得住", () => {
+  for (
+    const line of [
+      "我每週都會去爬山。週末也常常去露營",
+      "我每週都會去爬山\n週末也常常去露營",
+    ]
+  ) {
+    const memory = partnerMemoryFrom(
+      output({ interests: [item("爬山", line), item("露營", line)] }),
+      [her(line)],
+    );
+    assertEquals(memory.targetProfile?.interests, ["爬山", "露營"], line);
+    assertEquals(sourcesOf(memory, "interests"), [[line], [line]], line);
+  }
+});
+
+Deno.test("她先講自己、後面才問他：陳述那句照樣算，出處只記陳述那句", () => {
+  for (
+    const [line, own] of [
+      ["我每週都會去爬山。你呢？", "我每週都會去爬山。"],
+      ["我每週都會去爬山！你也會去嗎", "我每週都會去爬山！"],
+    ]
+  ) {
+    const memory = partnerMemoryFrom(
+      output({ interests: [item("爬山", line)] }),
+      [her(line)],
+    );
+    assertEquals(memory.targetProfile?.interests, ["爬山"], line);
+    assertEquals(sourcesOf(memory, "interests"), [[own]], line);
+  }
+});
