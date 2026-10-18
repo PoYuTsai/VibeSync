@@ -16,13 +16,15 @@
 export type TierName = "free" | "starter" | "essential";
 
 export const TIER_MONTHLY_LIMITS: Record<string, number> = {
-  free: 30,
+  // 免費 30／15 → 50／20（Eric 2026-10-18）：v3 每次成本約舊版五分之一，
+  // 新用戶第一天分析＋開場＋問教練就撞到每日 15 則；放寬讓人先感受到價值。
+  free: 50,
   starter: 300,
   essential: 800,
 };
 
 export const TIER_DAILY_LIMITS: Record<string, number> = {
-  free: 15,
+  free: 20,
   starter: 50,
   essential: 120,
 };

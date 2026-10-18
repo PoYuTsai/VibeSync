@@ -22,7 +22,8 @@ const corsHeaders = {
 };
 
 const TIER_LIMITS: Record<string, { monthly: number; daily: number }> = {
-  free: { monthly: 30, daily: 15 },
+  // 跟 _shared/quota.ts 同步：免費 50／20（Eric 2026-10-18）。
+  free: { monthly: 50, daily: 20 },
   starter: { monthly: 300, daily: 50 },
   essential: { monthly: 800, daily: 120 },
 };
