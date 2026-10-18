@@ -187,3 +187,63 @@ Deno.test("每類只看前 5 個候選：多的算 dropped", () => {
   assertEquals(memory.kept.interests, 5);
   assertEquals(memory.dropped.interests, 1);
 });
+
+// ── 主審第 1 輪 P2：她問他的事、或講他的事，不是她自己的事實 ──
+
+Deno.test("她問他的嗜好（問句）：擋下", () => {
+  const memory = partnerMemoryFrom(
+    output({ interests: [item("爬山", "你每週都會去爬山嗎")] }),
+    [me("我週末都在戶外"), her("你每週都會去爬山嗎")],
+  );
+  assertEquals("targetProfile" in memory, false);
+  assertEquals(memory.dropped, { interests: 1, traits: 0, notes: 0 });
+});
+
+Deno.test("她自己講的「我每週都會去爬山」：照樣留下", () => {
+  const memory = partnerMemoryFrom(
+    output({ interests: [item("爬山", "我每週都會去爬山")] }),
+    [her("我每週都會去爬山")],
+  );
+  assertEquals(memory.targetProfile?.interests, ["爬山"]);
+});
+
+Deno.test("原句有問句也有她的陳述：留下，出處只記陳述那一句", () => {
+  const memory = partnerMemoryFrom(
+    output({
+      interests: [item("爬山", "你每週都會去爬山嗎", "我每週都會去爬山")],
+    }),
+    [her("你每週都會去爬山嗎"), her("我每週都會去爬山")],
+  );
+  assertEquals(memory.targetProfile?.interests, ["爬山"]);
+  const evidence = (memory.targetProfile?.evidence as Record<
+    string,
+    { sourceMessages: string[] }[]
+  >).interests;
+  assertEquals(evidence[0].sourceMessages, ["我每週都會去爬山"]);
+});
+
+Deno.test("她的問句剪掉一截再抄：出處不認她的問句，一樣擋下", () => {
+  const memory = partnerMemoryFrom(
+    output({ interests: [item("爬山", "每週都會去爬山")] }),
+    [her("你每週都會去爬山嗎")],
+  );
+  assertEquals("targetProfile" in memory, false);
+});
+
+Deno.test("問句（？、?、嗎／呢／吧後面接標點或表情）或「你」開頭講他的事：都不記", () => {
+  const lines: [string, (typeof MEMORY_KINDS)[number], string][] = [
+    ["你週末通常在家嗎？", "notes", "週末通常在家"],
+    ["你養了一隻貓叫 Mochi 喔", "notes", "養了一隻貓叫 Mochi"],
+    ["你最近在學攝影吧～", "interests", "攝影"],
+    ["爬山你每週都會去?", "interests", "爬山"],
+    ["那你平常都在練吉他呢", "interests", "吉他"],
+    ["每天都會跑步的人是你吧😆", "interests", "跑步"],
+  ];
+  for (const [line, kind, value] of lines) {
+    const memory = partnerMemoryFrom(
+      output({ [kind]: [item(value, line)] }),
+      [her(line)],
+    );
+    assertEquals("targetProfile" in memory, false, line);
+  }
+});
