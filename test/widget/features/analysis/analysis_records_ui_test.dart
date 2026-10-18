@@ -214,7 +214,9 @@ void main() {
     ]) {
       final record = _freeLockedGuideV3Record();
       final snapshotBefore = record.analysisSnapshotJson;
+      // 每一輪換新的 ProviderScope：同一個 scope 重建時 override 不會換掉。
       await tester.pumpWidget(ProviderScope(
+        key: ValueKey(tier),
         overrides: [
           subscriptionProvider.overrideWith(
             (ref) => _SeededSubscriptionNotifier(tier),
@@ -222,6 +224,12 @@ void main() {
         ],
         child: MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
       ));
+      expect(
+        ProviderScope.containerOf(
+          tester.element(find.byType(AnalysisRecordDetailScreen)),
+        ).read(subscriptionProvider).tier,
+        tier,
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing,
