@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
@@ -21,6 +22,7 @@ PartnerAggregateView _agg({
   int rounds = 0,
   DateTime? lastInteraction,
   bool latestIsGuideV3 = false,
+  PartnerGuideV3Signals? signals,
 }) => PartnerAggregateView(
   unionInterests: interests,
   unionTraits: traits,
@@ -30,6 +32,7 @@ PartnerAggregateView _agg({
   totalMessages: 0,
   lastInteraction: lastInteraction,
   latestIsGuideV3: latestIsGuideV3,
+  latestGuideV3Signals: signals,
 );
 
 Future<void> _pump(WidgetTester t, Widget child) async {
@@ -146,6 +149,73 @@ void main() {
     expect(find.byIcon(Icons.insights_rounded), findsNothing);
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('咖啡'), findsOneWidget);
+  });
+
+  testWidgets('v3 最新一次的決定變成短狀態，放在燈號旁邊；不分方案', (t) async {
+    const cases = {
+      GuideV3Decision.send: '輪到你回',
+      GuideV3Decision.close: '輪到你回',
+      GuideV3Decision.hold: '先等她',
+      GuideV3Decision.stop: '先停',
+    };
+    for (final MapEntry(key: decision, value: status) in cases.entries) {
+      await _pump(
+        t,
+        PartnerListCard(
+          partner: _p('a', 'Alice'),
+          aggregate: _agg(
+            latestIsGuideV3: true,
+            signals: PartnerGuideV3Signals(
+              decision: decision,
+              light: GuideV3Light.yellow,
+            ),
+          ),
+          onTap: () {},
+        ),
+      );
+
+      final pill = find.byKey(const ValueKey('partner-card-v3-status'));
+      expect(pill, findsOneWidget, reason: decision.wire);
+      expect(
+          find.descendant(of: pill, matching: find.text('黃燈')), findsOneWidget,
+          reason: decision.wire);
+      expect(find.descendant(of: pill, matching: find.text(status)),
+          findsOneWidget,
+          reason: decision.wire);
+      expect(find.text('待分析'), findsNothing);
+      expect(find.textContaining('本次投入'), findsNothing);
+    }
+  });
+
+  testWidgets('v3 燈號讀不懂：只寫狀態；關心什麼都不多放', (t) async {
+    await _pump(
+      t,
+      PartnerListCard(
+        partner: _p('a', 'Alice'),
+        aggregate: _agg(
+          latestIsGuideV3: true,
+          signals: const PartnerGuideV3Signals(decision: GuideV3Decision.send),
+        ),
+        onTap: () {},
+      ),
+    );
+    expect(find.text('輪到你回'), findsOneWidget);
+    expect(find.textContaining('燈'), findsNothing);
+
+    await _pump(
+      t,
+      PartnerListCard(
+        partner: _p('a', 'Alice'),
+        aggregate: _agg(
+          latestIsGuideV3: true,
+          signals: const PartnerGuideV3Signals(decision: GuideV3Decision.care),
+        ),
+        onTap: () {},
+      ),
+    );
+    expect(find.byKey(const ValueKey('partner-card-v3-status')), findsNothing);
+    expect(find.text('待分析'), findsNothing);
+    expect(find.text('Alice'), findsOneWidget);
   });
 
   testWidgets(

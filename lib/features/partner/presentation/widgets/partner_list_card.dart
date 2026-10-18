@@ -7,6 +7,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
+import '../../../analysis/domain/entities/guide_v3_result.dart';
+import '../../../analysis/presentation/sections/guide_v3_result_section.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
 
@@ -158,6 +160,59 @@ class PartnerListCard extends StatelessWidget {
     );
   }
 
+  /// v3 最新一次的決定（Eric 2026-10-18；不分方案）：出卡與收尾是輪到他回，先別回是等她，
+  /// 停就停；關心不多放東西。
+  static String? _guideV3Status(GuideV3Decision decision) => switch (decision) {
+        GuideV3Decision.send || GuideV3Decision.close => '輪到你回',
+        GuideV3Decision.hold => '先等她',
+        GuideV3Decision.stop => '先停',
+        GuideV3Decision.care => null,
+      };
+
+  /// 燈號＋短狀態，放在原本熱度膠囊的位置（v3 沒有熱度）。
+  Widget _buildGuideV3StatusPill(GuideV3Light? light, String status) {
+    final tone = light == null
+        ? Colors.white.withValues(alpha: 0.64)
+        : guideV3LightColor(light);
+    return Container(
+      key: const ValueKey('partner-card-v3-status'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: tone.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (light != null) ...[
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              light.label,
+              style: AppTypography.caption.copyWith(
+                color: tone,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            status,
+            style: AppTypography.caption.copyWith(
+              color: Colors.white.withValues(alpha: 0.88),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTrailing(String date) {
     return SizedBox(
       width: 64,
@@ -207,6 +262,9 @@ class PartnerListCard extends StatelessWidget {
     // v3 分析過的對象沒有熱度可放：列表不顯示（Eric 2026-10-17），也不能
     // 因為沒有分數就寫成「待分析」——他剛分析完。
     final showStatusPill = heat != null || !aggregate.latestIsGuideV3;
+    final guideV3 = aggregate.latestGuideV3Signals;
+    final guideV3Status =
+        guideV3 == null ? null : _guideV3Status(guideV3.decision);
     final date = _formatDate(aggregate.lastInteraction);
 
     return Material(
@@ -263,6 +321,10 @@ class PartnerListCard extends StatelessWidget {
                         if (showStatusPill) ...[
                           const SizedBox(height: 6),
                           _buildStatusPill(level, heat),
+                        ] else if (guideV3 != null &&
+                            guideV3Status != null) ...[
+                          const SizedBox(height: 6),
+                          _buildGuideV3StatusPill(guideV3.light, guideV3Status),
                         ],
                         if (tags.isNotEmpty) ...[
                           const SizedBox(height: 4),
