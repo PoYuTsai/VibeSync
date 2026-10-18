@@ -61,14 +61,6 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
     state = seed;
   }
-
-  /// 刷新失敗：跟正式 notifier 一樣只記錯誤，方案留在舊的。
-  void failRefresh() =>
-      state = state.copyWith(isLoading: false, error: 'network unavailable');
-
-  /// 刷新成功：訂閱狀態同步成 [tier]。
-  void confirmTier(String tier) =>
-      state = SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 10);
 }
 
 /// 有設就讓生成走真的 OpenerService 傳輸（伺服器回這個 client 給的回應），
@@ -278,9 +270,6 @@ Future<void> _pumpManual(WidgetTester tester) async {
 int _paywallOpens = 0;
 final _paywallExtras = <Object?>[];
 
-/// 真的付費頁那條路由收到的方案提示（見 PaywallRequest）。
-final _paywallHints = <String?>[];
-
 Future<void> _pumpManualWithPaywall(WidgetTester tester,
     {String tier = SubscriptionTierHelper.free}) async {
   await tester.binding.setSurfaceSize(const Size(390, 4200));
@@ -291,7 +280,7 @@ Future<void> _pumpManualWithPaywall(WidgetTester tester,
         path: '/paywall',
         builder: (context, state) {
           _paywallOpens++;
-          _paywallExtras.add(PaywallEntry.fromRouteExtra(state.extra));
+          _paywallExtras.add(state.extra);
           return Scaffold(
               body: Center(
                   child: TextButton(
@@ -304,20 +293,16 @@ Future<void> _pumpManualWithPaywall(WidgetTester tester,
   await tester.pumpAndSettle();
 }
 
-/// 付費頁換成真的 PaywallScreen。訂閱刷新由 [onRefresh] 決定（不給就是停用、狀態不動）：
-/// 這個測試樹沒登入，真的刷新會把方案刷成免費。
+/// 付費頁換成真的 PaywallScreen（大標照訂閱方案）。訂閱刷新換成不動狀態：這個測試樹
+/// 沒登入，真的刷新會把方案刷成免費。
 Future<void> _pumpManualWithRealPaywall(WidgetTester tester,
-    {required String tier,
-    Future<void> Function(_SeededSubscriptionNotifier sub)? onRefresh}) async {
+    {required String tier}) async {
   await tester.binding.setSurfaceSize(const Size(390, 4200));
   // 付費頁跟開場救星要在同一個 ProviderScope：大標讀的是同一份訂閱狀態。
   await tester.pumpWidget(ProviderScope(
       overrides: [
         ..._screenOverrides(tier),
-        subscriptionScreenRefreshProvider.overrideWith((ref) => () async {
-              await onRefresh?.call(ref.read(subscriptionProvider.notifier)
-                  as _SeededSubscriptionNotifier);
-            }),
+        subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
         funnelTrackerProvider.overrideWithValue(
             FunnelTracker(invoker: (_, {required body}) async => 200)),
       ],
@@ -328,11 +313,9 @@ Future<void> _pumpManualWithRealPaywall(WidgetTester tester,
             path: '/paywall',
             builder: (context, state) {
               _paywallOpens++;
-              _paywallExtras.add(PaywallEntry.fromRouteExtra(state.extra));
-              _paywallHints
-                  .add(PaywallEntry.tierHintFromRouteExtra(state.extra));
-              // 跟 routes.dart 同一個轉法：入口加上額度入口帶的方案提示。
-              return PaywallScreen.fromRouteExtra(state.extra);
+              _paywallExtras.add(state.extra);
+              return PaywallScreen(
+                  entry: PaywallEntry.fromRouteExtra(state.extra));
             }),
       ]))));
   await tester.pump(const Duration(milliseconds: 600));
@@ -497,7 +480,6 @@ void main() {
     AiDataSharingConsent.debugUserIdOverride = null;
     _generateTransport = null;
     _paywallExtras.clear();
-    _paywallHints.clear();
   });
 
   tearDownAll(() async {
@@ -823,13 +805,15 @@ void main() {
         _paywallExtras, [PaywallEntry.forQuota(isMonthly: true, remaining: 3)]);
   });
 
-  /// 走真的付費頁：分析完、生成撞到今日額度 429，等真的付費頁自動打開。
-  Future<void> generateIntoRealPaywall(WidgetTester tester,
-      {required String tier,
-      Future<void> Function(_SeededSubscriptionNotifier sub)?
-          onRefresh}) async {
-    _paywallOpens = 0;
-    await _pumpManualWithRealPaywall(tester, tier: tier, onRefresh: onRefresh);
+  // 方案來源不一致（主審第 1 輪 P2-3）：RevenueCat 已是 Essential、訂閱快照還是 Starter。
+  // 請求照舊帶 RevenueCat 較高的方案；說明、按鈕跟真的付費頁大標都照訂閱方案，三者一致。
+  testWidgets('RevenueCat 是 Essential、訂閱快照是 Starter：說明、按鈕跟真的付費頁大標都照訂閱方案',
+      (tester) async {
+    RevenueCatService.debugGetCustomerInfoOverride =
+        () async => _essentialCustomerInfo();
+    addTearDown(() => RevenueCatService.debugGetCustomerInfoOverride = null);
+    await _pumpManualWithRealPaywall(tester,
+        tier: SubscriptionTierHelper.starter);
     await _analyze(tester);
     _generateTransport = MockClient.streaming((request, bodyStream) async {
       await bodyStream.drain<void>();
@@ -840,109 +824,29 @@ void main() {
     await _tapAndSettleAsync(
         tester, find.byKey(const ValueKey('opener-generate-button')),
         until: find.byType(PaywallScreen));
-    expect(_paywallOpens, 1, reason: '伺服器擋下後自動開一次付費牆');
+    expect(service.lastExpectedTier, SubscriptionTierHelper.essential,
+        reason: '請求照舊帶 RevenueCat 較高的方案');
     expect(_paywallExtras,
         [PaywallEntry.forQuota(isMonthly: false, remaining: 1)]);
-  }
-
-  /// 付費頁蓋著時，底下錯誤列的說明與按鈕。
-  ({String message, String button}) shownUnderPaywall(WidgetTester tester) => (
-        message: tester
-            .widget<Text>(find.byKey(const ValueKey('opener-flow-error'),
-                skipOffstage: false))
-            .data!,
-        button: tester
-            .widget<Text>(find.descendant(
-                of: find.byKey(const ValueKey('opener-upgrade-button'),
-                    skipOffstage: false),
-                matching: find.byType(Text, skipOffstage: false),
-                skipOffstage: false))
-            .data!,
-      );
-
-  /// 說明、按鈕跟真的付費頁大標都照 Essential：只說什麼時候恢復，不承諾升級。
-  void expectEssentialEverywhere(WidgetTester tester) {
-    final shown = shownUnderPaywall(tester);
-    expect(shown.message, contains(kDailyQuotaResetLine));
-    expect(shown.message, isNot(contains('升級')));
-    expect(shown.button, '查看方案');
     expect(
         find.text(PaywallEntry.dailyQuotaShort
-            .headlineFor(SubscriptionTierHelper.essential)),
+            .headlineFor(SubscriptionTierHelper.starter)),
         findsOneWidget,
-        reason: '真的付費頁大標說恢復時間');
-  }
-
-  // 方案來源不一致（主審第 2 輪 P2-1）：RevenueCat 已確認 Essential、訂閱快照還是
-  // Starter（刷新停用或失敗）。顯示方案取兩者較高：說明、按鈕跟真的付費頁大標都不叫
-  // 他升級；請求照舊帶 RevenueCat 的方案，訂閱狀態也不被改寫。
-  for (final refresh in ['停用', '失敗']) {
-    testWidgets(
-        'RevenueCat 是 Essential、快照是 Starter（刷新$refresh）：說明、按鈕、付費頁大標都不叫他升級',
-        (tester) async {
-      RevenueCatService.debugGetCustomerInfoOverride =
-          () async => _essentialCustomerInfo();
-      addTearDown(() => RevenueCatService.debugGetCustomerInfoOverride = null);
-      await generateIntoRealPaywall(tester,
-          tier: SubscriptionTierHelper.starter,
-          onRefresh: refresh == '失敗' ? (sub) async => sub.failRefresh() : null);
-      expect(service.lastExpectedTier, SubscriptionTierHelper.essential,
-          reason: '請求照舊帶 RevenueCat 較高的方案');
-      expect(_paywallHints, [SubscriptionTierHelper.essential],
-          reason: '付費頁收到這個畫面的顯示方案');
-      expectEssentialEverywhere(tester);
-      final container =
-          ProviderScope.containerOf(tester.element(find.byType(PaywallScreen)));
-      expect(container.read(subscriptionProvider).tier,
-          SubscriptionTierHelper.starter,
-          reason: 'RevenueCat 的方案只拿來顯示，不寫回訂閱狀態');
-    });
-  }
-
-  // 付費頁開著時刷新成功（訂閱狀態同步成 Essential），之後關掉付費頁：刷新前、刷新後、
-  // 關掉後，說明、按鈕跟大標都一致，任何時候都不出現升級承諾。
-  testWidgets('RevenueCat 是 Essential、快照是 Starter，付費頁開著時刷新成功再關掉：前後一致不叫他升級',
-      (tester) async {
-    RevenueCatService.debugGetCustomerInfoOverride =
-        () async => _essentialCustomerInfo();
-    addTearDown(() => RevenueCatService.debugGetCustomerInfoOverride = null);
-    final refreshed = Completer<void>();
-    await generateIntoRealPaywall(tester, tier: SubscriptionTierHelper.starter,
-        onRefresh: (sub) async {
-      await refreshed.future;
-      sub.confirmTier(SubscriptionTierHelper.essential);
-    });
-    expectEssentialEverywhere(tester);
-    refreshed.complete();
-    await _settleBounded(tester);
-    expectEssentialEverywhere(tester);
-    await tester.tap(find.byIcon(Icons.close));
-    await _settleBounded(tester);
-    expect(find.byType(PaywallScreen), findsNothing);
-    expect(find.textContaining('升級'), findsNothing);
+        reason: '真的付費頁照訂閱方案出大標');
+    final message = tester
+        .widget<Text>(find.byKey(const ValueKey('opener-flow-error'),
+            skipOffstage: false))
+        .data!;
+    expect(message, '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
+    final button = tester
+        .widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('opener-upgrade-button'),
+                skipOffstage: false),
+            matching: find.byType(Text, skipOffstage: false),
+            skipOffstage: false))
+        .data!;
+    expect(button, '升級方案');
   });
-
-  // 沒有不一致（RevenueCat 沒查到）：三個方案的說明、按鈕跟真的付費頁大標都跟以前一樣。
-  for (final tier in [
-    SubscriptionTierHelper.free,
-    SubscriptionTierHelper.starter,
-    SubscriptionTierHelper.essential,
-  ]) {
-    testWidgets('沒有不一致（$tier）：說明、按鈕跟真的付費頁大標照訂閱方案，跟以前一樣', (tester) async {
-      await generateIntoRealPaywall(tester, tier: tier);
-      expect(_paywallHints, [tier], reason: '沒有不一致時提示就是訂閱方案');
-      final shown = shownUnderPaywall(tester);
-      final canUpgrade = tier != SubscriptionTierHelper.essential;
-      expect(
-          shown.message,
-          canUpgrade
-              ? '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。'
-              : '今日額度不足，$kDailyQuotaResetLine。');
-      expect(shown.button, canUpgrade ? '升級方案' : '查看方案');
-      expect(find.text(PaywallEntry.dailyQuotaShort.headlineFor(tier)),
-          findsOneWidget);
-    });
-  }
 
   testWidgets('略過，直接生成：送出 skipped、結果沒有採用說明', (tester) async {
     await _pumpManual(tester);

@@ -28,33 +28,15 @@ import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
 import '../paywall_entry.dart';
-import '../quota_copy.dart';
 import '../subscription_diagnostics_gate.dart';
 import '../../../../core/services/app_haptics.dart';
 import 'purchase_error_message.dart';
 
 class PaywallScreen extends ConsumerStatefulWidget {
-  const PaywallScreen({
-    super.key,
-    this.entry = PaywallEntry.general,
-    this.tierHint,
-  });
-
-  /// 路由 extra 轉成付費頁：入口照 [PaywallEntry.fromRouteExtra]，額度入口帶的方案
-  /// 提示一起傳（主審第 2 輪 P2-1）。
-  factory PaywallScreen.fromRouteExtra(Object? extra, {Key? key}) =>
-      PaywallScreen(
-        key: key,
-        entry: PaywallEntry.fromRouteExtra(extra),
-        tierHint: PaywallEntry.tierHintFromRouteExtra(extra),
-      );
+  const PaywallScreen({super.key, this.entry = PaywallEntry.general});
 
   /// 從哪裡打開：只換最上面的大標（Eric 2026-10-18）。
   final PaywallEntry entry;
-
-  /// 開頁畫面已知的方案（見 [PaywallRequest]）：大標照訂閱方案跟它取高；沒帶就只看
-  /// 訂閱方案，跟以前一樣。
-  final String? tierHint;
 
   @override
   ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
@@ -314,9 +296,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   // 定位句（2026-08-18 拍板）：付費理由從「回覆」升到結果。
                   // 從鎖住的卡、額度不夠打開時換成那個入口的說法；額度的說法照
                   // 目前方案（Essential 不承諾升級，主審 r1 P2-3）。
-                  widget.entry.headlineFor(
-                    quotaDisplayTier(subscription.tier, widget.tierHint),
-                  ),
+                  widget.entry.headlineFor(subscription.tier),
                   style: AppTypography.headlineLarge.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     height: 1.12,

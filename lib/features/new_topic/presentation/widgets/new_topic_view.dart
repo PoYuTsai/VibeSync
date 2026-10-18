@@ -114,10 +114,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
 
   /// 伺服器回的額度錯誤：說明在顯示時才照目前方案組（見 [_shownError]）。
   NewTopicQuotaExceededException? _quotaError;
-
-  /// 送出前查到的 RevenueCat 方案：查不到是 null，重試不再查、沿用之前查到的。只拿來
-  /// 顯示，不寫回訂閱狀態；見 [_displayTier]。
-  String? _knownRevenueCatTier;
   bool _isGenerating = false;
   bool _preparing = false;
   final _partnerFocus = FocusNode();
@@ -473,7 +469,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
               SubscriptionTierHelper.rankOf(expectedTier)) {
             expectedTier = tier;
           }
-          if (info != null) _knownRevenueCatTier = tier;
         } catch (_) {/* Server remains authoritative. */}
       }
       if (!current()) return;
@@ -607,13 +602,8 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     }
   }
 
-  /// 這個畫面顯示額度說法用的方案（主審第 2 輪 P2-1）：訂閱方案跟送出前查到的
-  /// RevenueCat 方案取高；查不到就照訂閱方案。說明、主按鈕、付費頁大標都用它。
-  String _displayTier(SubscriptionState usage) =>
-      quotaDisplayTier(usage.tier, _knownRevenueCatTier);
-
-  /// 額度不足的說法在顯示時照 [tier]（[_displayTier]）組（主審第 1 輪 P2-2）：重試時
-  /// 請求照舊帶那筆的 expectedTier，說明卻要照用戶現在的方案（跟付費頁大標同一個）。
+  /// 額度不足的說法在顯示時照目前訂閱方案組（主審第 1 輪 P2-2）：重試時請求照舊帶
+  /// 那筆的 expectedTier，說明卻要照用戶現在的方案（跟付費頁大標同一個來源）。
   /// [error] 正是這筆額度錯誤時才換，其他錯誤照原文。
   String _shownError(String error, String tier) {
     final quotaError = _quotaError;
@@ -642,13 +632,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   }) async {
     if (!mounted || !widget.isActive) return;
     final owner = _owner;
-    // 額度入口帶上這個畫面的顯示方案：付費頁大標跟這裡的說明照同一個方案說（主審
-    // 第 2 輪 P2-1）。免費鎖卡等一般入口照舊只傳入口。
-    final extra = entry == PaywallEntry.general
-        ? entry
-        : PaywallRequest(entry,
-            tierHint: _displayTier(ref.read(subscriptionProvider)));
-    await context.push<String>('/paywall', extra: extra);
+    await context.push<String>('/paywall', extra: entry);
     if (owner != _owner) return;
     if (!mounted) return;
     try {
@@ -797,7 +781,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           : _isGenerating
               ? '生成中…'
               : quotaBlocked
-                  ? (canUpgradeQuota(_displayTier(usage))
+                  ? (canUpgradeQuota(usage.tier)
                       ? NewTopicView.upgradeButtonLabel
                       : NewTopicView.viewPlansButtonLabel)
                   : _confirmPending && pending != null
@@ -899,7 +883,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                       liveRegion: true,
                       child: Center(
                         child: Text(
-                          _shownError(_error!, _displayTier(usage)),
+                          _shownError(_error!, usage.tier),
                           style: AppTypography.bodyMedium
                               .copyWith(color: AppColors.error),
                           textAlign: TextAlign.center,

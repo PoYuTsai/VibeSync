@@ -28,6 +28,7 @@ import '../features/onboarding/data/onboarding_service.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/subscription/presentation/screens/ai_privacy_screen.dart';
 import '../features/report/presentation/screens/partner_stage_preview_screen.dart';
+import '../features/subscription/presentation/paywall_entry.dart';
 import '../features/subscription/presentation/screens/paywall_screen.dart';
 import '../features/conversation/presentation/screens/profile_card_screen.dart';
 import '../features/partner/presentation/screens/add_partner_screen.dart';
@@ -199,9 +200,8 @@ final router = GoRouter(
         fullscreenDialog: true,
         transitionDuration: AppMotion.modalIn,
         reverseTransitionDuration: AppMotion.modalOut,
-        // 入口（鎖住的卡、額度用完）由 extra 帶來，標題跟著換（Eric 2026-10-18）；
-        // 開場救星、新話題的額度入口另帶方案提示（主審第 2 輪 P2-1）。
-        child: PaywallScreen.fromRouteExtra(state.extra),
+        // 入口（鎖住的卡、額度用完）由 extra 帶來，標題跟著換（Eric 2026-10-18）。
+        child: PaywallScreen(entry: PaywallEntry.fromRouteExtra(state.extra)),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,

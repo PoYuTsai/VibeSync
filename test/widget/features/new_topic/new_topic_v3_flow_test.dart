@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -12,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/services/funnel_tracker.dart';
-import 'package:vibesync/core/services/revenuecat_service.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/new_topic/data/providers/new_topic_providers.dart';
 import 'package:vibesync/features/new_topic/data/services/new_topic_service.dart';
@@ -29,7 +27,6 @@ import 'package:vibesync/features/subscription/data/providers/subscription_provi
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
-import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import '../../../visual_proof/proof_support.dart';
 
@@ -136,8 +133,7 @@ Future<ProviderContainer> _pump(WidgetTester t,
     {String? selected = 'p',
     double scale = 1,
     Size size = const Size(390, 844),
-    bool paywallRoute = false,
-    bool realPaywall = false}) async {
+    bool paywallRoute = false}) async {
   await t.binding.setSurfaceSize(size);
   addTearDown(() => t.binding.setSurfaceSize(null));
   Widget app(Widget home) => paywallRoute
@@ -150,11 +146,7 @@ Future<ProviderContainer> _pump(WidgetTester t,
                 path: '/paywall',
                 builder: (context, state) {
                   paywallOpens++;
-                  paywallExtras.add(PaywallEntry.fromRouteExtra(state.extra));
-                  if (realPaywall) {
-                    // 跟 routes.dart 同一個轉法：入口加上額度入口帶的方案提示。
-                    return PaywallScreen.fromRouteExtra(state.extra);
-                  }
+                  paywallExtras.add(state.extra);
                   return Scaffold(
                       body: Center(
                           child: TextButton(
@@ -218,33 +210,6 @@ Future<ProviderContainer> _pump(WidgetTester t,
   await t.pump();
   return ProviderScope.containerOf(
       t.element(find.byType(NewTopicView, skipOffstage: false)));
-}
-
-/// RevenueCat 那邊已經是 Essential（訂閱快照可能還沒跟上）。
-CustomerInfo _essentialCustomerInfo() {
-  final now = DateTime.now().toIso8601String();
-  final entitlements = {
-    SubscriptionTierHelper.essential: EntitlementInfo(
-      SubscriptionTierHelper.essential,
-      true,
-      true,
-      now,
-      now,
-      'essential_monthly',
-      true,
-    ),
-  };
-  return CustomerInfo(
-    EntitlementInfos(entitlements, entitlements),
-    const {},
-    const ['essential_monthly'],
-    const ['essential_monthly'],
-    const [],
-    now,
-    'rc-user',
-    const {},
-    now,
-  );
 }
 
 ElevatedButton _button(WidgetTester t) =>
@@ -525,56 +490,6 @@ void main() {
     await t.tap(find.text('關閉付費牆'));
     await t.pumpAndSettle();
     expect(quotaButtonLabel(t), NewTopicView.viewPlansButtonLabel);
-  });
-
-  // 方案來源不一致（主審第 2 輪 P2-1）：新話題送出前也會查 RevenueCat。已確認 Essential、
-  // 訂閱快照還是 Starter（刷新停用）：說明、主按鈕跟真的付費頁大標都不叫他升級；請求照舊
-  // 帶 RevenueCat 的方案，訂閱狀態也不被改寫。
-  testWidgets('RevenueCat 是 Essential、快照是 Starter：新話題說明、主按鈕、付費頁大標都不叫他升級',
-      (t) async {
-    RevenueCatService.debugGetCustomerInfoOverride =
-        () async => _essentialCustomerInfo();
-    addTearDown(() => RevenueCatService.debugGetCustomerInfoOverride = null);
-    subTier = SubscriptionTierHelper.starter;
-    style = '有效風格';
-    final sentTiers = <Object?>[];
-    NewTopicView.debugServiceFactory = () => NewTopicService(
-          accessTokenProvider: () => 'token',
-          streamClientFactory: () =>
-              MockClient.streaming((request, bodyStream) async {
-            final sent = jsonDecode(await utf8.decodeStream(bodyStream))
-                as Map<String, dynamic>;
-            sentTiers.add(sent['expectedTier']);
-            return http.StreamedResponse(
-                Stream.value(utf8.encode(jsonEncode(quota429(monthly: false)))),
-                429,
-                headers: {'content-type': 'application/json'});
-          }),
-        );
-    final container = await _pump(t, paywallRoute: true, realPaywall: true);
-    await _tapGenerate(t);
-    // 伺服器擋下後會自動開付費牆；刷新拿到的用量也不夠這次的 3 則（方案還是 Starter）。
-    (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
-    await t.pumpAndSettle();
-    expect(sentTiers, [SubscriptionTierHelper.essential],
-        reason: '請求照舊帶 RevenueCat 較高的方案');
-    expect(
-        paywallExtras, [PaywallEntry.forQuota(isMonthly: false, remaining: 1)]);
-    expect(
-        find.text(PaywallEntry.dailyQuotaShort
-            .headlineFor(SubscriptionTierHelper.essential)),
-        findsOneWidget,
-        reason: '真的付費頁大標說恢復時間');
-    final message =
-        t.widget<Text>(find.textContaining('額度不足，', skipOffstage: false)).data!;
-    expect(message, contains(kDailyQuotaResetLine));
-    expect(message, isNot(contains('升級')));
-    await t.tap(find.byIcon(Icons.close));
-    await t.pumpAndSettle();
-    expect(quotaButtonLabel(t), NewTopicView.viewPlansButtonLabel);
-    expect(container.read(subscriptionProvider).tier,
-        SubscriptionTierHelper.starter,
-        reason: 'RevenueCat 的方案只拿來顯示，不寫回訂閱狀態');
   });
 
   testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {

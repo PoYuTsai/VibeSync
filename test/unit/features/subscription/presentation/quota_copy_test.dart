@@ -13,19 +13,6 @@ void main() {
     expect(canUpgradeQuota(null), isTrue);
   });
 
-  // 顯示方案（主審第 2 輪 P2-1）：RevenueCat 已確認比訂閱快照高時照較高的說；沒查到
-  // （null）就照訂閱方案，那是 app 已確認的狀態。
-  test('顯示方案：訂閱方案跟已知的 RevenueCat 方案取高，沒查到就照訂閱方案', () {
-    const free = SubscriptionTierHelper.free;
-    const starter = SubscriptionTierHelper.starter;
-    const essential = SubscriptionTierHelper.essential;
-    expect(quotaDisplayTier(starter, essential), essential);
-    expect(quotaDisplayTier(essential, starter), essential);
-    expect(quotaDisplayTier(starter, free), starter);
-    expect(quotaDisplayTier(starter, null), starter);
-    expect(quotaDisplayTier(null, null), free);
-  });
-
   test('升級能選的方案：Starter 只剩 Essential', () {
     expect(
       quotaUpgradeTargets(SubscriptionTierHelper.free),

@@ -359,10 +359,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
 
   /// 舊單段生成撞到的額度錯誤：說明在顯示時才照目前方案組（見 [_shownError]）。
   OpenerQuotaExceededException? _legacyQuotaError;
-
-  /// 送出前已經查到的 RevenueCat 方案（查不到就是 null）。只拿來顯示，不寫回訂閱
-  /// 狀態；見 [_displayTier]。
-  String? _knownRevenueCatTier;
   final _scrollController = ScrollController();
   // 2026-08-18 呈現精修：完成後定格在結果區頂部（開場白建議），不再捲到底
   // 把 5 張卡整個略過。
@@ -500,7 +496,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           SubscriptionTierHelper.rankOf(expectedTier)) {
         expectedTier = revenueCatTier;
       }
-      if (customerInfo != null) _knownRevenueCatTier = revenueCatTier;
     } catch (e) {
       debugPrint('OpeningRescueScreen RevenueCat hint failed: $e');
     }
@@ -638,14 +633,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return false;
   }
 
-  /// 這個畫面顯示額度說法用的方案（主審第 2 輪 P2-1）：訂閱方案跟送出前查到的
-  /// RevenueCat 方案取高；查不到就照訂閱方案。說明、按鈕、付費頁大標都用它。
-  String _displayTier(SubscriptionState subscription) =>
-      quotaDisplayTier(subscription.tier, _knownRevenueCatTier);
-
-  /// 額度不足的說法在顯示時照 [tier]（[_displayTier]）組（主審第 1 輪 P2-2／P2-3）：
-  /// 跟付費頁大標同一個方案，不用請求帶的 expectedTier。[error] 正是這筆額度錯誤時
-  /// 才換，其他錯誤照原文。
+  /// 額度不足的說法在顯示時照目前訂閱方案組（主審第 1 輪 P2-2／P2-3）：跟付費頁
+  /// 大標同一個來源，不用請求帶的 expectedTier（RevenueCat 可能比訂閱快照高）。
+  /// [error] 正是這筆額度錯誤時才換，其他錯誤照原文。
   String _shownError(
     String error,
     OpenerQuotaExceededException? quotaError,
@@ -674,13 +664,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     if (!mounted || _mode != OpeningRescueMode.opener) return;
     if (!mounted) return;
 
-    // 額度入口帶上這個畫面的顯示方案：付費頁大標跟這裡的說明照同一個方案說（主審
-    // 第 2 輪 P2-1）。鎖卡等一般入口照舊只傳入口。
-    final extra = entry == PaywallEntry.general
-        ? entry
-        : PaywallRequest(entry,
-            tierHint: _displayTier(ref.read(subscriptionProvider)));
-    final unlockedTier = await context.push<String>('/paywall', extra: extra);
+    final unlockedTier = await context.push<String>('/paywall', extra: entry);
     if (!mounted) return;
 
     if (unlockedTier != null && unlockedTier.isNotEmpty) {
@@ -944,7 +928,6 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               SubscriptionTierHelper.rankOf(expectedTier)) {
             expectedTier = revenueCatTier;
           }
-          if (customerInfo != null) _knownRevenueCatTier = revenueCatTier;
         } catch (e) {
           debugPrint('OpeningRescueScreen RevenueCat hint failed: $e');
         }
@@ -1455,25 +1438,23 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             child: Column(
               children: [
                 Text(
-                  _shownError(
-                      _error!, state.quotaError, _displayTier(subscription)),
+                  _shownError(_error!, state.quotaError, subscription.tier),
                   key: const ValueKey('opener-flow-error'),
                   style:
                       AppTypography.bodyMedium.copyWith(color: AppColors.error),
                   textAlign: TextAlign.center,
                 ),
                 // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給付費頁入口。
-                // Essential 已經是最高方案，鈕只寫「查看方案」；照顯示方案，跟說明、付費頁
-                // 大標同一個（Eric 2026-10-18）。
+                // Essential 已經是最高方案，鈕只寫「查看方案」；照目前訂閱方案，跟說明、
+                // 付費頁大標同一個來源（Eric 2026-10-18）。
                 if (state.quotaError != null && !state.isBusy)
                   TextButton(
                     key: const ValueKey('opener-upgrade-button'),
                     onPressed: AppHaptics.onPress(() => unawaited(
                         _showPaywallAndRefresh(
                             entry: _quotaEntryFor(state.quotaError!)))),
-                    child: Text(canUpgradeQuota(_displayTier(subscription))
-                        ? '升級方案'
-                        : '查看方案'),
+                    child: Text(
+                        canUpgradeQuota(subscription.tier) ? '升級方案' : '查看方案'),
                   )
                 else if (state.failedOperation != null &&
                     !state.isBusy &&
@@ -1626,8 +1607,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           padding: const EdgeInsets.only(top: 8),
           child: Center(
             child: Text(
-              _shownError(
-                  _error!, _legacyQuotaError, _displayTier(subscription)),
+              _shownError(_error!, _legacyQuotaError, subscription.tier),
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.error,
               ),
