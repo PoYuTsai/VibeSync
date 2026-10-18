@@ -140,10 +140,10 @@ class _PracticeCollectionScreenState
   int? _heldUnlockedCount;
 
   /// 「已收集」數字落位時跳一下：放大到 1.25 倍再回來、顏色閃一下那張卡的光色。單次
-  /// forward，不 repeat。
+  /// forward，不 repeat；長度用 AppMotion 的慶祝檔。
   late final AnimationController _countBump = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 300),
+    duration: AppMotion.celebrate,
   );
   Color _countBumpColor = AppColors.ctaStart;
 

@@ -1,7 +1,7 @@
-import 'dart:ui' show Color, Size;
-
-import 'package:flutter/painting.dart' show TextScaler;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/theme/app_typography.dart';
 import 'package:vibesync/core/theme/practice_reveal_palette.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
@@ -149,22 +149,100 @@ void main() {
   });
 
   group('第一句話對話框放得下幾行（V3.1 §5.13）', () {
-    // 一行 13 × 1.4 = 18.2 px；尖角 6＋上下內距 16＝22 px。
-    test('兩行要 58.4 px、一行要 40.2 px，再少就不顯示；最多兩行', () {
+    // 內文 15 × 1.4 = 21 px 一行；尖角 6＋上下內距 16＝22 px。
+    test('兩行要 64 px、一行要 43 px，再少就不顯示；最多兩行', () {
       const scaler = TextScaler.noScaling;
       expect(practiceIntroBubbleLines(120, scaler), 2);
-      expect(practiceIntroBubbleLines(58.5, scaler), 2);
-      expect(practiceIntroBubbleLines(58.3, scaler), 1);
-      expect(practiceIntroBubbleLines(40.3, scaler), 1);
-      expect(practiceIntroBubbleLines(40.1, scaler), 0);
+      expect(practiceIntroBubbleLines(64.1, scaler), 2);
+      expect(practiceIntroBubbleLines(63.9, scaler), 1);
+      expect(practiceIntroBubbleLines(43.1, scaler), 1);
+      expect(practiceIntroBubbleLines(42.9, scaler), 0);
       expect(practiceIntroBubbleLines(-10, scaler), 0);
     });
 
     test('系統字級放大時行高跟著變高，同樣的空間放得下的行數變少', () {
-      // 1.3 倍：一行 23.66 px，兩行要 69.32 px。
+      // 1.3 倍：一行 27.3 px，兩行要 76.6 px。
       const scaler = TextScaler.linear(1.3);
-      expect(practiceIntroBubbleLines(69.4, scaler), 2);
-      expect(practiceIntroBubbleLines(60, scaler), 1);
+      expect(practiceIntroBubbleLines(76.7, scaler), 2);
+      expect(practiceIntroBubbleLines(70, scaler), 1);
+    });
+  });
+
+  group('第一句話兩行等長（V3.1 §5.13）', () {
+    // 22 字：不收窄的話 390 寬一行排 21 字，第二行只剩「。」或「點。」。
+    const twoLines = '排班有點不固定，但遇到有趣的人會想多聊一點。';
+    const maxWidth = 319.0; // 390 寬的卡片（351）扣掉左右內距 16
+    final style =
+        AppTypography.bodyMedium.copyWith(fontWeight: FontWeight.w600);
+
+    List<double> lineWidths(String text, double width) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        maxLines: 2,
+      )..layout(maxWidth: width);
+      final widths = [for (final m in painter.computeLineMetrics()) m.width];
+      painter.dispose();
+      return widths;
+    }
+
+    double balanced(String text, {int maxLines = 2}) =>
+        practiceIntroBalancedWidth(
+          text: text,
+          style: style,
+          textScaler: TextScaler.noScaling,
+          textDirection: TextDirection.ltr,
+          maxLines: maxLines,
+          maxWidth: maxWidth,
+        );
+
+    testWidgets('要折兩行時收窄到兩行差不到一個字', (tester) async {
+      final unbalanced = lineWidths(twoLines, maxWidth);
+      expect(unbalanced, hasLength(2));
+      expect(unbalanced.last, lessThan(unbalanced.first / 4));
+
+      final width = balanced(twoLines);
+      expect(width, lessThan(maxWidth));
+      final widths = lineWidths(twoLines, width);
+      expect(widths, hasLength(2));
+      expect((widths.first - widths.last).abs(), lessThanOrEqualTo(15.5));
+    });
+
+    testWidgets('一行放得下、兩行也放不下要省略、或只准一行時，照原本的寬度', (tester) async {
+      expect(balanced('手沖咖啡是我的本命。'), maxWidth);
+      expect(balanced(twoLines * 3), maxWidth);
+      expect(balanced(twoLines, maxLines: 1), maxWidth);
+    });
+
+    testWidgets('對話框在 App 的字樣下排出來也是兩行等長、不被省略', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: 351,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: PracticeRevealIntroBubble(
+                    text: twoLines,
+                    typed: 1,
+                    maxLines: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.byKey(const ValueKey('practice-draw-ceremony-intro-text')),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.size.width, lessThan(maxWidth * 0.75));
+      expect(paragraph.size.height, closeTo(2 * 15 * 1.4, 0.5));
     });
   });
 }

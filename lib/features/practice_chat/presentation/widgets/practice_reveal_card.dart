@@ -677,28 +677,74 @@ class PracticeRevealStars extends StatelessWidget {
   }
 }
 
-// 角色第一句話對話框的尺寸（版面計算與 widget 共用單一真相）。
+// 角色第一句話對話框的尺寸（版面計算與 widget 共用單一真相）。字級用內文 15
+// （`AppTypography.bodyMedium`，行高 1.4），內距照 DESIGN.md §3、§5 的尺度。
 const double _kIntroNibWidth = 14;
 const double _kIntroNibHeight = 6;
-const double _kIntroPaddingH = 14;
+const double _kIntroPaddingH = 16;
 const double _kIntroPaddingV = 8;
-const double _kIntroFontSize = 13;
-const double _kIntroLineHeight = 1.4;
 const double _kIntroRadius = 18;
+const TextStyle _kIntroTextStyle = AppTypography.bodyMedium;
 
 /// 卡片下緣到提示字之間的 [available] 高度放得下幾行第一句話：0＝不顯示，最多 2 行
 /// （V3.1 規格 §5.13）。字級跟著系統字級放大，行高用 [scaler] 換算。
 int practiceIntroBubbleLines(double available, TextScaler scaler) {
-  final line = scaler.scale(_kIntroFontSize) * _kIntroLineHeight;
+  final line =
+      scaler.scale(_kIntroTextStyle.fontSize!) * _kIntroTextStyle.height!;
   final chrome = _kIntroNibHeight + 2 * _kIntroPaddingV;
   return ((available - chrome) / line).floor().clamp(0, 2);
 }
 
+/// 兩行時把字的寬度收到「還是兩行」的最窄寬度：兩行差不多長，不會只剩一兩個字掉到第二行
+/// （同 CSS 的 `text-wrap: balance`）。一行放得下，或兩行也放不下要省略時，照 [maxWidth]。
+/// [style]、[locale] 要跟實際畫字的 `Text` 一樣（合併過 DefaultTextStyle），折行才會一致。
+double practiceIntroBalancedWidth({
+  required String text,
+  required TextStyle style,
+  required TextScaler textScaler,
+  required TextDirection textDirection,
+  required int maxLines,
+  required double maxWidth,
+  Locale? locale,
+}) {
+  if (maxLines < 2 || !maxWidth.isFinite) return maxWidth;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textAlign: TextAlign.center,
+    textDirection: textDirection,
+    textScaler: textScaler,
+    maxLines: maxLines,
+    locale: locale,
+  );
+  try {
+    painter.layout(maxWidth: maxWidth);
+    final lines = painter.computeLineMetrics().length;
+    if (lines < 2 || painter.didExceedMaxLines) return maxWidth;
+    // 寬度砍半一定排不下（整句比 maxWidth 長才會折行），在兩者之間找最窄的寬度。
+    var narrow = maxWidth / lines;
+    var wide = maxWidth;
+    while (wide - narrow > 0.5) {
+      final mid = (narrow + wide) / 2;
+      painter.layout(maxWidth: mid);
+      if (painter.didExceedMaxLines ||
+          painter.computeLineMetrics().length > lines) {
+        narrow = mid;
+      } else {
+        wide = mid;
+      }
+    }
+    // 多留 1 px，逐字打出時兩段文字排版的些微誤差不會讓它多折一行。
+    return math.min(wide + 1, maxWidth);
+  } finally {
+    painter.dispose();
+  }
+}
+
 /// 角色第一句話（V3.1 規格 §5.13）：卡片下方的半透明深色小對話框，上緣尖角指向卡片；
 /// 外框跟資訊欄同一圈淡白邊，N／R 的深色背景上才看得出是對話框。
-/// 逐字打出時整句先排好、還沒打到的字透明，換行位置從頭到尾不跳。讀屏不另外唸：
-/// 停住時儀式的讀屏按鈕已經接上這句話。
-class PracticeRevealIntroBubble extends StatelessWidget {
+/// 逐字打出時整句先排好、還沒打到的字透明，換行位置從頭到尾不跳；兩行時兩行等長。
+/// 讀屏不另外唸：停住時儀式的讀屏按鈕已經接上這句話。
+class PracticeRevealIntroBubble extends StatefulWidget {
   const PracticeRevealIntroBubble({
     super.key,
     required this.text,
@@ -713,38 +759,88 @@ class PracticeRevealIntroBubble extends StatelessWidget {
   final int maxLines;
 
   @override
+  State<PracticeRevealIntroBubble> createState() =>
+      _PracticeRevealIntroBubbleState();
+}
+
+class _PracticeRevealIntroBubbleState extends State<PracticeRevealIntroBubble> {
+  static final TextStyle _style = _kIntroTextStyle.copyWith(
+    color: Colors.white.withValues(alpha: 0.92),
+    fontWeight: FontWeight.w600,
+  );
+
+  // 逐字打出時每一幀都會重建；兩行等長的寬度只在字、可用寬度、字樣或行數變了才重算。
+  Object? _widthKey;
+  double _textWidth = 0;
+
+  double _balancedWidth(BuildContext context, double maxWidth) {
+    // 跟底下的 Text 取一樣的字樣、字級縮放、方向與語系。
+    final style = DefaultTextStyle.of(context).style.merge(_style);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final key = (
+      widget.text,
+      maxWidth,
+      style,
+      scaler,
+      direction,
+      locale,
+      widget.maxLines
+    );
+    if (key != _widthKey) {
+      _widthKey = key;
+      _textWidth = practiceIntroBalancedWidth(
+        text: widget.text,
+        style: style,
+        textScaler: scaler,
+        textDirection: direction,
+        maxLines: widget.maxLines,
+        maxWidth: maxWidth,
+        locale: locale,
+      );
+    }
+    return _textWidth;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final chars = text.characters;
-    final shown = (typed * chars.length).ceil().clamp(0, chars.length);
+    final chars = widget.text.characters;
+    final shown = (widget.typed * chars.length).ceil().clamp(0, chars.length);
     return ExcludeSemantics(
-      child: CustomPaint(
-        painter: const _IntroBubblePainter(),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            _kIntroPaddingH,
-            _kIntroNibHeight + _kIntroPaddingV,
-            _kIntroPaddingH,
-            _kIntroPaddingV,
-          ),
-          child: Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(text: chars.take(shown).toString()),
-                TextSpan(
-                  text: chars.skip(shown).toString(),
-                  style: const TextStyle(color: Colors.transparent),
-                ),
-              ],
+      child: LayoutBuilder(
+        builder: (context, constraints) => CustomPaint(
+          painter: const _IntroBubblePainter(),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              _kIntroPaddingH,
+              _kIntroNibHeight + _kIntroPaddingV,
+              _kIntroPaddingH,
+              _kIntroPaddingV,
             ),
-            key: const ValueKey('practice-draw-ceremony-intro-text'),
-            maxLines: maxLines,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: AppTypography.bodySmall.copyWith(
-              fontSize: _kIntroFontSize,
-              height: _kIntroLineHeight,
-              color: Colors.white.withValues(alpha: 0.92),
-              fontWeight: FontWeight.w600,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: _balancedWidth(
+                  context,
+                  math.max(0.0, constraints.maxWidth - 2 * _kIntroPaddingH),
+                ),
+              ),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: chars.take(shown).toString()),
+                    TextSpan(
+                      text: chars.skip(shown).toString(),
+                      style: const TextStyle(color: Colors.transparent),
+                    ),
+                  ],
+                ),
+                key: const ValueKey('practice-draw-ceremony-intro-text'),
+                maxLines: widget.maxLines,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: _style,
+              ),
             ),
           ),
         ),
