@@ -74,6 +74,12 @@ export function planWithoutRead(hits: SafetyKeywordHits): GuideV3Plan | null {
   return null;
 }
 
+/// 額度不夠時（Eric 2026-10-18）：她的訊息有自殺、自殘、割腕、輕生、不想活任一個字，就不讀
+/// 局面、直接給自傷關心訊息（附專線）。「想死」與未成年不算，照額度不足處理（null）。
+export function planCareFromQuota(hits: SafetyKeywordHits): GuideV3Plan | null {
+  return hits.selfHarmWords ? carePlan("self_harm", false, true) : null;
+}
+
 /// 規則先後：自傷關心 → 未成年 → rules.ts 的 C 段規則。自傷排在未成年前面：兩個都有時，
 /// 專線比「不提供建議」重要。自傷：模型標了，或她的訊息有自殺、自殘、割腕、輕生、不想活
 /// 這些字，一律關心（Eric 2026-10-18）。讀局面成功時，未成年只看模型的 minorSignal（主審

@@ -23,7 +23,12 @@ import {
   parseWrittenCardLine,
 } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
-import { type GuideV3Plan, planTurn, planWithoutRead } from "./plan.ts";
+import {
+  type GuideV3Plan,
+  planCareFromQuota,
+  planTurn,
+  planWithoutRead,
+} from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
 import {
   NO_SAFETY_HITS,
@@ -169,6 +174,9 @@ export interface GuideV3StreamDeps {
   waitUntil?: (task: Promise<unknown>) => void;
   /// 這個方案最多送幾張（免費方案；null＝全部）。照排好的順序取前面幾張。
   maxCards?: number | null;
+  /// 額度不夠、她的訊息有自傷字眼（Eric 2026-10-18；入口在 analyze_chat_handler 的額度
+  /// 預查）：不打任何模型，直接給自傷關心訊息，不扣。
+  careOnlyFromQuota?: boolean;
 }
 
 type ErrorEvent = Record<string, unknown> & {
@@ -247,7 +255,18 @@ export async function handleGuideV3Stream(
       "handleGuideV3Stream: resume requests belong to the v2 handler",
     );
   }
-  const shouldCharge = deps.quotaUsage.shouldChargeQuota && !deps.accountIsTest;
+  // 額度不夠只給關心：入口只在她的訊息有自傷字眼時才這樣叫；對不上就是呼叫端的錯，不建
+  // run、不打模型。這種 run 一律不扣。
+  const quotaCare = deps.careOnlyFromQuota
+    ? planCareFromQuota(scanSafetyKeywords(deps.messages))
+    : null;
+  if (deps.careOnlyFromQuota && !quotaCare) {
+    throw new Error(
+      "handleGuideV3Stream: careOnlyFromQuota needs self-harm words from her",
+    );
+  }
+  const shouldCharge = !quotaCare && deps.quotaUsage.shouldChargeQuota &&
+    !deps.accountIsTest;
   let run: AnalysisStreamRun;
   try {
     run = await deps.store.createPendingRun({
@@ -278,7 +297,7 @@ export async function handleGuideV3Stream(
       retryable: false,
     }, 500);
   }
-  const flow = new GuideV3Flow(deps, run.id, shouldCharge);
+  const flow = new GuideV3Flow(deps, run.id, shouldCharge, quotaCare);
   return ndjsonStreamResponse((emit, close, _fail, isClosed) => {
     const task = flow.run(emit, isClosed).finally(close);
     deps.waitUntil?.(task.catch(() => undefined));
@@ -307,6 +326,8 @@ class GuideV3Flow {
     private readonly deps: GuideV3StreamDeps,
     private readonly runId: string,
     private readonly shouldCharge: boolean,
+    /// 額度不夠時直接給的自傷關心（careOnlyFromQuota 才有）。
+    private readonly quotaCare: GuideV3Plan | null = null,
   ) {
     this.now = deps.now ?? Date.now;
     this.startedAt = this.now();
@@ -334,6 +355,8 @@ class GuideV3Flow {
       const turns = toTurns(guideMessagesFrom(this.deps.messages));
       // 程式自己掃的安全訊號（safety.ts）：讀局面失敗或拒答時也要用，所以先掃。
       this.hits = scanSafetyKeywords(this.deps.messages, this.deps.background);
+      // 額度不夠：不讀局面、不寫卡、不打記憶，直接給關心訊息（Eric 2026-10-18）。
+      if (this.quotaCare) return await this.care(emit, this.quotaCare, null);
       let text: string;
       try {
         const read = await this.deps.callRead({
@@ -731,8 +754,8 @@ class GuideV3Flow {
   }
 
   /// 不出卡、不扣額度，顯示固定訊息：自傷關心，或涉及未成年（plan.careKind）。讀局面失敗、
-  /// 只靠程式關鍵字判出來時 tags 是 null（沒有燈號），readFailure 記失敗的原因。存不進
-  /// 資料庫也照樣顯示。
+  /// 只靠程式關鍵字判出來時 tags 是 null（沒有燈號），readFailure 記失敗的原因；額度不夠
+  /// 直接給的另標 insufficientQuota。存不進資料庫也照樣顯示。
   private async care(
     emit: NdjsonEmit,
     plan: GuideV3Plan,
@@ -748,6 +771,7 @@ class GuideV3Flow {
       kind: plan.careKind ?? "self_harm",
       trigger: plan.careTrigger ?? "model",
       ...(readFailure ? { readFailedCode: readFailure.code } : {}),
+      ...(this.quotaCare ? { insufficientQuota: true } : {}),
     } as const;
     let recorded = true;
     try {
@@ -799,6 +823,7 @@ class GuideV3Flow {
         careKind: care.kind,
         careTrigger: care.trigger,
         charged: false,
+        ...(this.quotaCare ? { insufficientQuota: true } : {}),
         ...(readFailure
           ? {
             readFailedCode: readFailure.code,

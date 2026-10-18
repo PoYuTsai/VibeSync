@@ -14,6 +14,7 @@ import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcom
 import '../../../helpers/memory_analysis_history_repository.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/core/services/usage_service.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
 import 'package:vibesync/features/analysis/application/ports/conversation_memory_port.dart';
@@ -95,12 +96,14 @@ class _RecordingAnalyzeStreamClient extends AnalyzeStreamClient {
   List<Message>? streamMessages;
   int? streamPreviousAnalyzedCount;
   int? streamPreviousAnalyzedCharCount;
+  bool? streamHasOverchargeConfirmation;
   AnalysisResult? streamResult;
 
   @override
   Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) async* {
     streamCalls++;
     streamMessages = List<Message>.from(request.messages);
+    streamHasOverchargeConfirmation = request.confirmedOvercharge != null;
     streamPreviousAnalyzedCount = request.previousAnalyzedCount;
     streamPreviousAnalyzedCharCount = request.previousAnalyzedCharCount;
     yield AnalysisStreamUpdate.done(
@@ -1931,6 +1934,210 @@ void main() {
         await tapOrb(tester);
         expect(find.text('最後一則是你傳的'), findsNothing);
         expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    // 額度不夠時的自傷關心（Eric 2026-10-18）：她的訊息有那五個字（含簡體寫法）就不跳
+    // 額度不足的框，照常送出；伺服器只回關心訊息與專線，不扣、不打模型。
+    /// 他問一句、她回一句（她那句 [her]）。
+    Conversation selfHarmConversation({
+      required String her,
+      String his = '最近工作還順利嗎？上次你說新主管很難搞',
+    }) =>
+        Conversation(
+          id: _conversationId,
+          name: '小雲',
+          messages: [
+            Message(
+              id: 'his-1',
+              content: his,
+              isFromMe: true,
+              timestamp: DateTime(2026, 10, 18, 9),
+            ),
+            Message(
+              id: 'her-1',
+              content: her,
+              isFromMe: false,
+              timestamp: DateTime(2026, 10, 18, 10),
+            ),
+          ],
+          createdAt: DateTime(2026, 10, 18),
+          updatedAt: DateTime(2026, 10, 18),
+          currentRound: 1,
+        );
+    const herSelfHarm = '其實壓力大到每天都睡不好，有時候會覺得不想活了，也不知道能跟誰說';
+    const herPlain = '其實壓力大到每天都睡不好，下班只想躺著，也不知道能跟誰說這些事情';
+
+    /// 這段對話要扣幾則（跟按下去時同一個算法）。
+    int unitsOf(Conversation conversation) =>
+        MessageCalculator.previewAnalysisRequest(conversation.messages)
+            .band
+            .units!;
+
+    /// 今天剩的比這段要扣的少一則（還沒用完）。
+    SubscriptionState oneShortToday(Conversation conversation) {
+      final units = unitsOf(conversation);
+      expect(units, greaterThanOrEqualTo(2), reason: '要扣 2 則以上才測得到剩的不夠');
+      return SubscriptionState(
+        dailyMessagesUsed: AppConstants.freeDailyLimit - (units - 1),
+      );
+    }
+
+    testWidgets(
+      '自傷關心：今天額度用完、她說不想活了，不跳額度不足的框，直接送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(
+            dailyMessagesUsed: AppConstants.freeDailyLimit,
+          ),
+          conversation: selfHarmConversation(her: herSelfHarm),
+        );
+        expect(
+            find.byKey(FloatingAnalysisActionButton.captionKey), findsNothing);
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '自傷關心：剩的比這段要扣的少（簡體「自杀」），一樣直接送出',
+      (tester) async {
+        final conversation = selfHarmConversation(
+          her: '其實壓力大到每天都睡不好，有時候真的會想自杀，也不知道能跟誰說',
+        );
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: oneShortToday(conversation),
+          conversation: conversation,
+        );
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '自傷關心：剩的不夠、沒有那五個字，照舊跳額度不足的框、不送出',
+      (tester) async {
+        final conversation = selfHarmConversation(her: herPlain);
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: oneShortToday(conversation),
+          conversation: conversation,
+        );
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      '自傷關心：那些字只在他的訊息，照舊跳額度不足的框、不送出',
+      (tester) async {
+        final conversation = selfHarmConversation(
+          his: '我最近真的累到覺得不想活了，工作一直出包',
+          her: herPlain,
+        );
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: oneShortToday(conversation),
+          conversation: conversation,
+        );
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      '自傷關心：額度夠時不變，照舊寫那一行、按下去直接開始',
+      (tester) async {
+        final conversation = selfHarmConversation(her: herSelfHarm);
+        final units = unitsOf(conversation);
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: conversation,
+        );
+        expect(
+          find.text('這次會用 $units 則，剩 ${freeLeftAfter(units: units)} 則'),
+          findsOneWidget,
+        );
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '自傷關心：第一次用，不跳額度框，但資料分享同意框照舊要先同意才送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(
+            dailyMessagesUsed: AppConstants.freeDailyLimit,
+          ),
+          conversation: selfHarmConversation(her: herSelfHarm),
+          consentAccepted: false,
+        );
+        await tapOrb(tester);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(find.text('同意並繼續'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+
+        await tester.tap(find.byType(Checkbox).last);
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.tap(find.text('同意並繼續').last);
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '自傷關心：超過 2000 字、剩的不夠，不跳「內容較長」確認框，送出時也不帶長內容確認',
+      (tester) async {
+        final long = Conversation(
+          id: _conversationId,
+          name: '小雲',
+          messages: [
+            for (var i = 0; i < 4; i++)
+              Message(
+                id: 'her-long-$i',
+                content: i == 0 ? '我真的不想活了${'好' * 493}' : '好' * 501,
+                isFromMe: false,
+                timestamp: DateTime(2026, 10, 18, 10, i),
+              ),
+          ],
+          createdAt: DateTime(2026, 10, 18),
+          updatedAt: DateTime(2026, 10, 18),
+          currentRound: 4,
+        );
+        final preview = MessageCalculator.previewAnalysisRequest(long.messages);
+        expect(preview.band.kind, BillingBandKind.overcharge);
+        final harness = await pumpOrbScreen(
+          tester,
+          // 今天剩的比長內容要扣的少一則。
+          subscription: SubscriptionState(
+            dailyMessagesUsed:
+                AppConstants.freeDailyLimit - (preview.band.units! - 1),
+          ),
+          conversation: long,
+        );
+        await tapOrb(tester);
+
+        expect(find.text('內容較長，確認後才會扣'), findsNothing);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+        expect(harness.recorder.streamHasOverchargeConfirmation, isFalse);
       },
     );
 

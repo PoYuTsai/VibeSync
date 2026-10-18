@@ -165,11 +165,13 @@ export interface GuideV3Trace {
   readonly herLastTurnChars?: number;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;
-  /// care 才有：哪一種固定訊息、誰判出來的；讀局面失敗才靠關鍵字給的，記失敗的錯誤碼。
+  /// care 才有：哪一種固定訊息、誰判出來的；讀局面失敗才靠關鍵字給的，記失敗的錯誤碼；
+  /// 額度不夠、沒讀局面就直接給的，標 insufficientQuota（Eric 2026-10-18）。
   readonly care?: {
     readonly kind: GuideV3CareKind;
     readonly trigger: GuideV3CareTrigger;
     readonly readFailedCode?: string;
+    readonly insufficientQuota?: boolean;
   };
   /// 程式關鍵字有命中才有（safety.ts；只有真假，不放原句）。
   readonly keywordHits?: SafetyKeywordHits;
