@@ -182,6 +182,32 @@ void main() {
       }
     });
 
+    test('再調結果要照則留住空格：原稿有空格才查，則數與每一則的段數都要一樣', () {
+      expect(guideV3BlankRuns('我做＿＿，住＿和＿＿'), 3);
+      expect(guideV3BlankRuns('沒有空格'), 0);
+      // 原稿沒有空格：不查（多出空格的話，卡片的複製規則會要他先填）。
+      expect(guideV3RefineKeepsBlanks(['好啊'], ['好啊，週末去＿＿']), isTrue);
+      expect(
+        guideV3RefineKeepsBlanks(['我做＿＿', '住＿＿'], ['我做＿＿啦', '住＿＿附近']),
+        isTrue,
+      );
+      // 空格被填成編的。
+      expect(
+        guideV3RefineKeepsBlanks(['我是＿＿', '週末常去＿＿'], ['我是工程師', '週末常爬山']),
+        isFalse,
+      );
+      // 總數一樣、但挪了則（主審第 1 輪 P2-5 的例子）。
+      expect(
+        guideV3RefineKeepsBlanks(['我做＿＿', '住＿＿'], ['我做設計', '住＿＿，週末去＿＿']),
+        isFalse,
+      );
+      // 兩則被併成一則。
+      expect(
+        guideV3RefineKeepsBlanks(['我做＿＿', '住＿＿'], ['我做＿＿，住＿＿']),
+        isFalse,
+      );
+    });
+
     test('形狀不對就不收', () {
       expect(GuideV3Card.fromJson(_card(0)), isNull);
       expect(GuideV3Card.fromJson(_card(1, task: 'coldRead')), isNull);

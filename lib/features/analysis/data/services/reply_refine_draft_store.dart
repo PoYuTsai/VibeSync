@@ -62,10 +62,14 @@ class ReplyRefineDraft {
   }
 }
 
+/// [scope]＝草稿的分區：一般微調是 null；v3 任務卡帶卡片規格（主審第 1 輪 P2-2）。
+/// 同一句原句，一般微調調出來的稿（例如推進卡不能有的徵求同意問句）不能被任務卡
+/// 預選採用——那會完全繞過伺服器的任務卡檢查。
 abstract class ReplyRefineDraftStore {
   Future<ReplyRefineDraft?> loadFor({
     required String ownerUserId,
     required String originText,
+    String? scope,
   });
 
   Future<void> save({
@@ -73,11 +77,19 @@ abstract class ReplyRefineDraftStore {
     required String originText,
     required String refinedText,
     String? requestId,
+    String? scope,
   });
 }
 
-String replyRefineOriginDigest(String originText) =>
-    sha256.convert(utf8.encode(originText.trim())).toString();
+/// 一般微調的 digest 跟以前一樣（24 小時內存的舊稿照樣讀得回來）；有分區時把分區和
+/// 原句一起 JSON 編碼再算，跟一般微調的鑰匙不可能撞在一起。
+String replyRefineOriginDigest(String originText, {String? scope}) => sha256
+    .convert(utf8.encode(
+      scope == null
+          ? originText.trim()
+          : jsonEncode([scope, originText.trim()]),
+    ))
+    .toString();
 
 class InMemoryReplyRefineDraftStore implements ReplyRefineDraftStore {
   InMemoryReplyRefineDraftStore({DateTime Function()? now})
@@ -93,9 +105,10 @@ class InMemoryReplyRefineDraftStore implements ReplyRefineDraftStore {
   Future<ReplyRefineDraft?> loadFor({
     required String ownerUserId,
     required String originText,
+    String? scope,
   }) async {
-    final draft =
-        _drafts[_key(ownerUserId, replyRefineOriginDigest(originText))];
+    final draft = _drafts[
+        _key(ownerUserId, replyRefineOriginDigest(originText, scope: scope))];
     if (draft == null) return null;
     if (_now().toUtc().difference(draft.savedAt) >= kReplyRefineDraftTtl) {
       return null;
@@ -109,8 +122,9 @@ class InMemoryReplyRefineDraftStore implements ReplyRefineDraftStore {
     required String originText,
     required String refinedText,
     String? requestId,
+    String? scope,
   }) async {
-    final originDigest = replyRefineOriginDigest(originText);
+    final originDigest = replyRefineOriginDigest(originText, scope: scope);
     _drafts[_key(ownerUserId, originDigest)] = ReplyRefineDraft(
       ownerUserId: ownerUserId.trim(),
       originDigest: originDigest,
@@ -142,9 +156,10 @@ class HiveReplyRefineDraftStore implements ReplyRefineDraftStore {
   Future<ReplyRefineDraft?> loadFor({
     required String ownerUserId,
     required String originText,
+    String? scope,
   }) async {
     final box = _openBox();
-    final originDigest = replyRefineOriginDigest(originText);
+    final originDigest = replyRefineOriginDigest(originText, scope: scope);
     final key = _storageKey(ownerUserId, originDigest);
     final draft = _decode(box.get(key));
     // 這裡和 optimize pending identity 的處理刻意不同：那一份讀不出來會 throw，
@@ -166,9 +181,10 @@ class HiveReplyRefineDraftStore implements ReplyRefineDraftStore {
     required String originText,
     required String refinedText,
     String? requestId,
+    String? scope,
   }) async {
     final box = _openBox();
-    final originDigest = replyRefineOriginDigest(originText);
+    final originDigest = replyRefineOriginDigest(originText, scope: scope);
     final draft = ReplyRefineDraft(
       ownerUserId: ownerUserId.trim(),
       originDigest: originDigest,

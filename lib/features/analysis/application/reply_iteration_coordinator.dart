@@ -149,20 +149,27 @@ class ReplyIterationCoordinator {
   }
 
   /// 讀回同一原句最近一次微調稿。讀失敗就當作沒有草稿：這只是方便用的
-  /// 快取，不能為了它擋住面板。
+  /// 快取，不能為了它擋住面板。任務卡只讀同一個卡片規格存的稿。
   Future<ReplyRefineDraftSnapshot?> restoreRefineDraft({
     required String ownerUserId,
     required String originText,
+    GuideV3RefineSpec? guideV3Card,
   }) async {
     try {
       return await _draftStore.loadFor(
         ownerUserId: ownerUserId,
         originText: originText,
+        scope: _draftScope(guideV3Card),
       );
     } catch (_) {
       return null;
     }
   }
+
+  /// 草稿分區：任務卡依卡片規格（任務、口吻、做法）分開，跟一般微調也分開。
+  static String? _draftScope(GuideV3RefineSpec? card) => card == null
+      ? null
+      : 'guide_v3:${card.task}:${card.voice}:${card.method}';
 
   /// 回覆微調一輪：與潤飾共用同一條 exactly-once 帳本；指令進 fingerprint，
   /// 同一句話的兩種指令不會共用同一顆 requestId 而 replay 出上一輪結果。
@@ -217,7 +224,15 @@ class ReplyIterationCoordinator {
           onTelemetry: onTelemetry,
         );
         final refined = result.optimizedMessage?.optimized.trim();
-        if (refined == null || refined.isEmpty) {
+        // 任務卡：原稿有空格時，結果要照則留住空格才給（還沒升版的 Edge 不查）。
+        // 擋下用的錯誤碼不在 runner 的換身分清單裡：同一份輸入再按會 replay，不再扣。
+        if (refined == null ||
+            refined.isEmpty ||
+            (guideV3Card != null &&
+                !guideV3RefineKeepsBlanks(
+                  _cardLines(currentText),
+                  _cardLines(refined),
+                ))) {
           throw AnalysisException(
             '這次沒有調出可用的版本，請再試一次。',
             code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
@@ -245,6 +260,7 @@ class ReplyIterationCoordinator {
         originText: anchorText,
         refinedText: refinedText,
         requestId: pending.requestId,
+        scope: _draftScope(guideV3Card),
       );
       restorable = true;
     } catch (_) {}
@@ -259,6 +275,13 @@ class ReplyIterationCoordinator {
       restorable: restorable,
     );
   }
+
+  /// 任務卡的幾則用換行接成一段送（伺服器回來也是一則一行）。
+  static List<String> _cardLines(String text) => text
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
 
   /// 微調後複製的獨立事件 key。原卡的 adviceId 是決定論的，覆寫它污染的
   /// 不只是統計：outcome digest 會回注 coach prompt，教練會以為你送出的是

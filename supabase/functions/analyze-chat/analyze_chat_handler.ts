@@ -1085,6 +1085,7 @@ ${recentText}`;
       isRefineReplyMode;
     let optimizeRequestId: string | null = null;
     let optimizeInputHash: string | null = null;
+    let optimizeLegacyInputHash: string | null = null;
     let optimizeReplayResult: Record<string, unknown> | null = null;
 
     if (isOptimizeMessageMode) {
@@ -1111,6 +1112,7 @@ ${recentText}`;
       }
       optimizeRequestId = optimizeIdentity.requestId;
       optimizeInputHash = optimizeIdentity.inputHash;
+      optimizeLegacyInputHash = optimizeIdentity.legacyInputHash;
       optimizeReplayResult = optimizeIdentity.replayResult;
     }
     // ADR #19 r3：全對話字數合併計費。    // ADR #19 r3：全對話字數合併計費。增量 = 字數差（三層 compat fallback）、
@@ -2298,6 +2300,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         refineFreeGranted,
         requestId: optimizeRequestId,
         inputHash: optimizeInputHash,
+        legacyInputHash: optimizeLegacyInputHash,
         result,
         userDraft,
         monthlyLimit,

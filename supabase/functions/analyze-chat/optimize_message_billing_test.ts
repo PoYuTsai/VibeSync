@@ -213,6 +213,32 @@ Deno.test("任務卡規格進 hash；沒帶卡的微調 hash 跟上線前完全�
   }
 });
 
+Deno.test("任務卡的再調：帳本列是不含卡的舊 hash 時照 replay，其他 hash 照舊不一致", () => {
+  const result = { optimizedMessage: { optimized: "那就週六，我來訂位" } };
+  const legacyRow = { input_hash: "b".repeat(64), result_json: result };
+  assertEquals(
+    classifyOptimizeMessageReplayPreflight(
+      legacyRow,
+      "a".repeat(64),
+      "b".repeat(64),
+    ),
+    { kind: "replay", result },
+  );
+  assertEquals(
+    classifyOptimizeMessageReplayPreflight(
+      { input_hash: "c".repeat(64), result_json: result },
+      "a".repeat(64),
+      "b".repeat(64),
+    ),
+    { kind: "mismatch" },
+  );
+  // 沒帶卡（沒有舊 hash）：跟以前一樣。
+  assertEquals(
+    classifyOptimizeMessageReplayPreflight(legacyRow, "a".repeat(64)),
+    { kind: "mismatch" },
+  );
+});
+
 Deno.test("optimize-message replay preflight returns cached result or mismatch", () => {
   const result = { optimizedMessage: { optimized: "要不要一起喝咖啡？" } };
   assertEquals(

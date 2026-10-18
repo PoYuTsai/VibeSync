@@ -11,6 +11,22 @@ const guideV3BlankMark = '＿';
 
 bool guideV3TextHasBlank(String text) => text.contains(guideV3BlankMark);
 
+/// 一則裡有幾段空格（連著的「＿」算一段；跟伺服器 `refine_card.ts` 同一套算法）。
+int guideV3BlankRuns(String text) =>
+    RegExp('$guideV3BlankMark+').allMatches(text).length;
+
+/// 「再調一下」的結果有沒有照則留住空格：原稿有空格時，則數要一樣、每一則的空格段數
+/// 也要一樣（伺服器 `finalizeRefinedCard` 的同一條規則；還沒升版的 Edge 不查，App 這裡
+/// 再擋一次，免得編出來的身分資料不經填空就被複製走；主審第 1 輪 P2-3／P2-5）。
+bool guideV3RefineKeepsBlanks(List<String> before, List<String> after) {
+  if (!before.any(guideV3TextHasBlank)) return true;
+  if (before.length != after.length) return false;
+  for (var i = 0; i < before.length; i++) {
+    if (guideV3BlankRuns(before[i]) != guideV3BlankRuns(after[i])) return false;
+  }
+  return true;
+}
+
 /// 卡片任務（伺服器 `TASK_CODE`）。標籤直接給用戶看（設計文件第 5 節）。
 enum GuideV3Task {
   accept('accept', '接住'),

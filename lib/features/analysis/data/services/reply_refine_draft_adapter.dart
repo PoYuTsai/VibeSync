@@ -15,10 +15,12 @@ class ReplyRefineDraftAdapter implements ReplyRefineDraftPort {
   Future<ReplyRefineDraftSnapshot?> loadFor({
     required String ownerUserId,
     required String originText,
+    String? scope,
   }) async {
     final draft = await _store.loadFor(
       ownerUserId: ownerUserId,
       originText: originText,
+      scope: scope,
     );
     if (draft == null) return null;
     return ReplyRefineDraftSnapshot(
@@ -33,12 +35,14 @@ class ReplyRefineDraftAdapter implements ReplyRefineDraftPort {
     required String originText,
     required String refinedText,
     String? requestId,
+    String? scope,
   }) {
     return _store.save(
       ownerUserId: ownerUserId,
       originText: originText,
       refinedText: refinedText,
       requestId: requestId,
+      scope: scope,
     );
   }
 }

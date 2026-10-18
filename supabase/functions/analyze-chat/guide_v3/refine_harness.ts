@@ -1,6 +1,7 @@
 // 任務卡「再調一下」的整條路徑工具：用假 Supabase 跑正式 handler（訂閱、帳本、免費次數、
-// 限流都是假的，額度一律還有；免費次數預設授權，也可以設成今天已用完），模型呼叫交給呼叫端決定——測試給假回覆，
-// 黑箱工具在付費閘內放行真的 API。其他對外連線（ai_logs）一律回成功、不連網。
+// 限流都是假的，額度一律還有；免費次數預設授權，也可以設成今天已用完；帳本可以先放一列），
+// 模型呼叫交給呼叫端決定——測試給假回覆，黑箱工具在付費閘內放行真的 API。其他對外連線
+// （ai_logs）一律回成功、不連網。
 // 給 refine_guide_v3_handler_test.ts 與 tools/v3-card-refine-blackbox 共用；入口不載入，
 // 不隨函式部署。
 import { createAnalyzeChatHandler } from "../index.ts";
@@ -28,12 +29,25 @@ export type RefineHarnessModel = (
 /// 今天的免費微調：還有（預設）或已經用完（之後每次 1 則）。
 export type RefineHarnessFreeAllowance = "available" | "exhausted";
 
+export interface RefineHarnessOptions {
+  readonly freeAllowance?: RefineHarnessFreeAllowance;
+  /// 帳本裡已經有這一顆 requestId 的列（例如還沒升版的 Edge 用不含卡的 hash 寫的）。
+  /// 結算時 hash 一樣就回這一列、不扣；不一樣就是不一致（跟正式函式一樣）。
+  readonly ledgerRow?: {
+    readonly inputHash: string;
+    readonly result: Record<string, unknown>;
+    /// true＝重播預檢讀不到、結算時才在（並行重試撞在升版那一刻）。
+    readonly appearsAtSettle?: boolean;
+  };
+}
+
 function fakeSupabase(
   rpcs: RefineHarnessRpc[],
-  freeAllowance: RefineHarnessFreeAllowance,
+  options: RefineHarnessOptions,
 ) {
   const nowIso = new Date().toISOString();
-  const exhausted = freeAllowance === "exhausted";
+  const exhausted = options.freeAllowance === "exhausted";
+  const ledgerRow = options.ledgerRow;
   const subscription = {
     tier: "free",
     monthly_messages_used: 0,
@@ -42,12 +56,19 @@ function fakeSupabase(
     monthly_reset_at: nowIso,
   };
   const query = (table: string) => {
-    // 訂閱有一列；重播帳本沒有紀錄（第一次）；免費次數今天還沒用過，或已經用滿 10 次。
+    // 訂閱有一列；重播帳本預設沒有紀錄（第一次）；免費次數今天還沒用過，或已經用滿 10 次。
     const result = {
       data: table === "subscriptions"
         ? subscription
         : table === "refine_free_allowance" && exhausted
         ? { day_utc: nowIso.slice(0, 10), used_count: 10 }
+        : table === "optimize_message_requests" && ledgerRow &&
+            !ledgerRow.appearsAtSettle
+        ? {
+          input_hash: ledgerRow.inputHash,
+          result_json: ledgerRow.result,
+          created_at: nowIso,
+        }
         : null,
       error: null,
     };
@@ -86,6 +107,27 @@ function fakeSupabase(
           error: null,
         });
       }
+      if (fn === "settle_optimize_message_request" && ledgerRow) {
+        return Promise.resolve(
+          args.p_input_hash === ledgerRow.inputHash
+            ? {
+              data: {
+                result: ledgerRow.result,
+                charged: false,
+                monthlyUsed: 0,
+                dailyUsed: 0,
+              },
+              error: null,
+            }
+            : {
+              data: null,
+              error: {
+                message: "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH",
+                code: "P0001",
+              },
+            },
+        );
+      }
       if (fn === "settle_optimize_message_request") {
         // 帳本照呼叫端要求扣或不扣（p_charge_quota），跟正式函式一樣。
         const charged = args.p_charge_quota === true;
@@ -109,11 +151,11 @@ function fakeSupabase(
 export async function runRefineThroughHandler(
   body: Record<string, unknown>,
   model: RefineHarnessModel,
-  freeAllowance: RefineHarnessFreeAllowance = "available",
+  options: RefineHarnessOptions = {},
 ): Promise<RefineHarnessOutcome> {
   const rpcs: RefineHarnessRpc[] = [];
   const handler = createAnalyzeChatHandler({
-    createSupabaseClient: () => fakeSupabase(rpcs, freeAllowance),
+    createSupabaseClient: () => fakeSupabase(rpcs, options),
   });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
