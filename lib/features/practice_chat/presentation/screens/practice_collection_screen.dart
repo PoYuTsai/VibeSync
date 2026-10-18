@@ -4,6 +4,7 @@
 // N 60%），本頁只負責呈現（邊框／badge／星等），不影響扣費。解鎖集合來自
 // practiceCollectionProvider（server 的翻牌事件為唯一真相源），翻牌成功即時 +1。
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -130,10 +131,27 @@ class _PracticeCollectionScreenState
   /// 光球已落位但捲動還沒到位：到位後才亮。
   bool _glowPending = false;
 
+  /// 這次抽牌開始時的已解鎖集合：揭曉時判斷新角色或重複角色（V3.1 規格 §5.14）。
+  /// null＝沒有紀錄（抽牌中離開圖鑑又回來），儀式不掛 NEW 也不寫「已收藏」。
+  Set<String>? _unlockedAtDrawStart;
+
+  /// 儀式期間標題先顯示抽之前的數字（抽中後的 +1 會先在儀式底下到）；光球落位才換成
+  /// 新數字並跳一下。null＝照實際數字顯示。
+  int? _heldUnlockedCount;
+
+  /// 「已收集」數字落位時跳一下：放大到 1.25 倍再回來、顏色閃一下那張卡的光色。單次
+  /// forward，不 repeat。
+  late final AnimationController _countBump = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 300),
+  );
+  Color _countBumpColor = AppColors.ctaStart;
+
   @override
   void dispose() {
     _drawPulse.dispose();
     _highlight.dispose();
+    _countBump.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -177,10 +195,36 @@ class _PracticeCollectionScreenState
     });
   }
 
-  /// 收卡光球落位：點亮那一格。捲動還沒到位就先記著，到位再亮（reduce-motion 在
-  /// 抽中當下就會呼叫，這時捲動通常還在跑）。
+  /// 儀式揭曉時問：這位是不是這次才解鎖（抽牌前的紀錄裡沒有她）。
+  bool? _isNewProfile(String profileId) {
+    final before = _unlockedAtDrawStart;
+    if (before == null) return null;
+    return !before.contains(profileId);
+  }
+
+  /// 標題數字換回實際值；數字真的變大才跳一下（重複角色不跳，reduce-motion 不動）。
+  void _releaseHeldCount(String profileId) {
+    final held = _heldUnlockedCount;
+    _unlockedAtDrawStart = null;
+    if (held == null) return;
+    setState(() {
+      _heldUnlockedCount = null;
+      _countBumpColor =
+          PracticeRevealTheme.of(practiceGirlRarityFor(profileId)).orb;
+    });
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (!reduceMotion && ref.read(unlockedPracticeGirlCountProvider) > held) {
+      _countBump.forward(from: 0);
+    }
+  }
+
+  /// 收卡光球落位：標題數字 +1、點亮那一格。捲動還沒到位就先記著，到位再亮
+  /// （reduce-motion 在抽中當下就會呼叫，這時捲動通常還在跑）。
   void _onCeremonyArchived(String profileId) {
-    if (!mounted || _highlightProfileId != profileId) return;
+    if (!mounted) return;
+    _releaseHeldCount(profileId);
+    if (_highlightProfileId != profileId) return;
     if (_scrollingToHighlight) {
       _glowPending = true;
       return;
@@ -503,7 +547,24 @@ class _PracticeCollectionScreenState
     // 402/429 事後錯誤呈現：只攔「翻牌在途 → 收場」的轉場（同步 gating 的
     // snackbar 由 _onDrawPressed 自己出，不會雙發）。
     ref.listen(practiceChatControllerProvider, (prev, next) {
+      // 抽牌開始：拍下抽之前的已解鎖集合與數字（一般抽、確認後抽、SR 券都走這裡）。
+      // 解鎖的 +1 要等抽中後存完草稿才到，這一刻一定還是抽之前的樣子。圖鑑還沒載到
+      // （網路慢、讀取失敗）就不拍：空集合會讓每張卡都被當成新角色，寧可不掛 NEW。
+      if (prev != null && !prev.isDrawing && next.isDrawing) {
+        final loaded = ref.read(practiceCollectionProvider).valueOrNull;
+        _unlockedAtDrawStart = loaded?.toSet();
+        _heldUnlockedCount =
+            loaded == null ? null : ref.read(unlockedPracticeGirlCountProvider);
+        return;
+      }
       if (prev == null || !prev.isDrawing || next.isDrawing) return;
+      // 抽牌沒成功（錯誤、402／429、換一位失敗）：儀式只淡出不收卡，數字直接放回。
+      final drawSucceeded =
+          next.isRevealed && next.errorMessage == null && next.girl != null;
+      if (!drawSucceeded) {
+        _unlockedAtDrawStart = null;
+        _heldUnlockedCount = null;
+      }
       if (next.drawUpgradeRequired) {
         // 402＝Free 額度用完（產品拍板：絕不宣傳加抽）→ 直接進付費牆。
         // 402 常代表訂閱快照 stale（付費過期降 free 未同步）→ 順帶重同步一次
@@ -541,6 +602,7 @@ class _PracticeCollectionScreenState
             onRevealTarget: _onRevealTarget,
             archiveTargetRect: _archiveTargetRect,
             onArchived: _onCeremonyArchived,
+            isNewProfile: _isNewProfile,
           ),
         ),
       ],
@@ -594,7 +656,9 @@ class _PracticeCollectionScreenState
                 slivers: [
                   SliverToBoxAdapter(
                     child: _CollectionHeader(
-                      unlockedCount: unlockedCount,
+                      unlockedCount: _heldUnlockedCount ?? unlockedCount,
+                      countBump: _countBump,
+                      countBumpColor: _countBumpColor,
                       total: total,
                       drawPulse: _drawPulse,
                       drawIsDrawing: chatState.isDrawing,
@@ -866,6 +930,8 @@ class _UnlockHighlight extends StatelessWidget {
 class _CollectionHeader extends StatelessWidget {
   const _CollectionHeader({
     required this.unlockedCount,
+    required this.countBump,
+    required this.countBumpColor,
     required this.total,
     required this.drawPulse,
     required this.drawIsDrawing,
@@ -875,6 +941,10 @@ class _CollectionHeader extends StatelessWidget {
   });
 
   final int unlockedCount;
+
+  /// 收卡落位時「已收集」數字跳一下（0→1 單次）；顏色閃一下 [countBumpColor]。
+  final Animation<double> countBump;
+  final Color countBumpColor;
   final int total;
   final Animation<double> drawPulse;
   final bool drawIsDrawing;
@@ -924,14 +994,28 @@ class _CollectionHeader extends StatelessWidget {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            Text(
-                              '$unlockedCount',
-                              key:
-                                  const ValueKey('collection-completion-count'),
-                              style: AppTypography.titleLarge.copyWith(
-                                color: AppColors.ctaStart,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            AnimatedBuilder(
+                              animation: countBump,
+                              builder: (context, child) {
+                                final bump =
+                                    math.sin(math.pi * countBump.value);
+                                return Transform.scale(
+                                  scale: 1 + 0.25 * bump,
+                                  child: Text(
+                                    '$unlockedCount',
+                                    key: const ValueKey(
+                                        'collection-completion-count'),
+                                    style: AppTypography.titleLarge.copyWith(
+                                      color: Color.lerp(
+                                        AppColors.ctaStart,
+                                        countBumpColor,
+                                        bump,
+                                      ),
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                             Text(
                               ' / $total',

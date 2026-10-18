@@ -167,4 +167,56 @@ void main() {
       expect(scales, everyElement(0));
     });
   });
+
+  group('新角色與重複角色（V3.1 規格 §5.14）', () {
+    const newTag = ValueKey('practice-draw-ceremony-new-tag');
+    const badge = ValueKey('practice-draw-ceremony-rarity-badge');
+
+    Future<void> pumpCard(WidgetTester tester, {bool? isNew}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: debugCeremonyCardFront(
+                girl: sr,
+                width: 300,
+                height: 450,
+                isNew: isNew,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('新角色：稀有度牌右邊掛 NEW、在卡片內，資訊欄沒有「已收藏」', (tester) async {
+      await pumpCard(tester, isNew: true);
+
+      expect(find.byKey(newTag), findsOneWidget);
+      final card = tester.getRect(
+        find.byKey(const ValueKey('practice-draw-ceremony-front')),
+      );
+      final tag = tester.getRect(find.byKey(newTag));
+      expect(tag.left, greaterThan(tester.getRect(find.byKey(badge)).right));
+      expect(
+          card.contains(tag.topLeft) && card.contains(tag.bottomRight), isTrue);
+      expect(find.textContaining('已收藏'), findsNothing);
+    });
+
+    testWidgets('重複角色：不掛 NEW，基本資訊那行最後是「已收藏」', (tester) async {
+      await pumpCard(tester, isNew: false);
+
+      expect(find.byKey(newTag), findsNothing);
+      expect(find.textContaining(RegExp(r' · 已收藏$')), findsOneWidget);
+    });
+
+    testWidgets('不知道新舊（沒有抽牌前的紀錄）：NEW、「已收藏」都不畫', (tester) async {
+      await pumpCard(tester);
+
+      expect(find.byKey(newTag), findsNothing);
+      expect(find.textContaining('已收藏'), findsNothing);
+    });
+  });
 }

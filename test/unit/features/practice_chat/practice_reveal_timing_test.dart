@@ -350,6 +350,45 @@ void main() {
         expect(practiceRevealStarPulse(PracticeRevealTiming.revealMs, i), 0);
       }
     });
+
+    test('NEW 小標晚稀有度牌 150 ms 浮現，停住前到位（V3.1 §5.14）', () {
+      expect(
+        PracticeRevealTiming.newTagStartMs - PracticeRevealTiming.stampStartMs,
+        150,
+      );
+      expect(practiceRevealNewTagAppear(PracticeRevealTiming.newTagStartMs), 0);
+      expect(practiceRevealNewTagAppear(PracticeRevealTiming.newTagEndMs), 1);
+      expect(
+        PracticeRevealTiming.newTagEndMs,
+        lessThan(PracticeRevealTiming.revealMs),
+      );
+    });
+
+    test('第一句話：資訊欄到位才開始，100 ms 淡入、等速打字、停住前打完（V3.1 §5.13）', () {
+      expect(
+        PracticeRevealTiming.introLineStartMs,
+        PracticeRevealTiming.infoEndMs,
+      );
+      expect(
+        PracticeRevealTiming.introLineEndMs,
+        lessThan(PracticeRevealTiming.revealMs),
+      );
+      const start = PracticeRevealTiming.introLineStartMs;
+      expect(practiceRevealIntroLineOpacity(start), 0);
+      expect(practiceRevealIntroLineOpacity(start + 100), 1);
+      expect(practiceRevealIntroLineTyped(start), 0);
+      expect(practiceRevealIntroLineTyped(start + 250), closeTo(0.5, 1e-9));
+      expect(
+        practiceRevealIntroLineTyped(PracticeRevealTiming.introLineEndMs),
+        1,
+      );
+      var last = -1.0;
+      for (var ms = start; ms <= PracticeRevealTiming.revealMs; ms += 10) {
+        final typed = practiceRevealIntroLineTyped(ms);
+        expect(typed, greaterThanOrEqualTo(last), reason: '$ms');
+        last = typed;
+      }
+    });
   });
 
   group('收卡：變成光、光球、星點', () {

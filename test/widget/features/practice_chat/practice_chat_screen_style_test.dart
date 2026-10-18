@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1599,11 +1600,14 @@ void main() {
   });
 
   // ── 每日翻牌入口（locked → draw）─────────────────────────────────────────
+  /// [surface]／[padding]：模擬不同手機的螢幕與安全區（預設 390×844、無安全區）。
   Future<void> pumpLocked(
     WidgetTester tester, {
     required PracticeChatApiService api,
+    Size surface = const Size(390, 844),
+    EdgeInsets padding = EdgeInsets.zero,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
@@ -1613,7 +1617,16 @@ void main() {
           practiceChatApiServiceProvider.overrideWithValue(api),
         ],
         // 儀式行為測試 host：練習室內容＋ceremony overlay（掛載點見檔頭註解）。
-        child: const MaterialApp(home: _CeremonyTestHost()),
+        child: MaterialApp(
+          builder: padding == EdgeInsets.zero
+              ? null
+              : (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(padding: padding, viewPadding: padding),
+                    child: child!,
+                  ),
+          home: const _CeremonyTestHost(),
+        ),
       ),
     );
   }
@@ -3746,6 +3759,83 @@ void main() {
     await finishCeremony(tester);
   });
 
+  // ── V3.1 第四刀：角色第一句話（docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md §5.13）──
+  const introLineKey = ValueKey('practice-draw-ceremony-intro-line');
+  const introTextKey = ValueKey('practice-draw-ceremony-intro-text');
+
+  /// 對話框目前打出來的字（還沒打到、畫成透明的那段不算）。
+  String introTyped(WidgetTester tester) {
+    final span = tester.widget<Text>(find.byKey(introTextKey)).textSpan!;
+    return ((span as TextSpan).children!.first as TextSpan).text!;
+  }
+
+  testWidgets('V3.1：資訊欄到位後卡片下方浮出第一句話，逐字打出、停住前打完', (tester) async {
+    final girl = practiceGirlProfiles[2];
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester, completer: completer, girl: girl);
+
+    await tester.pump(revealAt(PracticeRevealTiming.introLineStartMs - 20));
+    expect(find.byKey(introLineKey), findsNothing);
+
+    await tester.pump(revealAt(20 + 250)); // 打到一半
+    final half = introTyped(tester);
+    expect(half, isNotEmpty);
+    expect(half.length, lessThan(girl.selfIntro.length));
+    expect(girl.selfIntro.startsWith(half), isTrue);
+
+    await tester.pumpAndSettle(); // 停住：整句打完、畫面靜止
+    expect(introTyped(tester), girl.selfIntro);
+    expect(opacityAbove(tester, find.byKey(introLineKey)), 1);
+
+    // 收卡：跟資訊欄一起淡掉，不留在圖鑑上。
+    await tester.tap(find.byKey(_ceremonyContinueKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(introLineKey), findsNothing);
+    await tester.pump(const Duration(milliseconds: 250));
+  });
+
+  for (final (surface, padding) in const [
+    (Size(375, 667), EdgeInsets.only(top: 20)), // iPhone SE：沒有底部安全區
+    (Size(390, 844), EdgeInsets.only(top: 47, bottom: 34)), // iPhone 14／15
+  ]) {
+    testWidgets(
+        'V3.1：${surface.width.toInt()}×${surface.height.toInt()} 上第一句話不蓋到卡片、'
+        '也不蓋到提示字，最長的一句兩行放得下', (tester) async {
+      final girl = practiceGirlProfiles.reduce(
+        (a, b) => a.selfIntro.length >= b.selfIntro.length ? a : b,
+      );
+      final completer = Completer<PracticeDrawResult>();
+      final api = _DrawApi(() => completer.future);
+      await pumpLocked(tester, api: api, surface: surface, padding: padding);
+      await drawToReveal(tester, completer: completer, girl: girl);
+      await tester.pumpAndSettle(); // 停住
+
+      final card = tester.getRect(find.byKey(_ceremonyFrontKey));
+      final bubble = tester.getRect(find.byKey(introLineKey));
+      final hint = tester.getRect(find.byKey(_ceremonyHintKey));
+      expect(bubble.top, greaterThanOrEqualTo(card.bottom + 8 - 0.5),
+          reason: '對話框 $bubble 太貼卡片 $card');
+      expect(bubble.bottom, lessThanOrEqualTo(hint.top - 8 + 0.5),
+          reason: '對話框 $bubble 蓋到提示字 $hint');
+      expect(bubble.width, lessThanOrEqualTo(card.width + 0.5));
+
+      final text = tester.widget<Text>(find.byKey(introTextKey));
+      expect(text.maxLines, 2);
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(
+          of: find.byKey(introTextKey),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse, reason: '整句要放得下');
+      expect(introTyped(tester), girl.selfIntro);
+
+      await finishCeremony(tester);
+    });
+  }
+
   testWidgets('V3：翻牌落定前點擊無效；落定後點一下快轉到停住，再點一下才收卡', (tester) async {
     final completer = Completer<PracticeDrawResult>();
     final api = _DrawApi(() => completer.future);
@@ -3806,7 +3896,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
   });
 
-  testWidgets('V3：停住時整層是可點的按鈕，讀得出抽到誰（VoiceOver）', (tester) async {
+  testWidgets('V3：停住時整層是可點的按鈕，讀得出抽到誰與她的第一句話（VoiceOver）', (tester) async {
     final handle = tester.ensureSemantics();
     final girl = practiceGirlProfiles[2];
     final api = _DrawApi(() async => _drawResultFor(girl));
@@ -3815,10 +3905,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('practice-draw-cta')));
     await tester.pumpAndSettle();
 
+    // 這個 host 沒接圖鑑頁的新舊紀錄：不唸「新角色」也不唸「已收藏」。
     expect(
       tester.getSemantics(find.byKey(_ceremonyContinueKey)),
       isSemantics(
-        label: '已抽到 ${girl.displayName}，${girl.rarity.label} 卡',
+        label: '已抽到 ${girl.displayName}，${girl.rarity.label} 卡。'
+            '${girl.selfIntro}',
         hint: '點兩下收進圖鑑',
         isButton: true,
         hasTapAction: true,

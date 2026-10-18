@@ -1,8 +1,10 @@
 import 'dart:ui' show Color, Size;
 
+import 'package:flutter/painting.dart' show TextScaler;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/theme/practice_reveal_palette.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_painters.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_theme.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
@@ -143,6 +145,26 @@ void main() {
           practiceRevealAmbientParticle(i, 1.37, area),
         );
       }
+    });
+  });
+
+  group('第一句話對話框放得下幾行（V3.1 §5.13）', () {
+    // 一行 13 × 1.4 = 18.2 px；尖角 6＋上下內距 16＝22 px。
+    test('兩行要 58.4 px、一行要 40.2 px，再少就不顯示；最多兩行', () {
+      const scaler = TextScaler.noScaling;
+      expect(practiceIntroBubbleLines(120, scaler), 2);
+      expect(practiceIntroBubbleLines(58.5, scaler), 2);
+      expect(practiceIntroBubbleLines(58.3, scaler), 1);
+      expect(practiceIntroBubbleLines(40.3, scaler), 1);
+      expect(practiceIntroBubbleLines(40.1, scaler), 0);
+      expect(practiceIntroBubbleLines(-10, scaler), 0);
+    });
+
+    test('系統字級放大時行高跟著變高，同樣的空間放得下的行數變少', () {
+      // 1.3 倍：一行 23.66 px，兩行要 69.32 px。
+      const scaler = TextScaler.linear(1.3);
+      expect(practiceIntroBubbleLines(69.4, scaler), 2);
+      expect(practiceIntroBubbleLines(60, scaler), 1);
     });
   });
 }

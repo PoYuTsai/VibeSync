@@ -8,6 +8,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import 'practice_new_badge.dart';
 
 const String kPracticeRoomEntryHeroAsset =
     'assets/images/practice_girls/practice_girl_038.jpg';
@@ -192,33 +193,8 @@ class _TitleRow extends StatelessWidget {
             height: 1.15,
           ),
         ),
-        _NewBadge(),
+        PracticeNewBadge(),
       ],
-    );
-  }
-}
-
-class _NewBadge extends StatelessWidget {
-  const _NewBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.ctaStart,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: const Text(
-        'NEW',
-        style: TextStyle(
-          color: AppColors.onCta,
-          fontWeight: FontWeight.w900,
-          fontSize: 12,
-          letterSpacing: 0,
-          height: 1,
-        ),
-      ),
     );
   }
 }

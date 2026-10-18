@@ -14,6 +14,7 @@ import '../../../../core/theme/practice_reveal_palette.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
 import 'practice_girl_photo.dart';
+import 'practice_new_badge.dart';
 import 'practice_reveal_painters.dart';
 import 'practice_reveal_theme.dart';
 import 'practice_reveal_timing.dart';
@@ -179,6 +180,7 @@ class PracticeRevealFaceState {
     required this.stamped,
     required this.stampScale,
     required this.stampOpacity,
+    required this.newTagAppear,
     required this.starScales,
     required this.starPulses,
     required this.overlayOpacity,
@@ -194,6 +196,7 @@ class PracticeRevealFaceState {
       stamped: practiceRevealStamped(revealMs),
       stampScale: practiceRevealStampScale(revealMs),
       stampOpacity: practiceRevealStampOpacity(revealMs),
+      newTagAppear: practiceRevealNewTagAppear(revealMs),
       starScales: [
         for (var i = 0; i < _kMaxStars; i++)
           practiceRevealStarScale(revealMs, i),
@@ -225,6 +228,9 @@ class PracticeRevealFaceState {
   final double stampScale;
   final double stampOpacity;
 
+  /// NEW 小標浮現（0..1）；只有新卡會畫。
+  final double newTagAppear;
+
   /// 每顆亮星的縮放與點亮脈衝（只取前 `rarity.stars` 顆）。
   final List<double> starScales;
   final List<double> starPulses;
@@ -245,12 +251,17 @@ class PracticeRevealCardFront extends StatelessWidget {
     required this.width,
     required this.height,
     required this.state,
+    this.isNew,
   });
 
   final PracticeGirlProfile girl;
   final double width;
   final double height;
   final PracticeRevealFaceState state;
+
+  /// 這次抽到的是不是新角色（V3.1 規格 §5.14）：true 在稀有度牌旁掛 NEW；false＝重複
+  /// 角色，資訊欄寫「已收藏」；null＝不知道（抽牌中離開圖鑑又回來），兩個都不畫。
+  final bool? isNew;
 
   @override
   Widget build(BuildContext context) {
@@ -302,15 +313,32 @@ class PracticeRevealCardFront extends StatelessWidget {
                 Positioned(
                   top: 16,
                   left: 16,
-                  child: Opacity(
-                    opacity: state.stampOpacity * state.overlayOpacity,
-                    child: Transform.scale(
-                      scale: state.stampScale,
-                      child: PracticeRevealRarityBadge(
-                        rarity: girl.rarity,
-                        theme: theme,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Opacity(
+                        opacity: state.stampOpacity * state.overlayOpacity,
+                        child: Transform.scale(
+                          scale: state.stampScale,
+                          child: PracticeRevealRarityBadge(
+                            rarity: girl.rarity,
+                            theme: theme,
+                          ),
+                        ),
                       ),
-                    ),
+                      if (isNew == true && state.newTagAppear > 0) ...[
+                        const SizedBox(width: 6),
+                        Opacity(
+                          opacity: state.newTagAppear * state.overlayOpacity,
+                          child: Transform.scale(
+                            scale: 0.6 + 0.4 * state.newTagAppear,
+                            child: const PracticeNewBadge(
+                              key: ValueKey('practice-draw-ceremony-new-tag'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               Positioned(
@@ -329,6 +357,7 @@ class PracticeRevealCardFront extends StatelessWidget {
                       photoShift: infoRise,
                       starScales: state.starScales,
                       starPulses: state.starPulses,
+                      collected: isNew == false,
                     ),
                   ),
                 ),
@@ -487,10 +516,14 @@ class PracticeRevealInfoBar extends StatelessWidget {
     required this.photoShift,
     required this.starScales,
     required this.starPulses,
+    this.collected = false,
   });
 
   final PracticeGirlProfile girl;
   final PracticeRevealTheme theme;
+
+  /// 重複角色：基本資訊那行最後加「已收藏」（V3.1 規格 §5.14）。
+  final bool collected;
 
   /// 和卡面同一張、同緩縮的照片（模糊後當毛玻璃底）。
   final Widget photo;
@@ -507,6 +540,7 @@ class PracticeRevealInfoBar extends StatelessWidget {
       '${girl.age}',
       if (girl.city.isNotEmpty) girl.city,
       if (girl.professionLabel.isNotEmpty) girl.professionLabel,
+      if (collected) '已收藏',
     ].join(' · ');
     final radius = BorderRadius.circular(18);
     // 不設 liveRegion：停住時整層已主動唸出抽到誰（儀式的讀屏按鈕），這裡再唸會連唸兩次。
@@ -631,4 +665,110 @@ class PracticeRevealStars extends StatelessWidget {
       ],
     );
   }
+}
+
+// 角色第一句話對話框的尺寸（版面計算與 widget 共用單一真相）。
+const double _kIntroNibWidth = 14;
+const double _kIntroNibHeight = 6;
+const double _kIntroPaddingH = 14;
+const double _kIntroPaddingV = 8;
+const double _kIntroFontSize = 13;
+const double _kIntroLineHeight = 1.4;
+
+/// 卡片下緣到提示字之間的 [available] 高度放得下幾行第一句話：0＝不顯示，最多 2 行
+/// （V3.1 規格 §5.13）。字級跟著系統字級放大，行高用 [scaler] 換算。
+int practiceIntroBubbleLines(double available, TextScaler scaler) {
+  final line = scaler.scale(_kIntroFontSize) * _kIntroLineHeight;
+  final chrome = _kIntroNibHeight + 2 * _kIntroPaddingV;
+  return ((available - chrome) / line).floor().clamp(0, 2);
+}
+
+/// 角色第一句話（V3.1 規格 §5.13）：卡片下方的半透明深色小對話框，上緣尖角指向卡片。
+/// 逐字打出時整句先排好、還沒打到的字透明，換行位置從頭到尾不跳。讀屏不另外唸：
+/// 停住時儀式的讀屏按鈕已經接上這句話。
+class PracticeRevealIntroBubble extends StatelessWidget {
+  const PracticeRevealIntroBubble({
+    super.key,
+    required this.text,
+    required this.typed,
+    required this.maxLines,
+  });
+
+  final String text;
+
+  /// 打出來的比例（0..1），以字形叢集計，emoji 不會被切半。
+  final double typed;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final chars = text.characters;
+    final shown = (typed * chars.length).ceil().clamp(0, chars.length);
+    final fill = PracticeRevealPalette.infoGlass.withValues(alpha: 0.82);
+    return ExcludeSemantics(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CustomPaint(
+            size: const Size(_kIntroNibWidth, _kIntroNibHeight),
+            painter: _IntroNibPainter(fill),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: _kIntroPaddingH,
+                vertical: _kIntroPaddingV,
+              ),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: chars.take(shown).toString()),
+                    TextSpan(
+                      text: chars.skip(shown).toString(),
+                      style: const TextStyle(color: Colors.transparent),
+                    ),
+                  ],
+                ),
+                key: const ValueKey('practice-draw-ceremony-intro-text'),
+                maxLines: maxLines,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: AppTypography.bodySmall.copyWith(
+                  fontSize: _kIntroFontSize,
+                  height: _kIntroLineHeight,
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 對話框上緣的小尖角（朝上指向卡片）。
+class _IntroNibPainter extends CustomPainter {
+  const _IntroNibPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 底邊往下多畫 1 px 壓進對話框，接縫不會透出一條線。
+    final path = Path()
+      ..moveTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height + 1)
+      ..lineTo(0, size.height + 1)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_IntroNibPainter old) => old.color != color;
 }
