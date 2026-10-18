@@ -3898,18 +3898,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   void _copyGuideV3Card(GuideV3Card card, String text, String toast) {
     Clipboard.setData(ClipboardData(text: text));
+    final key = _guideV3EditKey(card);
+    // 兩則一組的卡一則一則複製（Eric 2026-10-18）：成效紀錄一張卡只記一次（事件
+    // id 照 runId:slot，第二則是 no-op），記的是整張卡現在的字，不是先複製的那則。
+    final cardText = _v3Versions.displayed(key, card.messages).join('\n');
     // 再調過的卡（之後自己填空也算）記成那一輪微調的獨立事件，不落回原卡。
-    final refined = _v3Versions.refinedFor(_guideV3EditKey(card));
+    final refined = _v3Versions.refinedFor(key);
     unawaited(
       refined != null
           ? _recordRefineCopy(
               originCardKey: _guideV3CardKey(card),
               requestId: refined.requestId,
-              copiedText: text,
+              copiedText: cardText,
             )
           : _recordAnalysisCopy(
               cardKey: _guideV3CardKey(card),
-              copiedText: text,
+              copiedText: cardText,
             ),
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -3920,31 +3924,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// 填空／改成自己的說法（從卡上現在顯示的那一份開始）；改好就直接複製改好的版本。
-  Future<void> _editGuideV3Card(GuideV3Card card) async {
+  /// 填空／改成自己的說法（從卡上現在顯示的那一份開始）。存好回傳每一則，複製哪
+  /// 一則由卡片決定（兩則以上從第 1 則開始）。
+  Future<List<String>?> _editGuideV3Card(GuideV3Card card) async {
     final key = _guideV3EditKey(card);
     final edited = await showGuideV3EditSheet(
       context,
       messages: _v3Versions.displayed(key, card.messages),
     );
-    if (edited == null || !mounted) return;
+    if (edited == null || !mounted) return null;
     setState(() => _v3Versions.saveEdit(key, edited));
-    AppHaptics.light();
-    _copyGuideV3Card(
-      card,
-      edited.join('\n'),
-      edited.length == 1 ? '已複製這句' : '已複製這組訊息',
-    );
+    return edited;
   }
 
   /// v3 任務卡的「再調一下」（Eric 2026-10-18）：沿用 [_refineReply] 的面板、同意書、
   /// 計費與冪等，帶卡片規格讓伺服器保住任務、跑出卡的檢查；幾則照舊是幾則。選定的
-  /// 版本不直接進剪貼簿：先存成這張卡的再調版本（編的細節提醒照留），再照卡片的
-  /// 複製規則走（還有「＿」就先填）。
-  Future<void> _refineGuideV3Card(GuideV3Card card) async {
+  /// 版本不直接進剪貼簿：先存成這張卡的再調版本（編的細節提醒照留），回傳給卡片
+  /// 照複製規則走（還有「＿」就先填）。
+  Future<List<String>?> _refineGuideV3Card(GuideV3Card card) async {
     final spec = card.refineSpec;
-    if (spec == null) return;
+    if (spec == null) return null;
     final key = _guideV3EditKey(card);
+    List<String>? adopted;
     await _refineReply(
       originText: _v3Versions.displayed(key, card.messages).join('\n'),
       originCardKey: _guideV3CardKey(card),
@@ -3957,25 +3958,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
         if (version.messages.isEmpty || !mounted) return;
         setState(() => _v3Versions.adoptRefined(key, version));
-        await _copyGuideV3CardAsShown(card);
+        adopted = version.messages;
       },
     );
-  }
-
-  /// 照卡片的複製規則複製卡上現在顯示的那一份：還有「＿」就先開填空，填好才複製。
-  Future<void> _copyGuideV3CardAsShown(GuideV3Card card) async {
-    final messages =
-        _v3Versions.displayed(_guideV3EditKey(card), card.messages);
-    if (messages.any(guideV3TextHasBlank)) {
-      await _editGuideV3Card(card);
-      return;
-    }
-    AppHaptics.light();
-    _copyGuideV3Card(
-      card,
-      messages.join('\n'),
-      messages.length == 1 ? '已複製這句' : '已複製這組訊息',
-    );
+    return adopted;
   }
 
   Future<void> _recordAnalysisCopy({
@@ -4499,14 +4485,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               recovered: _v3Result?.recovered ?? false,
                               editedMessagesFor: _guideV3EditedFor,
                               onCopy: _copyGuideV3Card,
-                              onEdit: (card) =>
-                                  unawaited(_editGuideV3Card(card)),
+                              onEdit: _editGuideV3Card,
                               // 再調只給最終結果（串流中、分析紀錄都不給）。
                               refinedMessagesFor: _guideV3RefinedFor,
-                              onRefine: _v3Result == null
-                                  ? null
-                                  : (card) =>
-                                      unawaited(_refineGuideV3Card(card)),
+                              onRefine:
+                                  _v3Result == null ? null : _refineGuideV3Card,
                               onUpgrade: () => unawaited(_showPaywall(context)),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),
