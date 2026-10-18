@@ -3,6 +3,7 @@
 // 設定 RECORD_CEREMONY=1 才會跑；平常 `flutter test` 全量會 skip，不寫檔不拖慢。
 //   RECORD_CEREMONY=1 flutter test test/tools/ceremony_preview_recorder_test.dart
 // 只錄某個稀有度：再加 RECORD_RARITY=n|r|sr（預設三個都錄）。
+// 預設錄新角色（NEW、收集數字落位 +1）；RECORD_DUPLICATE=1 改錄重複角色（「已收藏」）。
 // 掛真實的角色圖鑑頁（儀式蓋在整頁最上層、底下是模糊的圖鑑），從按下翻牌起以固定
 // 步長 pump、逐幀 RenderRepaintBoundary.toImage 截圖到 build/card_draw_preview/<稀有度>/，
 // 之後由 ffmpeg 組 mp4（可再 mux 配樂、和參考片並排）。
@@ -169,6 +170,7 @@ Future<void> _loadFirstAvailableFont(
 void main() {
   final record = Platform.environment['RECORD_CEREMONY'] == '1';
   final only = Platform.environment['RECORD_RARITY'];
+  final duplicate = Platform.environment['RECORD_DUPLICATE'] == '1';
 
   // 錨點與 catalog 指定同步：001=N、010=R、004=SR（見 practice_persona.ts）。
   final girls = <String, PracticeGirlProfile>{
@@ -196,10 +198,12 @@ void main() {
       addTearDown(tester.view.reset);
 
       final api = _DrawApi(() async => _drawResultFor(girl));
-      // 圖鑑先解鎖幾張（底下的格子有真照片），剛抽到的那一格也在裡面。
+      // 圖鑑先解鎖幾張（底下的格子有真照片）。預設錄「新角色」：剛抽到的那位不在裡面，
+      // 抽中後才 +1（看得到 NEW 與收集數字落位跳動）；RECORD_DUPLICATE=1 改錄重複角色。
       final unlocked = {
-        for (final g in practiceGirlProfiles.take(8)) g.profileId,
-        girl.profileId,
+        for (final g in practiceGirlProfiles.take(8))
+          if (g.profileId != girl.profileId) g.profileId,
+        if (duplicate) girl.profileId,
       };
 
       await tester.pumpWidget(

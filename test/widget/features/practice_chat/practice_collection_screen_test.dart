@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -146,6 +148,12 @@ class _SeededCollection extends PracticeCollectionNotifier {
 
   @override
   Future<Set<String>> build() async => _ids;
+}
+
+/// 圖鑑一直載不到（網路慢、讀取還沒回來）：build 永遠不完成。
+class _PendingCollection extends PracticeCollectionNotifier {
+  @override
+  Future<Set<String>> build() => Completer<Set<String>>().future;
 }
 
 List<Override> _collectionOverrides({
@@ -1386,6 +1394,12 @@ void main() {
       expect(find.byKey(backKey), findsOneWidget); // 接著走卡背入場
       await tester.pumpAndSettle();
       expect(find.byKey(frontKey), findsOneWidget); // 揭曉、停住
+      // 新的圖鑑頁沒有抽牌前的紀錄：不掛 NEW、也不寫「已收藏」（寧可少掛、不錯掛）。
+      expect(
+        find.byKey(const ValueKey('practice-draw-ceremony-new-tag')),
+        findsNothing,
+      );
+      expect(find.textContaining('已收藏'), findsNothing);
 
       await tester.tap(find.byKey(continueKey));
       await tester.pumpAndSettle();
@@ -1513,6 +1527,231 @@ void main() {
       expect(sfx.calls, contains(#stopWhoosh));
 
       await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    // ── V3.1 第四刀：NEW、已收藏、「已收集」數字落位才 +1（規格 §5.14、§7）──
+    const newTagKey = ValueKey('practice-draw-ceremony-new-tag');
+    const countKey = ValueKey('collection-completion-count');
+
+    String countText(WidgetTester tester) =>
+        tester.widget<Text>(find.byKey(countKey)).data!;
+
+    double countScale(WidgetTester tester) => tester
+        .widget<Transform>(
+          find
+              .ancestor(
+                  of: find.byKey(countKey), matching: find.byType(Transform))
+              .first,
+        )
+        .transform
+        .entry(0, 0);
+
+    testWidgets('V3.1 新角色：停住時掛 NEW；儀式期間數字先不動，光球落位才 +1 並跳一下', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+      expect(countText(tester), '1');
+
+      await drawAndReveal(tester, controller, mia, unlockInto: notifier);
+      await tester.pumpAndSettle(); // 揭曉走完停住（圖鑑的 +1 早就到了）
+      expect(find.byKey(newTagKey), findsOneWidget);
+      expect(find.textContaining('已收藏'), findsNothing);
+      expect(countText(tester), '1', reason: '儀式期間先顯示抽之前的數字');
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump(); // 收卡起飛
+      await tester.pump(const Duration(milliseconds: 400)); // 落位前
+      expect(countText(tester), '1');
+      await tester.pump(const Duration(milliseconds: 100)); // 過 0.45 s：落位
+      await tester.pump(const Duration(milliseconds: 150)); // 跳到一半
+      expect(countText(tester), '2');
+      expect(countScale(tester), greaterThan(1.1));
+
+      await tester.pumpAndSettle(); // 單次跳動收尾，回到原尺寸
+      expect(countScale(tester), 1);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('V3.1 重複角色：不掛 NEW、資訊欄寫「已收藏」；落位時數字不變也不跳', (tester) async {
+      final alice = practiceGirlProfiles.first;
+      final notifier = _SeededCollection({alice.profileId});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+
+      await drawAndReveal(tester, controller, alice); // 集合不變（重複）
+      await tester.pumpAndSettle();
+      expect(find.byKey(newTagKey), findsNothing);
+      expect(find.textContaining(RegExp(r' · 已收藏$')), findsOneWidget);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500)); // 落位
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(countText(tester), '1');
+      expect(countScale(tester), 1);
+
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('V3.1 解鎖晚到落位之後：落位時數字不動，解鎖到的那一刻才 +1 並跳一下（只跳一次）', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+
+      await drawAndReveal(tester, controller, mia); // 存草稿比儀式慢：解鎖還沒到
+      await tester.pumpAndSettle(); // 停住
+      expect(find.byKey(newTagKey), findsOneWidget);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump(); // 收卡起飛
+      await tester.pump(const Duration(milliseconds: 500)); // 落位
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(countText(tester), '1', reason: '解鎖還沒到：照實際數字');
+      expect(countScale(tester), 1, reason: '數字沒變就不跳');
+      await tester.pumpAndSettle(); // 儀式收完
+
+      notifier.add(mia.profileId); // 解鎖這時才到
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150)); // 跳到一半
+      expect(countText(tester), '2');
+      expect(countScale(tester), greaterThan(1.1));
+      await tester.pumpAndSettle();
+      expect(countScale(tester), 1);
+
+      // 只跳這一次：之後別的角色解鎖，數字照樣更新、不再跳。
+      notifier.add('practice_girl_002');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(countText(tester), '3');
+      expect(countScale(tester), 1);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('V3.1 重複角色停住時別的角色解鎖：落位時數字照實際更新，但不跳', (tester) async {
+      final alice = practiceGirlProfiles.first;
+      final notifier = _SeededCollection({alice.profileId});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+
+      await drawAndReveal(tester, controller, alice); // 重複角色
+      await tester.pumpAndSettle(); // 停住
+      notifier.add('practice_girl_004'); // 別的角色剛好解鎖（例如別台裝置抽到）
+      await tester.pump();
+      expect(countText(tester), '1', reason: '儀式期間先顯示抽之前的數字');
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500)); // 落位
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(countText(tester), '2');
+      expect(countScale(tester), 1, reason: '這次抽到的是重複角色，不跳');
+
+      await tester.pumpAndSettle();
+      expect(countScale(tester), 1);
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('V3.1 圖鑑還沒載到就抽：不掛 NEW、也不寫「已收藏」（寧可少掛、不錯掛）', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          collectionNotifier: _PendingCollection(),
+        ),
+      );
+
+      await drawAndReveal(tester, controller, mia);
+      await tester.pumpAndSettle(); // 停住
+      expect(find.byKey(frontKey), findsOneWidget);
+      expect(find.byKey(newTagKey), findsNothing);
+      expect(find.textContaining('已收藏'), findsNothing);
+
+      await tester.tap(find.byKey(continueKey));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('V3.1 抽牌沒成功：標題不再卡在抽之前的數字', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, collectionNotifier: notifier),
+      );
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(_lockedSeed()); // 沒抽成（回到 locked）
+      // locked 時翻牌鈕一直在脈動（pumpAndSettle 收不了）：推過儀式淡出就好。
+      await tester.pump(const Duration(milliseconds: 600));
+      // 之後圖鑑有別的更新（例如重新整理）：標題照實際數字，不卡在抽之前。
+      notifier.add(mia.profileId);
+      await tester.pump();
+      expect(countText(tester), '2');
+      await tester.pump(const Duration(milliseconds: 250));
+    });
+
+    testWidgets('V3.1 reduce-motion：沒有儀式，數字抽中就更新、不跳', (tester) async {
+      final mia = practiceGirlProfiles
+          .firstWhere((p) => p.profileId == 'practice_girl_004');
+      final notifier = _SeededCollection({'practice_girl_001'});
+      final controller = _DrawSpyController(_lockedSeed());
+      await tester.binding.setSurfaceSize(const Size(500, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _collectionOverrides(
+            controller: controller,
+            collectionNotifier: notifier,
+          ),
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: child!,
+            ),
+            home: const PracticeCollectionScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.debugSetState(
+        _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+      );
+      await tester.pump();
+      controller.debugSetState(revealedWith(mia));
+      notifier.add(mia.profileId);
+      await tester.pump();
+      expect(countText(tester), '2');
+      expect(countScale(tester), 1);
+
+      await tester.pumpAndSettle();
+      expect(countScale(tester), 1);
       await tester.pump(const Duration(milliseconds: 250));
     });
   });

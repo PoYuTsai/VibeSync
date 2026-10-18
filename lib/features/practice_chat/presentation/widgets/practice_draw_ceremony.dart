@@ -63,6 +63,8 @@ Size practiceCeremonyCardSize(Size screen) {
 /// 全息掃光、膠囊稀有度牌、兩行毛玻璃資訊欄與亮星；卡片元件在 `practice_reveal_card.dart`，
 /// 特效 painter 在 `practice_reveal_painters.dart`。聲音（第三刀）：N／R／SR 同一條揭曉配樂
 /// （翻牌紙聲混在裡面），點擊收卡時一聲收卡音；稀有度差別只靠畫面與觸覺（規格 D3）。
+/// V3.1 第四刀（`docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md` §5.13–§5.14）：停住前
+/// 卡片下方浮出角色的第一句話；新角色在稀有度牌旁掛 NEW，重複角色的資訊欄寫「已收藏」。
 ///
 /// 流程：hidden → drawing（卡背入場＋等待呼吸）→ revealing（蓄力 → 單次翻牌 → 資訊浮出，
 /// 共 2.7 s）→ holding（畫面靜止，等使用者點）→ archiving（縮成光球飛進圖鑑那一格，
@@ -89,11 +91,16 @@ class PracticeDrawCeremony extends ConsumerStatefulWidget {
     this.onRevealTarget,
     this.archiveTargetRect,
     this.onArchived,
+    this.isNewProfile,
   });
 
   /// 揭曉開始（reduce-motion 為抽中當下）：圖鑑頁收 filter、標記並捲到這張卡。
   /// 新卡與重複角色都會呼叫。
   final ValueChanged<PracticeGirlProfile>? onRevealTarget;
+
+  /// 揭曉開始時問圖鑑頁：這位是不是這次才解鎖的新角色（V3.1 規格 §5.14）。true 掛 NEW；
+  /// false＝重複角色，資訊欄寫「已收藏」；null＝圖鑑頁沒有抽牌前的紀錄，兩個都不畫。
+  final bool? Function(String profileId)? isNewProfile;
 
   /// 收卡起飛前查目標格的 global rect；回 null 或不在畫面內 → 光球原地收束。
   final Rect? Function(String profileId)? archiveTargetRect;
@@ -215,6 +222,9 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   _CeremonyPhase _phase = _CeremonyPhase.hidden;
   PracticeGirlProfile? _revealGirl;
 
+  /// 揭曉開始時問到的「是不是新角色」（見 [PracticeDrawCeremony.isNewProfile]）。
+  bool? _revealIsNew;
+
   /// server 比卡背入場還快回來：等 `_intro` 走完才開始揭曉。
   bool _pendingReveal = false;
 
@@ -324,6 +334,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     setState(() {
       _phase = _CeremonyPhase.drawing;
       _revealGirl = null;
+      _revealIsNew = null;
       _archiveTarget = null;
     });
     if (_reduceMotion) {
@@ -400,6 +411,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     );
     // 揭曉起始播一條與 `_reveal` 對好拍的配樂 bed（已預載）；咻聲尾巴不停，交棒給 bed。
     _sfx.playRevealBed();
+    // 先問新舊再通知圖鑑頁：圖鑑那邊的解鎖集合可能晚一兩幀才 +1，紀錄是抽牌前拍下的。
+    _revealIsNew = widget.isNewProfile?.call(girl.profileId);
     widget.onRevealTarget?.call(girl);
     _firedBeats.clear();
     setState(() => _phase = _CeremonyPhase.revealing);
@@ -548,6 +561,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     setState(() {
       _phase = _CeremonyPhase.hidden;
       _revealGirl = null;
+      _revealIsNew = null;
       _archiveTarget = null;
     });
     _waiting.stop();
@@ -626,6 +640,13 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   /// 提示字淡入時同步上浮的距離（規格 §4：translateY +6 → 0）。
   static const double _hintRise = 6;
 
+  /// 提示字預留的行高倍數（第一句話要讓出它的位置；字級取提示字的 caption）。
+  static const double _hintLineHeight = 1.5;
+
+  /// 第一句話對話框離卡片、離提示字的距離，與跟著系統字級放大的上限（同卡面）。
+  static const double _introGap = 8;
+  static const double _introMaxTextScale = 1.3;
+
   Widget _buildOverlay(Size size) {
     final cardSize = practiceCeremonyCardSize(MediaQuery.sizeOf(context));
     final stageSize = Size(
@@ -646,6 +667,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final archiveMs = _archiveMs;
     final backdrop = _backdropFactor();
     final hint = _hintOpacity();
+    final introOpacity = _introLineOpacity();
 
     // 環境光與環境星塵跟著卡背染色走（等待期與 N 全程是銀）。
     final backColors = drawing || girl == null
@@ -684,9 +706,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
           container: true,
           button: holding,
           liveRegion: holding,
-          label: holding && girl != null
-              ? '已抽到 ${girl.displayName}，${girl.rarity.label} 卡'
-              : '正在翻牌',
+          label: holding && girl != null ? _holdingLabel(girl) : '正在翻牌',
           hint: holding ? '點兩下收進圖鑑' : null,
           child: GestureDetector(
             key: const ValueKey('practice-draw-ceremony-continue'),
@@ -834,6 +854,15 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               ),
             ),
           ),
+        // L5b 角色第一句話（V3.1 規格 §5.13）：卡片下緣與提示字之間；收卡時跟資訊欄一起淡掉。
+        if (girl != null && introOpacity > 0.001)
+          _buildIntroLine(
+            girl: girl,
+            size: size,
+            cardCenter: cardCenter,
+            cardSize: cardSize,
+            opacity: introOpacity,
+          ),
         // L6 收卡光球。
         if (archiving)
           Positioned.fill(
@@ -912,6 +941,80 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
       case _CeremonyPhase.drawing:
         return 0;
     }
+  }
+
+  /// 第一句話對話框的透明度：資訊欄浮出後淡入、停住全亮、收卡時跟資訊欄一起淡掉。
+  double _introLineOpacity() {
+    switch (_phase) {
+      case _CeremonyPhase.revealing:
+        return practiceRevealIntroLineOpacity(_revealMs);
+      case _CeremonyPhase.holding:
+        return 1;
+      case _CeremonyPhase.archiving:
+        return practiceArchiveInfoOpacity(_archiveMs);
+      case _CeremonyPhase.hidden:
+      case _CeremonyPhase.drawing:
+        return 0;
+    }
+  }
+
+  /// 停住時讀屏唸的內容：抽到誰、稀有度、新舊，再接角色的第一句話（V3.1 規格 §5.13）。
+  String _holdingLabel(PracticeGirlProfile girl) {
+    final label =
+        StringBuffer('已抽到 ${girl.displayName}，${girl.rarity.label} 卡');
+    if (_revealIsNew == true) label.write('，新角色');
+    if (_revealIsNew == false) label.write('，已收藏');
+    final line = girl.selfIntro.trim();
+    if (line.isNotEmpty) label.write('。$line');
+    return label.toString();
+  }
+
+  /// 第一句話放在卡片下緣（+8）到提示字（−8）之間：放不下兩行就一行，一行都放不下就
+  /// 不畫（讀屏照樣唸）。提示字還沒出現時也先讓出它的位置，兩者不會疊在一起。
+  Widget _buildIntroLine({
+    required PracticeGirlProfile girl,
+    required Size size,
+    required Offset cardCenter,
+    required Size cardSize,
+    required double opacity,
+  }) {
+    final text = girl.selfIntro.trim();
+    if (text.isEmpty) return const SizedBox.shrink();
+    final textScaler = MediaQuery.textScalerOf(context);
+    final top = cardCenter.dy + cardSize.height / 2 + _introGap;
+    final hintTop = size.height -
+        MediaQuery.paddingOf(context).bottom -
+        24 -
+        textScaler.scale(AppTypography.caption.fontSize!) * _hintLineHeight;
+    final lines = practiceIntroBubbleLines(
+      hintTop - _introGap - top,
+      textScaler.clamp(maxScaleFactor: _introMaxTextScale),
+    );
+    if (lines == 0) return const SizedBox.shrink();
+    return Positioned(
+      left: (size.width - cardSize.width) / 2,
+      width: cardSize.width,
+      top: top,
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: opacity,
+          child: MediaQuery.withClampedTextScaling(
+            maxScaleFactor: _introMaxTextScale,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: PracticeRevealIntroBubble(
+                key: const ValueKey('practice-draw-ceremony-intro-line'),
+                text: text,
+                typed: _phase == _CeremonyPhase.revealing
+                    ? practiceRevealIntroLineTyped(_revealMs)
+                    : 1,
+                maxLines: lines,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCaption() {
@@ -1004,6 +1107,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 ms,
                 archiveMs: archiving ? archiveMs : null,
               ),
+              isNew: _revealIsNew,
             ),
           )
         : PracticeRevealCardBack(
@@ -1039,12 +1143,14 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
 
 /// 揭曉「結果卡」的 test/preview seam：免跑整條儀式時間軸即可單獨渲染卡面。
 /// [settled]＝揭曉走完停住的樣子（稀有度牌已烙上、亮星全亮）；false＝剛翻開落定。
+/// [isNew]：true 掛 NEW、false 寫「已收藏」、null 兩個都不畫。
 @visibleForTesting
 Widget debugCeremonyCardFront({
   required PracticeGirlProfile girl,
   required double width,
   required double height,
   bool settled = true,
+  bool? isNew,
 }) =>
     PracticeRevealCardFront(
       girl: girl,
@@ -1053,6 +1159,7 @@ Widget debugCeremonyCardFront({
       state: settled
           ? PracticeRevealFaceState.settled
           : PracticeRevealFaceState.at(PracticeRevealTiming.flipEndMs),
+      isNew: isNew,
     );
 
 /// 卡背的 test/preview seam：讓 still-recorder 與 widget test 免跑整條儀式即可單獨渲染
