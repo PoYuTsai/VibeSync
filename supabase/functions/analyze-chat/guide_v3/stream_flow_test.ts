@@ -961,7 +961,7 @@ Deno.test("讀局面成功、模型沒標未成年：照模型出卡（關鍵字
     ],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(evs[1].decision, "send");
+  assertEquals(evs.find((e) => e.type === "analysis.read")!.decision, "send");
   assertEquals(h.calls.includes("write"), true);
   assertEquals(h.charges[0].decisionKind, "send");
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
@@ -1106,7 +1106,7 @@ Deno.test("主審漏掉的自傷說法：「我打算自殘」讀局面成功、
   ];
   const readOk = harness({ messages: dieMessages });
   const e2 = await events(await handleGuideV3Stream(readOk.deps));
-  assertEquals(e2[1].decision, "send");
+  assertEquals(e2.find((e) => e.type === "analysis.read")!.decision, "send");
   const readFailed = harness({
     messages: dieMessages,
     readError: new Error("overloaded"),
@@ -1124,7 +1124,7 @@ Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照
     ],
   });
   const evs = await events(await handleGuideV3Stream(h.deps));
-  assertEquals(evs[1].decision, "send");
+  assertEquals(evs.find((e) => e.type === "analysis.read")!.decision, "send");
   assertEquals(h.charges[0].decisionKind, "send");
   const trace = h.done[0].guideV3Trace as Record<string, unknown>;
   assertEquals(trace.keywordHits, {
