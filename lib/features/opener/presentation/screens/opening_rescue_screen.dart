@@ -31,6 +31,7 @@ import '../../domain/opener_access.dart';
 import '../../domain/opener_flow_models.dart';
 import '../../data/services/opener_result_cache_service.dart';
 import '../../data/services/opener_service.dart';
+import '../widgets/blank_fill_sheet.dart';
 import '../widgets/opener_flow_sections.dart';
 import '../../../../shared/widgets/coaching_outcome_capture_card.dart';
 import '../../../../shared/widgets/coaching_outcome_follow_up_bar.dart';
@@ -46,6 +47,9 @@ import '../../../../core/services/app_haptics.dart';
 /// `/opener` 頁的兩個模式：開場白（既有 opener body）與新話題。
 /// `?mode=new_topic` 只決定初始 tab；頁內切換不改 route。
 enum OpeningRescueMode { opener, newTopic }
+
+/// 開場卡片底下給什麼：直接複製、先填好「＿＿」再複製，或只給方向（舊快照的範例）。
+enum OpenerCardCopyMode { copy, fillThenCopy, directionOnly }
 
 class OpeningRescueScreen extends ConsumerStatefulWidget {
   const OpeningRescueScreen({
@@ -182,6 +186,24 @@ class OpeningRescueScreen extends ConsumerStatefulWidget {
   };
 
   /// 卡片標籤依 server 實際給的卡片組；舊快取／舊 Edge 沒有 cardSet＝五風格。
+  /// 卡片底下給什麼（Bruce 2026-10-18 #97：三個功能留空格一律用「＿＿」）：
+  /// 留了「＿＿」就先填好再複製；舊快照的方向＋範例卡（範例沒留空格、細節是編的）
+  /// 照舊只給方向、不給複製；其他直接複製。
+  static OpenerCardCopyMode openerCardCopyMode({
+    required String content,
+    required String? direction,
+  }) {
+    if (blankFillNeeded(content)) return OpenerCardCopyMode.fillThenCopy;
+    return direction == null
+        ? OpenerCardCopyMode.copy
+        : OpenerCardCopyMode.directionOnly;
+  }
+
+  /// 方向＋範例卡在範例上方的說明。
+  static String openerExampleCaption(String content) => blankFillNeeded(content)
+      ? '把＿＿換成你的再傳：'
+      : '範例，換成你自己的經驗再傳：';
+
   static String openerTypeLabel(String type, {int cardSet = 1}) =>
       (cardSet == 2 ? openerCardSet2Labels : openerTypeLabels)[type] ?? type;
 
@@ -2335,6 +2357,20 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     );
   }
 
+  /// 留「＿＿」的句子：先開填空框，填好才複製；記錄與提示用他填好的那句。
+  Future<void> _copyOpenerAfterFilling({
+    required String type,
+    required String content,
+    required String label,
+  }) async {
+    final filled = await showBlankFillSheet(context, text: content);
+    if (filled == null || !mounted) return;
+    AppHaptics.light();
+    unawaited(Clipboard.setData(ClipboardData(text: filled)));
+    unawaited(_recordOpenerCopy(type: type, content: filled));
+    _showOpenerSnackBar(OpeningRescueScreen.copiedOpenerMessage(label));
+  }
+
   Future<void> _recordOpenerCopy({
     required String type,
     required String content,
@@ -2431,6 +2467,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     final label = OpeningRescueScreen.openerTypeLabel(type, cardSet: cardSet);
     // 方向＋範例卡：句子是範例，要用戶換成自己的經驗（Bruce 9/26）。
     final direction = cardSet == 2 ? _result?.access?.directions[type] : null;
+    final copyMode = OpeningRescueScreen.openerCardCopyMode(
+      content: content,
+      direction: direction,
+    );
     // 一句推薦＋四句備選不是風格：不配五風格的圖示（調情眨眼、冷讀水晶球）。
     final icon = cardSet == 2 ? null : replyStyleIcons[type];
 
@@ -2516,12 +2556,31 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                   child: const Text('升級解鎖'),
                 ),
               )
-            else if (direction != null)
+            else if (copyMode == OpenerCardCopyMode.directionOnly)
+              // 舊快照的範例沒有留空格（細節是編的）：照舊只給方向，不給複製。
               Align(
                 alignment: Alignment.centerRight,
                 child: Text('照方向寫你自己的版本',
                     style: AppTypography.caption
                         .copyWith(color: AppColors.onBackgroundSecondary)),
+              )
+            else if (copyMode == OpenerCardCopyMode.fillThenCopy)
+              // 留了「＿＿」（Bruce 2026-10-18 #97）：填好空格才複製。
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  key: ValueKey('opener-fill-copy-$type'),
+                  onPressed: () => _copyOpenerAfterFilling(
+                    type: type,
+                    content: content,
+                    label: label,
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('填好再複製'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.ctaStart,
+                  ),
+                ),
               )
             else
               Align(
@@ -2563,7 +2622,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 fontWeight: FontWeight.w600,
                 height: 1.5)),
         const SizedBox(height: 8),
-        Text('範例，換成你自己的經驗再傳：',
+        Text(OpeningRescueScreen.openerExampleCaption(content),
             style: AppTypography.caption
                 .copyWith(color: AppColors.onBackgroundSecondary)),
         const SizedBox(height: 4),

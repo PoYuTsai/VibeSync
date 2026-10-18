@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/opener_home_components.dart';
+import '../../../opener/presentation/widgets/blank_fill_sheet.dart';
 import '../../domain/entities/new_topic_result.dart';
 
 /// 一張新話題卡（計畫 §13.6）：縱向排版，不沿用 opener 220px 橫向固定高。
@@ -97,8 +98,16 @@ class NewTopicIdeaCard extends StatelessWidget {
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: onCopyOpeningLine,
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('複製'),
+                    // 留了「＿＿」就先填好再複製（Bruce 2026-10-18 #97）。
+                    icon: Icon(
+                      blankFillNeeded(idea.openingLine)
+                          ? Icons.edit_outlined
+                          : Icons.copy,
+                      size: 16,
+                    ),
+                    label: Text(
+                      blankFillNeeded(idea.openingLine) ? '填好再複製' : '複製',
+                    ),
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.ctaStart,
                     ),

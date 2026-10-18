@@ -33,6 +33,7 @@ import '../../data/providers/new_topic_providers.dart';
 import '../../data/services/new_topic_service.dart';
 import '../../domain/entities/new_topic_result.dart';
 import '../../domain/new_topic_two_stage_copy.dart';
+import '../../../opener/presentation/widgets/blank_fill_sheet.dart';
 import 'new_topic_idea_card.dart';
 import '../../../../shared/widgets/brand/app_sheet.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -647,9 +648,16 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     }
   }
 
-  void _copyOpeningLine(NewTopicIdea idea) {
+  Future<void> _copyOpeningLine(NewTopicIdea idea) async {
+    var text = idea.openingLine;
+    // 留「＿＿」的句子先填好再複製（Bruce 2026-10-18 #97：三個功能留空格一律用「＿＿」）。
+    if (blankFillNeeded(text)) {
+      final filled = await showBlankFillSheet(context, text: text);
+      if (filled == null || !mounted) return;
+      text = filled;
+    }
     AppHaptics.light();
-    Clipboard.setData(ClipboardData(text: idea.openingLine));
+    unawaited(Clipboard.setData(ClipboardData(text: text)));
     // 去識別化：只記有複製、是不是推薦那題，不含句子（量新話題有沒有被拿去傳）。
     unawaited(ref.read(funnelTrackerProvider).track('new_topic_copied',
         properties: {
