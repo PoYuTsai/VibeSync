@@ -224,15 +224,17 @@ class ReplyIterationCoordinator {
           onTelemetry: onTelemetry,
         );
         final refined = result.optimizedMessage?.optimized.trim();
-        // 任務卡：原稿有空格時，結果要照則留住空格才給（還沒升版的 Edge 不查）。
-        // 擋下用的錯誤碼不在 runner 的換身分清單裡：同一份輸入再按會 replay，不再扣。
+        // 任務卡：只收伺服器標了「已過任務卡定稿」的結果（主審第 2 輪；還沒升版的 Edge
+        // 不會標），原稿有空格時也要照則留住空格。擋下用的錯誤碼不在 runner 的換身分
+        // 清單裡：同一份輸入再按帶同一顆 requestId，伺服器 replay、不再扣。
         if (refined == null ||
             refined.isEmpty ||
             (guideV3Card != null &&
-                !guideV3RefineKeepsBlanks(
-                  _cardLines(currentText),
-                  _cardLines(refined),
-                ))) {
+                (result.rawResponse?['guideV3CardChecked'] != true ||
+                    !guideV3RefineKeepsBlanks(
+                      _cardLines(currentText),
+                      _cardLines(refined),
+                    )))) {
           throw AnalysisException(
             '這次沒有調出可用的版本，請再試一次。',
             code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
