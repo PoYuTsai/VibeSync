@@ -17,6 +17,18 @@ enum PracticeRevealEffectTier { high, medium, low }
 const PracticeRevealEffectTier kPracticeRevealEffectTier =
     PracticeRevealEffectTier.medium;
 
+/// 測試 seam：覆寫檔位（null＝[kPracticeRevealEffectTier]）。production 不碰。
+@visibleForTesting
+PracticeRevealEffectTier? debugPracticeRevealEffectTierOverride;
+
+/// 實際用的檔位。
+PracticeRevealEffectTier get practiceRevealEffectTier =>
+    debugPracticeRevealEffectTierOverride ?? kPracticeRevealEffectTier;
+
+/// 泛光畫幾層（§9）：高、中檔卡片前後兩層，低檔只畫後層。
+int practiceRevealBloomLayers(PracticeRevealEffectTier tier) =>
+    tier == PracticeRevealEffectTier.low ? 1 : 2;
+
 @immutable
 class PracticeRevealTheme {
   const PracticeRevealTheme._({
@@ -62,7 +74,7 @@ class PracticeRevealTheme {
   final double bladeWidth;
 
   /// 目前檔位的爆發星塵顆數。
-  int get burstCount => switch (kPracticeRevealEffectTier) {
+  int get burstCount => switch (practiceRevealEffectTier) {
         PracticeRevealEffectTier.high => burstCounts.high,
         PracticeRevealEffectTier.medium => burstCounts.medium,
         PracticeRevealEffectTier.low => burstCounts.low,

@@ -39,6 +39,18 @@ void main() {
       expect(themes[1].backTint, PracticeRevealPalette.rBackTint);
       expect(themes[1].backTint, isNot(const Color(0xFF64B5F6)));
     });
+
+    test('泛光層數：高、中檔前後兩層，低檔只畫後層（§9）；檔位可在測試覆寫', () {
+      expect(practiceRevealBloomLayers(PracticeRevealEffectTier.high), 2);
+      expect(practiceRevealBloomLayers(PracticeRevealEffectTier.medium), 2);
+      expect(practiceRevealBloomLayers(PracticeRevealEffectTier.low), 1);
+      expect(practiceRevealEffectTier, kPracticeRevealEffectTier);
+
+      debugPracticeRevealEffectTierOverride = PracticeRevealEffectTier.low;
+      addTearDown(() => debugPracticeRevealEffectTierOverride = null);
+      expect(practiceRevealEffectTier, PracticeRevealEffectTier.low);
+      expect(PracticeRevealTheme.of(PracticeGirlRarity.sr).burstCount, 48);
+    });
   });
 
   group('卡背顏色（只升到真實稀有度）', () {

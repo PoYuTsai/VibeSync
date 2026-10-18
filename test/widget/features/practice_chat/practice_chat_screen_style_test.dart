@@ -29,6 +29,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_painters.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_theme.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -3768,6 +3769,27 @@ void main() {
       await finishCeremony(tester);
     });
   }
+
+  testWidgets('V3.1 §9：低檔只畫後層泛光，翻牌峰值也沒有前層', (tester) async {
+    debugPracticeRevealEffectTierOverride = PracticeRevealEffectTier.low;
+    addTearDown(() => debugPracticeRevealEffectTierOverride = null);
+    final girl = practiceGirlProfiles
+        .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
+    final completer = Completer<PracticeDrawResult>();
+    final api = _DrawApi(() => completer.future);
+    await pumpLocked(tester, api: api);
+    await drawToReveal(tester, completer: completer, girl: girl);
+    const bloomBackKey = ValueKey('practice-draw-ceremony-bloom-back');
+    const bloomFrontKey = ValueKey('practice-draw-ceremony-bloom-front');
+
+    await tester.pump(revealAt(PracticeRevealTiming.flipPeakMs));
+    expect(find.byKey(bloomBackKey), findsOneWidget);
+    expect(find.byKey(bloomFrontKey), findsNothing);
+    await tester.pump(revealAt(100)); // 1450：前層原本還在退
+    expect(find.byKey(bloomFrontKey), findsNothing);
+
+    await finishCeremony(tester);
+  });
 
   testWidgets('V3.1：六角牌 1.94 s 才出現、第一幀就是正確稀有度，從畫面左上外面砸進來，2.06 s 落在卡片左上角（§5.10）',
       (tester) async {

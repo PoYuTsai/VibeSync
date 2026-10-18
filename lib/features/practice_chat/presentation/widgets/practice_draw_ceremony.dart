@@ -817,12 +817,15 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     final bladeCore = revealed ? practiceRevealBladeCore(ms, rarity) : 0.0;
     final cross = revealed ? practiceRevealCross(ms, rarity) : 0.0;
     final showBlade = bladeHalo > 0 || bladeCore > 0 || cross > 0;
-    // V3.1 第一刀的光效：泛光兩層、升階光點（R／SR）、衝擊波（R／SR）與 SR 牌落地的小光環。
+    // V3.1 第一刀的光效：泛光兩層（低檔只畫後層，§9）、升階光點（R／SR）、衝擊波（R／SR）
+    // 與 SR 牌落地的小光環。
     final bloomSize = cardSize * (_kBloomScale * cardScale);
     final bloomBack =
         revealed ? practiceRevealBloomBack(ms, rarity) * cardPresence : 0.0;
     final bloomFront =
-        revealed ? practiceRevealBloomFront(ms, rarity) * cardPresence : 0.0;
+        revealed && practiceRevealBloomLayers(practiceRevealEffectTier) > 1
+            ? practiceRevealBloomFront(ms, rarity) * cardPresence
+            : 0.0;
     final showRiseDots = revealed &&
         rarity != PracticeGirlRarity.n &&
         ms > PracticeRevealTiming.dyeBlueEndMs &&
