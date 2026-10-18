@@ -85,6 +85,51 @@ export function zeroMemoryCounts(): MemoryCounts {
   return { interests: 0, traits: 0, notes: 0 };
 }
 
+/// 她問的話（句尾是問號，或是「嗎／呢／吧」，後面可接標點、表情），或用「你」開頭講他的
+/// 事，都不是她自己的事實（主審第 1 輪 P2）。v2 的出處檢查只看關鍵詞，認不出主詞與問句；
+/// 這裡寧可少記。
+export function isHerOwnStatement(line: string): boolean {
+  const text = line.trim();
+  const tail = text.match(/[^\p{L}\p{N}]*$/u)?.[0] ?? "";
+  const body = text.slice(0, text.length - tail.length);
+  if (/[?？]/.test(tail) || /[嗎呢吧]$/.test(body)) return false;
+  return !text.replace(/^[^\p{L}\p{N}]+/u, "").startsWith("你");
+}
+
+/// 依句號、驚嘆號、問號、刪節號與換行切句；標點留在句尾，問句檢查要看。
+function sentencesOf(text: string): string[] {
+  return (text.match(/[^。！？!?…\n]+[。！？!?…]*/g) ?? [])
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
+
+/// 逐句只留她自己的陳述句：每句都是就原樣不動；有問句或講他的句子就只留陳述句（換行
+/// 隔開，分句還在）；一句都不剩回 null。同一則「那你也會去嗎？我不太喜歡運動」只認後半句。
+function ownStatementText(text: string): string | null {
+  const sentences = sentencesOf(text);
+  const own = sentences.filter(isHerOwnStatement);
+  if (own.length === 0) return null;
+  return own.length === sentences.length ? text : own.join("\n");
+}
+
+/// 候選的原句只留她自己的陳述句；一句都不剩就不要這個候選。
+function ownStatementCandidates(candidates: unknown): unknown {
+  if (!Array.isArray(candidates)) return candidates;
+  return candidates.flatMap((candidate) => {
+    const evidence = (candidate as { evidence?: unknown } | null)?.evidence;
+    if (
+      !candidate || typeof candidate !== "object" || !Array.isArray(evidence)
+    ) {
+      return [candidate];
+    }
+    const own = evidence.flatMap((line) => {
+      const text = typeof line === "string" ? ownStatementText(line) : null;
+      return text === null ? [] : [text];
+    });
+    return own.length > 0 ? [{ ...candidate, evidence: own }] : [];
+  });
+}
+
 function countsBy(count: (kind: MemoryKind) => number): MemoryCounts {
   return Object.fromEntries(
     MEMORY_KINDS.map((kind) => [kind, count(kind)]),
@@ -92,7 +137,8 @@ function countsBy(count: (kind: MemoryKind) => number): MemoryCounts {
 }
 
 /// 模型輸出 → 通過出處檢查的對象記憶。出處只認 App 送來的原始訊息（不是帶引用前綴的
-/// 對話稿），跟 v2 同一道檢查。不丟錯。
+/// 對話稿），跟 v2 同一道檢查；兩邊都逐句只認她自己的陳述句：候選原句裡的問句先拿掉，
+/// 出處也不給她的問句（剪掉一截再抄的問句就對不到）。不丟錯。
 export function partnerMemoryFrom(
   text: string,
   messages: readonly { readonly isFromMe: boolean; readonly content: string }[],
@@ -112,11 +158,16 @@ export function partnerMemoryFrom(
   const proposed = raw as Record<string, unknown>;
   try {
     const profile = sanitizeTargetProfile({
-      rawProfile: proposed,
-      requestMessages: messages.map((m) => ({
-        isFromMe: m.isFromMe,
-        content: m.content,
-      })),
+      rawProfile: Object.fromEntries(
+        MEMORY_KINDS.map((kind) => [
+          kind,
+          ownStatementCandidates(proposed[kind]),
+        ]),
+      ),
+      requestMessages: messages.flatMap((m) => {
+        const content = m.isFromMe ? null : ownStatementText(m.content);
+        return content === null ? [] : [{ isFromMe: false, content }];
+      }),
     });
     const kept = countsBy((kind) => {
       const values = profile?.[kind];
