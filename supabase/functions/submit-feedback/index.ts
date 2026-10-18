@@ -1,6 +1,9 @@
 // supabase/functions/submit-feedback/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import {
   AI_RESPONSE_MAX_LENGTH,
@@ -146,7 +149,26 @@ async function sendDiscordNotification(feedback: {
   }
 }
 
-serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
+// 入口照 analyze-chat 的寫法（主審 P3，Eric 2026-10-18）：測試從正式入口送請求、資料庫
+// 換成替身；部署時 import.meta.main 為真，照舊 serve，行為不變。
+export interface SubmitFeedbackHandlerDeps {
+  // deno-lint-ignore no-explicit-any
+  createSupabaseClient: () => SupabaseClient<any, "public", any>;
+}
+
+export function createSubmitFeedbackHandler(
+  deps: SubmitFeedbackHandlerDeps = {
+    createSupabaseClient: () =>
+      createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY),
+  },
+): (req: Request) => Promise<Response> {
+  return (req) => handleSubmitFeedback(req, deps);
+}
+
+async function handleSubmitFeedback(
+  req: Request,
+  deps: SubmitFeedbackHandlerDeps,
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -157,7 +179,7 @@ serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const supabase = deps.createSupabaseClient();
     const token = stripBearer(authHeader);
     const {
       data: { user },
@@ -329,4 +351,13 @@ serve(withOperationalErrorMonitoring("submit-feedback", async (req) => {
     console.error("Error:", error);
     return jsonResponse({ error: "Internal server error" }, 500);
   }
-}));
+}
+
+if (import.meta.main) {
+  serve(
+    withOperationalErrorMonitoring(
+      "submit-feedback",
+      createSubmitFeedbackHandler(),
+    ),
+  );
+}
