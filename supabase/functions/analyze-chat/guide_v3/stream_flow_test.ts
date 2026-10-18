@@ -16,6 +16,7 @@ import {
   STOP_REASON_MINOR,
 } from "./plan.ts";
 import type { GuideV3Background } from "./prompts.ts";
+import { MONEY_RISK_WARNING } from "./rules.ts";
 import {
   type GuideV3ExtractRequest,
   type GuideV3StreamDeps,
@@ -929,7 +930,29 @@ Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照
     minor: false,
     selfHarm: true,
     selfHarmExplicit: false,
+    money: false,
   });
+});
+
+Deno.test("她要他借錢（模型沒標風險）：照常出卡扣一次，判讀換成固定提醒、沒有推進卡", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "週末要不要去看展" },
+      { isFromMe: false, content: "好啊！不過可以先借我五千嗎，下個月還你" },
+    ],
+    readTags: tags({ herMove: "開窗" }),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  const read = evs.find((e) => e.type === "analysis.read")!;
+  assertEquals(read.decision, "send");
+  assertEquals(read.judgment, MONEY_RISK_WARNING);
+  assert(
+    (read.plannedCards as { task: string }[]).every((c) => c.task !== "push"),
+  );
+  assertEquals(h.charges.length, 1);
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals((trace.keywordHits as Record<string, unknown>).money, true);
+  assertEquals(trace.push, null);
 });
 
 Deno.test("自傷訊號但紀錄寫不進資料庫：關心訊息照樣顯示，不呼叫 markDone", async () => {

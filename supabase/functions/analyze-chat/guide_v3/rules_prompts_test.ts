@@ -20,6 +20,7 @@ import {
   decidePush,
   decideReply,
   judgmentFor,
+  MONEY_RISK_WARNING,
   perfunctoryStreak,
   pickEntries,
   SCAM_VENUE_WARNING,
@@ -518,6 +519,28 @@ Deno.test("v3.3：B47 只出換地方的推進和先不約的收，判斷由程�
     )[0],
     "B47",
   );
+});
+
+Deno.test("金錢、詐騙：標到風險時判讀換成固定提醒、不推進；B47 照它自己的提醒與換地方", () => {
+  const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
+  const risky = tags({
+    risk: true,
+    herMove: "開窗",
+    readForUser: "她很熱情。",
+  });
+  assertEquals(judgmentFor(risky), MONEY_RISK_WARNING);
+  assertEquals(decidePush(long, risky), null);
+  assert(
+    arrangeCards({ kind: "send" }, null, risky).every((c) => c.task !== "推進"),
+  );
+  const b47 = tags({ risk: true, matchedEntries: ["B47"] });
+  assertEquals(judgmentFor(b47), SCAM_VENUE_WARNING);
+  assertEquals(decidePush(long, b47), "換地方");
+  // 提醒兩句以內，講到借錢、投資、下載 App，叫他先別轉帳。
+  assert(MONEY_RISK_WARNING.split("。").filter(Boolean).length <= 2);
+  for (const word of ["借錢", "投資", "下載 App", "不要轉帳"]) {
+    assert(MONEY_RISK_WARNING.includes(word), word);
+  }
 });
 
 Deno.test("v3.5：B47 命中時，寫卡提示詞帶真的 B47 觸發（含只指定店家不算）與寫法", () => {

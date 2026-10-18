@@ -29,7 +29,7 @@ import {
 } from "./prompts.ts";
 import { READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
 import type { CardSpec } from "./rules.ts";
-import { SCAM_VENUE_WARNING } from "./rules.ts";
+import { MONEY_RISK_WARNING, SCAM_VENUE_WARNING } from "./rules.ts";
 import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
 import {
   GUIDE_V3_STALE_AFTER_MS,
@@ -255,6 +255,45 @@ Deno.test("送出型與 B47：判讀換成固定提醒，排推進、收、推�
     "push",
   ]);
   assertEquals(plan.entries.map((e) => e.id), ["B47"]);
+});
+
+Deno.test("她要錢的關鍵字跟風險標記同樣處理：照常出卡、不排推進、判讀換成固定提醒；B47 不受影響", () => {
+  const long = toTurns([
+    { isFromMe: true, content: "a" },
+    { isFromMe: false, content: "b" },
+    { isFromMe: true, content: "c" },
+    { isFromMe: false, content: "d" },
+  ]);
+  for (
+    const [t, h] of [
+      [tags({ herMove: "開窗" }), hits({ money: true })],
+      [tags({ herMove: "開窗", risk: true }), NO_SAFETY_HITS],
+    ] as const
+  ) {
+    const plan = planTurn(long, t, h);
+    assertEquals(plan.decision, "send");
+    assertEquals(plan.judgment, MONEY_RISK_WARNING);
+    assertEquals(plan.push, null);
+    assert(plan.specs.length > 0);
+    assert(plan.specs.every((s) => s.task !== "推進"));
+  }
+  // 沒命中照常推進（開窗）、判讀用模型的。
+  const plain = planTurn(long, tags({ herMove: "開窗" }));
+  assertEquals(plain.push, "具體邀約");
+  assertEquals(plain.judgment, "她在分享日常。");
+  // B47 有自己的提醒與換地方的卡。
+  const b47 = planTurn(
+    herLast,
+    tags({ matchedEntries: ["B47"] }),
+    hits({ money: true }),
+  );
+  assertEquals(b47.judgment, SCAM_VENUE_WARNING);
+  assertEquals(b47.push, "換地方");
+  // 先別回、停也換成提醒（判讀照樣給用戶看）。
+  assertEquals(
+    planTurn(hisLast, tags(), hits({ money: true })).judgment,
+    MONEY_RISK_WARNING,
+  );
 });
 
 Deno.test("讀局面標記的 schema 有自傷欄位，而且是必填", () => {

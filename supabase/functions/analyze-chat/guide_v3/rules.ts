@@ -6,7 +6,8 @@
 // 2. 明確拒絕或封鎖：停（被封鎖時最常是他最後一則，要先判，不能落到先別回；Eric 2026-10-18）。
 // 3. 他是最後一則：先別回。
 // 4. B47（指定店家、換地方不肯）：照常出卡，只排「推進（換地方）、收、推進」，判斷換成固定提醒；
-//    不受 B46 不排推進、她直接問他時第一張排接住、婉拒收尾影響。
+//    不受 B46 不排推進、她直接問他時第一張排接住、婉拒收尾影響。沒有 B47 時，風險標記（含她要錢、
+//    拉投資的關鍵字，plan.ts）不排推進，判斷換成金錢、詐騙的固定提醒。
 // 5. 他連續主動兩次、她都只回敷衍的字：先別回。
 // 6. 她取消約會：照常出卡（推進：改天或說定）；婉拒或界線：一張收尾。
 // 7. 排卡：B46 不排推進，蓋過「她給了機會至少一張推進」；B43–B46 帶張力改排接住，
@@ -329,12 +330,19 @@ export function pickEntries(
     .map((id) => enabled.get(id)!);
 }
 
+/// 金錢、詐騙的固定提醒（Eric 2026-10-18 盤點預設）：讀局面標到風險，或程式掃到她要他借錢、
+/// 轉帳、投資、下載 App（safety.ts，plan.ts 把它當成風險標記）。兩種來源都說得通，所以用
+/// 「例如」列常見的訊號；推進卡由 decidePush 拿掉。
+export const MONEY_RISK_WARNING =
+  "這段對話有感情詐騙常見的訊號，例如剛認識就很熱絡，或聊到借錢、匯款、投資、下載 App。先不要轉帳或儲值，也別照她給的連結或 App 操作。";
+
 /// 給用戶看的局面判讀；標到 B47 時整段換成固定的酒托、飯托提醒，不用模型寫的
-/// （v3.3 第一輪：模型的判讀兩次寫「順著她的選擇比較穩」，跟提醒互相矛盾）。
+/// （v3.3 第一輪：模型的判讀兩次寫「順著她的選擇比較穩」，跟提醒互相矛盾）。標到風險時
+/// 同樣整段換成金錢、詐騙的固定提醒（B47 優先，它有自己的提醒與換地方的卡）。
 export function judgmentFor(
-  tags: Pick<ReadTags, "readForUser" | "matchedEntries">,
+  tags: Pick<ReadTags, "readForUser" | "matchedEntries" | "risk">,
 ): string {
-  return matchedSet(tags).has(SCAM_VENUE_ENTRY)
-    ? SCAM_VENUE_WARNING
-    : tags.readForUser.trim();
+  if (matchedSet(tags).has(SCAM_VENUE_ENTRY)) return SCAM_VENUE_WARNING;
+  if (tags.risk) return MONEY_RISK_WARNING;
+  return tags.readForUser.trim();
 }
