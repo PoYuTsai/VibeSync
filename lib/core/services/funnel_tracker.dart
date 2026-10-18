@@ -46,6 +46,10 @@ class FunnelTracker {
     ],
     'about_me_cleared': [],
     'new_topic_copied': ['is_recommended'],
+    'paywall_opened': ['entry'],
+    // purchaser：開始購買時的帳號，伺服器比對登入帳號用，不落庫。
+    'paywall_purchase_completed': ['tier', 'entry', 'purchaser'],
+    'locked_cards_upgrade_tap': ['locked_count'],
   };
 
   final FunnelUploadInvoker _invoke;

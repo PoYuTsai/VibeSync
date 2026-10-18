@@ -4,6 +4,10 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { buildFunnelRow, FUNNEL_EVENT_PROPS } from "./funnel_utils.ts";
 
+// 購買事件要帶發起購買的帳號（登入帳號的 UUID），伺服器比對後才收。
+const BUYER = "8f14e45f-ceea-4c6b-9a8e-3e4d4b5c6a7f";
+const OTHER_ACCOUNT = "2b7c1d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e";
+
 Deno.test("buildFunnelRow accepts a dictionary event and forces server user_id", () => {
   const result = buildFunnelRow("user-abc", {
     event: "onboarding_page_view",
@@ -198,6 +202,9 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
     ],
     about_me_cleared: [],
     new_topic_copied: ["is_recommended"],
+    paywall_opened: ["entry"],
+    paywall_purchase_completed: ["tier", "entry", "purchaser"],
+    locked_cards_upgrade_tap: ["locked_count"],
   });
 });
 
@@ -216,4 +223,244 @@ Deno.test("new_topic_copied：只收 is_recommended 布林，字串或其他鍵�
   assertEquals(bad.ok, true);
   if (!bad.ok) return;
   assertEquals(bad.row.properties, {});
+});
+
+// 付費頁與鎖卡的漏斗（Eric 2026-10-18：量從哪裡打開付費頁、買了哪個方案、
+// 鎖卡區塊被點時鎖了幾張）。值域在 server 強制，不合就剝掉那個鍵、事件照收。
+Deno.test("paywall_opened：entry 只收三種入口，其他值剝除整鍵", () => {
+  for (const entry of ["general", "locked_cards", "quota_exhausted"]) {
+    const ok = buildFunnelRow("u", {
+      event: "paywall_opened",
+      properties: { entry },
+    });
+    assert(ok.ok);
+    if (ok.ok) assertEquals(ok.row.properties, { entry });
+  }
+
+  for (const bad of ["lockedCards", "home", "", 1, true, null]) {
+    const result = buildFunnelRow("u", {
+      event: "paywall_opened",
+      properties: { entry: bad },
+    });
+    assert(result.ok, `entry=${String(bad)} 只剝鍵，事件照收`);
+    if (result.ok) assertEquals(result.row.properties, {});
+  }
+});
+
+Deno.test("paywall_purchase_completed：只留 tier 與 entry，價格、商品 id、收據都剝除", () => {
+  const result = buildFunnelRow(BUYER, {
+    event: "paywall_purchase_completed",
+    properties: {
+      tier: "essential",
+      entry: "locked_cards",
+      purchaser: BUYER,
+      price: 590,
+      productId: "vibesync_essential_monthly",
+      receipt: "MIIT...",
+      partnerName: "小美",
+    },
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  assertEquals(result.row.properties, {
+    tier: "essential",
+    entry: "locked_cards",
+  });
+
+  const starter = buildFunnelRow(BUYER, {
+    event: "paywall_purchase_completed",
+    properties: { tier: "starter", entry: "general", purchaser: BUYER },
+  });
+  assert(starter.ok);
+  if (starter.ok) {
+    assertEquals(starter.row.properties, { tier: "starter", entry: "general" });
+  }
+});
+
+Deno.test("paywall_purchase_completed：tier 不是 starter／essential 就剝掉 tier，entry 照留", () => {
+  for (const bad of ["free", "premium", "Essential", 2]) {
+    const result = buildFunnelRow(BUYER, {
+      event: "paywall_purchase_completed",
+      properties: { tier: bad, entry: "quota_exhausted", purchaser: BUYER },
+    });
+    assert(result.ok);
+    if (result.ok) {
+      assertEquals(result.row.properties, { entry: "quota_exhausted" });
+    }
+  }
+});
+
+Deno.test("locked_cards_upgrade_tap：locked_count 只收 1–5 的整數", () => {
+  for (const count of [1, 3, 5]) {
+    const ok = buildFunnelRow("u", {
+      event: "locked_cards_upgrade_tap",
+      properties: { locked_count: count, slot: 3, task: "push" },
+    });
+    assert(ok.ok);
+    if (ok.ok) assertEquals(ok.row.properties, { locked_count: count });
+  }
+
+  for (const bad of [0, 6, -1, 2.5, "3", null]) {
+    const result = buildFunnelRow("u", {
+      event: "locked_cards_upgrade_tap",
+      properties: { locked_count: bad },
+    });
+    assert(result.ok, `locked_count=${String(bad)} 只剝鍵，事件照收`);
+    if (result.ok) assertEquals(result.row.properties, {});
+  }
+});
+
+Deno.test("其他鍵的下限不受 locked_count 影響：page_index 0 照收", () => {
+  const result = buildFunnelRow("u", {
+    event: "onboarding_page_view",
+    properties: { page_index: 0 },
+  });
+  assert(result.ok);
+  if (result.ok) assertEquals(result.row.properties, { page_index: 0 });
+});
+
+Deno.test("字典外的付費頁事件名照樣拒絕", () => {
+  for (
+    const event of [
+      "paywall_closed",
+      "purchase_completed",
+      "paywall_purchase_cancelled",
+      "locked_card_tap",
+      "PAYWALL_OPENED",
+    ]
+  ) {
+    const result = buildFunnelRow("u", { event, properties: {} });
+    assert(!result.ok, `${event} 應該被拒`);
+  }
+});
+
+// 原型上的名字不是字典裡的事件（主審 r1 P2）：用 in 判斷時 toString、constructor、
+// __proto__ 會過關，接著取到函式或原型而丟錯，端點回 500。要走拒絕路徑
+// （ok:false → index.ts 回 400），不能丟錯。
+Deno.test("原型上的名字當事件名：一律拒絕，不丟錯", () => {
+  for (
+    const event of [
+      "toString",
+      "constructor",
+      "__proto__",
+      "hasOwnProperty",
+      "valueOf",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "toLocaleString",
+      "__defineGetter__",
+    ]
+  ) {
+    let result: ReturnType<typeof buildFunnelRow> | undefined;
+    try {
+      result = buildFunnelRow("u", { event, properties: {} });
+    } catch (error) {
+      throw new Error(`${event} 丟錯了（會變 500）：${error}`);
+    }
+    assertEquals(
+      result,
+      { ok: false, error: "Unknown funnel event" },
+      `${event} 應該走拒絕路徑`,
+    );
+  }
+});
+
+Deno.test("JSON 解出來的 __proto__ 事件名也走拒絕路徑", () => {
+  const raw = JSON.parse('{"event":"__proto__","properties":{}}');
+  assertEquals(buildFunnelRow("u", raw), {
+    ok: false,
+    error: "Unknown funnel event",
+  });
+});
+
+Deno.test("properties 只認自己的鍵：原型上的名字與 __proto__ 鍵都不帶進來", () => {
+  // JSON.parse 會把 __proto__ 當成一般的鍵，裡面就算放了 entry 也不能算數。
+  const raw = JSON.parse(
+    '{"event":"paywall_opened","properties":{"__proto__":{"entry":"general"},"constructor":"x","toString":"y"}}',
+  );
+  const result = buildFunnelRow("u", raw);
+  assert(result.ok);
+  if (result.ok) assertEquals(result.row.properties, {});
+
+  const inherited = Object.create({ entry: "locked_cards" });
+  const fromPrototype = buildFunnelRow("u", {
+    event: "paywall_opened",
+    properties: inherited,
+  });
+  assert(fromPrototype.ok);
+  if (fromPrototype.ok) {
+    assertEquals(fromPrototype.row.properties, {}, "原型鏈上的 entry 不算");
+  }
+});
+
+// 購買事件綁定發起購買的帳號（主審 r2 P2；Eric 2026-10-18 核准的第 3 輪範圍）：
+// 認證權杖在送出當下才取，付款確認期間換了帳號，事件會用到別人的登入。purchaser
+// 是開始購買時的帳號，跟登入的不同就整筆拒絕（ok:false → index.ts 回 400，不寫入）。
+Deno.test("paywall_purchase_completed：purchaser 等於登入帳號才收，而且不落庫", () => {
+  const result = buildFunnelRow(BUYER, {
+    event: "paywall_purchase_completed",
+    properties: { tier: "essential", entry: "general", purchaser: BUYER },
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  assertEquals(result.row.user_id, BUYER);
+  assertEquals(result.row.properties, { tier: "essential", entry: "general" });
+  assert(!("purchaser" in result.row.properties), "purchaser 只拿來比對");
+});
+
+Deno.test("paywall_purchase_completed：purchaser 跟登入的不同、缺少或格式不對，整筆拒絕", () => {
+  const cases: Record<string, Record<string, unknown>> = {
+    "別的帳號": { purchaser: OTHER_ACCOUNT },
+    "缺少": {},
+    "空字串": { purchaser: "" },
+    "不是 UUID": { purchaser: "user-a" },
+    "數字": { purchaser: 42 },
+    "null": { purchaser: null },
+    "前後有空白": { purchaser: ` ${BUYER} ` },
+    "後面多字": { purchaser: `${BUYER}0` },
+    "大寫（跟登入的字串不同）": { purchaser: BUYER.toUpperCase() },
+  };
+  for (const [name, extra] of Object.entries(cases)) {
+    const result = buildFunnelRow(BUYER, {
+      event: "paywall_purchase_completed",
+      properties: { tier: "essential", entry: "locked_cards", ...extra },
+    });
+    assertEquals(
+      result,
+      { ok: false, error: "Funnel purchaser mismatch" },
+      `${name} 應該整筆拒絕`,
+    );
+    assert(!("row" in result), `${name} 不該有可寫入的 row`);
+  }
+});
+
+Deno.test("paywall_purchase_completed：登入帳號本身不是 UUID 時，purchaser 照抄也不收", () => {
+  const result = buildFunnelRow("u", {
+    event: "paywall_purchase_completed",
+    properties: { tier: "essential", entry: "general", purchaser: "u" },
+  });
+  assertEquals(result, { ok: false, error: "Funnel purchaser mismatch" });
+});
+
+Deno.test("其他事件帶了 purchaser：剝掉，事件照收", () => {
+  const opened = buildFunnelRow(BUYER, {
+    event: "paywall_opened",
+    properties: { entry: "locked_cards", purchaser: BUYER },
+  });
+  assert(opened.ok);
+  if (opened.ok) assertEquals(opened.row.properties, { entry: "locked_cards" });
+
+  const tap = buildFunnelRow(BUYER, {
+    event: "locked_cards_upgrade_tap",
+    properties: { locked_count: 2, purchaser: OTHER_ACCOUNT },
+  });
+  assert(tap.ok);
+  if (tap.ok) assertEquals(tap.row.properties, { locked_count: 2 });
+
+  const quota = buildFunnelRow(BUYER, {
+    event: "quota_strip_tap",
+    properties: { purchaser: "not-a-uuid" },
+  });
+  assert(quota.ok);
+  if (quota.ok) assertEquals(quota.row.properties, {});
 });

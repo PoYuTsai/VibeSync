@@ -51,4 +51,17 @@ enum PaywallEntry {
       PaywallEntry.monthlyQuotaShort => '這個月的額度不夠這次用\n$monthlyNext',
     };
   }
+
+  /// 漏斗事件的 entry 值（docs/integrations/funnel-events-v1.md）。額度不夠的四種
+  ///（今天／這個月、用完／不夠這次用）都記 quota_exhausted；server 只收這三個值，
+  /// 加入口要同一批改字典與 server 白名單。
+  String get funnelValue => switch (this) {
+        PaywallEntry.general => 'general',
+        PaywallEntry.lockedCards => 'locked_cards',
+        PaywallEntry.dailyQuotaUsedUp ||
+        PaywallEntry.dailyQuotaShort ||
+        PaywallEntry.monthlyQuotaUsedUp ||
+        PaywallEntry.monthlyQuotaShort =>
+          'quota_exhausted',
+      };
 }

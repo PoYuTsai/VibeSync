@@ -13,6 +13,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -61,6 +62,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   void initState() {
     super.initState();
+    // 漏斗：每開一次記一筆、帶入口（Eric 2026-10-18：量從哪裡打開付費頁）。
+    unawaited(
+      ref.read(funnelTrackerProvider).track(
+        'paywall_opened',
+        properties: {'entry': widget.entry.funnelValue},
+      ),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(ref.read(subscriptionScreenRefreshProvider)());
@@ -1110,6 +1118,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
 
     setState(() => _isPurchasing = true);
+    // 付款確認回來前他可能已經關掉這頁（之後不能再用 ref），成功照樣要記，先抓好。
+    // 帳號也在這裡記下、之後不再重讀，免得 A 買的算到 B（主審 r1、r2 P2）：確認回來時
+    // 換了帳號或登出就不送；送出的認證權杖是 HTTP 送出當下才取，檢查之後才換帳號這邊
+    // 擋不到，所以事件帶上這個帳號，伺服器發現跟登入的不同就整筆丟掉。
+    final tracker = ref.read(funnelTrackerProvider);
+    final entry = widget.entry;
+    final purchaserId = SupabaseService.currentUser?.id;
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
       final result = package != null
@@ -1117,6 +1132,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           : await notifier
               .purchaseStoreProduct(storeProduct!)
               .timeout(_purchaseTimeout);
+      // 漏斗：RevenueCat 回成功才記買的方案（Eric 2026-10-18）。取消、失敗的
+      // success 是 false，逾時、例外直接進 catch；排程降級當下沒有新方案生效，不算買到。
+      final samePurchaser =
+          purchaserId != null && SupabaseService.currentUser?.id == purchaserId;
+      if (result.success && !result.isDeferredDowngrade && samePurchaser) {
+        unawaited(
+          tracker.track(
+            'paywall_purchase_completed',
+            properties: {
+              'tier': result.requestedTier,
+              'entry': entry.funnelValue,
+              // 只給伺服器比對，不落庫。
+              'purchaser': purchaserId,
+            },
+          ),
+        );
+      }
       if (!mounted || result.cancelled) return;
 
       if (!result.success) {
