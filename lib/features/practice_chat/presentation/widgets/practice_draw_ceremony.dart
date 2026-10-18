@@ -799,10 +799,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         : archiving
             ? practiceArchiveCardOpacity(archiveMs)
             : 1.0;
-    final cardScale = drawing
-        ? _waitingPose().scale
-        : practiceRevealPose(ms).scale *
-            (archiving ? practiceArchiveCardScale(archiveMs) : 1.0);
+    // 跟卡片本身同一個縮放（含從等待姿態接過來的那一段與收卡縮小）：環境光、泛光、
+    // 升階光點都貼著看得到的卡片。
+    final cardScale =
+        drawing || girl == null ? _waitingPose().scale : _revealPose().scale;
     final ambientScale = drawing ? 1.0 : practiceRevealAmbientScale(ms, rarity);
     final dustPhase = drawing
         ? _waiting.value
