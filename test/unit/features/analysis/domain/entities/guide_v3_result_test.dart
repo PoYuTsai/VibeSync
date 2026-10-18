@@ -116,6 +116,78 @@ void main() {
       expect(send.careKind, isNull);
     });
 
+    test('邀約進度：伺服器七個代碼都認得；不認得、沒帶（舊快照）是 null；care 一律沒有', () {
+      GuideV3Read read(Object? code, {String decision = 'send'}) =>
+          GuideV3Read.fromJson({
+            ..._read(decision: decision),
+            if (code != null) 'inviteReadiness': code,
+          })!;
+      // 伺服器 wire.ts 的 INVITE_READINESS_CODE（flow_parts_test.ts 釘住同一張表）。
+      const labels = {
+        'none': '沒機會',
+        'declined': '婉拒過',
+        'vague_yes': '含糊答應',
+        'clear_yes': '明確答應',
+        'she_proposed': '她自己提見面',
+        'she_cancelled': '她取消了',
+        'hesitant': '猶豫',
+      };
+      expect(GuideV3InviteReadiness.values.map((r) => r.wire).toSet(),
+          labels.keys.toSet());
+      for (final entry in labels.entries) {
+        final parsed = read(entry.key).inviteReadiness;
+        expect(parsed?.wire, entry.key);
+        expect(parsed?.label, entry.value);
+        expect(read(entry.key, decision: 'hold').inviteReadiness, parsed);
+      }
+      expect(read('maybe_later').inviteReadiness, isNull);
+      expect(read(3).inviteReadiness, isNull);
+      expect(read(null).inviteReadiness, isNull);
+      expect(read('clear_yes', decision: 'care').inviteReadiness, isNull);
+    });
+
+    test('冷訊號：c1＋她連續敷衍幾輪；缺欄、型別不對、負數整個不收；舊快照與 care 沒有', () {
+      GuideV3Read read(Object? cold, {String decision = 'hold'}) =>
+          GuideV3Read.fromJson({
+            ..._read(decision: decision, plannedCards: const []),
+            if (cold != null) 'cold': cold,
+          })!;
+      final fired = read({'c1': true, 'herPerfunctoryStreak': 2}).cold!;
+      expect(fired.c1, isTrue);
+      expect(fired.herPerfunctoryStreak, 2);
+      final quiet =
+          read({'c1': false, 'herPerfunctoryStreak': 0}, decision: 'send')
+              .cold!;
+      expect(quiet.c1, isFalse);
+      expect(quiet.herPerfunctoryStreak, 0);
+      expect(read({'c1': true}).cold, isNull);
+      expect(read({'c1': 'yes', 'herPerfunctoryStreak': 1}).cold, isNull);
+      expect(read({'c1': false, 'herPerfunctoryStreak': -1}).cold, isNull);
+      expect(read({'c1': false, 'herPerfunctoryStreak': 1.5}).cold, isNull);
+      expect(read('cold').cold, isNull);
+      expect(read(null).cold, isNull);
+      expect(
+        read({'c1': true, 'herPerfunctoryStreak': 2}, decision: 'care').cold,
+        isNull,
+      );
+    });
+
+    test('新欄位不影響其他欄位：舊快照照舊解析、最終結果帶得到', () {
+      final legacy = GuideV3Result.fromJson(_final())!;
+      expect(legacy.read.inviteReadiness, isNull);
+      expect(legacy.read.cold, isNull);
+      expect(legacy.read.light, GuideV3Light.green);
+      final withSignals = GuideV3Result.fromJson(_final(read: {
+        ..._read(),
+        'inviteReadiness': 'she_proposed',
+        'cold': {'c1': false, 'herPerfunctoryStreak': 1},
+      }))!;
+      expect(
+          withSignals.read.inviteReadiness, GuideV3InviteReadiness.sheProposed);
+      expect(withSignals.read.cold?.herPerfunctoryStreak, 1);
+      expect(withSignals.cards, hasLength(2));
+    });
+
     test('讀不懂的決定整個不收；讀不懂的燈號只是不顯示', () {
       expect(GuideV3Read.fromJson(_read(decision: 'maybe')), isNull);
       expect(GuideV3Read.fromJson('not a map'), isNull);

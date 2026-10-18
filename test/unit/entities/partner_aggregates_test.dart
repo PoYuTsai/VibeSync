@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -154,6 +155,113 @@ void main() {
       ]);
       expect(v2Latest.latestIsGuideV3, isFalse);
       expect(PartnerAggregateView.empty().latestIsGuideV3, isFalse);
+    });
+
+    test('latestGuideV3Signals：最近那段 v3 的燈號、決定、邀約進度、冷訊號；不分方案', () {
+      String v3({
+        required String decision,
+        String? light,
+        String? inviteReadiness,
+        Map<String, Object?>? cold,
+      }) =>
+          jsonEncode({
+            'guideVersion': 'v3.5',
+            'read': {
+              'guideVersion': 'v3.5',
+              'decision': decision,
+              if (light != null) 'light': light,
+              'judgment': '',
+              if (inviteReadiness != null) 'inviteReadiness': inviteReadiness,
+              if (cold != null) 'cold': cold,
+              'plannedCards': const [],
+            },
+            'cards': const [],
+          });
+
+      final view = _partner().aggregateOver([
+        _convo(
+          id: 'old',
+          updatedAt: DateTime(2026, 10, 1),
+          snapshotJson: v3(decision: 'send', light: 'green'),
+        ),
+        _convo(
+          id: 'new',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(
+            decision: 'hold',
+            light: 'yellow',
+            inviteReadiness: 'hesitant',
+            cold: {'c1': true, 'herPerfunctoryStreak': 2},
+          ),
+        ),
+      ]);
+      final signals = view.latestGuideV3Signals!;
+      expect(signals.decision, GuideV3Decision.hold);
+      expect(signals.light, GuideV3Light.yellow);
+      expect(signals.inviteReadiness, GuideV3InviteReadiness.hesitant);
+      expect(signals.c1, isTrue);
+      expect(signals.herPerfunctoryStreak, 2);
+
+      // 舊快照（伺服器還沒送新欄位）：燈號、決定照給，其他是 null。
+      final legacy = _partner().aggregateOver([
+        _convo(
+          id: 'legacy',
+          updatedAt: DateTime(2026, 10, 17),
+          snapshotJson: v3(decision: 'send', light: 'red'),
+        ),
+      ]).latestGuideV3Signals!;
+      expect(legacy.decision, GuideV3Decision.send);
+      expect(legacy.light, GuideV3Light.red);
+      expect(legacy.inviteReadiness, isNull);
+      expect(legacy.c1, isNull);
+      expect(legacy.herPerfunctoryStreak, isNull);
+
+      // 關心不帶燈號（伺服器的判讀可能有 light，畫面本來就不給 care 顯示）。
+      final care = _partner().aggregateOver([
+        _convo(
+          id: 'care',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(decision: 'care', light: 'red'),
+        ),
+      ]).latestGuideV3Signals!;
+      expect(care.decision, GuideV3Decision.care);
+      expect(care.light, isNull);
+
+      // 最近那段是舊流程或還沒分析：沒有 v3 訊號（不拿更早的 v3 冒充最新）。
+      final v2Latest = _partner().aggregateOver([
+        _convo(
+          id: 'v3',
+          updatedAt: DateTime(2026, 10, 1),
+          snapshotJson: v3(decision: 'send', light: 'green'),
+        ),
+        _convo(
+          id: 'v2',
+          updatedAt: DateTime(2026, 10, 18),
+          lastEnthusiasmScore: 60,
+          snapshotJson: _snapshot(traits: const ['慢熱']),
+        ),
+      ]);
+      expect(v2Latest.latestGuideV3Signals, isNull);
+      final unanalyzed = _partner().aggregateOver([
+        _convo(
+          id: 'v3',
+          updatedAt: DateTime(2026, 10, 1),
+          snapshotJson: v3(decision: 'send', light: 'green'),
+        ),
+        _convo(id: 'blank', updatedAt: DateTime(2026, 10, 18)),
+      ]);
+      expect(unanalyzed.latestGuideV3Signals, isNull);
+      // v3 形狀但決定讀不懂：還是 v3（不顯示熱度），只是沒有訊號。
+      final unreadable = _partner().aggregateOver([
+        _convo(
+          id: 'odd',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(decision: 'maybe', light: 'green'),
+        ),
+      ]);
+      expect(unreadable.latestIsGuideV3, isTrue);
+      expect(unreadable.latestGuideV3Signals, isNull);
+      expect(PartnerAggregateView.empty().latestGuideV3Signals, isNull);
     });
 
     test('lastInteraction = max(updatedAt) across conversations', () {
