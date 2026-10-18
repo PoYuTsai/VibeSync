@@ -19,6 +19,7 @@ void main() {
     String originalText = '這週要不要一起喝杯咖啡？',
     String? restoredText,
     String? restoredRequestId,
+    List<String> quickInstructions = kRefineQuickInstructions,
   }) async {
     await tester.binding.setSurfaceSize(const Size(420, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -30,6 +31,7 @@ void main() {
           freeRemaining: freeRemaining,
           restoredText: restoredText,
           restoredRequestId: restoredRequestId,
+          quickInstructions: quickInstructions,
         ),
       ),
     );
@@ -58,7 +60,8 @@ void main() {
 
     expect(find.text('調過第 1 次：短一點'), findsWidgets);
     expect(find.text('今天還有 3 次免費微調。'), findsOneWidget);
-    expect(find.byKey(const ValueKey('reply-refine-version-1')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('reply-refine-version-1')), findsOneWidget);
 
     // 迭代：第二次要調的是上一輪的結果，不是最初的原句。
     // debounce 用真實時鐘擋連點，所以這裡要真的等過那個窗。
@@ -172,7 +175,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('免費次數待確認，下一次微調可能會使用 1 則。'), findsOneWidget);
 
-    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 700)));
+    await tester
+        .runAsync(() => Future.delayed(const Duration(milliseconds: 700)));
     await tester.tap(_quick('短一點'));
     await tester.pumpAndSettle();
 
@@ -198,6 +202,37 @@ void main() {
     }
   });
 
+  testWidgets('v3 任務卡用自己的四顆快捷指令；一般回覆那一組不變', (tester) async {
+    expect(kRefineQuickInstructions, ['太油了，自然一點', '短一點', '白話一點', '語氣溫和一點']);
+    expect(kGuideV3RefineQuickInstructions, ['短一點', '自然一點', '更直接', '更幽默']);
+
+    final sent = <String>[];
+    await pumpSheet(
+      tester,
+      originalText: '好啊\n那就週六，我來訂位',
+      quickInstructions: kGuideV3RefineQuickInstructions,
+      onRefine: ({required currentText, required instruction}) async {
+        sent.add('$instruction|$currentText');
+        return const ReplyRefineOutcome(
+          refinedText: '好啊\n週六我來訂位',
+          requestId: 'req-v3',
+        );
+      },
+    );
+    for (final chip in kGuideV3RefineQuickInstructions) {
+      expect(_quick(chip), findsOneWidget, reason: chip);
+    }
+    expect(_quick('語氣溫和一點'), findsNothing);
+    expect(_quick('太油了，自然一點'), findsNothing);
+    // 多則卡的每一則各占一行。
+    expect(find.text('好啊\n那就週六，我來訂位'), findsOneWidget);
+
+    await tester.tap(_quick('更直接'));
+    await tester.pumpAndSettle();
+    expect(sent, ['更直接|好啊\n那就週六，我來訂位']);
+    expect(find.text('好啊\n週六我來訂位'), findsWidgets);
+  });
+
   testWidgets('接回 24 小時內的上一版：直接從那一版繼續調', (tester) async {
     final seenTexts = <String>[];
     await pumpSheet(
@@ -212,7 +247,8 @@ void main() {
 
     // 目前版本卡與版本列都標著同一個標籤。
     expect(find.text('上次調過的'), findsWidgets);
-    expect(find.byKey(const ValueKey('reply-refine-version-1')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('reply-refine-version-1')), findsOneWidget);
     await tester.tap(_quick('短一點'));
     await tester.pumpAndSettle();
     expect(seenTexts, ['上次調到一半的版本']);
@@ -241,7 +277,8 @@ void main() {
               result = await showReplyRefineSheet(
                 context,
                 originalText: '原句',
-                onRefine: ({required currentText, required instruction}) async =>
+                onRefine: (
+                        {required currentText, required instruction}) async =>
                     const ReplyRefineOutcome(
                   refinedText: '調過的句子',
                   requestId: 'req-1',

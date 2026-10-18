@@ -5,6 +5,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../conversation/domain/entities/message.dart';
+import '../../domain/entities/guide_v3_result.dart';
 import '../../domain/entities/optimize_message_pending_request.dart';
 
 export '../../domain/entities/optimize_message_pending_request.dart';
@@ -245,6 +246,7 @@ class OptimizeMessageRequestIdSession {
     String? effectiveStyleContext,
     String? knownContactName,
     String? refineInstruction,
+    GuideV3RefineSpec? guideV3Card,
   }) {
     String? normalizedOptional(String? value) {
       final trimmed = value?.trim();
@@ -286,6 +288,8 @@ class OptimizeMessageRequestIdSession {
       // 只有非空才 append。無條件放進來會讓陣列永遠是 8 元素，舊 pending 的
       // fingerprint digest 立刻全變，7 天窗內未結算的請求全部對不回去。
       if (normalizedRefineInstruction != null) normalizedRefineInstruction,
+      // 任務卡的再調（規格會改伺服器的提示詞）同理：有帶才 append。
+      if (guideV3Card != null) guideV3Card.toJson(),
     ]);
   }
 }

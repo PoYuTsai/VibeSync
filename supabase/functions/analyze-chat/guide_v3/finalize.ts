@@ -80,9 +80,10 @@ function cleanMessage(message: string): string | null {
 }
 
 /// sourceText：對話全文（她跟他傳過的字），英文詞要有它支持或在白名單裡。
+/// 規格只用到口吻（任務卡的再調也走這裡，見 refine_card.ts）。
 export function finalizeCard(
   card: WrittenCard,
-  spec: CardSpec,
+  spec: Pick<CardSpec, "voice">,
   sourceText: string,
 ): FinalizedCard {
   const voiced = applyVoice(card, spec);

@@ -1,7 +1,8 @@
 /// v3 任務卡（結果頁與分析紀錄共用）：任務標籤直接給用戶看（設計文件第 5 節），
 /// 點一則複製一則、整張一起複製；有空格（「＿」）的卡一定要先填好才能複製，
 /// 照樣寫＋標示的卡提醒「有編的細節，請改成你的」。複製本身與成效紀錄由呼叫端
-/// 做（這裡只給文字），所以結果頁與紀錄頁可以各自決定要不要記錄。
+/// 做（這裡只給文字），所以結果頁與紀錄頁可以各自決定要不要記錄。「再調一下」
+/// 也一樣由呼叫端決定給不給（只有結果頁的最終結果給）。
 library;
 
 import 'package:flutter/material.dart';
@@ -22,6 +23,9 @@ const guideV3LockedLiveMessage = '升級後才看得到這張';
 
 /// 分析紀錄的鎖住卡：紀錄是當時的快照，升級不會補寫這一筆。
 const guideV3LockedArchivedMessage = '付費方案才有這張';
+
+/// 卡上顯示的是「再調一下」選定的版本。
+const guideV3RefinedLabel = '已再調過';
 
 Color guideV3TaskColor(GuideV3Task task) => switch (task) {
       GuideV3Task.accept => AppColors.info,
@@ -95,8 +99,10 @@ class GuideV3TaskCard extends StatelessWidget {
     super.key,
     required this.card,
     this.editedMessages,
+    this.refinedMessages,
     this.onCopy,
     this.onEdit,
+    this.onRefine,
     this.footer,
   });
 
@@ -105,16 +111,24 @@ class GuideV3TaskCard extends StatelessWidget {
   /// 他填過空格或改過的版本；null＝照伺服器原樣。
   final List<String>? editedMessages;
 
+  /// 「再調一下」選定的版本（模型寫的字：編的細節提醒照留，空格一樣要先填）；
+  /// 他之後自己改過就以 [editedMessages] 為準。
+  final List<String>? refinedMessages;
+
   /// 複製（文字、提示）；null＝這個畫面不給複製。
   final void Function(String text, String toast)? onCopy;
 
   /// 打開填空／改寫；有空格的卡要先經過這裡才能複製。
   final VoidCallback? onEdit;
 
+  /// 打開「再調一下」；null＝這個畫面或這張卡不給再調。
+  final VoidCallback? onRefine;
+
   /// 卡片下方（例如複製後的成效回報列）。
   final Widget? footer;
 
-  List<String> get _messages => editedMessages ?? card.messages;
+  List<String> get _messages =>
+      editedMessages ?? refinedMessages ?? card.messages;
 
   bool get _needsFill => _messages.any(guideV3TextHasBlank);
 
@@ -122,6 +136,7 @@ class GuideV3TaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final messages = _messages;
     final edited = editedMessages != null;
+    final refined = !edited && refinedMessages != null;
     final textStyle = AppTypography.bodyLarge.copyWith(
       color: AppColors.onBackgroundPrimary,
       height: 1.45,
@@ -137,9 +152,9 @@ class GuideV3TaskCard extends StatelessWidget {
             children: [
               GuideV3TaskChip(task: card.task),
               const Spacer(),
-              if (edited)
+              if (edited || refined)
                 Text(
-                  '已改成你的',
+                  edited ? '已改成你的' : guideV3RefinedLabel,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                   ),
@@ -245,6 +260,21 @@ class GuideV3TaskCard extends StatelessWidget {
                     ),
             ),
           ],
+          // 整張卡一起調（幾則照舊是幾則）；跟 v2 的「再調一下」同一個樣子。
+          if (onRefine != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: SizedBox(
+                width: double.infinity,
+                height: 34,
+                child: TextButton.icon(
+                  key: ValueKey('guide-v3-card-${card.slot}-refine'),
+                  onPressed: onRefine,
+                  icon: const Icon(Icons.tune_rounded, size: 16),
+                  label: Text('再調一下', style: AppTypography.labelMedium),
+                ),
+              ),
+            ),
           if (footer != null) footer!,
         ],
       ),

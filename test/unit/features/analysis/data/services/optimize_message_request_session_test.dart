@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis/data/services/optimize_message_request_session.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 
@@ -265,6 +266,85 @@ void main() {
       );
 
       expect(restored?.requestId, pending.requestId);
+    });
+
+    // 2026-10-18 任務卡的再調上線前，帶指令的微調用舊版程式算出的值（暫存複本
+    // 對拍：舊檔與新檔同一個輸入都是這一顆）。沒帶卡片規格時必須一字不差，7 天窗
+    // 內未結算的微調才找得回原本的 requestId。
+    test('refine fingerprint without a v3 card is byte-identical to before',
+        () {
+      final fingerprint = OptimizeMessageRequestIdSession.fingerprintFor(
+        messages: [
+          Message(
+            id: '1',
+            content: '嗨，週末有空嗎？',
+            isFromMe: false,
+            timestamp: DateTime.utc(2026, 7, 16),
+            quotedReplyPreview: '前一句',
+            quotedReplyPreviewIsFromMe: true,
+          ),
+          Message(
+            id: '2',
+            content: '看情況欸',
+            isFromMe: true,
+            timestamp: DateTime.utc(2026, 7, 16),
+          ),
+        ],
+        userDraft: '要不要一起去看展',
+        sessionContext: SessionContext(
+          meetingContext: MeetingContext.datingApp,
+          duration: AcquaintanceDuration.fewWeeks,
+          goal: UserGoal.dateInvite,
+          analysisContextNote: '她剛換工作',
+        ),
+        conversationSummary: '剛認識兩週',
+        partnerSummary: '喜歡藝術',
+        effectiveStyleContext: '幽默但不油',
+        knownContactName: '小美',
+        refineInstruction: '再幽默一點',
+      );
+      expect(
+        OptimizeMessageRequestIdSession.digestFingerprint(fingerprint),
+        '103b28f69b173c009989551913bfee4620b8561daee23c403efc4feaeef1c622',
+      );
+    });
+
+    test('v3 card spec only joins the fingerprint when present', () {
+      String fingerprint({GuideV3RefineSpec? card}) =>
+          OptimizeMessageRequestIdSession.fingerprintFor(
+            messages: [_message('嗨')],
+            userDraft: '好啊\n週六見',
+            refineInstruction: '短一點',
+            guideV3Card: card,
+          );
+      const push = GuideV3RefineSpec(
+        task: 'push',
+        voice: 'default',
+        method: 'reaction',
+      );
+
+      final plain = fingerprint();
+      final withCard = fingerprint(card: push);
+      expect(fingerprint(card: null), plain);
+      expect(withCard, isNot(plain));
+      expect(
+        fingerprint(
+          card: const GuideV3RefineSpec(
+            task: 'push',
+            voice: 'default',
+            method: 'reaction',
+          ),
+        ),
+        withCard,
+      );
+      for (final other in const [
+        GuideV3RefineSpec(
+            task: 'tension', voice: 'default', method: 'reaction'),
+        GuideV3RefineSpec(task: 'push', voice: 'his', method: 'reaction'),
+        GuideV3RefineSpec(task: 'push', voice: 'default', method: 'blank'),
+      ]) {
+        expect(fingerprint(card: other), isNot(withCard));
+      }
     });
 
     test('success and explicit reset rotate the next attempt', () async {

@@ -8,6 +8,7 @@ import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_telemetry.dart';
+import '../../domain/entities/guide_v3_result.dart';
 
 typedef OptimizeDraftCall = Future<AnalysisResult> Function({
   required List<Message> messages,
@@ -26,6 +27,7 @@ typedef RefineReplyCall = Future<AnalysisResult> Function({
   required String userDraft,
   required String refineInstruction,
   String? refineAnchorText,
+  GuideV3RefineSpec? guideV3Card,
   SessionContext? sessionContext,
   String? conversationSummary,
   String? partnerSummary,

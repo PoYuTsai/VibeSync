@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vibesync/features/analysis/data/services/analysis_service.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 Message _msg(String content, {bool fromMe = false}) {
@@ -100,6 +101,44 @@ void main() {
       );
       expect(bodies.single.containsKey('refineAnchorText'), isFalse);
       expect(bodies.single.containsKey('refineInstruction'), isFalse);
+    });
+  });
+
+  group('任務卡的再調 guideV3Card', () {
+    const spec = GuideV3RefineSpec(
+      task: 'tension',
+      voice: 'his',
+      method: 'invented',
+    );
+
+    test('跟指令一起送：三個代碼原樣上 wire', () async {
+      final bodies = <Map<String, dynamic>>[];
+      await _service(bodies).refineReply(
+        messages: [_msg('最近有空嗎？')],
+        userDraft: '妳這樣說我會當真喔\n週末見',
+        refineInstruction: '更幽默',
+        guideV3Card: spec,
+        requestId: requestId,
+      );
+      expect(bodies.single['guideV3Card'], {
+        'task': 'tension',
+        'voice': 'his',
+        'method': 'invented',
+      });
+      expect(bodies.single['userDraft'], '妳這樣說我會當真喔\n週末見');
+    });
+
+    test('指令是空白時不送（不會變成帶卡片規格的潤飾）', () async {
+      final bodies = <Map<String, dynamic>>[];
+      await _service(bodies).refineReply(
+        messages: [_msg('最近有空嗎？')],
+        userDraft: '週末見',
+        refineInstruction: '   ',
+        guideV3Card: spec,
+        requestId: requestId,
+      );
+      expect(bodies.single.containsKey('refineInstruction'), isFalse);
+      expect(bodies.single.containsKey('guideV3Card'), isFalse);
     });
   });
 

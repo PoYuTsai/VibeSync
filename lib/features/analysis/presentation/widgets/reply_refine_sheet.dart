@@ -38,6 +38,16 @@ const kRefineQuickInstructions = <String>[
   // prompt「禁止純同義改寫」的品質規則自相矛盾，產出也最弱。
 ];
 
+/// 對話分析 v3 任務卡的快捷指令（Eric 2026-10-18）。跟上面那組不同：卡片的任務由
+/// 伺服器帶著卡片規格鎖住（推進還是推進、收還是收），所以可以放「更直接」——它只是
+/// 把意思講明白，不會變成改邀約或界線；任務卡也不需要「語氣溫和一點」把推進調軟。
+const kGuideV3RefineQuickInstructions = <String>[
+  '短一點',
+  '自然一點',
+  '更直接',
+  '更幽默',
+];
+
 /// 一次成功微調的結果。`freeRemaining` / `chargedQuota` 由 server 回應決定，
 /// client 不自己推算，否則面板顯示的免費次數會和真正扣費的那一本帳分岔。
 class ReplyRefineOutcome {
@@ -86,6 +96,7 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
   int freeDailyLimit = kRefineFreeDailyLimit,
   String? restoredText,
   String? restoredRequestId,
+  List<String> quickInstructions = kRefineQuickInstructions,
 }) {
   return showAppSheet<ReplyRefineSheetResult>(
     context: context,
@@ -98,6 +109,7 @@ Future<ReplyRefineSheetResult?> showReplyRefineSheet(
       freeDailyLimit: freeDailyLimit,
       restoredText: restoredText,
       restoredRequestId: restoredRequestId,
+      quickInstructions: quickInstructions,
     ),
   );
 }
@@ -111,10 +123,15 @@ class ReplyRefineSheet extends StatefulWidget {
     this.freeDailyLimit = kRefineFreeDailyLimit,
     this.restoredText,
     this.restoredRequestId,
+    this.quickInstructions = kRefineQuickInstructions,
   });
 
   final String originalText;
   final ReplyRefineRequest onRefine;
+
+  /// 快捷指令：一般回覆用 [kRefineQuickInstructions]，v3 任務卡用
+  /// [kGuideV3RefineQuickInstructions]。
+  final List<String> quickInstructions;
 
   /// 已知的今日剩餘免費次數；null 代表今天還沒問過 server。
   final int? freeRemaining;
@@ -353,8 +370,7 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                               onTap: _inFlight
                                   ? null
                                   : AppHaptics.onPress(
-                                      () =>
-                                          setState(() => _selectedIndex = i)),
+                                      () => setState(() => _selectedIndex = i)),
                             ),
                         ],
                         const SizedBox(height: 16),
@@ -362,9 +378,10 @@ class _ReplyRefineSheetState extends State<ReplyRefineSheet> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            for (final instruction in kRefineQuickInstructions)
+                            for (final instruction in widget.quickInstructions)
                               ActionChip(
-                                key: ValueKey('reply-refine-quick-$instruction'),
+                                key:
+                                    ValueKey('reply-refine-quick-$instruction'),
                                 label: Text(instruction),
                                 onPressed: _inFlight
                                     ? null

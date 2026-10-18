@@ -15,6 +15,7 @@ import 'package:vibesync/features/analysis/data/services/optimize_billing_adapte
 import 'package:vibesync/features/analysis/data/services/optimize_message_request_session.dart';
 import 'package:vibesync/features/analysis/data/services/reply_refine_draft_adapter.dart';
 import 'package:vibesync/features/analysis/data/services/reply_refine_draft_store.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
 Message _msg(String content, {bool fromMe = false}) {
@@ -269,6 +270,45 @@ void main() {
       expect(h.bodies[0]['refineAnchorText'], '原始那句話');
       expect(h.bodies[0]['requestId'], shorter.pending.requestId);
       expect(h.bodies[1]['refineInstruction'], '溫柔一點');
+    });
+
+    test('任務卡的再調：卡片規格上 wire、進 fingerprint；多則草稿用換行接著送', () async {
+      final h = _harness();
+      final messages = [_msg('最近有空嗎？')];
+      const spec = GuideV3RefineSpec(
+        task: 'push',
+        voice: 'default',
+        method: 'reaction',
+      );
+      Future<RefineRoundResult?> round({GuideV3RefineSpec? card}) =>
+          h.coordinator.runRefineRound(
+            ownerUserId: owner,
+            context: _contextWith(messages),
+            sessionContext: null,
+            currentText: '好啊\n那就週六',
+            instruction: '更直接',
+            anchorText: '好啊\n那就週六',
+            onReadyToSend: () async => true,
+            onTelemetry: (_) {},
+            guideV3Card: card,
+          );
+
+      final v3 = await round(card: spec);
+      final plain = await round();
+
+      expect(h.bodies[0]['guideV3Card'], {
+        'task': 'push',
+        'voice': 'default',
+        'method': 'reaction',
+      });
+      expect(h.bodies[0]['userDraft'], '好啊\n那就週六');
+      expect(h.bodies[0]['refineInstruction'], '更直接');
+      expect(h.bodies[1].containsKey('guideV3Card'), isFalse);
+      expect(
+        v3!.pending.requestId,
+        isNot(plain!.pending.requestId),
+        reason: '卡片規格會改伺服器的提示詞，不能跟一般微調共用帳本列',
+      );
     });
 
     test('durable 暫存先落地才 restorable，restoreRefineDraft 讀得回同一版', () async {

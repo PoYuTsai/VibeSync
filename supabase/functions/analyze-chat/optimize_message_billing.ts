@@ -36,8 +36,10 @@ export async function computeOptimizeMessageInputHash(input: {
   knownContactName?: string | null;
   forceModel?: string | null;
   refineInstruction?: string | null;
+  guideV3Card?: { task: string; voice: string; method: string } | null;
 }): Promise<string> {
   const refineInstruction = input.refineInstruction?.trim() ?? "";
+  const card = input.guideV3Card;
   const canonical = JSON.stringify([
     input.messages,
     input.userDraft,
@@ -50,6 +52,10 @@ export async function computeOptimizeMessageInputHash(input: {
     // 只有非空才 append。寫成 `input.refineInstruction ?? null` 會讓陣列永遠
     // 是 9 元素，舊請求的 hash 立刻全變，7 天窗內的 pending 全毀。
     ...(refineInstruction ? [refineInstruction] : []),
+    // 任務卡的再調（規格會改提示詞）同理：有帶才 append，key 順序固定。
+    ...(card
+      ? [{ task: card.task, voice: card.voice, method: card.method }]
+      : []),
   ]);
   const digest = await crypto.subtle.digest(
     "SHA-256",

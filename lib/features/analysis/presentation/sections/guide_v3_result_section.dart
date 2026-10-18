@@ -168,6 +168,8 @@ class GuideV3ResultSection extends StatelessWidget {
     required this.editedMessagesFor,
     required this.onCopy,
     required this.onEdit,
+    this.refinedMessagesFor,
+    this.onRefine,
     this.onUpgrade,
     this.lockedMessage = guideV3LockedLiveMessage,
     this.footerFor,
@@ -192,6 +194,13 @@ class GuideV3ResultSection extends StatelessWidget {
   final List<String>? Function(GuideV3Card card) editedMessagesFor;
   final void Function(GuideV3Card card, String text, String toast) onCopy;
   final void Function(GuideV3Card card) onEdit;
+
+  /// 「再調一下」選定的版本；null＝這個畫面沒有再調。
+  final List<String>? Function(GuideV3Card card)? refinedMessagesFor;
+
+  /// 「再調一下」：只有結果頁的最終結果給（分析紀錄不給）；帶不出卡片規格的卡
+  ///（舊快照）也不給。
+  final void Function(GuideV3Card card)? onRefine;
   final VoidCallback? onUpgrade;
 
   /// 鎖住卡的說法（結果頁與分析紀錄不同，見 [GuideV3LockedCard.message]）。
@@ -286,8 +295,12 @@ class GuideV3ResultSection extends StatelessWidget {
   Widget _taskCard(GuideV3Card card) => GuideV3TaskCard(
         card: card,
         editedMessages: editedMessagesFor(card),
+        refinedMessages: refinedMessagesFor?.call(card),
         onCopy: (text, toast) => onCopy(card, text, toast),
         onEdit: () => onEdit(card),
+        onRefine: onRefine != null && card.refineSpec != null
+            ? () => onRefine!(card)
+            : null,
         footer: footerFor?.call(card),
       );
 

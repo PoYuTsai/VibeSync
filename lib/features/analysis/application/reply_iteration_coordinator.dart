@@ -12,6 +12,7 @@ library;
 import '../../conversation/domain/entities/session_context.dart';
 import '../domain/entities/analysis_models.dart';
 import '../domain/entities/analysis_telemetry.dart';
+import '../domain/entities/guide_v3_result.dart';
 import '../domain/entities/optimize_message_pending_request.dart';
 import '../domain/errors/analysis_exceptions.dart';
 import 'analysis_run_preparer.dart';
@@ -169,6 +170,9 @@ class ReplyIterationCoordinator {
   /// 順序不能反：先把已付費結果落到本機暫存，成功了才輪到畫面在可見幀後
   /// markSuccess。存檔失敗時保留 pending（restorable=false），同一份輸入的
   /// 下一次送出會走 replay 拿回同一個結果，不重複扣費。
+  ///
+  /// [guideV3Card]＝任務卡的再調：卡片規格跟指令一樣進 fingerprint 與請求，
+  /// 計費照回覆微調。
   Future<RefineRoundResult?> runRefineRound({
     required String ownerUserId,
     required AuxiliaryAnalysisContext context,
@@ -178,6 +182,7 @@ class ReplyIterationCoordinator {
     required String anchorText,
     required Future<bool> Function() onReadyToSend,
     required AnalysisTelemetryCallback onTelemetry,
+    GuideV3RefineSpec? guideV3Card,
   }) async {
     final fingerprint = _billing.fingerprintFor(
       messages: context.requestMessages,
@@ -188,6 +193,7 @@ class ReplyIterationCoordinator {
       effectiveStyleContext: context.effectiveStyleContext,
       knownContactName: context.knownContactName,
       refineInstruction: instruction,
+      guideV3Card: guideV3Card,
     );
     final outcome = await _billing.run(
       ownerUserId: ownerUserId,
@@ -206,6 +212,7 @@ class ReplyIterationCoordinator {
           // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
           // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
           refineAnchorText: anchorText,
+          guideV3Card: guideV3Card,
           requestId: pending.requestId,
           onTelemetry: onTelemetry,
         );

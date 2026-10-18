@@ -188,6 +188,8 @@ void main() {
     expect(find.text('接住'), findsOneWidget);
     expect(find.text('填好空格再複製'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
+    // 「再調一下」只在結果頁的最終結果給，紀錄頁不給（Eric 2026-10-18）。
+    expect(find.text('再調一下'), findsNothing);
     // 免費方案當時沒寫的卡：紀錄裡也有升級入口，但說法不承諾補寫這一筆。
     expect(find.text('付費方案才有這張'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-v3-locked-2-upgrade')),
