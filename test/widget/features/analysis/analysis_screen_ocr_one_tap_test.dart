@@ -538,6 +538,16 @@ void _expectRecognitionErrorCard(
   expect(card.showForceReRecognize, isTrue, reason: '錯誤來源是截圖辨識');
 }
 
+/// 按錯誤卡的主按鈕「重新辨識」（不是旁邊的「強制重新辨識」）。
+Future<void> _tapRetryRecognition(WidgetTester tester) async {
+  final retry = find.widgetWithText(ElevatedButton, '重新辨識');
+  await tester.ensureVisible(retry);
+  await tester.tap(retry);
+  await _pumpFrames(tester);
+  // 辨識計時器每秒才醒一次、辨識完下一次醒來才停：推過一秒，測試結束時不留計時器。
+  await tester.pump(const Duration(seconds: 1));
+}
+
 /// 分析開始之後有輪播動畫，不能 settle：固定推幾格。
 Future<void> _pumpFrames(WidgetTester tester, {int count = 8}) async {
   for (var i = 0; i < count; i++) {
@@ -996,6 +1006,59 @@ void main() {
       expect(_contents(harness.conversation.messages),
           _recognizedContents(messages),
           reason: '匯入照樣留著');
+    });
+  });
+
+  // 辨識錯誤卡的「重新辨識」（Eric 2026-10-18；主審 P3 延伸）：以前清錯誤狀態時連來源一起
+  // 清掉，按下去走的是分析（跳「開始分析前」），不是重跑辨識。辨識走快取、不打網路，
+  // 「辨識又跑了一次」看的是確認框再出現一次。重新分析那條見 hydration 測試
+  // 「開始失敗之後鎖會放掉：按重試照樣能再開始」。
+  group('辨識錯誤卡：「重新辨識」重跑辨識、不走分析', () {
+    testWidgets('初次辨識後存檔失敗：按「重新辨識」再辨識一次、確認框再出現，不跳「開始分析前」、一次都不送',
+        (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      harness.repository.failUpdates = true;
+      await _tapInDialog(tester, _analyzeLabel);
+      _expectRecognitionErrorCard(
+        tester,
+        message: _recognitionFailedMessage,
+        primaryActionLabel: '重新辨識',
+      );
+
+      await _tapRetryRecognition(tester);
+
+      expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget,
+          reason: '辨識又跑了一次，確認框再出現');
+      expect(find.byType(AnalysisErrorCard), findsNothing);
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+    });
+
+    testWidgets('從「繼續確認本次內容」匯入、存檔失敗：按「重新辨識」照上一批圖再辨識、確認框再出現，不跳「開始分析前」、一次都不送',
+        (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      await _cancelThenResume(tester);
+      harness.repository.failUpdates = true;
+      await _tapInDialog(tester, _analyzeLabel);
+      _expectRecognitionErrorCard(
+        tester,
+        message: _recognitionFailedMessage,
+        primaryActionLabel: '重新辨識',
+      );
+
+      await _tapRetryRecognition(tester);
+
+      expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget,
+          reason: '續看那條的圖已經收起來，照上一批圖再辨識，確認框再出現');
+      expect(find.byType(AnalysisErrorCard), findsNothing);
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
     });
   });
 }

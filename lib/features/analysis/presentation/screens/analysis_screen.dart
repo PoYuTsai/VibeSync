@@ -808,9 +808,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _handleErrorAction(AnalysisErrorAction action) async {
     switch (action) {
       case AnalysisErrorAction.retry:
+        // 先記下來源再清：清完 _errorOrigin 就是 null，「重新辨識」會誤走分析（Eric 2026-10-18）。
+        final origin = _errorOrigin;
         setState(_resetErrorState);
-        if (_errorOrigin == _AnalysisErrorOrigin.recognition) {
-          await _recognizeAndAddToConversation();
+        if (origin == _AnalysisErrorOrigin.recognition) {
+          if (_selectedImages.isEmpty) {
+            // 續看卡那條路的圖已經收起來：照上一批圖重跑（同「強制重新辨識」那批，快取照用）。
+            await _recognizeAndAddToConversation(
+              overrideImages: _lastRecognitionImages,
+              overrideMetrics: _lastRecognitionImageMetrics,
+            );
+          } else {
+            await _recognizeAndAddToConversation();
+          }
         } else {
           await _runAnalysis();
         }
