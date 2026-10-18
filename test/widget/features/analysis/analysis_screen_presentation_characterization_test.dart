@@ -934,7 +934,9 @@ void main() {
       expect(find.text('綠燈'), findsOneWidget);
       expect(find.text('接住'), findsOneWidget);
       expect(find.text('推進'), findsOneWidget);
-      expect(find.text('這輪付費方案還有 1 張：帶張力'), findsOneWidget);
+      // 排卡第 3 張標 locked（伺服器改之前的免費結果）：不畫、不推升級（Eric 2026-10-19）。
+      expect(find.textContaining('付費方案還有'), findsNothing);
+      expect(find.text('帶張力'), findsNothing);
       expect(find.byKey(const ValueKey('analysis-reply-zone')), findsNothing);
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
@@ -1091,7 +1093,7 @@ void main() {
       expect(find.byType(StreamingAnalysisLoader), findsNothing);
       expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
       expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
-      // 還在寫：鎖住的卡與升級都還不出現（Eric 2026-10-18）。
+      // 沒有鎖卡區塊與升級（免費也看全部的卡，Eric 2026-10-19）。
       expect(
         find.byKey(const ValueKey('guide-v3-locked-block')),
         findsNothing,
@@ -1348,72 +1350,72 @@ void main() {
       expect(snapshot!.summary, '她有在接你的話，可以往前一步。');
     });
 
-    testWidgets(
-        '鎖住的卡（Eric 2026-10-18）：免費 5 張排卡、送到 2 張，只有一塊、一顆「看方案」，點了打開付費頁的鎖卡大標',
-        (tester) async {
-      final free = GuideV3Result.fromJson({
-        'guideVersion': 'v3.5',
-        'read': {
-          ...readJson(),
-          'plannedCards': [
-            {'slot': 1, 'task': 'accept', 'locked': false},
-            {'slot': 2, 'task': 'push', 'locked': false},
-            {'slot': 3, 'task': 'tension', 'locked': true},
-            {'slot': 4, 'task': 'tension', 'locked': true},
-            {'slot': 5, 'task': 'push', 'locked': true},
+    /// 免費方案的結果：排卡裡沒標 locked 的都送到。
+    GuideV3Result freeResult(List<Map<String, dynamic>> planned) =>
+        GuideV3Result.fromJson({
+          'guideVersion': 'v3.5',
+          'read': {...readJson(), 'plannedCards': planned},
+          'cards': [
+            for (final plan in planned)
+              if (plan['locked'] != true)
+                cardJson(
+                  plan['slot'] as int,
+                  plan['task'] as String,
+                  '第 ${plan['slot']} 張的句子',
+                ),
           ],
-        },
-        'cards': [
-          cardJson(1, 'accept', '那家我也想吃吃看'),
-          cardJson(2, 'push', '週六下午一起去？我來找位子'),
-        ],
-        'partial': false,
-        'usage': {
-          'messagesUsed': 1,
-          'monthlyRemaining': 29,
-          'dailyRemaining': 4,
-          'tierUsed': 'free',
-        },
-      })!;
+          'partial': false,
+          'usage': {
+            'messagesUsed': 3,
+            'monthlyRemaining': 27,
+            'dailyRemaining': 12,
+            'tierUsed': 'free',
+          },
+        })!;
+    const fiveTasks = ['accept', 'push', 'tension', 'tension', 'push'];
+
+    testWidgets('免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：伺服器送幾張就畫幾張，沒有鎖卡區塊與看方案',
+        (tester) async {
       await _pumpScreen(
         tester,
-        seed: doneSeed(free),
-        extraRoutes: [
-          GoRoute(
-            path: '/paywall',
-            // 跟 lib/app/routes.dart 一樣從 extra 取入口。
-            builder: (_, state) => PaywallScreen(
-              entry: PaywallEntry.fromRouteExtra(state.extra),
-            ),
-          ),
-        ],
-        extraOverrides: [
-          subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
-        ],
+        seed: doneSeed(freeResult([
+          for (var i = 0; i < fiveTasks.length; i++)
+            {'slot': i + 1, 'task': fiveTasks[i], 'locked': false},
+        ])),
       );
       await dismissEditCoachMark(tester);
+      for (var slot = 1; slot <= fiveTasks.length; slot++) {
+        expect(find.byKey(ValueKey('guide-v3-card-$slot')), findsOneWidget,
+            reason: 'slot $slot');
+      }
       expect(
         find.byKey(const ValueKey('guide-v3-locked-block')),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.textContaining('付費方案還有'), findsNothing);
+      expect(find.text('看方案'), findsNothing);
+    });
+
+    testWidgets('舊快照：伺服器改之前存的免費結果，後 3 張標 locked、沒寫；不畫、不推升級、不算比較少',
+        (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(freeResult([
+          for (var i = 0; i < fiveTasks.length; i++)
+            {'slot': i + 1, 'task': fiveTasks[i], 'locked': i >= 2},
+        ])),
+      );
+      await dismissEditCoachMark(tester);
+      expect(find.byKey(const ValueKey('guide-v3-card-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('guide-v3-card-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('guide-v3-card-3')), findsNothing);
       expect(
-        find.text(
-          '這輪付費方案還有 ${free.read.lockedCards.length} 張：帶張力 ×2、推進',
-        ),
-        findsOneWidget,
+        find.byKey(const ValueKey('guide-v3-locked-block')),
+        findsNothing,
       );
-      expect(find.text('看方案'), findsOneWidget);
-      final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
-      await tester.ensureVisible(upgrade);
-      await tester.tap(upgrade);
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          PaywallEntry.lockedCards.headlineFor(SubscriptionTierHelper.free),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
+      expect(find.textContaining('付費方案還有'), findsNothing);
+      expect(find.text('看方案'), findsNothing);
+      expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
     });
 
     testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {

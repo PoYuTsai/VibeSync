@@ -198,11 +198,21 @@ void main() {
       expect(find.text('先試手感'), findsOneWidget);
       expect(find.text('穩定練習'), findsOneWidget);
       expect(find.text('深度打磨'), findsOneWidget);
-      // 對話分析 v3：付費全部的卡、免費前 2 張；不寫「每次 3–5 張」（收尾 1 張、
-      // 先別回和停沒有卡，Eric 2026-10-18）。新流程沒有雷達圖，比較表不再列。
+      // 對話分析 v3：三個方案都看全部的卡（Bruce PR #97，Eric 2026-10-19），這一列照留；
+      // 不寫「每次 3–5 張」（收尾 1 張、先別回和停沒有卡，Eric 2026-10-18）。新流程沒有
+      // 雷達圖，比較表不再列。
       expect(find.text('回覆卡'), findsOneWidget);
-      expect(find.text('前 2 張'), findsOneWidget);
-      expect(find.text('全部'), findsNWidgets(2));
+      final cardsRow =
+          find.ancestor(of: find.text('回覆卡'), matching: find.byType(Row)).first;
+      expect(
+        tester
+            .widgetList<Text>(
+                find.descendant(of: cardsRow, matching: find.byType(Text)))
+            .map((text) => text.data)
+            .toList(),
+        ['回覆卡', '全部', '全部', '全部'],
+      );
+      expect(find.text('前 2 張'), findsNothing);
       expect(find.text('每次回覆卡'), findsNothing);
       expect(find.text('雷達圖'), findsNothing);
       expect(find.text('延展＋調情 2 種'), findsNothing);
@@ -212,11 +222,9 @@ void main() {
       expect(find.text('訊息優化'), findsNothing);
       expect(find.text('可用'), findsNothing);
       expect(find.text('未開放'), findsNothing);
-      // 方案卡的重點也不再寫五種風格或雷達圖。
-      expect(
-        find.text('該回的時候給你 3–5 張回覆；免費看前 2 張'),
-        findsNWidgets(4),
-      );
+      // 方案卡的重點也不再寫五種風格或雷達圖；免費也看全部的卡，不再寫「免費看前 2 張」。
+      expect(find.text('該回的時候給你 3–5 張回覆'), findsNWidgets(4));
+      expect(find.textContaining('免費看前'), findsNothing);
       expect(find.textContaining('對話健檢'), findsNothing);
       expect(find.textContaining('訊息優化'), findsNothing);
       expect(find.textContaining('五種風格'), findsNothing);

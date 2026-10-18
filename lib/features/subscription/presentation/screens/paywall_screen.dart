@@ -107,7 +107,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterMonthlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '該回的時候給你 3–5 張回覆；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆',
           '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
@@ -122,7 +122,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '該回的時候給你 3–5 張回覆；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆',
           '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
@@ -137,7 +137,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialMonthlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '該回的時候給你 3–5 張回覆；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -152,7 +152,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '該回的時候給你 3–5 張回覆；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -602,10 +602,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 12),
           _buildComparisonHeader(),
           _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
-          // 對話分析 v3（Eric 2026-10-17）：伺服器照局面排卡，免費只寫只送前 2 張
-          //（routing.ts 的 GUIDE_V3_FREE_CARD_LIMIT）。不寫「每次」：收尾只有 1 張、
-          // 先別回和停沒有卡（Eric 2026-10-18）。
-          _buildComparisonRow('回覆卡', '前 2 張', '全部', '全部'),
+          // 對話分析 v3：伺服器照局面排卡，三個方案都看全部的卡（Bruce PR #97，Eric
+          // 2026-10-19）；這一列照留，讓人知道免費也看得到全部。不寫「每次」：收尾只有
+          // 1 張、先別回和停沒有卡（Eric 2026-10-18）。
+          _buildComparisonRow('回覆卡', '全部', '全部', '全部'),
           // 開場救星（Eric 2026-10-18）：免費只看得到其中幾句，兩個付費方案都看完整。
           // 句數照開場權益契約（opener_access.dart，鏡像 server opener_payload.ts），
           // 改契約不用回來改文案。

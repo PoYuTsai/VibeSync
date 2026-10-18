@@ -313,8 +313,6 @@ class GuideV3ResultSection extends StatelessWidget {
     required this.onEdit,
     this.refinedMessagesFor,
     this.onRefine,
-    this.onUpgrade,
-    this.offerUpgrade = true,
     this.footerFor,
     this.anchorKey,
     this.showUpgradeRefresh = false,
@@ -346,11 +344,6 @@ class GuideV3ResultSection extends StatelessWidget {
   /// 「再調一下」：只有結果頁的最終結果給（分析紀錄不給）；帶不出卡片規格的卡
   ///（舊快照）也不給。存好後回傳選定的版本（見 [GuideV3TaskCard.onRefine]）。
   final Future<List<String>?> Function(GuideV3Card card)? onRefine;
-  final VoidCallback? onUpgrade;
-
-  /// 目前的方案還能升級（免費）才給鎖卡區塊與升級入口；已付費回看免費時的紀錄就
-  /// 不推（主審 r1 P2-1）。看的是「現在」的方案，紀錄本身不動。
-  final bool offerUpgrade;
   final Widget? Function(GuideV3Card card)? footerFor;
 
   /// 分析完成時捲動定位用（第一張卡一到就捲到這裡）。
@@ -383,7 +376,8 @@ class GuideV3ResultSection extends StatelessWidget {
           shownSlots.add(card.slot);
           slots.add(_taskCard(card));
         } else if (!plan.locked && isStreaming) {
-          // 鎖住的卡不逐張畫，整輪寫完才在後面合成一塊（見 lockedBlock）。
+          // 免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：只有伺服器改之前的舊結果
+          // 會標 locked，那幾張不會送來，不畫「正在寫」，也不畫鎖卡或升級。
           slots.add(GuideV3PendingCard(planned: plan));
         }
       }
@@ -414,23 +408,6 @@ class GuideV3ResultSection extends StatelessWidget {
             deliveredCards: cards.length,
             deliverableCards: read.deliverableCount,
           );
-      // 讓人看到付費價值的時機（Eric 2026-10-18）：整輪完整寫完才出現；第一張卡前、
-      // 串流中、少卡或中斷、出錯、已升級（在等重新整理或回看紀錄）時都不出現升級。
-      // 先別回、停、關心本來就不會走到這裡。
-      final lockedBlock = offerUpgrade &&
-          isFinal &&
-          !fewer &&
-          cards.isNotEmpty &&
-          read.hasLockedCards &&
-          !showUpgradeRefresh;
-      if (lockedBlock) {
-        children
-          ..add(const SizedBox(height: 10))
-          ..add(GuideV3LockedBlock(
-            locked: read.lockedCards,
-            onUpgrade: onUpgrade,
-          ));
-      }
       if (fewer) {
         children
           ..add(const SizedBox(height: 10))
