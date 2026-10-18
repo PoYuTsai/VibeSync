@@ -22,6 +22,7 @@ Widget? buildAnalysisFloatingOverlay({
   bool isFollowing = false,
   bool streamInterrupted = false,
   String? quotaLine,
+  String? quotaHint,
 }) {
   if ((isAnalyzing && !analysisCompleted) || streamInterrupted) {
     return AnalysisScrollHint(
@@ -31,7 +32,11 @@ Widget? buildAnalysisFloatingOverlay({
     );
   }
   if (showStartAction) {
-    return FloatingAnalysisActionButton(onPressed: onStart, caption: quotaLine);
+    return FloatingAnalysisActionButton(
+      onPressed: onStart,
+      caption: quotaLine,
+      captionHint: quotaHint,
+    );
   }
   return null;
 }
@@ -82,6 +87,7 @@ class FloatingAnalysisActionButton extends StatefulWidget {
   static const buttonKey = ValueKey('floating-analysis-action');
   static const orbKey = ValueKey('floating-analysis-orb');
   static const captionKey = ValueKey('floating-analysis-caption');
+  static const captionHintKey = ValueKey('floating-analysis-caption-hint');
 
   final VoidCallback? onPressed;
 
@@ -89,10 +95,15 @@ class FloatingAnalysisActionButton extends StatefulWidget {
   /// 不再跳確認框；Eric 2026-10-18）。null＝不顯示。
   final String? caption;
 
+  /// [caption] 下面的第二行：用完這次之後大約只剩一次完整分析或更少時的提醒
+  ///（Eric 2026-10-18）。null＝不顯示。
+  final String? captionHint;
+
   const FloatingAnalysisActionButton({
     super.key,
     required this.onPressed,
     this.caption,
+    this.captionHint,
   });
 
   @override
@@ -293,6 +304,7 @@ class _FloatingAnalysisActionButtonState
       ),
     );
     final caption = widget.caption;
+    final captionHint = widget.captionHint;
     if (caption == null) return orb;
     // 圓鈕貼著右緣，字從右邊對齊往左長，不壓到圓鈕。這行只是說明：點擊直接穿過
     // 去，不擋住底下的訊息或按鈕。
@@ -310,12 +322,28 @@ class _FloatingAnalysisActionButtonState
               borderRadius: BorderRadius.circular(999),
               border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
             ),
-            child: Text(
-              caption,
-              style: AppTypography.caption.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  caption,
+                  style: AppTypography.caption.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                // 額度快用完：琥珀色提醒，不是按鈕（升級入口在額度真的不夠時才出）。
+                if (captionHint != null)
+                  Text(
+                    captionHint,
+                    key: FloatingAnalysisActionButton.captionHintKey,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
             ),
           ),
         ),

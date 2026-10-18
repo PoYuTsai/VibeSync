@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -1736,6 +1737,42 @@ void main() {
         dailyLimit: limits.daily,
       );
     }
+
+    // 額度提示（Eric 2026-10-18）：用完這次之後大約只剩一次完整分析或更少，那一行
+    // 下面再寫一句。邊界照常數算：一次完整分析＝MessageCalculator.softCapUnits 則。
+    Future<void> pumpWithLeftAfter(WidgetTester tester, int leftAfter) async {
+      final limits =
+          SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+      // 「今天加班好累喔」7 字 → 1 則。
+      await pumpOrbScreen(
+        tester,
+        subscription: SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+          dailyMessagesUsed: limits.daily - 1 - leftAfter,
+        ),
+      );
+      expect(find.text('這次會用 1 則，剩 $leftAfter 則'), findsOneWidget);
+    }
+
+    testWidgets('額度提示：用完這次後還夠兩次完整分析，不寫', (tester) async {
+      await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits * 2);
+      expect(
+        find.byKey(FloatingAnalysisActionButton.captionHintKey),
+        findsNothing,
+      );
+    });
+
+    testWidgets('額度提示：用完這次後只夠一次多一點，寫大約還能完整分析 1 次', (tester) async {
+      await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits * 2 - 1);
+      expect(find.text('大約還能完整分析 1 次'), findsOneWidget);
+    });
+
+    testWidgets('額度提示：用完這次後不夠一次完整分析，直接說不夠', (tester) async {
+      await pumpWithLeftAfter(tester, MessageCalculator.softCapUnits - 1);
+      expect(find.text('剩下的不夠一次完整分析'), findsOneWidget);
+    });
 
     testWidgets(
       '一般長度的上限：剛好 2000 字照樣一行就開始，不跳框',

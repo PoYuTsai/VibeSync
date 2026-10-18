@@ -81,6 +81,7 @@ import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
 import '../helpers/analysis_feedback_payload.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
+import '../helpers/analysis_quota_hints.dart';
 import '../sections/analysis_banners_section.dart';
 import '../sections/analysis_error_card.dart';
 import '../sections/analysis_followup_section.dart';
@@ -3190,7 +3191,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           }
         });
         if (action == AnalysisErrorAction.upgrade) {
-          unawaited(_showPaywall(context));
+          // 這裡的 upgrade 只來自每日、每月額度用完（見
+          // _failedBeforeRecommendationAction）：付費頁用額度大標。
+          unawaited(
+            _showPaywall(context, entry: PaywallEntry.quotaExhausted),
+          );
         } else if (action == AnalysisErrorAction.updateApp) {
           unawaited(showAppUpdateRequiredDialog(
             context,
@@ -3282,12 +3287,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     } on DailyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_dailyQuotaExceededMessage(e));
-      await _showPaywall(context);
+      await _showPaywall(context, entry: PaywallEntry.quotaExhausted);
       return null;
     } on MonthlyLimitExceededException catch (e) {
       if (!mounted) return null;
       _showFloatingSnackBar(_monthlyQuotaExceededMessage(e));
-      await _showPaywall(context);
+      await _showPaywall(context, entry: PaywallEntry.quotaExhausted);
       return null;
     } on AnalysisException catch (e) {
       // 身分被伺服器否認時的 reset 由 OptimizeRequestRunner 負責，這裡只顯示文案。
@@ -4275,6 +4280,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
         quotaLine: quotaLine?.text,
+        // 用完這次之後大約只剩一次完整分析或更少時多寫一句（Eric 2026-10-18）。
+        quotaHint: quotaLine == null
+            ? null
+            : analysisRemainingHint(quotaLine.remainingAfter),
       ),
       floatingActionButtonLocation: showFloatingAnalysisAction
           ? const AnalysisSideCenterFabLocation()
@@ -4740,7 +4749,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 isMonthly: _quotaExceededInfo!.isMonthly,
                                 remaining: _quotaExceededInfo!.remaining,
                                 quotaNeeded: _quotaExceededInfo!.quotaNeeded,
-                                onViewPlans: () => _showPaywall(context),
+                                onViewPlans: () => _showPaywall(
+                                  context,
+                                  entry: PaywallEntry.quotaExhausted,
+                                ),
+                                // 免費用戶才寫 Starter 的量（Eric 2026-10-18）。
+                                showStarterCapacity: subscription.isFreeUser,
                               )
                             else
                               StreamingAnalysisRetryCard(

@@ -89,6 +89,40 @@ void main() {
       expect(find.byKey(FloatingAnalysisActionButton.captionKey), findsNothing);
     });
 
+    testWidgets('額度快用完（Eric 2026-10-18）：那一行下面再寫一句提示；沒給就不寫', (tester) async {
+      await tester.pumpWidget(_wrap(buildAnalysisFloatingOverlay(
+        showStartAction: true,
+        isAnalyzing: false,
+        analysisCompleted: false,
+        onStart: () {},
+        onFollowProgress: () {},
+        quotaLine: '這次會用 3 則，剩 12 則',
+        quotaHint: '大約還能完整分析 1 次',
+      )!));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final hint = find.byKey(FloatingAnalysisActionButton.captionHintKey);
+      expect(hint, findsOneWidget);
+      expect(find.text('大約還能完整分析 1 次'), findsOneWidget);
+      expect(
+        tester.getRect(hint).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.text('這次會用 3 則，剩 12 則')).bottom - 0.01,
+        ),
+      );
+
+      await tester.pumpWidget(_wrap(buildAnalysisFloatingOverlay(
+        showStartAction: true,
+        isAnalyzing: false,
+        analysisCompleted: false,
+        onStart: () {},
+        onFollowProgress: () {},
+        quotaLine: '這次會用 3 則，剩 120 則',
+      )!));
+      expect(find.byKey(FloatingAnalysisActionButton.captionHintKey),
+          findsNothing);
+    });
+
     testWidgets('uses a labelled 62px circular action', (tester) async {
       await tester.pumpWidget(
         _wrap(FloatingAnalysisActionButton(onPressed: () {})),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_quota_hints.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 
 Widget _wrap(Widget child) {
@@ -173,6 +174,27 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('null'), findsNothing);
+    });
+
+    testWidgets('額度用完（Eric 2026-10-18）：免費用戶多一行 Starter 的量；沒要求就不出',
+        (tester) async {
+      await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
+        isMonthly: false,
+        remaining: 0,
+        quotaNeeded: 3,
+        onViewPlans: () {},
+        showStarterCapacity: true,
+      )));
+      expect(find.text(starterCapacityLine()), findsOneWidget);
+      expect(find.text('查看方案'), findsOneWidget);
+
+      await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
+        isMonthly: false,
+        remaining: 0,
+        quotaNeeded: 3,
+        onViewPlans: () {},
+      )));
+      expect(find.text(starterCapacityLine()), findsNothing);
     });
   });
 }

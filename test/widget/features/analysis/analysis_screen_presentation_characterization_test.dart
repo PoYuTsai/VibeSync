@@ -17,6 +17,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart'
 import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
+import 'package:vibesync/features/analysis/presentation/helpers/analysis_quota_hints.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/guide_v3_task_card.dart';
@@ -57,6 +58,9 @@ class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 
   @override
   StreamingAnalysisState build(String conversationId) => seed;
+
+  /// 模擬分析途中狀態改變（走畫面的即時 listener，不是回頁 hydrate）。
+  void emit(StreamingAnalysisState next) => state = next;
 }
 
 /// 已付費（Essential）的訂閱狀態；任何同步都維持原樣。
@@ -260,6 +264,8 @@ Future<void> _pumpScreen(
   // 非空時改用 GoRouter 掛 AnalysisScreen 於 '/'，讓導航目的地可被攔截。
   List<RouteBase> extraRoutes = const [],
   List<Override> extraOverrides = const [],
+  // 拿到畫面用的 notifier（要模擬分析途中狀態改變時）。
+  void Function(_SeededStreamingAnalyzeNotifier notifier)? onNotifier,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -283,8 +289,11 @@ Future<void> _pumpScreen(
             .overrideWithValue(_EmptyCoachChatRepository()),
         coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
             .overrideWithValue(const []),
-        streamingAnalyzeProvider
-            .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
+        streamingAnalyzeProvider.overrideWith(() {
+          final notifier = _SeededStreamingAnalyzeNotifier(seed);
+          onNotifier?.call(notifier);
+          return notifier;
+        }),
         ...extraOverrides,
       ],
       child: extraRoutes.isEmpty
@@ -1374,6 +1383,89 @@ void main() {
       );
       expect(find.byKey(const Key('analysis_coach_cta')), findsOneWidget);
       expect(find.text('問教練：我現在該怎麼做？'), findsOneWidget);
+    });
+  });
+
+  // 額度提示與付費頁入口（Eric 2026-10-18）：數字照常數算，額度用完的入口用額度大標。
+  group('額度用完', () {
+    StreamingAnalysisState quotaFailed() => const StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+          recommendationPreviewErrorCode: 'DAILY_LIMIT_EXCEEDED',
+          recommendationPreviewErrorMessage: '今日額度已用完',
+          quotaExceeded: QuotaExceededInfo(
+            isMonthly: false,
+            remaining: 3,
+            quotaNeeded: 10,
+          ),
+        );
+    List<RouteBase> paywallRoute() => [
+          GoRoute(
+            path: '/paywall',
+            // 跟 lib/app/routes.dart 一樣從 extra 取入口。
+            builder: (_, state) => PaywallScreen(
+              entry: PaywallEntry.fromRouteExtra(state.extra),
+            ),
+          ),
+        ];
+    final paywallOverrides = <Override>[
+      subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+    ];
+
+    testWidgets('免費用戶的升級卡多一行 Starter 的量；點查看方案開付費頁的額度大標', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: quotaFailed(),
+        extraRoutes: paywallRoute(),
+        extraOverrides: paywallOverrides,
+      );
+      expect(find.byType(QuotaExceededUpgradeCard), findsOneWidget);
+      expect(find.text(starterCapacityLine()), findsOneWidget);
+
+      // 片段還能改：先關掉「長按訊息泡泡」的提示才點得到。
+      final gotIt = find.text('知道了');
+      if (gotIt.evaluate().isNotEmpty) {
+        await tester.tap(gotIt);
+        await tester.pump();
+      }
+      final viewPlans = find.text('查看方案');
+      await tester.ensureVisible(viewPlans);
+      await tester.tap(viewPlans);
+      await tester.pumpAndSettle();
+      expect(find.text(PaywallEntry.quotaExhausted.headline), findsOneWidget);
+    });
+
+    testWidgets('已經是付費方案：升級卡不寫 Starter 的量', (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: quotaFailed(),
+        extraOverrides: [
+          subscriptionProvider.overrideWith(
+            (ref) => _PremiumSubscriptionNotifier(),
+          ),
+        ],
+      );
+      expect(find.byType(QuotaExceededUpgradeCard), findsOneWidget);
+      expect(find.text(starterCapacityLine()), findsNothing);
+    });
+
+    testWidgets('分析途中撞到額度（429）：自動打開付費頁，大標是額度用完那一句', (tester) async {
+      late _SeededStreamingAnalyzeNotifier notifier;
+      await _pumpScreen(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        onNotifier: (created) => notifier = created,
+        extraRoutes: paywallRoute(),
+        extraOverrides: paywallOverrides,
+      );
+      final gotIt = find.text('知道了');
+      if (gotIt.evaluate().isNotEmpty) {
+        await tester.tap(gotIt);
+        await tester.pump();
+      }
+
+      notifier.emit(quotaFailed());
+      await tester.pumpAndSettle();
+      expect(find.text(PaywallEntry.quotaExhausted.headline), findsOneWidget);
     });
   });
 
