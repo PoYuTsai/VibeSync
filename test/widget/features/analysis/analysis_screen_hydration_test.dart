@@ -788,6 +788,35 @@ class _NoopConversationMemory implements ConversationMemoryPort {
   int get minRoundsPerSummary => 3;
 }
 
+/// 組請求時卡在摘要這一步，直到測試放行（主審 r1 P1：測「前置還沒做完又按一次」）。
+/// 每輪都做摘要（門檻 0）；裁切照原樣回傳，算出來的則數跟沒裁一樣。
+class _GatedConversationMemory implements ConversationMemoryPort {
+  final gates = <Completer<String>>[];
+
+  @override
+  String? persistedHistoricalSummary(Conversation conversation) => null;
+
+  @override
+  Future<String> formatEphemeralSummary(
+    Conversation conversation,
+    int olderRounds,
+  ) {
+    final gate = Completer<String>();
+    gates.add(gate);
+    return gate.future;
+  }
+
+  @override
+  List<Message> clipToRecentRounds(List<Message> messages, int maxRounds) =>
+      messages;
+
+  @override
+  int get maxRecentRounds => 0;
+
+  @override
+  int get minRoundsPerSummary => 0;
+}
+
 class _HydrationHarness {
   _HydrationHarness({
     required this.recorder,
@@ -1451,6 +1480,7 @@ void main() {
       WidgetTester tester, {
       required SubscriptionState subscription,
       Conversation? conversation,
+      ConversationMemoryPort? memory,
     }) async {
       SharedPreferences.setMockInitialValues({
         AiDataSharingConsent.acceptedKeyForTesting: true,
@@ -1463,7 +1493,7 @@ void main() {
         extraOverrides: [
           analysisRunPreparerProvider.overrideWithValue(
             AnalysisRunPreparer(
-              memory: _NoopConversationMemory(),
+              memory: memory ?? _NoopConversationMemory(),
               resolvePartnerSummary: (_) => null,
               resolveEffectiveStyleContext: (_) => null,
             ),
@@ -1538,6 +1568,69 @@ void main() {
       },
     );
 
+    // 連點（主審 r1 P1）：開始前有好幾段等待，確認框又可能跳過，第二下不能再開一次。
+    Future<void> pumpFrames(WidgetTester tester) async {
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets(
+      '連點兩下：前置還沒做完又按一次、兩邊前置完成順序顛倒，也只送出一次',
+      (tester) async {
+        final memory = _GatedConversationMemory();
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          memory: memory,
+        );
+        final orb = find.byKey(FloatingAnalysisActionButton.buttonKey);
+        await tester.tap(orb);
+        await tester.pump();
+        await tester.tap(orb, warnIfMissed: false);
+        await tester.pump();
+
+        // 後按的先做完、先按的後做完。
+        for (final gate in memory.gates.reversed.toList()) {
+          gate.complete('較早的對話摘要');
+          await pumpFrames(tester);
+        }
+        expect(harness.recorder.streamCalls, 1);
+        expect(memory.gates, hasLength(1), reason: '第二下在入口就擋下，連組請求都沒開始');
+      },
+    );
+
+    testWidgets(
+      '開始失敗之後鎖會放掉：按重試照樣能再開始',
+      (tester) async {
+        final memory = _GatedConversationMemory();
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          memory: memory,
+        );
+        await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
+        await tester.pump();
+        memory.gates.single.completeError(StateError('組請求失敗'));
+        await pumpFrames(tester);
+        expect(find.text('分析暫時失敗，請稍後再試。'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+
+        final retry = find.widgetWithText(ElevatedButton, '重新分析');
+        await tester.ensureVisible(retry);
+        await tester.tap(retry);
+        await tester.pump();
+        expect(memory.gates, hasLength(2));
+        memory.gates.last.complete('較早的對話摘要');
+        await pumpFrames(tester);
+        // 重試看不到圓鈕下那一行，照舊跳確認框。
+        expect(find.text('開始分析前'), findsOneWidget);
+        await tester.tap(find.text('開始分析').last);
+        await pumpFrames(tester);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
     // 最後一則是他傳的（Eric 2026-10-18）：開始前先問，先不要就什麼都不送。
     Conversation endsWithHisMessage() => _conversation(extraMessages: [
           Message(
@@ -1567,6 +1660,11 @@ void main() {
         expect(find.text('最後一則是你傳的'), findsNothing);
         expect(find.text('開始分析前'), findsNothing);
         expect(harness.recorder.streamCalls, 0);
+
+        // 先不要之後開始鎖已放掉：再按一次照樣會問。
+        await tapOrb(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('最後一則是你傳的'), findsOneWidget);
       },
     );
 

@@ -173,6 +173,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
+
+  /// 開始分析這一段的鎖（主審 r1 P1）：從按下到 [_isAnalyzing] 設好之前有好幾段
+  /// 等待（紀錄修復、最後一則提示、組請求、確認框、同意框），額度夠時確認框又會
+  /// 跳過，連點兩下可能各開一次、各扣一次。只鎖開始這一段：[_isAnalyzing] 一設好
+  /// 就放掉，之後由它擋；提早結束或出錯也一定放掉。
+  Object? _analysisStartLock;
   bool _isRefreshingPremiumReplies = false;
   int? _enthusiasmScore;
   Map<String, int>? _dimensionScores;
@@ -2768,6 +2774,38 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     bool allowPendingOutgoingRefresh = false,
     int? shownQuotaUnits,
   }) async {
+    // 第一個等待之前同步拿鎖：已經在開始或已經在分析就不再開一次。
+    if (_analysisStartLock != null || _isAnalyzing) return;
+    final lock = _analysisStartLock = Object();
+    void release() {
+      // 只放自己這一把：要等整個串流的那次（升級後重新整理）結束時，可能已經有
+      // 下一次在開始了。
+      if (identical(_analysisStartLock, lock)) _analysisStartLock = null;
+    }
+
+    try {
+      await _startAnalysisRun(
+        skipPreview: skipPreview,
+        waitForCompletion: waitForCompletion,
+        analysisMessageLimit: analysisMessageLimit,
+        allowPendingOutgoingRefresh: allowPendingOutgoingRefresh,
+        shownQuotaUnits: shownQuotaUnits,
+        onStarted: release,
+      );
+    } finally {
+      release();
+    }
+  }
+
+  /// [_runAnalysis] 拿到開始鎖之後的流程；[onStarted] 在 [_isAnalyzing] 設好時呼叫。
+  Future<void> _startAnalysisRun({
+    required bool skipPreview,
+    required bool waitForCompletion,
+    required int? analysisMessageLimit,
+    required bool allowPendingOutgoingRefresh,
+    required int? shownQuotaUnits,
+    required VoidCallback onStarted,
+  }) async {
     final pendingRecordRepair = _persistence.recordRepairFuture;
     if (pendingRecordRepair != null) {
       await pendingRecordRepair;
@@ -2915,6 +2953,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _v3Snapped = false;
         _v3Versions.clear();
       });
+      onStarted();
 
       // Fire-and-forget（waitForCompletion 之外）。notifier 快取 payload 供
       // retryStream 並跨畫面導航存活；ref.listen + initState hydration 把
