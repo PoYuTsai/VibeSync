@@ -8,9 +8,19 @@ import type { GuideV3Background } from "./prompts.ts";
 export interface SafetyKeywordHits {
   /// 有人明講自己未滿 18 歲、現在讀國中或高中、未成年（雙方的訊息與背景都掃）。
   readonly minor: boolean;
+  /// 她明講想死、想自殺、不想活、自殘（只掃她的訊息）。後援層：讀局面失敗或拒答時，
+  /// 有這個就給關心訊息（附專線），不給錯誤。
+  readonly selfHarm: boolean;
+  /// 上面之中最不會是誇張說法的幾種（想自殺、不想活了、割腕、自殘）：讀局面成功但沒標
+  /// 自傷，也照樣給關心訊息（plan.ts 的 FORCE_CARE_ON_EXPLICIT_SELF_HARM）。
+  readonly selfHarmExplicit: boolean;
 }
 
-export const NO_SAFETY_HITS: SafetyKeywordHits = { minor: false };
+export const NO_SAFETY_HITS: SafetyKeywordHits = {
+  minor: false,
+  selfHarm: false,
+  selfHarmExplicit: false,
+};
 
 export interface SafetyScanMessage {
   readonly isFromMe: boolean;
@@ -63,6 +73,21 @@ const MINOR_IN_BACKGROUND = [
   new RegExp(String.raw`(?:她|對方|我|人家)\s*${TEEN_THIS_YEAR}`, "u"),
 ];
 
+/// 最明確的自傷說法。「不想活在怨恨裡」「熱到不想活了」、「不要自殺」「自殺小隊」、新聞裡別人
+/// 輕生、「這樣熬夜根本自殘」都不算。
+const SELF_HARM_EXPLICIT = [
+  /(?<!不)(?:想|要|去|打算|準備)自殺|想過自殺|自殺的?念頭/u,
+  /(?<![到得])不想(?:再)?活(?:了|下去)/u,
+  /割腕/u,
+  /(?:我|有在|一直|又|會|常常|曾經)在?自殘|想自殘/u,
+  /(?<!不)想輕生|輕生的?念頭/u,
+];
+/// 只在讀局面失敗或拒答時才用：「我好想死」也可能是考試前的誇張說法，模型讀得出來；讀不出來
+/// 時寧可附專線。「熱到想死」「笑到想死」「想死你了」不算。
+const SELF_HARM_FALLBACK_ONLY = [
+  /(?<![到得])(?:我|好|真的|超|很)想去?死(?![你妳他她])/u,
+];
+
 function variants(text: string): string[] {
   const halfWidth = text.replace(
     /[０-９]/g,
@@ -95,8 +120,12 @@ export function scanSafetyKeywords(
   background?: GuideV3Background,
 ): SafetyKeywordHits {
   const all = messages.map((m) => m.content);
+  const hers = messages.filter((m) => !m.isFromMe).map((m) => m.content);
+  const selfHarmExplicit = anyMatch(hers, SELF_HARM_EXPLICIT);
   return {
     minor: anyMatch(all, MINOR_IN_MESSAGE) ||
       anyMatch(backgroundTexts(background), MINOR_IN_BACKGROUND),
+    selfHarm: selfHarmExplicit || anyMatch(hers, SELF_HARM_FALLBACK_ONLY),
+    selfHarmExplicit,
   };
 }

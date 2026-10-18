@@ -14,6 +14,7 @@ import {
   vetPlanText,
 } from "./finalize.ts";
 import {
+  FORCE_CARE_ON_EXPLICIT_SELF_HARM,
   HOLD_WAIT_FALLBACK,
   planTurn,
   planWithoutRead,
@@ -29,6 +30,7 @@ import {
 import { READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
 import type { CardSpec } from "./rules.ts";
 import { SCAM_VENUE_WARNING } from "./rules.ts";
+import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
 import {
   GUIDE_V3_STALE_AFTER_MS,
   guideV3ResumeSnapshot,
@@ -83,6 +85,12 @@ const hisLast = toTurns([
   { isFromMe: true, content: "哪座山" },
 ]);
 
+/// 程式關鍵字的命中（沒寫到的都是 false）。
+const hits = (over: Partial<SafetyKeywordHits>): SafetyKeywordHits => ({
+  ...NO_SAFETY_HITS,
+  ...over,
+});
+
 const spec = (over: Partial<CardSpec> = {}): CardSpec => ({
   task: "接住",
   method: "只用反應",
@@ -127,11 +135,12 @@ Deno.test("未成年：模型標記或程式關鍵字任一個就不出卡、給
   assertEquals(byModel.entries, []);
   assertEquals(byModel.judgment, "");
   assertEquals(
-    planTurn(herLast, tags(), { minor: true }).careTrigger,
+    planTurn(herLast, tags(), hits({ minor: true })).careTrigger,
     "keyword",
   );
   assertEquals(
-    planTurn(herLast, tags({ minorSignal: true }), { minor: true }).careTrigger,
+    planTurn(herLast, tags({ minorSignal: true }), hits({ minor: true }))
+      .careTrigger,
     "both",
   );
   // 自傷關心排在未成年前面（專線比「不提供建議」重要）。
@@ -152,9 +161,42 @@ Deno.test("未成年：模型標記或程式關鍵字任一個就不出卡、給
     assertEquals(plan.careKind, "minor", JSON.stringify(over));
   }
   // 讀局面失敗時只看關鍵字；沒命中就照原本的錯誤處理。
-  assertEquals(planWithoutRead({ minor: true })?.careKind, "minor");
-  assertEquals(planWithoutRead({ minor: true })?.careTrigger, "keyword");
-  assertEquals(planWithoutRead({ minor: false }), null);
+  assertEquals(planWithoutRead(hits({ minor: true }))?.careKind, "minor");
+  assertEquals(planWithoutRead(hits({ minor: true }))?.careTrigger, "keyword");
+  assertEquals(planWithoutRead(NO_SAFETY_HITS), null);
+});
+
+Deno.test("自傷關鍵字：最明確的說法在模型沒標時也強制關心；後援層只在讀局面失敗時用", () => {
+  assert(FORCE_CARE_ON_EXPLICIT_SELF_HARM);
+  const explicit = hits({ selfHarm: true, selfHarmExplicit: true });
+  const forced = planTurn(herLast, tags(), explicit);
+  assertEquals(
+    [forced.decision, forced.careKind, forced.careTrigger],
+    ["care", "self_harm", "keyword"],
+  );
+  assertEquals(
+    planTurn(herLast, tags({ selfHarmSignal: true }), explicit).careTrigger,
+    "both",
+  );
+  // 自傷先於未成年，關鍵字的也一樣。
+  assertEquals(
+    planTurn(herLast, tags({ minorSignal: true }), explicit).careKind,
+    "self_harm",
+  );
+  // 只有後援層（「我好想死」）：讀局面成功時照模型的判斷。
+  assertEquals(
+    planTurn(herLast, tags(), hits({ selfHarm: true })).decision,
+    "send",
+  );
+  // 讀局面失敗：後援層也給關心訊息，而且排在未成年前面。
+  assertEquals(
+    planWithoutRead(hits({ selfHarm: true }))?.careKind,
+    "self_harm",
+  );
+  assertEquals(
+    planWithoutRead(hits({ selfHarm: true, minor: true }))?.careKind,
+    "self_harm",
+  );
 });
 
 Deno.test("未成年的判讀事件：固定說明、careKind，沒有排卡；說明一兩句、講明不扣", () => {
@@ -173,7 +215,10 @@ Deno.test("未成年的判讀事件：固定說明、careKind，沒有排卡；�
   );
   assertEquals([care.careKind, care.careMessage], ["self_harm", CARE_MESSAGE]);
   // 讀局面失敗、只靠關鍵字時沒有燈號。
-  assertEquals(readView(planWithoutRead({ minor: true })!, null).light, null);
+  assertEquals(
+    readView(planWithoutRead(hits({ minor: true }))!, null).light,
+    null,
+  );
   assert(MINOR_MESSAGE.split("。").filter(Boolean).length <= 2);
   for (const word of ["18 歲", "不提供回覆建議", "不扣額度"]) {
     assert(MINOR_MESSAGE.includes(word), word);

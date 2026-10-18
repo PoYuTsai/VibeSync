@@ -64,9 +64,14 @@ function carePlan(
   };
 }
 
-/// 讀局面失敗或拒答時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）；看不出就 null，
-/// 照原本的錯誤處理。
+/// 讀局面成功、模型沒標自傷，但她講了最明確的自傷說法（safety.ts 的 selfHarmExplicit）時，
+/// 照樣給關心訊息（盤點的提議預設，等 Eric 拍板；改成 false 就只在讀局面失敗時才看關鍵字）。
+export const FORCE_CARE_ON_EXPLICIT_SELF_HARM = true;
+
+/// 讀局面失敗或拒答時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心訊息
+/// （附專線），其次未成年；都看不出就 null，照原本的錯誤處理。
 export function planWithoutRead(hits: SafetyKeywordHits): GuideV3Plan | null {
+  if (hits.selfHarm) return carePlan("self_harm", false, true);
   if (hits.minor) return carePlan("minor", false, true);
   return null;
 }
@@ -79,7 +84,11 @@ export function planTurn(
   hits: SafetyKeywordHits = NO_SAFETY_HITS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
 ): GuideV3Plan {
-  if (tags.selfHarmSignal) return carePlan("self_harm", true, false);
+  const explicitSelfHarm = FORCE_CARE_ON_EXPLICIT_SELF_HARM &&
+    hits.selfHarmExplicit;
+  if (tags.selfHarmSignal || explicitSelfHarm) {
+    return carePlan("self_harm", tags.selfHarmSignal, explicitSelfHarm);
+  }
   if (tags.minorSignal || hits.minor) {
     return carePlan("minor", tags.minorSignal, hits.minor);
   }

@@ -96,3 +96,64 @@ Deno.test("沒有背景、沒有訊息都不會出錯", () => {
   assertEquals(scanSafetyKeywords([]).minor, false);
   assertEquals(scanSafetyKeywords([her("")], {}).minor, false);
 });
+
+function selfHarmIn(...lines: string[]) {
+  return scanSafetyKeywords(lines.map(her));
+}
+
+Deno.test("自傷：她明講想自殺、不想活了、割腕、自殘，是最明確的一層", () => {
+  for (
+    const line of [
+      "我真的不想活了",
+      "我不想再活下去",
+      "最近一直有自殺的念頭",
+      "我想自殺",
+      "我又自殘了",
+      "以前割腕過",
+      "有時候會想輕生",
+      // 簡體也認得。
+      "我又自残了",
+      "我想自杀",
+    ]
+  ) {
+    const h = selfHarmIn(line);
+    assert(h.selfHarmExplicit && h.selfHarm, line);
+  }
+});
+
+Deno.test("自傷：「我好想死」只算後援層（讀局面失敗才用），不強制關心", () => {
+  for (const line of ["我好想死", "真的想死", "好想去死"]) {
+    const h = selfHarmIn(line);
+    assert(h.selfHarm && !h.selfHarmExplicit, line);
+  }
+});
+
+Deno.test("自傷：誇張說法、想念、講別人或電影、勸人的話都不算", () => {
+  for (
+    const line of [
+      "熱死了",
+      "笑死",
+      "累死了",
+      "熱到想死",
+      "笑到我想死",
+      "累得想死",
+      "想死你了",
+      "我好想死你喔",
+      "自殺小隊好看嗎",
+      "新聞說那個藝人輕生了",
+      "我不想自殺啦，只是累",
+      "不要自殺喔",
+      "這樣熬夜根本自殘",
+      "不想活在別人的期待裡",
+      "沒有咖啡我活不下去",
+    ]
+  ) {
+    const h = selfHarmIn(line);
+    assert(!h.selfHarm && !h.selfHarmExplicit, line);
+  }
+});
+
+Deno.test("自傷：只掃她的訊息", () => {
+  const h = scanSafetyKeywords([me("我真的不想活了"), her("怎麼了？")]);
+  assertEquals([h.selfHarm, h.selfHarmExplicit], [false, false]);
+});

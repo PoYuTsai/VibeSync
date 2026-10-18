@@ -10,7 +10,11 @@ import type {
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { MEMORY_SCHEMA, memorySystemPrompt } from "./memory.ts";
 import type { ReadTags } from "./read_tags.ts";
-import { HOLD_WAIT_FALLBACK, STOP_REASON_MINOR } from "./plan.ts";
+import {
+  HOLD_WAIT_FALLBACK,
+  STOP_REASON_CARE,
+  STOP_REASON_MINOR,
+} from "./plan.ts";
 import type { GuideV3Background } from "./prompts.ts";
 import {
   type GuideV3ExtractRequest,
@@ -844,6 +848,88 @@ Deno.test("讀局面拒答或格式壞掉，但關鍵字看得出未成年：給
       .readFailedCode,
     "GUIDE_V3_READ_INVALID",
   );
+});
+
+Deno.test("讀局面拒答，但她明講不想活了：給關心訊息（附專線），不給「請調整內容」、不扣", async () => {
+  const refusal = Object.assign(new Error("refused"), {
+    code: "MODEL_REFUSAL",
+  });
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "最近還好嗎" },
+      { isFromMe: false, content: "我真的不想活了" },
+    ],
+    readError: refusal,
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(evs[1].careKind, "self_harm");
+  assertEquals(evs[1].careMessage, CARE_MESSAGE);
+  assertEquals(h.failed, []);
+  assertEquals([h.charges[0].chargeQuota, h.charges[0].messageCount], [
+    false,
+    0,
+  ]);
+  assertEquals(h.charges[0].recommendationJson.reason, STOP_REASON_CARE);
+  assertEquals((h.done[0].guideV3Trace as { care: unknown }).care, {
+    kind: "self_harm",
+    trigger: "keyword",
+    readFailedCode: "MODEL_REFUSAL",
+  });
+});
+
+Deno.test("讀局面失敗時，「我好想死」也給關心訊息；只有「熱死了」照舊是可重試的錯誤", async () => {
+  const hit = harness({
+    messages: [{ isFromMe: false, content: "我好想死" }],
+    readError: new Error("overloaded"),
+  });
+  const e1 = await events(await handleGuideV3Stream(hit.deps));
+  assertEquals(e1[1].careKind, "self_harm");
+  assertEquals(hit.failed, []);
+  const miss = harness({
+    messages: [{ isFromMe: false, content: "今天熱死了" }],
+    readError: new Error("overloaded"),
+  });
+  const e2 = await events(await handleGuideV3Stream(miss.deps));
+  assertEquals(types(e2), ["analysis.started", "analysis.error"]);
+  assertEquals(e2[1].code, "GUIDE_V3_UPSTREAM_FAILED");
+  assertEquals(miss.failed, ["GUIDE_V3_UPSTREAM_FAILED"]);
+});
+
+Deno.test("讀局面成功、模型沒標自傷，但她說想自殺：照樣給關心訊息（盤點預設，等 Eric 拍板）", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "怎麼這麼晚還沒睡" },
+      { isFromMe: false, content: "睡不著，一直在想自殺的事" },
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].careKind, "self_harm");
+  assertEquals(h.calls.includes("write"), false);
+  assertEquals(h.charges[0].chargeQuota, false);
+  assertEquals(h.charges[0].recommendationJson.careTrigger, "keyword");
+});
+
+Deno.test("讀局面成功、她說「我好想死」（可能是誇張）：照模型的判斷出卡，trace 記關鍵字命中", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "明天考試準備好了嗎" },
+      { isFromMe: false, content: "還沒，我好想死喔" },
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].decision, "send");
+  assertEquals(h.charges[0].decisionKind, "send");
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.keywordHits, {
+    minor: false,
+    selfHarm: true,
+    selfHarmExplicit: false,
+  });
 });
 
 Deno.test("自傷訊號但紀錄寫不進資料庫：關心訊息照樣顯示，不呼叫 markDone", async () => {
