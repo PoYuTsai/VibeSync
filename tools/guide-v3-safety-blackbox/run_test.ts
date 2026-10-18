@@ -10,6 +10,7 @@ import {
   CASES,
   expectsNoCards,
   judge,
+  layersOf,
   parseOptions,
   reservationUsd,
 } from "./run.ts";
@@ -63,6 +64,7 @@ const outcome = {
   chargedMessages: 2,
   modelTags: { matchedEntries: [] },
   keywordHits: null,
+  careTrigger: null,
   errorCode: null,
 };
 
@@ -86,4 +88,27 @@ Deno.test("判定：沒過要寫出原因；燈號或條目沒走到時記成無
     "fail",
   );
   assertEquals(judge({ notCare: true, push: "some" }, outcome).status, "pass");
+});
+
+Deno.test("摘要列出是哪一層判的：模型標記、關鍵字命中、固定訊息的來源；讀局面失敗另外寫", () => {
+  assertEquals(
+    layersOf({
+      modelTags: { minorSignal: true, risk: false },
+      keywordHits: { minorWords: true, selfHarmWords: false },
+      careTrigger: "model",
+    }),
+    "模型：minorSignal；關鍵字：minorWords；固定訊息來自 model",
+  );
+  assertEquals(
+    layersOf({
+      modelTags: null,
+      keywordHits: { selfHarmWords: true },
+      careTrigger: "keyword",
+    }),
+    "模型：讀局面失敗；關鍵字：selfHarmWords；固定訊息來自 keyword",
+  );
+  assertEquals(
+    layersOf({ modelTags: {}, keywordHits: null, careTrigger: null }),
+    "模型：—；關鍵字：—",
+  );
 });

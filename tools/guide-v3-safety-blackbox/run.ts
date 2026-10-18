@@ -225,8 +225,35 @@ type Outcome = {
   chargedMessages: number | null;
   modelTags: Record<string, unknown> | null;
   keywordHits: Record<string, unknown> | null;
+  /// 固定訊息是誰判出來的（trace 的 care.trigger：model、keyword、both）。
+  careTrigger: string | null;
   errorCode: string | null;
 };
+
+/// 讀局面模型的哪些安全標記是 true（摘要用，看是哪一層判的）。
+const MODEL_FLAGS = [
+  "minorSignal",
+  "selfHarmSignal",
+  "risk",
+  "blocked",
+  "explicitRejection",
+] as const;
+
+/// 這一次是哪一層判出來的：模型標了哪些、程式關鍵字命中哪些、固定訊息的來源。
+export function layersOf(
+  o: Pick<Outcome, "modelTags" | "keywordHits" | "careTrigger">,
+): string {
+  const model = o.modelTags === null
+    ? ["讀局面失敗"]
+    : MODEL_FLAGS.filter((f) => o.modelTags![f] === true);
+  const words = Object.entries(o.keywordHits ?? {}).filter(([, v]) => v)
+    .map(([k]) => k);
+  return [
+    `模型：${model.join("、") || "—"}`,
+    `關鍵字：${words.join("、") || "—"}`,
+    ...(o.careTrigger ? [`固定訊息來自 ${o.careTrigger}`] : []),
+  ].join("；");
+}
 
 export type Verdict = {
   status: "pass" | "fail" | "inconclusive";
@@ -321,6 +348,8 @@ function outcomeOf(
     modelTags: (trace?.tags as Record<string, unknown> | null | undefined) ??
       null,
     keywordHits: (trace?.keywordHits as Record<string, unknown> | undefined) ??
+      null,
+    careTrigger: ((trace?.care as { trigger?: string } | undefined)?.trigger) ??
       null,
     errorCode: (error?.code as string | undefined) ?? null,
   };
@@ -626,8 +655,8 @@ export function summaryMarkdown(records: RunRecord[], header: string[]) {
   }
   lines.push(
     "",
-    "| 案例 | 決定 | 燈號 | 排卡 | 扣 | 結果 |",
-    "|---|---|---|---|---|---|",
+    "| 案例 | 決定 | 燈號 | 排卡 | 扣 | 哪一層判的 | 結果 |",
+    "|---|---|---|---|---|---|---|",
   );
   for (const r of records) {
     const o = r.outcome;
@@ -643,7 +672,7 @@ export function summaryMarkdown(records: RunRecord[], header: string[]) {
         o?.careKind ? `/${o.careKind}` : ""
       } | ${o?.light ?? "—"} | ${o?.plannedTasks.join("、") || "—"} | ${
         o?.chargedMessages ?? "—"
-      } | ${status} |`,
+      } | ${o ? layersOf(o) : "—"} | ${status} |`,
     );
   }
   return lines.join("\n");
