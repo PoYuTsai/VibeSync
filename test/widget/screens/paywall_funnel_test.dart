@@ -48,9 +48,15 @@ void _signInAs(String? userId) {
 }
 
 class _StubSubscriptionNotifier extends SubscriptionNotifier {
-  _StubSubscriptionNotifier({this.onPurchase});
+  _StubSubscriptionNotifier({
+    this.onPurchase,
+    this.onPurchaseStoreProduct,
+    this.onRestore,
+  });
 
   final Future<SubscriptionPurchaseResult> Function()? onPurchase;
+  final Future<SubscriptionPurchaseResult> Function()? onPurchaseStoreProduct;
+  final Future<bool> Function()? onRestore;
 
   void seedState(SubscriptionState value) => state = value;
 
@@ -62,6 +68,26 @@ class _StubSubscriptionNotifier extends SubscriptionNotifier {
     final handler = onPurchase;
     if (handler == null) {
       fail('purchase should not be called in this test');
+    }
+    return handler();
+  }
+
+  @override
+  Future<SubscriptionPurchaseResult> purchaseStoreProduct(
+    StoreProduct product,
+  ) {
+    final handler = onPurchaseStoreProduct;
+    if (handler == null) {
+      fail('purchaseStoreProduct should not be called in this test');
+    }
+    return handler();
+  }
+
+  @override
+  Future<bool> restorePurchases() {
+    final handler = onRestore;
+    if (handler == null) {
+      fail('restorePurchases should not be called in this test');
     }
     return handler();
   }
@@ -107,6 +133,23 @@ SubscriptionState _stateWith(String productId, String title) {
   );
 }
 
+/// 只有 App Store 商品、沒有 RevenueCat 套裝（offerings 還沒同步到）：付費頁走
+/// purchaseStoreProduct 那條。
+SubscriptionState _storeProductOnly(String productId, String title) =>
+    SubscriptionState(
+      storeProducts: {
+        productId: StoreProduct(
+          productId,
+          'description',
+          title,
+          590,
+          r'$590',
+          'TWD',
+          subscriptionPeriod: 'P1M',
+        ),
+      },
+    );
+
 SubscriptionPurchaseResult _success(String tier) => SubscriptionPurchaseResult(
       success: true,
       cancelled: false,
@@ -122,6 +165,8 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
   required FunnelTracker tracker,
   PaywallEntry? entry,
   Future<SubscriptionPurchaseResult> Function()? onPurchase,
+  Future<SubscriptionPurchaseResult> Function()? onPurchaseStoreProduct,
+  Future<bool> Function()? onRestore,
   SubscriptionState? seededState,
   String? signedInAs = 'user-a',
 }) async {
@@ -130,7 +175,11 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
   // 方案狀態一建立就會去讀登入帳號；先清掉，畫面與價格都好了再登入。
   SupabaseService.debugResetForTesting();
 
-  final stub = _StubSubscriptionNotifier(onPurchase: onPurchase);
+  final stub = _StubSubscriptionNotifier(
+    onPurchase: onPurchase,
+    onPurchaseStoreProduct: onPurchaseStoreProduct,
+    onRestore: onRestore,
+  );
   final router = GoRouter(
     routes: [
       GoRoute(
@@ -299,6 +348,63 @@ void main() {
       expect(find.textContaining('方案已更新'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('home-root'), findsOneWidget);
+      await _flush(tester);
+    });
+
+    testWidgets('沒有套裝、直接用 App Store 商品購買：成功一樣記', (tester) async {
+      final sent = _Sent();
+      var storeProductPurchases = 0;
+      await _pumpPaywall(
+        tester,
+        tracker: _recordingTracker(sent),
+        entry: PaywallEntry.lockedCards,
+        onPurchaseStoreProduct: () async {
+          storeProductPurchases++;
+          return _success(SubscriptionTierHelper.essential);
+        },
+        seededState:
+            _storeProductOnly('vibesync_essential_monthly', 'Essential'),
+      );
+
+      await _tapSubscribe(tester, '訂閱 Essential');
+
+      expect(storeProductPurchases, 1, reason: '走的是 purchaseStoreProduct 那條');
+      expect(sent.propsOf('paywall_purchase_completed'), [
+        {'tier': 'essential', 'entry': 'locked_cards'},
+      ]);
+      await _flush(tester);
+    });
+
+    testWidgets('恢復購買成功：不記 paywall_purchase_completed', (tester) async {
+      final sent = _Sent();
+      var restores = 0;
+      await _pumpPaywall(
+        tester,
+        tracker: _recordingTracker(sent),
+        entry: PaywallEntry.lockedCards,
+        onRestore: () async {
+          restores++;
+          return true;
+        },
+        seededState: _stateWith('vibesync_essential_monthly', 'Essential'),
+      );
+
+      final restoreLink = find.widgetWithText(TextButton, '恢復購買');
+      await tester.ensureVisible(restoreLink);
+      await tester.pump();
+      await tester.tap(restoreLink, warnIfMissed: false);
+      await tester.pump();
+      // 確認框的按鈕跟頁尾連結同字，確認框在最上層，取最後一個。
+      await tester.tap(
+        find.widgetWithText(TextButton, '恢復購買').last,
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(restores, 1);
+      expect(find.text('訂閱狀態已更新。'), findsOneWidget);
+      expect(sent.names, ['paywall_opened']);
       await _flush(tester);
     });
 
