@@ -336,6 +336,7 @@ void main() {
               'message': monthly
                   ? '本月額度不足，升級方案可取得更多新話題與分析額度。'
                   : '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+              'quotaScope': monthly ? 'monthly' : 'daily',
               'monthlyLimit': 800,
               'dailyLimit': 50,
               'quotaNeeded': 3,

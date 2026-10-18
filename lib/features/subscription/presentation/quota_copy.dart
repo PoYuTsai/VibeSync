@@ -24,17 +24,18 @@ String quotaUpgradeTargets(String? tier) =>
         ? 'Essential'
         : 'Starter 或 Essential';
 
-/// 額度 429 是本月還是今日擋下：伺服器先看本月、再看今天。共用額度 payload 的
-/// error 會寫 Monthly／Daily；開場、新話題的額度閘只寫「額度不足」，改看本月剩的
-/// 夠不夠這次用；都看不出來就當本月（同分析的 quotaExceptionFrom429）。
+/// 額度 429 是本月還是今日擋下，只看伺服器說的（主審第 1 輪 P2-1）：先看
+/// quotaScope（開場、新話題的額度 429 都帶），再看共用額度 payload 的 error
+/// （Monthly／Daily limit exceeded）；都沒有就當本月（同分析的
+/// quotaExceptionFrom429）。不從剩餘數推：結算競態回的剩餘數是預查時的舊值。
 bool quotaPayloadIsMonthly(Map<dynamic, dynamic> data) {
+  final scope = data['quotaScope'];
+  if (scope == 'monthly') return true;
+  if (scope == 'daily') return false;
   final error = data['error']?.toString().toLowerCase() ?? '';
   if (error.contains('monthly')) return true;
   if (error.contains('daily')) return false;
-  final monthlyRemaining = (data['monthlyRemaining'] as num?)?.round();
-  final quotaNeeded = (data['quotaNeeded'] as num?)?.round();
-  if (monthlyRemaining == null || quotaNeeded == null) return true;
-  return monthlyRemaining < quotaNeeded;
+  return true;
 }
 
 /// 開場救星、新話題撞到額度時的說明（Eric 2026-10-18）：免費、Starter 照舊說升級

@@ -478,6 +478,7 @@ void main() {
       const daily = {
         'error': '額度不足',
         'message': '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'quotaScope': 'daily',
         'monthlyLimit': 800,
         'dailyLimit': 50,
         'monthlyRemaining': 500,
@@ -487,6 +488,7 @@ void main() {
       const monthly = {
         'error': '額度不足',
         'message': '本月額度不足，升級方案可取得更多開場與分析額度。',
+        'quotaScope': 'monthly',
         'monthlyLimit': 800,
         'dailyLimit': 50,
         'monthlyRemaining': 1,

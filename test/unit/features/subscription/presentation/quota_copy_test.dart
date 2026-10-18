@@ -33,27 +33,31 @@ void main() {
     );
   });
 
-  // 開場救星、新話題的 429（Eric 2026-10-18）：共用額度 payload 的 error 寫明
-  // Monthly／Daily；額度閘只寫「額度不足」，改看本月剩的夠不夠這次用。
-  test('429 是本月還是今日擋下：先看 error，再看本月剩的夠不夠，看不出來當本月', () {
-    expect(quotaPayloadIsMonthly({'error': 'Monthly limit exceeded'}), isTrue);
+  // 本月還是今日只看伺服器說的（主審第 1 輪 P2-1）：先看 quotaScope，再看共用額度 payload
+  // 的 error，都沒有就當本月；不從剩餘數推（結算競態回的剩餘數是預查時的舊值）。
+  test('429 是本月還是今日擋下：先看 quotaScope，再看 error，都沒有就當本月，不看剩餘數', () {
+    // 結算競態：舊數字看起來還夠（本月剩 3、這次要 3），quotaScope 說本月。
     expect(
       quotaPayloadIsMonthly({
-        'error': 'Daily limit exceeded',
-        'monthlyRemaining': 0,
+        'error': '額度不足',
+        'quotaScope': 'monthly',
+        'monthlyRemaining': 3,
         'quotaNeeded': 3,
       }),
-      isFalse,
-    );
-    expect(
-      quotaPayloadIsMonthly(
-          {'error': '額度不足', 'monthlyRemaining': 2, 'quotaNeeded': 3}),
       isTrue,
     );
     expect(
       quotaPayloadIsMonthly(
-          {'error': '額度不足', 'monthlyRemaining': 3, 'quotaNeeded': 3}),
+          {'error': 'Monthly limit exceeded', 'quotaScope': 'daily'}),
       isFalse,
+    );
+    expect(quotaPayloadIsMonthly({'error': 'Monthly limit exceeded'}), isTrue);
+    expect(quotaPayloadIsMonthly({'error': 'Daily limit exceeded'}), isFalse);
+    // 沒有 quotaScope 也沒有 Monthly／Daily：不從剩餘數推，當本月。
+    expect(
+      quotaPayloadIsMonthly(
+          {'error': '額度不足', 'monthlyRemaining': 500, 'quotaNeeded': 3}),
+      isTrue,
     );
     expect(quotaPayloadIsMonthly({'error': '額度不足'}), isTrue);
   });

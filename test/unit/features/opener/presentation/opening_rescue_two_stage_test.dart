@@ -616,12 +616,14 @@ void main() {
   });
 
   // 額度說法照方案（Eric 2026-10-18）：生成走真的 OpenerService 傳輸，伺服器回額度
-  // 429（它的 message 不分方案、一律叫人升級），畫面要照目前方案說。
+  // 429（它的 message 不分方案、一律叫人升級），畫面要照目前方案說。payload 照伺服器
+  // 帶 quotaScope（本月或今日只看它，主審第 1 輪 P2-1）。
   Map<String, dynamic> quota429({required bool monthly}) => {
         'error': '額度不足',
         'message': monthly
             ? '本月額度不足，升級方案可取得更多開場與分析額度。'
             : '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'quotaScope': monthly ? 'monthly' : 'daily',
         'quotaNeeded': 3,
         'monthlyRemaining': monthly ? 1 : 500,
         'dailyRemaining': monthly ? 20 : 1,
@@ -629,34 +631,44 @@ void main() {
         'dailyLimit': 50,
       };
 
-  Future<String> generateIntoQuota(WidgetTester tester,
-      {required String tier, required bool monthly}) async {
+  /// 生成撞到伺服器額度 429：付費牆自動打開時，讀底下錯誤列的說明與按鈕，再關掉付費牆。
+  /// 趁付費牆蓋著時讀：這個測試樹的訂閱刷新沒登入，關掉付費牆後方案會被刷成免費。
+  Future<({String message, String button})> generateIntoQuota(
+      WidgetTester tester,
+      {required String tier,
+      required bool monthly,
+      Map<String, dynamic>? payload}) async {
     _paywallOpens = 0;
     await _pumpManualWithPaywall(tester, tier: tier);
     await _analyze(tester);
+    final body = payload ?? quota429(monthly: monthly);
     _generateTransport = MockClient.streaming((request, bodyStream) async {
       await bodyStream.drain<void>();
       return http.StreamedResponse(
-          Stream.value(utf8.encode(jsonEncode(quota429(monthly: monthly)))),
-          429,
+          Stream.value(utf8.encode(jsonEncode(body))), 429,
           headers: {'content-type': 'application/json'});
     });
     await _tapAndSettleAsync(
         tester, find.byKey(const ValueKey('opener-generate-button')),
         until: find.text('關閉付費牆'));
     expect(_paywallOpens, 1, reason: '伺服器擋下後自動開一次付費牆');
+    final shown = (
+      message: tester
+          .widget<Text>(find.byKey(const ValueKey('opener-flow-error'),
+              skipOffstage: false))
+          .data!,
+      button: tester
+          .widget<Text>(find.descendant(
+              of: find.byKey(const ValueKey('opener-upgrade-button'),
+                  skipOffstage: false),
+              matching: find.byType(Text, skipOffstage: false),
+              skipOffstage: false))
+          .data!,
+    );
     await tester.tap(find.text('關閉付費牆'));
     await _settleBounded(tester);
-    return tester
-        .widget<Text>(find.byKey(const ValueKey('opener-flow-error')))
-        .data!;
+    return shown;
   }
-
-  String quotaButtonLabel(WidgetTester tester) => tester
-      .widget<Text>(find.descendant(
-          of: find.byKey(const ValueKey('opener-upgrade-button')),
-          matching: find.byType(Text)))
-      .data!;
 
   /// 錯誤下方的鈕再開一次付費頁；兩次都照每月或每日換大標。本月或今日都還剩 1 則、
   /// 不夠這次的 3 則：付費頁說「不夠這次用」。
@@ -675,12 +687,12 @@ void main() {
         monthly ? kDailyQuotaResetLine : kMonthlyQuotaResetLine;
     testWidgets('$period額度不足：Essential 不叫他升級，只說什麼時候恢復，鈕寫「查看方案」',
         (tester) async {
-      final message = await generateIntoQuota(tester,
+      final shown = await generateIntoQuota(tester,
           tier: SubscriptionTierHelper.essential, monthly: monthly);
-      expect(message, isNot(contains('升級')));
-      expect(message, contains(resetLine));
-      expect(message, isNot(contains(otherResetLine)));
-      expect(quotaButtonLabel(tester), '查看方案');
+      expect(shown.message, isNot(contains('升級')));
+      expect(shown.message, contains(resetLine));
+      expect(shown.message, isNot(contains(otherResetLine)));
+      expect(shown.button, '查看方案');
       await reopenPaywall(tester, monthly: monthly);
     });
 
@@ -689,19 +701,43 @@ void main() {
       SubscriptionTierHelper.starter,
     ]) {
       testWidgets('$period額度不足：$tier 照舊說升級能多用，不點名升級到 Starter', (tester) async {
-        final message =
+        final shown =
             await generateIntoQuota(tester, tier: tier, monthly: monthly);
         expect(
-            message,
+            shown.message,
             monthly
                 ? '本月額度不足，升級方案可取得更多開場與分析額度。'
                 : '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
-        expect(message, isNot(contains('Starter')));
-        expect(quotaButtonLabel(tester), '升級方案');
+        expect(shown.message, isNot(contains('Starter')));
+        expect(shown.button, '升級方案');
         await reopenPaywall(tester, monthly: monthly);
       });
     }
   }
+
+  // 結算競態（主審第 1 輪 P2-1）：剩餘數是預查時的舊值（本月剩 3、這次要 3，看起來還夠），
+  // 只有伺服器的 quotaScope 說是本月擋下。Essential 要看到每月恢復、付費頁開本月入口。
+  testWidgets('結算競態：quotaScope 說本月、剩餘數是舊值，Essential 看到每月恢復、付費頁開本月入口',
+      (tester) async {
+    final shown = await generateIntoQuota(tester,
+        tier: SubscriptionTierHelper.essential,
+        monthly: true,
+        payload: {
+          'error': '額度不足',
+          'message': '本月額度不足，升級方案可取得更多開場與分析額度。',
+          'quotaScope': 'monthly',
+          'quotaNeeded': 3,
+          'monthlyRemaining': 3,
+          'dailyRemaining': 10,
+          'monthlyLimit': 800,
+          'dailyLimit': 50,
+        });
+    expect(shown.message, contains(kMonthlyQuotaResetLine));
+    expect(shown.message, isNot(contains(kDailyQuotaResetLine)));
+    expect(shown.message, isNot(contains('升級')));
+    expect(
+        _paywallExtras, [PaywallEntry.forQuota(isMonthly: true, remaining: 3)]);
+  });
 
   testWidgets('略過，直接生成：送出 skipped、結果沒有採用說明', (tester) async {
     await _pumpManual(tester);

@@ -307,12 +307,14 @@ void main() {
   });
 
   // 額度說法照方案（Eric 2026-10-18）：生成走真的 NewTopicService 傳輸，伺服器回額度
-  // 429（它的 message 不分方案、一律叫人升級），畫面照目前方案說。
+  // 429（它的 message 不分方案、一律叫人升級），畫面照目前方案說。payload 照伺服器帶
+  // quotaScope（本月或今日只看它，主審第 1 輪 P2-1）。
   Map<String, dynamic> quota429({required bool monthly}) => {
         'error': '額度不足',
         'message': monthly
             ? '本月額度不足，升級方案可取得更多新話題與分析額度。'
             : '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'quotaScope': monthly ? 'monthly' : 'daily',
         'quotaNeeded': 3,
         'monthlyRemaining': monthly ? 2 : 500,
         'dailyRemaining': monthly ? 10 : 1,
@@ -324,7 +326,10 @@ void main() {
 
   /// 生成撞到伺服器額度 429、關掉自動開的付費牆後，回傳畫面上的額度說明。
   Future<String> generateIntoQuota(WidgetTester t,
-      {required String tier, required bool monthly}) async {
+      {required String tier,
+      required bool monthly,
+      Map<String, dynamic>? payload}) async {
+    final body = payload ?? quota429(monthly: monthly);
     subTier = tier;
     style = '有效風格';
     quotaRequests = 0;
@@ -335,9 +340,7 @@ void main() {
             await bodyStream.drain<void>();
             quotaRequests++;
             return http.StreamedResponse(
-                Stream.value(
-                    utf8.encode(jsonEncode(quota429(monthly: monthly)))),
-                429,
+                Stream.value(utf8.encode(jsonEncode(body))), 429,
                 headers: {'content-type': 'application/json'});
           }),
         );
@@ -407,6 +410,30 @@ void main() {
       });
     }
   }
+
+  // 結算競態（主審第 1 輪 P2-1）：剩餘數是預查時的舊值（本月剩 3、這次要 3，看起來還夠），
+  // 只有伺服器的 quotaScope 說是本月擋下。Essential 要看到每月恢復、付費頁開本月入口。
+  testWidgets('結算競態：quotaScope 說本月、剩餘數是舊值，Essential 看到每月恢復、付費頁開本月入口',
+      (t) async {
+    final message = await generateIntoQuota(t,
+        tier: SubscriptionTierHelper.essential,
+        monthly: true,
+        payload: {
+          'error': '額度不足',
+          'message': '本月額度不足，升級方案可取得更多新話題與分析額度。',
+          'quotaScope': 'monthly',
+          'quotaNeeded': 3,
+          'monthlyRemaining': 3,
+          'dailyRemaining': 10,
+          'monthlyLimit': 800,
+          'dailyLimit': 50,
+        });
+    expect(message, contains(kMonthlyQuotaResetLine));
+    expect(message, isNot(contains(kDailyQuotaResetLine)));
+    expect(message, isNot(contains('升級')));
+    expect(paywallExtras.first,
+        PaywallEntry.forQuota(isMonthly: true, remaining: 3));
+  });
 
   testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {
     style = '有效風格';
