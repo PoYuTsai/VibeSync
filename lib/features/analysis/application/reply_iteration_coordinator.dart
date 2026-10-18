@@ -72,11 +72,18 @@ class ReplyIterationCoordinator {
   /// 的數字，好讓下一次開面板時能在動手前就顯示；沒問過就是 null（不猜）。
   int? _refineFreeRemaining;
 
+  /// 上一輪微調丟出例外，[_refineFreeRemaining] 就不再可信：伺服器可能已用掉
+  /// 免費次數、結算才失敗。跟面板同一條規則，記在這裡是為了關掉重開的面板也標
+  /// 待確認，不會又說還有 N 次免費（主審第 1 輪 P2，Eric 2026-10-18）。
+  bool _refineFreeRemainingStale = false;
+
   /// 已產生但尚未在畫面上確認可見的付費潤飾結果身分。
   OptimizeMessagePendingRequest? get pendingAwaitingPresentation =>
       _pendingAwaitingPresentation;
 
   int? get refineFreeRemaining => _refineFreeRemaining;
+
+  bool get refineFreeRemainingStale => _refineFreeRemainingStale;
 
   /// 草稿潤飾的唯一計費路徑。成功時記下 pending 等畫面 acknowledge；
   /// 取消（同意書拒絕／畫面離開）回 null。擋下與失敗以
@@ -202,48 +209,56 @@ class ReplyIterationCoordinator {
       refineInstruction: instruction,
       guideV3Card: guideV3Card,
     );
-    final outcome = await _billing.run(
-      ownerUserId: ownerUserId,
-      fingerprint: fingerprint,
-      onReadyToSend: onReadyToSend,
-      send: (pending) async {
-        final result = await _refineReply(
-          messages: context.requestMessages,
-          sessionContext: sessionContext,
-          conversationSummary: context.conversationSummary,
-          partnerSummary: context.partnerSummary,
-          effectiveStyleContext: context.effectiveStyleContext,
-          knownContactName: context.knownContactName,
-          userDraft: currentText,
-          refineInstruction: instruction,
-          // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
-          // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
-          refineAnchorText: anchorText,
-          guideV3Card: guideV3Card,
-          requestId: pending.requestId,
-          onTelemetry: onTelemetry,
-        );
-        final refined = result.optimizedMessage?.optimized.trim();
-        // 任務卡：只收伺服器標了「已過任務卡定稿」的結果（主審第 2 輪；還沒升版的 Edge
-        // 不會標），原稿有空格時也要照則留住空格。擋下用的錯誤碼不在 runner 的換身分
-        // 清單裡：同一份輸入再按帶同一顆 requestId，伺服器 replay、不再扣。
-        if (refined == null ||
-            refined.isEmpty ||
-            (guideV3Card != null &&
-                (result.rawResponse?['guideV3CardChecked'] != true ||
-                    !guideV3RefineKeepsBlanks(
-                      _cardLines(currentText),
-                      _cardLines(refined),
-                    )))) {
-          throw AnalysisException(
-            '這次沒有調出可用的版本，請再試一次。',
-            code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
-            suggestedAction: AnalysisErrorAction.wait,
+    final OptimizeBillingOutcome outcome;
+    try {
+      outcome = await _billing.run(
+        ownerUserId: ownerUserId,
+        fingerprint: fingerprint,
+        onReadyToSend: onReadyToSend,
+        send: (pending) async {
+          final result = await _refineReply(
+            messages: context.requestMessages,
+            sessionContext: sessionContext,
+            conversationSummary: context.conversationSummary,
+            partnerSummary: context.partnerSummary,
+            effectiveStyleContext: context.effectiveStyleContext,
+            knownContactName: context.knownContactName,
+            userDraft: currentText,
+            refineInstruction: instruction,
+            // 多輪漂移錨：永遠帶「這串微調最初的原句」，讓 server 的
+            // anchor_action 條款有錨可判——第 N 版不得長出原句沒有的邀約。
+            refineAnchorText: anchorText,
+            guideV3Card: guideV3Card,
+            requestId: pending.requestId,
+            onTelemetry: onTelemetry,
           );
-        }
-        return result;
-      },
-    );
+          final refined = result.optimizedMessage?.optimized.trim();
+          // 任務卡：只收伺服器標了「已過任務卡定稿」的結果（主審第 2 輪；還沒升版的 Edge
+          // 不會標），原稿有空格時也要照則留住空格。擋下用的錯誤碼不在 runner 的換身分
+          // 清單裡：同一份輸入再按帶同一顆 requestId，伺服器 replay、不再扣。
+          if (refined == null ||
+              refined.isEmpty ||
+              (guideV3Card != null &&
+                  (result.rawResponse?['guideV3CardChecked'] != true ||
+                      !guideV3RefineKeepsBlanks(
+                        _cardLines(currentText),
+                        _cardLines(refined),
+                      )))) {
+            throw AnalysisException(
+              '這次沒有調出可用的版本，請再試一次。',
+              code: 'OPTIMIZE_MESSAGE_RESULT_INVALID',
+              suggestedAction: AnalysisErrorAction.wait,
+            );
+          }
+          return result;
+        },
+      );
+    } catch (_) {
+      // 丟出例外不代表沒用掉免費次數（伺服器可能先用掉、結算才失敗）：記成待確認。
+      // 取消回 null，什麼都沒送出，不動它。
+      _refineFreeRemainingStale = true;
+      rethrow;
+    }
     if (!outcome.isSuccess) return null;
 
     final pending = outcome.pending!;
@@ -253,6 +268,7 @@ class ReplyIterationCoordinator {
     final freeDailyLimit = usage is Map ? usage['refineFreeDailyLimit'] : null;
     if (freeRemaining is num) {
       _refineFreeRemaining = freeRemaining.round();
+      _refineFreeRemainingStale = false;
     }
     final refinedText = result.optimizedMessage!.optimized.trim();
     var restorable = false;

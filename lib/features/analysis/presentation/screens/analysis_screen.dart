@@ -3474,6 +3474,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       restoredText: restored?.refinedText,
       restoredRequestId: restored?.requestId,
       freeRemaining: _replyIteration.refineFreeRemaining,
+      freeRemainingStale: _replyIteration.refineFreeRemainingStale,
       quickInstructions: quickInstructions,
       onRefine: ({required currentText, required instruction}) async {
         final RefineRoundResult? round;

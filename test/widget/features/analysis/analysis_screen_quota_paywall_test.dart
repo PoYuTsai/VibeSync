@@ -4,6 +4,7 @@
 // - 每月額度：升級卡的查看方案、分析途中撞到每月額度自動打開。
 // - 草稿潤飾撞到每日／每月額度；回覆微調撞到額度時面板上的說明。
 // - Essential 已經是最高方案：不叫他升級，只說什麼時候恢復；免費、Starter 照舊有升級那句。
+// - 回覆微調上一輪失敗後關掉重開：免費次數照樣標待確認（主審第 1 輪 P2）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -133,6 +134,9 @@ class _FakeOptimizeTransport {
   AnalysisException? polishError;
   AnalysisException? refineError;
 
+  /// 依序給每一輪微調的結果（成功或丟出）；排完才看 [refineError]。
+  final refineRounds = <AnalysisResult Function()>[];
+
   Future<AnalysisResult> optimizeDraft({
     required List<Message> messages,
     required String userDraft,
@@ -163,6 +167,7 @@ class _FakeOptimizeTransport {
     String? requestId,
     AnalysisTelemetryCallback? onTelemetry,
   }) async {
+    if (refineRounds.isNotEmpty) return refineRounds.removeAt(0)();
     throw refineError ?? StateError('這個測試沒有設定微調結果');
   }
 }
@@ -190,6 +195,20 @@ Map<String, dynamic> _polishedBody(String draft) => {
         'reason': '更自然',
       },
     };
+
+/// 一輪微調成功；[freeRemaining] 是伺服器帶回來的今天剩幾次免費微調。
+Map<String, dynamic> _refinedBody({required int freeRemaining}) =>
+    _polishedBody('這週要不要一起喝杯咖啡？')
+      ..['optimizedMessage'] = {
+        'original': '這週要不要一起喝杯咖啡？',
+        'optimized': '週末要不要喝杯咖啡？',
+        'reason': '更短',
+      }
+      ..['usage'] = {
+        'refineFreeRemaining': freeRemaining,
+        'refineFreeDailyLimit': kRefineFreeDailyLimit,
+        'shouldChargeQuota': false,
+      };
 
 /// 已送出的漏斗事件。
 class _SentFunnel {
@@ -581,6 +600,27 @@ Future<void> _polishDraft(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// 潤飾結果上的「再調一下」：打開回覆微調面板。
+Future<void> _openRefineSheet(WidgetTester tester) async {
+  final refine = find.byKey(const ValueKey('draft-polish-refine'));
+  await tester.ensureVisible(refine);
+  await tester.tap(refine);
+  await tester.pumpAndSettle();
+}
+
+/// 在微調面板按一顆快捷指令送出。
+Future<void> _tapRefineQuick(WidgetTester tester, String instruction) async {
+  final quick = find.byKey(ValueKey('reply-refine-quick-$instruction'));
+  await tester.ensureVisible(quick);
+  await tester.tap(quick);
+  await tester.pumpAndSettle();
+}
+
+/// 微調面板標題下那一行免費次數說明。
+String _refineQuotaLine(WidgetTester tester) => tester
+    .widget<Text>(find.byKey(const ValueKey('reply-refine-quota-line')))
+    .data!;
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -776,16 +816,8 @@ void main() {
     /// 潤飾成功後按「再調一下」，用快捷指令送一次微調。
     Future<String> refineOnce(WidgetTester tester) async {
       await _polishDraft(tester);
-      final refine = find.byKey(const ValueKey('draft-polish-refine'));
-      await tester.ensureVisible(refine);
-      await tester.tap(refine);
-      await tester.pumpAndSettle();
-      final quick = find.byKey(
-        ValueKey('reply-refine-quick-${kRefineQuickInstructions[1]}'),
-      );
-      await tester.ensureVisible(quick);
-      await tester.tap(quick);
-      await tester.pumpAndSettle();
+      await _openRefineSheet(tester);
+      await _tapRefineQuick(tester, kRefineQuickInstructions[1]);
       return tester
           .widget<Text>(find.byKey(const ValueKey('reply-refine-error')))
           .data!;
@@ -855,6 +887,48 @@ void main() {
         error,
         '目前方案 Free：今日額度已用完 ($limit/$limit)，每天早上 8 點恢復；升級方案可取得更多額度。',
       );
+    });
+  });
+
+  group('回覆微調的免費次數：上一輪失敗後關掉重開，照樣標待確認（主審第 1 輪 P2）', () {
+    testWidgets('第 1 輪成功剩 1 次、第 2 輪失敗，關掉重開：講待確認，不再說今天還有 1 次免費', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        seed: _doneSeed(),
+      );
+      harness.transport.refineRounds.addAll([
+        () => AnalysisResult.fromJson(_refinedBody(freeRemaining: 1)),
+        // 伺服器先用掉最後一次免費、結算才失敗（額度表沒有退款，已知取捨）。
+        () => throw AnalysisException(
+              '額度確認失敗',
+              code: 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED',
+              suggestedAction: AnalysisErrorAction.wait,
+            ),
+      ]);
+      const staleLine = '免費次數待確認，下一次微調可能會使用 1 則。';
+
+      await _polishDraft(tester);
+      await _openRefineSheet(tester);
+      await _tapRefineQuick(tester, kRefineQuickInstructions[1]);
+      expect(_refineQuotaLine(tester), '今天還有 1 次免費微調。');
+
+      // 換個指令再調；面板的連點擋用真實時鐘，要真的等過那個窗。
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 700)),
+      );
+      await _tapRefineQuick(tester, kRefineQuickInstructions[2]);
+      expect(find.byKey(const ValueKey('reply-refine-error')), findsOneWidget);
+      expect(_refineQuotaLine(tester), staleLine);
+
+      // 點面板外面關掉，再從同一個入口打開。
+      await tester.tapAt(const Offset(215, 40));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReplyRefineSheet), findsNothing);
+      await _openRefineSheet(tester);
+
+      expect(_refineQuotaLine(tester), staleLine);
+      expect(find.text('今天還有 1 次免費微調。'), findsNothing);
     });
   });
 }

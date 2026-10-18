@@ -97,11 +97,14 @@ AuxiliaryAnalysisContext _contextWith(List<Message> messages) {
 }) _harness({
   Map<String, dynamic>? responseBody,
   ReplyRefineDraftPort? draftPort,
+  List<http.Response>? responses,
 }) {
   final bodies = <Map<String, dynamic>>[];
   final client = AnalysisAuxiliaryClient(
     clientFactory: () => MockClient((request) async {
       bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+      // 有給 [responses] 就依序回給每一次請求。
+      if (responses != null) return responses.removeAt(0);
       return http.Response(
         jsonEncode(responseBody ?? _successBody),
         200,
@@ -127,6 +130,27 @@ AuxiliaryAnalysisContext _contextWith(List<Message> messages) {
     bodies: bodies,
   );
 }
+
+/// 微調成功；[freeRemaining] 是伺服器帶回來的今天剩幾次免費（null＝沒帶）。
+http.Response _refineOk({int? freeRemaining}) => http.Response(
+      jsonEncode(Map<String, dynamic>.from(_successBody)
+        ..['usage'] = {
+          if (freeRemaining != null) 'refineFreeRemaining': freeRemaining,
+          'shouldChargeQuota': false,
+        }),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+
+/// 伺服器先用掉免費次數、結算才失敗（額度表沒有退款，已知取捨）。
+http.Response _settlementFailed() => http.Response(
+      jsonEncode({
+        'error': 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED',
+        'code': 'OPTIMIZE_MESSAGE_SETTLEMENT_FAILED',
+      }),
+      500,
+      headers: {'content-type': 'application/json'},
+    );
 
 void main() {
   const owner = 'owner-1';
@@ -588,6 +612,72 @@ void main() {
       // 下一輪 server 沒帶 usage：本地不得自行遞減或亂猜。
       final h2 = _harness();
       expect(h2.coordinator.refineFreeRemaining, isNull);
+    });
+
+    test('一輪丟出例外：免費次數記成待確認，重開面板照樣標；之後成功帶回數字才清掉（主審第 1 輪 P2）', () async {
+      final h = _harness(responses: [
+        _refineOk(freeRemaining: 1),
+        _settlementFailed(),
+        _refineOk(),
+        _refineOk(freeRemaining: 0),
+      ]);
+      Future<RefineRoundResult?> round(String instruction) =>
+          h.coordinator.runRefineRound(
+            ownerUserId: owner,
+            context: _contextWith([_msg('hi')]),
+            sessionContext: null,
+            currentText: '要不要喝咖啡',
+            instruction: instruction,
+            anchorText: '要不要喝咖啡',
+            onReadyToSend: () async => true,
+            onTelemetry: (_) {},
+          );
+
+      await round('短一點');
+      expect(h.coordinator.refineFreeRemaining, 1);
+      expect(h.coordinator.refineFreeRemainingStale, isFalse);
+
+      // 伺服器可能已用掉那次免費、結算才失敗：數字還在，但不再可信，也不自己減。
+      await expectLater(round('白話一點'), throwsA(isA<AnalysisException>()));
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+      expect(h.coordinator.refineFreeRemaining, 1);
+
+      // 成功但沒帶數字：還是不知道剩幾次，維持待確認。
+      await round('語氣溫和一點');
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+
+      await round('太油了，自然一點');
+      expect(h.coordinator.refineFreeRemaining, 0);
+      expect(h.coordinator.refineFreeRemainingStale, isFalse);
+      expect(h.bodies, hasLength(4));
+    });
+
+    test('取消（同意書拒絕、什麼都沒送）：待確認與否都維持原狀', () async {
+      final h = _harness(responses: [_settlementFailed()]);
+      Future<RefineRoundResult?> round({required bool consent}) =>
+          h.coordinator.runRefineRound(
+            ownerUserId: owner,
+            context: _contextWith([_msg('hi')]),
+            sessionContext: null,
+            currentText: '要不要喝咖啡',
+            instruction: '短一點',
+            anchorText: '要不要喝咖啡',
+            onReadyToSend: () async => consent,
+            onTelemetry: (_) {},
+          );
+
+      expect(await round(consent: false), isNull);
+      expect(h.coordinator.refineFreeRemainingStale, isFalse);
+
+      await expectLater(
+        round(consent: true),
+        throwsA(isA<AnalysisException>()),
+      );
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+
+      expect(await round(consent: false), isNull);
+      expect(h.coordinator.refineFreeRemainingStale, isTrue);
+      expect(h.bodies, hasLength(1));
     });
 
     test('acknowledgeRefinePresented 結案後，同輸入下一輪鑄新身分', () async {
