@@ -13,6 +13,7 @@ import 'package:vibesync/features/analysis/application/ports/analysis_record_por
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/persistable_analysis.dart';
+import 'package:vibesync/features/analysis/domain/entities/previous_round_context.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_run_metadata_mapping.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
@@ -83,6 +84,7 @@ class _Harness {
   SessionContext? startedSessionContext;
   String? startedPartnerId;
   bool? startedReconnectContext;
+  PreviousRoundContext? startedPreviousRound;
   var startCalls = 0;
 
   late final AnalysisPersistenceCoordinator persistence =
@@ -124,8 +126,10 @@ class _Harness {
       conversationContentRevision,
       conversationPartnerId,
       isReconnectContext,
+      previousRound,
     }) async {
       startCalls++;
+      startedPreviousRound = previousRound;
       startedSessionContext = sessionContext;
       startedPartnerId = conversationPartnerId;
       startedReconnectContext = isReconnectContext;
@@ -177,6 +181,42 @@ void main() {
     expect(harness.startedPartnerId, isNull);
     expect(harness.startedReconnectContext, isTrue);
     expect(conversation.sessionContext, same(originalContext));
+  });
+
+  test('start：上一輪脈絡原樣交給串流 run（Eric 2026-10-18）', () async {
+    final conversation = _conversation(partnerId: 'partner-a');
+    final harness = _Harness(conversation: conversation);
+    const previousRound = PreviousRoundContext(
+      decision: 'send',
+      light: 'green',
+      judgment: '她在反問你',
+      messages: [PreviousRoundMessage(isFromMe: false, content: '你呢')],
+    );
+    final preparation = AnalysisRunPreparation(
+      requestMessages: conversation.messages,
+      conversationSummary: null,
+      partnerSummary: null,
+      effectiveStyleContext: null,
+      knownContactName: null,
+      sessionContext: null,
+      conversationPartnerId: 'partner-a',
+      isReconnectContext: false,
+      previousStage: null,
+      analysisFragmentStartIndex: 0,
+      analyzedMessageCount: 1,
+      contentRevision: conversationContentRevision(conversation),
+      previousRound: previousRound,
+    );
+
+    await harness.session.start(
+      conversation: conversation,
+      preparation: preparation,
+      waitForCompletion: true,
+      shouldProceed: () => true,
+    );
+
+    expect(harness.startCalls, 1);
+    expect(harness.startedPreviousRound, same(previousRound));
   });
 
   test('start：畫面已失效時不送出，也不改寫 Conversation context', () async {

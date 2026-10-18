@@ -5,6 +5,7 @@ library;
 import '../../../conversation/domain/entities/message.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../domain/entities/overcharge_confirmation.dart';
+import '../../domain/entities/previous_round_context.dart';
 
 /// 啟動唯一串流 run（notifier 快取 payload 供 retry、跨導航存活）。
 typedef StartAnalysisRun = Future<void> Function({
@@ -24,6 +25,7 @@ typedef StartAnalysisRun = Future<void> Function({
   String? conversationContentRevision,
   String? conversationPartnerId,
   bool? isReconnectContext,
+  PreviousRoundContext? previousRound,
 });
 
 /// 以快取的 runId＋payload 續跑同一 run（不重扣額度）；無可續跑時 no-op。

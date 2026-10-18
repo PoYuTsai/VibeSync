@@ -9,6 +9,7 @@ import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/entities/message.dart';
 import '../../conversation/domain/entities/session_context.dart';
 import '../../conversation/domain/services/conversation_content_revision.dart';
+import '../domain/entities/previous_round_context.dart';
 import '../domain/services/screenshot_recognition_helper.dart';
 import 'ports/conversation_memory_port.dart';
 
@@ -52,6 +53,9 @@ class AnalysisRunPreparation {
   /// 送出前同步擷取的內容修訂：同數量編輯也能被 stale 守門認出。
   final String contentRevision;
 
+  /// 上一輪脈絡（同一個對象上一次的 v3 結果，Eric 2026-10-18）；沒有就不帶。
+  final PreviousRoundContext? previousRound;
+
   const AnalysisRunPreparation({
     required this.requestMessages,
     required this.conversationSummary,
@@ -65,6 +69,7 @@ class AnalysisRunPreparation {
     required this.analysisFragmentStartIndex,
     required this.analyzedMessageCount,
     required this.contentRevision,
+    this.previousRound,
   });
 }
 
@@ -117,11 +122,14 @@ class AnalysisRunPreparer {
         resolveEffectiveStyleContext,
     String? Function(Conversation conversation)? resolvePreviousStage,
     SessionContext? Function(Conversation conversation)? resolveSessionContext,
+    PreviousRoundContext? Function(Conversation conversation)?
+        resolvePreviousRound,
   })  : _memory = memory,
         _resolvePartnerSummary = resolvePartnerSummary,
         _resolveEffectiveStyleContext = resolveEffectiveStyleContext,
         _resolvePreviousStage = resolvePreviousStage,
-        _resolveSessionContext = resolveSessionContext;
+        _resolveSessionContext = resolveSessionContext,
+        _resolvePreviousRound = resolvePreviousRound;
 
   final ConversationMemoryPort _memory;
   final String? Function(Conversation conversation) _resolvePartnerSummary;
@@ -133,6 +141,10 @@ class AnalysisRunPreparer {
   final String? Function(Conversation conversation)? _resolvePreviousStage;
   final SessionContext? Function(Conversation conversation)?
       _resolveSessionContext;
+
+  /// 上一輪脈絡（composition root 注入）；null＝不帶（輔助流程用不到）。
+  final PreviousRoundContext? Function(Conversation conversation)?
+      _resolvePreviousRound;
 
   /// 主分析同步守門：驗證（空對話、無對方訊息）、切出本次要分析的訊息、
   /// 同步擷取內容修訂——修訂必須在任何 await 之前取，old run 才不可能
@@ -224,6 +236,7 @@ class AnalysisRunPreparer {
       analysisFragmentStartIndex: analysisFragmentStartIndex,
       analyzedMessageCount: gate.analyzedMessageCount!,
       contentRevision: gate.contentRevision!,
+      previousRound: _resolvePreviousRound?.call(conversation),
     );
   }
 

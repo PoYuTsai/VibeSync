@@ -21,6 +21,7 @@ import '../../domain/entities/analysis_models.dart';
 
 import '../../domain/entities/analysis_recommendation_preview.dart';
 import '../../domain/entities/guide_v3_result.dart';
+import '../../domain/entities/previous_round_context.dart';
 import 'analysis_exceptions.dart';
 import 'analysis_transport_support.dart';
 
@@ -42,6 +43,9 @@ class AnalyzeStreamRequest {
   final int? previousAnalyzedCharCount;
   final OverchargeConfirmationPayload? confirmedOvercharge;
 
+  /// 上一輪脈絡（新片段帶；伺服器開關沒開就不用，不算計費字數）。
+  final PreviousRoundContext? previousRound;
+
   const AnalyzeStreamRequest({
     this.analysisRunId,
     required this.messages,
@@ -55,6 +59,7 @@ class AnalyzeStreamRequest {
     this.previousAnalyzedCount,
     this.previousAnalyzedCharCount,
     this.confirmedOvercharge,
+    this.previousRound,
   });
 }
 
@@ -686,6 +691,9 @@ class AnalyzeStreamClient {
         'previousAnalyzedCharCount': previousAnalyzedCharCount,
       if (request.confirmedOvercharge != null)
         'confirmedOvercharge': request.confirmedOvercharge!.toJson(),
+      // 上一輪脈絡（Eric 2026-10-18）：沒有就不帶，其他欄位一字不變。
+      if (request.previousRound != null)
+        'previousRound': request.previousRound!.toJson(),
       if (entitlementContext.expectedTier != null)
         'expectedTier': entitlementContext.expectedTier,
       if (entitlementContext.revenueCatAppUserId != null)
