@@ -27,8 +27,8 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-Deno.test("說明書 A 段：v3.5 六節逐字鎖住，各節以自己的標題開頭", async () => {
-  assertEquals(GUIDE_V3_VERSION, "v3.5");
+Deno.test("說明書 A 段：v3.6 六節逐字鎖住，各節以自己的標題開頭", async () => {
+  assertEquals(GUIDE_V3_VERSION, "v3.6");
   for (const id of GUIDE_V3_SECTION_IDS) {
     assert(GUIDE_V3_SECTIONS[id].startsWith(`### ${id} `), id);
   }
@@ -57,7 +57,7 @@ Deno.test("說明書 B 段：B01–B47 連號、全部啟用、觸發與寫法�
   ).join("\n");
   assertEquals(
     await sha256Hex(canonical),
-    "c6cf056fd2407b7c4a39322b6d727bcf9e39e52ec0faf2f3885fc0022b3b6a7e",
+    "23074f4da1b8537308bab96ac1defef90f4bbb315056660045c361200d488bd1",
   );
 });
 
@@ -78,6 +78,32 @@ Deno.test("v3.5：B47 要他已經提議換地方、她還是不肯；只指定�
   assert(b47.trigger.includes("她只是指定店家、他還沒提換地方，不算"));
   // 讀局面看得到整句觸發（含「不算」的但書），才分得出只是指定店家。
   assert(readSystemPrompt().includes(`- B47：${b47.trigger}`));
+});
+
+Deno.test("v3.6：B44 照 Bruce（10/17、10/18）：不再寫「不順著她說加分」，只寫正面做法並附他的例句", () => {
+  const b44 = GUIDE_V3_ENTRIES.find((e) => e.id === "B44")!;
+  assert(!b44.writing.includes("加分"));
+  assert(!b44.writing.includes("順著"));
+  assert(
+    b44.writing.includes(
+      "直接說欣賞她哪一點，例如「有啊，願意踩雷這點我很欣賞」",
+    ),
+  );
+  // 結構照舊：觸發不動；具體欣賞、不打分數、不說她缺什麼、不出下一題都留著。
+  assertEquals(
+    b44.trigger,
+    "她討他的看法（「那我有加分嗎」「你覺得我是怎樣的人」）",
+  );
+  for (
+    const kept of [
+      "給一個具體、有根據的欣賞",
+      "不打分數",
+      "不說她還缺什麼",
+      "不出下一題",
+    ]
+  ) {
+    assert(b44.writing.includes(kept), kept);
+  }
 });
 
 Deno.test("只放送進模型的部分：A 段裡沒有 B、C、D 段的內容", () => {

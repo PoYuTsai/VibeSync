@@ -9,8 +9,9 @@
 //    不受 B46 不排推進、她直接問他時第一張排接住、婉拒收尾影響。沒有 B47 時，讀局面標到風險就
 //    不排推進，判斷換成金錢、詐騙的固定提醒。
 // 5. 他連續主動兩次、她都只回敷衍的字：先別回。
-// 6. 她取消約會：照常出卡（推進：改天或說定）；婉拒或界線：一張收尾。
-// 7. 排卡：B46 不排推進，蓋過「她給了機會至少一張推進」；B43–B46 帶張力改排接住，
+// 6. 她取消約會：照常出卡（推進：改天或說定）；她說太快了（B34）：照常出卡、不當收尾；
+//    婉拒或界線：一張收尾。
+// 7. 排卡：B34、B46 不排推進，蓋過「她給了機會至少一張推進」；B43–B46 帶張力改排接住，
 //    蓋過「綠燈至少一張帶張力」；最後她直接問他時，第一張排接住。
 import type { GuideV3Entry } from "./entries.ts";
 import type { ReadTags } from "./read_tags.ts";
@@ -64,8 +65,8 @@ export const PERFUNCTORY_HOLD_REASON = "他連續主動兩次，她都只回敷�
 
 /// C1 要不要回。v3 的順序：明確拒絕或封鎖就停（她拒絕後他又追問、或被封鎖時他是最後
 /// 一則，也是停）；他是最後一則先別回；他連續主動兩次、她都只回敷衍的字就先別回（不附
-/// 備用句）；她取消約會不是只回收尾（交給推進）；她婉拒或說了界線就一句中性收尾；其他
-/// 照常回（她只冷一次也照常回）。
+/// 備用句）；她取消約會不是只回收尾（交給推進）；她說太快了（B34）照常回；她婉拒或說了
+/// 界線就一句中性收尾；其他照常回（她只冷一次也照常回）。
 export function decideReply(
   turns: readonly Turn[],
   tags: ReadTags,
@@ -83,6 +84,9 @@ export function decideReply(
     return { kind: "hold", reason: PERFUNCTORY_HOLD_REASON };
   }
   if (tags.inviteReadiness === "她取消了") return { kind: "send" };
+  // B34：照常聊、不當收尾（Bruce 10/18）。讀局面可能把「我想慢一點」標成界線，那樣會只剩
+  // 一張收尾。
+  if (matchedSet(tags).has(SLOW_DOWN_ENTRY)) return { kind: "send" };
   if (tags.declinedOrBoundary) {
     return { kind: "close", reason: "她婉拒或說了界線" };
   }
@@ -99,8 +103,10 @@ export const NO_TENSION_ENTRIES: readonly string[] = [
   "B45",
   "B46",
 ];
-/// 標到 B46（她對自己的投入不好意思）時不排推進。
-export const NO_PUSH_ENTRIES: readonly string[] = ["B46"];
+/// B34（她說太快了、想慢一點）：照常聊、不推進，也不當收尾（Bruce 10/18，Eric 2026-10-19）。
+export const SLOW_DOWN_ENTRY = "B34";
+/// 標到 B34、B46（她對自己的投入不好意思）時不排推進：不靠讀局面有沒有標 retreating。
+export const NO_PUSH_ENTRIES: readonly string[] = [SLOW_DOWN_ENTRY, "B46"];
 /// B33（兩次提案都被帶過）：不再排推進，照常聊（Bruce 已定的規格，Eric 2026-10-18 要程式照做）。
 /// 她自己提見面或明確答應時照常推進：B33 的寫法本來就是等她自己開口。
 export const BRUSHED_OFF_TWICE_ENTRY = "B33";
@@ -195,15 +201,18 @@ function tasksFor(tags: ReadTags, push: PushAction | null, n: number): Task[] {
   if (tags.drunkOrLateNight) {
     return Array.from({ length: n }, (_, i) => i % 2 === 0 ? "共鳴" : "接住");
   }
-  // 預設：紅燈只用接住和收；她大笑收尾時不出帶張力，一張收。
+  // 預設：紅燈只用接住和收（她大笑收尾也是這樣排）。
   if (tags.light === "red") {
     return [...Array(n - 1).fill("接住"), "收"];
   }
-  // 她大笑收尾：照 C4 原樣，一張收，另外還是要一張帶張力，讓他也可以選擇繼續玩（Bruce 10/14）。
-  if (tags.herMove === "大笑收尾") {
+  // 她大笑收尾：一張收。綠燈照 C4 原樣，另外還是要一張帶張力，讓他也可以選擇繼續玩
+  //（Bruce 10/14）。帶張力是綠燈的規則：黃燈的收之外照下面一般的排法，不排帶張力，聊開了
+  // 選的種子照樣排進來（Bruce 10/18 黃燈維持現在；主審第 1 輪 P2）。
+  const laughClose = tags.herMove === "大笑收尾";
+  if (laughClose && tags.light === "green") {
     return ["收", "帶張力", ...Array(n - 2).fill("接住")];
   }
-  const tasks: Task[] = [];
+  const tasks: Task[] = laughClose ? ["收"] : [];
   if (push) {
     tasks.push(...Array(n >= 5 && push === "具體邀約" ? 2 : 1).fill("推進"));
   }

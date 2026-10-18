@@ -149,8 +149,8 @@ function harness(opts: {
   markFailedError?: Error;
   /// 扣費交易在回錯之後才提交：條件式失敗寫入等到它提交，看到的是已扣費的列。
   chargeCommitsDuringFailureWrite?: boolean;
-  /// 免費方案最多送幾張。
-  maxCards?: number | null;
+  /// 預設 starter。
+  effectiveTier?: string;
   /// 寫卡串流送完 writeParts 之後通知 reached、卡在 release，直到測試放行才結束。
   writeEndGate?: { reached: () => void; release: Promise<void> };
   markDoneError?: Error;
@@ -258,7 +258,7 @@ function harness(opts: {
       conversationHash: "hash-1",
       messages: opts.messages ?? CHAT,
       requestType: "analyze",
-      effectiveTier: "starter",
+      effectiveTier: opts.effectiveTier ?? "starter",
       accountIsTest: opts.accountIsTest ?? false,
       quotaUsage: {
         shouldChargeQuota: true,
@@ -298,7 +298,6 @@ function harness(opts: {
       now: () => opts.now ?? T0,
       heartbeatIntervalMs: 0,
       waitUntil: (task) => tasks.push(task),
-      maxCards: opts.maxCards ?? null,
       ...(opts.background ? { background: opts.background } : {}),
       ...(opts.extract
         ? {
@@ -669,6 +668,32 @@ Deno.test("C5 只記錄的檢查（10/18 補）：推進卡請求句、條目編
   }
 });
 
+Deno.test("C5「欠」組只記錄、不擋（Bruce 10/18）：卡照送，命中跟其他打分字眼一起記在 trace 與 outcome log", async () => {
+  const h = harness({
+    writeParts: [
+      line(1, ["腿斷了還能打字，看來還撐得住"]),
+      line(2, ["下次爬山我等妳，遲到就算妳欠我一杯"]),
+      line(3, ["哪座山？下次我也想去"]),
+      line(4, ["這點加分，妳體力不錯"]),
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(
+    evs.filter((e) => e.type === "analysis.card").map((e) => e.slot),
+    [1, 2, 3, 4],
+  );
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.removed, []);
+  assertEquals(trace.scoringWords, [
+    { slot: 2, words: ["欠我", "你欠"] },
+    { slot: 4, words: ["加分"] },
+  ]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.scoringWordCards, 2);
+  assertEquals(outcome.metadata.cardsRemoved, 0);
+  assertEquals(outcome.metadata.removedReasons, []);
+});
+
 Deno.test("每張都被拿掉：不扣、run 記失敗、送錯誤事件", async () => {
   const h = harness({
     writeParts: [
@@ -934,7 +959,7 @@ Deno.test("先別回（他是最後一則）：不寫卡，讀完扣一次不送
   assertEquals("cardTask" in c.recommendationJson, false);
 });
 
-Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的用量與剩餘都是 1；測試帳號 0", async () => {
+Deno.test("先別回與停照字數扣（Bruce 10/18 維持）：跟出卡扣一樣的則數，done 的用量、剩餘、telemetry 與 log 一致；測試帳號 0", async () => {
   const noSendCases: [string, Parameters<typeof harness>[0]][] = [
     ["先別回", {
       messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
@@ -943,29 +968,43 @@ Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的�
   ];
   for (const [label, opts] of noSendCases) {
     const h = harness(opts);
+    // 照字數的則數由 handler 照計費規則算好，放在 quotaUsage（billing.ts）。
+    const expected = h.deps.quotaUsage.chargedMessageCount;
+    assert(expected > 1, "要超過 1 則才分得出不是固定扣 1 則");
     const evs = await events(await handleGuideV3Stream(h.deps));
     const c = h.charges[0];
-    assertEquals([c.chargeQuota, c.messageCount], [true, 1], label);
-    assertEquals(c.recommendationJson.chargedMessageCount, 1, label);
-    const result = evs.at(-1)!.finalResult as Record<string, unknown>;
+    assertEquals([c.chargeQuota, c.messageCount], [true, expected], label);
+    assertEquals(c.recommendationJson.chargedMessageCount, expected, label);
+    const done = evs.find((e) => e.type === "analysis.done")!;
+    const result = done.finalResult as Record<string, unknown>;
     const usage = result.usage as Record<string, unknown>;
-    // 這次照字數是 2 則（harness 的 chargedMessageCount）；先別回、停只扣 1。
-    assertEquals(usage.messagesUsed, 1, label);
+    assertEquals(usage.messagesUsed, expected, label);
     assertEquals(usage.shouldChargeQuota, true, label);
-    assertEquals(usage.dailyRemaining, 50 - 3 - 1, label);
-    assertEquals(usage.monthlyRemaining, 300 - 10 - 1, label);
+    assertEquals(
+      usage.dailyRemaining,
+      h.deps.dailyLimit - h.deps.subDailyUsed - expected,
+      label,
+    );
+    assertEquals(
+      usage.monthlyRemaining,
+      h.deps.monthlyLimit - h.deps.subMonthlyUsed - expected,
+      label,
+    );
     assertEquals(
       (result.telemetry as Record<string, unknown>).chargedMessageCount,
-      1,
+      expected,
       label,
     );
     const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
-    assertEquals(outcome.metadata.chargedMessageCount, 1, label);
+    assertEquals(outcome.metadata.chargedMessageCount, expected, label);
   }
-  // 出卡照舊照字數扣。
+  // 出卡扣的是同一個數字。
   const send = harness();
   await events(await handleGuideV3Stream(send.deps));
-  assertEquals(send.charges[0].messageCount, 2);
+  assertEquals(
+    send.charges[0].messageCount,
+    send.deps.quotaUsage.chargedMessageCount,
+  );
   // 測試帳號：照樣寫扣費紀錄、不扣。
   const test = harness({
     accountIsTest: true,
@@ -976,8 +1015,9 @@ Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的�
     false,
     0,
   ]);
+  const done = evs.find((e) => e.type === "analysis.done")!;
   assertEquals(
-    ((evs.at(-1)!.finalResult as Record<string, unknown>).usage as Record<
+    ((done.finalResult as Record<string, unknown>).usage as Record<
       string,
       unknown
     >).messagesUsed,
@@ -1367,24 +1407,33 @@ Deno.test("續看不在這裡：帶 analysisRunId 的請求交給 v2 handler", a
   assertEquals(h.calls, []);
 });
 
-Deno.test("免費方案：只寫、只送排好順序的前 2 張，其餘標 locked", async () => {
-  const writeRequests: { user: string }[] = [];
-  const h = harness({ maxCards: 2, writeRequests });
-  const evs = await events(await handleGuideV3Stream(h.deps));
-  const read = evs.find((e) => e.type === "analysis.read")!;
-  assertEquals(read.plannedCards, [
-    { slot: 1, task: "accept", locked: false },
-    { slot: 2, task: "tension", locked: false },
-    { slot: 3, task: "accept", locked: true },
-    { slot: 4, task: "tension", locked: true },
-  ]);
-  assert(writeRequests[0].user.includes("一共 2 張"));
-  // 模型多寫了第 3、4 張也不送。
-  assertEquals(types(evs).filter((t) => t === "analysis.card").length, 2);
-  const result = evs.at(-1)!.finalResult as Record<string, unknown>;
-  assertEquals((result.cards as unknown[]).length, 2);
-  assertEquals(result.partial, false);
-  assertEquals(h.charges.length, 1);
+Deno.test("免費方案也寫、也送全部的卡（Bruce 10/18）：plannedCards 都不鎖，跟付費一樣", async () => {
+  const views: Record<string, unknown>[] = [];
+  for (const tier of ["free", "starter"]) {
+    const writeRequests: { user: string }[] = [];
+    const h = harness({ effectiveTier: tier, writeRequests });
+    const evs = await events(await handleGuideV3Stream(h.deps));
+    const read = evs.find((e) => e.type === "analysis.read")!;
+    assertEquals(read.plannedCards, [
+      { slot: 1, task: "accept", locked: false },
+      { slot: 2, task: "tension", locked: false },
+      { slot: 3, task: "accept", locked: false },
+      { slot: 4, task: "tension", locked: false },
+    ], tier);
+    assert(writeRequests[0].user.includes("一共 4 張"), tier);
+    assertEquals(
+      evs.filter((e) => e.type === "analysis.card").length,
+      FOUR_CARDS.length,
+      tier,
+    );
+    const done = evs.find((e) => e.type === "analysis.done")!;
+    const result = done.finalResult as Record<string, unknown>;
+    assertEquals((result.cards as unknown[]).length, FOUR_CARDS.length, tier);
+    assertEquals(result.partial, false, tier);
+    assertEquals(h.charges.length, 1, tier);
+    views.push({ read, cards: result.cards });
+  }
+  assertEquals(views[0], views[1]);
 });
 
 Deno.test("判讀外洩：判讀不給、記 log；要等她做什麼壞了用預設那句", async () => {

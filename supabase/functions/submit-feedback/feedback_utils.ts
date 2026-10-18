@@ -38,8 +38,10 @@ const GUIDE_V3_CARD_TASKS_MAX = 5;
 /// 來源的對拍在 feedback_utils_test.ts（guide_text.ts 的 GUIDE_V3_VERSION、plan.ts 的
 /// 決定、read_tags.ts 的 LIGHTS、stream_run_store.ts 的 V3_CARD_TASK_CODES）。不合法
 /// 的欄位整個丟掉，回饋照收。
+/// 舊版本也照收：App 裡存著的舊結果，之後才按回饋（v3.6：B44 照 Bruce，Eric 2026-10-19）。
 export const GUIDE_V3_FEEDBACK_VERSIONS: ReadonlySet<string> = new Set([
   "v3.5",
+  "v3.6",
 ]);
 export const GUIDE_V3_FEEDBACK_DECISIONS: ReadonlySet<string> = new Set([
   "send",

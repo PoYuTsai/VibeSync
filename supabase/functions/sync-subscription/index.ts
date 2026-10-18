@@ -22,8 +22,9 @@ const corsHeaders = {
 };
 
 const TIER_LIMITS: Record<string, { monthly: number; daily: number }> = {
-  // 跟 _shared/quota.ts 同步：免費 50／20（Eric 2026-10-18）。
-  free: { monthly: 50, daily: 20 },
+  // 跟 _shared/quota.ts 同步：免費 30／15（Eric 2026-10-19 照 Bruce 改回）；
+  // analyze-chat/tier_limits_parity_test.ts 鎖住三份一致。
+  free: { monthly: 30, daily: 15 },
   starter: { monthly: 300, daily: 50 },
   essential: { monthly: 800, daily: 120 },
 };

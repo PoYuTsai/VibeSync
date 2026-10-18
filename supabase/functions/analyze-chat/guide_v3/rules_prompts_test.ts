@@ -660,6 +660,126 @@ Deno.test("C3：黃燈的種子卡排在 3 張裡、不帶問號；帶張力照�
   assertEquals(cards[0].questionBudget, 0);
 });
 
+Deno.test("黃燈照舊（Bruce 10/18）：接住為主，聊開了才加一張種子；不排帶張力、沒有小提案", () => {
+  const short = toTurns([me("嗨"), her("哈囉")]);
+  const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
+  const yellow = tags({ light: "yellow" });
+  // 還沒聊開：不推進，3 張都是接住。
+  assertEquals(decidePush(short, yellow), null);
+  assertEquals(
+    arrangeCards({ kind: "send" }, decidePush(short, yellow), yellow).map((c) =>
+      c.task
+    ),
+    ["接住", "接住", "接住"],
+  );
+  // 聊開了：一張種子，其餘接住；沒有帶張力。
+  const push = decidePush(long, yellow);
+  assertEquals(push, "種子");
+  const cards = arrangeCards({ kind: "send" }, push, yellow);
+  assertEquals(cards.map((c) => c.task), ["推進", "接住", "接住"]);
+  assertEquals(cards.filter((c) => c.push !== null).map((c) => c.push), [
+    "種子",
+  ]);
+});
+
+Deno.test("黃燈遇到她大笑收尾（主審第 1 輪 P2）：一張收、不排帶張力，聊開了選的種子照樣排進卡；綠燈照 C4 原樣", () => {
+  // 主審的重現：聊了兩輪，她最後只回「哈哈哈哈笑死」，讀局面標黃燈＋大笑收尾，沒有連續兩次敷衍。
+  const turns = toTurns([
+    me("週末去哪"),
+    her("去爬山"),
+    me("哪座山"),
+    her("哈哈哈哈笑死"),
+  ]);
+  const laugh = (light: "green" | "yellow") =>
+    tags({
+      light,
+      herMove: "大笑收尾",
+      herTurnsPerfunctory: [
+        { turn: 2, perfunctory: false },
+        { turn: 4, perfunctory: true },
+      ],
+    });
+  const yellow = laugh("yellow");
+  const reply = decideReply(turns, yellow);
+  assertEquals(reply.kind, "send");
+  const push = decidePush(turns, yellow);
+  assertEquals(push, "種子");
+  const cards = arrangeCards(reply, push, yellow);
+  assertEquals(cards.map((c) => c.task), ["收", "推進", "接住"]);
+  assertEquals(cards.find((c) => c.task === "推進")?.push, "種子");
+  assertEquals(cards.find((c) => c.task === "推進")?.questionBudget, 0);
+  // 還沒聊開：不推進，一張收、其餘接住。
+  const short = toTurns([me("哪座山"), her("哈哈哈哈笑死")]);
+  assertEquals(decidePush(short, yellow), null);
+  assertEquals(
+    arrangeCards(decideReply(short, yellow), null, yellow).map((c) => c.task),
+    ["收", "接住", "接住"],
+  );
+  // 綠燈照 C4 原樣（Bruce 10/14）：一張收、一張帶張力讓他可以選擇繼續玩，其餘接住；
+  // 選了推進也不排（現狀，10/18 的答覆沒有改綠燈）。
+  const green = laugh("green");
+  const greenPush = decidePush(turns, green);
+  assertEquals(greenPush, "種子");
+  assertEquals(
+    arrangeCards(decideReply(turns, green), greenPush, green).map((c) =>
+      c.task
+    ),
+    ["收", "帶張力", "接住", "接住"],
+  );
+});
+
+Deno.test("含糊答應算答應（Bruce 10/18）：綠燈、黃燈都由他接著講具體（具體邀約）；明確答應就說定", () => {
+  const long = toTurns([me("a"), her("b"), me("c"), her("聽起來不錯")]);
+  for (const light of ["green", "yellow"] as const) {
+    assertEquals(
+      decidePush(long, tags({ light, inviteReadiness: "含糊答應" })),
+      "具體邀約",
+      light,
+    );
+    assertEquals(
+      decidePush(long, tags({ light, inviteReadiness: "明確答應" })),
+      "說定",
+      light,
+    );
+  }
+});
+
+Deno.test("B34（她說太快了，Bruce 10/18）：照常聊、不推進，不當收尾；讀局面標成婉拒或界線也一樣", () => {
+  const turns = toTurns([
+    me("a"),
+    her("b"),
+    me("週末要不要來我家看電影"),
+    her("太快了啦，我想慢一點"),
+  ]);
+  const b34 = (over: Partial<ReadTags> = {}) =>
+    tags({ matchedEntries: ["B34"], ...over });
+  // 聊開了本來會種子；標到 B34 就不推進（沒標 retreating 也一樣）。
+  assertEquals(decidePush(turns, tags()), "種子");
+  assertEquals(decidePush(turns, b34()), null);
+  assertEquals(decidePush(turns, b34({ herMove: "開窗" })), null);
+  assertEquals(decidePush(turns, b34({ inviteReadiness: "含糊答應" })), null);
+  // 讀局面把「太快了」標成婉拒或界線：不收尾，照常出卡、沒有推進卡。
+  assertEquals(
+    decideReply(turns, tags({ declinedOrBoundary: true })).kind,
+    "close",
+  );
+  const asBoundary = b34({ declinedOrBoundary: true, retreating: true });
+  const reply = decideReply(turns, asBoundary);
+  assertEquals(reply.kind, "send");
+  const cards = arrangeCards(reply, decidePush(turns, asBoundary), asBoundary);
+  assert(cards.length > 1);
+  assert(cards.every((c) => c.task !== "推進" && c.task !== "收"));
+  // 明確拒絕、封鎖、他是最後一則照舊先判。
+  assertEquals(
+    decideReply(turns, b34({ explicitRejection: true })).kind,
+    "stop",
+  );
+  assertEquals(
+    decideReply(toTurns([her("太快了"), me("好啦")]), b34()).kind,
+    "hold",
+  );
+});
+
 Deno.test("B33（兩次提案都被帶過）：不排推進；她自己提見面或明確答應照常推進", () => {
   const long = toTurns([me("a"), her("b"), me("c"), her("d")]);
   const b33 = (over: Partial<ReadTags> = {}) =>

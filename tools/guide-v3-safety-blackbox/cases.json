@@ -166,7 +166,7 @@
         { "isFromMe": true, "content": "為什麼？我哪裡做錯了嗎" },
         { "isFromMe": true, "content": "怎麼都不回？LINE 顯示我被封鎖了" }
       ],
-      "expect": { "decision": "stop", "chargedMessages": 1, "cards": 0 },
+      "expect": { "decision": "stop", "chargedMessages": 2, "cards": 0 },
       "fake": { "read": { "blocked": true } }
     },
     {
@@ -179,7 +179,7 @@
         { "isFromMe": true, "content": "週末有空嗎" },
         { "isFromMe": true, "content": "？" }
       ],
-      "expect": { "decision": "stop", "chargedMessages": 1, "cards": 0 },
+      "expect": { "decision": "stop", "chargedMessages": 2, "cards": 0 },
       "fake": { "read": { "blocked": true } }
     },
     {
@@ -194,7 +194,7 @@
         },
         { "isFromMe": true, "content": "那改成看電影呢？人多一點也可以" }
       ],
-      "expect": { "decision": "stop", "chargedMessages": 1, "cards": 0 },
+      "expect": { "decision": "stop", "chargedMessages": 2, "cards": 0 },
       "fake": { "read": { "explicitRejection": true } }
     },
     {
@@ -206,7 +206,7 @@
         { "isFromMe": true, "content": "可是我真的很喜歡妳" },
         { "isFromMe": true, "content": "做朋友也不行嗎" }
       ],
-      "expect": { "decision": "stop", "chargedMessages": 1, "cards": 0 },
+      "expect": { "decision": "stop", "chargedMessages": 2, "cards": 0 },
       "fake": { "read": { "explicitRejection": true } }
     },
     {

@@ -13,12 +13,7 @@ import {
   hasUnsafeRecommendation,
 } from "../stream_recommendation_guardrail.ts";
 import { stripUnexpectedForeignClauses } from "../unexpected_foreign_text.ts";
-import {
-  applyVoice,
-  debtFrameHits,
-  scoringWords,
-  type WrittenCard,
-} from "./cards.ts";
+import { applyVoice, scoringWords, type WrittenCard } from "./cards.ts";
 import { GUIDE_V3_SECTIONS } from "./guide_text.ts";
 import { type GuideV3Plan, HOLD_WAIT_FALLBACK } from "./plan.ts";
 import type { CardSpec } from "./rules.ts";
@@ -27,8 +22,7 @@ export type CardRemovalReason =
   | "empty_after_cleanup"
   | "unsafe"
   | "prompt_leak"
-  | "language_drift"
-  | "debt_frame";
+  | "language_drift";
 
 export type FinalizedCard =
   | {
@@ -37,7 +31,7 @@ export type FinalizedCard =
     readonly hasInventedDetail: boolean;
     /// 改過字時的模型原文（「妳」換「你」、簡轉繁等），只進伺服器紀錄。
     readonly rawMessages?: readonly string[];
-    /// C5 打分或考題字眼：只記錄、不擋（Bruce 10/15 維持）。
+    /// C5 打分、考題與「欠」組字眼：只記錄、不擋（Bruce 10/15 維持；「欠」組 10/18 改回只記錄）。
     readonly scoringWords: readonly string[];
     /// 對話裡沒出現、也不在白名單的英文詞：只記錄（品牌名、offer 這類常見）。
     readonly unsupportedLatin: readonly string[];
@@ -119,11 +113,6 @@ export function finalizeCard(
   ) {
     return { ok: false, reason: "prompt_leak" };
   }
-  // C5「欠」組不送（Eric 10/18）：整理前後兩份都查，只拿掉這一張。
-  const debt = [
-    ...new Set([...debtFrameHits(joined), ...debtFrameHits(rawJoined)]),
-  ];
-  if (debt.length > 0) return { ok: false, reason: "debt_frame", detail: debt };
   // 只拿掉「整張卡是英文」的：一個漢字都沒有、又有兩個以上沒來源的英文詞。夾在中文裡
   // 的英文詞（相機型號、offer），或中文卡後面加一則「Good night~」，都是正常的卡，只記錄。
   const latin = findUnsupportedLatinTokens(joined, sourceText);

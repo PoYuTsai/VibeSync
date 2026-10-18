@@ -2,7 +2,7 @@
 // 由本機原檔產生（D 段測試答案含課程改寫的句子，不進 repo）；改字要連 sha256 鎖一起改。
 // 來源：PR #97 Bruce 2026-10-14、10-15、10-17 的回覆。
 
-export const GUIDE_V3_VERSION = "v3.5";
+export const GUIDE_V3_VERSION = "v3.6";
 
 export const GUIDE_V3_SECTION_IDS = [
   "A1",
