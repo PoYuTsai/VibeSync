@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/coaching_memory/data/providers/coaching_outcome_providers.dart';
@@ -21,6 +23,7 @@ import 'package:vibesync/features/analysis/data/providers/analysis_providers.dar
 import 'package:vibesync/features/analysis/data/repositories/analysis_record_store.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
+import 'package:vibesync/features/analysis/data/services/conversation_memory_adapter.dart';
 import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
@@ -788,6 +791,46 @@ class _NoopConversationMemory implements ConversationMemoryPort {
   int get minRoundsPerSummary => 3;
 }
 
+/// 組請求時卡在摘要這一步，直到測試放行（主審 r1 P1：測「前置還沒做完又按一次」）。
+/// 每輪都做摘要（門檻 0）；裁切照原樣回傳，算出來的則數跟沒裁一樣。
+class _GatedConversationMemory implements ConversationMemoryPort {
+  final gates = <Completer<String>>[];
+
+  @override
+  String? persistedHistoricalSummary(Conversation conversation) => null;
+
+  @override
+  Future<String> formatEphemeralSummary(
+    Conversation conversation,
+    int olderRounds,
+  ) {
+    final gate = Completer<String>();
+    gates.add(gate);
+    return gate.future;
+  }
+
+  @override
+  List<Message> clipToRecentRounds(List<Message> messages, int maxRounds) =>
+      messages;
+
+  @override
+  int get maxRecentRounds => 0;
+
+  @override
+  int get minRoundsPerSummary => 0;
+}
+
+/// 摘要做不出來（回空字串）：實際組請求整段照送，同步預覽卻以為要裁成最近 15 輪
+///（主審 r1 P2：兩邊算的不一樣時確認框一定要跳）。
+class _EmptySummaryMemory extends ConversationMemoryAdapter {
+  @override
+  Future<String> formatEphemeralSummary(
+    Conversation conversation,
+    int olderRounds,
+  ) async =>
+      '';
+}
+
 class _HydrationHarness {
   _HydrationHarness({
     required this.recorder,
@@ -1443,6 +1486,451 @@ void main() {
         // 重新分析是新的一次：先出現一般的額度確認框，確認前不會送出。
         expect(find.text('開始分析前'), findsOneWidget);
         expect(recorder.streamCalls, 0);
+      },
+    );
+
+    // 分析圓鈕（Eric 2026-10-18）：額度夠的一般長度不跳確認框，圓鈕下寫一行。
+    Future<_HydrationHarness> pumpOrbScreen(
+      WidgetTester tester, {
+      required SubscriptionState subscription,
+      Conversation? conversation,
+      ConversationMemoryPort? memory,
+      bool consentAccepted = true,
+      UsageData? localUsage,
+      void Function(_SeededSubscriptionNotifier notifier)? onSubscription,
+    }) async {
+      SharedPreferences.setMockInitialValues({
+        if (consentAccepted) AiDataSharingConsent.acceptedKeyForTesting: true,
+      });
+      late final _SeededSubscriptionNotifier notifier;
+      final harness = await _pumpHydratedAnalysisScreenWithRepo(
+        tester,
+        seed: const StreamingAnalysisState.idle(),
+        conversation: conversation ?? _conversation(),
+        extraOverrides: [
+          analysisRunPreparerProvider.overrideWithValue(
+            AnalysisRunPreparer(
+              memory: memory ?? _NoopConversationMemory(),
+              resolvePartnerSummary: (_) => null,
+              resolveEffectiveStyleContext: (_) => null,
+            ),
+          ),
+          partnerContextResolverProvider.overrideWithValue(
+            _emptyPartnerContextResolver(),
+          ),
+          subscriptionProvider.overrideWith((ref) {
+            notifier = _SeededSubscriptionNotifier(subscription);
+            return notifier;
+          }),
+          // 確認流程照舊讀本機用量（只拿重置時間；方案載好時數字以方案為準）。
+          usageDataProvider.overrideWithValue(
+            localUsage ??
+                UsageData(
+                  monthlyUsed: subscription.monthlyMessagesUsed,
+                  monthlyLimit: subscription.monthlyLimit,
+                  dailyUsed: subscription.dailyMessagesUsed,
+                  dailyLimit: subscription.dailyLimit,
+                  dailyResetAt: DateTime(2026, 10, 19),
+                ),
+          ),
+        ],
+      );
+      notifier.restoreSeed();
+      onSubscription?.call(notifier);
+      await tester.pump();
+      final dismissCoachMark = find.text('知道了');
+      if (dismissCoachMark.evaluate().isNotEmpty) {
+        await tester.tap(dismissCoachMark);
+        await tester.pump();
+      }
+      return harness;
+    }
+
+    /// 免費方案（[SubscriptionState] 預設值）用掉 [units] 則之後剩幾則：本月、今日取少的。
+    /// 照額度常數算，免費額度再調整（例：30／15 → 50／20，Eric 2026-10-18）也不用改測試。
+    int freeLeftAfter({int dailyUsed = 0, required int units}) =>
+        math.min(
+          AppConstants.freeMonthlyLimit,
+          AppConstants.freeDailyLimit - dailyUsed,
+        ) -
+        units;
+
+    Future<void> tapOrb(WidgetTester tester) async {
+      await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets(
+      '分析圓鈕：額度夠的一般長度，圓鈕下寫這次會用幾則，按下去不跳確認框直接開始',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(dailyMessagesUsed: 3),
+        );
+
+        // 「今天加班好累喔」7 字 → 1 則；今天已用 3 則，用完再少 1 則。
+        expect(
+          find.text('這次會用 1 則，剩 ${freeLeftAfter(dailyUsed: 3, units: 1)} 則'),
+          findsOneWidget,
+        );
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '分析圓鈕：今天額度不夠就不寫那一行，按下去照舊跳確認框、不送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(
+            dailyMessagesUsed: AppConstants.freeDailyLimit,
+          ),
+        );
+
+        expect(
+            find.byKey(FloatingAnalysisActionButton.captionKey), findsNothing);
+        await tapOrb(tester);
+
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    // 額度那一行（主審 r1 P2）：跟按下去時同一份請求算；兩邊完全一樣才跳過確認框。
+    /// [rounds] 輪，每輪他一則、她一則，各 10 字，最後是她。
+    Conversation roundsConversation(int rounds) {
+      final messages = <Message>[];
+      for (var i = 1; i <= rounds; i++) {
+        final n = i.toString().padLeft(2, '0');
+        messages
+          ..add(Message(
+            id: 'me-$i',
+            content: '第$n輪他說的那些話',
+            isFromMe: true,
+            timestamp: DateTime(2026, 10, 18, 9, i),
+          ))
+          ..add(Message(
+            id: 'her-$i',
+            content: '第$n輪她回的那些話',
+            isFromMe: false,
+            timestamp: DateTime(2026, 10, 18, 10, i),
+          ));
+      }
+      return Conversation(
+        id: _conversationId,
+        name: '小雲',
+        messages: messages,
+        createdAt: DateTime(2026, 10, 18),
+        updatedAt: DateTime(2026, 10, 18),
+        currentRound: rounds,
+      );
+    }
+
+    /// 她傳的 [count] 則，各 [chars] 字（最後一則多 [extra] 字）。
+    Conversation charsConversation({
+      required int count,
+      required int chars,
+      int extra = 0,
+    }) =>
+        Conversation(
+          id: _conversationId,
+          name: '小雲',
+          messages: [
+            for (var i = 0; i < count; i++)
+              Message(
+                id: 'her-$i',
+                content: '好' * (chars + (i == count - 1 ? extra : 0)),
+                isFromMe: false,
+                timestamp: DateTime(2026, 10, 18, 10, i),
+              ),
+          ],
+          createdAt: DateTime(2026, 10, 18),
+          updatedAt: DateTime(2026, 10, 18),
+          currentRound: count,
+        );
+
+    testWidgets(
+      '額度那一行：有摘要時照實際送出的最近 15 輪算（25 輪 500 字 → 300 字 8 則），按下去不跳框',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: roundsConversation(25),
+          memory: ConversationMemoryAdapter(),
+        );
+        // 用 8 則（照整段算會寫成 10 則）。
+        expect(
+          find.text('這次會用 8 則，剩 ${freeLeftAfter(units: 8)} 則'),
+          findsOneWidget,
+        );
+        await tapOrb(tester);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+        expect(harness.recorder.streamMessages, hasLength(30));
+      },
+    );
+
+    testWidgets(
+      '額度那一行跟按下去時算的不一樣（摘要沒做出來、實際整段送）：照舊跳確認框、不送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: roundsConversation(25),
+          memory: _EmptySummaryMemory(),
+        );
+        expect(
+          find.text('這次會用 8 則，剩 ${freeLeftAfter(units: 8)} 則'),
+          findsOneWidget,
+        );
+        await tapOrb(tester);
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(find.text('10 則'), findsOneWidget, reason: '確認框寫實際的則數');
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      '按下去時剩的則數跟那一行不一樣：照舊跳確認框、不送出',
+      (tester) async {
+        late _SeededSubscriptionNotifier subscription;
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(dailyMessagesUsed: 3),
+          // 方案重新載入中，按下去時改看本機用量：今天已經用了 5 則。
+          localUsage: UsageData(
+            monthlyUsed: 0,
+            monthlyLimit: 30,
+            dailyUsed: 5,
+            dailyLimit: 15,
+            dailyResetAt: DateTime(2026, 10, 19),
+          ),
+          onSubscription: (notifier) => subscription = notifier,
+        );
+        expect(
+          find.text('這次會用 1 則，剩 ${freeLeftAfter(dailyUsed: 3, units: 1)} 則'),
+          findsOneWidget,
+        );
+        // 還沒重畫就按：圓鈕帶的是剛才那一行。
+        subscription.state = const SubscriptionState(
+          dailyMessagesUsed: 3,
+          isLoading: true,
+        );
+        await tapOrb(tester);
+        expect(find.text('開始分析前'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    SubscriptionState essentialPlan() {
+      final limits =
+          SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.essential);
+      return SubscriptionState(
+        tier: SubscriptionTierHelper.essential,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
+      );
+    }
+
+    testWidgets(
+      '一般長度的上限：剛好 2000 字照樣一行就開始，不跳框',
+      (tester) async {
+        final plan = essentialPlan();
+        final remaining = plan.monthlyRemaining < plan.dailyRemaining
+            ? plan.monthlyRemaining
+            : plan.dailyRemaining;
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: plan,
+          conversation: charsConversation(count: 4, chars: 500),
+        );
+        expect(find.text('這次會用 10 則，剩 ${remaining - 10} 則'), findsOneWidget);
+        await tapOrb(tester);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    testWidgets(
+      '一般長度的上限：2001 字不寫那一行，跳「內容較長」確認框、不送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: essentialPlan(),
+          conversation: charsConversation(count: 4, chars: 500, extra: 1),
+        );
+        expect(
+            find.byKey(FloatingAnalysisActionButton.captionKey), findsNothing);
+        await tapOrb(tester);
+        expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+      },
+    );
+
+    testWidgets(
+      '第一次用：額度那一行照樣跳過確認框，但資料分享同意框照舊要先同意才送出',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          consentAccepted: false,
+        );
+        expect(
+          find.text('這次會用 1 則，剩 ${freeLeftAfter(units: 1)} 則'),
+          findsOneWidget,
+        );
+        await tapOrb(tester);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(find.text('同意並繼續'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+
+        await tester.tap(find.byType(Checkbox).last);
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.tap(find.text('同意並繼續').last);
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    // 連點（主審 r1 P1）：開始前有好幾段等待，確認框又可能跳過，第二下不能再開一次。
+    Future<void> pumpFrames(WidgetTester tester) async {
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets(
+      '連點兩下：前置還沒做完又按一次、兩邊前置完成順序顛倒，也只送出一次',
+      (tester) async {
+        final memory = _GatedConversationMemory();
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          memory: memory,
+        );
+        final orb = find.byKey(FloatingAnalysisActionButton.buttonKey);
+        await tester.tap(orb);
+        await tester.pump();
+        await tester.tap(orb, warnIfMissed: false);
+        await tester.pump();
+
+        // 後按的先做完、先按的後做完。
+        for (final gate in memory.gates.reversed.toList()) {
+          gate.complete('較早的對話摘要');
+          await pumpFrames(tester);
+        }
+        expect(harness.recorder.streamCalls, 1);
+        expect(memory.gates, hasLength(1), reason: '第二下在入口就擋下，連組請求都沒開始');
+      },
+    );
+
+    testWidgets(
+      '開始失敗之後鎖會放掉：按重試照樣能再開始',
+      (tester) async {
+        final memory = _GatedConversationMemory();
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          memory: memory,
+        );
+        await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
+        await tester.pump();
+        memory.gates.single.completeError(StateError('組請求失敗'));
+        await pumpFrames(tester);
+        expect(find.text('分析暫時失敗，請稍後再試。'), findsOneWidget);
+        expect(harness.recorder.streamCalls, 0);
+
+        final retry = find.widgetWithText(ElevatedButton, '重新分析');
+        await tester.ensureVisible(retry);
+        await tester.tap(retry);
+        await tester.pump();
+        expect(memory.gates, hasLength(2));
+        memory.gates.last.complete('較早的對話摘要');
+        await pumpFrames(tester);
+        // 重試看不到圓鈕下那一行，照舊跳確認框。
+        expect(find.text('開始分析前'), findsOneWidget);
+        await tester.tap(find.text('開始分析').last);
+        await pumpFrames(tester);
+        expect(harness.recorder.streamCalls, 1);
+      },
+    );
+
+    // 最後一則是他傳的（Eric 2026-10-18）：開始前先問，先不要就什麼都不送。
+    Conversation endsWithHisMessage() => _conversation(extraMessages: [
+          Message(
+            id: 'm2',
+            content: '那要不要早點睡',
+            isFromMe: true,
+            timestamp: DateTime(2026, 5, 28, 12, 1),
+          ),
+        ]);
+
+    testWidgets(
+      '最後一則是他傳的：按分析先跳「最後一則是你傳的」，先不要就不送出、也不跳確認框',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: endsWithHisMessage(),
+        );
+        await tapOrb(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('最後一則是你傳的'), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('his-last-message-cancel')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.text('最後一則是你傳的'), findsNothing);
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 0);
+
+        // 先不要之後開始鎖已放掉：再按一次照樣會問。
+        await tapOrb(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('最後一則是你傳的'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '最後一則是他傳的：還是要分析就照常開始（額度夠的一般長度一樣不跳確認框）',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+          conversation: endsWithHisMessage(),
+        );
+        await tapOrb(tester);
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester
+            .tap(find.byKey(const ValueKey('his-last-message-proceed')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.text('開始分析前'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
+        expect(harness.recorder.streamMessages!.last.isFromMe, isTrue,
+            reason: '他傳的那則照樣送去分析');
+      },
+    );
+
+    testWidgets(
+      '最後一則是她傳的：不問，直接照一般流程',
+      (tester) async {
+        final harness = await pumpOrbScreen(
+          tester,
+          subscription: const SubscriptionState(),
+        );
+        await tapOrb(tester);
+        expect(find.text('最後一則是你傳的'), findsNothing);
+        expect(harness.recorder.streamCalls, 1);
       },
     );
 

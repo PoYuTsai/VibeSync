@@ -1,6 +1,8 @@
 // 任務卡的「再調一下」（Eric 2026-10-18 核准）：App 帶這張卡的任務、口吻與「有他」做法，
 // 伺服器只認 wire.ts 的固定代碼；提示詞多一段任務卡規則；調完的字跟出卡走同一套定稿
 // 檢查，另外則數與空格都要留住。計費完全沿用回覆微調（refine_reply），這裡不碰帳。
+import { containsPromptLeak } from "../../_shared/prompt_leak_guard.ts";
+import { normalizeOutgoingScript } from "../outgoing_message_text.ts";
 import type { V3CardTaskCode } from "../stream_run_store.ts";
 import { type CardRemovalReason, finalizeCard } from "./finalize.ts";
 import type { HisMethod, Task, Voice } from "./rules.ts";
@@ -108,10 +110,43 @@ export function guideV3RefineSection(card: GuideV3RefineCard): string {
   ].join("\n");
 }
 
+/// 每一種規格（任務 × 口吻 × 做法），從 wire.ts 的代碼表列出來。
+function allRefineCards(): GuideV3RefineCard[] {
+  return Object.values(TASK_CODE).flatMap((task) =>
+    Object.values(VOICE_CODE).flatMap((voice) =>
+      Object.values(METHOD_CODE).map((method) => ({ task, voice, method }))
+    )
+  );
+}
+
+/// 任務卡規則段落的外洩哨兵（主審第 1 輪 P2-4；出卡的哨兵只涵蓋說明書，見 finalize.ts）：
+/// 每一種規格組出來的段落，標題以外每一行依「：；。」切開，留 12 字以上的片段。模型把
+/// 段落或其中一條規則照抄成一則時，定稿擋下。
+export const GUIDE_V3_REFINE_SENTINELS: readonly string[] = [
+  ...new Set(
+    allRefineCards()
+      .flatMap((card) => guideV3RefineSection(card).split("\n").slice(1))
+      .flatMap((line) => line.replace(/^-\s*/, "").split(/[：；。]/))
+      .map((part) => part.trim())
+      .filter((part) => part.length >= 12),
+  ),
+];
+
+/// 簡體照抄時整理會轉成繁體（也會改詞），所以哨兵也備一份整理過的。
+const GUIDE_V3_REFINE_SENTINELS_NORMALIZED: readonly string[] =
+  GUIDE_V3_REFINE_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s);
+
+function echoesRefineSection(texts: readonly string[]): boolean {
+  return texts.some((text) =>
+    containsPromptLeak(text, GUIDE_V3_REFINE_SENTINELS) ||
+    containsPromptLeak(text, GUIDE_V3_REFINE_SENTINELS_NORMALIZED)
+  );
+}
+
 export type GuideV3RefineRejection =
   | CardRemovalReason
   | "message_count_changed"
-  | "blank_removed";
+  | "blank_changed";
 
 export type GuideV3RefineOutcome =
   | { readonly ok: true; readonly messages: readonly string[] }
@@ -119,13 +154,14 @@ export type GuideV3RefineOutcome =
 
 const BLANK_RUN = /＿+/g;
 
-function blankRuns(messages: readonly string[]): number {
-  return messages.reduce((n, m) => n + (m.match(BLANK_RUN)?.length ?? 0), 0);
+function blankRuns(message: string): number {
+  return message.match(BLANK_RUN)?.length ?? 0;
 }
 
 /// 調完的字定稿：拆成幾則，跟出卡同一套 finalizeCard（口吻、整理、簡轉繁、禁語與脅迫、
-/// 外洩、「欠」組、語言漂移），再查兩件結構上的事——則數跟原本一樣（多則卡不被併成
-/// 一則），空格一個都沒少（身分空格不能被填成編的）。多出空格可以，App 會要他先填。
+/// 外洩、「欠」組、語言漂移），再查任務卡規則有沒有被照抄，以及兩件結構上的事——則數
+/// 跟原本一樣（多則卡不被併成一則），每一則的空格段數也跟原本一樣（身分空格不能被填成
+/// 編的、挪到別則，也不能多編一個；主審第 1 輪 P2-5 改成逐則比）。
 export function finalizeRefinedCard(args: {
   readonly draft: string;
   readonly optimized: string;
@@ -145,11 +181,20 @@ export function finalizeRefinedCard(args: {
     args.sourceText,
   );
   if (!out.ok) return { ok: false, reason: out.reason };
+  // 整理前後兩份都查：預設口吻會把「妳」換成「你」，簡體會轉成繁體。
+  if (
+    echoesRefineSection([
+      out.messages.join("\n"),
+      splitCardMessages(args.optimized).join("\n"),
+    ])
+  ) {
+    return { ok: false, reason: "prompt_leak" };
+  }
   if (out.messages.length !== before.length) {
     return { ok: false, reason: "message_count_changed" };
   }
-  if (blankRuns(out.messages) < blankRuns(before)) {
-    return { ok: false, reason: "blank_removed" };
+  if (out.messages.some((m, i) => blankRuns(m) !== blankRuns(before[i]))) {
+    return { ok: false, reason: "blank_changed" };
   }
   return { ok: true, messages: out.messages };
 }

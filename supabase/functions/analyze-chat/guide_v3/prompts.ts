@@ -10,7 +10,6 @@ import {
 import type { ReadTags } from "./read_tags.ts";
 import type { CardSpec, PushAction } from "./rules.ts";
 import { transcriptByTurn, type Turn } from "./turns.ts";
-import { SAFETY_RULES } from "../guardrails.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
 
 const READ_FIELD_NOTES = `## 要輸出的欄位
@@ -23,6 +22,7 @@ const READ_FIELD_NOTES = `## 要輸出的欄位
 - blocked：用戶說了被封鎖，或對話看得出來。
 - risk：上面說的風險（剛認識就熱得不合理，或只在要他花錢、送禮、幫忙時才熱）。
 - selfHarmSignal：對話裡有人（她或他）認真表達想自殺、自傷或不想活了；「笑死」「累死了」「熱到想死」這類誇張說法不算。
+- minorSignal：她或他本人未滿 18 歲，或現在還在讀國中、高中（國一到高三）；作戰板或對象背景這樣寫也算。講以前的事（「我高中的時候」）、講別人（學生、弟妹、小孩），或只是提到高中同學、高中老師，都不算。
 - retreating：她有沒有在退、說不或要放慢。
 - needsHisFacts：要回好這一輪，需要他本人的事實。
 - identityQuestion：她問的是工作、年紀、身高、感情狀態、住哪。
@@ -112,9 +112,17 @@ export const WRITE_OUTPUT_FORMAT = `## 輸出格式
 - messages 1–3 則；需要他填的地方用「＿＿」。
 - 只有「照樣寫＋標示」和「留空格」的卡可以寫他的經歷或狀態，編出來的細節要把 hasInventedDetail 設成 true；其他卡一律 false，也不能編。`;
 
+/// 寫卡的安全底線（v3 自己的最小版，Eric 2026-10-18）：取代 v2 的舊安全段落（那段還在講
+/// 熱度，跟 v3 並存會互相矛盾）。課程只有兩個例外（涉及未成年、她明確拒絕後施壓），
+/// 再加騷擾、跟蹤、威脅；程式規則會先處理這些情況，這裡是寫卡時的最後一道。
+export const WRITE_SAFETY_FLOOR = `## 安全底線
+- 對話涉及未滿 18 歲或還在讀國中、高中的人，就不寫任何卡。
+- 她明確拒絕之後，不寫施壓、再約一次或換個說法再追的句子。
+- 不寫騷擾、跟蹤、威脅或逼迫她的內容。`;
+
 export function writeSystemPrompt(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
-  safetyRules: string = SAFETY_RULES,
+  safetyRules: string = WRITE_SAFETY_FLOOR,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
 ): string {
   return [

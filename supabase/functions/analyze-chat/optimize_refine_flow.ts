@@ -79,7 +79,6 @@ export async function resolveOptimizeIdentity(args: {
     knownContactName: string | undefined;
     forceModel: string | null;
     refineInstruction: string | null;
-    guideV3Card: GuideV3RefineCard | null;
   };
 }): Promise<OptimizeIdentityResolution> {
   // Missing requestId is allowed only for old clients. Current clients
@@ -137,7 +136,6 @@ export async function resolveOptimizeIdentity(args: {
     // 指令必須綁進冪等鍵，否則同一句草稿的兩種不同微調會共用同一顆
     // request id 的帳本列，第二次會 replay 出第一次的結果。
     refineInstruction: args.hashContext.refineInstruction,
-    guideV3Card: args.hashContext.guideV3Card,
   });
   const { data: replayRow, error: replayReadError } = await args.supabase
     .from("optimize_message_requests")
@@ -327,6 +325,8 @@ export function validateOptimizeOutcome(args: {
   guideV3Card?: GuideV3RefineCard | null;
   /// 對話全文（她跟他傳過的字），任務卡定稿的英文詞檢查用。
   sourceText?: string;
+  /// 重播（帳本裡的那一份）：不查微調輸出長度（見 refineOutputTooLong）。
+  replay?: boolean;
 }): OptimizeOutcomeValidation {
   // 亂碼防呆：模型宣告 userDraft 無法理解（unusable: true）。必須在
   // hasUsableOptimizedMessage 之前攔——模型可能違規把說明文字塞進
@@ -349,8 +349,9 @@ export function validateOptimizeOutcome(args: {
     };
   }
   const optimizeClientShapeViolations = findClientShapeViolations(args.result);
-  // 只作用於微調。草稿潤飾的輸出長度行為一個字不改。
-  const refineOutputTooLong = args.isRefineReplyMode &&
+  // 只作用於微調。草稿潤飾的輸出長度行為一個字不改。重播不查：那一份當初已經過關
+  // （定稿整理成繁體可能多幾個字），不能因此擋掉已經付過費的結果。
+  const refineOutputTooLong = args.isRefineReplyMode && !args.replay &&
     hasUsableOptimizedMessage(args.result) &&
     exceedsRefineOutputLimit({
       sourceDraft: args.userDraft ?? "",
@@ -398,8 +399,9 @@ export function validateOptimizeOutcome(args: {
       refineMaxOutputChars: args.isRefineReplyMode
         ? refineMaxOutputChars(args.userDraft ?? "")
         : null,
-      // 任務卡的再調被哪一項擋下（只記原因代碼，不記字）。
+      // 任務卡的再調被哪一項擋下（只記原因代碼，不記字）；replay＝帳本裡的那一份。
       guideV3RefineRejected: guideV3Rejection,
+      replay: args.replay === true,
     });
     // 安全守門攔下要有專屬文案（2026-08-16 Eric 拍板）：通用的「請稍後
     // 再試」會誤導使用者原句重送——這不是暫時性失敗，是內容問題。
@@ -446,6 +448,41 @@ export function validateOptimizeOutcome(args: {
     };
   }
   return { kind: "ok", result: args.result };
+}
+
+/// 任務卡的再調交給 App 前的最後一關（主審第 2 輪）：帳本裡的那一份（預檢重播，或結算時
+/// 拿回別次請求寫的那一列）可能是還沒升版的 Edge 給的、沒跑過任務卡定稿，所以照這次的
+/// 卡片規格再過一次守門與定稿；沒過回跟新結果一樣的擋下碼（重播本來就不扣）。通過才標
+/// guideV3CardChecked：App 只把有標記的結果給採用、存成任務卡的稿，舊 Edge 回的結果
+/// 因此不會被直接用掉。
+export function checkGuideV3RefineDelivery(args: {
+  result: Record<string, unknown>;
+  guideV3Card: GuideV3RefineCard;
+  userDraft: string | undefined;
+  requestId: string | null;
+  userId: string;
+  actualModel: string;
+  sourceText: string;
+  /// 這次剛定稿、剛交給結算的字：結算拿回的就是它，直接標記（不必再定稿一次）。
+  alreadyCheckedText?: string | null;
+}): OptimizeOutcomeValidation {
+  const { alreadyCheckedText, ...rest } = args;
+  const optimized = (args.result.optimizedMessage as
+    | Record<string, unknown>
+    | undefined)?.optimized;
+  if (alreadyCheckedText != null && optimized === alreadyCheckedText) {
+    return { kind: "ok", result: { ...args.result, guideV3CardChecked: true } };
+  }
+  const outcome = validateOptimizeOutcome({
+    ...rest,
+    isRefineReplyMode: true,
+    replay: true,
+  });
+  if (outcome.kind === "response") return outcome;
+  return {
+    kind: "ok",
+    result: { ...outcome.result, guideV3CardChecked: true },
+  };
 }
 
 export interface RefineFreeConsumptionOutcome {

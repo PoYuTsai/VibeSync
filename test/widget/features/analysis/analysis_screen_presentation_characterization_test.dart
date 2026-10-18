@@ -19,6 +19,7 @@ import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/guide_v3_task_card.dart';
 import 'package:vibesync/features/analysis/presentation/sections/analysis_banners_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/reply_style_card.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/swipe_hint_nudge.dart';
@@ -942,6 +943,122 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
+    testWidgets('兩則一組（Eric 2026-10-18）：一則一則進剪貼簿，成效紀錄一張卡只記一次、記整張卡',
+        (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final outcomes = MemoryCoachingOutcomeRepository();
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(cards: [
+          {
+            ...cardJson(1, 'accept', ''),
+            'messages': ['那家我也想吃吃看', '妳推薦哪道'],
+          },
+          cardJson(2, 'push', '週六下午一起去？我來找位子'),
+        ])),
+        outcomes: outcomes,
+      );
+      await dismissEditCoachMark(tester);
+
+      final primary = find.byKey(const ValueKey('guide-v3-card-1-copy'));
+      await tester.ensureVisible(primary);
+      await tester.tap(primary);
+      await tester.pump();
+      await tester.tap(primary);
+      await tester.pump();
+      expect(copied, ['那家我也想吃吃看', '妳推薦哪道']);
+      final event = outcomes.listRecent().single;
+      expect(event.id, 'analyze:$_conversationId:run_v3:v3:1:accept');
+      expect(event.suggestedMoveSummary, '那家我也想吃吃看\n妳推薦哪道');
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('改成我的（Eric 2026-10-18）：沒改字就複製，不標已改成你的、編的細節提醒照留；真的改了才標',
+        (tester) async {
+      final copied = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(finalResult(cards: [
+          {
+            ...cardJson(1, 'accept', '我上週也剛去爬了七星山'),
+            'method': 'invented',
+            'hasInventedDetail': true,
+          },
+          cardJson(2, 'push', '週六下午一起去？我來找位子'),
+        ])),
+      );
+      await dismissEditCoachMark(tester);
+
+      Future<void> editAndCopy({String? newText}) async {
+        final edit = find.byKey(const ValueKey('guide-v3-card-1-edit'));
+        await tester.ensureVisible(edit);
+        await tester.tap(edit);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        if (newText != null) {
+          await tester.enterText(
+            find.byKey(const ValueKey('guide-v3-edit-field-0')),
+            newText,
+          );
+          await tester.pump();
+        }
+        await tester.tap(find.byKey(const ValueKey('guide-v3-edit-copy')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+      }
+
+      await editAndCopy();
+      expect(copied, ['我上週也剛去爬了七星山']);
+      expect(find.text('已改成你的'), findsNothing);
+      expect(find.text('有編的細節，請改成你的'), findsOneWidget);
+
+      await editAndCopy(newText: '我上週也去爬了陽明山');
+      expect(copied.last, '我上週也去爬了陽明山');
+      expect(find.text('已改成你的'), findsOneWidget);
+      expect(find.text('有編的細節，請改成你的'), findsNothing);
+      // 兩次複製各有一則提示，排隊顯示：一格一格等到都收掉再結束。
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+    });
+
+    testWidgets('回饋（Eric 2026-10-18）：v3 結果的倒讚用 v3 的分類', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.thumb_down_outlined),
+          )
+          .onPressed!();
+      await tester.pump();
+
+      for (final label in ['判斷不準', '像在考她', '編了我的事', '太軟有客服感', '其他']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      for (final label in ['太直接', '不自然', '回覆太長', '不符合我的風格']) {
+        expect(find.text(label), findsNothing);
+      }
+    });
+
     testWidgets('串流中：第一張卡已能複製，還沒到的卡顯示正在寫，不顯示大的載入動畫', (tester) async {
       final outcomes = MemoryCoachingOutcomeRepository();
       final read = GuideV3Read.fromJson(readJson())!;
@@ -976,22 +1093,32 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     });
 
-    testWidgets('再調一下：最終結果每張送到的卡都有，鎖住的卡沒有', (tester) async {
+    testWidgets('再調一下：入口開關關著時，最終結果的每張卡都沒有入口（卡照樣能複製）', (tester) async {
+      // 入口由 guide_v3_task_card.dart 的 kGuideV3CardRefineEnabled 控制（Eric 2026-10-18
+      // 停損：主審第 3 輪 APPROVED_WITH_RISK，今天先隱藏入口）。打開開關時，這裡改回斷言
+      // 每張送到的卡都有 guide-v3-card-N-refine、鎖住的卡沒有。
       await _pumpScreen(tester, seed: doneSeed(finalResult()));
       await dismissEditCoachMark(tester);
       await tester.ensureVisible(
-        find.byKey(const ValueKey('guide-v3-card-2-refine')),
+        find.byKey(const ValueKey('guide-v3-card-2-copy')),
       );
       expect(
-        find.byKey(const ValueKey('guide-v3-card-1-refine')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('guide-v3-card-2-refine')),
-        findsOneWidget,
-      );
-      expect(
-          find.byKey(const ValueKey('guide-v3-card-3-refine')), findsNothing);
+          find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+      for (final slot in [1, 2, 3]) {
+        expect(
+          find.byKey(ValueKey('guide-v3-card-$slot-refine')),
+          findsNothing,
+        );
+      }
+    });
+
+    testWidgets('再調一下入口先隱藏：v3 最終結果整頁沒有「再調一下」，草稿潤飾入口照舊', (tester) async {
+      // 開關見 guide_v3_task_card.dart 的 kGuideV3CardRefineEnabled（Eric 2026-10-18 停損）。
+      expect(kGuideV3CardRefineEnabled, isFalse);
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+      expect(find.text('再調一下'), findsNothing);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsOneWidget);
     });
 
     testWidgets('再調一下：還在串流時不給（卡已經能複製）', (tester) async {
@@ -1056,6 +1183,113 @@ void main() {
       expect(find.text('問教練：我現在該怎麼做？'), findsNothing);
       expect(find.text('這個建議有幫助嗎？'), findsNothing);
       expect(find.text('分析新片段'), findsOneWidget);
+    });
+
+    // ── 對話分析 v3 安全與規格修正（Eric 2026-10-18） ──
+    testWidgets('涉及未成年：跟關心同一條路，只有固定說明，沒有問教練、潤飾、回饋與扣費行', (tester) async {
+      const message = '看起來對話裡有人未滿 18 歲或還在讀國中、高中，這類對話我們不提供回覆建議。這次不扣額度。';
+      final minor = GuideV3Result.fromJson({
+        'guideVersion': 'v3.5',
+        'read': {
+          'guideVersion': 'v3.5',
+          'decision': 'care',
+          'light': null,
+          'judgment': '',
+          'careMessage': message,
+          'careKind': 'minor',
+          'plannedCards': const [],
+        },
+        'cards': const [],
+        'partial': false,
+        'usage': {
+          'messagesUsed': 0,
+          'monthlyRemaining': 29,
+          'dailyRemaining': 4,
+        },
+      })!;
+      await _pumpScreen(tester, seed: doneSeed(minor));
+      expect(find.text('這段不提供建議'), findsOneWidget);
+      expect(find.text(message), findsOneWidget);
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
+      expect(find.textContaining('本次分析使用'), findsNothing);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
+      expect(find.text('問教練：我現在該怎麼做？'), findsNothing);
+      expect(find.text('這個建議有幫助嗎？'), findsNothing);
+      expect(find.text('分析新片段'), findsOneWidget);
+    });
+
+    GuideV3Result noSendResult(String decision) => GuideV3Result.fromJson({
+          'guideVersion': 'v3.5',
+          'read': {
+            'guideVersion': 'v3.5',
+            'decision': decision,
+            'light': 'red',
+            'judgment': '球在她那邊，先等她。',
+            if (decision == 'hold') 'waitFor': '等她回你，再看她怎麼接',
+            'plannedCards': const [],
+          },
+          'cards': const [],
+          'partial': false,
+          // 先別回、停固定扣 1 則（伺服器 NO_SEND_MESSAGE_COUNT）。
+          'usage': {
+            'messagesUsed': 1,
+            'monthlyRemaining': 29,
+            'dailyRemaining': 4,
+          },
+        })!;
+
+    testWidgets('先別回：沒有潤飾入口，改成一行小字「還是想回？先問教練」，點了直達問教練；扣費行寫 1 則',
+        (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(noSendResult('hold')),
+        extraRoutes: [
+          GoRoute(
+            path: '/coach',
+            builder: (_, state) {
+              snapshot = state.extra as CoachChatAnalysisSnapshot?;
+              return const Text('coach-route');
+            },
+          ),
+        ],
+      );
+      await dismissEditCoachMark(tester);
+      expect(find.text('先別回'), findsOneWidget);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
+      expect(find.text('我已有草稿，幫我修自然'), findsNothing);
+      expect(find.textContaining('還不確定該不該回'), findsNothing);
+      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      final link = find.byKey(const ValueKey('guide-v3-hold-coach-link'));
+      expect(find.text('還是想回？先問教練'), findsOneWidget);
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(find.text('coach-route'), findsOneWidget);
+      expect(snapshot!.summary, '球在她那邊，先等她。');
+      expect(snapshot!.nextStep, '等她回你，再看她怎麼接');
+    });
+
+    testWidgets('停：潤飾入口與小字連結都沒有；扣費行寫 1 則', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(noSendResult('stop')));
+      expect(find.text('先停在這裡'), findsOneWidget);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
+      expect(find.text('我已有草稿，幫我修自然'), findsNothing);
+      expect(find.textContaining('還不確定該不該回'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('guide-v3-hold-coach-link')),
+        findsNothing,
+      );
+      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+    });
+
+    testWidgets('出卡：潤飾入口照舊，沒有先別回的小字連結', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('guide-v3-hold-coach-link')),
+        findsNothing,
+      );
     });
   });
 

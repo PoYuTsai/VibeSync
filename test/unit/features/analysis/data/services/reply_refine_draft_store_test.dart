@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:vibesync/features/analysis/data/services/reply_refine_draft_store.dart';
@@ -43,6 +44,54 @@ void main() {
 
     expect(draft?.refinedText, '週末有空喝杯咖啡嗎');
     expect(draft?.requestId, 'req-1');
+  });
+
+  test('任務卡的稿另外分區：同一句原句，一般微調與各規格互不相見；一般微調的鑰匙不變', () async {
+    const origin = '星期六去喝咖啡';
+    // 一般微調的 digest 跟以前一樣（24 小時內存的舊稿照樣讀得回來）。
+    expect(
+      replyRefineOriginDigest(origin),
+      sha256.convert(utf8.encode(origin)).toString(),
+    );
+    const push = 'guide_v3:push:default:reaction';
+    expect(
+      replyRefineOriginDigest(origin, scope: push),
+      isNot(replyRefineOriginDigest(origin)),
+    );
+
+    await store().save(
+      ownerUserId: _ownerA,
+      originText: origin,
+      refinedText: '星期六一起喝咖啡，好嗎？',
+    );
+    await store().save(
+      ownerUserId: _ownerA,
+      originText: origin,
+      refinedText: '星期六去喝咖啡，我來挑地方',
+      scope: push,
+    );
+    expect(
+      (await store().loadFor(ownerUserId: _ownerA, originText: origin))
+          ?.refinedText,
+      '星期六一起喝咖啡，好嗎？',
+    );
+    expect(
+      (await store().loadFor(
+        ownerUserId: _ownerA,
+        originText: origin,
+        scope: push,
+      ))
+          ?.refinedText,
+      '星期六去喝咖啡，我來挑地方',
+    );
+    expect(
+      await store().loadFor(
+        ownerUserId: _ownerA,
+        originText: origin,
+        scope: 'guide_v3:tension:default:reaction',
+      ),
+      isNull,
+    );
   });
 
   test('超過 24 小時就當作沒有，並把過期的 row 刪掉', () async {

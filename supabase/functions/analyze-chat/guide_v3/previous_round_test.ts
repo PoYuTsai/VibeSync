@@ -216,6 +216,7 @@ const TAGS: ReadTags = {
   blocked: false,
   risk: false,
   selfHarmSignal: false,
+  minorSignal: false,
   needsHisFacts: true,
   identityQuestion: false,
   hisStatedFacts: ["週末去哪玩"],

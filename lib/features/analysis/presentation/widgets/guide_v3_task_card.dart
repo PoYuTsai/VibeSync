@@ -1,10 +1,15 @@
-/// v3 任務卡（結果頁與分析紀錄共用）：任務標籤直接給用戶看（設計文件第 5 節），
-/// 點一則複製一則、整張一起複製；有空格（「＿」）的卡一定要先填好才能複製，
-/// 照樣寫＋標示的卡提醒「有編的細節，請改成你的」。複製本身與成效紀錄由呼叫端
-/// 做（這裡只給文字），所以結果頁與紀錄頁可以各自決定要不要記錄。「再調一下」
-/// 也一樣由呼叫端決定給不給（只有結果頁的最終結果給）。
+/// v3 任務卡（結果頁與分析紀錄共用）：任務標籤直接給用戶看（設計文件第 5 節）。
+/// 兩則以上的卡要分開傳（Eric 2026-10-18）：主按鈕一則一則複製（第 1 則 → 第 2 則），
+/// 整組複製放次要位置；點泡泡也能只複製那一則。有空格（「＿」）的卡一定要先填好
+/// 才能複製，照樣寫＋標示的卡提醒「有編的細節，請改成你的」。複製哪一則由卡片決定
+///（填空、再調之後也是卡片接著複製）；剪貼簿與成效紀錄由呼叫端做，所以結果頁與
+/// 紀錄頁可以各自決定要不要記錄。「再調一下」也由呼叫端決定給不給（只有結果頁的
+/// 最終結果給）。
 library;
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/services/app_haptics.dart';
@@ -26,6 +31,11 @@ const guideV3LockedArchivedMessage = '付費方案才有這張';
 
 /// 卡上顯示的是「再調一下」選定的版本。
 const guideV3RefinedLabel = '已再調過';
+
+/// 結果頁的任務卡要不要給「再調一下」入口（只管畫面給不給 onRefine；伺服器、v2 回覆的
+/// 再調一下與草稿潤飾都不受影響）。
+/// Eric 2026-10-18 停損：主審第 3 輪 APPROVED_WITH_RISK，今天先隱藏入口，明天再決定。
+const bool kGuideV3CardRefineEnabled = false;
 
 Color guideV3TaskColor(GuideV3Task task) => switch (task) {
       GuideV3Task.accept => AppColors.info,
@@ -94,7 +104,7 @@ BoxDecoration _cardDecoration({Color? border}) => BoxDecoration(
       ),
     );
 
-class GuideV3TaskCard extends StatelessWidget {
+class GuideV3TaskCard extends StatefulWidget {
   const GuideV3TaskCard({
     super.key,
     required this.card,
@@ -118,25 +128,86 @@ class GuideV3TaskCard extends StatelessWidget {
   /// 複製（文字、提示）；null＝這個畫面不給複製。
   final void Function(String text, String toast)? onCopy;
 
-  /// 打開填空／改寫；有空格的卡要先經過這裡才能複製。
-  final VoidCallback? onEdit;
+  /// 打開填空／改寫（呼叫端負責存），回傳他按「複製」時的每一則；關掉回 null。
+  /// 有空格的卡要先經過這裡才能複製；拿到結果卡片就複製第 1 則。
+  final Future<List<String>?> Function()? onEdit;
 
-  /// 打開「再調一下」；null＝這個畫面或這張卡不給再調。
-  final VoidCallback? onRefine;
+  /// 打開「再調一下」（呼叫端負責存），回傳選定的版本；沒選回 null。卡片拿到就照
+  /// 複製規則走（還有「＿」就先填）。null＝這個畫面或這張卡不給再調。
+  final Future<List<String>?> Function()? onRefine;
 
   /// 卡片下方（例如複製後的成效回報列）。
   final Widget? footer;
 
+  @override
+  State<GuideV3TaskCard> createState() => _GuideV3TaskCardState();
+}
+
+class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
+  /// 兩則以上的卡：主按鈕下一個要複製第幾則（從 0 起）。
+  int _next = 0;
+
+  /// [_next] 算的是哪一份字；卡上的字換了（改過、再調過）就從第 1 則重新開始。
+  List<String>? _progressOf;
+
   List<String> get _messages =>
-      editedMessages ?? refinedMessages ?? card.messages;
+      widget.editedMessages ?? widget.refinedMessages ?? widget.card.messages;
 
   bool get _needsFill => _messages.any(guideV3TextHasBlank);
 
   @override
+  void didUpdateWidget(covariant GuideV3TaskCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final progressOf = _progressOf;
+    if (progressOf != null && !listEquals(progressOf, _messages)) {
+      _next = 0;
+      _progressOf = null;
+    }
+  }
+
+  /// 複製其中一則；主按鈕接著指到下一則（最後一則之後回到第 1 則）。
+  void _copyAt(List<String> messages, int index) {
+    final onCopy = widget.onCopy;
+    if (onCopy == null || index < 0 || index >= messages.length) return;
+    AppHaptics.light();
+    final single = messages.length == 1;
+    onCopy(messages[index], single ? '已複製這句' : '已複製第 ${index + 1} 則');
+    setState(() {
+      _progressOf = List.unmodifiable(messages);
+      _next = single ? 0 : (index + 1) % messages.length;
+    });
+  }
+
+  /// 先填空／改寫，好了就從第 1 則開始複製（一張卡的幾則是一起傳的）。
+  Future<void> _editThenCopy() async {
+    final saved = await widget.onEdit?.call();
+    if (saved == null || saved.isEmpty || !mounted) return;
+    if (saved.any(guideV3TextHasBlank)) return;
+    _copyAt(saved, 0);
+  }
+
+  /// 再調選定的版本不直接當成已傳：還有「＿」就先填，填好才複製第 1 則。
+  Future<void> _refineThenCopy() async {
+    final adopted = await widget.onRefine?.call();
+    if (adopted == null || adopted.isEmpty || !mounted) return;
+    if (adopted.any(guideV3TextHasBlank)) {
+      await _editThenCopy();
+      return;
+    }
+    _copyAt(adopted, 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final card = widget.card;
+    final onCopy = widget.onCopy;
+    final onEdit = widget.onEdit;
     final messages = _messages;
-    final edited = editedMessages != null;
-    final refined = !edited && refinedMessages != null;
+    final edited = widget.editedMessages != null;
+    final refined = !edited && widget.refinedMessages != null;
+    final needsFill = _needsFill;
+    final multi = messages.length > 1;
+    final next = _next < messages.length ? _next : 0;
     final textStyle = AppTypography.bodyLarge.copyWith(
       color: AppColors.onBackgroundPrimary,
       height: 1.45,
@@ -172,15 +243,11 @@ class GuideV3TaskCard extends StatelessWidget {
                   : () {
                       // 整張卡有空格就先填：一張卡的幾則是一起傳的，不能先
                       // 拿走沒空格的那幾則（主審第 1 輪 P2-2）。
-                      if (_needsFill) {
-                        onEdit?.call();
+                      if (needsFill) {
+                        unawaited(_editThenCopy());
                         return;
                       }
-                      AppHaptics.light();
-                      onCopy!(
-                        messages[i],
-                        messages.length == 1 ? '已複製這句' : '已複製第 ${i + 1} 句',
-                      );
+                      _copyAt(messages, i);
                     },
               child: Container(
                 width: double.infinity,
@@ -218,7 +285,7 @@ class GuideV3TaskCard extends StatelessWidget {
                 if (onEdit != null)
                   TextButton(
                     key: ValueKey('guide-v3-card-${card.slot}-edit'),
-                    onPressed: onEdit,
+                    onPressed: () => unawaited(_editThenCopy()),
                     child: const Text('改成我的'),
                   ),
               ],
@@ -229,10 +296,12 @@ class GuideV3TaskCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: 38,
-              child: _needsFill
+              child: needsFill
                   ? FilledButton.icon(
                       key: ValueKey('guide-v3-card-${card.slot}-fill'),
-                      onPressed: onEdit,
+                      onPressed: onEdit == null
+                          ? null
+                          : () => unawaited(_editThenCopy()),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.warning,
                         foregroundColor: AppColors.brandInk,
@@ -248,20 +317,47 @@ class GuideV3TaskCard extends StatelessWidget {
                           color: AppColors.ctaStart.withValues(alpha: 0.55),
                         ),
                       ),
-                      onPressed: () {
-                        AppHaptics.light();
-                        onCopy!(
-                          messages.join('\n'),
-                          messages.length == 1 ? '已複製這句' : '已複製這組訊息',
-                        );
-                      },
+                      onPressed: () => _copyAt(messages, multi ? next : 0),
                       icon: const Icon(TablerIcons.copy, size: 16),
-                      label: Text(messages.length == 1 ? '複製這句' : '複製整組'),
+                      label: Text(multi ? '複製第 ${next + 1} 則' : '複製這句'),
                     ),
             ),
+            // 兩則以上：提醒分開傳；整組複製放次要（貼到 LINE 會變成同一則）。
+            if (multi)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '分 ${messages.length} 則傳',
+                        key: ValueKey('guide-v3-card-${card.slot}-split-hint'),
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onBackgroundSecondary,
+                        ),
+                      ),
+                    ),
+                    if (!needsFill)
+                      TextButton(
+                        key: ValueKey('guide-v3-card-${card.slot}-copy-all'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 34),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: AppColors.onBackgroundSecondary,
+                        ),
+                        onPressed: () {
+                          AppHaptics.light();
+                          onCopy(messages.join('\n'), '已複製這組訊息');
+                        },
+                        child: Text('複製整組', style: AppTypography.labelMedium),
+                      ),
+                  ],
+                ),
+              ),
           ],
           // 整張卡一起調（幾則照舊是幾則）；跟 v2 的「再調一下」同一個樣子。
-          if (onRefine != null)
+          if (widget.onRefine != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: SizedBox(
@@ -269,13 +365,13 @@ class GuideV3TaskCard extends StatelessWidget {
                 height: 34,
                 child: TextButton.icon(
                   key: ValueKey('guide-v3-card-${card.slot}-refine'),
-                  onPressed: onRefine,
+                  onPressed: () => unawaited(_refineThenCopy()),
                   icon: const Icon(Icons.tune_rounded, size: 16),
                   label: Text('再調一下', style: AppTypography.labelMedium),
                 ),
               ),
             ),
-          if (footer != null) footer!,
+          if (widget.footer != null) widget.footer!,
         ],
       ),
     );
@@ -370,6 +466,11 @@ class GuideV3PendingCard extends StatelessWidget {
   }
 }
 
+/// 填空框帶回來的字有沒有改（Eric 2026-10-18：沒改就不算「已改成你的」，編的細節
+/// 提醒照留）。填空框回傳的是去掉頭尾空白的字，比之前一樣先去掉。
+bool guideV3EditChanged(List<String> before, List<String> after) =>
+    !listEquals([for (final message in before) message.trim()], after);
+
 /// 填空／改成自己的說法。回傳改好的每一則；他關掉就回 null。空格（「＿」）
 /// 還在或有一則清空時不能按複製。
 Future<List<String>?> showGuideV3EditSheet(
@@ -398,6 +499,26 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
     for (final message in widget.messages) TextEditingController(text: message),
   ];
   late final bool _hadBlank = widget.messages.any(guideV3TextHasBlank);
+
+  /// 第一個有空格的那一則；沒有空格就是 null。
+  int? _firstBlankField;
+
+  @override
+  void initState() {
+    super.initState();
+    // 先選好第一個空格：打字就直接換掉＿＿，不用自己點到底線再刪（Eric 2026-10-18）。
+    final blank = RegExp('$guideV3BlankMark+');
+    for (var i = 0; i < _controllers.length; i++) {
+      final match = blank.firstMatch(_controllers[i].text);
+      if (match == null) continue;
+      _controllers[i].selection = TextSelection(
+        baseOffset: match.start,
+        extentOffset: match.end,
+      );
+      _firstBlankField = i;
+      break;
+    }
+  }
 
   @override
   void dispose() {
@@ -462,6 +583,7 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
                           TextField(
                             key: ValueKey('guide-v3-edit-field-$i'),
                             controller: _controllers[i],
+                            autofocus: i == _firstBlankField,
                             minLines: 1,
                             maxLines: 5,
                             onChanged: (_) => setState(() {}),
@@ -505,7 +627,10 @@ class _GuideV3EditSheetState extends State<GuideV3EditSheet> {
                               )
                           : null,
                       icon: const Icon(TablerIcons.copy, size: 18),
-                      label: const Text('複製'),
+                      // 兩則以上照卡片的規則從第 1 則開始傳。
+                      label: Text(
+                        _controllers.length > 1 ? '複製第 1 則' : '複製',
+                      ),
                     ),
                   ),
                 ],

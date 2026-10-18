@@ -8,7 +8,7 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   fakeModelResponse,
-  type RefineHarnessFreeAllowance,
+  type RefineHarnessOptions,
   type RefineHarnessOutcome,
   runRefineThroughHandler,
 } from "./guide_v3/refine_harness.ts";
@@ -26,7 +26,7 @@ const PUSH_CARD = { task: "push", voice: "default", method: "reaction" };
 async function run(
   body: Record<string, unknown>,
   optimized: string,
-  freeAllowance: RefineHarnessFreeAllowance = "available",
+  options: RefineHarnessOptions = {},
 ): Promise<RefineHarnessOutcome & { models: Record<string, unknown>[] }> {
   const models: Record<string, unknown>[] = [];
   const out = await runRefineThroughHandler(
@@ -47,7 +47,7 @@ async function run(
         },
       })));
     },
-    freeAllowance,
+    options,
   );
   return { ...out, models };
 }
@@ -83,7 +83,9 @@ Deno.test("任務卡的再調：提示詞帶任務卡規則與陣列草稿，回
   const optimized =
     (out.json.optimizedMessage as Record<string, unknown>).optimized;
   assertEquals(optimized, "你說的喔，就週六\n我來訂位");
-  // 計費照回覆微調：先授權免費次數、再結算定稿後的字；hash 綁卡片規格。
+  // 只有通過任務卡定稿的結果才帶這個標記（App 只認有標記的）。
+  assertEquals(out.json.guideV3CardChecked, true);
+  // 計費照回覆微調：先授權免費次數、再結算定稿後的字。
   assertEquals(rpcNames(out), [
     "increment_model_usage",
     "consume_refine_free_allowance",
@@ -96,15 +98,8 @@ Deno.test("任務卡的再調：提示詞帶任務卡規則與陣列草稿，回
     "你說的喔，就週六\n我來訂位",
   );
   assertEquals(settle.p_charge_quota, false);
-  assertEquals(
-    settle.p_input_hash,
-    await computeOptimizeMessageInputHash({
-      messages: MESSAGES,
-      userDraft: DRAFT,
-      refineInstruction: "短一點",
-      guideV3Card: PUSH_CARD,
-    }),
-  );
+  // 伺服器 hash 不含卡片規格：跟同一份輸入的一般微調、跟還沒升版的 Edge 都是同一顆。
+  assertEquals(settle.p_input_hash, await noCardHash());
   const usage = out.json.usage as Record<string, unknown>;
   assertEquals(usage.quotaReason, "refine_free_daily");
   assertEquals(usage.refineFreeRemaining, 9);
@@ -137,7 +132,7 @@ Deno.test("任務卡的再調：今天免費次數用完時照回覆微調扣 1 
   const out = await run(
     { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
     "就週六\n我來訂位",
-    "exhausted",
+    { freeAllowance: "exhausted" },
   );
   assertEquals(out.status, 200);
   assertEquals(rpcNames(out), [
@@ -155,7 +150,7 @@ Deno.test("任務卡的再調：今天免費次數用完時照回覆微調扣 1 
   const blocked = await run(
     { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
     "就週六\n遲到算妳欠我一杯",
-    "exhausted",
+    { freeAllowance: "exhausted" },
   );
   assertEquals(blocked.status, 502);
   assertEquals(rpcNames(blocked), ["increment_model_usage"]);
@@ -217,4 +212,175 @@ Deno.test("潤飾帶了卡片規格也不理：不進提示詞、不進 hash", a
     }),
   );
   assert(!rpcNames(out).includes("consume_refine_free_allowance"));
+});
+
+/// 伺服器的 input hash 不含卡片規格（主審第 2 輪）：這一顆就是還沒升版的 Edge
+/// 對同一次請求算出來的那一顆。
+async function noCardHash(): Promise<string> {
+  return await computeOptimizeMessageInputHash({
+    messages: MESSAGES,
+    userDraft: DRAFT,
+    refineInstruction: "短一點",
+  });
+}
+
+function storedResult(optimized: string) {
+  return { optimizedMessage: { optimized, reason: "帳本裡的那一份" } };
+}
+
+Deno.test("跨版本重播（舊 Edge 先結算）：同一個 hash，新 Edge 重播時再定稿、加標記，不扣、不打模型", async () => {
+  const out = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "不該被呼叫",
+    {
+      ledgerRow: {
+        inputHash: await noCardHash(),
+        result: storedResult("妳說的喔，就週六\n我來訂位"),
+      },
+    },
+  );
+  assertEquals(out.status, 200);
+  // 舊 Edge 沒跑任務卡定稿：重播時補跑（預設口吻的「妳」換成「你」）。
+  assertEquals(
+    (out.json.optimizedMessage as Record<string, unknown>).optimized,
+    "你說的喔，就週六\n我來訂位",
+  );
+  assertEquals(out.json.guideV3CardChecked, true);
+  assertEquals(out.models.length, 0);
+  assert(!rpcNames(out).includes("consume_refine_free_allowance"));
+  assert(!rpcNames(out).includes("settle_optimize_message_request"));
+  const usage = out.json.usage as Record<string, unknown>;
+  assertEquals(usage.messagesUsed, 0);
+  assertEquals(usage.quotaReason, "optimize_message_idempotent_replay");
+});
+
+Deno.test("跨版本重播（新 Edge 先結算、重試落到舊 Edge）：新 Edge 存的 hash 就是舊 Edge 算的那一顆", async () => {
+  const fresh = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+  );
+  assertEquals(fresh.status, 200);
+  const settle = fresh.rpcs.find((call) =>
+    call.fn === "settle_optimize_message_request"
+  )!;
+  // 舊 Edge 不認 guideV3Card，算的就是不含卡的那一顆：同一次請求，同一個 hash。
+  assertEquals(settle.args.p_input_hash, await noCardHash());
+  // 用舊 Edge 看到的樣子（沒有卡片規格）重送同一顆 requestId：是 replay，不是不一致，
+  // App 不會換身分、不會再扣。（舊 Edge 回的結果沒有標記，App 會拒收但保留身分。）
+  const retry = await run(
+    { refineInstruction: "短一點" },
+    "不該被呼叫",
+    {
+      ledgerRow: {
+        inputHash: settle.args.p_input_hash as string,
+        result: settle.args.p_result_json as Record<string, unknown>,
+      },
+    },
+  );
+  assertEquals(retry.status, 200);
+  assertEquals(retry.models.length, 0);
+  assertEquals(retry.json.guideV3CardChecked, undefined);
+  assertEquals((retry.json.usage as Record<string, unknown>).messagesUsed, 0);
+});
+
+Deno.test("重播再定稿：帳本裡沒過任務卡檢查的「欠」組結果擋下，不扣、不打模型", async () => {
+  const out = await run(
+    { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
+    "不該被呼叫",
+    {
+      ledgerRow: {
+        inputHash: await computeOptimizeMessageInputHash({
+          messages: MESSAGES,
+          userDraft: DRAFT,
+          refineInstruction: "更直接",
+        }),
+        result: storedResult("就週六\n遲到算你欠我一杯"),
+      },
+    },
+  );
+  assertEquals(out.status, 502);
+  assertEquals(out.json.code, "OPTIMIZE_MESSAGE_SAFETY_BLOCKED");
+  assertEquals(out.json.shouldChargeQuota, false);
+  assertEquals(out.models.length, 0);
+  assertEquals(rpcNames(out), []);
+});
+
+Deno.test("並行重試：結算拿回的是別次寫進帳本的那一列，也要再定稿；沒過擋下、不另扣", async () => {
+  const blocked = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+    {
+      freeAllowance: "exhausted",
+      ledgerRow: {
+        inputHash: await noCardHash(),
+        result: storedResult("就週六\n遲到算你欠我一杯"),
+        appearsAtSettle: true,
+      },
+    },
+  );
+  assertEquals(blocked.status, 502);
+  assertEquals(blocked.json.code, "OPTIMIZE_MESSAGE_SAFETY_BLOCKED");
+  assertEquals(blocked.json.shouldChargeQuota, false);
+  // 結算只有一次（同一個 hash，拿回那一列、不扣），之後沒有另外扣費。
+  assertEquals(
+    rpcNames(blocked).filter((fn) => fn === "settle_optimize_message_request")
+      .length,
+    1,
+  );
+  assert(!rpcNames(blocked).includes("increment_usage"));
+
+  const passed = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+    {
+      freeAllowance: "exhausted",
+      ledgerRow: {
+        inputHash: await noCardHash(),
+        result: storedResult("那就週六\n我來訂位子"),
+        appearsAtSettle: true,
+      },
+    },
+  );
+  assertEquals(passed.status, 200);
+  assertEquals(
+    (passed.json.optimizedMessage as Record<string, unknown>).optimized,
+    "那就週六\n我來訂位子",
+  );
+  assertEquals(passed.json.guideV3CardChecked, true);
+  assertEquals((passed.json.usage as Record<string, unknown>).messagesUsed, 0);
+});
+
+Deno.test("帳本列是別的 hash：照舊回不一致（預檢 400、結算 409）", async () => {
+  const preflight = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "不該被呼叫",
+    {
+      ledgerRow: {
+        inputHash: "f".repeat(64),
+        result: storedResult("那就週六，我來訂位"),
+      },
+    },
+  );
+  assertEquals(preflight.status, 400);
+  assertEquals(preflight.json.code, "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH");
+  assertEquals(preflight.models.length, 0);
+
+  const atSettle = await run(
+    { refineInstruction: "短一點", guideV3Card: PUSH_CARD },
+    "就週六\n我來訂位",
+    {
+      ledgerRow: {
+        inputHash: "f".repeat(64),
+        result: storedResult("那就週六，我來訂位"),
+        appearsAtSettle: true,
+      },
+    },
+  );
+  assertEquals(atSettle.status, 409);
+  assertEquals(atSettle.json.code, "OPTIMIZE_MESSAGE_REQUEST_REPLAY_MISMATCH");
+  assertEquals(
+    rpcNames(atSettle).filter((fn) => fn === "settle_optimize_message_request")
+      .length,
+    1,
+  );
 });

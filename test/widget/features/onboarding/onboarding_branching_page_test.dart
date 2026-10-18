@@ -88,7 +88,7 @@ void main() {
 
       expect(find.text('即時看懂她的訊號'), findsOneWidget);
       expect(
-        find.text('一個燈號告訴你：該回、先別回，還是收尾\n讀懂她這輪話裡的訊號'),
+        find.text('燈號看她現在有多熱\n教練再告訴你：該回、先別回，還是收尾'),
         findsOneWidget,
       );
       expect(find.textContaining('投入度'), findsNothing);

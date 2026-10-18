@@ -36,10 +36,8 @@ export async function computeOptimizeMessageInputHash(input: {
   knownContactName?: string | null;
   forceModel?: string | null;
   refineInstruction?: string | null;
-  guideV3Card?: { task: string; voice: string; method: string } | null;
 }): Promise<string> {
   const refineInstruction = input.refineInstruction?.trim() ?? "";
-  const card = input.guideV3Card;
   const canonical = JSON.stringify([
     input.messages,
     input.userDraft,
@@ -52,10 +50,10 @@ export async function computeOptimizeMessageInputHash(input: {
     // 只有非空才 append。寫成 `input.refineInstruction ?? null` 會讓陣列永遠
     // 是 9 元素，舊請求的 hash 立刻全變，7 天窗內的 pending 全毀。
     ...(refineInstruction ? [refineInstruction] : []),
-    // 任務卡的再調（規格會改提示詞）同理：有帶才 append，key 順序固定。
-    ...(card
-      ? [{ task: card.task, voice: card.voice, method: card.method }]
-      : []),
+    // 任務卡的卡片規格刻意不進來（主審第 2 輪）：還沒升版的 Edge 不認 guideV3Card，
+    // 新舊 Edge 對同一次請求必須算出同一個 hash，兩個方向的重試才都能 replay、不重扣。
+    // 不同規格不會共用 requestId，靠的是 App 的 fingerprint；重播的結果交出前還會照
+    // 這次的規格再定稿一次（optimize_refine_flow.ts checkGuideV3RefineDelivery）。
   ]);
   const digest = await crypto.subtle.digest(
     "SHA-256",

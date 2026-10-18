@@ -111,7 +111,7 @@ class DemoSignalPreview extends StatelessWidget {
   }
 }
 
-/// 第 3 頁「每次 3–5 張回覆，依局面搭配」：三張示範任務卡（任務標籤＋句子）。
+/// 第 3 頁「該回的時候給你 3–5 張回覆」：三張示範任務卡（任務標籤＋句子）。
 class DemoCardsPreview extends StatelessWidget {
   const DemoCardsPreview({super.key});
 

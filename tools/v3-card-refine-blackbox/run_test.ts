@@ -112,6 +112,18 @@ Deno.test("每次檢查：則數、空格、有沒有改、預設口吻的「妳
     ["我是做設計的，妳呢"],
   );
   assertEquals(blank.blanksKept, false);
+  // 逐則比：總數一樣、但第一則被填掉、第二則多一個，也算沒留住。
+  assertEquals(
+    inspect(
+      card({
+        task: "accept",
+        messages: ["我做＿＿", "住＿＿"],
+        hasBlank: true,
+      }),
+      ["我做設計", "住＿＿，週末去＿＿"],
+    ).blanksKept,
+    false,
+  );
   assertEquals(blank.defaultVoiceHasNi, true);
   assertEquals(blank.push, undefined);
   assertEquals(inspect(card(), ["好啊"]).countKept, false);

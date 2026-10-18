@@ -397,6 +397,7 @@ const FAKE_READ_TAGS = {
   blocked: false,
   risk: false,
   selfHarmSignal: false,
+  minorSignal: false,
   needsHisFacts: false,
   identityQuestion: false,
   hisStatedFacts: [],

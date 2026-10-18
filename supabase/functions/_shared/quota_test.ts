@@ -130,18 +130,18 @@ Deno.test("tierRank is strictly ordered free < starter < essential", () => {
 // ---------------------------------------------------------------------------
 
 Deno.test("resolveLimits returns matching tier limits", () => {
-  assertEquals(resolveLimits("free"), { monthly: 30, daily: 15 });
+  assertEquals(resolveLimits("free"), { monthly: 50, daily: 20 });
   assertEquals(resolveLimits("starter"), { monthly: 300, daily: 50 });
   assertEquals(resolveLimits("essential"), { monthly: 800, daily: 120 });
 });
 
 Deno.test("resolveLimits falls back to free for unknown tier", () => {
-  assertEquals(resolveLimits("mystery_tier"), { monthly: 30, daily: 15 });
+  assertEquals(resolveLimits("mystery_tier"), { monthly: 50, daily: 20 });
 });
 
 Deno.test("resolveLimits falls back to free for null / undefined tier", () => {
-  assertEquals(resolveLimits(null), { monthly: 30, daily: 15 });
-  assertEquals(resolveLimits(undefined), { monthly: 30, daily: 15 });
+  assertEquals(resolveLimits(null), { monthly: 50, daily: 20 });
+  assertEquals(resolveLimits(undefined), { monthly: 50, daily: 20 });
 });
 
 // ---------------------------------------------------------------------------
@@ -436,12 +436,12 @@ Deno.test("parseRevenueCatSubscriber picks highest active tier across entitlemen
 
 Deno.test("TIER_MONTHLY_LIMITS / TIER_DAILY_LIMITS pricing-final.md values", () => {
   assertObjectMatch(TIER_MONTHLY_LIMITS, {
-    free: 30,
+    free: 50,
     starter: 300,
     essential: 800,
   });
   assertObjectMatch(TIER_DAILY_LIMITS, {
-    free: 15,
+    free: 20,
     starter: 50,
     essential: 120,
   });

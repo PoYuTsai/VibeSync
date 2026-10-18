@@ -53,6 +53,29 @@ void main() {
     expect(usage.dailyLimit, essentialLimits.daily);
   });
 
+  test('舊版 App 存的免費上限 30／15：更新後照現在的方案表 50／20，已用量照舊', () {
+    // 免費 30／15 → 50／20（Eric 2026-10-18）：方案還在載入時，分析確認框用的是這份本機
+    // 快照；存著的舊上限不能把還有額度的人擋掉。先讀一次，讓今日與本月的重置時間就位。
+    UsageService().getLocalUsage();
+    UsageService.syncSubscriptionSnapshot(
+      tier: SubscriptionTierHelper.free,
+      monthlyLimit: 30,
+      dailyLimit: 15,
+      monthlyUsed: 30,
+      dailyUsed: 15,
+    );
+
+    final usage = UsageService().getLocalUsage();
+
+    expect(usage.tier, SubscriptionTierHelper.free);
+    expect(usage.monthlyLimit, 50);
+    expect(usage.dailyLimit, 20);
+    expect(usage.monthlyUsed, 30);
+    expect(usage.dailyUsed, 15);
+    expect(usage.monthlyRemaining, 20);
+    expect(usage.dailyRemaining, 5);
+  });
+
   test('does not restore paid snapshot after account changes', () {
     final starterLimits =
         SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.starter);

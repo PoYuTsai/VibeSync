@@ -74,10 +74,12 @@ import '../screens/partner_analysis_records_screen.dart';
 import '../widgets/analysis_platform_picker.dart';
 import '../widgets/app_update_required_dialog.dart';
 import '../widgets/draft_polish_sheet.dart';
+import '../widgets/his_last_message_sheet.dart';
 import '../widgets/reply_refine_sheet.dart';
 import '../widgets/reply_style_card.dart';
 import '../widgets/screenshot_recognition_dialog.dart';
 import '../widgets/analysis_usage_summary_line.dart';
+import '../helpers/analysis_feedback_payload.dart';
 import '../helpers/analysis_progress_stage_copy.dart';
 import '../sections/analysis_banners_section.dart';
 import '../sections/analysis_error_card.dart';
@@ -171,6 +173,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   static const _subscriptionSyncTimeout = Duration(seconds: 20);
   bool get _showTelemetryDiagnostics => kDebugMode;
   bool _isAnalyzing = false;
+
+  /// 開始分析這一段的鎖（主審 r1 P1）：從按下到 [_isAnalyzing] 設好之前有好幾段
+  /// 等待（紀錄修復、最後一則提示、組請求、確認框、同意框），額度夠時確認框又會
+  /// 跳過，連點兩下可能各開一次、各扣一次。只鎖開始這一段：[_isAnalyzing] 一設好
+  /// 就放掉，之後由它擋；提早結束或出錯也一定放掉。
+  Object? _analysisStartLock;
   bool _isRefreshingPremiumReplies = false;
   int? _enthusiasmScore;
   Map<String, int>? _dimensionScores;
@@ -2321,13 +2329,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 分析鈕旁那一行（Eric 2026-10-18）：跟按下去時同一份請求算（有歷史摘要時只送
+  /// 最近幾輪，主審 r1 P2）。null＝按下去會跳確認框。
+  /// 在 build 裡算：只用已訂閱的方案狀態，不讀本機用量；方案還在載入就不寫。
+  AnalysisQuotaLine? _analysisQuotaLine(
+    Conversation conversation,
+    SubscriptionState subscription,
+  ) {
+    if (subscription.isLoading) return null;
+    final preparer = ref.read(analysisRunPreparerProvider);
+    final gate = preparer.gate(conversation: conversation);
+    if (gate.messagesForAnalysis == null) return null;
+    final preview = MessageCalculator.previewAnalysisRequest(
+      preparer.previewRequestMessages(conversation: conversation, gate: gate),
+      previousAnalyzedCharCount: conversation.lastAnalyzedCharCount ?? 0,
+    );
+    return AnalysisQuotaLine.of(
+      preview,
+      monthlyRemaining: subscription.monthlyRemaining,
+      dailyRemaining: subscription.dailyRemaining,
+    );
+  }
+
   /// ADR #19 r3 分析前確認流程。
   ///
   /// 順序（定案 #4）：算出本次計費字數/則數 → 4001+ 先擋（請分批，不送出）
   /// → 額度檢查（preview dialog 內建，不足時無法確認、給升級 CTA）→
   /// >2000 確認框（同一 dialog 的 overcharge 變體，顯示精確 20 則）。
+  /// [shownQuotaLine]：按鈕旁那一行；用實際請求與用量重算出來的跟它完全一樣才不跳框
+  ///（Eric 2026-10-18；主審 r1 P2：多算少算都照舊跳框）。沒有那一行的入口（重新
+  /// 分析、錯誤重試）照舊跳框。
   Future<({bool confirmed, OverchargeConfirmationPayload? overcharge})>
-      _confirmAnalysisPreview(List<Message> requestMessages) async {
+      _confirmAnalysisPreview(
+    List<Message> requestMessages, {
+    AnalysisQuotaLine? shownQuotaLine,
+  }) async {
     if (!mounted) {
       return (confirmed: false, overcharge: null);
     }
@@ -2350,10 +2386,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return (confirmed: false, overcharge: null);
     }
 
+    final usage = _buildPreviewUsageData();
+    final line = AnalysisQuotaLine.of(
+      preview,
+      monthlyRemaining: usage.monthlyRemaining,
+      dailyRemaining: usage.dailyRemaining,
+    );
+    if (line != null && line == shownQuotaLine) {
+      return (confirmed: true, overcharge: null);
+    }
+
     final confirmed = await showAnalysisPreviewDialog(
       context: context,
       preview: preview,
-      usage: _buildPreviewUsageData(),
+      usage: usage,
       onUpgrade: () {
         Navigator.of(context, rootNavigator: true).pop(false);
         _showPaywall(context);
@@ -2724,6 +2770,39 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     bool waitForCompletion = false,
     int? analysisMessageLimit,
     bool allowPendingOutgoingRefresh = false,
+    AnalysisQuotaLine? shownQuotaLine,
+  }) async {
+    // 第一個等待之前同步拿鎖：已經在開始或已經在分析就不再開一次。
+    if (_analysisStartLock != null || _isAnalyzing) return;
+    final lock = _analysisStartLock = Object();
+    void release() {
+      // 只放自己這一把：要等整個串流的那次（升級後重新整理）結束時，可能已經有
+      // 下一次在開始了。
+      if (identical(_analysisStartLock, lock)) _analysisStartLock = null;
+    }
+
+    try {
+      await _startAnalysisRun(
+        skipPreview: skipPreview,
+        waitForCompletion: waitForCompletion,
+        analysisMessageLimit: analysisMessageLimit,
+        allowPendingOutgoingRefresh: allowPendingOutgoingRefresh,
+        shownQuotaLine: shownQuotaLine,
+        onStarted: release,
+      );
+    } finally {
+      release();
+    }
+  }
+
+  /// [_runAnalysis] 拿到開始鎖之後的流程；[onStarted] 在 [_isAnalyzing] 設好時呼叫。
+  Future<void> _startAnalysisRun({
+    required bool skipPreview,
+    required bool waitForCompletion,
+    required int? analysisMessageLimit,
+    required bool allowPendingOutgoingRefresh,
+    required AnalysisQuotaLine? shownQuotaLine,
+    required VoidCallback onStarted,
   }) async {
     final pendingRecordRepair = _persistence.recordRepairFuture;
     if (pendingRecordRepair != null) {
@@ -2815,6 +2894,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
+    // 最後一則是他傳的（Eric 2026-10-18）：v3 多半判先別回、扣 1 則，開始前先問；
+    // 「先不要」就什麼都不送、不扣。升級後的重新整理（skipPreview）不問。
+    final analysisMessages = runGate.messagesForAnalysis;
+    if (!skipPreview &&
+        analysisMessages != null &&
+        analysisMessages.isNotEmpty &&
+        analysisMessages.last.isFromMe) {
+      final proceed = await showHisLastMessageSheet(context);
+      if (!proceed || !mounted) return;
+    }
+
     try {
       final preparation = await preparer.assemble(
         conversation: conversation,
@@ -2834,6 +2924,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       } else {
         previewDecision = await _confirmAnalysisPreview(
           preparation.requestMessages,
+          shownQuotaLine: shownQuotaLine,
         );
       }
       if (!previewDecision.confirmed || !mounted) {
@@ -2860,6 +2951,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         _v3Snapped = false;
         _v3Versions.clear();
       });
+      onStarted();
 
       // Fire-and-forget（waitForCompletion 之外）。notifier 快取 payload 供
       // retryStream 並跨畫面導航存活；ref.listen + initState hydration 把
@@ -3280,6 +3372,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final restored = await _replyIteration.restoreRefineDraft(
       ownerUserId: ownerUserId,
       originText: origin,
+      guideV3Card: guideV3Card,
     );
     if (!mounted) return;
 
@@ -3440,7 +3533,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (guideV3 != null) {
       final read = guideV3.read;
       buffer.writeln('--- AI 分析結果 ---');
-      buffer.writeln(guideV3DecisionTitle(read.decision));
+      buffer.writeln(guideV3ReadTitle(read));
       if (guideV3.isCare) {
         buffer.writeln(read.careMessage ?? '');
       } else {
@@ -3574,7 +3667,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         'submit-feedback',
         body: {
           'rating': rating,
-          'category': _feedbackCategory,
+          'category': _v3Result != null
+              ? guideV3FeedbackStoredCategory(_feedbackCategory)
+              : _feedbackCategory,
           'comment': _feedbackCommentController.text.trim().isEmpty
               ? null
               : _feedbackCommentController.text.trim(),
@@ -3830,12 +3925,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     final guideV3 = _v3Result;
     if (guideV3 != null) {
-      payload['guideV3'] = {
-        'guideVersion': guideV3.read.guideVersion,
-        'decision': guideV3.read.decision.wire,
-        if (guideV3.read.light != null) 'light': guideV3.read.light!.wire,
-        'cardTasks': [for (final card in guideV3.cards) card.task.wire],
-      };
+      // 帶伺服器 runId：負評對得回是哪一次、哪一組卡（Eric 2026-10-18）。
+      payload['guideV3'] = guideV3FeedbackContext(
+        guideV3,
+        runId: _v3RunId,
+        category: _feedbackCategory,
+      );
     }
 
     if (_enthusiasmScore != null) {
@@ -3898,18 +3993,22 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   void _copyGuideV3Card(GuideV3Card card, String text, String toast) {
     Clipboard.setData(ClipboardData(text: text));
+    final key = _guideV3EditKey(card);
+    // 兩則一組的卡一則一則複製（Eric 2026-10-18）：成效紀錄一張卡只記一次（事件
+    // id 照 runId:slot，第二則是 no-op），記的是整張卡現在的字，不是先複製的那則。
+    final cardText = _v3Versions.displayed(key, card.messages).join('\n');
     // 再調過的卡（之後自己填空也算）記成那一輪微調的獨立事件，不落回原卡。
-    final refined = _v3Versions.refinedFor(_guideV3EditKey(card));
+    final refined = _v3Versions.refinedFor(key);
     unawaited(
       refined != null
           ? _recordRefineCopy(
               originCardKey: _guideV3CardKey(card),
               requestId: refined.requestId,
-              copiedText: text,
+              copiedText: cardText,
             )
           : _recordAnalysisCopy(
               cardKey: _guideV3CardKey(card),
-              copiedText: text,
+              copiedText: cardText,
             ),
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -3920,31 +4019,29 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
-  /// 填空／改成自己的說法（從卡上現在顯示的那一份開始）；改好就直接複製改好的版本。
-  Future<void> _editGuideV3Card(GuideV3Card card) async {
+  /// 填空／改成自己的說法（從卡上現在顯示的那一份開始）。存好回傳每一則，複製哪
+  /// 一則由卡片決定（兩則以上從第 1 則開始）。
+  Future<List<String>?> _editGuideV3Card(GuideV3Card card) async {
     final key = _guideV3EditKey(card);
-    final edited = await showGuideV3EditSheet(
-      context,
-      messages: _v3Versions.displayed(key, card.messages),
-    );
-    if (edited == null || !mounted) return;
-    setState(() => _v3Versions.saveEdit(key, edited));
-    AppHaptics.light();
-    _copyGuideV3Card(
-      card,
-      edited.join('\n'),
-      edited.length == 1 ? '已複製這句' : '已複製這組訊息',
-    );
+    final shown = _v3Versions.displayed(key, card.messages);
+    final edited = await showGuideV3EditSheet(context, messages: shown);
+    if (edited == null || !mounted) return null;
+    // 沒改字就直接複製：不標「已改成你的」，編的細節提醒照留。
+    if (guideV3EditChanged(shown, edited)) {
+      setState(() => _v3Versions.saveEdit(key, edited));
+    }
+    return edited;
   }
 
   /// v3 任務卡的「再調一下」（Eric 2026-10-18）：沿用 [_refineReply] 的面板、同意書、
   /// 計費與冪等，帶卡片規格讓伺服器保住任務、跑出卡的檢查；幾則照舊是幾則。選定的
-  /// 版本不直接進剪貼簿：先存成這張卡的再調版本（編的細節提醒照留），再照卡片的
-  /// 複製規則走（還有「＿」就先填）。
-  Future<void> _refineGuideV3Card(GuideV3Card card) async {
+  /// 版本不直接進剪貼簿：先存成這張卡的再調版本（編的細節提醒照留），回傳給卡片
+  /// 照複製規則走（還有「＿」就先填）。
+  Future<List<String>?> _refineGuideV3Card(GuideV3Card card) async {
     final spec = card.refineSpec;
-    if (spec == null) return;
+    if (spec == null) return null;
     final key = _guideV3EditKey(card);
+    List<String>? adopted;
     await _refineReply(
       originText: _v3Versions.displayed(key, card.messages).join('\n'),
       originCardKey: _guideV3CardKey(card),
@@ -3957,25 +4054,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         );
         if (version.messages.isEmpty || !mounted) return;
         setState(() => _v3Versions.adoptRefined(key, version));
-        await _copyGuideV3CardAsShown(card);
+        adopted = version.messages;
       },
     );
-  }
-
-  /// 照卡片的複製規則複製卡上現在顯示的那一份：還有「＿」就先開填空，填好才複製。
-  Future<void> _copyGuideV3CardAsShown(GuideV3Card card) async {
-    final messages =
-        _v3Versions.displayed(_guideV3EditKey(card), card.messages);
-    if (messages.any(guideV3TextHasBlank)) {
-      await _editGuideV3Card(card);
-      return;
-    }
-    AppHaptics.light();
-    _copyGuideV3Card(
-      card,
-      messages.join('\n'),
-      messages.length == 1 ? '已複製這句' : '已複製這組訊息',
-    );
+    return adopted;
   }
 
   Future<void> _recordAnalysisCopy({
@@ -4164,6 +4246,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         isScreenshotOnlyEmptyState && analysisFragmentMessages.isEmpty;
     final showStreamInterruptedAction =
         !_isAnalyzing && !_hasAnalysisResult && _streamErrorMessage != null;
+    // 額度夠的一般長度：圓鈕下寫這次會用幾則，按下去不再跳確認框。
+    final quotaLine = showFloatingAnalysisAction
+        ? _analysisQuotaLine(conversation, subscription)
+        : null;
 
     return BrandScaffold(
       // body 自帶 SafeArea（見下方），故關掉鷹架的外層 SafeArea 避免雙層巢套。
@@ -4173,10 +4259,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         showStartAction: showFloatingAnalysisAction,
         isAnalyzing: _isAnalyzing,
         analysisCompleted: _hasAnalysisResult,
-        onStart: (_isAnalyzing || _isRecognizing) ? null : _runAnalysis,
+        onStart: (_isAnalyzing || _isRecognizing)
+            ? null
+            : () => unawaited(_runAnalysis(shownQuotaLine: quotaLine)),
         onFollowProgress: _jumpToCurrentAnalysis,
         isFollowing: _followLiveAnalysis,
         streamInterrupted: showStreamInterruptedAction,
+        quotaLine: quotaLine?.text,
       ),
       floatingActionButtonLocation: showFloatingAnalysisAction
           ? const AnalysisSideCenterFabLocation()
@@ -4499,14 +4588,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               recovered: _v3Result?.recovered ?? false,
                               editedMessagesFor: _guideV3EditedFor,
                               onCopy: _copyGuideV3Card,
-                              onEdit: (card) =>
-                                  unawaited(_editGuideV3Card(card)),
-                              // 再調只給最終結果（串流中、分析紀錄都不給）。
+                              onEdit: _editGuideV3Card,
+                              // 再調只給最終結果（串流中、分析紀錄都不給），而且要
+                              // kGuideV3CardRefineEnabled 打開（Eric 2026-10-18 停損，
+                              // 今天先隱藏入口）。
                               refinedMessagesFor: _guideV3RefinedFor,
-                              onRefine: _v3Result == null
-                                  ? null
-                                  : (card) =>
-                                      unawaited(_refineGuideV3Card(card)),
+                              onRefine:
+                                  kGuideV3CardRefineEnabled && _v3Result != null
+                                      ? _refineGuideV3Card
+                                      : null,
                               onUpgrade: () => unawaited(_showPaywall(context)),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),
@@ -4663,8 +4753,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // 草稿潤飾：獨立面板入口（2026-08-16 Bruce 回饋，
                           // 從收合卡升級成整頁式）。判斷/策略仍交給 Coach 1:1。
+                          // v3 只在出卡與收尾給；停不給，先別回換成一行小字導去
+                          // 問教練（Eric 2026-10-18，見 offersDraftPolish）。
                           if (_hasAnalysisResult &&
-                              !(_v3Result?.isCare ?? false)) ...[
+                              (_v3Result?.offersDraftPolish ?? true)) ...[
                             const SizedBox(height: 24),
                             DraftPolishEntryCard(
                               onOpen: _openDraftPolishSheet,
@@ -4673,6 +4765,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 label: '潤飾草稿',
                               ),
                             ),
+                          ] else if (_hasAnalysisResult &&
+                              _v3Result?.decision == GuideV3Decision.hold) ...[
+                            const SizedBox(height: 12),
+                            GuideV3HoldCoachLink(onTap: _openCoachQuestion),
                           ],
 
                           // 一致性提醒
@@ -4687,6 +4783,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                               !(_v3Result?.isCare ?? false)) ...[
                             const SizedBox(height: 24),
                             AnalysisFeedbackSection(
+                              guideV3: _v3Result != null,
                               submitted: _feedbackSubmitted,
                               showForm: _showFeedbackForm,
                               isSubmitting: _isSubmittingFeedback,

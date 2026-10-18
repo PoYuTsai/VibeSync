@@ -11,6 +11,22 @@ const guideV3BlankMark = '＿';
 
 bool guideV3TextHasBlank(String text) => text.contains(guideV3BlankMark);
 
+/// 一則裡有幾段空格（連著的「＿」算一段；跟伺服器 `refine_card.ts` 同一套算法）。
+int guideV3BlankRuns(String text) =>
+    RegExp('$guideV3BlankMark+').allMatches(text).length;
+
+/// 「再調一下」的結果有沒有照則留住空格：原稿有空格時，則數要一樣、每一則的空格段數
+/// 也要一樣（伺服器 `finalizeRefinedCard` 的同一條規則；還沒升版的 Edge 不查，App 這裡
+/// 再擋一次，免得編出來的身分資料不經填空就被複製走；主審第 1 輪 P2-3／P2-5）。
+bool guideV3RefineKeepsBlanks(List<String> before, List<String> after) {
+  if (!before.any(guideV3TextHasBlank)) return true;
+  if (before.length != after.length) return false;
+  for (var i = 0; i < before.length; i++) {
+    if (guideV3BlankRuns(before[i]) != guideV3BlankRuns(after[i])) return false;
+  }
+  return true;
+}
+
 /// 卡片任務（伺服器 `TASK_CODE`）。標籤直接給用戶看（設計文件第 5 節）。
 enum GuideV3Task {
   accept('accept', '接住'),
@@ -54,6 +70,22 @@ enum GuideV3Decision {
   /// 會出卡的決定；其餘只有判讀（關心只有固定文案）。
   bool get hasCards =>
       this == GuideV3Decision.send || this == GuideV3Decision.close;
+}
+
+/// 固定訊息（care）是哪一種（伺服器 `careKind`，Eric 2026-10-18 加未成年）：自傷關心，
+/// 或涉及未成年。舊快照沒有這欄，當成自傷關心。
+enum GuideV3CareKind {
+  selfHarm('self_harm'),
+  minor('minor');
+
+  const GuideV3CareKind(this.wire);
+
+  final String wire;
+
+  static GuideV3CareKind fromWire(Object? value) =>
+      value == GuideV3CareKind.minor.wire
+          ? GuideV3CareKind.minor
+          : GuideV3CareKind.selfHarm;
 }
 
 /// 局面燈號（讀局面的 light）。
@@ -110,6 +142,7 @@ class GuideV3Read {
     required this.judgment,
     this.waitFor,
     this.careMessage,
+    this.careKind,
     this.plannedCards = const [],
   });
 
@@ -125,8 +158,11 @@ class GuideV3Read {
   /// 先別回時「要等她做什麼」。
   final String? waitFor;
 
-  /// 自傷關心的固定文案（伺服器 `CARE_MESSAGE`）。
+  /// 固定訊息的文案（伺服器 `CARE_MESSAGE` 或 `MINOR_MESSAGE`）。
   final String? careMessage;
+
+  /// 固定訊息的種類；不是 care 就是 null。
+  final GuideV3CareKind? careKind;
   final List<GuideV3PlannedCard> plannedCards;
 
   List<GuideV3PlannedCard> get lockedCards =>
@@ -164,6 +200,9 @@ class GuideV3Read {
       waitFor: decision == GuideV3Decision.hold ? text(json['waitFor']) : null,
       careMessage:
           decision == GuideV3Decision.care ? text(json['careMessage']) : null,
+      careKind: decision == GuideV3Decision.care
+          ? GuideV3CareKind.fromWire(json['careKind'])
+          : null,
       plannedCards: List.unmodifiable(planned),
     );
   }
@@ -308,7 +347,13 @@ class GuideV3Result {
     return raw.map((key, value) => MapEntry(key.toString(), value));
   }
 
-  /// 自傷關心不扣費（伺服器 chargeQuota=false），存檔不推進字數基準。
+  /// 結果頁給不給「我已有草稿，幫我修自然」：只有出卡與收尾給（Eric 2026-10-18）。潤飾會
+  /// 保留草稿想說的事、只把壓力調低，停（她拒絕或封鎖）時等於幫他繼續施壓；先別回改成
+  /// 導去問教練；固定訊息本來就不給。
+  bool get offersDraftPolish => read.decision.hasCards;
+
+  /// 固定訊息（自傷關心、涉及未成年）不扣費（伺服器 chargeQuota=false），存檔不推進字數
+  /// 基準；畫面不給問教練、潤飾與回饋。
   bool get isCare => read.decision == GuideV3Decision.care;
 
   static GuideV3Result? fromJson(Map<String, dynamic> json) {

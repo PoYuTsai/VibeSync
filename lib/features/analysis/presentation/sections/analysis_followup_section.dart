@@ -72,6 +72,34 @@ class DraftPolishEntryCard extends StatelessWidget {
   }
 }
 
+/// v3 先別回的出口（Eric 2026-10-18）：取代潤飾入口的一行小字連結，導去問教練。
+/// 潤飾只降壓、會保留草稿想說的事，先別回時不給；真的還想回，讓教練看過整段再說。
+class GuideV3HoldCoachLink extends StatelessWidget {
+  const GuideV3HoldCoachLink({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        key: const ValueKey('guide-v3-hold-coach-link'),
+        onPressed: AppHaptics.onPress(onTap),
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.onBackgroundSecondary,
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          textStyle: AppTypography.bodySmall.copyWith(
+            decoration: TextDecoration.underline,
+          ),
+        ),
+        child: const Text('還是想回？先問教練'),
+      ),
+    );
+  }
+}
+
 /// 對話延續輸入區（分析完成後的底部動作列）：問教練直達 Sydney 視窗、
 /// 分析新片段另開獨立片段。可見性（分析中/未完成隱藏）由 screen 判斷。
 class ConversationContinuationBar extends StatelessWidget {

@@ -136,15 +136,7 @@ const TRACE_ENUM_TAGS: ReadonlySet<string> = new Set([
 ]);
 const ENTRY_ID = /^B\d{2}$/;
 
-/// 帶了上一輪的那次，存進資料庫的 trace 不放任何模型寫的字（主審第 1 輪 P1）：模型可能把
-/// 上一輪的原句抄進讀局面的自由文字欄位（他說過的事要逐字摘錄），或抄進卡片。標記只留
-/// 旗標、數字、固定選項與條目編號，自由文字改成筆數或字數；卡片原文只留第幾張與則數。
-/// 給用戶看的判讀、要等什麼與送出的卡是產品輸出，照存在結果裡，不在這裡處理。用白名單：
-/// 之後新增的字串欄位預設不進 trace。
-export function traceWithoutText(
-  trace: GuideV3Trace,
-  tags: ReadTags,
-): GuideV3Trace {
+function tagsWithoutText(tags: ReadTags): Record<string, unknown> {
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(tags)) {
     if (typeof value === "boolean" || typeof value === "number") {
@@ -154,18 +146,31 @@ export function traceWithoutText(
     }
   }
   return {
+    ...kept,
+    herTurnsPerfunctory: tags.herTurnsPerfunctory.map((t) => ({
+      turn: t.turn,
+      perfunctory: t.perfunctory,
+    })),
+    matchedEntries: tags.matchedEntries.filter((id) => ENTRY_ID.test(id)),
+    hisStatedFactsCount: tags.hisStatedFacts.length,
+    readForUserChars: tags.readForUser.length,
+    waitForChars: tags.waitFor.length,
+  };
+}
+
+/// 帶了上一輪的那次，存進資料庫的 trace 不放任何模型寫的字（主審第 1 輪 P1）：模型可能把
+/// 上一輪的原句抄進讀局面的自由文字欄位（他說過的事要逐字摘錄），或抄進卡片。標記只留
+/// 旗標、數字、固定選項與條目編號，自由文字改成筆數或字數；卡片原文只留第幾張與則數。
+/// 給用戶看的判讀、要等什麼與送出的卡是產品輸出，照存在結果裡，不在這裡處理。用白名單：
+/// 之後新增的字串欄位預設不進 trace。
+export function traceWithoutText(
+  trace: GuideV3Trace,
+  tags: ReadTags | null,
+): GuideV3Trace {
+  return {
     ...trace,
-    tags: {
-      ...kept,
-      herTurnsPerfunctory: tags.herTurnsPerfunctory.map((t) => ({
-        turn: t.turn,
-        perfunctory: t.perfunctory,
-      })),
-      matchedEntries: tags.matchedEntries.filter((id) => ENTRY_ID.test(id)),
-      hisStatedFactsCount: tags.hisStatedFacts.length,
-      readForUserChars: tags.readForUser.length,
-      waitForChars: tags.waitFor.length,
-    },
+    // 讀局面失敗時沒有標記（main 的安全後援：關鍵字直接給關心）。
+    tags: tags ? tagsWithoutText(tags) : null,
     rawMessages: trace.rawMessages.map((raw) => ({
       slot: raw.slot,
       messageCount: "messages" in raw ? raw.messages.length : raw.messageCount,

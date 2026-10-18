@@ -94,7 +94,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterMonthlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆；免費看前 2 張',
           '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
@@ -109,7 +109,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.starterQuarterlyStoreProduct,
         highlights: [
           '每月 ${starterLimits.monthly} 則 / 每日 ${starterLimits.daily} 則',
-          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆；免費看前 2 張',
           '互動電子書 4 冊＋聊天測驗全關卡',
         ],
       ),
@@ -124,7 +124,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialMonthlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆；免費看前 2 張',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -139,7 +139,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         storeProduct: subscription.essentialQuarterlyStoreProduct,
         highlights: [
           '每月 ${essentialLimits.monthly} 則 / 每日 ${essentialLimits.daily} 則',
-          '每次 3–5 張回覆，依局面搭配；免費看前 2 張',
+          '該回的時候給你 3–5 張回覆；免費看前 2 張',
           '《成為獎賞》三冊專屬電子書，全 7 冊解鎖',
         ],
       ),
@@ -587,9 +587,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 12),
           _buildComparisonHeader(),
           _buildComparisonRow('適合誰', '先試手感', '穩定練習', '深度打磨'),
-          // 對話分析 v3（Eric 2026-10-17）：伺服器照局面排 3–5 張回覆卡，免費
-          // 只寫只送前 2 張（routing.ts 的 GUIDE_V3_FREE_CARD_LIMIT）。
-          _buildComparisonRow('每次回覆卡', '前 2 張', '全部 3–5 張', '全部 3–5 張'),
+          // 對話分析 v3（Eric 2026-10-17）：伺服器照局面排卡，免費只寫只送前 2 張
+          //（routing.ts 的 GUIDE_V3_FREE_CARD_LIMIT）。不寫「每次」：收尾只有 1 張、
+          // 先別回和停沒有卡（Eric 2026-10-18）。
+          _buildComparisonRow('回覆卡', '前 2 張', '全部', '全部'),
           // 鏡像 server 真相源 practice-chat/draw_decision.ts：free=0（只剩
           // 起步清單一次性贈抽）；付費數字吃 AppConstants，改額度不用改文案。
           _buildComparisonRow(

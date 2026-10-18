@@ -53,6 +53,42 @@ void main() {
   });
 
   group('FloatingAnalysisActionButton', () {
+    testWidgets('額度那一行（Eric 2026-10-18）：有給才顯示在圓鈕下面，圓鈕照樣能按', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(_wrap(buildAnalysisFloatingOverlay(
+        showStartAction: true,
+        isAnalyzing: false,
+        analysisCompleted: false,
+        onStart: () => taps++,
+        onFollowProgress: () {},
+        quotaLine: '這次會用 3 則，剩 12 則',
+      )!));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final caption = find.byKey(FloatingAnalysisActionButton.captionKey);
+      expect(find.text('這次會用 3 則，剩 12 則'), findsOneWidget);
+      final orb =
+          tester.getRect(find.byKey(FloatingAnalysisActionButton.orbKey));
+      final line = tester.getRect(caption);
+      expect(line.top, greaterThanOrEqualTo(orb.bottom - 0.01));
+      expect(line.right, closeTo(orb.right, 0.01));
+
+      await tester.tap(find.byKey(FloatingAnalysisActionButton.buttonKey));
+      expect(taps, 1);
+      // 那一行只是說明：點擊穿過去，不擋底下的內容。
+      expect(
+        tester.hitTestOnBinding(line.center).path.any(
+              (entry) => entry.target == tester.renderObject(caption),
+            ),
+        isFalse,
+      );
+
+      await tester.pumpWidget(
+        _wrap(FloatingAnalysisActionButton(onPressed: () {})),
+      );
+      expect(find.byKey(FloatingAnalysisActionButton.captionKey), findsNothing);
+    });
+
     testWidgets('uses a labelled 62px circular action', (tester) async {
       await tester.pumpWidget(
         _wrap(FloatingAnalysisActionButton(onPressed: () {})),
