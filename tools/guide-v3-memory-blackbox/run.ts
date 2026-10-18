@@ -58,6 +58,10 @@ type Fact = {
   evidence: string;
   match: string[];
   optional?: boolean;
+  /// --fake 替身給的兩個判斷欄位；沒寫就是 her＋true（陷阱沒寫＝模型標錯的最壞情況，
+  /// 要靠出處檢查自己擋下）。
+  subject?: string;
+  own?: boolean;
 };
 type Trap = Fact & { type: string };
 type Case = {
@@ -308,9 +312,9 @@ function proposedTraps(c: Case, text: string): number {
   }
 }
 
-/// --fake 的標準答案：期望的事實（含 optional）與陷阱，各附案例寫的原句。
+/// --fake 的標準答案：期望的事實（含 optional）與陷阱，各附案例寫的原句與兩個判斷欄位。
 export function oracleAnswer(c: Case): string {
-  const out: Record<MemoryKind, { value: string; evidence: string[] }[]> = {
+  const out: Record<MemoryKind, Record<string, unknown>[]> = {
     interests: [],
     traits: [],
     notes: [],
@@ -319,6 +323,8 @@ export function oracleAnswer(c: Case): string {
     out[f.kinds?.[0] ?? "interests"].push({
       value: f.value,
       evidence: [f.evidence],
+      subject: f.subject ?? "her",
+      evidenceIsHerOwnStatement: f.own ?? true,
     });
   }
   return JSON.stringify(out);

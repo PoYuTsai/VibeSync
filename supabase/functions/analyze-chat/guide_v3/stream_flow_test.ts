@@ -869,8 +869,14 @@ const memoryOut = (over: Record<string, unknown> = {}) => ({
   text: JSON.stringify({ interests: [], traits: [], notes: [], ...over }),
   model: "claude-haiku-5-5",
 });
-const hiking = () =>
-  memoryOut({ interests: [{ value: "爬山", evidence: [HIKING] }] });
+/// 模型標成她自己陳述的項目（subject her、evidenceIsHerOwnStatement true）。
+const own = (value: string, ...evidence: string[]) => ({
+  value,
+  evidence,
+  subject: "her",
+  evidenceIsHerOwnStatement: true,
+});
+const hiking = () => memoryOut({ interests: [own("爬山", HIKING)] });
 
 function trace(h: Harness): Record<string, unknown> {
   return h.done[0].guideV3Trace as Record<string, unknown>;
@@ -955,8 +961,8 @@ Deno.test("對象記憶：他說的、只在背景出現的都擋下、不帶；
     extract: () =>
       Promise.resolve(memoryOut({
         interests: [
-          { value: "爬山", evidence: [HIKING] },
-          { value: "潛水", evidence: ["- 興趣：潛水"] },
+          own("爬山", HIKING),
+          own("潛水", "- 興趣：潛水"),
         ],
       })),
     extractRequests,
@@ -988,7 +994,7 @@ Deno.test("對象記憶的出處對 App 送來的原始訊息：她引用他的�
     ],
     extract: () =>
       Promise.resolve(memoryOut({
-        interests: [{ value: "游泳", evidence: ["我每週都會去游泳"] }],
+        interests: [own("游泳", "我每週都會去游泳")],
       })),
     extractRequests,
   });
@@ -1176,8 +1182,8 @@ Deno.test("對象記憶的 trace 與 log 只有計數：沒有她的原句或候
     messages: MEMORY_CHAT,
     extract: () =>
       Promise.resolve(memoryOut({
-        interests: [{ value: "爬山", evidence: [HIKING] }],
-        notes: [{ value: "愛吃辣", evidence: ["你說的那家很辣"] }],
+        interests: [own("爬山", HIKING)],
+        notes: [own("愛吃辣", "你說的那家很辣")],
       })),
   });
   await events(await handleGuideV3Stream(h.deps));

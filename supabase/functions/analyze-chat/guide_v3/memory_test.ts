@@ -22,7 +22,17 @@ const her = (content: string, quotedReplyPreview?: string) => ({
   content,
   ...(quotedReplyPreview ? { quotedReplyPreview } : {}),
 });
-const item = (value: string, ...evidence: string[]) => ({ value, evidence });
+/// 模型標成她自己陳述的項目（subject her、evidenceIsHerOwnStatement true）。
+const item = (value: string, ...evidence: string[]) =>
+  labeled(value, "her", true, ...evidence);
+function labeled(
+  value: string,
+  subject: unknown,
+  evidenceIsHerOwnStatement: unknown,
+  ...evidence: string[]
+) {
+  return { value, evidence, subject, evidenceIsHerOwnStatement };
+}
 const output = (
   over: Partial<Record<(typeof MEMORY_KINDS)[number], unknown>> = {},
 ) => JSON.stringify({ interests: [], traits: [], notes: [], ...over });
@@ -32,6 +42,9 @@ Deno.test("提示詞：三類規則與逐字出處、外洩指令；不帶讀局
   for (const kind of MEMORY_KINDS) assert(system.includes(`- ${kind}：`), kind);
   assert(system.includes("evidence 逐字複製她自己傳的訊息"));
   assert(system.includes("「（引用：…）」裡的內容"));
+  // 兩個判斷欄位有說明：是誰的事、原句是不是她在講自己。
+  assert(system.includes("- subject：") && system.includes("her＝"));
+  assert(system.includes("- evidenceIsHerOwnStatement："));
   assert(system.includes(PROMPT_LEAK_DEFENSE_DIRECTIVE.trim()));
   assert(!system.includes(GUIDE_V3_SECTIONS.A3));
   assert(!system.includes(GUIDE_V3_SECTIONS.A4));
@@ -53,7 +66,7 @@ Deno.test("使用者訊息只有對話稿（跟讀局面同一份分輪，含引
   }
 });
 
-Deno.test("schema：三類都必填、每項 value＋evidence，沒有結構化輸出不支援的限制", () => {
+Deno.test("schema：三類都必填；每項 value、evidence、subject、evidenceIsHerOwnStatement 都必填，沒有結構化輸出不支援的限制", () => {
   assertEquals(MEMORY_SCHEMA.required, [...MEMORY_KINDS]);
   assertEquals(MEMORY_SCHEMA.additionalProperties, false);
   const props = MEMORY_SCHEMA.properties as Record<
@@ -63,8 +76,20 @@ Deno.test("schema：三類都必填、每項 value＋evidence，沒有結構化�
   assertEquals(Object.keys(props), [...MEMORY_KINDS]);
   for (const kind of MEMORY_KINDS) {
     const items = props[kind].items;
-    assertEquals(items.required, ["value", "evidence"]);
+    assertEquals(items.required, [
+      "value",
+      "evidence",
+      "subject",
+      "evidenceIsHerOwnStatement",
+    ]);
     assertEquals(items.additionalProperties, false);
+    const fields = items.properties as Record<string, Record<string, unknown>>;
+    assertEquals(Object.keys(fields), items.required);
+    assertEquals(fields.subject, {
+      type: "string",
+      enum: ["her", "him", "other"],
+    });
+    assertEquals(fields.evidenceIsHerOwnStatement, { type: "boolean" });
   }
   const unsupported = [
     "maxItems",
@@ -101,6 +126,7 @@ Deno.test("她自己的原句撐得住：留下，形狀同 v2（provenanceVersi
   assertEquals(memory.dropped, { interests: 0, traits: 0, notes: 0 });
 });
 
+// 這三個候選都標成她自己的陳述（模型標錯的最壞情況），出處檢查自己也要擋得下。
 Deno.test("他說的、只在背景出現的、貼圖：都擋下；全擋就不帶 targetProfile", () => {
   const messages = [
     me("我每個週末都會去爬山"),
@@ -186,4 +212,100 @@ Deno.test("每類只看前 5 個候選：多的算 dropped", () => {
   );
   assertEquals(memory.kept.interests, 5);
   assertEquals(memory.dropped.interests, 1);
+});
+
+// ── 主審第 2 輪：是誰的事交給模型判斷（subject、evidenceIsHerOwnStatement），程式只收 her＋true ──
+
+Deno.test("模型標成他的事、或她在問他：不要；她自己講的：留下", () => {
+  const him = partnerMemoryFrom(
+    output({
+      interests: [labeled("爬山", "him", true, "原來你每週都會去爬山")],
+    }),
+    [me("我每週都會去爬山"), her("原來你每週都會去爬山")],
+  );
+  assertEquals("targetProfile" in him, false);
+  assertEquals(him.dropped, { interests: 1, traits: 0, notes: 0 });
+  const question = partnerMemoryFrom(
+    output({
+      interests: [labeled("爬山", "her", false, "你每週都會去爬山嗎")],
+    }),
+    [her("你每週都會去爬山嗎")],
+  );
+  assertEquals("targetProfile" in question, false);
+  const own = partnerMemoryFrom(
+    output({ interests: [item("爬山", "我每週都會去爬山")] }),
+    [her("我每週都會去爬山")],
+  );
+  assertEquals(own.targetProfile?.interests, ["爬山"]);
+});
+
+Deno.test("主審第 2 輪的六個例子：照正確模型會給的欄位，該留的留、該擋的擋", () => {
+  const cases: {
+    line: string;
+    items: ReturnType<typeof labeled>[];
+    kept: string[];
+  }[] = [
+    {
+      line: "原來你每週都會去爬山",
+      items: [labeled("爬山", "him", false, "原來你每週都會去爬山")],
+      kept: [],
+    },
+    {
+      line: "那你是不是每週都會去爬山",
+      items: [labeled("爬山", "him", false, "那你是不是每週都會去爬山")],
+      kept: [],
+    },
+    {
+      line: "那你每週都會去爬山嗎，我比較喜歡看電影",
+      items: [
+        labeled("爬山", "him", false, "那你每週都會去爬山嗎，我比較喜歡看電影"),
+        item("看電影", "我比較喜歡看電影"),
+      ],
+      kept: ["看電影"],
+    },
+    {
+      line: "我每週都會去酒吧",
+      items: [item("酒吧", "我每週都會去酒吧")],
+      kept: ["酒吧"],
+    },
+    {
+      line: "我喜歡爬山呢",
+      items: [item("爬山", "我喜歡爬山呢")],
+      kept: ["爬山"],
+    },
+    {
+      line: "我每週都會去爬山，你呢？",
+      items: [item("爬山", "我每週都會去爬山，你呢？")],
+      kept: ["爬山"],
+    },
+  ];
+  for (const c of cases) {
+    const memory = partnerMemoryFrom(
+      output({ interests: c.items }),
+      [me("我週末都在戶外"), her(c.line)],
+    );
+    assertEquals(memory.targetProfile?.interests ?? [], c.kept, c.line);
+  }
+});
+
+Deno.test("欄位缺了或值不對：這一項不要", () => {
+  const line = "我每週都會去爬山";
+  const broken: Record<string, unknown>[] = [
+    { value: "爬山", evidence: [line], evidenceIsHerOwnStatement: true },
+    { value: "爬山", evidence: [line], subject: "her" },
+    labeled("爬山", "she", true, line),
+    labeled("爬山", "Her", true, line),
+    labeled("爬山", null, true, line),
+    labeled("爬山", "other", true, line),
+    labeled("爬山", "her", "true", line),
+    labeled("爬山", "her", 1, line),
+  ];
+  for (const candidate of broken) {
+    const memory = partnerMemoryFrom(
+      output({ interests: [candidate] }),
+      [her(line)],
+    );
+    assertEquals("targetProfile" in memory, false, JSON.stringify(candidate));
+    assertEquals(memory.dropped.interests, 1, JSON.stringify(candidate));
+  }
 });
