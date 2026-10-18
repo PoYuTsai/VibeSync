@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
@@ -28,6 +29,10 @@ import 'package:vibesync/features/learning/domain/dating_knowledge_links.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
@@ -145,6 +150,78 @@ Future<void> _selectScope(WidgetTester tester, Key scopeKey) async {
   // A/B 串可各自仍在等待，因此不能對持續進度動畫 pumpAndSettle。
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
+}
+
+class _SeededSubscriptionNotifier extends SubscriptionNotifier {
+  _SeededSubscriptionNotifier(SubscriptionState seed) {
+    state = seed;
+  }
+}
+
+/// 有 /paywall 路由時依序記每次帶的入口（開了幾次＝長度）。
+final _paywallExtras = <Object?>[];
+
+/// 額度 429 走真的 CoachChatApiService，伺服器回 [quotaBody]；方案是 [tier]。
+Future<void> _pumpQuota(
+  WidgetTester tester, {
+  required String tier,
+  required Map<String, dynamic> quotaBody,
+}) async {
+  SharedPreferences.setMockInitialValues(
+    {AiDataSharingConsent.acceptedKeyForTesting: true},
+  );
+  _paywallExtras.clear();
+  await tester.binding.setSurfaceSize(const Size(430, 1600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(
+            invoker: (String _, {required Map<String, dynamic> body}) async =>
+                CoachChatInvokeResponse(status: 429, data: quotaBody),
+          ),
+        ),
+        // 風格設定預設讀 Hive（測試裡等不到），這裡直接回沒有風格。
+        coachChatStyleContextResolverProvider.overrideWithValue(({
+          required String? partnerId,
+          required bool includePartnerOverride,
+        }) async =>
+            null),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(MemoryCoachingOutcomeRepository()),
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        ..._partnerOverrides(const [], const {}),
+        subscriptionProvider.overrideWith(
+          (ref) => _SeededSubscriptionNotifier(
+            SubscriptionState(tier: tier, monthlyLimit: 800, dailyLimit: 30),
+          ),
+        ),
+      ],
+      child: MaterialApp.router(
+        routerConfig: GoRouter(routes: [
+          GoRoute(path: '/', builder: (_, __) => const GlobalCoachScreen()),
+          GoRoute(
+            path: '/paywall',
+            builder: (context, state) {
+              _paywallExtras.add(state.extra);
+              return Scaffold(
+                body: Center(
+                  child: TextButton(
+                    onPressed: () => context.pop(),
+                    child: const Text('關閉付費牆'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ]),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 CoachSurface _surface(WidgetTester tester) =>
@@ -547,4 +624,100 @@ void main() {
       expect(find.text('正在送出問題'), findsNothing);
     }
   });
+
+  // 額度說法照方案（Eric 2026-10-18）：Essential 已經是最高方案，不叫他升級，只說
+  // 什麼時候恢復；Starter 照舊說升級（只會升到 Essential），每日那句不再說「明天」
+  // （台灣早上 8 點才恢復）。走真的 API 服務與畫面，伺服器回額度 429。
+  Map<String, dynamic> coachQuota429({required bool monthly}) => {
+        'error': monthly ? 'Monthly limit exceeded' : 'Daily limit exceeded',
+        'message': monthly
+            ? '本月額度已用完，升級方案可取得更多分析與教練額度。'
+            : '今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'quotaNeeded': 1,
+        'used': monthly ? 800 : 30,
+        'limit': monthly ? 800 : 30,
+        'monthlyLimit': 800,
+        'dailyLimit': 30,
+      };
+
+  String textOf(WidgetTester tester, String fragment) =>
+      tester.widget<Text>(find.textContaining(fragment)).data!;
+
+  /// 問一題撞到額度：自動開一次付費牆，關掉後看額度卡。
+  Future<void> askIntoQuota(WidgetTester tester) async {
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(CoachSurface),
+        matching: find.byType(TextField),
+      ),
+      '她已讀我兩天，我該追問嗎？',
+    );
+    // 送出鈕要等下一幀才會因為有字而亮起來。
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pumpAndSettle();
+    expect(_paywallExtras, hasLength(1));
+    await tester.tap(find.text('關閉付費牆'));
+    await tester.pumpAndSettle();
+  }
+
+  for (final monthly in [false, true]) {
+    final period = monthly ? '本月' : '今日';
+    final resetLine = monthly ? kMonthlyQuotaResetLine : kDailyQuotaResetLine;
+    final usage = monthly ? '（800/800）' : '（30/30）';
+    // 這題要 1 則、剩 0 則：付費頁照每月或每日、說「用完了」。
+    final entry = PaywallEntry.forQuota(isMonthly: monthly, remaining: 0);
+
+    testWidgets('$period額度用完：Essential 只看到什麼時候恢復，鈕寫「查看方案」', (tester) async {
+      await _pumpQuota(
+        tester,
+        tier: SubscriptionTierHelper.essential,
+        quotaBody: coachQuota429(monthly: monthly),
+      );
+      expect(textOf(tester, '幫教練釐清最多 3 次'), isNot(contains('升級')));
+
+      await askIntoQuota(tester);
+      final message = textOf(tester, '額度已用完（');
+      expect(message, contains(usage));
+      expect(message, contains(resetLine));
+      expect(message, isNot(contains('升級')));
+      expect(message, isNot(contains('明天')));
+      expect(textOf(tester, '這是額度限制'), isNot(contains('升級')));
+      expect(find.text('查看方案'), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
+      await tester.tap(find.text('查看方案'));
+      await tester.pumpAndSettle();
+      expect(_paywallExtras, [entry, entry]);
+    });
+
+    testWidgets('$period額度用完：Starter 照舊說升級，不點名升級到 Starter', (tester) async {
+      await _pumpQuota(
+        tester,
+        tier: SubscriptionTierHelper.starter,
+        quotaBody: coachQuota429(monthly: monthly),
+      );
+      expect(
+        textOf(tester, '幫教練釐清最多 3 次'),
+        '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
+      );
+
+      await askIntoQuota(tester);
+      final message = textOf(tester, '額度已用完（');
+      expect(
+        message,
+        monthly
+            ? '本月額度已用完$usage，升級後可以繼續問教練。'
+            : '今日額度已用完$usage，$kDailyQuotaResetLine，也可以升級解鎖更多教練建議。',
+      );
+      expect(message, isNot(contains('Starter')));
+      expect(
+        textOf(tester, '這是額度限制'),
+        '這是額度限制，不是教練失敗。升級或等額度重置後再試。',
+      );
+      expect(find.text('查看升級'), findsOneWidget);
+      await tester.tap(find.text('查看升級'));
+      await tester.pumpAndSettle();
+      expect(_paywallExtras, [entry, entry]);
+    });
+  }
 }

@@ -15,6 +15,8 @@ import '../../../learning/presentation/widgets/knowledge_library_link_row.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/mindmap/mind_map_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
+import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../data/services/coach_chat_api_service.dart'
     show CoachChatAnalysisSnapshot;
 import '../../data/providers/coach_chat_providers.dart';
@@ -281,7 +283,11 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。',
+          // Essential 已經是最高方案，不說會提醒升級；用完時額度卡會寫幾點恢復
+          // （Eric 2026-10-18）。
+          canUpgradeQuota(ref.watch(subscriptionProvider).tier)
+              ? '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會提醒升級。'
+              : '幫教練釐清最多 3 次；正式建議扣 1 則，額度用完會告訴你什麼時候恢復。',
           style: AppTypography.caption.copyWith(
             color: AppColors.onBackgroundSecondary,
             height: 1.5,
@@ -530,7 +536,9 @@ class _GlobalCoachScreenState extends ConsumerState<GlobalCoachScreen> {
                   focusRequestToken: _focusToken,
                   prefillText: _prefill,
                   lifecyclePhase: _pendingPhase,
-                  onQuotaExceeded: () => context.push('/paywall'),
+                  // 付費頁照每月或每日、用完或只是不夠換大標（Eric 2026-10-18）。
+                  onQuotaExceeded: (entry) =>
+                      context.push('/paywall', extra: entry),
                 ),
               ),
             ],

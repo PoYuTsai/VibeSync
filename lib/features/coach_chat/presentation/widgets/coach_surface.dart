@@ -20,6 +20,8 @@ import '../../domain/entities/coach_chat_mode.dart';
 import '../../domain/entities/coach_scope.dart';
 import '../../domain/entities/unified_coach_result.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import 'coach_chat_progress_notice.dart';
 import '../../../../core/services/app_haptics.dart';
@@ -40,7 +42,9 @@ class CoachSurface extends ConsumerStatefulWidget {
 
   /// conversation scope 由分析頁 CTA 隨行傳入；partner/global scope 不傳。
   final CoachChatAnalysisSnapshot? analysisSnapshot;
-  final VoidCallback? onQuotaExceeded;
+
+  /// 額度用完時開付費頁，帶入口（每月或每日、用完或只是不夠；Eric 2026-10-18）。
+  final ValueChanged<PaywallEntry>? onQuotaExceeded;
   final int focusRequestToken;
 
   /// focusRequestToken 變化時一併預填進輸入框的問題（引導問句／情境 chip）。
@@ -66,32 +70,43 @@ class CoachSurface extends ConsumerStatefulWidget {
   static bool isQuotaError(Object? error) =>
       error is CoachChatQuotaExceededException;
 
+  /// 不是本月就當今日（標題、說明、付費頁入口同一個判斷）。
+  static bool _isMonthlyQuota(CoachChatQuotaExceededException error) =>
+      error.code == 'MONTHLY_LIMIT_EXCEEDED';
+
   static String failureTitleFor(Object error) {
     if (error is CoachChatQuotaExceededException) {
-      return error.code == 'MONTHLY_LIMIT_EXCEEDED' ? '本月額度已用完' : '今日額度已用完';
+      return _isMonthlyQuota(error) ? '本月額度已用完' : '今日額度已用完';
     }
     return '這題教練沒接住';
   }
 
-  static String failureSubtitleFor(Object error) {
+  /// [tier] 是目前方案：Essential 已經是最高方案，不叫他升級（Eric 2026-10-18）。
+  static String failureSubtitleFor(Object error, {required String? tier}) {
     if (error is CoachChatQuotaExceededException) {
-      return '這是額度限制，不是教練失敗。升級或等額度重置後再試。';
+      return canUpgradeQuota(tier)
+          ? '這是額度限制，不是教練失敗。升級或等額度重置後再試。'
+          : '這是額度限制，不是教練失敗。等額度恢復後再試。';
     }
     return '上一輪回覆已保留，但不是這題的新結果。';
   }
 
-  static String failureMessageFor(Object error) {
+  /// 額度用完的說法照 [tier]（Eric 2026-10-18）：免費、Starter 照舊說升級；
+  /// Essential 只說什麼時候恢復。台灣早上 8 點才恢復，凌晨用完不能說「明天」。
+  static String failureMessageFor(Object error, {required String? tier}) {
     if (error is CoachChatQuotaExceededException) {
       final usage = error.used != null && error.limit != null
           ? '（${error.used}/${error.limit}）'
           : '';
-      if (error.code == 'MONTHLY_LIMIT_EXCEEDED') {
-        return '本月額度已用完$usage，升級後可以繼續問教練。';
+      final canUpgrade = canUpgradeQuota(tier);
+      if (_isMonthlyQuota(error)) {
+        return canUpgrade
+            ? '本月額度已用完$usage，升級後可以繼續問教練。'
+            : '本月額度已用完$usage，$kMonthlyQuotaResetLine。';
       }
-      if (error.code == 'DAILY_LIMIT_EXCEEDED') {
-        return '今日額度已用完$usage，可以明天再試，或升級解鎖更多教練建議。';
-      }
-      return error.message;
+      return canUpgrade
+          ? '今日額度已用完$usage，$kDailyQuotaResetLine，也可以升級解鎖更多教練建議。'
+          : '今日額度已用完$usage，$kDailyQuotaResetLine。';
     }
     // 「未扣額度」只保證在 4xx 驗證失敗路徑（server 未走到扣費）成立；
     // generation failure 含 client 端 parse 失敗（server 已扣）、未知錯誤
@@ -110,11 +125,23 @@ class CoachSurface extends ConsumerStatefulWidget {
     return '教練暫時沒接住，請稍後再試。';
   }
 
-  static String failureActionLabelFor(Object error) {
+  /// Essential 的額度鈕只寫「查看方案」（同分析的確認框）。
+  static String failureActionLabelFor(Object error, {required String? tier}) {
     if (error is CoachChatQuotaExceededException) {
-      return '查看升級';
+      return canUpgradeQuota(tier) ? '查看升級' : '查看方案';
     }
     return '重試這題';
+  }
+
+  /// 額度用完開付費頁的入口：付費頁照每月或每日、用完或只是不夠換大標，跟分析頁
+  /// 同一套（Eric 2026-10-18）。剩幾則照伺服器回的 used／limit 算。
+  static PaywallEntry paywallEntryFor(CoachChatQuotaExceededException error) {
+    final used = error.used;
+    final limit = error.limit;
+    return PaywallEntry.forQuota(
+      isMonthly: _isMonthlyQuota(error),
+      remaining: used != null && limit != null ? limit - used : null,
+    );
   }
 
   @override
@@ -352,12 +379,15 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       if (!context.mounted) return;
       if (error is CoachChatQuotaExceededException) {
         AppHaptics.failure();
-        widget.onQuotaExceeded?.call();
+        widget.onQuotaExceeded?.call(CoachSurface.paywallEntryFor(error));
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(CoachSurface.failureMessageFor(error)),
+          content: Text(CoachSurface.failureMessageFor(
+            error,
+            tier: ref.read(subscriptionProvider).tier,
+          )),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -431,21 +461,21 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
                                   ),
                                   subtitle: CoachSurface.failureSubtitleFor(
                                     activeErrorObject,
+                                    tier: subscription.tier,
                                   ),
                                   question: _lastAskedQuestion!,
                                   message: CoachSurface.failureMessageFor(
                                     activeErrorObject,
+                                    tier: subscription.tier,
                                   ),
                                   actionLabel:
                                       CoachSurface.failureActionLabelFor(
                                     activeErrorObject,
+                                    tier: subscription.tier,
                                   ),
-                                  onRetry: CoachSurface.isQuotaError(
-                                    activeErrorObject,
-                                  )
-                                      ? (widget.onQuotaExceeded ??
-                                          _retryLastQuestion)
-                                      : _retryLastQuestion,
+                                  onRetry:
+                                      _quotaPaywallFor(activeErrorObject) ??
+                                          _retryLastQuestion,
                                 ),
                               )
                             : const SizedBox.shrink(),
@@ -749,6 +779,15 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
   void _fillSuggestedQuestion(String question) {
     _controller.text = question;
     _controller.selection = TextSelection.collapsed(offset: question.length);
+  }
+
+  /// 額度錯誤：鈕開付費頁（帶入口）；不是額度錯誤、或沒接付費頁就回 null，照舊重試。
+  VoidCallback? _quotaPaywallFor(Object error) {
+    final onQuotaExceeded = widget.onQuotaExceeded;
+    if (error is! CoachChatQuotaExceededException || onQuotaExceeded == null) {
+      return null;
+    }
+    return () => onQuotaExceeded(CoachSurface.paywallEntryFor(error));
   }
 
   Future<void> _retryLastQuestion() async {
