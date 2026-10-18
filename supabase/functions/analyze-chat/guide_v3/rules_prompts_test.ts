@@ -108,6 +108,31 @@ Deno.test("C1：他最後一則先別回；封鎖或明確拒絕就停", () => {
   );
 });
 
+Deno.test("規則先後：封鎖或明確拒絕比「他最後一則」先判，是停不是先別回", () => {
+  // 被封鎖時最常見的就是他最後一則（傳了訊息才發現被封鎖）。
+  const blockedHisLast = toTurns([
+    her("好啊"),
+    me("那週六見？"),
+    me("怎麼訊息都送不出去了"),
+  ]);
+  assertEquals(
+    decideReply(blockedHisLast, tags({ blocked: true })),
+    { kind: "stop", reason: "明確拒絕或封鎖" },
+  );
+  // 她明確拒絕後他又追問一次。
+  const refusedThenFollowUp = toTurns([
+    me("週末要不要去看展？"),
+    her("謝謝，不過我對你沒有那種感覺"),
+    me("那吃個飯就好呢？"),
+  ]);
+  assertEquals(
+    decideReply(refusedThenFollowUp, tags({ explicitRejection: true })).kind,
+    "stop",
+  );
+  // 沒有拒絕或封鎖，他最後一則照舊先別回。
+  assertEquals(decideReply(refusedThenFollowUp, tags()).kind, "hold");
+});
+
 Deno.test("C1：連續主動兩次、她兩次都敷衍才先別回；只冷一次照常回", () => {
   const turns = toTurns([
     her("今天去看展超好看"),

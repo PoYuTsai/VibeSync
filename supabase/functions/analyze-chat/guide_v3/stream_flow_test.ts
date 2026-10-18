@@ -708,6 +708,18 @@ Deno.test("停（明確拒絕）：acknowledge_and_stop、不寫卡", async () =
   assertEquals(h.calls.includes("write"), false);
 });
 
+Deno.test("封鎖、他是最後一則：判成停（不是先別回），不寫卡", async () => {
+  const h = harness({
+    messages: [...CHAT, { isFromMe: true, content: "怎麼訊息都送不出去" }],
+    readTags: tags({ blocked: true, waitFor: "等她回你" }),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].decision, "stop");
+  assertEquals("waitFor" in evs[1], false);
+  assertEquals(h.charges[0].decisionKind, "acknowledge_and_stop");
+  assertEquals(h.calls.includes("write"), false);
+});
+
 Deno.test("自傷訊號：不寫卡、不扣額度、顯示固定關心訊息", async () => {
   const h = harness({ readTags: tags({ selfHarmSignal: true }) });
   const evs = await events(await handleGuideV3Stream(h.deps));
