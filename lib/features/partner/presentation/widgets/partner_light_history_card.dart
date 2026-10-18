@@ -125,10 +125,32 @@ class PartnerLightHistoryCard extends StatelessWidget {
             showChange: fullHistory,
           ),
         ],
+        // 跟同頁「詳細特質與趨勢」的展開一樣用白字加箭頭（主題紫在深色卡上對比不夠）。
         if (collapsible)
           TextButton(
             onPressed: onToggleExpanded,
-            child: Text(expanded ? '收起' : '看全部 ${entries.length} 次'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.onBackgroundPrimary,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  expanded ? '收起' : '看全部 ${entries.length} 次',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.onBackgroundSecondary,
+                ),
+              ],
+            ),
           ),
         if (showLocked) ...[
           const SizedBox(height: 14),
