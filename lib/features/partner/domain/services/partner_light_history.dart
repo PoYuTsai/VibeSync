@@ -1,6 +1,6 @@
-/// 對象頁的燈號紀錄（Eric 2026-10-18：Starter 主打「燈號紀錄＋邀約進度」，免費只看最新
-/// 一次）。每次 v3 分析一筆、新到舊，只讀既有分析紀錄存的快照（伺服器 finalResult 的原樣）：
-/// 不開新表、不打新 API。舊紀錄沒有的欄位（邀約進度）就是 null，畫面不顯示。
+/// 對象頁的燈號紀錄（Eric 2026-10-18；10/19 起不分方案都看完整紀錄，Bruce PR #97）。每次
+/// v3 分析一筆、新到舊，只讀既有分析紀錄存的快照（伺服器 finalResult 的原樣）：不開新表、
+/// 不打新 API。舊紀錄沒有的欄位（邀約進度）就是 null，畫面不顯示。
 library;
 
 import 'dart:convert';
@@ -17,10 +17,6 @@ class PartnerLightHistoryEntry {
     this.light,
     this.inviteReadiness,
     this.previousLight,
-    this.partial = false,
-    this.recovered = false,
-    this.deliveredCards = 0,
-    this.deliverableCards = 0,
   });
 
   final String recordId;
@@ -37,22 +33,7 @@ class PartnerLightHistoryEntry {
   /// 比這筆舊、最近一筆有燈號的燈號跟這筆不一樣時才有（畫面寫「綠 → 黃」）；關心跳過不比。
   final GuideV3Light? previousLight;
 
-  /// 這一次存下來的結果完整度：伺服器標的 partial、續看重組的 recovered、送到幾張，以及這個
-  /// 方案預定幾張（不含鎖住的）。快照讀不懂時是 false／0。
-  final bool partial;
-  final bool recovered;
-  final int deliveredCards;
-  final int deliverableCards;
-
   bool get isCare => decision == GuideV3Decision.care;
-
-  /// 這次比預定的少（跟結果頁「這次比預定的少幾張」同一個判斷）：對象頁這時不推升級。
-  bool get deliveredFewer => guideV3DeliveredFewer(
-        partial: partial,
-        recovered: recovered,
-        deliveredCards: deliveredCards,
-        deliverableCards: deliverableCards,
-      );
 }
 
 /// [records] 不必排好；舊流程（v2）的紀錄不算。
@@ -91,10 +72,6 @@ List<PartnerLightHistoryEntry> buildPartnerLightHistory(
         light: lights[i],
         inviteReadiness: reads[i]?.inviteReadiness,
         previousLight: previous[i],
-        partial: results[i]?.partial ?? false,
-        recovered: results[i]?.recovered ?? false,
-        deliveredCards: results[i]?.cards.length ?? 0,
-        deliverableCards: reads[i]?.deliverableCount ?? 0,
       ),
   ]);
 }

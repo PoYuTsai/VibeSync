@@ -934,7 +934,9 @@ void main() {
       expect(find.text('綠燈'), findsOneWidget);
       expect(find.text('接住'), findsOneWidget);
       expect(find.text('推進'), findsOneWidget);
-      expect(find.text('這輪付費方案還有 1 張：帶張力'), findsOneWidget);
+      // 排卡第 3 張標 locked（伺服器改之前的免費結果）：不畫、不推升級（Eric 2026-10-19）。
+      expect(find.textContaining('付費方案還有'), findsNothing);
+      expect(find.text('帶張力'), findsNothing);
       expect(find.byKey(const ValueKey('analysis-reply-zone')), findsNothing);
       expect(find.byType(ReplyStyleCard), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
@@ -1091,7 +1093,7 @@ void main() {
       expect(find.byType(StreamingAnalysisLoader), findsNothing);
       expect(find.byKey(const ValueKey('guide-v3-pending-2')), findsOneWidget);
       expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
-      // 還在寫：鎖住的卡與升級都還不出現（Eric 2026-10-18）。
+      // 沒有鎖卡區塊與升級（免費也看全部的卡，Eric 2026-10-19）。
       expect(
         find.byKey(const ValueKey('guide-v3-locked-block')),
         findsNothing,
@@ -1248,15 +1250,16 @@ void main() {
           },
           'cards': const [],
           'partial': false,
-          // 先別回、停固定扣 1 則（伺服器 NO_SEND_MESSAGE_COUNT）。
+          // 先別回、停跟出卡一樣照字數扣（Eric 2026-10-19 照 Bruce 改回）；扣費行照伺服器
+          // 送來的則數寫，App 不自己算。
           'usage': {
-            'messagesUsed': 1,
-            'monthlyRemaining': 29,
-            'dailyRemaining': 4,
+            'messagesUsed': 3,
+            'monthlyRemaining': 27,
+            'dailyRemaining': 2,
           },
         })!;
 
-    testWidgets('先別回：沒有潤飾入口，改成一行小字「還是想回？先問教練」，點了直達問教練；扣費行寫 1 則',
+    testWidgets('先別回：沒有潤飾入口，改成一行小字「還是想回？先問教練」，點了直達問教練；扣費行照伺服器的則數',
         (tester) async {
       CoachChatAnalysisSnapshot? snapshot;
       await _pumpScreen(
@@ -1277,7 +1280,7 @@ void main() {
       expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
       expect(find.text('我已有草稿，幫我修自然'), findsNothing);
       expect(find.textContaining('還不確定該不該回'), findsNothing);
-      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      expect(find.text('本次分析使用 3 則・剩餘 27 則'), findsOneWidget);
       final link = find.byKey(const ValueKey('guide-v3-hold-coach-link'));
       expect(find.text('還是想回？先問教練'), findsOneWidget);
       await tester.ensureVisible(link);
@@ -1288,7 +1291,7 @@ void main() {
       expect(snapshot!.nextStep, '等她回你，再看她怎麼接');
     });
 
-    testWidgets('停：潤飾入口與小字連結都沒有；扣費行寫 1 則', (tester) async {
+    testWidgets('停：潤飾入口與小字連結都沒有；扣費行照伺服器的則數', (tester) async {
       await _pumpScreen(tester, seed: doneSeed(noSendResult('stop')));
       expect(find.text('先停在這裡'), findsOneWidget);
       expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
@@ -1298,7 +1301,7 @@ void main() {
         find.byKey(const ValueKey('guide-v3-hold-coach-link')),
         findsNothing,
       );
-      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      expect(find.text('本次分析使用 3 則・剩餘 27 則'), findsOneWidget);
     });
 
     testWidgets('出卡：潤飾入口照舊，沒有先別回的小字連結', (tester) async {
@@ -1347,72 +1350,97 @@ void main() {
       expect(snapshot!.summary, '她有在接你的話，可以往前一步。');
     });
 
-    testWidgets(
-        '鎖住的卡（Eric 2026-10-18）：免費 5 張排卡、送到 2 張，只有一塊、一顆「看方案」，點了打開付費頁的鎖卡大標',
-        (tester) async {
-      final free = GuideV3Result.fromJson({
-        'guideVersion': 'v3.5',
-        'read': {
-          ...readJson(),
-          'plannedCards': [
-            {'slot': 1, 'task': 'accept', 'locked': false},
-            {'slot': 2, 'task': 'push', 'locked': false},
-            {'slot': 3, 'task': 'tension', 'locked': true},
-            {'slot': 4, 'task': 'tension', 'locked': true},
-            {'slot': 5, 'task': 'push', 'locked': true},
+    /// 免費方案的結果：排卡裡沒標 locked 的都送到。
+    GuideV3Result freeResult(List<Map<String, dynamic>> planned) =>
+        GuideV3Result.fromJson({
+          'guideVersion': 'v3.5',
+          'read': {...readJson(), 'plannedCards': planned},
+          'cards': [
+            for (final plan in planned)
+              if (plan['locked'] != true)
+                cardJson(
+                  plan['slot'] as int,
+                  plan['task'] as String,
+                  '第 ${plan['slot']} 張的句子',
+                ),
           ],
-        },
-        'cards': [
-          cardJson(1, 'accept', '那家我也想吃吃看'),
-          cardJson(2, 'push', '週六下午一起去？我來找位子'),
-        ],
-        'partial': false,
-        'usage': {
-          'messagesUsed': 1,
-          'monthlyRemaining': 29,
-          'dailyRemaining': 4,
-          'tierUsed': 'free',
-        },
-      })!;
+          'partial': false,
+          'usage': {
+            'messagesUsed': 3,
+            'monthlyRemaining': 27,
+            'dailyRemaining': 12,
+            'tierUsed': 'free',
+          },
+        })!;
+    const fiveTasks = ['accept', 'push', 'tension', 'tension', 'push'];
+
+    testWidgets('免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：伺服器送幾張就畫幾張，沒有鎖卡區塊與看方案',
+        (tester) async {
       await _pumpScreen(
         tester,
-        seed: doneSeed(free),
-        extraRoutes: [
-          GoRoute(
-            path: '/paywall',
-            // 跟 lib/app/routes.dart 一樣從 extra 取入口。
-            builder: (_, state) => PaywallScreen(
-              entry: PaywallEntry.fromRouteExtra(state.extra),
-            ),
-          ),
-        ],
-        extraOverrides: [
-          subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
-        ],
+        seed: doneSeed(freeResult([
+          for (var i = 0; i < fiveTasks.length; i++)
+            {'slot': i + 1, 'task': fiveTasks[i], 'locked': false},
+        ])),
       );
       await dismissEditCoachMark(tester);
+      for (var slot = 1; slot <= fiveTasks.length; slot++) {
+        expect(find.byKey(ValueKey('guide-v3-card-$slot')), findsOneWidget,
+            reason: 'slot $slot');
+      }
       expect(
         find.byKey(const ValueKey('guide-v3-locked-block')),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.textContaining('付費方案還有'), findsNothing);
+      expect(find.text('看方案'), findsNothing);
+    });
+
+    testWidgets('舊快照：伺服器改之前存的免費結果，後 3 張標 locked、沒寫；不畫、不推升級、不算比較少',
+        (tester) async {
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(freeResult([
+          for (var i = 0; i < fiveTasks.length; i++)
+            {'slot': i + 1, 'task': fiveTasks[i], 'locked': i >= 2},
+        ])),
+      );
+      await dismissEditCoachMark(tester);
+      expect(find.byKey(const ValueKey('guide-v3-card-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('guide-v3-card-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('guide-v3-card-3')), findsNothing);
       expect(
-        find.text(
-          '這輪付費方案還有 ${free.read.lockedCards.length} 張：帶張力 ×2、推進',
+        find.byKey(const ValueKey('guide-v3-locked-block')),
+        findsNothing,
+      );
+      expect(find.textContaining('付費方案還有'), findsNothing);
+      expect(find.text('看方案'), findsNothing);
+      expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+    });
+
+    testWidgets('第一張卡標「AI 推薦」，卡片列表上面一行推薦理由（Bruce PR #97，Eric 2026-10-19）',
+        (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      await dismissEditCoachMark(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('guide-v3-card-1')),
+          matching: find.text('AI 推薦'),
         ),
         findsOneWidget,
       );
-      expect(find.text('看方案'), findsOneWidget);
-      final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
-      await tester.ensureVisible(upgrade);
-      await tester.tap(upgrade);
-      await tester.pumpAndSettle();
+      expect(find.text('AI 推薦'), findsOneWidget);
       expect(
-        find.text(
-          PaywallEntry.lockedCards.headlineFor(SubscriptionTierHelper.free),
-        ),
+        find.text('AI 推薦理由：先接她剛說的話，\n讓她知道你有在聽。'),
         findsOneWidget,
       );
-      expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
+    });
+
+    testWidgets('先別回沒有卡：不出「AI 推薦」與推薦理由', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(noSendResult('hold')));
+      expect(find.text('AI 推薦'), findsNothing);
+      expect(find.textContaining('AI 推薦理由'), findsNothing);
     });
 
     testWidgets('沒有卡（先別回、出卡但一張都沒送到）：問教練照舊是醒目的入口', (tester) async {

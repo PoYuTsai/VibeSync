@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/features/opener/domain/opener_access.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -150,8 +151,39 @@ void main() {
       expect(find.text('目前方案：Free'), findsOneWidget);
       expect(find.text('本月剩餘'), findsOneWidget);
       expect(find.text('今日剩餘'), findsOneWidget);
-      expect(find.text('50/50'), findsOneWidget);
-      expect(find.text('20/20'), findsOneWidget);
+      // 免費額度照常數算，之後再調也不用改這裡。
+      const monthly = AppConstants.freeMonthlyLimit;
+      const daily = AppConstants.freeDailyLimit;
+      expect(find.text('$monthly/$monthly'), findsOneWidget);
+      expect(find.text('$daily/$daily'), findsOneWidget);
+    });
+
+    testWidgets('比較表的每日、每月額度三欄都照方案常數', (tester) async {
+      await pumpPaywall(tester);
+
+      List<String?> cellsOf(String feature) {
+        final row = find
+            .ancestor(of: find.text(feature), matching: find.byType(Row))
+            .first;
+        return tester
+            .widgetList<Text>(
+                find.descendant(of: row, matching: find.byType(Text)))
+            .map((text) => text.data)
+            .toList();
+      }
+
+      expect(cellsOf('每日額度'), [
+        '每日額度',
+        '${AppConstants.freeDailyLimit} 則',
+        '${AppConstants.starterDailyLimit} 則',
+        '${AppConstants.essentialDailyLimit} 則',
+      ]);
+      expect(cellsOf('每月額度'), [
+        '每月額度',
+        '${AppConstants.freeMonthlyLimit} 則',
+        '${AppConstants.starterMonthlyLimit} 則',
+        '${AppConstants.essentialMonthlyLimit} 則',
+      ]);
     });
 
     testWidgets('comparison table names tiers and uses human-readable values',
@@ -166,11 +198,21 @@ void main() {
       expect(find.text('先試手感'), findsOneWidget);
       expect(find.text('穩定練習'), findsOneWidget);
       expect(find.text('深度打磨'), findsOneWidget);
-      // 對話分析 v3：付費全部的卡、免費前 2 張；不寫「每次 3–5 張」（收尾 1 張、
-      // 先別回和停沒有卡，Eric 2026-10-18）。新流程沒有雷達圖，比較表不再列。
+      // 對話分析 v3：三個方案都看全部的卡（Bruce PR #97，Eric 2026-10-19），這一列照留；
+      // 不寫「每次 3–5 張」（收尾 1 張、先別回和停沒有卡，Eric 2026-10-18）。新流程沒有
+      // 雷達圖，比較表不再列。
       expect(find.text('回覆卡'), findsOneWidget);
-      expect(find.text('前 2 張'), findsOneWidget);
-      expect(find.text('全部'), findsNWidgets(2));
+      final cardsRow =
+          find.ancestor(of: find.text('回覆卡'), matching: find.byType(Row)).first;
+      expect(
+        tester
+            .widgetList<Text>(
+                find.descendant(of: cardsRow, matching: find.byType(Text)))
+            .map((text) => text.data)
+            .toList(),
+        ['回覆卡', '全部', '全部', '全部'],
+      );
+      expect(find.text('前 2 張'), findsNothing);
       expect(find.text('每次回覆卡'), findsNothing);
       expect(find.text('雷達圖'), findsNothing);
       expect(find.text('延展＋調情 2 種'), findsNothing);
@@ -180,11 +222,9 @@ void main() {
       expect(find.text('訊息優化'), findsNothing);
       expect(find.text('可用'), findsNothing);
       expect(find.text('未開放'), findsNothing);
-      // 方案卡的重點也不再寫五種風格或雷達圖。
-      expect(
-        find.text('該回的時候給你 3–5 張回覆；免費看前 2 張'),
-        findsNWidgets(4),
-      );
+      // 方案卡的重點也不再寫五種風格或雷達圖；免費也看全部的卡，不再寫「免費看前 2 張」。
+      expect(find.text('該回的時候給你 3–5 張回覆'), findsNWidgets(4));
+      expect(find.textContaining('免費看前'), findsNothing);
       expect(find.textContaining('對話健檢'), findsNothing);
       expect(find.textContaining('訊息優化'), findsNothing);
       expect(find.textContaining('五種風格'), findsNothing);
@@ -193,21 +233,13 @@ void main() {
       expect(find.text('800 則'), findsOneWidget);
     });
 
-    testWidgets('比較表有燈號走勢與邀約進度：免費最新一次、兩個付費方案完整走勢，排在回覆卡下面', (tester) async {
+    testWidgets('比較表不再列燈號走勢與邀約進度：不分方案都看完整紀錄（Eric 2026-10-19）', (tester) async {
       await pumpPaywall(tester);
 
-      // Eric 2026-10-18：Starter 主打燈號紀錄＋邀約進度。分析紀錄頁本來就列出每次的燈號、
-      // 不分方案，所以分層的是對象頁的走勢，不能寫「只看」（主審第 1 輪 P2）。
-      expect(find.text('燈號走勢與邀約進度'), findsOneWidget);
-      expect(find.text('最新一次'), findsOneWidget);
-      expect(find.text('完整走勢'), findsNWidgets(2));
-      expect(find.text('只看最新一次'), findsNothing);
+      expect(find.text('燈號走勢與邀約進度'), findsNothing);
       expect(find.text('燈號紀錄與邀約進度'), findsNothing);
-      final cardsRow = tester.getTopLeft(find.text('回覆卡')).dy;
-      final historyRow = tester.getTopLeft(find.text('燈號走勢與邀約進度')).dy;
-      final drawRow = tester.getTopLeft(find.text('陪練女孩翻牌')).dy;
-      expect(historyRow, greaterThan(cardsRow));
-      expect(historyRow, lessThan(drawRow));
+      expect(find.text('最新一次'), findsNothing);
+      expect(find.text('完整走勢'), findsNothing);
     });
 
     testWidgets('比較表有開場救星：句數照開場權益契約，排在回覆卡下面', (tester) async {
@@ -229,9 +261,9 @@ void main() {
       expect(cells, ['開場救星', freeLines, paidLines, paidLines]);
       final cardsRow = tester.getTopLeft(find.text('回覆卡')).dy;
       final openerRow = tester.getTopLeft(find.text('開場救星')).dy;
-      final historyRow = tester.getTopLeft(find.text('燈號走勢與邀約進度')).dy;
+      final drawRow = tester.getTopLeft(find.text('陪練女孩翻牌')).dy;
       expect(openerRow, greaterThan(cardsRow));
-      expect(openerRow, lessThan(historyRow));
+      expect(openerRow, lessThan(drawRow));
     });
 
     testWidgets('comparison table includes practice girl and model copy',

@@ -30,7 +30,8 @@ class AnalysisQuotaLine {
   /// 這次會用幾則（跟確認框同一個算法）。
   final int units;
 
-  /// 用完之後剩幾則：本月、今日取少的。先別回只扣 1 則，實際只會更多。
+  /// 用完之後剩幾則：本月、今日取少的。先別回、停也照字數扣；只有關心、未成年說明
+  /// 不扣，實際只會一樣或更多（照 Bruce 10/18，Eric 2026-10-19）。
   final int remainingAfter;
 
   String get text => '這次會用 $units 則，剩 $remainingAfter 則';
