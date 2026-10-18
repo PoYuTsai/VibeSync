@@ -5,6 +5,7 @@
 # - 對話分析（analyze-chat）與共用模組（_shared）整個目錄都跑（2026-10-03 健檢
 #   F21，Eric 2026-10-12 核准）。之前逐檔白名單漏掉 reframer、post_process、
 #   stream_prompt、兩支 prompt 雜湊鎖等 42 支；新增測試檔不必再改這份清單。
+# - submit-feedback 整個目錄也跑：漏斗購買事件的帳號比對要在部署前守住（Eric 2026-10-18）。
 # - 其他函式維持逐檔列出，範圍跟改版前相同。其中 practice-chat 的
 #   index_test.ts 與 prompt_test.ts 是 1:1 記憶接線（PR D）動到聊天主路徑時的
 #   迴歸證據；在那之前這兩支不在清單裡，聊天主路徑在 PR CI 完全沒有守門。
@@ -28,6 +29,7 @@ deno test --allow-env --allow-read \
   supabase/functions/analyze-chat \
   supabase/functions/_shared \
   supabase/functions/keyboard-reply \
+  supabase/functions/submit-feedback \
   supabase/functions/coach-chat/prompts_test.ts \
   supabase/functions/coach-chat/generation_test.ts \
   supabase/functions/coach-chat/validate_test.ts \

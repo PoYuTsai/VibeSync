@@ -327,6 +327,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 反覆測試每個 action 都看得到提醒。production 由 hint 旗標 gate 成
   // first-run only。
   int _coachMarkLastSeenMessageCount = 0;
+  // 「加入並開始分析」抬高上面那個則數之前的值。只壓那一批：下一次匯入新的一批時還原，
+  // 分析沒開始（存檔失敗、取消、「先不要」）時那批的則數才不會擋住之後比較少則的批次。
+  // 不在分析沒開始的當下還原：額度不夠按升級時付費頁已經蓋上來，提示掛在最上層會蓋住它
+  //（主審 P3，Eric 2026-10-18）。
+  int? _coachMarkCountBeforeOneTap;
 
   // 截圖 root ScaffoldMessenger reference，避免 dispose 時 context lookup 失敗。
   // 用於 dispose 時清除可能殘留的 SnackBar，避免 OCR 加入提示跨頁殘留
@@ -801,9 +806,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Future<void> _handleErrorAction(AnalysisErrorAction action) async {
     switch (action) {
       case AnalysisErrorAction.retry:
+        // 先記下來源再清：清完 _errorOrigin 就是 null，「重新辨識」會誤走分析（Eric 2026-10-18）。
+        final origin = _errorOrigin;
         setState(_resetErrorState);
-        if (_errorOrigin == _AnalysisErrorOrigin.recognition) {
-          await _recognizeAndAddToConversation();
+        if (origin == _AnalysisErrorOrigin.recognition) {
+          if (_selectedImages.isEmpty) {
+            // 續看卡那條路的圖已經收起來：照上一批圖重跑（同「強制重新辨識」那批，快取照用）。
+            await _recognizeAndAddToConversation(
+              overrideImages: _lastRecognitionImages,
+              overrideMetrics: _lastRecognitionImageMetrics,
+            );
+          } else {
+            await _recognizeAndAddToConversation();
+          }
         } else {
           await _runAnalysis();
         }
@@ -2206,11 +2221,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required ScreenshotRecognitionDialogResult dialogResult,
     required RecognizedConversation recognized,
   }) async {
+    // 上一次「加入並開始分析」為那批抬過則數；這次匯入的是新的一批，先還原。
+    final countBeforeOneTap = _coachMarkCountBeforeOneTap;
+    if (countBeforeOneTap != null) {
+      _coachMarkCountBeforeOneTap = null;
+      _coachMarkLastSeenMessageCount = countBeforeOneTap;
+    }
     if (dialogResult.startAnalysis &&
         dialogResult.messages.length > _coachMarkLastSeenMessageCount) {
       // 「加入並開始分析」：這批匯入後就要開始分析，「長按可編輯」提示這次不排——它掛在
       // 最上層，會蓋住接著跳的最後一則提示或確認框。整批取代後就是這幾則；匯入前先記，
       // 存檔途中重畫也排不到。
+      _coachMarkCountBeforeOneTap = _coachMarkLastSeenMessageCount;
       _coachMarkLastSeenMessageCount = dialogResult.messages.length;
     }
     final commit = await _screenshotImport.commitImport(
@@ -2305,9 +2327,35 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    await _applyRecognitionImport(
-      dialogResult: dialogResult,
-      recognized: recognized,
+    try {
+      await _applyRecognitionImport(
+        dialogResult: dialogResult,
+        recognized: recognized,
+      );
+    } catch (e) {
+      // 續看卡送出後存檔失敗（Eric 2026-10-18；主審 P3）：以前例外直接漏掉、畫面沒說，
+      // 現在跟初次辨識同一張錯誤卡。訊息與續看卡照舊；存檔沒成功本來就不會開始分析。
+      _debugLog('[Recognize] Resume import failed: $e');
+      if (!mounted) return;
+      setState(() => _applyRecognitionErrorState(e));
+    }
+  }
+
+  /// 截圖辨識或匯入出錯時錯誤卡的內容：初次辨識與「繼續確認本次內容」共用這一份，
+  /// 呼叫端自己包 setState。
+  void _applyRecognitionErrorState(Object error) {
+    if (error is AnalysisException) {
+      _applyErrorState(
+        message: error.message,
+        action: error.suggestedAction,
+        origin: _AnalysisErrorOrigin.recognition,
+      );
+      return;
+    }
+    _applyErrorState(
+      message: '截圖辨識暫時失敗，請稍後再試。',
+      action: AnalysisErrorAction.retry,
+      origin: _AnalysisErrorOrigin.recognition,
     );
   }
 
@@ -2813,11 +2861,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       }
       setState(() {
         _isRecognizing = false;
-        _applyErrorState(
-          message: e.message,
-          action: e.suggestedAction,
-          origin: _AnalysisErrorOrigin.recognition,
-        );
+        _applyRecognitionErrorState(e);
       });
     } catch (e) {
       final elapsed = DateTime.now().difference(startTime).inSeconds;
@@ -2826,11 +2870,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _debugLog('錯誤詳情: $e');
       setState(() {
         _isRecognizing = false;
-        _applyErrorState(
-          message: '截圖辨識暫時失敗，請稍後再試。',
-          action: AnalysisErrorAction.retry,
-          origin: _AnalysisErrorOrigin.recognition,
-        );
+        _applyRecognitionErrorState(e);
       });
     }
   }
