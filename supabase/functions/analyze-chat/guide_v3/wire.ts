@@ -96,12 +96,13 @@ export interface GuideV3ReadView {
     readonly c1: boolean;
     readonly herPerfunctoryStreak: number;
   };
-  /// 預定的卡（照順序）；送出的張數可能比較少（被檢查拿掉）。locked＝這個方案看
-  /// 不到（免費方案只送前幾張），伺服器不會寫也不會送那幾張。
+  /// 預定的卡（照順序）；送出的張數可能比較少（被檢查拿掉）。免費也看全部卡（Bruce
+  /// 10/18，Eric 2026-10-19），沒有鎖住的卡：locked 一律 false，欄位留著給舊版 App
+  ///（它看到 true 才顯示升級區塊）。
   readonly plannedCards: readonly {
     slot: number;
     task: V3CardTaskCode;
-    locked: boolean;
+    locked: false;
   }[];
 }
 
@@ -119,7 +120,6 @@ export interface GuideV3CardView {
 export function readView(
   plan: GuideV3Plan,
   light: typeof LIGHTS[number] | null,
-  maxCards: number | null = null,
 ): GuideV3ReadView {
   const careKind = plan.careKind ?? "self_harm";
   return {
@@ -143,7 +143,7 @@ export function readView(
     plannedCards: plan.specs.map((spec, i) => ({
       slot: i + 1,
       task: TASK_CODE[spec.task],
-      locked: maxCards !== null && i >= maxCards,
+      locked: false,
     })),
   };
 }

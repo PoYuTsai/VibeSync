@@ -22,7 +22,6 @@ import {
   type TokenPricing,
 } from "../../supabase/functions/_shared/model_pricing.ts";
 import { maxTokensFor } from "../../supabase/functions/_shared/model_request_params.ts";
-import { guideV3MaxCards } from "../../supabase/functions/analyze-chat/guide_v3/routing.ts";
 import {
   readSystemPrompt,
   readUserPrompt,
@@ -856,7 +855,6 @@ async function main(args: string[]): Promise<number> {
           log: () => {},
           now: () => Date.now(),
           heartbeatIntervalMs: 0,
-          maxCards: guideV3MaxCards("essential"),
         });
         outcome = outcomeOf(
           await readEvents(response),

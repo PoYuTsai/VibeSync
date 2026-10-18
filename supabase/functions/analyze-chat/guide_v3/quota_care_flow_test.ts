@@ -145,7 +145,6 @@ function harness(opts: {
     log: (event, metadata) => logs.push({ event, metadata }),
     now: () => T0,
     heartbeatIntervalMs: 0,
-    maxCards: 2,
     ...(opts.careOnlyFromQuota === false ? {} : { careOnlyFromQuota: true }),
   };
   return { deps, calls, charges, created, done, logs };

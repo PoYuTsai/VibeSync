@@ -179,8 +179,6 @@ export interface GuideV3StreamDeps {
   heartbeatIntervalMs?: number;
   /// 讓 runtime 在 App 斷線後仍把這次流程跑完（production：EdgeRuntime.waitUntil）。
   waitUntil?: (task: Promise<unknown>) => void;
-  /// 這個方案最多送幾張（免費方案；null＝全部）。照排好的順序取前面幾張。
-  maxCards?: number | null;
   /// 額度不夠、她的訊息有自傷字眼（Eric 2026-10-18；入口在 analyze_chat_handler 的額度
   /// 預查）：不打任何模型，直接給自傷關心訊息，不扣。
   careOnlyFromQuota?: boolean;
@@ -429,7 +427,7 @@ class GuideV3Flow {
             field,
           }, "error"),
       );
-      const view = readView(plan, tags.light, this.deps.maxCards ?? null);
+      const view = readView(plan, tags.light);
       // 自傷訊號要讀完才知道，所以記憶在讀局面之後才開始；關心訊息不打這一次。
       if (plan.decision !== "care") this.startMemory(turns, deadlineAtMs);
       switch (plan.decision) {
@@ -787,11 +785,7 @@ class GuideV3Flow {
     tags: ReadTags | null,
     readFailure?: { code: string; error?: string },
   ): Promise<void> {
-    const view = readView(
-      plan,
-      tags?.light ?? null,
-      this.deps.maxCards ?? null,
-    );
+    const view = readView(plan, tags?.light ?? null);
     const care = {
       kind: plan.careKind ?? "self_harm",
       trigger: plan.careTrigger ?? "model",
@@ -940,10 +934,8 @@ class GuideV3Flow {
     deadlineAtMs: number,
     isClosed: () => boolean,
   ): Promise<void> {
-    // 免費方案只寫、只送排好順序的前幾張（伺服器端把關，跟 v2 只給兩種風格同理）。
-    const deliverable = this.deps.maxCards
-      ? plan.specs.slice(0, this.deps.maxCards)
-      : plan.specs;
+    // 每個方案都寫、都送排好的全部卡（免費也看全部：Bruce 10/18，Eric 2026-10-19）。
+    const deliverable = plan.specs;
     const sourceText = this.deps.messages.map((m) => m.content).join("\n");
     const hisMessages = this.deps.messages.filter((m) => m.isFromMe).map((m) =>
       m.content

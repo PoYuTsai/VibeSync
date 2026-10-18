@@ -892,20 +892,15 @@ Deno.test("續看快照：扣過費但還沒到 120 秒，不重組（原請求�
   assertEquals(snapshot.finalResult, null);
 });
 
-Deno.test("判讀事件：免費方案的張數之外標 locked", () => {
-  const view = readView(planTurn(herLast, tags()), "green", 2);
+Deno.test("判讀事件：plannedCards 每張都帶 locked:false（免費也看全部卡；舊版 App 認這欄）", () => {
+  const view = readView(planTurn(herLast, tags()), "green");
+  assertEquals(view.plannedCards.length, 4);
   assertEquals(view.plannedCards.map((c) => c.locked), [
     false,
     false,
-    true,
-    true,
-  ]);
-  assertEquals(
-    readView(planTurn(herLast, tags()), "green").plannedCards.some((c) =>
-      c.locked
-    ),
     false,
-  );
+    false,
+  ]);
 });
 
 Deno.test("定稿第 3 輪：換行或空白夾在關鍵詞中間照擋；原文與整理後各自掃，不湊出假威脅", () => {

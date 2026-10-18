@@ -149,8 +149,8 @@ function harness(opts: {
   markFailedError?: Error;
   /// 扣費交易在回錯之後才提交：條件式失敗寫入等到它提交，看到的是已扣費的列。
   chargeCommitsDuringFailureWrite?: boolean;
-  /// 免費方案最多送幾張。
-  maxCards?: number | null;
+  /// 預設 starter。
+  effectiveTier?: string;
   /// 寫卡串流送完 writeParts 之後通知 reached、卡在 release，直到測試放行才結束。
   writeEndGate?: { reached: () => void; release: Promise<void> };
   markDoneError?: Error;
@@ -258,7 +258,7 @@ function harness(opts: {
       conversationHash: "hash-1",
       messages: opts.messages ?? CHAT,
       requestType: "analyze",
-      effectiveTier: "starter",
+      effectiveTier: opts.effectiveTier ?? "starter",
       accountIsTest: opts.accountIsTest ?? false,
       quotaUsage: {
         shouldChargeQuota: true,
@@ -298,7 +298,6 @@ function harness(opts: {
       now: () => opts.now ?? T0,
       heartbeatIntervalMs: 0,
       waitUntil: (task) => tasks.push(task),
-      maxCards: opts.maxCards ?? null,
       ...(opts.background ? { background: opts.background } : {}),
       ...(opts.extract
         ? {
@@ -1382,24 +1381,33 @@ Deno.test("續看不在這裡：帶 analysisRunId 的請求交給 v2 handler", a
   assertEquals(h.calls, []);
 });
 
-Deno.test("免費方案：只寫、只送排好順序的前 2 張，其餘標 locked", async () => {
-  const writeRequests: { user: string }[] = [];
-  const h = harness({ maxCards: 2, writeRequests });
-  const evs = await events(await handleGuideV3Stream(h.deps));
-  const read = evs.find((e) => e.type === "analysis.read")!;
-  assertEquals(read.plannedCards, [
-    { slot: 1, task: "accept", locked: false },
-    { slot: 2, task: "tension", locked: false },
-    { slot: 3, task: "accept", locked: true },
-    { slot: 4, task: "tension", locked: true },
-  ]);
-  assert(writeRequests[0].user.includes("一共 2 張"));
-  // 模型多寫了第 3、4 張也不送。
-  assertEquals(types(evs).filter((t) => t === "analysis.card").length, 2);
-  const result = evs.at(-1)!.finalResult as Record<string, unknown>;
-  assertEquals((result.cards as unknown[]).length, 2);
-  assertEquals(result.partial, false);
-  assertEquals(h.charges.length, 1);
+Deno.test("免費方案也寫、也送全部的卡（Bruce 10/18）：plannedCards 都不鎖，跟付費一樣", async () => {
+  const views: Record<string, unknown>[] = [];
+  for (const tier of ["free", "starter"]) {
+    const writeRequests: { user: string }[] = [];
+    const h = harness({ effectiveTier: tier, writeRequests });
+    const evs = await events(await handleGuideV3Stream(h.deps));
+    const read = evs.find((e) => e.type === "analysis.read")!;
+    assertEquals(read.plannedCards, [
+      { slot: 1, task: "accept", locked: false },
+      { slot: 2, task: "tension", locked: false },
+      { slot: 3, task: "accept", locked: false },
+      { slot: 4, task: "tension", locked: false },
+    ], tier);
+    assert(writeRequests[0].user.includes("一共 4 張"), tier);
+    assertEquals(
+      evs.filter((e) => e.type === "analysis.card").length,
+      FOUR_CARDS.length,
+      tier,
+    );
+    const done = evs.find((e) => e.type === "analysis.done")!;
+    const result = done.finalResult as Record<string, unknown>;
+    assertEquals((result.cards as unknown[]).length, FOUR_CARDS.length, tier);
+    assertEquals(result.partial, false, tier);
+    assertEquals(h.charges.length, 1, tier);
+    views.push({ read, cards: result.cards });
+  }
+  assertEquals(views[0], views[1]);
 });
 
 Deno.test("判讀外洩：判讀不給、記 log；要等她做什麼壞了用預設那句", async () => {

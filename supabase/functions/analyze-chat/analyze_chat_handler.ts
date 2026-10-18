@@ -86,7 +86,6 @@ import { createGuideV3ModelCalls } from "./guide_v3/model_calls.ts";
 import { acceptedPreviousRound } from "./guide_v3/previous_round.ts";
 import {
   billingMessagesFor,
-  guideV3MaxCards,
   guideV3Mode,
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
@@ -1840,7 +1839,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         dailyLimit,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
-        maxCards: guideV3MaxCards(effectiveTier),
         careOnlyFromQuota,
         ...createGuideV3ModelCalls({
           apiKey: CLAUDE_API_KEY,
