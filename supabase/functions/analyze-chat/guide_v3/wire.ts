@@ -10,6 +10,7 @@ import type {
   GuideV3Decision,
   GuideV3Plan,
 } from "./plan.ts";
+import type { GuideV3PreviousRoundTrace } from "./previous_round.ts";
 import type { LIGHTS } from "./read_tags.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
 import type { SafetyKeywordHits } from "./safety.ts";
@@ -154,10 +155,12 @@ export interface GuideV3Trace {
   }[];
   readonly invalidLines: number;
   readonly scoringWords: readonly { slot: number; words: readonly string[] }[];
-  readonly rawMessages: readonly {
-    slot: number;
-    messages: readonly string[];
-  }[];
+  /// 預設口吻的「妳」被換掉時留的原文；帶了上一輪的那次只留第幾張與則數
+  ///（previous_round.ts 的 traceWithoutText）。
+  readonly rawMessages: readonly (
+    | { slot: number; messages: readonly string[] }
+    | { slot: number; messageCount: number }
+  )[];
   readonly models: { read?: string; write?: string };
   readonly firstCardMs: number | null;
   /// 有寫卡才有：送出的每張卡的 C5 檢查（cards.ts，只有數字與真假），以及她最後一輪的字數。
@@ -175,6 +178,8 @@ export interface GuideV3Trace {
   };
   /// 程式關鍵字有命中才有（safety.ts；只有真假，不放原句）。
   readonly keywordHits?: SafetyKeywordHits;
+  /// 有帶上一輪脈絡才有（只有數量，見 previous_round.ts）。
+  readonly previousRound?: GuideV3PreviousRoundTrace;
 }
 
 export function finalResult(args: {

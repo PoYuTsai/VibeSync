@@ -1,0 +1,648 @@
+// 上一輪脈絡（previousRound，Eric 2026-10-18）：只看同一個對象裡、緊接在這個片段前面
+// 建立的那一段，驗過時間、結果、紀錄才組，任何一關不過就不帶、不往更早找（主審第 2 輪
+// P2）；上限跟伺服器一樣（每段 120、最多 4 則、合計 600）。不帶「他複製的那張」。
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
+import 'package:vibesync/features/analysis/domain/entities/previous_round_context.dart';
+import 'package:vibesync/features/analysis/domain/services/previous_round_builder.dart';
+import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
+
+const _partner = 'partner-a';
+final _t0 = DateTime(2026, 10, 18, 9);
+
+Map<String, dynamic> _v3Result({
+  String decision = 'send',
+  String light = 'yellow',
+  String judgment = '她只回了貼圖，先等她多說一點。',
+}) =>
+    {
+      'guideVersion': 'v3.5',
+      'read': {
+        'guideVersion': 'v3.5',
+        'decision': decision,
+        'light': light,
+        'judgment': judgment,
+        'plannedCards': [
+          {'slot': 1, 'task': 'accept', 'locked': false},
+        ],
+      },
+      'cards': decision == 'send'
+          ? [
+              {
+                'slot': 1,
+                'task': 'accept',
+                'method': 'reaction',
+                'voice': 'default',
+                'messages': ['那週六去吃早午餐？'],
+                'hasInventedDetail': false,
+                'hasBlank': false,
+              },
+            ]
+          : [],
+      'partial': false,
+    };
+
+var _nextEventId = 0;
+
+/// 快照 meta 預設帶一個不重複的歷史事件 id（跟持久化一樣）；noEventId 模擬舊資料沒記。
+String _snapshot(
+  Map<String, dynamic> result, {
+  String? historyEventId,
+  bool noEventId = false,
+}) =>
+    jsonEncode({
+      ...result,
+      '__vibesync_snapshot_meta_v1': {
+        'contentRevision': 'rev',
+        if (!noEventId)
+          'historyEventId': historyEventId ?? 'e-${_nextEventId++}',
+        'analysisRunId': 'run-1',
+      },
+    });
+
+List<Message> _messages(List<(bool, String)> items) => [
+      for (final (i, (isFromMe, content)) in items.indexed)
+        Message(
+          id: 'm$i',
+          content: content,
+          isFromMe: isFromMe,
+          timestamp: _t0,
+        ),
+    ];
+
+Conversation _segment({
+  required String id,
+  String? partnerId = _partner,
+  String? snapshotJson,
+  List<(bool, String)> messages = const [(false, '在嗎')],
+  DateTime? createdAt,
+  DateTime? updatedAt,
+  String? ownerUserId = 'user-1',
+}) {
+  final msgs = _messages(messages);
+  return Conversation(
+    id: id,
+    name: '小雲',
+    messages: msgs,
+    createdAt: createdAt ?? _t0,
+    updatedAt: updatedAt ?? createdAt ?? _t0,
+    lastAnalysisSnapshotJson: snapshotJson,
+    lastAnalyzedMessageCount: snapshotJson == null ? null : msgs.length,
+    partnerId: partnerId,
+    ownerUserId: ownerUserId,
+  );
+}
+
+AnalysisHistoryEvent _event(String id, DateTime createdAt) =>
+    AnalysisHistoryEvent.analyze(id: id, createdAt: createdAt);
+
+/// 測試沒指定事件時：每段分析的事件時間就是那段最後存檔的時間（一般情況）。
+List<AnalysisHistoryEvent> _eventsAtSave(List<Conversation> segments) => [
+      for (final c in segments)
+        if (_metaEventId(c) case final id?) _event(id, c.updatedAt),
+    ];
+
+String? _metaEventId(Conversation c) {
+  try {
+    final meta = (jsonDecode(c.lastAnalysisSnapshotJson ?? '')
+        as Map)['__vibesync_snapshot_meta_v1'];
+    final id = meta is Map ? meta['historyEventId'] : null;
+    return id is String ? id : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// 跟持久化一樣：紀錄存分析結果原樣（去掉 App meta），訊息是那次分析的片段。
+AnalysisRecord? _liveRecord(Conversation c, {int start = 0, int? end}) {
+  try {
+    final payload = Map<String, dynamic>.from(
+      jsonDecode(c.lastAnalysisSnapshotJson ?? '') as Map,
+    )..remove('__vibesync_snapshot_meta_v1');
+    final until = end ?? c.messages.length;
+    return AnalysisRecord(
+      id: 'record-${c.id}',
+      ownerUserId: c.ownerUserId ?? 'user-1',
+      conversationId: c.id,
+      partnerId: c.partnerId,
+      subjectName: c.name,
+      segmentStart: start,
+      segmentEnd: until,
+      createdAt: c.updatedAt,
+      messages: c.messages
+          .sublist(start, until)
+          .map(AnalysisRecordMessage.fromMessage)
+          .toList(),
+      analysisSnapshotJson: jsonEncode(payload),
+      analyzedContentRevision: 'rev',
+      completionKey: 'run-1',
+      sourcePlatform: null,
+      enthusiasmScore: null,
+      gameStageLabel: '',
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+PreviousRoundContext? _build({
+  required Conversation current,
+  required List<Conversation> others,
+  List<AnalysisHistoryEvent>? events,
+  AnalysisRecord? Function(Conversation c) liveRecordFor = _liveRecord,
+}) =>
+    const PreviousRoundBuilder().build(
+      current: current,
+      partnerConversations: [current, ...others],
+      historyEvents: events ?? _eventsAtSave(others),
+      liveRecordFor: liveRecordFor,
+    );
+
+void main() {
+  final newSegment = _segment(
+    id: 'new',
+    messages: [(false, '好啊，那就週六')],
+    createdAt: _t0.add(const Duration(hours: 2)),
+  );
+
+  test('組出上次的燈號、決定、判讀與上一段最後幾則；不帶他複製的那張', () {
+    final previous = _segment(
+      id: 'prev',
+      snapshotJson: _snapshot(_v3Result(), historyEventId: 'e1'),
+      messages: [(true, '週末有空嗎'), (false, '應該在家耍廢')],
+      updatedAt: _t0.add(const Duration(hours: 1)),
+    );
+    final context = _build(
+      current: newSegment,
+      others: [previous],
+      events: [_event('e1', _t0.add(const Duration(minutes: 30)))],
+    );
+    expect(context, isNotNull);
+    expect(context!.toJson(), {
+      'decision': 'send',
+      'light': 'yellow',
+      'judgment': '她只回了貼圖，先等她多說一點。',
+      'messages': [
+        {'isFromMe': true, 'content': '週末有空嗎'},
+        {'isFromMe': false, 'content': '應該在家耍廢'},
+      ],
+    });
+  });
+
+  test('沒有對象、沒有別的片段、只有 v2 結果或自傷關心：不帶', () {
+    final v2Snapshot = jsonEncode({
+      'enthusiasm': {'score': 70},
+      'replies': {'extend': 'a'},
+      '__vibesync_snapshot_meta_v1': {'historyEventId': 'e-v2-only'},
+    });
+    final orphan = _segment(id: 'new', partnerId: null);
+    expect(
+      _build(
+        current: orphan,
+        others: [
+          _segment(
+              id: 'p', partnerId: null, snapshotJson: _snapshot(_v3Result()))
+        ],
+      ),
+      isNull,
+    );
+    expect(_build(current: newSegment, others: const []), isNull);
+    expect(
+      _build(
+        current: newSegment,
+        others: [_segment(id: 'v2', snapshotJson: v2Snapshot)],
+      ),
+      isNull,
+    );
+    expect(
+      _build(
+        current: newSegment,
+        others: [
+          _segment(
+            id: 'care',
+            snapshotJson: _snapshot(_v3Result(decision: 'care', judgment: '')),
+          ),
+        ],
+      ),
+      isNull,
+    );
+    // 壞掉的快照不擋，當沒有。
+    expect(
+      _build(
+        current: newSegment,
+        others: [_segment(id: 'bad', snapshotJson: '{not json')],
+      ),
+      isNull,
+    );
+  });
+
+  test('上一段照片段建立的先後挑，不看分析時間（主審第 2 輪 P2）', () {
+    // X 先建立、後分析；Y 後建立、先分析。緊接在新片段前面的是 Y。
+    final x = _segment(
+      id: 'x',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: '先建立、後分析'), historyEventId: 'e-x'),
+      createdAt: _t0,
+      updatedAt: _t0.add(const Duration(minutes: 90)),
+    );
+    final y = _segment(
+      id: 'y',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: '後建立、先分析'), historyEventId: 'e-y'),
+      createdAt: _t0.add(const Duration(minutes: 30)),
+      updatedAt: _t0.add(const Duration(minutes: 40)),
+    );
+    final events = [
+      _event('e-x', _t0.add(const Duration(minutes: 90))),
+      _event('e-y', _t0.add(const Duration(minutes: 40))),
+    ];
+    expect(
+      _build(current: newSegment, others: [x, y], events: events)!.judgment,
+      '後建立、先分析',
+    );
+  });
+
+  test('上一輪是 v2 或自傷關心：不帶，也不跳去更早那段 v3', () {
+    final olderV3 = _segment(
+      id: 'older',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: '更早的'), historyEventId: 'e-v3'),
+    );
+    final latestV2 = _segment(
+      id: 'v2',
+      snapshotJson: jsonEncode({
+        'enthusiasm': {'score': 70},
+        'replies': {'extend': 'a'},
+        '__vibesync_snapshot_meta_v1': {'historyEventId': 'e-v2'},
+      }),
+      createdAt: _t0.add(const Duration(minutes: 5)),
+      updatedAt: _t0.add(const Duration(minutes: 20)),
+    );
+    final latestCare = _segment(
+      id: 'care',
+      snapshotJson: _snapshot(
+        _v3Result(decision: 'care', judgment: ''),
+        historyEventId: 'e-care',
+      ),
+      createdAt: _t0.add(const Duration(minutes: 5)),
+      updatedAt: _t0.add(const Duration(minutes: 20)),
+    );
+    final events = [
+      _event('e-v3', _t0.add(const Duration(minutes: 10))),
+      _event('e-v2', _t0.add(const Duration(minutes: 20))),
+      _event('e-care', _t0.add(const Duration(minutes: 20))),
+    ];
+    expect(
+      _build(current: newSegment, others: [olderV3, latestV2], events: events),
+      isNull,
+    );
+    expect(
+      _build(
+        current: newSegment,
+        others: [olderV3, latestCare],
+        events: events,
+      ),
+      isNull,
+    );
+    expect(
+      _build(current: newSegment, others: [olderV3], events: events)!.judgment,
+      '更早的',
+    );
+  });
+
+  test('只看同一個對象、同一個帳號裡比這個片段早建立的那段，不認自己', () {
+    final self = _segment(
+      id: 'new',
+      snapshotJson: _snapshot(_v3Result(judgment: '自己')),
+      createdAt: _t0.add(const Duration(hours: 2)),
+    );
+    // 比這個片段晚建立的不是上一段。
+    final later = _segment(
+      id: 'later',
+      snapshotJson: _snapshot(_v3Result(judgment: '比較晚')),
+      createdAt: _t0.add(const Duration(hours: 2, minutes: 30)),
+      updatedAt: _t0.add(const Duration(hours: 3)),
+    );
+    final otherPartner = _segment(
+      id: 'other',
+      partnerId: 'partner-b',
+      snapshotJson: _snapshot(_v3Result(judgment: '別的對象')),
+      createdAt: _t0.add(const Duration(hours: 1, minutes: 50)),
+    );
+    final otherOwner = _segment(
+      id: 'owner',
+      ownerUserId: 'user-2',
+      snapshotJson: _snapshot(_v3Result(judgment: '別的帳號')),
+      createdAt: _t0.add(const Duration(hours: 1, minutes: 55)),
+    );
+    expect(
+      _build(current: self, others: [later, otherPartner, otherOwner]),
+      isNull,
+    );
+    final earlier = _segment(
+      id: 'earlier',
+      snapshotJson: _snapshot(_v3Result(judgment: '上一輪')),
+      createdAt: _t0.add(const Duration(minutes: 30)),
+      updatedAt: _t0.add(const Duration(hours: 1)),
+    );
+    expect(
+      _build(current: self, others: [later, otherPartner, otherOwner, earlier])!
+          .judgment,
+      '上一輪',
+    );
+  });
+
+  test('上限：每段超過 120 截到 119 加「…」、只取最後 4 則，合計剛好 600', () {
+    final long = '字' * 200;
+    final previous = _segment(
+      id: 'prev',
+      snapshotJson: _snapshot(_v3Result(judgment: long)),
+      messages: [
+        for (var i = 0; i < 6; i++) (i.isOdd, '第$i則${'話' * 150}'),
+      ],
+    );
+    final context = _build(current: newSegment, others: [previous])!;
+    expect(context.judgment!.length, PreviousRoundBuilder.maxTextChars);
+    expect(context.judgment, '${'字' * 119}…');
+    for (final message in context.messages) {
+      expect(message.content.length, PreviousRoundBuilder.maxTextChars);
+    }
+    // 判讀 120＋最後 4 則各 120＝600，剛好是合計上限。
+    expect(context.messages.map((m) => m.content.substring(0, 3)).toList(), [
+      '第2則',
+      '第3則',
+      '第4則',
+      '第5則',
+    ]);
+    expect(context.charCount, PreviousRoundBuilder.maxChars);
+    // 沒有判讀時也只取最後 4 則。
+    final noExtras = _build(
+      current: newSegment,
+      others: [
+        _segment(
+          id: 'prev2',
+          snapshotJson: _snapshot(_v3Result(judgment: '')),
+          messages: [for (var i = 0; i < 6; i++) (i.isOdd, '第$i則')],
+        ),
+      ],
+    )!;
+    expect(noExtras.judgment, isNull);
+    expect(noExtras.messages.map((m) => m.content).toList(), [
+      '第2則',
+      '第3則',
+      '第4則',
+      '第5則',
+    ]);
+  });
+
+  test('截斷不切開 emoji', () {
+    final previous = _segment(
+      id: 'prev',
+      snapshotJson: _snapshot(_v3Result(judgment: '${'字' * 118}😀😀')),
+    );
+    final judgment = _build(current: newSegment, others: [previous])!.judgment!;
+    expect(judgment, '${'字' * 118}…');
+    expect(judgment.length <= PreviousRoundBuilder.maxTextChars, isTrue);
+  });
+
+  test('訊息只取那筆紀錄自己的片段（同一段對話裡更早的紀錄不混進來）', () {
+    final previous = _segment(
+      id: 'prev',
+      snapshotJson: _snapshot(_v3Result(judgment: '')),
+      messages: [(true, '一'), (false, '二'), (true, '三'), (false, '四')],
+    );
+    expect(
+      _build(
+        current: newSegment,
+        others: [previous],
+        liveRecordFor: (c) => _liveRecord(c, start: 2),
+      )!
+          .messages
+          .map((m) => m.content)
+          .toList(),
+      ['三', '四'],
+    );
+  });
+
+  test('那次分析的紀錄被刪了、或紀錄跟快照不是同一次：不帶，也不跳去更早那段（主審第 1 輪 P2）', () {
+    final older = _segment(
+      id: 'older',
+      snapshotJson: _snapshot(_v3Result(judgment: '更早的'), historyEventId: 'e1'),
+    );
+    final latest = _segment(
+      id: 'latest',
+      snapshotJson: _snapshot(_v3Result(judgment: '最近的'), historyEventId: 'e2'),
+      createdAt: _t0.add(const Duration(minutes: 5)),
+      updatedAt: _t0.add(const Duration(minutes: 20)),
+    );
+    final events = [
+      _event('e1', _t0.add(const Duration(minutes: 10))),
+      _event('e2', _t0.add(const Duration(minutes: 20))),
+    ];
+    expect(
+      _build(current: newSegment, others: [older, latest], events: events)!
+          .judgment,
+      '最近的',
+    );
+    // 最近那段的紀錄被刪了（對話還在）。
+    expect(
+      _build(
+        current: newSegment,
+        others: [older, latest],
+        events: events,
+        liveRecordFor: (c) => c.id == 'latest' ? null : _liveRecord(c),
+      ),
+      isNull,
+    );
+    // 紀錄還是更早那次的結果（例如這次的紀錄沒存成功）。
+    expect(
+      _build(
+        current: newSegment,
+        others: [older, latest],
+        events: events,
+        liveRecordFor: (c) => c.id == 'latest' ? _liveRecord(older) : null,
+      ),
+      isNull,
+    );
+  });
+
+  test(
+      'A 10:00 分析、B 11:00 建立、A 12:00 升級刷新、B 13:00 分析：A 的快照比 B 新，不帶（主審第 1 輪 P2）',
+      () {
+    final day = DateTime(2026, 10, 18);
+    DateTime at(int hour, [int minute = 0]) =>
+        day.add(Duration(hours: hour, minutes: minute));
+    final events = [
+      _event('e-a', at(10)),
+      _event('e-older', at(9)),
+    ];
+    // 刷新會覆寫快照、重存對話（updatedAt），歷史事件留第一次分析的時間。
+    Conversation segmentA({required DateTime savedAt}) => _segment(
+          id: 'a',
+          snapshotJson: _snapshot(
+            _v3Result(judgment: 'A 刷新後的判讀'),
+            historyEventId: 'e-a',
+          ),
+          createdAt: at(9, 50),
+          updatedAt: savedAt,
+        );
+    final older = _segment(
+      id: 'older',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: '更早那段'), historyEventId: 'e-older'),
+      createdAt: at(8),
+      updatedAt: at(9),
+    );
+    // B 在 13:00 分析時，B 是 11:00 建立的。
+    final b = _segment(id: 'b', createdAt: at(11));
+
+    expect(
+      _build(current: b, others: [segmentA(savedAt: at(12))], events: events),
+      isNull,
+    );
+    // 也不跳去更早那段。
+    expect(
+      _build(
+        current: b,
+        others: [older, segmentA(savedAt: at(12))],
+        events: events,
+      ),
+      isNull,
+    );
+    // 刷新在 B 建立之前就完成了：照常帶刷新後那一次。
+    expect(
+      _build(
+        current: b,
+        others: [older, segmentA(savedAt: at(10, 30))],
+        events: events,
+      )!
+          .judgment,
+      'A 刷新後的判讀',
+    );
+  });
+
+  test(
+      'O 09:00 分析、A 10:00 分析（第一筆歷史事件沒寫進去）、B 11:00 建立、A 12:00 重新分析、B 13:00 分析：不帶，也不跳去 O（主審第 2 輪 P2）',
+      () {
+    final day = DateTime(2026, 10, 18);
+    DateTime at(int hour, [int minute = 0]) =>
+        day.add(Duration(hours: hour, minutes: minute));
+    final o = _segment(
+      id: 'o',
+      snapshotJson:
+          _snapshot(_v3Result(judgment: 'O 的判讀'), historyEventId: 'e-o'),
+      createdAt: at(8, 50),
+      updatedAt: at(9),
+    );
+    // 重新分析會覆寫快照、重存對話；第一筆事件沒寫進去時，用同一個 id 補寫成 12:00。
+    final a = _segment(
+      id: 'a',
+      snapshotJson: _snapshot(
+        _v3Result(judgment: 'A 重新分析後的判讀'),
+        historyEventId: 'e-a',
+      ),
+      createdAt: at(9, 50),
+      updatedAt: at(12),
+    );
+    final b = _segment(id: 'b', createdAt: at(11));
+    expect(
+      _build(
+        current: b,
+        others: [o, a],
+        events: [_event('e-o', at(9)), _event('e-a', at(12))],
+      ),
+      isNull,
+    );
+    // 補寫也失敗、A 完全沒有事件：一樣不帶，也不跳去 O。
+    expect(
+      _build(current: b, others: [o, a], events: [_event('e-o', at(9))]),
+      isNull,
+    );
+  });
+
+  test('上一段還沒分析（有內容的草稿）：不帶，也不跳去更早那段；沒有訊息的空白片段不算一段', () {
+    final o = _segment(
+      id: 'o',
+      snapshotJson: _snapshot(_v3Result(judgment: 'O'), historyEventId: 'e-o'),
+      createdAt: _t0,
+      updatedAt: _t0.add(const Duration(minutes: 10)),
+    );
+    final draft = _segment(
+      id: 'draft',
+      messages: [(false, '還沒分析的內容')],
+      createdAt: _t0.add(const Duration(minutes: 30)),
+    );
+    final blank = _segment(
+      id: 'blank',
+      messages: const [],
+      createdAt: _t0.add(const Duration(minutes: 40)),
+    );
+    final events = [_event('e-o', _t0.add(const Duration(minutes: 10)))];
+    expect(
+      _build(current: newSegment, others: [o, draft], events: events),
+      isNull,
+    );
+    expect(
+      _build(current: newSegment, others: [o, blank], events: events)!.judgment,
+      'O',
+    );
+  });
+
+  test('上一段那次分析的歷史事件不在（沒寫進去、被清掉或快照沒記）：不帶', () {
+    final saved = _t0.add(const Duration(minutes: 10));
+    final a = _segment(
+      id: 'a',
+      snapshotJson: _snapshot(_v3Result(judgment: 'A'), historyEventId: 'e-a'),
+      updatedAt: saved,
+    );
+    expect(_build(current: newSegment, others: [a], events: const []), isNull);
+    final noId = _segment(
+      id: 'a',
+      snapshotJson: _snapshot(_v3Result(judgment: 'A'), noEventId: true),
+      updatedAt: saved,
+    );
+    expect(
+      _build(
+          current: newSegment, others: [noId], events: [_event('e-a', saved)]),
+      isNull,
+    );
+    expect(
+      _build(current: newSegment, others: [a], events: [_event('e-a', saved)])!
+          .judgment,
+      'A',
+    );
+  });
+
+  test('建立時間一樣、分不出先後：不帶', () {
+    final p = _segment(
+      id: 'p',
+      snapshotJson: _snapshot(_v3Result(judgment: 'P'), historyEventId: 'e-p'),
+      createdAt: _t0,
+    );
+    final q = _segment(
+      id: 'q',
+      snapshotJson: _snapshot(_v3Result(judgment: 'Q'), historyEventId: 'e-q'),
+      createdAt: _t0,
+    );
+    final events = [_event('e-p', _t0), _event('e-q', _t0)];
+    expect(_build(current: newSegment, others: [p, q], events: events), isNull);
+    // 跟這個片段同一刻建立的那段也分不出先後。
+    final twin = _segment(
+      id: 'twin',
+      messages: [(false, '同一刻建立')],
+      createdAt: newSegment.createdAt,
+    );
+    expect(
+      _build(current: newSegment, others: [p, twin], events: events),
+      isNull,
+    );
+    expect(
+      _build(current: newSegment, others: [p], events: events)!.judgment,
+      'P',
+    );
+  });
+}

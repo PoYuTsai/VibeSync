@@ -2,6 +2,11 @@
 // 輸出格式只有佔位符、沒有可以照抄的中文句子。
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import { GUIDE_V3_SECTIONS, type GuideV3SectionId } from "./guide_text.ts";
+import {
+  type GuideV3PreviousRound,
+  previousRoundReadSection,
+  previousRoundWriteSection,
+} from "./previous_round.ts";
 import type { ReadTags } from "./read_tags.ts";
 import type { CardSpec, PushAction } from "./rules.ts";
 import { transcriptByTurn, type Turn } from "./turns.ts";
@@ -91,9 +96,12 @@ export function backgroundSections(
 export function readUserPrompt(
   turns: readonly Turn[],
   background?: GuideV3Background,
+  previousRound?: GuideV3PreviousRound,
 ): string {
   return [
     ...backgroundSections(background),
+    // 上一輪脈絡（開關 ANALYZE_GUIDE_V3_PREV_ROUND）：沒帶就一字不變。
+    ...previousRoundReadSection(previousRound),
     `## 對話\n${transcriptByTurn(turns)}`,
   ].join("\n\n");
 }
@@ -161,6 +169,7 @@ export function writeUserPrompt(args: {
   readonly entries: readonly GuideV3Entry[];
   readonly cards: readonly CardSpec[];
   readonly background?: GuideV3Background;
+  readonly previousRound?: GuideV3PreviousRound;
 }): string {
   const facts = args.tags.hisStatedFacts.length > 0
     ? args.tags.hisStatedFacts.map((f) => `- ${f}`).join("\n")
@@ -172,6 +181,8 @@ export function writeUserPrompt(args: {
     : "（這一輪沒有）";
   return [
     ...backgroundSections(args.background),
+    // 上一輪脈絡（開關 ANALYZE_GUIDE_V3_PREV_ROUND）：沒帶就一字不變。
+    ...previousRoundWriteSection(args.previousRound),
     `## 對話\n${transcriptByTurn(args.turns)}`,
     `## 他在對話裡說過的自己的事\n${facts}`,
     `## 這一輪的情境做法\n${entries}`,

@@ -12,6 +12,7 @@ import '../services/analyze_stream_client.dart';
 import '../../domain/entities/analysis_models.dart';
 import '../../domain/entities/analysis_recommendation_preview.dart';
 import '../../domain/entities/guide_v3_result.dart';
+import '../../domain/entities/previous_round_context.dart';
 
 /// Phases of the analyze flow.
 ///
@@ -315,6 +316,7 @@ class StreamingAnalyzeNotifier
   bool? _cachedIsReconnectContext;
   int? _cachedPreviousAnalyzedCharCount;
   OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
+  PreviousRoundContext? _cachedPreviousRound;
   int? _cachedPayloadCharCount;
 
   // 續接同一個 run 時保留用戶已看到的卡片（F12）。伺服器續接分兩種：run 還在
@@ -357,6 +359,7 @@ class StreamingAnalyzeNotifier
     String? conversationContentRevision,
     String? conversationPartnerId,
     bool? isReconnectContext,
+    PreviousRoundContext? previousRound,
   }) async {
     final myGen = ++_generation;
     _keepAliveLink ??= ref.keepAlive();
@@ -381,6 +384,7 @@ class StreamingAnalyzeNotifier
     _cachedIsReconnectContext = isReconnectContext;
     _cachedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
     _cachedConfirmedOvercharge = confirmedOvercharge;
+    _cachedPreviousRound = previousRound;
     // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages 的計費字數；
     // F04：最後面他傳的（上限內）不算費，也不進 baseline（照伺服器）。
     _cachedPayloadCharCount = MessageCalculator.countPayloadChars(
@@ -419,6 +423,7 @@ class StreamingAnalyzeNotifier
       conversationContentRevision: conversationContentRevision,
       conversationPartnerId: conversationPartnerId,
       isReconnectContext: isReconnectContext,
+      previousRound: previousRound,
     );
   }
 
@@ -441,6 +446,7 @@ class StreamingAnalyzeNotifier
     String? conversationContentRevision,
     String? conversationPartnerId,
     bool? isReconnectContext,
+    PreviousRoundContext? previousRound,
     int automaticRecoveryAttempt = 0,
   }) async {
     final localProgress = _startLocalStreamPreludeProgress(
@@ -463,6 +469,7 @@ class StreamingAnalyzeNotifier
         previousAnalyzedCount: previousAnalyzedCount,
         previousAnalyzedCharCount: previousAnalyzedCharCount,
         confirmedOvercharge: confirmedOvercharge,
+        previousRound: previousRound,
       ))) {
         // v3 新分析的 started 沒有字：本地輪播接著跑、換成 v3 的句子，等伺服器
         // 送進度、判讀或卡才停（Eric 2026-10-18：不要停在「開始完整分析」）。
@@ -679,6 +686,7 @@ class StreamingAnalyzeNotifier
           conversationContentRevision: conversationContentRevision,
           conversationPartnerId: conversationPartnerId,
           isReconnectContext: isReconnectContext,
+          previousRound: previousRound,
           automaticRecoveryAttempt: automaticRecoveryAttempt + 1,
         );
         return;
@@ -895,6 +903,7 @@ class StreamingAnalyzeNotifier
       conversationContentRevision: _cachedConversationContentRevision,
       conversationPartnerId: _cachedConversationPartnerId,
       isReconnectContext: _cachedIsReconnectContext,
+      previousRound: _cachedPreviousRound,
     );
   }
 }

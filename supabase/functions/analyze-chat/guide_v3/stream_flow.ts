@@ -45,6 +45,12 @@ import {
   zeroMemoryCounts,
 } from "./memory.ts";
 import {
+  type GuideV3PreviousRound,
+  type GuideV3PreviousRoundTrace,
+  previousRoundTrace,
+  traceWithoutText,
+} from "./previous_round.ts";
+import {
   type GuideV3Background,
   readSystemPrompt,
   readUserPrompt,
@@ -138,6 +144,9 @@ export interface GuideV3StreamDeps {
   conversationHash: string;
   messages: readonly GuideV3Message[];
   background?: GuideV3Background;
+  /// 上一輪脈絡：開關 ANALYZE_GUIDE_V3_PREV_ROUND 允許、格式也對才有（handler 把關）；
+  /// 沒有就跟今天一模一樣。
+  previousRound?: GuideV3PreviousRound;
   requestType: string;
   effectiveTier: string;
   accountIsTest: boolean;
@@ -341,6 +350,15 @@ class GuideV3Flow {
     };
   }
 
+  /// 有帶上一輪脈絡時，trace 與 outcome log 只記數量（不放任何字）。
+  private get previousRoundCounts(): {
+    previousRound?: GuideV3PreviousRoundTrace;
+  } {
+    return this.deps.previousRound
+      ? { previousRound: previousRoundTrace(this.deps.previousRound) }
+      : {};
+  }
+
   async run(emit: NdjsonEmit, isClosed: () => boolean): Promise<void> {
     const deadlineAtMs = this.startedAt + GUIDE_V3_DEADLINE_MS;
     emit({
@@ -362,7 +380,11 @@ class GuideV3Flow {
         const read = await this.deps.callRead({
           runId: this.runId,
           system: readSystemPrompt(),
-          user: readUserPrompt(turns, this.deps.background),
+          user: readUserPrompt(
+            turns,
+            this.deps.background,
+            this.deps.previousRound,
+          ),
           schema: READ_TAGS_SCHEMA,
           deadlineAtMs,
         });
@@ -503,6 +525,7 @@ class GuideV3Flow {
       charged: this.charged,
       chargeUnknown: this.chargeUnknown,
       latencyMs: this.now() - this.startedAt,
+      ...this.previousRoundCounts,
       ...details,
     });
     emit(event);
@@ -624,7 +647,7 @@ class GuideV3Flow {
     plan: GuideV3Plan,
     extra: Partial<GuideV3Trace> = {},
   ): GuideV3Trace {
-    return {
+    const trace: GuideV3Trace = {
       tags,
       push: plan.push,
       specs: plan.specs,
@@ -638,8 +661,11 @@ class GuideV3Flow {
       ...(Object.values(this.hits).some(Boolean)
         ? { keywordHits: this.hits }
         : {}),
+      ...this.previousRoundCounts,
       ...extra,
     };
+    // 帶了上一輪的那次，trace 不放任何模型寫的字（主審第 1 輪 P1，previous_round.ts）。
+    return this.deps.previousRound ? traceWithoutText(trace, tags) : trace;
   }
 
   /// 對象記憶跟寫卡（或不送型的扣費）同時跑；結案前才用 settleMemory 等。
@@ -742,6 +768,7 @@ class GuideV3Flow {
       outcome: "done",
       persisted,
       latencyMs: this.now() - this.startedAt,
+      ...this.previousRoundCounts,
       ...outcome,
     });
     const client = stripClientHiddenFinalResult(result);
@@ -1031,6 +1058,7 @@ class GuideV3Flow {
           entries: plan.entries,
           cards: deliverable,
           background: this.deps.background,
+          previousRound: this.deps.previousRound,
         }),
         deadlineAtMs,
       });

@@ -90,6 +90,7 @@ class AnalysisSessionController {
       conversationContentRevision: preparation.contentRevision,
       conversationPartnerId: preparation.conversationPartnerId,
       isReconnectContext: preparation.isReconnectContext,
+      previousRound: preparation.previousRound,
     );
     if (waitForCompletion) {
       await analysisFuture;

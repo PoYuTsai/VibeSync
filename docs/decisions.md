@@ -660,6 +660,7 @@
 6. 完整覆蓋單一 Conversation 的唯一 record 被刪除時，走 Conversation 的 owner-scoped 安全刪除與 records/state/source cascade；舊制同一 Conversation 多筆或 partial records 只刪指定 record，避免誤刪其他歷史。partner `metVia` 不因刪一條 conversation 而消失，並跟隨 partner merge／delete lifecycle。
 7. 原有整段 conversation archive 保留並改稱「已收起的對話」，只承接無法安全視為單一完整 record 的舊制資料；已由完整獨立 record 承接的 Conversation 必須從該入口排除，避免重複顯示或刪除後看似復活。
 8. OCR `recognizeOnly` request 不帶目前或歷史訊息，只保留必要的 canonical Partner name 做身份核對；舊批次摘要在整批取代時一併清除。正式分析仍只使用這次 fragment 的內容，封存紀錄不回流成模型輸入。本案不改 Edge schema、quota 或 billing。
+   - 2026-10-18 修訂（Eric 核准）：v3 新片段可以在開關 `ANALYZE_GUIDE_V3_PREV_ROUND`（預設關）後面，帶上一輪的精簡摘要當背景：燈號、決定、判讀，加上一段最後 4 則，合計最多 600 字（不帶他複製的那句：手機上的複製紀錄記不準最後複製的是哪張，主審第 1 輪拿掉）。這段不計費、不進雜湊，紀錄只記數量；目的是讓「她回了、我要接著問」不用整段重貼。開關關著時照原條款，封存紀錄不回流。
 9. 對象頁右上封存圖示是分析紀錄的主要入口；分析頁保留同一入口作捷徑。「已收起的對話」降為封存抽屜內的次入口，不再佔用對象頁主內容。
 10. `sourcePlatform == null` 的紀錄保留在「全部」，但 UI 不顯示「未分類」badge／filter，也不得由 `metVia` 或 OCR 猜測。只有至少兩種已知平台時才顯示平台篩選。
 11. 清單不常駐顯示刪除；點入唯讀快照後才可從右上管理選單刪除。詳情必須讀 frozen messages／AI snapshot，不重新分析，並保留回覆引用脈絡。

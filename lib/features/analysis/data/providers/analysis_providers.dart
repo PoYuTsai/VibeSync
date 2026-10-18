@@ -28,6 +28,7 @@ import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/ports/conversation_write_ports.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/partner_stage_resolver.dart';
+import '../../domain/services/previous_round_builder.dart';
 import '../../domain/services/screenshot_session_context_defaults.dart';
 import '../../presentation/helpers/analysis_stream_content_display.dart';
 import '../../application/analysis_run_preparer.dart';
@@ -212,6 +213,33 @@ final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
           )
           ?.name;
     },
+    // 上一輪脈絡（Eric 2026-10-18）：同一個對象上一次的 v3 結果（燈號、決定、判讀）
+    // 與那筆分析紀錄的最後幾則。跟對象背景同一道資料品質閘門（被標記可能混到別人就
+    // 不帶）；紀錄被刪掉的那次不帶；讀本機資料出錯就不帶，絕不擋分析。
+    resolvePreviousRound: (conversation) {
+      final partnerId = conversation.partnerId?.trim();
+      if (partnerId == null || partnerId.isEmpty) return null;
+      try {
+        if (ref.read(dataQualityFlagProvider(partnerId)).isFlagged) return null;
+        final owner = ref.read(analysisRecordOwnerProvider);
+        final records = ref.read(analysisRecordStoreProvider);
+        return const PreviousRoundBuilder().build(
+          current: conversation,
+          partnerConversations:
+              ref.read(conversationRepositoryProvider).listByPartner(partnerId),
+          historyEvents:
+              ref.read(analysisHistoryRepositoryProvider).listRecent(),
+          liveRecordFor: (candidate) => owner == null
+              ? null
+              : records.currentFor(
+                  ownerUserId: owner,
+                  conversationId: candidate.id,
+                ),
+        );
+      } catch (_) {
+        return null;
+      }
+    },
   );
 });
 
@@ -314,6 +342,7 @@ final analysisSessionControllerFactoryProvider =
         conversationContentRevision,
         conversationPartnerId,
         isReconnectContext,
+        previousRound,
       }) =>
           ref.read(streamingAnalyzeProvider(conversationId).notifier).start(
                 messages: messages,
@@ -332,6 +361,7 @@ final analysisSessionControllerFactoryProvider =
                 conversationContentRevision: conversationContentRevision,
                 conversationPartnerId: conversationPartnerId,
                 isReconnectContext: isReconnectContext,
+                previousRound: previousRound,
               ),
       retryRun: () => ref
           .read(streamingAnalyzeProvider(conversationId).notifier)

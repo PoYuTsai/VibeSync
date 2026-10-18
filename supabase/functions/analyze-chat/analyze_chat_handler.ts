@@ -83,12 +83,14 @@ import {
 import { hashConversation } from "./conversation_hash.ts";
 import { handleGuideV3Stream } from "./guide_v3/stream_flow.ts";
 import { createGuideV3ModelCalls } from "./guide_v3/model_calls.ts";
+import { acceptedPreviousRound } from "./guide_v3/previous_round.ts";
 import {
   billingMessagesFor,
   guideV3MaxCards,
   guideV3Mode,
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
+  shouldUseGuideV3PreviousRound,
 } from "./guide_v3/routing.ts";
 import { scanSafetyKeywords } from "./guide_v3/safety.ts";
 import {
@@ -1814,6 +1816,22 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           partnerSummary,
           conversationSummary,
         },
+        // 上一輪脈絡（開關 ANALYZE_GUIDE_V3_PREV_ROUND，off／test／on，每次請求讀；
+        // Eric 2026-10-18）：沒開就不讀這個欄位；格式不對整份不用、不擋分析。
+        // 不算計費字數、不進對話雜湊（續看只重播）；log 只記原因代碼。
+        previousRound: shouldUseGuideV3PreviousRound({
+            mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_PREV_ROUND")),
+            accountIsTest,
+          })
+          ? acceptedPreviousRound(
+            requestBody.previousRound,
+            (reason) =>
+              logInfo("guide_v3_previous_round_ignored", {
+                user: summarizeUser(user.id),
+                reason,
+              }),
+          )
+          : undefined,
         requestType,
         effectiveTier,
         accountIsTest,
