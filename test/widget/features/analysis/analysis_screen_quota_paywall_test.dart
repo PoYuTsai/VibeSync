@@ -1,25 +1,42 @@
-// 額度不夠時打開付費頁的入口（Eric 2026-10-18：審查留下的殘餘風險「不接受，先處理」）。
-// 走畫面上真的呼叫點，不直接造入口：
+// 額度不夠時打開付費頁的入口，以及額度說明照目前方案（Eric 2026-10-18：審查留下的
+// 殘餘風險「不接受，先處理」）。全部走畫面上真的呼叫點，不直接造入口：
 // - 分析前確認框的升級鈕：付費頁換額度大標、漏斗記 quota_exhausted（之前是一般入口）。
-// - Essential 已經是最高方案：確認框不叫他升級，付費頁大標只說什麼時候恢復。
+// - 每月額度：升級卡的查看方案、分析途中撞到每月額度自動打開。
+// - 草稿潤飾撞到每日／每月額度；回覆微調撞到額度時面板上的說明。
+// - Essential 已經是最高方案：不叫他升級，只說什麼時候恢復；免費、Starter 照舊有升級那句。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
+import 'package:vibesync/core/services/supabase_service.dart';
 import 'package:vibesync/core/services/usage_service.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
 import 'package:vibesync/features/analysis/application/ports/conversation_memory_port.dart';
+import 'package:vibesync/features/analysis/application/reply_iteration_coordinator.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_record_providers.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
+import 'package:vibesync/features/analysis/data/services/optimize_billing_adapter.dart';
+import 'package:vibesync/features/analysis/data/services/optimize_message_request_session.dart';
 import 'package:vibesync/features/analysis/data/services/partner_context_resolver.dart';
+import 'package:vibesync/features/analysis/data/services/reply_refine_draft_adapter.dart';
+import 'package:vibesync/features/analysis/data/services/reply_refine_draft_store.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_recommendation_preview.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_telemetry.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
+import 'package:vibesync/features/analysis/domain/errors/analysis_exceptions.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/reply_refine_sheet.dart';
+import 'package:vibesync/features/analysis/presentation/widgets/streaming_analysis_loading_widgets.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
@@ -33,6 +50,7 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_ar
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
+import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/services/partner_summary_builder.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
@@ -47,6 +65,7 @@ import '../../../helpers/memory_analysis_history_repository.dart';
 import '../../../helpers/memory_coaching_outcome_repository.dart';
 
 const _conversationId = 'quota-paywall-test';
+const _userId = 'quota-paywall-user';
 
 const _free = SubscriptionTierHelper.free;
 const _starter = SubscriptionTierHelper.starter;
@@ -61,6 +80,9 @@ class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 
   @override
   StreamingAnalysisState build(String conversationId) => seed;
+
+  /// 模擬分析途中狀態改變（走畫面的即時 listener，不是回頁 hydrate）。
+  void emit(StreamingAnalysisState next) => state = next;
 }
 
 /// 指定的方案與用量；重新整理、同步都回到同一份（不打 RevenueCat）。
@@ -104,6 +126,70 @@ class _RecordingAnalyzeStreamClient extends AnalyzeStreamClient {
     return const Stream.empty();
   }
 }
+
+/// 潤飾、微調的傳輸假件：潤飾預設成功；設了錯誤就照伺服器回 429 時 client 丟出的
+/// 額度例外丟出（同 quotaExceptionFrom429 的型別）。
+class _FakeOptimizeTransport {
+  AnalysisException? polishError;
+  AnalysisException? refineError;
+
+  Future<AnalysisResult> optimizeDraft({
+    required List<Message> messages,
+    required String userDraft,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    String? requestId,
+    AnalysisTelemetryCallback? onTelemetry,
+  }) async {
+    final error = polishError;
+    if (error != null) throw error;
+    return AnalysisResult.fromJson(_polishedBody(userDraft));
+  }
+
+  Future<AnalysisResult> refineReply({
+    required List<Message> messages,
+    required String userDraft,
+    required String refineInstruction,
+    String? refineAnchorText,
+    GuideV3RefineSpec? guideV3Card,
+    SessionContext? sessionContext,
+    String? conversationSummary,
+    String? partnerSummary,
+    String? effectiveStyleContext,
+    String? knownContactName,
+    String? requestId,
+    AnalysisTelemetryCallback? onTelemetry,
+  }) async {
+    throw refineError ?? StateError('這個測試沒有設定微調結果');
+  }
+}
+
+Map<String, dynamic> _polishedBody(String draft) => {
+      'enthusiasm': {'score': 70, 'level': 'warm'},
+      'gameStage': {
+        'current': 'premise',
+        'status': 'normal',
+        'nextStep': '繼續',
+      },
+      'psychology': {'subtext': '有興趣'},
+      'topicDepth': {'current': 'personal', 'suggestion': '可深入'},
+      'replies': {'extend': '延展回覆內容'},
+      'finalRecommendation': {
+        'pick': 'extend',
+        'content': '延展回覆內容',
+        'reason': '理由',
+        'psychology': '心理',
+      },
+      'strategy': '保持沉穩',
+      'optimizedMessage': {
+        'original': draft,
+        'optimized': '這週要不要一起喝杯咖啡？',
+        'reason': '更自然',
+      },
+    };
 
 /// 已送出的漏斗事件。
 class _SentFunnel {
@@ -225,6 +311,14 @@ class _NoPartnerDataQualityRepo implements PartnerDataQualityRepoView {
   bool isFlaggedUnresolved(String partnerId) => false;
 }
 
+User _fakeUser() => User(
+      id: _userId,
+      appMetadata: const {},
+      userMetadata: const {},
+      aud: 'authenticated',
+      createdAt: DateTime(2026, 10, 18).toIso8601String(),
+    );
+
 /// [tier] 方案，上限照方案常數；[dailyUsed]／[monthlyUsed] 是已經用掉的則數。
 SubscriptionState _plan(
   String tier, {
@@ -264,11 +358,62 @@ Conversation _conversation({String content = '今天加班好累喔'}) {
   );
 }
 
+/// 分析完成的結果（草稿潤飾的入口只在有結果時出現）。
+StreamingAnalysisState _doneSeed() {
+  const runId = 'run_quota_paywall';
+  return const StreamingAnalysisState(
+    phase: StreamingAnalyzePhase.done,
+    recommendationPreview: AnalysisRecommendationPreview(
+      analysisRunId: runId,
+      pick: 'resonate',
+      nextStep: '先接住情緒再延伸',
+      recommendedReply: '聽起來累，要不要週末喝杯咖啡？',
+      shortReason: '情緒先接住',
+      insufficientContext: false,
+      confidence: 'high',
+      estimatedReportSeconds: 17,
+    ),
+    result: AnalysisResult(
+      enthusiasmScore: 72,
+      strategy: '保持沉穩',
+      gameStage: GameStageInfo(
+        current: GameStage.premise,
+        status: GameStageStatus.normal,
+        nextStep: '繼續',
+      ),
+      psychology: PsychologyAnalysis(subtext: '有興趣'),
+      topicDepth: TopicDepth(
+        current: TopicDepthLevel.personal,
+        suggestion: '可深入',
+      ),
+      replies: {
+        'extend': '延展回覆內容',
+        'resonate': '共鳴回覆內容',
+      },
+      replyOptions: {},
+      recommendation: FinalRecommendation(
+        pick: 'resonate',
+        content: '共鳴回覆內容',
+        reason: '推薦理由文案',
+        psychology: '推薦心理判斷',
+      ),
+    ),
+    analysisRunId: runId,
+  );
+}
+
 class _Harness {
-  _Harness({required this.recorder, required this.funnel});
+  _Harness({
+    required this.recorder,
+    required this.funnel,
+    required this.transport,
+    required this.streaming,
+  });
 
   final _RecordingAnalyzeStreamClient recorder;
   final _SentFunnel funnel;
+  final _FakeOptimizeTransport transport;
+  final _SeededStreamingAnalyzeNotifier Function() streaming;
 }
 
 Future<_Harness> _pumpScreen(
@@ -281,12 +426,16 @@ Future<_Harness> _pumpScreen(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({
     AiDataSharingConsent.acceptedKeyForTesting: true,
+    // 潤飾／微調的同意是帳號級的 key。
+    '${AiDataSharingConsent.optimizeReplayConsentKey}::$_userId': true,
   });
 
   final conv = conversation ?? _conversation();
   final recorder = _RecordingAnalyzeStreamClient();
   final funnel = _SentFunnel();
+  final transport = _FakeOptimizeTransport();
   late final _SeededSubscriptionNotifier subscription;
+  late final _SeededStreamingAnalyzeNotifier streaming;
 
   await tester.pumpWidget(
     ProviderScope(
@@ -308,7 +457,7 @@ Future<_Harness> _pumpScreen(
         coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
             .overrideWithValue(const []),
         streamingAnalyzeProvider.overrideWith(
-          () => _SeededStreamingAnalyzeNotifier(seed),
+          () => streaming = _SeededStreamingAnalyzeNotifier(seed),
         ),
         analysisRunPreparerProvider.overrideWithValue(
           AnalysisRunPreparer(
@@ -336,6 +485,21 @@ Future<_Harness> _pumpScreen(
             dailyLimit: plan.dailyLimit,
             dailyResetAt: DateTime(2026, 10, 19),
             tier: plan.tier,
+          ),
+        ),
+        // 潤飾、微調走真的協調器與計費順序，只換掉 Hive 與網路。
+        replyIterationCoordinatorFactoryProvider.overrideWithValue(
+          () => ReplyIterationCoordinator(
+            billing: OptimizeBillingAdapter(
+              session: OptimizeMessageRequestIdSession(
+                store: InMemoryOptimizeMessagePendingRequestStore(),
+              ),
+            ),
+            draftStore: ReplyRefineDraftAdapter(
+              store: InMemoryReplyRefineDraftStore(),
+            ),
+            optimizeDraft: transport.optimizeDraft,
+            refineReply: transport.refineReply,
           ),
         ),
         funnelTrackerProvider.overrideWithValue(
@@ -381,7 +545,12 @@ Future<_Harness> _pumpScreen(
     await tester.tap(gotIt);
     await tester.pump();
   }
-  return _Harness(recorder: recorder, funnel: funnel);
+  return _Harness(
+    recorder: recorder,
+    funnel: funnel,
+    transport: transport,
+    streaming: () => streaming,
+  );
 }
 
 Future<void> _tapOrb(WidgetTester tester) async {
@@ -393,6 +562,24 @@ Future<void> _tapOrb(WidgetTester tester) async {
 
 Finder _inPreviewDialog(Finder finder) =>
     find.descendant(of: find.byType(AnalysisPreviewDialog), matching: finder);
+
+/// 打開草稿潤飾面板、送出一段草稿。潤飾要登入（帳號是同意與計費的 key）；畫面
+/// 先載好才登入，訂閱狀態就不會去讀伺服器和 Hive。
+Future<void> _polishDraft(WidgetTester tester) async {
+  SupabaseService.debugCurrentUserOverride = _fakeUser;
+  addTearDown(SupabaseService.debugResetForTesting);
+  final entry = find.byKey(const ValueKey('draft-polish-entry'));
+  await tester.ensureVisible(entry);
+  await tester.tap(entry);
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const ValueKey('draft-polish-input')),
+    '要不要喝咖啡',
+  );
+  await tester.pump();
+  await tester.tap(find.byKey(const ValueKey('draft-polish-submit')));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   setUp(() {
@@ -463,6 +650,211 @@ void main() {
         findsOneWidget,
       );
       expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+  });
+
+  group('每月額度：走真的呼叫點帶每月的入口', () {
+    testWidgets('升級卡的查看方案：這個月剩 2 則、這次要 5 則 → 每月「不夠這次用」的大標', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        seed: const StreamingAnalysisState(
+          phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+          recommendationPreviewErrorCode: 'MONTHLY_LIMIT_EXCEEDED',
+          recommendationPreviewErrorMessage: '本月額度已用完',
+          quotaExceeded: QuotaExceededInfo(
+            isMonthly: true,
+            remaining: 2,
+            quotaNeeded: 5,
+          ),
+        ),
+      );
+      final viewPlans = find.descendant(
+        of: find.byType(QuotaExceededUpgradeCard),
+        matching: find.text('查看方案'),
+      );
+      await tester.ensureVisible(viewPlans);
+      await tester.tap(viewPlans);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(PaywallEntry.monthlyQuotaShort.headlineFor(_free)),
+        findsOneWidget,
+      );
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+
+    testWidgets('分析途中撞到每月額度（429）：自動打開付費頁；Essential 只說每月 1 號早上 8 點恢復',
+        (tester) async {
+      final harness = await _pumpScreen(tester, plan: _plan(_essential));
+
+      harness.streaming().emit(const StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+            recommendationPreviewErrorCode: 'MONTHLY_LIMIT_EXCEEDED',
+            recommendationPreviewErrorMessage: '本月額度已用完',
+            quotaExceeded: QuotaExceededInfo(
+              isMonthly: true,
+              remaining: 0,
+              quotaNeeded: 3,
+            ),
+          ));
+      await tester.pumpAndSettle();
+
+      final headline = PaywallEntry.monthlyQuotaUsedUp.headlineFor(_essential);
+      expect(find.text(headline), findsOneWidget);
+      expect(headline, contains('每月 1 號早上 8 點恢復'));
+      expect(headline, isNot(contains('升級')));
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+
+    testWidgets('只有每月的錯誤碼、沒有額度明細：照錯誤碼當每月、不知道剩幾則就說不夠這次用', (tester) async {
+      final harness = await _pumpScreen(tester, plan: _plan(_starter));
+
+      harness.streaming().emit(const StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+            recommendationPreviewErrorCode: 'MONTHLY_LIMIT_EXCEEDED',
+            recommendationPreviewErrorMessage: '本月額度已用完',
+          ));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(PaywallEntry.monthlyQuotaShort.headlineFor(_starter)),
+        findsOneWidget,
+      );
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+  });
+
+  // 潤飾的額度提示在打開付費頁前就被清掉（_showPaywall 先清 snackbar），畫面上看得到
+  // 的是付費頁大標；那句說明跟微調面板同一句，由下一組和單元測試驗。
+  group('草稿潤飾撞到額度：走真的潤飾路徑，付費頁照每日或每月換大標', () {
+    testWidgets('免費今天用完：付費頁是今天用完、升級後每天能用更多', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        seed: _doneSeed(),
+      );
+      harness.transport.polishError = DailyLimitExceededException(
+        dailyLimit: _dailyLimitOf(_free),
+        used: _dailyLimitOf(_free),
+        remaining: 0,
+        quotaNeeded: 1,
+      );
+
+      await _polishDraft(tester);
+
+      expect(
+        find.text(PaywallEntry.dailyQuotaUsedUp.headlineFor(_free)),
+        findsOneWidget,
+      );
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+
+    testWidgets('Essential 這個月用完：付費頁是這個月用完、只說每月 1 號早上 8 點恢復', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_essential),
+        seed: _doneSeed(),
+      );
+      harness.transport.polishError = MonthlyLimitExceededException(
+        monthlyLimit: _monthlyLimitOf(_essential),
+        used: _monthlyLimitOf(_essential),
+        remaining: 0,
+        quotaNeeded: 1,
+      );
+
+      await _polishDraft(tester);
+
+      final headline = PaywallEntry.monthlyQuotaUsedUp.headlineFor(_essential);
+      expect(find.text(headline), findsOneWidget);
+      expect(headline, isNot(contains('升級')));
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+  });
+
+  group('回覆微調撞到額度：面板上的說明照目前方案，跟潤飾同一句', () {
+    /// 潤飾成功後按「再調一下」，用快捷指令送一次微調。
+    Future<String> refineOnce(WidgetTester tester) async {
+      await _polishDraft(tester);
+      final refine = find.byKey(const ValueKey('draft-polish-refine'));
+      await tester.ensureVisible(refine);
+      await tester.tap(refine);
+      await tester.pumpAndSettle();
+      final quick = find.byKey(
+        ValueKey('reply-refine-quick-${kRefineQuickInstructions[1]}'),
+      );
+      await tester.ensureVisible(quick);
+      await tester.tap(quick);
+      await tester.pumpAndSettle();
+      return tester
+          .widget<Text>(find.byKey(const ValueKey('reply-refine-error')))
+          .data!;
+    }
+
+    testWidgets('Essential 今天用完：不叫他升級，只說每天早上 8 點恢復', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_essential),
+        seed: _doneSeed(),
+      );
+      final limit = _dailyLimitOf(_essential);
+      harness.transport.refineError = DailyLimitExceededException(
+        dailyLimit: limit,
+        used: limit,
+        remaining: 0,
+        quotaNeeded: 1,
+      );
+
+      final error = await refineOnce(tester);
+
+      expect(
+        error,
+        '目前方案 Essential：今日額度已用完 ($limit/$limit)，每天早上 8 點恢復。',
+      );
+    });
+
+    testWidgets('Essential 這個月用完：只說每月 1 號早上 8 點恢復', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_essential),
+        seed: _doneSeed(),
+      );
+      final limit = _monthlyLimitOf(_essential);
+      harness.transport.refineError = MonthlyLimitExceededException(
+        monthlyLimit: limit,
+        used: limit,
+        remaining: 0,
+        quotaNeeded: 1,
+      );
+
+      final error = await refineOnce(tester);
+
+      expect(
+        error,
+        '目前方案 Essential：本月額度已用完 ($limit/$limit)，每月 1 號早上 8 點恢復。',
+      );
+    });
+
+    testWidgets('免費今天用完：保留升級那句', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        seed: _doneSeed(),
+      );
+      final limit = _dailyLimitOf(_free);
+      harness.transport.refineError = DailyLimitExceededException(
+        dailyLimit: limit,
+        used: limit,
+        remaining: 0,
+        quotaNeeded: 1,
+      );
+
+      final error = await refineOnce(tester);
+
+      expect(
+        error,
+        '目前方案 Free：今日額度已用完 ($limit/$limit)，每天早上 8 點恢復；升級方案可取得更多額度。',
+      );
     });
   });
 }
