@@ -41,6 +41,9 @@ export interface ReadTags {
   readonly risk: boolean;
   /// 自傷訊號（Eric 10/16）：有就不出卡，改顯示固定的關心訊息、不扣額度。
   readonly selfHarmSignal: boolean;
+  /// 她或他本人未滿 18 歲、或現在還在讀國中或高中（Eric 2026-10-18）：有就不出卡、
+  /// 不扣額度，顯示固定說明（課程兩個例外之一）。
+  readonly minorSignal: boolean;
   readonly needsHisFacts: boolean;
   readonly identityQuestion: boolean;
   readonly hisStatedFacts: readonly string[];
@@ -66,6 +69,7 @@ const BOOL_FIELDS = [
   "blocked",
   "risk",
   "selfHarmSignal",
+  "minorSignal",
   "needsHisFacts",
   "identityQuestion",
   "hasHisVoiceSample",

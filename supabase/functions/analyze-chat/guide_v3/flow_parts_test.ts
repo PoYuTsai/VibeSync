@@ -13,9 +13,16 @@ import {
   vetCoachText,
   vetPlanText,
 } from "./finalize.ts";
-import { HOLD_WAIT_FALLBACK, planTurn } from "./plan.ts";
+import {
+  HOLD_WAIT_FALLBACK,
+  planTurn,
+  planWithoutRead,
+  STOP_REASON_CARE,
+  STOP_REASON_MINOR,
+} from "./plan.ts";
 import {
   backgroundSections,
+  readSystemPrompt,
   readUserPrompt,
   writeUserPrompt,
 } from "./prompts.ts";
@@ -30,7 +37,13 @@ import {
 } from "./run_shape.ts";
 import { guideMessagesFrom, upstreamErrorEvent } from "./stream_flow.ts";
 import { toTurns } from "./turns.ts";
-import { cardView, CARE_MESSAGE, readView, TASK_CODE } from "./wire.ts";
+import {
+  cardView,
+  CARE_MESSAGE,
+  MINOR_MESSAGE,
+  readView,
+  TASK_CODE,
+} from "./wire.ts";
 
 function tags(over: Partial<ReadTags> = {}): ReadTags {
   return {
@@ -46,6 +59,7 @@ function tags(over: Partial<ReadTags> = {}): ReadTags {
     blocked: false,
     risk: false,
     selfHarmSignal: false,
+    minorSignal: false,
     needsHisFacts: false,
     identityQuestion: false,
     hisStatedFacts: [],
@@ -101,6 +115,80 @@ Deno.test("自傷訊號優先於其他所有判斷：不排卡、不帶條目", 
   assertEquals(plan.specs, []);
   assertEquals(plan.entries, []);
   assertEquals(plan.judgment, "");
+});
+
+Deno.test("未成年：模型標記或程式關鍵字任一個就不出卡、給固定說明；自傷排在前面", () => {
+  const byModel = planTurn(herLast, tags({ minorSignal: true }));
+  assertEquals(byModel.decision, "care");
+  assertEquals(byModel.careKind, "minor");
+  assertEquals(byModel.careTrigger, "model");
+  assertEquals(byModel.reason, STOP_REASON_MINOR);
+  assertEquals(byModel.specs, []);
+  assertEquals(byModel.entries, []);
+  assertEquals(byModel.judgment, "");
+  assertEquals(
+    planTurn(herLast, tags(), { minor: true }).careTrigger,
+    "keyword",
+  );
+  assertEquals(
+    planTurn(herLast, tags({ minorSignal: true }), { minor: true }).careTrigger,
+    "both",
+  );
+  // 自傷關心排在未成年前面（專線比「不提供建議」重要）。
+  const both = planTurn(
+    herLast,
+    tags({ selfHarmSignal: true, minorSignal: true }),
+  );
+  assertEquals([both.careKind, both.reason], ["self_harm", STOP_REASON_CARE]);
+  // 蓋過 B47、停、先別回：一律固定說明。
+  for (
+    const [turns, over] of [
+      [herLast, { matchedEntries: ["B47"] }],
+      [herLast, { explicitRejection: true }],
+      [hisLast, {}],
+    ] as const
+  ) {
+    const plan = planTurn(turns, tags({ ...over, minorSignal: true }));
+    assertEquals(plan.careKind, "minor", JSON.stringify(over));
+  }
+  // 讀局面失敗時只看關鍵字；沒命中就照原本的錯誤處理。
+  assertEquals(planWithoutRead({ minor: true })?.careKind, "minor");
+  assertEquals(planWithoutRead({ minor: true })?.careTrigger, "keyword");
+  assertEquals(planWithoutRead({ minor: false }), null);
+});
+
+Deno.test("未成年的判讀事件：固定說明、careKind，沒有排卡；說明一兩句、講明不扣", () => {
+  const view = readView(
+    planTurn(herLast, tags({ minorSignal: true })),
+    "green",
+  );
+  assertEquals(view.decision, "care");
+  assertEquals(view.careKind, "minor");
+  assertEquals(view.careMessage, MINOR_MESSAGE);
+  assertEquals(view.plannedCards, []);
+  // 自傷關心的 careKind 是 self_harm，文案不變。
+  const care = readView(
+    planTurn(herLast, tags({ selfHarmSignal: true })),
+    "red",
+  );
+  assertEquals([care.careKind, care.careMessage], ["self_harm", CARE_MESSAGE]);
+  // 讀局面失敗、只靠關鍵字時沒有燈號。
+  assertEquals(readView(planWithoutRead({ minor: true })!, null).light, null);
+  assert(MINOR_MESSAGE.split("。").filter(Boolean).length <= 2);
+  for (const word of ["18 歲", "不提供回覆建議", "不扣額度"]) {
+    assert(MINOR_MESSAGE.includes(word), word);
+  }
+});
+
+Deno.test("讀局面標記的 schema 有未成年欄位，而且是必填；提示詞有欄位說明", () => {
+  assert((READ_TAGS_SCHEMA.required as string[]).includes("minorSignal"));
+  assertEquals(
+    (READ_TAGS_SCHEMA.properties as Record<string, unknown>).minorSignal,
+    { type: "boolean" },
+  );
+  const prompt = readSystemPrompt();
+  assert(prompt.includes("- minorSignal："));
+  assert(prompt.includes("「我高中的時候」"));
 });
 
 Deno.test("先別回：模型沒寫要等什麼時用預設；有寫就用模型的", () => {

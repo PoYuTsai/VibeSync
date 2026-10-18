@@ -10,15 +10,16 @@ import type {
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { MEMORY_SCHEMA, memorySystemPrompt } from "./memory.ts";
 import type { ReadTags } from "./read_tags.ts";
-import { HOLD_WAIT_FALLBACK } from "./plan.ts";
+import { HOLD_WAIT_FALLBACK, STOP_REASON_MINOR } from "./plan.ts";
 import type { GuideV3Background } from "./prompts.ts";
 import {
   type GuideV3ExtractRequest,
   type GuideV3StreamDeps,
   handleGuideV3Stream,
   STOP_CONDITION_CARE,
+  STOP_CONDITION_MINOR,
 } from "./stream_flow.ts";
-import { CARE_MESSAGE } from "./wire.ts";
+import { CARE_MESSAGE, MINOR_MESSAGE } from "./wire.ts";
 
 const T0 = Date.parse("2026-10-16T00:00:00.000Z");
 
@@ -36,6 +37,7 @@ function tags(over: Partial<ReadTags> = {}): ReadTags {
     blocked: false,
     risk: false,
     selfHarmSignal: false,
+    minorSignal: false,
     needsHisFacts: false,
     identityQuestion: false,
     hisStatedFacts: [],
@@ -744,6 +746,104 @@ Deno.test("自傷訊號：不寫卡、不扣額度、顯示固定關心訊息", 
   >;
   assertEquals(usage.messagesUsed, 0);
   assertEquals(usage.shouldChargeQuota, false);
+});
+
+Deno.test("未成年（模型標記）：不寫卡、不扣額度、不打記憶，固定說明；紀錄分得出來", async () => {
+  const h = harness({
+    readTags: tags({ minorSignal: true }),
+    extract: () => Promise.resolve({ text: "{}", model: "claude-haiku-5-5" }),
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(types(evs), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(evs[1].decision, "care");
+  assertEquals(evs[1].careKind, "minor");
+  assertEquals(evs[1].careMessage, MINOR_MESSAGE);
+  assertEquals(evs[1].plannedCards, []);
+  assertEquals(h.calls.includes("write"), false);
+  assertEquals(h.calls.includes("extract"), false);
+  const c = h.charges[0];
+  assertEquals([c.chargeQuota, c.messageCount], [false, 0]);
+  assertEquals(c.decisionKind, "do_not_send");
+  assertEquals(c.recommendationJson.action, "care");
+  assertEquals(c.recommendationJson.careKind, "minor");
+  assertEquals(c.recommendationJson.careTrigger, "model");
+  assertEquals(c.recommendationJson.reason, STOP_REASON_MINOR);
+  assertEquals(c.recommendationJson.stopCondition, STOP_CONDITION_MINOR);
+  const usage = (evs[2].finalResult as Record<string, unknown>).usage as Record<
+    string,
+    unknown
+  >;
+  assertEquals(usage.messagesUsed, 0);
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.care, { kind: "minor", trigger: "model" });
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.careKind, "minor");
+  assertEquals(outcome.metadata.charged, false);
+});
+
+Deno.test("未成年（只有程式關鍵字）：模型沒標也擋，trace 記關鍵字命中", async () => {
+  const h = harness({
+    messages: [
+      { isFromMe: true, content: "妳幾年級啊" },
+      { isFromMe: false, content: "我高二啦" },
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].careKind, "minor");
+  assertEquals(h.calls.includes("write"), false);
+  assertEquals(h.charges[0].recommendationJson.careTrigger, "keyword");
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals((trace.keywordHits as Record<string, unknown>).minor, true);
+});
+
+Deno.test("未成年（背景寫她高二）：一樣不出卡", async () => {
+  const h = harness({ background: { targetDescription: "高二學妹" } });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  assertEquals(evs[1].careKind, "minor");
+  assertEquals(h.charges[0].chargeQuota, false);
+});
+
+Deno.test("讀局面拒答或格式壞掉，但關鍵字看得出未成年：給固定說明，不給錯誤、不扣", async () => {
+  const messages = [
+    { isFromMe: true, content: "妳幾歲" },
+    { isFromMe: false, content: "人家才16歲" },
+  ];
+  const refusal = Object.assign(new Error("refused"), {
+    code: "MODEL_REFUSAL",
+  });
+  const h1 = harness({ messages, readError: refusal });
+  const e1 = await events(await handleGuideV3Stream(h1.deps));
+  assertEquals(types(e1), [
+    "analysis.started",
+    "analysis.read",
+    "analysis.done",
+  ]);
+  assertEquals(e1[1].careKind, "minor");
+  assertEquals(e1[1].light, null);
+  assertEquals(h1.failed, []);
+  assertEquals(h1.charges[0].chargeQuota, false);
+  const trace = h1.done[0].guideV3Trace as Record<string, unknown>;
+  assertEquals(trace.tags, null);
+  assertEquals(trace.care, {
+    kind: "minor",
+    trigger: "keyword",
+    readFailedCode: "MODEL_REFUSAL",
+  });
+  const outcome = h1.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.readFailedCode, "MODEL_REFUSAL");
+
+  const h2 = harness({ messages, readTags: '{"light":"blue"}' });
+  const e2 = await events(await handleGuideV3Stream(h2.deps));
+  assertEquals(e2[1].careKind, "minor");
+  assertEquals(
+    (h2.done[0].guideV3Trace as { care: { readFailedCode: string } }).care
+      .readFailedCode,
+    "GUIDE_V3_READ_INVALID",
+  );
 });
 
 Deno.test("自傷訊號但紀錄寫不進資料庫：關心訊息照樣顯示，不呼叫 markDone", async () => {

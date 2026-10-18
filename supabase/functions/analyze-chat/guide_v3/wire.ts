@@ -3,9 +3,15 @@
 import type { V3CardTaskCode } from "../stream_run_store.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type { GuideV3MemoryTrace } from "./memory.ts";
-import type { GuideV3Decision, GuideV3Plan } from "./plan.ts";
+import type {
+  GuideV3CareKind,
+  GuideV3CareTrigger,
+  GuideV3Decision,
+  GuideV3Plan,
+} from "./plan.ts";
 import type { LIGHTS } from "./read_tags.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
+import type { SafetyKeywordHits } from "./safety.ts";
 
 export const GUIDE_V3_READ_EVENT = "analysis.read";
 export const GUIDE_V3_CARD_EVENT = "analysis.card";
@@ -41,16 +47,24 @@ export const CARE_MESSAGE = [
   "這次不提供回覆建議。",
 ].join("\n");
 
+/// 涉及未成年時的固定說明（Eric 2026-10-18 盤點預設：一兩句、平靜、不說教，只講這類對話
+/// 不給建議）。
+export const MINOR_MESSAGE =
+  "看起來對話裡有人未滿 18 歲或還在讀國中、高中，這類對話我們不提供回覆建議。這次不扣額度。";
+
 /// 需要他填的空格（提示詞要求寫成「＿＿」）。
 const BLANK_PATTERN = /＿/;
 
 export interface GuideV3ReadView {
   readonly guideVersion: string;
   readonly decision: GuideV3Decision;
-  readonly light: typeof LIGHTS[number];
+  /// 讀局面失敗、只靠程式關鍵字給固定訊息時沒有燈號（App 本來就不給 care 顯示燈號）。
+  readonly light: typeof LIGHTS[number] | null;
   readonly judgment: string;
   readonly waitFor?: string;
   readonly careMessage?: string;
+  /// care 才有：self_harm（自傷關心）或 minor（涉及未成年）。舊版 App 不看這欄。
+  readonly careKind?: GuideV3CareKind;
   /// 預定的卡（照順序）；送出的張數可能比較少（被檢查拿掉）。locked＝這個方案看
   /// 不到（免費方案只送前幾張），伺服器不會寫也不會送那幾張。
   readonly plannedCards: readonly {
@@ -73,16 +87,22 @@ export interface GuideV3CardView {
 
 export function readView(
   plan: GuideV3Plan,
-  light: typeof LIGHTS[number],
+  light: typeof LIGHTS[number] | null,
   maxCards: number | null = null,
 ): GuideV3ReadView {
+  const careKind = plan.careKind ?? "self_harm";
   return {
     guideVersion: GUIDE_V3_VERSION,
     decision: plan.decision,
     light,
     judgment: plan.judgment,
     ...(plan.decision === "hold" ? { waitFor: plan.waitFor } : {}),
-    ...(plan.decision === "care" ? { careMessage: CARE_MESSAGE } : {}),
+    ...(plan.decision === "care"
+      ? {
+        careMessage: careKind === "minor" ? MINOR_MESSAGE : CARE_MESSAGE,
+        careKind,
+      }
+      : {}),
     plannedCards: plan.specs.map((spec, i) => ({
       slot: i + 1,
       task: TASK_CODE[spec.task],
@@ -134,6 +154,14 @@ export interface GuideV3Trace {
   readonly firstCardMs: number | null;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;
+  /// care 才有：哪一種固定訊息、誰判出來的；讀局面失敗才靠關鍵字給的，記失敗的錯誤碼。
+  readonly care?: {
+    readonly kind: GuideV3CareKind;
+    readonly trigger: GuideV3CareTrigger;
+    readonly readFailedCode?: string;
+  };
+  /// 程式關鍵字有命中才有（safety.ts；只有真假，不放原句）。
+  readonly keywordHits?: SafetyKeywordHits;
 }
 
 export function finalResult(args: {

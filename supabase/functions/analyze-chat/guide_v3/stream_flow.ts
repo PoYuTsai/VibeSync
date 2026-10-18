@@ -3,7 +3,8 @@
 // ANALYZE_GUIDE_V3_MEMORY 開時，讀完另打一次對象記憶（memory.ts），不擋判讀與出卡。
 //
 // 扣費（Eric 10/16）：第一張卡定稿、確定要送的那一刻扣一次；一張都沒送出不扣；
-// 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型）；自傷關心不扣。
+// 斷線時已送出的照留、算一次；先別回、停讀完就扣（不送型）；固定訊息（自傷關心、
+// 涉及未成年）不扣。
 // run：pending →（扣費）charged → done；沒扣費就 failed。扣過費一定以 done 結案
 //（寫卡中途出錯就用已送出的卡）。不重生、不 retry；續看只重播（run_shape.ts）。
 import { jsonResponse } from "../http_response.ts";
@@ -16,8 +17,13 @@ import type {
 } from "../stream_run_store.ts";
 import { createLineSplitter, parseWrittenCardLine } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
-import { type GuideV3Plan, planTurn } from "./plan.ts";
+import { type GuideV3Plan, planTurn, planWithoutRead } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
+import {
+  NO_SAFETY_HITS,
+  type SafetyKeywordHits,
+  scanSafetyKeywords,
+} from "./safety.ts";
 import {
   type GuideV3MemoryTrace,
   MEMORY_SCHEMA,
@@ -53,9 +59,10 @@ export const GUIDE_V3_DEADLINE_MS = 90_000;
 /// 早就好了；先別回、停只有讀局面，判讀先送出，done 最多晚這麼久。
 export const GUIDE_V3_MEMORY_WAIT_MS = 2_500;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
-/// 停（明確拒絕或封鎖）與自傷關心存進扣費紀錄的 stopCondition（RPC 要非空）。
+/// 停（明確拒絕或封鎖）、自傷關心與未成年存進扣費紀錄的 stopCondition（RPC 要非空）。
 export const STOP_CONDITION_STOP = "不再主動傳訊息";
 export const STOP_CONDITION_CARE = "先確認安全";
+export const STOP_CONDITION_MINOR = "涉及未成年，不給建議";
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -273,6 +280,8 @@ class GuideV3Flow {
   private markedFailed = false;
   /// 對象記憶那一次呼叫（沒開或自傷關心就是 null）；永遠不會 reject。
   private memory: Promise<PartnerMemory & { latencyMs: number }> | null = null;
+  /// 程式關鍵字掃到的安全訊號（run 一開始就掃）。
+  private hits: SafetyKeywordHits = NO_SAFETY_HITS;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -303,6 +312,8 @@ class GuideV3Flow {
     const stopHeartbeat = this.startHeartbeat(emit);
     try {
       const turns = toTurns(guideMessagesFrom(this.deps.messages));
+      // 程式自己掃的安全訊號（safety.ts）：讀局面失敗或拒答時也要用，所以先掃。
+      this.hits = scanSafetyKeywords(this.deps.messages, this.deps.background);
       let text: string;
       try {
         const read = await this.deps.callRead({
@@ -315,13 +326,28 @@ class GuideV3Flow {
         text = read.text;
         this.readModel = read.model;
       } catch (error) {
-        return await this.fail(emit, upstreamErrorEvent(error), {
+        const event = upstreamErrorEvent(error);
+        // 讀局面失敗或拒答，但程式關鍵字看得出要給固定訊息：給固定訊息，不給錯誤。
+        const fallback = planWithoutRead(this.hits);
+        if (fallback) {
+          return await this.care(emit, fallback, null, {
+            code: event.code,
+            error: errorText(error),
+          });
+        }
+        return await this.fail(emit, event, {
           stage: "read",
           error: errorText(error),
         });
       }
       const tags = parseTagsText(text);
       if (!tags) {
+        const fallback = planWithoutRead(this.hits);
+        if (fallback) {
+          return await this.care(emit, fallback, null, {
+            code: "GUIDE_V3_READ_INVALID",
+          });
+        }
         return await this.fail(
           emit,
           errorEvent(
@@ -333,7 +359,7 @@ class GuideV3Flow {
         );
       }
       const plan = vetPlanText(
-        planTurn(turns, tags),
+        planTurn(turns, tags, this.hits),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
             analysisRunId: this.runId,
@@ -345,7 +371,7 @@ class GuideV3Flow {
       if (plan.decision !== "care") this.startMemory(turns, deadlineAtMs);
       switch (plan.decision) {
         case "care":
-          return await this.care(emit, plan, view, tags);
+          return await this.care(emit, plan, tags);
         case "hold":
         case "stop":
           return await this.noSend(emit, plan, view, tags, isClosed);
@@ -553,7 +579,7 @@ class GuideV3Flow {
   }
 
   private trace(
-    tags: ReadTags,
+    tags: ReadTags | null,
     plan: GuideV3Plan,
     extra: Partial<GuideV3Trace> = {},
   ): GuideV3Trace {
@@ -568,6 +594,9 @@ class GuideV3Flow {
       rawMessages: [],
       models: { read: this.readModel, write: this.writeModel },
       firstCardMs: null,
+      ...(Object.values(this.hits).some(Boolean)
+        ? { keywordHits: this.hits }
+        : {}),
       ...extra,
     };
   }
@@ -683,13 +712,25 @@ class GuideV3Flow {
     });
   }
 
-  /// 自傷訊號：不出卡、不扣額度，顯示固定的關心訊息。存不進資料庫也照樣顯示。
+  /// 不出卡、不扣額度，顯示固定訊息：自傷關心，或涉及未成年（plan.careKind）。讀局面失敗、
+  /// 只靠程式關鍵字判出來時 tags 是 null（沒有燈號），readFailure 記失敗的原因。存不進
+  /// 資料庫也照樣顯示。
   private async care(
     emit: NdjsonEmit,
     plan: GuideV3Plan,
-    view: GuideV3ReadView,
-    tags: ReadTags,
+    tags: ReadTags | null,
+    readFailure?: { code: string; error?: string },
   ): Promise<void> {
+    const view = readView(
+      plan,
+      tags?.light ?? null,
+      this.deps.maxCards ?? null,
+    );
+    const care = {
+      kind: plan.careKind ?? "self_harm",
+      trigger: plan.careTrigger ?? "model",
+      ...(readFailure ? { readFailedCode: readFailure.code } : {}),
+    } as const;
     let recorded = true;
     try {
       // CHECK：done 一定要有 charged_at，所以走不扣額度的不送型扣費紀錄。
@@ -701,7 +742,11 @@ class GuideV3Flow {
           decisionKind: "do_not_send",
           action: "care",
           reason: plan.reason,
-          stopCondition: STOP_CONDITION_CARE,
+          stopCondition: care.kind === "minor"
+            ? STOP_CONDITION_MINOR
+            : STOP_CONDITION_CARE,
+          careKind: care.kind,
+          careTrigger: care.trigger,
           guideVersion: GUIDE_V3_VERSION,
           read: view,
           chargedMessageCount: 0,
@@ -729,9 +774,20 @@ class GuideV3Flow {
           shouldChargeQuota: false,
           chargedMessageCount: 0,
         }),
-        trace: this.trace(tags, plan),
+        trace: this.trace(tags, plan, { care }),
       }),
-      { decision: "care", charged: false },
+      {
+        decision: "care",
+        careKind: care.kind,
+        careTrigger: care.trigger,
+        charged: false,
+        ...(readFailure
+          ? {
+            readFailedCode: readFailure.code,
+            ...(readFailure.error ? { readError: readFailure.error } : {}),
+          }
+          : {}),
+      },
       recorded,
     );
   }
