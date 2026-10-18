@@ -348,9 +348,9 @@ void main() {
       );
       repository.replace(completedSource);
 
-      // 空片段開的確認框有「加入並開始分析」，今天的確認改叫「只加入對話」
+      // 空片段開的確認框有「加入並開始分析」，今天的確認改叫「先存起來，晚點再分析」
       //（Eric 2026-10-18），行為一樣。
-      final confirmButton = find.text('只加入對話');
+      final confirmButton = find.text('先存起來，晚點再分析');
       await tester.ensureVisible(confirmButton);
       await tester.tap(confirmButton);
       await tester.pumpAndSettle();

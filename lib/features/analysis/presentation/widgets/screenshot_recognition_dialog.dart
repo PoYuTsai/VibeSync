@@ -55,7 +55,7 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final Conversation currentConversation;
   final String? expectedPartnerName;
 
-  /// 有給：主鈕換成「加入並開始分析」，原本的確認改成次要的「只加入對話」
+  /// 有給：主鈕換成「加入並開始分析」，原本的確認改成次要的「先存起來，晚點再分析」
   /// （Eric 2026-10-18：辨識確認後一鍵接著分析）。用目前編輯中的訊息算這次會用
   /// 幾則（跟分析鈕同一套）；回 null 就不寫那一行，按下去照舊跳確認框。
   /// 沒給：只有今天的「確認本次內容」。
@@ -1362,7 +1362,7 @@ class _ScreenshotRecognitionDialogState
   }
 
   /// 一鍵分析（Eric 2026-10-18）：上面寫這次會用幾則，主鈕加入並開始分析；
-  /// 次要的「只加入對話」就是今天的確認，不送分析。
+  /// 次要的「先存起來，晚點再分析」就是今天的確認，不送分析。
   Widget _buildImportAndAnalyzeActions() {
     final quotaLine = _shownQuotaLine;
     return Column(
@@ -1405,7 +1405,7 @@ class _ScreenshotRecognitionDialogState
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: const Text('只加入對話'),
+                child: const Text('先存起來，晚點再分析'),
               ),
             ),
           ],

@@ -1,6 +1,6 @@
 // 截圖辨識確認後一鍵「加入並開始分析」（Eric 2026-10-18）：先照今天匯入，再走分析鈕
 // 同一個入口——開始鎖、最後一則提示、額度不足、超過 2000 字確認都照舊；
-// 「只加入對話」維持今天的匯入、不送分析。確認框上那一行跟分析鈕同一套算法。
+// 「先存起來，晚點再分析」維持今天的匯入、不送分析。確認框上那一行跟分析鈕同一套算法。
 import 'dart:convert';
 import 'dart:io';
 
@@ -52,7 +52,7 @@ import '../../../helpers/memory_coaching_outcome_repository.dart';
 
 const _conversationId = 'ocr-one-tap-test';
 const _analyzeLabel = '加入並開始分析';
-const _importOnlyLabel = '只加入對話';
+const _importOnlyLabel = '先存起來，晚點再分析';
 
 /// 「長按可編輯」提示（EditMessageCoachMark）的關閉鈕。
 const _editHintDismissLabel = '知道了';
@@ -514,7 +514,7 @@ void main() {
           reason: '片段馬上唯讀，「長按可編輯」提示不跳出來蓋住畫面');
     });
 
-    testWidgets('只加入對話：照今天只匯入、不送分析；分析鈕下那一行跟確認框上看到的一樣', (tester) async {
+    testWidgets('先存起來，晚點再分析：照今天只匯入、不送分析；分析鈕下那一行跟確認框上看到的一樣', (tester) async {
       final messages = [_her(_chars('好')), _her(_chars('嗯'))];
       final harness =
           await _pumpOcrScreen(tester, recognizedMessages: messages);

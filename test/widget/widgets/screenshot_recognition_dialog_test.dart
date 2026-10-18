@@ -1142,7 +1142,7 @@ void main() {
       );
       expect(tester.widget<Text>(quotaLine).data, expected.text);
       expect(find.text('加入並開始分析'), findsOneWidget);
-      expect(find.text('只加入對話'), findsOneWidget);
+      expect(find.text('先存起來，晚點再分析'), findsOneWidget);
       expect(find.text('確認本次內容'), findsNothing);
 
       await _tapVisible(tester, analyzeButton);
@@ -1153,7 +1153,7 @@ void main() {
       expect(results.single!.messages, hasLength(3));
     });
 
-    testWidgets('只加入對話：照今天的確認帶回，不分析、不帶那一行', (tester) async {
+    testWidgets('先存起來，晚點再分析：照今天的確認帶回，不分析、不帶那一行', (tester) async {
       await _useTallSurface(tester);
       final results = <ScreenshotRecognitionDialogResult?>[];
       await tester.pumpWidget(
