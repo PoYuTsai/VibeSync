@@ -1234,10 +1234,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 1,
+                "messagesUsed": 2,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 799,
-                "dailyRemaining": 119,
+                "monthlyRemaining": 798,
+                "dailyRemaining": 118,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -1254,7 +1254,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 1
+                "chargedMessageCount": 2
               }
             },
             "result": {
@@ -1275,10 +1275,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 1,
+                "messagesUsed": 2,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 799,
-                "dailyRemaining": 119,
+                "monthlyRemaining": 798,
+                "dailyRemaining": 118,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -1295,7 +1295,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 1
+                "chargedMessageCount": 2
               }
             }
           }
@@ -1329,10 +1329,10 @@
                 },
                 "plannedCards": []
               },
-              "chargedMessageCount": 1
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
-            "messageCount": 1
+            "messageCount": 2
           }
         ],
         "markDoneFinal": {
@@ -1353,10 +1353,10 @@
           "cards": [],
           "partial": false,
           "usage": {
-            "messagesUsed": 1,
+            "messagesUsed": 2,
             "estimatedMessages": 2,
-            "monthlyRemaining": 799,
-            "dailyRemaining": 119,
+            "monthlyRemaining": 798,
+            "dailyRemaining": 118,
             "model": "claude-sonnet-5-5",
             "tierUsed": "essential",
             "isTestAccount": false,
@@ -1373,7 +1373,7 @@
             "readModel": "claude-sonnet-5-5",
             "estimatedMessageCount": 2,
             "shouldChargeQuota": true,
-            "chargedMessageCount": 1
+            "chargedMessageCount": 2
           },
           "guideV3Trace": {
             "tags": {
@@ -12841,10 +12841,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 1,
+                "messagesUsed": 2,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 799,
-                "dailyRemaining": 119,
+                "monthlyRemaining": 798,
+                "dailyRemaining": 118,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -12861,7 +12861,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 1
+                "chargedMessageCount": 2
               }
             },
             "result": {
@@ -12882,10 +12882,10 @@
               "cards": [],
               "partial": false,
               "usage": {
-                "messagesUsed": 1,
+                "messagesUsed": 2,
                 "estimatedMessages": 2,
-                "monthlyRemaining": 799,
-                "dailyRemaining": 119,
+                "monthlyRemaining": 798,
+                "dailyRemaining": 118,
                 "model": "claude-sonnet-5-5",
                 "tierUsed": "essential",
                 "isTestAccount": false,
@@ -12902,7 +12902,7 @@
                 "readModel": "claude-sonnet-5-5",
                 "estimatedMessageCount": 2,
                 "shouldChargeQuota": true,
-                "chargedMessageCount": 1
+                "chargedMessageCount": 2
               }
             }
           }
@@ -12936,10 +12936,10 @@
                 },
                 "plannedCards": []
               },
-              "chargedMessageCount": 1
+              "chargedMessageCount": 2
             },
             "chargeQuota": true,
-            "messageCount": 1
+            "messageCount": 2
           }
         ],
         "markDoneFinal": {
@@ -12960,10 +12960,10 @@
           "cards": [],
           "partial": false,
           "usage": {
-            "messagesUsed": 1,
+            "messagesUsed": 2,
             "estimatedMessages": 2,
-            "monthlyRemaining": 799,
-            "dailyRemaining": 119,
+            "monthlyRemaining": 798,
+            "dailyRemaining": 118,
             "model": "claude-sonnet-5-5",
             "tierUsed": "essential",
             "isTestAccount": false,
@@ -12980,7 +12980,7 @@
             "readModel": "claude-sonnet-5-5",
             "estimatedMessageCount": 2,
             "shouldChargeQuota": true,
-            "chargedMessageCount": 1
+            "chargedMessageCount": 2
           },
           "guideV3Trace": {
             "tags": {

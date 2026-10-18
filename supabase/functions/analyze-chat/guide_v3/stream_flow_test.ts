@@ -934,7 +934,7 @@ Deno.test("先別回（他是最後一則）：不寫卡，讀完扣一次不送
   assertEquals("cardTask" in c.recommendationJson, false);
 });
 
-Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的用量與剩餘都是 1；測試帳號 0", async () => {
+Deno.test("先別回與停照字數扣（Bruce 10/18 維持）：跟出卡扣一樣的則數，done 的用量、剩餘、telemetry 與 log 一致；測試帳號 0", async () => {
   const noSendCases: [string, Parameters<typeof harness>[0]][] = [
     ["先別回", {
       messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
@@ -943,29 +943,43 @@ Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的�
   ];
   for (const [label, opts] of noSendCases) {
     const h = harness(opts);
+    // 照字數的則數由 handler 照計費規則算好，放在 quotaUsage（billing.ts）。
+    const expected = h.deps.quotaUsage.chargedMessageCount;
+    assert(expected > 1, "要超過 1 則才分得出不是固定扣 1 則");
     const evs = await events(await handleGuideV3Stream(h.deps));
     const c = h.charges[0];
-    assertEquals([c.chargeQuota, c.messageCount], [true, 1], label);
-    assertEquals(c.recommendationJson.chargedMessageCount, 1, label);
-    const result = evs.at(-1)!.finalResult as Record<string, unknown>;
+    assertEquals([c.chargeQuota, c.messageCount], [true, expected], label);
+    assertEquals(c.recommendationJson.chargedMessageCount, expected, label);
+    const done = evs.find((e) => e.type === "analysis.done")!;
+    const result = done.finalResult as Record<string, unknown>;
     const usage = result.usage as Record<string, unknown>;
-    // 這次照字數是 2 則（harness 的 chargedMessageCount）；先別回、停只扣 1。
-    assertEquals(usage.messagesUsed, 1, label);
+    assertEquals(usage.messagesUsed, expected, label);
     assertEquals(usage.shouldChargeQuota, true, label);
-    assertEquals(usage.dailyRemaining, 50 - 3 - 1, label);
-    assertEquals(usage.monthlyRemaining, 300 - 10 - 1, label);
+    assertEquals(
+      usage.dailyRemaining,
+      h.deps.dailyLimit - h.deps.subDailyUsed - expected,
+      label,
+    );
+    assertEquals(
+      usage.monthlyRemaining,
+      h.deps.monthlyLimit - h.deps.subMonthlyUsed - expected,
+      label,
+    );
     assertEquals(
       (result.telemetry as Record<string, unknown>).chargedMessageCount,
-      1,
+      expected,
       label,
     );
     const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
-    assertEquals(outcome.metadata.chargedMessageCount, 1, label);
+    assertEquals(outcome.metadata.chargedMessageCount, expected, label);
   }
-  // 出卡照舊照字數扣。
+  // 出卡扣的是同一個數字。
   const send = harness();
   await events(await handleGuideV3Stream(send.deps));
-  assertEquals(send.charges[0].messageCount, 2);
+  assertEquals(
+    send.charges[0].messageCount,
+    send.deps.quotaUsage.chargedMessageCount,
+  );
   // 測試帳號：照樣寫扣費紀錄、不扣。
   const test = harness({
     accountIsTest: true,
@@ -976,8 +990,9 @@ Deno.test("先別回與停固定扣 1 則（不照字數）：扣費、done 的�
     false,
     0,
   ]);
+  const done = evs.find((e) => e.type === "analysis.done")!;
   assertEquals(
-    ((evs.at(-1)!.finalResult as Record<string, unknown>).usage as Record<
+    ((done.finalResult as Record<string, unknown>).usage as Record<
       string,
       unknown
     >).messagesUsed,
