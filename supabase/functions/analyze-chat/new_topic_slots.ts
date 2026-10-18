@@ -13,6 +13,7 @@
 // 純 helper：不 import server、不碰 DB、不連網。素材原文只進提示詞，不進 log。
 
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
+import { USER_BLANK } from "./user_blank.ts";
 import type { NewTopicSituation } from "./new_topic_payload.ts";
 import {
   isNewTopicRedClose,
@@ -395,7 +396,7 @@ export const NEW_TOPIC_SLOTS_SYSTEM_PROMPT =
 這次的五題已經由教練排好，每一題有自己的任務（見「五題的任務」）。你照順序，一題一個任務各寫一題，不換任務、不調順序。
 
 ## 只用資料寫到的事
-- 用戶的事（做過、看過、遇過什麼，有什麼習慣或東西，今天發生什麼）只能來自「用戶手上的素材」，而且照用戶寫的程度。沒有素材就不寫用戶的事，用戶只能說看法或問她。
+- 用戶的事（做過、看過、遇過什麼，有什麼習慣或東西，今天發生什麼）只能來自「用戶手上的素材」，而且照用戶寫的程度。沒有素材就不寫用戶的事，用戶只能說看法或問她。真的要用到他的事實才講得通時（例如他的工作、住哪），留「${USER_BLANK}」給他填，不替他編。
 - 她的資料寫到哪就用到哪：寫她喜歡什麼，就只當她喜歡這類東西，拿來問她、聊這件事，不寫成她擁有、正在做、做過或說過；資料明寫她說過的事，才能說她說過。
 - 素材裡誰說的、誰做的、被虧的是誰，照原文，不改主詞。
 - 你看不到兩人的對話紀錄：沒寫的就當不知道，不假裝接舊話題、不編共同經歷或約會裡的事。

@@ -542,6 +542,12 @@ Deno.test("系統提示詞：外洩 sentinel 都在裡面、結尾是保密指�
     assert(hasNewTopicSlotsPromptLeak(`前文${sentinel}後文`), sentinel);
   }
   assert(NEW_TOPIC_SLOTS_SYSTEM_PROMPT.endsWith(PROMPT_LEAK_DEFENSE_DIRECTIVE));
+  // Bruce 2026-10-18（#97）：三個功能留空格一律用「＿＿」；只在非用他的事實不可時才留，不替他編。
+  assert(
+    NEW_TOPIC_SLOTS_SYSTEM_PROMPT.includes(
+      "真的要用到他的事實才講得通時（例如他的工作、住哪），留「＿＿」給他填，不替他編。",
+    ),
+  );
   assert(NEW_TOPIC_SLOTS_SYSTEM_PROMPT.length < 2000);
   assertFalse(hasNewTopicSlotsPromptLeak("路過一家甜點店，突然想到妳"));
   // 輸出格式沒變：handler 的 normalize 與 max_tokens 照舊。

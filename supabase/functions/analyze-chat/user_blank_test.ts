@@ -1,0 +1,24 @@
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { hasUserBlank, normalizeUserBlanks, USER_BLANK } from "./user_blank.ts";
+
+Deno.test("留空格一律收成「＿＿」：全形一個或多個、半形兩個以上都算；一個半形底線不動", () => {
+  assertEquals(USER_BLANK, "＿＿");
+  assertEquals(normalizeUserBlanks("我住＿附近"), "我住＿＿附近");
+  assertEquals(normalizeUserBlanks("我做＿＿＿＿的"), "我做＿＿的");
+  assertEquals(
+    normalizeUserBlanks("我週__有空，在___附近"),
+    "我週＿＿有空，在＿＿附近",
+  );
+  assertEquals(normalizeUserBlanks("帳號 a_b 不算"), "帳號 a_b 不算");
+  assertEquals(normalizeUserBlanks("沒有空格"), "沒有空格");
+});
+
+Deno.test("有沒有空格：跟 App 的 guideV3TextHasBlank 一樣看全形「＿」", () => {
+  assert(hasUserBlank("我最近都在＿＿夜跑"));
+  assertFalse(hasUserBlank("我最近都在河濱夜跑"));
+  assertFalse(hasUserBlank("a__b"), "半形要先經過 normalizeUserBlanks");
+});

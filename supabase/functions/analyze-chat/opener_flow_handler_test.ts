@@ -1724,7 +1724,7 @@ Deno.test("GPT 預審 R3：同一筆生成換舊版 App 重播，拿掉方向＋
     h.env.OPENER_PLAN_WRITE = "true";
     h.tier = "essential";
     const direction = "分享一次自己假日散步的經驗";
-    const write = { ...WRITE_JSON, openers: { ...WRITE_JSON.openers, coldRead: "我假日也常去河堤走走，妳家狗最愛哪一段？" }, directions: { coldRead: direction } };
+    const write = { ...WRITE_JSON, openers: { ...WRITE_JSON.openers, coldRead: "我假日也常去＿＿走走，妳家狗最愛哪一段？" }, directions: { coldRead: direction } };
     const script = { calls: [] as OpenerFlowModelRequest[], write };
     const analysis = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), { invokeModel: planWriteInvoker(script) }));
     const sessionId = String((await json(analysis)).sessionId);

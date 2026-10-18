@@ -476,6 +476,25 @@ Deno.test("normalize：openingLine 的「你」轉「妳」，教練欄位不動
   assertEquals(result.topics[0].nextMove, "她反駁的話你就順著演");
 });
 
+Deno.test("normalize：openingLine 的空格統一成「＿＿」（Bruce 2026-10-18 #97），教練欄位不動", () => {
+  const topics = modelTopics();
+  topics[0] = {
+    ...topics[0],
+    openingLine: "我最近在____附近發現一間早午餐，妳週末都吃哪",
+  };
+  topics[1] = { ...topics[1], openingLine: "我住＿附近，那邊最近很吵" };
+  const result = normalizeNewTopicModelPayload({
+    topics,
+    recommendation: { index: 0, reason: "最貼近她的近況" },
+  });
+  assert(result.ok);
+  assertEquals(
+    result.topics[0].openingLine,
+    "我最近在＿＿附近發現一間早午餐，妳週末都吃哪",
+  );
+  assertEquals(result.topics[1].openingLine, "我住＿＿附近，那邊最近很吵");
+});
+
 Deno.test("normalize：openingLine 丟掉混入外語 token 的整個子句", () => {
   const topics = modelTopics();
   topics[0] = {

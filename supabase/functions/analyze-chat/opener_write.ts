@@ -7,11 +7,12 @@ import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "./prompt_leak.ts";
 import type { OpenerType } from "./opener_payload.ts";
 import { approachStillApplies, type OpenerAnalysisSnapshot } from "./opener_stage.ts";
 import { cueSourceText, type OpenerPlan, type OpenerPlanDigest } from "./opener_plan.ts";
+import { USER_BLANK } from "./user_blank.ts";
 
 export const OPENER_WRITE_MAX_TOKENS = 1600;
 export const OPENER_REWRITE_MAX_TOKENS = 500;
 /** 僅供 telemetry 比對寫手版本，不參與生成輸入指紋。 */
-export const OPENER_WRITER_PROMPT_REVISION = "opener-confidence-tone-v1";
+export const OPENER_WRITER_PROMPT_REVISION = "opener-blank-example-v1";
 
 /** 寫法（需求凍結 §4.4；Eric 9/25 選 B）：free＝一句推薦＋四句固定角色的備選（新版 App，openerCardSet=2）；
  * styles＝五風格（舊版 App 的標籤仍是延展／共鳴／調情／幽默／冷讀，內容要對得上標籤）。 */
@@ -60,8 +61,8 @@ const FREE_CARDS = `## 五則（一句推薦＋四句備選；App 標籤照括�
     沒有自述、資料裡也沒有【帶到自己】那一行時：先問她，再說自己對這件事的好奇，不編經歷、不給 directions。
     資料裡有【帶到自己】那一行時才改寫「方向＋範例」（Bruce 的標準格式）：
     directions.coldRead＝給用戶的一句方向（25 字內），例：可以先分享自己夜跑的經驗
-    openers.coldRead＝範例那一則訊息本身，用戶照著改成自己的再傳：用「我最近…」分享一個跟這次話題有關的具體小經驗，再問她。例：我最近都跑環河公園那，會經過公館水岸那很chill，妳都跑哪？
-    範例要是真的一則訊息，不是說明；地點與細節跟這次話題有關，不照抄上面的例子。其他四則仍不寫用戶自己的經歷。`;
+    openers.coldRead＝範例那一則訊息本身，用戶把空格填好再傳：用「我最近…」帶一個跟這次話題有關的小經驗，再問她。他自己的事（去哪、做了什麼、細節）不替他編，用「${USER_BLANK}」留給他填，至少留一個；她的事和問她的那句照寫。例：我最近都在${USER_BLANK}夜跑，妳都跑哪？
+    範例要是真的一則訊息，不是說明；話題跟這次有關，不照抄上面的例子。其他四則仍不寫用戶自己的經歷，也不留空格。`;
 
 const OUTPUT_SPEC = `## 輸出（只輸出 JSON，不要 code fence）
 {"openers":{"extend":"…","resonate":"…","tease":"…","humor":"…","coldRead":"…"},"directions":{"coldRead":"只有要你寫方向＋範例時才給"},"cardReasons":{"extend":"一句：這則接了她什麼、她可以怎麼回","resonate":"…","tease":"…","humor":"…","coldRead":"…"},"pioneerPlan":{"ifCold":"她冷回時下一步","ifShortPositive":"她短回但有接時下一步","ifEngaged":"她認真回時下一步","handoff":"何時把她的回覆貼回對話分析"}}
@@ -79,8 +80,9 @@ ${arm === "free" ? FREE_CARDS : STYLE_CARDS}
 ${OUTPUT_SPEC}${PROMPT_LEAK_DEFENSE_DIRECTIVE}`;
 }
 
-/** Bruce 9/26（Eric 定案）：B 臂用戶沒給自述時，「帶到自己」改成給用戶的方向＋一句範例（範例細節是舉例，要用戶換成自己的）。 */
-/** 寫手 prompt 裡範例的專有細節：卡片出現卻不在當次輸入裡＝照抄範例，不是這次話題的經驗。 */
+/** Bruce 9/26（Eric 定案）：B 臂用戶沒給自述時，「帶到自己」改成給用戶的方向＋一句範例。
+ * Bruce 2026-10-18（#97，Eric 2026-10-19 照做）：範例裡他自己的事改留「＿＿」給他填，不再替他編細節。 */
+/** 舊版寫手 prompt 範例的地名（現在的範例只留空格、沒有地名）：卡片出現卻不在當次輸入裡＝照抄範例，照舊擋。 */
 export const DIRECTION_EXAMPLE_TOKENS: readonly string[] = ["環河公園", "公館水岸"];
 
 export function writesDirectionExample(arm: OpenerWriterArm, digest: Pick<OpenerPlanDigest, "selfFacts" | "noExperienceLabels">): boolean {
@@ -129,7 +131,7 @@ export function buildOpenerWriteUserContent(input: OpenerWriteInput): string {
       : "【用戶自述】沒有：不要寫任何用戶自己的經歷或習慣。",
   );
   if (writesDirectionExample(input.arm, digest)) {
-    out.push("【帶到自己】用戶沒給自述：coldRead 寫「方向＋範例」——directions.coldRead 是給用戶的一句方向，openers.coldRead 是範例那一則訊息本身（「我最近…」分享一個跟這次話題有關的具體小經驗，再問她）。");
+    out.push(`【帶到自己】用戶沒給自述：coldRead 寫「方向＋範例」——directions.coldRead 是給用戶的一句方向，openers.coldRead 是範例那一則訊息本身（「我最近…」帶一個跟這次話題有關的小經驗，他自己的事用「${USER_BLANK}」留給他填，再問她）。`);
   }
   if (digest.noExperienceLabels.length) {
     out.push(`【用戶沒有經驗的話題】${digest.noExperienceLabels.join("、")}：只能說好奇，不寫成他做過、養過或常去。`);

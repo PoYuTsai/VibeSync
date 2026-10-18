@@ -385,7 +385,7 @@ Deno.test("執行：規劃＋寫手兩次呼叫，規劃不重試不 fallback，
   assertEquals(Object.keys(out.result.openers).length, 5);
   assertEquals(out.result.materialUse.traceStatus, "matched");
   assertEquals(out.telemetry.roleCounts, { invite_request: 1 });
-  assertEquals(out.telemetry.writerPromptRevision, "opener-confidence-tone-v1");
+  assertEquals(out.telemetry.writerPromptRevision, "opener-blank-example-v1");
   assertFalse("writerPromptRevision" in out.result, "revision 僅供 telemetry，不加入交付結果");
 });
 
@@ -634,7 +634,7 @@ Deno.test("執行：B 臂推薦句固定在 extend、好笑意圖讓幽默優先
 Deno.test("方向＋範例（Bruce 9/26）：B 臂沒有用戶自述時，帶到自己給方向＋範例，標 access.directions、不當推薦", async () => {
   const withDirection = {
     ...WRITE_OK,
-    openers: { ...WRITE_OK.openers, coldRead: "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？" },
+    openers: { ...WRITE_OK.openers, coldRead: "我最近都跑＿＿那段，晚上風很舒服，妳都跑哪？" },
     directions: { coldRead: "可以先分享自己夜跑的經驗" },
   };
   const plan = { spans: [{ quote: "想約她一起夜跑", role: "invite_request", topicPart: "夜跑" }], anchorCueIds: ["cue_1"] };
@@ -676,7 +676,7 @@ Deno.test("方向＋範例（Bruce 9/26）：B 臂沒有用戶自述時，帶到
   const long = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: { ...withDirection, directions: { coldRead: "可".repeat(61) } } }, []));
   assertEquals(long.kind === "ok" && long.result.openers.coldRead, undefined);
   const restricted = { spans: [{ quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_1"] };
-  const badExample = { ...withDirection, openers: { ...withDirection.openers, coldRead: "我最近工作都很晚才跑，妳都跑哪？" } };
+  const badExample = { ...withDirection, openers: { ...withDirection.openers, coldRead: "我最近工作都很晚才去＿＿跑，妳都跑哪？" } };
   const calls2: OpenerFlowModelRequest[] = [];
   const vetoed = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: restricted, write: badExample }, calls2));
   assertEquals(vetoed.kind === "ok" && vetoed.result.openers.coldRead, undefined);
@@ -709,11 +709,13 @@ Deno.test("規劃「要問的點」只收名字／選擇（what）與經過／�
 });
 
 Deno.test("方向卡範例要是真的訊息：說明、空白、照抄 prompt 範例地名都不交付那張，也不讓整組失敗", async () => {
-  assert(isDirectionExample("我最近都跑河濱那段，晚上風很舒服，妳都跑哪段", "可以先分享自己夜跑的經驗", ""));
+  assert(isDirectionExample("我最近都跑＿＿那段，晚上風很舒服，妳都跑哪段", "可以先分享自己夜跑的經驗", ""));
   assertFalse(isDirectionExample("（沒有使用者自述）", "可以先分享自己的經驗", ""));
   assertFalse(isDirectionExample("先分享自己選潛點的考量再問她", "可以先分享自己的經驗", ""));
-  assertFalse(isDirectionExample("我最近都跑環河公園那邊夜釣，妳們都釣什麼", "可以先分享自己釣魚的經驗", "她喜歡海釣"));
-  assert(isDirectionExample("我最近都跑環河公園那，妳都跑哪", "可以先分享自己夜跑的經驗", "我常去環河公園"), "她或用戶的資料真的有那個地名就不算照抄");
+  assertFalse(isDirectionExample("我最近都跑環河公園那邊＿＿夜釣，妳們都釣什麼", "可以先分享自己釣魚的經驗", "她喜歡海釣"));
+  assert(isDirectionExample("我最近都跑環河公園那，常在＿＿休息，妳都跑哪", "可以先分享自己夜跑的經驗", "我常去環河公園"), "她或用戶的資料真的有那個地名就不算照抄");
+  // Bruce 2026-10-18（#97）：他自己的事要留「＿＿」給他填；沒留空格＝細節是替他編的，不交付。
+  assertFalse(isDirectionExample("我最近都跑河濱那段，晚上風很舒服，妳都跑哪段", "可以先分享自己夜跑的經驗", ""));
   const plan = { spans: [{ quote: "想約她一起夜跑", role: "invite_request", topicPart: "夜跑" }], anchorCueIds: ["cue_1"] };
   const blank = { ...WRITE_OK, openers: { ...WRITE_OK.openers, coldRead: "" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
   const calls: OpenerFlowModelRequest[] = [];
@@ -722,6 +724,27 @@ Deno.test("方向卡範例要是真的訊息：說明、空白、照抄 prompt �
   assertEquals(calls.length, 2, "也不為它修格式");
   assertEquals(out.kind === "ok" && out.result.openers.coldRead, undefined);
   assertEquals(Object.keys(out.kind === "ok" ? out.result.openers : {}).length, 4);
+});
+
+Deno.test("帶到自己的範例留「＿＿」給他填（Bruce 2026-10-18 #97）：寫成半形底線也收成「＿＿」；沒留空格那張不交付", async () => {
+  const plan = { spans: [{ quote: "想約她一起夜跑", role: "invite_request", topicPart: "夜跑" }], anchorCueIds: ["cue_1"] };
+  const write = (coldRead: string) => ({
+    ...WRITE_OK,
+    openers: { ...WRITE_OK.openers, coldRead },
+    directions: { coldRead: "可以先分享自己夜跑的經驗" },
+  });
+  const ascii = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: write("我最近都在____夜跑，妳都跑哪？") }, []));
+  assertEquals(ascii.kind === "ok" && ascii.result.openers.coldRead, "我最近都在＿＿夜跑，妳都跑哪？");
+  assertEquals(ascii.kind === "ok" && ascii.telemetry.directionCard, "ok");
+  const invented = await runOpenerPlanWrite(input("想約她一起夜跑", PAID, "free"), deps({ plan, write: write("我最近都在河濱夜跑，妳都跑哪？") }, []));
+  assertEquals(invented.kind, "ok", "範例不合格只拿掉那張，不讓整組失敗");
+  assertEquals(invented.kind === "ok" && invented.result.openers.coldRead, undefined);
+  assertEquals(invented.kind === "ok" && invented.telemetry.directionCard, "missing");
+
+  const writer = buildOpenerWritePrompt("free");
+  assert(writer.includes("用「＿＿」留給他填，至少留一個"), "寫手知道範例裡他的事要留空格");
+  assert(writer.includes("也不留空格"), "其他四則不留空格");
+  assertFalse(writer.includes("環河公園"), "範例不再有地名");
 });
 
 // ── GPT 預審（4571b7c4）四項 P1 的固定回歸 ──
@@ -780,7 +803,7 @@ Deno.test("R1 執行：擴寫自述的卡走唯一一次改寫；改好照交付
 Deno.test("R2 範例身分在評判／改寫／挑選前鎖定：寫手標成範例、又不是當次要求的那張，整張不交付", async () => {
   const noSelf = { spans: [{ quote: "想聊半馬", role: "topic" }], anchorCueIds: ["cue_2"] };
   const selfPlan = { spans: [{ quote: "我也在練半馬", role: "sender_fact" }], anchorCueIds: ["cue_2"] };
-  const coldExample = "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？";
+  const coldExample = "我最近都跑＿＿那段，晚上風很舒服，妳都跑哪？";
   const extendExample = "我最近拉坯總是歪掉，妳半馬都怎麼配速";
   // 要求方向＋範例時，寫手把 extend 也標成範例：extend 不交付、不當推薦，coldRead 範例照規則交付。
   const both = { ...WRITE_OK, openers: { ...WRITE_OK.openers, extend: extendExample, coldRead: coldExample }, directions: { extend: "分享自己練陶藝的小經驗", coldRead: "可以先分享自己夜跑的經驗" } };
@@ -890,7 +913,7 @@ Deno.test("R2 複核：改寫回覆新標的範例、修格式回覆新標的空
   assertEquals(stillMissing.kind === "fail" && stillMissing.reason, "incomplete");
   // 對照：合法方向＋範例 coldRead 照交付、不當推薦。
   const noSelf = { spans: [{ quote: "想聊半馬", role: "topic" }], anchorCueIds: ["cue_2"] };
-  const directional = { ...WRITE_OK, openers: { ...WRITE_OK.openers, humor: "", coldRead: "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
+  const directional = { ...WRITE_OK, openers: { ...WRITE_OK.openers, humor: "", coldRead: "我最近都跑＿＿那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
   const dirRepaired = await runOpenerPlanWrite(input("想聊半馬", PAID, "free"), deps({ plan: noSelf, write: directional, repair: { ...directional, openers: { ...directional.openers, humor: "" }, directions: { coldRead: "可以先分享自己夜跑的經驗", humor: "分享" } } }, []));
   assertEquals(dirRepaired.kind, "ok");
   assertEquals(dirRepaired.kind === "ok" && dirRepaired.result.access.directions, { coldRead: "可以先分享自己夜跑的經驗" });
@@ -927,7 +950,7 @@ Deno.test("R2 複核對照：原標記丟失保護、額外呼叫只有一次、
   assertEquals(capped.kind === "ok" && capped.telemetry.rewriteUsed, false);
   // 除了方向＋範例卡其他都踩紅線：範例不當推薦，整組不交付。
   const noSelfRestricted = { spans: [{ quote: "不要聊工作", role: "restriction", term: "工作" }], anchorCueIds: ["cue_1"] };
-  const allWork = { openers: { extend: "工作忙嗎", resonate: "工作累嗎", tease: "工作多嗎", humor: "工作好玩嗎", coldRead: "我最近都跑河濱那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
+  const allWork = { openers: { extend: "工作忙嗎", resonate: "工作累嗎", tease: "工作多嗎", humor: "工作好玩嗎", coldRead: "我最近都跑＿＿那段，晚上風很舒服，妳都跑哪？" }, directions: { coldRead: "可以先分享自己夜跑的經驗" } };
   const onlyExample = await runOpenerPlanWrite(input("不要聊工作", PAID, "free"), deps({ plan: noSelfRestricted, write: allWork }, []));
   assertEquals(onlyExample.kind === "fail" && onlyExample.reason, "no_deliverable");
 });

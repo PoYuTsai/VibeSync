@@ -8,6 +8,7 @@
 // code fence 修不回，都必須整份失敗；不可丟掉壞題後照樣扣 3。
 
 import { normalizeOutgoingMessageText } from "./outgoing_message_text.ts";
+import { normalizeUserBlanks } from "./user_blank.ts";
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import {
   type NewTopicTopicContext,
@@ -375,13 +376,17 @@ export function normalizeNewTopicModelPayload(
       NEW_TOPIC_FIELD_CAPS.direction,
       userProvidedText,
     );
-    const openingLine = normalizeOutgoingMessageText(
+    const outgoingLine = normalizeOutgoingMessageText(
       sanitizeModelVisibleText(
         rawTopic.openingLine,
         NEW_TOPIC_FIELD_CAPS.openingLine,
         userProvidedText,
       ),
     );
+    // 留給用戶填的空格統一成「＿＿」（Bruce 2026-10-18 #97）；App 沒填完不讓複製。
+    const openingLine = outgoingLine === null
+      ? null
+      : normalizeUserBlanks(outgoingLine);
     const whyItWorks = sanitizeCustomerExplanationText(
       rawTopic.whyItWorks,
       NEW_TOPIC_FIELD_CAPS.whyItWorks,

@@ -14,6 +14,7 @@ import type { OpenerAnalysisSnapshot, OpenerQuestionOption } from "./opener_stag
 import { sanitizeCustomerExplanationText } from "./customer_explanation.ts";
 import { hasOpenerFlowPromptLeak } from "./opener_flow_prompt.ts";
 import { parseJsonObjectFromText } from "./json_text.ts";
+import { hasUserBlank, normalizeUserBlanks } from "./user_blank.ts";
 import { isPlainObject } from "../_shared/quota.ts";
 import {
   buildOpenerPlanUserContent,
@@ -143,9 +144,11 @@ export const OPENER_DIRECTION_MAX_CHARS = 60;
  * 範例要是一則真的訊息（格式可判，不判語意）：用戶自己分享（有「我」）、不是寫給用戶的說明、
  * 不跟方向同一句、沒有照抄寫手 prompt 範例裡的地名。bb5 實測寫手會把說明或「（沒有使用者自述）」
  * 塞進範例欄，也會把「環河公園」搬去釣魚題。
+ * Bruce 2026-10-18（#97）：他自己的事要留「＿＿」給他填，沒留空格＝細節是替他編的，這張不交付。
  */
 export function isDirectionExample(example: string, direction: string, inputText: string): boolean {
   if (!example.includes("我") || example === direction) return false;
+  if (!hasUserBlank(example)) return false;
   if (/先分享|再問她|範例|自述|使用者|方向/u.test(example)) return false;
   return !DIRECTION_EXAMPLE_TOKENS.some((token) => example.includes(token) && !inputText.includes(token));
 }
@@ -352,7 +355,8 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
     }
     const sanitized = sanitizeOpenerText(rawOpeners[type]);
     const text = sanitized ? withoutEmoji(sanitized) : null;
-    if (text) openers[type] = text;
+    // 留給用戶填的空格統一成「＿＿」（Bruce 2026-10-18 #97）。
+    if (text) openers[type] = normalizeUserBlanks(text);
     const reason = customerText(rawReasons[type], 200);
     if (reason) cardReasons[type] = reason;
   }
@@ -412,7 +416,7 @@ export async function runOpenerPlanWrite(input: PlanWriteInput, deps: PlanWriteD
         const sanitized = sanitizeOpenerText(rewritten[style]);
         const text = sanitized ? withoutEmoji(sanitized) : null;
         if (text) {
-          openers[style] = text;
+          openers[style] = normalizeUserBlanks(text);
           delete cardReasons[style];
           telemetry.rewrittenStyles.push(style);
         }
