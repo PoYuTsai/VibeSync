@@ -1,5 +1,6 @@
 // 每張卡送出前各自定稿：整理文字、再逐項檢查。命中只拿掉這一張（記原因），
 // 不整組換成罐頭句；送出之後不再改字。
+import { containsPromptLeak } from "../../_shared/prompt_leak_guard.ts";
 import { findUnsupportedLatinTokens } from "../../_shared/zh_tw_visible_text_guard.ts";
 import { isBlockedOutgoingCard } from "../guardrails.ts";
 import {
@@ -62,14 +63,19 @@ const HAN = /\p{Script=Han}/u;
 
 /// 哨兵也做一份跟卡片同樣的簡轉繁（會改詞，例如「用戶」→「使用者」）：模型用簡體
 /// 照抄時，原文對不上繁體哨兵、整理後又被改詞，要拿整理後的哨兵比。
-const GUIDE_V3_SENTINELS_NORMALIZED: readonly string[] = GUIDE_V3_SENTINELS.map(
-  (s) => normalizeOutgoingScript(s) ?? s,
-);
+export const GUIDE_V3_SENTINELS_NORMALIZED: readonly string[] =
+  GUIDE_V3_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s);
+
+/// 說明書哨兵也走共用比對（Eric 2026-10-18）：原本直接 includes，夾空白或簡體照抄
+/// （「用 户＝他（男生）…」）都對不上（主審 r1 P2-2）。整理過的那份照樣一起比。
+const GUIDE_V3_LEAK_SENTINELS: readonly string[] = [
+  ...GUIDE_V3_SENTINELS,
+  ...GUIDE_V3_SENTINELS_NORMALIZED,
+];
 
 function leaksPrompt(text: string): boolean {
   return hasAnalyzeChatPromptLeak(text) ||
-    GUIDE_V3_SENTINELS.some((s) => text.includes(s)) ||
-    GUIDE_V3_SENTINELS_NORMALIZED.some((s) => text.includes(s));
+    containsPromptLeak(text, GUIDE_V3_LEAK_SENTINELS);
 }
 
 function cleanMessage(message: string): string | null {

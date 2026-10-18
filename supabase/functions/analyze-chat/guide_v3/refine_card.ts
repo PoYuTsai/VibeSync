@@ -133,7 +133,7 @@ export const GUIDE_V3_REFINE_SENTINELS: readonly string[] = [
 ];
 
 /// 簡體照抄時整理會轉成繁體（也會改詞），所以哨兵也備一份整理過的。
-const GUIDE_V3_REFINE_SENTINELS_NORMALIZED: readonly string[] =
+export const GUIDE_V3_REFINE_SENTINELS_NORMALIZED: readonly string[] =
   GUIDE_V3_REFINE_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s);
 
 function echoesRefineSection(texts: readonly string[]): boolean {
