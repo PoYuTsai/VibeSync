@@ -40,6 +40,28 @@ export function perfunctoryStreak(
   return count;
 }
 
+/// 她最近連續幾輪只回敷衍的字：從她最新的一輪往前數，碰到沒標敷衍的就停；最後一則是他
+/// 也照數。給新話題的冷訊號（Eric 2026-10-18）；C1 要不要回仍只看 perfunctoryStreak。
+export function herPerfunctoryStreak(
+  turns: readonly Turn[],
+  tags: Pick<ReadTags, "herTurnsPerfunctory">,
+): number {
+  const flags = new Map(
+    tags.herTurnsPerfunctory.map((t) => [t.turn, t.perfunctory]),
+  );
+  let count = 0;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].fromMe) continue;
+    if (flags.get(turns[i].index) !== true) break;
+    count++;
+  }
+  return count;
+}
+
+/// C1「他連續主動兩次、她都只回敷衍的字」判的先別回。plan.ts 認這個理由給冷訊號的 c1，
+/// 不另寫一份判斷。
+export const PERFUNCTORY_HOLD_REASON = "他連續主動兩次，她都只回敷衍的字";
+
 /// C1 要不要回。v3 的順序：明確拒絕或封鎖就停（她拒絕後他又追問、或被封鎖時他是最後
 /// 一則，也是停）；他是最後一則先別回；他連續主動兩次、她都只回敷衍的字就先別回（不附
 /// 備用句）；她取消約會不是只回收尾（交給推進）；她婉拒或說了界線就一句中性收尾；其他
@@ -58,7 +80,7 @@ export function decideReply(
   // 不當婉拒收尾，照 Bruce 出「堅持換地方」和「這次先不約」兩種卡。
   if (matchedSet(tags).has(SCAM_VENUE_ENTRY)) return { kind: "send" };
   if (perfunctoryStreak(turns, tags) >= 2) {
-    return { kind: "hold", reason: "他連續主動兩次，她都只回敷衍的字" };
+    return { kind: "hold", reason: PERFUNCTORY_HOLD_REASON };
   }
   if (tags.inviteReadiness === "她取消了") return { kind: "send" };
   if (tags.declinedOrBoundary) {

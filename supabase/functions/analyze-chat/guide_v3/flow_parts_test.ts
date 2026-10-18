@@ -26,9 +26,17 @@ import {
   readUserPrompt,
   writeUserPrompt,
 } from "./prompts.ts";
-import { READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
+import {
+  INVITE_READINESS,
+  READ_TAGS_SCHEMA,
+  type ReadTags,
+} from "./read_tags.ts";
 import type { CardSpec } from "./rules.ts";
-import { MONEY_RISK_WARNING, SCAM_VENUE_WARNING } from "./rules.ts";
+import {
+  decideReply,
+  MONEY_RISK_WARNING,
+  SCAM_VENUE_WARNING,
+} from "./rules.ts";
 import {
   NO_SAFETY_HITS,
   type SafetyKeywordHits,
@@ -45,6 +53,7 @@ import { toTurns } from "./turns.ts";
 import {
   cardView,
   CARE_MESSAGE,
+  INVITE_READINESS_CODE,
   MINOR_MESSAGE,
   readView,
   TASK_CODE,
@@ -493,6 +502,121 @@ Deno.test("判讀事件：先別回帶 waitFor、關心帶固定文案，其他�
   const send = readView(planTurn(herLast, tags()), "green");
   assertEquals("waitFor" in send, false);
   assertEquals(send.plannedCards.length, 4);
+});
+
+Deno.test("判讀事件：出卡、收尾、先別回、停都帶邀約進度代碼與冷訊號；關心（含只靠關鍵字的）兩個都沒有", () => {
+  const ready = tags({ inviteReadiness: "含糊答應" });
+  const views = [
+    readView(planTurn(herLast, ready), "green"),
+    readView(
+      planTurn(
+        herLast,
+        tags({ declinedOrBoundary: true, inviteReadiness: "婉拒過" }),
+      ),
+      "yellow",
+    ),
+    readView(planTurn(hisLast, ready), "yellow"),
+    readView(
+      planTurn(
+        herLast,
+        tags({ explicitRejection: true, inviteReadiness: "婉拒過" }),
+      ),
+      "red",
+    ),
+  ];
+  assertEquals(views.map((v) => v.decision), ["send", "close", "hold", "stop"]);
+  assertEquals(views.map((v) => v.inviteReadiness), [
+    "vague_yes",
+    "declined",
+    "vague_yes",
+    "declined",
+  ]);
+  for (const view of views) {
+    assertEquals(view.cold, { c1: false, herPerfunctoryStreak: 0 });
+  }
+  const cares = [
+    readView(
+      planTurn(
+        herLast,
+        tags({ selfHarmSignal: true, inviteReadiness: "明確答應" }),
+      ),
+      "green",
+    ),
+    readView(planTurn(herLast, tags({ minorSignal: true })), "green"),
+    readView(planWithoutRead(hits({ selfHarmWords: true }))!, null),
+    readView(planWithoutRead(hits({ minorWords: true }))!, null),
+  ];
+  for (const care of cares) {
+    assertEquals(care.decision, "care");
+    assertEquals("inviteReadiness" in care, false);
+    assertEquals("cold" in care, false);
+  }
+});
+
+Deno.test("邀約進度代碼：讀局面的七種各對到一個固定的英文代碼（App 只認代碼）", () => {
+  assertEquals(INVITE_READINESS_CODE, {
+    沒機會: "none",
+    婉拒過: "declined",
+    含糊答應: "vague_yes",
+    明確答應: "clear_yes",
+    她自己提見面: "she_proposed",
+    她取消了: "she_cancelled",
+    猶豫: "hesitant",
+  });
+  const codes = INVITE_READINESS.map((r) => INVITE_READINESS_CODE[r]);
+  assertEquals(new Set(codes).size, INVITE_READINESS.length);
+  for (const readiness of INVITE_READINESS) {
+    const view = readView(
+      planTurn(herLast, tags({ inviteReadiness: readiness })),
+      "green",
+    );
+    assertEquals(view.inviteReadiness, INVITE_READINESS_CODE[readiness]);
+  }
+});
+
+Deno.test("冷訊號：c1 跟 C1（他連續主動兩次、她兩次都敷衍才先別回）是同一個判斷；被更前面的規則蓋過就是 false", () => {
+  const chat = [
+    { isFromMe: false, content: "今天去看展超好看" },
+    { isFromMe: true, content: "真的嗎" },
+    { isFromMe: false, content: "哈哈" },
+    { isFromMe: true, content: "那妳週末呢" },
+    { isFromMe: false, content: "嗯" },
+  ];
+  const turns = toTurns(chat);
+  const both = tags({
+    herTurnsPerfunctory: [
+      { turn: 3, perfunctory: true },
+      { turn: 5, perfunctory: true },
+    ],
+  });
+  const once = tags({ herTurnsPerfunctory: [{ turn: 5, perfunctory: true }] });
+  // rules_prompts_test.ts「C1：連續主動兩次…」的兩組。
+  for (const [t, streak] of [[both, 2], [once, 1]] as const) {
+    const view = readView(planTurn(turns, t), "yellow");
+    assertEquals(view.cold, {
+      c1: decideReply(turns, t).kind === "hold",
+      herPerfunctoryStreak: streak,
+    });
+  }
+  assertEquals(readView(planTurn(turns, both), "yellow").cold?.c1, true);
+  assertEquals(readView(planTurn(turns, once), "yellow").cold?.c1, false);
+  // 他又追了一則：是「他最後一則」判的先別回，不是 C1；她連兩次敷衍照數。
+  const chased = readView(
+    planTurn(toTurns([...chat, { isFromMe: true, content: "在忙嗎" }]), both),
+    "yellow",
+  );
+  assertEquals(chased.decision, "hold");
+  assertEquals(chased.cold, { c1: false, herPerfunctoryStreak: 2 });
+  // 停、B47 排在 C1 前面：C1 沒判，c1 是 false。
+  const blocked = readView(planTurn(turns, { ...both, blocked: true }), "red");
+  assertEquals(blocked.decision, "stop");
+  assertEquals(blocked.cold, { c1: false, herPerfunctoryStreak: 2 });
+  const venue = readView(
+    planTurn(turns, { ...both, matchedEntries: ["B47"] }),
+    "yellow",
+  );
+  assertEquals(venue.decision, "send");
+  assertEquals(venue.cold, { c1: false, herPerfunctoryStreak: 2 });
 });
 
 Deno.test("關心文案照 Eric 10/16 同意的版本，有專線號碼", () => {

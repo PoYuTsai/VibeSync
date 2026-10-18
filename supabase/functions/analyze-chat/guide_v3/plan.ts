@@ -1,13 +1,15 @@
 // 讀局面之後、寫卡之前：把標記交給 rules.ts，得出這一輪要做什麼（回、先別回、
 // 收尾、停、關心），以及每張卡的規格與要帶的情境條目。純函式，不碰模型與資料庫。
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
-import type { ReadTags } from "./read_tags.ts";
+import type { INVITE_READINESS, ReadTags } from "./read_tags.ts";
 import {
   arrangeCards,
   type CardSpec,
   decidePush,
   decideReply,
+  herPerfunctoryStreak,
   judgmentFor,
+  PERFUNCTORY_HOLD_REASON,
   pickEntries,
   type PushAction,
 } from "./rules.ts";
@@ -25,6 +27,17 @@ export type GuideV3CareKind = "self_harm" | "minor";
 /// 用來看是哪一層判出來的。
 export type GuideV3CareTrigger = "model" | "keyword" | "both";
 
+/// 讀局面成功、不是 care 才有：邀約進度，以及給新話題的冷訊號（Eric 2026-10-18；不分方案）。
+/// c1＝這一輪是 C1「他連續主動兩次、她都只回敷衍的字」判的先別回（被停、B47 蓋過就不算）；
+/// herPerfunctoryStreak＝她最近連續幾輪只回敷衍的字。
+export interface GuideV3Signals {
+  readonly inviteReadiness: typeof INVITE_READINESS[number];
+  readonly cold: {
+    readonly c1: boolean;
+    readonly herPerfunctoryStreak: number;
+  };
+}
+
 export interface GuideV3Plan {
   readonly decision: GuideV3Decision;
   /// 給用戶看的局面判讀（B47 換成固定提醒）；care 時是空字串。
@@ -39,6 +52,8 @@ export interface GuideV3Plan {
   /// care 才有。
   readonly careKind?: GuideV3CareKind;
   readonly careTrigger?: GuideV3CareTrigger;
+  /// care 沒有。
+  readonly signals?: GuideV3Signals;
 }
 
 /// 模型沒寫要等什麼時的預設（依先別回的理由）。
@@ -92,6 +107,13 @@ export function planTurn(
   const push = reply.kind === "send" ? decidePush(turns, tags) : null;
   const specs = arrangeCards(reply, push, tags);
   const judgment = judgmentFor(tags);
+  const signals: GuideV3Signals = {
+    inviteReadiness: tags.inviteReadiness,
+    cold: {
+      c1: reply.kind === "hold" && reply.reason === PERFUNCTORY_HOLD_REASON,
+      herPerfunctoryStreak: herPerfunctoryStreak(turns, tags),
+    },
+  };
   switch (reply.kind) {
     case "hold":
       return {
@@ -102,6 +124,7 @@ export function planTurn(
         push: null,
         specs: [],
         entries: [],
+        signals,
       };
     case "stop":
       return {
@@ -112,6 +135,7 @@ export function planTurn(
         push: null,
         specs: [],
         entries: [],
+        signals,
       };
     case "close":
       return {
@@ -122,6 +146,7 @@ export function planTurn(
         push: null,
         specs,
         entries: pickEntries(tags.matchedEntries, entries),
+        signals,
       };
     case "send":
       return {
@@ -132,6 +157,7 @@ export function planTurn(
         push,
         specs,
         entries: pickEntries(tags.matchedEntries, entries),
+        signals,
       };
   }
 }

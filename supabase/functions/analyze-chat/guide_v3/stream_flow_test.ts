@@ -440,6 +440,64 @@ Deno.test("扣費還沒完成時，判讀和卡都還沒送出（只有開始和
   ]);
 });
 
+Deno.test("邀約進度與冷訊號只放在判讀裡（扣費之後才送）；扣費內容與結果也帶；先別回也帶、關心沒有", async () => {
+  const byType = (evs: Record<string, unknown>[], type: string) =>
+    evs.find((e) => e.type === type)!;
+  const finalRead = (evs: Record<string, unknown>[]) =>
+    (byType(evs, "analysis.done").finalResult as {
+      read: Record<string, unknown>;
+    }).read;
+  const carriers = (evs: Record<string, unknown>[]) =>
+    evs.filter((e) => "inviteReadiness" in e || "cold" in e).map((e) => e.type);
+
+  const send = harness({ readTags: tags({ inviteReadiness: "明確答應" }) });
+  const sendEvs = await events(await handleGuideV3Stream(send.deps));
+  const cold = { c1: false, herPerfunctoryStreak: 0 };
+  assertEquals(carriers(sendEvs), ["analysis.read"]);
+  assertEquals(byType(sendEvs, "analysis.read").inviteReadiness, "clear_yes");
+  assertEquals(byType(sendEvs, "analysis.read").cold, cold);
+  const charged = send.charges[0].recommendationJson.read as Record<
+    string,
+    unknown
+  >;
+  assertEquals([charged.inviteReadiness, charged.cold], ["clear_yes", cold]);
+  assertEquals(finalRead(sendEvs).inviteReadiness, "clear_yes");
+  assertEquals(finalRead(sendEvs).cold, cold);
+
+  // 他最後一則（先別回）：她上一輪敷衍照數，c1 不是 C1 判的。
+  const hold = harness({
+    messages: [...CHAT, { isFromMe: true, content: "哪座山" }],
+    readTags: tags({
+      inviteReadiness: "猶豫",
+      herTurnsPerfunctory: [{ turn: 2, perfunctory: true }],
+    }),
+  });
+  const holdEvs = await events(await handleGuideV3Stream(hold.deps));
+  assertEquals(carriers(holdEvs), ["analysis.read"]);
+  assertEquals(byType(holdEvs, "analysis.read").decision, "hold");
+  assertEquals(byType(holdEvs, "analysis.read").inviteReadiness, "hesitant");
+  assertEquals(byType(holdEvs, "analysis.read").cold, {
+    c1: false,
+    herPerfunctoryStreak: 1,
+  });
+  assertEquals(finalRead(holdEvs).inviteReadiness, "hesitant");
+
+  const care = harness({
+    readTags: tags({ selfHarmSignal: true, inviteReadiness: "明確答應" }),
+  });
+  const careEvs = await events(await handleGuideV3Stream(care.deps));
+  assertEquals(byType(careEvs, "analysis.read").decision, "care");
+  assertEquals(carriers(careEvs), []);
+  assertEquals("inviteReadiness" in finalRead(careEvs), false);
+  assertEquals("cold" in finalRead(careEvs), false);
+  const careRecord = care.charges[0].recommendationJson.read as Record<
+    string,
+    unknown
+  >;
+  assertEquals("inviteReadiness" in careRecord, false);
+  assertEquals("cold" in careRecord, false);
+});
+
 Deno.test("收尾（她婉拒或說了界線）：一張收尾卡，扣費的任務是 close", async () => {
   const h = harness({
     readTags: tags({ declinedOrBoundary: true }),

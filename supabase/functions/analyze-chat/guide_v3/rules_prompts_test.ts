@@ -25,8 +25,10 @@ import {
   type CardSpec,
   decidePush,
   decideReply,
+  herPerfunctoryStreak,
   judgmentFor,
   MONEY_RISK_WARNING,
+  PERFUNCTORY_HOLD_REASON,
   perfunctoryStreak,
   pickEntries,
   SCAM_VENUE_WARNING,
@@ -160,6 +162,45 @@ Deno.test("C1：連續主動兩次、她兩次都敷衍才先別回；只冷一�
   const once = tags({ herTurnsPerfunctory: [{ turn: 5, perfunctory: true }] });
   assertEquals(perfunctoryStreak(turns, once), 1);
   assertEquals(decideReply(turns, once).kind, "send");
+  // 給新話題的冷訊號認這個理由，不另寫一份判斷。
+  assertEquals(decideReply(turns, both), {
+    kind: "hold",
+    reason: PERFUNCTORY_HOLD_REASON,
+  });
+});
+
+Deno.test("她最近連續幾輪敷衍：從她最新的一輪往前數，碰到沒標敷衍就停；他最後一則也照數", () => {
+  const herLastTurns = toTurns([
+    her("今天去看展超好看"),
+    me("真的嗎"),
+    her("哈哈"),
+    me("那妳週末呢"),
+    her("嗯"),
+  ]);
+  const flags = (...turns: number[]) =>
+    tags({
+      herTurnsPerfunctory: [1, 3, 5].map((turn) => ({
+        turn,
+        perfunctory: turns.includes(turn),
+      })),
+    });
+  assertEquals(herPerfunctoryStreak(herLastTurns, flags(3, 5)), 2);
+  assertEquals(herPerfunctoryStreak(herLastTurns, flags(1, 3, 5)), 3);
+  assertEquals(herPerfunctoryStreak(herLastTurns, flags(5)), 1);
+  assertEquals(herPerfunctoryStreak(herLastTurns, flags(1, 3)), 0);
+  // 模型沒列到的輪次不算敷衍。
+  assertEquals(herPerfunctoryStreak(herLastTurns, tags()), 0);
+  // 他又追了一則：C1 不會判（他最後一則先別回），她連兩次敷衍還是 2。
+  const hisLastTurns = toTurns([
+    her("今天去看展超好看"),
+    me("真的嗎"),
+    her("哈哈"),
+    me("那妳週末呢"),
+    her("嗯"),
+    me("在忙嗎"),
+  ]);
+  assertEquals(perfunctoryStreak(hisLastTurns, flags(3, 5)), 0);
+  assertEquals(herPerfunctoryStreak(hisLastTurns, flags(3, 5)), 2);
 });
 
 Deno.test("C1：她婉拒就一句收尾；她取消不是只收尾（交給推進：提一次改天）", () => {

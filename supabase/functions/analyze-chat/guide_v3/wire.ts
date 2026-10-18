@@ -10,7 +10,7 @@ import type {
   GuideV3Decision,
   GuideV3Plan,
 } from "./plan.ts";
-import type { LIGHTS } from "./read_tags.ts";
+import type { INVITE_READINESS, LIGHTS } from "./read_tags.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
 import type { SafetyKeywordHits } from "./safety.ts";
 
@@ -40,6 +40,28 @@ export const VOICE_CODE: Readonly<Record<Voice, VoiceCode>> = {
   預設: "default",
 };
 
+/// 邀約進度 → App 用的代碼（Eric 2026-10-18 燈號紀錄＋邀約進度）。中文類別名之後可能改，
+/// App 只認代碼、不認得的當沒有。
+export type InviteReadinessCode =
+  | "none"
+  | "declined"
+  | "vague_yes"
+  | "clear_yes"
+  | "she_proposed"
+  | "she_cancelled"
+  | "hesitant";
+export const INVITE_READINESS_CODE: Readonly<
+  Record<typeof INVITE_READINESS[number], InviteReadinessCode>
+> = {
+  沒機會: "none",
+  婉拒過: "declined",
+  含糊答應: "vague_yes",
+  明確答應: "clear_yes",
+  她自己提見面: "she_proposed",
+  她取消了: "she_cancelled",
+  猶豫: "hesitant",
+};
+
 /// 自傷訊號時顯示的固定關心訊息（Eric 10/16 同意的文案，之後給 Bruce 看）。
 export const CARE_MESSAGE = [
   "對話裡出現了可能有人有危險的訊號。先把安全放在第一位，不用想怎麼回得漂亮。",
@@ -66,6 +88,13 @@ export interface GuideV3ReadView {
   readonly careMessage?: string;
   /// care 才有：self_harm（自傷關心）或 minor（涉及未成年）。舊版 App 不看這欄。
   readonly careKind?: GuideV3CareKind;
+  /// care 以外才有（plan.signals）：邀約進度，以及給新話題的冷訊號。跟判讀一起在扣費之後
+  /// 才送；舊版 App 不看這兩欄。
+  readonly inviteReadiness?: InviteReadinessCode;
+  readonly cold?: {
+    readonly c1: boolean;
+    readonly herPerfunctoryStreak: number;
+  };
   /// 預定的卡（照順序）；送出的張數可能比較少（被檢查拿掉）。locked＝這個方案看
   /// 不到（免費方案只送前幾張），伺服器不會寫也不會送那幾張。
   readonly plannedCards: readonly {
@@ -102,6 +131,12 @@ export function readView(
       ? {
         careMessage: careKind === "minor" ? MINOR_MESSAGE : CARE_MESSAGE,
         careKind,
+      }
+      : {}),
+    ...(plan.decision !== "care" && plan.signals
+      ? {
+        inviteReadiness: INVITE_READINESS_CODE[plan.signals.inviteReadiness],
+        cold: { ...plan.signals.cold },
       }
       : {}),
     plannedCards: plan.specs.map((spec, i) => ({

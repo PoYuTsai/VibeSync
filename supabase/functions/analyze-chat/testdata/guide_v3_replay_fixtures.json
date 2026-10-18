@@ -47,6 +47,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。",
+            "inviteReadiness": "she_proposed",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -150,6 +155,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -276,6 +286,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -417,6 +432,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -470,6 +490,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她到家主動回報、道謝，還說下次換她請，等於自己把下一次見面的門打開了，這是往前的訊號。",
+            "inviteReadiness": "she_proposed",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -770,6 +795,11 @@
             "decision": "close",
             "light": "red",
             "judgment": "她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -801,6 +831,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -859,6 +894,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -932,6 +972,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -965,6 +1010,11 @@
             "decision": "close",
             "light": "red",
             "judgment": "她很客氣地說還不想談感情、先當朋友，是在放慢、畫界線，但不是直接拒絕，也沒有關門。現在不適合再推進，先接住她的坦白、不給壓力。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -1136,6 +1186,11 @@
             "light": "red",
             "judgment": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
             "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": true,
+              "herPerfunctoryStreak": 3
+            },
             "plannedCards": []
           },
           {
@@ -1149,6 +1204,11 @@
                 "light": "red",
                 "judgment": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
                 "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": true,
+                  "herPerfunctoryStreak": 3
+                },
                 "plannedCards": []
               },
               "cards": [],
@@ -1185,6 +1245,11 @@
                 "light": "red",
                 "judgment": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
                 "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": true,
+                  "herPerfunctoryStreak": 3
+                },
                 "plannedCards": []
               },
               "cards": [],
@@ -1237,6 +1302,11 @@
                 "light": "red",
                 "judgment": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
                 "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": true,
+                  "herPerfunctoryStreak": 3
+                },
                 "plannedCards": []
               },
               "chargedMessageCount": 1
@@ -1253,6 +1323,11 @@
             "light": "red",
             "judgment": "她三輪都只回一兩個字，沒有反問也沒有補內容，一路偏短偏淡。目前不算明確拒絕，但她沒投入，再多問問題只會更像面試。",
             "waitFor": "等她自己多說一點、反問你，或主動丟個話題再接。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": true,
+              "herPerfunctoryStreak": 3
+            },
             "plannedCards": []
           },
           "cards": [],
@@ -1378,6 +1453,11 @@
             "decision": "close",
             "light": "yellow",
             "judgment": "她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -1409,6 +1489,11 @@
                 "decision": "close",
                 "light": "yellow",
                 "judgment": "她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -1467,6 +1552,11 @@
                 "decision": "close",
                 "light": "yellow",
                 "judgment": "她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -1540,6 +1630,11 @@
                 "decision": "close",
                 "light": "yellow",
                 "judgment": "她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -1573,6 +1668,11 @@
             "decision": "close",
             "light": "yellow",
             "judgment": "她說展覽好像不錯，但這週末有約，只說之後再看看，沒給具體時間。算委婉婉拒這次，不是明確拒絕，興趣還在但沒加碼。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -1736,6 +1836,11 @@
             "decision": "close",
             "light": "red",
             "judgment": "她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 1
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -1767,6 +1872,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 1
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -1825,6 +1935,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 1
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -1898,6 +2013,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 1
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -1931,6 +2051,11 @@
             "decision": "close",
             "light": "red",
             "judgment": "她說最近忙、再說吧，沒給任何時間，是委婉的不要。先不要追問或再約，給她空間，看她之後會不會自己開口。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 1
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -2094,6 +2219,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。",
+            "inviteReadiness": "she_proposed",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -2197,6 +2327,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -2323,6 +2458,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -2464,6 +2604,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -2517,6 +2662,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她禮拜五加班沒辦法，但主動提出禮拜天，還反問他可不可以，是在幫兩人找時間，往前的訊號。",
+            "inviteReadiness": "she_proposed",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -2804,6 +2954,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -2870,6 +3025,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -2961,6 +3121,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -3067,6 +3232,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -3109,6 +3279,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動開口、問你照片在哪拍，還誇照片美，是在給你話題。她有投入，可以大方接。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -3356,6 +3531,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -3459,6 +3639,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -3585,6 +3770,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -3726,6 +3916,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -3779,6 +3974,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動延伸話題，分享自己學底片的糗事，還問你入門機推薦，是往前的綠燈。她給的比你問的多，可以認真回她的問題。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -4095,6 +4295,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。",
+            "inviteReadiness": "clear_yes",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -4198,6 +4403,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。",
+                "inviteReadiness": "clear_yes",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -4324,6 +4534,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。",
+                "inviteReadiness": "clear_yes",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -4465,6 +4680,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。",
+                "inviteReadiness": "clear_yes",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -4518,6 +4738,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她直接答應了週六的約，還主動先講會晚十分鐘，是把見面當真在安排，不是客套。",
+            "inviteReadiness": "clear_yes",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -4957,6 +5182,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。",
+            "inviteReadiness": "vague_yes",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -5061,6 +5291,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。",
+                "inviteReadiness": "vague_yes",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -5188,6 +5423,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。",
+                "inviteReadiness": "vague_yes",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -5330,6 +5570,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。",
+                "inviteReadiness": "vague_yes",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -5383,6 +5628,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她每輪都有回答還反問你，現在還主動問咖啡廳在哪、說這週末想去，算是開窗。不過你一路只回「我也差不多」，她問了這麼多你幾乎沒給料，要補點自己的內容。",
+            "inviteReadiness": "vague_yes",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -5687,6 +5937,11 @@
             "decision": "close",
             "light": "red",
             "judgment": "她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -5717,6 +5972,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -5774,6 +6034,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -5846,6 +6111,11 @@
                 "decision": "close",
                 "light": "red",
                 "judgment": "她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -5878,6 +6148,11 @@
             "decision": "close",
             "light": "red",
             "judgment": "她一開頭就說有男友，是先把界線說清楚，不算明確拒絕他這個人，但這個方向現在沒有往前的空間。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -6047,6 +6322,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -6150,6 +6430,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -6276,6 +6561,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -6417,6 +6707,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -6470,6 +6765,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動分享自己在考慮換工作的事，還直接問你的意見，是在信任你、想聽你的看法，這是往前的訊號。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -6805,6 +7105,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -6872,6 +7177,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -6964,6 +7274,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -7071,6 +7386,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -7114,6 +7434,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她接了貓的話題，還主動反問你的工作，也猜你常出差，有在延伸、對你有興趣，局面偏正向。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -7355,6 +7680,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -7456,6 +7786,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -7580,6 +7915,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -7719,6 +8059,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -7772,6 +8117,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動回頭分享今天吃了你推薦的拉麵，還誇你品味不錯，引用你說過的話又主動開話題，是往前的訊號。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -8081,6 +8431,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。",
+            "inviteReadiness": "she_proposed",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -8184,6 +8539,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -8310,6 +8670,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -8451,6 +8816,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。",
+                "inviteReadiness": "she_proposed",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -8504,6 +8874,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動拿演唱會票問你要不要去，還記得你之前說過喜歡這個樂團，這是明確的邀約訊號，她在往前走。",
+            "inviteReadiness": "she_proposed",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -8807,6 +9182,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -8874,6 +9254,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -8966,6 +9351,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -9073,6 +9463,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -9116,6 +9511,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動道歉、解釋自己為什麼沒回，還反問你最近怎樣，是願意重新接上的訊號。現在輪到你給點近況，自然接就好。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -9355,6 +9755,11 @@
             "decision": "send",
             "light": "yellow",
             "judgment": "她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -9422,6 +9827,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -9514,6 +9924,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -9621,6 +10036,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -9664,6 +10084,11 @@
             "decision": "send",
             "light": "yellow",
             "judgment": "她今天被主管當眾罵，又丟臉又累，是在跟你吐苦水，不是在調情。先接住她的情緒，別急著講道理或推進。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -9900,6 +10325,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -10003,6 +10433,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -10129,6 +10564,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -10270,6 +10710,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -10323,6 +10768,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她先誇你厲害，又半開玩笑虧你，等於主動加碼、在跟你玩，是偏熱的訊號，可以輕鬆接她的玩笑。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -10643,6 +11093,11 @@
             "decision": "close",
             "light": "yellow",
             "judgment": "她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -10674,6 +11129,11 @@
                 "decision": "close",
                 "light": "yellow",
                 "judgment": "她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -10732,6 +11192,11 @@
                 "decision": "close",
                 "light": "yellow",
                 "judgment": "她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -10805,6 +11270,11 @@
                 "decision": "close",
                 "light": "yellow",
                 "judgment": "她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。",
+                "inviteReadiness": "declined",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -10838,6 +11308,11 @@
             "decision": "close",
             "light": "yellow",
             "judgment": "她說這週忙、下次再看看，但沒給任何時間，這是委婉的婉拒，不是明確拒絕。先別追問也別再硬約，把互動放輕鬆，等她自己有表示再說。",
+            "inviteReadiness": "declined",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -11007,6 +11482,11 @@
             "decision": "send",
             "light": "yellow",
             "judgment": "才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 1
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -11074,6 +11554,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 1
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -11166,6 +11651,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 1
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -11273,6 +11763,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 1
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -11316,6 +11811,11 @@
             "decision": "send",
             "light": "yellow",
             "judgment": "才剛打完招呼，她回了哈囉，算正常禮貌的回應，還看不出熱或冷，需要你先給點料開個話題。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 1
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -11549,6 +12049,11 @@
             "decision": "send",
             "light": "yellow",
             "judgment": "她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -11613,6 +12118,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -11702,6 +12212,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -11806,6 +12321,11 @@
                 "decision": "send",
                 "light": "yellow",
                 "judgment": "她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -11848,6 +12368,11 @@
             "decision": "send",
             "light": "yellow",
             "judgment": "她有回答簡報的事，也道了謝，但沒有反問或延伸，是接得住但不加碼的黃燈。目前只有一則短回，還不能算冷，先別用力。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -12064,6 +12589,11 @@
             "light": "yellow",
             "judgment": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
             "waitFor": "等她開完會，自己回來接著聊今天那件事。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": []
           },
           {
@@ -12077,6 +12607,11 @@
                 "light": "yellow",
                 "judgment": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
                 "waitFor": "等她開完會，自己回來接著聊今天那件事。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": []
               },
               "cards": [],
@@ -12113,6 +12648,11 @@
                 "light": "yellow",
                 "judgment": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
                 "waitFor": "等她開完會，自己回來接著聊今天那件事。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": []
               },
               "cards": [],
@@ -12165,6 +12705,11 @@
                 "light": "yellow",
                 "judgment": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
                 "waitFor": "等她開完會，自己回來接著聊今天那件事。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": []
               },
               "chargedMessageCount": 1
@@ -12181,6 +12726,11 @@
             "light": "yellow",
             "judgment": "她在開會，說晚點結束再聊今天那件事，是正常的忙，不是在退。他已經回好，沒有更多要補的。",
             "waitFor": "等她開完會，自己回來接著聊今天那件事。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": []
           },
           "cards": [],
@@ -12300,6 +12850,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
@@ -12403,6 +12958,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -12529,6 +13089,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -12670,6 +13235,11 @@
                 "decision": "send",
                 "light": "green",
                 "judgment": "她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。",
+                "inviteReadiness": "none",
+                "cold": {
+                  "c1": false,
+                  "herPerfunctoryStreak": 0
+                },
                 "plannedCards": [
                   {
                     "slot": 1,
@@ -12723,6 +13293,11 @@
             "decision": "send",
             "light": "green",
             "judgment": "她主動問你平常看什麼、還跟你要推薦，還補了片荒的近況，有延伸也有反問，偏綠燈。這是順著話題給料的好時機。",
+            "inviteReadiness": "none",
+            "cold": {
+              "c1": false,
+              "herPerfunctoryStreak": 0
+            },
             "plannedCards": [
               {
                 "slot": 1,
