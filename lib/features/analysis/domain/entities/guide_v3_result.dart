@@ -56,6 +56,22 @@ enum GuideV3Decision {
       this == GuideV3Decision.send || this == GuideV3Decision.close;
 }
 
+/// 固定訊息（care）是哪一種（伺服器 `careKind`，Eric 2026-10-18 加未成年）：自傷關心，
+/// 或涉及未成年。舊快照沒有這欄，當成自傷關心。
+enum GuideV3CareKind {
+  selfHarm('self_harm'),
+  minor('minor');
+
+  const GuideV3CareKind(this.wire);
+
+  final String wire;
+
+  static GuideV3CareKind fromWire(Object? value) =>
+      value == GuideV3CareKind.minor.wire
+          ? GuideV3CareKind.minor
+          : GuideV3CareKind.selfHarm;
+}
+
 /// 局面燈號（讀局面的 light）。
 enum GuideV3Light {
   green('green', '綠燈'),
@@ -110,6 +126,7 @@ class GuideV3Read {
     required this.judgment,
     this.waitFor,
     this.careMessage,
+    this.careKind,
     this.plannedCards = const [],
   });
 
@@ -125,8 +142,11 @@ class GuideV3Read {
   /// 先別回時「要等她做什麼」。
   final String? waitFor;
 
-  /// 自傷關心的固定文案（伺服器 `CARE_MESSAGE`）。
+  /// 固定訊息的文案（伺服器 `CARE_MESSAGE` 或 `MINOR_MESSAGE`）。
   final String? careMessage;
+
+  /// 固定訊息的種類；不是 care 就是 null。
+  final GuideV3CareKind? careKind;
   final List<GuideV3PlannedCard> plannedCards;
 
   List<GuideV3PlannedCard> get lockedCards =>
@@ -164,6 +184,9 @@ class GuideV3Read {
       waitFor: decision == GuideV3Decision.hold ? text(json['waitFor']) : null,
       careMessage:
           decision == GuideV3Decision.care ? text(json['careMessage']) : null,
+      careKind: decision == GuideV3Decision.care
+          ? GuideV3CareKind.fromWire(json['careKind'])
+          : null,
       plannedCards: List.unmodifiable(planned),
     );
   }
@@ -308,7 +331,8 @@ class GuideV3Result {
     return raw.map((key, value) => MapEntry(key.toString(), value));
   }
 
-  /// 自傷關心不扣費（伺服器 chargeQuota=false），存檔不推進字數基準。
+  /// 固定訊息（自傷關心、涉及未成年）不扣費（伺服器 chargeQuota=false），存檔不推進字數
+  /// 基準；畫面不給問教練、潤飾與回饋。
   bool get isCare => read.decision == GuideV3Decision.care;
 
   static GuideV3Result? fromJson(Map<String, dynamic> json) {

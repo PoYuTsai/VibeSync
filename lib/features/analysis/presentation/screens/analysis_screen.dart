@@ -3440,7 +3440,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     if (guideV3 != null) {
       final read = guideV3.read;
       buffer.writeln('--- AI 分析結果 ---');
-      buffer.writeln(guideV3DecisionTitle(read.decision));
+      buffer.writeln(guideV3ReadTitle(read));
       if (guideV3.isCare) {
         buffer.writeln(read.careMessage ?? '');
       } else {

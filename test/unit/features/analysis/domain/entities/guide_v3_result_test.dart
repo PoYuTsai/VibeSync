@@ -9,6 +9,7 @@ Map<String, dynamic> _read({
   List<Object?>? plannedCards,
   String? waitFor,
   String? careMessage,
+  String? careKind,
 }) {
   return {
     'guideVersion': 'v3.4',
@@ -17,6 +18,7 @@ Map<String, dynamic> _read({
     'judgment': judgment,
     if (waitFor != null) 'waitFor': waitFor,
     if (careMessage != null) 'careMessage': careMessage,
+    if (careKind != null) 'careKind': careKind,
     'plannedCards': plannedCards ??
         [
           {'slot': 1, 'task': 'accept', 'locked': false},
@@ -97,6 +99,21 @@ void main() {
       expect(care.careMessage, '先把安全放在第一位');
       expect(care.waitFor, isNull);
       expect(care.decision.hasCards, isFalse);
+    });
+
+    test('固定訊息的種類：未成年另外認；沒帶（舊快照）或認不得都當自傷關心；不是 care 就沒有', () {
+      GuideV3Read care(String? kind) => GuideV3Read.fromJson(_read(
+            decision: 'care',
+            plannedCards: const [],
+            careMessage: '固定文案',
+            careKind: kind,
+          ))!;
+      expect(care('minor').careKind, GuideV3CareKind.minor);
+      expect(care('self_harm').careKind, GuideV3CareKind.selfHarm);
+      expect(care(null).careKind, GuideV3CareKind.selfHarm);
+      expect(care('other').careKind, GuideV3CareKind.selfHarm);
+      final send = GuideV3Read.fromJson(_read(careKind: 'minor'))!;
+      expect(send.careKind, isNull);
     });
 
     test('讀不懂的決定整個不收；讀不懂的燈號只是不顯示', () {

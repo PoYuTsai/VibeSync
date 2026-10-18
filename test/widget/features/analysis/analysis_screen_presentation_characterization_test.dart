@@ -1057,6 +1057,39 @@ void main() {
       expect(find.text('這個建議有幫助嗎？'), findsNothing);
       expect(find.text('分析新片段'), findsOneWidget);
     });
+
+    // ── 對話分析 v3 安全與規格修正（Eric 2026-10-18） ──
+    testWidgets('涉及未成年：跟關心同一條路，只有固定說明，沒有問教練、潤飾、回饋與扣費行', (tester) async {
+      const message = '看起來對話裡有人未滿 18 歲或還在讀國中、高中，這類對話我們不提供回覆建議。這次不扣額度。';
+      final minor = GuideV3Result.fromJson({
+        'guideVersion': 'v3.5',
+        'read': {
+          'guideVersion': 'v3.5',
+          'decision': 'care',
+          'light': null,
+          'judgment': '',
+          'careMessage': message,
+          'careKind': 'minor',
+          'plannedCards': const [],
+        },
+        'cards': const [],
+        'partial': false,
+        'usage': {
+          'messagesUsed': 0,
+          'monthlyRemaining': 29,
+          'dailyRemaining': 4,
+        },
+      })!;
+      await _pumpScreen(tester, seed: doneSeed(minor));
+      expect(find.text('這段不提供建議'), findsOneWidget);
+      expect(find.text(message), findsOneWidget);
+      expect(find.byKey(const Key('analysis_coach_cta')), findsNothing);
+      expect(find.textContaining('本次分析使用'), findsNothing);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
+      expect(find.text('問教練：我現在該怎麼做？'), findsNothing);
+      expect(find.text('這個建議有幫助嗎？'), findsNothing);
+      expect(find.text('分析新片段'), findsOneWidget);
+    });
   });
 
   group('空片段起始畫面', () {
