@@ -149,6 +149,15 @@ export interface CardChecks {
 }
 
 const EMOJI = /\p{Extended_Pictographic}/gu;
+/// 比對前把一整個表情換成空白（主審 r1 P3）：數字鍵帽是「1」加 U+FE0F、U+20E3，只拿掉表情字會
+/// 留下數字；旗幟的標籤字元、變體選擇符、ZWJ、膚色也要一起拿掉。換成空白，表情夾在兩句中間時
+/// 還是斷句的位置。表情個數（emoji）照舊只數表情字。
+const EMOJI_SEQUENCE =
+  /[0-9#*]\u{FE0F}?\u{20E3}|\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[\u{FE0E}\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu;
+
+function withoutEmoji(text: string): string {
+  return text.replace(EMOJI_SEQUENCE, " ");
+}
 const ENDS_WITH_NI_NE = /[你妳]呢[？?！!～~。…\s]*$/u;
 const COPY_RUN = 8;
 
@@ -214,7 +223,7 @@ export function cardChecks(
   spec: Pick<CardSpec, "voice" | "task">,
   hisMessages: readonly string[],
 ): CardChecks {
-  const last = (messages.at(-1) ?? "").replace(EMOJI, "").trim();
+  const last = withoutEmoji(messages.at(-1) ?? "").trim();
   const lastCore = last.replace(TRAILING_NON_TEXT, "");
   return {
     slot,
@@ -230,7 +239,7 @@ export function cardChecks(
       ? REQUEST_ENDINGS.some((w) => lastCore.endsWith(w))
       : null,
     hasRequest: spec.task === "推進"
-      ? messages.some((m) => REQUEST_CLAUSE.test(m))
+      ? messages.some((m) => REQUEST_CLAUSE.test(withoutEmoji(m)))
       : null,
     internalIds: messages.reduce(
       (n, m) => n + (m.normalize("NFKC").match(INTERNAL_ID)?.length ?? 0),
@@ -248,7 +257,7 @@ export function sameOpeningCount(
   const seen = new Set<string>();
   let same = 0;
   for (const messages of cards) {
-    const text = (messages[0] ?? "").replaceAll("妳", "你").replace(EMOJI, "")
+    const text = withoutEmoji(messages[0] ?? "").replaceAll("妳", "你")
       .replace(NON_TEXT, "");
     const opening = [...text].slice(0, OPENING_CHARS).join("");
     if (!opening) continue;

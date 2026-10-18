@@ -491,6 +491,34 @@ Deno.test("C5 推進卡請求句（盤點的算法）：任何一句用請求句
   );
 });
 
+// 多碼點表情用跳脫字元寫，原始碼裡看得到每個碼點（主審 r1 P3）：數字鍵帽是「1」加 U+FE0F、
+// U+20E3；蘇格蘭旗是黑旗加看不見的標籤字元。
+const KEYCAP_1 = "1\u{FE0F}\u{20E3}";
+const KEYCAP_2 = "2\u{FE0F}\u{20E3}";
+const KEYCAP_1_BARE = "1\u{20E3}";
+const TAG_FLAG =
+  "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
+const HEART = "\u{2764}\u{FE0F}";
+const THUMBS_LIGHT = "\u{1F44D}\u{1F3FB}";
+const FAMILY = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+
+Deno.test("C5 請求句與「你呢」：結尾的數字鍵帽、旗幟這類多碼點表情整組拿掉，不留下數字", () => {
+  const push = { voice: "預設" as const, task: "推進" as const };
+  const check = (message: string) => {
+    const c = cardChecks(1, [message], push, []);
+    return [c.endsWithRequest, c.hasRequest, c.endsWithNiNe];
+  };
+  assertEquals(check(`週六下午見，可以嗎${KEYCAP_1}`), [true, true, false]);
+  assertEquals(check(`週六下午見，好嗎${KEYCAP_1_BARE}`), [true, true, false]);
+  assertEquals(check(`週六下午見，可以嗎${TAG_FLAG}`), [true, true, false]);
+  // 表情夾在請求句和下一句中間：照樣是一句的結尾。
+  assertEquals(check(`可以嗎${KEYCAP_1}我來訂位`), [false, true, false]);
+  // 「你呢」後面接數字鍵帽、愛心、膚色、全家福、旗幟：都是你呢收尾。
+  for (const emoji of [KEYCAP_1, HEART, THUMBS_LIGHT, FAMILY, TAG_FLAG]) {
+    assertEquals(check(`那你呢${emoji}`)[2], true, emoji);
+  }
+});
+
 Deno.test("C5 內部條目編號：B 加兩位數字算一次；B12 維他命也算到，所以只記錄", () => {
   const spec = { voice: "預設" as const, task: "接住" as const };
   const ids = (messages: string[]) =>
@@ -528,6 +556,28 @@ Deno.test("C5 同一組開頭：第一則去掉標點表情後前 4 個字跟前
   // 只有表情的第一則沒有字可比，不算。
   assertEquals(sameOpeningCount([["😂"], ["🤣🤣"], ["週末去爬山"]]), 0);
   assertEquals(sameOpeningCount([]), 0);
+});
+
+Deno.test("C5 同一組開頭：開頭的數字鍵帽、旗幟整組拿掉再比，不拿剩下的數字或標籤字元比", () => {
+  // 兩個不同的數字鍵帽開頭，後面的字一樣：算一張。
+  assertEquals(
+    sameOpeningCount([[`${KEYCAP_1}週六下午見`], [
+      `${KEYCAP_2}週六下午去吃飯`,
+    ]]),
+    1,
+  );
+  // 只有前面的表情一樣、字不一樣：不算。
+  const keycaps = KEYCAP_1 + KEYCAP_2 + KEYCAP_1 + KEYCAP_2;
+  assertEquals(sameOpeningCount([[`${keycaps}好啊`], [`${keycaps}真的嗎`]]), 0);
+  assertEquals(
+    sameOpeningCount([[`${TAG_FLAG}好啊`], [`${TAG_FLAG}真的嗎`]]),
+    0,
+  );
+  // 全家福、膚色這類本來就拿得掉的照舊。
+  assertEquals(
+    sameOpeningCount([[`${FAMILY}週六下午見`], [`${THUMBS_LIGHT}週六下午去`]]),
+    1,
+  );
 });
 
 Deno.test("v3.2：B44、B45（她直接問他）排在一般條目前面", () => {
