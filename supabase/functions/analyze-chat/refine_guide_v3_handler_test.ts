@@ -106,15 +106,34 @@ Deno.test("任務卡的再調：提示詞帶任務卡規則與陣列草稿，回
   assertEquals(usage.messagesUsed, 0);
 });
 
-Deno.test("任務卡的再調：調出「欠」組整次不給，不授權免費次數、不結算、不扣費", async () => {
+Deno.test("任務卡的再調：調出脅迫句整次不給，不授權免費次數、不結算、不扣費", async () => {
   const out = await run(
     { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
-    "就週六\n遲到算妳欠我一杯",
+    "就週六\n你不來我就去死",
   );
   assertEquals(out.status, 502);
   assertEquals(out.json.code, "OPTIMIZE_MESSAGE_SAFETY_BLOCKED");
   assertEquals(out.json.shouldChargeQuota, false);
   assertEquals(rpcNames(out), ["increment_model_usage"]);
+});
+
+Deno.test("任務卡的再調：調出「欠」組照給（Bruce 10/18 改回只記錄），照常授權免費次數、結算", async () => {
+  const out = await run(
+    { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
+    "就週六\n遲到算妳欠我一杯",
+  );
+  assertEquals(out.status, 200);
+  // 預設口吻：「妳」換成「你」。
+  assertEquals(
+    (out.json.optimizedMessage as Record<string, unknown>).optimized,
+    "就週六\n遲到算你欠我一杯",
+  );
+  assertEquals(out.json.guideV3CardChecked, true);
+  assertEquals(rpcNames(out), [
+    "increment_model_usage",
+    "consume_refine_free_allowance",
+    "settle_optimize_message_request",
+  ]);
 });
 
 Deno.test("任務卡的再調：兩則被併成一則就整次不給，同樣不碰免費次數與結算", async () => {
@@ -149,7 +168,7 @@ Deno.test("任務卡的再調：今天免費次數用完時照回覆微調扣 1 
   // 同樣用完的情況下被擋：照樣不扣、不結算。
   const blocked = await run(
     { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
-    "就週六\n遲到算妳欠我一杯",
+    "就週六\n你不來我就去死",
     { freeAllowance: "exhausted" },
   );
   assertEquals(blocked.status, 502);
@@ -283,7 +302,7 @@ Deno.test("跨版本重播（新 Edge 先結算、重試落到舊 Edge）：新 
   assertEquals((retry.json.usage as Record<string, unknown>).messagesUsed, 0);
 });
 
-Deno.test("重播再定稿：帳本裡沒過任務卡檢查的「欠」組結果擋下，不扣、不打模型", async () => {
+Deno.test("重播再定稿：帳本裡沒過任務卡檢查的結果（脅迫句）擋下，不扣、不打模型", async () => {
   const out = await run(
     { refineInstruction: "更直接", guideV3Card: PUSH_CARD },
     "不該被呼叫",
@@ -294,7 +313,7 @@ Deno.test("重播再定稿：帳本裡沒過任務卡檢查的「欠」組結果
           userDraft: DRAFT,
           refineInstruction: "更直接",
         }),
-        result: storedResult("就週六\n遲到算你欠我一杯"),
+        result: storedResult("就週六\n你不來我就去死"),
       },
     },
   );
@@ -313,7 +332,7 @@ Deno.test("並行重試：結算拿回的是別次寫進帳本的那一列，也
       freeAllowance: "exhausted",
       ledgerRow: {
         inputHash: await noCardHash(),
-        result: storedResult("就週六\n遲到算你欠我一杯"),
+        result: storedResult("就週六\n你不來我就去死"),
         appearsAtSettle: true,
       },
     },

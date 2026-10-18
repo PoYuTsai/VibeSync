@@ -1,11 +1,9 @@
-// 什麼請求走 v3、免費方案幾張，以及 F04 的扣費字數。
+// 什麼請求走 v3，以及 F04 的扣費字數。
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   billingMessagesFor,
   F04_MAX_EXCLUDED_CHARS,
   F04_MAX_EXCLUDED_MESSAGES,
-  GUIDE_V3_FREE_CARD_LIMIT,
-  guideV3MaxCards,
   guideV3Mode,
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
@@ -64,13 +62,6 @@ Deno.test("對象記憶開關：沒設或打錯都不抽；test 只給測試帳�
     shouldExtractGuideV3Memory({ mode: "on", accountIsTest: false }),
     true,
   );
-});
-
-Deno.test("免費方案最多 2 張，付費方案不限", () => {
-  assertEquals(GUIDE_V3_FREE_CARD_LIMIT, 2);
-  assertEquals(guideV3MaxCards("free"), 2);
-  assertEquals(guideV3MaxCards("starter"), null);
-  assertEquals(guideV3MaxCards("essential"), null);
 });
 
 const plain = (contractVersion: number) => ({

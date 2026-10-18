@@ -44,14 +44,6 @@ export function shouldUseGuideV3PreviousRound(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
-/// 免費方案看排好順序的前 2 張（計畫第五節第 5 項的預設；v2 的免費方案也只有延展、
-/// 調情兩種風格）。伺服器只寫、只送這幾張。
-export const GUIDE_V3_FREE_CARD_LIMIT = 2;
-
-export function guideV3MaxCards(effectiveTier: string): number | null {
-  return effectiveTier === "free" ? GUIDE_V3_FREE_CARD_LIMIT : null;
-}
-
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。

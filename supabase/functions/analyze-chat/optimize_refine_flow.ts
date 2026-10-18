@@ -405,7 +405,7 @@ export function validateOptimizeOutcome(args: {
     });
     // 安全守門攔下要有專屬文案（2026-08-16 Eric 拍板）：通用的「請稍後
     // 再試」會誤導使用者原句重送——這不是暫時性失敗，是內容問題。
-    // 任務卡的禁語、脅迫與「欠」組同理。
+    // 任務卡的禁語、脅迫同理。
     if (
       hasOutboundSafetyWarning(args.result) ||
       isGuideV3RefineSafetyRejection(guideV3Rejection)

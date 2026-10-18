@@ -214,13 +214,14 @@ void main() {
       expect(find.text('不帶入'), findsNothing);
     });
 
-    test('最後一則是我說（Eric 2026-10-18）：照 v3 實際行為講先等她回、會用 1 則，不再說改用她前一則', () {
+    test('最後一則是我說：照 v3 實際行為講先等她回、一樣照字數扣（Eric 2026-10-19），不再說改用她前一則', () {
       final hint = newConversationHintText(
         hasMessages: true,
         hasIncomingMessage: true,
         endsWithMyMessage: true,
       );
-      expect(hint, '最後一則是我說，教練多半會建議先等她回，這樣會用 1 則；還沒傳出去的先別加。');
+      expect(hint, '最後一則是我說，教練多半會建議先等她回，一樣照字數扣；還沒傳出去的先別加。');
+      expect(hint, isNot(contains('1 則')));
       expect(hint, isNot(contains('前一則她的回覆')));
     });
 

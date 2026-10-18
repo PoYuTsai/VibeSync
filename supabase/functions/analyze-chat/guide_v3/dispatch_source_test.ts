@@ -34,12 +34,9 @@ Deno.test("v3 入口排在所有不打模型的關卡之後、v2 串流分派之
   assert(gate.includes('mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3"))'));
   // 續看一律交給 v2 handler。
   assert(gate.includes("isResume: analysisRunId !== null"));
-  // 免費方案的張數在伺服器端把關。
-  assert(
-    source.slice(v3Call, v2Dispatch).includes(
-      "maxCards: guideV3MaxCards(effectiveTier),",
-    ),
-  );
+  // 免費也看全部卡（Bruce 10/18，Eric 2026-10-19）：v3 入口不分方案限制張數。
+  assertEquals(source.slice(v3Call, v2Dispatch).includes("maxCards"), false);
+  assertEquals(source.includes("guideV3MaxCards"), false);
 });
 
 Deno.test("對象記憶只接在 v3 入口，照 ANALYZE_GUIDE_V3_MEMORY 開關（測試帳號用 test）", () => {

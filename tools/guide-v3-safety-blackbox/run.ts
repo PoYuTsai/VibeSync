@@ -22,7 +22,6 @@ import {
   type TokenPricing,
 } from "../../supabase/functions/_shared/model_pricing.ts";
 import { maxTokensFor } from "../../supabase/functions/_shared/model_request_params.ts";
-import { guideV3MaxCards } from "../../supabase/functions/analyze-chat/guide_v3/routing.ts";
 import {
   readSystemPrompt,
   readUserPrompt,
@@ -72,7 +71,7 @@ const STREAM_FLOW =
 const API_URL = "https://api.anthropic.com/v1/messages";
 const OUT_ROOT = new URL("./out/", import.meta.url);
 const TOKENS_PER_CHAR = 1.5;
-/// 照字數扣費模擬成 2 則（看先別回、停是不是固定 1 則）。
+/// 照字數扣費模擬成 2 則；先別回、停也照字數扣（Eric 2026-10-19 照 Bruce 改回），停的案例要 2 則。
 const SIMULATED_CHARGE = 2;
 const PRIMARY_MODEL = "claude-sonnet-5-5";
 const READ_MAX_TOKENS = 1500;
@@ -856,7 +855,6 @@ async function main(args: string[]): Promise<number> {
           log: () => {},
           now: () => Date.now(),
           heartbeatIntervalMs: 0,
-          maxCards: guideV3MaxCards("essential"),
         });
         outcome = outcomeOf(
           await readEvents(response),

@@ -377,9 +377,9 @@ class UsageService {
     final shouldRestorePaidSnapshot =
         storedTier == SubscriptionTierHelper.free && paidSnapshot != null;
     final tier = shouldRestorePaidSnapshot ? paidSnapshot.tier : storedTier;
-    // 存著的上限都是寫入當時照 App 方案表算的；App 更新改了方案表（免費 30／15 → 50／20，
-    // Eric 2026-10-18）後，舊值會在方案還在載入時擋人。所以上限一律照現在的方案表重算，
-    // 已用量照舊。
+    // 存著的上限都是寫入當時照 App 方案表算的；App 更新改了方案表（例：10/18 的免費
+    // 50／20，Eric 2026-10-19 改回 30／15）後，舊值在方案還在載入時會跟伺服器對不上。
+    // 所以上限一律照現在的方案表重算，已用量照舊（用超過的剩 0 則）。
     final monthlyLimit = _defaultMonthlyLimitForTier(tier);
     final dailyLimit = _defaultDailyLimitForTier(tier);
 

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/keyboard_privacy_purge_service.dart';
 import 'package:vibesync/features/keyboard/data/providers/keyboard_context_sync_provider.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
@@ -331,8 +332,11 @@ void main() {
       expect(find.text('目前方案：Free'), findsOneWidget);
       expect(find.text('本月剩餘'), findsNWidgets(2));
       expect(find.text('今日剩餘'), findsNWidgets(2));
-      expect(find.text('50/50'), findsNWidgets(2));
-      expect(find.text('20/20'), findsNWidgets(2));
+      // 免費額度照常數算，之後再調也不用改這裡。
+      const monthly = AppConstants.freeMonthlyLimit;
+      const daily = AppConstants.freeDailyLimit;
+      expect(find.text('$monthly/$monthly'), findsNWidgets(2));
+      expect(find.text('$daily/$daily'), findsNWidgets(2));
     });
 
     testWidgets('點「關於我」導去 /profile/about-me', (tester) async {
@@ -351,7 +355,7 @@ void main() {
       expect(find.text('方案與帳號'), findsOneWidget);
       expect(find.text('目前方案'), findsOneWidget);
       expect(find.text('本月已使用'), findsOneWidget);
-      expect(find.text('0/50'), findsOneWidget);
+      expect(find.text('0/${AppConstants.freeMonthlyLimit}'), findsOneWidget);
       expect(find.text('帳號'), findsOneWidget);
       expect(find.text('尚未登入'), findsOneWidget);
       expect(find.text('管理訂閱'), findsOneWidget);

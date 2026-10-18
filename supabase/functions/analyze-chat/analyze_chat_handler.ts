@@ -86,7 +86,6 @@ import { createGuideV3ModelCalls } from "./guide_v3/model_calls.ts";
 import { acceptedPreviousRound } from "./guide_v3/previous_round.ts";
 import {
   billingMessagesFor,
-  guideV3MaxCards,
   guideV3Mode,
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
@@ -174,16 +173,16 @@ import {
   subscriptionTierRank,
 } from "./tier_sync_contract.ts";
 
-// 訊息制額度
+// 訊息制額度。跟 _shared/quota.ts 同步：免費 30／15（Bruce 10/18 維持，Eric 2026-10-19
+// 照他改回）；tier_limits_parity_test.ts 鎖住三份一致。
 export const TIER_MONTHLY_LIMITS: Record<string, number> = {
-  // 跟 _shared/quota.ts 同步：免費 50／20（Eric 2026-10-18）；tier_limits_parity_test.ts 鎖住兩份一致。
-  free: 50,
+  free: 30,
   starter: 300,
   essential: 800,
 };
 
 export const TIER_DAILY_LIMITS: Record<string, number> = {
-  free: 20,
+  free: 15,
   starter: 50,
   essential: 120,
 };
@@ -1840,7 +1839,6 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         dailyLimit,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
-        maxCards: guideV3MaxCards(effectiveTier),
         careOnlyFromQuota,
         ...createGuideV3ModelCalls({
           apiKey: CLAUDE_API_KEY,

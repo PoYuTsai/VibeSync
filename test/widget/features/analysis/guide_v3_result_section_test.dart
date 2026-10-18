@@ -9,6 +9,8 @@ import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart'
 import 'package:vibesync/features/analysis/presentation/sections/guide_v3_result_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/guide_v3_task_card.dart';
 
+/// 預設排卡的第 3 張標 locked：伺服器改成免費也看全部的卡之前（Eric 2026-10-19）存的
+/// 免費結果長這樣；畫面不畫它、也不推升級。
 GuideV3Read _read({
   String decision = 'send',
   String light = 'green',
@@ -55,7 +57,6 @@ class _Calls {
   final toasts = <String>[];
   final edits = <int>[];
   final refines = <int>[];
-  var upgrades = 0;
 }
 
 Future<_Calls> _pump(
@@ -102,7 +103,6 @@ Future<_Calls> _pump(
                   return refineResult;
                 }
               : null,
-          onUpgrade: () => calls.upgrades++,
         ),
       ),
     ),
@@ -111,7 +111,7 @@ Future<_Calls> _pump(
 }
 
 void main() {
-  testWidgets('出卡：燈號、判讀、任務標籤；免費方案的卡只給標籤與升級', (tester) async {
+  testWidgets('出卡：燈號、判讀、任務標籤；舊快照裡鎖住的卡不畫、不推升級', (tester) async {
     final calls = await _pump(
       tester,
       read: _read(),
@@ -127,13 +127,12 @@ void main() {
     expect(find.text('可以這樣回'), findsOneWidget);
     expect(find.text('接住'), findsOneWidget);
     expect(find.text('帶張力'), findsOneWidget);
-    expect(find.text('推進'), findsOneWidget, reason: '鎖住的卡只顯示任務標籤');
-    expect(find.text('這輪付費方案還有 1 張：推進'), findsOneWidget);
+    expect(find.text('推進'), findsNothing, reason: '舊快照裡鎖住的卡連標籤都不畫');
+    expect(find.textContaining('付費方案還有'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
+    expect(find.text('看方案'), findsNothing);
     expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing,
         reason: 'locked 不算比較少');
-
-    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-upgrade')));
-    expect(calls.upgrades, 1);
 
     await tester.tap(find.byKey(const ValueKey('guide-v3-card-1-copy')));
     await tester.pump();
@@ -293,157 +292,283 @@ void main() {
     );
   });
 
-  testWidgets('鎖住的卡（Eric 2026-10-18）：免費 5 張排卡、送到 2 張，後面只有一塊，張數照任務數，一顆按鈕',
+  testWidgets('免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：5 張全部送到就全部畫出來，沒有鎖卡區塊與看方案',
       (tester) async {
     final read = _read(planned: [
       {'slot': 1, 'task': 'accept', 'locked': false},
       {'slot': 2, 'task': 'accept', 'locked': false},
-      {'slot': 3, 'task': 'tension', 'locked': true},
-      {'slot': 4, 'task': 'tension', 'locked': true},
-      {'slot': 5, 'task': 'push', 'locked': true},
+      {'slot': 3, 'task': 'tension', 'locked': false},
+      {'slot': 4, 'task': 'tension', 'locked': false},
+      {'slot': 5, 'task': 'push', 'locked': false},
     ]);
-    final calls = await _pump(
+    await _pump(
       tester,
       read: read,
       cards: [
         _card(1, 'accept', ['那家我也想吃吃看']),
         _card(2, 'accept', ['妳推薦哪道']),
+        _card(3, 'tension', ['妳這樣說我會當真喔']),
+        _card(4, 'tension', ['那我要排第一個']),
+        _card(5, 'push', ['週六下午一起去？']),
       ],
     );
-    final block = find.byKey(const ValueKey('guide-v3-locked-block'));
-    expect(block, findsOneWidget);
+    for (var slot = 1; slot <= 5; slot++) {
+      expect(find.byKey(ValueKey('guide-v3-card-$slot-copy')), findsOneWidget,
+          reason: 'slot $slot');
+    }
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
+    expect(find.textContaining('付費方案還有'), findsNothing);
+    expect(find.text('看方案'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+  });
+
+  testWidgets('舊快照：伺服器改之前存的免費結果，排卡裡標 locked 的不畫、不出鎖卡區塊與看方案，也不算比較少',
+      (tester) async {
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+        {'slot': 2, 'task': 'accept', 'locked': false},
+        {'slot': 3, 'task': 'tension', 'locked': true},
+        {'slot': 4, 'task': 'tension', 'locked': true},
+        {'slot': 5, 'task': 'push', 'locked': true},
+      ]),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'accept', ['妳推薦哪道']),
+      ],
+    );
+    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-card-2-copy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
+    expect(find.textContaining('付費方案還有'), findsNothing);
+    expect(find.text('帶張力'), findsNothing);
+    expect(find.text('推進'), findsNothing);
+    expect(find.text('看方案'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing);
+  });
+
+  // ── 第一張卡是推薦（Bruce PR #97，Eric 2026-10-19）：跟開場救星、新話題同一個「AI 推薦」
+  //    膠囊；卡片列表上面一行推薦理由，用第一張卡任務的固定說明，不花模型費 ──
+  testWidgets('第一張卡標「AI 推薦」，卡片列表上面一行 AI 推薦理由（第一張卡任務的固定說明）', (tester) async {
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+        {'slot': 2, 'task': 'tension', 'locked': false},
+        {'slot': 3, 'task': 'push', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'accept', ['那家我也想吃吃看']),
+        _card(2, 'tension', ['妳這樣說我會當真喔']),
+        _card(3, 'push', ['週六下午一起去？']),
+      ],
+    );
+
+    final badge = find.byKey(const ValueKey('guide-v3-card-1-recommended'));
+    expect(badge, findsOneWidget);
     expect(
       find.descendant(
-        of: block,
-        matching: find.text(
-          '這輪付費方案還有 ${read.lockedCards.length} 張：帶張力 ×2、推進',
-        ),
+        of: find.byKey(const ValueKey('guide-v3-card-1')),
+        matching: find.text('AI 推薦'),
       ),
       findsOneWidget,
     );
-    // 每種任務一句用途（帶張力兩張也只寫一次）。
-    for (final task in [GuideV3Task.tension, GuideV3Task.push]) {
-      expect(
-        find.descendant(
-            of: block, matching: find.text(guideV3TaskPurpose(task))),
-        findsOneWidget,
-      );
-    }
+    expect(find.text('AI 推薦'), findsOneWidget, reason: '只有第一張');
+    final reason = find.text(
+      'AI 推薦理由：先接她剛說的話，\n讓她知道你有在聽。',
+    );
+    expect(reason, findsOneWidget);
+    // 理由在標題和第一張卡之間。
     expect(
-      find.descendant(
-        of: block,
-        matching: find.text(guideV3TaskPurpose(GuideV3Task.accept)),
+      tester.getTopLeft(reason).dy,
+      greaterThan(tester.getBottomLeft(find.text('可以這樣回')).dy),
+    );
+    expect(
+      tester.getBottomLeft(reason).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('guide-v3-card-1'))).dy,
       ),
-      findsNothing,
-      reason: '看得到的任務不列',
     );
-    expect(find.text('看方案'), findsOneWidget, reason: '整頁只有一顆');
-    // 區塊在看得到的卡後面。
-    expect(
-      tester.getTopLeft(block).dy,
-      greaterThan(tester
-          .getBottomLeft(find.byKey(const ValueKey('guide-v3-card-2')))
-          .dy),
-    );
-
-    await tester.tap(find.byKey(const ValueKey('guide-v3-locked-upgrade')));
-    expect(calls.upgrades, 1);
   });
 
-  testWidgets('不出現升級的時機：第一張卡前、串流中、少卡、中斷、出錯、已升級等重新整理都沒有鎖卡區塊', (tester) async {
-    final block = find.byKey(const ValueKey('guide-v3-locked-block'));
-
-    // 串流中、第一張卡還沒到。
+  testWidgets('「AI 推薦」膠囊與推薦理由的樣子照開場救星（顏色、圓角、字級）', (tester) async {
     await _pump(
       tester,
-      read: _read(),
+      read: _read(planned: [
+        {'slot': 1, 'task': 'push', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'push', ['週六下午一起去？']),
+      ],
+    );
+
+    final pill = tester.widget<Container>(
+      find.byKey(const ValueKey('guide-v3-card-1-recommended')),
+    );
+    final decoration = pill.decoration! as BoxDecoration;
+    expect(decoration.color,
+        AppColors.coachRecommendation.withValues(alpha: 0.16));
+    expect(decoration.borderRadius, BorderRadius.circular(18));
+    expect(
+      (decoration.border! as Border).top.color,
+      AppColors.coachRecommendation.withValues(alpha: 0.64),
+    );
+    final label = tester.widget<Text>(find.text('AI 推薦'));
+    expect(label.style!.color, AppColors.coachRecommendation);
+    expect(label.style!.fontSize, 12);
+    expect(label.style!.fontWeight, FontWeight.w600);
+
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const ValueKey('guide-v3-recommendation-reason')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(icon.icon, Icons.lightbulb_outline_rounded);
+    expect(icon.size, 18);
+    expect(icon.color, AppColors.coachRecommendation);
+    final reason = tester.widget<Text>(
+      find.text('AI 推薦理由：往見面靠近一步，\n例如提個想一起做的事，或約好時間。'),
+    );
+    expect(reason.style!.fontSize, 15);
+    expect(reason.style!.color, AppColors.onBackgroundSecondary);
+  });
+
+  testWidgets('推薦理由在說明的第一個「，」後面換行，字跟任務標籤的說明一樣（五種任務）', (tester) async {
+    for (final task in GuideV3Task.values) {
+      await _pump(
+        tester,
+        read: _read(
+          decision: task == GuideV3Task.close ? 'close' : 'send',
+          planned: [
+            {'slot': 1, 'task': task.wire, 'locked': false},
+          ],
+        ),
+        cards: [
+          _card(1, task.wire, ['好啊']),
+        ],
+      );
+      final reason = tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('guide-v3-recommendation-reason')),
+              matching: find.byType(Text),
+            ),
+          )
+          .data!;
+      final purpose = guideV3TaskPurpose(task);
+      expect(reason.replaceAll('\n', ''), 'AI 推薦理由：$purpose',
+          reason: task.name);
+      expect('\n'.allMatches(reason).length, 1, reason: task.name);
+      expect(reason.indexOf('\n'), reason.indexOf('，') + 1, reason: task.name);
+    }
+  });
+
+  testWidgets('收尾只有一張也標推薦；第 1 張被拿掉時標第一張送到的卡', (tester) async {
+    await _pump(
+      tester,
+      read: _read(decision: 'close', planned: [
+        {'slot': 1, 'task': 'close', 'locked': false},
+      ]),
+      cards: [
+        _card(1, 'close', ['今天聊得很開心，早點休息']),
+      ],
+    );
+    expect(find.byKey(const ValueKey('guide-v3-card-1-recommended')),
+        findsOneWidget);
+    expect(
+      find.text('AI 推薦理由：讓這輪自然收個尾，\n不用硬聊下去。'),
+      findsOneWidget,
+    );
+
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+        {'slot': 2, 'task': 'resonate', 'locked': false},
+      ]),
+      cards: [
+        _card(2, 'resonate', ['那一定很累吧']),
+      ],
+      partial: true,
+    );
+    expect(find.byKey(const ValueKey('guide-v3-card-2-recommended')),
+        findsOneWidget);
+    expect(find.text('AI 推薦'), findsOneWidget);
+    expect(
+      find.text('AI 推薦理由：站在她的感受這邊，\n讓她覺得你懂她。'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('還在寫：第一張卡到了才出推薦與理由，正在寫的卡不標', (tester) async {
+    final read = _read(planned: [
+      {'slot': 1, 'task': 'accept', 'locked': false},
+      {'slot': 2, 'task': 'push', 'locked': false},
+    ]);
+    await _pump(
+      tester,
+      read: read,
       cards: const [],
       isStreaming: true,
       isFinal: false,
     );
-    expect(block, findsNothing);
-    expect(find.text('看方案'), findsNothing);
     expect(find.byKey(const ValueKey('guide-v3-pending-1')), findsOneWidget);
+    expect(find.text('AI 推薦'), findsNothing);
+    expect(find.textContaining('AI 推薦理由'), findsNothing);
 
-    // 串流中、第一張已到：鎖住的卡也還不出現。
     await _pump(
       tester,
-      read: _read(),
+      read: read,
       cards: [
         _card(1, 'accept', ['那家我也想吃吃看']),
       ],
       isStreaming: true,
       isFinal: false,
     );
-    expect(block, findsNothing);
-    expect(find.text('看方案'), findsNothing);
-
-    // 最終結果比預定少、續看重組。
-    for (final recovered in [false, true]) {
-      await _pump(
-        tester,
-        read: _read(),
-        cards: [
-          _card(1, 'accept', ['那家我也想吃吃看']),
-        ],
-        partial: true,
-        recovered: recovered,
-      );
-      expect(block, findsNothing);
-      expect(find.text('看方案'), findsNothing);
-    }
-
-    // 少卡但沒有標 partial（例如被檢查拿掉）也不出。
-    await _pump(
-      tester,
-      read: _read(),
-      cards: [
-        _card(1, 'accept', ['那家我也想吃吃看']),
-      ],
+    expect(find.byKey(const ValueKey('guide-v3-card-1-recommended')),
+        findsOneWidget);
+    expect(find.text('AI 推薦'), findsOneWidget, reason: '正在寫的第 2 張不標');
+    expect(
+      find.text('AI 推薦理由：先接她剛說的話，\n讓她知道你有在聽。'),
+      findsOneWidget,
     );
-    expect(block, findsNothing);
-
-    // 中途出錯：不是串流中、也不是最終結果。
-    await _pump(
-      tester,
-      read: _read(),
-      cards: [
-        _card(1, 'accept', ['那家我也想吃吃看']),
-        _card(2, 'tension', ['妳這樣說我會當真喔']),
-      ],
-      isFinal: false,
-    );
-    expect(block, findsNothing);
-    expect(find.text('看方案'), findsNothing);
   });
 
-  testWidgets('目前已付費（主審 r1 P2-1）：offerUpgrade 關掉就不出鎖卡區塊與升級，卡照樣能複製',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: GuideV3ResultSection(
-            read: _read(),
-            cards: [
-              _card(1, 'accept', ['那家我也想吃吃看']),
-              _card(2, 'tension', ['妳這樣說我會當真喔']),
-            ],
-            isStreaming: false,
-            isFinal: true,
-            editedMessagesFor: (_) => null,
-            onCopy: (_, __, ___) {},
-            onEdit: (_) async => null,
-            onUpgrade: () {},
-            offerUpgrade: false,
-          ),
+  testWidgets('沒有卡（先別回、停、關心、未成年、出卡但一張都沒送到）：不出推薦與理由', (tester) async {
+    for (final (decision, careKind) in [
+      ('hold', null),
+      ('stop', null),
+      ('care', null),
+      ('care', 'minor'),
+    ]) {
+      await _pump(
+        tester,
+        read: _read(
+          decision: decision,
+          light: 'yellow',
+          careMessage: decision == 'care' ? '先把安全放在第一位。' : null,
+          careKind: careKind,
+          planned: const [],
         ),
-      ),
-    ));
-    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
-    expect(find.text('看方案'), findsNothing);
-    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
-    expect(find.byKey(const ValueKey('guide-v3-partial-note')), findsNothing,
-        reason: '鎖住的不算比較少');
+        cards: const [],
+      );
+      expect(find.text('AI 推薦'), findsNothing, reason: '$decision $careKind');
+      expect(find.textContaining('AI 推薦理由'), findsNothing,
+          reason: '$decision $careKind');
+    }
+
+    await _pump(
+      tester,
+      read: _read(planned: [
+        {'slot': 1, 'task': 'accept', 'locked': false},
+      ]),
+      cards: const [],
+      partial: true,
+    );
+    expect(find.text('AI 推薦'), findsNothing);
+    expect(find.textContaining('AI 推薦理由'), findsNothing);
   });
 
   testWidgets('先別回、停、關心：就算排卡裡有鎖住的也不出升級', (tester) async {
@@ -481,7 +606,6 @@ void main() {
             editedMessagesFor: (_) => null,
             onCopy: (_, __, ___) {},
             onEdit: (_) async => null,
-            onUpgrade: () {},
             showUpgradeRefresh: true,
             onRefreshAfterUpgrade: () {},
           ),
@@ -1041,7 +1165,6 @@ void main() {
       'copy-all': find.byKey(const ValueKey('guide-v3-card-2-copy-all')),
       'edit': find.byKey(const ValueKey('guide-v3-card-3-edit')),
       'refine': find.byKey(const ValueKey('guide-v3-card-1-refine')),
-      'locked-upgrade': find.byKey(const ValueKey('guide-v3-locked-upgrade')),
       'task-chip': find.byKey(const ValueKey('guide-v3-task-chip-1')),
       'light': find.ancestor(
         of: find.byKey(const ValueKey('guide-v3-light')),
@@ -1099,7 +1222,6 @@ void main() {
     );
     final buttons = {
       '改成我的': find.byKey(const ValueKey('guide-v3-card-1-edit')),
-      '看方案': find.byKey(const ValueKey('guide-v3-locked-upgrade')),
       '複製整組': find.byKey(const ValueKey('guide-v3-card-2-copy-all')),
     };
     for (final entry in buttons.entries) {

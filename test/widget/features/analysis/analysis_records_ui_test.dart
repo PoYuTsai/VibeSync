@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_record_detail_screen.dart';
@@ -12,7 +11,6 @@ import 'package:vibesync/features/analysis/presentation/screens/partner_analysis
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_platform_picker.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
-import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 
 String _snapshot() => jsonEncode({
       'enthusiasm': {'score': 72, 'level': 'warm'},
@@ -131,14 +129,9 @@ AnalysisRecord _guideV3Record({required String id, required DateTime at}) {
   );
 }
 
-/// 目前方案（紀錄頁看「現在」的方案決定推不推升級，主審 r1 P2-1）；[upgradeTo] 模擬在
-/// 付費頁買完回來。
+/// 目前方案：回看紀錄不分方案（免費也看全部的卡，Eric 2026-10-19），測試用來確認這件事。
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(String tier) {
-    upgradeTo(tier);
-  }
-
-  void upgradeTo(String tier) {
     final limits = SubscriptionTierHelper.limitsFor(tier);
     state = SubscriptionState(
       tier: tier,
@@ -154,7 +147,8 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   Future<void> syncWithRevenueCat() async {}
 }
 
-/// 免費時存的 v3 紀錄：排了 3 張，只寫了第 1 張，後兩張鎖住。
+/// 伺服器改成免費也看全部的卡之前（Eric 2026-10-19）存的免費 v3 紀錄：排了 3 張，只寫了
+/// 第 1 張，後兩張鎖住。
 AnalysisRecord _freeLockedGuideV3Record() {
   final base = _guideV3Record(id: 'v3-free-locked', at: DateTime(2026, 10, 17));
   return AnalysisRecord(
@@ -204,11 +198,12 @@ AnalysisRecord _freeLockedGuideV3Record() {
 }
 
 void main() {
-  // ── 已付費回看免費時的紀錄（主審 r1 P2-1）：照「現在」的方案決定推不推升級，紀錄本身不動 ──
-  testWidgets('已付費回看免費時的紀錄：不出鎖卡區塊、不推升級，看得到的卡照樣能用', (tester) async {
+  // ── 免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：舊的免費紀錄回看也不出鎖卡區塊、不推升級 ──
+  testWidgets('不分方案回看免費時存的紀錄：不出鎖卡區塊、不推升級，看得到的卡照樣能用', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     for (final tier in [
+      SubscriptionTierHelper.free,
       SubscriptionTierHelper.starter,
       SubscriptionTierHelper.essential,
     ]) {
@@ -234,65 +229,12 @@ void main() {
 
       expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing,
           reason: tier);
+      expect(find.textContaining('付費方案還有'), findsNothing, reason: tier);
       expect(find.text('看方案'), findsNothing, reason: tier);
       expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget,
           reason: tier);
       expect(record.analysisSnapshotJson, snapshotBefore, reason: '紀錄不改');
     }
-  });
-
-  testWidgets('免費時在紀錄頁打開付費頁、買完回來：鎖卡區塊跟著收掉', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(390, 1400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final subscription =
-        _SeededSubscriptionNotifier(SubscriptionTierHelper.free);
-    final paywallExtras = <Object?>[];
-    final record = _freeLockedGuideV3Record();
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (_, __) => AnalysisRecordDetailScreen(record: record),
-        ),
-        GoRoute(
-          path: '/paywall',
-          builder: (context, state) {
-            paywallExtras.add(state.extra);
-            return Scaffold(
-              body: TextButton(
-                onPressed: () {
-                  subscription.upgradeTo(SubscriptionTierHelper.starter);
-                  context.pop(SubscriptionTierHelper.starter);
-                },
-                child: const Text('假的購買成功'),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        subscriptionProvider.overrideWith((ref) => subscription),
-      ],
-      child: MaterialApp.router(routerConfig: router),
-    ));
-    await tester.pumpAndSettle();
-
-    final block = find.byKey(const ValueKey('guide-v3-locked-block'));
-    expect(block, findsOneWidget);
-    final upgrade = find.byKey(const ValueKey('guide-v3-locked-upgrade'));
-    await tester.ensureVisible(upgrade);
-    await tester.tap(upgrade);
-    await tester.pumpAndSettle();
-    expect(paywallExtras, [PaywallEntry.lockedCards]);
-
-    await tester.tap(find.text('假的購買成功'));
-    await tester.pumpAndSettle();
-    expect(block, findsNothing);
-    expect(find.text('看方案'), findsNothing);
-    expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsOneWidget);
   });
 
   testWidgets('新流程紀錄詳情：判讀與任務卡，沒有熱度卡；有空格要先填', (tester) async {
@@ -343,7 +285,6 @@ void main() {
       guideV3Light: 'yellow',
     );
 
-    // 紀錄頁照目前方案決定推不推升級（主審 r1 P2-1）：這裡是免費。
     await tester.pumpWidget(ProviderScope(
       overrides: [
         subscriptionProvider.overrideWith(
@@ -364,11 +305,10 @@ void main() {
     expect(find.byKey(const ValueKey('guide-v3-card-1-copy')), findsNothing);
     // 「再調一下」只在結果頁的最終結果給，紀錄頁不給（Eric 2026-10-18）。
     expect(find.text('再調一下'), findsNothing);
-    // 免費方案當時沒寫的卡：紀錄裡也是同一塊（只說付費方案這輪還有幾張，不承諾補寫
-    // 這一筆），升級入口照樣有（Eric 2026-10-18）。
-    expect(find.text('這輪付費方案還有 1 張：推進'), findsOneWidget);
-    expect(
-        find.byKey(const ValueKey('guide-v3-locked-upgrade')), findsOneWidget);
+    // 免費方案當時沒寫的卡（舊紀錄裡標 locked）：不畫、不推升級（Eric 2026-10-19）。
+    expect(find.text('推進'), findsNothing);
+    expect(find.textContaining('付費方案還有'), findsNothing);
+    expect(find.byKey(const ValueKey('guide-v3-locked-block')), findsNothing);
     expect(find.text('這筆分析內容暫時無法顯示，但上方聊天片段仍完整保留。'), findsNothing);
     expect(tester.takeException(), isNull);
   });

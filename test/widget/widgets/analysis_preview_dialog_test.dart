@@ -7,6 +7,7 @@
 // - reject 帶由 caller 在呼叫前擋下，dialog 不處理。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/core/services/usage_service.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
@@ -220,12 +221,20 @@ void main() {
       expect(find.textContaining('合計也是 20 則'), findsOneWidget);
     });
 
-    testWidgets(
-        'Free tier 今日剩 20 → 剛好夠 20 則，可以確認（免費 50／20，Eric 2026-10-18）',
-        (tester) async {
+    testWidgets('今天剛好剩 20 則 → 夠這次用，可以確認', (tester) async {
+      // 邊界：剩下的剛好等於這次要用的。免費每天不到 20 則，所以用 Starter 的上限。
+      final starter =
+          SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.starter);
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(2500),
-        usage: UsageData.free(),
+        usage: UsageData(
+          monthlyUsed: 0,
+          monthlyLimit: starter.monthly,
+          dailyUsed: starter.daily - MessageCalculator.overchargeUnits,
+          dailyLimit: starter.daily,
+          dailyResetAt: DateTime.now().add(const Duration(days: 1)),
+          tier: SubscriptionTierHelper.starter,
+        ),
         onUpgrade: () {},
       ));
       await openDialog(tester);
@@ -237,13 +246,17 @@ void main() {
       expect(find.text('查看升級方案'), findsNothing);
     });
 
-    testWidgets(
-        'Free tier daily remaining 19 < 20 → confirm disabled（定案 #4：額度先於確認）',
+    testWidgets('Free tier 每日上限不到 20 則 → confirm disabled（定案 #4：額度先於確認）',
         (tester) async {
-      // 今天已用 1 則，剩 19 不夠 20 則 → 引導分批（跨日）或升級。
+      // 免費每日上限（Eric 2026-10-19 改回 15 則）一天內不夠一次 20 則 → 引導分批
+      //（跨日）或升級。
+      expect(
+        AppConstants.freeDailyLimit,
+        lessThan(MessageCalculator.overchargeUnits),
+      );
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(2500),
-        usage: UsageData.free().copyWith(dailyUsed: 1),
+        usage: UsageData.free(),
         onUpgrade: () {},
       ));
       await openDialog(tester);
@@ -264,7 +277,7 @@ void main() {
       bool upgraded = false;
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(2500),
-        usage: UsageData.free().copyWith(dailyUsed: 1),
+        usage: UsageData.free(),
         onUpgrade: () => upgraded = true,
       ));
       await openDialog(tester);

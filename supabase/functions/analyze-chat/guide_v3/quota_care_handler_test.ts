@@ -205,6 +205,8 @@ interface Outcome {
 async function analyze(
   body: Record<string, unknown>,
   opts: {
+    /// 預設免費方案。
+    tier?: string;
     monthlyUsed?: number;
     dailyUsed?: number;
     guideV3?: string;
@@ -215,7 +217,7 @@ async function analyze(
 ): Promise<Outcome> {
   const fake: Fake = {
     sub: {
-      tier: "free",
+      tier: opts.tier ?? "free",
       monthlyUsed: opts.monthlyUsed ?? 0,
       dailyUsed: opts.dailyUsed ?? 0,
     },
@@ -600,8 +602,9 @@ Deno.test("超過 2000 字、剩的不夠、她說不想活了：不用先確認
     false,
   );
 
-  // 對照：額度夠的時候照舊要先確認長內容（409，不分析）。
-  const enough = await analyze(chatAnalysis(messages));
+  // 對照：額度夠的時候照舊要先確認長內容（409，不分析）。免費每天上限比一次長內容的則數少，
+  // 本來就做不到（ADR #19 定案 #4），對照用 Starter。
+  const enough = await analyze(chatAnalysis(messages), { tier: "starter" });
   assertEquals(enough.status, 409);
   assertEquals(
     JSON.parse(enough.text).code,

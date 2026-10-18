@@ -19,6 +19,13 @@ void main() {
       expect(essential.daily, AppConstants.essentialDailyLimit);
     });
 
+    // 免費額度要跟伺服器的額度表同一組：10/18 放寬成每月 50、每日 20，Bruce 在 PR #97
+    // 決定改回 30／15，Eric 2026-10-19 照他決定。
+    test('免費每月 30 則、每日 15 則（Eric 2026-10-19）', () {
+      expect(AppConstants.freeMonthlyLimit, 30);
+      expect(AppConstants.freeDailyLimit, 15);
+    });
+
     test('falls back to free limits for unknown tiers', () {
       final limits = SubscriptionTierHelper.limitsFor('unknown');
 

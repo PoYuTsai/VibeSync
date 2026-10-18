@@ -534,9 +534,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   bool _analysisNeedsReplyRefresh(SubscriptionState subscription) {
-    // v3：免費方案只寫排好的前 2 張，其餘 locked；升級後照 v2 做法重新整理一次。
-    // 有 locked 的卡就代表是免費方案的結果（只有免費方案會 locked），不看
-    // usage.tierUsed：續看重組的結果沒有這個欄位（主審第 1 輪 P2-1）。
+    // v3：免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）之後新的結果不會有 locked；
+    // 之前存的免費結果只寫了前 2 張、其餘 locked，升級後照 v2 做法重新整理一次。有
+    // locked 的卡就代表是那種結果，不看 usage.tierUsed：續看重組的結果沒有這個欄位
+    //（主審第 1 輪 P2-1）。
     final guideV3 = _v3Result;
     if (guideV3 != null) {
       return subscription.isPremium && guideV3.read.hasLockedCards;
@@ -3004,8 +3005,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    // 最後一則是他傳的（Eric 2026-10-18）：v3 多半判先別回、扣 1 則，開始前先問；
-    // 「先不要」就什麼都不送、不扣。升級後的重新整理（skipPreview）不問。
+    // 最後一則是他傳的（Eric 2026-10-18）：v3 多半判先別回、照字數扣（Eric 2026-10-19），
+    // 開始前先問；「先不要」就什麼都不送、不扣。升級後的重新整理（skipPreview）不問。
     final analysisMessages = runGate.messagesForAnalysis;
     if (!skipPreview &&
         analysisMessages != null &&
@@ -4752,10 +4753,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                   kGuideV3CardRefineEnabled && _v3Result != null
                                       ? _refineGuideV3Card
                                       : null,
-                              onUpgrade: () => unawaited(_showPaywall(
-                                context,
-                                entry: PaywallEntry.lockedCards,
-                              )),
                               footerFor: (card) => _buildAnalysisOutcomeBar(
                                 cardKey: _guideV3CardKey(card),
                                 label: card.task.label,

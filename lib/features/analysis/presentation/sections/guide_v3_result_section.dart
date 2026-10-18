@@ -313,8 +313,6 @@ class GuideV3ResultSection extends StatelessWidget {
     required this.onEdit,
     this.refinedMessagesFor,
     this.onRefine,
-    this.onUpgrade,
-    this.offerUpgrade = true,
     this.footerFor,
     this.anchorKey,
     this.showUpgradeRefresh = false,
@@ -346,11 +344,6 @@ class GuideV3ResultSection extends StatelessWidget {
   /// 「再調一下」：只有結果頁的最終結果給（分析紀錄不給）；帶不出卡片規格的卡
   ///（舊快照）也不給。存好後回傳選定的版本（見 [GuideV3TaskCard.onRefine]）。
   final Future<List<String>?> Function(GuideV3Card card)? onRefine;
-  final VoidCallback? onUpgrade;
-
-  /// 目前的方案還能升級（免費）才給鎖卡區塊與升級入口；已付費回看免費時的紀錄就
-  /// 不推（主審 r1 P2-1）。看的是「現在」的方案，紀錄本身不動。
-  final bool offerUpgrade;
   final Widget? Function(GuideV3Card card)? footerFor;
 
   /// 分析完成時捲動定位用（第一張卡一到就捲到這裡）。
@@ -377,20 +370,30 @@ class GuideV3ResultSection extends StatelessWidget {
                 ),
             ];
       final shownSlots = <int>{};
+      // 第一張畫出來的卡是推薦（Bruce PR #97，Eric 2026-10-19）：伺服器排卡時第一張就是
+      // 照局面最自然的那一步（rules.ts 的 arrangeCards）。正在寫的卡不算。
+      GuideV3Card? recommended;
+      Widget taskCard(GuideV3Card card) {
+        recommended ??= card;
+        return _taskCard(card, recommended: identical(recommended, card));
+      }
+
       for (final plan in planned) {
         final card = bySlot[plan.slot];
         if (card != null) {
           shownSlots.add(card.slot);
-          slots.add(_taskCard(card));
+          slots.add(taskCard(card));
         } else if (!plan.locked && isStreaming) {
-          // 鎖住的卡不逐張畫，整輪寫完才在後面合成一塊（見 lockedBlock）。
+          // 免費也看全部的卡（Bruce PR #97，Eric 2026-10-19）：只有伺服器改之前的舊結果
+          // 會標 locked，那幾張不會送來，不畫「正在寫」，也不畫鎖卡或升級。
           slots.add(GuideV3PendingCard(planned: plan));
         }
       }
       // 排卡裡沒有的卡（不該發生）也照樣顯示，不吃掉已送到的內容。
       for (final card in cards) {
-        if (!shownSlots.contains(card.slot)) slots.add(_taskCard(card));
+        if (!shownSlots.contains(card.slot)) slots.add(taskCard(card));
       }
+      final first = recommended;
       if (slots.isNotEmpty) {
         children
           ..add(const SizedBox(height: 16))
@@ -401,6 +404,11 @@ class GuideV3ResultSection extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ));
+        if (first != null) {
+          children
+            ..add(const SizedBox(height: 8))
+            ..add(_recommendationReason(first.task));
+        }
         for (final slot in slots) {
           children
             ..add(const SizedBox(height: 10))
@@ -414,23 +422,6 @@ class GuideV3ResultSection extends StatelessWidget {
             deliveredCards: cards.length,
             deliverableCards: read.deliverableCount,
           );
-      // 讓人看到付費價值的時機（Eric 2026-10-18）：整輪完整寫完才出現；第一張卡前、
-      // 串流中、少卡或中斷、出錯、已升級（在等重新整理或回看紀錄）時都不出現升級。
-      // 先別回、停、關心本來就不會走到這裡。
-      final lockedBlock = offerUpgrade &&
-          isFinal &&
-          !fewer &&
-          cards.isNotEmpty &&
-          read.hasLockedCards &&
-          !showUpgradeRefresh;
-      if (lockedBlock) {
-        children
-          ..add(const SizedBox(height: 10))
-          ..add(GuideV3LockedBlock(
-            locked: read.lockedCards,
-            onUpgrade: onUpgrade,
-          ));
-      }
       if (fewer) {
         children
           ..add(const SizedBox(height: 10))
@@ -455,10 +446,12 @@ class GuideV3ResultSection extends StatelessWidget {
     );
   }
 
-  Widget _taskCard(GuideV3Card card) => GuideV3TaskCard(
+  Widget _taskCard(GuideV3Card card, {required bool recommended}) =>
+      GuideV3TaskCard(
         // 卡片自己記著下一則要複製第幾則：用 slot 當 key，前後的卡變動也不會弄丟。
         key: ValueKey('guide-v3-task-card-${card.slot}'),
         card: card,
+        recommended: recommended,
         editedMessages: editedMessagesFor(card),
         refinedMessages: refinedMessagesFor?.call(card),
         onCopy: (text, toast) => onCopy(card, text, toast),
@@ -468,6 +461,39 @@ class GuideV3ResultSection extends StatelessWidget {
             : null,
         footer: footerFor?.call(card),
       );
+
+  /// 推薦理由：跟開場救星、新話題同一個樣子（燈泡＋「AI 推薦理由：」，樣式照抄、不共用
+  /// 元件）。理由是第一張卡任務的固定說明（[guideV3TaskPurpose]），不花模型費、不寫新句子
+  ///（Eric 2026-10-19）。在說明的第一個「，」後面換行：手機上整句一行放不下，照字數自然斷
+  /// 會只剩「聽。」一兩個字在第二行（截圖自查，DESIGN.md §10）；字不變。
+  Widget _recommendationReason(GuideV3Task task) {
+    final purpose = guideV3TaskPurpose(task);
+    final comma = purpose.indexOf('，');
+    final body = comma < 0
+        ? purpose
+        : '${purpose.substring(0, comma + 1)}\n${purpose.substring(comma + 1)}';
+    return Row(
+      key: const ValueKey('guide-v3-recommendation-reason'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.lightbulb_outline_rounded,
+          size: 18,
+          color: AppColors.coachRecommendation,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'AI 推薦理由：$body',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   /// 已升級但看的是免費版結果（沿用 v2 的「重新產生完整分析」文案）。
   Widget _upgradeRefreshNotice() {
