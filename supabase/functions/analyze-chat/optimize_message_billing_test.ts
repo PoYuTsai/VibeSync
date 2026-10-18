@@ -152,90 +152,36 @@ Deno.test("舊 client 的未結算 pending 在新版 server 仍命中 replay", a
   );
 });
 
-// 2026-10-18 任務卡的再調上線前、帶指令的微調實際算出的值：沒帶卡的微調
-// hash 必須一字不差，7 天窗內的 pending 才 replay 得回來。
+// 2026-10-18 任務卡的再調上線前、帶指令的微調實際算出的值。
 const REFINE_GOLDEN_HASH =
   "cb767ed559fcf30d955387dfbe15e53ae06a407fbb51c09d6a119355f2816826";
 
-Deno.test("任務卡規格進 hash；沒帶卡的微調 hash 跟上線前完全相同", async () => {
+Deno.test("任務卡規格不進伺服器 hash：帶不帶 guideV3Card 都是上線前那一顆", async () => {
+  // 主審第 2 輪：新舊 Edge 對同一次請求要算出同一個 hash，兩個方向的重試才都能
+  // replay；不同卡片規格不會共用 requestId，靠的是 App 的 fingerprint。
   const refine = {
     ...LEGACY_GOLDEN_FULL_INPUT,
     refineInstruction: "再幽默一點",
+  };
+  const withCard = {
+    ...refine,
+    guideV3Card: { task: "push", voice: "default", method: "reaction" },
   };
   assertEquals(
     await computeOptimizeMessageInputHash(refine),
     REFINE_GOLDEN_HASH,
   );
-  for (const absent of [null, undefined]) {
-    assertEquals(
-      await computeOptimizeMessageInputHash({ ...refine, guideV3Card: absent }),
-      REFINE_GOLDEN_HASH,
-    );
-  }
-  // 潤飾也一樣：沒帶卡就是 2026-07-28 的金值。
   assertEquals(
-    await computeOptimizeMessageInputHash({
-      ...LEGACY_GOLDEN_FULL_INPUT,
-      guideV3Card: null,
-    }),
+    await computeOptimizeMessageInputHash(withCard),
+    REFINE_GOLDEN_HASH,
+  );
+  const polishWithCard = {
+    ...LEGACY_GOLDEN_FULL_INPUT,
+    guideV3Card: { task: "push", voice: "default", method: "reaction" },
+  };
+  assertEquals(
+    await computeOptimizeMessageInputHash(polishWithCard),
     LEGACY_GOLDEN_FULL_HASH,
-  );
-
-  const card = { task: "push", voice: "default", method: "reaction" };
-  const withCard = await computeOptimizeMessageInputHash({
-    ...refine,
-    guideV3Card: card,
-  });
-  assert(withCard !== REFINE_GOLDEN_HASH);
-  // key 順序不影響（伺服器自己排固定順序）。
-  assertEquals(
-    await computeOptimizeMessageInputHash({
-      ...refine,
-      guideV3Card: { method: "reaction", voice: "default", task: "push" },
-    }),
-    withCard,
-  );
-  for (
-    const other of [
-      { ...card, task: "tension" },
-      { ...card, voice: "his" },
-      { ...card, method: "blank" },
-    ]
-  ) {
-    assert(
-      await computeOptimizeMessageInputHash({
-        ...refine,
-        guideV3Card: other,
-      }) !==
-        withCard,
-      JSON.stringify(other),
-    );
-  }
-});
-
-Deno.test("任務卡的再調：帳本列是不含卡的舊 hash 時照 replay，其他 hash 照舊不一致", () => {
-  const result = { optimizedMessage: { optimized: "那就週六，我來訂位" } };
-  const legacyRow = { input_hash: "b".repeat(64), result_json: result };
-  assertEquals(
-    classifyOptimizeMessageReplayPreflight(
-      legacyRow,
-      "a".repeat(64),
-      "b".repeat(64),
-    ),
-    { kind: "replay", result },
-  );
-  assertEquals(
-    classifyOptimizeMessageReplayPreflight(
-      { input_hash: "c".repeat(64), result_json: result },
-      "a".repeat(64),
-      "b".repeat(64),
-    ),
-    { kind: "mismatch" },
-  );
-  // 沒帶卡（沒有舊 hash）：跟以前一樣。
-  assertEquals(
-    classifyOptimizeMessageReplayPreflight(legacyRow, "a".repeat(64)),
-    { kind: "mismatch" },
   );
 });
 
