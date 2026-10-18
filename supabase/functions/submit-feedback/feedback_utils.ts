@@ -34,6 +34,36 @@ const GUIDE_V3_FEEDBACK_CATEGORY_LABELS: ReadonlyMap<string, string> = new Map([
 ]);
 const GUIDE_V3_CARD_TASKS_MAX = 5;
 
+/// v3 回饋其他欄位的合法值（主審 r1 P2）：只收 analyze-chat 實際送給 App 的值，跟
+/// 來源的對拍在 feedback_utils_test.ts（guide_text.ts 的 GUIDE_V3_VERSION、plan.ts 的
+/// 決定、read_tags.ts 的 LIGHTS、stream_run_store.ts 的 V3_CARD_TASK_CODES）。不合法
+/// 的欄位整個丟掉，回饋照收。
+export const GUIDE_V3_FEEDBACK_VERSIONS: ReadonlySet<string> = new Set([
+  "v3.5",
+]);
+export const GUIDE_V3_FEEDBACK_DECISIONS: ReadonlySet<string> = new Set([
+  "send",
+  "close",
+  "hold",
+  "stop",
+  "care",
+]);
+export const GUIDE_V3_FEEDBACK_LIGHTS: ReadonlySet<string> = new Set([
+  "green",
+  "yellow",
+  "red",
+]);
+export const GUIDE_V3_FEEDBACK_CARD_TASKS: ReadonlySet<string> = new Set([
+  "accept",
+  "resonate",
+  "tension",
+  "push",
+  "close",
+]);
+/// 分析 run 的 id（analysis_stream_runs.id，gen_random_uuid）。
+const GUIDE_V3_RUN_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function normalizeOptionalString(
   value: unknown,
   maxLength: number,
@@ -191,9 +221,8 @@ export function buildDiscordNotificationContent(
     `User: ${maskedEmail} (${feedback.userTier})\n`,
   ];
 
-  const guideV3 = isPlainObject(feedback.aiResponse?.guideV3)
-    ? feedback.aiResponse.guideV3
-    : null;
+  // v3 欄位不管誰傳進來都再驗一次：通知裡只會有合法值，不會有自由文字。
+  const guideV3 = sanitizeGuideV3Feedback(feedback.aiResponse?.guideV3);
   const guideV3Category = typeof guideV3?.feedbackCategory === "string"
     ? GUIDE_V3_FEEDBACK_CATEGORY_LABELS.get(guideV3.feedbackCategory)
     : undefined;
@@ -361,8 +390,9 @@ export function sanitizeFeedbackAiResponse(
   return Object.keys(sanitized).length > 1 ? sanitized : undefined;
 }
 
-/// 對話分析 v3 的回饋欄位（Eric 2026-10-18）：只留固定的短欄位。runId 讓負評對得回
-/// 是哪一次分析；沒有卡片文字、沒有對話。
+/// 對話分析 v3 的回饋欄位（Eric 2026-10-18）：每個欄位都要是合法值（主審 r1 P2：
+/// 列舉值、UUID、任務代碼），不合法的那個欄位丟掉。runId 讓負評對得回是哪一次
+/// 分析；沒有卡片文字、沒有對話。
 function sanitizeGuideV3Feedback(
   value: unknown,
 ): Record<string, unknown> | undefined {
@@ -371,21 +401,34 @@ function sanitizeGuideV3Feedback(
   }
 
   const guideV3: Record<string, unknown> = {};
-  for (const key of ["guideVersion", "decision", "light", "runId"]) {
-    const field = clampOptionalString(value[key], ENUM_MAX_LENGTH);
-    if (field != null) {
+  const keepIfAllowed = (key: string, allowed: ReadonlySet<string>) => {
+    const field = value[key];
+    if (typeof field === "string" && allowed.has(field)) {
       guideV3[key] = field;
     }
+  };
+  keepIfAllowed("guideVersion", GUIDE_V3_FEEDBACK_VERSIONS);
+  keepIfAllowed("decision", GUIDE_V3_FEEDBACK_DECISIONS);
+  keepIfAllowed("light", GUIDE_V3_FEEDBACK_LIGHTS);
+
+  if (
+    typeof value.runId === "string" &&
+    GUIDE_V3_RUN_ID_PATTERN.test(value.runId)
+  ) {
+    guideV3.runId = value.runId;
   }
 
-  if (Array.isArray(value.cardTasks)) {
-    const cardTasks = value.cardTasks
-      .slice(0, GUIDE_V3_CARD_TASKS_MAX)
-      .map((task) => clampOptionalString(task, ENUM_MAX_LENGTH))
-      .filter((task): task is string => task != null);
-    if (cardTasks.length > 0) {
-      guideV3.cardTasks = cardTasks;
-    }
+  // 一張卡一個任務、照卡片順序：有一個不認得或超過張數就整個不收，免得位置錯開。
+  const cardTasks = value.cardTasks;
+  if (
+    Array.isArray(cardTasks) &&
+    cardTasks.length > 0 &&
+    cardTasks.length <= GUIDE_V3_CARD_TASKS_MAX &&
+    cardTasks.every((task) =>
+      typeof task === "string" && GUIDE_V3_FEEDBACK_CARD_TASKS.has(task)
+    )
+  ) {
+    guideV3.cardTasks = [...cardTasks];
   }
 
   if (
@@ -396,4 +439,17 @@ function sanitizeGuideV3Feedback(
   }
 
   return Object.keys(guideV3).length > 0 ? guideV3 : undefined;
+}
+
+/// Discord 訊息本體（主審 r1 P2）：一律不解析 mentions，內容就算混進 @everyone 也
+/// 不會真的通知全頻道。
+export function buildDiscordMessageBody(
+  content: string,
+  username?: string,
+): Record<string, unknown> {
+  return {
+    content,
+    ...(username ? { username } : {}),
+    allowed_mentions: { parse: [] },
+  };
 }

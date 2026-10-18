@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { withOperationalErrorMonitoring } from "../_shared/operational_error_monitor.ts";
 import {
   AI_RESPONSE_MAX_LENGTH,
+  buildDiscordMessageBody,
   buildDiscordNotificationContent,
   isPlainObject,
   resolveDiscordNotificationTarget,
@@ -95,10 +96,9 @@ async function sendDiscordNotification(feedback: {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content,
-            username: "VibeSync Feedback",
-          }),
+          body: JSON.stringify(
+            buildDiscordMessageBody(content, "VibeSync Feedback"),
+          ),
         },
       );
 
@@ -129,9 +129,7 @@ async function sendDiscordNotification(feedback: {
           "Content-Type": "application/json",
           Authorization: `Bot ${botToken}`,
         },
-        body: JSON.stringify({
-          content,
-        }),
+        body: JSON.stringify(buildDiscordMessageBody(content)),
       },
     );
 

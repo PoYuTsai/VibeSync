@@ -1,12 +1,24 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { GUIDE_V3_VERSION } from "../analyze-chat/guide_v3/guide_text.ts";
+import type { GuideV3Decision } from "../analyze-chat/guide_v3/plan.ts";
+import { LIGHTS } from "../analyze-chat/guide_v3/read_tags.ts";
+import { TASK_CODE } from "../analyze-chat/guide_v3/wire.ts";
+import { V3_CARD_TASK_CODES } from "../analyze-chat/stream_run_store.ts";
 import {
+  buildDiscordMessageBody,
   buildDiscordNotificationContent,
+  GUIDE_V3_FEEDBACK_CARD_TASKS,
+  GUIDE_V3_FEEDBACK_DECISIONS,
+  GUIDE_V3_FEEDBACK_LIGHTS,
+  GUIDE_V3_FEEDBACK_VERSIONS,
   maskEmailForNotification,
   resolveDiscordNotificationTarget,
   sanitizeFeedbackAiResponse,
   truncateOptionalStringToMax,
   VALID_FEEDBACK_CATEGORIES,
 } from "./feedback_utils.ts";
+
+const RUN_ID = "6f0c2c1e-4d5b-4d2f-9a8e-1b2c3d4e5f60";
 
 Deno.test("feedback category whitelist includes Batch E coach failure modes", () => {
   for (
@@ -251,11 +263,11 @@ Deno.test("sanitizeFeedbackAiResponse 保留對話分析 v3 的短欄位與 runI
     sanitizeFeedbackAiResponse({
       schemaVersion: 1,
       guideV3: {
-        guideVersion: "v3.5",
+        guideVersion: GUIDE_V3_VERSION,
         decision: "send",
         light: "green",
-        cardTasks: ["accept", "push", "accept", "tension", "push", "accept"],
-        runId: "6f0c2c1e-4d5b-4d2f-9a8e-1b2c3d4e5f60",
+        cardTasks: ["accept", "push", "accept", "tension", "close"],
+        runId: RUN_ID,
         feedbackCategory: "testing_her",
         cards: [{ messages: ["不該存"] }],
       },
@@ -263,11 +275,11 @@ Deno.test("sanitizeFeedbackAiResponse 保留對話分析 v3 的短欄位與 runI
     {
       schemaVersion: 1,
       guideV3: {
-        guideVersion: "v3.5",
+        guideVersion: GUIDE_V3_VERSION,
         decision: "send",
         light: "green",
-        runId: "6f0c2c1e-4d5b-4d2f-9a8e-1b2c3d4e5f60",
-        cardTasks: ["accept", "push", "accept", "tension", "push"],
+        runId: RUN_ID,
+        cardTasks: ["accept", "push", "accept", "tension", "close"],
         feedbackCategory: "testing_her",
       },
     },
@@ -289,6 +301,114 @@ Deno.test("sanitizeFeedbackAiResponse 丟掉不認得的 v3 分類（含原型�
   );
 });
 
+Deno.test("v3 回饋的合法值跟 analyze-chat 送給 App 的值一致（主審 r1 P2）", () => {
+  assertEquals(GUIDE_V3_FEEDBACK_CARD_TASKS, new Set(V3_CARD_TASK_CODES));
+  assertEquals(GUIDE_V3_FEEDBACK_CARD_TASKS, new Set(Object.values(TASK_CODE)));
+  assertEquals(GUIDE_V3_FEEDBACK_LIGHTS, new Set(LIGHTS));
+  assertEquals(GUIDE_V3_FEEDBACK_VERSIONS.has(GUIDE_V3_VERSION), true);
+  // 型別上列滿每一種決定：plan.ts 加一種，這裡就編譯不過。
+  const decisions: Record<GuideV3Decision, true> = {
+    send: true,
+    close: true,
+    hold: true,
+    stop: true,
+    care: true,
+  };
+  assertEquals(GUIDE_V3_FEEDBACK_DECISIONS, new Set(Object.keys(decisions)));
+});
+
+Deno.test("v3 回饋欄位不合法就只丟那個欄位，回饋照收（主審 r1 P2）", () => {
+  assertEquals(
+    sanitizeFeedbackAiResponse({
+      strategy: "先共鳴",
+      guideV3: {
+        guideVersion: "v9.9",
+        decision: "maybe",
+        light: "blue",
+        cardTasks: ["accept", "hack"],
+        runId: RUN_ID,
+      },
+    }),
+    { schemaVersion: 1, strategy: "先共鳴", guideV3: { runId: RUN_ID } },
+  );
+  // 卡最多 5 張：多了就整個任務清單不收（位置對不回卡片）。
+  assertEquals(
+    sanitizeFeedbackAiResponse({
+      guideV3: {
+        decision: "send",
+        cardTasks: ["accept", "push", "accept", "tension", "push", "accept"],
+      },
+    }),
+    { schemaVersion: 1, guideV3: { decision: "send" } },
+  );
+  // 大小寫、前後空白也不算合法值。
+  assertEquals(
+    sanitizeFeedbackAiResponse({
+      guideV3: { decision: " send", light: "GREEN", runId: RUN_ID },
+    }),
+    { schemaVersion: 1, guideV3: { runId: RUN_ID } },
+  );
+});
+
+Deno.test("runId 只收 UUID（主審 r1 P2）", () => {
+  for (
+    const runId of [
+      "run-123",
+      "對話原文",
+      `${RUN_ID}\n偽造通知`,
+      RUN_ID.slice(0, -1),
+      `${RUN_ID}0`,
+      "6f0c2c1e4d5b4d2f9a8e1b2c3d4e5f60",
+    ]
+  ) {
+    assertEquals(
+      sanitizeFeedbackAiResponse({ guideV3: { decision: "send", runId } }),
+      { schemaVersion: 1, guideV3: { decision: "send" } },
+      runId,
+    );
+  }
+});
+
+Deno.test("v3 欄位塞 mention 或換行：清洗後不留、Discord 通知也不出現（主審 r1 P2）", () => {
+  const injected = {
+    guideVersion: "@everyone\n偽造通知",
+    decision: "@everyone\n偽造通知",
+    light: "<@&123456>",
+    runId: "@here 對話原文",
+    cardTasks: ["@everyone"],
+    feedbackCategory: "@everyone",
+  };
+  assertEquals(sanitizeFeedbackAiResponse({ guideV3: injected }), undefined);
+  // 就算有人直接拿沒清洗過的內容組通知，v3 那幾行也只用合法值。
+  const content = buildDiscordNotificationContent(
+    {
+      userEmail: "vibesync.test@gmail.com",
+      userTier: "free",
+      rating: "negative",
+      category: "other",
+      aiResponse: { guideV3: injected },
+    },
+    { timestamp: "2026-10-18T00:00:00.000Z" },
+  );
+  assertEquals(content.includes("@everyone"), false);
+  assertEquals(content.includes("偽造通知"), false);
+  assertEquals(content.includes("@here"), false);
+  assertEquals(content.includes("<@&"), false);
+  assertEquals(content.includes("Category: Other"), true);
+});
+
+Deno.test("Discord 訊息一律不解析 mentions（主審 r1 P2）", () => {
+  assertEquals(buildDiscordMessageBody("內容", "VibeSync Feedback"), {
+    content: "內容",
+    username: "VibeSync Feedback",
+    allowed_mentions: { parse: [] },
+  });
+  assertEquals(buildDiscordMessageBody("內容"), {
+    content: "內容",
+    allowed_mentions: { parse: [] },
+  });
+});
+
 Deno.test("buildDiscordNotificationContent 標出 v3 的分類、判讀與 runId", () => {
   const negative = buildDiscordNotificationContent(
     {
@@ -300,7 +420,7 @@ Deno.test("buildDiscordNotificationContent 標出 v3 的分類、判讀與 runId
         guideV3: {
           decision: "send",
           light: "yellow",
-          runId: "run-123",
+          runId: RUN_ID,
           feedbackCategory: "testing_her",
         },
       },
@@ -310,7 +430,7 @@ Deno.test("buildDiscordNotificationContent 標出 v3 的分類、判讀與 runId
   );
   assertEquals(negative.includes("Category: Testing / scoring her"), true);
   assertEquals(negative.includes("Category: Other"), false);
-  assertEquals(negative.includes("v3: send / yellow run run-123"), true);
+  assertEquals(negative.includes(`v3: send / yellow run ${RUN_ID}`), true);
   assertEquals(negative.startsWith("👎 沒幫助回饋 — 分析頁"), true);
 
   const positive = buildDiscordNotificationContent(
