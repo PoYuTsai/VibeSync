@@ -137,8 +137,10 @@ export function buildFunnelRow(
     return { ok: false, error: "Invalid funnel event" };
   }
 
+  // 只認字典、白名單自己的鍵（主審 r1 P2）：用 in 的話 toString、constructor
+  // 這類原型上的名字也會過，接著取到函式而丟錯，端點回 500；字典外要一律 400。
   const event = rawEvent.event;
-  if (typeof event !== "string" || !(event in FUNNEL_EVENT_PROPS)) {
+  if (typeof event !== "string" || !Object.hasOwn(FUNNEL_EVENT_PROPS, event)) {
     return { ok: false, error: "Unknown funnel event" };
   }
 
@@ -148,9 +150,9 @@ export function buildFunnelRow(
     : {};
   const properties: Record<string, unknown> = {};
   for (const key of allowedKeys) {
-    if (!(key in rawProps)) continue;
+    if (!Object.hasOwn(rawProps, key)) continue;
+    if (!Object.hasOwn(PROP_SPECS, key)) continue;
     const spec = PROP_SPECS[key];
-    if (!spec) continue;
     const sanitized = sanitizeValue(spec, rawProps[key]);
     if (sanitized !== null) properties[key] = sanitized;
   }

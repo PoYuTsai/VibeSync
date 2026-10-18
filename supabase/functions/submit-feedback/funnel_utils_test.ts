@@ -328,3 +328,62 @@ Deno.test("字典外的付費頁事件名照樣拒絕", () => {
     assert(!result.ok, `${event} 應該被拒`);
   }
 });
+
+// 原型上的名字不是字典裡的事件（主審 r1 P2）：用 in 判斷時 toString、constructor、
+// __proto__ 會過關，接著取到函式或原型而丟錯，端點回 500。要走拒絕路徑
+// （ok:false → index.ts 回 400），不能丟錯。
+Deno.test("原型上的名字當事件名：一律拒絕，不丟錯", () => {
+  for (
+    const event of [
+      "toString",
+      "constructor",
+      "__proto__",
+      "hasOwnProperty",
+      "valueOf",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "toLocaleString",
+      "__defineGetter__",
+    ]
+  ) {
+    let result: ReturnType<typeof buildFunnelRow> | undefined;
+    try {
+      result = buildFunnelRow("u", { event, properties: {} });
+    } catch (error) {
+      throw new Error(`${event} 丟錯了（會變 500）：${error}`);
+    }
+    assertEquals(
+      result,
+      { ok: false, error: "Unknown funnel event" },
+      `${event} 應該走拒絕路徑`,
+    );
+  }
+});
+
+Deno.test("JSON 解出來的 __proto__ 事件名也走拒絕路徑", () => {
+  const raw = JSON.parse('{"event":"__proto__","properties":{}}');
+  assertEquals(buildFunnelRow("u", raw), {
+    ok: false,
+    error: "Unknown funnel event",
+  });
+});
+
+Deno.test("properties 只認自己的鍵：原型上的名字與 __proto__ 鍵都不帶進來", () => {
+  // JSON.parse 會把 __proto__ 當成一般的鍵，裡面就算放了 entry 也不能算數。
+  const raw = JSON.parse(
+    '{"event":"paywall_opened","properties":{"__proto__":{"entry":"general"},"constructor":"x","toString":"y"}}',
+  );
+  const result = buildFunnelRow("u", raw);
+  assert(result.ok);
+  if (result.ok) assertEquals(result.row.properties, {});
+
+  const inherited = Object.create({ entry: "locked_cards" });
+  const fromPrototype = buildFunnelRow("u", {
+    event: "paywall_opened",
+    properties: inherited,
+  });
+  assert(fromPrototype.ok);
+  if (fromPrototype.ok) {
+    assertEquals(fromPrototype.row.properties, {}, "原型鏈上的 entry 不算");
+  }
+});
