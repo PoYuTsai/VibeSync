@@ -5,6 +5,7 @@
 // - 草稿潤飾撞到每日／每月額度；回覆微調撞到額度時面板上的說明。
 // - Essential 已經是最高方案：不叫他升級，只說什麼時候恢復；免費、Starter 照舊有升級那句。
 // - 回覆微調上一輪失敗後關掉重開：免費次數照樣標待確認（主審第 1 輪 P2）。
+// - 這個月和今天都不夠：跟伺服器一樣先看本月（主審第 1 輪 P3）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -690,6 +691,52 @@ void main() {
         findsOneWidget,
       );
       expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+
+    testWidgets('這個月剩 1 則、今天剩 0 則、這次要 2 則：先看本月，付費頁是每月不夠這次用；關掉付費頁也不會開始分析',
+        (tester) async {
+      final twoUnits = '好' * (MessageCalculator.charsPerMessageUnit + 1);
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(
+          _free,
+          dailyUsed: _dailyLimitOf(_free),
+          monthlyUsed: _monthlyLimitOf(_free) - 1,
+        ),
+        conversation: _conversation(content: twoUnits),
+      );
+      await _tapOrb(tester);
+      // 前提：這次要 2 則，本月剩 1、今天剩 0，兩邊都不夠。
+      expect(_inPreviewDialog(find.text('2 則')), findsOneWidget);
+      expect(
+        _inPreviewDialog(find.text('1 / ${_monthlyLimitOf(_free)} 則')),
+        findsOneWidget,
+      );
+      expect(
+        _inPreviewDialog(find.text('0 / ${_dailyLimitOf(_free)} 則')),
+        findsOneWidget,
+      );
+      // 確認框的提醒也先講本月。
+      expect(
+        _inPreviewDialog(find.text('這個月的分析次數不夠了，升級後再繼續。')),
+        findsOneWidget,
+      );
+
+      await tester.tap(_inPreviewDialog(find.text('查看升級方案')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(PaywallEntry.monthlyQuotaShort.headlineFor(_free)),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.descendant(
+        of: find.byType(PaywallScreen),
+        matching: find.byIcon(Icons.close),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(PaywallScreen), findsNothing);
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+      expect(harness.recorder.streamCalls, 0);
     });
   });
 
