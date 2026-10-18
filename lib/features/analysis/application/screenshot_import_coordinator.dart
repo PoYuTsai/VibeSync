@@ -302,6 +302,48 @@ class ScreenshotImportCoordinator {
     );
   }
 
+  /// 確認框上「加入並開始分析」那一行用（Eric 2026-10-18）：照 [commitImport]
+  /// 整批取代後的樣子另做一份不存檔的對話，讓畫面用分析鈕同一套算法算則數。
+  /// 會另開新片段（或對話不在）時回 null：那次分析不在這一頁跑。
+  Conversation? previewReplacedBatch({
+    required List<RecognizedMessage> editedRecognizedMessages,
+    required bool hasLoadedAnalysisResult,
+  }) {
+    final source = _getConversation(conversationId);
+    if (source == null ||
+        AnalysisFragmentPolicy.mustCreateNewFragmentForImport(
+          conversation: source,
+          hasLoadedAnalysisResult: hasLoadedAnalysisResult,
+        )) {
+      return null;
+    }
+    final preview = Conversation(
+      id: source.id,
+      name: source.name,
+      avatarPath: source.avatarPath,
+      // 複製一份：整批取代會清空清單，不能動到畫面上那一份。
+      messages: List<Message>.of(source.messages),
+      createdAt: source.createdAt,
+      updatedAt: source.updatedAt,
+      lastEnthusiasmScore: source.lastEnthusiasmScore,
+      sessionContext: source.sessionContext,
+      currentGameStage: source.currentGameStage,
+      currentRound: source.currentRound,
+      summaries: source.summaries,
+      lastUserChoice: source.lastUserChoice,
+      lastAnalysisSnapshotJson: source.lastAnalysisSnapshotJson,
+      lastAnalyzedMessageCount: source.lastAnalyzedMessageCount,
+      ownerUserId: source.ownerUserId,
+      partnerId: source.partnerId,
+      lastAnalyzedCharCount: source.lastAnalyzedCharCount,
+    );
+    AnalysisFragmentPolicy.replaceDraftBatch(
+      conversation: preview,
+      messages: _buildImportedMessages(editedRecognizedMessages),
+    );
+    return preview;
+  }
+
   List<Message> _buildImportedMessages(List<RecognizedMessage> recognized) {
     final baseTimestamp = DateTime.now();
     return List.generate(recognized.length, (index) {
