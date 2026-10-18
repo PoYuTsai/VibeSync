@@ -1115,8 +1115,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
     setState(() => _isPurchasing = true);
     // 付款確認回來前他可能已經關掉這頁（之後不能再用 ref），成功照樣要記，先抓好。
+    // 帳號也先記下：事件用送出當下的登入，等確認時換了帳號或登出就不記，免得 A
+    // 買的算到 B（主審 r1 P2）。
     final tracker = ref.read(funnelTrackerProvider);
     final entry = widget.entry;
+    final purchaserId = SupabaseService.currentUser?.id;
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
       final result = package != null
@@ -1126,7 +1129,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               .timeout(_purchaseTimeout);
       // 漏斗：RevenueCat 回成功才記買的方案（Eric 2026-10-18）。取消、失敗的
       // success 是 false，逾時、例外直接進 catch；排程降級當下沒有新方案生效，不算買到。
-      if (result.success && !result.isDeferredDowngrade) {
+      final samePurchaser =
+          purchaserId != null && SupabaseService.currentUser?.id == purchaserId;
+      if (result.success && !result.isDeferredDowngrade && samePurchaser) {
         unawaited(
           tracker.track(
             'paywall_purchase_completed',

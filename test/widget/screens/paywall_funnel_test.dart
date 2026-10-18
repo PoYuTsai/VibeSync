@@ -5,6 +5,7 @@
 // - paywall_purchase_completed：RevenueCat 回成功才記；取消、失敗、例外、逾時、
 //   排程降級都不記。
 // - 埋點掛住或出錯，付費頁和購買流程都照常。
+// - 購買事件只記給發起購買的帳號：確認回來時換了帳號或登出就不記。
 
 import 'dart:async';
 
@@ -13,7 +14,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show User;
 import 'package:vibesync/core/services/funnel_tracker.dart';
+import 'package:vibesync/core/services/supabase_service.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
@@ -29,6 +32,20 @@ const _wireEntry = {
   PaywallEntry.monthlyQuotaUsedUp: 'quota_exhausted',
   PaywallEntry.monthlyQuotaShort: 'quota_exhausted',
 };
+
+User _fakeUser(String id) => User(
+      id: id,
+      appMetadata: const {},
+      userMetadata: const {},
+      aud: 'authenticated',
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+/// 目前登入的帳號（null＝沒登入）。
+void _signInAs(String? userId) {
+  SupabaseService.debugCurrentUserOverride =
+      () => userId == null ? null : _fakeUser(userId);
+}
 
 class _StubSubscriptionNotifier extends SubscriptionNotifier {
   _StubSubscriptionNotifier({this.onPurchase});
@@ -106,9 +123,12 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
   PaywallEntry? entry,
   Future<SubscriptionPurchaseResult> Function()? onPurchase,
   SubscriptionState? seededState,
+  String? signedInAs = 'user-a',
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  // 方案狀態一建立就會去讀登入帳號；先清掉，畫面與價格都好了再登入。
+  SupabaseService.debugResetForTesting();
 
   final stub = _StubSubscriptionNotifier(onPurchase: onPurchase);
   final router = GoRouter(
@@ -145,6 +165,7 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
     stub.seedState(seededState);
     await tester.pump();
   }
+  _signInAs(signedInAs);
   return (router, stub);
 }
 
@@ -176,6 +197,8 @@ Future<void> _flush(WidgetTester tester) async {
 }
 
 void main() {
+  tearDown(SupabaseService.debugResetForTesting);
+
   group('paywall_opened', () {
     testWidgets('每個入口打開各記一筆，只帶 entry', (tester) async {
       for (final entry in PaywallEntry.values) {
@@ -395,6 +418,59 @@ void main() {
         {'tier': 'essential', 'entry': 'quota_exhausted'},
       ]);
       expect(tester.takeException(), isNull);
+      await _flush(tester);
+    });
+
+    // 付款確認要等一陣子，這段時間可能登出、換帳號；送事件用的是當下的登入，
+    // 換了就不記，免得 A 買的算到 B（主審 r1 P2）。
+    final accountChanges = <String, String?>{
+      '換成別的帳號': 'user-b',
+      '登出': null,
+    };
+    for (final change in accountChanges.entries) {
+      testWidgets('付款確認回來前關掉付費頁並${change.key}：不記', (tester) async {
+        final sent = _Sent();
+        final pending = Completer<SubscriptionPurchaseResult>();
+        await _pumpPaywall(
+          tester,
+          tracker: _recordingTracker(sent),
+          entry: PaywallEntry.lockedCards,
+          onPurchase: () => pending.future,
+          seededState: _stateWith('vibesync_essential_monthly', 'Essential'),
+        );
+
+        await _tapSubscribe(tester, '訂閱 Essential');
+        await tester.tap(find.byIcon(Icons.close));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        _signInAs(change.value);
+
+        pending.complete(_success(SubscriptionTierHelper.essential));
+        await tester.pump();
+        await tester.pump();
+
+        expect(sent.propsOf('paywall_purchase_completed'), isEmpty);
+        expect(sent.names, ['paywall_opened']);
+        expect(tester.takeException(), isNull);
+        await _flush(tester);
+      });
+    }
+
+    testWidgets('沒登入就開始的購買：不記（沒有帳號可以算）', (tester) async {
+      final sent = _Sent();
+      await _pumpPaywall(
+        tester,
+        tracker: _recordingTracker(sent),
+        entry: PaywallEntry.general,
+        onPurchase: () async => _success(SubscriptionTierHelper.essential),
+        seededState: _stateWith('vibesync_essential_monthly', 'Essential'),
+        signedInAs: null,
+      );
+
+      await _tapSubscribe(tester, '訂閱 Essential');
+
+      expect(find.textContaining('方案已更新'), findsOneWidget);
+      expect(sent.propsOf('paywall_purchase_completed'), isEmpty);
       await _flush(tester);
     });
 
