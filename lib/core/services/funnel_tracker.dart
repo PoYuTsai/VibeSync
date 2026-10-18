@@ -46,6 +46,9 @@ class FunnelTracker {
     ],
     'about_me_cleared': [],
     'new_topic_copied': ['is_recommended'],
+    'paywall_opened': ['entry'],
+    'paywall_purchase_completed': ['tier', 'entry'],
+    'locked_cards_upgrade_tap': ['locked_count'],
   };
 
   final FunnelUploadInvoker _invoke;

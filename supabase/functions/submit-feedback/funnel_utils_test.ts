@@ -198,6 +198,9 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
     ],
     about_me_cleared: [],
     new_topic_copied: ["is_recommended"],
+    paywall_opened: ["entry"],
+    paywall_purchase_completed: ["tier", "entry"],
+    locked_cards_upgrade_tap: ["locked_count"],
   });
 });
 
@@ -216,4 +219,112 @@ Deno.test("new_topic_copied：只收 is_recommended 布林，字串或其他鍵�
   assertEquals(bad.ok, true);
   if (!bad.ok) return;
   assertEquals(bad.row.properties, {});
+});
+
+// 付費頁與鎖卡的漏斗（Eric 2026-10-18：量從哪裡打開付費頁、買了哪個方案、
+// 鎖卡區塊被點時鎖了幾張）。值域在 server 強制，不合就剝掉那個鍵、事件照收。
+Deno.test("paywall_opened：entry 只收三種入口，其他值剝除整鍵", () => {
+  for (const entry of ["general", "locked_cards", "quota_exhausted"]) {
+    const ok = buildFunnelRow("u", {
+      event: "paywall_opened",
+      properties: { entry },
+    });
+    assert(ok.ok);
+    if (ok.ok) assertEquals(ok.row.properties, { entry });
+  }
+
+  for (const bad of ["lockedCards", "home", "", 1, true, null]) {
+    const result = buildFunnelRow("u", {
+      event: "paywall_opened",
+      properties: { entry: bad },
+    });
+    assert(result.ok, `entry=${String(bad)} 只剝鍵，事件照收`);
+    if (result.ok) assertEquals(result.row.properties, {});
+  }
+});
+
+Deno.test("paywall_purchase_completed：只留 tier 與 entry，價格、商品 id、收據都剝除", () => {
+  const result = buildFunnelRow("u", {
+    event: "paywall_purchase_completed",
+    properties: {
+      tier: "essential",
+      entry: "locked_cards",
+      price: 590,
+      productId: "vibesync_essential_monthly",
+      receipt: "MIIT...",
+      partnerName: "小美",
+    },
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  assertEquals(result.row.properties, {
+    tier: "essential",
+    entry: "locked_cards",
+  });
+
+  const starter = buildFunnelRow("u", {
+    event: "paywall_purchase_completed",
+    properties: { tier: "starter", entry: "general" },
+  });
+  assert(starter.ok);
+  if (starter.ok) {
+    assertEquals(starter.row.properties, { tier: "starter", entry: "general" });
+  }
+});
+
+Deno.test("paywall_purchase_completed：tier 不是 starter／essential 就剝掉 tier，entry 照留", () => {
+  for (const bad of ["free", "premium", "Essential", 2]) {
+    const result = buildFunnelRow("u", {
+      event: "paywall_purchase_completed",
+      properties: { tier: bad, entry: "quota_exhausted" },
+    });
+    assert(result.ok);
+    if (result.ok) {
+      assertEquals(result.row.properties, { entry: "quota_exhausted" });
+    }
+  }
+});
+
+Deno.test("locked_cards_upgrade_tap：locked_count 只收 1–5 的整數", () => {
+  for (const count of [1, 3, 5]) {
+    const ok = buildFunnelRow("u", {
+      event: "locked_cards_upgrade_tap",
+      properties: { locked_count: count, slot: 3, task: "push" },
+    });
+    assert(ok.ok);
+    if (ok.ok) assertEquals(ok.row.properties, { locked_count: count });
+  }
+
+  for (const bad of [0, 6, -1, 2.5, "3", null]) {
+    const result = buildFunnelRow("u", {
+      event: "locked_cards_upgrade_tap",
+      properties: { locked_count: bad },
+    });
+    assert(result.ok, `locked_count=${String(bad)} 只剝鍵，事件照收`);
+    if (result.ok) assertEquals(result.row.properties, {});
+  }
+});
+
+Deno.test("其他鍵的下限不受 locked_count 影響：page_index 0 照收", () => {
+  const result = buildFunnelRow("u", {
+    event: "onboarding_page_view",
+    properties: { page_index: 0 },
+  });
+  assert(result.ok);
+  if (result.ok) assertEquals(result.row.properties, { page_index: 0 });
+});
+
+Deno.test("字典外的付費頁事件名照樣拒絕", () => {
+  for (
+    const event of [
+      "paywall_closed",
+      "purchase_completed",
+      "paywall_purchase_cancelled",
+      "locked_card_tap",
+      "PAYWALL_OPENED",
+    ]
+  ) {
+    const result = buildFunnelRow("u", { event, properties: {} });
+    assert(!result.ok, `${event} 應該被拒`);
+  }
 });

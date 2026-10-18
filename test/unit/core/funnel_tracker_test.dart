@@ -91,7 +91,50 @@ void main() {
       ],
       'about_me_cleared': <String>[],
       'new_topic_copied': ['is_recommended'],
+      'paywall_opened': ['entry'],
+      'paywall_purchase_completed': ['tier', 'entry'],
+      'locked_cards_upgrade_tap': ['locked_count'],
     });
+  });
+
+  // 付費頁與鎖卡（Eric 2026-10-18）：價格、商品 id、收據連手機都不出。
+  test('付費頁與鎖卡事件：只帶白名單鍵', () async {
+    final sent = <Map<String, dynamic>>[];
+    final tracker = FunnelTracker(
+      invoker: (fn, {required body}) async {
+        sent.add(body['event'] as Map<String, dynamic>);
+        return 200;
+      },
+    );
+
+    await tracker.track('paywall_opened', properties: {
+      'entry': 'locked_cards',
+      'route': '/paywall',
+    });
+    await tracker.track('paywall_purchase_completed', properties: {
+      'tier': 'essential',
+      'entry': 'quota_exhausted',
+      'price': 590,
+      'productId': 'vibesync_essential_monthly',
+      'receipt': 'MIIT',
+    });
+    await tracker.track('locked_cards_upgrade_tap', properties: {
+      'locked_count': 3,
+      'tasks': ['push'],
+    });
+
+    final names = [for (final e in sent) e['event']];
+    final props = [for (final e in sent) e['properties']];
+    expect(names, [
+      'paywall_opened',
+      'paywall_purchase_completed',
+      'locked_cards_upgrade_tap',
+    ]);
+    expect(props, [
+      {'entry': 'locked_cards'},
+      {'tier': 'essential', 'entry': 'quota_exhausted'},
+      {'locked_count': 3},
+    ]);
   });
 
   test('trackOnce：字典外事件不落 once-flag（GLM F6）', () async {

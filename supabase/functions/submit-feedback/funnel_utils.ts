@@ -8,6 +8,9 @@
 const PAGE_INDEX_MAX = 20;
 const GOALS_COUNT_MAX = 5;
 const SEEDS_COUNT_MAX = 5;
+// 鎖卡區塊出現時至少鎖 1 張，排卡最多 5 張（Eric 2026-10-18）。
+const LOCKED_COUNT_MIN = 1;
+const LOCKED_COUNT_MAX = 5;
 const STRING_VALUE_MAX = 40;
 
 const CHECKLIST_ITEMS = new Set([
@@ -22,10 +25,24 @@ const ABOUT_ME_SOURCES = new Set([
   "settings",
 ]);
 
-type PropSpec = { kind: "int"; max: number } | { kind: "bool" } | {
-  kind: "enum";
-  values: Set<string>;
-};
+// 付費頁從哪裡打開（對應 app 的 PaywallEntry）。
+const PAYWALL_ENTRIES = new Set([
+  "general",
+  "locked_cards",
+  "quota_exhausted",
+]);
+
+// 買到的付費方案；free 不是購買結果，不收。
+const PAID_TIERS = new Set([
+  "starter",
+  "essential",
+]);
+
+// int 的 min 沒寫就是 0。
+type PropSpec =
+  | { kind: "int"; min?: number; max: number }
+  | { kind: "bool" }
+  | { kind: "enum"; values: Set<string> };
 
 const PROP_SPECS: Record<string, PropSpec> = {
   page_index: { kind: "int", max: PAGE_INDEX_MAX },
@@ -38,6 +55,13 @@ const PROP_SPECS: Record<string, PropSpec> = {
   item: { kind: "enum", values: CHECKLIST_ITEMS },
   source: { kind: "enum", values: ABOUT_ME_SOURCES },
   is_recommended: { kind: "bool" },
+  entry: { kind: "enum", values: PAYWALL_ENTRIES },
+  tier: { kind: "enum", values: PAID_TIERS },
+  locked_count: {
+    kind: "int",
+    min: LOCKED_COUNT_MIN,
+    max: LOCKED_COUNT_MAX,
+  },
 };
 
 /** event → 允許的 properties 鍵。字典外 event 一律 400。 */
@@ -64,6 +88,9 @@ export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
   ],
   about_me_cleared: [],
   new_topic_copied: ["is_recommended"],
+  paywall_opened: ["entry"],
+  paywall_purchase_completed: ["tier", "entry"],
+  locked_cards_upgrade_tap: ["locked_count"],
 };
 
 export interface FunnelRow {
@@ -86,7 +113,7 @@ function sanitizeValue(spec: PropSpec, value: unknown): unknown {
   switch (spec.kind) {
     case "int":
       if (typeof value !== "number" || !Number.isInteger(value)) return null;
-      if (value < 0 || value > spec.max) return null;
+      if (value < (spec.min ?? 0) || value > spec.max) return null;
       return value;
     case "bool":
       return typeof value === "boolean" ? value : null;
