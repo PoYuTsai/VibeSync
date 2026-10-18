@@ -2197,6 +2197,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required ScreenshotRecognitionDialogResult dialogResult,
     required RecognizedConversation recognized,
   }) async {
+    if (dialogResult.startAnalysis &&
+        dialogResult.messages.length > _coachMarkLastSeenMessageCount) {
+      // 「加入並開始分析」：這批匯入後就要開始分析，「長按可編輯」提示這次不排——它掛在
+      // 最上層，會蓋住接著跳的最後一則提示或確認框。整批取代後就是這幾則；匯入前先記，
+      // 存檔途中重畫也排不到。
+      _coachMarkLastSeenMessageCount = dialogResult.messages.length;
+    }
     final commit = await _screenshotImport.commitImport(
       editedRecognizedMessages: dialogResult.messages,
       newName: dialogResult.name,
@@ -2236,7 +2243,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           _hasPendingRecognitionImport = false;
         });
         // OCR 匯入浮動提示全拆（2026-08-16 Eric：沒什麼用）。來源已完成分析
-        // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。
+        // 而另開新片段時，直接帶使用者過去，不留在舊片段乾等。按的是「加入並開始
+        // 分析」也一樣（確認框開著時片段剛好完成）：分析在新片段那頁按，這裡不送。
         context.push('/conversation/${commit.createdConversationId}');
         return;
       case ScreenshotImportCommitKind.replacedBatch:
@@ -2255,6 +2263,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // 「已確認本次片段／查看本次內容」浮動提示已拆（2026-08-16 Eric：
         // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
         // 「前往新片段」提示保留，那個有導航作用。
+        // 「加入並開始分析」（Eric 2026-10-18）：匯入成功才走分析鈕同一個入口，帶確認框
+        // 上看到的那一行；最後一則提示、額度、超過 2000 字、資料分享同意照舊一關一關問，
+        // 任何一關取消都不送、不扣，匯入的內容照今天留著。
+        if (dialogResult.startAnalysis) {
+          unawaited(_runAnalysis(shownQuotaLine: dialogResult.shownQuotaLine));
+        }
         return;
     }
   }
@@ -2533,23 +2547,53 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final partnerId = currentConversation.partnerId?.trim();
     final isPartnerBound = partnerId != null && partnerId.isNotEmpty;
     final initialContext = _screenshotSessionContextFor(currentConversation);
+    // 「加入並開始分析」（Eric 2026-10-18）：會另開新片段時那次分析不在這一頁跑，
+    // 只留今天的確認。
+    final canAnalyzeAfterImport =
+        !AnalysisFragmentPolicy.mustCreateNewFragmentForImport(
+      conversation: currentConversation,
+      hasLoadedAnalysisResult: _hasAnalysisResult,
+    );
     return showDialog<ScreenshotRecognitionDialogResult>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => ScreenshotRecognitionDialog(
-        recognized: recognized,
-        warningMessage: warningMessage,
-        initialName: isPartnerBound
-            ? expectedPartnerName ?? currentConversation.name
-            : recognized.contactName?.trim() ?? '',
-        initialMeetingContext: initialContext.meetingContext,
-        initialDuration: initialContext.duration,
-        initialGoal: initialContext.goal,
-        initialAnalysisContextNote: _screenshotAnalysisContextNoteFor() ?? '',
-        currentConversation: currentConversation,
-        expectedPartnerName: expectedPartnerName,
+      // 方案載好或用量變了，確認框上那一行跟著重算。
+      builder: (ctx) => Consumer(
+        builder: (context, dialogRef, _) {
+          dialogRef.watch(subscriptionProvider);
+          return ScreenshotRecognitionDialog(
+            recognized: recognized,
+            warningMessage: warningMessage,
+            initialName: isPartnerBound
+                ? expectedPartnerName ?? currentConversation.name
+                : recognized.contactName?.trim() ?? '',
+            initialMeetingContext: initialContext.meetingContext,
+            initialDuration: initialContext.duration,
+            initialGoal: initialContext.goal,
+            initialAnalysisContextNote:
+                _screenshotAnalysisContextNoteFor() ?? '',
+            currentConversation: currentConversation,
+            expectedPartnerName: expectedPartnerName,
+            analyzeQuotaLineFor:
+                canAnalyzeAfterImport ? _recognitionImportQuotaLine : null,
+          );
+        },
       ),
     );
+  }
+
+  /// 確認框上「加入並開始分析」那一行（Eric 2026-10-18）：照匯入後的對話、用分析鈕
+  /// 同一個 [_analysisQuotaLine] 算；按下去在入口重算，一樣才不跳確認框。
+  AnalysisQuotaLine? _recognitionImportQuotaLine(
+    List<RecognizedMessage> messages,
+  ) {
+    if (!mounted) return null;
+    final imported = _screenshotImport.previewReplacedBatch(
+      editedRecognizedMessages: messages,
+      hasLoadedAnalysisResult: _hasAnalysisResult,
+    );
+    if (imported == null) return null;
+    return _analysisQuotaLine(imported, ref.read(subscriptionProvider));
   }
 
   // 識別計時器
