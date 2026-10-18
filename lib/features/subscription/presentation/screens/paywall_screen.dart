@@ -13,6 +13,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/revenuecat_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/services/usage_service.dart';
@@ -61,6 +62,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   void initState() {
     super.initState();
+    // 漏斗：每開一次記一筆、帶入口（Eric 2026-10-18：量從哪裡打開付費頁）。
+    unawaited(
+      ref.read(funnelTrackerProvider).track(
+        'paywall_opened',
+        properties: {'entry': widget.entry.funnelValue},
+      ),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(ref.read(subscriptionScreenRefreshProvider)());
@@ -1105,6 +1113,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
 
     setState(() => _isPurchasing = true);
+    // 付款確認回來前他可能已經關掉這頁（之後不能再用 ref），成功照樣要記，先抓好。
+    final tracker = ref.read(funnelTrackerProvider);
+    final entry = widget.entry;
     try {
       final notifier = ref.read(subscriptionProvider.notifier);
       final result = package != null
@@ -1112,6 +1123,19 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           : await notifier
               .purchaseStoreProduct(storeProduct!)
               .timeout(_purchaseTimeout);
+      // 漏斗：RevenueCat 回成功才記買的方案（Eric 2026-10-18）。取消、失敗的
+      // success 是 false，逾時、例外直接進 catch；排程降級當下沒有新方案生效，不算買到。
+      if (result.success && !result.isDeferredDowngrade) {
+        unawaited(
+          tracker.track(
+            'paywall_purchase_completed',
+            properties: {
+              'tier': result.requestedTier,
+              'entry': entry.funnelValue,
+            },
+          ),
+        );
+      }
       if (!mounted || result.cancelled) return;
 
       if (!result.success) {

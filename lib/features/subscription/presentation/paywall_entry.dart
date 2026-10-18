@@ -20,4 +20,12 @@ enum PaywallEntry {
         PaywallEntry.lockedCards => '每一輪的回覆卡\n全部看得到',
         PaywallEntry.quotaExhausted => '額度用完了\n升級就能繼續分析',
       };
+
+  /// 漏斗事件的 entry 值（docs/integrations/funnel-events-v1.md）。server 只收這三個；
+  /// 加入口要同一批改字典與 server 白名單。
+  String get funnelValue => switch (this) {
+        PaywallEntry.general => 'general',
+        PaywallEntry.lockedCards => 'locked_cards',
+        PaywallEntry.quotaExhausted => 'quota_exhausted',
+      };
 }
