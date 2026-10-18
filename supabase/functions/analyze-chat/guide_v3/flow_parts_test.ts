@@ -442,6 +442,28 @@ Deno.test("定稿：C5 打分字眼只記錄，不拿掉", () => {
   assertEquals(out.scoringWords, ["加分"]);
 });
 
+Deno.test("定稿：10/18 補的打分字眼、推進卡請求句、條目編號都只記錄，卡照送", () => {
+  for (
+    const [text, word] of [
+      ["這個想法先給你過關", "過關"],
+      ["打球這關先讓你過", "這關"],
+      ["表現好的話再考慮看看", "再考慮看看"],
+      ["下次再考慮帶你去", "再考慮帶你"],
+    ]
+  ) {
+    const out = finalizeCard(card([text]), spec(), "");
+    assert(out.ok, text);
+    assertEquals(out.scoringWords, [word]);
+  }
+  const push = spec({ task: "推進", push: "具體邀約" });
+  assert(
+    finalizeCard(card(["週六下午兩點，我來訂位", "可以嗎？"]), push, "").ok,
+  );
+  assert(
+    finalizeCard(card(["照 B44 的寫法，記得吃 B12 維他命"]), spec(), "").ok,
+  );
+});
+
 Deno.test("定稿：空白或清完只剩空的訊息拿掉；全部空掉才整張拿掉", () => {
   const one = finalizeCard(card(["好啊", "Привет"]), spec(), "");
   assert(one.ok);

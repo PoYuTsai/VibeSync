@@ -507,6 +507,9 @@ Deno.test("C5 只記錄的檢查：每張送出的卡記問句、你呢、表情
       emoji: 0,
       chars: 16,
       copiesHim: true,
+      endsWithRequest: null,
+      hasRequest: null,
+      internalIds: 0,
     },
     // 第 2 張預設口吻：不檢查照抄；連在一起的問號算一個。
     {
@@ -516,6 +519,9 @@ Deno.test("C5 只記錄的檢查：每張送出的卡記問句、你呢、表情
       emoji: 0,
       chars: 11,
       copiesHim: null,
+      endsWithRequest: null,
+      hasRequest: null,
+      internalIds: 0,
     },
     {
       slot: 3,
@@ -524,6 +530,9 @@ Deno.test("C5 只記錄的檢查：每張送出的卡記問句、你呢、表情
       emoji: 2,
       chars: 4,
       copiesHim: false,
+      endsWithRequest: null,
+      hasRequest: null,
+      internalIds: 0,
     },
     {
       slot: 4,
@@ -532,13 +541,73 @@ Deno.test("C5 只記錄的檢查：每張送出的卡記問句、你呢、表情
       emoji: 0,
       chars: 11,
       copiesHim: null,
+      endsWithRequest: null,
+      hasRequest: null,
+      internalIds: 0,
     },
   ]);
+  assertEquals(trace.sameOpening, 0);
   const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
   assertEquals(outcome.metadata.cardChecks, trace.checks);
   assertEquals(outcome.metadata.herLastTurnChars, 8);
   for (const text of ["打電動", "連線", "好巧", "行程", "我也是"]) {
     assert(!JSON.stringify(outcome.metadata).includes(text), text);
+  }
+});
+
+Deno.test("C5 只記錄的檢查（10/18 補）：推進卡請求句、條目編號、同一組開頭、新打分字眼；卡照送，trace 與 log 只有數字與真假", async () => {
+  // 她自己提見面：排 5 張，前兩張是推進（具體邀約）。
+  const h = harness({
+    readTags: tags({ inviteReadiness: "她自己提見面" }),
+    writeParts: [
+      line(1, ["週六下午兩點，我來訂位", "可以嗎？😊"]),
+      line(2, ["週六下午去看展好嗎？門票我來買"]),
+      line(3, ["這關先讓妳過，爬山很厲害"]),
+      line(4, ["B44 那招對我沒用"]),
+      line(5, ["週六下午見！"]),
+    ],
+  });
+  const evs = await events(await handleGuideV3Stream(h.deps));
+  const read = evs.find((e) => e.type === "analysis.read")!;
+  assertEquals(
+    (read.plannedCards as { task: string }[]).map((c) => c.task),
+    ["push", "push", "accept", "tension", "tension"],
+  );
+  // 只記錄：五張都送出。
+  assertEquals(evs.filter((e) => e.type === "analysis.card").length, 5);
+  const trace = h.done[0].guideV3Trace as Record<string, unknown>;
+  const checks = trace.checks as Record<string, unknown>[];
+  assertEquals(checks.map((c) => c.endsWithRequest), [
+    true,
+    false,
+    null,
+    null,
+    null,
+  ]);
+  // 第 2 張的請求句在中間：盤點的算法算它，最後一則收尾的不算。
+  assertEquals(checks.map((c) => c.hasRequest), [true, true, null, null, null]);
+  assertEquals(checks.map((c) => c.internalIds), [0, 0, 0, 1, 0]);
+  // 第 2、5 張跟第 1 張一樣用「週六下午」開頭。
+  assertEquals(trace.sameOpening, 2);
+  assertEquals(trace.scoringWords, [{ slot: 3, words: ["這關"] }]);
+  const outcome = h.logs.find((l) => l.event === "guide_v3_outcome")!;
+  assertEquals(outcome.metadata.cardChecks, checks);
+  assertEquals(outcome.metadata.sameOpening, 2);
+  assertEquals(outcome.metadata.scoringWordCards, 1);
+  for (const c of checks) {
+    for (const field of ["endsWithRequest", "hasRequest"]) {
+      assert(c[field] === null || typeof c[field] === "boolean", field);
+    }
+    assertEquals(typeof c.internalIds, "number");
+  }
+  assertEquals(typeof trace.sameOpening, "number");
+  const logged = JSON.stringify(outcome.metadata);
+  const recorded = JSON.stringify([trace.checks, trace.sameOpening]);
+  for (
+    const text of ["週六", "訂位", "可以嗎", "看展", "這關", "爬山", "B44"]
+  ) {
+    assert(!logged.includes(text), text);
+    assert(!recorded.includes(text), text);
   }
 });
 

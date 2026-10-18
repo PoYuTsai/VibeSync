@@ -21,6 +21,7 @@ import {
   charCount,
   createLineSplitter,
   parseWrittenCardLine,
+  sameOpeningCount,
 } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import { type GuideV3Plan, planTurn, planWithoutRead } from "./plan.ts";
@@ -1036,6 +1037,8 @@ class GuideV3Flow {
 
     const { invalidLines, firstCardMs, stop, upstreamError } = state;
     const herChars = herLastTurnChars(this.deps.messages);
+    // C4 開頭重複要等整組送完才算（Eric 2026-10-18 只記錄）：只有張數。
+    const sameOpening = sameOpeningCount(delivered.map((c) => c.messages));
     const traceExtra = {
       removed,
       invalidLines,
@@ -1043,6 +1046,7 @@ class GuideV3Flow {
       rawMessages: raws,
       firstCardMs,
       checks,
+      sameOpening,
       herLastTurnChars: herChars,
     };
     if (stop?.kind === "charge_failed") {
@@ -1122,6 +1126,7 @@ class GuideV3Flow {
         scoringWordCards: scoring.length,
         // C5 只記錄的檢查：數字與真假，不放卡片或她的字。
         cardChecks: checks,
+        sameOpening,
         herLastTurnChars: herChars,
         ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         ...(memory.trace ? { memory: memory.trace } : {}),

@@ -8,6 +8,7 @@ import {
   cardChecks,
   charCount,
   parseWrittenCards,
+  sameOpeningCount,
   scoringWords,
 } from "./cards.ts";
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
@@ -410,7 +411,7 @@ Deno.test("v3.2 C5：打分或考題字眼只記錄；照他口吻的「妳」�
 });
 
 Deno.test("C5 只記錄的檢查：半形問號、你呢後面接表情、照抄他時忽略空白", () => {
-  const his = (voice: "照他" | "預設") => ({ voice });
+  const his = (voice: "照他" | "預設") => ({ voice, task: "接住" as const });
   const c = cardChecks(2, ["真的嗎? 那你呢😊"], his("預設"), []);
   assertEquals(
     [c.slot, c.questions, c.endsWithNiNe, c.emoji, c.copiesHim],
@@ -427,6 +428,106 @@ Deno.test("C5 只記錄的檢查：半形問號、你呢後面接表情、照抄
       .copiesHim,
     false,
   );
+});
+
+Deno.test("C5 打分字眼（10/18 補）：過關、這關、再考慮看看、再考慮帶你只記錄", () => {
+  assertEquals(scoringWords("這個想法先給妳過關"), ["過關"]);
+  assertEquals(scoringWords("打球這關先讓你過"), ["這關"]);
+  assertEquals(scoringWords("表現好的話再考慮看看"), ["再考慮看看"]);
+  assertEquals(scoringWords("下次再考慮帶妳去"), ["再考慮帶你"]);
+  // 「關」是另一個詞的開頭：關係、關於、關鍵、關心、關東煮都不算「這關」。
+  for (
+    const text of [
+      "這關係很好",
+      "這關於信任",
+      "這關鍵在時間",
+      "這關心來得剛好",
+      "這關東煮好香",
+    ]
+  ) {
+    assertEquals(scoringWords(text), [], text);
+  }
+  // 同一句兩種都有：只拿掉關係那個，關卡的照樣算。
+  assertEquals(scoringWords("我們這關係不錯，這關就算你過"), ["這關"]);
+});
+
+Deno.test("C5 推進卡請求句收尾：只看推進卡的最後一則，後面只能接標點或表情", () => {
+  const push = { voice: "預設" as const, task: "推進" as const };
+  const ends = (messages: string[]) =>
+    cardChecks(1, messages, push, []).endsWithRequest;
+  assertEquals(ends(["週六下午兩點，我來訂位", "可以嗎？😊"]), true);
+  assertEquals(ends(["週六去吃那家，好嗎❤️"]), true);
+  assertEquals(ends(["週日中午怎麼樣～～"]), true);
+  assertEquals(ends(["週六晚上空出來給我，方不方便👍🏻"]), true);
+  assertEquals(ends(["這樣約會不會太突然？"]), true);
+  // 句子裡有「可以」但用陳述句收尾，不算；請求只在開頭也不算。
+  assertEquals(ends(["我們可以見面"]), false);
+  assertEquals(ends(["可以嗎？", "週六我在出口等你"]), false);
+  assertEquals(ends(["要不要一起去看展"]), false);
+  // 不是推進卡：不檢查。
+  assertEquals(
+    cardChecks(1, ["可以嗎？"], { voice: "預設", task: "接住" }, [])
+      .endsWithRequest,
+    null,
+  );
+});
+
+Deno.test("C5 推進卡請求句（盤點的算法）：任何一句用請求句收尾就算，不一定在最後", () => {
+  const push = { voice: "預設" as const, task: "推進" as const };
+  const check = (messages: string[]) => {
+    const c = cardChecks(1, messages, push, []);
+    return [c.hasRequest, c.endsWithRequest];
+  };
+  assertEquals(check(["週六下午兩點可以嗎？我來訂位"]), [true, false]);
+  assertEquals(check(["週六可以嗎，我先去佔位子"]), [true, false]);
+  assertEquals(check(["週六下午兩點好嗎", "我來訂位"]), [true, false]);
+  assertEquals(check(["週六下午兩點，我來訂位", "可以嗎？"]), [true, true]);
+  // 「要不要」後面還有字、句子裡只有「可以」：都不是請求句。
+  assertEquals(check(["要不要一起去看展"]), [false, false]);
+  assertEquals(check(["我們可以見面"]), [false, false]);
+  assertEquals(
+    cardChecks(1, ["好嗎？"], { voice: "預設", task: "收" }, []).hasRequest,
+    null,
+  );
+});
+
+Deno.test("C5 內部條目編號：B 加兩位數字算一次；B12 維他命也算到，所以只記錄", () => {
+  const spec = { voice: "預設" as const, task: "接住" as const };
+  const ids = (messages: string[]) =>
+    cardChecks(1, messages, spec, []).internalIds;
+  assertEquals(ids(["照 B44 的寫法", "（B45）先接住"]), 2);
+  // 已知誤算：營養品名稱也長這樣。只進記錄，不拿掉卡。
+  assertEquals(ids(["記得吃 B12 維他命"]), 1);
+  // 全形也算（比對前先轉半形）。
+  assertEquals(ids(["Ｂ４４"]), 1);
+  // 不是兩位數字、或接在英數字中間的不算。
+  assertEquals(ids(["B612 小王子", "AB12", "B1 停車場", "B44A"]), 0);
+});
+
+Deno.test("C5 同一組開頭：第一則去掉標點表情後前 4 個字跟前面某張一樣就算一張", () => {
+  assertEquals(
+    sameOpeningCount([
+      ["哈哈哈哈妳也太扯"],
+      ["哈哈哈哈，我也是"],
+      ["哈哈，好啦"],
+      ["哈哈哈哈😂 真的"],
+    ]),
+    2,
+  );
+  // 「妳」「你」當成一樣；只比第一則。
+  assertEquals(
+    sameOpeningCount([["妳這樣說我很好奇"], ["你這樣說我就放心了"]]),
+    1,
+  );
+  assertEquals(
+    sameOpeningCount([["好巧", "我也是"], ["真的嗎", "我也是"]]),
+    0,
+  );
+  // 第一則不到 4 個字：整則一樣才算。
+  assertEquals(sameOpeningCount([["好啊"], ["好啊！"], ["好啊週六見"]]), 1);
+  // 只有表情的第一則沒有字可比，不算。
+  assertEquals(sameOpeningCount([["😂"], ["🤣🤣"], ["週末去爬山"]]), 0);
+  assertEquals(sameOpeningCount([]), 0);
 });
 
 Deno.test("v3.2：B44、B45（她直接問他）排在一般條目前面", () => {
