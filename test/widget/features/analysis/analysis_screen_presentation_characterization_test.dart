@@ -1248,15 +1248,16 @@ void main() {
           },
           'cards': const [],
           'partial': false,
-          // 先別回、停固定扣 1 則（伺服器 NO_SEND_MESSAGE_COUNT）。
+          // 先別回、停跟出卡一樣照字數扣（Eric 2026-10-19 照 Bruce 改回）；扣費行照伺服器
+          // 送來的則數寫，App 不自己算。
           'usage': {
-            'messagesUsed': 1,
-            'monthlyRemaining': 29,
-            'dailyRemaining': 4,
+            'messagesUsed': 3,
+            'monthlyRemaining': 27,
+            'dailyRemaining': 2,
           },
         })!;
 
-    testWidgets('先別回：沒有潤飾入口，改成一行小字「還是想回？先問教練」，點了直達問教練；扣費行寫 1 則',
+    testWidgets('先別回：沒有潤飾入口，改成一行小字「還是想回？先問教練」，點了直達問教練；扣費行照伺服器的則數',
         (tester) async {
       CoachChatAnalysisSnapshot? snapshot;
       await _pumpScreen(
@@ -1277,7 +1278,7 @@ void main() {
       expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
       expect(find.text('我已有草稿，幫我修自然'), findsNothing);
       expect(find.textContaining('還不確定該不該回'), findsNothing);
-      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      expect(find.text('本次分析使用 3 則・剩餘 27 則'), findsOneWidget);
       final link = find.byKey(const ValueKey('guide-v3-hold-coach-link'));
       expect(find.text('還是想回？先問教練'), findsOneWidget);
       await tester.ensureVisible(link);
@@ -1288,7 +1289,7 @@ void main() {
       expect(snapshot!.nextStep, '等她回你，再看她怎麼接');
     });
 
-    testWidgets('停：潤飾入口與小字連結都沒有；扣費行寫 1 則', (tester) async {
+    testWidgets('停：潤飾入口與小字連結都沒有；扣費行照伺服器的則數', (tester) async {
       await _pumpScreen(tester, seed: doneSeed(noSendResult('stop')));
       expect(find.text('先停在這裡'), findsOneWidget);
       expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
@@ -1298,7 +1299,7 @@ void main() {
         find.byKey(const ValueKey('guide-v3-hold-coach-link')),
         findsNothing,
       );
-      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      expect(find.text('本次分析使用 3 則・剩餘 27 則'), findsOneWidget);
     });
 
     testWidgets('出卡：潤飾入口照舊，沒有先別回的小字連結', (tester) async {

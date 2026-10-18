@@ -1,5 +1,6 @@
 /// 最後一則是他傳的：開始分析前先提醒（Eric 2026-10-18）。v3 看到最後一則是他的，
-/// 多半判「先別回」、扣 1 則；這裡讓他選要不要照樣分析，「先不要」什麼都不扣。
+/// 多半判「先別回」，跟出卡一樣照字數扣（Eric 2026-10-19 照 Bruce 改回，不再固定 1 則）；
+/// 這裡讓他選要不要照樣分析，「先不要」什麼都不扣。
 /// 只有對話分析的開始流程會叫（開場救星、新話題不走這裡）。
 library;
 
@@ -60,7 +61,7 @@ class HisLastMessageSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '教練多半會建議你先等她回，這種結果只用 1 則。',
+                  '教練多半會建議你先等她回。\n這種結果跟其他分析一樣，照字數扣。',
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.onBackgroundPrimary,
                     height: 1.5,

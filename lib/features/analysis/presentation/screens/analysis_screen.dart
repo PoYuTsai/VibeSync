@@ -3004,8 +3004,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return;
     }
 
-    // 最後一則是他傳的（Eric 2026-10-18）：v3 多半判先別回、扣 1 則，開始前先問；
-    // 「先不要」就什麼都不送、不扣。升級後的重新整理（skipPreview）不問。
+    // 最後一則是他傳的（Eric 2026-10-18）：v3 多半判先別回、照字數扣（Eric 2026-10-19），
+    // 開始前先問；「先不要」就什麼都不送、不扣。升級後的重新整理（skipPreview）不問。
     final analysisMessages = runGate.messagesForAnalysis;
     if (!skipPreview &&
         analysisMessages != null &&

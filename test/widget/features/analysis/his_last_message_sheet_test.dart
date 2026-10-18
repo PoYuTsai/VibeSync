@@ -23,10 +23,15 @@ Future<bool?> _open(WidgetTester tester, Future<void> Function() act) async {
 }
 
 void main() {
-  testWidgets('最後一則是你傳的（Eric 2026-10-18）：講先別回只用 1 則、還沒傳的改用幫我修', (tester) async {
+  testWidgets('最後一則是你傳的：講先別回跟其他分析一樣照字數扣（Eric 2026-10-19）、還沒傳的改用幫我修',
+      (tester) async {
     await _open(tester, () async {
       expect(find.text(hisLastMessageSheetTitle), findsOneWidget);
-      expect(find.text('教練多半會建議你先等她回，這種結果只用 1 則。'), findsOneWidget);
+      expect(
+        find.text('教練多半會建議你先等她回。\n這種結果跟其他分析一樣，照字數扣。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('1 則'), findsNothing);
       expect(
         find.text('還沒傳出去的話：長按這則刪掉再分析，分析完用「幫我修」改它。'),
         findsOneWidget,
