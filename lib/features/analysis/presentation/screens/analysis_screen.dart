@@ -327,6 +327,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   // 反覆測試每個 action 都看得到提醒。production 由 hint 旗標 gate 成
   // first-run only。
   int _coachMarkLastSeenMessageCount = 0;
+  // 「加入並開始分析」抬高上面那個則數之前的值。只壓那一批：下一次匯入新的一批時還原，
+  // 分析沒開始（存檔失敗、取消、「先不要」）時那批的則數才不會擋住之後比較少則的批次。
+  // 不在分析沒開始的當下還原：額度不夠按升級時付費頁已經蓋上來，提示掛在最上層會蓋住它
+  //（主審 P3，Eric 2026-10-18）。
+  int? _coachMarkCountBeforeOneTap;
 
   // 截圖 root ScaffoldMessenger reference，避免 dispose 時 context lookup 失敗。
   // 用於 dispose 時清除可能殘留的 SnackBar，避免 OCR 加入提示跨頁殘留
@@ -2208,11 +2213,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     required ScreenshotRecognitionDialogResult dialogResult,
     required RecognizedConversation recognized,
   }) async {
+    // 上一次「加入並開始分析」為那批抬過則數；這次匯入的是新的一批，先還原。
+    final countBeforeOneTap = _coachMarkCountBeforeOneTap;
+    if (countBeforeOneTap != null) {
+      _coachMarkCountBeforeOneTap = null;
+      _coachMarkLastSeenMessageCount = countBeforeOneTap;
+    }
     if (dialogResult.startAnalysis &&
         dialogResult.messages.length > _coachMarkLastSeenMessageCount) {
       // 「加入並開始分析」：這批匯入後就要開始分析，「長按可編輯」提示這次不排——它掛在
       // 最上層，會蓋住接著跳的最後一則提示或確認框。整批取代後就是這幾則；匯入前先記，
       // 存檔途中重畫也排不到。
+      _coachMarkCountBeforeOneTap = _coachMarkLastSeenMessageCount;
       _coachMarkLastSeenMessageCount = dialogResult.messages.length;
     }
     final commit = await _screenshotImport.commitImport(

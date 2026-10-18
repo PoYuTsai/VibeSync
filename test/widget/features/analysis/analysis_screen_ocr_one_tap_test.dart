@@ -23,6 +23,7 @@ import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart'
 import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/analysis/presentation/screens/analysis_screen.dart';
+import 'package:vibesync/features/analysis/presentation/sections/screenshot_intake_section.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/analysis_action_widgets.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/analysis_history/data/providers/analysis_history_providers.dart';
@@ -60,6 +61,11 @@ const _editHintDismissLabel = '知道了';
 /// 縮圖會真的渲染，bytes 要是合法圖檔：1x1 透明 PNG。
 final _imageBytes = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+);
+
+/// 同一頁換一批時選的第二張圖：另一個合法 1x1 PNG，快取照 bytes 分開記。
+final _laterImageBytes = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO46Z8HAAObAZd+AmgeAAAAAElFTkSuQmCC',
 );
 
 class _RecordingAnalyzeStreamClient extends AnalyzeStreamClient {
@@ -348,6 +354,8 @@ Future<_Harness> _pumpOcrScreen(
   WidgetTester tester, {
   required List<RecognizedMessage> recognizedMessages,
   SubscriptionState subscription = const SubscriptionState(),
+  // 同一頁換一批（[_repickAndRecognize]）時，第二張圖辨識出來的內容。
+  List<RecognizedMessage>? laterRecognizedMessages,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -363,6 +371,13 @@ Future<_Harness> _pumpOcrScreen(
       conversationId: _conversationId,
       recognizedConversation: _recognized(recognizedMessages),
     );
+    if (laterRecognizedMessages != null) {
+      await OcrRecognitionCacheService.write(
+        images: [_laterImageBytes],
+        conversationId: _conversationId,
+        recognizedConversation: _recognized(laterRecognizedMessages),
+      );
+    }
     return directory;
   }))!;
   addTearDown(() async {
@@ -468,6 +483,22 @@ Future<void> _recognize(WidgetTester tester) async {
   await tester.tap(recognizeButton);
   // 開始分析前只有有限次的動畫（確認框的滑動教學播兩輪就停），可以 settle。
   await tester.pumpAndSettle();
+  expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
+}
+
+/// 同一頁換一批再辨識：「重新選圖」挑好圖之後走的就是這個入口（相簿是平台外掛，
+/// 測試不開）。已經有匯入的內容，按鈕寫「辨識並取代本次內容」。
+Future<void> _repickAndRecognize(WidgetTester tester) async {
+  final intake =
+      tester.state(find.byType(AnalysisScreen)) as ScreenshotIntakeActions;
+  intake.selectedImagesChanged([_laterImageBytes]);
+  await tester.pump();
+  final recognizeButton = find.text('辨識並取代本次內容（1 張）');
+  await tester.ensureVisible(recognizeButton);
+  await tester.tap(recognizeButton);
+  await _pumpFrames(tester);
+  // 辨識計時器每秒才醒一次、辨識完下一次醒來才停：推過一秒，測試結束時不留計時器。
+  await tester.pump(const Duration(seconds: 1));
   expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
 }
 
@@ -741,6 +772,42 @@ void main() {
   // 主審 P3 補測（Eric 2026-10-18「不接受，先處理」）：按了「加入並開始分析」、分析卻沒
   // 開始的幾條路。扣額只在送出的那一次請求，所以「沒送」就是「沒扣」。
   group('加入並開始分析：分析沒開始的路', () {
+    testWidgets('先不要之後，同一頁換一批比較少則的（先存起來）：「長按可編輯」提示照常出現', (tester) async {
+      // 第一批 8 則、最後一則他的（會先問）；第二批 2 則，比第一批少。
+      final first = [
+        for (var i = 1; i <= 7; i++) _her('第$i則'),
+        _me('那我先去忙'),
+      ];
+      final later = [_her('剛到家'), _her('你呢')];
+      final harness = await _pumpOcrScreen(
+        tester,
+        recognizedMessages: first,
+        laterRecognizedMessages: later,
+      );
+      await _recognize(tester);
+      await _tapInDialog(tester, _analyzeLabel);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('his-last-message-cancel')));
+      await _pumpFrames(tester);
+
+      expect(harness.recorder.streamCalls, 0);
+      expect(
+          _contents(harness.conversation.messages), _recognizedContents(first));
+      expect(find.text(_editHintDismissLabel), findsNothing,
+          reason: '按「加入並開始分析」的那一批照原本的決定不排提示');
+
+      await _repickAndRecognize(tester);
+      await _tapInDialog(tester, _importOnlyLabel);
+
+      expect(later.length, lessThan(first.length));
+      expect(
+          _contents(harness.conversation.messages), _recognizedContents(later),
+          reason: '第二批整批取代第一批');
+      expect(harness.recorder.streamCalls, 0);
+      expect(find.text(_editHintDismissLabel), findsOneWidget,
+          reason: '上一批的分析沒開始，那批的則數不能擋住這一批的第一次提示');
+    });
+
     // 兩個鈕同一套期待：「先存起來」就是今天的匯入失敗，「加入並開始分析」要跟它一樣。
     for (final label in [_importOnlyLabel, _analyzeLabel]) {
       testWidgets('匯入存檔失敗（按「$label」）：照今天的匯入失敗顯示，一次都不送', (tester) async {
