@@ -45,6 +45,12 @@ class _Sub extends SubscriptionNotifier {
   /// 同上，換成本月只剩 2 則。
   void exhaustMonthly() => state = SubscriptionState(
       tier: subTier, monthlyLimit: 30, dailyLimit: 15, monthlyMessagesUsed: 28);
+
+  /// 訂閱狀態同步成另一個方案（例如用戶剛升級）。
+  void setTier(String tier) {
+    subTier = tier;
+    state = SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 15);
+  }
 }
 
 class _FakeService extends NewTopicService {
@@ -284,10 +290,12 @@ void main() {
     style = '有效風格';
     final container = await _pump(t, paywallRoute: true);
     await _tapGenerate(t);
+    // 擋下的是今日額度：畫面照目前方案（免費）組說明（主審第 1 輪 P2-2）。
     _service.replies.single.completeError(const NewTopicQuotaExceededException(
-        message: '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。',
+        message: '今日額度不足。',
         dailyRemaining: 1,
-        quotaNeeded: 3));
+        quotaNeeded: 3,
+        isMonthly: false));
     // 伺服器擋下後會自動開一次付費牆；刷新拿到今日只剩 1 則。
     (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
     await t.pumpAndSettle();
@@ -433,6 +441,55 @@ void main() {
     expect(message, isNot(contains('升級')));
     expect(paywallExtras.first,
         PaywallEntry.forQuota(isMonthly: true, remaining: 3));
+  });
+
+  // 升級後重試（主審第 1 輪 P2-2）：上一筆以 Starter 送出、連線中斷沒拿到結果（自動接回
+  // 一次也斷），留著待重試；用戶之後升級成 Essential，回來重試同一筆（請求照舊帶原本的
+  // expectedTier），伺服器回額度 429。說明照目前的訂閱方案（Essential）說，不照那筆請求
+  // 帶的方案。
+  testWidgets('升級後重試：待重試那筆是 Starter 送的，現在是 Essential，429 只說什麼時候恢復', (t) async {
+    subTier = SubscriptionTierHelper.starter;
+    style = '有效風格';
+    final sentTiers = <Object?>[];
+    NewTopicView.debugServiceFactory = () => NewTopicService(
+          accessTokenProvider: () => 'token',
+          streamClientFactory: () =>
+              MockClient.streaming((request, bodyStream) async {
+            final sent = jsonDecode(await utf8.decodeStream(bodyStream))
+                as Map<String, dynamic>;
+            sentTiers.add(sent['expectedTier']);
+            if (sentTiers.length <= 2) {
+              throw http.ClientException('connection closed');
+            }
+            return http.StreamedResponse(
+                Stream.value(utf8.encode(jsonEncode(quota429(monthly: false)))),
+                429,
+                headers: {'content-type': 'application/json'});
+          }),
+        );
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    await t.pumpAndSettle();
+    expect(find.text('重試'), findsOneWidget, reason: '連線中斷：那筆留著待重試');
+    final sub = container.read(subscriptionProvider.notifier) as _Sub;
+    sub.setTier(SubscriptionTierHelper.essential);
+    await t.pump();
+    await _tapGenerate(t);
+    // 伺服器擋下後會自動開一次付費牆；刷新拿到的用量也不夠這次的 3 則。
+    sub.exhaustDaily();
+    await t.pumpAndSettle();
+    expect(sentTiers, List.filled(3, SubscriptionTierHelper.starter),
+        reason: '重試照舊送原本那筆的請求資料');
+    expect(paywallOpens, 1);
+    expect(
+        paywallExtras, [PaywallEntry.forQuota(isMonthly: false, remaining: 1)]);
+    final message =
+        t.widget<Text>(find.textContaining('額度不足，', skipOffstage: false)).data!;
+    expect(message, contains(kDailyQuotaResetLine));
+    expect(message, isNot(contains('升級')));
+    await t.tap(find.text('關閉付費牆'));
+    await t.pumpAndSettle();
+    expect(quotaButtonLabel(t), NewTopicView.viewPlansButtonLabel);
   });
 
   testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {

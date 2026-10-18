@@ -333,11 +333,9 @@ class OpenerQuotaExceededException implements Exception {
   final int? dailyRemaining;
   final int? quotaNeeded;
 
-  /// 擋下的是本月額度（不然是今日）：付費頁照這個換大標（Eric 2026-10-18）。
+  /// 擋下的是本月額度（不然是今日），照伺服器的 quotaScope：畫面照這個組說明、
+  /// 付費頁照這個換大標（Eric 2026-10-18）。
   final bool isMonthly;
-
-  /// [message] 有沒有提升級（Essential 沒有）；錯誤下方的鈕跟著換字。
-  final bool canUpgrade;
 
   const OpenerQuotaExceededException({
     required this.message,
@@ -345,7 +343,6 @@ class OpenerQuotaExceededException implements Exception {
     this.dailyRemaining,
     this.quotaNeeded,
     this.isMonthly = true,
-    this.canUpgrade = true,
   });
 
   /// 擋下的那個額度還剩幾則。
@@ -403,8 +400,7 @@ class OpenerService {
     final response = await _invoke('analyze-chat', body: body);
 
     if (response.status != 200) {
-      _throwForErrorResponse(response.status, response.data,
-          tier: expectedTier);
+      _throwForErrorResponse(response.status, response.data);
     }
     return _parseSuccessData(response.data as Map<String, dynamic>);
   }
@@ -474,8 +470,7 @@ class OpenerService {
           decoded = null;
         }
         if (response.statusCode != 200) {
-          _throwForErrorResponse(response.statusCode, decoded,
-              tier: expectedTier);
+          _throwForErrorResponse(response.statusCode, decoded);
         }
         if (decoded is! Map<String, dynamic>) {
           throw Exception('開場產生格式異常，請重新生成一次。');
@@ -515,7 +510,7 @@ class OpenerService {
             throw Exception('開場產生格式異常，請重新生成一次。');
           case 'opener.error':
             final status = (decoded['status'] as num?)?.round() ?? 500;
-            _throwForErrorResponse(status, decoded, tier: expectedTier);
+            _throwForErrorResponse(status, decoded);
           default:
             continue; // 未知事件型別向前相容：忽略。
         }
@@ -569,7 +564,6 @@ class OpenerService {
       eventPrefix: 'opener_analyze',
       onProgress: onProgress,
       flow: true,
-      tier: expectedTier,
     );
     final analysis = OpenerAnalysis.tryParse(data);
     if (analysis == null || data['stage'] != 'analyze') {
@@ -614,7 +608,6 @@ class OpenerService {
       eventPrefix: 'opener_generate',
       onProgress: onProgress,
       flow: true,
-      tier: expectedTier,
     );
     final generation = OpenerGeneration.fromServerBody(
       data,
@@ -633,13 +626,11 @@ class OpenerService {
 
   /// 共用 NDJSON 傳輸：done 事件帶整包 body；非 200 或 legacy JSON 走
   /// [_throwForErrorResponse]。[flow] 為 true 時錯誤先對映成 [OpenerFlowException]。
-  /// [tier] 是這次請求帶的 expectedTier，額度說法照它換。
   Future<Map<String, dynamic>> _postStreaming({
     required Map<String, dynamic> body,
     required String eventPrefix,
     void Function(String label, String? phase)? onProgress,
     bool flow = false,
-    String? tier,
   }) async {
     final accessToken = _accessTokenProvider();
     if (accessToken == null) {
@@ -673,8 +664,8 @@ class OpenerService {
           decoded = null;
         }
         if (response.statusCode != 200) {
-          if (flow) _throwFlowError(response.statusCode, decoded, tier: tier);
-          _throwForErrorResponse(response.statusCode, decoded, tier: tier);
+          if (flow) _throwFlowError(response.statusCode, decoded);
+          _throwForErrorResponse(response.statusCode, decoded);
         }
         if (decoded is! Map<String, dynamic>) {
           throw Exception('開場產生格式異常，請重新生成一次。');
@@ -710,8 +701,8 @@ class OpenerService {
           throw Exception('開場產生格式異常，請重新生成一次。');
         } else if (type == '$eventPrefix.error') {
           final status = (decoded['status'] as num?)?.round() ?? 500;
-          if (flow) _throwFlowError(status, decoded, tier: tier);
-          _throwForErrorResponse(status, decoded, tier: tier);
+          if (flow) _throwFlowError(status, decoded);
+          _throwForErrorResponse(status, decoded);
         }
       }
       throw Exception('連線中斷，請再試一次；同一筆請求重試不會重複扣額度。');
@@ -728,14 +719,14 @@ class OpenerService {
   /// paywall）；其他帶 code 的錯誤→[OpenerFlowException]；400 卻沒有 code＝
   /// 舊 Edge 不認識兩段式 mode → OPENER_FLOW_UNSUPPORTED（呼叫端退回舊單段，
   /// 只限尚未進入兩段式的局）。
-  Never _throwFlowError(int status, dynamic errorData, {String? tier}) {
+  Never _throwFlowError(int status, dynamic errorData) {
     if (errorData is Map) {
       final code = errorData['code'];
       if (status == 429 &&
           code != OpenerFlowErrorCode.modelRateLimited &&
           (errorData['monthlyLimit'] != null ||
               errorData['dailyLimit'] != null)) {
-        _throwForErrorResponse(status, errorData, tier: tier);
+        _throwForErrorResponse(status, errorData);
       }
       // 只收中文訊息；平台英文錯誤（WORKER_LIMIT、BOOT_ERROR）改用通用中文。
       final message = _localizedMessage(errorData['message']);
@@ -777,7 +768,7 @@ class OpenerService {
         );
       }
     }
-    _throwForErrorResponse(status, errorData, tier: tier);
+    _throwForErrorResponse(status, errorData);
   }
 
   Map<String, dynamic> _buildRequestBody({
@@ -834,9 +825,8 @@ class OpenerService {
     };
   }
 
-  /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。[tier] 是這次
-  /// 請求帶的 expectedTier，額度說法照它換。
-  Never _throwForErrorResponse(int status, dynamic errorData, {String? tier}) {
+  /// 非 200 的統一對映（legacy 與 stream 共用）：一定 throw。
+  Never _throwForErrorResponse(int status, dynamic errorData) {
     if (status == 429 && errorData is Map) {
       // server 端 per-user 模型呼叫限流（MODEL_RATE_LIMITED）不是訂閱額度：
       // 絕不 throw OpenerQuotaExceededException（那會誤開 paywall），
@@ -855,20 +845,16 @@ class OpenerService {
           errorData['message'] as String? ?? '請求太頻繁，請稍後再試。',
         );
       }
-      // 說法照方案自己組（Eric 2026-10-18）：伺服器的 message 不分方案、一律叫人
-      // 升級；Essential 已經是最高方案，只說什麼時候恢復。
+      // 只帶結構化資料（Eric 2026-10-18）：伺服器的 message 不分方案、一律叫人升級，
+      // 畫面照目前訂閱方案自己組說明（跟付費頁大標同一個來源，主審第 1 輪 P2-2／
+      // P2-3）。這裡的 message 只當紀錄與保底：不提升級，也不說恢復時間。
       final isMonthly = quotaPayloadIsMonthly(errorData);
       throw OpenerQuotaExceededException(
-        message: quotaShortMessage(
-          tier: tier,
-          isMonthly: isMonthly,
-          feature: '開場',
-        ),
+        message: isMonthly ? '本月額度不足。' : '今日額度不足。',
         monthlyRemaining: (errorData['monthlyRemaining'] as num?)?.round(),
         dailyRemaining: (errorData['dailyRemaining'] as num?)?.round(),
         quotaNeeded: (errorData['quotaNeeded'] as num?)?.round(),
         isMonthly: isMonthly,
-        canUpgrade: canUpgradeQuota(tier),
       );
     }
 

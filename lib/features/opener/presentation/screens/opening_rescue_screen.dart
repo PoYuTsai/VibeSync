@@ -19,6 +19,7 @@ import '../../../../shared/widgets/warm_theme_widgets.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../subscription/presentation/paywall_entry.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../../../core/services/usage_service.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../../shared/widgets/ai_data_sharing_consent.dart';
@@ -355,6 +356,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   final Set<String> _completedStreamPhases = {};
   OpenerResult? _result;
   String? _error;
+
+  /// 舊單段生成撞到的額度錯誤：說明在顯示時才照目前方案組（見 [_shownError]）。
+  OpenerQuotaExceededException? _legacyQuotaError;
   final _scrollController = ScrollController();
   // 2026-08-18 呈現精修：完成後定格在結果區頂部（開場白建議），不再捲到底
   // 把 5 張卡整個略過。
@@ -629,6 +633,22 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     return false;
   }
 
+  /// 額度不足的說法在顯示時照目前訂閱方案組（主審第 1 輪 P2-2／P2-3）：跟付費頁
+  /// 大標同一個來源，不用請求帶的 expectedTier（RevenueCat 可能比訂閱快照高）。
+  /// [error] 正是這筆額度錯誤時才換，其他錯誤照原文。
+  String _shownError(
+    String error,
+    OpenerQuotaExceededException? quotaError,
+    String tier,
+  ) =>
+      quotaError != null && error == quotaError.message
+          ? quotaShortMessage(
+              tier: tier,
+              isMonthly: quotaError.isMonthly,
+              feature: '開場',
+            )
+          : error;
+
   /// 伺服器回額度不足時開付費頁的入口：每月或每日、用完或只是不夠，跟分析頁
   /// 同一套大標（Eric 2026-10-18）。
   PaywallEntry _quotaEntryFor(OpenerQuotaExceededException error) =>
@@ -889,6 +909,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           hasImages: input.images?.isNotEmpty ?? false,
         );
         _error = null;
+        _legacyQuotaError = null;
         _result = null;
         _currentDraftId = null;
       });
@@ -1009,6 +1030,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         if (current()) {
           setState(() {
             _error = e.message;
+            _legacyQuotaError = e;
             _isGenerating = false;
           });
           await _showPaywallAndRefresh(entry: _quotaEntryFor(e));
@@ -1416,21 +1438,23 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             child: Column(
               children: [
                 Text(
-                  _error!,
+                  _shownError(_error!, state.quotaError, subscription.tier),
                   key: const ValueKey('opener-flow-error'),
                   style:
                       AppTypography.bodyMedium.copyWith(color: AppColors.error),
                   textAlign: TextAlign.center,
                 ),
                 // 額度不足：同一筆再試只會再被擋（升級頁關掉後還留著這行），給付費頁入口。
-                // Essential 已經是最高方案，鈕只寫「查看方案」（Eric 2026-10-18）。
+                // Essential 已經是最高方案，鈕只寫「查看方案」；照目前訂閱方案，跟說明、
+                // 付費頁大標同一個來源（Eric 2026-10-18）。
                 if (state.quotaError != null && !state.isBusy)
                   TextButton(
                     key: const ValueKey('opener-upgrade-button'),
                     onPressed: AppHaptics.onPress(() => unawaited(
                         _showPaywallAndRefresh(
                             entry: _quotaEntryFor(state.quotaError!)))),
-                    child: Text(state.quotaError!.canUpgrade ? '升級方案' : '查看方案'),
+                    child: Text(
+                        canUpgradeQuota(subscription.tier) ? '升級方案' : '查看方案'),
                   )
                 else if (state.failedOperation != null &&
                     !state.isBusy &&
@@ -1583,7 +1607,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           padding: const EdgeInsets.only(top: 8),
           child: Center(
             child: Text(
-              _error!,
+              _shownError(_error!, _legacyQuotaError, subscription.tier),
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.error,
               ),

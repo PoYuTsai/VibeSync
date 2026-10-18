@@ -111,6 +111,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
   final Set<String> _completedStreamPhases = {};
   NewTopicResult? _result;
   String? _error;
+
+  /// 伺服器回的額度錯誤：說明在顯示時才照目前方案組（見 [_shownError]）。
+  NewTopicQuotaExceededException? _quotaError;
   bool _isGenerating = false;
   bool _preparing = false;
   final _partnerFocus = FocusNode();
@@ -414,6 +417,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     setState(() {
       _preparing = true;
       _error = null;
+      _quotaError = null;
       _quotaRejectedRequestId = null;
     });
     try {
@@ -519,6 +523,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (!current()) return;
       setState(() {
         _error = e.message;
+        _quotaError = e;
         _quotaRejectedRequestId = requestSession
             .pendingFor(
                 partnerId: partnerId,
@@ -595,6 +600,20 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     } catch (_) {
       /* A delivered result does not depend on subscription refresh. */
     }
+  }
+
+  /// 額度不足的說法在顯示時照目前訂閱方案組（主審第 1 輪 P2-2）：重試時請求照舊帶
+  /// 那筆的 expectedTier，說明卻要照用戶現在的方案（跟付費頁大標同一個來源）。
+  /// [error] 正是這筆額度錯誤時才換，其他錯誤照原文。
+  String _shownError(String error, String tier) {
+    final quotaError = _quotaError;
+    return quotaError != null && error == quotaError.message
+        ? quotaShortMessage(
+            tier: tier,
+            isMonthly: quotaError.isMonthly,
+            feature: '新話題',
+          )
+        : error;
   }
 
   /// 額度不夠時開付費頁的入口：跟伺服器一樣先看本月、再看今天，付費頁照每月或
@@ -864,7 +883,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                       liveRegion: true,
                       child: Center(
                         child: Text(
-                          _error!,
+                          _shownError(_error!, usage.tier),
                           style: AppTypography.bodyMedium
                               .copyWith(color: AppColors.error),
                           textAlign: TextAlign.center,

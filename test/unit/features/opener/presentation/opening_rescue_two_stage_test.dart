@@ -15,9 +15,12 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
+import 'package:vibesync/core/services/revenuecat_service.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_view.dart';
@@ -31,6 +34,7 @@ import 'package:vibesync/features/opener/presentation/widgets/opener_flow_sectio
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
+import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
@@ -81,6 +85,7 @@ class _FakeOpenerService extends OpenerService {
   String? lastFreeText;
   String? lastState;
   Object? generateError;
+  String? lastExpectedTier;
 
   @override
   Future<OpenerAnalysis> analyzeProfileStreaming({
@@ -160,6 +165,7 @@ class _FakeOpenerService extends OpenerService {
     generateCalls += 1;
     lastFreeText = contribution.freeText;
     lastState = contribution.stateWire;
+    lastExpectedTier = expectedTier;
     generationProgress = onProgress;
     if (_generateTransport != null) {
       return super.generateFromAnalysisStreaming(
@@ -234,18 +240,20 @@ class _FakeOpenerService extends OpenerService {
   }
 }
 
-Widget _screen({String tier = SubscriptionTierHelper.free}) => ProviderScope(
-      overrides: [
-        authConversationScopeProvider.overrideWith((_) => const Stream.empty()),
-        partnerListProvider.overrideWith((_) => const []),
-        // 結果區的回報列會讀 coaching outcome Hive box；本測試不開那個 box。
-        coachingOutcomeEventProvider.overrideWith((ref, id) => null),
-        subscriptionProvider.overrideWith(
-          (ref) => _SeededSubscriptionNotifier(
-            SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 10),
-          ),
+List<Override> _screenOverrides(String tier) => [
+      authConversationScopeProvider.overrideWith((_) => const Stream.empty()),
+      partnerListProvider.overrideWith((_) => const []),
+      // 結果區的回報列會讀 coaching outcome Hive box；本測試不開那個 box。
+      coachingOutcomeEventProvider.overrideWith((ref, id) => null),
+      subscriptionProvider.overrideWith(
+        (ref) => _SeededSubscriptionNotifier(
+          SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 10),
         ),
-      ],
+      ),
+    ];
+
+Widget _screen({String tier = SubscriptionTierHelper.free}) => ProviderScope(
+      overrides: _screenOverrides(tier),
       child: const OpeningRescueScreen(),
     );
 
@@ -283,6 +291,63 @@ Future<void> _pumpManualWithPaywall(WidgetTester tester,
   await tester.pump(const Duration(milliseconds: 600));
   await tester.tap(find.text('手動輸入'));
   await tester.pumpAndSettle();
+}
+
+/// 付費頁換成真的 PaywallScreen（大標照訂閱方案）。訂閱刷新換成不動狀態：這個測試樹
+/// 沒登入，真的刷新會把方案刷成免費。
+Future<void> _pumpManualWithRealPaywall(WidgetTester tester,
+    {required String tier}) async {
+  await tester.binding.setSurfaceSize(const Size(390, 4200));
+  // 付費頁跟開場救星要在同一個 ProviderScope：大標讀的是同一份訂閱狀態。
+  await tester.pumpWidget(ProviderScope(
+      overrides: [
+        ..._screenOverrides(tier),
+        subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+        funnelTrackerProvider.overrideWithValue(
+            FunnelTracker(invoker: (_, {required body}) async => 200)),
+      ],
+      child: MaterialApp.router(
+          routerConfig: GoRouter(routes: [
+        GoRoute(path: '/', builder: (_, __) => const OpeningRescueScreen()),
+        GoRoute(
+            path: '/paywall',
+            builder: (context, state) {
+              _paywallOpens++;
+              _paywallExtras.add(state.extra);
+              return PaywallScreen(
+                  entry: PaywallEntry.fromRouteExtra(state.extra));
+            }),
+      ]))));
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.tap(find.text('手動輸入'));
+  await tester.pumpAndSettle();
+}
+
+/// RevenueCat 那邊已經是 Essential（訂閱快照可能還沒跟上）。
+CustomerInfo _essentialCustomerInfo() {
+  final now = DateTime.now().toIso8601String();
+  final entitlements = {
+    SubscriptionTierHelper.essential: EntitlementInfo(
+      SubscriptionTierHelper.essential,
+      true,
+      true,
+      now,
+      now,
+      'essential_monthly',
+      true,
+    ),
+  };
+  return CustomerInfo(
+    EntitlementInfos(entitlements, entitlements),
+    const {},
+    const ['essential_monthly'],
+    const ['essential_monthly'],
+    const [],
+    now,
+    'rc-user',
+    const {},
+    now,
+  );
 }
 
 /// 結果區有長駐動畫（SwipeHintNudge repeat 34 輪），不能 pumpAndSettle；
@@ -597,8 +662,9 @@ void main() {
     _paywallOpens = 0;
     await _pumpManualWithPaywall(tester);
     await _analyze(tester);
+    // service 只帶結構化資料；說明由畫面照方案組（免費：照舊說升級）。
     service.generateError = const OpenerQuotaExceededException(
-        message: '本月額度不足，升級方案可取得更多開場與分析額度。', monthlyRemaining: 0);
+        message: '本月額度不足。', monthlyRemaining: 0);
     await _tapAndSettleAsync(
         tester, find.byKey(const ValueKey('opener-generate-button')),
         until: find.text('關閉付費牆'));
@@ -737,6 +803,49 @@ void main() {
     expect(shown.message, isNot(contains('升級')));
     expect(
         _paywallExtras, [PaywallEntry.forQuota(isMonthly: true, remaining: 3)]);
+  });
+
+  // 方案來源不一致（主審第 1 輪 P2-3）：RevenueCat 已是 Essential、訂閱快照還是 Starter。
+  // 請求照舊帶 RevenueCat 較高的方案；說明、按鈕跟真的付費頁大標都照訂閱方案，三者一致。
+  testWidgets('RevenueCat 是 Essential、訂閱快照是 Starter：說明、按鈕跟真的付費頁大標都照訂閱方案',
+      (tester) async {
+    RevenueCatService.debugGetCustomerInfoOverride =
+        () async => _essentialCustomerInfo();
+    addTearDown(() => RevenueCatService.debugGetCustomerInfoOverride = null);
+    await _pumpManualWithRealPaywall(tester,
+        tier: SubscriptionTierHelper.starter);
+    await _analyze(tester);
+    _generateTransport = MockClient.streaming((request, bodyStream) async {
+      await bodyStream.drain<void>();
+      return http.StreamedResponse(
+          Stream.value(utf8.encode(jsonEncode(quota429(monthly: false)))), 429,
+          headers: {'content-type': 'application/json'});
+    });
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-generate-button')),
+        until: find.byType(PaywallScreen));
+    expect(service.lastExpectedTier, SubscriptionTierHelper.essential,
+        reason: '請求照舊帶 RevenueCat 較高的方案');
+    expect(_paywallExtras,
+        [PaywallEntry.forQuota(isMonthly: false, remaining: 1)]);
+    expect(
+        find.text(PaywallEntry.dailyQuotaShort
+            .headlineFor(SubscriptionTierHelper.starter)),
+        findsOneWidget,
+        reason: '真的付費頁照訂閱方案出大標');
+    final message = tester
+        .widget<Text>(find.byKey(const ValueKey('opener-flow-error'),
+            skipOffstage: false))
+        .data!;
+    expect(message, '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
+    final button = tester
+        .widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('opener-upgrade-button'),
+                skipOffstage: false),
+            matching: find.byType(Text, skipOffstage: false),
+            skipOffstage: false))
+        .data!;
+    expect(button, '升級方案');
   });
 
   testWidgets('略過，直接生成：送出 skipped、結果沒有採用說明', (tester) async {

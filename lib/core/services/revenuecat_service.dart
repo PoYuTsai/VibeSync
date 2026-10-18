@@ -32,6 +32,10 @@ class RevenueCatService {
   @visibleForTesting
   static Future<List<StoreProduct>> Function(List<String> productIds)?
       debugGetSubscriptionProductsOverride;
+  // 開場救星、新話題送出前拿 RevenueCat 的方案當請求的 expectedTier：測試要能
+  // 模擬 RevenueCat 比訂閱快照高的情況（主審第 1 輪 P2-3）。
+  @visibleForTesting
+  static Future<CustomerInfo?> Function()? debugGetCustomerInfoOverride;
 
   static const MethodChannel _subscriptionManagementChannel = MethodChannel(
     'vibesync/subscription_management',
@@ -95,6 +99,7 @@ class RevenueCatService {
     debugSyncPurchasesAndRefreshCustomerInfoOverride = null;
     debugGetOfferingsOverride = null;
     debugGetSubscriptionProductsOverride = null;
+    debugGetCustomerInfoOverride = null;
   }
 
   /// 關聯用戶 ID（登入後呼叫）
@@ -209,6 +214,8 @@ class RevenueCatService {
 
   /// 取得目前訂閱狀態
   static Future<CustomerInfo?> getCustomerInfo() async {
+    final override = debugGetCustomerInfoOverride;
+    if (override != null) return override();
     if (!_isInitialized) return null;
 
     try {
