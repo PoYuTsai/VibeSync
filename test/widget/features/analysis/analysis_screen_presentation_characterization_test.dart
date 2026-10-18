@@ -1090,6 +1090,80 @@ void main() {
       expect(find.text('這個建議有幫助嗎？'), findsNothing);
       expect(find.text('分析新片段'), findsOneWidget);
     });
+
+    GuideV3Result noSendResult(String decision) => GuideV3Result.fromJson({
+          'guideVersion': 'v3.5',
+          'read': {
+            'guideVersion': 'v3.5',
+            'decision': decision,
+            'light': 'red',
+            'judgment': '球在她那邊，先等她。',
+            if (decision == 'hold') 'waitFor': '等她回你，再看她怎麼接',
+            'plannedCards': const [],
+          },
+          'cards': const [],
+          'partial': false,
+          // 先別回、停固定扣 1 則（伺服器 NO_SEND_MESSAGE_COUNT）。
+          'usage': {
+            'messagesUsed': 1,
+            'monthlyRemaining': 29,
+            'dailyRemaining': 4,
+          },
+        })!;
+
+    testWidgets('先別回：沒有潤飾入口，改成一行小字「還是想回？先問教練」，點了直達問教練；扣費行寫 1 則',
+        (tester) async {
+      CoachChatAnalysisSnapshot? snapshot;
+      await _pumpScreen(
+        tester,
+        seed: doneSeed(noSendResult('hold')),
+        extraRoutes: [
+          GoRoute(
+            path: '/coach',
+            builder: (_, state) {
+              snapshot = state.extra as CoachChatAnalysisSnapshot?;
+              return const Text('coach-route');
+            },
+          ),
+        ],
+      );
+      await dismissEditCoachMark(tester);
+      expect(find.text('先別回'), findsOneWidget);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
+      expect(find.text('我已有草稿，幫我修自然'), findsNothing);
+      expect(find.textContaining('還不確定該不該回'), findsNothing);
+      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+      final link = find.byKey(const ValueKey('guide-v3-hold-coach-link'));
+      expect(find.text('還是想回？先問教練'), findsOneWidget);
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(find.text('coach-route'), findsOneWidget);
+      expect(snapshot!.summary, '球在她那邊，先等她。');
+      expect(snapshot!.nextStep, '等她回你，再看她怎麼接');
+    });
+
+    testWidgets('停：潤飾入口與小字連結都沒有；扣費行寫 1 則', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(noSendResult('stop')));
+      expect(find.text('先停在這裡'), findsOneWidget);
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsNothing);
+      expect(find.text('我已有草稿，幫我修自然'), findsNothing);
+      expect(find.textContaining('還不確定該不該回'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('guide-v3-hold-coach-link')),
+        findsNothing,
+      );
+      expect(find.text('本次分析使用 1 則・剩餘 29 則'), findsOneWidget);
+    });
+
+    testWidgets('出卡：潤飾入口照舊，沒有先別回的小字連結', (tester) async {
+      await _pumpScreen(tester, seed: doneSeed(finalResult()));
+      expect(find.byKey(const ValueKey('draft-polish-entry')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('guide-v3-hold-coach-link')),
+        findsNothing,
+      );
+    });
   });
 
   group('空片段起始畫面', () {

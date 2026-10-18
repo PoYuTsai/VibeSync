@@ -331,6 +331,11 @@ class GuideV3Result {
     return raw.map((key, value) => MapEntry(key.toString(), value));
   }
 
+  /// 結果頁給不給「我已有草稿，幫我修自然」：只有出卡與收尾給（Eric 2026-10-18）。潤飾會
+  /// 保留草稿想說的事、只把壓力調低，停（她拒絕或封鎖）時等於幫他繼續施壓；先別回改成
+  /// 導去問教練；固定訊息本來就不給。
+  bool get offersDraftPolish => read.decision.hasCards;
+
   /// 固定訊息（自傷關心、涉及未成年）不扣費（伺服器 chargeQuota=false），存檔不推進字數
   /// 基準；畫面不給問教練、潤飾與回饋。
   bool get isCare => read.decision == GuideV3Decision.care;

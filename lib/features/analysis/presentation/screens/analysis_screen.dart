@@ -4663,8 +4663,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
                           // 草稿潤飾：獨立面板入口（2026-08-16 Bruce 回饋，
                           // 從收合卡升級成整頁式）。判斷/策略仍交給 Coach 1:1。
+                          // v3 只在出卡與收尾給；停不給，先別回換成一行小字導去
+                          // 問教練（Eric 2026-10-18，見 offersDraftPolish）。
                           if (_hasAnalysisResult &&
-                              !(_v3Result?.isCare ?? false)) ...[
+                              (_v3Result?.offersDraftPolish ?? true)) ...[
                             const SizedBox(height: 24),
                             DraftPolishEntryCard(
                               onOpen: _openDraftPolishSheet,
@@ -4673,6 +4675,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 label: '潤飾草稿',
                               ),
                             ),
+                          ] else if (_hasAnalysisResult &&
+                              _v3Result?.decision == GuideV3Decision.hold) ...[
+                            const SizedBox(height: 12),
+                            GuideV3HoldCoachLink(onTap: _openCoachQuestion),
                           ],
 
                           // 一致性提醒

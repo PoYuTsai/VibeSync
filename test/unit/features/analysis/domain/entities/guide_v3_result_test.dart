@@ -242,6 +242,20 @@ void main() {
       expect(GuideV3Result.fromJson(_final(read: {'decision': 'x'})), isNull);
     });
 
+    test('潤飾入口只在出卡與收尾給：先別回、停、固定訊息都不給', () {
+      bool offers(String decision) => GuideV3Result.fromJson({
+            'guideVersion': 'v3.5',
+            'read': _read(decision: decision, plannedCards: const []),
+            'cards': const [],
+          })!
+              .offersDraftPolish;
+      expect(offers('send'), isTrue);
+      expect(offers('close'), isTrue);
+      expect(offers('hold'), isFalse);
+      expect(offers('stop'), isFalse);
+      expect(offers('care'), isFalse);
+    });
+
     test('關心沒有卡、不扣費', () {
       final result = GuideV3Result.fromJson(_final(
         read: _read(
