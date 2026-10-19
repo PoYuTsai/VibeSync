@@ -1858,6 +1858,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
             mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_MEMORY")),
             accountIsTest,
           }),
+          // 兩段式實驗的說明步驟：跟上面的 twoStage 同一個值，沒開就不多打。
+          explain: twoStage,
         }),
         log: (event, metadata, level) =>
           (level === "error" ? logError : logInfo)(event, {

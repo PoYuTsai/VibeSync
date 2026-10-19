@@ -69,6 +69,10 @@ Deno.test("兩段式開關只在 v3 入口讀一次（ANALYZE_GUIDE_V3_TWO_STAGE
     1,
   );
   assert(source.slice(v3Call, v2Dispatch).includes("        twoStage,\n"));
+  // 說明步驟的模型呼叫跟流程用同一個值（沒開就沒有 callExplain）。
+  assert(
+    source.slice(v3Call, v2Dispatch).includes("          explain: twoStage,\n"),
+  );
 });
 
 Deno.test("F04：只用在一般文字串流分析，計費與超額確認雜湊都用排除後的訊息", () => {

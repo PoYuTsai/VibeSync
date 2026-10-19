@@ -140,14 +140,19 @@ export function finalizeCard(
 /// 給用戶看的教練文字（判讀、要等她做什麼）：比照 v2 不送型決定的檢查（提示詞注入、
 /// 英文的不安全樣式），再加外洩哨兵；整理前後都查。不掃 BLOCKED_PATTERNS：那是給
 /// 可以照傳的句子，拿去掃描述會誤傷正確的說明（同 guardrails.ts 的理由）。
+/// extraSentinels：兩段式實驗的說明步驟另帶自己的哨兵（explain.ts）；沒給就跟今天一樣。
 export function vetCoachText(
   text: string,
+  extraSentinels: readonly string[] = [],
 ): { ok: true; text: string } | { ok: false } {
   const cleaned =
     (normalizeOutgoingScript(normalizeOutgoingPunctuation(text)) ??
       "").trim();
   for (const t of [text, cleaned]) {
-    if (leaksPrompt(t) || hasPromptInjection(t) || hasUnsafeRecommendation(t)) {
+    if (
+      leaksPrompt(t, extraSentinels) || hasPromptInjection(t) ||
+      hasUnsafeRecommendation(t)
+    ) {
       return { ok: false };
     }
   }

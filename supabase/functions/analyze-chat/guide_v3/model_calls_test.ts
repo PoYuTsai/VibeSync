@@ -5,11 +5,17 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { SONNET_5_5_MODEL } from "../../_shared/model_request_params.ts";
+import {
+  SONNET_5_5_MODEL,
+  SONNET_5_MODEL,
+} from "../../_shared/model_request_params.ts";
 import type { ProviderAttemptLogEntry } from "../model_call_budget.ts";
+import { EXPLAIN_SCHEMA } from "./explain.ts";
 import { MEMORY_SCHEMA } from "./memory.ts";
 import {
   createGuideV3ModelCalls,
+  GUIDE_V3_EXPLAIN_MAX_TOKENS,
+  GUIDE_V3_EXPLAIN_REQUEST_TYPE,
   GUIDE_V3_MEMORY_MAX_TOKENS,
   GUIDE_V3_MEMORY_MODEL,
   GUIDE_V3_MEMORY_REQUEST_TYPE,
@@ -153,4 +159,101 @@ Deno.test("讀局面的 ai_logs 照舊記這次分析的 request_type", async ()
     (c.logs[0].requestBody as Record<string, unknown>).stage,
     "read",
   );
+});
+
+function explainCalls(explain?: boolean) {
+  const logs: ProviderAttemptLogEntry[] = [];
+  return {
+    logs,
+    ...createGuideV3ModelCalls({
+      apiKey: "test-key",
+      requestType: "analyze",
+      tier: "essential",
+      recordAiCall: (entry) => logs.push(entry),
+      ...(explain === undefined ? {} : { explain }),
+    }),
+  };
+}
+
+const explainRequest = () => ({
+  runId: "run-2s",
+  system: "說明系統提示",
+  user: "## 寫好的卡（一共 1 張）",
+  schema: EXPLAIN_SCHEMA,
+  deadlineAtMs: Date.now() + 20_000,
+});
+
+const explainOk = () =>
+  Response.json({
+    content: [{
+      type: "text",
+      text: '{"explanations":[{"card":1,"text":"說明"}]}',
+    }],
+    stop_reason: "end_turn",
+    usage: {
+      input_tokens: 2000,
+      output_tokens: 120,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    },
+  });
+
+Deno.test("兩段式說明呼叫：開關沒開就沒有這個呼叫（Eric 2026-10-19 兩段式實驗）", () => {
+  assertEquals("callExplain" in explainCalls(), false);
+  assertEquals("callExplain" in explainCalls(false), false);
+  assertEquals(typeof explainCalls(true).callExplain, "function");
+});
+
+Deno.test("兩段式說明呼叫：同一個模型（5.5 參數）、json_schema、system 走快取；ai_logs 另記 request_type 與 stage", async () => {
+  const c = explainCalls(true);
+  await withFetch(explainOk, async (bodies) => {
+    const res = await c.callExplain!(explainRequest());
+    assertEquals(res.model, SONNET_5_5_MODEL);
+    assertEquals(res.text, '{"explanations":[{"card":1,"text":"說明"}]}');
+    assertEquals(bodies.length, 1);
+    const body = bodies[0];
+    assertEquals(body.model, SONNET_5_5_MODEL);
+    assertEquals(body.thinking, { type: "adaptive", display: "omitted" });
+    assertEquals(body.output_config, {
+      format: { type: "json_schema", schema: EXPLAIN_SCHEMA },
+      effort: "low",
+    });
+    assert((body.max_tokens as number) > GUIDE_V3_EXPLAIN_MAX_TOKENS);
+    assertEquals(body.system[0].text, "說明系統提示");
+    assertEquals(body.system[0].cache_control, { type: "ephemeral" });
+    assertEquals(body.messages, [{
+      role: "user",
+      content: explainRequest().user,
+    }]);
+  });
+  assertEquals(c.logs.length, 1);
+  assertEquals(c.logs[0].requestType, GUIDE_V3_EXPLAIN_REQUEST_TYPE);
+  assertEquals(c.logs[0].requestType, "analyze_explain");
+  assertEquals(c.logs[0].status, "success");
+  const meta = c.logs[0].requestBody as Record<string, unknown>;
+  assertEquals(meta.stage, "explain");
+  assertEquals(meta.purpose, "guide_v3_explain");
+  assertEquals(meta.operation, "run-2s");
+});
+
+Deno.test("兩段式說明呼叫：上游一直失敗時照共用備援鏈換模型，最多 3 次 provider 呼叫，每次都記 ai_logs", async () => {
+  const c = explainCalls(true);
+  await withFetch(
+    () =>
+      Response.json({ error: { type: "overloaded_error" } }, { status: 529 }),
+    async (bodies) => {
+      await assertRejects(() => c.callExplain!(explainRequest()));
+      assertEquals(bodies.map((b) => b.model), [
+        SONNET_5_5_MODEL,
+        SONNET_5_MODEL,
+        "claude-sonnet-4-6",
+      ]);
+    },
+  );
+  assertEquals(c.logs.length, 3);
+  for (const log of c.logs) {
+    assertEquals(log.requestType, "analyze_explain");
+    assertEquals(log.status, "failed");
+    assertEquals((log.requestBody as Record<string, unknown>).stage, "explain");
+  }
 });

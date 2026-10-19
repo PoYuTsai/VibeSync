@@ -32,6 +32,13 @@ import {
 } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
 import {
+  EXPLAIN_SCHEMA,
+  explainSystemPrompt,
+  explainUserPrompt,
+  parseExplanations,
+  vetExplanation,
+} from "./explain.ts";
+import {
   NO_SAFETY_HITS,
   type SafetyKeywordHits,
   scanSafetyKeywords,
@@ -73,12 +80,19 @@ import {
   writeSystemPromptTwoStage,
   writeUserPromptTwoStage,
 } from "./two_stage_prompts.ts";
-import { type GuideMessage, toTurns, type Turn } from "./turns.ts";
+import {
+  type GuideMessage,
+  latestHerMessages,
+  toTurns,
+  type Turn,
+} from "./turns.ts";
 import {
   cardEvent,
+  cardExplainEvent,
   cardView,
   finalResult,
   type GuideV3CardView,
+  type GuideV3ExplainTrace,
   type GuideV3ReadView,
   type GuideV3Trace,
   readEvent,
@@ -97,6 +111,8 @@ export const STOP_CONDITION_CARE = "先確認安全";
 export const STOP_CONDITION_MINOR = "涉及未成年，不給建議";
 /// 讀完局面、開始寫卡前的中性進度（只有出卡、收尾才有；不帶判讀、不動扣費）。
 export const GUIDE_V3_WRITING_LABEL = "看完了，正在寫回覆";
+/// 兩段式實驗的說明步驟最多等多久（卡都送完才開始；done 最多晚這麼久）。
+export const GUIDE_V3_EXPLAIN_WAIT_MS = 20_000;
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -142,6 +158,9 @@ export interface GuideV3WriteRequest {
 
 /// 對象記憶：跟讀局面一樣是非串流＋json_schema，提示詞與 schema 在 memory.ts。
 export type GuideV3ExtractRequest = GuideV3ReadRequest;
+
+/// 兩段式實驗的說明步驟：也是非串流＋json_schema，提示詞與 schema 在 explain.ts。
+export type GuideV3ExplainRequest = GuideV3ReadRequest;
 
 export interface GuideV3Message {
   readonly isFromMe: boolean;
@@ -199,6 +218,12 @@ export interface GuideV3StreamDeps {
   /// 兩段式「正常回覆」實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，handler 把關；Eric 2026-10-19
   /// 兩段式實驗）。沒給或 false：提示詞、schema、事件、trace 與扣費都跟今天一樣。
   twoStage?: boolean;
+  /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
+  callExplain?(
+    req: GuideV3ExplainRequest,
+  ): Promise<{ text: string; model: string }>;
+  /// 預設 GUIDE_V3_EXPLAIN_WAIT_MS（測試縮短用）。
+  explainWaitMs?: number;
 }
 
 type ErrorEvent = Record<string, unknown> & {
@@ -1166,6 +1191,11 @@ class GuideV3Flow {
       : upstreamErrorEvent(upstreamError).code;
     const partial = upstreamError !== null ||
       delivered.length < deliverable.length;
+    // 兩段式實驗：卡都定稿送出之後才說明，事件排在最後一張卡之後、done 之前；失敗、逾時或
+    // 斷線只是沒有說明，卡與扣費不變（Eric 2026-10-19 兩段式實驗）。
+    const explain = this.deps.twoStage === true
+      ? await this.explainCards(emit, plan, tags, turns, delivered, isClosed)
+      : null;
     // 卡都送完了才等記憶（通常早就好了）。
     const memory = await this.settleMemory();
     await this.finish(
@@ -1190,6 +1220,7 @@ class GuideV3Flow {
         trace: this.trace(tags, plan, {
           ...traceExtra,
           ...(memory.trace ? { memory: memory.trace } : {}),
+          ...(explain ? { twoStage: { explain } } : {}),
         }),
         targetProfile: memory.targetProfile,
       }),
@@ -1209,7 +1240,140 @@ class GuideV3Flow {
         herLastTurnChars: herChars,
         ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         ...(memory.trace ? { memory: memory.trace } : {}),
+        // 說明只記狀態、張數與原因，不放原文。
+        ...(explain
+          ? {
+            explain: {
+              status: explain.status,
+              ...(explain.code ? { code: explain.code } : {}),
+              latencyMs: explain.latencyMs,
+              delivered: explain.delivered.length,
+              removed: explain.removed,
+            },
+          }
+          : {}),
       },
     );
+  }
+
+  /// 兩段式實驗的說明步驟：替送出的每張卡要一段「為什麼這樣回」，過檢查的照卡片順序送出。
+  /// 永遠不丟錯；結果只進 trace（App 的 done 不帶）。
+  private async explainCards(
+    emit: NdjsonEmit,
+    plan: GuideV3Plan,
+    tags: ReadTags,
+    turns: readonly Turn[],
+    delivered: readonly GuideV3CardView[],
+    isClosed: () => boolean,
+  ): Promise<GuideV3ExplainTrace> {
+    const none = { delivered: [], removed: [] };
+    const callExplain = this.deps.callExplain;
+    if (!callExplain) {
+      return { status: "skipped", code: "NO_CALL", latencyMs: null, ...none };
+    }
+    // App 已經斷線：說明沒人看，不打這一次。
+    if (isClosed()) {
+      return {
+        status: "skipped",
+        code: "CLIENT_GONE",
+        latencyMs: null,
+        ...none,
+      };
+    }
+    const startedAt = this.now();
+    const waitMs = this.deps.explainWaitMs ?? GUIDE_V3_EXPLAIN_WAIT_MS;
+    const herLatest = latestHerMessages(turns);
+    const cards = delivered.map((card) => ({
+      slot: card.slot,
+      spec: plan.specs[card.slot - 1],
+      messages: card.messages,
+    }));
+    // 用 executor 包起來：callExplain 同步丟錯也變成 reject。
+    const task = new Promise<{ text: string; model: string }>((resolve) =>
+      resolve(callExplain({
+        runId: this.runId,
+        system: explainSystemPrompt(),
+        user: explainUserPrompt({
+          tags,
+          herLatest,
+          entries: plan.entries,
+          cards,
+        }),
+        schema: EXPLAIN_SCHEMA,
+        deadlineAtMs: startedAt + waitMs,
+      }))
+    );
+    // 等不到就先結案，但這次呼叫還是要跑完、寫完 ai_logs。
+    this.deps.waitUntil?.(task.catch(() => undefined));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), waitMs);
+    });
+    let res: { text: string; model: string } | "timeout";
+    try {
+      res = await Promise.race([task, late]);
+    } catch (error) {
+      const code = (error as { code?: unknown })?.code;
+      const failure = typeof code === "string" ? code : "UNKNOWN";
+      this.deps.log("guide_v3_explain_failed", {
+        analysisRunId: this.runId,
+        code: failure,
+      }, "error");
+      return {
+        status: "failed",
+        code: failure,
+        latencyMs: this.now() - startedAt,
+        ...none,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res === "timeout") {
+      this.deps.log("guide_v3_explain_failed", {
+        analysisRunId: this.runId,
+        code: "EXPLAIN_TIMEOUT",
+      }, "error");
+      return {
+        status: "failed",
+        code: "EXPLAIN_TIMEOUT",
+        latencyMs: this.now() - startedAt,
+        ...none,
+      };
+    }
+    const latencyMs = this.now() - startedAt;
+    const parsed = parseExplanations(res.text);
+    if (!parsed) {
+      this.deps.log("guide_v3_explain_failed", {
+        analysisRunId: this.runId,
+        code: "EXPLAIN_INVALID",
+      }, "error");
+      return { status: "invalid", model: res.model, latencyMs, ...none };
+    }
+    const sent: number[] = [];
+    const removed: { card: number; reason: string }[] = [];
+    const texts: { card: number; text: string }[] = [];
+    for (const card of delivered) {
+      const raw = parsed.get(card.slot);
+      if (raw === undefined) {
+        removed.push({ card: card.slot, reason: "missing" });
+        continue;
+      }
+      const vetted = vetExplanation(raw);
+      if (!vetted.ok) {
+        removed.push({ card: card.slot, reason: vetted.reason });
+        continue;
+      }
+      emit(cardExplainEvent(card.slot, vetted.text));
+      sent.push(card.slot);
+      texts.push({ card: card.slot, text: vetted.text });
+    }
+    return {
+      status: "ok",
+      model: res.model,
+      latencyMs,
+      delivered: sent,
+      removed,
+      texts,
+    };
   }
 }
