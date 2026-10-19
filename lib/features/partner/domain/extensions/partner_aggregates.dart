@@ -67,6 +67,22 @@ class PartnerGuideV3Signals {
     this.herPerfunctoryStreak,
   });
 
+  /// 最新一次決定的短狀態（Eric 2026-10-18；首頁對象卡、報告作戰板、全螢幕作戰板同一組字）：
+  /// 出卡與收尾是輪到他回，先別回是等她，停就停；關心不多放東西。
+  String? get status => switch (decision) {
+        GuideV3Decision.send || GuideV3Decision.close => '輪到你回',
+        GuideV3Decision.hold => '先等她',
+        GuideV3Decision.stop => '先停',
+        GuideV3Decision.care => null,
+      };
+
+  /// 一位對象的對話裡，最近分析過的那段是 v3 時的訊號（[LatestAnalyzedFragment]，各頁同一條
+  /// 規則）；不是 v3 或判讀讀不懂是 null。首頁對象卡與報告作戰板都從這裡拿。
+  static PartnerGuideV3Signals? latestOf(Iterable<Conversation> conversations) {
+    final read = LatestAnalyzedFragment.of(conversations)?.guideV3Read;
+    return read == null ? null : PartnerGuideV3Signals.fromRead(read);
+  }
+
   factory PartnerGuideV3Signals.fromRead(GuideV3Read read) {
     final isCare = read.decision == GuideV3Decision.care;
     return PartnerGuideV3Signals(
@@ -111,7 +127,6 @@ extension PartnerAggregates on Partner {
     // 「是不是 v3」看最近分析過的那段（Bruce 2026-10-19 路線二，各頁同一條規則）；
     // 熱度照舊看最近更新那段。
     final latestAnalyzed = LatestAnalyzedFragment.of(conversations);
-    final latestRead = latestAnalyzed?.guideV3Read;
 
     return PartnerAggregateView(
       unionInterests: unionInterests,
@@ -122,9 +137,7 @@ extension PartnerAggregates on Partner {
       totalMessages: totalMessages,
       lastInteraction: descByDate.first.updatedAt,
       latestIsGuideV3: latestAnalyzed?.isGuideV3 ?? false,
-      latestGuideV3Signals: latestRead == null
-          ? null
-          : PartnerGuideV3Signals.fromRead(latestRead),
+      latestGuideV3Signals: PartnerGuideV3Signals.latestOf(conversations),
     );
   }
 }

@@ -160,15 +160,6 @@ class PartnerListCard extends StatelessWidget {
     );
   }
 
-  /// v3 最新一次的決定（Eric 2026-10-18；不分方案）：出卡與收尾是輪到他回，先別回是等她，
-  /// 停就停；關心不多放東西。
-  static String? _guideV3Status(GuideV3Decision decision) => switch (decision) {
-        GuideV3Decision.send || GuideV3Decision.close => '輪到你回',
-        GuideV3Decision.hold => '先等她',
-        GuideV3Decision.stop => '先停',
-        GuideV3Decision.care => null,
-      };
-
   /// 燈號＋短狀態，放在原本熱度膠囊的位置（v3 沒有熱度）。
   Widget _buildGuideV3StatusPill(GuideV3Light? light, String status) {
     final tone = light == null
@@ -264,8 +255,7 @@ class PartnerListCard extends StatelessWidget {
     // 也照樣放燈號，熱度在對象頁與報告。
     final showStatusPill = !aggregate.latestIsGuideV3;
     final guideV3 = aggregate.latestGuideV3Signals;
-    final guideV3Status =
-        guideV3 == null ? null : _guideV3Status(guideV3.decision);
+    final guideV3Status = guideV3?.status;
     final date = _formatDate(aggregate.lastInteraction);
 
     return Material(

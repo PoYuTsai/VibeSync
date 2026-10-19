@@ -320,4 +320,72 @@ void main() {
     expect(captured.single.path, '/coach');
     expect(captured.single.queryParameters['partnerId'], 'p1');
   });
+  group('v3（任務卡）：下一步與問教練（Bruce 2026-10-19 路線二）', () {
+    String v3(String decision, {String? waitFor, bool withCard = false}) =>
+        jsonEncode({
+          'guideVersion': 'v3.6',
+          'read': {
+            'guideVersion': 'v3.6',
+            'decision': decision,
+            'light': decision == 'care' ? null : 'yellow',
+            'judgment': decision == 'care' ? '' : '球在她那邊。',
+            if (waitFor != null) 'waitFor': waitFor,
+            if (decision == 'care') 'careMessage': '先把安全放在第一位。',
+            'plannedCards': const [],
+          },
+          'cards': [
+            if (withCard)
+              {
+                'slot': 1,
+                'task': 'accept',
+                'method': 'reaction',
+                'voice': 'default',
+                'messages': ['那當然 我挑的欸'],
+                'hasInventedDetail': false,
+                'hasBlank': false,
+              },
+          ],
+          'partial': false,
+        });
+
+    Future<void> pump(WidgetTester t, String snapshot) async {
+      await t.binding.setSurfaceSize(const Size(400, 900));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      await t.pumpWidget(ProviderScope(
+        overrides: [
+          partnerByIdProvider('p1').overrideWith((_) => _p()),
+          partnerAggregateProvider('p1')
+              .overrideWith((_) => PartnerAggregateView.empty()),
+          conversationsByPartnerProvider('p1')
+              .overrideWith((_) => [_analyzedConv(snapshotJson: snapshot)]),
+        ],
+        child: const MaterialApp(home: PartnerMindMapScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('先別回：下一步行動是要等她做什麼，問教練照樣在', (t) async {
+      await pump(t, v3('hold', waitFor: '等她回你，再看她怎麼接'));
+      expect(find.text('下一步行動'), findsOneWidget);
+      expect(find.text('等她回你，再看她怎麼接'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mind-map-ask-coach')), findsOneWidget);
+    });
+
+    testWidgets('出卡：下一步行動是第一張卡', (t) async {
+      await pump(t, v3('send', withCard: true));
+      expect(find.text('那當然 我挑的欸'), findsOneWidget);
+    });
+
+    testWidgets('出卡但一張都沒送到：沒有下一步，問教練也照樣在（不靠下一步才出現）', (t) async {
+      await pump(t, v3('send'));
+      expect(find.text('下一步行動'), findsNothing);
+      expect(find.byKey(const ValueKey('mind-map-ask-coach')), findsOneWidget);
+    });
+
+    testWidgets('最近一次是關心：跟結果頁一樣不給問教練，也沒有下一步', (t) async {
+      await pump(t, v3('care'));
+      expect(find.text('下一步行動'), findsNothing);
+      expect(find.byKey(const ValueKey('mind-map-ask-coach')), findsNothing);
+    });
+  });
 }

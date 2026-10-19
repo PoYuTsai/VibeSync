@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
+import '../../../analysis/domain/entities/guide_v3_result.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../extensions/partner_aggregates.dart';
@@ -21,6 +22,9 @@ import 'mind_map_models.dart';
 /// - 已確認資料：Partner.customNote 經 allowlist chips 解析，舊自由文字不採用。
 /// - AI 聚合興趣 / 特質不進「關於她」節點；aggregate 興趣只保留給既有
 ///   作戰重點 panel 的可接話題。
+/// - v3（任務卡）快照（Bruce 2026-10-19 路線二）：階段讀判讀的關係狀態；下一步跟對象頁
+///   同一套（先別回是要等她做什麼、停是停止條件、出卡與收尾是第一張卡）；關心不給下一步，
+///   也不講關係狀態。
 PartnerMindMap buildPartnerMindMap({
   required String partnerName,
   required PartnerAggregateView aggregate,
@@ -68,6 +72,8 @@ PartnerMindMap buildPartnerMindMap({
   final branches = <MindMapNode>[];
   String? relationshipSignal;
   String? fullNextStep;
+  // 最近一次是 v3 的關心（自傷、未成年）：不給下一步，也不拿舊的階段說「你們目前的狀態」。
+  final latestIsCare = latestSnapshot?.isGuideV3Care ?? false;
 
   if (hasAnalysisData) {
     if (stageInfo != null || fallbackStage != null) {
@@ -79,9 +85,11 @@ PartnerMindMap buildPartnerMindMap({
         stage,
         reconnectWording: reconnectWording,
       );
-      relationshipSignal = reconnectWording && stage == GameStage.opening
-          ? '這輪重點是重新接上互動，不代表關係退回陌生人'
-          : stage.description;
+      relationshipSignal = latestIsCare
+          ? null
+          : reconnectWording && stage == GameStage.opening
+              ? '這輪重點是重新接上互動，不代表關係退回陌生人'
+              : stage.description;
       branches.add(MindMapNode(
         id: 'stage',
         label: '目前互動重點',
@@ -169,7 +177,25 @@ PartnerMindMap buildPartnerMindMap({
     confirmedFacts: confirmedFacts,
     topics: aggregate.unionInterests,
     fullNextStep: fullNextStep,
+    latestGuideV3Signals: aggregate.latestGuideV3Signals,
+    latestIsGuideV3Care: latestIsCare,
   );
+}
+
+/// v3 的下一步：跟對象頁的下一步卡同一套（partner_detail_screen 的 fromGuideV3）。先別回是
+/// 要等她做什麼、停是伺服器扣費紀錄同一句停止條件、出卡與收尾是第一張卡；關心沒有。
+String _guideV3NextStep(GuideV3Result result) {
+  switch (result.decision) {
+    case GuideV3Decision.hold:
+      return result.read.waitFor ?? '';
+    case GuideV3Decision.stop:
+      return '先停在這裡，不再主動傳訊息';
+    case GuideV3Decision.send:
+    case GuideV3Decision.close:
+      return result.cards.isEmpty ? '' : result.cards.first.copyText;
+    case GuideV3Decision.care:
+      return '';
+  }
 }
 
 List<MindMapNode> _recentInteractionNodes(
@@ -422,6 +448,22 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
       (key, value) => MapEntry(key.toString(), value),
     );
 
+    if (isGuideV3Payload(json)) {
+      // v3 快照只認形狀，不交給 v2 的解析；讀不懂（判讀壞掉）照舊算一次空的分析。
+      final result = GuideV3Result.fromJson(json);
+      final stage = result?.read.relation?.stage;
+      return _ParsedMindMapSnapshot(
+        conversationId: source.conversationId,
+        stageInfo:
+            stage == null ? null : GameStageInfo(current: stage, nextStep: ''),
+        reconnectWording: source.reconnectWording,
+        topicDepth: null,
+        strategy: result == null ? '' : _guideV3NextStep(result),
+        fallbackHighlight: source.fallbackHighlight,
+        isGuideV3Care: result?.isCare ?? false,
+      );
+    }
+
     final gameStageJson = _strictOptionalJsonMap(json['gameStage']);
     final topicDepthJson = _strictOptionalJsonMap(json['topicDepth']);
     final rawStrategy = json['strategy'];
@@ -502,15 +544,21 @@ class _ParsedMindMapSnapshot {
     required this.strategy,
     required this.fallbackHighlight,
     this.coachActionHint,
+    this.isGuideV3Care = false,
   });
 
   final String conversationId;
   final GameStageInfo? stageInfo;
   final bool reconnectWording;
   final TopicDepth? topicDepth;
+
+  /// v2 的策略；v3 放下一步（見 [_guideV3NextStep]），一樣在 nextStep 是空的時候頂上。
   final String strategy;
   final String fallbackHighlight;
   final CoachActionHint? coachActionHint;
+
+  /// v3 的關心（自傷、未成年）。
+  final bool isGuideV3Care;
 
   String? get visibleStageLabel {
     final stage = stageInfo?.current;

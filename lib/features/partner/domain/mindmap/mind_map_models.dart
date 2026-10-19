@@ -1,3 +1,5 @@
+import '../extensions/partner_aggregates.dart';
+
 /// 作戰板節點樹（pure Dart，渲染層無關）。
 /// 由 [buildPartnerMindMap] 從既有分析快照衍生，零 AI 邊際成本。
 enum MindMapBranch {
@@ -53,6 +55,13 @@ class PartnerMindMap {
   final List<String> topics;
   final String? fullNextStep;
 
+  /// 最近分析過的那段是 v3 時的燈號與決定（入口卡的燈號＋短狀態用；Bruce 2026-10-19
+  /// 路線二）；不是 v3 是 null。
+  final PartnerGuideV3Signals? latestGuideV3Signals;
+
+  /// 最近一次是 v3 的關心（自傷、未成年）：跟結果頁一樣不給問教練，也沒有下一步。
+  final bool latestIsGuideV3Care;
+
   const PartnerMindMap({
     required this.root,
     required this.hasAnalysisData,
@@ -62,5 +71,7 @@ class PartnerMindMap {
     this.confirmedFacts = const [],
     this.topics = const [],
     this.fullNextStep,
+    this.latestGuideV3Signals,
+    this.latestIsGuideV3Care = false,
   });
 }

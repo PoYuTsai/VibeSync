@@ -144,10 +144,15 @@ class _MindMapDetailPanel extends StatelessWidget {
               value: map.fullNextStep!,
               emphasize: true,
             ),
+          ],
+          // 問教練不靠下一步才出現（v3 先別回、停、還沒寫出下一步的分析也問得到）；最近一次是
+          // v3 的關心（自傷、未成年）時跟結果頁一樣不給。
+          if (!map.latestIsGuideV3Care) ...[
             const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
+                key: const ValueKey('mind-map-ask-coach'),
                 onPressed: onAskCoach,
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.ctaStart,

@@ -17,7 +17,9 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../analysis/domain/services/partner_stage_resolver.dart';
+import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../partner/domain/extensions/partner_aggregates.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/presentation/widgets/about_me_card.dart';
@@ -53,6 +55,18 @@ class MyReportScreen extends ConsumerWidget {
             p.id,
             stageEvents,
             allConversations,
+          ),
+        ),
+    };
+    // 作戰板的燈號＋短狀態（Bruce 2026-10-19 路線二，B1 物件加燈號）：跟首頁對象卡同一條
+    // 規則（最近分析過的那段是 v3 時的訊號），跟階段一樣從全部對話裡找這位對象的。
+    final guideV3Signals = {
+      for (final p in partners)
+        p.id: PartnerGuideV3Signals.latestOf(
+          allConversations.where(
+            (conversation) =>
+                AnalysisHistoryEvent.normalizeScope(conversation.partnerId) ==
+                AnalysisHistoryEvent.normalizeScope(p.id),
           ),
         ),
     };
@@ -191,6 +205,7 @@ class MyReportScreen extends ConsumerWidget {
         PartnerMindMapCardList(
           partners: partners,
           stageLabelOf: (id) => stageLabels[id],
+          guideV3SignalsOf: (id) => guideV3Signals[id],
           onTapPartner: (id) => context.push('/partner/$id/mindmap'),
         ),
       ],

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
+import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
@@ -1096,6 +1097,160 @@ void main() {
 
       walk(map.root);
       expect(ids.toSet().length, ids.length);
+    });
+  });
+  group('v3（任務卡）快照（Bruce 2026-10-19 路線二）', () {
+    String v3({
+      String decision = 'send',
+      Map<String, dynamic>? relation,
+      String? waitFor,
+      List<List<String>> cards = const [
+        ['那當然 我挑的欸'],
+      ],
+    }) =>
+        jsonEncode({
+          'guideVersion': 'v3.6',
+          'read': {
+            'guideVersion': 'v3.6',
+            'decision': decision,
+            'light': decision == 'care' ? null : 'green',
+            'judgment': decision == 'care' ? '' : '她主動回來聊。',
+            if (waitFor != null) 'waitFor': waitFor,
+            if (decision == 'care') 'careMessage': '先把安全放在第一位。',
+            if (relation != null) 'relation': relation,
+            'plannedCards': const [],
+          },
+          'cards': [
+            for (var i = 0; i < cards.length; i++)
+              {
+                'slot': i + 1,
+                'task': 'accept',
+                'method': 'reaction',
+                'voice': 'default',
+                'messages': cards[i],
+                'hasInventedDetail': false,
+                'hasBlank': false,
+              },
+          ],
+          'partial': false,
+        });
+
+    PartnerMindMap build(
+      List<Conversation> conversations, {
+      PartnerGuideV3Signals? signals,
+    }) =>
+        buildPartnerMindMap(
+          partnerName: '小安',
+          aggregate: PartnerAggregateView(
+            unionInterests: const [],
+            unionTraits: const [],
+            unionNotes: null,
+            latestHeat: null,
+            totalRounds: 0,
+            totalMessages: 0,
+            lastInteraction: null,
+            latestIsGuideV3: signals != null,
+            latestGuideV3Signals: signals,
+          ),
+          conversations: conversations,
+        );
+
+    MindMapNode? branch(PartnerMindMap map, MindMapBranch kind) =>
+        map.root.children
+            .where((b) => b.branch == kind)
+            .cast<MindMapNode?>()
+            .firstOrNull;
+
+    test('帶了關係狀態：階段照判讀的；出卡的下一步是第一張卡；燈號訊號跟著帶', () {
+      const signals = PartnerGuideV3Signals(
+        decision: GuideV3Decision.send,
+        light: GuideV3Light.green,
+      );
+      final map = build(
+        [
+          _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 10, 20),
+            snapshotJson: v3(relation: const {'stage': 'premise', 'heat': 72}),
+          ),
+        ],
+        signals: signals,
+      );
+
+      expect(map.hasAnalysisData, isTrue);
+      expect(branch(map, MindMapBranch.stage)!.children.first.label, '建立男女感');
+      expect(map.relationshipSignal, '開始有男女氛圍，可以加點張力');
+      expect(map.fullNextStep, '那當然 我挑的欸');
+      expect(map.latestGuideV3Signals, same(signals));
+      expect(map.latestIsGuideV3Care, isFalse);
+      expect(map.root.label, '小安・已分析 1 次');
+    });
+
+    test('改版前的 v3（沒帶）：沒有階段支線，下一步照樣有', () {
+      final map = build([
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(decision: 'hold', waitFor: '等她回你，再看她怎麼接'),
+        ),
+      ]);
+      expect(branch(map, MindMapBranch.stage), isNull);
+      expect(map.relationshipSignal, isNull);
+      expect(map.fullNextStep, '等她回你，再看她怎麼接');
+    });
+
+    test('停：下一步是停止條件；兩則一組的卡整組放', () {
+      final stop = build([
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(decision: 'stop', cards: const []),
+        ),
+      ]);
+      expect(stop.fullNextStep, '先停在這裡，不再主動傳訊息');
+
+      final pair = build([
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(cards: const [
+            ['你真的去吃了欸', '開心'],
+          ]),
+        ),
+      ]);
+      expect(pair.fullNextStep, '你真的去吃了欸\n開心');
+    });
+
+    test('最近一次是關心：沒有下一步、不講你們目前的狀態，問教練也不給', () {
+      final map = build([
+        _convo(
+          id: 'old',
+          updatedAt: DateTime(2026, 10, 1),
+          snapshotJson: _snapshot(),
+        ),
+        _convo(
+          id: 'care',
+          updatedAt: DateTime(2026, 10, 18),
+          snapshotJson: v3(decision: 'care', cards: const []),
+        ),
+      ]);
+      expect(map.latestIsGuideV3Care, isTrue);
+      expect(map.fullNextStep, isNull);
+      expect(map.relationshipSignal, isNull);
+      expect(branch(map, MindMapBranch.nextStep), isNull);
+    });
+
+    test('v2 照舊：下一步照 gameStage.nextStep，不是 v3 就沒有燈號訊號', () {
+      final map = build([
+        _convo(
+          id: 'c1',
+          updatedAt: DateTime(2026, 6, 1),
+          snapshotJson: _snapshot(),
+        ),
+      ]);
+      expect(map.fullNextStep, '約她週末喝咖啡');
+      expect(map.latestGuideV3Signals, isNull);
+      expect(map.latestIsGuideV3Care, isFalse);
     });
   });
 }

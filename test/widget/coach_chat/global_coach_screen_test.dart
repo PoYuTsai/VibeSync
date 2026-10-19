@@ -10,6 +10,7 @@
 // 不渲染；切換保留輸入框草稿。`?partnerId=` 進場＝鎖定模式：不渲染 chips、
 // 標題帶對象名。
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -394,6 +395,96 @@ void main() {
     expect(_surface(tester).scope, const CoachScope.global());
     expect(_surface(tester).lifecyclePhase, isNull,
         reason: '情境是跟著對象串的，回一般不得殘留 phase');
+  });
+
+  group('對象 scope 的開場：作戰板同一套快照（Bruce 2026-10-19 路線二）', () {
+    Conversation analyzed(String id, DateTime at, Map<String, dynamic> json) =>
+        Conversation(
+          id: id,
+          name: '第 $id 段',
+          messages: const [],
+          createdAt: at,
+          updatedAt: at,
+          partnerId: 'p1',
+          lastAnalysisSnapshotJson: jsonEncode(json),
+        );
+
+    Map<String, dynamic> v3(
+      String decision, {
+      String? waitFor,
+      Map<String, dynamic>? relation,
+    }) =>
+        {
+          'guideVersion': 'v3.6',
+          'read': {
+            'guideVersion': 'v3.6',
+            'decision': decision,
+            'light': decision == 'care' ? null : 'yellow',
+            'judgment': decision == 'care' ? '' : '球在她那邊。',
+            if (waitFor != null) 'waitFor': waitFor,
+            if (decision == 'care') 'careMessage': '先把安全放在第一位。',
+            if (relation != null) 'relation': relation,
+            'plannedCards': const [],
+          },
+          'cards': const [],
+          'partial': false,
+        };
+
+    final v2 = {
+      'gameStage': {
+        'current': 'premise',
+        'status': 'normal',
+        'nextStep': '約她週末喝咖啡',
+      },
+      'strategy': '維持神祕感',
+    };
+
+    Future<void> pumpWith(WidgetTester tester, List<Conversation> convs) =>
+        _pump(
+          tester,
+          partners: [_partner('p1', 'Alice')],
+          lockedPartnerId: 'p1',
+          partnerConversations: {'p1': convs},
+        );
+
+    testWidgets('最近一次是 v3 先別回：下一步是要等她做什麼', (tester) async {
+      await pumpWith(tester, [
+        analyzed('c1', DateTime(2026, 10, 1), v2),
+        analyzed(
+            'c2', DateTime(2026, 10, 18), v3('hold', waitFor: '等她回你，再看她怎麼接')),
+      ]);
+      expect(find.text('上次分析完的下一步是「等她回你，再看她怎麼接」，試了嗎？'), findsOneWidget);
+    });
+
+    testWidgets('v3 帶了階段、沒有下一步：照階段說目前的狀態（不是舊流程的階段）', (tester) async {
+      await pumpWith(tester, [
+        analyzed('c1', DateTime(2026, 10, 1), {
+          ...v2,
+          'gameStage': {
+            'current': 'opening',
+            'status': 'normal',
+            'nextStep': ''
+          },
+          'strategy': '',
+        }),
+        analyzed('c2', DateTime(2026, 10, 20),
+            v3('send', relation: const {'stage': 'premise'})),
+      ]);
+      expect(find.text('你們目前的狀態：開始有男女氛圍，可以加點張力。想從哪裡推進？'), findsOneWidget);
+    });
+
+    testWidgets('最近一次是 v3 的關心：不拿舊的階段或下一步開場，照一般的說法', (tester) async {
+      await pumpWith(tester, [
+        analyzed('c1', DateTime(2026, 10, 1), v2),
+        analyzed('c2', DateTime(2026, 10, 18), v3('care')),
+      ]);
+      expect(find.text('想聊Alice的什麼？卡住的地方直接丟給我。'), findsOneWidget);
+    });
+
+    testWidgets('v2 照舊：下一步照分析的 nextStep', (tester) async {
+      await pumpWith(tester, [analyzed('c1', DateTime(2026, 10, 1), v2)]);
+      expect(find.text('上次分析完的下一步是「約她週末喝咖啡」，試了嗎？'), findsOneWidget);
+    });
   });
 
   testWidgets('鎖定模式（?partnerId=）：不渲染問誰、標題帶對象名、直接情境問句', (tester) async {
