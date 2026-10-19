@@ -300,6 +300,63 @@ Deno.test("兩段式開：寫卡送兩段式的系統提示詞；每張規格都
   );
 });
 
+Deno.test("第 2 輪：她傳照片、貼圖又問他，寫卡每張都先接她問的那句；照片貼圖只當旁邊那則的情境，規格不引辨識描述也不引表情", async () => {
+  const messages = [
+    { isFromMe: true, content: "聚餐好玩嗎" },
+    { isFromMe: false, content: "超好玩 主管請客🥳" },
+    { isFromMe: false, content: "「[兩張照片：同事合照、一桌火鍋]」" },
+    { isFromMe: false, content: "[貼圖：小熊比愛心]" },
+    { isFromMe: false, content: "晚點回去給你看影片" },
+    { isFromMe: false, content: "你覺得我今天好看嗎😏" },
+  ];
+  const extras: TwoStageTags = {
+    establishedCouple: false,
+    herAffection: true,
+    herHappyShare: true,
+    worthyLines: [
+      { line: 1, label: "主管請客", kind: "情感" },
+      { line: 2, label: "照片", kind: "照片或貼圖" },
+      { line: 3, label: "愛心貼圖", kind: "情感" },
+      { line: 4, label: "晚點給他看影片", kind: "其他" },
+      { line: 5, label: "問他好不好看", kind: "問他" },
+    ],
+  };
+  const h = flowHarness({
+    twoStage: true,
+    messages,
+    extras,
+    tags: baseTags({ worthyBallCount: 3, herMove: "問他意見" }),
+  });
+  await eventsOf(await handleGuideV3Stream(h.deps));
+  const user = h.writes[0].user;
+  const specLines = user.split("## 卡片規格")[1].split("\n").filter((l) =>
+    /^\d+\. 任務：/.test(l)
+  );
+  assertEquals(specLines.length, 5);
+  for (const line of specLines) {
+    assert(line.includes("這張接：她的「你覺得我今天好看嗎」｜"), line);
+    assert(!line.includes("😏") && !line.includes("🥳"), line);
+    for (const described of ["同事合照", "火鍋", "小熊", "比愛心"]) {
+      assert(!line.includes(described), line);
+    }
+  }
+  // 照片離「主管請客」最近、貼圖離「影片」那句最近，各自併進去。
+  assert(
+    user.includes("可以順帶：她的「超好玩 主管請客」（連同第 2 則）"),
+    user,
+  );
+  assert(
+    user.includes("可以順帶：她的「晚點回去給你看影片」（連同第 3 則）"),
+    user,
+  );
+  // 她示愛：誇她直接誇。
+  assert(user.includes(`${praiseSection("direct")}\n\n## 卡片規格`));
+  const trace = h.done[0].guideV3Trace as {
+    specs: { answer?: { main: { line: number } } }[];
+  };
+  assert(trace.specs.every((s) => s.answer?.main.line === 5));
+});
+
 Deno.test("兩段式沒開：寫卡的請求跟今天一樣（系統提示詞與使用者提示詞逐字相同）", async () => {
   const h = flowHarness({ extras: null });
   await eventsOf(await handleGuideV3Stream(h.deps));
