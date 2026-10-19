@@ -767,6 +767,71 @@ Deno.test("大笑收尾＋她已經答應邀約（Bruce 10/19）：第一張排�
   }
 });
 
+Deno.test("她直接問他（標到 B02、B44）＋大笑收尾＋已經答應邀約：第一張照舊排接住，推進排第二張、只有一張，張數不變（主審第 1 輪 P3）", () => {
+  const turns = toTurns([
+    me("週六下午去看展？"),
+    her("好啊"),
+    me("那我先查一下展期"),
+    her("哈哈哈哈好啦"),
+  ]);
+  const cases = [
+    ["green", "B02", "含糊答應", "具體邀約", [
+      "接住",
+      "推進",
+      "帶張力",
+      "接住",
+      "接住",
+    ]],
+    ["green", "B02", "明確答應", "說定", [
+      "接住",
+      "推進",
+      "帶張力",
+      "接住",
+      "接住",
+    ]],
+    // B44 也在 B43–B46 裡：帶張力改排接住。
+    ["green", "B44", "含糊答應", "具體邀約", [
+      "接住",
+      "推進",
+      "接住",
+      "接住",
+      "接住",
+    ]],
+    ["green", "B44", "明確答應", "說定", [
+      "接住",
+      "推進",
+      "接住",
+      "接住",
+      "接住",
+    ]],
+    ["yellow", "B02", "含糊答應", "具體邀約", ["接住", "推進", "接住"]],
+    ["yellow", "B02", "明確答應", "說定", ["接住", "推進", "接住"]],
+    ["yellow", "B44", "含糊答應", "具體邀約", ["接住", "推進", "接住"]],
+    ["yellow", "B44", "明確答應", "說定", ["接住", "推進", "接住"]],
+  ] as const;
+  for (
+    const [light, entry, inviteReadiness, expectedPush, expectedTasks] of cases
+  ) {
+    const label = `${light}＋${entry}＋${inviteReadiness}`;
+    const t = tags({
+      light,
+      herMove: "大笑收尾",
+      inviteReadiness,
+      matchedEntries: [entry],
+    });
+    const reply = decideReply(turns, t);
+    assertEquals(reply.kind, "send", label);
+    const push = decidePush(turns, t);
+    assertEquals(push, expectedPush, label);
+    const cards = arrangeCards(reply, push, t);
+    // 張數：綠燈她答應了是 5 張，黃燈 3 張。
+    assertEquals(cards.length, light === "green" ? 5 : 3, label);
+    assertEquals(cards.map((c) => c.task), [...expectedTasks], label);
+    assertEquals(cards.filter((c) => c.task === "推進").length, 1, label);
+    assertEquals(cards[1].push, expectedPush, label);
+  }
+});
+
 Deno.test("大笑收尾沒有答應邀約，或標到 B34（就算已經答應）：照舊第一張排收、不推進，綠燈帶張力照留（Bruce 10/19 維持）", () => {
   const short = toTurns([me("哪座山"), her("哈哈哈哈笑死")]);
   const arrange = (over: Partial<ReadTags>) => {
