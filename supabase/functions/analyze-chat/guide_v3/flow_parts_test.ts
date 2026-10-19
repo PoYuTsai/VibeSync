@@ -472,6 +472,17 @@ Deno.test("定稿：10/18 補的打分字眼、推進卡請求句、條目編號
   );
 });
 
+Deno.test("定稿：10/19 補的打分字眼只記錄，卡照送（正式環境那張卡）", () => {
+  const messages = [
+    "這種拼圖一發出來，我是不是該先評分，不然顯得不尊重美食",
+    "先說，我的標準很嚴，但這桌我願意給過",
+  ];
+  const out = finalizeCard(card(messages), spec(), "");
+  assert(out.ok);
+  assertEquals(out.messages, messages);
+  assertEquals(out.scoringWords, ["評分", "給過", "標準很嚴"]);
+});
+
 Deno.test("定稿：空白或清完只剩空的訊息拿掉；全部空掉才整張拿掉", () => {
   const one = finalizeCard(card(["好啊", "Привет"]), spec(), "");
   assert(one.ok);
