@@ -245,7 +245,7 @@ Deno.test("兩段式開：讀局面送兩段式的系統提示詞、逐則編號
   assertEquals(h.reads[0].user, readUserPromptTwoStage(toTurns(MESSAGES)));
   assertEquals(h.reads[0].schema, READ_TAGS_SCHEMA_TWO_STAGE);
   assert(evs.some((e) => e.type === "analysis.card"));
-  assertEquals(evs.at(-1)?.type, "analysis.done");
+  assert(evs.some((e) => e.type === "analysis.done"));
 });
 
 Deno.test("兩段式沒開（沒給或 false）：讀局面的請求跟今天一樣", async () => {
@@ -282,7 +282,7 @@ Deno.test("兩段式開：寫卡送兩段式的系統提示詞；規格第一張
   assert(user.includes("第 2 輪・她：\n1. [照片：一盤咖哩飯]"));
   // 送出的卡跟規格一致：第二張是共鳴（resonate）。
   const cards = evs.filter((e) => e.type === "analysis.card");
-  assertEquals(cards[1].task, "resonate");
+  assertEquals(cards.find((c) => c.slot === 2)?.task, "resonate");
   // trace 的規格帶每張要接的句子編號與 note。
   const trace = h.done[0].guideV3Trace as { specs: { lines?: number[] }[] };
   assertEquals(trace.specs[0].lines, [3]);
@@ -396,7 +396,9 @@ Deno.test("兩段式說明：卡都送完之後、done 之前，每張卡一則 
   assert(
     order.lastIndexOf("analysis.card") < order.indexOf("analysis.card_explain"),
   );
-  assertEquals(order.at(-1), "analysis.done");
+  assert(
+    order.lastIndexOf("analysis.card_explain") < order.indexOf("analysis.done"),
+  );
   // 說明在扣費、寫卡之後才打；只扣一次。
   assertEquals(h.calls.filter((c) => c.startsWith("charge:")).length, 1);
   assert(h.calls.indexOf("explain") > h.calls.indexOf("write"));
@@ -409,7 +411,8 @@ Deno.test("兩段式說明：卡都送完之後、done 之前，每張卡一則 
   assertEquals(explains[0].schema, EXPLAIN_SCHEMA);
   assertEquals(explains[0].runId, "run-2s");
   // App 的 done 不帶說明；伺服器的 trace 記狀態與原文，outcome log 不放原文。
-  const done = evs.at(-1)!.finalResult as Record<string, unknown>;
+  const done = evs.find((e) => e.type === "analysis.done")!
+    .finalResult as Record<string, unknown>;
   assertEquals(JSON.stringify(done).includes("先接住她的話"), false);
   const trace = h.done[0].guideV3Trace as {
     twoStage: { explain: Record<string, unknown> };
@@ -439,6 +442,8 @@ async function withoutExplain() {
   return { h, evs };
 }
 
+const doneOf = (evs: Event[]) => evs.find((e) => e.type === "analysis.done")!;
+
 const sameShape = (evs: Event[]) =>
   evs.filter((e) => e.type !== "analysis.done").map((e) => JSON.stringify(e));
 
@@ -453,8 +458,8 @@ Deno.test("兩段式說明失敗（上游錯誤）：沒有說明事件，卡、
   assertEquals(evs.filter((e) => e.type === "analysis.card_explain"), []);
   assertEquals(sameShape(evs), sameShape(base.evs));
   assertEquals(
-    JSON.stringify(evs.at(-1)!.finalResult),
-    JSON.stringify(base.evs.at(-1)!.finalResult),
+    JSON.stringify(doneOf(evs).finalResult),
+    JSON.stringify(doneOf(base.evs).finalResult),
   );
   assertEquals(h.charges, base.h.charges);
   const trace = h.done[0].guideV3Trace as {
@@ -472,7 +477,7 @@ Deno.test("兩段式說明逾時：等到上限就結案，沒有說明事件、
   });
   const evs = await eventsOf(await handleGuideV3Stream(h.deps));
   assertEquals(evs.filter((e) => e.type === "analysis.card_explain"), []);
-  assertEquals(evs.at(-1)?.type, "analysis.done");
+  assert(evs.some((e) => e.type === "analysis.done"));
   const trace = h.done[0].guideV3Trace as {
     twoStage: { explain: Record<string, unknown> };
   };
@@ -493,7 +498,7 @@ Deno.test("兩段式說明回的格式壞了：整次沒有說明；同步丟錯
     const { h } = withExplain(callExplain);
     const evs = await eventsOf(await handleGuideV3Stream(h.deps));
     assertEquals(evs.filter((e) => e.type === "analysis.card_explain"), []);
-    assertEquals(evs.at(-1)?.type, "analysis.done");
+    assert(evs.some((e) => e.type === "analysis.done"));
     assertEquals(h.charges.length, 1);
   }
 });

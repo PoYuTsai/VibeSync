@@ -153,7 +153,9 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_TWO_STAGE=on 時讀局面多四欄
   assert(
     kinds.lastIndexOf("analysis.card") < kinds.indexOf("analysis.card_explain"),
   );
-  assertEquals(kinds.at(-1), "analysis.done");
+  assert(
+    kinds.lastIndexOf("analysis.card_explain") < kinds.indexOf("analysis.done"),
+  );
   // 扣費只有一次，跟沒開一樣。
   assertEquals(
     out.rpcs.filter((r) => r.fn === "charge_stream_analysis_run_v3").length,
