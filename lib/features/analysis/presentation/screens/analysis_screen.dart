@@ -2299,7 +2299,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // 上看到的那一行。一般情況（最後一則是她、額度夠、用量跟那一行一樣、已同意資料
         // 分享）一關都不跳，直接開始分析；照 Bruce 拿掉「先存起來」後沒有只匯入的路
         //（Eric 2026-10-19）。只有真的跳出最後一則提示或確認框而在那裡取消，或額度不夠，
-        // 匯入的內容才留著、不送、不扣。
+        // 匯入的內容才留著、不送、不扣。額度不夠但她的訊息有自傷字眼例外（Eric
+        // 2026-10-18）：照常送出，伺服器只回關心訊息與專線、不扣。
         if (dialogResult.startAnalysis) {
           unawaited(_runAnalysis(shownQuotaLine: dialogResult.shownQuotaLine));
         }
