@@ -313,6 +313,95 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('新流程紀錄帶了關係狀態與說明（Bruce 2026-10-19 路線二）：跟結果頁一樣畫關係狀態卡與為什麼這樣回，雷達不分方案',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final base = _guideV3Record(id: 'v3-relation', at: DateTime(2026, 10, 20));
+    final record = AnalysisRecord(
+      id: base.id,
+      ownerUserId: base.ownerUserId,
+      conversationId: base.conversationId,
+      partnerId: base.partnerId,
+      subjectName: base.subjectName,
+      segmentStart: base.segmentStart,
+      segmentEnd: base.segmentEnd,
+      createdAt: base.createdAt,
+      messages: base.messages,
+      analysisSnapshotJson: jsonEncode({
+        'guideVersion': 'v3.6',
+        'read': {
+          'guideVersion': 'v3.6',
+          'decision': 'send',
+          'light': 'green',
+          'judgment': '她主動回來聊。',
+          'inviteReadiness': 'none',
+          'relation': {
+            'stage': 'premise',
+            'heat': 72,
+            'dimensions': {
+              'heat': 72,
+              'engagement': 70,
+              'topicDepth': 45,
+              'replyWillingness': 78,
+              'emotionalConnection': 60,
+            },
+            'herMove': 'high',
+            'willingness': 'high',
+          },
+          'plannedCards': [
+            {'slot': 1, 'task': 'accept', 'locked': false},
+          ],
+        },
+        'cards': [
+          {
+            'slot': 1,
+            'task': 'accept',
+            'method': 'reaction',
+            'voice': 'default',
+            'messages': ['那當然 我挑的欸'],
+            'hasInventedDetail': false,
+            'hasBlank': false,
+          },
+        ],
+        'partial': false,
+        'cardExplains': [
+          {'card': 1, 'text': '接住她誇你，用短短一句收下。'},
+        ],
+      }),
+      analyzedContentRevision: base.analyzedContentRevision,
+      completionKey: base.completionKey,
+      sourcePlatform: base.sourcePlatform,
+      // 紀錄不寫熱度（列表照舊顯示燈號），階段照 v2 的寫法。
+      enthusiasmScore: null,
+      gameStageLabel: '建立男女感',
+      guideVersion: 'v3.6',
+      guideV3Light: 'green',
+    );
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        subscriptionProvider.overrideWith(
+          (ref) => _SeededSubscriptionNotifier(SubscriptionTierHelper.free),
+        ),
+      ],
+      child: MaterialApp(home: AnalysisRecordDetailScreen(record: record)),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('guide-v3-relation')), findsOneWidget);
+    expect(find.text('分享開心的事'), findsOneWidget);
+    expect(find.text('還沒提過見面'), findsOneWidget);
+    expect(find.text('接住她誇你，用短短一句收下。'), findsOneWidget);
+    final toggle = find.byKey(const ValueKey('guide-v3-relation-detail'));
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('guide-v3-relation-radar')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('新流程紀錄在列表顯示燈號，不顯示熱度（Eric 2026-10-17）', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
