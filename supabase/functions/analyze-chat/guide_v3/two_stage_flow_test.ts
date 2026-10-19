@@ -421,6 +421,9 @@ Deno.test("兩段式說明：卡都送完之後、done 之前，每張卡一則 
   assertEquals(explains[0].system, explainSystemPrompt());
   assertEquals(explains[0].schema, EXPLAIN_SCHEMA);
   assertEquals(explains[0].runId, "run-2s");
+  // 第 2 輪：說明看到的稱讚那一句跟寫卡同一句。
+  assert(explains[0].user.includes(praiseSection("light")));
+  assert(h.writes[0].user.includes(praiseSection("light")));
   // App 的 done 不帶說明；伺服器的 trace 記狀態與原文，outcome log 不放原文。
   const done = evs.find((e) => e.type === "analysis.done")!
     .finalResult as Record<string, unknown>;

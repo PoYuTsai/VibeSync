@@ -27,7 +27,7 @@ import {
 import { GUIDE_V3_SENTINELS } from "./finalize.ts";
 import { GUIDE_V3_SECTIONS } from "./guide_text.ts";
 import type { CardSpec } from "./rules.ts";
-import { HAPPY_SHARE_TASK } from "./two_stage_prompts.ts";
+import { HAPPY_SHARE_TASK, praiseSection } from "./two_stage_prompts.ts";
 
 const spec = (over: Partial<CardSpec>): CardSpec => ({
   task: "接住",
@@ -88,6 +88,29 @@ Deno.test("說明步驟系統提示詞：帶 A1、A6 原文與 A5 的接球、�
   ) {
     assertStringIncludes(system, rule);
   }
+});
+
+Deno.test("第 2 輪說明：Bruce 盲選點名的寫法不算優點，說明不誇也不替它們找理由；稱讚那一句跟寫卡同一句", () => {
+  const system = explainSystemPrompt();
+  assertStringIncludes(
+    system,
+    "自己說收到、收下或記下，評她的語氣、用字、貼圖或表情，被她誇時順勢誇自己，該直接誇時還繞彎吊著她：這些都不算優點",
+  );
+  assertStringIncludes(system, "卡片剛好有的話，只講它其他做對的地方");
+  const args = {
+    tags: { light: "green", herMove: "問他意見", readForUser: "她在討稱讚。" },
+    herLatest: ["你覺得我今天好看嗎"],
+    entries: [],
+    cards: [{ slot: 1, spec: spec({}), messages: ["好看啊"] }],
+  } as const;
+  for (const style of ["direct", "light"] as const) {
+    const user = explainUserPrompt({ ...args, praise: style });
+    assertStringIncludes(
+      user,
+      `- 判讀：她在討稱讚。\n\n${praiseSection(style)}\n\n## 她最新這一輪`,
+    );
+  }
+  assert(!explainUserPrompt(args).includes("## 稱讚"));
 });
 
 Deno.test("A5 分段：六個小標都在；任務與做法的那一條連同子項目一起取", () => {
@@ -286,4 +309,16 @@ Deno.test("說明步驟的哨兵：都在說明步驟的提示詞裡；重播錄
   for (const text of texts) {
     assertEquals(containsPromptLeak(text, EXPLAIN_SENTINELS), false, text);
   }
+});
+
+Deno.test("說明步驟系統提示詞的雜湊鎖：改這段要連這裡一起改", async () => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(explainSystemPrompt()),
+  );
+  assertEquals(
+    [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0"))
+      .join(""),
+    "afd9dfec19b2cfdc2012ebe0900caf5583847568fd4c5c73635b0938f446754e",
+  );
 });

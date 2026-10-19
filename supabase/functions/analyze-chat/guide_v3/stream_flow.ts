@@ -1302,6 +1302,7 @@ class GuideV3Flow {
           herLatest,
           entries: plan.entries,
           cards,
+          ...(plan.praise ? { praise: plan.praise } : {}),
         }),
         schema: EXPLAIN_SCHEMA,
         deadlineAtMs: startedAt + waitMs,

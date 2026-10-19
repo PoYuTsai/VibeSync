@@ -7,11 +7,12 @@ import type { GuideV3Entry } from "./entries.ts";
 import { GUIDE_V3_SECTIONS, type GuideV3SectionId } from "./guide_text.ts";
 import { vetCoachText } from "./finalize.ts";
 import type { LIGHTS, ReadTags } from "./read_tags.ts";
-import type { CardSpec, HisMethod, Task } from "./rules.ts";
+import type { CardSpec, HisMethod, PraiseStyle, Task } from "./rules.ts";
 import { cardTaskText } from "./prompts.ts";
 import {
   answerParts,
   HAPPY_SHARE_TASK,
+  praiseSection,
   TWO_STAGE_METHOD_LABEL,
 } from "./two_stage_prompts.ts";
 
@@ -44,7 +45,8 @@ const EXPLAIN_RULES = `## 說明怎麼寫
 - 每張卡寫 1–2 句白話的繁體中文：先講這張接住了她的哪一點，再講這樣回在兩人之間起什麼作用。
 - 道理從下面的說明書來，但要換成一般人聽得懂的白話：不寫段落代號或條目編號，不整句照抄說明書；真的要用說明書裡的名稱，放在括號裡。
 - 只講卡片實際寫到的東西：不改寫卡片、不另外建議怎麼回，也不替卡片多加意思。
-- 她的話只在講清楚時才引，幾個字就好；不評斷她這個人，講她的意思時只講判讀看得出來的。`;
+- 她的話只在講清楚時才引，幾個字就好；不評斷她這個人，講她的意思時只講判讀看得出來的。
+- 自己說收到、收下或記下，評她的語氣、用字、貼圖或表情，被她誇時順勢誇自己，該直接誇時還繞彎吊著她：這些都不算優點，說明不誇、也不替它們找理由；卡片剛好有的話，只講它其他做對的地方。`;
 
 const EXPLAIN_FORMAT = `## 輸出格式
 只輸出 JSON：{"explanations": [{"card": <卡片編號>, "text": "<這張的說明>"}]}，每張卡一項，照卡片編號。`;
@@ -54,6 +56,7 @@ export const EXPLAIN_SENTINELS: readonly string[] = [
   "VibeSync 對話分析的「說明」步驟",
   "道理從下面的說明書來",
   "說明書（道理的來源）",
+  "也不替它們找理由",
 ];
 
 /// A5 以粗體小標分段（任務、「有他」做法、口吻、她丟來的球、曖昧、每張卡都要做到）。
@@ -141,6 +144,8 @@ export function explainUserPrompt(args: {
   readonly entries: readonly GuideV3Entry[];
   readonly cards: readonly ExplainCard[];
   readonly a5?: string;
+  /// 寫卡看到的那一句稱讚（第 2 輪）：說明跟寫卡用同一把尺，不會把直接誇講成給太滿。
+  readonly praise?: PraiseStyle;
 }): string {
   const a5 = args.a5 ?? GUIDE_V3_SECTIONS.A5;
   const her = args.herLatest.length > 0
@@ -174,6 +179,7 @@ export function explainUserPrompt(args: {
       `- 她這一輪在做什麼：${args.tags.herMove}`,
       `- 判讀：${args.tags.readForUser.trim() || "（沒有）"}`,
     ].join("\n"),
+    ...(args.praise ? [praiseSection(args.praise)] : []),
     `## 她最新這一輪\n${her}`,
     `## 這一輪的情境做法\n${entries}`,
     `## 寫好的卡（一共 ${args.cards.length} 張）\n\n${cards.join("\n\n")}`,
