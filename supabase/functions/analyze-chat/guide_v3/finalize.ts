@@ -67,9 +67,11 @@ const GUIDE_V3_LEAK_SENTINELS: readonly string[] = [
   ...GUIDE_V3_SENTINELS_NORMALIZED,
 ];
 
-function leaksPrompt(text: string): boolean {
+/// extra：開關開了才多的提示詞段落的哨兵（關係訊號見 relation.ts）；沒給就跟今天一樣。
+function leaksPrompt(text: string, extra: readonly string[] = []): boolean {
   return hasAnalyzeChatPromptLeak(text) ||
-    containsPromptLeak(text, GUIDE_V3_LEAK_SENTINELS);
+    containsPromptLeak(text, GUIDE_V3_LEAK_SENTINELS) ||
+    (extra.length > 0 && containsPromptLeak(text, extra));
 }
 
 function cleanMessage(message: string): string | null {
@@ -135,14 +137,19 @@ export function finalizeCard(
 /// 給用戶看的教練文字（判讀、要等她做什麼）：比照 v2 不送型決定的檢查（提示詞注入、
 /// 英文的不安全樣式），再加外洩哨兵；整理前後都查。不掃 BLOCKED_PATTERNS：那是給
 /// 可以照傳的句子，拿去掃描述會誤傷正確的說明（同 guardrails.ts 的理由）。
+/// extraSentinels：開關開了才多的提示詞段落的哨兵；沒給就跟今天一樣。
 export function vetCoachText(
   text: string,
+  extraSentinels: readonly string[] = [],
 ): { ok: true; text: string } | { ok: false } {
   const cleaned =
     (normalizeOutgoingScript(normalizeOutgoingPunctuation(text)) ??
       "").trim();
   for (const t of [text, cleaned]) {
-    if (leaksPrompt(t) || hasPromptInjection(t) || hasUnsafeRecommendation(t)) {
+    if (
+      leaksPrompt(t, extraSentinels) || hasPromptInjection(t) ||
+      hasUnsafeRecommendation(t)
+    ) {
       return { ok: false };
     }
   }
@@ -150,20 +157,22 @@ export function vetCoachText(
 }
 
 /// 判讀命中就不給（空字串）；要等她做什麼命中或清完是空的，就用預設那句（扣費紀錄
-/// 的 stopCondition 不能是空的）。
+/// 的 stopCondition 不能是空的）。extraSentinels：讀局面多了提示詞段落時（關係訊號開關開，
+/// relation.ts 的 RELATION_LEAK_SENTINELS）一起比；沒給就跟今天一樣（主審第 1 輪 P2）。
 export function vetPlanText(
   plan: GuideV3Plan,
   onRemoved: (field: "judgment" | "waitFor") => void,
+  extraSentinels: readonly string[] = [],
 ): GuideV3Plan {
   let judgment = plan.judgment;
   if (judgment) {
-    const vetted = vetCoachText(judgment);
+    const vetted = vetCoachText(judgment, extraSentinels);
     judgment = vetted.ok ? vetted.text : "";
     if (!vetted.ok) onRemoved("judgment");
   }
   let waitFor = plan.waitFor;
   if (waitFor) {
-    const vetted = vetCoachText(waitFor);
+    const vetted = vetCoachText(waitFor, extraSentinels);
     if (vetted.ok && vetted.text) waitFor = vetted.text;
     else {
       waitFor = HOLD_WAIT_FALLBACK;

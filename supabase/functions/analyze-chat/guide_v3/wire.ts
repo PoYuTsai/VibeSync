@@ -11,7 +11,17 @@ import type {
   GuideV3Plan,
 } from "./plan.ts";
 import type { GuideV3PreviousRoundTrace } from "./previous_round.ts";
-import type { INVITE_READINESS, LIGHTS } from "./read_tags.ts";
+import type {
+  HER_MOVES,
+  INVITE_READINESS,
+  LIGHTS,
+  ReadTags,
+} from "./read_tags.ts";
+import type {
+  GameStage,
+  GuideV3RelationTrace,
+  RelationRead,
+} from "./relation.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
 import type { SafetyKeywordHits } from "./safety.ts";
 
@@ -63,6 +73,36 @@ export const INVITE_READINESS_CODE: Readonly<
   猶豫: "hesitant",
 };
 
+/// 她這一輪在做什麼 → App 用的代碼（「關係狀態」卡，Bruce 2026-10-19 路線二）。中文類別名之後
+/// 可能改，App 只認代碼、不認得的當沒有。
+export type HerMoveCode =
+  | "daily_life"
+  | "emotion"
+  | "high_point"
+  | "laugh_ending"
+  | "teasing"
+  | "testing"
+  | "serious_question"
+  | "asks_about_him"
+  | "asks_his_opinion"
+  | "open_window"
+  | "braking";
+export const HER_MOVE_CODE: Readonly<
+  Record<typeof HER_MOVES[number], HerMoveCode>
+> = {
+  生活: "daily_life",
+  情緒: "emotion",
+  高點: "high_point",
+  大笑收尾: "laugh_ending",
+  調侃: "teasing",
+  試探: "testing",
+  認真問: "serious_question",
+  問他的事: "asks_about_him",
+  問他意見: "asks_his_opinion",
+  開窗: "open_window",
+  煞車: "braking",
+};
+
 /// 自傷訊號時顯示的固定關心訊息（Eric 10/16 同意的文案，之後給 Bruce 看）。
 export const CARE_MESSAGE = [
   "對話裡出現了可能有人有危險的訊號。先把安全放在第一位，不用想怎麼回得漂亮。",
@@ -104,6 +144,43 @@ export interface GuideV3ReadView {
     task: V3CardTaskCode;
     locked: false;
   }[];
+  /// 關係訊號開關開才有，排在最後（舊版 App 不看這欄）；自傷關心、未成年不帶。
+  readonly relation?: GuideV3RelationView;
+}
+
+/// 判讀裡的關係狀態（Bruce 2026-10-19 路線二：結果頁的「關係狀態」卡、作戰板的階段、熱度與雷達）。
+/// stage、heat、dimensions 來自讀局面多要的三欄，沒通過檢查的不放；dimensions 要熱度與四個維度
+/// 都在才放（App 的雷達是五個角，heat 就是熱度）。herMove、willingness 是本來就有的標記，一定有。
+export interface GuideV3RelationView {
+  readonly stage?: GameStage;
+  readonly heat?: number;
+  readonly dimensions?: {
+    readonly heat: number;
+    readonly engagement: number;
+    readonly topicDepth: number;
+    readonly replyWillingness: number;
+    readonly emotionalConnection: number;
+  };
+  readonly herMove: HerMoveCode;
+  readonly willingness: ReadTags["replyWillingness"];
+}
+
+/// 三欄都沒通過檢查就沒有 relation（判讀跟開關沒開一樣）。
+export function relationView(
+  read: RelationRead,
+  tags: Pick<ReadTags, "herMove" | "replyWillingness">,
+): GuideV3RelationView | undefined {
+  const dimensions = read.heat !== undefined && read.dimensions
+    ? { heat: read.heat, ...read.dimensions }
+    : undefined;
+  if (!read.stage && read.heat === undefined && !dimensions) return undefined;
+  return {
+    ...(read.stage ? { stage: read.stage } : {}),
+    ...(read.heat !== undefined ? { heat: read.heat } : {}),
+    ...(dimensions ? { dimensions } : {}),
+    herMove: HER_MOVE_CODE[tags.herMove],
+    willingness: tags.replyWillingness,
+  };
 }
 
 export interface GuideV3CardView {
@@ -120,6 +197,7 @@ export interface GuideV3CardView {
 export function readView(
   plan: GuideV3Plan,
   light: typeof LIGHTS[number] | null,
+  relation?: GuideV3RelationView,
 ): GuideV3ReadView {
   const careKind = plan.careKind ?? "self_harm";
   return {
@@ -145,6 +223,8 @@ export function readView(
       task: TASK_CODE[spec.task],
       locked: false,
     })),
+    // 自傷關心、未成年只顯示固定訊息，關係狀態沒有意義，不帶（Bruce 2026-10-19 路線二）。
+    ...(plan.decision !== "care" && relation ? { relation } : {}),
   };
 }
 
@@ -205,6 +285,9 @@ export interface GuideV3Trace {
   readonly herLastTurnChars?: number;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;
+  /// 關係訊號開關開、讀局面成功才有：通過檢查的階段、熱度與四個維度，加上拿掉的欄位（只有代碼
+  /// 與數字，見 relation.ts）。
+  readonly relation?: GuideV3RelationTrace;
   /// care 才有：哪一種固定訊息、誰判出來的；讀局面失敗才靠關鍵字給的，記失敗的錯誤碼；
   /// 額度不夠、沒讀局面就直接給的，標 insufficientQuota（Eric 2026-10-18）。
   readonly care?: {

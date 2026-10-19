@@ -46,6 +46,13 @@ import {
   zeroMemoryCounts,
 } from "./memory.ts";
 import {
+  type GuideV3RelationTrace,
+  parseRelation,
+  READ_TAGS_SCHEMA_WITH_RELATION,
+  readSystemPromptWithRelation,
+  RELATION_LEAK_SENTINELS,
+} from "./relation.ts";
+import {
   type GuideV3PreviousRound,
   type GuideV3PreviousRoundTrace,
   previousRoundTrace,
@@ -69,6 +76,7 @@ import {
   type GuideV3Trace,
   readEvent,
   readView,
+  relationView,
 } from "./wire.ts";
 
 /// 讀局面＋寫卡共用的模型期限（從請求開始算）。
@@ -169,6 +177,10 @@ export interface GuideV3StreamDeps {
   ): Promise<{ text: string; model: string }>;
   /// 預設 GUIDE_V3_MEMORY_WAIT_MS（測試縮短用）。
   memoryWaitMs?: number;
+  /// 關係訊號（開關 ANALYZE_GUIDE_V3_RELATION，handler 把關；Bruce 2026-10-19 路線二）：讀局面
+  /// 在最後多要階段、熱度與四個維度，判讀多帶 relation。沒給或 false：提示詞、schema、事件、
+  /// trace 與扣費都跟今天一樣。
+  relation?: boolean;
   log(
     event: string,
     metadata: Record<string, unknown>,
@@ -326,6 +338,8 @@ class GuideV3Flow {
   private memory: Promise<PartnerMemory & { latencyMs: number }> | null = null;
   /// 程式關鍵字掃到的安全訊號（run 一開始就掃）。
   private hits: SafetyKeywordHits = NO_SAFETY_HITS;
+  /// 關係訊號（開關開、讀局面成功才有）：通過檢查的值與拿掉的欄位，進 trace。
+  private relation: GuideV3RelationTrace | null = null;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -371,17 +385,23 @@ class GuideV3Flow {
       this.hits = scanSafetyKeywords(this.deps.messages, this.deps.background);
       // 額度不夠：不讀局面、不寫卡、不打記憶，直接給關心訊息（Eric 2026-10-18）。
       if (this.quotaCare) return await this.care(emit, this.quotaCare, null);
+      // 關係訊號（Bruce 2026-10-19 路線二）：讀局面在最後多要三欄；沒開照舊。
+      const withRelation = this.deps.relation === true;
       let text: string;
       try {
         const read = await this.deps.callRead({
           runId: this.runId,
-          system: readSystemPrompt(),
+          system: withRelation
+            ? readSystemPromptWithRelation()
+            : readSystemPrompt(),
           user: readUserPrompt(
             turns,
             this.deps.background,
             this.deps.previousRound,
           ),
-          schema: READ_TAGS_SCHEMA,
+          schema: withRelation
+            ? READ_TAGS_SCHEMA_WITH_RELATION
+            : READ_TAGS_SCHEMA,
           deadlineAtMs,
         });
         text = read.text;
@@ -419,6 +439,16 @@ class GuideV3Flow {
           { stage: "read" },
         );
       }
+      if (withRelation) {
+        // 三欄各自檢查：不合格的拿掉、記 log，其他標記、決定、卡與扣費都不受影響。
+        this.relation = parseRelation(tags);
+        if (this.relation.dropped.length > 0) {
+          this.deps.log("guide_v3_relation_dropped", {
+            analysisRunId: this.runId,
+            dropped: this.relation.dropped,
+          }, "error");
+        }
+      }
       const plan = vetPlanText(
         planTurn(turns, tags, this.hits),
         (field) =>
@@ -426,8 +456,15 @@ class GuideV3Flow {
             analysisRunId: this.runId,
             field,
           }, "error"),
+        // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；沒開照舊。
+        withRelation ? RELATION_LEAK_SENTINELS : [],
       );
-      const view = readView(plan, tags.light);
+      // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
+      const view = readView(
+        plan,
+        tags.light,
+        this.relation ? relationView(this.relation, tags) : undefined,
+      );
       // 自傷訊號要讀完才知道，所以記憶在讀局面之後才開始；關心訊息不打這一次。
       if (plan.decision !== "care") this.startMemory(turns, deadlineAtMs);
       switch (plan.decision) {
@@ -658,6 +695,7 @@ class GuideV3Flow {
         ? { keywordHits: this.hits }
         : {}),
       ...this.previousRoundCounts,
+      ...(this.relation ? { relation: this.relation } : {}),
       ...extra,
     };
     // 帶了上一輪的那次，trace 不放任何模型寫的字（主審第 1 輪 P1，previous_round.ts）。
