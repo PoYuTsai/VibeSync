@@ -83,6 +83,7 @@ Deno.test("說明步驟系統提示詞：帶 A1、A6 原文與 A5 的接球、�
       "1–2 句",
       "不寫段落代號或條目編號",
       "不整句照抄說明書",
+      "只講判讀看得出來的",
     ]
   ) {
     assertStringIncludes(system, rule);
