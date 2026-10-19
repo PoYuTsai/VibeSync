@@ -12,6 +12,7 @@ import type {
 } from "./plan.ts";
 import type { GuideV3PreviousRoundTrace } from "./previous_round.ts";
 import type { INVITE_READINESS, LIGHTS } from "./read_tags.ts";
+import type { GuideV3RelationTrace } from "./relation.ts";
 import type { CardSpec, HisMethod, Task, Voice } from "./rules.ts";
 import type { SafetyKeywordHits } from "./safety.ts";
 
@@ -205,6 +206,9 @@ export interface GuideV3Trace {
   readonly herLastTurnChars?: number;
   /// 有打對象記憶才有（只有計數，見 memory.ts）。
   readonly memory?: GuideV3MemoryTrace;
+  /// 關係訊號開關開、讀局面成功才有：通過檢查的階段、熱度與四個維度，加上拿掉的欄位（只有代碼
+  /// 與數字，見 relation.ts）。
+  readonly relation?: GuideV3RelationTrace;
   /// care 才有：哪一種固定訊息、誰判出來的；讀局面失敗才靠關鍵字給的，記失敗的錯誤碼；
   /// 額度不夠、沒讀局面就直接給的，標 insufficientQuota（Eric 2026-10-18）。
   readonly care?: {

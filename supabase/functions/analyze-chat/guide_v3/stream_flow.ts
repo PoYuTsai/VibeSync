@@ -46,6 +46,12 @@ import {
   zeroMemoryCounts,
 } from "./memory.ts";
 import {
+  type GuideV3RelationTrace,
+  parseRelation,
+  READ_TAGS_SCHEMA_WITH_RELATION,
+  readSystemPromptWithRelation,
+} from "./relation.ts";
+import {
   type GuideV3PreviousRound,
   type GuideV3PreviousRoundTrace,
   previousRoundTrace,
@@ -330,6 +336,8 @@ class GuideV3Flow {
   private memory: Promise<PartnerMemory & { latencyMs: number }> | null = null;
   /// 程式關鍵字掃到的安全訊號（run 一開始就掃）。
   private hits: SafetyKeywordHits = NO_SAFETY_HITS;
+  /// 關係訊號（開關開、讀局面成功才有）：通過檢查的值與拿掉的欄位，進 trace。
+  private relation: GuideV3RelationTrace | null = null;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -375,17 +383,23 @@ class GuideV3Flow {
       this.hits = scanSafetyKeywords(this.deps.messages, this.deps.background);
       // 額度不夠：不讀局面、不寫卡、不打記憶，直接給關心訊息（Eric 2026-10-18）。
       if (this.quotaCare) return await this.care(emit, this.quotaCare, null);
+      // 關係訊號（Bruce 2026-10-19 路線二）：讀局面在最後多要三欄；沒開照舊。
+      const withRelation = this.deps.relation === true;
       let text: string;
       try {
         const read = await this.deps.callRead({
           runId: this.runId,
-          system: readSystemPrompt(),
+          system: withRelation
+            ? readSystemPromptWithRelation()
+            : readSystemPrompt(),
           user: readUserPrompt(
             turns,
             this.deps.background,
             this.deps.previousRound,
           ),
-          schema: READ_TAGS_SCHEMA,
+          schema: withRelation
+            ? READ_TAGS_SCHEMA_WITH_RELATION
+            : READ_TAGS_SCHEMA,
           deadlineAtMs,
         });
         text = read.text;
@@ -422,6 +436,16 @@ class GuideV3Flow {
           ),
           { stage: "read" },
         );
+      }
+      if (withRelation) {
+        // 三欄各自檢查：不合格的拿掉、記 log，其他標記、決定、卡與扣費都不受影響。
+        this.relation = parseRelation(tags);
+        if (this.relation.dropped.length > 0) {
+          this.deps.log("guide_v3_relation_dropped", {
+            analysisRunId: this.runId,
+            dropped: this.relation.dropped,
+          }, "error");
+        }
       }
       const plan = vetPlanText(
         planTurn(turns, tags, this.hits),
@@ -662,6 +686,7 @@ class GuideV3Flow {
         ? { keywordHits: this.hits }
         : {}),
       ...this.previousRoundCounts,
+      ...(this.relation ? { relation: this.relation } : {}),
       ...extra,
     };
     // 帶了上一輪的那次，trace 不放任何模型寫的字（主審第 1 輪 P1，previous_round.ts）。

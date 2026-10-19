@@ -39,6 +39,8 @@ export function readSystemPrompt(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  /// 開關開了才多要的欄位說明（關係訊號見 relation.ts）；沒給就跟今天一字不差。
+  extraFieldNotes?: string,
 ): string {
   const triggers = entries.filter((e) => e.enabled).map((e) =>
     `- ${e.id}：${e.trigger}`
@@ -48,6 +50,7 @@ export function readSystemPrompt(
     sections.A3,
     sections.A4,
     READ_FIELD_NOTES,
+    ...(extraFieldNotes ? [extraFieldNotes] : []),
     `## 情境條目的觸發（只回符合的編號）\n${triggers}`,
     // readForUser、waitFor 是直接給用戶看的文字。
     leakDirective.trim(),
