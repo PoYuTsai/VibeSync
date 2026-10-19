@@ -1347,12 +1347,29 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
+  // 底部動作列：量排不排得下和畫出來用同一組數字。
+  static const _actionGap = 12.0;
+  static const _cancelMinSize = Size(88, 52);
+
+  /// 主鈕留白跟 App 主題同值（畫面不變）；寫在按鈕上，量字和畫鈕才是同一個數。
+  static const _primaryPadding =
+      EdgeInsets.symmetric(horizontal: 24, vertical: 16);
+  static const _analyzeLabel = '加入並開始分析';
+  static final _quotaLineStyle = AppTypography.bodySmall.copyWith(
+    color: AppColors.onBackgroundSecondary,
+    fontWeight: FontWeight.w600,
+  );
+  static final _primaryLabelStyle = AppTypography.titleSmall.copyWith(
+    color: AppColors.onCta,
+    fontWeight: FontWeight.w800,
+  );
+
   /// 不提供一鍵分析時（例如會另開新片段）：今天的「取消／確認本次內容」。
   Widget _buildConfirmOnlyActions() {
     return Row(
       children: [
         _buildCancelAction(),
-        const SizedBox(width: 12),
+        const SizedBox(width: _actionGap),
         Expanded(
           child: _buildPrimaryAction(label: '確認本次內容', onPressed: _submit),
         ),
@@ -1365,40 +1382,110 @@ class _ScreenshotRecognitionDialogState
   /// 一般情況按一下就匯入並開始分析，後面一關都不跳；不想現在分析就按「取消」，辨識
   /// 結果留在分析頁，可從「繼續確認本次內容」再開。只有後面真的跳出最後一則提示或
   /// 確認框而在那裡取消，或額度不夠，匯入的內容才留著、不送。
+  ///
+  /// 「取消」旁邊放不下那一行或主鈕的字（各一行）就改上下排，三樣各占整排（主審 r1
+  /// P3：320 寬、1.4 倍字會變成「加入並開始分／析」、「則」單獨一行）。照實際的寬度、
+  /// 字型和字級縮放量，放得下就維持同一排。
   Widget _buildImportAndAnalyzeActions() {
     final quotaLine = _shownQuotaLine;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        _buildCancelAction(),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 「取消」兩個字在 App 字級上限 1.4 倍也比最小寬 88 窄，旁邊剩的就是這麼寬。
+        final besideCancel =
+            constraints.maxWidth - _cancelMinSize.width - _actionGap;
+        final fitsBesideCancel = (quotaLine == null ||
+                _fitsOneLine(
+                  context,
+                  quotaLine.text,
+                  DefaultTextStyle.of(context).style.merge(_quotaLineStyle),
+                  besideCancel,
+                )) &&
+            _fitsOneLine(
+              context,
+              _analyzeLabel,
+              _primaryLabelStyleIn(context),
+              besideCancel - _primaryPadding.horizontal,
+            );
+        final lineAndButton = <Widget>[
+          if (quotaLine != null) ...[
+            Text(
+              quotaLine.text,
+              key: ScreenshotRecognitionDialog.quotaLineKey,
+              textAlign: TextAlign.center,
+              style: _quotaLineStyle,
+            ),
+            const SizedBox(height: 8),
+          ],
+          _buildPrimaryAction(
+            key: ScreenshotRecognitionDialog.analyzeButtonKey,
+            label: _analyzeLabel,
+            onPressed: () => _submit(startAnalysis: true),
+          ),
+        ];
+        if (!fitsBesideCancel) {
+          return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (quotaLine != null) ...[
-                Text(
-                  quotaLine.text,
-                  key: ScreenshotRecognitionDialog.quotaLineKey,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-              _buildPrimaryAction(
-                key: ScreenshotRecognitionDialog.analyzeButtonKey,
-                label: '加入並開始分析',
-                onPressed: () => _submit(startAnalysis: true),
-              ),
+              ...lineAndButton,
+              const SizedBox(height: 8),
+              _buildCancelAction(),
             ],
-          ),
-        ),
-      ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _buildCancelAction(),
+            const SizedBox(width: _actionGap),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: lineAndButton,
+              ),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  /// 主鈕上的字實際用的樣式：ElevatedButton 的字以按鈕主題（沒有就是 labelLarge）
+  /// 為底，再疊我們給的。
+  TextStyle _primaryLabelStyleIn(BuildContext context) {
+    final base = ElevatedButtonTheme.of(context)
+            .style
+            ?.textStyle
+            ?.resolve(const <WidgetState>{}) ??
+        Theme.of(context).textTheme.labelLarge ??
+        const TextStyle();
+    return base.merge(_primaryLabelStyle);
+  }
+
+  /// 這段字在 [maxWidth] 內排不排得下一行：跟 Text 一樣套字級縮放、粗體設定和語系。
+  bool _fitsOneLine(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    double maxWidth,
+  ) {
+    if (maxWidth <= 0) return false;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: MediaQuery.boldTextOf(context)
+            ? style.merge(const TextStyle(fontWeight: FontWeight.bold))
+            : style,
+      ),
+      textDirection: Directionality.of(context),
+      locale: Localizations.maybeLocaleOf(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout(maxWidth: maxWidth);
+    final fits = !painter.didExceedMaxLines;
+    painter.dispose();
+    return fits;
   }
 
   Widget _buildCancelAction() {
@@ -1410,7 +1497,7 @@ class _ScreenshotRecognitionDialogState
         Navigator.of(context).pop();
       },
       style: TextButton.styleFrom(
-        minimumSize: const Size(88, 52),
+        minimumSize: _cancelMinSize,
       ),
       child: const Text(
         '取消',
@@ -1433,16 +1520,14 @@ class _ScreenshotRecognitionDialogState
         backgroundColor: AppColors.ctaStart,
         foregroundColor: AppColors.onCta,
         minimumSize: const Size.fromHeight(52),
+        padding: _primaryPadding,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
       ),
       child: Text(
         label,
-        style: AppTypography.titleSmall.copyWith(
-          color: AppColors.onCta,
-          fontWeight: FontWeight.w800,
-        ),
+        style: _primaryLabelStyle,
       ),
     );
   }
