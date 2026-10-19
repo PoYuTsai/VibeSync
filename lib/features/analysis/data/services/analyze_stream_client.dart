@@ -113,6 +113,9 @@ enum AnalysisStreamUpdateKind {
   /// v3：一張定稿過的任務卡，到了就能複製。
   guideV3Card,
 
+  /// v3：一張卡的「為什麼這樣回」（卡都送完、done 之前；done 的結果不帶）。
+  guideV3CardExplain,
+
   /// v2 帶 [AnalysisStreamUpdate.result]；v3 帶
   /// [AnalysisStreamUpdate.guideV3Result]。
   done,
@@ -132,6 +135,7 @@ class AnalysisStreamUpdate {
   final String? guideVersion;
   final GuideV3Read? guideV3Read;
   final GuideV3Card? guideV3Card;
+  final GuideV3CardExplain? guideV3CardExplain;
   final GuideV3Result? guideV3Result;
   final Map<String, dynamic>? rawEvent;
 
@@ -147,6 +151,7 @@ class AnalysisStreamUpdate {
     this.guideVersion,
     this.guideV3Read,
     this.guideV3Card,
+    this.guideV3CardExplain,
     this.guideV3Result,
     this.rawEvent,
   });
@@ -261,6 +266,19 @@ class AnalysisStreamUpdate {
           label: label,
           etaSeconds: etaSeconds,
           guideV3Card: card,
+          rawEvent: rawEvent,
+        );
+
+  const AnalysisStreamUpdate.guideV3CardExplain({
+    required GuideV3CardExplain explain,
+    String? runId,
+    int? etaSeconds,
+    Map<String, dynamic>? rawEvent,
+  }) : this._(
+          kind: AnalysisStreamUpdateKind.guideV3CardExplain,
+          runId: runId,
+          etaSeconds: etaSeconds,
+          guideV3CardExplain: explain,
           rawEvent: rawEvent,
         );
 
@@ -481,6 +499,21 @@ class AnalyzeStreamClient {
               card: card,
               runId: runId,
               label: '第 ${card.slot} 張卡已送到',
+              etaSeconds: etaSeconds,
+              rawEvent: event,
+            );
+            break;
+          case 'analysis.card_explain':
+            // 「為什麼這樣回」（兩段式實驗；Bruce 2026-10-19 路線二）：讀不懂就跳過，卡照舊。
+            final explain = GuideV3CardExplain.fromJson(event);
+            if (explain == null) {
+              analysisDebugLog(
+                  '[analyze.stream] unreadable analysis.card_explain');
+              break;
+            }
+            yield AnalysisStreamUpdate.guideV3CardExplain(
+              explain: explain,
+              runId: runId,
               etaSeconds: etaSeconds,
               rawEvent: event,
             );

@@ -1,7 +1,7 @@
-/// v3（任務卡）結果區：燈號＋局面判讀＋任務卡（Eric 2026-10-17：新流程不留雷達、
-/// 熱度、階段；先別回時加「要等她做什麼」）。卡一到就畫、就能複製；免費方案看
-/// 不到的卡整輪寫完才在後面合成一塊（Eric 2026-10-18）。被動 section：資料與動作
-/// 都由畫面傳進來。
+/// v3（任務卡）結果區：燈號＋局面判讀＋任務卡（先別回時加「要等她做什麼」）。卡一到就畫、
+/// 就能複製。判讀帶了關係狀態時，判讀下面加「關係狀態」卡，每張卡下面有「為什麼這樣回」
+/// 就加一段（Bruce 2026-10-19 路線二；Eric 2026-10-17 原本不留雷達、熱度、階段）。被動
+/// section：資料與動作都由畫面傳進來。
 library;
 
 import 'package:flutter/material.dart';
@@ -10,6 +10,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../domain/entities/guide_v3_result.dart';
+import '../widgets/guide_v3_relation_card.dart';
 import '../widgets/guide_v3_task_card.dart';
 
 Color guideV3LightColor(GuideV3Light light) => switch (light) {
@@ -318,6 +319,9 @@ class GuideV3ResultSection extends StatelessWidget {
     this.showUpgradeRefresh = false,
     this.refreshBusy = false,
     this.onRefreshAfterUpgrade,
+    this.explanations = const {},
+    this.reconnectWording = false,
+    this.showRelationRadar = true,
   });
 
   final GuideV3Read read;
@@ -352,10 +356,31 @@ class GuideV3ResultSection extends StatelessWidget {
   final bool refreshBusy;
   final VoidCallback? onRefreshAfterUpgrade;
 
+  /// 每張卡的「為什麼這樣回」（slot → 說明）；沒有的卡不畫那一段。
+  final Map<int, String> explanations;
+
+  /// 關係狀態卡的階段用「重新連線」的說法（已是伴侶，閉環規則 5）。
+  final bool reconnectWording;
+
+  /// 關係狀態卡的五維雷達：結果頁照 v2 只給付費方案，分析紀錄不分方案。
+  final bool showRelationRadar;
+
   @override
   Widget build(BuildContext context) {
     final decision = read.decision;
     final children = <Widget>[GuideV3ReadPanel(read: read)];
+    // 關係狀態（Bruce 2026-10-19 路線二，A3）：判讀帶了才畫；關心本來就不帶。
+    final relation = read.relation;
+    if (relation != null && decision != GuideV3Decision.care) {
+      children
+        ..add(const SizedBox(height: 12))
+        ..add(GuideV3RelationCard(
+          read: read,
+          relation: relation,
+          reconnectWording: reconnectWording,
+          showRadar: showRelationRadar,
+        ));
+    }
     if (decision.hasCards) {
       final bySlot = {for (final card in cards) card.slot: card};
       final slots = <Widget>[];
@@ -459,8 +484,24 @@ class GuideV3ResultSection extends StatelessWidget {
         onRefine: onRefine != null && card.refineSpec != null
             ? () => onRefine!(card)
             : null,
-        footer: footerFor?.call(card),
+        footer: _footer(card),
       );
+
+  /// 卡片下方：成效回報列（複製過才有）在上，「為什麼這樣回」在最下面（A3）。
+  Widget? _footer(GuideV3Card card) {
+    final outcome = footerFor?.call(card);
+    final explanation = explanations[card.slot];
+    if (explanation == null) return outcome;
+    final why = GuideV3CardExplanation(
+      key: ValueKey('guide-v3-card-${card.slot}-why'),
+      text: explanation,
+    );
+    if (outcome == null) return why;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [outcome, why],
+    );
+  }
 
   /// 推薦理由：跟開場救星、新話題同一個樣子（燈泡＋「AI 推薦理由：」，樣式照抄、不共用
   /// 元件）。理由是第一張卡任務的固定說明（[guideV3TaskPurpose]），不花模型費、不寫新句子

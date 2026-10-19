@@ -360,6 +360,61 @@ void main() {
     });
   });
 
+  group('為什麼這樣回（analysis.card_explain）', () {
+    test('一張卡一則：slot 是 1 起算的整數、說明去空白後不能是空的', () {
+      final explain =
+          GuideV3CardExplain.fromJson({'card': 2, 'text': '  順著她說的地方約。 '})!;
+      expect(explain.card, 2);
+      expect(explain.text, '順著她說的地方約。');
+      for (final bad in <Object?>[
+        {'card': 0, 'text': '說明'},
+        {'card': '1', 'text': '說明'},
+        {'card': 1, 'text': '  '},
+        {'card': 1, 'text': 3},
+        'not a map',
+      ]) {
+        expect(GuideV3CardExplain.fromJson(bad), isNull, reason: '$bad');
+      }
+    });
+
+    test('併進結果連原樣一起改（存檔、重開畫面都在）；已經有的不覆蓋，沒有新的回自己', () {
+      final result = GuideV3Result.fromJson(_final())!;
+      expect(result.cardExplains, isEmpty);
+      expect(identical(result.withCardExplains(const {}), result), isTrue);
+
+      final explained = result.withCardExplains({2: '第二張', 1: '第一張'});
+      expect(explained.cardExplains, {1: '第一張', 2: '第二張'});
+      expect(explained.rawResponse[guideV3CardExplainsKey], [
+        {'card': 1, 'text': '第一張'},
+        {'card': 2, 'text': '第二張'},
+      ]);
+      expect(explained.cards, result.cards);
+
+      final restored = GuideV3Result.fromJson(explained.rawResponse)!;
+      expect(restored.cardExplains, {1: '第一張', 2: '第二張'});
+      expect(
+        identical(restored.withCardExplains({1: '別的'}), restored),
+        isTrue,
+      );
+    });
+
+    test('續看重組補回畫面上的卡時，說明照留', () {
+      final recovered = GuideV3Result.fromJson(_final(
+        cards: [_card(1)],
+        recovered: true,
+      ))!
+          .withCardExplains({1: '第一張'});
+      final merged = recovered.withShownCards([
+        GuideV3Card.fromJson(_card(2, task: 'tension'))!,
+      ]);
+      expect(merged.cards.map((c) => c.slot), [1, 2]);
+      expect(merged.cardExplains, {1: '第一張'});
+      expect(merged.rawResponse[guideV3CardExplainsKey], [
+        {'card': 1, 'text': '第一張'},
+      ]);
+    });
+  });
+
   group('GuideV3Card.fromJson', () {
     test('任務標籤是給用戶看的中文', () {
       expect(GuideV3Task.values.map((t) => t.label),

@@ -19,6 +19,8 @@ GuideV3Read _read({
   String? waitFor,
   String? careMessage,
   String? careKind,
+  String? inviteReadiness,
+  Map<String, dynamic>? relation,
 }) =>
     GuideV3Read.fromJson({
       'guideVersion': 'v3.4',
@@ -28,6 +30,8 @@ GuideV3Read _read({
       if (waitFor != null) 'waitFor': waitFor,
       if (careMessage != null) 'careMessage': careMessage,
       if (careKind != null) 'careKind': careKind,
+      if (inviteReadiness != null) 'inviteReadiness': inviteReadiness,
+      if (relation != null) 'relation': relation,
       'plannedCards': planned ??
           [
             {'slot': 1, 'task': 'accept', 'locked': false},
@@ -73,6 +77,10 @@ Future<_Calls> _pump(
   // 填空框、再調面板帶回來的字（null＝他關掉、沒選）。
   List<String>? editResult,
   List<String>? refineResult,
+  Map<int, String> explanations = const {},
+  bool showRelationRadar = true,
+  bool reconnectWording = false,
+  Widget? Function(GuideV3Card card)? footerFor,
 }) async {
   final calls = _Calls();
   await tester.binding.setSurfaceSize(const Size(430, 1600));
@@ -103,6 +111,10 @@ Future<_Calls> _pump(
                   return refineResult;
                 }
               : null,
+          explanations: explanations,
+          showRelationRadar: showRelationRadar,
+          reconnectWording: reconnectWording,
+          footerFor: footerFor,
         ),
       ),
     ),
@@ -1354,5 +1366,198 @@ void main() {
       isSemantics(label: '填好空格再複製（接住）', isButton: true),
     );
     handle.dispose();
+  });
+  group('關係狀態與為什麼這樣回（Bruce 2026-10-19 路線二，A3）', () {
+    const relation = <String, dynamic>{
+      'stage': 'premise',
+      'heat': 72,
+      'dimensions': {
+        'heat': 72,
+        'engagement': 70,
+        'topicDepth': 45,
+        'replyWillingness': 78,
+        'emotionalConnection': 60,
+      },
+      'herMove': 'high',
+      'willingness': 'high',
+    };
+    final cards = [
+      _card(1, 'accept', ['那當然 我挑的欸']),
+      _card(2, 'tension', ['妳這樣說我會當真喔']),
+    ];
+
+    testWidgets('判讀帶了關係狀態：判讀下面一張卡，燈號、她在做什麼、回覆意願、邀約進度、關係階段', (tester) async {
+      await _pump(
+        tester,
+        read: _read(relation: relation, inviteReadiness: 'none'),
+        cards: cards,
+      );
+
+      final card = find.byKey(const ValueKey('guide-v3-relation'));
+      expect(card, findsOneWidget);
+      // 放在局面判讀與「可以這樣回」之間。
+      expect(
+        tester.getTopLeft(card).dy,
+        greaterThan(tester
+            .getBottomLeft(find.byKey(const ValueKey('guide-v3-read')))
+            .dy),
+      );
+      expect(
+        tester.getTopLeft(card).dy,
+        lessThan(tester.getTopLeft(find.text('可以這樣回')).dy),
+      );
+      for (final text in [
+        '關係狀態',
+        '燈號',
+        '她這一輪在做什麼',
+        '分享開心的事',
+        '回覆意願',
+        '她很想聊',
+        '邀約進度',
+        '還沒提過見面',
+        '關係階段',
+      ]) {
+        expect(find.descendant(of: card, matching: find.text(text)),
+            findsOneWidget,
+            reason: text);
+      }
+      final stage = find.byKey(const ValueKey('guide-v3-relation-stage'));
+      expect(find.descendant(of: stage, matching: find.text('目前・升溫')),
+          findsOneWidget);
+      // v3 只有階段，沒有 v2 的「節奏」那一行。
+      expect(find.textContaining('節奏'), findsNothing);
+      // 熱度與雷達先收在「詳細」裡。
+      expect(find.text('對方這次的投入度'), findsNothing);
+      expect(
+          find.byKey(const ValueKey('guide-v3-relation-radar')), findsNothing);
+    });
+
+    testWidgets('點「詳細」展開熱度（換成 0–90）與五維雷達，再點收起', (tester) async {
+      await _pump(tester, read: _read(relation: relation), cards: cards);
+
+      final toggle = find.byKey(const ValueKey('guide-v3-relation-detail'));
+      expect(find.descendant(of: toggle, matching: find.text('熱度・五維雷達')),
+          findsOneWidget);
+      expect(tester.getSize(toggle).height, greaterThanOrEqualTo(44));
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.text('對方這次的投入度'), findsOneWidget);
+      expect(find.text('65'), findsOneWidget);
+      expect(find.byKey(const ValueKey('guide-v3-relation-radar')),
+          findsOneWidget);
+      expect(find.text('五維度剖析'), findsOneWidget);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.text('對方這次的投入度'), findsNothing);
+    });
+
+    testWidgets('雷達照 v2 只給付費方案：免費的詳細只有熱度', (tester) async {
+      await _pump(
+        tester,
+        read: _read(relation: relation),
+        cards: cards,
+        showRelationRadar: false,
+      );
+      final toggle = find.byKey(const ValueKey('guide-v3-relation-detail'));
+      expect(find.descendant(of: toggle, matching: find.text('熱度')),
+          findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.text('對方這次的投入度'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('guide-v3-relation-radar')), findsNothing);
+    });
+
+    testWidgets('已是伴侶：破冰階段說成重新連線', (tester) async {
+      await _pump(
+        tester,
+        read: _read(relation: {...relation, 'stage': 'opening'}),
+        cards: cards,
+        reconnectWording: true,
+      );
+      expect(find.text('目前・重新連線'), findsOneWidget);
+    });
+
+    testWidgets('只帶了一部分：沒有的那一列、階段、詳細都不畫', (tester) async {
+      await _pump(
+        tester,
+        read: _read(relation: const {'willingness': 'low'}),
+        cards: cards,
+      );
+      final card = find.byKey(const ValueKey('guide-v3-relation'));
+      expect(find.descendant(of: card, matching: find.text('興趣不高')),
+          findsOneWidget);
+      expect(find.text('她這一輪在做什麼'), findsNothing);
+      expect(find.text('邀約進度'), findsNothing);
+      expect(find.text('關係階段'), findsNothing);
+      expect(
+          find.byKey(const ValueKey('guide-v3-relation-detail')), findsNothing);
+    });
+
+    testWidgets('改版前的 v3（判讀沒帶）：沒有關係狀態卡，頁面照舊', (tester) async {
+      await _pump(tester, read: _read(inviteReadiness: 'none'), cards: cards);
+      expect(find.byKey(const ValueKey('guide-v3-relation')), findsNothing);
+      expect(find.text('關係狀態'), findsNothing);
+      expect(find.text('可以這樣回'), findsOneWidget);
+    });
+
+    testWidgets('先別回、停也畫（伺服器照送）；關心的判讀不收關係狀態，不畫', (tester) async {
+      await _pump(
+        tester,
+        read: _read(
+          decision: 'hold',
+          planned: const [],
+          waitFor: '等她回你',
+          relation: relation,
+        ),
+        cards: const [],
+      );
+      expect(find.byKey(const ValueKey('guide-v3-relation')), findsOneWidget);
+
+      await _pump(
+        tester,
+        read: _read(
+          decision: 'care',
+          planned: const [],
+          careMessage: '先把安全放在第一位。',
+          relation: relation,
+        ),
+        cards: const [],
+      );
+      expect(find.byKey(const ValueKey('guide-v3-relation')), findsNothing);
+    });
+
+    testWidgets('每張卡下面「為什麼這樣回」：有說明的卡才畫，放在成效回報列下面', (tester) async {
+      await _pump(
+        tester,
+        read: _read(),
+        cards: cards,
+        explanations: const {1: '接住她誇你，用短短一句收下。'},
+        footerFor: (card) => card.slot == 1
+            ? const SizedBox(key: ValueKey('outcome-bar-1'), height: 10)
+            : null,
+      );
+
+      final why = find.byKey(const ValueKey('guide-v3-card-1-why'));
+      final taskCard = find.byKey(const ValueKey('guide-v3-task-card-1'));
+      expect(find.descendant(of: taskCard, matching: why), findsOneWidget);
+      expect(find.descendant(of: why, matching: find.text('為什麼這樣回')),
+          findsOneWidget);
+      expect(find.text('接住她誇你，用短短一句收下。'), findsOneWidget);
+      expect(
+        tester.getTopLeft(why).dy,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(find.byKey(const ValueKey('outcome-bar-1'))).dy,
+        ),
+      );
+      expect(find.byKey(const ValueKey('guide-v3-card-2-why')), findsNothing);
+      expect(find.text('為什麼這樣回'), findsOneWidget);
+    });
+
+    testWidgets('沒有說明（兩段式沒開、舊快照）：卡跟原本一樣', (tester) async {
+      await _pump(tester, read: _read(), cards: cards);
+      expect(find.text('為什麼這樣回'), findsNothing);
+    });
   });
 }

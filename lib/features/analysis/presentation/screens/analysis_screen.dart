@@ -224,6 +224,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   GuideV3Result? _v3Result;
   String? _v3RunId;
 
+  /// 每張卡的「為什麼這樣回」（slot → 說明；Bruce 2026-10-19 路線二）：串流中從 notifier
+  /// 鏡射，最終結果與重開畫面從結果（快照）帶。
+  Map<int, String> _v3Explains = const {};
+
   /// 他填過空格、改過，或「再調一下」選定的版本（key＝runId:slot），只在這個畫面裡。
   final _v3Versions = GuideV3CardVersions();
 
@@ -1184,6 +1188,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = null;
     _v3Cards = const [];
     _v3RunId = null;
+    _v3Explains = const {};
     _enthusiasmScore = null;
     _dimensionScores = null;
     _strategy = null;
@@ -1623,6 +1628,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = s.guideV3Read;
     _v3Cards = s.guideV3Cards;
     _v3RunId = s.isGuideV3Run ? s.analysisRunId : null;
+    _v3Explains = s.guideV3CardExplains;
   }
 
   /// 套用 v3 最終結果（新分析完成、續看、重開畫面還原）。v2 欄位一律清掉。
@@ -1633,6 +1639,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = result.read;
     _v3Cards = result.cards;
     _v3RunId = runId;
+    _v3Explains = result.cardExplains;
     // 用量常駐行與方案判斷讀這份（跟 v2 一樣隨快照保存）。
     _lastAiResponse = result.rawResponse;
   }
@@ -1645,6 +1652,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = null;
     _v3Cards = const [];
     _v3RunId = null;
+    _v3Explains = const {};
     _analysisRunKey = const Uuid().v4();
     _enthusiasmScore = result.enthusiasmScore;
     _dimensionScores = result.dimensionScores;
@@ -4741,7 +4749,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           // 對話分析 v3（任務卡）：燈號＋判讀＋任務卡，卡一到就
-                          // 畫、就能複製（Eric 2026-10-17：不留雷達、熱度、階段）。
+                          // 畫、就能複製；判讀帶了關係狀態才有階段、熱度、雷達
+                          //（Bruce 2026-10-19 路線二；原本 Eric 2026-10-17 不留）。
                           if (_v3Read != null) ...[
                             GuideV3ResultSection(
                               anchorKey: _guideV3SectionKey,
@@ -4766,6 +4775,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 cardKey: _guideV3CardKey(card),
                                 label: card.task.label,
                               ),
+                              // 關係狀態卡與「為什麼這樣回」（Bruce 2026-10-19 路線二，A3）：
+                              // 階段說法跟 v2 一樣看是不是伴侶，雷達照 v2 只給付費方案。
+                              explanations: _v3Explains,
+                              reconnectWording:
+                                  _isCommittedPartner(conversation),
+                              showRelationRadar: subscription.isPremium,
                               showUpgradeRefresh:
                                   _analysisNeedsReplyRefresh(subscription),
                               refreshBusy:

@@ -309,6 +309,87 @@ void main() {
           reason: '他傳的照樣送去分析');
     });
 
+    test('「為什麼這樣回」（Bruce 2026-10-19 路線二）：一到就進狀態，done 時併進結果與存檔的原樣', () async {
+      final gate = Completer<void>();
+      final client = _ScriptedClient([
+        [
+          _v3Started,
+          AnalysisStreamUpdate.guideV3Read(read: _read(), runId: 'run_v3'),
+          AnalysisStreamUpdate.guideV3Card(
+              card: _card(1, 'accept'), runId: 'run_v3'),
+          AnalysisStreamUpdate.guideV3Card(
+              card: _card(2, 'tension'), runId: 'run_v3'),
+          AnalysisStreamUpdate.guideV3Card(
+              card: _card(3, 'push'), runId: 'run_v3'),
+          const AnalysisStreamUpdate.guideV3CardExplain(
+            explain: GuideV3CardExplain(card: 2, text: '第二張的說明'),
+            runId: 'run_v3',
+          ),
+          const AnalysisStreamUpdate.guideV3CardExplain(
+            explain: GuideV3CardExplain(card: 1, text: '第一張的說明'),
+            runId: 'run_v3',
+          ),
+          // 同一張送兩次：留第一次的。
+          const AnalysisStreamUpdate.guideV3CardExplain(
+            explain: GuideV3CardExplain(card: 1, text: '重複'),
+            runId: 'run_v3',
+          ),
+          gate,
+          AnalysisStreamUpdate.guideV3Done(result: _result(), runId: 'run_v3'),
+        ],
+      ]);
+      final container = _container(client);
+      addTearDown(container.dispose);
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+
+      final run = notifier.start(messages: [_msg('哈囉')]);
+      await Future<void>.delayed(Duration.zero);
+      var state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.phase, StreamingAnalyzePhase.streamingReport);
+      expect(state.guideV3CardExplains, {2: '第二張的說明', 1: '第一張的說明'});
+
+      gate.complete();
+      await run;
+      state = container.read(streamingAnalyzeProvider('conv-1'));
+      final result = state.guideV3Result!;
+      expect(result.cardExplains, {1: '第一張的說明', 2: '第二張的說明'});
+      expect(result.rawResponse[guideV3CardExplainsKey], [
+        {'card': 1, 'text': '第一張的說明'},
+        {'card': 2, 'text': '第二張的說明'},
+      ]);
+      // 存檔的原樣重新解析，說明照樣在（重開畫面看得到）。
+      expect(
+        GuideV3Result.fromJson(result.rawResponse)!.cardExplains,
+        result.cardExplains,
+      );
+    });
+
+    test('沒有說明（兩段式沒開）：結果照伺服器原樣，不多欄位', () async {
+      final client = _ScriptedClient([
+        [
+          _v3Started,
+          AnalysisStreamUpdate.guideV3Read(read: _read(), runId: 'run_v3'),
+          AnalysisStreamUpdate.guideV3Card(
+              card: _card(1, 'accept'), runId: 'run_v3'),
+          AnalysisStreamUpdate.guideV3Done(result: _result(), runId: 'run_v3'),
+        ],
+      ]);
+      final container = _container(client);
+      addTearDown(container.dispose);
+
+      await container
+          .read(streamingAnalyzeProvider('conv-1').notifier)
+          .start(messages: [_msg('哈囉')]);
+
+      final state = container.read(streamingAnalyzeProvider('conv-1'));
+      expect(state.guideV3Result!.cardExplains, isEmpty);
+      expect(
+        state.guideV3Result!.rawResponse.containsKey(guideV3CardExplainsKey),
+        isFalse,
+      );
+    });
+
     test('新的一次分析清掉上一次的 v3 狀態', () async {
       final client = _ScriptedClient([
         [
@@ -336,6 +417,7 @@ void main() {
       expect(state.guideV3Read, isNull);
       expect(state.guideV3Cards, isEmpty);
       expect(state.guideV3Result, isNull);
+      expect(state.guideV3CardExplains, isEmpty);
     });
 
     test('等待（Eric 2026-10-18）：v3 的 started 不停在「開始完整分析」，改輪播 v3 的句子；寫卡進度到了就接手',

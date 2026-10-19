@@ -519,6 +519,39 @@ bool guideV3DeliveredFewer({
 }) =>
     partial || recovered || deliveredCards < deliverableCards;
 
+/// 「為什麼這樣回」（伺服器 `analysis.card_explain`；兩段式實驗，Bruce 2026-10-19 路線二：
+/// 結果頁每張卡下面一段）。卡都送完、done 之前，每張卡一則；[card] 是那張卡的 slot。
+class GuideV3CardExplain {
+  const GuideV3CardExplain({required this.card, required this.text});
+
+  final int card;
+  final String text;
+
+  static GuideV3CardExplain? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final card = json['card'];
+    final text = json['text'];
+    if (card is! int || card < 1 || text is! String) return null;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
+    return GuideV3CardExplain(card: card, text: trimmed);
+  }
+}
+
+/// App 自己存進 v3 快照的「為什麼這樣回」：伺服器的最終結果不帶（只在串流事件送），收到的
+/// 照 slot 跟卡一起存，重開畫面、分析紀錄才看得到。舊快照沒有這欄。
+const guideV3CardExplainsKey = 'cardExplains';
+
+Map<int, String> _cardExplainsFrom(Object? json) {
+  if (json is! List) return const {};
+  final explains = <int, String>{};
+  for (final raw in json) {
+    final explain = GuideV3CardExplain.fromJson(raw);
+    if (explain != null) explains.putIfAbsent(explain.card, () => explain.text);
+  }
+  return Map.unmodifiable(explains);
+}
+
 /// 伺服器 `isGuideV3FinalResult`：字串 guideVersion＋cards 陣列。
 bool isGuideV3Payload(Object? json) =>
     json is Map && json['guideVersion'] is String && json['cards'] is List;
@@ -531,6 +564,7 @@ class GuideV3Result {
     required this.partial,
     required this.recovered,
     required this.rawResponse,
+    this.cardExplains = const {},
   });
 
   final GuideV3Read read;
@@ -546,6 +580,9 @@ class GuideV3Result {
 
   /// 伺服器送來的原樣（已剝掉伺服器專用欄位）；存檔與成效紀錄用。
   final Map<String, dynamic> rawResponse;
+
+  /// 每張卡的「為什麼這樣回」（slot → 說明）；沒送或舊快照是空的。
+  final Map<int, String> cardExplains;
 
   GuideV3Decision get decision => read.decision;
 
@@ -589,6 +626,28 @@ class GuideV3Result {
       partial: json['partial'] == true,
       recovered: json['recovered'] == true,
       rawResponse: json,
+      cardExplains: _cardExplainsFrom(json[guideV3CardExplainsKey]),
+    );
+  }
+
+  /// 串流收到的「為什麼這樣回」補進結果，連存檔的原樣一起改（[guideV3CardExplainsKey]）。
+  /// 已經有的那張不覆蓋；沒有新的就回自己。
+  GuideV3Result withCardExplains(Map<int, String> explains) {
+    final merged = <int, String>{...explains, ...cardExplains};
+    if (merged.length == cardExplains.length) return this;
+    final slots = merged.keys.toList()..sort();
+    return GuideV3Result(
+      read: read,
+      cards: cards,
+      partial: partial,
+      recovered: recovered,
+      rawResponse: <String, dynamic>{
+        ...rawResponse,
+        guideV3CardExplainsKey: [
+          for (final slot in slots) {'card': slot, 'text': merged[slot]},
+        ],
+      },
+      cardExplains: Map.unmodifiable(merged),
     );
   }
 
@@ -609,6 +668,7 @@ class GuideV3Result {
         ...rawResponse,
         'cards': merged.map((card) => card.raw).toList(growable: false),
       },
+      cardExplains: cardExplains,
     );
   }
 }

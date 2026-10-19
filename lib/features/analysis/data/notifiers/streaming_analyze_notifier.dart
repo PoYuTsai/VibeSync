@@ -111,6 +111,10 @@ class StreamingAnalysisState {
   /// v3 最終結果；v2 的最終結果在 [result]。兩者不會同時非 null。
   final GuideV3Result? guideV3Result;
 
+  /// v3 已送到的「為什麼這樣回」（slot → 說明；兩段式實驗才有）。done 的結果不帶，done 時
+  /// 併進 [guideV3Result]，跟卡一起存檔。
+  final Map<int, String> guideV3CardExplains;
+
   const StreamingAnalysisState({
     required this.phase,
     this.recommendationPreview,
@@ -136,6 +140,7 @@ class StreamingAnalysisState {
     this.guideV3Read,
     this.guideV3Cards = const [],
     this.guideV3Result,
+    this.guideV3CardExplains = const {},
   });
 
   const StreamingAnalysisState.idle() : this(phase: StreamingAnalyzePhase.idle);
@@ -174,6 +179,7 @@ class StreamingAnalysisState {
     Object? guideV3Read = _unset,
     List<GuideV3Card>? guideV3Cards,
     Object? guideV3Result = _unset,
+    Map<int, String>? guideV3CardExplains,
   }) {
     return StreamingAnalysisState(
       phase: phase ?? this.phase,
@@ -240,6 +246,7 @@ class StreamingAnalysisState {
       guideV3Result: identical(guideV3Result, _unset)
           ? this.guideV3Result
           : guideV3Result as GuideV3Result?,
+      guideV3CardExplains: guideV3CardExplains ?? this.guideV3CardExplains,
     );
   }
 }
@@ -539,6 +546,20 @@ class StreamingAnalyzeNotifier
               guideV3Cards: List<GuideV3Card>.unmodifiable(cards),
             );
             break;
+          case AnalysisStreamUpdateKind.guideV3CardExplain:
+            final explain = update.guideV3CardExplain;
+            // 同一張只留第一次送到的（伺服器不會重送；保險）。
+            if (explain == null ||
+                state.guideV3CardExplains.containsKey(explain.card)) {
+              break;
+            }
+            state = state.copyWith(
+              guideV3CardExplains: Map<int, String>.unmodifiable({
+                ...state.guideV3CardExplains,
+                explain.card: explain.text,
+              }),
+            );
+            break;
           case AnalysisStreamUpdateKind.content:
             final content = update.content;
             if (content == null) break;
@@ -586,10 +607,12 @@ class StreamingAnalyzeNotifier
             final guideV3Result = update.guideV3Result;
             if (guideV3Result != null) {
               // 續看重組只帶回第一張卡：這個 run 畫面上已經送到的卡補回來，
-              // 不讓用戶看過的卡消失（存檔也存合併後的）。
-              final merged = guideV3Result.recovered
-                  ? guideV3Result.withShownCards(state.guideV3Cards)
-                  : guideV3Result;
+              // 不讓用戶看過的卡消失（存檔也存合併後的）。「為什麼這樣回」done 不帶，
+              // 收到的一起併進去存。
+              final merged = (guideV3Result.recovered
+                      ? guideV3Result.withShownCards(state.guideV3Cards)
+                      : guideV3Result)
+                  .withCardExplains(state.guideV3CardExplains);
               state = state.copyWith(
                 phase: StreamingAnalyzePhase.done,
                 result: null,

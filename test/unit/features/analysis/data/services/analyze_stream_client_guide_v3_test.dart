@@ -201,6 +201,38 @@ void main() {
       expect(done.cards.first.messages, ['那家我也想吃吃看']);
     });
 
+    test('「為什麼這樣回」：卡之後、done 之前每張一則，照種類找；讀不懂的跳過，卡與結果照舊', () async {
+      final updates = await _client([
+        _v3Started,
+        _readEvent,
+        _cardEvent(1, 'accept', '那家我也想吃吃看'),
+        _cardEvent(2, 'push', '週六一起去？'),
+        {'type': 'analysis.card_explain', 'card': 1, 'text': '  先接住她的分享。 '},
+        {'type': 'analysis.card_explain', 'card': 0, 'text': '沒有這張'},
+        {'type': 'analysis.card_explain', 'card': 2, 'text': '   '},
+        {'type': 'analysis.card_explain', 'card': '2', 'text': '代碼不對'},
+        {'type': 'analysis.card_explain', 'card': 2, 'text': '順著她說的地方約。'},
+        {
+          'type': 'analysis.done',
+          'runId': 'run_v3',
+          'finalResult': _finalResult()
+        },
+      ]).stream(AnalyzeStreamRequest(messages: [_msg('哈囉')])).toList();
+
+      final explains = updates
+          .where((u) => u.kind == AnalysisStreamUpdateKind.guideV3CardExplain)
+          .map((u) => u.guideV3CardExplain!)
+          .toList();
+      expect(explains.map((e) => e.card), [1, 2]);
+      expect(explains.map((e) => e.text), ['先接住她的分享。', '順著她說的地方約。']);
+      final done = updates
+          .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.done)
+          .guideV3Result!;
+      expect(done.cards.map((c) => c.slot), [1, 2]);
+      // 伺服器的最終結果不帶說明；由 notifier 併進去。
+      expect(done.cardExplains, isEmpty);
+    });
+
     test('中途讀不懂的判讀或卡跳過，等 done 的完整結果', () async {
       final updates = await _client([
         _v3Started,
