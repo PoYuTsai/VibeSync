@@ -12,6 +12,8 @@ import {
   judgmentFor,
   PERFUNCTORY_HOLD_REASON,
   pickEntries,
+  type PraiseStyle,
+  praiseStyle,
   type PushAction,
 } from "./rules.ts";
 import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
@@ -55,6 +57,8 @@ export interface GuideV3Plan {
   readonly careTrigger?: GuideV3CareTrigger;
   /// care 沒有。
   readonly signals?: GuideV3Signals;
+  /// 兩段式實驗開著、出卡或收尾才有：誇她的方式（rules.ts praiseStyle）。
+  readonly praise?: PraiseStyle;
 }
 
 /// 模型沒寫要等什麼時的預設（依先別回的理由）。
@@ -139,6 +143,7 @@ export function planTurn(
     twoStage,
   );
   const judgment = judgmentFor(tags);
+  const praise = twoStage ? { praise: praiseStyle(twoStage) } : {};
   const signals: GuideV3Signals = {
     inviteReadiness: tags.inviteReadiness,
     cold: {
@@ -179,6 +184,7 @@ export function planTurn(
         specs,
         entries: pickEntries(tags.matchedEntries, entries),
         signals,
+        ...praise,
       };
     case "send":
       return {
@@ -190,6 +196,7 @@ export function planTurn(
         specs,
         entries: pickEntries(tags.matchedEntries, entries),
         signals,
+        ...praise,
       };
   }
 }

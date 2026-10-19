@@ -16,7 +16,8 @@ import {
   writeUserPrompt,
 } from "./prompts.ts";
 import type { ReadTags } from "./read_tags.ts";
-import type { AnswerLine, CardAnswer, CardSpec } from "./rules.ts";
+import { withoutEmoji } from "./cards.ts";
+import type { AnswerLine, CardAnswer, CardSpec, PraiseStyle } from "./rules.ts";
 import { latestHerMessages, type Turn } from "./turns.ts";
 
 /// 讀局面多輸出的四欄，以及作戰板標籤靠不住時怎麼判（研究報告 §5.3、§7.2：v3 把 App 預設的
@@ -177,15 +178,18 @@ export function twoStageWriterSections(
 }
 
 /// 寫卡新加的兩段（我們自己的話；參考 v2 快照 :62-67、:253-257、:553、:566 與 :342-351）。
+/// 第 2 輪照 Bruce 10/19 盲選理由補進原本的句子裡，不另開一串「不要」：你我少用、不自己報收到、
+/// 不評她的語氣用字、被誇時謙虛（他的例句「還好啦」）、貼圖表情不拿出來講。
 export const WRITE_NATURAL_RULES = `## 這一步只寫訊息
-- 每則訊息都是他可以原封不動傳出去的自然句子，像他平常跟朋友聊天那樣說話。
-- 判斷、策略、招式的名稱、對她的評價，以及替自己說明心態或原則的話，都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。
+- 每則訊息都是他可以原封不動傳出去的自然句子，像他平常跟朋友聊天那樣說話；主詞能省就省，「你」「我」不用每句都帶。
+- 直接回她說的事。判斷、策略、招式的名稱、對她的評價（包括評她的語氣和用字），以及替自己說明心態、原則或反應的話（例如「我收到了」「我收下了」「記下了」），都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。
+- 被她誇的時候，謙虛一點帶過，例如「還好啦」，不順勢誇自己。
 - 不是每一句都要表態或用上技巧。沒有適合的時機，就像朋友一樣正常聊。`;
 
 export const WRITE_MEDIA_RULES = `## 照片和貼圖
 - 她傳照片，是想跟他分享：接她分享的這件事。
 - 方括號裡的字是辨識程式寫的照片描述，不是她說的話：不照搬描述裡的用字，也不假裝看到描述以外的東西。
-- 貼圖或只有一個表情符號，是她的語氣：跟旁邊那句話一起讀。`;
+- 貼圖和表情符號是她的語氣：跟旁邊那句話一起讀，用來抓她的心情，不拿出來講。`;
 
 /// 新加段落的外洩哨兵（只在兩段式寫出來的卡上檢查）：正常的回覆不會出現這些說法。
 export const TWO_STAGE_WRITER_SENTINELS: readonly string[] = [
@@ -223,15 +227,19 @@ export function twoStageEntryWriting(entry: GuideV3Entry): string {
 }
 
 /// 她開心分享時換上的那張共鳴：說明書的共鳴是寫她氣頭上或難過時，這張另外講清楚是陪她開心。
+/// 第 2 輪改成講那件事本身（Bruce 10/19：「你整個人都亮亮的」不自然；第 1 輪這張常在形容她的樣子）。
 export const HAPPY_SHARE_TASK =
-  "共鳴（她在分享開心或得意的事：跟她一起高興，具體說出他替她開心的地方）";
+  "共鳴（她在分享開心或得意的事：跟她一起為那件事高興，說那件事好在哪）";
 
 const QUOTE_MAX_CHARS = 30;
 const QUOTED_REPLY_PREFIX = /^（引用：「[^」]*」）/;
 
-/// 規格裡引她的那一則：去掉引用前綴、空白收成一格，太長就截短。
+/// 規格裡引她的那一則：去掉引用前綴與表情、空白收成一格，太長就截短。表情不引（第 2 輪，Bruce
+/// 10/19：特別挑她的語氣去評價很不自然）：規格裡少了表情，寫卡就不會把它當成要回的東西；
+/// 對話稿裡照樣看得到。
 export function quoteHerLine(content: string): string {
-  const text = content.replace(QUOTED_REPLY_PREFIX, "").replace(/\s+/g, " ")
+  const text = withoutEmoji(content.replace(QUOTED_REPLY_PREFIX, ""))
+    .replace(/\s+/g, " ")
     .trim();
   const chars = [...text];
   return chars.length > QUOTE_MAX_CHARS
@@ -285,6 +293,19 @@ export function cardSpecLineTwoStage(
   return parts.join("｜");
 }
 
+/// 第 2 輪（Bruce 10/19 盲選理由，他的例句照用）：誇她的方式由程式照 praiseStyle 挑一句放進
+/// 使用者訊息，不讓寫卡自己判斷兩人到哪一步，也不把兩種寫法同時擺給它挑。
+export const PRAISE_TEXT: Readonly<Record<PraiseStyle, string>> = {
+  direct:
+    "她傳自拍、問他好不好看或討稱讚時：直接誇、講明白，不賣關子、不吊著她。",
+  light:
+    "她傳自拍、問他好不好看或討稱讚時：輕輕誇一句、不用給太多，帶點玩笑、留一點讓她猜，像她傳自拍時回「美啊 已戀愛。哈哈哈哈 不錯啦」。",
+};
+
+export function praiseSection(style: PraiseStyle): string {
+  return `## 稱讚\n${PRAISE_TEXT[style]}`;
+}
+
 export function writeUserPromptTwoStage(args: {
   readonly turns: readonly Turn[];
   readonly tags: ReadTags;
@@ -292,14 +313,18 @@ export function writeUserPromptTwoStage(args: {
   readonly cards: readonly CardSpec[];
   readonly background?: GuideV3Background;
   readonly previousRound?: GuideV3PreviousRound;
+  /// 出卡、收尾的計畫才有（plan.ts）；沒給就不放稱讚那段。
+  readonly praise?: PraiseStyle;
 }): string {
   const herLatest = latestHerMessages(args.turns);
+  const { praise, ...rest } = args;
   return writeUserPrompt({
-    ...args,
+    ...rest,
     variant: {
       numberLatestHerTurn: true,
       entryWriting: twoStageEntryWriting,
       specLine: (spec, n) => cardSpecLineTwoStage(spec, n, herLatest),
+      beforeCards: praise ? [praiseSection(praise)] : [],
     },
   });
 }

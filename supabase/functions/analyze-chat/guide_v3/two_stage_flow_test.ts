@@ -37,6 +37,7 @@ import {
 import { toTurns } from "./turns.ts";
 import {
   HAPPY_SHARE_TASK,
+  praiseSection,
   readSystemPromptTwoStage,
   readUserPromptTwoStage,
   writeSystemPromptTwoStage,
@@ -282,6 +283,8 @@ Deno.test("兩段式開：寫卡送兩段式的系統提示詞；每張規格都
     ),
   );
   assert(user.includes("第 2 輪・她：\n1. [照片：一盤咖哩飯]"));
+  // 第 2 輪：程式挑的稱讚那一句在卡片規格前（不是情侶、她也沒示愛：輕輕誇）。
+  assert(user.includes(`${praiseSection("light")}\n\n## 卡片規格`), user);
   // 送出的卡跟規格一致：第二張是共鳴（resonate）。
   const cards = evs.filter((e) => e.type === "analysis.card");
   assertEquals(cards.find((c) => c.slot === 2)?.task, "resonate");
@@ -316,6 +319,7 @@ Deno.test("兩段式沒開：寫卡的請求跟今天一樣（系統提示詞與
   assert(
     trace.specs.every((spec) => !("answer" in spec) && !("note" in spec)),
   );
+  assert(!h.writes[0].user.includes("## 稱讚"));
 });
 
 Deno.test("兩段式開：卡片抄到寫卡新加的段落就拿掉（prompt_leak）；同一張卡在開關沒開時照送", async () => {

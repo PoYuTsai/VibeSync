@@ -36,6 +36,8 @@ import {
   applyLineEdits,
   cardSpecLineTwoStage,
   HAPPY_SHARE_TASK,
+  PRAISE_TEXT,
+  praiseSection,
   quoteHerLine,
   READ_TWO_STAGE_NOTES,
   readSystemPromptTwoStage,
@@ -244,6 +246,25 @@ Deno.test("兩段式寫卡系統提示詞：沒有 A1、沒有「每張卡都要
   assertStringIncludes(write, "不是每一句都要表態");
   assertStringIncludes(write, WRITE_MEDIA_RULES);
   assertStringIncludes(write, "不是她說的話");
+  // 第 2 輪（Bruce 10/19 盲選理由）補進原本的句子：你我少用、不自己報收到、不評她的語氣用字、
+  // 被誇時謙虛、貼圖表情不拿出來講。
+  for (
+    const rule of [
+      "主詞能省就省，「你」「我」不用每句都帶",
+      "直接回她說的事",
+      "包括評她的語氣和用字",
+      "「我收到了」「我收下了」「記下了」",
+      "被她誇的時候，謙虛一點帶過，例如「還好啦」",
+      "貼圖和表情符號是她的語氣",
+      "不拿出來講",
+    ]
+  ) {
+    assertStringIncludes(write, rule);
+  }
+  // 誇她的兩種寫法不放系統提示詞（程式在使用者訊息只放一句）。
+  for (const text of Object.values(PRAISE_TEXT)) {
+    assert(!write.includes(text));
+  }
   assertStringIncludes(write, `**${TWO_STAGE_METHOD_LABEL}**`);
   // 照留的：A2、A3 原文，輸出格式、安全底線、外洩指令，寫卡的開頭那句（也是外洩哨兵）。
   assertStringIncludes(write, GUIDE_V3_SECTIONS.A2);
@@ -313,7 +334,7 @@ Deno.test("兩段式寫卡的 A5、A6：只改那幾行，其他一字不差、�
 Deno.test("兩段式寫卡系統提示詞的雜湊鎖：改這段要連這裡一起改", async () => {
   assertEquals(
     await sha256(writeSystemPromptTwoStage()),
-    "e0382516166c197a869d0835a7dd745deab14200b022a5d00bfb2dfcb75bfc55",
+    "e016b913452728fd3ee7419d76782d66f993ec7e036ae05a18f924f83802c1a5",
   );
   assertEquals(
     await sha256(readSystemPromptTwoStage()),
@@ -458,9 +479,19 @@ Deno.test("兩段式卡片規格：任務後面先講這張接她哪一則、可
   assert(!extraOut.includes("可以順帶"));
 });
 
-Deno.test("引她的那一句：去掉引用前綴、空白收成一格、超過 30 字截短", () => {
+Deno.test("引她的那一句：去掉引用前綴與表情、空白收成一格、超過 30 字截短", () => {
   assertEquals(quoteHerLine("（引用：「你說的那家」）我吃到了"), "我吃到了");
   assertEquals(quoteHerLine("今天\n  好累"), "今天 好累");
+  // 第 2 輪：表情不引（Bruce 10/19：特別挑她的語氣去評價很不自然）。
+  assertEquals(
+    quoteHerLine("欸 你覺得我今天是不是最好看的那個😏"),
+    "欸 你覺得我今天是不是最好看的那個",
+  );
+  assertEquals(
+    quoteHerLine("今天部門聚餐 主管請客🥳"),
+    "今天部門聚餐 主管請客",
+  );
+  assertEquals(quoteHerLine("我的也不錯唷～🫴"), "我的也不錯唷～");
   const long = "一".repeat(40);
   assertEquals([...quoteHerLine(long)].length, 30);
   assert(quoteHerLine(long).endsWith("…"));
@@ -499,6 +530,47 @@ Deno.test("兩段式寫卡使用者提示詞：她最新這一輪逐則編號、
       "第 4 輪・她：\n1. [照片：一盤咖哩飯]\n2. 我自己煮的！\n3. 好想你喔",
     ).replace(b23.writing, twoStageEntryWriting(b23)),
   );
+});
+
+Deno.test("第 2 輪稱讚：程式挑的那一句放在卡片規格前；沒給就沒有這段；兩種寫法各帶 Bruce 的意思", () => {
+  const turns = toTurns(MESSAGES);
+  const entries = GUIDE_V3_ENTRIES.filter((e) =>
+    TAGS.matchedEntries.includes(e.id)
+  );
+  const args = { turns, tags: TAGS, entries, cards: SPECS };
+  const none = writeUserPromptTwoStage(args);
+  assert(!none.includes("## 稱讚"));
+  for (const style of ["direct", "light"] as const) {
+    const user = writeUserPromptTwoStage({ ...args, praise: style });
+    assertStringIncludes(
+      user,
+      `## 這一輪的情境做法\n`,
+    );
+    assertStringIncludes(user, `${praiseSection(style)}\n\n## 卡片規格`);
+    assertEquals(
+      user,
+      none.replace(
+        "\n\n## 卡片規格",
+        `\n\n${praiseSection(style)}\n\n## 卡片規格`,
+      ),
+    );
+    const other = style === "direct" ? "light" : "direct";
+    assert(!user.includes(PRAISE_TEXT[other]));
+  }
+  assertStringIncludes(
+    PRAISE_TEXT.direct,
+    "直接誇、講明白，不賣關子、不吊著她",
+  );
+  assertStringIncludes(PRAISE_TEXT.light, "留一點讓她猜");
+  assertStringIncludes(PRAISE_TEXT.light, "「美啊 已戀愛。哈哈哈哈 不錯啦」");
+});
+
+Deno.test("第 2 輪開心分享的共鳴：講那件事本身，不再要他說替她開心的地方", () => {
+  assertStringIncludes(
+    HAPPY_SHARE_TASK,
+    "跟她一起為那件事高興，說那件事好在哪",
+  );
+  assert(!HAPPY_SHARE_TASK.includes("替她開心的地方"));
 });
 
 Deno.test("兩段式寫卡的外洩哨兵：都是新加段落裡的字，今天的提示詞沒有，重播錄音的卡一張都不中", () => {

@@ -14,6 +14,7 @@ import {
   type CardAnswer,
   type CardSpec,
   isMediaLine,
+  praiseStyle,
   type Task,
 } from "./rules.ts";
 import { toTurns } from "./turns.ts";
@@ -501,4 +502,51 @@ Deno.test("第 2 輪排卡：每張規格都帶 answer（回她最想聽的那�
   );
   assert(photoOnly.specs.length > 0);
   assert(photoOnly.specs.every((s) => !("answer" in s)));
+});
+
+Deno.test("第 2 輪稱讚：已經在交往或她這一輪撒嬌示愛就直接誇，其他輕輕誇；出卡、收尾的計畫才帶，開關沒開沒有", () => {
+  assertEquals(praiseStyle(extras({ establishedCouple: true })), "direct");
+  assertEquals(praiseStyle(extras({ herAffection: true })), "direct");
+  assertEquals(praiseStyle(extras()), "light");
+  const turns = toTurns([
+    { isFromMe: true, content: "剪頭髮了嗎" },
+    { isFromMe: false, content: "剪了 會很怪嗎" },
+  ]);
+  const ex = extras({ worthyLines: [w(1, "問他")] });
+  assertEquals(
+    planTurn(turns, tags(), undefined, undefined, ex).praise,
+    "light",
+  );
+  assertEquals(
+    planTurn(
+      turns,
+      tags({ declinedOrBoundary: true }),
+      undefined,
+      undefined,
+      ex,
+    )
+      .praise,
+    "light",
+  );
+  assertEquals(
+    planTurn(
+      turns,
+      tags(),
+      undefined,
+      undefined,
+      extras({ ...ex, establishedCouple: true }),
+    ).praise,
+    "direct",
+  );
+  // 先別回、沒開兩段式：計畫沒有這個欄位。
+  const hold = planTurn(
+    toTurns([{ isFromMe: true, content: "在嗎" }]),
+    tags(),
+    undefined,
+    undefined,
+    ex,
+  );
+  assertEquals(hold.decision, "hold");
+  assertEquals("praise" in hold, false);
+  assertEquals("praise" in planTurn(turns, tags()), false);
 });

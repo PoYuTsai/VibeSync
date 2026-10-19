@@ -401,6 +401,20 @@ function placeWarmCard(tasks: Task[]): number | null {
   return 1;
 }
 
+/// 兩段式實驗第 2 輪（Bruce 10/19 盲選理由：在一起後稱讚不用迂迴、一直吊著；曖昧期委婉一點、留
+/// 一點讓她猜）：誇她的方式由程式挑，寫卡只看到其中一句。已經在交往、或她這一輪撒嬌示愛，直接誇；
+/// 其他時候輕輕誇。她示愛也算：第 1 輪讀局面把用 App 預設標籤的情侶都判成還沒交往，她都示愛了
+/// 還讓她猜，就是在吊著她。
+export type PraiseStyle = "direct" | "light";
+
+export function praiseStyle(
+  twoStage: Pick<TwoStageTags, "establishedCouple" | "herAffection">,
+): PraiseStyle {
+  return twoStage.establishedCouple || twoStage.herAffection
+    ? "direct"
+    : "light";
+}
+
 /// 照片、貼圖的辨識標記（方括號開頭；外面可能再包一層「」，10/19 正式環境的案例就是這樣），
 /// 或整則只有表情符號（可以夾標點，例如「😂～」）。
 const MEDIA_PLACEHOLDER = /^[「『"]?[\[［【]/u;

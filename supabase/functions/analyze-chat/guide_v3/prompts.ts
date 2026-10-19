@@ -177,11 +177,12 @@ export function cardSpecLine(spec: CardSpec, n: number): string {
 }
 
 /// 兩段式實驗換掉的三處（two_stage_prompts.ts）：對話稿她最新這一輪逐則編號、條目寫法的
-/// 標籤字、每張卡的規格行。沒給就跟今天一字不差。
+/// 標籤字、每張卡的規格行；第 2 輪再加卡片規格前的段落（稱讚）。沒給就跟今天一字不差。
 export interface WriteUserPromptVariant {
   readonly numberLatestHerTurn: boolean;
   readonly entryWriting: (entry: GuideV3Entry) => string;
   readonly specLine: (spec: CardSpec, n: number) => string;
+  readonly beforeCards?: readonly string[];
 }
 
 export function writeUserPrompt(args: {
@@ -214,6 +215,7 @@ export function writeUserPrompt(args: {
     `## 對話\n${transcript}`,
     `## 他在對話裡說過的自己的事\n${facts}`,
     `## 這一輪的情境做法\n${entries}`,
+    ...(args.variant?.beforeCards ?? []),
     `## 卡片規格（照順序寫，一共 ${args.cards.length} 張）\n${
       args.cards.map((c, i) => specLine(c, i + 1)).join("\n")
     }`,

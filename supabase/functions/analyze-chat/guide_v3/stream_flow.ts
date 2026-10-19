@@ -1099,19 +1099,23 @@ class GuideV3Flow {
       label: GUIDE_V3_WRITING_LABEL,
     });
     try {
-      // 兩段式實驗（Eric 2026-10-19）：寫卡不帶說明書的立場與表態段，規格多「這張接」；沒開照舊。
+      // 兩段式實驗（Eric 2026-10-19）：寫卡不帶說明書的立場與表態段，規格多「這張接」；第 2 輪
+      // 另放程式挑的稱讚那一句（Bruce 10/19 盲選理由）。沒開照舊。
       const twoStage = this.deps.twoStage === true;
+      const userArgs = {
+        turns,
+        tags,
+        entries: plan.entries,
+        cards: deliverable,
+        background: this.deps.background,
+        previousRound: this.deps.previousRound,
+      };
       const write = await this.deps.callWrite({
         runId: this.runId,
         system: twoStage ? writeSystemPromptTwoStage() : writeSystemPrompt(),
-        user: (twoStage ? writeUserPromptTwoStage : writeUserPrompt)({
-          turns,
-          tags,
-          entries: plan.entries,
-          cards: deliverable,
-          background: this.deps.background,
-          previousRound: this.deps.previousRound,
-        }),
+        user: twoStage
+          ? writeUserPromptTwoStage({ ...userArgs, praise: plan.praise })
+          : writeUserPrompt(userArgs),
         deadlineAtMs,
       });
       this.writeModel = write.model;
