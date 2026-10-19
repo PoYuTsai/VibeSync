@@ -24,7 +24,6 @@ import 'package:vibesync/features/conversation/data/repositories/conversation_ar
 import 'package:vibesync/features/conversation/data/repositories/conversation_repository.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
-import 'package:vibesync/features/conversation/domain/services/conversation_content_revision.dart';
 import 'package:vibesync/features/follow_up_notification/data/follow_up_opt_in_store.dart';
 import 'package:vibesync/features/follow_up_notification/data/providers/follow_up_notification_service.dart';
 import 'package:vibesync/features/follow_up_notification/domain/follow_up_opt_in.dart';
