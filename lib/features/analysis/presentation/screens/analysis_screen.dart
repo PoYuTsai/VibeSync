@@ -1671,11 +1671,20 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 綁 partner 的分析完成後：首次（opt-in=unknown）顯示軟詢問卡，
   /// 再委派 service 依 opt-in 決定要不要排 48h 跟進通知。
-  Future<void> _maybeScheduleFollowUpNotification(Conversation conv) async {
+  /// [silenceFollowUp]：v3 關心或停之後不問、不排，已排的收回（P1 安全修正）。
+  Future<void> _maybeScheduleFollowUpNotification(
+    Conversation conv, {
+    required bool silenceFollowUp,
+  }) async {
     final partnerId = conv.partnerId;
     if (partnerId == null || partnerId.isEmpty) return;
     try {
       final service = ref.read(followUpNotificationServiceProvider);
+      if (silenceFollowUp) {
+        // 軟卡也不問：一次性的詢問留給下一次正常的分析。
+        await service.silenceForPartner(partnerId);
+        return;
+      }
       final displayName = _partnerDisplayName(partnerId);
 
       // 首次綁 partner 分析完成才問一次軟卡（之後 opt-in 非 unknown 不再問）。

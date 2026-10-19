@@ -29,7 +29,7 @@ void main() {
       conversationId: 'freshness-conv',
       notifyStateChanged: () {},
       invalidateRecordViews: (_) {},
-      afterAnalysisPersisted: (_) async {},
+      afterAnalysisPersisted: (_, {required silenceFollowUp}) async {},
     );
 
     final conversation = Conversation(

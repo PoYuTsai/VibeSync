@@ -48,6 +48,13 @@ class FollowUpNotificationService {
     );
   }
 
+  /// 這次分析是 v3 的關心（自傷、未成年）或停（她拒絕或封鎖）時呼叫：收回這位對象已排的
+  /// 那則，不排新的、不動 opt-in（P1 安全修正：不在這種時候催他回去找她）。
+  Future<void> silenceForPartner(String? partnerId) async {
+    if (partnerId == null || partnerId.isEmpty) return;
+    await _gateway.cancel(followUpNotificationId(partnerId));
+  }
+
   /// 軟卡「幫我提醒」後呼叫：向系統要權限，落 granted / denied。
   Future<bool> requestSoftOptIn() async {
     final granted = await _gateway.requestPermission();

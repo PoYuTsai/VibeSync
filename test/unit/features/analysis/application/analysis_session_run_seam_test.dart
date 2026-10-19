@@ -104,7 +104,7 @@ class _Harness {
     lastPayloadCharCount: () => null,
     notifyStateChanged: () {},
     invalidateRecordViews: (_) {},
-    afterAnalysisPersisted: (_) async {},
+    afterAnalysisPersisted: (_, {required silenceFollowUp}) async {},
   );
 
   late final AnalysisSessionController session = AnalysisSessionController(

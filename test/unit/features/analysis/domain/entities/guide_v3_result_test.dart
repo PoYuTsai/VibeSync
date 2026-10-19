@@ -382,6 +382,21 @@ void main() {
       expect(offers('care'), isFalse);
     });
 
+    test('跟進提醒（P1 安全修正）：關心與停不催他回去找她；先別回、出卡、收尾照舊', () {
+      bool silences(String decision) => GuideV3Result.fromJson({
+            'guideVersion': 'v3.6',
+            'read': _read(decision: decision, plannedCards: const []),
+            'cards': const [],
+          })!
+              .decision
+              .silencesFollowUp;
+      expect(silences('care'), isTrue);
+      expect(silences('stop'), isTrue);
+      expect(silences('hold'), isFalse);
+      expect(silences('send'), isFalse);
+      expect(silences('close'), isFalse);
+    });
+
     test('關心沒有卡、不扣費', () {
       final result = GuideV3Result.fromJson(_final(
         read: _read(

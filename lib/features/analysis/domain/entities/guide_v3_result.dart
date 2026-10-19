@@ -70,6 +70,11 @@ enum GuideV3Decision {
   /// 會出卡的決定；其餘只有判讀（關心只有固定文案）。
   bool get hasCards =>
       this == GuideV3Decision.send || this == GuideV3Decision.close;
+
+  /// 不催他回去找她：關心（自傷、未成年）與停（她拒絕或封鎖）之後，不問也不排 48 小時
+  /// 跟進提醒，已排的那則收回（P1 安全修正）。先別回只是等一下，照舊。
+  bool get silencesFollowUp =>
+      this == GuideV3Decision.care || this == GuideV3Decision.stop;
 }
 
 /// 固定訊息（care）是哪一種（伺服器 `careKind`，Eric 2026-10-18 加未成年）：自傷關心，

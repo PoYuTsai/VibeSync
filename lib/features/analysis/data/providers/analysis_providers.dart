@@ -250,8 +250,7 @@ typedef AnalysisPersistenceCoordinatorFactory = AnalysisPersistenceCoordinator
   required String conversationId,
   required void Function() notifyStateChanged,
   required void Function(Conversation conversation) invalidateRecordViews,
-  required Future<void> Function(Conversation conversation)
-      afterAnalysisPersisted,
+  required AfterAnalysisPersisted afterAnalysisPersisted,
 });
 
 final analysisPersistenceCoordinatorFactoryProvider =
@@ -260,8 +259,7 @@ final analysisPersistenceCoordinatorFactoryProvider =
     required String conversationId,
     required void Function() notifyStateChanged,
     required void Function(Conversation conversation) invalidateRecordViews,
-    required Future<void> Function(Conversation conversation)
-        afterAnalysisPersisted,
+    required AfterAnalysisPersisted afterAnalysisPersisted,
   }) {
     return AnalysisPersistenceCoordinator(
       conversationId: conversationId,

@@ -29,6 +29,14 @@ import '../domain/entities/persistable_analysis.dart';
 import 'ports/analysis_record_port.dart';
 import 'ports/conversation_write_ports.dart';
 
+/// canonical snapshot 落地後的畫面層跟進（48h 跟進提醒）。[silenceFollowUp]＝這次是
+/// v3 的關心（自傷、未成年）或停（她拒絕或封鎖）：不問軟卡、不排，這位對象已排的那則
+/// 收回（P1 安全修正）；其他照舊問一次、照 opt-in 排。
+typedef AfterAnalysisPersisted = Future<void> Function(
+  Conversation conversation, {
+  required bool silenceFollowUp,
+});
+
 /// [AnalysisPersistenceCoordinator.restore] 的結果：畫面據此套用本地鏡像。
 /// [result]（v2）與 [guideV3]（v3 任務卡）恰好一個非 null。
 class AnalysisRestoreOutcome {
@@ -71,8 +79,7 @@ class AnalysisPersistenceCoordinator {
     required int? Function() lastPayloadCharCount,
     required void Function() notifyStateChanged,
     required void Function(Conversation conversation) invalidateRecordViews,
-    required Future<void> Function(Conversation conversation)
-        afterAnalysisPersisted,
+    required AfterAnalysisPersisted afterAnalysisPersisted,
   })  : _getConversation = getConversation,
         _persistAnalysisCompleted = persistAnalysisCompleted,
         _persistContentChanged = persistContentChanged,
@@ -111,8 +118,7 @@ class AnalysisPersistenceCoordinator {
   final void Function(Conversation conversation) _invalidateRecordViews;
 
   /// canonical snapshot 落地後的畫面層跟進（48h 跟進通知軟卡）。
-  final Future<void> Function(Conversation conversation)
-      _afterAnalysisPersisted;
+  final AfterAnalysisPersisted _afterAnalysisPersisted;
 
   int _inFlightCount = 0;
   final Set<Future<void>> _pendingTasks = {};
@@ -805,7 +811,11 @@ class AnalysisPersistenceCoordinator {
 
     // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
     // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
-    await _afterAnalysisPersisted(conv);
+    // v3 關心與停不催他回去找她：不問、不排，已排的收回（P1 安全修正）。
+    await _afterAnalysisPersisted(
+      conv,
+      silenceFollowUp: analysis.silencesFollowUp,
+    );
   }
 
   void _setAnalysisRecordNeedsRepair(bool value) {

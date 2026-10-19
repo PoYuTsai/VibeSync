@@ -282,6 +282,7 @@ class _Harness {
   final contentChangedSaves = <String>[];
   final funnelEvents = <String>[];
   final afterPersisted = <Conversation>[];
+  final silencedFollowUps = <bool>[];
   int notifyCount = 0;
   int invalidateCount = 0;
 
@@ -306,7 +307,10 @@ class _Harness {
     lastPayloadCharCount: () => 42,
     notifyStateChanged: () {},
     invalidateRecordViews: (_) {},
-    afterAnalysisPersisted: (conv) async => afterPersisted.add(conv),
+    afterAnalysisPersisted: (conv, {required silenceFollowUp}) async {
+      afterPersisted.add(conv);
+      silencedFollowUps.add(silenceFollowUp);
+    },
   );
 }
 
@@ -859,6 +863,40 @@ void main() {
       expect(recordPort.savedStageLabels, ['']);
     });
   });
+  group('48 小時跟進提醒（P1 安全修正）：關心與停之後不催他回去找她', () {
+    Future<List<bool>> silenceAfter(PersistableAnalysis analysis) async {
+      final conversation = _conversation(partnerId: 'p1');
+      final harness = _Harness(conversation: conversation);
+      await harness.coordinator.persistLatestSnapshot(
+        analysis,
+        completionKey: 'run_follow_up',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+      expect(harness.afterPersisted.single.id, _conversationId);
+      return harness.silencedFollowUps;
+    }
+
+    test('v3 關心（自傷）與停：存好後叫畫面收回提醒', () async {
+      expect(await silenceAfter(_guideV3(decision: 'care')), [true]);
+      expect(await silenceAfter(_guideV3(decision: 'stop')), [true]);
+    });
+
+    test('v3 先別回、出卡與 v2 結果照舊', () async {
+      expect(await silenceAfter(_guideV3(decision: 'hold')), [false]);
+      expect(await silenceAfter(_guideV3()), [false]);
+      expect(
+        await silenceAfter(
+          PersistableAnalysis.fromResult(
+            AnalysisResult.fromJson(_resultJson()),
+          ),
+        ),
+        [false],
+      );
+    });
+  });
+
   group('v3 任務卡存檔（Eric 2026-10-17：新流程沒有熱度）', () {
     test('熱度清掉、階段保留、字數基準推進、快照記 runId；紀錄與歷史事件都沒有熱度', () async {
       final conversation =

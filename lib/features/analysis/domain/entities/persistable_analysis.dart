@@ -14,6 +14,7 @@ class PersistableAnalysis {
     required this.enthusiasmScore,
     required this.validStage,
     required this.waivesCharBaseline,
+    this.silencesFollowUp = false,
     this.guideVersion,
     this.guideV3Light,
     this.analysisRunId,
@@ -44,6 +45,7 @@ class PersistableAnalysis {
       validStage: null,
       // 自傷關心沒扣費：字數基準不推進，下一次照整段計費。
       waivesCharBaseline: result.isCare,
+      silencesFollowUp: result.decision.silencesFollowUp,
       guideVersion:
           result.read.guideVersion.isEmpty ? 'v3' : result.read.guideVersion,
       guideV3Light: result.read.light,
@@ -63,6 +65,10 @@ class PersistableAnalysis {
   /// 不推進存檔的字數基準（這次沒照字數扣費）。
   final bool waivesCharBaseline;
 
+  /// 這次之後不問、不排 48 小時跟進提醒，已排的收回（見
+  /// [GuideV3Decision.silencesFollowUp]）；v2 一律 false。
+  final bool silencesFollowUp;
+
   /// v3 的說明書版本；v2 是 null。
   final String? guideVersion;
 
@@ -79,6 +85,7 @@ class PersistableAnalysis {
         enthusiasmScore: enthusiasmScore,
         validStage: validStage,
         waivesCharBaseline: waivesCharBaseline,
+        silencesFollowUp: silencesFollowUp,
         guideVersion: guideVersion,
         guideV3Light: guideV3Light,
         analysisRunId: analysisRunId,
