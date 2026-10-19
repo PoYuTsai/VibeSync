@@ -268,7 +268,7 @@ Deno.test("兩段式開、讀局面少了新四欄：當成讀局面失敗，不
   assertEquals(h.failed, ["GUIDE_V3_READ_INVALID"]);
 });
 
-Deno.test("兩段式開：寫卡送兩段式的系統提示詞；規格第一張接最重要的那句，第二張是開心分享的共鳴", async () => {
+Deno.test("兩段式開：寫卡送兩段式的系統提示詞；每張規格都先接她最想聽的那則、可以順帶一則，第二張是開心分享的共鳴", async () => {
   const h = flowHarness({ twoStage: true });
   const evs = await eventsOf(await handleGuideV3Stream(h.deps));
   assertEquals(h.writes.length, 1);
@@ -277,15 +277,20 @@ Deno.test("兩段式開：寫卡送兩段式的系統提示詞；規格第一張
   assert(!user.includes("「有他」做法"));
   assert(user.includes("1. 任務：接住｜這張接：她的「好想你喔」"), user);
   assert(
-    user.includes(`2. 任務：${HAPPY_SHARE_TASK}｜這張接：她的「我自己煮的！」`),
+    user.includes(
+      `2. 任務：${HAPPY_SHARE_TASK}｜這張接：她的「好想你喔」｜可以順帶：她的「我自己煮的！」（連同第 1 則）`,
+    ),
   );
   assert(user.includes("第 2 輪・她：\n1. [照片：一盤咖哩飯]"));
   // 送出的卡跟規格一致：第二張是共鳴（resonate）。
   const cards = evs.filter((e) => e.type === "analysis.card");
   assertEquals(cards.find((c) => c.slot === 2)?.task, "resonate");
-  // trace 的規格帶每張要接的句子編號與 note。
-  const trace = h.done[0].guideV3Trace as { specs: { lines?: number[] }[] };
-  assertEquals(trace.specs[0].lines, [3]);
+  // trace 的規格帶每張要回的那幾則與 note。
+  const trace = h.done[0].guideV3Trace as { specs: { answer?: unknown }[] };
+  assertEquals(trace.specs[0].answer, {
+    main: { line: 3, with: [] },
+    extra: { line: 2, with: [1] },
+  });
   assertEquals(
     (trace.specs[1] as { note?: string }).note,
     "happy_share",
@@ -308,7 +313,9 @@ Deno.test("兩段式沒開：寫卡的請求跟今天一樣（系統提示詞與
     }),
   );
   const trace = h.done[0].guideV3Trace as { specs: Record<string, unknown>[] };
-  assert(trace.specs.every((spec) => !("lines" in spec) && !("note" in spec)));
+  assert(
+    trace.specs.every((spec) => !("answer" in spec) && !("note" in spec)),
+  );
 });
 
 Deno.test("兩段式開：卡片抄到寫卡新加的段落就拿掉（prompt_leak）；同一張卡在開關沒開時照送", async () => {

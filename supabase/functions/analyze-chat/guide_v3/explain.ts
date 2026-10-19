@@ -10,8 +10,8 @@ import type { LIGHTS, ReadTags } from "./read_tags.ts";
 import type { CardSpec, HisMethod, Task } from "./rules.ts";
 import { cardTaskText } from "./prompts.ts";
 import {
+  answerParts,
   HAPPY_SHARE_TASK,
-  quoteHerLine,
   TWO_STAGE_METHOD_LABEL,
 } from "./two_stage_prompts.ts";
 
@@ -151,15 +151,12 @@ export function explainUserPrompt(args: {
     ? args.entries.map((e) => `- ${e.trigger}：${e.writing}`).join("\n")
     : "（這一輪沒有）";
   const cards = args.cards.map(({ slot, spec, messages }) => {
-    const answers = (spec.lines ?? [])
-      .filter((line) => line >= 1 && line <= args.herLatest.length)
-      .map((line) => `「${quoteHerLine(args.herLatest[line - 1])}」`);
     const head = [
       `任務：${
         spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
       }`,
       `${TWO_STAGE_METHOD_LABEL}：${spec.method}`,
-      ...(answers.length > 0 ? [`這張接：她的${answers.join("和")}`] : []),
+      ...answerParts(spec.answer, args.herLatest),
     ].join("｜");
     return [
       `### 第 ${slot} 張`,

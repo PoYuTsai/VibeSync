@@ -190,7 +190,7 @@ export const READ_TAGS_SCHEMA_TWO_STAGE: Record<string, unknown> = {
 };
 
 /// 兩段式多要的四欄逐欄檢查，壞了回 null（跟 parseReadTags 一樣記成讀局面失敗）。編號在不在
-/// 她最新這一輪的範圍內，交給排卡（rules.ts assignLines）處理，這裡只看型別。
+/// 她最新這一輪的範圍內，交給排卡（rules.ts assignAnswers）處理，這裡只看型別。
 export function parseTwoStageTags(value: unknown): TwoStageTags | null {
   // deno-lint-ignore no-explicit-any
   const v = value as any;

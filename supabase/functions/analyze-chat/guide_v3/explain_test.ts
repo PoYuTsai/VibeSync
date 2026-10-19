@@ -131,12 +131,21 @@ Deno.test("說明步驟使用者訊息：局面、她最新這一輪、沒有編
     cards: [
       {
         slot: 1,
-        spec: spec({ lines: [3, 1] }),
+        spec: spec({
+          answer: {
+            main: { line: 3, with: [] },
+            extra: { line: 2, with: [1] },
+          },
+        }),
         messages: ["我也想你", "咖哩看起來好香"],
       },
       {
         slot: 2,
-        spec: spec({ task: "共鳴", note: "happy_share", lines: [2] }),
+        spec: spec({
+          task: "共鳴",
+          note: "happy_share",
+          answer: { main: { line: 3, with: [] } },
+        }),
         messages: ["自己煮的也太厲害"],
       },
       {
@@ -159,7 +168,7 @@ Deno.test("說明步驟使用者訊息：局面、她最新這一輪、沒有編
   assertStringIncludes(user, "## 寫好的卡（一共 3 張）");
   assertStringIncludes(
     user,
-    "### 第 1 張\n任務：接住｜他的事怎麼寫：只用反應｜這張接：她的「好想你喔」和「[照片：一盤咖哩飯]」\n- 我也想你\n- 咖哩看起來好香",
+    "### 第 1 張\n任務：接住｜他的事怎麼寫：只用反應｜這張接：她的「好想你喔」｜可以順帶：她的「我自己煮的！」（連同第 1 則）\n- 我也想你\n- 咖哩看起來好香",
   );
   assertStringIncludes(user, `### 第 2 張\n任務：${HAPPY_SHARE_TASK}｜`);
   assertStringIncludes(

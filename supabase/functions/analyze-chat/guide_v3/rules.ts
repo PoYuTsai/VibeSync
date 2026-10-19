@@ -15,9 +15,15 @@
 //    蓋過「綠燈至少一張帶張力」；最後她直接問他時，第一張排接住。
 // 8. 兩段式實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，Eric 2026-10-19；沒開時這條不存在）：綠燈帶張力
 //    最多一張，已在交往或她撒嬌示愛時不排；她分享開心的事（她情緒差時不算）第二張改成共鳴；
-//    最後把她值得接的句子分給各張卡。上面 1–7 都照舊先算。
+//    最後每張卡都指定先回她最想聽的那則、可以順帶一則（第 2 輪，Bruce 10/19 盲選理由）。
+//    上面 1–7 都照舊先算。
 import type { GuideV3Entry } from "./entries.ts";
-import type { ReadTags, TwoStageTags, WorthyLine } from "./read_tags.ts";
+import type {
+  ReadTags,
+  TwoStageTags,
+  WorthyLine,
+  WorthyLineKind,
+} from "./read_tags.ts";
 import type { Turn } from "./turns.ts";
 
 export type ReplyDecision =
@@ -178,10 +184,23 @@ export interface CardSpec {
   readonly push: PushAction | null;
   /// 同規格的第幾張（0 起算）；大於 0 時要換切入點。
   readonly angle: number;
-  /// 兩段式實驗才有（沒開時沒有這兩個欄位）：這張要接她最新這一輪的第幾則（1 起算，最多兩則），
+  /// 兩段式實驗才有（沒開時沒有這兩個欄位）：這張要回她最新這一輪的哪幾則（assignAnswers），
   /// 以及她分享開心的事時換上的那張共鳴。
-  readonly lines?: readonly number[];
+  readonly answer?: CardAnswer;
   readonly note?: "happy_share";
+}
+
+/// 兩段式實驗：她最新這一輪的第幾則（1 起算）。with＝併進這一則一起看的照片、貼圖或只有表情的
+/// 那幾則：它們不單獨當一張卡要回的對象（第 2 輪，Bruce 10/19：不用特別去評價她的貼圖）。
+export interface AnswerLine {
+  readonly line: number;
+  readonly with: readonly number[];
+}
+
+/// main＝她最想聽他回的那則，每張卡都一樣；extra＝這張可以順帶的一則（可以沒有）。
+export interface CardAnswer {
+  readonly main: AnswerLine;
+  readonly extra?: AnswerLine;
 }
 
 /// C4 每次幾張：情緒差、黃燈、紅燈、問他的事但缺他的資料是 3；綠燈而且她給了機會、
@@ -382,30 +401,46 @@ function placeWarmCard(tasks: Task[]): number | null {
   return 1;
 }
 
-/// 照片、貼圖的辨識標記（方括號開頭），或整則只有表情符號。
-const MEDIA_PLACEHOLDER = /^[\[［【]/;
-const EMOJI_ONLY =
-  /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\uFE0F|\u200D|\s)+$/u;
+/// 照片、貼圖的辨識標記（方括號開頭；外面可能再包一層「」，10/19 正式環境的案例就是這樣），
+/// 或整則只有表情符號（可以夾標點，例如「😂～」）。
+const MEDIA_PLACEHOLDER = /^[「『"]?[\[［【]/u;
+const EMOJI = /\p{Extended_Pictographic}/u;
+const SYMBOLS_ONLY = /^[\p{P}\p{S}\p{M}\s\u200d\uFE0F]+$/u;
 
 export function isMediaLine(content: string): boolean {
   const text = content.trim();
-  return MEDIA_PLACEHOLDER.test(text) || EMOJI_ONLY.test(text);
+  return MEDIA_PLACEHOLDER.test(text) ||
+    (EMOJI.test(text) && SYMBOLS_ONLY.test(text));
 }
 
-/// 先接情感（撒嬌、示愛、帶情緒），再接一般的話，照片與貼圖最後；同一級照她傳的順序。
-function lineRank(line: WorthyLine, content: string): number {
-  if (line.kind === "照片或貼圖" || isMediaLine(content)) return 2;
-  return line.kind === "情感" ? 0 : 1;
+/// 誰先被當成「她最想聽他回的那則」：問他最先、情感其次、其他再來。有字的那則被標成照片或貼圖時
+/// 當其他（照片、貼圖本身由 isMediaLine 認，不靠這個標記）。
+const ANSWER_RANK: Readonly<Record<WorthyLineKind, number>> = {
+  問他: 0,
+  情感: 1,
+  其他: 2,
+  照片或貼圖: 2,
+};
+
+/// 離 line 最近的那一則；一樣近時取後面那則（她常先傳照片，再講照片裡的事）。
+function nearestLine(line: number, candidates: readonly number[]): number {
+  return candidates.reduce((best, c) => {
+    const d = Math.abs(c - line);
+    const bestD = Math.abs(best - line);
+    return d < bestD || (d === bestD && c > best) ? c : best;
+  });
 }
 
-/// 兩段式實驗（研究 §7.3、Bruce 10/19 計畫第 6 點）：她最新這一輪值得接的句子分給各張卡，每張
-/// 1–2 句，全部合起來每句都有卡接。句子比卡少時從最重要的那句再輪一次；比卡多時從第一張開始
-/// 各多接一句；超過兩倍張數的（最不重要的）不排。編號不在她最新這一輪裡、或重複的，略過。
-export function assignLines(
+/// 兩段式實驗第 2 輪（Bruce 10/19 盲選理由）：每張卡都先回她最想聽他回的那則（問他 → 情感 →
+/// 其他，同一級取她最後傳的），每張最多再順帶一則（其餘值得接的照同樣的先後、同一級照她傳的順序
+/// 輪流分；比卡多的不排）。第 1 輪把句子輪流分給各張，結果有幾張只回了照片、貼圖或肉盤，沒回她
+/// 問的那句（代審「沒對準她要的」15%→34%）。照片、貼圖、只有表情的那則不單獨當對象，併進最近
+/// 一則有字的（with）。編號不在她最新這一輪、或重複的略過；沒有一則有字的就不指定（null）。
+export function assignAnswers(
   cardCount: number,
   worthy: readonly WorthyLine[],
   herLatest: readonly string[],
-): (readonly number[])[] {
+): (CardAnswer | null)[] {
   const seen = new Set<number>();
   const valid = worthy.filter((w) => {
     if (w.line < 1 || w.line > herLatest.length || seen.has(w.line)) {
@@ -414,19 +449,34 @@ export function assignLines(
     seen.add(w.line);
     return true;
   });
-  const ordered = valid
-    .map((w) => ({ line: w.line, rank: lineRank(w, herLatest[w.line - 1]) }))
-    .sort((a, b) => a.rank - b.rank || a.line - b.line)
-    .map((w) => w.line)
-    .slice(0, cardCount * 2);
-  const k = ordered.length;
-  return Array.from({ length: cardCount }, (_, i) => {
-    if (k === 0) return [];
-    if (k <= cardCount) return [ordered[i % k]];
-    return i + cardCount < k ? [ordered[i], ordered[i + cardCount]] : [
-      ordered[i],
-    ];
+  const media = valid.filter((w) => isMediaLine(herLatest[w.line - 1]));
+  const text = valid.filter((w) => !isMediaLine(herLatest[w.line - 1]));
+  if (text.length === 0) return Array.from({ length: cardCount }, () => null);
+  const rank = (w: WorthyLine) => ANSWER_RANK[w.kind];
+  const main = text.reduce((best, w) =>
+    rank(w) < rank(best) || (rank(w) === rank(best) && w.line > best.line)
+      ? w
+      : best
+  );
+  const extras = text.filter((w) => w !== main)
+    .sort((a, b) => rank(a) - rank(b) || a.line - b.line)
+    .slice(0, cardCount);
+  const folded = new Map<number, number[]>();
+  for (const m of media) {
+    const to = nearestLine(m.line, text.map((w) => w.line));
+    folded.set(to, [...(folded.get(to) ?? []), m.line]);
+  }
+  const answerLine = (w: WorthyLine): AnswerLine => ({
+    line: w.line,
+    with: [...(folded.get(w.line) ?? [])].sort((a, b) => a - b),
   });
+  return Array.from({ length: cardCount }, (_, i) =>
+    extras.length > 0
+      ? {
+        main: answerLine(main),
+        extra: answerLine(extras[i % extras.length]),
+      }
+      : { main: answerLine(main) });
 }
 
 const ENTRY_PRIORITY: readonly (readonly string[])[] = [

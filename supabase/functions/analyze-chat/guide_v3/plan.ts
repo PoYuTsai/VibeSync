@@ -4,7 +4,7 @@ import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import type { INVITE_READINESS, ReadTags, TwoStageTags } from "./read_tags.ts";
 import {
   arrangeCards,
-  assignLines,
+  assignAnswers,
   type CardSpec,
   decidePush,
   decideReply,
@@ -80,21 +80,23 @@ function carePlan(
   };
 }
 
-/// 兩段式實驗：每張卡記下要接她最新這一輪的第幾則（rules.ts assignLines）；分不到的卡不加欄位。
-function withLines(
+/// 兩段式實驗：每張卡記下要回她最新這一輪的哪幾則（rules.ts assignAnswers）；沒有可指定的
+///（她值得接的只有照片、貼圖或表情）就不加欄位。
+function withAnswers(
   specs: CardSpec[],
   turns: readonly Turn[],
   twoStage: TwoStageTags | undefined,
 ): CardSpec[] {
   if (!twoStage || specs.length === 0) return specs;
-  const lines = assignLines(
+  const answers = assignAnswers(
     specs.length,
     twoStage.worthyLines,
     latestHerMessages(turns),
   );
-  return specs.map((spec, i) =>
-    lines[i].length > 0 ? { ...spec, lines: lines[i] } : spec
-  );
+  return specs.map((spec, i) => {
+    const answer = answers[i];
+    return answer ? { ...spec, answer } : spec;
+  });
 }
 
 /// 讀局面失敗、拒答或逾時時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心
@@ -131,7 +133,7 @@ export function planTurn(
   if (tags.minorSignal) return carePlan("minor", true, false);
   const reply = decideReply(turns, tags);
   const push = reply.kind === "send" ? decidePush(turns, tags) : null;
-  const specs = withLines(
+  const specs = withAnswers(
     arrangeCards(reply, push, tags, twoStage),
     turns,
     twoStage,

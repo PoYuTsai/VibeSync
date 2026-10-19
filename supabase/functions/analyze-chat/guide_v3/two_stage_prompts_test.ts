@@ -400,7 +400,7 @@ const SPECS: CardSpec[] = [
     questionBudget: 1,
     push: null,
     angle: 0,
-    lines: [3, 1],
+    answer: { main: { line: 3, with: [] }, extra: { line: 2, with: [1] } },
   },
   {
     task: "共鳴",
@@ -409,7 +409,7 @@ const SPECS: CardSpec[] = [
     questionBudget: 1,
     push: null,
     angle: 0,
-    lines: [2],
+    answer: { main: { line: 3, with: [] } },
     note: "happy_share",
   },
   {
@@ -422,25 +422,40 @@ const SPECS: CardSpec[] = [
   },
 ];
 
-Deno.test("兩段式卡片規格：任務後面先講這張接她哪幾句，標籤改「他的事怎麼寫」，開心分享的共鳴另寫清楚", () => {
+Deno.test("兩段式卡片規格：任務後面先講這張接她哪一則、可以順帶哪一則（照片併進旁邊那則，註明第幾則），標籤改「他的事怎麼寫」，開心分享的共鳴另寫清楚", () => {
   const herLatest = ["[照片：一盤咖哩飯]", "我自己煮的！", "好想你喔"];
   assertEquals(
     cardSpecLineTwoStage(SPECS[0], 1, herLatest),
-    `1. 任務：接住｜這張接：她的「好想你喔」和「[照片：一盤咖哩飯]」｜${TWO_STAGE_METHOD_LABEL}：只用反應｜口吻：預設｜問句最多 1 個`,
+    `1. 任務：接住｜這張接：她的「好想你喔」｜可以順帶：她的「我自己煮的！」（連同第 1 則）｜${TWO_STAGE_METHOD_LABEL}：只用反應｜口吻：預設｜問句最多 1 個`,
   );
   assertEquals(
     cardSpecLineTwoStage(SPECS[1], 2, herLatest),
-    `2. 任務：${HAPPY_SHARE_TASK}｜這張接：她的「我自己煮的！」｜${TWO_STAGE_METHOD_LABEL}：只用反應｜口吻：預設｜問句最多 1 個`,
+    `2. 任務：${HAPPY_SHARE_TASK}｜這張接：她的「好想你喔」｜${TWO_STAGE_METHOD_LABEL}：只用反應｜口吻：預設｜問句最多 1 個`,
   );
-  // 沒分到句子（或編號超出）就不寫「這張接」；推進照舊帶動作說明。
+  // 照片的辨識描述不重抄進規格（對話稿上有編號）。
+  assert(!cardSpecLineTwoStage(SPECS[0], 1, herLatest).includes("咖哩飯"));
+  // 沒指定（或編號超出）就不寫「這張接」；推進照舊帶動作說明。
   const third = cardSpecLineTwoStage(SPECS[2], 3, herLatest);
   assert(!third.includes("這張接"));
   assert(third.startsWith("3. 任務：推進（種子）｜他的事怎麼寫：留空格（"));
   assert(
-    !cardSpecLineTwoStage({ ...SPECS[0], lines: [9] }, 1, herLatest).includes(
-      "這張接",
-    ),
+    !cardSpecLineTwoStage(
+      { ...SPECS[0], answer: { main: { line: 9, with: [] } } },
+      1,
+      herLatest,
+    ).includes("這張接"),
   );
+  // 順帶的那則編號超出：只寫這張接。
+  const extraOut = cardSpecLineTwoStage(
+    {
+      ...SPECS[0],
+      answer: { main: { line: 3, with: [] }, extra: { line: 9, with: [] } },
+    },
+    1,
+    herLatest,
+  );
+  assertStringIncludes(extraOut, "這張接：她的「好想你喔」");
+  assert(!extraOut.includes("可以順帶"));
 });
 
 Deno.test("引她的那一句：去掉引用前綴、空白收成一格、超過 30 字截短", () => {

@@ -16,7 +16,7 @@ import {
   writeUserPrompt,
 } from "./prompts.ts";
 import type { ReadTags } from "./read_tags.ts";
-import type { CardSpec } from "./rules.ts";
+import type { AnswerLine, CardAnswer, CardSpec } from "./rules.ts";
 import { latestHerMessages, type Turn } from "./turns.ts";
 
 /// 讀局面多輸出的四欄，以及作戰板標籤靠不住時怎麼判（研究報告 §5.3、§7.2：v3 把 App 預設的
@@ -239,20 +239,44 @@ export function quoteHerLine(content: string): string {
     : text;
 }
 
-/// 兩段式的規格行：任務之後先講這張接她哪一句，「有他」做法改叫「他的事怎麼寫」。
+/// 規格裡的一則：「她的「…」」；併進來的照片、貼圖（rules.ts assignAnswers 的 with）註明第幾則，
+/// 對話稿上她最新這一輪有逐則編號，寫卡看得到那幾則是什麼，規格裡不重抄辨識描述。
+function answerQuote(at: AnswerLine, herLatest: readonly string[]): string {
+  const folded = at.with.filter((line) =>
+    line >= 1 && line <= herLatest.length
+  );
+  const note = folded.length > 0 ? `（連同第 ${folded.join("、")} 則）` : "";
+  return `她的「${quoteHerLine(herLatest[at.line - 1])}」${note}`;
+}
+
+/// 第 2 輪（Bruce 10/19 盲選理由）：「這張接」是每張都要先回的那則，「可以順帶」是這張可以多接的
+/// 一則。編號不在她最新這一輪就不寫。說明步驟（explain.ts）也用同一份。
+export function answerParts(
+  answer: CardAnswer | undefined,
+  herLatest: readonly string[],
+): string[] {
+  const inRange = (at: AnswerLine) =>
+    at.line >= 1 && at.line <= herLatest.length;
+  if (!answer || !inRange(answer.main)) return [];
+  return [
+    `這張接：${answerQuote(answer.main, herLatest)}`,
+    ...(answer.extra && inRange(answer.extra)
+      ? [`可以順帶：${answerQuote(answer.extra, herLatest)}`]
+      : []),
+  ];
+}
+
+/// 兩段式的規格行：任務之後先講這張接她哪一則、可以順帶哪一則，「有他」做法改叫「他的事怎麼寫」。
 export function cardSpecLineTwoStage(
   spec: CardSpec,
   n: number,
   herLatest: readonly string[],
 ): string {
-  const answers = (spec.lines ?? [])
-    .filter((line) => line >= 1 && line <= herLatest.length)
-    .map((line) => `「${quoteHerLine(herLatest[line - 1])}」`);
   const parts = [
     `${n}. 任務：${
       spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
     }`,
-    ...(answers.length > 0 ? [`這張接：她的${answers.join("和")}`] : []),
+    ...answerParts(spec.answer, herLatest),
     `${TWO_STAGE_METHOD_LABEL}：${cardMethodText(spec)}`,
     `口吻：${spec.voice}`,
     spec.questionBudget === 0 ? "不問問題" : "問句最多 1 個",
