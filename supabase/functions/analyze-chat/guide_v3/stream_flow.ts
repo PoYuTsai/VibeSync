@@ -169,6 +169,10 @@ export interface GuideV3StreamDeps {
   ): Promise<{ text: string; model: string }>;
   /// 預設 GUIDE_V3_MEMORY_WAIT_MS（測試縮短用）。
   memoryWaitMs?: number;
+  /// 關係訊號（開關 ANALYZE_GUIDE_V3_RELATION，handler 把關；Bruce 2026-10-19 路線二）：讀局面
+  /// 在最後多要階段、熱度與四個維度，判讀多帶 relation。沒給或 false：提示詞、schema、事件、
+  /// trace 與扣費都跟今天一樣。
+  relation?: boolean;
   log(
     event: string,
     metadata: Record<string, unknown>,

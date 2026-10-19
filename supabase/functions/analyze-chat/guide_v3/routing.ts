@@ -34,6 +34,16 @@ export function shouldExtractGuideV3Memory(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 讀局面順便給關係階段、熱度與四個維度（relation.ts）：開關 ANALYZE_GUIDE_V3_RELATION，跟
+/// ANALYZE_GUIDE_V3 一樣 off／test／on。沒開就讀局面的提示詞、schema 與送給 App 的判讀一字
+/// 不變（Bruce 2026-10-19 路線二）。
+export function shouldReadGuideV3Relation(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// v3 分析帶上一輪脈絡（previousRound，見 previous_round.ts）：開關
 /// ANALYZE_GUIDE_V3_PREV_ROUND，跟 ANALYZE_GUIDE_V3 一樣 off／test／on。沒開就不讀
 /// 這個欄位，兩段提示詞一字不變（Eric 2026-10-18）。
