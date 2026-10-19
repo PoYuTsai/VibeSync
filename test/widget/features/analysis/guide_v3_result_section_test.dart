@@ -1432,6 +1432,34 @@ void main() {
           find.byKey(const ValueKey('guide-v3-relation-radar')), findsNothing);
     });
 
+    testWidgets('放大字（1.4 倍）：標籤欄跟著放寬，「她這一輪在做什麼」不斷成兩行', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(390, 1600),
+            textScaler: TextScaler.linear(1.4),
+          ),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              child: GuideV3ResultSection(
+                read: _read(relation: relation, inviteReadiness: 'none'),
+                cards: cards,
+                isStreaming: false,
+                editedMessagesFor: (_) => null,
+                onCopy: (_, __, ___) {},
+                onEdit: (_) async => null,
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      double height(String text) => tester.getSize(find.text(text)).height;
+      expect(height('她這一輪在做什麼'), height('回覆意願'));
+    });
+
     testWidgets('點「詳細」展開熱度（換成 0–90）與五維雷達，再點收起', (tester) async {
       await _pump(tester, read: _read(relation: relation), cards: cards);
 

@@ -204,7 +204,8 @@ class _GuideV3RelationCardState extends State<GuideV3RelationCard> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SizedBox(
-              width: 112,
+              // 跟著字級放大：放大字時「她這一輪在做什麼」才不會斷成兩行、只剩「什麼」。
+              width: MediaQuery.textScalerOf(context).scale(112),
               child: Text(
                 label,
                 style: AppTypography.bodySmall.copyWith(
