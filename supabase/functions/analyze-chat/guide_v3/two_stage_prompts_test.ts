@@ -158,6 +158,23 @@ Deno.test("兩段式讀局面系統提示詞：今天的整段照舊，只在欄
   }
 });
 
+Deno.test("兩段式第 2 輪讀局面：值得接的句子多一種「問他」（排第一個），同時算問他和情感時填問他", () => {
+  assertEquals(WORTHY_LINE_KINDS, ["問他", "情感", "照片或貼圖", "其他"]);
+  assertStringIncludes(
+    READ_TWO_STAGE_NOTES,
+    "「問他」（她直接問他、要他的看法，或想聽他說好不好看、厲不厲害）",
+  );
+  assertStringIncludes(
+    READ_TWO_STAGE_NOTES,
+    "一則同時算問他和情感時填「問他」",
+  );
+  const asks: TwoStageTags = {
+    ...EXTRAS,
+    worthyLines: [{ line: 3, label: "問他好不好看", kind: "問他" }],
+  };
+  assertEquals(parseTwoStageTags(asks), asks);
+});
+
 Deno.test("兩段式讀局面使用者提示詞：只有她最新這一輪逐則編號，其他一字不變；最後是他的就完全一樣", () => {
   const turns = toTurns(MESSAGES);
   const today = readUserPrompt(turns);
@@ -300,7 +317,7 @@ Deno.test("兩段式寫卡系統提示詞的雜湊鎖：改這段要連這裡一
   );
   assertEquals(
     await sha256(readSystemPromptTwoStage()),
-    "2c19aaf122c6b43023c74a2d849281541bfe053bf2b2da1a620abb34b602799c",
+    "35dcb974cb25db0f12db7b4f1c33b63dd138010629a1621904a2c1624e26a203",
   );
 });
 

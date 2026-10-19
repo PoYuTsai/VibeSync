@@ -130,7 +130,14 @@ function isOneOf<T extends string>(
 /// 兩段式實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，Eric 2026-10-19 兩段式實驗）才多要的標記：
 /// 只放排卡用得到的（情侶、撒嬌示愛、開心分享不排帶張力或多一張共鳴，值得接的句子分給各張卡）。
 /// 開關沒開時 schema 與檢查都不碰這幾欄。
-export const WORTHY_LINE_KINDS = ["情感", "照片或貼圖", "其他"] as const;
+/// 「問他」是第 2 輪加的（Bruce 10/19 盲選理由）：每張卡都要先回她直接問他、要他看法的那句，
+/// 第 1 輪讀局面把這種句子有時標情感、有時標其他，排卡找不出來。
+export const WORTHY_LINE_KINDS = [
+  "問他",
+  "情感",
+  "照片或貼圖",
+  "其他",
+] as const;
 export type WorthyLineKind = typeof WORTHY_LINE_KINDS[number];
 
 export interface WorthyLine {
