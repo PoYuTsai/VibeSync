@@ -441,7 +441,13 @@ class GuideV3Flow {
         );
       }
       const plan = vetPlanText(
-        planTurn(turns, tags, this.hits),
+        planTurn(
+          turns,
+          tags,
+          this.hits,
+          undefined,
+          twoStageTags ?? undefined,
+        ),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
             analysisRunId: this.runId,

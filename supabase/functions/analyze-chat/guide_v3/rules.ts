@@ -13,8 +13,11 @@
 //    婉拒或界線：一張收尾。
 // 7. 排卡：B34、B46 不排推進，蓋過「她給了機會至少一張推進」；B43–B46 帶張力改排接住，
 //    蓋過「綠燈至少一張帶張力」；最後她直接問他時，第一張排接住。
+// 8. 兩段式實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，Eric 2026-10-19；沒開時這條不存在）：綠燈帶張力
+//    最多一張，已在交往或她撒嬌示愛時不排；她分享開心的事（她情緒差時不算）第二張改成共鳴；
+//    最後把她值得接的句子分給各張卡。上面 1–7 都照舊先算。
 import type { GuideV3Entry } from "./entries.ts";
-import type { ReadTags } from "./read_tags.ts";
+import type { ReadTags, TwoStageTags, WorthyLine } from "./read_tags.ts";
 import type { Turn } from "./turns.ts";
 
 export type ReplyDecision =
@@ -175,6 +178,10 @@ export interface CardSpec {
   readonly push: PushAction | null;
   /// 同規格的第幾張（0 起算）；大於 0 時要換切入點。
   readonly angle: number;
+  /// 兩段式實驗才有（沒開時沒有這兩個欄位）：這張要接她最新這一輪的第幾則（1 起算，最多兩則），
+  /// 以及她分享開心的事時換上的那張共鳴。
+  readonly lines?: readonly number[];
+  readonly note?: "happy_share";
 }
 
 /// C4 每次幾張：情緒差、黃燈、紅燈、問他的事但缺他的資料是 3；綠燈而且她給了機會、
@@ -194,7 +201,12 @@ export function cardCount(tags: ReadTags, push: PushAction | null): number {
   return 4;
 }
 
-function tasksFor(tags: ReadTags, push: PushAction | null, n: number): Task[] {
+function tasksFor(
+  tags: ReadTags,
+  push: PushAction | null,
+  n: number,
+  twoStage?: TwoStageTags,
+): Task[] {
   // B47：推進（換地方）、收（這次先不約）、推進（換個切入點）。
   if (push === "換地方") return ["推進", "收", "推進"];
   if (tags.herMoodBad) return Array(n).fill("共鳴");
@@ -227,7 +239,8 @@ function tasksFor(tags: ReadTags, push: PushAction | null, n: number): Task[] {
   if (push) {
     tasks.push(...Array(n >= 5 && push === "具體邀約" ? 2 : 1).fill("推進"));
   }
-  const tension = tags.light === "green" ? (n >= 4 ? 2 : 1) : 0;
+  // 兩段式實驗：綠燈最多一張（研究 §2.2：刻意句 76%、擺姿態 9/10 都在帶張力；Eric 2026-10-19）。
+  const tension = tags.light === "green" ? (n >= 4 && !twoStage ? 2 : 1) : 0;
   const rest = n - tasks.length;
   // 接住、帶張力交錯；放不下就從後面補滿帶張力的張數。
   const fill: Task[] = Array(rest).fill("接住");
@@ -288,6 +301,8 @@ export function arrangeCards(
   decision: ReplyDecision,
   push: PushAction | null,
   tags: ReadTags,
+  /// 兩段式實驗的讀局面四欄；沒給（開關沒開）就跟今天一樣。
+  twoStage?: TwoStageTags,
 ): CardSpec[] {
   const voiceOnly: Voice = tags.hasHisVoiceSample ? "照他" : "預設";
   if (decision.kind === "close") {
@@ -303,9 +318,12 @@ export function arrangeCards(
   if (decision.kind !== "send") return [];
   const n = cardCount(tags, push);
   const matched = matchedSet(tags);
-  // v3.3：B43–B46 不排帶張力（10/15 實驗：明顯考她或打分的卡 13→0）。
-  const noTension = NO_TENSION_ENTRIES.some((id) => matched.has(id));
-  const tasks = tasksFor(tags, push, n).map((t): Task =>
+  // v3.3：B43–B46 不排帶張力（10/15 實驗：明顯考她或打分的卡 13→0）。兩段式實驗另外在已經
+  // 交往、或她這一輪撒嬌示愛時不排（她越喜歡他，玩笑越少；Eric 2026-10-19 兩段式實驗）。
+  const noTension = NO_TENSION_ENTRIES.some((id) => matched.has(id)) ||
+    (twoStage !== undefined &&
+      (twoStage.establishedCouple || twoStage.herAffection));
+  const tasks = tasksFor(tags, push, n, twoStage).map((t): Task =>
     noTension && t === "帶張力" ? "接住" : t
   );
   // v3.3：她直接問他（問他的事、問他意見、認真問，或標到她直接問的條目）時，第一張排接住。
@@ -318,6 +336,12 @@ export function arrangeCards(
       tasks.unshift("接住");
     }
   }
+  // 兩段式實驗：她分享開心或得意的事（情緒差時不算），第二張換成一張共鳴，第一張照原本的順序
+  //（Bruce 10/19 PR #97 計畫第 4 點）。B47 的三張固定排法不動。
+  const warmAt = twoStage?.herHappyShare && !tags.herMoodBad &&
+      push !== "換地方"
+    ? placeWarmCard(tasks)
+    : null;
   const methods = methodsFor(tags, tasks);
   // 口吻：有他的訊息時照他、預設交錯（第一張照他）；沒有就全部預設。
   const voices: Voice[] = tasks.map((_, i) =>
@@ -337,12 +361,72 @@ export function arrangeCards(
       questionBudget: isSeed ? 0 : 1,
       push: task === "推進" ? push : null,
       angle,
+      ...(i === warmAt ? { note: "happy_share" as const } : {}),
     };
   });
   // 第一張照 C4 的自然順序：她給了機會時是推進，否則是接住或共鳴（可以有空格）。
   // 10/14 第一輪原型曾把「不用改就能送」的卡挪到第一，結果需要他填資料時，帶張力的卡
   // 變成推薦（9/48 次），已拿掉。
   return cards;
+}
+
+/// 兩段式實驗：把一張接住（沒有就一張帶張力）換成共鳴、放到第二張；第一張不動。已經有共鳴
+///（她喝醉或深夜）、或第一張之外沒有可換的卡，就不換。回換上的位置。
+function placeWarmCard(tasks: Task[]): number | null {
+  if (tasks.length < 2 || tasks.includes("共鳴")) return null;
+  let from = tasks.indexOf("接住", 1);
+  if (from === -1) from = tasks.indexOf("帶張力", 1);
+  if (from === -1) return null;
+  tasks.splice(from, 1);
+  tasks.splice(1, 0, "共鳴");
+  return 1;
+}
+
+/// 照片、貼圖的辨識標記（方括號開頭），或整則只有表情符號。
+const MEDIA_PLACEHOLDER = /^[\[［【]/;
+const EMOJI_ONLY =
+  /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\uFE0F|\u200D|\s)+$/u;
+
+export function isMediaLine(content: string): boolean {
+  const text = content.trim();
+  return MEDIA_PLACEHOLDER.test(text) || EMOJI_ONLY.test(text);
+}
+
+/// 先接情感（撒嬌、示愛、帶情緒），再接一般的話，照片與貼圖最後；同一級照她傳的順序。
+function lineRank(line: WorthyLine, content: string): number {
+  if (line.kind === "照片或貼圖" || isMediaLine(content)) return 2;
+  return line.kind === "情感" ? 0 : 1;
+}
+
+/// 兩段式實驗（研究 §7.3、Bruce 10/19 計畫第 6 點）：她最新這一輪值得接的句子分給各張卡，每張
+/// 1–2 句，全部合起來每句都有卡接。句子比卡少時從最重要的那句再輪一次；比卡多時從第一張開始
+/// 各多接一句；超過兩倍張數的（最不重要的）不排。編號不在她最新這一輪裡、或重複的，略過。
+export function assignLines(
+  cardCount: number,
+  worthy: readonly WorthyLine[],
+  herLatest: readonly string[],
+): (readonly number[])[] {
+  const seen = new Set<number>();
+  const valid = worthy.filter((w) => {
+    if (w.line < 1 || w.line > herLatest.length || seen.has(w.line)) {
+      return false;
+    }
+    seen.add(w.line);
+    return true;
+  });
+  const ordered = valid
+    .map((w) => ({ line: w.line, rank: lineRank(w, herLatest[w.line - 1]) }))
+    .sort((a, b) => a.rank - b.rank || a.line - b.line)
+    .map((w) => w.line)
+    .slice(0, cardCount * 2);
+  const k = ordered.length;
+  return Array.from({ length: cardCount }, (_, i) => {
+    if (k === 0) return [];
+    if (k <= cardCount) return [ordered[i % k]];
+    return i + cardCount < k ? [ordered[i], ordered[i + cardCount]] : [
+      ordered[i],
+    ];
+  });
 }
 
 const ENTRY_PRIORITY: readonly (readonly string[])[] = [

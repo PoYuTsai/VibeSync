@@ -1,9 +1,10 @@
 // 讀局面之後、寫卡之前：把標記交給 rules.ts，得出這一輪要做什麼（回、先別回、
 // 收尾、停、關心），以及每張卡的規格與要帶的情境條目。純函式，不碰模型與資料庫。
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
-import type { INVITE_READINESS, ReadTags } from "./read_tags.ts";
+import type { INVITE_READINESS, ReadTags, TwoStageTags } from "./read_tags.ts";
 import {
   arrangeCards,
+  assignLines,
   type CardSpec,
   decidePush,
   decideReply,
@@ -14,7 +15,7 @@ import {
   type PushAction,
 } from "./rules.ts";
 import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
-import type { Turn } from "./turns.ts";
+import { latestHerMessages, type Turn } from "./turns.ts";
 
 /// send＝出卡；close＝她婉拒或說了界線，一張收尾卡；hold＝先別回；stop＝停；
 /// care＝不出卡、不扣，改顯示固定訊息（自傷關心，或涉及未成年）。
@@ -79,6 +80,23 @@ function carePlan(
   };
 }
 
+/// 兩段式實驗：每張卡記下要接她最新這一輪的第幾則（rules.ts assignLines）；分不到的卡不加欄位。
+function withLines(
+  specs: CardSpec[],
+  turns: readonly Turn[],
+  twoStage: TwoStageTags | undefined,
+): CardSpec[] {
+  if (!twoStage || specs.length === 0) return specs;
+  const lines = assignLines(
+    specs.length,
+    twoStage.worthyLines,
+    latestHerMessages(turns),
+  );
+  return specs.map((spec, i) =>
+    lines[i].length > 0 ? { ...spec, lines: lines[i] } : spec
+  );
+}
+
 /// 讀局面失敗、拒答或逾時時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心
 /// 訊息（附專線），其次未成年；都看不出就 null，照原本的錯誤處理。
 export function planWithoutRead(hits: SafetyKeywordHits): GuideV3Plan | null {
@@ -104,6 +122,8 @@ export function planTurn(
   tags: ReadTags,
   hits: SafetyKeywordHits = NO_SAFETY_HITS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
+  /// 兩段式實驗的讀局面四欄（開關 ANALYZE_GUIDE_V3_TWO_STAGE）；沒給就跟今天一樣。
+  twoStage?: TwoStageTags,
 ): GuideV3Plan {
   if (tags.selfHarmSignal || hits.selfHarmWords) {
     return carePlan("self_harm", tags.selfHarmSignal, hits.selfHarmWords);
@@ -111,7 +131,11 @@ export function planTurn(
   if (tags.minorSignal) return carePlan("minor", true, false);
   const reply = decideReply(turns, tags);
   const push = reply.kind === "send" ? decidePush(turns, tags) : null;
-  const specs = arrangeCards(reply, push, tags);
+  const specs = withLines(
+    arrangeCards(reply, push, tags, twoStage),
+    turns,
+    twoStage,
+  );
   const judgment = judgmentFor(tags);
   const signals: GuideV3Signals = {
     inviteReadiness: tags.inviteReadiness,
