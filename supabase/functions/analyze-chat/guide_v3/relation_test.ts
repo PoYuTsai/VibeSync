@@ -414,6 +414,26 @@ Deno.test("關係狀態那一段的外洩哨兵：每句都照抄自那一段，
   );
 });
 
+/// 只有提示詞才會寫的記號：欄位名、階段與維度的代碼、計分範圍、指輸出本身的字。
+const PROMPT_ONLY_MARKERS = [
+  ...RELATION_KEYS,
+  ...GAME_STAGES,
+  ...RELATION_DIMENSIONS,
+  `${RELATION_SCORE_MIN}–${RELATION_SCORE_MAX}`,
+  "欄位",
+  "標記",
+];
+
+Deno.test("關係狀態那一段的外洩哨兵：每句都帶只有提示詞才會寫的記號，一般判讀自己會講的話不當哨兵（主審第 2 輪 P3）", () => {
+  for (const sentinel of RELATION_SENTINELS) {
+    assert(
+      PROMPT_ONLY_MARKERS.some((marker) => sentinel.includes(marker)),
+      sentinel,
+    );
+  }
+  assertEquals(RELATION_SENTINELS.length, 18);
+});
+
 function planWith(judgment: string, waitFor = ""): GuideV3Plan {
   return { ...SIGNALS_PLAN, judgment, waitFor };
 }
@@ -459,6 +479,11 @@ Deno.test("開關開時的判讀檢查：一般判讀照給——錄下的判讀
     "她回得短、話題也轉走了，先別急著追。",
     "你們生活步調合不合還看不出來，先接她的話就好。",
     "她把週五的票留給你，等於主動約你，直接答應就好。",
+    // 主審第 2 輪 P3 的例子，與同類的一般說法。
+    "你們的互動階段可以跳，也可以退，先接她現在的話就好",
+    "看的是這段對話最新在做的事，不是認識多久，先回她今天說的。",
+    "回覆快慢只是很弱的訊號，一次晚回不扣分，她明天回也很正常。",
+    "你們從隨口說要約到敲定時間地點都算有進展，照她給的時間回就好。",
   ];
   const recorded = fixtures.cases.flatMap((c) => {
     const tags = JSON.parse(c.readText) as Record<string, unknown>;
@@ -473,6 +498,47 @@ Deno.test("開關開時的判讀檢查：一般判讀照給——錄下的判讀
     assertEquals(on, vetted(plan), text);
     assertEquals(on.removed, [], text);
     assert(on.judgment !== "", text);
+  }
+});
+
+/// 第 2 輪拿掉或改窄的六句（主審第 2 輪 P3）：夾在一般判讀裡不再讓判讀被清掉。
+const NO_LONGER_SENTINELS = [
+  "這段對話最新在做的事，不是認識多久",
+  "從隨口說要約到敲定時間地點都算",
+  "階段可以跳，也可以退",
+  "認真回應、表情符號多就高",
+  "敷衍的單字就低；他講得多不加分",
+  "回覆快慢只是很弱的訊號，一次晚回不扣分",
+  "同一個標準，換成分數",
+];
+
+Deno.test("開關開時的判讀檢查：拿掉的那幾句夾在一般判讀裡照給；照抄標題、階段與計分的定義照樣不給", () => {
+  for (const fragment of NO_LONGER_SENTINELS) {
+    assert(!RELATION_SENTINELS.includes(fragment), fragment);
+    const text = `她回得很長，${fragment}，先接她的話。`;
+    assertEquals(
+      vetted(planWith(text), RELATION_LEAK_SENTINELS),
+      vetted(planWith(text)),
+      fragment,
+    );
+    assertEquals(vetted(planWith(text), RELATION_LEAK_SENTINELS).removed, []);
+  }
+  const copies = [
+    // 那一段的每一整行（標題、階段、熱度、四個維度）。
+    ...RELATION_FIELD_NOTES.split("\n").filter((l) => l.trim()),
+    // 標題拿掉井字號、熱度與維度的說明拿掉欄位名。
+    "最後三個欄位：關係狀態（另外記錄，不影響上面的標記）",
+    "她對這段互動的熱度，0–100 的整數，只看她的訊息",
+    "四個 0–100 的整數，也只看她",
+    "opening＝第一次搭上話，或冷了很久、吵架後重新搭上",
+    "照 close、qualification、narrative、premise、opening 的順序取前面的",
+  ];
+  for (const copy of copies) {
+    assertEquals(
+      vetted(planWith(`她在分享日常。${copy}`), RELATION_LEAK_SENTINELS),
+      { judgment: "", waitFor: "", removed: ["judgment"] },
+      copy,
+    );
   }
 });
 
