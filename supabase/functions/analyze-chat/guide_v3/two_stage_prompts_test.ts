@@ -188,6 +188,10 @@ async function sha256(value: string): Promise<string> {
     .join("");
 }
 
+/// 推拉那一條在寫卡看到的樣子（Eric 2026-10-19 決定：拿掉「用來製造張力」和「推在前、拉收尾…」）。
+const PUSH_PULL_WRITER_LINE =
+  "  - 推拉：推只推觀點、喜好或合不合，拉多推少；用反話表達喜歡也算。挑戰只在他真的有立場時用。";
+
 /// 原文裡以這幾個字開頭的那一行（測試不另抄原文）。
 function lineOf(section: string, startsWith: string): string {
   const found = section.split("\n").filter((l) => l.startsWith(startsWith));
@@ -206,6 +210,10 @@ Deno.test("兩段式寫卡系統提示詞：沒有 A1、沒有「每張卡都要
       "換誰講都成立",
       "繃緊",
       "封號",
+      // 推拉那一條（Eric 2026-10-19 決定）：跟先繃緊再鬆開同一個形狀，寫卡不帶。
+      "製造張力",
+      "推在前",
+      "拉收尾",
       "「有他」做法",
       "**有他**",
     ]
@@ -248,6 +256,7 @@ Deno.test("兩段式寫卡的 A5、A6：只改那幾行，其他一字不差、�
       lineOf(a5, "  - 材料從她話裡"),
       lineOf(a5, "  - 材料從她話裡").split("；")[0] + "。",
     )
+    .replace(lineOf(a5, "  - 推拉用來製造張力："), PUSH_PULL_WRITER_LINE)
     .replace(
       `\n${lineOf(a5, "**「有他」做法**")}\n`,
       `\n**${TWO_STAGE_METHOD_LABEL}**\n`,
@@ -255,7 +264,7 @@ Deno.test("兩段式寫卡的 A5、A6：只改那幾行，其他一字不差、�
     .replace(lineOf(a5, "- 每張卡都要有他的態度"), "- 講具體的，不講類別。");
   assertEquals(A5, expectedA5);
   assertEquals(A5.split("\n").length, a5.split("\n").length);
-  // 帶張力底下的手法與界線照留。
+  // 帶張力底下的手法與界線照留；推拉只留具體的做法與界線。
   for (
     const kept of [
       "誇張解讀",
@@ -263,6 +272,7 @@ Deno.test("兩段式寫卡的 A5、A6：只改那幾行，其他一字不差、�
       "好笑的類比",
       "虧她做的事，不虧她這個人",
       "她越喜歡他，玩笑越少",
+      PUSH_PULL_WRITER_LINE,
     ]
   ) {
     assertStringIncludes(A5, kept);
@@ -286,12 +296,35 @@ Deno.test("兩段式寫卡的 A5、A6：只改那幾行，其他一字不差、�
 Deno.test("兩段式寫卡系統提示詞的雜湊鎖：改這段要連這裡一起改", async () => {
   assertEquals(
     await sha256(writeSystemPromptTwoStage()),
-    "1d741485295d051bccc365a9b596df6b65a36210f9eb8ece82adec65251f3ce0",
+    "e0382516166c197a869d0835a7dd745deab14200b022a5d00bfb2dfcb75bfc55",
   );
   assertEquals(
     await sha256(readSystemPromptTwoStage()),
     "2c19aaf122c6b43023c74a2d849281541bfe053bf2b2da1a620abb34b602799c",
   );
+});
+
+Deno.test("推拉那一條：原文的「用來製造張力」或「推在前、拉收尾…」那一句改了，寫卡提示詞直接丟錯", () => {
+  const a5 = GUIDE_V3_SECTIONS.A5;
+  const line = lineOf(a5, "  - 推拉用來製造張力：");
+  for (
+    const changed of [
+      line.replace("推在前、拉收尾", "推在後、拉收尾"),
+      line.replace("最後一句決定", "最後那句決定"),
+      line.replace("推拉用來製造張力：", "推拉用來製造張力，"),
+    ]
+  ) {
+    let threw = false;
+    try {
+      twoStageWriterSections({
+        ...GUIDE_V3_SECTIONS,
+        A5: a5.replace(line, changed),
+      });
+    } catch {
+      threw = true;
+    }
+    assert(threw, changed);
+  }
 });
 
 Deno.test("改說明書原文的工具：對不上一行、對上兩行、要換的字不在，都直接丟錯", () => {

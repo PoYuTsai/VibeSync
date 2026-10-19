@@ -181,6 +181,27 @@ Deno.test("說明步驟使用者訊息：局面、她最新這一輪、沒有編
   assert(!user.includes(a5Bullet("留空格")));
 });
 
+Deno.test("說明步驟照說明書原文：有帶張力的卡時，推拉那一條（含推在前、拉收尾）原樣帶給說明；沒有就不帶", () => {
+  const original = GUIDE_V3_SECTIONS.A5.split("\n").filter((l) =>
+    l.startsWith("  - 推拉用來製造張力：")
+  );
+  assertEquals(original.length, 1);
+  const prompt = (task: CardSpec["task"]) =>
+    explainUserPrompt({
+      tags: { light: "green", herMove: "調侃", readForUser: "她在虧他。" },
+      herLatest: ["你很怪欸"],
+      entries: [],
+      cards: [{ slot: 1, spec: spec({ task }), messages: ["我就當你在誇我"] }],
+    });
+  const tension = prompt("帶張力");
+  assertStringIncludes(tension, original[0]);
+  assertStringIncludes(tension, "推在前、拉收尾");
+  assertStringIncludes(tension, "製造張力");
+  assert(!prompt("接住").includes(original[0]));
+  // 系統提示詞不帶任務條目，推拉那一條只在有帶張力的卡時出現在使用者訊息。
+  assert(!explainSystemPrompt().includes(original[0]));
+});
+
 Deno.test("說明的解析：格式對才收、同一張只用第一段；壞掉回 null", () => {
   const ok = parseExplanations(
     JSON.stringify({
