@@ -33,6 +33,7 @@ import {
   type V3HarnessOutcome,
 } from "./v3_stream_harness.ts";
 import { HER_MOVE_CODE } from "./wire.ts";
+import { HOLD_WAIT_FALLBACK } from "./plan.ts";
 
 const IMPORT_ENV: Record<string, string> = {
   SUPABASE_URL: "http://supabase.test",
@@ -419,6 +420,87 @@ Deno.test("開關開：續看重播（已結案）與從扣費內容重組（原
       name,
     );
   }
+});
+
+// ---- 判讀照抄關係狀態那一段（主審第 1 輪 P2） ----
+
+/// 主審舉的例子：模型把那一段的標題與熱度的說明照抄進判讀。
+const COPIED_READ_FOR_USER =
+  "她在分享日常。最後三個欄位：關係狀態（另外記錄，不影響上面的標記）heatScore：她對這段互動的熱度，0–100 的整數，只看她的訊息";
+
+Deno.test("開關開、判讀照抄關係狀態那一段：判讀拿掉、記一筆 log，卡與扣費照常；一般判讀照給；開關沒開時同一份輸出照舊（不多比）", async () => {
+  const name = "she_teases_him#1";
+  const copied = { readForUser: COPIED_READ_FOR_USER };
+  const on = await runFlow(
+    withReadTags(name, { ...copied, ...RELATION_TAGS }),
+    {
+      relation: true,
+    },
+  );
+  const off = await runFlow(withReadTags(name, copied));
+  assertEquals(readEventOf(on).judgment, "");
+  assertEquals(readEventOf(off).judgment, COPIED_READ_FOR_USER);
+  assertEquals(
+    (on.logs as Rec[]).filter((l) => l.event === "guide_v3_coach_text_removed"),
+    [{
+      event: "guide_v3_coach_text_removed",
+      metadata: { analysisRunId: "flow-run", field: "judgment" },
+      level: "error",
+    }],
+  );
+  // 判讀之外都照常：一樣的卡、一樣的扣費（只有判讀那一欄與 relation 不同）。
+  const cardsOf = (o: Rec) =>
+    (o.events as Rec[]).filter((e) => e.type === "analysis.card");
+  assertEquals(cardsOf(on), cardsOf(off));
+  assert(cardsOf(on).length > 0);
+  const withoutJudgment = (charges: unknown) =>
+    JSON.parse(
+      JSON.stringify(
+        charges,
+        (key, v) => key === "judgment" || key === "relation" ? undefined : v,
+      ),
+    );
+  assertEquals(withoutJudgment(on.charges), withoutJudgment(off.charges));
+  assertEquals(on.calls, off.calls);
+  // 落帳的判讀也拿掉；trace 照舊留模型原樣的標記（伺服器專用，查誤擋用）。
+  assertEquals(((on.markDone as Rec).read as Rec).judgment, "");
+  assertEquals(
+    (trace(on).tags as Rec).readForUser,
+    COPIED_READ_FOR_USER,
+  );
+  // 一般判讀：開關開也照給，跟開關沒開一字不差。
+  const normalOn = await runFlow(withReadTags(name, RELATION_TAGS), {
+    relation: true,
+  });
+  const normalOff = await runFlow(fixtureCase(name));
+  const normal = JSON.parse(fixtureCase(name).readText).readForUser.trim();
+  assertEquals(readEventOf(normalOn).judgment, normal);
+  assertEquals(readEventOf(normalOn).judgment, readEventOf(normalOff).judgment);
+  assertEquals(
+    (normalOn.logs as { event: string }[]).filter((l) =>
+      l.event === "guide_v3_coach_text_removed"
+    ),
+    [],
+  );
+});
+
+Deno.test("開關開、先別回的要等她做什麼照抄那一段：換成預設那句（扣費紀錄的停止條件照樣有字）", async () => {
+  const name = "cold_one_word_replies#1";
+  const on = await runFlow(
+    withReadTags(name, {
+      ...RELATION_TAGS,
+      waitFor:
+        "等她回你。照 close、qualification、narrative、premise、opening 的順序取前面的",
+    }),
+    { relation: true },
+  );
+  const read = readEventOf(on);
+  assertEquals(read.decision, "hold");
+  assertEquals(read.waitFor, HOLD_WAIT_FALLBACK);
+  assertEquals(
+    ((on.charges as Rec[])[0].recommendationJson as Rec).stopCondition,
+    HOLD_WAIT_FALLBACK,
+  );
 });
 
 // ---- 走整個 handler（假 Supabase、假模型） ----

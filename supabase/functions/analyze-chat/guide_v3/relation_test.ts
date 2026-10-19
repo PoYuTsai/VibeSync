@@ -1,11 +1,19 @@
 // 關係訊號（開關 ANALYZE_GUIDE_V3_RELATION，Bruce 2026-10-19 路線二）：開關怎麼讀、入口怎麼接，
-// 讀局面多要的三欄（schema、提示詞、逐欄檢查）。不呼叫模型、不連網。
+// 讀局面多要的三欄（schema、提示詞、逐欄檢查），以及那一段的外洩哨兵。不呼叫模型、不連網。
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
-import type { GuideV3Plan } from "./plan.ts";
+import {
+  leakVariants,
+  SENTINEL_LISTS,
+} from "../../_shared/prompt_leak_harness.ts";
+import fixtures from "../testdata/guide_v3_replay_fixtures.json" with {
+  type: "json",
+};
+import { vetPlanText } from "./finalize.ts";
+import { type GuideV3Plan, HOLD_WAIT_FALLBACK } from "./plan.ts";
 import { readSystemPrompt } from "./prompts.ts";
 import { HER_MOVES, READ_TAGS_SCHEMA } from "./read_tags.ts";
 import {
@@ -15,8 +23,11 @@ import {
   readSystemPromptWithRelation,
   RELATION_DIMENSIONS,
   RELATION_FIELD_NOTES,
+  RELATION_LEAK_SENTINELS,
   RELATION_SCORE_MAX,
   RELATION_SCORE_MIN,
+  RELATION_SENTINELS,
+  RELATION_SENTINELS_NORMALIZED,
   type RelationField,
   withRelationFields,
 } from "./relation.ts";
@@ -378,4 +389,96 @@ Deno.test("判讀：relation 排在最後；沒給就跟今天一樣；自傷關
     assertEquals(readView(care, "green", relation), readView(care, "green"));
     assertEquals("relation" in readView(care, "green", relation), false);
   }
+});
+
+// ---- 關係狀態那一段的外洩哨兵（主審第 1 輪 P2） ----
+
+Deno.test("關係狀態那一段的外洩哨兵：每句都照抄自那一段，每一行都有，整理過的那份一起比，也登記在共用清單", () => {
+  for (const sentinel of RELATION_SENTINELS) {
+    assert(RELATION_FIELD_NOTES.includes(sentinel), sentinel);
+  }
+  // 標題、階段、熱度、四個維度每一行都至少有一句。
+  const lines = RELATION_FIELD_NOTES.split("\n").filter((l) => l.trim());
+  assertEquals(lines.length, 4);
+  for (const line of lines) {
+    assert(RELATION_SENTINELS.some((s) => line.includes(s)), line);
+  }
+  assertEquals(RELATION_LEAK_SENTINELS, [
+    ...new Set([...RELATION_SENTINELS, ...RELATION_SENTINELS_NORMALIZED]),
+  ]);
+  // 共用的哨兵測試（各種照抄寫法都抓得到、至少 8 字、一般聊天與錄下的輸出都不中）照這份清單跑。
+  assertEquals(SENTINEL_LISTS.RELATION_SENTINELS, RELATION_SENTINELS);
+  assertEquals(
+    SENTINEL_LISTS.RELATION_SENTINELS_NORMALIZED,
+    RELATION_SENTINELS_NORMALIZED,
+  );
+});
+
+function planWith(judgment: string, waitFor = ""): GuideV3Plan {
+  return { ...SIGNALS_PLAN, judgment, waitFor };
+}
+
+function vetted(plan: GuideV3Plan, extra?: readonly string[]) {
+  const removed: string[] = [];
+  const out = vetPlanText(plan, (field) => removed.push(field), extra);
+  return { judgment: out.judgment, waitFor: out.waitFor, removed };
+}
+
+/// 主審舉的例子：判讀把那一段的標題與熱度的說明照抄出來。
+const COPIED_HEADING_AND_HEAT =
+  "她在分享日常。最後三個欄位：關係狀態（另外記錄，不影響上面的標記）\n- heatScore：她對這段互動的熱度，0–100 的整數，只看她的訊息";
+
+Deno.test("開關開時的判讀檢查：判讀照抄關係狀態那一段（標題、熱度的說明、每一句的各種照抄寫法）就不給；要等她做什麼換成預設那句", () => {
+  assertEquals(
+    vetted(planWith(COPIED_HEADING_AND_HEAT), RELATION_LEAK_SENTINELS),
+    { judgment: "", waitFor: "", removed: ["judgment"] },
+  );
+  let checks = 0;
+  const missed: string[] = [];
+  for (const sentinel of RELATION_SENTINELS) {
+    for (const variant of leakVariants(sentinel)) {
+      checks++;
+      const out = vetted(
+        planWith(`她回得很長，${variant}，可以接著聊。`, `等她${variant}再回`),
+        RELATION_LEAK_SENTINELS,
+      );
+      if (
+        out.judgment !== "" || out.waitFor !== HOLD_WAIT_FALLBACK ||
+        out.removed.join() !== "judgment,waitFor"
+      ) missed.push(JSON.stringify(variant));
+    }
+  }
+  assertEquals(missed, []);
+  // 每一句至少有原樣與插空白兩種寫法：確認真的每句都跑過，不是空迴圈。
+  assert(checks >= RELATION_SENTINELS.length * 2, String(checks));
+});
+
+Deno.test("開關開時的判讀檢查：一般判讀照給——錄下的判讀與要等她做什麼、講到熱度或步調的一般說法，結果跟不多比一樣", () => {
+  const natural = [
+    "她對這段互動的熱度不低，回得長還反問你，可以接著聊。",
+    "她回得短、話題也轉走了，先別急著追。",
+    "你們生活步調合不合還看不出來，先接她的話就好。",
+    "她把週五的票留給你，等於主動約你，直接答應就好。",
+  ];
+  const recorded = fixtures.cases.flatMap((c) => {
+    const tags = JSON.parse(c.readText) as Record<string, unknown>;
+    return [tags.readForUser, tags.waitFor].filter((t): t is string =>
+      typeof t === "string" && t.trim() !== ""
+    );
+  });
+  assertEquals(recorded.length, 28);
+  for (const text of [...natural, ...recorded]) {
+    const plan = planWith(text, text);
+    const on = vetted(plan, RELATION_LEAK_SENTINELS);
+    assertEquals(on, vetted(plan), text);
+    assertEquals(on.removed, [], text);
+    assert(on.judgment !== "", text);
+  }
+});
+
+Deno.test("開關沒開時不多比（跟 afa50d6f 一樣）：模型看不到那一段，同一句照舊通過", () => {
+  const plan = planWith(COPIED_HEADING_AND_HEAT);
+  assertEquals(vetted(plan), vetted(plan, []));
+  assertEquals(vetted(plan).removed, []);
+  assert(vetted(plan).judgment.includes("最後三個欄位"));
 });

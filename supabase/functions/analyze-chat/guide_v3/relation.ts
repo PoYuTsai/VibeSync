@@ -7,6 +7,7 @@
 // - 結構化輸出不支援數值範圍（跟 memory.ts 的 maxItems 一樣），0–100 在這裡檢查。不合格的那一欄
 //   拿掉、記 log，不夾到範圍內，也不讓分析失敗。
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
+import { normalizeOutgoingScript } from "../outgoing_message_text.ts";
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import { GUIDE_V3_SECTIONS, type GuideV3SectionId } from "./guide_text.ts";
 import { readSystemPrompt } from "./prompts.ts";
@@ -57,6 +58,46 @@ export function readSystemPromptWithRelation(
     RELATION_FIELD_NOTES,
   );
 }
+
+/// 上面那一段的外洩哨兵（主審第 1 輪 P2）：開關開時，判讀與要等她做什麼照抄這段就不給，跟照抄
+/// 說明書一樣。挑正常判讀不會整句寫出來的片段：標題、欄位與代碼的定義、0–100 的計分說法；一般
+/// 判讀也會講的話（「她對這段互動的熱度」「生活步調合不合」）不單獨挑，熱度那句要連著「0–100 的
+/// 整數」才算。每句都照抄自上面那一段（測試會比對）。
+export const RELATION_SENTINELS: readonly string[] = [
+  "最後三個欄位：關係狀態",
+  "另外記錄，不影響上面的標記",
+  "這段對話最新在做的事，不是認識多久",
+  "opening＝第一次搭上話",
+  "premise＝從一般聊天進到互相好奇",
+  "qualification＝互相了解，確認價值觀",
+  "narrative＝分享自己的故事",
+  "close＝兩人正在談見面",
+  "從隨口說要約到敲定時間地點都算",
+  "照 close、qualification、narrative、premise、opening 的順序取前面的",
+  "階段可以跳，也可以退",
+  "回得短或資料不夠，不算 opening",
+  "作戰板標籤或他的目標不算 close",
+  "她對這段互動的熱度，0–100 的整數",
+  "認真回應、表情符號多就高",
+  "敷衍的單字就低；他講得多不加分",
+  "回覆快慢只是很弱的訊號，一次晚回不扣分",
+  "四個 0–100 的整數，也只看她",
+  "engagement＝她回的份量、次數與主動提問",
+  "topicDepth＝話題從日常表面進到感受",
+  "replyWillingness＝跟上面的 replyWillingness 同一個標準",
+  "同一個標準，換成分數",
+  "emotionalConnection＝她分享自己的事",
+];
+
+/// 跟說明書哨兵一樣再做一份簡轉繁整理過的（finalize.ts 的 GUIDE_V3_SENTINELS_NORMALIZED）：判讀
+/// 整理後才比的那一次要用。
+export const RELATION_SENTINELS_NORMALIZED: readonly string[] =
+  RELATION_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s);
+
+/// 開關開時交給 vetPlanText 多比的哨兵（原樣與整理過的，去掉重複）。
+export const RELATION_LEAK_SENTINELS: readonly string[] = [
+  ...new Set([...RELATION_SENTINELS, ...RELATION_SENTINELS_NORMALIZED]),
+];
 
 /// 在任何一份讀局面 schema 的最後加上三欄（都必填）；原本的欄位與順序不動。
 export function withRelationFields(

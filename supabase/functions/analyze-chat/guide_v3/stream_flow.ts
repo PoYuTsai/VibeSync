@@ -50,6 +50,7 @@ import {
   parseRelation,
   READ_TAGS_SCHEMA_WITH_RELATION,
   readSystemPromptWithRelation,
+  RELATION_LEAK_SENTINELS,
 } from "./relation.ts";
 import {
   type GuideV3PreviousRound,
@@ -455,6 +456,8 @@ class GuideV3Flow {
             analysisRunId: this.runId,
             field,
           }, "error"),
+        // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；沒開照舊。
+        withRelation ? RELATION_LEAK_SENTINELS : [],
       );
       // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
       const view = readView(
