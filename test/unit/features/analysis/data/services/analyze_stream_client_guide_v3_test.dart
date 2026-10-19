@@ -154,6 +154,85 @@ void main() {
       expect(done.runId, 'run_v3');
     });
 
+    test('關係狀態（Bruce 2026-10-19 路線二）：判讀事件與 done 的判讀都帶得到；壞的欄位不收、不讓分析失敗',
+        () async {
+      const relation = {
+        'stage': 'narrative',
+        'heat': 80,
+        'dimensions': {
+          'heat': 80,
+          'engagement': 75,
+          'topicDepth': 60,
+          'replyWillingness': 82,
+          'emotionalConnection': 70,
+        },
+        'herMove': 'laugh_ending',
+        'willingness': 'medium',
+      };
+      final updates = await _client([
+        _v3Started,
+        {..._readEvent, 'relation': relation},
+        _cardEvent(1, 'accept', '那家我也想吃吃看'),
+        {
+          'type': 'analysis.done',
+          'runId': 'run_v3',
+          'finalResult': {
+            ..._finalResult(),
+            'read': {
+              ...(_finalResult()['read'] as Map<String, dynamic>),
+              // 伺服器丟掉的欄位（例如熱度超出範圍）App 也不收，其他照收。
+              'relation': {...relation, 'heat': 180},
+            },
+          },
+        },
+      ]).stream(AnalyzeStreamRequest(messages: [_msg('哈囉')])).toList();
+
+      final read = updates
+          .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.guideV3Read)
+          .guideV3Read!;
+      expect(read.relation!.heat, 80);
+      expect(read.relation!.herMove, GuideV3HerMove.laughEnding);
+      expect(read.relation!.willingness, GuideV3Willingness.medium);
+      final done = updates
+          .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.done)
+          .guideV3Result!;
+      expect(done.read.relation!.heat, isNull);
+      expect(done.read.relation!.dimensions!['heat'], 80);
+      expect(done.cards.first.messages, ['那家我也想吃吃看']);
+    });
+
+    test('「為什麼這樣回」：卡之後、done 之前每張一則，照種類找；讀不懂的跳過，卡與結果照舊', () async {
+      final updates = await _client([
+        _v3Started,
+        _readEvent,
+        _cardEvent(1, 'accept', '那家我也想吃吃看'),
+        _cardEvent(2, 'push', '週六一起去？'),
+        {'type': 'analysis.card_explain', 'card': 1, 'text': '  先接住她的分享。 '},
+        {'type': 'analysis.card_explain', 'card': 0, 'text': '沒有這張'},
+        {'type': 'analysis.card_explain', 'card': 2, 'text': '   '},
+        {'type': 'analysis.card_explain', 'card': '2', 'text': '代碼不對'},
+        {'type': 'analysis.card_explain', 'card': 2, 'text': '順著她說的地方約。'},
+        {
+          'type': 'analysis.done',
+          'runId': 'run_v3',
+          'finalResult': _finalResult()
+        },
+      ]).stream(AnalyzeStreamRequest(messages: [_msg('哈囉')])).toList();
+
+      final explains = updates
+          .where((u) => u.kind == AnalysisStreamUpdateKind.guideV3CardExplain)
+          .map((u) => u.guideV3CardExplain!)
+          .toList();
+      expect(explains.map((e) => e.card), [1, 2]);
+      expect(explains.map((e) => e.text), ['先接住她的分享。', '順著她說的地方約。']);
+      final done = updates
+          .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.done)
+          .guideV3Result!;
+      expect(done.cards.map((c) => c.slot), [1, 2]);
+      // 伺服器的最終結果不帶說明；由 notifier 併進去。
+      expect(done.cardExplains, isEmpty);
+    });
+
     test('中途讀不懂的判讀或卡跳過，等 done 的完整結果', () async {
       final updates = await _client([
         _v3Started,

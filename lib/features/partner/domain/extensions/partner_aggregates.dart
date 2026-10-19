@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
+import 'package:vibesync/features/analysis/domain/services/latest_analyzed_fragment.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 
@@ -13,11 +14,12 @@ class PartnerAggregateView {
   final int totalMessages;
   final DateTime? lastInteraction;
 
-  /// 最近更新那段對話的分析是 v3（任務卡）。v3 沒有熱度，[latestHeat] 是 null
-  /// 不代表還沒分析：顯示端要分開「沒分析過」跟「分析過但不算熱度」。
+  /// 最近分析過的那段片段是 v3（任務卡；[LatestAnalyzedFragment]，各頁同一條規則）。
+  /// v3 沒有熱度，[latestHeat] 是 null 不代表還沒分析：顯示端要分開「沒分析過」跟
+  /// 「分析過但不算熱度」。
   final bool latestIsGuideV3;
 
-  /// 最近更新那段對話的 v3 訊號（燈號、決定、邀約進度、冷訊號）；那段不是 v3 或讀不懂就是
+  /// 最近分析過的那段的 v3 訊號（燈號、決定、邀約進度、冷訊號）；那段不是 v3 或讀不懂就是
   /// null。首頁卡的狀態與新話題都讀這份，不分方案（Eric 2026-10-18）。
   final PartnerGuideV3Signals? latestGuideV3Signals;
 
@@ -65,6 +67,22 @@ class PartnerGuideV3Signals {
     this.herPerfunctoryStreak,
   });
 
+  /// 最新一次決定的短狀態（Eric 2026-10-18；首頁對象卡、報告作戰板、全螢幕作戰板同一組字）：
+  /// 出卡與收尾是輪到他回，先別回是等她，停就停；關心不多放東西。
+  String? get status => switch (decision) {
+        GuideV3Decision.send || GuideV3Decision.close => '輪到你回',
+        GuideV3Decision.hold => '先等她',
+        GuideV3Decision.stop => '先停',
+        GuideV3Decision.care => null,
+      };
+
+  /// 一位對象的對話裡，最近分析過的那段是 v3 時的訊號（[LatestAnalyzedFragment]，各頁同一條
+  /// 規則）；不是 v3 或判讀讀不懂是 null。首頁對象卡與報告作戰板都從這裡拿。
+  static PartnerGuideV3Signals? latestOf(Iterable<Conversation> conversations) {
+    final read = LatestAnalyzedFragment.of(conversations)?.guideV3Read;
+    return read == null ? null : PartnerGuideV3Signals.fromRead(read);
+  }
+
   factory PartnerGuideV3Signals.fromRead(GuideV3Read read) {
     final isCare = read.decision == GuideV3Decision.care;
     return PartnerGuideV3Signals(
@@ -106,8 +124,9 @@ extension PartnerAggregates on Partner {
         conversations.fold<int>(0, (s, c) => s + c.currentRound);
     final totalMessages =
         conversations.fold<int>(0, (s, c) => s + c.messages.length);
-    final latestGuideV3 =
-        _guideV3Snapshot(descByDate.first.lastAnalysisSnapshotJson);
+    // 「是不是 v3」看最近分析過的那段（Bruce 2026-10-19 路線二，各頁同一條規則）；
+    // 熱度照舊看最近更新那段。
+    final latestAnalyzed = LatestAnalyzedFragment.of(conversations);
 
     return PartnerAggregateView(
       unionInterests: unionInterests,
@@ -117,24 +136,9 @@ extension PartnerAggregates on Partner {
       totalRounds: totalRounds,
       totalMessages: totalMessages,
       lastInteraction: descByDate.first.updatedAt,
-      latestIsGuideV3: latestGuideV3 != null,
-      latestGuideV3Signals: latestGuideV3?.signals,
+      latestIsGuideV3: latestAnalyzed?.isGuideV3 ?? false,
+      latestGuideV3Signals: PartnerGuideV3Signals.latestOf(conversations),
     );
-  }
-}
-
-/// v3 快照（[isGuideV3Payload]）才回非 null；判讀讀不懂時 signals 是 null。
-({PartnerGuideV3Signals? signals})? _guideV3Snapshot(String? jsonStr) {
-  if (jsonStr == null || jsonStr.trim().isEmpty) return null;
-  try {
-    final decoded = jsonDecode(jsonStr);
-    if (!isGuideV3Payload(decoded)) return null;
-    final read = GuideV3Read.fromJson((decoded as Map)['read']);
-    return (
-      signals: read == null ? null : PartnerGuideV3Signals.fromRead(read)
-    );
-  } catch (_) {
-    return null;
   }
 }
 

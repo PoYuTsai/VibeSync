@@ -511,6 +511,61 @@ class _GuideV3TaskCardState extends State<GuideV3TaskCard> {
   }
 }
 
+/// 卡片最下面的「為什麼這樣回」（伺服器 `analysis.card_explain`；Bruce 2026-10-19 路線二，
+/// 選的是 A3）：一條細線隔開，燈泡＋標題，說明縮排對齊標題。
+class GuideV3CardExplanation extends StatelessWidget {
+  const GuideV3CardExplanation({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: MergeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  size: 16,
+                  color: AppColors.coachAccent,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '為什麼這樣回',
+                    style: AppTypography.labelMedium.copyWith(
+                      color: AppColors.coachAccentBright,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              // 燈泡 16＋間距 6：說明跟標題的字對齊。
+              padding: const EdgeInsets.only(left: 22),
+              child: Text(
+                text,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.onBackgroundSecondary,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 還在寫的卡（串流中，排好但還沒送到）。
 class GuideV3PendingCard extends StatelessWidget {
   const GuideV3PendingCard({super.key, required this.planned});

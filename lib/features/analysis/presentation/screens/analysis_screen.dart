@@ -224,6 +224,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   GuideV3Result? _v3Result;
   String? _v3RunId;
 
+  /// 每張卡的「為什麼這樣回」（slot → 說明；Bruce 2026-10-19 路線二）：串流中從 notifier
+  /// 鏡射，最終結果與重開畫面從結果（快照）帶。
+  Map<int, String> _v3Explains = const {};
+
   /// 他填過空格、改過，或「再調一下」選定的版本（key＝runId:slot），只在這個畫面裡。
   final _v3Versions = GuideV3CardVersions();
 
@@ -1184,6 +1188,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = null;
     _v3Cards = const [];
     _v3RunId = null;
+    _v3Explains = const {};
     _enthusiasmScore = null;
     _dimensionScores = null;
     _strategy = null;
@@ -1623,6 +1628,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = s.guideV3Read;
     _v3Cards = s.guideV3Cards;
     _v3RunId = s.isGuideV3Run ? s.analysisRunId : null;
+    _v3Explains = s.guideV3CardExplains;
   }
 
   /// 套用 v3 最終結果（新分析完成、續看、重開畫面還原）。v2 欄位一律清掉。
@@ -1633,6 +1639,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = result.read;
     _v3Cards = result.cards;
     _v3RunId = runId;
+    _v3Explains = result.cardExplains;
     // 用量常駐行與方案判斷讀這份（跟 v2 一樣隨快照保存）。
     _lastAiResponse = result.rawResponse;
   }
@@ -1645,6 +1652,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _v3Read = null;
     _v3Cards = const [];
     _v3RunId = null;
+    _v3Explains = const {};
     _analysisRunKey = const Uuid().v4();
     _enthusiasmScore = result.enthusiasmScore;
     _dimensionScores = result.dimensionScores;
@@ -1671,7 +1679,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   /// 綁 partner 的分析完成後：首次（opt-in=unknown）顯示軟詢問卡，
   /// 再委派 service 依 opt-in 決定要不要排 48h 跟進通知。
-  Future<void> _maybeScheduleFollowUpNotification(Conversation conv) async {
+  /// [silenceFollowUp]：v3 關心或停之後不問、不排（已排的由串流與存檔協調器收回，不靠這個
+  /// 畫面；P1 安全修正）。一次性的軟卡詢問留給下一次正常的分析。
+  Future<void> _maybeScheduleFollowUpNotification(
+    Conversation conv, {
+    required bool silenceFollowUp,
+  }) async {
+    if (silenceFollowUp) return;
     final partnerId = conv.partnerId;
     if (partnerId == null || partnerId.isEmpty) return;
     try {
@@ -3097,6 +3111,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     StreamingAnalysisState next,
   ) {
     if (!mounted) return;
+    // 卡的說明在卡之後才到、只動 guideV3CardExplains，也要算變了，不然要等 done 才看得到
+    //（主審第 1 輪 finding 4）。
     if (prev?.phase == next.phase &&
         prev?.analysisRunId == next.analysisRunId &&
         prev?.result == next.result &&
@@ -3105,6 +3121,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         prev?.streamContents == next.streamContents &&
         prev?.guideV3Read == next.guideV3Read &&
         prev?.guideV3Cards == next.guideV3Cards &&
+        prev?.guideV3CardExplains == next.guideV3CardExplains &&
         prev?.guideV3Result == next.guideV3Result) {
       return;
     }
@@ -4732,7 +4749,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                           ],
 
                           // 對話分析 v3（任務卡）：燈號＋判讀＋任務卡，卡一到就
-                          // 畫、就能複製（Eric 2026-10-17：不留雷達、熱度、階段）。
+                          // 畫、就能複製；判讀帶了關係狀態才有階段、熱度、雷達
+                          //（Bruce 2026-10-19 路線二；原本 Eric 2026-10-17 不留）。
                           if (_v3Read != null) ...[
                             GuideV3ResultSection(
                               anchorKey: _guideV3SectionKey,
@@ -4757,6 +4775,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                                 cardKey: _guideV3CardKey(card),
                                 label: card.task.label,
                               ),
+                              // 關係狀態卡與「為什麼這樣回」（Bruce 2026-10-19 路線二，A3）：
+                              // 階段說法跟 v2 一樣看是不是伴侶，雷達照 v2 只給付費方案。
+                              explanations: _v3Explains,
+                              reconnectWording:
+                                  _isCommittedPartner(conversation),
+                              showRelationRadar: subscription.isPremium,
                               showUpgradeRefresh:
                                   _analysisNeedsReplyRefresh(subscription),
                               refreshBusy:

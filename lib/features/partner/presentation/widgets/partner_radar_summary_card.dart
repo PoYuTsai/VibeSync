@@ -1,35 +1,39 @@
 // lib/features/partner/presentation/widgets/partner_radar_summary_card.dart
 //
 // Renders a 5-dimension radar from the latest conversation's
-// `lastAnalysisSnapshotJson`. Reuses `AnalysisResult.fromJson` so dimension
-// parsing logic stays in one place. Returns a fallback Card if the
-// snapshot is missing, malformed, or has no `dimensions` key.
+// `lastAnalysisSnapshotJson`. Dimension parsing lives in
+// `LatestAnalyzedFragment.dimensionScores` (v2 reuses `AnalysisResult.fromJson`;
+// v3 reads the relation radar). Returns a fallback Card if the snapshot is
+// missing, malformed, or has no `dimensions` key.
 //
 // Post-A2 visual polish (2026-04-28): glass surface alignment only.
 // NO new dimensions, NO AI interpretation lines, NO fake per-dim scores
 // (per scope lock). Same fallback copy.
-import 'dart:convert';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../analysis/domain/entities/analysis_models.dart'
-    show AnalysisResult;
-import '../../../analysis/domain/entities/guide_v3_result.dart'
-    show isGuideV3Payload;
+import '../../../analysis/domain/services/latest_analyzed_fragment.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 
 class PartnerRadarSummaryCard extends StatelessWidget {
-  final Conversation? latestConversation;
-  const PartnerRadarSummaryCard({super.key, required this.latestConversation});
+  /// 這位對象的對話（順序不拘）。雷達畫最近更新那段；「是不是 v3」看最近分析過的那段
+  ///（[LatestAnalyzedFragment]，對象頁同一條規則）。
+  final List<Conversation> conversations;
+  const PartnerRadarSummaryCard({super.key, required this.conversations});
 
   @override
   Widget build(BuildContext context) {
-    // v3（任務卡）沒有五維雷達（Eric 2026-10-17）：不顯示，也不說「尚未分析」。
-    if (_latestIsGuideV3(latestConversation)) return const SizedBox.shrink();
-    final dims = _parseDimensions(latestConversation);
+    final latest = LatestAnalyzedFragment.of(conversations);
+    // 改版前的 v3（任務卡）沒有五維雷達（Eric 2026-10-17）：不顯示，也不說「尚未分析」；
+    // v3 帶了雷達就跟 v2 一樣畫（Bruce 2026-10-19 路線二）。
+    if (latest?.lacksRadar ?? false) return const SizedBox.shrink();
+    // 畫的是最近更新那段：那段還沒分析就照舊說「最新對話尚未分析」。
+    final dims =
+        latest != null && identical(latest.conversation, _newest(conversations))
+            ? latest.dimensionScores
+            : null;
     if (dims == null) {
       return _GlassShell(
         child: Text(
@@ -108,31 +112,12 @@ class PartnerRadarSummaryCard extends StatelessWidget {
     );
   }
 
-  /// Reuse path: `AnalysisResult.fromJson(...).dimensionScores` already returns
-  /// `Map<String, int>?` with default-50 per key, parsed by the package-private
-  /// `_parseDimensions` inside `analysis_models.dart`. Catching here ensures a
-  /// malformed snapshot string degrades to the "尚未分析" fallback rather than
-  /// crashing the detail screen.
-  static bool _latestIsGuideV3(Conversation? c) {
-    final raw = c?.lastAnalysisSnapshotJson;
-    if (raw == null || raw.trim().isEmpty) return false;
-    try {
-      return isGuideV3Payload(jsonDecode(raw));
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Map<String, int>? _parseDimensions(Conversation? c) {
-    final raw = c?.lastAnalysisSnapshotJson;
-    if (raw == null || raw.trim().isEmpty) return null;
-    try {
-      final json = jsonDecode(raw) as Map<String, dynamic>;
-      return AnalysisResult.fromJson(json).dimensionScores;
-    } catch (_) {
-      return null;
-    }
-  }
+  static Conversation? _newest(List<Conversation> conversations) =>
+      conversations.isEmpty
+          ? null
+          : conversations.reduce(
+              (a, b) => b.updatedAt.isAfter(a.updatedAt) ? b : a,
+            );
 }
 
 /// Shared glass shell used by both the radar render and the fallback path.

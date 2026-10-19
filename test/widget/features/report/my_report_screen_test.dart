@@ -5,6 +5,8 @@
 // - Free + 1 對象 → 鎖卡（既有 gating）與作戰板 section 必須同時 render。
 // - 付費 + 有數據 → 三張圖與作戰板 section 必須同時 render。
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -356,6 +358,81 @@ void main() {
                   duration: AcquaintanceDuration.fewWeeks,
                 ),
         );
+
+    testWidgets('物件加燈號（Bruce 2026-10-19 路線二）：v3 帶階段有物件＋燈號，改版前的 v3 放燈號，v2 照舊',
+        (tester) async {
+      String v3({required String decision, String? stage}) => jsonEncode({
+            'guideVersion': 'v3.6',
+            'read': {
+              'guideVersion': 'v3.6',
+              'decision': decision,
+              'light': decision == 'hold' ? 'yellow' : 'green',
+              'judgment': '她有在接。',
+              if (stage != null) 'relation': {'stage': stage, 'heat': 72},
+              'plannedCards': const [],
+            },
+            'cards': const [],
+          });
+      await _pumpReportScreen(
+        tester,
+        subscription:
+            const SubscriptionState(tier: SubscriptionTierHelper.free),
+        report: _emptyReport,
+        partners: [
+          _partner('rel', '小安'),
+          _partner('old', '小晴'),
+          _partner('v2', 'Mia'),
+        ],
+        historyEvents: [
+          // 帶了關係狀態的 v3：存檔時照 v2 的欄位寫進歷史事件的階段。
+          AnalysisHistoryEvent.analyze(
+            id: 'e-rel',
+            createdAt: DateTime(2026, 10, 20),
+            partnerId: 'rel',
+            subjectName: '小安',
+            enthusiasmScore: 65,
+            gameStageLabel: 'premise',
+          ),
+          AnalysisHistoryEvent.analyze(
+            id: 'e-v2',
+            createdAt: DateTime(2026, 10, 1),
+            partnerId: 'v2',
+            subjectName: 'Mia',
+            enthusiasmScore: 70,
+            gameStageLabel: 'close',
+          ),
+        ],
+        conversations: [
+          conversationWithStage(
+            id: 'c-rel',
+            partnerId: 'rel',
+            stage: 'premise',
+            updatedAt: DateTime(2026, 10, 20),
+          )..lastAnalysisSnapshotJson = v3(decision: 'send', stage: 'premise'),
+          conversationWithStage(
+            id: 'c-old',
+            partnerId: 'old',
+            updatedAt: DateTime(2026, 10, 18),
+          )..lastAnalysisSnapshotJson = v3(decision: 'hold'),
+        ],
+      );
+
+      expect(find.text('升溫'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('partner-stage-status-rel')),
+          matching: find.text('輪到你回'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+          find.byKey(const ValueKey('partner-stage-lamp-old')), findsOneWidget);
+      expect(find.text('先等她'), findsOneWidget);
+      expect(find.text('邀約'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('partner-stage-status-v2')), findsNothing);
+      expect(find.text('尚未分析'), findsNothing);
+    });
 
     testWidgets('history event 優先於較晚 updatedAt 的 Conversation 快照',
         (tester) async {

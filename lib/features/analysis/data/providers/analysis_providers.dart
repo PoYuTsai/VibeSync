@@ -15,6 +15,7 @@ import '../../../conversation/data/repositories/conversation_archive_store.dart'
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/conversation.dart';
+import '../../../follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../../../partner/domain/entities/partner.dart';
 import '../../../partner/domain/services/partner_summary_builder.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
@@ -26,6 +27,7 @@ import '../../../user_profile/data/repositories/partner_data_quality_repo_view.d
 import '../../../user_profile/data/repositories/partner_data_quality_repository.dart';
 import '../../application/analysis_persistence_coordinator.dart';
 import '../../application/ports/conversation_write_ports.dart';
+import '../../application/ports/follow_up_port.dart';
 import '../../domain/entities/game_stage.dart';
 import '../../domain/services/partner_stage_resolver.dart';
 import '../../domain/services/previous_round_builder.dart';
@@ -243,6 +245,14 @@ final analysisRunPreparerProvider = Provider<AnalysisRunPreparer>((ref) {
   );
 });
 
+/// v3 判成關心或停時收回這位對象的 48 小時跟進提醒（見 [FollowUpSilencer]）。每次呼叫才解析
+/// service，跟其他注入的 callable 一樣維持 per-call 新鮮度。
+final analysisFollowUpSilencerProvider = Provider<FollowUpSilencer>(
+  (ref) => (partnerId) => ref
+      .read(followUpNotificationServiceProvider)
+      .silenceForPartner(partnerId),
+);
+
 /// [AnalysisPersistenceCoordinator] 的工廠。畫面提供 UI callback；
 /// 資料相依全部在這裡以具名 callable 解析（維持原 per-call read 新鮮度）。
 typedef AnalysisPersistenceCoordinatorFactory = AnalysisPersistenceCoordinator
@@ -250,8 +260,7 @@ typedef AnalysisPersistenceCoordinatorFactory = AnalysisPersistenceCoordinator
   required String conversationId,
   required void Function() notifyStateChanged,
   required void Function(Conversation conversation) invalidateRecordViews,
-  required Future<void> Function(Conversation conversation)
-      afterAnalysisPersisted,
+  required AfterAnalysisPersisted afterAnalysisPersisted,
 });
 
 final analysisPersistenceCoordinatorFactoryProvider =
@@ -260,8 +269,7 @@ final analysisPersistenceCoordinatorFactoryProvider =
     required String conversationId,
     required void Function() notifyStateChanged,
     required void Function(Conversation conversation) invalidateRecordViews,
-    required Future<void> Function(Conversation conversation)
-        afterAnalysisPersisted,
+    required AfterAnalysisPersisted afterAnalysisPersisted,
   }) {
     return AnalysisPersistenceCoordinator(
       conversationId: conversationId,
@@ -306,6 +314,8 @@ final analysisPersistenceCoordinatorFactoryProvider =
       notifyStateChanged: notifyStateChanged,
       invalidateRecordViews: invalidateRecordViews,
       afterAnalysisPersisted: afterAnalysisPersisted,
+      silenceFollowUp: (partnerId) =>
+          ref.read(analysisFollowUpSilencerProvider)(partnerId),
     );
   };
 });

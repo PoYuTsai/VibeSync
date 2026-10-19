@@ -100,7 +100,9 @@ class ProfileCardScreen extends ConsumerWidget {
                       '目前階段',
                       _stageLabel(conversation.currentGameStage),
                     ),
-                    // v3 沒有熱度（Eric 2026-10-17）：不放一行「本次投入 --」。
+                    // 改版前的 v3 沒有熱度（Eric 2026-10-17）：不放一行「本次投入 --」；
+                    // 帶了關係狀態的 v3 存檔時已照 v2 寫進熱度與階段（Bruce 2026-10-19
+                    // 路線二），這裡照舊顯示。
                     if (conversation.lastEnthusiasmScore != null ||
                         !_lastAnalysisIsGuideV3(conversation))
                       _buildHeatRow(conversation.lastEnthusiasmScore),

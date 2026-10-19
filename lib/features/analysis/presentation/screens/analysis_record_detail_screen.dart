@@ -239,6 +239,7 @@ class _AnalysisRecordDetailScreenState
                 _SavedGuideV3Card(
                   result: _guideV3,
                   onCopy: _copyRecommendation,
+                  reconnectWording: record.gameStageLabel.trim() == '重新連線',
                 )
               else if (_result == null)
                 const _UnavailableAnalysisCard()
@@ -270,10 +271,17 @@ class _AnalysisRecordDetailScreenState
 /// v3 紀錄的判讀與任務卡（唯讀；複製不記成效，跟 v2 紀錄一樣）。空格一樣要
 /// 填好才能複製。
 class _SavedGuideV3Card extends StatefulWidget {
-  const _SavedGuideV3Card({required this.result, required this.onCopy});
+  const _SavedGuideV3Card({
+    required this.result,
+    required this.onCopy,
+    this.reconnectWording = false,
+  });
 
   final GuideV3Result result;
   final Future<void> Function(String content, {String message}) onCopy;
+
+  /// 關係狀態卡的階段用「重新連線」的說法（紀錄存的階段就是這樣寫的）。
+  final bool reconnectWording;
 
   @override
   State<_SavedGuideV3Card> createState() => _SavedGuideV3CardState();
@@ -309,6 +317,10 @@ class _SavedGuideV3CardState extends State<_SavedGuideV3Card> {
       editedMessagesFor: (card) => _edited[card.slot],
       onCopy: (card, text, toast) => widget.onCopy(text, message: toast),
       onEdit: (card) => _edit(card),
+      // 關係狀態卡與「為什麼這樣回」跟結果頁同一份（Bruce 2026-10-19 路線二）；回看紀錄
+      // 不分方案，雷達照樣畫。
+      explanations: result.cardExplains,
+      reconnectWording: widget.reconnectWording,
     );
   }
 }

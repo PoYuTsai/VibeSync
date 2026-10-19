@@ -17,8 +17,6 @@
 //  - ⋮ menu (merge / edit / delete-即將推出) — see partner_detail_screen_test.
 //  - FAB still opens NewConversationSheet(partnerId).
 //  - Partner-bound entry starts one independent analysis fragment.
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -44,6 +42,7 @@ import '../../../conversation/presentation/dialogs/conversation_reassign_picker.
 import '../../../analysis/data/providers/analysis_providers.dart';
 import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/guide_v3_result.dart';
+import '../../../analysis/domain/services/latest_analyzed_fragment.dart';
 import '../../../coach_follow_up/presentation/widgets/coach_follow_up_section.dart';
 import '../../../conversation/presentation/widgets/new_conversation_sheet.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
@@ -169,9 +168,12 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
       );
     }
 
-    final latestInsight = _PartnerLatestInsight.fromConversations(
-      conversations,
-    );
+    // 「這位對象是不是 v3」整頁同一條規則：最近分析過的那段（Bruce 2026-10-19 路線二）。
+    // v3 帶了熱度、雷達就跟 v2 一樣顯示；改版前的 v3 沒有，照 10/17 的做法收起來。
+    final latestAnalyzed = LatestAnalyzedFragment.of(conversations);
+    final hidesHeat = latestAnalyzed?.lacksHeat ?? false;
+    final hidesRadar = latestAnalyzed?.lacksRadar ?? false;
+    final latestInsight = _PartnerLatestInsight.fromLatest(latestAnalyzed);
     // 燈號紀錄＋邀約進度（Eric 2026-10-18）：不分方案都看完整紀錄（Bruce PR #97，
     // Eric 2026-10-19）。
     final lightHistory = ref.watch(partnerLightHistoryProvider(partnerId));
@@ -257,6 +259,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   aggregate: aggregate,
                   conversations: conversations,
                   latestInsight: latestInsight,
+                  showHeatState: !hidesHeat,
                   animateName: !_nameIntroPlayed,
                   onNameIntroEnd: () => _nameIntroPlayed = true,
                 ),
@@ -273,9 +276,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                // v3（任務卡）沒有熱度（Eric 2026-10-17：清掉不顯示）：最新一段
-                // 是新流程分析的，就不放熱度卡，免得顯示「待分析」。
-                if (!_latestAnalysisIsGuideV3(conversations)) ...[
+                // 改版前的 v3（任務卡）沒有熱度（Eric 2026-10-17：清掉不顯示）：最近分析
+                // 過的那段是這種，就不放熱度卡，免得顯示「待分析」。
+                if (!hidesHeat) ...[
                   PartnerHeatHeroCard(
                     heat: aggregate.latestHeat,
                     animate: !_heatIntroPlayed,
@@ -317,10 +320,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 const SizedBox(height: 16),
                 _PartnerExpandableDetailSection(
                   expanded: _detailTraitsExpanded,
-                  // v3 沒有雷達（Eric 2026-10-17），展開後也看不到：說明別再提雷達圖。
-                  subtitle: _latestAnalysisIsGuideV3(conversations)
-                      ? '長期資料，給想確認依據時展開。'
-                      : '長期資料與雷達圖，給想確認依據時展開。',
+                  // 改版前的 v3 沒有雷達（Eric 2026-10-17），展開後也看不到：說明別再提雷達圖。
+                  subtitle:
+                      hidesRadar ? '長期資料，給想確認依據時展開。' : '長期資料與雷達圖，給想確認依據時展開。',
                   onToggle: () => setState(
                     () => _detailTraitsExpanded = !_detailTraitsExpanded,
                   ),
@@ -342,10 +344,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      PartnerRadarSummaryCard(
-                        latestConversation:
-                            conversations.isEmpty ? null : conversations.first,
-                      ),
+                      PartnerRadarSummaryCard(conversations: conversations),
                     ],
                   ),
                 ),
@@ -1035,7 +1034,7 @@ class _PartnerLatestInsight {
   final String? coachMicroMove;
   final DateTime? analyzedAt;
 
-  /// 最近一次分析是 v3（任務卡）：沒有熱度可顯示（Eric 2026-10-17）。
+  /// 最近一次分析是 v3（任務卡）：沒有「接法」（v3 不產生 microMove）。
   final bool isGuideV3;
 
   const _PartnerLatestInsight({
@@ -1079,86 +1078,56 @@ class _PartnerLatestInsight {
     );
   }
 
-  factory _PartnerLatestInsight.fromConversations(
-    List<Conversation> conversations,
-  ) {
-    final sorted = [...conversations]
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-
-    for (final conversation in sorted) {
-      final raw = conversation.lastAnalysisSnapshotJson;
-      if (raw == null || raw.trim().isEmpty) continue;
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is! Map) continue;
-        if (isGuideV3Payload(decoded)) {
-          return _PartnerLatestInsight.fromGuideV3(
-            GuideV3Result.fromJson(
-              decoded.map((key, value) => MapEntry(key.toString(), value)),
-            ),
-            analyzedAt: conversation.updatedAt,
-          );
-        }
-        final result = AnalysisResult.fromJson(
-          decoded.map((key, value) => MapEntry(key.toString(), value)),
-        );
-        final hint = result.coachActionHint;
-        final hintInsight = (hint != null && hint.isUsable)
-            ? '她丟出的球：${hint.catchablePoint}。${hint.read}'
-            : null;
-        final hintAction =
-            (hint != null && hint.isUsable) ? hint.microMove : null;
-        final segmentAction = _replySegmentAction(
-          result.recommendation.replySegments,
-        );
-        final segmentCue = _replySegmentCue(
-          result.recommendation.replySegments,
-        );
-        return _PartnerLatestInsight(
-          nextStep: _firstNonEmpty([
-            result.gameStage.nextStep,
-            result.strategy,
-            result.recommendation.reason,
-          ]),
-          recentInsight: _firstNonEmpty([
-            hintInsight,
-            segmentCue,
-            result.psychology.subtext,
-            result.recommendation.psychology,
-            result.strategy,
-          ]),
-          interactionAction: _firstNonEmpty([
-            segmentAction,
-            result.recommendation.content,
-            hintAction,
-            result.topicDepth.suggestion,
-            result.recommendation.reason,
-          ]),
-          coachMicroMove: hintAction,
-          analyzedAt: conversation.updatedAt,
-        );
-      } catch (_) {
-        continue;
-      }
+  /// 最近分析過的那段（[LatestAnalyzedFragment]）的洞察；沒分析過是空的。
+  factory _PartnerLatestInsight.fromLatest(LatestAnalyzedFragment? latest) {
+    if (latest == null) return const _PartnerLatestInsight();
+    final conversation = latest.conversation;
+    if (latest.isGuideV3) {
+      return _PartnerLatestInsight.fromGuideV3(
+        latest.guideV3Result,
+        analyzedAt: conversation.updatedAt,
+      );
     }
-
-    return const _PartnerLatestInsight();
-  }
-}
-
-/// 熱度卡取的是最近更新那段對話的熱度（partner_aggregates 的 latestHeat）；
-/// 那段的分析是 v3 的話就沒有熱度可放。
-bool _latestAnalysisIsGuideV3(List<Conversation> conversations) {
-  if (conversations.isEmpty) return false;
-  final latest = conversations.reduce(
-    (a, b) => b.updatedAt.isAfter(a.updatedAt) ? b : a,
-  );
-  final raw = latest.lastAnalysisSnapshotJson;
-  if (raw == null || raw.trim().isEmpty) return false;
-  try {
-    return isGuideV3Payload(jsonDecode(raw));
-  } catch (_) {
-    return false;
+    try {
+      final result = AnalysisResult.fromJson(latest.payload);
+      final hint = result.coachActionHint;
+      final hintInsight = (hint != null && hint.isUsable)
+          ? '她丟出的球：${hint.catchablePoint}。${hint.read}'
+          : null;
+      final hintAction =
+          (hint != null && hint.isUsable) ? hint.microMove : null;
+      final segmentAction = _replySegmentAction(
+        result.recommendation.replySegments,
+      );
+      final segmentCue = _replySegmentCue(
+        result.recommendation.replySegments,
+      );
+      return _PartnerLatestInsight(
+        nextStep: _firstNonEmpty([
+          result.gameStage.nextStep,
+          result.strategy,
+          result.recommendation.reason,
+        ]),
+        recentInsight: _firstNonEmpty([
+          hintInsight,
+          segmentCue,
+          result.psychology.subtext,
+          result.recommendation.psychology,
+          result.strategy,
+        ]),
+        interactionAction: _firstNonEmpty([
+          segmentAction,
+          result.recommendation.content,
+          hintAction,
+          result.topicDepth.suggestion,
+          result.recommendation.reason,
+        ]),
+        coachMicroMove: hintAction,
+        analyzedAt: conversation.updatedAt,
+      );
+    } catch (_) {
+      return const _PartnerLatestInsight();
+    }
   }
 }
 
@@ -1201,6 +1170,9 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
   final List<Conversation> conversations;
   final _PartnerLatestInsight latestInsight;
 
+  /// 改版前的 v3（任務卡）沒有熱度：不顯示熱度狀態（不然會變成「待分析」）。
+  final bool showHeatState;
+
   /// 名字開場只在打開這一頁時播一次；旗標由 [_PartnerDetailScreenState] 持有。
   final bool animateName;
   final VoidCallback? onNameIntroEnd;
@@ -1210,17 +1182,18 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
     required this.aggregate,
     required this.conversations,
     required this.latestInsight,
+    required this.showHeatState,
     this.animateName = true,
     this.onNameIntroEnd,
   });
 
   @override
   Widget build(BuildContext context) {
-    // v3（任務卡）沒有熱度：不顯示熱度狀態（不然會變成「待分析」），也沒有
-    // 「接法」（v3 不產生 microMove），建議在下一步卡。
+    // v3 沒有「接法」（v3 不產生 microMove），建議在下一步卡。
     final isGuideV3 = latestInsight.isGuideV3;
-    final state =
-        isGuideV3 ? null : PartnerHeatMessaging.labelFor(aggregate.latestHeat);
+    final state = showHeatState
+        ? PartnerHeatMessaging.labelFor(aggregate.latestHeat)
+        : null;
     // 「接法」只能顯示本輪 coachActionHint.microMove。特質＋興趣是對象
     // 線索，不是策略；把兩者拼起來會讓 UI 對使用者宣稱 AI 給了不存在的接法。
     final hook = latestInsight.coachMicroMove ??

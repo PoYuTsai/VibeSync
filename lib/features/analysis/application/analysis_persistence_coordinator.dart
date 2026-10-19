@@ -28,6 +28,15 @@ import '../domain/entities/guide_v3_result.dart';
 import '../domain/entities/persistable_analysis.dart';
 import 'ports/analysis_record_port.dart';
 import 'ports/conversation_write_ports.dart';
+import 'ports/follow_up_port.dart';
+
+/// canonical snapshot 落地後的畫面層跟進（48h 跟進提醒）。[silenceFollowUp]＝這次是
+/// v3 的關心（自傷、未成年）或停（她拒絕或封鎖）：不問軟卡、不排（已排的那則由協調器
+/// 自己收回，見 [FollowUpSilencer]；P1 安全修正）；其他照舊問一次、照 opt-in 排。
+typedef AfterAnalysisPersisted = Future<void> Function(
+  Conversation conversation, {
+  required bool silenceFollowUp,
+});
 
 /// [AnalysisPersistenceCoordinator.restore] 的結果：畫面據此套用本地鏡像。
 /// [result]（v2）與 [guideV3]（v3 任務卡）恰好一個非 null。
@@ -55,6 +64,10 @@ class AnalysisPersistenceCoordinator {
   static const _snapshotIsReconnectKey = 'isReconnect';
   static const _snapshotSessionContextKey = 'sessionContext';
   static const _snapshotRunIdKey = 'analysisRunId';
+
+  /// 這次完成分析的時間（UTC ISO）。紀錄沿用第一次分析的建立時間，重跑較舊的片段時
+  /// 「目前怎麼做」要看這個（LatestAnalyzedFragment；主審第 1 輪 finding 2）。
+  static const _snapshotAnalyzedAtKey = 'analyzedAt';
   static const _targetProfileKey = 'targetProfile';
 
   AnalysisPersistenceCoordinator({
@@ -71,8 +84,9 @@ class AnalysisPersistenceCoordinator {
     required int? Function() lastPayloadCharCount,
     required void Function() notifyStateChanged,
     required void Function(Conversation conversation) invalidateRecordViews,
-    required Future<void> Function(Conversation conversation)
-        afterAnalysisPersisted,
+    required AfterAnalysisPersisted afterAnalysisPersisted,
+    required FollowUpSilencer silenceFollowUp,
+    DateTime Function()? now,
   })  : _getConversation = getConversation,
         _persistAnalysisCompleted = persistAnalysisCompleted,
         _persistContentChanged = persistContentChanged,
@@ -85,7 +99,9 @@ class AnalysisPersistenceCoordinator {
         _lastPayloadCharCount = lastPayloadCharCount,
         _notifyStateChanged = notifyStateChanged,
         _invalidateRecordViews = invalidateRecordViews,
-        _afterAnalysisPersisted = afterAnalysisPersisted;
+        _afterAnalysisPersisted = afterAnalysisPersisted,
+        _silenceFollowUp = silenceFollowUp,
+        _now = now ?? DateTime.now;
 
   final String conversationId;
   final GetConversation _getConversation;
@@ -111,8 +127,14 @@ class AnalysisPersistenceCoordinator {
   final void Function(Conversation conversation) _invalidateRecordViews;
 
   /// canonical snapshot 落地後的畫面層跟進（48h 跟進通知軟卡）。
-  final Future<void> Function(Conversation conversation)
-      _afterAnalysisPersisted;
+  final AfterAnalysisPersisted _afterAnalysisPersisted;
+
+  /// v3 關心或停時收回這位對象的跟進提醒：存檔與冷啟動還原都叫，不靠畫面（主審第 1 輪
+  /// finding 1）。
+  final FollowUpSilencer _silenceFollowUp;
+
+  /// 快照記的完成分析時間用的時鐘（測試注入）。
+  final DateTime Function() _now;
 
   int _inFlightCount = 0;
   final Set<Future<void>> _pendingTasks = {};
@@ -175,6 +197,10 @@ class AnalysisPersistenceCoordinator {
       if (isGuideV3Payload(analysisPayload)) {
         restoredGuideV3 = GuideV3Result.fromJson(analysisPayload);
         if (restoredGuideV3 == null) return null;
+        // 還原到關心或停（例如舊版 App 存的、或上次存好後沒收回）：再收一次提醒，重複無妨。
+        if (restoredGuideV3.decision.silencesFollowUp) {
+          unawaited(_silenceFollowUpSafely(conversation.partnerId));
+        }
         restoredRunId = _snapshotRunId(snapshot);
         persistable = PersistableAnalysis.fromGuideV3(
           restoredGuideV3,
@@ -302,6 +328,7 @@ class AnalysisPersistenceCoordinator {
         _snapshotRevisionKey: contentRevision,
         _snapshotMessageCountKey: messageCount,
         _snapshotHistoryEventIdKey: historyEventId,
+        _snapshotAnalyzedAtKey: _now().toUtc().toIso8601String(),
         if (isReconnect != null) _snapshotIsReconnectKey: isReconnect,
         if (analysisRunId != null) _snapshotRunIdKey: analysisRunId,
         if (freezeSessionContext)
@@ -691,7 +718,8 @@ class AnalysisPersistenceCoordinator {
       analysisRunId: analysis.analysisRunId,
     );
 
-    // v3 沒有熱度：清掉，列表與對象頁就不顯示（Eric 2026-10-17）。
+    // v3 帶了關係狀態就寫它的熱度（Bruce 2026-10-19 路線二）；沒帶的 v3 沒有熱度：清掉，
+    // 列表與對象頁就不顯示（Eric 2026-10-17）。
     conv.lastEnthusiasmScore = analysis.enthusiasmScore;
     conv.lastAnalyzedMessageCount = targetAnalyzedMessageCount;
     // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
@@ -705,7 +733,7 @@ class AnalysisPersistenceCoordinator {
     }
     // 對象卡互動階段閉環規則 9：缺少或非法 stage 不得寫入新 stage
     // snapshot，保留上一個有效階段；從未有有效階段則維持 null（問號）。
-    // v3 沒有階段，同樣保留上一個（Eric 2026-10-17）。
+    // 沒帶關係狀態的 v3 沒有階段，同樣保留上一個（Eric 2026-10-17）。
     if (validStage != null) {
       conv.currentGameStage = validStage.name;
     }
@@ -805,7 +833,24 @@ class AnalysisPersistenceCoordinator {
 
     // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
     // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
-    await _afterAnalysisPersisted(conv);
+    // v3 關心與停不催他回去找她：這裡先收回已排的（不靠畫面），畫面不問、不排（P1 安全修正）。
+    if (analysis.silencesFollowUp) {
+      await _silenceFollowUpSafely(conv.partnerId);
+    }
+    await _afterAnalysisPersisted(
+      conv,
+      silenceFollowUp: analysis.silencesFollowUp,
+    );
+  }
+
+  Future<void> _silenceFollowUpSafely(String? partnerId) async {
+    final id = partnerId?.trim();
+    if (id == null || id.isEmpty) return;
+    try {
+      await _silenceFollowUp(id);
+    } catch (error) {
+      debugPrint('FollowUp silence failed: $error');
+    }
   }
 
   void _setAnalysisRecordNeedsRepair(bool value) {
@@ -920,13 +965,21 @@ class AnalysisPersistenceCoordinator {
         analyzedMessageCount: analyzedMessageCount,
         analyzedContentRevision: analyzedPrefixRevision,
         analysisSnapshotJson: snapshotJson,
-        enthusiasmScore: analysis.enthusiasmScore,
+        // v3 的紀錄列表照舊顯示燈號（Eric 2026-10-17），熱度不寫進紀錄；紀錄詳情的關係狀態
+        // 卡照樣看得到熱度（Bruce 2026-10-19 路線二）。
+        enthusiasmScore: analysis.isGuideV3 ? null : analysis.enthusiasmScore,
         // Missing/unknown model output must not leak the display fallback
         // opening into durable records. Reuse only the conversation's latest
-        // strictly valid stage; otherwise persist a blank label. v3 沒有階段，
-        // 紀錄不沿用舊流程的階段（那不是這一次的判斷）。
+        // strictly valid stage; otherwise persist a blank label. v3 帶了關係狀態
+        // 就寫它的階段；沒帶不沿用舊流程的階段（那不是這一次的判斷）。
         gameStageLabel: analysis.isGuideV3
-            ? ''
+            ? (validStage == null
+                ? ''
+                : _visibleRecordStageLabel(
+                    conversation,
+                    validStage,
+                    isReconnectOverride: analyzedIsReconnect,
+                  ))
             : validStage != null
                 ? _visibleRecordStageLabel(
                     conversation,

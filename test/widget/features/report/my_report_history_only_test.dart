@@ -138,10 +138,10 @@ void main() {
       ),
     ]);
 
-    expect(find.text('新版分析看的是每次的燈號，不算投入度分數。'), findsOneWidget);
+    expect(find.text('最近一次分析沒有算投入度分數，之後有分數的分析會畫在這裡。'), findsOneWidget);
     expect(find.text('再多分析幾次，就能比較對方每次互動的投入度'), findsNothing);
     // 沒有點時不放「只有舊版紀錄」的補充。
-    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsNothing);
+    expect(find.text('最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。'), findsNothing);
   });
 
   testWidgets('舊版有一筆、之後改用新版：不說再分析 1 次就有趨勢', (tester) async {
@@ -165,7 +165,7 @@ void main() {
     final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
     expect(chart.trendPoints.map((p) => p.score), [61]);
     expect(find.text('再分析 1 次就能形成趨勢'), findsNothing);
-    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsOneWidget);
+    expect(find.text('最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。'), findsOneWidget);
   });
 
   testWidgets('多個舊點、其中一段用 v3 重跑（沿用舊日期）：留舊點、加補充', (tester) async {
@@ -223,7 +223,59 @@ void main() {
     final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
     expect(chart.trendPoints.map((p) => p.score), [70, 65]);
     expect(find.text('再分析 1 次就能形成趨勢'), findsNothing);
-    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsOneWidget);
+    expect(find.text('最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。'), findsOneWidget);
+  });
+
+  testWidgets('新版帶了熱度（Bruce 2026-10-19 路線二）：照常長點，說法跟舊版一樣', (tester) async {
+    await _pump(
+      tester,
+      [
+        AnalysisHistoryEvent.analyze(
+          id: 'a1',
+          createdAt: DateTime(2026, 10, 1),
+          conversationId: 'c1',
+          partnerId: 'p1',
+          subjectName: '小雲',
+          enthusiasmScore: 61,
+          gameStageLabel: 'premise',
+        ),
+        // 帶了關係狀態的 v3：存檔時照 v2 的欄位寫熱度（0–90）與階段。
+        AnalysisHistoryEvent.analyze(
+          id: 'a2',
+          createdAt: DateTime(2026, 10, 20),
+          conversationId: 'c2',
+          partnerId: 'p1',
+          subjectName: '小雲',
+          enthusiasmScore: 65,
+          gameStageLabel: 'narrative',
+        ),
+      ],
+      conversations: [
+        Conversation(
+          id: 'c2',
+          name: '小雲',
+          messages: const [],
+          createdAt: DateTime(2026, 10, 20),
+          updatedAt: DateTime(2026, 10, 20),
+          partnerId: 'p1',
+          lastEnthusiasmScore: 65,
+          lastAnalysisSnapshotJson: jsonEncode({
+            'guideVersion': 'v3.6',
+            'read': {
+              'light': 'green',
+              'decision': 'send',
+              'relation': {'stage': 'narrative', 'heat': 72},
+            },
+            'cards': const [],
+          }),
+        ),
+      ],
+    );
+
+    final chart = tester.widget<HeatTrendChart>(find.byType(HeatTrendChart));
+    expect(chart.trendPoints.map((p) => p.score), [61, 65]);
+    expect(find.text('最近一次分析沒有算投入度分數，之後有分數的分析會畫在這裡。'), findsNothing);
+    expect(find.text('最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。'), findsNothing);
   });
 
   testWidgets('新版之後又有舊版分數（舊 App）：照舊顯示提示', (tester) async {
@@ -245,7 +297,7 @@ void main() {
     ]);
 
     expect(find.text('再分析 1 次就能形成趨勢'), findsOneWidget);
-    expect(find.text('新版分析不算投入度分數，這裡只有舊版分析的紀錄。'), findsNothing);
+    expect(find.text('最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。'), findsNothing);
   });
 
   testWidgets('舊用戶沒有事件時不把缺資料顯示成平均 0', (tester) async {
