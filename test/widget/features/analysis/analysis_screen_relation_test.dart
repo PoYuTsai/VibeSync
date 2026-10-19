@@ -40,6 +40,9 @@ class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
 
   @override
   StreamingAnalysisState build(String conversationId) => seed;
+
+  /// 換成下一個狀態，模擬串流事件一個一個到。
+  void emit(StreamingAnalysisState next) => state = next;
 }
 
 class _InertAnalyzeStreamClient extends AnalyzeStreamClient {
@@ -291,6 +294,43 @@ void main() {
     );
     expect(find.byKey(const ValueKey('guide-v3-relation')), findsOneWidget);
     expect(find.text('分享開心的事'), findsOneWidget);
+    expect(find.text('接住她誇你，用短短一句收下。'), findsOneWidget);
+  });
+
+  testWidgets('串流中卡先到、說明後到：說明一到就畫在卡下面，不用等分析完成（主審第 1 輪 finding 4）',
+      (tester) async {
+    final conversation = _conversation();
+    final result = _v3(relation: _relation);
+    final streaming = StreamingAnalysisState(
+      phase: StreamingAnalyzePhase.streamingReport,
+      analysisRunId: 'run_relation',
+      isGuideV3Run: true,
+      guideV3Read: result.read,
+      guideV3Cards: result.cards,
+      previousAnalyzedCount: 0,
+      analyzedMessageCount: conversation.messages.length,
+      conversationMessageCount: conversation.messages.length,
+      conversationContentRevision: conversationContentRevision(conversation),
+      isReconnectContext: false,
+    );
+    await _pump(tester, conversation: conversation, seed: streaming);
+    expect(find.byKey(const ValueKey('guide-v3-task-card-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guide-v3-card-1-why')), findsNothing);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AnalysisScreen)),
+    );
+    final notifier = container.read(
+      streamingAnalyzeProvider(_conversationId).notifier,
+    ) as _SeededStreamingAnalyzeNotifier;
+    notifier.emit(streaming.copyWith(guideV3CardExplains: _explains));
+    await tester.pump();
+
+    expect(
+      container.read(streamingAnalyzeProvider(_conversationId)).phase,
+      StreamingAnalyzePhase.streamingReport,
+    );
+    expect(find.byKey(const ValueKey('guide-v3-card-1-why')), findsOneWidget);
     expect(find.text('接住她誇你，用短短一句收下。'), findsOneWidget);
   });
 

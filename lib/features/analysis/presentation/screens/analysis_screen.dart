@@ -3111,6 +3111,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     StreamingAnalysisState next,
   ) {
     if (!mounted) return;
+    // 卡的說明在卡之後才到、只動 guideV3CardExplains，也要算變了，不然要等 done 才看得到
+    //（主審第 1 輪 finding 4）。
     if (prev?.phase == next.phase &&
         prev?.analysisRunId == next.analysisRunId &&
         prev?.result == next.result &&
@@ -3119,6 +3121,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         prev?.streamContents == next.streamContents &&
         prev?.guideV3Read == next.guideV3Read &&
         prev?.guideV3Cards == next.guideV3Cards &&
+        prev?.guideV3CardExplains == next.guideV3CardExplains &&
         prev?.guideV3Result == next.guideV3Result) {
       return;
     }
