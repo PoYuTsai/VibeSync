@@ -1100,8 +1100,6 @@ void main() {
 
     final analyzeButton =
         find.byKey(ScreenshotRecognitionDialog.analyzeButtonKey);
-    final importOnlyButton =
-        find.byKey(ScreenshotRecognitionDialog.importOnlyButtonKey);
     final quotaLine = find.byKey(ScreenshotRecognitionDialog.quotaLineKey);
 
     testWidgets('沒給算法：只有今天的「確認本次內容」', (tester) async {
@@ -1112,10 +1110,89 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('確認本次內容'), findsOneWidget);
+      expect(_actionBarLabels(tester), unorderedEquals(['取消', '確認本次內容']));
       expect(analyzeButton, findsNothing);
-      expect(importOnlyButton, findsNothing);
       expect(quotaLine, findsNothing);
+    });
+
+    // Bruce 真機試過說用不到，Eric 2026-10-19「照 Bruce 拿掉」：想先存著不分析，
+    // 在後面任何一關取消就好，匯入的內容照樣留著。
+    testWidgets('有給算法：底下只剩「取消」和「加入並開始分析」，沒有「先存起來」', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        _actionBarLabels(tester),
+        unorderedEquals(['取消', '加入並開始分析']),
+      );
+      expect(find.text('先存起來，晚點再分析'), findsNothing);
+    });
+
+    testWidgets('有給算法：不論按哪一顆送出，都是匯入並開始分析、帶回看到的那一行', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      final submitLabels = [
+        for (final label in _actionBarLabels(tester))
+          if (label != '取消') label,
+      ];
+      expect(submitLabels, isNotEmpty);
+
+      for (final label in submitLabels) {
+        if (find.byType(ScreenshotRecognitionDialog).evaluate().isEmpty) {
+          await tester.tap(find.text('Open Dialog'));
+          await tester.pumpAndSettle();
+        }
+        await _tapVisible(
+          tester,
+          find.descendant(of: _actionBar(), matching: find.text(label)),
+        );
+      }
+
+      final expected = freeLineFor(mixedConversation.messages!)!;
+      expect(results, hasLength(submitLabels.length));
+      for (final result in results) {
+        expect(result!.startAnalysis, isTrue);
+        expect(result.shownQuotaLine, expected);
+        expect(result.messages, hasLength(3));
+      }
+    });
+
+    testWidgets('有給算法：按「取消」帶回 null、確認框關掉', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await _tapVisible(
+        tester,
+        find.descendant(of: _actionBar(), matching: find.text('取消')),
+      );
+
+      expect(results, [isNull]);
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
     });
 
     testWidgets('有給算法：寫出那一行；主鈕帶回要分析與看到的那一行', (tester) async {
@@ -1142,7 +1219,6 @@ void main() {
       );
       expect(tester.widget<Text>(quotaLine).data, expected.text);
       expect(find.text('加入並開始分析'), findsOneWidget);
-      expect(find.text('先存起來，晚點再分析'), findsOneWidget);
       expect(find.text('確認本次內容'), findsNothing);
 
       await _tapVisible(tester, analyzeButton);
@@ -1150,27 +1226,6 @@ void main() {
       expect(results, hasLength(1));
       expect(results.single!.startAnalysis, isTrue);
       expect(results.single!.shownQuotaLine, expected);
-      expect(results.single!.messages, hasLength(3));
-    });
-
-    testWidgets('先存起來，晚點再分析：照今天的確認帶回，不分析、不帶那一行', (tester) async {
-      await _useTallSurface(tester);
-      final results = <ScreenshotRecognitionDialogResult?>[];
-      await tester.pumpWidget(
-        buildDialogHost(
-          recognized: mixedConversation,
-          onResult: results.add,
-          analyzeQuotaLineFor: freeLineFor,
-        ),
-      );
-      await tester.tap(find.text('Open Dialog'));
-      await tester.pumpAndSettle();
-
-      await _tapVisible(tester, importOnlyButton);
-
-      expect(results, hasLength(1));
-      expect(results.single!.startAnalysis, isFalse);
-      expect(results.single!.shownQuotaLine, isNull);
       expect(results.single!.messages, hasLength(3));
     });
 
@@ -1246,6 +1301,33 @@ void main() {
       expect(find.textContaining('請先勾選上方的確認格'), findsOneWidget);
     });
   });
+}
+
+/// 確認框底部固定的動作列：整個確認框只有這一處是 SafeArea。
+Finder _actionBar() => find.descendant(
+      of: find.byType(ScreenshotRecognitionDialog),
+      matching: find.byType(SafeArea),
+    );
+
+/// 動作列上每一顆按鈕的字。
+List<String> _actionBarLabels(WidgetTester tester) {
+  expect(_actionBar(), findsOneWidget, reason: '確認框只有底部動作列是 SafeArea');
+  final buttons = find.descendant(
+    of: _actionBar(),
+    matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+  );
+  return [
+    for (final button in buttons.evaluate())
+      tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byElementPredicate((element) => element == button),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((text) => text.data ?? '')
+          .join(),
+  ];
 }
 
 Finder _partnerNameField() {

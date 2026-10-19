@@ -42,7 +42,6 @@ class ScreenshotRecognitionDialogResult {
 
 class ScreenshotRecognitionDialog extends StatefulWidget {
   static const analyzeButtonKey = ValueKey('recognition-import-analyze');
-  static const importOnlyButtonKey = ValueKey('recognition-import-only');
   static const quotaLineKey = ValueKey('recognition-import-quota-line');
 
   final RecognizedConversation recognized;
@@ -55,9 +54,9 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final Conversation currentConversation;
   final String? expectedPartnerName;
 
-  /// 有給：主鈕換成「加入並開始分析」，原本的確認改成次要的「先存起來，晚點再分析」
-  /// （Eric 2026-10-18：辨識確認後一鍵接著分析）。用目前編輯中的訊息算這次會用
-  /// 幾則（跟分析鈕同一套）；回 null 就不寫那一行，按下去照舊跳確認框。
+  /// 有給：主鈕換成「加入並開始分析」（Eric 2026-10-18：辨識確認後一鍵接著分析），
+  /// 旁邊只有「取消」（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）。用目前編輯中的
+  /// 訊息算這次會用幾則（跟分析鈕同一套）；回 null 就不寫那一行，按下去照舊跳確認框。
   /// 沒給：只有今天的「確認本次內容」。
   final AnalysisQuotaLine? Function(List<RecognizedMessage> messages)?
       analyzeQuotaLineFor;
@@ -1352,7 +1351,7 @@ class _ScreenshotRecognitionDialogState
   Widget _buildConfirmOnlyActions() {
     return Row(
       children: [
-        _buildCancelAction(minimumHeight: 52),
+        _buildCancelAction(),
         const SizedBox(width: 12),
         Expanded(
           child: _buildPrimaryAction(label: '確認本次內容', onPressed: _submit),
@@ -1361,60 +1360,46 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
-  /// 一鍵分析（Eric 2026-10-18）：上面寫這次會用幾則，主鈕加入並開始分析；
-  /// 次要的「先存起來，晚點再分析」就是今天的確認，不送分析。
+  /// 一鍵分析（Eric 2026-10-18）：主鈕加入並開始分析，上面寫這次會用幾則。旁邊只留
+  /// 「取消」，跟「確認本次內容」同一排（Eric 2026-10-19 照 Bruce 拿掉「先存起來」：
+  /// 想先存著不分析，在後面的提示、額度或確認框取消就好，匯入的內容照樣留著）。
   Widget _buildImportAndAnalyzeActions() {
     final quotaLine = _shownQuotaLine;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (quotaLine != null) ...[
-          Text(
-            quotaLine.text,
-            key: ScreenshotRecognitionDialog.quotaLineKey,
-            textAlign: TextAlign.center,
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.onBackgroundSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        _buildPrimaryAction(
-          key: ScreenshotRecognitionDialog.analyzeButtonKey,
-          label: '加入並開始分析',
-          onPressed: () => _submit(startAnalysis: true),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _buildCancelAction(minimumHeight: 48),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton(
-                key: ScreenshotRecognitionDialog.importOnlyButtonKey,
-                onPressed: AppHaptics.onPress(_submit),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.onBackgroundPrimary,
-                  minimumSize: const Size.fromHeight(48),
-                  side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.28),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+        _buildCancelAction(),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (quotaLine != null) ...[
+                Text(
+                  quotaLine.text,
+                  key: ScreenshotRecognitionDialog.quotaLineKey,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                child: const Text('先存起來，晚點再分析'),
+                const SizedBox(height: 8),
+              ],
+              _buildPrimaryAction(
+                key: ScreenshotRecognitionDialog.analyzeButtonKey,
+                label: '加入並開始分析',
+                onPressed: () => _submit(startAnalysis: true),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildCancelAction({required double minimumHeight}) {
+  Widget _buildCancelAction() {
     return TextButton(
       onPressed: () {
         // 跟送出共用一次性旗標：同一格裡又按確認又按取消，也只關一次。
@@ -1423,7 +1408,7 @@ class _ScreenshotRecognitionDialogState
         Navigator.of(context).pop();
       },
       style: TextButton.styleFrom(
-        minimumSize: Size(88, minimumHeight),
+        minimumSize: const Size(88, 52),
       ),
       child: const Text(
         '取消',
