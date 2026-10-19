@@ -72,6 +72,9 @@ export interface StreamAnalysisResumeSnapshot {
   lastErrorCode: string | null;
   retriesRemaining: number;
   wasCharged: boolean;
+  /// v3 only (guide_v3/run_shape.ts): the run's original completion time, replayed
+  /// on the done event. v2 snapshots never set it, so their replay is unchanged.
+  completedAt?: string;
 }
 
 export interface StreamAnalysisResumeOptions {
@@ -171,6 +174,7 @@ export function handleStreamAnalysisResume(
           finalResult: run.finalResult,
           result: run.finalResult,
           recovered: true,
+          ...(run.completedAt ? { completedAt: run.completedAt } : {}),
         });
         close();
         return;

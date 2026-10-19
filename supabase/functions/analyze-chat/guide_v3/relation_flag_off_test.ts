@@ -1,7 +1,8 @@
 // 關係訊號開關（ANALYZE_GUIDE_V3_RELATION，Bruce 2026-10-19 路線二）沒開時，跟 afa50d6f 一字不差：
 // 讀局面的系統提示詞、schema、使用者那一則，流程送出的事件、扣費內容、落帳結果（含 trace）與 log，
 // 以及走整個 handler 時送給模型的請求。期望的雜湊都是在還沒改的 afa50d6f 上算出來的；
-// 這支失敗就是開關沒開也改到了東西。不呼叫模型、不連網。
+// 這支失敗就是開關沒開也改到了東西。2026-10-20 起每次結案都多帶 completedAt（結案時間，開關沒開也帶，
+// 見 stream_flow.ts 的 finish）：只拿掉這一欄再比，另外核對它真的在、值是流程的時間。不呼叫模型、不連網。
 //
 // 寫卡的 streaming_fallback.ts 一載入就存下 fetch：轉接器要放第一個 import。
 import "../test_fetch_dispatcher.ts";
@@ -14,6 +15,7 @@ import { READ_TAGS_SCHEMA } from "./read_tags.ts";
 import {
   fixtureCase,
   type FlowCase,
+  RELATION_FLOW_T0,
   runFlow,
   withReadTags,
 } from "./relation_flow_harness.ts";
@@ -135,12 +137,38 @@ const FLOW_CASES: readonly { case: FlowCase; sha256: string }[] = [
   },
 ];
 
+/// 2026-10-20 加的結案時間（completedAt）以外都要跟 afa50d6f 一樣。
+function withoutCompletedAt<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (key, v) => key === "completedAt" ? undefined : v),
+  );
+}
+
 for (const { case: flowCase, sha256: expected } of FLOW_CASES) {
-  Deno.test(`關係訊號開關沒開（沒給、false）：${flowCase.name} 的事件、扣費、落帳、trace 與 log 跟 afa50d6f 一樣`, async () => {
+  Deno.test(`關係訊號開關沒開（沒給、false）：${flowCase.name} 的事件、扣費、落帳、trace 與 log 跟 afa50d6f 一樣（結案時間以外）`, async () => {
     for (const extra of [{}, { relation: false }]) {
       const outcome = await runFlow(flowCase, extra);
-      assertEquals(await sha256(outcome), expected, JSON.stringify(extra));
+      assertEquals(
+        await sha256(withoutCompletedAt(outcome)),
+        expected,
+        JSON.stringify(extra),
+      );
       assert(!JSON.stringify(outcome).includes('"relation"'));
+      // 多的只有結案時間：done 事件、done 的兩份結果與落帳結果，都是流程的時間。
+      const done = (outcome.events as Record<string, unknown>[]).find((e) =>
+        e.type === "analysis.done"
+      )!;
+      const at = new Date(RELATION_FLOW_T0).toISOString();
+      assertEquals(done.completedAt, at);
+      assertEquals(
+        (done.finalResult as Record<string, unknown>).completedAt,
+        at,
+      );
+      assertEquals((done.result as Record<string, unknown>).completedAt, at);
+      assertEquals(
+        (outcome.markDone as Record<string, unknown>).completedAt,
+        at,
+      );
     }
   });
 }
@@ -191,17 +219,26 @@ function runHandler(flag: string | undefined): Promise<V3HarnessOutcome> {
   });
 }
 
-/// done 的 telemetry 有實際花的毫秒數，每次都不一樣；其他欄位都要一樣。
+/// done 的 telemetry 有實際花的毫秒數、completedAt 是實際的結案時間，每次都不一樣；其他欄位都要
+/// 一樣。
 function eventsWithoutTiming(
   events: readonly Record<string, unknown>[],
 ): unknown[] {
   return events.map((e) => {
     if (e.type !== "analysis.done") return e;
     const strip = (r: unknown) => {
-      const { telemetry: _t, ...rest } = r as Record<string, unknown>;
+      const { telemetry: _t, completedAt: _c, ...rest } = r as Record<
+        string,
+        unknown
+      >;
       return rest;
     };
-    return { ...e, finalResult: strip(e.finalResult), result: strip(e.result) };
+    const { completedAt: _c, ...event } = e;
+    return {
+      ...event,
+      finalResult: strip(e.finalResult),
+      result: strip(e.result),
+    };
   });
 }
 

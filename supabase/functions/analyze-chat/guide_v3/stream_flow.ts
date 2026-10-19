@@ -781,10 +781,14 @@ class GuideV3Flow {
   /// 結果送給 App。
   private async finish(
     emit: NdjsonEmit,
-    result: Record<string, unknown>,
+    built: Record<string, unknown>,
     outcome: Record<string, unknown>,
     persist = true,
   ): Promise<void> {
+    // 結案時間（ISO 8601 UTC）跟結果一起存：續看重播回的是這個原本的時間，不是重播當下；App 拿來
+    // 排哪一次分析比較新（Eric 2026-10-20「直接修好上線」）。資料表沒有結案時間的欄位，不加 migration。
+    const completedAt = new Date(this.now()).toISOString();
+    const result = { ...built, completedAt };
     let persisted = persist;
     if (persist) {
       try {
@@ -811,6 +815,7 @@ class GuideV3Flow {
       runId: this.runId,
       finalResult: client,
       result: client,
+      completedAt,
     });
   }
 

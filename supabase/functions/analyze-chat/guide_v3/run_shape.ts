@@ -52,7 +52,28 @@ export function recoveredGuideV3Result(
     partial: Boolean(run.card_task),
     recovered: true,
     usage: { messagesUsed, shouldChargeQuota: messagesUsed > 0 },
+    // 原請求沒有結案：判讀與第一張卡在扣費那一刻就定了，用扣費時間（不是重組的時間）。
+    ...(isoUtc(run.charged_at) ? { completedAt: isoUtc(run.charged_at) } : {}),
   };
+}
+
+/// 資料庫的時間（PostgREST 回「…+00:00」、微秒六位）換成跟結案時間同一種寫法（toISOString 的
+/// UTC「…Z」）；讀不懂就當沒有。
+function isoUtc(value: string | null | undefined): string | undefined {
+  const ms = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
+}
+
+/// 續看重播的結案時間：結果裡存的那個；沒存的（這個欄位之前結案的、或從扣費內容重組的）用扣費
+/// 時間。都是 run 原本的時間，不是重播當下（Eric 2026-10-20）。
+function replayedCompletedAt(
+  run: AnalysisStreamRun,
+  finalResult: Record<string, unknown> | null,
+): string | undefined {
+  if (!finalResult) return undefined;
+  const stored = finalResult.completedAt;
+  if (typeof stored === "string" && stored !== "") return stored;
+  return isoUtc(run.charged_at);
 }
 
 /// v3 run 的續看快照：不 retry（retriesRemaining 一律 0）；太久沒結案的 pending
@@ -79,11 +100,13 @@ export function guideV3ResumeSnapshot(
     status = "failed";
     lastErrorCode = "GUIDE_V3_ABANDONED";
   }
+  const completedAt = replayedCompletedAt(run, finalResult);
   return {
     status,
     finalResult: finalResult ? stripClientHiddenFinalResult(finalResult) : null,
     lastErrorCode,
     retriesRemaining: 0,
     wasCharged: run.charged_at !== null,
+    ...(completedAt ? { completedAt } : {}),
   };
 }
