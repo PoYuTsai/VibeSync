@@ -218,7 +218,7 @@ const _relationJson = <String, dynamic>{
     'replyWillingness': 78,
     'emotionalConnection': 60,
   },
-  'herMove': 'sincere_question',
+  'herMove': 'serious_question',
   'willingness': 'high',
 };
 
@@ -1038,7 +1038,7 @@ void main() {
           .relation!;
       expect(relation.stage, GameStage.narrative);
       expect(relation.visibleHeat, 65);
-      expect(relation.herMove, GuideV3HerMove.sincereQuestion);
+      expect(relation.herMove, GuideV3HerMove.seriousQuestion);
     });
 
     test('自傷關心沒扣費：字數基準不推進', () async {

@@ -223,7 +223,7 @@ void main() {
         'replyWillingness': 78,
         'emotionalConnection': 60,
       },
-      Object? herMove = 'high',
+      Object? herMove = 'high_point',
       Object? willingness = 'high',
     }) =>
         {
@@ -251,7 +251,7 @@ void main() {
         'replyWillingness': 78,
         'emotionalConnection': 60,
       });
-      expect(rel.herMove, GuideV3HerMove.high);
+      expect(rel.herMove, GuideV3HerMove.highPoint);
       expect(rel.willingness, GuideV3Willingness.high);
     });
 
@@ -261,6 +261,24 @@ void main() {
       expect(visible(100), 90);
       expect(visible(0), 0);
       expect(visible(1), 1);
+    });
+
+    test('她在做什麼的代碼跟伺服器 guide_v3/wire.ts 的 HER_MOVE_CODE 同一組（十一類）', () {
+      expect(GuideV3HerMove.values.map((m) => m.wire), [
+        'daily_life',
+        'emotion',
+        'high_point',
+        'laugh_ending',
+        'teasing',
+        'testing',
+        'serious_question',
+        'asks_about_him',
+        'asks_his_opinion',
+        'open_window',
+        'braking',
+      ]);
+      expect(GuideV3Willingness.values.map((w) => w.wire),
+          ['high', 'medium', 'low']);
     });
 
     test('伺服器的英文代碼都認得', () {

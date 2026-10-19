@@ -166,7 +166,7 @@ void main() {
           'replyWillingness': 82,
           'emotionalConnection': 70,
         },
-        'herMove': 'laugh_close',
+        'herMove': 'laugh_ending',
         'willingness': 'medium',
       };
       final updates = await _client([
@@ -191,7 +191,7 @@ void main() {
           .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.guideV3Read)
           .guideV3Read!;
       expect(read.relation!.heat, 80);
-      expect(read.relation!.herMove, GuideV3HerMove.laughClose);
+      expect(read.relation!.herMove, GuideV3HerMove.laughEnding);
       expect(read.relation!.willingness, GuideV3Willingness.medium);
       final done = updates
           .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.done)

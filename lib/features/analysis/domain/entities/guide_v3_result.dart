@@ -140,20 +140,21 @@ enum GuideV3InviteReadiness {
   }
 }
 
-/// 她這一輪在做什麼（伺服器讀局面的 herMove，送 App 時換成英文代碼）。[label] 是給用戶看
-/// 的白話（Eric review 時核准）；App 只認代碼，不認得的當沒有。
+/// 她這一輪在做什麼（伺服器讀局面的 herMove，送 App 時換成 `guide_v3/wire.ts` 的
+/// HER_MOVE_CODE）。[label] 是給用戶看的白話（Eric review 時核准）；App 只認代碼，不認得的
+/// 當沒有。
 enum GuideV3HerMove {
-  life('life', '聊她的日常'),
+  dailyLife('daily_life', '聊她的日常'),
   emotion('emotion', '在講心情'),
-  high('high', '分享開心的事'),
-  laughClose('laugh_close', '笑著收尾'),
-  tease('tease', '在虧你'),
-  test('test', '在試探你'),
-  sincereQuestion('sincere_question', '認真在問你'),
+  highPoint('high_point', '分享開心的事'),
+  laughEnding('laugh_ending', '笑著收尾'),
+  teasing('teasing', '在虧你'),
+  testing('testing', '在試探你'),
+  seriousQuestion('serious_question', '認真在問你'),
   asksAboutHim('asks_about_him', '想多了解你'),
-  asksOpinion('asks_opinion', '想聽你的意見'),
-  window('window', '給你約她的機會'),
-  brake('brake', '想放慢一點');
+  asksHisOpinion('asks_his_opinion', '想聽你的意見'),
+  openWindow('open_window', '給你約她的機會'),
+  braking('braking', '想放慢一點');
 
   const GuideV3HerMove(this.wire, this.label);
 

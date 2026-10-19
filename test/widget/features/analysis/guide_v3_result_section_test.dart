@@ -1378,7 +1378,7 @@ void main() {
         'replyWillingness': 78,
         'emotionalConnection': 60,
       },
-      'herMove': 'high',
+      'herMove': 'high_point',
       'willingness': 'high',
     };
     final cards = [
