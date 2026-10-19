@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
@@ -106,6 +107,7 @@ Future<List<Map<String, dynamic>>> _pump(
   String? lockedPartnerId,
   int invokerStatus = 429,
   Map<String, List<Conversation>> partnerConversations = const {},
+  List<Override> extraOverrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -129,6 +131,7 @@ Future<List<Map<String, dynamic>>> _pump(
         if (lockedPartnerId != null &&
             partners.every((partner) => partner.id != lockedPartnerId))
           partnerByIdProvider(lockedPartnerId).overrideWithValue(null),
+        ...extraOverrides,
       ],
       child: MaterialApp(
         home: GlobalCoachScreen(lockedPartnerId: lockedPartnerId),
@@ -484,6 +487,78 @@ void main() {
     testWidgets('v2 照舊：下一步照分析的 nextStep', (tester) async {
       await pumpWith(tester, [analyzed('c1', DateTime(2026, 10, 1), v2)]);
       expect(find.text('上次分析完的下一步是「約她週末喝咖啡」，試了嗎？'), findsOneWidget);
+    });
+
+    // A、B 依序分析，再重跑 A（主審第 1 輪 finding 2）：A 的紀錄沿用第一次的建立時間；開場要
+    // 看最後完成分析的 A，不是照紀錄時間排到最前面的 B。
+    Future<void> pumpRerunOlder(
+      WidgetTester tester,
+      Map<String, dynamic> rerunA,
+    ) {
+      final t1 = DateTime(2026, 10, 18, 9);
+      final t2 = DateTime(2026, 10, 18, 12);
+      final t3 = DateTime(2026, 10, 18, 15);
+      final b = v3('hold', waitFor: '等她回你，再看她怎麼接');
+      Map<String, dynamic> withMeta(
+        Map<String, dynamic> json,
+        DateTime analyzedAt,
+      ) =>
+          {
+            ...json,
+            '__vibesync_snapshot_meta_v1': {
+              'contentRevision': 'rev',
+              'messageCount': 1,
+              'analyzedAt': analyzedAt.toUtc().toIso8601String(),
+            },
+          };
+      AnalysisRecord record(
+              String id, DateTime at, Map<String, dynamic> json) =>
+          AnalysisRecord(
+            id: 'rec-$id',
+            ownerUserId: 'owner-a',
+            conversationId: id,
+            partnerId: 'p1',
+            subjectName: 'Alice',
+            segmentStart: 0,
+            segmentEnd: 1,
+            createdAt: at,
+            messages: const [],
+            analysisSnapshotJson: jsonEncode(json),
+            analyzedContentRevision: 'revision-$id',
+            completionKey: 'completion-$id',
+            sourcePlatform: null,
+            enthusiasmScore: null,
+            gameStageLabel: '',
+          );
+      return _pump(
+        tester,
+        partners: [_partner('p1', 'Alice')],
+        lockedPartnerId: 'p1',
+        partnerConversations: {
+          'p1': [
+            analyzed('a', t3, withMeta(rerunA, t3)),
+            analyzed('b', t2, withMeta(b, t2)),
+          ],
+        },
+        extraOverrides: [
+          partnerAnalysisRecordsProvider('p1').overrideWith(
+            (_) => [record('a', t1, rerunA), record('b', t2, b)],
+          ),
+        ],
+      );
+    }
+
+    testWidgets('重跑較舊的 A 判成停：開場講停止條件，不是 B 的先別回', (tester) async {
+      await pumpRerunOlder(tester, v3('stop'));
+      expect(
+        find.text('上次分析完的下一步是「先停在這裡，不再主動傳訊息」，試了嗎？'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('重跑較舊的 A 判成關心：照一般的說法開場', (tester) async {
+      await pumpRerunOlder(tester, v3('care'));
+      expect(find.text('想聊Alice的什麼？卡住的地方直接丟給我。'), findsOneWidget);
     });
   });
 

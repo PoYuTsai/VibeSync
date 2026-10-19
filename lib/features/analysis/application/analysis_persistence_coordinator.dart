@@ -64,6 +64,10 @@ class AnalysisPersistenceCoordinator {
   static const _snapshotIsReconnectKey = 'isReconnect';
   static const _snapshotSessionContextKey = 'sessionContext';
   static const _snapshotRunIdKey = 'analysisRunId';
+
+  /// 這次完成分析的時間（UTC ISO）。紀錄沿用第一次分析的建立時間，重跑較舊的片段時
+  /// 「目前怎麼做」要看這個（LatestAnalyzedFragment；主審第 1 輪 finding 2）。
+  static const _snapshotAnalyzedAtKey = 'analyzedAt';
   static const _targetProfileKey = 'targetProfile';
 
   AnalysisPersistenceCoordinator({
@@ -82,6 +86,7 @@ class AnalysisPersistenceCoordinator {
     required void Function(Conversation conversation) invalidateRecordViews,
     required AfterAnalysisPersisted afterAnalysisPersisted,
     required FollowUpSilencer silenceFollowUp,
+    DateTime Function()? now,
   })  : _getConversation = getConversation,
         _persistAnalysisCompleted = persistAnalysisCompleted,
         _persistContentChanged = persistContentChanged,
@@ -95,7 +100,8 @@ class AnalysisPersistenceCoordinator {
         _notifyStateChanged = notifyStateChanged,
         _invalidateRecordViews = invalidateRecordViews,
         _afterAnalysisPersisted = afterAnalysisPersisted,
-        _silenceFollowUp = silenceFollowUp;
+        _silenceFollowUp = silenceFollowUp,
+        _now = now ?? DateTime.now;
 
   final String conversationId;
   final GetConversation _getConversation;
@@ -126,6 +132,9 @@ class AnalysisPersistenceCoordinator {
   /// v3 關心或停時收回這位對象的跟進提醒：存檔與冷啟動還原都叫，不靠畫面（主審第 1 輪
   /// finding 1）。
   final FollowUpSilencer _silenceFollowUp;
+
+  /// 快照記的完成分析時間用的時鐘（測試注入）。
+  final DateTime Function() _now;
 
   int _inFlightCount = 0;
   final Set<Future<void>> _pendingTasks = {};
@@ -319,6 +328,7 @@ class AnalysisPersistenceCoordinator {
         _snapshotRevisionKey: contentRevision,
         _snapshotMessageCountKey: messageCount,
         _snapshotHistoryEventIdKey: historyEventId,
+        _snapshotAnalyzedAtKey: _now().toUtc().toIso8601String(),
         if (isReconnect != null) _snapshotIsReconnectKey: isReconnect,
         if (analysisRunId != null) _snapshotRunIdKey: analysisRunId,
         if (freezeSessionContext)

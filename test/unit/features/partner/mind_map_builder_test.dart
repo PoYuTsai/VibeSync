@@ -1253,4 +1253,97 @@ void main() {
       expect(map.latestIsGuideV3Care, isFalse);
     });
   });
+  group('重跑較舊的片段（主審第 1 輪 finding 2）：目前怎麼做看最後完成分析的那段', () {
+    // A、B 依序分析，再重跑 A。紀錄沿用 A 原本的建立時間（analysis_record_store），所以
+    // 照紀錄時間排會選到 B；最後完成的是 A（快照 meta 的 analyzedAt）。
+    Map<String, dynamic> v3Json(
+      String decision, {
+      String? card,
+      Map<String, dynamic>? relation,
+    }) =>
+        {
+          'guideVersion': 'v3.6',
+          'read': {
+            'guideVersion': 'v3.6',
+            'decision': decision,
+            'light': decision == 'care' ? null : 'green',
+            'judgment': decision == 'care' ? '' : '她有在接。',
+            if (decision == 'care') 'careMessage': '先把安全放在第一位。',
+            if (relation != null) 'relation': relation,
+            'plannedCards': const [],
+          },
+          'cards': [
+            if (card != null)
+              {
+                'slot': 1,
+                'task': 'accept',
+                'method': 'reaction',
+                'voice': 'default',
+                'messages': [card],
+                'hasInventedDetail': false,
+                'hasBlank': false,
+              },
+          ],
+          'partial': false,
+        };
+
+    String withMeta(Map<String, dynamic> json, DateTime analyzedAt) =>
+        jsonEncode({
+          ...json,
+          '__vibesync_snapshot_meta_v1': {
+            'contentRevision': 'rev',
+            'messageCount': 1,
+            'analyzedAt': analyzedAt.toUtc().toIso8601String(),
+          },
+        });
+
+    PartnerMindMap abaMap(String rerunDecision) {
+      final t1 = DateTime(2026, 10, 18, 9);
+      final t2 = DateTime(2026, 10, 18, 12);
+      final t3 = DateTime(2026, 10, 18, 15);
+      final aRerun = v3Json(rerunDecision);
+      final b = v3Json(
+        'send',
+        card: 'B 的第一張卡',
+        relation: const {'stage': 'premise', 'heat': 72},
+      );
+      return buildPartnerMindMap(
+        partnerName: '小安',
+        aggregate: _aggregate(),
+        conversations: [
+          _convo(id: 'a', updatedAt: t3, snapshotJson: withMeta(aRerun, t3)),
+          _convo(id: 'b', updatedAt: t2, snapshotJson: withMeta(b, t2)),
+        ],
+        analysisRecords: [
+          _record(
+            id: 'rec-a',
+            conversationId: 'a',
+            createdAt: t1,
+            snapshotJson: jsonEncode(aRerun),
+          ),
+          _record(
+            id: 'rec-b',
+            conversationId: 'b',
+            createdAt: t2,
+            snapshotJson: jsonEncode(b),
+          ),
+        ],
+      );
+    }
+
+    test('重跑 A 判成停：下一步是停止條件，不是 B 的第一張卡', () {
+      final map = abaMap('stop');
+      expect(map.fullNextStep, '先停在這裡，不再主動傳訊息');
+      expect(map.nextStepSourceConversationId, 'a');
+      expect(map.latestIsGuideV3Care, isFalse);
+    });
+
+    test('重跑 A 判成關心：沒有下一步、不講目前的狀態、問教練收起', () {
+      final map = abaMap('care');
+      expect(map.fullNextStep, isNull);
+      expect(map.relationshipSignal, isNull);
+      expect(map.latestIsGuideV3Care, isTrue);
+      expect(map.nextStepSourceConversationId, 'a');
+    });
+  });
 }

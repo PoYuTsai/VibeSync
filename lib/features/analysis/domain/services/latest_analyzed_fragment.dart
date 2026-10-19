@@ -4,26 +4,38 @@ import '../../../conversation/domain/entities/conversation.dart';
 import '../entities/analysis_models.dart';
 import '../entities/guide_v3_result.dart';
 
-/// 一位對象「最近分析過的那段片段」：「這位對象現在是不是 v3（任務卡）」各頁都用這一條
-/// 規則判斷（Bruce 2026-10-19 路線二；10/17–18 各頁各自看最新一段或任一段，會互相打架）。
+/// 一位對象「最近分析過的那段片段」：「這位對象現在是不是 v3（任務卡）」與「現在怎麼做」
+/// （首頁卡狀態、對象頁、作戰板的下一步與關心、教練開場）各頁都用這一條規則判斷（Bruce
+/// 2026-10-19 路線二；10/17–18 各頁各自看最新一段或任一段，會互相打架）。
 ///
-/// 片段照 updatedAt 新到舊，第一段存了分析快照（JSON 物件）的就是；還沒分析的新片段不算，
-/// 所以剛加了截圖、還沒分析時，各頁照上一次的分析顯示。壞掉的快照跳過，跟對象頁的最近
-/// 洞察同一個做法。
+/// 存了分析快照（JSON 物件）的片段裡，最後完成分析的那段（快照 meta 的 analyzedAt）；
+/// 還沒分析的新片段不算，所以剛加了截圖、還沒分析時，各頁照上一次的分析顯示。重跑較舊的
+/// 片段時，重跑那次算數（主審第 1 輪 finding 2：紀錄沿用第一次的建立時間，改名也會改
+/// updatedAt）。改版前存的快照沒有這個時間，比有記的都舊（有記的一定是改版後才分析的），
+/// 彼此照 updatedAt 比。壞掉的快照跳過，跟對象頁的最近洞察同一個做法。
 class LatestAnalyzedFragment {
-  LatestAnalyzedFragment._(this.conversation, this.payload);
+  LatestAnalyzedFragment._(
+    this.conversation,
+    this.payload, {
+    required this.analyzedAt,
+    required this.hasRecordedCompletion,
+  });
 
   /// 都沒分析過（或快照都壞掉）回 null。
   static LatestAnalyzedFragment? of(Iterable<Conversation> conversations) {
     LatestAnalyzedFragment? latest;
     for (final conversation in conversations) {
-      if (latest != null &&
-          !conversation.updatedAt.isAfter(latest.conversation.updatedAt)) {
-        continue;
-      }
       final payload = _decodeSnapshot(conversation.lastAnalysisSnapshotJson);
-      if (payload != null) {
-        latest = LatestAnalyzedFragment._(conversation, payload);
+      if (payload == null) continue;
+      final recorded = _recordedAnalyzedAt(payload);
+      final candidate = LatestAnalyzedFragment._(
+        conversation,
+        payload,
+        analyzedAt: recorded ?? conversation.updatedAt,
+        hasRecordedCompletion: recorded != null,
+      );
+      if (latest == null || candidate._isLaterThan(latest)) {
+        latest = candidate;
       }
     }
     return latest;
@@ -31,6 +43,12 @@ class LatestAnalyzedFragment {
 
   /// 最近分析過的那段對話。
   final Conversation conversation;
+
+  /// 那段完成分析的時間；改版前存的快照沒記，是那段的 updatedAt。
+  final DateTime analyzedAt;
+
+  /// 快照有記完成分析的時間（[analyzedAt] 不是退回的 updatedAt）。
+  final bool hasRecordedCompletion;
 
   /// 那段存的分析快照原樣（v2 是 AnalysisResult 的 JSON，v3 是任務卡結果）。
   final Map<String, dynamic> payload;
@@ -67,6 +85,22 @@ class LatestAnalyzedFragment {
     } catch (_) {
       return null;
     }
+  }
+
+  bool _isLaterThan(LatestAnalyzedFragment other) {
+    if (hasRecordedCompletion != other.hasRecordedCompletion) {
+      return hasRecordedCompletion;
+    }
+    return analyzedAt.isAfter(other.analyzedAt);
+  }
+
+  static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
+  static const _snapshotAnalyzedAtKey = 'analyzedAt';
+
+  static DateTime? _recordedAnalyzedAt(Map<String, dynamic> snapshot) {
+    final meta = snapshot[_snapshotClientMetaKey];
+    final raw = meta is Map ? meta[_snapshotAnalyzedAtKey] : null;
+    return raw is String ? DateTime.tryParse(raw) : null;
   }
 
   static Map<String, dynamic>? _decodeSnapshot(String? raw) {

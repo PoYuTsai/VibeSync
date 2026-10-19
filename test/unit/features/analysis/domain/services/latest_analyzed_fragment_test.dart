@@ -100,6 +100,63 @@ void main() {
     expect(LatestAnalyzedFragment.of(const []), isNull);
   });
 
+  group('照完成分析的時間（主審第 1 輪 finding 2）', () {
+    String withAnalyzedAt(String snapshot, DateTime analyzedAt) => jsonEncode({
+          ...(jsonDecode(snapshot) as Map<String, dynamic>),
+          '__vibesync_snapshot_meta_v1': {
+            'contentRevision': 'rev',
+            'messageCount': 1,
+            'analyzedAt': analyzedAt.toUtc().toIso8601String(),
+          },
+        });
+
+    test('分析完之後改名、換對象（updatedAt 變新）不會變成最新的分析', () {
+      final latest = LatestAnalyzedFragment.of([
+        // 10/1 分析，10/20 改名。
+        _fragment('renamed', DateTime(2026, 10, 20),
+            snapshot: withAnalyzedAt(_v2, DateTime(2026, 10, 1))),
+        _fragment('stop', DateTime(2026, 10, 18),
+            snapshot:
+                withAnalyzedAt(_v3(decision: 'stop'), DateTime(2026, 10, 18))),
+      ])!;
+      expect(latest.conversation.id, 'stop');
+      expect(latest.analyzedAt, DateTime(2026, 10, 18).toUtc());
+      expect(latest.hasRecordedCompletion, isTrue);
+    });
+
+    test('重跑較舊的片段：重跑那次完成的時間算數', () {
+      final latest = LatestAnalyzedFragment.of([
+        _fragment('a', DateTime(2026, 10, 18, 15),
+            snapshot: withAnalyzedAt(
+                _v3(decision: 'care'), DateTime(2026, 10, 18, 15))),
+        _fragment('b', DateTime(2026, 10, 18, 12),
+            snapshot: withAnalyzedAt(_v3(), DateTime(2026, 10, 18, 12))),
+      ])!;
+      expect(latest.conversation.id, 'a');
+    });
+
+    test('改版前存的快照沒記完成時間：比有記的都舊（有記的一定是改版後才分析的）', () {
+      final latest = LatestAnalyzedFragment.of([
+        // 改版前分析、之後改過名，updatedAt 比較新。
+        _fragment('legacy', DateTime(2026, 10, 19), snapshot: _v2),
+        _fragment('new', DateTime(2026, 10, 18),
+            snapshot: withAnalyzedAt(_v3(), DateTime(2026, 10, 18))),
+      ])!;
+      expect(latest.conversation.id, 'new');
+      expect(latest.hasRecordedCompletion, isTrue);
+    });
+
+    test('都沒記完成時間：照舊看 updatedAt', () {
+      final latest = LatestAnalyzedFragment.of([
+        _fragment('older', DateTime(2026, 10, 1), snapshot: _v3()),
+        _fragment('legacy', DateTime(2026, 10, 19), snapshot: _v2),
+      ])!;
+      expect(latest.conversation.id, 'legacy');
+      expect(latest.hasRecordedCompletion, isFalse);
+      expect(latest.analyzedAt, DateTime(2026, 10, 19));
+    });
+  });
+
   group('關係狀態（Bruce 2026-10-19 路線二）：v3 帶了就跟 v2 一樣顯示', () {
     LatestAnalyzedFragment latest(String snapshot) => LatestAnalyzedFragment.of(
           [_fragment('c', DateTime(2026, 10, 19), snapshot: snapshot)],

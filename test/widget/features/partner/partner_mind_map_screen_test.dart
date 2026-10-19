@@ -74,11 +74,12 @@ AnalysisRecord _record({
   required String id,
   required DateTime createdAt,
   required String snapshotJson,
+  String conversationId = 'c1',
 }) =>
     AnalysisRecord(
       id: id,
       ownerUserId: 'u1',
-      conversationId: 'c1',
+      conversationId: conversationId,
       partnerId: 'p1',
       subjectName: 'Alice',
       segmentStart: 0,
@@ -386,6 +387,79 @@ void main() {
       await pump(t, v3('care'));
       expect(find.text('下一步行動'), findsNothing);
       expect(find.byKey(const ValueKey('mind-map-ask-coach')), findsNothing);
+    });
+
+    // A、B 依序分析，再重跑 A（主審第 1 輪 finding 2）：A 的紀錄沿用第一次的建立時間，照紀錄
+    // 時間排會選到 B；目前怎麼做要看最後完成分析的 A。
+    Future<void> pumpRerunOlder(WidgetTester t, String rerunA) async {
+      await t.binding.setSurfaceSize(const Size(400, 900));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      final t1 = DateTime(2026, 10, 18, 9);
+      final t2 = DateTime(2026, 10, 18, 12);
+      final t3 = DateTime(2026, 10, 18, 15);
+      final b = v3('send', withCard: true);
+      String withMeta(String json, DateTime analyzedAt) => jsonEncode({
+            ...(jsonDecode(json) as Map<String, dynamic>),
+            '__vibesync_snapshot_meta_v1': {
+              'contentRevision': 'rev',
+              'messageCount': 1,
+              'analyzedAt': analyzedAt.toUtc().toIso8601String(),
+            },
+          });
+      Conversation fragment(String id, DateTime at, String snapshot) =>
+          Conversation(
+            id: id,
+            name: '第 $id 段',
+            messages: const [],
+            createdAt: at,
+            updatedAt: at,
+            partnerId: 'p1',
+            lastAnalysisSnapshotJson: snapshot,
+          );
+      final records = [
+        _record(
+          id: 'rec-a',
+          conversationId: 'a',
+          createdAt: t1,
+          snapshotJson: rerunA,
+        ),
+        _record(
+          id: 'rec-b',
+          conversationId: 'b',
+          createdAt: t2,
+          snapshotJson: b,
+        ),
+      ];
+      await t.pumpWidget(ProviderScope(
+        overrides: [
+          partnerByIdProvider('p1').overrideWith((_) => _p()),
+          partnerAggregateProvider('p1')
+              .overrideWith((_) => PartnerAggregateView.empty()),
+          conversationsByPartnerProvider('p1').overrideWith((_) => [
+                fragment('a', t3, withMeta(rerunA, t3)),
+                fragment('b', t2, withMeta(b, t2)),
+              ]),
+          analysisRecordOwnerProvider.overrideWithValue('u1'),
+          analysisRecordStoreProvider
+              .overrideWithValue(_StaticAnalysisRecordStore(records)),
+        ],
+        child: const MaterialApp(home: PartnerMindMapScreen(partnerId: 'p1')),
+      ));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('重跑較舊的 A 判成關心：不給問教練，也不拿 B 的卡當下一步', (t) async {
+      await pumpRerunOlder(t, v3('care'));
+      expect(find.text('Alice・已分析 2 次'), findsOneWidget);
+      expect(find.text('下一步行動'), findsNothing);
+      expect(find.text('那當然 我挑的欸'), findsNothing);
+      expect(find.byKey(const ValueKey('mind-map-ask-coach')), findsNothing);
+    });
+
+    testWidgets('重跑較舊的 A 判成停：下一步行動是停止條件', (t) async {
+      await pumpRerunOlder(t, v3('stop'));
+      expect(find.text('先停在這裡，不再主動傳訊息'), findsOneWidget);
+      expect(find.text('那當然 我挑的欸'), findsNothing);
     });
   });
 }

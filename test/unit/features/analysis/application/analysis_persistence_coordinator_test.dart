@@ -295,10 +295,14 @@ class _Harness {
     String? recordOwnerUserId,
     AnalysisHistoryRepository? historyRepository,
     void Function(Conversation conversation)? onPersistAnalysisCompleted,
+    this.now,
   })  : _recordPort = recordPort ?? _ThrowingAnalysisRecordPort(),
         _recordOwnerUserId = recordOwnerUserId,
         _onPersistAnalysisCompleted = onPersistAnalysisCompleted,
         history = historyRepository ?? MemoryAnalysisHistoryRepository();
+
+  /// 協調器的時鐘（完成分析的時間）；null 用真的時間。
+  final DateTime Function()? now;
 
   final Conversation conversation;
   final AnalysisRecordPort _recordPort;
@@ -342,6 +346,7 @@ class _Harness {
       silencedFollowUps.add(silenceFollowUp);
     },
     silenceFollowUp: (partnerId) async => silencedPartners.add(partnerId),
+    now: now,
   );
 }
 
@@ -965,6 +970,66 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         expect(harness.silencedPartners, isEmpty);
       }
+    });
+  });
+
+  group('完成分析的時間（主審第 1 輪 finding 2）', () {
+    String? analyzedAt(Conversation conversation) {
+      final snapshot = jsonDecode(conversation.lastAnalysisSnapshotJson!)
+          as Map<String, dynamic>;
+      return (snapshot['__vibesync_snapshot_meta_v1'] as Map)['analyzedAt']
+          as String?;
+    }
+
+    test('快照記下這次完成分析的時間；同一段重跑換成重跑那次，趨勢事件的時間不動', () async {
+      var clock = DateTime.utc(2026, 10, 18, 1);
+      final harness = _Harness(
+        conversation: _conversation(partnerId: 'partner-1'),
+        now: () => clock,
+      );
+      final revision = conversationContentRevision(harness.conversation);
+
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(runId: 'run-a'),
+        completionKey: 'run-a',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: revision,
+      );
+      await harness.coordinator.awaitSettled();
+      expect(analyzedAt(harness.conversation), '2026-10-18T01:00:00.000Z');
+      final firstEvent = harness.history.listRecent().single;
+
+      clock = DateTime.utc(2026, 10, 18, 7);
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(decision: 'stop', runId: 'run-a2'),
+        completionKey: 'run-a2',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: revision,
+      );
+      await harness.coordinator.awaitSettled();
+      expect(analyzedAt(harness.conversation), '2026-10-18T07:00:00.000Z');
+      final rerunEvent = harness.history.listRecent().single;
+      expect(rerunEvent.id, firstEvent.id);
+      expect(rerunEvent.createdAt, firstEvent.createdAt);
+    });
+
+    test('本機時間也存成 UTC', () async {
+      final harness = _Harness(
+        conversation: _conversation(),
+        now: () => DateTime.fromMillisecondsSinceEpoch(0),
+      );
+      await harness.coordinator.persistLatestSnapshot(
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
+        completionKey: 'run-v2',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision:
+            conversationContentRevision(harness.conversation),
+      );
+      await harness.coordinator.awaitSettled();
+      expect(analyzedAt(harness.conversation), '1970-01-01T00:00:00.000Z');
     });
   });
 

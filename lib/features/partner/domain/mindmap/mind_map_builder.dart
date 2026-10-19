@@ -4,6 +4,7 @@ import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../analysis/domain/entities/guide_v3_result.dart';
+import '../../../analysis/domain/services/latest_analyzed_fragment.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../extensions/partner_aggregates.dart';
@@ -25,6 +26,8 @@ import 'mind_map_models.dart';
 /// - v3（任務卡）快照（Bruce 2026-10-19 路線二）：階段讀判讀的關係狀態；下一步跟對象頁
 ///   同一套（先別回是要等她做什麼、停是停止條件、出卡與收尾是第一張卡）；關心不給下一步，
 ///   也不講關係狀態。
+/// - 「現在怎麼做」（下一步、關心、本輪）看最後完成分析的那段（[LatestAnalyzedFragment]，
+///   首頁卡、對象頁同一條規則；主審第 1 輪 finding 2），見 [_currentFirst]。
 PartnerMindMap buildPartnerMindMap({
   required String partnerName,
   required PartnerAggregateView aggregate,
@@ -35,9 +38,12 @@ PartnerMindMap buildPartnerMindMap({
   final descByDate = [...conversations]
     ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-  final parsedSnapshots = _latestParsedSnapshots(
-    conversations: descByDate,
-    analysisRecords: analysisRecords,
+  final parsedSnapshots = _currentFirst(
+    _latestParsedSnapshots(
+      conversations: descByDate,
+      analysisRecords: analysisRecords,
+    ),
+    LatestAnalyzedFragment.of(conversations),
   );
   final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
   GameStageInfo? stageInfo;
@@ -180,6 +186,29 @@ PartnerMindMap buildPartnerMindMap({
     latestGuideV3Signals: aggregate.latestGuideV3Signals,
     latestIsGuideV3Care: latestIsCare,
   );
+}
+
+/// 最後完成分析的那段排到最前面，其他照紀錄時間。紀錄沿用第一次分析的建立時間，重跑較舊的
+/// 片段時照紀錄排會選到別段：下一步拿到別段的卡、關心也不收問教練（主審第 1 輪 finding 2）。
+/// 改版前的 v2 快照沒記完成時間，照舊用紀錄時間；v3 一律跟首頁卡、對象頁同一段，關心才不會
+/// 這頁收起、那頁還在。
+List<_ParsedMindMapSnapshot> _currentFirst(
+  List<_ParsedMindMapSnapshot> snapshots,
+  LatestAnalyzedFragment? latest,
+) {
+  if (latest == null || !(latest.isGuideV3 || latest.hasRecordedCompletion)) {
+    return snapshots;
+  }
+  final raw = latest.conversation.lastAnalysisSnapshotJson?.trim();
+  if (raw == null || raw.isEmpty) return snapshots;
+  final key = _snapshotMirrorKey(latest.conversation.id, raw);
+  final index = snapshots.indexWhere((snapshot) => snapshot.mirrorKey == key);
+  if (index <= 0) return snapshots;
+  return [
+    snapshots[index],
+    ...snapshots.take(index),
+    ...snapshots.skip(index + 1),
+  ];
 }
 
 /// v3 的下一步：跟對象頁的下一步卡同一套（partner_detail_screen 的 fromGuideV3）。先別回是
@@ -336,9 +365,11 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
   for (final record in analysisRecords) {
     final raw = record.analysisSnapshotJson.trim();
     if (raw.isEmpty) continue;
-    recordMirrorKeys.add(_snapshotMirrorKey(record.conversationId, raw));
+    final mirrorKey = _snapshotMirrorKey(record.conversationId, raw);
+    recordMirrorKeys.add(mirrorKey);
     sources.add(_MindMapSnapshotSource(
       conversationId: record.conversationId,
+      mirrorKey: mirrorKey,
       occurredAt: record.createdAt,
       rawJson: raw,
       sourceId: 'record:${record.id}',
@@ -351,11 +382,13 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
   for (final conversation in conversations) {
     final raw = conversation.lastAnalysisSnapshotJson?.trim();
     if (raw == null || raw.isEmpty) continue;
-    if (recordMirrorKeys.contains(_snapshotMirrorKey(conversation.id, raw))) {
+    final mirrorKey = _snapshotMirrorKey(conversation.id, raw);
+    if (recordMirrorKeys.contains(mirrorKey)) {
       continue;
     }
     sources.add(_MindMapSnapshotSource(
       conversationId: conversation.id,
+      mirrorKey: mirrorKey,
       occurredAt: conversation.updatedAt,
       rawJson: raw,
       sourceId: 'conversation:${conversation.id}',
@@ -454,6 +487,7 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
       final stage = result?.read.relation?.stage;
       return _ParsedMindMapSnapshot(
         conversationId: source.conversationId,
+        mirrorKey: source.mirrorKey,
         stageInfo:
             stage == null ? null : GameStageInfo(current: stage, nextStep: ''),
         reconnectWording: source.reconnectWording,
@@ -486,6 +520,7 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
 
     return _ParsedMindMapSnapshot(
       conversationId: source.conversationId,
+      mirrorKey: source.mirrorKey,
       stageInfo: parsedStage,
       reconnectWording: source.reconnectWording,
       topicDepth: parsedDepth,
@@ -518,6 +553,7 @@ bool _hasNonEmptyCurrent(Map<String, dynamic>? json) {
 class _MindMapSnapshotSource {
   const _MindMapSnapshotSource({
     required this.conversationId,
+    required this.mirrorKey,
     required this.occurredAt,
     required this.rawJson,
     required this.sourceId,
@@ -527,6 +563,9 @@ class _MindMapSnapshotSource {
   });
 
   final String conversationId;
+
+  /// 同一段同一份分析的比對鍵（[_snapshotMirrorKey]，不看 meta）。
+  final String mirrorKey;
   final DateTime occurredAt;
   final String rawJson;
   final String sourceId;
@@ -538,6 +577,7 @@ class _MindMapSnapshotSource {
 class _ParsedMindMapSnapshot {
   const _ParsedMindMapSnapshot({
     required this.conversationId,
+    required this.mirrorKey,
     required this.stageInfo,
     required this.reconnectWording,
     required this.topicDepth,
@@ -548,6 +588,7 @@ class _ParsedMindMapSnapshot {
   });
 
   final String conversationId;
+  final String mirrorKey;
   final GameStageInfo? stageInfo;
   final bool reconnectWording;
   final TopicDepth? topicDepth;
