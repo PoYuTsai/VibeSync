@@ -160,19 +160,20 @@ class MyReportScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
             ],
-            // 最近分析的是改版前的 v3、不產生投入度（Eric 2026-10-17）：別叫他「再多分析
-            // 幾次」，舊點也要講明只是舊版的紀錄。v3 帶了熱度就照常長點（Bruce
-            // 2026-10-19 路線二），照 v2 的說法。
+            // 最近分析的是改版前的 v3、沒有投入度（Eric 2026-10-17）：別叫他「再多分析
+            // 幾次」，舊點也要講明是之前有分數的紀錄。v3 帶了熱度就照常長點（Bruce
+            // 2026-10-19 路線二），照 v2 的說法；所以這裡不再說「新版不算分數」，只講最近
+            // 那一次。
             HeatTrendChart(
               trendPoints: subjectPoints,
               subjectId: selectedSubject,
               contextLabel: selectedSubjectName,
               emptyMessage: subjectStoppedScoring
-                  ? '新版分析看的是每次的燈號，不算投入度分數。'
+                  ? '最近一次分析沒有算投入度分數，之後有分數的分析會畫在這裡。'
                   : '再多分析幾次，就能比較對方每次互動的投入度',
               showTrendHint: !subjectStoppedScoring,
               footnote:
-                  subjectStoppedScoring ? '新版分析不算投入度分數，這裡只有舊版分析的紀錄。' : null,
+                  subjectStoppedScoring ? '最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。' : null,
             ),
           ],
           const SizedBox(height: 32),
