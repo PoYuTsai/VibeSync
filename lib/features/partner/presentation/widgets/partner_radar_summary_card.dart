@@ -17,19 +17,22 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../analysis/domain/entities/analysis_models.dart'
     show AnalysisResult;
-import '../../../analysis/domain/entities/guide_v3_result.dart'
-    show isGuideV3Payload;
+import '../../../analysis/domain/services/latest_analyzed_fragment.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 
 class PartnerRadarSummaryCard extends StatelessWidget {
-  final Conversation? latestConversation;
-  const PartnerRadarSummaryCard({super.key, required this.latestConversation});
+  /// 這位對象的對話（順序不拘）。雷達畫最近更新那段；「是不是 v3」看最近分析過的那段
+  ///（[LatestAnalyzedFragment]，對象頁同一條規則）。
+  final List<Conversation> conversations;
+  const PartnerRadarSummaryCard({super.key, required this.conversations});
 
   @override
   Widget build(BuildContext context) {
     // v3（任務卡）沒有五維雷達（Eric 2026-10-17）：不顯示，也不說「尚未分析」。
-    if (_latestIsGuideV3(latestConversation)) return const SizedBox.shrink();
-    final dims = _parseDimensions(latestConversation);
+    if (LatestAnalyzedFragment.of(conversations)?.isGuideV3 ?? false) {
+      return const SizedBox.shrink();
+    }
+    final dims = _parseDimensions(_newest(conversations));
     if (dims == null) {
       return _GlassShell(
         child: Text(
@@ -108,21 +111,18 @@ class PartnerRadarSummaryCard extends StatelessWidget {
     );
   }
 
+  static Conversation? _newest(List<Conversation> conversations) =>
+      conversations.isEmpty
+          ? null
+          : conversations.reduce(
+              (a, b) => b.updatedAt.isAfter(a.updatedAt) ? b : a,
+            );
+
   /// Reuse path: `AnalysisResult.fromJson(...).dimensionScores` already returns
   /// `Map<String, int>?` with default-50 per key, parsed by the package-private
   /// `_parseDimensions` inside `analysis_models.dart`. Catching here ensures a
   /// malformed snapshot string degrades to the "尚未分析" fallback rather than
   /// crashing the detail screen.
-  static bool _latestIsGuideV3(Conversation? c) {
-    final raw = c?.lastAnalysisSnapshotJson;
-    if (raw == null || raw.trim().isEmpty) return false;
-    try {
-      return isGuideV3Payload(jsonDecode(raw));
-    } catch (_) {
-      return false;
-    }
-  }
-
   static Map<String, int>? _parseDimensions(Conversation? c) {
     final raw = c?.lastAnalysisSnapshotJson;
     if (raw == null || raw.trim().isEmpty) return null;

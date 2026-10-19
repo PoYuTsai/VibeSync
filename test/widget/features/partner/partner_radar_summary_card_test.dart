@@ -24,7 +24,7 @@ Conversation _conv({String? snapshot}) => Conversation(
 void main() {
   testWidgets('null conversation → fallback text', (t) async {
     await t.pumpWidget(const MaterialApp(
-      home: Scaffold(body: PartnerRadarSummaryCard(latestConversation: null)),
+      home: Scaffold(body: PartnerRadarSummaryCard(conversations: [])),
     ));
     expect(find.text('最新對話尚未分析'), findsOneWidget);
   });
@@ -42,8 +42,8 @@ void main() {
     });
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: PartnerRadarSummaryCard(
-            latestConversation: _conv(snapshot: snapshot)),
+        body:
+            PartnerRadarSummaryCard(conversations: [_conv(snapshot: snapshot)]),
       ),
     ));
     await t.pumpAndSettle();
@@ -61,8 +61,8 @@ void main() {
     });
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: PartnerRadarSummaryCard(
-            latestConversation: _conv(snapshot: snapshot)),
+        body:
+            PartnerRadarSummaryCard(conversations: [_conv(snapshot: snapshot)]),
       ),
     ));
     expect(find.text('最新對話尚未分析'), findsOneWidget);
@@ -77,19 +77,77 @@ void main() {
     });
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: PartnerRadarSummaryCard(
-            latestConversation: _conv(snapshot: snapshot)),
+        body:
+            PartnerRadarSummaryCard(conversations: [_conv(snapshot: snapshot)]),
       ),
     ));
     expect(find.text('最新對話尚未分析'), findsNothing);
     expect(find.byType(RadarChart), findsNothing);
   });
 
+  testWidgets('最新那段還沒分析、最近分析過的是 v3：照對象頁同一條規則整張不顯示', (t) async {
+    final v3 = jsonEncode({
+      'guideVersion': 'v3.6',
+      'read': {'decision': 'hold', 'light': 'yellow', 'judgment': '先等她'},
+      'cards': [],
+    });
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerRadarSummaryCard(
+          conversations: [
+            Conversation(
+              id: 'blank',
+              partnerId: 'p1',
+              name: '測試',
+              messages: const [],
+              createdAt: DateTime(2026, 10, 19),
+              updatedAt: DateTime(2026, 10, 19),
+            ),
+            _conv(snapshot: v3),
+          ],
+        ),
+      ),
+    ));
+    expect(find.text('最新對話尚未分析'), findsNothing);
+    expect(find.byType(RadarChart), findsNothing);
+  });
+
+  testWidgets('最新那段還沒分析、最近分析過的是 v2：照舊說最新對話尚未分析', (t) async {
+    final v2 = jsonEncode({
+      'enthusiasm': {'score': 70, 'level': 'warm'},
+      'dimensions': {
+        'heat': 70,
+        'engagement': 65,
+        'topicDepth': 55,
+        'replyWillingness': 80,
+        'emotionalConnection': 60,
+      },
+    });
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerRadarSummaryCard(
+          conversations: [
+            _conv(snapshot: v2),
+            Conversation(
+              id: 'blank',
+              partnerId: 'p1',
+              name: '測試',
+              messages: const [],
+              createdAt: DateTime(2026, 10, 19),
+              updatedAt: DateTime(2026, 10, 19),
+            ),
+          ],
+        ),
+      ),
+    ));
+    expect(find.text('最新對話尚未分析'), findsOneWidget);
+  });
+
   testWidgets('malformed snapshot → fallback (no throw)', (t) async {
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
         body: PartnerRadarSummaryCard(
-          latestConversation: _conv(snapshot: 'not-json{{{'),
+          conversations: [_conv(snapshot: 'not-json{{{')],
         ),
       ),
     ));

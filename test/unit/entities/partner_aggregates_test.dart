@@ -120,7 +120,7 @@ void main() {
       expect(view.latestHeat, isNull);
     });
 
-    test('latestIsGuideV3 只看最近那段對話的快照是不是 v3', () {
+    test('latestIsGuideV3 看最近分析過的那段是不是 v3（各頁同一條規則）', () {
       final v3Snapshot = jsonEncode({
         'guideVersion': 'v3.5',
         'read': {'light': 'green', 'decision': 'send'},
@@ -133,18 +133,37 @@ void main() {
             lastEnthusiasmScore: 80,
             snapshotJson: _snapshot(interests: const ['咖啡'])),
         _convo(
-            id: 'c2', updatedAt: DateTime(2026, 5, 1), snapshotJson: v3Snapshot),
+            id: 'c2',
+            updatedAt: DateTime(2026, 5, 1),
+            snapshotJson: v3Snapshot),
       ]);
       expect(v3Latest.latestIsGuideV3, isTrue);
       expect(v3Latest.latestHeat, isNull);
 
-      // 最近那段還沒分析（沒有快照）：照舊是「待分析」的情況。
+      // 最近那段還沒分析（沒有快照）：照上一次分析（v3）算，熱度照舊看最近那段。
       final unanalyzedLatest = _partner().aggregateOver([
         _convo(
-            id: 'c1', updatedAt: DateTime(2026, 1, 1), snapshotJson: v3Snapshot),
+            id: 'c1',
+            updatedAt: DateTime(2026, 1, 1),
+            snapshotJson: v3Snapshot),
         _convo(id: 'c2', updatedAt: DateTime(2026, 5, 1)),
       ]);
-      expect(unanalyzedLatest.latestIsGuideV3, isFalse);
+      expect(unanalyzedLatest.latestIsGuideV3, isTrue);
+      expect(unanalyzedLatest.latestHeat, isNull);
+
+      // 最近分析過的是 v2：不是 v3，更早的 v3 不算數。
+      final v2AfterV3 = _partner().aggregateOver([
+        _convo(
+            id: 'c1',
+            updatedAt: DateTime(2026, 1, 1),
+            snapshotJson: v3Snapshot),
+        _convo(
+            id: 'c2',
+            updatedAt: DateTime(2026, 5, 1),
+            lastEnthusiasmScore: 64,
+            snapshotJson: _snapshot(traits: const ['慢熱'])),
+      ]);
+      expect(v2AfterV3.latestIsGuideV3, isFalse);
 
       final v2Latest = _partner().aggregateOver([
         _convo(
@@ -227,7 +246,7 @@ void main() {
       expect(care.decision, GuideV3Decision.care);
       expect(care.light, isNull);
 
-      // 最近那段是舊流程或還沒分析：沒有 v3 訊號（不拿更早的 v3 冒充最新）。
+      // 最近分析過的是舊流程：沒有 v3 訊號（不拿更早的 v3 冒充最新）。
       final v2Latest = _partner().aggregateOver([
         _convo(
           id: 'v3',
@@ -242,6 +261,7 @@ void main() {
         ),
       ]);
       expect(v2Latest.latestGuideV3Signals, isNull);
+      // 最近那段還沒分析：照上一次分析（各頁同一條規則），不會變成沒有訊號。
       final unanalyzed = _partner().aggregateOver([
         _convo(
           id: 'v3',
@@ -250,7 +270,7 @@ void main() {
         ),
         _convo(id: 'blank', updatedAt: DateTime(2026, 10, 18)),
       ]);
-      expect(unanalyzed.latestGuideV3Signals, isNull);
+      expect(unanalyzed.latestGuideV3Signals!.light, GuideV3Light.green);
       // v3 形狀但決定讀不懂：還是 v3（不顯示熱度），只是沒有訊號。
       final unreadable = _partner().aggregateOver([
         _convo(

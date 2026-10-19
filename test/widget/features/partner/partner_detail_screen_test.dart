@@ -868,6 +868,60 @@ void main() {
     expect(find.textContaining('雷達'), findsNothing);
   });
 
+  testWidgets('最新一段還沒分析、上一次是新流程：整頁照上一次算，不放熱度卡、不說待分析、不提雷達', (t) async {
+    // 對象頁同一條規則（Bruce 2026-10-19 路線二）：熱度卡、摘要、雷達、說明都看最近分析過的那段。
+    await t.binding.setSurfaceSize(const Size(400, 1200));
+    addTearDown(() => t.binding.setSurfaceSize(null));
+    final analyzed = _conv('v3')
+      ..lastAnalysisSnapshotJson = jsonEncode({
+        'guideVersion': 'v3.6',
+        'read': {
+          'guideVersion': 'v3.6',
+          'decision': 'hold',
+          'light': 'yellow',
+          'judgment': '球在她那邊。',
+          'waitFor': '等她回你，再看她怎麼接',
+          'plannedCards': const [],
+        },
+        'cards': const [],
+        'partial': false,
+      });
+    final pending = Conversation(
+      id: 'pending',
+      name: '第 pending 段',
+      messages: const [],
+      createdAt: DateTime(2026, 4, 21),
+      updatedAt: DateTime(2026, 4, 21),
+    );
+
+    await t.pumpWidget(ProviderScope(
+      overrides: [
+        partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+        coachChatRepositoryProvider
+            .overrideWithValue(MemoryCoachChatRepository()),
+        partnerByIdProvider('p1').overrideWith((_) => _p()),
+        partnerAggregateProvider('p1')
+            .overrideWith((_) => PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p1')
+            .overrideWith((_) => const DataQualityFlag.unflagged()),
+        conversationsByPartnerProvider('p1')
+            .overrideWith((_) => [pending, analyzed]),
+      ],
+      child: motionFreeApp(home: const PartnerDetailScreen(partnerId: 'p1')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.byType(PartnerHeatHeroCard), findsNothing);
+    expect(find.text('待分析'), findsNothing);
+    expect(find.textContaining('最近一次：'), findsNothing);
+    // 下一步照上一次的先別回。
+    expect(find.text('等她回你，再看她怎麼接'), findsOneWidget);
+
+    await _scrollUntilVisible(t, find.text('詳細特質與趨勢'));
+    expect(find.text('長期資料，給想確認依據時展開。'), findsOneWidget);
+    expect(find.textContaining('雷達'), findsNothing);
+  });
+
   testWidgets('conversation records sit between heat score and next step',
       (t) async {
     await t.binding.setSurfaceSize(const Size(400, 1200));
