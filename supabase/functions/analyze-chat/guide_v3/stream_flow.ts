@@ -58,7 +58,18 @@ import {
   writeSystemPrompt,
   writeUserPrompt,
 } from "./prompts.ts";
-import { parseReadTags, READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
+import {
+  parseReadTags,
+  parseTwoStageTags,
+  READ_TAGS_SCHEMA,
+  READ_TAGS_SCHEMA_TWO_STAGE,
+  type ReadTags,
+  type TwoStageTags,
+} from "./read_tags.ts";
+import {
+  readSystemPromptTwoStage,
+  readUserPromptTwoStage,
+} from "./two_stage_prompts.ts";
 import { type GuideMessage, toTurns, type Turn } from "./turns.ts";
 import {
   cardEvent,
@@ -375,16 +386,18 @@ class GuideV3Flow {
       // 額度不夠：不讀局面、不寫卡、不打記憶，直接給關心訊息（Eric 2026-10-18）。
       if (this.quotaCare) return await this.care(emit, this.quotaCare, null);
       let text: string;
+      // 兩段式實驗（Eric 2026-10-19）：讀局面多要幾個標記、她最新這一輪逐則編號；沒開照舊。
+      const twoStage = this.deps.twoStage === true;
       try {
         const read = await this.deps.callRead({
           runId: this.runId,
-          system: readSystemPrompt(),
-          user: readUserPrompt(
+          system: twoStage ? readSystemPromptTwoStage() : readSystemPrompt(),
+          user: (twoStage ? readUserPromptTwoStage : readUserPrompt)(
             turns,
             this.deps.background,
             this.deps.previousRound,
           ),
-          schema: READ_TAGS_SCHEMA,
+          schema: twoStage ? READ_TAGS_SCHEMA_TWO_STAGE : READ_TAGS_SCHEMA,
           deadlineAtMs,
         });
         text = read.text;
@@ -404,7 +417,12 @@ class GuideV3Flow {
           error: errorText(error),
         });
       }
-      const tags = parseTagsText(text);
+      const parsed = parseTagsText(text);
+      // 兩段式多要的四欄在同一份 JSON 裡；壞了跟其他欄位壞了一樣算讀局面失敗。
+      const twoStageTags: TwoStageTags | null = twoStage && parsed
+        ? parseTwoStageTags(parsed)
+        : null;
+      const tags = twoStage && !twoStageTags ? null : parsed;
       if (!tags) {
         const fallback = planWithoutRead(this.hits);
         if (fallback) {

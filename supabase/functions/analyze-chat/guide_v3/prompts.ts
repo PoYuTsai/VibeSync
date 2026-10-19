@@ -39,6 +39,8 @@ export function readSystemPrompt(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  /// 兩段式實驗多要的欄位說明（two_stage_prompts.ts）；沒給就跟今天一字不差。
+  extraFieldNotes?: string,
 ): string {
   const triggers = entries.filter((e) => e.enabled).map((e) =>
     `- ${e.id}：${e.trigger}`
@@ -48,6 +50,7 @@ export function readSystemPrompt(
     sections.A3,
     sections.A4,
     READ_FIELD_NOTES,
+    ...(extraFieldNotes ? [extraFieldNotes] : []),
     `## 情境條目的觸發（只回符合的編號）\n${triggers}`,
     // readForUser、waitFor 是直接給用戶看的文字。
     leakDirective.trim(),
@@ -97,12 +100,14 @@ export function readUserPrompt(
   turns: readonly Turn[],
   background?: GuideV3Background,
   previousRound?: GuideV3PreviousRound,
+  /// 兩段式實驗：她最新這一輪逐則編號（worthyLines 要填編號）；沒給就跟今天一字不差。
+  numberLatestHerTurn = false,
 ): string {
   return [
     ...backgroundSections(background),
     // 上一輪脈絡（開關 ANALYZE_GUIDE_V3_PREV_ROUND）：沒帶就一字不變。
     ...previousRoundReadSection(previousRound),
-    `## 對話\n${transcriptByTurn(turns)}`,
+    `## 對話\n${transcriptByTurn(turns, { numberLatestHerTurn })}`,
   ].join("\n\n");
 }
 
