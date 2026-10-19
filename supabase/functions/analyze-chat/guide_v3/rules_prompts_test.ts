@@ -728,6 +728,79 @@ Deno.test("黃燈遇到她大笑收尾（主審第 1 輪 P2）：一張收、不
   );
 });
 
+Deno.test("大笑收尾＋她已經答應邀約（Bruce 10/19）：第一張排推進、這張就是收尾，不另排收；綠燈留帶張力與接住，黃燈照一般排法", () => {
+  const turns = toTurns([
+    me("週六下午去看展？"),
+    her("好啊"),
+    me("那我先查一下展期"),
+    her("哈哈哈哈好啦"),
+  ]);
+  const cases = [
+    ["green", "含糊答應", "具體邀約", [
+      "推進",
+      "帶張力",
+      "接住",
+      "接住",
+      "接住",
+    ]],
+    ["green", "明確答應", "說定", ["推進", "帶張力", "接住", "接住", "接住"]],
+    ["yellow", "含糊答應", "具體邀約", ["推進", "接住", "接住"]],
+    ["yellow", "明確答應", "說定", ["推進", "接住", "接住"]],
+  ] as const;
+  for (const [light, inviteReadiness, expectedPush, expectedTasks] of cases) {
+    const label = `${light}＋${inviteReadiness}`;
+    const t = tags({ light, herMove: "大笑收尾", inviteReadiness });
+    const reply = decideReply(turns, t);
+    assertEquals(reply.kind, "send", label);
+    const push = decidePush(turns, t);
+    assertEquals(push, expectedPush, label);
+    const cards = arrangeCards(reply, push, t);
+    assertEquals(cards.map((c) => c.task), [...expectedTasks], label);
+    // 只有第一張是推進，帶的就是這次選的動作；問句額度照一般規則（不是種子，最多 1 個）。
+    assertEquals(
+      cards.map((c) => c.push),
+      cards.map((_, i) => i === 0 ? expectedPush : null),
+      label,
+    );
+    assertEquals(cards[0].questionBudget, 1, label);
+    assert(cards.every((c) => c.questionBudget <= 1), label);
+  }
+});
+
+Deno.test("大笑收尾沒有答應邀約，或標到 B34（就算已經答應）：照舊第一張排收、不推進，綠燈帶張力照留（Bruce 10/19 維持）", () => {
+  const short = toTurns([me("哪座山"), her("哈哈哈哈笑死")]);
+  const arrange = (over: Partial<ReadTags>) => {
+    const t = tags({ herMove: "大笑收尾", ...over });
+    const reply = decideReply(short, t);
+    assertEquals(reply.kind, "send", JSON.stringify(over));
+    const push = decidePush(short, t);
+    return { push, tasks: arrangeCards(reply, push, t).map((c) => c.task) };
+  };
+  // 沒有答應邀約：照舊。
+  assertEquals(arrange({ light: "green" }), {
+    push: null,
+    tasks: ["收", "帶張力", "接住", "接住"],
+  });
+  assertEquals(arrange({ light: "yellow" }), {
+    push: null,
+    tasks: ["收", "接住", "接住"],
+  });
+  // B34（她先說想慢一點，接著大笑收尾）：第一張收、其他卡照出，綠燈帶張力照留；已經答應也不推進。
+  for (const inviteReadiness of ["沒機會", "含糊答應", "明確答應"] as const) {
+    const b34 = { matchedEntries: ["B34"], inviteReadiness };
+    assertEquals(
+      arrange({ light: "green", ...b34 }),
+      { push: null, tasks: ["收", "帶張力", "接住", "接住"] },
+      inviteReadiness,
+    );
+    assertEquals(
+      arrange({ light: "yellow", ...b34 }),
+      { push: null, tasks: ["收", "接住", "接住"] },
+      inviteReadiness,
+    );
+  }
+});
+
 Deno.test("含糊答應算答應（Bruce 10/18）：綠燈、黃燈都由他接著講具體（具體邀約）；明確答應就說定", () => {
   const long = toTurns([me("a"), her("b"), me("c"), her("聽起來不錯")]);
   for (const light of ["green", "yellow"] as const) {

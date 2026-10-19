@@ -209,10 +209,21 @@ function tasksFor(tags: ReadTags, push: PushAction | null, n: number): Task[] {
   //（Bruce 10/14）。帶張力是綠燈的規則：黃燈的收之外照下面一般的排法，不排帶張力，聊開了
   // 選的種子照樣排進來（Bruce 10/18 黃燈維持現在；主審第 1 輪 P2）。
   const laughClose = tags.herMove === "大笑收尾";
+  // 她大笑收尾但已經答應邀約（Bruce 10/19）：第一張排那張推進（明確答應就說定時間地點，含糊
+  // 答應由他講具體），這張本身就是收尾，不另排收；其餘照原本的排法。標到 B34 時 decidePush
+  // 不推進，照舊排收；聊開了的種子不在這條裡，照舊。
+  const acceptedInvite = laughClose && (
+    (tags.inviteReadiness === "含糊答應" && push === "具體邀約") ||
+    (tags.inviteReadiness === "明確答應" && push === "說定")
+  );
   if (laughClose && tags.light === "green") {
-    return ["收", "帶張力", ...Array(n - 2).fill("接住")];
+    return [
+      acceptedInvite ? "推進" : "收",
+      "帶張力",
+      ...Array(n - 2).fill("接住"),
+    ];
   }
-  const tasks: Task[] = laughClose ? ["收"] : [];
+  const tasks: Task[] = laughClose && !acceptedInvite ? ["收"] : [];
   if (push) {
     tasks.push(...Array(n >= 5 && push === "具體邀約" ? 2 : 1).fill("推進"));
   }
