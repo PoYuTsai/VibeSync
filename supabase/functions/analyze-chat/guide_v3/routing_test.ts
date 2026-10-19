@@ -7,6 +7,7 @@ import {
   guideV3Mode,
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
+  shouldUseGuideV3TwoStage,
 } from "./routing.ts";
 
 Deno.test("開關：沒設、空白、打錯都當 off；大小寫與空白不影響", () => {
@@ -113,4 +114,30 @@ Deno.test("F04 上限：超過 5 則或 300 字、或整段都是他的，就照
     him(1),
     him(1),
   ]);
+});
+
+Deno.test("兩段式開關（Eric 2026-10-19 兩段式實驗）：沒設或打錯都不開；test 只給測試帳號；on 誰都開", () => {
+  for (const raw of [undefined, "", "true", "1", "offf"]) {
+    for (const accountIsTest of [true, false]) {
+      assertEquals(
+        shouldUseGuideV3TwoStage({ mode: guideV3Mode(raw), accountIsTest }),
+        false,
+        `${raw}/${accountIsTest}`,
+      );
+    }
+  }
+  assertEquals(
+    shouldUseGuideV3TwoStage({ mode: "test", accountIsTest: true }),
+    true,
+  );
+  assertEquals(
+    shouldUseGuideV3TwoStage({ mode: "test", accountIsTest: false }),
+    false,
+  );
+  for (const accountIsTest of [true, false]) {
+    assertEquals(
+      shouldUseGuideV3TwoStage({ mode: guideV3Mode(" On "), accountIsTest }),
+      true,
+    );
+  }
 });

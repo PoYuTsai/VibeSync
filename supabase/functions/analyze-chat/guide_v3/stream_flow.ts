@@ -182,6 +182,9 @@ export interface GuideV3StreamDeps {
   /// 額度不夠、她的訊息有自傷字眼（Eric 2026-10-18；入口在 analyze_chat_handler 的額度
   /// 預查）：不打任何模型，直接給自傷關心訊息，不扣。
   careOnlyFromQuota?: boolean;
+  /// 兩段式「正常回覆」實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，handler 把關；Eric 2026-10-19
+  /// 兩段式實驗）。沒給或 false：提示詞、schema、事件、trace 與扣費都跟今天一樣。
+  twoStage?: boolean;
 }
 
 type ErrorEvent = Record<string, unknown> & {

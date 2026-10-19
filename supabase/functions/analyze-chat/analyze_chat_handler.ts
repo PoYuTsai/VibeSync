@@ -90,6 +90,7 @@ import {
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
   shouldUseGuideV3PreviousRound,
+  shouldUseGuideV3TwoStage,
 } from "./guide_v3/routing.ts";
 import { scanSafetyKeywords } from "./guide_v3/safety.ts";
 import {
@@ -1798,6 +1799,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         isResume: analysisRunId !== null,
       })
     ) {
+      // 兩段式「正常回覆」實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，off／test／on，每次請求讀；
+      // Eric 2026-10-19 兩段式實驗）：只讀一次，流程與模型呼叫用同一個值。沒開就跟今天一樣。
+      const twoStage = shouldUseGuideV3TwoStage({
+        mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TWO_STAGE")),
+        accountIsTest,
+      });
       return await handleGuideV3Stream({
         store: new AnalysisStreamRunStore(
           createSupabaseAnalysisStreamRunDriver(
@@ -1840,6 +1847,7 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         subMonthlyUsed: sub.monthly_messages_used,
         subDailyUsed: sub.daily_messages_used,
         careOnlyFromQuota,
+        twoStage,
         ...createGuideV3ModelCalls({
           apiKey: CLAUDE_API_KEY,
           requestType,
