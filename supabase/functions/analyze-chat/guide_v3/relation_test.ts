@@ -5,8 +5,9 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
+import type { GuideV3Plan } from "./plan.ts";
 import { readSystemPrompt } from "./prompts.ts";
-import { READ_TAGS_SCHEMA } from "./read_tags.ts";
+import { HER_MOVES, READ_TAGS_SCHEMA } from "./read_tags.ts";
 import {
   GAME_STAGES,
   parseRelation,
@@ -20,6 +21,7 @@ import {
   withRelationFields,
 } from "./relation.ts";
 import { guideV3Mode, shouldReadGuideV3Relation } from "./routing.ts";
+import { HER_MOVE_CODE, readView, relationView } from "./wire.ts";
 
 Deno.test("關係訊號開關：沒設或打錯都不開；test 只給測試帳號；on 誰都開", () => {
   for (const raw of [undefined, "", "true", "1", "offf"]) {
@@ -278,4 +280,102 @@ Deno.test("關係訊號檢查：四個維度要全部是 0–100 的整數，缺
   });
   assertEquals(extra.dimensions, DIMENSIONS);
   assertEquals(extra.dropped, []);
+});
+
+Deno.test("她這一輪在做什麼的代碼：十一類都有，不重複，都是小寫英文與底線", () => {
+  assertEquals(Object.keys(HER_MOVE_CODE), [...HER_MOVES]);
+  const codes = Object.values(HER_MOVE_CODE);
+  assertEquals(new Set(codes).size, HER_MOVES.length);
+  for (const code of codes) assert(/^[a-z]+(_[a-z]+)*$/.test(code), code);
+});
+
+const SIGNALS_PLAN: GuideV3Plan = {
+  decision: "send",
+  judgment: "她在分享日常，氣氛輕鬆。",
+  reason: "照常回",
+  waitFor: "",
+  push: null,
+  specs: [],
+  entries: [],
+  signals: {
+    inviteReadiness: "沒機會",
+    cold: { c1: false, herPerfunctoryStreak: 0 },
+  },
+};
+
+const MOVE = { herMove: "調侃", replyWillingness: "high" } as const;
+
+Deno.test("判讀的 relation：照合約的欄位與順序，雷達的 heat 用熱度補上", () => {
+  const view = relationView({
+    stage: "qualification",
+    heat: 62,
+    dimensions: DIMENSIONS,
+  }, MOVE);
+  // 用 JSON 字串比，連欄位順序一起鎖住。
+  assertEquals(
+    JSON.stringify(view),
+    JSON.stringify({
+      stage: "qualification",
+      heat: 62,
+      dimensions: {
+        heat: 62,
+        engagement: 70,
+        topicDepth: 55,
+        replyWillingness: 65,
+        emotionalConnection: 50,
+      },
+      herMove: "teasing",
+      willingness: "high",
+    }),
+  );
+});
+
+Deno.test("判讀的 relation：沒通過檢查的不放；熱度沒過時雷達整組不放；三欄都沒有就沒有 relation", () => {
+  assertEquals(relationView({ stage: "close" }, MOVE), {
+    stage: "close",
+    herMove: "teasing",
+    willingness: "high",
+  });
+  assertEquals(relationView({ heat: 30 }, MOVE), {
+    heat: 30,
+    herMove: "teasing",
+    willingness: "high",
+  });
+  assertEquals(
+    relationView({ stage: "premise", dimensions: DIMENSIONS }, MOVE),
+    { stage: "premise", herMove: "teasing", willingness: "high" },
+  );
+  assertEquals(relationView({ dimensions: DIMENSIONS }, MOVE), undefined);
+  assertEquals(relationView({}, MOVE), undefined);
+  assertEquals(
+    relationView({ heat: 0 }, { herMove: "煞車", replyWillingness: "low" }),
+    { heat: 0, herMove: "braking", willingness: "low" },
+  );
+});
+
+Deno.test("判讀：relation 排在最後；沒給就跟今天一樣；自傷關心、未成年一律不帶", () => {
+  const relation = relationView({ stage: "premise", heat: 70 }, MOVE)!;
+  const without = readView(SIGNALS_PLAN, "green");
+  const withRelation = readView(SIGNALS_PLAN, "green", relation);
+  assertEquals(Object.keys(withRelation), [
+    ...Object.keys(without),
+    "relation",
+  ]);
+  assertEquals(withRelation.relation, relation);
+  assertEquals("relation" in without, false);
+  for (const careKind of ["self_harm", "minor"] as const) {
+    const care: GuideV3Plan = {
+      decision: "care",
+      judgment: "",
+      reason: "",
+      waitFor: "",
+      push: null,
+      specs: [],
+      entries: [],
+      careKind,
+      careTrigger: "model",
+    };
+    assertEquals(readView(care, "green", relation), readView(care, "green"));
+    assertEquals("relation" in readView(care, "green", relation), false);
+  }
 });

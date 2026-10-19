@@ -16,15 +16,23 @@ import {
 import {
   fixtureCase,
   type FlowCase,
+  RELATION_FLOW_T0,
   runFlow,
+  runFlowWithRun,
   withReadTags,
 } from "./relation_flow_harness.ts";
+import {
+  GUIDE_V3_STALE_AFTER_MS,
+  guideV3ResumeSnapshot,
+  recoveredGuideV3Result,
+} from "./run_shape.ts";
 import {
   fakeReadResponse,
   fakeWriteResponse,
   runGuideV3StreamThroughHandler,
   type V3HarnessOutcome,
 } from "./v3_stream_harness.ts";
+import { HER_MOVE_CODE } from "./wire.ts";
 
 const IMPORT_ENV: Record<string, string> = {
   SUPABASE_URL: "http://supabase.test",
@@ -230,6 +238,189 @@ Deno.test("開關開、帶了上一輪：trace 只留白名單，關係訊號照
   assertEquals("readForUser" in tags, false);
 });
 
+// ---- 判讀帶 relation（合約見 COMMON2：stage、heat、dimensions、herMove、willingness） ----
+
+/// 讀局面標記與三欄 → 判讀裡應該出現的 relation（欄位順序照合約）。
+function expectedRelation(name: string, over: Rec = {}): Rec {
+  const tags = { ...JSON.parse(fixtureCase(name).readText), ...over };
+  return {
+    stage: "qualification",
+    heat: 62,
+    dimensions: { heat: 62, ...DIMENSIONS },
+    herMove: HER_MOVE_CODE[tags.herMove as keyof typeof HER_MOVE_CODE],
+    willingness: tags.replyWillingness,
+  };
+}
+
+function readEventOf(outcome: Rec): Rec {
+  const read = (outcome.events as Rec[]).find((e) =>
+    e.type === "analysis.read"
+  );
+  assert(read, "要有判讀");
+  return read;
+}
+
+/// relation 出現的每個地方：判讀事件、done 的兩份結果、扣費內容、落帳結果。
+function relationCopies(outcome: Rec): unknown[] {
+  const done = (outcome.events as Rec[]).find((e) =>
+    e.type === "analysis.done"
+  )!;
+  return [
+    readEventOf(outcome).relation,
+    ((done.finalResult as Rec).read as Rec).relation,
+    ((done.result as Rec).read as Rec).relation,
+    ...(outcome.charges as Rec[]).map((c) =>
+      ((c.recommendationJson as Rec).read as Rec).relation
+    ),
+    ((outcome.markDone as Rec).read as Rec).relation,
+  ];
+}
+
+Deno.test("開關開、出卡：判讀在最後多一個 relation，形狀照合約；done、扣費內容、落帳結果都是同一份", async () => {
+  const name = "she_teases_him#1";
+  const on = await assertSameExceptRelation(name, RELATION_TAGS);
+  const expected = expectedRelation(name);
+  assertEquals(expected.herMove, "teasing");
+  const read = readEventOf(on);
+  // 用 JSON 字串比，連欄位順序一起鎖住；relation 排在判讀最後，前面的欄位不動。
+  assertEquals(JSON.stringify(read.relation), JSON.stringify(expected));
+  const off = await runFlow(fixtureCase(name));
+  assertEquals(Object.keys(read), [
+    ...Object.keys(readEventOf(off)),
+    "relation",
+  ]);
+  const copies = relationCopies(on);
+  assertEquals(copies.length, 5);
+  for (const copy of copies) assertEquals(copy, expected);
+  // 判讀照舊跟第一張卡一起、在扣費之後才送。
+  const types = (on.events as Rec[]).map((e) => e.type);
+  assertEquals(
+    types.indexOf("analysis.read") + 1,
+    types.indexOf("analysis.card"),
+  );
+  assert((on.calls as string[]).indexOf("charge:send:accept") > 0);
+});
+
+Deno.test("開關開、收尾、先別回、停：判讀照樣帶 relation，扣費內容也帶（續看重組拿得到）", async () => {
+  const cases: [string, Rec, string][] = [
+    ["soft_reject_after_invite#1", {}, "close"],
+    ["cold_one_word_replies#1", {}, "hold"],
+    ["she_teases_him#1", { explicitRejection: true }, "stop"],
+  ];
+  for (const [name, over, decision] of cases) {
+    const on = await assertSameExceptRelation(name, RELATION_TAGS, over);
+    const read = readEventOf(on);
+    assertEquals(read.decision, decision, name);
+    const expected = expectedRelation(name, over);
+    for (const copy of relationCopies(on)) assertEquals(copy, expected, name);
+  }
+});
+
+Deno.test("開關開、自傷關心與未成年（模型標的、她的訊息有自傷字眼）：判讀、done、扣費內容都不帶 relation；決定與扣費跟沒開一樣，trace 照記", async () => {
+  const careCases: FlowCase[] = [
+    withReadTags("she_teases_him#1", { selfHarmSignal: true }),
+    withReadTags("she_teases_him#1", { minorSignal: true }),
+  ];
+  const teases = fixtureCase("she_teases_him#1");
+  careCases.push({
+    ...teases,
+    name: "keyword",
+    messages: [...teases.messages, { isFromMe: false, content: "我不想活了" }],
+  });
+  for (const careCase of careCases) {
+    const off = await runFlow(careCase);
+    const on = await runFlow(
+      {
+        ...careCase,
+        readText: JSON.stringify({
+          ...JSON.parse(careCase.readText),
+          ...RELATION_TAGS,
+        }),
+      },
+      { relation: true },
+    );
+    assertEquals(readEventOf(on).decision, "care", careCase.name);
+    // 送出的、扣費的、存給 App 看的都跟沒開一模一樣（沒有 relation）。
+    assertEquals(on.events, off.events, careCase.name);
+    assertEquals(on.charges, off.charges, careCase.name);
+    assertEquals(
+      JSON.stringify([on.events, on.charges]).includes('"relation"'),
+      false,
+    );
+    assertEquals(trace(on).relation, {
+      stage: "qualification",
+      heat: 62,
+      dimensions: DIMENSIONS,
+      dropped: [],
+    }, careCase.name);
+  }
+});
+
+Deno.test("開關開、三欄只有部分合格：只送合格的；熱度不合格時雷達整組不送；三欄都不合格就沒有 relation（判讀跟沒開一樣）", async () => {
+  const name = "she_teases_him#1";
+  const move = { herMove: "teasing", willingness: "high" };
+  const cases: [Rec, Rec | undefined][] = [
+    [{ heatScore: 150 }, { stage: "qualification", ...move }],
+    [{ gameStage: "dating" }, {
+      heat: 62,
+      dimensions: { heat: 62, ...DIMENSIONS },
+      ...move,
+    }],
+    [{ dimensions: { ...DIMENSIONS, topicDepth: -1 } }, {
+      stage: "qualification",
+      heat: 62,
+      ...move,
+    }],
+    [{ gameStage: "Close", heatScore: 62.5, dimensions: null }, undefined],
+  ];
+  for (const [bad, expected] of cases) {
+    const on = await assertSameExceptRelation(name, {
+      ...RELATION_TAGS,
+      ...bad,
+    });
+    for (const copy of relationCopies(on)) {
+      assertEquals(copy, expected, JSON.stringify(bad));
+    }
+    assertEquals(relationLogs(on).length, 1, JSON.stringify(bad));
+  }
+  const allBad = await runFlow(
+    withReadTags(name, { gameStage: "x", heatScore: -3, dimensions: [] }),
+    { relation: true },
+  );
+  assertEquals(allBad.events, (await runFlow(fixtureCase(name))).events);
+});
+
+Deno.test("開關開：續看重播（已結案）與從扣費內容重組（原請求被終止）都拿得到 relation", async () => {
+  for (const name of ["she_teases_him#1", "cold_one_word_replies#1"]) {
+    const { run } = await runFlowWithRun(withReadTags(name, RELATION_TAGS), {
+      relation: true,
+    });
+    const expected = expectedRelation(name);
+    // 已結案：續看重播落帳結果（剝掉伺服器專用的 trace）。
+    assertEquals(run.status, "done");
+    const replay = guideV3ResumeSnapshot(run, RELATION_FLOW_T0);
+    const replayed = replay.finalResult as Rec;
+    assertEquals((replayed.read as Rec).relation, expected, name);
+    assertEquals("guideV3Trace" in replayed, false);
+    // 扣過費、原請求被終止、沒有結果：逾時後從扣費內容重組。
+    const cut = { ...run, status: "charged" as const, final_result_json: null };
+    assertEquals(
+      (recoveredGuideV3Result(cut)?.read as Rec).relation,
+      expected,
+      name,
+    );
+    const stale = guideV3ResumeSnapshot(
+      cut,
+      RELATION_FLOW_T0 + GUIDE_V3_STALE_AFTER_MS,
+    );
+    assertEquals(
+      ((stale.finalResult as Rec).read as Rec).relation,
+      expected,
+      name,
+    );
+  }
+});
+
 // ---- 走整個 handler（假 Supabase、假模型） ----
 
 const HANDLER_MESSAGES = [
@@ -317,4 +508,34 @@ Deno.test("開關 on，或 test＋測試帳號：走 handler 時讀局面請求�
       flag,
     );
   }
+});
+
+Deno.test("開關 on 走 handler：判讀事件、扣費 RPC 的內容、落帳結果都帶 relation；送給 App 的 done 沒有 trace", async () => {
+  const out = await runHandler("on");
+  assertEquals(out.status, 200);
+  const expected = {
+    stage: "qualification",
+    heat: 62,
+    dimensions: { heat: 62, ...DIMENSIONS },
+    herMove: HER_MOVE_CODE[HANDLER_TAGS.herMove as keyof typeof HER_MOVE_CODE],
+    willingness: HANDLER_TAGS.replyWillingness,
+  };
+  const read = out.events.find((e) => e.type === "analysis.read");
+  assertEquals(JSON.stringify(read?.relation), JSON.stringify(expected));
+  const charge = out.rpcs.find((r) => r.fn === "charge_stream_analysis_run_v3");
+  assert(charge, "要有扣費");
+  assertEquals(
+    ((charge.args.p_recommendation_json as Rec).read as Rec).relation,
+    expected,
+  );
+  assertEquals((out.finalResult?.read as Rec).relation, expected);
+  assertEquals((out.finalResult?.guideV3Trace as Rec).relation, {
+    stage: "qualification",
+    heat: 62,
+    dimensions: DIMENSIONS,
+    dropped: [],
+  });
+  const done = out.events.find((e) => e.type === "analysis.done")!;
+  assertEquals("guideV3Trace" in (done.finalResult as Rec), false);
+  assertEquals(((done.finalResult as Rec).read as Rec).relation, expected);
 });

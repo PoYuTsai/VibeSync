@@ -75,6 +75,7 @@ import {
   type GuideV3Trace,
   readEvent,
   readView,
+  relationView,
 } from "./wire.ts";
 
 /// 讀局面＋寫卡共用的模型期限（從請求開始算）。
@@ -455,7 +456,12 @@ class GuideV3Flow {
             field,
           }, "error"),
       );
-      const view = readView(plan, tags.light);
+      // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
+      const view = readView(
+        plan,
+        tags.light,
+        this.relation ? relationView(this.relation, tags) : undefined,
+      );
       // 自傷訊號要讀完才知道，所以記憶在讀局面之後才開始；關心訊息不打這一次。
       if (plan.decision !== "care") this.startMemory(turns, deadlineAtMs);
       switch (plan.decision) {
