@@ -155,7 +155,7 @@ class _GuideV3RelationCardState extends State<GuideV3RelationCard> {
       child: InkWell(
         key: const ValueKey('guide-v3-relation-detail'),
         onTap: _toggleDetail,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Row(
