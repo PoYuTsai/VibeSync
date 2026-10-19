@@ -69,6 +69,9 @@ import {
 import {
   readSystemPromptTwoStage,
   readUserPromptTwoStage,
+  TWO_STAGE_WRITER_SENTINELS,
+  writeSystemPromptTwoStage,
+  writeUserPromptTwoStage,
 } from "./two_stage_prompts.ts";
 import { type GuideMessage, toTurns, type Turn } from "./turns.ts";
 import {
@@ -991,7 +994,10 @@ class GuideV3Flow {
         return true;
       }
       seen.add(card.card);
-      const out = finalizeCard(card, spec, sourceText);
+      // 兩段式實驗：寫卡提示詞新加的段落也當外洩哨兵；沒開照舊。
+      const out = this.deps.twoStage === true
+        ? finalizeCard(card, spec, sourceText, TWO_STAGE_WRITER_SENTINELS)
+        : finalizeCard(card, spec, sourceText);
       if (!out.ok) {
         // 原文留在伺服器紀錄，誤擋時查得到；outcome log 只記原因。
         removed.push({
@@ -1068,10 +1074,12 @@ class GuideV3Flow {
       label: GUIDE_V3_WRITING_LABEL,
     });
     try {
+      // 兩段式實驗（Eric 2026-10-19）：寫卡不帶說明書的立場與表態段，規格多「這張接」；沒開照舊。
+      const twoStage = this.deps.twoStage === true;
       const write = await this.deps.callWrite({
         runId: this.runId,
-        system: writeSystemPrompt(),
-        user: writeUserPrompt({
+        system: twoStage ? writeSystemPromptTwoStage() : writeSystemPrompt(),
+        user: (twoStage ? writeUserPromptTwoStage : writeUserPrompt)({
           turns,
           tags,
           entries: plan.entries,

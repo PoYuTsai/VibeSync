@@ -152,20 +152,36 @@ const PUSH_NOTE: Record<PushAction, string> = {
     "推進（她堅持要去她指定的店：由他提別的時間、地點，只約別的地方，不答應去那家，也不答應之後再去那家；用陳述句收尾，不問她方不方便、可不可以）",
 };
 
-export function cardSpecLine(spec: CardSpec, n: number): string {
-  const task = spec.push ? PUSH_NOTE[spec.push] : spec.task;
+/// 卡片規格的任務字（推進另附動作）。兩段式實驗的規格（two_stage_prompts.ts）也用這一份。
+export function cardTaskText(spec: CardSpec): string {
+  return spec.push ? PUSH_NOTE[spec.push] : spec.task;
+}
+
+/// 卡片規格的「他的事」做法字。兩段式實驗的規格也用這一份。
+export function cardMethodText(spec: CardSpec): string {
   // v3.2（Bruce 10/14）：留空格的卡也可以編別的細節，但要標示；身分資料仍只能留空格。
-  const method = spec.method === "留空格"
+  return spec.method === "留空格"
     ? "留空格（需要他的事實用＿＿；工作、年紀、身高、感情狀態、住哪只能留空格；空格以外編出來的細節要標示）"
     : spec.method;
+}
+
+export function cardSpecLine(spec: CardSpec, n: number): string {
   const parts = [
-    `${n}. 任務：${task}`,
-    `「有他」做法：${method}`,
+    `${n}. 任務：${cardTaskText(spec)}`,
+    `「有他」做法：${cardMethodText(spec)}`,
     `口吻：${spec.voice}`,
     spec.questionBudget === 0 ? "不問問題" : "問句最多 1 個",
   ];
   if (spec.angle > 0) parts.push("切入點要跟前面同規格的卡不同");
   return parts.join("｜");
+}
+
+/// 兩段式實驗換掉的三處（two_stage_prompts.ts）：對話稿她最新這一輪逐則編號、條目寫法的
+/// 標籤字、每張卡的規格行。沒給就跟今天一字不差。
+export interface WriteUserPromptVariant {
+  readonly numberLatestHerTurn: boolean;
+  readonly entryWriting: (entry: GuideV3Entry) => string;
+  readonly specLine: (spec: CardSpec, n: number) => string;
 }
 
 export function writeUserPrompt(args: {
@@ -175,24 +191,31 @@ export function writeUserPrompt(args: {
   readonly cards: readonly CardSpec[];
   readonly background?: GuideV3Background;
   readonly previousRound?: GuideV3PreviousRound;
+  readonly variant?: WriteUserPromptVariant;
 }): string {
   const facts = args.tags.hisStatedFacts.length > 0
     ? args.tags.hisStatedFacts.map((f) => `- ${f}`).join("\n")
     : "（沒有）";
+  const writing = args.variant?.entryWriting ??
+    ((e: GuideV3Entry) => e.writing);
+  const specLine = args.variant?.specLine ?? cardSpecLine;
   const entries = args.entries.length > 0
-    ? args.entries.map((e) => `- ${e.id}（${e.trigger}）：${e.writing}`).join(
+    ? args.entries.map((e) => `- ${e.id}（${e.trigger}）：${writing(e)}`).join(
       "\n",
     )
     : "（這一輪沒有）";
+  const transcript = transcriptByTurn(args.turns, {
+    numberLatestHerTurn: args.variant?.numberLatestHerTurn ?? false,
+  });
   return [
     ...backgroundSections(args.background),
     // 上一輪脈絡（開關 ANALYZE_GUIDE_V3_PREV_ROUND）：沒帶就一字不變。
     ...previousRoundWriteSection(args.previousRound),
-    `## 對話\n${transcriptByTurn(args.turns)}`,
+    `## 對話\n${transcript}`,
     `## 他在對話裡說過的自己的事\n${facts}`,
     `## 這一輪的情境做法\n${entries}`,
     `## 卡片規格（照順序寫，一共 ${args.cards.length} 張）\n${
-      args.cards.map((c, i) => cardSpecLine(c, i + 1)).join("\n")
+      args.cards.map((c, i) => specLine(c, i + 1)).join("\n")
     }`,
   ].join("\n\n");
 }

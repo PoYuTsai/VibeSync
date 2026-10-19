@@ -67,9 +67,11 @@ const GUIDE_V3_LEAK_SENTINELS: readonly string[] = [
   ...GUIDE_V3_SENTINELS_NORMALIZED,
 ];
 
-function leaksPrompt(text: string): boolean {
+/// extra：兩段式實驗新提示詞的哨兵（two_stage_prompts.ts、explain.ts）；沒給就跟今天一樣。
+function leaksPrompt(text: string, extra: readonly string[] = []): boolean {
   return hasAnalyzeChatPromptLeak(text) ||
-    containsPromptLeak(text, GUIDE_V3_LEAK_SENTINELS);
+    containsPromptLeak(text, GUIDE_V3_LEAK_SENTINELS) ||
+    (extra.length > 0 && containsPromptLeak(text, extra));
 }
 
 function cleanMessage(message: string): string | null {
@@ -81,10 +83,12 @@ function cleanMessage(message: string): string | null {
 
 /// sourceText：對話全文（她跟他傳過的字），英文詞要有它支持或在白名單裡。
 /// 規格只用到口吻（任務卡的再調也走這裡，見 refine_card.ts）。
+/// extraSentinels：兩段式實驗寫卡提示詞新加段落的哨兵；沒給就跟今天一樣。
 export function finalizeCard(
   card: WrittenCard,
   spec: Pick<CardSpec, "voice">,
   sourceText: string,
+  extraSentinels: readonly string[] = [],
 ): FinalizedCard {
   const voiced = applyVoice(card, spec);
   const cleaned = voiced.messages.map(cleanMessage).filter((m): m is string =>
@@ -108,7 +112,8 @@ export function finalizeCard(
   const joined = cleaned.join("\n");
   const rawJoined = card.messages.join("\n");
   if (
-    leaksPrompt(joined) || leaksPrompt(rawJoined) ||
+    leaksPrompt(joined, extraSentinels) ||
+    leaksPrompt(rawJoined, extraSentinels) ||
     hasPromptInjection(joined) || hasPromptInjection(rawJoined)
   ) {
     return { ok: false, reason: "prompt_leak" };
