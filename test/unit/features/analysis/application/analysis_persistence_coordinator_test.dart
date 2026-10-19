@@ -310,6 +310,9 @@ class _Harness {
   final funnelEvents = <String>[];
   final afterPersisted = <Conversation>[];
   final silencedFollowUps = <bool>[];
+
+  /// 協調器自己收回提醒的對象（不靠畫面；主審第 1 輪 finding 1）。
+  final silencedPartners = <String>[];
   int notifyCount = 0;
   int invalidateCount = 0;
 
@@ -338,6 +341,7 @@ class _Harness {
       afterPersisted.add(conv);
       silencedFollowUps.add(silenceFollowUp);
     },
+    silenceFollowUp: (partnerId) async => silencedPartners.add(partnerId),
   );
 }
 
@@ -891,7 +895,7 @@ void main() {
     });
   });
   group('48 小時跟進提醒（P1 安全修正）：關心與停之後不催他回去找她', () {
-    Future<List<bool>> silenceAfter(PersistableAnalysis analysis) async {
+    Future<_Harness> persist(PersistableAnalysis analysis) async {
       final conversation = _conversation(partnerId: 'p1');
       final harness = _Harness(conversation: conversation);
       await harness.coordinator.persistLatestSnapshot(
@@ -902,25 +906,65 @@ void main() {
         analyzedContentRevision: conversationContentRevision(conversation),
       );
       expect(harness.afterPersisted.single.id, _conversationId);
-      return harness.silencedFollowUps;
+      return harness;
     }
 
-    test('v3 關心（自傷）與停：存好後叫畫面收回提醒', () async {
-      expect(await silenceAfter(_guideV3(decision: 'care')), [true]);
-      expect(await silenceAfter(_guideV3(decision: 'stop')), [true]);
+    test('v3 關心（自傷）與停：存好時協調器自己收回這位對象的提醒，畫面只被告知不問、不排', () async {
+      for (final decision in ['care', 'stop']) {
+        final harness = await persist(_guideV3(decision: decision));
+        expect(harness.silencedPartners, ['p1'], reason: decision);
+        expect(harness.silencedFollowUps, [true], reason: decision);
+      }
     });
 
-    test('v3 先別回、出卡與 v2 結果照舊', () async {
-      expect(await silenceAfter(_guideV3(decision: 'hold')), [false]);
-      expect(await silenceAfter(_guideV3()), [false]);
-      expect(
-        await silenceAfter(
-          PersistableAnalysis.fromResult(
-            AnalysisResult.fromJson(_resultJson()),
-          ),
+    test('v3 先別回、出卡與 v2 結果照舊：不收回', () async {
+      for (final analysis in [
+        _guideV3(decision: 'hold'),
+        _guideV3(),
+        PersistableAnalysis.fromResult(AnalysisResult.fromJson(_resultJson())),
+      ]) {
+        final harness = await persist(analysis);
+        expect(harness.silencedPartners, isEmpty);
+        expect(harness.silencedFollowUps, [false]);
+      }
+    });
+
+    _Harness restoring(String decision, {String? partnerId = 'p1'}) {
+      final base = _conversation();
+      final snapshot = _guideV3Json(decision: decision)
+        ..['__vibesync_snapshot_meta_v1'] = {
+          'contentRevision': conversationContentRevision(base, messageCount: 1),
+          'messageCount': 1,
+        };
+      return _Harness(
+        conversation: _conversation(
+          snapshotJson: jsonEncode(snapshot),
+          analyzedCount: 1,
+          partnerId: partnerId,
         ),
-        [false],
       );
+    }
+
+    test('冷啟動還原到關心或停：再收一次這位對象的提醒（主審第 1 輪 finding 1；重複無妨）', () async {
+      for (final decision in ['care', 'stop']) {
+        final harness = restoring(decision);
+        expect(harness.coordinator.restore(repairRecord: false), isNotNull);
+        expect(harness.coordinator.restore(repairRecord: false), isNotNull);
+        await Future<void>.delayed(Duration.zero);
+        expect(harness.silencedPartners, ['p1', 'p1'], reason: decision);
+      }
+    });
+
+    test('還原到出卡、先別回，或沒綁對象：不叫', () async {
+      for (final harness in [
+        restoring('send'),
+        restoring('hold'),
+        restoring('care', partnerId: null),
+      ]) {
+        expect(harness.coordinator.restore(repairRecord: false), isNotNull);
+        await Future<void>.delayed(Duration.zero);
+        expect(harness.silencedPartners, isEmpty);
+      }
     });
   });
 

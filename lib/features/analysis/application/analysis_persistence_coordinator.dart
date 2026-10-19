@@ -28,10 +28,11 @@ import '../domain/entities/guide_v3_result.dart';
 import '../domain/entities/persistable_analysis.dart';
 import 'ports/analysis_record_port.dart';
 import 'ports/conversation_write_ports.dart';
+import 'ports/follow_up_port.dart';
 
 /// canonical snapshot 落地後的畫面層跟進（48h 跟進提醒）。[silenceFollowUp]＝這次是
-/// v3 的關心（自傷、未成年）或停（她拒絕或封鎖）：不問軟卡、不排，這位對象已排的那則
-/// 收回（P1 安全修正）；其他照舊問一次、照 opt-in 排。
+/// v3 的關心（自傷、未成年）或停（她拒絕或封鎖）：不問軟卡、不排（已排的那則由協調器
+/// 自己收回，見 [FollowUpSilencer]；P1 安全修正）；其他照舊問一次、照 opt-in 排。
 typedef AfterAnalysisPersisted = Future<void> Function(
   Conversation conversation, {
   required bool silenceFollowUp,
@@ -80,6 +81,7 @@ class AnalysisPersistenceCoordinator {
     required void Function() notifyStateChanged,
     required void Function(Conversation conversation) invalidateRecordViews,
     required AfterAnalysisPersisted afterAnalysisPersisted,
+    required FollowUpSilencer silenceFollowUp,
   })  : _getConversation = getConversation,
         _persistAnalysisCompleted = persistAnalysisCompleted,
         _persistContentChanged = persistContentChanged,
@@ -92,7 +94,8 @@ class AnalysisPersistenceCoordinator {
         _lastPayloadCharCount = lastPayloadCharCount,
         _notifyStateChanged = notifyStateChanged,
         _invalidateRecordViews = invalidateRecordViews,
-        _afterAnalysisPersisted = afterAnalysisPersisted;
+        _afterAnalysisPersisted = afterAnalysisPersisted,
+        _silenceFollowUp = silenceFollowUp;
 
   final String conversationId;
   final GetConversation _getConversation;
@@ -119,6 +122,10 @@ class AnalysisPersistenceCoordinator {
 
   /// canonical snapshot 落地後的畫面層跟進（48h 跟進通知軟卡）。
   final AfterAnalysisPersisted _afterAnalysisPersisted;
+
+  /// v3 關心或停時收回這位對象的跟進提醒：存檔與冷啟動還原都叫，不靠畫面（主審第 1 輪
+  /// finding 1）。
+  final FollowUpSilencer _silenceFollowUp;
 
   int _inFlightCount = 0;
   final Set<Future<void>> _pendingTasks = {};
@@ -181,6 +188,10 @@ class AnalysisPersistenceCoordinator {
       if (isGuideV3Payload(analysisPayload)) {
         restoredGuideV3 = GuideV3Result.fromJson(analysisPayload);
         if (restoredGuideV3 == null) return null;
+        // 還原到關心或停（例如舊版 App 存的、或上次存好後沒收回）：再收一次提醒，重複無妨。
+        if (restoredGuideV3.decision.silencesFollowUp) {
+          unawaited(_silenceFollowUpSafely(conversation.partnerId));
+        }
         restoredRunId = _snapshotRunId(snapshot);
         persistable = PersistableAnalysis.fromGuideV3(
           restoredGuideV3,
@@ -812,11 +823,24 @@ class AnalysisPersistenceCoordinator {
 
     // 案4：48h 跟進提醒 — 綁 partner 的分析完成後，首次詢問軟卡並排程。
     // best-effort：失敗只 debugPrint，絕不影響分析呈現與快照持久化。
-    // v3 關心與停不催他回去找她：不問、不排，已排的收回（P1 安全修正）。
+    // v3 關心與停不催他回去找她：這裡先收回已排的（不靠畫面），畫面不問、不排（P1 安全修正）。
+    if (analysis.silencesFollowUp) {
+      await _silenceFollowUpSafely(conv.partnerId);
+    }
     await _afterAnalysisPersisted(
       conv,
       silenceFollowUp: analysis.silencesFollowUp,
     );
+  }
+
+  Future<void> _silenceFollowUpSafely(String? partnerId) async {
+    final id = partnerId?.trim();
+    if (id == null || id.isEmpty) return;
+    try {
+      await _silenceFollowUp(id);
+    } catch (error) {
+      debugPrint('FollowUp silence failed: $error');
+    }
   }
 
   void _setAnalysisRecordNeedsRepair(bool value) {

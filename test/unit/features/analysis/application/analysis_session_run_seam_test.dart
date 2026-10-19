@@ -105,6 +105,7 @@ class _Harness {
     notifyStateChanged: () {},
     invalidateRecordViews: (_) {},
     afterAnalysisPersisted: (_, {required silenceFollowUp}) async {},
+    silenceFollowUp: (_) async {},
   );
 
   late final AnalysisSessionController session = AnalysisSessionController(

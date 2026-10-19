@@ -102,11 +102,33 @@ class _ScriptedClient extends AnalyzeStreamClient {
   }
 }
 
-ProviderContainer _container(AnalyzeStreamClient client) {
+ProviderContainer _container(
+  AnalyzeStreamClient client, {
+  List<String>? silenced,
+}) {
   return ProviderContainer(overrides: [
     analyzeStreamClientProvider.overrideWithValue(client),
+    if (silenced != null)
+      analysisFollowUpSilencerProvider.overrideWithValue(
+        (partnerId) async => silenced.add(partnerId),
+      ),
   ]);
 }
+
+GuideV3Result _decisionResult(String decision) => GuideV3Result.fromJson({
+      'guideVersion': 'v3.6',
+      'read': {
+        'guideVersion': 'v3.6',
+        'decision': decision,
+        'light': decision == 'care' ? null : 'red',
+        'judgment': decision == 'care' ? '' : '她說了不要。',
+        if (decision == 'care') 'careMessage': '先把安全放在第一位。',
+        'plannedCards': const [],
+      },
+      'cards': const [],
+      'partial': false,
+      'usage': {'messagesUsed': decision == 'care' ? 0 : 1},
+    })!;
 
 void main() {
   group('StreamingAnalyzeNotifier — v3 任務卡', () {
@@ -388,6 +410,76 @@ void main() {
         state.guideV3Result!.rawResponse.containsKey(guideV3CardExplainsKey),
         isFalse,
       );
+    });
+
+    group('跟進提醒（P1 安全修正；主審第 1 輪 finding 1）：判成關心或停時 notifier 自己收回，不靠分析頁', () {
+      Future<List<String>> run(
+        List<Object> script, {
+        String? partnerId = 'partner-1',
+      }) async {
+        final silenced = <String>[];
+        final container =
+            _container(_ScriptedClient([script]), silenced: silenced);
+        addTearDown(container.dispose);
+        await container.read(streamingAnalyzeProvider('conv-1').notifier).start(
+          messages: [_msg('哈囉')],
+          conversationPartnerId: partnerId,
+        );
+        await Future<void>.delayed(Duration.zero);
+        return silenced;
+      }
+
+      test('關心與停：判讀一到就收回這位對象的提醒；同一個 run 到 done 也只叫一次', () async {
+        for (final decision in ['care', 'stop']) {
+          final result = _decisionResult(decision);
+          final silenced = await run([
+            _v3Started,
+            AnalysisStreamUpdate.guideV3Read(read: result.read, runId: 'r'),
+            AnalysisStreamUpdate.guideV3Done(result: result, runId: 'r'),
+          ]);
+          expect(silenced, ['partner-1'], reason: decision);
+        }
+      });
+
+      test('判讀還沒送到就斷了、只有 done 帶決定：done 時收回', () async {
+        final result = _decisionResult('stop');
+        expect(
+          await run([
+            _v3Started,
+            AnalysisStreamUpdate.guideV3Done(result: result, runId: 'r'),
+          ]),
+          ['partner-1'],
+        );
+      });
+
+      test('先別回、出卡、沒綁對象：不叫', () async {
+        final hold = _decisionResult('hold');
+        expect(
+          await run([
+            _v3Started,
+            AnalysisStreamUpdate.guideV3Read(read: hold.read, runId: 'r'),
+            AnalysisStreamUpdate.guideV3Done(result: hold, runId: 'r'),
+          ]),
+          isEmpty,
+        );
+        expect(
+          await run([
+            _v3Started,
+            AnalysisStreamUpdate.guideV3Read(read: _read(), runId: 'r'),
+            AnalysisStreamUpdate.guideV3Done(result: _result(), runId: 'r'),
+          ]),
+          isEmpty,
+        );
+        final care = _decisionResult('care');
+        expect(
+          await run([
+            _v3Started,
+            AnalysisStreamUpdate.guideV3Read(read: care.read, runId: 'r'),
+            AnalysisStreamUpdate.guideV3Done(result: care, runId: 'r'),
+          ], partnerId: null),
+          isEmpty,
+        );
+      });
     });
 
     test('新的一次分析清掉上一次的 v3 狀態', () async {

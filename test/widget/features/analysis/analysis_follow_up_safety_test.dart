@@ -1,6 +1,9 @@
 // 48 小時跟進提醒的安全閘（P1）：v3 判成關心（自傷、未成年）或停（她拒絕或封鎖）
 // 之後，不問軟卡、不排提醒，這位對象先前排好的那則也收回；先別回與出卡照舊。
 // 走真的 AnalysisScreen：分析完成（hydrate 補寫）→ 存檔協調器 → 畫面的跟進掛點。
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +58,18 @@ class _InertAnalyzeStreamClient extends AnalyzeStreamClient {
   @override
   Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) =>
       const Stream.empty();
+}
+
+/// 串流由測試一則一則推（模擬伺服器還在送，畫面可能已經關掉）。
+class _ControlledAnalyzeStreamClient extends AnalyzeStreamClient {
+  _ControlledAnalyzeStreamClient()
+      : super(displayMapper: const AnalysisStreamContentDisplayMapper());
+
+  final controller = StreamController<AnalysisStreamUpdate>();
+
+  @override
+  Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) =>
+      controller.stream;
 }
 
 class _StubConversationRepository extends ConversationRepository {
@@ -213,6 +228,175 @@ GuideV3Result _result(String decision, {String? careKind}) {
   })!;
 }
 
+List<Override> _overrides({
+  required Conversation conversation,
+  required FakeNotificationGateway gateway,
+  required _MemoryOptInStore optInStore,
+  required AnalyzeStreamClient streamClient,
+}) =>
+    [
+      coachingOutcomeRepositoryProvider
+          .overrideWithValue(MemoryCoachingOutcomeRepository()),
+      analysisHistoryRepositoryProvider
+          .overrideWithValue(MemoryAnalysisHistoryRepository()),
+      conversationArchiveStoreProvider
+          .overrideWithValue(_MemoryConversationArchiveStore()),
+      conversationRepositoryProvider
+          .overrideWithValue(_StubConversationRepository(conversation)),
+      conversationProvider(_conversationId).overrideWithValue(conversation),
+      analyzeStreamClientProvider.overrideWithValue(streamClient),
+      coachChatRepositoryProvider
+          .overrideWithValue(_EmptyCoachChatRepository()),
+      coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
+          .overrideWithValue(const []),
+      partnerRepositoryProvider.overrideWithValue(
+        _StubPartnerRepository(
+          Partner(
+            id: _partnerId,
+            name: '小雲',
+            createdAt: DateTime(2026, 10, 1),
+            updatedAt: DateTime(2026, 10, 1),
+          ),
+        ),
+      ),
+      followUpNotificationServiceProvider.overrideWithValue(
+        FollowUpNotificationService(
+          gateway: gateway,
+          optInStore: optInStore,
+          now: () => DateTime(2026, 10, 19, 21),
+        ),
+      ),
+    ];
+
+/// 他按了分析、還沒出結果就離開分析頁（notifier 照樣在背景跑），結果之後才到。
+Future<_Harness> _pumpLeaveMidStream(
+  WidgetTester tester, {
+  required GuideV3Result result,
+  required FollowUpOptIn optIn,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  final conversation = _conversation();
+  final gateway = FakeNotificationGateway();
+  final optInStore = _MemoryOptInStore(optIn);
+  final client = _ControlledAnalyzeStreamClient();
+  // 同一個測試裡換一個 ProviderScope 前先清空。
+  await tester.pumpWidget(const SizedBox.shrink());
+  final container = ProviderContainer(
+    overrides: _overrides(
+      conversation: conversation,
+      gateway: gateway,
+      optInStore: optInStore,
+      streamClient: client,
+    ),
+  );
+  addTearDown(container.dispose);
+  final showScreen = ValueNotifier(true);
+  addTearDown(showScreen.dispose);
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        home: ValueListenableBuilder<bool>(
+          valueListenable: showScreen,
+          builder: (_, show, __) => show
+              ? const AnalysisScreen(conversationId: _conversationId)
+              : const Scaffold(body: Text('別的頁面')),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  tester.takeException();
+
+  unawaited(
+    container.read(streamingAnalyzeProvider(_conversationId).notifier).start(
+          messages: conversation.messages,
+          conversationMessageCount: conversation.messages.length,
+          analyzedMessageCount: conversation.messages.length,
+          conversationContentRevision:
+              conversationContentRevision(conversation),
+          conversationPartnerId: _partnerId,
+          isReconnectContext: false,
+        ),
+  );
+  client.controller.add(const AnalysisStreamUpdate.started(
+    runId: 'run_left',
+    guideVersion: 'v3.6',
+  ));
+  await tester.pump(const Duration(milliseconds: 50));
+
+  // 離開分析頁：畫面與它的存檔回呼都沒了，串流還在。
+  showScreen.value = false;
+  await tester.pump();
+  expect(find.byType(AnalysisScreen), findsNothing);
+
+  client.controller
+    ..add(
+        AnalysisStreamUpdate.guideV3Read(read: result.read, runId: 'run_left'))
+    ..add(AnalysisStreamUpdate.guideV3Done(result: result, runId: 'run_left'));
+  await client.controller.close();
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  tester.takeException();
+  return _Harness(gateway, optInStore);
+}
+
+/// 冷啟動：這段對話已經存了 v3 結果（例如舊版 App 存的，或上次存好後提醒沒收回），打開分析頁
+/// 從快照還原。
+Future<_Harness> _pumpColdRestore(
+  WidgetTester tester, {
+  required GuideV3Result result,
+  required FollowUpOptIn optIn,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  final base = _conversation();
+  final conversation = _conversation()
+    ..lastAnalyzedMessageCount = base.messages.length
+    ..lastAnalysisSnapshotJson = jsonEncode({
+      ...result.rawResponse,
+      '__vibesync_snapshot_meta_v1': {
+        'contentRevision': conversationContentRevision(
+          base,
+          messageCount: base.messages.length,
+        ),
+        'messageCount': base.messages.length,
+      },
+    });
+  final gateway = FakeNotificationGateway();
+  final optInStore = _MemoryOptInStore(optIn);
+
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        ..._overrides(
+          conversation: conversation,
+          gateway: gateway,
+          optInStore: optInStore,
+          streamClient: _InertAnalyzeStreamClient(),
+        ),
+        streamingAnalyzeProvider.overrideWith(
+          () => _SeededStreamingAnalyzeNotifier(
+            const StreamingAnalysisState.idle(),
+          ),
+        ),
+      ],
+      child: const MaterialApp(
+        home: AnalysisScreen(conversationId: _conversationId),
+      ),
+    ),
+  );
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  tester.takeException();
+  return _Harness(gateway, optInStore);
+}
+
 class _Harness {
   _Harness(this.gateway, this.optInStore);
 
@@ -249,37 +433,11 @@ Future<_Harness> _pumpCompletedAnalysis(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        coachingOutcomeRepositoryProvider
-            .overrideWithValue(MemoryCoachingOutcomeRepository()),
-        analysisHistoryRepositoryProvider
-            .overrideWithValue(MemoryAnalysisHistoryRepository()),
-        conversationArchiveStoreProvider
-            .overrideWithValue(_MemoryConversationArchiveStore()),
-        conversationRepositoryProvider
-            .overrideWithValue(_StubConversationRepository(conversation)),
-        conversationProvider(_conversationId).overrideWithValue(conversation),
-        analyzeStreamClientProvider
-            .overrideWithValue(_InertAnalyzeStreamClient()),
-        coachChatRepositoryProvider
-            .overrideWithValue(_EmptyCoachChatRepository()),
-        coachChatHistoryProvider(const CoachScope.conversation(_conversationId))
-            .overrideWithValue(const []),
-        partnerRepositoryProvider.overrideWithValue(
-          _StubPartnerRepository(
-            Partner(
-              id: _partnerId,
-              name: '小雲',
-              createdAt: DateTime(2026, 10, 1),
-              updatedAt: DateTime(2026, 10, 1),
-            ),
-          ),
-        ),
-        followUpNotificationServiceProvider.overrideWithValue(
-          FollowUpNotificationService(
-            gateway: gateway,
-            optInStore: optInStore,
-            now: () => DateTime(2026, 10, 19, 21),
-          ),
+        ..._overrides(
+          conversation: conversation,
+          gateway: gateway,
+          optInStore: optInStore,
+          streamClient: _InertAnalyzeStreamClient(),
         ),
         streamingAnalyzeProvider
             .overrideWith(() => _SeededStreamingAnalyzeNotifier(seed)),
@@ -389,6 +547,68 @@ void main() {
 
       expect(find.text(_softCardTitle), findsNothing);
       expect(harness.gateway.scheduled.single.payload, _partnerId);
+    });
+  });
+  group('不靠分析頁（主審第 1 輪 finding 1）：離開分析頁之後才判成關心或停', () {
+    for (final (name, result) in [
+      ('自傷關心', _result('care')),
+      ('涉及未成年', _result('care', careKind: 'minor')),
+      ('停', _result('stop')),
+    ]) {
+      testWidgets('$name：已排的提醒照樣收回，也不排新的', (tester) async {
+        final harness = await _pumpLeaveMidStream(
+          tester,
+          result: result,
+          optIn: FollowUpOptIn.granted,
+        );
+        expect(harness.gateway.cancelled, contains(partnerNotificationId));
+        expect(harness.gateway.scheduled, isEmpty);
+      });
+    }
+
+    testWidgets('出卡、先別回照舊：不收回，也不在背景另外排', (tester) async {
+      for (final decision in ['send', 'hold']) {
+        final harness = await _pumpLeaveMidStream(
+          tester,
+          result: _result(decision),
+          optIn: FollowUpOptIn.granted,
+        );
+        expect(harness.gateway.cancelled, isEmpty, reason: decision);
+        expect(harness.gateway.scheduled, isEmpty, reason: decision);
+      }
+    });
+  });
+
+  group('冷啟動還原已存好的關心或停：打開分析頁時收回這位對象的提醒', () {
+    for (final (name, result) in [
+      ('自傷關心', _result('care')),
+      ('涉及未成年', _result('care', careKind: 'minor')),
+      ('停', _result('stop')),
+    ]) {
+      testWidgets('$name：收回，不問軟卡、不排', (tester) async {
+        final harness = await _pumpColdRestore(
+          tester,
+          result: result,
+          optIn: FollowUpOptIn.unknown,
+        );
+        expect(find.byKey(const ValueKey('guide-v3-read')), findsOneWidget);
+        expect(harness.gateway.cancelled, contains(partnerNotificationId));
+        expect(harness.gateway.scheduled, isEmpty);
+        expect(find.text(_softCardTitle), findsNothing);
+        expect(harness.optInStore.value, FollowUpOptIn.unknown);
+      });
+    }
+
+    testWidgets('出卡、先別回照舊：還原不動提醒', (tester) async {
+      for (final decision in ['send', 'hold']) {
+        final harness = await _pumpColdRestore(
+          tester,
+          result: _result(decision),
+          optIn: FollowUpOptIn.granted,
+        );
+        expect(harness.gateway.cancelled, isEmpty, reason: decision);
+        expect(harness.gateway.scheduled, isEmpty, reason: decision);
+      }
     });
   });
 }
