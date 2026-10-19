@@ -1115,8 +1115,8 @@ void main() {
       expect(quotaLine, findsNothing);
     });
 
-    // Bruce 真機試過說用不到，Eric 2026-10-19「照 Bruce 拿掉」：想先存著不分析，
-    // 在後面任何一關取消就好，匯入的內容照樣留著。
+    // Bruce 真機試過說用不到，Eric 2026-10-19「照 Bruce 拿掉」：沒有只匯入不分析的鈕，
+    // 不想現在分析就按「取消」，辨識結果留在分析頁（續看卡）。
     testWidgets('有給算法：底下只剩「取消」和「加入並開始分析」，沒有「先存起來」', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(

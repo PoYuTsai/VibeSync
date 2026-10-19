@@ -2296,8 +2296,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         // 沒什麼用——內容就在眼前，確認框也已揭露取代規則）。另開新片段的
         // 「前往新片段」提示保留，那個有導航作用。
         // 「加入並開始分析」（Eric 2026-10-18）：匯入成功才走分析鈕同一個入口，帶確認框
-        // 上看到的那一行；最後一則提示、額度、超過 2000 字、資料分享同意照舊一關一關問，
-        // 任何一關取消都不送、不扣，匯入的內容照今天留著。
+        // 上看到的那一行。一般情況（最後一則是她、額度夠、用量跟那一行一樣、已同意資料
+        // 分享）一關都不跳，直接開始分析；照 Bruce 拿掉「先存起來」後沒有只匯入的路
+        //（Eric 2026-10-19）。只有真的跳出最後一則提示或確認框而在那裡取消，或額度不夠，
+        // 匯入的內容才留著、不送、不扣。
         if (dialogResult.startAnalysis) {
           unawaited(_runAnalysis(shownQuotaLine: dialogResult.shownQuotaLine));
         }

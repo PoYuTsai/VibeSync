@@ -55,9 +55,9 @@ class ScreenshotRecognitionDialog extends StatefulWidget {
   final String? expectedPartnerName;
 
   /// 有給：主鈕換成「加入並開始分析」（Eric 2026-10-18：辨識確認後一鍵接著分析），
-  /// 旁邊只有「取消」（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）。用目前編輯中的
-  /// 訊息算這次會用幾則（跟分析鈕同一套）；回 null 就不寫那一行，按下去照舊跳確認框。
-  /// 沒給：只有今天的「確認本次內容」。
+  /// 旁邊只有「取消」，沒有只匯入不分析的鈕（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）。
+  /// 用目前編輯中的訊息算這次會用幾則（跟分析鈕同一套），寫在主鈕上面；回 null 就不寫
+  /// 那一行，按下去照舊跳確認框。沒給：只有今天的「確認本次內容」。
   final AnalysisQuotaLine? Function(List<RecognizedMessage> messages)?
       analyzeQuotaLineFor;
 
@@ -1361,8 +1361,10 @@ class _ScreenshotRecognitionDialogState
   }
 
   /// 一鍵分析（Eric 2026-10-18）：主鈕加入並開始分析，上面寫這次會用幾則。旁邊只留
-  /// 「取消」，跟「確認本次內容」同一排（Eric 2026-10-19 照 Bruce 拿掉「先存起來」：
-  /// 想先存著不分析，在後面的提示、額度或確認框取消就好，匯入的內容照樣留著）。
+  /// 「取消」，跟「確認本次內容」同一排（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）。
+  /// 一般情況按一下就匯入並開始分析，後面一關都不跳；不想現在分析就按「取消」，辨識
+  /// 結果留在分析頁，可從「繼續確認本次內容」再開。只有後面真的跳出最後一則提示或
+  /// 確認框而在那裡取消，或額度不夠，匯入的內容才留著、不送。
   Widget _buildImportAndAnalyzeActions() {
     final quotaLine = _shownQuotaLine;
     return Row(

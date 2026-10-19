@@ -1,7 +1,8 @@
 // 截圖辨識確認後一鍵「加入並開始分析」（Eric 2026-10-18）：先照今天匯入，再走分析鈕
 // 同一個入口——開始鎖、最後一則提示、額度不足、超過 2000 字確認都照舊。確認框只剩
-// 「取消」和它（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）：想先存著不分析，在後面
-// 任何一關取消就好，匯入的內容照樣留著。確認框上那一行跟分析鈕同一套算法。
+// 「取消」和它（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）：一般情況按一下就匯入並
+// 開始分析；「取消」把辨識結果留在這頁（續看卡）；只有後面真的跳出關卡而在那裡取消，
+// 或額度不夠，匯入的內容才留著、不送。確認框上那一行跟分析鈕同一套算法。
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -718,7 +719,8 @@ void main() {
       expect(start.onPressed, isNull);
       expect(harness.recorder.streamCalls, 0);
 
-      // 拿掉「先存起來」之後，想先存著不分析就是在這裡取消（Eric 2026-10-19）。
+      // 額度不夠才會停在這一關；取消後匯入的內容留著、不送。一般情況不會跳這一關
+      //（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）。
       await tester.tap(find.descendant(
         of: find.byType(AnalysisPreviewDialog),
         matching: find.text('取消'),
