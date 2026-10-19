@@ -85,6 +85,42 @@ void main() {
     expect(find.byType(RadarChart), findsNothing);
   });
 
+  testWidgets('v3 帶了關係狀態的雷達（Bruce 2026-10-19 路線二）：跟 v2 一樣畫，數值照伺服器', (t) async {
+    final snapshot = jsonEncode({
+      'guideVersion': 'v3.6',
+      'read': {
+        'decision': 'send',
+        'light': 'green',
+        'judgment': '她有在接',
+        'relation': {
+          'stage': 'premise',
+          'heat': 72,
+          'dimensions': {
+            'heat': 72,
+            'engagement': 70,
+            'topicDepth': 45,
+            'replyWillingness': 78,
+            'emotionalConnection': 60,
+          },
+        },
+      },
+      'cards': [],
+    });
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body:
+            PartnerRadarSummaryCard(conversations: [_conv(snapshot: snapshot)]),
+      ),
+    ));
+    await t.pumpAndSettle();
+    expect(find.text('最新對話尚未分析'), findsNothing);
+    final chart = t.widget<RadarChart>(find.byType(RadarChart));
+    expect(
+      chart.data.dataSets.single.dataEntries.map((e) => e.value),
+      [72, 70, 45, 78, 60],
+    );
+  });
+
   testWidgets('最新那段還沒分析、最近分析過的是 v3：照對象頁同一條規則整張不顯示', (t) async {
     final v3 = jsonEncode({
       'guideVersion': 'v3.6',

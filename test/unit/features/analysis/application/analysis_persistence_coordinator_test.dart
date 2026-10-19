@@ -8,6 +8,7 @@ import 'package:vibesync/features/analysis/application/ports/analysis_record_por
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
 import 'package:vibesync/features/analysis/domain/entities/persistable_analysis.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/analysis_history/domain/entities/analysis_history_event.dart';
 import 'package:vibesync/features/analysis_history/domain/repositories/analysis_history_repository.dart';
@@ -206,14 +207,34 @@ class _CapturingAnalysisRecordPort implements AnalysisRecordPort {
       null;
 }
 
+/// 關係狀態（伺服器開關 ANALYZE_GUIDE_V3_RELATION 開著時，判讀的 relation）。
+const _relationJson = <String, dynamic>{
+  'stage': 'narrative',
+  'heat': 72,
+  'dimensions': {
+    'heat': 72,
+    'engagement': 70,
+    'topicDepth': 45,
+    'replyWillingness': 78,
+    'emotionalConnection': 60,
+  },
+  'herMove': 'sincere_question',
+  'willingness': 'high',
+};
+
 /// 形狀照伺服器 guide_v3/wire.ts 的 finalResult（已剝掉伺服器專用欄位）。
-Map<String, dynamic> _guideV3Json({String decision = 'send'}) => {
+Map<String, dynamic> _guideV3Json({
+  String decision = 'send',
+  Map<String, dynamic>? relation,
+}) =>
+    {
       'guideVersion': 'v3.4',
       'read': {
         'guideVersion': 'v3.4',
         'decision': decision,
         'light': 'green',
         'judgment': decision == 'care' ? '' : '她有在接你的話。',
+        if (relation != null) 'relation': relation,
         if (decision == 'care') 'careMessage': '先把安全放在第一位。',
         'plannedCards': decision == 'send'
             ? [
@@ -241,9 +262,15 @@ Map<String, dynamic> _guideV3Json({String decision = 'send'}) => {
       },
     };
 
-PersistableAnalysis _guideV3({String decision = 'send', String? runId}) =>
+PersistableAnalysis _guideV3({
+  String decision = 'send',
+  String? runId,
+  Map<String, dynamic>? relation,
+}) =>
     PersistableAnalysis.fromGuideV3(
-      GuideV3Result.fromJson(_guideV3Json(decision: decision))!,
+      GuideV3Result.fromJson(
+        _guideV3Json(decision: decision, relation: relation),
+      )!,
       analysisRunId: runId,
     );
 
@@ -934,6 +961,84 @@ void main() {
       final event = harness.history.listByConversation(_conversationId).single;
       expect(event.enthusiasmScore, isNull);
       expect(event.gameStageLabel, isNull);
+    });
+
+    test(
+        '帶了關係狀態（Bruce 2026-10-19 路線二）：熱度與階段照 v2 的欄位寫進對話與歷史事件；'
+        '紀錄只寫階段，列表照舊顯示燈號', () async {
+      final conversation =
+          _conversation(currentGameStage: 'premise', ownerUserId: 'owner-1')
+            ..lastEnthusiasmScore = 40;
+      final port = _CapturingAnalysisRecordPort();
+      final harness = _Harness(
+        conversation: conversation,
+        recordPort: port,
+        recordOwnerUserId: 'owner-1',
+      );
+
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(runId: 'run_rel', relation: _relationJson),
+        completionKey: 'run_rel',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+
+      // 原始 72 → 跟 v2 一樣換成 0–90：ceil(72 × 0.9) = 65。
+      expect(conversation.lastEnthusiasmScore, 65);
+      expect(conversation.currentGameStage, 'narrative');
+      final event = harness.history.listByConversation(_conversationId).single;
+      expect(event.enthusiasmScore, 65);
+      expect(event.gameStageLabel, 'narrative');
+      final save = port.saves.single;
+      expect(save.score, isNull);
+      expect(save.stage, '展現個人魅力');
+      // 快照照伺服器的原樣存，重開畫面還原得到關係狀態。
+      final snapshot = jsonDecode(conversation.lastAnalysisSnapshotJson!)
+          as Map<String, dynamic>;
+      expect((snapshot['read'] as Map)['relation'], _relationJson);
+    });
+
+    test('帶了關係狀態但階段讀不懂：熱度照寫，階段保留上一個有效的', () async {
+      final conversation = _conversation(currentGameStage: 'premise');
+      final harness = _Harness(conversation: conversation);
+
+      await harness.coordinator.persistLatestSnapshot(
+        _guideV3(relation: {..._relationJson, 'stage': 'unknown'}),
+        completionKey: 'run_rel',
+        previousAnalyzedCount: 0,
+        analyzedMessageCount: 1,
+        analyzedContentRevision: conversationContentRevision(conversation),
+      );
+
+      expect(conversation.lastEnthusiasmScore, 65);
+      expect(conversation.currentGameStage, 'premise');
+      final event = harness.history.listByConversation(_conversationId).single;
+      expect(event.gameStageLabel, isNull);
+    });
+
+    test('restore：關係狀態跟著快照回來', () {
+      final base = _conversation();
+      final snapshot = _guideV3Json(relation: _relationJson)
+        ..['__vibesync_snapshot_meta_v1'] = {
+          'contentRevision': conversationContentRevision(base, messageCount: 1),
+          'messageCount': 1,
+        };
+      final harness = _Harness(
+        conversation: _conversation(
+          snapshotJson: jsonEncode(snapshot),
+          analyzedCount: 1,
+        ),
+      );
+
+      final relation = harness.coordinator
+          .restore(repairRecord: false)!
+          .guideV3!
+          .read
+          .relation!;
+      expect(relation.stage, GameStage.narrative);
+      expect(relation.visibleHeat, 65);
+      expect(relation.herMove, GuideV3HerMove.sincereQuestion);
     });
 
     test('自傷關心沒扣費：字數基準不推進', () async {

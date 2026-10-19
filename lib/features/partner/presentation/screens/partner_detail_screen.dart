@@ -169,8 +169,10 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
     }
 
     // 「這位對象是不是 v3」整頁同一條規則：最近分析過的那段（Bruce 2026-10-19 路線二）。
+    // v3 帶了熱度、雷達就跟 v2 一樣顯示；改版前的 v3 沒有，照 10/17 的做法收起來。
     final latestAnalyzed = LatestAnalyzedFragment.of(conversations);
-    final latestIsGuideV3 = latestAnalyzed?.isGuideV3 ?? false;
+    final hidesHeat = latestAnalyzed?.lacksHeat ?? false;
+    final hidesRadar = latestAnalyzed?.lacksRadar ?? false;
     final latestInsight = _PartnerLatestInsight.fromLatest(latestAnalyzed);
     // 燈號紀錄＋邀約進度（Eric 2026-10-18）：不分方案都看完整紀錄（Bruce PR #97，
     // Eric 2026-10-19）。
@@ -257,6 +259,7 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   aggregate: aggregate,
                   conversations: conversations,
                   latestInsight: latestInsight,
+                  showHeatState: !hidesHeat,
                   animateName: !_nameIntroPlayed,
                   onNameIntroEnd: () => _nameIntroPlayed = true,
                 ),
@@ -273,9 +276,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                // v3（任務卡）沒有熱度（Eric 2026-10-17：清掉不顯示）：最近分析過的
-                // 那段是新流程的，就不放熱度卡，免得顯示「待分析」。
-                if (!latestIsGuideV3) ...[
+                // 改版前的 v3（任務卡）沒有熱度（Eric 2026-10-17：清掉不顯示）：最近分析
+                // 過的那段是這種，就不放熱度卡，免得顯示「待分析」。
+                if (!hidesHeat) ...[
                   PartnerHeatHeroCard(
                     heat: aggregate.latestHeat,
                     animate: !_heatIntroPlayed,
@@ -317,10 +320,9 @@ class _PartnerDetailScreenState extends ConsumerState<PartnerDetailScreen> {
                 const SizedBox(height: 16),
                 _PartnerExpandableDetailSection(
                   expanded: _detailTraitsExpanded,
-                  // v3 沒有雷達（Eric 2026-10-17），展開後也看不到：說明別再提雷達圖。
-                  subtitle: latestIsGuideV3
-                      ? '長期資料，給想確認依據時展開。'
-                      : '長期資料與雷達圖，給想確認依據時展開。',
+                  // 改版前的 v3 沒有雷達（Eric 2026-10-17），展開後也看不到：說明別再提雷達圖。
+                  subtitle:
+                      hidesRadar ? '長期資料，給想確認依據時展開。' : '長期資料與雷達圖，給想確認依據時展開。',
                   onToggle: () => setState(
                     () => _detailTraitsExpanded = !_detailTraitsExpanded,
                   ),
@@ -1032,7 +1034,7 @@ class _PartnerLatestInsight {
   final String? coachMicroMove;
   final DateTime? analyzedAt;
 
-  /// 最近一次分析是 v3（任務卡）：沒有熱度可顯示（Eric 2026-10-17）。
+  /// 最近一次分析是 v3（任務卡）：沒有「接法」（v3 不產生 microMove）。
   final bool isGuideV3;
 
   const _PartnerLatestInsight({
@@ -1168,6 +1170,9 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
   final List<Conversation> conversations;
   final _PartnerLatestInsight latestInsight;
 
+  /// 改版前的 v3（任務卡）沒有熱度：不顯示熱度狀態（不然會變成「待分析」）。
+  final bool showHeatState;
+
   /// 名字開場只在打開這一頁時播一次；旗標由 [_PartnerDetailScreenState] 持有。
   final bool animateName;
   final VoidCallback? onNameIntroEnd;
@@ -1177,17 +1182,18 @@ class _PartnerCommandSummaryCard extends StatelessWidget {
     required this.aggregate,
     required this.conversations,
     required this.latestInsight,
+    required this.showHeatState,
     this.animateName = true,
     this.onNameIntroEnd,
   });
 
   @override
   Widget build(BuildContext context) {
-    // v3（任務卡）沒有熱度：不顯示熱度狀態（不然會變成「待分析」），也沒有
-    // 「接法」（v3 不產生 microMove），建議在下一步卡。
+    // v3 沒有「接法」（v3 不產生 microMove），建議在下一步卡。
     final isGuideV3 = latestInsight.isGuideV3;
-    final state =
-        isGuideV3 ? null : PartnerHeatMessaging.labelFor(aggregate.latestHeat);
+    final state = showHeatState
+        ? PartnerHeatMessaging.labelFor(aggregate.latestHeat)
+        : null;
     // 「接法」只能顯示本輪 coachActionHint.microMove。特質＋興趣是對象
     // 線索，不是策略；把兩者拼起來會讓 UI 對使用者宣稱 AI 給了不存在的接法。
     final hook = latestInsight.coachMicroMove ??

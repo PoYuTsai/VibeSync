@@ -154,6 +154,53 @@ void main() {
       expect(done.runId, 'run_v3');
     });
 
+    test('關係狀態（Bruce 2026-10-19 路線二）：判讀事件與 done 的判讀都帶得到；壞的欄位不收、不讓分析失敗',
+        () async {
+      const relation = {
+        'stage': 'narrative',
+        'heat': 80,
+        'dimensions': {
+          'heat': 80,
+          'engagement': 75,
+          'topicDepth': 60,
+          'replyWillingness': 82,
+          'emotionalConnection': 70,
+        },
+        'herMove': 'laugh_close',
+        'willingness': 'medium',
+      };
+      final updates = await _client([
+        _v3Started,
+        {..._readEvent, 'relation': relation},
+        _cardEvent(1, 'accept', '那家我也想吃吃看'),
+        {
+          'type': 'analysis.done',
+          'runId': 'run_v3',
+          'finalResult': {
+            ..._finalResult(),
+            'read': {
+              ...(_finalResult()['read'] as Map<String, dynamic>),
+              // 伺服器丟掉的欄位（例如熱度超出範圍）App 也不收，其他照收。
+              'relation': {...relation, 'heat': 180},
+            },
+          },
+        },
+      ]).stream(AnalyzeStreamRequest(messages: [_msg('哈囉')])).toList();
+
+      final read = updates
+          .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.guideV3Read)
+          .guideV3Read!;
+      expect(read.relation!.heat, 80);
+      expect(read.relation!.herMove, GuideV3HerMove.laughClose);
+      expect(read.relation!.willingness, GuideV3Willingness.medium);
+      final done = updates
+          .firstWhere((u) => u.kind == AnalysisStreamUpdateKind.done)
+          .guideV3Result!;
+      expect(done.read.relation!.heat, isNull);
+      expect(done.read.relation!.dimensions!['heat'], 80);
+      expect(done.cards.first.messages, ['那家我也想吃吃看']);
+    });
+
     test('中途讀不懂的判讀或卡跳過，等 done 的完整結果', () async {
       final updates = await _client([
         _v3Started,

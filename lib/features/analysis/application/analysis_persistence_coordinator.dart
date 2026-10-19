@@ -697,7 +697,8 @@ class AnalysisPersistenceCoordinator {
       analysisRunId: analysis.analysisRunId,
     );
 
-    // v3 沒有熱度：清掉，列表與對象頁就不顯示（Eric 2026-10-17）。
+    // v3 帶了關係狀態就寫它的熱度（Bruce 2026-10-19 路線二）；沒帶的 v3 沒有熱度：清掉，
+    // 列表與對象頁就不顯示（Eric 2026-10-17）。
     conv.lastEnthusiasmScore = analysis.enthusiasmScore;
     conv.lastAnalyzedMessageCount = targetAnalyzedMessageCount;
     // ADR #19 規格 #8：char baseline 對應「實際送出的 requestMessages」
@@ -711,7 +712,7 @@ class AnalysisPersistenceCoordinator {
     }
     // 對象卡互動階段閉環規則 9：缺少或非法 stage 不得寫入新 stage
     // snapshot，保留上一個有效階段；從未有有效階段則維持 null（問號）。
-    // v3 沒有階段，同樣保留上一個（Eric 2026-10-17）。
+    // 沒帶關係狀態的 v3 沒有階段，同樣保留上一個（Eric 2026-10-17）。
     if (validStage != null) {
       conv.currentGameStage = validStage.name;
     }
@@ -930,13 +931,21 @@ class AnalysisPersistenceCoordinator {
         analyzedMessageCount: analyzedMessageCount,
         analyzedContentRevision: analyzedPrefixRevision,
         analysisSnapshotJson: snapshotJson,
-        enthusiasmScore: analysis.enthusiasmScore,
+        // v3 的紀錄列表照舊顯示燈號（Eric 2026-10-17），熱度不寫進紀錄；紀錄詳情的關係狀態
+        // 卡照樣看得到熱度（Bruce 2026-10-19 路線二）。
+        enthusiasmScore: analysis.isGuideV3 ? null : analysis.enthusiasmScore,
         // Missing/unknown model output must not leak the display fallback
         // opening into durable records. Reuse only the conversation's latest
-        // strictly valid stage; otherwise persist a blank label. v3 沒有階段，
-        // 紀錄不沿用舊流程的階段（那不是這一次的判斷）。
+        // strictly valid stage; otherwise persist a blank label. v3 帶了關係狀態
+        // 就寫它的階段；沒帶不沿用舊流程的階段（那不是這一次的判斷）。
         gameStageLabel: analysis.isGuideV3
-            ? ''
+            ? (validStage == null
+                ? ''
+                : _visibleRecordStageLabel(
+                    conversation,
+                    validStage,
+                    isReconnectOverride: analyzedIsReconnect,
+                  ))
             : validStage != null
                 ? _visibleRecordStageLabel(
                     conversation,

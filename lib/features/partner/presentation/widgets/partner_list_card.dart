@@ -259,9 +259,10 @@ class PartnerListCard extends StatelessWidget {
         ? null
         : clampVisibleInvestmentScore(aggregate.latestHeat!);
     final level = heat != null ? EnthusiasmLevel.fromScore(heat) : null;
-    // v3 分析過的對象沒有熱度可放：列表不顯示（Eric 2026-10-17），也不能
-    // 因為沒有分數就寫成「待分析」——他剛分析完。
-    final showStatusPill = heat != null || !aggregate.latestIsGuideV3;
+    // v3 分析過的對象放燈號＋短狀態（Eric 2026-10-18），不放熱度膠囊：改版前沒有熱度，
+    // 不能因為沒有分數就寫成「待分析」——他剛分析完；帶了熱度（Bruce 2026-10-19 路線二）
+    // 也照樣放燈號，熱度在對象頁與報告。
+    final showStatusPill = !aggregate.latestIsGuideV3;
     final guideV3 = aggregate.latestGuideV3Signals;
     final guideV3Status =
         guideV3 == null ? null : _guideV3Status(guideV3.decision);

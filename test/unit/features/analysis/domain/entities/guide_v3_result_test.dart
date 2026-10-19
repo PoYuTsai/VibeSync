@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vibesync/features/analysis/domain/entities/game_stage.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 
 /// 形狀照伺服器 `guide_v3/wire.ts`（readView／cardView／finalResult）。
@@ -208,6 +209,154 @@ void main() {
         'junk',
       ]))!;
       expect(read.plannedCards.map((c) => c.slot), [1]);
+    });
+  });
+
+  group('GuideV3Relation（關係狀態，Bruce 2026-10-19 路線二）', () {
+    Map<String, dynamic> relation({
+      Object? stage = 'premise',
+      Object? heat = 72,
+      Object? dimensions = const {
+        'heat': 72,
+        'engagement': 70,
+        'topicDepth': 45,
+        'replyWillingness': 78,
+        'emotionalConnection': 60,
+      },
+      Object? herMove = 'high',
+      Object? willingness = 'high',
+    }) =>
+        {
+          'stage': stage,
+          'heat': heat,
+          'dimensions': dimensions,
+          'herMove': herMove,
+          'willingness': willingness,
+        };
+
+    GuideV3Read? read(Map<String, dynamic>? rel, {String decision = 'send'}) =>
+        GuideV3Read.fromJson({
+          ..._read(decision: decision),
+          if (rel != null) 'relation': rel,
+        });
+
+    test('判讀帶得到階段、熱度、五維雷達、她在做什麼、回覆意願', () {
+      final rel = read(relation())!.relation!;
+      expect(rel.stage, GameStage.premise);
+      expect(rel.heat, 72);
+      expect(rel.dimensions, {
+        'heat': 72,
+        'engagement': 70,
+        'topicDepth': 45,
+        'replyWillingness': 78,
+        'emotionalConnection': 60,
+      });
+      expect(rel.herMove, GuideV3HerMove.high);
+      expect(rel.willingness, GuideV3Willingness.high);
+    });
+
+    test('顯示與存檔的熱度跟 v2 一樣換成 0–90：ceil(原始 × 0.9)', () {
+      int? visible(int raw) => read(relation(heat: raw))!.relation!.visibleHeat;
+      expect(visible(72), 65);
+      expect(visible(100), 90);
+      expect(visible(0), 0);
+      expect(visible(1), 1);
+    });
+
+    test('伺服器的英文代碼都認得', () {
+      for (final move in GuideV3HerMove.values) {
+        expect(
+          read(relation(herMove: move.wire))!.relation!.herMove,
+          move,
+        );
+      }
+      for (final level in GuideV3Willingness.values) {
+        expect(
+          read(relation(willingness: level.wire))!.relation!.willingness,
+          level,
+        );
+      }
+      for (final stage in GameStage.values) {
+        expect(read(relation(stage: stage.name))!.relation!.stage, stage);
+      }
+    });
+
+    test('壞掉的欄位各自不收，其他照收；判讀不受影響', () {
+      final rel = read(relation(
+        stage: '破冰',
+        heat: 101,
+        herMove: '高點',
+        willingness: 'very_high',
+      ))!
+          .relation!;
+      expect(rel.stage, isNull);
+      expect(rel.heat, isNull);
+      expect(rel.visibleHeat, isNull);
+      expect(rel.herMove, isNull);
+      expect(rel.willingness, isNull);
+      expect(rel.dimensions, isNotNull);
+
+      for (final bad in <Object?>[-1, 50.5, '50', null]) {
+        expect(read(relation(heat: bad))!.relation!.heat, isNull);
+      }
+      // 五維雷達要五個都在、都是 0–100 的整數，缺一個或壞一個整組不收。
+      for (final bad in <Object?>[
+        const {
+          'heat': 72,
+          'engagement': 70,
+          'topicDepth': 45,
+          'replyWillingness': 78,
+        },
+        const {
+          'heat': 72,
+          'engagement': 170,
+          'topicDepth': 45,
+          'replyWillingness': 78,
+          'emotionalConnection': 60,
+        },
+        const [72, 70, 45, 78, 60],
+        null,
+      ]) {
+        expect(read(relation(dimensions: bad))!.relation!.dimensions, isNull);
+      }
+      expect(read(relation(heat: 101))!.decision, GuideV3Decision.send);
+    });
+
+    test('沒送（開關沒開、改版前的快照）或每一欄都讀不懂：沒有關係狀態', () {
+      expect(read(null)!.relation, isNull);
+      expect(
+        read(relation(
+          stage: null,
+          heat: null,
+          dimensions: null,
+          herMove: null,
+          willingness: null,
+        ))!
+            .relation,
+        isNull,
+      );
+      expect(
+        GuideV3Read.fromJson({..._read(), 'relation': 'premise'})!.relation,
+        isNull,
+      );
+    });
+
+    test('關心一律不收：固定訊息那次不拿來算階段、熱度與雷達', () {
+      final care = read(
+        relation(),
+        decision: 'care',
+      )!;
+      expect(care.relation, isNull);
+      // 先別回、停照收（伺服器照樣送）。
+      expect(read(relation(), decision: 'hold')!.relation, isNotNull);
+      expect(read(relation(), decision: 'stop')!.relation, isNotNull);
+    });
+
+    test('最終結果的判讀帶得到（重開畫面從快照還原也一樣）', () {
+      final result = GuideV3Result.fromJson(_final(
+        read: {..._read(), 'relation': relation()},
+      ))!;
+      expect(result.read.relation!.stage, GameStage.premise);
     });
   });
 

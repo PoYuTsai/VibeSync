@@ -76,8 +76,8 @@ class MyReportScreen extends ConsumerWidget {
     final subjectPoints = selectedSubject == null
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
-    final subjectUsesGuideV3 = selectedSubject != null &&
-        ref.watch(subjectHasGuideV3AnalysisProvider(selectedSubject));
+    final subjectStoppedScoring = selectedSubject != null &&
+        ref.watch(subjectGuideV3LacksHeatProvider(selectedSubject));
     final practicePoints = ref.watch(practiceTemperatureTrendProvider);
     // 歷史事件與 Conversation 最新快照是兩條合法資料流：只要任一條有資料，
     // 報告就應顯示。舊邏輯只看 Conversation，會把「只有練習紀錄」或仍保留
@@ -146,19 +146,19 @@ class MyReportScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
             ],
-            // 改用 v3 的對象不再產生投入度（Eric 2026-10-17）：別叫他「再多分析
-            // 幾次」，舊點也要講明只是舊版的紀錄。
+            // 最近分析的是改版前的 v3、不產生投入度（Eric 2026-10-17）：別叫他「再多分析
+            // 幾次」，舊點也要講明只是舊版的紀錄。v3 帶了熱度就照常長點（Bruce
+            // 2026-10-19 路線二），照 v2 的說法。
             HeatTrendChart(
               trendPoints: subjectPoints,
               subjectId: selectedSubject,
               contextLabel: selectedSubjectName,
-              emptyMessage: subjectUsesGuideV3
+              emptyMessage: subjectStoppedScoring
                   ? '新版分析看的是每次的燈號，不算投入度分數。'
                   : '再多分析幾次，就能比較對方每次互動的投入度',
-              showTrendHint: !subjectUsesGuideV3,
-              footnote: subjectUsesGuideV3
-                  ? '新版分析不算投入度分數，這裡只有舊版分析的紀錄。'
-                  : null,
+              showTrendHint: !subjectStoppedScoring,
+              footnote:
+                  subjectStoppedScoring ? '新版分析不算投入度分數，這裡只有舊版分析的紀錄。' : null,
             ),
           ],
           const SizedBox(height: 32),

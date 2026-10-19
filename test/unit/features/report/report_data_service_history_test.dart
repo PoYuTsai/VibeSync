@@ -104,7 +104,7 @@ void main() {
     });
   });
 
-  group('subjectHasGuideV3Analysis', () {
+  group('subjectGuideV3LacksHeat', () {
     final v3Snapshot = jsonEncode({
       'guideVersion': 'v3.5',
       'read': {'light': 'green', 'decision': 'send'},
@@ -121,7 +121,7 @@ void main() {
 
     test('對話都刪了：最近一筆 analyze 沒有分數＝改用新版', () {
       expect(
-        service.subjectHasGuideV3Analysis(
+        service.subjectGuideV3LacksHeat(
           [
             _analyze('a1', 'c-1', '小雲', 61, DateTime(2026, 10, 1)),
             v3('a2', 'c-1', DateTime(2026, 10, 18)),
@@ -135,7 +135,7 @@ void main() {
 
     test('對話都刪了：最近一筆有分數、沒有事件、或是別的對象：不算', () {
       expect(
-        service.subjectHasGuideV3Analysis(
+        service.subjectGuideV3LacksHeat(
           [
             v3('a1', 'c-1', DateTime(2026, 10, 1)),
             _analyze('a2', 'c-1', '小雲', 61, DateTime(2026, 10, 18)),
@@ -146,11 +146,11 @@ void main() {
         isFalse,
       );
       expect(
-        service.subjectHasGuideV3Analysis(const [], 'c-1', const []),
+        service.subjectGuideV3LacksHeat(const [], 'c-1', const []),
         isFalse,
       );
       expect(
-        service.subjectHasGuideV3Analysis(
+        service.subjectGuideV3LacksHeat(
           [v3('b1', 'c-2', DateTime(2026, 10, 18))],
           'c-1',
           const [],
@@ -161,7 +161,7 @@ void main() {
 
     test('partner scope：同一位對象任一段對話存的是 v3 分析就算', () {
       expect(
-        service.subjectHasGuideV3Analysis(
+        service.subjectGuideV3LacksHeat(
           [
             _analyze('a1', 'c-1', '小雲', 61, DateTime(2026, 10, 1)),
             v3('a2', 'c-2', DateTime(2026, 10, 18)),
@@ -177,7 +177,55 @@ void main() {
     });
   });
 
-  group('subjectHasGuideV3Analysis：重跑沿用舊日期', () {
+  group('subjectGuideV3LacksHeat：v3 帶了熱度（Bruce 2026-10-19 路線二）', () {
+    String v3({required bool withHeat}) => jsonEncode({
+          'guideVersion': 'v3.6',
+          'read': {
+            'light': 'green',
+            'decision': 'send',
+            if (withHeat) 'relation': {'stage': 'premise', 'heat': 72},
+          },
+          'cards': const [],
+        });
+
+    test('最近分析的 v3 帶了熱度：照常長點，不算「改用新版不算分數」', () {
+      expect(
+        service.subjectGuideV3LacksHeat(
+          [_analyze('a1', 'c-1', '小雲', 65, DateTime(2026, 10, 20))],
+          'p-1',
+          [_conversation('c-1', 'p-1', '小雲', snapshotJson: v3(withHeat: true))],
+        ),
+        isFalse,
+      );
+    });
+
+    test('最近分析的 v3 沒帶（改版前）：照舊算', () {
+      expect(
+        service.subjectGuideV3LacksHeat(
+          const [],
+          'p-1',
+          [
+            _conversation('c-1', 'p-1', '小雲',
+                snapshotJson: v3(withHeat: false)),
+          ],
+        ),
+        isTrue,
+      );
+    });
+
+    test('對話都刪了：最近一筆事件有分數（帶熱度的 v3）就不算', () {
+      expect(
+        service.subjectGuideV3LacksHeat(
+          [_analyze('a1', 'c-1', '小雲', 65, DateTime(2026, 10, 20))],
+          'c-1',
+          const [],
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('subjectGuideV3LacksHeat：重跑沿用舊日期', () {
     final v3Snapshot = jsonEncode({
       'guideVersion': 'v3.5',
       'read': {'light': 'yellow', 'decision': 'hold'},
@@ -188,7 +236,7 @@ void main() {
       // c-1、c-2 都在 10 月初用 v2 分析過；10/18 把 c-1 用 v3 重跑，
       // coordinator 覆寫同一筆事件、保留 10/1，最近日期的事件仍是 c-2 的 v2。
       expect(
-        service.subjectHasGuideV3Analysis(
+        service.subjectGuideV3LacksHeat(
           [
             AnalysisHistoryEvent.analyze(
               id: 'a1',
@@ -211,7 +259,7 @@ void main() {
     test('對話還在而且都不是 v3：舊的沒分數事件不算', () {
       // 很舊、沒有分數的 v2 事件剛好是最近一筆；對話存的分析才是準。
       expect(
-        service.subjectHasGuideV3Analysis(
+        service.subjectGuideV3LacksHeat(
           [
             _analyze('a1', 'c-1', '小雲', 61, DateTime(2026, 10, 1)),
             AnalysisHistoryEvent.analyze(
@@ -227,7 +275,9 @@ void main() {
               'c-1',
               'p-1',
               '小雲',
-              snapshotJson: jsonEncode({'enthusiasm': {'score': 61}}),
+              snapshotJson: jsonEncode({
+                'enthusiasm': {'score': 61}
+              }),
             ),
           ],
         ),
@@ -251,11 +301,11 @@ void main() {
       ];
 
       expect(
-        service.subjectHasGuideV3Analysis(events, 'p-a', conversations),
+        service.subjectGuideV3LacksHeat(events, 'p-a', conversations),
         isFalse,
       );
       expect(
-        service.subjectHasGuideV3Analysis(events, 'p-b', conversations),
+        service.subjectGuideV3LacksHeat(events, 'p-b', conversations),
         isTrue,
       );
     });
@@ -275,11 +325,11 @@ void main() {
       ];
 
       expect(
-        service.subjectHasGuideV3Analysis(events, 'p-new', conversations),
+        service.subjectGuideV3LacksHeat(events, 'p-new', conversations),
         isTrue,
       );
       expect(
-        service.subjectHasGuideV3Analysis(events, 'p-old', conversations),
+        service.subjectGuideV3LacksHeat(events, 'p-old', conversations),
         isFalse,
       );
     });
