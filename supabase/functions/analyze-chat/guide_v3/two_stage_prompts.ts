@@ -227,11 +227,47 @@ export const TWO_STAGE_A6_EDITS: readonly LineEdit[] = [
 ];
 
 /// 寫卡看到的 A5、A6（從說明書原文改出來）。
+// ── 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，Bruce 2026-10-20「改」）──────────────────────
+// Bruce 第 3 輪盲選 4:4：帶張力照樣可以出，但玩笑只對事情本身，或誇張地誇她；不打分、不說她別有用意、
+// 不擺自己比較厲害。他不要的那幾張（替她打分、說她想要什麼、擺自己的架子）從帶張力的手法長出來：材料取
+// 「矛盾、疑點」、「刻意誤解」、推拉的「推」與「挑戰」。開關開時，在兩段式的 A5 之上再改這幾行；排卡不變。
+
+/// 帶張力的新說法（照 Bruce 這次的話）。
+export const TENSION_STYLE_LINE =
+  "- **帶張力**：開一個輕的玩笑：只對事情本身（吃的、去的地方、遇到的狀況）開，或用一看就誇張的方式誇她；不替她打分、不說她別有用意、不把自己擺得比較厲害。留好退路，她接了就一起玩，沒接也不尷尬。";
+
+/// 材料不再從「矛盾、疑點」找（會變成抓她的語病、猜她的用意）。
+export const TENSION_STYLE_MATERIAL_LINE =
+  "  - 材料從事情本身和她話裡誇張的地方長出來。";
+
+export const TENSION_STYLE_A5_EDITS: readonly LineEdit[] = [
+  { startsWith: "- **帶張力**：", edit: () => TENSION_STYLE_LINE },
+  { startsWith: "  - 材料從她話裡", edit: () => TENSION_STYLE_MATERIAL_LINE },
+  // 刻意誤解：常變成「你這是在暗示…」那種替她說用意的話。其餘手法照留。
+  {
+    startsWith: "  - 手法輪流用：",
+    edit: (l) => replaceOnce(l, "刻意誤解（偶爾）、", ""),
+  },
+  // 推拉（推觀點、挑戰）：常變成打分、擺自己比較懂；帶張力不再用。
+  { startsWith: "  - 推拉：", edit: () => null },
+];
+
+/// 卡片多比的外洩哨兵（上面兩行裡只有提示詞才寫的說法）：抄進卡片就拿掉那張。
+export const TENSION_STYLE_WRITER_SENTINELS: readonly string[] = [
+  "用一看就誇張的方式誇她",
+  "不替她打分、不說她別有用意",
+  "不把自己擺得比較厲害",
+  "事情本身和她話裡誇張的地方",
+];
+
 export function twoStageWriterSections(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+  /// 帶張力改寫法開時，A5 在兩段式的改法之上再改帶張力那幾行（TENSION_STYLE_A5_EDITS）。
+  options: { readonly tensionStyle?: boolean } = {},
 ): { readonly A5: string; readonly A6: string } {
+  const a5 = applyLineEdits(sections.A5, TWO_STAGE_A5_EDITS);
   return {
-    A5: applyLineEdits(sections.A5, TWO_STAGE_A5_EDITS),
+    A5: options.tensionStyle ? applyLineEdits(a5, TENSION_STYLE_A5_EDITS) : a5,
     A6: renumber(applyLineEdits(sections.A6, TWO_STAGE_A6_EDITS)),
   };
 }
@@ -261,8 +297,10 @@ export function writeSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   safetyRules: string = WRITE_SAFETY_FLOOR,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）。
+  options: { readonly tensionStyle?: boolean } = {},
 ): string {
-  const writer = twoStageWriterSections(sections);
+  const writer = twoStageWriterSections(sections, options);
   return [
     "你是 VibeSync 對話分析的「寫句子」步驟：照使用者訊息裡每張卡的規格，寫他可以直接傳給她的訊息。",
     WRITE_NATURAL_RULES,
@@ -332,6 +370,17 @@ export function answerParts(
   ];
 }
 
+/// 規格裡回她哪一則的那幾段（answerParts），抽到短版的那一張在「這張接」後面多寫短版的誇法
+///（LIGHT_SHORT_CARD_PART）。寫卡與說明都用這一份。
+export function specAnswerParts(
+  spec: CardSpec,
+  herLatest: readonly string[],
+): string[] {
+  const parts = answerParts(spec.answer, herLatest);
+  if (!spec.shortPraise || parts.length === 0) return parts;
+  return [parts[0], LIGHT_SHORT_CARD_PART, ...parts.slice(1)];
+}
+
 /// 兩段式的規格行：任務之後先講這張接她哪一則、可以順帶哪一則，「有他」做法改叫「他的事怎麼寫」。
 export function cardSpecLineTwoStage(
   spec: CardSpec,
@@ -342,7 +391,7 @@ export function cardSpecLineTwoStage(
     `${n}. 任務：${
       spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
     }`,
-    ...answerParts(spec.answer, herLatest),
+    ...specAnswerParts(spec, herLatest),
     `${TWO_STAGE_METHOD_LABEL}：${cardMethodText(spec)}`,
     `口吻：${spec.voice}`,
     spec.questionBudget === 0 ? "不問問題" : "問句最多 1 個",
@@ -353,12 +402,28 @@ export function cardSpecLineTwoStage(
 
 /// 第 2 輪（Bruce 10/19 盲選理由，他的例句照用）：誇她的方式由程式照 praiseStyle 挑一句放進
 /// 使用者訊息，不讓寫卡自己判斷兩人到哪一步，也不把兩種寫法同時擺給它挑。
+const LIGHT_PRAISE_TEXT =
+  "她傳自拍、問他好不好看或討稱讚時：輕輕誇一句、不用給太多，帶點玩笑、留一點讓她猜，像她傳自拍時回「美啊 已戀愛。哈哈哈哈 不錯啦」。";
+
 export const PRAISE_TEXT: Readonly<Record<PraiseStyle, string>> = {
   direct:
     "她傳自拍、問他好不好看或討稱讚時：直接誇、講明白，不賣關子、不吊著她。",
-  light:
-    "她傳自拍、問他好不好看或討稱讚時：輕輕誇一句、不用給太多，帶點玩笑、留一點讓她猜，像她傳自拍時回「美啊 已戀愛。哈哈哈哈 不錯啦」。",
+  light: LIGHT_PRAISE_TEXT,
+  // 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：短版不寫在這一段（第 3 輪真跑寫在這裡時，寫出來還是
+  // 一般的回法），改寫在那一張卡的規格（LIGHT_SHORT_CARD_PART）；這一段跟輕輕誇一樣。
+  light_short: LIGHT_PRAISE_TEXT,
 };
+
+/// 短版稱讚（Bruce 2026-10-20「可以」：還沒交往時偶爾用，要短，太長會油）：抽到短版時，plan.ts 挑的那一張卡
+/// 在「這張接」後面多這一段。只講形狀、不放例句（他提醒例句會被照抄）；她沒在討稱讚就照一般寫。
+export const LIGHT_SHORT_CARD_PART =
+  "誇法（她傳自拍、問好不好看或討稱讚時）：這張只回很短的一句，誇張到一看就知道在開玩笑，用正面的說法，不解釋";
+
+/// 短版稱讚開時，卡片多比的外洩哨兵（上面那段裡只有提示詞才寫的說法）：抄進卡片就拿掉那張。
+export const SHORT_PRAISE_WRITER_SENTINELS: readonly string[] = [
+  "這張只回很短的一句",
+  "誇張到一看就知道在開玩笑",
+];
 
 export function praiseSection(style: PraiseStyle): string {
   return `## 稱讚\n${PRAISE_TEXT[style]}`;

@@ -42,6 +42,7 @@ import {
   explainSystemPrompt,
   explainUserPrompt,
   parseExplanations,
+  TENSION_STYLE_EXPLAIN_SENTINELS,
   vetExplanation,
 } from "./explain.ts";
 import {
@@ -86,11 +87,14 @@ import {
   type ReadTags,
   type TwoStageTags,
 } from "./read_tags.ts";
+import { lightShortRun } from "./rules.ts";
 import {
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   readSystemPromptTwoStage,
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
+  SHORT_PRAISE_WRITER_SENTINELS,
+  TENSION_STYLE_WRITER_SENTINELS,
   TWO_STAGE_READ_LEAK_SENTINELS,
   TWO_STAGE_WRITER_SENTINELS,
   writeSystemPromptTwoStage,
@@ -242,6 +246,12 @@ export interface GuideV3StreamDeps {
   /// 口吻與斷句交給程式（開關 ANALYZE_GUIDE_V3_TYPING_STYLE，handler 把關；Bruce 2026-10-20 改法 3）：
   /// 每張卡定稿、檢查過之後，送出之前照他的打字習慣統一稱呼與斷句。沒給或 false：一字不變。
   typingStyle?: boolean;
+  /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，handler 把關；Bruce 2026-10-20「可以」）：只在 twoStage
+  /// 開時有作用。程式照 runId 抽，抽到時一張卡的規格多寫短版的誇法。沒給或 false：一字不變。
+  shortPraise?: boolean;
+  /// 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，handler 把關；Bruce 2026-10-20「改」）：只在 twoStage
+  /// 開時有作用。排卡不變，寫卡與說明看到的帶張力寫法換新的。沒給或 false：一字不變。
+  tensionStyle?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -394,6 +404,10 @@ class GuideV3Flow {
   private hits: SafetyKeywordHits = NO_SAFETY_HITS;
   /// 關係訊號（開關開、讀局面成功才有）：通過檢查的值與拿掉的欄位，進 trace。
   private relation: GuideV3RelationTrace | null = null;
+  /// 短版稱讚開著（兩段式也開）：卡片多比短版那段的哨兵。
+  private shortPraiseOn = false;
+  /// 帶張力改寫法開著（兩段式也開）：寫卡、說明的提示詞換帶張力那幾行，卡片與說明多比新寫法的哨兵。
+  private tensionStyleOn = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -520,6 +534,10 @@ class GuideV3Flow {
           }, "error");
         }
       }
+      // 短版稱讚（Bruce 2026-10-20「可以」）：照 runId 抽，重播一致；沒開照舊。
+      this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
+      // 帶張力改寫法（Bruce 2026-10-20「改」）：排卡不變，寫卡與說明的帶張力寫法換新的；沒開照舊。
+      this.tensionStyleOn = twoStage && this.deps.tensionStyle === true;
       const plan = vetPlanText(
         planTurn(
           turns,
@@ -527,6 +545,9 @@ class GuideV3Flow {
           this.hits,
           undefined,
           twoStageTags ?? undefined,
+          this.shortPraiseOn
+            ? { lightShortPraise: lightShortRun(this.runId) }
+            : {},
         ),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
@@ -1095,7 +1116,19 @@ class GuideV3Flow {
       seen.add(card.card);
       // 兩段式實驗：寫卡提示詞新加的段落也當外洩哨兵；沒開照舊。
       const out = this.deps.twoStage === true
-        ? finalizeCard(card, spec, sourceText, TWO_STAGE_WRITER_SENTINELS)
+        ? finalizeCard(
+          card,
+          spec,
+          sourceText,
+          // 短版稱讚、帶張力改寫法開時：規格裡短版那段、帶張力的新寫法抄進卡片也拿掉。都沒開照舊。
+          this.shortPraiseOn || this.tensionStyleOn
+            ? [
+              ...TWO_STAGE_WRITER_SENTINELS,
+              ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
+              ...(this.tensionStyleOn ? TENSION_STYLE_WRITER_SENTINELS : []),
+            ]
+            : TWO_STAGE_WRITER_SENTINELS,
+        )
         : finalizeCard(card, spec, sourceText);
       if (!out.ok) {
         // 原文留在伺服器紀錄，誤擋時查得到；outcome log 只記原因。
@@ -1192,7 +1225,11 @@ class GuideV3Flow {
       };
       const write = await this.deps.callWrite({
         runId: this.runId,
-        system: twoStage ? writeSystemPromptTwoStage() : writeSystemPrompt(),
+        system: twoStage
+          ? writeSystemPromptTwoStage(undefined, undefined, undefined, {
+            tensionStyle: this.tensionStyleOn,
+          })
+          : writeSystemPrompt(),
         user: twoStage
           ? writeUserPromptTwoStage({ ...userArgs, praise: plan.praise })
           : writeUserPrompt(userArgs),
@@ -1384,8 +1421,11 @@ class GuideV3Flow {
     const task = new Promise<{ text: string; model: string }>((resolve) =>
       resolve(callExplain({
         runId: this.runId,
-        system: explainSystemPrompt(),
+        system: explainSystemPrompt(undefined, undefined, {
+          tensionStyle: this.tensionStyleOn,
+        }),
         user: explainUserPrompt({
+          tensionStyle: this.tensionStyleOn,
           tags,
           herLatest,
           entries: plan.entries,
@@ -1451,7 +1491,17 @@ class GuideV3Flow {
         removed.push({ card: card.slot, reason: "missing" });
         continue;
       }
-      const vetted = vetExplanation(raw);
+      // 說明看得到的新字（短版那段、帶張力的新寫法）照抄進說明也不給，跟卡片同一份哨兵；帶張力改寫法另加
+      // 說明規則那一條（主審第 1 輪 P2）。都沒開照舊。
+      const vetted = vetExplanation(raw, [
+        ...(this.tensionStyleOn
+          ? [
+            ...TENSION_STYLE_EXPLAIN_SENTINELS,
+            ...TENSION_STYLE_WRITER_SENTINELS,
+          ]
+          : []),
+        ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
+      ]);
       if (!vetted.ok) {
         removed.push({ card: card.slot, reason: vetted.reason });
         continue;

@@ -44,12 +44,16 @@ export type V3HarnessModel = (
 
 type Row = Record<string, unknown>;
 
+/// 假 Supabase 建的 run 預設用的 id（固定，結果對得回來）。
+export const V3_HARNESS_RUN_ID = "11111111-2222-4333-8444-000000000001";
+
 function fakeSupabase(args: {
   email: string;
   tier: string;
   createdRuns: Row[];
   rpcs: V3HarnessRpc[];
   finals: Row[];
+  runId?: string;
 }) {
   const nowIso = new Date().toISOString();
   let run: Row | null = null;
@@ -74,7 +78,7 @@ function fakeSupabase(args: {
         if (op === "insert") {
           args.createdRuns.push(values);
           run = {
-            id: "11111111-2222-4333-8444-000000000001",
+            id: args.runId ?? V3_HARNESS_RUN_ID,
             selected_style: null,
             decision_kind: null,
             card_task: null,
@@ -157,6 +161,8 @@ export async function runGuideV3StreamThroughHandler(args: {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly email?: string;
   readonly tier?: string;
+  /// 換掉假 Supabase 建的 run 的 id（短版稱讚照 runId 抽，測試要指定抽到哪一邊時用）；沒給是 V3_HARNESS_RUN_ID。
+  readonly runId?: string;
 }): Promise<V3HarnessOutcome> {
   const createdRuns: Row[] = [];
   const rpcs: V3HarnessRpc[] = [];
@@ -170,6 +176,7 @@ export async function runGuideV3StreamThroughHandler(args: {
         createdRuns,
         rpcs,
         finals,
+        ...(args.runId ? { runId: args.runId } : {}),
       }),
   });
   const savedEnv = Object.keys(args.env ?? {}).map((k) =>

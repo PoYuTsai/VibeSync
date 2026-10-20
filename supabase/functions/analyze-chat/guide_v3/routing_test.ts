@@ -7,6 +7,8 @@ import {
   guideV3Mode,
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
+  shouldUseGuideV3ShortPraise,
+  shouldUseGuideV3TensionStyle,
   shouldUseGuideV3TwoStage,
 } from "./routing.ts";
 
@@ -137,6 +139,61 @@ Deno.test("兩段式開關（Eric 2026-10-19 兩段式實驗）：沒設或打�
   for (const accountIsTest of [true, false]) {
     assertEquals(
       shouldUseGuideV3TwoStage({ mode: guideV3Mode(" On "), accountIsTest }),
+      true,
+    );
+  }
+});
+
+Deno.test("短版稱讚的開關（Bruce 2026-10-20「可以」）：沒設或打錯是 off；test 只給測試帳號；on 誰都開", () => {
+  for (const raw of [undefined, "", "true", "offf"]) {
+    for (const accountIsTest of [true, false]) {
+      assertEquals(
+        shouldUseGuideV3ShortPraise({ mode: guideV3Mode(raw), accountIsTest }),
+        false,
+        `${raw}/${accountIsTest}`,
+      );
+    }
+  }
+  assertEquals(
+    shouldUseGuideV3ShortPraise({ mode: "test", accountIsTest: true }),
+    true,
+  );
+  assertEquals(
+    shouldUseGuideV3ShortPraise({ mode: "test", accountIsTest: false }),
+    false,
+  );
+  for (const accountIsTest of [true, false]) {
+    assertEquals(
+      shouldUseGuideV3ShortPraise({ mode: guideV3Mode(" On "), accountIsTest }),
+      true,
+    );
+  }
+});
+
+Deno.test("帶張力改寫法的開關（Bruce 2026-10-20「改」）：沒設或打錯是 off；test 只給測試帳號；on 誰都開", () => {
+  for (const raw of [undefined, "", "true", "offf"]) {
+    for (const accountIsTest of [true, false]) {
+      assertEquals(
+        shouldUseGuideV3TensionStyle({ mode: guideV3Mode(raw), accountIsTest }),
+        false,
+        `${raw}/${accountIsTest}`,
+      );
+    }
+  }
+  assertEquals(
+    shouldUseGuideV3TensionStyle({ mode: "test", accountIsTest: true }),
+    true,
+  );
+  assertEquals(
+    shouldUseGuideV3TensionStyle({ mode: "test", accountIsTest: false }),
+    false,
+  );
+  for (const accountIsTest of [true, false]) {
+    assertEquals(
+      shouldUseGuideV3TensionStyle({
+        mode: guideV3Mode(" On "),
+        accountIsTest,
+      }),
       true,
     );
   }

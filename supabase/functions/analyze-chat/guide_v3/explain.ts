@@ -10,9 +10,12 @@ import type { LIGHTS, ReadTags } from "./read_tags.ts";
 import type { CardSpec, HisMethod, PraiseStyle, Task } from "./rules.ts";
 import { cardTaskText } from "./prompts.ts";
 import {
-  answerParts,
+  applyLineEdits,
   HAPPY_SHARE_TASK,
   praiseSection,
+  specAnswerParts,
+  TENSION_STYLE_A5_EDITS,
+  TWO_STAGE_A5_EDITS,
   TWO_STAGE_METHOD_LABEL,
 } from "./two_stage_prompts.ts";
 
@@ -47,6 +50,16 @@ const EXPLAIN_RULES = `## 說明怎麼寫
 - 只講卡片實際寫到的東西：不改寫卡片、不另外建議怎麼回，也不替卡片多加意思。
 - 她的話只在講清楚時才引，幾個字就好；不評斷她這個人，講她的意思時只講判讀看得出來的。
 - 自己說收到、收下或記下，評她的語氣、用字、貼圖或表情，被她誇時順勢誇自己，該直接誇時還繞彎吊著她：這些都不算優點，說明不誇、也不替它們找理由；卡片剛好有的話，只講它其他做對的地方。`;
+
+/// 帶張力改寫法開時說明多的一條（Bruce 2026-10-20「改」）：說明跟寫卡用同一把尺，不把打分、說她用意、擺架子
+/// 講成優點。
+export const TENSION_STYLE_EXPLAIN_RULE =
+  "- 帶張力的卡：玩笑對事情本身、或誇張地誇她，才是這張做對的地方；替她打分、說她別有用意、把自己擺得比較厲害，都不算優點，說明不誇。";
+
+/// 上面那一條的外洩哨兵（開關開才比）。
+export const TENSION_STYLE_EXPLAIN_SENTINELS: readonly string[] = [
+  "帶張力的卡：玩笑對事情本身",
+];
 
 const EXPLAIN_FORMAT = `## 輸出格式
 只輸出 JSON：{"explanations": [{"card": <卡片編號>, "text": "<這張的說明>"}]}，每張卡一項，照卡片編號。`;
@@ -93,11 +106,15 @@ function requiredBlock(
 export function explainSystemPrompt(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  /// 帶張力改寫法開時，說明怎麼寫多一條（TENSION_STYLE_EXPLAIN_RULE）。
+  options: { readonly tensionStyle?: boolean } = {},
 ): string {
   const blocks = a5Blocks(sections.A5);
   return [
     EXPLAIN_ROLE,
-    EXPLAIN_RULES,
+    options.tensionStyle
+      ? `${EXPLAIN_RULES}\n${TENSION_STYLE_EXPLAIN_RULE}`
+      : EXPLAIN_RULES,
     "## 說明書（道理的來源）",
     sections.A1,
     [
@@ -146,6 +163,8 @@ export function explainUserPrompt(args: {
   readonly a5?: string;
   /// 寫卡看到的那一句稱讚（第 2 輪）：說明跟寫卡用同一把尺，不會把直接誇講成給太滿。
   readonly praise?: PraiseStyle;
+  /// 帶張力改寫法開時：帶張力那一條改用寫卡看到的新寫法（其他任務與做法照說明書原文）。
+  readonly tensionStyle?: boolean;
 }): string {
   const a5 = args.a5 ?? GUIDE_V3_SECTIONS.A5;
   const her = args.herLatest.length > 0
@@ -161,7 +180,7 @@ export function explainUserPrompt(args: {
         spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
       }`,
       `${TWO_STAGE_METHOD_LABEL}：${spec.method}`,
-      ...answerParts(spec.answer, args.herLatest),
+      ...specAnswerParts(spec, args.herLatest),
     ].join("｜");
     return [
       `### 第 ${slot} 張`,
@@ -184,7 +203,17 @@ export function explainUserPrompt(args: {
     `## 這一輪的情境做法\n${entries}`,
     `## 寫好的卡（一共 ${args.cards.length} 張）\n\n${cards.join("\n\n")}`,
     `## 這幾張卡用到的任務與做法（說明書原文）\n${
-      used.map((name) => a5Bullet(name, a5)).join("\n")
+      used.map((name) =>
+        args.tensionStyle && name === "帶張力"
+          ? a5Bullet(
+            name,
+            applyLineEdits(
+              applyLineEdits(a5, TWO_STAGE_A5_EDITS),
+              TENSION_STYLE_A5_EDITS,
+            ),
+          )
+          : a5Bullet(name, a5)
+      ).join("\n")
     }`,
   ].join("\n\n");
 }
@@ -225,9 +254,16 @@ const INTERNAL_ID = /(?<![A-Za-z0-9])[A-D]\d{1,2}(?![0-9])/;
 /// 步驟自己的哨兵、內部代號與長度。
 export function vetExplanation(
   raw: string,
+  /// 開關開了才多的說明規則的哨兵（帶張力改寫法：TENSION_STYLE_EXPLAIN_SENTINELS）；沒給就跟今天一樣。
+  extraSentinels: readonly string[] = [],
 ): { ok: true; text: string } | { ok: false; reason: ExplainRemovalReason } {
   if (!raw.trim()) return { ok: false, reason: "empty" };
-  const vetted = vetCoachText(raw, EXPLAIN_SENTINELS);
+  const vetted = vetCoachText(
+    raw,
+    extraSentinels.length > 0
+      ? [...EXPLAIN_SENTINELS, ...extraSentinels]
+      : EXPLAIN_SENTINELS,
+  );
   if (!vetted.ok) return { ok: false, reason: "blocked" };
   if (!vetted.text) return { ok: false, reason: "empty" };
   if (INTERNAL_ID.test(raw) || INTERNAL_ID.test(vetted.text)) {
