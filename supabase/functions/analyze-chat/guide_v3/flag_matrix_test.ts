@@ -24,14 +24,17 @@ import {
   RELATION_SENTINELS,
   withRelationFields,
 } from "./relation.ts";
+import { explainSystemPrompt } from "./explain.ts";
 import { handleGuideV3Stream } from "./stream_flow.ts";
 import { detectTypingHabits, styleCard } from "./typing_style.ts";
 import { toTurns } from "./turns.ts";
 import {
+  LIGHT_SHORT_CARD_PART,
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   READ_TWO_STAGE_NOTES,
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
+  TENSION_STYLE_LINE,
   TWO_STAGE_WRITER_SENTINELS,
   writeSystemPromptTwoStage,
 } from "./two_stage_prompts.ts";
@@ -70,7 +73,13 @@ type Outcome = {
 };
 
 const run = async (
-  combo: { twoStage: boolean; relation: boolean; typingStyle?: boolean },
+  combo: {
+    twoStage: boolean;
+    relation: boolean;
+    typingStyle?: boolean;
+    shortPraise?: boolean;
+    tensionStyle?: boolean;
+  },
   options = {},
 ) =>
   await runFlagMatrix(
@@ -321,4 +330,113 @@ Deno.test("口吻與斷句開、兩段式沒開：卡一樣照他的習慣改（
       cardsOf(off).some((c) => c.messages.some((m) => m.includes("，"))),
     );
   }
+});
+
+// ---- 寫卡第 4 輪（Bruce 2026-10-20）：短版稱讚、帶張力改寫法 ----
+
+/// 正式上線的組合（兩段式、關係訊號、口吻與斷句都開）。
+const PRODUCTION = { ...BOTH, typingStyle: true };
+/// 正式組合再開帶張力改寫法的整份結果：鎖住，改了要連這裡一起改。寫卡與說明的系統提示詞換帶張力那幾行
+///（這段她在撒嬌，沒有帶張力的卡，說明的使用者訊息不變）；兩份系統提示詞換回沒開的就是 f3aa55b8…。
+const PRODUCTION_TENSION_STYLE_ON =
+  "148daa9fd63c525504d7add965a46ef98a1e1c55124c6ada754f30ca547f5754";
+/// 正式組合再開短版稱讚、她沒撒嬌（輕輕誇；matrix-run 這個 runId 抽到短版）的整份結果：鎖住。跟下面的對照只差
+/// 寫卡與說明使用者訊息裡短版那段（各一處）與 trace 規格的 shortPraise（一處）。
+const PRODUCTION_SHORT_PRAISE_LIGHT_ON =
+  "03da6d6b909c3c5871d66de8d0ee66854eb7361edb6b168bdd458409e35e9f1f";
+/// 同一個情境（她沒撒嬌）短版稱讚沒開時的整份結果（上面那個的對照）。
+const PRODUCTION_LIGHT_OFF =
+  "ce5c0f0d69a0dce30608d93be52273488f56d97ccedf5c6ec785b1662e306e99";
+
+Deno.test("第 4 輪兩個開關明確關著（false）：每種組合的整份結果跟沒給一模一樣（雜湊照舊）", async () => {
+  const off = { shortPraise: false, tensionStyle: false };
+  assertEquals(
+    await outcomeDigest(await run({ ...OFF, ...off })),
+    MAIN_6EF72AFF_OFF,
+  );
+  assertEquals(
+    await outcomeDigest(await run({ ...RELATION_ONLY, ...off })),
+    MAIN_6EF72AFF_RELATION,
+  );
+  assertEquals(
+    await outcomeDigest(
+      withoutKeys(await run({ ...TWO_STAGE_ONLY, ...off }), [
+        "completedAt",
+        "cardExplains",
+      ]),
+    ),
+    TWO_STAGE_C8F64DFE,
+  );
+  assertEquals(await outcomeDigest(await run({ ...BOTH, ...off })), BOTH_ON);
+  assertEquals(
+    await outcomeDigest(await run({ ...PRODUCTION, ...off })),
+    BOTH_TYPING_ON,
+  );
+});
+
+Deno.test("第 4 輪兩個開關開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用）", async () => {
+  const on = { shortPraise: true, tensionStyle: true };
+  assertEquals(
+    await outcomeDigest(await run({ ...OFF, ...on })),
+    MAIN_6EF72AFF_OFF,
+  );
+  assertEquals(
+    await outcomeDigest(await run({ ...RELATION_ONLY, ...on })),
+    MAIN_6EF72AFF_RELATION,
+  );
+});
+
+Deno.test("正式組合再開帶張力改寫法：寫卡與說明的系統提示詞換帶張力那幾行；讀局面、寫卡的規格與卡都不變", async () => {
+  const off = await run(PRODUCTION);
+  const on = await run({ ...PRODUCTION, tensionStyle: true });
+  assertEquals(on.requests.read, off.requests.read);
+  assertEquals(on.requests.write.user, off.requests.write.user);
+  assertEquals(
+    on.requests.write.system,
+    writeSystemPromptTwoStage(undefined, undefined, undefined, {
+      tensionStyle: true,
+    }),
+  );
+  assert(on.requests.write.system.includes(TENSION_STYLE_LINE));
+  assertEquals(
+    on.requests.explain.system,
+    explainSystemPrompt(undefined, undefined, { tensionStyle: true }),
+  );
+  assertEquals(on.requests.explain.user, off.requests.explain.user);
+  assertEquals(cardsOf(on), cardsOf(off));
+  assertEquals(await outcomeDigest(on), PRODUCTION_TENSION_STYLE_ON);
+});
+
+/// 同一段對話，但她這一輪沒撒嬌（程式挑輕輕誇）。
+const notAffectionate = (combo: typeof PRODUCTION) =>
+  JSON.stringify({
+    ...JSON.parse(flagMatrixReadText(combo)),
+    herAffection: false,
+  });
+
+Deno.test("正式組合再開短版稱讚：她撒嬌（直接誇）時跟沒開一模一樣；她沒撒嬌、這個 runId 抽到短版時，一張卡的規格與說明多短版那段", async () => {
+  // 她撒嬌：直接誇，不會用短版，整份結果跟沒開一樣。
+  assertEquals(
+    await outcomeDigest(await run({ ...PRODUCTION, shortPraise: true })),
+    BOTH_TYPING_ON,
+  );
+  const readText = notAffectionate(PRODUCTION);
+  const off = await run(PRODUCTION, { readText });
+  const on = await run({ ...PRODUCTION, shortPraise: true }, { readText });
+  assertEquals(off.requests.write.user.includes(LIGHT_SHORT_CARD_PART), false);
+  assertEquals(
+    on.requests.write.user.split(LIGHT_SHORT_CARD_PART).length - 1,
+    1,
+  );
+  assertEquals(
+    on.requests.explain.user.split(LIGHT_SHORT_CARD_PART).length - 1,
+    1,
+  );
+  // 稱讚那段跟一般輕輕誇一樣；讀局面、寫卡的系統提示詞不變。
+  assertEquals(on.requests.read, off.requests.read);
+  assertEquals(on.requests.write.system, off.requests.write.system);
+  const specs = (on.markDone.guideV3Trace as { specs: Rec[] }).specs;
+  assertEquals(specs.filter((s) => s.shortPraise === true).length, 1);
+  assertEquals(await outcomeDigest(off), PRODUCTION_LIGHT_OFF);
+  assertEquals(await outcomeDigest(on), PRODUCTION_SHORT_PRAISE_LIGHT_ON);
 });
