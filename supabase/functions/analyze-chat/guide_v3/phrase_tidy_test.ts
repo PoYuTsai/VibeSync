@@ -42,7 +42,7 @@ Deno.test("常數：考題字、她在講題目的字、題材不算；考題空
   ]);
   assertEquals(NOT_QUIZ_WORDS, ["這題材"]);
   assert(HER_QUIZ_WORDS.includes("題目"));
-  assertEquals(QUIZ_FILLERS.length, 12);
+  assertEquals(QUIZ_FILLERS.length, 15);
   for (const filler of ["這題不用想", "這題我不用想", "這個答案很穩"]) {
     assert(QUIZ_FILLERS.includes(filler), filler);
   }
@@ -103,6 +103,35 @@ Deno.test("這題：答案就在那一段裡不拿掉；「這題我選你」這
   assertEquals(tidy("是啊 你最好看 這題沒有第二個答案"), "是啊 你最好看");
   assertEquals(tidy("欸這題我不用想 就是你"), "就是你");
   assertEquals(tidy("這題送分欸 當然是你"), "當然是你");
+});
+
+Deno.test("Bruce 2026-10-21 加的三個說法：「這個問題答案很明顯」「答案很穩」「先說我的答案」整段剛好是就拿掉（前後可以有語氣詞、語助詞、表情），多了別的字就照原文", () => {
+  for (const filler of ["這個問題答案很明顯", "答案很穩", "先說我的答案"]) {
+    assert(QUIZ_FILLERS.includes(filler), filler);
+  }
+  assertEquals(tidy("這個問題答案很明顯 當然是你"), "當然是你");
+  assertEquals(tidy("最好看的就是你 答案很穩"), "最好看的就是你");
+  assertEquals(tidy("先說我的答案 就是你"), "就是你");
+  assertEquals(tidy("欸先說我的答案 就是你"), "就是你");
+  assertEquals(tidy("答案很穩啦 你最好看"), "你最好看");
+  assertEquals(tidy("這個問題答案很明顯😏 當然是你"), "當然是你");
+  assertEquals(
+    tidyMessage("先說我的答案 就是你", ASKS_BEST).changes,
+    { quiz: 1, quizRewrite: 0, degree: 0, messages: 1 },
+  );
+  for (
+    const kept of [
+      "我的答案是你",
+      "先說我的答案是你",
+      "答案很穩的是你",
+      "這個問題答案很明顯是你",
+      // 整則只有這一句：拿掉就沒字了。
+      "答案很穩",
+    ]
+  ) assertEquals(tidy(kept), kept);
+  // 她自己在講真的題目：這三句也不動。
+  const exam = phraseTidyContext({ herMessages: ["這題答案是什麼"] });
+  assertEquals(tidy("先說我的答案 選B", exam), "先說我的答案 選B");
 });
 
 Deno.test("主審第 1 輪 P2：有考題字、但不是整段空話的，不確定答案在不在裡面，整則照原文", () => {

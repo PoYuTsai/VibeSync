@@ -5,7 +5,8 @@
 //
 // 規則（字表都在下面的常數，Bruce 可以調）：
 // - 這題：一則裡用空白或標點隔開的一小段，整段剛好是把她的問題當考題、自己沒有內容的說法（QUIZ_FILLERS，
-//   例如「這題不用想」），才拿掉；有別的字的（這題當然第一名啊、這題海邊勝出）不確定答案在不在裡面，照原文
+//   例如「這題不用想」，與 Bruce 加的「答案很穩」這些），才拿掉；有別的字的（這題當然第一名啊、這題海邊勝出）
+//   不確定答案在不在裡面，照原文
 //  （主審第 1 輪 P2）。「這題我選你」這種拿掉考題字也通的說法，只拿掉那兩三個字。她自己的訊息就在講題目
 //  （HER_QUIZ_WORDS），這一條整個不做。
 // - 滿→蠻：「滿」後面整個接著常數表裡兩個字以上的詞（適合、好看、有勇氣……）、前面那個字也不會跟「滿」
@@ -34,7 +35,8 @@ export const NOT_ANSWER_AFTER = "得的了吧啊啦嗎呢喔欸案票";
 /// 答案在這一段裡、拿掉考題字也通的說法：只拿掉考題字（這題我選你→我選你、這題我直接投你一票→我直接投你一票）。
 export const QUIZ_REWRITE = /(?:這題|這一題|這道題)(?=我(?:直接|就)?[選投])/u;
 /// 會整段拿掉的考題說法：自己沒有內容，答案一定在別段（從之前跑過的卡整理，主審第 1 輪 P2：只認整段剛好
-/// 是這些，前面可以有欸、啊，後面可以有語助詞與表情）。開頭的「這題」也可以是這一題、這道題。
+/// 是這些，前面可以有欸、啊，後面可以有語助詞與表情）。開頭的「這題」也可以是這一題、這道題。最後三句是
+/// Bruce 看過例子後加的（2026-10-21 PR #97：加三個說法），沒有考題字也一樣整段拿掉。
 export const QUIZ_FILLERS: readonly string[] = [
   "這題不用想",
   "這題我不用想",
@@ -48,6 +50,9 @@ export const QUIZ_FILLERS: readonly string[] = [
   "這題要選的話",
   "這種送分題我秒答",
   "這個答案很穩",
+  "這個問題答案很明顯",
+  "答案很穩",
+  "先說我的答案",
 ];
 /// 考題說法前面可以有的語氣詞。
 export const QUIZ_FILLER_LEAD: readonly string[] = ["欸", "啊"];
@@ -286,14 +291,13 @@ export function tidyMessage(
   const quizDrops = new Set<number>();
   const rewrites = new Map<number, string>();
   pieces.forEach((p, i) => {
-    if (p.sep || p.locked) return;
-    if (!context.herQuizWords && isQuizClause(p.text)) {
-      // 只拿掉整段剛好是考題空話的；其他有考題字的，只有「這題我選你」這種只拿掉考題字，不然照原文。
-      if (QUIZ_FILLER_PATTERN.test(p.text)) quizDrops.add(i);
-      else if (carriesAnswer(p.text) && QUIZ_REWRITE.test(p.text)) {
-        rewrites.set(i, p.text.replace(QUIZ_REWRITE, ""));
-      }
-    }
+    if (p.sep || p.locked || context.herQuizWords) return;
+    // 只拿掉整段剛好是考題空話的（有的沒有考題字，例如「答案很穩」）；其他有考題字的，只有「這題我選你」
+    // 這種只拿掉考題字，不然照原文。
+    if (QUIZ_FILLER_PATTERN.test(p.text)) quizDrops.add(i);
+    else if (
+      isQuizClause(p.text) && carriesAnswer(p.text) && QUIZ_REWRITE.test(p.text)
+    ) rewrites.set(i, p.text.replace(QUIZ_REWRITE, ""));
   });
   const rewritten = pieces.map((p, i) =>
     rewrites.has(i) ? { ...p, text: rewrites.get(i)! } : p
