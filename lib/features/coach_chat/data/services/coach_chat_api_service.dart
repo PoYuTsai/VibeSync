@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../user_profile/domain/services/effective_style_prompt_builder.dart';
 import '../../domain/entities/coach_chat_result.dart';
 import '../../domain/entities/coach_scope.dart';
 
@@ -290,11 +291,13 @@ class CoachChatApiService {
         'conversationSummary': _clampForWire(conversationSummary.trim(), 500),
       if (analysisSnapshot != null)
         'analysisSnapshot': _analysisSnapshotToWire(analysisSnapshot),
+      // 「關於我」上限跟組字端與 server schema 同為 900（規格 PR-3）；組字端
+      // 已整行取捨，這裡只是最後一道保險。
       if (effectiveStyleContext != null &&
           effectiveStyleContext.trim().isNotEmpty)
         'effectiveStyleContext': _clampForWire(
           effectiveStyleContext.trim(),
-          500,
+          EffectiveStylePromptBuilder.coachFollowUpMaxChars,
         ),
       if (partnerHint != null)
         'partnerHint': _partnerHintToWire(
