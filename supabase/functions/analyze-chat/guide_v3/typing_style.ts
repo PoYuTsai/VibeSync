@@ -78,7 +78,9 @@ export function addTypingChanges(
 
 const HAN = /\p{Script=Han}/u;
 const DIGIT = /\p{Nd}/u;
-const URL = /https?:\/\/\S+/gu;
+/// 網址與 email 整段不動：http(s)://（大小寫都算）、www. 開頭的、email（主審第 1 輪 P2：原本只認小寫的
+/// http(s)://，HTTPS://…/你好、www.…/你好 的「你」會被換掉）。
+const URL = /(?:https?:\/\/|www\.)\S+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/giu;
 const SPACE_BREAK = /\p{Script=Han}[ \u3000]+\S|\S[ \u3000]+\p{Script=Han}/u;
 
 /// 每個字是不是在引號裡（引號本身不算在裡面）、是不是在網址或「不是稱呼的詞」裡（都不動）。
@@ -107,7 +109,7 @@ function protectedMap(chars: readonly string[]): {
       inQuote.push(stack.length > 0 || ascii);
     }
   }
-  // 網址、不是稱呼的詞：以字（code point）為單位標記。
+  // 網址與 email、不是稱呼的詞：以字（code point）為單位標記。
   const marks: [number, number][] = [];
   for (const m of text.matchAll(URL)) marks.push([m.index!, m[0].length]);
   for (const word of NOT_PRONOUN_WORDS) {

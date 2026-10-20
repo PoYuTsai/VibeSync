@@ -210,3 +210,22 @@ Deno.test("主審第 1 輪 P2：整理空白只整理引號外的，引號裡的
   assertEquals(text("「 好  啊 」，"), "「 好  啊 」");
   assertEquals(text("好，，  那  「 A  B 」"), "好 那 「 A  B 」");
 });
+
+Deno.test("主審第 1 輪 P2：網址大小寫都認、www. 開頭的也認、email 也整段不動（他習慣打「妳」時，裡面的「你」不換）", () => {
+  const her = habits({ address: "妳" });
+  for (
+    const url of [
+      "HTTPS://example.com/你好",
+      "www.example.com/你好",
+      "Http://Example.com/你",
+      "WWW.EXAMPLE.COM/你們",
+      "看 HTTPS://example.com/你好",
+    ]
+  ) {
+    assertEquals(text(url, her), url);
+  }
+  assertEquals(
+    text("寄到 ni.you@example.com，你看一下", her),
+    "寄到 ni.you@example.com 妳看一下",
+  );
+});
