@@ -251,9 +251,8 @@ void main() {
       final styleContext = body['effectiveStyleContext'] as String;
       expect(
         styleContext.length,
-        lessThanOrEqualTo(EffectiveStylePromptBuilder.coachFollowUpMaxChars),
+        EffectiveStylePromptBuilder.coachFollowUpMaxChars,
       );
-      expect(styleContext.length, greaterThan(500));
       final turn =
           (body['activeSessionTurns'] as List).single as Map<String, dynamic>;
       expect((turn['content'] as String).length, lessThanOrEqualTo(500));
@@ -275,6 +274,24 @@ void main() {
       expect((hint['name'] as String).length, lessThanOrEqualTo(80));
       final trait = (hint['traits'] as List).single as String;
       expect(trait.length, lessThanOrEqualTo(40));
+    });
+
+    test('About Me under the cap is sent intact (not clamped to 500)', () async {
+      final calls = <_Recorded>[];
+      final service =
+          CoachChatApiService(invoker: _stub(_ok(), recorder: calls));
+      final aboutMe = '界${'線' * 848}';
+
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: null,
+        question: '要不要今晚約？',
+        recentMessages: const [],
+        effectiveStyleContext: aboutMe,
+        dataQualityFlagged: false,
+      );
+
+      expect(calls.single.body['effectiveStyleContext'], aboutMe);
     });
 
     test('About Me cap matches the coach-chat server schema (900)', () {
