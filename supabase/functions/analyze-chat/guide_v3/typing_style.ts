@@ -9,8 +9,8 @@
 //   不是稱呼的詞不動；你們、妳們跟著換。
 // - 斷句：他不是明顯用逗號斷句的人，句子中間的逗號換成一個空白、一則中間的句號也換成空白；他不是明顯
 //   會在句尾打句號的人，一則最後的句號拿掉。頓號、問號、驚嘆號、～、…、表情、1,000、3.5、網址都不動；
-//   連打的句號（。。。）當刪節號不動；引號裡的字不動。換完的空白連在一起的併成一個、頭尾修掉；
-//   一則換完變空的就照原文。
+//   連打的句號（。。。）當刪節號不動；引號裡的字不動。換完之後，引號外連在一起的空白併成一個、
+//   頭尾修掉（引號裡的空白照原樣）；一則換完變空的就照原文。
 import { isMediaLine, QUOTED_REPLY_PREFIX } from "./rules.ts";
 
 export type Address = "你" | "妳";
@@ -222,6 +222,31 @@ export function addressFor(habits: TypingHabits): Address {
   return habits.address ?? DEFAULT_ADDRESS;
 }
 
+/// 改好的一個字，記著它是不是受保護（引號裡、網址等）。
+interface OutChar {
+  readonly c: string;
+  readonly locked: boolean;
+}
+
+/// 換完之後整理空白：只整理沒受保護的字——連在一起的空白併成一個、頭尾的空白修掉；引號裡、網址
+/// 這些受保護的字照原樣（主審第 1 輪 P2：原本整則一起併，會把引號裡的「A  B」改成「A B」）。
+function tidy(out: readonly OutChar[]): string {
+  const kept: OutChar[] = [];
+  for (const x of out) {
+    const prev = kept.at(-1);
+    if (
+      !x.locked && x.c === " " && prev && !prev.locked && prev.c === " "
+    ) continue;
+    kept.push(x);
+  }
+  const loose = (x: OutChar) => !x.locked && /\s/u.test(x.c);
+  let start = 0;
+  let end = kept.length;
+  while (start < end && loose(kept[start])) start++;
+  while (end > start && loose(kept[end - 1])) end--;
+  return kept.slice(start, end).map((x) => x.c).join("");
+}
+
 /// 一則訊息照他的習慣改；回改好的字與次數。
 export function styleMessage(
   message: string,
@@ -235,26 +260,27 @@ export function styleMessage(
   let commas = 0;
   let innerPeriods = 0;
   let finalPeriods = 0;
-  const out: string[] = [];
+  const out: OutChar[] = [];
+  const keep = (c: string, locked = false) => out.push({ c, locked });
   chars.forEach((c, i) => {
     if (inQuote[i] || frozen[i]) {
-      out.push(c);
+      keep(c, true);
       return;
     }
     if (c === other) {
-      out.push(target);
+      keep(target);
       address++;
       return;
     }
     if (!habits.usesCommas && isClauseComma(chars, i)) {
-      out.push(" ");
+      keep(" ");
       commas++;
       return;
     }
     const final = isFinal(chars, i);
     if (c === "。" && !inPeriodRun(chars, i)) {
       if (!final && !habits.usesCommas) {
-        out.push(" ");
+        keep(" ");
         innerPeriods++;
         return;
       }
@@ -270,10 +296,10 @@ export function styleMessage(
       finalPeriods++;
       return;
     }
-    out.push(c);
+    keep(c);
   });
   const changed = address + commas + innerPeriods + finalPeriods > 0;
-  const text = changed ? out.join("").replace(/ {2,}/g, " ").trim() : message;
+  const text = changed ? tidy(out) : message;
   // 換完變空的（例如整則只有一個句號）就照原文：則數不能少。
   if (!changed || text === "") {
     return { text: message, changes: NO_TYPING_CHANGES };

@@ -204,3 +204,9 @@ Deno.test("一整組：同一份習慣套到每張卡的每一則，則數不變
     changes: NO_TYPING_CHANGES,
   });
 });
+
+Deno.test("主審第 1 輪 P2：整理空白只整理引號外的，引號裡的空白照原樣", () => {
+  assertEquals(text("好，「代碼 A  B」照貼"), "好 「代碼 A  B」照貼");
+  assertEquals(text("「 好  啊 」，"), "「 好  啊 」");
+  assertEquals(text("好，，  那  「 A  B 」"), "好 那 「 A  B 」");
+});
