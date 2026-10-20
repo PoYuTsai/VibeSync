@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/message_calculator.dart';
@@ -111,6 +112,10 @@ class StreamingAnalysisState {
   /// v3 最終結果；v2 的最終結果在 [result]。兩者不會同時非 null。
   final GuideV3Result? guideV3Result;
 
+  /// v3 已送到的「為什麼這樣回」（slot → 說明；兩段式實驗才有）。done 的結果不帶，done 時
+  /// 併進 [guideV3Result]，跟卡一起存檔。
+  final Map<int, String> guideV3CardExplains;
+
   const StreamingAnalysisState({
     required this.phase,
     this.recommendationPreview,
@@ -136,6 +141,7 @@ class StreamingAnalysisState {
     this.guideV3Read,
     this.guideV3Cards = const [],
     this.guideV3Result,
+    this.guideV3CardExplains = const {},
   });
 
   const StreamingAnalysisState.idle() : this(phase: StreamingAnalyzePhase.idle);
@@ -174,6 +180,7 @@ class StreamingAnalysisState {
     Object? guideV3Read = _unset,
     List<GuideV3Card>? guideV3Cards,
     Object? guideV3Result = _unset,
+    Map<int, String>? guideV3CardExplains,
   }) {
     return StreamingAnalysisState(
       phase: phase ?? this.phase,
@@ -240,6 +247,7 @@ class StreamingAnalysisState {
       guideV3Result: identical(guideV3Result, _unset)
           ? this.guideV3Result
           : guideV3Result as GuideV3Result?,
+      guideV3CardExplains: guideV3CardExplains ?? this.guideV3CardExplains,
     );
   }
 }
@@ -318,6 +326,9 @@ class StreamingAnalyzeNotifier
   OverchargeConfirmationPayload? _cachedConfirmedOvercharge;
   PreviousRoundContext? _cachedPreviousRound;
   int? _cachedPayloadCharCount;
+
+  /// 這個 run（generation）已經收回過跟進提醒：判讀與 done 都會檢查，只叫一次。
+  int? _followUpSilencedGeneration;
 
   // 續接同一個 run 時保留用戶已看到的卡片（F12）。伺服器續接分兩種：run 還在
   // 跑或已完成，只會重播最終的 done，不會再送卡片；run 已失敗則重跑一次，
@@ -501,6 +512,11 @@ class StreamingAnalyzeNotifier
           case AnalysisStreamUpdateKind.guideV3Read:
             final read = update.guideV3Read;
             if (read == null) break;
+            _silenceFollowUpIfNeeded(
+              read.decision,
+              partnerId: conversationPartnerId,
+              generation: generation,
+            );
             state = state.copyWith(
               phase: StreamingAnalyzePhase.streamingReport,
               analysisRunId: update.runId ?? state.analysisRunId,
@@ -537,6 +553,20 @@ class StreamingAnalyzeNotifier
               quotaExceeded: null,
               isGuideV3Run: true,
               guideV3Cards: List<GuideV3Card>.unmodifiable(cards),
+            );
+            break;
+          case AnalysisStreamUpdateKind.guideV3CardExplain:
+            final explain = update.guideV3CardExplain;
+            // 同一張只留第一次送到的（伺服器不會重送；保險）。
+            if (explain == null ||
+                state.guideV3CardExplains.containsKey(explain.card)) {
+              break;
+            }
+            state = state.copyWith(
+              guideV3CardExplains: Map<int, String>.unmodifiable({
+                ...state.guideV3CardExplains,
+                explain.card: explain.text,
+              }),
             );
             break;
           case AnalysisStreamUpdateKind.content:
@@ -585,11 +615,19 @@ class StreamingAnalyzeNotifier
           case AnalysisStreamUpdateKind.done:
             final guideV3Result = update.guideV3Result;
             if (guideV3Result != null) {
+              // 判讀中途讀不懂時，決定只在最終結果裡。
+              _silenceFollowUpIfNeeded(
+                guideV3Result.decision,
+                partnerId: conversationPartnerId,
+                generation: generation,
+              );
               // 續看重組只帶回第一張卡：這個 run 畫面上已經送到的卡補回來，
-              // 不讓用戶看過的卡消失（存檔也存合併後的）。
-              final merged = guideV3Result.recovered
-                  ? guideV3Result.withShownCards(state.guideV3Cards)
-                  : guideV3Result;
+              // 不讓用戶看過的卡消失（存檔也存合併後的）。「為什麼這樣回」done 不帶，
+              // 收到的一起併進去存。
+              final merged = (guideV3Result.recovered
+                      ? guideV3Result.withShownCards(state.guideV3Cards)
+                      : guideV3Result)
+                  .withCardExplains(state.guideV3CardExplains);
               state = state.copyWith(
                 phase: StreamingAnalyzePhase.done,
                 result: null,
@@ -745,6 +783,31 @@ class StreamingAnalyzeNotifier
       );
     } finally {
       stopLocalProgress();
+    }
+  }
+
+  /// v3 判成關心（自傷、未成年）或停（她拒絕或封鎖）就收回這位對象的 48 小時跟進提醒（P1 安全
+  /// 修正；主審第 1 輪 finding 1）。在 notifier 這裡做，不靠分析頁的存檔回呼：離開分析頁之後
+  /// 才到的結果也收得回。一個 run 只叫一次；best-effort，失敗不影響分析。
+  void _silenceFollowUpIfNeeded(
+    GuideV3Decision decision, {
+    required String? partnerId,
+    required int generation,
+  }) {
+    if (!decision.silencesFollowUp) return;
+    final id = partnerId?.trim();
+    if (id == null || id.isEmpty) return;
+    if (_followUpSilencedGeneration == generation) return;
+    _followUpSilencedGeneration = generation;
+    try {
+      unawaited(
+        ref.read(analysisFollowUpSilencerProvider)(id).catchError(
+              (Object error) =>
+                  debugPrint('FollowUp silence after v3 read failed: $error'),
+            ),
+      );
+    } catch (error) {
+      debugPrint('FollowUp silence after v3 read failed: $error');
     }
   }
 

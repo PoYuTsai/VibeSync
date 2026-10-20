@@ -39,7 +39,8 @@ export function readSystemPrompt(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
-  /// 兩段式實驗多要的欄位說明（two_stage_prompts.ts）；沒給就跟今天一字不差。
+  /// 開關開了才多要的欄位說明（兩段式實驗見 two_stage_prompts.ts，關係訊號見 relation.ts；兩個都開時
+  /// 兩段接在一起、關係那段在最後）；沒給就跟今天一字不差。
   extraFieldNotes?: string,
 ): string {
   const triggers = entries.filter((e) => e.enabled).map((e) =>

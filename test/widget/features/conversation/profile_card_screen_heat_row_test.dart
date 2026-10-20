@@ -7,7 +7,12 @@ import 'package:vibesync/features/conversation/data/providers/conversation_provi
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/presentation/screens/profile_card_screen.dart';
 
-Conversation _conversation({int? score, String? snapshotJson}) => Conversation(
+Conversation _conversation({
+  int? score,
+  String? snapshotJson,
+  String? stage,
+}) =>
+    Conversation(
       id: 'c-1',
       name: '小雨',
       messages: const [],
@@ -15,6 +20,7 @@ Conversation _conversation({int? score, String? snapshotJson}) => Conversation(
       updatedAt: DateTime(2026, 10, 18),
       lastEnthusiasmScore: score,
       lastAnalysisSnapshotJson: snapshotJson,
+      currentGameStage: stage,
     );
 
 Future<void> _pump(WidgetTester tester, Conversation conversation) async {
@@ -46,6 +52,31 @@ void main() {
 
     expect(find.text('本次投入'), findsNothing);
     expect(find.text('目前階段'), findsOneWidget);
+  });
+
+  testWidgets('v3 帶了關係狀態（Bruce 2026-10-19 路線二）：存檔寫進對話的階段與熱度照 v2 顯示',
+      (tester) async {
+    await _pump(
+      tester,
+      _conversation(
+        score: 65,
+        stage: 'premise',
+        snapshotJson: jsonEncode({
+          'guideVersion': 'v3.6',
+          'read': {
+            'light': 'green',
+            'decision': 'send',
+            'relation': {'stage': 'premise', 'heat': 72},
+          },
+          'cards': const [],
+        }),
+      ),
+    );
+
+    expect(find.text('目前階段'), findsOneWidget);
+    expect(find.text('升溫'), findsOneWidget);
+    expect(find.text('本次投入'), findsOneWidget);
+    expect(find.text('--'), findsWidgets);
   });
 
   testWidgets('還沒分析的對話照舊顯示「本次投入 --」', (tester) async {

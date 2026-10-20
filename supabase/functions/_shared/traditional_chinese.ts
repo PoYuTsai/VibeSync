@@ -37,8 +37,16 @@ function normalizeZhuyinLookalikes(value: string): string {
   return normalized;
 }
 
+// 「只」不交給轉換器（Eric 2026-10-20「直接修好上線」）：OpenCC 的詞組表把「是只」轉成「是隻」，
+// 已經是繁體的「還是只有」「不是只回」會被改成「還是隻有」「不是隻回」。模型輸出本來就該是繁體，
+// 「只」幾乎都是「只有、只是」的只，所以在「只」的地方切開、分段轉完再接回去，不維護詞組清單。
+// 代價：簡體的量詞「只」不再轉成「隻」（「一只猫」→「一只貓」，不是「一隻貓」；「船只」「只身」
+// 同理）。本來就是繁體的「隻」照留（「這隻狗」）。
 export function toTraditionalChinese(value: string): string {
-  let converted = simplifiedToTaiwanTraditional(normalizeZhuyinLookalikes(value));
+  let converted = normalizeZhuyinLookalikes(value)
+    .split("只")
+    .map((part) => simplifiedToTaiwanTraditional(part))
+    .join("只");
   for (const [from, to] of PRODUCT_TERMS) {
     converted = converted.split(from).join(to);
   }

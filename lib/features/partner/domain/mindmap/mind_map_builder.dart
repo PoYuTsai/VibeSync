@@ -3,6 +3,8 @@ import 'dart:convert';
 import '../../../analysis/domain/entities/analysis_models.dart';
 import '../../../analysis/domain/entities/analysis_record.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
+import '../../../analysis/domain/entities/guide_v3_result.dart';
+import '../../../analysis/domain/services/latest_analyzed_fragment.dart';
 import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../extensions/partner_aggregates.dart';
@@ -21,6 +23,11 @@ import 'mind_map_models.dart';
 /// - 已確認資料：Partner.customNote 經 allowlist chips 解析，舊自由文字不採用。
 /// - AI 聚合興趣 / 特質不進「關於她」節點；aggregate 興趣只保留給既有
 ///   作戰重點 panel 的可接話題。
+/// - v3（任務卡）快照（Bruce 2026-10-19 路線二）：階段讀判讀的關係狀態；下一步跟對象頁
+///   同一套（先別回是要等她做什麼、停是停止條件、出卡與收尾是第一張卡）；關心不給下一步，
+///   也不講關係狀態。
+/// - 「現在怎麼做」（下一步、關心、本輪）看最後完成分析的那段（[LatestAnalyzedFragment]，
+///   首頁卡、對象頁同一條規則；主審第 1 輪 finding 2），見 [_currentFirst]。
 PartnerMindMap buildPartnerMindMap({
   required String partnerName,
   required PartnerAggregateView aggregate,
@@ -31,9 +38,12 @@ PartnerMindMap buildPartnerMindMap({
   final descByDate = [...conversations]
     ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-  final parsedSnapshots = _latestParsedSnapshots(
-    conversations: descByDate,
-    analysisRecords: analysisRecords,
+  final parsedSnapshots = _currentFirst(
+    _latestParsedSnapshots(
+      conversations: descByDate,
+      analysisRecords: analysisRecords,
+    ),
+    LatestAnalyzedFragment.of(conversations),
   );
   final latestSnapshot = parsedSnapshots.isEmpty ? null : parsedSnapshots.first;
   GameStageInfo? stageInfo;
@@ -68,6 +78,8 @@ PartnerMindMap buildPartnerMindMap({
   final branches = <MindMapNode>[];
   String? relationshipSignal;
   String? fullNextStep;
+  // 最近一次是 v3 的關心（自傷、未成年）：不給下一步，也不拿舊的階段說「你們目前的狀態」。
+  final latestIsCare = latestSnapshot?.isGuideV3Care ?? false;
 
   if (hasAnalysisData) {
     if (stageInfo != null || fallbackStage != null) {
@@ -79,9 +91,11 @@ PartnerMindMap buildPartnerMindMap({
         stage,
         reconnectWording: reconnectWording,
       );
-      relationshipSignal = reconnectWording && stage == GameStage.opening
-          ? '這輪重點是重新接上互動，不代表關係退回陌生人'
-          : stage.description;
+      relationshipSignal = latestIsCare
+          ? null
+          : reconnectWording && stage == GameStage.opening
+              ? '這輪重點是重新接上互動，不代表關係退回陌生人'
+              : stage.description;
       branches.add(MindMapNode(
         id: 'stage',
         label: '目前互動重點',
@@ -169,7 +183,48 @@ PartnerMindMap buildPartnerMindMap({
     confirmedFacts: confirmedFacts,
     topics: aggregate.unionInterests,
     fullNextStep: fullNextStep,
+    latestGuideV3Signals: aggregate.latestGuideV3Signals,
+    latestIsGuideV3Care: latestIsCare,
   );
+}
+
+/// 最後完成分析的那段排到最前面，其他照紀錄時間。紀錄沿用第一次分析的建立時間，重跑較舊的
+/// 片段時照紀錄排會選到別段：下一步拿到別段的卡、關心也不收問教練（主審第 1 輪 finding 2）。
+/// 改版前的 v2 快照沒記完成時間，照舊用紀錄時間；v3 一律跟首頁卡、對象頁同一段，關心才不會
+/// 這頁收起、那頁還在。
+List<_ParsedMindMapSnapshot> _currentFirst(
+  List<_ParsedMindMapSnapshot> snapshots,
+  LatestAnalyzedFragment? latest,
+) {
+  if (latest == null || !(latest.isGuideV3 || latest.hasRecordedCompletion)) {
+    return snapshots;
+  }
+  final raw = latest.conversation.lastAnalysisSnapshotJson?.trim();
+  if (raw == null || raw.isEmpty) return snapshots;
+  final key = _snapshotMirrorKey(latest.conversation.id, raw);
+  final index = snapshots.indexWhere((snapshot) => snapshot.mirrorKey == key);
+  if (index <= 0) return snapshots;
+  return [
+    snapshots[index],
+    ...snapshots.take(index),
+    ...snapshots.skip(index + 1),
+  ];
+}
+
+/// v3 的下一步：跟對象頁的下一步卡同一套（partner_detail_screen 的 fromGuideV3）。先別回是
+/// 要等她做什麼、停是伺服器扣費紀錄同一句停止條件、出卡與收尾是第一張卡；關心沒有。
+String _guideV3NextStep(GuideV3Result result) {
+  switch (result.decision) {
+    case GuideV3Decision.hold:
+      return result.read.waitFor ?? '';
+    case GuideV3Decision.stop:
+      return '先停在這裡，不再主動傳訊息';
+    case GuideV3Decision.send:
+    case GuideV3Decision.close:
+      return result.cards.isEmpty ? '' : result.cards.first.copyText;
+    case GuideV3Decision.care:
+      return '';
+  }
 }
 
 List<MindMapNode> _recentInteractionNodes(
@@ -310,9 +365,11 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
   for (final record in analysisRecords) {
     final raw = record.analysisSnapshotJson.trim();
     if (raw.isEmpty) continue;
-    recordMirrorKeys.add(_snapshotMirrorKey(record.conversationId, raw));
+    final mirrorKey = _snapshotMirrorKey(record.conversationId, raw);
+    recordMirrorKeys.add(mirrorKey);
     sources.add(_MindMapSnapshotSource(
       conversationId: record.conversationId,
+      mirrorKey: mirrorKey,
       occurredAt: record.createdAt,
       rawJson: raw,
       sourceId: 'record:${record.id}',
@@ -325,11 +382,13 @@ List<_ParsedMindMapSnapshot> _latestParsedSnapshots({
   for (final conversation in conversations) {
     final raw = conversation.lastAnalysisSnapshotJson?.trim();
     if (raw == null || raw.isEmpty) continue;
-    if (recordMirrorKeys.contains(_snapshotMirrorKey(conversation.id, raw))) {
+    final mirrorKey = _snapshotMirrorKey(conversation.id, raw);
+    if (recordMirrorKeys.contains(mirrorKey)) {
       continue;
     }
     sources.add(_MindMapSnapshotSource(
       conversationId: conversation.id,
+      mirrorKey: mirrorKey,
       occurredAt: conversation.updatedAt,
       rawJson: raw,
       sourceId: 'conversation:${conversation.id}',
@@ -422,6 +481,23 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
       (key, value) => MapEntry(key.toString(), value),
     );
 
+    if (isGuideV3Payload(json)) {
+      // v3 快照只認形狀，不交給 v2 的解析；讀不懂（判讀壞掉）照舊算一次空的分析。
+      final result = GuideV3Result.fromJson(json);
+      final stage = result?.read.relation?.stage;
+      return _ParsedMindMapSnapshot(
+        conversationId: source.conversationId,
+        mirrorKey: source.mirrorKey,
+        stageInfo:
+            stage == null ? null : GameStageInfo(current: stage, nextStep: ''),
+        reconnectWording: source.reconnectWording,
+        topicDepth: null,
+        strategy: result == null ? '' : _guideV3NextStep(result),
+        fallbackHighlight: source.fallbackHighlight,
+        isGuideV3Care: result?.isCare ?? false,
+      );
+    }
+
     final gameStageJson = _strictOptionalJsonMap(json['gameStage']);
     final topicDepthJson = _strictOptionalJsonMap(json['topicDepth']);
     final rawStrategy = json['strategy'];
@@ -444,6 +520,7 @@ _ParsedMindMapSnapshot? _parseMindMapSnapshot(
 
     return _ParsedMindMapSnapshot(
       conversationId: source.conversationId,
+      mirrorKey: source.mirrorKey,
       stageInfo: parsedStage,
       reconnectWording: source.reconnectWording,
       topicDepth: parsedDepth,
@@ -476,6 +553,7 @@ bool _hasNonEmptyCurrent(Map<String, dynamic>? json) {
 class _MindMapSnapshotSource {
   const _MindMapSnapshotSource({
     required this.conversationId,
+    required this.mirrorKey,
     required this.occurredAt,
     required this.rawJson,
     required this.sourceId,
@@ -485,6 +563,9 @@ class _MindMapSnapshotSource {
   });
 
   final String conversationId;
+
+  /// 同一段同一份分析的比對鍵（[_snapshotMirrorKey]，不看 meta）。
+  final String mirrorKey;
   final DateTime occurredAt;
   final String rawJson;
   final String sourceId;
@@ -496,21 +577,29 @@ class _MindMapSnapshotSource {
 class _ParsedMindMapSnapshot {
   const _ParsedMindMapSnapshot({
     required this.conversationId,
+    required this.mirrorKey,
     required this.stageInfo,
     required this.reconnectWording,
     required this.topicDepth,
     required this.strategy,
     required this.fallbackHighlight,
     this.coachActionHint,
+    this.isGuideV3Care = false,
   });
 
   final String conversationId;
+  final String mirrorKey;
   final GameStageInfo? stageInfo;
   final bool reconnectWording;
   final TopicDepth? topicDepth;
+
+  /// v2 的策略；v3 放下一步（見 [_guideV3NextStep]），一樣在 nextStep 是空的時候頂上。
   final String strategy;
   final String fallbackHighlight;
   final CoachActionHint? coachActionHint;
+
+  /// v3 的關心（自傷、未成年）。
+  final bool isGuideV3Care;
 
   String? get visibleStageLabel {
     final stage = stageInfo?.current;

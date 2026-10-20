@@ -15,7 +15,8 @@ import {
   WRITE_SAFETY_FLOOR,
   writeUserPrompt,
 } from "./prompts.ts";
-import type { ReadTags } from "./read_tags.ts";
+import { READ_TAGS_SCHEMA_TWO_STAGE, type ReadTags } from "./read_tags.ts";
+import { RELATION_FIELD_NOTES, withRelationFields } from "./relation.ts";
 import { withoutEmoji } from "./cards.ts";
 import type { AnswerLine, CardAnswer, CardSpec, PraiseStyle } from "./rules.ts";
 import { latestHerMessages, type Turn } from "./turns.ts";
@@ -44,6 +45,25 @@ export function readSystemPromptTwoStage(
     READ_TWO_STAGE_NOTES,
   );
 }
+
+/// 關係訊號（relation.ts，開關 ANALYZE_GUIDE_V3_RELATION）也開時：兩段式的欄位說明之後接關係那段，
+/// schema 在兩段式的四欄之後再接關係三欄，關係的欄位照它自己的設計排在最後（Eric 2026-10-20 兩邊都上線）。
+export function readSystemPromptTwoStageWithRelation(
+  sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+  entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
+  leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+): string {
+  return readSystemPrompt(
+    sections,
+    entries,
+    leakDirective,
+    `${READ_TWO_STAGE_NOTES}\n\n${RELATION_FIELD_NOTES}`,
+  );
+}
+
+export const READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION = withRelationFields(
+  READ_TAGS_SCHEMA_TWO_STAGE,
+);
 
 /// 她最新這一輪逐則編號，worthyLines 才填得出編號。
 export function readUserPromptTwoStage(

@@ -1,10 +1,14 @@
 /// 對話分析 v3（任務卡）的結果：伺服器 `guide_v3/wire.ts` 的 App 端鏡像。
 ///
 /// 只有宣告協定版本 3 的 App 會收到；伺服器開關關著時照舊回 v2（五種風格），
-/// 由 [AnalysisResult] 處理。v3 沒有熱度、階段、雷達（Eric 2026-10-17），
-/// 所以這裡刻意不提供任何分數欄位：解析 v3 快照的地方要先用
-/// [isGuideV3Payload] 認形狀，不能丟給 `AnalysisResult.fromJson`（它會補熱度 50）。
+/// 由 `AnalysisResult` 處理。v3 原本沒有熱度、階段、雷達（Eric 2026-10-17）；
+/// 伺服器開了關係訊號才在判讀帶 [GuideV3Relation]（Bruce 2026-10-19 路線二），
+/// 沒帶就是沒有，不補預設值：解析 v3 快照的地方要先用 [isGuideV3Payload] 認形狀，
+/// 不能丟給 `AnalysisResult.fromJson`（它會補熱度 50）。
 library;
+
+import 'enthusiasm_level.dart';
+import 'game_stage.dart';
 
 /// 需要他自己填的空格（伺服器 `BLANK_PATTERN`；提示詞要求寫成「＿＿」）。
 const guideV3BlankMark = '＿';
@@ -70,6 +74,11 @@ enum GuideV3Decision {
   /// 會出卡的決定；其餘只有判讀（關心只有固定文案）。
   bool get hasCards =>
       this == GuideV3Decision.send || this == GuideV3Decision.close;
+
+  /// 不催他回去找她：關心（自傷、未成年）與停（她拒絕或封鎖）之後，不問也不排 48 小時
+  /// 跟進提醒，已排的那則收回（P1 安全修正）。先別回只是等一下，照舊。
+  bool get silencesFollowUp =>
+      this == GuideV3Decision.care || this == GuideV3Decision.stop;
 }
 
 /// 固定訊息（care）是哪一種（伺服器 `careKind`，Eric 2026-10-18 加未成年）：自傷關心，
@@ -131,6 +140,129 @@ enum GuideV3InviteReadiness {
   }
 }
 
+/// 她這一輪在做什麼（伺服器讀局面的 herMove，送 App 時換成 `guide_v3/wire.ts` 的
+/// HER_MOVE_CODE）。[label] 是給用戶看的白話（Eric review 時核准）；App 只認代碼，不認得的
+/// 當沒有。
+enum GuideV3HerMove {
+  dailyLife('daily_life', '聊她的日常'),
+  emotion('emotion', '在講心情'),
+  highPoint('high_point', '分享開心的事'),
+  laughEnding('laugh_ending', '笑著收尾'),
+  teasing('teasing', '在虧你'),
+  testing('testing', '在試探你'),
+  seriousQuestion('serious_question', '認真在問你'),
+  asksAboutHim('asks_about_him', '想多了解你'),
+  asksHisOpinion('asks_his_opinion', '想聽你的意見'),
+  openWindow('open_window', '給你約她的機會'),
+  braking('braking', '想放慢一點');
+
+  const GuideV3HerMove(this.wire, this.label);
+
+  final String wire;
+  final String label;
+
+  static GuideV3HerMove? fromWire(Object? value) {
+    for (final move in values) {
+      if (move.wire == value) return move;
+    }
+    return null;
+  }
+}
+
+/// 回覆意願（讀局面的 replyWillingness：只看她有沒有延伸、反問、補內容）。
+enum GuideV3Willingness {
+  high('high', '她很想聊'),
+  medium('medium', '有回，但沒多聊'),
+  low('low', '興趣不高');
+
+  const GuideV3Willingness(this.wire, this.label);
+
+  final String wire;
+  final String label;
+
+  static GuideV3Willingness? fromWire(Object? value) {
+    for (final willingness in values) {
+      if (willingness.wire == value) return willingness;
+    }
+    return null;
+  }
+}
+
+/// 五維雷達的鍵，跟 v2 的 dimensions 同一組（`AnalysisResult.dimensionScores` 的形狀）。
+const guideV3RelationDimensionKeys = [
+  'heat',
+  'engagement',
+  'topicDepth',
+  'replyWillingness',
+  'emotionalConnection',
+];
+
+/// 關係狀態（`analysis.read` 的 relation；伺服器開關 ANALYZE_GUIDE_V3_RELATION）：v2 的關係
+/// 階段、熱度、五維雷達，加上她這一輪在做什麼與回覆意願（Bruce 2026-10-19 路線二：留在 v3，
+/// 把 v2 好的部分帶回來）。開關沒開、改版前的結果、關心都沒有；伺服器丟掉或 App 讀不懂的
+/// 欄位各自是 null，不影響判讀與卡。
+class GuideV3Relation {
+  const GuideV3Relation({
+    this.stage,
+    this.heat,
+    this.dimensions,
+    this.herMove,
+    this.willingness,
+  });
+
+  /// 關係階段（v2 的五個代碼）。
+  final GameStage? stage;
+
+  /// 伺服器送的原始熱度（0–100 的整數，v2 定義）。顯示與存檔用 [visibleHeat]。
+  final int? heat;
+
+  /// 五維雷達（[guideV3RelationDimensionKeys] 五個都在、都是 0–100 的整數才收）。
+  final Map<String, int>? dimensions;
+  final GuideV3HerMove? herMove;
+  final GuideV3Willingness? willingness;
+
+  /// 給用戶看、存進對話與紀錄的熱度：v2 的投入度是伺服器收尾時照 ceil(原始 × 0.9) 換成
+  /// 0–90（post_process.ts），v3 的熱度照同一個換法，新舊分數才能放在同一條趨勢上。
+  int? get visibleHeat {
+    final raw = heat;
+    return raw == null ? null : calibrateVisibleInvestment(raw);
+  }
+
+  static bool _isScore(Object? value) =>
+      value is int && value >= 0 && value <= 100;
+
+  /// 不是物件、或每一欄都讀不懂就回 null（等於沒送）。
+  static GuideV3Relation? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final rawHeat = json['heat'];
+    final rawDimensions = json['dimensions'];
+    Map<String, int>? dimensions;
+    if (rawDimensions is Map &&
+        guideV3RelationDimensionKeys
+            .every((key) => _isScore(rawDimensions[key]))) {
+      dimensions = Map.unmodifiable({
+        for (final key in guideV3RelationDimensionKeys)
+          key: rawDimensions[key] as int,
+      });
+    }
+    final relation = GuideV3Relation(
+      stage: GameStage.tryFromString(
+        json['stage'] is String ? json['stage'] as String : null,
+      ),
+      heat: _isScore(rawHeat) ? rawHeat as int : null,
+      dimensions: dimensions,
+      herMove: GuideV3HerMove.fromWire(json['herMove']),
+      willingness: GuideV3Willingness.fromWire(json['willingness']),
+    );
+    final empty = relation.stage == null &&
+        relation.heat == null &&
+        relation.dimensions == null &&
+        relation.herMove == null &&
+        relation.willingness == null;
+    return empty ? null : relation;
+  }
+}
+
 /// 給新話題的冷訊號（伺服器 `cold`；不分方案，Eric 2026-10-18）。[c1]＝這一輪是 C1「他連續
 /// 主動兩次、她都只回敷衍的字」判的先別回；[herPerfunctoryStreak]＝她最近連續幾輪只回敷衍的字。
 class GuideV3ColdSignal {
@@ -189,6 +321,7 @@ class GuideV3Read {
     this.careKind,
     this.inviteReadiness,
     this.cold,
+    this.relation,
     this.plannedCards = const [],
   });
 
@@ -215,6 +348,10 @@ class GuideV3Read {
 
   /// 冷訊號；care、舊快照或格式不對是 null。
   final GuideV3ColdSignal? cold;
+
+  /// 關係狀態；伺服器開關沒開、改版前的快照、讀不懂都是 null。關心一律不收：固定訊息那次
+  /// 不拿來算階段、熱度與雷達（跟伺服器 care 不送同一個做法）。
+  final GuideV3Relation? relation;
   final List<GuideV3PlannedCard> plannedCards;
 
   List<GuideV3PlannedCard> get lockedCards =>
@@ -261,6 +398,9 @@ class GuideV3Read {
       cold: decision == GuideV3Decision.care
           ? null
           : GuideV3ColdSignal.fromJson(json['cold']),
+      relation: decision == GuideV3Decision.care
+          ? null
+          : GuideV3Relation.fromJson(json['relation']),
       plannedCards: List.unmodifiable(planned),
     );
   }
@@ -380,6 +520,39 @@ bool guideV3DeliveredFewer({
 }) =>
     partial || recovered || deliveredCards < deliverableCards;
 
+/// 「為什麼這樣回」（伺服器 `analysis.card_explain`；兩段式實驗，Bruce 2026-10-19 路線二：
+/// 結果頁每張卡下面一段）。卡都送完、done 之前，每張卡一則；[card] 是那張卡的 slot。
+class GuideV3CardExplain {
+  const GuideV3CardExplain({required this.card, required this.text});
+
+  final int card;
+  final String text;
+
+  static GuideV3CardExplain? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final card = json['card'];
+    final text = json['text'];
+    if (card is! int || card < 1 || text is! String) return null;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
+    return GuideV3CardExplain(card: card, text: trimmed);
+  }
+}
+
+/// App 自己存進 v3 快照的「為什麼這樣回」：伺服器的最終結果不帶（只在串流事件送），收到的
+/// 照 slot 跟卡一起存，重開畫面、分析紀錄才看得到。舊快照沒有這欄。
+const guideV3CardExplainsKey = 'cardExplains';
+
+Map<int, String> _cardExplainsFrom(Object? json) {
+  if (json is! List) return const {};
+  final explains = <int, String>{};
+  for (final raw in json) {
+    final explain = GuideV3CardExplain.fromJson(raw);
+    if (explain != null) explains.putIfAbsent(explain.card, () => explain.text);
+  }
+  return Map.unmodifiable(explains);
+}
+
 /// 伺服器 `isGuideV3FinalResult`：字串 guideVersion＋cards 陣列。
 bool isGuideV3Payload(Object? json) =>
     json is Map && json['guideVersion'] is String && json['cards'] is List;
@@ -392,6 +565,7 @@ class GuideV3Result {
     required this.partial,
     required this.recovered,
     required this.rawResponse,
+    this.cardExplains = const {},
   });
 
   final GuideV3Read read;
@@ -407,6 +581,9 @@ class GuideV3Result {
 
   /// 伺服器送來的原樣（已剝掉伺服器專用欄位）；存檔與成效紀錄用。
   final Map<String, dynamic> rawResponse;
+
+  /// 每張卡的「為什麼這樣回」（slot → 說明）；沒送或舊快照是空的。
+  final Map<int, String> cardExplains;
 
   GuideV3Decision get decision => read.decision;
 
@@ -450,6 +627,28 @@ class GuideV3Result {
       partial: json['partial'] == true,
       recovered: json['recovered'] == true,
       rawResponse: json,
+      cardExplains: _cardExplainsFrom(json[guideV3CardExplainsKey]),
+    );
+  }
+
+  /// 串流收到的「為什麼這樣回」補進結果，連存檔的原樣一起改（[guideV3CardExplainsKey]）。
+  /// 已經有的那張不覆蓋；沒有新的就回自己。
+  GuideV3Result withCardExplains(Map<int, String> explains) {
+    final merged = <int, String>{...explains, ...cardExplains};
+    if (merged.length == cardExplains.length) return this;
+    final slots = merged.keys.toList()..sort();
+    return GuideV3Result(
+      read: read,
+      cards: cards,
+      partial: partial,
+      recovered: recovered,
+      rawResponse: <String, dynamic>{
+        ...rawResponse,
+        guideV3CardExplainsKey: [
+          for (final slot in slots) {'card': slot, 'text': merged[slot]},
+        ],
+      },
+      cardExplains: Map.unmodifiable(merged),
     );
   }
 
@@ -470,6 +669,7 @@ class GuideV3Result {
         ...rawResponse,
         'cards': merged.map((card) => card.raw).toList(growable: false),
       },
+      cardExplains: cardExplains,
     );
   }
 }

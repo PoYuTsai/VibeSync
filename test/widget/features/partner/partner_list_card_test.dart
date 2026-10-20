@@ -8,12 +8,12 @@ import 'package:vibesync/features/partner/presentation/widgets/partner_list_card
 import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
 
 Partner _p(String id, String name) => Partner(
-  id: id,
-  name: name,
-  createdAt: DateTime(2026, 4, 20),
-  updatedAt: DateTime(2026, 4, 20),
-  ownerUserId: 'u1',
-);
+      id: id,
+      name: name,
+      createdAt: DateTime(2026, 4, 20),
+      updatedAt: DateTime(2026, 4, 20),
+      ownerUserId: 'u1',
+    );
 
 PartnerAggregateView _agg({
   List<String> interests = const [],
@@ -23,17 +23,18 @@ PartnerAggregateView _agg({
   DateTime? lastInteraction,
   bool latestIsGuideV3 = false,
   PartnerGuideV3Signals? signals,
-}) => PartnerAggregateView(
-  unionInterests: interests,
-  unionTraits: traits,
-  unionNotes: null,
-  latestHeat: heat,
-  totalRounds: rounds,
-  totalMessages: 0,
-  lastInteraction: lastInteraction,
-  latestIsGuideV3: latestIsGuideV3,
-  latestGuideV3Signals: signals,
-);
+}) =>
+    PartnerAggregateView(
+      unionInterests: interests,
+      unionTraits: traits,
+      unionNotes: null,
+      latestHeat: heat,
+      totalRounds: rounds,
+      totalMessages: 0,
+      lastInteraction: lastInteraction,
+      latestIsGuideV3: latestIsGuideV3,
+      latestGuideV3Signals: signals,
+    );
 
 Future<void> _pump(WidgetTester t, Widget child) async {
   await t.pumpWidget(
@@ -185,6 +186,29 @@ void main() {
       expect(find.text('待分析'), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
     }
+  });
+
+  testWidgets('v3 帶了熱度（Bruce 2026-10-19 路線二）：首頁卡照樣放燈號＋短狀態，不換回熱度膠囊', (t) async {
+    await _pump(
+      t,
+      PartnerListCard(
+        partner: _p('a', 'Alice'),
+        aggregate: _agg(
+          heat: 65,
+          latestIsGuideV3: true,
+          signals: const PartnerGuideV3Signals(
+            decision: GuideV3Decision.send,
+            light: GuideV3Light.green,
+          ),
+        ),
+        onTap: () {},
+      ),
+    );
+
+    final pill = find.byKey(const ValueKey('partner-card-v3-status'));
+    expect(
+        find.descendant(of: pill, matching: find.text('輪到你回')), findsOneWidget);
+    expect(find.textContaining('本次投入'), findsNothing);
   });
 
   testWidgets('v3 燈號讀不懂：只寫狀態；關心什麼都不多放', (t) async {

@@ -9,7 +9,9 @@ import '../../features/analysis/domain/entities/game_stage.dart';
 /// close 之後也可以回到其他互動任務，較早的點不得畫成已完成成就。
 class GameStageIndicator extends StatelessWidget {
   final GameStage currentStage;
-  final GameStageStatus status;
+
+  /// 階段內節奏；null＝不顯示那一行（v3 的關係狀態只有階段，沒有節奏）。
+  final GameStageStatus? status;
   final String? nextStep;
 
   /// 伴侶（已是伴侶）的 opening 可見語意固定為「重新連線」，
@@ -103,24 +105,26 @@ class GameStageIndicator extends StatelessWidget {
             }).toList(),
           ),
           // 階段內節奏狀態（維持節奏／互動偏平／可以推進／放慢一點）。
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                Icons.speed_rounded,
-                size: 14,
-                color: AppColors.glassTextSecondary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '節奏：${status.label}',
-                style: AppTypography.caption.copyWith(
+          if (status case final status?) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.speed_rounded,
+                  size: 14,
                   color: AppColors.glassTextSecondary,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 6),
+                Text(
+                  '節奏：${status.label}',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.glassTextSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
           // Next step description
           if (nextStep != null) ...[
             const SizedBox(height: 16),

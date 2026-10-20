@@ -62,6 +62,25 @@ void main() {
     expect(gateway.cancelled, isEmpty);
   });
 
+  test('silenceForPartner（v3 關心或停之後）→ 收回這位對象那則、不排新的、不動 opt-in', () async {
+    final service = build(FollowUpOptIn.granted);
+    await service.silenceForPartner('p1');
+    expect(gateway.cancelled, [followUpNotificationId('p1')]);
+    expect(gateway.scheduled, isEmpty);
+    expect(store.read(), FollowUpOptIn.granted);
+
+    final unasked = build(FollowUpOptIn.unknown);
+    await unasked.silenceForPartner('p1');
+    expect(store.read(), FollowUpOptIn.unknown);
+  });
+
+  test('silenceForPartner(null/空) → 不呼叫 cancel', () async {
+    final service = build(FollowUpOptIn.granted);
+    await service.silenceForPartner(null);
+    await service.silenceForPartner('');
+    expect(gateway.cancelled, isEmpty);
+  });
+
   test('disableAll() → cancelAll 且 optIn 落為 denied', () async {
     final service = build(FollowUpOptIn.granted);
     await service.disableAll();

@@ -19,6 +19,30 @@ void main() {
       expect(find.text('破冰'), findsOneWidget);
     });
 
+    testWidgets('status null：不畫節奏那一行（v3 的關係狀態只有階段）；預設照舊畫', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(
+              currentStage: GameStage.premise,
+              status: null,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('目前・升溫'), findsOneWidget);
+      expect(find.textContaining('節奏'), findsNothing);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GameStageIndicator(currentStage: GameStage.premise),
+          ),
+        ),
+      );
+      expect(find.text('節奏：維持節奏'), findsOneWidget);
+    });
+
     testWidgets('displays premise stage correctly', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(

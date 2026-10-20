@@ -48,9 +48,9 @@ final subjectHeatTrendProvider =
       );
 });
 
-final subjectHasGuideV3AnalysisProvider =
+final subjectGuideV3LacksHeatProvider =
     Provider.autoDispose.family<bool, String>((ref, subjectId) {
-  return ref.watch(reportDataServiceProvider).subjectHasGuideV3Analysis(
+  return ref.watch(reportDataServiceProvider).subjectGuideV3LacksHeat(
         ref.watch(analysisHistoryEventsProvider),
         subjectId,
         ref.watch(conversationsProvider),

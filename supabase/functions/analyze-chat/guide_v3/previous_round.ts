@@ -189,6 +189,8 @@ export function traceWithoutText(
       ? { herLastTurnChars: trace.herLastTurnChars }
       : {}),
     ...(trace.memory ? { memory: trace.memory } : {}),
+    // 關係訊號只有固定代碼、數字與欄位名，沒有模型寫的字（relation.ts）。
+    ...(trace.relation ? { relation: trace.relation } : {}),
     ...(trace.care ? { care: trace.care } : {}),
     ...(trace.keywordHits ? { keywordHits: trace.keywordHits } : {}),
     ...(trace.previousRound ? { previousRound: trace.previousRound } : {}),

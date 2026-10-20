@@ -17,7 +17,9 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/game_stage.dart';
 import '../../../analysis/domain/services/partner_stage_resolver.dart';
+import '../../../analysis_history/domain/entities/analysis_history_event.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../partner/domain/extensions/partner_aggregates.dart';
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/presentation/widgets/about_me_card.dart';
@@ -56,6 +58,18 @@ class MyReportScreen extends ConsumerWidget {
           ),
         ),
     };
+    // 作戰板的燈號＋短狀態（Bruce 2026-10-19 路線二，B1 物件加燈號）：跟首頁對象卡同一條
+    // 規則（最近分析過的那段是 v3 時的訊號），跟階段一樣從全部對話裡找這位對象的。
+    final guideV3Signals = {
+      for (final p in partners)
+        p.id: PartnerGuideV3Signals.latestOf(
+          allConversations.where(
+            (conversation) =>
+                AnalysisHistoryEvent.normalizeScope(conversation.partnerId) ==
+                AnalysisHistoryEvent.normalizeScope(p.id),
+          ),
+        ),
+    };
 
     // 對象選擇器＋單對象歷史序列。折線、平均與 delta 由 HeatTrendChart 從
     // 同一位對象的最近七筆自己算，不能混入 Conversation 全體摘要。
@@ -76,8 +90,8 @@ class MyReportScreen extends ConsumerWidget {
     final subjectPoints = selectedSubject == null
         ? const <HeatTrendPoint>[]
         : ref.watch(subjectHeatTrendProvider(selectedSubject));
-    final subjectUsesGuideV3 = selectedSubject != null &&
-        ref.watch(subjectHasGuideV3AnalysisProvider(selectedSubject));
+    final subjectStoppedScoring = selectedSubject != null &&
+        ref.watch(subjectGuideV3LacksHeatProvider(selectedSubject));
     final practicePoints = ref.watch(practiceTemperatureTrendProvider);
     // 歷史事件與 Conversation 最新快照是兩條合法資料流：只要任一條有資料，
     // 報告就應顯示。舊邏輯只看 Conversation，會把「只有練習紀錄」或仍保留
@@ -146,19 +160,20 @@ class MyReportScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
             ],
-            // 改用 v3 的對象不再產生投入度（Eric 2026-10-17）：別叫他「再多分析
-            // 幾次」，舊點也要講明只是舊版的紀錄。
+            // 最近分析的是改版前的 v3、沒有投入度（Eric 2026-10-17）：別叫他「再多分析
+            // 幾次」，舊點也要講明是之前有分數的紀錄。v3 帶了熱度就照常長點（Bruce
+            // 2026-10-19 路線二），照 v2 的說法；所以這裡不再說「新版不算分數」，只講最近
+            // 那一次。
             HeatTrendChart(
               trendPoints: subjectPoints,
               subjectId: selectedSubject,
               contextLabel: selectedSubjectName,
-              emptyMessage: subjectUsesGuideV3
-                  ? '新版分析看的是每次的燈號，不算投入度分數。'
+              emptyMessage: subjectStoppedScoring
+                  ? '最近一次分析沒有算投入度分數，之後有分數的分析會畫在這裡。'
                   : '再多分析幾次，就能比較對方每次互動的投入度',
-              showTrendHint: !subjectUsesGuideV3,
-              footnote: subjectUsesGuideV3
-                  ? '新版分析不算投入度分數，這裡只有舊版分析的紀錄。'
-                  : null,
+              showTrendHint: !subjectStoppedScoring,
+              footnote:
+                  subjectStoppedScoring ? '最近一次分析沒有算投入度分數，這裡是之前有分數的紀錄。' : null,
             ),
           ],
           const SizedBox(height: 32),
@@ -191,6 +206,7 @@ class MyReportScreen extends ConsumerWidget {
         PartnerMindMapCardList(
           partners: partners,
           stageLabelOf: (id) => stageLabels[id],
+          guideV3SignalsOf: (id) => guideV3Signals[id],
           onTapPartner: (id) => context.push('/partner/$id/mindmap'),
         ),
       ],

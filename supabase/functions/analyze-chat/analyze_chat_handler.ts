@@ -88,6 +88,7 @@ import {
   billingMessagesFor,
   guideV3Mode,
   shouldExtractGuideV3Memory,
+  shouldReadGuideV3Relation,
   shouldUseGuideV3,
   shouldUseGuideV3PreviousRound,
   shouldUseGuideV3TwoStage,
@@ -1838,6 +1839,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
               }),
           )
           : undefined,
+        // 關係訊號（開關 ANALYZE_GUIDE_V3_RELATION，off／test／on，每次請求讀；Bruce 2026-10-19
+        // 路線二）：讀局面多給階段、熱度與四個維度，判讀多帶 relation。沒開就一字不變。
+        relation: shouldReadGuideV3Relation({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_RELATION")),
+          accountIsTest,
+        }),
         requestType,
         effectiveTier,
         accountIsTest,
