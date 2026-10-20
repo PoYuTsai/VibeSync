@@ -308,7 +308,6 @@ export function parseOptions(args: string[]): Options {
 
 export type PlanInput = {
   partnerSummary: string | null;
-  effectiveStyleContext: string | null;
   situation: NewTopicSituation | null;
   topicContext: NewTopicTopicContext | null;
   requestId: string;
@@ -386,12 +385,13 @@ export function baseRouter(m: BaseModules): ArmRouter {
       // 7c5cc523 只放行素材原文（當時欄名 userMaterialText）。
       userProvidedText: input.topicContext?.materialText ?? null,
     };
+    // 改前那一版還收「關於我」；案例本來就一律不送（README），這裡固定給 null。
     if (input.topicContext === null) {
       return {
         system: m.NEW_TOPIC_PROMPT,
         user: m.buildNewTopicUserPrompt({
           partnerSummary: input.partnerSummary,
-          effectiveStyleContext: input.effectiveStyleContext,
+          effectiveStyleContext: null,
           situation: input.situation,
           requestId: input.requestId,
         }),
@@ -405,7 +405,7 @@ export function baseRouter(m: BaseModules): ArmRouter {
       system: m.NEW_TOPIC_TWO_STAGE_PROMPT,
       user: m.buildNewTopicTwoStageUserPrompt({
         partnerSummary: input.partnerSummary,
-        effectiveStyleContext: input.effectiveStyleContext,
+        effectiveStyleContext: null,
         situation: input.situation,
         topicContext: input.topicContext,
         requestId: input.requestId,
@@ -606,7 +606,6 @@ export async function buildPlan(
         if (!router) throw new Error(`沒有 ${arm} 臂的路由`);
         const armPlan = router({
           partnerSummary: request.partnerSummary,
-          effectiveStyleContext: request.effectiveStyleContext,
           situation: request.situation,
           topicContext: request.topicContext,
           requestId,

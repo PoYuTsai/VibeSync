@@ -41,15 +41,16 @@ export type NewTopicPromptPlan = {
   promptVersion: string;
 };
 
-/** 用戶給我們、也進了提示詞的原文：對象作戰板摘要、關於我、素材原文。 */
+/**
+ * 用戶給我們、也進了提示詞的原文：對象作戰板摘要、素材原文。「關於我」只給
+ * Coach 1:1（2026-08-04），不進新話題的提示詞，這裡也不收。
+ */
 function newTopicUserProvidedText(input: {
   partnerSummary: string | null;
-  effectiveStyleContext: string | null;
   topicContext: NewTopicTopicContext | null;
 }): string | null {
   const parts = [
     input.partnerSummary,
-    input.effectiveStyleContext,
     input.topicContext?.materialText ?? null,
   ].filter((part): part is string => part !== null && part.trim() !== "");
   return parts.length === 0 ? null : parts.join("\n");
@@ -57,7 +58,6 @@ function newTopicUserProvidedText(input: {
 
 export function planNewTopicPrompt(input: {
   partnerSummary: string | null;
-  effectiveStyleContext: string | null;
   situation: NewTopicSituation | null;
   topicContext: NewTopicTopicContext | null;
   requestId: string;
@@ -78,7 +78,6 @@ export function planNewTopicPrompt(input: {
     system: NEW_TOPIC_SLOTS_SYSTEM_PROMPT,
     user: buildNewTopicSlotsUserPrompt({
       partnerSummary: input.partnerSummary,
-      effectiveStyleContext: input.effectiveStyleContext,
       situation: input.situation,
       topicContext: input.topicContext,
       slots,

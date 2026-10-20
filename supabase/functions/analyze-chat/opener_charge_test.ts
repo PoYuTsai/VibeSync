@@ -196,6 +196,8 @@ Deno.test("computeOpenerInputHash is deterministic and payload-sensitive", async
   assert(/^[0-9a-f]{64}$/.test(hNoInputs));
 });
 
+// 2026-10-20 起「關於我」不再交給模型（只給 Coach 1:1），舊版 App 送來的值仍照原樣入 hash，
+// 部署前已扣費的同一筆重試才對得上（handler 層的對照見 opener_legacy_about_me_test.ts）。
 Deno.test("computeOpenerInputHash binds effectiveStyleContext; absent keeps legacy hash (F3-1)", async () => {
   const images = [{ data: "abc", mediaType: "image/jpeg", order: 1 }];
   const profileInfo = { name: "Candy", bio: "喜歡旅行" };
@@ -220,7 +222,7 @@ Deno.test("computeOpenerInputHash binds effectiveStyleContext; absent keeps lega
   // deploy 邊界相容：舊 client（不帶風格）在部署前後的 in-flight retry，
   // stored hash 必須繼續吻合 → 缺席時 canonical 形狀不得改變。
   assertEquals(absent, legacy);
-  // 風格設定是模型輸入的一部分：同 id 換風格必須被 mismatch 擋下。
+  // 指紋照舊綁舊值：同 id 換風格仍被 mismatch 擋下，部署前後算出的指紋一樣。
   assert(withStyle !== legacy, "style context must change the hash");
   assert(withStyle !== withOtherStyle, "different style → different hash");
   assert(/^[0-9a-f]{64}$/.test(withStyle));

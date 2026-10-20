@@ -7,5 +7,5 @@ import type { EvalScenario } from "./fixtures.ts";
 
 export function legacyControlUserContent(scenario: EvalScenario): string {
   const profile = normalizeOpenerProfileInfo(scenario.profileInfo);
-  return buildLegacyOpenerUserContent({ normalizedProfile: profile, imageCount: 0, openerStyleContext: null }).join("\n");
+  return buildLegacyOpenerUserContent({ normalizedProfile: profile, imageCount: 0 }).join("\n");
 }

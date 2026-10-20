@@ -76,14 +76,26 @@ export function classifyAnalyzeChatRequest(
   return { ok: true, shape, recognizeOnlyRequested };
 }
 
-/// About Me / voice preferences belong to auxiliary reply-writing paths.
-/// Main AnalyzeChat (including screenshot analysis) must ignore the field even
-/// when an older client still sends it, so it cannot affect score/stage/style.
+/// 「關於我」只給 Coach 1:1（2026-08-04 決定）。舊版 App 仍可能帶
+/// effectiveStyleContext：合法值只留在重送指紋裡，部署前後同一筆請求的重試才
+/// 對得上、不會重複扣額度；不合法的值（不是字串、超過 1,200 字）當作沒帶，不再
+/// 回 400，因為它不會交給模型。2026-10-20 起舊單段開場救星（mode: opener）走
+/// 這條規則；新話題的請求驗證照舊嚴格（不合法回 400），合法值一樣只留指紋
+///（new_topic_payload.ts）。
+export function legacyStyleContextForHash(
+  validation: { effectiveStyleContext?: string; error?: string },
+): string | undefined {
+  return validation.error ? undefined : validation.effectiveStyleContext;
+}
+
+/// 目前還會把舊值交給模型的只剩輔助寫訊息（my_message、optimize／refine）；
+/// 這兩條改成只留指紋之前，行為照舊。主分析（含截圖）一律丟棄，不能影響分數、
+/// 階段與風格。開場救星與新話題在 handler 呼叫這裡之前就分流，2026-10-20 起只
+/// 把舊值留在指紋（opener_handler.ts、new_topic_payload.ts）。
 export function acceptsUserStyleContext(
   shape: AnalyzeChatRequestShape,
 ): boolean {
-  return shape.kind === "my_message" || shape.kind === "optimize_message" ||
-    shape.kind === "new_topic" || shape.kind === "opener";
+  return shape.kind === "my_message" || shape.kind === "optimize_message";
 }
 
 export function routeUserStyleContext(

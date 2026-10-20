@@ -211,7 +211,7 @@ export async function handleNewTopicRequest(
       error: "NEW_TOPIC_CONTEXT_REQUIRED",
       code: "NEW_TOPIC_CONTEXT_REQUIRED",
       message:
-        "請先提供對象作戰板、關於我或目前狀況其中一項，才能生成新話題。本次不會扣額度。",
+        "請先提供對象作戰板或目前狀況其中一項，才能生成新話題。本次不會扣額度。",
       shouldChargeQuota: false,
     }, 422);
   }
@@ -258,6 +258,8 @@ export async function handleNewTopicRequest(
   }
 
   // 3. Server-keyed HMAC＋24h replay preflight（ledger read fail-closed）。
+  //    舊版 App 帶的「關於我」照舊進指紋（部署前後同一筆重試才對得上），
+  //    但不交給模型、不算素材（只給 Coach 1:1）。
   const newTopicInputHash = await computeNewTopicInputHash({
     userId: deps.userId,
     partnerSummary: newTopicRequest.partnerSummary,
@@ -568,7 +570,6 @@ export async function handleNewTopicRequest(
   // grounding 與推薦規則都跟這裡一致。
   const newTopicPromptPlan = planNewTopicPrompt({
     partnerSummary: newTopicRequest.partnerSummary,
-    effectiveStyleContext: newTopicRequest.effectiveStyleContext,
     situation: newTopicRequest.situation,
     topicContext: newTopicContext,
     requestId: newTopicRequest.requestId,

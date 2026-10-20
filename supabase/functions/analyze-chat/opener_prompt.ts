@@ -80,13 +80,13 @@ function buildOpenerRepairPrompt(rawText: string): string {
 /**
  * 舊單段（mode: opener）的 user content 純文字部分；圖片由 handler 以 image block 附上。
  * 抽成純函式讓評估工具的控制組走「同一條」正式路徑（R6a）；順序與字句與原 handler 內聯版本相同。
+ * 「關於我」只給 Coach 1:1（2026-08-04），這裡不收、也不放用戶自己的設定。
  */
 function buildLegacyOpenerUserContent(input: {
   normalizedProfile: { name?: string; bio?: string; interests?: string; meetingContext?: string };
   imageCount: number;
-  openerStyleContext: string | null;
 }): string[] {
-  const { normalizedProfile, imageCount, openerStyleContext } = input;
+  const { normalizedProfile, imageCount } = input;
   const userContent: string[] = [];
   const { name, bio, interests, meetingContext } = normalizedProfile;
   const parts: string[] = [];
@@ -111,15 +111,6 @@ function buildLegacyOpenerUserContent(input: {
   if (imageCount > 0) {
     userContent.push(
       "用戶上傳了對方的交友軟體自介截圖。請先讀取自介文字、明確禁忌、可接線索與照片中的具體場景，再生成開場白；不要只分析照片風格或外貌。",
-    );
-  }
-
-  // F3-1：風格設定必須在「對方資訊有無」分流之後注入，否則
-  // 沒填對方資料時它會被當成「可見資訊」觸發對方線索指令。
-  if (openerStyleContext) {
-    userContent.push(
-      "用戶（發訊者本人）的風格設定：\n" + openerStyleContext +
-        "\n這些不是對方的資料；只用來調整開場白語氣，絕不當成對方的興趣或共同點。",
     );
   }
   return userContent;

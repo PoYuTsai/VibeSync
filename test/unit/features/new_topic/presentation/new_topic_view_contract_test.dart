@@ -44,7 +44,6 @@ void main() {
         canGenerateNewTopic(
             readiness:
                 readiness ?? NewTopicReadiness.readyWithoutPartnerSignals,
-            styleContext: null,
             situation: null,
             hasMaterialText: hasMaterialText);
     expect(can(), isFalse);
