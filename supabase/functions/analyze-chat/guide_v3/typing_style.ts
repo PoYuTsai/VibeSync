@@ -88,7 +88,8 @@ const KAOMOJI =
 const SPACE_BREAK = /\p{Script=Han}[ \u3000]+\S|\S[ \u3000]+\p{Script=Han}/u;
 
 /// 每個字是不是在引號裡（引號本身不算在裡面）、是不是在網址或「不是稱呼的詞」裡（都不動）。
-function protectedMap(chars: readonly string[]): {
+/// 「這題」「不怪」「滿」那一步（phrase_tidy.ts）也用同一份保護。
+export function protectedMap(chars: readonly string[]): {
   inQuote: boolean[];
   frozen: boolean[];
 } {

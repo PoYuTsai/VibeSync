@@ -1,0 +1,408 @@
+// 卡片的「這題」「不怪」「滿」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY；Bruce 2026-10-20 PR #97：「這題」
+//「不怪」再處理、先看例子再決定，程度的「滿」要寫「蠻」）：提示詞改了兩次都沒變少——她問是不是最好看，卡常
+// 先說「這題我不用想」；她問會不會很怪，卡常先說「不怪啊」，把負面的字又講一次。每張卡定稿、口吻與斷句
+// 改完之後、送出之前，照下面三條改字；不重新生成、不增減則數。純函式，不碰模型與資料庫。
+//
+// 規則（字表都在下面的常數，Bruce 可以調）：
+// - 這題：一則裡用空白或標點隔開的一小段，有把她的問題當考題的字（QUIZ_MARKERS），整段拿掉。這一段自己
+//   就在回答（有「你」，或「選、投、答」這類字後面接著答案）就不拿掉，只有「這題我選你」這種拿掉考題字
+//   也通的說法，拿掉那兩三個字。她自己的訊息就在講題目（HER_QUIZ_WORDS），這一條整個不做。
+// - 不怪：一小段只是在否認她擔心的字（不怪、不會怪、一點都不怪、完全不怪、沒有很怪、哪裡怪；奇怪、醜、
+//   胖同樣），而且她最新這一輪真的提到這個字，才拿掉；「不怪你」這種多了別的字的不動。
+// - 滿→蠻：「滿」後面接著常數表裡的形容詞或動詞、前面那個字也不會跟「滿」連成詞（充滿、裝滿……），
+//   才換成「蠻」；滿意、滿足、滿分這些，「滿」後面接的不在表裡，所以不動。
+// 拿掉之後這一則還要有字（語助詞、表情、標點不算），不然照原文；引號裡、網址、顏文字都不動。
+import { isMediaLine, QUOTED_REPLY_PREFIX } from "./rules.ts";
+import { protectedMap, QUOTE_PAIRS } from "./typing_style.ts";
+
+/// 把她的問題當成考題的字（Bruce 2026-10-20 點名「這題」）。
+export const QUIZ_MARKERS: readonly string[] = [
+  "這題",
+  "這一題",
+  "這道題",
+  "送分題",
+  "這個答案",
+];
+/// 有考題字、但說的不是考題的詞：題材。
+export const NOT_QUIZ_WORDS: readonly string[] = ["這題材"];
+/// 她的訊息裡有這些字＝她自己在講真的題目（考試、作業），卡片的「這題」說的就是那一題：整條不做。
+export const HER_QUIZ_WORDS: readonly string[] = [...QUIZ_MARKERS, "題目"];
+/// 這一小段自己就在回答：這些字後面接著答案（這題我選你、這題我答山上）。
+export const ANSWER_VERBS = "選投答挑是說";
+/// ……後面接的是這些字就不算答案（答得很快、要選的話、能選吧、答案、投票）。
+export const NOT_ANSWER_AFTER = "得的了吧啊啦嗎呢喔欸案票";
+/// 答案在這一段裡、拿掉考題字也通的說法：只拿掉考題字（這題我選你→我選你、這題我直接投你一票→我直接投你一票）。
+export const QUIZ_REWRITE = /(?:這題|這一題|這道題)(?=我(?:直接|就)?[選投])/u;
+
+export interface WorryWord {
+  /// 她最新這一輪有這個字，才算她在擔心這件事。
+  readonly her: string;
+  /// 卡片否認時用的字（長的放前面）。
+  readonly card: readonly string[];
+  /// 她的訊息裡有這個字、但不是在擔心的詞（難怪、怪我……）。
+  readonly notWorry: readonly string[];
+}
+
+export const WORRY_WORDS: readonly WorryWord[] = [
+  {
+    her: "怪",
+    card: ["奇怪", "怪"],
+    notWorry: [
+      "難怪",
+      "怪我",
+      "怪你",
+      "怪妳",
+      "怪他",
+      "怪她",
+      "責怪",
+      "錯怪",
+      "見怪",
+      "怪罪",
+      "怪獸",
+      "妖怪",
+      "怪物",
+    ],
+  },
+  { her: "醜", card: ["醜"], notWorry: ["醜聞"] },
+  { her: "胖", card: ["胖"], notWorry: ["胖虎", "胖達"] },
+];
+/// 否認的說法：前面可以有一兩個「一點都、完全……」，再來是「不、不會、沒有、沒」，中間可以有「很、太、
+/// 那麼」，然後是擔心的字；或是反問的「哪裡、哪會、哪有、怎麼會」加擔心的字。後面只能接語助詞，可以連說兩次。
+export const DENY_ADVERBS: readonly string[] = [
+  "一點都",
+  "一點也",
+  "完全",
+  "根本",
+  "真的",
+  "其實",
+  "也",
+  "都",
+  "才",
+  "並",
+];
+export const DENY_NEGATORS: readonly string[] = ["不會", "不", "沒有", "沒"];
+export const DENY_RHETORICAL: readonly string[] = [
+  "哪裡",
+  "哪會",
+  "哪有",
+  "怎麼會",
+];
+export const DENY_DEGREES: readonly string[] = ["很", "太", "那麼"];
+export const DENY_PARTICLES = "啊啦呀喔哦噢欸耶吧的呢嘛唷咧";
+
+/// 「滿」當「很」用時，後面常接的形容詞或動詞（Bruce 2026-10-20：蠻適合的、蠻好看的才對）。好看、好吃、
+/// 好玩、有趣已經包在好、有裡面，照 Bruce 的說法列出來；加分、多、少、久、難、累、搭、甜、貼心、用心、
+/// 認真、驚喜是卡片常見的程度用法（之前跑過的卡有「還滿加分的」）。
+export const DEGREE_MAN_NEXT: readonly string[] = [
+  "適合",
+  "好看",
+  "好吃",
+  "好玩",
+  "好",
+  "有趣",
+  "有",
+  "可愛",
+  "不錯",
+  "喜歡",
+  "開心",
+  "厲害",
+  "酷",
+  "帥",
+  "美",
+  "漂亮",
+  "特別",
+  "舒服",
+  "舒適",
+  "期待",
+  "會",
+  "想",
+  "像",
+  "順",
+  "合理",
+  "自然",
+  "清爽",
+  "輕鬆",
+  "加分",
+  "多",
+  "少",
+  "久",
+  "難",
+  "累",
+  "搭",
+  "甜",
+  "貼心",
+  "用心",
+  "認真",
+  "驚喜",
+];
+/// 接在「滿」前面會連成一個詞的字（充滿、裝滿、圓滿、美滿、不滿、客滿、期滿、塞滿、坐滿、加滿、年滿、
+/// 滿滿、小滿……）：這時的「滿」是填滿的意思，不是「很」，後面就算接著表裡的字（充滿期待、期滿會續約、
+/// 裝滿好料）也不換。
+export const MAN_COMPOUND_BEFORE =
+  "充裝圓美不客期填塞擠坐住爆額自豐飽布佈寫堆灌加倒斟盛長開掛貼排約訂漲盈溢放種站停圍鋪灑撒蓋擺存集買" +
+  "年屆任服做待修拿刷儲蓄沾噴載滿小考選刻畫印繡簽抄吸泡浸染爬躺";
+const DEGREE_MAN_NEXT_MAX = Math.max(
+  ...DEGREE_MAN_NEXT.map((w) => [...w].length),
+);
+/// 語助詞、笑聲：拿掉一段之後只剩這些（加上表情、標點）就算沒有字，照原文。
+export const FILLER_CHARS =
+  "欸嗯喔哦噢啊啦呀耶哈嘿唉齁吼蛤嘛呢吧哇哎唷呦嘻呵咧";
+/// 一則裡隔開小段的空白與標點（口吻與斷句那一步留下的：空白，加上他用逗號時的逗號、句號）。
+const SEPARATOR = /[\s，,。.？?！!～~…⋯、：:；;]/u;
+/// 拿掉最後一段後，前面留在結尾的這些標點是用來接下一段的，一起拿掉；問號、驚嘆號、～、…、句號是前一段
+/// 自己的語氣，留著。
+const JOINERS = /[\s，,、：:；;]+$/u;
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+/// 表情（跟 rules.ts 一樣只用 u 旗標：正式環境的 Edge 解析不了 v 旗標）。
+const TRAILING_EMOJI =
+  "(?:\\p{Extended_Pictographic}|\\p{Emoji_Modifier}|\\u{FE0F}|\\u{200D})*";
+const QUOTE_CHARS = new Set(['"', ...QUOTE_PAIRS.flat()]);
+
+export interface PhraseTidyContext {
+  /// 她最新這一輪提到的擔心（WORRY_WORDS 的 her）；只有這些字的否認會拿掉。
+  readonly herWorries: readonly string[];
+  /// 她的訊息裡本來就有考題字（她在講真的題目）：「這題」那一條整個不做。
+  readonly herQuizWords: boolean;
+}
+
+/// 改了什麼（只有次數，不放字）。
+export interface PhraseTidyChanges {
+  /// 拿掉的考題小段。
+  readonly quiz: number;
+  /// 答案在裡面、只拿掉考題字的小段。
+  readonly quizRewrite: number;
+  /// 拿掉的否認擔心的小段。
+  readonly worry: number;
+  /// 換成「蠻」的「滿」。
+  readonly degree: number;
+  /// 有改到的訊息則數。
+  readonly messages: number;
+}
+
+export const NO_PHRASE_TIDY_CHANGES: PhraseTidyChanges = {
+  quiz: 0,
+  quizRewrite: 0,
+  worry: 0,
+  degree: 0,
+  messages: 0,
+};
+
+export function addPhraseTidyChanges(
+  a: PhraseTidyChanges,
+  b: PhraseTidyChanges,
+): PhraseTidyChanges {
+  return {
+    quiz: a.quiz + b.quiz,
+    quizRewrite: a.quizRewrite + b.quizRewrite,
+    worry: a.worry + b.worry,
+    degree: a.degree + b.degree,
+    messages: a.messages + b.messages,
+  };
+}
+
+/// 她這一則本身（拿掉引用前綴）；照片、貼圖、只有表情的不算她說的話。
+function herText(content: string): string | null {
+  const text = content.replace(QUOTED_REPLY_PREFIX, "").trim();
+  return text && !isMediaLine(text) ? text : null;
+}
+
+function mask(text: string, words: readonly string[]): string {
+  return words.reduce((t, w) => t.split(w).join("□"), text);
+}
+
+/// 從她的訊息看兩件事：她最新這一輪擔心什麼、她是不是自己就在講題目（只看她的，不看他的）。
+export function phraseTidyContext(args: {
+  readonly herLatest: readonly string[];
+  readonly herMessages: readonly string[];
+}): PhraseTidyContext {
+  const latest = args.herLatest.map(herText).filter((t): t is string =>
+    t !== null
+  );
+  const all = args.herMessages.map(herText).filter((t): t is string =>
+    t !== null
+  );
+  return {
+    herWorries: WORRY_WORDS.filter((w) =>
+      latest.some((t) => mask(t, w.notWorry).includes(w.her))
+    ).map((w) => w.her),
+    herQuizWords: all.some((t) =>
+      HER_QUIZ_WORDS.some((word) => mask(t, NOT_QUIZ_WORDS).includes(word))
+    ),
+  };
+}
+
+function escape(word: string): string {
+  return word.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function alt(words: readonly string[]): string {
+  return words.map(escape).join("|");
+}
+
+/// 一小段整段只是在否認這些擔心的字（見 DENY_* 常數）。
+function denyPattern(cardWords: readonly string[]): RegExp {
+  const word = `(?:${alt(cardWords)})`;
+  const degree = `(?:${alt(DENY_DEGREES)})?`;
+  const plain = `(?:${alt(DENY_ADVERBS)}){0,2}(?:${
+    alt(DENY_NEGATORS)
+  })${degree}${word}`;
+  const rhetorical = `(?:${alt(DENY_RHETORICAL)})${degree}${word}`;
+  // 後面跟著的表情也算這一段的（「不怪啊😂」），一起拿掉。
+  return new RegExp(
+    `^(?:(?:${plain}|${rhetorical})[${DENY_PARTICLES}]*)+${TRAILING_EMOJI}$`,
+    "u",
+  );
+}
+
+const DENY_PATTERNS = new Map(
+  WORRY_WORDS.map((w) => [w.her, denyPattern(w.card)]),
+);
+
+/// 這一小段自己就在回答：有「你／妳」，或「選、投、答……」後面接著答案。
+function carriesAnswer(clause: string): boolean {
+  if (/[你妳]/u.test(clause)) return true;
+  const chars = [...clause];
+  return chars.some((c, i) => {
+    const next = chars[i + 1];
+    return ANSWER_VERBS.includes(c) && next !== undefined &&
+      LETTER_OR_DIGIT.test(next) && !NOT_ANSWER_AFTER.includes(next);
+  });
+}
+
+function isQuizClause(clause: string): boolean {
+  const own = mask(clause, NOT_QUIZ_WORDS);
+  return QUIZ_MARKERS.some((m) => own.includes(m));
+}
+
+/// 還有字：至少一個不是語助詞、笑聲的字或數字。
+function hasContent(text: string): boolean {
+  return [...text].some((c) =>
+    LETTER_OR_DIGIT.test(c) && !FILLER_CHARS.includes(c)
+  );
+}
+
+interface Piece {
+  readonly text: string;
+  /// 空白或標點（隔開小段的）。
+  readonly sep: boolean;
+  /// 有受保護的字（引號裡、網址、顏文字）或引號本身：整段不動。
+  readonly locked: boolean;
+}
+
+/// 一則切成小段與隔開它們的空白、標點；受保護的字不切、也不算標點。
+function piecesOf(message: string): Piece[] {
+  const chars = [...message];
+  const { inQuote, frozen } = protectedMap(chars);
+  const pieces: { text: string; sep: boolean; locked: boolean }[] = [];
+  chars.forEach((c, i) => {
+    const locked = inQuote[i] || frozen[i] || QUOTE_CHARS.has(c);
+    const sep = !locked && SEPARATOR.test(c);
+    const last = pieces.at(-1);
+    if (last && last.sep === sep) {
+      last.text += c;
+      last.locked ||= locked;
+    } else {
+      pieces.push({ text: c, sep, locked });
+    }
+  });
+  return pieces;
+}
+
+/// 拿掉標好的小段：連同它後面的空白或標點（那是它自己的語氣）；拿掉的是最後一段，前面留在結尾的接續標點
+/// 與空白也拿掉。
+function withoutPieces(pieces: readonly Piece[], drop: ReadonlySet<number>) {
+  const kept: Piece[] = [];
+  pieces.forEach((p, i) => {
+    if (drop.has(i)) return;
+    if (p.sep && drop.has(i - 1)) return;
+    kept.push(p);
+  });
+  const text = kept.map((p) => p.text).join("");
+  const last = kept.at(-1);
+  return last?.sep ? text.replace(JOINERS, "") : text;
+}
+
+/// 程度的「滿」換成「蠻」（受保護的字不動）；回換好的字與個數。
+function degreeMan(text: string): { text: string; count: number } {
+  const chars = [...text];
+  const { inQuote, frozen } = protectedMap(chars);
+  let count = 0;
+  const out = chars.map((c, i) => {
+    if (c !== "滿" || inQuote[i] || frozen[i]) return c;
+    const before = chars[i - 1];
+    if (before !== undefined && MAN_COMPOUND_BEFORE.includes(before)) return c;
+    if (inQuote[i + 1] || frozen[i + 1]) return c;
+    const after = chars.slice(i + 1, i + 1 + DEGREE_MAN_NEXT_MAX).join("");
+    if (!DEGREE_MAN_NEXT.some((w) => after.startsWith(w))) return c;
+    count++;
+    return "蠻";
+  });
+  return { text: count > 0 ? out.join("") : text, count };
+}
+
+/// 一則訊息照三條改；回改好的字與次數。
+export function tidyMessage(
+  message: string,
+  context: PhraseTidyContext,
+): { text: string; changes: PhraseTidyChanges } {
+  const pieces = piecesOf(message);
+  const quizDrops = new Set<number>();
+  const worryDrops = new Set<number>();
+  const rewrites = new Map<number, string>();
+  pieces.forEach((p, i) => {
+    if (p.sep || p.locked) return;
+    if (!context.herQuizWords && isQuizClause(p.text)) {
+      if (!carriesAnswer(p.text)) quizDrops.add(i);
+      else if (QUIZ_REWRITE.test(p.text)) {
+        rewrites.set(i, p.text.replace(QUIZ_REWRITE, ""));
+      }
+      return;
+    }
+    if (
+      context.herWorries.some((w) => DENY_PATTERNS.get(w)!.test(p.text))
+    ) worryDrops.add(i);
+  });
+  const rewritten = pieces.map((p, i) =>
+    rewrites.has(i) ? { ...p, text: rewrites.get(i)! } : p
+  );
+  const drop = new Set([...quizDrops, ...worryDrops]);
+  let text = rewritten.map((p) => p.text).join("");
+  let dropped = false;
+  if (drop.size > 0) {
+    const rest = withoutPieces(rewritten, drop);
+    // 拿掉之後還要有字；沒有就整則照原文（則數不能少，也不能變成只剩語助詞）。
+    if (hasContent(rest)) {
+      text = rest;
+      dropped = true;
+    }
+  }
+  const man = degreeMan(text);
+  text = man.text;
+  if (text === "" || text === message) {
+    return { text: message, changes: NO_PHRASE_TIDY_CHANGES };
+  }
+  return {
+    text,
+    changes: {
+      quiz: dropped ? quizDrops.size : 0,
+      quizRewrite: rewrites.size,
+      worry: dropped ? worryDrops.size : 0,
+      degree: man.count,
+      messages: 1,
+    },
+  };
+}
+
+/// 一張卡的每一則都照三條改（則數不變）。
+export function tidyCard(
+  messages: readonly string[],
+  context: PhraseTidyContext,
+): { messages: string[]; changes: PhraseTidyChanges } {
+  let changes = NO_PHRASE_TIDY_CHANGES;
+  const out = messages.map((m) => {
+    const tidied = tidyMessage(m, context);
+    changes = addPhraseTidyChanges(changes, tidied.changes);
+    return tidied.text;
+  });
+  return { messages: out, changes };
+}
