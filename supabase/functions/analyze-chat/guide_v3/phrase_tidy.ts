@@ -4,9 +4,10 @@
 // 改完之後、送出之前，照下面三條改字；不重新生成、不增減則數。純函式，不碰模型與資料庫。
 //
 // 規則（字表都在下面的常數，Bruce 可以調）：
-// - 這題：一則裡用空白或標點隔開的一小段，有把她的問題當考題的字（QUIZ_MARKERS），整段拿掉。這一段自己
-//   就在回答（有「你」，或「選、投、答」這類字後面接著答案）就不拿掉，只有「這題我選你」這種拿掉考題字
-//   也通的說法，拿掉那兩三個字。她自己的訊息就在講題目（HER_QUIZ_WORDS），這一條整個不做。
+// - 這題：一則裡用空白或標點隔開的一小段，整段剛好是把她的問題當考題、自己沒有內容的說法（QUIZ_FILLERS，
+//   例如「這題不用想」），才拿掉；有別的字的（這題當然第一名啊、這題海邊勝出）不確定答案在不在裡面，照原文
+//  （主審第 1 輪 P2）。「這題我選你」這種拿掉考題字也通的說法，只拿掉那兩三個字。她自己的訊息就在講題目
+//  （HER_QUIZ_WORDS），這一條整個不做。
 // - 不怪：一小段只是在否認她擔心的字（不怪、不會怪、一點都不怪、完全不怪、沒有很怪、哪裡怪；奇怪、醜、
 //   胖同樣），而且她最新這一輪真的提到這個字，才拿掉；「不怪你」這種多了別的字的不動。
 // - 滿→蠻：「滿」後面接著常數表裡的形容詞或動詞、前面那個字也不會跟「滿」連成詞（充滿、裝滿……），
@@ -33,6 +34,24 @@ export const ANSWER_VERBS = "選投答挑是說";
 export const NOT_ANSWER_AFTER = "得的了吧啊啦嗎呢喔欸案票";
 /// 答案在這一段裡、拿掉考題字也通的說法：只拿掉考題字（這題我選你→我選你、這題我直接投你一票→我直接投你一票）。
 export const QUIZ_REWRITE = /(?:這題|這一題|這道題)(?=我(?:直接|就)?[選投])/u;
+/// 會整段拿掉的考題說法：自己沒有內容，答案一定在別段（從之前跑過的卡整理，主審第 1 輪 P2：只認整段剛好
+/// 是這些，前面可以有欸、啊，後面可以有語助詞與表情）。開頭的「這題」也可以是這一題、這道題。
+export const QUIZ_FILLERS: readonly string[] = [
+  "這題不用想",
+  "這題我不用想",
+  "這題根本不用想",
+  "這題連想都不用想",
+  "這題沒有懸念",
+  "這題沒有第二個答案",
+  "這題送分",
+  "這題我答得很快",
+  "這題我直接答",
+  "這題要選的話",
+  "這種送分題我秒答",
+  "這個答案很穩",
+];
+/// 考題說法前面可以有的語氣詞。
+export const QUIZ_FILLER_LEAD: readonly string[] = ["欸", "啊"];
 
 export interface WorryWord {
   /// 她最新這一輪有這個字，才算她在擔心這件事。
@@ -258,6 +277,18 @@ const DENY_PATTERNS = new Map(
   WORRY_WORDS.map((w) => [w.her, denyPattern(w.card)]),
 );
 
+/// 整段剛好是 QUIZ_FILLERS 的一句（開頭的「這題」可以是這一題、這道題）。
+const QUIZ_FILLER_PATTERN = new RegExp(
+  `^(?:${alt(QUIZ_FILLER_LEAD)})?(?:${
+    QUIZ_FILLERS.map((f) =>
+      f.startsWith("這題")
+        ? `(?:這題|這一題|這道題)${escape(f.slice("這題".length))}`
+        : escape(f)
+    ).join("|")
+  })[${DENY_PARTICLES}]*${TRAILING_EMOJI}$`,
+  "u",
+);
+
 /// 這一小段自己就在回答：有「你／妳」，或「選、投、答……」後面接著答案。
 function carriesAnswer(clause: string): boolean {
   if (/[你妳]/u.test(clause)) return true;
@@ -352,8 +383,9 @@ export function tidyMessage(
   pieces.forEach((p, i) => {
     if (p.sep || p.locked) return;
     if (!context.herQuizWords && isQuizClause(p.text)) {
-      if (!carriesAnswer(p.text)) quizDrops.add(i);
-      else if (QUIZ_REWRITE.test(p.text)) {
+      // 只拿掉整段剛好是考題空話的；其他有考題字的，只有「這題我選你」這種只拿掉考題字，不然照原文。
+      if (QUIZ_FILLER_PATTERN.test(p.text)) quizDrops.add(i);
+      else if (carriesAnswer(p.text) && QUIZ_REWRITE.test(p.text)) {
         rewrites.set(i, p.text.replace(QUIZ_REWRITE, ""));
       }
       return;

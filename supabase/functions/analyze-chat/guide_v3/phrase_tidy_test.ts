@@ -12,6 +12,7 @@ import {
   NOT_QUIZ_WORDS,
   type PhraseTidyContext,
   phraseTidyContext,
+  QUIZ_FILLERS,
   QUIZ_MARKERS,
   tidyCard,
   tidyMessage,
@@ -51,6 +52,10 @@ Deno.test("常數：考題字、她在講題目的字、題材不算；擔心的
   ]);
   assertEquals(NOT_QUIZ_WORDS, ["這題材"]);
   assert(HER_QUIZ_WORDS.includes("題目"));
+  assertEquals(QUIZ_FILLERS.length, 12);
+  for (const filler of ["這題不用想", "這題我不用想", "這個答案很穩"]) {
+    assert(QUIZ_FILLERS.includes(filler), filler);
+  }
   assertEquals(WORRY_WORDS.map((w) => w.her), ["怪", "醜", "胖"]);
   for (
     const word of ["適合", "好看", "有", "可愛", "喜歡", "會", "想", "加分"]
@@ -99,17 +104,38 @@ Deno.test("這題：答案就在那一段裡不拿掉；「這題我選你」這
       "這題是送分題 是你",
     ]
   ) assertEquals(tidy(kept), kept);
-  // 「選、答」後面接的不是答案：還是考題的說法，拿掉。
+  // 整段剛好是考題空話的才拿掉（QUIZ_FILLERS）。
   assertEquals(tidy("這題要選的話 我選你"), "我選你");
-  assertEquals(tidy("這題沒有別人能選吧 當然是你"), "當然是你");
   assertEquals(tidy("這題我答得很快：是 而且你還敢問"), "是 而且你還敢問");
   assertEquals(tidy("是啊 你最好看 這題沒有第二個答案"), "是啊 你最好看");
+  assertEquals(tidy("欸這題我不用想 就是你"), "就是你");
+  assertEquals(tidy("這題送分欸 當然是你"), "當然是你");
+});
+
+Deno.test("主審第 1 輪 P2：有考題字、但不是整段空話的，不確定答案在不在裡面，整則照原文", () => {
+  for (
+    const kept of [
+      // 主審的反例：答案在那一段裡，原本被整段拿掉。
+      "這題當然第一名啊 晚點給我看影片",
+      "這題海邊勝出 晚點看天氣",
+      // 之前跑過的卡：前面帶話題、暗示答案、接在而且後面，都照原文。
+      "最好看這題我直接說 你笑起來很有感染力",
+      "這題沒有別人能選吧 當然是你",
+      "是你 而且這個答案我不用想太久",
+      "這題還要問嗎？ 是你",
+    ]
+  ) {
+    assertEquals(tidyMessage(kept, ASKS_BEST), {
+      text: kept,
+      changes: NO_PHRASE_TIDY_CHANGES,
+    }, kept);
+  }
 });
 
 Deno.test("這題：拿掉那一段的語氣標點一起走；拿掉的是最後一段，前面接續用的逗號、空白也拿掉，問號驚嘆號留著", () => {
   assertEquals(tidy("當然是你，這題不用想"), "當然是你");
-  assertEquals(tidy("當然是你！ 這題還要問嗎？"), "當然是你！");
-  assertEquals(tidy("這題還要問嗎？ 是你"), "是你");
+  assertEquals(tidy("當然是你！ 這題不用想～"), "當然是你！");
+  assertEquals(tidy("這題不用想～ 是你"), "是你");
   assertEquals(tidy("是你啊 這題不用想～ 你最好看"), "是你啊 你最好看");
   assertEquals(tidy("是你 這題不用想 這個答案很穩"), "是你");
   // 表情在那一段裡，跟著那一段走。
@@ -122,10 +148,8 @@ Deno.test("這題：她自己在講真的題目（她的訊息有這題、題目
     herMessages: ["明天考試", "這題怎麼解啦"],
   });
   assertEquals(exam.herQuizWords, true);
-  assertEquals(
-    tidy("這題我也不會 不過可以問老師", exam),
-    "這題我也不會 不過可以問老師",
-  );
+  assertEquals(tidy("這題不用想 先通分", exam), "這題不用想 先通分");
+  assertEquals(tidy("這題不用想 先通分"), "先通分");
   assertEquals(
     phraseTidyContext({ herLatest: [], herMessages: ["題目好難"] })
       .herQuizWords,
