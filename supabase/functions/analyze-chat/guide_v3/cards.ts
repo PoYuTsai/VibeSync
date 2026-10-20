@@ -165,7 +165,8 @@ const EMOJI = /\p{Extended_Pictographic}/gu;
 const EMOJI_SEQUENCE =
   /[0-9#*]\u{FE0F}?\u{20E3}|\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[\u{FE0E}\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu;
 
-function withoutEmoji(text: string): string {
+/// 兩段式實驗的規格引她的話時也用（two_stage_prompts.ts quoteHerLine）。
+export function withoutEmoji(text: string): string {
   return text.replace(EMOJI_SEQUENCE, " ");
 }
 const ENDS_WITH_NI_NE = /[你妳]呢[？?！!～~。…\s]*$/u;

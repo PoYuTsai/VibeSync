@@ -1,0 +1,388 @@
+// 兩段式「正常回覆」實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，Eric 2026-10-19 兩段式實驗）的提示詞：
+// 照 Bruce 10/19「先生成回覆，再用說明書的內容來教」。這裡放開關開了才用的字，開關沒開的
+// 提示詞（prompts.ts）一字不動。說明書原文仍只在 guide_text.ts、entries.ts。
+import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
+import { normalizeOutgoingScript } from "../outgoing_message_text.ts";
+import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
+import { GUIDE_V3_SECTIONS, type GuideV3SectionId } from "./guide_text.ts";
+import type { GuideV3PreviousRound } from "./previous_round.ts";
+import {
+  cardMethodText,
+  cardTaskText,
+  type GuideV3Background,
+  readSystemPrompt,
+  readUserPrompt,
+  WRITE_OUTPUT_FORMAT,
+  WRITE_SAFETY_FLOOR,
+  writeUserPrompt,
+} from "./prompts.ts";
+import { READ_TAGS_SCHEMA_TWO_STAGE, type ReadTags } from "./read_tags.ts";
+import { RELATION_FIELD_NOTES, withRelationFields } from "./relation.ts";
+import {
+  type AnswerLine,
+  type CardAnswer,
+  type CardSpec,
+  herLineText,
+  type PraiseStyle,
+} from "./rules.ts";
+import { latestHerMessages, type Turn } from "./turns.ts";
+
+/// 讀局面多輸出的四欄，以及作戰板標籤靠不住時怎麼判（研究報告 §5.3、§7.2：v3 把 App 預設的
+/// 「交友軟體／剛認識」當事實，真的情侶被當成剛認識、親暱稱呼被標成風險）。
+export const READ_TWO_STAGE_NOTES = `## 兩段式多輸出的欄位
+- establishedCouple：兩人已經在交往。作戰板寫「已是伴侶」，或對話看得很清楚（她叫他男朋友或老公、聊到住在一起、提到交往多久）才算；還在曖昧不算。
+- herAffection：她這一輪在撒嬌或示愛，例如說想他、要抱抱、說愛他、傳愛心或親親。
+- herHappyShare：她這一輪在分享開心或得意的事，例如好消息、自己做的料理、剛經歷的一個好時刻。
+- worthyLines：她最新這一輪值得接的訊息，一則一項。line 填對話稿上那一則前面的編號；label 用幾個字寫那則在講什麼；kind 填「問他」（她直接問他、要他的看法，或想聽他說好不好看、厲不厲害）、「情感」（撒嬌、示愛，或帶著開心、難過、生氣的情緒）、「照片或貼圖」（照片、貼圖或只有表情符號），其他都填「其他」；一則同時算問他和情感時填「問他」。單純附和、語助詞，或跟前一則講同一件事的，可以不列。
+
+## 作戰板標籤跟對話對不上時
+- 作戰板上的認識方式、認識多久，有可能只是 App 的預設值，不一定是他自己選的。跟對話內容對不上時，照對話判斷。
+- 已經在交往的兩人互用親暱的稱呼、撒嬌，是感情好，不是風險。`;
+
+/// 上面那一段的外洩哨兵（主審第 1 輪 P2，Eric 2026-10-20）：兩段式開時，判讀與要等她做什麼照抄這段就
+/// 不給，跟照抄說明書、關係訊號那段一樣。照關係訊號的做法（82d379c2）：每句都照抄自上面那段，而且都帶
+/// 只有提示詞才會寫的記號（欄位名、line／label／kind 的填法、種類名後面接它的定義、「兩段式…欄位」
+///「作戰板標籤」「App 的預設值」）；一般判讀自己也會講的話（「她在撒嬌或示愛」「是感情好，不是風險」）
+/// 不當哨兵，不然好好的判讀會被清掉（測試會檢查）。
+export const TWO_STAGE_READ_SENTINELS: readonly string[] = [
+  "兩段式多輸出的欄位",
+  "establishedCouple：兩人已經在交往",
+  "herAffection：她這一輪在撒嬌或示愛",
+  "herHappyShare：她這一輪在分享開心或得意的事",
+  "worthyLines：她最新這一輪值得接的訊息",
+  "line 填對話稿上那一則前面的編號",
+  "label 用幾個字寫那則在講什麼",
+  "kind 填「問他」（她直接問他、要他的看法",
+  "「情感」（撒嬌、示愛，或帶著開心、難過、生氣的情緒）",
+  "「照片或貼圖」（照片、貼圖或只有表情符號）",
+  "一則同時算問他和情感時填「問他」",
+  "作戰板標籤跟對話對不上時",
+  "有可能只是 App 的預設值，不一定是他自己選的",
+];
+
+/// 跟說明書、關係訊號的哨兵一樣再做一份簡轉繁整理過的（判讀整理後才比的那一次要用）。
+export const TWO_STAGE_READ_SENTINELS_NORMALIZED: readonly string[] =
+  TWO_STAGE_READ_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s);
+
+/// 兩段式開時交給 vetPlanText 多比的哨兵（原樣與整理過的，去掉重複）。
+export const TWO_STAGE_READ_LEAK_SENTINELS: readonly string[] = [
+  ...new Set([
+    ...TWO_STAGE_READ_SENTINELS,
+    ...TWO_STAGE_READ_SENTINELS_NORMALIZED,
+  ]),
+];
+
+export function readSystemPromptTwoStage(
+  sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+  entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
+  leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+): string {
+  return readSystemPrompt(
+    sections,
+    entries,
+    leakDirective,
+    READ_TWO_STAGE_NOTES,
+  );
+}
+
+/// 關係訊號（relation.ts，開關 ANALYZE_GUIDE_V3_RELATION）也開時：兩段式的欄位說明之後接關係那段，
+/// schema 在兩段式的四欄之後再接關係三欄，關係的欄位照它自己的設計排在最後（Eric 2026-10-20 兩邊都上線）。
+export function readSystemPromptTwoStageWithRelation(
+  sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+  entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
+  leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+): string {
+  return readSystemPrompt(
+    sections,
+    entries,
+    leakDirective,
+    `${READ_TWO_STAGE_NOTES}\n\n${RELATION_FIELD_NOTES}`,
+  );
+}
+
+export const READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION = withRelationFields(
+  READ_TAGS_SCHEMA_TWO_STAGE,
+);
+
+/// 她最新這一輪逐則編號，worthyLines 才填得出編號。
+export function readUserPromptTwoStage(
+  turns: readonly Turn[],
+  background?: GuideV3Background,
+  previousRound?: GuideV3PreviousRound,
+): string {
+  return readUserPrompt(turns, background, previousRound, true);
+}
+
+// ── 寫卡（第 1 段）：只寫正常的回覆 ──────────────────────────────────────────
+// 研究 §7.1 的結構刀：寫卡不帶 A1、不帶「每張卡都要有他的態度」與快檢「有他」，帶張力不講「先繃緊
+// 再鬆開」、不取封號，推拉不講「推在前、拉收尾」，「「有他」做法」改叫「他的事怎麼寫」。拿掉的段落
+// 移到說明步驟（explain.ts）。
+// A2、A3、A5 其餘、A6 其餘、條目、安全底線、輸出格式照舊。
+
+/// 寫卡看到的「他的事」標籤（Bruce 原文叫「「有他」做法」，名稱本身會讓模型每張都表態）。
+export const TWO_STAGE_METHOD_LABEL = "他的事怎麼寫";
+
+/// 一行一行改說明書原文：startsWith 要在那一節剛好對上一行，edit 回新的一行（null＝刪掉）。
+/// 只寫每行開頭幾個字，不在這裡另抄一份原文；對不上就丟錯：Bruce 改了說明書、這裡沒跟著改時，
+/// 測試會先失敗，不會悄悄沒拿掉。
+export interface LineEdit {
+  readonly startsWith: string;
+  readonly edit: (line: string) => string | null;
+}
+
+export function applyLineEdits(
+  section: string,
+  edits: readonly LineEdit[],
+): string {
+  let lines = section.split("\n");
+  for (const { startsWith, edit } of edits) {
+    const at = lines.flatMap((l, i) => (l.startsWith(startsWith) ? [i] : []));
+    if (at.length !== 1) {
+      throw new Error(
+        `two_stage_prompts: expected one line, found ${at.length}: ${startsWith}`,
+      );
+    }
+    const next = edit(lines[at[0]]);
+    lines = next === null
+      ? lines.filter((_, i) => i !== at[0])
+      : lines.map((l, i) => (i === at[0] ? next : l));
+  }
+  return lines.join("\n");
+}
+
+/// 那一行裡的 from 要剛好出現一次，換成 to。
+function replaceOnce(line: string, from: string, to: string): string {
+  if (line.split(from).length !== 2) {
+    throw new Error(`two_stage_prompts: expected one "${from}" in: ${line}`);
+  }
+  return line.replace(from, to);
+}
+
+/// 只留第一個「；」之前的那半句（後半句要拿掉）。
+function keepBeforeSemicolon(line: string): string {
+  const cut = line.indexOf("；");
+  if (cut === -1) throw new Error(`two_stage_prompts: no "；" in: ${line}`);
+  return `${line.slice(0, cut)}。`;
+}
+
+/// 項目符號後只留最後一句（前面幾句要拿掉）。
+function keepLastSentence(line: string): string {
+  const bullet = line.match(/^(\s*- )/)?.[1] ?? "";
+  const sentences = line.slice(bullet.length).split("。").filter((x) => x);
+  if (sentences.length < 2) {
+    throw new Error(`two_stage_prompts: need two sentences in: ${line}`);
+  }
+  return `${bullet}${sentences.at(-1)}。`;
+}
+
+/// 拿掉一條之後，編號重排成 1、2、3…（A6 只有一組編號）。
+function renumber(section: string): string {
+  let n = 0;
+  return section.split("\n").map((l) =>
+    /^\d+\. /.test(l) ? l.replace(/^\d+/, String(++n)) : l
+  ).join("\n");
+}
+
+/// 帶張力的新說法（照 v2「安全的誤讀、反差或輕推拉，保留退路」的精神）：手法與界線沿用 A5
+/// 下面原本的幾條（誇張解讀、反差、好笑的類比…；虧事不虧人；她越喜歡他，玩笑越少）。
+export const TWO_STAGE_TENSION_LINE =
+  "- **帶張力**：開一個輕的玩笑，讓聊天多一點來回；用下面的手法，留好退路，她接了就一起玩，沒接也不尷尬。";
+
+export const TWO_STAGE_A5_EDITS: readonly LineEdit[] = [
+  {
+    startsWith: "程式會指定每張卡的",
+    edit: (l) => replaceOnce(l, "「有他」做法", TWO_STAGE_METHOD_LABEL),
+  },
+  // 「先繃緊再鬆開」的定義換成上面的新說法；底下的手法與界線照留。
+  { startsWith: "- **帶張力**：", edit: () => TWO_STAGE_TENSION_LINE },
+  // 取封號那半句拿掉（研究 §3.3：替她定性的來源）。
+  { startsWith: "  - 材料從她話裡", edit: keepBeforeSemicolon },
+  // 推拉那一條拿掉「用來製造張力」和「推在前、拉收尾…」那一句：跟先繃緊再鬆開是同一個形狀
+  //（研究 §3.3、§7.1；Eric 2026-10-19 兩段式實驗），具體手法與界線照留。說明步驟照原文。
+  // 兩段字都要剛好出現一次，原文改了就丟錯。
+  {
+    startsWith: "  - 推拉用來製造張力：",
+    edit: (l) =>
+      replaceOnce(
+        replaceOnce(l, "推拉用來製造張力：", "推拉："),
+        "推在前、拉收尾，最後一句決定她讀到的是好感。",
+        "",
+      ),
+  },
+  {
+    startsWith: "**「有他」做法**",
+    edit: () => `**${TWO_STAGE_METHOD_LABEL}**`,
+  },
+  // 「每張卡都要有他的態度…換誰講都成立」拿掉；最後一句講具體、不講類別，跟表態無關，留著。
+  { startsWith: "- 每張卡都要有他的態度", edit: keepLastSentence },
+];
+
+export const TWO_STAGE_A6_EDITS: readonly LineEdit[] = [
+  {
+    startsWith: "2. **照規格**",
+    edit: (l) => replaceOnce(l, "「有他」做法", TWO_STAGE_METHOD_LABEL),
+  },
+  // 快檢「有他：換誰講都成立嗎？」拿掉，後面的編號往前補。
+  { startsWith: "3. **有他**", edit: () => null },
+];
+
+/// 寫卡看到的 A5、A6（從說明書原文改出來）。
+export function twoStageWriterSections(
+  sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+): { readonly A5: string; readonly A6: string } {
+  return {
+    A5: applyLineEdits(sections.A5, TWO_STAGE_A5_EDITS),
+    A6: renumber(applyLineEdits(sections.A6, TWO_STAGE_A6_EDITS)),
+  };
+}
+
+/// 寫卡新加的兩段（我們自己的話；參考 v2 快照 :62-67、:253-257、:553、:566 與 :342-351）。
+/// 第 2 輪照 Bruce 10/19 盲選理由補進原本的句子裡，不另開一串「不要」：你我少用、不自己報收到、
+/// 不評她的語氣用字、被誇時謙虛（他的例句「還好啦」）、貼圖表情不拿出來講。
+export const WRITE_NATURAL_RULES = `## 這一步只寫訊息
+- 每則訊息都是他可以原封不動傳出去的自然句子，像他平常跟朋友聊天那樣說話；主詞能省就省，「你」「我」不用每句都帶。
+- 直接回她說的事。判斷、策略、招式的名稱、對她的評價（包括評她的語氣和用字），以及替自己說明心態、原則或反應的話（例如「我收到了」「我收下了」「記下了」），都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。
+- 被她誇的時候，謙虛一點帶過，例如「還好啦」，不順勢誇自己。
+- 不是每一句都要表態或用上技巧。沒有適合的時機，就像朋友一樣正常聊。`;
+
+export const WRITE_MEDIA_RULES = `## 照片和貼圖
+- 她傳照片，是想跟他分享：接她分享的這件事。
+- 方括號裡的字是辨識程式寫的照片描述，不是她說的話：不照搬描述裡的用字，也不假裝看到描述以外的東西。
+- 貼圖和表情符號是她的語氣：跟旁邊那句話一起讀，用來抓她的心情，不拿出來講。`;
+
+/// 新加段落的外洩哨兵（只在兩段式寫出來的卡上檢查）：正常的回覆不會出現這些說法。
+export const TWO_STAGE_WRITER_SENTINELS: readonly string[] = [
+  "原封不動傳出去的自然句子",
+  "下一步會另外說明給用戶",
+  "辨識程式寫的照片描述",
+];
+
+export function writeSystemPromptTwoStage(
+  sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+  safetyRules: string = WRITE_SAFETY_FLOOR,
+  leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+): string {
+  const writer = twoStageWriterSections(sections);
+  return [
+    "你是 VibeSync 對話分析的「寫句子」步驟：照使用者訊息裡每張卡的規格，寫他可以直接傳給她的訊息。",
+    WRITE_NATURAL_RULES,
+    sections.A2,
+    sections.A3,
+    WRITE_MEDIA_RULES,
+    writer.A5,
+    writer.A6,
+    WRITE_OUTPUT_FORMAT,
+    safetyRules.trim(),
+    leakDirective.trim(),
+  ].join("\n\n");
+}
+
+/// 條目寫法裡提到「「有他」做法」的（B23），寫卡看到的也換成新名稱。
+export function twoStageEntryWriting(entry: GuideV3Entry): string {
+  return entry.writing.replaceAll(
+    "「有他」做法",
+    `「${TWO_STAGE_METHOD_LABEL}」`,
+  );
+}
+
+/// 她開心分享時換上的那張共鳴：說明書的共鳴是寫她氣頭上或難過時，這張另外講清楚是陪她開心。
+/// 第 2 輪改成講那件事本身（Bruce 10/19：「你整個人都亮亮的」不自然；第 1 輪這張常在形容她的樣子）。
+export const HAPPY_SHARE_TASK =
+  "共鳴（她在分享開心或得意的事：跟她一起為那件事高興，說那件事好在哪）";
+
+const QUOTE_MAX_CHARS = 30;
+
+/// 規格裡引她的那一則：去掉引用前綴與表情、空白收成一格，太長就截短。表情不引（第 2 輪，Bruce
+/// 10/19：特別挑她的語氣去評價很不自然）：規格裡少了表情，寫卡就不會把它當成要回的東西；
+/// 對話稿裡照樣看得到。跟排卡判斷「有沒有字可以引」用同一份（rules.ts herLineText）。
+export function quoteHerLine(content: string): string {
+  const text = herLineText(content);
+  const chars = [...text];
+  return chars.length > QUOTE_MAX_CHARS
+    ? `${chars.slice(0, QUOTE_MAX_CHARS - 1).join("")}…`
+    : text;
+}
+
+/// 規格裡的一則：「她的「…」」；併進來的照片、貼圖（rules.ts assignAnswers 的 with）註明第幾則，
+/// 對話稿上她最新這一輪有逐則編號，寫卡看得到那幾則是什麼，規格裡不重抄辨識描述。
+function answerQuote(at: AnswerLine, herLatest: readonly string[]): string {
+  const folded = at.with.filter((line) =>
+    line >= 1 && line <= herLatest.length
+  );
+  const note = folded.length > 0 ? `（連同第 ${folded.join("、")} 則）` : "";
+  return `她的「${quoteHerLine(herLatest[at.line - 1])}」${note}`;
+}
+
+/// 第 2 輪（Bruce 10/19 盲選理由）：「這張接」是每張都要先回的那則，「可以順帶」是這張可以多接的
+/// 一則。編號不在她最新這一輪、或那一則沒有字可以引，就不寫（不會出現「她的「」」）。說明步驟
+///（explain.ts）也用同一份。
+export function answerParts(
+  answer: CardAnswer | undefined,
+  herLatest: readonly string[],
+): string[] {
+  const inRange = (at: AnswerLine) =>
+    at.line >= 1 && at.line <= herLatest.length &&
+    quoteHerLine(herLatest[at.line - 1]) !== "";
+  if (!answer || !inRange(answer.main)) return [];
+  return [
+    `這張接：${answerQuote(answer.main, herLatest)}`,
+    ...(answer.extra && inRange(answer.extra)
+      ? [`可以順帶：${answerQuote(answer.extra, herLatest)}`]
+      : []),
+  ];
+}
+
+/// 兩段式的規格行：任務之後先講這張接她哪一則、可以順帶哪一則，「有他」做法改叫「他的事怎麼寫」。
+export function cardSpecLineTwoStage(
+  spec: CardSpec,
+  n: number,
+  herLatest: readonly string[],
+): string {
+  const parts = [
+    `${n}. 任務：${
+      spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
+    }`,
+    ...answerParts(spec.answer, herLatest),
+    `${TWO_STAGE_METHOD_LABEL}：${cardMethodText(spec)}`,
+    `口吻：${spec.voice}`,
+    spec.questionBudget === 0 ? "不問問題" : "問句最多 1 個",
+  ];
+  if (spec.angle > 0) parts.push("切入點要跟前面同規格的卡不同");
+  return parts.join("｜");
+}
+
+/// 第 2 輪（Bruce 10/19 盲選理由，他的例句照用）：誇她的方式由程式照 praiseStyle 挑一句放進
+/// 使用者訊息，不讓寫卡自己判斷兩人到哪一步，也不把兩種寫法同時擺給它挑。
+export const PRAISE_TEXT: Readonly<Record<PraiseStyle, string>> = {
+  direct:
+    "她傳自拍、問他好不好看或討稱讚時：直接誇、講明白，不賣關子、不吊著她。",
+  light:
+    "她傳自拍、問他好不好看或討稱讚時：輕輕誇一句、不用給太多，帶點玩笑、留一點讓她猜，像她傳自拍時回「美啊 已戀愛。哈哈哈哈 不錯啦」。",
+};
+
+export function praiseSection(style: PraiseStyle): string {
+  return `## 稱讚\n${PRAISE_TEXT[style]}`;
+}
+
+export function writeUserPromptTwoStage(args: {
+  readonly turns: readonly Turn[];
+  readonly tags: ReadTags;
+  readonly entries: readonly GuideV3Entry[];
+  readonly cards: readonly CardSpec[];
+  readonly background?: GuideV3Background;
+  readonly previousRound?: GuideV3PreviousRound;
+  /// 出卡、收尾的計畫才有（plan.ts）；沒給就不放稱讚那段。
+  readonly praise?: PraiseStyle;
+}): string {
+  const herLatest = latestHerMessages(args.turns);
+  const { praise, ...rest } = args;
+  return writeUserPrompt({
+    ...rest,
+    variant: {
+      numberLatestHerTurn: true,
+      entryWriting: twoStageEntryWriting,
+      specLine: (spec, n) => cardSpecLineTwoStage(spec, n, herLatest),
+      beforeCards: praise ? [praiseSection(praise)] : [],
+    },
+  });
+}

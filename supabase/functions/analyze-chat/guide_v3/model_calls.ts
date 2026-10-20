@@ -2,6 +2,8 @@
 // 寫卡走串流（callClaudeStreaming）。兩段各一個 ModelCallBudget（各最多 3 次
 // provider 呼叫），每次呼叫交一列 ai_logs 給 recordAiCall（背景寫入，不擋回應）。
 // 對象記憶（開關開才有）另一個 ModelCallBudget，只打一次、不換模型。
+// 兩段式實驗的說明步驟（開關 ANALYZE_GUIDE_V3_TWO_STAGE 開才有）：同一個模型、同一條備援鏈，
+// 自己一個 ModelCallBudget（stage explain，最多 3 次），ai_logs 另記 request_type。
 import { SONNET_5_5_MODEL } from "../../_shared/model_request_params.ts";
 import { callClaudeWithFallback, extractClaudeText } from "../fallback.ts";
 import {
@@ -12,6 +14,7 @@ import {
 import { callClaudeStreaming } from "../streaming_fallback.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type {
+  GuideV3ExplainRequest,
   GuideV3ExtractRequest,
   GuideV3ReadRequest,
   GuideV3StreamDeps,
@@ -34,6 +37,12 @@ export const GUIDE_V3_MEMORY_MAX_TOKENS = 1500;
 export const GUIDE_V3_MEMORY_REQUEST_TYPE = "analyze_memory";
 const MEMORY_ATTEMPT_TIMEOUT_MS = 15_000;
 
+/// 說明步驟：每張卡一兩句，5 張大約 600 token；5.5 另加思考餘裕（maxTokensFor）。
+export const GUIDE_V3_EXPLAIN_MAX_TOKENS = 1200;
+/// ai_logs 的 request_type：說明不扣用戶額度，成本跟分析本身的那幾列分開算。
+export const GUIDE_V3_EXPLAIN_REQUEST_TYPE = "analyze_explain";
+const EXPLAIN_ATTEMPT_TIMEOUT_MS = 15_000;
+
 export function createGuideV3ModelCalls(args: {
   readonly apiKey: string;
   readonly requestType: string;
@@ -44,10 +53,15 @@ export function createGuideV3ModelCalls(args: {
   readonly memory?: boolean;
   /// 黑箱比較模型用；正式路徑一律 GUIDE_V3_MEMORY_MODEL。
   readonly memoryModel?: string;
-}): Pick<GuideV3StreamDeps, "callRead" | "callWrite" | "callExtract"> {
+  /// 開關 ANALYZE_GUIDE_V3_TWO_STAGE 允許時才給 callExplain；沒給就不會多打這一次。
+  readonly explain?: boolean;
+}): Pick<
+  GuideV3StreamDeps,
+  "callRead" | "callWrite" | "callExtract" | "callExplain"
+> {
   const model = args.model ?? GUIDE_V3_MODEL;
   const budget = (
-    stage: "read" | "write" | "memory",
+    stage: "read" | "write" | "memory" | "explain",
     runId: string,
     deadline: number,
     requestType = args.requestType,
@@ -99,6 +113,37 @@ export function createGuideV3ModelCalls(args: {
     );
     return { text: extractClaudeText(result.data), model: result.model };
   };
+  const callExplain = async (req: GuideV3ExplainRequest) => {
+    const result = await callClaudeWithFallback(
+      {
+        model,
+        max_tokens: GUIDE_V3_EXPLAIN_MAX_TOKENS,
+        system: req.system,
+        messages: [{ role: "user", content: req.user }],
+        output_config: {
+          format: { type: "json_schema", schema: req.schema },
+        },
+      },
+      args.apiKey,
+      {
+        timeout: Math.max(
+          1,
+          Math.min(EXPLAIN_ATTEMPT_TIMEOUT_MS, req.deadlineAtMs - Date.now()),
+        ),
+        maxRetries: 1,
+        allowModelFallback: true,
+        budget: budget(
+          "explain",
+          req.runId,
+          req.deadlineAtMs,
+          GUIDE_V3_EXPLAIN_REQUEST_TYPE,
+        ),
+        purpose: "guide_v3_explain",
+        absoluteDeadlineAtMs: req.deadlineAtMs,
+      },
+    );
+    return { text: extractClaudeText(result.data), model: result.model };
+  };
   return {
     async callRead(req: GuideV3ReadRequest) {
       const result = await callClaudeWithFallback(
@@ -145,5 +190,6 @@ export function createGuideV3ModelCalls(args: {
       return { model: claude.model, textStream: claude.textStream };
     },
     ...(args.memory ? { callExtract } : {}),
+    ...(args.explain ? { callExplain } : {}),
   };
 }

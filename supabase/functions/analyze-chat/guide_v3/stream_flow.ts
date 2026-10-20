@@ -32,6 +32,13 @@ import {
 } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
 import {
+  EXPLAIN_SCHEMA,
+  explainSystemPrompt,
+  explainUserPrompt,
+  parseExplanations,
+  vetExplanation,
+} from "./explain.ts";
+import {
   NO_SAFETY_HITS,
   type SafetyKeywordHits,
   scanSafetyKeywords,
@@ -65,13 +72,37 @@ import {
   writeSystemPrompt,
   writeUserPrompt,
 } from "./prompts.ts";
-import { parseReadTags, READ_TAGS_SCHEMA, type ReadTags } from "./read_tags.ts";
-import { type GuideMessage, toTurns, type Turn } from "./turns.ts";
+import {
+  parseReadTags,
+  parseTwoStageTags,
+  READ_TAGS_SCHEMA,
+  READ_TAGS_SCHEMA_TWO_STAGE,
+  type ReadTags,
+  type TwoStageTags,
+} from "./read_tags.ts";
+import {
+  READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
+  readSystemPromptTwoStage,
+  readSystemPromptTwoStageWithRelation,
+  readUserPromptTwoStage,
+  TWO_STAGE_READ_LEAK_SENTINELS,
+  TWO_STAGE_WRITER_SENTINELS,
+  writeSystemPromptTwoStage,
+  writeUserPromptTwoStage,
+} from "./two_stage_prompts.ts";
+import {
+  type GuideMessage,
+  latestHerMessages,
+  toTurns,
+  type Turn,
+} from "./turns.ts";
 import {
   cardEvent,
+  cardExplainEvent,
   cardView,
   finalResult,
   type GuideV3CardView,
+  type GuideV3ExplainTrace,
   type GuideV3ReadView,
   type GuideV3Trace,
   readEvent,
@@ -91,6 +122,8 @@ export const STOP_CONDITION_CARE = "先確認安全";
 export const STOP_CONDITION_MINOR = "涉及未成年，不給建議";
 /// 讀完局面、開始寫卡前的中性進度（只有出卡、收尾才有；不帶判讀、不動扣費）。
 export const GUIDE_V3_WRITING_LABEL = "看完了，正在寫回覆";
+/// 兩段式實驗的說明步驟最多等多久（卡都送完才開始；done 最多晚這麼久）。
+export const GUIDE_V3_EXPLAIN_WAIT_MS = 20_000;
 
 export interface GuideV3RunPort {
   getRun(args: {
@@ -136,6 +169,9 @@ export interface GuideV3WriteRequest {
 
 /// 對象記憶：跟讀局面一樣是非串流＋json_schema，提示詞與 schema 在 memory.ts。
 export type GuideV3ExtractRequest = GuideV3ReadRequest;
+
+/// 兩段式實驗的說明步驟：也是非串流＋json_schema，提示詞與 schema 在 explain.ts。
+export type GuideV3ExplainRequest = GuideV3ReadRequest;
 
 export interface GuideV3Message {
   readonly isFromMe: boolean;
@@ -194,6 +230,15 @@ export interface GuideV3StreamDeps {
   /// 額度不夠、她的訊息有自傷字眼（Eric 2026-10-18；入口在 analyze_chat_handler 的額度
   /// 預查）：不打任何模型，直接給自傷關心訊息，不扣。
   careOnlyFromQuota?: boolean;
+  /// 兩段式「正常回覆」實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，handler 把關；Eric 2026-10-19
+  /// 兩段式實驗）。沒給或 false：提示詞、schema、事件、trace 與扣費都跟今天一樣。
+  twoStage?: boolean;
+  /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
+  callExplain?(
+    req: GuideV3ExplainRequest,
+  ): Promise<{ text: string; model: string }>;
+  /// 預設 GUIDE_V3_EXPLAIN_WAIT_MS（測試縮短用）。
+  explainWaitMs?: number;
 }
 
 type ErrorEvent = Record<string, unknown> & {
@@ -388,18 +433,30 @@ class GuideV3Flow {
       // 關係訊號（Bruce 2026-10-19 路線二）：讀局面在最後多要三欄；沒開照舊。
       const withRelation = this.deps.relation === true;
       let text: string;
+      // 兩段式實驗（Eric 2026-10-19）：讀局面多要幾個標記、她最新這一輪逐則編號；沒開照舊。
+      // 兩個開關都開：欄位說明兩段都放、關係那段在最後；schema 是兩段式的，再把關係三欄接在最後
+      //（模型照 schema 順序輸出，前面的標記先寫完；Eric 2026-10-20 兩邊都上線）。
+      const twoStage = this.deps.twoStage === true;
       try {
         const read = await this.deps.callRead({
           runId: this.runId,
-          system: withRelation
+          system: twoStage
+            ? withRelation
+              ? readSystemPromptTwoStageWithRelation()
+              : readSystemPromptTwoStage()
+            : withRelation
             ? readSystemPromptWithRelation()
             : readSystemPrompt(),
-          user: readUserPrompt(
+          user: (twoStage ? readUserPromptTwoStage : readUserPrompt)(
             turns,
             this.deps.background,
             this.deps.previousRound,
           ),
-          schema: withRelation
+          schema: twoStage
+            ? withRelation
+              ? READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION
+              : READ_TAGS_SCHEMA_TWO_STAGE
+            : withRelation
             ? READ_TAGS_SCHEMA_WITH_RELATION
             : READ_TAGS_SCHEMA,
           deadlineAtMs,
@@ -421,7 +478,12 @@ class GuideV3Flow {
           error: errorText(error),
         });
       }
-      const tags = parseTagsText(text);
+      const parsed = parseTagsText(text);
+      // 兩段式多要的四欄在同一份 JSON 裡；壞了跟其他欄位壞了一樣算讀局面失敗。
+      const twoStageTags: TwoStageTags | null = twoStage && parsed
+        ? parseTwoStageTags(parsed)
+        : null;
+      const tags = twoStage && !twoStageTags ? null : parsed;
       if (!tags) {
         const fallback = planWithoutRead(this.hits);
         if (fallback) {
@@ -450,14 +512,24 @@ class GuideV3Flow {
         }
       }
       const plan = vetPlanText(
-        planTurn(turns, tags, this.hits),
+        planTurn(
+          turns,
+          tags,
+          this.hits,
+          undefined,
+          twoStageTags ?? undefined,
+        ),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
             analysisRunId: this.runId,
             field,
           }, "error"),
-        // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；沒開照舊。
-        withRelation ? RELATION_LEAK_SENTINELS : [],
+        // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；兩段式多的欄位說明也一樣
+        //（兩段式主審第 1 輪 P2），兩個都開就兩份一起比。都沒開照舊。
+        [
+          ...(twoStage ? TWO_STAGE_READ_LEAK_SENTINELS : []),
+          ...(withRelation ? RELATION_LEAK_SENTINELS : []),
+        ],
       );
       // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
       const view = readView(
@@ -1007,7 +1079,10 @@ class GuideV3Flow {
         return true;
       }
       seen.add(card.card);
-      const out = finalizeCard(card, spec, sourceText);
+      // 兩段式實驗：寫卡提示詞新加的段落也當外洩哨兵；沒開照舊。
+      const out = this.deps.twoStage === true
+        ? finalizeCard(card, spec, sourceText, TWO_STAGE_WRITER_SENTINELS)
+        : finalizeCard(card, spec, sourceText);
       if (!out.ok) {
         // 原文留在伺服器紀錄，誤擋時查得到；outcome log 只記原因。
         removed.push({
@@ -1084,17 +1159,23 @@ class GuideV3Flow {
       label: GUIDE_V3_WRITING_LABEL,
     });
     try {
+      // 兩段式實驗（Eric 2026-10-19）：寫卡不帶說明書的立場與表態段，規格多「這張接」；第 2 輪
+      // 另放程式挑的稱讚那一句（Bruce 10/19 盲選理由）。沒開照舊。
+      const twoStage = this.deps.twoStage === true;
+      const userArgs = {
+        turns,
+        tags,
+        entries: plan.entries,
+        cards: deliverable,
+        background: this.deps.background,
+        previousRound: this.deps.previousRound,
+      };
       const write = await this.deps.callWrite({
         runId: this.runId,
-        system: writeSystemPrompt(),
-        user: writeUserPrompt({
-          turns,
-          tags,
-          entries: plan.entries,
-          cards: deliverable,
-          background: this.deps.background,
-          previousRound: this.deps.previousRound,
-        }),
+        system: twoStage ? writeSystemPromptTwoStage() : writeSystemPrompt(),
+        user: twoStage
+          ? writeUserPromptTwoStage({ ...userArgs, praise: plan.praise })
+          : writeUserPrompt(userArgs),
         deadlineAtMs,
       });
       this.writeModel = write.model;
@@ -1174,6 +1255,15 @@ class GuideV3Flow {
       : upstreamErrorEvent(upstreamError).code;
     const partial = upstreamError !== null ||
       delivered.length < deliverable.length;
+    // 兩段式實驗：卡都定稿送出之後才說明，事件排在最後一張卡之後、done 之前；失敗、逾時或
+    // 斷線只是沒有說明，卡與扣費不變（Eric 2026-10-19 兩段式實驗）。
+    const explain = this.deps.twoStage === true
+      ? await this.explainCards(emit, plan, tags, turns, delivered, isClosed)
+      : null;
+    // 送出的說明也存進結果（照卡號）：續看只重播結果，App 才拿得回說明（主審第 1 輪 P2）。
+    const cardExplains = [...(explain?.texts ?? [])].sort((a, b) =>
+      a.card - b.card
+    );
     // 卡都送完了才等記憶（通常早就好了）。
     const memory = await this.settleMemory();
     await this.finish(
@@ -1181,6 +1271,7 @@ class GuideV3Flow {
       finalResult({
         read: view,
         cards: delivered,
+        cardExplains,
         partial,
         usage: this.usage(
           this.shouldCharge ? this.deps.quotaUsage.chargedMessageCount : 0,
@@ -1198,6 +1289,7 @@ class GuideV3Flow {
         trace: this.trace(tags, plan, {
           ...traceExtra,
           ...(memory.trace ? { memory: memory.trace } : {}),
+          ...(explain ? { twoStage: { explain } } : {}),
         }),
         targetProfile: memory.targetProfile,
       }),
@@ -1217,7 +1309,141 @@ class GuideV3Flow {
         herLastTurnChars: herChars,
         ...(interruptedCode ? { writeInterruptedCode: interruptedCode } : {}),
         ...(memory.trace ? { memory: memory.trace } : {}),
+        // 說明只記狀態、張數與原因，不放原文。
+        ...(explain
+          ? {
+            explain: {
+              status: explain.status,
+              ...(explain.code ? { code: explain.code } : {}),
+              latencyMs: explain.latencyMs,
+              delivered: explain.delivered.length,
+              removed: explain.removed,
+            },
+          }
+          : {}),
       },
     );
+  }
+
+  /// 兩段式實驗的說明步驟：替送出的每張卡要一段「為什麼這樣回」，過檢查的照卡片順序送出。
+  /// 永遠不丟錯；結果只進 trace（App 的 done 不帶）。
+  private async explainCards(
+    emit: NdjsonEmit,
+    plan: GuideV3Plan,
+    tags: ReadTags,
+    turns: readonly Turn[],
+    delivered: readonly GuideV3CardView[],
+    isClosed: () => boolean,
+  ): Promise<GuideV3ExplainTrace> {
+    const none = { delivered: [], removed: [] };
+    const callExplain = this.deps.callExplain;
+    if (!callExplain) {
+      return { status: "skipped", code: "NO_CALL", latencyMs: null, ...none };
+    }
+    // App 已經斷線：說明沒人看，不打這一次。
+    if (isClosed()) {
+      return {
+        status: "skipped",
+        code: "CLIENT_GONE",
+        latencyMs: null,
+        ...none,
+      };
+    }
+    const startedAt = this.now();
+    const waitMs = this.deps.explainWaitMs ?? GUIDE_V3_EXPLAIN_WAIT_MS;
+    const herLatest = latestHerMessages(turns);
+    const cards = delivered.map((card) => ({
+      slot: card.slot,
+      spec: plan.specs[card.slot - 1],
+      messages: card.messages,
+    }));
+    // 用 executor 包起來：callExplain 同步丟錯也變成 reject。
+    const task = new Promise<{ text: string; model: string }>((resolve) =>
+      resolve(callExplain({
+        runId: this.runId,
+        system: explainSystemPrompt(),
+        user: explainUserPrompt({
+          tags,
+          herLatest,
+          entries: plan.entries,
+          cards,
+          ...(plan.praise ? { praise: plan.praise } : {}),
+        }),
+        schema: EXPLAIN_SCHEMA,
+        deadlineAtMs: startedAt + waitMs,
+      }))
+    );
+    // 等不到就先結案，但這次呼叫還是要跑完、寫完 ai_logs。
+    this.deps.waitUntil?.(task.catch(() => undefined));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), waitMs);
+    });
+    let res: { text: string; model: string } | "timeout";
+    try {
+      res = await Promise.race([task, late]);
+    } catch (error) {
+      const code = (error as { code?: unknown })?.code;
+      const failure = typeof code === "string" ? code : "UNKNOWN";
+      this.deps.log("guide_v3_explain_failed", {
+        analysisRunId: this.runId,
+        code: failure,
+      }, "error");
+      return {
+        status: "failed",
+        code: failure,
+        latencyMs: this.now() - startedAt,
+        ...none,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res === "timeout") {
+      this.deps.log("guide_v3_explain_failed", {
+        analysisRunId: this.runId,
+        code: "EXPLAIN_TIMEOUT",
+      }, "error");
+      return {
+        status: "failed",
+        code: "EXPLAIN_TIMEOUT",
+        latencyMs: this.now() - startedAt,
+        ...none,
+      };
+    }
+    const latencyMs = this.now() - startedAt;
+    const parsed = parseExplanations(res.text);
+    if (!parsed) {
+      this.deps.log("guide_v3_explain_failed", {
+        analysisRunId: this.runId,
+        code: "EXPLAIN_INVALID",
+      }, "error");
+      return { status: "invalid", model: res.model, latencyMs, ...none };
+    }
+    const sent: number[] = [];
+    const removed: { card: number; reason: string }[] = [];
+    const texts: { card: number; text: string }[] = [];
+    for (const card of delivered) {
+      const raw = parsed.get(card.slot);
+      if (raw === undefined) {
+        removed.push({ card: card.slot, reason: "missing" });
+        continue;
+      }
+      const vetted = vetExplanation(raw);
+      if (!vetted.ok) {
+        removed.push({ card: card.slot, reason: vetted.reason });
+        continue;
+      }
+      emit(cardExplainEvent(card.slot, vetted.text));
+      sent.push(card.slot);
+      texts.push({ card: card.slot, text: vetted.text });
+    }
+    return {
+      status: "ok",
+      model: res.model,
+      latencyMs,
+      delivered: sent,
+      removed,
+      texts,
+    };
   }
 }

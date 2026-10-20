@@ -27,6 +27,9 @@ import type { SafetyKeywordHits } from "./safety.ts";
 
 export const GUIDE_V3_READ_EVENT = "analysis.read";
 export const GUIDE_V3_CARD_EVENT = "analysis.card";
+/// 兩段式實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，Eric 2026-10-19）：卡都送完、done 之前，每張卡
+/// 一則「為什麼這樣回」。舊版 App 不認得的事件型別一律略過。
+export const GUIDE_V3_CARD_EXPLAIN_EVENT = "analysis.card_explain";
 
 /// 卡片任務 → 扣費紀錄與 App 用的代碼（migration 20261016171939 的 card_task）。
 export const TASK_CODE: Readonly<Record<Task, V3CardTaskCode>> = {
@@ -253,6 +256,27 @@ export function cardEvent(view: GuideV3CardView): Record<string, unknown> {
   return { type: GUIDE_V3_CARD_EVENT, ...view };
 }
 
+/// card＝那張卡 analysis.card 事件的 slot。
+export function cardExplainEvent(
+  card: number,
+  text: string,
+): Record<string, unknown> {
+  return { type: GUIDE_V3_CARD_EXPLAIN_EVENT, card, text };
+}
+
+/// 兩段式實驗的說明步驟紀錄（只進伺服器的 trace）。status：ok＝有回（送出的在 delivered，
+/// 沒過檢查或沒寫到的在 removed）；failed＝呼叫失敗或逾時（code）；invalid＝回的格式壞了；
+/// skipped＝沒打（沒有呼叫、或 App 已斷線）。texts 是送出的說明原文（跟卡同一類產品輸出）。
+export interface GuideV3ExplainTrace {
+  readonly status: "ok" | "failed" | "invalid" | "skipped";
+  readonly code?: string;
+  readonly model?: string;
+  readonly latencyMs: number | null;
+  readonly delivered: readonly number[];
+  readonly removed: readonly { card: number; reason: string }[];
+  readonly texts?: readonly { card: number; text: string }[];
+}
+
 /// 伺服器專用：讀局面標記、卡片規格、條目與被拿掉的卡。存進 final_result_json，
 /// 送 App 前由 stripClientHiddenFinalResult 剝掉。
 export interface GuideV3Trace {
@@ -300,11 +324,25 @@ export interface GuideV3Trace {
   readonly keywordHits?: SafetyKeywordHits;
   /// 有帶上一輪脈絡才有（只有數量，見 previous_round.ts）。
   readonly previousRound?: GuideV3PreviousRoundTrace;
+  /// 兩段式實驗開了、有出卡才有：說明步驟的結果。
+  readonly twoStage?: { readonly explain: GuideV3ExplainTrace };
+}
+
+/// 兩段式實驗的「為什麼這樣回」放進結果的 key（App 573b71ee 的 guide_v3_result.dart 讀這個）：
+/// 續看只重播結果、不重播 analysis.card_explain，說明要跟卡一起存，才取得回來（主審第 1 輪 P2）。
+export const GUIDE_V3_CARD_EXPLAINS_KEY = "cardExplains";
+
+export interface GuideV3CardExplain {
+  /// 那張卡的 slot（analysis.card 的 slot）。
+  readonly card: number;
+  readonly text: string;
 }
 
 export function finalResult(args: {
   readonly read: GuideV3ReadView;
   readonly cards: readonly GuideV3CardView[];
+  /// 兩段式實驗才有：通過檢查、送出的說明（照卡號排）；沒有就不放這個 key。
+  readonly cardExplains?: readonly GuideV3CardExplain[];
   readonly partial: boolean;
   readonly usage: Record<string, unknown>;
   readonly telemetry: Record<string, unknown>;
@@ -317,6 +355,9 @@ export function finalResult(args: {
     guideVersion: GUIDE_V3_VERSION,
     read: args.read,
     cards: args.cards,
+    ...(args.cardExplains && args.cardExplains.length > 0
+      ? { [GUIDE_V3_CARD_EXPLAINS_KEY]: args.cardExplains }
+      : {}),
     partial: args.partial,
     ...(args.recovered ? { recovered: true } : {}),
     usage: args.usage,

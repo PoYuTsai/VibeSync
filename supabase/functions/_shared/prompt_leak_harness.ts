@@ -16,6 +16,10 @@ import {
   RELATION_SENTINELS,
   RELATION_SENTINELS_NORMALIZED,
 } from "../analyze-chat/guide_v3/relation.ts";
+import {
+  TWO_STAGE_READ_SENTINELS,
+  TWO_STAGE_READ_SENTINELS_NORMALIZED,
+} from "../analyze-chat/guide_v3/two_stage_prompts.ts";
 import { OPENER_FLOW_PROMPT_SENTINELS } from "../analyze-chat/opener_flow_prompt.ts";
 import {
   ANALYZE_CHAT_PROMPT_SENTINELS,
@@ -38,6 +42,9 @@ export const SENTINEL_LISTS: Readonly<Record<string, readonly string[]>> = {
   // v3 讀局面多的關係狀態那一段（開關開才比），和它整理過的那一份
   RELATION_SENTINELS,
   RELATION_SENTINELS_NORMALIZED,
+  // v3 讀局面多的兩段式欄位說明（開關開才比），和它整理過的那一份
+  TWO_STAGE_READ_SENTINELS,
+  TWO_STAGE_READ_SENTINELS_NORMALIZED,
   // 再調一下，和它整理過的那一份
   GUIDE_V3_REFINE_SENTINELS,
   GUIDE_V3_REFINE_SENTINELS_NORMALIZED,

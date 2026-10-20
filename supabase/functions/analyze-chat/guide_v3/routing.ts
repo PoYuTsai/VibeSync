@@ -54,6 +54,16 @@ export function shouldUseGuideV3PreviousRound(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 兩段式「正常回覆」實驗（Eric 2026-10-19 兩段式實驗）：開關 ANALYZE_GUIDE_V3_TWO_STAGE，
+/// 跟 ANALYZE_GUIDE_V3 一樣 off／test／on。開了才讀局面多幾個標記、寫卡改用拿掉立場段的
+/// 提示詞、寫完卡另打一次「為什麼這樣回」；沒開就跟今天一字不差。
+export function shouldUseGuideV3TwoStage(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。

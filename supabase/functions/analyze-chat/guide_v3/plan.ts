@@ -1,9 +1,10 @@
 // 讀局面之後、寫卡之前：把標記交給 rules.ts，得出這一輪要做什麼（回、先別回、
 // 收尾、停、關心），以及每張卡的規格與要帶的情境條目。純函式，不碰模型與資料庫。
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
-import type { INVITE_READINESS, ReadTags } from "./read_tags.ts";
+import type { INVITE_READINESS, ReadTags, TwoStageTags } from "./read_tags.ts";
 import {
   arrangeCards,
+  assignAnswers,
   type CardSpec,
   decidePush,
   decideReply,
@@ -11,10 +12,12 @@ import {
   judgmentFor,
   PERFUNCTORY_HOLD_REASON,
   pickEntries,
+  type PraiseStyle,
+  praiseStyle,
   type PushAction,
 } from "./rules.ts";
 import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
-import type { Turn } from "./turns.ts";
+import { latestHerMessages, type Turn } from "./turns.ts";
 
 /// send＝出卡；close＝她婉拒或說了界線，一張收尾卡；hold＝先別回；stop＝停；
 /// care＝不出卡、不扣，改顯示固定訊息（自傷關心，或涉及未成年）。
@@ -54,6 +57,8 @@ export interface GuideV3Plan {
   readonly careTrigger?: GuideV3CareTrigger;
   /// care 沒有。
   readonly signals?: GuideV3Signals;
+  /// 兩段式實驗開著、出卡或收尾才有：誇她的方式（rules.ts praiseStyle）。
+  readonly praise?: PraiseStyle;
 }
 
 /// 模型沒寫要等什麼時的預設（依先別回的理由）。
@@ -77,6 +82,25 @@ function carePlan(
     careKind: kind,
     careTrigger: model && keyword ? "both" : model ? "model" : "keyword",
   };
+}
+
+/// 兩段式實驗：每張卡記下要回她最新這一輪的哪幾則（rules.ts assignAnswers）；沒有可指定的
+///（她值得接的只有照片、貼圖或表情）就不加欄位。
+function withAnswers(
+  specs: CardSpec[],
+  turns: readonly Turn[],
+  twoStage: TwoStageTags | undefined,
+): CardSpec[] {
+  if (!twoStage || specs.length === 0) return specs;
+  const answers = assignAnswers(
+    specs.length,
+    twoStage.worthyLines,
+    latestHerMessages(turns),
+  );
+  return specs.map((spec, i) => {
+    const answer = answers[i];
+    return answer ? { ...spec, answer } : spec;
+  });
 }
 
 /// 讀局面失敗、拒答或逾時時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心
@@ -104,6 +128,8 @@ export function planTurn(
   tags: ReadTags,
   hits: SafetyKeywordHits = NO_SAFETY_HITS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
+  /// 兩段式實驗的讀局面四欄（開關 ANALYZE_GUIDE_V3_TWO_STAGE）；沒給就跟今天一樣。
+  twoStage?: TwoStageTags,
 ): GuideV3Plan {
   if (tags.selfHarmSignal || hits.selfHarmWords) {
     return carePlan("self_harm", tags.selfHarmSignal, hits.selfHarmWords);
@@ -111,8 +137,13 @@ export function planTurn(
   if (tags.minorSignal) return carePlan("minor", true, false);
   const reply = decideReply(turns, tags);
   const push = reply.kind === "send" ? decidePush(turns, tags) : null;
-  const specs = arrangeCards(reply, push, tags);
+  const specs = withAnswers(
+    arrangeCards(reply, push, tags, twoStage),
+    turns,
+    twoStage,
+  );
   const judgment = judgmentFor(tags);
+  const praise = twoStage ? { praise: praiseStyle(twoStage) } : {};
   const signals: GuideV3Signals = {
     inviteReadiness: tags.inviteReadiness,
     cold: {
@@ -153,6 +184,7 @@ export function planTurn(
         specs,
         entries: pickEntries(tags.matchedEntries, entries),
         signals,
+        ...praise,
       };
     case "send":
       return {
@@ -164,6 +196,7 @@ export function planTurn(
         specs,
         entries: pickEntries(tags.matchedEntries, entries),
         signals,
+        ...praise,
       };
   }
 }

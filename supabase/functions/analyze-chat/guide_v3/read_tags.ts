@@ -127,6 +127,100 @@ function isOneOf<T extends string>(
   );
 }
 
+/// 兩段式實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，Eric 2026-10-19 兩段式實驗）才多要的標記：
+/// 只放排卡用得到的（情侶、撒嬌示愛、開心分享不排帶張力或多一張共鳴，值得接的句子分給各張卡）。
+/// 開關沒開時 schema 與檢查都不碰這幾欄。
+/// 「問他」是第 2 輪加的（Bruce 10/19 盲選理由）：每張卡都要先回她直接問他、要他看法的那句，
+/// 第 1 輪讀局面把這種句子有時標情感、有時標其他，排卡找不出來。
+export const WORTHY_LINE_KINDS = [
+  "問他",
+  "情感",
+  "照片或貼圖",
+  "其他",
+] as const;
+export type WorthyLineKind = typeof WORTHY_LINE_KINDS[number];
+
+export interface WorthyLine {
+  /// 她最新這一輪的第幾則（1 起算，照讀局面對話稿上的編號）。
+  readonly line: number;
+  readonly label: string;
+  readonly kind: WorthyLineKind;
+}
+
+export interface TwoStageTags {
+  readonly establishedCouple: boolean;
+  readonly herAffection: boolean;
+  readonly herHappyShare: boolean;
+  readonly worthyLines: readonly WorthyLine[];
+}
+
+const TWO_STAGE_BOOL_FIELDS = [
+  "establishedCouple",
+  "herAffection",
+  "herHappyShare",
+] as const;
+
+/// 兩段式的讀局面 schema：今天的全部欄位，再加上面四欄（都必填）。
+export const READ_TAGS_SCHEMA_TWO_STAGE: Record<string, unknown> = {
+  ...READ_TAGS_SCHEMA,
+  required: [
+    ...(READ_TAGS_SCHEMA.required as readonly string[]),
+    ...TWO_STAGE_BOOL_FIELDS,
+    "worthyLines",
+  ],
+  properties: {
+    ...(READ_TAGS_SCHEMA.properties as Record<string, unknown>),
+    ...Object.fromEntries(
+      TWO_STAGE_BOOL_FIELDS.map((f) => [f, { type: "boolean" }]),
+    ),
+    worthyLines: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["line", "label", "kind"],
+        properties: {
+          line: { type: "integer" },
+          label: { type: "string" },
+          kind: { type: "string", enum: [...WORTHY_LINE_KINDS] },
+        },
+      },
+    },
+  },
+};
+
+/// 兩段式多要的四欄逐欄檢查，壞了回 null（跟 parseReadTags 一樣記成讀局面失敗）。編號在不在
+/// 她最新這一輪的範圍內，交給排卡（rules.ts assignAnswers）處理，這裡只看型別。
+export function parseTwoStageTags(value: unknown): TwoStageTags | null {
+  // deno-lint-ignore no-explicit-any
+  const v = value as any;
+  if (!v || typeof v !== "object") return null;
+  for (const f of TWO_STAGE_BOOL_FIELDS) {
+    if (typeof v[f] !== "boolean") return null;
+  }
+  if (
+    !Array.isArray(v.worthyLines) ||
+    !v.worthyLines.every((w: unknown) =>
+      // deno-lint-ignore no-explicit-any
+      Number.isInteger((w as any)?.line) &&
+      // deno-lint-ignore no-explicit-any
+      typeof (w as any)?.label === "string" &&
+      // deno-lint-ignore no-explicit-any
+      isOneOf((w as any)?.kind, WORTHY_LINE_KINDS)
+    )
+  ) return null;
+  return {
+    establishedCouple: v.establishedCouple,
+    herAffection: v.herAffection,
+    herHappyShare: v.herHappyShare,
+    worthyLines: v.worthyLines.map((w: WorthyLine) => ({
+      line: w.line,
+      label: w.label,
+      kind: w.kind,
+    })),
+  };
+}
+
 /// 結構化輸出照理不會壞；還是逐欄檢查，壞了回 null（記成讀局面失敗）。
 export function parseReadTags(value: unknown): ReadTags | null {
   // deno-lint-ignore no-explicit-any

@@ -52,6 +52,29 @@ Deno.test("對象記憶只接在 v3 入口，照 ANALYZE_GUIDE_V3_MEMORY 開關�
   assertEquals(source.split("ANALYZE_GUIDE_V3_MEMORY").length - 1, 1);
 });
 
+Deno.test("兩段式開關只在 v3 入口讀一次（ANALYZE_GUIDE_V3_TWO_STAGE，off／test／on），交給流程", () => {
+  const v3Gate = at(
+    'if (\n      responseMode === "stream" &&\n      shouldUseGuideV3({',
+  );
+  const v3Call = at("return await handleGuideV3Stream({");
+  const v2Dispatch = at(
+    'if (responseMode === "stream") {\n      return await handleAnalyzeStream({',
+  );
+  const read = at(
+    'const twoStage = shouldUseGuideV3TwoStage({\n        mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TWO_STAGE")),\n        accountIsTest,\n      });',
+  );
+  assert(v3Gate < read && read < v3Call);
+  assertEquals(
+    source.split('Deno.env.get("ANALYZE_GUIDE_V3_TWO_STAGE")').length - 1,
+    1,
+  );
+  assert(source.slice(v3Call, v2Dispatch).includes("        twoStage,\n"));
+  // 說明步驟的模型呼叫跟流程用同一個值（沒開就沒有 callExplain）。
+  assert(
+    source.slice(v3Call, v2Dispatch).includes("          explain: twoStage,\n"),
+  );
+});
+
 Deno.test("F04：只用在一般文字串流分析，計費與超額確認雜湊都用排除後的訊息", () => {
   const billingMessages = at(
     "const billingMessages = billingMessagesFor(messages, {",

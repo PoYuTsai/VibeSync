@@ -67,7 +67,8 @@ const GUIDE_V3_LEAK_SENTINELS: readonly string[] = [
   ...GUIDE_V3_SENTINELS_NORMALIZED,
 ];
 
-/// extra：開關開了才多的提示詞段落的哨兵（關係訊號見 relation.ts）；沒給就跟今天一樣。
+/// extra：開關開了才多的提示詞段落的哨兵（兩段式實驗見 two_stage_prompts.ts、explain.ts，關係訊號見
+/// relation.ts）；沒給就跟今天一樣。
 function leaksPrompt(text: string, extra: readonly string[] = []): boolean {
   return hasAnalyzeChatPromptLeak(text) ||
     containsPromptLeak(text, GUIDE_V3_LEAK_SENTINELS) ||
@@ -83,10 +84,12 @@ function cleanMessage(message: string): string | null {
 
 /// sourceText：對話全文（她跟他傳過的字），英文詞要有它支持或在白名單裡。
 /// 規格只用到口吻（任務卡的再調也走這裡，見 refine_card.ts）。
+/// extraSentinels：兩段式實驗寫卡提示詞新加段落的哨兵；沒給就跟今天一樣。
 export function finalizeCard(
   card: WrittenCard,
   spec: Pick<CardSpec, "voice">,
   sourceText: string,
+  extraSentinels: readonly string[] = [],
 ): FinalizedCard {
   const voiced = applyVoice(card, spec);
   const cleaned = voiced.messages.map(cleanMessage).filter((m): m is string =>
@@ -110,7 +113,8 @@ export function finalizeCard(
   const joined = cleaned.join("\n");
   const rawJoined = card.messages.join("\n");
   if (
-    leaksPrompt(joined) || leaksPrompt(rawJoined) ||
+    leaksPrompt(joined, extraSentinels) ||
+    leaksPrompt(rawJoined, extraSentinels) ||
     hasPromptInjection(joined) || hasPromptInjection(rawJoined)
   ) {
     return { ok: false, reason: "prompt_leak" };
@@ -137,7 +141,8 @@ export function finalizeCard(
 /// 給用戶看的教練文字（判讀、要等她做什麼）：比照 v2 不送型決定的檢查（提示詞注入、
 /// 英文的不安全樣式），再加外洩哨兵；整理前後都查。不掃 BLOCKED_PATTERNS：那是給
 /// 可以照傳的句子，拿去掃描述會誤傷正確的說明（同 guardrails.ts 的理由）。
-/// extraSentinels：開關開了才多的提示詞段落的哨兵；沒給就跟今天一樣。
+/// extraSentinels：開關開了才多的提示詞段落的哨兵（兩段式實驗的說明步驟另帶自己的，見 explain.ts）；
+/// 沒給就跟今天一樣。
 export function vetCoachText(
   text: string,
   extraSentinels: readonly string[] = [],
