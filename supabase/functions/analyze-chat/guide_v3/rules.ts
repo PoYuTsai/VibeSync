@@ -418,10 +418,12 @@ export function praiseStyle(
 
 /// 照片、貼圖的辨識標記（方括號開頭；外面可能再包一層「」，10/19 正式環境的案例就是這樣）。
 const MEDIA_PLACEHOLDER = /^[「『"]?[\[［【]/u;
-/// 一整個表情：RGI 表情序列（國旗、數字鍵帽、ZWJ 組合、膚色）＋單獨的表情字、膚色、區域指示字、
-/// 變體選擇符與 ZWJ（主審第 1 輪 P2：只認 Extended_Pictographic 會把 🇹🇼、1️⃣ 當成文字）。
+/// 一整個表情拆成這幾種片段一起拿掉：數字鍵帽（1️⃣、#️⃣，連前面的數字一起，所以放第一個）、表情字、
+/// 膚色、區域指示字（國旗）、變體選擇符、ZWJ、標籤字（英格蘭這類旗）。只認 Extended_Pictographic 會把
+/// 🇹🇼、1️⃣ 當成文字（主審第 1 輪 P2）。只用 u 旗標：正式環境的 Edge 還沒有函式用過 v 旗標，模組層級的
+/// 正規式解析不了，整個 analyze-chat 都開不起來（Eric 2026-10-20 送主審第 2 輪前改）。
 const EMOJI_PIECES =
-  /\p{RGI_Emoji}|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\p{Variation_Selector}|\p{Join_Control}/gv;
+  /[0-9#*]\u{FE0F}?\u{20E3}|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\p{Variation_Selector}|\p{Join_Control}|[\u{E0020}-\u{E007F}]/gu;
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
 /// 正式流程在引用回覆前面加的「（引用：「…」）」（stream_flow.ts guideMessagesFrom）：那是被引用的
