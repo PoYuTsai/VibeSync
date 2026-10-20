@@ -25,6 +25,7 @@ import {
   withRelationFields,
 } from "./relation.ts";
 import { handleGuideV3Stream } from "./stream_flow.ts";
+import { detectTypingHabits, styleCard } from "./typing_style.ts";
 import { toTurns } from "./turns.ts";
 import {
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
@@ -53,6 +54,9 @@ const OFF = { twoStage: false, relation: false };
 const RELATION_ONLY = { twoStage: false, relation: true };
 const TWO_STAGE_ONLY = { twoStage: true, relation: false };
 const BOTH = { twoStage: true, relation: true };
+/// 正式上線的組合再開口吻與斷句（Bruce 2026-10-20 改法 3）的整份結果：鎖住，改了要連這裡一起改。
+const BOTH_TYPING_ON =
+  "f3aa55b861063390b3a79e4f9b0b04eeb5b51d8cbf809063c3f69173589a6829";
 
 type Outcome = {
   events: { type: string; [key: string]: unknown }[];
@@ -65,7 +69,10 @@ type Outcome = {
   logs: { event: string; metadata: Record<string, unknown> }[];
 };
 
-const run = async (combo: typeof OFF, options = {}) =>
+const run = async (
+  combo: { twoStage: boolean; relation: boolean; typingStyle?: boolean },
+  options = {},
+) =>
   await runFlagMatrix(
     handleGuideV3Stream,
     combo,
@@ -220,4 +227,98 @@ Deno.test("兩個都開：兩份哨兵都管——卡抄兩段式寫卡新加的
     readText: leakyJudgment(TWO_STAGE_ONLY),
   });
   assert(String(judgmentOf(twoStageJudgment)).includes(RELATION_SENTINELS[2]));
+});
+
+// ---- 口吻與斷句交給程式（ANALYZE_GUIDE_V3_TYPING_STYLE，Bruce 2026-10-20 改法 3） ----
+
+Deno.test("口吻與斷句明確關著（false）：四種組合的整份結果跟沒給一模一樣（雜湊照舊）", async () => {
+  assertEquals(
+    await outcomeDigest(await run({ ...OFF, typingStyle: false })),
+    MAIN_6EF72AFF_OFF,
+  );
+  assertEquals(
+    await outcomeDigest(await run({ ...RELATION_ONLY, typingStyle: false })),
+    MAIN_6EF72AFF_RELATION,
+  );
+  assertEquals(
+    await outcomeDigest(
+      withoutKeys(await run({ ...TWO_STAGE_ONLY, typingStyle: false }), [
+        "completedAt",
+        "cardExplains",
+      ]),
+    ),
+    TWO_STAGE_C8F64DFE,
+  );
+  assertEquals(
+    await outcomeDigest(await run({ ...BOTH, typingStyle: false })),
+    BOTH_ON,
+  );
+});
+
+type Rec = Record<string, unknown>;
+const HIS_MESSAGES = FLAG_MATRIX_MESSAGES.filter((m) => m.isFromMe).map((m) =>
+  m.content
+);
+const cardsOf = (o: Outcome) =>
+  o.events.filter((e) => e.type === "analysis.card") as unknown as {
+    slot: number;
+    messages: string[];
+  }[];
+
+Deno.test("口吻與斷句開（兩段式、關係訊號都開）：送出的卡、扣費的第一張、存的結果、說明步驟看到的卡都是改過的字；trace 記習慣與次數；讀局面與寫卡的請求跟沒開一樣", async () => {
+  const off = await run(BOTH);
+  const on = await run({ ...BOTH, typingStyle: true });
+  const habits = detectTypingHabits(HIS_MESSAGES);
+  const offCards = cardsOf(off);
+  const onCards = cardsOf(on);
+  assertEquals(
+    onCards.map((c) => c.messages),
+    offCards.map((c) => styleCard(c.messages, habits).messages),
+  );
+  // 這段他沒打過逗號、也沒有稱呼：逗號全換成空白。
+  assert(offCards.every((c) => c.messages.some((m) => m.includes("，"))));
+  assert(onCards.every((c) => c.messages.every((m) => !m.includes("，"))));
+  // 存的結果、扣費內容的第一張卡、說明步驟看到的卡，都是同一份改過的字。
+  assertEquals(
+    (on.markDone.cards as { messages: string[] }[]).map((c) => c.messages),
+    onCards.map((c) => c.messages),
+  );
+  const charges = (on as unknown as { charges: Rec[] }).charges;
+  assertEquals(
+    ((charges[0].recommendationJson as Rec).firstCard as Rec).messages,
+    onCards[0].messages,
+  );
+  const explainUser = on.requests.explain.user;
+  for (const card of onCards) {
+    for (const m of card.messages) assert(explainUser.includes(`- ${m}`), m);
+  }
+  assertEquals(explainUser.includes("，第 1 張"), false);
+  // 讀局面與寫卡的請求不受影響（只改送出的卡）。
+  assertEquals(on.requests.read, off.requests.read);
+  assertEquals(on.requests.write, off.requests.write);
+  const trace = (on.markDone.guideV3Trace as Rec).typingStyle as {
+    habits: unknown;
+    changes: { commas: number; messages: number };
+  };
+  assertEquals(trace.habits, habits);
+  assertEquals(trace.changes.commas, onCards.length);
+  assertEquals(trace.changes.messages, onCards.length);
+  // 存的 trace 只有次數與習慣，沒有卡片的字。
+  assertEquals(JSON.stringify(trace).includes("好看"), false);
+  assertEquals(await outcomeDigest(on), BOTH_TYPING_ON);
+});
+
+Deno.test("口吻與斷句開、兩段式沒開：卡一樣照他的習慣改（不靠兩段式）；沒開的同一組不改", async () => {
+  for (const combo of [OFF, RELATION_ONLY]) {
+    const off = await run(combo);
+    const on = await run({ ...combo, typingStyle: true });
+    const habits = detectTypingHabits(HIS_MESSAGES);
+    assertEquals(
+      cardsOf(on).map((c) => c.messages),
+      cardsOf(off).map((c) => styleCard(c.messages, habits).messages),
+    );
+    assert(
+      cardsOf(off).some((c) => c.messages.some((m) => m.includes("，"))),
+    );
+  }
 });

@@ -1,5 +1,6 @@
 // v3 送給 App 的事件與結果形狀（只給協定版本 3）。v2 的事件型別表
 // （stream_events.ts）是模型輸出的解析白名單，v3 事件由伺服器自己產生，不放進去。
+import type { TypingChanges, TypingHabits } from "./typing_style.ts";
 import type { V3CardTaskCode } from "../stream_run_store.ts";
 import type { CardChecks } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
@@ -326,6 +327,11 @@ export interface GuideV3Trace {
   readonly previousRound?: GuideV3PreviousRoundTrace;
   /// 兩段式實驗開了、有出卡才有：說明步驟的結果。
   readonly twoStage?: { readonly explain: GuideV3ExplainTrace };
+  /// 口吻與斷句交給程式開著、有出卡才有：他的打字習慣與整組改了幾處（只有次數，不放字）。
+  readonly typingStyle?: {
+    readonly habits: TypingHabits;
+    readonly changes: TypingChanges;
+  };
 }
 
 /// 兩段式實驗的「為什麼這樣回」放進結果的 key（App 573b71ee 的 guide_v3_result.dart 讀這個）：

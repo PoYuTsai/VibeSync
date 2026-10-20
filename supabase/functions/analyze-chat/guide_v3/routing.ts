@@ -64,6 +64,16 @@ export function shouldUseGuideV3TwoStage(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 口吻與斷句交給程式（Bruce 2026-10-20 改法 3，typing_style.ts）：開關 ANALYZE_GUIDE_V3_TYPING_STYLE，
+/// 跟 ANALYZE_GUIDE_V3 一樣 off／test／on。開了才把每張卡的稱呼與斷句照他的打字習慣統一；沒開就
+/// 跟今天一字不差。
+export function shouldUseGuideV3TypingStyle(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。
