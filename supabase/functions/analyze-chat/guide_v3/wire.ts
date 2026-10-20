@@ -328,9 +328,21 @@ export interface GuideV3Trace {
   readonly twoStage?: { readonly explain: GuideV3ExplainTrace };
 }
 
+/// 兩段式實驗的「為什麼這樣回」放進結果的 key（App 573b71ee 的 guide_v3_result.dart 讀這個）：
+/// 續看只重播結果、不重播 analysis.card_explain，說明要跟卡一起存，才取得回來（主審第 1 輪 P2）。
+export const GUIDE_V3_CARD_EXPLAINS_KEY = "cardExplains";
+
+export interface GuideV3CardExplain {
+  /// 那張卡的 slot（analysis.card 的 slot）。
+  readonly card: number;
+  readonly text: string;
+}
+
 export function finalResult(args: {
   readonly read: GuideV3ReadView;
   readonly cards: readonly GuideV3CardView[];
+  /// 兩段式實驗才有：通過檢查、送出的說明（照卡號排）；沒有就不放這個 key。
+  readonly cardExplains?: readonly GuideV3CardExplain[];
   readonly partial: boolean;
   readonly usage: Record<string, unknown>;
   readonly telemetry: Record<string, unknown>;
@@ -343,6 +355,9 @@ export function finalResult(args: {
     guideVersion: GUIDE_V3_VERSION,
     read: args.read,
     cards: args.cards,
+    ...(args.cardExplains && args.cardExplains.length > 0
+      ? { [GUIDE_V3_CARD_EXPLAINS_KEY]: args.cardExplains }
+      : {}),
     partial: args.partial,
     ...(args.recovered ? { recovered: true } : {}),
     usage: args.usage,

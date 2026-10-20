@@ -15,7 +15,7 @@ import {
   flagMatrixReadText,
   outcomeDigest,
   runFlagMatrix,
-  withoutCompletedAt,
+  withoutKeys,
 } from "./flag_matrix_harness.ts";
 import { readSystemPrompt } from "./prompts.ts";
 import { READ_TAGS_SCHEMA_TWO_STAGE } from "./read_tags.ts";
@@ -44,9 +44,10 @@ const MAIN_6EF72AFF_RELATION =
 /// 兩段式 c8f64dfe 的原始快照，只開兩段式（那時還沒有 completedAt）。
 const TWO_STAGE_C8F64DFE =
   "378f410f2ac9460e263f347be982fa7f78927330ef3c2e5630ea8ef12540deeb";
-/// 合併後兩個都開的整份結果：鎖住這次上線的樣子，改了要連這裡一起改。
+/// 合併後兩個都開的整份結果：鎖住這次上線的樣子，改了要連這裡一起改。主審第 1 輪 P2 之後結果多了
+/// cardExplains（拿掉這個 key 跟之前的 a5f3b4fc… 一樣，只差這一處）。
 const BOTH_ON =
-  "b4dfbe6811184a58c70fc13024e695c1f9f16aec5e008e759ab5640befb843a9";
+  "37796f798818ef28e875fcaf8244f9be8c5e63bd1f1136104f006981c1445ffe";
 
 const OFF = { twoStage: false, relation: false };
 const RELATION_ONLY = { twoStage: false, relation: true };
@@ -82,11 +83,20 @@ Deno.test("只開關係訊號：跟 main 6ef72aff 開關係訊號一模一樣", 
   );
 });
 
-Deno.test("只開兩段式：跟 c8f64dfe 一模一樣，只多 main 加的 completedAt（done、結果與落帳都帶）", async () => {
+Deno.test("只開兩段式：跟 c8f64dfe 一模一樣，只多 main 加的 completedAt 與主審第 1 輪 P2 的 cardExplains（done、結果與落帳都帶）", async () => {
   const outcome = await run(TWO_STAGE_ONLY);
   assertEquals(
-    await outcomeDigest(withoutCompletedAt(outcome)),
+    await outcomeDigest(withoutKeys(outcome, ["completedAt", "cardExplains"])),
     TWO_STAGE_C8F64DFE,
+  );
+  const explained = outcome.events.filter((e) =>
+    e.type === "analysis.card_explain"
+  ).map((e) => ({ card: e.card, text: e.text }));
+  assert(explained.length > 0);
+  assertEquals(
+    (outcome.events.find((e) => e.type === "analysis.done")!
+      .finalResult as Record<string, unknown>).cardExplains,
+    explained,
   );
   const done = outcome.events.find((e) => e.type === "analysis.done")!;
   const at = new Date(FLAG_MATRIX_T0).toISOString();

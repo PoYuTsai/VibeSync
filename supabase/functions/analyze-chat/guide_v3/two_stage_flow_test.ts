@@ -481,10 +481,14 @@ Deno.test("兩段式說明：卡都送完之後、done 之前，每張卡一則 
   // 第 2 輪：說明看到的稱讚那一句跟寫卡同一句。
   assert(explains[0].user.includes(praiseSection("light")));
   assert(h.writes[0].user.includes(praiseSection("light")));
-  // App 的 done 不帶說明；伺服器的 trace 記狀態與原文，outcome log 不放原文。
+  // 結果帶送出的說明（cardExplains，照卡號；續看只重播結果，主審第 1 輪 P2）；trace 記狀態與原文，
+  // outcome log 不放原文。
   const done = evs.find((e) => e.type === "analysis.done")!
     .finalResult as Record<string, unknown>;
-  assertEquals(JSON.stringify(done).includes("先接住她的話"), false);
+  assertEquals(
+    done.cardExplains,
+    explained.map((e) => ({ card: e.card, text: e.text })),
+  );
   const trace = h.done[0].guideV3Trace as {
     twoStage: { explain: Record<string, unknown> };
   };

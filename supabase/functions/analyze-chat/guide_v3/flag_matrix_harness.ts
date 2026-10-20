@@ -275,17 +275,22 @@ export async function runFlagMatrix(
   }));
 }
 
-/// 拿掉每一層的 completedAt（main 加的結案時間；比兩段式 c8f64dfe 的行為時用）。
-export function withoutCompletedAt(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutCompletedAt);
+/// 拿掉每一層的這幾個 key（比兩段式 c8f64dfe 的行為時用：main 加的結案時間 completedAt、主審
+/// 第 1 輪 P2 加的結果裡的 cardExplains）。
+export function withoutKeys(value: unknown, keys: readonly string[]): unknown {
+  if (Array.isArray(value)) return value.map((v) => withoutKeys(v, keys));
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .filter(([key]) => key !== "completedAt")
-        .map(([key, v]) => [key, withoutCompletedAt(v)]),
+        .filter(([key]) => !keys.includes(key))
+        .map(([key, v]) => [key, withoutKeys(v, keys)]),
     );
   }
   return value;
+}
+
+export function withoutCompletedAt(value: unknown): unknown {
+  return withoutKeys(value, ["completedAt"]);
 }
 
 export async function outcomeDigest(outcome: unknown): Promise<string> {

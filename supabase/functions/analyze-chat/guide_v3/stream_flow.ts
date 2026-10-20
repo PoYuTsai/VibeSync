@@ -1255,6 +1255,10 @@ class GuideV3Flow {
     const explain = this.deps.twoStage === true
       ? await this.explainCards(emit, plan, tags, turns, delivered, isClosed)
       : null;
+    // 送出的說明也存進結果（照卡號）：續看只重播結果，App 才拿得回說明（主審第 1 輪 P2）。
+    const cardExplains = [...(explain?.texts ?? [])].sort((a, b) =>
+      a.card - b.card
+    );
     // 卡都送完了才等記憶（通常早就好了）。
     const memory = await this.settleMemory();
     await this.finish(
@@ -1262,6 +1266,7 @@ class GuideV3Flow {
       finalResult({
         read: view,
         cards: delivered,
+        cardExplains,
         partial,
         usage: this.usage(
           this.shouldCharge ? this.deps.quotaUsage.chargedMessageCount : 0,
