@@ -15,6 +15,7 @@ import { lightShortRun } from "./rules.ts";
 import {
   LIGHT_SHORT_CARD_PART,
   SHORT_PRAISE_WRITER_SENTINELS,
+  TENSION_STYLE_LINE,
 } from "./two_stage_prompts.ts";
 import {
   fakeExplainResponse,
@@ -97,6 +98,7 @@ function analyze(args: {
   readonly env: Record<string, string | undefined>;
   readonly runId: string;
   readonly cardText?: (card: number) => string | undefined;
+  readonly explainText?: (card: number) => string | undefined;
 }): Promise<V3HarnessOutcome> {
   return runGuideV3StreamThroughHandler({
     createHandler: createAnalyzeChatHandler,
@@ -137,7 +139,10 @@ function analyze(args: {
           ) => Number(m[1]));
           return Promise.resolve(
             fakeExplainResponse(
-              slots.map((card) => ({ card, text: `第 ${card} 張的道理。` })),
+              slots.map((card) => ({
+                card,
+                text: args.explainText?.(card) ?? `第 ${card} 張的道理。`,
+              })),
             ),
           );
         }
@@ -224,4 +229,67 @@ Deno.test("從正式入口：短版稱讚開，卡片照抄規格裡短版那段
     (off.finalResult?.guideV3Trace as { removed: unknown[] }).removed,
     [],
   );
+});
+
+/// 說明事件的卡號，與 trace 裡被拿掉的說明。
+const explainsOf = (out: V3HarnessOutcome) => ({
+  sent: out.events.filter((e) => e.type === "analysis.card_explain").map((e) =>
+    e.card
+  ),
+  removed: (out.finalResult?.guideV3Trace as {
+    twoStage: { explain: { removed: { card: number; reason: string }[] } };
+  }).twoStage.explain.removed,
+});
+
+Deno.test("從正式入口：短版稱讚開，說明照抄規格裡短版那段就不送那張的說明；其他張照送（主審第 1 輪 P2）", async () => {
+  const out = await analyze({
+    env: { ANALYZE_GUIDE_V3_SHORT_PRAISE: "on" },
+    runId: PICKED,
+    explainText: (card) => card === 1 ? LIGHT_SHORT_CARD_PART : undefined,
+  });
+  assertEquals(out.status, 200);
+  const { sent, removed } = explainsOf(out);
+  assertEquals(removed, [{ card: 1, reason: "blocked" }]);
+  assertEquals(sent.includes(1), false);
+  assert(sent.length >= 2);
+  // 沒開時同一段不比（跟今天一樣送出）。
+  const off = await analyze({
+    env: {},
+    runId: PICKED,
+    explainText: (card) => card === 1 ? LIGHT_SHORT_CARD_PART : undefined,
+  });
+  assertEquals(explainsOf(off).removed, []);
+});
+
+Deno.test("從正式入口：短版稱讚與帶張力改寫法都開，說明照抄短版那段、照抄帶張力的新寫法都不送；其他張照送（主審第 1 輪 P2）", async () => {
+  const both = {
+    ANALYZE_GUIDE_V3_SHORT_PRAISE: "on",
+    ANALYZE_GUIDE_V3_TENSION_STYLE: "on",
+  };
+  const plain = await analyze({ env: both, runId: PICKED });
+  const tensionSlot = plain.events.find((e) =>
+    e.type === "analysis.card" && e.task === "tension"
+  )!.slot as number;
+  assert(tensionSlot !== 1);
+  const out = await analyze({
+    env: both,
+    runId: PICKED,
+    explainText: (card) =>
+      card === 1
+        ? LIGHT_SHORT_CARD_PART
+        : card === tensionSlot
+        ? TENSION_STYLE_LINE
+        : undefined,
+  });
+  assertEquals(out.status, 200);
+  const { sent, removed } = explainsOf(out);
+  assertEquals(
+    removed,
+    [
+      { card: 1, reason: "blocked" },
+      { card: tensionSlot, reason: "blocked" },
+    ].sort((a, b) => a.card - b.card),
+  );
+  assertEquals(sent.includes(1) || sent.includes(tensionSlot), false);
+  assert(sent.length >= 1);
 });

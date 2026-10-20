@@ -1491,10 +1491,17 @@ class GuideV3Flow {
         removed.push({ card: card.slot, reason: "missing" });
         continue;
       }
-      const vetted = vetExplanation(
-        raw,
-        this.tensionStyleOn ? TENSION_STYLE_EXPLAIN_SENTINELS : [],
-      );
+      // 說明看得到的新字（短版那段、帶張力的新寫法）照抄進說明也不給，跟卡片同一份哨兵；帶張力改寫法另加
+      // 說明規則那一條（主審第 1 輪 P2）。都沒開照舊。
+      const vetted = vetExplanation(raw, [
+        ...(this.tensionStyleOn
+          ? [
+            ...TENSION_STYLE_EXPLAIN_SENTINELS,
+            ...TENSION_STYLE_WRITER_SENTINELS,
+          ]
+          : []),
+        ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
+      ]);
       if (!vetted.ok) {
         removed.push({ card: card.slot, reason: vetted.reason });
         continue;

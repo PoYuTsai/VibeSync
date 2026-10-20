@@ -250,3 +250,35 @@ Deno.test("從正式入口：帶張力改寫法開，自傷關心照舊（不打
       off.events.find((e) => e.type === "analysis.read")?.decision,
   );
 });
+
+Deno.test("從正式入口：帶張力改寫法開，說明照抄帶張力的新寫法（寫卡看到的那一條）就不送那張的說明（主審第 1 輪 P2）", async () => {
+  const plain = await analyze({
+    env: { ANALYZE_GUIDE_V3_TENSION_STYLE: "on" },
+  });
+  const tensionSlot = plain.events.find((e) =>
+    e.type === "analysis.card" && e.task === "tension"
+  )!.slot as number;
+  const copying = (card: number) =>
+    card === tensionSlot ? TENSION_STYLE_LINE : undefined;
+  const on = await analyze({
+    env: { ANALYZE_GUIDE_V3_TENSION_STYLE: "on" },
+    explainText: copying,
+  });
+  assertEquals(on.status, 200);
+  const trace = on.finalResult?.guideV3Trace as {
+    twoStage: { explain: { removed: { card: number; reason: string }[] } };
+  };
+  assertEquals(trace.twoStage.explain.removed, [{
+    card: tensionSlot,
+    reason: "blocked",
+  }]);
+  const sent = on.events.filter((e) => e.type === "analysis.card_explain")
+    .map((e) => e.card);
+  assertEquals(sent.includes(tensionSlot), false);
+  // 沒開時同一段不比（跟今天一樣送出）。
+  const off = await analyze({ env: {}, explainText: copying });
+  assertEquals(
+    (off.finalResult?.guideV3Trace as typeof trace).twoStage.explain.removed,
+    [],
+  );
+});
