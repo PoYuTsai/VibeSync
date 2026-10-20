@@ -13,7 +13,8 @@
 //   可能是怕你怪她、「我同事怪怪的」不是在問自己，都不算（主審第 1 輪 P2）。「不怪你」這種多了別的字的不動。
 // - 滿→蠻：「滿」後面接著常數表裡的形容詞或動詞、前面那個字也不會跟「滿」連成詞（充滿、裝滿……），
 //   才換成「蠻」；滿意、滿足、滿分這些，「滿」後面接的不在表裡，所以不動。
-// 拿掉之後這一則還要有字（語助詞、表情、標點不算），不然照原文；引號裡、網址、顏文字都不動。
+// 拿掉之後這一則還要有字（語助詞、表情、顏文字、網址、標點不算），不然照原文；引號裡、網址、顏文字都不動。
+import { withoutEmoji } from "./cards.ts";
 import { isMediaLine, QUOTED_REPLY_PREFIX } from "./rules.ts";
 import { protectedMap, QUOTE_PAIRS } from "./typing_style.ts";
 
@@ -169,8 +170,11 @@ const DEGREE_MAN_NEXT_MAX = Math.max(
 /// 語助詞、笑聲：拿掉一段之後只剩這些（加上表情、標點）就算沒有字，照原文。
 export const FILLER_CHARS =
   "欸嗯喔哦噢啊啦呀耶哈嘿唉齁吼蛤嘛呢吧哇哎唷呦嘻呵咧";
+/// 英文字母拼的表情（XD、QQ、QAQ、TT、orz）：跟顏文字一樣不算字。
+export const ASCII_EMOTICONS = /^(?:x+d+|q+a?q+|t+_*t+|orz)$/iu;
 /// 一則裡隔開小段的空白與標點（口吻與斷句那一步留下的：空白，加上他用逗號時的逗號、句號）。
 const SEPARATOR = /[\s，,。.？?！!～~…⋯、：:；;]/u;
+const SEPARATOR_RUN = /[\s，,。.？?！!～~…⋯、：:；;]+/u;
 /// 拿掉最後一段後，前面留在結尾的這些標點是用來接下一段的，一起拿掉；問號、驚嘆號、～、…、句號是前一段
 /// 自己的語氣，留著。
 const JOINERS = /[\s，,、：:；;]+$/u;
@@ -329,10 +333,16 @@ function isQuizClause(clause: string): boolean {
   return QUIZ_MARKERS.some((m) => own.includes(m));
 }
 
-/// 還有字：至少一個不是語助詞、笑聲的字或數字。
+/// 還有字：拿掉顏文字、網址這些受保護的整段，與整個表情（數字鍵帽、國旗也算，cards.ts 的 withoutEmoji）
+/// 之後，至少一個不是語助詞、笑聲、英文字母表情的字或數字（主審第 1 輪 P2：「(・ω・)」的 ω、「1️⃣」的 1
+/// 原本被當成字，否認拿掉後只剩表情）。不確定的就算沒字，照原文。
 function hasContent(text: string): boolean {
-  return [...text].some((c) =>
-    LETTER_OR_DIGIT.test(c) && !FILLER_CHARS.includes(c)
+  const chars = [...text];
+  const { frozen } = protectedMap(chars);
+  const bare = withoutEmoji(chars.filter((_, i) => !frozen[i]).join(""));
+  return bare.split(SEPARATOR_RUN).some((token) =>
+    !ASCII_EMOTICONS.test(token) &&
+    [...token].some((c) => LETTER_OR_DIGIT.test(c) && !FILLER_CHARS.includes(c))
   );
 }
 

@@ -393,6 +393,33 @@ Deno.test("拿掉之後沒有字（只剩語助詞、表情、標點）就整則
   assertEquals(tidyMessage("", ASKS_WEIRD).text, "");
 });
 
+Deno.test("主審第 1 輪 P2：拿掉後只剩顏文字、整個表情（數字鍵帽、國旗）、XD 這類、網址，都算沒有字，整則照原文", () => {
+  for (
+    const [message, context] of [
+      // 主審的反例。
+      ["不怪啊 (・ω・)", ASKS_WEIRD],
+      ["不怪啊 1️⃣", ASKS_WEIRD],
+      ["不怪啊 #️⃣ 🇹🇼", ASKS_WEIRD],
+      ["不怪啊 XD", ASKS_WEIRD],
+      ["這題不用想 (｡•̀ᴗ-)✧", ASKS_BEST],
+      ["這題不用想 QQ orz", ASKS_BEST],
+      ["這題不用想 https://example.com/a", ASKS_BEST],
+    ] as const
+  ) {
+    assertEquals(tidyMessage(message, context), {
+      text: message,
+      changes: NO_PHRASE_TIDY_CHANGES,
+    }, message);
+  }
+  // 顏文字、表情旁邊還有字就照常拿掉，顏文字與表情照原樣留著。
+  assertEquals(
+    tidy("不怪啊 (・ω・) 很好看", ASKS_WEIRD),
+    "(・ω・) 很好看",
+  );
+  assertEquals(tidy("這題不用想 1️⃣號是你"), "1️⃣號是你");
+  assertEquals(tidy("不怪啊 ok啦", ASKS_WEIRD), "ok啦");
+});
+
 Deno.test("一整張卡：每一則各自改、則數不變；次數加總；沒有要改的原樣回、次數都是 0", () => {
   const out = tidyCard(
     ["不會怪啊 滿適合的", "這題不用想 而且看起來比較有精神", "後悔什麼啦"],
