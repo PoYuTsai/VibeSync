@@ -644,6 +644,61 @@ Deno.test("handler：舊版 App 只帶「關於我」、沒有其他素材 → 4
   assertEquals(result.modelRequests, []);
 });
 
+// 已接受的部署交界限制（主審 1 P2）：素材檢查在查帳之前（D1 照規格預設），所以 8/4 以前的
+// 舊版 App 只帶「關於我」的那一筆，若部署前已落帳（done）或還在生成（pending），部署後同
+// 編號重試一樣回 422，不回放、也不回「處理中」。還會送關於我的最後一版是 TestFlight build
+// 385（2026-08-04），約 2026-11-02 到期。要改成先查帳再擋，記得一起改這條。
+Deno.test("handler：部署交界（已接受的限制）：舊版只帶「關於我」的同一筆，帳本上 done 或 pending 都不查、照樣 422", async () => {
+  const aboutMeOnly = {
+    mode: "new_topic",
+    requestId: REQUEST_ID,
+    effectiveStyleContext: ABOUT_ME_CANARY,
+  };
+  const sanitized = sanitizeNewTopicRequest(aboutMeOnly);
+  assert(sanitized.ok);
+  const inputHash = await computeNewTopicInputHash({
+    userId: USER_ID,
+    partnerSummary: sanitized.request.partnerSummary,
+    effectiveStyleContext: sanitized.request.effectiveStyleContext,
+    situation: sanitized.request.situation,
+    topicContext: sanitized.request.topicContext,
+    secret: STRONG_KEY,
+  });
+  const stored = buildNewTopicLedgerResult({
+    topics: MODEL_PAYLOAD.topics,
+    recommendationIndex: 0,
+    recommendationReason: "理由",
+    servedTier: "essential",
+  });
+  const rows = [
+    {
+      input_hash: inputHash,
+      state: "done",
+      lease_expires_at: new Date(Date.now() - 1000).toISOString(),
+      result_json: stored,
+    },
+    {
+      input_hash: inputHash,
+      state: "pending",
+      lease_expires_at: new Date(Date.now() + 30_000).toISOString(),
+      result_json: null,
+    },
+  ];
+  try {
+    for (const row of rows) {
+      replayRowForNextRun = row;
+      const result = await run(aboutMeOnly, undefined);
+      assertEquals(result.status, 422, row.state);
+      assertEquals(result.json.code, "NEW_TOPIC_CONTEXT_REQUIRED", row.state);
+      assertEquals(result.dbCalls, [], `${row.state}：不查帳`);
+      assertEquals(result.modelRequests, [], row.state);
+    }
+  } finally {
+    // 帳本列沒被讀走，不能留給下一條測試。
+    replayRowForNextRun = null;
+  }
+});
+
 Deno.test("handler：舊版 App 帶的「關於我」照舊進重送指紋：部署前已落帳的同一筆照常回放；指紋少了它就對不上", async () => {
   const sanitized = sanitizeNewTopicRequest(
     body({ effectiveStyleContext: ABOUT_ME_CANARY }),

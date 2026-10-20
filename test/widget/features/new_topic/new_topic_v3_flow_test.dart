@@ -121,6 +121,17 @@ String? style;
 /// 對象作戰板有沒有可用的訊號（預設沒有）。測試要「素材夠、可以生成」時設 true；
 /// 「關於我」只給 Coach 1:1，style 不算新話題素材（2026-10-20）。
 bool signals = false;
+
+/// 對象作戰板脈絡（預設空的）；要看送出的 partnerSummary 時換成 [_contextWith]。
+NewTopicPartnerContext partnerContext = NewTopicPartnerContext.empty;
+
+NewTopicPartnerContext _contextWith(String promptText) => NewTopicPartnerContext(
+    promptText: promptText,
+    hasActionableSignals: true,
+    hasHeatSignal: false,
+    hasInterestSignals: true,
+    hasTraitSignals: false,
+    hasNoteSignals: false);
 bool blocked = false;
 bool refreshFails = false;
 Completer<void>? refreshGate;
@@ -173,8 +184,7 @@ Future<ProviderContainer> _pump(WidgetTester t,
         partnerByIdProvider.overrideWith(
             (_, id) => partners.where((p) => p.id == id).firstOrNull),
         conversationsByPartnerProvider.overrideWith((_, id) => []),
-        newTopicPartnerContextProvider
-            .overrideWith((_, id) => NewTopicPartnerContext.empty),
+        newTopicPartnerContextProvider.overrideWith((_, id) => partnerContext),
         newTopicReadinessProvider.overrideWith((_, id) => blocked
             ? NewTopicReadiness.dataQualityBlocked
             : signals
@@ -271,6 +281,7 @@ void main() {
     partners = [_partner('p')];
     style = null;
     signals = false;
+    partnerContext = NewTopicPartnerContext.empty;
     blocked = false;
     refreshFails = false;
     refreshGate = null;
@@ -846,15 +857,20 @@ void main() {
       'NT-16/17/21 retry freezes all fields despite provider updates and usage refresh failure',
       (t) async {
     signals = true;
+    partnerContext = _contextWith('[對象作戰板：合成對象 p]\n- 興趣：散步（v1）');
     final container = await _pump(t);
     await _tapGenerate(t);
     expect(_service.calls, hasLength(1));
+    expect(_service.calls[0]['summary'], contains('散步（v1）'));
     _service.replies[0].completeError(
         const NewTopicRequestInProgressException(message: '正在確認本次結果，請勿重複送出。'));
     await t.pump();
     expect(find.text('確認本次結果'), findsOneWidget);
     await _capture(t, 'topic-pending-retry');
+    // 待確認期間作戰板改成 v2、訊號也沒了：重試仍送凍結的 v1 與原編號。
+    partnerContext = _contextWith('[對象作戰板：合成對象 p]\n- 興趣：爬山（v2）');
     signals = false;
+    container.invalidate(newTopicPartnerContextProvider('p'));
     container.invalidate(newTopicReadinessProvider('p'));
     await t.pump();
     await t.pump();
@@ -863,6 +879,7 @@ void main() {
     await _tapGenerate(t);
     expect(_service.calls, hasLength(2));
     expect(_service.calls[1], _service.calls[0]);
+    expect(_service.calls[1]['summary'], contains('散步（v1）'));
     refreshFails = true;
     _service.replies[1].complete(_result(_service.calls[1]['id']!));
     await t.pump(const Duration(milliseconds: 300));
