@@ -17,6 +17,8 @@ export interface FlagCombo {
   /// 寫卡第 4 輪（Bruce 2026-10-20）：短版稱讚、帶張力改寫法；沒給當關。
   readonly shortPraise?: boolean;
   readonly tensionStyle?: boolean;
+  /// 「這題」「滿→蠻」交給程式（ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97）；沒給當關。
+  readonly phraseTidy?: boolean;
 }
 
 /// 她傳照片、貼圖又問他（第 2 輪的形狀）；訊息裡不放「只」，繁體轉換的修正不影響比對。
@@ -251,6 +253,7 @@ export async function runFlagMatrix(
     typingStyle: combo.typingStyle ?? false,
     shortPraise: combo.shortPraise ?? false,
     tensionStyle: combo.tensionStyle ?? false,
+    phraseTidy: combo.phraseTidy ?? false,
     ...(combo.twoStage
       ? {
         callExplain: (

@@ -90,6 +90,7 @@ import {
   shouldExtractGuideV3Memory,
   shouldReadGuideV3Relation,
   shouldUseGuideV3,
+  shouldUseGuideV3PhraseTidy,
   shouldUseGuideV3PreviousRound,
   shouldUseGuideV3ShortPraise,
   shouldUseGuideV3TensionStyle,
@@ -1874,6 +1875,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // 「改」）：只在兩段式開時才有作用；排卡不變，沒開就一字不變。
         tensionStyle: twoStage && shouldUseGuideV3TensionStyle({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TENSION_STYLE")),
+          accountIsTest,
+        }),
+        // 「這題」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，off／test／on，每次請求讀；
+        // Bruce 2026-10-20 PR #97 再處理，2026-10-21 只用這兩條）：口吻與斷句之後改這兩種字。沒開就一字不變。
+        phraseTidy: shouldUseGuideV3PhraseTidy({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_PHRASE_TIDY")),
           accountIsTest,
         }),
         ...createGuideV3ModelCalls({
