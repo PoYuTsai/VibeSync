@@ -85,6 +85,7 @@ import {
   readSystemPromptTwoStage,
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
+  TWO_STAGE_READ_LEAK_SENTINELS,
   TWO_STAGE_WRITER_SENTINELS,
   writeSystemPromptTwoStage,
   writeUserPromptTwoStage,
@@ -523,8 +524,12 @@ class GuideV3Flow {
             analysisRunId: this.runId,
             field,
           }, "error"),
-        // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；沒開照舊。
-        withRelation ? RELATION_LEAK_SENTINELS : [],
+        // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；兩段式多的欄位說明也一樣
+        //（兩段式主審第 1 輪 P2），兩個都開就兩份一起比。都沒開照舊。
+        [
+          ...(twoStage ? TWO_STAGE_READ_LEAK_SENTINELS : []),
+          ...(withRelation ? RELATION_LEAK_SENTINELS : []),
+        ],
       );
       // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
       const view = readView(

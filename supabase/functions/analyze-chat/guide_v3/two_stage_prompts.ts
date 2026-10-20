@@ -2,6 +2,7 @@
 // 照 Bruce 10/19「先生成回覆，再用說明書的內容來教」。這裡放開關開了才用的字，開關沒開的
 // 提示詞（prompts.ts）一字不動。說明書原文仍只在 guide_text.ts、entries.ts。
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../../_shared/prompt_leak_guard.ts";
+import { normalizeOutgoingScript } from "../outgoing_message_text.ts";
 import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import { GUIDE_V3_SECTIONS, type GuideV3SectionId } from "./guide_text.ts";
 import type { GuideV3PreviousRound } from "./previous_round.ts";
@@ -32,6 +33,39 @@ export const READ_TWO_STAGE_NOTES = `## 兩段式多輸出的欄位
 ## 作戰板標籤跟對話對不上時
 - 作戰板上的認識方式、認識多久，有可能只是 App 的預設值，不一定是他自己選的。跟對話內容對不上時，照對話判斷。
 - 已經在交往的兩人互用親暱的稱呼、撒嬌，是感情好，不是風險。`;
+
+/// 上面那一段的外洩哨兵（主審第 1 輪 P2，Eric 2026-10-20）：兩段式開時，判讀與要等她做什麼照抄這段就
+/// 不給，跟照抄說明書、關係訊號那段一樣。照關係訊號的做法（82d379c2）：每句都照抄自上面那段，而且都帶
+/// 只有提示詞才會寫的記號（欄位名、line／label／kind 的填法、種類名後面接它的定義、「兩段式…欄位」
+///「作戰板標籤」「App 的預設值」）；一般判讀自己也會講的話（「她在撒嬌或示愛」「是感情好，不是風險」）
+/// 不當哨兵，不然好好的判讀會被清掉（測試會檢查）。
+export const TWO_STAGE_READ_SENTINELS: readonly string[] = [
+  "兩段式多輸出的欄位",
+  "establishedCouple：兩人已經在交往",
+  "herAffection：她這一輪在撒嬌或示愛",
+  "herHappyShare：她這一輪在分享開心或得意的事",
+  "worthyLines：她最新這一輪值得接的訊息",
+  "line 填對話稿上那一則前面的編號",
+  "label 用幾個字寫那則在講什麼",
+  "kind 填「問他」（她直接問他、要他的看法",
+  "「情感」（撒嬌、示愛，或帶著開心、難過、生氣的情緒）",
+  "「照片或貼圖」（照片、貼圖或只有表情符號）",
+  "一則同時算問他和情感時填「問他」",
+  "作戰板標籤跟對話對不上時",
+  "有可能只是 App 的預設值，不一定是他自己選的",
+];
+
+/// 跟說明書、關係訊號的哨兵一樣再做一份簡轉繁整理過的（判讀整理後才比的那一次要用）。
+export const TWO_STAGE_READ_SENTINELS_NORMALIZED: readonly string[] =
+  TWO_STAGE_READ_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s);
+
+/// 兩段式開時交給 vetPlanText 多比的哨兵（原樣與整理過的，去掉重複）。
+export const TWO_STAGE_READ_LEAK_SENTINELS: readonly string[] = [
+  ...new Set([
+    ...TWO_STAGE_READ_SENTINELS,
+    ...TWO_STAGE_READ_SENTINELS_NORMALIZED,
+  ]),
+];
 
 export function readSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
