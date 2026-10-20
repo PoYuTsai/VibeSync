@@ -1,6 +1,9 @@
 // 截圖辨識確認後一鍵「加入並開始分析」（Eric 2026-10-18）：先照今天匯入，再走分析鈕
-// 同一個入口——開始鎖、最後一則提示、額度不足、超過 2000 字確認都照舊；
-// 「先存起來，晚點再分析」維持今天的匯入、不送分析。確認框上那一行跟分析鈕同一套算法。
+// 同一個入口——開始鎖、最後一則提示、額度不足、超過 2000 字確認都照舊。確認框只剩
+// 「取消」和它（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）：一般情況按一下就匯入並
+// 開始分析；「取消」把辨識結果留在這頁（續看卡）；只有後面真的跳出關卡而在那裡取消，
+// 或額度不夠，匯入的內容才留著、不送（她的訊息有自傷字眼例外：照常送出，伺服器只回
+// 關心訊息與專線、不扣，Eric 2026-10-18）。確認框上那一行跟分析鈕同一套算法。
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -56,7 +59,9 @@ import '../../../helpers/memory_coaching_outcome_repository.dart';
 
 const _conversationId = 'ocr-one-tap-test';
 const _analyzeLabel = '加入並開始分析';
-const _importOnlyLabel = '先存起來，晚點再分析';
+
+/// 取消確認框時保留這次辨識結果的那一句。
+const _draftKeptMessage = '已保留這次辨識結果，你可以稍後再繼續確認。';
 
 /// 「長按可編輯」提示（EditMessageCoachMark）的關閉鈕。
 const _editHintDismissLabel = '知道了';
@@ -615,28 +620,53 @@ void main() {
           reason: '片段馬上唯讀，「長按可編輯」提示不跳出來蓋住畫面');
     });
 
-    testWidgets('先存起來，晚點再分析：照今天只匯入、不送分析；分析鈕下那一行跟確認框上看到的一樣', (tester) async {
+    testWidgets('確認框只剩「取消」和「加入並開始分析」：唯一的送出就是先匯入、再開始分析', (tester) async {
       final messages = [_her(_chars('好')), _her(_chars('嗯'))];
       final harness =
           await _pumpOcrScreen(tester, recognizedMessages: messages);
       await _recognize(tester);
-      final line = _expectedFreeLine(messages);
 
-      await _tapInDialog(tester, _importOnlyLabel);
+      Finder inDialog(String label) => find.descendant(
+            of: find.byType(ScreenshotRecognitionDialog),
+            matching: find.text(label),
+          );
+      expect(inDialog('先存起來，晚點再分析'), findsNothing);
+      expect(inDialog('取消'), findsOneWidget);
+      expect(inDialog(_analyzeLabel), findsOneWidget);
 
-      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+      await _tapInDialog(tester, _analyzeLabel);
+
       expect(_contents(harness.conversation.messages),
           _recognizedContents(messages));
+      expect(harness.recorder.streamCalls, 1);
+    });
+
+    testWidgets('按「取消」：照今天保留這次辨識結果，什麼都沒匯入、一次都不送；從續看卡再開、再取消也一樣', (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+
+      await _tapInDialog(tester, '取消');
+
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+      expect(find.text(_draftKeptMessage), findsOneWidget);
+      expect(harness.conversation.messages, isEmpty);
       expect(harness.recorder.streamCalls, 0);
-      expect(find.text('已讀取 ${messages.length} 則聊天內容，尚未開始分析'), findsOneWidget);
-      // 匯入前在確認框上算的，跟匯入後分析鈕用預備器算的是同一行。
-      final caption = find.byKey(FloatingAnalysisActionButton.captionKey);
-      expect(
-        find.descendant(of: caption, matching: find.text(line.text)),
-        findsOneWidget,
-      );
-      // 片段還能改：「長按可編輯」提示照今天出現（測試是 debug，每次都當沒看過）。
-      expect(find.text(_editHintDismissLabel), findsOneWidget);
+      final resume = find.text('繼續確認本次內容');
+      expect(resume, findsOneWidget);
+
+      await tester.ensureVisible(resume);
+      await tester.tap(resume);
+      await tester.pumpAndSettle();
+      expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
+      await _tapInDialog(tester, '取消');
+
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+      expect(find.text(_draftKeptMessage), findsOneWidget);
+      expect(harness.conversation.messages, isEmpty);
+      expect(harness.recorder.streamCalls, 0);
+      expect(find.text('繼續確認本次內容'), findsOneWidget, reason: '續看卡還在');
     });
 
     testWidgets('超過 2000 字：匯入後跳「內容較長」確認框，確認前不送出', (tester) async {
@@ -664,7 +694,8 @@ void main() {
       expect(harness.recorder.streamCalls, 1);
     });
 
-    testWidgets('額度不夠：匯入後跳額度確認框、不能開始，一次都不送', (tester) async {
+    testWidgets('額度不夠：匯入後跳額度確認框、不能開始；按取消後匯入的內容留著、停在尚未開始分析，一次都不送',
+        (tester) async {
       final messages = [_her(_chars('好')), _her(_chars('嗯'))];
       final harness = await _pumpOcrScreen(
         tester,
@@ -688,13 +719,38 @@ void main() {
       );
       expect(start.onPressed, isNull);
       expect(harness.recorder.streamCalls, 0);
+
+      // 額度不夠才會停在這一關；取消後匯入的內容留著、不送。一般情況不會跳這一關
+      //（Eric 2026-10-19 照 Bruce 拿掉「先存起來」）。
+      await tester.tap(find.descendant(
+        of: find.byType(AnalysisPreviewDialog),
+        matching: find.text('取消'),
+      ));
+      await _pumpFrames(tester);
+
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+      expect(_contents(harness.conversation.messages),
+          _recognizedContents(messages),
+          reason: '匯入照樣留著');
+      expect(find.text('已讀取 ${messages.length} 則聊天內容，尚未開始分析'), findsOneWidget);
+      expect(find.text('繼續確認本次內容'), findsNothing, reason: '不是暫存草稿，已經匯入');
     });
 
-    testWidgets('最後一則是他傳的：跳「最後一則是你傳的」，先不要就不送，匯入的內容留著', (tester) async {
+    testWidgets('最後一則是他傳的：跳「最後一則是你傳的」，先不要就不送，匯入的內容留著；分析鈕下那一行跟確認框上看到的一樣',
+        (tester) async {
       final messages = [_her(_chars('好')), _me('那我先去忙')];
       final harness =
           await _pumpOcrScreen(tester, recognizedMessages: messages);
       await _recognize(tester);
+      final line = _expectedFreeLine(messages);
+      expect(
+        find.descendant(
+          of: find.byType(ScreenshotRecognitionDialog),
+          matching: find.text(line.text),
+        ),
+        findsOneWidget,
+      );
 
       await _tapInDialog(tester, _analyzeLabel);
       await tester.pump(const Duration(milliseconds: 400));
@@ -710,6 +766,12 @@ void main() {
           _recognizedContents(messages));
       expect(find.text('已讀取 ${messages.length} 則聊天內容，尚未開始分析'), findsOneWidget);
       expect(find.text('繼續確認本次內容'), findsNothing, reason: '不是暫存草稿，已經匯入');
+      // 匯入前在確認框上算的，跟匯入後分析鈕用預備器算的是同一行。
+      final caption = find.byKey(FloatingAnalysisActionButton.captionKey);
+      expect(
+        find.descendant(of: caption, matching: find.text(line.text)),
+        findsOneWidget,
+      );
     });
 
     testWidgets('最後一則是他傳的：選「還是要分析」就照確認框那一行開始，不再跳確認框', (tester) async {
@@ -818,7 +880,8 @@ void main() {
   // 主審 P3 補測（Eric 2026-10-18「不接受，先處理」）：按了「加入並開始分析」、分析卻沒
   // 開始的幾條路。扣額只在送出的那一次請求，所以「沒送」就是「沒扣」。
   group('加入並開始分析：分析沒開始的路', () {
-    testWidgets('先不要之後，同一頁換一批比較少則的（先存起來）：「長按可編輯」提示照常出現', (tester) async {
+    testWidgets('先不要之後，同一頁換一批比較少則的、再按「加入並開始分析」：整批取代、照樣不排提示，這次照常送出一次',
+        (tester) async {
       // 第一批 8 則、最後一則他的（會先問）；第二批 2 則，比第一批少。
       final first = [
         for (var i = 1; i <= 7; i++) _her('第$i則'),
@@ -843,73 +906,71 @@ void main() {
           reason: '按「加入並開始分析」的那一批照原本的決定不排提示');
 
       await _repickAndRecognize(tester);
-      await _tapInDialog(tester, _importOnlyLabel);
+      await _tapInDialog(tester, _analyzeLabel);
 
       expect(later.length, lessThan(first.length));
       expect(
           _contents(harness.conversation.messages), _recognizedContents(later),
           reason: '第二批整批取代第一批');
-      expect(harness.recorder.streamCalls, 0);
-      expect(find.text(_editHintDismissLabel), findsOneWidget,
-          reason: '上一批的分析沒開始，那批的則數不能擋住這一批的第一次提示');
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 1, reason: '上一批「先不要」之後開始鎖有放掉');
+      expect(_contents(harness.recorder.streamMessages!),
+          _recognizedContents(later));
+      expect(find.text(_editHintDismissLabel), findsNothing,
+          reason: '這一批也是按「加入並開始分析」，比上一批少則也不排提示');
     });
 
-    // 兩個鈕同一套期待：「先存起來」就是今天的匯入失敗，「加入並開始分析」要跟它一樣。
-    for (final label in [_importOnlyLabel, _analyzeLabel]) {
-      testWidgets('匯入存檔失敗（按「$label」）：照今天的匯入失敗顯示，一次都不送', (tester) async {
-        final messages = [_her(_chars('好')), _her(_chars('嗯'))];
-        final harness =
-            await _pumpOcrScreen(tester, recognizedMessages: messages);
-        await _recognize(tester);
-        harness.repository.failUpdates = true;
+    testWidgets('匯入存檔失敗（按「$_analyzeLabel」）：照今天的匯入失敗顯示，一次都不送', (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      harness.repository.failUpdates = true;
 
-        await _tapInDialog(tester, label);
+      await _tapInDialog(tester, _analyzeLabel);
 
-        expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
-        _expectRecognitionErrorCard(
-          tester,
-          message: _recognitionFailedMessage,
-          primaryActionLabel: '重新辨識',
-        );
-        expect(find.text('最後一則是你傳的'), findsNothing);
-        expect(find.text('開始分析前'), findsNothing);
-        expect(harness.recorder.streamCalls, 0);
-        expect(_contents(harness.conversation.messages),
-            _recognizedContents(messages),
-            reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
-      });
-    }
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+      _expectRecognitionErrorCard(
+        tester,
+        message: _recognitionFailedMessage,
+        primaryActionLabel: '重新辨識',
+      );
+      expect(find.text('最後一則是你傳的'), findsNothing);
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+      expect(_contents(harness.conversation.messages),
+          _recognizedContents(messages),
+          reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
+    });
 
     // 續看卡那條路（主審 P3；Eric 2026-10-18「不接受，先處理」）：存檔失敗以前例外直接漏掉、
     // 畫面什麼都沒說；要跟初次辨識同一張錯誤卡。畫面那份訊息與續看卡照今天不動。
     // 例外沒接住的話，測試框架會判這條失敗。
-    for (final label in [_importOnlyLabel, _analyzeLabel]) {
-      testWidgets('從「繼續確認本次內容」匯入、存檔失敗（按「$label」）：跟初次辨識同一張錯誤卡，一次都不送',
-          (tester) async {
-        final messages = [_her(_chars('好')), _her(_chars('嗯'))];
-        final harness =
-            await _pumpOcrScreen(tester, recognizedMessages: messages);
-        await _recognize(tester);
-        await _cancelThenResume(tester);
-        harness.repository.failUpdates = true;
+    testWidgets('從「繼續確認本次內容」匯入、存檔失敗（按「$_analyzeLabel」）：跟初次辨識同一張錯誤卡，一次都不送',
+        (tester) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness =
+          await _pumpOcrScreen(tester, recognizedMessages: messages);
+      await _recognize(tester);
+      await _cancelThenResume(tester);
+      harness.repository.failUpdates = true;
 
-        await _tapInDialog(tester, label);
+      await _tapInDialog(tester, _analyzeLabel);
 
-        expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
-        _expectRecognitionErrorCard(
-          tester,
-          message: _recognitionFailedMessage,
-          primaryActionLabel: '重新辨識',
-        );
-        expect(find.text('最後一則是你傳的'), findsNothing);
-        expect(find.text('開始分析前'), findsNothing);
-        expect(harness.recorder.streamCalls, 0);
-        expect(_contents(harness.conversation.messages),
-            _recognizedContents(messages),
-            reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
-        expect(find.text('繼續確認本次內容'), findsOneWidget, reason: '照今天：續看卡還在');
-      });
-    }
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
+      _expectRecognitionErrorCard(
+        tester,
+        message: _recognitionFailedMessage,
+        primaryActionLabel: '重新辨識',
+      );
+      expect(find.text('最後一則是你傳的'), findsNothing);
+      expect(find.text('開始分析前'), findsNothing);
+      expect(harness.recorder.streamCalls, 0);
+      expect(_contents(harness.conversation.messages),
+          _recognizedContents(messages),
+          reason: '照今天：畫面上那份已整批換過，只是存檔失敗');
+      expect(find.text('繼續確認本次內容'), findsOneWidget, reason: '照今天：續看卡還在');
+    });
 
     testWidgets('從「繼續確認本次內容」按「加入並開始分析」、存檔丟出分析錯誤：錯誤卡照那個錯誤的訊息和動作，一次都不送',
         (tester) async {

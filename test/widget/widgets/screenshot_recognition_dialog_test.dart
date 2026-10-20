@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
@@ -24,11 +28,15 @@ void main() {
     ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
     AnalysisQuotaLine? Function(List<RecognizedMessage> messages)?
         analyzeQuotaLineFor,
+    TextScaler? textScaler,
   }) {
     return MaterialApp(
-      builder: (context, child) => reduceMotion
+      builder: (context, child) => reduceMotion || textScaler != null
           ? MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              data: MediaQuery.of(context).copyWith(
+                disableAnimations: reduceMotion ? true : null,
+                textScaler: textScaler,
+              ),
               child: child!,
             )
           : child!,
@@ -1100,8 +1108,6 @@ void main() {
 
     final analyzeButton =
         find.byKey(ScreenshotRecognitionDialog.analyzeButtonKey);
-    final importOnlyButton =
-        find.byKey(ScreenshotRecognitionDialog.importOnlyButtonKey);
     final quotaLine = find.byKey(ScreenshotRecognitionDialog.quotaLineKey);
 
     testWidgets('沒給算法：只有今天的「確認本次內容」', (tester) async {
@@ -1112,10 +1118,89 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('確認本次內容'), findsOneWidget);
+      expect(_actionBarLabels(tester), unorderedEquals(['取消', '確認本次內容']));
       expect(analyzeButton, findsNothing);
-      expect(importOnlyButton, findsNothing);
       expect(quotaLine, findsNothing);
+    });
+
+    // Bruce 真機試過說用不到，Eric 2026-10-19「照 Bruce 拿掉」：沒有只匯入不分析的鈕，
+    // 不想現在分析就按「取消」，辨識結果留在分析頁（續看卡）。
+    testWidgets('有給算法：底下只剩「取消」和「加入並開始分析」，沒有「先存起來」', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(
+        _actionBarLabels(tester),
+        unorderedEquals(['取消', '加入並開始分析']),
+      );
+      expect(find.text('先存起來，晚點再分析'), findsNothing);
+    });
+
+    testWidgets('有給算法：不論按哪一顆送出，都是匯入並開始分析、帶回看到的那一行', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      final submitLabels = [
+        for (final label in _actionBarLabels(tester))
+          if (label != '取消') label,
+      ];
+      expect(submitLabels, isNotEmpty);
+
+      for (final label in submitLabels) {
+        if (find.byType(ScreenshotRecognitionDialog).evaluate().isEmpty) {
+          await tester.tap(find.text('Open Dialog'));
+          await tester.pumpAndSettle();
+        }
+        await _tapVisible(
+          tester,
+          find.descendant(of: _actionBar(), matching: find.text(label)),
+        );
+      }
+
+      final expected = freeLineFor(mixedConversation.messages!)!;
+      expect(results, hasLength(submitLabels.length));
+      for (final result in results) {
+        expect(result!.startAnalysis, isTrue);
+        expect(result.shownQuotaLine, expected);
+        expect(result.messages, hasLength(3));
+      }
+    });
+
+    testWidgets('有給算法：按「取消」帶回 null、確認框關掉', (tester) async {
+      await _useTallSurface(tester);
+      final results = <ScreenshotRecognitionDialogResult?>[];
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          onResult: results.add,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await _tapVisible(
+        tester,
+        find.descendant(of: _actionBar(), matching: find.text('取消')),
+      );
+
+      expect(results, [isNull]);
+      expect(find.byType(ScreenshotRecognitionDialog), findsNothing);
     });
 
     testWidgets('有給算法：寫出那一行；主鈕帶回要分析與看到的那一行', (tester) async {
@@ -1142,7 +1227,6 @@ void main() {
       );
       expect(tester.widget<Text>(quotaLine).data, expected.text);
       expect(find.text('加入並開始分析'), findsOneWidget);
-      expect(find.text('先存起來，晚點再分析'), findsOneWidget);
       expect(find.text('確認本次內容'), findsNothing);
 
       await _tapVisible(tester, analyzeButton);
@@ -1150,27 +1234,6 @@ void main() {
       expect(results, hasLength(1));
       expect(results.single!.startAnalysis, isTrue);
       expect(results.single!.shownQuotaLine, expected);
-      expect(results.single!.messages, hasLength(3));
-    });
-
-    testWidgets('先存起來，晚點再分析：照今天的確認帶回，不分析、不帶那一行', (tester) async {
-      await _useTallSurface(tester);
-      final results = <ScreenshotRecognitionDialogResult?>[];
-      await tester.pumpWidget(
-        buildDialogHost(
-          recognized: mixedConversation,
-          onResult: results.add,
-          analyzeQuotaLineFor: freeLineFor,
-        ),
-      );
-      await tester.tap(find.text('Open Dialog'));
-      await tester.pumpAndSettle();
-
-      await _tapVisible(tester, importOnlyButton);
-
-      expect(results, hasLength(1));
-      expect(results.single!.startAnalysis, isFalse);
-      expect(results.single!.shownQuotaLine, isNull);
       expect(results.single!.messages, hasLength(3));
     });
 
@@ -1245,7 +1308,204 @@ void main() {
       expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget);
       expect(find.textContaining('請先勾選上方的確認格'), findsOneWidget);
     });
+
+    // 主審 r1 P3：App 字級上限 1.4（app.dart），320 寬的小手機上同一排放不下，主鈕的字
+    // 變成「加入並開始分／析」、那一行剩「則」單獨一行。放不下就改上下排。
+    testWidgets('320 寬、1.4 倍字：那一行和主鈕的字都只排一行，「取消」改到主鈕下面、一樣寬', (tester) async {
+      _usePhone(tester, const Size(320, 568));
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          reduceMotion: true,
+          analyzeQuotaLineFor: freeLineFor,
+          textScaler: const TextScaler.linear(1.4),
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      final analyzeLabel = find.descendant(
+        of: analyzeButton,
+        matching: find.text('加入並開始分析'),
+      );
+      final cancel = tester.getRect(_cancelButton());
+      final analyze = tester.getRect(analyzeButton);
+      // 三件一起比，紅的時候三件都看得到。
+      expect(
+        (
+          quotaLines: _lineCount(tester, quotaLine),
+          labelLines: _lineCount(tester, analyzeLabel),
+          cancelBelow: cancel.top >= analyze.bottom,
+        ),
+        (quotaLines: 1, labelLines: 1, cancelBelow: true),
+      );
+      expect(tester.getRect(quotaLine).bottom, lessThanOrEqualTo(analyze.top));
+      expect(cancel.width, analyze.width, reason: '「取消」跟主鈕一樣整排寬');
+    });
+
+    testWidgets('390 寬、1.0 倍字：「取消」和主鈕照舊同一排，那一行在主鈕上面', (tester) async {
+      _usePhone(tester, const Size(390, 844));
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          reduceMotion: true,
+          analyzeQuotaLineFor: freeLineFor,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      final cancel = tester.getRect(_cancelButton());
+      final analyze = tester.getRect(analyzeButton);
+      expect(cancel.right, lessThanOrEqualTo(analyze.left), reason: '「取消」在左');
+      expect(cancel.bottom, moreOrLessEquals(analyze.bottom),
+          reason: '同一排、底對齊');
+      expect(tester.getRect(quotaLine).bottom, lessThanOrEqualTo(analyze.top));
+      expect(_lineCount(tester, quotaLine), 1);
+    });
+
+    // 放得下就維持同一排：一點一點加寬，兩種排法都不斷行；第一個排成同一排的寬度，那一行
+    // 或主鈕的字剛好塞滿（少 1 點就會斷行），不會提早改上下排。
+    for (final (name, lineFor) in [
+      ('有那一行', freeLineFor),
+      ('沒有那一行', (List<RecognizedMessage> _) => null),
+    ]) {
+      testWidgets('1.4 倍字從 320 寬加到 440 寬（$name）：都不斷行，剛好放得下才回到同一排',
+          (tester) async {
+        _usePhone(tester, const Size(320, 568));
+        await tester.pumpWidget(
+          buildDialogHost(
+            recognized: mixedConversation,
+            reduceMotion: true,
+            analyzeQuotaLineFor: lineFor,
+            textScaler: const TextScaler.linear(1.4),
+          ),
+        );
+        await tester.tap(find.text('Open Dialog'));
+        await tester.pumpAndSettle();
+
+        final texts = [
+          if (quotaLine.evaluate().isNotEmpty) quotaLine,
+          find.descendant(of: analyzeButton, matching: find.text('加入並開始分析')),
+        ];
+        double? firstRowWidth;
+        for (var width = 320.0; width <= 440; width++) {
+          tester.view.physicalSize =
+              Size(width, 568) * tester.view.devicePixelRatio;
+          await tester.pump();
+          for (final text in texts) {
+            expect(_lineCount(tester, text), 1, reason: '寬 $width');
+          }
+          final inRow = tester.getRect(_cancelButton()).right <=
+              tester.getRect(analyzeButton).left;
+          if (firstRowWidth != null) {
+            expect(inRow, isTrue, reason: '寬 $width 比 $firstRowWidth 寬，維持同一排');
+          } else if (inRow) {
+            firstRowWidth = width;
+            final slack =
+                texts.map((text) => _slack(tester, text)).reduce(math.min);
+            expect(slack, lessThan(1), reason: '寬 $width 才剛好放得下');
+          }
+        }
+        expect(firstRowWidth, isNotNull);
+      });
+    }
+
+    testWidgets('沒給算法（確認本次內容）：320 寬、1.4 倍字也排得下一行，照舊同一排', (tester) async {
+      _usePhone(tester, const Size(320, 568));
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          reduceMotion: true,
+          textScaler: const TextScaler.linear(1.4),
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      final confirm = find.widgetWithText(ElevatedButton, '確認本次內容');
+      expect(
+        _lineCount(
+          tester,
+          find.descendant(of: confirm, matching: find.text('確認本次內容')),
+        ),
+        1,
+      );
+      expect(
+        tester.getRect(_cancelButton()).right,
+        lessThanOrEqualTo(tester.getRect(confirm).left),
+      );
+    });
   });
+}
+
+/// 確認框底部固定的動作列：整個確認框只有這一處是 SafeArea。
+Finder _actionBar() => find.descendant(
+      of: find.byType(ScreenshotRecognitionDialog),
+      matching: find.byType(SafeArea),
+    );
+
+/// 動作列上的「取消」。
+Finder _cancelButton() => find.descendant(
+      of: _actionBar(),
+      matching: find.widgetWithText(TextButton, '取消'),
+    );
+
+/// 畫出這段字的那個 RenderParagraph。
+RenderParagraph _paragraphOf(WidgetTester tester, Finder text) =>
+    tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: text,
+        matching: find.byType(RichText),
+        matchRoot: true,
+      ),
+    );
+
+/// 這段字離斷行還差幾點：排它的寬度減掉排成一行要的寬度。
+double _slack(WidgetTester tester, Finder text) {
+  final paragraph = _paragraphOf(tester, text);
+  return paragraph.constraints.maxWidth -
+      paragraph.getMaxIntrinsicWidth(double.infinity);
+}
+
+/// 這段字實際排成幾行：問畫出來的那個 RenderParagraph，每一行的框頂端各是一個高度。
+int _lineCount(WidgetTester tester, Finder text) {
+  final paragraph = _paragraphOf(tester, text);
+  final boxes = paragraph.getBoxesForSelection(
+    TextSelection(
+      baseOffset: 0,
+      extentOffset: paragraph.text.toPlainText().length,
+    ),
+    boxHeightStyle: ui.BoxHeightStyle.max,
+  );
+  return {for (final box in boxes) box.top}.length;
+}
+
+/// 手機尺寸：版面寬度和 MediaQuery 都照這個（setSurfaceSize 只改版面）。
+void _usePhone(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size * tester.view.devicePixelRatio;
+  addTearDown(tester.view.resetPhysicalSize);
+}
+
+/// 動作列上每一顆按鈕的字。
+List<String> _actionBarLabels(WidgetTester tester) {
+  expect(_actionBar(), findsOneWidget, reason: '確認框只有底部動作列是 SafeArea');
+  final buttons = find.descendant(
+    of: _actionBar(),
+    matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+  );
+  return [
+    for (final button in buttons.evaluate())
+      tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byElementPredicate((element) => element == button),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((text) => text.data ?? '')
+          .join(),
+  ];
 }
 
 Finder _partnerNameField() {
