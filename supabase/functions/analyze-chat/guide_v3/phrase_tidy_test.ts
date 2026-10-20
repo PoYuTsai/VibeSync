@@ -325,6 +325,36 @@ Deno.test("主審第 1 輪 P2：拿掉後只剩顏文字、整個表情（數字
   assertEquals(tidy("這題不用想 ok啦"), "ok啦");
 });
 
+Deno.test("第 2 輪主審殘餘風險 ①：表情或笑聲黏著語助詞（XD啦、哈哈XD、QAQ喔、www、ㄏㄏ）也算沒有字，整則照原文", () => {
+  for (
+    const message of [
+      // 主審的反例（原本是「不怪啊」後面接這些；那條拿掉了，「這題」那條會留下同樣的情形）。
+      "這題不用想 XD啦",
+      "這題不用想 哈哈XD",
+      "這題不用想 QAQ喔",
+      "這題不用想 XDDD 哈哈哈",
+      "這題不用想 www",
+      "這題不用想 w",
+      "這題不用想 呵呵呵",
+      "這題不用想 嘿嘿～",
+      "這題不用想 ㄏㄏ",
+      "這題不用想 hahaha",
+      "這題不用想 T_T",
+      "這題不用想 lol",
+    ]
+  ) {
+    assertEquals(tidyMessage(message, ASKS_BEST), {
+      text: message,
+      changes: NO_PHRASE_TIDY_CHANGES,
+    }, message);
+  }
+  // 旁邊還有字就照常拿掉，表情與笑聲照原樣留著。
+  assertEquals(tidy("這題不用想 XD 是你"), "XD 是你");
+  assertEquals(tidy("這題不用想 是你XD"), "是你XD");
+  assertEquals(tidy("這題不用想 哈哈 你最好看"), "哈哈 你最好看");
+  assertEquals(tidy("這題不用想 wow"), "wow");
+});
+
 Deno.test("一整張卡：每一則各自改、則數不變；次數加總；沒有要改的原樣回、次數都是 0", () => {
   const out = tidyCard(
     ["不會怪啊 滿適合的", "這題不用想 而且看起來比較有精神", "後悔什麼啦"],

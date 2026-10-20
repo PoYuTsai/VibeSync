@@ -97,11 +97,15 @@ export const MAN_COMPOUND_BEFORE =
 const DEGREE_MAN_NEXT_MAX = Math.max(
   ...DEGREE_MAN_NEXT.map((w) => [...w].length),
 );
-/// 語助詞、笑聲：拿掉一段之後只剩這些（加上表情、標點）就算沒有字，照原文。
+/// 語助詞、笑聲（哈哈、呵呵、嘿嘿、ㄏㄏ）：拿掉一段之後只剩這些（加上表情、標點）就算沒有字，照原文。
 export const FILLER_CHARS =
-  "欸嗯喔哦噢啊啦呀耶哈嘿唉齁吼蛤嘛呢吧哇哎唷呦嘻呵咧";
-/// 英文字母拼的表情（XD、QQ、QAQ、TT、orz）：跟顏文字一樣不算字。
-export const ASCII_EMOTICONS = /^(?:x+d+|q+a?q+|t+_*t+|orz)$/iu;
+  "欸嗯喔哦噢啊啦呀耶哈嘿唉齁吼蛤嘛呢吧哇哎唷呦嘻呵咧ㄏ";
+/// 英文字母拼的表情與笑聲（XD、QQ、QAQ、TT、orz、haha、hehe、lol）：跟顏文字一樣不算字，黏著語助詞或
+/// 哈哈也一樣（第 2 輪主審殘餘風險 ①：「XD啦」「哈哈XD」原本被當成字）。
+export const ASCII_EMOTICONS =
+  /x+d+|q+a*q+|t+_*t+|orz|otz|(?:ha){2,}h?|(?:he){2,}|lol/giu;
+/// 拿掉上面這些之後只剩 w（日式的笑：w、www）也不算字。
+const ONLY_W = /^w+$/iu;
 /// 一則裡隔開小段的空白與標點（口吻與斷句那一步留下的：空白，加上他用逗號時的逗號、句號）。
 const SEPARATOR = /[\s，,。.？?！!～~…⋯、：:；;]/u;
 const SEPARATOR_RUN = /[\s，,。.？?！!～~…⋯、：:；;]+/u;
@@ -211,16 +215,18 @@ function isQuizClause(clause: string): boolean {
 }
 
 /// 還有字：拿掉顏文字、網址這些受保護的整段，與整個表情（數字鍵帽、國旗也算，cards.ts 的 withoutEmoji）
-/// 之後，至少一個不是語助詞、笑聲、英文字母表情的字或數字（主審第 1 輪 P2：「(・ω・)」的 ω、「1️⃣」的 1
-/// 原本被當成字，拿掉後只剩表情）。不確定的就算沒字，照原文。
+/// 之後，每一小段再拿掉英文字母拼的表情、笑聲與語助詞，至少一段還剩下不是 w 的字或數字（主審第 1 輪 P2：
+///「(・ω・)」的 ω、「1️⃣」的 1 原本被當成字；第 2 輪殘餘風險 ①：「XD啦」「哈哈XD」）。不確定的就算沒字，照原文。
 function hasContent(text: string): boolean {
   const chars = [...text];
   const { frozen } = protectedMap(chars);
   const bare = withoutEmoji(chars.filter((_, i) => !frozen[i]).join(""));
-  return bare.split(SEPARATOR_RUN).some((token) =>
-    !ASCII_EMOTICONS.test(token) &&
-    [...token].some((c) => LETTER_OR_DIGIT.test(c) && !FILLER_CHARS.includes(c))
-  );
+  return bare.split(SEPARATOR_RUN).some((token) => {
+    const rest = [...token.replace(ASCII_EMOTICONS, "")].filter((c) =>
+      !FILLER_CHARS.includes(c)
+    ).join("");
+    return !ONLY_W.test(rest) && [...rest].some((c) => LETTER_OR_DIGIT.test(c));
+  });
 }
 
 interface Piece {
