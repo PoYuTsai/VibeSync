@@ -38,6 +38,12 @@ import {
   styleCard,
 } from "./typing_style.ts";
 import {
+  addPhraseTidyChanges,
+  NO_PHRASE_TIDY_CHANGES,
+  phraseTidyContext,
+  tidyCard,
+} from "./phrase_tidy.ts";
+import {
   EXPLAIN_SCHEMA,
   explainSystemPrompt,
   explainUserPrompt,
@@ -242,6 +248,9 @@ export interface GuideV3StreamDeps {
   /// 口吻與斷句交給程式（開關 ANALYZE_GUIDE_V3_TYPING_STYLE，handler 把關；Bruce 2026-10-20 改法 3）：
   /// 每張卡定稿、檢查過之後，送出之前照他的打字習慣統一稱呼與斷句。沒給或 false：一字不變。
   typingStyle?: boolean;
+  /// 「這題」「不怪」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，handler 把關；Bruce 2026-10-20
+  /// PR #97 再處理）：口吻與斷句之後、送出之前改這三種字。沒給或 false：一字不變。
+  phraseTidy?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -1069,6 +1078,17 @@ class GuideV3Flow {
       ? detectTypingHabits(hisMessages)
       : null;
     let typingChanges = NO_TYPING_CHANGES;
+    // 「這題」「不怪」「滿→蠻」（Bruce 2026-10-20 PR #97）：她最新這一輪擔心什麼、她是不是自己在講題目，
+    // 只看她的訊息、看一次；沒開就不算、卡一字不變。
+    const tidy = this.deps.phraseTidy === true
+      ? phraseTidyContext({
+        herLatest: latestHerMessages(turns),
+        herMessages: this.deps.messages.filter((m) => !m.isFromMe).map((m) =>
+          m.content
+        ),
+      })
+      : null;
+    let tidyChanges = NO_PHRASE_TIDY_CHANGES;
     const delivered: GuideV3CardView[] = [];
     const removed: GuideV3Trace["removed"][number][] = [];
     const scoring: { slot: number; words: readonly string[] }[] = [];
@@ -1112,7 +1132,13 @@ class GuideV3Flow {
       if (styled) {
         typingChanges = addTypingChanges(typingChanges, styled.changes);
       }
-      const messages = styled ? styled.messages : out.messages;
+      const typed = styled ? styled.messages : out.messages;
+      // 緊接在口吻與斷句之後、同一個位置改，送出、扣費、存的結果與說明步驟一樣看同一份字。
+      const tidied = tidy ? tidyCard(typed, tidy) : null;
+      if (tidied) {
+        tidyChanges = addPhraseTidyChanges(tidyChanges, tidied.changes);
+      }
+      const messages = tidied ? tidied.messages : typed;
       const shown = cardView(
         card.card,
         spec,
@@ -1238,6 +1264,16 @@ class GuideV3Flow {
       herLastTurnChars: herChars,
       ...(typing
         ? { typingStyle: { habits: typing, changes: typingChanges } }
+        : {}),
+      // 只記次數與她有沒有提到擔心、在不在講題目，不放她或卡片的字。
+      ...(tidy
+        ? {
+          phraseTidy: {
+            herWorries: tidy.herWorries.length,
+            herQuizWords: tidy.herQuizWords,
+            changes: tidyChanges,
+          },
+        }
         : {}),
     };
     if (stop?.kind === "charge_failed") {

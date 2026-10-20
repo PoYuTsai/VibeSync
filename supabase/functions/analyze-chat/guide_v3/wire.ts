@@ -1,6 +1,7 @@
 // v3 送給 App 的事件與結果形狀（只給協定版本 3）。v2 的事件型別表
 // （stream_events.ts）是模型輸出的解析白名單，v3 事件由伺服器自己產生，不放進去。
 import type { TypingChanges, TypingHabits } from "./typing_style.ts";
+import type { PhraseTidyChanges } from "./phrase_tidy.ts";
 import type { V3CardTaskCode } from "../stream_run_store.ts";
 import type { CardChecks } from "./cards.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
@@ -331,6 +332,13 @@ export interface GuideV3Trace {
   readonly typingStyle?: {
     readonly habits: TypingHabits;
     readonly changes: TypingChanges;
+  };
+  /// 「這題」「不怪」「滿→蠻」開著、有出卡才有：她最新這一輪提到幾種擔心、是不是自己在講題目，與整組
+  /// 改了幾處（只有次數與真假，不放字；phrase_tidy.ts）。
+  readonly phraseTidy?: {
+    readonly herWorries: number;
+    readonly herQuizWords: boolean;
+    readonly changes: PhraseTidyChanges;
   };
 }
 

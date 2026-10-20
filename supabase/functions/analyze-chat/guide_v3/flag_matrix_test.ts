@@ -70,7 +70,12 @@ type Outcome = {
 };
 
 const run = async (
-  combo: { twoStage: boolean; relation: boolean; typingStyle?: boolean },
+  combo: {
+    twoStage: boolean;
+    relation: boolean;
+    typingStyle?: boolean;
+    phraseTidy?: boolean;
+  },
   options = {},
 ) =>
   await runFlagMatrix(
@@ -321,4 +326,110 @@ Deno.test("口吻與斷句開、兩段式沒開：卡一樣照他的習慣改（
       cardsOf(off).some((c) => c.messages.some((m) => m.includes("，"))),
     );
   }
+});
+
+// ---- 「這題」「不怪」「滿→蠻」交給程式（ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97 再處理） ----
+
+/// 正式組合（兩段式、關係訊號、口吻與斷句都開）再開「這題」「不怪」「滿→蠻」的整份結果：鎖住，改了要連這裡
+/// 一起改。卡沒有這三種字，拿掉 trace 的 phraseTidy 就是 BOTH_TYPING_ON。
+const BOTH_TYPING_TIDY_ON =
+  "56a9b57199e24b774b7d5ac44d9e70f5211e0d81e3b62778a7dd601fe199b8b5";
+
+Deno.test("「這題」「不怪」「滿→蠻」明確關著（false）：四種組合與再開口吻與斷句的整份結果都跟沒給一模一樣（雜湊照舊）", async () => {
+  const off = { phraseTidy: false };
+  assertEquals(
+    await outcomeDigest(await run({ ...OFF, ...off })),
+    MAIN_6EF72AFF_OFF,
+  );
+  assertEquals(
+    await outcomeDigest(await run({ ...RELATION_ONLY, ...off })),
+    MAIN_6EF72AFF_RELATION,
+  );
+  assertEquals(
+    await outcomeDigest(
+      withoutKeys(await run({ ...TWO_STAGE_ONLY, ...off }), [
+        "completedAt",
+        "cardExplains",
+      ]),
+    ),
+    TWO_STAGE_C8F64DFE,
+  );
+  assertEquals(await outcomeDigest(await run({ ...BOTH, ...off })), BOTH_ON);
+  assertEquals(
+    await outcomeDigest(await run({ ...BOTH, typingStyle: true, ...off })),
+    BOTH_TYPING_ON,
+  );
+});
+
+Deno.test("「這題」「不怪」「滿→蠻」開、卡沒有這三種字：卡、請求、扣費、落帳與 log 都跟沒開一樣，只多 trace 的 phraseTidy（次數都是 0）", async () => {
+  const on = await run({
+    ...BOTH,
+    typingStyle: true,
+    phraseTidy: true,
+  });
+  assertEquals(
+    await outcomeDigest(withoutKeys(on, ["phraseTidy"])),
+    BOTH_TYPING_ON,
+  );
+  assertEquals((on.markDone.guideV3Trace as Rec).phraseTidy, {
+    herWorries: 0,
+    herQuizWords: false,
+    changes: {
+      quiz: 0,
+      quizRewrite: 0,
+      worry: 0,
+      degree: 0,
+      messages: 0,
+    },
+  });
+  assertEquals(await outcomeDigest(on), BOTH_TYPING_TIDY_ON);
+});
+
+/// 卡裡有「這題」「不怪」「滿」：她問的是好不好看（沒有提到怪），所以「不怪啊」不動。
+const TIDY_CARD = ["好看啊 這題不用想", "不怪啊 滿適合你的"];
+const tidyCards = (user: string) =>
+  flagMatrixCards(user).map((_, i) =>
+    JSON.stringify({
+      card: i + 1,
+      messages: TIDY_CARD,
+      hasInventedDetail: false,
+    }) + "\n"
+  );
+
+Deno.test("「這題」「不怪」「滿→蠻」開（正式組合）：送出的卡、扣費的第一張、存的結果、說明步驟看到的都是改過的字；她沒提到怪，「不怪啊」不動；讀局面與寫卡的請求跟沒開一樣", async () => {
+  const combo = { ...BOTH, typingStyle: true };
+  const off = await run(combo, { writeParts: tidyCards });
+  const on = await run({ ...combo, phraseTidy: true }, {
+    writeParts: tidyCards,
+  });
+  const expected = ["好看啊", "不怪啊 蠻適合你的"];
+  assert(cardsOf(off).every((c) => c.messages.join() === TIDY_CARD.join()));
+  const onCards = cardsOf(on);
+  assert(onCards.length > 0);
+  for (const card of onCards) assertEquals(card.messages, expected);
+  assertEquals(
+    (on.markDone.cards as { messages: string[] }[]).map((c) => c.messages),
+    onCards.map(() => expected),
+  );
+  const charges = (on as unknown as { charges: Rec[] }).charges;
+  assertEquals(
+    ((charges[0].recommendationJson as Rec).firstCard as Rec).messages,
+    expected,
+  );
+  const explainUser = on.requests.explain.user;
+  assert(explainUser.includes("- 好看啊\n- 不怪啊 蠻適合你的"));
+  assertEquals(explainUser.includes("這題不用想"), false);
+  assertEquals(on.requests.read, off.requests.read);
+  assertEquals(on.requests.write, off.requests.write);
+  const trace = (on.markDone.guideV3Trace as Rec).phraseTidy as {
+    changes: Record<string, number>;
+  };
+  assertEquals(trace.changes, {
+    quiz: onCards.length,
+    quizRewrite: 0,
+    worry: 0,
+    degree: onCards.length,
+    messages: onCards.length * 2,
+  });
+  assertEquals(JSON.stringify(trace).includes("適合"), false);
 });

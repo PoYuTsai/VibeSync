@@ -196,6 +196,8 @@ export function traceWithoutText(
     ...(trace.previousRound ? { previousRound: trace.previousRound } : {}),
     // 口吻與斷句只有習慣的代碼與次數，沒有字（typing_style.ts）。
     ...(trace.typingStyle ? { typingStyle: trace.typingStyle } : {}),
+    // 「這題」「不怪」「滿→蠻」只有次數與真假，沒有字（phrase_tidy.ts）。
+    ...(trace.phraseTidy ? { phraseTidy: trace.phraseTidy } : {}),
     // 兩段式實驗的說明：只留狀態、張數與原因，不留說明原文。
     ...(trace.twoStage
       ? {

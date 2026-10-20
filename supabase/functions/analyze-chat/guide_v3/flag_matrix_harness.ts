@@ -14,6 +14,8 @@ export interface FlagCombo {
   readonly relation: boolean;
   /// 口吻與斷句交給程式（ANALYZE_GUIDE_V3_TYPING_STYLE，Bruce 2026-10-20 改法 3）；沒給當關。
   readonly typingStyle?: boolean;
+  /// 「這題」「不怪」「滿→蠻」交給程式（ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97）；沒給當關。
+  readonly phraseTidy?: boolean;
 }
 
 /// 她傳照片、貼圖又問他（第 2 輪的形狀）；訊息裡不放「只」，繁體轉換的修正不影響比對。
@@ -246,6 +248,7 @@ export async function runFlagMatrix(
     twoStage: combo.twoStage,
     relation: combo.relation,
     typingStyle: combo.typingStyle ?? false,
+    phraseTidy: combo.phraseTidy ?? false,
     ...(combo.twoStage
       ? {
         callExplain: (
