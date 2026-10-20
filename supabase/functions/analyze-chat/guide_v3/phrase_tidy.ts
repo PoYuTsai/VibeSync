@@ -9,8 +9,9 @@
 //   不確定答案在不在裡面，照原文
 //  （主審第 1 輪 P2）。「這題我選你」這種拿掉考題字也通的說法，只拿掉那兩三個字。她自己的訊息就在講題目
 //  （HER_QUIZ_WORDS），這一條整個不做。
-// - 滿→蠻：「滿」後面整個接著常數表裡兩個字以上的詞（適合、好看、有勇氣……）、前面那個字也不會跟「滿」
-//   連成詞（充滿、裝滿、很滿……），才換成「蠻」；滿意、滿足、滿分、滿會費這些不在表裡，所以不動。
+// - 滿→蠻：「滿」後面整個接著常數表裡兩個字以上的詞、前面那個字也不會跟「滿」連成詞（充滿、裝滿、很滿……），
+//   才換成「蠻」；形容詞（好看、自然……）後面還要剛好斷開，動詞說法（適合、喜歡、有勇氣……）可以接著別的字。
+//   滿意、滿足、滿分、滿會費這些不在表裡，「人滿自然就出發」的自然是下一句的，都不動。
 // 拿掉之後這一則還要有字（語助詞、表情、顏文字、網址、標點不算），不然照原文；引號裡、網址、顏文字都不動。
 import { withoutEmoji } from "./cards.ts";
 import { isMediaLine, QUOTED_REPLY_PREFIX } from "./rules.ts";
@@ -60,33 +61,45 @@ export const QUIZ_FILLER_LEAD: readonly string[] = ["欸", "啊"];
 /// 考題說法後面可以接的語助詞。
 export const TRAILING_PARTICLES = "啊啦呀喔哦噢欸耶吧的呢嘛唷咧";
 
-/// 「滿」當「很」用時，後面接的形容詞或動詞（Bruce 2026-10-20：蠻適合的、蠻好看的才對）。只收兩個字以上、
-/// 整個詞都在這裡的：Bruce 列的詞，加上之前跑過的卡出現過的加分、有勇氣、有氣質、有精神。一個字的（會、想、
-/// 像、有、好、多……）常是下一個詞的開頭（行程很滿會累、繳滿會費），不收（主審第 1 輪 P2）。
-export const DEGREE_MAN_NEXT: readonly string[] = [
-  "適合",
+/// 「滿」當「很」用時，後面接的形容詞（Bruce 2026-10-20：蠻適合的、蠻好看的才對）。只收兩個字以上、整個詞
+/// 都在這裡的：Bruce 列的詞，加上之前跑過的卡出現過的加分。一個字的（會、想、像、有、好、多……）常是下一個
+/// 詞的開頭（行程很滿會累、繳滿會費），不收（主審第 1 輪 P2）。形容詞後面還要剛好斷開（MAN_ADJECTIVE_END）：
+///「等人滿自然就出發」的「自然」是下一句的開頭，「滿」是人到齊了，不換（第 2 輪主審殘餘風險 ③）。
+export const MAN_ADJECTIVES: readonly string[] = [
   "好看",
   "好吃",
   "好玩",
   "有趣",
   "可愛",
   "不錯",
-  "喜歡",
   "開心",
   "厲害",
   "特別",
   "漂亮",
   "舒服",
   "舒適",
-  "期待",
   "合理",
   "自然",
   "清爽",
   "輕鬆",
   "加分",
+];
+/// 形容詞後面接這些語助詞也算斷開（蠻好看的、蠻可愛耶、蠻開心了）；空白、標點、表情、顏文字、一則結尾也算。
+export const MAN_ADJECTIVE_END = "的啊耶欸喔哦呀吧啦了嘛呢";
+/// 後面會接受詞的動詞說法（蠻適合你的、蠻喜歡這個長度的、蠻期待見面的）：後面可以接著別的字。Bruce 列的
+/// 適合、喜歡、期待，加上之前跑過的卡出現過的有勇氣、有氣質、有精神。
+export const MAN_VERBS: readonly string[] = [
+  "適合",
+  "喜歡",
+  "期待",
   "有勇氣",
   "有氣質",
   "有精神",
+];
+/// 兩種都算「滿」後面可以接的詞。
+export const DEGREE_MAN_NEXT: readonly string[] = [
+  ...MAN_ADJECTIVES,
+  ...MAN_VERBS,
 ];
 /// 接在「滿」前面會連成一個詞的字（充滿、裝滿、圓滿、美滿、不滿、客滿、期滿、塞滿、坐滿、加滿、年滿、
 /// 繳滿、滿滿、小滿……）：這時的「滿」是填滿的意思，不是「很」，後面就算接著表裡的字（充滿期待、裝滿好吃
@@ -117,6 +130,8 @@ const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 const TRAILING_EMOJI =
   "(?:\\p{Extended_Pictographic}|\\p{Emoji_Modifier}|\\u{FE0F}|\\u{200D})*";
 const QUOTE_CHARS = new Set(['"', ...QUOTE_PAIRS.flat()]);
+const EMOJI_CHAR =
+  /\p{Extended_Pictographic}|\p{Emoji_Modifier}|[\u{FE0F}\u{200D}]/u;
 
 export interface PhraseTidyContext {
   /// 她的訊息裡本來就有考題字（她在講真的題目）：「這題」那一條整個不做。
@@ -275,13 +290,23 @@ function degreeMan(text: string): { text: string; count: number } {
   const chars = [...text];
   const { inQuote, frozen } = protectedMap(chars);
   let count = 0;
+  // 第 j 個字是斷開的地方：一則結尾、空白或標點、語助詞、表情、受保護的字（顏文字、引號）。
+  const endsAt = (j: number) =>
+    j >= chars.length || SEPARATOR.test(chars[j]) ||
+    MAN_ADJECTIVE_END.includes(chars[j]) || EMOJI_CHAR.test(chars[j]) ||
+    inQuote[j] || frozen[j] || QUOTE_CHARS.has(chars[j]);
   const out = chars.map((c, i) => {
     if (c !== "滿" || inQuote[i] || frozen[i]) return c;
     const before = chars[i - 1];
     if (before !== undefined && MAN_COMPOUND_BEFORE.includes(before)) return c;
     if (inQuote[i + 1] || frozen[i + 1]) return c;
     const after = chars.slice(i + 1, i + 1 + DEGREE_MAN_NEXT_MAX).join("");
-    if (!DEGREE_MAN_NEXT.some((w) => after.startsWith(w))) return c;
+    const verb = MAN_VERBS.some((w) => after.startsWith(w));
+    const adjective = MAN_ADJECTIVES.find((w) => after.startsWith(w));
+    // 形容詞要剛好在這裡斷開；動詞說法後面可以接受詞。都不是就不換。
+    if (!verb && !(adjective && endsAt(i + 1 + [...adjective].length))) {
+      return c;
+    }
     count++;
     return "蠻";
   });
