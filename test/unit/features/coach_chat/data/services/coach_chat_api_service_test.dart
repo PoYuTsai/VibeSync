@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
+import 'package:vibesync/features/user_profile/domain/services/effective_style_prompt_builder.dart';
 
 class _Recorded {
   final String fn;
@@ -230,7 +232,7 @@ void main() {
           coachActionType: '動作${'型' * 100}',
           keySignals: ['訊號${'一' * 100}'],
         ),
-        effectiveStyleContext: '風格${'述' * 600}',
+        effectiveStyleContext: '風格${'述' * 1000}',
         partnerHint: CoachChatPartnerHint(
           name: '名字${'長' * 100}',
           traits: ['特質${'多' * 60}'],
@@ -245,10 +247,13 @@ void main() {
         (body['conversationSummary'] as String).length,
         lessThanOrEqualTo(500),
       );
+      // 「關於我」上限跟組字端、server schema 同為 900（規格 PR-3），不再是 500。
+      final styleContext = body['effectiveStyleContext'] as String;
       expect(
-        (body['effectiveStyleContext'] as String).length,
-        lessThanOrEqualTo(500),
+        styleContext.length,
+        lessThanOrEqualTo(EffectiveStylePromptBuilder.coachFollowUpMaxChars),
       );
+      expect(styleContext.length, greaterThan(500));
       final turn =
           (body['activeSessionTurns'] as List).single as Map<String, dynamic>;
       expect((turn['content'] as String).length, lessThanOrEqualTo(500));
@@ -270,6 +275,17 @@ void main() {
       expect((hint['name'] as String).length, lessThanOrEqualTo(80));
       final trait = (hint['traits'] as List).single as String;
       expect(trait.length, lessThanOrEqualTo(40));
+    });
+
+    test('About Me cap matches the coach-chat server schema (900)', () {
+      // 兩邊不一致時：App 送超過 server 上限會整包 400，少送則白白剪掉內容。
+      final schema =
+          File('supabase/functions/coach-chat/schemas.ts').readAsStringSync();
+      final caps = RegExp(r'effectiveStyleContext: z\.string\(\)\.max\((\d+)\)')
+          .allMatches(schema)
+          .map((m) => int.parse(m.group(1)!))
+          .toSet();
+      expect(caps, {EffectiveStylePromptBuilder.coachFollowUpMaxChars});
     });
 
     test('wires outcomeInsightLines when provided (digest 回注)', () async {
