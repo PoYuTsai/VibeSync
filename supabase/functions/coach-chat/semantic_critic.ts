@@ -46,13 +46,13 @@ export function buildSemanticCriticPrompt(
 - goal_mismatch：沒有直接回答 userQuestion，或把任務換成另一件事。
 - unsupported_fact：把來源沒有的人物、地點、時間、經歷、意圖或實體寫成事實。
 - generic_hook：suggestedLine 只是空泛鉤子、查戶口、叫對方自行補材料，沒有接住現有內容。
-- style_mismatch：違反 effectiveStyleContext 的主／副風格或長度要求。
+- style_mismatch：違反 effectiveStyleContext（使用者自述）裡使用者自己寫的界線，或其中有的主／副風格、句長要求。
 - investment_mismatch：回覆投入明顯高於對方這輪，替低投入對話續命。
-- question_density：suggestedLine 的問句密度超過 style context，或在不需追問時硬塞問題。
+- question_density：suggestedLine 的問句密度超過使用者自述的要求，或在不需追問時硬塞問題。
 - boundary_conflict：answer、nextStep、suggestedLine、boundaryReminder 互相矛盾，或造成施壓／越界。
 - non_actionable：nextStep 不是一個現在能做的最小行動、觀察或停止點。
 - judgment_sprawl：沒有收斂成一個工作判斷，而是把多個選項丟回使用者。
-- invented_user_fact：suggestedLine 或 answer 替使用者編造他沒提供的具體經歷、事件、地點、時間或近況（例如來源沒有卻寫「我上禮拜差點滑倒」），或在沒有對方原話時假裝引用她說過的話。使用者自己在 userQuestion、rawReplyDraft、recentMessages 的「我」方訊息或補充裡說過的事都是來源：把他的原句換句話說、依他描述的處境寫開場，不算捏造。核對方法：把 suggestedLine 裡每一個第一人稱的經歷句（「我後來…」「我上次…」「我也去…了」）逐句找來源，找不到就是違規。
+- invented_user_fact：suggestedLine 或 answer 替使用者編造他沒提供的具體經歷、事件、地點、時間或近況（例如來源沒有卻寫「我上禮拜差點滑倒」），或在沒有對方原話時假裝引用她說過的話。使用者自己在 userQuestion、rawReplyDraft、recentMessages 的「我」方訊息、effectiveStyleContext（使用者自述）或補充裡說過的事都是來源：把他的原句換句話說、依他描述的處境寫開場，不算捏造。核對方法：把 suggestedLine 裡每一個第一人稱的經歷句（「我後來…」「我上次…」「我也去…了」）逐句找來源，找不到就是違規。
 
 只有十項全數通過才能 pass。只輸出下列 JSON，不要 Markdown、不要其他鍵：
 {"verdict":"pass | rewrite","violations":["上列代碼，最多4個；pass時必須空陣列"]}

@@ -407,7 +407,7 @@ Deno.test("buildCoachChatPrompt makes force-answer session state explicit", () =
 
 // ── 批 A：global scope prompt 變體 ──────────────────────────────────────
 
-Deno.test("buildCoachChatPrompt injects global framing and keeps style context", () => {
+Deno.test("buildCoachChatPrompt injects global framing and keeps About Me (使用者自述)", () => {
   const prompt = buildCoachChatPrompt({
     conversationId: "global:me",
     userQuestion: "不知道怎麼開啟話題，給我一點方向？",
@@ -416,14 +416,14 @@ Deno.test("buildCoachChatPrompt injects global framing and keeps style context",
     recentMessages: [],
     dataQualityFlagged: false,
     scope: { type: "global" },
-    effectiveStyleContext: "- Preferred voice: 幽默",
+    effectiveStyleContext: ABOUT_ME_BOUNDARY,
   });
 
   assertStringIncludes(prompt, "本次是全域教練對話");
   assertStringIncludes(prompt, "提醒他切換視窗上方「問誰」的對象選項");
-  // 「使用者風格設定」管線 scope 無關，global 照舊注入。
-  assertStringIncludes(prompt, "使用者風格設定");
-  assertStringIncludes(prompt, "- Preferred voice: 幽默");
+  // 「使用者自述（關於我）」管線 scope 無關，global 照舊注入（規格 PR-4b 改段名）。
+  assertStringIncludes(prompt, "## 使用者自述（關於我）\n" + ABOUT_ME_BOUNDARY);
+  assertEquals(prompt.includes("使用者風格設定"), false);
 });
 
 // 規格 PR-4a：教練挑參考卡不看「關於我」；同一個請求加不加關於我，選到的卡完全相同，
@@ -454,7 +454,7 @@ Deno.test("knowledge selection ignores About Me; the coach still reads it in the
     );
     assertStringIncludes(
       buildCoachChatPrompt({ ...base, effectiveStyleContext: aboutMe }),
-      "## 使用者風格設定\n" + aboutMe,
+      "## 使用者自述（關於我）\n" + aboutMe,
     );
   }
 });
