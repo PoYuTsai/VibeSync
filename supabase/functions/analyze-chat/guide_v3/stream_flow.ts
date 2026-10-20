@@ -86,11 +86,13 @@ import {
   type ReadTags,
   type TwoStageTags,
 } from "./read_tags.ts";
+import { lightShortRun } from "./rules.ts";
 import {
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   readSystemPromptTwoStage,
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
+  SHORT_PRAISE_WRITER_SENTINELS,
   TWO_STAGE_READ_LEAK_SENTINELS,
   TWO_STAGE_WRITER_SENTINELS,
   writeSystemPromptTwoStage,
@@ -242,6 +244,9 @@ export interface GuideV3StreamDeps {
   /// 口吻與斷句交給程式（開關 ANALYZE_GUIDE_V3_TYPING_STYLE，handler 把關；Bruce 2026-10-20 改法 3）：
   /// 每張卡定稿、檢查過之後，送出之前照他的打字習慣統一稱呼與斷句。沒給或 false：一字不變。
   typingStyle?: boolean;
+  /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，handler 把關；Bruce 2026-10-20「可以」）：只在 twoStage
+  /// 開時有作用。程式照 runId 抽，抽到時一張卡的規格多寫短版的誇法。沒給或 false：一字不變。
+  shortPraise?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -394,6 +399,8 @@ class GuideV3Flow {
   private hits: SafetyKeywordHits = NO_SAFETY_HITS;
   /// 關係訊號（開關開、讀局面成功才有）：通過檢查的值與拿掉的欄位，進 trace。
   private relation: GuideV3RelationTrace | null = null;
+  /// 短版稱讚開著（兩段式也開）：卡片多比短版那段的哨兵。
+  private shortPraiseOn = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -520,6 +527,8 @@ class GuideV3Flow {
           }, "error");
         }
       }
+      // 短版稱讚（Bruce 2026-10-20「可以」）：照 runId 抽，重播一致；沒開照舊。
+      this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
       const plan = vetPlanText(
         planTurn(
           turns,
@@ -527,6 +536,9 @@ class GuideV3Flow {
           this.hits,
           undefined,
           twoStageTags ?? undefined,
+          this.shortPraiseOn
+            ? { lightShortPraise: lightShortRun(this.runId) }
+            : {},
         ),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
@@ -1095,7 +1107,15 @@ class GuideV3Flow {
       seen.add(card.card);
       // 兩段式實驗：寫卡提示詞新加的段落也當外洩哨兵；沒開照舊。
       const out = this.deps.twoStage === true
-        ? finalizeCard(card, spec, sourceText, TWO_STAGE_WRITER_SENTINELS)
+        ? finalizeCard(
+          card,
+          spec,
+          sourceText,
+          // 短版稱讚開時：規格裡短版那段抄進卡片也拿掉。沒開照舊。
+          this.shortPraiseOn
+            ? [...TWO_STAGE_WRITER_SENTINELS, ...SHORT_PRAISE_WRITER_SENTINELS]
+            : TWO_STAGE_WRITER_SENTINELS,
+        )
         : finalizeCard(card, spec, sourceText);
       if (!out.ok) {
         // 原文留在伺服器紀錄，誤擋時查得到；outcome log 只記原因。

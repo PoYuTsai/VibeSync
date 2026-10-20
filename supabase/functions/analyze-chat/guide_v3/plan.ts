@@ -103,6 +103,23 @@ function withAnswers(
   });
 }
 
+/// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：抽到輕輕誇的短版時，挑一張卡寫短版的誇法——有回她
+/// 最想聽那則的接住先，其次共鳴，再其次其他有指定那則的卡（推進、收不放）；都沒有就不放。
+function withShortPraise(specs: CardSpec[]): CardSpec[] {
+  const eligible = (task: CardSpec["task"]) =>
+    specs.findIndex((s) => s.answer !== undefined && s.task === task);
+  let at = eligible("接住");
+  if (at === -1) at = eligible("共鳴");
+  if (at === -1) {
+    at = specs.findIndex((s) =>
+      s.answer !== undefined && s.task !== "推進" && s.task !== "收"
+    );
+  }
+  return at === -1
+    ? specs
+    : specs.map((s, i) => i === at ? { ...s, shortPraise: true as const } : s);
+}
+
 /// 讀局面失敗、拒答或逾時時，程式關鍵字仍看得出的固定訊息（不給錯誤、不扣）：自傷給關心
 /// 訊息（附專線），其次未成年；都看不出就 null，照原本的錯誤處理。
 export function planWithoutRead(hits: SafetyKeywordHits): GuideV3Plan | null {
@@ -130,6 +147,8 @@ export function planTurn(
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   /// 兩段式實驗的讀局面四欄（開關 ANALYZE_GUIDE_V3_TWO_STAGE）；沒給就跟今天一樣。
   twoStage?: TwoStageTags,
+  /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：這次分析抽到輕輕誇的短版（rules.ts lightShortRun）。
+  options: { readonly lightShortPraise?: boolean } = {},
 ): GuideV3Plan {
   if (tags.selfHarmSignal || hits.selfHarmWords) {
     return carePlan("self_harm", tags.selfHarmSignal, hits.selfHarmWords);
@@ -137,13 +156,20 @@ export function planTurn(
   if (tags.minorSignal) return carePlan("minor", true, false);
   const reply = decideReply(turns, tags);
   const push = reply.kind === "send" ? decidePush(turns, tags) : null;
-  const specs = withAnswers(
+  const answeredSpecs = withAnswers(
     arrangeCards(reply, push, tags, twoStage),
     turns,
     twoStage,
   );
   const judgment = judgmentFor(tags);
-  const praise = twoStage ? { praise: praiseStyle(twoStage) } : {};
+  const praiseValue = twoStage
+    ? praiseStyle(twoStage, options.lightShortPraise === true)
+    : undefined;
+  const praise = praiseValue ? { praise: praiseValue } : {};
+  // 短版只放在一張卡、接在她最想聽的那則後面（第 3 輪真跑：只寫在稱讚那段時，寫出來還是一般的回法）。
+  const specs = praiseValue === "light_short"
+    ? withShortPraise(answeredSpecs)
+    : answeredSpecs;
   const signals: GuideV3Signals = {
     inviteReadiness: tags.inviteReadiness,
     cold: {

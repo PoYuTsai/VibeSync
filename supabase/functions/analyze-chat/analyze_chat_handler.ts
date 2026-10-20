@@ -91,6 +91,7 @@ import {
   shouldReadGuideV3Relation,
   shouldUseGuideV3,
   shouldUseGuideV3PreviousRound,
+  shouldUseGuideV3ShortPraise,
   shouldUseGuideV3TwoStage,
   shouldUseGuideV3TypingStyle,
 } from "./guide_v3/routing.ts";
@@ -1860,6 +1861,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // 2026-10-20 改法 3）：每張卡的稱呼與斷句照他的打字習慣統一。沒開就一字不變。
         typingStyle: shouldUseGuideV3TypingStyle({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TYPING_STYLE")),
+          accountIsTest,
+        }),
+        // 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，off／test／on，每次請求讀；Bruce 2026-10-20「可以」）：
+        // 只在兩段式開時才有作用；沒開就一字不變。
+        shortPraise: twoStage && shouldUseGuideV3ShortPraise({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_SHORT_PRAISE")),
           accountIsTest,
         }),
         ...createGuideV3ModelCalls({

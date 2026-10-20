@@ -10,9 +10,9 @@ import type { LIGHTS, ReadTags } from "./read_tags.ts";
 import type { CardSpec, HisMethod, PraiseStyle, Task } from "./rules.ts";
 import { cardTaskText } from "./prompts.ts";
 import {
-  answerParts,
   HAPPY_SHARE_TASK,
   praiseSection,
+  specAnswerParts,
   TWO_STAGE_METHOD_LABEL,
 } from "./two_stage_prompts.ts";
 
@@ -161,7 +161,7 @@ export function explainUserPrompt(args: {
         spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
       }`,
       `${TWO_STAGE_METHOD_LABEL}：${spec.method}`,
-      ...answerParts(spec.answer, args.herLatest),
+      ...specAnswerParts(spec, args.herLatest),
     ].join("｜");
     return [
       `### 第 ${slot} 張`,

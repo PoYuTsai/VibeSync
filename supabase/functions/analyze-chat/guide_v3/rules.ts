@@ -189,6 +189,9 @@ export interface CardSpec {
   /// 以及她分享開心的事時換上的那張共鳴。
   readonly answer?: CardAnswer;
   readonly note?: "happy_share";
+  /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，Bruce 2026-10-20「可以」）：這次抽到短版時，只有這一張的
+  /// 規格在「這張接」後面寫短版的誇法（plan.ts 挑第一張回她那則的接住）；其他時候沒有這個欄位。
+  readonly shortPraise?: true;
 }
 
 /// 兩段式實驗：她最新這一輪的第幾則（1 起算）。with＝併進這一則一起看的照片、貼圖或只有表情的
@@ -406,14 +409,29 @@ function placeWarmCard(tasks: Task[]): number | null {
 /// 一點讓她猜）：誇她的方式由程式挑，寫卡只看到其中一句。已經在交往、或她這一輪撒嬌示愛，直接誇；
 /// 其他時候輕輕誇。她示愛也算：第 1 輪讀局面把用 App 預設標籤的情侶都判成還沒交往，她都示愛了
 /// 還讓她猜，就是在吊著她。
-export type PraiseStyle = "direct" | "light";
+/// light_short（Bruce 2026-10-20「可以」，開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：還沒交往時偶爾用的輕輕誇，
+/// 很短、一看就是故意誇張的那種；多久用一次由程式決定（lightShortRun），不讓寫卡自己挑。
+export type PraiseStyle = "direct" | "light" | "light_short";
 
 export function praiseStyle(
   twoStage: Pick<TwoStageTags, "establishedCouple" | "herAffection">,
+  /// 這次分析抽到輕輕誇的短版（開關開才會是 true）。
+  lightShort = false,
 ): PraiseStyle {
-  return twoStage.establishedCouple || twoStage.herAffection
-    ? "direct"
-    : "light";
+  if (twoStage.establishedCouple || twoStage.herAffection) return "direct";
+  return lightShort ? "light_short" : "light";
+}
+
+/// 輕輕誇的短版每幾次分析用一次（Bruce「偶爾用」；我們的預設）。
+export const LIGHT_SHORT_EVERY = 4;
+
+/// 這次分析要不要用輕輕誇的短版：照 runId 算 FNV-1a 雜湊，同一個 runId 永遠一樣（重播、測試對得上）。
+export function lightShortRun(runId: string): boolean {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(runId)) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return hash % LIGHT_SHORT_EVERY === 0;
 }
 
 /// 照片、貼圖的辨識標記（方括號開頭；外面可能再包一層「」，10/19 正式環境的案例就是這樣）。
