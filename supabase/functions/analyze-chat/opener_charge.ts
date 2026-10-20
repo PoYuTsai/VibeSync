@@ -68,7 +68,9 @@ export async function computeOpenerInputHash(args: {
   profileInfo: unknown;
   effectiveStyleContext?: string | null;
 }): Promise<string> {
-  // F3-1：風格設定是模型輸入的一部分，必須入 hash。缺席時維持既有
+  // F3-1 起舊版 App 會帶風格設定（關於我），當時它是模型輸入，所以入 hash。
+  // 2026-10-20 起它不再交給模型（只給 Coach 1:1），但仍照原樣入 hash：部署
+  // 前已扣費的同一筆請求，部署後重試才不會變成 mismatch。缺席時維持既有
   // 2 元素 canonical 形狀——部署邊界上舊 client in-flight retry 的
   // stored hash 不得因新欄位而全數 mismatch。
   const canonical = JSON.stringify(

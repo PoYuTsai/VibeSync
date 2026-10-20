@@ -341,63 +341,50 @@ Deno.test({
 
 Deno.test({
   name:
-    "opener path consumes effectiveStyleContext: sanitize before gates, bound into input hash, user-style never treated as target info (F3-1)",
+    "opener path keeps legacy About Me hash-only: no 400 gate, still bound into input hash, never in user content or resonate compose (2026-10-20)",
   permissions: { read: true },
   fn: async () => {
     const source = await readIndexSource();
     const prompt = await readOpenerPrompt();
 
-    // ── prompt 消費段：只調語氣、用戶資料絕不冒充對方資料 ──
+    // ── system prompt 不改字（新版 App 輸出一字不變）：沒附設定時照常生成 ──
     assert(prompt.includes("## 用戶風格設定（effectiveStyleContext）"));
-    assert(prompt.includes("只用來調整開場白的語氣"));
-    assert(prompt.includes("不要替用戶假裝成另一個人"));
-    assert(prompt.includes("絕不把用戶的興趣當成對方的興趣"));
-    assert(prompt.includes("假造共同點"));
-    assert(prompt.includes("對方可見線索、avoidTopics 與安全分寸永遠優先"));
     assert(prompt.includes("沒有附風格設定時照常生成"));
 
-    // ── handler 佈線 ──
-    const openerBranch = source.indexOf("if (isOpenerMode) {");
-    assert(openerBranch >= 0, "opener branch 定位失敗");
+    // ── handler 佈線：「關於我」只給 Coach 1:1，舊值只留指紋 ──
+    const handlerSource = await Deno.readTextFile(
+      new URL("./opener_handler.ts", import.meta.url),
+    );
+    assert(
+      handlerSource.includes(
+        "const legacyOpenerStyleContextForHash = legacyStyleContextForHash(",
+      ),
+      "舊值經 legacyStyleContextForHash 只留給指紋",
+    );
+    assertFalse(
+      handlerSource.includes("openerStyleValidation"),
+      "不合法的關於我不再回 400",
+    );
+    assert(
+      handlerSource.includes(
+        "effectiveStyleContext: legacyOpenerStyleContextForHash,",
+      ),
+      "computeOpenerInputHash 照舊吃舊值，部署前後重試的指紋不變",
+    );
+    assert(
+      handlerSource.includes("styleContext: null,"),
+      "共鳴開場不拿關於我組「我也＋引文」",
+    );
 
-    // sanitize 發生在 opener branch 內、且在 rate-limit gate 之前
-    //（gate 鐵則：所有不打模型的拒絕路徑必須先行）。
-    const sanitizeInOpener = source.indexOf(
-      "const openerStyleValidation = sanitizeEffectiveStyleContext(",
-      openerBranch,
+    // user content 純函式不收、也不放用戶自己的設定。
+    const builderStart = source.indexOf(
+      "function buildLegacyOpenerUserContent(",
     );
-    assert(sanitizeInOpener > openerBranch, "opener branch 內必須 sanitize");
-    const openerRateGate = source.indexOf('scope: "opener"', openerBranch);
-    assert(
-      openerRateGate > 0 && sanitizeInOpener < openerRateGate,
-      "sanitize 400 必須在 opener rate-limit gate 之前",
-    );
-
-    // input hash 綁 style context（同 requestId 換風格＝payload mismatch）
-    assert(
-      source.includes("effectiveStyleContext: openerStyleContext,"),
-      "computeOpenerInputHash 必須吃 openerStyleContext",
-    );
-
-    // userContent 注入必須標明是「用戶本人」的設定，且在對方資訊分流之後
-    // （防 style context 被當成「可見資訊」觸發對方線索指令）。
-    const targetInfoBranch = source.indexOf(
-      "用戶沒有提供對方資料",
-      openerBranch,
-    );
-    const styleInjection = source.indexOf(
-      "用戶（發訊者本人）的風格設定",
-      openerBranch,
-    );
-    assert(styleInjection > 0, "userContent 必須注入用戶風格設定區塊");
-    assert(
-      targetInfoBranch > 0 && styleInjection > targetInfoBranch,
-      "風格注入必須在對方資訊有無分流之後",
-    );
-    assert(
-      source.includes("這些不是對方的資料；只用來調整開場白語氣"),
-      "注入區塊必須帶不冒充對方資料的守門句",
-    );
+    const builderEnd = source.indexOf("const OPENER_PROMPT", builderStart);
+    assert(builderStart >= 0 && builderEnd > builderStart, "定位 user content 函式");
+    const builder = source.slice(builderStart, builderEnd);
+    assertFalse(/[Ss]tyleContext/.test(builder));
+    assertFalse(builder.includes("風格設定"));
   },
 });
 

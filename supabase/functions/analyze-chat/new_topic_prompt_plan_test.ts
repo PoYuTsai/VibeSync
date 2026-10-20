@@ -31,7 +31,6 @@ const NOW_MS = Date.UTC(2026, 9, 5, 4, 0);
 Deno.test("plan：基本模式（沒帶 topicContext）走結構刀、帶今天、外洩豁免只放用戶給的資料；推薦固定第一題", () => {
   const plan = planNewTopicPrompt({
     partnerSummary: PARTNER,
-    effectiveStyleContext: null,
     situation: "after_date",
     topicContext: null,
     requestId: REQUEST_ID,
@@ -49,7 +48,6 @@ Deno.test("plan：基本模式（沒帶 topicContext）走結構刀、帶今天�
     plan.user,
     buildNewTopicSlotsUserPrompt({
       partnerSummary: PARTNER,
-      effectiveStyleContext: null,
       situation: "after_date",
       topicContext: null,
       slots,
@@ -91,7 +89,6 @@ Deno.test("plan：進階模式帶素材 → 素材原文進提示詞與 groundin
   const topicContext = sanitized.topicContext;
   const plan = planNewTopicPrompt({
     partnerSummary: PARTNER,
-    effectiveStyleContext: null,
     situation: "warm_up",
     topicContext,
     requestId: REQUEST_ID,
@@ -102,7 +99,6 @@ Deno.test("plan：進階模式帶素材 → 素材原文進提示詞與 groundin
     plan.user,
     buildNewTopicSlotsUserPrompt({
       partnerSummary: PARTNER,
-      effectiveStyleContext: null,
       situation: "warm_up",
       topicContext,
       slots: plan.slots,
@@ -134,7 +130,6 @@ Deno.test("plan：她的興趣或備註撞到內部用語不算外洩，用戶�
   ].join("\n");
   const plan = planNewTopicPrompt({
     partnerSummary: partner,
-    effectiveStyleContext: null,
     situation: "stuck",
     topicContext: null,
     requestId: REQUEST_ID,
@@ -170,7 +165,6 @@ Deno.test("plan：同一個 requestId 排出同一組任務（重放一致），
   const plan = (requestId: string) =>
     planNewTopicPrompt({
       partnerSummary: "[對象作戰板：小雯]\n- 興趣：甜點、爬山、韓劇",
-      effectiveStyleContext: null,
       situation: null,
       topicContext: null,
       requestId,
@@ -186,7 +180,6 @@ Deno.test("plan：今天由 nowMs 照台灣時間決定（跨午夜換日）", (
   const at = (nowMs: number) =>
     planNewTopicPrompt({
       partnerSummary: PARTNER,
-      effectiveStyleContext: null,
       situation: null,
       topicContext: null,
       requestId: REQUEST_ID,

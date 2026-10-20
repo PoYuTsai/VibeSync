@@ -1,5 +1,5 @@
 // Opener handler：開場救星（flat cost 3、idempotency ledger、五風格投影）。
-// 固定順序：contract/profile 驗證→style sanitize→HMAC preflight→rate limit→
+// 固定順序：contract/profile 驗證→舊版關於我只留指紋→HMAC preflight→rate limit→
 // quota gate→charge（exactly-once ledger）→generate→(wrong surface 422)→
 // format repair→tier 投影→回應。stream 為 transport-only，扣費只在
 // completeOpenerRequest 共用管線內。
@@ -62,6 +62,7 @@ import {
   type ImageData,
   sanitizeEffectiveStyleContext,
 } from "./analysis_input_compiler.ts";
+import { legacyStyleContextForHash } from "./request_shape.ts";
 import { hasAnalyzeChatPromptLeak } from "./prompt_leak.ts";
 import {
   getErrorMessage,
@@ -217,16 +218,12 @@ export async function handleOpenerRequest(
     );
   }
 
-  // F3-1：用戶（發訊者）風格設定。無效形狀 400 必須在 rate-limit gate
-  // 與任何扣費之前（gate 鐵則：不打模型的拒絕路徑先行）；空字串視同未帶。
-  const openerStyleValidation = sanitizeEffectiveStyleContext(
-    deps.rawEffectiveStyleContext,
-  );
-  if (openerStyleValidation.error) {
-    return jsonResponse({ error: openerStyleValidation.error }, 400);
-  }
-  const openerStyleContext = openerStyleValidation.effectiveStyleContext ??
-    null;
+  // 「關於我」只給 Coach 1:1（2026-08-04）：舊版 App 送來的值不交給模型，也
+  // 不拿來組共鳴開場，只進下面的重送指紋，部署前已扣費的同一筆重試才對得上。
+  // 不合法的值當作沒帶（不再 400）；空字串視同未帶。
+  const legacyOpenerStyleContextForHash = legacyStyleContextForHash(
+    sanitizeEffectiveStyleContext(deps.rawEffectiveStyleContext),
+  ) ?? null;
 
   const imageCount = Array.isArray(deps.images) ? deps.images.length : 0;
   // Flat cost regardless of image count: image processing cost is
@@ -273,7 +270,7 @@ export async function handleOpenerRequest(
     : await computeOpenerInputHash({
       images: deps.images,
       profileInfo: deps.rawProfileInfo,
-      effectiveStyleContext: openerStyleContext,
+      effectiveStyleContext: legacyOpenerStyleContextForHash,
     });
   let openerKnownDedupReplay = false;
   if (openerRequestId !== null && openerInputHash !== null) {
@@ -392,7 +389,6 @@ export async function handleOpenerRequest(
   const userContent: string[] = buildLegacyOpenerUserContent({
     normalizedProfile,
     imageCount,
-    openerStyleContext,
   });
 
   // All production Opener tiers use Sonnet 5. Older models are reserved
@@ -513,9 +509,11 @@ export async function handleOpenerRequest(
   }
 
   // 共鳴「我也」前半句由 composeResonateOpener 組（Eric 2026-09-08）：引文
-  // 必須逐字在 openerStyleContext 裡，模型寫不到「我」；結果只記 log。
+  // 必須逐字在用戶設定裡，模型寫不到「我」；結果只記 log。「關於我」只給
+  // Coach 1:1，所以這裡不給設定，共鳴開場一律走「站在她的處境」那條；
+  // hasStyleContext 留著看還有多少舊版 App 的請求。
   const normalizeOpts: Parameters<typeof normalizeOpenerPayload>[1] = {
-    styleContext: openerStyleContext,
+    styleContext: null,
     onResonateCompose: (outcome) => {
       logInfo("opener_resonate_compose", {
         user: summarizeUser(deps.userId),
@@ -523,7 +521,7 @@ export async function handleOpenerRequest(
         stripped: outcome.stripped,
         ...(outcome.basis !== "style_overlap" ? { unsafeTail: outcome.unsafeTail } : {}),
         ...(outcome.basis === "tail_only" ? { reason: outcome.reason } : {}),
-        hasStyleContext: Boolean(openerStyleContext),
+        hasStyleContext: legacyOpenerStyleContextForHash !== null,
       });
     },
   };

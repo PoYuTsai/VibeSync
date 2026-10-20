@@ -285,7 +285,6 @@ Deno.test("候選路由＝planNewTopicPrompt（handler 呼叫同一個函式）�
   for (const call of plan.filter((p) => p.arm === "cand")) {
     const expected = planNewTopicPrompt({
       partnerSummary: call.partnerSummary,
-      effectiveStyleContext: null,
       situation: call.situation,
       topicContext: call.topicContext,
       requestId: call.requestId,

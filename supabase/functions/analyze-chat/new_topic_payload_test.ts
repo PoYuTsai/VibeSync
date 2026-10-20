@@ -400,7 +400,7 @@ Deno.test("topicContext：原文另以 UTF-16 長度 1500 封頂（組合符號�
 // hasNewTopicMaterial
 // ---------------------------------------------------------------------------
 
-Deno.test("material：三類至少一類有實質內容才可生成", () => {
+Deno.test("material：作戰板、情境、素材原文至少一類有實質內容才可生成；舊版帶的「關於我」不算", () => {
   const base = {
     requestId: REQUEST_ID,
     partnerSummary: null,
@@ -419,7 +419,8 @@ Deno.test("material：三類至少一類有實質內容才可生成", () => {
   } as const;
   assertFalse(hasNewTopicMaterial({ ...base }));
   assert(hasNewTopicMaterial({ ...base, partnerSummary: "對象摘要" }));
-  assert(hasNewTopicMaterial({ ...base, effectiveStyleContext: "風格" }));
+  // 「關於我」只給 Coach 1:1：舊版 App 只帶它時不算素材（它只進指紋、不交給模型）。
+  assertFalse(hasNewTopicMaterial({ ...base, effectiveStyleContext: "風格" }));
   assert(hasNewTopicMaterial({ ...base, situation: "stuck" }));
   // 用戶寫的素材原文也算素材；「沒有，幫我想」單獨不算。
   assert(hasNewTopicMaterial({

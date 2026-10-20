@@ -432,7 +432,6 @@ Deno.test("任務：連按幾次的排法夠分散（興趣與問法各自打散
 Deno.test("任務：不再有隨機角度；生活小題都是問她，不是用戶自己的事", () => {
   const prompt = buildNewTopicSlotsUserPrompt({
     partnerSummary: null,
-    effectiveStyleContext: null,
     situation: "went_cold",
     topicContext: null,
     slots: planNewTopicSlots({
@@ -575,7 +574,6 @@ Deno.test("使用者提示詞：資料（過濾後作戰板→素材→今天）
   });
   const prompt = buildNewTopicSlotsUserPrompt({
     partnerSummary: APP_PARTNER,
-    effectiveStyleContext: null,
     situation: "went_cold",
     topicContext,
     slots,
@@ -605,11 +603,11 @@ Deno.test("使用者提示詞：資料（過濾後作戰板→素材→今天）
   assert(prompt.includes("「我們」：不寫「我們」接動作"));
 });
 
-Deno.test("使用者提示詞：有「關於我」才放；沒有作戰板時明說沒提供；紅燈那一行換成結構刀的寫法", () => {
+// 「關於我」只給 Coach 1:1（2026-08-04）：提示詞函式不收它，資料段永遠沒有「關於用戶」。
+Deno.test("使用者提示詞：沒有「關於用戶」段；沒有作戰板時明說沒提供；紅燈那一行換成結構刀的寫法", () => {
   const red = context({ engagement: "red", materialKind: "none" }, "stuck");
   const prompt = buildNewTopicSlotsUserPrompt({
     partnerSummary: null,
-    effectiveStyleContext: "喜歡騎車、愛吃辣",
     situation: "stuck",
     topicContext: red,
     slots: planNewTopicSlots({
@@ -621,8 +619,7 @@ Deno.test("使用者提示詞：有「關於我」才放；沒有作戰板時明
     today: null,
   });
   assert(prompt.includes("（沒有提供：不要猜她的興趣、工作或生活）"));
-  assert(prompt.includes("### 關於用戶"));
-  assert(prompt.includes("喜歡騎車、愛吃辣"));
+  assertFalse(prompt.includes("### 關於用戶"));
   assert(prompt.includes("（沒有：這次不寫用戶做過、看過或遇過的事）"));
   assert(prompt.includes("她常只回哈哈、嗯：其他題也都很輕、很短"));
   assertFalse(prompt.includes("「好的第一則」"));

@@ -389,7 +389,6 @@ Deno.test("handler：開關沒開＋沒有 topicContext → 基本模式也走�
     request.messages[0].content,
     buildNewTopicSlotsUserPrompt({
       partnerSummary,
-      effectiveStyleContext: null,
       situation: "went_cold",
       topicContext: null,
       slots: planNewTopicSlots({
@@ -581,6 +580,117 @@ Deno.test("handler：只選「沒有，幫我想」且沒有其他素材 → 422
   assertEquals(result.status, 422);
   assertEquals(result.json.code, "NEW_TOPIC_CONTEXT_REQUIRED");
   assertEquals(result.dbCalls, []);
+});
+
+// 「關於我」只給 Coach 1:1（2026-08-04）：8/4 以前的舊版 App 還會帶 effectiveStyleContext。
+// 伺服器只拿它算重送指紋，不交給模型、不算素材。用一個獨特字串檢查它有沒有漏進模型請求。
+const ABOUT_ME_CANARY = "CANARY-關於我-7F3A";
+
+/** 模型請求裡「今天」那行換成固定字，兩次 run 跨過台灣午夜也能逐字比對。 */
+function withoutToday(content: string): string {
+  return content.replace(/### 今天（台灣時間）\n[^\n]*/, "### 今天（台灣時間）\n<today>");
+}
+
+Deno.test("handler：舊版 App 帶「關於我」→ 基本與進階都不進模型請求，送出的提示詞跟沒帶時逐字相同", async () => {
+  for (
+    const [label, extra, flag] of [
+      ["基本", {}, undefined],
+      ["進階", { topicContext: STORY }, "true"],
+    ] as const
+  ) {
+    const withAboutMe = await run(
+      body({ ...extra, effectiveStyleContext: ABOUT_ME_CANARY }),
+      flag,
+    );
+    assertEquals(withAboutMe.status, 200, label);
+    assertEquals(withAboutMe.modelRequests.length, 1, label);
+    assertFalse(
+      JSON.stringify(withAboutMe.modelRequests).includes(ABOUT_ME_CANARY),
+      `${label}：關於我漏進模型請求`,
+    );
+    const without = await run(body(extra), flag);
+    assertEquals(without.status, 200, label);
+    assertEquals(
+      withoutToday(withAboutMe.modelRequests[0].messages[0].content),
+      withoutToday(without.modelRequests[0].messages[0].content),
+      label,
+    );
+    assertEquals(
+      withAboutMe.modelRequests[0].system,
+      without.modelRequests[0].system,
+      label,
+    );
+  }
+});
+
+Deno.test("handler：舊版 App 只帶「關於我」、沒有其他素材 → 422 請先補資料，不查帳、不限流、不呼叫模型", async () => {
+  const result = await run(
+    {
+      mode: "new_topic",
+      requestId: REQUEST_ID,
+      effectiveStyleContext: ABOUT_ME_CANARY,
+    },
+    undefined,
+  );
+  assertEquals(result.status, 422);
+  assertEquals(result.json, {
+    error: "NEW_TOPIC_CONTEXT_REQUIRED",
+    code: "NEW_TOPIC_CONTEXT_REQUIRED",
+    message:
+      "請先提供對象作戰板或目前狀況其中一項，才能生成新話題。本次不會扣額度。",
+    shouldChargeQuota: false,
+  });
+  assertEquals(result.dbCalls, []);
+  assertEquals(result.modelRequests, []);
+});
+
+Deno.test("handler：舊版 App 帶的「關於我」照舊進重送指紋：部署前已落帳的同一筆照常回放；指紋少了它就對不上", async () => {
+  const sanitized = sanitizeNewTopicRequest(
+    body({ effectiveStyleContext: ABOUT_ME_CANARY }),
+  );
+  assert(sanitized.ok);
+  assertEquals(sanitized.request.effectiveStyleContext, ABOUT_ME_CANARY);
+  const hashWith = (effectiveStyleContext: string | null) =>
+    computeNewTopicInputHash({
+      userId: USER_ID,
+      partnerSummary: sanitized.request.partnerSummary,
+      effectiveStyleContext,
+      situation: sanitized.request.situation,
+      topicContext: sanitized.request.topicContext,
+      secret: STRONG_KEY,
+    });
+  const stored = buildNewTopicLedgerResult({
+    topics: MODEL_PAYLOAD.topics,
+    recommendationIndex: 0,
+    recommendationReason: "理由",
+    servedTier: "essential",
+  });
+  const doneRow = (inputHash: string) => ({
+    input_hash: inputHash,
+    state: "done",
+    lease_expires_at: new Date(Date.now() - 1000).toISOString(),
+    result_json: stored,
+  });
+
+  replayRowForNextRun = doneRow(await hashWith(ABOUT_ME_CANARY));
+  const replayed = await run(
+    body({ effectiveStyleContext: ABOUT_ME_CANARY }),
+    undefined,
+  );
+  assertEquals(replayed.status, 200);
+  assertEquals(replayed.json.topics, stored.topics);
+  assertEquals(replayed.modelRequests, []);
+  assertFalse(replayed.dbCalls.some((call) => call.startsWith("rpc:")));
+
+  // 對照組：帳本上是沒帶關於我的指紋，同一個編號帶了關於我就是不同內容。
+  replayRowForNextRun = doneRow(await hashWith(null));
+  const mismatched = await run(
+    body({ effectiveStyleContext: ABOUT_ME_CANARY }),
+    undefined,
+  );
+  assertEquals(mismatched.status, 409);
+  assertEquals(mismatched.json.code, "NEW_TOPIC_REQUEST_REPLAY_MISMATCH");
+  assertEquals(mismatched.modelRequests, []);
 });
 
 Deno.test("handler：開關開＋有 topicContext → 結構刀 system＋含局面段與五題任務的 user prompt", async () => {

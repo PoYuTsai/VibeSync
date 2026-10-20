@@ -72,6 +72,10 @@ const NEW_TOPIC_ALLOWED_KEYS = new Set([
 export type NewTopicSanitizedRequest = {
   requestId: string;
   partnerSummary: string | null;
+  /**
+   * 舊版 App 帶的「關於我」：只進重送指紋（new_topic_billing.ts），部署前後同
+   * 一筆重試才對得上；不交給模型、不算素材（只給 Coach 1:1，2026-08-04）。
+   */
   effectiveStyleContext: string | null;
   situation: NewTopicSituation | null;
   expectedTier: string | null;
@@ -214,15 +218,14 @@ export function sanitizeNewTopicRequest(
 }
 
 /**
- * 三類素材（作戰板摘要／關於我風格／情境）或用戶寫的素材原文至少一類有
- * 實質內容才可生成；全空必須在 rate limit、model、claim、charge 前回 422
- * （§1.4）。素材類型「沒有，幫我想」單獨不算。
+ * 作戰板摘要、情境或用戶寫的素材原文至少一類有實質內容才可生成；全空必須在
+ * rate limit、model、claim、charge 前回 422（§1.4）。素材類型「沒有，幫我想」
+ * 單獨不算；舊版 App 帶的「關於我」也不算，因為它不會交給模型。
  */
 export function hasNewTopicMaterial(
   request: NewTopicSanitizedRequest,
 ): boolean {
   return request.partnerSummary !== null ||
-    request.effectiveStyleContext !== null ||
     request.situation !== null ||
     (request.topicContext?.materialText ?? null) !== null;
 }
@@ -250,8 +253,8 @@ export type NewTopicModelNormalizeResult =
 export type NewTopicGroundingPolicy = {
   allowSharedFrame: boolean;
   /**
-   * 用戶給我們的原文：對象作戰板摘要（她的興趣、性格、備註）、關於我、進階
-   * 路徑的素材原文。只用來放行「用戶給的字」撞到內部術語的情況（例：她迷
+   * 用戶給我們、也交給模型的原文：對象作戰板摘要（她的興趣、性格、備註）、
+   * 進階路徑的素材原文。只用來放行「用戶給的字」撞到內部術語的情況（例：她迷
    * One Direction、在讀人間失格、素材寫了雙球冰淇淋或 stuck）；沒給就跟以前
    * 一模一樣。
    */

@@ -5,6 +5,7 @@ import {
 import {
   acceptsUserStyleContext,
   classifyAnalyzeChatRequest,
+  legacyStyleContextForHash,
   routeUserStyleContext,
 } from "./request_shape.ts";
 
@@ -61,15 +62,8 @@ Deno.test("形狀分類：recognizeOnly 非布林值 fail-closed", () => {
   if (nullish.ok) assertEquals(nullish.recognizeOnlyRequested, false);
 });
 
-Deno.test("style context 只進輔助寫訊息路徑，主分析與 OCR 一律丟棄", () => {
-  for (
-    const kind of [
-      "my_message",
-      "optimize_message",
-      "new_topic",
-      "opener",
-    ] as const
-  ) {
+Deno.test("style context 只進輔助寫訊息路徑；主分析、OCR、開場救星、新話題一律不交給模型", () => {
+  for (const kind of ["my_message", "optimize_message"] as const) {
     assert(acceptsUserStyleContext({ kind }));
   }
   for (
@@ -77,10 +71,26 @@ Deno.test("style context 只進輔助寫訊息路徑，主分析與 OCR 一律�
       "plain_analyze",
       "draft_with_images_analyze",
       "recognize",
+      "new_topic",
+      "opener",
+      "opener_analyze",
+      "opener_generate",
     ] as const
   ) {
     assertEquals(acceptsUserStyleContext({ kind }), false);
   }
+});
+
+Deno.test("legacy 關於我只留指紋：合法值原樣給指紋，不合法或沒帶當作沒有（不回 400）", () => {
+  assertEquals(
+    legacyStyleContextForHash({ effectiveStyleContext: "偏好自然短句" }),
+    "偏好自然短句",
+  );
+  assertEquals(
+    legacyStyleContextForHash({ error: "Invalid effectiveStyleContext" }),
+    undefined,
+  );
+  assertEquals(legacyStyleContextForHash({}), undefined);
 });
 
 Deno.test("主分析把 legacy style 留在 hash 相容層，但不送進模型", () => {

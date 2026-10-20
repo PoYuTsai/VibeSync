@@ -53,7 +53,6 @@ function context(
 /** 結構刀的使用者提示詞（任務由 planNewTopicSlots 依同一份輸入排）。 */
 function slotsPrompt(input: {
   partnerSummary: string | null;
-  effectiveStyleContext: string | null;
   situation: NewTopicSituation | null;
   topicContext: NewTopicTopicContext | null;
   requestId: string;
@@ -61,7 +60,6 @@ function slotsPrompt(input: {
 }): string {
   return buildNewTopicSlotsUserPrompt({
     partnerSummary: input.partnerSummary,
-    effectiveStyleContext: input.effectiveStyleContext,
     situation: input.situation,
     topicContext: input.topicContext,
     slots: planNewTopicSlots({
@@ -80,7 +78,6 @@ function promptFor(
 ): string {
   return slotsPrompt({
     partnerSummary: null,
-    effectiveStyleContext: null,
     situation,
     topicContext: context(raw, situation),
     requestId: REQUEST_ID,
@@ -579,7 +576,6 @@ Deno.test("user prompt：「我們」那一行永遠在局面最後，跟輸出�
     const rules = situationRules(
       slotsPrompt({
         partnerSummary,
-        effectiveStyleContext: null,
         situation,
         topicContext,
         requestId: REQUEST_ID,
@@ -675,7 +671,6 @@ Deno.test("user prompt（基本模式）：沒帶 topicContext → 局面只有�
   for (const [situation, label, rules] of expected) {
     const prompt = slotsPrompt({
       partnerSummary: "[對象作戰板：Miya]\n- 興趣：咖啡、爬山",
-      effectiveStyleContext: null,
       situation,
       topicContext: null,
       requestId: REQUEST_ID,
@@ -698,7 +693,6 @@ Deno.test("user prompt（基本模式）：沒帶 topicContext → 局面只有�
       prompt,
       slotsPrompt({
         partnerSummary: "[對象作戰板：Miya]\n- 興趣：咖啡、爬山",
-        effectiveStyleContext: null,
         situation,
         topicContext: {
           coldDuration: null,
@@ -771,7 +765,6 @@ Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () =
             if (!result.ok || result.topicContext === null) continue;
             const prompt = slotsPrompt({
               partnerSummary: null,
-              effectiveStyleContext: null,
               situation,
               topicContext: result.topicContext,
               requestId: REQUEST_ID,
@@ -822,7 +815,6 @@ Deno.test("user prompt：所有合法組合都不出現任何 enum 代碼", () =
   ) {
     const prompt = slotsPrompt({
       partnerSummary: null,
-      effectiveStyleContext: null,
       situation,
       topicContext: null,
       requestId: REQUEST_ID,
