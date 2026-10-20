@@ -92,6 +92,7 @@ import {
   shouldUseGuideV3,
   shouldUseGuideV3PreviousRound,
   shouldUseGuideV3TwoStage,
+  shouldUseGuideV3TypingStyle,
 } from "./guide_v3/routing.ts";
 import { scanSafetyKeywords } from "./guide_v3/safety.ts";
 import {
@@ -1855,6 +1856,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         subDailyUsed: sub.daily_messages_used,
         careOnlyFromQuota,
         twoStage,
+        // 口吻與斷句交給程式（開關 ANALYZE_GUIDE_V3_TYPING_STYLE，off／test／on，每次請求讀；Bruce
+        // 2026-10-20 改法 3）：每張卡的稱呼與斷句照他的打字習慣統一。沒開就一字不變。
+        typingStyle: shouldUseGuideV3TypingStyle({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TYPING_STYLE")),
+          accountIsTest,
+        }),
         ...createGuideV3ModelCalls({
           apiKey: CLAUDE_API_KEY,
           requestType,

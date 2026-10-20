@@ -32,6 +32,12 @@ import {
 } from "./plan.ts";
 import { finalizeCard, vetPlanText } from "./finalize.ts";
 import {
+  addTypingChanges,
+  detectTypingHabits,
+  NO_TYPING_CHANGES,
+  styleCard,
+} from "./typing_style.ts";
+import {
   EXPLAIN_SCHEMA,
   explainSystemPrompt,
   explainUserPrompt,
@@ -233,6 +239,9 @@ export interface GuideV3StreamDeps {
   /// 兩段式「正常回覆」實驗（開關 ANALYZE_GUIDE_V3_TWO_STAGE，handler 把關；Eric 2026-10-19
   /// 兩段式實驗）。沒給或 false：提示詞、schema、事件、trace 與扣費都跟今天一樣。
   twoStage?: boolean;
+  /// 口吻與斷句交給程式（開關 ANALYZE_GUIDE_V3_TYPING_STYLE，handler 把關；Bruce 2026-10-20 改法 3）：
+  /// 每張卡定稿、檢查過之後，送出之前照他的打字習慣統一稱呼與斷句。沒給或 false：一字不變。
+  typingStyle?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -1055,6 +1064,11 @@ class GuideV3Flow {
     const hisMessages = this.deps.messages.filter((m) => m.isFromMe).map((m) =>
       m.content
     );
+    // 口吻與斷句（Bruce 2026-10-20 改法 3）：只看他的訊息定習慣；沒開就不算、卡一字不變。
+    const typing = this.deps.typingStyle === true
+      ? detectTypingHabits(hisMessages)
+      : null;
+    let typingChanges = NO_TYPING_CHANGES;
     const delivered: GuideV3CardView[] = [];
     const removed: GuideV3Trace["removed"][number][] = [];
     const scoring: { slot: number; words: readonly string[] }[] = [];
@@ -1093,10 +1107,16 @@ class GuideV3Flow {
         });
         return true;
       }
+      // 外洩與安全檢查之後、扣費與送出之前改：送出的卡、扣費內容、存的結果與說明步驟都看同一份字。
+      const styled = typing ? styleCard(out.messages, typing) : null;
+      if (styled) {
+        typingChanges = addTypingChanges(typingChanges, styled.changes);
+      }
+      const messages = styled ? styled.messages : out.messages;
       const shown = cardView(
         card.card,
         spec,
-        out.messages,
+        messages,
         out.hasInventedDetail,
       );
       if (delivered.length === 0) {
@@ -1137,7 +1157,7 @@ class GuideV3Flow {
       if (out.rawMessages) {
         raws.push({ slot: card.card, messages: out.rawMessages });
       }
-      checks.push(cardChecks(card.card, out.messages, spec, hisMessages));
+      checks.push(cardChecks(card.card, messages, spec, hisMessages));
       return true;
     };
 
@@ -1216,6 +1236,9 @@ class GuideV3Flow {
       checks,
       sameOpening,
       herLastTurnChars: herChars,
+      ...(typing
+        ? { typingStyle: { habits: typing, changes: typingChanges } }
+        : {}),
     };
     if (stop?.kind === "charge_failed") {
       return await this.fail(emit, stop.event, {
