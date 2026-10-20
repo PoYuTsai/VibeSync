@@ -16,6 +16,10 @@ export function buildCoachSocialKnowledgeSelectionInput(
 ): SocialKnowledgeSelectionInput {
   return {
     ...input,
+    // 「關於我」不拿來挑參考卡（規格 PR-4a）：「卡住」「界線」這些標題字本身
+    // 就會命中關鍵字，不管使用者問什麼都會把冷掉、界線類的卡拉進來、擠掉真正
+    // 相關的。只改教練這側；analyze-chat 共用同一個選擇器，不動共享檔。
+    effectiveStyleContext: null,
     inviteSuppressed: shouldSuppressInviteLine(input.inviteHistory),
   };
 }
