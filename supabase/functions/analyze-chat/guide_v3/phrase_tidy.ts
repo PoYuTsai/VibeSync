@@ -9,7 +9,8 @@
 //  （主審第 1 輪 P2）。「這題我選你」這種拿掉考題字也通的說法，只拿掉那兩三個字。她自己的訊息就在講題目
 //  （HER_QUIZ_WORDS），這一條整個不做。
 // - 不怪：一小段只是在否認她擔心的字（不怪、不會怪、一點都不怪、完全不怪、沒有很怪、哪裡怪；奇怪、醜、
-//   胖同樣），而且她最新這一輪真的提到這個字，才拿掉；「不怪你」這種多了別的字的不動。
+//   胖同樣），而且她最新這一輪用問句問自己會不會很怪、很醜、很胖（HER_WORRY_FORMS），才拿掉；「會怪嗎」
+//   可能是怕你怪她、「我同事怪怪的」不是在問自己，都不算（主審第 1 輪 P2）。「不怪你」這種多了別的字的不動。
 // - 滿→蠻：「滿」後面接著常數表裡的形容詞或動詞、前面那個字也不會跟「滿」連成詞（充滿、裝滿……），
 //   才換成「蠻」；滿意、滿足、滿分這些，「滿」後面接的不在表裡，所以不動。
 // 拿掉之後這一則還要有字（語助詞、表情、標點不算），不然照原文；引號裡、網址、顏文字都不動。
@@ -54,37 +55,39 @@ export const QUIZ_FILLERS: readonly string[] = [
 export const QUIZ_FILLER_LEAD: readonly string[] = ["欸", "啊"];
 
 export interface WorryWord {
-  /// 她最新這一輪有這個字，才算她在擔心這件事。
+  /// 擔心的事（trace 只記她問了幾種）。
   readonly her: string;
-  /// 卡片否認時用的字（長的放前面）。
+  /// 她問句與卡片否認時用的字（長的放前面）。
   readonly card: readonly string[];
-  /// 她的訊息裡有這個字、但不是在擔心的詞（難怪、怪我……）。
-  readonly notWorry: readonly string[];
 }
 
 export const WORRY_WORDS: readonly WorryWord[] = [
-  {
-    her: "怪",
-    card: ["奇怪", "怪"],
-    notWorry: [
-      "難怪",
-      "怪我",
-      "怪你",
-      "怪妳",
-      "怪他",
-      "怪她",
-      "責怪",
-      "錯怪",
-      "見怪",
-      "怪罪",
-      "怪獸",
-      "妖怪",
-      "怪物",
-    ],
-  },
-  { her: "醜", card: ["醜"], notWorry: ["醜聞"] },
-  { her: "胖", card: ["胖"], notWorry: ["胖虎", "胖達"] },
+  { her: "怪", card: ["奇怪", "怪"] },
+  { her: "醜", card: ["醜"] },
+  { her: "胖", card: ["胖"] },
 ];
+/// 她問自己會不會怪、醜、胖的問法（W 換成擔心的字；主審第 1 輪 P2：只認有「很、太、變」的問句，光是
+///「會怪嗎」「怪怪的」「怪我」都不算）。她最新這一輪要有一小段整段剛好是：前面可以有「我、人家」、
+///「這樣」（剪、穿、畫、弄、染、燙、拍這樣）、「看起來」，接下面其中一種，後面只能有了、語助詞、表情。
+/// 前面是別人（我同事、他、這張）就不算：不確定是不是在問自己，照原文。
+export const HER_WORRY_FORMS: readonly string[] = [
+  "會很W嗎",
+  "會太W嗎",
+  "會不會很W",
+  "會不會太W",
+  "是不是很W",
+  "是不是太W",
+  "是不是變W",
+  "有沒有很W",
+  "有沒有變W",
+  "很W嗎",
+  "太W嗎",
+  "變W了嗎",
+  "看起來很W",
+  "看起來會很W",
+];
+const HER_WORRY_SUBJECT = "(?:我|人家)?(?:[剪穿畫弄染燙拍]?這樣)?(?:看起來)?";
+const HER_WORRY_TAIL = "了?[嗎呢啊欸喔吧啦耶齁]*";
 /// 否認的說法：前面可以有一兩個「一點都、完全……」，再來是「不、不會、沒有、沒」，中間可以有「很、太、
 /// 那麼」，然後是擔心的字；或是反問的「哪裡、哪會、哪有、怎麼會」加擔心的字。後面只能接語助詞，可以連說兩次。
 export const DENY_ADVERBS: readonly string[] = [
@@ -240,9 +243,13 @@ export function phraseTidyContext(args: {
   const all = args.herMessages.map(herText).filter((t): t is string =>
     t !== null
   );
+  // 她最新這一輪的每一小段（引號裡的是別人的話，不算）。
+  const herClauses = latest.flatMap((t) =>
+    piecesOf(t).filter((p) => !p.sep && !p.locked).map((p) => p.text)
+  );
   return {
     herWorries: WORRY_WORDS.filter((w) =>
-      latest.some((t) => mask(t, w.notWorry).includes(w.her))
+      herClauses.some((clause) => HER_WORRY_PATTERNS.get(w.her)!.test(clause))
     ).map((w) => w.her),
     herQuizWords: all.some((t) =>
       HER_QUIZ_WORDS.some((word) => mask(t, NOT_QUIZ_WORDS).includes(word))
@@ -275,6 +282,23 @@ function denyPattern(cardWords: readonly string[]): RegExp {
 
 const DENY_PATTERNS = new Map(
   WORRY_WORDS.map((w) => [w.her, denyPattern(w.card)]),
+);
+
+/// 她的一小段整段剛好是在問自己會不會很怪、很醜、很胖（HER_WORRY_FORMS）。
+const HER_WORRY_PATTERNS = new Map(
+  WORRY_WORDS.map((w) => {
+    const word = `(?:${alt(w.card)})`;
+    const forms = HER_WORRY_FORMS.map((f) =>
+      f.split("W").map(escape).join(word)
+    ).join("|");
+    return [
+      w.her,
+      new RegExp(
+        `^(?:欸|啊|那)?${HER_WORRY_SUBJECT}(?:${forms})${HER_WORRY_TAIL}${TRAILING_EMOJI}$`,
+        "u",
+      ),
+    ];
+  }),
 );
 
 /// 整段剛好是 QUIZ_FILLERS 的一句（開頭的「這題」可以是這一題、這道題）。

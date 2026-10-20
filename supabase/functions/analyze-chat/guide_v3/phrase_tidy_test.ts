@@ -192,8 +192,8 @@ Deno.test("不怪：只是在否認她擔心的字那一小段拿掉（Bruce 的
   assertEquals(tidy("哪有胖 你這樣剛好", fat), "你這樣剛好");
   assertEquals(tidy("沒那麼胖啦 很可愛", fat), "很可愛");
   const ugly = phraseTidyContext({
-    herLatest: ["這張會不會很醜"],
-    herMessages: ["這張會不會很醜"],
+    herLatest: ["我這樣會不會很醜"],
+    herMessages: ["我這樣會不會很醜"],
   });
   assertEquals(tidy("一點也不醜 很有氣質", ugly), "很有氣質");
   assertEquals(
@@ -229,17 +229,73 @@ Deno.test("不怪：她最新這一輪沒提到那個字就不動（別的擔心
       notWorry,
     );
   }
-  // 引用前綴是被引用的那句、照片貼圖是描述，都不算她說的。
+  for (
+    const kept of ["不怪你啊 很好看", "不會怪你 慢慢來", "有點怪 但很可愛"]
+  ) assertEquals(tidy(kept, ASKS_WEIRD), kept);
+});
+
+Deno.test("主審第 1 輪 P2：她要用問句問自己會不會很怪、很醜、很胖才算；怕你怪她、說別人怪怪的都不算，卡照原文", () => {
+  // 主審的反例：她是怕你怪她（取消約會），「不怪啊」是在回答她，不能拿掉。
+  const blame = phraseTidyContext({
+    herLatest: ["臨時取消約會很抱歉", "會怪嗎"],
+    herMessages: ["臨時取消約會很抱歉", "會怪嗎"],
+  });
+  assertEquals(blame.herWorries, []);
+  assertEquals(tidy("不怪啊 你先休息", blame), "不怪啊 你先休息");
+  for (
+    const notAsking of [
+      "我同事怪怪的",
+      "怪我囉",
+      "會不會很怪我",
+      "我同事是不是很怪",
+      "他會不會很胖",
+      "這張會不會很醜",
+      "我變胖了",
+      "會不會怪怪的",
+    ]
+  ) {
+    assertEquals(
+      phraseTidyContext({ herLatest: [notAsking], herMessages: [notAsking] })
+        .herWorries,
+      [],
+      notAsking,
+    );
+  }
+  // 問自己、有很／太／變的問句才算（可以先說我、這樣、看起來，後面可以有語助詞、表情、問號）。
+  for (
+    const [asking, worry] of [
+      ["會很怪嗎", "怪"],
+      ["會不會很怪", "怪"],
+      ["是不是很怪", "怪"],
+      ["很怪嗎？", "怪"],
+      ["看起來很怪", "怪"],
+      ["我這樣會不會很奇怪😂", "怪"],
+      ["欸 我剪這樣會太怪嗎", "怪"],
+      ["我是不是變胖了", "胖"],
+      ["會不會太胖啊", "胖"],
+      ["我穿這樣會很醜嗎", "醜"],
+      ["人家看起來是不是很醜", "醜"],
+    ]
+  ) {
+    assertEquals(
+      phraseTidyContext({ herLatest: [asking], herMessages: [asking] })
+        .herWorries,
+      [worry],
+      asking,
+    );
+  }
+  // 引用前綴是被引用的那句、照片貼圖是描述、引號裡是別人的話，都不算她問的。
   assertEquals(
     phraseTidyContext({
-      herLatest: ["（引用：「你穿這樣好怪」）哪有", "[照片：很怪的帽子]"],
+      herLatest: [
+        "（引用：「會很怪嗎」）哪有",
+        "[照片：會不會很怪的帽子]",
+        "他說「會很怪嗎」",
+      ],
       herMessages: [],
     }).herWorries,
     [],
   );
-  for (
-    const kept of ["不怪你啊 很好看", "不會怪你 慢慢來", "有點怪 但很可愛"]
-  ) assertEquals(tidy(kept, ASKS_WEIRD), kept);
 });
 
 Deno.test("滿→蠻：程度的「滿」後面接白名單的字才換（Bruce：蠻適合的、蠻好看的才對）", () => {
