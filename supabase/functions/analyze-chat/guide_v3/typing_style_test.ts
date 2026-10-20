@@ -229,3 +229,31 @@ Deno.test("主審第 1 輪 P2：網址大小寫都認、www. 開頭的也認、e
     "寄到 ni.you@example.com 妳看一下",
   );
 });
+
+Deno.test("主審第 1 輪 P3：看習慣跟改字用同一份保護——引號裡（沒關上的算到結尾）、網址裡的空白與句號不算他的斷句習慣", () => {
+  const quoted = Array(5).fill("她說「明天 見」");
+  assertEquals(
+    detectTypingHabits(["好，我等等過去", "嗯，晚點說", ...quoted]).usesCommas,
+    true,
+  );
+  assertEquals(
+    detectTypingHabits(["她說「好。", "她又說「嗯。", "好", "走吧"])
+      .endsWithPeriod,
+    false,
+  );
+  // 網址裡的空白不會有，但網址結尾的點不算句尾句號。
+  assertEquals(
+    detectTypingHabits(["看 www.example.com/a.", "這個 https://a.com/b."])
+      .endsWithPeriod,
+    false,
+  );
+  // 他自己引號外的空白斷句照算：兩則逗號、五則空白斷句 → 不到三分之一，不算用逗號。
+  assertEquals(
+    detectTypingHabits([
+      "好，我等等過去",
+      "嗯，晚點說",
+      ...Array(5).fill("我說 「明天見」"),
+    ]).usesCommas,
+    false,
+  );
+});

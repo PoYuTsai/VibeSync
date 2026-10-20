@@ -202,11 +202,17 @@ export function detectTypingHabits(
       }
     });
     if (hasComma) commaMessages++;
-    if (hasComma || hasInnerPeriod || SPACE_BREAK.test(text)) multiClause++;
+    // 空白斷句與句尾句號也只看他自己打的字：引號裡（沒關上的引號算到這一則結尾）、網址換成一個
+    // 不是空白也不是漢字的記號再比（主審第 1 輪 P3：「她說「明天 見」」不算他用空白斷句，
+    //「她說「好。」不算他習慣句尾打句號）。
+    const own = chars.map((c, i) => inQuote[i] || frozen[i] ? "□" : c).join("");
+    if (hasComma || hasInnerPeriod || SPACE_BREAK.test(own)) multiClause++;
     const last = chars.length - 1;
+    const lastIsHis = !inQuote[last] && !frozen[last];
     if (
-      (chars[last] === "。" && !inPeriodRun(chars, last)) ||
-      (chars[last] === "." && HAN.test(chars[last - 1] ?? ""))
+      lastIsHis &&
+      ((chars[last] === "。" && !inPeriodRun(chars, last)) ||
+        (chars[last] === "." && HAN.test(chars[last - 1] ?? "")))
     ) periodEnds++;
   }
   const habit = (count: number, total: number) =>
