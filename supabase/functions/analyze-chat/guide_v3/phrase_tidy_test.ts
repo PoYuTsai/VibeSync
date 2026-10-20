@@ -58,9 +58,13 @@ Deno.test("常數：考題字、她在講題目的字、題材不算；擔心的
   }
   assertEquals(WORRY_WORDS.map((w) => w.her), ["怪", "醜", "胖"]);
   for (
-    const word of ["適合", "好看", "有", "可愛", "喜歡", "會", "想", "加分"]
+    const word of ["適合", "好看", "可愛", "喜歡", "加分", "有勇氣", "有精神"]
   ) assert(DEGREE_MAN_NEXT.includes(word), word);
-  for (const c of "充裝圓美不客期") assert(MAN_COMPOUND_BEFORE.includes(c), c);
+  // 主審第 1 輪 P2：白名單只收兩個字以上的詞。
+  assert(DEGREE_MAN_NEXT.every((w) => [...w].length >= 2));
+  for (const c of "充裝圓美不客期繳很太好超") {
+    assert(MAN_COMPOUND_BEFORE.includes(c), c);
+  }
 });
 
 Deno.test("這題：Bruce 點名的例子——考題那一小段拿掉，其他照原樣", () => {
@@ -353,6 +357,31 @@ Deno.test("滿→蠻 不動的：滿意、滿足、充滿、滿分……（後�
       "滿不在乎",
     ]
   ) assertEquals(tidy(kept), kept);
+});
+
+Deno.test("主審第 1 輪 P2：「滿」後面一個字的、前面是很太好超的，不確定是不是「很」的意思，都照原文", () => {
+  for (
+    const kept of [
+      // 主審的反例：「會」是下一個詞的開頭、「繳滿」是繳完。
+      "行程很滿會累",
+      "月底之前要繳滿會費",
+      // 前面是很、太、好、超：滿是形容詞（很滿＝很擠）。
+      "這週很滿適合下週再約",
+      "今天很滿好的明天聊",
+      "時間太滿有點累",
+      "排得超滿想休息",
+      // 一個字的不收：滿會、滿想、滿多、滿好（之前跑過的卡沒有這些用法）。
+      "滿會打扮的",
+      "滿想去的",
+      "滿多人的",
+      "滿好的",
+    ]
+  ) assertEquals(tidy(kept), kept);
+  // 之前跑過的卡的用法照常換。
+  assertEquals(tidy("而且敢剪這麼短 滿有勇氣的"), "而且敢剪這麼短 蠻有勇氣的");
+  assertEquals(tidy("還滿有氣質的"), "還蠻有氣質的");
+  assertEquals(tidy("看起來滿有精神的"), "看起來蠻有精神的");
+  assertEquals(tidy("玩得滿開心的"), "玩得蠻開心的");
 });
 
 Deno.test("受保護的字不動：引號裡、網址、顏文字裡的「這題」「不怪」「滿」都照原樣", () => {
