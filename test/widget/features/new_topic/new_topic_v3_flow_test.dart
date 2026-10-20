@@ -117,6 +117,10 @@ late StreamController<String?> ownerEvents;
 String owner = 'a';
 List<Partner> partners = [];
 String? style;
+
+/// 對象作戰板有沒有可用的訊號（預設沒有）。測試要「素材夠、可以生成」時設 true；
+/// 「關於我」只給 Coach 1:1，style 不算新話題素材（2026-10-20）。
+bool signals = false;
 bool blocked = false;
 bool refreshFails = false;
 Completer<void>? refreshGate;
@@ -173,7 +177,9 @@ Future<ProviderContainer> _pump(WidgetTester t,
             .overrideWith((_, id) => NewTopicPartnerContext.empty),
         newTopicReadinessProvider.overrideWith((_, id) => blocked
             ? NewTopicReadiness.dataQualityBlocked
-            : NewTopicReadiness.readyWithoutPartnerSignals),
+            : signals
+                ? NewTopicReadiness.readyWithPartnerSignals
+                : NewTopicReadiness.readyWithoutPartnerSignals),
         newTopicStyleContextProvider.overrideWith(
             (_, id) => styleLoader?.call() ?? Future.value(style)),
         subscriptionProvider.overrideWith((_) => _Sub()),
@@ -264,6 +270,7 @@ void main() {
     owner = 'a';
     partners = [_partner('p')];
     style = null;
+    signals = false;
     blocked = false;
     refreshFails = false;
     refreshGate = null;
@@ -287,7 +294,7 @@ void main() {
 
 
   testWidgets('額度不足：伺服器回過額度不足的那筆不再顯示「重試／將使用 3 則」，主按鈕改成升級方案', (t) async {
-    style = '有效風格';
+    signals = true;
     final container = await _pump(t, paywallRoute: true);
     await _tapGenerate(t);
     // 擋下的是今日額度：畫面照目前方案（免費）組說明（主審第 1 輪 P2-2）。
@@ -339,7 +346,7 @@ void main() {
       Map<String, dynamic>? payload}) async {
     final body = payload ?? quota429(monthly: monthly);
     subTier = tier;
-    style = '有效風格';
+    signals = true;
     quotaRequests = 0;
     NewTopicView.debugServiceFactory = () => NewTopicService(
           accessTokenProvider: () => 'token',
@@ -449,7 +456,7 @@ void main() {
   // 帶的方案。
   testWidgets('升級後重試：待重試那筆是 Starter 送的，現在是 Essential，429 只說什麼時候恢復', (t) async {
     subTier = SubscriptionTierHelper.starter;
-    style = '有效風格';
+    signals = true;
     final sentTiers = <Object?>[];
     NewTopicView.debugServiceFactory = () => NewTopicService(
           accessTokenProvider: () => 'token',
@@ -493,7 +500,7 @@ void main() {
   });
 
   testWidgets('請求編號已用於不同內容（409）：顯示訊息、不留重試，再按生成換新編號', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     final first = _service.calls.single['id'];
@@ -508,7 +515,7 @@ void main() {
   });
 
   testWidgets('複製開場句送出去識別化事件：只記是不是推薦那題，不含句子', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     _service.replies.single.complete(_result(_service.calls.single['id']!));
@@ -623,7 +630,7 @@ void main() {
   });
 
   testWidgets('生成中離開並重建畫面，同答案送出相同 requestId', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapVisible(t, find.text('冷掉了，想重新聊'));
     await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
@@ -652,7 +659,7 @@ void main() {
   });
 
   testWidgets('成功交付後離開再生成，送出新的 requestId', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     final firstId = _service.calls.single['id']!;
@@ -670,7 +677,7 @@ void main() {
   });
 
   testWidgets('正式結果立即結束生成，不等待額度刷新', (t) async {
-    style = '有效風格';
+    signals = true;
     refreshGate = Completer<void>();
     await _pump(t);
     await _tapGenerate(t);
@@ -693,7 +700,7 @@ void main() {
   });
 
   testWidgets('階段開始沒有完成勾勾，最後確認收起骨架但不提早交付', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     for (var n = 1; n <= 5; n++) {
@@ -782,6 +789,11 @@ void main() {
     container.invalidate(newTopicStyleContextProvider('p'));
     await t.pump();
     await t.pump();
+    expect(_button(t).onPressed, isNull,
+        reason: '「關於我」只給 Coach 1:1，不算新話題素材');
+    signals = true;
+    container.invalidate(newTopicReadinessProvider('p'));
+    await t.pump();
     expect(_button(t).onPressed, isNotNull);
     blocked = true;
     container.invalidate(newTopicReadinessProvider('p'));
@@ -812,7 +824,7 @@ void main() {
       'NT-13 double tap consent has one preparation; cancellation releases lock',
       (t) async {
     SharedPreferences.setMockInitialValues({});
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     // Two real pointer taps before the disabled rebuild must still share one
     // preparation and one consent dialog.
@@ -833,7 +845,7 @@ void main() {
   testWidgets(
       'NT-16/17/21 retry freezes all fields despite provider updates and usage refresh failure',
       (t) async {
-    style = '原始風格';
+    signals = true;
     final container = await _pump(t);
     await _tapGenerate(t);
     expect(_service.calls, hasLength(1));
@@ -842,8 +854,8 @@ void main() {
     await t.pump();
     expect(find.text('確認本次結果'), findsOneWidget);
     await _capture(t, 'topic-pending-retry');
-    style = null;
-    container.invalidate(newTopicStyleContextProvider('p'));
+    signals = false;
+    container.invalidate(newTopicReadinessProvider('p'));
     await t.pump();
     await t.pump();
     expect(_button(t).onPressed, isNotNull,
@@ -862,7 +874,7 @@ void main() {
   testWidgets(
       'NT-18 actual HTTP model 429 stays on page and retries without opening paywall',
       (t) async {
-    style = '有效風格';
+    signals = true;
     final requests = <Map<String, dynamic>>[];
     NewTopicView.debugServiceFactory = () => NewTopicService(
           accessTokenProvider: () => 'synthetic-token',
@@ -901,7 +913,7 @@ void main() {
   testWidgets(
       'NT-14/15 result change needs confirmation; same partner keeps result',
       (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     _service.replies.single.complete(_result(_service.calls.single['id']!));
@@ -929,7 +941,7 @@ void main() {
 
   testWidgets('NT-22 offstage completion keeps current mode and defers scroll',
       (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     _active.value = false;
@@ -954,7 +966,7 @@ void main() {
   testWidgets('offstage preparation never opens consent after style resolves',
       (t) async {
     SharedPreferences.setMockInitialValues({});
-    style = '原本已載入的風格';
+    signals = true;
     final container = await _pump(t);
     final wait = Completer<String?>();
     styleLoader = () => wait.future;
@@ -976,7 +988,7 @@ void main() {
 
   testWidgets('changing conditions retires pending confirmation label',
       (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapGenerate(t);
     _service.replies.single.completeError(
@@ -998,7 +1010,7 @@ void main() {
   });
 
   testWidgets('兩段式：追問依第一問切換、教練提醒即時更新、換第一問清追問留素材', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     expect(find.text('多久沒聊了？'), findsNothing);
     expect(_key('new-topic-coach-tip'), findsNothing);
@@ -1045,7 +1057,7 @@ void main() {
   });
 
   testWidgets('素材輸入框：選了才出現，沒寫或超長不能生成，超長不截斷', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     expect(_button(t).onPressed, isNotNull);
     expect(_materialField, findsNothing);
@@ -1089,7 +1101,7 @@ void main() {
   });
 
   testWidgets('結果顯示這組根據、輸入框唯讀；調整狀況確認後清結果並保留答案', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapVisible(t, find.text('冷掉了，想重新聊'));
     await _tapVisible(t, _key('new-topic-cold-duration-weeks'));
@@ -1143,7 +1155,7 @@ void main() {
   });
 
   testWidgets('進階不可用：先不要保留錯誤；用基本模式重送不帶 topicContext 且保留答案與文字', (t) async {
-    style = '有效風格';
+    signals = true;
     await _pump(t);
     await _tapVisible(t, find.text('聊得不錯，想更靠近'));
     await _tapVisible(t, _key('new-topic-engagement-green'));
@@ -1239,7 +1251,7 @@ void main() {
         'preparation invalidated by ${removePartner ? 'partner deletion' : 'owner change'}',
         (t) async {
       SharedPreferences.setMockInitialValues({});
-      style = '有效風格';
+      signals = true;
       final container = await _pump(t);
       final wait = Completer<String?>();
       styleLoader = () => wait.future;
@@ -1265,7 +1277,7 @@ void main() {
 
   testWidgets('NT-23 account or deleted partner rejects late provider result',
       (t) async {
-    style = '有效風格';
+    signals = true;
     final container = await _pump(t);
     await _tapGenerate(t);
     owner = 'b';
@@ -1285,7 +1297,7 @@ void main() {
     testWidgets(
         'topic result remains readable in real 320 viewport scale=$scale',
         (t) async {
-      style = '有效風格';
+      signals = true;
       await _pump(t, scale: scale, size: const Size(320, 568));
       await _tapGenerate(t);
       _service.replies.single.complete(_result(_service.calls.single['id']!));
@@ -1298,7 +1310,7 @@ void main() {
     });
     testWidgets('NT-24/SH-04 320 width scale=$scale and own quota sheet',
         (t) async {
-      style = '有效風格';
+      signals = true;
       await _pump(t, scale: scale, size: const Size(320, 568));
       await t.ensureVisible(find.text('還在聊，但接不下去'));
       await t.tap(find.text('還在聊，但接不下去'));

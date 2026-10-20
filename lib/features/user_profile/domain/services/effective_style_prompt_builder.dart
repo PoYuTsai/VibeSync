@@ -9,8 +9,8 @@ import 'resolve_effective_style.dart';
 /// 2026-08-04 拍板：關於我只用來增加 Coach 1:1 對使用者的了解，不再影響
 /// analyze-chat 五風格回覆／開場白／新話題的實際輸出內容。互動風格／
 /// 舒適區（延伸標記）概念一併移除——「關於我」的互動風格選擇區塊也已從
-/// UI 拿掉。[buildForAnalysis]／[buildForOpener]／[buildForNewTopic] 因此
-/// 恆定回傳 null；呼叫端本來就把 null 視為「沒有關於我設定」的正常狀態。
+/// UI 拿掉。開場白與新話題的入口已拆掉（2026-10-20），那兩邊不讀任何關於我
+/// 來源；[buildForAnalysis] 仍恆定回傳 null，等對話分析那側一起拆。
 class EffectiveStylePromptBuilder {
   static const int coachFollowUpMaxChars = 900;
 
@@ -18,22 +18,6 @@ class EffectiveStylePromptBuilder {
 
   /// analyze-chat / my_message / userDraft optimize 不再讀取關於我。
   String? buildForAnalysis({
-    required UserProfile? global,
-    required PartnerStyleOverride? partner,
-    required bool includePartnerOverride,
-  }) =>
-      null;
-
-  /// Opener (F3-1) 不再讀取關於我。
-  String? buildForOpener({
-    required UserProfile? global,
-    required PartnerStyleOverride? partner,
-    required bool includePartnerOverride,
-  }) =>
-      null;
-
-  /// New Topic（破冰腦力）不再讀取關於我。
-  String? buildForNewTopic({
     required UserProfile? global,
     required PartnerStyleOverride? partner,
     required bool includePartnerOverride,

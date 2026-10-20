@@ -1,43 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
-import '../../../user_profile/data/providers/partner_style_providers.dart';
-import '../../../user_profile/data/providers/user_profile_providers.dart';
-
-/// F3-1: Spec 2.5 style context for the opener prompt. Mirrors
-/// `coachFollowUpStyleContextProvider`, with two opener twists: the partnerId
-/// is optional (opener often runs before a partner exists), and the builder
-/// slice carries the no-fabricated-common-ground guard.
+/// 開場救星送出的 effectiveStyleContext。「關於我」只給 Coach 1:1
+/// （2026-08-04），這裡固定回 null，不讀任何關於我或對象風格設定；伺服器
+/// 也只拿舊版 App 帶來的值算重送指紋（2026-10-20）。
 ///
-/// Future-based on purpose (Codex R1 P2): the async profile/partner deps are
-/// awaited so a cold opener entry still resolves the style snapshot *before*
-/// `beginAttempt` mints the requestId. A `valueOrNull` sync read would send
-/// no style on first use, then flip the fingerprint once deps load — a lost
-/// charged response could no longer dedup on retry (double-charge risk).
+/// Provider 本身保留：開場救星畫面每次嘗試前會 await 它，再把結果和
+/// requestId 一起凍結進 OpenerAttempt，重送指紋才不會漂移（Codex R1 P2）。
+/// 拿掉它要一併改畫面與防重複邏輯，另案處理。
 final openerStyleContextProvider =
-    FutureProvider.family<String?, String?>((ref, partnerId) async {
-  final global = await ref.watch(userProfileControllerProvider.future);
-  final builder = ref.watch(effectiveStylePromptBuilderProvider);
-
-  final id = partnerId?.trim();
-  if (id == null || id.isEmpty) {
-    return builder.buildForOpener(
-      global: global,
-      partner: null,
-      includePartnerOverride: false,
-    );
-  }
-
-  // Spec 3: a flagged partner card suspends partner-specific style memory.
-  final includePartnerOverride =
-      !ref.watch(dataQualityFlagProvider(id)).isFlagged;
-  final partner = includePartnerOverride
-      ? await ref.watch(partnerStyleOverrideProvider(id).future)
-      : null;
-
-  return builder.buildForOpener(
-    global: global,
-    partner: partner,
-    includePartnerOverride: includePartnerOverride,
-  );
-});
+    FutureProvider.family<String?, String?>((ref, partnerId) async => null);

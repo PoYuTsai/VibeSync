@@ -2,8 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../partner/presentation/providers/partner_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
-import '../../../user_profile/data/providers/partner_style_providers.dart';
-import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../domain/services/new_topic_partner_context_builder.dart';
 import '../services/new_topic_request_session.dart';
 
@@ -16,36 +14,15 @@ final newTopicRequestSessionProvider =
   (ref, key) => NewTopicRequestSession(),
 );
 
-/// 新話題的 Spec 2.5 style context。鏡像 openerStyleContextProvider 的
-/// Future-based 設計：async 依賴 await 完才 beginAttempt 鑄 requestId，
-/// 避免冷啟動 sync 讀到 loading 造成指紋漂移（同 Codex R1 P2 教訓）。
+/// 新話題送出的 effectiveStyleContext。「關於我」只給 Coach 1:1
+/// （2026-08-04），這裡固定回 null，不讀任何關於我或對象風格設定；伺服器
+/// 也不把它算成素材（2026-10-20）。
+///
+/// Provider 本身保留：畫面每次嘗試前會 await 它，再和 requestId 一起凍結進
+/// 請求（同 openerStyleContextProvider）。拿掉它要一併改畫面與防重複邏輯，
+/// 另案處理。
 final newTopicStyleContextProvider =
-    FutureProvider.family<String?, String?>((ref, partnerId) async {
-  final global = await ref.watch(userProfileControllerProvider.future);
-  final builder = ref.watch(effectiveStylePromptBuilderProvider);
-
-  final id = partnerId?.trim();
-  if (id == null || id.isEmpty) {
-    return builder.buildForNewTopic(
-      global: global,
-      partner: null,
-      includePartnerOverride: false,
-    );
-  }
-
-  // Spec 3: flagged partner card 暫停 partner-specific style memory。
-  final includePartnerOverride =
-      !ref.watch(dataQualityFlagProvider(id)).isFlagged;
-  final partner = includePartnerOverride
-      ? await ref.watch(partnerStyleOverrideProvider(id).future)
-      : null;
-
-  return builder.buildForNewTopic(
-    global: global,
-    partner: partner,
-    includePartnerOverride: includePartnerOverride,
-  );
-});
+    FutureProvider.family<String?, String?>((ref, partnerId) async => null);
 
 /// 對象作戰板脈絡：owner-scoped Partner＋其 conversations。Partner 不存在
 /// 回 empty（readiness 另行判 missingPartner）。
@@ -66,13 +43,13 @@ enum NewTopicReadiness {
   missingPartner,
 
   /// Partner 被 data-quality flag 判定不可用：必須阻擋，不能用
-  /// About Me／情境繞過。
+  /// 情境或素材原文繞過。
   dataQualityBlocked,
 
   /// Partner 有實質作戰板訊號。
   readyWithPartnerSignals,
 
-  /// Partner 合法但沒有實質訊號——仍可靠 style context 或 situation 生成
+  /// Partner 合法但沒有實質訊號——仍可靠情境或素材原文生成
   /// （UI 應提示建議可能較通用）。
   readyWithoutPartnerSignals,
 }
@@ -96,11 +73,11 @@ final newTopicReadinessProvider =
 });
 
 /// Generation readiness 總判（計畫 §9.5）：
-/// partner 存在 AND 未 flagged AND（作戰板有訊號 OR style context 非空 OR
-/// situation 已選 OR 有送素材原文；同 server hasNewTopicMaterial）。
+/// partner 存在 AND 未 flagged AND（作戰板有訊號 OR situation 已選 OR 有送
+/// 素材原文；同 server hasNewTopicMaterial）。「關於我」只給 Coach 1:1，
+/// 不算素材。
 bool canGenerateNewTopic({
   required NewTopicReadiness readiness,
-  required String? styleContext,
   required String? situation,
   bool hasMaterialText = false,
 }) {
@@ -109,7 +86,5 @@ bool canGenerateNewTopic({
     return false;
   }
   if (readiness == NewTopicReadiness.readyWithPartnerSignals) return true;
-  return hasMaterialText ||
-      (styleContext?.trim().isNotEmpty ?? false) ||
-      (situation?.trim().isNotEmpty ?? false);
+  return hasMaterialText || (situation?.trim().isNotEmpty ?? false);
 }

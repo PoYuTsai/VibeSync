@@ -432,7 +432,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       if (pending == null &&
           !canGenerateNewTopic(
               readiness: ref.read(newTopicReadinessProvider(partnerId)),
-              styleContext: styleContext,
               situation: situation,
               hasMaterialText: _hasMaterialText(topicContext))) {
         setState(() => _error = '請選一個目前情境，或先補充對象資料。');
@@ -560,7 +559,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
       // 基本模式不帶素材原文：它自己生得出來才提議，否則請用戶先選第一問。
       offerBasic = canGenerateNewTopic(
           readiness: ref.read(newTopicReadinessProvider(partnerId)),
-          styleContext: styleContext,
           situation: situation,
           hasMaterialText: false);
       setState(() => _error = offerBasic
@@ -748,8 +746,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
         : !loading &&
             canGenerateNewTopic(
                 readiness: readiness,
-                styleContext:
-                    pending?.effectiveStyleContext ?? style.valueOrNull,
                 situation: _situation,
                 hasMaterialText: hasMaterialText);
     // 選了要寫的素材卻沒寫或超長：不能生成，不偷偷截斷。
@@ -761,7 +757,6 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     // 第一問以外的素材（含用戶寫的那句）夠不夠：夠就可以不選第一問。
     final otherMaterials = canGenerateNewTopic(
         readiness: readiness,
-        styleContext: style.valueOrNull,
         situation: null,
         hasMaterialText: hasMaterialText);
     final usage = ref.watch(subscriptionProvider);

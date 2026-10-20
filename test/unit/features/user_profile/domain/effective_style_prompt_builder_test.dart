@@ -5,9 +5,9 @@ import 'package:vibesync/features/user_profile/domain/services/effective_style_p
 
 // 2026-08-04 拍板：關於我只用來增加 Coach 1:1 對使用者的了解，不再影響
 // analyze-chat 五風格回覆／開場白／新話題的實際輸出內容。互動風格／舒適區
-// （延伸標記）概念一併移除。buildForAnalysis/buildForOpener/buildForNewTopic
-// 因此恆定回傳 null；只有 buildForCoachFollowUp 仍讀取關於我，Batch D
-// 會明確帶入主／副風格、句長與問句密度。
+// （延伸標記）概念一併移除。開場白與新話題的入口已拆掉（2026-10-20），
+// buildForAnalysis 仍恆定回傳 null；只有 buildForCoachFollowUp 仍讀取關於我，
+// Batch D 會明確帶入主／副風格、句長與問句密度。
 void main() {
   const builder = EffectiveStylePromptBuilder();
   final now = DateTime(2026, 5, 5);
@@ -71,41 +71,6 @@ void main() {
           global: profile(style: InteractionStyle.gentle),
           partner: override(style: InteractionStyle.direct, notes: '直接一點'),
           includePartnerOverride: true,
-        ),
-        isNull,
-      );
-    });
-  });
-
-  group('EffectiveStylePromptBuilder.buildForOpener is permanently off', () {
-    test('returns null even with a fully populated global profile', () {
-      expect(
-        builder.buildForOpener(
-          global: profile(
-            style: InteractionStyle.humorous,
-            goals: const [PracticeGoal.findCompatiblePartner],
-            seeds: const [TopicSeed.fitness, TopicSeed.coffee],
-            customTopics: '日劇',
-            notes: '我慢熟，開場不要太衝',
-          ),
-          partner: null,
-          includePartnerOverride: true,
-        ),
-        isNull,
-      );
-    });
-  });
-
-  group('EffectiveStylePromptBuilder.buildForNewTopic is permanently off', () {
-    test('returns null even with a fully populated global profile', () {
-      expect(
-        builder.buildForNewTopic(
-          global: profile(
-            style: InteractionStyle.humorous,
-            seeds: const [TopicSeed.fitness, TopicSeed.coffee],
-          ),
-          partner: null,
-          includePartnerOverride: false,
         ),
         isNull,
       );
