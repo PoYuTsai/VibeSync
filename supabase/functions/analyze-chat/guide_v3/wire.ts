@@ -333,10 +333,9 @@ export interface GuideV3Trace {
     readonly habits: TypingHabits;
     readonly changes: TypingChanges;
   };
-  /// 「這題」「不怪」「滿→蠻」開著、有出卡才有：她最新這一輪提到幾種擔心、是不是自己在講題目，與整組
-  /// 改了幾處（只有次數與真假，不放字；phrase_tidy.ts）。
+  /// 「這題」「滿→蠻」開著、有出卡才有：她是不是自己在講題目，與整組改了幾處（只有次數與真假，不放字；
+  /// phrase_tidy.ts）。
   readonly phraseTidy?: {
-    readonly herWorries: number;
     readonly herQuizWords: boolean;
     readonly changes: PhraseTidyChanges;
   };

@@ -1,16 +1,13 @@
-// 卡片的「這題」「不怪」「滿」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY；Bruce 2026-10-20 PR #97：「這題」
-//「不怪」再處理、先看例子再決定，程度的「滿」要寫「蠻」）：提示詞改了兩次都沒變少——她問是不是最好看，卡常
-// 先說「這題我不用想」；她問會不會很怪，卡常先說「不怪啊」，把負面的字又講一次。每張卡定稿、口吻與斷句
-// 改完之後、送出之前，照下面三條改字；不重新生成、不增減則數。純函式，不碰模型與資料庫。
+// 卡片的「這題」「滿」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY；Bruce 2026-10-20 PR #97：「這題」再處理、
+// 先看例子再決定，程度的「滿」要寫「蠻」）：提示詞改了兩次都沒變少——她問是不是最好看，卡常先說「這題我不用想」。
+// 每張卡定稿、口吻與斷句改完之後、送出之前，照下面兩條改字；不重新生成、不增減則數。純函式，不碰模型與資料庫。
+// 「不怪」那條 Bruce 看過例子後決定不用（Bruce 2026-10-21 PR #97：只用這題和蠻），已經拿掉。
 //
 // 規則（字表都在下面的常數，Bruce 可以調）：
 // - 這題：一則裡用空白或標點隔開的一小段，整段剛好是把她的問題當考題、自己沒有內容的說法（QUIZ_FILLERS，
 //   例如「這題不用想」），才拿掉；有別的字的（這題當然第一名啊、這題海邊勝出）不確定答案在不在裡面，照原文
 //  （主審第 1 輪 P2）。「這題我選你」這種拿掉考題字也通的說法，只拿掉那兩三個字。她自己的訊息就在講題目
 //  （HER_QUIZ_WORDS），這一條整個不做。
-// - 不怪：一小段只是在否認她擔心的字（不怪、不會怪、一點都不怪、完全不怪、沒有很怪、哪裡怪；奇怪、醜、
-//   胖同樣），而且她最新這一輪用問句問自己會不會很怪、很醜、很胖（HER_WORRY_FORMS），才拿掉；「會怪嗎」
-//   可能是怕你怪她、「我同事怪怪的」不是在問自己，都不算（主審第 1 輪 P2）。「不怪你」這種多了別的字的不動。
 // - 滿→蠻：「滿」後面整個接著常數表裡兩個字以上的詞（適合、好看、有勇氣……）、前面那個字也不會跟「滿」
 //   連成詞（充滿、裝滿、很滿……），才換成「蠻」；滿意、滿足、滿分、滿會費這些不在表裡，所以不動。
 // 拿掉之後這一則還要有字（語助詞、表情、顏文字、網址、標點不算），不然照原文；引號裡、網址、顏文字都不動。
@@ -55,63 +52,8 @@ export const QUIZ_FILLERS: readonly string[] = [
 /// 考題說法前面可以有的語氣詞。
 export const QUIZ_FILLER_LEAD: readonly string[] = ["欸", "啊"];
 
-export interface WorryWord {
-  /// 擔心的事（trace 只記她問了幾種）。
-  readonly her: string;
-  /// 她問句與卡片否認時用的字（長的放前面）。
-  readonly card: readonly string[];
-}
-
-export const WORRY_WORDS: readonly WorryWord[] = [
-  { her: "怪", card: ["奇怪", "怪"] },
-  { her: "醜", card: ["醜"] },
-  { her: "胖", card: ["胖"] },
-];
-/// 她問自己會不會怪、醜、胖的問法（W 換成擔心的字；主審第 1 輪 P2：只認有「很、太、變」的問句，光是
-///「會怪嗎」「怪怪的」「怪我」都不算）。她最新這一輪要有一小段整段剛好是：前面可以有「我、人家」、
-///「這樣」（剪、穿、畫、弄、染、燙、拍這樣）、「看起來」，接下面其中一種，後面只能有了、語助詞、表情。
-/// 前面是別人（我同事、他、這張）就不算：不確定是不是在問自己，照原文。
-export const HER_WORRY_FORMS: readonly string[] = [
-  "會很W嗎",
-  "會太W嗎",
-  "會不會很W",
-  "會不會太W",
-  "是不是很W",
-  "是不是太W",
-  "是不是變W",
-  "有沒有很W",
-  "有沒有變W",
-  "很W嗎",
-  "太W嗎",
-  "變W了嗎",
-  "看起來很W",
-  "看起來會很W",
-];
-const HER_WORRY_SUBJECT = "(?:我|人家)?(?:[剪穿畫弄染燙拍]?這樣)?(?:看起來)?";
-const HER_WORRY_TAIL = "了?[嗎呢啊欸喔吧啦耶齁]*";
-/// 否認的說法：前面可以有一兩個「一點都、完全……」，再來是「不、不會、沒有、沒」，中間可以有「很、太、
-/// 那麼」，然後是擔心的字；或是反問的「哪裡、哪會、哪有、怎麼會」加擔心的字。後面只能接語助詞，可以連說兩次。
-export const DENY_ADVERBS: readonly string[] = [
-  "一點都",
-  "一點也",
-  "完全",
-  "根本",
-  "真的",
-  "其實",
-  "也",
-  "都",
-  "才",
-  "並",
-];
-export const DENY_NEGATORS: readonly string[] = ["不會", "不", "沒有", "沒"];
-export const DENY_RHETORICAL: readonly string[] = [
-  "哪裡",
-  "哪會",
-  "哪有",
-  "怎麼會",
-];
-export const DENY_DEGREES: readonly string[] = ["很", "太", "那麼"];
-export const DENY_PARTICLES = "啊啦呀喔哦噢欸耶吧的呢嘛唷咧";
+/// 考題說法後面可以接的語助詞。
+export const TRAILING_PARTICLES = "啊啦呀喔哦噢欸耶吧的呢嘛唷咧";
 
 /// 「滿」當「很」用時，後面接的形容詞或動詞（Bruce 2026-10-20：蠻適合的、蠻好看的才對）。只收兩個字以上、
 /// 整個詞都在這裡的：Bruce 列的詞，加上之前跑過的卡出現過的加分、有勇氣、有氣質、有精神。一個字的（會、想、
@@ -168,8 +110,6 @@ const TRAILING_EMOJI =
 const QUOTE_CHARS = new Set(['"', ...QUOTE_PAIRS.flat()]);
 
 export interface PhraseTidyContext {
-  /// 她最新這一輪提到的擔心（WORRY_WORDS 的 her）；只有這些字的否認會拿掉。
-  readonly herWorries: readonly string[];
   /// 她的訊息裡本來就有考題字（她在講真的題目）：「這題」那一條整個不做。
   readonly herQuizWords: boolean;
 }
@@ -180,8 +120,6 @@ export interface PhraseTidyChanges {
   readonly quiz: number;
   /// 答案在裡面、只拿掉考題字的小段。
   readonly quizRewrite: number;
-  /// 拿掉的否認擔心的小段。
-  readonly worry: number;
   /// 換成「蠻」的「滿」。
   readonly degree: number;
   /// 有改到的訊息則數。
@@ -191,7 +129,6 @@ export interface PhraseTidyChanges {
 export const NO_PHRASE_TIDY_CHANGES: PhraseTidyChanges = {
   quiz: 0,
   quizRewrite: 0,
-  worry: 0,
   degree: 0,
   messages: 0,
 };
@@ -203,7 +140,6 @@ export function addPhraseTidyChanges(
   return {
     quiz: a.quiz + b.quiz,
     quizRewrite: a.quizRewrite + b.quizRewrite,
-    worry: a.worry + b.worry,
     degree: a.degree + b.degree,
     messages: a.messages + b.messages,
   };
@@ -219,25 +155,14 @@ function mask(text: string, words: readonly string[]): string {
   return words.reduce((t, w) => t.split(w).join("□"), text);
 }
 
-/// 從她的訊息看兩件事：她最新這一輪擔心什麼、她是不是自己就在講題目（只看她的，不看他的）。
+/// 從她的訊息看她是不是自己就在講題目（只看她的，不看他的）。
 export function phraseTidyContext(args: {
-  readonly herLatest: readonly string[];
   readonly herMessages: readonly string[];
 }): PhraseTidyContext {
-  const latest = args.herLatest.map(herText).filter((t): t is string =>
-    t !== null
-  );
   const all = args.herMessages.map(herText).filter((t): t is string =>
     t !== null
   );
-  // 她最新這一輪的每一小段（引號裡的是別人的話，不算）。
-  const herClauses = latest.flatMap((t) =>
-    piecesOf(t).filter((p) => !p.sep && !p.locked).map((p) => p.text)
-  );
   return {
-    herWorries: WORRY_WORDS.filter((w) =>
-      herClauses.some((clause) => HER_WORRY_PATTERNS.get(w.her)!.test(clause))
-    ).map((w) => w.her),
     herQuizWords: all.some((t) =>
       HER_QUIZ_WORDS.some((word) => mask(t, NOT_QUIZ_WORDS).includes(word))
     ),
@@ -252,42 +177,6 @@ function alt(words: readonly string[]): string {
   return words.map(escape).join("|");
 }
 
-/// 一小段整段只是在否認這些擔心的字（見 DENY_* 常數）。
-function denyPattern(cardWords: readonly string[]): RegExp {
-  const word = `(?:${alt(cardWords)})`;
-  const degree = `(?:${alt(DENY_DEGREES)})?`;
-  const plain = `(?:${alt(DENY_ADVERBS)}){0,2}(?:${
-    alt(DENY_NEGATORS)
-  })${degree}${word}`;
-  const rhetorical = `(?:${alt(DENY_RHETORICAL)})${degree}${word}`;
-  // 後面跟著的表情也算這一段的（「不怪啊😂」），一起拿掉。
-  return new RegExp(
-    `^(?:(?:${plain}|${rhetorical})[${DENY_PARTICLES}]*)+${TRAILING_EMOJI}$`,
-    "u",
-  );
-}
-
-const DENY_PATTERNS = new Map(
-  WORRY_WORDS.map((w) => [w.her, denyPattern(w.card)]),
-);
-
-/// 她的一小段整段剛好是在問自己會不會很怪、很醜、很胖（HER_WORRY_FORMS）。
-const HER_WORRY_PATTERNS = new Map(
-  WORRY_WORDS.map((w) => {
-    const word = `(?:${alt(w.card)})`;
-    const forms = HER_WORRY_FORMS.map((f) =>
-      f.split("W").map(escape).join(word)
-    ).join("|");
-    return [
-      w.her,
-      new RegExp(
-        `^(?:欸|啊|那)?${HER_WORRY_SUBJECT}(?:${forms})${HER_WORRY_TAIL}${TRAILING_EMOJI}$`,
-        "u",
-      ),
-    ];
-  }),
-);
-
 /// 整段剛好是 QUIZ_FILLERS 的一句（開頭的「這題」可以是這一題、這道題）。
 const QUIZ_FILLER_PATTERN = new RegExp(
   `^(?:${alt(QUIZ_FILLER_LEAD)})?(?:${
@@ -296,7 +185,7 @@ const QUIZ_FILLER_PATTERN = new RegExp(
         ? `(?:這題|這一題|這道題)${escape(f.slice("這題".length))}`
         : escape(f)
     ).join("|")
-  })[${DENY_PARTICLES}]*${TRAILING_EMOJI}$`,
+  })[${TRAILING_PARTICLES}]*${TRAILING_EMOJI}$`,
   "u",
 );
 
@@ -318,7 +207,7 @@ function isQuizClause(clause: string): boolean {
 
 /// 還有字：拿掉顏文字、網址這些受保護的整段，與整個表情（數字鍵帽、國旗也算，cards.ts 的 withoutEmoji）
 /// 之後，至少一個不是語助詞、笑聲、英文字母表情的字或數字（主審第 1 輪 P2：「(・ω・)」的 ω、「1️⃣」的 1
-/// 原本被當成字，否認拿掉後只剩表情）。不確定的就算沒字，照原文。
+/// 原本被當成字，拿掉後只剩表情）。不確定的就算沒字，照原文。
 function hasContent(text: string): boolean {
   const chars = [...text];
   const { frozen } = protectedMap(chars);
@@ -388,14 +277,13 @@ function degreeMan(text: string): { text: string; count: number } {
   return { text: count > 0 ? out.join("") : text, count };
 }
 
-/// 一則訊息照三條改；回改好的字與次數。
+/// 一則訊息照兩條改；回改好的字與次數。
 export function tidyMessage(
   message: string,
   context: PhraseTidyContext,
 ): { text: string; changes: PhraseTidyChanges } {
   const pieces = piecesOf(message);
   const quizDrops = new Set<number>();
-  const worryDrops = new Set<number>();
   const rewrites = new Map<number, string>();
   pieces.forEach((p, i) => {
     if (p.sep || p.locked) return;
@@ -405,16 +293,12 @@ export function tidyMessage(
       else if (carriesAnswer(p.text) && QUIZ_REWRITE.test(p.text)) {
         rewrites.set(i, p.text.replace(QUIZ_REWRITE, ""));
       }
-      return;
     }
-    if (
-      context.herWorries.some((w) => DENY_PATTERNS.get(w)!.test(p.text))
-    ) worryDrops.add(i);
   });
   const rewritten = pieces.map((p, i) =>
     rewrites.has(i) ? { ...p, text: rewrites.get(i)! } : p
   );
-  const drop = new Set([...quizDrops, ...worryDrops]);
+  const drop = quizDrops;
   let text = rewritten.map((p) => p.text).join("");
   let dropped = false;
   if (drop.size > 0) {
@@ -435,14 +319,13 @@ export function tidyMessage(
     changes: {
       quiz: dropped ? quizDrops.size : 0,
       quizRewrite: rewrites.size,
-      worry: dropped ? worryDrops.size : 0,
       degree: man.count,
       messages: 1,
     },
   };
 }
 
-/// 一張卡的每一則都照三條改（則數不變）。
+/// 一張卡的每一則都照兩條改（則數不變）。
 export function tidyCard(
   messages: readonly string[],
   context: PhraseTidyContext,

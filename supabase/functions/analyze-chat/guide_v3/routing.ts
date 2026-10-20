@@ -74,9 +74,9 @@ export function shouldUseGuideV3TypingStyle(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
-/// 「這題」「不怪」「滿→蠻」交給程式（Bruce 2026-10-20 PR #97 再處理，phrase_tidy.ts）：開關
-/// ANALYZE_GUIDE_V3_PHRASE_TIDY，跟 ANALYZE_GUIDE_V3 一樣 off／test／on。開了才在口吻與斷句之後改這三種字；
-/// 沒開就跟今天一字不差。Bruce 看過例子同意前不開。
+/// 「這題」「滿→蠻」交給程式（Bruce 2026-10-20 PR #97 再處理，2026-10-21 只用這兩條；phrase_tidy.ts）：開關
+/// ANALYZE_GUIDE_V3_PHRASE_TIDY，跟 ANALYZE_GUIDE_V3 一樣 off／test／on。開了才在口吻與斷句之後改這兩種字；
+/// 沒開就跟今天一字不差。
 export function shouldUseGuideV3PhraseTidy(args: {
   readonly mode: GuideV3Mode;
   readonly accountIsTest: boolean;

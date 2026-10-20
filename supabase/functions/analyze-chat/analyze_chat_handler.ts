@@ -1863,8 +1863,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TYPING_STYLE")),
           accountIsTest,
         }),
-        // 「這題」「不怪」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，off／test／on，每次請求讀；
-        // Bruce 2026-10-20 PR #97 再處理）：口吻與斷句之後改這三種字。沒開就一字不變。
+        // 「這題」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，off／test／on，每次請求讀；
+        // Bruce 2026-10-20 PR #97 再處理，2026-10-21 只用這兩條）：口吻與斷句之後改這兩種字。沒開就一字不變。
         phraseTidy: shouldUseGuideV3PhraseTidy({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_PHRASE_TIDY")),
           accountIsTest,

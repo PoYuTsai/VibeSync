@@ -14,7 +14,7 @@ export interface FlagCombo {
   readonly relation: boolean;
   /// 口吻與斷句交給程式（ANALYZE_GUIDE_V3_TYPING_STYLE，Bruce 2026-10-20 改法 3）；沒給當關。
   readonly typingStyle?: boolean;
-  /// 「這題」「不怪」「滿→蠻」交給程式（ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97）；沒給當關。
+  /// 「這題」「滿→蠻」交給程式（ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97）；沒給當關。
   readonly phraseTidy?: boolean;
 }
 

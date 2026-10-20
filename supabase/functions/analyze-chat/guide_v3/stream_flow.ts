@@ -248,8 +248,8 @@ export interface GuideV3StreamDeps {
   /// 口吻與斷句交給程式（開關 ANALYZE_GUIDE_V3_TYPING_STYLE，handler 把關；Bruce 2026-10-20 改法 3）：
   /// 每張卡定稿、檢查過之後，送出之前照他的打字習慣統一稱呼與斷句。沒給或 false：一字不變。
   typingStyle?: boolean;
-  /// 「這題」「不怪」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，handler 把關；Bruce 2026-10-20
-  /// PR #97 再處理）：口吻與斷句之後、送出之前改這三種字。沒給或 false：一字不變。
+  /// 「這題」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，handler 把關；Bruce 2026-10-20 PR #97
+  /// 再處理，2026-10-21 只用這兩條）：口吻與斷句之後、送出之前改這兩種字。沒給或 false：一字不變。
   phraseTidy?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
@@ -1078,11 +1078,10 @@ class GuideV3Flow {
       ? detectTypingHabits(hisMessages)
       : null;
     let typingChanges = NO_TYPING_CHANGES;
-    // 「這題」「不怪」「滿→蠻」（Bruce 2026-10-20 PR #97）：她最新這一輪擔心什麼、她是不是自己在講題目，
-    // 只看她的訊息、看一次；沒開就不算、卡一字不變。
+    // 「這題」「滿→蠻」（Bruce 2026-10-20 PR #97；「不怪」那條 Bruce 2026-10-21 決定不用）：她是不是自己在講
+    // 題目，只看她的訊息、看一次；沒開就不算、卡一字不變。
     const tidy = this.deps.phraseTidy === true
       ? phraseTidyContext({
-        herLatest: latestHerMessages(turns),
         herMessages: this.deps.messages.filter((m) => !m.isFromMe).map((m) =>
           m.content
         ),
@@ -1265,11 +1264,10 @@ class GuideV3Flow {
       ...(typing
         ? { typingStyle: { habits: typing, changes: typingChanges } }
         : {}),
-      // 只記次數與她有沒有提到擔心、在不在講題目，不放她或卡片的字。
+      // 只記次數與她在不在講題目，不放她或卡片的字。
       ...(tidy
         ? {
           phraseTidy: {
-            herWorries: tidy.herWorries.length,
             herQuizWords: tidy.herQuizWords,
             changes: tidyChanges,
           },

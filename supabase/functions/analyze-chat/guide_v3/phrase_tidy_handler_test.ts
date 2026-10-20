@@ -1,4 +1,4 @@
-// 「這題」「不怪」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97 再處理）從
+// 「這題」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97 再處理）從
 // 正式入口走（guide_v3/v3_stream_harness.ts：假 Supabase、假模型）：env 每次請求設定；開了送出的卡、存的
 // 結果與說明步驟都是改過的字，而且是口吻與斷句改完之後才改；沒開一字不變。事件照種類找。
 //
@@ -80,12 +80,13 @@ const EXTRAS = {
   ],
 };
 
-/// 模型寫的卡：有逗號與「妳」（口吻與斷句先改），再有「不怪啊」「滿」「這題」（這一步才改）。
+/// 模型寫的卡：有逗號與「妳」（口吻與斷句先改），再有「滿」「這題」（這一步才改）；「不怪啊」那條不用（Bruce
+/// 2026-10-21），她就算問會不會很怪也照原文。
 const CARD_MESSAGES = ["不怪啊，滿適合妳的", "這題不用想，短髮很好看。"];
 /// 只開口吻與斷句：逗號換空白、句尾句號拿掉、他沒有稱呼習慣用「你」。
 const TYPED = ["不怪啊 滿適合你的", "這題不用想 短髮很好看"];
-/// 再開「這題」「不怪」「滿→蠻」。
-const TIDIED = ["蠻適合你的", "短髮很好看"];
+/// 再開「這題」「滿→蠻」。
+const TIDIED = ["不怪啊 蠻適合你的", "短髮很好看"];
 
 function userText(body: Record<string, unknown>): string {
   return (body.messages as { content: string }[])[0].content;
@@ -146,12 +147,11 @@ function analyze(
 }
 
 type PhraseTidyTrace = {
-  herWorries: number;
   herQuizWords: boolean;
   changes: Record<string, number>;
 };
 
-Deno.test("從正式入口：ANALYZE_GUIDE_V3_PHRASE_TIDY=on 時送出的卡在口吻與斷句之後再改（她問會不會很怪）；存的結果與說明步驟看同一份字", async () => {
+Deno.test("從正式入口：ANALYZE_GUIDE_V3_PHRASE_TIDY=on 時送出的卡在口吻與斷句之後再改（她問會不會很怪，「不怪啊」照原文）；存的結果與說明步驟看同一份字", async () => {
   const explains: string[] = [];
   const out = await analyze("on", explains);
   assertEquals(out.status, 200);
@@ -173,18 +173,15 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_PHRASE_TIDY=on 時送出的卡在�
   }
   assertEquals(explains.length, 1);
   assert(explains[0].includes(`- ${TIDIED[0]}\n- ${TIDIED[1]}`));
-  assertEquals(explains[0].includes("不怪啊"), false);
   assertEquals(explains[0].includes("這題"), false);
   const trace = out.finalResult?.guideV3Trace as {
     phraseTidy: PhraseTidyTrace;
     typingStyle: { changes: { commas: number } };
   };
-  assertEquals(trace.phraseTidy.herWorries, 1);
   assertEquals(trace.phraseTidy.herQuizWords, false);
   assertEquals(trace.phraseTidy.changes, {
     quiz: cards.length,
     quizRewrite: 0,
-    worry: cards.length,
     degree: cards.length,
     messages: cards.length * 2,
   });
