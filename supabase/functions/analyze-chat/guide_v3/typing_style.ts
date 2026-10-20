@@ -8,7 +8,7 @@
 //   卡是一張一張串流送出的，第一張送出時還看不到整組，Eric 2026-10-20 定）。引號裡的字、迷你這類
 //   不是稱呼的詞不動；你們、妳們跟著換。
 // - 斷句：他不是明顯用逗號斷句的人，句子中間的逗號換成一個空白、一則中間的句號也換成空白；他不是明顯
-//   會在句尾打句號的人，一則最後的句號拿掉。頓號、問號、驚嘆號、～、…、表情、1,000、3.5、網址都不動；
+//   會在句尾打句號的人，一則最後的句號拿掉。頓號、問號、驚嘆號、～、…、表情、顏文字、1,000、3.5、網址都不動；
 //   連打的句號（。。。）當刪節號不動；引號裡的字不動。換完之後，引號外連在一起的空白併成一個、
 //   頭尾修掉（引號裡的空白照原樣）；一則換完變空的就照原文。
 import { isMediaLine, QUOTED_REPLY_PREFIX } from "./rules.ts";
@@ -81,6 +81,10 @@ const DIGIT = /\p{Nd}/u;
 /// 網址與 email 整段不動：http(s)://（大小寫都算）、www. 開頭的、email（主審第 1 輪 P2：原本只認小寫的
 /// http(s)://，HTTPS://…/你好、www.…/你好 的「你」會被換掉）。
 const URL = /(?:https?:\/\/|www\.)\S+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/giu;
+/// 顏文字：括號（半形或全形）裡沒有漢字的那一段整段不動，裡面的句號、空白都照原樣（主審第 1 輪 P3：
+///「(。・ω・。)」原本會被改成「( ・ω・ )」）。一般的表情符號照舊。
+const KAOMOJI =
+  /\([^()（）\p{Script=Han}\n]*\)|（[^()（）\p{Script=Han}\n]*）/gu;
 const SPACE_BREAK = /\p{Script=Han}[ \u3000]+\S|\S[ \u3000]+\p{Script=Han}/u;
 
 /// 每個字是不是在引號裡（引號本身不算在裡面）、是不是在網址或「不是稱呼的詞」裡（都不動）。
@@ -109,9 +113,10 @@ function protectedMap(chars: readonly string[]): {
       inQuote.push(stack.length > 0 || ascii);
     }
   }
-  // 網址與 email、不是稱呼的詞：以字（code point）為單位標記。
+  // 網址與 email、顏文字、不是稱呼的詞：以字（code point）為單位標記。
   const marks: [number, number][] = [];
   for (const m of text.matchAll(URL)) marks.push([m.index!, m[0].length]);
+  for (const m of text.matchAll(KAOMOJI)) marks.push([m.index!, m[0].length]);
   for (const word of NOT_PRONOUN_WORDS) {
     let at = text.indexOf(word);
     while (at !== -1) {
@@ -161,8 +166,13 @@ function isClauseComma(chars: readonly string[], i: number): boolean {
   return c === "，" || HAN.test(prev) || HAN.test(next);
 }
 
+/// 後面只剩空白或收尾的括號、引號，就算一則的結尾（「好（你先走。）」的句號是句尾，不是句子中間）。
+const TRAILING_CLOSER = /[\s)）」』”"]/u;
+
 function isFinal(chars: readonly string[], i: number): boolean {
-  for (let j = i + 1; j < chars.length; j++) if (chars[j].trim()) return false;
+  for (let j = i + 1; j < chars.length; j++) {
+    if (!TRAILING_CLOSER.test(chars[j])) return false;
+  }
   return true;
 }
 

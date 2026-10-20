@@ -257,3 +257,18 @@ Deno.test("主審第 1 輪 P3：看習慣跟改字用同一份保護——引號
     false,
   );
 });
+
+Deno.test("主審第 1 輪 P3：括號裡沒有漢字的（顏文字）整段不動，裡面的句號、空白照原樣；括號外照常改", () => {
+  const her = habits({ address: "妳" });
+  assertEquals(text("好 (。・ω・。)，你呢", her), "好 (。・ω・。) 妳呢");
+  assertEquals(text("好啊（。＾▽＾。），等你", her), "好啊（。＾▽＾。） 等妳");
+  assertEquals(text("好 ( ・ω・ )，等你", her), "好 ( ・ω・ ) 等妳");
+  // 括號裡有漢字的不算顏文字，照常改；一般表情照舊。
+  assertEquals(text("好（你先走。）", her), "好（妳先走）");
+  assertEquals(text("好啊😂，等你。", her), "好啊😂 等妳");
+  // 他的訊息裡顏文字的句號，不算他一則中間打句號。
+  assertEquals(
+    detectTypingHabits(["好 (。・ω・。)", "嗯 (。>﹏<。)", "走吧"]).usesCommas,
+    false,
+  );
+});
