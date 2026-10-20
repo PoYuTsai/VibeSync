@@ -18,8 +18,13 @@ import {
 } from "./prompts.ts";
 import { READ_TAGS_SCHEMA_TWO_STAGE, type ReadTags } from "./read_tags.ts";
 import { RELATION_FIELD_NOTES, withRelationFields } from "./relation.ts";
-import { withoutEmoji } from "./cards.ts";
-import type { AnswerLine, CardAnswer, CardSpec, PraiseStyle } from "./rules.ts";
+import {
+  type AnswerLine,
+  type CardAnswer,
+  type CardSpec,
+  herLineText,
+  type PraiseStyle,
+} from "./rules.ts";
 import { latestHerMessages, type Turn } from "./turns.ts";
 
 /// 讀局面多輸出的四欄，以及作戰板標籤靠不住時怎麼判（研究報告 §5.3、§7.2：v3 把 App 預設的
@@ -286,15 +291,12 @@ export const HAPPY_SHARE_TASK =
   "共鳴（她在分享開心或得意的事：跟她一起為那件事高興，說那件事好在哪）";
 
 const QUOTE_MAX_CHARS = 30;
-const QUOTED_REPLY_PREFIX = /^（引用：「[^」]*」）/;
 
 /// 規格裡引她的那一則：去掉引用前綴與表情、空白收成一格，太長就截短。表情不引（第 2 輪，Bruce
 /// 10/19：特別挑她的語氣去評價很不自然）：規格裡少了表情，寫卡就不會把它當成要回的東西；
-/// 對話稿裡照樣看得到。
+/// 對話稿裡照樣看得到。跟排卡判斷「有沒有字可以引」用同一份（rules.ts herLineText）。
 export function quoteHerLine(content: string): string {
-  const text = withoutEmoji(content.replace(QUOTED_REPLY_PREFIX, ""))
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = herLineText(content);
   const chars = [...text];
   return chars.length > QUOTE_MAX_CHARS
     ? `${chars.slice(0, QUOTE_MAX_CHARS - 1).join("")}…`
@@ -312,13 +314,15 @@ function answerQuote(at: AnswerLine, herLatest: readonly string[]): string {
 }
 
 /// 第 2 輪（Bruce 10/19 盲選理由）：「這張接」是每張都要先回的那則，「可以順帶」是這張可以多接的
-/// 一則。編號不在她最新這一輪就不寫。說明步驟（explain.ts）也用同一份。
+/// 一則。編號不在她最新這一輪、或那一則沒有字可以引，就不寫（不會出現「她的「」」）。說明步驟
+///（explain.ts）也用同一份。
 export function answerParts(
   answer: CardAnswer | undefined,
   herLatest: readonly string[],
 ): string[] {
   const inRange = (at: AnswerLine) =>
-    at.line >= 1 && at.line <= herLatest.length;
+    at.line >= 1 && at.line <= herLatest.length &&
+    quoteHerLine(herLatest[at.line - 1]) !== "";
   if (!answer || !inRange(answer.main)) return [];
   return [
     `這張接：${answerQuote(answer.main, herLatest)}`,

@@ -17,6 +17,7 @@
 //    最多一張，已在交往或她撒嬌示愛時不排；她分享開心的事（她情緒差時不算）第二張改成共鳴；
 //    最後每張卡都指定先回她最想聽的那則、可以順帶一則（第 2 輪，Bruce 10/19 盲選理由）。
 //    上面 1–7 都照舊先算。
+import { withoutEmoji } from "./cards.ts";
 import type { GuideV3Entry } from "./entries.ts";
 import type {
   ReadTags,
@@ -415,16 +416,37 @@ export function praiseStyle(
     : "light";
 }
 
-/// 照片、貼圖的辨識標記（方括號開頭；外面可能再包一層「」，10/19 正式環境的案例就是這樣），
-/// 或整則只有表情符號（可以夾標點，例如「😂～」）。
+/// 照片、貼圖的辨識標記（方括號開頭；外面可能再包一層「」，10/19 正式環境的案例就是這樣）。
 const MEDIA_PLACEHOLDER = /^[「『"]?[\[［【]/u;
-const EMOJI = /\p{Extended_Pictographic}/u;
-const SYMBOLS_ONLY = /^[\p{P}\p{S}\p{M}\s\u200d\uFE0F]+$/u;
+/// 一整個表情：RGI 表情序列（國旗、數字鍵帽、ZWJ 組合、膚色）＋單獨的表情字、膚色、區域指示字、
+/// 變體選擇符與 ZWJ（主審第 1 輪 P2：只認 Extended_Pictographic 會把 🇹🇼、1️⃣ 當成文字）。
+const EMOJI_PIECES =
+  /\p{RGI_Emoji}|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|\p{Variation_Selector}|\p{Join_Control}/gv;
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
+/// 正式流程在引用回覆前面加的「（引用：「…」）」（stream_flow.ts guideMessagesFrom）：那是被引用的
+/// 那句，不是她這一則說的話；分類與引她的話都先拿掉（主審第 1 輪 P2）。
+export const QUOTED_REPLY_PREFIX = /^（引用：「[\s\S]*?」）/u;
+
+/// 她這一則本身：拿掉引用前綴、前後空白。
+function herLineBody(content: string): string {
+  return content.replace(QUOTED_REPLY_PREFIX, "").trim();
+}
+
+/// 規格引她的話用的字：她這一則本身去掉表情、空白收成一格。空字串＝這一則沒有字可以引。
+export function herLineText(content: string): string {
+  return withoutEmoji(content.replace(QUOTED_REPLY_PREFIX, ""))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/// 照片或貼圖的標記，或整則只有表情（可以夾標點，例如「😂～」）；都看她這一則本身，不看引用的那句。
+/// 單獨的數字、有字又有表情的，算文字。
 export function isMediaLine(content: string): boolean {
-  const text = content.trim();
-  return MEDIA_PLACEHOLDER.test(text) ||
-    (EMOJI.test(text) && SYMBOLS_ONLY.test(text));
+  const body = herLineBody(content);
+  if (MEDIA_PLACEHOLDER.test(body)) return true;
+  const rest = body.replace(EMOJI_PIECES, "");
+  return rest !== body && !LETTER_OR_DIGIT.test(rest);
 }
 
 /// 誰先被當成「她最想聽他回的那則」：問他最先、情感其次、其他再來。有字的那則被標成照片或貼圖時
@@ -463,8 +485,12 @@ export function assignAnswers(
     seen.add(w.line);
     return true;
   });
-  const media = valid.filter((w) => isMediaLine(herLatest[w.line - 1]));
-  const text = valid.filter((w) => !isMediaLine(herLatest[w.line - 1]));
+  // 引她的話會是空的那則（只有引用、或去掉表情後沒有字）也不當對象，跟照片貼圖一樣併進旁邊那則：
+  // 規格不會出現「她的「」」（主審第 1 輪 P2）。
+  const notTarget = (line: number) =>
+    isMediaLine(herLatest[line - 1]) || herLineText(herLatest[line - 1]) === "";
+  const media = valid.filter((w) => notTarget(w.line));
+  const text = valid.filter((w) => !notTarget(w.line));
   if (text.length === 0) return Array.from({ length: cardCount }, () => null);
   const rank = (w: WorthyLine) => ANSWER_RANK[w.kind];
   const main = text.reduce((best, w) =>

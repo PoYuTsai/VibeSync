@@ -357,6 +357,38 @@ Deno.test("第 2 輪：她傳照片、貼圖又問他，寫卡每張都先接她
   assert(trace.specs.every((s) => s.answer?.main.line === 5));
 });
 
+Deno.test("主審第 1 輪 P2：她說升職、再引用他一句回一個愛心（正式流程加上引用前綴），每張規格都接升職那則、愛心併進去，沒有「她的「」」", async () => {
+  const messages = [
+    { isFromMe: true, content: "今天還好嗎" },
+    { isFromMe: false, content: "今天升職了" },
+    { isFromMe: false, content: "❤️", quotedReplyPreview: "恭喜啊" },
+  ];
+  const h = flowHarness({
+    twoStage: true,
+    messages,
+    extras: {
+      establishedCouple: false,
+      herAffection: true,
+      herHappyShare: true,
+      worthyLines: [
+        { line: 1, label: "升職", kind: "情感" },
+        { line: 2, label: "愛心", kind: "情感" },
+      ],
+    },
+  });
+  await eventsOf(await handleGuideV3Stream(h.deps));
+  const user = h.writes[0].user;
+  assert(user.includes("2. （引用：「恭喜啊」）❤️"), user);
+  const specLines = user.split("## 卡片規格")[1].split("\n").filter((l) =>
+    /^\d+\. 任務：/.test(l)
+  );
+  assert(specLines.length > 0);
+  for (const line of specLines) {
+    assert(line.includes("這張接：她的「今天升職了」（連同第 2 則）"), line);
+    assert(!line.includes("她的「」"), line);
+  }
+});
+
 Deno.test("兩段式沒開：寫卡的請求跟今天一樣（系統提示詞與使用者提示詞逐字相同）", async () => {
   const h = flowHarness({ extras: null });
   await eventsOf(await handleGuideV3Stream(h.deps));

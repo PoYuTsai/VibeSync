@@ -18,6 +18,7 @@ import {
   type Task,
 } from "./rules.ts";
 import { toTurns } from "./turns.ts";
+import { answerParts, cardSpecLineTwoStage } from "./two_stage_prompts.ts";
 
 function tags(over: Partial<ReadTags> = {}): ReadTags {
   return {
@@ -549,4 +550,68 @@ Deno.test("第 2 輪稱讚：已經在交往或她這一輪撒嬌示愛就直接
   assertEquals(hold.decision, "hold");
   assertEquals("praise" in hold, false);
   assertEquals("praise" in planTurn(turns, tags()), false);
+});
+
+Deno.test("主審第 1 輪 P2：她說升職、又引用一句回一個愛心，兩則都標情感時，每張卡接升職那則，愛心併進去；規格不會出現「她的「」」", () => {
+  const herLatest = ["今天升職了", "（引用：「恭喜啊」）❤️"];
+  const out = assignAnswers(3, [w(1, "情感"), w(2, "情感")], herLatest);
+  assertEquals(out, Array(3).fill({ main: at(1, 2) }));
+  const line = cardSpecLineTwoStage(
+    {
+      task: "接住",
+      method: "只用反應",
+      voice: "預設",
+      questionBudget: 1,
+      push: null,
+      angle: 0,
+      answer: out[0]!,
+    },
+    1,
+    herLatest,
+  );
+  assert(line.includes("這張接：她的「今天升職了」（連同第 2 則）"), line);
+  assert(!line.includes("她的「」"), line);
+});
+
+Deno.test("主審第 1 輪 P2：整則只有表情要認完整的序列（國旗、數字鍵帽、ZWJ 組合、膚色、變體選擇符）；單獨的數字、有字的照樣是文字；引用回覆只看她那一則本身", () => {
+  for (
+    const media of [
+      "🇹🇼",
+      "1️⃣",
+      "#️⃣",
+      "❤️‍🔥",
+      "👍🏻",
+      "❤️",
+      "❤",
+      "（引用：「恭喜」）❤️",
+      "（引用：「你看」）[貼圖：小熊]",
+      "（引用：「好」）🇹🇼 1️⃣",
+    ]
+  ) {
+    assert(isMediaLine(media), media);
+  }
+  for (
+    const text of [
+      "1",
+      "10",
+      "（引用：「好」）1",
+      "（引用：「[照片：海邊]」）好美",
+      "今天升職了🎉",
+      "1️⃣號比較好",
+    ]
+  ) {
+    assert(!isMediaLine(text), text);
+  }
+});
+
+Deno.test("只有引用、沒有自己的字的那則：不當對象、併進旁邊那則；指到它的規格什麼都不寫", () => {
+  const herLatest = ["我到了", "（引用：「幾點到」）"];
+  assertEquals(
+    assignAnswers(1, [w(1, "其他"), w(2, "問他")], herLatest),
+    [{ main: at(1, 2) }],
+  );
+  assertEquals(answerParts({ main: at(2) }, herLatest), []);
+  assertEquals(answerParts({ main: at(1), extra: at(2) }, herLatest), [
+    "這張接：她的「我到了」",
+  ]);
 });
