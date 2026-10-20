@@ -227,11 +227,47 @@ export const TWO_STAGE_A6_EDITS: readonly LineEdit[] = [
 ];
 
 /// 寫卡看到的 A5、A6（從說明書原文改出來）。
+// ── 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，Bruce 2026-10-20「改」）──────────────────────
+// Bruce 第 3 輪盲選 4:4：帶張力照樣可以出，但玩笑只對事情本身，或誇張地誇她；不打分、不說她別有用意、
+// 不擺自己比較厲害。他不要的那幾張（替她打分、說她想要什麼、擺自己的架子）從帶張力的手法長出來：材料取
+// 「矛盾、疑點」、「刻意誤解」、推拉的「推」與「挑戰」。開關開時，在兩段式的 A5 之上再改這幾行；排卡不變。
+
+/// 帶張力的新說法（照 Bruce 這次的話）。
+export const TENSION_STYLE_LINE =
+  "- **帶張力**：開一個輕的玩笑：只對事情本身（吃的、去的地方、遇到的狀況）開，或用一看就誇張的方式誇她；不替她打分、不說她別有用意、不把自己擺得比較厲害。留好退路，她接了就一起玩，沒接也不尷尬。";
+
+/// 材料不再從「矛盾、疑點」找（會變成抓她的語病、猜她的用意）。
+export const TENSION_STYLE_MATERIAL_LINE =
+  "  - 材料從事情本身和她話裡誇張的地方長出來。";
+
+export const TENSION_STYLE_A5_EDITS: readonly LineEdit[] = [
+  { startsWith: "- **帶張力**：", edit: () => TENSION_STYLE_LINE },
+  { startsWith: "  - 材料從她話裡", edit: () => TENSION_STYLE_MATERIAL_LINE },
+  // 刻意誤解：常變成「你這是在暗示…」那種替她說用意的話。其餘手法照留。
+  {
+    startsWith: "  - 手法輪流用：",
+    edit: (l) => replaceOnce(l, "刻意誤解（偶爾）、", ""),
+  },
+  // 推拉（推觀點、挑戰）：常變成打分、擺自己比較懂；帶張力不再用。
+  { startsWith: "  - 推拉：", edit: () => null },
+];
+
+/// 卡片多比的外洩哨兵（上面兩行裡只有提示詞才寫的說法）：抄進卡片就拿掉那張。
+export const TENSION_STYLE_WRITER_SENTINELS: readonly string[] = [
+  "用一看就誇張的方式誇她",
+  "不替她打分、不說她別有用意",
+  "不把自己擺得比較厲害",
+  "事情本身和她話裡誇張的地方",
+];
+
 export function twoStageWriterSections(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
+  /// 帶張力改寫法開時，A5 在兩段式的改法之上再改帶張力那幾行（TENSION_STYLE_A5_EDITS）。
+  options: { readonly tensionStyle?: boolean } = {},
 ): { readonly A5: string; readonly A6: string } {
+  const a5 = applyLineEdits(sections.A5, TWO_STAGE_A5_EDITS);
   return {
-    A5: applyLineEdits(sections.A5, TWO_STAGE_A5_EDITS),
+    A5: options.tensionStyle ? applyLineEdits(a5, TENSION_STYLE_A5_EDITS) : a5,
     A6: renumber(applyLineEdits(sections.A6, TWO_STAGE_A6_EDITS)),
   };
 }
@@ -261,8 +297,10 @@ export function writeSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   safetyRules: string = WRITE_SAFETY_FLOOR,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）。
+  options: { readonly tensionStyle?: boolean } = {},
 ): string {
-  const writer = twoStageWriterSections(sections);
+  const writer = twoStageWriterSections(sections, options);
   return [
     "你是 VibeSync 對話分析的「寫句子」步驟：照使用者訊息裡每張卡的規格，寫他可以直接傳給她的訊息。",
     WRITE_NATURAL_RULES,

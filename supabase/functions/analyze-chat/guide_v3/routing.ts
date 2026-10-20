@@ -83,6 +83,15 @@ export function shouldUseGuideV3ShortPraise(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 帶張力改寫法（Bruce 2026-10-20「改」）：開關 ANALYZE_GUIDE_V3_TENSION_STYLE，跟 ANALYZE_GUIDE_V3 一樣
+/// off／test／on，只在兩段式開著時才有作用（入口把關）。排卡不變，只換寫卡與說明看到的帶張力寫法。
+export function shouldUseGuideV3TensionStyle(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。

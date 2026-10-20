@@ -92,6 +92,7 @@ import {
   shouldUseGuideV3,
   shouldUseGuideV3PreviousRound,
   shouldUseGuideV3ShortPraise,
+  shouldUseGuideV3TensionStyle,
   shouldUseGuideV3TwoStage,
   shouldUseGuideV3TypingStyle,
 } from "./guide_v3/routing.ts";
@@ -1867,6 +1868,12 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // 只在兩段式開時才有作用；沒開就一字不變。
         shortPraise: twoStage && shouldUseGuideV3ShortPraise({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_SHORT_PRAISE")),
+          accountIsTest,
+        }),
+        // 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，off／test／on，每次請求讀；Bruce 2026-10-20
+        // 「改」）：只在兩段式開時才有作用；排卡不變，沒開就一字不變。
+        tensionStyle: twoStage && shouldUseGuideV3TensionStyle({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_TENSION_STYLE")),
           accountIsTest,
         }),
         ...createGuideV3ModelCalls({

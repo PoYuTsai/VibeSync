@@ -42,6 +42,7 @@ import {
   explainSystemPrompt,
   explainUserPrompt,
   parseExplanations,
+  TENSION_STYLE_EXPLAIN_SENTINELS,
   vetExplanation,
 } from "./explain.ts";
 import {
@@ -93,6 +94,7 @@ import {
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
   SHORT_PRAISE_WRITER_SENTINELS,
+  TENSION_STYLE_WRITER_SENTINELS,
   TWO_STAGE_READ_LEAK_SENTINELS,
   TWO_STAGE_WRITER_SENTINELS,
   writeSystemPromptTwoStage,
@@ -247,6 +249,9 @@ export interface GuideV3StreamDeps {
   /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，handler 把關；Bruce 2026-10-20「可以」）：只在 twoStage
   /// 開時有作用。程式照 runId 抽，抽到時一張卡的規格多寫短版的誇法。沒給或 false：一字不變。
   shortPraise?: boolean;
+  /// 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，handler 把關；Bruce 2026-10-20「改」）：只在 twoStage
+  /// 開時有作用。排卡不變，寫卡與說明看到的帶張力寫法換新的。沒給或 false：一字不變。
+  tensionStyle?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -401,6 +406,8 @@ class GuideV3Flow {
   private relation: GuideV3RelationTrace | null = null;
   /// 短版稱讚開著（兩段式也開）：卡片多比短版那段的哨兵。
   private shortPraiseOn = false;
+  /// 帶張力改寫法開著（兩段式也開）：寫卡、說明的提示詞換帶張力那幾行，卡片與說明多比新寫法的哨兵。
+  private tensionStyleOn = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -529,6 +536,8 @@ class GuideV3Flow {
       }
       // 短版稱讚（Bruce 2026-10-20「可以」）：照 runId 抽，重播一致；沒開照舊。
       this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
+      // 帶張力改寫法（Bruce 2026-10-20「改」）：排卡不變，寫卡與說明的帶張力寫法換新的；沒開照舊。
+      this.tensionStyleOn = twoStage && this.deps.tensionStyle === true;
       const plan = vetPlanText(
         planTurn(
           turns,
@@ -1111,9 +1120,13 @@ class GuideV3Flow {
           card,
           spec,
           sourceText,
-          // 短版稱讚開時：規格裡短版那段抄進卡片也拿掉。沒開照舊。
-          this.shortPraiseOn
-            ? [...TWO_STAGE_WRITER_SENTINELS, ...SHORT_PRAISE_WRITER_SENTINELS]
+          // 短版稱讚、帶張力改寫法開時：規格裡短版那段、帶張力的新寫法抄進卡片也拿掉。都沒開照舊。
+          this.shortPraiseOn || this.tensionStyleOn
+            ? [
+              ...TWO_STAGE_WRITER_SENTINELS,
+              ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
+              ...(this.tensionStyleOn ? TENSION_STYLE_WRITER_SENTINELS : []),
+            ]
             : TWO_STAGE_WRITER_SENTINELS,
         )
         : finalizeCard(card, spec, sourceText);
@@ -1212,7 +1225,11 @@ class GuideV3Flow {
       };
       const write = await this.deps.callWrite({
         runId: this.runId,
-        system: twoStage ? writeSystemPromptTwoStage() : writeSystemPrompt(),
+        system: twoStage
+          ? writeSystemPromptTwoStage(undefined, undefined, undefined, {
+            tensionStyle: this.tensionStyleOn,
+          })
+          : writeSystemPrompt(),
         user: twoStage
           ? writeUserPromptTwoStage({ ...userArgs, praise: plan.praise })
           : writeUserPrompt(userArgs),
@@ -1404,8 +1421,11 @@ class GuideV3Flow {
     const task = new Promise<{ text: string; model: string }>((resolve) =>
       resolve(callExplain({
         runId: this.runId,
-        system: explainSystemPrompt(),
+        system: explainSystemPrompt(undefined, undefined, {
+          tensionStyle: this.tensionStyleOn,
+        }),
         user: explainUserPrompt({
+          tensionStyle: this.tensionStyleOn,
           tags,
           herLatest,
           entries: plan.entries,
@@ -1471,7 +1491,10 @@ class GuideV3Flow {
         removed.push({ card: card.slot, reason: "missing" });
         continue;
       }
-      const vetted = vetExplanation(raw);
+      const vetted = vetExplanation(
+        raw,
+        this.tensionStyleOn ? TENSION_STYLE_EXPLAIN_SENTINELS : [],
+      );
       if (!vetted.ok) {
         removed.push({ card: card.slot, reason: vetted.reason });
         continue;
