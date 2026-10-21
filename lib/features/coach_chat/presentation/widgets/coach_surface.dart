@@ -162,6 +162,25 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
   String? _pendingResultId;
   bool _keepReadingOnComplete = false;
 
+  /// 規格 PR-10：「這次不參考關於我」，只管這一題，每個範圍各記一份。這一題
+  /// 在畫面上還沒問完（送出中、失敗等重試、或有還沒答完的釐清）就保留，同一題
+  /// 的釐清回答、直接給建議與重試都照它；拿到正式建議、按「想問別的」，或這題
+  /// 已經不在畫面上（切走時沒有未完的題、重開畫面）就回到預設（帶關於我）。
+  final Set<CoachScope> _skipAboutMeScopes = <CoachScope>{};
+
+  bool get _skipAboutMe => _skipAboutMeScopes.contains(widget.scope);
+
+  /// 這個範圍的題目在畫面上是否還沒問完：送出中、或有這次畫面裡問出、還沒答完
+  /// 的釐清。失敗等重試的情況由呼叫端（還在同一個範圍）自然保留。
+  bool _questionOpen(CoachScope scope) {
+    final state = ref.read(coachChatControllerProvider(scope));
+    if (state.isLoading) return true;
+    final latest = state.valueOrNull;
+    return latest != null &&
+        latest.isClarifyingQuestion &&
+        _sessionResultIds.contains(latest.id);
+  }
+
   bool get _engaged => _engagedScopes.contains(widget.scope);
 
   @override
@@ -250,6 +269,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
     if (widget.scope != oldWidget.scope) {
       _lastAskedQuestion = null;
+      // 切走時這題已問完或還沒送：開關不留著；送出中或釐清未完就保留。
+      if (!_questionOpen(oldWidget.scope)) {
+        _skipAboutMeScopes.remove(oldWidget.scope);
+      }
+      if (!_questionOpen(widget.scope)) {
+        _skipAboutMeScopes.remove(widget.scope);
+      }
       _visibleResultId = null;
       _pendingResultId = null;
       _keepReadingOnComplete = false;
@@ -304,10 +330,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     final timeline = mergedHistory
         .where((result) => _sessionResultIds.contains(result.id))
         .toList();
+    final hasAboutMe = _readyAboutMe() != null;
     final memorySources = _coachMemorySources(
       ref: ref,
       conversation: conversation,
       analysisSnapshot: widget.analysisSnapshot,
+      hasAboutMe: hasAboutMe,
     );
     final activeError = state.hasError && _lastAskedQuestion != null;
     final activeErrorObject = state.error;
@@ -333,6 +361,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
         ? _clarificationOrdinals[latest.id] ?? controllerClarificationsUsed
         : null;
 
+    final scope = widget.scope;
     ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
       // 只有這次進來後問出去的結果（loading→data）進顯示白名單；
       // 「想問別的」還原舊答案是 data→data，不會誤入。
@@ -345,6 +374,18 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
         // tell whether the user has finished with the currently visible answer.
         _keepReadingOnComplete = _visibleResultId != null;
         _restoreReadingAnchor(anchor);
+      }
+      // 規格 PR-10：拿到正式建議＝這一題問完，開關回到預設。跟下面的畫面問句
+      // 記憶分開判斷：送出中或釐清未完時切走再切回，問句記憶會被清掉，但這題
+      // 照樣算問完（PR-10 主審 2）。
+      final arrived = next.valueOrNull;
+      if (previous?.isLoading == true &&
+          !next.isLoading &&
+          !next.hasError &&
+          arrived != null &&
+          !arrived.isClarifyingQuestion &&
+          _skipAboutMeScopes.contains(scope)) {
+        setState(() => _skipAboutMeScopes.remove(scope));
       }
       if (previous?.isLoading == true &&
           !next.isLoading &&
@@ -510,7 +551,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
             ),
           ),
         ),
-        _buildInputBar(canSubmit: canSubmit, isClarifying: isClarifying),
+        _buildInputBar(
+          canSubmit: canSubmit,
+          isClarifying: isClarifying,
+          hasAboutMe: hasAboutMe,
+          isLoading: isLoading,
+        ),
       ],
     );
   }
@@ -518,7 +564,12 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
   /// 釘在畫面底部的聊天式輸入列。配方整組沿用練習室（2026-08-15 Eric
   /// 拍板一致）：白 12% 框底＋白 18% 框線＋聚焦橘框與橘色瞬態光暈
   /// （DESIGN.md §7 登記）、失焦中性黑陰影分層、送出鈕「有字才亮」漸層圓鈕。
-  Widget _buildInputBar({required bool canSubmit, required bool isClarifying}) {
+  Widget _buildInputBar({
+    required bool canSubmit,
+    required bool isClarifying,
+    required bool hasAboutMe,
+    required bool isLoading,
+  }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: SafeArea(
@@ -536,6 +587,30 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
                   style: AppTypography.caption.copyWith(
                     color: AppColors.onBackgroundSecondary,
                     height: 1.35,
+                  ),
+                ),
+              ),
+            if (hasAboutMe)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  // 送出中鎖住：這次請求已經照當下的選擇送出，改了也不算數，
+                  // 標籤要跟送出的一致（PR-10 主審 1 P2）。
+                  child: _SkipAboutMeToggle(
+                    selected: _skipAboutMe,
+                    onChanged: isLoading
+                        ? null
+                        : (value) {
+                            AppHaptics.light();
+                            setState(() {
+                              if (value) {
+                                _skipAboutMeScopes.add(widget.scope);
+                              } else {
+                                _skipAboutMeScopes.remove(widget.scope);
+                              }
+                            });
+                          },
                   ),
                 ),
               ),
@@ -693,6 +768,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     required WidgetRef ref,
     required Conversation? conversation,
     required CoachChatAnalysisSnapshot? analysisSnapshot,
+    required bool hasAboutMe,
   }) {
     final sources = <String>[];
     final messages = conversation?.messages ?? const [];
@@ -718,30 +794,26 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
         : (widget.scope.isGlobal ? null : widget.scope.id);
     final flagged = partnerId != null &&
         ref.watch(dataQualityFlagProvider(partnerId)).isFlagged;
-    // 規格 PR-5：「關於我」不分範圍，送出的內容不是空的就標。讀取參數跟
-    // controller 送出時同一組（global 一律不帶對象覆寫），標籤才會跟實際
-    // 送出的一致，也不會多開一份 provider。
-    // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
-    // 來源標籤，載入中先當沒有，resolve 後這個 ConsumerWidget 會自動重繪。
-    // 只認讀完、沒出錯的值：valueOrNull 在重新讀取中或讀取失敗時會回上一次
-    // 的值，但 controller 送出時等的是這次的結果、失敗就不送（PR-5 主審 1 P2）。
-    final styleAsync = ref.watch(
-      coachChatStyleContextProvider((
-        partnerId: partnerId,
-        includePartnerOverride: widget.scope.isGlobal ? false : !flagged,
-      )),
-    );
-    final styleContext = styleAsync.isLoading || styleAsync.hasError
-        ? null
-        : styleAsync.valueOrNull;
-    if (styleContext != null && styleContext.trim().isNotEmpty) {
-      sources.add('關於我');
-    }
+    // 規格 PR-5：「關於我」不分範圍，這次會送才標；PR-10：選了「這次不參考
+    // 關於我」就不標。
+    if (hasAboutMe && !_skipAboutMe) sources.add('關於我');
     if (partnerId != null) {
       sources.add(flagged ? '只看本段' : '對象資料');
     }
 
     return sources.isEmpty ? const ['目前問題'] : sources;
+  }
+
+  /// 這次會跟問題一起送的「關於我」。PR-7 起教練只讀全域關於我，跟 controller
+  /// 送出時讀的是同一個 provider。FutureProvider（2026-08-03 冷啟動風格完整性
+  /// 修）：載入中先當沒有，resolve 後這個 ConsumerWidget 會自動重繪。只認讀完、
+  /// 沒出錯的值：valueOrNull 在重新讀取中或讀取失敗時會回上一次的值，但
+  /// controller 送出時等的是這次的結果、失敗就不送（PR-5 主審 1 P2）。
+  String? _readyAboutMe() {
+    final styleAsync = ref.watch(coachChatStyleContextProvider);
+    if (styleAsync.isLoading || styleAsync.hasError) return null;
+    final text = styleAsync.valueOrNull?.trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   bool _hasAnalysisSnapshot(CoachChatAnalysisSnapshot? snapshot) {
@@ -771,6 +843,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       return;
     }
     AppHaptics.light();
+    final includeAboutMe = !_skipAboutMe;
     setState(() {
       _lastAskedQuestion = question;
       _engagedScopes.add(widget.scope);
@@ -781,6 +854,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
           question: question,
           analysisSnapshot: widget.analysisSnapshot,
           lifecyclePhase: widget.lifecyclePhase,
+          includeAboutMe: includeAboutMe,
         );
   }
 
@@ -813,11 +887,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       featureLabel: 'Coach 1:1',
     );
     if (!consented || !mounted) return;
+    final includeAboutMe = !_skipAboutMe;
     await ref
         .read(coachChatControllerProvider(widget.scope).notifier)
         .forceAnswer(
           analysisSnapshot: widget.analysisSnapshot,
           lifecyclePhase: widget.lifecyclePhase,
+          includeAboutMe: includeAboutMe,
         );
   }
 
@@ -854,6 +930,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       _pendingResultId = null;
       _keepReadingOnComplete = false;
       _lastAskedQuestion = null;
+      _skipAboutMeScopes.remove(scope);
       _controller.clear();
     });
     _focusNode.requestFocus();
@@ -1445,6 +1522,73 @@ class CoachChatResultView extends ConsumerWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已複製'), behavior: SnackBarBehavior.floating),
+    );
+  }
+}
+
+/// 規格 PR-10：「這次不參考關於我」。只在關於我有內容時出現。
+class _SkipAboutMeToggle extends StatelessWidget {
+  const _SkipAboutMeToggle({required this.selected, required this.onChanged});
+
+  final bool selected;
+
+  /// null＝送出中，鎖住不給改。
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected
+        ? AppColors.coachAccentBright
+        : AppColors.onBackgroundSecondary;
+    final onChanged = this.onChanged;
+    return Semantics(
+      button: true,
+      toggled: selected,
+      enabled: onChanged != null,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: const Key('coach-skip-about-me'),
+          borderRadius: BorderRadius.circular(999),
+          onTap: onChanged == null ? null : () => onChanged(!selected),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppColors.coachAccentBright.withValues(alpha: 0.14)
+                  : Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected
+                    ? AppColors.coachAccentBright
+                    : Colors.white.withValues(alpha: 0.14),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  selected
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  size: 16,
+                  color: color,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '這次不參考關於我',
+                  style: AppTypography.caption.copyWith(
+                    color: selected
+                        ? AppColors.onBackgroundPrimary
+                        : AppColors.onBackgroundSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

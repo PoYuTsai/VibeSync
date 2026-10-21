@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
+import 'package:vibesync/features/user_profile/presentation/screens/about_me_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -136,6 +139,75 @@ void main() {
     await tester.enterText(find.byKey(const Key('about-me-notes')), '');
     await tester.pumpAndSettle();
     expect(find.text('清除設定'), findsOneWidget);
+  });
+
+  // 規格 PR-7：8/4 以前選過的互動風格看不到也改不到，不能擋住「清除設定」。
+  testWidgets('只有舊互動風格的人：按鈕是「清除設定」，按了整筆清掉', (tester) async {
+    final repo = FakeUserProfileRepo(
+      initial: UserProfile.create(
+        interactionStyle: InteractionStyle.steady,
+        secondaryStyle: InteractionStyle.gentle,
+        updatedAt: DateTime.utc(2026, 4, 30),
+      ),
+    );
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
+    expect(clearBtn, findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, '儲存'), findsNothing);
+    await tester.ensureVisible(clearBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(clearBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(repo.byOwner[FakeUserProfileRepo.testUid], isNull);
+  });
+
+  testWidgets('有舊互動風格的人存檔：風格寫成 null，看得到的欄位照存、預覽不提風格', (tester) async {
+    final repo = FakeUserProfileRepo(
+      initial: UserProfile.create(
+        interactionStyle: InteractionStyle.direct,
+        secondaryStyle: InteractionStyle.humorous,
+        notes: '慢熟',
+        updatedAt: DateTime.utc(2026, 4, 30),
+      ),
+    );
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
+    await tester.pumpAndSettle();
+    final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
+    await tester.ensureVisible(saveBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(saveBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+    expect(saved.interactionStyle, isNull);
+    expect(saved.secondaryStyle, isNull);
+    expect(saved.notes, '慢熟');
+    expect(saved.practiceGoals, [PracticeGoal.softInvite]);
+    expect(find.textContaining('你想約得出來'), findsOneWidget);
+    expect(find.textContaining('教練知道你平常偏'), findsNothing);
+  });
+
+  testWidgets('只填常聊話題存檔：不跳成長框架預覽（話題不會送給 AI）', (tester) async {
+    final repo = FakeUserProfileRepo();
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '咖啡'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '咖啡'));
+    await tester.pumpAndSettle();
+    final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
+    await tester.ensureVisible(saveBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(saveBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('已更新關於我'), findsOneWidget);
+    expect(find.text('好，我知道了'), findsNothing);
+    expect(find.textContaining('說話習慣'), findsNothing);
   });
 
   testWidgets('successful save pops back and shows snackbar 已更新關於我',
@@ -292,5 +364,89 @@ void main() {
     );
     expect(find.text(note), findsOneWidget);
     expect(find.textContaining('貼近你的語氣'), findsNothing);
+  });
+
+  // 規格 PR-10「看看教練會讀到什麼」：顯示的就是教練實際會讀到的那段。
+  group('看看教練會讀到什麼', () {
+    Future<void> openPreview(WidgetTester tester) async {
+      final link = find.byKey(const Key('about-me-coach-context-preview'));
+      await tester.ensureVisible(link);
+      await tester.pumpAndSettle();
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('已儲存的內容：原文跟教練實際讀到的一字不差', (tester) async {
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          stuckPoints: const [StuckPoint.anxiousWontSend],
+          practiceGoals: const [PracticeGoal.softInvite],
+          notes: '不要太快邀約',
+          updatedAt: DateTime.utc(2026, 10, 21),
+        ),
+      );
+      await tester.pumpWidget(aboutMeHarness(repo: repo));
+      await tester.pumpAndSettle();
+      await openPreview(tester);
+
+      final coachReads = await ProviderScope.containerOf(
+        tester.element(find.byType(AboutMeScreen)),
+      ).read(coachChatStyleContextProvider.future);
+      final shown = tester
+          .widget<SelectableText>(
+            find.byKey(const Key('coach-context-preview-text')),
+          )
+          .data;
+      expect(coachReads, isNotNull);
+      expect(shown, coachReads);
+      expect(find.text('這是你問教練 1:1 時，會跟問題一起送給 AI 的內容。'), findsOneWidget);
+      expect(
+          find.byKey(const Key('coach-context-preview-unsaved')), findsNothing);
+    });
+
+    testWidgets('還有修改沒儲存：提醒教練讀的是上次儲存的內容', (tester) async {
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          notes: '不要太快邀約',
+          updatedAt: DateTime.utc(2026, 10, 21),
+        ),
+      );
+      await tester.pumpWidget(aboutMeHarness(repo: repo));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
+      await tester.pumpAndSettle();
+      await openPreview(tester);
+
+      expect(
+        find.text('你還有修改沒儲存；存檔之後，教練才會讀到新的內容。'),
+        findsOneWidget,
+      );
+      final shown = tester
+          .widget<SelectableText>(
+            find.byKey(const Key('coach-context-preview-text')),
+          )
+          .data!;
+      expect(shown, contains('不要太快邀約'));
+      expect(shown, isNot(contains('想約得出來')), reason: '還沒存檔的不會送');
+    });
+
+    testWidgets('教練什麼都不會讀（沒填，或只填常聊話題）：不顯示入口', (tester) async {
+      for (final initial in [
+        null,
+        UserProfile.create(
+          topicSeeds: const [TopicSeed.coffee],
+          updatedAt: DateTime.utc(2026, 10, 21),
+        ),
+      ]) {
+        await tester.pumpWidget(
+          aboutMeHarness(repo: FakeUserProfileRepo(initial: initial)),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('about-me-coach-context-preview')),
+          findsNothing,
+        );
+      }
+    });
   });
 }

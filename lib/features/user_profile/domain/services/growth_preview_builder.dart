@@ -1,31 +1,33 @@
 import '../entities/user_profile.dart';
 
 /// 存檔後的成長框架預覽——純本地模板句，不呼叫 AI、不扣額度。
+///
+/// 規格 PR-7：只說教練真的會讀的東西。互動風格不再送給教練，拿掉「教練知道
+/// 你平常偏…」；常聊話題不會送給 AI，只填了話題時回 null、不顯示預覽。
 class GrowthPreviewBuilder {
   const GrowthPreviewBuilder();
 
-  String build({
+  String? build({
     required List<StuckPoint> stuckPoints,
     required List<PracticeGoal> goals,
-    required InteractionStyle? comfortStyle,
+    required bool hasNotes,
   }) {
     final goalPhrase = goals.map(_goalPhrase).join('、');
     final stuckPhrase = stuckPoints.map(_stuckPhrase).join('、');
 
-    final String main;
     if (goalPhrase.isNotEmpty && stuckPhrase.isNotEmpty) {
-      main = '你想$goalPhrase。教練會盯著你$stuckPhrase的地方，幫你往前推一步。';
-    } else if (goalPhrase.isNotEmpty) {
-      main = '你想$goalPhrase。教練會照著這個方向，幫你一步步往前推。';
-    } else if (stuckPhrase.isNotEmpty) {
-      main = '教練會盯著你$stuckPhrase的地方，幫你找方法往前推一步。';
-    } else {
-      main = '教練會先摸清你的說話習慣和邊界，抓對時機幫你往前推一步。';
+      return '你想$goalPhrase。教練會盯著你$stuckPhrase的地方，幫你往前推一步。';
     }
-
-    if (comfortStyle == null) return main;
-    return '$main\n教練知道你平常偏${_styleLabel(comfortStyle)}，'
-        '會照你的步調來，不會突然要你變一個人。';
+    if (goalPhrase.isNotEmpty) {
+      return '你想$goalPhrase。教練會照著這個方向，幫你一步步往前推。';
+    }
+    if (stuckPhrase.isNotEmpty) {
+      return '教練會盯著你$stuckPhrase的地方，幫你找方法往前推一步。';
+    }
+    if (hasNotes) {
+      return '教練會參考你寫的「想讓 AI 知道的事」，抓對時機幫你往前推一步。';
+    }
+    return null;
   }
 
   static String _goalPhrase(PracticeGoal g) => switch (g) {
@@ -42,13 +44,5 @@ class GrowthPreviewBuilder {
         StuckPoint.anxiousWontSend => '緊張不敢傳',
         StuckPoint.overExplains => '容易解釋太多',
         StuckPoint.leftOnRead => '已讀不回',
-      };
-
-  static String _styleLabel(InteractionStyle s) => switch (s) {
-        InteractionStyle.steady => '穩重',
-        InteractionStyle.direct => '直接',
-        InteractionStyle.humorous => '幽默',
-        InteractionStyle.gentle => '溫柔',
-        InteractionStyle.playful => '俏皮',
       };
 }

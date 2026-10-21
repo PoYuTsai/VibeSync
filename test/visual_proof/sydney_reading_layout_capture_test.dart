@@ -198,11 +198,8 @@ void main() {
             CoachChatApiService(invoker: harness.invoke),
           ),
           coachChatUsageSyncProvider.overrideWithValue(() async {}),
-          coachChatStyleContextResolverProvider.overrideWithValue(({
-            required String? partnerId,
-            required bool includePartnerOverride,
-          }) async =>
-              null),
+          coachChatStyleContextResolverProvider
+              .overrideWithValue(() async => null),
           coachingOutcomeRepositoryProvider.overrideWithValue(
             MemoryCoachingOutcomeRepository(),
           ),

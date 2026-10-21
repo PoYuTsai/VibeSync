@@ -1,6 +1,5 @@
 import '../entities/partner_style_override.dart';
 import '../entities/user_profile.dart';
-import 'resolve_effective_style.dart';
 
 /// Spec 2.5 — converts About Me + per-partner style settings into compact AI
 /// context. This is the only contract layer that should translate profile
@@ -11,6 +10,7 @@ import 'resolve_effective_style.dart';
 /// 舒適區（延伸標記）概念一併移除——「關於我」的互動風格選擇區塊也已從
 /// UI 拿掉。開場白與新話題的入口已拆掉（2026-10-20），那兩邊不讀任何關於我
 /// 來源；[buildForAnalysis] 仍恆定回傳 null，等對話分析那側一起拆。
+/// 規格 PR-7（2026-10-21）起教練也不再讀互動風格與對象個別設定。
 class EffectiveStylePromptBuilder {
   static const int coachFollowUpMaxChars = 900;
 
@@ -28,63 +28,43 @@ class EffectiveStylePromptBuilder {
   ///
   /// 2026-08 關於我重新定位案 批3：補讀 stuckPoints（現在卡住的處境）與
   /// notes（使用者邊界）——先前故意不讀是為了避免長期人格推斷，這次拍板
-  /// 補上是因為處境與邊界屬於「現在」而非長期人格。Batch D 再恢復
-  /// interactionStyle 原子 pair，並把句長／問句密度明文化；Topics 仍不進來，
+  /// 補上是因為處境與邊界屬於「現在」而非長期人格。Topics 仍不進來，
   /// 因為那是話題素材不是語氣/處境設定。
   ///
   /// 2026-10-20 規格 PR-3：使用者自己寫的界線排第一、用引號框住原文；超過
   /// [coachFollowUpMaxChars] 時從優先序最低的那一行整行丟掉，界線與使用範圍
   /// 永遠保留。以前從尾巴截字，排在最後的界線會最先被剪掉。
-  String? buildForCoachFollowUp({
-    required UserProfile? global,
-    required PartnerStyleOverride? partner,
-    required bool includePartnerOverride,
-  }) {
-    final effective = resolveEffectiveStyle(
-      global: global,
-      partner: includePartnerOverride ? partner : null,
-    );
-
-    final notes = effective.notes?.trim();
+  ///
+  /// 規格 PR-7（D2 選 A，Eric 2026-10-21）：只讀全域「關於我」畫面上看得到的
+  /// 欄位。8/4 以前選過的互動風格（Batch D 帶入的主／副風格、句長、問句密度）
+  /// 和對象個別設定，使用者都看不到也清不掉（對象個別設定的備註還會蓋掉全域
+  /// 界線），所以不再送；欄位與 Hive 資料照舊保留，不做 migration。
+  String? buildForCoachFollowUp({required UserProfile? global}) {
+    final notes = global?.notes?.trim();
     final boundary = notes == null || notes.isEmpty
         ? null
         : '- 使用者自己寫的界線（原文）：「${_quoteSafe(notes)}」；'
             '建議要尊重，不能違反；安全與同意規則優先。';
 
-    // 優先序由高到低，超長時從尾巴整行丟：卡住的處境 → 練習重點 → 舊互動風格。
+    // 優先序由高到低，超長時從尾巴整行丟：卡住的處境 → 練習重點。
     final optional = <String>[];
 
     // 2026-08-31 語言守門案：標籤全中文——英文標籤（Stuck points／Boundary…）
     // 會被模型當成「這裡可以夾英文」的示範抄進可貼句（同 08-29「早safe」）。
-    if (effective.stuckPoints.isNotEmpty) {
+    final stuckPoints = global?.stuckPoints ?? const <StuckPoint>[];
+    if (stuckPoints.isNotEmpty) {
       optional.add(
-        '- 卡住的處境：${effective.stuckPoints.map(_stuckPointLabel).join('、')}；'
+        '- 卡住的處境：${stuckPoints.map(_stuckPointLabel).join('、')}；'
         '回答時要接住這個情境，不要給通用建議。',
       );
     }
 
-    if (effective.practiceGoals.isNotEmpty) {
+    final goals = global?.practiceGoals ?? const <PracticeGoal>[];
+    if (goals.isNotEmpty) {
       optional.add(
-        '- 練習重點：${effective.practiceGoals.map(_goalLabel).join('、')}；'
-        '${effective.practiceGoals.map(_goalPrompt).join(' ')}',
+        '- 練習重點：${goals.map(_goalLabel).join('、')}；'
+        '${goals.map(_goalPrompt).join(' ')}',
       );
-    }
-
-    final primaryStyle = effective.interactionStyle;
-    if (primaryStyle != null) {
-      optional.add(
-        '- 主要互動風格：${_styleLabel(primaryStyle)}；'
-        '${_styleVoice(primaryStyle)}',
-      );
-      final secondaryStyle = effective.secondaryStyle;
-      if (secondaryStyle != null) {
-        optional.add(
-          '- 次要互動風格：${_styleLabel(secondaryStyle)}；只作少量點綴，'
-          '不可蓋過主要風格。',
-        );
-      }
-      optional.add('- 建議句長度：${_lengthGuidance(primaryStyle)}');
-      optional.add('- 問句密度：${_questionDensityGuidance(primaryStyle)}');
     }
 
     if (boundary == null && optional.isEmpty) return null;
@@ -161,37 +141,4 @@ class EffectiveStylePromptBuilder {
         return '維持雙向篩選：一面感受是否聊得來，一面看對方是否持續投入、尊重界線、生活節奏適配；不要為了不設限而忽略不適合訊號，也不要因單一標籤太早淘汰。';
     }
   }
-
-  static String _styleLabel(InteractionStyle style) => switch (style) {
-        InteractionStyle.steady => '穩重',
-        InteractionStyle.direct => '直接',
-        InteractionStyle.humorous => '幽默',
-        InteractionStyle.gentle => '溫柔',
-        InteractionStyle.playful => '有玩心',
-      };
-
-  static String _styleVoice(InteractionStyle style) => switch (style) {
-        InteractionStyle.steady => '沉著、真誠、少表演，先把判斷說穩。',
-        InteractionStyle.direct => '清楚俐落，直接說判斷，不兜圈也不粗魯。',
-        InteractionStyle.humorous => '先真誠再幽默，笑點來自現有內容，不油膩。',
-        InteractionStyle.gentle => '溫和接住情緒，但判斷不能含糊或過度安撫。',
-        InteractionStyle.playful => '輕巧有玩心，保留張力，不為表演而表演。',
-      };
-
-  static String _lengthGuidance(InteractionStyle style) => switch (style) {
-        InteractionStyle.steady => '中短，通常 20–60 個中文字；需要判斷時先說重點。',
-        InteractionStyle.direct => '短，通常 12–40 個中文字；能一句說清楚就不拉長。',
-        InteractionStyle.humorous => '中短，通常 18–55 個中文字；笑點後不要再解釋。',
-        InteractionStyle.gentle => '中短，通常 20–65 個中文字；同理一句後進入方向。',
-        InteractionStyle.playful => '短到中短，通常 15–50 個中文字；留白比補滿重要。',
-      };
-
-  static String _questionDensityGuidance(InteractionStyle style) =>
-      switch (style) {
-        InteractionStyle.steady => '低，每則最多 1 個問句，不用追問撐住對話。',
-        InteractionStyle.direct => '很低，能陳述就不問；必要時最多 1 個問句。',
-        InteractionStyle.humorous => '低，每則最多 1 個問句，不連續拋梗逼對方接。',
-        InteractionStyle.gentle => '低，每則最多 1 個問句，不用問題索取安撫。',
-        InteractionStyle.playful => '低，每則最多 1 個問句，不用追問製造熱度。',
-      };
 }

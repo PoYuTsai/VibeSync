@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 import 'package:vibesync/features/user_profile/presentation/screens/about_me_screen.dart';
 
 import '_harness.dart' show FakeUserProfileRepo;
@@ -87,6 +88,26 @@ void main() {
 
   testWidgets('沒有改動按返回鍵 → 直接離開，不跳確認', (tester) async {
     await _pumpWithBackStack(tester, repo: FakeUserProfileRepo());
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+
+    expect(find.text('放棄變更？'), findsNothing);
+    expect(find.text('open-about-me'), findsOneWidget);
+  });
+
+  // 規格 PR-7：看不到的舊互動風格不算使用者的修改，存檔時才會清掉。
+  testWidgets('只有舊互動風格、沒改看得到的欄位：返回不跳確認', (tester) async {
+    await _pumpWithBackStack(
+      tester,
+      repo: FakeUserProfileRepo(
+        initial: UserProfile.create(
+          interactionStyle: InteractionStyle.playful,
+          notes: '慢熟',
+          updatedAt: DateTime.utc(2026, 4, 30),
+        ),
+      ),
+    );
 
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();

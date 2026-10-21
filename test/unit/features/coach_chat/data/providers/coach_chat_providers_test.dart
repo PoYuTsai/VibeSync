@@ -19,9 +19,12 @@ import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_provider.dart';
+import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/user_profile_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 const _generatedAt = '2026-05-07T12:00:00.000Z';
@@ -203,6 +206,26 @@ class _DelayedProfileRepo implements UserProfileRepository {
   Future<void> clear(String ownerUserId) async {}
 }
 
+/// 對象個別設定（舊資料）。規格 PR-7 之後教練不該再讀到它。
+class _StaticPartnerStyleRepo implements PartnerStyleRepository {
+  _StaticPartnerStyleRepo(this.stored);
+  final PartnerStyleOverride? stored;
+  int loads = 0;
+
+  @override
+  Future<PartnerStyleOverride?> load(String partnerId) async {
+    loads++;
+    return stored;
+  }
+
+  @override
+  Future<void> save(PartnerStyleOverride o) async {}
+  @override
+  Future<void> delete(String partnerId) async {}
+  @override
+  Future<void> clearAll() async {}
+}
+
 /// profile 載入失敗——驗證 ask() 退回無風格繼續送出，不因加分項擋死請求
 /// （Codex cross-review P2 finding）。
 class _ThrowingProfileRepo implements UserProfileRepository {
@@ -340,16 +363,9 @@ ProviderContainer _container({
     partnerByIdProvider('p-1').overrideWithValue(partner),
     partnerAggregateProvider('p-1').overrideWithValue(aggregate),
     dataQualityFlagProvider('p-1').overrideWithValue(flag),
+    // 規格 PR-7：教練只讀全域關於我，不分範圍、不看對象資料標記。
     coachChatStyleContextResolverProvider.overrideWithValue(
-      styleContextResolver ??
-          ({
-            required String? partnerId,
-            required bool includePartnerOverride,
-          }) async {
-            if (partnerId != 'p-1') return null;
-            if (includePartnerOverride == flag.isFlagged) return null;
-            return styleContext;
-          },
+      styleContextResolver ?? () async => styleContext,
     ),
   ]);
 }
@@ -1117,24 +1133,18 @@ void main() {
   });
 
   group('global scope（批 A）', () {
-    test('ask sends global wire shape：無 partnerId/partnerHint，styleContext 以 '
-        'partnerId null＋includePartnerOverride false 解析', () async {
+    test(
+        'ask sends global wire shape：無 partnerId/partnerHint，'
+        'styleContext 讀全域關於我', () async {
       final repo = _FakeRepo();
       final calls = <_RecordedCall>[];
-      final resolverArgs =
-          <({String? partnerId, bool includePartnerOverride})>[];
+      var resolverCalls = 0;
       final c = _container(
         repo: repo,
         invoker: _invoker(calls: calls),
         partner: _partner(),
-        styleContextResolver: ({
-          required String? partnerId,
-          required bool includePartnerOverride,
-        }) async {
-          resolverArgs.add((
-            partnerId: partnerId,
-            includePartnerOverride: includePartnerOverride,
-          ));
+        styleContextResolver: () async {
+          resolverCalls++;
           return '- Preferred voice: 幽默';
         },
       );
@@ -1157,10 +1167,7 @@ void main() {
       expect(body['recentMessages'], isEmpty);
       expect(body.containsKey('analysisSnapshot'), isFalse);
       expect(body['effectiveStyleContext'], '- Preferred voice: 幽默');
-      expect(
-        resolverArgs.single,
-        (partnerId: null, includePartnerOverride: false),
-      );
+      expect(resolverCalls, 1);
 
       final stored = repo.latestForScope(CoachScopeType.global, 'me');
       expect(stored, isNotNull);
@@ -1176,6 +1183,164 @@ void main() {
         c.read(coachChatHistoryProvider(scope)).single.scopeId,
         'me',
       );
+    });
+  });
+
+  // 規格 PR-7（D2 選 A）：對象個別設定沒有編輯畫面、看不到也清不掉，它的備註
+  // 以前還會蓋掉全域界線；8/4 以前選過的互動風格也看不到。教練只讀全域關於我
+  // 畫面上看得到的欄位。
+  group('教練只讀全域關於我（規格 PR-7）', () {
+    test('有對象個別設定與舊互動風格：送出的只有全域界線', () async {
+      final calls = <_RecordedCall>[];
+      final partnerStyles = _StaticPartnerStyleRepo(
+        PartnerStyleOverride.create(
+          partnerId: 'p-1',
+          interactionStyle: InteractionStyle.playful,
+          notes: '對象備註：可以很快約她',
+          updatedAt: DateTime(2026, 10, 21),
+        ),
+      );
+      final c = ProviderContainer(overrides: [
+        conversationsByPartnerProvider('p-1').overrideWithValue(const []),
+        coachChatRepositoryProvider.overrideWithValue(_FakeRepo()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(_FakeOutcomeRepo(const [])),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(invoker: _invoker(calls: calls)),
+        ),
+        coachChatUsageSyncProvider.overrideWithValue(() async {}),
+        conversationProvider('c-1').overrideWithValue(_conversation()),
+        partnerByIdProvider('p-1').overrideWithValue(_partner()),
+        partnerAggregateProvider('p-1')
+            .overrideWithValue(PartnerAggregateView.empty()),
+        dataQualityFlagProvider('p-1')
+            .overrideWithValue(const DataQualityFlag.unflagged()),
+        userProfileRepositoryProvider.overrideWithValue(
+          _DelayedProfileRepo(
+            Future.value(
+              UserProfile.create(
+                interactionStyle: InteractionStyle.direct,
+                notes: '全域界線：不要太快邀約',
+                updatedAt: DateTime(2026, 10, 21),
+              ),
+            ),
+          ),
+        ),
+        authUserProfileScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+        partnerStyleRepositoryProvider.overrideWithValue(partnerStyles),
+      ]);
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c
+          .read(coachChatControllerProvider(_conversationScope).notifier)
+          .ask(
+            question: '她回很快，要不要今晚直接約？',
+            analysisSnapshot: _snapshot(),
+          );
+
+      final sent = calls.single.body['effectiveStyleContext'] as String;
+      expect(sent, contains('全域界線：不要太快邀約'));
+      expect(sent, isNot(contains('對象備註')));
+      expect(sent, isNot(contains('互動風格')));
+      expect(partnerStyles.loads, 0, reason: '教練不該再讀對象個別設定');
+    });
+  });
+
+  // 規格 PR-10：「這次不參考關於我」——這一題不讀、不送關於我。
+  group('這次不參考關於我（規格 PR-10）', () {
+    test('includeAboutMe false：不讀也不送關於我；預設照送', () async {
+      final calls = <_RecordedCall>[];
+      var resolverCalls = 0;
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+        styleContextResolver: () async {
+          resolverCalls++;
+          return '- 使用者自己寫的界線（原文）：「不要太快邀約」';
+        },
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(
+        question: '她回很快，要不要今晚直接約？',
+        analysisSnapshot: _snapshot(),
+        includeAboutMe: false,
+      );
+      expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
+      expect(resolverCalls, 0, reason: '不參考就不必讀');
+
+      await notifier.ask(question: '下一題', analysisSnapshot: _snapshot());
+      expect(calls.last.body['effectiveStyleContext'], contains('不要太快邀約'));
+      expect(resolverCalls, 1);
+    });
+
+    test('換了開關重試要用新編號，不重播帶著關於我產生的結果', () async {
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return const CoachChatInvokeResponse(
+            status: 500,
+            data: {'error': 'transient'},
+          );
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(
+        question: '同一題',
+        analysisSnapshot: _snapshot(),
+        includeAboutMe: false,
+      );
+      await notifier.ask(
+        question: '同一題',
+        analysisSnapshot: _snapshot(),
+        includeAboutMe: false,
+      );
+
+      expect(calls, hasLength(3));
+      expect(
+        calls[1].body['requestId'],
+        isNot(calls[0].body['requestId']),
+        reason: '開關不同是不同意圖',
+      );
+      expect(
+        calls[2].body['requestId'],
+        calls[1].body['requestId'],
+        reason: '同開關的失敗重試照舊沿用同編號',
+      );
+    });
+
+    test('直接給建議也照開關：includeAboutMe false 不送關於我', () async {
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c
+          .read(coachChatControllerProvider(_conversationScope).notifier)
+          .forceAnswer(analysisSnapshot: _snapshot(), includeAboutMe: false);
+
+      expect(calls.single.body['forceAnswer'], isTrue);
+      expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
     });
   });
 

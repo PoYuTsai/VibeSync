@@ -47,15 +47,12 @@ class PartnerStyleOverrideController
   }
 }
 
-/// Per-field merge of the global About Me with the per-partner override.
-/// UI uses this for placeholder hints ("沿用全域：穩重"). Spec 2.5 prompt code
-/// reads the same merge shape through [EffectiveStylePromptBuilder].
+/// 分析頁本地教練行動卡讀卡點與目標用的「關於我」（規格 D4：繼續讀，不經 AI）。
+///
+/// 規格 PR-7（D2 選 A）：只用全域「關於我」。對象個別設定沒有編輯畫面、使用者
+/// 看不到也清不掉，不再合併進來；family 參數保留給既有呼叫端，不影響結果。
 final effectiveStyleProvider =
     Provider.family<EffectiveStyle, String>((ref, partnerId) {
   final globalAsync = ref.watch(userProfileControllerProvider);
-  final partnerAsync = ref.watch(partnerStyleOverrideProvider(partnerId));
-  return resolveEffectiveStyle(
-    global: globalAsync.valueOrNull,
-    partner: partnerAsync.valueOrNull,
-  );
+  return resolveEffectiveStyle(global: globalAsync.valueOrNull);
 });

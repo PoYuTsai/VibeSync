@@ -176,11 +176,8 @@ Future<_Harness> _pump(
         coachChatUsageSyncProvider.overrideWithValue(() async {
           harness.usageSyncCalls++;
         }),
-        coachChatStyleContextResolverProvider.overrideWithValue(({
-          required String? partnerId,
-          required bool includePartnerOverride,
-        }) async =>
-            null),
+        coachChatStyleContextResolverProvider
+            .overrideWithValue(() async => null),
         coachingOutcomeRepositoryProvider.overrideWithValue(
           MemoryCoachingOutcomeRepository(),
         ),
