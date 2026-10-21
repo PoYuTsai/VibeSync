@@ -47,38 +47,13 @@ class MessageBubble extends StatelessWidget {
     final isMe = message.isFromMe;
     final quote = message.quotedReplyPreview?.trim();
     final hasQuote = quote != null && quote.isNotEmpty;
-    final initial = isMe ? null : partnerInitial;
 
-    final bubble = ChatBubble(
+    final bubble = MessageBubbleBody(
       isMe: isMe,
-      tail: isGroupStart,
-      maxWidth: MediaQuery.sizeOf(context).width * 0.7,
-      // 有引用時內距縮成 6，內文再補 6，左緣仍對齊 12。
-      padding: hasQuote
-          ? const EdgeInsets.fromLTRB(6, 6, 6, 8)
-          : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      // 泡泡寬度跟著內文或引用較寬的那個走，引用小卡再撐滿泡泡；有引用
-      // 不會再整排撐到最寬，內文也一律靠左。
-      child: IntrinsicWidth(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (quote != null && quote.isNotEmpty)
-              _QuoteCard(text: quote, isMe: isMe),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: hasQuote ? 6 : 0),
-              child: Text(
-                message.content,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      content: message.content,
+      quote: quote,
+      isGroupStart: isGroupStart,
+      partnerInitial: partnerInitial,
     );
 
     // VoiceOver 一次念完一則：說話者、引用、回覆分開標明，避免把引用那句
@@ -108,14 +83,7 @@ class MessageBubble extends StatelessWidget {
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
-              child: initial == null
-                  ? bubble
-                  : ChatAvatarGutter(
-                      avatar: isGroupStart
-                          ? _PartnerAvatar(initial: initial)
-                          : null,
-                      child: bubble,
-                    ),
+              child: bubble,
             ),
           ),
         ),
@@ -206,6 +174,76 @@ class MessageBubble extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 一則訊息的外觀：泡泡、引用小卡、對方頭像欄。排列、手勢與語意由呼叫端
+/// 負責——分析片段（[MessageBubble]）和截圖確認框共用這一份，匯入前後長得
+/// 一樣（2026-10-21 確認框改版）。
+class MessageBubbleBody extends StatelessWidget {
+  const MessageBubbleBody({
+    super.key,
+    required this.isMe,
+    required this.content,
+    this.quote,
+    this.isGroupStart = true,
+    this.partnerInitial,
+  });
+
+  final bool isMe;
+  final String content;
+
+  /// 截圖裡的引用原文；空的就不畫引用小卡。
+  final String? quote;
+
+  /// 同一人連發的第一則：帶尾巴角，對方那側再掛頭像。
+  final bool isGroupStart;
+
+  /// 對方頭像上的字（對象名字的第一個字）；null＝不留頭像欄。
+  final String? partnerInitial;
+
+  @override
+  Widget build(BuildContext context) {
+    final quoteText = quote?.trim();
+    final hasQuote = quoteText != null && quoteText.isNotEmpty;
+    final initial = isMe ? null : partnerInitial;
+
+    final bubble = ChatBubble(
+      isMe: isMe,
+      tail: isGroupStart,
+      maxWidth: MediaQuery.sizeOf(context).width * 0.7,
+      // 有引用時內距縮成 6，內文再補 6，左緣仍對齊 12。
+      padding: hasQuote
+          ? const EdgeInsets.fromLTRB(6, 6, 6, 8)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      // 泡泡寬度跟著內文或引用較寬的那個走，引用小卡再撐滿泡泡；有引用
+      // 不會再整排撐到最寬，內文也一律靠左。
+      child: IntrinsicWidth(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasQuote) _QuoteCard(text: quoteText, isMe: isMe),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: hasQuote ? 6 : 0),
+              child: Text(
+                content,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.glassTextPrimary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (initial == null) return bubble;
+    return ChatAvatarGutter(
+      avatar: isGroupStart ? _PartnerAvatar(initial: initial) : null,
+      child: bubble,
     );
   }
 }
