@@ -160,4 +160,61 @@ void main() {
       expect(p.secondaryStyle, isNull);
     });
   });
+
+  // 規格 PR-8「最近的狀況」：60 字、要有寫下時間、14 天內才算新的。
+  group('recentNote', () {
+    final ts = DateTime.utc(2026, 10, 21, 12);
+
+    test('trims, keeps the date, and counts toward isEmpty', () {
+      final p = UserProfile.create(
+        recentNote: '  這週很忙  ',
+        recentNoteUpdatedAt: ts,
+        updatedAt: ts,
+      );
+      expect(p.recentNote, '這週很忙');
+      expect(p.recentNoteUpdatedAt, ts);
+      expect(p.isEmpty, isFalse);
+    });
+
+    test('blank note drops both fields', () {
+      final p = UserProfile.create(
+        recentNote: '   ',
+        recentNoteUpdatedAt: ts,
+        updatedAt: ts,
+      );
+      expect(p.recentNote, isNull);
+      expect(p.recentNoteUpdatedAt, isNull);
+      expect(p.isEmpty, isTrue);
+    });
+
+    test('over 60 chars or missing date throws', () {
+      expect(
+        () => UserProfile.create(
+          recentNote: 'a' * (UserProfile.maxRecentNoteLength + 1),
+          recentNoteUpdatedAt: ts,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => UserProfile.create(recentNote: '這週很忙', updatedAt: ts),
+        throwsArgumentError,
+      );
+    });
+
+    test('fresh through day 14, stale from day 15', () {
+      UserProfile written(Duration ago) => UserProfile.create(
+            recentNote: '這週很忙',
+            recentNoteUpdatedAt: ts.subtract(ago),
+            updatedAt: ts,
+          );
+      final day14 = written(const Duration(days: 14, hours: 23));
+      expect(day14.recentNoteAgeDays(ts), 14);
+      expect(day14.recentNoteIsFresh(ts), isTrue);
+      final day15 = written(const Duration(days: 15));
+      expect(day15.recentNoteAgeDays(ts), 15);
+      expect(day15.recentNoteIsFresh(ts), isFalse);
+      expect(UserProfile.create(updatedAt: ts).recentNoteIsFresh(ts), isFalse);
+    });
+  });
 }

@@ -34,4 +34,23 @@ void main() {
 
     expect(restored.stuckPoints, profile.stuckPoints);
   });
+
+  // 規格 PR-8：新欄位也要經 HiveRegistrar 註冊的 adapter 存得進、讀得回。
+  test('UserProfile with a recent note saves and round-trips', () async {
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    final box = await Hive.openBox<UserProfile>('recent_note_wire_$ts');
+    addTearDown(() async => box.deleteFromDisk());
+
+    final profile = UserProfile.create(
+      recentNote: '這週在跟交友軟體認識的人聊，她回很慢',
+      recentNoteUpdatedAt: DateTime.utc(2026, 10, 20),
+      updatedAt: DateTime.utc(2026, 10, 21),
+    );
+
+    await box.put('me', profile);
+    final restored = box.get('me')!;
+
+    expect(restored.recentNote, profile.recentNote);
+    expect(restored.recentNoteUpdatedAt, profile.recentNoteUpdatedAt);
+  });
 }

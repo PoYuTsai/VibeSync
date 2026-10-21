@@ -189,6 +189,16 @@ class _FilledState extends StatelessWidget {
     if (profile.notes != null) {
       lines.add(_summaryLine('備註', profile.notes!));
     }
+    // 規格 PR-8：近況過期（超過 14 天）就不再提供給教練，摘要灰字標「已過期」。
+    final recentNote = profile.recentNote;
+    if (recentNote != null) {
+      final fresh = profile.recentNoteIsFresh(DateTime.now());
+      lines.add(_summaryLine(
+        '近況',
+        fresh ? recentNote : '$recentNote（已過期）',
+        dimmed: !fresh,
+      ));
+    }
 
     return GlassmorphicContainer(
       padding: const EdgeInsets.all(18),
@@ -262,7 +272,7 @@ class _FilledState extends StatelessWidget {
     );
   }
 
-  Widget _summaryLine(String label, String value) {
+  Widget _summaryLine(String label, String value, {bool dimmed = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Row(
@@ -281,7 +291,9 @@ class _FilledState extends StatelessWidget {
             child: Text(
               value,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.glassTextPrimary,
+                color: dimmed
+                    ? AppColors.glassTextSecondary
+                    : AppColors.glassTextPrimary,
               ),
             ),
           ),

@@ -29,13 +29,15 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
       customTopics: fields[3] as String?,
       notes: fields[4] as String?,
       updatedAt: fields[5] as DateTime,
+      recentNote: fields[8] as String?,
+      recentNoteUpdatedAt: fields[9] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, UserProfile obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.interactionStyle)
       ..writeByte(1)
@@ -51,7 +53,11 @@ class UserProfileAdapter extends TypeAdapter<UserProfile> {
       ..writeByte(6)
       ..write(obj.secondaryStyle)
       ..writeByte(7)
-      ..write(obj.stuckPoints);
+      ..write(obj.stuckPoints)
+      ..writeByte(8)
+      ..write(obj.recentNote)
+      ..writeByte(9)
+      ..write(obj.recentNoteUpdatedAt);
   }
 
   @override

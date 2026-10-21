@@ -62,6 +62,12 @@ class UserProfile {
   static const int maxNotesLength = 100;
   static const int maxStuckPoints = 2;
 
+  /// 規格 PR-8「最近的狀況」：一兩句就好。
+  static const int maxRecentNoteLength = 60;
+
+  /// 寫下超過這麼多天就不再提供給教練（D5 照預設 14 天）。
+  static const int recentNoteFreshDays = 14;
+
   @HiveField(0)
   final InteractionStyle? interactionStyle;
   @HiveField(1)
@@ -83,6 +89,15 @@ class UserProfile {
   @HiveField(7)
   final List<StuckPoint> stuckPoints;
 
+  /// 規格 PR-8「最近的狀況」原文。舊資料讀回來是 null，不做 migration；舊版
+  /// App 讀到這兩格會略過（adapter 先把欄位讀進 map 再按編號取值）。
+  @HiveField(8)
+  final String? recentNote;
+
+  /// [recentNote] 最後一次寫下或確認「還是這樣」的時間。
+  @HiveField(9)
+  final DateTime? recentNoteUpdatedAt;
+
   /// Public raw constructor — used by Hive codegen and trusted call sites.
   /// Callers from UI / controller MUST use [UserProfile.create] instead so
   /// trimming + bounds are enforced. Permissive on purpose so generated
@@ -98,6 +113,8 @@ class UserProfile {
     this.customTopics,
     this.notes,
     required this.updatedAt,
+    this.recentNote,
+    this.recentNoteUpdatedAt,
   });
 
   /// Validates + normalizes inputs. Always use this from controllers,
@@ -112,6 +129,8 @@ class UserProfile {
     String? customTopics,
     String? notes,
     required DateTime updatedAt,
+    String? recentNote,
+    DateTime? recentNoteUpdatedAt,
   }) {
     if (secondaryStyle != null && interactionStyle == null) {
       throw ArgumentError('secondaryStyle requires interactionStyle (主)');
@@ -136,6 +155,14 @@ class UserProfile {
     if (n != null && n.length > maxNotesLength) {
       throw ArgumentError('notes exceeds $maxNotesLength chars');
     }
+    final rn = recentNote?.trim();
+    final hasRecentNote = rn != null && rn.isNotEmpty;
+    if (hasRecentNote && rn.length > maxRecentNoteLength) {
+      throw ArgumentError('recentNote exceeds $maxRecentNoteLength chars');
+    }
+    if (hasRecentNote && recentNoteUpdatedAt == null) {
+      throw ArgumentError('recentNote requires recentNoteUpdatedAt');
+    }
     return UserProfile(
       interactionStyle: interactionStyle,
       secondaryStyle: secondaryStyle,
@@ -145,6 +172,8 @@ class UserProfile {
       customTopics: (ct == null || ct.isEmpty) ? null : ct,
       notes: (n == null || n.isEmpty) ? null : n,
       updatedAt: updatedAt,
+      recentNote: hasRecentNote ? rn : null,
+      recentNoteUpdatedAt: hasRecentNote ? recentNoteUpdatedAt : null,
     );
   }
 
@@ -155,5 +184,19 @@ class UserProfile {
       topicSeeds.isEmpty &&
       stuckPoints.isEmpty &&
       customTopics == null &&
-      notes == null;
+      notes == null &&
+      recentNote == null;
+
+  /// [recentNote] 寫下（或確認）到 [now] 經過幾個整天；沒有近況回 null。
+  int? recentNoteAgeDays(DateTime now) {
+    final at = recentNoteUpdatedAt;
+    if (recentNote == null || at == null) return null;
+    return now.difference(at).inDays;
+  }
+
+  /// 近況還在 [recentNoteFreshDays] 天內，才提供給教練。
+  bool recentNoteIsFresh(DateTime now) {
+    final age = recentNoteAgeDays(now);
+    return age != null && age <= recentNoteFreshDays;
+  }
 }

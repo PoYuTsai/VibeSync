@@ -286,4 +286,92 @@ void main() {
       );
     });
   });
+
+  // 規格 PR-8（D5 照預設）：最近的狀況排在界線之後、卡點之前；寫下 14 天內才送。
+  group('最近的狀況', () {
+    final now = DateTime.utc(2026, 10, 21, 12);
+    final clocked = EffectiveStylePromptBuilder(now: () => now);
+
+    UserProfile withRecent(
+      Duration ago, {
+      String note = '這週在跟交友軟體認識的人聊，她回很慢',
+    }) =>
+        UserProfile.create(
+          stuckPoints: const [StuckPoint.leftOnRead],
+          notes: '不要太快邀約',
+          recentNote: note,
+          recentNoteUpdatedAt: now.subtract(ago),
+          updatedAt: now,
+        );
+
+    test('排在界線之後、卡點之前，照原文並提醒可能已經變了', () {
+      final lines = clocked
+          .buildForCoachFollowUp(global: withRecent(const Duration(days: 3)))!
+          .split('\n');
+      expect(lines[0], startsWith('- 使用者自己寫的界線（原文）：'));
+      expect(
+        lines[1],
+        '- 最近的狀況（3 天前寫的，原文）：「這週在跟交友軟體認識的人聊，她回很慢」；'
+        '這是近況，可能已經變了，用之前可以先確認。',
+      );
+      expect(lines[2], startsWith('- 卡住的處境：'));
+      expect(lines.last, EffectiveStylePromptBuilder.coachFollowUpScopeLine);
+    });
+
+    test('第 14 天還送，第 15 天起不送', () {
+      expect(
+        clocked.buildForCoachFollowUp(
+          global: withRecent(const Duration(days: 14, hours: 23)),
+        ),
+        contains('14 天前寫的'),
+      );
+      expect(
+        clocked.buildForCoachFollowUp(
+          global: withRecent(const Duration(days: 15)),
+        ),
+        isNot(contains('最近的狀況')),
+      );
+    });
+
+    test('當天寫的寫「今天寫的」；原文的「」換成『』', () {
+      final context = clocked.buildForCoachFollowUp(
+        global: withRecent(const Duration(hours: 2), note: '她說「再看看」'),
+      )!;
+      expect(context, contains('- 最近的狀況（今天寫的，原文）：「她說『再看看』」；'));
+    });
+
+    test('只有近況（過期）時什麼都不送', () {
+      final onlyStale = UserProfile.create(
+        recentNote: '這週很忙',
+        recentNoteUpdatedAt: now.subtract(const Duration(days: 20)),
+        updatedAt: now,
+      );
+      expect(clocked.buildForCoachFollowUp(global: onlyStale), isNull);
+    });
+
+    test('最壞長度加上近況仍在上限內，不必丟行', () {
+      final worst = UserProfile.create(
+        practiceGoals: const [
+          PracticeGoal.softInvite,
+          PracticeGoal.buildCloseness,
+          PracticeGoal.findCompatiblePartner,
+        ],
+        stuckPoints: const [
+          StuckPoint.dontKnowHowToAsk,
+          StuckPoint.anxiousWontSend,
+        ],
+        notes: 'y' * UserProfile.maxNotesLength,
+        recentNote: 'r' * UserProfile.maxRecentNoteLength,
+        recentNoteUpdatedAt: now.subtract(const Duration(days: 1)),
+        updatedAt: now,
+      );
+      final lines = clocked.buildForCoachFollowUp(global: worst)!.split('\n');
+      expect(
+        lines.join('\n').length,
+        lessThanOrEqualTo(EffectiveStylePromptBuilder.coachFollowUpMaxChars),
+      );
+      expect(lines, hasLength(5));
+      expect(lines[1], contains('r' * UserProfile.maxRecentNoteLength));
+    });
+  });
 }

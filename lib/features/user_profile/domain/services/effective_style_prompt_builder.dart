@@ -14,7 +14,13 @@ import '../entities/user_profile.dart';
 class EffectiveStylePromptBuilder {
   static const int coachFollowUpMaxChars = 900;
 
-  const EffectiveStylePromptBuilder();
+  /// [now] 只給測試注入時鐘；正式環境用系統時間。
+  const EffectiveStylePromptBuilder({DateTime Function() now = _systemNow})
+      : _now = now;
+
+  final DateTime Function() _now;
+
+  static DateTime _systemNow() => DateTime.now();
 
   /// analyze-chat / my_message / userDraft optimize 不再讀取關於我。
   String? buildForAnalysis({
@@ -46,8 +52,21 @@ class EffectiveStylePromptBuilder {
         : '- 使用者自己寫的界線（原文）：「${_quoteSafe(notes)}」；'
             '建議要尊重，不能違反；安全與同意規則優先。';
 
-    // 優先序由高到低，超長時從尾巴整行丟：卡住的處境 → 練習重點。
+    // 優先序由高到低，超長時從尾巴整行丟：最近的狀況 → 卡住的處境 → 練習重點。
     final optional = <String>[];
+
+    // 規格 PR-8（D5 照預設）：最近的狀況排在界線之後；寫下超過 14 天就不送。
+    final recentNote = global?.recentNote;
+    final recentAge = global?.recentNoteAgeDays(_now());
+    if (recentNote != null &&
+        recentAge != null &&
+        global!.recentNoteIsFresh(_now())) {
+      final when = recentAge <= 0 ? '今天寫的' : '$recentAge 天前寫的';
+      optional.add(
+        '- 最近的狀況（$when，原文）：「${_quoteSafe(recentNote)}」；'
+        '這是近況，可能已經變了，用之前可以先確認。',
+      );
+    }
 
     // 2026-08-31 語言守門案：標籤全中文——英文標籤（Stuck points／Boundary…）
     // 會被模型當成「這裡可以夾英文」的示範抄進可貼句（同 08-29「早safe」）。

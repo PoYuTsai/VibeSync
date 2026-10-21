@@ -449,4 +449,119 @@ void main() {
       }
     });
   });
+
+  // 規格 PR-8「最近的狀況」（D5 照預設：14 天、60 字）。
+  group('最近的狀況', () {
+    Future<void> save(WidgetTester tester) async {
+      final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
+      await tester.ensureVisible(saveBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(saveBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    Future<void> showRecentSection(WidgetTester tester) async {
+      await tester.ensureVisible(find.byKey(const Key('about-me-recent-note')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('寫了就存，寫下時間是存檔當下', (tester) async {
+      final repo = FakeUserProfileRepo();
+      await tester.pumpWidget(aboutMeHarness(repo: repo));
+      await tester.pumpAndSettle();
+      await showRecentSection(tester);
+      final before = DateTime.now().toUtc();
+      await tester.enterText(
+        find.byKey(const Key('about-me-recent-note')),
+        '這週在跟交友軟體認識的人聊，她回很慢',
+      );
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+      expect(saved.recentNote, '這週在跟交友軟體認識的人聊，她回很慢');
+      expect(
+        saved.recentNoteUpdatedAt!
+            .isAfter(before.subtract(const Duration(seconds: 1))),
+        isTrue,
+      );
+    });
+
+    testWidgets('近況沒改：存檔沿用原本的寫下時間', (tester) async {
+      final writtenAt =
+          DateTime.now().toUtc().subtract(const Duration(days: 3));
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          recentNote: '這週很忙',
+          recentNoteUpdatedAt: writtenAt,
+          updatedAt: writtenAt,
+        ),
+      );
+      await tester.pumpWidget(aboutMeHarness(repo: repo));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('about-me-recent-stale')), findsNothing);
+      await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+      expect(saved.recentNote, '這週很忙');
+      expect(saved.recentNoteUpdatedAt, writtenAt);
+    });
+
+    testWidgets('過期：問現在還是不是這樣；按「還是這樣」再存檔，寫下時間更新', (tester) async {
+      final writtenAt =
+          DateTime.now().toUtc().subtract(const Duration(days: 20));
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          recentNote: '這週很忙',
+          recentNoteUpdatedAt: writtenAt,
+          updatedAt: writtenAt,
+        ),
+      );
+      await tester.pumpWidget(aboutMeHarness(repo: repo));
+      await tester.pumpAndSettle();
+      await showRecentSection(tester);
+      expect(find.text('這是 20 天前寫的，現在還是這樣嗎？'), findsOneWidget);
+
+      final before = DateTime.now().toUtc();
+      await tester.tap(find.byKey(const Key('about-me-recent-keep')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('about-me-recent-stale')), findsNothing);
+      await save(tester);
+
+      final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+      expect(saved.recentNote, '這週很忙');
+      expect(
+        saved.recentNoteUpdatedAt!
+            .isAfter(before.subtract(const Duration(seconds: 1))),
+        isTrue,
+      );
+    });
+
+    testWidgets('過期按「清掉」：存檔後近況與寫下時間都清掉', (tester) async {
+      final writtenAt =
+          DateTime.now().toUtc().subtract(const Duration(days: 20));
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          notes: '不要太快邀約',
+          recentNote: '這週很忙',
+          recentNoteUpdatedAt: writtenAt,
+          updatedAt: writtenAt,
+        ),
+      );
+      await tester.pumpWidget(aboutMeHarness(repo: repo));
+      await tester.pumpAndSettle();
+      await showRecentSection(tester);
+      await tester.tap(find.byKey(const Key('about-me-recent-clear')));
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+      expect(saved.recentNote, isNull);
+      expect(saved.recentNoteUpdatedAt, isNull);
+      expect(saved.notes, '不要太快邀約');
+    });
+  });
 }

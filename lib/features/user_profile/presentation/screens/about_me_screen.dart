@@ -36,6 +36,12 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   final Set<TopicSeed> _draftSeeds = <TopicSeed>{};
   final TextEditingController _customController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
+
+  /// 規格 PR-8「最近的狀況」。
+  final TextEditingController _recentController = TextEditingController();
+
+  /// 過期提示按了【還是這樣】的時間；存檔時拿它當新的寫下時間。
+  DateTime? _recentConfirmedAt;
   UserProfile? _initialProfile;
   bool _hydrated = false;
 
@@ -56,6 +62,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   void dispose() {
     _customController.dispose();
     _notesController.dispose();
+    _recentController.dispose();
     super.dispose();
   }
 
@@ -73,6 +80,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       ..addAll(profile.topicSeeds);
     _customController.text = profile.customTopics ?? '';
     _notesController.text = profile.notes ?? '';
+    _recentController.text = profile.recentNote ?? '';
     _hydrated = true;
   }
 
@@ -83,7 +91,8 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
       _draftGoals.isEmpty &&
       _draftSeeds.isEmpty &&
       _customController.text.trim().isEmpty &&
-      _notesController.text.trim().isEmpty;
+      _notesController.text.trim().isEmpty &&
+      _recentController.text.trim().isEmpty;
 
   /// 草稿是否偏離最後儲存過的內容（新用戶＝偏離全空基準）。返回鍵保護用。
   bool get _isDirty {
@@ -93,7 +102,31 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
         !setEquals(_draftGoals, (base?.practiceGoals ?? const []).toSet()) ||
         !setEquals(_draftSeeds, (base?.topicSeeds ?? const []).toSet()) ||
         _customController.text.trim() != (base?.customTopics ?? '').trim() ||
-        _notesController.text.trim() != (base?.notes ?? '').trim();
+        _notesController.text.trim() != (base?.notes ?? '').trim() ||
+        _recentController.text.trim() != (base?.recentNote ?? '').trim() ||
+        _recentConfirmedAt != null;
+  }
+
+  /// 近況過期、畫面上還是那句沒改、也還沒按【還是這樣】時，回寫下幾天了；
+  /// 其他情況回 null（不跳過期提示）。
+  int? get _staleRecentAgeDays {
+    final base = _initialProfile;
+    final note = base?.recentNote;
+    if (base == null || note == null || _recentConfirmedAt != null) return null;
+    if (_recentController.text.trim() != note) return null;
+    final now = DateTime.now();
+    if (base.recentNoteIsFresh(now)) return null;
+    return base.recentNoteAgeDays(now);
+  }
+
+  /// 存檔用的近況寫下時間：改了內容＝現在；按了【還是這樣】＝那個時間；
+  /// 沒動＝沿用原本的；清掉＝null。
+  DateTime? _recentNoteUpdatedAtForSave(DateTime now) {
+    final text = _recentController.text.trim();
+    if (text.isEmpty) return null;
+    final base = _initialProfile;
+    if (text != base?.recentNote) return now;
+    return _recentConfirmedAt ?? base?.recentNoteUpdatedAt ?? now;
   }
 
   Future<bool> _confirmDiscardDraft() async {
@@ -220,13 +253,16 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     // label == '儲存'
     try {
       // 不帶 interactionStyle／secondaryStyle：舊互動風格在這次存檔自然清掉（規格 PR-7）。
+      final savedAt = DateTime.now().toUtc();
       final profile = UserProfile.create(
         practiceGoals: _draftGoals.toList(),
         topicSeeds: _draftSeeds.toList(),
         stuckPoints: _draftStuckPoints.toList(),
         customTopics: _customController.text,
         notes: _notesController.text,
-        updatedAt: DateTime.now().toUtc(),
+        updatedAt: savedAt,
+        recentNote: _recentController.text,
+        recentNoteUpdatedAt: _recentNoteUpdatedAtForSave(savedAt),
       );
       await controller.save(profile);
     } catch (_) {
@@ -387,6 +423,38 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              // 規格 PR-8（D5 照預設：14 天、60 字）。
+              _ProfileInputSection(
+                title: '最近的狀況',
+                subtitle: '一兩句就好。14 天後會自動不再提供給教練。不用寫對方的全名或認得出對方的資料。',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_staleRecentAgeDays case final days?)
+                      _StaleRecentNotePrompt(
+                        days: days,
+                        onKeep: () => setState(
+                          () => _recentConfirmedAt = DateTime.now().toUtc(),
+                        ),
+                        onClear: () => setState(_recentController.clear),
+                      ),
+                    TextField(
+                      key: const Key('about-me-recent-note'),
+                      controller: _recentController,
+                      maxLength: UserProfile.maxRecentNoteLength,
+                      maxLines: 2,
+                      onChanged: (_) => setState(() {}),
+                      cursorColor: AppColors.ctaStart,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: Colors.white,
+                        height: 1.35,
+                      ),
+                      decoration: _fieldDecoration('例如：這週在跟交友軟體認識的人聊，她回很慢'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               const _PrivacyNote(),
               if (coachContext != null)
                 Align(
@@ -542,6 +610,59 @@ class _AboutMeIntroCard extends StatelessWidget {
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               height: 1.45,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 規格 PR-8：近況寫下超過 14 天，問一下現在還是不是這樣。
+class _StaleRecentNotePrompt extends StatelessWidget {
+  const _StaleRecentNotePrompt({
+    required this.days,
+    required this.onKeep,
+    required this.onClear,
+  });
+
+  final int days;
+  final VoidCallback onKeep;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '這是 $days 天前寫的，現在還是這樣嗎？',
+            key: const Key('about-me-recent-stale'),
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.ctaStart,
+              height: 1.35,
+            ),
+          ),
+          Row(
+            children: [
+              TextButton(
+                key: const Key('about-me-recent-keep'),
+                onPressed: onKeep,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.ctaStart,
+                ),
+                child: const Text('還是這樣'),
+              ),
+              TextButton(
+                key: const Key('about-me-recent-clear'),
+                onPressed: onClear,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.onBackgroundSecondary,
+                ),
+                child: const Text('清掉'),
+              ),
+            ],
           ),
         ],
       ),

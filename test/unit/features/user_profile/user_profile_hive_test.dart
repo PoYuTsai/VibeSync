@@ -122,6 +122,62 @@ void main() {
     expect(restored.secondaryStyle, isNull);
     await reopened.close();
   });
+
+  // 規格 PR-8：近況兩格（HiveField 8、9）。
+  test('recent note survives Hive round-trip', () async {
+    final original = UserProfile.create(
+      notes: '不要太快邀約',
+      recentNote: '這週在跟交友軟體認識的人聊，她回很慢',
+      recentNoteUpdatedAt: DateTime.utc(2026, 10, 18, 9),
+      updatedAt: DateTime.utc(2026, 10, 21),
+    );
+    await box.put('me', original);
+    final restored = box.get('me')!;
+    expect(restored.recentNote, '這週在跟交友軟體認識的人聊，她回很慢');
+    expect(restored.recentNoteUpdatedAt, DateTime.utc(2026, 10, 18, 9));
+    expect(restored.notes, '不要太快邀約');
+  });
+
+  test('PR-8 前後的 adapter 相容：舊資料讀回近況是 null；舊版讀新資料會略過這兩格',
+      () async {
+    final name = 'test_user_profile_pre_pr8_${DateTime.now().microsecondsSinceEpoch}';
+    addTearDown(
+      () => Hive.registerAdapter(UserProfileAdapter(), override: true),
+    );
+
+    // PR-8 之前的 App 寫的資料（只有第 0–7 格），新版讀回來。
+    Hive.registerAdapter(_PrePr8UserProfileAdapter(), override: true);
+    var oldBox = await Hive.openBox<UserProfile>(name);
+    await oldBox.put(
+      'me',
+      UserProfile.create(notes: '慢熟', updatedAt: DateTime.utc(2026, 8, 1)),
+    );
+    await oldBox.close();
+
+    Hive.registerAdapter(UserProfileAdapter(), override: true);
+    final currentBox = await Hive.openBox<UserProfile>(name);
+    final fromOld = currentBox.get('me')!;
+    expect(fromOld.notes, '慢熟');
+    expect(fromOld.recentNote, isNull);
+    expect(fromOld.recentNoteUpdatedAt, isNull);
+
+    // 新版寫的資料（多第 8、9 格），PR-8 之前的 App 讀回來不會出錯。
+    await currentBox.put(
+      'me',
+      UserProfile.create(
+        notes: '慢熟',
+        recentNote: '這週很忙',
+        recentNoteUpdatedAt: DateTime.utc(2026, 10, 20),
+        updatedAt: DateTime.utc(2026, 10, 21),
+      ),
+    );
+    await currentBox.close();
+
+    Hive.registerAdapter(_PrePr8UserProfileAdapter(), override: true);
+    oldBox = await Hive.openBox<UserProfile>(name);
+    expect(oldBox.get('me')!.notes, '慢熟');
+    await oldBox.deleteFromDisk();
+  });
 }
 
 /// The exact `write` shape the generated adapter had before secondaryStyle
@@ -150,5 +206,55 @@ class _LegacyUserProfileAdapter extends TypeAdapter<UserProfile> {
       ..write(obj.notes)
       ..writeByte(5)
       ..write(obj.updatedAt);
+  }
+}
+
+/// PR-8 之前產生的 adapter：只寫、只讀第 0–7 格（照當時的 `user_profile.g.dart`）。
+class _PrePr8UserProfileAdapter extends TypeAdapter<UserProfile> {
+  @override
+  final typeId = 9;
+
+  @override
+  UserProfile read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return UserProfile(
+      interactionStyle: fields[0] as InteractionStyle?,
+      secondaryStyle: fields[6] as InteractionStyle?,
+      practiceGoals: fields[1] == null
+          ? const []
+          : (fields[1] as List).cast<PracticeGoal>(),
+      topicSeeds:
+          fields[2] == null ? const [] : (fields[2] as List).cast<TopicSeed>(),
+      stuckPoints:
+          fields[7] == null ? const [] : (fields[7] as List).cast<StuckPoint>(),
+      customTopics: fields[3] as String?,
+      notes: fields[4] as String?,
+      updatedAt: fields[5] as DateTime,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, UserProfile obj) {
+    writer
+      ..writeByte(8)
+      ..writeByte(0)
+      ..write(obj.interactionStyle)
+      ..writeByte(1)
+      ..write(obj.practiceGoals)
+      ..writeByte(2)
+      ..write(obj.topicSeeds)
+      ..writeByte(3)
+      ..write(obj.customTopics)
+      ..writeByte(4)
+      ..write(obj.notes)
+      ..writeByte(5)
+      ..write(obj.updatedAt)
+      ..writeByte(6)
+      ..write(obj.secondaryStyle)
+      ..writeByte(7)
+      ..write(obj.stuckPoints);
   }
 }
