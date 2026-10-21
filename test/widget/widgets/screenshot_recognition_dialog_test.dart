@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_models.dart';
+import 'package:vibesync/features/analysis/domain/services/screenshot_recognition_helper.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/screenshot_recognition_dialog.dart';
 import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
@@ -1162,6 +1163,65 @@ void main() {
       expect(find.text('已全部改成她說'), findsNothing);
       expect(tester.getRect(find.text('在幹嘛')).top, firstMessageTop);
     });
+
+    // PR #110 審查 P3：那一格原本固定 44 高，320 寬、1.4 倍字時「已全部改成她說」
+    // 排成兩行，第二行被裁掉。改成最少 44，字排兩行時那一格跟著長高。
+    testWidgets('320 寬、1.4 倍字：按完那一格跟著字長高、不裁字，「復原」照樣按得到', (tester) async {
+      _usePhone(tester, const Size(320, 568));
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          reduceMotion: true,
+          textScaler: const TextScaler.linear(1.4),
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      await _tapVisible(tester, find.text('全是她說'));
+
+      final status =
+          find.descendant(of: markedDone, matching: find.text('已全部改成她說'));
+      final paragraph = _paragraphOf(tester, status);
+      final slot = tester.getRect(markedDone);
+      final undoButton = tester.getRect(undo);
+      // 四件一起比，紅的時候都看得到。排成兩行是這個情境的前提。
+      expect(
+        (
+          wraps: _lineCount(tester, status) > 1,
+          textClipped: paragraph.textSize.height > paragraph.size.height,
+          slotFitsText: slot.height >= paragraph.textSize.height,
+          undoTarget44: undoButton.width >= 44 && undoButton.height >= 44,
+        ),
+        (
+          wraps: true,
+          textClipped: false,
+          slotFitsText: true,
+          undoTarget44: true
+        ),
+      );
+
+      await _tapVisible(tester, find.text('復原'));
+      expect(find.text('全是她說'), findsOneWidget);
+      expect(find.text('已全部改成她說'), findsNothing);
+    });
+
+    testWidgets('390 寬、1.0 倍字：按之前、按之後那一格都是 44 高，換狀態不跳', (tester) async {
+      _usePhone(tester, const Size(390, 844));
+      await tester.pumpWidget(
+        buildDialogHost(recognized: mixedConversation, reduceMotion: true),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      final beforeTap = tester.getRect(markAllHers).height;
+
+      await _tapVisible(tester, find.text('全是她說'));
+
+      expect(
+        (beforeTap: beforeTap, afterTap: tester.getRect(markedDone).height),
+        (beforeTap: 44.0, afterTap: 44.0),
+      );
+    });
   });
 
   group('ScreenshotRecognitionDialog 確認流程', () {
@@ -1637,7 +1697,210 @@ void main() {
       );
     });
   });
+
+  // PR #110 審查 P2：確認格收進提醒卡後，沒勾就送出原本捲到整張卡；詳情展開後卡片
+  // 比視口高（320 寬、1.4 倍字），對齊整張卡會把卡底的確認格推出畫面。改成捲確認格
+  // 那一列，放得下就連卡片下面的紅字一起帶進視口。
+  group('ScreenshotRecognitionDialog 沒勾確認格就送出：捲到確認格', () {
+    const partnerName = '思妤';
+    const confirmLabel = '我確認這些是「$partnerName」的聊天';
+    // 跟改版實拍（ocr_confirm_redesign_proof_test.dart）同一組範例對話：名字不同、
+    // 兩邊都有人說話、帶引用。
+    const recognized = RecognizedConversation(
+      contactName: 'Sylvia',
+      messageCount: 10,
+      summary: '識別到 10 則訊息',
+      classification: 'valid_chat',
+      importPolicy: 'allow',
+      confidence: 'high',
+      sideConfidence: 'high',
+      messages: [
+        RecognizedMessage(side: 'left', isFromMe: false, content: '北鼻～北鼻～我下課了'),
+        RecognizedMessage(side: 'left', isFromMe: false, content: '剛上捷運'),
+        RecognizedMessage(
+          side: 'right',
+          isFromMe: true,
+          content: '[貼圖：咬你喔]',
+          quotedReplyPreview: '只對你一個人浪漫',
+          quotedReplyPreviewIsFromMe: false,
+        ),
+        RecognizedMessage(
+          side: 'right',
+          isFromMe: true,
+          content: '我專屬的',
+          quotedReplyPreview: '只對你一個人浪漫',
+          quotedReplyPreviewIsFromMe: false,
+        ),
+        RecognizedMessage(
+          side: 'right',
+          isFromMe: true,
+          content: '已經幫你買好了',
+          quotedReplyPreview: '北鼻最懂我 起司口味捲餅',
+          quotedReplyPreviewIsFromMe: false,
+        ),
+        RecognizedMessage(side: 'left', isFromMe: false, content: '你怎麼知道我想吃這個'),
+        RecognizedMessage(side: 'left', isFromMe: false, content: '好感動喔'),
+        RecognizedMessage(side: 'right', isFromMe: true, content: '因為我有在聽你說話啊'),
+        RecognizedMessage(side: 'left', isFromMe: false, content: '再三站就到了'),
+        RecognizedMessage(side: 'right', isFromMe: true, content: '我在出口等你'),
+      ],
+    );
+    final conversation = Conversation(
+      id: 'conversation-siyu',
+      name: partnerName,
+      partnerId: 'partner-siyu',
+      messages: [
+        Message(
+          id: 'existing-1',
+          content: '早安',
+          isFromMe: false,
+          timestamp: DateTime(2026, 10, 21, 8),
+        ),
+      ],
+      createdAt: DateTime(2026, 10, 21),
+      updatedAt: DateTime(2026, 10, 21),
+    );
+    // 跟分析頁同一套組字：名字不同和引用提醒兩段都在，展開詳情時卡片才會這麼長。
+    final warning = ScreenshotRecognitionHelper.buildWarning(
+      recognized: recognized,
+      currentConversation: conversation,
+      expectedPartnerName: partnerName,
+    );
+
+    AnalysisQuotaLine? lineFor(List<RecognizedMessage> messages) =>
+        AnalysisQuotaLine.of(
+          MessageCalculator.previewAnalysisRequest([
+            for (final (index, message) in messages.indexed)
+              Message(
+                id: 'reveal-$index',
+                content: message.content,
+                isFromMe: message.isFromMe,
+                timestamp: DateTime(2026, 10, 21, 9, index),
+              ),
+          ]),
+          monthlyRemaining: AppConstants.freeMonthlyLimit,
+          dailyRemaining: AppConstants.freeDailyLimit,
+        );
+
+    /// 開框（可先展開詳情）→ 捲到最底（看完訊息才按）→ 沒勾就按「加入並開始分析」。
+    /// 回傳捲動區視口、確認格那一列（圈＋說明）、紅字、整張提醒卡的位置。
+    Future<({Rect viewport, Rect checkboxRow, Rect guidance, Rect card})>
+        submitUnticked(
+      WidgetTester tester, {
+      required Size size,
+      TextScaler? textScaler,
+      bool expandDetails = false,
+    }) async {
+      _usePhone(tester, size);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: recognized,
+          reduceMotion: true,
+          warningMessage: warning,
+          currentConversation: conversation,
+          expectedPartnerName: partnerName,
+          analyzeQuotaLineFor: lineFor,
+          textScaler: textScaler,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      final info =
+          find.byKey(const ValueKey('recognition-warning-info-button'));
+      if (expandDetails) {
+        await tester.tap(info);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('recognition-warning-details')),
+          findsOneWidget,
+        );
+      }
+      final label = find.text(confirmLabel);
+      final scrollable =
+          find.ancestor(of: label, matching: find.byType(Scrollable));
+      final position = tester.state<ScrollableState>(scrollable).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      await tester
+          .tap(find.byKey(ScreenshotRecognitionDialog.analyzeButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(ScreenshotRecognitionDialog), findsOneWidget,
+          reason: '沒勾不送出');
+      return (
+        viewport: tester.getRect(scrollable),
+        checkboxRow: tester.getRect(
+          find.ancestor(of: label, matching: find.byType(InkWell)),
+        ),
+        guidance: tester.getRect(find.textContaining('請先勾選上方的確認格')),
+        // 資訊鈕往上最近的 Container 就是整張提醒卡。
+        card: tester.getRect(
+          find.ancestor(of: info, matching: find.byType(Container)).first,
+        ),
+      );
+    }
+
+    testWidgets('320 寬、1.4 倍字、詳情展開：確認格整列和紅字都捲進視口', (tester) async {
+      final shown = await submitUnticked(
+        tester,
+        size: const Size(320, 568),
+        textScaler: const TextScaler.linear(1.4),
+        expandDetails: true,
+      );
+      // 前提：整張卡比視口高（對齊整張卡就會把確認格推出去），而確認格到紅字這一段
+      // 放得下，所以兩樣都要看得到。
+      expect(shown.card.height, greaterThan(shown.viewport.height));
+      expect(
+        shown.guidance.bottom - shown.checkboxRow.top,
+        lessThanOrEqualTo(shown.viewport.height),
+      );
+      expect(
+        (
+          checkboxRow: _fullyInside(shown.checkboxRow, shown.viewport),
+          guidance: _fullyInside(shown.guidance, shown.viewport),
+        ),
+        (checkboxRow: true, guidance: true),
+      );
+    });
+
+    testWidgets('375×667、1.4 倍字、詳情展開：確認格整列和紅字都捲進視口', (tester) async {
+      final shown = await submitUnticked(
+        tester,
+        size: const Size(375, 667),
+        textScaler: const TextScaler.linear(1.4),
+        expandDetails: true,
+      );
+      expect(
+        (
+          checkboxRow: _fullyInside(shown.checkboxRow, shown.viewport),
+          guidance: _fullyInside(shown.guidance, shown.viewport),
+        ),
+        (checkboxRow: true, guidance: true),
+      );
+    });
+
+    testWidgets('390×844、1.0 倍字：整張卡連紅字都放得下，三樣都在視口裡、卡頂不捲出去', (tester) async {
+      final shown = await submitUnticked(tester, size: const Size(390, 844));
+      expect(
+        shown.guidance.bottom - shown.card.top,
+        lessThan(shown.viewport.height),
+      );
+      expect(
+        (
+          card: _fullyInside(shown.card, shown.viewport),
+          checkboxRow: _fullyInside(shown.checkboxRow, shown.viewport),
+          guidance: _fullyInside(shown.guidance, shown.viewport),
+        ),
+        (card: true, checkboxRow: true, guidance: true),
+      );
+    });
+  });
 }
+
+/// [inner] 上下都在 [outer] 裡（捲動區只看縱向）。
+bool _fullyInside(Rect inner, Rect outer) =>
+    inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5;
 
 /// 確認框底部固定的動作列：整個確認框只有這一處是 SafeArea。
 Finder _actionBar() => find.descendant(

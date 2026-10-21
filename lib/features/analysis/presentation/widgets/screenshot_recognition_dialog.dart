@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
@@ -88,12 +89,17 @@ class _ScreenshotRecognitionDialogState
   late final TextEditingController _nameController;
   late final List<_EditableRecognizedMessage> _editableMessages;
   String? _editValidationMessage;
+
+  /// 擋下送出的那行紅字：捲到確認格時，放得下就連它一起帶進視口。
+  final _editValidationKey = GlobalKey();
   bool _warningExpanded = false;
 
   /// 同對象確認格的定位錨與一次性閃光 token（沒勾就按「確認本次內容」時
   /// 自動捲到格子並閃一下——按鈕不再 disabled 裝死，2026-08-09 Eric 真機回報
-  /// 「根本不知道要勾」）。
+  /// 「根本不知道要勾」）。block 是整張提醒卡（閃光；捲的時候盡量不捲出卡頂），
+  /// checkbox 是卡裡確認格那一列（一定要捲進視口）。
   final _samePartnerBlockKey = GlobalKey();
+  final _samePartnerCheckboxKey = GlobalKey();
   int _samePartnerFlashRequest = 0;
   bool _confirmedSamePartner = false;
 
@@ -348,16 +354,8 @@ class _ScreenshotRecognitionDialogState
         _samePartnerFlashRequest++;
       });
       // 捲到確認格再閃：訊息可能在視口外，光有紅字使用者還是找不到。
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final blockContext = _samePartnerBlockKey.currentContext;
-        if (blockContext == null || !blockContext.mounted) return;
-        Scrollable.ensureVisible(
-          blockContext,
-          duration: AppMotion.scroll,
-          curve: AppMotion.easeOut,
-          alignment: 0.2,
-        );
-      });
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _revealSamePartnerConfirmation());
       return;
     }
 
@@ -383,6 +381,54 @@ class _ScreenshotRecognitionDialogState
         startAnalysis: startAnalysis,
         shownQuotaLine: startAnalysis ? _shownQuotaLine : null,
       ),
+    );
+  }
+
+  /// 捲到確認格時上下多留的距離：紅字不貼著底部動作列。
+  static const _revealMargin = 8.0;
+
+  /// 沒勾就送出：確認格那一列（圈＋兩行說明）一定捲進視口，下面那行紅字跟它一起
+  /// 放得下就連紅字；在這個前提下只捲必要的距離，能不把提醒卡頂端捲出去就不捲。
+  /// 不拿整張卡當目標：展開詳情後卡片可能比視口還高，對齊整張卡會把卡底的確認格
+  /// 推出畫面（320 寬、1.4 倍字只剩 7% 看得到）。
+  void _revealSamePartnerConfirmation() {
+    final rowContext = _samePartnerCheckboxKey.currentContext;
+    final row = rowContext?.findRenderObject();
+    final card = _samePartnerBlockKey.currentContext?.findRenderObject();
+    if (rowContext == null || row is! RenderBox || card == null) return;
+    final viewport = RenderAbstractViewport.maybeOf(row);
+    final position = Scrollable.maybeOf(rowContext)?.position;
+    if (viewport == null || position == null) return;
+
+    // 一定要看得到的一段（以確認格那一列為座標）：放得下就連紅字一起。
+    var mustSee = Offset.zero & row.size;
+    final guidance = _editValidationKey.currentContext?.findRenderObject();
+    if (guidance is RenderBox) {
+      final withGuidance = mustSee.expandToInclude(
+        MatrixUtils.transformRect(
+          guidance.getTransformTo(row),
+          Offset.zero & guidance.size,
+        ),
+      );
+      if (withGuidance.height + _revealMargin * 2 <=
+          position.viewportDimension) {
+        mustSee = withGuidance;
+      }
+    }
+    mustSee = mustSee.inflate(_revealMargin);
+
+    // 能停的捲動位置：最小是紅字貼底、最大是確認格貼頂。比卡頂貼頂更往下捲就會把
+    // 卡頂的摘要捲出去，所以上限先收到卡頂貼頂那一格（放不下時照樣以確認格為準）。
+    final lowest = viewport.getOffsetToReveal(row, 1, rect: mustSee).offset;
+    final highest = viewport.getOffsetToReveal(row, 0, rect: mustSee).offset;
+    final cardTop = viewport.getOffsetToReveal(card, 0).offset - _revealMargin;
+    final to = lowest > highest
+        ? highest // 視口連確認格都放不下：至少讓它的頂端進來。
+        : position.pixels.clamp(lowest, cardTop.clamp(lowest, highest));
+    position.animateTo(
+      to.clamp(position.minScrollExtent, position.maxScrollExtent),
+      duration: AppMotion.scroll,
+      curve: AppMotion.easeOut,
     );
   }
 
@@ -770,7 +816,9 @@ class _ScreenshotRecognitionDialogState
     );
   }
 
-  /// 「全是她說」按鈕和按完的那一格同高：換狀態時下面的訊息不會跳。
+  /// 「全是她說」按鈕和按完的那一格的最低高度：一般字級兩種狀態都是這個高，換狀態
+  /// 時下面的訊息不會跳；大字小螢幕上「已全部改成她說」排成兩行時，那一格跟著長高，
+  /// 不把第二行裁掉（320 寬、1.4 倍字原本裁掉 14）。
   static const _allHersSlotHeight = 44.0;
 
   /// 那一格裡按鈕的字：15／w600，不帶顏色與字型，讓按鈕的前景色照常套上。
@@ -785,8 +833,8 @@ class _ScreenshotRecognitionDialogState
   Widget _buildAllHersSlot() {
     final undo = _allHersUndo;
     if (undo == null && _hasAnyFromMeMessage()) {
-      return SizedBox(
-        height: _allHersSlotHeight,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: _allHersSlotHeight),
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
@@ -824,7 +872,7 @@ class _ScreenshotRecognitionDialogState
       liveRegion: true,
       child: Container(
         key: const ValueKey('ocr-mark-all-hers-done'),
-        height: _allHersSlotHeight,
+        constraints: const BoxConstraints(minHeight: _allHersSlotHeight),
         padding: const EdgeInsets.only(left: 16, right: 4),
         decoration: BoxDecoration(
           color: AppColors.primary.withValues(alpha: 0.08),
@@ -839,11 +887,15 @@ class _ScreenshotRecognitionDialogState
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                '已全部改成她說',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.glassTextPrimary,
-                  fontWeight: FontWeight.w500,
+              // 排成兩行時上下各留 4，字不貼著底色的邊；一行時比 44 矮，不撐高。
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '已全部改成她說',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.glassTextPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),
@@ -1115,7 +1167,8 @@ class _ScreenshotRecognitionDialogState
 
     if (!needsSamePartnerConfirmation) return card(0);
     // 2026-08-09 顯眼化（Eric 真機回報「根本不知道要勾」）：沒勾就按送出時
-    // 捲到這張卡並單發一次閃光，提示「卡在這格」。
+    // 捲到卡裡的確認格（_revealSamePartnerConfirmation），整張卡單發一次閃光，
+    // 提示「卡在這格」。
     return _AttentionFlash(
       key: _samePartnerBlockKey,
       flashRequest: _samePartnerFlashRequest,
@@ -1191,6 +1244,8 @@ class _ScreenshotRecognitionDialogState
     final confirmed = _confirmedSamePartner;
     final partnerName = widget.expectedPartnerName?.trim();
     return MergeSemantics(
+      // 沒勾就送出時一定捲進視口的是這一列（圈＋說明），不是整張提醒卡。
+      key: _samePartnerCheckboxKey,
       child: Semantics(
         checked: confirmed,
         child: Material(
@@ -1341,11 +1396,13 @@ class _ScreenshotRecognitionDialogState
                             needsSamePartnerConfirmation,
                       ),
                     ],
-                    // 擋下送出的原因寫在提醒卡正下方：沒勾確認格時會捲到那張卡。
+                    // 擋下送出的原因寫在提醒卡正下方：沒勾確認格時捲到卡裡的確認格，
+                    // 這行放得下就一起帶進視口。
                     if (_editValidationMessage != null) ...[
                       const SizedBox(height: 8),
                       Text(
                         _editValidationMessage!,
+                        key: _editValidationKey,
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.error,
                           fontWeight: FontWeight.w600,
