@@ -563,5 +563,24 @@ void main() {
       expect(saved.recentNoteUpdatedAt, isNull);
       expect(saved.notes, '不要太快邀約');
     });
+
+    // PR-8 主審 2 P3：只快不到一天時，整天數截成 0，曾顯示「這是 0 天前寫的」。
+    for (final ahead in const [Duration(hours: 3), Duration(days: 3)]) {
+      testWidgets('記錄時間在未來 $ahead：問時間不對，不說幾天前', (tester) async {
+        final writtenAt = DateTime.now().toUtc().add(ahead);
+        final repo = FakeUserProfileRepo(
+          initial: UserProfile.create(
+            recentNote: '這週很忙',
+            recentNoteUpdatedAt: writtenAt,
+            updatedAt: writtenAt,
+          ),
+        );
+        await tester.pumpWidget(aboutMeHarness(repo: repo));
+        await tester.pumpAndSettle();
+        await showRecentSection(tester);
+        expect(find.text('這則近況記錄的時間不對，現在還是這樣嗎？'), findsOneWidget);
+        expect(find.textContaining('天前寫的'), findsNothing);
+      });
+    }
   });
 }

@@ -117,6 +117,9 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
     if (_recentController.text.trim() != note) return null;
     final now = DateTime.now();
     if (base.recentNoteIsFresh(now)) return null;
+    // 時間在未來一律回負數（提示改問「時間不對」）：只快不到一天時，整天數
+    // 會截成 0，變成「這是 0 天前寫的」（PR-8 主審 2 P3）。
+    if (base.recentNoteUpdatedAt!.isAfter(now)) return -1;
     return base.recentNoteAgeDays(now);
   }
 
