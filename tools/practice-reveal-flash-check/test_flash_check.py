@@ -29,6 +29,19 @@ def levels(frames: int, flips: list[int], low: float = BG, high: float = LIT) ->
     return out
 
 
+def ramps(starts: list[int], length: int = 6, high: float = 0.5, frames: int = 80) -> np.ndarray:
+    """從 [BG] 開始，在 [starts] 的每一幀開始一段 [length] 幀的斜坡，亮暗輪流（[BG]↔[high]）。"""
+    out = np.full(frames, BG, np.float32)
+    level, lit, t_prev = BG, False, 0
+    for s in starts:
+        out[t_prev:s] = level
+        target = BG if lit else high
+        out[s:s + length] = level + (target - level) * np.arange(1, length + 1, dtype=np.float32) / length
+        level, lit, t_prev = target, not lit, s + length
+    out[t_prev:] = level
+    return out
+
+
 def paint(lum: np.ndarray, y: int, x: int, h: int, w: int, series: np.ndarray) -> None:
     lum[:, y:y + h, x:x + w] = series[:, None, None]
 
@@ -198,24 +211,33 @@ class ConcurrencyTest(unittest.TestCase):
     def test_ramps_starting_a_few_frames_apart_add_up(self):
         # Codex #108 第 2 輪 P2-1：兩塊相鄰的 120×60（各 7,200、合計 14,400 pt²），0.2↔0.5 六幀的
         # 斜坡，A 從第 1、9、…、57 幀開始，B 晚 4 幀。不是一起開始，但時間重疊，要加總。
-        def ramps(starts):
-            out = np.full(80, BG, np.float32)
-            level, lit, t_prev = BG, False, 0
-            for s in starts:
-                out[t_prev:s] = level
-                target = BG if lit else 0.5
-                out[s:s + 6] = level + (target - level) * np.arange(1, 7, dtype=np.float32) / 6
-                level, lit, t_prev = target, not lit, s + 6
-            out[t_prev:] = level
-            return out
-
         a = ramps([1, 9, 17, 25, 33, 41, 49, 57])
         b = ramps([5, 13, 21, 29, 37, 45, 53, 61])
         lum = screen()
         paint(lum, 100, 30, 60, 120, a)
         self.assertEqual(transitions(lum), 0)  # 一塊單獨不到門檻
         paint(lum, 100, 150, 60, 120, b)
+        result = fc.max_transitions(lum, FPS, 25)
+        self.assertEqual(result['transitions'], 8)
+        # 一串的數法要兩邊在 2 幀內一起開始，這裡數不到；配對的數得到，取較大的。
+        self.assertEqual(result['by_method'], {'chained': 0, 'paired': 8})
+
+    def test_small_patch_flashing_with_ramp_starts_does_not_hide_the_ramps(self):
+        # Codex #108 第 3 輪 P2：A、B 兩塊 120×60 用 5 幀斜坡來回（B 晚 1 幀），中間的 C 在每次 A 開始
+        # 那一幀亮一下、下一幀就暗回去。配對的數法會被 C 帶走（0 次），一串的照樣數得到；取較大的。
+        starts = [1, 9, 17, 25, 33, 41, 49, 57]
+        c = np.full(80, BG, np.float32)
+        c[starts] = 0.5
+        lum = screen()
+        paint(lum, 60, 90, 60, 120, ramps(starts, length=5))
+        paint(lum, 180, 90, 60, 120, ramps([s + 1 for s in starts], length=5))
         self.assertEqual(transitions(lum), 8)
+        paint(lum, 120, 90, 60, 120, c)
+        result = fc.max_transitions(lum, FPS, 25)
+        self.assertEqual(result['by_method']['paired'], 0)
+        self.assertGreaterEqual(result['by_method']['chained'], 8)
+        self.assertEqual(result['transitions'], result['by_method']['chained'])
+        self.assertFalse(fc.within_cap(result['transitions'], 2))
 
     def test_overlap_counts_no_matter_how_late_the_second_starts(self):
         # A 第 1 幀起 30 幀慢慢變亮、B 第 20 幀才一下變亮（各 7,200）：第 20 幀時兩塊都在變，加總

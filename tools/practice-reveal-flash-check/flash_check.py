@@ -7,7 +7,7 @@
 畫面（Codex 2026-10-18 #107 P2-1）。
 
 量法（#108 第 2 輪改過：同時在閃的面積不分升降加總；不同次閃光不要求是同一片、照時間數；
-10° 視野改成圓形。第 3 輪改過：時間重疊就加總、不要求一起開始；不同地方的閃光時間重疊也分開算）：
+10° 視野改成圓形。第 3 輪加了第二種數法；第 4 輪起兩種都跑、取較大的）：
 1. 每一幀換成相對亮度（sRGB → 線性 → Y＝0.2126R＋0.7152G＋0.0722B），每格 1×1 pt 取平均。
 2. 每一格各自找亮度的升降段（遲滯）：跟上一個極值相比變化 ≥ 0.1 才算一段，暗的那一端要 < 0.8。
    整條錄影從頭到尾只算一次，所以窗口之前的狀態不會丟。一段只算真的在變的那幾幀，停在極值
@@ -15,12 +15,16 @@
 3. 10° 視野是圓形：25 cm 半徑 132 pt、門檻約 13,660 pt²；20 cm 半徑 106 pt、約 8,742 pt²。
    圓心每 8 pt 一個，半徑再加 8·√2／2 pt，任何位置的 10° 視野都整個落在某一個圓裡；圓用 8 pt
    高的橫條從外面包住來加總。所以只會多算、不會漏（面積多 12%，20 cm 多 15%）。
-4. 一次轉折：每個視野記上一次轉折在哪一幀；這一幀正在變、而且在那之後才開始變的面積（不分升降）
-   超過門檻，就是一次新的轉折。只要時間重疊就加總，不要求一起開始；同一幀一起變的算同一次。
-5. 配成閃光：同一個視野裡，一秒內兩次轉折之間，組成它們的段有同一片反向（每一格可以一升一降、
-   也可以一降一升，面積加在一起）超過門檻。不同地方各自的閃光，時間重疊也分開算。每個視野、每個
-   完整一秒（fps＋1 幀，60 fps 是 61 幀）數配成閃光的轉折有幾次，回報最多的；超過「上限×2」就
-   不過。寧可多算：慢慢擴散、分好幾批的亮光，每批自己超過門檻就各算一次。
+4. 數轉折有兩種數法，各自會漏掉不同的情況，所以兩種都跑、取較大的（寧可多算）：
+   - 一串（第 2 輪）：一次轉折要兩邊的段在 2 幀（0.035 s）內一起開始；每一次都要跟相鄰的一次配成
+     同一片反向，配好的一段變完以後才接下一段，時間重疊的閃光算同一次。錯開幾幀才開始的、同一個
+     視野裡交錯各自閃的，會少算。
+   - 配對（第 3 輪）：每個視野記上一次轉折在哪一幀；這一幀正在變、而且在那之後才開始變的面積（不分
+     升降）超過門檻，就是一次新轉折。一秒內兩次轉折之間，組成它們的段有同一片反向超過門檻，就配成
+     閃光；不同地方各自的閃光，時間重疊也分開算。沒配到的轉折也會把還在變的段算掉，剛好跟著閃的
+     小區塊可能讓它少算。
+5. 每個視野、每個完整一秒（fps＋1 幀，60 fps 是 61 幀）裡的轉折次數取最多的；超過「上限×2」就
+   不過。報告會列出兩種數法各自的次數。
 
 量不出來的：細紋路在畫面上滑過去（例如卡片轉開時的照片），跟細紋路原地反向，逐格看是一樣的，
 這裡都當成閃光算。
@@ -57,6 +61,7 @@ DELTA = 0.1  # WCAG：相對亮度變化 ≥ 10%
 DARK_MAX = 0.8  # WCAG：暗的那一端 < 0.80
 FLAT = 0.01  # 離極值這麼近就算還停在極值，平台不算在變
 CAP = 2  # 規格 §3：任一秒最多 2 次閃光（--cap）
+_NONE = -(1 << 30)
 
 def _srgb_to_linear(c: np.ndarray) -> np.ndarray:
     return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
@@ -227,29 +232,151 @@ class Fields:
         return int(self.xs[f % len(self.xs)]) * PT_PER_CELL, int(self.ys[f // len(self.xs)]) * PT_PER_CELL
 
 
-def max_transitions(lum: np.ndarray, fps: int, distance_cm: float) -> dict:
-    """所有視野、所有完整一秒裡最長的一串轉折。[lum] 是 (幀, 高, 寬)，每格 [PT_PER_CELL] pt。
-
-    回傳轉折次數、那一串從哪一幀開始、哪個視野（圓心 pt），以及每次轉折的 (幀, 升／降／升降)。"""
-    frames, h, w = lum.shape
-    flat = lum.reshape(frames, -1)
-    busy = np.nonzero(flat.max(axis=0) - flat.min(axis=0) >= DELTA)[0]  # 變不到 0.1 的格子沒有段
-    cells, starts, ends, dirs = cell_runs(flat[:, busy])
-    cells, begins = busy[cells], starts + 1
-    keep = paired(cells, begins, dirs, fps)
-    cells, begins, ends, dirs = cells[keep], begins[keep], ends[keep], dirs[keep]
-    fields = Fields(h, w, field_radius_pt(distance_cm) / PT_PER_CELL,
-                    max(1, round(STRIDE_PT / PT_PER_CELL)), max(1, round(BAND_PT / PT_PER_CELL)))
-    threshold = threshold_pt2(distance_cm) / PT_PER_CELL**2
+def _chained_turns(cells: np.ndarray, begins: np.ndarray, ends: np.ndarray, dirs: np.ndarray,
+                   frames: int, h: int, w: int, fields: Fields, threshold: float, fps: int) -> dict:
+    """第 2 輪的量法（Bruce 寫的，原樣保留）：每個視野找最長的一串轉折，每一次都要跟相鄰的一次配成同一片
+    反向；配好的一段變完以後才接下一段。錯開幾幀才開始的、同一個視野裡交錯各自閃的，會少算（Codex #108
+    第 2 輪 P2）；另一種量法補這兩種。"""
     n_fields = fields.count
+    # 第一輪，逐幀：
+    # - moving_area：每個視野裡這一幀正在變（不分升降）的面積。
+    # - new_area[t][k]：這一幀正在變、而且在 t−1−k 之後才開始的面積。
+    # - ended[t′]：t′ 那一次轉折（t′ 往前 recent_runs 幀內開始、t′ 還在變的段）在每個視野裡哪一幀
+    #   變完（還在變的面積不超過門檻）。下一次要在這之後才開始，才算新的一次。
+    # - reversed_ok[(t′, t)]：t′ 到 t 之間同一片一起反向的面積超過門檻：t′ 升、t 降（或反過來），
+    #   而且兩邊的段都在那一幀往前 recent_runs 幀內才開始。要一起開始變：快速擴散的光環、掃過去的
+    #   細線，每一格開始變的時間不同，比較湊不成一片。
+    # - in_flash[t]：這一幀跟前後一秒內的某一幀有同一片一起反向，是一次閃光的一半。
+    recent_runs = max(1, round(0.035 * fps))
+    moving_area = np.zeros((frames, n_fields), np.int32)
+    started_area = np.zeros((frames, n_fields), np.int32)  # 往前 recent_runs 幀內才開始變的
+    up_area = np.zeros((frames, n_fields), np.int32)  # 其中在升的
+    in_flash = np.zeros((frames, n_fields), bool)
+    ended = np.full((frames, n_fields), np.iinfo(np.int32).max, np.int32)
+    new_area: dict[int, np.ndarray] = {}
+    reversed_ok: dict[tuple[int, int], np.ndarray] = {}
+    masks: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for t, up, down, since in frame_states(cells, begins, ends, dirs, frames, h * w):
+        changing = up | down
+        moving_area[t] = fields.sums(changing.reshape(h, w))
+        just_started = since >= t - recent_runs
+        up_now, down_now = up & just_started, down & just_started
+        up_area[t] = fields.sums(up_now.reshape(h, w))
+        started_area[t] = fields.sums((up_now | down_now).reshape(h, w))
+        masks[t] = (up_now, down_now)
+        masks.pop(t - fps - 1, None)
+        big = moving_area[t] > threshold
+        # newer[x]：這一幀正在變、在 x 之後才開始的面積，x＝t−1 … t−fps−recent−1。
+        oldest = t - fps - recent_runs - 1
+        by_start = {}
+        if big.any():
+            for b in np.unique(since[changing]):
+                if b > oldest:
+                    by_start[b] = fields.sums((changing & (since == b)).reshape(h, w))
+        newer = {}
+        total = np.zeros(n_fields, np.int32)
+        for x in range(t - 1, oldest - 1, -1):
+            if x + 1 in by_start:
+                total = total + by_start[x + 1]
+            newer[x] = total
+        new_area[t] = np.minimum(np.stack([newer[t - 1 - k] for k in range(fps)]), 65535)
+        new_area[t] = new_area[t].astype(np.uint16)
+        for t0 in range(max(0, t - fps), t):
+            searching = ended[t0] > t
+            if searching.any():
+                still = newer[t0 - recent_runs - 1] - newer[t0]
+                ended[t0][searching & (still <= threshold)] = t
+        started = started_area[t] > threshold
+        if not started.any():
+            continue
+        for t0 in range(max(0, t - fps), t):
+            if not (started & (started_area[t0] > threshold)).any():
+                continue
+            up0, down0 = masks[t0]
+            flipped = fields.sums(((up0 & down_now) | (down0 & up_now)).reshape(h, w)) > threshold
+            if flipped.any():
+                reversed_ok[(t0, t)] = flipped
+                in_flash[t0] |= flipped
+                in_flash[t] |= flipped
 
+    # 第二輪：每一次轉折都要跟相鄰的一次配成同一片的一升一降（同一片可以一直反向）；配好的一段
+    # 結束後，才能接上一段新的。waiting[t][k]／matched[t][k]＝每個視野裡長度 k、以第 t 幀結尾的一串
+    # 最晚從哪一幀開始（_NONE＝沒有）：waiting 是最後一次還沒配到、matched 是已經配好。
+    # waiting_from／matched_from 記前一次轉折在哪一幀（matched_from_waiting：那時是不是還沒配到），
+    # 用來回報整串。
+    longest = fps + 1
+    live: dict[int, tuple[np.ndarray, ...]] = {}
+    best = {'transitions': 0, 'window_start': None, 'field_pt': None, 'events': []}
+    for t in np.nonzero(in_flash.any(axis=1))[0]:
+        for old in [t0 for t0 in live if t0 < t - fps]:
+            del live[old]
+        waiting = np.full((longest + 1, n_fields), _NONE, np.int32)
+        matched = np.full((longest + 1, n_fields), _NONE, np.int32)
+        waiting_from = np.full((longest + 1, n_fields), -1, np.int32)
+        matched_from = np.full((longest + 1, n_fields), -1, np.int32)
+        matched_from_waiting = np.zeros((longest + 1, n_fields), bool)
+        waiting[1][in_flash[t]] = t
+        for t0 in sorted(live):
+            waiting0, matched0 = live[t0][0], live[t0][1]
+            if (t0, t) in reversed_ok:  # 同一片反向：配成一升一降
+                same = reversed_ok[(t0, t)]
+                for source, was_waiting in ((waiting0, True), (matched0, False)):
+                    longer = same & (source[:-1] > matched[1:])
+                    matched[1:][longer] = source[:-1][longer]
+                    matched_from[1:][longer] = t0
+                    matched_from_waiting[1:][longer] = was_waiting
+            # 新的一段：t0 已經配好，t0 那一次變完以後才開始的面積超過門檻，這一幀等著配。
+            k = t - ended[t0].astype(np.int64)
+            ok = (k >= 0) & (k < fps)
+            fresh = np.zeros(n_fields, bool)
+            fresh[ok] = new_area[t][k[ok], np.nonzero(ok)[0]] > threshold
+            longer = fresh & (matched0[:-1] > waiting[1:])
+            waiting[1:][longer] = matched0[:-1][longer]
+            waiting_from[1:][longer] = t0
+        waiting[waiting < t - fps] = _NONE
+        matched[matched < t - fps] = _NONE
+        live[t] = (waiting, matched, waiting_from, matched_from, matched_from_waiting)
+        lengths = np.nonzero((matched >= 0).any(axis=1))[0]
+        k = int(lengths[-1]) if lengths.size else 0
+        if k > best['transitions']:
+            f = int(np.argmax(matched[k] >= 0))
+            seq, frame, is_waiting = [], int(t), False
+            for length in range(k, 0, -1):
+                seq.append(frame)
+                state = live[frame]
+                if length == 1:
+                    break
+                if is_waiting:
+                    frame, is_waiting = int(state[2][length][f]), False
+                else:
+                    frame, is_waiting = int(state[3][length][f]), bool(state[4][length][f])
+            events = []
+            for e in reversed(seq):
+                rise, fall = int(up_area[e][f]), int(started_area[e][f] - up_area[e][f])
+                events.append((e, 1 if fall * 2 < rise else -1 if rise * 2 < fall else 0))
+            best = {
+                'transitions': k,
+                'window_start': int(matched[k][f]),
+                'field_pt': fields.center_pt(f),
+                'events': events,
+            }
+    return best
+
+
+def _paired_turns(cells: np.ndarray, begins: np.ndarray, ends: np.ndarray, dirs: np.ndarray,
+                  frames: int, h: int, w: int, fields: Fields, threshold: float, fps: int) -> dict:
+    """第 3 輪的量法：每個視野記上一次轉折，之後才開始、正在變的面積超過門檻就是新轉折；一秒內同一片反向
+    就配成閃光，數配到的轉折。沒配到的轉折也會把還在變的段算掉，干擾的小閃光可能讓它少算（Codex #108 第 3
+    輪 P2）；另一種量法補這種。"""
+    n_fields = fields.count
     # 逐幀找轉折（#108 第 3 輪改過）：每個視野記上一次轉折在哪一幀（last）。這一幀正在變、而且在
     # last 之後才開始變的面積（不分升降）超過門檻，就是這個視野的一次新轉折：只要時間重疊就加總，
     # 不要求一起開始（錯開幾幀才開始的兩塊也算同時，Codex 第 2 輪 P2-1）；同一幀一起變的算同一次。
     # 一次轉折只算組成它的段：在它的前一次轉折之後才開始、這一幀還在變的。
     # 配成閃光：同一個視野裡，一秒內兩次轉折之間，組成它們的段有同一片反向（這次升、那次降，或
     # 反過來），面積超過門檻。不同地方各自的閃光，時間重疊也分開算，不併成一次（第 2 輪 P2-2）。
-    # 只留最近一秒有轉折的幀的狀態，記憶體不隨錄影長度變大（第 2 輪 P3）。
+    # 整格的狀態只留最近一秒有轉折的幀；每個視野的轉折紀錄（turns、label、matched）仍跟錄影長度
+    # 成正比（第 3 輪 P3），315 幀的錄影用不到多少。
     last = np.full(n_fields, -1, np.int64)
     recent: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
     turns: list[list[int]] = [[] for _ in range(n_fields)]
@@ -315,6 +442,28 @@ def max_transitions(lum: np.ndarray, fps: int, distance_cm: float) -> dict:
     return best
 
 
+def max_transitions(lum: np.ndarray, fps: int, distance_cm: float) -> dict:
+    """所有視野、所有完整一秒裡最多的轉折次數。[lum] 是 (幀, 高, 寬)，每格 [PT_PER_CELL] pt。
+
+    兩種量法（一串、配對）各自會漏掉不同的情況，都跑、取轉折次數較大的那個（寧可多算；同樣多時用配對的）。
+    回傳轉折次數、那一秒從哪一幀開始、哪個視野（圓心 pt）、每次轉折的 (幀, 升／降／升降)，以及兩種量法各自
+    的次數（by_method）。"""
+    frames, h, w = lum.shape
+    flat = lum.reshape(frames, -1)
+    busy = np.nonzero(flat.max(axis=0) - flat.min(axis=0) >= DELTA)[0]  # 變不到 0.1 的格子沒有段
+    cells, starts, ends, dirs = cell_runs(flat[:, busy])
+    cells, begins = busy[cells], starts + 1
+    keep = paired(cells, begins, dirs, fps)
+    cells, begins, ends, dirs = cells[keep], begins[keep], ends[keep], dirs[keep]
+    fields = Fields(h, w, field_radius_pt(distance_cm) / PT_PER_CELL,
+                    max(1, round(STRIDE_PT / PT_PER_CELL)), max(1, round(BAND_PT / PT_PER_CELL)))
+    threshold = threshold_pt2(distance_cm) / PT_PER_CELL**2
+    chained = _chained_turns(cells, begins, ends, dirs, frames, h, w, fields, threshold, fps)
+    paired_ = _paired_turns(cells, begins, ends, dirs, frames, h, w, fields, threshold, fps)
+    best = paired_ if paired_['transitions'] >= chained['transitions'] else chained
+    return {**best, 'by_method': {'chained': chained['transitions'], 'paired': paired_['transitions']}}
+
+
 def check(folder: Path, fps: int, distance_cm: float, cap: int) -> dict:
     from PIL import Image
 
@@ -334,6 +483,7 @@ def check(folder: Path, fps: int, distance_cm: float, cap: int) -> dict:
         'window_ms': None if start is None else (round(start * 1000 / fps), round((start + fps) * 1000 / fps)),
         'field_pt': result['field_pt'],
         'events_ms': [(round(t * 1000 / fps), d) for t, d in result['events']],
+        'by_method': result['by_method'],
         'pass': within_cap(result['transitions'], cap),
     }
 
@@ -355,7 +505,8 @@ def main() -> None:
         where = '' if r['window_ms'] is None else (
             f"，最多的一秒 {r['window_ms'][0]}–{r['window_ms'][1]} ms、視野圓心 {r['field_pt']} pt")
         print(f"{r['folder']}：{r['frames']} 幀，任一秒最多 {r['transitions']} 次轉折"
-              f"（{r['flashes']:g} 次閃光）{where} → {'過' if r['pass'] else '超過上限'}")
+              f"（{r['flashes']:g} 次閃光；一串 {r['by_method']['chained']}、配對 {r['by_method']['paired']}）"
+              f"{where} → {'過' if r['pass'] else '超過上限'}")
         if r['events_ms']:
             names = {1: '升', -1: '降', 0: '升降'}
             print('  轉折：' + '、'.join(f'{ms} ms {names[d]}' for ms, d in r['events_ms']))
