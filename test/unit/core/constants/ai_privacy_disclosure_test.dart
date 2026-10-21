@@ -58,6 +58,23 @@ void main() {
       expect(AiDataSharingConsent.practicePurposeText, contains('提示'));
     });
 
+    // 規格 PR-5：「關於我」只在教練 1:1 跟著問題送出。同意框寫了，設定頁也要寫，
+    // 兩邊都要講「只在教練 1:1」。
+    test('「關於我」揭露：設定頁與同意框都說只在教練 1:1 送出', () {
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('使用教練 1:1 時，你在「關於我」填的內容也會跟問題一起送出'),
+      );
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('開場救星、對話分析和新話題不會送'),
+      );
+      expect(
+        AiDataSharingConsent.defaultDataDescriptionForTesting,
+        contains('你在「關於我」填的內容（只在使用教練 1:1 時）'),
+      );
+    });
+
     test('onboarding 維持精簡版，不列廠商也不展開重播細節', () {
       // 廠商名刻意不在 onboarding 出現（避免誤解練習室女孩＝DeepSeek）。
       expect(AiPrivacyDisclosure.onboardingDescription,

@@ -59,10 +59,14 @@ class NewTopicView extends ConsumerStatefulWidget {
   static const progressPhrases = [
     '正在整理她的作戰板…',
     '從你們的互動找新切入點…',
-    '把你的風格放進話題裡…',
+    '挑出她最可能接的話題…',
     '打磨可以直接送出的第一句…',
     '還在整理最適合先試的方向，請保持連線…',
   ];
+
+  /// 對象紀錄還不多時的說明。新話題不讀「關於我」（規格 PR-5），只能說會參考
+  /// 使用者這次選的狀況或寫的素材。
+  static const thinRecordHelper = '她的紀錄還不多，這次會先參考你選的狀況或寫下的素材。';
 
   /// 額度不足（生成前看到、或伺服器回過額度不足）時，主按鈕直接開付費頁：免費、
   /// Starter 寫升級；Essential 已經是最高方案，只寫查看方案（Eric 2026-10-18）。
@@ -1191,7 +1195,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           if (partner != null && !hasDetails)
             const Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Text('她的紀錄還不多，這次會先參考你的設定或所選情境。',
+                child: Text(NewTopicView.thinRecordHelper,
                     style: OpenerHomeStyle.helper)),
           if (hasDetails)
             Padding(

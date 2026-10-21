@@ -519,7 +519,7 @@ class _AboutMeIntroCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            '教練 1:1 會用這些設定了解你的處境，幫你往前推一步；對話分析不讀這裡，也不會照你現在的樣子模仿你。',
+            '教練 1:1 會用這些設定了解你的處境，幫你往前推一步；開場救星、對話分析和新話題的 AI 都不讀這裡，也不會照你現在的樣子模仿你。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.onBackgroundSecondary.withValues(alpha: 0.82),
               height: 1.45,
@@ -603,7 +603,7 @@ class _PrivacyNote extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '這些設定只用來讓建議更貼近你的語氣，不會顯示給任何對象，你可以隨時修改或清除。',
+              '這些內容只會在你使用教練 1:1 時，跟你的問題一起送給 AI 產生建議；不會給任何對象看到，開場救星、對話分析和新話題的 AI 也不會讀到。你可以隨時修改或清除。',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
                 height: 1.35,

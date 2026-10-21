@@ -39,12 +39,17 @@ import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
+import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/user_profile_repository.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 import '../../helpers/memory_coach_chat_repository.dart';
 import '../../helpers/memory_coaching_outcome_repository.dart';
 import '../../helpers/fake_sydney_video_platform.dart';
+import '../features/user_profile/_harness.dart';
 
 /// 引導問句直接引實作常數（review Grok Minor-3：防測試與文案漂移）。
 const _guideQuestions = GlobalCoachScreen.guideQuestions;
@@ -59,6 +64,26 @@ class _FakeStyleRepo implements PartnerStyleRepository {
   Future<void> delete(String partnerId) async {}
   @override
   Future<void> clearAll() async {}
+}
+
+/// 第一次讀「關於我」成功、之後打開 [failLoads] 就讀取失敗（換帳號重新讀取時）。
+class _FlakyProfileRepo implements UserProfileRepository {
+  _FlakyProfileRepo(this.profile);
+
+  final UserProfile profile;
+  bool failLoads = false;
+
+  @override
+  Future<UserProfile?> load(String uid) async {
+    if (failLoads) throw Exception('profile load boom');
+    return profile;
+  }
+
+  @override
+  Future<void> save(UserProfile profile, String uid) async {}
+
+  @override
+  Future<void> clear(String uid) async {}
 }
 
 Partner _partner(String id, String name) => Partner(
@@ -889,4 +914,164 @@ void main() {
       expect(_paywallExtras, [entry, entry]);
     });
   }
+
+  // 規格 PR-5：「教練參考」的「關於我」不分範圍，送出的內容不是空的就標；
+  // 讀取參數跟 controller 送出時同一組，標籤和實際送出的
+  // effectiveStyleContext 要一致。
+  group('教練參考：關於我', () {
+    final withNotes = UserProfile.create(
+      notes: '不要太快邀約',
+      updatedAt: DateTime(2026, 10, 21),
+    );
+
+    List<Override> aboutMe(UserProfile? profile) => [
+          userProfileRepositoryProvider
+              .overrideWithValue(FakeUserProfileRepo(initial: profile)),
+          authUserProfileScopeProvider.overrideWith(
+            (ref) => Stream.value(FakeUserProfileRepo.testUid),
+          ),
+        ];
+
+    Finder sourceChip(String label) => find.descendant(
+          of: find.ancestor(
+            of: find.text('教練參考'),
+            matching: find.byType(Wrap),
+          ),
+          matching: find.text(label),
+        );
+
+    /// 問一題（伺服器回 500，不開付費頁），回傳送出去的請求內容。
+    Future<Map<String, dynamic>> ask(
+      WidgetTester tester,
+      List<Map<String, dynamic>> calls,
+    ) async {
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CoachSurface),
+          matching: find.byType(TextField),
+        ),
+        '她回很快，要不要今晚直接約？',
+      );
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(1));
+      return calls.single;
+    }
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues(
+        {AiDataSharingConsent.acceptedKeyForTesting: true},
+      );
+    });
+
+    testWidgets('一般：填了關於我就標「關於我」，送出的也帶著', (tester) async {
+      final calls = await _pump(
+        tester,
+        invokerStatus: 500,
+        extraOverrides: aboutMe(withNotes),
+      );
+      expect(sourceChip('關於我'), findsOneWidget);
+      expect(find.text('你的風格'), findsNothing);
+
+      final body = await ask(tester, calls);
+      expect(body['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+
+    // PR-5 主審 1 P2：valueOrNull 在重新讀取失敗時會回上一次的值；controller
+    // 送出時讀到的是這次的錯誤、退回不送，標籤不能還掛著「關於我」。
+    testWidgets('讀過一次之後重新讀取失敗：不再標「關於我」，送出的也不帶', (tester) async {
+      final repo = _FlakyProfileRepo(withNotes);
+      final uid = StreamController<String?>();
+      addTearDown(uid.close);
+      final calls = await _pump(
+        tester,
+        invokerStatus: 500,
+        extraOverrides: [
+          userProfileRepositoryProvider.overrideWithValue(repo),
+          authUserProfileScopeProvider.overrideWith((ref) => uid.stream),
+        ],
+      );
+      uid.add('user-a');
+      await tester.pumpAndSettle();
+      expect(sourceChip('關於我'), findsOneWidget);
+
+      repo.failLoads = true;
+      uid.add('user-b');
+      await tester.pumpAndSettle();
+      // 確認真的走到「讀取失敗、但還留著上一次的值」，不是別的路徑讓這條通過
+      // （PR-5 主審 2 建議）。
+      final style = ProviderScope.containerOf(
+        tester.element(find.byType(CoachSurface)),
+      ).read(
+        coachChatStyleContextProvider(
+          (partnerId: null, includePartnerOverride: false),
+        ),
+      );
+      expect(style.hasError, isTrue);
+      expect(style.hasValue, isTrue);
+      expect(sourceChip('關於我'), findsNothing);
+
+      final body = await ask(tester, calls);
+      expect(body.containsKey('effectiveStyleContext'), isFalse);
+    });
+
+    testWidgets('一般：沒填關於我就不標，也不送', (tester) async {
+      final calls = await _pump(
+        tester,
+        invokerStatus: 500,
+        extraOverrides: aboutMe(null),
+      );
+      expect(sourceChip('關於我'), findsNothing);
+
+      final body = await ask(tester, calls);
+      expect(body.containsKey('effectiveStyleContext'), isFalse);
+    });
+
+    testWidgets('對象資料被標記有問題：照樣標「只看本段」，關於我也照實標', (tester) async {
+      final partner = _partner('p1', 'Alice');
+      final calls = <Map<String, dynamic>>[];
+      await tester.binding.setSurfaceSize(const Size(430, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            coachChatRepositoryProvider
+                .overrideWithValue(MemoryCoachChatRepository()),
+            coachChatApiServiceProvider.overrideWithValue(
+              CoachChatApiService(
+                invoker: _recordingInvoker(calls, status: 500),
+              ),
+            ),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+            partnerListProvider.overrideWithValue([partner]),
+            dataQualityFlagProvider(partner.id).overrideWith(
+              (_) => DataQualityFlag.flagged(
+                NamePair.canonical('Alice', 'Anna'),
+              ),
+            ),
+            partnerByIdProvider(partner.id).overrideWithValue(partner),
+            partnerAggregateProvider(partner.id)
+                .overrideWithValue(PartnerAggregateView.empty()),
+            conversationsByPartnerProvider(partner.id)
+                .overrideWithValue(const []),
+            ...aboutMe(withNotes),
+          ],
+          child: MaterialApp(
+            home: GlobalCoachScreen(lockedPartnerId: partner.id),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(sourceChip('只看本段'), findsOneWidget);
+      expect(sourceChip('對象資料'), findsNothing);
+      expect(sourceChip('關於我'), findsOneWidget);
+
+      final body = await ask(tester, calls);
+      expect(body['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+  });
 }

@@ -111,7 +111,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '填一下你卡在哪、想達成什麼，教練 1:1 會參考幫你抓方向、推你一步；對話分析不讀這裡。',
+            '填一下你卡在哪、想達成什麼，教練 1:1 會參考幫你抓方向、推你一步；開場救星、對話分析和新話題的 AI 都不讀這裡。',
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.glassTextSecondary,
               height: 1.5,
