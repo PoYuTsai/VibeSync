@@ -29,6 +29,7 @@
 - 頭像字母 72：`practice_girl_photo.dart`，隨 220px 相框縮放的功能性字形。
 - `fontSize: 0` 透明文字：`dimension_radar_chart.dart` 隱藏刻度的功能性 hack。
 - `analysis_screen.dart` 尺度外殘值（13/14/18/20）＝拍板只修 B6 不動版面，留給重構案。
+- 首頁對象卡燈號狀態字 13：`partner_list_card.dart` 第二行燈號標籤（Bruce 2026-10-21 規格、Eric 同日拍板）。配 16 高的信號機，行高 1.2；只用在這一列，不進 `AppTypography`。
 
 ## 4. 圓角
 
@@ -79,6 +80,7 @@ EdgeInsets 20→16、childless SizedBox 20→24、22/26→24、28/30→32）。
 | 共用聊天泡泡尾巴圓角 5 | `chat_bubble.dart`（分析片段與練習室共用，每組第一顆朝說話者的上角，見 §4） | PR #87：沿用分析片段的 LINE 熟悉感，練習室同組後續分段不重複尾巴；白名單＝`kAllowedRadiiByFile`，只開共用元件這一個值 |
 | Sydney 視窗開場泡泡尾巴圓角 5 | `global_coach_screen.dart`（開場泡泡朝頭像的貼合角） | 同上：沿用分則氣泡的尾巴語彙；白名單＝`kAllowedRadiiByFile`，只開這一檔這一個值 |
 | 分析片段引用小卡 6 | `message_bubble.dart`（泡泡內引用小卡；尾巴由共用 `chat_bubble.dart` 提供） | 2026-10-02 A 案「LINE 熟悉感」：引用小卡取外圓角 18 的 1/3，用 18 會變 pill；白名單＝`kAllowedRadiiByFile`，此檔只保留 6 |
+| 首頁對象卡燈號霓虹字與信號機亮燈 | `partner_list_card.dart` 第二行燈號標籤＋`japanese_led_signal.dart`：「燈色 狀態」整句同色，兩層文字光（.45／blur 2、.20／blur 5）；信號機亮的那顆用一層同色漸層光，不做逐顆模糊。外殼是 42 × 16 畫布上的切角金屬，不是新的容器圓角。色值集中在 `lib/core/theme/partner_signal_palette.dart` | Bruce 2026-10-21 燈號標籤規格、Eric 同日拍板：只限首頁對象卡這一列、靜態不動；光貼著燈具與筆畫，不出那一列；報告頁等其他燈號不跟著變 |
 
 規則：想把新的彩色光暈/漸層加進產品＝先加進這張表並說明理由，否則視為 slop。
 
