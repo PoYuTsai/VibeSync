@@ -121,7 +121,7 @@ Deno.test("計分：A／B 解盲回臂，各組與全部分開數", () => {
 
 Deno.test("盲測表：不露臂名；抽查的組標出來；每組三格勾選＋評完了", () => {
   const pairs = buildPairs(ALL_OK, 3);
-  const table = blindTable(pairs);
+  const table = blindTable(pairs, CASES);
   for (const word of ["base", "cand", "改前", "改後"]) {
     assertEquals(table.includes(word), false, word);
   }

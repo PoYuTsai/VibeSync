@@ -4,6 +4,8 @@
 
 預設是乾跑：不打模型、不讀金鑰、不連網；會跑 git（`rev-parse`、`status`、`archive`）取出改前版本。要花錢的真跑，必須 Eric 當次說「跑」之後才下指令。
 
+模組下載不歸工具的網路閘管（Deno 載入遠端模組不經 `fetch`）：下面的指令都帶 `--cached-only`，缺快取就停。第一次用先在 repo 根目錄跑 `deno cache tools/coach-about-me-eval/run.ts tools/coach-about-me-eval/judge.ts`（只下載模組，不呼叫模型）；改前那一版若用了不同版本的套件，`--cached-only` 會直接報錯，不會偷偷下載。
+
 ## 兩臂
 
 | 臂 | 是什麼 |
@@ -35,20 +37,20 @@
 在 repo 根目錄（WSL）執行：
 
 ```sh
-deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+deno run --cached-only --no-prompt --allow-read --allow-write --allow-run=git,tar \
   tools/coach-about-me-eval/run.ts --tag=dry-YYYYMMDD
 ```
 
-在 `out/<tag>/` 寫 `manifest.json`（兩臂的 SHA、案例 sha256、模型參數、估算）、`prompts.json`（每次的生成提示詞）、`prompt-diff.json`（同一題兩臂提示詞各自獨有的行）。同名輸出目錄已存在就拒絕執行，不覆寫證據。
+在 `out/<tag>/` 寫 `manifest.json`（兩臂的 SHA、案例 sha256、模型參數、估算）、`cases.snapshot.json`（題庫原文，評審只用這份）、`prompts.json`（每次的生成提示詞）、`prompt-diff.json`（同一題兩臂提示詞各自獨有的行）。同名輸出目錄已存在就拒絕執行，不覆寫證據。
 
-**費用估算**（保守）：input token＝字數×2（本機沒有 tokenizer；中文本機估算會低估一到兩成），Sonnet 5 單價 input $2/M、output $10/M（教練沒開快取）。一般＝一次生成（output 700）＋一次審稿（output 120）；最壞＝三次生成＋三次審稿、output 全滿。審稿的 input 用每欄都到上限的卡片估。
+**費用估算**（保守）：input token＝字數×2（本機沒有 tokenizer；中文本機估算會低估一到兩成），Sonnet 5 單價 input $2/M、output $10/M（教練沒開快取）。一般＝一次生成（output 700）＋一次審稿（output 120）；最壞＝三次生成（後兩次多算 600 字重寫指示）＋三次審稿、output 全滿。審稿的 input 用每欄都到上限的卡片估。
 
-2026-10-21 乾跑（36 題 × 1 次 × 2 臂＝72 次 runCoachChat）：一般 144 次呼叫約 US$3.54、最壞 432 次約 US$12.02。
+2026-10-21 乾跑（36 題 × 1 次 × 2 臂＝72 次 runCoachChat）：一般 144 次呼叫約 US$3.54、最壞 432 次約 US$12.36。
 
 ## 真跑（要 Eric 當次說「跑」）
 
 ```sh
-deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
+deno run --cached-only --no-prompt --allow-read --allow-write --allow-run=git,tar \
   --allow-env=HOME --allow-net=api.anthropic.com \
   tools/coach-about-me-eval/run.ts --tag=<tag> \
   --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>
@@ -65,20 +67,21 @@ deno run --no-prompt --allow-read --allow-write --allow-run=git,tar \
 - API 失敗或沒回 usage：成本當預留額計入，並停止後續呼叫，不當免費。
 - 送出前後都寫 `requests.jsonl`，每題跑完就重寫 `records.json`，中斷不會靜默重送。
 
-輸出在 `out/<tag>/`（已 gitignore）：`records.json`（每次 runCoachChat 的狀態與卡片）、`requests.jsonl`、`run-summary.json`。備援卡（`FALLBACK`）、HTTP 錯誤、預算停下的都不進盲比，數量照實列。
+輸出在 `out/<tag>/`（已 gitignore）：`records.json`（每次 runCoachChat 的狀態與卡片；停下來之後沒跑的也列進去）、`requests.jsonl`、`run-summary.json`。備援卡（`FALLBACK`）、HTTP 錯誤、預算停下的都不進盲比，數量照實列。
 
 ## 評審與盲測表
 
 ```sh
 # 乾跑：配對、寫盲測表與解盲表、估評審費用，不呼叫評審
-deno run --no-prompt --allow-read --allow-write tools/coach-about-me-eval/judge.ts --from=<run 的 tag>
+deno run --cached-only --no-prompt --allow-read --allow-write tools/coach-about-me-eval/judge.ts --from=<run 的 tag>
 
 # 真跑（要 Eric 當次說「跑」）
-deno run --no-prompt --allow-read --allow-write --allow-env=HOME \
+deno run --cached-only --no-prompt --allow-read --allow-write --allow-env=HOME \
   --allow-net=api.anthropic.com tools/coach-about-me-eval/judge.ts --from=<run 的 tag> \
   --tag=<judge tag> --run --confirm-paid --max-calls=<上限> --budget-usd=<上限>
 ```
 
+- 題目只用 `out/<run 的 tag>/cases.snapshot.json`，sha256 要等於那次 manifest 的 `casesSha256`，對不上就停（避免拿改過的題目評舊回答）。
 - 同一題同一次重複兩臂都 OK 才配成一對；A／B 依 `--seed` 隨機，同 seed 可重現。
 - 評審（`claude-sonnet-5`，max_tokens 600）只照該組的固定判準選 A、B 或平手，附兩邊各一句原文引文與 1–100 的信心分數；引文對不回回答原文、不是合法 JSON 的整筆當無效，不猜。評審看不到臂名。
 - `blind.md`：給 Eric 或 Bruce 的盲測表，不露臂名；標「請抽查」的至少 20%、每組至少一對。`unblind-key.json` 是解盲表，**不要跟盲測表一起給人**。

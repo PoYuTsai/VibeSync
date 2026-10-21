@@ -63,6 +63,11 @@ export const OUTPUT_USD_PER_TOKEN = 10 / 1_000_000;
 export const INITIAL_TOKENS_PER_CHAR = 2;
 export const TYPICAL_GENERATION_OUTPUT_TOKENS = 700;
 export const TYPICAL_CRITIC_OUTPUT_TOKENS = 120;
+/**
+ * 第二、三次生成會在提示詞後面加重寫指示（generation.ts 的 buildAttemptPrompt，最長
+ * 一段約 390 字再加違規代碼）；最壞估算每次多算 600 字。逐次預留用實際提示詞，不靠這個。
+ */
+export const RETRY_SUFFIX_CHARS = 600;
 
 export function callCostUsd(inputTokens: number, outputTokens: number): number {
   return inputTokens * INPUT_USD_PER_TOKEN + outputTokens * OUTPUT_USD_PER_TOKEN;
@@ -86,8 +91,9 @@ export type Estimate = {
 };
 
 /**
- * 一次 runCoachChat 的估算：一般＝一次生成＋一次審稿；最壞＝三次生成＋三次審稿、
- * output 全滿。生成的 input 用該臂的提示詞；審稿用最長卡片組出的審稿提示詞。
+ * 一次 runCoachChat 的估算：一般＝一次生成＋一次審稿；最壞＝三次生成（後兩次加重寫
+ * 指示）＋三次審稿、output 全滿。生成的 input 用該臂的提示詞；審稿用最長卡片組出的
+ * 審稿提示詞。
  */
 export function estimateRuns(
   runs: readonly { generationChars: number; criticChars: number }[],
@@ -97,10 +103,14 @@ export function estimateRuns(
   let worstUsd = 0;
   for (const run of runs) {
     const genIn = Math.ceil(run.generationChars * tokensPerChar);
+    const retryIn = Math.ceil(
+      (run.generationChars + RETRY_SUFFIX_CHARS) * tokensPerChar,
+    );
     const criticIn = Math.ceil(run.criticChars * tokensPerChar);
     typicalUsd += callCostUsd(genIn, TYPICAL_GENERATION_OUTPUT_TOKENS) +
       callCostUsd(criticIn, TYPICAL_CRITIC_OUTPUT_TOKENS);
-    worstUsd += 3 * callCostUsd(genIn, GENERATION_MAX_TOKENS) +
+    worstUsd += callCostUsd(genIn, GENERATION_MAX_TOKENS) +
+      2 * callCostUsd(retryIn, GENERATION_MAX_TOKENS) +
       3 * callCostUsd(criticIn, CRITIC_MAX_TOKENS);
   }
   return {
@@ -482,6 +492,23 @@ export async function materializeRef(
   }).output();
   if (!untar.success) throw new Error(`tar 失敗（exit ${untar.code}）`);
   return { sha, root: new URL(`file://${tmp}/`) };
+}
+
+/**
+ * 評審要用產生回答當時的題庫：run.ts 把 cases.json 原文存成 cases.snapshot.json，
+ * manifest 記它的 sha256。對不上就停，免得拿改過的題目評舊回答。
+ */
+export async function verifyCasesSnapshot(
+  manifest: { casesSha256?: unknown },
+  snapshotText: string,
+): Promise<EvalCase[]> {
+  const sha = await sha256Hex(snapshotText);
+  if (typeof manifest.casesSha256 !== "string" || manifest.casesSha256 !== sha) {
+    throw new Error(
+      `題庫快照的 sha256（${sha}）跟產生回答時的 manifest 對不上，停止評審`,
+    );
+  }
+  return (JSON.parse(snapshotText) as { cases: EvalCase[] }).cases;
 }
 
 /** 不覆寫既有證據：同名輸出目錄已存在就拒絕。 */

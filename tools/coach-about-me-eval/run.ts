@@ -1,7 +1,8 @@
 // 教練「關於我」成對評測：產生回答（規格 PR-6；Bruce 2026-10-20）。
 // 兩臂都呼叫正式的 runCoachChat：base＝改前（git archive 取出 --base-ref 那一版），
 // cand＝目前工作樹。同一個案例、同一次重複，兩臂送同一份請求。預設乾跑：只組提示詞、
-// 估費用，不打模型、不讀金鑰、不連網。用法與守門見 README.md。
+// 估費用，不打模型、不讀金鑰。模組下載不歸 fetch 管：README 的指令都帶 --cached-only，
+// 缺快取就停（先 `deno cache` 這支），所以乾跑也不連網。用法與守門見 README.md。
 
 import {
   type Arm,
@@ -160,6 +161,84 @@ export type RunRecord = {
 
 export type CoachLogEntry = { event: string; data?: Record<string, unknown> };
 
+/**
+ * 依序跑完計畫。停了以後的項目記 NOT_RUN_CAP_OR_STOP；每跑完一題、以及最後都把
+ * 完整清單交給 onRecords（寫檔），停下來之後剩下的項目也一定落盤。
+ */
+export async function executePlan(
+  plan: readonly PlannedRun[],
+  modules: Partial<Record<Arm, ArmModules>>,
+  caller: PaidCaller,
+  apiKey: string,
+  onRecords: (records: readonly RunRecord[]) => Promise<void>,
+): Promise<RunRecord[]> {
+  const records: RunRecord[] = [];
+  for (const planned of plan) {
+    if (caller.stopped !== null) {
+      records.push({
+        key: planned.key,
+        caseId: planned.caseId,
+        group: planned.group,
+        attempt: planned.attempt,
+        arm: planned.arm,
+        status: "NOT_RUN_CAP_OR_STOP",
+        httpStatus: null,
+        card: null,
+        events: [],
+      });
+      continue;
+    }
+    const m = modules[planned.arm];
+    if (!m) throw new Error(`沒有 ${planned.arm} 臂的程式`);
+    const logs: CoachLogEntry[] = [];
+    const logger = {
+      info: (event: string, data?: Record<string, unknown>) =>
+        logs.push({ event, data }),
+      warn: (event: string, data?: Record<string, unknown>) =>
+        logs.push({ event, data }),
+    };
+    const stoppedBefore = caller.stopped;
+    let result: CoachResult | null = null;
+    let error: string | undefined;
+    try {
+      result = await m.runCoachChat(
+        {
+          userId: "coach-about-me-eval",
+          request: planned.request,
+          tier: "essential",
+          accountIsTest: true,
+          apiKey,
+        },
+        {
+          callClaude: caller.wrap(planned.key, "generate", m.callClaudeAPI),
+          callSemanticCritic: caller.wrap(
+            planned.key,
+            "critic",
+            m.callClaudeAPI,
+          ),
+          deductCredit: () => Promise.resolve(),
+          logger,
+          now: () => Date.now(),
+        },
+      );
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+    records.push(
+      classifyRun(
+        planned,
+        result,
+        logs,
+        stoppedBefore === null && caller.stopped !== null,
+        error,
+      ),
+    );
+    await onRecords(records);
+  }
+  await onRecords(records);
+  return records;
+}
+
 /** 把一次 runCoachChat 的結果整理成紀錄。備援卡、預算停下都不進盲比。 */
 export function classifyRun(
   planned: PlannedRun,
@@ -266,6 +345,8 @@ async function main() {
     new URL("manifest.json", out),
     JSON.stringify(manifest, null, 2),
   );
+  // 評審只用這份快照（sha256 記在 manifest），之後改題目不會拿新題評舊回答。
+  await Deno.writeTextFile(new URL("cases.snapshot.json", out), casesText);
   await Deno.writeTextFile(
     new URL("prompts.json", out),
     JSON.stringify(
@@ -316,69 +397,14 @@ async function main() {
         append: true,
       }),
   });
-  const records: RunRecord[] = [];
   const recordsPath = new URL("records.json", out);
-  for (const planned of plan) {
-    if (caller.stopped !== null) {
-      records.push({
-        key: planned.key,
-        caseId: planned.caseId,
-        group: planned.group,
-        attempt: planned.attempt,
-        arm: planned.arm,
-        status: "NOT_RUN_CAP_OR_STOP",
-        httpStatus: null,
-        card: null,
-        events: [],
-      });
-      continue;
-    }
-    const m = modules[planned.arm]!;
-    const logs: CoachLogEntry[] = [];
-    const logger = {
-      info: (event: string, data?: Record<string, unknown>) =>
-        logs.push({ event, data }),
-      warn: (event: string, data?: Record<string, unknown>) =>
-        logs.push({ event, data }),
-    };
-    const stoppedBefore = caller.stopped;
-    let result: CoachResult | null = null;
-    let error: string | undefined;
-    try {
-      result = await m.runCoachChat(
-        {
-          userId: "coach-about-me-eval",
-          request: planned.request,
-          tier: "essential",
-          accountIsTest: true,
-          apiKey,
-        },
-        {
-          callClaude: caller.wrap(planned.key, "generate", m.callClaudeAPI),
-          callSemanticCritic: caller.wrap(
-            planned.key,
-            "critic",
-            m.callClaudeAPI,
-          ),
-          deductCredit: () => Promise.resolve(),
-          logger,
-          now: () => Date.now(),
-        },
-      );
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    }
-    records.push(
-      classifyRun(
-        planned,
-        result,
-        logs,
-        stoppedBefore === null && caller.stopped !== null,
-        error,
-      ),
-    );
-    await Deno.writeTextFile(recordsPath, JSON.stringify(records, null, 2));
-  }
+  const records = await executePlan(
+    plan,
+    modules,
+    caller,
+    apiKey,
+    (rows) => Deno.writeTextFile(recordsPath, JSON.stringify(rows, null, 2)),
+  );
   const summary = {
     calls: caller.calls,
     spentUsd: caller.spentUsd,

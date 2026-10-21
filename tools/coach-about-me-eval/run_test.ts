@@ -19,13 +19,19 @@ import {
   PaidCaller,
   parseOptions,
   reserveUsd,
+  RETRY_SUFFIX_CHARS,
+  sha256Hex,
+  verifyCasesSnapshot,
 } from "./lib.ts";
 import {
+  type ArmModules,
   buildPlan,
   classifyRun,
+  executePlan,
   loadArm,
   promptLineDiff,
   type PlannedRun,
+  type RunRecord,
 } from "./run.ts";
 
 const REPO_ROOT = new URL("../../", import.meta.url);
@@ -107,12 +113,14 @@ Deno.test("參數：預設乾跑；真跑缺任何守門參數都拒絕；基準
   assertEquals(parseOptions(["--arms=cand"]).arms, ["cand"]);
 });
 
-Deno.test("估算：一般＝一次生成＋一次審稿；最壞＝各三次且 output 全滿；預留＝input 全算＋max_tokens", () => {
+Deno.test("估算：一般＝一次生成＋一次審稿；最壞＝各三次（後兩次加重寫指示）且 output 全滿；預留＝input 全算＋max_tokens", () => {
   const est = estimateRuns([{ generationChars: 1000, criticChars: 500 }], 2);
   assertEquals(est.typicalCalls, 2);
   assertEquals(est.worstCalls, 6);
   const typical = callCostUsd(2000, 700) + callCostUsd(1000, 120);
-  const worst = 3 * callCostUsd(2000, 1200) + 3 * callCostUsd(1000, 260);
+  const retryIn = (1000 + RETRY_SUFFIX_CHARS) * 2;
+  const worst = callCostUsd(2000, 1200) + 2 * callCostUsd(retryIn, 1200) +
+    3 * callCostUsd(1000, 260);
   assert(Math.abs(est.typicalUsd - typical) < 1e-12);
   assert(Math.abs(est.worstUsd - worst) < 1e-12);
   assertEquals(reserveUsd(100, 50, 2), callCostUsd(200, 50));
@@ -304,4 +312,50 @@ Deno.test("接線：預算停在第一次呼叫時，正式 runCoachChat 回錯�
   assertEquals(sent, 0);
   assert(caller.stopped?.startsWith("budget_usd"));
   assertEquals(classifyRun(planned, result, logs, true).status, "STOPPED_BUDGET");
+});
+
+/** 假的一臂：每次 runCoachChat 呼叫一次 callClaude；被守門擋下就回 500（同正式程式）。 */
+function fakeArm(): ArmModules {
+  return {
+    runCoachChat: async (_input, deps) => {
+      const callClaude = deps.callClaude as (args: Record<string, unknown>) => Promise<unknown>;
+      try {
+        await callClaude({ model: "claude-sonnet-5", prompt: "字".repeat(100), maxTokens: 10, timeoutMs: 1, apiKey: "test" });
+      } catch {
+        return { status: 500, body: { error: "AI 生成失敗" } };
+      }
+      return { status: 200, body: { card: { headline: "標題" } } };
+    },
+    callClaudeAPI: () => Promise.resolve(fakeResponse(10, 10)),
+    buildCoachChatPrompt: () => "",
+    buildSemanticCriticPrompt: () => "",
+    parseRequest: (raw) => raw as Record<string, unknown>,
+  };
+}
+
+Deno.test("執行：停在第二題時這題記預算停下、之後的記沒跑，最後一次寫檔一定是完整清單", async () => {
+  const plan = ["B1", "B2", "B3"].map((caseId, i): PlannedRun => ({
+    ...PLANNED,
+    key: `${caseId}.1.cand`,
+    caseId,
+    attempt: 1,
+    generationPrompt: String(i),
+  }));
+  const caller = new PaidCaller({ maxCalls: 1, budgetUsd: 100, gate: null, log: () => {} });
+  const writes: (readonly RunRecord[])[] = [];
+  const records = await executePlan(plan, { cand: fakeArm() }, caller, "test", (rows) => {
+    writes.push(rows.map((r) => ({ ...r })));
+    return Promise.resolve();
+  });
+  assertEquals(records.map((r) => r.status), ["OK", "STOPPED_BUDGET", "NOT_RUN_CAP_OR_STOP"]);
+  assertEquals(writes.at(-1)!.map((r) => r.key), ["B1.1.cand", "B2.1.cand", "B3.1.cand"]);
+  assert(caller.stopped?.startsWith("max_calls"));
+});
+
+Deno.test("評審用的題庫快照：sha256 對得上 manifest 才用；對不上或缺就停", async () => {
+  const text = JSON.stringify({ cases: CASES.slice(0, 2) });
+  const cases = await verifyCasesSnapshot({ casesSha256: await sha256Hex(text) }, text);
+  assertEquals(cases.map((c) => c.id), [CASES[0].id, CASES[1].id]);
+  await assertRejects(() => verifyCasesSnapshot({ casesSha256: "0".repeat(64) }, text), Error, "對不上");
+  await assertRejects(() => verifyCasesSnapshot({}, text), Error, "對不上");
 });

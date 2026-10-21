@@ -1,12 +1,12 @@
 // 教練「關於我」成對評測：AI 評審＋真人盲測表（規格 PR-6）。
 // 讀 run.ts 真跑產出的 records.json，同一案例同一次重複兩臂都成功的配成一對，A／B 依
-// seed 隨機；評審照該組的固定規則選比較好的一邊，附引文與 1–100 的信心分數。預設乾跑：
+// seed 隨機；評審照該組的固定規則選比較好的一邊，附引文與 1–100 的信心分數。題目一律
+// 用產生回答當時存下的 cases.snapshot.json（sha256 要對得上 manifest）。預設乾跑：
 // 只組評審提示詞、估費用、寫盲測表，不打模型。真跑守門同 run.ts。
 
 import {
   type Arm,
   callCostUsd,
-  CASES,
   createOutDir,
   type EvalCase,
   GENERATION_MODEL,
@@ -20,6 +20,7 @@ import {
   seededRandom,
   sha256Hex,
   tagFlag,
+  verifyCasesSnapshot,
 } from "./lib.ts";
 import type { RunRecord } from "./run.ts";
 
@@ -231,8 +232,11 @@ export function tally(
 }
 
 /** 真人盲測表：不露臂名；抽查的組標出來；每組三格勾選＋評完了。 */
-export function blindTable(pairs: readonly Pair[]): string {
-  const caseById = new Map(CASES.map((c) => [c.id, c]));
+export function blindTable(
+  pairs: readonly Pair[],
+  cases: readonly EvalCase[],
+): string {
+  const caseById = new Map(cases.map((c) => [c.id, c]));
   const lines = [
     "# 教練「關於我」盲測表",
     "",
@@ -293,8 +297,15 @@ async function main() {
     throw e;
   });
   const records = JSON.parse(recordsText) as RunRecord[];
+  const manifest = JSON.parse(
+    await Deno.readTextFile(new URL(`out/${from}/manifest.json`, toolDir)),
+  ) as { casesSha256?: unknown };
+  const cases = await verifyCasesSnapshot(
+    manifest,
+    await Deno.readTextFile(new URL(`out/${from}/cases.snapshot.json`, toolDir)),
+  );
   const pairs = buildPairs(records, seed);
-  const caseById = new Map(CASES.map((c) => [c.id, c]));
+  const caseById = new Map(cases.map((c) => [c.id, c]));
   const prompts = pairs.map((pair) => buildJudgePrompt(pair, caseById.get(pair.caseId)!));
   const typicalUsd = prompts.reduce(
     (sum, p) => sum + callCostUsd(Math.ceil(p.length * INITIAL_TOKENS_PER_CHAR), 250),
@@ -306,7 +317,7 @@ async function main() {
   );
 
   const out = await createOutDir(toolDir, tag);
-  await Deno.writeTextFile(new URL("blind.md", out), blindTable(pairs));
+  await Deno.writeTextFile(new URL("blind.md", out), blindTable(pairs, cases));
   // 解盲表另外放，不要跟盲測表一起給人。
   await Deno.writeTextFile(
     new URL("unblind-key.json", out),
