@@ -17,6 +17,10 @@ class AiPrivacyDisclosure {
   static const String _vendorLine =
       '（分析與教練用 Anthropic Claude，練習室用 DeepSeek 與 Anthropic Claude）';
 
+  // 規格 PR-5：「關於我」只在教練 1:1 跟著問題送出；設定頁與同意框要說同一件事。
+  static const String _aboutMeLine =
+      '使用教練 1:1 時，你在「關於我」填的內容也會跟問題一起送出；開場救星、對話分析和新話題不會送';
+
   static const String _consentLine = '每個 AI 功能首次使用前，都會先徵求你的同意';
 
   static const String _uploadParagraph = '當你回報建議的採用情況時，僅去識別化的統計（採用了哪類建議、\n'
@@ -43,7 +47,7 @@ class AiPrivacyDisclosure {
       '上傳前會裁掉截圖裡 VibeSync 鍵盤自己佔的區塊，鍵盤上也會一直顯示這次用的是哪一張，按 ✕ 可隨時收起結果。後端不保存截圖或 OCR 逐字稿，你可以隨時在「設定 > 鍵盤」撤回同意並清除鍵盤脈絡。';
 
   static const String description =
-      '$_openingLine\n$_vendorLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph\n\n$_keyboardScreenshotParagraph';
+      '$_openingLine\n$_vendorLine\n$_aboutMeLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph\n\n$_keyboardScreenshotParagraph';
 
   /// Onboarding 第 4 頁：只保留「送第三方 AI」與「同意閘」兩句，
   /// 不列廠商名（避免誤解練習室女孩＝DeepSeek）。完整揭露留在設定頁。

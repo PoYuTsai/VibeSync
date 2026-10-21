@@ -56,6 +56,12 @@ void main() {
     expect(find.text('教練 1:1 參考'), findsOneWidget);
     expect(find.text('影響 AI 建議'), findsNothing);
     expect(find.textContaining('教練 1:1 會參考'), findsWidgets);
+    // 規格 PR-5：分析頁的本地行動卡還會讀卡點與目標（D4），所以只說 AI 不讀。
+    expect(
+      find.textContaining('開場救星、對話分析和新話題的 AI 都不讀這裡'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('對話分析不讀這裡'), findsNothing);
   });
 
   testWidgets('empty profile shows prominent CTA', (tester) async {

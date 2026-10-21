@@ -26,8 +26,10 @@ class AiDataSharingConsent {
   static const _privacyUrl = 'https://vibesyncai.app/privacy';
   static const _termsUrl = 'https://vibesyncai.app/terms';
   static const _defaultDestinationLabel = 'Anthropic';
+  // 規格 PR-5（D3 照預設：只改文字、不升同意版本，「關於我」畫面就近揭露）。
   static const _defaultDataDescription =
-      '可能包含聊天文字、截圖、對方名稱，以及你補充的情境或草稿。VibeSync 只會處理你主動送出的內容。';
+      '可能包含聊天文字、截圖、對方名稱、你補充的情境或草稿，以及你在「關於我」填的內容（只在使用教練 1:1 時）。VibeSync 只會處理你主動送出的內容。';
+  static const defaultDataDescriptionForTesting = _defaultDataDescription;
   static const _defaultPurposeText =
       '我們會結合關係階段、互動節奏與對話脈絡，提供分析、截圖辨識、開場建議或 Coach 1:1 回覆。';
 

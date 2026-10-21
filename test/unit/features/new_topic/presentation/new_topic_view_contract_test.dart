@@ -59,6 +59,18 @@ void main() {
     expect(NewTopicView.progressPhrases, hasLength(5));
     expect(NewTopicView.progressPhrases.first, contains('作戰板'));
     expect(NewTopicView.progressPhrases.last, contains('請保持連線'));
+    // 規格 PR-5：新話題不讀「關於我」，進度文案不能說會用你的風格或設定。
+    for (final phrase in NewTopicView.progressPhrases) {
+      expect(phrase, isNot(contains('風格')), reason: phrase);
+      expect(phrase, isNot(contains('設定')), reason: phrase);
+    }
+  });
+
+  test('對象紀錄還不多：只說會參考這次選的狀況或寫的素材，不說會用你的設定', () {
+    expect(
+      NewTopicView.thinRecordHelper,
+      '她的紀錄還不多，這次會先參考你選的狀況或寫下的素材。',
+    );
   });
 
   test('Free upsell 文案：一張完整推薦卡＋精簡再解鎖 4 個', () {

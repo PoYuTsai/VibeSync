@@ -266,14 +266,31 @@ void main() {
     expect(find.text('最後更新：$expected'), findsOneWidget);
   });
 
-  testWidgets('bottom privacy note 這些設定只用來讓建議更貼近你的語氣 renders', (tester) async {
+  // 規格 PR-5：說明文字講實話——只有教練 1:1 會把這些內容跟問題一起送給 AI；
+  // 分析頁的本地行動卡還會讀卡點與目標（D4），所以只能說那些功能的 AI 不讀。
+  testWidgets('上方說明：教練 1:1 會用，開場救星、對話分析和新話題的 AI 都不讀', (tester) async {
     await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
     await tester.pumpAndSettle();
+    expect(
+      find.text(
+        '教練 1:1 會用這些設定了解你的處境，幫你往前推一步；開場救星、對話分析和新話題的 AI 都不讀這裡，也不會照你現在的樣子模仿你。',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('對話分析不讀這裡'), findsNothing);
+  });
+
+  testWidgets('底部隱私說明：只在用教練 1:1 時跟問題一起送給 AI', (tester) async {
+    await tester.pumpWidget(aboutMeHarness(repo: FakeUserProfileRepo()));
+    await tester.pumpAndSettle();
+    const note =
+        '這些內容只會在你使用教練 1:1 時，跟你的問題一起送給 AI 產生建議；不會給任何對象看到，開場救星、對話分析和新話題的 AI 也不會讀到。你可以隨時修改或清除。';
     await tester.scrollUntilVisible(
-      find.textContaining('這些設定只用來'),
+      find.text(note),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.textContaining('這些設定只用來'), findsOneWidget);
+    expect(find.text(note), findsOneWidget);
+    expect(find.textContaining('貼近你的語氣'), findsNothing);
   });
 }
