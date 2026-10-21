@@ -11,6 +11,7 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
+import '../../domain/entities/about_me_suggestion.dart';
 import '../../domain/entities/coach_chat_result.dart';
 import '../../domain/entities/coach_scope.dart';
 import '../../domain/entities/unified_coach_result.dart';
@@ -96,6 +97,11 @@ final coachChatHistoryProvider =
 
 final coachChatProgressProvider = StateProvider.autoDispose
     .family<CoachChatProgressUpdate?, CoachScope>((ref, scope) => null);
+
+/// 規格 PR-9：最新那張正式建議附帶的「要不要加到關於我」。只放在記憶體裡、
+/// 不進 Hive；問下一題時清掉，按【加入】或【不用】後由畫面清掉。
+final coachAboutMeSuggestionProvider = StateProvider.autoDispose
+    .family<CoachAboutMeSuggestionOffer?, CoachScope>((ref, scope) => null);
 
 final coachChatControllerProvider = AsyncNotifierProvider.autoDispose
     .family<CoachChatController, UnifiedCoachResult?, CoachScope>(
@@ -189,6 +195,7 @@ class CoachChatController
       );
       state = const AsyncValue.loading();
       ref.read(coachChatProgressProvider(scope).notifier).state = null;
+      ref.read(coachAboutMeSuggestionProvider(scope).notifier).state = null;
 
       Conversation? conversation;
       final String? partnerId;
@@ -249,6 +256,8 @@ class CoachChatController
       final effectiveStyleContext =
           includeAboutMe ? await _styleContext() : null;
 
+      // 規格 PR-9：這題選了「這次不參考關於我」就不提加到關於我。
+      AboutMeSuggestion? aboutMeSuggestion;
       final api = ref.read(coachChatApiServiceProvider);
       final result = await api.ask(
         conversationId: scope.id,
@@ -289,6 +298,9 @@ class CoachChatController
         onProgress: (update) {
           ref.read(coachChatProgressProvider(scope).notifier).state = update;
         },
+        onAboutMeSuggestion: includeAboutMe
+            ? (suggestion) => aboutMeSuggestion = suggestion
+            : null,
       );
       final unified = _toUnified(
         result,
@@ -318,6 +330,14 @@ class CoachChatController
           createdAt: unified.generatedAt,
         ),
       ]);
+      final suggestion = aboutMeSuggestion;
+      if (suggestion != null && !unified.isClarifyingQuestion) {
+        ref.read(coachAboutMeSuggestionProvider(scope).notifier).state =
+            CoachAboutMeSuggestionOffer(
+          resultId: unified.id,
+          suggestion: suggestion,
+        );
+      }
       state = AsyncValue.data(unified);
       if (unified.costDeducted > 0) {
         await _syncUsageSnapshot();

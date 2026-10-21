@@ -67,6 +67,17 @@ class _FakeStyleRepo implements PartnerStyleRepository {
 }
 
 /// 第一次讀「關於我」成功、之後打開 [failLoads] 就讀取失敗（換帳號重新讀取時）。
+/// 存檔要等 [release] 才完成，用來測存檔途中離開畫面（規格 PR-9）。
+class _GatedSaveProfileRepo extends FakeUserProfileRepo {
+  final release = Completer<void>();
+
+  @override
+  Future<void> save(UserProfile profile, String uid) async {
+    await release.future;
+    await super.save(profile, uid);
+  }
+}
+
 class _FlakyProfileRepo implements UserProfileRepository {
   _FlakyProfileRepo(this.profile);
 
@@ -1434,6 +1445,237 @@ void main() {
 
       final body = await ask(tester, calls);
       expect(body['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+  });
+
+  // 規格 PR-9：正式建議下面「要不要把『…』加到關於我？」，本人按【加入】才寫進。
+  group('教練建議加到關於我', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(
+        {AiDataSharingConsent.acceptedKeyForTesting: true},
+      );
+    });
+
+    final at = DateTime.utc(2026, 10, 1);
+    const overExplains = {'field': 'stuckPoint', 'key': 'overExplains'};
+
+    /// 問一題，伺服器回正式建議並附 [suggestion]。
+    Future<void> askWithSuggestion(
+      WidgetTester tester, {
+      required FakeUserProfileRepo repo,
+      Map<String, dynamic>? suggestion = overExplains,
+    }) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var requests = 0;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            coachChatRepositoryProvider
+                .overrideWithValue(MemoryCoachChatRepository()),
+            coachChatApiServiceProvider.overrideWithValue(
+              CoachChatApiService(
+                invoker: (String _,
+                    {required Map<String, dynamic> body}) async {
+                  requests++;
+                  return CoachChatInvokeResponse(
+                    status: 200,
+                    data: {
+                      ..._formalAnswerBody(requests),
+                      if (suggestion != null) 'aboutMeSuggestion': suggestion,
+                    },
+                  );
+                },
+              ),
+            ),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+            ..._partnerOverrides(const [], const {}),
+            userProfileRepositoryProvider.overrideWithValue(repo),
+            authUserProfileScopeProvider.overrideWith(
+              (ref) => Stream.value(FakeUserProfileRepo.testUid),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(routes: [
+              GoRoute(path: '/', builder: (_, __) => const GlobalCoachScreen()),
+              GoRoute(
+                path: '/profile/about-me',
+                builder: (_, __) => const Scaffold(body: Text('about-me-stub')),
+              ),
+            ]),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CoachSurface),
+          matching: find.byType(TextField),
+        ),
+        '我每次都解釋太多，她說週末有空要怎麼回？',
+      );
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
+    }
+
+    Finder row() => find.byKey(const Key('coach-about-me-suggestion'));
+
+    testWidgets('按【加入】：寫進關於我、其他欄位照舊，提示已更新，這一行收掉', (tester) async {
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          stuckPoints: const [StuckPoint.fadesOut],
+          notes: '不要太快邀約',
+          updatedAt: at,
+        ),
+      );
+      await askWithSuggestion(tester, repo: repo);
+      expect(row(), findsOneWidget);
+      expect(find.text('要不要把『話太多、一直在解釋自己』加到關於我？'), findsOneWidget);
+      expect(
+        find.byKey(const Key('coach-about-me-suggestion-adjust')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const Key('coach-about-me-suggestion-add')));
+      await tester.pumpAndSettle();
+      final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+      expect(saved.stuckPoints, [StuckPoint.fadesOut, StuckPoint.overExplains]);
+      expect(saved.notes, '不要太快邀約');
+      expect(saved.updatedAt.isAfter(at), isTrue);
+      expect(find.text('已更新關於我'), findsOneWidget);
+      expect(row(), findsNothing);
+    });
+
+    testWidgets('還沒填過關於我：按【加入】新建一份', (tester) async {
+      final repo = FakeUserProfileRepo();
+      await askWithSuggestion(
+        tester,
+        repo: repo,
+        suggestion: const {'field': 'practiceGoal', 'key': 'softInvite'},
+      );
+      expect(find.text('要不要把『想約得出來』加到關於我？'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('coach-about-me-suggestion-add')));
+      await tester.pumpAndSettle();
+      final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+      expect(saved.practiceGoals, [PracticeGoal.softInvite]);
+      expect(saved.stuckPoints, isEmpty);
+    });
+
+    testWidgets('關於我裡已經有：不顯示', (tester) async {
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          stuckPoints: const [StuckPoint.overExplains],
+          updatedAt: at,
+        ),
+      );
+      await askWithSuggestion(tester, repo: repo);
+      expect(find.text('先接住她的話題'), findsOneWidget);
+      expect(row(), findsNothing);
+    });
+
+    testWidgets('沒有建議：不顯示', (tester) async {
+      await askWithSuggestion(
+        tester,
+        repo: FakeUserProfileRepo(),
+        suggestion: null,
+      );
+      expect(find.text('先接住她的話題'), findsOneWidget);
+      expect(row(), findsNothing);
+    });
+
+    testWidgets('按【不用】：這一行收掉，關於我不變', (tester) async {
+      final before = UserProfile.create(notes: '不要太快邀約', updatedAt: at);
+      final repo = FakeUserProfileRepo(initial: before);
+      await askWithSuggestion(tester, repo: repo);
+      await tester.tap(
+        find.byKey(const Key('coach-about-me-suggestion-dismiss')),
+      );
+      await tester.pumpAndSettle();
+      expect(row(), findsNothing);
+      expect(repo.byOwner[FakeUserProfileRepo.testUid], same(before));
+    });
+
+    testWidgets('卡點已經選滿 2 個：改成「去關於我調整」，不會擠掉舊的', (tester) async {
+      final before = UserProfile.create(
+        stuckPoints: const [StuckPoint.fadesOut, StuckPoint.leftOnRead],
+        updatedAt: at,
+      );
+      final repo = FakeUserProfileRepo(initial: before);
+      await askWithSuggestion(tester, repo: repo);
+      expect(row(), findsOneWidget);
+      expect(
+        find.text('「我現在卡在哪」最多 2 個，要先到關於我拿掉一個。'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('coach-about-me-suggestion-add')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('coach-about-me-suggestion-adjust')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('about-me-stub'), findsOneWidget);
+      expect(repo.byOwner[FakeUserProfileRepo.testUid], same(before));
+    });
+
+    testWidgets('練習重點已經選滿 3 個：也改成「去關於我調整」', (tester) async {
+      final repo = FakeUserProfileRepo(
+        initial: UserProfile.create(
+          practiceGoals: const [
+            PracticeGoal.comfortableChat,
+            PracticeGoal.humorousReply,
+            PracticeGoal.buildCloseness,
+          ],
+          updatedAt: at,
+        ),
+      );
+      await askWithSuggestion(
+        tester,
+        repo: repo,
+        suggestion: const {'field': 'practiceGoal', 'key': 'softInvite'},
+      );
+      expect(
+        find.text('「我想達成什麼」最多 3 個，要先到關於我拿掉一個。'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('coach-about-me-suggestion-adjust')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('存檔途中離開教練畫面：照樣存好，不誤報失敗', (tester) async {
+      final repo = _GatedSaveProfileRepo();
+      await askWithSuggestion(tester, repo: repo);
+      await tester.tap(find.byKey(const Key('coach-about-me-suggestion-add')));
+      await tester.pump();
+      GoRouter.of(tester.element(find.byType(CoachSurface)))
+          .go('/profile/about-me');
+      await tester.pumpAndSettle();
+      expect(find.byType(CoachSurface), findsNothing);
+
+      repo.release.complete();
+      await tester.pumpAndSettle();
+      expect(repo.byOwner[FakeUserProfileRepo.testUid]?.stuckPoints, [
+        StuckPoint.overExplains,
+      ]);
+      expect(find.text('儲存失敗，請再試一次'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('存檔失敗：提示儲存失敗，這一行留著', (tester) async {
+      final repo = FakeUserProfileRepo()..throwOnSave = true;
+      await askWithSuggestion(tester, repo: repo);
+      await tester.tap(find.byKey(const Key('coach-about-me-suggestion-add')));
+      await tester.pumpAndSettle();
+      expect(find.text('儲存失敗，請再試一次'), findsOneWidget);
+      expect(row(), findsOneWidget);
+      expect(repo.byOwner, isEmpty);
     });
   });
 }

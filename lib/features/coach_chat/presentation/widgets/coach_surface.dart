@@ -25,6 +25,7 @@ import '../../../subscription/presentation/quota_copy.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
+import 'coach_about_me_suggestion_row.dart';
 import 'coach_chat_progress_notice.dart';
 import '../../../../core/services/app_haptics.dart';
 
@@ -317,6 +318,8 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     final provider = coachChatControllerProvider(widget.scope);
     final state = ref.watch(provider);
     final progress = ref.watch(coachChatProgressProvider(widget.scope));
+    final aboutMeOffer =
+        ref.watch(coachAboutMeSuggestionProvider(widget.scope));
     final history = ref.watch(coachChatHistoryProvider(widget.scope));
     final subscription = ref.watch(subscriptionProvider);
     // conversation 資料只存在於 conversation scope；partner scope 不讀。
@@ -352,6 +355,14 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     final latest = visibleTimeline.isEmpty ? null : visibleTimeline.first;
     final isClarifying =
         !activeError && (latest?.isClarifyingQuestion ?? false);
+    // 規格 PR-9：只跟著剛拿到、正在看的那張正式建議。
+    final aboutMeSuggestion = !isLoading &&
+            !activeError &&
+            latest != null &&
+            !latest.isClarifyingQuestion &&
+            aboutMeOffer?.resultId == latest.id
+        ? aboutMeOffer!.suggestion
+        : null;
     // 序數必須跟後端 3 次上限同源：取 controller 當前追問串的釐清 turns 數。
     // 不能數歷史卡（同 sessionId 會跨追問串灌水，曾標到「第 5 次」）。
     // app 重啟後 turns 尚未回種時取不到數字，就退回無序數的通用文案。
@@ -544,6 +555,16 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
                             onForceAnswer: _forceAnswer,
                             actionsEnabled: canSubmit,
                             clarificationOrdinal: clarificationOrdinal,
+                            belowLatest: aboutMeSuggestion == null
+                                ? null
+                                : CoachAboutMeSuggestionRow(
+                                    key: ValueKey(
+                                      'coach-about-me-suggestion-'
+                                      '${aboutMeOffer!.resultId}',
+                                    ),
+                                    scope: widget.scope,
+                                    suggestion: aboutMeSuggestion,
+                                  ),
                           ),
                         ),
                       ),
@@ -951,6 +972,9 @@ class _CoachChatThreadView extends StatelessWidget {
   final int? clarificationOrdinal;
   final bool actionsEnabled;
 
+  /// 規格 PR-9：最新那張正式建議下面的「要不要加到關於我」。
+  final Widget? belowLatest;
+
   const _CoachChatThreadView({
     super.key,
     required this.results,
@@ -960,6 +984,7 @@ class _CoachChatThreadView extends StatelessWidget {
     required this.onForceAnswer,
     this.clarificationOrdinal,
     this.actionsEnabled = true,
+    this.belowLatest,
   });
 
   @override
@@ -982,6 +1007,10 @@ class _CoachChatThreadView extends StatelessWidget {
           onForceAnswer: onForceAnswer,
           clarificationOrdinal: clarificationOrdinal,
         ),
+        if (belowLatest case final row?) ...[
+          const SizedBox(height: 8),
+          row,
+        ],
         if (latest.earlierSummary?.trim().isNotEmpty == true) ...[
           const SizedBox(height: 8),
           _EarlierCoachSummaryCard(result: latest),

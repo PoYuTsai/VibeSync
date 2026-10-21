@@ -75,7 +75,7 @@ class EffectiveStylePromptBuilder {
     final stuckPoints = global?.stuckPoints ?? const <StuckPoint>[];
     if (stuckPoints.isNotEmpty) {
       optional.add(
-        '- 卡住的處境：${stuckPoints.map(_stuckPointLabel).join('、')}；'
+        '- 卡住的處境：${stuckPoints.map(coachStuckPointLabel).join('、')}；'
         '回答時要接住這個情境，不要給通用建議。',
       );
     }
@@ -83,7 +83,7 @@ class EffectiveStylePromptBuilder {
     final goals = global?.practiceGoals ?? const <PracticeGoal>[];
     if (goals.isNotEmpty) {
       optional.add(
-        '- 練習重點：${goals.map(_goalLabel).join('、')}；'
+        '- 練習重點：${goals.map(coachGoalLabel).join('、')}；'
         '${goals.map(_goalPrompt).join(' ')}',
       );
     }
@@ -125,7 +125,11 @@ class EffectiveStylePromptBuilder {
   static String _quoteSafe(String text) =>
       text.replaceAll('「', '『').replaceAll('」', '』');
 
-  static String _stuckPointLabel(StuckPoint s) => switch (s) {
+  /// 教練讀到的卡點與練習重點標籤。伺服器的「加到關於我」代碼清單用同一套
+  /// （supabase/functions/coach-chat/about_me_suggestion.ts，規格 PR-9），模型
+  /// 才比得出關於我裡是不是已經有了；對照測試在
+  /// test/unit/features/coach_chat/about_me_suggestion_codes_test.dart。
+  static String coachStuckPointLabel(StuckPoint s) => switch (s) {
         StuckPoint.fadesOut => '話題卡住接不下去',
         StuckPoint.dontKnowHowToAsk => '不知道怎麼開口約',
         StuckPoint.anxiousWontSend => '緊張不敢傳',
@@ -133,7 +137,7 @@ class EffectiveStylePromptBuilder {
         StuckPoint.leftOnRead => '已讀不回',
       };
 
-  static String _goalLabel(PracticeGoal goal) {
+  static String coachGoalLabel(PracticeGoal goal) {
     switch (goal) {
       case PracticeGoal.softInvite:
         return '想約得出來';

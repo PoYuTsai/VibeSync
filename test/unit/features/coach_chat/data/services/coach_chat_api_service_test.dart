@@ -5,8 +5,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/about_me_suggestion.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 import 'package:vibesync/features/user_profile/domain/services/effective_style_prompt_builder.dart';
 
 class _Recorded {
@@ -1097,6 +1099,113 @@ void main() {
         ),
         throwsA(isA<CoachChatGenerationFailedException>()),
       );
+    });
+  });
+
+  // 規格 PR-9：「要不要加到關於我」在回應頂層、不在卡片裡。
+  group('CoachChatApiService about-me suggestion', () {
+    Future<List<AboutMeSuggestion>> askWith(Map<String, dynamic> data) async {
+      final received = <AboutMeSuggestion>[];
+      final service = CoachChatApiService(invoker: _stub(_ok(data)));
+      await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '我每次都解釋太多，要怎麼回？',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        onAboutMeSuggestion: received.add,
+      );
+      return received;
+    }
+
+    test('正式建議帶的固定代碼會交出來', () async {
+      final received = await askWith({
+        ..._validResponse(),
+        'aboutMeSuggestion': {'field': 'stuckPoint', 'key': 'overExplains'},
+      });
+      expect(received, [
+        const AboutMeSuggestion.stuckPoint(StuckPoint.overExplains),
+      ]);
+    });
+
+    test('沒有建議、代碼不認得或是釐清問題時都不交', () async {
+      expect(await askWith(_validResponse()), isEmpty);
+      expect(
+        await askWith({
+          ..._validResponse(),
+          'aboutMeSuggestion': {'field': 'stuckPoint', 'key': 'noSuchCode'},
+        }),
+        isEmpty,
+      );
+      final clarifying = _validResponse(
+        card: <String, dynamic>{
+          ...(_validResponse()['card'] as Map<String, dynamic>),
+          'responseType': 'clarifyingQuestion',
+          'needsReflection': true,
+          'reflectionQuestion': '你想先確認哪一點？',
+          'costDeducted': 0,
+        },
+      );
+      expect(
+        await askWith({
+          ...clarifying,
+          'aboutMeSuggestion': {'field': 'stuckPoint', 'key': 'overExplains'},
+        }),
+        isEmpty,
+      );
+    });
+
+    test('建議放在卡片裡不算（伺服器只放頂層）', () async {
+      final received = await askWith(
+        _validResponse(
+          card: <String, dynamic>{
+            ...(_validResponse()['card'] as Map<String, dynamic>),
+            'aboutMeSuggestion': {'field': 'stuckPoint', 'key': 'overExplains'},
+          },
+        ),
+      );
+      expect(received, isEmpty);
+    });
+
+    test('串流的 coach.done 也讀得到', () async {
+      final client = MockClient((request) async {
+        final lines = [
+          {'type': 'coach.progress', 'stage': 'request'},
+          {
+            'type': 'coach.done',
+            'result': {
+              ..._validResponse(),
+              'aboutMeSuggestion': {
+                'field': 'practiceGoal',
+                'key': 'softInvite',
+              },
+            },
+          },
+        ].map(jsonEncode).join('\n');
+        return http.Response(
+          '$lines\n',
+          200,
+          headers: {'content-type': 'application/x-ndjson; charset=utf-8'},
+        );
+      });
+      final service = CoachChatApiService(
+        clientFactory: () => client,
+        accessTokenProvider: () => 'access-token',
+        progressStreamingEnabled: true,
+      );
+      final received = <AboutMeSuggestion>[];
+      final result = await service.ask(
+        conversationId: 'c-1',
+        partnerId: 'p-1',
+        question: '我想學會約她出來',
+        recentMessages: const [],
+        dataQualityFlagged: false,
+        onAboutMeSuggestion: received.add,
+      );
+      expect(result.headline, '接住她的觀察');
+      expect(received, [
+        const AboutMeSuggestion.practiceGoal(PracticeGoal.softInvite),
+      ]);
     });
   });
 }
