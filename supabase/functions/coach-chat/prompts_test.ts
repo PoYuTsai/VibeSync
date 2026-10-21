@@ -424,8 +424,9 @@ Deno.test("buildCoachChatPrompt injects global framing and keeps About Me (使�
   // 「使用者自述（關於我）」管線 scope 無關，global 照舊注入（規格 PR-4b 改段名）。
   assertStringIncludes(prompt, "## 使用者自述（關於我）\n" + ABOUT_ME_BOUNDARY);
   assertEquals(prompt.includes("使用者風格設定"), false);
-  // 記憶規則不把使用者自述列為「要點出的依據」：2026-10-21 成對評測 U5，列了之後無關的
-  // 題目也會被扯到卡點。關於我只在和這題有關時用（App 端使用範圍句）。
+  // 記憶規則不把使用者自述列為「要點出的依據」。2026-10-21 成對評測 U5 改後在無關的題目
+  // 扯到卡點（待驗假說：那輪同時換了參考卡，因果未定；主審第 2 輪 P3）。關於我只在和這題
+  // 有關時用（App 端使用範圍句）。
   assertEquals(
     prompt.includes("目前熱度/階段訊號、或可信的對方提示"),
     true,
