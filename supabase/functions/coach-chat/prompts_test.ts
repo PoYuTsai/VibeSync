@@ -497,8 +497,14 @@ Deno.test("hasUserWrittenBoundary only reads the App's fixed boundary labels", (
   assertEquals(hasUserWrittenBoundary("- 使用者邊界：不聊前任；任何建議都不能違反。"), true);
   assertEquals(hasUserWrittenBoundary(ABOUT_ME_STUCK), false);
   assertEquals(hasUserWrittenBoundary(ABOUT_ME_HUMOR), false);
-  // 只看行首的固定標籤：原文或其他行裡提到「界線」不算。
+  // 只看行首的固定標籤：原文或其他行裡提到「界線」不算，完整標籤嵌在一行中間也不算
+  // （主審第 3 輪 P3：防止日後把行首判斷改成「包含」也照樣通過）。
   assertEquals(hasUserWrittenBoundary("- 練習重點：想尊重界線；多聽少說。"), false);
+  assertEquals(
+    hasUserWrittenBoundary("- 卡住的處境：- 使用者自己寫的界線（原文）：「不要太快」；回答時要接住這個情境。"),
+    false,
+  );
+  assertEquals(hasUserWrittenBoundary("- 練習重點：她說- 使用者邊界：不約"), false);
   assertEquals(hasUserWrittenBoundary(null), false);
   assertEquals(hasUserWrittenBoundary(undefined), false);
   assertEquals(hasUserWrittenBoundary(""), false);
