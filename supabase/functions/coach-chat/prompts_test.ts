@@ -1,10 +1,12 @@
 import {
+  assert,
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   buildCoachChatPrompt,
   buildCoachSocialKnowledgeSelectionInput,
+  hasUserWrittenBoundary,
 } from "./prompts.ts";
 import { selectSocialKnowledge } from "../_shared/social/knowledge_selector.ts";
 
@@ -434,9 +436,9 @@ Deno.test("buildCoachChatPrompt injects global framing and keeps About Me (使�
   assertEquals(prompt.includes("使用者自述的處境或目標"), false);
 });
 
-// 規格 PR-4a：教練挑參考卡不看「關於我」；同一個請求加不加關於我，選到的卡完全相同，
-// 關於我照樣進提示詞給教練讀。三組照 App 組字端的格式：只有界線、只有卡點、舊幽默風格。
-Deno.test("knowledge selection ignores About Me; the coach still reads it in the prompt", () => {
+// 規格 PR-4a：教練挑參考卡不看「關於我」的字；寫了界線就固定帶界線類的卡（2026-10-21
+// 成對評測：只拿掉關於我，界線組 0 勝 6 負）。關於我照樣進提示詞給教練讀。
+Deno.test("knowledge selection ignores About Me text, but a user-written boundary always brings boundary cards", () => {
   const base = {
     conversationId: "c1",
     userQuestion: "第一次約會穿什麼比較好？",
@@ -453,18 +455,53 @@ Deno.test("knowledge selection ignores About Me; the coach still reads it in the
       }),
     ).map((atom) => atom.id);
   const without = ids();
-  for (const aboutMe of [ABOUT_ME_BOUNDARY, ABOUT_ME_STUCK, ABOUT_ME_HUMOR]) {
+  // 卡點、舊幽默風格：標題字（卡住、不要再解釋）不再觸發卡片，選到的跟沒填一樣。
+  for (const aboutMe of [ABOUT_ME_STUCK, ABOUT_ME_HUMOR]) {
     assertEquals(ids(aboutMe), without, aboutMe);
+    const input = buildCoachSocialKnowledgeSelectionInput({ ...base, effectiveStyleContext: aboutMe });
+    assertEquals(input.effectiveStyleContext, null);
+    assertEquals(input.typedSignals, undefined);
+  }
+  // 寫了界線（新舊兩種 App 格式）：只多了界線訊號，等於沒填時加上 boundary。
+  const withBoundarySignal = selectSocialKnowledge({
+    ...buildCoachSocialKnowledgeSelectionInput(base),
+    typedSignals: ["boundary"],
+  }).map((atom) => atom.id);
+  for (
+    const aboutMe of [
+      ABOUT_ME_BOUNDARY,
+      "- 使用者邊界：不要太快邀約；任何建議都不能違反。\n- 使用範圍：僅用來調整教練語氣與任務框架；不要拿來推斷對方或寫長期人格。",
+    ]
+  ) {
+    const selected = ids(aboutMe);
+    assertEquals(selected, withBoundarySignal, aboutMe);
+    for (const id of ["boundary.consent", "boundary.stop_signals", "boundary.no_pressure"]) {
+      assert(selected.includes(id), `${id}：${aboutMe}`);
+    }
     assertEquals(
       buildCoachSocialKnowledgeSelectionInput({ ...base, effectiveStyleContext: aboutMe })
         .effectiveStyleContext,
       null,
     );
+  }
+  for (const aboutMe of [ABOUT_ME_BOUNDARY, ABOUT_ME_STUCK, ABOUT_ME_HUMOR]) {
     assertStringIncludes(
       buildCoachChatPrompt({ ...base, effectiveStyleContext: aboutMe }),
       "## 使用者自述（關於我）\n" + aboutMe,
     );
   }
+});
+
+Deno.test("hasUserWrittenBoundary only reads the App's fixed boundary labels", () => {
+  assertEquals(hasUserWrittenBoundary(ABOUT_ME_BOUNDARY), true);
+  assertEquals(hasUserWrittenBoundary("- 使用者邊界：不聊前任；任何建議都不能違反。"), true);
+  assertEquals(hasUserWrittenBoundary(ABOUT_ME_STUCK), false);
+  assertEquals(hasUserWrittenBoundary(ABOUT_ME_HUMOR), false);
+  // 只看行首的固定標籤：原文或其他行裡提到「界線」不算。
+  assertEquals(hasUserWrittenBoundary("- 練習重點：想尊重界線；多聽少說。"), false);
+  assertEquals(hasUserWrittenBoundary(null), false);
+  assertEquals(hasUserWrittenBoundary(undefined), false);
+  assertEquals(hasUserWrittenBoundary(""), false);
 });
 
 Deno.test("buildCoachChatPrompt keeps conversation/partner output byte-identical (global 回歸鎖)", () => {

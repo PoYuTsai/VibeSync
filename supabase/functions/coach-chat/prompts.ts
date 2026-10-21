@@ -11,15 +11,38 @@ import {
   type SocialKnowledgeSelectionInput,
 } from "../_shared/social/knowledge_selector.ts";
 
+/**
+ * App 組字端（effective_style_prompt_builder.dart）送來的「使用者自己寫的界線」那一行；
+ * PR-3 之前的 App 用「- 使用者邊界：」。兩種都是 App 固定產生的標籤，使用者的原文在後面。
+ */
+const USER_BOUNDARY_LINE_PREFIXES = [
+  "- 使用者自己寫的界線（原文）：",
+  "- 使用者邊界：",
+] as const;
+
+export function hasUserWrittenBoundary(
+  effectiveStyleContext: string | null | undefined,
+): boolean {
+  if (!effectiveStyleContext) return false;
+  return effectiveStyleContext.split("\n").some((line) =>
+    USER_BOUNDARY_LINE_PREFIXES.some((prefix) => line.startsWith(prefix))
+  );
+}
+
 export function buildCoachSocialKnowledgeSelectionInput(
   input: CoachChatRequest,
 ): SocialKnowledgeSelectionInput {
   return {
     ...input,
-    // 「關於我」不拿來挑參考卡（規格 PR-4a）：「卡住」「界線」這些標題字本身
-    // 就會命中關鍵字，不管使用者問什麼都會把冷掉、界線類的卡拉進來、擠掉真正
-    // 相關的。只改教練這側；analyze-chat 共用同一個選擇器，不動共享檔。
+    // 「關於我」的字不拿來挑參考卡（規格 PR-4a）：「卡住」「界線」這些標題字本身
+    // 就會命中關鍵字，不管使用者問什麼都會把冷掉、邀約類的卡拉進來、擠掉真正
+    // 相關的。但使用者寫了界線時固定帶界線類的卡（同意、停止訊號、不施壓）：
+    // 2026-10-21 成對評測，只拿掉關於我會讓這些卡消失，界線組 0 勝 6 負。
+    // 只改教練這側；analyze-chat 共用同一個選擇器，不動共享檔。
     effectiveStyleContext: null,
+    typedSignals: hasUserWrittenBoundary(input.effectiveStyleContext)
+      ? ["boundary"]
+      : undefined,
     inviteSuppressed: shouldSuppressInviteLine(input.inviteHistory),
   };
 }
