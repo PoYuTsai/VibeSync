@@ -250,6 +250,31 @@ Future<void> _pumpQuota(
   await tester.pumpAndSettle();
 }
 
+/// 教練的釐清問題（免費）。
+Map<String, dynamic> _clarificationBody(int request) => {
+      'card': {
+        'responseType': 'clarifyingQuestion',
+        'mode': 'clarifyIntent',
+        'headline': '先問清楚你的想法',
+        'answer': '先補一個線索，我才不會亂猜。',
+        'userState': '想推進又怕太快',
+        'frictionType': 'unclearIntent',
+        'nextStep': '說說你原本想怎麼回。',
+        'suggestedLine': null,
+        'boundaryReminder': '補充釐清不扣額度；正式建議才扣 1 則。',
+        'needsReflection': true,
+        'reflectionQuestion': '你原本想怎麼回她？',
+        'costDeducted': 0,
+      },
+      'provider': 'test',
+      'model': 'test-coach',
+      'generatedAt': DateTime.now()
+          .toUtc()
+          .add(Duration(seconds: request))
+          .toIso8601String(),
+      'sessionId': 'about-me-toggle-session',
+    };
+
 /// 教練的正式建議（不是釐清），扣 1 則。
 Map<String, dynamic> _formalAnswerBody(int request) => {
       'card': {
@@ -1107,6 +1132,179 @@ void main() {
       await tester.pumpAndSettle();
       expect(calls, hasLength(3));
       expect(calls[2]['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+
+    /// 照順序回應的教練（每次呼叫從 [responses] 取一個；Completer 可以延遲）。
+    Future<void> pumpScripted(
+      WidgetTester tester, {
+      required List<Map<String, dynamic>> calls,
+      required List<Future<CoachChatInvokeResponse> Function()> responses,
+      List<Partner> partners = const [],
+      MemoryCoachChatRepository? repo,
+    }) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            coachChatRepositoryProvider
+                .overrideWithValue(repo ?? MemoryCoachChatRepository()),
+            coachChatApiServiceProvider.overrideWithValue(
+              CoachChatApiService(
+                invoker: (String _, {required Map<String, dynamic> body}) {
+                  calls.add(body);
+                  return responses[calls.length - 1]();
+                },
+              ),
+            ),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+            ..._partnerOverrides(partners, const {}),
+            ...aboutMe(withNotes),
+          ],
+          child: const MaterialApp(home: GlobalCoachScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<CoachChatInvokeResponse> Function() ok(
+      Map<String, dynamic> Function(int) body,
+      int request,
+    ) =>
+        () async => CoachChatInvokeResponse(status: 200, data: body(request));
+
+    Future<void> send(WidgetTester tester, String text) async {
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CoachSurface),
+          matching: find.byType(TextField),
+        ),
+        text,
+      );
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+    }
+
+    /// 切範圍：chip 在畫面上就先捲進來再點，不然走選單（同 [_selectScope]）。
+    Future<void> switchScope(WidgetTester tester, Key key) async {
+      if (find.byKey(key).evaluate().isNotEmpty) {
+        await tester.ensureVisible(find.byKey(key));
+        await tester.pumpAndSettle();
+      }
+      await _selectScope(tester, key);
+      await tester.pumpAndSettle();
+    }
+
+    // PR-10 主審 1 P2：送出中改開關不算數，標籤要跟這次送出的一致。
+    testWidgets('送出中開關鎖住：點了不變，標籤照這次送出的', (tester) async {
+      final calls = <Map<String, dynamic>>[];
+      final pending = Completer<CoachChatInvokeResponse>();
+      await pumpScripted(
+        tester,
+        calls: calls,
+        responses: [() => pending.future],
+      );
+      await send(tester, '她回很快，要不要今晚直接約？');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(calls.single['effectiveStyleContext'], contains('不要太快邀約'));
+
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      expect(sourceChip('關於我'), findsOneWidget, reason: '這次送出有帶關於我');
+
+      pending.complete(
+        CoachChatInvokeResponse(status: 200, data: _formalAnswerBody(1)),
+      );
+      await tester.pumpAndSettle();
+      expect(sourceChip('關於我'), findsOneWidget);
+    });
+
+    // 同一題的釐清還沒答完：切走再切回來，選擇照留，回答釐清也不帶。
+    testWidgets('釐清未完切換對象再回來：選擇照留，回答釐清不帶關於我', (tester) async {
+      final calls = <Map<String, dynamic>>[];
+      await pumpScripted(
+        tester,
+        calls: calls,
+        partners: [_partner('p1', 'Alice')],
+        responses: [
+          ok(_clarificationBody, 1),
+          ok(_formalAnswerBody, 2),
+        ],
+      );
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      await send(tester, '她回很快，要不要今晚直接約？');
+      await tester.pumpAndSettle();
+      expect(calls[0].containsKey('effectiveStyleContext'), isFalse);
+      expect(find.text('你原本想怎麼回她？'), findsOneWidget);
+
+      await switchScope(tester, const Key('coach_scope_partner_p1'));
+      await switchScope(tester, const Key('coach_scope_general'));
+      expect(find.text('你原本想怎麼回她？'), findsOneWidget);
+      expect(sourceChip('關於我'), findsNothing, reason: '這題還沒問完，選擇照留');
+
+      await send(tester, '我原本想回好啊');
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(2));
+      expect(calls[1].containsKey('effectiveStyleContext'), isFalse);
+      // 拿到正式建議：這題問完，回到預設。
+      expect(sourceChip('關於我'), findsOneWidget);
+    });
+
+    testWidgets('還沒送就切走再回來：選擇不留，回到預設', (tester) async {
+      await pumpScripted(
+        tester,
+        calls: <Map<String, dynamic>>[],
+        partners: [_partner('p1', 'Alice')],
+        responses: const [],
+      );
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      expect(sourceChip('關於我'), findsNothing);
+
+      await switchScope(tester, const Key('coach_scope_partner_p1'));
+      await switchScope(tester, const Key('coach_scope_general'));
+      expect(sourceChip('關於我'), findsOneWidget);
+    });
+
+    // 重開畫面：只顯示這次進來後問的問答，舊的釐清不會出現，下一句在畫面上
+    // 就是新問題；開關回到預設，標籤也照實標「關於我」。
+    testWidgets('重開畫面：舊釐清不顯示、開關回到預設、標籤照實標關於我', (tester) async {
+      final repo = MemoryCoachChatRepository();
+      final calls = <Map<String, dynamic>>[];
+      await pumpScripted(
+        tester,
+        calls: calls,
+        repo: repo,
+        responses: [ok(_clarificationBody, 1)],
+      );
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      await send(tester, '她回很快，要不要今晚直接約？');
+      await tester.pumpAndSettle();
+      expect(find.text('你原本想怎麼回她？'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpScripted(
+        tester,
+        calls: calls,
+        repo: repo,
+        responses: [ok(_clarificationBody, 1)],
+      );
+      expect(find.text('你原本想怎麼回她？'), findsNothing);
+      expect(sourceChip('關於我'), findsOneWidget);
+      final toggle = tester.widget<Semantics>(
+        find
+            .ancestor(
+              of: find.byKey(const Key('coach-skip-about-me')),
+              matching: find.byType(Semantics),
+            )
+            .first,
+      );
+      expect(toggle.properties.toggled, isFalse);
     });
 
     testWidgets('沒填關於我：不出現「這次不參考關於我」', (tester) async {

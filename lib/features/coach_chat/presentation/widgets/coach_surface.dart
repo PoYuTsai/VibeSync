@@ -162,10 +162,24 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
   String? _pendingResultId;
   bool _keepReadingOnComplete = false;
 
-  /// 規格 PR-10：「這次不參考關於我」，只管這一題。同一題的釐清回答、直接給
-  /// 建議與失敗重試都照它；拿到正式建議、按「想問別的」或切換對象後回到預設
-  /// （帶關於我）。
-  bool _skipAboutMe = false;
+  /// 規格 PR-10：「這次不參考關於我」，只管這一題，每個範圍各記一份。這一題
+  /// 在畫面上還沒問完（送出中、失敗等重試、或有還沒答完的釐清）就保留，同一題
+  /// 的釐清回答、直接給建議與重試都照它；拿到正式建議、按「想問別的」，或這題
+  /// 已經不在畫面上（切走時沒有未完的題、重開畫面）就回到預設（帶關於我）。
+  final Set<CoachScope> _skipAboutMeScopes = <CoachScope>{};
+
+  bool get _skipAboutMe => _skipAboutMeScopes.contains(widget.scope);
+
+  /// 這個範圍的題目在畫面上是否還沒問完：送出中、或有這次畫面裡問出、還沒答完
+  /// 的釐清。失敗等重試的情況由呼叫端（還在同一個範圍）自然保留。
+  bool _questionOpen(CoachScope scope) {
+    final state = ref.read(coachChatControllerProvider(scope));
+    if (state.isLoading) return true;
+    final latest = state.valueOrNull;
+    return latest != null &&
+        latest.isClarifyingQuestion &&
+        _sessionResultIds.contains(latest.id);
+  }
 
   bool get _engaged => _engagedScopes.contains(widget.scope);
 
@@ -255,7 +269,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     // 輸入框草稿刻意不清（設計拍板：切換保留草稿）。
     if (widget.scope != oldWidget.scope) {
       _lastAskedQuestion = null;
-      _skipAboutMe = false;
+      // 切走時這題已問完或還沒送：開關不留著；送出中或釐清未完就保留。
+      if (!_questionOpen(oldWidget.scope)) {
+        _skipAboutMeScopes.remove(oldWidget.scope);
+      }
+      if (!_questionOpen(widget.scope)) {
+        _skipAboutMeScopes.remove(widget.scope);
+      }
       _visibleResultId = null;
       _pendingResultId = null;
       _keepReadingOnComplete = false;
@@ -341,6 +361,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
         ? _clarificationOrdinals[latest.id] ?? controllerClarificationsUsed
         : null;
 
+    final scope = widget.scope;
     ref.listen<AsyncValue<UnifiedCoachResult?>>(provider, (previous, next) {
       // 只有這次進來後問出去的結果（loading→data）進顯示白名單；
       // 「想問別的」還原舊答案是 data→data，不會誤入。
@@ -367,7 +388,9 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
             _clarificationOrdinals[freshId] = ordinal;
           }
           // 規格 PR-10：拿到正式建議＝這一題問完，開關回到預設。
-          if (!next.valueOrNull!.isClarifyingQuestion) _skipAboutMe = false;
+          if (!next.valueOrNull!.isClarifyingQuestion) {
+            _skipAboutMeScopes.remove(scope);
+          }
           if (_keepReadingOnComplete && _visibleResultId != null) {
             _pendingResultId = freshId;
           } else {
@@ -524,6 +547,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
           canSubmit: canSubmit,
           isClarifying: isClarifying,
           hasAboutMe: hasAboutMe,
+          isLoading: isLoading,
         ),
       ],
     );
@@ -536,6 +560,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     required bool canSubmit,
     required bool isClarifying,
     required bool hasAboutMe,
+    required bool isLoading,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -562,12 +587,22 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Align(
                   alignment: Alignment.centerLeft,
+                  // 送出中鎖住：這次請求已經照當下的選擇送出，改了也不算數，
+                  // 標籤要跟送出的一致（PR-10 主審 1 P2）。
                   child: _SkipAboutMeToggle(
                     selected: _skipAboutMe,
-                    onChanged: (value) {
-                      AppHaptics.light();
-                      setState(() => _skipAboutMe = value);
-                    },
+                    onChanged: isLoading
+                        ? null
+                        : (value) {
+                            AppHaptics.light();
+                            setState(() {
+                              if (value) {
+                                _skipAboutMeScopes.add(widget.scope);
+                              } else {
+                                _skipAboutMeScopes.remove(widget.scope);
+                              }
+                            });
+                          },
                   ),
                 ),
               ),
@@ -887,7 +922,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       _pendingResultId = null;
       _keepReadingOnComplete = false;
       _lastAskedQuestion = null;
-      _skipAboutMe = false;
+      _skipAboutMeScopes.remove(scope);
       _controller.clear();
     });
     _focusNode.requestFocus();
@@ -1488,22 +1523,26 @@ class _SkipAboutMeToggle extends StatelessWidget {
   const _SkipAboutMeToggle({required this.selected, required this.onChanged});
 
   final bool selected;
-  final ValueChanged<bool> onChanged;
+
+  /// null＝送出中，鎖住不給改。
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     final color = selected
         ? AppColors.coachAccentBright
         : AppColors.onBackgroundSecondary;
+    final onChanged = this.onChanged;
     return Semantics(
       button: true,
       toggled: selected,
+      enabled: onChanged != null,
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
           key: const Key('coach-skip-about-me'),
           borderRadius: BorderRadius.circular(999),
-          onTap: () => onChanged(!selected),
+          onTap: onChanged == null ? null : () => onChanged(!selected),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
