@@ -17,6 +17,7 @@ export const GROUPS = [
   "honest_emotion",
   "legacy_style",
   "injection",
+  "recent_note",
   "no_about_me",
 ] as const;
 export type Group = typeof GROUPS[number];

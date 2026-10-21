@@ -12,6 +12,8 @@ import 'package:vibesync/features/user_profile/domain/services/effective_style_p
 // 規格 PR-7 起 App 不再送互動風格，PR-7 之前的舊版 App 還會送。題庫裡帶風格的題目
 // （U4、S1–S4，只填了風格）保留舊版格式：拿掉四行風格之後只剩使用範圍那行，而現在
 // 的 App 對同一份 profile 什麼都不送。
+//
+// 規格 PR-8 的近況用 recentNoteDaysAgo 表示寫下幾天了，這裡用固定時鐘重組。
 const _legacyStylePrefixes = [
   '- 主要互動風格：',
   '- 次要互動風格：',
@@ -25,8 +27,9 @@ void main() {
       File('tools/coach-about-me-eval/cases.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     final cases = (catalog['cases'] as List).cast<Map<String, dynamic>>();
-    expect(cases, hasLength(36));
-    const builder = EffectiveStylePromptBuilder();
+    expect(cases, hasLength(40));
+    final now = DateTime.utc(2026, 10, 21, 12);
+    final builder = EffectiveStylePromptBuilder(now: () => now);
     for (final c in cases) {
       final profile = c['profile'] as Map<String, dynamic>?;
       final expected = profile == null
@@ -49,6 +52,12 @@ void main() {
                     StuckPoint.values.byName(s as String),
                 ],
                 notes: profile['notes'] as String?,
+                recentNote: profile['recentNote'] as String?,
+                recentNoteUpdatedAt: profile['recentNoteDaysAgo'] == null
+                    ? null
+                    : now.subtract(
+                        Duration(days: profile['recentNoteDaysAgo'] as int),
+                      ),
                 updatedAt: DateTime.utc(2026, 10, 21),
               ),
             );

@@ -142,4 +142,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('edit-page-stub'), findsOneWidget);
   });
+
+  // 規格 PR-8：摘要多一行「近況」；過期（超過 14 天）灰字並標「已過期」。
+  UserProfile withRecentNote(Duration ago) {
+    final now = DateTime.now().toUtc();
+    return UserProfile.create(
+      notes: '慢熟',
+      recentNote: '這週很忙',
+      recentNoteUpdatedAt: now.subtract(ago),
+      updatedAt: now,
+    );
+  }
+
+  testWidgets('近況：新的照常顯示', (tester) async {
+    await tester.pumpWidget(
+      _harness(initial: withRecentNote(const Duration(days: 2))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('近況'), findsOneWidget);
+    expect(find.text('這週很忙'), findsOneWidget);
+  });
+
+  testWidgets('近況：過期的標已過期', (tester) async {
+    await tester.pumpWidget(
+      _harness(initial: withRecentNote(const Duration(days: 20))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('這週很忙（已過期）'), findsOneWidget);
+  });
 }

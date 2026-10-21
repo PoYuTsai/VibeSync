@@ -1050,7 +1050,7 @@ void main() {
       // （PR-5 主審 2 建議）。
       final style = ProviderScope.containerOf(
         tester.element(find.byType(CoachSurface)),
-      ).read(coachChatStyleContextProvider);
+      ).read(userProfileControllerProvider);
       expect(style.hasError, isTrue);
       expect(style.hasValue, isTrue);
       expect(sourceChip('關於我'), findsNothing);

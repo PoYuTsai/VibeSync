@@ -51,7 +51,7 @@ const ALL_OK: RunRecord[] = CASES.flatMap((c) => [record(c.id, "base"), record(c
 Deno.test("配對：同一案例同一次兩臂都成功才配；A／B 與抽查同 seed 可重現", () => {
   const records = [...ALL_OK.filter((r) => r.caseId !== "B1"), record("B1", "base"), record("B1", "cand", "FALLBACK")];
   const pairs = buildPairs(records, 7);
-  assertEquals(pairs.length, 35);
+  assertEquals(pairs.length, CASES.length - 1);
   assert(!pairs.some((p) => p.caseId === "B1"));
   assertEquals(buildPairs(records, 7), pairs);
   const flipped = buildPairs(records, 8);

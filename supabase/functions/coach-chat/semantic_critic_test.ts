@@ -59,9 +59,15 @@ Deno.test("semantic critic prompt has fixed rubric and untrusted-data boundary",
   ));
   assert(prompt.includes("問句密度超過使用者自述的要求"));
   assert(!prompt.includes("style context"));
-  // 使用者自述先不列為 invented_user_fact 的合法來源。2026-10-21 成對評測 F1 改後放行了
-  // 替使用者編的興趣（待驗假說：那輪同時換了參考卡，因果未定；主審第 2 輪 P3）。規格 PR-8
-  // （近況）真的需要時再加，並重跑評測。
+  // 規格 PR-8：只有「最近的狀況」那一行算 invented_user_fact 的合法來源（使用者自己寫的
+  // 近況原文）。整份自述不列：2026-10-21 成對評測 F1 放寬到整份自述時，放行了替使用者
+  // 編的興趣；卡點、練習重點與界線只是設定，不能推出沒寫過的經歷或喜好。
+  assert(prompt.includes(
+    "effectiveStyleContext 裡「最近的狀況」那一行是使用者自己寫的近況原文，也是來源",
+  ));
+  assert(prompt.includes(
+    "卡住的處境、練習重點與界線只是設定，不能從它們推出他沒寫過的經歷或喜好",
+  ));
   assert(!prompt.includes("effectiveStyleContext（使用者自述）或補充"));
 });
 

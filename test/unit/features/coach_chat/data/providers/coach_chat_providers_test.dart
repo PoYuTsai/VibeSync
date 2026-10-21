@@ -26,6 +26,7 @@ import 'package:vibesync/features/user_profile/data/repositories/user_profile_re
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
+import 'package:vibesync/features/user_profile/domain/services/effective_style_prompt_builder.dart';
 
 const _generatedAt = '2026-05-07T12:00:00.000Z';
 
@@ -1244,6 +1245,56 @@ void main() {
       expect(sent, isNot(contains('對象備註')));
       expect(sent, isNot(contains('互動風格')));
       expect(partnerStyles.loads, 0, reason: '教練不該再讀對象個別設定');
+    });
+  });
+
+  // PR-8 主審 1 P1：近況滿 14 天就不送；同一個 container 裡跨過到期時間，
+  // 第二次送出不能吃到第一次組好的字。
+  group('最近的狀況跨過到期時間（規格 PR-8）', () {
+    test('第一次還在期限內照送；兩分鐘後滿 14 天，第二次就不送', () async {
+      var clock = DateTime.utc(2026, 10, 21, 12);
+      final calls = <_RecordedCall>[];
+      final c = ProviderContainer(overrides: [
+        coachChatRepositoryProvider.overrideWithValue(_FakeRepo()),
+        coachingOutcomeRepositoryProvider
+            .overrideWithValue(_FakeOutcomeRepo(const [])),
+        coachChatApiServiceProvider.overrideWithValue(
+          CoachChatApiService(invoker: _invoker(calls: calls)),
+        ),
+        coachChatUsageSyncProvider.overrideWithValue(() async {}),
+        userProfileRepositoryProvider.overrideWithValue(
+          _DelayedProfileRepo(
+            Future.value(
+              UserProfile.create(
+                notes: '不要太快邀約',
+                recentNote: '這週剛換新工作，晚上比較累',
+                recentNoteUpdatedAt: clock.subtract(
+                  const Duration(days: 14) - const Duration(minutes: 1),
+                ),
+                updatedAt: clock,
+              ),
+            ),
+          ),
+        ),
+        authUserProfileScopeProvider.overrideWith((ref) => Stream.value('u-1')),
+        effectiveStylePromptBuilderProvider.overrideWithValue(
+          EffectiveStylePromptBuilder(now: () => clock),
+        ),
+      ]);
+      addTearDown(c.dispose);
+
+      const scope = CoachScope.global();
+      await c.read(coachChatControllerProvider(scope).future);
+      final notifier = c.read(coachChatControllerProvider(scope).notifier);
+      await notifier.ask(question: '她問我最近怎麼都很晚才回，我要怎麼回？');
+      expect(calls.single.body['effectiveStyleContext'], contains('最近的狀況'));
+
+      clock = clock.add(const Duration(minutes: 2));
+      await notifier.ask(question: '那這週末約她會不會太急？');
+      expect(calls, hasLength(2));
+      final second = calls.last.body['effectiveStyleContext'] as String;
+      expect(second, isNot(contains('最近的狀況')));
+      expect(second, contains('不要太快邀約'));
     });
   });
 

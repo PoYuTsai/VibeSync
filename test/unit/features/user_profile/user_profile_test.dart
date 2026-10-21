@@ -160,4 +160,94 @@ void main() {
       expect(p.secondaryStyle, isNull);
     });
   });
+
+  // 規格 PR-8「最近的狀況」：60 字、要有寫下時間、14 天內才算新的。
+  group('recentNote', () {
+    final ts = DateTime.utc(2026, 10, 21, 12);
+
+    test('trims, keeps the date, and counts toward isEmpty', () {
+      final p = UserProfile.create(
+        recentNote: '  這週很忙  ',
+        recentNoteUpdatedAt: ts,
+        updatedAt: ts,
+      );
+      expect(p.recentNote, '這週很忙');
+      expect(p.recentNoteUpdatedAt, ts);
+      expect(p.isEmpty, isFalse);
+    });
+
+    test('blank note drops both fields', () {
+      final p = UserProfile.create(
+        recentNote: '   ',
+        recentNoteUpdatedAt: ts,
+        updatedAt: ts,
+      );
+      expect(p.recentNote, isNull);
+      expect(p.recentNoteUpdatedAt, isNull);
+      expect(p.isEmpty, isTrue);
+    });
+
+    test('over 60 chars or missing date throws', () {
+      expect(
+        () => UserProfile.create(
+          recentNote: 'a' * (UserProfile.maxRecentNoteLength + 1),
+          recentNoteUpdatedAt: ts,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => UserProfile.create(recentNote: '這週很忙', updatedAt: ts),
+        throwsArgumentError,
+      );
+    });
+
+    // 「14 天後會自動不再提供給教練」：滿 14 × 24 小時就不算新的（PR-8 主審 1 殘餘）。
+    test('fresh until 14 full days have passed', () {
+      UserProfile written(Duration ago) => UserProfile.create(
+            recentNote: '這週很忙',
+            recentNoteUpdatedAt: ts.subtract(ago),
+            updatedAt: ts,
+          );
+      final almost = written(const Duration(days: 13, hours: 23, minutes: 59));
+      expect(almost.recentNoteAgeDays(ts), 13);
+      expect(almost.recentNoteIsFresh(ts), isTrue);
+      final full = written(const Duration(days: 14));
+      expect(full.recentNoteAgeDays(ts), 14);
+      expect(full.recentNoteIsFresh(ts), isFalse);
+      expect(UserProfile.create(updatedAt: ts).recentNoteIsFresh(ts), isFalse);
+    });
+
+    // PR-8 主審 1 P2：時間在未來（裝置時鐘曾經設錯）不算新的，免得有效期被拉長。
+    test('a timestamp in the future is not fresh', () {
+      final future = UserProfile.create(
+        recentNote: '這週很忙',
+        recentNoteUpdatedAt: ts.add(const Duration(days: 365)),
+        updatedAt: ts,
+      );
+      expect(future.recentNoteIsFresh(ts), isFalse);
+      expect(future.recentNoteAgeDays(ts), lessThan(0));
+    });
+
+    // PR-8 主審 1 P2：跟輸入框一樣算看得到的字數，emoji 不會因為佔兩個 UTF-16
+    // 單位就存不進去。
+    test('counts visible characters, so 59 字＋1 個 emoji 存得進去', () {
+      final note = '${'忙' * 59}😀';
+      expect(note.length, 61);
+      final p = UserProfile.create(
+        recentNote: note,
+        recentNoteUpdatedAt: ts,
+        updatedAt: ts,
+      );
+      expect(p.recentNote, note);
+      expect(
+        () => UserProfile.create(
+          recentNote: '$note忙',
+          recentNoteUpdatedAt: ts,
+          updatedAt: ts,
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
 }
