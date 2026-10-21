@@ -80,9 +80,10 @@ abstract final class PracticeRevealTiming {
   static const double flipPeakMs = 1350;
   static const double flipEndMs = 1800;
 
-  /// 光刃（V3.1 §5.5）：外暈前 60 ms 張開、之後快收；N／R 共 280 ms、SR 350 ms。SR 另加
-  /// 一道 400 ms、橫跨整個螢幕的十字光。
-  static const double bladeOpenMs = 60;
+  /// 光刃（V3.1 §5.5）：外暈 20 ms 就張開、之後快收；N／R 共 280 ms、SR 350 ms。SR 另加
+  /// 一道 400 ms、橫跨整個螢幕的十字光。不慢慢張開：卡面轉開會蓋住後層泛光，外暈晚到就是
+  /// 先一暗、光刃再一亮，SR 拿近到 20 cm 會多一次閃光（量實際畫面，V3.1 §3）。
+  static const double bladeOpenMs = 20;
   static const double bladeMs = 280;
   static const double bladeSrMs = 350;
   static const double crossMs = 400;
@@ -336,8 +337,8 @@ double practiceRevealBladeMs(PracticeGirlRarity rarity) =>
         ? PracticeRevealTiming.bladeSrMs
         : PracticeRevealTiming.bladeMs;
 
-/// 光刃外暈寬度（0..1，乘上主題的最寬倍率）：卡片側立後 60 ms 張開，之後快收（先快後
-/// 慢），照片很快露出來。
+/// 光刃外暈寬度（0..1，乘上主題的最寬倍率）：卡片側立後 [PracticeRevealTiming.bladeOpenMs]
+/// 張開，之後快收（先快後慢），照片很快露出來。
 double practiceRevealBladeWidth(
   double ms, [
   PracticeGirlRarity rarity = PracticeGirlRarity.n,
