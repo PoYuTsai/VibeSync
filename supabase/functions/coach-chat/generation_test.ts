@@ -3028,3 +3028,63 @@ Deno.test("runCoachChat does not attach a local about-me suggestion to another r
   assertEquals(result.body, ledgerBody);
   assertEquals(harness.events.includes("coach_chat_about_me_suggested"), false);
 });
+
+// PR-9 主審 1 P2：只比時間戳不夠，兩個 worker 可能在同一毫秒組出不同的卡。
+Deno.test("runCoachChat does not attach the suggestion to another card settled with the same timestamp", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({ aboutMeSuggestion: overExplainsSuggestion }),
+      ),
+    settleResult: (args) =>
+      Promise.resolve({
+        charged: false,
+        body: {
+          ...args.body,
+          card: {
+            ...(args.body.card as Record<string, unknown>),
+            headline: "先入帳者的卡",
+          },
+        },
+      }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).headline,
+    "先入帳者的卡",
+  );
+  assertEquals("aboutMeSuggestion" in result.body, false);
+  assertEquals(harness.events.includes("coach_chat_about_me_suggested"), false);
+});
+
+Deno.test("runCoachChat still treats its own result as fresh when the ledger reorders keys", async () => {
+  const reorder = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, inner]) => inner !== undefined)
+      .reverse();
+    return Object.fromEntries(
+      entries.map(([key, inner]) => [key, reorder(inner)]),
+    );
+  };
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({ aboutMeSuggestion: overExplainsSuggestion }),
+      ),
+    settleResult: (args) =>
+      Promise.resolve({
+        charged: true,
+        body: reorder(args.body) as Record<string, unknown>,
+      }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(result.body.aboutMeSuggestion, {
+    field: "stuckPoint",
+    key: "overExplains",
+  });
+});

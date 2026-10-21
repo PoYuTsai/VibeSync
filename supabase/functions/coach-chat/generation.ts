@@ -477,8 +477,7 @@ export async function runCoachChat(
     // replay＝先入帳者的卡（本地生成丟棄，絕不回未入帳結果）。
     // 規格 PR-9：建議不進帳本（帳本只收卡片那幾鍵），只附在這次真的入帳的
     // 回應上；拿到先入帳者的卡時，本地建議跟那張卡不同源，不附。
-    const settledOwnBody = settled.body.generatedAt === body.generatedAt;
-    if (aboutMeSuggestion && settledOwnBody) {
+    if (aboutMeSuggestion && isSameLedgerResult(settled.body, body)) {
       logAboutMeSuggestion(deps, input.tier, aboutMeSuggestion);
       return {
         status: 200,
@@ -547,6 +546,28 @@ export async function runCoachChat(
       ...(aboutMeSuggestion ? { aboutMeSuggestion } : {}),
     },
   };
+}
+
+// 規格 PR-9：settle RPC 不回「這次入帳／重播」旗標（只有 charged 與 result），
+// 帳本也不能多存鍵（CHECK）。這次入帳時回的是送進去的同一份 result（jsonb
+// 來回後鍵的順序可能不同），重播回的是先入帳者的；整份逐值相同才算自己這次
+// 入帳。只比時間戳不夠：兩個 worker 可能在同一毫秒組出不同的卡（PR-9 主審 1）。
+function isSameLedgerResult(stored: unknown, sent: unknown): boolean {
+  return canonicalJson(stored) === canonicalJson(sent);
+}
+
+/** 鍵排序、值是 undefined 的鍵拿掉（JSON 本來就不送），其餘照 JSON。 */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, inner) => {
+    if (inner === null || typeof inner !== "object" || Array.isArray(inner)) {
+      return inner;
+    }
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(inner).sort()) {
+      sorted[key] = (inner as Record<string, unknown>)[key];
+    }
+    return sorted;
+  });
 }
 
 // 規格 PR-9：log 只記欄位與代碼，不記 reason 或任何原文。
