@@ -250,6 +250,31 @@ Future<void> _pumpQuota(
   await tester.pumpAndSettle();
 }
 
+/// 教練的正式建議（不是釐清），扣 1 則。
+Map<String, dynamic> _formalAnswerBody(int request) => {
+      'card': {
+        'responseType': 'coachAnswer',
+        'mode': 'replyCraft',
+        'headline': '先接住她的話題',
+        'answer': '她回得快是好訊號，先順著她的話題聊，再看她有沒有延伸。',
+        'userState': '想推進又怕太快',
+        'frictionType': 'unclearIntent',
+        'nextStep': '先回她的話題，再看她有沒有反問。',
+        'suggestedLine': '這個我也有興趣，妳都怎麼找到的？',
+        'boundaryReminder': '別為了確認而連續追問。',
+        'needsReflection': false,
+        'reflectionQuestion': null,
+        'costDeducted': 1,
+      },
+      'provider': 'test',
+      'model': 'test-coach',
+      'generatedAt': DateTime.now()
+          .toUtc()
+          .add(Duration(seconds: request))
+          .toIso8601String(),
+      'sessionId': 'about-me-toggle-session',
+    };
+
 CoachSurface _surface(WidgetTester tester) =>
     tester.widget<CoachSurface>(find.byType(CoachSurface));
 
@@ -1007,6 +1032,86 @@ void main() {
 
       final body = await ask(tester, calls);
       expect(body.containsKey('effectiveStyleContext'), isFalse);
+    });
+
+    // 規格 PR-10：「這次不參考關於我」只管這一題：失敗重試也照它，拿到正式
+    // 建議才回到預設。
+    testWidgets('這次不參考關於我：這題不標不送、重試照它；拿到正式建議回到預設', (tester) async {
+      final calls = <Map<String, dynamic>>[];
+      await tester.binding.setSurfaceSize(const Size(430, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            coachChatRepositoryProvider
+                .overrideWithValue(MemoryCoachChatRepository()),
+            coachChatApiServiceProvider.overrideWithValue(
+              CoachChatApiService(
+                invoker: (String _,
+                    {required Map<String, dynamic> body}) async {
+                  calls.add(body);
+                  return calls.length == 1
+                      ? const CoachChatInvokeResponse(
+                          status: 500,
+                          data: {'error': 'transient'},
+                        )
+                      : CoachChatInvokeResponse(
+                          status: 200,
+                          data: _formalAnswerBody(calls.length),
+                        );
+                },
+              ),
+            ),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+            ..._partnerOverrides(const [], const {}),
+            ...aboutMe(withNotes),
+          ],
+          child: const MaterialApp(home: GlobalCoachScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final field = find.descendant(
+        of: find.byType(CoachSurface),
+        matching: find.byType(TextField),
+      );
+
+      expect(sourceChip('關於我'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      expect(sourceChip('關於我'), findsNothing);
+
+      await tester.enterText(field, '她回很快，要不要今晚直接約？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(1));
+      expect(calls[0].containsKey('effectiveStyleContext'), isFalse);
+
+      // 失敗：這一題還沒問完，開關照舊勾著，重試也不帶。
+      expect(sourceChip('關於我'), findsNothing);
+      await tester.tap(find.byIcon(Icons.refresh_rounded));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(2));
+      expect(calls[1].containsKey('effectiveStyleContext'), isFalse);
+
+      // 拿到正式建議：回到預設，又標「關於我」，下一題照送。
+      expect(sourceChip('關於我'), findsOneWidget);
+      // 等失敗提示（SnackBar）收掉，它會蓋住送出鈕。
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.enterText(field, '那明天約呢？');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(3));
+      expect(calls[2]['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+
+    testWidgets('沒填關於我：不出現「這次不參考關於我」', (tester) async {
+      await _pump(tester, invokerStatus: 500, extraOverrides: aboutMe(null));
+      expect(find.byKey(const Key('coach-skip-about-me')), findsNothing);
     });
 
     testWidgets('一般：沒填關於我就不標，也不送', (tester) async {

@@ -154,11 +154,14 @@ class CoachChatController
     return repo.latestForScope(scope.type, scope.id);
   }
 
+  /// [includeAboutMe] false＝使用者這題選了「這次不參考關於我」（規格 PR-10）：
+  /// 不讀、不送關於我。
   Future<void> ask({
     required String question,
     CoachChatAnalysisSnapshot? analysisSnapshot,
     bool forceAnswer = false,
     String? lifecyclePhase,
+    bool includeAboutMe = true,
   }) async {
     final trimmed = question.trim();
     if (trimmed.isEmpty || _inFlight) return;
@@ -233,9 +236,12 @@ class CoachChatController
       // 同 intent＝(question, effectiveForceAnswer, lifecyclePhase, resume
       // session) 四元組；effectiveForceAnswer 才是 wire 上實際送出的語意
       // （server ledger 綁 payload，同 id 換 payload 會 REPLAY_MISMATCH）。
+      // 規格 PR-10：「這次不參考關於我」也是不同意圖。server 的 input hash
+      // 不含關於我，同編號會直接重播；換了開關重試要用新編號，不能重播到帶著
+      // 關於我產生的那次結果。預設帶關於我時簽名跟以前一樣。
       final requestId = _requestIdSession.begin(
         '$trimmed|$effectiveForceAnswer|${lifecyclePhase ?? ''}'
-        '|${resumedSessionId ?? ''}',
+        '|${resumedSessionId ?? ''}${includeAboutMe ? '' : '|noAboutMe'}',
       );
       // fresh session 的合成 sessionId 綁 requestId 生命週期：server
       // input_hash 含 wire sessionId，重試若重合成時間戳會變成同 requestId
@@ -247,7 +253,8 @@ class CoachChatController
       // 第一次 Coach 請求漏帶使用者風格（2026-08-03 修）。不是重放/計費
       // 問題——server 的 computeCoachInputHash 不含 effectiveStyleContext，
       // 風格值改變不會觸發 COACH_REQUEST_REPLAY_MISMATCH（cross-review 已核）。
-      final effectiveStyleContext = await _styleContext();
+      final effectiveStyleContext =
+          includeAboutMe ? await _styleContext() : null;
 
       final api = ref.read(coachChatApiServiceProvider);
       final result = await api.ask(
@@ -334,6 +341,7 @@ class CoachChatController
   Future<void> forceAnswer({
     CoachChatAnalysisSnapshot? analysisSnapshot,
     String? lifecyclePhase,
+    bool includeAboutMe = true,
   }) async {
     final latest = state.valueOrNull ??
         ref
@@ -348,6 +356,7 @@ class CoachChatController
       analysisSnapshot: analysisSnapshot,
       forceAnswer: true,
       lifecyclePhase: lifecyclePhase,
+      includeAboutMe: includeAboutMe,
     );
   }
 

@@ -1247,6 +1247,103 @@ void main() {
     });
   });
 
+  // 規格 PR-10：「這次不參考關於我」——這一題不讀、不送關於我。
+  group('這次不參考關於我（規格 PR-10）', () {
+    test('includeAboutMe false：不讀也不送關於我；預設照送', () async {
+      final calls = <_RecordedCall>[];
+      var resolverCalls = 0;
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+        styleContextResolver: () async {
+          resolverCalls++;
+          return '- 使用者自己寫的界線（原文）：「不要太快邀約」';
+        },
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(
+        question: '她回很快，要不要今晚直接約？',
+        analysisSnapshot: _snapshot(),
+        includeAboutMe: false,
+      );
+      expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
+      expect(resolverCalls, 0, reason: '不參考就不必讀');
+
+      await notifier.ask(question: '下一題', analysisSnapshot: _snapshot());
+      expect(calls.last.body['effectiveStyleContext'], contains('不要太快邀約'));
+      expect(resolverCalls, 1);
+    });
+
+    test('換了開關重試要用新編號，不重播帶著關於我產生的結果', () async {
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: (fn, {required body}) async {
+          calls.add(_RecordedCall(fn, Map<String, dynamic>.from(body)));
+          return const CoachChatInvokeResponse(
+            status: 500,
+            data: {'error': 'transient'},
+          );
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '同一題', analysisSnapshot: _snapshot());
+      await notifier.ask(
+        question: '同一題',
+        analysisSnapshot: _snapshot(),
+        includeAboutMe: false,
+      );
+      await notifier.ask(
+        question: '同一題',
+        analysisSnapshot: _snapshot(),
+        includeAboutMe: false,
+      );
+
+      expect(calls, hasLength(3));
+      expect(
+        calls[1].body['requestId'],
+        isNot(calls[0].body['requestId']),
+        reason: '開關不同是不同意圖',
+      );
+      expect(
+        calls[2].body['requestId'],
+        calls[1].body['requestId'],
+        reason: '同開關的失敗重試照舊沿用同編號',
+      );
+    });
+
+    test('直接給建議也照開關：includeAboutMe false 不送關於我', () async {
+      final calls = <_RecordedCall>[];
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(calls: calls),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c
+          .read(coachChatControllerProvider(_conversationScope).notifier)
+          .forceAnswer(analysisSnapshot: _snapshot(), includeAboutMe: false);
+
+      expect(calls.single.body['forceAnswer'], isTrue);
+      expect(calls.single.body.containsKey('effectiveStyleContext'), isFalse);
+    });
+  });
+
   // 2026-08-03 修復：ask() 原本同步 valueOrNull 讀 profile，冷啟動時 profile
   // 還沒載入完就會漏帶 effectiveStyleContext。改成 await 後續兩組測試鎖住：
   // (a) 正常情況下等 profile resolve 完才送出、風格不缺席；(b) profile 載入

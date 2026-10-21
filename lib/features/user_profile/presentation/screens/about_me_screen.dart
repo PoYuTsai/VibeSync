@@ -9,9 +9,11 @@ import 'package:intl/intl.dart';
 import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../data/providers/partner_style_providers.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/user_profile.dart';
 import '../../domain/services/growth_preview_builder.dart';
+import '../widgets/coach_context_preview_sheet.dart';
 import '../widgets/growth_preview_sheet.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../widgets/profile_chip_section.dart';
@@ -295,6 +297,12 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
   }
 
   Widget _buildScaffold(BuildContext context) {
+    // 規格 PR-10：已儲存的關於我用跟教練同一個組字函式組出來，就是教練實際會
+    // 讀到的那段；沒有內容（教練什麼都不會讀）就不顯示入口。
+    final coachContext =
+        ref.watch(effectiveStylePromptBuilderProvider).buildForCoachFollowUp(
+              global: ref.watch(userProfileControllerProvider).valueOrNull,
+            );
     return PopScope(
       canPop: !_isDirty,
       onPopInvokedWithResult: _handlePopAttempt,
@@ -380,6 +388,23 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
               ),
               const SizedBox(height: 16),
               const _PrivacyNote(),
+              if (coachContext != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const Key('about-me-coach-context-preview'),
+                    onPressed: () => showCoachContextPreviewSheet(
+                      context,
+                      coachContext: coachContext,
+                      hasUnsavedChanges: _isDirty,
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('看看教練會讀到什麼'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.ctaStart,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 24),
               Container(
                 width: double.infinity,
