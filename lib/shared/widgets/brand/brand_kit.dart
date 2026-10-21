@@ -749,10 +749,14 @@ class BrandInfoNote extends StatelessWidget {
     super.key,
     required this.text,
     this.icon = Icons.lock_outline_rounded,
+    this.iconColor,
   });
 
   final String text;
   final IconData icon;
+
+  /// 預設是橘色重點；緊鄰橘色主鈕時傳中性色，畫面上的橘色只留給動作。
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -767,7 +771,8 @@ class BrandInfoNote extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon,
-              size: 18, color: AppColors.ctaStart.withValues(alpha: 0.86)),
+              size: 18,
+              color: iconColor ?? AppColors.ctaStart.withValues(alpha: 0.86)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
