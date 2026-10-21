@@ -39,12 +39,16 @@ import 'package:vibesync/features/user_profile/data/providers/data_quality_flag_
 import 'package:vibesync/features/user_profile/data/providers/partner_style_providers.dart';
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
+import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
+import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 import '../../helpers/memory_coach_chat_repository.dart';
 import '../../helpers/memory_coaching_outcome_repository.dart';
 import '../../helpers/fake_sydney_video_platform.dart';
+import '../features/user_profile/_harness.dart';
 
 /// 引導問句直接引實作常數（review Grok Minor-3：防測試與文案漂移）。
 const _guideQuestions = GlobalCoachScreen.guideQuestions;
@@ -889,4 +893,126 @@ void main() {
       expect(_paywallExtras, [entry, entry]);
     });
   }
+
+  // 規格 PR-5：「教練參考」的「關於我」不分範圍，送出的內容不是空的就標；
+  // 讀取參數跟 controller 送出時同一組，標籤和實際送出的
+  // effectiveStyleContext 要一致。
+  group('教練參考：關於我', () {
+    final withNotes = UserProfile.create(
+      notes: '不要太快邀約',
+      updatedAt: DateTime(2026, 10, 21),
+    );
+
+    List<Override> aboutMe(UserProfile? profile) => [
+          userProfileRepositoryProvider
+              .overrideWithValue(FakeUserProfileRepo(initial: profile)),
+          authUserProfileScopeProvider.overrideWith(
+            (ref) => Stream.value(FakeUserProfileRepo.testUid),
+          ),
+        ];
+
+    Finder sourceChip(String label) => find.descendant(
+          of: find.ancestor(
+            of: find.text('教練參考'),
+            matching: find.byType(Wrap),
+          ),
+          matching: find.text(label),
+        );
+
+    /// 問一題（伺服器回 500，不開付費頁），回傳送出去的請求內容。
+    Future<Map<String, dynamic>> ask(
+      WidgetTester tester,
+      List<Map<String, dynamic>> calls,
+    ) async {
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CoachSurface),
+          matching: find.byType(TextField),
+        ),
+        '她回很快，要不要今晚直接約？',
+      );
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(1));
+      return calls.single;
+    }
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues(
+        {AiDataSharingConsent.acceptedKeyForTesting: true},
+      );
+    });
+
+    testWidgets('一般：填了關於我就標「關於我」，送出的也帶著', (tester) async {
+      final calls = await _pump(
+        tester,
+        invokerStatus: 500,
+        extraOverrides: aboutMe(withNotes),
+      );
+      expect(sourceChip('關於我'), findsOneWidget);
+      expect(find.text('你的風格'), findsNothing);
+
+      final body = await ask(tester, calls);
+      expect(body['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+
+    testWidgets('一般：沒填關於我就不標，也不送', (tester) async {
+      final calls = await _pump(
+        tester,
+        invokerStatus: 500,
+        extraOverrides: aboutMe(null),
+      );
+      expect(sourceChip('關於我'), findsNothing);
+
+      final body = await ask(tester, calls);
+      expect(body.containsKey('effectiveStyleContext'), isFalse);
+    });
+
+    testWidgets('對象資料被標記有問題：照樣標「只看本段」，關於我也照實標', (tester) async {
+      final partner = _partner('p1', 'Alice');
+      final calls = <Map<String, dynamic>>[];
+      await tester.binding.setSurfaceSize(const Size(430, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            coachChatRepositoryProvider
+                .overrideWithValue(MemoryCoachChatRepository()),
+            coachChatApiServiceProvider.overrideWithValue(
+              CoachChatApiService(
+                invoker: _recordingInvoker(calls, status: 500),
+              ),
+            ),
+            coachingOutcomeRepositoryProvider
+                .overrideWithValue(MemoryCoachingOutcomeRepository()),
+            partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
+            partnerListProvider.overrideWithValue([partner]),
+            dataQualityFlagProvider(partner.id).overrideWith(
+              (_) => DataQualityFlag.flagged(
+                NamePair.canonical('Alice', 'Anna'),
+              ),
+            ),
+            partnerByIdProvider(partner.id).overrideWithValue(partner),
+            partnerAggregateProvider(partner.id)
+                .overrideWithValue(PartnerAggregateView.empty()),
+            conversationsByPartnerProvider(partner.id)
+                .overrideWithValue(const []),
+            ...aboutMe(withNotes),
+          ],
+          child: MaterialApp(
+            home: GlobalCoachScreen(lockedPartnerId: partner.id),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(sourceChip('只看本段'), findsOneWidget);
+      expect(sourceChip('對象資料'), findsNothing);
+      expect(sourceChip('關於我'), findsOneWidget);
+
+      final body = await ask(tester, calls);
+      expect(body['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+  });
 }

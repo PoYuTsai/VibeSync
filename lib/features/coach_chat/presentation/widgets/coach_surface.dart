@@ -716,22 +716,25 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     final partnerId = widget.scope.isConversation
         ? conversation?.partnerId
         : (widget.scope.isGlobal ? null : widget.scope.id);
+    final flagged = partnerId != null &&
+        ref.watch(dataQualityFlagProvider(partnerId)).isFlagged;
+    // 規格 PR-5：「關於我」不分範圍，送出的內容不是空的就標。讀取參數跟
+    // controller 送出時同一組（global 一律不帶對象覆寫），標籤才會跟實際
+    // 送出的一致，也不會多開一份 provider。
+    // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
+    // 來源標籤，載入中先當沒有，resolve 後這個 ConsumerWidget 會自動重繪。
+    final styleContext = ref
+        .watch(
+          coachChatStyleContextProvider((
+            partnerId: partnerId,
+            includePartnerOverride: widget.scope.isGlobal ? false : !flagged,
+          )),
+        )
+        .valueOrNull;
+    if (styleContext != null && styleContext.trim().isNotEmpty) {
+      sources.add('關於我');
+    }
     if (partnerId != null) {
-      final flag = ref.watch(dataQualityFlagProvider(partnerId));
-      final flagged = flag.isFlagged;
-      // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
-      // 來源標籤，載入中先當沒有風格，resolve 後這個 ConsumerWidget 會自動重繪。
-      final styleContext = ref
-          .watch(
-            coachChatStyleContextProvider((
-              partnerId: partnerId,
-              includePartnerOverride: !flagged,
-            )),
-          )
-          .valueOrNull;
-      if (styleContext != null && styleContext.trim().isNotEmpty) {
-        sources.add('你的風格');
-      }
       sources.add(flagged ? '只看本段' : '對象資料');
     }
 
