@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/config/environment.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../user_profile/domain/services/effective_style_prompt_builder.dart';
+import '../../domain/entities/about_me_suggestion.dart';
 import '../../domain/entities/coach_chat_result.dart';
 import '../../domain/entities/coach_scope.dart';
 
@@ -243,6 +244,9 @@ class CoachChatApiService {
   ///   頂層 `partnerId`（server superRefine 要求兩者一致）。
   /// - [lifecyclePhase]：client 不驗值（server 是真相源）；目前合法值為
   ///   `chatStalled` / `prepareInvite` / `postDate`。
+  ///
+  /// [onAboutMeSuggestion]：規格 PR-9，正式建議附帶「要不要加到關於我」時呼叫
+  /// （在回傳結果之前）；建議在回應頂層、不在卡片裡，也不進結果。
   Future<CoachChatResult> ask({
     required String conversationId,
     required String? partnerId,
@@ -264,6 +268,7 @@ class CoachChatApiService {
     String? lifecyclePhase,
     CoachChatContextProvenance? contextProvenance,
     List<CoachChatSentAdviceOutcome> inviteHistory = const [],
+    void Function(AboutMeSuggestion suggestion)? onAboutMeSuggestion,
   }) async {
     // scope 為真相源：partner scope 頂層 partnerId 一律覆寫成 scope.id，
     // 呼叫端沒傳也要補齊 superRefine 一致性。global scope 的 id 是哨兵值
@@ -354,12 +359,18 @@ class CoachChatApiService {
     }
     switch (response.status) {
       case 200:
-        return _parseSuccess(
+        final result = _parseSuccess(
           conversationId: conversationId,
           partnerId: partnerId,
           question: question.trim(),
           data: response.data,
         );
+        final data = response.data;
+        final suggestion = result.responseType == 'coachAnswer' && data is Map
+            ? AboutMeSuggestion.fromWire(data['aboutMeSuggestion'])
+            : null;
+        if (suggestion != null) onAboutMeSuggestion?.call(suggestion);
+        return result;
       case 429:
         final data = response.data;
         final asMap = data is Map ? data : const {};

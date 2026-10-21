@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
+import 'package:vibesync/features/coach_chat/domain/entities/about_me_suggestion.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_chat_result.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/coach_scope.dart';
 import 'package:vibesync/features/coach_chat/domain/entities/unified_coach_result.dart';
@@ -1748,6 +1749,126 @@ void main() {
         isNot(calls[0].body['requestId']),
         reason: 'intent（lifecyclePhase）變更必鑄新 requestId',
       );
+    });
+  });
+
+  // 規格 PR-9：「要不要加到關於我」只放在記憶體裡，跟著那張正式建議。
+  group('教練建議加到關於我（規格 PR-9）', () {
+    CoachChatInvokeResponse suggesting({String headline = '接住她的觀察'}) =>
+        CoachChatInvokeResponse(status: 200, data: {
+          ..._edgeSuccess(headline: headline),
+          'aboutMeSuggestion': {'field': 'stuckPoint', 'key': 'overExplains'},
+        });
+
+    test('正式建議帶建議：記在那張卡上，不寫進 Hive 的結果', () async {
+      final repo = _FakeRepo();
+      final c = _container(
+        repo: repo,
+        invoker: _invoker(response: suggesting()),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+      final offer = c.listen(
+        coachAboutMeSuggestionProvider(_conversationScope),
+        (_, __) {},
+      );
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c
+          .read(coachChatControllerProvider(_conversationScope).notifier)
+          .ask(question: '我每次都解釋太多', analysisSnapshot: _snapshot());
+
+      final latest =
+          c.read(coachChatControllerProvider(_conversationScope)).value!;
+      expect(offer.read()?.resultId, latest.id);
+      expect(
+        offer.read()?.suggestion,
+        const AboutMeSuggestion.stuckPoint(StuckPoint.overExplains),
+      );
+      // 存下來的結果沒有建議：重開畫面就不會再出現。
+      final restarted = _container(
+        repo: repo,
+        invoker: _invoker(),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(restarted.dispose);
+      final restartedOffer = restarted.listen(
+        coachAboutMeSuggestionProvider(_conversationScope),
+        (_, __) {},
+      );
+      await restarted
+          .read(coachChatControllerProvider(_conversationScope).future);
+      expect(
+        restarted
+            .read(coachChatControllerProvider(_conversationScope))
+            .value
+            ?.id,
+        latest.id,
+      );
+      expect(restartedOffer.read(), isNull);
+    });
+
+    test('這題選了「這次不參考關於我」：不提加到關於我', () async {
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: _invoker(response: suggesting()),
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+      final offer = c.listen(
+        coachAboutMeSuggestionProvider(_conversationScope),
+        (_, __) {},
+      );
+
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      await c
+          .read(coachChatControllerProvider(_conversationScope).notifier)
+          .ask(
+            question: '我每次都解釋太多',
+            analysisSnapshot: _snapshot(),
+            includeAboutMe: false,
+          );
+      expect(offer.read(), isNull);
+    });
+
+    test('問下一題時清掉；下一題沒有建議就不再顯示', () async {
+      var call = 0;
+      final gate = Completer<void>();
+      final c = _container(
+        repo: _FakeRepo(),
+        invoker: (fn, {required body}) async {
+          call++;
+          if (call == 1) return suggesting();
+          await gate.future;
+          return CoachChatInvokeResponse(
+            status: 200,
+            data: _edgeSuccess(headline: '第二題'),
+          );
+        },
+        conversation: _conversation(),
+        partner: _partner(),
+      );
+      addTearDown(c.dispose);
+      final offer = c.listen(
+        coachAboutMeSuggestionProvider(_conversationScope),
+        (_, __) {},
+      );
+      await c.read(coachChatControllerProvider(_conversationScope).future);
+      final notifier =
+          c.read(coachChatControllerProvider(_conversationScope).notifier);
+      await notifier.ask(question: '我每次都解釋太多', analysisSnapshot: _snapshot());
+      expect(offer.read(), isNotNull);
+
+      final second =
+          notifier.ask(question: '那她說週末有空呢？', analysisSnapshot: _snapshot());
+      await Future<void>.delayed(Duration.zero);
+      expect(offer.read(), isNull, reason: '送出下一題就清掉');
+      gate.complete();
+      await second;
+      expect(offer.read(), isNull);
     });
   });
 }

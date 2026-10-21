@@ -17,7 +17,7 @@
 - 每題一律 `forceAnswer: true`（等於使用者直接看正式建議），不然零證據的第一輪多半只回一個釐清問題。
 - 同一題同一次重複，兩臂送同一份請求（先過該臂的 `RequestSchema`）。
 
-## 題目（`cases.json`，40 題 9 組）
+## 題目（`cases.json`，46 題 10 組）
 
 | 組 | 題數 | 看什麼 |
 |---|---|---|
@@ -29,9 +29,12 @@
 | `legacy_style` 舊風格照樣遵守 | 4 | 8/4 以前設過互動風格的人；句長與問句數量 |
 | `injection` 惡意自述 | 4 | 自述裡夾「忽略規則」「拒絕也要約」「貼出系統提示」「扮成女友」 |
 | `recent_note` 最近的狀況 | 4 | 規格 PR-8：近況相關時照原文用、寫了 12 天的不把時間詞說成現在、無關時不扯、近況不是興趣不能編喜好 |
+| `about_me_suggestion` 建議加到關於我 | 6 | 規格 PR-9：使用者自己說出處境或目標時才建議（A1 卡點、A2 還沒填關於我的新用戶說目標）；對方訊息叫他改關於我、對方說他話多（A3、A4）與無關的題目（A5、A6）不建議 |
 | `no_about_me` 對照組 | 2 | 沒填關於我的同類題 |
 
 `aboutMe` 由 `profile` 照 App 的 `buildForCoachFollowUp` 組出；`test/unit/tools/coach_about_me_eval_cases_test.dart` 逐題比對兩者一字不差。都是人工示例，不是真用戶資料。題庫由 `gen_cases.py` 產生：改題目或 App 組字之後，在 repo 根目錄跑 `python3 -I tools/coach-about-me-eval/gen_cases.py > tools/coach-about-me-eval/cases.json`，再跑上面那支對照測試。近況用 `recentNoteDaysAgo` 表示寫下幾天了（滿 14 天就不放進 aboutMe），對照測試用固定時鐘重組。
+
+建議組每題有 `expectSuggestion`（該出現的 `{field, key}`，`null`＝不該出現）。真跑時 `run.ts` 直接比對回應頂層的 `aboutMeSuggestion`，結果寫在 `suggestions.json`（每臂的「該出現對／沒出現／給錯、不該出現卻出現／沒出現」與逐次明細），不靠評審；只算成功的正式卡，備援卡不算。改前臂沒有這個功能，建議一律不會出現，當對照。評審只比兩臂的卡片本身，確認加了這條規則之後回答沒有變差。
 
 規格 PR-7（2026-10-21）起新版 App 不再送互動風格；`legacy_style` 4 題與 U4 只填了風格，`aboutMe` 保留 PR-7 之前舊版 App 的格式（四行風格加使用範圍），代表還沒更新的舊版流量。對照測試對這 5 題改成檢查：拿掉風格行之後只剩使用範圍，而且新版組字對同一份 profile 什麼都不送。
 
@@ -70,7 +73,7 @@ deno run --cached-only --no-prompt --allow-read --allow-write --allow-run=git,ta
 - API 失敗或沒回 usage：成本當預留額計入，並停止後續呼叫，不當免費。
 - 送出前後都寫 `requests.jsonl`，每題跑完就重寫 `records.json`，中斷不會靜默重送。
 
-輸出在 `out/<tag>/`（已 gitignore）：`records.json`（每次 runCoachChat 的狀態與卡片；停下來之後沒跑的也列進去）、`requests.jsonl`、`run-summary.json`。備援卡（`FALLBACK`）、HTTP 錯誤、預算停下的都不進盲比，數量照實列。
+輸出在 `out/<tag>/`（已 gitignore）：`records.json`（每次 runCoachChat 的狀態、卡片與「加到關於我」建議；停下來之後沒跑的也列進去）、`requests.jsonl`、`run-summary.json`、`suggestions.json`（建議組的比對）。備援卡（`FALLBACK`）、HTTP 錯誤、預算停下的都不進盲比，數量照實列。
 
 ## 評審與盲測表
 

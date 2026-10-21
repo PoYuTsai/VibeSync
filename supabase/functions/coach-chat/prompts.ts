@@ -7,6 +7,10 @@ import {
 import { PROMPT_LEAK_DEFENSE_DIRECTIVE } from "../_shared/prompt_leak_guard.ts";
 import { shouldSuppressInviteLine } from "./invite_policy.ts";
 import {
+  ABOUT_ME_SUGGESTION_REASON_MAX,
+  formatAboutMeSuggestionRules,
+} from "./about_me_suggestion.ts";
+import {
   renderSelectedSocialKnowledge,
   type SocialKnowledgeSelectionInput,
 } from "../_shared/social/knowledge_selector.ts";
@@ -102,8 +106,10 @@ JSON schema:
   "boundaryReminder": "60字內。一句界線、成本或風險提醒，必填",
   "needsReflection": true/false,
   "reflectionQuestion": "90字內；需要問清楚使用者內在狀態時才填，否則 null",
-  "costDeducted": 0 或 1
-}`;
+  "costDeducted": 0 或 1,
+  "aboutMeSuggestion": null 或 {"field": "stuckPoint | practiceGoal", "key": "代碼", "reason": "${ABOUT_ME_SUGGESTION_REASON_MAX}字內"}
+}
+${formatAboutMeSuggestionRules()}`;
 }
 
 const SYSTEM_PROMPT_BASE =

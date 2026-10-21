@@ -12,6 +12,11 @@ import {
   shouldForceCoachAnswerAfterClarifications,
 } from "./clarification_policy.ts";
 import { LINE_INVITE_RE, shouldSuppressInviteLine } from "./invite_policy.ts";
+import {
+  type AboutMeSuggestion,
+  type AboutMeSuggestionParse,
+  normalizeAboutMeSuggestion,
+} from "./about_me_suggestion.ts";
 import { quotaExceededMessage } from "../_shared/quota.ts";
 import { toTraditionalChinese } from "../_shared/traditional_chinese.ts";
 import {
@@ -180,6 +185,8 @@ export async function runCoachChat(
   emitProgress(deps, { stage: "request" });
 
   let card: CoachChatResponseCard | null = null;
+  // 規格 PR-9：只記整張過驗、被採用那張卡的建議；剝句卡與備援卡不帶。
+  let cardSuggestion: AboutMeSuggestionParse = { kind: "absent" };
   const basePrompt = buildCoachChatPrompt(request);
   let lastValidationError = "schema_invalid";
   const generationDeadlineAt = startedAt + COACH_GENERATION_BUDGET_MS;
@@ -232,7 +239,8 @@ export async function runCoachChat(
     });
     let candidate: CoachChatResponseCard | null = null;
     try {
-      candidate = parseAndValidateCard(claudeData, request);
+      const parsedCard = parseAndValidateCard(claudeData, request);
+      candidate = parsedCard.card;
       assertSuggestedLineGrounded(candidate, request);
       assertSuggestedLineDeliverable(candidate, request);
       assertExplicitNoQuestionConstraint(candidate, request);
@@ -283,6 +291,7 @@ export async function runCoachChat(
         });
       }
       card = candidate;
+      cardSuggestion = parsedCard.aboutMeSuggestion;
       if (attempt > 1) {
         deps.logger.info("coach_chat_retry_succeeded", {
           tier: input.tier,
@@ -402,6 +411,16 @@ export async function runCoachChat(
   const shouldDeduct = card.responseType === "coachAnswer" &&
     card.costDeducted !== FALLBACK_NO_CHARGE;
   const shouldCharge = shouldDeduct && !input.accountIsTest;
+  // 規格 PR-9：只有 AI 真生成、要扣 1 則的正式建議才帶（同扣費不變量）；
+  // 釐清卡不帶。
+  const aboutMeSuggestion = shouldDeduct && cardSuggestion.kind === "valid"
+    ? cardSuggestion.suggestion
+    : null;
+  if (cardSuggestion.kind === "invalid") {
+    deps.logger.warn("coach_chat_about_me_suggestion_invalid", {
+      tier: input.tier,
+    });
+  }
 
   emitProgress(deps, { stage: "finalizing" });
 
@@ -456,6 +475,15 @@ export async function runCoachChat(
     });
     // 回 ledger 權威 body：fresh settle＝剛存的本地 body；state='done'
     // replay＝先入帳者的卡（本地生成丟棄，絕不回未入帳結果）。
+    // 規格 PR-9：建議不進帳本（帳本只收卡片那幾鍵），只附在這次真的入帳的
+    // 回應上；拿到先入帳者的卡時，本地建議跟那張卡不同源，不附。
+    if (aboutMeSuggestion && isSameLedgerResult(settled.body, body)) {
+      logAboutMeSuggestion(deps, input.tier, aboutMeSuggestion);
+      return {
+        status: 200,
+        body: { ...settled.body, aboutMeSuggestion },
+      };
+    }
     return { status: 200, body: settled.body };
   }
 
@@ -500,6 +528,9 @@ export async function runCoachChat(
     latencyMs: now() - startedAt,
     costDeducted: shouldCharge ? 1 : 0,
   });
+  if (aboutMeSuggestion) {
+    logAboutMeSuggestion(deps, input.tier, aboutMeSuggestion);
+  }
 
   return {
     status: 200,
@@ -512,8 +543,44 @@ export async function runCoachChat(
       provider: "claude",
       model,
       generatedAt: new Date(now()).toISOString(),
+      ...(aboutMeSuggestion ? { aboutMeSuggestion } : {}),
     },
   };
+}
+
+// 規格 PR-9：settle RPC 不回「這次入帳／重播」旗標（只有 charged 與 result），
+// 帳本也不能多存鍵（CHECK）。這次入帳時回的是送進去的同一份 result（jsonb
+// 來回後鍵的順序可能不同），重播回的是先入帳者的；整份逐值相同才算自己這次
+// 入帳。只比時間戳不夠：兩個 worker 可能在同一毫秒組出不同的卡（PR-9 主審 1）。
+function isSameLedgerResult(stored: unknown, sent: unknown): boolean {
+  return canonicalJson(stored) === canonicalJson(sent);
+}
+
+/** 鍵排序、值是 undefined 的鍵拿掉（JSON 本來就不送），其餘照 JSON。 */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, inner) => {
+    if (inner === null || typeof inner !== "object" || Array.isArray(inner)) {
+      return inner;
+    }
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(inner).sort()) {
+      sorted[key] = (inner as Record<string, unknown>)[key];
+    }
+    return sorted;
+  });
+}
+
+// 規格 PR-9：log 只記欄位與代碼，不記 reason 或任何原文。
+function logAboutMeSuggestion(
+  deps: GenerationDeps,
+  tier: string,
+  suggestion: AboutMeSuggestion,
+): void {
+  deps.logger.info("coach_chat_about_me_suggested", {
+    tier,
+    field: suggestion.field,
+    key: suggestion.key,
+  });
 }
 
 // B2：evidenceQuality 的唯一真相源。只認「對方證據」——recentMessages 逐字
@@ -862,8 +929,13 @@ function assertExplicitNoQuestionConstraint(
 function parseAndValidateCard(
   claudeData: unknown,
   request: CoachChatRequest,
-): CoachChatResponseCard {
+): { card: CoachChatResponseCard; aboutMeSuggestion: AboutMeSuggestionParse } {
   const parsed = parseClaudeJSON(claudeData);
+  // 規格 PR-9：建議不在卡片裡（卡片欄位白名單跟帳本的 CHECK 同組），repair
+  // 會丟掉不認得的鍵，所以先從模型原始 JSON 取出來另外檢查。
+  const aboutMeSuggestion = normalizeAboutMeSuggestion(
+    (parsed as Record<string, unknown>).aboutMeSuggestion,
+  );
   const repaired = repairCardShape(parsed, request);
   // 可見欄位過繁中正規化（黑箱 2026-09-07：建議句混進「这」，語言守門只看
   // 英文）。同 opener／練習室走 _shared 同一支，注音笑聲的厂丂已在裡面處理。
@@ -879,9 +951,12 @@ function parseAndValidateCard(
     repaired.costDeducted === FALLBACK_NO_CHARGE &&
     card.responseType === "coachAnswer"
   ) {
-    return { ...card, costDeducted: FALLBACK_NO_CHARGE };
+    return {
+      card: { ...card, costDeducted: FALLBACK_NO_CHARGE },
+      aboutMeSuggestion,
+    };
   }
-  return card;
+  return { card, aboutMeSuggestion };
 }
 
 type RawCardShape = Record<

@@ -27,7 +27,7 @@ void main() {
       File('tools/coach-about-me-eval/cases.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     final cases = (catalog['cases'] as List).cast<Map<String, dynamic>>();
-    expect(cases, hasLength(40));
+    expect(cases, hasLength(46));
     final now = DateTime.utc(2026, 10, 21, 12);
     final builder = EffectiveStylePromptBuilder(now: () => now);
     for (final c in cases) {

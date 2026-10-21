@@ -154,6 +154,8 @@ export type RunRecord = {
     | "NOT_RUN_CAP_OR_STOP";
   httpStatus: number | null;
   card: Record<string, unknown> | null;
+  /** 規格 PR-9：回應頂層的「加到關於我」建議（沒有是 null）。 */
+  aboutMeSuggestion?: unknown;
   events: string[];
   error?: string;
 };
@@ -281,7 +283,69 @@ export function classifyRun(
     status: fallback || card === null ? "FALLBACK" : "OK",
     httpStatus: 200,
     card,
+    aboutMeSuggestion: result.body.aboutMeSuggestion ?? null,
   };
+}
+
+export type SuggestionCheck = {
+  arm: Arm;
+  /** 建議組拿到正式卡（OK）的次數；備援卡不算。 */
+  runs: number;
+  /** 該出現、代碼也對。 */
+  hit: number;
+  /** 該出現卻沒出現。 */
+  missed: number;
+  /** 該出現，但給了別的選項。 */
+  wrong: number;
+  /** 不該出現卻出現。 */
+  unexpected: number;
+  /** 不該出現，也沒出現。 */
+  quiet: number;
+};
+
+/** 規格 PR-9：建議組逐次比對回應裡的建議和題目寫好的答案，不靠評審。 */
+export function checkSuggestions(
+  records: readonly RunRecord[],
+  cases: readonly EvalCase[],
+): SuggestionCheck[] {
+  const expected = new Map<string, { field: string; key: string } | null>();
+  for (const c of cases) {
+    if (c.expectSuggestion !== undefined) {
+      expected.set(c.id, c.expectSuggestion);
+    }
+  }
+  return ARMS.map((arm) => {
+    const row: SuggestionCheck = {
+      arm,
+      runs: 0,
+      hit: 0,
+      missed: 0,
+      wrong: 0,
+      unexpected: 0,
+      quiet: 0,
+    };
+    for (const r of records) {
+      if (r.arm !== arm || r.status !== "OK" || !expected.has(r.caseId)) {
+        continue;
+      }
+      const want = expected.get(r.caseId) ?? null;
+      const got = (r.aboutMeSuggestion ?? null) as
+        | { field?: unknown; key?: unknown }
+        | null;
+      row.runs++;
+      if (want === null) {
+        if (got === null) row.quiet++;
+        else row.unexpected++;
+      } else if (got === null) {
+        row.missed++;
+      } else if (got.field === want.field && got.key === want.key) {
+        row.hit++;
+      } else {
+        row.wrong++;
+      }
+    }
+    return row;
+  });
 }
 
 async function main() {
@@ -427,6 +491,40 @@ async function main() {
     new URL("run-summary.json", out),
     JSON.stringify(summary, null, 2),
   );
+  const suggestionChecks = checkSuggestions(records, cases);
+  const expectedSuggestions = new Map(
+    cases
+      .filter((c) => c.expectSuggestion !== undefined)
+      .map((c) => [c.id, c.expectSuggestion ?? null]),
+  );
+  await Deno.writeTextFile(
+    new URL("suggestions.json", out),
+    JSON.stringify(
+      {
+        summary: suggestionChecks,
+        rows: records
+          .filter((r) => expectedSuggestions.has(r.caseId))
+          .map((r) => ({
+            caseId: r.caseId,
+            attempt: r.attempt,
+            arm: r.arm,
+            status: r.status,
+            expected: expectedSuggestions.get(r.caseId),
+            got: r.aboutMeSuggestion ?? null,
+          })),
+      },
+      null,
+      2,
+    ),
+  );
+  for (const check of suggestionChecks) {
+    if (check.runs === 0) continue;
+    console.log(
+      `加到關於我（${check.arm}）：${check.runs} 次正式卡；` +
+        `該出現對 ${check.hit}、沒出現 ${check.missed}、給錯 ${check.wrong}；` +
+        `不該出現卻出現 ${check.unexpected}、沒出現 ${check.quiet}`,
+    );
+  }
   console.log(
     `完成：${caller.calls} 次呼叫，實付約 US$${caller.spentUsd.toFixed(3)}；${caller.stopped ? `已停：${caller.stopped}` : "沒有觸發上限"}`,
   );
