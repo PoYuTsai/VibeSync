@@ -39,30 +39,23 @@ final coachChatUsageSyncProvider = Provider<Future<void> Function()>((ref) {
 
 typedef CoachChatStyleContextResolver = Future<String?> Function();
 
-/// Future-based on purpose (structurally mirrors `openerStyleContextProvider`,
-/// 2026-08-03 fix): a sync `valueOrNull` read sends no style on a cold-start
-/// Coach turn while the profile is still loading, silently dropping the
-/// user's personalization for that request. Awaiting the profile future
-/// guarantees the first request already carries the resolved style.
+/// 教練這次要帶的「關於我」：每次送出前等 profile 讀完，再用當下的時鐘組字。
 ///
-/// Not a replay/idempotency fix: `computeCoachInputHash` (server
-/// billing.ts) does not include `effectiveStyleContext`, so a changed style
-/// value on retry cannot trigger `COACH_REQUEST_REPLAY_MISMATCH` (confirmed
-/// by cross-model review reading the server code — an earlier draft of this
-/// comment claimed otherwise; that claim was refuted).
+/// 等 profile 的 future（2026-08-03 冷啟動修）：同步 `valueOrNull` 讀，profile
+/// 還在載入時第一次問教練會漏帶。不是重放／計費修正：`computeCoachInputHash`
+/// （server billing.ts）不含 `effectiveStyleContext`，值變了也不會
+/// `COACH_REQUEST_REPLAY_MISMATCH`（cross-model review 讀過 server 程式確認）。
 ///
-/// 規格 PR-7（D2 選 A）：只讀全域「關於我」，不分範圍都是同一份；對象個別設定
-/// 沒有編輯畫面、看不到也清不掉，不再讀。
-final coachChatStyleContextProvider = FutureProvider<String?>((ref) async {
-  final global = await ref.watch(userProfileControllerProvider.future);
-  return ref
-      .watch(effectiveStylePromptBuilderProvider)
-      .buildForCoachFollowUp(global: global);
-});
-
+/// 不快取組好的字：規格 PR-8 的近況滿 14 天就不送，快取的字串不會跟著時間過期
+/// （PR-8 主審 1 P1）。規格 PR-7：只讀全域「關於我」，不分範圍都是同一份。
 final coachChatStyleContextResolverProvider =
     Provider<CoachChatStyleContextResolver>((ref) {
-  return () => ref.read(coachChatStyleContextProvider.future);
+  return () async {
+    final global = await ref.read(userProfileControllerProvider.future);
+    return ref
+        .read(effectiveStylePromptBuilderProvider)
+        .buildForCoachFollowUp(global: global);
+  };
 });
 
 /// Batch B1：partner scope 的「最近一段有效對話」——教練本次參考的來源。

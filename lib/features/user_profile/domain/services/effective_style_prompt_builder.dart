@@ -55,13 +55,15 @@ class EffectiveStylePromptBuilder {
     // 優先序由高到低，超長時從尾巴整行丟：最近的狀況 → 卡住的處境 → 練習重點。
     final optional = <String>[];
 
-    // 規格 PR-8（D5 照預設）：最近的狀況排在界線之後；寫下超過 14 天就不送。
+    // 規格 PR-8（D5 照預設）：最近的狀況排在界線之後；寫下滿 14 天就不送。
+    // 每次組字都用當下的時鐘（教練送出前現組，不吃快取；PR-8 主審 1 P1）。
+    final now = _now();
     final recentNote = global?.recentNote;
-    final recentAge = global?.recentNoteAgeDays(_now());
+    final recentAge = global?.recentNoteAgeDays(now);
     if (recentNote != null &&
         recentAge != null &&
-        global!.recentNoteIsFresh(_now())) {
-      final when = recentAge <= 0 ? '今天寫的' : '$recentAge 天前寫的';
+        global!.recentNoteIsFresh(now)) {
+      final when = recentAge <= 0 ? '不到 1 天前寫的' : '$recentAge 天前寫的';
       optional.add(
         '- 最近的狀況（$when，原文）：「${_quoteSafe(recentNote)}」；'
         '這是近況，可能已經變了，用之前可以先確認。',

@@ -31,7 +31,7 @@
 | `recent_note` 最近的狀況 | 4 | 規格 PR-8：近況相關時照原文用、寫了 12 天的不把時間詞說成現在、無關時不扯、近況不是興趣不能編喜好 |
 | `no_about_me` 對照組 | 2 | 沒填關於我的同類題 |
 
-`aboutMe` 由 `profile` 照 App 的 `buildForCoachFollowUp` 組出；`test/unit/tools/coach_about_me_eval_cases_test.dart` 逐題比對兩者一字不差。都是人工示例，不是真用戶資料。題庫由 `gen_cases.py` 產生：改題目或 App 組字之後，在 repo 根目錄跑 `python3 -I tools/coach-about-me-eval/gen_cases.py > tools/coach-about-me-eval/cases.json`，再跑上面那支對照測試。近況用 `recentNoteDaysAgo` 表示寫下幾天了（14 天內才放進 aboutMe），對照測試用固定時鐘重組。
+`aboutMe` 由 `profile` 照 App 的 `buildForCoachFollowUp` 組出；`test/unit/tools/coach_about_me_eval_cases_test.dart` 逐題比對兩者一字不差。都是人工示例，不是真用戶資料。題庫由 `gen_cases.py` 產生：改題目或 App 組字之後，在 repo 根目錄跑 `python3 -I tools/coach-about-me-eval/gen_cases.py > tools/coach-about-me-eval/cases.json`，再跑上面那支對照測試。近況用 `recentNoteDaysAgo` 表示寫下幾天了（滿 14 天就不放進 aboutMe），對照測試用固定時鐘重組。
 
 規格 PR-7（2026-10-21）起新版 App 不再送互動風格；`legacy_style` 4 題與 U4 只填了風格，`aboutMe` 保留 PR-7 之前舊版 App 的格式（四行風格加使用範圍），代表還沒更新的舊版流量。對照測試對這 5 題改成檢查：拿掉風格行之後只剩使用範圍，而且新版組字對同一份 profile 什麼都不送。
 

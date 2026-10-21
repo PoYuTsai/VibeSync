@@ -318,26 +318,35 @@ void main() {
       expect(lines.last, EffectiveStylePromptBuilder.coachFollowUpScopeLine);
     });
 
-    test('第 14 天還送，第 15 天起不送', () {
+    test('寫下滿 14 天就不送：13 天 23 小時還送', () {
       expect(
         clocked.buildForCoachFollowUp(
-          global: withRecent(const Duration(days: 14, hours: 23)),
+          global: withRecent(const Duration(days: 13, hours: 23)),
         ),
-        contains('14 天前寫的'),
+        contains('13 天前寫的'),
       );
       expect(
         clocked.buildForCoachFollowUp(
-          global: withRecent(const Duration(days: 15)),
+          global: withRecent(const Duration(days: 14)),
         ),
         isNot(contains('最近的狀況')),
       );
     });
 
-    test('當天寫的寫「今天寫的」；原文的「」換成『』', () {
+    test('時間在未來的近況不送', () {
+      expect(
+        clocked.buildForCoachFollowUp(
+          global: withRecent(const Duration(days: -30)),
+        ),
+        isNot(contains('最近的狀況')),
+      );
+    });
+
+    test('不到 1 天的寫「不到 1 天前寫的」；原文的「」換成『』', () {
       final context = clocked.buildForCoachFollowUp(
         global: withRecent(const Duration(hours: 2), note: '她說「再看看」'),
       )!;
-      expect(context, contains('- 最近的狀況（今天寫的，原文）：「她說『再看看』」；'));
+      expect(context, contains('- 最近的狀況（不到 1 天前寫的，原文）：「她說『再看看』」；'));
     });
 
     test('只有近況（過期）時什麼都不送', () {

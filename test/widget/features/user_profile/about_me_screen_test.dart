@@ -391,7 +391,7 @@ void main() {
 
       final coachReads = await ProviderScope.containerOf(
         tester.element(find.byType(AboutMeScreen)),
-      ).read(coachChatStyleContextProvider.future);
+      ).read(coachChatStyleContextResolverProvider)();
       final shown = tester
           .widget<SelectableText>(
             find.byKey(const Key('coach-context-preview-text')),

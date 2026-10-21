@@ -34,8 +34,9 @@ def about_me(p):
         lines.append(f"- 使用者自己寫的界線（原文）：「{q}」；建議要尊重，不能違反；安全與同意規則優先。")
     rn = (p.get("recentNote") or "").strip()
     days = p.get("recentNoteDaysAgo")
-    if rn and days is not None and days <= 14:
-        when = "今天寫的" if days <= 0 else f"{days} 天前寫的"
+    # App 端：寫下滿 14 天（14 × 24 小時）就不送；不到 1 天寫「不到 1 天前寫的」。
+    if rn and days is not None and 0 <= days < 14:
+        when = "不到 1 天前寫的" if days == 0 else f"{days} 天前寫的"
         q = rn.replace("「", "『").replace("」", "』")
         lines.append(f"- 最近的狀況（{when}，原文）：「{q}」；這是近況，可能已經變了，用之前可以先確認。")
     if p.get("stuckPoints"):

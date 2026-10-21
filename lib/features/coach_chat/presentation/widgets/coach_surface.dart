@@ -23,6 +23,8 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/presentation/paywall_entry.dart';
 import '../../../subscription/presentation/quota_copy.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
+import '../../../user_profile/data/providers/partner_style_providers.dart';
+import '../../../user_profile/data/providers/user_profile_providers.dart';
 import 'coach_chat_progress_notice.dart';
 import '../../../../core/services/app_haptics.dart';
 
@@ -804,15 +806,18 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     return sources.isEmpty ? const ['目前問題'] : sources;
   }
 
-  /// 這次會跟問題一起送的「關於我」。PR-7 起教練只讀全域關於我，跟 controller
-  /// 送出時讀的是同一個 provider。FutureProvider（2026-08-03 冷啟動風格完整性
-  /// 修）：載入中先當沒有，resolve 後這個 ConsumerWidget 會自動重繪。只認讀完、
-  /// 沒出錯的值：valueOrNull 在重新讀取中或讀取失敗時會回上一次的值，但
-  /// controller 送出時等的是這次的結果、失敗就不送（PR-5 主審 1 P2）。
+  /// 這次會跟問題一起送的「關於我」：跟 controller 送出前一樣，從全域 profile
+  /// 用同一個組字函式現組（規格 PR-8 的近況會過期，不吃快取）。載入中先當沒有，
+  /// 讀完後這個 ConsumerWidget 會自動重繪。只認讀完、沒出錯的值：valueOrNull 在
+  /// 重新讀取中或讀取失敗時會回上一次的值，但 controller 送出時等的是這次的
+  /// 結果、失敗就不送（PR-5 主審 1 P2）。
   String? _readyAboutMe() {
-    final styleAsync = ref.watch(coachChatStyleContextProvider);
-    if (styleAsync.isLoading || styleAsync.hasError) return null;
-    final text = styleAsync.valueOrNull?.trim();
+    final profileAsync = ref.watch(userProfileControllerProvider);
+    if (profileAsync.isLoading || profileAsync.hasError) return null;
+    final text = ref
+        .watch(effectiveStylePromptBuilderProvider)
+        .buildForCoachFollowUp(global: profileAsync.valueOrNull)
+        ?.trim();
     return text == null || text.isEmpty ? null : text;
   }
 

@@ -107,8 +107,8 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
         _recentConfirmedAt != null;
   }
 
-  /// 近況過期、畫面上還是那句沒改、也還沒按【還是這樣】時，回寫下幾天了；
-  /// 其他情況回 null（不跳過期提示）。
+  /// 近況過期（或記錄的時間在未來）、畫面上還是那句沒改、也還沒按【還是這樣】
+  /// 時，回寫下幾天了（時間在未來是負數）；其他情況回 null（不跳過期提示）。
   int? get _staleRecentAgeDays {
     final base = _initialProfile;
     final note = base?.recentNote;
@@ -617,7 +617,7 @@ class _AboutMeIntroCard extends StatelessWidget {
   }
 }
 
-/// 規格 PR-8：近況寫下超過 14 天，問一下現在還是不是這樣。
+/// 規格 PR-8：近況寫下滿 14 天（或記錄的時間在未來），問一下現在還是不是這樣。
 class _StaleRecentNotePrompt extends StatelessWidget {
   const _StaleRecentNotePrompt({
     required this.days,
@@ -637,7 +637,7 @@ class _StaleRecentNotePrompt extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '這是 $days 天前寫的，現在還是這樣嗎？',
+            days < 0 ? '這則近況記錄的時間不對，現在還是這樣嗎？' : '這是 $days 天前寫的，現在還是這樣嗎？',
             key: const Key('about-me-recent-stale'),
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.ctaStart,

@@ -1,3 +1,4 @@
+import 'package:characters/characters.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive_ce.dart';
 
@@ -62,10 +63,11 @@ class UserProfile {
   static const int maxNotesLength = 100;
   static const int maxStuckPoints = 2;
 
-  /// 規格 PR-8「最近的狀況」：一兩句就好。
+  /// 規格 PR-8「最近的狀況」：一兩句就好。算看得到的字數（跟輸入框的 maxLength
+  /// 同一套），emoji 不會因為佔兩個 UTF-16 單位就存不進去。
   static const int maxRecentNoteLength = 60;
 
-  /// 寫下超過這麼多天就不再提供給教練（D5 照預設 14 天）。
+  /// 寫下滿這麼多天（× 24 小時）就不再提供給教練（D5 照預設 14 天）。
   static const int recentNoteFreshDays = 14;
 
   @HiveField(0)
@@ -157,7 +159,7 @@ class UserProfile {
     }
     final rn = recentNote?.trim();
     final hasRecentNote = rn != null && rn.isNotEmpty;
-    if (hasRecentNote && rn.length > maxRecentNoteLength) {
+    if (hasRecentNote && rn.characters.length > maxRecentNoteLength) {
       throw ArgumentError('recentNote exceeds $maxRecentNoteLength chars');
     }
     if (hasRecentNote && recentNoteUpdatedAt == null) {
@@ -194,9 +196,11 @@ class UserProfile {
     return now.difference(at).inDays;
   }
 
-  /// 近況還在 [recentNoteFreshDays] 天內，才提供給教練。
+  /// 近況寫下還不滿 [recentNoteFreshDays] 天，才提供給教練。時間在未來（裝置
+  /// 時鐘曾經設錯）不算新的，免得有效期被拉長；畫面會請使用者確認。
   bool recentNoteIsFresh(DateTime now) {
-    final age = recentNoteAgeDays(now);
-    return age != null && age <= recentNoteFreshDays;
+    final at = recentNoteUpdatedAt;
+    if (recentNote == null || at == null || at.isAfter(now)) return false;
+    return now.difference(at) < const Duration(days: recentNoteFreshDays);
   }
 }
