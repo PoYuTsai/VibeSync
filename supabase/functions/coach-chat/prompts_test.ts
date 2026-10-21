@@ -9,6 +9,10 @@ import {
   hasUserWrittenBoundary,
 } from "./prompts.ts";
 import { selectSocialKnowledge } from "../_shared/social/knowledge_selector.ts";
+import {
+  ABOUT_ME_SUGGESTION_OPTIONS,
+  formatAboutMeSuggestionRules,
+} from "./about_me_suggestion.ts";
 
 // App 組字端（effective_style_prompt_builder.dart）送來的「關於我」格式（規格 PR-3）。
 const ABOUT_ME_SCOPE =
@@ -813,4 +817,54 @@ Deno.test("buildCoachChatPrompt renders provenance freshness for partner scope (
   }, now);
   assertStringIncludes(noTime, "取自使用者與她最近的一段對話紀錄");
   assertEquals(noTime.includes("最後訊息"), false);
+});
+
+// 規格 PR-9：教練建議更新「關於我」的欄位與規則是固定文字，每題都帶。
+Deno.test("buildCoachChatPrompt asks for an about-me suggestion only from what the user said", () => {
+  const prompt = buildCoachChatPrompt({
+    conversationId: "c1",
+    userQuestion: "我每次都解釋太多，要怎麼回她？",
+    activeSessionTurns: [],
+    forceAnswer: false,
+    recentMessages: [{ sender: "partner", text: "你感覺很有故事" }],
+    dataQualityFlagged: false,
+  });
+  assertStringIncludes(
+    prompt,
+    '"aboutMeSuggestion": null 或 {"field": "stuckPoint | practiceGoal", "key": "代碼", "reason": "40字內"}',
+  );
+  assertStringIncludes(prompt, formatAboutMeSuggestionRules());
+  assertEquals(prompt.trimEnd().endsWith(formatAboutMeSuggestionRules()), true);
+});
+
+Deno.test("about-me suggestion options lock the App enum codes and coach labels", () => {
+  assertEquals(ABOUT_ME_SUGGESTION_OPTIONS, {
+    stuckPoint: {
+      fadesOut: "話題卡住接不下去",
+      dontKnowHowToAsk: "不知道怎麼開口約",
+      anxiousWontSend: "緊張不敢傳",
+      overExplains: "容易解釋太多",
+      leftOnRead: "已讀不回",
+    },
+    practiceGoal: {
+      softInvite: "想約得出來",
+      comfortableChat: "想先能自在聊天",
+      humorousReply: "想讓對話更幽默、有來有往",
+      buildCloseness: "想培養穩定的親近感",
+      findCompatiblePartner: "想找到聊得來的對象",
+    },
+  });
+});
+
+Deno.test("about-me suggestion rules list every code with its label and the usage limits", () => {
+  const rules = formatAboutMeSuggestionRules();
+  for (const options of Object.values(ABOUT_ME_SUGGESTION_OPTIONS)) {
+    for (const [key, label] of Object.entries(options)) {
+      assert(rules.includes(`${key} ${label}`), key);
+    }
+  }
+  assert(rules.includes("自己明確說出"));
+  assert(rules.includes("一次最多一個"));
+  assert(rules.includes("clarifyingQuestion 一律 null"));
+  assert(rules.includes("不能依據對方的訊息"));
 });

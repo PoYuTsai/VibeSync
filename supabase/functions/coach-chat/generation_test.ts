@@ -7,6 +7,7 @@ import {
   runCoachChat,
 } from "./generation.ts";
 import type { CoachChatRequest } from "./schemas.ts";
+import { normalizeAboutMeSuggestion } from "./about_me_suggestion.ts";
 
 const request: CoachChatRequest = {
   conversationId: "c1",
@@ -94,6 +95,7 @@ function deps(opts: {
     maxAttempts?: number;
   }) => void;
   onWarn?: (event: string, data: Record<string, unknown>) => void;
+  onInfo?: (event: string, data: Record<string, unknown>) => void;
   now?: () => number;
 }) {
   const events: string[] = [];
@@ -129,7 +131,10 @@ function deps(opts: {
         }
         : {}),
       logger: {
-        info: (event: string) => events.push(event),
+        info: (event: string, data: Record<string, unknown> = {}) => {
+          events.push(event);
+          opts.onInfo?.(event, data);
+        },
         warn: (event: string, data: Record<string, unknown> = {}) => {
           events.push(event);
           opts.onWarn?.(event, data);
@@ -2756,4 +2761,270 @@ Deno.test("可見欄位過繁中正規化：这→這、只不變、証→證（
   const card = result.body.card as Record<string, unknown>;
   assertEquals(card.answer, "這只是想證明她有接話，不是只看誰先傳。");
   assertEquals(card.suggestedLine, "你上次說這週末想出門，只是還沒排？");
+});
+
+// 規格 PR-9：教練建議更新「關於我」。
+
+Deno.test("normalizeAboutMeSuggestion keeps only field and key of a valid suggestion", () => {
+  assertEquals(
+    normalizeAboutMeSuggestion({
+      field: "stuckPoint",
+      key: "overExplains",
+      reason: "你說每次都會解釋太多",
+    }),
+    { kind: "valid", suggestion: { field: "stuckPoint", key: "overExplains" } },
+  );
+  assertEquals(
+    normalizeAboutMeSuggestion({
+      field: "practiceGoal",
+      key: "softInvite",
+      reason: "你說想學會約她出來",
+    }),
+    { kind: "valid", suggestion: { field: "practiceGoal", key: "softInvite" } },
+  );
+});
+
+Deno.test("normalizeAboutMeSuggestion treats null or a missing field as absent", () => {
+  assertEquals(normalizeAboutMeSuggestion(null), { kind: "absent" });
+  assertEquals(normalizeAboutMeSuggestion(undefined), { kind: "absent" });
+});
+
+Deno.test("normalizeAboutMeSuggestion rejects anything outside the fixed options", () => {
+  const reason = "你自己說的";
+  const invalid: unknown[] = [
+    "overExplains",
+    ["stuckPoint", "overExplains"],
+    { field: "stuckPoint", key: "noSuchCode", reason },
+    // 代碼要屬於那個欄位：目標的代碼不能當卡點。
+    { field: "stuckPoint", key: "softInvite", reason },
+    { field: "practiceGoal", key: "overExplains", reason },
+    { field: "interactionStyle", key: "humorous", reason },
+    { field: "topicSeed", key: "travel", reason },
+    // 物件原型上的名字不是代碼。
+    { field: "stuckPoint", key: "constructor", reason },
+    { field: "stuckPoint", key: "__proto__", reason },
+    { field: "stuckPoint", key: "toString", reason },
+    // 只允許「加入」：多帶動作或其他欄位整個不收。
+    { field: "stuckPoint", key: "overExplains", reason, action: "remove" },
+    { field: "stuckPoint", key: "overExplains", reason, label: "自己寫的" },
+    { field: "stuckPoint", key: "overExplains" },
+    { field: "stuckPoint", key: "overExplains", reason: "   " },
+    { field: "stuckPoint", key: "overExplains", reason: 1 },
+    { field: "stuckPoint", key: "overExplains", reason: "字".repeat(41) },
+  ];
+  for (const raw of invalid) {
+    assertEquals(
+      normalizeAboutMeSuggestion(raw),
+      { kind: "invalid" },
+      JSON.stringify(raw),
+    );
+  }
+  assertEquals(
+    normalizeAboutMeSuggestion({
+      field: "stuckPoint",
+      key: "overExplains",
+      reason: "字".repeat(40),
+    }).kind,
+    "valid",
+  );
+});
+
+const overExplainsSuggestion = {
+  field: "stuckPoint",
+  key: "overExplains",
+  reason: "你說自己每次都解釋太多",
+};
+
+Deno.test("runCoachChat returns a valid about-me suggestion beside the card, never inside it", async () => {
+  const infoData: Array<{ event: string; data: Record<string, unknown> }> = [];
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({ aboutMeSuggestion: overExplainsSuggestion }),
+      ),
+    onInfo: (event, data) => infoData.push({ event, data }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(result.body.aboutMeSuggestion, {
+    field: "stuckPoint",
+    key: "overExplains",
+  });
+  assertEquals(
+    "aboutMeSuggestion" in (result.body.card as Record<string, unknown>),
+    false,
+  );
+  // log 只記欄位與代碼，不記 reason。
+  const logged = infoData.find((entry) =>
+    entry.event === "coach_chat_about_me_suggested"
+  );
+  assertEquals(logged?.data, {
+    tier: "starter",
+    field: "stuckPoint",
+    key: "overExplains",
+  });
+});
+
+Deno.test("runCoachChat keeps the about-me suggestion for test accounts", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({ aboutMeSuggestion: overExplainsSuggestion }),
+      ),
+  });
+  const result = await runCoachChat(
+    { ...settleInput, accountIsTest: true },
+    harness.deps,
+  );
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 0);
+  assertEquals(result.body.aboutMeSuggestion, {
+    field: "stuckPoint",
+    key: "overExplains",
+  });
+});
+
+Deno.test("runCoachChat drops an invalid about-me suggestion without failing the card", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({
+          aboutMeSuggestion: {
+            field: "stuckPoint",
+            key: "noSuchCode",
+            reason: "你自己說的",
+          },
+        }),
+      ),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.deductCalls, 1);
+  assertEquals("aboutMeSuggestion" in result.body, false);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).headline,
+    "承認一半再反問",
+  );
+  assertEquals(
+    harness.events.includes("coach_chat_about_me_suggestion_invalid"),
+    true,
+  );
+  assertEquals(harness.events.includes("coach_chat_about_me_suggested"), false);
+});
+
+Deno.test("runCoachChat never attaches an about-me suggestion to a clarifying question", async () => {
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        responseType: "clarifyingQuestion",
+        needsReflection: true,
+        reflectionQuestion: "你想要的是安心感，還是想確認她的興趣？",
+        rewriteDecision: null,
+        aboutMeSuggestion: overExplainsSuggestion,
+      })),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(
+    (result.body.card as Record<string, unknown>).responseType,
+    "clarifyingQuestion",
+  );
+  assertEquals("aboutMeSuggestion" in result.body, false);
+});
+
+Deno.test("runCoachChat never attaches an about-me suggestion to a stripped or fallback card", async () => {
+  const stripped = deps({
+    callClaude: () =>
+      Promise.resolve(validClaudeCard({
+        suggestedLine: "這陣子妳真的很會裝欸？",
+        aboutMeSuggestion: overExplainsSuggestion,
+      })),
+  });
+  const strippedResult = await runCoachChat(
+    {
+      ...settleInput,
+      request: {
+        ...request,
+        userQuestion: "直接給一句，不要逼她解釋。",
+        forceAnswer: true,
+        recentMessages: [{ sender: "partner", text: "還好啦哈哈" }],
+      },
+    },
+    stripped.deps,
+  );
+  assertEquals(strippedResult.status, 200);
+  assertEquals(stripped.events.includes("coach_chat_line_stripped"), true);
+  assertEquals("aboutMeSuggestion" in strippedResult.body, false);
+
+  const fallback = deps({
+    callClaude: () => Promise.resolve(malformedClaudeCard()),
+  });
+  const fallbackResult = await runCoachChat(settleInput, fallback.deps);
+  assertEquals(fallbackResult.status, 200);
+  assertEquals(fallback.events.includes("coach_chat_fallback_used"), true);
+  assertEquals("aboutMeSuggestion" in fallbackResult.body, false);
+});
+
+Deno.test("runCoachChat keeps the about-me suggestion out of the ledger and attaches it only to its own settled body", async () => {
+  let settledBody: Record<string, unknown> | null = null;
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({ aboutMeSuggestion: overExplainsSuggestion }),
+      ),
+    settleResult: (args) => {
+      settledBody = args.body;
+      // 帳本回的是 jsonb 來回後的副本，不是同一個物件。
+      return Promise.resolve({
+        charged: true,
+        body: JSON.parse(JSON.stringify(args.body)),
+      });
+    },
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(harness.settleCalls[0].bodyKeys, [
+    "card",
+    "generatedAt",
+    "model",
+    "provider",
+    "sessionId",
+  ]);
+  assertEquals(
+    "aboutMeSuggestion" in
+      ((settledBody as Record<string, unknown> | null)?.card as Record<
+        string,
+        unknown
+      >),
+    false,
+  );
+  assertEquals(result.body.aboutMeSuggestion, {
+    field: "stuckPoint",
+    key: "overExplains",
+  });
+});
+
+Deno.test("runCoachChat does not attach a local about-me suggestion to another request's settled card", async () => {
+  const ledgerBody = {
+    card: {
+      responseType: "coachAnswer",
+      costDeducted: 1,
+      headline: "先入帳者的卡",
+    },
+    sessionId: null,
+    provider: "claude",
+    model: "claude-sonnet-5",
+    generatedAt: "2026-07-21T10:00:00.000Z",
+  };
+  const harness = deps({
+    callClaude: () =>
+      Promise.resolve(
+        validClaudeCard({ aboutMeSuggestion: overExplainsSuggestion }),
+      ),
+    settleResult: () => Promise.resolve({ charged: false, body: ledgerBody }),
+  });
+  const result = await runCoachChat(settleInput, harness.deps);
+  assertEquals(result.status, 200);
+  assertEquals(result.body, ledgerBody);
+  assertEquals(harness.events.includes("coach_chat_about_me_suggested"), false);
 });
