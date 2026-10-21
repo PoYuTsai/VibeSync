@@ -134,21 +134,23 @@ class ConcurrencyTest(unittest.TestCase):
         paint(lum, 117, 30, 117, 117, levels(80, [11, 12, 31, 32]))
         self.assertEqual(transitions(lum), 8)
 
-    def test_flashes_overlapping_in_time_count_as_one(self):
-        # A 還沒閃完 B 就開始：時間重疊的閃光算同時的一次（WCAG：同時發生的閃光面積加總）。
+    def test_flashes_overlapping_in_time_in_two_places_count_separately(self):
+        # A 還沒閃完 B 就開始，兩塊各自超過門檻：是兩次閃光，時間重疊也分開算（Codex #108 第 2 輪
+        # P2-2：不同地方的閃光不併成一次）。
         lum = screen()
         paint(lum, 0, 30, 117, 117, levels(80, [1, 21]))  # A：第 1 幀亮、第 21 幀暗
         paint(lum, 117, 30, 117, 117, levels(80, [11, 31]))  # B：第 11 幀亮、第 31 幀暗
-        self.assertEqual(transitions(lum), 2)
+        self.assertEqual(transitions(lum), 4)
 
-    def test_flash_inside_a_longer_flash_counts_as_one(self):
+    def test_flash_inside_a_longer_flash_counts_separately(self):
         lum = screen()
         paint(lum, 0, 30, 117, 117, levels(80, [1, 31]))  # A：第 1 幀亮、第 31 幀暗
         paint(lum, 117, 30, 117, 117, levels(80, [11, 12]))  # B 在 A 亮著的時候閃一下
-        self.assertEqual(transitions(lum), 2)
+        self.assertEqual(transitions(lum), 4)
 
-    def test_falls_that_overlap_in_time_count_once(self):
-        # 一起在第 10 幀變亮；上半第 20–40 幀慢慢變暗，下半第 30–45 幀才開始變暗；第 55 幀一起變亮。
+    def test_falls_overlapping_in_time_in_two_halves_count_separately(self):
+        # 一起在第 10 幀變亮（同一次）；上半第 20–40 幀慢慢變暗、下半第 30–45 幀才開始變暗，兩半
+        # 各自超過門檻（兩次）；第 55 幀一起變亮（同一次）。
         top = np.full(80, LIT + 0.2, np.float32)
         top[:10] = BG
         top[20:41] = np.linspace(LIT + 0.2, BG, 21)
@@ -160,26 +162,82 @@ class ConcurrencyTest(unittest.TestCase):
         lum = screen()
         paint(lum, 30, 30, 120, 240, top)
         paint(lum, 150, 30, 120, 240, bottom)
+        self.assertEqual(transitions(lum), 4)
+        # 兩半各只有 120×60（各不到門檻、合計超過）：變暗時間重疊，加總成同一次，共 3 次。
+        lum = screen()
+        paint(lum, 30, 30, 60, 120, top)
+        paint(lum, 90, 30, 60, 120, bottom)
         self.assertEqual(transitions(lum), 3)
 
-    def test_one_rise_pairs_with_only_one_fall(self):
-        # 一起變亮後分三批在第 20、30、40 幀變暗（每批都超過門檻）：一升只配得到一降。
+    def test_one_rise_then_falls_in_three_places(self):
+        # 一起變亮後分三批在第 20、30、40 幀變暗，每批都超過門檻：三批各是一次閃光；一起變亮的那
+        # 一下只算一次轉折，共 4 次。
         lum = screen()
         paint(lum, 0, 0, 300, 300, levels(80, [10]))
         for i, t in enumerate((20, 30, 40)):
             lum[t:, 100 * i:100 * i + 100, :] = BG
+        self.assertEqual(transitions(lum), 4)
+
+    def test_glow_spreading_over_two_halves_counts_each_half(self):
+        # 兩半各 90×160（各自超過門檻）在 10 幀內變亮，下半晚 4 幀才開始；第 40 幀起一起變暗。
+        # 兩半各算一次變亮，一起變暗算一次，共 3 次（寧可多算）。
+        def glow(h):
+            lum = screen()
+            for i in range(2):
+                series = np.full(80, BG, np.float32)
+                series[10 + 4 * i:20 + 4 * i] = np.linspace(BG, 0.5, 10)
+                series[20 + 4 * i:40] = 0.5
+                series[40:50] = np.linspace(0.5, BG, 10)
+                paint(lum, 60 + h * i, 70, h, 160, series)
+            return lum
+
+        self.assertEqual(transitions(glow(90)), 3)
+        # 兩半各 45×160（各不到門檻、合計超過）：變亮時間重疊就加總成一次，共 2 次。
+        self.assertEqual(transitions(glow(45)), 2)
+
+    def test_ramps_starting_a_few_frames_apart_add_up(self):
+        # Codex #108 第 2 輪 P2-1：兩塊相鄰的 120×60（各 7,200、合計 14,400 pt²），0.2↔0.5 六幀的
+        # 斜坡，A 從第 1、9、…、57 幀開始，B 晚 4 幀。不是一起開始，但時間重疊，要加總。
+        def ramps(starts):
+            out = np.full(80, BG, np.float32)
+            level, lit, t_prev = BG, False, 0
+            for s in starts:
+                out[t_prev:s] = level
+                target = BG if lit else 0.5
+                out[s:s + 6] = level + (target - level) * np.arange(1, 7, dtype=np.float32) / 6
+                level, lit, t_prev = target, not lit, s + 6
+            out[t_prev:] = level
+            return out
+
+        a = ramps([1, 9, 17, 25, 33, 41, 49, 57])
+        b = ramps([5, 13, 21, 29, 37, 45, 53, 61])
+        lum = screen()
+        paint(lum, 100, 30, 60, 120, a)
+        self.assertEqual(transitions(lum), 0)  # 一塊單獨不到門檻
+        paint(lum, 100, 150, 60, 120, b)
+        self.assertEqual(transitions(lum), 8)
+
+    def test_overlap_counts_no_matter_how_late_the_second_starts(self):
+        # A 第 1 幀起 30 幀慢慢變亮、B 第 20 幀才一下變亮（各 7,200）：第 20 幀時兩塊都在變，加總
+        # 超過門檻；第 40 幀一起變暗。以前要兩塊在 2 幀內一起開始才算。
+        a = np.full(80, BG, np.float32)
+        a[1:31] = np.linspace(BG, 0.5, 31, dtype=np.float32)[1:]
+        a[31:40] = 0.5
+        b = levels(80, [20, 40], high=0.5)
+        lum = screen()
+        paint(lum, 100, 30, 60, 120, a)
+        paint(lum, 100, 150, 60, 120, b)
         self.assertEqual(transitions(lum), 2)
 
-    def test_glow_spreading_over_a_few_frames_counts_once(self):
-        # 兩半各 90×160（各超過門檻）在 10 幀內變亮，下半晚 4 幀才開始；第 40 幀起一起變暗。
+    def test_independent_flashes_interleaved_in_one_field_all_count(self):
+        # Codex #108 第 2 輪 P2-2：20 cm，兩塊 90×100（各 9,000，各自超過 8,742）並排在一個視野
+        # 裡，A 在第 1、16、31、46 幀切換、B 在第 8、23、38、53 幀：各兩次閃光，一秒內共 4 次。
         lum = screen()
-        for i in range(2):
-            series = np.full(80, BG, np.float32)
-            series[10 + 4 * i:20 + 4 * i] = np.linspace(BG, 0.5, 10)
-            series[20 + 4 * i:40] = 0.5
-            series[40:50] = np.linspace(0.5, BG, 10)
-            paint(lum, 60 + 90 * i, 70, 90, 160, series)
-        self.assertEqual(transitions(lum), 2)
+        paint(lum, 60, 40, 100, 90, levels(80, [1, 16, 31, 46]))
+        paint(lum, 60, 130, 100, 90, levels(80, [8, 23, 38, 53]))
+        result = fc.max_transitions(lum, FPS, 20)
+        self.assertEqual(result['transitions'], 8)
+        self.assertFalse(fc.within_cap(result['transitions'], 3))
 
     def test_turns_still_count_while_a_big_area_keeps_rising(self):
         # 同一個視野裡有一大片一直慢慢變亮（不是閃光），A、B 照樣輪流閃。

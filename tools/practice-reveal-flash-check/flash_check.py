@@ -7,7 +7,7 @@
 畫面（Codex 2026-10-18 #107 P2-1）。
 
 量法（#108 第 2 輪改過：同時在閃的面積不分升降加總；不同次閃光不要求是同一片、照時間數；
-10° 視野改成圓形）：
+10° 視野改成圓形。第 3 輪改過：時間重疊就加總、不要求一起開始；不同地方的閃光時間重疊也分開算）：
 1. 每一幀換成相對亮度（sRGB → 線性 → Y＝0.2126R＋0.7152G＋0.0722B），每格 1×1 pt 取平均。
 2. 每一格各自找亮度的升降段（遲滯）：跟上一個極值相比變化 ≥ 0.1 才算一段，暗的那一端要 < 0.8。
    整條錄影從頭到尾只算一次，所以窗口之前的狀態不會丟。一段只算真的在變的那幾幀，停在極值
@@ -15,12 +15,12 @@
 3. 10° 視野是圓形：25 cm 半徑 132 pt、門檻約 13,660 pt²；20 cm 半徑 106 pt、約 8,742 pt²。
    圓心每 8 pt 一個，半徑再加 8·√2／2 pt，任何位置的 10° 視野都整個落在某一個圓裡；圓用 8 pt
    高的橫條從外面包住來加總。所以只會多算、不會漏（面積多 12%，20 cm 多 15%）。
-4. 一次閃光：兩幀之間同一片反向的面積超過門檻。同一片裡每一格可以一升一降、也可以一降一升，
-   面積加在一起；兩邊的段都要在那一幀往前 2 幀（0.035 s）內才開始變，也就是一起開始變。
-5. 一串轉折：每一次都要跟相鄰的一次配成上面那樣的閃光（同一片可以一直反向）。配好以後，下一次
-   閃光照時間數、不要求是同一片，但要在上一次變完以後才開始；時間重疊的閃光算同時的一次。
-   每個視野、每個完整一秒（fps＋1 幀，60 fps 是 61 幀）找最長的一串，回報最多的轉折次數；超過
-   「上限×2」就不過。
+4. 一次轉折：每個視野記上一次轉折在哪一幀；這一幀正在變、而且在那之後才開始變的面積（不分升降）
+   超過門檻，就是一次新的轉折。只要時間重疊就加總，不要求一起開始；同一幀一起變的算同一次。
+5. 配成閃光：同一個視野裡，一秒內兩次轉折之間，組成它們的段有同一片反向（每一格可以一升一降、
+   也可以一降一升，面積加在一起）超過門檻。不同地方各自的閃光，時間重疊也分開算。每個視野、每個
+   完整一秒（fps＋1 幀，60 fps 是 61 幀）數配成閃光的轉折有幾次，回報最多的；超過「上限×2」就
+   不過。寧可多算：慢慢擴散、分好幾批的亮光，每批自己超過門檻就各算一次。
 
 量不出來的：細紋路在畫面上滑過去（例如卡片轉開時的照片），跟細紋路原地反向，逐格看是一樣的，
 這裡都當成閃光算。
@@ -57,7 +57,6 @@ DELTA = 0.1  # WCAG：相對亮度變化 ≥ 10%
 DARK_MAX = 0.8  # WCAG：暗的那一端 < 0.80
 FLAT = 0.01  # 離極值這麼近就算還停在極值，平台不算在變
 CAP = 2  # 規格 §3：任一秒最多 2 次閃光（--cap）
-_NONE = -(1 << 30)
 
 def _srgb_to_linear(c: np.ndarray) -> np.ndarray:
     return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
@@ -217,11 +216,11 @@ class Fields:
                                      r0 * (w + 1) + c1, r1 * (w + 1) + c0], axis=-1))
         self._corners = np.stack(corners, axis=1)  # (視野, 橫條, 4)：＋＋－－
 
-    def sums(self, mask: np.ndarray) -> np.ndarray:
-        """每個視野裡 [mask]（高×寬）的面積（格數）。"""
+    def sums(self, mask: np.ndarray, which: np.ndarray | None = None) -> np.ndarray:
+        """每個視野（或只有 [which] 這幾個）裡 [mask]（高×寬）的面積（格數）。"""
         integral = np.zeros((self.h + 1, self.w + 1), np.int32)
         integral[1:, 1:] = mask.cumsum(axis=0, dtype=np.int32).cumsum(axis=1)
-        v = integral.ravel().take(self._corners)
+        v = integral.ravel().take(self._corners if which is None else self._corners[which])
         return (v[..., 0] + v[..., 1] - v[..., 2] - v[..., 3]).sum(axis=1)
 
     def center_pt(self, f: int) -> tuple[int, int]:
@@ -244,128 +243,75 @@ def max_transitions(lum: np.ndarray, fps: int, distance_cm: float) -> dict:
     threshold = threshold_pt2(distance_cm) / PT_PER_CELL**2
     n_fields = fields.count
 
-    # 第一輪，逐幀：
-    # - moving_area：每個視野裡這一幀正在變（不分升降）的面積。
-    # - new_area[t][k]：這一幀正在變、而且在 t−1−k 之後才開始的面積。
-    # - ended[t′]：t′ 那一次轉折（t′ 往前 recent_runs 幀內開始、t′ 還在變的段）在每個視野裡哪一幀
-    #   變完（還在變的面積不超過門檻）。下一次要在這之後才開始，才算新的一次。
-    # - reversed_ok[(t′, t)]：t′ 到 t 之間同一片一起反向的面積超過門檻：t′ 升、t 降（或反過來），
-    #   而且兩邊的段都在那一幀往前 recent_runs 幀內才開始。要一起開始變：快速擴散的光環、掃過去的
-    #   細線，每一格開始變的時間不同，比較湊不成一片。
-    # - in_flash[t]：這一幀跟前後一秒內的某一幀有同一片一起反向，是一次閃光的一半。
-    recent_runs = max(1, round(0.035 * fps))
-    moving_area = np.zeros((frames, n_fields), np.int32)
-    started_area = np.zeros((frames, n_fields), np.int32)  # 往前 recent_runs 幀內才開始變的
-    up_area = np.zeros((frames, n_fields), np.int32)  # 其中在升的
-    in_flash = np.zeros((frames, n_fields), bool)
-    ended = np.full((frames, n_fields), np.iinfo(np.int32).max, np.int32)
-    new_area: dict[int, np.ndarray] = {}
-    reversed_ok: dict[tuple[int, int], np.ndarray] = {}
-    masks: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    # 逐幀找轉折（#108 第 3 輪改過）：每個視野記上一次轉折在哪一幀（last）。這一幀正在變、而且在
+    # last 之後才開始變的面積（不分升降）超過門檻，就是這個視野的一次新轉折：只要時間重疊就加總，
+    # 不要求一起開始（錯開幾幀才開始的兩塊也算同時，Codex 第 2 輪 P2-1）；同一幀一起變的算同一次。
+    # 一次轉折只算組成它的段：在它的前一次轉折之後才開始、這一幀還在變的。
+    # 配成閃光：同一個視野裡，一秒內兩次轉折之間，組成它們的段有同一片反向（這次升、那次降，或
+    # 反過來），面積超過門檻。不同地方各自的閃光，時間重疊也分開算，不併成一次（第 2 輪 P2-2）。
+    # 只留最近一秒有轉折的幀的狀態，記憶體不隨錄影長度變大（第 2 輪 P3）。
+    last = np.full(n_fields, -1, np.int64)
+    recent: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
+    turns: list[list[int]] = [[] for _ in range(n_fields)]
+    label: dict[tuple[int, int], int] = {}
+    matched: set[tuple[int, int]] = set()
     for t, up, down, since in frame_states(cells, begins, ends, dirs, frames, h * w):
+        for old in [t0 for t0 in recent if t0 < t - fps]:
+            del recent[old]
         changing = up | down
-        moving_area[t] = fields.sums(changing.reshape(h, w))
-        just_started = since >= t - recent_runs
-        up_now, down_now = up & just_started, down & just_started
-        up_area[t] = fields.sums(up_now.reshape(h, w))
-        started_area[t] = fields.sums((up_now | down_now).reshape(h, w))
-        masks[t] = (up_now, down_now)
-        masks.pop(t - fps - 1, None)
-        big = moving_area[t] > threshold
-        # newer[x]：這一幀正在變、在 x 之後才開始的面積，x＝t−1 … t−fps−recent−1。
-        oldest = t - fps - recent_runs - 1
-        by_start = {}
-        if big.any():
-            for b in np.unique(since[changing]):
-                if b > oldest:
-                    by_start[b] = fields.sums((changing & (since == b)).reshape(h, w))
-        newer = {}
-        total = np.zeros(n_fields, np.int32)
-        for x in range(t - 1, oldest - 1, -1):
-            if x + 1 in by_start:
-                total = total + by_start[x + 1]
-            newer[x] = total
-        new_area[t] = np.minimum(np.stack([newer[t - 1 - k] for k in range(fps)]), 65535)
-        new_area[t] = new_area[t].astype(np.uint16)
-        for t0 in range(max(0, t - fps), t):
-            searching = ended[t0] > t
-            if searching.any():
-                still = newer[t0 - recent_runs - 1] - newer[t0]
-                ended[t0][searching & (still <= threshold)] = t
-        started = started_area[t] > threshold
-        if not started.any():
+        if not changing.any():
             continue
-        for t0 in range(max(0, t - fps), t):
-            if not (started & (started_area[t0] > threshold)).any():
+        # 比這一幀所有正在變的段都早的 last，結果都一樣，併成同一組少算幾次。
+        group = np.maximum(last, int(since[changing].min()) - 1)
+        fresh = np.zeros(n_fields, np.int64)
+        rise = np.zeros(n_fields, np.int64)
+        for g in np.unique(group):
+            idx = np.nonzero(group == g)[0]
+            newer = since > g
+            fresh[idx] = fields.sums((changing & newer).reshape(h, w), idx)
+            hit = idx[fresh[idx] > threshold]
+            if hit.size:
+                rise[hit] = fields.sums((up & newer).reshape(h, w), hit)
+        turn = fresh > threshold
+        if not turn.any():
+            continue
+        direction = up.astype(np.int8) - down.astype(np.int8)
+        prev = last.copy()
+        for f in np.nonzero(turn)[0].tolist():
+            turns[f].append(t)
+            r, fall = int(rise[f]), int(fresh[f] - rise[f])
+            label[(f, t)] = 1 if fall * 2 < r else -1 if r * 2 < fall else 0
+        for t0, (direction0, since0, turn0, prev0) in recent.items():
+            both = turn & turn0
+            if not both.any():
                 continue
-            up0, down0 = masks[t0]
-            flipped = fields.sums(((up0 & down_now) | (down0 & up_now)).reshape(h, w)) > threshold
-            if flipped.any():
-                reversed_ok[(t0, t)] = flipped
-                in_flash[t0] |= flipped
-                in_flash[t] |= flipped
+            flip = direction0 * direction == -1
+            if not flip.any():
+                continue
+            for g0, g1 in set(zip(prev0[both].tolist(), prev[both].tolist())):
+                idx = np.nonzero(both & (prev0 == g0) & (prev == g1))[0]
+                area = fields.sums((flip & (since0 > g0) & (since > g1)).reshape(h, w), idx)
+                for f in idx[area > threshold].tolist():
+                    matched.add((f, t0))
+                    matched.add((f, t))
+        recent[t] = (direction, since.copy(), turn, prev)
+        last[turn] = t
 
-    # 第二輪：每一次轉折都要跟相鄰的一次配成同一片的一升一降（同一片可以一直反向）；配好的一段
-    # 結束後，才能接上一段新的。waiting[t][k]／matched[t][k]＝每個視野裡長度 k、以第 t 幀結尾的一串
-    # 最晚從哪一幀開始（_NONE＝沒有）：waiting 是最後一次還沒配到、matched 是已經配好。
-    # waiting_from／matched_from 記前一次轉折在哪一幀（matched_from_waiting：那時是不是還沒配到），
-    # 用來回報整串。
-    longest = fps + 1
-    live: dict[int, tuple[np.ndarray, ...]] = {}
+    # 每個視野、每個完整一秒（fps＋1 幀）裡，配成閃光的轉折有幾次，取最多的。
     best = {'transitions': 0, 'window_start': None, 'field_pt': None, 'events': []}
-    for t in np.nonzero(in_flash.any(axis=1))[0]:
-        for old in [t0 for t0 in live if t0 < t - fps]:
-            del live[old]
-        waiting = np.full((longest + 1, n_fields), _NONE, np.int32)
-        matched = np.full((longest + 1, n_fields), _NONE, np.int32)
-        waiting_from = np.full((longest + 1, n_fields), -1, np.int32)
-        matched_from = np.full((longest + 1, n_fields), -1, np.int32)
-        matched_from_waiting = np.zeros((longest + 1, n_fields), bool)
-        waiting[1][in_flash[t]] = t
-        for t0 in sorted(live):
-            waiting0, matched0 = live[t0][0], live[t0][1]
-            if (t0, t) in reversed_ok:  # 同一片反向：配成一升一降
-                same = reversed_ok[(t0, t)]
-                for source, was_waiting in ((waiting0, True), (matched0, False)):
-                    longer = same & (source[:-1] > matched[1:])
-                    matched[1:][longer] = source[:-1][longer]
-                    matched_from[1:][longer] = t0
-                    matched_from_waiting[1:][longer] = was_waiting
-            # 新的一段：t0 已經配好，t0 那一次變完以後才開始的面積超過門檻，這一幀等著配。
-            k = t - ended[t0].astype(np.int64)
-            ok = (k >= 0) & (k < fps)
-            fresh = np.zeros(n_fields, bool)
-            fresh[ok] = new_area[t][k[ok], np.nonzero(ok)[0]] > threshold
-            longer = fresh & (matched0[:-1] > waiting[1:])
-            waiting[1:][longer] = matched0[:-1][longer]
-            waiting_from[1:][longer] = t0
-        waiting[waiting < t - fps] = _NONE
-        matched[matched < t - fps] = _NONE
-        live[t] = (waiting, matched, waiting_from, matched_from, matched_from_waiting)
-        lengths = np.nonzero((matched >= 0).any(axis=1))[0]
-        k = int(lengths[-1]) if lengths.size else 0
-        if k > best['transitions']:
-            f = int(np.argmax(matched[k] >= 0))
-            seq, frame, is_waiting = [], int(t), False
-            for length in range(k, 0, -1):
-                seq.append(frame)
-                state = live[frame]
-                if length == 1:
-                    break
-                if is_waiting:
-                    frame, is_waiting = int(state[2][length][f]), False
-                else:
-                    frame, is_waiting = int(state[3][length][f]), bool(state[4][length][f])
-            events = []
-            for e in reversed(seq):
-                rise, fall = int(up_area[e][f]), int(started_area[e][f] - up_area[e][f])
-                events.append((e, 1 if fall * 2 < rise else -1 if rise * 2 < fall else 0))
-            best = {
-                'transitions': k,
-                'window_start': int(matched[k][f]),
-                'field_pt': fields.center_pt(f),
-                'events': events,
-            }
+    for f in range(n_fields):
+        hits = [t for t in turns[f] if (f, t) in matched]
+        j = 0
+        for i, start in enumerate(hits):
+            while j < len(hits) and hits[j] <= start + fps:
+                j += 1
+            if j - i > best['transitions']:
+                best = {
+                    'transitions': j - i,
+                    'window_start': start,
+                    'field_pt': fields.center_pt(f),
+                    'events': [(e, label[(f, e)]) for e in hits[i:j]],
+                }
     return best
 
 
