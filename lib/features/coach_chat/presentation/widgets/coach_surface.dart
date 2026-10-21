@@ -723,14 +723,17 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     // 送出的一致，也不會多開一份 provider。
     // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
     // 來源標籤，載入中先當沒有，resolve 後這個 ConsumerWidget 會自動重繪。
-    final styleContext = ref
-        .watch(
-          coachChatStyleContextProvider((
-            partnerId: partnerId,
-            includePartnerOverride: widget.scope.isGlobal ? false : !flagged,
-          )),
-        )
-        .valueOrNull;
+    // 只認讀完、沒出錯的值：valueOrNull 在重新讀取中或讀取失敗時會回上一次
+    // 的值，但 controller 送出時等的是這次的結果、失敗就不送（PR-5 主審 1 P2）。
+    final styleAsync = ref.watch(
+      coachChatStyleContextProvider((
+        partnerId: partnerId,
+        includePartnerOverride: widget.scope.isGlobal ? false : !flagged,
+      )),
+    );
+    final styleContext = styleAsync.isLoading || styleAsync.hasError
+        ? null
+        : styleAsync.valueOrNull;
     if (styleContext != null && styleContext.trim().isNotEmpty) {
       sources.add('關於我');
     }

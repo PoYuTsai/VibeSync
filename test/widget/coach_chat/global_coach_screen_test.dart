@@ -40,6 +40,7 @@ import 'package:vibesync/features/user_profile/data/providers/partner_style_prov
 import 'package:vibesync/features/user_profile/data/repositories/partner_style_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_style_override.dart';
 import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/user_profile/data/repositories/user_profile_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/partner_data_quality_state.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
 
@@ -63,6 +64,26 @@ class _FakeStyleRepo implements PartnerStyleRepository {
   Future<void> delete(String partnerId) async {}
   @override
   Future<void> clearAll() async {}
+}
+
+/// 第一次讀「關於我」成功、之後打開 [failLoads] 就讀取失敗（換帳號重新讀取時）。
+class _FlakyProfileRepo implements UserProfileRepository {
+  _FlakyProfileRepo(this.profile);
+
+  final UserProfile profile;
+  bool failLoads = false;
+
+  @override
+  Future<UserProfile?> load(String uid) async {
+    if (failLoads) throw Exception('profile load boom');
+    return profile;
+  }
+
+  @override
+  Future<void> save(UserProfile profile, String uid) async {}
+
+  @override
+  Future<void> clear(String uid) async {}
 }
 
 Partner _partner(String id, String name) => Partner(
@@ -955,6 +976,33 @@ void main() {
 
       final body = await ask(tester, calls);
       expect(body['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+
+    // PR-5 主審 1 P2：valueOrNull 在重新讀取失敗時會回上一次的值；controller
+    // 送出時讀到的是這次的錯誤、退回不送，標籤不能還掛著「關於我」。
+    testWidgets('讀過一次之後重新讀取失敗：不再標「關於我」，送出的也不帶', (tester) async {
+      final repo = _FlakyProfileRepo(withNotes);
+      final uid = StreamController<String?>();
+      addTearDown(uid.close);
+      final calls = await _pump(
+        tester,
+        invokerStatus: 500,
+        extraOverrides: [
+          userProfileRepositoryProvider.overrideWithValue(repo),
+          authUserProfileScopeProvider.overrideWith((ref) => uid.stream),
+        ],
+      );
+      uid.add('user-a');
+      await tester.pumpAndSettle();
+      expect(sourceChip('關於我'), findsOneWidget);
+
+      repo.failLoads = true;
+      uid.add('user-b');
+      await tester.pumpAndSettle();
+      expect(sourceChip('關於我'), findsNothing);
+
+      final body = await ask(tester, calls);
+      expect(body.containsKey('effectiveStyleContext'), isFalse);
     });
 
     testWidgets('一般：沒填關於我就不標，也不送', (tester) async {
