@@ -4,7 +4,7 @@
 
 預設是乾跑：不打模型、不讀金鑰、不連網；會跑 git（`rev-parse`、`status`、`archive`）取出改前版本。要花錢的真跑，必須 Eric 當次說「跑」之後才下指令。
 
-模組下載不歸工具的網路閘管（Deno 載入遠端模組不經 `fetch`）：下面的指令都帶 `--cached-only`，缺快取就停。第一次用先在 repo 根目錄跑 `deno cache tools/coach-about-me-eval/run.ts tools/coach-about-me-eval/judge.ts`（只下載模組，不呼叫模型）；改前那一版若用了不同版本的套件，`--cached-only` 會直接報錯，不會偷偷下載。
+模組下載不歸工具的網路閘管（Deno 載入遠端模組不經 `fetch`）：下面的指令都帶 `--cached-only`，缺快取就停。第一次用先在 repo 根目錄跑 `deno cache tools/coach-about-me-eval/run.ts tools/coach-about-me-eval/judge.ts supabase/functions/coach-chat/generation.ts supabase/functions/coach-chat/prompts.ts supabase/functions/coach-chat/semantic_critic.ts supabase/functions/coach-chat/schemas.ts`（只下載模組，不呼叫模型；兩臂的 coach-chat 是執行時動態載入，要另外列）；改前那一版若用了不同版本的套件，`--cached-only` 會直接報錯，不會偷偷下載。
 
 ## 兩臂
 

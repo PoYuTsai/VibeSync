@@ -7,7 +7,6 @@
 import {
   type Arm,
   ARMS,
-  CASES,
   createOutDir,
   CRITIC_MAX_TOKENS,
   estimateRuns,
@@ -309,9 +308,12 @@ async function main() {
   }
   if (options.arms.includes("cand")) modules.cand = await loadArm(repoRoot);
 
+  // 題庫只讀一次：計畫與快照用同一份原文，執行中有人改檔也不會對不上。
+  const casesText = await Deno.readTextFile(new URL("cases.json", toolDir));
+  const allCases = (JSON.parse(casesText) as { cases: EvalCase[] }).cases;
   const cases = options.only
-    ? CASES.filter((c) => options.only!.includes(c.id))
-    : CASES;
+    ? allCases.filter((c) => options.only!.includes(c.id))
+    : allCases;
   const plan = buildPlan(cases, options.repeat, options.arms, modules);
   const estimate = estimateRuns(plan.map((p) => ({
     generationChars: p.generationPrompt.length,
@@ -319,7 +321,6 @@ async function main() {
   })));
 
   const out = await createOutDir(toolDir, options.tag);
-  const casesText = await Deno.readTextFile(new URL("cases.json", toolDir));
   const manifest = {
     tool: "coach-about-me-eval",
     tag: options.tag,
