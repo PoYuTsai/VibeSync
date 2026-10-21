@@ -999,6 +999,17 @@ void main() {
       repo.failLoads = true;
       uid.add('user-b');
       await tester.pumpAndSettle();
+      // 確認真的走到「讀取失敗、但還留著上一次的值」，不是別的路徑讓這條通過
+      // （PR-5 主審 2 建議）。
+      final style = ProviderScope.containerOf(
+        tester.element(find.byType(CoachSurface)),
+      ).read(
+        coachChatStyleContextProvider(
+          (partnerId: null, includePartnerOverride: false),
+        ),
+      );
+      expect(style.hasError, isTrue);
+      expect(style.hasValue, isTrue);
       expect(sourceChip('關於我'), findsNothing);
 
       final body = await ask(tester, calls);
