@@ -375,6 +375,18 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
         _keepReadingOnComplete = _visibleResultId != null;
         _restoreReadingAnchor(anchor);
       }
+      // 規格 PR-10：拿到正式建議＝這一題問完，開關回到預設。跟下面的畫面問句
+      // 記憶分開判斷：送出中或釐清未完時切走再切回，問句記憶會被清掉，但這題
+      // 照樣算問完（PR-10 主審 2）。
+      final arrived = next.valueOrNull;
+      if (previous?.isLoading == true &&
+          !next.isLoading &&
+          !next.hasError &&
+          arrived != null &&
+          !arrived.isClarifyingQuestion &&
+          _skipAboutMeScopes.contains(scope)) {
+        setState(() => _skipAboutMeScopes.remove(scope));
+      }
       if (previous?.isLoading == true &&
           !next.isLoading &&
           !next.hasError &&
@@ -386,10 +398,6 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
               ref.read(provider.notifier).noChargeClarificationsUsed;
           if (next.valueOrNull!.isClarifyingQuestion && ordinal > 0) {
             _clarificationOrdinals[freshId] = ordinal;
-          }
-          // 規格 PR-10：拿到正式建議＝這一題問完，開關回到預設。
-          if (!next.valueOrNull!.isClarifyingQuestion) {
-            _skipAboutMeScopes.remove(scope);
           }
           if (_keepReadingOnComplete && _visibleResultId != null) {
             _pendingResultId = freshId;

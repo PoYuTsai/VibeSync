@@ -1254,6 +1254,72 @@ void main() {
       expect(sourceChip('關於我'), findsOneWidget);
     });
 
+    // PR-10 主審 2：切走再切回時畫面問句記憶會被清掉，但正式建議回來照樣算
+    // 這題問完，開關要回到預設。
+    testWidgets('送出中切走再切回、正式建議才回來：開關回到預設，下一題照送', (tester) async {
+      final calls = <Map<String, dynamic>>[];
+      final pending = Completer<CoachChatInvokeResponse>();
+      await pumpScripted(
+        tester,
+        calls: calls,
+        partners: [_partner('p1', 'Alice')],
+        responses: [() => pending.future, ok(_formalAnswerBody, 2)],
+      );
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      await send(tester, '她回很快，要不要今晚直接約？');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(calls.single.containsKey('effectiveStyleContext'), isFalse);
+
+      // 送出中有進度動畫，不能 pumpAndSettle；兩次切換之間等選單收起。
+      await _selectScope(tester, const Key('coach_scope_partner_p1'));
+      await tester.pump(const Duration(seconds: 1));
+      await _selectScope(tester, const Key('coach_scope_general'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(sourceChip('關於我'), findsNothing, reason: '還在送出，選擇照留');
+
+      pending.complete(
+        CoachChatInvokeResponse(status: 200, data: _formalAnswerBody(1)),
+      );
+      await tester.pumpAndSettle();
+      expect(sourceChip('關於我'), findsOneWidget);
+
+      await send(tester, '那明天約呢？');
+      await tester.pumpAndSettle();
+      expect(calls, hasLength(2));
+      expect(calls[1]['effectiveStyleContext'], contains('不要太快邀約'));
+    });
+
+    testWidgets('釐清未完切走再切回、直接看建議：照選擇不帶，正式建議後回到預設', (tester) async {
+      final calls = <Map<String, dynamic>>[];
+      await pumpScripted(
+        tester,
+        calls: calls,
+        partners: [_partner('p1', 'Alice')],
+        responses: [ok(_clarificationBody, 1), ok(_formalAnswerBody, 2)],
+      );
+      await tester.tap(find.byKey(const Key('coach-skip-about-me')));
+      await tester.pump();
+      await send(tester, '她回很快，要不要今晚直接約？');
+      await tester.pumpAndSettle();
+      await switchScope(tester, const Key('coach_scope_partner_p1'));
+      await switchScope(tester, const Key('coach_scope_general'));
+
+      final forceAnswer = find.text('直接看建議（扣 1 則）');
+      await tester.ensureVisible(forceAnswer);
+      await tester.pumpAndSettle();
+      await tester.tap(forceAnswer);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('扣 1 則並生成'));
+      await tester.pumpAndSettle();
+
+      expect(calls, hasLength(2));
+      expect(calls[1]['forceAnswer'], isTrue);
+      expect(calls[1].containsKey('effectiveStyleContext'), isFalse);
+      expect(sourceChip('關於我'), findsOneWidget, reason: '正式建議回來，這題問完');
+    });
+
     testWidgets('還沒送就切走再回來：選擇不留，回到預設', (tester) async {
       await pumpScripted(
         tester,
