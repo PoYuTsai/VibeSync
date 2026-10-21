@@ -718,19 +718,13 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
         : (widget.scope.isGlobal ? null : widget.scope.id);
     final flagged = partnerId != null &&
         ref.watch(dataQualityFlagProvider(partnerId)).isFlagged;
-    // 規格 PR-5：「關於我」不分範圍，送出的內容不是空的就標。讀取參數跟
-    // controller 送出時同一組（global 一律不帶對象覆寫），標籤才會跟實際
-    // 送出的一致，也不會多開一份 provider。
+    // 規格 PR-5：「關於我」不分範圍，送出的內容不是空的就標；PR-7 起教練只讀
+    // 全域關於我，跟 controller 送出時讀的是同一個 provider。
     // FutureProvider（2026-08-03 冷啟動風格完整性修）：這裡只是顯示用的
     // 來源標籤，載入中先當沒有，resolve 後這個 ConsumerWidget 會自動重繪。
     // 只認讀完、沒出錯的值：valueOrNull 在重新讀取中或讀取失敗時會回上一次
     // 的值，但 controller 送出時等的是這次的結果、失敗就不送（PR-5 主審 1 P2）。
-    final styleAsync = ref.watch(
-      coachChatStyleContextProvider((
-        partnerId: partnerId,
-        includePartnerOverride: widget.scope.isGlobal ? false : !flagged,
-      )),
-    );
+    final styleAsync = ref.watch(coachChatStyleContextProvider);
     final styleContext = styleAsync.isLoading || styleAsync.hasError
         ? null
         : styleAsync.valueOrNull;

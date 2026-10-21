@@ -32,6 +32,8 @@
 
 `aboutMe` 由 `profile` 照 App 的 `buildForCoachFollowUp` 組出；`test/unit/tools/coach_about_me_eval_cases_test.dart` 逐題比對兩者一字不差。都是人工示例，不是真用戶資料。
 
+規格 PR-7（2026-10-21）起新版 App 不再送互動風格；`legacy_style` 4 題與 U4 只填了風格，`aboutMe` 保留 PR-7 之前舊版 App 的格式（四行風格加使用範圍），代表還沒更新的舊版流量。對照測試對這 5 題改成檢查：拿掉風格行之後只剩使用範圍，而且新版組字對同一份 profile 什麼都不送。
+
 ## 乾跑（不花錢）
 
 在 repo 根目錄（WSL）執行：

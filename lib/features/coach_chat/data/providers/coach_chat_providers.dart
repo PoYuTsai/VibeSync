@@ -37,15 +37,7 @@ final coachChatUsageSyncProvider = Provider<Future<void> Function()>((ref) {
   };
 });
 
-typedef CoachChatStyleContextArgs = ({
-  String? partnerId,
-  bool includePartnerOverride,
-});
-
-typedef CoachChatStyleContextResolver = Future<String?> Function({
-  required String? partnerId,
-  required bool includePartnerOverride,
-});
+typedef CoachChatStyleContextResolver = Future<String?> Function();
 
 /// Future-based on purpose (structurally mirrors `openerStyleContextProvider`,
 /// 2026-08-03 fix): a sync `valueOrNull` read sends no style on a cold-start
@@ -58,35 +50,19 @@ typedef CoachChatStyleContextResolver = Future<String?> Function({
 /// value on retry cannot trigger `COACH_REQUEST_REPLAY_MISMATCH` (confirmed
 /// by cross-model review reading the server code — an earlier draft of this
 /// comment claimed otherwise; that claim was refuted).
-final coachChatStyleContextProvider =
-    FutureProvider.family<String?, CoachChatStyleContextArgs>((
-  ref,
-  args,
-) async {
+///
+/// 規格 PR-7（D2 選 A）：只讀全域「關於我」，不分範圍都是同一份；對象個別設定
+/// 沒有編輯畫面、看不到也清不掉，不再讀。
+final coachChatStyleContextProvider = FutureProvider<String?>((ref) async {
   final global = await ref.watch(userProfileControllerProvider.future);
-  final partner = args.partnerId != null && args.includePartnerOverride
-      ? await ref.watch(partnerStyleOverrideProvider(args.partnerId!).future)
-      : null;
-  return ref.watch(effectiveStylePromptBuilderProvider).buildForCoachFollowUp(
-        global: global,
-        partner: partner,
-        includePartnerOverride: args.includePartnerOverride,
-      );
+  return ref
+      .watch(effectiveStylePromptBuilderProvider)
+      .buildForCoachFollowUp(global: global);
 });
 
 final coachChatStyleContextResolverProvider =
     Provider<CoachChatStyleContextResolver>((ref) {
-  return ({
-    required String? partnerId,
-    required bool includePartnerOverride,
-  }) {
-    return ref.read(
-      coachChatStyleContextProvider((
-        partnerId: partnerId,
-        includePartnerOverride: includePartnerOverride,
-      )).future,
-    );
-  };
+  return () => ref.read(coachChatStyleContextProvider.future);
 });
 
 /// Batch B1：partner scope 的「最近一段有效對話」——教練本次參考的來源。
@@ -271,11 +247,7 @@ class CoachChatController
       // 第一次 Coach 請求漏帶使用者風格（2026-08-03 修）。不是重放/計費
       // 問題——server 的 computeCoachInputHash 不含 effectiveStyleContext，
       // 風格值改變不會觸發 COACH_REQUEST_REPLAY_MISMATCH（cross-review 已核）。
-      final effectiveStyleContext = await _styleContext(
-        partnerId: partnerId,
-        // global 沒有對象可覆寫，明確傳 false（不靠 partnerId null 隱含）。
-        includePartnerOverride: scope.isGlobal ? false : !flagged,
-      );
+      final effectiveStyleContext = await _styleContext();
 
       final api = ref.read(coachChatApiServiceProvider);
       final result = await api.ask(
@@ -583,19 +555,12 @@ class CoachChatController
     return text.length <= 500 ? text : '${text.substring(0, 499).trimRight()}…';
   }
 
-  Future<String?> _styleContext({
-    required String? partnerId,
-    required bool includePartnerOverride,
-  }) async {
+  Future<String?> _styleContext() async {
     try {
-      return await ref.read(coachChatStyleContextResolverProvider)(
-        partnerId: partnerId,
-        includePartnerOverride: includePartnerOverride,
-      );
+      return await ref.read(coachChatStyleContextResolverProvider)();
     } catch (_) {
-      // profile/partner-style 載入失敗（Hive/repo 炸掉）就退回無風格，不擋
-      // 整個 Coach 請求——風格是個人化加分項，不是必要輸入（Codex
-      // cross-review P2 finding）。
+      // 關於我載入失敗（Hive/repo 炸掉）就退回不帶，不擋整個 Coach 請求——
+      // 關於我是個人化加分項，不是必要輸入（Codex cross-review P2 finding）。
       return null;
     }
   }

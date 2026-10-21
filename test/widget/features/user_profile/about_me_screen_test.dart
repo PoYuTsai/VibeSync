@@ -138,6 +138,75 @@ void main() {
     expect(find.text('清除設定'), findsOneWidget);
   });
 
+  // 規格 PR-7：8/4 以前選過的互動風格看不到也改不到，不能擋住「清除設定」。
+  testWidgets('只有舊互動風格的人：按鈕是「清除設定」，按了整筆清掉', (tester) async {
+    final repo = FakeUserProfileRepo(
+      initial: UserProfile.create(
+        interactionStyle: InteractionStyle.steady,
+        secondaryStyle: InteractionStyle.gentle,
+        updatedAt: DateTime.utc(2026, 4, 30),
+      ),
+    );
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    final clearBtn = find.widgetWithText(ElevatedButton, '清除設定');
+    expect(clearBtn, findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, '儲存'), findsNothing);
+    await tester.ensureVisible(clearBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(clearBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(repo.byOwner[FakeUserProfileRepo.testUid], isNull);
+  });
+
+  testWidgets('有舊互動風格的人存檔：風格寫成 null，看得到的欄位照存、預覽不提風格', (tester) async {
+    final repo = FakeUserProfileRepo(
+      initial: UserProfile.create(
+        interactionStyle: InteractionStyle.direct,
+        secondaryStyle: InteractionStyle.humorous,
+        notes: '慢熟',
+        updatedAt: DateTime.utc(2026, 4, 30),
+      ),
+    );
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '想約得出來'));
+    await tester.pumpAndSettle();
+    final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
+    await tester.ensureVisible(saveBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(saveBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final saved = repo.byOwner[FakeUserProfileRepo.testUid]!;
+    expect(saved.interactionStyle, isNull);
+    expect(saved.secondaryStyle, isNull);
+    expect(saved.notes, '慢熟');
+    expect(saved.practiceGoals, [PracticeGoal.softInvite]);
+    expect(find.textContaining('你想約得出來'), findsOneWidget);
+    expect(find.textContaining('教練知道你平常偏'), findsNothing);
+  });
+
+  testWidgets('只填常聊話題存檔：不跳成長框架預覽（話題不會送給 AI）', (tester) async {
+    final repo = FakeUserProfileRepo();
+    await tester.pumpWidget(aboutMeHarness(repo: repo));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '咖啡'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '咖啡'));
+    await tester.pumpAndSettle();
+    final saveBtn = find.widgetWithText(ElevatedButton, '儲存');
+    await tester.ensureVisible(saveBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(saveBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('已更新關於我'), findsOneWidget);
+    expect(find.text('好，我知道了'), findsNothing);
+    expect(find.textContaining('說話習慣'), findsNothing);
+  });
+
   testWidgets('successful save pops back and shows snackbar 已更新關於我',
       (tester) async {
     final repo = FakeUserProfileRepo();

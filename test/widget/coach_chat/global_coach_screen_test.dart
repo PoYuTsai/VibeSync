@@ -214,11 +214,8 @@ Future<void> _pumpQuota(
           ),
         ),
         // 風格設定預設讀 Hive（測試裡等不到），這裡直接回沒有風格。
-        coachChatStyleContextResolverProvider.overrideWithValue(({
-          required String? partnerId,
-          required bool includePartnerOverride,
-        }) async =>
-            null),
+        coachChatStyleContextResolverProvider
+            .overrideWithValue(() async => null),
         coachingOutcomeRepositoryProvider
             .overrideWithValue(MemoryCoachingOutcomeRepository()),
         partnerStyleRepositoryProvider.overrideWithValue(_FakeStyleRepo()),
@@ -1003,11 +1000,7 @@ void main() {
       // （PR-5 主審 2 建議）。
       final style = ProviderScope.containerOf(
         tester.element(find.byType(CoachSurface)),
-      ).read(
-        coachChatStyleContextProvider(
-          (partnerId: null, includePartnerOverride: false),
-        ),
-      );
+      ).read(coachChatStyleContextProvider);
       expect(style.hasError, isTrue);
       expect(style.hasValue, isTrue);
       expect(sourceChip('關於我'), findsNothing);

@@ -89,7 +89,9 @@ void main() {
     expect(eff.notes, 'global notes');
   });
 
-  test('partner override takes precedence per-field', () async {
+  // 規格 PR-7（D2 選 A）：對象個別設定沒有編輯畫面、看不到也清不掉，不再合併。
+  test('partner override is ignored; only the global About Me counts',
+      () async {
     userRepo.byOwner[uid] = UserProfile.create(
       interactionStyle: InteractionStyle.steady,
       practiceGoals: const [PracticeGoal.softInvite],
@@ -99,6 +101,8 @@ void main() {
     await styleRepo.save(PartnerStyleOverride.create(
       partnerId: 'p1',
       interactionStyle: InteractionStyle.humorous,
+      practiceGoals: const [PracticeGoal.buildCloseness],
+      notes: 'partner notes',
       updatedAt: ts,
     ));
     final container = makeContainer();
@@ -109,12 +113,12 @@ void main() {
     await container.read(partnerStyleOverrideProvider('p1').future);
 
     final eff = container.read(effectiveStyleProvider('p1'));
-    expect(eff.interactionStyle, InteractionStyle.humorous);
+    expect(eff.interactionStyle, InteractionStyle.steady);
     expect(eff.practiceGoals, [PracticeGoal.softInvite]);
     expect(eff.notes, 'global notes');
   });
 
-  test('saving a new override invalidates effective style', () async {
+  test('saving a new override does not change the effective style', () async {
     userRepo.byOwner[uid] = UserProfile.create(
       interactionStyle: InteractionStyle.steady,
       updatedAt: ts,
@@ -138,7 +142,7 @@ void main() {
         ));
 
     final after = container.read(effectiveStyleProvider('p1'));
-    expect(after.interactionStyle, InteractionStyle.gentle);
+    expect(after.interactionStyle, InteractionStyle.steady);
   });
 
   test('returns all-null when global and partner are both empty', () async {
