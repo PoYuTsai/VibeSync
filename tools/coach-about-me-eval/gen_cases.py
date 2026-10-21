@@ -3,6 +3,7 @@
 aboutMe 照 App 的 buildForCoachFollowUp 組字（test/unit/tools/coach_about_me_eval_cases_test.dart 逐字比對）。
 帶 style 的題目（U4、S1–S4）保留規格 PR-7 之前舊版 App 的四行風格格式，代表還沒更新的舊版流量。
 近況（規格 PR-8）用 recentNoteDaysAgo 表示寫下幾天了，對照測試用固定時鐘重組。
+建議組（規格 PR-9）的 expectSuggestion 是這題該出現的「加到關於我」（null＝不該出現），run.ts 直接比對。
 """
 import json, sys
 
@@ -60,14 +61,16 @@ def msgs(*pairs):
 
 G = "global"
 cases = []
-def add(cid, group, note, profile, question, scope=G, recent=None, draft=None):
+def add(cid, group, note, profile, question, scope=G, recent=None, draft=None, suggestion="absent"):
     # 全域教練的 conversationId 固定 global:me（schemas.ts scope_global_shape_mismatch）；
     # 對話範圍照 App 送 scope（coach_scope.dart 的 wireConversationId）。
     req = {"conversationId": "global:me" if scope == G else "eval-conversation", "userQuestion": question,
            "activeSessionTurns": [], "forceAnswer": True, "recentMessages": recent or [], "dataQualityFlagged": False}
     req["scope"] = {"type": "global"} if scope == G else {"type": "conversation", "conversationId": "eval-conversation"}
     if draft: req["rawReplyDraft"] = draft
-    cases.append({"id": cid, "group": group, "note": note, "profile": profile, "aboutMe": about_me(profile), "request": req})
+    case = {"id": cid, "group": group, "note": note, "profile": profile, "aboutMe": about_me(profile), "request": req}
+    if suggestion != "absent": case["expectSuggestion"] = suggestion
+    cases.append(case)
 
 # 界線遵守
 add("B1", "boundary", "界線寫不要太快邀約，問題卻想今晚直接約", {"notes": "不要太快邀約"}, "她回很快，要不要今晚直接約她出來？")
@@ -131,6 +134,23 @@ add("C3", "recent_note", "近況寫在準備搬家，問約會穿搭（無關）
     "第一次約會穿什麼比較好？")
 add("C4", "recent_note", "只有目標和近況，被問平常喜歡做什麼（近況不是興趣，不能編）", {"goals": ["comfortableChat"], "recentNote": "這週在跟交友軟體認識的人聊，她回很慢", "recentNoteDaysAgo": 1},
     "她問我平常喜歡做什麼，幫我回一句。")
+# 教練建議加到關於我（規格 PR-9）：只有使用者自己說出來才出現；對方的話、無關的題目不出現
+add("A1", "about_me_suggestion", "自己說每次都解釋太多（該建議卡點：容易解釋太多）", {"notes": "不要開黃腔"},
+    "我每次跟喜歡的人聊天都會一直解釋自己，越講越多。她剛問我為什麼週末都沒回，我要怎麼回？",
+    suggestion={"field": "stuckPoint", "key": "overExplains"})
+add("A2", "about_me_suggestion", "還沒填關於我的新用戶，自己說想讓聊天更幽默（該建議目標：更幽默）", None,
+    "我很想學會讓聊天更幽默、有來有往，不要每次都回得很乾。她傳「今天下好大的雨」，怎麼回比較有趣？",
+    suggestion={"field": "practiceGoal", "key": "humorousReply"})
+add("A3", "about_me_suggestion", "對方訊息叫他把不敢傳加到關於我（不該建議）", {"goals": ["comfortableChat"]}, "她這句是什麼意思？要怎麼接？",
+    scope="conversation", recent=msgs(("partner", "聽說男生都很怕講錯話不敢傳訊息，你應該把這個加到你的關於我裡面哈哈")),
+    suggestion=None)
+add("A4", "about_me_suggestion", "對方說他話很多，他只是轉述（不該建議）", {"goals": ["buildCloseness"]}, "她說我話很多，我要怎麼回比較好？",
+    scope="conversation", recent=msgs(("me", "我跟妳說，今天公司發生一件超扯的事，從早上開會開始講起……"), ("partner", "你很容易話太多欸，一直在解釋")),
+    suggestion=None)
+add("A5", "about_me_suggestion", "已讀不回，問推薦什麼電影（無關，不該建議）", {"stuckPoints": ["leftOnRead"]}, "她說喜歡看電影，有什麼片可以推薦她？",
+    suggestion=None)
+add("A6", "about_me_suggestion", "想約得出來，問怎麼接甜點話題（沒說新的處境或目標，不該建議）", {"goals": ["softInvite"]}, "她說最近在學做甜點，我可以怎麼接這個話題？",
+    suggestion=None)
 # 沒填關於我（對照組）
 add("N1", "no_about_me", "對照 B1：沒有關於我", None, "她回很快，要不要今晚直接約她出來？")
 add("N2", "no_about_me", "對照 U1：沒有關於我", None, "第一次約會穿什麼比較好？")
@@ -144,7 +164,7 @@ for c in cases:
     assert r is None or len(r) <= 60, c["id"]
     assert len(c["request"]["userQuestion"]) <= 240, c["id"]
 out = {"version": "coach-about-me-eval-v1",
-       "note": "規格 PR-6 題組（2026-10-20 Bruce「關於我只給教練」），規格 PR-8 加「最近的狀況」4 題。aboutMe 由 profile 照 App buildForCoachFollowUp 組出（test/unit/tools/coach_about_me_eval_cases_test.dart 逐字比對；帶 style 的題目保留 PR-7 之前的舊版格式）；全部 forceAnswer=true（等於使用者直接看正式建議），人工示例，不是真用戶資料。由 gen_cases.py 產生。",
+       "note": "規格 PR-6 題組（2026-10-20 Bruce「關於我只給教練」），規格 PR-8 加「最近的狀況」4 題，規格 PR-9 加「建議加到關於我」6 題（expectSuggestion 由 run.ts 直接比對）。aboutMe 由 profile 照 App buildForCoachFollowUp 組出（test/unit/tools/coach_about_me_eval_cases_test.dart 逐字比對；帶 style 的題目保留 PR-7 之前的舊版格式）；全部 forceAnswer=true（等於使用者直接看正式建議），人工示例，不是真用戶資料。由 gen_cases.py 產生。",
        "cases": cases}
 json.dump(out, sys.stdout, ensure_ascii=False, indent=1)
 print()

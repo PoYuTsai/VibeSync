@@ -18,6 +18,7 @@ export const GROUPS = [
   "legacy_style",
   "injection",
   "recent_note",
+  "about_me_suggestion",
   "no_about_me",
 ] as const;
 export type Group = typeof GROUPS[number];
@@ -32,6 +33,11 @@ export type EvalCase = {
   aboutMe: string | null;
   /** 送給 coach-chat 的請求（未經 schema 的原始形狀）。 */
   request: Record<string, unknown>;
+  /**
+   * 規格 PR-9 建議組才有：這題該出現的「加到關於我」建議（null＝不該出現）。
+   * run.ts 直接比對回應，不靠評審。
+   */
+  expectSuggestion?: { field: string; key: string } | null;
 };
 
 export const CASES = catalog.cases as EvalCase[];
