@@ -96,6 +96,7 @@ function analyze(
   phraseTidy: string | undefined,
   explains: string[],
   email?: string,
+  cardMessages: readonly string[] = CARD_MESSAGES,
 ): Promise<V3HarnessOutcome> {
   return runGuideV3StreamThroughHandler({
     createHandler: createAnalyzeChatHandler,
@@ -123,7 +124,7 @@ function analyze(
             Array.from({ length: n }, (_, i) =>
               JSON.stringify({
                 card: i + 1,
-                messages: CARD_MESSAGES,
+                messages: cardMessages,
                 hasInventedDetail: false,
               })),
           ));
@@ -183,6 +184,7 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_PHRASE_TIDY=on 時送出的卡在�
     quiz: cards.length,
     quizRewrite: 0,
     degree: cards.length,
+    typo: 0,
     messages: cards.length * 2,
   });
   // 口吻與斷句照樣先跑（兩個逗號換成空白）。
@@ -206,4 +208,40 @@ Deno.test("從正式入口：沒設、off、或 test 但不是測試帳號，卡
   const cards = testAccount.events.filter((e) => e.type === "analysis.card");
   assert(cards.length >= 3);
   for (const card of cards) assertEquals(card.messages, TIDIED);
+});
+
+/// 錯字（Bruce 2026-10-21 PR #97）：模型寫出「一齣現」；口吻與斷句先把妳換成你、逗號換空白，這一步再換錯字。
+const TYPO_CARD = ["妳一齣現，大家都會先看髮型", "短髮很好看。"];
+const TYPO_TYPED = ["你一齣現 大家都會先看髮型", "短髮很好看"];
+const TYPO_TIDIED = ["你一出現 大家都會先看髮型", "短髮很好看"];
+
+Deno.test("從正式入口：錯字「一齣現」開了才換成「一出現」（送出、存的結果、說明步驟同一份字），trace 記 typo 次數；沒開照原文", async () => {
+  const explains: string[] = [];
+  const on = await analyze("on", explains, undefined, TYPO_CARD);
+  assertEquals(on.status, 200);
+  const cards = on.events.filter((e) => e.type === "analysis.card");
+  assert(cards.length >= 3);
+  for (const card of cards) assertEquals(card.messages, TYPO_TIDIED);
+  for (
+    const card of (on.finalResult as { cards: { messages: unknown }[] }).cards
+  ) {
+    assertEquals(card.messages, TYPO_TIDIED);
+  }
+  assertEquals(explains.length, 1);
+  assert(explains[0].includes(`- ${TYPO_TIDIED[0]}\n- ${TYPO_TIDIED[1]}`));
+  assertEquals(explains[0].includes("一齣現"), false);
+  const trace = on.finalResult?.guideV3Trace as { phraseTidy: PhraseTidyTrace };
+  assertEquals(trace.phraseTidy.changes, {
+    quiz: 0,
+    quizRewrite: 0,
+    degree: 0,
+    typo: cards.length,
+    messages: cards.length,
+  });
+
+  const off = await analyze("off", [], undefined, TYPO_CARD);
+  assertEquals(off.status, 200);
+  const offCards = off.events.filter((e) => e.type === "analysis.card");
+  assert(offCards.length >= 3);
+  for (const card of offCards) assertEquals(card.messages, TYPO_TYPED);
 });

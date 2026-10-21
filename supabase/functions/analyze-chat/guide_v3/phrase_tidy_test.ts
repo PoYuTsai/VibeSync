@@ -1,5 +1,5 @@
 // 「這題」「滿→蠻」交給程式（phrase_tidy.ts，Bruce 2026-10-20 PR #97 再處理、先看例子；2026-10-21 只用這兩條）：
-// 每一條的例子、受保護的字、拿掉後沒字就照原文、「滿」不動的詞。
+// 每一條的例子、受保護的字、拿掉後沒字就照原文、「滿」不動的詞。錯字「一齣現」→「一出現」（Bruce 2026-10-21）在最後。
 import {
   assert,
   assertEquals,
@@ -16,6 +16,7 @@ import {
   QUIZ_MARKERS,
   tidyCard,
   tidyMessage,
+  TYPO_FIXES,
 } from "./phrase_tidy.ts";
 
 /// 她問是不是最好看（沒在講題目）。
@@ -72,7 +73,7 @@ Deno.test("這題：Bruce 點名的例子——考題那一小段拿掉，其他
   assertEquals(tidy("這一題不用想 是你"), "是你");
   assertEquals(
     tidyMessage("是你啊 這題不用想", ASKS_BEST).changes,
-    { quiz: 1, quizRewrite: 0, degree: 0, messages: 1 },
+    { quiz: 1, quizRewrite: 0, degree: 0, typo: 0, messages: 1 },
   );
 });
 
@@ -86,7 +87,7 @@ Deno.test("這題：答案就在那一段裡不拿掉；「這題我選你」這
   assertEquals(tidy("欸這題我就選你"), "欸我就選你");
   assertEquals(
     tidyMessage("這題我選你", ASKS_BEST).changes,
-    { quiz: 0, quizRewrite: 1, degree: 0, messages: 1 },
+    { quiz: 0, quizRewrite: 1, degree: 0, typo: 0, messages: 1 },
   );
   // 有「你」、或「選、答……」後面接著答案，但不是「這題我選／投」：整則照原文。
   for (
@@ -117,7 +118,7 @@ Deno.test("Bruce 2026-10-21 加的三個說法：「這個問題答案很明顯�
   assertEquals(tidy("這個問題答案很明顯😏 當然是你"), "當然是你");
   assertEquals(
     tidyMessage("先說我的答案 就是你", ASKS_BEST).changes,
-    { quiz: 1, quizRewrite: 0, degree: 0, messages: 1 },
+    { quiz: 1, quizRewrite: 0, degree: 0, typo: 0, messages: 1 },
   );
   for (
     const kept of [
@@ -195,7 +196,7 @@ Deno.test("滿→蠻：程度的「滿」後面接白名單的字才換（Bruce�
   assertEquals(tidy("我滿喜歡 也滿期待的"), "我蠻喜歡 也蠻期待的");
   assertEquals(
     tidyMessage("我滿喜歡 也滿期待的", ASKS_BEST).changes,
-    { quiz: 0, quizRewrite: 0, degree: 2, messages: 1 },
+    { quiz: 0, quizRewrite: 0, degree: 2, typo: 0, messages: 1 },
   );
 });
 
@@ -401,6 +402,7 @@ Deno.test("一整張卡：每一則各自改、則數不變；次數加總；沒
     quiz: 1,
     quizRewrite: 0,
     degree: 1,
+    typo: 0,
     messages: 2,
   });
   assertEquals(tidyCard(["好看啊", "等你回來"], ASKS_BEST), {
@@ -412,4 +414,96 @@ Deno.test("一整張卡：每一則各自改、則數不變；次數加總；沒
     tidyCard(["這題我不用想", "是你"], ASKS_BEST).messages,
     ["這題我不用想", "是你"],
   );
+});
+
+// ---- 錯字（Bruce 2026-10-21 PR #97：1-A3、3-A3 的「一齣現」應該是「一出現」，新舊兩版都有） ----
+
+Deno.test("錯字：Bruce 抓到的三張卡，「一齣現」換成「一出現」，其他字不動；次數記在 typo", () => {
+  assertEquals(TYPO_FIXES, [{ from: "一齣現", to: "一出現" }]);
+  assertEquals(tidy("你一齣現整間店都變亮了"), "你一出現整間店都變亮了");
+  assertEquals(
+    tidy("在＿＿ 你一齣現那家店的評價大概會直接五星"),
+    "在＿＿ 你一出現那家店的評價大概會直接五星",
+  );
+  assertEquals(
+    tidy("你一齣現那家店應該會直接升級成米其林"),
+    "你一出現那家店應該會直接升級成米其林",
+  );
+  assertEquals(tidyMessage("你一齣現整間店都變亮了", ASKS_BEST).changes, {
+    quiz: 0,
+    quizRewrite: 0,
+    degree: 0,
+    typo: 1,
+    messages: 1,
+  });
+  // 一則兩個各算一次；接「在、場、代」這些字的錯字也換（不另外排除）。
+  assertEquals(
+    tidyMessage("你一齣現在門口 我一齣現場面就熱了", ASKS_BEST),
+    {
+      text: "你一出現在門口 我一出現場面就熱了",
+      changes: { quiz: 0, quizRewrite: 0, degree: 0, typo: 2, messages: 1 },
+    },
+  );
+});
+
+Deno.test("錯字：只換整個「一齣現」；引號裡（她說的話）、沒寫完的引號後面不動；正常的「一齣戲」「這齣現代劇」不動；換過的再跑一次不變", () => {
+  for (
+    const kept of [
+      "你說「我一齣現大家都在看」是真的嗎",
+      "她回『一齣現就被認出來』",
+      "你說“一齣現就被認出來”",
+      "你上次說「我一齣現",
+      "這是一齣戲",
+      "這齣現代劇很好看",
+      "你出現的時候",
+      "你一出現整間店都變亮了",
+    ]
+  ) {
+    assertEquals(tidyMessage(kept, ASKS_BEST), {
+      text: kept,
+      changes: NO_PHRASE_TIDY_CHANGES,
+    }, kept);
+  }
+  // 引號外的照換，引號裡的照原文。
+  assertEquals(
+    tidy("你一齣現我就想到你說的「一齣現」"),
+    "你一出現我就想到你說的「一齣現」",
+  );
+  // 「一齣現代劇」換完是「一出現代劇」：「出」也是戲的量詞（一出好戲），意思不變。
+  assertEquals(tidy("像在看一齣現代劇"), "像在看一出現代劇");
+});
+
+Deno.test("錯字：跟「這題」「滿→蠻」同一則時都改、各自記次數；她在講題目時「這題」不做，錯字照換", () => {
+  assertEquals(
+    tidyMessage("這題不用想 你一齣現就滿好看的", ASKS_BEST),
+    {
+      text: "你一出現就蠻好看的",
+      changes: { quiz: 1, quizRewrite: 0, degree: 1, typo: 1, messages: 1 },
+    },
+  );
+  const herQuiz = phraseTidyContext({ herMessages: ["這題好難 題目看不懂"] });
+  assertEquals(herQuiz.herQuizWords, true);
+  assertEquals(
+    tidyMessage("這題不用想 你一齣現就懂了", herQuiz),
+    {
+      text: "這題不用想 你一出現就懂了",
+      changes: { quiz: 0, quizRewrite: 0, degree: 0, typo: 1, messages: 1 },
+    },
+  );
+  const card = tidyCard(
+    ["你一齣現整間店都變亮了", "週末我也想去", "你一齣現 我一齣現"],
+    ASKS_BEST,
+  );
+  assertEquals(card.messages, [
+    "你一出現整間店都變亮了",
+    "週末我也想去",
+    "你一出現 我一出現",
+  ]);
+  assertEquals(card.changes, {
+    quiz: 0,
+    quizRewrite: 0,
+    degree: 0,
+    typo: 3,
+    messages: 2,
+  });
 });

@@ -1,6 +1,6 @@
-// 卡片的「這題」「滿」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY；Bruce 2026-10-20 PR #97：「這題」再處理、
+// 卡片的「這題」「滿」與常見錯字交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY；Bruce 2026-10-20 PR #97：「這題」再處理、
 // 先看例子再決定，程度的「滿」要寫「蠻」）：提示詞改了兩次都沒變少——她問是不是最好看，卡常先說「這題我不用想」。
-// 每張卡定稿、口吻與斷句改完之後、送出之前，照下面兩條改字；不重新生成、不增減則數。純函式，不碰模型與資料庫。
+// 每張卡定稿、口吻與斷句改完之後、送出之前，照下面三條改字；不重新生成、不增減則數。純函式，不碰模型與資料庫。
 // 「不怪」那條 Bruce 看過例子後決定不用（Bruce 2026-10-21 PR #97：只用這題和蠻），已經拿掉。
 //
 // 規則（字表都在下面的常數，Bruce 可以調）：
@@ -12,6 +12,7 @@
 // - 滿→蠻：「滿」後面整個接著常數表裡兩個字以上的詞、前面那個字也不會跟「滿」連成詞（充滿、裝滿、很滿……），
 //   才換成「蠻」；形容詞（好看、自然……）後面還要剛好斷開，動詞說法（適合、喜歡、有勇氣……）可以接著別的字。
 //   滿意、滿足、滿分、滿會費這些不在表裡，「人滿自然就出發」的自然是下一句的，都不動。
+// - 錯字：TYPO_FIXES 的常見錯字直接換掉（「一齣現」→「一出現」，Bruce 2026-10-21 PR #97）。
 // 拿掉之後這一則還要有字（語助詞、表情、顏文字、網址、標點不算），不然照原文；引號裡、網址、顏文字都不動。
 import { withoutEmoji } from "./cards.ts";
 import { isMediaLine, QUOTED_REPLY_PREFIX } from "./rules.ts";
@@ -146,6 +147,8 @@ export interface PhraseTidyChanges {
   readonly quizRewrite: number;
   /// 換成「蠻」的「滿」。
   readonly degree: number;
+  /// 換掉的常見錯字（TYPO_FIXES）。
+  readonly typo: number;
   /// 有改到的訊息則數。
   readonly messages: number;
 }
@@ -154,6 +157,7 @@ export const NO_PHRASE_TIDY_CHANGES: PhraseTidyChanges = {
   quiz: 0,
   quizRewrite: 0,
   degree: 0,
+  typo: 0,
   messages: 0,
 };
 
@@ -165,6 +169,7 @@ export function addPhraseTidyChanges(
     quiz: a.quiz + b.quiz,
     quizRewrite: a.quizRewrite + b.quizRewrite,
     degree: a.degree + b.degree,
+    typo: a.typo + b.typo,
     messages: a.messages + b.messages,
   };
 }
@@ -285,6 +290,44 @@ function withoutPieces(pieces: readonly Piece[], drop: ReadonlySet<number>) {
   return last?.sep ? text.replace(JOINERS, "") : text;
 }
 
+/// 常見錯字（Bruce 2026-10-21 PR #97：新舊兩版寫卡都寫出「你一齣現……」，應該是「一出現」）。只換整個「一齣現」：
+///「齣」是戲的量詞，正常的「一齣現代劇」換完是「一出現代劇」，「出」也是戲的量詞（一出好戲），意思不變，所以不另外
+/// 排除；排除「現在、現場……」反而會漏掉「你一齣現在門口」這種錯字。
+export const TYPO_FIXES: readonly {
+  readonly from: string;
+  readonly to: string;
+}[] = [
+  { from: "一齣現", to: "一出現" },
+];
+
+/// 錯字照 TYPO_FIXES 換掉（受保護的字、引號裡不動）；回換好的字與個數。
+function fixTypos(text: string): { text: string; count: number } {
+  let out = text;
+  let count = 0;
+  for (const { from, to } of TYPO_FIXES) {
+    if (!out.includes(from)) continue;
+    const chars = [...out];
+    const { inQuote, frozen } = protectedMap(chars);
+    const want = [...from];
+    const res: string[] = [];
+    for (let i = 0; i < chars.length;) {
+      const hit = want.every((c, k) =>
+        chars[i + k] === c && !inQuote[i + k] && !frozen[i + k]
+      );
+      if (hit) {
+        res.push(...to);
+        i += want.length;
+        count++;
+      } else {
+        res.push(chars[i]);
+        i++;
+      }
+    }
+    out = res.join("");
+  }
+  return { text: out, count };
+}
+
 /// 程度的「滿」換成「蠻」（受保護的字不動）；回換好的字與個數。
 function degreeMan(text: string): { text: string; count: number } {
   const chars = [...text];
@@ -313,7 +356,7 @@ function degreeMan(text: string): { text: string; count: number } {
   return { text: count > 0 ? out.join("") : text, count };
 }
 
-/// 一則訊息照兩條改；回改好的字與次數。
+/// 一則訊息照三條改；回改好的字與次數。
 export function tidyMessage(
   message: string,
   context: PhraseTidyContext,
@@ -345,7 +388,8 @@ export function tidyMessage(
     }
   }
   const man = degreeMan(text);
-  text = man.text;
+  const typo = fixTypos(man.text);
+  text = typo.text;
   if (text === "" || text === message) {
     return { text: message, changes: NO_PHRASE_TIDY_CHANGES };
   }
@@ -355,12 +399,13 @@ export function tidyMessage(
       quiz: dropped ? quizDrops.size : 0,
       quizRewrite: rewrites.size,
       degree: man.count,
+      typo: typo.count,
       messages: 1,
     },
   };
 }
 
-/// 一張卡的每一則都照兩條改（則數不變）。
+/// 一張卡的每一則都照三條改（則數不變）。
 export function tidyCard(
   messages: readonly string[],
   context: PhraseTidyContext,

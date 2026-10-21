@@ -447,8 +447,12 @@ Deno.test("正式組合再開短版稱讚：她撒嬌（直接誇）時跟沒開
 
 /// 正式組合（兩段式、關係訊號、口吻與斷句都開）再開「這題」「滿→蠻」的整份結果：鎖住，改了要連這裡
 /// 一起改。卡沒有這兩種字，拿掉 trace 的 phraseTidy 就是 BOTH_TYPING_ON。「不怪」那條拿掉（Bruce 2026-10-21）
-/// 之後 trace 少了 herWorries 與 worry 次數，所以從 56a9b571… 換成這個；送出、扣費、落帳與 log 都沒變。
+/// 之後 trace 少了 herWorries 與 worry 次數，所以從 56a9b571… 換成 6634fa48…；錯字「一齣現」（Bruce 2026-10-21）
+/// 多記 typo 次數之後 trace 多一個 typo: 0，再換成這個。拿掉 typo 就是 6634fa48…（下面有比），送出、扣費、落帳
+/// 與 log 都沒變。
 const BOTH_TYPING_TIDY_ON =
+  "db1e2830a5d2b3d945afbec5f8c5d5006c643a6f7cd80e0f3bcbc7248b0dab0c";
+const BOTH_TYPING_TIDY_ON_BEFORE_TYPO =
   "6634fa484186680a07d3a6dd295e13d8575a8b3508c27dd4b16ef2cc1ec22578";
 
 Deno.test("「這題」「滿→蠻」明確關著（false）：四種組合與再開口吻與斷句的整份結果都跟沒給一模一樣（雜湊照舊）", async () => {
@@ -493,10 +497,15 @@ Deno.test("「這題」「滿→蠻」開、卡沒有這兩種字：卡、請求
       quiz: 0,
       quizRewrite: 0,
       degree: 0,
+      typo: 0,
       messages: 0,
     },
   });
   assertEquals(await outcomeDigest(on), BOTH_TYPING_TIDY_ON);
+  assertEquals(
+    await outcomeDigest(withoutKeys(on, ["typo"])),
+    BOTH_TYPING_TIDY_ON_BEFORE_TYPO,
+  );
 });
 
 /// 卡裡有「這題」「不怪」「滿」：「不怪」那條不用（Bruce 2026-10-21），「不怪啊」不動。
@@ -542,6 +551,7 @@ Deno.test("「這題」「滿→蠻」開（正式組合）：送出的卡、扣
     quiz: onCards.length,
     quizRewrite: 0,
     degree: onCards.length,
+    typo: 0,
     messages: onCards.length * 2,
   });
   assertEquals(JSON.stringify(trace).includes("適合"), false);
