@@ -283,7 +283,8 @@ class _PartnerMindMapCardListState extends State<PartnerMindMapCardList> {
         ? AppColors.onBackgroundSecondary
         : guideV3LightColor(signals!.light!);
     final statusStyle = AppTypography.caption.copyWith(
-      // 字留白色（綠紅字在這張卡上不到 4.5:1），顏色由燈號帶（跟首頁對象卡一樣）。
+      // 字留白色（綠紅字在這張卡上不到 4.5:1），顏色由燈號帶。首頁對象卡 2026-10-21 起
+      // 改成整句同色霓虹字（另一組較亮的色票），這裡沒有跟著改。
       color: Colors.white.withValues(alpha: 0.88),
       fontWeight: FontWeight.w700,
     );

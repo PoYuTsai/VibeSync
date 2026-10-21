@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:vibesync/core/theme/app_typography.dart';
 import 'package:vibesync/features/analysis/domain/entities/guide_v3_result.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
 import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.dart';
+import 'package:vibesync/features/partner/presentation/widgets/japanese_led_signal.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
 import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
+
+import '../../../visual_proof/proof_support.dart' show loadProofFonts;
 
 Partner _p(String id, String name) => Partner(
       id: id,
@@ -36,19 +41,98 @@ PartnerAggregateView _agg({
       latestGuideV3Signals: signals,
     );
 
-Future<void> _pump(WidgetTester t, Widget child) async {
+Future<void> _pump(
+  WidgetTester t,
+  Widget child, {
+  double width = 400,
+  double textScale = 1.0,
+}) async {
   await t.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: MediaQuery(
-          data: const MediaQueryData(disableAnimations: true),
-          child: SizedBox(width: 400, child: child),
+          data: MediaQueryData(
+            disableAnimations: true,
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: SizedBox(width: width, child: child),
         ),
       ),
     ),
   );
   await t.pumpAndSettle();
 }
+
+/// 最近一次是 v3 的對象卡；燈號與決定分開給（燈色和要不要回是兩套資料）。
+Widget _v3Card({GuideV3Light? light, required GuideV3Decision decision}) =>
+    PartnerListCard(
+      partner: _p('a', 'Alice'),
+      aggregate: _agg(
+        interests: const ['咖啡'],
+        latestIsGuideV3: true,
+        signals: PartnerGuideV3Signals(decision: decision, light: light),
+      ),
+      onTap: () {},
+      onDelete: () {},
+    );
+
+/// 改版前（ed94a198）燈號膠囊的外框：上下 4 內距＋1 邊框，包一行 12 號粗體。
+/// 用來確認拿掉膠囊後那一列的高度沒變（卡片其他東西不會移動）。
+Widget _legacyPill(String status) => Material(
+      type: MaterialType.transparency,
+      child: Container(
+        key: const ValueKey('legacy-pill'),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white),
+        ),
+        child: Text(
+          status,
+          style: AppTypography.caption.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+
+final _statusRow = find.byKey(const ValueKey('partner-card-v3-status'));
+final _legacyRow = find.byKey(const ValueKey('legacy-pill'));
+
+/// 卡片文字區（姓名、標籤列、興趣列那一欄）的寬度＝標籤列能用的寬度。
+double _textColumnWidth(WidgetTester t) => t
+    .getSize(
+      find
+          .ancestor(of: find.text('Alice'), matching: find.byType(Column))
+          .first,
+    )
+    .width;
+
+/// 標籤列那行字：整句自然寬度、有沒有被省略號截掉、有沒有信號機。
+({double fullWidth, bool truncated, bool hasSignal}) _labelLayout(
+  WidgetTester t,
+  String text,
+) {
+  final paragraph = t.renderObject<RenderParagraph>(
+    find.descendant(of: _statusRow, matching: find.text(text)),
+  );
+  return (
+    fullWidth: paragraph.getMaxIntrinsicWidth(double.infinity),
+    truncated: paragraph.didExceedMaxLines,
+    hasSignal: find
+        .descendant(of: _statusRow, matching: find.byType(JapaneseLedSignal))
+        .evaluate()
+        .isNotEmpty,
+  );
+}
+
+/// 信號機（42）＋間距 6＋整句，放得下才畫信號機。
+bool _fitsWithSignal(double fullWidth, double available) =>
+    JapaneseLedSignal.size.width + 6 + fullWidth <= available;
+
+const _standardLabels = [
+  (GuideV3Light.yellow, GuideV3Decision.send, '輪到你回', '黃燈 輪到你回'),
+  (GuideV3Light.green, GuideV3Decision.send, '輪到你回', '綠燈 輪到你回'),
+  (GuideV3Light.red, GuideV3Decision.hold, '先等她', '紅燈 先等她'),
+];
 
 void main() {
   testWidgets('renders core visual pieces given Partner + aggregate', (
@@ -177,11 +261,16 @@ void main() {
 
       final pill = find.byKey(const ValueKey('partner-card-v3-status'));
       expect(pill, findsOneWidget, reason: decision.wire);
-      expect(
-          find.descendant(of: pill, matching: find.text('黃燈')), findsOneWidget,
-          reason: decision.wire);
-      expect(find.descendant(of: pill, matching: find.text(status)),
+      // 燈色與狀態合成一句（Bruce 2026-10-21 燈號標籤規格），旁邊的信號機亮黃燈。
+      expect(find.descendant(of: pill, matching: find.text('黃燈 $status')),
           findsOneWidget,
+          reason: decision.wire);
+      expect(
+          t
+              .widget<JapaneseLedSignal>(find.descendant(
+                  of: pill, matching: find.byType(JapaneseLedSignal)))
+              .light,
+          GuideV3Light.yellow,
           reason: decision.wire);
       expect(find.text('待分析'), findsNothing);
       expect(find.textContaining('本次投入'), findsNothing);
@@ -206,8 +295,8 @@ void main() {
     );
 
     final pill = find.byKey(const ValueKey('partner-card-v3-status'));
-    expect(
-        find.descendant(of: pill, matching: find.text('輪到你回')), findsOneWidget);
+    expect(find.descendant(of: pill, matching: find.text('綠燈 輪到你回')),
+        findsOneWidget);
     expect(find.textContaining('本次投入'), findsNothing);
   });
 
@@ -225,6 +314,12 @@ void main() {
     );
     expect(find.text('輪到你回'), findsOneWidget);
     expect(find.textContaining('燈'), findsNothing);
+    // 不猜顏色、不畫三顆全暗的信號機；字用中性的白。
+    expect(find.byType(JapaneseLedSignal), findsNothing);
+    expect(
+      t.widget<Text>(find.text('輪到你回')).style?.color,
+      Colors.white.withValues(alpha: 0.88),
+    );
 
     await _pump(
       t,
@@ -323,5 +418,298 @@ void main() {
     final waiting = t.widget<Text>(find.text('待分析'));
     expect(waiting.style?.color, Colors.white.withValues(alpha: 0.70));
     expect(waiting.style?.fontWeight, FontWeight.w700);
+  });
+
+  group('v3 燈號標籤（Bruce 2026-10-21 燈號標籤規格）', () {
+    testWidgets('三種標準案例：信號機亮對的燈，整句同色霓虹字', (t) async {
+      const cases = [
+        (GuideV3Light.yellow, GuideV3Decision.send, '黃燈 輪到你回'),
+        (GuideV3Light.green, GuideV3Decision.send, '綠燈 輪到你回'),
+        (GuideV3Light.red, GuideV3Decision.hold, '紅燈 先等她'),
+      ];
+      for (final (light, decision, text) in cases) {
+        await _pump(t, _v3Card(light: light, decision: decision));
+
+        final label = t.widget<Text>(
+          find.descendant(of: _statusRow, matching: find.text(text)),
+        );
+        final tone = partnerSignalColor(light);
+        expect(label.style?.color, tone, reason: text);
+        expect(label.style?.fontSize, 13, reason: text);
+        expect(label.style?.fontWeight, FontWeight.w700, reason: text);
+        final shadows = label.style!.shadows!;
+        expect(shadows, hasLength(2), reason: text);
+        for (final shadow in shadows) {
+          expect(shadow.color.withValues(alpha: 1), tone, reason: text);
+          expect(shadow.offset, Offset.zero, reason: text);
+        }
+        expect(label.maxLines, 1, reason: text);
+        expect(label.overflow, TextOverflow.ellipsis, reason: text);
+
+        final signal = find.descendant(
+          of: _statusRow,
+          matching: find.byType(JapaneseLedSignal),
+        );
+        expect(t.widget<JapaneseLedSignal>(signal).light, light, reason: text);
+        expect(t.getSize(signal), const Size(42, 16), reason: text);
+      }
+    });
+
+    testWidgets('燈色和要不要回分開算：資料允許的其他組合照資料顯示', (t) async {
+      const cases = [
+        (GuideV3Light.yellow, GuideV3Decision.hold, '黃燈 先等她'),
+        (GuideV3Light.green, GuideV3Decision.stop, '綠燈 先停'),
+        (GuideV3Light.red, GuideV3Decision.close, '紅燈 輪到你回'),
+      ];
+      for (final (light, decision, text) in cases) {
+        await _pump(t, _v3Card(light: light, decision: decision));
+        expect(
+          find.descendant(of: _statusRow, matching: find.text(text)),
+          findsOneWidget,
+          reason: text,
+        );
+        expect(
+          t.widget<JapaneseLedSignal>(find.byType(JapaneseLedSignal)).light,
+          light,
+          reason: text,
+        );
+      }
+    });
+
+    testWidgets('沒有膠囊：無底色無框；信號機對齊姓名左緣，字在右邊 6、垂直置中', (t) async {
+      await _pump(
+        t,
+        _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
+      );
+
+      expect(
+        find.descendant(of: _statusRow, matching: find.byType(DecoratedBox)),
+        findsNothing,
+      );
+      final signal = t.getRect(find.byType(JapaneseLedSignal));
+      final label = t.getRect(find.text('黃燈 輪到你回'));
+      final row = t.getRect(_statusRow);
+      expect(signal.left, t.getTopLeft(find.text('Alice')).dx);
+      expect(label.left, signal.right + 6);
+      expect(signal.center.dy, moreOrLessEquals(row.center.dy));
+      expect(label.center.dy, moreOrLessEquals(row.center.dy));
+    });
+
+    testWidgets('那一列的高度跟原本膠囊一樣（字縮放 1.0／1.3／2.0，燈號讀不懂也一樣）', (t) async {
+      for (final scale in const [1.0, 1.3, 2.0]) {
+        for (final light in const [GuideV3Light.yellow, null]) {
+          await _pump(
+            t,
+            Column(
+              children: [
+                _v3Card(light: light, decision: GuideV3Decision.send),
+                _legacyPill('輪到你回'),
+              ],
+            ),
+            textScale: scale,
+          );
+          expect(
+            t.getSize(_statusRow).height,
+            t.getSize(find.byKey(const ValueKey('legacy-pill'))).height,
+            reason: 'scale $scale, light $light',
+          );
+        }
+      }
+    });
+
+    testWidgets('VoiceOver 念成一句；信號機是裝飾，不另外念', (t) async {
+      final semantics = t.ensureSemantics();
+      await _pump(
+        t,
+        _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
+      );
+
+      final node = t.getSemantics(find.text('黃燈 輪到你回'));
+      expect(node.label, contains('黃燈 輪到你回'));
+      expect('黃燈'.allMatches(node.label), hasLength(1));
+      expect(find.bySemanticsLabel(RegExp(r'^黃燈$')), findsNothing);
+      expect(find.bySemanticsLabel(RegExp(r'^輪到你回$')), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('放不下的規則：先拿掉信號機，連字都放不下才省略；高度不變（跟字型無關）', (t) async {
+      // 288／358 = 320／390 寬手機扣掉首頁左右各 16 邊距後的卡片寬。
+      for (final width in const [288.0, 358.0]) {
+        for (final scale in const [1.0, 1.3, 2.0]) {
+          for (final (light, decision, status, text) in _standardLabels) {
+            final when = '$text, $width×$scale';
+            await _pump(
+              t,
+              Column(
+                children: [
+                  _v3Card(light: light, decision: decision),
+                  _legacyPill(status),
+                ],
+              ),
+              width: width,
+              textScale: scale,
+            );
+            expect(t.takeException(), isNull, reason: when);
+
+            final layout = _labelLayout(t, text);
+            final available = _textColumnWidth(t);
+            expect(
+              layout.hasSignal,
+              _fitsWithSignal(layout.fullWidth, available),
+              reason: when,
+            );
+            // 有信號機就一定完整；被截只會發生在連字本身都比可用寬度寬的時候。
+            expect(
+              layout.truncated,
+              !layout.hasSignal && layout.fullWidth > available,
+              reason: when,
+            );
+            expect(
+              t.getSize(_statusRow).height,
+              t.getSize(_legacyRow).height,
+              reason: when,
+            );
+          }
+        }
+      }
+    });
+  });
+
+  group('v3 燈號標籤：窄畫面與大字（真實繁中字型）', () {
+    // 測試預設字型連空白都是一個全形寬，量不出真機放不放得下；這組改用對照圖工具的
+    // 繁中字型（CI 也裝同一套），跟 Codex 審查點名的尺寸逐一對。
+    setUpAll(loadProofFonts);
+
+    Future<void> pumpReal(
+      WidgetTester t,
+      Widget child, {
+      required double width,
+      required double textScale,
+    }) async {
+      await t.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(fontFamily: 'AppTC', useMaterial3: true),
+          home: Scaffold(
+            body: DefaultTextStyle.merge(
+              style: const TextStyle(fontFamily: 'AppTC'),
+              child: MediaQuery(
+                data: MediaQueryData(
+                  disableAnimations: true,
+                  textScaler: TextScaler.linear(textScale),
+                ),
+                child: SizedBox(width: width, child: child),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('320×1.0、390×2.0、320×1.3：放不下信號機就拿掉，整句完整、高度不變', (t) async {
+      for (final (width, scale) in const [
+        (288.0, 1.0),
+        (358.0, 2.0),
+        (288.0, 1.3),
+      ]) {
+        for (final (light, decision, status, text) in _standardLabels) {
+          final when = '$text, ${width + 32}×$scale';
+          await pumpReal(
+            t,
+            Column(
+              children: [
+                _v3Card(light: light, decision: decision),
+                _legacyPill(status),
+              ],
+            ),
+            width: width,
+            textScale: scale,
+          );
+          expect(t.takeException(), isNull, reason: when);
+
+          final layout = _labelLayout(t, text);
+          final paragraph = t.renderObject<RenderParagraph>(find.text(text));
+          expect(layout.truncated, isFalse, reason: when);
+          expect(
+            paragraph.size.width,
+            greaterThanOrEqualTo(layout.fullWidth - 0.01),
+            reason: when,
+          );
+          expect(
+            layout.hasSignal,
+            _fitsWithSignal(layout.fullWidth, _textColumnWidth(t)),
+            reason: when,
+          );
+          // 「輪到你回」這兩句在三種尺寸都明顯放不下信號機（差 13 以上）。
+          if (status == '輪到你回') {
+            expect(layout.hasSignal, isFalse, reason: when);
+          }
+          expect(
+            t.getSize(_statusRow).height,
+            t.getSize(_legacyRow).height,
+            reason: when,
+          );
+        }
+      }
+    });
+
+    testWidgets('390×1.0：照樣有信號機，整句完整', (t) async {
+      for (final (light, decision, status, text) in _standardLabels) {
+        await pumpReal(
+          t,
+          Column(
+            children: [
+              _v3Card(light: light, decision: decision),
+              _legacyPill(status),
+            ],
+          ),
+          width: 358,
+          textScale: 1.0,
+        );
+        final layout = _labelLayout(t, text);
+        expect(layout.hasSignal, isTrue, reason: text);
+        expect(layout.truncated, isFalse, reason: text);
+        expect(
+          t.getSize(_statusRow).height,
+          t.getSize(_legacyRow).height,
+          reason: text,
+        );
+      }
+    });
+
+    testWidgets('連字都放不下（320×2.0）才用省略號；沒有信號機、不溢出、高度不變', (t) async {
+      await pumpReal(
+        t,
+        Column(
+          children: [
+            _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
+            _legacyPill('輪到你回'),
+          ],
+        ),
+        width: 288,
+        textScale: 2.0,
+      );
+      expect(t.takeException(), isNull);
+      final layout = _labelLayout(t, '黃燈 輪到你回');
+      expect(layout.hasSignal, isFalse);
+      expect(layout.fullWidth, greaterThan(_textColumnWidth(t)));
+      expect(layout.truncated, isTrue);
+      expect(t.getSize(_statusRow).height, t.getSize(_legacyRow).height);
+    });
+
+    testWidgets('拿掉信號機時 VoiceOver 一樣念整句', (t) async {
+      final semantics = t.ensureSemantics();
+      await pumpReal(
+        t,
+        _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
+        width: 288,
+        textScale: 1.0,
+      );
+      expect(find.byType(JapaneseLedSignal), findsNothing);
+      final node = t.getSemantics(find.text('黃燈 輪到你回'));
+      expect(node.label, contains('黃燈 輪到你回'));
+      expect(find.bySemanticsLabel(RegExp(r'^黃燈$')), findsNothing);
+      semantics.dispose();
+    });
   });
 }

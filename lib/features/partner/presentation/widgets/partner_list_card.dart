@@ -8,9 +8,9 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/liquid_motion_frame.dart';
 import '../../../analysis/domain/entities/enthusiasm_level.dart';
 import '../../../analysis/domain/entities/guide_v3_result.dart';
-import '../../../analysis/presentation/sections/guide_v3_result_section.dart';
 import '../../domain/entities/partner.dart';
 import '../../domain/extensions/partner_aggregates.dart';
+import 'japanese_led_signal.dart';
 
 class PartnerListCard extends StatelessWidget {
   final Partner partner;
@@ -160,48 +160,92 @@ class PartnerListCard extends StatelessWidget {
     );
   }
 
-  /// 燈號＋短狀態，放在原本熱度膠囊的位置（v3 沒有熱度）。
-  Widget _buildGuideV3StatusPill(GuideV3Light? light, String status) {
-    final tone = light == null
-        ? Colors.white.withValues(alpha: 0.64)
-        : guideV3LightColor(light);
-    return Container(
-      key: const ValueKey('partner-card-v3-status'),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (light != null) ...[
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              light.label,
-              style: AppTypography.caption.copyWith(
-                color: tone,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            status,
-            style: AppTypography.caption.copyWith(
-              color: Colors.white.withValues(alpha: 0.88),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
+  /// 燈號＋短狀態，放在原本熱度膠囊的位置（v3 沒有熱度）。Bruce 2026-10-21 燈號標籤規格：
+  /// 左邊日本橫式三燈信號機、右邊「燈色 狀態」整句同色霓虹字，沒有底色與框；燈號讀不懂就
+  /// 只寫狀態、不畫信號機。高度沿用原本膠囊，卡片其他東西不會移動。
+  Widget _buildGuideV3StatusRow(GuideV3Light? light, String status) {
+    final tone = light == null ? null : partnerSignalColor(light);
+    final label = light == null ? status : '${light.label} $status';
+    final style = AppTypography.caption.copyWith(
+      // 13 是這一列的局部字級（DESIGN.md §3 登記例外），配 16 高的信號機。
+      fontSize: 13,
+      height: 1.2,
+      letterSpacing: 0,
+      fontWeight: FontWeight.w700,
+      color: tone ?? Colors.white.withValues(alpha: 0.88),
+      // 靜態霓虹：兩層同色光只貼著筆畫（DESIGN.md §7 登記）。
+      shadows: tone == null
+          ? null
+          : [
+              Shadow(color: tone.withValues(alpha: 0.45), blurRadius: 2),
+              Shadow(color: tone.withValues(alpha: 0.20), blurRadius: 5),
+            ],
     );
+    // LayoutBuilder：在卡片自己的 Material 底下量字（跟原本膠囊吃同一組預設字型），
+    // 也拿得到這一列能用的寬度。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 信號機加整句放不下（窄畫面或大字）就拿掉信號機，字照樣完整顯示，不默默截斷
+        // （Eric 2026-10-21 選 A）；連字都放不下才用省略號。
+        final fits = JapaneseLedSignal.size.width +
+                _signalGap +
+                _measureLine(context, label, style).width <=
+            constraints.maxWidth;
+        final signalLight = fits ? light : null;
+        return SizedBox(
+          key: const ValueKey('partner-card-v3-status'),
+          // 原本膠囊的高度：上下各 4 內距＋1 邊框，加上一行 12 號粗體。那行字沒設行高，
+          // 跟著預設字型與字縮放走，所以用同一組設定量，不寫死數字（大字時一起長高）。
+          height: _measureLine(context, status, _legacyStatusStyle).height +
+              2 * (4 + 1),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (signalLight != null) ...[
+                JapaneseLedSignal(light: signalLight),
+                const SizedBox(width: _signalGap),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: style,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static const double _signalGap = 6;
+
+  /// 改版前膠囊裡那行字（12 號粗體）。
+  static final TextStyle _legacyStatusStyle =
+      AppTypography.caption.copyWith(fontWeight: FontWeight.w700);
+
+  /// 用跟 Text 一樣的預設字型、粗體設定、字縮放與語系量一行字的大小，量完就丟。
+  Size _measureLine(BuildContext context, String text, TextStyle style) {
+    final defaultStyle = DefaultTextStyle.of(context);
+    var effective = defaultStyle.style.merge(style);
+    if (MediaQuery.boldTextOf(context)) {
+      effective = effective.merge(const TextStyle(fontWeight: FontWeight.bold));
+    }
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: effective),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
+      textHeightBehavior: defaultStyle.textHeightBehavior ??
+          DefaultTextHeightBehavior.maybeOf(context),
+      maxLines: 1,
+    )..layout();
+    final size = painter.size;
+    painter.dispose();
+    return size;
   }
 
   Widget _buildTrailing(String date) {
@@ -315,7 +359,7 @@ class PartnerListCard extends StatelessWidget {
                         ] else if (guideV3 != null &&
                             guideV3Status != null) ...[
                           const SizedBox(height: 6),
-                          _buildGuideV3StatusPill(guideV3.light, guideV3Status),
+                          _buildGuideV3StatusRow(guideV3.light, guideV3Status),
                         ],
                         if (tags.isNotEmpty) ...[
                           const SizedBox(height: 4),
