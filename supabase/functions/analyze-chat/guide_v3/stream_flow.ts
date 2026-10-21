@@ -255,7 +255,7 @@ export interface GuideV3StreamDeps {
   /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，handler 把關；Bruce 2026-10-20「可以」）：只在 twoStage
   /// 開時有作用。程式照 runId 抽，抽到時一張卡的規格多寫短版的誇法。沒給或 false：一字不變。
   shortPraise?: boolean;
-  /// 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，handler 把關；Bruce 2026-10-20「改」）：只在 twoStage
+  /// 帶張力改寫法 v2（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，handler 把關；Bruce 2026-10-21「改」：推拉換成三條不要）：只在 twoStage
   /// 開時有作用。排卡不變，寫卡與說明看到的帶張力寫法換新的。沒給或 false：一字不變。
   tensionStyle?: boolean;
   /// 「這題」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，handler 把關；Bruce 2026-10-20 PR #97

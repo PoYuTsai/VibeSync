@@ -1,6 +1,6 @@
-// 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，Bruce 2026-10-20「改」）從正式入口走
+// 帶張力改寫法 v2（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，Bruce 2026-10-21「改」：推拉換成三條不要）從正式入口走
 //（guide_v3/v3_stream_harness.ts：假 Supabase、假模型）：env 每次請求設定。開時排卡不變（帶張力照排），寫卡
-// 與說明看到的帶張力寫法換新的；沒開一字不變；自傷關心照舊不打寫卡。事件照種類找。
+// 與說明看到的帶張力推拉那一條換成三條不要；沒開一字不變；自傷關心照舊不打寫卡。事件照種類找。
 //
 // 寫卡的 streaming_fallback.ts 一載入就存下 fetch：轉接器要放第一個 import，入口模組也要在 env 裝好
 // 之後才動態載入（STREAM_ANALYZE_ENABLED 是載入時讀的常數）。
@@ -160,7 +160,7 @@ const bodyOf = (out: V3HarnessOutcome, stage: string) =>
 const tasksOf = (out: V3HarnessOutcome) =>
   out.events.filter((e) => e.type === "analysis.card").map((e) => e.task);
 
-Deno.test("從正式入口：ANALYZE_GUIDE_V3_TENSION_STYLE=on，帶張力照排（卡的任務跟沒開一樣），寫卡與說明看到的帶張力換新寫法", async () => {
+Deno.test("從正式入口：ANALYZE_GUIDE_V3_TENSION_STYLE=on，帶張力照排（卡的任務跟沒開一樣），寫卡與說明看到的推拉那一條換成三條不要", async () => {
   const off = await analyze({ env: {} });
   const on = await analyze({ env: { ANALYZE_GUIDE_V3_TENSION_STYLE: "on" } });
   assertEquals(on.status, 200);
@@ -168,8 +168,10 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_TENSION_STYLE=on，帶張力照排
   assertEquals(tasksOf(on).filter((t) => t === "tension").length, 1);
   const writeOn = systemText(bodyOf(on, "write")!);
   assert(writeOn.includes(TENSION_STYLE_LINE));
-  assertEquals(writeOn.includes(TWO_STAGE_TENSION_LINE), false);
-  assertEquals(writeOn.includes("刻意誤解"), false);
+  assertEquals(writeOn.includes("  - 推拉："), false);
+  // 帶張力的定義與手法照兩段式原本的寫法。
+  assert(writeOn.includes(TWO_STAGE_TENSION_LINE));
+  assert(writeOn.includes("刻意誤解"));
   // 寫卡的使用者訊息（規格）不變。
   assertEquals(
     userText(bodyOf(on, "write")!),
@@ -189,6 +191,7 @@ Deno.test("從正式入口：帶張力改寫法沒設、off、或 test 但不是
     assertEquals(out.status, 200, String(flag));
     const write = systemText(bodyOf(out, "write")!);
     assert(write.includes(TWO_STAGE_TENSION_LINE));
+    assert(write.includes("  - 推拉："));
     assertEquals(write.includes(TENSION_STYLE_LINE), false);
     assertEquals(
       systemText(bodyOf(out, "explain")!).includes(TENSION_STYLE_EXPLAIN_RULE),
@@ -201,7 +204,7 @@ Deno.test("從正式入口：帶張力改寫法開，卡片照抄新寫法的字
   const out = await analyze({
     env: { ANALYZE_GUIDE_V3_TENSION_STYLE: "on" },
     cardText: (card) =>
-      card === 1 ? `好吃 ${TENSION_STYLE_WRITER_SENTINELS[2]}` : undefined,
+      card === 1 ? `好吃 ${TENSION_STYLE_WRITER_SENTINELS[1]}` : undefined,
     explainText: (card) =>
       card === 2 ? `${TENSION_STYLE_EXPLAIN_SENTINELS[0]}。` : undefined,
   });
@@ -221,7 +224,7 @@ Deno.test("從正式入口：帶張力改寫法開，卡片照抄新寫法的字
   const off = await analyze({
     env: {},
     cardText: (card) =>
-      card === 1 ? `好吃 ${TENSION_STYLE_WRITER_SENTINELS[2]}` : undefined,
+      card === 1 ? `好吃 ${TENSION_STYLE_WRITER_SENTINELS[1]}` : undefined,
   });
   assertEquals(
     (off.finalResult?.guideV3Trace as { removed: unknown[] }).removed,
