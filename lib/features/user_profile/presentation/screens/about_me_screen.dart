@@ -13,6 +13,7 @@ import '../../data/providers/partner_style_providers.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/user_profile.dart';
 import '../../domain/services/growth_preview_builder.dart';
+import '../widgets/about_me_option_labels.dart';
 import '../widgets/coach_context_preview_sheet.dart';
 import '../widgets/growth_preview_sheet.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
@@ -365,7 +366,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                 title: '我現在卡在哪',
                 subtitle: '最多 2 個，教練會盯著這裡幫你推一把。',
                 options: StuckPoint.values,
-                labelOf: _stuckPointLabel,
+                labelOf: stuckPointLabel,
                 isSelected: _draftStuckPoints.contains,
                 onTap: _toggleStuckPoint,
               ),
@@ -374,7 +375,7 @@ class _AboutMeScreenState extends ConsumerState<AboutMeScreen> {
                 title: '我想達成什麼',
                 subtitle: '最多 3 個，這是教練幫你的主要方向。',
                 options: PracticeGoal.values,
-                labelOf: _practiceGoalLabel,
+                labelOf: practiceGoalLabel,
                 isSelected: _draftGoals.contains,
                 onTap: _toggleGoal,
               ),
@@ -754,22 +755,6 @@ class _PrivacyNote extends StatelessWidget {
     );
   }
 }
-
-String _stuckPointLabel(StuckPoint s) => switch (s) {
-      StuckPoint.fadesOut => '聊一聊就冷掉，不知道怎麼接下去',
-      StuckPoint.dontKnowHowToAsk => '不知道怎麼開口約',
-      StuckPoint.anxiousWontSend => '會緊張、怕講錯話不敢傳',
-      StuckPoint.overExplains => '話太多、一直在解釋自己',
-      StuckPoint.leftOnRead => '一直被已讀不回',
-    };
-
-String _practiceGoalLabel(PracticeGoal g) => switch (g) {
-      PracticeGoal.softInvite => '想約得出來',
-      PracticeGoal.comfortableChat => '想先能自在聊天，不要那麼緊繃',
-      PracticeGoal.humorousReply => '想讓對話更幽默、有來有往',
-      PracticeGoal.buildCloseness => '想培養穩定的親近感',
-      PracticeGoal.findCompatiblePartner => '想找到聊得來的對象、不設限交往',
-    };
 
 String _topicSeedLabel(TopicSeed t) => switch (t) {
       TopicSeed.fitness => '健身',

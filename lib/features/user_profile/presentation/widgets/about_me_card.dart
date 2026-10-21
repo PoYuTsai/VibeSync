@@ -8,6 +8,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/glassmorphic_container.dart';
 import '../../data/providers/user_profile_providers.dart';
 import '../../domain/entities/user_profile.dart';
+import 'about_me_option_labels.dart';
 import '../../../../core/services/app_haptics.dart';
 
 /// 我的報告頂部「關於我」卡片。
@@ -168,13 +169,13 @@ class _FilledState extends StatelessWidget {
     if (profile.stuckPoints.isNotEmpty) {
       lines.add(_summaryLine(
         '卡在哪',
-        profile.stuckPoints.map(_stuckPointLabel).join('、'),
+        profile.stuckPoints.map(stuckPointLabel).join('、'),
       ));
     }
     if (profile.practiceGoals.isNotEmpty) {
       lines.add(_summaryLine(
         '想達成什麼',
-        profile.practiceGoals.map(_practiceGoalLabel).join('、'),
+        profile.practiceGoals.map(practiceGoalLabel).join('、'),
       ));
     }
     if (profile.topicSeeds.isNotEmpty) {
@@ -347,22 +348,6 @@ class _ProfilePill extends StatelessWidget {
     );
   }
 }
-
-String _stuckPointLabel(StuckPoint s) => switch (s) {
-      StuckPoint.fadesOut => '聊一聊就冷掉，不知道怎麼接下去',
-      StuckPoint.dontKnowHowToAsk => '不知道怎麼開口約',
-      StuckPoint.anxiousWontSend => '會緊張、怕講錯話不敢傳',
-      StuckPoint.overExplains => '話太多、一直在解釋自己',
-      StuckPoint.leftOnRead => '一直被已讀不回',
-    };
-
-String _practiceGoalLabel(PracticeGoal g) => switch (g) {
-      PracticeGoal.softInvite => '想約得出來',
-      PracticeGoal.comfortableChat => '想先能自在聊天，不要那麼緊繃',
-      PracticeGoal.humorousReply => '想讓對話更幽默、有來有往',
-      PracticeGoal.buildCloseness => '想培養穩定的親近感',
-      PracticeGoal.findCompatiblePartner => '想找到聊得來的對象、不設限交往',
-    };
 
 String _topicSeedLabel(TopicSeed t) => switch (t) {
       TopicSeed.fitness => '健身',
