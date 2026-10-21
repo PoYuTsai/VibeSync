@@ -227,37 +227,24 @@ export const TWO_STAGE_A6_EDITS: readonly LineEdit[] = [
 ];
 
 /// 寫卡看到的 A5、A6（從說明書原文改出來）。
-// ── 帶張力改寫法（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，Bruce 2026-10-20「改」）──────────────────────
-// Bruce 第 3 輪盲選 4:4：帶張力照樣可以出，但玩笑只對事情本身，或誇張地誇她；不打分、不說她別有用意、
-// 不擺自己比較厲害。他不要的那幾張（替她打分、說她想要什麼、擺自己的架子）從帶張力的手法長出來：材料取
-// 「矛盾、疑點」、「刻意誤解」、推拉的「推」與「挑戰」。開關開時，在兩段式的 A5 之上再改這幾行；排卡不變。
+// ── 帶張力改寫法 v2（開關 ANALYZE_GUIDE_V3_TENSION_STYLE，Bruce 2026-10-21「改」）──────────────────────
+// 第 4 輪換掉帶張力的定義、材料與手法（玩笑只對事情本身），Bruce 盲選 3:6 輸（PR #97 issuecomment-6295195588）：
+// 他留下的舊版是輕輕虧她、拐個彎誇她，那一版連這種也拿掉了。v2 照兩段式原本的寫法，推拉那一條拿掉，換成三條
+// 不要：不打分、不說她別有用意、不擺自己比較厲害（Bruce 2026-10-21「改」，issuecomment-6306094638）。開關開時
+// 在兩段式的 A5 之上只改這一行；排卡不變。
 
-/// 帶張力的新說法（照 Bruce 這次的話）。
+/// 推拉那一條的位置（虧事不虧人之後、力道看她之前）換成這一行。
 export const TENSION_STYLE_LINE =
-  "- **帶張力**：開一個輕的玩笑：只對事情本身（吃的、去的地方、遇到的狀況）開，或用一看就誇張的方式誇她；不替她打分、不說她別有用意、不把自己擺得比較厲害。留好退路，她接了就一起玩，沒接也不尷尬。";
-
-/// 材料不再從「矛盾、疑點」找（會變成抓她的語病、猜她的用意）。
-export const TENSION_STYLE_MATERIAL_LINE =
-  "  - 材料從事情本身和她話裡誇張的地方長出來。";
+  "  - 不替她打分、不說她別有用意、不把自己擺得比較厲害。";
 
 export const TENSION_STYLE_A5_EDITS: readonly LineEdit[] = [
-  { startsWith: "- **帶張力**：", edit: () => TENSION_STYLE_LINE },
-  { startsWith: "  - 材料從她話裡", edit: () => TENSION_STYLE_MATERIAL_LINE },
-  // 刻意誤解：常變成「你這是在暗示…」那種替她說用意的話。其餘手法照留。
-  {
-    startsWith: "  - 手法輪流用：",
-    edit: (l) => replaceOnce(l, "刻意誤解（偶爾）、", ""),
-  },
-  // 推拉（推觀點、挑戰）：常變成打分、擺自己比較懂；帶張力不再用。
-  { startsWith: "  - 推拉：", edit: () => null },
+  { startsWith: "  - 推拉：", edit: () => TENSION_STYLE_LINE },
 ];
 
-/// 卡片多比的外洩哨兵（上面兩行裡只有提示詞才寫的說法）：抄進卡片就拿掉那張。
+/// 卡片多比的外洩哨兵（上面那一行裡只有提示詞才寫的說法）：抄進卡片就拿掉那張。
 export const TENSION_STYLE_WRITER_SENTINELS: readonly string[] = [
-  "用一看就誇張的方式誇她",
   "不替她打分、不說她別有用意",
   "不把自己擺得比較厲害",
-  "事情本身和她話裡誇張的地方",
 ];
 
 export function twoStageWriterSections(

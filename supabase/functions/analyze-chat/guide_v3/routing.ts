@@ -83,7 +83,7 @@ export function shouldUseGuideV3ShortPraise(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
-/// 帶張力改寫法（Bruce 2026-10-20「改」）：開關 ANALYZE_GUIDE_V3_TENSION_STYLE，跟 ANALYZE_GUIDE_V3 一樣
+/// 帶張力改寫法 v2（Bruce 2026-10-21「改」：推拉換成三條不要，見 two_stage_prompts.ts）：開關 ANALYZE_GUIDE_V3_TENSION_STYLE，跟 ANALYZE_GUIDE_V3 一樣
 /// off／test／on，只在兩段式開著時才有作用（入口把關）。排卡不變，只換寫卡與說明看到的帶張力寫法。
 export function shouldUseGuideV3TensionStyle(args: {
   readonly mode: GuideV3Mode;
