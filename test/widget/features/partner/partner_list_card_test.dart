@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vibesync/core/theme/app_typography.dart';
@@ -8,6 +9,8 @@ import 'package:vibesync/features/partner/domain/extensions/partner_aggregates.d
 import 'package:vibesync/features/partner/presentation/widgets/japanese_led_signal.dart';
 import 'package:vibesync/features/partner/presentation/widgets/partner_list_card.dart';
 import 'package:vibesync/shared/widgets/brand/liquid_motion_frame.dart';
+
+import '../../../visual_proof/proof_support.dart' show loadProofFonts;
 
 Partner _p(String id, String name) => Partner(
       id: id,
@@ -92,6 +95,44 @@ Widget _legacyPill(String status) => Material(
     );
 
 final _statusRow = find.byKey(const ValueKey('partner-card-v3-status'));
+final _legacyRow = find.byKey(const ValueKey('legacy-pill'));
+
+/// 卡片文字區（姓名、標籤列、興趣列那一欄）的寬度＝標籤列能用的寬度。
+double _textColumnWidth(WidgetTester t) => t
+    .getSize(
+      find
+          .ancestor(of: find.text('Alice'), matching: find.byType(Column))
+          .first,
+    )
+    .width;
+
+/// 標籤列那行字：整句自然寬度、有沒有被省略號截掉、有沒有信號機。
+({double fullWidth, bool truncated, bool hasSignal}) _labelLayout(
+  WidgetTester t,
+  String text,
+) {
+  final paragraph = t.renderObject<RenderParagraph>(
+    find.descendant(of: _statusRow, matching: find.text(text)),
+  );
+  return (
+    fullWidth: paragraph.getMaxIntrinsicWidth(double.infinity),
+    truncated: paragraph.didExceedMaxLines,
+    hasSignal: find
+        .descendant(of: _statusRow, matching: find.byType(JapaneseLedSignal))
+        .evaluate()
+        .isNotEmpty,
+  );
+}
+
+/// 信號機（42）＋間距 6＋整句，放得下才畫信號機。
+bool _fitsWithSignal(double fullWidth, double available) =>
+    JapaneseLedSignal.size.width + 6 + fullWidth <= available;
+
+const _standardLabels = [
+  (GuideV3Light.yellow, GuideV3Decision.send, '輪到你回', '黃燈 輪到你回'),
+  (GuideV3Light.green, GuideV3Decision.send, '輪到你回', '綠燈 輪到你回'),
+  (GuideV3Light.red, GuideV3Decision.hold, '先等她', '紅燈 先等她'),
+];
 
 void main() {
   testWidgets('renders core visual pieces given Partner + aggregate', (
@@ -491,25 +532,184 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('窄卡與大字：維持一行、放不下就省略，不溢出也不加高', (t) async {
-      // 288 = 320 寬手機扣掉首頁左右各 16 邊距後的卡片寬。
-      for (final scale in const [1.0, 1.3, 2.0]) {
-        await _pump(
-          t,
-          _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
-          width: 288,
-          textScale: scale,
-        );
-        expect(t.takeException(), isNull, reason: 'scale $scale');
-        final label = t.getRect(find.text('黃燈 輪到你回'));
-        final row = t.getRect(_statusRow);
-        expect(label.height, moreOrLessEquals(13 * scale * 1.2, epsilon: 1),
-            reason: 'scale $scale');
-        expect(label.height, lessThanOrEqualTo(row.height),
-            reason: 'scale $scale');
-        expect(label.right, lessThanOrEqualTo(row.right + 0.01),
-            reason: 'scale $scale');
+    testWidgets('放不下的規則：先拿掉信號機，連字都放不下才省略；高度不變（跟字型無關）', (t) async {
+      // 288／358 = 320／390 寬手機扣掉首頁左右各 16 邊距後的卡片寬。
+      for (final width in const [288.0, 358.0]) {
+        for (final scale in const [1.0, 1.3, 2.0]) {
+          for (final (light, decision, status, text) in _standardLabels) {
+            final when = '$text, $width×$scale';
+            await _pump(
+              t,
+              Column(
+                children: [
+                  _v3Card(light: light, decision: decision),
+                  _legacyPill(status),
+                ],
+              ),
+              width: width,
+              textScale: scale,
+            );
+            expect(t.takeException(), isNull, reason: when);
+
+            final layout = _labelLayout(t, text);
+            final available = _textColumnWidth(t);
+            expect(
+              layout.hasSignal,
+              _fitsWithSignal(layout.fullWidth, available),
+              reason: when,
+            );
+            // 有信號機就一定完整；被截只會發生在連字本身都比可用寬度寬的時候。
+            expect(
+              layout.truncated,
+              !layout.hasSignal && layout.fullWidth > available,
+              reason: when,
+            );
+            expect(
+              t.getSize(_statusRow).height,
+              t.getSize(_legacyRow).height,
+              reason: when,
+            );
+          }
+        }
       }
+    });
+  });
+
+  group('v3 燈號標籤：窄畫面與大字（真實繁中字型）', () {
+    // 測試預設字型連空白都是一個全形寬，量不出真機放不放得下；這組改用對照圖工具的
+    // 繁中字型（CI 也裝同一套），跟 Codex 審查點名的尺寸逐一對。
+    setUpAll(loadProofFonts);
+
+    Future<void> pumpReal(
+      WidgetTester t,
+      Widget child, {
+      required double width,
+      required double textScale,
+    }) async {
+      await t.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(fontFamily: 'AppTC', useMaterial3: true),
+          home: Scaffold(
+            body: DefaultTextStyle.merge(
+              style: const TextStyle(fontFamily: 'AppTC'),
+              child: MediaQuery(
+                data: MediaQueryData(
+                  disableAnimations: true,
+                  textScaler: TextScaler.linear(textScale),
+                ),
+                child: SizedBox(width: width, child: child),
+              ),
+            ),
+          ),
+        ),
+      );
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('320×1.0、390×2.0、320×1.3：放不下信號機就拿掉，整句完整、高度不變', (t) async {
+      for (final (width, scale) in const [
+        (288.0, 1.0),
+        (358.0, 2.0),
+        (288.0, 1.3),
+      ]) {
+        for (final (light, decision, status, text) in _standardLabels) {
+          final when = '$text, ${width + 32}×$scale';
+          await pumpReal(
+            t,
+            Column(
+              children: [
+                _v3Card(light: light, decision: decision),
+                _legacyPill(status),
+              ],
+            ),
+            width: width,
+            textScale: scale,
+          );
+          expect(t.takeException(), isNull, reason: when);
+
+          final layout = _labelLayout(t, text);
+          final paragraph = t.renderObject<RenderParagraph>(find.text(text));
+          expect(layout.truncated, isFalse, reason: when);
+          expect(
+            paragraph.size.width,
+            greaterThanOrEqualTo(layout.fullWidth - 0.01),
+            reason: when,
+          );
+          expect(
+            layout.hasSignal,
+            _fitsWithSignal(layout.fullWidth, _textColumnWidth(t)),
+            reason: when,
+          );
+          // 「輪到你回」這兩句在三種尺寸都明顯放不下信號機（差 13 以上）。
+          if (status == '輪到你回') {
+            expect(layout.hasSignal, isFalse, reason: when);
+          }
+          expect(
+            t.getSize(_statusRow).height,
+            t.getSize(_legacyRow).height,
+            reason: when,
+          );
+        }
+      }
+    });
+
+    testWidgets('390×1.0：照樣有信號機，整句完整', (t) async {
+      for (final (light, decision, status, text) in _standardLabels) {
+        await pumpReal(
+          t,
+          Column(
+            children: [
+              _v3Card(light: light, decision: decision),
+              _legacyPill(status),
+            ],
+          ),
+          width: 358,
+          textScale: 1.0,
+        );
+        final layout = _labelLayout(t, text);
+        expect(layout.hasSignal, isTrue, reason: text);
+        expect(layout.truncated, isFalse, reason: text);
+        expect(
+          t.getSize(_statusRow).height,
+          t.getSize(_legacyRow).height,
+          reason: text,
+        );
+      }
+    });
+
+    testWidgets('連字都放不下（320×2.0）才用省略號；沒有信號機、不溢出、高度不變', (t) async {
+      await pumpReal(
+        t,
+        Column(
+          children: [
+            _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
+            _legacyPill('輪到你回'),
+          ],
+        ),
+        width: 288,
+        textScale: 2.0,
+      );
+      expect(t.takeException(), isNull);
+      final layout = _labelLayout(t, '黃燈 輪到你回');
+      expect(layout.hasSignal, isFalse);
+      expect(layout.fullWidth, greaterThan(_textColumnWidth(t)));
+      expect(layout.truncated, isTrue);
+      expect(t.getSize(_statusRow).height, t.getSize(_legacyRow).height);
+    });
+
+    testWidgets('拿掉信號機時 VoiceOver 一樣念整句', (t) async {
+      final semantics = t.ensureSemantics();
+      await pumpReal(
+        t,
+        _v3Card(light: GuideV3Light.yellow, decision: GuideV3Decision.send),
+        width: 288,
+        textScale: 1.0,
+      );
+      expect(find.byType(JapaneseLedSignal), findsNothing);
+      final node = t.getSemantics(find.text('黃燈 輪到你回'));
+      expect(node.label, contains('黃燈 輪到你回'));
+      expect(find.bySemanticsLabel(RegExp(r'^黃燈$')), findsNothing);
+      semantics.dispose();
     });
   });
 }

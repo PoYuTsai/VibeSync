@@ -283,6 +283,16 @@ Map<String, Object?> _cardGeometry(WidgetTester tester, _Seed s) {
     'neededWidth': _r(needed),
     'fits': needed <= available + 0.01 && !truncated,
     'truncated': truncated,
+    // 用型別名字找，改版前沒有這個元件也能編譯。
+    'signal': find
+        .descendant(
+          of: slot,
+          matching: find.byWidgetPredicate(
+            (w) => w.runtimeType.toString() == 'JapaneseLedSignal',
+          ),
+        )
+        .evaluate()
+        .isNotEmpty,
   };
   return out;
 }
