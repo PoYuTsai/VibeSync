@@ -847,7 +847,7 @@ void main() {
       expect(after.units, isNot(before.units), reason: '改了左右則數要不一樣');
       expect(find.text(before.text), findsOneWidget);
 
-      final markAll = find.text('全部都是對方說的');
+      final markAll = find.text('全是她說');
       await tester.ensureVisible(markAll);
       await tester.tap(markAll);
       await tester.pump();

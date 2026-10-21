@@ -307,6 +307,37 @@ void main() {
       expect(result, isNotNull);
     });
 
+    // 2026-10-21 改版：確認格收進提醒卡，在訊息板上面，不必捲到所有訊息下面。
+    testWidgets('同一人確認格跟提醒在同一張卡、排在訊息板上面', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: const RecognizedConversation(
+            contactName: 'Amber',
+            messageCount: 1,
+            summary: '識別到 1 則訊息',
+            messages: [
+              RecognizedMessage(side: 'left', isFromMe: false, content: '晚安'),
+            ],
+          ),
+          warningMessage: '這張截圖辨識到「Amber」，和目前對象「小美」不同。',
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      final summary = tester.getRect(
+        find.text('辨識到的名字和目前對象不同，請先確認是不是同一人。'),
+      );
+      final confirm = tester.getRect(find.text('我確認這些截圖都是目前這位對象'));
+      final board = tester.getRect(
+        find.byKey(const ValueKey('ocr-message-edit-workspace')),
+      );
+      expect(confirm.top, greaterThan(summary.bottom));
+      expect(confirm.bottom, lessThan(board.top));
+    });
+
     testWidgets('對象頁名稱相符時不重複要求確認，並隱藏名字欄', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
@@ -411,12 +442,10 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      // 保留：滑動提示一行 + 低信心警示。
+      // 保留：滑動提示一行 + 低信心警示。左右對應改由常駐圖例講（2026-10-21）。
       expect(find.text('判錯邊？滑動訊息切換說話者。'), findsOneWidget);
-      expect(
-        find.text('右滑＝我說，左滑＝她說；點訊息可改字或刪除。'),
-        findsOneWidget,
-      );
+      expect(find.text('點訊息可改字或刪除。'), findsOneWidget);
+      expect(_directionLegend(), findsOneWidget);
       expect(find.text('加入方式'), findsNothing);
       expect(find.text('另開分析片段'), findsNothing);
       expect(find.text('這次辨識信心較低，請先快速確認內容。'), findsOneWidget);
@@ -521,19 +550,14 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
-        findsOneWidget,
-      );
+      expect(_directionLegend(), findsOneWidget);
 
       // 第 0 則「在幹嘛」初始她說，右滑改我說。
       await tester.drag(find.text('在幹嘛'), const Offset(400, 0));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
-        findsNothing,
-      );
+      // 左右圖例常駐（2026-10-21 改版），滑過也不收。
+      expect(_directionLegend(), findsOneWidget);
 
       await _tapVisible(tester, find.text('確認本次內容'));
 
@@ -579,20 +603,14 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
-        findsOneWidget,
-      );
+      expect(_directionLegend(), findsOneWidget);
 
       // 第 0 則「在幹嘛」初始她說，右滑一小段（已過 touch slop 但未過切換門檻）
       // 應彈回、不切換。
       await tester.drag(find.text('在幹嘛'), const Offset(40, 0));
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
-        findsOneWidget,
-      );
+      expect(_directionLegend(), findsOneWidget);
 
       await _tapVisible(tester, find.text('確認本次內容'));
 
@@ -713,7 +731,7 @@ void main() {
       expect(find.text('引用對方'), findsNothing);
     });
 
-    testWidgets('有「我說」時提供一鍵「全部都是對方說的」兜底', (tester) async {
+    testWidgets('有「我說」時提供一鍵「全是她說」兜底', (tester) async {
       await _useTallSurface(tester);
       ScreenshotRecognitionDialogResult? dialogResult;
 
@@ -727,7 +745,8 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      await _tapVisible(tester, find.text('全部都是對方說的'));
+      expect(find.text('全部都是對方說的'), findsNothing);
+      await _tapVisible(tester, find.text('全是她說'));
       await _tapVisible(tester, find.text('確認本次內容'));
 
       expect(dialogResult, isNotNull);
@@ -788,15 +807,54 @@ void main() {
         greaterThan(0),
       );
 
-      // 使用者動手（一鍵改對方）即停，位移歸零並留下靜態圖例。
-      await tester.tap(find.text('全部都是對方說的'));
+      // 使用者動手（全是她說）即停，位移歸零；左右圖例常駐。
+      await tester.tap(find.text('全是她說'));
       await tester.pump();
       expect(_tutorialShiftX(tester), 0);
+      expect(_directionLegend(), findsOneWidget);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('教學位移時露出的那條跟真的滑一樣：右移露「改成我說」、左移露「改成她說」',
+        (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pump();
+      await tester.pump(); // flush post-frame autoplay scheduling
+      await tester.pump(const Duration(milliseconds: 650));
+
+      // 右移停住的那段：左邊讓出來的寬度＝位移，「改成我說」整段落在裡面。
+      await tester.pump(const Duration(milliseconds: 600));
+      final rightShift = _tutorialShiftX(tester);
+      expect(rightShift, greaterThan(60), reason: '要移得夠開，露出的字才看得到');
+      // Transform 只移畫面，這裡量到的是那一排原本的位置。
+      final firstRow = tester.getRect(
+        find.byKey(const ValueKey('ocr-swipe-tutorial-shift')),
+      );
+      final toMeLabel = tester.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('ocr-swipe-tutorial-right-hint')),
+          matching: find.text('改成我說'),
+        ),
+      );
+      expect(toMeLabel.left, greaterThanOrEqualTo(firstRow.left));
+      expect(toMeLabel.right, lessThanOrEqualTo(firstRow.left + rightShift));
+
+      // 同一輪後半左移：右邊讓出來的那段露出「改成她說」。
+      await tester.pump(const Duration(milliseconds: 1300));
+      expect(_tutorialShiftX(tester), lessThan(-60));
       expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
-        findsOneWidget,
+        _tutorialHintOpacity(tester, 'ocr-swipe-tutorial-left-hint'),
+        greaterThan(0),
       );
       await tester.pumpAndSettle();
+      expect(_tutorialShiftX(tester), 0);
     });
 
     testWidgets('關閉再開仍會自動播，問號也可手動重播', (tester) async {
@@ -856,13 +914,10 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       expect(_tutorialShiftX(tester), 0);
-      expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
-        findsOneWidget,
-      );
+      expect(_directionLegend(), findsOneWidget);
     });
 
-    testWidgets('首次進場延遲內一鍵改為對方也會取消自動教學', (tester) async {
+    testWidgets('首次進場延遲內按「全是她說」也會取消自動教學', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -873,7 +928,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pump();
       await tester.pump(); // flush post-frame autoplay scheduling
-      final markAllButton = find.text('全部都是對方說的');
+      final markAllButton = find.text('全是她說');
       await tester.ensureVisible(markAllButton);
       await tester.pump();
       await tester.tap(markAllButton);
@@ -883,7 +938,7 @@ void main() {
       expect(_tutorialShiftX(tester), 0);
     });
 
-    testWidgets('reduce-motion 不自動位移，進場直接顯示靜態雙向圖例', (tester) async {
+    testWidgets('reduce-motion 不自動位移，左右圖例照樣在', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -896,12 +951,19 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pump(const Duration(seconds: 2));
       expect(_tutorialShiftX(tester), 0);
+      expect(_directionLegend(), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('ocr-swipe-tutorial-static-legend')),
+        find.descendant(of: _directionLegend(), matching: find.text('她說')),
         findsOneWidget,
       );
-      expect(find.text('右滑 → 我說'), findsWidgets);
-      expect(find.text('左滑 → 她說'), findsWidgets);
+      expect(
+        find.descendant(of: _directionLegend(), matching: find.text('我說')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSemantics(_directionLegend()).label,
+        '左滑改成她說，右滑改成我說。',
+      );
     });
 
     testWidgets('650ms 延遲期間關閉 dialog 會取消 autoplay timer', (tester) async {
@@ -949,7 +1011,7 @@ void main() {
       );
     });
 
-    testWidgets('全部都是對方說的時隱藏兜底鍵', (tester) async {
+    testWidgets('打開時就全是她說：不出現「全是她說」那一格', (tester) async {
       await _useTallSurface(tester);
       await tester.pumpWidget(
         buildDialogHost(
@@ -960,7 +1022,145 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('全部都是對方說的'), findsNothing);
+      expect(find.text('全是她說'), findsNothing);
+      expect(find.text('已全部改成她說'), findsNothing);
+    });
+  });
+
+  // 「全是她說」移到說明正下方、按完保留位置加「復原」（Bruce 2026-10-21
+  // 示意稿）：原本在所有訊息最後，使用者常常手動改完才看到。
+  group('ScreenshotRecognitionDialog 全是她說與復原', () {
+    final markAllHers = find.byKey(const ValueKey('ocr-mark-all-hers'));
+    final markedDone = find.byKey(const ValueKey('ocr-mark-all-hers-done'));
+    final undo = find.byKey(const ValueKey('ocr-mark-all-hers-undo'));
+
+    Future<void> openMixed(
+      WidgetTester tester, {
+      ValueChanged<ScreenshotRecognitionDialogResult?>? onResult,
+    }) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: mixedConversation,
+          reduceMotion: true,
+          onResult: onResult,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('放在「判錯邊？」說明正下方、第一則訊息上面', (tester) async {
+      await openMixed(tester);
+
+      final hint = tester.getRect(find.text('點訊息可改字或刪除。'));
+      final slot = tester.getRect(markAllHers);
+      final firstMessage = tester.getRect(find.text('在幹嘛'));
+      expect(slot.top, greaterThan(hint.bottom));
+      expect(slot.bottom, lessThan(firstMessage.top));
+      expect(slot.height, 44);
+    });
+
+    testWidgets('按下後同一格改成「已全部改成她說・復原」，位置和高度不變、第一則不跳',
+        (tester) async {
+      await openMixed(tester);
+      // 量相對位置：訊息換邊後整段變短，捲到底時整頁會一起被夾回，絕對座標
+      // 會跟著動，但那一格離說明、離第一則的距離不能變。
+      ({double fromHint, double height, double toFirstMessage}) measure(
+        Finder slot,
+      ) {
+        final hint = tester.getRect(find.text('點訊息可改字或刪除。'));
+        final rect = tester.getRect(slot);
+        final firstMessage = tester.getRect(find.text('在幹嘛'));
+        return (
+          fromHint: rect.top - hint.bottom,
+          height: rect.height,
+          toFirstMessage: firstMessage.top - rect.bottom,
+        );
+      }
+
+      final before = measure(markAllHers);
+      await _tapVisible(tester, find.text('全是她說'));
+
+      expect(find.text('全是她說'), findsNothing);
+      expect(find.text('已全部改成她說'), findsOneWidget);
+      expect(undo, findsOneWidget);
+      expect(measure(markedDone), before);
+      expect(before.height, 44);
+    });
+
+    testWidgets('按「復原」：每則回到按之前的說話者，這格變回「全是她說」', (tester) async {
+      ScreenshotRecognitionDialogResult? dialogResult;
+      await openMixed(tester, onResult: (result) => dialogResult = result);
+
+      await _tapVisible(tester, find.text('全是她說'));
+      await _tapVisible(tester, find.text('復原'));
+
+      expect(find.text('全是她說'), findsOneWidget);
+      expect(find.text('已全部改成她說'), findsNothing);
+      await _tapVisible(tester, find.text('確認本次內容'));
+      expect(
+        [for (final message in dialogResult!.messages) message.isFromMe],
+        [false, true, false],
+      );
+    });
+
+    testWidgets('按完又手動把某則滑成「我說」：復原作廢，這格變回「全是她說」', (tester) async {
+      ScreenshotRecognitionDialogResult? dialogResult;
+      await openMixed(tester, onResult: (result) => dialogResult = result);
+
+      await _tapVisible(tester, find.text('全是她說'));
+      await tester.drag(find.text('這麼晚還沒睡'), const Offset(400, 0));
+      await tester.pumpAndSettle();
+
+      expect(undo, findsNothing);
+      expect(find.text('全是她說'), findsOneWidget);
+      await _tapVisible(tester, find.text('確認本次內容'));
+      expect(
+        [for (final message in dialogResult!.messages) message.isFromMe],
+        [false, false, true],
+      );
+    });
+
+    testWidgets('按完往同一邊再滑（還是她說）：沒換邊，復原照樣在', (tester) async {
+      await openMixed(tester);
+
+      await _tapVisible(tester, find.text('全是她說'));
+      await tester.drag(find.text('在幹嘛'), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+
+      expect(undo, findsOneWidget);
+    });
+
+    testWidgets('沒按按鈕、自己滑到全是她說：顯示「已全部改成她說」但沒有「復原」', (tester) async {
+      await openMixed(tester);
+
+      // 唯一一則「我說」是「剛回到家」，左滑改她說。
+      await tester.drag(find.text('剛回到家'), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已全部改成她說'), findsOneWidget);
+      expect(undo, findsNothing);
+    });
+
+    testWidgets('打開時全是她說、之後滑出「我說」：這格照樣不出現，訊息不往下跳', (tester) async {
+      await _useTallSurface(tester);
+      await tester.pumpWidget(
+        buildDialogHost(
+          recognized: singleSpeakerConversation,
+          reduceMotion: true,
+        ),
+      );
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      final firstMessageTop = tester.getRect(find.text('在幹嘛')).top;
+
+      await tester.drag(find.text('這麼晚還沒睡'), const Offset(400, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('全是她說'), findsNothing);
+      expect(find.text('已全部改成她說'), findsNothing);
+      expect(tester.getRect(find.text('在幹嘛')).top, firstMessageTop);
     });
   });
 
@@ -1514,6 +1714,10 @@ Finder _partnerNameField() {
     description: 'partner name TextField',
   );
 }
+
+/// 對話板上常駐的左右圖例（← 她說／我說 →）。
+Finder _directionLegend() =>
+    find.byKey(const ValueKey('ocr-swipe-direction-legend'));
 
 double _tutorialShiftX(WidgetTester tester) {
   return tester
