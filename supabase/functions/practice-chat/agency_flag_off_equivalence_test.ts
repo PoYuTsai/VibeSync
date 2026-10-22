@@ -111,6 +111,8 @@ const ROUTING_ENV = "PRACTICE_CHAT_MODEL_ROUTING";
 const STANDARD_CLASSIFIER_ENV = "PRACTICE_STANDARD_AGENCY_CLASSIFIER";
 /** Phase 5 WP5／WP6 收尾訊號＋性冒犯階梯旗標（harness 多枚舉的一維環境值）。 */
 const SESSION_END_ENV = "PRACTICE_SESSION_END_SIGNAL";
+/** 大頭照／認識當天記憶修正旗標（harness 多枚舉的一維環境值）。 */
+const PHOTO_MEMORY_FIX_ENV = "PRACTICE_PHOTO_MEMORY_FIX";
 const STYLE_ENV = "PRACTICE_REPLY_STYLE_ENABLED";
 const TEST_ACCOUNT = { id: "user-1", email: "vibesync.test@gmail.com" };
 
@@ -491,6 +493,7 @@ async function observableDigest(
   routingEnv?: string,
   standardClassifierEnv?: string,
   sessionEndEnv?: string,
+  photoMemoryFixEnv?: string,
 ): Promise<ObservableDigest> {
   const fake = makeFake({
     ...c.options,
@@ -509,6 +512,9 @@ async function observableDigest(
       ...(sessionEndEnv === undefined
         ? {}
         : { [SESSION_END_ENV]: sessionEndEnv }),
+      ...(photoMemoryFixEnv === undefined
+        ? {}
+        : { [PHOTO_MEMORY_FIX_ENV]: photoMemoryFixEnv }),
     },
   });
   const lines: string[] = [];
@@ -2195,5 +2201,157 @@ Deno.test({
       if (digestLine(on) !== digestLine(agencyOn)) anyChanged = true;
     }
     assert(anyChanged, "兩支旗標都開時至少要有一個案例的可觀測面不同");
+  },
+});
+
+Deno.test({
+  name:
+    "PRACTICE_PHOTO_MEMORY_FIX 未設／off／亂填時四面等價（含 agency on）；agency 未設或 shadow 時 true 也不得生效；兩支都開時只有 chat 案例會變、Response 不變",
+  ignore: PRINT_GOLDEN,
+  fn: async () => {
+    // 分面寫法沿用 Phase 4.5b／WP6：
+    //   未設／`off`／亂填 → 四面全等 flag-off golden，而且在 agency `true` 的那條
+    //     臂上也逐位元組等於「agency on ＋ 這維未設」。
+    //   agency 未設或 `shadow` ＋ 這維 `true` → 改的全是 agency on 分支的 prompt，
+    //     必須仍然等於同一個 agency 值、這維未設的結果。
+    //   兩支都 `true` → 只有 chat 案例允許不同（messages 與 telemetry 多一個
+    //     key），Response 一律不變（fake 的回覆是固定的）；hint／debrief 全等。
+    const changed: string[] = [];
+    // 主審 1 P3：合併 digest 不同可能只是 telemetry 多了 key；handler 若拔掉傳給
+    // builder 的那兩行、只留 telemetry，前面的判斷照樣成立。另外記下送給模型的
+    // messages 真的變了的案例，standard 與 assisted 各要至少一案。
+    const messagesChanged: string[] = [];
+    for (const c of equivalenceCases()) {
+      const expected = parseGolden(c.name);
+      const agencyOn = await observableDigest(c, "true");
+      for (const env of ["off", "亂填"]) {
+        assertEquals(
+          await observableDigest(
+            c,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          expected,
+          `${c.name} / photoMemoryFix=${env}`,
+        );
+        assertEquals(
+          await observableDigest(
+            c,
+            "true",
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            env,
+          ),
+          agencyOn,
+          `${c.name} / agency=true ＋ photoMemoryFix=${env}`,
+        );
+      }
+      assertEquals(
+        await observableDigest(
+          c,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "true",
+        ),
+        expected,
+        `${c.name} / agency 未設 ＋ photoMemoryFix=true`,
+      );
+      assertEquals(
+        await observableDigest(
+          c,
+          "shadow",
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          "true",
+        ),
+        await observableDigest(c, "shadow"),
+        `${c.name} / agency=shadow ＋ photoMemoryFix=true`,
+      );
+      const probe: RunProbe = { durationKeys: [] };
+      const on = await observableDigest(
+        c,
+        "true",
+        undefined,
+        probe,
+        undefined,
+        undefined,
+        undefined,
+        "true",
+      );
+      assertEquals(on.response, agencyOn.response, `${c.name} / Response`);
+      if (digestLine(on) !== digestLine(agencyOn)) {
+        changed.push(c.name);
+        if (on.messages !== agencyOn.messages) messagesChanged.push(c.name);
+        // 生效的那一輪 telemetry 才有這個 key。
+        assert(
+          (probe.lines ?? []).some((line) =>
+            line.includes("practice_chat_succeeded") &&
+            line.includes('"photoMemoryFix":true')
+          ),
+          `${c.name} 生效但 telemetry 沒有 photoMemoryFix`,
+        );
+      }
+    }
+    assert(changed.length > 0, "兩支旗標都開時至少要有一個 chat 案例不同");
+    for (const name of changed) assert(name.startsWith("chat／"), name);
+    assert(
+      messagesChanged.some((name) => name.startsWith("chat／standard")),
+      "standard 至少要有一案送給模型的 messages 真的變了",
+    );
+    assert(
+      messagesChanged.some((name) =>
+        name.startsWith("chat／beginner") || name.startsWith("chat／game")
+      ),
+      "assisted（beginner／game）至少要有一案送給模型的 messages 真的變了",
+    );
+    // "test"：只有 TEST_EMAILS 帳號生效。
+    const sample = equivalenceCases().find((c) => changed.includes(c.name))!;
+    assertEquals(
+      await observableDigest(
+        sample,
+        "true",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "test",
+      ),
+      await observableDigest(sample, "true"),
+      "一般帳號 ＋ photoMemoryFix=test 不得生效",
+    );
+    // 生效要看送給模型的 messages，不只看 telemetry（主審 1 P3）。
+    const messagesSample = equivalenceCases().find((c) =>
+      messagesChanged.includes(c.name)
+    )!;
+    assert(
+      (await observableDigest(
+        messagesSample,
+        "true",
+        TEST_ACCOUNT,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "test",
+      )).messages !==
+        (await observableDigest(messagesSample, "true", TEST_ACCOUNT)).messages,
+      "TEST_EMAILS 帳號 ＋ photoMemoryFix=test 必須生效（messages 要變）",
+    );
   },
 });

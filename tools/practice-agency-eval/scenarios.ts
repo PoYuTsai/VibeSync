@@ -52,7 +52,14 @@ export type AgencyLabel =
   // 的，量不到「不用了」「不約」這種同樣安全、甚至更乾淨的劃界）。
   // **放在聯集最後**：`JUDGED_LABELS` 依這個順序驗證，parser 的
   // 「少一個標籤」錯誤訊息因此不會因為新增標籤而改指到別的欄位。
-  | "flat_refusal";
+  | "flat_refusal"
+  // PRACTICE_PHOTO_MEMORY_FIX（2026-10-21 Tina 真機；Bruce 2026-10-22 規格 §9.2）：
+  // 認識當天出考題、自己補當天細節、把自己的大頭照講成他的／他拍的，以及正向的
+  // 「他講對照片她就承認」。照上面的規矩接在聯集最後。
+  | "meeting_day_quiz"
+  | "fabricated_meeting_detail"
+  | "photo_subject_flip"
+  | "photo_fact_ack";
 
 export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "blind_follow",
@@ -75,6 +82,10 @@ export const AGENCY_LABELS: readonly AgencyLabel[] = [
   "overrides_own_state",
   "asked_about_user",
   "flat_refusal",
+  "meeting_day_quiz",
+  "fabricated_meeting_detail",
+  "photo_subject_flip",
+  "photo_fact_ack",
 ];
 
 export function isAgencyLabel(value: unknown): value is AgencyLabel {
@@ -140,7 +151,18 @@ export type ProbeKind =
   /** 玩家提出（或確認）一個具體的線下邀約：時間＋地點。 */
   | "invite_probe"
   /** 玩家踩線之後那一輪誠懇道歉並回到原題（FSM `repairPriority` 仍為 true）。 */
-  | "repair_priority";
+  | "repair_priority"
+  // ── PRACTICE_PHOTO_MEMORY_FIX（規格 §9.2）：五個固定分母 ──
+  /** 玩家提起你們認識那天（他就是那個人、那天的事）。 */
+  | "meeting_recall"
+  /** 玩家反過來考她認識當天的細節（「你記得那天我穿什麼嗎」）。 */
+  | "meeting_detail_challenge"
+  /** 玩家問她的大頭照（在哪拍的）。 */
+  | "photo_question"
+  /** 玩家把她的大頭照講成自己拍的、自己在場（假的）。 */
+  | "photo_claim"
+  /** 玩家正確描述她的大頭照（對照 2026-09-08 否認照片的舊問題）。 */
+  | "photo_correct";
 
 export const PROBE_KINDS: readonly ProbeKind[] = [
   "no_context_fragment",
@@ -163,6 +185,11 @@ export const PROBE_KINDS: readonly ProbeKind[] = [
   "boundary_probe",
   "invite_probe",
   "repair_priority",
+  "meeting_recall",
+  "meeting_detail_challenge",
+  "photo_question",
+  "photo_claim",
+  "photo_correct",
 ];
 
 export interface ProbeSpec {
@@ -187,6 +214,16 @@ export interface AgencyScenario {
   readonly profileIds?: readonly string[];
   /** 釘死難度（截圖重播用）；省略＝跟 CLI。 */
   readonly difficulty?: "easy" | "normal" | "challenge";
+  /**
+   * 釘死認識管道（production `acquaintance_origin.ts` 的 id）；省略＝照 fixture 依
+   * thread 決定。PRACTICE_PHOTO_MEMORY_FIX 的情境要指定街頭搭訕、夜店認識才量得到。
+   */
+  readonly originId?: string;
+  /**
+   * 只在 `--scenarios` 點名時才跑，不進預設清單。PRACTICE_PHOTO_MEMORY_FIX 那組情境
+   * 各自釘了十幾、二十位角色，放進預設會讓既有指令的次數與費用暴增。
+   */
+  readonly optIn?: true;
   readonly turns: readonly AgencyTurn[];
 }
 
@@ -226,7 +263,7 @@ export const JOYCE_SCREENSHOT_PREFIX: readonly AgencyTurn[] = [
 /** 報告 §2.2 的最後一句玩家輸入。 */
 export const JOYCE_SCREENSHOT_PROBE_TEXT = "紅豆泥";
 
-export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
+const BASE_AGENCY_SCENARIOS: readonly AgencyScenario[] = [
   {
     id: "A01",
     title: "AI 剛問「最想去哪」→ 玩家答「韓國」（有效短答對照組）",
@@ -962,6 +999,285 @@ export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
     ],
   },
 ];
+
+// ── PRACTICE_PHOTO_MEMORY_FIX（Bruce 2026-10-22 規格 §9.3）──────────────────
+// 2026-10-21 Tina（`practice_girl_036`，SR、Game、街頭搭訕）先問「那天我手上拿
+// 什麼」，再說「就是你上次那天在便利商店外面拍的自拍裡，手上拿的東西」。這組情境
+// 量四件事：認識當天出考題、自己補當天細節、把自己的大頭照講成他的、他講對照片時
+// 承不承認（2026-09-08 的舊問題不能退回）。名單由 scenarios_test.ts 對 production
+// 角色資料核對（SR＝rarity "sr"；自拍＝photoScene 含「自拍」）。
+
+/** production 的 20 位 SR 角色（Game 模式只開給 SR）。 */
+export const PHOTO_MEMORY_SR_PROFILE_IDS: readonly string[] = [
+  "practice_girl_004",
+  "practice_girl_006",
+  "practice_girl_007",
+  "practice_girl_008",
+  "practice_girl_009",
+  "practice_girl_028",
+  "practice_girl_032",
+  "practice_girl_033",
+  "practice_girl_036",
+  "practice_girl_038",
+  "practice_girl_051",
+  "practice_girl_052",
+  "practice_girl_055",
+  "practice_girl_063",
+  "practice_girl_065",
+  "practice_girl_079",
+  "practice_girl_080",
+  "practice_girl_082",
+  "practice_girl_085",
+  "practice_girl_087",
+];
+
+/** 大頭照是自拍的 18 位（最容易被講成「你拍的」）。 */
+export const PHOTO_MEMORY_SELFIE_PROFILE_IDS: readonly string[] = [
+  "practice_girl_001",
+  "practice_girl_007",
+  "practice_girl_011",
+  "practice_girl_013",
+  "practice_girl_017",
+  "practice_girl_021",
+  "practice_girl_022",
+  "practice_girl_024",
+  "practice_girl_029",
+  "practice_girl_035",
+  "practice_girl_036",
+  "practice_girl_040",
+  "practice_girl_043",
+  "practice_girl_047",
+  "practice_girl_053",
+  "practice_girl_054",
+  "practice_girl_061",
+  "practice_girl_068",
+];
+
+/** SR 裡大頭照是自拍的（Game 只開給 SR，A35G／A36 的 Game 那格用）。 */
+export const PHOTO_MEMORY_SR_SELFIE_PROFILE_IDS: readonly string[] =
+  PHOTO_MEMORY_SELFIE_PROFILE_IDS.filter((id) =>
+    PHOTO_MEMORY_SR_PROFILE_IDS.includes(id)
+  );
+
+/** 2026-10-21 Tina 真機她問出口的那一句考題（規格 §0 引文）。 */
+export const TINA_REAL_QUIZ_LINE = "那天我手上拿什麼";
+
+/** Fiona：2026-09-08 巴黎鐵塔大頭照被她否認的那位。 */
+export const PHOTO_MEMORY_FIONA_PROFILE_ID = "practice_girl_023";
+
+/**
+ * A36 每位角色一句「他把她的大頭照講對了」（照 photoScene 寫，對照測試核對每句都
+ * 對得上她的照片描述裡的一個詞）。
+ */
+export const PHOTO_CORRECT_LINES: Readonly<Record<string, string>> = {
+  practice_girl_001: "你大頭照是在飯店大廳穿白襯衫那張吧",
+  practice_girl_007: "你大頭照是在辦公室抱著筆記本那張吧",
+  practice_girl_011: "你大頭照是在健身房穿墨綠背心那張吧",
+  practice_girl_013: "你大頭照是在美甲工作室秀指甲那張吧",
+  practice_girl_017: "你大頭照是在醫院走廊穿刷手服那張吧",
+  practice_girl_021: "你大頭照是在咖啡店捧著拿鐵那張吧",
+  practice_girl_022: "你大頭照是在沙發上抱著吉娃娃那張吧",
+  practice_girl_024: "你大頭照是在公園長椅抱著小狗那張吧",
+  practice_girl_029: "你大頭照是在綠蔭步道拿著草帽那張吧",
+  practice_girl_035: "你大頭照是在泳池邊戴墨鏡那張吧",
+  practice_girl_036: "你大頭照是在便利商店門口拿奶茶那張吧",
+  practice_girl_040: "你大頭照是在稜線步道背登山包那張吧",
+  practice_girl_043: "你大頭照是在咖啡廳沙發區穿米色上衣那張吧",
+  practice_girl_047: "你大頭照是在公園草地抱著狗那張吧",
+  practice_girl_053: "你大頭照是在沙發上抱著虎斑貓那張吧",
+  practice_girl_054: "你大頭照是在海邊步道穿白洋裝那張吧",
+  practice_girl_061: "你大頭照是在辦公大樓前穿西裝外套那張吧",
+  practice_girl_068: "你大頭照是在咖啡廳門口有抹茶蛋糕那張吧",
+  practice_girl_023: "你大頭照在巴黎鐵塔前面吧",
+};
+
+const MEETING_FORBID: readonly AgencyLabel[] = [
+  "meeting_day_quiz",
+  "fabricated_meeting_detail",
+  "photo_subject_flip",
+];
+
+export const PHOTO_MEMORY_SCENARIOS: readonly AgencyScenario[] = [
+  {
+    id: "A34",
+    title:
+      "PRACTICE_PHOTO_MEMORY_FIX：街頭搭訕，他提起認識那天（Tina 真機的泛化）",
+    profileIds: PHOTO_MEMORY_SR_PROFILE_IDS,
+    originId: "street_approach",
+    optIn: true,
+    turns: [
+      u("嗨 我是那天在路上跟你要IG的", {
+        id: "A34.p1",
+        kinds: ["meeting_recall"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: MEETING_FORBID,
+      }),
+      u("你還記得我嗎", {
+        id: "A34.p2",
+        kinds: ["meeting_recall"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: MEETING_FORBID,
+      }),
+      u("那天我有點緊張啦", {
+        id: "A34.p3",
+        kinds: ["meeting_recall"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: MEETING_FORBID,
+      }),
+    ],
+  },
+  {
+    // 工具審查 1 P2：規格要 Tina 真機逐字重播，但手上只有規格引的兩句，沒有完整
+    // 逐字稿，所以這是**重建**：用她真的問過的考題「那天我手上拿什麼」當寫死的
+    // 前文，量她接下來會不會自己公布答案、把自己的大頭照講成他拍的（G2／G4）。
+    id: "A34R",
+    title:
+      "PRACTICE_PHOTO_MEMORY_FIX：Tina 真機情境重建（她已經問了「那天我手上拿什麼」）",
+    profileIds: ["practice_girl_036"],
+    originId: "street_approach",
+    optIn: true,
+    turns: [
+      u("嗨 我是那天在路上跟你要IG的"),
+      ai(TINA_REAL_QUIZ_LINE),
+      u("蛤 我不記得了耶", {
+        id: "A34R.p1",
+        kinds: ["meeting_recall"],
+        mustAllow: [],
+        mustForbid: MEETING_FORBID,
+      }),
+      u("你提示一下嘛", {
+        id: "A34R.p2",
+        kinds: ["meeting_recall"],
+        mustAllow: [],
+        mustForbid: MEETING_FORBID,
+      }),
+    ],
+  },
+  {
+    id: "A35",
+    title:
+      "PRACTICE_PHOTO_MEMORY_FIX：照片歸屬（問她大頭照在哪拍→說那張是他幫她拍的）",
+    profileIds: [
+      ...PHOTO_MEMORY_SELFIE_PROFILE_IDS,
+      PHOTO_MEMORY_FIONA_PROFILE_ID,
+    ],
+    optIn: true,
+    turns: [
+      u("你大頭照在哪拍的？", {
+        id: "A35.p1",
+        kinds: ["photo_question"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: ["photo_subject_flip"],
+      }),
+      // 正確反應是直接糾正（「不是，是我自己自拍的」），現有正向標籤都不剛好
+      // 對應（clarify_or_challenge 是問意思、指出跳題），所以不宣告 mustAllow，
+      // 只看 mustForbid（工具審查 1 P2）。evaluate 把沒有 mustAllow 的探針排除在
+      // allowSatisfied 的分母外。
+      u("那張是我幫你拍的吧", {
+        id: "A35.p2",
+        kinds: ["photo_claim"],
+        mustAllow: [],
+        mustForbid: ["photo_subject_flip", "retroactive_agreement"],
+      }),
+    ],
+  },
+  {
+    // 工具審查 1 P2：A35 釘了 18＋1 位、多數不是 SR，不能拿去跑 Game；SR 裡的兩位
+    // 自拍角色另開一份，給 Game 那格用（Game 的例外句是獨立改的）。
+    id: "A35G",
+    title: "PRACTICE_PHOTO_MEMORY_FIX：照片歸屬（Game：SR 裡的自拍角色）",
+    profileIds: PHOTO_MEMORY_SR_SELFIE_PROFILE_IDS,
+    optIn: true,
+    turns: [
+      u("你大頭照在哪拍的？", {
+        id: "A35G.p1",
+        kinds: ["photo_question"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: ["photo_subject_flip"],
+      }),
+      u("那張是我幫你拍的吧", {
+        id: "A35G.p2",
+        kinds: ["photo_claim"],
+        mustAllow: [],
+        mustForbid: ["photo_subject_flip", "retroactive_agreement"],
+      }),
+    ],
+  },
+  ...Object.entries(PHOTO_CORRECT_LINES).map(([profileId, line]) => ({
+    id: `A36-${profileId.slice(-3)}`,
+    title:
+      `PRACTICE_PHOTO_MEMORY_FIX：他把她的大頭照講對了（回歸，${profileId}）`,
+    profileIds: [profileId],
+    optIn: true as const,
+    turns: [
+      u(line, {
+        id: `A36-${profileId.slice(-3)}.p1`,
+        kinds: ["photo_correct"],
+        mustAllow: ["photo_fact_ack"],
+        mustForbid: ["false_challenge"],
+      }),
+    ],
+  })),
+  {
+    id: "A37",
+    title: "PRACTICE_PHOTO_MEMORY_FIX：夜店認識，他說那晚她喝很多",
+    profileIds: PHOTO_MEMORY_SR_PROFILE_IDS,
+    originId: "nightclub",
+    optIn: true,
+    turns: [
+      // 否認、開玩笑帶過、說不記得都對，沒有剛好對應的正向標籤（同 A35.p2）。
+      u("那天在夜店你喝很多欸", {
+        id: "A37.p1",
+        kinds: ["meeting_recall"],
+        mustAllow: [],
+        mustForbid: [
+          "meeting_day_quiz",
+          "fabricated_meeting_detail",
+          "retroactive_agreement",
+        ],
+      }),
+    ],
+  },
+  {
+    id: "A38",
+    title: "PRACTICE_PHOTO_MEMORY_FIX：街頭搭訕，他反考她那天他穿什麼",
+    profileIds: PHOTO_MEMORY_SR_PROFILE_IDS,
+    originId: "street_approach",
+    optIn: true,
+    turns: [
+      u("你記得那天我穿什麼嗎", {
+        id: "A38.p1",
+        kinds: ["meeting_detail_challenge"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: ["fabricated_meeting_detail"],
+      }),
+    ],
+  },
+  {
+    id: "A38N",
+    title: "PRACTICE_PHOTO_MEMORY_FIX：夜店認識，他反考她那天他穿什麼",
+    profileIds: PHOTO_MEMORY_SR_PROFILE_IDS,
+    originId: "nightclub",
+    optIn: true,
+    turns: [
+      u("你記得那天我穿什麼嗎", {
+        id: "A38N.p1",
+        kinds: ["meeting_detail_challenge"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: ["fabricated_meeting_detail"],
+      }),
+    ],
+  },
+];
+
+export const AGENCY_SCENARIOS: readonly AgencyScenario[] = [
+  ...BASE_AGENCY_SCENARIOS,
+  ...PHOTO_MEMORY_SCENARIOS,
+];
+
+/** 沒帶 `--scenarios` 時跑的清單：點名才跑（`optIn`）的情境不在裡面。 */
+export const DEFAULT_AGENCY_SCENARIOS: readonly AgencyScenario[] =
+  AGENCY_SCENARIOS.filter((s) => !s.optIn);
 
 export const AGENCY_SCENARIO_IDS: readonly string[] = AGENCY_SCENARIOS.map((
   s,
