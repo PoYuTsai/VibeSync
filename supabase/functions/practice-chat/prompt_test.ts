@@ -3522,6 +3522,8 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
         `${PHOTO_SCENE_LINE_PREFIX}${tina.girl.photoScene}${PHOTO_SCENE_LINE_SUFFIX}`,
       ),
     );
+    // 不叫她說「我那張」：2026-10-22 評測照片題約 8～28% 的回覆硬塞成口頭禪。
+    assert(!sys.includes("我那張"));
     // 2. 現實錨定第一條的窄例外
     assert(sys.includes("只有認識當天的細節和照片沒拍到的事例外"));
     // 3. 認識管道立場：不考題版
@@ -3662,11 +3664,11 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     }
   });
 
-  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：大頭照固定句長度鎖定（101 code units）", () => {
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：大頭照固定句長度鎖定（90 code units）", () => {
     assertEquals(
       PHOTO_SCENE_LINE_PREFIX_PHOTO_MEMORY_FIX.length +
         PHOTO_SCENE_LINE_SUFFIX_PHOTO_MEMORY_FIX.length,
-      101,
+      90,
     );
   });
 }
