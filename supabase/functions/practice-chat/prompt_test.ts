@@ -3533,6 +3533,17 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     // 5. Game 例外句：拿掉「逐字稿可以替認識經過加細節」的許可
     assert(sys.includes("stay unknown even if you said them earlier"));
     assert(!sys.includes("the transcript may add color"));
+    // 主審 1 P2：範圍只到系統沒給的認識當天細節與照片的拍攝經過，不能寫成
+    // 「照片沒拍到的事都不知道」（工作、住處、今天在做什麼是系統給的）。
+    assert(sys.includes("meeting-day details it doesn't give"));
+    assert(sys.includes("who took your photo, when, or whether he was there"));
+    assert(!sys.includes("anything your photo doesn't show"));
+    // 同一段允許 profile／sceneContext 支撐事實的那句照舊。
+    assert(
+      sys.includes(
+        "remain unverified unless profile, memorySummary, sceneContext, or your own earlier confirmed words support them.",
+      ),
+    );
   });
 
   Deno.test("PRACTICE_PHOTO_MEMORY_FIX：鎖住的來源優先序句子一字不少", () => {
@@ -3612,7 +3623,9 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     }
   });
 
-  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：穩定前綴＋當輪尾巴仍逐位元組等於 system", () => {
+  // 主審 1：原名寫「逐位元組等於 system」，實際只驗 startsWith（bundle 沒有露出
+  // 當輪尾巴），名稱改成驗的東西；另外鎖住記憶摘要與 Game 那兩段留在當輪尾巴。
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：大頭照、錨定、認識管道在穩定前綴，記憶摘要與 Game 在當輪尾巴", () => {
     const bundle = buildChatPromptBundle(turns, tina, {
       practiceMode: "game",
       temperatureScore: 40,
@@ -3633,6 +3646,15 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
       bundle.systemStable.includes("只有認識當天的細節和照片沒拍到的事例外"),
     );
     assert(bundle.systemStable.includes(street.noQuizStancePrompt!));
+    for (
+      const tail of [
+        "行蹤、上次見面或認識當天的細節",
+        "meeting-day details it doesn't give",
+      ]
+    ) {
+      assert(system.includes(tail), tail);
+      assert(!bundle.systemStable.includes(tail), tail);
+    }
   });
 
   Deno.test("PRACTICE_PHOTO_MEMORY_FIX：大頭照固定句長度鎖定（101 code units）", () => {

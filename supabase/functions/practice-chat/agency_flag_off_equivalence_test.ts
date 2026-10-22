@@ -2217,6 +2217,10 @@ Deno.test({
     //   兩支都 `true` → 只有 chat 案例允許不同（messages 與 telemetry 多一個
     //     key），Response 一律不變（fake 的回覆是固定的）；hint／debrief 全等。
     const changed: string[] = [];
+    // 主審 1 P3：合併 digest 不同可能只是 telemetry 多了 key；handler 若拔掉傳給
+    // builder 的那兩行、只留 telemetry，前面的判斷照樣成立。另外記下送給模型的
+    // messages 真的變了的案例，standard 與 assisted 各要至少一案。
+    const messagesChanged: string[] = [];
     for (const c of equivalenceCases()) {
       const expected = parseGolden(c.name);
       const agencyOn = await observableDigest(c, "true");
@@ -2292,6 +2296,7 @@ Deno.test({
       assertEquals(on.response, agencyOn.response, `${c.name} / Response`);
       if (digestLine(on) !== digestLine(agencyOn)) {
         changed.push(c.name);
+        if (on.messages !== agencyOn.messages) messagesChanged.push(c.name);
         // 生效的那一輪 telemetry 才有這個 key。
         assert(
           (probe.lines ?? []).some((line) =>
@@ -2304,6 +2309,16 @@ Deno.test({
     }
     assert(changed.length > 0, "兩支旗標都開時至少要有一個 chat 案例不同");
     for (const name of changed) assert(name.startsWith("chat／"), name);
+    assert(
+      messagesChanged.some((name) => name.startsWith("chat／standard")),
+      "standard 至少要有一案送給模型的 messages 真的變了",
+    );
+    assert(
+      messagesChanged.some((name) =>
+        name.startsWith("chat／beginner") || name.startsWith("chat／game")
+      ),
+      "assisted（beginner／game）至少要有一案送給模型的 messages 真的變了",
+    );
     // "test"：只有 TEST_EMAILS 帳號生效。
     const sample = equivalenceCases().find((c) => changed.includes(c.name))!;
     assertEquals(
@@ -2320,20 +2335,23 @@ Deno.test({
       await observableDigest(sample, "true"),
       "一般帳號 ＋ photoMemoryFix=test 不得生效",
     );
+    // 生效要看送給模型的 messages，不只看 telemetry（主審 1 P3）。
+    const messagesSample = equivalenceCases().find((c) =>
+      messagesChanged.includes(c.name)
+    )!;
     assert(
-      digestLine(
-        await observableDigest(
-          sample,
-          "true",
-          TEST_ACCOUNT,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          "test",
-        ),
-      ) !== digestLine(await observableDigest(sample, "true", TEST_ACCOUNT)),
-      "TEST_EMAILS 帳號 ＋ photoMemoryFix=test 必須生效",
+      (await observableDigest(
+        messagesSample,
+        "true",
+        TEST_ACCOUNT,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "test",
+      )).messages !==
+        (await observableDigest(messagesSample, "true", TEST_ACCOUNT)).messages,
+      "TEST_EMAILS 帳號 ＋ photoMemoryFix=test 必須生效（messages 要變）",
     );
   },
 });
