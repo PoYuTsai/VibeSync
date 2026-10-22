@@ -3533,11 +3533,16 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     // 5. Game 例外句：拿掉「逐字稿可以替認識經過加細節」的許可
     assert(sys.includes("stay unknown even if you said them earlier"));
     assert(!sys.includes("the transcript may add color"));
-    // 主審 1 P2：範圍只到系統沒給的認識當天細節與照片的拍攝經過，不能寫成
-    // 「照片沒拍到的事都不知道」（工作、住處、今天在做什麼是系統給的）。
-    assert(sys.includes("meeting-day details it doesn't give"));
-    assert(sys.includes("who took your photo, when, or whether he was there"));
+    // 主審 1 P2：範圍只到系統沒給的認識當天細節與照片資訊，不能寫成「照片沒拍到
+    // 的事都不知道」（工作、住處、今天在做什麼是系統給的）；主審 2：照片描述寫了
+    // 的（Tina「晚上……拍的自拍」）也不能一律說誰拍、何時拍不知道。
+    assert(
+      sys.includes(
+        "meeting-day details and photo facts the system doesn't give stay unknown",
+      ),
+    );
     assert(!sys.includes("anything your photo doesn't show"));
+    assert(!sys.includes("who took your photo"));
     // 同一段允許 profile／sceneContext 支撐事實的那句照舊。
     assert(
       sys.includes(
@@ -3649,7 +3654,7 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
     for (
       const tail of [
         "行蹤、上次見面或認識當天的細節",
-        "meeting-day details it doesn't give",
+        "photo facts the system doesn't give",
       ]
     ) {
       assert(system.includes(tail), tail);

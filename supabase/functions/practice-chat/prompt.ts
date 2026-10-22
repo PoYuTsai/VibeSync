@@ -273,13 +273,14 @@ function gameModePrompt(opts: {
   // 她自己前面編的當天畫面，等於讓她自己的捏造變成支撐。修正版拿掉這個許可，
   // 並把當天細節／照片外的事排除在「your own earlier confirmed words」之外。
   // 「他講成別的場合就糾正」由 agency 分支的認識管道區塊與現實錨定負責。
-  // 範圍只到系統沒給的認識當天細節與照片的拍攝經過；工作、住處、今天在做什麼
-  // 這些系統給了、只是照片裡看不到的事照常算數（PR 主審 1 P2：規格原句寫
-  // 「anything your photo doesn't show」，會連這些都變成不知道）。
+  // 範圍只到系統沒給的認識當天細節與照片資訊：工作、住處、今天在做什麼這些
+  // 系統給了、只是照片裡看不到的事照常算數（主審 1 P2：規格原句「anything your
+  // photo doesn't show」會連這些都變成不知道）；照片描述本身寫了的（例如 Tina
+  // 「晚上……拍的自拍」）也照常算數，不能一律說誰拍、何時拍不知道（主審 2）。
   const acquaintanceOriginException = opts.photoMemoryFix
     ? (opts.acquaintanceOrigin
-      ? " How you met comes only from the acquaintance origin above; meeting-day details it doesn't give, and who took your photo, when, or whether he was there, stay unknown even if you said them earlier."
-      : " Who took your photo, when, or whether he was there stays unknown even if you said it earlier.")
+      ? " How you met comes only from the acquaintance origin above; meeting-day details and photo facts the system doesn't give stay unknown even if you said them earlier."
+      : " Photo facts the system doesn't give stay unknown even if you said them earlier.")
     : opts.acquaintanceOrigin
     ? " How you two met is the one exception to that support list: only the server-provided acquaintance origin above establishes it; memorySummary and the transcript may add color consistent with that origin but can never replace or contradict it, no matter how many times the user repeats a different story."
     : "";
