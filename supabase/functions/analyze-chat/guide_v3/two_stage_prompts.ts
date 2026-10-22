@@ -358,14 +358,19 @@ export function answerParts(
 }
 
 /// 規格裡回她哪一則的那幾段（answerParts），抽到短版的那一張在「這張接」後面多寫短版的誇法
-///（LIGHT_SHORT_CARD_PART）。寫卡與說明都用這一份。
+///（LIGHT_SHORT_CARD_PART），回她很短甜話的卡在同一個位置多寫短回的指示（SWEET_SHORT_CARD_PART）。寫卡與說明都用這一份。
+/// 兩個不會在同一張（她撒嬌時直接誇，不抽短版）；萬一都有，短回在前。
 export function specAnswerParts(
   spec: CardSpec,
   herLatest: readonly string[],
 ): string[] {
   const parts = answerParts(spec.answer, herLatest);
-  if (!spec.shortPraise || parts.length === 0) return parts;
-  return [parts[0], LIGHT_SHORT_CARD_PART, ...parts.slice(1)];
+  if (parts.length === 0) return parts;
+  const notes = [
+    ...(spec.sweetShort ? [SWEET_SHORT_CARD_PART] : []),
+    ...(spec.shortPraise ? [LIGHT_SHORT_CARD_PART] : []),
+  ];
+  return notes.length === 0 ? parts : [parts[0], ...notes, ...parts.slice(1)];
 }
 
 /// 兩段式的規格行：任務之後先講這張接她哪一則、可以順帶哪一則，「有他」做法改叫「他的事怎麼寫」。
@@ -410,6 +415,18 @@ export const LIGHT_SHORT_CARD_PART =
 export const SHORT_PRAISE_WRITER_SENTINELS: readonly string[] = [
   "這張只回很短的一句",
   "誇張到一看就知道在開玩笑",
+];
+
+/// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」，指示照他核准的「短短回她一句就好」）：她最新那句
+/// 是很短的甜話時，回那句的卡在「這張接」後面多這一段（rules.ts arrangeSweetShort 排）。不放例句（例句會被照抄），也不替她
+/// 下標籤（寫「撒嬌」「甜話」，卡片容易變成評她「又在撒嬌」）；她說了什麼，寫卡從「這張接」與對話稿看得到。
+export const SWEET_SHORT_CARD_PART = "短短回她一句就好";
+
+/// 甜話短回排到時，卡片多比的外洩哨兵：上面那段整句（8 個字，共用比對最短收 8 個字）。給她的訊息不會用「她」稱呼她，
+/// 正常的卡不會有這一句。只比卡片、不比說明：說明講這張「短短回她一句就好」是自然的白話，拿掉反而少了那張的說明；照抄
+/// 規格的結構仍由說明自己的哨兵（explain.ts EXPLAIN_SENTINELS）擋。
+export const SWEET_SHORT_WRITER_SENTINELS: readonly string[] = [
+  SWEET_SHORT_CARD_PART,
 ];
 
 export function praiseSection(style: PraiseStyle): string {

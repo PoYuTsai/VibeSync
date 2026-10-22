@@ -93,6 +93,7 @@ import {
   shouldUseGuideV3PhraseTidy,
   shouldUseGuideV3PreviousRound,
   shouldUseGuideV3ShortPraise,
+  shouldUseGuideV3SweetShort,
   shouldUseGuideV3TensionStyle,
   shouldUseGuideV3TwoStage,
   shouldUseGuideV3TypingStyle,
@@ -1881,6 +1882,13 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // Bruce 2026-10-20 PR #97 再處理，2026-10-21 只用這兩條）：口吻與斷句之後改這兩種字。沒開就一字不變。
         phraseTidy: shouldUseGuideV3PhraseTidy({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_PHRASE_TIDY")),
+          accountIsTest,
+        }),
+        // 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，off／test／on，每次請求讀；Eric 2026-10-22「照預設」）：只在
+        // 兩段式開時才有作用；她最新那句是很短的甜話時只有一張卡回那句（短短回一句），其他卡回她別的話，沒有別的話就
+        // 少出幾張（至少 3 張）。沒開就一字不變。
+        sweetShort: twoStage && shouldUseGuideV3SweetShort({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_SWEET_SHORT")),
           accountIsTest,
         }),
         ...createGuideV3ModelCalls({

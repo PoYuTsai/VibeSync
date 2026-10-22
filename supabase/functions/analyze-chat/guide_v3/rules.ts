@@ -17,6 +17,10 @@
 //    最多一張，已在交往或她撒嬌示愛時不排；她分享開心的事（她情緒差時不算）第二張改成共鳴；
 //    最後每張卡都指定先回她最想聽的那則、可以順帶一則（第 2 輪，Bruce 10/19 盲選理由）。
 //    上面 1–7 都照舊先算。
+// 9. 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」；沒開時這條不存在）：她撒嬌、這一輪有很短的
+//    情感句時（不一定是本來先回的那則；她問了他什麼就不算），只有一張卡回那句（短短回一句），其他卡改回她別的話、不提任何
+//    一句很短的甜話；她沒有別的話就少出幾張、至少 3 張（arrangeSweetShort）。上面 1–8 都照舊先算；婉拒收尾、詐騙換地方的
+//    固定排法不動（plan.ts 把關）。
 import { withoutEmoji } from "./cards.ts";
 import type { GuideV3Entry } from "./entries.ts";
 import type {
@@ -192,6 +196,9 @@ export interface CardSpec {
   /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE，Bruce 2026-10-20「可以」）：這次抽到短版時，只有這一張的
   /// 規格在「這張接」後面寫短版的誇法（plan.ts 挑第一張回她那則的接住）；其他時候沒有這個欄位。
   readonly shortPraise?: true;
+  /// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）：回她那句很短甜話的卡，規格在「這張接」
+  /// 後面多寫短回的指示（arrangeSweetShort 排）；其他時候沒有這個欄位。
+  readonly sweetShort?: true;
 }
 
 /// 兩段式實驗：她最新這一輪的第幾則（1 起算）。with＝併進這一則一起看的照片、貼圖或只有表情的
@@ -537,6 +544,142 @@ export function assignAnswers(
         extra: answerLine(extras[i % extras.length]),
       }
       : { main: answerLine(main) });
+}
+
+// ── 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）──────────────────────────────────
+// Bruce 2026-10-22 iPhone 試兩段式：已經在交往，她撒嬌說了很短的甜話、又說腿很累，5 張卡都回那三個字，還要換切入點，只能
+// 評論那兩個字（「專屬的我收到了」「專屬這兩個字聽起來就很有分量」）；他說這種甜話短短回就好。讀局面把腿那則也標情感時，
+// 每張卡改成先回腿、甜話當順帶，一樣每張都提那兩個字，所以候選不限先回的那則。只看讀局面的標記與字數，不比對內容。
+
+/// 她那則去掉引用前綴、表情、標點與空白後，幾個字以內算「很短」：先訂 6 個字（我們的預設，Bruce 可以調）。
+export const SWEET_SHORT_MAX_CHARS = 6;
+/// 她沒有其他有字、值得回的句子時，張數改成這麼多（原本就不到這麼多張就不動）；付費頁寫的「每次 3–5 張」不變。
+export const SWEET_SHORT_CARD_COUNT = 3;
+
+/// 她那則本身有幾個字：去掉引用前綴與表情（herLineText）之後，只數字母與數字，標點、空白不算。
+export function herLineChars(content: string): number {
+  return [...herLineText(content)].filter((ch) => LETTER_OR_DIGIT.test(ch))
+    .length;
+}
+
+/// 她最新這一輪每一則有字、值得接的句子在 assignAnswers 裡的樣子（連同併進來的照片、貼圖），照編號查：卡給到跟條目一樣多張，
+/// 第一順位那則是每張的 main，其他則輪流當順帶，每一則都會出現。
+function answerLinesOf(
+  worthy: readonly WorthyLine[],
+  herLatest: readonly string[],
+): Map<number, AnswerLine> {
+  const out = new Map<number, AnswerLine>();
+  for (
+    const a of assignAnswers(Math.max(1, worthy.length), worthy, herLatest)
+  ) {
+    if (!a) continue;
+    out.set(a.main.line, a.main);
+    if (a.extra) out.set(a.extra.line, a.extra);
+  }
+  return out;
+}
+
+/// 甜話短回的候選與選中的那則：讀局面標她這一輪撒嬌或示愛時，有字（不是照片、貼圖、只有表情或只有引用）、標成情感、而且
+/// 不超過 SWEET_SHORT_MAX_CHARS 個字的每一則都是候選（連同併進來的照片、貼圖）；不一定是本來每張卡都要先回的那則——Bruce
+/// 2026-10-22 那次她先撒嬌、後說腿很累，兩則都標情感時腿那則排第一，甜話只當順帶。本來先回的那則是問他（她問了他什麼）就
+/// 不算，照今天每張卡都先回她問的那句。選中的是 assignAnswers 在候選裡排第一的那則（都是情感，同一級取她後傳的）。
+function pickSweetShort(
+  twoStage: TwoStageTags,
+  herLatest: readonly string[],
+): { readonly sweet: AnswerLine; readonly candidates: AnswerLine[] } | null {
+  if (!twoStage.herAffection) return null;
+  const main = assignAnswers(1, twoStage.worthyLines, herLatest)[0]?.main;
+  if (!main) return null;
+  // 同一則標了兩次時跟 assignAnswers 一樣看第一次的標記。
+  const kindOf = (line: number) =>
+    twoStage.worthyLines.find((w) => w.line === line)?.kind;
+  if (kindOf(main.line) === "問他") return null;
+  const all = answerLinesOf(twoStage.worthyLines, herLatest);
+  const candidates = [...all.values()].filter((a) =>
+    kindOf(a.line) === "情感" &&
+    herLineChars(herLatest[a.line - 1]) <= SWEET_SHORT_MAX_CHARS
+  ).sort((a, b) => a.line - b.line);
+  if (candidates.length === 0) return null;
+  const lines = new Set(candidates.map((c) => c.line));
+  const first = assignAnswers(
+    1,
+    twoStage.worthyLines.filter((w) => lines.has(w.line)),
+    herLatest,
+  )[0]?.main.line;
+  const sweet = candidates.find((c) => c.line === first);
+  return sweet ? { sweet, candidates } : null;
+}
+
+/// 她最新這一輪有沒有很短的甜話（見 pickSweetShort）：有就回選中的那則（連同併進來的照片、貼圖），沒有就 null。
+export function sweetShortLine(
+  twoStage: TwoStageTags,
+  herLatest: readonly string[],
+): AnswerLine | null {
+  return pickSweetShort(twoStage, herLatest)?.sweet ?? null;
+}
+
+/// 回甜話的那一張：第一張不是推進、也不是收的卡；她開心分享時換上的那張共鳴留給她分享的那件事，也先跳過。都沒有就放寬
+/// 開心分享那張，再沒有就第一張。
+function sweetCardAt(specs: readonly CardSpec[]): number {
+  const free = (s: CardSpec) => s.task !== "推進" && s.task !== "收";
+  const at = specs.findIndex((s) => free(s) && s.note !== "happy_share");
+  if (at !== -1) return at;
+  const loose = specs.findIndex(free);
+  return loose === -1 ? 0 : loose;
+}
+
+/// 換切入點照「同任務、同做法、同口吻、回同一則」重算：甜話短回把各張卡回的那則分開了，前面同規格的卡回的是別則時
+/// 不用換（沒開時每張都回同一則，跟 arrangeCards 算的一樣）。
+function withAngles(specs: readonly CardSpec[]): CardSpec[] {
+  const seen = new Map<string, number>();
+  return specs.map((spec) => {
+    const key = `${spec.task}|${spec.method}|${spec.voice}|${
+      spec.answer?.main.line ?? 0
+    }`;
+    const angle = seen.get(key) ?? 0;
+    seen.set(key, angle + 1);
+    return { ...spec, angle };
+  });
+}
+
+/// 甜話短回的排法（Eric 2026-10-22「照預設」）。specs 是 withAnswers 排好、每張都先回同一則的卡；她這一輪沒有很短的甜話
+///（pickSweetShort）就原樣回。有的話：
+/// - 只有一張卡回選中的那句、不帶順帶（sweetCardAt 挑），規格多短回的指示（sweetShort）。
+/// - 其他卡改回她其他有字、值得回的句子：每一句很短的甜話（候選，不只選中的那句）與併進它們的照片、貼圖都拿掉，其餘照
+///   assignAnswers 同一套先後與輪流重排，所以這些卡的規格完全不會出現任何一句很短的甜話（main、順帶都不是）；換切入點跟著
+///   重算（withAngles）。
+/// - 她沒有其他有字的句子：張數改成 SWEET_SHORT_CARD_COUNT（前幾張，原本就不到就不動），每張都回選中的那句、都帶短回的指示，
+///   不要求換切入點，靠口吻（照他、預設交錯）區分。
+export function arrangeSweetShort(
+  specs: readonly CardSpec[],
+  twoStage: TwoStageTags,
+  herLatest: readonly string[],
+): CardSpec[] {
+  const picked = pickSweetShort(twoStage, herLatest);
+  if (!picked || specs.length === 0) return [...specs];
+  const { sweet, candidates } = picked;
+  const left = new Set(candidates.flatMap((c) => [c.line, ...c.with]));
+  const others = twoStage.worthyLines.filter((w) => !left.has(w.line));
+  const sweetCard = (spec: CardSpec): CardSpec => ({
+    ...spec,
+    answer: { main: sweet },
+    sweetShort: true,
+  });
+  if (assignAnswers(1, others, herLatest)[0] === null) {
+    return specs.slice(0, SWEET_SHORT_CARD_COUNT).map((spec) => ({
+      ...sweetCard(spec),
+      angle: 0,
+    }));
+  }
+  const at = sweetCardAt(specs);
+  // 有其他有字的句子時，assignAnswers 每一項都有指定（全是 null 只會發生在一則有字的都沒有）。
+  const rest = assignAnswers(specs.length - 1, others, herLatest);
+  let next = 0;
+  return withAngles(
+    specs.map((spec, i) =>
+      i === at ? sweetCard(spec) : { ...spec, answer: rest[next++]! }
+    ),
+  );
 }
 
 const ENTRY_PRIORITY: readonly (readonly string[])[] = [

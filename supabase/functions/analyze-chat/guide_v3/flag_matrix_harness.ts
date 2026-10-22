@@ -3,6 +3,7 @@
 // handleGuideV3Stream，收集事件、送給模型的請求、扣費、落帳與 log，再算成一個 sha256。
 // handle 由呼叫端傳進來：測試傳這一版的，對照值是拿同一個情境跑 main 6ef72aff 與兩段式 c8f64dfe 的
 // 原始快照算出來的（不連網、不呼叫模型）。給 flag_matrix_test.ts 用；入口不載入，不隨函式部署。
+// 甜話短回另有一段交往中的情境（FLAG_MATRIX_SWEET_*，句子全新），用 options.messages 與 readText 換上。
 import type { AnalysisStreamRun } from "../stream_run_store.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type { GuideV3StreamDeps } from "./stream_flow.ts";
@@ -19,6 +20,8 @@ export interface FlagCombo {
   readonly tensionStyle?: boolean;
   /// 「這題」「滿→蠻」交給程式（ANALYZE_GUIDE_V3_PHRASE_TIDY，Bruce 2026-10-20 PR #97）；沒給當關。
   readonly phraseTidy?: boolean;
+  /// 甜話短回（ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）；沒給當關。
+  readonly sweetShort?: boolean;
 }
 
 /// 她傳照片、貼圖又問他（第 2 輪的形狀）；訊息裡不放「只」，繁體轉換的修正不影響比對。
@@ -95,6 +98,58 @@ export function flagMatrixReadText(combo: FlagCombo): string {
   });
 }
 
+// ── 甜話短回（ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）的情境：已經在交往，她最新這一輪先撒嬌一句很短的
+// 甜話、再說腳痛（Bruce 2026-10-22 試的形狀，句子全新）。他傳過兩則，排卡第一張是推進（種子）。
+
+export const FLAG_MATRIX_SWEET_MESSAGES: readonly {
+  isFromMe: boolean;
+  content: string;
+}[] = [
+  { isFromMe: true, content: "今天還好嗎" },
+  { isFromMe: false, content: "還行 剛開完會" },
+  { isFromMe: true, content: "辛苦了 晚點打給你" },
+  { isFromMe: false, content: "只想要你哄❤️" },
+  { isFromMe: false, content: "今天穿新鞋走了好多路 腳底好痛" },
+];
+
+/// 同一段對話但她最新這一輪只有那句甜話（走少出幾張的路）。
+export const FLAG_MATRIX_SWEET_ONLY_MESSAGES = FLAG_MATRIX_SWEET_MESSAGES.slice(
+  0,
+  4,
+);
+
+export const FLAG_MATRIX_SWEET_TAGS: Record<string, unknown> = {
+  ...FLAG_MATRIX_TAGS,
+  herMove: "生活",
+  worthyBallCount: 2,
+  matchedEntries: [],
+  readForUser: "你們在交往，她跟你撒嬌，也說今天走路走到腳底痛。",
+};
+
+export const FLAG_MATRIX_SWEET_TWO_STAGE_FIELDS: Record<string, unknown> = {
+  establishedCouple: true,
+  herAffection: true,
+  herHappyShare: false,
+  worthyLines: [
+    { line: 1, label: "撒嬌要他哄", kind: "情感" },
+    { line: 2, label: "腳底痛", kind: "其他" },
+  ],
+};
+
+/// 甜話情境的讀局面 JSON（跟 flagMatrixReadText 一樣照組合給欄位）；over 蓋過讀局面的欄位（她只傳那句甜話、她沒撒嬌、
+/// 那則變長這些對照用）。
+export function flagMatrixSweetReadText(
+  combo: FlagCombo,
+  over: Record<string, unknown> = {},
+): string {
+  return JSON.stringify({
+    ...FLAG_MATRIX_SWEET_TAGS,
+    ...(combo.twoStage ? FLAG_MATRIX_SWEET_TWO_STAGE_FIELDS : {}),
+    ...(combo.relation ? FLAG_MATRIX_RELATION_FIELDS : {}),
+    ...over,
+  });
+}
+
 /// 寫卡：規格要幾張就回幾張。
 export function flagMatrixCards(user: string): string[] {
   const n = Number(user.match(/一共 (\d+) 張/)?.[1] ?? 0);
@@ -130,6 +185,10 @@ export interface FlagMatrixOptions {
   readonly readText?: string;
   /// 換掉寫卡的輸出（哨兵測試用）。
   readonly writeParts?: (user: string) => string[];
+  /// 換掉說明的輸出（哨兵測試用）。
+  readonly explainText?: (user: string) => string;
+  /// 換掉對話（甜話短回的情境用）；沒給是 FLAG_MATRIX_MESSAGES。
+  readonly messages?: readonly { isFromMe: boolean; content: string }[];
 }
 
 /// 跑一次，送出的、存的、記的都收進 outcome（JSON 化，跟資料庫存的一樣丟掉 undefined）。
@@ -205,7 +264,7 @@ export async function runFlagMatrix(
     userId: "matrix-user",
     analysisRunId: null,
     conversationHash: "matrix-hash",
-    messages: FLAG_MATRIX_MESSAGES,
+    messages: options.messages ?? FLAG_MATRIX_MESSAGES,
     requestType: "analyze",
     effectiveTier: "essential",
     accountIsTest: false,
@@ -254,6 +313,7 @@ export async function runFlagMatrix(
     shortPraise: combo.shortPraise ?? false,
     tensionStyle: combo.tensionStyle ?? false,
     phraseTidy: combo.phraseTidy ?? false,
+    sweetShort: combo.sweetShort ?? false,
     ...(combo.twoStage
       ? {
         callExplain: (
@@ -266,7 +326,7 @@ export async function runFlagMatrix(
             schema: req.schema,
           };
           return Promise.resolve({
-            text: flagMatrixExplain(req.user),
+            text: (options.explainText ?? flagMatrixExplain)(req.user),
             model: "claude-sonnet-5-5",
           });
         },

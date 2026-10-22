@@ -8,6 +8,7 @@ import {
   shouldExtractGuideV3Memory,
   shouldUseGuideV3,
   shouldUseGuideV3ShortPraise,
+  shouldUseGuideV3SweetShort,
   shouldUseGuideV3TensionStyle,
   shouldUseGuideV3TwoStage,
 } from "./routing.ts";
@@ -194,6 +195,32 @@ Deno.test("帶張力改寫法的開關（Bruce 2026-10-20「改」）：沒設�
         mode: guideV3Mode(" On "),
         accountIsTest,
       }),
+      true,
+    );
+  }
+});
+
+Deno.test("甜話短回的開關（Eric 2026-10-22「照預設」）：沒設或打錯是 off；test 只給測試帳號；on 誰都開", () => {
+  for (const raw of [undefined, "", "true", "1", "offf"]) {
+    for (const accountIsTest of [true, false]) {
+      assertEquals(
+        shouldUseGuideV3SweetShort({ mode: guideV3Mode(raw), accountIsTest }),
+        false,
+        `${raw}/${accountIsTest}`,
+      );
+    }
+  }
+  assertEquals(
+    shouldUseGuideV3SweetShort({ mode: "test", accountIsTest: true }),
+    true,
+  );
+  assertEquals(
+    shouldUseGuideV3SweetShort({ mode: "test", accountIsTest: false }),
+    false,
+  );
+  for (const accountIsTest of [true, false]) {
+    assertEquals(
+      shouldUseGuideV3SweetShort({ mode: guideV3Mode(" On "), accountIsTest }),
       true,
     );
   }

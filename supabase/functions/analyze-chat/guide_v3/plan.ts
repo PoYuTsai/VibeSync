@@ -4,6 +4,7 @@ import { GUIDE_V3_ENTRIES, type GuideV3Entry } from "./entries.ts";
 import type { INVITE_READINESS, ReadTags, TwoStageTags } from "./read_tags.ts";
 import {
   arrangeCards,
+  arrangeSweetShort,
   assignAnswers,
   type CardSpec,
   decidePush,
@@ -90,17 +91,23 @@ function withAnswers(
   specs: CardSpec[],
   turns: readonly Turn[],
   twoStage: TwoStageTags | undefined,
+  /// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT）：她最新那句是很短的甜話時改排（rules.ts arrangeSweetShort）。
+  sweetShort = false,
 ): CardSpec[] {
   if (!twoStage || specs.length === 0) return specs;
+  const herLatest = latestHerMessages(turns);
   const answers = assignAnswers(
     specs.length,
     twoStage.worthyLines,
-    latestHerMessages(turns),
+    herLatest,
   );
-  return specs.map((spec, i) => {
+  const answered = specs.map((spec, i) => {
     const answer = answers[i];
     return answer ? { ...spec, answer } : spec;
   });
+  return sweetShort
+    ? arrangeSweetShort(answered, twoStage, herLatest)
+    : answered;
 }
 
 /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：抽到輕輕誇的短版時，挑一張卡寫短版的誇法——有回她
@@ -148,7 +155,12 @@ export function planTurn(
   /// 兩段式實驗的讀局面四欄（開關 ANALYZE_GUIDE_V3_TWO_STAGE）；沒給就跟今天一樣。
   twoStage?: TwoStageTags,
   /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：這次分析抽到輕輕誇的短版（rules.ts lightShortRun）。
-  options: { readonly lightShortPraise?: boolean } = {},
+  /// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）：她最新那句是很短的甜話時，只有一張卡回那句、
+  /// 其他卡回她別的話，沒有別的話就少出幾張（rules.ts arrangeSweetShort）。
+  options: {
+    readonly lightShortPraise?: boolean;
+    readonly sweetShort?: boolean;
+  } = {},
 ): GuideV3Plan {
   if (tags.selfHarmSignal || hits.selfHarmWords) {
     return carePlan("self_harm", tags.selfHarmSignal, hits.selfHarmWords);
@@ -160,6 +172,8 @@ export function planTurn(
     arrangeCards(reply, push, tags, twoStage),
     turns,
     twoStage,
+    // 只在照常出卡時排：婉拒收尾那一張要回她的婉拒；詐騙換地方的三張固定排法不動。
+    options.sweetShort === true && reply.kind === "send" && push !== "換地方",
   );
   const judgment = judgmentFor(tags);
   const praiseValue = twoStage

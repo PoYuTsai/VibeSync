@@ -100,6 +100,7 @@ import {
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
   SHORT_PRAISE_WRITER_SENTINELS,
+  SWEET_SHORT_WRITER_SENTINELS,
   TENSION_STYLE_WRITER_SENTINELS,
   TWO_STAGE_READ_LEAK_SENTINELS,
   TWO_STAGE_WRITER_SENTINELS,
@@ -261,6 +262,10 @@ export interface GuideV3StreamDeps {
   /// 「這題」「滿→蠻」交給程式（開關 ANALYZE_GUIDE_V3_PHRASE_TIDY，handler 把關；Bruce 2026-10-20 PR #97
   /// 再處理，2026-10-21 只用這兩條）：口吻與斷句之後、送出之前改這兩種字。沒給或 false：一字不變。
   phraseTidy?: boolean;
+  /// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，handler 把關；Eric 2026-10-22「照預設」）：只在 twoStage 開時有作用。
+  /// 她最新那句是很短的甜話時，只有一張卡回那句、規格多短回的指示，其他卡回她別的話，沒有別的話就少出幾張（至少 3 張）。
+  /// 沒給或 false：一字不變。
+  sweetShort?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -417,6 +422,9 @@ class GuideV3Flow {
   private shortPraiseOn = false;
   /// 帶張力改寫法開著（兩段式也開）：寫卡、說明的提示詞換帶張力那幾行，卡片與說明多比新寫法的哨兵。
   private tensionStyleOn = false;
+  /// 甜話短回開著（兩段式也開）、而且這一輪真的排到（有卡的規格寫了短回的指示）：卡片多比那一段的哨兵（說明不比，見
+  /// explainCards）。沒排到時寫卡看不到那一段，跟沒開一樣不比。
+  private sweetShortPlanned = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -547,6 +555,8 @@ class GuideV3Flow {
       this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
       // 帶張力改寫法（Bruce 2026-10-20「改」）：排卡不變，寫卡與說明的帶張力寫法換新的；沒開照舊。
       this.tensionStyleOn = twoStage && this.deps.tensionStyle === true;
+      // 甜話短回（Eric 2026-10-22「照預設」）：她最新那句是很短的甜話時改排（plan.ts）；沒開照舊。
+      const sweetShortOn = twoStage && this.deps.sweetShort === true;
       const plan = vetPlanText(
         planTurn(
           turns,
@@ -554,9 +564,12 @@ class GuideV3Flow {
           this.hits,
           undefined,
           twoStageTags ?? undefined,
-          this.shortPraiseOn
-            ? { lightShortPraise: lightShortRun(this.runId) }
-            : {},
+          {
+            ...(this.shortPraiseOn
+              ? { lightShortPraise: lightShortRun(this.runId) }
+              : {}),
+            ...(sweetShortOn ? { sweetShort: true } : {}),
+          },
         ),
         (field) =>
           this.deps.log("guide_v3_coach_text_removed", {
@@ -570,6 +583,8 @@ class GuideV3Flow {
           ...(withRelation ? RELATION_LEAK_SENTINELS : []),
         ],
       );
+      this.sweetShortPlanned = sweetShortOn &&
+        plan.specs.some((s) => s.sweetShort === true);
       // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
       const view = readView(
         plan,
@@ -1139,12 +1154,14 @@ class GuideV3Flow {
           card,
           spec,
           sourceText,
-          // 短版稱讚、帶張力改寫法開時：規格裡短版那段、帶張力的新寫法抄進卡片也拿掉。都沒開照舊。
-          this.shortPraiseOn || this.tensionStyleOn
+          // 短版稱讚、帶張力改寫法開時：規格裡短版那段、帶張力的新寫法抄進卡片也拿掉；甜話短回排到時，規格裡短回的
+          // 指示也一樣。都沒開照舊。
+          this.shortPraiseOn || this.tensionStyleOn || this.sweetShortPlanned
             ? [
               ...TWO_STAGE_WRITER_SENTINELS,
               ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
               ...(this.tensionStyleOn ? TENSION_STYLE_WRITER_SENTINELS : []),
+              ...(this.sweetShortPlanned ? SWEET_SHORT_WRITER_SENTINELS : []),
             ]
             : TWO_STAGE_WRITER_SENTINELS,
         )
@@ -1526,7 +1543,8 @@ class GuideV3Flow {
         continue;
       }
       // 說明看得到的新字（短版那段、帶張力的新寫法）照抄進說明也不給，跟卡片同一份哨兵；帶張力改寫法另加
-      // 說明規則那一條（主審第 1 輪 P2）。都沒開照舊。
+      // 說明規則那一條（主審第 1 輪 P2）。都沒開照舊。甜話短回的短回指示只比卡片、不比說明：說明講這張「短短回她一句就好」
+      // 是自然的白話，拿掉反而少了那張的說明；照抄規格的結構仍由說明自己的哨兵擋。
       const vetted = vetExplanation(raw, [
         ...(this.tensionStyleOn
           ? [

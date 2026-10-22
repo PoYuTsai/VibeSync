@@ -102,6 +102,16 @@ export function shouldUseGuideV3PhraseTidy(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 甜話短回（Eric 2026-10-22「照預設」，Bruce 2026-10-22：她說很短的甜話，短短回就好；見 rules.ts arrangeSweetShort）：開關
+/// ANALYZE_GUIDE_V3_SWEET_SHORT，跟 ANALYZE_GUIDE_V3 一樣 off／test／on，只在兩段式開著時才有作用（入口把關）。她最新那句是
+/// 很短的甜話時只有一張卡回那句、其他卡回她別的話，沒有別的話就少出幾張；沒開跟今天一字不差。
+export function shouldUseGuideV3SweetShort(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。
