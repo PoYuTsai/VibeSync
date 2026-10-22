@@ -85,7 +85,12 @@ import {
   buildBakeoffContextFixture,
 } from "../practice-difficulty-bakeoff/bakeoff.ts";
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
-import { estimateCostUsd, HAIKU_4_5_PRICING } from "./pricing.ts";
+import {
+  DEEPSEEK_CHAT_USD_PER_CALL,
+  DEEPSEEK_CLASSIFIER_USD_PER_CALL,
+  estimateCostUsd,
+  HAIKU_4_5_PRICING,
+} from "./pricing.ts";
 import {
   type AgencyClassifierSignal,
   type AgencyMode,
@@ -108,14 +113,19 @@ import {
 import {
   AGENCY_SCENARIOS,
   type AgencyScenario,
+  DEFAULT_AGENCY_SCENARIOS,
   isAgencyScenarioId,
   type ProbeSpec,
 } from "./scenarios.ts";
+import {
+  ACQUAINTANCE_ORIGINS,
+  type AcquaintanceOrigin,
+} from "../../supabase/functions/practice-chat/acquaintance_origin.ts";
 
 // 照 handler.ts 現用值抄錄（handler 未 export；改 handler 記得同步）。
 const CHAT_MAX_TOKENS = 200;
 const CHAT_TEMPERATURE = 0.9;
-const CHAT_GENERATION_ATTEMPTS = 2;
+export const CHAT_GENERATION_ATTEMPTS = 2;
 const MODEL_TIMEOUT_MS = 30000;
 // handler.ts assisted 分支在還沒有分類器結果時的注入值（beginner 起始溫度／熟悉度）。
 // Phase 4.5h 之後這兩個常數只是 `--temperature`／`--familiarity` 的**預設值**：
@@ -144,6 +154,11 @@ export interface TrustedSources {
   readonly scenePromptLine: string;
   readonly memorySummary: string;
   readonly herRecentMomentsBlock: string;
+  /**
+   * PRACTICE_PHOTO_MEMORY_FIX：她的大頭照描述（照片裡的人是她）。評審要看得到
+   * 照片是誰的，才判得了把照片講成他拍的。舊 artifact 沒有這格。
+   */
+  readonly photoScene?: string;
 }
 
 export function trustedSourcesFor(
@@ -166,6 +181,7 @@ export function trustedSourcesFor(
     scenePromptLine: fixture.sceneContext.promptLine,
     memorySummary: fixture.memorySummary,
     herRecentMomentsBlock: fixture.herRecentMomentsBlock,
+    photoScene: profile.girl.photoScene,
   };
 }
 
@@ -233,8 +249,216 @@ export interface AgencySessionResult {
   readonly difficulty: PracticeDifficulty;
   readonly mode: PracticeRunMode;
   readonly sceneId: string;
+  /**
+   * PRACTICE_PHOTO_MEMORY_FIX：這一場的認識管道 id（情境釘死的，或 fixture 依
+   * thread 決定的）。評審用它找管道的 label／sharedFact。舊 artifact 沒有這格。
+   */
+  readonly acquaintanceOriginId?: string | null;
   readonly turns: readonly AgencyTurnResult[];
   readonly error?: string;
+}
+
+// ── PRACTICE_PHOTO_MEMORY_FIX 評測臂（Bruce 2026-10-22 規格 §9.2）──────────
+//
+// `on`＝production 修正版（`buildChatPromptBundle` 的 `photoMemoryFix: true`）；
+// `deletions_only`＝Eric 2026-10-22 同意加的「只刪不加」對照：從現行 agency 版
+// （旗標關）出發，只刪掉造成問題的兩種句子——街頭搭訕／夜店立場裡「要他講出／
+// 對得上當天畫面」的條件，與 Game 例外句裡「逐字稿可以替認識經過加細節」的
+// 許可——修正版加的大頭照主詞、錨定例外、記憶摘要清單都不加。用來量那幾句加的
+// 是不是真的有用。這一臂只存在評測工具裡，production 沒有。
+export type PhotoMemoryFixArm = "off" | "on" | "deletions_only";
+
+/** 「只刪不加」要刪的立場句（取自 production 原文，對不上就丟錯）。 */
+export const PHOTO_MEMORY_STANCE_DELETIONS: Readonly<
+  Record<string, { readonly from: string; readonly to: string }>
+> = {
+  street_approach: {
+    from:
+      "開頭會保守、會先確認他是不是那個人；他要能講出當時的畫面或那句讓你答應的理由，你才會慢慢放鬆。",
+    to: "開頭會保守。",
+  },
+  nightclub: {
+    from:
+      "隔天清醒之後其實有點半信半疑；他要能對得上當天的畫面，你才會接得比較自然。",
+    to: "隔天清醒之後其實有點半信半疑。",
+  },
+};
+
+/** 「只刪不加」要刪的 Game 例外句片段（只刪「逐字稿可以加細節」的許可）。 */
+export const PHOTO_MEMORY_GAME_DELETION = {
+  from:
+    "; memorySummary and the transcript may add color consistent with that origin but can never replace or contradict it,",
+  to: ", and nothing else can replace or contradict it,",
+} as const;
+
+function replaceExactlyOnce(
+  text: string,
+  from: string,
+  to: string,
+  label: string,
+): string {
+  const at = text.indexOf(from);
+  if (at < 0 || text.indexOf(from, at + from.length) >= 0) {
+    throw new Error(`agency_photo_memory_deletion_miss: ${label}`);
+  }
+  return text.slice(0, at) + to + text.slice(at + from.length);
+}
+
+/**
+ * 「只刪不加」臂：對旗標關的 agency prompt 做逐字刪除。立場句在穩定前綴裡，兩邊
+ * 都改；Game 例外句在當輪尾巴，只改 system。刪完之後穩定前綴仍必須是 system 的
+ * 開頭。
+ */
+export function applyPhotoMemoryDeletionsOnly(args: {
+  messages: readonly { role: string; content: string }[];
+  systemStable: string;
+  originId: string | null;
+  game: boolean;
+}): { messages: { role: string; content: string }[]; systemStable: string } {
+  const [system, ...rest] = args.messages;
+  if (!system || system.role !== "system") {
+    throw new Error("agency_photo_memory_deletion_no_system");
+  }
+  let stable = args.systemStable;
+  let content = system.content;
+  const stance = args.originId
+    ? PHOTO_MEMORY_STANCE_DELETIONS[args.originId]
+    : undefined;
+  if (stance) {
+    stable = replaceExactlyOnce(stable, stance.from, stance.to, args.originId!);
+    content = replaceExactlyOnce(
+      content,
+      stance.from,
+      stance.to,
+      args.originId!,
+    );
+  }
+  if (args.game && args.originId) {
+    content = replaceExactlyOnce(
+      content,
+      PHOTO_MEMORY_GAME_DELETION.from,
+      PHOTO_MEMORY_GAME_DELETION.to,
+      "game",
+    );
+  }
+  if (!content.startsWith(stable)) {
+    throw new Error("agency_photo_memory_deletion_split");
+  }
+  return { messages: [{ ...system, content }, ...rest], systemStable: stable };
+}
+
+/** 依 id 找 production 的認識管道；查無此 id 就丟錯（production 的
+ * `getAcquaintanceOrigin` 會靜默退回預設管道，評測不能這樣）。 */
+export function acquaintanceOriginById(id: string): AcquaintanceOrigin {
+  const origin = ACQUAINTANCE_ORIGINS.find((o) => o.id === id);
+  if (!origin) throw new Error(`agency_unknown_acquaintance_origin: "${id}"`);
+  return origin;
+}
+
+// ── 付費守門（Haiku 臂必帶；DeepSeek 臂可選）──────────────────────────────
+//
+// 每次送出前預留最壞情況（input 用字數 × 2 token、output 用 max_tokens 全滿），
+// 回來後用實際 usage 結算；已花＋這次預留超過 `--budget-usd`、或到 `--max-calls`，
+// 之後的呼叫一律丟 BudgetStopError（不送出）。同一場的其餘回合跟著失敗、記成
+// 錯誤，artifact 照樣寫出來。API 失敗或沒回 usage 時成本以預留額計入。
+// 守門是技術保險，不能取代 Eric 當次說「跑」。
+export const HAIKU_RESERVE_TOKENS_PER_CHAR = 2;
+
+export class BudgetStopError extends Error {
+  constructor(readonly reason: "max_calls" | "budget_usd") {
+    super(`agency_budget_stop: ${reason}`);
+  }
+}
+
+export class PaidBudget {
+  calls = 0;
+  spentUsd = 0;
+  stopped: "max_calls" | "budget_usd" | null = null;
+  constructor(readonly maxCalls: number, readonly budgetUsd: number) {}
+
+  /** 送出前呼叫；回傳預留額，送出後要用 `settle` 結算。 */
+  reserve(estimateUsd: number): number {
+    if (this.stopped) throw new BudgetStopError(this.stopped);
+    if (this.calls + 1 > this.maxCalls) {
+      this.stopped = "max_calls";
+      throw new BudgetStopError(this.stopped);
+    }
+    if (this.spentUsd + estimateUsd > this.budgetUsd) {
+      this.stopped = "budget_usd";
+      throw new BudgetStopError(this.stopped);
+    }
+    this.calls++;
+    this.spentUsd += estimateUsd;
+    return estimateUsd;
+  }
+
+  /** 把預留額換成實際花費（實際比預留高也照記）。 */
+  settle(reservedUsd: number, actualUsd: number): void {
+    this.spentUsd += actualUsd - reservedUsd;
+  }
+}
+
+/**
+ * Haiku 呼叫成功之後結算：有 usage 就換成實際花費；沒回 usage 就保留預留額
+ * （當作花掉了，工具審查 1 P2）。回傳這次有沒有 usage。
+ */
+export function settleHaikuReservation(
+  budget: PaidBudget | null,
+  reservedUsd: number,
+  usage: HaikuUsage | null,
+): boolean {
+  if (!usage) return false;
+  budget?.settle(reservedUsd, estimateHaikuCostUsd(usage));
+  return true;
+}
+
+/** Haiku 一次呼叫的預留額：input 全算、output 用 max_tokens 全滿。 */
+export function haikuReserveUsd(
+  promptChars: number,
+  maxTokens: number,
+): number {
+  return estimateCostUsd({
+    inputTokens: Math.ceil(promptChars * HAIKU_RESERVE_TOKENS_PER_CHAR),
+    outputTokens: maxTokens,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
+  }, HAIKU_4_5_PRICING);
+}
+
+/** 乾跑時模型的固定回覆（普通、短、不會觸發任何守門）。 */
+export const DRY_RUN_REPLY = "嗯嗯";
+
+/**
+ * 乾跑的估價：每次生成各算一次（每輪一次＝一般）；最壞＝每輪都重試到
+ * CHAT_GENERATION_ATTEMPTS 次、output 全滿、每字 2 token。
+ */
+export function estimateDryRun(
+  calls: readonly { model: "deepseek" | "haiku"; promptChars: number }[],
+): {
+  deepseekCalls: number;
+  haikuCalls: number;
+  haikuPromptChars: number;
+  haikuReserveUsd: number;
+  haikuWorstUsd: number;
+  deepseekUsd: number;
+  deepseekWorstUsd: number;
+} {
+  const haiku = calls.filter((c) => c.model === "haiku");
+  const deepseek = calls.filter((c) => c.model === "deepseek");
+  const haikuReserve = haiku.reduce(
+    (sum, c) => sum + haikuReserveUsd(c.promptChars, CHAT_MAX_TOKENS),
+    0,
+  );
+  return {
+    deepseekCalls: deepseek.length,
+    haikuCalls: haiku.length,
+    haikuPromptChars: haiku.reduce((sum, c) => sum + c.promptChars, 0),
+    haikuReserveUsd: haikuReserve,
+    haikuWorstUsd: haikuReserve * CHAT_GENERATION_ATTEMPTS,
+    deepseekUsd: deepseek.length * DEEPSEEK_CHAT_USD_PER_CALL,
+    deepseekWorstUsd: deepseek.length * DEEPSEEK_CHAT_USD_PER_CALL *
+      CHAT_GENERATION_ATTEMPTS,
+  };
 }
 
 /** 鏡像 Flutter practice_chat_screen.dart 的 _splitBubbles（>4 段視為一則）。 */
@@ -382,6 +606,19 @@ export async function runAgencyScenario(args: {
    */
   temperatureScore?: number;
   familiarityScore?: number;
+  /**
+   * PRACTICE_PHOTO_MEMORY_FIX 評測臂（`--photo-memory-fix`）。省略／`off`＝逐字
+   * 舊行為；`on` 與 `deletions_only` 只在 `agency === "on"` 時有意義（CLI 會擋）。
+   */
+  photoMemoryFix?: PhotoMemoryFixArm;
+  /**
+   * 付費守門（見 PaidBudget）。生成的守門在 main 包進 callChat／callChatHaiku；
+   * 這一格給 `--state=1` 的分類器呼叫用：每次送出前先預留 DeepSeek 分類器的觀測
+   * 單價，停了就不送（工具審查 1 P1）。
+   */
+  budget?: PaidBudget | null;
+  /** 分類器呼叫端（測試注入假的）；省略＝production 的 callDeepSeek。 */
+  callClassifier?: typeof callDeepSeek;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
   const temperatureScore = args.temperatureScore ?? BEGINNER_TEMPERATURE_SCORE;
@@ -391,9 +628,13 @@ export async function runAgencyScenario(args: {
     profileId: args.profileId,
   });
   const fixture = buildBakeoffContextFixture(profile);
+  // PRACTICE_PHOTO_MEMORY_FIX：情境釘死認識管道時用它，否則照 fixture（依 thread）。
+  const origin = args.scenario.originId
+    ? acquaintanceOriginById(args.scenario.originId)
+    : fixture.acquaintanceOrigin;
   const chatContext = {
     sceneContext: fixture.sceneContext,
-    acquaintanceOrigin: fixture.acquaintanceOrigin,
+    acquaintanceOrigin: origin,
     memorySummary: fixture.memorySummary,
     timeContext: fixture.timeContext,
     herRecentMomentsBlock: fixture.herRecentMomentsBlock,
@@ -418,6 +659,7 @@ export async function runAgencyScenario(args: {
     difficulty,
     mode: args.mode,
     sceneId: fixture.sceneContext.id,
+    acquaintanceOriginId: origin?.id ?? null,
   };
 
   for (let i = 0; i < args.scenario.turns.length; i++) {
@@ -495,8 +737,19 @@ export async function runAgencyScenario(args: {
         }
         : {}),
       ...chatContext,
+      ...(args.photoMemoryFix === "on" ? { photoMemoryFix: true } : {}),
     });
-    const messages = bundle.messages;
+    // 「只刪不加」對照臂：對旗標關的 agency prompt 逐字刪兩種句子（見
+    // applyPhotoMemoryDeletionsOnly）；其餘臂原封不動。
+    const prompt = args.photoMemoryFix === "deletions_only"
+      ? applyPhotoMemoryDeletionsOnly({
+        messages: bundle.messages,
+        systemStable: bundle.systemStable,
+        originId: origin?.id ?? null,
+        game: args.mode === "game",
+      })
+      : { messages: bundle.messages, systemStable: bundle.systemStable };
+    const messages = prompt.messages;
     const promptChars = messages.reduce((sum, m) => sum + m.content.length, 0);
     // Phase 4.3 步驟 1（`--chat-model=mixed`）：選模入口見 `runnerChatModelFor`
     // ——mixed 臂直接呼叫 production 的 `chatModelFor`，兩邊不可能再漂。
@@ -578,7 +831,7 @@ export async function runAgencyScenario(args: {
                 content: checkOutRewrite,
               }]
               : messages,
-            bundle.systemStable,
+            prompt.systemStable,
           );
         // handler.ts 同序後處理。
         candidate = toTraditionalChinese(normalizeLiteralNewlines(candidate));
@@ -681,7 +934,8 @@ export async function runAgencyScenario(args: {
       // standard 的精簡分類器（production 的 `judgeStandardAgencyFailOpen`
       // 同一組 prompt／parser；判準文字與逐輪分類器共用 AGENCY_CLASSIFIER_RULES）。
       try {
-        const raw = await callDeepSeek({
+        args.budget?.reserve(DEEPSEEK_CLASSIFIER_USD_PER_CALL);
+        const raw = await (args.callClassifier ?? callDeepSeek)({
           apiKey: args.classifierApiKey,
           messages: buildStandardAgencyClassifierMessages({
             turns,
@@ -708,7 +962,8 @@ export async function runAgencyScenario(args: {
       (args.mode === "beginner" || args.mode === "game")
     ) {
       try {
-        const raw = await callDeepSeek({
+        args.budget?.reserve(DEEPSEEK_CLASSIFIER_USD_PER_CALL);
+        const raw = await (args.callClassifier ?? callDeepSeek)({
           apiKey: args.classifierApiKey,
           messages: buildTurnClassifierMessages({
             turns,
@@ -811,7 +1066,7 @@ export async function runAgencyScenario(args: {
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────
-interface CliOptions {
+export interface CliOptions {
   outPath: string;
   profileIds: string[];
   scenarios: AgencyScenario[];
@@ -845,13 +1100,30 @@ interface CliOptions {
    */
   temperatureScore: number;
   familiarityScore: number;
+  /**
+   * --photo-memory-fix=off|on|deletions-only：PRACTICE_PHOTO_MEMORY_FIX 評測臂。
+   * 預設 off＝逐字舊行為；另外兩個要 `--agency=on`。
+   */
+  photoMemoryFix: PhotoMemoryFixArm;
+  /**
+   * --max-calls=N／--budget-usd=X：付費守門（兩個一起帶）。`--chat-model=haiku`
+   * 或 `mixed` 真跑時必帶；deepseek 臂可選。null＝沒有守門（舊行為）。
+   */
+  maxCalls: number | null;
+  budgetUsd: number | null;
+  /**
+   * --dry-run=1：不連網、不讀金鑰，模型換成固定回覆，量出每次生成的提示字數，
+   * 估呼叫次數與費用（見 README）。
+   */
+  dryRun: boolean;
 }
 
 export function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
     outPath: new URL("./out/latest.json", import.meta.url).pathname,
     profileIds: [...DEFAULT_PROFILE_IDS],
-    scenarios: [...AGENCY_SCENARIOS],
+    // 點名才跑（optIn）的情境不在預設清單裡，既有指令的次數與費用不變。
+    scenarios: [...DEFAULT_AGENCY_SCENARIOS],
     repeat: 3,
     difficulty: "normal",
     mode: "standard",
@@ -864,6 +1136,10 @@ export function parseArgs(argv: string[]): CliOptions {
     chatModel: "deepseek",
     temperatureScore: BEGINNER_TEMPERATURE_SCORE,
     familiarityScore: BEGINNER_FAMILIARITY_SCORE,
+    photoMemoryFix: "off",
+    maxCalls: null,
+    budgetUsd: null,
+    dryRun: false,
   };
   // 分數旗標共用一支解析：非整數或落在 0–100 之外一律報錯，不靜默 clamp
   // ——clamp 掉的話 artifact meta 記的起始分數就跟實際注入的不一樣。
@@ -970,9 +1246,37 @@ export function parseArgs(argv: string[]): CliOptions {
         }
         opts.difficulty = value;
         break;
+      case "photo-memory-fix":
+        if (value === "off" || value === "on") {
+          opts.photoMemoryFix = value;
+        } else if (value === "deletions-only") {
+          opts.photoMemoryFix = "deletions_only";
+        } else {
+          throw new Error(`agency_invalid_photo_memory_fix: "${value}"`);
+        }
+        break;
+      case "max-calls": {
+        const n = Number.parseInt(value, 10);
+        if (!Number.isInteger(n) || n < 1 || String(n) !== value.trim()) {
+          throw new Error(`agency_invalid_max_calls: "${value}"`);
+        }
+        opts.maxCalls = n;
+        break;
+      }
+      case "budget-usd": {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) {
+          throw new Error(`agency_invalid_budget_usd: "${value}"`);
+        }
+        opts.budgetUsd = n;
+        break;
+      }
+      case "dry-run":
+        opts.dryRun = value === "1" || value === "true";
+        break;
       default:
         throw new Error(
-          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model、--temperature、--familiarity）`,
+          `agency_unknown_cli_flag: "--${key}"（支援：--profiles、--scenarios、--repeat、--mode、--style、--agency、--shape、--difficulty、--concurrency、--state、--thread-salt、--chat-model、--temperature、--familiarity、--photo-memory-fix、--max-calls、--budget-usd、--dry-run）`,
         );
     }
   }
@@ -980,7 +1284,33 @@ export function parseArgs(argv: string[]): CliOptions {
   // Phase 4.5b 之後不成立：`PRACTICE_STANDARD_AGENCY_CLASSIFIER=true` 時
   // standard 也有每輪分類器與持久化狀態，所以 `--mode=standard --state=1`
   // 就是那條 production 路徑的黑箱對應（分類器走精簡版，見 runAgencyScenario）。
+  //
+  // PRACTICE_PHOTO_MEMORY_FIX：修正只改 agency `on` 分支，agency 沒開時這兩臂跟
+  // off 完全一樣，靜默跑會讓 artifact meta 說謊。
+  if (opts.photoMemoryFix !== "off" && opts.agency !== "on") {
+    throw new Error(
+      `agency_photo_memory_fix_requires_agency_on: --photo-memory-fix=${opts.photoMemoryFix} 要搭 --agency=on`,
+    );
+  }
+  if ((opts.maxCalls === null) !== (opts.budgetUsd === null)) {
+    throw new Error(
+      "agency_budget_flags_pair: --max-calls 與 --budget-usd 要一起帶",
+    );
+  }
   return opts;
+}
+
+/**
+ * 真跑前的付費守門（main 在讀金鑰之前呼叫；parseArgs 只管解析，舊的
+ * `--chat-model=haiku` 解析行為不變）。`haiku`／`mixed` 會打 Anthropic，真跑必帶
+ * `--max-calls` 與 `--budget-usd`；乾跑不用。
+ */
+export function assertPaidRunGuards(opts: CliOptions): void {
+  if (!opts.dryRun && opts.chatModel !== "deepseek" && opts.maxCalls === null) {
+    throw new Error(
+      `agency_budget_required: --chat-model=${opts.chatModel} 會打 Anthropic，真跑要帶 --max-calls 與 --budget-usd（Eric 當次說「跑」才跑）`,
+    );
+  }
 }
 
 // ── 模型 A/B（Phase 4 之後）：Haiku 4.5 臂 ──────────────────────────────────
@@ -1098,8 +1428,10 @@ export async function callHaikuChat(
     /** Phase 4.5b 刀 B：與 production 同一格（`bundle.systemStable`）。 */
     systemCachePrefix?: string;
   },
-): Promise<{ text: string; usage: HaikuUsage }> {
-  let usage: HaikuUsage = ZERO_HAIKU_USAGE_TOTALS;
+): Promise<{ text: string; usage: HaikuUsage | null }> {
+  // 沒回 usage 時是 null（不是全零）：付費守門要分得出「沒回」跟「真的用了零」
+  // （工具審查 1 P2）。
+  let usage: HaikuUsage | null = null;
   const text = await callClaude({
     apiKey: args.apiKey,
     model: CLAUDE_HAIKU_MODEL,
@@ -1182,11 +1514,24 @@ export function buildJobs(
 
 async function main(): Promise<void> {
   const opts = parseArgs(Deno.args);
+  assertPaidRunGuards(opts);
+  // PRACTICE_PHOTO_MEMORY_FIX 之後：付費守門（見 PaidBudget）。沒帶旗標＝null＝
+  // 舊行為。
+  const budget = opts.maxCalls !== null
+    ? new PaidBudget(opts.maxCalls, opts.budgetUsd!)
+    : null;
+  const promptCharsOf = (messages: { content: string }[]) =>
+    messages.reduce((sum, m) => sum + m.content.length, 0);
   // haiku 臂／mixed 臂的 usage 累加（純 deepseek 臂沒有這個帳，維持 undefined，
   // 逐字舊行為）。
   let haikuUsageTotals: HaikuUsageTotals | undefined;
+  // Haiku 回了文字卻沒回 usage 的次數（這幾次以預留額記帳）。
+  let haikuUsageMissing = 0;
   const makeHaikuCaller =
     (apiKey: string): ChatCaller => async (messages, systemCachePrefix) => {
+      const reserved = budget?.reserve(
+        haikuReserveUsd(promptCharsOf(messages), CHAT_MAX_TOKENS),
+      ) ?? 0;
       const { text, usage } = await callHaikuChat({
         apiKey,
         messages: messages as ChatMessage[],
@@ -1195,11 +1540,18 @@ async function main(): Promise<void> {
         timeoutMs: MODEL_TIMEOUT_MS,
         systemCachePrefix,
       });
-      haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
+      // 失敗（丟錯）時不結算：預留額就當花掉了。沒回 usage 也一樣。
+      if (settleHaikuReservation(budget, reserved, usage)) {
+        haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage!);
+      } else {
+        haikuUsageMissing++;
+      }
       return text;
     };
-  const makeDeepSeekCaller = (apiKey: string): ChatCaller => (messages) =>
-    callDeepSeek({
+  const makeDeepSeekCaller = (apiKey: string): ChatCaller => (messages) => {
+    // DeepSeek 用觀測單價記帳（pricing.ts 的 DEEPSEEK_CHAT_USD_PER_CALL）。
+    budget?.reserve(DEEPSEEK_CHAT_USD_PER_CALL);
+    return callDeepSeek({
       apiKey,
       messages: messages as {
         role: "system" | "user" | "assistant";
@@ -1209,6 +1561,15 @@ async function main(): Promise<void> {
       temperature: CHAT_TEMPERATURE,
       timeoutMs: MODEL_TIMEOUT_MS,
     });
+  };
+  // --dry-run=1：模型換成固定回覆，只記每次生成的提示字數；不連網、不讀金鑰。
+  const dryRunCalls: { model: "deepseek" | "haiku"; promptChars: number }[] =
+    [];
+  const makeDryRunCaller =
+    (model: "deepseek" | "haiku"): ChatCaller => (messages) => {
+      dryRunCalls.push({ model, promptChars: promptCharsOf(messages) });
+      return Promise.resolve(DRY_RUN_REPLY);
+    };
 
   let callChat: ChatCaller;
   let callChatHaiku: ChatCaller | undefined;
@@ -1216,7 +1577,17 @@ async function main(): Promise<void> {
   // judgeLearningState 同款，不受 --chat-model 影響），只在 assisted＋
   // stateSimulation 時才需要，其餘模式不多讀一把 key。
   let classifierApiKey: string | undefined;
-  if (opts.chatModel === "haiku") {
+  if (opts.dryRun) {
+    if (opts.stateSimulation) {
+      throw new Error(
+        "agency_dry_run_state_unsupported: --dry-run 不支援 --state=1（分類器呼叫沒有估價）",
+      );
+    }
+    callChat = makeDryRunCaller(
+      opts.chatModel === "haiku" ? "haiku" : "deepseek",
+    );
+    if (opts.chatModel === "mixed") callChatHaiku = makeDryRunCaller("haiku");
+  } else if (opts.chatModel === "haiku") {
     haikuUsageTotals = ZERO_HAIKU_USAGE_TOTALS;
     callChat = makeHaikuCaller(readAnthropicKey());
     if (opts.stateSimulation) classifierApiKey = await readDeepSeekKey();
@@ -1257,6 +1628,8 @@ async function main(): Promise<void> {
         chatModel: opts.chatModel,
         temperatureScore: opts.temperatureScore,
         familiarityScore: opts.familiarityScore,
+        photoMemoryFix: opts.photoMemoryFix,
+        budget,
       });
       console.error(
         `[agency] ${
@@ -1267,6 +1640,41 @@ async function main(): Promise<void> {
     }
   };
   await Promise.all(Array.from({ length: opts.concurrency }, worker));
+
+  if (opts.dryRun) {
+    const estimate = estimateDryRun(dryRunCalls);
+    const plan = {
+      meta: {
+        tool: "practice-agency-eval/run_agency",
+        dryRun: true,
+        commit: await git(["rev-parse", "HEAD"]),
+        practiceMode: opts.mode,
+        conversationAgency: opts.agency,
+        chatModel: opts.chatModel,
+        photoMemoryFix: opts.photoMemoryFix,
+        profileIds: opts.profileIds,
+        scenarioIds: opts.scenarios.map((s) => s.id),
+        repeat: opts.repeat,
+        args: Deno.args,
+      },
+      sessions: results.length,
+      estimate,
+    };
+    const planPath = opts.outPath.replace(/\.json$/, "") + ".dry-run.json";
+    const planDir = planPath.includes("/")
+      ? planPath.slice(0, planPath.lastIndexOf("/"))
+      : ".";
+    await Deno.mkdir(planDir, { recursive: true });
+    await Deno.writeTextFile(planPath, JSON.stringify(plan, null, 2) + "\n");
+    console.error(
+      `[agency] 乾跑：${results.length} 場、DeepSeek ${estimate.deepseekCalls} 次、Haiku ${estimate.haikuCalls} 次生成（每輪一次）；Haiku 保守估 US$${
+        estimate.haikuReserveUsd.toFixed(2)
+      }、每輪都重試到 ${CHAT_GENERATION_ATTEMPTS} 次的最壞 US$${
+        estimate.haikuWorstUsd.toFixed(2)
+      }；DeepSeek 約 US$${estimate.deepseekUsd.toFixed(3)}。寫入 ${planPath}`,
+    );
+    return;
+  }
 
   const trustedKey = (r: AgencySessionResult) =>
     `${r.profileId}|${r.difficulty}`;
@@ -1314,6 +1722,8 @@ async function main(): Promise<void> {
           haikuUsage: {
             ...haikuUsageTotals,
             estimatedCostUsd: estimateHaikuCostUsd(haikuUsageTotals),
+            // 沒回 usage 的次數（不在上面的 token 數裡，守門以預留額記帳）。
+            missingUsageCalls: haikuUsageMissing,
           },
         }
         : {}),
@@ -1328,6 +1738,20 @@ async function main(): Promise<void> {
       },
       replyStyle: opts.style,
       conversationAgency: opts.agency,
+      // PRACTICE_PHOTO_MEMORY_FIX 評測臂（`off`／`on`／`deletions_only`）；只在
+      // conversationAgency 是 on 時才有效果（CLI 會擋）。
+      photoMemoryFix: opts.photoMemoryFix,
+      // 付費守門：沒帶 --max-calls／--budget-usd 時是 null。spentUsd 是預留後
+      // 用實際 usage 結算的金額（DeepSeek 用觀測單價）。
+      budget: budget
+        ? {
+          maxCalls: budget.maxCalls,
+          budgetUsd: budget.budgetUsd,
+          calls: budget.calls,
+          spentUsd: budget.spentUsd,
+          stopped: budget.stopped,
+        }
+        : null,
       // Phase 3.3 形狀實驗臂（`off`／`truncate`）；解讀數字時要跟
       // conversationAgency 一起看——旗標不是 on 時這個臂沒有任何效果。
       shapeExperiment: opts.shape,

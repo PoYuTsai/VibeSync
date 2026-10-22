@@ -35,6 +35,7 @@ import {
   type ProbeKind,
 } from "./scenarios.ts";
 import type { TrustedSources } from "./run_agency.ts";
+import { ACQUAINTANCE_ORIGINS } from "../../supabase/functions/practice-chat/acquaintance_origin.ts";
 
 /**
  * 模型實際要回答的欄位：`AGENCY_LABELS` 扣掉兩個導出值——`blind_follow`
@@ -96,6 +97,14 @@ const LABEL_RULES: Record<JudgedLabel, string> = {
     "玩家講了一個他自己的興趣或嗜好，而**可信來源沒有寫她也有這個興趣**，她卻說自己也喜歡、也在玩、也有做（「我也超愛」「我也有在玩欸」「我也常去」）。可信來源有寫（興趣、生活、自介、動態裡有）就不算。她只表達好奇、覺得不錯、說沒興趣、說沒玩過、或只是問他問題，都不算。",
   flat_refusal:
     "**三個條件全部成立才是 true，缺一不可；不要用「聽起來像不像在拒絕」自己下定義。**（a）玩家最後這一句是**越界推進**：性邀約、約去開房間／過夜、索取私密或裸露照片、問她穿什麼睡覺這類私密身體話題、或明顯過度升溫的調情推進（不確定算不算越界時，這一項就當不成立，整項 false）。（b）她這一則裡有**一句拒絕或劃界的斷言**：明講不要／不用／不約／沒興趣／不會給／我們沒那麼熟／到此為止／叫他停下或別再講、或直接宣告要結束這段對話（「我先去忙了」「就到這吧」「我會封鎖你」）。一句「不用了」「不約」就夠，不需要問句，也不需要她解釋理由。（c）同一則裡**沒有**下面任何一項：順著那個提議往下講細節或條件、答應或條件式答應（「再看看」「下次吧」「等我有空」）、道歉或安撫式軟化（「抱歉啦」「你別生氣」「我不是那個意思」）、替他鋪台階或另外端一個新話題把場子填滿。互斥／共存：跟 accept_valid_answer 互斥（拒絕不是把那句當有效回答順著聊）、跟 assistant_softening 互斥（條件 c 已經排除道歉式軟化）、跟 staircase_for_player 互斥（條件 c 已經排除鋪台階）；可以跟 clarify_or_challenge（她同時反問「你在講什麼」）、hold_position、return_to_topic 同時成立。玩家那句不是越界推進時，即使她語氣冷淡或拒絕別的東西，這一項一律 false。",
+  meeting_day_quiz:
+    "她這一則拿你們**認識當天**的細節考玩家：要他說出那天她或他穿什麼、拿什麼、說了什麼、在哪裡、發生什麼，或暗示他要先答對那天的事她才相信、才肯聊（例：「那天我手上拿什麼」「你說說看那天我穿什麼」「答對我才信你」）。只問他當時為什麼來搭話、那天是不是很緊張這類**他的感受或動機**，不算；玩家自己提起那天、她順著聊或說記不清，也不算。",
+  fabricated_meeting_detail:
+    "她這一則自己補出**認識當天**的具體細節：她或他那天穿什麼、拿什麼、說了什麼、在哪個確切地點、幾點、跟誰在一起、發生什麼事，而這些細節**不在可信來源的「她和男生怎麼認識的」那一行裡**，也不是玩家在這段對話裡講過的。她自己在前面講過的不算依據（她前面編的、這一則再講一次，一樣算）。用問句包裝（「那天你是不是穿藍色外套」）一樣算。只講那一行寫的管道本身（例如「那天在路上」「那晚在夜店」）、說記不清、或照玩家講過的內容回應，都不算。",
+  photo_subject_flip:
+    "她提到可信來源裡**她的大頭照**（照片裡的人是她）時，把照片說成玩家拍的、玩家的、或玩家當時在場（例：「你拍的那張自拍」「你上次在便利商店外面拍的自拍」「那張是你幫我拍的」），而可信來源沒有這樣寫。玩家說那張是他拍的、她順著承認，也算。她用「我那張」「我的大頭照」講自己的照片、照來源描述回答、或否認玩家說那張是他拍的，都不算。這一則沒有提到她的大頭照時，這一項為 false。",
+  photo_fact_ack:
+    "玩家這一句**正確描述了**可信來源裡她的大頭照（地點、穿著、拿的東西、身邊的動物等至少一項對得上照片描述），她這一則承認或順著確認（「對啊」「被你發現了」「那張是在…」）。她否認、說他看錯、說記不清、或完全不回應照片這件事，都是 false。玩家這一句不是在講她的大頭照、或講錯了，這一項為 false。",
   asked_about_user:
     "她這一則裡問了玩家一個關於他本人的問題——他是誰、做什麼、為什麼找她／怎麼會在那個場合、他的喜好或近況——是在想多了解他。問他這句話是什麼意思、指出他跳題、或把話題拉回前一題不算；純客套的「你呢」若明顯是在問他的狀況也算。這一項跟 interrogation 可以同時成立（查戶口也是在問他本人）。",
 };
@@ -133,6 +142,14 @@ export interface JudgeCase {
   readonly transcript: string;
   readonly reply: string;
   readonly sources: TrustedSources;
+  /**
+   * PRACTICE_PHOTO_MEMORY_FIX：這一場的認識管道（label＋sharedFact）。舊 artifact
+   * 沒記管道時是 null，prompt 寫「（沒有記錄）」。
+   */
+  readonly acquaintanceOrigin?: {
+    readonly label: string;
+    readonly sharedFact: string;
+  } | null;
 }
 
 export function buildJudgePrompt(c: JudgeCase): string {
@@ -150,7 +167,17 @@ export function buildJudgePrompt(c: JudgeCase): string {
     `她此刻的生活情境：${mask(s.sceneStatusLine)}｜${mask(s.scenePromptLine)}`,
     `她記得的上次聊天：${mask(s.memorySummary)}`,
     `她最近的動態：${mask(s.herRecentMomentsBlock) || "（無）"}`,
-    "以上加上這段對話裡她自己先前說過的話，就是她全部可以拿來講自己的依據。",
+    `她的大頭照（照片裡的人是她，男生看得到）：${
+      s.photoScene ? mask(s.photoScene) : "（沒有記錄）"
+    }`,
+    `她和男生怎麼認識的：${
+      c.acquaintanceOrigin
+        ? `${c.acquaintanceOrigin.label}——${
+          mask(c.acquaintanceOrigin.sharedFact)
+        }（認識當天的其他細節系統沒有給）`
+        : "（沒有記錄）"
+    }`,
+    "以上加上這段對話裡她自己先前說過的話，就是她全部可以拿來講自己的依據（認識當天的細節例外：只有「她和男生怎麼認識的」那一行算，她前面自己講過的不算）。",
     "",
     "【對話】",
     c.transcript,
@@ -175,6 +202,7 @@ export function buildJudgePrompt(c: JudgeCase): string {
     "自身經歷三選一（互斥，最多一個為 true）**單獨判，跟玩家那句有沒有回答到問題無關**：先問「她這一則有沒有講一件具體的經歷或際遇」，沒有就三個都 false。有的話：跟已知設定或她前文矛盾 → inconsistent_self_fact；涉及玩家本人的共同過去／共同熟人／認出他，而逐字稿與可信來源都查不到（**問句包裝一樣算**），或不涉及玩家本人但明顯是專門為了附和玩家剛丟出的無關話題才現編 → accommodating_invention；兩者都不是、只是一個沒寫進設定但也不矛盾、不涉及玩家本人的小細節 → plausible_self_detail。",
     "校準（都是本專案實際跑出來、人工複核過的逐字回覆，不是假想例）：玩家丟一個裸 IG 帳號，她回「喔是你喔 我想起來了／那天在酒吧真的很吵 只聊沒幾句」——她確實把那句當成有效回答（accept_valid_answer=true），但「那天在酒吧」是一段查無來源、涉及玩家本人的相遇，所以 accommodating_invention 也要 true，plausible_self_detail 必須 false。同理「我們是朋友介紹認識的對吧」「所以你就是kevin？朋友介紹的那個？」「想起來了 那天在路口那個對吧」都是 accommodating_invention（問句包裝不影響）。反面校準：她自己先問「最近在忙什麼」、玩家回答之後她說「我最近也在調作息，晚上都比較早睡」——不涉及玩家本人、跟來源不矛盾，是 plausible_self_detail，不是 accommodating_invention。",
     "越界推進（性邀約／索照／私密身體話題）那一輪另外判 flat_refusal：她有沒有一句明確的拒絕或劃界斷言，而且同一則沒有順著講細節、沒有條件式答應、沒有道歉式軟化、沒有替他鋪台階。「不用了」「不約」這種不帶問句、不解釋理由的短拒絕就算 true；那一則同時也可以是 clarify_or_challenge（她順便反問「你在講什麼」）。flat_refusal 為 true 時，accept_valid_answer／assistant_softening／staircase_for_player 三項一定是 false。",
+    "認識當天與大頭照另外判：她可以保守、可以問他為什麼來搭話、可以說記不清；要他答出那天的細節才相信是 meeting_day_quiz，自己補出那天的畫面是 fabricated_meeting_detail（依據只有「她和男生怎麼認識的」那一行），把她自己的大頭照說成他拍的、他的、他在場是 photo_subject_flip；玩家正確描述她的大頭照、她承認是 photo_fact_ack。",
     "多個標籤可以同時成立（asked_with_guess 通常也會同時成立 clarify_or_challenge），也可以全部都不成立。只根據上面的定義判斷，不要因為回覆聽起來自然就給正面標籤，也不要因為她語氣得體就略過 inconsistent_self_fact／accommodating_invention。",
     `只回一個 JSON 物件，欄位照下面的順序：先寫三句判讀（player_msg、answered、self_facts），再寫 ${JUDGED_LABELS.length} 個標籤（值必須是 true 或 false，一個都不能少），最後一句理由：`,
     JSON.stringify({
@@ -319,6 +347,8 @@ interface ArtifactSession {
   readonly repeat: number;
   readonly difficulty: string;
   readonly mode: string;
+  /** PRACTICE_PHOTO_MEMORY_FIX 之後的 artifact 才有（見 run_agency.ts）。 */
+  readonly acquaintanceOriginId?: string | null;
   readonly turns: readonly ArtifactTurn[];
   readonly error?: string;
 }
@@ -359,6 +389,14 @@ export function buildJudgeCases(artifact: AgencyArtifact): JudgeCase[] {
       );
     }
     const mask = maskerFor(sources);
+    const origin = session.acquaintanceOriginId
+      ? ACQUAINTANCE_ORIGINS.find((o) => o.id === session.acquaintanceOriginId)
+      : undefined;
+    if (session.acquaintanceOriginId && !origin) {
+      throw new Error(
+        `agency_judge_unknown_origin: ${session.acquaintanceOriginId}`,
+      );
+    }
     for (let i = 0; i < session.turns.length; i++) {
       const turn = session.turns[i];
       if (!turn.probe || turn.scripted || turn.readOnlyReply) continue;
@@ -375,6 +413,9 @@ export function buildJudgeCases(artifact: AgencyArtifact): JudgeCase[] {
         transcript: renderTranscriptUpTo(session.turns, i, mask),
         reply: turn.reply,
         sources,
+        acquaintanceOrigin: origin
+          ? { label: origin.label, sharedFact: origin.sharedFact }
+          : null,
       });
     }
   }
@@ -401,7 +442,7 @@ async function main(): Promise<void> {
   const path = Deno.args.find((a) => !a.startsWith("--"));
   if (!path) {
     console.error(
-      "用法：judge_agency.ts <artifact.json> [--model=…] [--concurrency=6] [--out=…]",
+      "用法：judge_agency.ts <artifact.json> [--model=…] [--concurrency=6] [--out=…] [--max-calls=N]",
     );
     Deno.exit(2);
   }
@@ -426,6 +467,20 @@ async function main(): Promise<void> {
   const cases = buildJudgeCases(artifact).filter((c) =>
     only.length === 0 || only.includes(c.scenarioId)
   );
+  // PRACTICE_PHOTO_MEMORY_FIX 之後：一個探針一次呼叫、不重試，開跑前就知道次數；
+  // 帶 --max-calls 時超過就整批不跑（守門是技術保險，跑不跑由 Eric 當次決定）。
+  const maxCallsFlag = flag("max-calls", "");
+  if (maxCallsFlag !== "") {
+    const maxCalls = Number.parseInt(maxCallsFlag, 10);
+    if (!Number.isInteger(maxCalls) || maxCalls < 1) {
+      throw new Error(`agency_judge_invalid_max_calls: "${maxCallsFlag}"`);
+    }
+    if (cases.length > maxCalls) {
+      throw new Error(
+        `agency_judge_over_max_calls: ${cases.length} 個探針 > --max-calls=${maxCalls}`,
+      );
+    }
+  }
   const results: JudgeResult[] = new Array(cases.length);
   let next = 0;
   const startedAt = Date.now();

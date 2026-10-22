@@ -2559,6 +2559,14 @@ export function createPracticeChatHandler(
       deps.getEnv("PRACTICE_CONVERSATIONAL_AGENCY_ENABLED"),
       accountIsTest,
     );
+    // PRACTICE_PHOTO_MEMORY_FIX（2026-10-21 Tina 真機：把自己的大頭照講成他拍的、
+    // 拿認識當天細節考他）：server-only 旗標。"true"＝全部；"test"＝只有
+    // TEST_EMAILS；其他＝關。改的全是 agency `on` 分支的 prompt，所以 agency
+    // off／shadow 時設了也不生效，五面與未設逐位元組相同。
+    const photoMemoryFixFlag = deps.getEnv("PRACTICE_PHOTO_MEMORY_FIX");
+    const photoMemoryFixOn = agencyMode === "on" &&
+      (photoMemoryFixFlag === "true" ||
+        (photoMemoryFixFlag === "test" && accountIsTest));
     // Phase 3.3 形狀實驗旋鈕：`off`（預設，與接線前逐字相同）／`truncate`。
     // 只有 agency 解析成 `on` 且這一輪真的介入時才會有效果，所以旗標
     // off／shadow 的行為與 telemetry 完全不受影響。
@@ -4998,6 +5006,7 @@ export function createPracticeChatHandler(
                 offenseColdTurn: offenseTurn?.stage === "cold",
               }
               : {}),
+            ...(photoMemoryFixOn ? { photoMemoryFix: true } : {}),
           }
           : {
             replyStyle: replyStyleEnabled,
@@ -5028,6 +5037,7 @@ export function createPracticeChatHandler(
                 offenseColdTurn: offenseTurn?.stage === "cold",
               }
               : {}),
+            ...(photoMemoryFixOn ? { photoMemoryFix: true } : {}),
           },
       );
       responsePlan = chatPromptBundle.responsePlan;
@@ -5644,6 +5654,9 @@ export function createPracticeChatHandler(
           ...(chatModelUsage ? { chatModelUsage } : {}),
         }
         : {}),
+      // PRACTICE_PHOTO_MEMORY_FIX 生效才有這個 key（未設／agency 沒開時整個 key
+      // 不存在，flag-off golden 一個位元都不動）。
+      ...(photoMemoryFixOn ? { photoMemoryFix: true } : {}),
       // Phase 2：delta cap 是否真的壓過這一輪的 heat／familiarity delta。
       // Codex round-2 P0-2：旗標 off 時這個 key **根本不存在**（不是 "none"）
       // ——`main` 的 telemetry 沒有它，填預設值等於旗標關著的 log 也多一個欄位。
