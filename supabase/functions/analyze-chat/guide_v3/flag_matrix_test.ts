@@ -13,15 +13,17 @@ import {
   FLAG_MATRIX_SWEET_ONLY_MESSAGES,
   FLAG_MATRIX_T0,
   FLAG_MATRIX_TAGS,
+  FLAG_MATRIX_TIRED_MESSAGES,
   flagMatrixCards,
   flagMatrixReadText,
   flagMatrixSweetReadText,
+  flagMatrixTiredReadText,
   outcomeDigest,
   runFlagMatrix,
   withoutKeys,
 } from "./flag_matrix_harness.ts";
 import { readSystemPrompt } from "./prompts.ts";
-import { READ_TAGS_SCHEMA_TWO_STAGE } from "./read_tags.ts";
+import { READ_TAGS_SCHEMA_TWO_STAGE, withHerTired } from "./read_tags.ts";
 import {
   RELATION_FIELD_NOTES,
   RELATION_SENTINELS,
@@ -32,7 +34,11 @@ import { handleGuideV3Stream } from "./stream_flow.ts";
 import { detectTypingHabits, styleCard } from "./typing_style.ts";
 import { toTurns } from "./turns.ts";
 import {
+  HER_TIRED_NOTE,
   LIGHT_SHORT_CARD_PART,
+  NO_IOU_DIRECT_REPLY_LINE,
+  NO_IOU_READ_SENTINELS,
+  NO_IOU_WRITER_SENTINELS,
   READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION,
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   READ_TWO_STAGE_NOTES,
@@ -42,6 +48,7 @@ import {
   SWEET_WORTHY_LINES_NOTE,
   TENSION_STYLE_LINE,
   TWO_STAGE_WRITER_SENTINELS,
+  WRITE_NATURAL_RULES,
   writeSystemPromptTwoStage,
 } from "./two_stage_prompts.ts";
 
@@ -87,6 +94,7 @@ const run = async (
     tensionStyle?: boolean;
     phraseTidy?: boolean;
     sweetShort?: boolean;
+    noIou?: boolean;
   },
   options = {},
 ) =>
@@ -1091,4 +1099,449 @@ Deno.test("甜話短回開、甜話情境：說明寫到「短短回她一句就
     writeParts: leakyCards,
   });
   assertEquals(traceOf(off).removed, []);
+});
+
+// ---- 不記帳不承諾（ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 PR #97 盲選回覆；Eric 同日「回了 來處理吧」） ----
+
+/// 甜話情境（交往中她撒嬌「只想要你哄❤️」、再說腳底痛），正式組合再開甜話短回與不記帳不承諾的整份結果：鎖住。沒有推進（種子），
+/// 5 張都接住，第 1 張回甜話（短回）、其他回腳底痛。
+const NOIOU_SWEET_PRODUCTION_ON =
+  "23ede08884a1922c530aa57c6e404e9b85a6764fcaa2adeec8be6bd1f2e39e5f";
+/// 同一個情境只開不記帳不承諾（甜話短回沒開）：5 張都接住，每張先回甜話、順帶腳底痛。鎖住。
+const NOIOU_PRODUCTION_ON =
+  "ee907fc6508f092165861704d0abf9c894a2f0a575f87244d7cfbd29b2cb156e";
+/// 她只傳那句甜話，正式組合再開兩個：3 張都接住、都短回（甜話短回單開時第 1 張是推進（種子））。鎖住。
+const NOIOU_SWEET_ONLY_PRODUCTION_ON =
+  "ef7fb72d1e7bb8eeb73dca3cb0f8d77b30af86c10c72b6e68005f5f077773510";
+/// 喊累情境（flag_matrix_harness.ts 的 FLAG_MATRIX_TIRED_*：交往中她開心地喊累、沒撒嬌，句子全新），全開（正式九個開關＋甜話短回）
+/// 沒開與再開不記帳不承諾的整份結果：鎖住。沒開第 1 張是推進（種子）；開了 4 張都接住。
+const TIRED_ALL_OFF =
+  "52171c62b5cc5f54e178f5a1ec2469696d80741acaa355b3a15e7da6e6d781b1";
+const TIRED_ALL_ON =
+  "1b633ec0235b2adfe57692c9dc52a903cfc718b5fbc5d348bcb62565f0e0b651";
+/// 開著、情境不觸發種子規則（原本的情境：還沒交往、他只傳過一則，本來就沒有推進），正式組合與全開：鎖住。只差讀局面那一行、schema、
+/// 寫卡系統提示詞那一句與 trace 讀局面標記的 herTired（這段她沒喊累，假讀局面標 false）；換回沒開的就是 f3aa55b8…、71dae596…
+///（下面有比）。
+const NOT_TRIGGERED_PRODUCTION_ON =
+  "f64f867dcff99c449f44a59f9c5ca8c9aff7f2288dc6955e8d17a9879beb5cf7";
+const NOT_TRIGGERED_ALL_ON =
+  "7110da543134540aa786931a5c47f23bf31847afbcedd3ff9351b8f4c2d8900f";
+
+const NO_IOU = <C extends Combo>(combo: C) => ({ ...combo, noIou: true });
+/// 全開：正式環境九個開關再開甜話短回（它比這個先上線）；不記帳不承諾另外用 NO_IOU 開。
+const ALL_SWEET = { ...PRODUCTION_ALL, sweetShort: true };
+/// 喊累情境：harness 的假讀局面跟真的模型一樣，開著（schema 有 herTired）才標 herTired。
+const tiredScenario = (combo: Combo) => ({
+  messages: FLAG_MATRIX_TIRED_MESSAGES,
+  readText: flagMatrixTiredReadText(combo),
+});
+const OLD_DIRECT_LINE = WRITE_NATURAL_RULES.split("\n").find((l) =>
+  l.startsWith("- 直接回她說的事。")
+)!;
+const plannedTasks = (o: Outcome) =>
+  (o.events.find((e) => e.type === "analysis.read")!.plannedCards as Rec[])
+    .map((p) => p.task);
+const cardTasks = (o: Outcome) =>
+  o.events.filter((e) => e.type === "analysis.card").map((e) => e.task);
+
+/// 開著時的請求：讀局面只在 herAffection 下面多 herTired 那一行、schema 多 herTired，使用者那一則跟沒開一樣；寫卡的系統提示詞只換
+/// 第二條；說明的系統提示詞不變。
+const assertNoIouRequests = (on: Outcome, off: Outcome, combo: Combo) => {
+  assertEquals(on.requests.read.user, off.requests.read.user);
+  assertEquals(
+    on.requests.read.system,
+    readSystemPromptTwoStageWithRelation(undefined, undefined, undefined, {
+      sweetShort: combo.sweetShort === true,
+      noIou: true,
+    }),
+  );
+  assertEquals(
+    on.requests.read.system.replace(`\n${HER_TIRED_NOTE}`, ""),
+    off.requests.read.system,
+  );
+  assertEquals(
+    on.requests.read.schema,
+    withHerTired(off.requests.read.schema as Record<string, unknown>),
+  );
+  assertEquals(
+    on.requests.write.system,
+    writeSystemPromptTwoStage(undefined, undefined, undefined, {
+      tensionStyle: combo.tensionStyle === true,
+      noIou: true,
+    }),
+  );
+  assertEquals(
+    on.requests.write.system.replace(NO_IOU_DIRECT_REPLY_LINE, OLD_DIRECT_LINE),
+    off.requests.write.system,
+  );
+  assertEquals(on.requests.explain.system, off.requests.explain.system);
+};
+/// 開著的整份結果把這幾處換回沒開的：讀局面的請求、寫卡的系統提示詞、trace 的讀局面標記（key 的順序不變）。
+const swapBackNoIou = (on: Outcome, off: Outcome) => ({
+  ...on,
+  requests: {
+    ...on.requests,
+    read: off.requests.read,
+    write: { ...on.requests.write, system: off.requests.write.system },
+  },
+  markDone: {
+    ...on.markDone,
+    guideV3Trace: { ...traceOf(on), tags: traceOf(off).tags },
+  },
+});
+
+Deno.test("不記帳不承諾明確關著（false）：每種組合、每個情境的整份結果都跟沒給一模一樣（既有雜湊照舊）", async () => {
+  const off = { noIou: false };
+  const locked: [Combo, Rec, string][] = [
+    [OFF, {}, MAIN_6EF72AFF_OFF],
+    [RELATION_ONLY, {}, MAIN_6EF72AFF_RELATION],
+    [BOTH, {}, BOTH_ON],
+    [PRODUCTION, {}, BOTH_TYPING_ON],
+    [{ ...PRODUCTION, tensionStyle: true }, {}, PRODUCTION_TENSION_STYLE_ON],
+    [{ ...PRODUCTION, phraseTidy: true }, {}, BOTH_TYPING_TIDY_ON],
+    [
+      PRODUCTION,
+      { readText: notAffectionate(PRODUCTION) },
+      PRODUCTION_LIGHT_OFF,
+    ],
+    [
+      { ...PRODUCTION, shortPraise: true },
+      { readText: notAffectionate(PRODUCTION) },
+      PRODUCTION_SHORT_PRAISE_LIGHT_ON,
+    ],
+    [PRODUCTION_ALL, {}, PRODUCTION_ALL_OFF],
+    [ON(PRODUCTION), {}, PRODUCTION_ON_NOT_SWEET],
+    [ON(PRODUCTION_ALL), {}, PRODUCTION_ALL_ON_NOT_SWEET],
+  ];
+  for (
+    const [combo, scenario, digest] of [
+      [PRODUCTION, sweetScenario, SWEET_PRODUCTION_OFF],
+      [PRODUCTION_ALL, sweetScenario, SWEET_ALL_OFF],
+      [ON(PRODUCTION), sweetScenario, SWEET_PRODUCTION_ON],
+      [ON(PRODUCTION_ALL), sweetScenario, SWEET_ALL_ON],
+      [PRODUCTION, sweetOnlyScenario, SWEET_ONLY_PRODUCTION_OFF],
+      [PRODUCTION_ALL, sweetOnlyScenario, SWEET_ONLY_ALL_OFF],
+      [ON(PRODUCTION), sweetOnlyScenario, SWEET_ONLY_PRODUCTION_ON],
+      [ON(PRODUCTION_ALL), sweetOnlyScenario, SWEET_ONLY_ALL_ON],
+      [PRODUCTION, a2Scenario, A2_PRODUCTION_OFF],
+      [PRODUCTION_ALL, a2Scenario, A2_ALL_OFF],
+      [ON(PRODUCTION), a2Scenario, A2_PRODUCTION_ON],
+      [ON(PRODUCTION_ALL), a2Scenario, A2_ALL_ON],
+    ] as const
+  ) {
+    locked.push([{ ...combo, ...off }, scenario({ ...combo, ...off }), digest]);
+  }
+  for (const [combo, options, digest] of locked) {
+    assertEquals(
+      await outcomeDigest(await run({ ...combo, ...off }, options)),
+      digest,
+      JSON.stringify(combo),
+    );
+  }
+  assertEquals(
+    await outcomeDigest(
+      withoutKeys(await run({ ...TWO_STAGE_ONLY, ...off }), [
+        "completedAt",
+        "cardExplains",
+      ]),
+    ),
+    TWO_STAGE_C8F64DFE,
+  );
+  // 其他每一種開關組合（含甜話短回）、五個情境：給 false 跟沒給一樣。
+  const flags = [
+    "typingStyle",
+    "shortPraise",
+    "tensionStyle",
+    "phraseTidy",
+    "sweetShort",
+  ] as const;
+  for (const base of [OFF, RELATION_ONLY, TWO_STAGE_ONLY, BOTH]) {
+    for (let mask = 0; mask < 1 << flags.length; mask++) {
+      const combo: Combo = {
+        ...base,
+        ...Object.fromEntries(
+          flags.map((f, i) => [f, (mask & (1 << i)) !== 0]),
+        ),
+      };
+      for (
+        const scenario of [
+          () => ({}),
+          sweetScenario,
+          sweetOnlyScenario,
+          a2Scenario,
+          tiredScenario,
+        ]
+      ) {
+        assertEquals(
+          await outcomeDigest(
+            await run({ ...combo, ...off }, scenario({ ...combo, ...off })),
+          ),
+          await outcomeDigest(await run(combo, scenario(combo))),
+          JSON.stringify(combo),
+        );
+      }
+    }
+  }
+});
+
+Deno.test("不記帳不承諾開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用；讀局面的請求也不變），每個情境都一樣", async () => {
+  assertEquals(
+    await outcomeDigest(await run(NO_IOU(OFF))),
+    MAIN_6EF72AFF_OFF,
+  );
+  assertEquals(
+    await outcomeDigest(await run(NO_IOU(RELATION_ONLY))),
+    MAIN_6EF72AFF_RELATION,
+  );
+  for (
+    const combo of [
+      OFF,
+      RELATION_ONLY,
+      { ...RELATION_ONLY, typingStyle: true, sweetShort: true },
+    ]
+  ) {
+    for (
+      const scenario of [
+        sweetScenario,
+        sweetOnlyScenario,
+        a2Scenario,
+        tiredScenario,
+      ]
+    ) {
+      assertEquals(
+        await outcomeDigest(await run(NO_IOU(combo), scenario(NO_IOU(combo)))),
+        await outcomeDigest(await run(combo, scenario(combo))),
+        JSON.stringify(combo),
+      );
+    }
+  }
+});
+
+Deno.test("不記帳不承諾開、情境不觸發種子規則（原本的情境，本來就沒有推進）：只差讀局面那一行、schema、寫卡系統提示詞那一句與 trace 的 herTired，排卡、寫卡的規格、卡、說明都跟關著一樣；正式組合與全開都鎖住", async () => {
+  for (
+    const [combo, offDigest, onDigest] of [
+      [PRODUCTION, BOTH_TYPING_ON, NOT_TRIGGERED_PRODUCTION_ON],
+      [ALL_SWEET, PRODUCTION_ALL_ON_NOT_SWEET, NOT_TRIGGERED_ALL_ON],
+    ] as const
+  ) {
+    const off = await run(combo);
+    const on = await run(NO_IOU(combo));
+    assertNoIouRequests(on, off, combo);
+    assertEquals(on.requests.write.user, off.requests.write.user);
+    assertEquals(on.requests.explain, off.requests.explain);
+    assertEquals(cardsOf(on), cardsOf(off));
+    assertEquals(plannedTasks(on), plannedTasks(off));
+    assertEquals(traceOf(on).push, null);
+    assertEquals(traceOf(off).push, null);
+    assertEquals((traceOf(on).tags as Rec).herTired, false);
+    assertEquals("herTired" in (traceOf(off).tags as Rec), false);
+    assertEquals(await outcomeDigest(swapBackNoIou(on, off)), offDigest);
+    assertEquals(await outcomeDigest(off), offDigest);
+    assertEquals(await outcomeDigest(on), onDigest);
+  }
+});
+
+Deno.test("不記帳不承諾開、交往撒嬌情境（甜話情境）、正式組合再開甜話短回：沒有推進（種子），5 張都接住，第 1 張回甜話（短回）、其他回腳底痛；張數不變、扣費的第一張是接住；只開不記帳不承諾時每張先回甜話；都鎖住", async () => {
+  const sweetOn = ON(PRODUCTION);
+  const off = await run(sweetOn, sweetScenario(sweetOn));
+  const on = await run(NO_IOU(sweetOn), sweetScenario(NO_IOU(sweetOn)));
+  assertEquals(await outcomeDigest(off), SWEET_PRODUCTION_ON);
+  assertNoIouRequests(on, off, sweetOn);
+  // trace：讀局面多 herTired（這段她沒喊累，標 false）；push 拿掉、沒有推進的卡；短回只在第 1 張。
+  assertEquals((traceOf(on).tags as Rec).herTired, false);
+  assertEquals(traceOf(off).push, "種子");
+  assertEquals(traceOf(on).push, null);
+  const specs = traceOf(on).specs as Rec[];
+  assertEquals(specs.map((s) => s.task), [
+    "接住",
+    "接住",
+    "接住",
+    "接住",
+    "接住",
+  ]);
+  assertEquals(specs.every((s) => s.push === null), true);
+  assertEquals(
+    specs.flatMap((s, i) => s.sweetShort === true ? [i] : []),
+    [0],
+  );
+  // 寫卡的規格：第 1 張回甜話、多短回的指示，其他回腳底痛；沒有推進。規格以外一字不差。
+  const lines = specLinesOf(on.requests.write.user);
+  assertEquals(lines.length, 5);
+  assertEquals(
+    lines[0],
+    `1. 任務：接住｜這張接：她的「只想要你哄」｜${SWEET_SHORT_CARD_PART}｜他的事怎麼寫：只用反應｜口吻：照他｜問句最多 1 個`,
+  );
+  for (const line of lines.slice(1)) {
+    assert(
+      line.includes("這張接：她的「今天穿新鞋走了好多路 腳底好痛」"),
+      line,
+    );
+  }
+  assertEquals(on.requests.write.user.includes("推進"), false);
+  const others = (user: string) =>
+    user.split("\n").filter((l) => !/^\d\. 任務：/.test(l));
+  assertEquals(others(on.requests.write.user), others(off.requests.write.user));
+  // 送給 App 的：預定的卡與送出的卡都沒有 push，張數一樣；扣費紀錄的第一張是接住。
+  assertEquals(plannedTasks(off), [
+    "push",
+    "accept",
+    "accept",
+    "accept",
+    "accept",
+  ]);
+  assertEquals(plannedTasks(on), [
+    "accept",
+    "accept",
+    "accept",
+    "accept",
+    "accept",
+  ]);
+  assertEquals(cardTasks(on), [
+    "accept",
+    "accept",
+    "accept",
+    "accept",
+    "accept",
+  ]);
+  assertEquals(cardsOf(on).length, cardsOf(off).length);
+  const charges = (on as unknown as { charges: Rec[] }).charges;
+  assertEquals(charges[0].cardTask, "accept");
+  assertEquals(await outcomeDigest(on), NOIOU_SWEET_PRODUCTION_ON);
+
+  // 只開不記帳不承諾（甜話短回沒開）：一樣沒有推進；甜話短回沒開，每張照舊先回甜話、順帶腳底痛。
+  const onlyOff = await run(PRODUCTION, sweetScenario(PRODUCTION));
+  const only = await run(NO_IOU(PRODUCTION), sweetScenario(NO_IOU(PRODUCTION)));
+  assertEquals(await outcomeDigest(onlyOff), SWEET_PRODUCTION_OFF);
+  assertNoIouRequests(only, onlyOff, PRODUCTION);
+  assertEquals(traceOf(only).push, null);
+  const onlyLines = specLinesOf(only.requests.write.user);
+  assertEquals(onlyLines.length, 5);
+  for (const line of onlyLines) {
+    assert(
+      line.includes("任務：接住｜這張接：她的「只想要你哄」｜可以順帶："),
+      line,
+    );
+  }
+  assertEquals(await outcomeDigest(only), NOIOU_PRODUCTION_ON);
+});
+
+Deno.test("不記帳不承諾、甜話短回都開、她只傳那句甜話：3 張都接住、都短回、沒有推進（甜話短回單開時第 1 張是推進（種子））；鎖住", async () => {
+  const sweetOn = ON(PRODUCTION);
+  const off = await run(sweetOn, sweetOnlyScenario(sweetOn));
+  const on = await run(NO_IOU(sweetOn), sweetOnlyScenario(NO_IOU(sweetOn)));
+  assertEquals(await outcomeDigest(off), SWEET_ONLY_PRODUCTION_ON);
+  assertNoIouRequests(on, off, sweetOn);
+  assertEquals(plannedTasks(off), ["push", "accept", "accept"]);
+  assertEquals(plannedTasks(on), ["accept", "accept", "accept"]);
+  const lines = specLinesOf(on.requests.write.user);
+  assertEquals(lines.length, 3);
+  for (const line of lines) {
+    assert(
+      line.includes(
+        `任務：接住｜這張接：她的「只想要你哄」｜${SWEET_SHORT_CARD_PART}｜`,
+      ),
+      line,
+    );
+  }
+  assertEquals(
+    (traceOf(on).specs as Rec[]).every((s) => s.sweetShort === true),
+    true,
+  );
+  assertEquals(await outcomeDigest(on), NOIOU_SWEET_ONLY_PRODUCTION_ON);
+});
+
+Deno.test("全開（正式九個開關＋甜話短回）再開不記帳不承諾、交往喊累情境（她開心地喊累、沒撒嬌）：讀局面標 herTired、沒有推進（種子）、4 張都接住；沒開時第 1 張是推進（種子）；都鎖住", async () => {
+  const off = await run(ALL_SWEET, tiredScenario(ALL_SWEET));
+  const on = await run(NO_IOU(ALL_SWEET), tiredScenario(NO_IOU(ALL_SWEET)));
+  assertNoIouRequests(on, off, ALL_SWEET);
+  const onTags = traceOf(on).tags as Rec;
+  assertEquals([onTags.herTired, onTags.herAffection], [true, false]);
+  assertEquals("herTired" in (traceOf(off).tags as Rec), false);
+  assertEquals(traceOf(off).push, "種子");
+  assertEquals(traceOf(on).push, null);
+  assertEquals(plannedTasks(off), ["push", "accept", "accept", "accept"]);
+  assertEquals(plannedTasks(on), ["accept", "accept", "accept", "accept"]);
+  assertEquals(on.requests.write.user.includes("推進"), false);
+  assertEquals(
+    (traceOf(on).specs as Rec[]).some((s) => s.sweetShort === true),
+    false,
+  );
+  assertEquals(await outcomeDigest(off), TIRED_ALL_OFF);
+  assertEquals(await outcomeDigest(on), TIRED_ALL_ON);
+});
+
+Deno.test("不記帳不承諾開：卡片照抄寫卡那一句就拿掉那張（沒開不比）；說明寫到照送（只比卡片）；判讀照抄 herTired 那一行就不給（沒開照給）", async () => {
+  const combo = NO_IOU(PRODUCTION);
+  const leakyCards = (user: string) =>
+    flagMatrixCards(user).map((line, i) =>
+      i === 1
+        ? JSON.stringify({
+          card: 2,
+          messages: [`腳還好嗎 ${NO_IOU_WRITER_SENTINELS[0]}`],
+          hasInventedDetail: false,
+        }) + "\n"
+        : line
+    );
+  const leaky = await run(combo, {
+    ...tiredScenario(combo),
+    writeParts: leakyCards,
+  });
+  assertEquals(
+    (traceOf(leaky).removed as { slot: number; reason: string }[]).map((r) => [
+      r.slot,
+      r.reason,
+    ]),
+    [[2, "prompt_leak"]],
+  );
+  assertEquals(cardsOf(leaky).length, 3);
+  const offLeaky = await run(PRODUCTION, {
+    ...tiredScenario(PRODUCTION),
+    writeParts: leakyCards,
+  });
+  assertEquals(traceOf(offLeaky).removed, []);
+  // 說明寫到同一類說法：照送（說明不比這一組哨兵）。
+  const explainText = (user: string) =>
+    JSON.stringify({
+      explanations: [...user.matchAll(/^### 第 (\d+) 張$/gmu)].map((m) => ({
+        card: Number(m[1]),
+        text: Number(m[1]) === 1
+          ? `她喊累，這張沒有${NO_IOU_WRITER_SENTINELS[1]}，讀起來比較自然。`
+          : `第 ${m[1]} 張先關心她的腳。`,
+      })),
+    });
+  const kept = await run(combo, { ...tiredScenario(combo), explainText });
+  assertEquals(
+    kept.events.filter((e) => e.type === "analysis.card_explain").map((e) =>
+      e.card
+    ),
+    [1, 2, 3, 4],
+  );
+  assertEquals(
+    ((traceOf(kept).twoStage as Rec).explain as { removed: unknown[] }).removed,
+    [],
+  );
+  // 判讀照抄 herTired 那一行：開著不給、記 log；沒開照給。
+  const leakyJudgment = (c: Combo) =>
+    JSON.stringify({
+      ...JSON.parse(flagMatrixTiredReadText(c)),
+      readForUser: `她跑了四家客戶。${NO_IOU_READ_SENTINELS[0]}`,
+    });
+  const judgmentOf = (o: Outcome) =>
+    o.events.find((e) => e.type === "analysis.read")!.judgment;
+  const judged = await run(combo, {
+    messages: FLAG_MATRIX_TIRED_MESSAGES,
+    readText: leakyJudgment(combo),
+  });
+  assertEquals(judgmentOf(judged), "");
+  assert(
+    judged.logs.some((l) =>
+      l.event === "guide_v3_coach_text_removed" &&
+      l.metadata.field === "judgment"
+    ),
+  );
+  const offJudged = await run(PRODUCTION, {
+    messages: FLAG_MATRIX_TIRED_MESSAGES,
+    readText: leakyJudgment(PRODUCTION),
+  });
+  assert(String(judgmentOf(offJudged)).includes(NO_IOU_READ_SENTINELS[0]));
 });

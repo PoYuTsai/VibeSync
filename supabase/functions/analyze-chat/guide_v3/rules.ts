@@ -21,6 +21,9 @@
 //    撒嬌的很短的一則時（不一定是本來先回的那則；她問了他什麼就不算），只有一張卡回那句（短短回一句），其他卡改回她別的話、
 //    不提任何一句很短的甜話；她沒有別的話就少出幾張、至少 3 張（arrangeSweetShort）。上面 1–8 都照舊先算；婉拒收尾、詐騙
 //    換地方的固定排法不動（plan.ts 把關）。
+// 10. 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22「不要」；沒開時這條不存在）：decidePush 算出種子、已經在
+//    交往、她這一輪撒嬌示愛或喊累時，這次不推進（withoutCoupleSeed，plan.ts 在排卡之前換）；張數、任務照沒有推進的排法走，
+//    9 也照這個排。其他推進（具體邀約、說定、改天、換地方）、還沒交往都照舊。跟 9 各自獨立。
 import { withoutEmoji } from "./cards.ts";
 import type { GuideV3Entry } from "./entries.ts";
 import {
@@ -176,6 +179,22 @@ export function decidePush(
   // 種子不用等綠燈（Bruce 10/13）：黃燈聊開了也種；紅燈上面已經擋掉。
   if (hisTurns >= 2 && herTurns >= 2) return "種子";
   return null;
+}
+
+/// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU；Bruce 2026-10-22 PR #97 盲選回覆：「已經在交往、她撒嬌或喊累時，排一張「下次約」
+/// 的卡：不要」）：decidePush 給種子、讀局面標已經在交往、而且她這一輪撒嬌示愛或喊累（herTired，開關開時讀局面才標）時，這次
+/// 不推進（回 null）；其他情況原樣回。只拿掉種子：具體邀約、說定、改天、換地方是她自己給的機會或固定排法，照舊；還沒交往照舊。
+export function withoutCoupleSeed(
+  push: PushAction | null,
+  twoStage: Pick<
+    TwoStageTags,
+    "establishedCouple" | "herAffection" | "herTired"
+  >,
+): PushAction | null {
+  return push === "種子" && twoStage.establishedCouple &&
+      (twoStage.herAffection || twoStage.herTired === true)
+    ? null
+    : push;
 }
 
 export type Task = "接住" | "共鳴" | "帶張力" | "推進" | "收";

@@ -76,12 +76,13 @@ export const TWO_STAGE_READ_LEAK_SENTINELS: readonly string[] = [
   ]),
 ];
 
-/// 讀局面兩段式的欄位說明：甜話短回開時 worthyLines 那一條換成多「撒嬌」的寫法（readTwoStageNotes），沒開跟今天一字不差。
+/// 讀局面兩段式的欄位說明：甜話短回開時 worthyLines 那一條換成多「撒嬌」的寫法、不記帳不承諾開時 herAffection 下面多 herTired
+/// 那一行（readTwoStageNotes），都沒開跟今天一字不差。
 export function readSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
-  options: { readonly sweetShort?: boolean } = {},
+  options: { readonly sweetShort?: boolean; readonly noIou?: boolean } = {},
 ): string {
   return readSystemPrompt(
     sections,
@@ -97,7 +98,7 @@ export function readSystemPromptTwoStageWithRelation(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
-  options: { readonly sweetShort?: boolean } = {},
+  options: { readonly sweetShort?: boolean; readonly noIou?: boolean } = {},
 ): string {
   return readSystemPrompt(
     sections,
@@ -291,17 +292,50 @@ export const TWO_STAGE_WRITER_SENTINELS: readonly string[] = [
   "辨識程式寫的照片描述",
 ];
 
+// ── 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 PR #97 盲選回覆；Eric 同日「回了 來處理吧」）──────────────
+// Bruce：「我都記在帳上」「腳底按摩也算我的」是在給 credit、算 credit；「我來幫你提袋子」「換我來犒賞你」不用特別提，文字訊息不用
+// 特別說要幫她做什麼，或給什麼物質上的承諾當作補償；減少「我先收下」「幫你記一筆」這類記 credit、討 credit 的說法。
+
+/// 開關開時 WRITE_NATURAL_RULES 第二條換成這一句：把 Bruce 這次的理由併進原本那一句，不另開一條（照 10/19 第 2 輪「補進原本的
+/// 句子裡，不另開一串不要」的做法）；例句是他點名的那幾類說法。其他條、其他段一字不動。
+export const NO_IOU_DIRECT_REPLY_LINE =
+  "- 直接回她說的事。判斷、策略、招式的名稱、對她的評價（包括評她的語氣和用字）、替自己說明心態、原則或反應的話（例如「我收到了」「我收下了」「記下了」），以及像在記帳、討人情，或說要幫她做什麼、給她什麼來補償的話（例如「幫你記一筆」「都算我的」「換我來犒賞你」），都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。";
+
+/// 寫卡的「這一步只寫訊息」那一段：不記帳不承諾開時第二條換成 NO_IOU_DIRECT_REPLY_LINE（原文那一行對不上就丟錯，測試會先
+/// 失敗）；沒開就是 WRITE_NATURAL_RULES 原文。
+export function writeNaturalRules(
+  options: { readonly noIou?: boolean } = {},
+): string {
+  return options.noIou
+    ? applyLineEdits(WRITE_NATURAL_RULES, [
+      {
+        startsWith: "- 直接回她說的事。",
+        edit: () => NO_IOU_DIRECT_REPLY_LINE,
+      },
+    ])
+    : WRITE_NATURAL_RULES;
+}
+
+/// 上面那一句新加的說法的外洩哨兵（開關開時只比卡片，照 SWEET_SHORT_WRITER_SENTINELS 的位置；說明步驟看不到寫卡的系統提示詞，
+/// 不比）：都照抄自那一句、而且帶只有提示詞才會寫的說法（稱她「她」、把幾類說法串成定義）。給她的訊息不會用「她」稱呼她，正常的卡
+///（「晚餐我來想」「吃的我來處理」「先休息一下」）不會有這幾段；例句本身（「幫你記一筆」）不當哨兵——那是寫法的問題，不是外洩。
+export const NO_IOU_WRITER_SENTINELS: readonly string[] = [
+  "像在記帳、討人情，或說要幫她做什麼",
+  "給她什麼來補償的話",
+];
+
 export function writeSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   safetyRules: string = WRITE_SAFETY_FLOOR,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
-  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）。
-  options: { readonly tensionStyle?: boolean } = {},
+  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）；不記帳不承諾開時，「這一步只寫訊息」第二條
+  /// 換成 NO_IOU_DIRECT_REPLY_LINE（writeNaturalRules）。
+  options: { readonly tensionStyle?: boolean; readonly noIou?: boolean } = {},
 ): string {
   const writer = twoStageWriterSections(sections, options);
   return [
     "你是 VibeSync 對話分析的「寫句子」步驟：照使用者訊息裡每張卡的規格，寫他可以直接傳給她的訊息。",
-    WRITE_NATURAL_RULES,
+    writeNaturalRules(options),
     sections.A2,
     sections.A3,
     WRITE_MEDIA_RULES,
@@ -446,15 +480,46 @@ export const SWEET_SHORT_WRITER_SENTINELS: readonly string[] = [
 export const SWEET_WORTHY_LINES_NOTE =
   "- worthyLines：她最新這一輪值得接的訊息，一則一項。line 填對話稿上那一則前面的編號；label 用幾個字寫那則在講什麼；kind 填「問他」（她直接問他、要他的看法，或想聽他說好不好看、厲不厲害）、「撒嬌」（這一則本身在對他撒嬌或示愛，例如說想他、要他抱抱、說愛他或喜歡他、跟他討親親；只是說累、痛或心情不好，填「情感」）、「情感」（帶著開心、難過、生氣的情緒）、「照片或貼圖」（照片、貼圖或只有表情符號），其他都填「其他」；一則同時算好幾種時，照問他、撒嬌、情感的順序填前面那種。單純附和、語助詞，或跟前一則講同一件事的，可以不列。";
 
-/// 讀局面兩段式的欄位說明：甜話短回開時 worthyLines 那一條換成 SWEET_WORTHY_LINES_NOTE（原文那一行對不上就丟錯，測試會先失敗）；
-/// 沒開就是 READ_TWO_STAGE_NOTES 原文。
+/// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22）開時讀局面多的一行，接在 herAffection 那一行下面（readTwoStageNotes）：
+/// 排卡在交往中她撒嬌示愛或喊累時不排推進（種子）。例子是我們寫的類型，不是哪一段真實對話。
+export const HER_TIRED_NOTE =
+  "- herTired：她這一輪在喊累，或說身體痠痛、不舒服，例如說好累、腳很痠、頭痛、沒睡飽。";
+
+/// 上面那一行的外洩哨兵（開關開時，判讀與要等她做什麼照抄就不給，比的位置跟 SWEET_READ_LEAK_SENTINELS 一樣）：照抄自那一行，
+/// 而且帶只有提示詞才會寫的記號（欄位名接它的定義、「例如說」接一串例子）；一般判讀自己也會講的話（「她說好累、腳很痠」）不當哨兵。
+export const NO_IOU_READ_SENTINELS: readonly string[] = [
+  "herTired：她這一輪在喊累",
+  "或說身體痠痛、不舒服，例如說好累",
+];
+
+/// 不記帳不承諾開時交給 vetPlanText 多比的哨兵（原樣與簡轉繁整理過的，去掉重複）。
+export const NO_IOU_READ_LEAK_SENTINELS: readonly string[] = [
+  ...new Set([
+    ...NO_IOU_READ_SENTINELS,
+    ...NO_IOU_READ_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s),
+  ]),
+];
+
+/// 讀局面兩段式的欄位說明：甜話短回開時 worthyLines 那一條換成 SWEET_WORTHY_LINES_NOTE、不記帳不承諾開時 herAffection 那一行
+/// 下面多 HER_TIRED_NOTE（兩個各自獨立，都開就兩處都改；原文那一行對不上就丟錯，測試會先失敗）；都沒開就是 READ_TWO_STAGE_NOTES
+/// 原文。
 export function readTwoStageNotes(
-  options: { readonly sweetShort?: boolean } = {},
+  options: { readonly sweetShort?: boolean; readonly noIou?: boolean } = {},
 ): string {
-  return options.sweetShort
-    ? applyLineEdits(READ_TWO_STAGE_NOTES, [
-      { startsWith: "- worthyLines：", edit: () => SWEET_WORTHY_LINES_NOTE },
-    ])
+  const edits: LineEdit[] = [
+    // 回兩行＝那一行照留、下面插一行。
+    ...(options.noIou
+      ? [{
+        startsWith: "- herAffection：",
+        edit: (line: string) => `${line}\n${HER_TIRED_NOTE}`,
+      }]
+      : []),
+    ...(options.sweetShort
+      ? [{ startsWith: "- worthyLines：", edit: () => SWEET_WORTHY_LINES_NOTE }]
+      : []),
+  ];
+  return edits.length > 0
+    ? applyLineEdits(READ_TWO_STAGE_NOTES, edits)
     : READ_TWO_STAGE_NOTES;
 }
 

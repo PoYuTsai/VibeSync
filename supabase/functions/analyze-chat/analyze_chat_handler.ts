@@ -90,6 +90,7 @@ import {
   shouldExtractGuideV3Memory,
   shouldReadGuideV3Relation,
   shouldUseGuideV3,
+  shouldUseGuideV3NoIou,
   shouldUseGuideV3PhraseTidy,
   shouldUseGuideV3PreviousRound,
   shouldUseGuideV3ShortPraise,
@@ -1889,6 +1890,13 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // 回她別的話，沒有別的話就少出幾張（至少 3 張）。沒開就一字不變。
         sweetShort: twoStage && shouldUseGuideV3SweetShort({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_SWEET_SHORT")),
+          accountIsTest,
+        }),
+        // 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，off／test／on，每次請求讀；Bruce 2026-10-22 盲選回覆，Eric 同日「回了
+        // 來處理吧」）：只在兩段式開時才有作用；讀局面多一欄 herTired，交往中她撒嬌或喊累時不排推進（種子），寫卡那一條多記帳、
+        // 承諾補償的說法。跟甜話短回各自獨立；沒開就一字不變。
+        noIou: twoStage && shouldUseGuideV3NoIou({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_NO_IOU")),
           accountIsTest,
         }),
         ...createGuideV3ModelCalls({

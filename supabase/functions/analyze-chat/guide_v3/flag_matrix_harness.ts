@@ -3,7 +3,8 @@
 // handleGuideV3Stream，收集事件、送給模型的請求、扣費、落帳與 log，再算成一個 sha256。
 // handle 由呼叫端傳進來：測試傳這一版的，對照值是拿同一個情境跑 main 6ef72aff 與兩段式 c8f64dfe 的
 // 原始快照算出來的（不連網、不呼叫模型）。給 flag_matrix_test.ts 用；入口不載入，不隨函式部署。
-// 甜話短回另有一段交往中的情境（FLAG_MATRIX_SWEET_*，句子全新），用 options.messages 與 readText 換上。
+// 甜話短回另有一段交往中的情境（FLAG_MATRIX_SWEET_*，句子全新），用 options.messages 與 readText 換上；不記帳不承諾另有一段交往中
+// 她開心地喊累的情境（FLAG_MATRIX_TIRED_*，句子全新）。
 import type { AnalysisStreamRun } from "../stream_run_store.ts";
 import { GUIDE_V3_VERSION } from "./guide_text.ts";
 import type { GuideV3StreamDeps } from "./stream_flow.ts";
@@ -22,6 +23,23 @@ export interface FlagCombo {
   readonly phraseTidy?: boolean;
   /// 甜話短回（ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）；沒給當關。
   readonly sweetShort?: boolean;
+  /// 不記帳不承諾（ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 盲選回覆）；沒給當關。
+  readonly noIou?: boolean;
+}
+
+/// 讀局面回的 JSON：不記帳不承諾開著（兩段式也開）時 schema 在 herAffection 後面多 herTired，假讀局面跟真的模型一樣照 schema 的
+/// 順序把它放在 herAffection 後面（值照 read 裡給的 herTired，沒給是 false）；沒開時讀局面沒有這一欄（read 裡給了也拿掉）。read 裡
+/// 沒有 herTired、開關也沒開時，跟直接 JSON.stringify(read) 一字不差（既有的雜湊不變）。
+function readJson(combo: FlagCombo, read: Record<string, unknown>): string {
+  const { herTired, ...rest } = read;
+  if (!(combo.twoStage && combo.noIou)) return JSON.stringify(rest);
+  return JSON.stringify(Object.fromEntries(
+    Object.entries(rest).flatMap(([key, value]) =>
+      key === "herAffection"
+        ? [[key, value], ["herTired", herTired === true]]
+        : [[key, value]]
+    ),
+  ));
 }
 
 /// 她傳照片、貼圖又問他（第 2 輪的形狀）；訊息裡不放「只」，繁體轉換的修正不影響比對。
@@ -89,9 +107,10 @@ export const FLAG_MATRIX_RELATION_FIELDS: Record<string, unknown> = {
   },
 };
 
-/// 讀局面回的 JSON：照這個組合的 schema 該有的欄位（兩段式四欄在前、關係三欄在最後）。
+/// 讀局面回的 JSON：照這個組合的 schema 該有的欄位（兩段式四欄在前、關係三欄在最後；不記帳不承諾開時 herAffection 後面多
+/// herTired，這段她沒喊累）。
 export function flagMatrixReadText(combo: FlagCombo): string {
-  return JSON.stringify({
+  return readJson(combo, {
     ...FLAG_MATRIX_TAGS,
     ...(combo.twoStage ? FLAG_MATRIX_TWO_STAGE_FIELDS : {}),
     ...(combo.relation ? FLAG_MATRIX_RELATION_FIELDS : {}),
@@ -138,7 +157,8 @@ export const FLAG_MATRIX_SWEET_TWO_STAGE_FIELDS: Record<string, unknown> = {
 
 /// 甜話情境的讀局面 JSON（跟 flagMatrixReadText 一樣照組合給欄位）；over 蓋過讀局面的欄位（她只傳那句甜話、她沒撒嬌、
 /// 那則變長這些對照用）。甜話短回開時讀局面的 schema 多「撒嬌」：開著（兩段式也開）就把甜話那幾則（sweetLines，預設第 1 則）
-/// 從情感改標撒嬌，跟真的模型一樣；沒開照標情感（整份字一樣，既有的雜湊不變）。
+/// 從情感改標撒嬌，跟真的模型一樣；沒開照標情感（整份字一樣，既有的雜湊不變）。不記帳不承諾開時多 herTired（readJson；over
+/// 沒給 herTired 就是 false）。
 export function flagMatrixSweetReadText(
   combo: FlagCombo,
   over: Record<string, unknown> = {},
@@ -158,7 +178,46 @@ export function flagMatrixSweetReadText(
           : w
       );
   }
-  return JSON.stringify(read);
+  return readJson(combo, read);
+}
+
+// ── 不記帳不承諾（ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 盲選回覆）的情境：已經在交往，她最新這一輪開心地喊累（跑了一天客戶、
+// 腳快斷了），沒撒嬌、情緒不差（句子全新）。他傳過兩則，沒開時排卡第一張是推進（種子）。
+
+export const FLAG_MATRIX_TIRED_MESSAGES: readonly {
+  isFromMe: boolean;
+  content: string;
+}[] = [
+  { isFromMe: true, content: "今天客戶多嗎" },
+  { isFromMe: false, content: "超多 跑了四家" },
+  { isFromMe: true, content: "這麼拚 晚餐記得吃" },
+  { isFromMe: false, content: "腳快斷了哈哈 今晚要早點睡" },
+];
+
+export const FLAG_MATRIX_TIRED_TAGS: Record<string, unknown> = {
+  ...FLAG_MATRIX_TAGS,
+  herMove: "生活",
+  worthyBallCount: 1,
+  matchedEntries: [],
+  readForUser: "你們在交往，她跑了四家客戶、喊腳快斷了，心情還不錯。",
+};
+
+export const FLAG_MATRIX_TIRED_TWO_STAGE_FIELDS: Record<string, unknown> = {
+  establishedCouple: true,
+  herAffection: false,
+  // 不記帳不承諾開時才進讀局面的 JSON（readJson）。
+  herTired: true,
+  herHappyShare: false,
+  worthyLines: [{ line: 1, label: "腳快斷了要早點睡", kind: "情感" }],
+};
+
+/// 喊累情境的讀局面 JSON（跟 flagMatrixReadText 一樣照組合給欄位；herTired 只在不記帳不承諾開著時才有）。
+export function flagMatrixTiredReadText(combo: FlagCombo): string {
+  return readJson(combo, {
+    ...FLAG_MATRIX_TIRED_TAGS,
+    ...(combo.twoStage ? FLAG_MATRIX_TIRED_TWO_STAGE_FIELDS : {}),
+    ...(combo.relation ? FLAG_MATRIX_RELATION_FIELDS : {}),
+  });
 }
 
 /// 寫卡：規格要幾張就回幾張。
@@ -325,6 +384,7 @@ export async function runFlagMatrix(
     tensionStyle: combo.tensionStyle ?? false,
     phraseTidy: combo.phraseTidy ?? false,
     sweetShort: combo.sweetShort ?? false,
+    noIou: combo.noIou ?? false,
     ...(combo.twoStage
       ? {
         callExplain: (

@@ -112,6 +112,17 @@ export function shouldUseGuideV3SweetShort(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 不記帳不承諾（Bruce 2026-10-22 盲選回覆：交往中她撒嬌或喊累時排「下次約」的卡「不要」，卡片不記帳、不討人情、不說要做什麼
+/// 來補償；Eric 同日「回了 來處理吧」；見 rules.ts withoutCoupleSeed）：開關 ANALYZE_GUIDE_V3_NO_IOU，跟 ANALYZE_GUIDE_V3
+/// 一樣 off／test／on，只在兩段式開著時才有作用（入口把關）。讀局面多一欄 herTired，交往中她撒嬌或喊累時不排推進（種子），
+/// 寫卡那一條多記帳、承諾補償的說法；跟甜話短回各自獨立。沒開跟今天一字不差。
+export function shouldUseGuideV3NoIou(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。

@@ -93,9 +93,12 @@ import {
   READ_TAGS_SCHEMA_TWO_STAGE_SWEET,
   type ReadTags,
   type TwoStageTags,
+  withHerTired,
 } from "./read_tags.ts";
 import { lightShortRun } from "./rules.ts";
 import {
+  NO_IOU_READ_LEAK_SENTINELS,
+  NO_IOU_WRITER_SENTINELS,
   READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION,
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   readSystemPromptTwoStage,
@@ -269,6 +272,11 @@ export interface GuideV3StreamDeps {
   /// 讀局面 worthyLines 多一種「撒嬌」；她這一輪有標成撒嬌的很短的一則時，只有一張卡回那句、規格多短回的指示，其他卡回她
   /// 別的話，沒有別的話就少出幾張（至少 3 張）。沒給或 false：一字不變。
   sweetShort?: boolean;
+  /// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，handler 把關；Bruce 2026-10-22 盲選回覆，Eric 同日「回了 來處理吧」）：只在
+  /// twoStage 開時有作用。讀局面多一欄 herTired（提示詞 herAffection 下面多一行、schema、檢查）；已經在交往、她撒嬌或喊累時不排
+  /// 推進（種子）；寫卡「這一步只寫訊息」第二條多記帳、承諾補償的說法，卡片多比那一句的哨兵。跟 sweetShort 各自獨立。沒給或
+  /// false：一字不變。
+  noIou?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -428,6 +436,8 @@ class GuideV3Flow {
   /// 甜話短回開著（兩段式也開）、而且這一輪真的排到（有卡的規格寫了短回的指示）：卡片多比那一段的哨兵（說明不比，見
   /// explainCards）。沒排到時寫卡看不到那一段，跟沒開一樣不比。
   private sweetShortPlanned = false;
+  /// 不記帳不承諾開著（兩段式也開）：寫卡的系統提示詞第二條換新的那一句，卡片多比那一句的哨兵（說明看不到寫卡的提示詞，不比）。
+  private noIouOn = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -483,7 +493,21 @@ class GuideV3Flow {
       // 甜話短回（Eric 2026-10-22「照預設」；Codex 主審第 1 輪 P2）：讀局面 worthyLines 多一種「撒嬌」（提示詞那一條、schema、
       // 檢查都換），排卡在她撒嬌的很短的一則上改排（plan.ts）。沒開照舊。
       const sweetShortOn = twoStage && this.deps.sweetShort === true;
-      const sweetRead = { sweetShort: sweetShortOn };
+      // 不記帳不承諾（Bruce 2026-10-22 盲選回覆）：讀局面多一欄 herTired（提示詞 herAffection 下面那一行、schema、檢查都換），
+      // 排卡在交往中她撒嬌或喊累時不排種子（plan.ts）。跟甜話短回各自獨立；沒開照舊。
+      const noIouOn = twoStage && this.deps.noIou === true;
+      const readOptions = { sweetShort: sweetShortOn, noIou: noIouOn };
+      const readSchema = twoStage
+        ? withRelation
+          ? sweetShortOn
+            ? READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION
+            : READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION
+          : sweetShortOn
+          ? READ_TAGS_SCHEMA_TWO_STAGE_SWEET
+          : READ_TAGS_SCHEMA_TWO_STAGE
+        : withRelation
+        ? READ_TAGS_SCHEMA_WITH_RELATION
+        : READ_TAGS_SCHEMA;
       try {
         const read = await this.deps.callRead({
           runId: this.runId,
@@ -493,13 +517,13 @@ class GuideV3Flow {
                 undefined,
                 undefined,
                 undefined,
-                sweetRead,
+                readOptions,
               )
               : readSystemPromptTwoStage(
                 undefined,
                 undefined,
                 undefined,
-                sweetRead,
+                readOptions,
               )
             : withRelation
             ? readSystemPromptWithRelation()
@@ -509,17 +533,7 @@ class GuideV3Flow {
             this.deps.background,
             this.deps.previousRound,
           ),
-          schema: twoStage
-            ? withRelation
-              ? sweetShortOn
-                ? READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION
-                : READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION
-              : sweetShortOn
-              ? READ_TAGS_SCHEMA_TWO_STAGE_SWEET
-              : READ_TAGS_SCHEMA_TWO_STAGE
-            : withRelation
-            ? READ_TAGS_SCHEMA_WITH_RELATION
-            : READ_TAGS_SCHEMA,
+          schema: noIouOn ? withHerTired(readSchema) : readSchema,
           deadlineAtMs,
         });
         text = read.text;
@@ -542,7 +556,7 @@ class GuideV3Flow {
       const parsed = parseTagsText(text);
       // 兩段式多要的四欄在同一份 JSON 裡；壞了跟其他欄位壞了一樣算讀局面失敗。
       const twoStageTags: TwoStageTags | null = twoStage && parsed
-        ? parseTwoStageTags(parsed, sweetRead)
+        ? parseTwoStageTags(parsed, readOptions)
         : null;
       const tags = twoStage && !twoStageTags ? null : parsed;
       if (!tags) {
@@ -576,6 +590,7 @@ class GuideV3Flow {
       this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
       // 帶張力改寫法（Bruce 2026-10-20「改」）：排卡不變，寫卡與說明的帶張力寫法換新的；沒開照舊。
       this.tensionStyleOn = twoStage && this.deps.tensionStyle === true;
+      this.noIouOn = noIouOn;
       const plan = vetPlanText(
         planTurn(
           turns,
@@ -588,6 +603,7 @@ class GuideV3Flow {
               ? { lightShortPraise: lightShortRun(this.runId) }
               : {}),
             ...(sweetShortOn ? { sweetShort: true } : {}),
+            ...(noIouOn ? { noIou: true } : {}),
           },
         ),
         (field) =>
@@ -596,11 +612,13 @@ class GuideV3Flow {
             field,
           }, "error"),
         // 讀局面多了關係狀態那一段：判讀照抄那一段也不給（主審第 1 輪 P2）；兩段式多的欄位說明也一樣
-        //（兩段式主審第 1 輪 P2），兩個都開就兩份一起比。甜話短回開時 worthyLines 那一條新加的說法也比。都沒開照舊。
+        //（兩段式主審第 1 輪 P2），兩個都開就兩份一起比。甜話短回開時 worthyLines 那一條新加的說法也比；不記帳不承諾開時
+        // herTired 那一行也比。都沒開照舊。
         [
           ...(twoStage ? TWO_STAGE_READ_LEAK_SENTINELS : []),
           ...(withRelation ? RELATION_LEAK_SENTINELS : []),
           ...(sweetShortOn ? SWEET_READ_LEAK_SENTINELS : []),
+          ...(noIouOn ? NO_IOU_READ_LEAK_SENTINELS : []),
         ],
       );
       this.sweetShortPlanned = sweetShortOn &&
@@ -1175,13 +1193,15 @@ class GuideV3Flow {
           spec,
           sourceText,
           // 短版稱讚、帶張力改寫法開時：規格裡短版那段、帶張力的新寫法抄進卡片也拿掉；甜話短回排到時，規格裡短回的
-          // 指示也一樣。都沒開照舊。
-          this.shortPraiseOn || this.tensionStyleOn || this.sweetShortPlanned
+          // 指示也一樣；不記帳不承諾開時，寫卡系統提示詞那一句新加的說法也一樣。都沒開照舊。
+          this.shortPraiseOn || this.tensionStyleOn || this.sweetShortPlanned ||
+            this.noIouOn
             ? [
               ...TWO_STAGE_WRITER_SENTINELS,
               ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
               ...(this.tensionStyleOn ? TENSION_STYLE_WRITER_SENTINELS : []),
               ...(this.sweetShortPlanned ? SWEET_SHORT_WRITER_SENTINELS : []),
+              ...(this.noIouOn ? NO_IOU_WRITER_SENTINELS : []),
             ]
             : TWO_STAGE_WRITER_SENTINELS,
         )
@@ -1290,6 +1310,7 @@ class GuideV3Flow {
         system: twoStage
           ? writeSystemPromptTwoStage(undefined, undefined, undefined, {
             tensionStyle: this.tensionStyleOn,
+            noIou: this.noIouOn,
           })
           : writeSystemPrompt(),
         user: twoStage

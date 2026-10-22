@@ -16,6 +16,7 @@ import {
   type PraiseStyle,
   praiseStyle,
   type PushAction,
+  withoutCoupleSeed,
 } from "./rules.ts";
 import { NO_SAFETY_HITS, type SafetyKeywordHits } from "./safety.ts";
 import { latestHerMessages, type Turn } from "./turns.ts";
@@ -157,9 +158,12 @@ export function planTurn(
   /// 短版稱讚（開關 ANALYZE_GUIDE_V3_SHORT_PRAISE）：這次分析抽到輕輕誇的短版（rules.ts lightShortRun）。
   /// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）：她最新那句是很短的甜話時，只有一張卡回那句、
   /// 其他卡回她別的話，沒有別的話就少出幾張（rules.ts arrangeSweetShort）。
+  /// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22「不要」）：已經在交往、她撒嬌或喊累時不排推進（種子）
+  ///（rules.ts withoutCoupleSeed）；只在有兩段式的讀局面欄位時有作用。
   options: {
     readonly lightShortPraise?: boolean;
     readonly sweetShort?: boolean;
+    readonly noIou?: boolean;
   } = {},
 ): GuideV3Plan {
   if (tags.selfHarmSignal || hits.selfHarmWords) {
@@ -167,7 +171,11 @@ export function planTurn(
   }
   if (tags.minorSignal) return carePlan("minor", true, false);
   const reply = decideReply(turns, tags);
-  const push = reply.kind === "send" ? decidePush(turns, tags) : null;
+  const decided = reply.kind === "send" ? decidePush(turns, tags) : null;
+  // 在排卡之前換：張數、任務、問句、甜話短回那張排在哪，以及計畫、trace 裡的 push，都照沒有推進的排法走。
+  const push = options.noIou === true && twoStage
+    ? withoutCoupleSeed(decided, twoStage)
+    : decided;
   const answeredSpecs = withAnswers(
     arrangeCards(reply, push, tags, twoStage),
     turns,

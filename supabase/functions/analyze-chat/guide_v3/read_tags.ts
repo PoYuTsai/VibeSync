@@ -161,6 +161,9 @@ export interface WorthyLine {
 export interface TwoStageTags {
   readonly establishedCouple: boolean;
   readonly herAffection: boolean;
+  /// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22）開時才有：她這一輪在喊累，或說身體痠痛、不舒服。排卡在
+  /// 交往中她撒嬌或喊累時不排推進（種子）（rules.ts withoutCoupleSeed）。開關沒開時沒有這個欄位。
+  readonly herTired?: boolean;
   readonly herHappyShare: boolean;
   readonly worthyLines: readonly WorthyLine[];
 }
@@ -230,12 +233,46 @@ function withWorthyKinds(
   };
 }
 
+/// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU）開時讀局面多要的一欄。
+export const HER_TIRED_FIELD = "herTired";
+
+/// 不記帳不承諾開時的讀局面 schema：在 herAffection 後面多一欄 herTired（布林、必填），其他欄位與順序照原樣。兩段式的每一種
+///（有沒有甜話短回、有沒有關係訊號）都從原本那份加：模型照 schema 的順序寫，herTired 緊接在撒嬌示愛之後，跟提示詞那一行同一個
+/// 位置；關係三欄照舊在最後。原本那份沒有 herAffection 就丟錯（測試會先失敗）。
+export function withHerTired(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const required = schema.required as readonly string[];
+  const properties = schema.properties as Record<string, unknown>;
+  const at = required.indexOf("herAffection");
+  if (at === -1 || !("herAffection" in properties)) {
+    throw new Error("read_tags: withHerTired needs herAffection");
+  }
+  return {
+    ...schema,
+    required: [
+      ...required.slice(0, at + 1),
+      HER_TIRED_FIELD,
+      ...required.slice(at + 1),
+    ],
+    properties: Object.fromEntries(
+      Object.entries(properties).flatMap(([key, value]) =>
+        key === "herAffection"
+          ? [[key, value], [HER_TIRED_FIELD, { type: "boolean" }]]
+          : [[key, value]]
+      ),
+    ),
+  };
+}
+
 /// 兩段式多要的四欄逐欄檢查，壞了回 null（跟 parseReadTags 一樣記成讀局面失敗）。編號在不在
 /// 她最新這一輪的範圍內，交給排卡（rules.ts assignAnswers）處理，這裡只看型別。
 /// sweetShort（甜話短回開、兩段式也開）：kind 多認「撒嬌」；沒給或 false 跟今天一樣，標了撒嬌就算讀局面失敗。
+/// noIou（不記帳不承諾開、兩段式也開）：多收 herTired，缺了或不是 true 都當 false（只影響排不排種子，不因為這一欄讓整次
+/// 讀局面失敗）；沒給或 false 跟今天一樣，回的欄位裡沒有 herTired。
 export function parseTwoStageTags(
   value: unknown,
-  options: { readonly sweetShort?: boolean } = {},
+  options: { readonly sweetShort?: boolean; readonly noIou?: boolean } = {},
 ): TwoStageTags | null {
   const kinds: readonly WorthyLineKind[] = options.sweetShort
     ? WORTHY_LINE_KINDS_SWEET
@@ -260,6 +297,7 @@ export function parseTwoStageTags(
   return {
     establishedCouple: v.establishedCouple,
     herAffection: v.herAffection,
+    ...(options.noIou ? { herTired: v[HER_TIRED_FIELD] === true } : {}),
     herHappyShare: v.herHappyShare,
     worthyLines: v.worthyLines.map((w: WorthyLine) => ({
       line: w.line,
