@@ -16,7 +16,11 @@ import {
   WRITE_SAFETY_FLOOR,
   writeUserPrompt,
 } from "./prompts.ts";
-import { READ_TAGS_SCHEMA_TWO_STAGE, type ReadTags } from "./read_tags.ts";
+import {
+  READ_TAGS_SCHEMA_TWO_STAGE,
+  READ_TAGS_SCHEMA_TWO_STAGE_SWEET,
+  type ReadTags,
+} from "./read_tags.ts";
 import { RELATION_FIELD_NOTES, withRelationFields } from "./relation.ts";
 import {
   type AnswerLine,
@@ -72,16 +76,18 @@ export const TWO_STAGE_READ_LEAK_SENTINELS: readonly string[] = [
   ]),
 ];
 
+/// 讀局面兩段式的欄位說明：甜話短回開時 worthyLines 那一條換成多「撒嬌」的寫法（readTwoStageNotes），沒開跟今天一字不差。
 export function readSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  options: { readonly sweetShort?: boolean } = {},
 ): string {
   return readSystemPrompt(
     sections,
     entries,
     leakDirective,
-    READ_TWO_STAGE_NOTES,
+    readTwoStageNotes(options),
   );
 }
 
@@ -91,18 +97,23 @@ export function readSystemPromptTwoStageWithRelation(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   entries: readonly GuideV3Entry[] = GUIDE_V3_ENTRIES,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
+  options: { readonly sweetShort?: boolean } = {},
 ): string {
   return readSystemPrompt(
     sections,
     entries,
     leakDirective,
-    `${READ_TWO_STAGE_NOTES}\n\n${RELATION_FIELD_NOTES}`,
+    `${readTwoStageNotes(options)}\n\n${RELATION_FIELD_NOTES}`,
   );
 }
 
 export const READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION = withRelationFields(
   READ_TAGS_SCHEMA_TWO_STAGE,
 );
+
+/// 甜話短回開時（關係訊號也開）：schema 照兩段式甜話短回那一份，關係三欄一樣接在最後。
+export const READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION =
+  withRelationFields(READ_TAGS_SCHEMA_TWO_STAGE_SWEET);
 
 /// 她最新這一輪逐則編號，worthyLines 才填得出編號。
 export function readUserPromptTwoStage(
@@ -427,6 +438,42 @@ export const SWEET_SHORT_CARD_PART = "短短回她一句就好";
 /// 規格的結構仍由說明自己的哨兵（explain.ts EXPLAIN_SENTINELS）擋。
 export const SWEET_SHORT_WRITER_SENTINELS: readonly string[] = [
   SWEET_SHORT_CARD_PART,
+];
+
+/// 甜話短回開時讀局面 worthyLines 那一條（Codex 主審第 1 輪 P2：「情感」也包含難過、生氣、痛，「腿好痛」「想你」都標情感時
+/// 分不出哪句是甜話）：kind 多一種「撒嬌」，由讀局面逐則標她對他撒嬌或示愛的那一則；情感拿掉撒嬌、示愛，只剩帶著情緒的；一則
+/// 算好幾種時照問他、撒嬌、情感的順序。例句是我們寫的類型，不是哪一段真實對話。其他欄位、其他文字照 READ_TWO_STAGE_NOTES。
+export const SWEET_WORTHY_LINES_NOTE =
+  "- worthyLines：她最新這一輪值得接的訊息，一則一項。line 填對話稿上那一則前面的編號；label 用幾個字寫那則在講什麼；kind 填「問他」（她直接問他、要他的看法，或想聽他說好不好看、厲不厲害）、「撒嬌」（這一則本身在對他撒嬌或示愛，例如說想他、要他抱抱、說愛他或喜歡他、跟他討親親；只是說累、痛或心情不好，填「情感」）、「情感」（帶著開心、難過、生氣的情緒）、「照片或貼圖」（照片、貼圖或只有表情符號），其他都填「其他」；一則同時算好幾種時，照問他、撒嬌、情感的順序填前面那種。單純附和、語助詞，或跟前一則講同一件事的，可以不列。";
+
+/// 讀局面兩段式的欄位說明：甜話短回開時 worthyLines 那一條換成 SWEET_WORTHY_LINES_NOTE（原文那一行對不上就丟錯，測試會先失敗）；
+/// 沒開就是 READ_TWO_STAGE_NOTES 原文。
+export function readTwoStageNotes(
+  options: { readonly sweetShort?: boolean } = {},
+): string {
+  return options.sweetShort
+    ? applyLineEdits(READ_TWO_STAGE_NOTES, [
+      { startsWith: "- worthyLines：", edit: () => SWEET_WORTHY_LINES_NOTE },
+    ])
+    : READ_TWO_STAGE_NOTES;
+}
+
+/// 上面那一條新加的說法的外洩哨兵（甜話短回開時，判讀與要等她做什麼照抄就不給，跟 TWO_STAGE_READ_SENTINELS 同一套）：每句都
+/// 照抄自 SWEET_WORTHY_LINES_NOTE，而且帶只有提示詞才會寫的記號（種類名接它的定義、「填「情感」」、種類的先後）；一般判讀自己
+/// 也會講的話（「她在跟你撒嬌」）不當哨兵。沿用的那幾段已經在 TWO_STAGE_READ_SENTINELS。
+export const SWEET_READ_SENTINELS: readonly string[] = [
+  "「撒嬌」（這一則本身在對他撒嬌或示愛",
+  "只是說累、痛或心情不好，填「情感」",
+  "「情感」（帶著開心、難過、生氣的情緒）",
+  "一則同時算好幾種時，照問他、撒嬌、情感的順序",
+];
+
+/// 甜話短回開時交給 vetPlanText 多比的哨兵（原樣與簡轉繁整理過的，去掉重複）。
+export const SWEET_READ_LEAK_SENTINELS: readonly string[] = [
+  ...new Set([
+    ...SWEET_READ_SENTINELS,
+    ...SWEET_READ_SENTINELS.map((s) => normalizeOutgoingScript(s) ?? s),
+  ]),
 ];
 
 export function praiseSection(style: PraiseStyle): string {

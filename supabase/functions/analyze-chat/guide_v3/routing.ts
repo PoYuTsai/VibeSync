@@ -103,8 +103,8 @@ export function shouldUseGuideV3PhraseTidy(args: {
 }
 
 /// 甜話短回（Eric 2026-10-22「照預設」，Bruce 2026-10-22：她說很短的甜話，短短回就好；見 rules.ts arrangeSweetShort）：開關
-/// ANALYZE_GUIDE_V3_SWEET_SHORT，跟 ANALYZE_GUIDE_V3 一樣 off／test／on，只在兩段式開著時才有作用（入口把關）。她最新那句是
-/// 很短的甜話時只有一張卡回那句、其他卡回她別的話，沒有別的話就少出幾張；沒開跟今天一字不差。
+/// ANALYZE_GUIDE_V3_SWEET_SHORT，跟 ANALYZE_GUIDE_V3 一樣 off／test／on，只在兩段式開著時才有作用（入口把關）。讀局面逐則
+/// 多標「撒嬌」，她這一輪有撒嬌的很短的一則時只有一張卡回那句、其他卡回她別的話，沒有別的話就少出幾張；沒開跟今天一字不差。
 export function shouldUseGuideV3SweetShort(args: {
   readonly mode: GuideV3Mode;
   readonly accountIsTest: boolean;

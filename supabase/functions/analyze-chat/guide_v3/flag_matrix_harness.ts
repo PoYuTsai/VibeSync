@@ -137,17 +137,28 @@ export const FLAG_MATRIX_SWEET_TWO_STAGE_FIELDS: Record<string, unknown> = {
 };
 
 /// 甜話情境的讀局面 JSON（跟 flagMatrixReadText 一樣照組合給欄位）；over 蓋過讀局面的欄位（她只傳那句甜話、她沒撒嬌、
-/// 那則變長這些對照用）。
+/// 那則變長這些對照用）。甜話短回開時讀局面的 schema 多「撒嬌」：開著（兩段式也開）就把甜話那幾則（sweetLines，預設第 1 則）
+/// 從情感改標撒嬌，跟真的模型一樣；沒開照標情感（整份字一樣，既有的雜湊不變）。
 export function flagMatrixSweetReadText(
   combo: FlagCombo,
   over: Record<string, unknown> = {},
+  sweetLines: readonly number[] = [1],
 ): string {
-  return JSON.stringify({
+  const read: Record<string, unknown> = {
     ...FLAG_MATRIX_SWEET_TAGS,
     ...(combo.twoStage ? FLAG_MATRIX_SWEET_TWO_STAGE_FIELDS : {}),
     ...(combo.relation ? FLAG_MATRIX_RELATION_FIELDS : {}),
     ...over,
-  });
+  };
+  if (combo.twoStage && combo.sweetShort && Array.isArray(read.worthyLines)) {
+    read.worthyLines = (read.worthyLines as { line: number; kind: string }[])
+      .map((w) =>
+        sweetLines.includes(w.line) && w.kind === "情感"
+          ? { ...w, kind: "撒嬌" }
+          : w
+      );
+  }
+  return JSON.stringify(read);
 }
 
 /// 寫卡：規格要幾張就回幾張。

@@ -17,17 +17,18 @@
 //    最多一張，已在交往或她撒嬌示愛時不排；她分享開心的事（她情緒差時不算）第二張改成共鳴；
 //    最後每張卡都指定先回她最想聽的那則、可以順帶一則（第 2 輪，Bruce 10/19 盲選理由）。
 //    上面 1–7 都照舊先算。
-// 9. 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」；沒開時這條不存在）：她撒嬌、這一輪有很短的
-//    情感句時（不一定是本來先回的那則；她問了他什麼就不算），只有一張卡回那句（短短回一句），其他卡改回她別的話、不提任何
-//    一句很短的甜話；她沒有別的話就少出幾張、至少 3 張（arrangeSweetShort）。上面 1–8 都照舊先算；婉拒收尾、詐騙換地方的
-//    固定排法不動（plan.ts 把關）。
+// 9. 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」；沒開時這條不存在）：她撒嬌、這一輪有讀局面標成
+//    撒嬌的很短的一則時（不一定是本來先回的那則；她問了他什麼就不算），只有一張卡回那句（短短回一句），其他卡改回她別的話、
+//    不提任何一句很短的甜話；她沒有別的話就少出幾張、至少 3 張（arrangeSweetShort）。上面 1–8 都照舊先算；婉拒收尾、詐騙
+//    換地方的固定排法不動（plan.ts 把關）。
 import { withoutEmoji } from "./cards.ts";
 import type { GuideV3Entry } from "./entries.ts";
-import type {
-  ReadTags,
-  TwoStageTags,
-  WorthyLine,
-  WorthyLineKind,
+import {
+  type ReadTags,
+  SWEET_LINE_KIND,
+  type TwoStageTags,
+  type WorthyLine,
+  type WorthyLineKind,
 } from "./read_tags.ts";
 import type { Turn } from "./turns.ts";
 
@@ -477,9 +478,10 @@ export function isMediaLine(content: string): boolean {
 }
 
 /// 誰先被當成「她最想聽他回的那則」：問他最先、情感其次、其他再來。有字的那則被標成照片或貼圖時
-/// 當其他（照片、貼圖本身由 isMediaLine 認，不靠這個標記）。
+/// 當其他（照片、貼圖本身由 isMediaLine 認，不靠這個標記）。撒嬌只有甜話短回開時讀局面才會標，跟情感同一級。
 const ANSWER_RANK: Readonly<Record<WorthyLineKind, number>> = {
   問他: 0,
+  撒嬌: 1,
   情感: 1,
   其他: 2,
   照片或貼圖: 2,
@@ -549,7 +551,9 @@ export function assignAnswers(
 // ── 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）──────────────────────────────────
 // Bruce 2026-10-22 iPhone 試兩段式：已經在交往，她撒嬌說了很短的甜話、又說腿很累，5 張卡都回那三個字，還要換切入點，只能
 // 評論那兩個字（「專屬的我收到了」「專屬這兩個字聽起來就很有分量」）；他說這種甜話短短回就好。讀局面把腿那則也標情感時，
-// 每張卡改成先回腿、甜話當順帶，一樣每張都提那兩個字，所以候選不限先回的那則。只看讀局面的標記與字數，不比對內容。
+// 每張卡改成先回腿、甜話當順帶，一樣每張都提那兩個字，所以候選不限先回的那則。「情感」也包含難過、生氣、痛，「腿好痛」
+// 「想你」都標情感時分不出哪句是甜話（Codex 主審第 1 輪 P2），所以開關開時讀局面逐則多標一種「撒嬌」，只有標成撒嬌的才算。
+// 只看讀局面的標記與字數，不比對內容。
 
 /// 她那則去掉引用前綴、表情、標點與空白後，幾個字以內算「很短」：先訂 6 個字（我們的預設，Bruce 可以調）。
 export const SWEET_SHORT_MAX_CHARS = 6;
@@ -579,10 +583,11 @@ function answerLinesOf(
   return out;
 }
 
-/// 甜話短回的候選與選中的那則：讀局面標她這一輪撒嬌或示愛時，有字（不是照片、貼圖、只有表情或只有引用）、標成情感、而且
-/// 不超過 SWEET_SHORT_MAX_CHARS 個字的每一則都是候選（連同併進來的照片、貼圖）；不一定是本來每張卡都要先回的那則——Bruce
-/// 2026-10-22 那次她先撒嬌、後說腿很累，兩則都標情感時腿那則排第一，甜話只當順帶。本來先回的那則是問他（她問了他什麼）就
-/// 不算，照今天每張卡都先回她問的那句。選中的是 assignAnswers 在候選裡排第一的那則（都是情感，同一級取她後傳的）。
+/// 甜話短回的候選與選中的那則：讀局面標她這一輪撒嬌或示愛時，有字（不是照片、貼圖、只有表情或只有引用）、標成撒嬌（甜話短回
+/// 開時讀局面才會標的那一種）、而且不超過 SWEET_SHORT_MAX_CHARS 個字的每一則都是候選（連同併進來的照片、貼圖）；標成情感的
+/// 一律不算，再短也不算（「腿好痛」是情感，不是甜話）。不一定是本來每張卡都要先回的那則：Bruce 2026-10-22 那次她先撒嬌、後說
+/// 腿很累，腿那則排第一時甜話只當順帶。本來先回的那則是問他（她問了他什麼）就不算，照今天每張卡都先回她問的那句。選中的是
+/// assignAnswers 在候選裡排第一的那則（都是撒嬌，同一級取她後傳的）。
 function pickSweetShort(
   twoStage: TwoStageTags,
   herLatest: readonly string[],
@@ -596,7 +601,7 @@ function pickSweetShort(
   if (kindOf(main.line) === "問他") return null;
   const all = answerLinesOf(twoStage.worthyLines, herLatest);
   const candidates = [...all.values()].filter((a) =>
-    kindOf(a.line) === "情感" &&
+    kindOf(a.line) === SWEET_LINE_KIND &&
     herLineChars(herLatest[a.line - 1]) <= SWEET_SHORT_MAX_CHARS
   ).sort((a, b) => a.line - b.line);
   if (candidates.length === 0) return null;

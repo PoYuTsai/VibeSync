@@ -138,7 +138,18 @@ export const WORTHY_LINE_KINDS = [
   "照片或貼圖",
   "其他",
 ] as const;
-export type WorthyLineKind = typeof WORTHY_LINE_KINDS[number];
+/// 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT；Codex 主審第 1 輪 P2）開時才多的一種：她這一則本身在對他撒嬌或示愛。「情感」
+/// 也包含難過、生氣、痛（「腿好痛」），不能拿來認甜話，所以由讀局面逐則標。開關沒開時讀局面的提示詞、schema 與檢查都不認
+/// 這一種（WORTHY_LINE_KINDS 不變）。
+export const SWEET_LINE_KIND = "撒嬌";
+export const WORTHY_LINE_KINDS_SWEET = [
+  "問他",
+  SWEET_LINE_KIND,
+  "情感",
+  "照片或貼圖",
+  "其他",
+] as const;
+export type WorthyLineKind = typeof WORTHY_LINE_KINDS_SWEET[number];
 
 export interface WorthyLine {
   /// 她最新這一輪的第幾則（1 起算，照讀局面對話稿上的編號）。
@@ -189,9 +200,46 @@ export const READ_TAGS_SCHEMA_TWO_STAGE: Record<string, unknown> = {
   },
 };
 
+/// 甜話短回開時的兩段式 schema：只有 worthyLines 的 kind 多「撒嬌」，其他欄位與順序都跟 READ_TAGS_SCHEMA_TWO_STAGE 一樣。
+export const READ_TAGS_SCHEMA_TWO_STAGE_SWEET: Record<string, unknown> =
+  withWorthyKinds(READ_TAGS_SCHEMA_TWO_STAGE, WORTHY_LINE_KINDS_SWEET);
+
+/// schema 的 worthyLines.kind 換一份可以填的種類（其他照原樣，key 的順序不變）。
+function withWorthyKinds(
+  schema: Record<string, unknown>,
+  kinds: readonly string[],
+): Record<string, unknown> {
+  // deno-lint-ignore no-explicit-any
+  const properties = schema.properties as Record<string, any>;
+  const worthy = properties.worthyLines;
+  return {
+    ...schema,
+    properties: {
+      ...properties,
+      worthyLines: {
+        ...worthy,
+        items: {
+          ...worthy.items,
+          properties: {
+            ...worthy.items.properties,
+            kind: { type: "string", enum: [...kinds] },
+          },
+        },
+      },
+    },
+  };
+}
+
 /// 兩段式多要的四欄逐欄檢查，壞了回 null（跟 parseReadTags 一樣記成讀局面失敗）。編號在不在
 /// 她最新這一輪的範圍內，交給排卡（rules.ts assignAnswers）處理，這裡只看型別。
-export function parseTwoStageTags(value: unknown): TwoStageTags | null {
+/// sweetShort（甜話短回開、兩段式也開）：kind 多認「撒嬌」；沒給或 false 跟今天一樣，標了撒嬌就算讀局面失敗。
+export function parseTwoStageTags(
+  value: unknown,
+  options: { readonly sweetShort?: boolean } = {},
+): TwoStageTags | null {
+  const kinds: readonly WorthyLineKind[] = options.sweetShort
+    ? WORTHY_LINE_KINDS_SWEET
+    : WORTHY_LINE_KINDS;
   // deno-lint-ignore no-explicit-any
   const v = value as any;
   if (!v || typeof v !== "object") return null;
@@ -206,7 +254,7 @@ export function parseTwoStageTags(value: unknown): TwoStageTags | null {
       // deno-lint-ignore no-explicit-any
       typeof (w as any)?.label === "string" &&
       // deno-lint-ignore no-explicit-any
-      isOneOf((w as any)?.kind, WORTHY_LINE_KINDS)
+      isOneOf((w as any)?.kind, kinds)
     )
   ) return null;
   return {

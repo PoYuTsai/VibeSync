@@ -1,7 +1,8 @@
 // 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」）從正式入口走（guide_v3/v3_stream_harness.ts：
-// 假 Supabase、假模型）：env 每次請求設定。開著、她這一輪有很短的甜話時，只有一張卡的規格回那句、多短回的指示，其他卡
-// 回她別的話；她沒有別的話就少出幾張。短回指示只比卡片、不比說明。沒設、off、test 但不是測試帳號、兩段式沒開時一字不變。
-// 對話全部新寫，事件照種類找。
+// 假 Supabase、假模型）：env 每次請求設定。開著時讀局面 worthyLines 多一種「撒嬌」（提示詞、schema、檢查）；她這一輪有標成
+// 撒嬌的很短的一則時，只有一張卡的規格回那句、多短回的指示，其他卡回她別的話；她沒有別的話就少出幾張。短回指示只比卡片、
+// 不比說明。沒設、off、test 但不是測試帳號、兩段式沒開時一字不變。假讀局面跟真的模型一樣：schema 有撒嬌才標撒嬌，沒有就標
+// 情感。對話全部新寫，事件照種類找。
 //
 // 寫卡的 streaming_fallback.ts 一載入就存下 fetch：轉接器要放第一個 import，入口模組也要在 env 裝好
 // 之後才動態載入（STREAM_ANALYZE_ENABLED 是載入時讀的常數）。
@@ -13,7 +14,10 @@ import {
 import { BILLING_PROTOCOL_VERSION } from "../billing.ts";
 import { ANALYSIS_CONTRACT_VERSION_V3 } from "../no_send_decision.ts";
 import { TEST_EMAILS } from "../../_shared/quota.ts";
-import { SWEET_SHORT_CARD_PART } from "./two_stage_prompts.ts";
+import {
+  SWEET_SHORT_CARD_PART,
+  SWEET_WORTHY_LINES_NOTE,
+} from "./two_stage_prompts.ts";
 import {
   fakeExplainResponse,
   fakeReadResponse,
@@ -75,18 +79,46 @@ const READ = {
   establishedCouple: true,
   herAffection: true,
   herHappyShare: false,
+  // 甜話那則的 kind 寫「撒嬌」；請求的 schema 沒有撒嬌（開關沒開）時，readFor 換成情感，跟真的模型一樣。
   worthyLines: [
-    { line: 1, label: "要他陪", kind: "情感" },
+    { line: 1, label: "要他陪", kind: "撒嬌" },
     { line: 2, label: "腳痠", kind: "其他" },
   ],
 };
 const READ_SWEET_ONLY = {
   ...READ,
   worthyBallCount: 1,
-  worthyLines: [{ line: 1, label: "要他陪", kind: "情感" }],
+  worthyLines: [{ line: 1, label: "要他陪", kind: "撒嬌" }],
 };
 
 type Rec = Record<string, unknown>;
+
+/// 這次讀局面請求的 schema 裡 worthyLines 的 kind 可以填哪些。
+function kindsOf(body: Rec): string[] {
+  const schema = (body.output_config as
+    | { format?: { schema?: Rec } }
+    | undefined)?.format?.schema as
+      | {
+        properties?: {
+          worthyLines?: {
+            items?: { properties?: { kind?: { enum?: string[] } } };
+          };
+        };
+      }
+      | undefined;
+  return schema?.properties?.worthyLines?.items?.properties?.kind?.enum ?? [];
+}
+
+/// 假讀局面：schema 沒有撒嬌時，撒嬌那則改標情感（真的模型照 schema 只能填有的種類）。
+function readFor(read: Rec, body: Rec): Rec {
+  if (kindsOf(body).includes("撒嬌")) return read;
+  return {
+    ...read,
+    worthyLines: (read.worthyLines as { kind: string }[]).map((w) =>
+      w.kind === "撒嬌" ? { ...w, kind: "情感" } : w
+    ),
+  };
+}
 
 function userText(body: Rec): string {
   return (body.messages as { content: string }[])[0].content;
@@ -96,6 +128,8 @@ function analyze(args: {
   readonly env: Record<string, string | undefined>;
   readonly messages?: readonly { isFromMe: boolean; content: string }[];
   readonly read?: Rec;
+  /// 讀局面照原樣回（不照 schema 換種類）：測開關沒開時讀局面標了撒嬌會怎樣。
+  readonly rawRead?: boolean;
   readonly email?: string;
   readonly cardText?: (card: number) => string | undefined;
   readonly explainText?: (card: number) => string | undefined;
@@ -149,7 +183,13 @@ function analyze(args: {
           );
         }
         default:
-          return Promise.resolve(fakeReadResponse(args.read ?? READ));
+          return Promise.resolve(
+            fakeReadResponse(
+              args.rawRead
+                ? (args.read ?? READ)
+                : readFor(args.read ?? READ, body),
+            ),
+          );
       }
     },
   });
@@ -338,4 +378,40 @@ Deno.test("從正式入口：甜話短回排到時，說明寫到「短短回她
     [[3, "prompt_leak"]],
   );
   assertEquals(explainOf(both).removed, []);
+});
+
+Deno.test("從正式入口：甜話短回開時讀局面的請求換 worthyLines 那一條、schema 多撒嬌；沒開時讀局面的提示詞與 schema 都沒有撒嬌", async () => {
+  const systemOf = (body: Rec) =>
+    typeof body.system === "string"
+      ? body.system
+      : (body.system as { text?: string }[]).map((b) => b.text ?? "").join("");
+  const on = await analyze({ env: { ANALYZE_GUIDE_V3_SWEET_SHORT: "on" } });
+  const readOn = bodyOf(on, "read")!;
+  assert(systemOf(readOn).includes(SWEET_WORTHY_LINES_NOTE));
+  assert(kindsOf(readOn).includes("撒嬌"));
+  for (const flag of [undefined, "off", "test"]) {
+    const off = await analyze({ env: { ANALYZE_GUIDE_V3_SWEET_SHORT: flag } });
+    const readOff = bodyOf(off, "read")!;
+    assertEquals(systemOf(readOff).includes(SWEET_WORTHY_LINES_NOTE), false);
+    assertEquals(systemOf(readOff).includes("「撒嬌」"), false);
+    assertEquals(kindsOf(readOff).includes("撒嬌"), false, String(flag));
+  }
+});
+
+Deno.test("從正式入口：甜話短回沒開時讀局面標了撒嬌（schema 本來就不給）照今天一樣算讀局面失敗、不扣；開著才收", async () => {
+  const off = await analyze({ env: {}, rawRead: true });
+  assertEquals(off.status, 200);
+  const error = off.events.find((e) => e.type === "analysis.error");
+  assertEquals(error?.code, "GUIDE_V3_READ_INVALID");
+  assertEquals(off.events.some((e) => e.type === "analysis.card"), false);
+  assertEquals(
+    off.rpcs.some((r) => r.fn === "charge_stream_analysis_run_v3"),
+    false,
+  );
+  const on = await analyze({
+    env: { ANALYZE_GUIDE_V3_SWEET_SHORT: "on" },
+    rawRead: true,
+  });
+  assertEquals(on.events.some((e) => e.type === "analysis.error"), false);
+  assertEquals(on.events.filter((e) => e.type === "analysis.card").length, 5);
 });

@@ -33,11 +33,13 @@ import { detectTypingHabits, styleCard } from "./typing_style.ts";
 import { toTurns } from "./turns.ts";
 import {
   LIGHT_SHORT_CARD_PART,
+  READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION,
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   READ_TWO_STAGE_NOTES,
   readSystemPromptTwoStageWithRelation,
   readUserPromptTwoStage,
   SWEET_SHORT_CARD_PART,
+  SWEET_WORTHY_LINES_NOTE,
   TENSION_STYLE_LINE,
   TWO_STAGE_WRITER_SENTINELS,
   writeSystemPromptTwoStage,
@@ -562,7 +564,7 @@ Deno.test("「這題」「滿→蠻」開（正式組合）：送出的卡、扣
   assertEquals(JSON.stringify(trace).includes("適合"), false);
 });
 
-// ---- 甜話短回（ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」） ----
+// ---- 甜話短回（ANALYZE_GUIDE_V3_SWEET_SHORT，Eric 2026-10-22「照預設」；Codex 主審第 1 輪 P2 改成讀局面逐則標「撒嬌」） ----
 
 /// 正式環境現在開著、這個情境用得到的開關全開（兩段式、關係訊號、口吻與斷句、短版稱讚、帶張力改寫法、「這題」「滿→蠻」；
 /// v3、上一輪脈絡、對象記憶不在這個情境裡）：正式環境九個開關在這個工具裡的樣子。
@@ -575,42 +577,52 @@ const PRODUCTION_ALL = {
 /// 上面那組（原本的情境）的整份結果：鎖住。拿同一個情境跑 main b36614c7 的原始快照算出來的一樣（甜話短回沒開的對照）。
 const PRODUCTION_ALL_OFF =
   "20921e63d35664c28de17fb89b6a7b56370909425c964ca673b6d8bdc4fabab8";
+/// 開著、情境不是甜話（原本的情境她先問他），正式組合與全開的整份結果：鎖住。主審第 1 輪 P2 之後開著時讀局面的請求換
+/// worthyLines 那一條、schema 多撒嬌，所以跟關著不同；把讀局面的請求換回沒開的，就是 f3aa55b8…、20921e63…（下面有比）。
+const PRODUCTION_ON_NOT_SWEET =
+  "f06d6c72df2f3b6546e8d61976cae64ccb731a491d560089583076ff6ff90b0c";
+const PRODUCTION_ALL_ON_NOT_SWEET =
+  "71dae596677a280927bf28ca566bd588e995ae1577ef95a2975bb2c3a42cec87";
 /// 甜話情境（flag_matrix_harness.ts 的 FLAG_MATRIX_SWEET_*：交往中，她先撒嬌「只想要你哄❤️」、再說腳底痛，句子全新），正式
-/// 組合與全開各自沒開、開的整份結果：鎖住。沒開的跟 main b36614c7 原始快照跑同一個情境一樣；開的只差寫卡與說明的使用者
-/// 訊息、trace 的規格（下面逐項比）。
+/// 組合與全開各自沒開、開的整份結果：鎖住。沒開的跟 main b36614c7 原始快照跑同一個情境一樣（讀局面標情感）。開的（主審第 1 輪
+/// P2 之後重鎖：957339f6…→e56eb236…、51d7efba…→cdb93e0b…）比沒開多差讀局面的請求（worthyLines 那一條、schema 多撒嬌）與
+/// trace 的讀局面標記（甜話那則標撒嬌），其餘照舊只差寫卡與說明的使用者訊息、trace 的規格（下面逐項比）。
 const SWEET_PRODUCTION_OFF =
   "1992c55c2086d80aa9cf1bc0d21ab8897e078499f736ada346a9d44cd6aa5b6d";
 const SWEET_PRODUCTION_ON =
-  "957339f6dd7338ee25160ae61a7b6c53676554aebb64288dcc6a455b58204d3a";
+  "e56eb23672ebc609a806661d49f5543be4b33fc8a56961db7a3072e534007f1f";
 const SWEET_ALL_OFF =
   "81d3e66ee1fb0b1a36c748a932415f229727d419f6a5da4fff129cef4c02be6e";
 const SWEET_ALL_ON =
-  "51d7efbaa50ada386ecdf9fdfe3ceae1b81c05b11e2d471de4881c72a7d09c8f";
-/// 同一段對話、她只傳那句甜話（少出幾張：4→3）。沒開的兩個一樣跟 main b36614c7 原始快照算的一樣。
+  "cdb93e0b794515d95b4a9d2bf17ee339a24fcf25d53e639151c3bd463c5e14dd";
+/// 同一段對話、她只傳那句甜話（少出幾張：4→3）。沒開的兩個一樣跟 main b36614c7 原始快照算的一樣；開的同上重鎖
+///（7f24f171…→12954517…、fe4d3529…→5d03d4dd…）。
 const SWEET_ONLY_PRODUCTION_OFF =
   "92cafa5c9f27c8a9cc5b4c9d048a0a437554e7a1488ec55e620931f220865dbe";
 const SWEET_ONLY_PRODUCTION_ON =
-  "7f24f17126b9c17a5c8f74dbe84d04c5aef83a592bac662f1a50d1640d23c1a4";
+  "129545177a14d565977f2cb8f390015e13d5f1f9390e2d713f8769f52ec9c925";
 const SWEET_ONLY_ALL_OFF =
   "c544a4561a49f18fb925bbe99dfc78b5f4d366410199c880653d0f7b7adc23b9";
 const SWEET_ONLY_ALL_ON =
-  "fe4d35299fbc39445b88a0296ae37a45dd6c958a934890cf0d35a617e805dbd9";
+  "5d03d4dd1811d2e74a53b0fc2cc47d6e7d2b989c2513ece30553b400d4e5d8c7";
 /// 甜話情境改成 Bruce 那次的形狀（A2）：腳底痛那則也標情感，沒開時每張卡先回腳底痛、甜話只當順帶（甜話不是本來先回的那則）。
-/// 沒開的兩個跟 main b36614c7 原始快照跑同一個情境一樣；開的只差寫卡與說明的使用者訊息、trace 的規格。
+/// 沒開的兩個跟 main b36614c7 原始快照跑同一個情境一樣；開的同上重鎖（aec931ef…→228677bc…、ebf0ba3a…→59aeae1a…）。
 const A2_PRODUCTION_OFF =
   "1528203e2018f52f9573837d8b4643c6ef0192b83ad2b3561dbc8326f41e738a";
 const A2_PRODUCTION_ON =
-  "aec931ef51de57abc1b6a9ad3d0229626dda14e16b4d10d8af69b62e1adc940a";
+  "228677bc0f4f3d7e7ae32fd654411f6f7109d99be2438eb87a786882cf34d43c";
 const A2_ALL_OFF =
   "d7e477efe351b41204381c260e77b9789444bad96f81139cb5f560c98187128e";
 const A2_ALL_ON =
-  "ebf0ba3a2e21cc0b413ba93ed06d5e65a8b982d885a9ed25d5150f560d9a56c5";
+  "59aeae1a24678b7040edc6eb6a7d1723a39791c1f9ad32370f995e4971d49e08";
 
 type Combo = Parameters<typeof run>[0];
+const ON = <C extends Combo>(combo: C) => ({ ...combo, sweetShort: true });
 const SWEET_ONLY_OVER = {
   worthyBallCount: 1,
   worthyLines: [{ line: 1, label: "撒嬌要他哄", kind: "情感" }],
 };
+/// 甜話情境：harness 的假讀局面跟真的模型一樣，開著（schema 有撒嬌）才把甜話那則標撒嬌，沒開標情感。
 const sweetScenario = (combo: Combo, over: Rec = {}) => ({
   messages: FLAG_MATRIX_SWEET_MESSAGES,
   readText: flagMatrixSweetReadText(combo, over),
@@ -629,6 +641,47 @@ const a2Scenario = (combo: Combo) => sweetScenario(combo, A2_OVER);
 const specLinesOf = (user: string) =>
   user.split("\n").filter((l) => /^\d\. 任務：/.test(l));
 const traceOf = (o: Outcome) => o.markDone.guideV3Trace as Rec;
+/// 開著時讀局面的請求（關係訊號也開）：系統提示詞只換 worthyLines 那一條、schema 多撒嬌；使用者那一則跟沒開一樣。
+const assertSweetRead = (on: Outcome, off: Outcome) => {
+  assertEquals(on.requests.read.user, off.requests.read.user);
+  assertEquals(
+    on.requests.read.system,
+    readSystemPromptTwoStageWithRelation(undefined, undefined, undefined, {
+      sweetShort: true,
+    }),
+  );
+  assert(on.requests.read.system.includes(SWEET_WORTHY_LINES_NOTE));
+  assertEquals(
+    off.requests.read.system.includes(SWEET_WORTHY_LINES_NOTE),
+    false,
+  );
+  assertEquals(
+    on.requests.read.schema,
+    READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION,
+  );
+  assertEquals(
+    off.requests.read.schema,
+    READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
+  );
+};
+/// 開著的整份結果把這幾處換回沒開的：讀局面的請求、trace 的讀局面標記與規格、寫卡與說明的使用者訊息（key 的順序不變）。
+const swapBack = (on: Outcome, off: Outcome) => ({
+  ...on,
+  requests: {
+    ...on.requests,
+    read: off.requests.read,
+    write: { ...on.requests.write, user: off.requests.write.user },
+    explain: { ...on.requests.explain, user: off.requests.explain.user },
+  },
+  markDone: {
+    ...on.markDone,
+    guideV3Trace: {
+      ...traceOf(on),
+      tags: traceOf(off).tags,
+      specs: traceOf(off).specs,
+    },
+  },
+});
 
 Deno.test("甜話短回明確關著（false）：每種組合、原本的情境與甜話情境的整份結果都跟沒給一模一樣（既有雜湊照舊）", async () => {
   const off = { sweetShort: false };
@@ -693,11 +746,13 @@ Deno.test("甜話短回明確關著（false）：每種組合、原本的情境�
       digest,
     );
     assertEquals(
-      await outcomeDigest(await run({ ...combo, ...off }, scenario(combo))),
+      await outcomeDigest(
+        await run({ ...combo, ...off }, scenario({ ...combo, ...off })),
+      ),
       digest,
     );
   }
-  // 其他每一種開關組合、三個情境：給 false 跟沒給一樣。
+  // 其他每一種開關組合、四個情境：給 false 跟沒給一樣。
   const flags = [
     "typingStyle",
     "shortPraise",
@@ -730,74 +785,83 @@ Deno.test("甜話短回明確關著（false）：每種組合、原本的情境�
   }
 });
 
-Deno.test("甜話短回開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用），甜話情境也一樣", async () => {
-  const on = { sweetShort: true };
+Deno.test("甜話短回開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用；讀局面的請求也不變），甜話情境也一樣", async () => {
   assertEquals(
-    await outcomeDigest(await run({ ...OFF, ...on })),
+    await outcomeDigest(await run(ON(OFF))),
     MAIN_6EF72AFF_OFF,
   );
   assertEquals(
-    await outcomeDigest(await run({ ...RELATION_ONLY, ...on })),
+    await outcomeDigest(await run(ON(RELATION_ONLY))),
     MAIN_6EF72AFF_RELATION,
   );
   for (const combo of [OFF, RELATION_ONLY]) {
     for (const scenario of [sweetScenario, sweetOnlyScenario, a2Scenario]) {
       assertEquals(
-        await outcomeDigest(await run({ ...combo, ...on }, scenario(combo))),
+        await outcomeDigest(await run(ON(combo), scenario(ON(combo)))),
         await outcomeDigest(await run(combo, scenario(combo))),
       );
     }
   }
 });
 
-Deno.test("甜話短回開、情境不是甜話：整份結果跟關著一模一樣（原本的情境她先問他；甜話情境她沒撒嬌、那則 7 個字、標成其他、同一輪也問他）", async () => {
-  const on = { sweetShort: true };
-  assertEquals(
-    await outcomeDigest(await run({ ...PRODUCTION, ...on })),
-    BOTH_TYPING_ON,
-  );
-  assertEquals(
-    await outcomeDigest(await run({ ...PRODUCTION_ALL, ...on })),
-    PRODUCTION_ALL_OFF,
-  );
+Deno.test("甜話短回開、情境不是甜話：只差讀局面的請求（worthyLines 那一條、schema 多撒嬌）與 trace 的讀局面標記，排卡、卡、說明都跟關著一樣；原本的情境鎖住", async () => {
+  for (
+    const [combo, offDigest, onDigest] of [
+      [PRODUCTION, BOTH_TYPING_ON, PRODUCTION_ON_NOT_SWEET],
+      [PRODUCTION_ALL, PRODUCTION_ALL_OFF, PRODUCTION_ALL_ON_NOT_SWEET],
+    ] as const
+  ) {
+    const off = await run(combo);
+    const on = await run(ON(combo));
+    assertSweetRead(on, off);
+    assertEquals(on.requests.write, off.requests.write);
+    assertEquals(on.requests.explain, off.requests.explain);
+    assertEquals(await outcomeDigest(swapBack(on, off)), offDigest);
+    assertEquals(await outcomeDigest(on), onDigest);
+  }
   const replaced = (at: number, content: string) =>
     FLAG_MATRIX_SWEET_MESSAGES.map((m, i) => i === at ? { ...m, content } : m);
-  const variants: [string, { messages: unknown; readText: string }][] = [
-    ["她沒撒嬌", sweetScenario(PRODUCTION, { herAffection: false })],
+  const variants: [
+    string,
+    (c: Combo) => { messages: unknown; readText: string },
+  ][] = [
+    ["她沒撒嬌", (c) => sweetScenario(c, { herAffection: false })],
     [
       "那則 7 個字",
-      {
+      (c) => ({
         messages: replaced(3, "好想好想要你哄❤️"),
-        readText: flagMatrixSweetReadText(PRODUCTION),
-      },
-    ],
-    [
-      "標成其他",
-      sweetScenario(PRODUCTION, {
-        worthyLines: [
-          { line: 1, label: "撒嬌要他哄", kind: "其他" },
-          { line: 2, label: "腳底痛", kind: "其他" },
-        ],
+        readText: flagMatrixSweetReadText(c),
       }),
     ],
     [
+      "標成其他",
+      (c) =>
+        sweetScenario(c, {
+          worthyLines: [
+            { line: 1, label: "撒嬌要他哄", kind: "其他" },
+            { line: 2, label: "腳底痛", kind: "其他" },
+          ],
+        }),
+    ],
+    [
       "同一輪也問他",
-      {
+      (c) => ({
         messages: replaced(4, "你今天幾點下班"),
-        readText: flagMatrixSweetReadText(PRODUCTION, {
+        readText: flagMatrixSweetReadText(c, {
           worthyLines: [
             { line: 1, label: "撒嬌要他哄", kind: "情感" },
             { line: 2, label: "問他幾點下班", kind: "問他" },
           ],
         }),
-      },
+      }),
     ],
   ];
-  for (const [name, options] of variants) {
-    const offOut = await run(PRODUCTION, options);
-    const onOut = await run({ ...PRODUCTION, ...on }, options);
+  for (const [name, scenario] of variants) {
+    const offOut = await run(PRODUCTION, scenario(PRODUCTION));
+    const onOut = await run(ON(PRODUCTION), scenario(ON(PRODUCTION)));
+    assertSweetRead(onOut, offOut);
     assertEquals(
-      await outcomeDigest(onOut),
+      await outcomeDigest(swapBack(onOut, offOut)),
       await outcomeDigest(offOut),
       name,
     );
@@ -808,7 +872,7 @@ Deno.test("甜話短回開、情境不是甜話：整份結果跟關著一模一
   }
 });
 
-Deno.test("甜話短回開、甜話情境（正式組合、正式九個開關全開）：只有第 2 張（第一張不是推進的卡）回那句、多短回的指示，其他卡回腳底痛；只差寫卡與說明的使用者訊息、trace 的規格；鎖住", async () => {
+Deno.test("甜話短回開、甜話情境（正式組合、正式九個開關全開）：甜話那則標撒嬌時只有第 2 張（第一張不是推進的卡）回那句、多短回的指示，其他卡回腳底痛；讀局面的請求換那一條；鎖住", async () => {
   for (
     const [combo, offDigest, onDigest] of [
       [PRODUCTION, SWEET_PRODUCTION_OFF, SWEET_PRODUCTION_ON],
@@ -816,10 +880,17 @@ Deno.test("甜話短回開、甜話情境（正式組合、正式九個開關全
     ] as const
   ) {
     const off = await run(combo, sweetScenario(combo));
-    const on = await run({ ...combo, sweetShort: true }, sweetScenario(combo));
-    assertEquals(on.requests.read, off.requests.read);
+    const on = await run(ON(combo), sweetScenario(ON(combo)));
+    assertSweetRead(on, off);
     assertEquals(on.requests.write.system, off.requests.write.system);
     assertEquals(on.requests.explain.system, off.requests.explain.system);
+    // trace 的讀局面標記：開著時甜話那則標撒嬌，沒開標情感。
+    const kinds = (o: Outcome) =>
+      ((traceOf(o).tags as Rec).worthyLines as { kind: string }[]).map((w) =>
+        w.kind
+      );
+    assertEquals(kinds(off), ["情感", "其他"]);
+    assertEquals(kinds(on), ["撒嬌", "其他"]);
     // 寫卡的使用者訊息：規格以外一字不差；規格第 2 張回甜話、多短回的指示，其他張回腳底痛、完全不出現甜話那句。
     const others = (user: string) =>
       user.split("\n").filter((l) => !/^\d\. 任務：/.test(l));
@@ -875,26 +946,14 @@ Deno.test("甜話短回開、甜話情境（正式組合、正式九個開關全
     assertEquals(specs.flatMap((s, i) => s.sweetShort === true ? [i] : []), [
       1,
     ]);
-    // 這三處換回沒開的，整份結果就跟沒開一模一樣。
-    const swapped = {
-      ...on,
-      requests: {
-        ...on.requests,
-        write: { ...on.requests.write, user: off.requests.write.user },
-        explain: { ...on.requests.explain, user: off.requests.explain.user },
-      },
-      markDone: {
-        ...on.markDone,
-        guideV3Trace: { ...traceOf(on), specs: traceOf(off).specs },
-      },
-    };
-    assertEquals(await outcomeDigest(swapped), offDigest);
+    // 讀局面的請求與標記、寫卡與說明的使用者訊息、trace 的規格換回沒開的，整份結果就跟沒開一模一樣。
+    assertEquals(await outcomeDigest(swapBack(on, off)), offDigest);
     assertEquals(await outcomeDigest(off), offDigest);
     assertEquals(await outcomeDigest(on), onDigest);
   }
 });
 
-Deno.test("甜話短回開、她只傳那句甜話（正式組合、正式九個開關全開）：少出幾張（4→3），每張都回那句、都帶短回指示、不換切入點；讀局面與系統提示詞不變；鎖住", async () => {
+Deno.test("甜話短回開、她只傳那句甜話（正式組合、正式九個開關全開）：少出幾張（4→3），每張都回那句、都帶短回指示、不換切入點；讀局面的請求換那一條；鎖住", async () => {
   for (
     const [combo, offDigest, onDigest] of [
       [PRODUCTION, SWEET_ONLY_PRODUCTION_OFF, SWEET_ONLY_PRODUCTION_ON],
@@ -902,11 +961,8 @@ Deno.test("甜話短回開、她只傳那句甜話（正式組合、正式九個
     ] as const
   ) {
     const off = await run(combo, sweetOnlyScenario(combo));
-    const on = await run(
-      { ...combo, sweetShort: true },
-      sweetOnlyScenario(combo),
-    );
-    assertEquals(on.requests.read, off.requests.read);
+    const on = await run(ON(combo), sweetOnlyScenario(ON(combo)));
+    assertSweetRead(on, off);
     assertEquals(on.requests.write.system, off.requests.write.system);
     assertEquals(on.requests.explain.system, off.requests.explain.system);
     assertEquals(cardsOf(off).length, 4);
@@ -943,7 +999,7 @@ Deno.test("甜話短回開、她只傳那句甜話（正式組合、正式九個
   }
 });
 
-Deno.test("甜話短回開、A2 形狀（甜話在前、腳底痛也標情感）：沒開時每張先回腳底痛、甜話當順帶；開了第 2 張回甜話，其他卡回腳底痛、不帶順帶；只差寫卡與說明的使用者訊息、trace 的規格；鎖住", async () => {
+Deno.test("甜話短回開、A2 形狀（甜話標撒嬌在前、腳底痛標情感在後）：沒開時每張先回腳底痛、甜話當順帶；開了第 2 張回甜話，其他卡回腳底痛、不帶順帶；讀局面的請求換那一條；鎖住", async () => {
   for (
     const [combo, offDigest, onDigest] of [
       [PRODUCTION, A2_PRODUCTION_OFF, A2_PRODUCTION_ON],
@@ -951,8 +1007,8 @@ Deno.test("甜話短回開、A2 形狀（甜話在前、腳底痛也標情感）
     ] as const
   ) {
     const off = await run(combo, a2Scenario(combo));
-    const on = await run({ ...combo, sweetShort: true }, a2Scenario(combo));
-    assertEquals(on.requests.read, off.requests.read);
+    const on = await run(ON(combo), a2Scenario(ON(combo)));
+    assertSweetRead(on, off);
     assertEquals(on.requests.write.system, off.requests.write.system);
     assertEquals(on.requests.explain.system, off.requests.explain.system);
     const offSpecs = specLinesOf(off.requests.write.user);
@@ -981,26 +1037,14 @@ Deno.test("甜話短回開、A2 形狀（甜話在前、腳底痛也標情感）
       assertEquals(onSpecs[i].includes("只想要你哄"), false);
     }
     assertEquals(cardsOf(on), cardsOf(off));
-    const swapped = {
-      ...on,
-      requests: {
-        ...on.requests,
-        write: { ...on.requests.write, user: off.requests.write.user },
-        explain: { ...on.requests.explain, user: off.requests.explain.user },
-      },
-      markDone: {
-        ...on.markDone,
-        guideV3Trace: { ...traceOf(on), specs: traceOf(off).specs },
-      },
-    };
-    assertEquals(await outcomeDigest(swapped), offDigest);
+    assertEquals(await outcomeDigest(swapBack(on, off)), offDigest);
     assertEquals(await outcomeDigest(off), offDigest);
     assertEquals(await outcomeDigest(on), onDigest);
   }
 });
 
 Deno.test("甜話短回開、甜話情境：說明寫到「短短回她一句就好」照送（只比卡片）；卡片寫到同一句就拿掉那張", async () => {
-  const combo = { ...PRODUCTION, sweetShort: true };
+  const combo = ON(PRODUCTION);
   const explainText = (user: string) =>
     JSON.stringify({
       explanations: [...user.matchAll(/^### 第 (\d+) 張$/gmu)].map((m) => ({
@@ -1010,7 +1054,7 @@ Deno.test("甜話短回開、甜話情境：說明寫到「短短回她一句就
           : `第 ${m[1]} 張先回她說的事。`,
       })),
     });
-  const kept = await run(combo, { ...sweetScenario(PRODUCTION), explainText });
+  const kept = await run(combo, { ...sweetScenario(combo), explainText });
   const explains = kept.events.filter((e) =>
     e.type === "analysis.card_explain"
   );
@@ -1031,7 +1075,7 @@ Deno.test("甜話短回開、甜話情境：說明寫到「短短回她一句就
         : line
     );
   const leaky = await run(combo, {
-    ...sweetScenario(PRODUCTION),
+    ...sweetScenario(combo),
     writeParts: leakyCards,
   });
   assertEquals(

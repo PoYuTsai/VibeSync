@@ -1885,8 +1885,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           accountIsTest,
         }),
         // 甜話短回（開關 ANALYZE_GUIDE_V3_SWEET_SHORT，off／test／on，每次請求讀；Eric 2026-10-22「照預設」）：只在
-        // 兩段式開時才有作用；她最新那句是很短的甜話時只有一張卡回那句（短短回一句），其他卡回她別的話，沒有別的話就
-        // 少出幾張（至少 3 張）。沒開就一字不變。
+        // 兩段式開時才有作用；讀局面逐則多標「撒嬌」，她這一輪有撒嬌的很短的一則時只有一張卡回那句（短短回一句），其他卡
+        // 回她別的話，沒有別的話就少出幾張（至少 3 張）。沒開就一字不變。
         sweetShort: twoStage && shouldUseGuideV3SweetShort({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_SWEET_SHORT")),
           accountIsTest,
