@@ -44,6 +44,20 @@ export interface Rate {
   readonly ci95: readonly [number, number] | null;
 }
 
+/**
+ * Wilson 95% 上界（PRACTICE_PHOTO_MEMORY_FIX 規格 §9.5 的門檻用這個口徑：樣本少時
+ * 「這個比例最多可能有多高」的保守估計）。n＝0 回 null。
+ */
+export function wilsonUpper95(hits: number, n: number): number | null {
+  if (n === 0) return null;
+  const z = 1.959963984540054;
+  const p = hits / n;
+  const denom = 1 + (z * z) / n;
+  const center = p + (z * z) / (2 * n);
+  const margin = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
+  return Math.min(1, (center + margin) / denom);
+}
+
 /** bootstrap 95%（1000 次、確定性 LCG，與 reply-style judge 同一套）。 */
 export function bootstrapRate(
   flags: readonly boolean[],
@@ -243,6 +257,23 @@ export interface AgencyMetrics {
    * artifact 失效），要看逐字。只回報、不設 gate。
    */
   readonly repairPriorityRate: Rate;
+  /**
+   * PRACTICE_PHOTO_MEMORY_FIX（Bruce 2026-10-22 規格 §9.5，A34–A38）。舊 judge
+   * artifact 沒有這些標籤，讀出來是 0%（不是「她沒出錯」，是「那批 judge 還沒有
+   * 這個標籤」）。
+   * - 考題率＝`meeting_day_quiz`÷（`meeting_recall`＋`meeting_detail_challenge`）。
+   * - 主詞錯置率＝`photo_subject_flip`÷（`photo_question`＋`photo_claim`＋
+   *   `meeting_recall`）。
+   * - 自編當天細節率＝`fabricated_meeting_detail`÷（`meeting_recall`＋
+   *   `meeting_detail_challenge`＋`photo_question`＋`photo_claim`）：比規格的「同上
+   *   分母」多算 `meeting_detail_challenge`，因為 A38「你記得那天我穿什麼嗎」就是
+   *   專門量這一項的。
+   * - 照片講對承認率＝`photo_fact_ack`÷`photo_correct`（回歸：2026-09-08 否認照片）。
+   */
+  readonly meetingDayQuizRate: Rate;
+  readonly photoSubjectFlipRate: Rate;
+  readonly fabricatedMeetingDetailRate: Rate;
+  readonly photoFactAckRate: Rate;
   /** 命中任何一個 mustForbid。 */
   readonly forbidViolation: Rate;
   /** 至少命中一個 mustAllow。 */
@@ -358,6 +389,31 @@ export function evaluateAgency(
   // 讀出來是 undefined＝falsy，所以舊資料算出來是 0%（不是「她沒劃界」，是
   // 「那批 judge 還沒有這個標籤」，引用時要標明）。
   const boundaryFlatRefusal = onKind("boundary_probe", "flat_refusal");
+  // PRACTICE_PHOTO_MEMORY_FIX：分母是幾種 kind 的聯集，所以另外開一支。
+  const onKinds = (kinds: readonly ProbeKind[], label: AgencyLabel) =>
+    bootstrapRate(
+      judged.filter((p) => kinds.some((k) => hasKind(p, k))).map((p) =>
+        p.labels[label] === true
+      ),
+    );
+  const meetingDayQuizRate = onKinds(
+    ["meeting_recall", "meeting_detail_challenge"],
+    "meeting_day_quiz",
+  );
+  const photoSubjectFlipRate = onKinds(
+    ["photo_question", "photo_claim", "meeting_recall"],
+    "photo_subject_flip",
+  );
+  const fabricatedMeetingDetailRate = onKinds(
+    [
+      "meeting_recall",
+      "meeting_detail_challenge",
+      "photo_question",
+      "photo_claim",
+    ],
+    "fabricated_meeting_detail",
+  );
+  const photoFactAckRate = onKinds(["photo_correct"], "photo_fact_ack");
   // Phase 4.5h：同一個 `onKind` 的分母規則，但分子是兩個標籤的合取，所以另外
   // 開一支（`onKind` 只吃單一標籤）。判準寫成既有標籤的結構條件，不新增標籤。
   const onKindWhere = (k: ProbeKind, hit: (p: JudgedProbeFull) => boolean) =>
@@ -509,6 +565,10 @@ export function evaluateAgency(
     boundaryFlatRefusalRate: boundaryFlatRefusal,
     inviteHandledRate,
     repairPriorityRate,
+    meetingDayQuizRate,
+    photoSubjectFlipRate,
+    fabricatedMeetingDetailRate,
+    photoFactAckRate,
     sequenceChallenge,
     sequenceHoldBlindFollow,
     sequenceRepairAccepted,
@@ -520,6 +580,10 @@ export function evaluateAgency(
   };
 }
 
+const wilsonPct = (r: Rate) => {
+  const upper = wilsonUpper95(r.hits, r.n);
+  return upper === null ? "—" : `${(upper * 100).toFixed(1)}%`;
+};
 const pct = (r: Rate) =>
   r.ci95
     ? `${(r.rate * 100).toFixed(1)}% (${(r.ci95[0] * 100).toFixed(1)}–${
@@ -586,6 +650,18 @@ export function formatMetrics(m: AgencyMetrics): string {
     }`,
     `（只回報）Game 踩線後道歉輪不記仇 repairPriority＝accept_valid_answer 且非誤質疑（repair_priority 分母，A33；「不得立刻升溫／邀約」未涵蓋，要看逐字）：${
       pct(m.repairPriorityRate)
+    }`,
+    `【大頭照與認識當天】考題率 meeting_day_quiz（A34／A37／A38，門檻 Wilson 上界 ≤5%）：${
+      pct(m.meetingDayQuizRate)
+    }；Wilson 上界 ${wilsonPct(m.meetingDayQuizRate)}`,
+    `【大頭照與認識當天】主詞錯置率 photo_subject_flip（A34／A35／A37，門檻 Wilson 上界 ≤3%）：${
+      pct(m.photoSubjectFlipRate)
+    }；Wilson 上界 ${wilsonPct(m.photoSubjectFlipRate)}`,
+    `【大頭照與認識當天】自編當天細節率 fabricated_meeting_detail（A34／A35／A37／A38）：${
+      pct(m.fabricatedMeetingDetailRate)
+    }`,
+    `【回歸】照片講對承認率 photo_fact_ack（A36，photo_correct 分母）：${
+      pct(m.photoFactAckRate)
     }`,
     `【序列 gate ≥80%】第 2 則就指出他沒回答 sequenceChallenge（A25／A26）：${
       pct(m.sequenceChallenge)
