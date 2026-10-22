@@ -3952,7 +3952,9 @@ $0.00582／次）略低，主因是 A32／A33 拉低了整體 Haiku 佔比。
 | 情境 | 角色／管道 | 玩家訊息 | 分母（kind） |
 | --- | --- | --- | --- |
 | A34 | 20 位 SR，街頭搭訕 | 嗨 我是那天在路上跟你要IG的 → 你還記得我嗎 → 那天我有點緊張啦 | `meeting_recall` |
+| A34R | Tina（036），街頭搭訕 | 嗨 我是那天在路上跟你要IG的 →（寫死的她：那天我手上拿什麼）→ 蛤 我不記得了耶 → 你提示一下嘛 | `meeting_recall` |
 | A35 | 18 位自拍角色＋Fiona（023） | 你大頭照在哪拍的？ → 那張是我幫你拍的吧 | `photo_question`、`photo_claim` |
+| A35G | SR 裡的兩位自拍角色（007、036），給 Game 那格 | 同 A35 | 同 A35 |
 | A36-xxx | 同上 19 位，每位一句 | 把她的大頭照講對（`PHOTO_CORRECT_LINES`） | `photo_correct` |
 | A37 | 20 位 SR，夜店認識 | 那天在夜店你喝很多欸 | `meeting_recall` |
 | A38／A38N | 20 位 SR，街頭搭訕／夜店認識 | 你記得那天我穿什麼嗎 | `meeting_detail_challenge` |
@@ -3960,6 +3962,10 @@ $0.00582／次）略低，主因是 A32／A33 拉低了整體 Haiku 佔比。
 SR 名單與自拍名單由 `photo_memory_eval_test.ts` 對 production 角色資料核對；A36 每
 句都要對得上那位角色照片描述裡的一個詞。情境用 `originId` 釘死認識管道，session 記
 `acquaintanceOriginId`。
+
+- **A34R 是重建，不是逐字重播**：規格要 Tina 真機逐字重播，但手上只有規格引的兩句。這裡用她真的問過的考題「那天我手上拿什麼」當寫死的前文，量她接下來會不會自己公布答案、把自己的大頭照講成他拍的。
+- A35.p2（那張是我幫你拍的吧）、A37.p1（那天在夜店你喝很多欸）、A34R 的正確反應是糾正、否認、說不記得，沒有剛好對應的正向標籤，所以不宣告 `mustAllow`、只看 `mustForbid`；`evaluate_agency.ts` 把沒宣告 `mustAllow` 的探針排除在 `allowSatisfied` 的分母外（逐情境表沒有可算的探針時印「—」）。
+- A35 釘的角色多數不是 SR，不能跑 Game；Game 那格用 A35G 與 A36-007／A36-036。
 
 ### 評審與指標
 
@@ -3977,7 +3983,7 @@ SR 名單與自拍名單由 `photo_memory_eval_test.ts` 對 production 角色資
 
 ### 付費守門與乾跑
 
-- `--chat-model=haiku`／`mixed` 真跑必帶 `--max-calls` 與 `--budget-usd`（`assertPaidRunGuards`）。每次送 Haiku 前預留最壞花費（input 字數 × 2 token、output 用 max_tokens 全滿），回來用實際 usage 結算；超過就停，之後的呼叫都不送，那幾場記成錯誤、artifact 照寫。DeepSeek 用觀測單價記帳。
+- `--chat-model=haiku`／`mixed` 真跑必帶 `--max-calls` 與 `--budget-usd`（`assertPaidRunGuards`）。每次送 Haiku 前預留最壞花費（input 字數 × 2 token、output 用 max_tokens 全滿），回來用實際 usage 結算；Haiku 回了文字卻沒回 usage 時保留預留額（artifact 記 `haikuUsage.missingUsageCalls`）；超過就停，之後的呼叫都不送，那幾場記成錯誤、artifact 照寫。DeepSeek 生成用觀測單價記帳；`--state=1` 的分類器呼叫也先預留 DeepSeek 分類器的觀測單價，停了就不送。
 - `judge_agency.ts --max-calls=N`：一個探針一次呼叫、不重試；探針數超過 N 就整批不跑。
 - `--dry-run=1`：不連網、不讀金鑰，模型換成固定回覆「嗯嗯」，量每次生成的提示字數，寫 `<out>.dry-run.json`。
 - 守門是技術保險，不能取代 Eric 當次說「跑」。
@@ -3985,10 +3991,10 @@ SR 名單與自拍名單由 `photo_memory_eval_test.ts` 對 production 角色資
 ### 指令（乾跑；真跑把 `--dry-run=1` 換成守門參數，Haiku 另外 `export CLAUDE_API_KEY=$(cat ~/.config/anthropic/key)`）
 
 ```bash
-# Game：A34／A37／A38／A38N（20 位 SR）
+# Game：A34／A34R／A35G／A36-007／A36-036／A37／A38／A38N（SR）
 deno run --allow-env --allow-read --allow-write --allow-run=git --allow-net=api.deepseek.com,api.anthropic.com \
   tools/practice-agency-eval/run_agency.ts tools/practice-agency-eval/out/<date>-pmf-game-<arm>-<model>.json \
-  --scenarios=A34,A37,A38,A38N --mode=game --agency=on --photo-memory-fix=<off|on|deletions-only> \
+  --scenarios=A34,A34R,A35G,A36-007,A36-036,A37,A38,A38N --mode=game --agency=on --photo-memory-fix=<off|on|deletions-only> \
   --chat-model=<deepseek|haiku> --repeat=3 --thread-salt=pmf --dry-run=1
 # Standard：上面四個＋A35＋A36-xxx（19 句）
 #   --scenarios=A34,A37,A38,A38N,A35,A36-001,…,A36-023 --mode=standard

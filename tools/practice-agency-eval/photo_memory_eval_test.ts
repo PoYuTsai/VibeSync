@@ -12,6 +12,7 @@ import {
   applyPhotoMemoryDeletionsOnly,
   assertPaidRunGuards,
   BudgetStopError,
+  callHaikuChat,
   CHAT_GENERATION_ATTEMPTS,
   estimateDryRun,
   haikuReserveUsd,
@@ -20,6 +21,7 @@ import {
   PHOTO_MEMORY_GAME_DELETION,
   PHOTO_MEMORY_STANCE_DELETIONS,
   runAgencyScenario,
+  settleHaikuReservation,
   trustedSourcesFor,
 } from "./run_agency.ts";
 import {
@@ -31,6 +33,8 @@ import {
   PHOTO_MEMORY_SCENARIOS,
   PHOTO_MEMORY_SELFIE_PROFILE_IDS,
   PHOTO_MEMORY_SR_PROFILE_IDS,
+  PHOTO_MEMORY_SR_SELFIE_PROFILE_IDS,
+  TINA_REAL_QUIZ_LINE,
 } from "./scenarios.ts";
 import {
   type AgencyArtifact,
@@ -526,4 +530,114 @@ Deno.test("wilsonUpper95：樣本少時的保守上界；n＝0 回 null", () => 
   assertAlmostEquals(wilsonUpper95(0, 20)!, 0.1611, 1e-3);
   assertAlmostEquals(wilsonUpper95(1, 100)!, 0.0545, 1e-3);
   assertAlmostEquals(wilsonUpper95(10, 10)!, 1, 1e-12);
+});
+
+// ── 工具審查 1 的修正 ─────────────────────────────────────────────────────
+
+Deno.test("工具審查 1：A35G 只放 SR 裡的自拍角色；A34R 是 Tina 真機重建（她的考題寫死成前文）", () => {
+  const byId = new Map(PHOTO_MEMORY_SCENARIOS.map((s) => [s.id, s]));
+  const girls = GIRL_PROFILES as readonly {
+    profileId: string;
+    rarity: string;
+    photoScene: string;
+  }[];
+  assertEquals(
+    [...byId.get("A35G")!.profileIds!].sort(),
+    girls.filter((g) => g.rarity === "sr" && g.photoScene.includes("自拍"))
+      .map((g) => g.profileId).sort(),
+  );
+  assertEquals([...PHOTO_MEMORY_SR_SELFIE_PROFILE_IDS], [
+    "practice_girl_007",
+    "practice_girl_036",
+  ]);
+  const replay = byId.get("A34R")!;
+  assertEquals(replay.profileIds, ["practice_girl_036"]);
+  assertEquals(replay.originId, "street_approach");
+  // 第一句玩家訊息之後是寫死的她（不打模型），內容就是真機那句考題。
+  assertEquals(replay.turns[1], { role: "ai", text: TINA_REAL_QUIZ_LINE });
+  assertEquals(
+    replay.turns.filter((t) => t.probe).map((t) => t.probe!.id),
+    ["A34R.p1", "A34R.p2"],
+  );
+});
+
+for (const mode of ["standard", "game"] as const) {
+  Deno.test(`工具審查 1 P1：--state=1 的分類器也吃付費守門（${mode}），用完就不再送`, async () => {
+    let classifierCalls = 0;
+    const budget = new PaidBudget(1, 1);
+    const result = await runAgencyScenario({
+      callChat: () => Promise.resolve("嗯嗯"),
+      profileId: "practice_girl_036",
+      scenario: PHOTO_MEMORY_SCENARIOS.find((s) => s.id === "A34")!,
+      repeat: 1,
+      difficulty: "normal",
+      mode,
+      style: true,
+      agency: "on",
+      stateSimulation: true,
+      classifierApiKey: "fake",
+      callClassifier: () => {
+        classifierCalls++;
+        return Promise.resolve("{}");
+      },
+      budget,
+    });
+    assertEquals(result.error, undefined);
+    // A34 有三輪生成；第一輪的分類器用掉唯一的一次，之後兩輪都在預留時就停。
+    assertEquals(classifierCalls, 1);
+    assertEquals(budget.calls, 1);
+    assertEquals(budget.stopped, "max_calls");
+  });
+}
+
+Deno.test("工具審查 1 P2：Haiku 成功但沒回 usage 時保留預留額，不結算成零", async () => {
+  const budget = new PaidBudget(10, 1);
+  const reserved = budget.reserve(0.02);
+  assertEquals(settleHaikuReservation(budget, reserved, null), false);
+  assertAlmostEquals(budget.spentUsd, 0.02, 1e-12);
+  const reserved2 = budget.reserve(0.02);
+  assertEquals(
+    settleHaikuReservation(budget, reserved2, {
+      inputTokens: 1_000,
+      outputTokens: 100,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+    }),
+    true,
+  );
+  // 1,000 × $1/M ＋ 100 × $5/M ＝ $0.0015
+  assertAlmostEquals(budget.spentUsd, 0.0215, 1e-9);
+
+  const original = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ content: [{ type: "text", text: "嗯嗯" }] }),
+        { status: 200 },
+      ),
+    );
+  try {
+    const result = await callHaikuChat({
+      apiKey: "k",
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 10,
+      temperature: 0.5,
+      timeoutMs: 1000,
+    });
+    assertEquals(result.text, "嗯嗯");
+    assertEquals(result.usage, null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("工具審查 1 P2：沒宣告 mustAllow 的探針不進 allowSatisfied 的分母", () => {
+  const m = evaluateAgency([
+    judged("A35.p1", "accept_valid_answer"),
+    judged("A35.p2"),
+    judged("A37.p1"),
+  ]);
+  assertEquals([m.allowSatisfied.hits, m.allowSatisfied.n], [1, 1]);
+  assertEquals(m.perScenario.A35.allowSatisfied, 1);
+  assertEquals(m.perScenario.A37.allowSatisfied, null);
 });

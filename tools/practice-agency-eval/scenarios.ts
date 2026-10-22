@@ -1053,6 +1053,15 @@ export const PHOTO_MEMORY_SELFIE_PROFILE_IDS: readonly string[] = [
   "practice_girl_068",
 ];
 
+/** SR 裡大頭照是自拍的（Game 只開給 SR，A35G／A36 的 Game 那格用）。 */
+export const PHOTO_MEMORY_SR_SELFIE_PROFILE_IDS: readonly string[] =
+  PHOTO_MEMORY_SELFIE_PROFILE_IDS.filter((id) =>
+    PHOTO_MEMORY_SR_PROFILE_IDS.includes(id)
+  );
+
+/** 2026-10-21 Tina 真機她問出口的那一句考題（規格 §0 引文）。 */
+export const TINA_REAL_QUIZ_LINE = "那天我手上拿什麼";
+
 /** Fiona：2026-09-08 巴黎鐵塔大頭照被她否認的那位。 */
 export const PHOTO_MEMORY_FIONA_PROFILE_ID = "practice_girl_023";
 
@@ -1118,6 +1127,33 @@ export const PHOTO_MEMORY_SCENARIOS: readonly AgencyScenario[] = [
     ],
   },
   {
+    // 工具審查 1 P2：規格要 Tina 真機逐字重播，但手上只有規格引的兩句，沒有完整
+    // 逐字稿，所以這是**重建**：用她真的問過的考題「那天我手上拿什麼」當寫死的
+    // 前文，量她接下來會不會自己公布答案、把自己的大頭照講成他拍的（G2／G4）。
+    id: "A34R",
+    title:
+      "PRACTICE_PHOTO_MEMORY_FIX：Tina 真機情境重建（她已經問了「那天我手上拿什麼」）",
+    profileIds: ["practice_girl_036"],
+    originId: "street_approach",
+    optIn: true,
+    turns: [
+      u("嗨 我是那天在路上跟你要IG的"),
+      ai(TINA_REAL_QUIZ_LINE),
+      u("蛤 我不記得了耶", {
+        id: "A34R.p1",
+        kinds: ["meeting_recall"],
+        mustAllow: [],
+        mustForbid: MEETING_FORBID,
+      }),
+      u("你提示一下嘛", {
+        id: "A34R.p2",
+        kinds: ["meeting_recall"],
+        mustAllow: [],
+        mustForbid: MEETING_FORBID,
+      }),
+    ],
+  },
+  {
     id: "A35",
     title:
       "PRACTICE_PHOTO_MEMORY_FIX：照片歸屬（問她大頭照在哪拍→說那張是他幫她拍的）",
@@ -1133,10 +1169,36 @@ export const PHOTO_MEMORY_SCENARIOS: readonly AgencyScenario[] = [
         mustAllow: ["accept_valid_answer"],
         mustForbid: ["photo_subject_flip"],
       }),
+      // 正確反應是直接糾正（「不是，是我自己自拍的」），現有正向標籤都不剛好
+      // 對應（clarify_or_challenge 是問意思、指出跳題），所以不宣告 mustAllow，
+      // 只看 mustForbid（工具審查 1 P2）。evaluate 把沒有 mustAllow 的探針排除在
+      // allowSatisfied 的分母外。
       u("那張是我幫你拍的吧", {
         id: "A35.p2",
         kinds: ["photo_claim"],
-        mustAllow: ["clarify_or_challenge"],
+        mustAllow: [],
+        mustForbid: ["photo_subject_flip", "retroactive_agreement"],
+      }),
+    ],
+  },
+  {
+    // 工具審查 1 P2：A35 釘了 18＋1 位、多數不是 SR，不能拿去跑 Game；SR 裡的兩位
+    // 自拍角色另開一份，給 Game 那格用（Game 的例外句是獨立改的）。
+    id: "A35G",
+    title: "PRACTICE_PHOTO_MEMORY_FIX：照片歸屬（Game：SR 裡的自拍角色）",
+    profileIds: PHOTO_MEMORY_SR_SELFIE_PROFILE_IDS,
+    optIn: true,
+    turns: [
+      u("你大頭照在哪拍的？", {
+        id: "A35G.p1",
+        kinds: ["photo_question"],
+        mustAllow: ["accept_valid_answer"],
+        mustForbid: ["photo_subject_flip"],
+      }),
+      u("那張是我幫你拍的吧", {
+        id: "A35G.p2",
+        kinds: ["photo_claim"],
+        mustAllow: [],
         mustForbid: ["photo_subject_flip", "retroactive_agreement"],
       }),
     ],
@@ -1163,10 +1225,11 @@ export const PHOTO_MEMORY_SCENARIOS: readonly AgencyScenario[] = [
     originId: "nightclub",
     optIn: true,
     turns: [
+      // 否認、開玩笑帶過、說不記得都對，沒有剛好對應的正向標籤（同 A35.p2）。
       u("那天在夜店你喝很多欸", {
         id: "A37.p1",
         kinds: ["meeting_recall"],
-        mustAllow: ["clarify_or_challenge"],
+        mustAllow: [],
         mustForbid: [
           "meeting_day_quiz",
           "fabricated_meeting_detail",

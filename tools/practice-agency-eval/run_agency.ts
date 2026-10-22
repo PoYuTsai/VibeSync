@@ -87,6 +87,7 @@ import {
 import { DEFAULT_PROFILE_IDS } from "../practice-reply-style-eval/run_baseline.ts";
 import {
   DEEPSEEK_CHAT_USD_PER_CALL,
+  DEEPSEEK_CLASSIFIER_USD_PER_CALL,
   estimateCostUsd,
   HAIKU_4_5_PRICING,
 } from "./pricing.ts";
@@ -397,6 +398,20 @@ export class PaidBudget {
   }
 }
 
+/**
+ * Haiku 呼叫成功之後結算：有 usage 就換成實際花費；沒回 usage 就保留預留額
+ * （當作花掉了，工具審查 1 P2）。回傳這次有沒有 usage。
+ */
+export function settleHaikuReservation(
+  budget: PaidBudget | null,
+  reservedUsd: number,
+  usage: HaikuUsage | null,
+): boolean {
+  if (!usage) return false;
+  budget?.settle(reservedUsd, estimateHaikuCostUsd(usage));
+  return true;
+}
+
 /** Haiku 一次呼叫的預留額：input 全算、output 用 max_tokens 全滿。 */
 export function haikuReserveUsd(
   promptChars: number,
@@ -596,6 +611,14 @@ export async function runAgencyScenario(args: {
    * 舊行為；`on` 與 `deletions_only` 只在 `agency === "on"` 時有意義（CLI 會擋）。
    */
   photoMemoryFix?: PhotoMemoryFixArm;
+  /**
+   * 付費守門（見 PaidBudget）。生成的守門在 main 包進 callChat／callChatHaiku；
+   * 這一格給 `--state=1` 的分類器呼叫用：每次送出前先預留 DeepSeek 分類器的觀測
+   * 單價，停了就不送（工具審查 1 P1）。
+   */
+  budget?: PaidBudget | null;
+  /** 分類器呼叫端（測試注入假的）；省略＝production 的 callDeepSeek。 */
+  callClassifier?: typeof callDeepSeek;
 }): Promise<AgencySessionResult> {
   const difficulty = args.scenario.difficulty ?? args.difficulty;
   const temperatureScore = args.temperatureScore ?? BEGINNER_TEMPERATURE_SCORE;
@@ -911,7 +934,8 @@ export async function runAgencyScenario(args: {
       // standard 的精簡分類器（production 的 `judgeStandardAgencyFailOpen`
       // 同一組 prompt／parser；判準文字與逐輪分類器共用 AGENCY_CLASSIFIER_RULES）。
       try {
-        const raw = await callDeepSeek({
+        args.budget?.reserve(DEEPSEEK_CLASSIFIER_USD_PER_CALL);
+        const raw = await (args.callClassifier ?? callDeepSeek)({
           apiKey: args.classifierApiKey,
           messages: buildStandardAgencyClassifierMessages({
             turns,
@@ -938,7 +962,8 @@ export async function runAgencyScenario(args: {
       (args.mode === "beginner" || args.mode === "game")
     ) {
       try {
-        const raw = await callDeepSeek({
+        args.budget?.reserve(DEEPSEEK_CLASSIFIER_USD_PER_CALL);
+        const raw = await (args.callClassifier ?? callDeepSeek)({
           apiKey: args.classifierApiKey,
           messages: buildTurnClassifierMessages({
             turns,
@@ -1403,8 +1428,10 @@ export async function callHaikuChat(
     /** Phase 4.5b 刀 B：與 production 同一格（`bundle.systemStable`）。 */
     systemCachePrefix?: string;
   },
-): Promise<{ text: string; usage: HaikuUsage }> {
-  let usage: HaikuUsage = ZERO_HAIKU_USAGE_TOTALS;
+): Promise<{ text: string; usage: HaikuUsage | null }> {
+  // 沒回 usage 時是 null（不是全零）：付費守門要分得出「沒回」跟「真的用了零」
+  // （工具審查 1 P2）。
+  let usage: HaikuUsage | null = null;
   const text = await callClaude({
     apiKey: args.apiKey,
     model: CLAUDE_HAIKU_MODEL,
@@ -1498,6 +1525,8 @@ async function main(): Promise<void> {
   // haiku 臂／mixed 臂的 usage 累加（純 deepseek 臂沒有這個帳，維持 undefined，
   // 逐字舊行為）。
   let haikuUsageTotals: HaikuUsageTotals | undefined;
+  // Haiku 回了文字卻沒回 usage 的次數（這幾次以預留額記帳）。
+  let haikuUsageMissing = 0;
   const makeHaikuCaller =
     (apiKey: string): ChatCaller => async (messages, systemCachePrefix) => {
       const reserved = budget?.reserve(
@@ -1511,9 +1540,12 @@ async function main(): Promise<void> {
         timeoutMs: MODEL_TIMEOUT_MS,
         systemCachePrefix,
       });
-      // 失敗（丟錯）時不結算：預留額就當花掉了。
-      budget?.settle(reserved, estimateHaikuCostUsd(usage));
-      haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage);
+      // 失敗（丟錯）時不結算：預留額就當花掉了。沒回 usage 也一樣。
+      if (settleHaikuReservation(budget, reserved, usage)) {
+        haikuUsageTotals = addHaikuUsage(haikuUsageTotals!, usage!);
+      } else {
+        haikuUsageMissing++;
+      }
       return text;
     };
   const makeDeepSeekCaller = (apiKey: string): ChatCaller => (messages) => {
@@ -1597,6 +1629,7 @@ async function main(): Promise<void> {
         temperatureScore: opts.temperatureScore,
         familiarityScore: opts.familiarityScore,
         photoMemoryFix: opts.photoMemoryFix,
+        budget,
       });
       console.error(
         `[agency] ${
@@ -1689,6 +1722,8 @@ async function main(): Promise<void> {
           haikuUsage: {
             ...haikuUsageTotals,
             estimatedCostUsd: estimateHaikuCostUsd(haikuUsageTotals),
+            // 沒回 usage 的次數（不在上面的 token 數裡，守門以預留額記帳）。
+            missingUsageCalls: haikuUsageMissing,
           },
         }
         : {}),
