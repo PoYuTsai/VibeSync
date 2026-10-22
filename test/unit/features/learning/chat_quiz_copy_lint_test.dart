@@ -16,7 +16,6 @@ import '../../../helpers/chat_quiz_test_content.dart';
 
 /// L1：允許出現的英文單字（規格 §3 第 10 條）。
 ///
-/// Hey、all、pass 只出現在 q-7-2-05-b 的對話原句裡，那是她傳的字，照原樣保留。
 /// Bio 刻意不在清單裡：一律寫「自介」。
 const _allowedEnglishWords = <String>{
   'Tinder',
@@ -28,9 +27,6 @@ const _allowedEnglishWords = <String>{
   'XD',
   'NG',
   'tone',
-  'Hey',
-  'all',
-  'pass',
 };
 
 /// L2：禁用字串。key 是禁用的字，value 是為什麼。
