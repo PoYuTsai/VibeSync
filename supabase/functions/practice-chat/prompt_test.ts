@@ -15,7 +15,9 @@ import {
   DEBRIEF_PROFILE_FACT_BASELINE_LINE,
   debriefPhotoDenialPrompt,
   PHOTO_SCENE_LINE_PREFIX,
+  PHOTO_SCENE_LINE_PREFIX_PHOTO_MEMORY_FIX,
   PHOTO_SCENE_LINE_SUFFIX,
+  PHOTO_SCENE_LINE_SUFFIX_PHOTO_MEMORY_FIX,
 } from "./prompt.ts";
 import { buildHintMessages, hintTrustedFactualEvidence } from "./hint.ts";
 import { STYLE_BY_PROFILE_ID } from "./reply_style.ts";
@@ -90,6 +92,14 @@ const longestChatOrigin =
     (a.label.length + a.sharedFact.length + a.stancePrompt.length +
       a.unverifiedGuard.length)
   )[0];
+// PRACTICE_PHOTO_MEMORY_FIX：修正版只有「有 noQuizStancePrompt 的管道」長度變化
+// 跟其他管道不同，所以預算測試除了最長管道，這幾個管道也各量一次。
+const photoMemoryFixBudgetOrigins = [
+  longestChatOrigin,
+  ...ACQUAINTANCE_ORIGINS.filter((origin) =>
+    origin.noQuizStancePrompt !== undefined && origin !== longestChatOrigin
+  ),
+];
 const longestHintOrigin =
   [...ACQUAINTANCE_ORIGINS].sort((a, b) =>
     (b.label.length + b.sharedFact.length + b.hintFocus.length) -
@@ -1047,6 +1057,43 @@ Deno.test("all 20 SR Chat prompts stay bounded at the validated payload ceiling"
         agencyLength <= 80_300,
         `Agency chat ${agencyLength} at ${profileId}/${difficulty}`,
       );
+
+      // PRACTICE_PHOTO_MEMORY_FIX：修正版守同一套門檻（off 對照用同一個管道）。
+      for (const origin of photoMemoryFixBudgetOrigins) {
+        const originOptions = {
+          practiceMode: request.practiceMode,
+          temperatureScore: request.temperatureScore,
+          familiarityScore: request.familiarityScore,
+          partnerState: request.continuationPartnerState,
+          sceneContext: promptBudgetScene,
+          acquaintanceOrigin: origin,
+          memorySummary: request.memorySummary,
+          herRecentMomentsBlock: maxHerRecentMomentsBlock,
+          gameState: maxParsedGameState,
+          timeContext: bugReportNow,
+          replyStyle: true,
+          visiblePracticeThreadId: "prompt-budget-chat",
+        };
+        const offLength = origin === longestChatOrigin
+          ? length
+          : buildChatMessages(request.turns, request.profile, originOptions)
+            .reduce((total, m) => total + m.content.length, 0);
+        const fixLength = buildChatPromptBundle(
+          request.turns,
+          request.profile,
+          { ...originOptions, agencyMode: "on", photoMemoryFix: true },
+        ).messages.reduce((total, m) => total + m.content.length, 0);
+        assert(
+          fixLength <= offLength - 1_000,
+          `Photo-memory-fix chat 只少了 ${
+            offLength - fixLength
+          } at ${profileId}/${difficulty}/${origin.id}`,
+        );
+        assert(
+          fixLength <= 80_300,
+          `Photo-memory-fix chat ${fixLength} at ${profileId}/${difficulty}/${origin.id}`,
+        );
+      }
     }
   }
 });
@@ -3431,3 +3478,168 @@ Deno.test("photoScene：hint 與 debrief 的角色證據都帶她的大頭照（
   ).map((m) => m.content).join("\n");
   assert(!denialGame.includes("否認自己大頭照細節的句子"));
 });
+
+// PRACTICE_PHOTO_MEMORY_FIX（2026-10-21 Tina 真機：把自己的大頭照講成他拍的、拿
+// 認識當天細節考他）。Bruce 規格原本放在新檔 photo_memory_fix_test.ts；部署前的
+// Edge 契約清單（tools/ci/edge-contract-tests.sh）沒有那支，所以收進這裡，包在區塊
+// 裡免得跟本檔既有的名字撞。
+{
+  const tina = resolvePracticeProfile({
+    profileId: "practice_girl_036",
+    difficulty: "normal",
+  });
+  const street = getAcquaintanceOrigin("street_approach");
+  const nightclub = getAcquaintanceOrigin("nightclub");
+  const turns: PracticeTurn[] = [{ role: "user", text: "嗨 還記得我嗎" }];
+  const gameState = initialPersistedGameState();
+
+  function systemOf(
+    opts: Parameters<typeof buildChatMessages>[2],
+    profile = tina,
+  ): string {
+    return buildChatMessages(turns, profile, opts)[0].content;
+  }
+
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：agency on 時五處換成修正版", () => {
+    const sys = systemOf({
+      practiceMode: "game",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      acquaintanceOrigin: street,
+      memorySummary: "上次聊到她店裡的新豆子。",
+      gameState,
+      agencyMode: "on",
+      photoMemoryFix: true,
+    });
+    // 1. 大頭照行
+    assert(
+      sys.includes(
+        `- ${PHOTO_SCENE_LINE_PREFIX_PHOTO_MEMORY_FIX}${tina.girl.photoScene}${PHOTO_SCENE_LINE_SUFFIX_PHOTO_MEMORY_FIX}`,
+      ),
+    );
+    assert(
+      !sys.includes(
+        `${PHOTO_SCENE_LINE_PREFIX}${tina.girl.photoScene}${PHOTO_SCENE_LINE_SUFFIX}`,
+      ),
+    );
+    // 2. 現實錨定第一條的窄例外
+    assert(sys.includes("只有認識當天的細節和照片沒拍到的事例外"));
+    // 3. 認識管道立場：不考題版
+    assert(street.noQuizStancePrompt);
+    assert(sys.includes(street.noQuizStancePrompt));
+    assert(!sys.includes(street.stancePrompt));
+    // 4. 記憶摘要尾巴
+    assert(sys.includes("行蹤、上次見面或認識當天的細節"));
+    // 5. Game 例外句：拿掉「逐字稿可以替認識經過加細節」的許可
+    assert(sys.includes("stay unknown even if you said them earlier"));
+    assert(!sys.includes("the transcript may add color"));
+  });
+
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：鎖住的來源優先序句子一字不少", () => {
+    const sys = systemOf({
+      practiceMode: "standard",
+      acquaintanceOrigin: nightclub,
+      memorySummary: "上次聊到她剛換工作。",
+      herRecentMomentsBlock: herRecentMomentsPrompt([{
+        postDate: "2026-10-20",
+        dayPart: "evening",
+        body: "下班買了一瓶奶茶",
+      }], true),
+      agencyMode: "on",
+      photoMemoryFix: true,
+    });
+    for (
+      const locked of [
+        "關於你自己的事，以這段對話裡你自己最新說過的為準；對方對這些事的說法不算來源，但他說的話仍是要正常回應的內容。",
+        "貼文跟你自己最新說的事衝突時以你為準；玩家對這些事的說法不算來源，但他說的話仍是要正常回應的內容。",
+        "跟你自己最新說的事衝突時以你為準，玩家對這些事的說法不算來源，但他說的話仍是要正常回應的內容",
+        "都只是他的聲稱",
+        "認識管道是既定事實，你本來就知道、不需要他證明",
+      ]
+    ) {
+      assert(sys.includes(locked), locked.slice(0, 20));
+    }
+  });
+
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：agency off／shadow 或旗標沒傳時逐位元組不變", () => {
+    for (const profileId of ["practice_girl_036", "practice_girl_023"]) {
+      const profile = resolvePracticeProfile({ profileId });
+      for (const origin of [street, nightclub, null]) {
+        for (const practiceMode of ["standard", "game"] as const) {
+          const base = {
+            practiceMode,
+            temperatureScore: 40,
+            familiarityScore: 10,
+            acquaintanceOrigin: origin,
+            memorySummary: "上次聊到她剛換工作。",
+            gameState,
+          };
+          for (const agencyMode of ["off", "shadow"] as const) {
+            assertEquals(
+              systemOf({ ...base, agencyMode, photoMemoryFix: true }, profile),
+              systemOf({ ...base, agencyMode }, profile),
+              `${profileId}/${origin?.id}/${practiceMode}/${agencyMode}`,
+            );
+          }
+          assertEquals(
+            systemOf(
+              { ...base, agencyMode: "on", photoMemoryFix: false },
+              profile,
+            ),
+            systemOf({ ...base, agencyMode: "on" }, profile),
+          );
+        }
+      }
+    }
+  });
+
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：要求「講出／對得上當天畫面」的管道都有不考題版", () => {
+    for (const origin of ACQUAINTANCE_ORIGINS) {
+      const asksForScene = origin.stancePrompt.includes("當時的畫面") ||
+        origin.stancePrompt.includes("當天的畫面");
+      assertEquals(
+        origin.noQuizStancePrompt !== undefined,
+        asksForScene,
+        origin.id,
+      );
+      if (origin.noQuizStancePrompt) {
+        assert(!origin.noQuizStancePrompt.includes("畫面"), origin.id);
+        assert(
+          origin.noQuizStancePrompt.includes("當天的細節你也記不清"),
+          origin.id,
+        );
+      }
+    }
+  });
+
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：穩定前綴＋當輪尾巴仍逐位元組等於 system", () => {
+    const bundle = buildChatPromptBundle(turns, tina, {
+      practiceMode: "game",
+      temperatureScore: 40,
+      familiarityScore: 10,
+      acquaintanceOrigin: street,
+      memorySummary: "上次聊到她店裡的新豆子。",
+      gameState,
+      agencyMode: "on",
+      photoMemoryFix: true,
+    });
+    const system = bundle.messages[0].content;
+    assert(system.startsWith(bundle.systemStable));
+    // 修正版的大頭照行、錨定、認識管道都在穩定前綴裡（同一場逐輪不變，可快取）。
+    assert(
+      bundle.systemStable.includes(PHOTO_SCENE_LINE_PREFIX_PHOTO_MEMORY_FIX),
+    );
+    assert(
+      bundle.systemStable.includes("只有認識當天的細節和照片沒拍到的事例外"),
+    );
+    assert(bundle.systemStable.includes(street.noQuizStancePrompt!));
+  });
+
+  Deno.test("PRACTICE_PHOTO_MEMORY_FIX：大頭照固定句長度鎖定（101 code units）", () => {
+    assertEquals(
+      PHOTO_SCENE_LINE_PREFIX_PHOTO_MEMORY_FIX.length +
+        PHOTO_SCENE_LINE_SUFFIX_PHOTO_MEMORY_FIX.length,
+      101,
+    );
+  });
+}
