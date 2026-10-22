@@ -264,7 +264,6 @@ function agencyBundle(
 
 const FIX_ONLY_SENTENCES = [
   "照片裡的人是你",
-  "我那張",
   "只有認識當天的細節和照片沒拍到的事例外",
   "行蹤、上次見面或認識當天的細節",
   "photo facts the system doesn't give",
