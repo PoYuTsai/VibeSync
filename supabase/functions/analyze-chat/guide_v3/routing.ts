@@ -112,10 +112,11 @@ export function shouldUseGuideV3SweetShort(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
-/// 不記帳不承諾（Bruce 2026-10-22 盲選回覆：交往中她撒嬌或喊累時排「下次約」的卡「不要」，卡片不記帳、不討人情、不說要做什麼
-/// 來補償；Eric 同日「回了 來處理吧」；見 rules.ts withoutCoupleSeed）：開關 ANALYZE_GUIDE_V3_NO_IOU，跟 ANALYZE_GUIDE_V3
-/// 一樣 off／test／on，只在兩段式開著時才有作用（入口把關）。讀局面多一欄 herTired，交往中她撒嬌或喊累時不排推進（種子），
-/// 寫卡那一條多記帳、承諾補償的說法；跟甜話短回各自獨立。沒開跟今天一字不差。
+/// 不記帳不承諾（Bruce 2026-10-22 盲選回覆：交往中她撒嬌或喊累時排「下次約」的卡「不要」，記帳、承諾補償的說法多半就出在那張；
+/// Eric 同日「回了 來處理吧」；見 rules.ts withoutCoupleSeed）：開關 ANALYZE_GUIDE_V3_NO_IOU，跟 ANALYZE_GUIDE_V3 一樣
+/// off／test／on，只在兩段式開著時才有作用（入口把關）。讀局面多一欄 herTired，交往中她撒嬌或喊累時不排推進（種子）；跟甜話短回
+/// 各自獨立。寫卡不變：原本「這一步只寫訊息」第二條多加的記帳、承諾補償說法，Bruce 10/25 盲選看不出比較好（他要留的「晚餐我來想」
+/// 這種順手幫忙也被壓少），Eric 同日「照預設」拿掉。沒開跟今天一字不差。
 export function shouldUseGuideV3NoIou(args: {
   readonly mode: GuideV3Mode;
   readonly accountIsTest: boolean;

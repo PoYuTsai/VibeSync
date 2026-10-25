@@ -1,8 +1,8 @@
 // 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 PR #97 盲選回覆；Eric 同日「回了 來處理吧」）從正式入口走
 //（guide_v3/v3_stream_harness.ts：假 Supabase、假模型）：env 每次請求設定。開著時讀局面的提示詞在 herAffection 下面多 herTired
-// 那一行、schema 多 herTired；已經在交往、她撒嬌或喊累時不排推進（種子）；寫卡「這一步只寫訊息」第二條換成多記帳、承諾補償說法的
-// 那一句，卡片多比那一句的哨兵（說明不比）。沒設、off、test 但不是測試帳號、兩段式沒開時一字不變；跟甜話短回各自獨立。假讀局面跟
-// 真的模型一樣：schema 有 herTired 才給、有撒嬌才標撒嬌。對話全部新寫，事件照種類找。
+// 那一行、schema 多 herTired；已經在交往、她撒嬌或喊累時不排推進（種子）；寫卡的系統提示詞不變。沒設、off、test 但不是測試帳號、
+// 兩段式沒開時一字不變；跟甜話短回各自獨立。假讀局面跟真的模型一樣：schema 有 herTired 才給、有撒嬌才標撒嬌。對話全部新寫，事件
+// 照種類找。
 //
 // 寫卡的 streaming_fallback.ts 一載入就存下 fetch：轉接器要放第一個 import，入口模組也要在 env 裝好
 // 之後才動態載入（STREAM_ANALYZE_ENABLED 是載入時讀的常數）。
@@ -14,13 +14,7 @@ import {
 import { BILLING_PROTOCOL_VERSION } from "../billing.ts";
 import { ANALYSIS_CONTRACT_VERSION_V3 } from "../no_send_decision.ts";
 import { TEST_EMAILS } from "../../_shared/quota.ts";
-import {
-  HER_TIRED_NOTE,
-  NO_IOU_DIRECT_REPLY_LINE,
-  NO_IOU_WRITER_SENTINELS,
-  SWEET_SHORT_CARD_PART,
-  WRITE_NATURAL_RULES,
-} from "./two_stage_prompts.ts";
+import { HER_TIRED_NOTE, SWEET_SHORT_CARD_PART } from "./two_stage_prompts.ts";
 import {
   fakeExplainResponse,
   fakeReadResponse,
@@ -229,11 +223,8 @@ const planned = (out: V3HarnessOutcome) =>
   (out.events.find((e) => e.type === "analysis.read")!.plannedCards as {
     task: string;
   }[]).map((p) => p.task);
-const OLD_DIRECT_LINE = WRITE_NATURAL_RULES.split("\n").find((l) =>
-  l.startsWith("- 直接回她說的事。")
-)!;
 
-Deno.test("從正式入口：ANALYZE_GUIDE_V3_NO_IOU=on、交往中她喊累：讀局面的提示詞多 herTired 那一行、schema 多 herTired；寫卡的系統提示詞換那一句；沒有推進（種子）、張數照舊；trace 記 herTired、push 是 null", async () => {
+Deno.test("從正式入口：ANALYZE_GUIDE_V3_NO_IOU=on、交往中她喊累：讀局面的提示詞多 herTired 那一行、schema 多 herTired；寫卡的系統提示詞跟沒開一字不差；沒有推進（種子）、張數照舊；trace 記 herTired、push 是 null", async () => {
   const out = await analyze({ env: { ANALYZE_GUIDE_V3_NO_IOU: "on" } });
   assertEquals(out.status, 200);
   const read = bodyOf(out, "read")!;
@@ -241,8 +232,8 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_NO_IOU=on、交往中她喊累：�
   assert(schemaOf(read).required!.includes("herTired"));
   assert(schemaOf(read).properties && "herTired" in schemaOf(read).properties!);
   const write = bodyOf(out, "write")!;
-  assert(systemOf(write).includes(NO_IOU_DIRECT_REPLY_LINE));
-  assertEquals(systemOf(write).includes(OLD_DIRECT_LINE), false);
+  const offWrite = bodyOf(await analyze({ env: {} }), "write")!;
+  assertEquals(systemOf(write), systemOf(offWrite));
   const lines = specLines(userText(write));
   assertEquals(lines.length, 4);
   for (const line of lines) {
@@ -261,7 +252,7 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_NO_IOU=on、交往中她喊累：�
   assertEquals(trace.specs.some((s) => s.task === "推進"), false);
 });
 
-Deno.test("從正式入口：不記帳不承諾沒設、off、test 但不是測試帳號、打錯（true）：讀局面沒有 herTired、寫卡是原本那一句、第一張是推進（種子）；test 加測試帳號就開", async () => {
+Deno.test("從正式入口：不記帳不承諾沒設、off、test 但不是測試帳號、打錯（true）：讀局面沒有 herTired、第一張是推進（種子）；test 加測試帳號就開", async () => {
   for (const flag of [undefined, "off", "test", "true"]) {
     const out = await analyze({ env: { ANALYZE_GUIDE_V3_NO_IOU: flag } });
     assertEquals(out.status, 200, String(flag));
@@ -269,8 +260,6 @@ Deno.test("從正式入口：不記帳不承諾沒設、off、test 但不是測�
     assertEquals(systemOf(read).includes("herTired"), false, String(flag));
     assertEquals(schemaOf(read).required!.includes("herTired"), false);
     const write = bodyOf(out, "write")!;
-    assert(systemOf(write).includes(OLD_DIRECT_LINE));
-    assertEquals(systemOf(write).includes(NO_IOU_DIRECT_REPLY_LINE), false);
     assert(
       specLines(userText(write))[0].startsWith("1. 任務：推進（種子）｜"),
       String(flag),
@@ -346,37 +335,6 @@ Deno.test("從正式入口：跟甜話短回各自獨立——她只撒嬌一句
   assert(read(sweetOnly).includes("「撒嬌」"));
   assert(read(noIouOnly).includes(HER_TIRED_NOTE));
   assert(!read(noIouOnly).includes("「撒嬌」"));
-});
-
-Deno.test("從正式入口：不記帳不承諾開時，卡片照抄寫卡那一句就拿掉那張（沒開不比）；說明寫到照送（只比卡片）", async () => {
-  const leaky = (card: number) =>
-    card === 2 ? `先躺一下 ${NO_IOU_WRITER_SENTINELS[0]}` : undefined;
-  const on = await analyze({
-    env: { ANALYZE_GUIDE_V3_NO_IOU: "on" },
-    cardText: leaky,
-  });
-  assertEquals(
-    traceOf(on).removed.map((r) => [r.slot, r.reason]),
-    [[2, "prompt_leak"]],
-  );
-  assertEquals(cardsOf(on).length, 3);
-  const off = await analyze({ env: {}, cardText: leaky });
-  assertEquals(traceOf(off).removed, []);
-  const natural = (card: number) =>
-    card === 1
-      ? `她喊累，這張沒有說要${NO_IOU_WRITER_SENTINELS[1]}，比較自然。`
-      : undefined;
-  const explained = await analyze({
-    env: { ANALYZE_GUIDE_V3_NO_IOU: "on" },
-    explainText: natural,
-  });
-  assertEquals(traceOf(explained).twoStage!.explain.removed, []);
-  assertEquals(
-    explained.events.filter((e) => e.type === "analysis.card_explain").map((
-      e,
-    ) => e.card),
-    [1, 2, 3, 4],
-  );
 });
 
 Deno.test("從正式入口：開著時讀局面沒給 herTired（缺欄位）照常出卡、當沒喊累（她沒撒嬌就照舊排種子）；沒開時讀局面多給 herTired 也照常出卡、照舊排種子", async () => {

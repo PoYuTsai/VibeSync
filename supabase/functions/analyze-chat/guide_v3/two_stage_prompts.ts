@@ -292,52 +292,17 @@ export const TWO_STAGE_WRITER_SENTINELS: readonly string[] = [
   "辨識程式寫的照片描述",
 ];
 
-// ── 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 PR #97 盲選回覆；Eric 同日「回了 來處理吧」）──────────────
-// Bruce：「我都記在帳上」「腳底按摩也算我的」是在給 credit、算 credit；「我來幫你提袋子」「換我來犒賞你」不用特別提，文字訊息不用
-// 特別說要幫她做什麼，或給什麼物質上的承諾當作補償；減少「我先收下」「幫你記一筆」這類記 credit、討 credit 的說法。
-
-/// 開關開時 WRITE_NATURAL_RULES 第二條換成這一句：把 Bruce 這次的理由併進原本那一句，不另開一條（照 10/19 第 2 輪「補進原本的
-/// 句子裡，不另開一串不要」的做法）；例句是他點名的那幾類說法。其他條、其他段一字不動。
-export const NO_IOU_DIRECT_REPLY_LINE =
-  "- 直接回她說的事。判斷、策略、招式的名稱、對她的評價（包括評她的語氣和用字）、替自己說明心態、原則或反應的話（例如「我收到了」「我收下了」「記下了」），以及像在記帳、討人情，或說要幫她做什麼、給她什麼來補償的話（例如「幫你記一筆」「都算我的」「換我來犒賞你」），都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。";
-
-/// 寫卡的「這一步只寫訊息」那一段：不記帳不承諾開時第二條換成 NO_IOU_DIRECT_REPLY_LINE（原文那一行對不上就丟錯，測試會先
-/// 失敗）；沒開就是 WRITE_NATURAL_RULES 原文。
-export function writeNaturalRules(
-  options: { readonly noIou?: boolean } = {},
-): string {
-  return options.noIou
-    ? applyLineEdits(WRITE_NATURAL_RULES, [
-      {
-        startsWith: "- 直接回她說的事。",
-        edit: () => NO_IOU_DIRECT_REPLY_LINE,
-      },
-    ])
-    : WRITE_NATURAL_RULES;
-}
-
-/// 上面那一句新加的說法的外洩哨兵（開關開時只比卡片，照 SWEET_SHORT_WRITER_SENTINELS 的位置；說明步驟看不到寫卡的系統提示詞，
-/// 不比）：都照抄自那一句、而且帶只有提示詞才會寫的說法（稱她「她」、把幾類說法串成定義）。給她的訊息不會用「她」稱呼她，正常的卡
-///（「晚餐我來想」「吃的我來處理」「先休息一下」）不會有這幾段；例句本身（「幫你記一筆」）不當哨兵——那是寫法的問題，不是外洩。
-/// 後半句要連著「（例如「幫你記一筆」」一起比（Codex 主審第 1 輪 P3）：只比「給她什麼來補償的話」會把談第三人的正常卡（她想補償
-/// 閨蜜，卡片寫「想給她什麼來補償的話 先問問她需要什麼」）整張當外洩拿掉。
-export const NO_IOU_WRITER_SENTINELS: readonly string[] = [
-  "像在記帳、討人情，或說要幫她做什麼",
-  "給她什麼來補償的話（例如「幫你記一筆」",
-];
-
 export function writeSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   safetyRules: string = WRITE_SAFETY_FLOOR,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
-  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）；不記帳不承諾開時，「這一步只寫訊息」第二條
-  /// 換成 NO_IOU_DIRECT_REPLY_LINE（writeNaturalRules）。
-  options: { readonly tensionStyle?: boolean; readonly noIou?: boolean } = {},
+  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）。
+  options: { readonly tensionStyle?: boolean } = {},
 ): string {
   const writer = twoStageWriterSections(sections, options);
   return [
     "你是 VibeSync 對話分析的「寫句子」步驟：照使用者訊息裡每張卡的規格，寫他可以直接傳給她的訊息。",
-    writeNaturalRules(options),
+    WRITE_NATURAL_RULES,
     sections.A2,
     sections.A3,
     WRITE_MEDIA_RULES,

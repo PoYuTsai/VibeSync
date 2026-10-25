@@ -1,15 +1,13 @@
 // 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 PR #97 盲選回覆；Eric 同日「回了 來處理吧」）的純函式：已經在交往、
 // 她這一輪撒嬌示愛或喊累時不排推進（種子）（rules.ts withoutCoupleSeed、plan.ts），其他推進與固定排法照舊；讀局面開關開時多一欄
-// herTired（提示詞 herAffection 下面那一行、schema、檢查）；寫卡「這一步只寫訊息」第二條換成多記帳、承諾補償說法的那一句（其他字
-// 不動）；兩組外洩哨兵（讀局面那一行比判讀、寫卡那一句只比卡片）與誤擋；跟甜話短回一起開時的排法。沒開時一律跟今天一樣。對話全部
-// 新寫。
+// herTired（提示詞 herAffection 下面那一行、schema、檢查）；讀局面那一行的外洩哨兵（比判讀）與誤擋；跟甜話短回一起開時的排法。
+// 寫卡不變（見 routing.ts shouldUseGuideV3NoIou）。沒開時一律跟今天一樣。對話全部新寫。
 import {
   assert,
   assertEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { TENSION_STYLE_EXPLAIN_SENTINELS, vetExplanation } from "./explain.ts";
-import { finalizeCard, vetCoachText } from "./finalize.ts";
+import { vetCoachText } from "./finalize.ts";
 import { planTurn } from "./plan.ts";
 import {
   HER_TIRED_FIELD,
@@ -34,25 +32,17 @@ import { latestHerMessages, toTurns, type Turn } from "./turns.ts";
 import {
   cardSpecLineTwoStage,
   HER_TIRED_NOTE,
-  NO_IOU_DIRECT_REPLY_LINE,
   NO_IOU_READ_LEAK_SENTINELS,
   NO_IOU_READ_SENTINELS,
-  NO_IOU_WRITER_SENTINELS,
   READ_TAGS_SCHEMA_TWO_STAGE_SWEET_WITH_RELATION,
   READ_TAGS_SCHEMA_TWO_STAGE_WITH_RELATION,
   READ_TWO_STAGE_NOTES,
   readSystemPromptTwoStage,
   readSystemPromptTwoStageWithRelation,
   readTwoStageNotes,
-  SHORT_PRAISE_WRITER_SENTINELS,
   SWEET_READ_LEAK_SENTINELS,
   SWEET_SHORT_CARD_PART,
-  TENSION_STYLE_WRITER_SENTINELS,
   TWO_STAGE_READ_LEAK_SENTINELS,
-  TWO_STAGE_WRITER_SENTINELS,
-  WRITE_NATURAL_RULES,
-  writeNaturalRules,
-  writeSystemPromptTwoStage,
 } from "./two_stage_prompts.ts";
 
 function tags(over: Partial<ReadTags> = {}): ReadTags {
@@ -534,136 +524,7 @@ Deno.test("讀局面：解析只有開時才收 herTired——缺了或不是 tr
   );
 });
 
-// ── 寫卡 ───────────────────────────────────────────────────────────────────
-
-const OLD_DIRECT_LINE = WRITE_NATURAL_RULES.split("\n").find((l) =>
-  l.startsWith("- 直接回她說的事。")
-)!;
-
-Deno.test("寫卡：沒開時系統提示詞跟今天一字不差；開時只換「這一步只寫訊息」第二條，換回原本那一句就跟沒開一樣（帶張力改寫法開不開都一樣）；其他條一字不動", () => {
-  assertEquals(
-    NO_IOU_DIRECT_REPLY_LINE,
-    "- 直接回她說的事。判斷、策略、招式的名稱、對她的評價（包括評她的語氣和用字）、替自己說明心態、原則或反應的話（例如「我收到了」「我收下了」「記下了」），以及像在記帳、討人情，或說要幫她做什麼、給她什麼來補償的話（例如「幫你記一筆」「都算我的」「換我來犒賞你」），都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。",
-  );
-  assertEquals(
-    writeSystemPromptTwoStage(),
-    writeSystemPromptTwoStage(
-      undefined,
-      undefined,
-      undefined,
-      { noIou: false },
-    ),
-  );
-  for (const tensionStyle of [false, true]) {
-    const off = writeSystemPromptTwoStage(undefined, undefined, undefined, {
-      tensionStyle,
-    });
-    const on = writeSystemPromptTwoStage(undefined, undefined, undefined, {
-      tensionStyle,
-      noIou: true,
-    });
-    assert(on.includes(NO_IOU_DIRECT_REPLY_LINE));
-    assertEquals(on.includes(OLD_DIRECT_LINE), false);
-    assertEquals(on.replace(NO_IOU_DIRECT_REPLY_LINE, OLD_DIRECT_LINE), off);
-  }
-  assertEquals(writeNaturalRules(), WRITE_NATURAL_RULES);
-  const onLines = writeNaturalRules({ noIou: true }).split("\n");
-  const offLines = WRITE_NATURAL_RULES.split("\n");
-  assertEquals(onLines.length, offLines.length);
-  offLines.forEach((line, i) => {
-    assertEquals(
-      onLines[i],
-      line === OLD_DIRECT_LINE ? NO_IOU_DIRECT_REPLY_LINE : line,
-    );
-  });
-  // 新的那一句保留原本那一句的每一段（只把「，以及」挪到新加的說法前面），沒有另開一條。
-  for (
-    const part of [
-      "- 直接回她說的事。判斷、策略、招式的名稱、對她的評價（包括評她的語氣和用字）",
-      "替自己說明心態、原則或反應的話（例如「我收到了」「我收下了」「記下了」）",
-      "，都不寫進訊息；為什麼這樣回，下一步會另外說明給用戶。",
-    ]
-  ) {
-    assert(OLD_DIRECT_LINE.includes(part), part);
-    assert(NO_IOU_DIRECT_REPLY_LINE.includes(part), part);
-  }
-});
-
 // ── 哨兵 ───────────────────────────────────────────────────────────────────
-
-Deno.test("寫卡的外洩哨兵：都照抄自新的那一句、夠長、沒開的提示詞裡沒有；正常的卡（晚餐我來想、吃的我來處理、先休息一下…）不會被擋，照抄那一句（夾空白也一樣）就拿掉那張", () => {
-  const off = writeSystemPromptTwoStage(undefined, undefined, undefined, {
-    tensionStyle: true,
-  });
-  assert(NO_IOU_WRITER_SENTINELS.length > 0);
-  for (const s of NO_IOU_WRITER_SENTINELS) {
-    assert(NO_IOU_DIRECT_REPLY_LINE.includes(s), s);
-    assertEquals(off.includes(s), false, s);
-    // 共用比對不比 8 字以下的哨兵。
-    assert([...s.replace(/\s+/g, "")].length >= 8, s);
-  }
-  // 正式流程開著時卡片比的哨兵（兩段式、帶張力改寫法、這個）。
-  const sentinels = [
-    ...TWO_STAGE_WRITER_SENTINELS,
-    ...TENSION_STYLE_WRITER_SENTINELS,
-    ...NO_IOU_WRITER_SENTINELS,
-  ];
-  const card = (messages: string[]) =>
-    finalizeCard(
-      { card: 1, messages, hasInventedDetail: false, expectedReaction: "" },
-      { voice: "預設" },
-      "腳快斷了哈哈\n今晚要早點睡",
-      sentinels,
-    );
-  for (
-    const messages of [
-      ["晚餐我來想"],
-      ["吃的我來處理"],
-      ["先休息一下"],
-      ["辛苦了 先休息一下", "吃的我來處理"],
-      ["腳還好嗎 回去泡個腳早點睡"],
-      ["今天也太拚了 晚點打給你"],
-      ["我也想你"],
-      // 談第三人的補償（Codex 主審第 1 輪 P3）：她想補償閨蜜，這不是外洩。
-      ["想給她什麼來補償的話 先問問她需要什麼"],
-      ["閨蜜那邊 你想給她什麼來補償的話", "我陪你一起想"],
-    ]
-  ) {
-    assertEquals(card(messages).ok, true, messages.join("／"));
-  }
-  for (
-    const leak of [
-      "像在記帳、討人情，或說要幫她做什麼",
-      "像在記帳、討人情， 或說要 幫她做什麼",
-      "給她什麼來補償的話（例如「幫你記一筆」",
-      "給她什麼來補償的話 （例如「幫你記一筆」",
-    ]
-  ) {
-    const out = card(["先休息一下", leak]);
-    assertEquals(out.ok, false, leak);
-    assertEquals(!out.ok && out.reason, "prompt_leak");
-  }
-});
-
-Deno.test("寫卡那一句只比卡片：說明看不到寫卡的系統提示詞，正式流程給說明多比的哨兵裡沒有這幾句，說明寫到也照送", () => {
-  // 開關都開時正式流程給說明多比的哨兵（stream_flow.ts explainCards）：帶張力改寫法、短版稱讚的；這個開關的不在裡面。
-  const explainExtra = [
-    ...TENSION_STYLE_EXPLAIN_SENTINELS,
-    ...TENSION_STYLE_WRITER_SENTINELS,
-    ...SHORT_PRAISE_WRITER_SENTINELS,
-  ];
-  for (const s of NO_IOU_WRITER_SENTINELS) {
-    assertEquals(explainExtra.includes(s), false, s);
-  }
-  for (
-    const text of [
-      "她喊累，這張先關心她的腳，沒有說要幫她做什麼、給她什麼來補償的話，讀起來比較自然。",
-      "她說腳快斷了，你先讓她休息，語氣輕鬆不刻意。",
-    ]
-  ) {
-    assertEquals(vetExplanation(text, explainExtra).ok, true, text);
-  }
-});
 
 Deno.test("讀局面的外洩哨兵：都照抄自 herTired 那一行、夠長、沒開的提示詞裡沒有；判讀照抄就不給，一般的判讀（她說好累、腳很痠）照給", () => {
   const off = readSystemPromptTwoStageWithRelation(

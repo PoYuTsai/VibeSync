@@ -1893,8 +1893,8 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           accountIsTest,
         }),
         // 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，off／test／on，每次請求讀；Bruce 2026-10-22 盲選回覆，Eric 同日「回了
-        // 來處理吧」）：只在兩段式開時才有作用；讀局面多一欄 herTired，交往中她撒嬌或喊累時不排推進（種子），寫卡那一條多記帳、
-        // 承諾補償的說法。跟甜話短回各自獨立；沒開就一字不變。
+        // 來處理吧」）：只在兩段式開時才有作用；讀局面多一欄 herTired，交往中她撒嬌或喊累時不排推進（種子）；寫卡不變。跟甜話短回
+        // 各自獨立；沒開就一字不變。
         noIou: twoStage && shouldUseGuideV3NoIou({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_NO_IOU")),
           accountIsTest,
