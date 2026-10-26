@@ -109,6 +109,7 @@ import {
   TENSION_STYLE_WRITER_SENTINELS,
   TWO_STAGE_READ_LEAK_SENTINELS,
   TWO_STAGE_WRITER_SENTINELS,
+  WRITER_TRIM_VENUE_CLOSE_SENTINELS,
   writeSystemPromptTwoStage,
   writeUserPromptTwoStage,
 } from "./two_stage_prompts.ts";
@@ -275,6 +276,11 @@ export interface GuideV3StreamDeps {
   /// twoStage 開時有作用。讀局面多一欄 herTired（提示詞 herAffection 下面多一行、schema、檢查）；已經在交往、她撒嬌或喊累時不排
   /// 推進（種子）。寫卡的提示詞與卡片的哨兵不變。跟 sweetShort 各自獨立。沒給或 false：一字不變。
   noIou?: boolean;
+  /// 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，handler 把關；Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度
+  /// 會有影響」，Eric 2026-10-27「照預設」）：只在 twoStage 開時有作用。寫卡的使用者訊息不帶 B43–B47 的觸發與寫法（plan.ts
+  /// writerEntries）、系統提示詞 A5「讓她也投入」少一句。讀局面、排卡、說明步驟、trace 與卡片的哨兵不變（只拿掉字、沒有新加的
+  /// 字）。跟其他開關各自獨立。沒給或 false：一字不變。
+  writerTrim?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
     req: GuideV3ExplainRequest,
@@ -434,6 +440,11 @@ class GuideV3Flow {
   /// 甜話短回開著（兩段式也開）、而且這一輪真的排到（有卡的規格寫了短回的指示）：卡片多比那一段的哨兵（說明不比，見
   /// explainCards）。沒排到時寫卡看不到那一段，跟沒開一樣不比。
   private sweetShortPlanned = false;
+  /// 寫卡瘦身開著（兩段式也開）：寫卡的系統提示詞 A5 少一句（使用者訊息的條目由計畫的 writerEntries 帶）。說明照舊。
+  private writerTrimOn = false;
+  /// 寫卡瘦身開著、而且標到 B47（排卡是推進換地方、收、推進）：收卡的任務字換成固定說明（two_stage_prompts.ts
+  /// WRITER_TRIM_VENUE_CLOSE_TASK），卡片多比那一句的哨兵（說明看不到寫卡的規格，不比）。
+  private writerTrimVenueClose = false;
 
   constructor(
     private readonly deps: GuideV3StreamDeps,
@@ -586,6 +597,9 @@ class GuideV3Flow {
       this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
       // 帶張力改寫法（Bruce 2026-10-20「改」）：排卡不變，寫卡與說明的帶張力寫法換新的；沒開照舊。
       this.tensionStyleOn = twoStage && this.deps.tensionStyle === true;
+      // 寫卡瘦身（Bruce 2026-10-26；Eric 2026-10-27「照預設」）：讀局面與排卡不變，計畫多一份寫卡用的條目（排除 B43–B47），寫卡的
+      // 系統提示詞 A5 少一句；說明與 trace 照舊用原本那一份。沒開照舊。
+      this.writerTrimOn = twoStage && this.deps.writerTrim === true;
       const plan = vetPlanText(
         planTurn(
           turns,
@@ -599,6 +613,7 @@ class GuideV3Flow {
               : {}),
             ...(sweetShortOn ? { sweetShort: true } : {}),
             ...(noIouOn ? { noIou: true } : {}),
+            ...(this.writerTrimOn ? { writerTrim: true } : {}),
           },
         ),
         (field) =>
@@ -618,6 +633,8 @@ class GuideV3Flow {
       );
       this.sweetShortPlanned = sweetShortOn &&
         plan.specs.some((s) => s.sweetShort === true);
+      // 寫卡瘦身標到 B47：換地方只在 B47 排（rules.ts decidePush），收卡補固定說明（Eric 2026-10-27「照預設，跑」）。
+      this.writerTrimVenueClose = this.writerTrimOn && plan.push === "換地方";
       // 關係狀態排在判讀最後，跟判讀一起在扣費之後才送；扣費內容、結果與續看都帶得到。
       const view = readView(
         plan,
@@ -1188,13 +1205,17 @@ class GuideV3Flow {
           spec,
           sourceText,
           // 短版稱讚、帶張力改寫法開時：規格裡短版那段、帶張力的新寫法抄進卡片也拿掉；甜話短回排到時，規格裡短回的
-          // 指示也一樣。都沒開照舊。
-          this.shortPraiseOn || this.tensionStyleOn || this.sweetShortPlanned
+          // 指示也一樣；寫卡瘦身標到 B47 時，收卡那句固定說明也一樣。都沒開照舊。
+          this.shortPraiseOn || this.tensionStyleOn || this.sweetShortPlanned ||
+            this.writerTrimVenueClose
             ? [
               ...TWO_STAGE_WRITER_SENTINELS,
               ...(this.shortPraiseOn ? SHORT_PRAISE_WRITER_SENTINELS : []),
               ...(this.tensionStyleOn ? TENSION_STYLE_WRITER_SENTINELS : []),
               ...(this.sweetShortPlanned ? SWEET_SHORT_WRITER_SENTINELS : []),
+              ...(this.writerTrimVenueClose
+                ? WRITER_TRIM_VENUE_CLOSE_SENTINELS
+                : []),
             ]
             : TWO_STAGE_WRITER_SENTINELS,
         )
@@ -1293,7 +1314,9 @@ class GuideV3Flow {
       const userArgs = {
         turns,
         tags,
-        entries: plan.entries,
+        // 寫卡瘦身開著時寫卡看的是排除 B43–B47 的那一份（plan.ts writerEntries）；沒開沒有這一欄，照舊用 entries。說明步驟與
+        // trace 一律用 entries。
+        entries: plan.writerEntries ?? plan.entries,
         cards: deliverable,
         background: this.deps.background,
         previousRound: this.deps.previousRound,
@@ -1303,10 +1326,15 @@ class GuideV3Flow {
         system: twoStage
           ? writeSystemPromptTwoStage(undefined, undefined, undefined, {
             tensionStyle: this.tensionStyleOn,
+            writerTrim: this.writerTrimOn,
           })
           : writeSystemPrompt(),
         user: twoStage
-          ? writeUserPromptTwoStage({ ...userArgs, praise: plan.praise })
+          ? writeUserPromptTwoStage({
+            ...userArgs,
+            praise: plan.praise,
+            ...(this.writerTrimVenueClose ? { venueClose: true } : {}),
+          })
           : writeUserPrompt(userArgs),
         deadlineAtMs,
       });

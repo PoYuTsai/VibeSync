@@ -25,6 +25,9 @@ export interface FlagCombo {
   readonly sweetShort?: boolean;
   /// 不記帳不承諾（ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 盲選回覆）；沒給當關。
   readonly noIou?: boolean;
+  /// 寫卡瘦身（ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26；Eric 2026-10-27「照預設」）；沒給當關。原本的情境標到 B44，開了
+  /// 寫卡看不到那一條。
+  readonly writerTrim?: boolean;
 }
 
 /// 讀局面回的 JSON：不記帳不承諾開著（兩段式也開）時 schema 在 herAffection 後面多 herTired，假讀局面跟真的模型一樣照 schema 的
@@ -385,6 +388,7 @@ export async function runFlagMatrix(
     phraseTidy: combo.phraseTidy ?? false,
     sweetShort: combo.sweetShort ?? false,
     noIou: combo.noIou ?? false,
+    writerTrim: combo.writerTrim ?? false,
     ...(combo.twoStage
       ? {
         callExplain: (

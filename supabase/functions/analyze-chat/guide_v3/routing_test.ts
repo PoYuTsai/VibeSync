@@ -12,6 +12,7 @@ import {
   shouldUseGuideV3SweetShort,
   shouldUseGuideV3TensionStyle,
   shouldUseGuideV3TwoStage,
+  shouldUseGuideV3WriterTrim,
 } from "./routing.ts";
 
 Deno.test("開關：沒設、空白、打錯都當 off；大小寫與空白不影響", () => {
@@ -248,6 +249,32 @@ Deno.test("不記帳不承諾的開關（Bruce 2026-10-22 盲選回覆，Eric �
   for (const accountIsTest of [true, false]) {
     assertEquals(
       shouldUseGuideV3NoIou({ mode: guideV3Mode(" On "), accountIsTest }),
+      true,
+    );
+  }
+});
+
+Deno.test("寫卡瘦身的開關（Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」，Eric 2026-10-27「照預設」）：沒設或打錯是 off；test 只給測試帳號；on 誰都開", () => {
+  for (const raw of [undefined, "", "true", "1", "offf"]) {
+    for (const accountIsTest of [true, false]) {
+      assertEquals(
+        shouldUseGuideV3WriterTrim({ mode: guideV3Mode(raw), accountIsTest }),
+        false,
+        `${raw}/${accountIsTest}`,
+      );
+    }
+  }
+  assertEquals(
+    shouldUseGuideV3WriterTrim({ mode: "test", accountIsTest: true }),
+    true,
+  );
+  assertEquals(
+    shouldUseGuideV3WriterTrim({ mode: "test", accountIsTest: false }),
+    false,
+  );
+  for (const accountIsTest of [true, false]) {
+    assertEquals(
+      shouldUseGuideV3WriterTrim({ mode: guideV3Mode(" On "), accountIsTest }),
       true,
     );
   }

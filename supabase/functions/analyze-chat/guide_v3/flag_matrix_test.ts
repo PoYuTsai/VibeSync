@@ -22,8 +22,10 @@ import {
   runFlagMatrix,
   withoutKeys,
 } from "./flag_matrix_harness.ts";
+import { GUIDE_V3_ENTRIES } from "./entries.ts";
 import { readSystemPrompt } from "./prompts.ts";
 import { READ_TAGS_SCHEMA_TWO_STAGE, withHerTired } from "./read_tags.ts";
+import { WRITER_TRIM_ENTRY_IDS } from "./rules.ts";
 import {
   RELATION_FIELD_NOTES,
   RELATION_SENTINELS,
@@ -46,6 +48,8 @@ import {
   SWEET_WORTHY_LINES_NOTE,
   TENSION_STYLE_LINE,
   TWO_STAGE_WRITER_SENTINELS,
+  twoStageEntryWriting,
+  WRITER_TRIM_A5_SENTENCE,
   writeSystemPromptTwoStage,
 } from "./two_stage_prompts.ts";
 
@@ -92,6 +96,7 @@ const run = async (
     phraseTidy?: boolean;
     sweetShort?: boolean;
     noIou?: boolean;
+    writerTrim?: boolean;
   },
   options = {},
 ) =>
@@ -1478,4 +1483,274 @@ Deno.test("不記帳不承諾開：判讀照抄 herTired 那一行就不給、�
     readText: leakyJudgment(PRODUCTION),
   });
   assert(String(judgmentOf(offJudged)).includes(NO_IOU_READ_SENTINELS[0]));
+});
+
+// ---- 寫卡瘦身（ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」；Eric 2026-10-27「照預設」） ----
+
+/// 正式 11 個開關全開：正式環境九個開關（PRODUCTION_ALL 那六個；v3、上一輪脈絡、對象記憶不在這個情境裡）再開甜話短回與不記帳
+/// 不承諾（都比這個先上線）；寫卡瘦身另外用 WRITER_TRIM 開。原本的情境在這組沒開寫卡瘦身時就是 NOT_TRIGGERED_ALL_ON。
+const ALL_ELEVEN = NO_IOU(ALL_SWEET);
+/// 原本的情境（標到 B44、B22），正式組合與正式 11 個開關全開再開寫卡瘦身的整份結果：鎖住。跟沒開只差寫卡的系統提示詞（A5「讓她也
+/// 投入」少一句）與寫卡使用者訊息的條目段（B44 那一行不見）；這兩處換回沒開的就是 f3aa55b8…、47f25612…（下面有比）。
+const WRITER_TRIM_PRODUCTION_ON =
+  "915ced2dc2d6f4204020f540439f0dcb7d7ab19bec816c8ead477c63ba508a38";
+const WRITER_TRIM_ALL_ON =
+  "0335ba9340078e2c580c21feb6ec540109c6d0fb08d99fbe1c54628b470df1bb";
+
+const WRITER_TRIM = <C extends Combo>(combo: C) => ({
+  ...combo,
+  writerTrim: true,
+});
+/// 寫卡使用者訊息裡一條條目的樣子（「編號（觸發）：寫法」，兩段式的寫法照 twoStageEntryWriting）。
+const entryLine = (id: string) => {
+  const e = GUIDE_V3_ENTRIES.find((x) => x.id === id)!;
+  return `- ${e.id}（${e.trigger}）：${twoStageEntryWriting(e)}`;
+};
+/// 寫卡看不到的那幾條（B43–B47）在寫卡使用者訊息裡的樣子。
+const TRIMMED_ENTRY_LINES = WRITER_TRIM_ENTRY_IDS.map(entryLine);
+const ALL_SCENARIOS = [
+  () => ({}),
+  sweetScenario,
+  sweetOnlyScenario,
+  a2Scenario,
+  tiredScenario,
+] as const;
+/// 開著（兩段式也開）跟沒開比，只差寫卡那兩處：系統提示詞只少 A5 那一句；使用者訊息只少 B43–B47 那幾行（removed 行，這裡的情境
+/// 都還有別的條目或本來就沒有條目，不會變成「（這一輪沒有）」）。比雜湊之前先比結構：把寫卡的請求換回沒開的，整份就跟沒開一模一樣
+///（key 的順序不變）。
+const assertWriterTrimOnly = async (
+  on: Outcome,
+  off: Outcome,
+  removed: number,
+  label: string,
+) => {
+  assertEquals(
+    off.requests.write.system.split(WRITER_TRIM_A5_SENTENCE).length - 1,
+    1,
+    label,
+  );
+  assertEquals(
+    on.requests.write.system,
+    off.requests.write.system.replace(WRITER_TRIM_A5_SENTENCE, ""),
+    label,
+  );
+  const offLines = off.requests.write.user.split("\n");
+  assertEquals(
+    offLines.filter((l) => TRIMMED_ENTRY_LINES.includes(l)).length,
+    removed,
+    label,
+  );
+  assertEquals(
+    on.requests.write.user.split("\n"),
+    offLines.filter((l) => !TRIMMED_ENTRY_LINES.includes(l)),
+    label,
+  );
+  assertEquals(
+    await outcomeDigest({
+      ...on,
+      requests: { ...on.requests, write: off.requests.write },
+    }),
+    await outcomeDigest(off),
+    label,
+  );
+};
+
+Deno.test("寫卡瘦身明確關著（false）：每種組合、每個情境的整份結果都跟沒給一模一樣（既有雜湊照舊）", async () => {
+  const off = { writerTrim: false };
+  const none = () => ({});
+  const affection = () => ({ readText: notAffectionate(PRODUCTION) });
+  const locked: [Combo, (c: Combo) => Rec, string][] = [
+    [OFF, none, MAIN_6EF72AFF_OFF],
+    [RELATION_ONLY, none, MAIN_6EF72AFF_RELATION],
+    [BOTH, none, BOTH_ON],
+    [PRODUCTION, none, BOTH_TYPING_ON],
+    [{ ...PRODUCTION, tensionStyle: true }, none, PRODUCTION_TENSION_STYLE_ON],
+    [{ ...PRODUCTION, phraseTidy: true }, none, BOTH_TYPING_TIDY_ON],
+    [PRODUCTION, affection, PRODUCTION_LIGHT_OFF],
+    [
+      { ...PRODUCTION, shortPraise: true },
+      affection,
+      PRODUCTION_SHORT_PRAISE_LIGHT_ON,
+    ],
+    [PRODUCTION_ALL, none, PRODUCTION_ALL_OFF],
+    [ON(PRODUCTION), none, PRODUCTION_ON_NOT_SWEET],
+    [ON(PRODUCTION_ALL), none, PRODUCTION_ALL_ON_NOT_SWEET],
+    [PRODUCTION, sweetScenario, SWEET_PRODUCTION_OFF],
+    [PRODUCTION_ALL, sweetScenario, SWEET_ALL_OFF],
+    [ON(PRODUCTION), sweetScenario, SWEET_PRODUCTION_ON],
+    [ON(PRODUCTION_ALL), sweetScenario, SWEET_ALL_ON],
+    [PRODUCTION, sweetOnlyScenario, SWEET_ONLY_PRODUCTION_OFF],
+    [PRODUCTION_ALL, sweetOnlyScenario, SWEET_ONLY_ALL_OFF],
+    [ON(PRODUCTION), sweetOnlyScenario, SWEET_ONLY_PRODUCTION_ON],
+    [ON(PRODUCTION_ALL), sweetOnlyScenario, SWEET_ONLY_ALL_ON],
+    [PRODUCTION, a2Scenario, A2_PRODUCTION_OFF],
+    [PRODUCTION_ALL, a2Scenario, A2_ALL_OFF],
+    [ON(PRODUCTION), a2Scenario, A2_PRODUCTION_ON],
+    [ON(PRODUCTION_ALL), a2Scenario, A2_ALL_ON],
+    [NO_IOU(ON(PRODUCTION)), sweetScenario, NOIOU_SWEET_PRODUCTION_ON],
+    [NO_IOU(PRODUCTION), sweetScenario, NOIOU_PRODUCTION_ON],
+    [
+      NO_IOU(ON(PRODUCTION)),
+      sweetOnlyScenario,
+      NOIOU_SWEET_ONLY_PRODUCTION_ON,
+    ],
+    [ALL_SWEET, tiredScenario, TIRED_ALL_OFF],
+    [NO_IOU(ALL_SWEET), tiredScenario, TIRED_ALL_ON],
+    [NO_IOU(PRODUCTION), none, NOT_TRIGGERED_PRODUCTION_ON],
+    [ALL_ELEVEN, none, NOT_TRIGGERED_ALL_ON],
+  ];
+  for (const [combo, scenario, digest] of locked) {
+    const withOff = { ...combo, ...off };
+    assertEquals(
+      await outcomeDigest(await run(withOff, scenario(withOff))),
+      digest,
+      JSON.stringify(combo),
+    );
+  }
+  assertEquals(
+    await outcomeDigest(
+      withoutKeys(await run({ ...TWO_STAGE_ONLY, ...off }), [
+        "completedAt",
+        "cardExplains",
+      ]),
+    ),
+    TWO_STAGE_C8F64DFE,
+  );
+  // 其他每一種開關組合（含甜話短回、不記帳不承諾）、五個情境：給 false 跟沒給一樣。
+  const flags = [
+    "typingStyle",
+    "shortPraise",
+    "tensionStyle",
+    "phraseTidy",
+    "sweetShort",
+    "noIou",
+  ] as const;
+  for (const base of [OFF, RELATION_ONLY, TWO_STAGE_ONLY, BOTH]) {
+    for (let mask = 0; mask < 1 << flags.length; mask++) {
+      const combo: Combo = {
+        ...base,
+        ...Object.fromEntries(
+          flags.map((f, i) => [f, (mask & (1 << i)) !== 0]),
+        ),
+      };
+      for (const scenario of ALL_SCENARIOS) {
+        assertEquals(
+          await outcomeDigest(
+            await run({ ...combo, ...off }, scenario({ ...combo, ...off })),
+          ),
+          await outcomeDigest(await run(combo, scenario(combo))),
+          JSON.stringify(combo),
+        );
+      }
+    }
+  }
+});
+
+Deno.test("寫卡瘦身開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用；舊的一步寫卡照舊看得到 B44），每個情境都一樣", async () => {
+  assertEquals(
+    await outcomeDigest(await run(WRITER_TRIM(OFF))),
+    MAIN_6EF72AFF_OFF,
+  );
+  assertEquals(
+    await outcomeDigest(await run(WRITER_TRIM(RELATION_ONLY))),
+    MAIN_6EF72AFF_RELATION,
+  );
+  assert((await run(WRITER_TRIM(OFF))).requests.write.user.includes("- B44（"));
+  for (
+    const combo of [
+      OFF,
+      RELATION_ONLY,
+      { ...RELATION_ONLY, typingStyle: true, sweetShort: true, noIou: true },
+    ]
+  ) {
+    for (const scenario of ALL_SCENARIOS) {
+      assertEquals(
+        await outcomeDigest(
+          await run(WRITER_TRIM(combo), scenario(WRITER_TRIM(combo))),
+        ),
+        await outcomeDigest(await run(combo, scenario(combo))),
+        JSON.stringify(combo),
+      );
+    }
+  }
+});
+
+Deno.test("寫卡瘦身開、原本的情境（標到 B44、B22），正式組合與正式 11 個開關全開：只差寫卡的系統提示詞那一句與使用者訊息的條目段（B44 那一行不見）；讀局面、說明、卡、扣費、trace 都不變；鎖住", async () => {
+  for (
+    const [combo, offDigest, onDigest] of [
+      [PRODUCTION, BOTH_TYPING_ON, WRITER_TRIM_PRODUCTION_ON],
+      [ALL_ELEVEN, NOT_TRIGGERED_ALL_ON, WRITER_TRIM_ALL_ON],
+    ] as const
+  ) {
+    const off = await run(combo);
+    const on = await run(WRITER_TRIM(combo));
+    assertEquals(await outcomeDigest(off), offDigest);
+    // 寫卡的系統提示詞：A5「讓她也投入」少一句（全開時帶張力改寫法也開，一樣只少這一句）。
+    assertEquals(
+      on.requests.write.system,
+      writeSystemPromptTwoStage(undefined, undefined, undefined, {
+        tensionStyle: (combo as Combo).tensionStyle === true,
+        writerTrim: true,
+      }),
+    );
+    // 寫卡的使用者訊息：條目段原本是 B44、B22，開了只剩 B22。
+    const section = (user: string) =>
+      user.split("\n\n").find((p) => p.startsWith("## 這一輪的情境做法\n"));
+    assertEquals(
+      section(off.requests.write.user),
+      `## 這一輪的情境做法\n${entryLine("B44")}\n${entryLine("B22")}`,
+    );
+    assertEquals(
+      section(on.requests.write.user),
+      `## 這一輪的情境做法\n${entryLine("B22")}`,
+    );
+    // 讀局面、說明、送出的卡、扣費、trace（條目照舊有 B44）都一樣。
+    assertEquals(on.requests.read, off.requests.read);
+    assertEquals(on.requests.explain, off.requests.explain);
+    const b44 = GUIDE_V3_ENTRIES.find((e) => e.id === "B44")!;
+    assert(
+      on.requests.explain.user.includes(`- ${b44.trigger}：${b44.writing}`),
+    );
+    assertEquals(cardsOf(on), cardsOf(off));
+    assertEquals(
+      (on as unknown as { charges: Rec[] }).charges,
+      (off as unknown as { charges: Rec[] }).charges,
+    );
+    assertEquals(traceOf(on), traceOf(off));
+    assertEquals(traceOf(on).entries, ["B44", "B22"]);
+    // 比雜湊之前先比結構：寫卡那兩處換回沒開的就是沒開的雜湊。
+    await assertWriterTrimOnly(on, off, 1, JSON.stringify(combo));
+    assertEquals(await outcomeDigest(on), onDigest);
+  }
+});
+
+Deno.test("寫卡瘦身開（兩段式開）：每一種開關組合、每個情境都只差寫卡那兩處——系統提示詞少那一句；原本的情境少 B44 那一行，沒標到 B43–B47 的情境使用者訊息一字不差", async () => {
+  const flags = [
+    "typingStyle",
+    "shortPraise",
+    "tensionStyle",
+    "phraseTidy",
+    "sweetShort",
+    "noIou",
+  ] as const;
+  for (const base of [TWO_STAGE_ONLY, BOTH]) {
+    for (let mask = 0; mask < 1 << flags.length; mask++) {
+      const combo: Combo = {
+        ...base,
+        ...Object.fromEntries(
+          flags.map((f, i) => [f, (mask & (1 << i)) !== 0]),
+        ),
+      };
+      for (const [i, scenario] of ALL_SCENARIOS.entries()) {
+        const off = await run(combo, scenario(combo));
+        const on = await run(WRITER_TRIM(combo), scenario(WRITER_TRIM(combo)));
+        await assertWriterTrimOnly(
+          on,
+          off,
+          i === 0 ? 1 : 0,
+          `${JSON.stringify(combo)}/${i}`,
+        );
+      }
+    }
+  }
 });

@@ -124,6 +124,18 @@ export function shouldUseGuideV3NoIou(args: {
   return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
 }
 
+/// 寫卡瘦身（Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」；Eric 2026-10-27「照預設」；見 rules.ts
+/// pickWriterEntries、two_stage_prompts.ts WRITER_TRIM_A5_EDITS）：開關 ANALYZE_GUIDE_V3_WRITER_TRIM，跟 ANALYZE_GUIDE_V3 一樣
+/// off／test／on，只在兩段式開著時才有作用（入口把關）。寫卡的使用者訊息不帶 B43–B47 的觸發與寫法、系統提示詞 A5「讓她也投入」
+/// 少一句；讀局面、排卡（B43–B46 不排帶張力、B46 不推進、B44／B45 第一張接住、B47 的提醒與三張固定排法）、說明步驟與 trace 照舊。
+/// 跟其他開關各自獨立；沒開跟今天一字不差。
+export function shouldUseGuideV3WriterTrim(args: {
+  readonly mode: GuideV3Mode;
+  readonly accountIsTest: boolean;
+}): boolean {
+  return args.mode === "on" || (args.mode === "test" && args.accountIsTest);
+}
+
 /// F04 不算費的上限：她最後一則之後他連續傳的，最多 5 則、合計 300 字（字數照
 /// billing.ts 的 trim 後長度）。超過、或整段對話都是他的，就照舊全部算費——
 /// 不然可以把大段內容標成「他傳的」放在最後，免費分析還繞過 4000 字上限。

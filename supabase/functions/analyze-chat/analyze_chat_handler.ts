@@ -98,6 +98,7 @@ import {
   shouldUseGuideV3TensionStyle,
   shouldUseGuideV3TwoStage,
   shouldUseGuideV3TypingStyle,
+  shouldUseGuideV3WriterTrim,
 } from "./guide_v3/routing.ts";
 import { scanSafetyKeywords } from "./guide_v3/safety.ts";
 import {
@@ -1897,6 +1898,13 @@ Return \`optimizedMessage\` in the structured JSON response.`,
         // 各自獨立；沒開就一字不變。
         noIou: twoStage && shouldUseGuideV3NoIou({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_NO_IOU")),
+          accountIsTest,
+        }),
+        // 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，off／test／on，每次請求讀；Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt
+        // 移除 他們對自然度會有影響」，Eric 2026-10-27「照預設」）：只在兩段式開時才有作用；寫卡不帶 B43–B47 的觸發與寫法、A5「讓她
+        // 也投入」少一句，讀局面、排卡、說明照舊。跟其他開關各自獨立；沒開就一字不變。
+        writerTrim: twoStage && shouldUseGuideV3WriterTrim({
+          mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_WRITER_TRIM")),
           accountIsTest,
         }),
         ...createGuideV3ModelCalls({

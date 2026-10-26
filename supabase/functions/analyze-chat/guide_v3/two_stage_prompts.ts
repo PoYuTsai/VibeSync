@@ -259,14 +259,53 @@ export const TENSION_STYLE_WRITER_SENTINELS: readonly string[] = [
   "不把自己擺得比較厲害",
 ];
 
+// ── 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Eric 2026-10-27「照預設」）──────────────────────────────────
+// Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」：B43–B47 從寫卡的使用者訊息拿掉（rules.ts
+// pickWriterEntries）；同一份規格也拿掉 A5「讓她也投入」那一行裡的一句（WRITER_TRIM_A5_SENTENCE），寫卡不再看到。前後照留：
+// 「是邀她參與，不是考她」與「小挑戰」那一句都在。說明書原文（guide_text.ts）與說明步驟（explain.ts）不改。開關開時在兩段式（與
+// 帶張力改寫法）的 A5 之上只改這一行；只拿掉字、沒有新加的字，所以不另加外洩哨兵。
+
+/// 寫卡瘦身拿掉的那一句（照抄說明書 A5 原文；原文改了 replaceOnce 就丟錯，測試會先失敗，不會悄悄沒拿掉）。
+export const WRITER_TRIM_A5_SENTENCE =
+  "她自己多說、解釋自己時一定要接住；她給了沒得到回應，下次就不給了。";
+
+export const WRITER_TRIM_A5_EDITS: readonly LineEdit[] = [
+  {
+    startsWith: "- 讓她也投入：",
+    edit: (l) => replaceOnce(l, WRITER_TRIM_A5_SENTENCE, ""),
+  },
+];
+
+/// 寫卡瘦身開著、標到 B47（她堅持去她指定的店；排卡是推進換地方、收、推進）時，中間那張收卡的任務字換成這一句（Eric
+/// 2026-10-27「照預設，跑」）：「這次先不約」「不出答應去那家的卡」原本只寫在 B47 的條目裡，寫卡看不到條目後，兩張推進卡還有
+/// prompts.ts PUSH_NOTE.換地方，收卡只剩「收」（收的寫法是「一句中性收尾，門留著」，可能寫成之後再去那家）。說法照
+/// PUSH_NOTE.換地方。沒開、沒標到 B47 時不出現。
+export const WRITER_TRIM_VENUE_CLOSE_TASK =
+  "收（她堅持要去她指定的店：這次先不約，不答應去那家，也不答應之後再去那家）";
+
+/// 上面那一句的外洩哨兵（排到時只比卡片；說明看不到寫卡的規格，不比）：給她的訊息不會用「不答應…」這樣講。
+/// PUSH_NOTE.換地方 也有這一段，抄進卡片一樣拿掉。
+export const WRITER_TRIM_VENUE_CLOSE_SENTINELS: readonly string[] = [
+  "不答應去那家，也不答應之後再去那家",
+];
+
 export function twoStageWriterSections(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
-  /// 帶張力改寫法開時，A5 在兩段式的改法之上再改帶張力那幾行（TENSION_STYLE_A5_EDITS）。
-  options: { readonly tensionStyle?: boolean } = {},
+  /// 帶張力改寫法開時，A5 在兩段式的改法之上再改帶張力那幾行（TENSION_STYLE_A5_EDITS）；寫卡瘦身開時，最後再拿掉
+  /// 「讓她也投入」那一句（WRITER_TRIM_A5_EDITS）。都沒開跟今天一字不差。
+  options: {
+    readonly tensionStyle?: boolean;
+    readonly writerTrim?: boolean;
+  } = {},
 ): { readonly A5: string; readonly A6: string } {
   const a5 = applyLineEdits(sections.A5, TWO_STAGE_A5_EDITS);
+  const tensioned = options.tensionStyle
+    ? applyLineEdits(a5, TENSION_STYLE_A5_EDITS)
+    : a5;
   return {
-    A5: options.tensionStyle ? applyLineEdits(a5, TENSION_STYLE_A5_EDITS) : a5,
+    A5: options.writerTrim
+      ? applyLineEdits(tensioned, WRITER_TRIM_A5_EDITS)
+      : tensioned,
     A6: renumber(applyLineEdits(sections.A6, TWO_STAGE_A6_EDITS)),
   };
 }
@@ -296,8 +335,12 @@ export function writeSystemPromptTwoStage(
   sections: Readonly<Record<GuideV3SectionId, string>> = GUIDE_V3_SECTIONS,
   safetyRules: string = WRITE_SAFETY_FLOOR,
   leakDirective: string = PROMPT_LEAK_DEFENSE_DIRECTIVE,
-  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）。
-  options: { readonly tensionStyle?: boolean } = {},
+  /// 帶張力改寫法開時，A5 的帶張力那幾行換成新的寫法（TENSION_STYLE_A5_EDITS）；寫卡瘦身開時，A5「讓她也投入」少一句
+  ///（WRITER_TRIM_A5_EDITS）。
+  options: {
+    readonly tensionStyle?: boolean;
+    readonly writerTrim?: boolean;
+  } = {},
 ): string {
   const writer = twoStageWriterSections(sections, options);
   return [
@@ -390,10 +433,16 @@ export function cardSpecLineTwoStage(
   spec: CardSpec,
   n: number,
   herLatest: readonly string[],
+  /// 寫卡瘦身開著、標到 B47 時：收卡的任務字換成 WRITER_TRIM_VENUE_CLOSE_TASK。沒給跟今天一樣。
+  options: { readonly venueClose?: boolean } = {},
 ): string {
   const parts = [
     `${n}. 任務：${
-      spec.note === "happy_share" ? HAPPY_SHARE_TASK : cardTaskText(spec)
+      spec.note === "happy_share"
+        ? HAPPY_SHARE_TASK
+        : options.venueClose === true && spec.task === "收" && !spec.push
+        ? WRITER_TRIM_VENUE_CLOSE_TASK
+        : cardTaskText(spec)
     }`,
     ...specAnswerParts(spec, herLatest),
     `${TWO_STAGE_METHOD_LABEL}：${cardMethodText(spec)}`,
@@ -521,15 +570,18 @@ export function writeUserPromptTwoStage(args: {
   readonly previousRound?: GuideV3PreviousRound;
   /// 出卡、收尾的計畫才有（plan.ts）；沒給就不放稱讚那段。
   readonly praise?: PraiseStyle;
+  /// 寫卡瘦身開著、標到 B47 時（stream_flow.ts）：收卡的任務字換成 WRITER_TRIM_VENUE_CLOSE_TASK。沒給跟今天一樣。
+  readonly venueClose?: boolean;
 }): string {
   const herLatest = latestHerMessages(args.turns);
-  const { praise, ...rest } = args;
+  const { praise, venueClose, ...rest } = args;
   return writeUserPrompt({
     ...rest,
     variant: {
       numberLatestHerTurn: true,
       entryWriting: twoStageEntryWriting,
-      specLine: (spec, n) => cardSpecLineTwoStage(spec, n, herLatest),
+      specLine: (spec, n) =>
+        cardSpecLineTwoStage(spec, n, herLatest, { venueClose }),
       beforeCards: praise ? [praiseSection(praise)] : [],
     },
   });
