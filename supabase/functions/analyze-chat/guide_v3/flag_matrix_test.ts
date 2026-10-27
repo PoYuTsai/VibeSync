@@ -1490,12 +1490,13 @@ Deno.test("不記帳不承諾開：判讀照抄 herTired 那一行就不給、�
 /// 正式 11 個開關全開：正式環境九個開關（PRODUCTION_ALL 那六個；v3、上一輪脈絡、對象記憶不在這個情境裡）再開甜話短回與不記帳
 /// 不承諾（都比這個先上線）；寫卡瘦身另外用 WRITER_TRIM 開。原本的情境在這組沒開寫卡瘦身時就是 NOT_TRIGGERED_ALL_ON。
 const ALL_ELEVEN = NO_IOU(ALL_SWEET);
-/// 原本的情境（標到 B44、B22），正式組合與正式 11 個開關全開再開寫卡瘦身的整份結果：鎖住。跟沒開只差寫卡的系統提示詞（A5「讓她也
-/// 投入」少一句）與寫卡使用者訊息的條目段（B44 那一行不見）；這兩處換回沒開的就是 f3aa55b8…、47f25612…（下面有比）。
+/// 原本的情境（標到 B44、B22），正式組合與正式 11 個開關全開再開寫卡瘦身的整份結果：鎖住。B44 留給寫卡（Bruce 2026-10-27 盲選：
+/// B44 舊版 4 比 1；Eric 同日「照預設」），所以跟沒開只差寫卡的系統提示詞（A5「讓她也投入」少一句），使用者訊息一字不差；把那一句
+/// 補回原本的位置就是 f3aa55b8…、47f25612…（下面有比）。
 const WRITER_TRIM_PRODUCTION_ON =
-  "915ced2dc2d6f4204020f540439f0dcb7d7ab19bec816c8ead477c63ba508a38";
+  "f8dabcf3662919210608556d57d764236bfb19f938d898e9cd989508b9b76c92";
 const WRITER_TRIM_ALL_ON =
-  "0335ba9340078e2c580c21feb6ec540109c6d0fb08d99fbe1c54628b470df1bb";
+  "781352fe2140a4684a5cc771b0b7f09c97ad49508a40beb52042459855669d42";
 
 const WRITER_TRIM = <C extends Combo>(combo: C) => ({
   ...combo,
@@ -1506,32 +1507,52 @@ const entryLine = (id: string) => {
   const e = GUIDE_V3_ENTRIES.find((x) => x.id === id)!;
   return `- ${e.id}（${e.trigger}）：${twoStageEntryWriting(e)}`;
 };
-/// 寫卡看不到的那幾條（B43–B47）在寫卡使用者訊息裡的樣子。
+/// 寫卡看不到的那幾條（B43、B45、B46、B47）在寫卡使用者訊息裡的樣子。
 const TRIMMED_ENTRY_LINES = WRITER_TRIM_ENTRY_IDS.map(entryLine);
+/// 原本的情境換成她最後問他喜歡什麼樣的女生、讀局面標到 B45、B22（句子全新）：B45 是寫卡看不到的那幾條之一，每一種開關組合都用它
+/// 確認開時寫卡只少 B45 那一行（原本的情境標的 B44 留給寫卡，那邊使用者訊息一字不差）。
+const B45_MESSAGES = FLAG_MATRIX_MESSAGES.map((m, i) =>
+  i === FLAG_MATRIX_MESSAGES.length - 1
+    ? { ...m, content: "那你喜歡什麼樣的女生" }
+    : m
+);
+const b45Scenario = (combo: Combo) => {
+  const read = JSON.parse(flagMatrixReadText(combo)) as Rec;
+  read.matchedEntries = ["B45", "B22"];
+  read.readForUser = "她在分享聚餐的開心，最後問你喜歡什麼樣的女生。";
+  if (Array.isArray(read.worthyLines)) {
+    read.worthyLines = (read.worthyLines as { line: number }[]).map((w) =>
+      w.line === 5 ? { ...w, label: "問他喜歡什麼樣的女生" } : w
+    );
+  }
+  return { messages: B45_MESSAGES, readText: JSON.stringify(read) };
+};
 const ALL_SCENARIOS = [
   () => ({}),
   sweetScenario,
   sweetOnlyScenario,
   a2Scenario,
   tiredScenario,
+  b45Scenario,
 ] as const;
-/// 開著（兩段式也開）跟沒開比，只差寫卡那兩處：系統提示詞只少 A5 那一句；使用者訊息只少 B43–B47 那幾行（removed 行，這裡的情境
-/// 都還有別的條目或本來就沒有條目，不會變成「（這一輪沒有）」）。比雜湊之前先比結構：把寫卡的請求換回沒開的，整份就跟沒開一模一樣
-///（key 的順序不變）。
+/// 開著（兩段式也開）跟沒開比，只差寫卡那兩處：系統提示詞只少 A5 那一句；使用者訊息只少 B43、B45、B46、B47 那幾行（removed 行；B44
+/// 那一行照留。這裡的情境都還有別的條目或本來就沒有條目，不會變成「（這一輪沒有）」）。比雜湊之前先比結構：把那一句補回原本的位置、
+/// 拿掉的那幾行補回去，整份就跟沒開一模一樣（key 的順序不變）。
 const assertWriterTrimOnly = async (
   on: Outcome,
   off: Outcome,
   removed: number,
   label: string,
 ) => {
+  const offSystem = off.requests.write.system;
+  const onSystem = on.requests.write.system;
+  const at = offSystem.indexOf(WRITER_TRIM_A5_SENTENCE);
+  assert(at > 0, label);
+  assertEquals(offSystem.split(WRITER_TRIM_A5_SENTENCE).length - 1, 1, label);
   assertEquals(
-    off.requests.write.system.split(WRITER_TRIM_A5_SENTENCE).length - 1,
-    1,
-    label,
-  );
-  assertEquals(
-    on.requests.write.system,
-    off.requests.write.system.replace(WRITER_TRIM_A5_SENTENCE, ""),
+    onSystem,
+    offSystem.slice(0, at) +
+      offSystem.slice(at + WRITER_TRIM_A5_SENTENCE.length),
     label,
   );
   const offLines = off.requests.write.user.split("\n");
@@ -1548,7 +1569,15 @@ const assertWriterTrimOnly = async (
   assertEquals(
     await outcomeDigest({
       ...on,
-      requests: { ...on.requests, write: off.requests.write },
+      requests: {
+        ...on.requests,
+        write: {
+          ...on.requests.write,
+          system: onSystem.slice(0, at) + WRITER_TRIM_A5_SENTENCE +
+            onSystem.slice(at),
+          user: off.requests.write.user,
+        },
+      },
     }),
     await outcomeDigest(off),
     label,
@@ -1616,7 +1645,7 @@ Deno.test("寫卡瘦身明確關著（false）：每種組合、每個情境的�
     ),
     TWO_STAGE_C8F64DFE,
   );
-  // 其他每一種開關組合（含甜話短回、不記帳不承諾）、五個情境：給 false 跟沒給一樣。
+  // 其他每一種開關組合（含甜話短回、不記帳不承諾）、六個情境（含標到 B45 的那個）：給 false 跟沒給一樣。
   const flags = [
     "typingStyle",
     "shortPraise",
@@ -1646,7 +1675,7 @@ Deno.test("寫卡瘦身明確關著（false）：每種組合、每個情境的�
   }
 });
 
-Deno.test("寫卡瘦身開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用；舊的一步寫卡照舊看得到 B44），每個情境都一樣", async () => {
+Deno.test("寫卡瘦身開、兩段式沒開：整份結果跟沒開一模一樣（只在兩段式開時有作用；舊的一步寫卡照舊看得到 B44、B45），每個情境都一樣", async () => {
   assertEquals(
     await outcomeDigest(await run(WRITER_TRIM(OFF))),
     MAIN_6EF72AFF_OFF,
@@ -1656,6 +1685,10 @@ Deno.test("寫卡瘦身開、兩段式沒開：整份結果跟沒開一模一樣
     MAIN_6EF72AFF_RELATION,
   );
   assert((await run(WRITER_TRIM(OFF))).requests.write.user.includes("- B44（"));
+  assert(
+    (await run(WRITER_TRIM(OFF), b45Scenario(WRITER_TRIM(OFF)))).requests.write
+      .user.includes("- B45（"),
+  );
   for (
     const combo of [
       OFF,
@@ -1675,7 +1708,7 @@ Deno.test("寫卡瘦身開、兩段式沒開：整份結果跟沒開一模一樣
   }
 });
 
-Deno.test("寫卡瘦身開、原本的情境（標到 B44、B22），正式組合與正式 11 個開關全開：只差寫卡的系統提示詞那一句與使用者訊息的條目段（B44 那一行不見）；讀局面、說明、卡、扣費、trace 都不變；鎖住", async () => {
+Deno.test("寫卡瘦身開、原本的情境（標到 B44、B22），正式組合與正式 11 個開關全開：B44 留給寫卡，只差寫卡的系統提示詞那一句、使用者訊息一字不差；讀局面、說明、卡、扣費、trace 都不變；把那一句補回去就是沒開的雜湊；鎖住", async () => {
   for (
     const [combo, offDigest, onDigest] of [
       [PRODUCTION, BOTH_TYPING_ON, WRITER_TRIM_PRODUCTION_ON],
@@ -1693,18 +1726,15 @@ Deno.test("寫卡瘦身開、原本的情境（標到 B44、B22），正式組�
         writerTrim: true,
       }),
     );
-    // 寫卡的使用者訊息：條目段原本是 B44、B22，開了只剩 B22。
+    // 寫卡的使用者訊息一字不差：條目段照舊是 B44、B22（B44 留給寫卡）。
     const section = (user: string) =>
       user.split("\n\n").find((p) => p.startsWith("## 這一輪的情境做法\n"));
     assertEquals(
-      section(off.requests.write.user),
+      section(on.requests.write.user),
       `## 這一輪的情境做法\n${entryLine("B44")}\n${entryLine("B22")}`,
     );
-    assertEquals(
-      section(on.requests.write.user),
-      `## 這一輪的情境做法\n${entryLine("B22")}`,
-    );
-    // 讀局面、說明、送出的卡、扣費、trace（條目照舊有 B44）都一樣。
+    assertEquals(on.requests.write.user, off.requests.write.user);
+    // 讀局面、說明、送出的卡、扣費、trace（條目 B44、B22）都一樣。
     assertEquals(on.requests.read, off.requests.read);
     assertEquals(on.requests.explain, off.requests.explain);
     const b44 = GUIDE_V3_ENTRIES.find((e) => e.id === "B44")!;
@@ -1718,13 +1748,30 @@ Deno.test("寫卡瘦身開、原本的情境（標到 B44、B22），正式組�
     );
     assertEquals(traceOf(on), traceOf(off));
     assertEquals(traceOf(on).entries, ["B44", "B22"]);
-    // 比雜湊之前先比結構：寫卡那兩處換回沒開的就是沒開的雜湊。
-    await assertWriterTrimOnly(on, off, 1, JSON.stringify(combo));
+    // 比雜湊之前先比結構：把那一句補回原本的位置，就是沒開的雜湊（f3aa55b8…、47f25612…）。
+    const at = off.requests.write.system.indexOf(WRITER_TRIM_A5_SENTENCE);
+    assert(at > 0);
+    const system = on.requests.write.system;
+    assertEquals(
+      await outcomeDigest({
+        ...on,
+        requests: {
+          ...on.requests,
+          write: {
+            ...on.requests.write,
+            system: system.slice(0, at) + WRITER_TRIM_A5_SENTENCE +
+              system.slice(at),
+          },
+        },
+      }),
+      offDigest,
+    );
+    await assertWriterTrimOnly(on, off, 0, JSON.stringify(combo));
     assertEquals(await outcomeDigest(on), onDigest);
   }
 });
 
-Deno.test("寫卡瘦身開（兩段式開）：每一種開關組合、每個情境都只差寫卡那兩處——系統提示詞少那一句；原本的情境少 B44 那一行，沒標到 B43–B47 的情境使用者訊息一字不差", async () => {
+Deno.test("寫卡瘦身開（兩段式開）：每一種開關組合、每個情境都只差寫卡那兩處——系統提示詞少那一句；標到 B45 的情境少 B45 那一行；原本的情境（B44、B22）與沒標到這幾條的情境，使用者訊息一字不差（B44 留給寫卡）", async () => {
   const flags = [
     "typingStyle",
     "shortPraise",
@@ -1742,14 +1789,23 @@ Deno.test("寫卡瘦身開（兩段式開）：每一種開關組合、每個情
         ),
       };
       for (const [i, scenario] of ALL_SCENARIOS.entries()) {
+        const label = `${JSON.stringify(combo)}/${i}`;
         const off = await run(combo, scenario(combo));
         const on = await run(WRITER_TRIM(combo), scenario(WRITER_TRIM(combo)));
-        await assertWriterTrimOnly(
-          on,
-          off,
-          i === 0 ? 1 : 0,
-          `${JSON.stringify(combo)}/${i}`,
-        );
+        const isB45 = scenario === b45Scenario;
+        await assertWriterTrimOnly(on, off, isB45 ? 1 : 0, label);
+        if (i === 0) {
+          assert(on.requests.write.user.includes(entryLine("B44")), label);
+        }
+        if (isB45) {
+          assert(off.requests.write.user.includes(entryLine("B45")), label);
+          assertEquals(
+            on.requests.write.user.includes("- B45（"),
+            false,
+            label,
+          );
+          assert(on.requests.write.user.includes(entryLine("B22")), label);
+        }
       }
     }
   }

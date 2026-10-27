@@ -126,9 +126,10 @@ export function shouldUseGuideV3NoIou(args: {
 
 /// 寫卡瘦身（Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」；Eric 2026-10-27「照預設」；見 rules.ts
 /// pickWriterEntries、two_stage_prompts.ts WRITER_TRIM_A5_EDITS）：開關 ANALYZE_GUIDE_V3_WRITER_TRIM，跟 ANALYZE_GUIDE_V3 一樣
-/// off／test／on，只在兩段式開著時才有作用（入口把關）。寫卡的使用者訊息不帶 B43–B47 的觸發與寫法、系統提示詞 A5「讓她也投入」
-/// 少一句；讀局面、排卡（B43–B46 不排帶張力、B46 不推進、B44／B45 第一張接住、B47 的提醒與三張固定排法）、說明步驟與 trace 照舊。
-/// 跟其他開關各自獨立；沒開跟今天一字不差。
+/// off／test／on，只在兩段式開著時才有作用（入口把關）。寫卡的使用者訊息不帶 B43、B45、B46、B47 的觸發與寫法、系統提示詞 A5
+/// 「讓她也投入」少一句；B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。讀局面、排卡（B43–B46 不排
+/// 帶張力、B46 不推進、B44／B45 第一張接住、B47 的提醒與三張固定排法）、說明步驟與 trace 照舊。跟其他開關各自獨立；沒開跟今天
+/// 一字不差。
 export function shouldUseGuideV3WriterTrim(args: {
   readonly mode: GuideV3Mode;
   readonly accountIsTest: boolean;

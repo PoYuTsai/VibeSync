@@ -1,8 +1,9 @@
 // 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」；
 // Eric 2026-10-27「照預設」）從正式入口走（guide_v3/v3_stream_harness.ts：假 Supabase、假模型）：env 每次請求設定。開著時寫卡的
-// 使用者訊息不帶 B43–B47 的觸發與寫法、系統提示詞 A5「讓她也投入」少一句；讀局面與說明的請求、卡片的任務一字不差；B47 照樣給
-// 酒托提醒與三張固定排法，換地方的卡片規格還在，中間那張收卡補固定說明（不答應去那家）。沒設、off、test 但不是測試帳號、打錯、兩段式沒開時一字不變。對話全部新寫，事件
-// 照種類找。
+// 使用者訊息不帶 B43、B45、B46、B47 的觸發與寫法、系統提示詞 A5「讓她也投入」少一句；B44 留給寫卡（Bruce 2026-10-27 盲選：B44
+// 舊版 4 比 1；Eric 同日「照預設」），只標到 B44 時寫卡的使用者訊息一字不差。讀局面與說明的請求、卡片的任務一字不差；B47 照樣給
+// 酒托提醒與三張固定排法，換地方的卡片規格還在，中間那張收卡補固定說明（不答應去那家）。沒設、off、test 但不是測試帳號、打錯、
+// 兩段式沒開時一字不變。對話全部新寫，事件照種類找。
 //
 // 寫卡的 streaming_fallback.ts 一載入就存下 fetch：轉接器要放第一個 import，入口模組也要在 env 裝好
 // 之後才動態載入（STREAM_ANALYZE_ENABLED 是載入時讀的常數）。
@@ -45,16 +46,16 @@ for (const [k, v] of savedEnv) {
   else Deno.env.set(k!, v);
 }
 
-/// 還沒交往：她說自己一個人去爬山，他說很敢，她問這樣有沒有加分、也問他下次該挑哪座（句子全新）。他傳過兩則。
+/// 還沒交往：他說剛看完一部老電影，她說自己也在補老片，接著問他喜歡什麼樣的女生、也問他她適不適合留短髮（句子全新）。他傳過兩則。
 const MESSAGES = [
-  { isFromMe: true, content: "連假去哪玩" },
-  { isFromMe: false, content: "自己背包去爬雪山" },
-  { isFromMe: true, content: "一個人上雪山 很敢欸" },
-  { isFromMe: false, content: "這樣有加分嗎😏" },
-  { isFromMe: false, content: "你覺得我下次該挑哪座" },
+  { isFromMe: true, content: "剛看完一部老電影 後勁好強" },
+  { isFromMe: false, content: "我最近也在補老片欸" },
+  { isFromMe: true, content: "那下次換你推一部" },
+  { isFromMe: false, content: "先說 你喜歡什麼樣的女生😏" },
+  { isFromMe: false, content: "你覺得我適合留短髮嗎" },
 ];
 
-/// 讀局面：標到 B44（她討他的看法）與 B21（她問他意見）。
+/// 讀局面：標到 B45（她問他喜歡怎樣的人，寫卡看不到）與 B21（她問他意見）。
 const READ = {
   light: "green",
   herMove: "問他意見",
@@ -76,12 +77,33 @@ const READ = {
   replyWillingness: "high",
   worthyBallCount: 2,
   herTurnsPerfunctory: [],
-  matchedEntries: ["B44", "B21"],
-  readForUser: "她一個人去爬雪山，問你這樣有沒有加分，也想聽你推薦下一座山。",
+  matchedEntries: ["B45", "B21"],
+  readForUser:
+    "她也在補老片，問你喜歡什麼樣的女生，也想聽你覺得她適不適合留短髮。",
   waitFor: "",
   establishedCouple: false,
   herAffection: false,
   herHappyShare: false,
+  worthyLines: [
+    { line: 1, label: "問他喜歡什麼樣的女生", kind: "問他" },
+    { line: 2, label: "問適不適合短髮", kind: "問他" },
+  ],
+};
+
+/// 還沒交往：她說自己一個人去爬山，他說很敢，她問這樣有沒有加分、也問他下次該挑哪座（句子全新）。他傳過兩則。
+const B44_MESSAGES = [
+  { isFromMe: true, content: "連假去哪玩" },
+  { isFromMe: false, content: "自己背包去爬雪山" },
+  { isFromMe: true, content: "一個人上雪山 很敢欸" },
+  { isFromMe: false, content: "這樣有加分嗎😏" },
+  { isFromMe: false, content: "你覺得我下次該挑哪座" },
+];
+
+/// 讀局面：標到 B44（她討他的看法，留給寫卡）與 B21（她問他意見）。
+const B44_READ = {
+  ...READ,
+  matchedEntries: ["B44", "B21"],
+  readForUser: "她一個人去爬雪山，問你這樣有沒有加分，也想聽你推薦下一座山。",
   worthyLines: [
     { line: 1, label: "問有沒有加分", kind: "問他" },
     { line: 2, label: "問下次挑哪座", kind: "問他" },
@@ -197,13 +219,13 @@ const planned = (out: V3HarnessOutcome) =>
 const judgmentOf = (out: V3HarnessOutcome) =>
   out.events.find((e) => e.type === "analysis.read")!.judgment;
 const entryOf = (id: string) => GUIDE_V3_ENTRIES.find((e) => e.id === id)!;
-/// 寫卡使用者訊息裡那一條的樣子（「編號（觸發）：寫法」；B21、B44、B47 的寫法沒有要改名的字）。
+/// 寫卡使用者訊息裡那一條的樣子（「編號（觸發）：寫法」；B21、B44、B45、B47 的寫法沒有要改名的字）。
 const entryLine = (id: string) =>
   `- ${id}（${entryOf(id).trigger}）：${entryOf(id).writing}`;
 const sameBody = (a: V3HarnessOutcome, b: V3HarnessOutcome, stage: string) =>
   JSON.stringify(bodyOf(a, stage)) === JSON.stringify(bodyOf(b, stage));
 
-/// 開著的寫卡請求跟沒開比：系統提示詞只少 A5 那一句；使用者訊息只少 B44 那一行（B21 照樣在）。
+/// 開著的寫卡請求跟沒開比：系統提示詞只少 A5 那一句；使用者訊息只少 B45 那一行（B21 照樣在）。
 function assertTrimmedWrite(on: V3HarnessOutcome, off: V3HarnessOutcome) {
   const onWrite = bodyOf(on, "write")!;
   const offWrite = bodyOf(off, "write")!;
@@ -212,29 +234,29 @@ function assertTrimmedWrite(on: V3HarnessOutcome, off: V3HarnessOutcome) {
     systemOf(onWrite),
     systemOf(offWrite).replace(WRITER_TRIM_A5_SENTENCE, ""),
   );
-  const b44 = entryOf("B44");
+  const b45 = entryOf("B45");
   assert(
-    userText(offWrite).includes(`${entryLine("B44")}\n${entryLine("B21")}`),
+    userText(offWrite).includes(`${entryLine("B45")}\n${entryLine("B21")}`),
   );
-  assertEquals(userText(onWrite).includes(b44.trigger), false);
-  assertEquals(userText(onWrite).includes(b44.writing), false);
+  assertEquals(userText(onWrite).includes(b45.trigger), false);
+  assertEquals(userText(onWrite).includes(b45.writing), false);
   assert(
     userText(onWrite).includes(`## 這一輪的情境做法\n${entryLine("B21")}`),
   );
   assertEquals(
     userText(onWrite),
-    userText(offWrite).replace(`${entryLine("B44")}\n`, ""),
+    userText(offWrite).replace(`${entryLine("B45")}\n`, ""),
   );
 }
 
-Deno.test("從正式入口：ANALYZE_GUIDE_V3_WRITER_TRIM=on：讀局面與說明的請求一字不差、卡片任務一樣；寫卡的系統提示詞只少那一句、使用者訊息沒有 B44 的觸發與寫法（B21 照樣在）；trace 的條目照舊", async () => {
+Deno.test("從正式入口：ANALYZE_GUIDE_V3_WRITER_TRIM=on：讀局面與說明的請求一字不差、卡片任務一樣；寫卡的系統提示詞只少那一句、使用者訊息沒有 B45 的觸發與寫法（B21 照樣在）；trace 的條目照舊", async () => {
   const on = await analyze({ env: { ANALYZE_GUIDE_V3_WRITER_TRIM: "on" } });
   const off = await analyze({ env: {} });
   assertEquals(on.status, 200);
   assertEquals(on.events.some((e) => e.type === "analysis.error"), false);
   assert(sameBody(on, off, "read"));
   assert(sameBody(on, off, "explain"));
-  // 卡片任務一樣：她直接問他，第一張接住；B44 不排帶張力。
+  // 卡片任務一樣：她直接問他，第一張接住；B45 不排帶張力。
   assertEquals(planned(on), planned(off));
   assertEquals(planned(on), ["accept", "push", "accept", "accept", "accept"]);
   assertEquals(
@@ -243,15 +265,47 @@ Deno.test("從正式入口：ANALYZE_GUIDE_V3_WRITER_TRIM=on：讀局面與說�
   );
   assertEquals(traceOf(on).specs, traceOf(off).specs);
   assertTrimmedWrite(on, off);
-  // 說明與 trace 照舊用原本那一份條目（有 B44）。
-  assertEquals(traceOf(on).entries, ["B44", "B21"]);
-  assert(userText(bodyOf(on, "explain")!).includes(entryOf("B44").writing));
+  // 說明與 trace 照舊用原本那一份條目（有 B45）。
+  assertEquals(traceOf(on).entries, ["B45", "B21"]);
+  assert(userText(bodyOf(on, "explain")!).includes(entryOf("B45").writing));
   // 送出的卡、判讀一樣。
   assertEquals(
     on.events.filter((e) => e.type === "analysis.card"),
     off.events.filter((e) => e.type === "analysis.card"),
   );
   assertEquals(judgmentOf(on), judgmentOf(off));
+});
+
+Deno.test("從正式入口：寫卡瘦身開、B44（她討他的看法）：寫卡照樣看得到 B44（Bruce 2026-10-27 盲選留下）——使用者訊息跟沒開一字不差、系統提示詞只少 A5 那一句；讀局面與說明的請求、卡片任務一樣", async () => {
+  const run = (env: Record<string, string>) =>
+    analyze({ env, messages: B44_MESSAGES, read: B44_READ });
+  const on = await run({ ANALYZE_GUIDE_V3_WRITER_TRIM: "on" });
+  const off = await run({});
+  assertEquals(on.status, 200);
+  assertEquals(on.events.some((e) => e.type === "analysis.error"), false);
+  assert(sameBody(on, off, "read"));
+  assert(sameBody(on, off, "explain"));
+  // 她直接問他，第一張接住；B44 不排帶張力（開不開都一樣）。
+  assertEquals(planned(on), ["accept", "push", "accept", "accept", "accept"]);
+  assertEquals(planned(on), planned(off));
+  assertEquals(traceOf(on).entries, ["B44", "B21"]);
+  const onWrite = bodyOf(on, "write")!;
+  const offWrite = bodyOf(off, "write")!;
+  assert(
+    userText(onWrite).includes(
+      `## 這一輪的情境做法\n${entryLine("B44")}\n${entryLine("B21")}`,
+    ),
+  );
+  assertEquals(userText(onWrite), userText(offWrite));
+  assertEquals(systemOf(offWrite).split(WRITER_TRIM_A5_SENTENCE).length - 1, 1);
+  assertEquals(
+    systemOf(onWrite),
+    systemOf(offWrite).replace(WRITER_TRIM_A5_SENTENCE, ""),
+  );
+  assertEquals(
+    on.events.filter((e) => e.type === "analysis.card"),
+    off.events.filter((e) => e.type === "analysis.card"),
+  );
 });
 
 Deno.test("從正式入口：寫卡瘦身沒設、off、test 但不是測試帳號、打錯（true）：每一個請求都跟沒設一字不差；test 加測試帳號就開", async () => {
@@ -263,7 +317,7 @@ Deno.test("從正式入口：寫卡瘦身沒設、off、test 但不是測試帳�
       assert(sameBody(out, unset, stage), `${flag}/${stage}`);
     }
     assert(systemOf(bodyOf(out, "write")!).includes(WRITER_TRIM_A5_SENTENCE));
-    assert(userText(bodyOf(out, "write")!).includes(entryLine("B44")));
+    assert(userText(bodyOf(out, "write")!).includes(entryLine("B45")));
   }
   const testAccount = await analyze({
     env: { ANALYZE_GUIDE_V3_WRITER_TRIM: "test" },
@@ -287,8 +341,8 @@ Deno.test("從正式入口：寫卡瘦身開、兩段式沒開：不作用（只
     assert(sameBody(on, off, stage), stage);
   }
   assertEquals(bodyOf(on, "explain"), undefined);
-  // 舊的一步寫卡照舊看得到 B44。
-  assert(userText(bodyOf(on, "write")!).includes(entryOf("B44").writing));
+  // 舊的一步寫卡照舊看得到 B45。
+  assert(userText(bodyOf(on, "write")!).includes(entryOf("B45").writing));
   assertEquals(traceOf(on).entries, traceOf(off).entries);
 });
 

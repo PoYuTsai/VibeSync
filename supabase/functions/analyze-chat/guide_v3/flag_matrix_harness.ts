@@ -25,8 +25,9 @@ export interface FlagCombo {
   readonly sweetShort?: boolean;
   /// 不記帳不承諾（ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22 盲選回覆）；沒給當關。
   readonly noIou?: boolean;
-  /// 寫卡瘦身（ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26；Eric 2026-10-27「照預設」）；沒給當關。原本的情境標到 B44，開了
-  /// 寫卡看不到那一條。
+  /// 寫卡瘦身（ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26；Eric 2026-10-27「照預設」）；沒給當關。原本的情境標到 B44、B22，
+  /// 開了寫卡兩條都照樣看得到：B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」），只差寫卡系統提示詞 A5
+  /// 那一句。
   readonly writerTrim?: boolean;
 }
 

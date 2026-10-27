@@ -260,10 +260,11 @@ export const TENSION_STYLE_WRITER_SENTINELS: readonly string[] = [
 ];
 
 // ── 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Eric 2026-10-27「照預設」）──────────────────────────────────
-// Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」：B43–B47 從寫卡的使用者訊息拿掉（rules.ts
-// pickWriterEntries）；同一份規格也拿掉 A5「讓她也投入」那一行裡的一句（WRITER_TRIM_A5_SENTENCE），寫卡不再看到。前後照留：
-// 「是邀她參與，不是考她」與「小挑戰」那一句都在。說明書原文（guide_text.ts）與說明步驟（explain.ts）不改。開關開時在兩段式（與
-// 帶張力改寫法）的 A5 之上只改這一行；只拿掉字、沒有新加的字，所以不另加外洩哨兵。
+// Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」：B43、B45、B46、B47 從寫卡的使用者訊息拿掉（rules.ts
+// pickWriterEntries）；B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。同一份規格也拿掉 A5「讓她也
+// 投入」那一行裡的一句（WRITER_TRIM_A5_SENTENCE），寫卡不再看到。前後照留：「是邀她參與，不是考她」與「小挑戰」那一句都在。說明書
+// 原文（guide_text.ts）與說明步驟（explain.ts）不改。開關開時在兩段式（與帶張力改寫法）的 A5 之上只改這一行；這一行只拿掉字、沒有
+// 新加的字，所以不另加外洩哨兵（B47 收卡的固定說明另有自己的哨兵，見下面 WRITER_TRIM_VENUE_CLOSE_SENTINELS）。
 
 /// 寫卡瘦身拿掉的那一句（照抄說明書 A5 原文；原文改了 replaceOnce 就丟錯，測試會先失敗，不會悄悄沒拿掉）。
 export const WRITER_TRIM_A5_SENTENCE =

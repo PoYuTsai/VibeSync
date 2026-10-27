@@ -1901,8 +1901,9 @@ Return \`optimizedMessage\` in the structured JSON response.`,
           accountIsTest,
         }),
         // 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，off／test／on，每次請求讀；Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt
-        // 移除 他們對自然度會有影響」，Eric 2026-10-27「照預設」）：只在兩段式開時才有作用；寫卡不帶 B43–B47 的觸發與寫法、A5「讓她
-        // 也投入」少一句，讀局面、排卡、說明照舊。跟其他開關各自獨立；沒開就一字不變。
+        // 移除 他們對自然度會有影響」，Eric 2026-10-27「照預設」）：只在兩段式開時才有作用；寫卡不帶 B43、B45、B46、B47 的觸發與寫法、
+        // A5「讓她也投入」少一句，讀局面、排卡、說明照舊。B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。
+        // 跟其他開關各自獨立；沒開就一字不變。
         writerTrim: twoStage && shouldUseGuideV3WriterTrim({
           mode: guideV3Mode(Deno.env.get("ANALYZE_GUIDE_V3_WRITER_TRIM")),
           accountIsTest,

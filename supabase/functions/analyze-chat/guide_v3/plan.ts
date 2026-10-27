@@ -56,7 +56,8 @@ export interface GuideV3Plan {
   readonly specs: readonly CardSpec[];
   readonly entries: readonly GuideV3Entry[];
   /// 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Eric 2026-10-27「照預設」）開著、出卡或收尾才有：只給寫卡用的條目（排除
-  /// B43–B47，rules.ts pickWriterEntries）。說明步驟與 trace 照舊用 entries；沒開時沒有這個欄位。
+  /// B43、B45、B46、B47，rules.ts pickWriterEntries）。B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。
+  /// 說明步驟與 trace 照舊用 entries；沒開時沒有這個欄位。
   readonly writerEntries?: readonly GuideV3Entry[];
   /// care 才有。
   readonly careKind?: GuideV3CareKind;
@@ -165,7 +166,8 @@ export function planTurn(
   /// 不記帳不承諾（開關 ANALYZE_GUIDE_V3_NO_IOU，Bruce 2026-10-22「不要」）：已經在交往、她撒嬌或喊累時不排推進（種子）
   ///（rules.ts withoutCoupleSeed）；只在有兩段式的讀局面欄位時有作用。
   /// 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26；Eric 2026-10-27「照預設」）：出卡、收尾的計畫多一欄
-  /// writerEntries（寫卡看不到 B43–B47）；決定、排卡、判讀與 entries 都不變。只在兩段式開時才會給（stream_flow.ts 把關）。
+  /// writerEntries（寫卡看不到 B43、B45、B46、B47）；B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。
+  /// 決定、排卡、判讀與 entries 都不變。只在兩段式開時才會給（stream_flow.ts 把關）。
   options: {
     readonly lightShortPraise?: boolean;
     readonly sweetShort?: boolean;

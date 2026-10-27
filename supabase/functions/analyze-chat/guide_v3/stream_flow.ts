@@ -277,9 +277,10 @@ export interface GuideV3StreamDeps {
   /// 推進（種子）。寫卡的提示詞與卡片的哨兵不變。跟 sweetShort 各自獨立。沒給或 false：一字不變。
   noIou?: boolean;
   /// 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，handler 把關；Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度
-  /// 會有影響」，Eric 2026-10-27「照預設」）：只在 twoStage 開時有作用。寫卡的使用者訊息不帶 B43–B47 的觸發與寫法（plan.ts
-  /// writerEntries）、系統提示詞 A5「讓她也投入」少一句。讀局面、排卡、說明步驟、trace 與卡片的哨兵不變（只拿掉字、沒有新加的
-  /// 字）。跟其他開關各自獨立。沒給或 false：一字不變。
+  /// 會有影響」，Eric 2026-10-27「照預設」）：只在 twoStage 開時有作用。寫卡的使用者訊息不帶 B43、B45、B46、B47 的觸發與寫法（plan.ts
+  /// writerEntries）、系統提示詞 A5「讓她也投入」少一句；B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。
+  /// 標到 B47 時收卡的任務字換成固定說明、卡片多比那一句的哨兵（writerTrimVenueClose），其他時候卡片的哨兵不變。讀局面、排卡、
+  /// 說明步驟與 trace 不變。跟其他開關各自獨立。沒給或 false：一字不變。
   writerTrim?: boolean;
   /// 兩段式實驗的說明步驟（卡都送完才打一次）；twoStage 開但沒給就不說明。
   callExplain?(
@@ -597,8 +598,9 @@ class GuideV3Flow {
       this.shortPraiseOn = twoStage && this.deps.shortPraise === true;
       // 帶張力改寫法（Bruce 2026-10-20「改」）：排卡不變，寫卡與說明的帶張力寫法換新的；沒開照舊。
       this.tensionStyleOn = twoStage && this.deps.tensionStyle === true;
-      // 寫卡瘦身（Bruce 2026-10-26；Eric 2026-10-27「照預設」）：讀局面與排卡不變，計畫多一份寫卡用的條目（排除 B43–B47），寫卡的
-      // 系統提示詞 A5 少一句；說明與 trace 照舊用原本那一份。沒開照舊。
+      // 寫卡瘦身（Bruce 2026-10-26；Eric 2026-10-27「照預設」）：讀局面與排卡不變，計畫多一份寫卡用的條目（排除 B43、B45、B46、
+      // B47；B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）），寫卡的系統提示詞 A5 少一句；說明與 trace
+      // 照舊用原本那一份。沒開照舊。
       this.writerTrimOn = twoStage && this.deps.writerTrim === true;
       const plan = vetPlanText(
         planTurn(
@@ -1314,8 +1316,8 @@ class GuideV3Flow {
       const userArgs = {
         turns,
         tags,
-        // 寫卡瘦身開著時寫卡看的是排除 B43–B47 的那一份（plan.ts writerEntries）；沒開沒有這一欄，照舊用 entries。說明步驟與
-        // trace 一律用 entries。
+        // 寫卡瘦身開著時寫卡看的是排除 B43、B45、B46、B47 的那一份（plan.ts writerEntries；B44 留給寫卡（Bruce 2026-10-27 盲選：
+        // B44 舊版 4 比 1；Eric 同日「照預設」））；沒開沒有這一欄，照舊用 entries。說明步驟與 trace 一律用 entries。
         entries: plan.writerEntries ?? plan.entries,
         cards: deliverable,
         background: this.deps.background,

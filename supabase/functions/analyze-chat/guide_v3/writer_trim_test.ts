@@ -1,8 +1,9 @@
 // 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」；
-// Eric 2026-10-27「照預設」）的純函式：寫卡拿到的條目先排除 B43–B47 再挑（rules.ts pickWriterEntries、plan.ts writerEntries），
-// 說明步驟與 trace 用的 entries 不變；B43–B47 的程式保護（B43–B46 不排帶張力、B46 不推進、B44／B45 第一張接住、B47 的酒托提醒與
-// 三張固定排法）開不開都一樣；寫卡的系統提示詞 A5「讓她也投入」少一句（two_stage_prompts.ts WRITER_TRIM_A5_EDITS），說明書原文
-// 那一句改了就丟錯。沒開時一律跟今天一樣。對話全部新寫。
+// Eric 2026-10-27「照預設」）的純函式：寫卡拿到的條目先排除 B43、B45、B46、B47 再挑（rules.ts pickWriterEntries、plan.ts
+// writerEntries）；B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」），只標到 B44 時寫卡的使用者訊息跟沒開
+// 一字不差。說明步驟與 trace 用的 entries 不變；B43–B47 的程式保護（B43–B46 不排帶張力、B46 不推進、B44／B45 第一張接住、B47 的
+// 酒托提醒與三張固定排法）開不開都一樣；標到 B47 時收卡的任務字換成固定說明；寫卡的系統提示詞 A5「讓她也投入」少一句
+//（two_stage_prompts.ts WRITER_TRIM_A5_EDITS），說明書原文那一句改了就丟錯。沒開時一律跟今天一樣。對話全部新寫。
 import {
   assert,
   assertEquals,
@@ -137,8 +138,8 @@ const SENTENCE = WRITER_TRIM_A5_SENTENCE;
 
 // ── 寫卡拿到的條目 ─────────────────────────────────────────────────────────
 
-Deno.test("pickWriterEntries：只排除 B43–B47 這五條（全部 47 條逐條試過），其他條目跟 pickEntries 一模一樣；沒標到這五條時整份一樣", () => {
-  assertEquals([...WRITER_TRIM_ENTRY_IDS], ["B43", "B44", "B45", "B46", "B47"]);
+Deno.test("pickWriterEntries：只排除 B43、B45、B46、B47 這四條（全部 47 條逐條試過；B44 留給寫卡），其他條目跟 pickEntries 一模一樣；沒標到這四條時整份一樣", () => {
+  assertEquals([...WRITER_TRIM_ENTRY_IDS], ["B43", "B45", "B46", "B47"]);
   assertEquals(GUIDE_V3_ENTRIES.length, 47);
   for (const e of GUIDE_V3_ENTRIES) {
     assertEquals(
@@ -149,6 +150,8 @@ Deno.test("pickWriterEntries：只排除 B43–B47 這五條（全部 47 條逐�
       e.id,
     );
   }
+  // B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。
+  assertEquals(ids(pickWriterEntries(["B44"], GUIDE_V3_ENTRIES)), ["B44"]);
   for (
     const matched of [
       [],
@@ -156,6 +159,8 @@ Deno.test("pickWriterEntries：只排除 B43–B47 這五條（全部 47 條逐�
       ["B02", "B11", "B22", "B40"],
       ["B21", "B31", "B40", "B01"],
       [" B22 ", "B22", "B99"],
+      ["B44", "B22"],
+      ["B44", "B21", "B31", "B40"],
     ]
   ) {
     assertEquals(
@@ -166,17 +171,29 @@ Deno.test("pickWriterEntries：只排除 B43–B47 這五條（全部 47 條逐�
   }
 });
 
-Deno.test("pickWriterEntries：先排除再挑，空出來的名額由其他標到的條目補上（照 pickEntries 的先後、最多三條）；全是這五條時是空的", () => {
-  // B44（她直接問他）排在一般條目前面，原本佔掉一個名額；排除之後 B40 補上。
-  const asked = ["B44", "B21", "B31", "B40"];
+Deno.test("pickWriterEntries：先排除再挑，空出來的名額由其他標到的條目補上（照 pickEntries 的先後、最多三條）；B44 照樣佔名額；全是這四條時是空的", () => {
+  // B45（她直接問他）排在一般條目前面，原本佔掉一個名額；排除之後 B40 補上。
+  const asked = ["B45", "B21", "B31", "B40"];
   assertEquals(ids(pickEntries(asked, GUIDE_V3_ENTRIES)), [
-    "B44",
+    "B45",
     "B21",
     "B31",
   ]);
   assertEquals(ids(pickWriterEntries(asked, GUIDE_V3_ENTRIES)), [
     "B21",
     "B31",
+    "B40",
+  ]);
+  // B44 跟 B45 同一組（她直接問他）：B44 照留、照樣排在一般條目前面；B45 排除，空出來的名額由 B40 補上。
+  const both = ["B44", "B45", "B21", "B40"];
+  assertEquals(ids(pickEntries(both, GUIDE_V3_ENTRIES)), [
+    "B44",
+    "B45",
+    "B21",
+  ]);
+  assertEquals(ids(pickWriterEntries(both, GUIDE_V3_ENTRIES)), [
+    "B44",
+    "B21",
     "B40",
   ]);
   // B47 在最前面那一組（停、拒絕、安全），B43 在一般那一組：兩條都排除，剩下的照原本的先後。
@@ -187,12 +204,18 @@ Deno.test("pickWriterEntries：先排除再挑，空出來的名額由其他標�
     "B40",
   ]);
   assertEquals(ids(pickWriterEntries(venue, GUIDE_V3_ENTRIES)), ["B11", "B40"]);
-  // 五條全標、前後有空白也認得：寫卡一條都沒有。
+  // 四條全標、前後有空白也認得：寫卡一條都沒有；B43–B47 全標時只剩 B44。
   assertEquals(
-    pickWriterEntries(["B43", "B44", "B45", "B46", "B47"], GUIDE_V3_ENTRIES),
+    pickWriterEntries(["B43", "B45", "B46", "B47"], GUIDE_V3_ENTRIES),
     [],
   );
-  assertEquals(pickWriterEntries([" B44 ", "B47"], GUIDE_V3_ENTRIES), []);
+  assertEquals(pickWriterEntries([" B45 ", "B47"], GUIDE_V3_ENTRIES), []);
+  assertEquals(
+    ids(
+      pickWriterEntries(["B43", "B44", "B45", "B46", "B47"], GUIDE_V3_ENTRIES),
+    ),
+    ["B44"],
+  );
   // 停用的條目照舊不挑（假條目，不放原文）。
   const fake = (id: string, enabled: boolean): GuideV3Entry => ({
     id,
@@ -200,15 +223,15 @@ Deno.test("pickWriterEntries：先排除再挑，空出來的名額由其他標�
     writing: `寫法${id}`,
     enabled,
   });
-  const fakes = [fake("B22", false), fake("B40", true), fake("B44", true)];
-  assertEquals(ids(pickWriterEntries(["B22", "B40", "B44"], fakes)), ["B40"]);
+  const fakes = [fake("B22", false), fake("B40", true), fake("B45", true)];
+  assertEquals(ids(pickWriterEntries(["B22", "B40", "B45"], fakes)), ["B40"]);
 });
 
 // ── 計畫 ───────────────────────────────────────────────────────────────────
 
-Deno.test("planTurn：開時出卡、收尾的計畫多 writerEntries（排除 B43–B47），entries 與其他欄位都不變；沒開（沒給或 false）一個 key 都不多", () => {
-  const turns = chat(["所以我這樣算加分嗎😏", "我還拍了一堆照片"]);
-  const t = tags({ matchedEntries: ["B44", "B22"], worthyBallCount: 2 });
+Deno.test("planTurn：開時出卡、收尾的計畫多 writerEntries（排除 B43、B45、B46、B47；B44 照留），entries 與其他欄位都不變；沒開（沒給或 false）一個 key 都不多", () => {
+  const turns = chat(["那你喜歡什麼樣的女生", "我還拍了一堆照片"]);
+  const t = tags({ matchedEntries: ["B45", "B22"], worthyBallCount: 2 });
   const two = extras({ worthyLines: [w(1, "問他"), w(2, "其他")] });
   const off = plan(turns, t, two, {});
   assertEquals("writerEntries" in off, false);
@@ -217,9 +240,16 @@ Deno.test("planTurn：開時出卡、收尾的計畫多 writerEntries（排除 B
   assertEquals(offFalse, off);
   const on = plan(turns, t, two);
   assertEquals(on.decision, "send");
-  assertEquals(ids(on.entries), ["B44", "B22"]);
+  assertEquals(ids(on.entries), ["B45", "B22"]);
   assertEquals(ids(on.writerEntries!), ["B22"]);
   assertEquals(withoutWriterEntries(on), off);
+  // B44 留給寫卡：寫卡用的那一份跟 entries 一樣。
+  const asked = chat(["所以我這樣算加分嗎😏", "我還拍了一堆照片"]);
+  const t44 = tags({ matchedEntries: ["B44", "B22"], worthyBallCount: 2 });
+  const on44 = plan(asked, t44, two);
+  assertEquals(ids(on44.entries), ["B44", "B22"]);
+  assertEquals(on44.writerEntries, on44.entries);
+  assertEquals(withoutWriterEntries(on44), plan(asked, t44, two, {}));
   // 收尾（她婉拒）也一樣多這一欄。
   const declined = tags({
     declinedOrBoundary: true,
@@ -343,19 +373,34 @@ Deno.test("B43（她解釋自己、秀自己會什麼）：開不開都一樣—
   assertEquals(off.push, "種子");
 });
 
-Deno.test("B44（她討他的看法）：開不開都一樣——第一張排接住（她直接問他）、沒有帶張力；寫卡看不到 B44", () => {
+Deno.test("B44（她討他的看法）：開不開都一樣——第一張排接住（她直接問他）、沒有帶張力；寫卡照樣看得到 B44（Bruce 2026-10-27 盲選留下），寫卡的使用者訊息跟沒開一字不差、系統提示詞只少 A5 那一句", () => {
   const turns = chat(["所以我這樣算加分嗎😏"]);
   const two = extras({ worthyLines: [w(1, "問他")] });
   const plain = plan(turns, tags(), two, {});
   assertEquals(tasksOf(plain.specs), ["推進", "接住", "帶張力", "接住"]);
-  const off = assertSameExceptWriter(
-    turns,
-    tags({ matchedEntries: ["B44"] }),
-    two,
-    "B44",
-  );
+  const t = tags({ matchedEntries: ["B44"] });
+  const off = plan(turns, t, two, {});
+  const on = plan(turns, t, two);
+  assertEquals(withoutWriterEntries(on), off);
+  assertEquals(ids(on.entries), ["B44"]);
+  assertEquals(ids(on.writerEntries!), ["B44"]);
   assertEquals(tasksOf(off.specs), ["接住", "推進", "接住", "接住"]);
   assertEquals(off.push, "種子");
+  const offUser = writerUser(turns, t, off);
+  assert(offUser.includes(`## 這一輪的情境做法\n${entryLine("B44")}`));
+  assertEquals(writerUser(turns, t, on), offUser);
+  // 系統提示詞只少 A5 那一句（帶張力改寫法開不開都一樣）。
+  for (const tensionStyle of [false, true]) {
+    assertEquals(
+      writeSystemPromptTwoStage(undefined, undefined, undefined, {
+        tensionStyle,
+        writerTrim: true,
+      }),
+      writeSystemPromptTwoStage(undefined, undefined, undefined, {
+        tensionStyle,
+      }).replace(SENTENCE, ""),
+    );
+  }
 });
 
 Deno.test("B45（她問他喜歡怎樣的人）：開不開都一樣——第一張排接住、沒有帶張力；寫卡看不到 B45", () => {
@@ -522,9 +567,17 @@ Deno.test("B47 收卡那句的外洩哨兵：照抄自那句、夠長；正常�
 
 // ── 寫卡的使用者訊息 ───────────────────────────────────────────────────────
 
-Deno.test("寫卡使用者訊息：開時沒有 B43–B47 的觸發與寫法，其他標到的條目照樣在、順序不變；沒開照舊有", () => {
+Deno.test("寫卡使用者訊息：開時沒有 B43、B45、B46、B47 的觸發與寫法，其他標到的條目照樣在、順序不變；沒開照舊有；B44 開不開都在、整份一字不差", () => {
   const turns = chat(["所以我這樣算加分嗎😏", "我還拍了一堆照片"]);
   const two = extras({ worthyLines: [w(1, "問他"), w(2, "其他")] });
+  // B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。
+  const t44 = tags({
+    matchedEntries: ["B44", "B22", "B40"],
+    worthyBallCount: 2,
+  });
+  const user44 = writerUser(turns, t44, plan(turns, t44, two));
+  assert(user44.includes(`## 這一輪的情境做法\n${entryLine("B44")}\n`));
+  assertEquals(user44, writerUser(turns, t44, plan(turns, t44, two, {})));
   for (const id of WRITER_TRIM_ENTRY_IDS) {
     const t = tags({ matchedEntries: [id, "B22", "B40"], worthyBallCount: 2 });
     const off = plan(turns, t, two, {});
@@ -548,12 +601,12 @@ Deno.test("寫卡使用者訊息：開時沒有 B43–B47 的觸發與寫法，�
   }
 });
 
-Deno.test("寫卡使用者訊息：只標到 B43–B47 時情境做法是「（這一輪沒有）」，跟一條都沒標到一樣", () => {
-  const turns = chat(["所以我這樣算加分嗎😏", "那你喜歡什麼樣的女生"]);
-  const two = extras({ worthyLines: [w(1, "問他"), w(2, "問他")] });
-  const t = tags({ matchedEntries: ["B44", "B45"], worthyBallCount: 2 });
+Deno.test("寫卡使用者訊息：只標到 B43、B45、B46、B47 時情境做法是「（這一輪沒有）」，跟一條都沒標到一樣；多標 B44 時只剩 B44", () => {
+  const turns = chat(["我才不安靜好嗎", "那你喜歡什麼樣的女生"]);
+  const two = extras({ worthyLines: [w(1, "其他"), w(2, "問他")] });
+  const t = tags({ matchedEntries: ["B43", "B45"], worthyBallCount: 2 });
   const on = plan(turns, t, two);
-  assertEquals(ids(on.entries), ["B44", "B45"]);
+  assertEquals(ids(on.entries), ["B45", "B43"]);
   assertEquals(on.writerEntries, []);
   const user = writerUser(turns, t, on);
   assert(user.includes("## 這一輪的情境做法\n（這一輪沒有）\n"));
@@ -566,6 +619,17 @@ Deno.test("寫卡使用者訊息：只標到 B43–B47 時情境做法是「（�
       cards: on.specs,
       praise: on.praise,
     }),
+  );
+  // 多標 B44（她也討他的看法）：B44 留給寫卡，情境做法只剩 B44 那一條。
+  const asked = chat(["我才不安靜好嗎", "所以我這樣算加分嗎😏"]);
+  const t44 = tags({ matchedEntries: ["B43", "B44"], worthyBallCount: 2 });
+  const on44 = plan(asked, t44, two);
+  assertEquals(ids(on44.entries), ["B44", "B43"]);
+  assertEquals(ids(on44.writerEntries!), ["B44"]);
+  assert(
+    writerUser(asked, t44, on44).includes(
+      `## 這一輪的情境做法\n${entryLine("B44")}\n\n`,
+    ),
   );
 });
 

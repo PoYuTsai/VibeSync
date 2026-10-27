@@ -25,7 +25,7 @@
 //    交往、她這一輪撒嬌示愛或喊累時，這次不推進（withoutCoupleSeed，plan.ts 在排卡之前換）；張數、任務照沒有推進的排法走，
 //    9 也照這個排。其他推進（具體邀約、說定、改天、換地方）、還沒交往都照舊。跟 9 各自獨立。
 // （寫卡瘦身，開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Bruce 2026-10-26；不是排卡的規則：上面 1–10 都不動，只是寫卡拿到的條目先排除
-//  B43–B47，見 pickWriterEntries。）
+//  B43、B45、B46、B47，見 pickWriterEntries。B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。）
 import { withoutEmoji } from "./cards.ts";
 import type { GuideV3Entry } from "./entries.ts";
 import {
@@ -737,15 +737,15 @@ export function pickEntries(
 
 // ── 寫卡瘦身（開關 ANALYZE_GUIDE_V3_WRITER_TRIM，Eric 2026-10-27「照預設」）──────────────────────────────────
 // Bruce 2026-10-26「看B43-B47感覺可以從寫卡prompt 移除 他們對自然度會有影響」：寫卡的使用者訊息「## 這一輪的情境做法」不再帶
-// B43–B47 的觸發與寫法。讀局面照舊標這幾條，程式的保護照舊：B43–B46 不排帶張力、B46 不推進、B44／B45（她直接問他）第一張排
-// 接住；B47 照樣辨認，固定的酒托提醒（SCAM_VENUE_WARNING）、三張固定排法、換地方的卡片規格（prompts.ts PUSH_NOTE.換地方）都
-// 不動。B47 不照 Bruce 規格整條拿掉（Eric 2026-10-27「照預設」），只是寫卡看不到它的條目。說明步驟與 trace 的 entries 照舊用
-// pickEntries 那一份。
+// B43、B45、B46、B47 的觸發與寫法。B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日「照預設」）。讀局面照舊標
+// 這幾條，程式的保護照舊：B43–B46 不排帶張力、B46 不推進、B44／B45（她直接問他）第一張排接住；B47 照樣辨認，固定的酒托提醒
+// （SCAM_VENUE_WARNING）、三張固定排法、換地方的卡片規格（prompts.ts PUSH_NOTE.換地方）都不動。B47 不照 Bruce 規格整條拿掉
+// （Eric 2026-10-27「照預設」），只是寫卡看不到它的條目。說明步驟與 trace 的 entries 照舊用 pickEntries 那一份。
 
-/// 寫卡看不到的條目：B43–B46 與 B47（SCAM_VENUE_ENTRY）。
+/// 寫卡看不到的條目：B43、B45、B46 與 B47（SCAM_VENUE_ENTRY）。B44 留給寫卡（Bruce 2026-10-27 盲選：B44 舊版 4 比 1；Eric 同日
+/// 「照預設」）。
 export const WRITER_TRIM_ENTRY_IDS: readonly string[] = [
   "B43",
-  "B44",
   "B45",
   "B46",
   SCAM_VENUE_ENTRY,
