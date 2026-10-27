@@ -91,7 +91,7 @@
 | Needy 警示 | ✗ | ✓ | ✓ |
 | 5 維雷達圖 | ✗ | ✓ | ✓ |
 | 我的報告 Tab | ✗ | ✓ | ✓ |
-| 練習室翻牌（每日免費）| 1 次 | 3 次 | 5 次 |
+| 練習室翻牌（每日免費）| 0 次（每帳號送一次免費首抽，第一次進練習室就發）| 3 次 | 5 次 |
 | 翻牌用完加購（扣 5 則額度）| ✗（導升級）| ✓ | ✓ |
 | 練習室續玩同一位角色 | ✗（僅第 1 輪）| ✓ | ✓ |
 | 學習專區（每日上限）| 3 篇/日 | ∞ | ∞ |
@@ -106,7 +106,7 @@
 > 2026-07-17 起 Free `analyze-chat` 固定回傳 `extend`＋`tease` 兩種（analyze 權益與 Opener 各自獨立）。
 > 新話題（`mode: new_topic`）成功一律扣 3 則；所有 tier 模型都生成五題，Free 由 server 投影只回最推薦一題（另外四題文字不出 server）。由 ADR #52 取代（提案中）：所有方案都回完整五題，Free 以 `starter` 投影落帳。限流 scope `new_topic`＝3/分、30/日，與 opener 分開計數。Free 只要月／日額度都剩 ≥3 就可用，不因 tier 先擋。
 > 上表其餘 gating 對照實碼：草稿潤飾
-> client＋server 雙閘 Essential、翻牌 1/3/5＋加購規則（`practice-chat/draw_decision.ts`）、
+> client＋server 雙閘 Essential、翻牌 0/3/5＋加購規則（`practice-chat/draw_decision.ts`；免費首抽見 ADR #35 決定 7）、
 > Free 續玩閘（`practice-chat/quota_decision.ts`）。
 
 ### App Store 產品結構（2026-04-22）

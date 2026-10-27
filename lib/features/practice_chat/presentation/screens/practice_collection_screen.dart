@@ -86,7 +86,34 @@ class _PracticeCollectionScreenState
             .read(practiceChatControllerProvider.notifier)
             .refreshDrawQuotaStatus(),
       );
+      unawaited(_maybeGrantFirstDraw());
     });
+  }
+
+  /// 沒對象的新用戶不能一按翻牌就撞付費頁（Onboarding 第 1 步，決策 C，Eric
+  /// 2026-10-27）：免費帳號走進練習室、圖鑑一張都沒有，就先把那一次免費翻牌發給他。
+  /// onboarding、首頁、學習頁、起步清單四個入口都走到這一頁，所以發在這裡。
+  /// 伺服器一人一列、重呼冪等（`grant_onboarding_draw_bonus`），發過再呼叫也不會多。
+  /// 發成功才重新補水額度列（「免費首抽 剩 1 次」）；任何失敗都吞掉、不擋畫面，
+  /// 按翻牌照舊走 402 → 付費頁。
+  Future<void> _maybeGrantFirstDraw() async {
+    try {
+      if (!ref.read(subscriptionProvider).isFreeUser) return;
+      // 圖鑑還在讀時的 0 不算數：等讀完、確定一張都沒有才發；讀不到就不發。
+      await ref.read(practiceCollectionProvider.future);
+      if (!mounted) return;
+      if (!ref.read(subscriptionProvider).isFreeUser ||
+          ref.read(unlockedPracticeGirlCountProvider) > 0) {
+        return;
+      }
+      await ref.read(practiceChatApiServiceProvider).grantOnboardingDrawBonus();
+      if (!mounted) return;
+      await ref
+          .read(practiceChatControllerProvider.notifier)
+          .refreshDrawQuotaStatus();
+    } catch (_) {
+      // fail-quiet：沒發成就維持現狀，額度列照舊、翻牌由 server 裁決。
+    }
   }
 
   /// grid 版面常數：估算新卡捲動位置（[_estimatedCardOffset]）與 sliver 版面
@@ -359,8 +386,8 @@ class _PracticeCollectionScreenState
 
     if (!state.isRevealed) {
       // locked（今日首抽）：client 不預判額度直接翻，額度由 server 裁決
-      // （Free 每日免費抽已於 2026-08-02 移除，只剩起步清單一次性贈抽；
-      // Free 無額度時 server 回 402 走 drawUpgradeRequired 分支）。
+      // （Free 每日免費抽已於 2026-08-02 移除，只剩一次性首抽，進練習室就發，
+      // 見 _maybeGrantFirstDraw；Free 無額度時 server 回 402 走 drawUpgradeRequired 分支）。
       if (state.drawUpgradeRequired) {
         context.push('/paywall');
         return;
@@ -551,6 +578,8 @@ class _PracticeCollectionScreenState
     final unlockedCount = ref.watch(unlockedPracticeGirlCountProvider);
     // 翻牌鈕兩態顯示必須 watch：同時讓 autoDispose controller 在本頁存活。
     final chatState = ref.watch(practiceChatControllerProvider);
+    final isFreeUser =
+        ref.watch(subscriptionProvider.select((s) => s.isFreeUser));
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     _syncDrawPulse(
@@ -619,6 +648,7 @@ class _PracticeCollectionScreenState
           unlockedCount: unlockedCount,
           total: total,
           visible: visible,
+          isFreeUser: isFreeUser,
         ),
         Positioned.fill(
           child: PracticeDrawCeremony(
@@ -638,6 +668,7 @@ class _PracticeCollectionScreenState
     required int unlockedCount,
     required int total,
     required List<PracticeGirlProfile> visible,
+    required bool isFreeUser,
   }) {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -689,6 +720,7 @@ class _PracticeCollectionScreenState
                           !chatState.isDrawing && !chatState.isPersistingTurn,
                       onDrawPressed: _onDrawPressed,
                       freeQuota: _currentFreeQuota(chatState),
+                      isFreeUser: isFreeUser,
                     ),
                   ),
                   // 模擬社群動態入口（Threads 版面）：唯讀 feed，只顯示已抽到
@@ -961,6 +993,7 @@ class _CollectionHeader extends StatelessWidget {
     required this.drawEnabled,
     required this.onDrawPressed,
     required this.freeQuota,
+    required this.isFreeUser,
   });
 
   final int unlockedCount;
@@ -974,8 +1007,11 @@ class _CollectionHeader extends StatelessWidget {
   final bool drawEnabled;
   final VoidCallback onDrawPressed;
 
-  /// 今日免費翻牌（remaining/allowance）；null＝本 session 尚無可信資料，不顯示。
+  /// 本窗免費翻牌（remaining/allowance）；null＝本 session 尚無可信資料，不顯示。
   final ({int remaining, int allowance})? freeQuota;
+
+  /// 免費帳號沒有每日免費翻牌，額度列裡只會是那一次首抽，字要跟著換。
+  final bool isFreeUser;
 
   @override
   Widget build(BuildContext context) {
@@ -1096,7 +1132,11 @@ class _CollectionHeader extends StatelessWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          '今日免費翻牌 剩 ${freeQuota!.remaining} / ${freeQuota!.allowance}',
+                          // 免費帳號的額度只有那一次首抽（Onboarding 第 1 步）：不寫
+                          // 「今日」（ADR #35 §5：免費版不寫每日）。付費照舊。
+                          isFreeUser
+                              ? '免費首抽 剩 ${freeQuota!.remaining} 次'
+                              : '今日免費翻牌 剩 ${freeQuota!.remaining} / ${freeQuota!.allowance}',
                           key: const ValueKey('collection-free-quota-line'),
                           style: AppTypography.caption.copyWith(
                             color: AppColors.onBackgroundSecondary,

@@ -46,6 +46,33 @@ PracticeChatApiService _unusedApi() => PracticeChatApiService(
           throw UnimplementedError('collection test 不應打 practice-chat'),
     );
 
+/// 進場發首抽的 API 替身（Onboarding 第 1 步）：只接 grant_onboarding_draw_bonus、
+/// 記呼叫次數；[fail] 時回 500，API 會丟例外，畫面要吞掉。
+class _GrantRecorder {
+  _GrantRecorder({this.fail = false});
+
+  final bool fail;
+  int grantCalls = 0;
+
+  PracticeChatApiService api() => PracticeChatApiService(
+        invoker: (name, {required body}) async {
+          if (body['mode'] != 'grant_onboarding_draw_bonus') {
+            throw UnimplementedError('collection test 只接發首抽：${body['mode']}');
+          }
+          grantCalls++;
+          return fail
+              ? const PracticeInvokeResponse(
+                  status: 500,
+                  data: {'error': 'bonus_grant_failed'},
+                )
+              : const PracticeInvokeResponse(
+                  status: 200,
+                  data: {'granted': true, 'consumed': false},
+                );
+        },
+      );
+}
+
 /// 同 practice_chat_screen_style_test 的 seeded-controller idiom。
 class _SeededPracticeChatController extends PracticeChatController {
   _SeededPracticeChatController(PracticeChatState seed)
@@ -162,6 +189,7 @@ List<Override> _collectionOverrides({
   SubscriptionState subscription = const SubscriptionState(),
   PracticeCollectionNotifier? collectionNotifier,
   VoidCallback? onSubscriptionRefresh,
+  PracticeChatApiService? api,
 }) {
   return [
     practiceCollectionProvider
@@ -169,6 +197,8 @@ List<Override> _collectionOverrides({
     practiceChatControllerProvider.overrideWith(
       (ref) => controller ?? _SeededPracticeChatController(_revealedSeed()),
     ),
+    // 免費＋圖鑑 0 張進場會發首抽：沒指定替身就用一打就炸的 API，失敗由畫面吞掉。
+    practiceChatApiServiceProvider.overrideWithValue(api ?? _unusedApi()),
     subscriptionProvider
         .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
     // 402 導 paywall 順帶的訂閱重同步 seam：測試絕不打網路，只記呼叫。
@@ -184,6 +214,7 @@ Widget collectionApp({
   SubscriptionState subscription = const SubscriptionState(),
   PracticeCollectionNotifier? collectionNotifier,
   bool showOnboardingGuide = false,
+  PracticeChatApiService? api,
 }) {
   return ProviderScope(
     overrides: _collectionOverrides(
@@ -191,6 +222,7 @@ Widget collectionApp({
       controller: controller,
       subscription: subscription,
       collectionNotifier: collectionNotifier,
+      api: api,
     ),
     child: MaterialApp(
       home: PracticeCollectionScreen(
@@ -205,6 +237,7 @@ Widget collectionRouterApp({
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
   VoidCallback? onSubscriptionRefresh,
+  PracticeChatApiService? api,
 }) {
   final router = GoRouter(
     routes: [
@@ -225,6 +258,7 @@ Widget collectionRouterApp({
       controller: controller,
       subscription: subscription,
       onSubscriptionRefresh: onSubscriptionRefresh,
+      api: api,
     ),
     child: MaterialApp.router(routerConfig: router),
   );
@@ -932,14 +966,136 @@ void main() {
       expect(controller.quotaStatusRefreshCalls, 1);
     });
 
-    testWidgets('額度列：有已知額度＋未過重置點 → 顯示「剩 x / y」', (tester) async {
+    // Onboarding 第 1 步（決策 C，Eric 2026-10-27）：沒對象的免費新用戶一進練習室
+    // 就拿到那一次首抽，按翻牌抽得到人；伺服器一人一列、重呼冪等。
+    group('進場發首抽', () {
+      testWidgets('免費＋圖鑑 0 張：發一次首抽，發完重新補水額度列', (tester) async {
+        final grants = _GrantRecorder();
+        final controller = _DrawSpyController(_lockedSeed());
+        await pumpApp(
+          tester,
+          collectionApp(controller: controller, api: grants.api()),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(grants.grantCalls, 1);
+        // 進場一次＋發完首抽一次。
+        expect(controller.quotaStatusRefreshCalls, 2);
+      });
+
+      testWidgets('付費帳號：不發首抽', (tester) async {
+        final grants = _GrantRecorder();
+        final controller = _DrawSpyController(_lockedSeed());
+        await pumpApp(
+          tester,
+          collectionApp(
+            controller: controller,
+            subscription: _paidSubscription,
+            api: grants.api(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(grants.grantCalls, 0);
+        expect(controller.quotaStatusRefreshCalls, 1);
+      });
+
+      testWidgets('免費但圖鑑已經有角色：不發首抽', (tester) async {
+        final grants = _GrantRecorder();
+        final controller = _DrawSpyController(_lockedSeed());
+        await pumpApp(
+          tester,
+          collectionApp(
+            controller: controller,
+            unlocked: {'practice_girl_001'},
+            api: grants.api(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(grants.grantCalls, 0);
+        expect(controller.quotaStatusRefreshCalls, 1);
+      });
+
+      testWidgets('圖鑑還在讀：讀取中的 0 張不算數，先不發', (tester) async {
+        final grants = _GrantRecorder();
+        final controller = _DrawSpyController(_lockedSeed());
+        await pumpApp(
+          tester,
+          collectionApp(
+            controller: controller,
+            collectionNotifier: _PendingCollection(),
+            api: grants.api(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(grants.grantCalls, 0);
+      });
+
+      testWidgets('發首抽失敗：圖鑑照常、不跳錯誤；按翻牌照舊 402 → 付費頁', (tester) async {
+        final grants = _GrantRecorder(fail: true);
+        final controller = _DrawSpyController(_lockedSeed());
+        await pumpApp(
+          tester,
+          collectionRouterApp(controller: controller, api: grants.api()),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(grants.grantCalls, 1);
+        expect(controller.quotaStatusRefreshCalls, 1, reason: '沒發成就不重新補水');
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(drawButton), findsOneWidget);
+
+        // 按翻牌照舊直接翻、由 server 裁決；server 回 402 → 付費頁（後備路徑不變）。
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(controller.drawCalls, 1);
+        controller.debugSetState(
+          _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+        );
+        await tester.pump();
+        controller.debugSetState(
+          _lockedSeed(upgradeRequired: true, errorMessage: '升級後每天可以翻更多陪練女孩。'),
+        );
+        // locked 脈動 repeat 中不能 settle；逐幀推進到路由轉場完。
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      });
+    });
+
+    testWidgets('額度列（付費）：有已知額度＋未過重置點 → 顯示「今日免費翻牌 剩 x / y」', (tester) async {
       final controller = _DrawSpyController(
         _revealedSeed(freeAllowance: 3, freeRemaining: 2)
             .copyWith(drawNextResetAt: '2999-01-01T04:00:00.000Z'),
       );
-      await pumpApp(tester, collectionApp(controller: controller));
+      await pumpApp(
+        tester,
+        collectionApp(controller: controller, subscription: _paidSubscription),
+      );
 
       expect(find.text('今日免費翻牌 剩 2 / 3'), findsOneWidget);
+    });
+
+    testWidgets('額度列（免費）：只有那一次首抽 → 「免費首抽 剩 1 次」，不寫今日', (tester) async {
+      final controller = _DrawSpyController(
+        _lockedSeed().copyWith(
+          drawFreeAllowance: 1,
+          drawFreeRemaining: 1,
+          drawNextResetAt: '2999-01-01T04:00:00.000Z',
+        ),
+      );
+      await pumpApp(tester, collectionApp(controller: controller));
+
+      expect(find.text('免費首抽 剩 1 次'), findsOneWidget);
+      expect(find.textContaining('今日免費翻牌'), findsNothing);
     });
 
     testWidgets('額度列寧缺勿誤：過了重置點或 allowance 0 都不顯示', (tester) async {
