@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/constants/ai_privacy_disclosure.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 
 void main() {
@@ -81,6 +82,38 @@ void main() {
           isNot(contains('DeepSeek')));
       expect(
           AiPrivacyDisclosure.onboardingDescription, isNot(contains('保留 7 天')));
+    });
+  });
+
+  // onboarding 轉換第 4 步：登入前的使用事件先存在手機、登入後補送並連到帳號
+  // （Eric 2026-10-27「照預設」補進設定頁）。揭露的數字跟 FunnelTracker 綁在一起。
+  group('登入前的使用事件：設定頁寫明先存手機、登入後補送', () {
+    test('設定頁逐字寫出這一段', () {
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('還沒登入時的使用事件（例如 onboarding 看到第幾頁、回答有沒有對象）\n'
+            '會先存在這支手機，存的是事件名稱、固定選項值與發生時間，\n'
+            '不含對話內容或名字，最多 50 筆。登入後才補送並連到登入的帳號；\n'
+            '補送時已存超過 7 天的不送、直接刪除'),
+      );
+    });
+
+    test('筆數上限與天數跟實作一致：改一邊就得改另一邊', () {
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('最多 ${FunnelTracker.maxPendingEvents} 筆'),
+      );
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('已存超過 ${FunnelTracker.pendingMaxAge.inDays} 天的不送'),
+      );
+    });
+
+    test('onboarding 精簡版不加這段', () {
+      for (final phrase in ['還沒登入', '補送', '最多 50 筆']) {
+        expect(
+            AiPrivacyDisclosure.onboardingDescription, isNot(contains(phrase)));
+      }
     });
   });
 }
