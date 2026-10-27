@@ -110,11 +110,16 @@ class _Sent {
       ];
 }
 
+/// 漏斗 tracker 一律當作已登入（沒登入會先排隊不送）：這裡測的是付費頁自己對
+/// 帳號的檢查，跟 tracker 的排隊無關。
+String? _trackerSignedIn() => _userA;
+
 FunnelTracker _recordingTracker(_Sent sent) => FunnelTracker(
       invoker: (fn, {required body}) async {
         sent.events.add(body['event'] as Map<String, dynamic>);
         return 200;
       },
+      currentUserId: _trackerSignedIn,
     );
 
 SubscriptionState _stateWith(String productId, String title) {
@@ -311,9 +316,11 @@ void main() {
       for (final tracker in [
         FunnelTracker(
           invoker: (fn, {required body}) => Completer<int>().future,
+          currentUserId: _trackerSignedIn,
         ),
         FunnelTracker(
           invoker: (fn, {required body}) async => throw StateError('boom'),
+          currentUserId: _trackerSignedIn,
         ),
       ]) {
         await _pumpPaywall(
@@ -586,6 +593,7 @@ void main() {
             sent.events.add(event);
             return 200;
           },
+          currentUserId: _trackerSignedIn,
         ),
         entry: PaywallEntry.lockedCards,
         onPurchase: () async => _success(SubscriptionTierHelper.essential),
@@ -624,9 +632,11 @@ void main() {
       for (final tracker in [
         FunnelTracker(
           invoker: (fn, {required body}) => Completer<int>().future,
+          currentUserId: _trackerSignedIn,
         ),
         FunnelTracker(
           invoker: (fn, {required body}) async => throw StateError('boom'),
+          currentUserId: _trackerSignedIn,
         ),
       ]) {
         await _pumpPaywall(

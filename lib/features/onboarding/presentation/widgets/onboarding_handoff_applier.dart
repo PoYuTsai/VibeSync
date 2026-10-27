@@ -4,6 +4,7 @@
 // 問卷目標與分流目的地暫存在 prefs（OnboardingService.stashPendingHandoff），
 // 使用者登入落地 MainShell 時由本 widget 取走——種 profile（沿用 onboarding
 // 原規則：只在全空時種、失敗靜默）並 push 分流目的地。
+// 同一時機補送登入前排隊的漏斗事件（onboarding 轉換第 4 步，FunnelTracker）。
 // 平常沒有暫存＝no-op，掛在 MainShell 常駐零成本。
 import 'dart:async';
 
@@ -11,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../data/onboarding_service.dart';
@@ -32,6 +34,8 @@ class _OnboardingHandoffApplierState
   }
 
   Future<void> _apply() async {
+    // 登入前排隊的漏斗事件：不等它、也不影響下面的交接。
+    if (mounted) unawaited(ref.read(funnelTrackerProvider).flushPending());
     final pending = await OnboardingService.takePendingHandoff();
     if (pending == null || !mounted) return;
     try {

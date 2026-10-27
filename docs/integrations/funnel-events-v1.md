@@ -17,7 +17,8 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
   `user_id`（本來就是登入帳號）。
 - client＋server 雙層白名單：client 只送白名單鍵；server 對事件名 enum 硬擋
   （字典外一律 400）、對 properties 剝除白名單外鍵、值超長截斷。
-- best-effort 上傳：失敗吞掉、絕不 block UI、絕不重試風暴。
+- best-effort 上傳：失敗吞掉、絕不 block UI、絕不重試風暴；唯一會重試的是登入前排隊的
+  補送（每筆最多 3 次，見「登入前的事件」）。
 - 揭露：設定頁 AI 隱私頁「去識別化使用事件」段落涵蓋本通道。
 
 ## 事件白名單 v1
@@ -73,6 +74,24 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 `first_analysis_completed` / `first_practice_completed` 用 SharedPreferences key
 `funnel_once_<event>` 在本機去重，只送第一次。server 不做唯一約束（best-effort
 通道，重複列在查詢端 dedup）。
+
+## 登入前的事件：先排隊、登入後補送（2026-10-27）
+
+onboarding 走在登入之前，那時伺服器沒有帳號可以掛，事件以前一律被拒（401）、client
+吞掉，等於沒記。改成（onboarding 轉換第 4 步）：
+
+- 沒登入時 client 不送，把事件存進手機 SharedPreferences 的 `funnel_pending_queue_v1`
+  （JSON 陣列）。每筆只有事件名、已過白名單的屬性、當時的 `clientTs`、排進來的時間與
+  補送失敗次數；沒有對話、名字或自由文字。最多 50 筆，滿了丟最舊的。
+- 登入後進首頁時（MainShell 掛上 `OnboardingHandoffApplier`，跟問卷交接同一個時機；
+  每次開 App 進首頁都會跑，沒有佇列就什麼都不做）呼叫 `flushPending()`：排隊超過 7 天
+  的丟掉（太久以前的可能是別人用這支手機時留下的）；其餘逐筆照原本的 body 送，成功的
+  移除，失敗的留著下次進首頁再送，每筆最多試 3 次。同時呼叫只跑一輪；補送途中登出就停，
+  剩下的留著。
+- 補送的事件掛在補送當下登入的帳號；`client_ts` 是事件當時的時間，`created_at` 是補送
+  的時間，算 onboarding 各頁時間要看 `client_ts`。伺服器不用改。
+- 從頭到尾沒登入就離開的人仍然看不到；那一段改用 App Store Connect 的首次下載數對照每天
+  新帳號數粗估。onboarding 各頁的流失率只代表後來有登入的人。
 
 ## 讀取方式
 

@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'supabase_service.dart';
 
 /// Testable seam over the Edge Function invocation（同 CoachingOutcomeUploader）。
 typedef FunnelUploadInvoker = Future<int> Function(
@@ -9,18 +14,47 @@ typedef FunnelUploadInvoker = Future<int> Function(
   required Map<String, dynamic> body,
 });
 
-/// Best-effort, fire-and-forget 去識別化漏斗埋點（Tier 2 批 1.5）。
+/// 目前登入的帳號 id，沒登入回 null（測試注入用）。
+typedef FunnelCurrentUserId = String? Function();
+
+/// Best-effort 去識別化漏斗埋點（Tier 2 批 1.5）。
 ///
 /// 鐵則（隱私＋韌性，照 CoachingOutcomeUploader）：
-/// - 絕不 block UI、絕不重試、吞下一切錯誤（網路／非 2xx／exception）。
+/// - 絕不 block UI、吞下一切錯誤（網路／非 2xx／exception）。
+/// - 沒登入時伺服器收不到（沒有帳號可以掛），先排進手機裡的佇列，登入後由
+///   [flushPending] 補送（onboarding 轉換第 4 步）。只有補送會重試，每筆最多
+///   [maxFlushAttempts] 次。
 /// - 白名單真相源：docs/integrations/funnel-events-v1.md。改字典必同批
 ///   同步改本檔與 Edge funnel_utils.ts 兩層。
-/// - payload 只有事件名＋白名單鍵；對話內容、對象名、自由文字絕不上傳。
+/// - payload 只有事件名＋白名單鍵；對話內容、對象名、自由文字絕不上傳，
+///   佇列也只存這些。
 class FunnelTracker {
-  FunnelTracker({FunnelUploadInvoker? invoker})
-      : _invoke = invoker ?? _defaultInvoker;
+  FunnelTracker({
+    FunnelUploadInvoker? invoker,
+    FunnelCurrentUserId? currentUserId,
+    DateTime Function()? clock,
+  })  : _invoke = invoker ?? _defaultInvoker,
+        _currentUserId = currentUserId ?? _defaultCurrentUserId,
+        _clock = clock ?? DateTime.now;
 
   static const _functionName = 'submit-feedback';
+
+  /// 登入前排隊的事件（SharedPreferences 裡的 JSON 陣列）。
+  @visibleForTesting
+  static const pendingQueueKey = 'funnel_pending_queue_v1';
+
+  /// 佇列最多幾筆，滿了丟最舊的。
+  @visibleForTesting
+  static const maxPendingEvents = 50;
+
+  /// 排隊超過這麼久就不補送：太久以前的事件可能是別人用這支手機時留下的，
+  /// 補送會掛到後來登入的帳號。
+  @visibleForTesting
+  static const pendingMaxAge = Duration(days: 7);
+
+  /// 每筆最多補送幾次，都沒成功就丟掉。
+  @visibleForTesting
+  static const maxFlushAttempts = 3;
 
   /// client 端白名單鏡像（event → 允許的 properties 鍵）。
   static const Map<String, List<String>> eventProps = {
@@ -53,34 +87,29 @@ class FunnelTracker {
   };
 
   final FunnelUploadInvoker _invoke;
+  final FunnelCurrentUserId _currentUserId;
+  final DateTime Function() _clock;
+  final _random = Random();
+  Future<void>? _flushing;
 
   /// 送一發事件。字典外事件直接丟棄（連手機都不出）。
+  /// 沒登入時不送，排進佇列，登入後由 [flushPending] 補送。
   Future<void> track(
     String event, {
     Map<String, Object?> properties = const {},
   }) async {
     try {
-      final allowed = eventProps[event];
-      if (allowed == null) {
+      final filtered = _whitelisted(event, properties);
+      if (filtered == null) {
         debugPrint('[FunnelTracker] unknown event dropped: $event');
         return;
       }
-      final filtered = <String, Object?>{
-        for (final key in allowed)
-          if (properties.containsKey(key)) key: properties[key],
-      };
-      final body = <String, dynamic>{
-        'kind': 'funnel',
-        'event': <String, dynamic>{
-          'event': event,
-          'properties': filtered,
-          'clientTs': DateTime.now().toUtc().toIso8601String(),
-        },
-      };
-      final status = await _invoke(_functionName, body: body);
-      if (status < 200 || status >= 300) {
-        debugPrint('[FunnelTracker] non-2xx status: $status ($event)');
+      final clientTs = _clock().toUtc().toIso8601String();
+      if (_currentUserId() == null) {
+        await _enqueue(event, filtered, clientTs);
+        return;
       }
+      await _send(event, filtered, clientTs);
     } catch (e) {
       // Best-effort：埋點永遠不影響功能。
       debugPrint('[FunnelTracker] track failed (ignored): $e');
@@ -112,7 +141,212 @@ class FunnelTracker {
     }
     await track(event, properties: properties);
   }
+
+  /// 補送登入前排隊的事件（登入後進首頁時由 OnboardingHandoffApplier 呼叫）。
+  ///
+  /// 超過 [pendingMaxAge] 的丟掉；其餘逐筆照原本的 body 與當時的 clientTs 送，
+  /// 成功的移除、失敗的留著下次再試，每筆最多 [maxFlushAttempts] 次。沒登入或
+  /// 沒有佇列就什麼都不做；同時呼叫只跑一輪。
+  Future<void> flushPending() =>
+      _flushing ??= _flushPendingOnce().whenComplete(() => _flushing = null);
+
+  Future<void> _flushPendingOnce() async {
+    try {
+      if (_currentUserId() == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final now = _clock().toUtc();
+      final stored = _readQueue(prefs);
+      final fresh = [
+        for (final entry in stored)
+          if (now.difference(entry.queuedAt).abs() <= pendingMaxAge) entry,
+      ];
+      if (fresh.length != stored.length) await _writeQueue(prefs, fresh);
+      for (final entry in fresh) {
+        // 補送途中登出：剩下的留著，等下次登入。
+        if (_currentUserId() == null) return;
+        // 字典照現在的版本再過一次：App 更新後可能拿掉事件或鍵。
+        final properties = _whitelisted(entry.event, entry.properties);
+        final sent = properties != null &&
+            await _send(entry.event, properties, entry.clientTs);
+        // 送的期間可能有新事件排進來：重讀一次，只動這一筆（讀改寫之間不 await）。
+        final queue = _readQueue(prefs);
+        final index = queue.indexWhere((e) => e.id == entry.id);
+        if (index < 0) continue;
+        final attempts = queue[index].attempts + 1;
+        if (sent || properties == null || attempts >= maxFlushAttempts) {
+          queue.removeAt(index);
+        } else {
+          queue[index] = queue[index].withAttempts(attempts);
+        }
+        await _writeQueue(prefs, queue);
+      }
+    } catch (e) {
+      debugPrint('[FunnelTracker] flush failed (ignored): $e');
+    }
+  }
+
+  /// 只留這個事件白名單內的鍵；字典外事件回 null。
+  static Map<String, Object?>? _whitelisted(
+    String event,
+    Map<String, Object?> properties,
+  ) {
+    final allowed = eventProps[event];
+    if (allowed == null) return null;
+    return <String, Object?>{
+      for (final key in allowed)
+        if (properties.containsKey(key)) key: properties[key],
+    };
+  }
+
+  /// 送一筆；2xx 回 true，其他一律 false（不丟錯）。
+  Future<bool> _send(
+    String event,
+    Map<String, Object?> properties,
+    String clientTs,
+  ) async {
+    try {
+      final status = await _invoke(
+        _functionName,
+        body: <String, dynamic>{
+          'kind': 'funnel',
+          'event': <String, dynamic>{
+            'event': event,
+            'properties': properties,
+            'clientTs': clientTs,
+          },
+        },
+      );
+      if (status >= 200 && status < 300) return true;
+      debugPrint('[FunnelTracker] non-2xx status: $status ($event)');
+    } catch (e) {
+      // functions_client 對非 2xx 直接丟 FunctionException，一樣算沒送到。
+      debugPrint('[FunnelTracker] send failed (ignored): $e');
+    }
+    return false;
+  }
+
+  Future<void> _enqueue(
+    String event,
+    Map<String, Object?> properties,
+    String clientTs,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = _clock().toUtc();
+    // 讀改寫之間不 await：同一個 isolate 裡不會跟另一筆排隊或補送交錯。
+    final queue = _readQueue(prefs)
+      ..add(_PendingFunnelEvent(
+        id: '${now.microsecondsSinceEpoch}-${_random.nextInt(0x7fffffff)}',
+        event: event,
+        properties: properties,
+        clientTs: clientTs,
+        queuedAt: now,
+        attempts: 0,
+      ));
+    if (queue.length > maxPendingEvents) {
+      queue.removeRange(0, queue.length - maxPendingEvents);
+    }
+    await _writeQueue(prefs, queue);
+  }
+
+  /// 讀佇列；內容壞掉或不是預期的格式就當沒有（壞掉的那筆略過）。
+  static List<_PendingFunnelEvent> _readQueue(SharedPreferences prefs) {
+    try {
+      final raw = prefs.getString(pendingQueueKey);
+      if (raw == null) return [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded
+          .map(_PendingFunnelEvent.tryParse)
+          .whereType<_PendingFunnelEvent>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> _writeQueue(
+    SharedPreferences prefs,
+    List<_PendingFunnelEvent> queue,
+  ) async {
+    if (queue.isEmpty) {
+      await prefs.remove(pendingQueueKey);
+      return;
+    }
+    await prefs.setString(
+      pendingQueueKey,
+      jsonEncode([for (final entry in queue) entry.toJson()]),
+    );
+  }
 }
+
+/// 登入前排隊的一筆：事件名、已過白名單的屬性、當時的 clientTs、排進來的時間、
+/// 已經補送失敗幾次。
+@immutable
+class _PendingFunnelEvent {
+  const _PendingFunnelEvent({
+    required this.id,
+    required this.event,
+    required this.properties,
+    required this.clientTs,
+    required this.queuedAt,
+    required this.attempts,
+  });
+
+  final String id;
+  final String event;
+  final Map<String, Object?> properties;
+  final String clientTs;
+  final DateTime queuedAt;
+  final int attempts;
+
+  _PendingFunnelEvent withAttempts(int value) => _PendingFunnelEvent(
+        id: id,
+        event: event,
+        properties: properties,
+        clientTs: clientTs,
+        queuedAt: queuedAt,
+        attempts: value,
+      );
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'event': event,
+        'properties': properties,
+        'clientTs': clientTs,
+        'queuedAt': queuedAt.toIso8601String(),
+        'attempts': attempts,
+      };
+
+  static _PendingFunnelEvent? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'];
+    final event = json['event'];
+    final properties = json['properties'];
+    final clientTs = json['clientTs'];
+    final queuedAt = json['queuedAt'];
+    final attempts = json['attempts'];
+    if (id is! String ||
+        event is! String ||
+        properties is! Map ||
+        clientTs is! String ||
+        queuedAt is! String ||
+        attempts is! int) {
+      return null;
+    }
+    final parsedQueuedAt = DateTime.tryParse(queuedAt);
+    if (parsedQueuedAt == null) return null;
+    return _PendingFunnelEvent(
+      id: id,
+      event: event,
+      properties: Map<String, Object?>.from(properties),
+      clientTs: clientTs,
+      queuedAt: parsedQueuedAt,
+      attempts: attempts,
+    );
+  }
+}
+
+String? _defaultCurrentUserId() => SupabaseService.currentUser?.id;
 
 Future<int> _defaultInvoker(
   String fn, {

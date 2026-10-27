@@ -530,6 +530,7 @@ Future<_Harness> _pumpScreen(
               funnel.events.add(body['event'] as Map<String, dynamic>);
               return 200;
             },
+            currentUserId: () => _userId,
           ),
         ),
         subscriptionScreenRefreshProvider.overrideWithValue(() async {}),

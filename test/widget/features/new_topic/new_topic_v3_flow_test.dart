@@ -193,11 +193,12 @@ Future<ProviderContainer> _pump(WidgetTester t,
         newTopicStyleContextProvider.overrideWith(
             (_, id) => styleLoader?.call() ?? Future.value(style)),
         subscriptionProvider.overrideWith((_) => _Sub()),
-        funnelTrackerProvider.overrideWithValue(
-            FunnelTracker(invoker: (_, {required body}) async {
-          funnelBodies.add(body);
-          return 200;
-        })),
+        funnelTrackerProvider.overrideWithValue(FunnelTracker(
+            currentUserId: () => 'u1',
+            invoker: (_, {required body}) async {
+              funnelBodies.add(body);
+              return 200;
+            })),
         subscriptionScreenRefreshProvider.overrideWith((_) => () async {
               if (refreshFails) throw StateError('offline');
               await refreshGate?.future;
