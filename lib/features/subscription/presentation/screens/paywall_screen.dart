@@ -32,6 +32,9 @@ import '../subscription_diagnostics_gate.dart';
 import '../../../../core/services/app_haptics.dart';
 import 'purchase_error_message.dart';
 
+/// 付費頁分兩版（Onboarding 第 9 步）：免費用戶看「購買版」——兩張方案卡、價格、固定在
+/// 底部的購買鈕，第一屏就買得到；已付費的人看「管理版」——升降級說明、目前額度、四張
+/// 方案卡，內容照舊。
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key, this.entry = PaywallEntry.general});
 
@@ -51,13 +54,54 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _planRefreshTimeout = Duration(seconds: 20);
   static const _postSuccessRefreshTimeout = Duration(seconds: 20);
 
-  String _selectedOptionId = 'essential_monthly';
+  /// 方案還在同步時，骨架最多擋這麼久；之後照當下的方案先排版面。
+  static const _layoutResolveTimeout = Duration(seconds: 2);
+
+  /// 購買版的差異句：docs/positioning.md 文案系統裡 Onboarding 第 4 頁（定位頁）那句。
+  /// 斷行固定在破折號後面，窄螢幕也不會把「冷還熱」拆到兩行。
+  static const _buyPitch = '不只教你回這句：它認得你聊的每一個她——\n聊到哪、她現在冷還熱、什麼時候該約。';
+
+  /// 使用者點過的方案；null＝還沒點過，照目前方案的預設（[_defaultOptionIdFor]）。
+  String? _selectedOptionId;
   bool _isPurchasing = false;
   bool _isRefreshingPlans = false;
+
+  /// 打開時方案可能還是本機快取（isLoading）：第一次同步完（或等了
+  /// [_layoutResolveTimeout]）才決定給購買版還是管理版，不先閃錯的那一版再換。
+  /// 決定之後就不再回骨架——每次打開付費頁都會再刷新一次方案，那次刷新不能讓畫面
+  /// 閃回骨架。
+  bool _layoutResolved = false;
+  Timer? _layoutResolveTimer;
+
+  /// 購買、恢復處理中（遮罩蓋著）時沿用按下去那一刻的版面與選取：付款成功到關頁前
+  /// 還會刷新一次方案，不要在遮罩底下從購買版換成管理版、或把選取換成付費用戶的預設。
+  bool? _frozenFreeLayout;
+  String? _frozenSelectedId;
+
+  /// 「比較全部方案」展開了沒（購買版）。
+  bool _showComparison = false;
+
+  /// 沒點過時預設選哪一張（Onboarding 第 9 步，Eric 2026-10-27）：免費用戶 Starter
+  /// 月繳；Starter 用戶 Essential 月繳（升級的那一張）；Essential 用戶照舊 Essential
+  /// 月繳。「推薦」徽章與橘色樣式跟著這一張，不再另外寫死。
+  static String _defaultOptionIdFor(String tier) =>
+      SubscriptionTierHelper.normalizeTier(tier) == SubscriptionTierHelper.free
+          ? 'starter_monthly'
+          : 'essential_monthly';
+
+  String _resolvedOptionId(SubscriptionState subscription) =>
+      _selectedOptionId ?? _defaultOptionIdFor(subscription.tier);
 
   void _selectOption(String id) {
     if (id == _selectedOptionId) return;
     setState(() => _selectedOptionId = id);
+  }
+
+  void _markLayoutResolved() {
+    if (_layoutResolved) return;
+    _layoutResolved = true;
+    _layoutResolveTimer?.cancel();
+    _layoutResolveTimer = null;
   }
 
   @override
@@ -70,10 +114,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         properties: {'entry': widget.entry.funnelValue},
       ),
     );
+    if (ref.read(subscriptionProvider).isLoading) {
+      _layoutResolveTimer = Timer(_layoutResolveTimeout, () {
+        if (!mounted || _layoutResolved) return;
+        setState(_markLayoutResolved);
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(ref.read(subscriptionScreenRefreshProvider)());
     });
+  }
+
+  @override
+  void dispose() {
+    _layoutResolveTimer?.cancel();
+    super.dispose();
   }
 
   List<_PaywallOption> _buildOptions(SubscriptionState subscription) {
@@ -159,10 +215,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     ];
   }
 
-  _PaywallOption? _selectedOption(List<_PaywallOption> options) {
+  _PaywallOption? _selectedOption(
+    List<_PaywallOption> options,
+    String selectedId,
+  ) {
     return options
         .cast<_PaywallOption?>()
-        .firstWhere((o) => o?.id == _selectedOptionId, orElse: () => null);
+        .firstWhere((o) => o?.id == selectedId, orElse: () => null);
   }
 
   _PaywallOption? _firstAvailableOption(List<_PaywallOption> options) {
@@ -171,8 +230,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         .firstWhere((o) => o?.isReady == true, orElse: () => null);
   }
 
-  void _scheduleSelectedOptionFallback(_PaywallOption? fallback) {
-    if (fallback == null || fallback.id == _selectedOptionId) return;
+  void _scheduleSelectedOptionFallback(
+    _PaywallOption? fallback,
+    String selectedId,
+  ) {
+    if (fallback == null || fallback.id == selectedId) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || fallback.id == _selectedOptionId) return;
       setState(() => _selectedOptionId = fallback.id);
@@ -239,12 +301,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
+    if (!subscription.isLoading) _markLayoutResolved();
+    if (!_layoutResolved) return _buildLoadingSkeleton();
+
     final options = _buildOptions(subscription);
-    final selected = _selectedOption(options);
+    final resolvedId = _resolvedOptionId(subscription);
+    final selectedId =
+        _isPurchasing ? (_frozenSelectedId ?? resolvedId) : resolvedId;
+    final showFreeLayout = _isPurchasing
+        ? (_frozenFreeLayout ?? subscription.isFreeUser)
+        : subscription.isFreeUser;
+    _frozenSelectedId = selectedId;
+    _frozenFreeLayout = showFreeLayout;
+    final selected = _selectedOption(options, selectedId);
     final fallbackOption = selected == null || selected.isReady
         ? null
         : _firstAvailableOption(options);
-    _scheduleSelectedOptionFallback(fallbackOption);
+    _scheduleSelectedOptionFallback(fallbackOption, selectedId);
     final selectedProduct = selected?.purchasableProduct;
     final selectedTier = selected?.tier ?? SubscriptionTierHelper.essential;
     final plansReady = options.any((o) => o.isReady);
@@ -279,6 +352,59 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       };
     }
 
+    final primaryButton = BrandPrimaryButton(
+      label: _primaryButtonText(
+        subscription,
+        selected,
+        selectedTier,
+        isCurrentPlan,
+        canManagePendingDowngrade,
+        pendingDowngradeMatchesSelection,
+        selectedProduct,
+      ),
+      onPressed: primaryAction,
+      isLoading: _isPurchasing || _isRefreshingPlans,
+    );
+
+    if (showFreeLayout) {
+      return _buildFreeLayout(
+        options: options,
+        selected: selected,
+        selectedId: selectedId,
+        subscription: subscription,
+        primaryButton: primaryButton,
+      );
+    }
+    return _buildManageLayout(
+      subscription: subscription,
+      options: options,
+      selected: selected,
+      selectedId: selectedId,
+      plansReady: plansReady,
+      isCurrentPlan: isCurrentPlan,
+      isDowngrade: isDowngrade,
+      hasPendingDowngrade: hasPendingDowngrade,
+      canManagePendingDowngrade: canManagePendingDowngrade,
+      pendingDowngradeMatchesSelection: pendingDowngradeMatchesSelection,
+      primaryButton: primaryButton,
+    );
+  }
+
+  /// 管理版（已付費的人）：升降級說明、目前方案與額度、比較表、四張方案卡，內容照舊
+  /// （Onboarding 第 9 步只把它從 build 搬出來）。
+  Widget _buildManageLayout({
+    required SubscriptionState subscription,
+    required List<_PaywallOption> options,
+    required _PaywallOption? selected,
+    required String selectedId,
+    required bool plansReady,
+    required bool isCurrentPlan,
+    required bool isDowngrade,
+    required bool hasPendingDowngrade,
+    required bool canManagePendingDowngrade,
+    required bool pendingDowngradeMatchesSelection,
+    required Widget primaryButton,
+  }) {
     return BrandScaffold(
       title: '方案與額度',
       leading: IconButton(
@@ -353,8 +479,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _buildOptionCard(
                       option: option,
-                      isSelected: _selectedOptionId == option.id,
+                      selectedOptionId: selectedId,
+                      isSelected: selectedId == option.id,
                       isCurrentPlan: _isCurrentOption(subscription, option),
+                      isRecommended:
+                          option.id == _defaultOptionIdFor(subscription.tier),
                       onTap: () => _selectOption(option.id),
                     ),
                   ),
@@ -370,19 +499,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                BrandPrimaryButton(
-                  label: _primaryButtonText(
-                    subscription,
-                    selected,
-                    selectedTier,
-                    isCurrentPlan,
-                    canManagePendingDowngrade,
-                    pendingDowngradeMatchesSelection,
-                    selectedProduct,
-                  ),
-                  onPressed: primaryAction,
-                  isLoading: _isPurchasing || _isRefreshingPlans,
-                ),
+                primaryButton,
                 const SizedBox(height: 12),
                 Text(
                   _primaryFootnote(
@@ -447,25 +564,541 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               ],
             ),
           ),
-          // 購買處理 scrim 淡入淡出，不硬切。
-          IgnorePointer(
-            ignoring: !_isPurchasing,
-            // 單一 scrim 的淡入淡出沒有新舊內容並存的殘影問題，維持預設
-            // cross-fade（2026-08 殘影拆除刻意保留此處）；退場 spinner 的
-            // ticker 生命週期由 spinner 守門測試（2.1(b)）釘住。
-            child: AnimatedSwitcher(
-              duration: AppMotion.enter,
-              switchInCurve: AppMotion.easeOut,
-              switchOutCurve: AppMotion.easeOut,
-              child: _isPurchasing
-                  ? Container(
-                      color: Colors.black54,
-                      child: const Center(child: CircularProgressIndicator()),
-                    )
-                  : const SizedBox.shrink(),
+          _buildPurchasingScrim(),
+        ],
+      ),
+    );
+  }
+
+  /// 購買處理 scrim 淡入淡出，不硬切。[showSpinner] false 給購買版的固定底部：同一層
+  /// 遮罩蓋住購買鈕與條款連結，轉圈只留在內容區中間那一個。
+  Widget _buildPurchasingScrim({bool showSpinner = true}) {
+    return IgnorePointer(
+      ignoring: !_isPurchasing,
+      // 單一 scrim 的淡入淡出沒有新舊內容並存的殘影問題，維持預設
+      // cross-fade（2026-08 殘影拆除刻意保留此處）；退場 spinner 的
+      // ticker 生命週期由 spinner 守門測試（2.1(b)）釘住。
+      child: AnimatedSwitcher(
+        duration: AppMotion.enter,
+        switchInCurve: AppMotion.easeOut,
+        switchOutCurve: AppMotion.easeOut,
+        child: _isPurchasing
+            ? Container(
+                color: Colors.black54,
+                child: showSpinner
+                    ? const Center(child: CircularProgressIndicator())
+                    : null,
+              )
+            : const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  /// 購買版（免費用戶，Onboarding 第 9 步）：大標第二行先講免費什麼時候恢復，接著
+  /// 差異句、月繳／季繳切換、Starter 與 Essential 兩張卡；購買鈕、自動續訂說明、條款
+  /// 連結固定在底部，不用捲。比較表收在「比較全部方案」裡；按比例計費的說明、額度
+  /// 膠囊、降級排程卡是管理版的東西，這裡不放。
+  Widget _buildFreeLayout({
+    required SubscriptionState subscription,
+    required List<_PaywallOption> options,
+    required _PaywallOption? selected,
+    required String selectedId,
+    required Widget primaryButton,
+  }) {
+    final isQuarterly = selected?.isQuarterly ?? false;
+    final selectedTier = selected?.tier ?? SubscriptionTierHelper.starter;
+    final shownOptions =
+        options.where((option) => option.isQuarterly == isQuarterly).toList();
+    // 推薦跟著免費用戶的預設（Starter）；月繳、季繳都標在 Starter 那張。
+    final recommendedTier = options
+        .firstWhere(
+          (option) =>
+              option.id == _defaultOptionIdFor(SubscriptionTierHelper.free),
+        )
+        .tier;
+    final quarterlyDiscount = options
+        .firstWhere(
+            (option) => option.tier == selectedTier && option.isQuarterly)
+        .discount;
+
+    return BrandScaffold(
+      title: '升級方案',
+      leading: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white),
+        onPressed: _closePaywall,
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: TextButton(
+            onPressed: _isPurchasing
+                ? null
+                : () {
+                    _syncPurchasedPlan();
+                  },
+            child: Text(
+              '恢復購買',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
+        ),
+      ],
+      bottomNavigationBar: _buildBuyBottomBar(
+        primaryButton: primaryButton,
+        isQuarterly: isQuarterly,
+      ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 購買版只給免費用戶；購買處理中方案可能已經換成付費（翻牌入口的大標
+                // 跟著方案變），遮罩底下維持免費那句。
+                _buildBuyHeadline(
+                  widget.entry.headlineFor(SubscriptionTierHelper.free),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _buyPitch,
+                  style: AppTypography.bodySmall.copyWith(
+                    color:
+                        AppColors.onBackgroundSecondary.withValues(alpha: 0.78),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                BrandSegmentedButton<bool>(
+                  segments: [
+                    const BrandSegment(value: false, label: '月繳'),
+                    BrandSegment(
+                      value: true,
+                      label: quarterlyDiscount == null
+                          ? '季繳'
+                          : '季繳 $quarterlyDiscount',
+                    ),
+                  ],
+                  selected: isQuarterly,
+                  onChanged: (quarterly) => _selectOption(
+                    '${selectedTier}_${quarterly ? 'quarterly' : 'monthly'}',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < shownOptions.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildBuyPlanCard(
+                            option: shownOptions[i],
+                            isSelected: shownOptions[i].id == selectedId,
+                            isRecommended:
+                                shownOptions[i].tier == recommendedTier,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (subscription.error != null &&
+                    subscription.error!.isNotEmpty &&
+                    subscription.error != 'Not logged in') ...[
+                  const SizedBox(height: 16),
+                  _buildInfoCard(
+                    icon: Icons.error_outline,
+                    title: '方案同步異常',
+                    message: '目前無法更新你的最新方案狀態。若持續失敗，請稍後再試或重新登入。',
+                    iconColor: AppColors.error,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Center(
+                  child: TextButton(
+                    key: const ValueKey('paywall-compare-toggle'),
+                    onPressed: () =>
+                        setState(() => _showComparison = !_showComparison),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '比較全部方案',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.onBackgroundSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _showComparison
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          size: 18,
+                          color: AppColors.onBackgroundSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                AnimatedSize(
+                  duration: AppMotion.state,
+                  curve: AppMotion.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: _showComparison
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: _buildFeatureComparisonTable(),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+                if (SubscriptionDiagnosticsGate.isVisible) ...[
+                  const SizedBox(height: 16),
+                  Center(
+                    child: TextButton(
+                      onPressed: _copySubscriptionDiagnostics,
+                      child: Text('複製訂閱診斷', style: AppTypography.caption),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _buildPurchasingScrim(),
         ],
+      ),
+    );
+  }
+
+  /// 購買版大標：沿用入口的兩行大標（額度入口第二行是恢復時間，Onboarding 第 3 步），
+  /// 第二行改成副標樣式。整段還是同一個 Text，讀出來、找字都跟管理版是同一句。
+  Widget _buildBuyHeadline(String headline) {
+    final lineBreak = headline.indexOf('\n');
+    final title = lineBreak < 0 ? headline : headline.substring(0, lineBreak);
+    final subtitle = lineBreak < 0 ? null : headline.substring(lineBreak + 1);
+    return Text.rich(
+      TextSpan(
+        text: title,
+        style: AppTypography.headlineLarge.copyWith(
+          color: AppColors.onBackgroundPrimary,
+          height: 1.12,
+        ),
+        children: [
+          if (subtitle != null)
+            TextSpan(
+              text: '\n$subtitle',
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.onBackgroundSecondary,
+                fontWeight: FontWeight.w400,
+                height: 1.6,
+              ),
+            ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
+  }
+
+  /// 購買版卡片上的權益：數字全部照 AppConstants，冊數照下面比較表那兩格；跟比較表、
+  /// docs/pricing-final.md 同一套，不另外編。草稿潤飾 2026-07-28 起全方案都能用
+  /// （docs/plans/2026-07-28-reply-refinement-design.md D-4），不列成 Essential 的權益。
+  /// 每一條拆成幾段：放得下就同一行，放不下只在段與段之間換行（卡片窄，繁中可能在
+  /// 任何字中間斷開，「50 則」的「則」會自己掉到下一行）。
+  static List<List<String>> _buyHighlightsFor(String tier) {
+    final limits = SubscriptionTierHelper.limitsFor(tier);
+    final quota = ['每月 ${limits.monthly} 則・', '每天 ${limits.daily} 則'];
+    if (tier == SubscriptionTierHelper.essential) {
+      return [
+        quota,
+        ['陪練每天翻 ${AppConstants.essentialDailyDrawLimit} 位、', '同一位能續聊'],
+        ['互動電子書全 7 冊、', '夜市實戰影片完整版'],
+      ];
+    }
+    return [
+      quota,
+      ['陪練每天翻 ${AppConstants.starterDailyDrawLimit} 位、', '同一位能續聊'],
+      ['互動電子書 4 冊＋', '聊天測驗全關卡'],
+    ];
+  }
+
+  /// 購買版的方案卡：名稱、App Store 價格（沒到就「價格同步中」）、續訂週期；季繳多一行
+  /// 灰色月均價小字（無條件進位，字比扣款金額小）。選到的那張是橘框；「推薦」跟著預設
+  /// 那張；沒有徽章的卡留同樣高度，兩張卡的名稱、價格對齊。
+  Widget _buildBuyPlanCard({
+    required _PaywallOption option,
+    required bool isSelected,
+    required bool isRecommended,
+  }) {
+    final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
+    final monthlyAverage = option.isQuarterly
+        ? quarterlyMonthlyAverageLabel(option.purchasableProduct)
+        : null;
+    final badges = <Widget>[
+      if (isRecommended)
+        _buildBadge(
+          label: '推薦',
+          background: const LinearGradient(
+            colors: [AppColors.ctaStart, AppColors.ctaEnd],
+          ),
+          color: Colors.white,
+        ),
+      if (option.isQuarterly && option.discount != null)
+        _buildBadge(
+          label: option.discount!,
+          background: LinearGradient(
+            colors: [
+              AppColors.success.withValues(alpha: 0.88),
+              AppColors.success.withValues(alpha: 0.72),
+            ],
+          ),
+          color: Colors.white,
+        ),
+    ];
+
+    return Semantics(
+      key: ValueKey('paywall-buy-card-${option.id}'),
+      button: true,
+      selected: isSelected,
+      child: PressableScale(
+        child: GestureDetector(
+          onTap: () => _selectOption(option.id),
+          child: AnimatedContainer(
+            duration: AppMotion.state,
+            curve: AppMotion.easeOut,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.brandSurface2.withValues(alpha: 0.9),
+                  AppColors.brandSurface.withValues(alpha: 0.96),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.ctaStart.withValues(alpha: 0.9)
+                    : Colors.white.withValues(alpha: 0.1),
+                width: isSelected ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 22,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (badges.isEmpty)
+                  Visibility(
+                    visible: false,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: _buildBadge(label: '推薦', color: Colors.white),
+                  )
+                else
+                  Wrap(spacing: 6, runSpacing: 6, children: badges),
+                const SizedBox(height: 8),
+                Text(
+                  option.name,
+                  style: AppTypography.titleLarge.copyWith(
+                    color: AppColors.onBackgroundPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    option.priceString ?? '價格同步中',
+                    style: AppTypography.headlineMedium.copyWith(
+                      color: AppColors.onBackgroundPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  option.isReady ? billingCycle : '請重新載入 App Store 價格',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.onBackgroundSecondary,
+                  ),
+                ),
+                if (monthlyAverage != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    monthlyAverage,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                for (final phrases in _buyHighlightsFor(option.tier))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: AppColors.success,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: MergeSemantics(
+                            child: Wrap(
+                              children: [
+                                for (final phrase in phrases)
+                                  Text(
+                                    phrase,
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.onBackgroundPrimary,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 購買版固定底部：購買鈕＋自動續訂說明（照選到的週期寫，季繳寫每 3 個月）＋條款、
+  /// 隱私連結，都在購買鈕旁邊看得到（App Review 3.1.2）。
+  Widget _buildBuyBottomBar({
+    required Widget primaryButton,
+    required bool isQuarterly,
+  }) {
+    final linkStyle = TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      minimumSize: const Size(48, 40),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+    return Stack(
+      key: const ValueKey('paywall-buy-bottom-bar'),
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  primaryButton,
+                  const SizedBox(height: 8),
+                  Text(
+                    '${isQuarterly ? '每 3 個月' : '每月'}自動續訂，可隨時在 iPhone 設定取消',
+                    key: const ValueKey('paywall-buy-renewal-note'),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          _launchUrl(_termsUrl);
+                        },
+                        style: linkStyle,
+                        child: Text('服務條款', style: AppTypography.caption),
+                      ),
+                      Text('|', style: AppTypography.caption),
+                      TextButton(
+                        onPressed: () {
+                          _launchUrl(_privacyUrl);
+                        },
+                        style: linkStyle,
+                        child: Text('隱私政策', style: AppTypography.caption),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(child: _buildPurchasingScrim(showSpinner: false)),
+      ],
+    );
+  }
+
+  /// 方案還在同步、還不知道該給哪一版時的骨架：靜態色塊，不跑動畫；左上 X 照樣能關。
+  Widget _buildLoadingSkeleton() {
+    Widget block({double? width, required double height, double radius = 18}) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      );
+    }
+
+    return BrandScaffold(
+      title: '',
+      leading: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white),
+        onPressed: _closePaywall,
+      ),
+      body: SingleChildScrollView(
+        key: const ValueKey('paywall-loading-skeleton'),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Column(
+          children: [
+            block(width: 220, height: 32, radius: 999),
+            const SizedBox(height: 12),
+            block(width: 280, height: 16, radius: 999),
+            const SizedBox(height: 32),
+            block(height: 40),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: block(height: 220, radius: 24)),
+                const SizedBox(width: 12),
+                Expanded(child: block(height: 220, radius: 24)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '正在同步方案資訊',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.onBackgroundSecondary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -920,15 +1553,19 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
+  /// 管理版的方案卡。[isRecommended]（橘色徽章）跟著預設選取那一張
+  /// （[_defaultOptionIdFor]，Onboarding 第 9 步）；以前寫死在 Essential 季繳，跟
+  /// 預設的 Essential 月繳對不上。
   Widget _buildOptionCard({
     required _PaywallOption option,
+    required String selectedOptionId,
     required bool isSelected,
     required bool isCurrentPlan,
+    required bool isRecommended,
     required VoidCallback onTap,
   }) {
     final priceLabel = option.priceString ?? '價格同步中';
     final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
-    final isRecommended = option.id == 'essential_quarterly';
 
     return PressableScale(
       child: GestureDetector(
@@ -1024,7 +1661,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                   Radio<String>(
                     value: option.id,
-                    groupValue: _selectedOptionId,
+                    groupValue: selectedOptionId,
                     onChanged: (value) {
                       if (value == null) return;
                       _selectOption(value);
