@@ -247,6 +247,8 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(practiceChatControllerProvider);
+    // 錯誤橫幅的額度說法照目前方案組（Onboarding 第 3 步補）。
+    final tier = ref.watch(subscriptionProvider.select((s) => s.tier));
 
     // 訊息變動或開始等待 → 捲到底。
     ref.listen(practiceChatControllerProvider, (prev, next) {
@@ -403,7 +405,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
               ),
               if (state.errorMessage != null)
                 _ErrorBanner(
-                  message: state.errorMessage!,
+                  // 共用額度用完的說法在顯示時照目前方案組（Onboarding 第 3 步補，跟開場
+                  // 救星、新話題同一個做法）：伺服器 429 那句不分方案（本月那句沒寫恢復
+                  // 時間、Essential 也被叫去升級），不拿來顯示。本月或今日照伺服器說的。
+                  message: state.quotaExceeded
+                      ? quotaShortMessage(
+                          tier: tier,
+                          isMonthly: state.quotaExceededMonthly,
+                          feature: '練習',
+                        )
+                      : state.errorMessage!,
+                  // Essential 已經是最高方案：鈕寫「查看方案」，不叫他升級（同分析、教練）。
+                  upgradeLabel: canUpgradeQuota(tier) ? '升級' : '查看方案',
                   showUpgrade: state.quotaExceeded ||
                       state.upgradeRequired ||
                       state.drawUpgradeRequired ||
@@ -1801,12 +1814,14 @@ class _TypingDotsState extends State<_TypingDots>
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({
     required this.message,
+    required this.upgradeLabel,
     required this.showUpgrade,
     required this.onUpgrade,
     required this.onDismiss,
   });
 
   final String message;
+  final String upgradeLabel;
   final bool showUpgrade;
   final VoidCallback onUpgrade;
   final VoidCallback onDismiss;
@@ -1837,7 +1852,7 @@ class _ErrorBanner extends StatelessWidget {
             TextButton(
               onPressed: onUpgrade,
               child: Text(
-                '升級',
+                upgradeLabel,
                 style: AppTypography.labelMedium.copyWith(
                   color: AppColors.ctaStart,
                   fontWeight: FontWeight.w700,

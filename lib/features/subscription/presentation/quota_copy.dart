@@ -62,10 +62,10 @@ bool quotaPayloadIsMonthly(Map<dynamic, dynamic> data) {
   return true;
 }
 
-/// 開場救星、新話題撞到額度時的說明（Eric 2026-10-18）：先說什麼時候恢復，免費、
-/// Starter 再說升級能多用（Onboarding 第 3 步：本月那句以前只叫人升級）；Essential
-/// 只說什麼時候恢復。[feature] 是本月那句點名的功能（「開場」、「新話題」）。伺服器
-/// 429 的 message 不分方案，不拿來顯示。
+/// 開場救星、新話題、練習對話撞到額度時的說明（Eric 2026-10-18；練習對話是 Onboarding
+/// 第 3 步補）：先說什麼時候恢復，免費、Starter 再說升級能多用（Onboarding 第 3 步：
+/// 本月那句以前只叫人升級）；Essential 只說什麼時候恢復。[feature] 是本月那句點名的
+/// 功能（「開場」、「新話題」、「練習」）。伺服器 429 的 message 不分方案，不拿來顯示。
 String quotaShortMessage({
   required String? tier,
   required bool isMonthly,

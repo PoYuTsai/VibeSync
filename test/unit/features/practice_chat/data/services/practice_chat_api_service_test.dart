@@ -404,6 +404,37 @@ void main() {
       );
     });
 
+    // Onboarding 第 3 步補：本月或今日照伺服器說的（共用額度 payload 的 error），分不出來
+    // 當本月；說明由畫面照目前方案組，伺服器那句不分方案。
+    test('429：本月或今日照伺服器的 error 判斷，分不出來當本月', () async {
+      Future<PracticeQuotaExceededException> caught(
+        Map<String, dynamic> body,
+      ) async {
+        try {
+          await serviceReturning(429, body)
+              .sendMessage(sessionId: 's', profile: profile, turns: turns);
+        } on PracticeQuotaExceededException catch (e) {
+          return e;
+        }
+        fail('應該丟 PracticeQuotaExceededException');
+      }
+
+      final daily = await caught({
+        'error': 'Daily limit exceeded',
+        'message': '今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。',
+        'dailyRemaining': 0,
+      });
+      expect(daily.isMonthly, isFalse);
+      final monthly = await caught({
+        'error': 'Monthly limit exceeded',
+        'message': '本月額度已用完，升級方案可取得更多分析與教練額度。',
+        'monthlyRemaining': 0,
+      });
+      expect(monthly.isMonthly, isTrue);
+      final unknown = await caught({'message': '額度已用完'});
+      expect(unknown.isMonthly, isTrue, reason: '分不出來當本月（保守寫法）');
+    });
+
     test('MODEL_RATE_LIMITED 429 不當 quota 例外（不得誤導升級）', () async {
       final svc = serviceReturning(429, {
         'error': 'Model rate limited',

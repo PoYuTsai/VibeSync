@@ -191,6 +191,10 @@ class PracticeChatState {
   final bool debriefRetryable; // true 顯示再試一次；false 只允許完成
   final String? errorMessage;
   final bool quotaExceeded;
+
+  /// 共用額度是本月還是今日擋下（伺服器說的；分不出來當本月）。只在 [quotaExceeded]
+  /// 時有意義：伺服器那句不分方案，畫面照目前方案自己組字（Onboarding 第 3 步補）。
+  final bool quotaExceededMonthly;
   final bool upgradeRequired; // Free 續同一位被擋（402）：導向付費牆，與額度用罄分開
   final String? restoreText; // 失敗時把使用者剛打的字還回輸入列
   final PracticeLearningMode learningMode;
@@ -278,6 +282,7 @@ class PracticeChatState {
     this.debriefRetryable = true,
     this.errorMessage,
     this.quotaExceeded = false,
+    this.quotaExceededMonthly = true,
     this.upgradeRequired = false,
     this.restoreText,
     this.learningMode = PracticeLearningMode.standard,
@@ -383,6 +388,7 @@ class PracticeChatState {
     bool? debriefFailed,
     bool? debriefRetryable,
     bool? quotaExceeded,
+    bool? quotaExceededMonthly,
     bool? upgradeRequired,
     PracticeDrawStatus? drawStatus,
     PracticeGirlProfile? girl,
@@ -446,6 +452,7 @@ class PracticeChatState {
       debriefFailed: debriefFailed ?? this.debriefFailed,
       debriefRetryable: debriefRetryable ?? this.debriefRetryable,
       quotaExceeded: quotaExceeded ?? this.quotaExceeded,
+      quotaExceededMonthly: quotaExceededMonthly ?? this.quotaExceededMonthly,
       upgradeRequired: upgradeRequired ?? this.upgradeRequired,
       difficultyPreference: difficultyPreference ?? this.difficultyPreference,
       personaId: personaId ?? this.personaId,
@@ -2066,6 +2073,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       state = priorState.copyWith(
         isSending: false,
         quotaExceeded: true,
+        quotaExceededMonthly: e.isMonthly,
         errorMessage: e.message,
         restoreText: trimmed,
       );
@@ -2325,6 +2333,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         hintFailed: false,
         hasRetiredHintForCurrentTurn: replacingRetiredHint,
         quotaExceeded: true,
+        quotaExceededMonthly: e.isMonthly,
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {
@@ -2506,6 +2515,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         debriefFailed: true,
         debriefRetryable: true,
         quotaExceeded: true,
+        quotaExceededMonthly: e.isMonthly,
         errorMessage: e.message,
       );
     } on PracticeUpgradeRequiredException {

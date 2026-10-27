@@ -9,6 +9,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.da
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_moment_post.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 
 /// 一則送進 practice-chat 的對話 turn。
 class PracticeTurnDto {
@@ -337,12 +338,18 @@ class PracticeQuotaExceededException implements Exception {
   final int? limit;
   final int? monthlyRemaining;
   final int? dailyRemaining;
+
+  /// 是本月還是今日的額度擋下（quota_copy.dart 的 quotaPayloadIsMonthly：照伺服器說的，
+  /// 分不出來當本月）。[message] 是伺服器那句、不分方案，畫面照目前方案自己組字
+  /// （Onboarding 第 3 步補）。
+  final bool isMonthly;
   PracticeQuotaExceededException(
     this.message, {
     this.used,
     this.limit,
     this.monthlyRemaining,
     this.dailyRemaining,
+    this.isMonthly = true,
   });
   @override
   String toString() => 'PracticeQuotaExceededException: $message';
@@ -1063,6 +1070,7 @@ class PracticeChatApiService {
           limit: _asInt(data['limit']),
           monthlyRemaining: _asInt(data['monthlyRemaining']),
           dailyRemaining: _asInt(data['dailyRemaining']),
+          isMonthly: quotaPayloadIsMonthly(data),
         );
       default:
         if (response.status >= 500) {
@@ -1322,6 +1330,7 @@ class PracticeChatApiService {
           limit: _asInt(data['limit']),
           monthlyRemaining: _asInt(data['monthlyRemaining']),
           dailyRemaining: _asInt(data['dailyRemaining']),
+          isMonthly: quotaPayloadIsMonthly(data),
         );
       case 409:
         // 409 依 body error code 分流：mode locked 是「切回原模式」而非場次已滿；
