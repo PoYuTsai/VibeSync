@@ -305,6 +305,39 @@ Deno.test("runReport 再擋一次：out 指到這個 repo 裡面就停，不讀 
   assertEquals(touched, false);
 });
 
+Deno.test({
+  name:
+    "runReport 再擋一次：Linux 上 out 是 C:\\temp\\cohort.md 這種 Windows 路徑就停（Codex 主審第 1 輪 P2）",
+  ignore: Deno.build.os === "windows", // Windows 上這是合法的絕對路徑
+  fn: async () => {
+    let touched = false;
+    const touch = () => {
+      touched = true;
+      return Promise.resolve(FAKE_TOKEN);
+    };
+    const touchWrite = (_path: string, _text: string) => {
+      touched = true;
+      return Promise.resolve();
+    };
+    for (const out of ["C:\\temp\\cohort.md", "\\\\server\\share\\x.md"]) {
+      await assertRejects(
+        () =>
+          runReport(options({ out }), {
+            now: NOW,
+            fetchImpl: touch as unknown as typeof fetch,
+            readToken: touch,
+            writeFile: touchWrite,
+            log: () => {},
+          }),
+        Error,
+        "看起來是 Windows 路徑",
+        out,
+      );
+    }
+    assertEquals(touched, false);
+  },
+});
+
 Deno.test("runReport：沒有 project ref 就停在送出前（不讀 token、不打網路）", async () => {
   let touched = false;
   const code = await runReport(options({ projectRef: undefined }), {
@@ -383,4 +416,41 @@ Deno.test("CLI：在 repo 根目錄下指定 --out=docs/... 會被拒絕（exit 
   assertStringIncludes(err, "在 repo 裡面");
   assertStringIncludes(err, "repo 是公開的");
   assertEquals(new TextDecoder().decode(stdout), "");
+});
+
+Deno.test({
+  name:
+    "CLI：在 repo 根目錄真跑、--out='C:\\temp\\cohort.md' 會被拒絕（exit 1），repo 裡不會多出怪檔名（Codex 主審第 1 輪 P2）",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    // 不給寫檔與網路權限：就算守門壞了也寫不進 repo、打不到 API。
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--cached-only",
+        "--allow-env",
+        "--allow-read",
+        new URL("./report.ts", import.meta.url).pathname,
+        "--project-ref=fake-ref",
+        "--week=2026-W40",
+        "--weeks=1",
+        "--out=C:\\temp\\cohort.md",
+      ],
+      cwd: REPO_ROOT,
+      env: { SUPABASE_ACCESS_TOKEN: "", HOME: "/nonexistent" },
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code, stderr } = await command.output();
+    const err = new TextDecoder().decode(stderr);
+    assertEquals(code, 1);
+    assertStringIncludes(err, "看起來是 Windows 路徑");
+    assertStringIncludes(err, "反斜線不是路徑分隔符");
+    for (const junk of ["C:\\temp\\cohort.md", "C:\\temp", "C:"]) {
+      assertThrows(
+        () => Deno.lstatSync(`${REPO_ROOT}${junk}`),
+        Deno.errors.NotFound,
+      );
+    }
+  },
 });

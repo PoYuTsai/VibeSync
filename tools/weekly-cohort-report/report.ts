@@ -22,6 +22,7 @@ import {
   defaultOutContext,
   type OutPathContext,
   resolveOutPath,
+  writeOutsideRepo,
 } from "./out_path.ts";
 import { type CohortResult, parseCohortRow, renderReport } from "./render.ts";
 import {
@@ -162,10 +163,9 @@ export async function fetchCohort(opts: {
   return results;
 }
 
+/** 真跑的寫檔：寫檔前再用真實路徑確認在 repo 以外（見 out_path.ts）。 */
 async function writeReportFile(path: string, text: string): Promise<void> {
-  const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
-  await Deno.writeTextFile(path, text);
+  await writeOutsideRepo(path, text);
 }
 
 /** 可注入的外部依賴：測試用假的 fetch／token／寫檔，不碰網路也不碰檔案。 */
@@ -184,8 +184,8 @@ export async function runReport(
 ): Promise<number> {
   const log = deps.log ?? console.log;
   // parseArgs 已經擋過；這裡在讀 token、打網路、寫檔之前再擋一次，
-  // 不是從 parseArgs 來的 CliOptions 也繞不過去。
-  assertOutsideRepo(opts.out, defaultOutContext());
+  // 不是從 parseArgs 來的 CliOptions 也繞不過去。之後一律用檢查過的正規化路徑。
+  const out = assertOutsideRepo(opts.out, defaultOutContext());
   const weeks = weeksEndingAt(opts.latest, opts.weeks);
 
   if (opts.dryRun) {
@@ -195,7 +195,7 @@ export async function runReport(
       log("");
     }
     log(
-      `-- 真跑會寫到 ${opts.out}（repo 以外；之後由 agent 經 Brain Publisher 收進 Dev Brain）`,
+      `-- 真跑會寫到 ${out}（repo 以外；之後由 agent 經 Brain Publisher 收進 Dev Brain）`,
     );
     return 0;
   }
@@ -212,11 +212,11 @@ export async function runReport(
     fetchImpl: deps.fetchImpl,
   });
   await (deps.writeFile ?? writeReportFile)(
-    opts.out,
+    out,
     renderReport({ asOf: deps.now, results }),
   );
   log(
-    `已輸出 ${opts.out}（不要 commit 進 repo；由 agent 經 Brain Publisher 收進 Dev Brain）`,
+    `已輸出 ${out}（不要 commit 進 repo；由 agent 經 Brain Publisher 收進 Dev Brain）`,
   );
   return 0;
 }

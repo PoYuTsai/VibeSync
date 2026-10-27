@@ -25,10 +25,17 @@ deno test --allow-all tools/weekly-cohort-report/
 | `--project-ref=` | `SUPABASE_PROJECT_REF` | Supabase 專案 ref，程式裡沒有寫死。 |
 | `--week=` | 上一個已經結束的 ISO 週 | 報表裡最新的註冊週，例如 `2026-W43`。還沒結束的週會報錯。 |
 | `--weeks=` | `6` | 從 `--week` 往回共幾週（1～12），一週一次查詢。 |
-| `--out=` | `~/vibesync-weekly-cohort/<週>.md`（家目錄底下，repo 以外） | 不能指到 repo 裡面（含 `docs/`），指到就報錯並說明原因，沒有逃生口。相對路徑以目前目錄為準，`~` 換成家目錄。 |
+| `--out=` | `~/vibesync-weekly-cohort/<週>.md`（家目錄底下，repo 以外） | 不能指到 repo 裡面（含 `docs/`），指到就報錯並說明原因，沒有逃生口。相對路徑以目前目錄為準，`~` 換成家目錄。在 Linux／WSL 上不收 Windows 路徑（磁碟代號、反斜線、UNC），請用 `/mnt/c/…`。 |
 | `--dry-run` | 關 | 只印每一週的 SQL。 |
 
 `--k=v` 與 `--k v` 兩種寫法都收；認不得的參數、孤立的字串、缺值一律報錯。token 跟練習室週報一樣：`SUPABASE_ACCESS_TOKEN` 環境變數優先，沒有就讀 `~/.supabase/access-token`；只放進 `Authorization: Bearer`，不進報表、不進輸出。
+
+輸出路徑有兩道檢查（`tools/weekly-cohort-report/out_path.ts`）：
+
+1. 路徑字串（`--dry-run` 也跑）：照執行平台的規則換成正規化的絕對路徑再比對。Linux／WSL 上反斜線不是路徑分隔符，`C:\temp\x.md` 會在目前目錄寫出一個叫這個名字的檔案，所以看起來像 Windows 的路徑一律拒絕。
+2. 真實路徑（真跑寫檔前）：解開 symlink 之後也必須在 repo 以外；經過 symlink 指進 repo、輸出檔本身是 symlink、路徑上有壞掉的 symlink 都不寫。寫的就是檢查過的那個路徑。
+
+`--dry-run` 沒有讀檔權限，只做第一道。兩道都是防手誤的護欄，不是安全邊界：工具只認得自己所在的這份 repo，同一台機器上的其他副本或 worktree 擋不到。
 
 ## 欄位定義
 
