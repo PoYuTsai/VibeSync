@@ -1439,8 +1439,28 @@ void main() {
       final s = c.currentState;
 
       expect(s.quotaExceeded, true);
+      expect(s.quotaExceededMonthly, true);
       expect(s.errorMessage, '本月額度已用完');
       expect(s.messages, isEmpty);
+    });
+
+    // Onboarding 第 3 步補：記下伺服器說的是今日還是本月，畫面照目前方案組字。
+    test('額度用罄（今日）：記下是今日擋下', () async {
+      final c = await makeRevealed();
+      api.sendHandler =
+          (_, {profile}) async => throw PracticeQuotaExceededException(
+                '今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。',
+                monthlyRemaining: 20,
+                dailyRemaining: 0,
+                isMonthly: false,
+              );
+
+      await c.sendMessage('嗨');
+      final s = c.currentState;
+
+      expect(s.quotaExceeded, true);
+      expect(s.quotaExceededMonthly, false);
+      expect(s.restoreText, '嗨');
     });
 
     test('模型限流 429：不標 quotaExceeded、顯示稍等文案＋回滾還原', () async {
@@ -1788,6 +1808,19 @@ void main() {
       expect(s.debriefRetryable, false);
       expect(s.errorMessage, '這場練習的拆解次數已用完。');
       expect(s.canDebrief, false);
+    });
+
+    test('拆解撞到今日額度：記下是今日擋下（畫面照方案組字）', () async {
+      final c = await makeDebriefable();
+      api.debriefHandler = (_, {profile}) async =>
+          throw PracticeQuotaExceededException('今日額度已用完', isMonthly: false);
+
+      await c.endPractice();
+      final s = c.currentState;
+
+      expect(s.quotaExceeded, true);
+      expect(s.quotaExceededMonthly, false);
+      expect(s.debriefFailed, true);
     });
 
     test('拆解 quota / upgrade / mode locked 走明確旗標與文案', () async {
@@ -3920,6 +3953,29 @@ void main() {
       expect(c.currentState.isHintLoading, false);
       expect(c.currentState.errorMessage, '要等對方回覆後，才能請 Hint。');
       expect(c.currentState.messages.map((m) => m.role), ['user', 'ai']);
+    });
+
+    test('requestHint 撞到今日額度：標 quotaExceeded 並記下是今日擋下', () async {
+      final c = await makeRevealed();
+      await c.setPracticeLearningMode(PracticeLearningMode.beginner);
+      api.sendHandler = (_, {profile}) async => reply(
+            cost: 0,
+            temperature: const PracticeTemperature(
+              score: 30,
+              delta: 0,
+              band: 'cold',
+              reason: '維持',
+            ),
+          );
+      await c.sendMessage('hello');
+      api.hintHandler = (_, {profile}) async =>
+          throw PracticeQuotaExceededException('今日額度已用完', isMonthly: false);
+
+      await c.requestHint();
+
+      expect(c.currentState.isHintLoading, false);
+      expect(c.currentState.quotaExceeded, true);
+      expect(c.currentState.quotaExceededMonthly, false);
     });
 
     test('requestHint explains backend readiness failure', () async {

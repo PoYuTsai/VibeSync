@@ -3368,6 +3368,131 @@ void main() {
     });
   });
 
+  // Onboarding 第 3 步補（Eric 2026-10-27「照預設」）：練習對話撞到共用額度時，橫幅照
+  // 目前方案自己組字，跟開場救星、新話題同一個做法——先講恢復時間，本月或今日照伺服器
+  // 說的；免費、Starter 再補升級，Essential 只講恢復時間、鈕寫「查看方案」。伺服器那句
+  // 不分方案（本月那句沒寫恢復時間），不拿來顯示。走真的送出路徑。
+  group('練習對話撞到共用額度：橫幅照目前方案講恢復時間', () {
+    const serverMonthly = '本月額度已用完，升級方案可取得更多分析與教練額度。';
+    const serverDaily = '今日額度已用完，每天早上 8 點恢復；也可以升級取得更多額度。';
+
+    Future<void> sendIntoQuota(
+      WidgetTester tester, {
+      required String tier,
+      required bool monthly,
+    }) async {
+      SharedPreferences.setMockInitialValues({
+        AiDataSharingConsent.practiceConsentKey: true,
+      });
+      final api = _MessageApi(
+        (_) async => throw PracticeQuotaExceededException(
+          monthly ? serverMonthly : serverDaily,
+          monthlyRemaining: monthly ? 0 : 20,
+          dailyRemaining: 0,
+          isMonthly: monthly,
+        ),
+      );
+      final controller = _SeededPracticeChatController(
+        seed: revealedPreMsgSeed(),
+        repository: repo,
+        api: api,
+      );
+      final limits = SubscriptionTierHelper.limitsFor(tier);
+
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceChatControllerProvider.overrideWith((ref) => controller),
+            subscriptionProvider.overrideWith(
+              (ref) => _SeededSubscriptionNotifier(
+                SubscriptionState(
+                  tier: tier,
+                  monthlyLimit: limits.monthly,
+                  dailyLimit: limits.daily,
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(home: PracticeChatScreen()),
+        ),
+      );
+
+      // 第二拍推過 AppHaptics.strong() 的計時器，免得留下 pending Timer。
+      await tester.tap(find.byKey(const ValueKey('practice-start-chat-cta')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.enterText(find.byType(TextField), '嗨');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('practice-send-button')));
+      await tester.pumpAndSettle();
+
+      expect(api.sendCalls, 1);
+      expect(controller.currentState.quotaExceeded, true);
+      expect(controller.currentState.quotaExceededMonthly, monthly);
+    }
+
+    const upgradeableMonthly = '本月額度不足，每月 1 號早上 8 點恢復；也可以升級取得更多練習與分析額度。';
+    const upgradeableDaily = '今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。';
+    final cases = <({String tier, bool monthly, String text, String button})>[
+      (
+        tier: SubscriptionTierHelper.free,
+        monthly: true,
+        text: upgradeableMonthly,
+        button: '升級',
+      ),
+      (
+        tier: SubscriptionTierHelper.free,
+        monthly: false,
+        text: upgradeableDaily,
+        button: '升級',
+      ),
+      (
+        tier: SubscriptionTierHelper.starter,
+        monthly: true,
+        text: upgradeableMonthly,
+        button: '升級',
+      ),
+      (
+        tier: SubscriptionTierHelper.starter,
+        monthly: false,
+        text: upgradeableDaily,
+        button: '升級',
+      ),
+      (
+        tier: SubscriptionTierHelper.essential,
+        monthly: true,
+        text: '本月額度不足，每月 1 號早上 8 點恢復。',
+        button: '查看方案',
+      ),
+      (
+        tier: SubscriptionTierHelper.essential,
+        monthly: false,
+        text: '今日額度不足，每天早上 8 點恢復。',
+        button: '查看方案',
+      ),
+    ];
+
+    for (final c in cases) {
+      testWidgets('${c.tier}・${c.monthly ? '每月' : '每日'}：${c.text}',
+          (tester) async {
+        await sendIntoQuota(tester, tier: c.tier, monthly: c.monthly);
+
+        expect(find.text(c.text), findsOneWidget);
+        expect(find.text(serverMonthly), findsNothing);
+        expect(find.text(serverDaily), findsNothing);
+        expect(find.text(c.button), findsOneWidget);
+        if (c.tier == SubscriptionTierHelper.essential) {
+          expect(c.text, isNot(contains('升級')));
+          expect(find.text('升級'), findsNothing);
+        }
+        // 失敗觸覺若有第二下（90ms 間隔），推過去免得留下計時器。
+        await tester.pump(const Duration(milliseconds: 200));
+      });
+    }
+  });
+
   // ── 翻牌揭曉儀式 overlay（Batch 4 commit 2）─────────────────────────────
   testWidgets('儀式：seeded revealed（無抽牌轉場）→ overlay 休眠、不顯翻牌卡', (tester) async {
     final seed = revealedPreMsgSeed();
