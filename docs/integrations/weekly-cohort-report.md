@@ -6,7 +6,7 @@
 
 ## 怎麼跑
 
-工具在 `tools/weekly-cohort-report/`，只讀不寫：每條語句組出來時與送出前都過練習室週報同一道唯讀守門（`tools/practice-weekly-report/sql.ts` 的 `assertReadOnlySql`，定位一樣是防手誤的護欄、不是安全邊界），只呼叫 Supabase Management API 的 `POST /v1/projects/<ref>/database/query`。**第一次真跑要 Eric 另外核准**：會用 Eric 的 Management API token 讀正式資料庫。
+工具在 `tools/weekly-cohort-report/`，只讀不寫：每條語句組出來時與送出前都過練習室週報同一道唯讀守門（`tools/practice-weekly-report/sql.ts` 的 `assertReadOnlySql`，定位一樣是防手誤的護欄、不是安全邊界），只呼叫 Supabase Management API 的 `POST /v1/projects/<ref>/database/query`。產出的 markdown 只寫到 repo 以外（見「存檔」）。**第一次真跑要 Eric 另外核准**：會用 Eric 的 Management API token 讀正式資料庫。
 
 ```bash
 # 先看會送什麼 SQL：不打網路、不需要 token、不落檔
@@ -25,7 +25,7 @@ deno test --allow-all tools/weekly-cohort-report/
 | `--project-ref=` | `SUPABASE_PROJECT_REF` | Supabase 專案 ref，程式裡沒有寫死。 |
 | `--week=` | 上一個已經結束的 ISO 週 | 報表裡最新的註冊週，例如 `2026-W43`。還沒結束的週會報錯。 |
 | `--weeks=` | `6` | 從 `--week` 往回共幾週（1～12），一週一次查詢。 |
-| `--out=` | `docs/reports/weekly-cohort/<週>.md` | 只准寫進 `docs/reports/`；要寫別處加 `--allow-out-anywhere`，`..` 一律擋。 |
+| `--out=` | `~/vibesync-weekly-cohort/<週>.md`（家目錄底下，repo 以外） | 不能指到 repo 裡面（含 `docs/`），指到就報錯並說明原因，沒有逃生口。相對路徑以目前目錄為準，`~` 換成家目錄。 |
 | `--dry-run` | 關 | 只印每一週的 SQL。 |
 
 `--k=v` 與 `--k v` 兩種寫法都收；認不得的參數、孤立的字串、缺值一律報錯。token 跟練習室週報一樣：`SUPABASE_ACCESS_TOKEN` 環境變數優先，沒有就讀 `~/.supabase/access-token`；只放進 `Authorization: Bearer`，不進報表、不進輸出。
@@ -160,6 +160,7 @@ left join refunded       rf on rf.user_id = c.user_id
 
 ## 存檔
 
-- 每週跑一次，建議每週二（UTC）之後跑，上一週的 24 小時欄就都走完了。存成 `docs/reports/weekly-cohort/<週>.md`（工具預設，例如 `2026-W43.md`），或 Eric 指定的試算表。
+- **週報不 commit 進 repo**（Eric 2026-10-27「照預設」）：repo 是公開的，週報有註冊、付費、退款人數。週報裡的數字也不要貼進 repo 的其他文件、commit 訊息或 PR。
+- 工具先把 markdown 寫到 repo 以外的本機路徑（預設 `~/vibesync-weekly-cohort/<週>.md`，例如 `2026-W43.md`），再存進 Dev Brain 的 VibeSync 週報筆記，由 agent 經 Brain Publisher 收錄。工具自己不 commit，也不直接寫進 Dev Brain。
+- 每週跑一次，建議每週二（UTC）之後跑，上一週的 24 小時欄就都走完了。
 - 一定要每週跑：`ai_logs` 30 天後就刪，晚了 24h 分析、24h 開場就補不回來。
-- **這個 repo 是公開的**：週報有註冊數、付費數、退款數，commit 進來等於公開這些營運數字。要 commit 進 repo，還是只存本機或私人試算表，由 Eric 決定；工具只寫本機檔案，不會自動 commit。

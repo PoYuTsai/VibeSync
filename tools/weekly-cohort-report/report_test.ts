@@ -5,6 +5,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { assertReadOnlySql } from "../practice-weekly-report/sql.ts";
+import { type OutPathContext, REPO_ROOT } from "./out_path.ts";
 import { COHORT_COLUMNS } from "./render.ts";
 import {
   type CliOptions,
@@ -18,6 +19,13 @@ import { buildCohortSql, parseIsoWeek, weeksEndingAt } from "./sql.ts";
 // 2026-10-27（週二）：上一個完整的週是 2026-W43。
 const NOW = new Date("2026-10-27T05:00:00Z");
 const FAKE_TOKEN = "fake-token-for-tests";
+// 假的路徑：repo 在 /work/VibeSync、家目錄在 /home/tester、目前目錄是 repo 根。
+const OUT_CTX: OutPathContext = {
+  repoRoot: "/work/VibeSync",
+  home: "/home/tester",
+  cwd: () => "/work/VibeSync",
+};
+const DEFAULT_OUT = "/home/tester/vibesync-weekly-cohort/2026-W43.md";
 
 function row(newAccounts: number): Record<string, number> {
   return Object.fromEntries(
@@ -49,12 +57,12 @@ function fakeFetch(bodies: string[], captured: Captured[], status = 200) {
   }) as unknown as typeof fetch;
 }
 
-Deno.test("parseArgs 預設：上一個完整的週、往回 6 週、寫進 docs/reports/weekly-cohort/", () => {
-  const opts = parseArgs(["--project-ref=abcdef"], NOW);
+Deno.test("parseArgs 預設：上一個完整的週、往回 6 週、寫到家目錄底下（repo 以外）", () => {
+  const opts = parseArgs(["--project-ref=abcdef"], NOW, OUT_CTX);
   assertEquals(opts.projectRef, "abcdef");
   assertEquals(opts.latest.label, "2026-W43");
   assertEquals(opts.weeks, DEFAULT_WEEKS);
-  assertEquals(opts.out, "docs/reports/weekly-cohort/2026-W43.md");
+  assertEquals(opts.out, DEFAULT_OUT);
   assertEquals(opts.dryRun, false);
 });
 
@@ -65,14 +73,15 @@ Deno.test("parseArgs：--k=v 與 --k v 都收", () => {
       "2026-W40",
       "--weeks=3",
       "--out",
-      "docs/reports/weekly-cohort/manual.md",
+      "/home/tester/notes/manual.md",
       "--dry-run",
     ],
     NOW,
+    OUT_CTX,
   );
   assertEquals(opts.latest.label, "2026-W40");
   assertEquals(opts.weeks, 3);
-  assertEquals(opts.out, "docs/reports/weekly-cohort/manual.md");
+  assertEquals(opts.out, "/home/tester/notes/manual.md");
   assertEquals(opts.dryRun, true);
 });
 
@@ -109,20 +118,27 @@ Deno.test("parseArgs：未知參數、孤立字串、缺值一律報錯不靜默
   );
 });
 
-Deno.test("parseArgs：--out 預設只能寫進 docs/reports/，.. 永遠擋", () => {
+Deno.test("parseArgs：--out 指到 repo 裡面（含 docs/）就拒絕並說明原因；沒有逃生口", () => {
+  for (
+    const out of [
+      "docs/reports/weekly-cohort/2026-W43.md",
+      "docs/integrations/x.md",
+      "/work/VibeSync/docs/x.md",
+    ]
+  ) {
+    const error = assertThrows(
+      () => parseArgs([`--out=${out}`], NOW, OUT_CTX),
+      Error,
+      "在 repo 裡面",
+      out,
+    );
+    assertStringIncludes(error.message, "repo 是公開的");
+  }
+  // 舊的 --allow-out-anywhere 拿掉了：週報沒有任何寫進 repo 的路。
   assertThrows(
-    () => parseArgs(["--out=lib/x.md"], NOW),
+    () => parseArgs(["--allow-out-anywhere"], NOW, OUT_CTX),
     Error,
-    "invalid --out",
-  );
-  assertThrows(
-    () => parseArgs(["--out=docs/reports/../../x.md"], NOW),
-    Error,
-    "路徑穿越",
-  );
-  assertEquals(
-    parseArgs(["--out=/tmp/scratch/x.md", "--allow-out-anywhere"], NOW).out,
-    "/tmp/scratch/x.md",
+    "unknown flag",
   );
 });
 
@@ -207,7 +223,7 @@ Deno.test("fetchCohort：HTTP 錯誤、零列、多列、欄位壞掉都報錯�
 
 function options(overrides: Partial<CliOptions> = {}): CliOptions {
   return {
-    ...parseArgs(["--project-ref=myref", "--weeks=2"], NOW),
+    ...parseArgs(["--project-ref=myref", "--weeks=2"], NOW, OUT_CTX),
     ...overrides,
   };
 }
@@ -232,13 +248,15 @@ Deno.test("runReport：假的 fetch 跑完整條路，寫出報表、token 不�
   assertEquals(code, 0);
   assertEquals(captured.length, 2);
   assertEquals(written.length, 1);
-  assertEquals(written[0].path, "docs/reports/weekly-cohort/2026-W43.md");
+  assertEquals(written[0].path, DEFAULT_OUT);
   assertStringIncludes(written[0].text, "# 每週 cohort 報表 2026-W43");
   assertStringIncludes(written[0].text, "| 2026-W42（10-12～10-18） | 3 |");
   assertStringIncludes(written[0].text, "| 2026-W43（10-19～10-25） | 5 |");
   assertEquals(written[0].text.includes(FAKE_TOKEN), false);
   assertEquals(logs.join("\n").includes(FAKE_TOKEN), false);
-  assertEquals(logs, ["已輸出 docs/reports/weekly-cohort/2026-W43.md"]);
+  assertEquals(logs.length, 1);
+  assertStringIncludes(logs[0], `已輸出 ${DEFAULT_OUT}`);
+  assertStringIncludes(logs[0], "不要 commit 進 repo");
 });
 
 Deno.test("runReport --dry-run：只印 SQL，不讀 token、不打網路、不寫檔", async () => {
@@ -257,7 +275,34 @@ Deno.test("runReport --dry-run：只印 SQL，不讀 token、不打網路、不�
   const out = logs.join("\n");
   assertStringIncludes(out, "-- 2026-W42：2026-10-12 ～ 2026-10-19");
   assertStringIncludes(out, buildCohortSql(parseIsoWeek("2026-W43")));
-  assertStringIncludes(out, "docs/reports/weekly-cohort/2026-W43.md");
+  assertStringIncludes(out, `-- 真跑會寫到 ${DEFAULT_OUT}（repo 以外`);
+});
+
+Deno.test("runReport 再擋一次：out 指到這個 repo 裡面就停，不讀 token、不打網路、不寫檔", async () => {
+  let touched = false;
+  const touch = () => {
+    touched = true;
+    return Promise.resolve(FAKE_TOKEN);
+  };
+  const touchWrite = (_path: string, _text: string) => {
+    touched = true;
+    return Promise.resolve();
+  };
+  for (const dryRun of [false, true]) {
+    await assertRejects(
+      () =>
+        runReport(options({ out: `${REPO_ROOT}docs/reports/x.md`, dryRun }), {
+          now: NOW,
+          fetchImpl: touch as unknown as typeof fetch,
+          readToken: touch,
+          writeFile: touchWrite,
+          log: () => {},
+        }),
+      Error,
+      "在 repo 裡面",
+    );
+  }
+  assertEquals(touched, false);
 });
 
 Deno.test("runReport：沒有 project ref 就停在送出前（不讀 token、不打網路）", async () => {
@@ -307,5 +352,35 @@ Deno.test("CLI --dry-run：子程序離線跑（--cached-only），只要 env �
   assertStringIncludes(out, "-- 2026-W39：2026-09-21 ～ 2026-09-28");
   assertStringIncludes(out, "-- 2026-W40：2026-09-28 ～ 2026-10-05");
   assertStringIncludes(out, "SELECT * FROM (\nwith cohort as (");
+  // 預設路徑在家目錄底下，不在 repo 裡。
+  assertStringIncludes(
+    out,
+    "-- 真跑會寫到 /nonexistent/vibesync-weekly-cohort/2026-W40.md",
+  );
   assertEquals(out.toLowerCase().includes("bearer"), false);
+});
+
+Deno.test("CLI：在 repo 根目錄下指定 --out=docs/... 會被拒絕（exit 1），說明 repo 是公開的", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--cached-only",
+      "--allow-env",
+      new URL("./report.ts", import.meta.url).pathname,
+      "--dry-run",
+      "--week=2026-W40",
+      "--weeks=1",
+      "--out=docs/reports/weekly-cohort/2026-W40.md",
+    ],
+    cwd: REPO_ROOT,
+    env: { SUPABASE_ACCESS_TOKEN: "", HOME: "/nonexistent" },
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stdout, stderr } = await command.output();
+  const err = new TextDecoder().decode(stderr);
+  assertEquals(code, 1);
+  assertStringIncludes(err, "在 repo 裡面");
+  assertStringIncludes(err, "repo 是公開的");
+  assertEquals(new TextDecoder().decode(stdout), "");
 });
