@@ -4,6 +4,8 @@
 /// `analysis_service.dart` barrel 以 re-export 相容。
 library;
 
+import '../../../subscription/presentation/quota_copy.dart';
+
 enum AnalysisErrorAction {
   retry,
   relogin,
@@ -77,7 +79,9 @@ class DailyLimitExceededException extends AnalysisException {
     this.remaining,
     this.quotaNeeded,
   }) : super(
-          '今日額度已用完，可以明天再試，或升級解鎖更多分析。',
+          // 台灣早上 8 點恢復（不是「明天」，Onboarding 第 3 步）。這裡拿不到目前
+          // 方案，不提升級：升級由接著打開的付費頁或錯誤卡的提示負責。
+          '今日額度已用完，$kDailyQuotaResetLine。',
           code: 'DAILY_LIMIT_EXCEEDED',
           suggestedAction: AnalysisErrorAction.wait,
         );
@@ -99,7 +103,9 @@ class MonthlyLimitExceededException extends AnalysisException {
     this.remaining,
     this.quotaNeeded,
   }) : super(
-          '本月額度已用完，升級後可以繼續分析。',
+          // 先講什麼時候恢復（Onboarding 第 3 步）。這裡拿不到目前方案，不提升級：
+          // 升級由接著打開的付費頁負責（Essential 不能再升級）。
+          '本月額度已用完，$kMonthlyQuotaResetLine。',
           code: 'MONTHLY_LIMIT_EXCEEDED',
           suggestedAction: AnalysisErrorAction.upgrade,
         );

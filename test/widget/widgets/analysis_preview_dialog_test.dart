@@ -100,6 +100,12 @@ void main() {
         find.textContaining('分析完成後會顯示實際使用的則數'),
         findsOneWidget,
       );
+      // 扣的是額度（則），不寫「次數」（Onboarding 第 3 步）。
+      expect(
+        find.textContaining('只有送出完整分析才會扣額度。先讀截圖、不做完整分析，不會扣額度。'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('次數'), findsNothing);
       // 「重新分析會用目前整段對話…」說明已拆（2026-08-16 Bruce 回饋）。
       expect(
         find.textContaining('重新分析會用目前整段對話重新判斷'),
@@ -121,7 +127,13 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('這個月的分析次數不夠了，升級後再繼續。'), findsOneWidget);
+      // Onboarding 第 3 步：先講需要幾則、剩幾則，再講每月 1 號早上 8 點恢復，免費
+      // 再補也可以升級；不寫「次數」。
+      expect(
+        find.text('這個月的額度不夠這次用（需要 10 則，剩 5 則）。'
+            '每月 1 號早上 8 點恢復；也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
       final confirmButton = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, '開始分析'),
       );
@@ -143,7 +155,8 @@ void main() {
 
       // 台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」（主審第 1 輪 P3）。
       expect(
-        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        find.text('今天的額度不夠這次用（需要 10 則，剩 5 則）。'
+            '每天早上 8 點恢復；也可以升級取得更多額度。'),
         findsOneWidget,
       );
       expect(find.textContaining('明天'), findsNothing);
@@ -262,7 +275,11 @@ void main() {
       await openDialog(tester);
 
       expect(
-        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        find.text(
+          '今天的額度不夠這次用（需要 ${MessageCalculator.overchargeUnits} 則，'
+          '剩 ${AppConstants.freeDailyLimit} 則）。'
+          '每天早上 8 點恢復；也可以升級取得更多額度。',
+        ),
         findsOneWidget,
       );
       final confirmButton = tester.widget<ElevatedButton>(
@@ -318,7 +335,10 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('這個月的分析次數不夠了，每月 1 號早上 8 點恢復。'), findsOneWidget);
+      expect(
+        find.text('這個月的額度不夠這次用（需要 3 則，剩 0 則）。每月 1 號早上 8 點恢復。'),
+        findsOneWidget,
+      );
       expect(find.textContaining('升級'), findsNothing);
       await tester.tap(find.text('查看方案'));
       await tester.pumpAndSettle();
@@ -336,12 +356,15 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('今天的分析次數不夠了，每天早上 8 點恢復。'), findsOneWidget);
+      expect(
+        find.text('今天的額度不夠這次用（需要 3 則，剩 0 則）。每天早上 8 點恢復。'),
+        findsOneWidget,
+      );
       expect(find.textContaining('升級'), findsNothing);
       expect(find.text('查看方案'), findsOneWidget);
     });
 
-    testWidgets('Starter 還能升級：今天不夠照舊叫他升級，鈕寫查看升級方案', (tester) async {
+    testWidgets('Starter 還能升級：今天不夠先說恢復時間再叫他升級，鈕寫查看升級方案', (tester) async {
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(100),
         usage: usageFor(
@@ -353,13 +376,14 @@ void main() {
       await openDialog(tester);
 
       expect(
-        find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'),
+        find.text('今天的額度不夠這次用（需要 3 則，剩 0 則）。'
+            '每天早上 8 點恢復；也可以升級取得更多額度。'),
         findsOneWidget,
       );
       expect(find.text('查看升級方案'), findsOneWidget);
     });
 
-    testWidgets('Starter 這個月不夠：照舊說升級後再繼續', (tester) async {
+    testWidgets('Starter 這個月不夠：先說每月 1 號早上 8 點恢復，再說也可以升級', (tester) async {
       await tester.pumpWidget(buildTestWidget(
         preview: _preview(100),
         usage: usageFor(
@@ -370,7 +394,11 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('這個月的分析次數不夠了，升級後再繼續。'), findsOneWidget);
+      expect(
+        find.text('這個月的額度不夠這次用（需要 3 則，剩 0 則）。'
+            '每月 1 號早上 8 點恢復；也可以升級取得更多額度。'),
+        findsOneWidget,
+      );
       expect(find.text('查看升級方案'), findsOneWidget);
     });
   });

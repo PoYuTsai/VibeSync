@@ -107,6 +107,7 @@ import '../../../opener/presentation/screens/opening_rescue_screen.dart'
 import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/domain/services/subscription_tier_helper.dart';
 import '../../../subscription/presentation/paywall_entry.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../../user_profile/data/providers/data_quality_flag_provider.dart';
 import '../../../user_profile/data/providers/partner_style_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
@@ -576,19 +577,26 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     _errorGuidance = null;
   }
 
+  /// [errorCode] 是錯誤碼（AnalysisException.code）：wait 類的預設提示要靠它分辨
+  /// 是不是每日額度用完。
   void _applyErrorState({
     required String message,
     AnalysisErrorAction? action,
     _AnalysisErrorOrigin? origin,
     String? guidance,
+    String? errorCode,
   }) {
     _errorMessage = message;
     _errorAction = action;
     _errorOrigin = origin;
-    _errorGuidance = guidance ?? _defaultErrorGuidance(action);
+    _errorGuidance =
+        guidance ?? _defaultErrorGuidance(action, errorCode: errorCode);
   }
 
-  String? _defaultErrorGuidance(AnalysisErrorAction? action) {
+  String? _defaultErrorGuidance(
+    AnalysisErrorAction? action, {
+    String? errorCode,
+  }) {
     switch (action) {
       case AnalysisErrorAction.retry:
         return _errorOrigin == _AnalysisErrorOrigin.recognition
@@ -605,7 +613,15 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       case AnalysisErrorAction.upgrade:
         return '升級後可解鎖更完整的分析能力與較高額度。';
       case AnalysisErrorAction.wait:
-        return '今日額度用完後會在隔天重置，或升級方案取得更多額度。';
+        // Onboarding 第 3 步：只有每日額度用完才講額度，恢復時間已經在錯誤訊息裡
+        // （DailyLimitExceededException），這裡只補能升級的人；Essential 不顯示。
+        // 請求太頻繁、潤飾沒產生結果等其他 wait 類錯誤跟額度無關。
+        if (errorCode == 'DAILY_LIMIT_EXCEEDED') {
+          return canUpgradeQuota(ref.read(subscriptionProvider).tier)
+              ? '也可以升級取得更多額度。'
+              : null;
+        }
+        return '稍等一下再試。';
       case AnalysisErrorAction.addIncomingMessage:
         return _selectedImages.isNotEmpty
             ? '先把截圖辨識成文字並確認為本次片段；若沒有她的訊息，請重新選擇包含她回覆的截圖。'
@@ -2367,6 +2383,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         message: error.message,
         action: error.suggestedAction,
         origin: _AnalysisErrorOrigin.recognition,
+        errorCode: error.code,
       );
       return;
     }

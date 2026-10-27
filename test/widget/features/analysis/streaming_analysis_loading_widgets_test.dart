@@ -126,7 +126,8 @@ void main() {
   });
 
   group('QuotaExceededUpgradeCard（smoke P1 fix 2026-06-11）', () {
-    testWidgets('monthly：顯示剩餘/需要則數 + 升級文案 + 查看方案，絕不出現「無法再重試」', (tester) async {
+    testWidgets('monthly：顯示剩餘/需要則數 + 恢復時間 + 升級文案 + 查看方案，絕不出現「無法再重試」',
+        (tester) async {
       var viewed = 0;
       await tester.pumpWidget(_wrap(QuotaExceededUpgradeCard(
         isMonthly: true,
@@ -137,7 +138,9 @@ void main() {
       )));
 
       expect(
-        find.text('本月額度剩 2 則，這次分析需要 5 則。升級至 Starter 或 Essential 繼續分析。'),
+        // Onboarding 第 3 步：先講每月 1 號早上 8 點恢復，再說也可以升級。
+        find.text(
+            '本月額度剩 2 則，這次分析需要 5 則。每月 1 號早上 8 點恢復；也可以升級至 Starter 或 Essential。'),
         findsOneWidget,
       );
       expect(find.text(kRetryExhaustedMessage), findsNothing);
@@ -157,7 +160,7 @@ void main() {
       )));
 
       expect(
-        find.text('今日額度剩 0 則，這次分析需要 3 則。每天早上 8 點恢復，也可以升級取得更多額度。'),
+        find.text('今日額度剩 0 則，這次分析需要 3 則。每天早上 8 點恢復；也可以升級取得更多額度。'),
         findsOneWidget,
       );
       expect(find.text('查看方案'), findsOneWidget);
@@ -174,7 +177,7 @@ void main() {
       )));
 
       expect(
-        find.text('本月額度不足，升級至 Starter 或 Essential 繼續分析。'),
+        find.text('本月額度不足，每月 1 號早上 8 點恢復；也可以升級至 Starter 或 Essential。'),
         findsOneWidget,
       );
       expect(find.textContaining('null'), findsNothing);
@@ -268,7 +271,8 @@ void main() {
       expect(find.text('查看方案'), findsOneWidget);
     });
 
-    testWidgets('Starter 這個月不夠：只叫他升級 Essential，不叫他升級到 Starter', (tester) async {
+    testWidgets('Starter 這個月不夠：先說恢復時間，只叫他升級 Essential，不叫他升級到 Starter',
+        (tester) async {
       await pumpCard(
         tester,
         tier: SubscriptionTierHelper.starter,
@@ -277,7 +281,7 @@ void main() {
         quotaNeeded: 5,
       );
       expect(
-        find.text('本月額度剩 2 則，這次分析需要 5 則。升級至 Essential 繼續分析。'),
+        find.text('本月額度剩 2 則，這次分析需要 5 則。每月 1 號早上 8 點恢復；也可以升級至 Essential。'),
         findsOneWidget,
       );
 
@@ -286,7 +290,8 @@ void main() {
         tier: SubscriptionTierHelper.starter,
         isMonthly: true,
       );
-      expect(find.text('本月額度不足，升級至 Essential 繼續分析。'), findsOneWidget);
+      expect(
+          find.text('本月額度不足，每月 1 號早上 8 點恢復；也可以升級至 Essential。'), findsOneWidget);
     });
 
     testWidgets('Starter 今天不夠：每天早上 8 點恢復，也可以升級', (tester) async {
@@ -298,7 +303,7 @@ void main() {
         quotaNeeded: 3,
       );
       expect(
-        find.text('今日額度剩 1 則，這次分析需要 3 則。每天早上 8 點恢復，也可以升級取得更多額度。'),
+        find.text('今日額度剩 1 則，這次分析需要 3 則。每天早上 8 點恢復；也可以升級取得更多額度。'),
         findsOneWidget,
       );
     });

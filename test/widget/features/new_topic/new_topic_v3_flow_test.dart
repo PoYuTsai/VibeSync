@@ -422,13 +422,13 @@ void main() {
       SubscriptionTierHelper.free,
       SubscriptionTierHelper.starter,
     ]) {
-      testWidgets('$period額度不足：$tier 照舊說升級能多用，不點名升級到 Starter', (t) async {
+      testWidgets('$period額度不足：$tier 先說恢復時間再說升級能多用，不點名升級到 Starter', (t) async {
         final message =
             await generateIntoQuota(t, tier: tier, monthly: monthly);
         expect(
             message,
             monthly
-                ? '本月額度不足，升級方案可取得更多新話題與分析額度。'
+                ? '本月額度不足，$kMonthlyQuotaResetLine；也可以升級取得更多新話題與分析額度。'
                 : '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
         expect(message, isNot(contains('Starter')));
         expect(quotaButtonLabel(t), NewTopicView.upgradeButtonLabel);

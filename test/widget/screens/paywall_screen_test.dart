@@ -792,15 +792,16 @@ void main() {
       );
     });
 
-    // 主審 r1 P2-3：大標要給做得到的下一步。免費、Starter 升級後額度更多；Essential
-    // 已經是最高方案，不承諾升級，只說什麼時候恢復（伺服器照 UTC 換日、換月重算，
-    // 台灣是早上 8 點）；也不說換繳費週期會補額度。
-    test('額度大標照目前方案：免費、Starter 說升級後更多，Essential 說什麼時候恢復', () {
+    // 主審 r1 P2-3：大標要給做得到的下一步。Onboarding 第 3 步：一律先說什麼時候恢復
+    // （伺服器照 UTC 換日、換月重算，台灣是早上 8 點），免費、Starter 再補升級後額度
+    // 更多；Essential 已經是最高方案，不承諾升級，只說什麼時候恢復；也不說換繳費週期
+    // 會補額度。
+    test('額度大標照目前方案：免費、Starter 先說恢復再說升級後更多，Essential 只說什麼時候恢復', () {
       const upgradeable = {
-        PaywallEntry.dailyQuotaUsedUp: '今天的額度用完了\n升級後每天能用更多',
-        PaywallEntry.dailyQuotaShort: '今天的額度不夠這次用\n升級後每天能用更多',
-        PaywallEntry.monthlyQuotaUsedUp: '這個月的額度用完了\n升級後每月能用更多',
-        PaywallEntry.monthlyQuotaShort: '這個月的額度不夠這次用\n升級後每月能用更多',
+        PaywallEntry.dailyQuotaUsedUp: '今天的額度用完了\n每天早上 8 點恢復；升級後每天能用更多',
+        PaywallEntry.dailyQuotaShort: '今天的額度不夠這次用\n每天早上 8 點恢復；升級後每天能用更多',
+        PaywallEntry.monthlyQuotaUsedUp: '這個月的額度用完了\n每月 1 號早上 8 點恢復；升級後每月能用更多',
+        PaywallEntry.monthlyQuotaShort: '這個月的額度不夠這次用\n每月 1 號早上 8 點恢復；升級後每月能用更多',
       };
       const topTier = {
         PaywallEntry.dailyQuotaUsedUp: '今天的額度用完了\n每天早上 8 點恢復',

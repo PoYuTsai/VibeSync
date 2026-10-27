@@ -671,7 +671,8 @@ void main() {
     expect(_paywallOpens, 1, reason: '伺服器擋下後自動開一次付費牆');
     await tester.tap(find.text('關閉付費牆'));
     await _settleBounded(tester);
-    expect(find.text('本月額度不足，升級方案可取得更多開場與分析額度。'), findsOneWidget);
+    expect(
+        find.text('本月額度不足，每月 1 號早上 8 點恢復；也可以升級取得更多開場與分析額度。'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-retry-button')), findsNothing,
         reason: '同一筆再試只會再被擋');
     expect(find.byKey(const ValueKey('opener-upgrade-button')), findsOneWidget);
@@ -766,13 +767,14 @@ void main() {
       SubscriptionTierHelper.free,
       SubscriptionTierHelper.starter,
     ]) {
-      testWidgets('$period額度不足：$tier 照舊說升級能多用，不點名升級到 Starter', (tester) async {
+      testWidgets('$period額度不足：$tier 先說恢復時間再說升級能多用，不點名升級到 Starter',
+          (tester) async {
         final shown =
             await generateIntoQuota(tester, tier: tier, monthly: monthly);
         expect(
             shown.message,
             monthly
-                ? '本月額度不足，升級方案可取得更多開場與分析額度。'
+                ? '本月額度不足，$kMonthlyQuotaResetLine；也可以升級取得更多開場與分析額度。'
                 : '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。');
         expect(shown.message, isNot(contains('Starter')));
         expect(shown.button, '升級方案');

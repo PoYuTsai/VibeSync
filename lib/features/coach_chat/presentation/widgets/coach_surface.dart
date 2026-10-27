@@ -95,9 +95,10 @@ class CoachSurface extends ConsumerStatefulWidget {
     return '上一輪回覆已保留，但不是這題的新結果。';
   }
 
-  /// 額度用完的說法照 [tier]（Eric 2026-10-18）：免費、Starter 照舊說升級；
-  /// Essential 只說什麼時候恢復，恢復時間自己一行（接在用量後面，手機寬度會把
-  /// 最後一兩個字擠到第二行）。台灣早上 8 點才恢復，凌晨用完不能說「明天」。
+  /// 額度用完的說法照 [tier]（Eric 2026-10-18）：先說什麼時候恢復，免費、Starter
+  /// 再說也可以升級（Onboarding 第 3 步：本月那句以前只叫人升級）；Essential 只說
+  /// 什麼時候恢復，恢復時間自己一行（接在用量後面，手機寬度會把最後一兩個字擠到
+  /// 第二行）。台灣早上 8 點才恢復，凌晨用完不能說「明天」。
   static String failureMessageFor(Object error, {required String? tier}) {
     if (error is CoachChatQuotaExceededException) {
       final usage = error.used != null && error.limit != null
@@ -105,13 +106,21 @@ class CoachSurface extends ConsumerStatefulWidget {
           : '';
       final canUpgrade = canUpgradeQuota(tier);
       if (_isMonthlyQuota(error)) {
-        return canUpgrade
-            ? '本月額度已用完$usage，升級後可以繼續問教練。'
-            : '本月額度已用完$usage。\n$kMonthlyQuotaResetLine。';
+        if (!canUpgrade) return '本月額度已用完$usage。\n$kMonthlyQuotaResetLine。';
+        final next = quotaNextStepLine(
+          tier: tier,
+          isMonthly: true,
+          upgrade: '也可以升級繼續問教練',
+        );
+        return '本月額度已用完$usage。$next。';
       }
-      return canUpgrade
-          ? '今日額度已用完$usage，$kDailyQuotaResetLine，也可以升級解鎖更多教練建議。'
-          : '今日額度已用完$usage。\n$kDailyQuotaResetLine。';
+      if (!canUpgrade) return '今日額度已用完$usage。\n$kDailyQuotaResetLine。';
+      final next = quotaNextStepLine(
+        tier: tier,
+        isMonthly: false,
+        upgrade: '也可以升級解鎖更多教練建議',
+      );
+      return '今日額度已用完$usage，$next。';
     }
     // 「未扣額度」只保證在 4xx 驗證失敗路徑（server 未走到扣費）成立；
     // generation failure 含 client 端 parse 失敗（server 已扣）、未知錯誤

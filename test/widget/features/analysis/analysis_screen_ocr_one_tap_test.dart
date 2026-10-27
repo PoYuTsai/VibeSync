@@ -713,7 +713,14 @@ void main() {
           _recognizedContents(messages),
           reason: '匯入照樣留著');
       expect(find.text('開始分析前'), findsOneWidget);
-      expect(find.text('今天的分析次數不夠了，每天早上 8 點恢復，也可以升級取得更多額度。'), findsOneWidget);
+      // 需要幾則照匯入內容算；今天剩 0 則、早上 8 點恢復、免費可以升級（Onboarding
+      // 第 3 步）。
+      expect(
+        find.textContaining(RegExp(
+          r'^今天的額度不夠這次用（需要 \d+ 則，剩 0 則）。每天早上 8 點恢復；也可以升級取得更多額度。$',
+        )),
+        findsOneWidget,
+      );
       final start = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, '開始分析'),
       );
@@ -997,6 +1004,99 @@ void main() {
       expect(find.text(_recognitionFailedMessage), findsNothing);
       expect(find.text('開始分析前'), findsNothing);
       expect(harness.recorder.streamCalls, 0);
+    });
+
+    // Onboarding 第 3 步：錯誤卡的預設提示照錯誤碼分流，只有每日額度用完才講額度。
+    // 初次辨識與續看匯入共用同一個錯誤卡入口，這裡借續看匯入的存檔失敗把錯誤送進去。
+    Future<AnalysisErrorCard> errorCardFor(
+      WidgetTester tester, {
+      required Object error,
+      SubscriptionState subscription = const SubscriptionState(),
+    }) async {
+      final messages = [_her(_chars('好')), _her(_chars('嗯'))];
+      final harness = await _pumpOcrScreen(
+        tester,
+        recognizedMessages: messages,
+        subscription: subscription,
+      );
+      await _recognize(tester);
+      await _cancelThenResume(tester);
+      harness.repository
+        ..failUpdates = true
+        ..saveError = error;
+      await _tapInDialog(tester, _analyzeLabel);
+      expect(harness.recorder.streamCalls, 0);
+      return tester.widget<AnalysisErrorCard>(find.byType(AnalysisErrorCard));
+    }
+
+    testWidgets('錯誤卡提示：每日額度用完（免費）→ 訊息講早上 8 點恢復，提示只補也可以升級', (tester) async {
+      final card = await errorCardFor(
+        tester,
+        error: DailyLimitExceededException(
+          dailyLimit: AppConstants.freeDailyLimit,
+          used: AppConstants.freeDailyLimit,
+        ),
+      );
+
+      _expectRecognitionErrorCard(
+        tester,
+        message: '今日額度已用完，每天早上 8 點恢復。',
+        primaryActionLabel: '稍後再試',
+      );
+      expect(card.guidance, '也可以升級取得更多額度。');
+      for (final wrong in ['明天', '隔天']) {
+        expect(
+          find.descendant(
+            of: find.byType(AnalysisErrorCard),
+            matching: find.textContaining(wrong),
+          ),
+          findsNothing,
+        );
+      }
+    });
+
+    testWidgets('錯誤卡提示：每日額度用完（Essential）→ 不叫他升級，提示不顯示', (tester) async {
+      final card = await errorCardFor(
+        tester,
+        error: DailyLimitExceededException(
+          dailyLimit: SubscriptionTierHelper.limitsFor(
+            SubscriptionTierHelper.essential,
+          ).daily,
+          used: SubscriptionTierHelper.limitsFor(
+            SubscriptionTierHelper.essential,
+          ).daily,
+        ),
+        subscription: const SubscriptionState(
+          tier: SubscriptionTierHelper.essential,
+          monthlyLimit: 800,
+          dailyLimit: 120,
+        ),
+      );
+
+      expect(card.message, '今日額度已用完，每天早上 8 點恢復。');
+      expect(card.guidance, isNull);
+      expect(
+        find.descendant(
+          of: find.byType(AnalysisErrorCard),
+          matching: find.textContaining('升級'),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('錯誤卡提示：請求太頻繁這類其他稍候錯誤 → 「稍等一下再試。」，不講額度', (tester) async {
+      final card = await errorCardFor(
+        tester,
+        error: AnalysisException(
+          '截圖辨識太頻繁，請稍等一下再試。',
+          code: 'OCR_RATE_LIMITED',
+          suggestedAction: AnalysisErrorAction.wait,
+        ),
+      );
+
+      expect(card.message, '截圖辨識太頻繁，請稍等一下再試。');
+      expect(card.guidance, '稍等一下再試。');
+      expect(card.guidance, isNot(contains('額度')));
     });
 
     testWidgets('從「繼續確認本次內容」匯入、存檔還沒回來就離開這頁：之後存檔失敗也不碰已關掉的畫面，一次都不送',

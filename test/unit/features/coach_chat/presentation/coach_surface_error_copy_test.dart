@@ -79,16 +79,17 @@ void main() {
       );
     });
 
-    test('免費、Starter：每日說幾點恢復也能升級，每月說升級；不點名 Starter', () {
+    // Onboarding 第 3 步：每月那句以前只叫人升級，現在跟每日一樣先說幾點恢復。
+    test('免費、Starter：每日、每月都先說幾點恢復，再說也可以升級；不點名 Starter', () {
       for (final tier in [_free, _starter]) {
         final daily = CoachSurface.failureMessageFor(_daily(), tier: tier);
         expect(
           daily,
-          '今日額度已用完（15/15），$kDailyQuotaResetLine，也可以升級解鎖更多教練建議。',
+          '今日額度已用完（15/15），$kDailyQuotaResetLine；也可以升級解鎖更多教練建議。',
         );
         expect(
           CoachSurface.failureMessageFor(_monthly(), tier: tier),
-          '本月額度已用完（120/120），升級後可以繼續問教練。',
+          '本月額度已用完（120/120）。$kMonthlyQuotaResetLine；也可以升級繼續問教練。',
         );
         for (final error in [_daily(), _monthly()]) {
           expect(

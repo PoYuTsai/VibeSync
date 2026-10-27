@@ -31,9 +31,10 @@ String starterCapacityLine() {
       '（每次 ${MessageCalculator.softCapBandMaxChars} 字以內）';
 }
 
-/// 草稿潤飾、回覆微調撞到額度時的說明（Eric 2026-10-18）：[tier] 是目前方案，免費、
-/// Starter 照舊說升級能多用；Essential 已經是最高方案，只說什麼時候恢復（跟付費頁
-/// 大標同一句）。[used]／[limit] 是伺服器 429 帶回來的那個額度。
+/// 草稿潤飾、回覆微調撞到額度時的說明（Eric 2026-10-18）：[tier] 是目前方案。先說
+/// 什麼時候恢復（Onboarding 第 3 步：本月那句以前只叫人升級），免費、Starter 再說
+/// 也可以升級；Essential 已經是最高方案，只說什麼時候恢復（跟付費頁大標同一句）。
+/// [used]／[limit] 是伺服器 429 帶回來的那個額度。
 String polishQuotaMessage({
   required String? tier,
   required bool isMonthly,
@@ -41,13 +42,7 @@ String polishQuotaMessage({
   required int limit,
 }) {
   final plan = SubscriptionTierHelper.displayName(tier);
-  final canUpgrade = canUpgradeQuota(tier);
-  if (isMonthly) {
-    final next = canUpgrade ? '升級方案可取得更多分析額度。' : '$kMonthlyQuotaResetLine。';
-    return '目前方案 $plan：本月額度已用完 ($used/$limit)，$next';
-  }
-  final next = canUpgrade
-      ? '$kDailyQuotaResetLine；升級方案可取得更多額度。'
-      : '$kDailyQuotaResetLine。';
-  return '目前方案 $plan：今日額度已用完 ($used/$limit)，$next';
+  final scope = isMonthly ? '本月' : '今日';
+  final next = quotaNextStepLine(tier: tier, isMonthly: isMonthly);
+  return '目前方案 $plan：$scope額度已用完 ($used/$limit)，$next。';
 }

@@ -30,6 +30,18 @@ bool canUpgradeQuota(String? tier) =>
     SubscriptionTierHelper.normalizeTier(tier) !=
     SubscriptionTierHelper.essential;
 
+/// 額度不足時的下一步（Onboarding 第 3 步）：一律先講恢復時間；可升級的方案（免費、
+/// Starter）再補升級說法 [upgrade]（各處原本那句），Essential 只講恢復時間。
+/// 回傳不含句尾標點，由呼叫端接。
+String quotaNextStepLine({
+  required String? tier,
+  required bool isMonthly,
+  String upgrade = '也可以升級取得更多額度',
+}) {
+  final reset = isMonthly ? kMonthlyQuotaResetLine : kDailyQuotaResetLine;
+  return canUpgradeQuota(tier) ? '$reset；$upgrade' : reset;
+}
+
 /// 升級能選的方案：Starter 只剩 Essential，不叫他升級到 Starter。
 String quotaUpgradeTargets(String? tier) =>
     SubscriptionTierHelper.normalizeTier(tier) == SubscriptionTierHelper.starter
@@ -50,21 +62,19 @@ bool quotaPayloadIsMonthly(Map<dynamic, dynamic> data) {
   return true;
 }
 
-/// 開場救星、新話題撞到額度時的說明（Eric 2026-10-18）：免費、Starter 照舊說升級
-/// 能多用；Essential 只說什麼時候恢復。[feature] 是本月那句點名的功能（「開場」、
-/// 「新話題」）。伺服器 429 的 message 不分方案，不拿來顯示。
+/// 開場救星、新話題撞到額度時的說明（Eric 2026-10-18）：先說什麼時候恢復，免費、
+/// Starter 再說升級能多用（Onboarding 第 3 步：本月那句以前只叫人升級）；Essential
+/// 只說什麼時候恢復。[feature] 是本月那句點名的功能（「開場」、「新話題」）。伺服器
+/// 429 的 message 不分方案，不拿來顯示。
 String quotaShortMessage({
   required String? tier,
   required bool isMonthly,
   required String feature,
 }) {
-  final canUpgrade = canUpgradeQuota(tier);
-  if (isMonthly) {
-    return canUpgrade
-        ? '本月額度不足，升級方案可取得更多$feature與分析額度。'
-        : '本月額度不足，$kMonthlyQuotaResetLine。';
-  }
-  return canUpgrade
-      ? '今日額度不足，$kDailyQuotaResetLine；也可以升級取得更多額度。'
-      : '今日額度不足，$kDailyQuotaResetLine。';
+  final next = quotaNextStepLine(
+    tier: tier,
+    isMonthly: isMonthly,
+    upgrade: isMonthly ? '也可以升級取得更多$feature與分析額度' : '也可以升級取得更多額度',
+  );
+  return '${isMonthly ? '本月' : '今日'}額度不足，$next。';
 }

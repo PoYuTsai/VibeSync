@@ -40,13 +40,21 @@ enum PaywallEntry {
       extra is PaywallEntry ? extra : PaywallEntry.general;
 
   /// 付費頁最上面的大標；[tier] 是目前的方案。額度不夠時只說做得到的下一步（主審
-  /// r1 P2-3）：免費、Starter 升級後額度更多；Essential 已經是最高方案，不承諾升級，
-  /// 只說什麼時候恢復（恢復時間跟額度卡、確認框同一句，見 quota_copy.dart）。
+  /// r1 P2-3），而且先說什麼時候恢復（Onboarding 第 3 步：付錢不是唯一的路）：免費、
+  /// Starter 再補升級後額度更多；Essential 已經是最高方案，不承諾升級，只說什麼時候
+  /// 恢復（恢復時間跟額度卡、確認框同一句，見 quota_copy.dart）。
   /// 換繳費週期不會補額度，不提。
   String headlineFor(String? tier) {
-    final canUpgrade = canUpgradeQuota(tier);
-    final dailyNext = canUpgrade ? '升級後每天能用更多' : kDailyQuotaResetLine;
-    final monthlyNext = canUpgrade ? '升級後每月能用更多' : kMonthlyQuotaResetLine;
+    final dailyNext = quotaNextStepLine(
+      tier: tier,
+      isMonthly: false,
+      upgrade: '升級後每天能用更多',
+    );
+    final monthlyNext = quotaNextStepLine(
+      tier: tier,
+      isMonthly: true,
+      upgrade: '升級後每月能用更多',
+    );
     return switch (this) {
       PaywallEntry.general => '完整教練帶路\n把她約出來更有把握',
       PaywallEntry.lockedCards => '每一輪的回覆卡\n全部看得到',

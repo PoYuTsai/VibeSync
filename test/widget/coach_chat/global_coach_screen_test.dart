@@ -955,11 +955,12 @@ void main() {
 
       await askIntoQuota(tester);
       final message = textOf(tester, '額度已用完（');
+      // Onboarding 第 3 步：每日、每月都先說幾點恢復，再說也可以升級。
       expect(
         message,
         monthly
-            ? '本月額度已用完$usage，升級後可以繼續問教練。'
-            : '今日額度已用完$usage，$kDailyQuotaResetLine，也可以升級解鎖更多教練建議。',
+            ? '本月額度已用完$usage。$kMonthlyQuotaResetLine；也可以升級繼續問教練。'
+            : '今日額度已用完$usage，$kDailyQuotaResetLine；也可以升級解鎖更多教練建議。',
       );
       expect(message, isNot(contains('Starter')));
       expect(

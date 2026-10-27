@@ -62,7 +62,68 @@ void main() {
     expect(quotaPayloadIsMonthly({'error': '額度不足'}), isTrue);
   });
 
-  test('開場、新話題的額度說明：Essential 只說什麼時候恢復，其他方案照舊說升級', () {
+  // Onboarding 第 3 步：每個「不夠了」都先講什麼時候恢復，能升級的方案才補升級說法。
+  group('額度不足的下一步：先講恢復時間，再看能不能升級', () {
+    const free = SubscriptionTierHelper.free;
+    const starter = SubscriptionTierHelper.starter;
+    const essential = SubscriptionTierHelper.essential;
+
+    test('免費・每日：恢復時間＋預設升級說法', () {
+      expect(
+        quotaNextStepLine(tier: free, isMonthly: false),
+        '每天早上 8 點恢復；也可以升級取得更多額度',
+      );
+    });
+
+    test('免費・每月：恢復時間＋預設升級說法', () {
+      expect(
+        quotaNextStepLine(tier: free, isMonthly: true),
+        '每月 1 號早上 8 點恢復；也可以升級取得更多額度',
+      );
+    });
+
+    test('Starter・每日：還能升級，帶呼叫端給的升級說法', () {
+      expect(
+        quotaNextStepLine(
+          tier: starter,
+          isMonthly: false,
+          upgrade: '升級後每天能用更多',
+        ),
+        '每天早上 8 點恢復；升級後每天能用更多',
+      );
+    });
+
+    test('Starter・每月：還能升級，帶呼叫端給的升級說法', () {
+      expect(
+        quotaNextStepLine(
+          tier: starter,
+          isMonthly: true,
+          upgrade: '也可以升級至 Essential',
+        ),
+        '每月 1 號早上 8 點恢復；也可以升級至 Essential',
+      );
+    });
+
+    test('Essential・每日：只講恢復時間，給了升級說法也不加', () {
+      expect(
+        quotaNextStepLine(
+          tier: essential,
+          isMonthly: false,
+          upgrade: '升級後每天能用更多',
+        ),
+        kDailyQuotaResetLine,
+      );
+    });
+
+    test('Essential・每月：只講恢復時間', () {
+      expect(
+        quotaNextStepLine(tier: essential, isMonthly: true),
+        kMonthlyQuotaResetLine,
+      );
+    });
+  });
+
+  test('開場、新話題的額度說明：Essential 只說什麼時候恢復，其他方案先說恢復再說升級', () {
     for (final (isMonthly, resetLine, otherResetLine) in [
       (false, kDailyQuotaResetLine, kMonthlyQuotaResetLine),
       (true, kMonthlyQuotaResetLine, kDailyQuotaResetLine),
@@ -83,7 +144,7 @@ void main() {
     ]) {
       expect(
         quotaShortMessage(tier: tier, isMonthly: true, feature: '新話題'),
-        '本月額度不足，升級方案可取得更多新話題與分析額度。',
+        '本月額度不足，$kMonthlyQuotaResetLine；也可以升級取得更多新話題與分析額度。',
       );
       expect(
         quotaShortMessage(tier: tier, isMonthly: false, feature: '開場'),

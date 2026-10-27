@@ -148,21 +148,23 @@ class QuotaExceededUpgradeCard extends StatelessWidget {
     this.showStarterCapacity = false,
   });
 
+  /// 先講什麼時候恢復，能升級的方案再補升級（Onboarding 第 3 步：本月那句以前只叫人
+  /// 升級，好像付錢是唯一的路）。
   String get _headline {
     final hasNumbers = remaining != null && quotaNeeded != null;
-    final canUpgrade = canUpgradeQuota(tier);
     if (isMonthly) {
       final lead =
           hasNumbers ? '本月額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。' : '本月額度不足，';
-      return canUpgrade
-          ? '$lead升級至 ${quotaUpgradeTargets(tier)} 繼續分析。'
-          : '$lead$kMonthlyQuotaResetLine。';
+      final next = quotaNextStepLine(
+        tier: tier,
+        isMonthly: true,
+        upgrade: '也可以升級至 ${quotaUpgradeTargets(tier)}',
+      );
+      return '$lead$next。';
     }
     final lead =
         hasNumbers ? '今日額度剩 $remaining 則，這次分析需要 $quotaNeeded 則。' : '今日額度不足，';
-    return canUpgrade
-        ? '$lead$kDailyQuotaResetLine，也可以升級取得更多額度。'
-        : '$lead$kDailyQuotaResetLine。';
+    return '$lead${quotaNextStepLine(tier: tier, isMonthly: false)}。';
   }
 
   @override

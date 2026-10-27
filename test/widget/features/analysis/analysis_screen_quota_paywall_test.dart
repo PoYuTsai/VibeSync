@@ -725,9 +725,11 @@ void main() {
         _inPreviewDialog(find.text('0 / ${_dailyLimitOf(_free)} 則')),
         findsOneWidget,
       );
-      // 確認框的提醒也先講本月。
+      // 確認框的提醒也先講本月：需要幾則、剩幾則，再講每月 1 號恢復（Onboarding
+      // 第 3 步）。
       expect(
-        _inPreviewDialog(find.text('這個月的分析次數不夠了，升級後再繼續。')),
+        _inPreviewDialog(find.text('這個月的額度不夠這次用（需要 2 則，剩 1 則）。'
+            '每月 1 號早上 8 點恢復；也可以升級取得更多額度。')),
         findsOneWidget,
       );
 
@@ -941,7 +943,7 @@ void main() {
 
       expect(
         error,
-        '目前方案 Free：今日額度已用完 ($limit/$limit)，每天早上 8 點恢復；升級方案可取得更多額度。',
+        '目前方案 Free：今日額度已用完 ($limit/$limit)，每天早上 8 點恢復；也可以升級取得更多額度。',
       );
     });
   });

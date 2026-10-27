@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
+import 'package:vibesync/features/analysis/domain/errors/analysis_exceptions.dart';
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_quota_hints.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/quota_copy.dart';
 
 void main() {
   // 一般長度（2000 字以內）的分析最多扣 MessageCalculator.softCapUnits 則；短的片段
@@ -50,14 +52,19 @@ void main() {
     String message(String? tier, {required bool isMonthly}) =>
         polishQuotaMessage(tier: tier, isMonthly: isMonthly, used: 9, limit: 9);
 
-    test('免費、Starter：每天的說恢復時間也說升級，每月的說升級', () {
+    // Onboarding 第 3 步：每月那句以前只叫人升級，現在跟每天一樣先講恢復時間。
+    test('免費、Starter：每天、每月都先說恢復時間，再說也可以升級', () {
       expect(
         message(SubscriptionTierHelper.free, isMonthly: false),
-        '目前方案 Free：今日額度已用完 (9/9)，每天早上 8 點恢復；升級方案可取得更多額度。',
+        '目前方案 Free：今日額度已用完 (9/9)，每天早上 8 點恢復；也可以升級取得更多額度。',
+      );
+      expect(
+        message(SubscriptionTierHelper.free, isMonthly: true),
+        '目前方案 Free：本月額度已用完 (9/9)，每月 1 號早上 8 點恢復；也可以升級取得更多額度。',
       );
       expect(
         message(SubscriptionTierHelper.starter, isMonthly: true),
-        '目前方案 Starter：本月額度已用完 (9/9)，升級方案可取得更多分析額度。',
+        '目前方案 Starter：本月額度已用完 (9/9)，每月 1 號早上 8 點恢復；也可以升級取得更多額度。',
       );
     });
 
@@ -77,5 +84,18 @@ void main() {
         message(SubscriptionTierHelper.free, isMonthly: true),
       );
     });
+  });
+
+  // Onboarding 第 3 步：例外類別拿不到目前方案，只講恢復時間（台灣早上 8 點，不說
+  // 「明天」），升級交給接著打開的付費頁或錯誤卡的提示。
+  test('分析額度例外的訊息：只講恢復時間，不提升級、不說明天', () {
+    final daily = DailyLimitExceededException(dailyLimit: 15, used: 15);
+    final monthly = MonthlyLimitExceededException(monthlyLimit: 30, used: 30);
+    expect(daily.message, '今日額度已用完，$kDailyQuotaResetLine。');
+    expect(monthly.message, '本月額度已用完，$kMonthlyQuotaResetLine。');
+    for (final text in [daily.message, monthly.message]) {
+      expect(text, isNot(contains('升級')));
+      expect(text, isNot(contains('明天')));
+    }
   });
 }

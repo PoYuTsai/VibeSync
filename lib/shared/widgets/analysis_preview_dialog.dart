@@ -139,16 +139,21 @@ class AnalysisPreviewDialog extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          // 先講需要幾則、剩幾則，再講什麼時候恢復，能升級的方案才補升級（Onboarding
+          // 第 3 步）。台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」；跟額度卡
+          // 同一句（主審第 1 輪 P3）。扣的是「則」，不寫「次數」。
           if (usage.monthlyRemaining < _requiredUnits)
-            _buildWarning(canUpgrade
-                ? '這個月的分析次數不夠了，升級後再繼續。'
-                : '這個月的分析次數不夠了，$kMonthlyQuotaResetLine。')
+            _buildWarning(
+              '這個月的額度不夠這次用（需要 $_requiredUnits 則，'
+              '剩 ${usage.monthlyRemaining} 則）。'
+              '${quotaNextStepLine(tier: usage.tier, isMonthly: true)}。',
+            )
           else if (usage.dailyRemaining < _requiredUnits)
-            // 台灣早上 8 點恢復：凌晨不夠時當天早上就有，不說「明天」；跟額度卡
-            // 同一句（主審第 1 輪 P3）。
-            _buildWarning(canUpgrade
-                ? '今天的分析次數不夠了，$kDailyQuotaResetLine，也可以升級取得更多額度。'
-                : '今天的分析次數不夠了，$kDailyQuotaResetLine。'),
+            _buildWarning(
+              '今天的額度不夠這次用（需要 $_requiredUnits 則，'
+              '剩 ${usage.dailyRemaining} 則）。'
+              '${quotaNextStepLine(tier: usage.tier, isMonthly: false)}。',
+            ),
           const SizedBox(height: 12),
           if (_isOvercharge)
             Text(
@@ -163,7 +168,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
           else
             // 「重新分析會用目前整段對話…」說明已拆（2026-08-16 Bruce 回饋）。
             Text(
-              '只有送出完整分析才會扣次數。先讀截圖、不做完整分析，不會扣次數。'
+              '只有送出完整分析才會扣額度。先讀截圖、不做完整分析，不會扣額度。'
               '分析完成後會顯示實際使用的則數。',
               style: AppTypography.caption.copyWith(
                 color: AppColors.textSecondary,
