@@ -57,6 +57,7 @@ import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
 import '../../../conversation/data/providers/conversation_write_controller.dart';
+import '../../../conversation/domain/entities/conversation.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
@@ -105,30 +106,47 @@ class AddPartnerScreen extends ConsumerStatefulWidget {
 ///   滑到選截圖，不會先閃過一張空白的對象頁；堆疊是首頁 → 對象頁 → 片段，按
 ///   返回時分析頁的 `_cleanupAndGoBack` 會刪掉沒內容的空片段、回到對象頁。
 /// - 建空片段失敗：照樣落在對象頁（等於沒帶參數的落點），再跳既有的錯誤字。
+/// - 等寫入的空檔裡使用者可以按返回離開（[isStillOnForm] 變 false）：不再替他
+///   換頁；空片段已經建好的話就收回（[discardEmptyConversation]），因為分析頁
+///   根本沒打開，`_cleanupAndGoBack` 不會跑，不收回會在對象頁留一個空的
+///   「新對話」（Codex 第二批主審第 1 輪 P3）。收回失敗只記 log，不擋使用者。
 @visibleForTesting
 Future<void> followUpAfterPartnerCreated({
   required String partnerId,
   required String? nextStep,
-  required Future<String> Function() createEmptyConversation,
+  required bool Function() isStillOnForm,
+  required Future<Conversation> Function() createEmptyConversation,
+  required Future<void> Function(Conversation conversation)
+      discardEmptyConversation,
   required void Function(String location) replaceWith,
   required void Function(String location) push,
   required void Function() onCreateConversationFailed,
 }) async {
   final partnerLocation = '/partner/$partnerId';
+  // 建對象的空檔就離開了：對象照樣建好（首頁看得到），不換頁、也不建片段。
+  if (!isStillOnForm()) return;
   if (nextStep != AddPartnerScreen.nextStepScreenshot) {
     replaceWith(partnerLocation);
     return;
   }
-  final String conversationId;
+  final Conversation conversation;
   try {
-    conversationId = await createEmptyConversation();
+    conversation = await createEmptyConversation();
   } catch (_) {
-    replaceWith(partnerLocation);
+    if (isStillOnForm()) replaceWith(partnerLocation);
     onCreateConversationFailed();
     return;
   }
+  if (!isStillOnForm()) {
+    try {
+      await discardEmptyConversation(conversation);
+    } catch (error) {
+      debugPrint('Discard unused empty conversation failed: $error');
+    }
+    return;
+  }
   replaceWith(partnerLocation);
-  push('/conversation/$conversationId');
+  push('/conversation/${conversation.id}');
 }
 
 class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
@@ -188,33 +206,33 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
       return;
     }
     if (!mounted) return;
-    // 換頁後這個畫面就會被拆掉：router、messenger、片段寫入都在換頁前抓好。
+    // 換頁後這個畫面就會被拆掉：router、messenger、片段寫入、這頁的 route 都在
+    // 換頁前抓好。
     final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final route = ModalRoute.of(context);
     final conversationWriter =
         ref.read(conversationWriteControllerProvider.notifier);
     await followUpAfterPartnerCreated(
       partnerId: partner.id,
       nextStep: widget.nextStep,
+      // 只看 mounted 不夠：按返回後退場動畫期間這頁還掛著（mounted 仍是 true），
+      // 但 go_router 已經退回首頁，這時換頁會把首頁換掉。route.isActive 在按下
+      // 返回的那一刻就變 false。
+      isStillOnForm: () => mounted && (route?.isActive ?? true),
       // 跟對象頁「分析新片段 → 截圖開始」同一個寫法（new_conversation_sheet）。
-      createEmptyConversation: () async {
-        final conversation = await conversationWriter.create(
-          name: '新對話',
-          messages: [],
-          partnerId: partner.id,
-        );
-        return conversation.id;
-      },
+      createEmptyConversation: () => conversationWriter.create(
+        name: '新對話',
+        messages: [],
+        partnerId: partner.id,
+      ),
+      // 跟分析頁 _cleanupAndGoBack 同一個刪法；建好到這裡沒人碰過，一定還是空的。
+      discardEmptyConversation: conversationWriter.delete,
       // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
       // back from detail returns to Home (Partner list) underneath, not to
       // the add form. (Codex r1 P1.2)
-      // 建片段的空檔裡使用者若已經離開這頁，就不再替他換頁。
-      replaceWith: (location) {
-        if (mounted) router.pushReplacement<void>(location);
-      },
-      push: (location) {
-        if (mounted) router.push<void>(location);
-      },
+      replaceWith: (location) => router.pushReplacement<void>(location),
+      push: (location) => router.push<void>(location),
       onCreateConversationFailed: () {
         messenger?.showSnackBar(
           buildBrandFeedbackSnackBar(
