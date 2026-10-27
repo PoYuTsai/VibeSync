@@ -1,9 +1,11 @@
 // test/widget/features/partner/getting_started_checklist_test.dart
 //
 // 起步清單卡（訊號驅動，全完成即消失）。2026-08-01 起三項（iOS）／兩項（Android）：
-// - 關於我／第一次分析或第一局練習（二擇一）／設定鍵盤（僅 iOS）。
+// - 關於我／第一次分析或第一局練習（二擇一）／看過鍵盤設定（僅 iOS App）。
 // - 非 iOS 隱藏鍵盤項；全完成整卡 SizedBox.shrink()。
 // - 未完成項點擊導航正確；打勾項發 checklist_item_done once 埋點。
+// onboarding 轉換第 13 步（2026-10-27）：鍵盤項改叫「看過鍵盤設定」（按「稍後
+// 設定」也算完成）；網頁版（含 iPhone Safari 開的）也不顯示鍵盤項。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -98,6 +100,8 @@ void main() {
     OnboardingService.keyboardCompletedListenable.value = false;
   });
 
+  tearDown(() => GettingStartedChecklist.debugIsWebOverride = null);
+
   final iosVariant = TargetPlatformVariant.only(TargetPlatform.iOS);
   final androidVariant = TargetPlatformVariant.only(TargetPlatform.android);
 
@@ -107,7 +111,8 @@ void main() {
     expect(find.byKey(GettingStartedChecklist.cardKey), findsOneWidget);
     expect(find.text('填 30 秒關於我'), findsOneWidget);
     expect(find.text('完成第一次分析或練習'), findsOneWidget);
-    expect(find.text('設定 AI 鍵盤'), findsOneWidget);
+    expect(find.text('看過鍵盤設定'), findsOneWidget);
+    expect(find.text('設定 AI 鍵盤'), findsNothing);
     expect(find.text('開啟跟進提醒'), findsNothing);
   }, variant: iosVariant);
 
@@ -135,7 +140,7 @@ void main() {
   testWidgets('Android → 鍵盤項整個不顯示（僅兩項）', (tester) async {
     await _pump(tester);
 
-    expect(find.text('設定 AI 鍵盤'), findsNothing);
+    expect(find.text('看過鍵盤設定'), findsNothing);
     expect(find.text('填 30 秒關於我'), findsOneWidget);
     expect(find.text('完成第一次分析或練習'), findsOneWidget);
   }, variant: androidVariant);
@@ -164,7 +169,7 @@ void main() {
 
   testWidgets('未完成項點擊導航：鍵盤 → /settings/keyboard', (tester) async {
     await _pump(tester);
-    await tester.tap(find.text('設定 AI 鍵盤'));
+    await tester.tap(find.text('看過鍵盤設定'));
     await tester.pumpAndSettle();
     expect(find.text('keyboard-screen'), findsOneWidget);
   }, variant: iosVariant);
@@ -269,4 +274,70 @@ void main() {
 
     expect(find.byKey(const Key('checklist_done_keyboard')), findsOneWidget);
   }, variant: iosVariant);
+
+  testWidgets('網頁版（iPhone Safari 開的也算）→ 不顯示鍵盤項，只有兩項', (tester) async {
+    GettingStartedChecklist.debugIsWebOverride = true;
+    await _pump(tester);
+
+    expect(find.byKey(GettingStartedChecklist.cardKey), findsOneWidget);
+    expect(find.text('看過鍵盤設定'), findsNothing,
+        reason: '網頁版沒有鍵盤可裝；平台是 iOS 也不能顯示');
+    expect(find.text('填 30 秒關於我'), findsOneWidget);
+    expect(find.text('完成第一次分析或練習'), findsOneWidget);
+    expect(find.text('0/2'), findsOneWidget);
+  }, variant: iosVariant);
+
+  testWidgets('網頁版兩項完成 → 清單收起，不被鍵盤項卡住', (tester) async {
+    GettingStartedChecklist.debugIsWebOverride = true;
+    await _pump(
+      tester,
+      profile: UserProfile.create(
+        interactionStyle: InteractionStyle.humorous,
+        updatedAt: DateTime(2026, 7, 1),
+      ),
+      historyEvents: [_analyzeEvent()],
+    );
+
+    expect(find.byKey(GettingStartedChecklist.cardKey), findsNothing);
+  }, variant: iosVariant);
+
+  group('blockVisible（首頁空態走兩頁還是一頁）', () {
+    Future<String> blockText(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            userProfileControllerProvider.overrideWith(
+              () => _SeededProfileController(UserProfile.create(
+                interactionStyle: InteractionStyle.humorous,
+                updatedAt: DateTime(2026, 7, 1),
+              )),
+            ),
+            analysisHistoryEventsProvider.overrideWithValue([_analyzeEvent()]),
+            onboardingDrawRewardDismissedProvider
+                .overrideWith((ref) async => true),
+            onboardingDrawBonusConsumedProvider
+                .overrideWith((ref) async => true),
+          ],
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, _) => Text(
+                'block:${GettingStartedChecklist.blockVisible(ref)}',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.widget<Text>(find.textContaining('block:')).data!;
+    }
+
+    testWidgets('iOS App：鍵盤還沒看過 → 清單仍佔版面', (tester) async {
+      expect(await blockText(tester), 'block:true');
+    }, variant: iosVariant);
+
+    testWidgets('網頁版：鍵盤項不存在，不因它把空態撐成兩頁', (tester) async {
+      GettingStartedChecklist.debugIsWebOverride = true;
+      expect(await blockText(tester), 'block:false');
+    }, variant: iosVariant);
+  });
 }

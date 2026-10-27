@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 
 import '../../../../core/services/app_haptics.dart';
@@ -15,6 +16,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../onboarding/data/onboarding_service.dart';
+import '../../../onboarding/domain/keyboard_onboarding_gate.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../../report/data/providers/report_providers.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
@@ -23,6 +25,7 @@ import '../providers/partner_providers.dart';
 
 /// Tier 2 批 2：首頁起步清單卡（訊號驅動，全完成整卡消失不留殘骸）。
 /// 2026-08-01 起縮為三項（iOS）／兩項（Android）：跟進提醒項移除（功能仍在設定頁）。
+/// 2026-10-27 起網頁版也是兩項（含 iPhone Safari 開的網頁版，沒有鍵盤可裝）。
 ///
 /// 訊號全部讀既有 provider／service，本卡不寫任何狀態；
 /// 每項首次變成完成時打一發 `checklist_item_done`（per-item once-flag）。
@@ -30,6 +33,17 @@ class GettingStartedChecklist extends ConsumerWidget {
   const GettingStartedChecklist({super.key});
 
   static const cardKey = Key('getting_started_checklist');
+
+  /// 測試替身：widget 測試改不了 kIsWeb，用它模擬網頁版（null＝照常讀 kIsWeb）。
+  @visibleForTesting
+  static bool? debugIsWebOverride;
+
+  /// 鍵盤項只在 iOS App 出現：網頁版沒有鍵盤可裝，在 iPhone Safari 開的也一樣
+  /// （跟設定頁的鍵盤區同一個判斷；foundation 顯式 import——CI dart2js 教訓）。
+  static bool get _showsKeyboardItem => isKeyboardSetupAvailable(
+        platform: defaultTargetPlatform,
+        isWeb: debugIsWebOverride ?? kIsWeb,
+      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,8 +55,7 @@ class GettingStartedChecklist extends ConsumerWidget {
     final firstActionDone =
         historyEvents.isNotEmpty || practicePoints.isNotEmpty;
 
-    // 鍵盤僅 iOS（foundation 顯式 import——CI dart2js 教訓）。
-    final showKeyboardItem = defaultTargetPlatform == TargetPlatform.iOS;
+    final showKeyboardItem = _showsKeyboardItem;
 
     // 鍵盤完成態走 ValueListenable：設定流程 pop 回首頁時本 widget 不重掛，
     // 靜態同步讀會 stale（比照 follow_up 的 stale bug 教訓）。
@@ -74,7 +87,7 @@ class GettingStartedChecklist extends ConsumerWidget {
     final firstActionDone =
         ref.watch(analysisHistoryEventsProvider).isNotEmpty ||
             ref.watch(practiceTemperatureTrendProvider).isNotEmpty;
-    final keyboardPending = defaultTargetPlatform == TargetPlatform.iOS &&
+    final keyboardPending = _showsKeyboardItem &&
         !OnboardingService.keyboardCompletedListenable.value;
     if (!profileDone || !firstActionDone || keyboardPending) return true;
 
@@ -114,7 +127,9 @@ class GettingStartedChecklist extends ConsumerWidget {
       if (showKeyboardItem)
         _ChecklistItem(
           id: 'keyboard',
-          label: '設定 AI 鍵盤',
+          // 「稍後設定」與關閉也算完成，所以寫「看過」不寫「設定」
+          // （onboarding 轉換第 13 步）。
+          label: '看過鍵盤設定',
           done: keyboardDone,
           onTap: () => context.push('/settings/keyboard'),
         ),
