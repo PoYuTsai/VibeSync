@@ -69,11 +69,20 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - 付款確認期間換帳號或登出，那筆購買事件會被丟掉（寧可少記，不記到別人身上）。
 - 免費看幾張卡的決定（audit 三層方案）：累積二到四週，比 `entry=locked_cards` 開了幾次付費頁、其中幾次買了。
 
-## once-flag 去重
+## once-flag 去重（2026-10-27 起送成功才算）
 
-`first_analysis_completed` / `first_practice_completed` 用 SharedPreferences key
-`funnel_once_<event>` 在本機去重，只送第一次。server 不做唯一約束（best-effort
-通道，重複列在查詢端 dedup）。
+`first_analysis_completed` / `first_practice_completed` 與起步清單的
+`checklist_item_done`（逐項）每個帳號只送一次（onboarding 轉換第 5 步）：
+
+- 記號鍵 `funnel_once_v2_<user_id>_<onceKey 或事件名>`，分帳號：同一支手機登出換另一個
+  帳號，第二個帳號的「第一次」照樣記。
+- 先送，伺服器收下（2xx）才寫記號；斷網、被拒或丟錯都不寫，下次觸發再送。同一個鍵送出
+  中再觸發直接略過（起步清單每次重建都會觸發），同一次執行同一個鍵最多試 3 次。
+- 沒登入時交給下面的「登入前的事件」佇列，不寫記號；同一次執行同一個鍵只排一次。
+- 舊鍵 `funnel_once_<event>`（不分帳號、送之前就寫）不再讀：升級後每個帳號可能再送一次
+  「第一次」事件。
+
+server 不做唯一約束（best-effort 通道），重複列在查詢端以 `user_id` 去重。
 
 ## 登入前的事件：先排隊、登入後補送（2026-10-27）
 

@@ -22,8 +22,9 @@ typedef FunnelCurrentUserId = String? Function();
 /// 鐵則（隱私＋韌性，照 CoachingOutcomeUploader）：
 /// - 絕不 block UI、吞下一切錯誤（網路／非 2xx／exception）。
 /// - 沒登入時伺服器收不到（沒有帳號可以掛），先排進手機裡的佇列，登入後由
-///   [flushPending] 補送（onboarding 轉換第 4 步）。只有補送會重試，每筆最多
-///   [maxFlushAttempts] 次。
+///   [flushPending] 補送（onboarding 轉換第 4 步）。會再試的只有這個補送（每筆
+///   最多 [maxFlushAttempts] 次）與 [trackOnce] 沒送成功的下次觸發（同一次執行
+///   最多 [maxOnceAttemptsPerRun] 次）。
 /// - 白名單真相源：docs/integrations/funnel-events-v1.md。改字典必同批
 ///   同步改本檔與 Edge funnel_utils.ts 兩層。
 /// - payload 只有事件名＋白名單鍵；對話內容、對象名、自由文字絕不上傳，
@@ -55,6 +56,14 @@ class FunnelTracker {
   /// 每筆最多補送幾次，都沒成功就丟掉。
   @visibleForTesting
   static const maxFlushAttempts = 3;
+
+  /// 只記一次的事件：同一次執行同一個鍵最多試幾次（一直失敗時不要每次觸發都重送）。
+  @visibleForTesting
+  static const maxOnceAttemptsPerRun = 3;
+
+  /// 只記一次的記號鍵：`funnel_once_v2_<uid>_<onceKey ?? event>`，分帳號。
+  /// 舊鍵 `funnel_once_<event>` 不分帳號、送之前就寫，不再讀。
+  static const _onceFlagPrefix = 'funnel_once_v2_';
 
   /// client 端白名單鏡像（event → 允許的 properties 鍵）。
   static const Map<String, List<String>> eventProps = {
@@ -92,9 +101,15 @@ class FunnelTracker {
   final _random = Random();
   Future<void>? _flushing;
 
-  /// 送一發事件。字典外事件直接丟棄（連手機都不出）。
-  /// 沒登入時不送，排進佇列，登入後由 [flushPending] 補送。
-  Future<void> track(
+  // 只記一次的事件在這次執行中的狀態（記憶體，不落地）。
+  final _onceInFlight = <String>{};
+  final _onceAttempts = <String, int>{};
+  final _onceQueuedSignedOut = <String>{};
+
+  /// 送一發事件；伺服器收下（2xx）才回 true，其他（沒送到、被拒、丟錯）一律
+  /// false，不丟錯。字典外事件直接丟棄（連手機都不出）。
+  /// 沒登入時不送，排進佇列，登入後由 [flushPending] 補送（這次回 false）。
+  Future<bool> track(
     String event, {
     Map<String, Object?> properties = const {},
   }) async {
@@ -102,44 +117,63 @@ class FunnelTracker {
       final filtered = _whitelisted(event, properties);
       if (filtered == null) {
         debugPrint('[FunnelTracker] unknown event dropped: $event');
-        return;
+        return false;
       }
       final clientTs = _clock().toUtc().toIso8601String();
       if (_currentUserId() == null) {
         await _enqueue(event, filtered, clientTs);
-        return;
+        return false;
       }
-      await _send(event, filtered, clientTs);
+      return await _send(event, filtered, clientTs);
     } catch (e) {
       // Best-effort：埋點永遠不影響功能。
       debugPrint('[FunnelTracker] track failed (ignored): $e');
+      return false;
     }
   }
 
-  /// 本機 once-flag 去重版（first_* 類事件用）。attempt-once 語意：
-  /// 旗標在出手前就落，失敗不補送，避免重試風暴。
+  /// 每個帳號只記一次的事件（first_* 類、起步清單逐項）。送成功才記號
+  /// （onboarding 轉換第 5 步）：斷網或伺服器沒收下就不記，下次觸發再送；
+  /// 記號分帳號，同一支手機換帳號各記各的。
+  /// - 沒登入：交給 [track] 排隊、不寫記號；同一次執行同一個鍵只排一次。
+  /// - 同一個鍵送出中再觸發直接略過（起步清單每次重建都會觸發）。
+  /// - 同一次執行同一個鍵最多試 [maxOnceAttemptsPerRun] 次。
   /// [onceKey] 讓同事件不同維度各自去重（如 checklist 逐項）。
   Future<void> trackOnce(
     String event, {
     Map<String, Object?> properties = const {},
     String? onceKey,
   }) async {
-    // 先驗白名單再落 once-flag（GLM 審查 F6：否則 typo 事件會把旗標
-    // 燒掉，真事件永遠送不出且無聲無息）。
+    // 先驗白名單再碰記號（GLM 審查 F6：否則 typo 事件會把記號燒掉，真事件
+    // 永遠送不出且無聲無息）。
     if (!eventProps.containsKey(event)) {
       debugPrint('[FunnelTracker] unknown once event dropped: $event');
       return;
     }
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = 'funnel_once_${onceKey ?? event}';
-      if (prefs.getBool(key) ?? false) return;
-      await prefs.setBool(key, true);
-    } catch (e) {
-      debugPrint('[FunnelTracker] once-flag failed (ignored): $e');
+    final scope = onceKey ?? event;
+    final uid = _currentUserId();
+    if (uid == null) {
+      if (_onceQueuedSignedOut.add(scope)) {
+        await track(event, properties: properties);
+      }
       return;
     }
-    await track(event, properties: properties);
+    final flagKey = '$_onceFlagPrefix${uid}_$scope';
+    if (_onceInFlight.contains(flagKey)) return;
+    if ((_onceAttempts[flagKey] ?? 0) >= maxOnceAttemptsPerRun) return;
+    _onceInFlight.add(flagKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(flagKey) ?? false) return;
+      _onceAttempts[flagKey] = (_onceAttempts[flagKey] ?? 0) + 1;
+      if (await track(event, properties: properties)) {
+        await prefs.setBool(flagKey, true);
+      }
+    } catch (e) {
+      debugPrint('[FunnelTracker] once-flag failed (ignored): $e');
+    } finally {
+      _onceInFlight.remove(flagKey);
+    }
   }
 
   /// 補送登入前排隊的事件（登入後進首頁時由 OnboardingHandoffApplier 呼叫）。

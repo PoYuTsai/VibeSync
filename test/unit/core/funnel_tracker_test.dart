@@ -2,8 +2,8 @@
 //
 // FunnelTracker（Tier 2 批 1.5）：best-effort 去識別化漏斗埋點封裝。
 // - wire payload 只帶 client 白名單鍵；字典外事件根本不出手機。
-// - 非 2xx／invoker 炸掉一律吞掉不 throw。
-// - trackOnce 用 SharedPreferences once-flag 去重。
+// - 非 2xx／invoker 炸掉一律吞掉不 throw；track 只有伺服器收下（2xx）才回 true。
+// - trackOnce 用 SharedPreferences 記號去重：分帳號、送成功才記（第 5 步）。
 // - 沒登入時排進手機佇列，登入後 flushPending 補送（onboarding 轉換第 4 步）。
 
 import 'dart:async';
@@ -94,22 +94,35 @@ void main() {
     expect(calls, 0);
   });
 
-  test('非 2xx 不 throw', () async {
+  test('非 2xx 不 throw，回 false', () async {
     final tracker = FunnelTracker(
       invoker: (fn, {required body}) async => 500,
       currentUserId: _signedIn,
     );
 
-    await tracker.track('quota_strip_tap');
+    expect(await tracker.track('quota_strip_tap'), isFalse);
   });
 
-  test('invoker 炸掉不 throw', () async {
+  test('invoker 炸掉不 throw，回 false（functions_client 對非 2xx 會丟錯）', () async {
     final tracker = FunnelTracker(
       invoker: (fn, {required body}) async => throw StateError('boom'),
       currentUserId: _signedIn,
     );
 
-    await tracker.track('quota_strip_tap');
+    expect(await tracker.track('quota_strip_tap'), isFalse);
+  });
+
+  test('track 回傳：伺服器收下才是 true；字典外、沒登入排隊都是 false', () async {
+    String? uid = _uid;
+    final tracker = FunnelTracker(
+      invoker: (fn, {required body}) async => 204,
+      currentUserId: () => uid,
+    );
+
+    expect(await tracker.track('quota_strip_tap'), isTrue);
+    expect(await tracker.track('made_up_event'), isFalse);
+    uid = null;
+    expect(await tracker.track('quota_strip_tap'), isFalse);
   });
 
   test('鍵級白名單與字典逐字鎖死（Grok F5：防單邊漂移）', () {
@@ -189,15 +202,20 @@ void main() {
   });
 
   test('trackOnce：字典外事件不落 once-flag（GLM F6）', () async {
+    var calls = 0;
     final tracker = FunnelTracker(
-      invoker: (fn, {required body}) async => 200,
+      invoker: (fn, {required body}) async {
+        calls++;
+        return 200;
+      },
       currentUserId: _signedIn,
     );
 
     await tracker.trackOnce('not_in_dict');
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('funnel_once_not_in_dict'), isNull);
+    expect(prefs.getKeys().where((k) => k.startsWith('funnel_once')), isEmpty);
+    expect(calls, 0);
   });
 
   test('trackOnce：同事件只送一次，跨 instance 也擋', () async {
@@ -487,6 +505,153 @@ void main() {
         {'page_index': 2},
       ]);
       expect(await _storedQueue(), isEmpty);
+    });
+  });
+
+  // onboarding 轉換第 5 步：「只記一次」的事件送成功才記號，記號分帳號。
+  group('只記一次：送成功才算', () {
+    String? uid;
+    late _Wire wire;
+    late FunnelTracker tracker;
+
+    setUp(() {
+      uid = _uid;
+      wire = _Wire();
+      tracker = FunnelTracker(invoker: wire.call, currentUserId: () => uid);
+    });
+
+    Future<bool?> flag(String key) async =>
+        (await SharedPreferences.getInstance()).getBool(key);
+
+    test('送失敗不寫記號，下次觸發會再送；送成功才寫，之後不再送', () async {
+      wire.status = (_) => 503;
+      await tracker.trackOnce('first_analysis_completed');
+      expect(wire.names, ['first_analysis_completed']);
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isNull);
+
+      wire.status = (_) => 200;
+      await tracker.trackOnce('first_analysis_completed');
+      expect(wire.names, hasLength(2));
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isTrue);
+
+      await tracker.trackOnce('first_analysis_completed');
+      await FunnelTracker(invoker: wire.call, currentUserId: () => uid)
+          .trackOnce('first_analysis_completed');
+      expect(wire.names, hasLength(2));
+    });
+
+    test('記號分帳號：同一支手機換帳號，第二個帳號的第一次照樣送', () async {
+      await tracker.trackOnce('first_practice_completed');
+      uid = 'user-b';
+      await tracker.trackOnce('first_practice_completed');
+      await tracker.trackOnce('first_practice_completed');
+
+      expect(wire.names, [
+        'first_practice_completed',
+        'first_practice_completed',
+      ]);
+      expect(await flag('funnel_once_v2_${_uid}_first_practice_completed'),
+          isTrue);
+      expect(
+          await flag('funnel_once_v2_user-b_first_practice_completed'), isTrue);
+    });
+
+    test('同一個鍵同時觸發只送一次（起步清單每次重建都會觸發）', () async {
+      final gate = Completer<void>();
+      final slow = FunnelTracker(
+        invoker: (fn, {required body}) async {
+          await gate.future;
+          return wire.call(fn, body: body);
+        },
+        currentUserId: () => uid,
+      );
+
+      final calls = [
+        for (var i = 0; i < 4; i++)
+          slow.trackOnce(
+            'checklist_item_done',
+            properties: {'item': 'profile'},
+            onceKey: 'checklist_item_done_profile',
+          ),
+      ];
+      gate.complete();
+      await Future.wait(calls);
+
+      expect(wire.props, [
+        {'item': 'profile'},
+      ]);
+      expect(await flag('funnel_once_v2_${_uid}_checklist_item_done_profile'),
+          isTrue);
+    });
+
+    test('onceKey 讓同一個事件逐項各記一次', () async {
+      for (final item in ['profile', 'first_action', 'profile']) {
+        await tracker.trackOnce(
+          'checklist_item_done',
+          properties: {'item': item},
+          onceKey: 'checklist_item_done_$item',
+        );
+      }
+
+      expect(wire.props, [
+        {'item': 'profile'},
+        {'item': 'first_action'},
+      ]);
+    });
+
+    test(
+        '一直失敗：同一次執行同一個鍵最多試 ${FunnelTracker.maxOnceAttemptsPerRun} 次，'
+        '下次開 App（新的 tracker）才再試', () async {
+      wire.status = (_) => 400;
+      for (var i = 0; i < FunnelTracker.maxOnceAttemptsPerRun + 2; i++) {
+        await tracker.trackOnce('first_analysis_completed');
+      }
+      expect(wire.sent, hasLength(FunnelTracker.maxOnceAttemptsPerRun));
+
+      wire.status = (_) => 200;
+      await FunnelTracker(invoker: wire.call, currentUserId: () => uid)
+          .trackOnce('first_analysis_completed');
+      expect(wire.sent, hasLength(FunnelTracker.maxOnceAttemptsPerRun + 1));
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isTrue);
+    });
+
+    test('沒登入：交給佇列、不寫記號；同一次執行同一個鍵只排一次', () async {
+      uid = null;
+      await tracker.trackOnce('first_practice_completed');
+      await tracker.trackOnce('first_practice_completed');
+
+      expect(wire.sent, isEmpty);
+      final queue = await _storedQueue();
+      expect([for (final e in queue) e['event']], ['first_practice_completed']);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+          prefs.getKeys().where((k) => k.startsWith('funnel_once')), isEmpty);
+
+      uid = _uid;
+      await tracker.flushPending();
+      expect(wire.names, ['first_practice_completed']);
+    });
+
+    test('舊的記號鍵（不分帳號、送之前就寫）不再讀：升級前送過的，這個帳號會再送一次', () async {
+      SharedPreferences.setMockInitialValues({
+        'funnel_once_first_analysis_completed': true,
+        'funnel_once_checklist_item_done_profile': true,
+      });
+
+      await tracker.trackOnce('first_analysis_completed');
+      await tracker.trackOnce(
+        'checklist_item_done',
+        properties: {'item': 'profile'},
+        onceKey: 'checklist_item_done_profile',
+      );
+
+      expect(wire.names, [
+        'first_analysis_completed',
+        'checklist_item_done',
+      ]);
     });
   });
 }
