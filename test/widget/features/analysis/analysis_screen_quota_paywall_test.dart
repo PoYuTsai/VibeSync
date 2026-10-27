@@ -7,7 +7,7 @@
 // - 回覆微調上一輪失敗、或送出後還沒回來就關掉重開：免費次數照樣標待確認（主審第 1、2 輪 P2）。
 // - 這個月和今天都不夠：跟伺服器一樣先看本月（主審第 1 輪 P3）。
 // - 付款後自動接續分析（Onboarding 第 14 步）：成交且額度夠才開始、只開始一次。
-// - 只分析最後 2,000 字（Onboarding 第 15 步）：超長又付不起才有那顆鈕，只送最後那段。
+// - 只分析最後 2000 字（Onboarding 第 15 步）：超長又付不起才有那顆鈕，只送最後那段。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -968,13 +968,12 @@ void main() {
   });
 
   // Onboarding 第 15 步：手動貼長文（超過 2000 字）又付不起 20 則時，多一顆「只分析最後
-  // 2,000 字」；按下去只送最後那段、只算那段的則數。
-  group('只分析最後 2,000 字（Onboarding 第 15 步）', () {
+  // 2000 字」；按下去只送最後那段、只算那段的則數。
+  group('只分析最後 2000 字（Onboarding 第 15 步）', () {
     /// 五則各 600 字＝3000 字：一次要 20 則；最後三則 1800 字＝10 則。
     const fiveBy600 = [600, 600, 600, 600, 600];
 
-    testWidgets('免費、貼了 3000 字：多一顆只分析最後 2,000 字（10 則），按下去只送最後那段',
-        (tester) async {
+    testWidgets('免費、貼了 3000 字：多一顆只分析最後 2000 字（10 則），按下去只送最後那段', (tester) async {
       final harness = await _pumpScreen(
         tester,
         plan: _plan(_free),
@@ -983,7 +982,7 @@ void main() {
       await _tapOrb(tester);
       expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
       expect(
-        _inPreviewDialog(find.text('只分析最後 2,000 字（10 則）')),
+        _inPreviewDialog(find.text('只分析最後 2000 字（10 則）')),
         findsOneWidget,
       );
 

@@ -233,9 +233,9 @@ void main() {
     expect(harness.startedPreviousRound, same(previousRound));
   });
 
-  // Onboarding 第 15 步：只分析最後 2,000 字送的是尾段，兩個基準是對整段算的，都不帶；
+  // Onboarding 第 15 步：只分析最後 2000 字送的是尾段，兩個基準是對整段算的，都不帶；
   // 成功後的字數基準照整段存。
-  group('只分析最後 2,000 字：送尾段時的基準（Onboarding 第 15 步）', () {
+  group('只分析最後 2000 字：送尾段時的基準（Onboarding 第 15 步）', () {
     /// 上次分析到第 1 則（字數基準 5），之後又來了兩則。
     Conversation analyzedBefore() => Conversation(
           id: _conversationId,

@@ -1,5 +1,5 @@
-// 只分析最後 2,000 字（Onboarding 第 15 步）：從整段請求的最後往前累加、計費字數不超過
-// 2,000 字的最長尾段。計費字數跟伺服器同一套算法（MessageCalculator 與 billing.ts
+// 只分析最後 2000 字（Onboarding 第 15 步）：從整段請求的最後往前累加、計費字數不超過
+// 2000 字的最長尾段。計費字數跟伺服器同一套算法（MessageCalculator 與 billing.ts
 // 對拍），送出時不帶上次的基準，伺服器算的就是尾段的字數，一定在 10 則以內。成功後的
 // 字數基準照整段存，下次續析只算之後新增的字。
 import 'package:flutter_test/flutter_test.dart';

@@ -73,7 +73,7 @@ class AnalysisSessionController {
       return;
     }
 
-    // 只分析最後 2,000 字（Onboarding 第 15 步）送的是尾段：兩個基準都是對整段算的，
+    // 只分析最後 2000 字（Onboarding 第 15 步）送的是尾段：兩個基準都是對整段算的，
     // 套在尾段上伺服器會少算（字數基準）或對錯位置（舊的則數基準），所以都不帶，伺服器
     // 就把尾段整段當新內容算錢。成功後的字數基準照整段存（nextCharBaseline）。
     final tailOnly = preparation.isTailOnly;

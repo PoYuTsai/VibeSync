@@ -166,7 +166,7 @@ enum _AnalysisAppBarAction {
   export,
 }
 
-/// 分析前確認框的結論：要不要開始、長內容的確認憑證，以及他選了只分析最後 2,000 字
+/// 分析前確認框的結論：要不要開始、長內容的確認憑證，以及他選了只分析最後 2000 字
 /// 時改送的那一份（Onboarding 第 15 步）。
 typedef _AnalysisPreviewDecision = ({
   bool confirmed,
@@ -2502,7 +2502,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// [shownQuotaLine]：按鈕旁那一行；用實際請求與用量重算出來的跟它完全一樣才不跳框
   ///（Eric 2026-10-18；主審 r1 P2：多算少算都照舊跳框）。沒有那一行的入口（重新
   /// 分析、錯誤重試）照舊跳框。
-  /// 回傳的 tailOnly 不是 null＝他選了只分析最後 2,000 字，改送那一份（Onboarding
+  /// 回傳的 tailOnly 不是 null＝他選了只分析最後 2000 字，改送那一份（Onboarding
   /// 第 15 步）。
   Future<_AnalysisPreviewDecision> _confirmAnalysisPreview(
     AnalysisRunPreparation preparation, {
@@ -2554,7 +2554,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _trackQuotaBlock(QuotaBlockSource.precheck,
           isMonthly: usage.monthlyRemaining < units);
     }
-    // 只分析最後 2,000 字（Onboarding 第 15 步）：超過 2,000 字又付不起才截尾段；尾段
+    // 只分析最後 2000 字（Onboarding 第 15 步）：超過 2000 字又付不起才截尾段；尾段
     // 付不付得起由確認框判斷，付不起就不出那顆鈕。
     final tailOnly =
         preview.band.kind == BillingBandKind.overcharge && !canAfford
@@ -3185,7 +3185,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // 舊 render tree 繼續運作（Eric 2026-05-28 UX spec）。
       await _session.start(
         conversation: conversation,
-        // 選了只分析最後 2,000 字就送尾段那一份；訊息數基準兩份一樣。
+        // 選了只分析最後 2000 字就送尾段那一份；訊息數基準兩份一樣。
         preparation: previewDecision.tailOnly ?? preparation,
         confirmedOvercharge: previewDecision.overcharge,
         waitForCompletion: waitForCompletion,

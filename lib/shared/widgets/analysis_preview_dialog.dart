@@ -8,7 +8,7 @@
 //   時 caller 已走額度不足路徑，這裡的 canProceed 只是防禦層。
 // - reject 帶（4001+）：caller 在呼叫本 dialog 前就擋下，不會進來。
 // - [AnalysisQuotaLine]：額度夠、又是一般長度時不跳本 dialog，改在分析鈕旁寫一行。
-// - 只分析最後 2,000 字（Onboarding 第 15 步）：overcharge 帶付不起、最後那段付得起時
+// - 只分析最後 2000 字（Onboarding 第 15 步）：overcharge 帶付不起、最後那段付得起時
 //   多一顆鈕；最後那段由 caller 截好、則數一起給。
 import 'dart:math' as math;
 
@@ -71,8 +71,8 @@ class AnalysisPreviewDialog extends StatelessWidget {
   final VoidCallback onCancel;
   final VoidCallback? onUpgrade;
 
-  /// 只分析最後 2,000 字要用幾則（Onboarding 第 15 步）；null＝沒有這個選項（例如
-  /// 她最後一則就超過 2,000 字）。
+  /// 只分析最後 2000 字要用幾則（Onboarding 第 15 步）；null＝沒有這個選項（例如
+  /// 她最後一則就超過 2000 字）。
   final int? tailUnits;
   final VoidCallback? onAnalyzeTail;
 
@@ -93,7 +93,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
 
   int get _requiredUnits => preview.band.units ?? 0;
 
-  /// 只在超過 2,000 字、這次付不起，而且最後那段付得起時才給「只分析最後 2,000 字」。
+  /// 只在超過 2000 字、這次付不起，而且最後那段付得起時才給「只分析最後 2000 字」。
   bool _showsTailOption({required bool canProceed}) {
     final units = tailUnits;
     return _isOvercharge &&
@@ -213,7 +213,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
                 ),
                 onPressed: AppHaptics.onPress(onAnalyzeTail),
                 child: Text(
-                  '只分析最後 2,000 字（$tailUnits 則）',
+                  '只分析最後 2000 字（$tailUnits 則）',
                   textAlign: TextAlign.center,
                 ),
               ),

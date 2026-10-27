@@ -340,7 +340,7 @@ class StreamingAnalyzeNotifier
   /// 不含最後面他傳的、上限內的那幾則）。分析成功後由 screen 持久化為
   /// conversation.lastAnalyzedCharCount（baseline 必須對應送出的
   /// requestMessages，不是完成時 repository 裡的最新 messages）。只分析最後
-  /// 2,000 字（Onboarding 第 15 步）送的是尾段，這裡是呼叫端給的整段計費字數。
+  /// 2000 字（Onboarding 第 15 步）送的是尾段，這裡是呼叫端給的整段計費字數。
   int? get lastPayloadCharCount => _cachedPayloadCharCount;
 
   @override
@@ -400,7 +400,7 @@ class StreamingAnalyzeNotifier
     _cachedPreviousRound = previousRound;
     // ADR #19 規格 #8：baseline 對應這次送出的 requestMessages 的計費字數；
     // F04：最後面他傳的（上限內）不算費，也不進 baseline（照伺服器）。
-    // 只分析最後 2,000 字（Onboarding 第 15 步）送的是尾段：基準照呼叫端給的整段
+    // 只分析最後 2000 字（Onboarding 第 15 步）送的是尾段：基準照呼叫端給的整段
     // 計費字數，跳過的那段下次不再算錢，尾段也不會再算一次。
     _cachedPayloadCharCount = nextCharBaseline ??
         MessageCalculator.countPayloadChars(

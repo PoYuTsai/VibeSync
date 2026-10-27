@@ -57,7 +57,7 @@ class AnalysisRunPreparation {
   /// 上一輪脈絡（同一個對象上一次的 v3 結果，Eric 2026-10-18）；沒有就不帶。
   final PreviousRoundContext? previousRound;
 
-  /// 只分析最後 2,000 字（Onboarding 第 15 步）才有值：整段請求的計費字數，也就是整段
+  /// 只分析最後 2000 字（Onboarding 第 15 步）才有值：整段請求的計費字數，也就是整段
   /// 分析成功後會存的字數基準。有值時 [requestMessages] 只是整段的尾段：送出時不帶上次
   /// 的基準（伺服器把尾段整段當新內容算錢），成功後的字數基準存這個數字，下次續析只算
   /// 之後新增的字——跳過的那段不再算錢，尾段也不會再算一次。一般分析是 null。
@@ -263,14 +263,14 @@ class AnalysisRunPreparer {
     );
   }
 
-  /// 只分析最後 2,000 字（Onboarding 第 15 步）：從 [full] 的請求最後往前一則一則加，
+  /// 只分析最後 2000 字（Onboarding 第 15 步）：從 [full] 的請求最後往前一則一則加，
   /// 取計費字數不超過 [maxBillableChars] 的最長尾段，回一份只送這段的請求。現有的
   /// `analysisMessageLimit` 是取前 N 則，這裡是取最後那段。
   ///
   /// 計費字數用伺服器同一套算法（MessageCalculator 跟 billing.ts 對拍：trim 後加總；
   /// F04 最後面他傳的、上限內不算）。送出時不帶上次的基準（見
   /// [AnalysisRunPreparation.fullRequestCharBaseline]），伺服器算的計費字數就是這段的
-  /// 計費字數，不超過 2,000 字，一定落在 10 則以內。
+  /// 計費字數，不超過 2000 字，一定落在 10 則以內。
   ///
   /// 回 null＝沒有這個選項：整段本來就不超過（不用截）、沒有她的訊息，或從她最後一則
   /// 開始就超過（她那一則、或之後他傳的要算錢的那幾則太長）。不截斷單則：截了會改到

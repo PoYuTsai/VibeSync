@@ -310,7 +310,7 @@ void main() {
   });
 
   // Onboarding 第 15 步：超過 2000 字、這次付不起，但最後那段付得起時才多一顆鈕。
-  group('AnalysisPreviewDialog — 只分析最後 2,000 字（Onboarding 第 15 步）', () {
+  group('AnalysisPreviewDialog — 只分析最後 2000 字（Onboarding 第 15 步）', () {
     Finder tailButton() => find.byKey(AnalysisPreviewDialog.tailButtonKey);
 
     testWidgets('超過 2000 字、免費今天付不起 20 則：出現這顆鈕，按下去叫 onAnalyzeTail',
@@ -325,7 +325,7 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('只分析最後 2,000 字（10 則）'), findsOneWidget);
+      expect(find.text('只分析最後 2000 字（10 則）'), findsOneWidget);
       // 原本的升級與停用的確認鈕照舊。
       expect(find.text('查看升級方案'), findsOneWidget);
       expect(
@@ -351,7 +351,7 @@ void main() {
       ));
       await openDialog(tester);
 
-      expect(find.text('只分析最後 2,000 字（8 則）'), findsOneWidget);
+      expect(find.text('只分析最後 2000 字（8 則）'), findsOneWidget);
     });
 
     testWidgets('付得起 20 則：沒有這顆鈕', (tester) async {

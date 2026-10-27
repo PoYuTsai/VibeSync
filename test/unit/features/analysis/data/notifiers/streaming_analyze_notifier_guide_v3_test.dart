@@ -331,7 +331,7 @@ void main() {
           reason: '他傳的照樣送去分析');
     });
 
-    test('只分析最後 2,000 字（Onboarding 第 15 步）：存檔用的字數基準照呼叫端給的整段，送出的只有尾段', () async {
+    test('只分析最後 2000 字（Onboarding 第 15 步）：存檔用的字數基準照呼叫端給的整段，送出的只有尾段', () async {
       final client = _ScriptedClient([
         [Completer<void>()],
       ]);
