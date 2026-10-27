@@ -490,6 +490,84 @@ void main() {
         'onboarding_skip',
       ]);
       expect(queue.first['attempts'], 0);
+      // 補送開始時就綁給 A 的留給 A；登出後才排進來的還沒綁帳號。
+      expect(queue.first['owner'], _uid);
+      expect(queue.last.containsKey('owner'), isFalse);
+    });
+
+    // Codex 主審第 1 輪 P2：同一批 onboarding 事件不能分到 A、B 兩個帳號。第一次補送就
+    // 把佇列綁給當時登入的帳號；換別的帳號登入時，殘留的直接丟掉、不送。
+    Future<void> partlyFlushAsA() async {
+      await tracker
+          .track('onboarding_page_view', properties: {'page_index': 0});
+      await tracker
+          .track('onboarding_page_view', properties: {'page_index': 1});
+      uid = _uid;
+      wire.status = (event) =>
+          (event['properties'] as Map)['page_index'] == 1 ? 500 : 200;
+      await tracker.flushPending();
+      wire.status = (_) => 200;
+      expect(wire.props, [
+        {'page_index': 0},
+        {'page_index': 1},
+      ]);
+      final queue = await _storedQueue();
+      expect([
+        for (final e in queue) e['properties']
+      ], [
+        {'page_index': 1},
+      ]);
+      expect(queue.single['owner'], _uid);
+    }
+
+    test('補送到一半失敗、換別的帳號登入：A 的殘留直接丟掉，不會送給 B', () async {
+      await partlyFlushAsA();
+      uid = null; // A 登出
+      uid = 'user-b';
+
+      await tracker.flushPending();
+
+      expect(wire.sent, hasLength(2), reason: 'B 登入後什麼都沒送');
+      expect(await _storedQueue(), isEmpty);
+    });
+
+    test('同一個帳號再登入：殘留照樣繼續送', () async {
+      await partlyFlushAsA();
+      uid = null;
+      uid = _uid;
+
+      await tracker.flushPending();
+
+      expect(wire.props.last, {'page_index': 1});
+      expect(wire.sent, hasLength(3));
+      expect(await _storedQueue(), isEmpty);
+    });
+
+    test('A 綁定之後、沒登入時才排進來的事件：照舊給下一個登入的帳號', () async {
+      await partlyFlushAsA();
+      uid = null;
+      await tracker.track('onboarding_skip', properties: {'page_index': 2});
+      uid = 'user-b';
+
+      await tracker.flushPending();
+
+      expect(wire.names.last, 'onboarding_skip');
+      expect(wire.sent, hasLength(3), reason: 'A 的殘留沒有送給 B');
+      expect(await _storedQueue(), isEmpty);
+    });
+
+    test('等 SharedPreferences 期間換帳號：這次不送也不綁', () async {
+      await tracker
+          .track('onboarding_page_view', properties: {'page_index': 0});
+      uid = _uid;
+
+      final pending = tracker.flushPending();
+      uid = 'user-b';
+      await pending;
+
+      expect(wire.sent, isEmpty);
+      final queue = await _storedQueue();
+      expect(queue.single.containsKey('owner'), isFalse);
     });
 
     test('佇列內容壞掉：不丟錯，照常排隊與補送', () async {

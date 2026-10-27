@@ -267,26 +267,36 @@ class FunnelTracker {
 
   /// 補送登入前排隊的事件（登入後進首頁時由 OnboardingHandoffApplier 呼叫）。
   ///
-  /// 超過 [pendingMaxAge] 的丟掉；其餘逐筆照原本的 body 與當時的 clientTs 送，
-  /// 成功的移除、失敗的留著下次再試，每筆最多 [maxFlushAttempts] 次。沒登入或
-  /// 沒有佇列就什麼都不做；同時呼叫只跑一輪。
+  /// 超過 [pendingMaxAge] 的丟掉。還沒綁帳號的事件綁給現在登入的帳號（存 owner），
+  /// 之後只送給同一個帳號；已經綁給別的帳號的（之前補送到一半就換帳號）直接丟掉、
+  /// 不送，同一批 onboarding 事件不會分到兩個帳號（Codex 主審第 1 輪 P2）。其餘逐筆
+  /// 照原本的 body 與當時的 clientTs 送，成功的移除、失敗的留著下次再試，每筆最多
+  /// [maxFlushAttempts] 次。沒登入或沒有佇列就什麼都不做；同時呼叫只跑一輪。
   Future<void> flushPending() =>
       _flushing ??= _flushPendingOnce().whenComplete(() => _flushing = null);
 
   Future<void> _flushPendingOnce() async {
     try {
-      if (_currentUserId() == null) return;
+      final uid = _currentUserId();
+      if (uid == null) return;
       final prefs = await SharedPreferences.getInstance();
+      // 等 SharedPreferences 期間換了帳號或登出：這次不動，下次進首頁再說。
+      if (_currentUserId() != uid) return;
       final now = _clock().toUtc();
       final stored = _readQueue(prefs);
-      final fresh = [
+      // 讀改寫之間不 await：丟掉過期的與綁給別的帳號的，沒綁的綁給現在這個帳號。
+      final mine = [
         for (final entry in stored)
-          if (now.difference(entry.queuedAt).abs() <= pendingMaxAge) entry,
+          if (now.difference(entry.queuedAt).abs() <= pendingMaxAge &&
+              (entry.owner == null || entry.owner == uid))
+            entry.owner == null ? entry.withOwner(uid) : entry,
       ];
-      if (fresh.length != stored.length) await _writeQueue(prefs, fresh);
-      for (final entry in fresh) {
-        // 補送途中登出：剩下的留著，等下次登入。
-        if (_currentUserId() == null) return;
+      if (mine.length != stored.length || stored.any((e) => e.owner == null)) {
+        await _writeQueue(prefs, mine);
+      }
+      for (final entry in mine) {
+        // 補送途中登出或換帳號：剩下的留著，還是綁給原帳號。
+        if (_currentUserId() != uid) return;
         // 字典照現在的版本再過一次：App 更新後可能拿掉事件或鍵。
         final properties = _whitelisted(entry.event, entry.properties);
         final sent = properties != null &&
@@ -402,8 +412,8 @@ class FunnelTracker {
   }
 }
 
-/// 登入前排隊的一筆：事件名、已過白名單的屬性、當時的 clientTs、排進來的時間、
-/// 已經補送失敗幾次。
+/// 登入前排隊的一筆：內部編號、事件名、已過白名單的屬性、當時的 clientTs、排進來
+/// 的時間、已經補送失敗幾次；第一次補送時再綁上當時登入的帳號（[owner]）。
 @immutable
 class _PendingFunnelEvent {
   const _PendingFunnelEvent({
@@ -413,6 +423,7 @@ class _PendingFunnelEvent {
     required this.clientTs,
     required this.queuedAt,
     required this.attempts,
+    this.owner,
   });
 
   final String id;
@@ -422,6 +433,9 @@ class _PendingFunnelEvent {
   final DateTime queuedAt;
   final int attempts;
 
+  /// 第一次補送時綁定的帳號；null＝還沒補送過，給第一個登入的帳號。
+  final String? owner;
+
   _PendingFunnelEvent withAttempts(int value) => _PendingFunnelEvent(
         id: id,
         event: event,
@@ -429,6 +443,17 @@ class _PendingFunnelEvent {
         clientTs: clientTs,
         queuedAt: queuedAt,
         attempts: value,
+        owner: owner,
+      );
+
+  _PendingFunnelEvent withOwner(String value) => _PendingFunnelEvent(
+        id: id,
+        event: event,
+        properties: properties,
+        clientTs: clientTs,
+        queuedAt: queuedAt,
+        attempts: attempts,
+        owner: value,
       );
 
   Map<String, Object?> toJson() => {
@@ -438,6 +463,7 @@ class _PendingFunnelEvent {
         'clientTs': clientTs,
         'queuedAt': queuedAt.toIso8601String(),
         'attempts': attempts,
+        if (owner != null) 'owner': owner,
       };
 
   static _PendingFunnelEvent? tryParse(Object? json) {
@@ -448,12 +474,14 @@ class _PendingFunnelEvent {
     final clientTs = json['clientTs'];
     final queuedAt = json['queuedAt'];
     final attempts = json['attempts'];
+    final owner = json['owner'];
     if (id is! String ||
         event is! String ||
         properties is! Map ||
         clientTs is! String ||
         queuedAt is! String ||
-        attempts is! int) {
+        attempts is! int ||
+        (owner != null && owner is! String)) {
       return null;
     }
     final parsedQueuedAt = DateTime.tryParse(queuedAt);
@@ -465,6 +493,7 @@ class _PendingFunnelEvent {
       clientTs: clientTs,
       queuedAt: parsedQueuedAt,
       attempts: attempts,
+      owner: owner as String?,
     );
   }
 }

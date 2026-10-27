@@ -93,8 +93,8 @@ void main() {
         AiPrivacyDisclosure.description,
         contains('還沒登入時的使用事件（例如 onboarding 看到第幾頁、回答有沒有對象）\n'
             '會先存在這支手機，存的是事件名稱、固定選項值與發生時間，\n'
-            '不含對話內容或名字，最多 50 筆。登入後才補送並連到登入的帳號；\n'
-            '補送時已存超過 7 天的不送、直接刪除'),
+            '不含對話內容或名字，最多 50 筆。登入後才補送，並記下送給哪個帳號，\n'
+            '之後只送給這個帳號；換成別的帳號登入，或已存超過 7 天的，都不送、直接刪除'),
       );
     });
 
@@ -105,7 +105,7 @@ void main() {
       );
       expect(
         AiPrivacyDisclosure.description,
-        contains('已存超過 ${FunnelTracker.pendingMaxAge.inDays} 天的不送'),
+        contains('已存超過 ${FunnelTracker.pendingMaxAge.inDays} 天的，都不送'),
       );
     });
 
