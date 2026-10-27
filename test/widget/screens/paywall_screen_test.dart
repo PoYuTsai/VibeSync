@@ -615,9 +615,6 @@ void main() {
       if (seededState != null) {
         stub.seedState(seededState);
         await tester.pump();
-        // 免費用戶預設選 Starter 月繳（Onboarding 第 9 步）；種的狀態只有 Essential
-        // 有價格時，下一幀才換到有價格的那一張。
-        await tester.pump();
       }
       return stub;
     }
@@ -670,8 +667,6 @@ void main() {
       await tester.pump();
       if (seededState != null) {
         stub.seedState(seededState);
-        await tester.pump();
-        // 同上：預設的 Starter 月繳沒價格時，下一幀才換到有價格的那一張。
         await tester.pump();
       }
       return stub;
@@ -1190,6 +1185,16 @@ void main() {
           of: find.byType(BrandSegmentedButton<bool>),
           matching: find.text(label),
         );
+    Finder renewalNote() =>
+        find.byKey(const ValueKey('paywall-buy-renewal-note'));
+
+    /// 購買鈕底下的扣款與續訂說明（拆成幾段排，接起來是一句）。
+    String renewalText(WidgetTester tester) => tester
+        .widgetList<Text>(
+          find.descendant(of: renewalNote(), matching: find.byType(Text)),
+        )
+        .map((text) => text.data!)
+        .join();
 
     testWidgets('第一屏（390x844，扣掉瀏海與底部橫條）就有兩張方案卡、價格與固定在底部的購買鈕；沒有按比例計費句',
         (tester) async {
@@ -1217,12 +1222,13 @@ void main() {
       expect(_inBuyCard('essential_monthly', find.text(r'NT$1,290')),
           findsOneWidget);
 
-      // 購買鈕、自動續訂說明、條款與隱私都在固定底部，底部橫條上面（App Review
-      // 3.1.2）。
+      // 購買鈕、扣款與自動續訂說明、條款與隱私都在固定底部，底部橫條上面（App
+      // Review 3.1.2；「由 Apple ID 扣款」是主審第 1 輪建議補回的舊頁揭露）。
       final buy = inBottomBar(find.text(r'以 NT$590 訂閱 Starter 月繳'));
       expect(buy, findsOneWidget);
       expect(tester.getRect(buy).bottom, lessThanOrEqualTo(844 - 34));
-      expect(inBottomBar(find.text('每月自動續訂，可隨時在 iPhone 設定取消')), findsOneWidget);
+      expect(inBottomBar(renewalNote()), findsOneWidget);
+      expect(renewalText(tester), '由 Apple ID 扣款，每月自動續訂，可隨時在 iPhone 設定取消');
       expect(inBottomBar(find.text('服務條款')), findsOneWidget);
       expect(inBottomBar(find.text('隱私政策')), findsOneWidget);
 
@@ -1373,9 +1379,7 @@ void main() {
       expect(
           _inBuyCard('essential_quarterly', find.text('省 9%')), findsOneWidget);
       // 續訂週期寫季，不能寫成每月。
-      expect(inBottomBar(find.text('每 3 個月自動續訂，可隨時在 iPhone 設定取消')),
-          findsOneWidget);
-      expect(find.text('每月自動續訂，可隨時在 iPhone 設定取消'), findsNothing);
+      expect(renewalText(tester), '由 Apple ID 扣款，每 3 個月自動續訂，可隨時在 iPhone 設定取消');
       expect(find.text(r'以 NT$1,590 訂閱 Starter 季繳'), findsOneWidget);
 
       // 點 Essential：季繳那一格換成 Essential 省多少；切回月繳還是 Essential。
@@ -1387,7 +1391,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(_buyCardSelected(tester, 'essential_monthly'), isTrue);
       expect(find.text(r'以 NT$1,290 訂閱 Essential 月繳'), findsOneWidget);
-      expect(inBottomBar(find.text('每月自動續訂，可隨時在 iPhone 設定取消')), findsOneWidget);
+      expect(renewalText(tester), '由 Apple ID 扣款，每月自動續訂，可隨時在 iPhone 設定取消');
       // 選卡只有 240ms 的邊框漸變，跑完就靜止。
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.binding.transientCallbackCount, 0);
@@ -1413,7 +1417,7 @@ void main() {
           _visibleCount(_inBuyCard('essential_quarterly', find.text('推薦'))), 0);
     });
 
-    testWidgets('價格還沒到：卡片寫價格同步中，購買鈕改成重新載入價格', (tester) async {
+    testWidgets('價格還沒到：卡片寫價格同步中，購買鈕改成重新載入價格；切換與點卡照舊', (tester) async {
       await pumpPaywall(tester, state: const SubscriptionState());
 
       expect(_inBuyCard('starter_monthly', find.text('價格同步中')), findsOneWidget);
@@ -1421,6 +1425,122 @@ void main() {
           _inBuyCard('essential_monthly', find.text('價格同步中')), findsOneWidget);
       expect(inBottomBar(find.text('重新載入 App Store 價格')), findsOneWidget);
       expect(find.textContaining('平均每月'), findsNothing);
+      // 全部都還沒價格：預設、推薦都在 Starter 月繳；月繳／季繳照樣能切、卡照樣能點。
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(_visibleCount(_inBuyCard('starter_monthly', find.text('推薦'))), 1);
+      await tester.tap(segment('季繳'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'starter_quarterly'), isTrue);
+      await tester.tap(_buyCard('essential_quarterly'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'essential_quarterly'), isTrue);
+      expect(inBottomBar(find.text('重新載入 App Store 價格')), findsOneWidget);
+    });
+
+    // 主審第 1 輪 P2：App Store 只回了部分方案時，買得到的方案一定選得到。購買版一次
+    // 只顯示一個週期；以前選到沒價格的方案會退回「第一個有價格的」，例如只有 Starter
+    // 月繳與 Essential 季繳時，點季繳又被拉回 Starter 月繳，Essential 季繳永遠選不到。
+    SubscriptionState freeWith(List<String> productIds) => SubscriptionState(
+          storeProducts: {
+            for (final entry in _allProducts().entries)
+              if (productIds.contains(entry.key)) entry.key: entry.value,
+          },
+        );
+    Finder periodToggle() => find.byType(BrandSegmentedButton<bool>);
+    int recommendedOn(String optionId) =>
+        _visibleCount(_inBuyCard(optionId, find.text('推薦')));
+
+    testWidgets('只回 Starter 月繳與 Essential 季繳：點季繳選到 Essential 季繳，兩張都選得到',
+        (tester) async {
+      await pumpPaywall(
+        tester,
+        state: freeWith(['starter_monthly', 'essential_quarterly']),
+      );
+
+      expect(periodToggle(), findsOneWidget);
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(recommendedOn('starter_monthly'), 1);
+      // Essential 月繳沒有價格：點了不換選取。
+      await tester.tap(_buyCard('essential_monthly'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(find.text(r'以 NT$590 訂閱 Starter 月繳'), findsOneWidget);
+
+      // 切到季繳：Starter 季繳沒價格，選同週期買得到的 Essential 季繳。
+      await tester.tap(segment('季繳'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'essential_quarterly'), isTrue);
+      expect(find.text(r'以 NT$3,490 訂閱 Essential 季繳'), findsOneWidget);
+      expect(renewalText(tester), '由 Apple ID 扣款，每 3 個月自動續訂，可隨時在 iPhone 設定取消');
+      // 買不到的 Starter 季繳不標推薦，點了也不換。
+      expect(recommendedOn('starter_quarterly'), 0);
+      await tester.tap(_buyCard('starter_quarterly'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'essential_quarterly'), isTrue);
+
+      // 切回月繳：Essential 月繳沒價格，回到買得到的 Starter 月繳。
+      await tester.tap(segment('月繳'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(find.text(r'以 NT$590 訂閱 Starter 月繳'), findsOneWidget);
+    });
+
+    testWidgets('只有月繳：不放切換，兩張月繳卡都選得到，預設與推薦都是 Starter 月繳', (tester) async {
+      await pumpPaywall(
+        tester,
+        state: freeWith(['starter_monthly', 'essential_monthly']),
+      );
+
+      expect(periodToggle(), findsNothing);
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(recommendedOn('starter_monthly'), 1);
+      await tester.tap(_buyCard('essential_monthly'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'essential_monthly'), isTrue);
+      expect(find.text(r'以 NT$1,290 訂閱 Essential 月繳'), findsOneWidget);
+    });
+
+    testWidgets('只有季繳：不放切換，預設退到 Starter 季繳、推薦跟著，Essential 季繳也選得到',
+        (tester) async {
+      await pumpPaywall(
+        tester,
+        state: freeWith(['starter_quarterly', 'essential_quarterly']),
+      );
+
+      expect(periodToggle(), findsNothing);
+      expect(_buyCard('starter_monthly'), findsNothing);
+      expect(_buyCardSelected(tester, 'starter_quarterly'), isTrue);
+      expect(recommendedOn('starter_quarterly'), 1);
+      expect(find.text(r'以 NT$1,590 訂閱 Starter 季繳'), findsOneWidget);
+      expect(renewalText(tester), '由 Apple ID 扣款，每 3 個月自動續訂，可隨時在 iPhone 設定取消');
+      await tester.tap(_buyCard('essential_quarterly'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'essential_quarterly'), isTrue);
+      expect(find.text(r'以 NT$3,490 訂閱 Essential 季繳'), findsOneWidget);
+    });
+
+    testWidgets('只有一張卡：不管是哪一張都直接選到它；同畫面另一張買不到，不標推薦、點了不換', (tester) async {
+      const buyLabels = {
+        'starter_monthly': r'以 NT$590 訂閱 Starter 月繳',
+        'starter_quarterly': r'以 NT$1,590 訂閱 Starter 季繳',
+        'essential_monthly': r'以 NT$1,290 訂閱 Essential 月繳',
+        'essential_quarterly': r'以 NT$3,490 訂閱 Essential 季繳',
+      };
+      for (final MapEntry(key: id, value: label) in buyLabels.entries) {
+        await pumpPaywall(tester, state: freeWith([id]));
+
+        expect(periodToggle(), findsNothing, reason: id);
+        expect(_buyCardSelected(tester, id), isTrue, reason: id);
+        expect(find.text(label), findsOneWidget, reason: id);
+        final other = id.startsWith('starter')
+            ? id.replaceFirst('starter', 'essential')
+            : id.replaceFirst('essential', 'starter');
+        expect(recommendedOn(other), 0, reason: id);
+        await tester.tap(_buyCard(other));
+        await tester.pumpAndSettle();
+        expect(_buyCardSelected(tester, id), isTrue, reason: id);
+        expect(find.text(label), findsOneWidget, reason: id);
+      }
     });
   });
 

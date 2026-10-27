@@ -106,7 +106,9 @@ Future<void> _capture(
   await tester.pump(const Duration(milliseconds: 800));
   if (beforeCapture != null) {
     await beforeCapture(tester);
-    await tester.pump(const Duration(milliseconds: 800));
+    // 點下去那一幀動畫才開始：等切換動畫跑完再截，不然同一張會同時出現「月繳
+    // 橘底、季繳打勾」（主審第 1 輪 P3）。
+    await tester.pumpAndSettle();
   }
 
   final boundary =
