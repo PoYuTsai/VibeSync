@@ -13,6 +13,9 @@
 //   data loss. (Codex r1 P2/P1.4)
 // - On success: the controller refreshes the partner list, then this screen
 //   replaces /partner/new with /partner/:id so Home stays underneath.
+// - 建好直接選截圖（onboarding 轉換第 10 步）：帶 `?next=screenshot` 進來時，
+//   再建一個空的分析片段疊在對象頁上，落地就是選截圖；按返回回到對象頁。
+//   導航順序在 [followUpAfterPartnerCreated]。
 // - Avatar picker is intentionally deferred to Phase 3/4 (parent A2 plan
 //   Task 8 flagged it optional).
 //
@@ -53,6 +56,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_feedback_snack_bar.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../conversation/data/providers/conversation_providers.dart';
+import '../../../conversation/data/providers/conversation_write_controller.dart';
 import '../../../conversation/domain/entities/session_context.dart';
 import '../../data/providers/partner_write_controller.dart';
 import '../../domain/entities/partner.dart';
@@ -65,10 +69,66 @@ import '../../../../shared/widgets/brand/app_sheet.dart';
 const double _kToolbarHeight = 48;
 
 class AddPartnerScreen extends ConsumerStatefulWidget {
-  const AddPartnerScreen({super.key});
+  const AddPartnerScreen({super.key, this.nextStep});
+
+  /// 建好對象卡之後接著做什麼（路由的 [nextQueryParam]）。目前只認
+  /// [nextStepScreenshot]；沒帶或不認得的值＝只到對象頁（原本的行為）。
+  final String? nextStep;
+
+  /// 路由查詢參數名：`/partner/new?next=…`。
+  static const nextQueryParam = 'next';
+
+  /// 建好直接打開一個空的分析片段，落地就是選截圖（onboarding 轉換第 10 步）。
+  static const nextStepScreenshot = 'screenshot';
+
+  /// 「建好直接選截圖」的入口：onboarding 分流「有，幫我分析對話」與首頁空白的
+  /// 「建立對象卡，開始分析」共用。
+  ///
+  /// 登入前完成 onboarding 時，這串會原樣存進暫存、登入後才 push
+  /// （OnboardingService.stashPendingHandoff），所以改字要顧到手機裡已經存著的
+  /// 舊值；更早的版本存的是沒帶參數的 `/partner/new`，照舊只到對象頁。
+  static const screenshotFlowLocation =
+      '/partner/new?$nextQueryParam=$nextStepScreenshot';
 
   @override
   ConsumerState<AddPartnerScreen> createState() => _AddPartnerScreenState();
+}
+
+/// 建好對象卡之後的導航（onboarding 轉換第 10 步）。
+///
+/// 抽成可注入的函式，是因為 widget 測試裡從 async 送出鏈發出的導航不好驗
+/// （add_partner_screen_test 開頭的已知限制）；換成記錄器就能斷言呼叫順序。
+///
+/// - 沒帶 [AddPartnerScreen.nextStepScreenshot]：只把新增頁換成對象頁，返回回
+///   首頁、不回表單（跟原本一樣）。
+/// - 帶了：先建空片段，再在同一幀「換成對象頁＋把片段疊上去」。畫面直接從表單
+///   滑到選截圖，不會先閃過一張空白的對象頁；堆疊是首頁 → 對象頁 → 片段，按
+///   返回時分析頁的 `_cleanupAndGoBack` 會刪掉沒內容的空片段、回到對象頁。
+/// - 建空片段失敗：照樣落在對象頁（等於沒帶參數的落點），再跳既有的錯誤字。
+@visibleForTesting
+Future<void> followUpAfterPartnerCreated({
+  required String partnerId,
+  required String? nextStep,
+  required Future<String> Function() createEmptyConversation,
+  required void Function(String location) replaceWith,
+  required void Function(String location) push,
+  required void Function() onCreateConversationFailed,
+}) async {
+  final partnerLocation = '/partner/$partnerId';
+  if (nextStep != AddPartnerScreen.nextStepScreenshot) {
+    replaceWith(partnerLocation);
+    return;
+  }
+  final String conversationId;
+  try {
+    conversationId = await createEmptyConversation();
+  } catch (_) {
+    replaceWith(partnerLocation);
+    onCreateConversationFailed();
+    return;
+  }
+  replaceWith(partnerLocation);
+  push('/conversation/$conversationId');
 }
 
 class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
@@ -116,24 +176,56 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
     );
     try {
       await ref.read(partnerWriteControllerProvider.notifier).create(partner);
-      if (!mounted) return;
-      // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
-      // back from detail returns to Home (Partner list) underneath, not to
-      // the add form. (Codex r1 P1.2)
-      GoRouter.of(context).pushReplacement('/partner/${partner.id}');
     } catch (_) {
       if (!mounted) return;
+      setState(() => _busy = false);
       showBrandFeedbackSnackBar(
         context,
         title: '建立對象失敗，請再試一次',
         icon: Icons.error_outline_rounded,
         accentColor: AppColors.error,
       );
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      return;
     }
+    if (!mounted) return;
+    // 換頁後這個畫面就會被拆掉：router、messenger、片段寫入都在換頁前抓好。
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final conversationWriter =
+        ref.read(conversationWriteControllerProvider.notifier);
+    await followUpAfterPartnerCreated(
+      partnerId: partner.id,
+      nextStep: widget.nextStep,
+      // 跟對象頁「分析新片段 → 截圖開始」同一個寫法（new_conversation_sheet）。
+      createEmptyConversation: () async {
+        final conversation = await conversationWriter.create(
+          name: '新對話',
+          messages: [],
+          partnerId: partner.id,
+        );
+        return conversation.id;
+      },
+      // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
+      // back from detail returns to Home (Partner list) underneath, not to
+      // the add form. (Codex r1 P1.2)
+      // 建片段的空檔裡使用者若已經離開這頁，就不再替他換頁。
+      replaceWith: (location) {
+        if (mounted) router.pushReplacement<void>(location);
+      },
+      push: (location) {
+        if (mounted) router.push<void>(location);
+      },
+      onCreateConversationFailed: () {
+        messenger?.showSnackBar(
+          buildBrandFeedbackSnackBar(
+            title: '建立對話失敗，請再試一次',
+            icon: Icons.error_outline_rounded,
+            accentColor: AppColors.error,
+          ),
+        );
+      },
+    );
+    if (mounted) setState(() => _busy = false);
   }
 
   String? get _normalizedBackgroundNote {

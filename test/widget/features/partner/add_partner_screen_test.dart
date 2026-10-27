@@ -19,6 +19,13 @@
 // none change the outcome. The data-side contract (Partner persisted with
 // owner) IS covered by the "successful submit writes Partner" test below.
 // The back-stack semantic is covered by the manual TF QA checklist.
+//
+// onboarding 轉換第 10 步（建好直接選截圖）照規格補兩層測試，見檔尾 group：
+// 1. 建立後的導航抽成可注入的 followUpAfterPartnerCreated，直接斷言呼叫順序；
+// 2. 用真的 addPartnerRoute＋不碰磁碟的替身倉庫跑完整個送出鏈，驗 next 參數
+//    真的傳進畫面、落點與返回堆疊。上面那條 skip 卡住的是 Hive 真檔案 I/O 在
+//    fake-async 裡收不掉（送出鏈停在寫入、根本走不到換頁）；換成記憶體倉庫後
+//    pushReplacement／push 都照常生效。
 import 'dart:async';
 import 'dart:io';
 
@@ -28,8 +35,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart';
 
+import 'package:vibesync/app/routes.dart' show addPartnerRoute;
 import 'package:vibesync/core/theme/app_typography.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
+import 'package:vibesync/features/conversation/data/providers/conversation_write_controller.dart';
+import 'package:vibesync/features/conversation/domain/entities/conversation.dart';
+import 'package:vibesync/features/conversation/domain/entities/message.dart';
 import 'package:vibesync/features/conversation/domain/entities/session_context.dart';
 import 'package:vibesync/features/partner/data/repositories/partner_repository.dart';
 import 'package:vibesync/features/partner/domain/entities/partner.dart';
@@ -334,4 +345,239 @@ void main() {
     // contract is covered by PartnerWriteController.create.
     skip: true,
   );
+
+  group('建好直接選截圖（onboarding 轉換第 10 步）', () {
+    test('入口網址固定：這串會存在使用者手機的登入前暫存裡', () {
+      expect(
+        AddPartnerScreen.screenshotFlowLocation,
+        '/partner/new?next=screenshot',
+      );
+    });
+
+    group('建立後的導航順序（followUpAfterPartnerCreated）', () {
+      Future<List<String>> run({String? nextStep, bool fail = false}) async {
+        final calls = <String>[];
+        await followUpAfterPartnerCreated(
+          partnerId: 'p1',
+          nextStep: nextStep,
+          createEmptyConversation: () async {
+            calls.add('create');
+            if (fail) throw StateError('寫入失敗');
+            return 'c1';
+          },
+          replaceWith: (location) => calls.add('replace $location'),
+          push: (location) => calls.add('push $location'),
+          onCreateConversationFailed: () => calls.add('error'),
+        );
+        return calls;
+      }
+
+      test('沒帶 next：只把新增頁換成對象頁，不建片段', () async {
+        expect(await run(), ['replace /partner/p1']);
+      });
+
+      test('不認得的 next 值：跟沒帶一樣', () async {
+        expect(await run(nextStep: 'gallery'), ['replace /partner/p1']);
+      });
+
+      test('next=screenshot：先建空片段，再換成對象頁、把片段疊上去', () async {
+        expect(await run(nextStep: AddPartnerScreen.nextStepScreenshot), [
+          'create',
+          'replace /partner/p1',
+          'push /conversation/c1',
+        ]);
+      });
+
+      test('建空片段失敗：照樣落在對象頁並跳錯誤字，不疊片段', () async {
+        expect(
+          await run(nextStep: AddPartnerScreen.nextStepScreenshot, fail: true),
+          ['create', 'replace /partner/p1', 'error'],
+        );
+      });
+    });
+
+    group('真的路由＋送出鏈', () {
+      Future<GoRouter> pumpNav(
+        WidgetTester t, {
+        required _MemoryPartnerRepository partners,
+        required _RecordingConversationWriter writer,
+      }) async {
+        await t.binding.setSurfaceSize(const Size(393, 852));
+        addTearDown(() => t.binding.setSurfaceSize(null));
+        final router = GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (c, s) => const Scaffold(body: Text('home-stub')),
+            ),
+            // 真的 /partner/new 路由（routes.dart），驗 next 參數有傳進畫面。
+            addPartnerRoute,
+            GoRoute(
+              path: '/partner/:id',
+              builder: (c, s) =>
+                  Scaffold(body: Text('detail:${s.pathParameters['id']}')),
+            ),
+            GoRoute(
+              path: '/conversation/:id',
+              builder: (c, s) => Scaffold(
+                body: Text('conversation:${s.pathParameters['id']}'),
+              ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await t.pumpWidget(
+          ProviderScope(
+            overrides: [
+              partnerRepositoryProvider.overrideWithValue(partners),
+              conversationWriteControllerProvider.overrideWith(() => writer),
+              authConversationScopeProvider
+                  .overrideWith((ref) => Stream.value('u-test')),
+            ],
+            child: MaterialApp.router(
+              routerConfig: router,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                child: child!,
+              ),
+            ),
+          ),
+        );
+        await t.pumpAndSettle();
+        return router;
+      }
+
+      Future<void> openAddPartner(
+        WidgetTester t,
+        GoRouter router,
+        String location,
+      ) async {
+        unawaited(router.push<void>(location));
+        await t.pumpAndSettle();
+      }
+
+      Future<void> submit(WidgetTester t, String name) async {
+        await t.enterText(nameField(), name);
+        await t.pump();
+        await t.tap(find.widgetWithText(BrandPrimaryButton, '建立'));
+        await t.pumpAndSettle();
+      }
+
+      String? nextStepOnScreen(WidgetTester t) =>
+          t.widget<AddPartnerScreen>(find.byType(AddPartnerScreen)).nextStep;
+
+      testWidgets('帶 next=screenshot：建好直接到空片段；返回回對象頁，再返回回首頁', (t) async {
+        final partners = _MemoryPartnerRepository();
+        final writer = _RecordingConversationWriter();
+        final router = await pumpNav(t, partners: partners, writer: writer);
+        await openAddPartner(
+            t, router, AddPartnerScreen.screenshotFlowLocation);
+        expect(nextStepOnScreen(t), AddPartnerScreen.nextStepScreenshot);
+
+        await submit(t, 'Alice');
+
+        final partner = partners.saved.single;
+        expect(partner.name, 'Alice');
+        expect(partner.ownerUserId, 'u-test');
+        expect(writer.created, [
+          (name: '新對話', messageCount: 0, partnerId: partner.id),
+        ]);
+        expect(find.text('conversation:conv-new'), findsOneWidget);
+        expect(find.byType(AddPartnerScreen), findsNothing);
+
+        router.pop();
+        await t.pumpAndSettle();
+        expect(find.text('detail:${partner.id}'), findsOneWidget,
+            reason: '返回要回到剛建好的對象頁，不是新增表單');
+
+        router.pop();
+        await t.pumpAndSettle();
+        expect(find.text('home-stub'), findsOneWidget);
+        expect(find.byType(AddPartnerScreen), findsNothing);
+      });
+
+      testWidgets('建空片段失敗：停在對象頁、跳既有錯誤字；返回回首頁', (t) async {
+        final partners = _MemoryPartnerRepository();
+        final writer = _RecordingConversationWriter(fail: true);
+        final router = await pumpNav(t, partners: partners, writer: writer);
+        await openAddPartner(
+            t, router, AddPartnerScreen.screenshotFlowLocation);
+
+        await submit(t, 'Alice');
+
+        expect(find.text('detail:${partners.saved.single.id}'), findsOneWidget);
+        expect(find.text('建立對話失敗，請再試一次'), findsOneWidget);
+        expect(find.textContaining('conversation:'), findsNothing);
+
+        router.pop();
+        await t.pumpAndSettle();
+        expect(find.text('home-stub'), findsOneWidget);
+      });
+
+      testWidgets('沒帶參數（含舊版暫存的 /partner/new）：照舊只到對象頁、不建片段', (t) async {
+        final partners = _MemoryPartnerRepository();
+        final writer = _RecordingConversationWriter();
+        final router = await pumpNav(t, partners: partners, writer: writer);
+        await openAddPartner(t, router, '/partner/new');
+        expect(nextStepOnScreen(t), isNull);
+
+        await submit(t, 'Alice');
+
+        expect(find.text('detail:${partners.saved.single.id}'), findsOneWidget);
+        expect(writer.created, isEmpty);
+
+        router.pop();
+        await t.pumpAndSettle();
+        expect(find.text('home-stub'), findsOneWidget);
+      });
+    });
+  });
+}
+
+/// 不碰磁碟的對象倉庫：Hive 真檔案 I/O 在 testWidgets 的 fake-async 裡收不掉，
+/// 導航測試改用它，讓送出鏈真的跑完。
+class _MemoryPartnerRepository implements PartnerRepository {
+  final saved = <Partner>[];
+
+  @override
+  Future<bool> upsertIfAbsent(Partner partner) async {
+    saved.add(partner);
+    return true;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// 記下建片段的參數；fail＝模擬寫入失敗。
+class _RecordingConversationWriter extends ConversationWriteController {
+  _RecordingConversationWriter({this.fail = false});
+
+  final bool fail;
+  final created = <({String name, int messageCount, String? partnerId})>[];
+
+  @override
+  void build() {}
+
+  @override
+  Future<Conversation> create({
+    required String name,
+    required List<Message> messages,
+    String? partnerId,
+  }) async {
+    created.add(
+      (name: name, messageCount: messages.length, partnerId: partnerId),
+    );
+    if (fail) throw StateError('寫入失敗');
+    final now = DateTime(2026, 10, 27);
+    return Conversation(
+      id: 'conv-new',
+      name: name,
+      messages: messages,
+      createdAt: now,
+      updatedAt: now,
+      partnerId: partnerId,
+    );
+  }
 }
