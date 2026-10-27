@@ -228,11 +228,14 @@ class _TeaserChoice extends StatelessWidget {
         ? '${choice.text}。$verdict。${isPicked ? '你選了這個。' : ''}'
         : choice.text;
 
+    // 裡面的 InkWell 被 excludeSemantics 排掉了，讀屏的點擊要接在這一層；作答後跟手點
+    // 一樣不能再點（主審 r1 P2）。
     return Semantics(
       button: !revealed,
       selected: isPicked,
       inMutuallyExclusiveGroup: true,
       label: semanticsLabel,
+      onTap: revealed ? null : onTap,
       excludeSemantics: true,
       child: PressableScale(
         enabled: !revealed,

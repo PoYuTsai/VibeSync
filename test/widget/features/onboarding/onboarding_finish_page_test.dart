@@ -160,6 +160,22 @@ void main() {
       );
     });
 
+    testWidgets('讀屏：隱私一行點得到，點了打開完整說明（主審 r1 P2）', (tester) async {
+      await _pumpFinishPage(tester, intent: OnboardingIntent.analyze);
+      final semantics = tester.ensureSemantics();
+
+      await semanticsTap(
+        tester,
+        find.byKey(const ValueKey('onboarding-privacy-link')),
+      );
+
+      expect(
+        find.byKey(const ValueKey('onboarding-privacy-sheet-text')),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('隱私一行整行都能點（點擊範圍至少 44 高）', (tester) async {
       await _pumpFinishPage(tester, intent: OnboardingIntent.opener);
 

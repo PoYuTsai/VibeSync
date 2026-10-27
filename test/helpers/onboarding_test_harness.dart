@@ -10,6 +10,7 @@
 // 先讀好——大 JSON 經 rootBundle 會走 isolate 解碼，testWidgets 的 fake async
 // 等不到。
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -142,6 +143,19 @@ Future<OnboardingHarness> pumpOnboardingApp(
 
 Future<void> chooseIntent(WidgetTester tester, OnboardingIntent intent) async {
   await tester.tap(find.byKey(ValueKey('onboarding-intent-${intent.wire}')));
+  await tester.pumpAndSettle();
+}
+
+/// 用讀屏點（VoiceOver 點兩下）：送 [SemanticsAction.tap] 給 [finder] 所在的語意節點，
+/// 不是點座標。呼叫前要先 `tester.ensureSemantics()`。節點沒有點擊動作就直接失敗。
+Future<void> semanticsTap(WidgetTester tester, Finder finder) async {
+  final node = tester.getSemantics(finder);
+  expect(
+    node.getSemanticsData().hasAction(SemanticsAction.tap),
+    isTrue,
+    reason: '讀屏要點得到',
+  );
+  node.owner!.performAction(node.id, SemanticsAction.tap);
   await tester.pumpAndSettle();
 }
 

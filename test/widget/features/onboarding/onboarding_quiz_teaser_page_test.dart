@@ -7,6 +7,7 @@
 //   - 記 onboarding_quiz_answer {correct}；作答前「下一步」不能按。
 //   - 題庫讀不到或找不到這一題：一句說明，「下一步」照樣能按。
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
@@ -138,6 +139,30 @@ void main() {
     expect(app.funnel.propsOf('onboarding_quiz_answer'), [
       {'correct': false},
     ]);
+  });
+
+  testWidgets('讀屏：作答前選項點得到、點了跟手點一樣定案；作答後就點不到（主審 r1 P2）', (tester) async {
+    final app = await _pumpQuizPage(tester);
+    final semantics = tester.ensureSemantics();
+    final correct = _realQuestion.correctChoice;
+
+    await semanticsTap(tester, _choice(correct.id));
+
+    expect(find.text('答對了'), findsOneWidget);
+    expect(app.funnel.propsOf('onboarding_quiz_answer'), [
+      {'correct': true},
+    ]);
+    for (final choice in _realQuestion.choices) {
+      expect(
+        tester
+            .getSemantics(_choice(choice.id))
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isFalse,
+        reason: choice.id,
+      );
+    }
+    semantics.dispose();
   });
 
   testWidgets('對錯不看位置：正解放在第 3 個也判得對，第 1 個是錯的', (tester) async {

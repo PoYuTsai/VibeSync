@@ -171,10 +171,12 @@ class _PrivacyLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(18);
+    // 裡面的 InkWell 被 excludeSemantics 排掉了，讀屏的點擊要接在這一層（主審 r1 P2）。
     return Semantics(
       button: true,
       label: '${AiPrivacyDisclosure.onboardingLine}。'
           '${OnboardingFinishPage.privacyLinkLabel}',
+      onTap: onOpen,
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,

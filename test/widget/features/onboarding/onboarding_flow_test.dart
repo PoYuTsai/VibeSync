@@ -122,6 +122,26 @@ void main() {
       semantics.dispose();
     });
 
+    testWidgets('讀屏：三條路徑都點得到，點了跟手點一樣換到第 2 頁（主審 r1 P2）', (tester) async {
+      await pumpOnboardingApp(tester, catalog: _catalog);
+      final semantics = tester.ensureSemantics();
+
+      for (final option in OnboardingIntentPage.options) {
+        await semanticsTap(
+          tester,
+          find.byKey(ValueKey('onboarding-intent-${option.intent.wire}')),
+        );
+        expect(
+          find.text(OnboardingQuizTeaserPage.title),
+          findsOneWidget,
+          reason: option.intent.wire,
+        );
+        await tester.tap(find.byTooltip('上一頁'));
+        await tester.pumpAndSettle();
+      }
+      semantics.dispose();
+    });
+
     testWidgets('系統返回鍵：第 2 頁回第 1 頁，不離開 onboarding', (tester) async {
       await pumpOnboardingApp(tester, catalog: _catalog);
       await chooseIntent(tester, OnboardingIntent.practice);
