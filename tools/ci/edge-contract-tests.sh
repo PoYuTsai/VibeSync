@@ -6,6 +6,9 @@
 #   F21，Eric 2026-10-12 核准）。之前逐檔白名單漏掉 reframer、post_process、
 #   stream_prompt、兩支 prompt 雜湊鎖等 42 支；新增測試檔不必再改這份清單。
 # - submit-feedback 整個目錄也跑：漏斗購買事件的帳號比對要在部署前守住（Eric 2026-10-18）。
+# - revenuecat-webhook 整個目錄也跑：付費 webhook 寫進 webhook_logs／revenue_events
+#   的欄位（含取消原因）與訂閱判斷要在部署前守住（Onboarding 第 7 步）。在那之前
+#   subscription_update_test.ts、tiers_test.ts 不在清單裡，付費 webhook 在 CI 沒有守門。
 # - 其他函式維持逐檔列出，範圍跟改版前相同。其中 practice-chat 的
 #   index_test.ts 與 prompt_test.ts 是 1:1 記憶接線（PR D）動到聊天主路徑時的
 #   迴歸證據；在那之前這兩支不在清單裡，聊天主路徑在 PR CI 完全沒有守門。
@@ -30,6 +33,7 @@ deno test --allow-env --allow-read \
   supabase/functions/_shared \
   supabase/functions/keyboard-reply \
   supabase/functions/submit-feedback \
+  supabase/functions/revenuecat-webhook \
   supabase/functions/coach-chat/prompts_test.ts \
   supabase/functions/coach-chat/generation_test.ts \
   supabase/functions/coach-chat/validate_test.ts \
