@@ -490,6 +490,84 @@ void main() {
         'onboarding_skip',
       ]);
       expect(queue.first['attempts'], 0);
+      // 補送開始時就綁給 A 的留給 A；登出後才排進來的還沒綁帳號。
+      expect(queue.first['owner'], _uid);
+      expect(queue.last.containsKey('owner'), isFalse);
+    });
+
+    // Codex 主審第 1 輪 P2：同一批 onboarding 事件不能分到 A、B 兩個帳號。第一次補送就
+    // 把佇列綁給當時登入的帳號；換別的帳號登入時，殘留的直接丟掉、不送。
+    Future<void> partlyFlushAsA() async {
+      await tracker
+          .track('onboarding_page_view', properties: {'page_index': 0});
+      await tracker
+          .track('onboarding_page_view', properties: {'page_index': 1});
+      uid = _uid;
+      wire.status = (event) =>
+          (event['properties'] as Map)['page_index'] == 1 ? 500 : 200;
+      await tracker.flushPending();
+      wire.status = (_) => 200;
+      expect(wire.props, [
+        {'page_index': 0},
+        {'page_index': 1},
+      ]);
+      final queue = await _storedQueue();
+      expect([
+        for (final e in queue) e['properties']
+      ], [
+        {'page_index': 1},
+      ]);
+      expect(queue.single['owner'], _uid);
+    }
+
+    test('補送到一半失敗、換別的帳號登入：A 的殘留直接丟掉，不會送給 B', () async {
+      await partlyFlushAsA();
+      uid = null; // A 登出
+      uid = 'user-b';
+
+      await tracker.flushPending();
+
+      expect(wire.sent, hasLength(2), reason: 'B 登入後什麼都沒送');
+      expect(await _storedQueue(), isEmpty);
+    });
+
+    test('同一個帳號再登入：殘留照樣繼續送', () async {
+      await partlyFlushAsA();
+      uid = null;
+      uid = _uid;
+
+      await tracker.flushPending();
+
+      expect(wire.props.last, {'page_index': 1});
+      expect(wire.sent, hasLength(3));
+      expect(await _storedQueue(), isEmpty);
+    });
+
+    test('A 綁定之後、沒登入時才排進來的事件：照舊給下一個登入的帳號', () async {
+      await partlyFlushAsA();
+      uid = null;
+      await tracker.track('onboarding_skip', properties: {'page_index': 2});
+      uid = 'user-b';
+
+      await tracker.flushPending();
+
+      expect(wire.names.last, 'onboarding_skip');
+      expect(wire.sent, hasLength(3), reason: 'A 的殘留沒有送給 B');
+      expect(await _storedQueue(), isEmpty);
+    });
+
+    test('等 SharedPreferences 期間換帳號：這次不送也不綁', () async {
+      await tracker
+          .track('onboarding_page_view', properties: {'page_index': 0});
+      uid = _uid;
+
+      final pending = tracker.flushPending();
+      uid = 'user-b';
+      await pending;
+
+      expect(wire.sent, isEmpty);
+      final queue = await _storedQueue();
+      expect(queue.single.containsKey('owner'), isFalse);
     });
 
     test('佇列內容壞掉：不丟錯，照常排隊與補送', () async {
@@ -653,6 +731,67 @@ void main() {
         'first_analysis_completed',
         'checklist_item_done',
       ]);
+    });
+
+    // Codex 主審第 1 輪 P2：記號鍵用一開始的帳號，送出用的卻是當下的登入；中途換帳號
+    // 會把 A 的事件送給 B、記號寫給 A（A 從此被略過）。
+    test('等 SharedPreferences 期間換帳號：不送、不記號；之後兩個帳號各自照常記一次', () async {
+      final pending = tracker.trackOnce('first_analysis_completed');
+      uid = 'user-b'; // 讀記號的那一下等待期間換成 B
+      await pending;
+
+      expect(wire.sent, isEmpty);
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isNull);
+      expect(
+          await flag('funnel_once_v2_user-b_first_analysis_completed'), isNull);
+
+      await tracker.trackOnce('first_analysis_completed');
+      expect(wire.sent, hasLength(1));
+      expect(
+          await flag('funnel_once_v2_user-b_first_analysis_completed'), isTrue);
+
+      uid = _uid; // A 沒有被略過
+      await tracker.trackOnce('first_analysis_completed');
+      expect(wire.sent, hasLength(2));
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isTrue);
+    });
+
+    test('送出後、寫記號前換帳號：不寫記號，A 下次還會再送', () async {
+      final switching = FunnelTracker(
+        invoker: (fn, {required body}) async {
+          final status = await wire.call(fn, body: body);
+          uid = 'user-b'; // 送出期間換成 B
+          return status;
+        },
+        currentUserId: () => uid,
+      );
+
+      await switching.trackOnce('first_practice_completed');
+      expect(wire.sent, hasLength(1));
+      expect(await flag('funnel_once_v2_${_uid}_first_practice_completed'),
+          isNull);
+      expect(
+          await flag('funnel_once_v2_user-b_first_practice_completed'), isNull);
+
+      uid = _uid;
+      await tracker.trackOnce('first_practice_completed');
+      expect(wire.sent, hasLength(2));
+      expect(await flag('funnel_once_v2_${_uid}_first_practice_completed'),
+          isTrue);
+    });
+
+    test('等 SharedPreferences 期間登出：不送、不記號，也不改成排隊', () async {
+      final pending = tracker.trackOnce('first_practice_completed');
+      uid = null;
+      await pending;
+
+      expect(wire.sent, isEmpty);
+      expect(await _storedQueue(), isEmpty);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+          prefs.getKeys().where((k) => k.startsWith('funnel_once')), isEmpty);
     });
   });
 
