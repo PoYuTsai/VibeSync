@@ -566,8 +566,10 @@ void main() {
         reason: 'completion does not switch mode');
     expect(find.byKey(const ValueKey('opener-approach-summary')), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
-    await tester.tap(find.text('開場白'));
-    await _settleBounded(tester);
+    // 分析完成後的 Hive 寫入在全套並行時可能比固定 80ms 慢（2026-10-27 全套一次 UI-13 flake）：
+    // 切回開場白時等到分析摘要真的出現（上限 5 秒），斷言本身不變。
+    await _tapAndSettleAsync(tester, find.text('開場白'),
+        until: find.byKey(const ValueKey('opener-approach-summary')));
     expect(
         find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget);
     expect(
