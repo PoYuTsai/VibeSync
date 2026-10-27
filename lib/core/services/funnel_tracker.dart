@@ -182,6 +182,8 @@ class FunnelTracker {
   /// （onboarding 轉換第 5 步）：斷網或伺服器沒收下就不記，下次觸發再送；
   /// 記號分帳號，同一支手機換帳號各記各的。
   /// - 沒登入：交給 [track] 排隊、不寫記號；同一次執行同一個鍵只排一次。
+  /// - 記號鍵用一開始讀到的帳號；送出前、寫記號前都確認登入的還是同一個帳號，
+  ///   中途換帳號或登出就不送、不記號（不改排隊，免得掛到下一個登入的帳號）。
   /// - 同一個鍵送出中再觸發直接略過（起步清單每次重建都會觸發）。
   /// - 同一次執行同一個鍵最多試 [maxOnceAttemptsPerRun] 次。
   /// [onceKey] 讓同事件不同維度各自去重（如 checklist 逐項）。
@@ -211,8 +213,15 @@ class FunnelTracker {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(flagKey) ?? false) return;
+      // 事件、送出時的身份、成功記號都要是同一個帳號（Codex 主審第 1 輪 P2）：等
+      // SharedPreferences 期間換了帳號就不送；送出後換了帳號就不寫記號。
+      if (_currentUserId() != uid) return;
+      final filtered = _whitelisted(event, properties);
+      if (filtered == null) return;
       _onceAttempts[flagKey] = (_onceAttempts[flagKey] ?? 0) + 1;
-      if (await track(event, properties: properties)) {
+      final sent =
+          await _send(event, filtered, _clock().toUtc().toIso8601String());
+      if (sent && _currentUserId() == uid) {
         await prefs.setBool(flagKey, true);
       }
     } catch (e) {

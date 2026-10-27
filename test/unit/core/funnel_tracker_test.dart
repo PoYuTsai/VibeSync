@@ -654,6 +654,67 @@ void main() {
         'checklist_item_done',
       ]);
     });
+
+    // Codex 主審第 1 輪 P2：記號鍵用一開始的帳號，送出用的卻是當下的登入；中途換帳號
+    // 會把 A 的事件送給 B、記號寫給 A（A 從此被略過）。
+    test('等 SharedPreferences 期間換帳號：不送、不記號；之後兩個帳號各自照常記一次', () async {
+      final pending = tracker.trackOnce('first_analysis_completed');
+      uid = 'user-b'; // 讀記號的那一下等待期間換成 B
+      await pending;
+
+      expect(wire.sent, isEmpty);
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isNull);
+      expect(
+          await flag('funnel_once_v2_user-b_first_analysis_completed'), isNull);
+
+      await tracker.trackOnce('first_analysis_completed');
+      expect(wire.sent, hasLength(1));
+      expect(
+          await flag('funnel_once_v2_user-b_first_analysis_completed'), isTrue);
+
+      uid = _uid; // A 沒有被略過
+      await tracker.trackOnce('first_analysis_completed');
+      expect(wire.sent, hasLength(2));
+      expect(await flag('funnel_once_v2_${_uid}_first_analysis_completed'),
+          isTrue);
+    });
+
+    test('送出後、寫記號前換帳號：不寫記號，A 下次還會再送', () async {
+      final switching = FunnelTracker(
+        invoker: (fn, {required body}) async {
+          final status = await wire.call(fn, body: body);
+          uid = 'user-b'; // 送出期間換成 B
+          return status;
+        },
+        currentUserId: () => uid,
+      );
+
+      await switching.trackOnce('first_practice_completed');
+      expect(wire.sent, hasLength(1));
+      expect(await flag('funnel_once_v2_${_uid}_first_practice_completed'),
+          isNull);
+      expect(
+          await flag('funnel_once_v2_user-b_first_practice_completed'), isNull);
+
+      uid = _uid;
+      await tracker.trackOnce('first_practice_completed');
+      expect(wire.sent, hasLength(2));
+      expect(await flag('funnel_once_v2_${_uid}_first_practice_completed'),
+          isTrue);
+    });
+
+    test('等 SharedPreferences 期間登出：不送、不記號，也不改成排隊', () async {
+      final pending = tracker.trackOnce('first_practice_completed');
+      uid = null;
+      await pending;
+
+      expect(wire.sent, isEmpty);
+      expect(await _storedQueue(), isEmpty);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+          prefs.getKeys().where((k) => k.startsWith('funnel_once')), isEmpty);
+    });
   });
 
   // onboarding 轉換第 6 步：告訴使用者「額度不夠」的那一刻記一筆。
