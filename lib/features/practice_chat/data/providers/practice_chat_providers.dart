@@ -1534,6 +1534,10 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 一發落地，舊發不互蓋。
   int _drawQuotaEpoch = 0;
 
+  /// 翻牌 402（Free 沒有免費翻牌、不能加抽）時留在 state 的那句話；解除過期的鎖時
+  /// 只收這一句，別的錯誤訊息不動。
+  static const _drawUpgradeRequiredMessage = '升級後每天可以翻更多陪練女孩。';
+
   /// 圖鑑額度列 v2：唯讀補水本窗翻牌額度（app 重啟後跨 session 也準確）。
   /// fail-quiet：任何失敗保持現狀，額度列顯示已知值或不顯示（寧缺勿誤）。
   /// 刻意不動 drawExtraCost——那是 draw 回應在宣傳的加抽價，status 不帶。
@@ -1543,12 +1547,23 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     try {
       final status = await _api.fetchDrawQuotaStatus();
       if (!mounted || state.isDrawing || epoch != _drawQuotaEpoch) return;
-      state = state.copyWith(
+      final next = state.copyWith(
         drawFreeAllowance: status.freeAllowance,
         drawFreeUsed: status.freeUsed,
         drawFreeRemaining: status.freeRemaining,
         drawNextResetAt: status.nextResetAt,
       );
+      // server 說這一窗還有免費翻牌（例如首抽剛發下來），先前 402 留下的「要升級」鎖
+      // 就過期了：解除，下一次翻牌照常送出、由 server 裁決，不會多給、也繞不過付費
+      // （Codex 主審第 1 輪 P2：首抽發放比第一次翻牌慢時，人會被鎖在付費頁）。
+      state = next.drawUpgradeRequired && status.freeRemaining > 0
+          ? next.copyWith(
+              drawUpgradeRequired: false,
+              errorMessage: next.errorMessage == _drawUpgradeRequiredMessage
+                  ? null
+                  : next.errorMessage,
+            )
+          : next;
     } catch (_) {
       // fail-quiet：唯讀補水失敗不打擾使用者，也不覆蓋既有已知值。
     }
@@ -1681,7 +1696,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         drawFreeAllowance: e.freeAllowance,
         drawExtraCost: e.extraCostMessages,
         drawNextResetAt: e.nextResetAt,
-        errorMessage: '升級後每天可以翻更多陪練女孩。',
+        errorMessage: _drawUpgradeRequiredMessage,
       );
     } on PracticeQuotaExceededException catch (e) {
       if (!mounted) return;

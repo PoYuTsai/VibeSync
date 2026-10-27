@@ -34,6 +34,11 @@ import '../widgets/practice_reveal_theme.dart';
 @visibleForTesting
 const Duration kCollectionHighlightGlow = Duration(milliseconds: 1500);
 
+/// 首抽還在發的時候按翻牌，最多等它這麼久；逾時就照常送出、由 server 裁決（首抽之後
+/// 才到時，補水會解除 402 的鎖）。
+@visibleForTesting
+const Duration kFirstDrawGrantWait = Duration(seconds: 10);
+
 /// 發光時間軸（0→1）映強度：前 8%（約 120 ms）快速亮起，接住光球落位那一下 →
 /// 停留到 40% → 淡出，收尾歸 0 不殘留。
 @visibleForTesting
@@ -89,9 +94,17 @@ class _PracticeCollectionScreenState
             .read(practiceChatControllerProvider.notifier)
             .refreshDrawQuotaStatus(),
       );
-      unawaited(_maybeGrantFirstDraw());
+      final grant = _maybeGrantFirstDraw();
+      _firstDrawGrant = grant;
+      unawaited(grant.whenComplete(() => _firstDrawGrant = null));
     });
   }
+
+  /// 進場發首抽還在路上（付費帳號、已有角色時馬上就結束）；結束就清掉。
+  Future<void>? _firstDrawGrant;
+
+  /// 按了翻牌、正在等首抽發完：翻牌鈕轉圈、先不送出（Codex 主審第 1 輪 P2）。
+  bool _waitingForFirstDrawGrant = false;
 
   /// 沒對象的新用戶不能一按翻牌就撞付費頁（Onboarding 第 1 步，決策 C，Eric
   /// 2026-10-27）：免費帳號走進練習室、圖鑑一張都沒有，就先把那一次免費翻牌發給他。
@@ -381,7 +394,18 @@ class _PracticeCollectionScreenState
   /// 掛著 listener，這裡的 read 只是取當下值。
   void _onDrawPressed() {
     final state = ref.read(practiceChatControllerProvider);
-    if (state.isDrawing || state.isPersistingTurn) return;
+    if (state.isDrawing ||
+        state.isPersistingTurn ||
+        _waitingForFirstDrawGrant) {
+      return;
+    }
+    // 首抽還在發：先等它回來再翻。搶在發放生效前送出，server 還沒有那一次首抽，會回
+    // 402 把人鎖在付費頁（Codex 主審第 1 輪 P2）。
+    final pendingGrant = _firstDrawGrant;
+    if (pendingGrant != null) {
+      unawaited(_drawAfterFirstDrawGrant(pendingGrant));
+      return;
+    }
 
     final notifier = ref.read(practiceChatControllerProvider.notifier);
     final unlockedCount = ref.read(unlockedPracticeGirlCountProvider);
@@ -475,6 +499,18 @@ class _PracticeCollectionScreenState
               source: source,
             ),
       );
+
+  /// 首抽還在發的時候按了翻牌：翻牌鈕轉圈等它回來（最多 [kFirstDrawGrantWait]），
+  /// 再照常走一次翻牌判斷。發放失敗或逾時也照常送出、由 server 裁決，402 → 付費頁的
+  /// 後備路徑不變；逾時之後首抽才到，補水會解除 402 的鎖。
+  Future<void> _drawAfterFirstDrawGrant(Future<void> grant) async {
+    setState(() => _waitingForFirstDrawGrant = true);
+    await grant.timeout(kFirstDrawGrantWait, onTimeout: () {});
+    if (!mounted) return;
+    setState(() => _waitingForFirstDrawGrant = false);
+    _firstDrawGrant = null; // 逾時也只等這一次
+    _onDrawPressed();
+  }
 
   /// SR 限定翻牌券抽：券固定 SR、不扣額度，沒有「值不值」的猶豫 → 不彈確認框，
   /// 儀式本身就是慶祝。完成後刷新券狀態（成功→金券收起；已用 409→同樣收起）。
@@ -738,9 +774,12 @@ class _PracticeCollectionScreenState
                       countBumpColor: _countBumpColor,
                       total: total,
                       drawPulse: _drawPulse,
-                      drawIsDrawing: chatState.isDrawing,
-                      drawEnabled:
-                          !chatState.isDrawing && !chatState.isPersistingTurn,
+                      // 等首抽發完的那一下也轉圈、不能再按。
+                      drawIsDrawing:
+                          chatState.isDrawing || _waitingForFirstDrawGrant,
+                      drawEnabled: !chatState.isDrawing &&
+                          !chatState.isPersistingTurn &&
+                          !_waitingForFirstDrawGrant,
                       onDrawPressed: _onDrawPressed,
                       freeQuota: _currentFreeQuota(chatState),
                       isFreeUser: isFreeUser,

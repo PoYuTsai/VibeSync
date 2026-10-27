@@ -74,6 +74,74 @@ class _GrantRecorder {
       );
 }
 
+/// 首抽發放與第一次翻牌的競態（Codex 主審第 1 輪 P2）：發放卡在 [grant] 完成之前；
+/// draw_status 照 server 的樣子回——首抽發下來之前 0 次，發下來之後「剩 1 次」。
+class _DelayedGrantApi {
+  final grant = Completer<void>();
+
+  /// 發放回 500（API 丟例外，畫面吞掉）。
+  bool grantFails = false;
+  int grantCalls = 0;
+
+  bool get _granted => grant.isCompleted && !grantFails;
+
+  PracticeChatApiService api() => PracticeChatApiService(
+        invoker: (name, {required body}) async {
+          switch (body['mode']) {
+            case 'grant_onboarding_draw_bonus':
+              grantCalls++;
+              await grant.future;
+              return grantFails
+                  ? const PracticeInvokeResponse(
+                      status: 500,
+                      data: {'error': 'bonus_grant_failed'},
+                    )
+                  : const PracticeInvokeResponse(
+                      status: 200,
+                      data: {'granted': true, 'consumed': false},
+                    );
+            case 'draw_status':
+              return PracticeInvokeResponse(
+                status: 200,
+                data: {
+                  'draw': {
+                    'freeAllowance': _granted ? 1 : 0,
+                    'freeUsed': 0,
+                    'freeRemaining': _granted ? 1 : 0,
+                    'nextResetAt': '2999-01-01T04:00:00.000Z',
+                  },
+                },
+              );
+            default:
+              throw UnimplementedError('競態測試不接 ${body['mode']}');
+          }
+        },
+      );
+}
+
+/// 額度補水走真的（[_DelayedGrantApi] 回 draw_status），翻牌只記次數；server 的翻牌
+/// 結果由測試用 [debugSetState] 模擬。
+class _GrantRaceController extends PracticeChatController {
+  _GrantRaceController(PracticeChatState seed, PracticeChatApiService api)
+      : super(
+          api: api,
+          repository: _FakePracticeSessionRepository(),
+          sessionId: seed.sessionId,
+          createdAt: seed.createdAt,
+        ) {
+    state = seed;
+  }
+
+  int drawCalls = 0;
+
+  @override
+  Future<void> drawNewPracticeGirl({bool srTicket = false}) async {
+    drawCalls++;
+  }
+
+  void debugSetState(PracticeChatState next) => state = next;
+}
+
 /// 同 practice_chat_screen_style_test 的 seeded-controller idiom。
 class _SeededPracticeChatController extends PracticeChatController {
   _SeededPracticeChatController(PracticeChatState seed)
@@ -1130,6 +1198,141 @@ void main() {
 
         expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
         expect(find.text('entry:practiceDraw'), findsOneWidget);
+      });
+
+      // Codex 主審第 1 輪 P2：首抽在背景發，發放比第一次翻牌慢時，人會被 402 鎖在付費頁。
+      Finder spinnerOnDrawButton() => find.descendant(
+            of: find.byKey(drawButton),
+            matching: find.byType(CircularProgressIndicator),
+          );
+
+      Future<void> serverReplies402(
+        WidgetTester tester,
+        _GrantRaceController controller,
+      ) async {
+        controller.debugSetState(
+          _lockedSeed().copyWith(drawStatus: PracticeDrawStatus.drawing),
+        );
+        await tester.pump();
+        controller.debugSetState(
+          _lockedSeed(upgradeRequired: true, errorMessage: '升級後每天可以翻更多陪練女孩。'),
+        );
+        // locked 脈動 repeat 中不能 settle；逐幀推進到路由轉場完（含失敗觸覺第二下）。
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      testWidgets('延遲發放、402 先回：首抽發下來後再按翻牌，抽得到、不會再進付費頁', (tester) async {
+        final grants = _DelayedGrantApi();
+        final controller = _GrantRaceController(_lockedSeed(), grants.api());
+        await pumpApp(
+          tester,
+          collectionRouterApp(controller: controller, api: grants.api()),
+        );
+        await tester.pump();
+        expect(grants.grantCalls, 1, reason: '發放卡在半路');
+
+        // 402 先回（例如等發放逾時後送出的那一次）：鎖住、開付費頁。
+        await serverReplies402(tester, controller);
+        expect(find.text('entry:practiceDraw'), findsOneWidget);
+        expect(controller.currentState.drawUpgradeRequired, isTrue);
+
+        // 首抽這時才發下來：補水看到還有 1 次，解除 402 的鎖。
+        grants.grant.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(controller.currentState.drawUpgradeRequired, isFalse);
+        expect(controller.currentState.errorMessage, isNull);
+
+        // 關掉付費頁：額度列寫著首抽還在，按翻牌照常翻、不再進付費頁。
+        GoRouter.of(tester.element(find.byKey(const ValueKey('paywall-stub'))))
+            .pop();
+        // 退場轉場走完前 Navigator 會擋住點擊：推過一秒再按。
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+        expect(find.text('免費首抽 剩 1 次'), findsOneWidget);
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(controller.drawCalls, 1);
+        expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+      });
+
+      testWidgets('發放還在路上就按翻牌：翻牌鈕先轉圈等，發放完才翻、不會撞 402', (tester) async {
+        final grants = _DelayedGrantApi();
+        final controller = _GrantRaceController(_lockedSeed(), grants.api());
+        await pumpApp(
+          tester,
+          collectionRouterApp(controller: controller, api: grants.api()),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(controller.drawCalls, 0, reason: '首抽還沒發下來，先不送');
+        expect(spinnerOnDrawButton(), findsOneWidget);
+
+        await tester.tap(find.byKey(drawButton), warnIfMissed: false);
+        await tester.pump();
+        expect(controller.drawCalls, 0, reason: '轉圈時不能再按');
+
+        grants.grant.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(controller.drawCalls, 1);
+        expect(spinnerOnDrawButton(), findsNothing);
+        expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+        expect(find.text('免費首抽 剩 1 次'), findsOneWidget);
+      });
+
+      testWidgets('發放失敗：發放中按的翻牌照常送出，server 回 402 → 付費頁', (tester) async {
+        final grants = _DelayedGrantApi()..grantFails = true;
+        final controller = _GrantRaceController(_lockedSeed(), grants.api());
+        await pumpApp(
+          tester,
+          collectionRouterApp(controller: controller, api: grants.api()),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(controller.drawCalls, 0);
+
+        grants.grant.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(controller.drawCalls, 1, reason: '發放失敗也照常送出，由 server 裁決');
+
+        // server 沒有首抽 → 402 → 付費頁（後備路徑不變），鎖也不會被解除。
+        await serverReplies402(tester, controller);
+        expect(find.text('entry:practiceDraw'), findsOneWidget);
+        expect(controller.currentState.drawUpgradeRequired, isTrue);
+      });
+
+      testWidgets('發放卡住超過等候上限：不再等，照常送出、由 server 裁決', (tester) async {
+        final grants = _DelayedGrantApi();
+        final controller = _GrantRaceController(_lockedSeed(), grants.api());
+        await pumpApp(
+          tester,
+          collectionApp(controller: controller, api: grants.api()),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(controller.drawCalls, 0);
+
+        await tester.pump(kFirstDrawGrantWait);
+        await tester.pump();
+        expect(controller.drawCalls, 1);
+        expect(spinnerOnDrawButton(), findsNothing);
+
+        // 收尾：讓卡住的發放結束，不留懸著的請求。
+        grants.grant.complete();
+        await tester.pump();
       });
     });
 
