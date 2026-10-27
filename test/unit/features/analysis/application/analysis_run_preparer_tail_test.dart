@@ -2,6 +2,8 @@
 // 2000 字的最長尾段。計費字數跟伺服器同一套算法（MessageCalculator 與 billing.ts
 // 對拍），送出時不帶上次的基準，伺服器算的就是尾段的字數，一定在 10 則以內。成功後的
 // 字數基準照整段存，下次續析只算之後新增的字。
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
@@ -161,6 +163,52 @@ void main() {
     ];
 
     expect(_preparer().tailOnly(_full(messages)), isNull);
+  });
+
+  test('則數上限跟伺服器 MAX_MESSAGES 一樣（只改一邊就會失敗）', () {
+    final source =
+        File('supabase/functions/analyze-chat/analysis_input_compiler.ts')
+            .readAsStringSync();
+    final match = RegExp(r'const MAX_MESSAGES = (\d+);').firstMatch(source);
+    expect(match, isNotNull, reason: '找不到伺服器的 MAX_MESSAGES');
+    expect(int.parse(match!.group(1)!), AnalysisRunPreparer.maxRequestMessages);
+  });
+
+  test('很多則短訊息：字數還沒到 2000 就先碰到 120 則，尾段停在 120 則（主審 r1 P2）', () {
+    // 主審的例子：她 1100 字、他 120 則各 15 字、她最後 15 字，共 122 則、2915 字。
+    // 只看字數會收 121 則（1815 字），伺服器回 Too many messages。
+    final messages = [
+      _msg('her1', 1100),
+      for (var i = 1; i <= 120; i++) _msg('me$i', 15, fromMe: true),
+      _msg('her2', 15),
+    ];
+
+    final tail = _preparer().tailOnly(_full(messages))!;
+
+    expect(tail.requestMessages,
+        hasLength(AnalysisRunPreparer.maxRequestMessages));
+    expect(tail.requestMessages.first.id, 'me2');
+    expect(tail.requestMessages.last.id, 'her2');
+    expect(_billableChars(tail.requestMessages), 1800);
+    expect(
+      MessageCalculator.previewAnalysisRequest(tail.requestMessages).band.units,
+      lessThanOrEqualTo(10),
+    );
+  });
+
+  test('她最後一則之後的訊息多到超過 120 則（連不算錢、照樣送的一起算）：不提供', () {
+    final messages = [
+      _msg('a', 2500),
+      _msg('her', 10),
+      for (var i = 1; i <= 120; i++) _msg('me$i', 1, fromMe: true),
+    ];
+
+    expect(_preparer().tailOnly(_full(messages)), isNull);
+    // 少一則就剛好 120 則，收得下。
+    expect(
+      _preparer().tailOnly(_full(messages.sublist(0, messages.length - 1))),
+      isNotNull,
+    );
   });
 
   test('整段本來就不超過 2000 字、沒有她的訊息、已經是尾段：不提供', () {

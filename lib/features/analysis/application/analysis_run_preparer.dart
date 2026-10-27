@@ -126,6 +126,10 @@ class AnalysisRunPreparer {
   static const _snapshotClientMetaKey = '__vibesync_snapshot_meta_v1';
   static const _snapshotSessionContextKey = 'sessionContext';
 
+  /// 伺服器一次最多收的訊息則數（`analyze-chat/analysis_input_compiler.ts` 的
+  /// `MAX_MESSAGES`）。[tailOnly] 用它限制尾段；兩邊要一起改。
+  static const maxRequestMessages = 120;
+
   AnalysisRunPreparer({
     required ConversationMemoryPort memory,
     required String? Function(Conversation conversation) resolvePartnerSummary,
@@ -272,16 +276,20 @@ class AnalysisRunPreparer {
   /// [AnalysisRunPreparation.fullRequestCharBaseline]），伺服器算的計費字數就是這段的
   /// 計費字數，不超過 2000 字，一定落在 10 則以內。
   ///
+  /// 尾段也要守伺服器一次能收的則數 [maxRequestMessages]：很多則短訊息時，字數還沒到
+  /// 2000 就可能超過，送出去一定被擋（主審 r1 P2）。
+  ///
   /// 回 null＝沒有這個選項：整段本來就不超過（不用截）、沒有她的訊息，或從她最後一則
-  /// 開始就超過（她那一則、或之後他傳的要算錢的那幾則太長）。不截斷單則：截了會改到
-  /// 她說的話（Onboarding 第 15 步定案）。
+  /// 開始就超過（她那一則、或之後他傳的要算錢的那幾則太長；或她最後一則之後的訊息
+  /// 多到超過則數上限）。不截斷單則：截了會改到她說的話（Onboarding 第 15 步定案）。
   AnalysisRunPreparation? tailOnly(
     AnalysisRunPreparation full, {
     int maxBillableChars = MessageCalculator.softCapBandMaxChars,
+    int maxMessages = maxRequestMessages,
   }) {
     if (full.isTailOnly) return null;
     final messages = full.requestMessages;
-    final start = _tailStart(messages, maxBillableChars);
+    final start = _tailStart(messages, maxBillableChars, maxMessages);
     if (start == null || start == 0) return null;
     final tail = List<Message>.unmodifiable(messages.sublist(start));
     return AnalysisRunPreparation(
@@ -310,18 +318,26 @@ class AnalysisRunPreparer {
   }
 
   /// 尾段起點：一定要含她最後一則（沒有她的訊息不能分析）。加進更前面的訊息，計費
-  /// 字數只會變多（她最後一則之後那幾則算不算錢，對每個候選尾段都一樣），所以往前
-  /// 加到下一則會超過就停。null＝從她最後一則開始就超過。
-  static int? _tailStart(List<Message> messages, int maxBillableChars) {
+  /// 字數與則數只會變多（她最後一則之後那幾則算不算錢，對每個候選尾段都一樣；則數
+  /// 連不算錢、照樣送出的那幾則一起算），所以往前加到下一則會超過就停。null＝從她
+  /// 最後一則開始就超過。
+  static int? _tailStart(
+    List<Message> messages,
+    int maxBillableChars,
+    int maxMessages,
+  ) {
     final lastIncoming =
         messages.lastIndexWhere((message) => !message.isFromMe);
     if (lastIncoming < 0) return null;
     int billableCharsFrom(int start) => MessageCalculator.countPayloadChars(
           MessageCalculator.billingMessagesForAnalysis(messages.sublist(start)),
         );
-    if (billableCharsFrom(lastIncoming) > maxBillableChars) return null;
+    bool fits(int start) =>
+        messages.length - start <= maxMessages &&
+        billableCharsFrom(start) <= maxBillableChars;
+    if (!fits(lastIncoming)) return null;
     var start = lastIncoming;
-    while (start > 0 && billableCharsFrom(start - 1) <= maxBillableChars) {
+    while (start > 0 && fits(start - 1)) {
       start--;
     }
     return start;
