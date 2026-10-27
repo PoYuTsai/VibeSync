@@ -3,8 +3,9 @@
 // 唯讀保證跟練習室週報同一套：①只組 SELECT（sql.ts）②送出前每條語句再過一次
 // `assertReadOnlySql`（沿用 tools/practice-weekly-report 的 `fetchDbRows`，它在
 // fetch 之前自己叫）③只呼叫 Management API 的 `/database/query`。腳本絕不寫 DB。
-// **第一次真跑要 Eric 另外核准。** 欄位定義、讀法、存檔見
-// docs/integrations/weekly-cohort-report.md。
+// **第一次真跑要 Eric 另外核准。** 週報只寫到 repo 以外（repo 是公開的，見
+// out_path.ts），再由 agent 經 Brain Publisher 收進 Dev Brain。欄位定義、讀法、
+// 存檔見 docs/integrations/weekly-cohort-report.md。
 //
 // 跑法：
 //   # 只印 SQL：不打網路、不需要 token、不落檔
@@ -13,13 +14,15 @@
 //   deno run --allow-read --allow-write --allow-env \
 //     --allow-net=api.supabase.com tools/weekly-cohort-report/report.ts \
 //     --project-ref=<ref> [--week=2026-W43] [--weeks=6] \
-//     [--out=docs/reports/weekly-cohort/<週>.md]
+//     [--out=<repo 以外的路徑，預設 ~/vibesync-weekly-cohort/<週>.md>]
 
+import { fetchDbRows } from "../practice-weekly-report/report.ts";
 import {
-  assertOutPath,
-  fetchDbRows,
-  REPORTS_DIR,
-} from "../practice-weekly-report/report.ts";
+  assertOutsideRepo,
+  defaultOutContext,
+  type OutPathContext,
+  resolveOutPath,
+} from "./out_path.ts";
 import { type CohortResult, parseCohortRow, renderReport } from "./render.ts";
 import {
   buildCohortSql,
@@ -33,21 +36,20 @@ import {
 export const DEFAULT_WEEKS = 6;
 /** 一週一次查詢；上限擋掉手滑打成幾百週。 */
 export const MAX_WEEKS = 12;
-export const OUT_DIR = `${REPORTS_DIR}weekly-cohort/`;
 
 export interface CliOptions {
   projectRef: string | undefined;
   /** 報表裡最新的那個註冊週。 */
   latest: CohortWeek;
   weeks: number;
+  /** 絕對路徑，一定在 repo 以外。 */
   out: string;
   dryRun: boolean;
-  allowOutAnywhere: boolean;
 }
 
 /** 認得的參數；認不得的、孤立的字串、缺值一律報錯（照練習室週報的教訓）。 */
 const VALUE_FLAGS = ["project-ref", "week", "weeks", "out"] as const;
-const BOOL_FLAGS = ["dry-run", "allow-out-anywhere"] as const;
+const BOOL_FLAGS = ["dry-run"] as const;
 
 function readFlags(argv: string[]): Map<string, string> {
   const values = new Map<string, string>();
@@ -80,7 +82,11 @@ function readFlags(argv: string[]): Map<string, string> {
   return values;
 }
 
-export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
+export function parseArgs(
+  argv: string[],
+  now: Date = new Date(),
+  outContext: OutPathContext = defaultOutContext(),
+): CliOptions {
   const values = readFlags(argv);
   const week = values.get("week");
   const latest = week === undefined
@@ -97,18 +103,13 @@ export function parseArgs(argv: string[], now: Date = new Date()): CliOptions {
   if (!Number.isInteger(weeks) || weeks < 1 || weeks > MAX_WEEKS) {
     throw new Error(`invalid --weeks: ${rawWeeks}（1～${MAX_WEEKS}）`);
   }
-  const allowOutAnywhere = values.get("allow-out-anywhere") === "true";
   return {
     projectRef: values.get("project-ref") ??
       Deno.env.get("SUPABASE_PROJECT_REF"),
     latest,
     weeks,
-    out: assertOutPath(
-      values.get("out") ?? `${OUT_DIR}${latest.label}.md`,
-      allowOutAnywhere,
-    ),
+    out: resolveOutPath(values.get("out"), latest, outContext),
     dryRun: values.get("dry-run") === "true",
-    allowOutAnywhere,
   };
 }
 
@@ -182,6 +183,9 @@ export async function runReport(
   deps: RunDeps,
 ): Promise<number> {
   const log = deps.log ?? console.log;
+  // parseArgs 已經擋過；這裡在讀 token、打網路、寫檔之前再擋一次，
+  // 不是從 parseArgs 來的 CliOptions 也繞不過去。
+  assertOutsideRepo(opts.out, defaultOutContext());
   const weeks = weeksEndingAt(opts.latest, opts.weeks);
 
   if (opts.dryRun) {
@@ -190,7 +194,9 @@ export async function runReport(
       log(buildCohortSql(week));
       log("");
     }
-    log(`-- 真跑會寫到 ${opts.out}`);
+    log(
+      `-- 真跑會寫到 ${opts.out}（repo 以外；之後由 agent 經 Brain Publisher 收進 Dev Brain）`,
+    );
     return 0;
   }
 
@@ -209,7 +215,9 @@ export async function runReport(
     opts.out,
     renderReport({ asOf: deps.now, results }),
   );
-  log(`已輸出 ${opts.out}`);
+  log(
+    `已輸出 ${opts.out}（不要 commit 進 repo；由 agent 經 Brain Publisher 收進 Dev Brain）`,
+  );
   return 0;
 }
 
