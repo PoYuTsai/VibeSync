@@ -6,12 +6,12 @@ import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 
-/// Tier 2 批 2：onboarding 一頁輕量問卷（第 4 頁，隱私頁前）。
+/// Tier 2 批 2：onboarding 一頁輕量問卷（onboarding 轉換第 12 步起是 4 頁版的第 3 頁）。
 ///
 /// Controlled widget：選擇存在 parent（_OnboardingScreenState）欄位，
-/// 本頁不寫 Hive——統一由分流頁的合併種子一次寫入。不選也能往下走。
-/// chips 為頁內輕量自建（ProfileChipSection 佈局不合 onboarding 深色滿版），
-/// 絕不改共用元件。
+/// 本頁不寫 Hive——按最後一頁的「繼續」才一次種進 profile（未登入時先暫存）。
+/// 不選也能往下走。chips 為頁內輕量自建（ProfileChipSection 佈局不合 onboarding
+/// 深色滿版），絕不改共用元件。
 class OnboardingQuestionnairePage extends StatelessWidget {
   const OnboardingQuestionnairePage({
     super.key,
@@ -20,6 +20,10 @@ class OnboardingQuestionnairePage extends StatelessWidget {
   });
 
   static const maxGoals = 2;
+
+  /// 目標只有教練 1:1 會參考（effective_style_prompt_builder；關於我 PR-5），原本的
+  /// 「30 秒，讓建議更像你」說過頭（onboarding 轉換第 12 步改）。
+  static const title = '選個目標，教練 1:1 會參考';
 
   final List<PracticeGoal> selectedGoals;
   final ValueChanged<List<PracticeGoal>> onGoalsChanged;
@@ -61,75 +65,67 @@ class OnboardingQuestionnairePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '30 秒，讓建議更像你',
-                  style: AppTypography.headlineMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '不選也可以，之後都能在「關於我」修改',
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.onBackgroundSecondary,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                _sectionTitle('你最想練的是？（最多 2 個）'),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final goal in PracticeGoal.values)
-                      _chip(
-                        // 鏡像卡會複誦 chip 同字樣，測試點擊一律走 key 不走文字。
-                        chipKey: ValueKey('onboarding-goal-${goal.name}'),
-                        label: goalLabel(goal),
-                        selected: selectedGoals.contains(goal),
-                        onTap: () => _toggleGoal(goal),
-                      ),
-                  ],
-                ),
-                // 鏡像卡：選了目標當場回「教練會怎麼做」，沒選就整塊收掉——
-                // 沒有投入就沒有東西可以反射，不出對誰都成立的空話 fallback。
-                // AnimatedSize：本頁 Column 垂直置中，卡片長出時整塊會重新置中；
-                // 平滑過渡取代瞬移。ticker 驅動，fake async 測試可收斂（絕不用
-                // Timer/Future.delayed 當時間軸）。間距收在卡片分支內，空狀態
-                // 版面與未加卡前逐位元一致。
-                AnimatedSize(
-                  duration: reduceMotion ? Duration.zero : AppMotion.enter,
-                  curve: AppMotion.easeOut,
-                  alignment: Alignment.topCenter,
-                  child: selectedGoals.isEmpty
-                      ? const SizedBox(width: double.infinity)
-                      : Padding(
-                          padding: const EdgeInsets.only(top: 24),
-                          child: _mirrorCard(),
-                        ),
-                ),
-              ],
+    // 4 頁版每頁標題都貼頂、左右 24（onboarding 轉換第 12 步）；以前垂直置中、
+    // 左右 32，換頁時標題會上下跳。
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: AppTypography.headlineMedium.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
             ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            '不選也可以，之後都能在「關於我」修改',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.onBackgroundSecondary,
+            ),
+          ),
+          const SizedBox(height: 32),
+          _sectionTitle('你最想練的是？（最多 2 個）'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final goal in PracticeGoal.values)
+                _chip(
+                  // 鏡像卡會複誦 chip 同字樣，測試點擊一律走 key 不走文字。
+                  chipKey: ValueKey('onboarding-goal-${goal.name}'),
+                  label: goalLabel(goal),
+                  selected: selectedGoals.contains(goal),
+                  onTap: () => _toggleGoal(goal),
+                ),
+            ],
+          ),
+          // 鏡像卡：選了目標當場回「教練會怎麼做」，沒選就整塊收掉——
+          // 沒有投入就沒有東西可以反射，不出對誰都成立的空話 fallback。
+          // AnimatedSize：卡片長出來時平滑撐開，取代瞬移。ticker 驅動，
+          // fake async 測試可收斂（絕不用 Timer/Future.delayed 當時間軸）。
+          // 間距收在卡片分支內，空狀態不多留白。
+          AnimatedSize(
+            duration: reduceMotion ? Duration.zero : AppMotion.enter,
+            curve: AppMotion.easeOut,
+            alignment: Alignment.topCenter,
+            child: selectedGoals.isEmpty
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: _mirrorCard(),
+                  ),
+          ),
+        ],
       ),
     );
   }
 
-  /// 鏡像卡：樣式 token 比照第 2、3 頁示範卡（_DemoCard），但不掛「示範」
-  /// 徽章——前兩頁演的是別人的對話，這張講的是使用者自己，混同會削弱
-  /// 「這在講我」的感覺。照本檔既有規矩頁內輕量自建，不 export 共用元件。
+  /// 鏡像卡：暗面卡樣式（白 6% 底、白 8% 框、圓角 22），不掛任何徽章——這張講的
+  /// 是使用者自己。照本檔既有規矩頁內輕量自建，不 export 共用元件。
   Widget _mirrorCard() {
     return Container(
       key: const ValueKey('onboarding-mirror-card'),

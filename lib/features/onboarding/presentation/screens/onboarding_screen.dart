@@ -1,40 +1,66 @@
 // lib/features/onboarding/presentation/screens/onboarding_screen.dart
 //
-// 2026-06-17 暗紫橘統一 (BrandKit migration): the first-run onboarding flow now
-// rides the shared dark brand gradient (BrandPageBackground) instead of the
-// bare near-black AppColors.background. The "下一步" CTA uses
-// BrandPrimaryButton (orange pill), the skip link + page indicators switch to
-// white/orange brand tokens, matching the shipped 關於我/作戰板 dark surface
-// system.
-//
-// 2026-07-06 案 3 冷啟動分流：第 5 頁新增 _OnboardingBranchingPage 分流頁
-// （有對象 → /partner/new；還沒 → /practice-collection），原「開始使用」
-// 完成 CTA 移除，分流頁的動作按鈕在頁內、底部「下一步」隱藏。
-// onboarding 轉換第 10 步：「有」改走 /partner/new?next=screenshot，建好對象卡
-// 直接到選截圖，少掉空白對象頁與來源選單兩個畫面。
+// onboarding 轉換第 12 步（Eric 2026-10-27「全部都做 照夥伴預設」）：由 9 頁
+// （6 頁功能介紹＋問卷＋獨立隱私頁＋分流頁）改成 4 頁，先問他現在要做什麼，
+// 用最短的路帶他到第一件事——
+//   0. OnboardingIntentPage：她回我了／剛配對／還沒有對象，或「先逛逛」略過；
+//   1. OnboardingQuizTeaserPage：內建題庫的一題判讀，答完看解析（可「直接開始」）；
+//   2. OnboardingQuestionnairePage：目標最多 2 個、鏡像卡（可「略過」）；
+//   3. OnboardingFinishPage：登入後先做什麼、免費額度、AI 隱私一行＋看完整說明。
+// 「繼續」→ 寫暫存 → 登入頁；登入後 MainShell 的 OnboardingHandoffApplier 帶他去
+// 第 1 頁選的地方。右上「我有帳號」直接到登入、不寫暫存。
+// 換頁只用按鈕（不能滑）：第 1 頁要選了路徑才往下走。
+// 回退：沒有遠端開關（App 沒有遠端設定），要退回 9 頁版就 git revert 再出新版。
+// `onboarding_completed` 這個鍵不改名（改了會把已登入的舊用戶拉回 onboarding）。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/ai_privacy_disclosure.dart';
-import '../../../../core/services/funnel_tracker.dart';
+
 import '../../../../core/services/app_haptics.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../learning/domain/models/chat_quiz.dart';
 import '../../../partner/presentation/screens/add_partner_screen.dart'
     show AddPartnerScreen;
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
+import '../../data/onboarding_quiz.dart';
 import '../../data/onboarding_service.dart';
-import '../widgets/demo_analysis_preview.dart';
-import '../widgets/onboarding_page.dart';
+import '../../domain/onboarding_intent.dart';
+import '../widgets/onboarding_finish_page.dart';
+import '../widgets/onboarding_intent_page.dart';
 import '../widgets/onboarding_questionnaire_page.dart';
+import '../widgets/onboarding_quiz_teaser_page.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
+
+  static const pageCount = 4;
+  static const intentPage = 0;
+  static const quizPage = 1;
+  static const questionnairePage = 2;
+  static const finishPage = 3;
+
+  static const haveAccountLabel = '我有帳號';
+  static const skipQuizLabel = '直接開始';
+  static const skipQuestionnaireLabel = '略過';
+  static const nextLabel = '下一步';
+  static const finishLabel = '繼續';
+
+  /// 第 1 頁的路徑登入後要去哪。未登入時這串原樣存進暫存、登入後才 push。
+  static String? routeForIntent(OnboardingIntent intent) => switch (intent) {
+        // 建好對象卡直接到選截圖（第 10 步）。
+        OnboardingIntent.analyze => AddPartnerScreen.screenshotFlowLocation,
+        OnboardingIntent.opener => '/opener',
+        // guide=1：圖鑑落地出 Sydney 引導泡泡；免費帳號第一次進來就發首抽（第 1 步，決策 C）。
+        OnboardingIntent.practice => '/practice-collection?guide=1',
+        OnboardingIntent.browse => null,
+      };
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -42,80 +68,33 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _pageController = PageController();
-  int _currentPage = 0;
+  int _currentPage = OnboardingScreen.intentPage;
 
-  // Tier 2 批 2：問卷選擇存在 parent state，本頁不寫 Hive，
-  // 統一由分流頁的合併種子一次寫入。
-  // 2026-08-04 拍板：問卷不再問互動風格（那條線已整條移除，關於我頁也拿掉
-  // 對應區塊），只留練習目標。
-  List<PracticeGoal> _questionnaireGoals = const [];
+  OnboardingIntent? _intent;
 
-  /// 問卷插在賣點頁（含練習室/學習/定位頁，index 0-5）之後、隱私頁之前。
-  static const _questionnairePageIndex = 6;
+  // 第 2 頁：作答一次就定案。
+  String? _quizChoiceId;
+  bool? _quizCorrect;
 
-  final _pages = [
-    {
-      'title': '不知道怎麼回她？',
-      'description': '貼上對話或截圖，AI 幫你分析她的心理狀態\n教你最適合的回覆方式',
-      'imagePath': 'welcome',
-      // 2026-08-01 轉化診斷 Tier 1：第一印象用品牌教練 Sydney，不用罐頭 icon。
-      'heroImage': 'assets/images/coach/sydney_greeting.png',
-    },
-    {
-      // 燈號和要不要回是分開判的（Eric 2026-10-18）：燈號只講她現在多熱。
-      'title': '即時看懂她的訊號',
-      'description': '燈號看她現在有多熱\n教練再告訴你：該回、先別回，還是收尾',
-      'imagePath': 'analyze',
-    },
-    {
-      // 對話分析 v3：付費頁用同一個說法。收尾只有 1 張、先別回和停沒有卡，
-      // 所以不寫「每次」（Eric 2026-10-18）。
-      'title': '該回的時候給你 3–5 張回覆',
-      'description': '接住、共鳴、推進，照她這輪的狀況排好\n每句都幫你控制字數，不會顯得太黏或太急',
-      'imagePath': 'reply',
-    },
-    // 練習室＋學習專區（2026-08-18 Eric 指示）：讓「還沒有對象」的用戶
-    // 在分流頁之前就知道有地方可以練——接分流「還沒，先去練習」那條路。
-    {
-      'title': '還沒有對象？先練',
-      'description': '百位風格各異的女孩陪你實戰演練\n練完拿一張教練拆解卡，上場不再手抖',
-      'imagePath': 'practice',
-    },
-    {
-      'title': '越用越會聊',
-      'description': '幽默、EQ、拿回對話重心的社交心法\n文章＋互動測驗，學完直接帶進實戰',
-      'imagePath': 'learning',
-    },
-    // 定位頁（2026-08-18 定位拍板，docs/positioning.md）：功能演示後
-    // 把自我介紹從「回這句」抬到品類差異化——教練帶完整段；
-    // 記憶不寫「有記憶」，寫成利益句「認得你聊的每一個她」。
-    // 對話分析 v3（2026-10-17）不產生熱度數字，這頁不再寫「熱度多少」。
-    {
-      'title': '不只教你回這句',
-      'description': '它認得你聊的每一個她——聊到哪、她現在冷還熱、什麼時候該約\n教練帶你從曖昧一路走到約出來',
-      'imagePath': 'coach',
-    },
-    // R1-4 App Review 保險：靜態揭露第三方 AI 資料外送；實際同意
-    // 仍由各 AI 功能首次使用前的 AiDataSharingConsent 同意閘把關。
-    // 文案與設定頁「AI 與你的隱私」共用 AiPrivacyDisclosure（F5-A7）。
-    {
-      'title': AiPrivacyDisclosure.title,
-      // onboarding 不列廠商名（避免誤解練習室女孩＝DeepSeek）；
-      // 完整含廠商揭露留在設定頁 AI 隱私頁。
-      'description': AiPrivacyDisclosure.onboardingDescription,
-      'imagePath': 'privacy',
-    },
-  ];
+  // 問卷選擇存在這裡，本頁不寫 Hive，按「繼續」才一次種（或暫存）。
+  // 2026-08-04 拍板：問卷只留練習目標。
+  List<PracticeGoal> _goals = const [];
+
+  // 已經按了離開（繼續／先逛逛／我有帳號）：轉場期間再按不重複送。
+  bool _leaving = false;
+
+  FunnelTracker get _funnel => ref.read(funnelTrackerProvider);
 
   @override
   void initState() {
     super.initState();
-    // 第 0 頁不會觸發 onPageChanged，漏斗第一格要在這裡補
-    // （GLM 審查 F5：否則第一頁就跳出的流失測不見）。
+    // 第 0 頁不是換頁換來的，漏斗第一格在這裡補（GLM 審查 F5：否則第一頁就
+    // 跳出的流失測不見）。
     unawaited(
-      ref
-          .read(funnelTrackerProvider)
-          .track('onboarding_page_view', properties: {'page_index': 0}),
+      _funnel.track(
+        'onboarding_page_view',
+        properties: {'page_index': OnboardingScreen.intentPage},
+      ),
     );
   }
 
@@ -125,87 +104,157 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  // 案 3 冷啟動分流：底部「下一步」只在前 4 頁顯示（分流頁的動作按鈕在
-  // 頁內），所以這裡永遠只是翻頁，不再有「開始使用」完成分支。
-  void _nextPage() {
-    _pageController.nextPage(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void _skipOnboarding() {
+  /// 換頁：每換一頁記一筆 page_view（含按上一頁回去）。相鄰頁滑過去，跳頁
+  /// （「直接開始」「略過」）直接切，免得滑過中間那頁又多記一筆。
+  void _goToPage(int page) {
+    if (page == _currentPage || !_pageController.hasClients) return;
+    final adjacent = (page - _currentPage).abs() == 1;
+    setState(() => _currentPage = page);
+    AppHaptics.tap();
     unawaited(
-      ref
-          .read(funnelTrackerProvider)
-          .track('onboarding_skip', properties: {'page_index': _currentPage}),
+      _funnel.track('onboarding_page_view', properties: {'page_index': page}),
     );
-    _completeOnboarding();
-  }
-
-  Future<void> _completeOnboarding() async {
-    await OnboardingService.markCompleted();
-    if (mounted) {
-      context.go('/');
+    if (adjacent) {
+      _pageController.animateToPage(
+        page,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      _pageController.jumpToPage(page);
     }
   }
 
-  /// 分流頁按鈕：完成 onboarding 後先 go('/') 再 push 目的地，
-  /// back 鍵可退回首頁 tab 0，不卡死（設計檔案 3）。
-  Future<void> _completeOnboardingTo(
-    String route, {
-    required bool hasPartner,
-  }) async {
+  void _goBack() {
+    if (_currentPage > OnboardingScreen.intentPage) {
+      _goToPage(_currentPage - 1);
+    }
+  }
+
+  void _selectIntent(OnboardingIntent intent) {
+    // 換頁動畫期間連點第二下不重記、不重複換頁。
+    if (_leaving || _currentPage != OnboardingScreen.intentPage) return;
     unawaited(
-      ref.read(funnelTrackerProvider).track(
-        'onboarding_branch_answer',
-        properties: {'has_partner': hasPartner},
+      _funnel.track('onboarding_intent', properties: {'intent': intent.wire}),
+    );
+    setState(() => _intent = intent);
+    _goToPage(OnboardingScreen.quizPage);
+  }
+
+  void _answerQuiz(ChatQuizQuestion question, String choiceId) {
+    if (_quizChoiceId != null) return;
+    final correct = question.isCorrectChoice(choiceId);
+    setState(() {
+      _quizChoiceId = choiceId;
+      _quizCorrect = correct;
+    });
+    unawaited(
+      _funnel.track('onboarding_quiz_answer', properties: {'correct': correct}),
+    );
+  }
+
+  /// 「先逛逛」：不選路徑、略過整個 onboarding（每頁可逃生）。不寫暫存，
+  /// 登入後落在首頁。
+  Future<void> _browse() async {
+    if (_leaving) return;
+    _leaving = true;
+    unawaited(
+      _funnel.track(
+        'onboarding_intent',
+        properties: {'intent': OnboardingIntent.browse.wire},
       ),
     );
     unawaited(
-      ref.read(funnelTrackerProvider).track(
-        'onboarding_questionnaire_submit',
-        properties: {
-          'goals_count': _questionnaireGoals.length,
-        },
+      _funnel.track(
+        'onboarding_skip',
+        properties: {'page_index': _currentPage},
       ),
     );
-    // onboarding 移到登入前（2026-08-18）：未登入時 profile 沒有 scope 可種、
-    // 目的地也推不進去（會被 auth gate 攔），改暫存 prefs，登入後由
-    // MainShell 的 OnboardingHandoffApplier 取走套用。
-    final uid = await ref.read(authUserProfileScopeProvider.future);
-    if (uid == null) {
-      await OnboardingService.stashPendingHandoff(
-        goalNames: _questionnaireGoals
-            .map((goal) => goal.name)
-            .toList(growable: false),
-        route: route,
-      );
+    await _markCompletedAndGo('/');
+  }
+
+  /// 「我有帳號」：直接到登入、不寫暫存。一定要先記成看過 onboarding：未登入
+  /// 又沒看過 onboarding 的人會被 resolveAppRedirect 拉回 /onboarding，順序
+  /// 反過來會卡在迴圈。
+  Future<void> _haveAccount() async {
+    if (_leaving) return;
+    _leaving = true;
+    await _markCompletedAndGo('/login');
+  }
+
+  Future<void> _markCompletedAndGo(String location) async {
+    try {
       await OnboardingService.markCompleted();
-      if (mounted) context.go('/'); // redirect 會落到 /login
+    } catch (e) {
+      // 記號寫不進手機也照走：記憶體裡的快取已經翻成完成，這次不會被拉回來。
+      debugPrint('[OnboardingScreen] markCompleted failed (ignored): $e');
+    }
+    if (mounted) context.go(location);
+  }
+
+  /// 第 4 頁「繼續」：未登入時把路徑、目標、測驗結果寫進暫存再去登入頁；
+  /// 已登入（少見：這支手機沒看過 onboarding）就直接種 profile、帶去目的地。
+  Future<void> _finish() async {
+    if (_leaving) return;
+    _leaving = true;
+    final intent = _intent;
+    final route =
+        intent == null ? null : OnboardingScreen.routeForIntent(intent);
+    unawaited(
+      _funnel.track(
+        'onboarding_questionnaire_submit',
+        properties: {'goals_count': _goals.length},
+      ),
+    );
+    final String? uid;
+    try {
+      uid = await ref.read(authUserProfileScopeProvider.future);
+    } catch (e) {
+      debugPrint('[OnboardingScreen] auth scope failed: $e');
+      _leaving = false;
       return;
     }
-    await _seedProfileFromOnboardingAnswers();
-    await OnboardingService.markCompleted();
-    if (mounted) {
-      context.go('/');
-      context.push(route);
+    if (!mounted) return;
+    if (uid == null) {
+      if (intent != null && route != null) {
+        try {
+          await OnboardingService.stashPendingHandoff(
+            intent: intent,
+            route: route,
+            goalNames: [for (final goal in _goals) goal.name],
+            quizCorrect: _quizCorrect,
+          );
+        } catch (e) {
+          // 暫存寫不進去就只少了登入後的導頁與目標，照樣去登入頁。
+          debugPrint('[OnboardingScreen] stash failed (ignored): $e');
+        }
+      }
+      // 回到 '/'，redirect 會落到 /login。
+      await _markCompletedAndGo('/');
+      return;
     }
+    await _seedProfileFromGoals();
+    try {
+      await OnboardingService.markCompleted();
+    } catch (e) {
+      debugPrint('[OnboardingScreen] markCompleted failed (ignored): $e');
+    }
+    if (!mounted) return;
+    // 先 go('/') 再 push：返回鍵退回首頁，不卡死（2026-07-06 案 3）。
+    context.go('/');
+    if (route != null) context.push(route);
   }
 
-  /// 只種問卷（風格＋目標）：分流頁的「有沒有對象」不再轉寫進 notes——
-  /// 那 100 字要留給用戶自己的真實自述，「有沒有對象」已經有
-  /// onboarding_branch_answer funnel event 記錄，不需要佔用 profile
-  /// （2026-08-03「關於我」重新定位 report）。問卷全略過就不建任何資料。
-  /// 仍只在 profile 全空時種、失敗靜默放過、絕不擋導頁。
-  Future<void> _seedProfileFromOnboardingAnswers() async {
-    if (_questionnaireGoals.isEmpty) return;
+  /// 已登入時直接種目標：只在 profile 全空時種、失敗靜默、絕不擋導頁。目標全
+  /// 略過就不建任何資料（2026-08-03「關於我」重新定位）。
+  Future<void> _seedProfileFromGoals() async {
+    if (_goals.isEmpty) return;
     try {
       final existing = await ref.read(userProfileControllerProvider.future);
       if (existing != null && !existing.isEmpty) return;
       await ref.read(userProfileControllerProvider.notifier).save(
             UserProfile.create(
-              practiceGoals: List.of(_questionnaireGoals),
+              practiceGoals: List.of(_goals),
               updatedAt: DateTime.now(),
             ),
           );
@@ -214,201 +263,120 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return BrandPageBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Skip button
-              Align(
-                alignment: Alignment.topRight,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: TextButton(
-                    onPressed: AppHaptics.onPress(_skipOnboarding),
-                    child: Text(
-                      '略過',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.onBackgroundSecondary
-                            .withValues(alpha: 0.75),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Page content
-              Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  // +2：第 4 頁問卷（批 2）＋最後一頁冷啟動分流頁（案 3）。
-                  itemCount: _pages.length + 2,
-                  onPageChanged: (page) {
-                    AppHaptics.tap();
-                    unawaited(
-                      ref.read(funnelTrackerProvider).track(
-                        'onboarding_page_view',
-                        properties: {'page_index': page},
-                      ),
-                    );
-                    setState(() {
-                      _currentPage = page;
-                    });
-                  },
-                  itemBuilder: (context, index) {
-                    if (index == _questionnairePageIndex) {
-                      return OnboardingQuestionnairePage(
-                        selectedGoals: _questionnaireGoals,
-                        onGoalsChanged: (goals) =>
-                            setState(() => _questionnaireGoals = goals),
-                      );
-                    }
-                    if (index == _pages.length + 1) {
-                      return _OnboardingBranchingPage(
-                        onHasPartner: () => _completeOnboardingTo(
-                          // 建好對象卡直接到選截圖（第 10 步）。未登入時這串
-                          // 原樣存進暫存，登入後才 push。
-                          AddPartnerScreen.screenshotFlowLocation,
-                          hasPartner: true,
-                        ),
-                        onNoPartner: () => _completeOnboardingTo(
-                          // guide=1：圖鑑落地出 Sydney 引導泡泡，把 onboarding
-                          // 的教練陪伴接到落地頁（只有這條路會帶）。
-                          '/practice-collection?guide=1',
-                          hasPartner: false,
-                        ),
-                      );
-                    }
-                    // 問卷插頁後，index 3 之後的靜態頁往前挪一格。
-                    final page = _pages[
-                        index < _questionnairePageIndex ? index : index - 1];
-                    // 轉化診斷 Tier 1-1：第 2、3 頁掛零 API 示範卡，
-                    // 讓「燈號判讀」「任務卡」用演的不是用講的。
-                    final demo = switch (page['imagePath']) {
-                      'analyze' => const DemoSignalPreview(),
-                      'reply' => const DemoCardsPreview(),
-                      _ => null,
-                    };
-                    return OnboardingPage(
-                      title: page['title']!,
-                      description: page['description']!,
-                      imagePath: page['imagePath']!,
-                      heroImageAsset: page['heroImage'],
-                      customContent: demo,
-                    );
-                  },
-                ),
-              ),
-
-              // Page indicators
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    _pages.length + 2,
-                    (index) => AnimatedContainer(
-                      duration: AppMotion.enter,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: _currentPage == index ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: _currentPage == index
-                            ? AppColors.ctaStart
-                            : Colors.white.withValues(alpha: 0.20),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Next button — hidden on the branching page (its own CTAs
-              // live inside the page body).
-              if (_currentPage < _pages.length + 1)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                  child: BrandPrimaryButton(
-                    label: '下一步',
-                    onPressed: _nextPage,
-                    verticalPadding: 16,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+  /// 第 2 頁的「下一步」：作答後才能按；題目打不開（讀不到題庫或找不到題）時
+  /// 直接可按，不擋路。
+  bool get _quizNextEnabled {
+    if (_quizChoiceId != null) return true;
+    final item = ref.watch(onboardingQuizItemProvider);
+    return item.hasError || (item.hasValue && item.value == null);
   }
-}
 
-/// 第 5 頁冷啟動分流頁（案 3）：問用戶有沒有正在聊的對象，
-/// 直接把「有」導去建對象卡、「還沒」導去練習室圖鑑。
-/// 視覺對齊 OnboardingPage 的 icon hero＋標題排版，但 CTA 在頁內。
-class _OnboardingBranchingPage extends StatelessWidget {
-  const _OnboardingBranchingPage({
-    required this.onHasPartner,
-    required this.onNoPartner,
-  });
+  ({String label, VoidCallback? onPressed})? _bottomAction() =>
+      switch (_currentPage) {
+        OnboardingScreen.quizPage => (
+            label: OnboardingScreen.nextLabel,
+            onPressed: _quizNextEnabled
+                ? () => _goToPage(OnboardingScreen.questionnairePage)
+                : null,
+          ),
+        OnboardingScreen.questionnairePage => (
+            label: OnboardingScreen.nextLabel,
+            onPressed: () => _goToPage(OnboardingScreen.finishPage),
+          ),
+        OnboardingScreen.finishPage => (
+            label: OnboardingScreen.finishLabel,
+            onPressed: _finish,
+          ),
+        _ => null,
+      };
 
-  final VoidCallback onHasPartner;
-  final VoidCallback onNoPartner;
+  ({String label, VoidCallback onPressed})? _topAction() =>
+      switch (_currentPage) {
+        OnboardingScreen.intentPage => (
+            label: OnboardingScreen.haveAccountLabel,
+            onPressed: _haveAccount,
+          ),
+        // 「直接開始」：跳過測驗與目標，直接到最後一頁（下一步與隱私一行照樣看得到）。
+        OnboardingScreen.quizPage => (
+            label: OnboardingScreen.skipQuizLabel,
+            onPressed: () => _goToPage(OnboardingScreen.finishPage),
+          ),
+        // 「略過」目標：不帶目標到最後一頁。
+        OnboardingScreen.questionnairePage => (
+            label: OnboardingScreen.skipQuestionnaireLabel,
+            onPressed: () {
+              setState(() => _goals = const []);
+              _goToPage(OnboardingScreen.finishPage);
+            },
+          ),
+        _ => null,
+      };
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+    final bottom = _bottomAction();
+    final top = _topAction();
+    return BrandPageBackground(
+      child: PopScope(
+        // 系統返回（Android 返回鍵、iOS 邊緣滑）在第 2–4 頁回上一頁，不離開 onboarding。
+        canPop: _currentPage == OnboardingScreen.intentPage,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _goBack();
+        },
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // 2026-08-01 轉化診斷 Tier 1：分流頁 hero 改品牌教練 Sydney
-                // （鼓勵姿勢），與第 1 頁的 greeting 前後呼應。
-                Semantics(
-                  image: true,
-                  label: 'VibeSync Coach Sydney，欣欣',
-                  child: Image.asset(
-                    'assets/images/coach/sydney_encouragement.png',
-                    key: const ValueKey('onboarding-branch-hero-image'),
-                    height: 220,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.medium,
-                    excludeFromSemantics: true,
+                _OnboardingTopBar(
+                  currentPage: _currentPage,
+                  onBack: _currentPage > OnboardingScreen.intentPage
+                      ? _goBack
+                      : null,
+                  actionLabel: top?.label,
+                  onAction:
+                      top == null ? null : AppHaptics.onPress(top.onPressed),
+                ),
+                Expanded(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      OnboardingIntentPage(
+                        selected: _intent,
+                        onSelect: _selectIntent,
+                        onBrowse: () {
+                          AppHaptics.light();
+                          unawaited(_browse());
+                        },
+                      ),
+                      OnboardingQuizTeaserPage(
+                        selectedChoiceId: _quizChoiceId,
+                        onAnswer: _answerQuiz,
+                      ),
+                      OnboardingQuestionnairePage(
+                        selectedGoals: _goals,
+                        onGoalsChanged: (goals) =>
+                            setState(() => _goals = goals),
+                      ),
+                      OnboardingFinishPage(
+                        intent: _intent,
+                        hasGoals: _goals.isNotEmpty,
+                        onOpenPrivacy: () =>
+                            unawaited(showOnboardingPrivacySheet(context)),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 40),
-                Text(
-                  '你現在有正在聊的對象嗎？',
-                  style: AppTypography.headlineMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
+                if (bottom != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    child: BrandPrimaryButton(
+                      label: bottom.label,
+                      onPressed: bottom.onPressed,
+                      verticalPadding: 16,
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 40),
-                BrandPrimaryButton(
-                  label: '有，幫我分析對話',
-                  onPressed: onHasPartner,
-                  verticalPadding: 16,
-                ),
-                const SizedBox(height: 6),
-                // 按之前先講兩條路各通到哪（按之後回一句＝多一次點擊或計時器
-                // 等待，都是在轉化最後一步加摩擦）。「先抽一位練習夥伴」對齊
-                // 真實落地頁：按下去到圖鑑翻牌，Sydney 泡泡接著就叫你抽。
-                _branchHint('先幫你把她這輪的訊號讀懂'),
-                const SizedBox(height: 16),
-                BrandSecondaryButton(
-                  label: '還沒，先去練習',
-                  onPressed: onNoPartner,
-                ),
-                const SizedBox(height: 6),
-                _branchHint('先抽一位練習夥伴，把手感練起來'),
               ],
             ),
           ),
@@ -416,12 +384,97 @@ class _OnboardingBranchingPage extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _branchHint(String text) => Text(
-        text,
-        textAlign: TextAlign.center,
-        style: AppTypography.bodySmall.copyWith(
-          color: AppColors.onBackgroundSecondary.withValues(alpha: 0.76),
+/// 頂列：左邊上一頁（第 2–4 頁）、中間頁數點、右邊逃生出口（我有帳號／
+/// 直接開始／略過）。
+class _OnboardingTopBar extends StatelessWidget {
+  const _OnboardingTopBar({
+    required this.currentPage,
+    required this.onBack,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final int currentPage;
+  final VoidCallback? onBack;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 56,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          _PageDots(current: currentPage),
+          if (onBack != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: IconButton(
+                  onPressed: onBack,
+                  tooltip: '上一頁',
+                  color: Colors.white,
+                  icon: const BackButtonIcon(),
+                ),
+              ),
+            ),
+          if (actionLabel != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: TextButton(
+                  onPressed: onAction,
+                  child: Text(
+                    actionLabel!,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.onBackgroundSecondary
+                          .withValues(alpha: 0.75),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PageDots extends StatelessWidget {
+  const _PageDots({required this.current});
+
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '第 ${current + 1} 頁，共 ${OnboardingScreen.pageCount} 頁',
+      child: ExcludeSemantics(
+        child: Row(
+          key: const ValueKey('onboarding-page-dots'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var index = 0; index < OnboardingScreen.pageCount; index++)
+              AnimatedContainer(
+                duration: AppMotion.enter,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: current == index ? 24 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: current == index
+                      ? AppColors.ctaStart
+                      : Colors.white.withValues(alpha: 0.20),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }

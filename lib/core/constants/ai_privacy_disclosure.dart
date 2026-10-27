@@ -1,7 +1,7 @@
 // lib/core/constants/ai_privacy_disclosure.dart
 //
 // R1-4 / F5-A7 —「AI 與你的隱私」靜態揭露文案的單一來源。
-// onboarding 第 4 頁與設定頁的 AI 隱私頁共用，避免雙份文案漂移。
+// onboarding 最後一頁與設定頁的 AI 隱私頁共用，避免雙份文案漂移。
 // 純文案常數：實際同意仍由各 AI 功能首次使用前的 AiDataSharingConsent
 // 同意閘把關，這裡不含任何同意邏輯。
 class AiPrivacyDisclosure {
@@ -12,8 +12,9 @@ class AiPrivacyDisclosure {
   // 共用單句，避免 onboarding 與設定頁雙份漂移。
   static const String _openingLine = '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI';
 
-  // 廠商行：只在設定頁 AI 隱私頁揭露。onboarding 刻意不列，
-  // 避免使用者誤以為練習室女孩「背後就是 DeepSeek」。
+  // 廠商行：onboarding 頁面上刻意不列，避免使用者誤以為練習室女孩「背後就是
+  // DeepSeek」。設定頁 AI 隱私頁，以及 onboarding「看完整說明」打開的 sheet
+  // （跟設定頁同一段 [description]，onboarding 轉換第 12 步）才看得到。
   static const String _vendorLine =
       '（分析與教練用 Anthropic Claude，練習室用 DeepSeek 與 Anthropic Claude）';
 
@@ -30,7 +31,8 @@ class AiPrivacyDisclosure {
       '是否已建立對象卡），絕不包含對話內容、對象名稱或任何自由文字。\n'
       // 登入前的事件（onboarding 轉換第 4 步，FunnelTracker）：筆數與天數跟實作綁在
       // 測試裡，改一邊就得改另一邊。
-      '還沒登入時的使用事件（例如 onboarding 看到第幾頁、回答有沒有對象）\n'
+      // onboarding 轉換第 12 步：例子改成 4 頁版真的會記的事件（路徑、測驗題）。
+      '還沒登入時的使用事件（例如 onboarding 看到第幾頁、選了想先做哪件事、測驗題有沒有答對）\n'
       '會先存在這支手機，存的是事件名稱、固定選項值與發生時間，\n'
       '不含對話內容或名字，最多 50 筆。登入後才補送，並記下送給哪個帳號，\n'
       '之後只送給這個帳號；換成別的帳號登入，或已存超過 7 天的，都不送、直接刪除';
@@ -55,7 +57,9 @@ class AiPrivacyDisclosure {
   static const String description =
       '$_openingLine\n$_vendorLine\n$_aboutMeLine\n$_consentLine\n\n$_uploadParagraph\n\n$_optimizeReplayParagraph\n\n$_keyboardReplayParagraph\n\n$_keyboardScreenshotParagraph';
 
-  /// Onboarding 第 4 頁：只保留「送第三方 AI」與「同意閘」兩句，
-  /// 不列廠商名（避免誤解練習室女孩＝DeepSeek）。完整揭露留在設定頁。
-  static const String onboardingDescription = '$_openingLine\n$_consentLine';
+  /// Onboarding 最後一頁的隱私一行（onboarding 轉換第 12 步）：只有「送第三方
+  /// AI」這一句，不列廠商名（避免誤解練習室女孩＝DeepSeek）；後面接「看完整
+  /// 說明」，打開跟設定頁同一段 [description] 的 sheet。以前是獨立一頁、多一句
+  /// 同意閘，那句現在在完整說明裡。
+  static const String onboardingLine = _openingLine;
 }

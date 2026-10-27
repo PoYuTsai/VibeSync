@@ -12,6 +12,8 @@
 //   - Authenticated + onboarding incomplete -> forced to /onboarding.
 //   - Authenticated + onboarding complete   -> never sees /login or /onboarding.
 //   - Password recovery keeps the user on /login to set a new password.
+//   - onboarding 轉換第 12 步：第 1 頁右上「我有帳號」直接到登入，App 要先記成看過
+//     onboarding 再 go('/login')，否則會被拉回 /onboarding（見最後一組）。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/app/routes.dart';
 
@@ -213,6 +215,51 @@ void main() {
           isPasswordRecovery: true,
         ),
         isNull,
+      );
+    });
+  });
+
+  // onboarding 轉換第 12 步：「我有帳號」＝OnboardingService.markCompleted() 之後
+  // 才 go('/login')。三步照順序走一遍，順序反過來就是迴圈。
+  group('resolveAppRedirect — 「我有帳號」直接到登入（不卡迴圈）', () {
+    test('還沒記成看過 onboarding 就去 /login：會被拉回 /onboarding', () {
+      expect(
+        redirect(
+          isLoggedIn: false,
+          isOnboardingCompleted: false,
+          matchedLocation: '/login',
+        ),
+        '/onboarding',
+      );
+    });
+
+    test('先記成看過再去 /login：停在登入頁', () {
+      expect(
+        redirect(
+          isLoggedIn: false,
+          isOnboardingCompleted: true,
+          matchedLocation: '/login',
+        ),
+        isNull,
+      );
+    });
+
+    test('登入之後從 /login 進首頁，不會再看到 onboarding', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/login',
+        ),
+        '/',
+      );
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/onboarding',
+        ),
+        '/',
       );
     });
   });

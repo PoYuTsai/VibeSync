@@ -184,7 +184,7 @@ class _MainShellState extends State<MainShell>
         ),
         body: Stack(
           children: [
-            // 登入前完成 onboarding 的暫存交接（種問卷目標＋推分流目的地）；
+            // 登入前完成 onboarding 的暫存交接（種問卷目標＋推第 1 頁選的目的地）；
             // 平常沒有暫存＝no-op。
             const OnboardingHandoffApplier(),
             AnimatedBuilder(

@@ -30,8 +30,6 @@
     "lib/features/analysis/presentation/sections/streaming_content_section.dart": 2,
     "lib/features/analysis/presentation/sections/telemetry_diagnostics_section.dart": 2,
     "lib/features/conversation/presentation/widgets/message_bubble.dart": 1,
-    "lib/features/onboarding/presentation/screens/onboarding_screen.dart": 1,
-    "lib/features/onboarding/presentation/widgets/demo_analysis_preview.dart": 1,
     "lib/features/practice_chat/presentation/screens/practice_chat_screen.dart": 2,
     "lib/features/practice_chat/presentation/widgets/practice_game_intro_sheet.dart": 3,
     "lib/features/practice_chat/presentation/widgets/practice_rarity_style.dart": 1,

@@ -109,8 +109,14 @@ class FunnelTracker {
   static const Map<String, List<String>> eventProps = {
     'onboarding_page_view': ['page_index'],
     'onboarding_skip': ['page_index'],
+    // 9 頁版的分流頁才送；4 頁版（onboarding 轉換第 12 步）改送 onboarding_intent。
+    // 留在字典：舊版 App 與手機裡還沒補送的佇列照樣收得到。
     'onboarding_branch_answer': ['has_partner'],
     'onboarding_questionnaire_submit': ['goals_count'],
+    // onboarding 轉換第 12 步：第 1 頁選的路徑（OnboardingIntent.wire）、第 2 頁
+    // 那一題答對沒有。
+    'onboarding_intent': ['intent'],
+    'onboarding_quiz_answer': ['correct'],
     'quota_strip_tap': [],
     'opener_entry_tap': [],
     'coach_entry_tap': ['has_partner'],

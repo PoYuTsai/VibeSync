@@ -81,7 +81,7 @@ class AddPartnerScreen extends ConsumerStatefulWidget {
   /// 建好直接打開一個空的分析片段，落地就是選截圖（onboarding 轉換第 10 步）。
   static const nextStepScreenshot = 'screenshot';
 
-  /// 「建好直接選截圖」的入口：onboarding 分流「有，幫我分析對話」與首頁空白的
+  /// 「建好直接選截圖」的入口：onboarding 第 1 頁「她回我了」與首頁空白的
   /// 「建立對象卡，開始分析」共用。
   ///
   /// 登入前完成 onboarding 時，這串會原樣存進暫存、登入後才 push

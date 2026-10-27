@@ -184,6 +184,8 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
     onboarding_skip: ["page_index"],
     onboarding_branch_answer: ["has_partner"],
     onboarding_questionnaire_submit: ["goals_count"],
+    onboarding_intent: ["intent"],
+    onboarding_quiz_answer: ["correct"],
     quota_strip_tap: [],
     opener_entry_tap: [],
     coach_entry_tap: ["has_partner"],
@@ -623,4 +625,96 @@ Deno.test("quota_block_shown 的 properties 鍵名是原型上的名字：不帶
   const result = buildFunnelRow("u", raw);
   assert(result.ok);
   if (result.ok) assertEquals(result.row.properties, { feature: "keyboard" });
+});
+
+// onboarding 轉換第 12 步：4 頁版 onboarding 的兩個新事件。intent 是第 1 頁選的
+// 路徑（固定四個值），correct 是第 2 頁那一題答對沒有（只收布林）。
+const ONBOARDING_INTENTS = ["analyze", "opener", "practice", "browse"];
+
+Deno.test("onboarding_intent：四種路徑照收，其他值剝掉 intent、事件照收", () => {
+  for (const intent of ONBOARDING_INTENTS) {
+    const result = buildFunnelRow("u", {
+      event: "onboarding_intent",
+      properties: { intent },
+    });
+    assert(result.ok);
+    if (result.ok) assertEquals(result.row.properties, { intent });
+  }
+
+  for (
+    const intent of ["Analyze", "has_partner", "", 1, true, null, "她回我了"]
+  ) {
+    const result = buildFunnelRow("u", {
+      event: "onboarding_intent",
+      properties: { intent },
+    });
+    assert(result.ok, `${JSON.stringify(intent)} 只剝鍵，事件照收`);
+    if (result.ok) assertEquals(result.row.properties, {});
+  }
+});
+
+Deno.test("onboarding_quiz_answer：correct 只收布林", () => {
+  for (const correct of [true, false]) {
+    const result = buildFunnelRow("u", {
+      event: "onboarding_quiz_answer",
+      properties: { correct },
+    });
+    assert(result.ok);
+    if (result.ok) assertEquals(result.row.properties, { correct });
+  }
+
+  for (const correct of ["true", 1, 0, null, "q-1-1-01-a"]) {
+    const result = buildFunnelRow("u", {
+      event: "onboarding_quiz_answer",
+      properties: { correct },
+    });
+    assert(result.ok);
+    if (result.ok) assertEquals(result.row.properties, {});
+  }
+});
+
+Deno.test("onboarding 新事件：題號、選項、目標等白名單外的鍵一律剝掉", () => {
+  const quiz = buildFunnelRow("u", {
+    event: "onboarding_quiz_answer",
+    properties: {
+      correct: false,
+      questionId: "q-1-1-01",
+      choiceId: "q-1-1-01-b",
+      page_index: 1,
+    },
+  });
+  assert(quiz.ok);
+  if (quiz.ok) assertEquals(quiz.row.properties, { correct: false });
+
+  const intent = buildFunnelRow("u", {
+    event: "onboarding_intent",
+    properties: {
+      intent: "practice",
+      has_partner: false,
+      goals: ["softInvite"],
+      route: "/practice-collection?guide=1",
+    },
+  });
+  assert(intent.ok);
+  if (intent.ok) assertEquals(intent.row.properties, { intent: "practice" });
+});
+
+Deno.test("intent、correct 只有 onboarding 新事件收：其他事件帶了剝掉", () => {
+  const result = buildFunnelRow("u", {
+    event: "onboarding_branch_answer",
+    properties: { has_partner: true, intent: "analyze", correct: true },
+  });
+  assert(result.ok);
+  if (result.ok) assertEquals(result.row.properties, { has_partner: true });
+});
+
+Deno.test("4 頁版 onboarding 的 page_index 0–3 照收", () => {
+  for (const page_index of [0, 1, 2, 3]) {
+    const result = buildFunnelRow("u", {
+      event: "onboarding_page_view",
+      properties: { page_index },
+    });
+    assert(result.ok);
+    if (result.ok) assertEquals(result.row.properties, { page_index });
+  }
 });
