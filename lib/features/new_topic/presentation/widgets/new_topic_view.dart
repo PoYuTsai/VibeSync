@@ -455,6 +455,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           (subscriptionSnapshot.monthlyRemaining < kNewTopicQuotaCost ||
               subscriptionSnapshot.dailyRemaining < kNewTopicQuotaCost)) {
         setState(() => _error = '本次需要 $kNewTopicQuotaCost 則，目前可用額度不足。');
+        _trackQuotaBlock(QuotaBlockSource.precheck,
+            isMonthly:
+                subscriptionSnapshot.monthlyRemaining < kNewTopicQuotaCost);
         if (widget.isActive) {
           await _showPaywallAndRefresh(
               entry: _quotaEntryFor(subscriptionSnapshot));
@@ -535,6 +538,7 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
                 topicContext: topicContext)
             ?.requestId;
       });
+      _trackQuotaBlock(QuotaBlockSource.server, isMonthly: e.isMonthly);
       if (widget.isActive) {
         await _showPaywallAndRefresh(
           entry: PaywallEntry.forQuota(
@@ -618,6 +622,14 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
           )
         : error;
   }
+
+  /// 額度不足事件（onboarding 轉換第 6 步）：只記錄，不影響額度判斷與付費頁。
+  void _trackQuotaBlock(QuotaBlockSource source, {required bool isMonthly}) =>
+      unawaited(ref.read(funnelTrackerProvider).trackQuotaBlockShown(
+            feature: QuotaBlockFeature.newTopic,
+            scope: isMonthly ? QuotaBlockScope.monthly : QuotaBlockScope.daily,
+            source: source,
+          ));
 
   /// 額度不夠時開付費頁的入口：跟伺服器一樣先看本月、再看今天，付費頁照每月或
   /// 每日、用完或只是不夠換大標（Eric 2026-10-18）。
@@ -772,6 +784,15 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給付費頁入口。
     final quotaBlocked = quotaShort &&
         (pending == null || pending.requestId == _quotaRejectedRequestId);
+    if (quotaBlocked && widget.isActive) {
+      // 按鈕換成「升級／查看方案」、提示寫額度不足：畫完這一幀再記。
+      final isMonthly = usage.monthlyRemaining < kNewTopicQuotaCost;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _trackQuotaBlock(QuotaBlockSource.precheck, isMonthly: isMonthly);
+        }
+      });
+    }
     final helper = validPartnerId == null
         ? '先選擇聊天對象，再補充目前情境。'
         : readiness == NewTopicReadiness.dataQualityBlocked

@@ -144,6 +144,13 @@ final paywallExtras = <Object?>[];
 /// 送出的去識別化漏斗事件（submit-feedback 的 body）。
 final funnelBodies = <Map<String, dynamic>>[];
 
+/// 額度不足事件（quota_block_shown）帶的屬性，照送出順序。
+List<Object?> _quotaBlocks() => [
+      for (final body in funnelBodies)
+        if ((body['event'] as Map)['event'] == 'quota_block_shown')
+          (body['event'] as Map)['properties'],
+    ];
+
 Future<ProviderContainer> _pump(WidgetTester t,
     {String? selected = 'p',
     double scale = 1,
@@ -193,11 +200,12 @@ Future<ProviderContainer> _pump(WidgetTester t,
         newTopicStyleContextProvider.overrideWith(
             (_, id) => styleLoader?.call() ?? Future.value(style)),
         subscriptionProvider.overrideWith((_) => _Sub()),
-        funnelTrackerProvider.overrideWithValue(
-            FunnelTracker(invoker: (_, {required body}) async {
-          funnelBodies.add(body);
-          return 200;
-        })),
+        funnelTrackerProvider.overrideWithValue(FunnelTracker(
+            currentUserId: () => 'u1',
+            invoker: (_, {required body}) async {
+              funnelBodies.add(body);
+              return 200;
+            })),
         subscriptionScreenRefreshProvider.overrideWith((_) => () async {
               if (refreshFails) throw StateError('offline');
               await refreshGate?.future;
@@ -1344,4 +1352,77 @@ void main() {
       await _capture(t, 'topic-quota-$scale');
     });
   }
+
+  // onboarding 轉換第 6 步：告訴使用者「額度不夠」的那一刻記一筆 quota_block_shown，
+  // 只是記錄；按鈕、提示與付費牆照舊。
+  testWidgets('額度不足事件：伺服器擋下記一筆 new_topic／daily／server；之後按鈕被擋（同一種額度）不重記',
+      (t) async {
+    signals = true;
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    _service.replies.single.completeError(const NewTopicQuotaExceededException(
+        message: '今日額度不足。',
+        dailyRemaining: 1,
+        quotaNeeded: 3,
+        isMonthly: false));
+    (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
+    await t.pumpAndSettle();
+    await t.tap(find.text('關閉付費牆'));
+    await t.pumpAndSettle();
+    expect(find.text(NewTopicView.upgradeButtonLabel), findsOneWidget);
+    await _tapGenerate(t);
+    await t.pumpAndSettle();
+
+    expect(paywallOpens, 2);
+    expect(_quotaBlocks(), [
+      {'feature': 'new_topic', 'scope': 'daily', 'block_source': 'server'},
+    ]);
+  });
+
+  testWidgets('額度不足事件：額度不夠、按鈕被擋就記一筆 new_topic／monthly／precheck；在另一個模式時不記',
+      (t) async {
+    signals = true;
+    _active.value = false;
+    final container = await _pump(t, paywallRoute: true);
+    (container.read(subscriptionProvider.notifier) as _Sub).exhaustMonthly();
+    await t.pumpAndSettle();
+    expect(_quotaBlocks(), isEmpty);
+
+    _active.value = true;
+    await t.pumpAndSettle();
+    expect(find.text(NewTopicView.upgradeButtonLabel), findsOneWidget);
+    expect(_quotaBlocks(), [
+      {'feature': 'new_topic', 'scope': 'monthly', 'block_source': 'precheck'},
+    ]);
+
+    await _tapGenerate(t);
+    await t.pumpAndSettle();
+    expect(paywallOpens, 1);
+    expect(_quotaBlocks(), hasLength(1));
+    expect(_service.calls, isEmpty);
+  });
+
+  testWidgets('額度不足事件：按下生成後才知道額度不夠（生成前預檢）：只記一筆 precheck、不送出', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    signals = true;
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.text('資料使用說明'), findsOneWidget);
+    await t.ensureVisible(find.byType(CheckboxListTile));
+    await t.tap(find.byType(CheckboxListTile));
+    await t.pump();
+    // 同意框開著時刷新拿到今日只剩 1 則，接著同意：生成前的預檢擋下。
+    (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
+    await t.ensureVisible(find.text('同意並繼續'));
+    await t.tap(find.text('同意並繼續'));
+    await t.pumpAndSettle();
+
+    expect(paywallOpens, 1);
+    expect(_service.calls, isEmpty);
+    expect(find.text('本次需要 3 則，目前可用額度不足。', skipOffstage: false), findsWidgets);
+    expect(_quotaBlocks(), [
+      {'feature': 'new_topic', 'scope': 'daily', 'block_source': 'precheck'},
+    ]);
+  });
 }

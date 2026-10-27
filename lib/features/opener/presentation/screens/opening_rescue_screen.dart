@@ -12,6 +12,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/services/revenuecat_service.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/reveal_pill.dart';
 import '../../../../shared/widgets/scroll_card_ticks.dart';
@@ -481,6 +482,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     final quotaError = state.quotaError;
     if (quotaError != null && !identical(quotaError, _handledQuotaError)) {
       _handledQuotaError = quotaError;
+      _trackQuotaBlock(QuotaBlockSource.server,
+          isMonthly: quotaError.isMonthly);
       if (_mode == OpeningRescueMode.opener) {
         unawaited(_showPaywallAndRefresh(entry: _quotaEntryFor(quotaError)));
       }
@@ -642,6 +645,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       // 跟伺服器一樣先看本月、再看今天，付費頁照這個換大標（Eric 2026-10-18）。
       final usage = _currentUsageSnapshot();
       final isMonthly = usage.monthlyRemaining < cost;
+      _trackQuotaBlock(QuotaBlockSource.precheck, isMonthly: isMonthly);
       await _showPaywallAndRefresh(
         entry: PaywallEntry.forQuota(
           isMonthly: isMonthly,
@@ -670,6 +674,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
               feature: '開場',
             )
           : error;
+
+  /// 額度不足事件（onboarding 轉換第 6 步）：只記錄，不影響額度判斷與付費頁。
+  void _trackQuotaBlock(QuotaBlockSource source, {required bool isMonthly}) =>
+      unawaited(ref.read(funnelTrackerProvider).trackQuotaBlockShown(
+            feature: QuotaBlockFeature.opener,
+            scope: isMonthly ? QuotaBlockScope.monthly : QuotaBlockScope.daily,
+            source: source,
+          ));
 
   /// 伺服器回額度不足時開付費頁的入口：每月或每日、用完或只是不夠，跟分析頁
   /// 同一套大標（Eric 2026-10-18）。
@@ -1055,6 +1067,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
             _legacyQuotaError = e;
             _isGenerating = false;
           });
+          _trackQuotaBlock(QuotaBlockSource.server, isMonthly: e.isMonthly);
           await _showPaywallAndRefresh(entry: _quotaEntryFor(e));
         }
       } catch (e) {

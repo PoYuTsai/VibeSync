@@ -12,6 +12,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/services/app_haptics.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -416,6 +417,7 @@ class _PracticeCollectionScreenState
     // revealed（換一位）：Free／已標升級 → 付費牆。
     final subscription = ref.read(subscriptionProvider);
     if (subscription.isFreeUser || state.drawUpgradeRequired) {
+      _trackDrawQuotaBlock(QuotaBlockSource.precheck);
       context.push('/paywall', extra: PaywallEntry.practiceDraw);
       return;
     }
@@ -428,6 +430,7 @@ class _PracticeCollectionScreenState
     if (freeRemaining != null &&
         freeRemaining <= 0 &&
         (state.drawExtraCost ?? 0) <= 0) {
+      _trackDrawQuotaBlock(QuotaBlockSource.precheck);
       context.push('/paywall', extra: PaywallEntry.practiceDraw);
       return;
     }
@@ -443,6 +446,7 @@ class _PracticeCollectionScreenState
     }
 
     if (_hasInsufficientPaidDrawQuota(subscription, state)) {
+      _trackDrawQuotaBlock(QuotaBlockSource.precheck);
       notifier.lockDrawQuotaExceeded(message: drawUsedUp);
       _showDrawSnackBar(
         ref.read(practiceChatControllerProvider).errorMessage ?? drawUsedUp,
@@ -461,6 +465,16 @@ class _PracticeCollectionScreenState
 
     notifier.drawNewPracticeGirl();
   }
+
+  /// 額度不足事件（onboarding 轉換第 6 步）：翻牌被額度擋下、告訴使用者的那一刻。
+  /// 只記錄，不影響額度判斷與付費頁；翻牌這邊分不出每日或每月，scope 一律 unknown。
+  void _trackDrawQuotaBlock(QuotaBlockSource source) => unawaited(
+        ref.read(funnelTrackerProvider).trackQuotaBlockShown(
+              feature: QuotaBlockFeature.practice,
+              scope: QuotaBlockScope.unknown,
+              source: source,
+            ),
+      );
 
   /// SR 限定翻牌券抽：券固定 SR、不扣額度，沒有「值不值」的猶豫 → 不彈確認框，
   /// 儀式本身就是慶祝。完成後刷新券狀態（成功→金券收起；已用 409→同樣收起）。
@@ -620,10 +634,14 @@ class _PracticeCollectionScreenState
         // （沿用 paywall/settings 的 refresh seam；paywall 本身 initState 也會
         // refresh，重複呼叫 idempotent）。
         if (!mounted) return;
+        _trackDrawQuotaBlock(QuotaBlockSource.server);
         AppHaptics.failure();
         unawaited(ref.read(subscriptionScreenRefreshProvider)());
         context.push('/paywall', extra: PaywallEntry.practiceDraw);
       } else if (next.drawQuotaExceeded || next.errorMessage != null) {
+        if (next.drawQuotaExceeded) {
+          _trackDrawQuotaBlock(QuotaBlockSource.server);
+        }
         AppHaptics.failure();
         _showDrawSnackBar(next.errorMessage ?? '翻牌失敗了，再試一次。');
       }

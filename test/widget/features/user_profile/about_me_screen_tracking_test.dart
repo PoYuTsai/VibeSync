@@ -22,6 +22,7 @@ Future<void> _pump(
   String? source,
 }) async {
   final tracker = FunnelTracker(
+    currentUserId: () => 'u1',
     invoker: (fn, {required body}) async {
       final event = body['event'] as Map<String, dynamic>;
       events.add(

@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/services/message_calculator.dart';
 import '../../../../core/services/keyboard_privacy_purge_service.dart';
 import '../../../../core/services/supabase_service.dart';
@@ -2457,6 +2458,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     );
   }
 
+  /// 額度不足事件（onboarding 轉換第 6 步）：只記錄，不影響額度判斷與付費頁。
+  void _trackQuotaBlock(QuotaBlockSource source, {required bool isMonthly}) =>
+      unawaited(ref.read(funnelTrackerProvider).trackQuotaBlockShown(
+            feature: QuotaBlockFeature.analyze,
+            scope: isMonthly ? QuotaBlockScope.monthly : QuotaBlockScope.daily,
+            source: source,
+          ));
+
   /// ADR #19 r3 分析前確認流程。
   ///
   /// 順序（定案 #4）：算出本次計費字數/則數 → 4001+ 先擋（請分批，不送出）
@@ -2509,6 +2518,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       return (confirmed: true, overcharge: null);
     }
 
+    if (usage.monthlyRemaining < units || usage.dailyRemaining < units) {
+      _trackQuotaBlock(QuotaBlockSource.precheck,
+          isMonthly: usage.monthlyRemaining < units);
+    }
     final confirmed = await showAnalysisPreviewDialog(
       context: context,
       preview: preview,
@@ -3301,6 +3314,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           // 已經送到的 v3 卡留著（扣過費的內容不能消失）。
           _mirrorLiveGuideV3(next);
         });
+        final afterQuota = next.quotaExceeded;
+        if (afterQuota != null) {
+          _trackQuotaBlock(QuotaBlockSource.server,
+              isMonthly: afterQuota.isMonthly);
+        }
         break;
       case StreamingAnalyzePhase.failedBeforeRecommendation:
         final code = next.recommendationPreviewErrorCode;
@@ -3329,6 +3347,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           }
         });
         if (action == AnalysisErrorAction.upgrade) {
+          _trackQuotaBlock(QuotaBlockSource.server,
+              isMonthly:
+                  liveQuotaInfo?.isMonthly ?? code == 'MONTHLY_LIMIT_EXCEEDED');
           // 這裡的 upgrade 只來自每日、每月額度不夠（見
           // _failedBeforeRecommendationAction）：付費頁照每日或每月、用完或只是不夠
           // 換大標（主審 r1 P2-3）。

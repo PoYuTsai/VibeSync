@@ -26,11 +26,12 @@ class _SpyFunnelTracker extends FunnelTracker {
   final events = <String>[];
 
   @override
-  Future<void> track(
+  Future<bool> track(
     String event, {
     Map<String, Object?> properties = const {},
   }) async {
     events.add(event);
+    return true;
   }
 }
 

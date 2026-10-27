@@ -15,6 +15,10 @@ import 'routes.dart';
 class App extends ConsumerStatefulWidget {
   const App({super.key});
 
+  /// 測試替身：鍵盤轉來的額度訊號（null＝照常讀 KeyboardTokenBridge）。
+  @visibleForTesting
+  static Future<bool> Function()? debugKeyboardQuotaSignalOverride;
+
   @override
   ConsumerState<App> createState() => _AppState();
 }
@@ -63,8 +67,16 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   Future<void> _handleKeyboardQuotaSignal() async {
     await KeyboardTokenBridge.syncOnForeground();
     final shouldOpenPaywall =
-        await KeyboardTokenBridge.consumeQuotaExceededSignal();
+        await (App.debugKeyboardQuotaSignalOverride?.call() ??
+            KeyboardTokenBridge.consumeQuotaExceededSignal());
     if (!mounted || !shouldOpenPaywall) return;
+    // 額度不足事件（onboarding 轉換第 6 步）：鍵盤已經跟他說額度用完了；訊號只說
+    // 伺服器確認過額度不夠，分不出每日或每月。只記錄，付費頁照舊。
+    unawaited(ref.read(funnelTrackerProvider).trackQuotaBlockShown(
+          feature: QuotaBlockFeature.keyboard,
+          scope: QuotaBlockScope.unknown,
+          source: QuotaBlockSource.server,
+        ));
     if (!_splashComplete) {
       _openPaywallAfterSplash = true;
       return;

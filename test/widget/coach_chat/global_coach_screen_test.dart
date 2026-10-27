@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/features/analysis/domain/entities/analysis_record.dart';
 import 'package:vibesync/features/coach_chat/data/providers/coach_chat_providers.dart';
 import 'package:vibesync/features/coach_chat/data/services/coach_chat_api_service.dart';
@@ -202,10 +203,12 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
 final _paywallExtras = <Object?>[];
 
 /// 額度 429 走真的 CoachChatApiService，伺服器回 [quotaBody]；方案是 [tier]。
+/// [tracker] 給了就換掉漏斗 tracker（額度不足事件的斷言用）。
 Future<void> _pumpQuota(
   WidgetTester tester, {
   required String tier,
   required Map<String, dynamic> quotaBody,
+  FunnelTracker? tracker,
 }) async {
   SharedPreferences.setMockInitialValues(
     {AiDataSharingConsent.acceptedKeyForTesting: true},
@@ -236,6 +239,7 @@ Future<void> _pumpQuota(
             SubscriptionState(tier: tier, monthlyLimit: 800, dailyLimit: 30),
           ),
         ),
+        if (tracker != null) funnelTrackerProvider.overrideWithValue(tracker),
       ],
       child: MaterialApp.router(
         routerConfig: GoRouter(routes: [
@@ -1677,6 +1681,67 @@ void main() {
       expect(find.text('儲存失敗，請再試一次'), findsOneWidget);
       expect(row(), findsOneWidget);
       expect(repo.byOwner, isEmpty);
+    });
+  });
+
+  // onboarding 轉換第 6 步：教練沒有預檢，伺服器回額度 429、告訴使用者額度用完的那一刻
+  // 記一筆 quota_block_shown；只是記錄，付費頁與額度卡照舊。
+  group('額度不足事件（quota_block_shown）', () {
+    final sent = <Map<String, dynamic>>[];
+    FunnelTracker recordingTracker() => FunnelTracker(
+          invoker: (fn, {required body}) async {
+            sent.add(body['event'] as Map<String, dynamic>);
+            return 200;
+          },
+          currentUserId: () => 'coach-user',
+        );
+    List<Object?> quotaBlocks() => [
+          for (final e in sent)
+            if (e['event'] == 'quota_block_shown') e['properties'],
+        ];
+
+    setUp(sent.clear);
+
+    for (final monthly in [false, true]) {
+      final scope = monthly ? 'monthly' : 'daily';
+      testWidgets('撞到額度（429）記一筆 coach／$scope／server；再按查看方案不重記', (tester) async {
+        await _pumpQuota(
+          tester,
+          tier: SubscriptionTierHelper.essential,
+          quotaBody: coachQuota429(monthly: monthly),
+          tracker: recordingTracker(),
+        );
+
+        await askIntoQuota(tester);
+        expect(quotaBlocks(), [
+          {'feature': 'coach', 'scope': scope, 'block_source': 'server'},
+        ]);
+
+        await tester.tap(find.text('查看方案'));
+        await tester.pumpAndSettle();
+        expect(_paywallExtras, hasLength(2));
+        expect(quotaBlocks(), hasLength(1));
+      });
+    }
+
+    testWidgets('429 沒說是每日還是每月：scope 記 unknown', (tester) async {
+      await _pumpQuota(
+        tester,
+        tier: SubscriptionTierHelper.essential,
+        quotaBody: const {
+          'error': 'quota_exceeded',
+          'message': '額度已用完',
+          'quotaNeeded': 1,
+          'used': 30,
+          'limit': 30,
+        },
+        tracker: recordingTracker(),
+      );
+
+      await askIntoQuota(tester);
+      expect(quotaBlocks(), [
+        {'feature': 'coach', 'scope': 'unknown', 'block_source': 'server'},
+      ]);
     });
   });
 }

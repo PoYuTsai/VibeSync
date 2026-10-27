@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/core/services/revenuecat_service.dart';
+import 'package:vibesync/core/services/usage_service.dart';
 import 'package:vibesync/features/conversation/data/providers/conversation_providers.dart';
 import 'package:vibesync/features/partner/presentation/providers/partner_providers.dart';
 import 'package:vibesync/features/new_topic/presentation/widgets/new_topic_view.dart';
@@ -61,6 +62,20 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   _SeededSubscriptionNotifier(SubscriptionState seed) {
     state = seed;
   }
+}
+
+/// 用量不會被背景同步蓋回預設的方案（額度不夠的預檢測試用）：其他測試靠背景刷新
+/// 把方案刷回免費，所以只在需要時用這個。
+class _StickySubscriptionNotifier extends _SeededSubscriptionNotifier {
+  _StickySubscriptionNotifier(this._seed) : super(_seed);
+
+  final SubscriptionState _seed;
+
+  @override
+  Future<void> syncWithRevenueCat() async => state = _seed;
+
+  @override
+  Future<void> refresh() async => state = _seed;
 }
 
 /// 有設就讓生成走真的 OpenerService 傳輸（伺服器回這個 client 給的回應），
@@ -240,16 +255,36 @@ class _FakeOpenerService extends OpenerService {
   }
 }
 
-List<Override> _screenOverrides(String tier) => [
+/// 送出的漏斗事件（額度不足事件 quota_block_shown 用）；每個測試開始時清空。
+final _funnelEvents = <Map<String, dynamic>>[];
+
+List<Object?> _quotaBlocks() => [
+      for (final e in _funnelEvents)
+        if (e['event'] == 'quota_block_shown') e['properties'],
+    ];
+
+List<Override> _screenOverrides(String tier,
+        {SubscriptionState? stickySubscription}) =>
+    [
       authConversationScopeProvider.overrideWith((_) => const Stream.empty()),
       partnerListProvider.overrideWith((_) => const []),
       // 結果區的回報列會讀 coaching outcome Hive box；本測試不開那個 box。
       coachingOutcomeEventProvider.overrideWith((ref, id) => null),
       subscriptionProvider.overrideWith(
-        (ref) => _SeededSubscriptionNotifier(
-          SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 10),
-        ),
+        (ref) => stickySubscription != null
+            ? _StickySubscriptionNotifier(stickySubscription)
+            : _SeededSubscriptionNotifier(
+                SubscriptionState(tier: tier, monthlyLimit: 30, dailyLimit: 10),
+              ),
       ),
+      // 漏斗事件只記在記憶體，不打網路。
+      funnelTrackerProvider.overrideWithValue(FunnelTracker(
+        invoker: (_, {required body}) async {
+          _funnelEvents.add(body['event'] as Map<String, dynamic>);
+          return 200;
+        },
+        currentUserId: () => 'user-a',
+      )),
     ];
 
 Widget _screen({String tier = SubscriptionTierHelper.free}) => ProviderScope(
@@ -303,8 +338,6 @@ Future<void> _pumpManualWithRealPaywall(WidgetTester tester,
       overrides: [
         ..._screenOverrides(tier),
         subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
-        funnelTrackerProvider.overrideWithValue(
-            FunnelTracker(invoker: (_, {required body}) async => 200)),
       ],
       child: MaterialApp.router(
           routerConfig: GoRouter(routes: [
@@ -470,6 +503,7 @@ void main() {
     SharedPreferences.setMockInitialValues({
       '${AiDataSharingConsent.acceptedKeyForTesting}::user-a': true,
     });
+    _funnelEvents.clear();
     await Hive.box(AppConstants.settingsBox).clear();
   });
 
@@ -1130,5 +1164,74 @@ void main() {
     expect(freeText.controller!.text, '沒養過，只想問散步');
     expect(service.generateCalls, 0);
     expect(service.analyzeCalls, 1, reason: '回看 analyzed 草稿不重新分析');
+  });
+
+  // onboarding 轉換第 6 步：告訴使用者「額度不夠」的那一刻記一筆 quota_block_shown，
+  // 只是記錄；付費牆與錯誤列照舊。
+  for (final monthly in [false, true]) {
+    final scope = monthly ? 'monthly' : 'daily';
+    testWidgets('額度不足事件：生成撞到伺服器額度（429）記一筆 opener／$scope／server；再開付費頁不重記',
+        (tester) async {
+      await generateIntoQuota(tester,
+          tier: SubscriptionTierHelper.free, monthly: monthly);
+      expect(_quotaBlocks(), [
+        {'feature': 'opener', 'scope': scope, 'block_source': 'server'},
+      ]);
+
+      await tester.tap(find.byKey(const ValueKey('opener-upgrade-button')));
+      await _settleBounded(tester);
+      expect(_paywallOpens, 2);
+      expect(_quotaBlocks(), hasLength(1));
+    });
+  }
+
+  testWidgets('額度不足事件：舊單段生成前 App 先擋（今天用完）記一筆 opener／daily／precheck，不送出',
+      (tester) async {
+    service.analyzeError = const OpenerFlowException(
+        code: OpenerFlowErrorCode.flowUnsupported, message: 'x', status: 400);
+    _paywallOpens = 0;
+    await tester.binding.setSurfaceSize(const Size(390, 4200));
+    await tester.pumpWidget(ProviderScope(
+        overrides: [
+          ..._screenOverrides(SubscriptionTierHelper.free,
+              stickySubscription: const SubscriptionState(
+                  monthlyLimit: 30, dailyLimit: 10, dailyMessagesUsed: 10)),
+          subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          // 本機用量預設讀 Hive usage box（這個測試沒開）。
+          usageDataProvider.overrideWithValue(UsageData(
+              monthlyUsed: 0,
+              monthlyLimit: 30,
+              dailyUsed: 10,
+              dailyLimit: 10,
+              dailyResetAt: DateTime(2026, 10, 28),
+              tier: SubscriptionTierHelper.free)),
+        ],
+        child: MaterialApp.router(
+            routerConfig: GoRouter(routes: [
+          GoRoute(path: '/', builder: (_, __) => const OpeningRescueScreen()),
+          GoRoute(
+              path: '/paywall',
+              builder: (context, state) {
+                _paywallOpens++;
+                return Scaffold(
+                    body: Center(
+                        child: TextButton(
+                            onPressed: () => context.pop(),
+                            child: const Text('關閉付費牆'))));
+              }),
+        ]))));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(find.text('手動輸入'));
+    await tester.pumpAndSettle();
+    await _analyze(tester, until: find.text('生成開場白'));
+
+    await _tapAndSettleAsync(tester, find.text('生成開場白'),
+        until: find.text('關閉付費牆'));
+
+    expect(_paywallOpens, 1);
+    expect(_quotaBlocks(), [
+      {'feature': 'opener', 'scope': 'daily', 'block_source': 'precheck'},
+    ]);
+    expect(service.legacyCalls, 0);
   });
 }
