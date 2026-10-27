@@ -1323,10 +1323,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             '${OpenerAccessContract.canonicalPaidOrder.length} 句',
           ),
           // 鏡像 server 真相源 practice-chat/draw_decision.ts：free=0（只剩
-          // 起步清單一次性贈抽）；付費數字吃 AppConstants，改額度不用改文案。
+          // 一次性首抽：免費帳號第一次進練習室就發，ADR #35；Onboarding 第 1 步）；
+          // 付費數字吃 AppConstants，改額度不用改文案。
           _buildComparisonRow(
             '陪練女孩翻牌',
-            '起步贈抽 1 次',
+            '免費首抽 1 次',
             '每日 ${AppConstants.starterDailyDrawLimit} 次',
             '每日 ${AppConstants.essentialDailyDrawLimit} 次',
           ),

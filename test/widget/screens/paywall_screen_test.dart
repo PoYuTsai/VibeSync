@@ -364,9 +364,10 @@ void main() {
         (tester) async {
       await pumpManagePaywall(tester);
 
-      // 鏡像 server draw_decision.ts：free=0（起步一次性贈抽）/3/5。
+      // 鏡像 server draw_decision.ts：free=0（一次性首抽，第一次進練習室就發）/3/5。
       expect(find.text('陪練女孩翻牌'), findsOneWidget);
-      expect(find.text('起步贈抽 1 次'), findsOneWidget);
+      expect(find.text('免費首抽 1 次'), findsOneWidget);
+      expect(find.text('起步贈抽 1 次'), findsNothing); // 觸發點已改，舊說法不回歸
       expect(find.text('每日 3 次'), findsOneWidget);
       expect(find.text('每日 5 次'), findsOneWidget);
       expect(find.text('每日 1 位'), findsNothing); // 舊不實文案絕不回歸
