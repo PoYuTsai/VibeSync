@@ -230,6 +230,40 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         .firstWhere((o) => o?.isReady == true, orElse: () => null);
   }
 
+  /// 購買版：選到的那一張沒有 App Store 價格時退回哪一張（Codex 主審第 1 輪 P2）。
+  /// 購買版一次只顯示一個週期，退回「第一個有價格的」會把人拉回別的週期，例如只有
+  /// Starter 月繳與 Essential 季繳時，點季繳又被拉回 Starter 月繳，Essential 季繳就
+  /// 永遠選不到。所以先找同週期另一級、再找同一級另一個週期、最後才是任何一張有價格的。
+  static _PaywallOption? _buyFallbackOption(
+    List<_PaywallOption> options,
+    _PaywallOption requested,
+  ) {
+    final ready = options.where((option) => option.isReady).toList();
+    if (ready.isEmpty) return null;
+    return ready.firstWhere(
+      (option) => option.isQuarterly == requested.isQuarterly,
+      orElse: () => ready.firstWhere(
+        (option) => option.tier == requested.tier,
+        orElse: () => ready.first,
+      ),
+    );
+  }
+
+  /// 購買版切換到月繳或季繳時要選哪一張：同一級在那個週期有價格就留在同一級；沒有就
+  /// 選那個週期有價格的另一級；兩級都還沒價格（同步中）才照舊選同一級。
+  static String _buyOptionIdForPeriod(
+    List<_PaywallOption> options, {
+    required String tier,
+    required bool quarterly,
+  }) {
+    final inPeriod =
+        options.where((option) => option.isQuarterly == quarterly).toList();
+    final sameTier = inPeriod.firstWhere((option) => option.tier == tier);
+    if (sameTier.isReady) return sameTier.id;
+    final ready = inPeriod.where((option) => option.isReady);
+    return ready.isEmpty ? sameTier.id : ready.first.id;
+  }
+
   void _scheduleSelectedOptionFallback(
     _PaywallOption? fallback,
     String selectedId,
@@ -305,19 +339,26 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (!_layoutResolved) return _buildLoadingSkeleton();
 
     final options = _buildOptions(subscription);
-    final resolvedId = _resolvedOptionId(subscription);
-    final selectedId =
-        _isPurchasing ? (_frozenSelectedId ?? resolvedId) : resolvedId;
     final showFreeLayout = _isPurchasing
         ? (_frozenFreeLayout ?? subscription.isFreeUser)
         : subscription.isFreeUser;
+    final resolvedId = _resolvedOptionId(subscription);
+    final requestedId =
+        _isPurchasing ? (_frozenSelectedId ?? resolvedId) : resolvedId;
+    final requested = _selectedOption(options, requestedId);
+    final fallbackOption = requested == null || requested.isReady
+        ? null
+        : showFreeLayout
+            ? _buyFallbackOption(options, requested)
+            : _firstAvailableOption(options);
+    _scheduleSelectedOptionFallback(fallbackOption, requestedId);
+    // 購買版一次只顯示一個週期：當幀就畫退回後的那一張，不先閃一幀沒有價格的卡
+    // （主審第 1 輪 P2）。管理版照舊，下一幀才換。
+    final selected =
+        showFreeLayout && fallbackOption != null ? fallbackOption : requested;
+    final selectedId = selected?.id ?? requestedId;
     _frozenSelectedId = selectedId;
     _frozenFreeLayout = showFreeLayout;
-    final selected = _selectedOption(options, selectedId);
-    final fallbackOption = selected == null || selected.isReady
-        ? null
-        : _firstAvailableOption(options);
-    _scheduleSelectedOptionFallback(fallbackOption, selectedId);
     final selectedProduct = selected?.purchasableProduct;
     final selectedTier = selected?.tier ?? SubscriptionTierHelper.essential;
     final plansReady = options.any((o) => o.isReady);
@@ -620,6 +661,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         .firstWhere(
             (option) => option.tier == selectedTier && option.isQuarterly)
         .discount;
+    // App Store 只回了部分方案時（主審第 1 輪 P2）：買得到的方案一定選得到。只有一個
+    // 週期買得到就不放月繳／季繳切換（切過去也一張都買不到）；買不到的卡點了不換選取、
+    // 也不標推薦。全部都還沒價格（同步中）時照舊：切換、點卡都可以，推薦標在 Starter。
+    final anyReady = options.any((option) => option.isReady);
+    final showPeriodToggle = !anyReady ||
+        (options.any((option) => !option.isQuarterly && option.isReady) &&
+            options.any((option) => option.isQuarterly && option.isReady));
 
     return BrandScaffold(
       title: '升級方案',
@@ -671,23 +719,29 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
-                BrandSegmentedButton<bool>(
-                  segments: [
-                    const BrandSegment(value: false, label: '月繳'),
-                    BrandSegment(
-                      value: true,
-                      label: quarterlyDiscount == null
-                          ? '季繳'
-                          : '季繳 $quarterlyDiscount',
-                    ),
-                  ],
-                  selected: isQuarterly,
-                  onChanged: (quarterly) => _selectOption(
-                    '${selectedTier}_${quarterly ? 'quarterly' : 'monthly'}',
-                  ),
-                ),
                 const SizedBox(height: 16),
+                if (showPeriodToggle) ...[
+                  BrandSegmentedButton<bool>(
+                    segments: [
+                      const BrandSegment(value: false, label: '月繳'),
+                      BrandSegment(
+                        value: true,
+                        label: quarterlyDiscount == null
+                            ? '季繳'
+                            : '季繳 $quarterlyDiscount',
+                      ),
+                    ],
+                    selected: isQuarterly,
+                    onChanged: (quarterly) => _selectOption(
+                      _buyOptionIdForPeriod(
+                        options,
+                        tier: selectedTier,
+                        quarterly: quarterly,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -698,8 +752,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           child: _buildBuyPlanCard(
                             option: shownOptions[i],
                             isSelected: shownOptions[i].id == selectedId,
+                            isSelectable: !anyReady || shownOptions[i].isReady,
                             isRecommended:
-                                shownOptions[i].tier == recommendedTier,
+                                shownOptions[i].tier == recommendedTier &&
+                                    (!anyReady || shownOptions[i].isReady),
                           ),
                         ),
                       ],
@@ -827,10 +883,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   /// 購買版的方案卡：名稱、App Store 價格（沒到就「價格同步中」）、續訂週期；季繳多一行
   /// 灰色月均價小字（無條件進位，字比扣款金額小）。選到的那張是橘框；「推薦」跟著預設
-  /// 那張；沒有徽章的卡留同樣高度，兩張卡的名稱、價格對齊。
+  /// 那張；沒有徽章的卡留同樣高度，兩張卡的名稱、價格對齊。[isSelectable] false＝
+  /// 別的方案已經買得到、這張還沒價格：點了不換選取。
   Widget _buildBuyPlanCard({
     required _PaywallOption option,
     required bool isSelected,
+    required bool isSelectable,
     required bool isRecommended,
   }) {
     final billingCycle = option.isQuarterly ? '每 3 個月自動續訂' : '每月自動續訂';
@@ -862,10 +920,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return Semantics(
       key: ValueKey('paywall-buy-card-${option.id}'),
       button: true,
+      enabled: isSelectable,
       selected: isSelected,
       child: PressableScale(
+        enabled: isSelectable,
         child: GestureDetector(
-          onTap: () => _selectOption(option.id),
+          onTap: isSelectable ? () => _selectOption(option.id) : null,
           child: AnimatedContainer(
             duration: AppMotion.state,
             curve: AppMotion.easeOut,
@@ -985,12 +1045,19 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     );
   }
 
-  /// 購買版固定底部：購買鈕＋自動續訂說明（照選到的週期寫，季繳寫每 3 個月）＋條款、
-  /// 隱私連結，都在購買鈕旁邊看得到（App Review 3.1.2）。
+  /// 購買版固定底部：購買鈕＋扣款與自動續訂說明（照選到的週期寫，季繳寫每 3 個月）＋
+  /// 條款、隱私連結，都在購買鈕旁邊看得到（App Review 3.1.2）。「由 Apple ID 扣款」
+  /// 是管理版本來就有的揭露（主審第 1 輪建議補回）。說明拆成幾段，窄螢幕只在逗號後
+  /// 換行。
   Widget _buildBuyBottomBar({
     required Widget primaryButton,
     required bool isQuarterly,
   }) {
+    final renewalPhrases = [
+      '由 Apple ID 扣款，',
+      '${isQuarterly ? '每 3 個月' : '每月'}自動續訂，',
+      '可隨時在 iPhone 設定取消',
+    ];
     final linkStyle = TextButton.styleFrom(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       minimumSize: const Size(48, 40),
@@ -1008,20 +1075,27 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   primaryButton,
                   const SizedBox(height: 8),
-                  Text(
-                    '${isQuarterly ? '每 3 個月' : '每月'}自動續訂，可隨時在 iPhone 設定取消',
+                  MergeSemantics(
                     key: const ValueKey('paywall-buy-renewal-note'),
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.onBackgroundSecondary,
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        for (final phrase in renewalPhrases)
+                          Text(
+                            phrase,
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.onBackgroundSecondary,
+                            ),
+                          ),
+                      ],
                     ),
-                    textAlign: TextAlign.center,
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

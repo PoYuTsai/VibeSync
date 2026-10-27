@@ -224,9 +224,6 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
   if (seededState != null) {
     stub.seedState(seededState);
     await tester.pump();
-    // 免費用戶預設選 Starter 月繳（Onboarding 第 9 步）；種的狀態只有 Essential 有
-    // 價格時，下一幀才換到有價格的那一張。
-    await tester.pump();
   }
   _signInAs(signedInAs);
   return (router, stub);
