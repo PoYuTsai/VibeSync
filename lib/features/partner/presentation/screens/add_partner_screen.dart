@@ -107,17 +107,19 @@ class AddPartnerScreen extends ConsumerStatefulWidget {
 ///   返回時分析頁的 `_cleanupAndGoBack` 會刪掉沒內容的空片段、回到對象頁。
 /// - 建空片段失敗：照樣落在對象頁（等於沒帶參數的落點），再跳既有的錯誤字。
 /// - 等寫入的空檔裡使用者可以按返回離開（[isStillOnForm] 變 false）：不再替他
-///   換頁；空片段已經建好的話就收回（[discardEmptyConversation]），因為分析頁
-///   根本沒打開，`_cleanupAndGoBack` 不會跑，不收回會在對象頁留一個空的
-///   「新對話」（Codex 第二批主審第 1 輪 P3）。收回失敗只記 log，不擋使用者。
+///   換頁，也不刪已經建好的空片段，直接結束。
+///
+/// 為什麼離開時不刪空片段（Codex 第二批主審第 2 輪 P2）：片段在建立流程跑完
+/// 之前就讀得到了（write controller 先寫片段、才等封存狀態那筆寫入），使用者
+/// 可能已經回首頁、從剛建好的對象打開這個「新對話」並匯入內容；這時刪掉會連他
+/// 剛匯入的內容一起刪。留一個空的「新對話」不傷資料，使用者可以自己刪——這是
+/// 第 1 輪 P3（離開會留下空片段）的已知殘留。
 @visibleForTesting
 Future<void> followUpAfterPartnerCreated({
   required String partnerId,
   required String? nextStep,
   required bool Function() isStillOnForm,
   required Future<Conversation> Function() createEmptyConversation,
-  required Future<void> Function(Conversation conversation)
-      discardEmptyConversation,
   required void Function(String location) replaceWith,
   required void Function(String location) push,
   required void Function() onCreateConversationFailed,
@@ -137,14 +139,9 @@ Future<void> followUpAfterPartnerCreated({
     onCreateConversationFailed();
     return;
   }
-  if (!isStillOnForm()) {
-    try {
-      await discardEmptyConversation(conversation);
-    } catch (error) {
-      debugPrint('Discard unused empty conversation failed: $error');
-    }
-    return;
-  }
+  // 寫入期間離開了：不換頁（不把已經退回的首頁換掉），也不刪空片段（原因見
+  // 上面：可能刪到他重新打開、已經匯入內容的片段）。
+  if (!isStillOnForm()) return;
   replaceWith(partnerLocation);
   push('/conversation/${conversation.id}');
 }
@@ -226,8 +223,6 @@ class _AddPartnerScreenState extends ConsumerState<AddPartnerScreen> {
         messages: [],
         partnerId: partner.id,
       ),
-      // 跟分析頁 _cleanupAndGoBack 同一個刪法；建好到這裡沒人碰過，一定還是空的。
-      discardEmptyConversation: conversationWriter.delete,
       // pushReplacement (NOT go): swaps /partner/new with /partner/:id so
       // back from detail returns to Home (Partner list) underneath, not to
       // the add form. (Codex r1 P1.2)
