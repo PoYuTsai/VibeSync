@@ -26,6 +26,8 @@ void main() {
     VoidCallback? onConfirm,
     VoidCallback? onCancel,
     VoidCallback? onUpgrade,
+    int? tailUnits,
+    VoidCallback? onAnalyzeTail,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -40,6 +42,8 @@ void main() {
                   onConfirm: onConfirm ?? () {},
                   onCancel: onCancel ?? () {},
                   onUpgrade: onUpgrade,
+                  tailUnits: tailUnits,
+                  onAnalyzeTail: onAnalyzeTail,
                 ),
               );
             },
@@ -302,6 +306,118 @@ void main() {
       await tester.tap(find.text('查看升級方案'));
       await tester.pumpAndSettle();
       expect(upgraded, isTrue);
+    });
+  });
+
+  // Onboarding 第 15 步：超過 2000 字、這次付不起，但最後那段付得起時才多一顆鈕。
+  group('AnalysisPreviewDialog — 只分析最後 2,000 字（Onboarding 第 15 步）', () {
+    Finder tailButton() => find.byKey(AnalysisPreviewDialog.tailButtonKey);
+
+    testWidgets('超過 2000 字、免費今天付不起 20 則：出現這顆鈕，按下去叫 onAnalyzeTail',
+        (tester) async {
+      var analyzedTail = false;
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(3100),
+        usage: UsageData.free(),
+        onUpgrade: () {},
+        tailUnits: 10,
+        onAnalyzeTail: () => analyzedTail = true,
+      ));
+      await openDialog(tester);
+
+      expect(find.text('只分析最後 2,000 字（10 則）'), findsOneWidget);
+      // 原本的升級與停用的確認鈕照舊。
+      expect(find.text('查看升級方案'), findsOneWidget);
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.widgetWithText(ElevatedButton, '確認使用 20 則'),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(tailButton());
+      await tester.pumpAndSettle();
+      expect(analyzedTail, isTrue);
+    });
+
+    testWidgets('最後那段不到 10 則：照算出來的則數寫', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(2500),
+        usage: UsageData.free(),
+        tailUnits: 8,
+        onAnalyzeTail: () {},
+      ));
+      await openDialog(tester);
+
+      expect(find.text('只分析最後 2,000 字（8 則）'), findsOneWidget);
+    });
+
+    testWidgets('付得起 20 則：沒有這顆鈕', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(3100),
+        usage: UsageData(
+          monthlyUsed: 0,
+          monthlyLimit: 300,
+          dailyUsed: 0,
+          dailyLimit: 50,
+          dailyResetAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+        tailUnits: 10,
+        onAnalyzeTail: () {},
+      ));
+      await openDialog(tester);
+
+      expect(tailButton(), findsNothing);
+    });
+
+    testWidgets('不到 2000 字（一般長度）付不起：沒有這顆鈕', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(450), // 10 則
+        usage: UsageData(
+          monthlyUsed: 0,
+          monthlyLimit: 30,
+          dailyUsed: 10, // 剩 5 < 10
+          dailyLimit: 15,
+          dailyResetAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+        tailUnits: 3,
+        onAnalyzeTail: () {},
+      ));
+      await openDialog(tester);
+
+      expect(tailButton(), findsNothing);
+    });
+
+    testWidgets('連最後那段都付不起（今天剩 5 則）：沒有這顆鈕', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(3100),
+        usage: UsageData(
+          monthlyUsed: 0,
+          monthlyLimit: 30,
+          dailyUsed: 10,
+          dailyLimit: 15,
+          dailyResetAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+        tailUnits: 10,
+        onAnalyzeTail: () {},
+      ));
+      await openDialog(tester);
+
+      expect(tailButton(), findsNothing);
+    });
+
+    testWidgets('呼叫端沒給尾段（例如她最後一則就超過 2000 字）：沒有這顆鈕', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        preview: _preview(3100),
+        usage: UsageData.free(),
+        onUpgrade: () {},
+      ));
+      await openDialog(tester);
+
+      expect(tailButton(), findsNothing);
+      expect(find.textContaining('只分析最後'), findsNothing);
     });
   });
 

@@ -7,6 +7,7 @@
 // - 回覆微調上一輪失敗、或送出後還沒回來就關掉重開：免費次數照樣標待確認（主審第 1、2 輪 P2）。
 // - 這個月和今天都不夠：跟伺服器一樣先看本月（主審第 1 輪 P3）。
 // - 付款後自動接續分析（Onboarding 第 14 步）：成交且額度夠才開始、只開始一次。
+// - 只分析最後 2,000 字（Onboarding 第 15 步）：超長又付不起才有那顆鈕，只送最後那段。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -650,16 +651,16 @@ Future<void> _closePaywall(WidgetTester tester) async {
   expect(find.byType(PaywallScreen), findsNothing);
 }
 
-/// 她說了 [count] 則、每則 [charsEach] 字（超過 2000 字要確認 20 則用）。
-Conversation _longConversation({int count = 3, int charsEach = 800}) {
+/// 她說了好幾則，第 i 則 [sizes][i] 字（預設三則各 800 字＝2400 字，要確認 20 則）。
+Conversation _longConversation([List<int> sizes = const [800, 800, 800]]) {
   return Conversation(
     id: _conversationId,
     name: '小雲',
     messages: [
-      for (var i = 1; i <= count; i++)
+      for (var i = 1; i <= sizes.length; i++)
         Message(
           id: 'long-$i',
-          content: '$i${'好' * (charsEach - 1)}',
+          content: '$i${'好' * (sizes[i - 1] - 1)}',
           isFromMe: false,
           timestamp: DateTime(2026, 10, 18, 12, i),
         ),
@@ -963,6 +964,98 @@ void main() {
       final second = harness.recorder.requests.last.confirmedOvercharge!;
       expect(second.confirmationId, isNot(first.confirmationId));
       expect(second.payloadHash, first.payloadHash);
+    });
+  });
+
+  // Onboarding 第 15 步：手動貼長文（超過 2000 字）又付不起 20 則時，多一顆「只分析最後
+  // 2,000 字」；按下去只送最後那段、只算那段的則數。
+  group('只分析最後 2,000 字（Onboarding 第 15 步）', () {
+    /// 五則各 600 字＝3000 字：一次要 20 則；最後三則 1800 字＝10 則。
+    const fiveBy600 = [600, 600, 600, 600, 600];
+
+    testWidgets('免費、貼了 3000 字：多一顆只分析最後 2,000 字（10 則），按下去只送最後那段',
+        (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        conversation: _longConversation(fiveBy600),
+      );
+      await _tapOrb(tester);
+      expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+      expect(
+        _inPreviewDialog(find.text('只分析最後 2,000 字（10 則）')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        _inPreviewDialog(find.byKey(AnalysisPreviewDialog.tailButtonKey)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AnalysisPreviewDialog), findsNothing);
+      expect(find.byType(PaywallScreen), findsNothing);
+      expect(harness.recorder.streamCalls, 1);
+      final request = harness.recorder.requests.single;
+      expect(
+        [for (final m in request.messages) m.id],
+        ['long-3', 'long-4', 'long-5'],
+      );
+      // 伺服器照同一套算法：尾段 1800 字、10 則，不用長內容確認。
+      expect(MessageCalculator.countPayloadChars(request.messages), 1800);
+      expect(
+        MessageCalculator.previewAnalysisRequest(request.messages).band.units,
+        10,
+      );
+      expect(request.confirmedOvercharge, isNull);
+      // 尾段整段都是這次的新內容；不帶上次的基準。
+      expect(request.analysisFragmentStartIndex, 0);
+      expect(request.previousAnalyzedCount, isNull);
+      expect(request.previousAnalyzedCharCount, isNull);
+    });
+
+    testWidgets('付得起 20 則（Starter）：沒有這顆鈕，照舊確認使用 20 則', (tester) async {
+      await _pumpScreen(
+        tester,
+        plan: _plan(_starter),
+        conversation: _longConversation(fiveBy600),
+      );
+      await _tapOrb(tester);
+      expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+      expect(find.byKey(AnalysisPreviewDialog.tailButtonKey), findsNothing);
+      expect(_inPreviewDialog(find.text('確認使用 20 則')), findsOneWidget);
+    });
+
+    testWidgets('不到 2000 字、只是今天不夠：沒有這顆鈕', (tester) async {
+      await _pumpScreen(
+        tester,
+        plan: _plan(_free, dailyUsed: _dailyLimitOf(_free)),
+        conversation: _longConversation(const [600, 600]),
+      );
+      await _tapOrb(tester);
+      expect(find.text('開始分析前'), findsOneWidget);
+      expect(find.byKey(AnalysisPreviewDialog.tailButtonKey), findsNothing);
+    });
+
+    testWidgets('她最後一則就超過 2000 字：沒有這顆鈕（不截斷她說的話）', (tester) async {
+      await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        conversation: _longConversation(const [600, 2001]),
+      );
+      await _tapOrb(tester);
+      expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+      expect(find.byKey(AnalysisPreviewDialog.tailButtonKey), findsNothing);
+    });
+
+    testWidgets('今天剩的連最後那段的 10 則都不夠：沒有這顆鈕', (tester) async {
+      await _pumpScreen(
+        tester,
+        plan: _plan(_free, dailyUsed: _dailyLimitOf(_free) - 5),
+        conversation: _longConversation(fiveBy600),
+      );
+      await _tapOrb(tester);
+      expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+      expect(find.byKey(AnalysisPreviewDialog.tailButtonKey), findsNothing);
     });
   });
 

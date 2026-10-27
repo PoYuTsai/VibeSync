@@ -8,6 +8,8 @@
 //   時 caller 已走額度不足路徑，這裡的 canProceed 只是防禦層。
 // - reject 帶（4001+）：caller 在呼叫本 dialog 前就擋下，不會進來。
 // - [AnalysisQuotaLine]：額度夠、又是一般長度時不跳本 dialog，改在分析鈕旁寫一行。
+// - 只分析最後 2,000 字（Onboarding 第 15 步）：overcharge 帶付不起、最後那段付得起時
+//   多一顆鈕；最後那段由 caller 截好、則數一起給。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -69,6 +71,13 @@ class AnalysisPreviewDialog extends StatelessWidget {
   final VoidCallback onCancel;
   final VoidCallback? onUpgrade;
 
+  /// 只分析最後 2,000 字要用幾則（Onboarding 第 15 步）；null＝沒有這個選項（例如
+  /// 她最後一則就超過 2,000 字）。
+  final int? tailUnits;
+  final VoidCallback? onAnalyzeTail;
+
+  static const tailButtonKey = ValueKey('analysis-preview-analyze-tail');
+
   const AnalysisPreviewDialog({
     super.key,
     required this.preview,
@@ -76,11 +85,25 @@ class AnalysisPreviewDialog extends StatelessWidget {
     required this.onConfirm,
     required this.onCancel,
     this.onUpgrade,
+    this.tailUnits,
+    this.onAnalyzeTail,
   });
 
   bool get _isOvercharge => preview.band.kind == BillingBandKind.overcharge;
 
   int get _requiredUnits => preview.band.units ?? 0;
+
+  /// 只在超過 2,000 字、這次付不起，而且最後那段付得起時才給「只分析最後 2,000 字」。
+  bool _showsTailOption({required bool canProceed}) {
+    final units = tailUnits;
+    return _isOvercharge &&
+        !canProceed &&
+        onAnalyzeTail != null &&
+        units != null &&
+        units > 0 &&
+        usage.monthlyRemaining >= units &&
+        usage.dailyRemaining >= units;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +111,7 @@ class AnalysisPreviewDialog extends StatelessWidget {
     final canProceed = preview.band.kind != BillingBandKind.reject &&
         usage.monthlyRemaining >= _requiredUnits &&
         usage.dailyRemaining >= _requiredUnits;
+    final showsTailOption = _showsTailOption(canProceed: canProceed);
     // 額度不夠的說法照目前方案（Eric 2026-10-18）：Essential 已經是最高方案，不叫他
     // 升級，只說什麼時候恢復（跟付費頁大標同一句），鈕也只寫「查看方案」。
     final canUpgrade = canUpgradeQuota(usage.tier);
@@ -175,6 +199,26 @@ class AnalysisPreviewDialog extends StatelessWidget {
                 height: 1.45,
               ),
             ),
+          if (showsTailOption) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                key: tailButtonKey,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.28),
+                  ),
+                ),
+                onPressed: AppHaptics.onPress(onAnalyzeTail),
+                child: Text(
+                  '只分析最後 2,000 字（$tailUnits 則）',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
       actions: [
@@ -248,6 +292,8 @@ Future<bool> showAnalysisPreviewDialog({
   required MessagePreview preview,
   required UsageData usage,
   VoidCallback? onUpgrade,
+  int? tailUnits,
+  VoidCallback? onAnalyzeTail,
 }) async {
   final result = await showDialog<bool>(
     context: context,
@@ -257,6 +303,8 @@ Future<bool> showAnalysisPreviewDialog({
       onConfirm: () => Navigator.of(dialogContext).pop(true),
       onCancel: () => Navigator.of(dialogContext).pop(false),
       onUpgrade: onUpgrade,
+      tailUnits: tailUnits,
+      onAnalyzeTail: onAnalyzeTail,
     ),
   );
   return result ?? false;

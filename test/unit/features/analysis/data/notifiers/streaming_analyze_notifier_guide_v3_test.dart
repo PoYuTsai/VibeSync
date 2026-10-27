@@ -331,6 +331,33 @@ void main() {
           reason: '他傳的照樣送去分析');
     });
 
+    test('只分析最後 2,000 字（Onboarding 第 15 步）：存檔用的字數基準照呼叫端給的整段，送出的只有尾段', () async {
+      final client = _ScriptedClient([
+        [Completer<void>()],
+      ]);
+      final container = _container(client);
+      addTearDown(container.dispose);
+      final notifier =
+          container.read(streamingAnalyzeProvider('conv-1').notifier);
+      unawaited(notifier.start(
+        messages: [_msg('最後那段')],
+        nextCharBaseline: 2400,
+        analyzedMessageCount: 5,
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifier.lastPayloadCharCount, 2400,
+          reason: '尾段只有 4 字；基準要存整段的，下次才不會把跳過的那段算進去');
+      final request = client.requests.single;
+      expect(request.messages, hasLength(1));
+      expect(request.previousAnalyzedCount, isNull);
+      expect(request.previousAnalyzedCharCount, isNull);
+      expect(
+        container.read(streamingAnalyzeProvider('conv-1')).analyzedMessageCount,
+        5,
+      );
+    });
+
     test('「為什麼這樣回」（Bruce 2026-10-19 路線二）：一到就進狀態，done 時併進結果與存檔的原樣', () async {
       final gate = Completer<void>();
       final client = _ScriptedClient([

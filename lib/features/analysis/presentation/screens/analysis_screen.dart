@@ -166,6 +166,14 @@ enum _AnalysisAppBarAction {
   export,
 }
 
+/// 分析前確認框的結論：要不要開始、長內容的確認憑證，以及他選了只分析最後 2,000 字
+/// 時改送的那一份（Onboarding 第 15 步）。
+typedef _AnalysisPreviewDecision = ({
+  bool confirmed,
+  OverchargeConfirmationPayload? overcharge,
+  AnalysisRunPreparation? tailOnly,
+});
+
 class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin
     implements
@@ -2494,15 +2502,19 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// [shownQuotaLine]：按鈕旁那一行；用實際請求與用量重算出來的跟它完全一樣才不跳框
   ///（Eric 2026-10-18；主審 r1 P2：多算少算都照舊跳框）。沒有那一行的入口（重新
   /// 分析、錯誤重試）照舊跳框。
-  Future<({bool confirmed, OverchargeConfirmationPayload? overcharge})>
-      _confirmAnalysisPreview(
-    List<Message> requestMessages, {
+  /// 回傳的 tailOnly 不是 null＝他選了只分析最後 2,000 字，改送那一份（Onboarding
+  /// 第 15 步）。
+  Future<_AnalysisPreviewDecision> _confirmAnalysisPreview(
+    AnalysisRunPreparation preparation, {
     AnalysisQuotaLine? shownQuotaLine,
   }) async {
+    const notStarted = (confirmed: false, overcharge: null, tailOnly: null);
+    const confirmedAsIs = (confirmed: true, overcharge: null, tailOnly: null);
     if (!mounted) {
-      return (confirmed: false, overcharge: null);
+      return notStarted;
     }
 
+    final requestMessages = preparation.requestMessages;
     final conversation = ref.read(conversationProvider(widget.conversationId));
     // 增量 = 字數差：billing baseline 用 lastAnalyzedCharCount（ADR #19
     // 規格 #1 欄位職責分離——lastAnalyzedMessageCount 只留給 stale/UI 判斷）。
@@ -2518,7 +2530,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _showFloatingSnackBar(
         '這次新增內容超過 ${MessageCalculator.maxBillableChars} 字，請分批分析。',
       );
-      return (confirmed: false, overcharge: null);
+      return notStarted;
     }
 
     final usage = _buildPreviewUsageData();
@@ -2528,21 +2540,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       dailyRemaining: usage.dailyRemaining,
     );
     if (line != null && line == shownQuotaLine) {
-      return (confirmed: true, overcharge: null);
+      return confirmedAsIs;
     }
     // 額度不夠、她的訊息有自傷字眼（Eric 2026-10-18）：不跳額度不足的框，直接開始；伺服器
     // 只回關心訊息與專線，不扣，也不用長內容確認。資料分享同意照舊在後面。
     final units = preview.band.units ?? 0;
-    if ((usage.monthlyRemaining < units || usage.dailyRemaining < units) &&
-        SelfHarmWords.inHerMessages(requestMessages)) {
-      return (confirmed: true, overcharge: null);
+    final canAfford = usage.canAfford(units);
+    if (!canAfford && SelfHarmWords.inHerMessages(requestMessages)) {
+      return confirmedAsIs;
     }
 
-    if (usage.monthlyRemaining < units || usage.dailyRemaining < units) {
+    if (!canAfford) {
       _trackQuotaBlock(QuotaBlockSource.precheck,
           isMonthly: usage.monthlyRemaining < units);
     }
+    // 只分析最後 2,000 字（Onboarding 第 15 步）：超過 2,000 字又付不起才截尾段；尾段
+    // 付不付得起由確認框判斷，付不起就不出那顆鈕。
+    final tailOnly =
+        preview.band.kind == BillingBandKind.overcharge && !canAfford
+            ? ref.read(analysisRunPreparerProvider).tailOnly(preparation)
+            : null;
     var upgradeTapped = false;
+    var tailTapped = false;
     final confirmed = await showAnalysisPreviewDialog(
       context: context,
       preview: preview,
@@ -2551,9 +2570,25 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         upgradeTapped = true;
         Navigator.of(context, rootNavigator: true).pop(false);
       },
+      // 尾段送出時不帶上次的基準，伺服器算的就是尾段本身的計費字數（見
+      // AnalysisRunPreparer.tailOnly），這裡照同一個算法算則數。
+      tailUnits: tailOnly == null
+          ? null
+          : MessageCalculator.previewAnalysisRequest(tailOnly.requestMessages)
+              .band
+              .units,
+      onAnalyzeTail: tailOnly == null
+          ? null
+          : () {
+              tailTapped = true;
+              Navigator.of(context, rootNavigator: true).pop(false);
+            },
     );
     if (!mounted) {
-      return (confirmed: false, overcharge: null);
+      return notStarted;
+    }
+    if (tailTapped) {
+      return (confirmed: true, overcharge: null, tailOnly: tailOnly);
     }
     if (upgradeTapped) {
       // 額度不夠才有這顆鈕：跟伺服器一樣先看本月、再看今天，付費頁照每日或每月、
@@ -2573,10 +2608,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (!purchased ||
           !mounted ||
           !_buildPreviewUsageData().canAfford(units)) {
-        return (confirmed: false, overcharge: null);
+        return notStarted;
       }
     } else if (!confirmed) {
-      return (confirmed: false, overcharge: null);
+      return notStarted;
     }
 
     if (preview.band.kind == BillingBandKind.overcharge) {
@@ -2593,10 +2628,11 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           billableChars: preview.billableChars,
           confirmationId: const Uuid().v4(),
         ),
+        tailOnly: null,
       );
     }
 
-    return (confirmed: true, overcharge: null);
+    return confirmedAsIs;
   }
 
   void _syncSubscriptionUsageFromResult(
@@ -3108,15 +3144,12 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // 呼叫 Supabase Edge Function（不帶圖片，因為截圖已轉成文字存入）
       // skipPreview 路徑刻意拿不到 overcharge 憑證：>2000 字會被 server
       // 守門擋回（409 要求重新確認），絕不可能未經確認被扣 20 則。
-      ({
-        bool confirmed,
-        OverchargeConfirmationPayload? overcharge
-      }) previewDecision;
+      _AnalysisPreviewDecision previewDecision;
       if (skipPreview) {
-        previewDecision = (confirmed: true, overcharge: null);
+        previewDecision = (confirmed: true, overcharge: null, tailOnly: null);
       } else {
         previewDecision = await _confirmAnalysisPreview(
-          preparation.requestMessages,
+          preparation,
           shownQuotaLine: shownQuotaLine,
         );
       }
@@ -3152,7 +3185,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // 舊 render tree 繼續運作（Eric 2026-05-28 UX spec）。
       await _session.start(
         conversation: conversation,
-        preparation: preparation,
+        // 選了只分析最後 2,000 字就送尾段那一份；訊息數基準兩份一樣。
+        preparation: previewDecision.tailOnly ?? preparation,
         confirmedOvercharge: previewDecision.overcharge,
         waitForCompletion: waitForCompletion,
         shouldProceed: () => mounted,
