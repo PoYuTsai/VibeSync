@@ -763,10 +763,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
+                    // 只在 iPhone App 出現；Apple 放第一（Face ID 最快）——
+                    // 推翻 2026-03-15 的 Google 第一，見 docs/decisions.md
+                    // ADR #58。Android 的登入順序由 Android 上架規格另定。
                     if (_isIOS && !_isSignUp && !_isPasswordRecoveryMode) ...[
-                      _buildGoogleSignInButton(),
-                      const SizedBox(height: 12),
                       _buildAppleSignInButton(),
+                      const SizedBox(height: 12),
+                      _buildGoogleSignInButton(),
                       const SizedBox(height: 24),
                       _buildDivider(),
                       const SizedBox(height: 24),

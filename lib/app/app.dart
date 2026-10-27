@@ -7,6 +7,8 @@ import '../core/theme/app_theme.dart';
 import '../core/services/funnel_tracker.dart';
 import '../core/services/keyboard_token_bridge.dart';
 import '../core/services/supabase_service.dart';
+import '../features/analysis_history/data/providers/analysis_history_providers.dart';
+import '../features/analysis_history/domain/entities/analysis_history_event.dart';
 import '../features/follow_up_notification/data/providers/follow_up_notification_service.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
 import 'keyboard_onboarding_scheduler.dart';
@@ -40,6 +42,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       trackShown: () => unawaited(
         ref.read(funnelTrackerProvider).track('keyboard_setup_shown'),
       ),
+      // 鍵盤教學等成功分析滿 2 次才跳（onboarding 轉換第 13 步）。本機分析
+      // 紀錄以裝置為單位、上限 500 筆，判斷 ≥2 足夠。
+      successfulAnalysisCount: () => ref
+          .read(analysisHistoryRepositoryProvider)
+          .listByKind(AnalysisHistoryKind.analyze)
+          .length,
     )..attach();
     unawaited(_keyboardOnboardingScheduler.primeFullAccessResume());
     _authSubscription = SupabaseService.authStateChanges.listen((_) {

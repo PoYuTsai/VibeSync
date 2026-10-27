@@ -5,7 +5,7 @@
 // router 狀態判斷」）。
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
@@ -21,6 +21,8 @@ class KeyboardOnboardingScheduler {
     required this.isAuthenticated,
     required this.isSplashComplete,
     required this.trackShown,
+    required this.successfulAnalysisCount,
+    this.isWeb = kIsWeb,
   });
 
   final GoRouter router;
@@ -28,10 +30,32 @@ class KeyboardOnboardingScheduler {
   final bool Function() isSplashComplete;
   final void Function() trackShown;
 
+  /// 這台裝置成功分析過幾次（onboarding 轉換第 13 步：滿 2 次才自動提示）。
+  final int Function() successfulAnalysisCount;
+
+  /// 是不是網頁版。預設讀 kIsWeb；測試改不了常數，從這裡模擬。
+  final bool isWeb;
+
   bool _pending = false;
   bool _shownThisSession = false;
   bool _resumePending = false;
   bool _detached = false;
+  int? _sessionAnalysisCount;
+
+  /// 成功分析次數一個 session 只讀一次（[attach] 時，等於開 App 那一刻）：這次
+  /// 打開才分析滿 2 次的人，要等下一次打開才提示，不會在他剛分析完、回到首頁時
+  /// 就跳出來。讀不到（例如本機資料沒開）當 0：寧可晚一點提示，也不讓啟動流程
+  /// 因此出錯。
+  int get _analysisCountThisSession =>
+      _sessionAnalysisCount ??= _readSuccessfulAnalysisCount();
+
+  int _readSuccessfulAnalysisCount() {
+    try {
+      return successfulAnalysisCount();
+    } catch (_) {
+      return 0;
+    }
+  }
 
   /// 冷啟動讀「切完整取用中斷」旗標：有旗標＝上次是在設定流程裡被 iOS
   /// 殺掉（切權限開關必殺 App），要無視 gate 條件把設定頁推回來——
@@ -49,6 +73,8 @@ class KeyboardOnboardingScheduler {
   // 靜默更新 _value、不通知 listener（go_router 14.8.1 源碼＋探針證實），
   // 掛在它上面等於冷啟動後永遠沒有重觸發機會。
   void attach() {
+    // 分析次數在開 App 這一刻定下來（見 _analysisCountThisSession）。
+    _sessionAnalysisCount ??= _readSuccessfulAnalysisCount();
     router.routerDelegate.addListener(maybeSchedule);
   }
 
@@ -64,6 +90,7 @@ class KeyboardOnboardingScheduler {
     if (!_resumePending &&
         !shouldScheduleKeyboardOnboarding(
           platform: defaultTargetPlatform,
+          isWeb: isWeb,
           splashComplete: isSplashComplete(),
           isAuthenticated: isAuthenticated(),
           onboardingCompleted: OnboardingService.isCompletedSync,
@@ -72,6 +99,7 @@ class KeyboardOnboardingScheduler {
           keyboardOnboardingCompleted:
               OnboardingService.isKeyboardCompletedSync,
           alreadyPending: _pending,
+          successfulAnalysisCount: _analysisCountThisSession,
         )) {
       return;
     }

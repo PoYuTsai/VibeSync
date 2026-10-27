@@ -238,7 +238,7 @@ void main() {
   setUpAll(_loadFonts);
 
   testWidgets('prod partner home', (tester) async {
-    // 起步清單卡含「設定 AI 鍵盤」項僅 iOS 顯示，proof 以 iOS 呈現全貌。
+    // 起步清單卡含「看過鍵盤設定」項僅 iOS 顯示，proof 以 iOS 呈現全貌。
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final partners = [
       _p('amy', 'Amy'),

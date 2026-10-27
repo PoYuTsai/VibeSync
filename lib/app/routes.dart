@@ -134,10 +134,7 @@ final router = GoRouter(
     ),
     // literal '/partner/new' MUST come before '/partner/:partnerId' so
     // 'new' isn't matched as a partnerId by the parametric route.
-    GoRoute(
-      path: '/partner/new',
-      builder: (context, state) => const AddPartnerScreen(),
-    ),
+    addPartnerRoute,
     GoRoute(
       path: '/partner/:partnerId',
       builder: (context, state) => PartnerDetailScreen(
@@ -305,6 +302,18 @@ final router = GoRouter(
     ),
     ...chatQuizRoutes,
   ],
+);
+
+/// 新增對象。帶 `?next=screenshot`（[AddPartnerScreen.screenshotFlowLocation]）
+/// 建好直接打開空片段選截圖（onboarding 轉換第 10 步）；沒帶照舊只到對象頁。
+///
+/// 抽成獨立常數是為了讓 `add_partner_screen_test.dart` 驗得到參數真的傳進畫面：
+/// 整個 [router] 的初始化會碰 SupabaseService，測試起不來（同 [chatQuizRoutes]）。
+final addPartnerRoute = GoRoute(
+  path: '/partner/new',
+  builder: (context, state) => AddPartnerScreen(
+    nextStep: state.uri.queryParameters[AddPartnerScreen.nextQueryParam],
+  ),
 );
 
 /// 聊天測驗的路由。獨立路徑與獨立 id space，與電子書、文章都不相干。

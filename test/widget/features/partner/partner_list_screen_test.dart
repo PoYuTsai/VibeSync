@@ -138,8 +138,14 @@ Widget _routedScreen({required List<Override> overrides}) => ProviderScope(
             ),
             GoRoute(
               path: '/partner/new',
-              builder: (_, __) =>
-                  const Scaffold(body: Text('partner-new-screen')),
+              // 帶出 next 參數：主 CTA 要帶 next=screenshot（建好對象卡直接到
+              // 選截圖，onboarding 轉換第 10 步）。
+              builder: (_, state) => Scaffold(
+                body: Text(
+                  'partner-new-screen '
+                  'next=${state.uri.queryParameters['next']}',
+                ),
+              ),
             ),
             GoRoute(
               path: '/practice-collection',
@@ -338,7 +344,9 @@ void main() {
       expect(find.text('先去練習室熱身'), findsNothing);
     });
 
-    testWidgets('primary CTA pushes /partner/new', (t) async {
+    // 預設 800×600 測試視窗高度不到兩頁門檻（620），走單頁版面的主 CTA。
+    testWidgets('primary CTA pushes /partner/new?next=screenshot（單頁版面）',
+        (t) async {
       await t.pumpWidget(
         _routedScreen(
           overrides: [
@@ -354,7 +362,27 @@ void main() {
       await t.tap(find.text('建立對象卡，開始分析'));
       await t.pumpAndSettle();
 
-      expect(find.text('partner-new-screen'), findsOneWidget);
+      expect(find.text('partner-new-screen next=screenshot'), findsOneWidget);
+    });
+
+    testWidgets('兩頁版面的主 CTA 也帶 next=screenshot', (t) async {
+      await t.binding.setSurfaceSize(const Size(393, 852));
+      addTearDown(() => t.binding.setSurfaceSize(null));
+      await t.pumpWidget(
+        _routedScreen(
+          overrides: [
+            partnerListProvider.overrideWith((_) => const <Partner>[]),
+          ],
+        ),
+      );
+      await t.pumpAndSettle();
+
+      await t.ensureVisible(find.text('建立對象卡，開始分析'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('建立對象卡，開始分析'));
+      await t.pumpAndSettle();
+
+      expect(find.text('partner-new-screen next=screenshot'), findsOneWidget);
     });
 
     testWidgets('secondary CTA pushes /practice-collection', (t) async {

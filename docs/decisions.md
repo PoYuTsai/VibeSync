@@ -1526,3 +1526,23 @@ v2.4 修正三項。做法是把「誰說、誰做、資料支持到哪」寫成
 1. 她先說想慢一點（B34），接著又大笑收尾：維持現在。第一張排收，其他卡照出，綠燈那張帶張力照留；B34 照舊不推進。
 2. 綠燈或黃燈、她大笑收尾，但已經答應邀約（含糊答應或明確答應）：第一張排推進，明確答應就說定時間地點，含糊答應由他講具體；這張本身就是收尾，不另排收。其餘照原本的排法：綠燈留帶張力與接住，黃燈照一般排法、不排帶張力。標到 B34 時照舊不推進；聊開了的種子不在這次答覆裡，照舊。
 3. 決定 10「沉默滿 3 天可以重開」的天數從哪裡來，我們想好再跟 Bruce 確認。
+
+---
+
+## ADR #58 — [2026-10-27] iOS 登入頁 Apple 放第一（推翻 2026-03-15 的 Google 第一）
+
+**狀態**: 🟢 Active — Eric 2026-10-27 決定。取代 `docs/superpowers/specs/2026-03-15-pre-launch-polish-design.md` §2.1「Google → Apple」（該節已加註）。
+
+**背景**: 2026-03-15 上架前準備把社群登入改成 Google 在上、Apple 在下，理由是「Google 帳號更通用（跨平台）」「未來 Android 版也適用」「Apple 審核沒規定順序」。可是這兩顆按鈕只在 iPhone App 出現（`login_screen.dart` 的 `_isIOS`，網頁版與 Android 都不顯示），Android 的理由用不到；在 iPhone 上用 Apple 登入只要 Face ID，最快。夥伴的 onboarding 實作規格（2026-10-22）步驟 11 把它列成要 Eric 拍板的決策（決策表第 3 題，建議 Apple 第一）。
+
+**決定**（Eric 2026-10-27「全部都做 照夥伴預設 開工」，即照決策表第 3 題的建議）:
+
+1. iOS 登入頁：「使用 Apple 繼續」放第一顆、「使用 Google 繼續」第二顆。兩顆照舊都能登入，Email 表單不動。
+2. 只影響 iPhone App：按鈕本來就只在 iOS 出現，網頁版與 Android 的畫面不變。
+3. Android 不受本決定約束：照 `docs/plans/2026-08-21-android-public-release-roundtable-spec.md`（DEC-04、AUTH-01、AUTH-02），Android 以 Google／Email 為主要入口，Apple 只是「已有 iPhone VibeSync 帳號」的次要入口。之後做 Android 登入畫面時，不能直接沿用 iOS 這個順序。
+
+**不動**: 登入流程、Supabase OAuth 設定、Sign in with Apple 本身都不變，只改兩顆按鈕的上下順序。
+
+**驗證**: 目前沒有 widget 測試掛 `LoginScreen`（缺 Supabase auth 的注入點），只為鎖順序先做注入點不划算，所以不加測試，靠真機驗收：iPhone 登入頁第一顆是「使用 Apple 繼續」，兩顆都能登入成功。
+
+**回退**: 把兩顆按鈕對調回去（單一 commit 還原）。

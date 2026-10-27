@@ -2,7 +2,9 @@
 //
 // 案 3 冷啟動分流（docs/plans/2026-07-06-case3-cold-start-branching-design.md）：
 // onboarding 第 5 頁是分流頁——「你現在有正在聊的對象嗎？」。
-//   - 主按鈕「有，幫我分析對話」→ markCompleted → go('/') → push('/partner/new')
+//   - 主按鈕「有，幫我分析對話」→ markCompleted → go('/') →
+//     push('/partner/new?next=screenshot')（onboarding 轉換第 10 步：建好對象卡
+//     直接到選截圖）
 //   - 次按鈕「還沒，先去練習」→ markCompleted → go('/') → push('/practice-collection?guide=1')
 //   - 底部「下一步」在分流頁隱藏（分流按鈕在頁內）；「略過」行為不變。
 // 用無 redirect 的 stub GoRouter 驗證真實導流落點＋SharedPreferences 寫入。
@@ -28,7 +30,14 @@ GoRouter _stubRouter() => GoRouter(
         ),
         GoRoute(
           path: '/partner/new',
-          builder: (_, __) => const Scaffold(body: Text('partner-new-screen')),
+          // 帶出 next 參數讓測試驗證：分流「有」必須帶 next=screenshot（建好
+          // 對象卡直接到選截圖，onboarding 轉換第 10 步）。
+          builder: (_, state) => Scaffold(
+            body: Text(
+              'partner-new-screen '
+              'next=${state.uri.queryParameters['next']}',
+            ),
+          ),
         ),
         GoRoute(
           path: '/practice-collection',
@@ -127,7 +136,7 @@ void main() {
       );
     });
 
-    testWidgets('主按鈕「有，幫我分析對話」→ 完成 onboarding 並落在 /partner/new',
+    testWidgets('主按鈕「有，幫我分析對話」→ 完成 onboarding 並落在 /partner/new?next=screenshot',
         (tester) async {
       await _pumpOnboarding(tester);
       await _swipeToBranchingPage(tester);
@@ -135,7 +144,7 @@ void main() {
       await tester.tap(find.text('有，幫我分析對話'));
       await tester.pumpAndSettle();
 
-      expect(find.text('partner-new-screen'), findsOneWidget);
+      expect(find.text('partner-new-screen next=screenshot'), findsOneWidget);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('onboarding_completed'), isTrue);
     });
@@ -167,11 +176,11 @@ void main() {
 
       await tester.tap(find.text('有，幫我分析對話'));
       await tester.pumpAndSettle();
-      expect(find.text('partner-new-screen'), findsOneWidget);
+      expect(find.text('partner-new-screen next=screenshot'), findsOneWidget);
 
       // push 在 go('/') 之上 → pop 應回主殼，不是 onboarding。
       final router = GoRouter.of(
-        tester.element(find.text('partner-new-screen')),
+        tester.element(find.text('partner-new-screen next=screenshot')),
       );
       router.pop();
       await tester.pumpAndSettle();
@@ -236,15 +245,19 @@ void main() {
       // 未登入：只回到 '/'（真實 app 會被 auth gate 轉去 /login），
       // 不 push 目的地。
       expect(find.text('main-shell'), findsOneWidget);
-      expect(find.text('partner-new-screen'), findsNothing);
+      expect(find.textContaining('partner-new-screen'), findsNothing);
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('onboarding_completed'), isTrue);
-      expect(prefs.getString('onboarding_pending_route'), '/partner/new');
+      // 暫存原樣保存整串（含 next=screenshot），登入後 applier 照原樣 push。
+      expect(
+        prefs.getString('onboarding_pending_route'),
+        '/partner/new?next=screenshot',
+      );
 
       // 暫存取走即清（登入後 MainShell applier 消費的契約）。
       final pending = await OnboardingService.takePendingHandoff();
-      expect(pending?.route, '/partner/new');
+      expect(pending?.route, '/partner/new?next=screenshot');
       expect(await OnboardingService.takePendingHandoff(), isNull);
     });
   });

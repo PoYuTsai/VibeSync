@@ -31,6 +31,7 @@ import '../../data/repositories/partner_repository.dart';
 import '../../data/services/partner_banner_service.dart';
 import '../../domain/entities/partner.dart';
 import '../providers/partner_providers.dart';
+import 'add_partner_screen.dart';
 import 'partner_detail_screen.dart';
 import '../widgets/getting_started_checklist.dart';
 import '../widgets/home_coach_presence.dart';
@@ -649,7 +650,9 @@ class _EmptyTail extends StatelessWidget {
         BrandPrimaryButton(
           label: '建立對象卡，開始分析',
           icon: Icons.person_add_alt_1_rounded,
-          onPressed: () => context.push('/partner/new'),
+          // 建好對象卡直接到選截圖（onboarding 轉換第 10 步）。
+          onPressed: () =>
+              context.push(AddPartnerScreen.screenshotFlowLocation),
         ),
         const SizedBox(height: 16),
         // Sydney 吃掉 CTA 以下的全部剩餘高度（上限 340），避免中間開洞；
@@ -745,7 +748,9 @@ class _EmptyBlock extends StatelessWidget {
         BrandPrimaryButton(
           label: '建立對象卡，開始分析',
           icon: Icons.person_add_alt_1_rounded,
-          onPressed: () => context.push('/partner/new'),
+          // 建好對象卡直接到選截圖（onboarding 轉換第 10 步）。
+          onPressed: () =>
+              context.push(AddPartnerScreen.screenshotFlowLocation),
         ),
         if (showWarmUpLink) ...[
           const SizedBox(height: 12),

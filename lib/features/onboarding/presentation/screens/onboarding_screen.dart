@@ -10,6 +10,8 @@
 // 2026-07-06 案 3 冷啟動分流：第 5 頁新增 _OnboardingBranchingPage 分流頁
 // （有對象 → /partner/new；還沒 → /practice-collection），原「開始使用」
 // 完成 CTA 移除，分流頁的動作按鈕在頁內、底部「下一步」隱藏。
+// onboarding 轉換第 10 步：「有」改走 /partner/new?next=screenshot，建好對象卡
+// 直接到選截圖，少掉空白對象頁與來源選單兩個畫面。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,6 +24,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
+import '../../../partner/presentation/screens/add_partner_screen.dart'
+    show AddPartnerScreen;
 import '../../../user_profile/data/providers/user_profile_providers.dart';
 import '../../../user_profile/domain/entities/user_profile.dart';
 import '../../data/onboarding_service.dart';
@@ -265,7 +269,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     if (index == _pages.length + 1) {
                       return _OnboardingBranchingPage(
                         onHasPartner: () => _completeOnboardingTo(
-                          '/partner/new',
+                          // 建好對象卡直接到選截圖（第 10 步）。未登入時這串
+                          // 原樣存進暫存，登入後才 push。
+                          AddPartnerScreen.screenshotFlowLocation,
                           hasPartner: true,
                         ),
                         onNoPartner: () => _completeOnboardingTo(

@@ -30,6 +30,8 @@ VibeSync 已完成核心功能開發，目前 TestFlight v41 正在進行伙伴�
 ## 2. 設計決策
 
 ### 2.1 登入頁社群登入順序
+> **🔁 已被取代（2026-10-27）**：iOS 登入頁改成 Apple 第一、Google 第二（Eric 決定，見 `docs/decisions.md` ADR #58）。這兩顆按鈕只在 iPhone App 出現，下面「Android 也適用」的理由用不到。本節、§3.1 第一列與 §6 任務 2 保留原文作歷史紀錄。
+
 **決定：** Google → Apple（與 Claude app 一致）
 
 **理由：**
