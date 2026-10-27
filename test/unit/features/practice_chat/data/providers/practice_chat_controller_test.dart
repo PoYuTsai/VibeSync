@@ -981,6 +981,57 @@ void main() {
       expect(s.drawExtraCost, priorExtraCost);
     });
 
+    // Codex 主審第 1 輪 P2：首抽發放比第一次翻牌慢，402 先回把人鎖住；首抽發下來後
+    // 補水看到還有免費翻牌，就要解除這個鎖（server 照樣裁決，不會多給）。
+    test('402 鎖住後 server 說還有免費翻牌 → 解除鎖與 402 那句話', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeDrawUpgradeRequiredException(
+            freeAllowance: 0,
+            extraCostMessages: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      final c = makeController();
+      await c.drawNewPracticeGirl();
+      expect(c.currentState.drawUpgradeRequired, true);
+      expect(c.currentState.errorMessage, '升級後每天可以翻更多陪練女孩。');
+
+      api.statusHandler = () async => (
+            freeAllowance: 1,
+            freeUsed: 0,
+            freeRemaining: 1,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+      final s = c.currentState;
+
+      expect(s.drawUpgradeRequired, false);
+      expect(s.errorMessage, isNull);
+      expect(s.drawFreeRemaining, 1);
+      expect(s.drawStatus, PracticeDrawStatus.locked);
+    });
+
+    test('402 鎖住後 server 說還是沒有免費翻牌 → 鎖照舊（照樣走付費頁）', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeDrawUpgradeRequiredException(
+            freeAllowance: 0,
+            extraCostMessages: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      final c = makeController();
+      await c.drawNewPracticeGirl();
+
+      api.statusHandler = () async => (
+            freeAllowance: 0,
+            freeUsed: 0,
+            freeRemaining: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+
+      expect(c.currentState.drawUpgradeRequired, true);
+      expect(c.currentState.errorMessage, '升級後每天可以翻更多陪練女孩。');
+    });
+
     test('失敗 → fail-quiet，既有已知值原封不動', () async {
       api.statusHandler = () async => throw Exception('boom');
       final c = await makeRevealed(); // draw 回應已種額度
