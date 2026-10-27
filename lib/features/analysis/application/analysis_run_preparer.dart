@@ -5,6 +5,7 @@ library;
 
 import 'dart:convert';
 
+import '../../../core/services/message_calculator.dart';
 import '../../conversation/domain/entities/conversation.dart';
 import '../../conversation/domain/entities/message.dart';
 import '../../conversation/domain/entities/session_context.dart';
@@ -56,6 +57,15 @@ class AnalysisRunPreparation {
   /// 上一輪脈絡（同一個對象上一次的 v3 結果，Eric 2026-10-18）；沒有就不帶。
   final PreviousRoundContext? previousRound;
 
+  /// 只分析最後 2,000 字（Onboarding 第 15 步）才有值：整段請求的計費字數，也就是整段
+  /// 分析成功後會存的字數基準。有值時 [requestMessages] 只是整段的尾段：送出時不帶上次
+  /// 的基準（伺服器把尾段整段當新內容算錢），成功後的字數基準存這個數字，下次續析只算
+  /// 之後新增的字——跳過的那段不再算錢，尾段也不會再算一次。一般分析是 null。
+  final int? fullRequestCharBaseline;
+
+  /// 這次只送整段的尾段（見 [fullRequestCharBaseline]）。
+  bool get isTailOnly => fullRequestCharBaseline != null;
+
   const AnalysisRunPreparation({
     required this.requestMessages,
     required this.conversationSummary,
@@ -70,6 +80,7 @@ class AnalysisRunPreparation {
     required this.analyzedMessageCount,
     required this.contentRevision,
     this.previousRound,
+    this.fullRequestCharBaseline,
   });
 }
 
@@ -250,6 +261,70 @@ class AnalysisRunPreparer {
       contentRevision: gate.contentRevision!,
       previousRound: _resolvePreviousRound?.call(conversation),
     );
+  }
+
+  /// 只分析最後 2,000 字（Onboarding 第 15 步）：從 [full] 的請求最後往前一則一則加，
+  /// 取計費字數不超過 [maxBillableChars] 的最長尾段，回一份只送這段的請求。現有的
+  /// `analysisMessageLimit` 是取前 N 則，這裡是取最後那段。
+  ///
+  /// 計費字數用伺服器同一套算法（MessageCalculator 跟 billing.ts 對拍：trim 後加總；
+  /// F04 最後面他傳的、上限內不算）。送出時不帶上次的基準（見
+  /// [AnalysisRunPreparation.fullRequestCharBaseline]），伺服器算的計費字數就是這段的
+  /// 計費字數，不超過 2,000 字，一定落在 10 則以內。
+  ///
+  /// 回 null＝沒有這個選項：整段本來就不超過（不用截）、沒有她的訊息，或從她最後一則
+  /// 開始就超過（她那一則、或之後他傳的要算錢的那幾則太長）。不截斷單則：截了會改到
+  /// 她說的話（Onboarding 第 15 步定案）。
+  AnalysisRunPreparation? tailOnly(
+    AnalysisRunPreparation full, {
+    int maxBillableChars = MessageCalculator.softCapBandMaxChars,
+  }) {
+    if (full.isTailOnly) return null;
+    final messages = full.requestMessages;
+    final start = _tailStart(messages, maxBillableChars);
+    if (start == null || start == 0) return null;
+    final tail = List<Message>.unmodifiable(messages.sublist(start));
+    return AnalysisRunPreparation(
+      requestMessages: tail,
+      conversationSummary: full.conversationSummary,
+      partnerSummary: full.partnerSummary,
+      effectiveStyleContext: full.effectiveStyleContext,
+      knownContactName: full.knownContactName,
+      sessionContext: full.sessionContext,
+      conversationPartnerId: full.conversationPartnerId,
+      isReconnectContext: full.isReconnectContext,
+      previousStage: full.previousStage,
+      // 片段起點換成尾段裡的位置；起點在尾段之前＝整段尾段都是這次的新內容。
+      analysisFragmentStartIndex: (full.analysisFragmentStartIndex - start)
+          .clamp(0, tail.length - 1)
+          .toInt(),
+      // 續析基準照實際送出範圍的結尾：尾段一直到整段的最後一則，訊息數基準跟整段
+      // 一樣；字數基準存整段的計費字數（等於整段分析成功會存的那個）。
+      analyzedMessageCount: full.analyzedMessageCount,
+      contentRevision: full.contentRevision,
+      previousRound: full.previousRound,
+      fullRequestCharBaseline: MessageCalculator.countPayloadChars(
+        MessageCalculator.billingMessagesForAnalysis(messages),
+      ),
+    );
+  }
+
+  /// 尾段起點：一定要含她最後一則（沒有她的訊息不能分析）。加進更前面的訊息，計費
+  /// 字數只會變多（她最後一則之後那幾則算不算錢，對每個候選尾段都一樣），所以往前
+  /// 加到下一則會超過就停。null＝從她最後一則開始就超過。
+  static int? _tailStart(List<Message> messages, int maxBillableChars) {
+    final lastIncoming =
+        messages.lastIndexWhere((message) => !message.isFromMe);
+    if (lastIncoming < 0) return null;
+    int billableCharsFrom(int start) => MessageCalculator.countPayloadChars(
+          MessageCalculator.billingMessagesForAnalysis(messages.sublist(start)),
+        );
+    if (billableCharsFrom(lastIncoming) > maxBillableChars) return null;
+    var start = lastIncoming;
+    while (start > 0 && billableCharsFrom(start - 1) <= maxBillableChars) {
+      start--;
+    }
+    return start;
   }
 
   /// 潤飾／微調脈絡：全量訊息走同一套摘要感知組裝。

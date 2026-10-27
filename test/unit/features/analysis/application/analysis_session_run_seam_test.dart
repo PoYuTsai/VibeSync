@@ -85,6 +85,12 @@ class _Harness {
   String? startedPartnerId;
   bool? startedReconnectContext;
   PreviousRoundContext? startedPreviousRound;
+  List<Message>? startedMessages;
+  int? startedFragmentStart;
+  int? startedPreviousAnalyzedCount;
+  int? startedPreviousAnalyzedCharCount;
+  int? startedNextCharBaseline;
+  int? startedAnalyzedMessageCount;
   var startCalls = 0;
 
   late final AnalysisPersistenceCoordinator persistence =
@@ -121,6 +127,7 @@ class _Harness {
       analysisFragmentStartIndex,
       previousAnalyzedCount,
       previousAnalyzedCharCount,
+      nextCharBaseline,
       confirmedOvercharge,
       conversationMessageCount,
       analyzedMessageCount,
@@ -130,6 +137,12 @@ class _Harness {
       previousRound,
     }) async {
       startCalls++;
+      startedMessages = messages;
+      startedFragmentStart = analysisFragmentStartIndex;
+      startedPreviousAnalyzedCount = previousAnalyzedCount;
+      startedPreviousAnalyzedCharCount = previousAnalyzedCharCount;
+      startedNextCharBaseline = nextCharBaseline;
+      startedAnalyzedMessageCount = analyzedMessageCount;
       startedPreviousRound = previousRound;
       startedSessionContext = sessionContext;
       startedPartnerId = conversationPartnerId;
@@ -218,6 +231,95 @@ void main() {
 
     expect(harness.startCalls, 1);
     expect(harness.startedPreviousRound, same(previousRound));
+  });
+
+  // Onboarding 第 15 步：只分析最後 2,000 字送的是尾段，兩個基準是對整段算的，都不帶；
+  // 成功後的字數基準照整段存。
+  group('只分析最後 2,000 字：送尾段時的基準（Onboarding 第 15 步）', () {
+    /// 上次分析到第 1 則（字數基準 5），之後又來了兩則。
+    Conversation analyzedBefore() => Conversation(
+          id: _conversationId,
+          name: '小雲',
+          messages: [
+            for (var i = 1; i <= 3; i++)
+              Message(
+                id: 'm$i',
+                content: '第 $i 則',
+                isFromMe: false,
+                timestamp: DateTime(2026, 10, 27, 12, i),
+              ),
+          ],
+          createdAt: DateTime(2026, 10, 27),
+          updatedAt: DateTime(2026, 10, 27),
+          lastAnalyzedMessageCount: 1,
+          lastAnalyzedCharCount: 5,
+        );
+
+    AnalysisRunPreparation preparationOf(
+      Conversation conversation, {
+      required List<Message> requestMessages,
+      int? fullRequestCharBaseline,
+    }) =>
+        AnalysisRunPreparation(
+          requestMessages: requestMessages,
+          conversationSummary: null,
+          partnerSummary: null,
+          effectiveStyleContext: null,
+          knownContactName: null,
+          sessionContext: null,
+          conversationPartnerId: null,
+          isReconnectContext: false,
+          analysisFragmentStartIndex: 0,
+          analyzedMessageCount: conversation.messages.length,
+          contentRevision: conversationContentRevision(conversation),
+          fullRequestCharBaseline: fullRequestCharBaseline,
+        );
+
+    test('一般分析：照舊帶上次的則數與字數基準，成功後的基準照送出的算', () async {
+      final conversation = analyzedBefore();
+      final harness = _Harness(conversation: conversation);
+
+      await harness.session.start(
+        conversation: conversation,
+        preparation: preparationOf(
+          conversation,
+          requestMessages: conversation.messages,
+        ),
+        waitForCompletion: true,
+        shouldProceed: () => true,
+      );
+
+      expect(harness.startCalls, 1);
+      expect(harness.startedPreviousAnalyzedCount, 1);
+      expect(harness.startedPreviousAnalyzedCharCount, 5);
+      expect(harness.startedNextCharBaseline, isNull);
+    });
+
+    test('只送尾段：兩個基準都不帶（伺服器把尾段整段當新內容算），成功後的字數基準照整段存', () async {
+      final conversation = analyzedBefore();
+      final harness = _Harness(conversation: conversation);
+      final tail = conversation.messages.sublist(1);
+
+      await harness.session.start(
+        conversation: conversation,
+        preparation: preparationOf(
+          conversation,
+          requestMessages: tail,
+          fullRequestCharBaseline: 15,
+        ),
+        waitForCompletion: true,
+        shouldProceed: () => true,
+      );
+
+      expect(harness.startCalls, 1);
+      expect(harness.startedMessages, tail);
+      expect(harness.startedFragmentStart, 0);
+      expect(harness.startedPreviousAnalyzedCount, isNull);
+      expect(harness.startedPreviousAnalyzedCharCount, isNull);
+      expect(harness.startedNextCharBaseline, 15);
+      // 訊息數基準照實際送出範圍的結尾（整段最後一則）。
+      expect(harness.startedAnalyzedMessageCount, 3);
+    });
   });
 
   test('start：畫面已失效時不送出，也不改寫 Conversation context', () async {

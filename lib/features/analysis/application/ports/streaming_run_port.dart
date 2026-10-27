@@ -19,6 +19,9 @@ typedef StartAnalysisRun = Future<void> Function({
   int? analysisFragmentStartIndex,
   int? previousAnalyzedCount,
   int? previousAnalyzedCharCount,
+  // 成功後要存的字數基準；null＝照送出的訊息算（只分析最後 2,000 字才給，見
+  // AnalysisRunPreparation.fullRequestCharBaseline）。
+  int? nextCharBaseline,
   OverchargeConfirmationPayload? confirmedOvercharge,
   int? conversationMessageCount,
   int? analyzedMessageCount,
