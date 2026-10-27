@@ -355,15 +355,30 @@ void main() {
     });
 
     group('建立後的導航順序（followUpAfterPartnerCreated）', () {
-      Future<List<String>> run({String? nextStep, bool fail = false}) async {
+      /// [alreadyLeft]：建對象的空檔就按返回離開了。
+      /// [leaveDuringCreate]：等空片段寫入時按返回離開。
+      Future<List<String>> run({
+        String? nextStep,
+        bool fail = false,
+        bool alreadyLeft = false,
+        bool leaveDuringCreate = false,
+        bool discardFails = false,
+      }) async {
         final calls = <String>[];
+        var onForm = !alreadyLeft;
         await followUpAfterPartnerCreated(
           partnerId: 'p1',
           nextStep: nextStep,
+          isStillOnForm: () => onForm,
           createEmptyConversation: () async {
             calls.add('create');
+            if (leaveDuringCreate) onForm = false;
             if (fail) throw StateError('寫入失敗');
-            return 'c1';
+            return _emptyConversation('c1');
+          },
+          discardEmptyConversation: (conversation) async {
+            calls.add('discard ${conversation.id}');
+            if (discardFails) throw StateError('刪除失敗');
           },
           replaceWith: (location) => calls.add('replace $location'),
           push: (location) => calls.add('push $location'),
@@ -394,13 +409,60 @@ void main() {
           ['create', 'replace /partner/p1', 'error'],
         );
       });
+
+      // Codex 第二批主審第 1 輪 P3：分析頁沒打開，_cleanupAndGoBack 不會跑，
+      // 不收回就會在對象頁留一個空的「新對話」。
+      test('等空片段寫入時按返回離開：不換頁，把建好的空片段收回', () async {
+        expect(
+          await run(
+            nextStep: AddPartnerScreen.nextStepScreenshot,
+            leaveDuringCreate: true,
+          ),
+          ['create', 'discard c1'],
+        );
+      });
+
+      test('收回空片段失敗：只記 log、不丟例外，也不替他換頁', () async {
+        expect(
+          await run(
+            nextStep: AddPartnerScreen.nextStepScreenshot,
+            leaveDuringCreate: true,
+            discardFails: true,
+          ),
+          ['create', 'discard c1'],
+        );
+      });
+
+      test('建對象的空檔就離開：不換頁，也不建空片段', () async {
+        expect(
+          await run(
+            nextStep: AddPartnerScreen.nextStepScreenshot,
+            alreadyLeft: true,
+          ),
+          isEmpty,
+        );
+        expect(await run(alreadyLeft: true), isEmpty);
+      });
+
+      test('離開後才發現建片段失敗：不換頁，錯誤字照舊', () async {
+        expect(
+          await run(
+            nextStep: AddPartnerScreen.nextStepScreenshot,
+            leaveDuringCreate: true,
+            fail: true,
+          ),
+          ['create', 'error'],
+        );
+      });
     });
 
     group('真的路由＋送出鏈', () {
+      /// [animate]：保留換頁動畫（預設關掉讓 pumpAndSettle 好收斂）。
       Future<GoRouter> pumpNav(
         WidgetTester t, {
         required _MemoryPartnerRepository partners,
         required _RecordingConversationWriter writer,
+        bool animate = false,
       }) async {
         await t.binding.setSurfaceSize(const Size(393, 852));
         addTearDown(() => t.binding.setSurfaceSize(null));
@@ -437,10 +499,13 @@ void main() {
             ],
             child: MaterialApp.router(
               routerConfig: router,
-              builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context).copyWith(disableAnimations: true),
-                child: child!,
-              ),
+              builder: animate
+                  ? null
+                  : (context, child) => MediaQuery(
+                        data: MediaQuery.of(context)
+                            .copyWith(disableAnimations: true),
+                        child: child!,
+                      ),
             ),
           ),
         );
@@ -485,6 +550,7 @@ void main() {
         ]);
         expect(find.text('conversation:conv-new'), findsOneWidget);
         expect(find.byType(AddPartnerScreen), findsNothing);
+        expect(writer.deleted, isEmpty, reason: '有交付導航就不收回空片段');
 
         router.pop();
         await t.pumpAndSettle();
@@ -509,10 +575,51 @@ void main() {
         expect(find.text('detail:${partners.saved.single.id}'), findsOneWidget);
         expect(find.text('建立對話失敗，請再試一次'), findsOneWidget);
         expect(find.textContaining('conversation:'), findsNothing);
+        expect(writer.deleted, isEmpty);
 
         router.pop();
         await t.pumpAndSettle();
         expect(find.text('home-stub'), findsOneWidget);
+      });
+
+      // Codex 第二批主審第 1 輪 P3。刻意讓寫入在「返回的退場動畫還在跑」時
+      // 才完成：這時畫面還掛著（mounted 仍是 true），但 go_router 已經退回
+      // 首頁；只看 mounted 會把首頁換成對象頁，還留下空片段。
+      testWidgets('等空片段寫入時按返回：不換頁、空片段收回，回到首頁', (t) async {
+        final partners = _MemoryPartnerRepository();
+        final pendingCreate = Completer<void>();
+        final writer =
+            _RecordingConversationWriter(pendingCreate: pendingCreate);
+        final router = await pumpNav(
+          t,
+          partners: partners,
+          writer: writer,
+          animate: true,
+        );
+        await openAddPartner(
+            t, router, AddPartnerScreen.screenshotFlowLocation);
+
+        await t.enterText(nameField(), 'Alice');
+        await t.pump();
+        await t.tap(find.widgetWithText(BrandPrimaryButton, '建立'));
+        await t.pump();
+        expect(partners.saved, hasLength(1));
+        expect(writer.created, hasLength(1), reason: '對象建好了，空片段還在寫入');
+
+        router.pop();
+        await t.pump();
+        expect(find.byType(AddPartnerScreen), findsOneWidget,
+            reason: '退場動畫還在跑，表單仍掛著');
+
+        pendingCreate.complete();
+        await t.pumpAndSettle();
+
+        expect(writer.deleted, ['conv-new'], reason: '分析頁沒開，要自己把空片段收回');
+        expect(find.text('home-stub'), findsOneWidget);
+        expect(find.byType(AddPartnerScreen), findsNothing);
+        expect(find.textContaining('detail:'), findsNothing);
+        expect(find.textContaining('conversation:'), findsNothing);
+        expect(partners.saved, hasLength(1), reason: '對象是他自己建的，照樣留著');
       });
 
       testWidgets('沒帶參數（含舊版暫存的 /partner/new）：照舊只到對象頁、不建片段', (t) async {
@@ -550,12 +657,15 @@ class _MemoryPartnerRepository implements PartnerRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// 記下建片段的參數；fail＝模擬寫入失敗。
+/// 記下建片段與收回片段的參數；fail＝模擬寫入失敗；[pendingCreate] 有給就讓
+/// 建片段卡在寫入中，等測試自己 complete（模擬寫入期間按返回）。
 class _RecordingConversationWriter extends ConversationWriteController {
-  _RecordingConversationWriter({this.fail = false});
+  _RecordingConversationWriter({this.fail = false, this.pendingCreate});
 
   final bool fail;
+  final Completer<void>? pendingCreate;
   final created = <({String name, int messageCount, String? partnerId})>[];
+  final deleted = <String>[];
 
   @override
   void build() {}
@@ -569,6 +679,7 @@ class _RecordingConversationWriter extends ConversationWriteController {
     created.add(
       (name: name, messageCount: messages.length, partnerId: partnerId),
     );
+    await pendingCreate?.future;
     if (fail) throw StateError('寫入失敗');
     final now = DateTime(2026, 10, 27);
     return Conversation(
@@ -580,4 +691,21 @@ class _RecordingConversationWriter extends ConversationWriteController {
       partnerId: partnerId,
     );
   }
+
+  @override
+  Future<void> delete(Conversation c) async {
+    deleted.add(c.id);
+  }
+}
+
+Conversation _emptyConversation(String id) {
+  final now = DateTime(2026, 10, 27);
+  return Conversation(
+    id: id,
+    name: '新對話',
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+    partnerId: 'p1',
+  );
 }
