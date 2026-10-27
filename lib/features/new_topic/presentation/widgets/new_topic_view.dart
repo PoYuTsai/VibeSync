@@ -784,7 +784,9 @@ class _NewTopicViewState extends ConsumerState<NewTopicView> {
     // 額度不足的那筆沒有落帳，再按只會再被擋：跟生成前額度不足一樣給付費頁入口。
     final quotaBlocked = quotaShort &&
         (pending == null || pending.requestId == _quotaRejectedRequestId);
-    if (quotaBlocked && widget.isActive) {
+    // 提示與按鈕在底下那一列，有結果時整列收起來（見下面的 footer）：真的顯示給他看
+    // 才記，成功用完最後額度不算撞額度（Codex 主審第 1 輪 P2）。
+    if (quotaBlocked && widget.isActive && _result == null) {
       // 按鈕換成「升級／查看方案」、提示寫額度不足：畫完這一幀再記。
       final isMonthly = usage.monthlyRemaining < kNewTopicQuotaCost;
       WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -1425,4 +1425,30 @@ void main() {
       {'feature': 'new_topic', 'scope': 'daily', 'block_source': 'precheck'},
     ]);
   });
+
+  // Codex 主審第 1 輪 P2：剩最後幾則時生成成功，額度刷新成不夠；這時結果蓋住了底下的
+  // 按鈕與「額度不足」提示，使用者只看到成功的結果，不能算一次撞額度。
+  testWidgets('額度不足事件：生成成功用完最後額度（結果蓋住按鈕）不記；清掉結果、按鈕真的換成額度不足才記', (t) async {
+    signals = true;
+    final container = await _pump(t, paywallRoute: true);
+    await _tapGenerate(t);
+    _service.replies.single.complete(_result(_service.calls.single['id']!));
+    // 這次用掉最後的額度：刷新後今日只剩 1 則，不夠下一次的 3 則。
+    (container.read(subscriptionProvider.notifier) as _Sub).exhaustDaily();
+    await t.pumpAndSettle();
+    expect(find.text('最近有找到喜歡的散步路線嗎？'), findsOneWidget);
+    expect(_quotaBlocks(), isEmpty);
+    expect(paywallOpens, 0);
+
+    // 換條件清掉結果：底下的按鈕換成額度不足，這時才真的告訴他。
+    await t.ensureVisible(find.text('聊得不錯，想更靠近'));
+    await t.tap(find.text('聊得不錯，想更靠近'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('清除並更換'));
+    await t.pumpAndSettle();
+    expect(find.text(NewTopicView.upgradeButtonLabel), findsOneWidget);
+    expect(_quotaBlocks(), [
+      {'feature': 'new_topic', 'scope': 'daily', 'block_source': 'precheck'},
+    ]);
+  });
 }
