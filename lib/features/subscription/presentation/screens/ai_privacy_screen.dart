@@ -1,8 +1,9 @@
 // lib/features/subscription/presentation/screens/ai_privacy_screen.dart
 //
 // F5-A7 App Review 保險：設定頁常駐的「AI 與你的隱私」靜態揭露頁。
-// onboarding 第 4 頁可被「略過」，這裡提供事後隨時可查的入口。
-// 文案與 onboarding 共用 AiPrivacyDisclosure，避免雙份漂移。
+// onboarding 最後一頁只有一行揭露＋「看完整說明」（同一段 description），整段
+// onboarding 也可被略過，這裡提供事後隨時可查的入口。文案與 onboarding 共用
+// AiPrivacyDisclosure，避免雙份漂移。
 // 純靜態頁：不含任何同意邏輯——實際同意仍由各 AI 功能首次使用前的
 // AiDataSharingConsent 同意閘把關。
 import 'package:flutter/material.dart';

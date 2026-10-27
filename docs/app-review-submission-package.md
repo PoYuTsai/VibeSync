@@ -1,6 +1,6 @@
 ﻿# App Review Submission Package
 
-最後更新：2026-07-04（**已送審**：build 305，§6.3 判定 Submit GO；H batch 完成紀錄見 §6.3）
+最後更新：2026-07-04（**已送審**：build 305，§6.3 判定 Submit GO；H batch 完成紀錄見 §6.3）；2026-10-27 §0 補註、§1 Review Notes 的隱私段與 Reviewer demo flow 第 1 步改成 4 頁版 onboarding（Onboarding 第 12 步）
 
 這份文件是送審前的「主控台」：App Store Connect 審核說明、Reviewer 測試步驟、Privacy Label 對照、Go/No-Go gate 都先放這裡。密碼、API key、Apple sandbox 帳密不要 commit，請只填在 App Store Connect 的 App Review Information。
 
@@ -21,6 +21,8 @@
 | 3.1.2(c) 帳單金額 | priceString 為 paywall 最大價格元素；「省 X%」徽章改 App Store 實價動態計算（floor 絕不高報、抓不到價或幣別不符不顯示） | R2-1，TDD 9 新測 |
 | 3.1.2(c) 必要資訊 | app 內名稱/訂閱長度/價格/Terms/Privacy 可點連結齊全；`vibesyncai.app/terms` 六項 EULA 要素查核齊全 | R2-2；metadata 側 EULA/Privacy 連結歸 H-2 人工 |
 | 5.1.1(i)/5.1.2(i) AI 同意 | 同意閘 v2 帳號級化（consent key 綁 userId，換帳號不沿用）；onboarding 第 4 頁靜態「AI 與隱私」揭露頁；設定頁常駐「AI 與你的隱私」入口；練習室 DeepSeek 獨立同意；privacy policy／Review Notes 點名 Anthropic＋DeepSeek | R1-1 Codex 雙審 APPROVED；R1-4／F5 A7 |
+
+> **2026-10-27 補註（Onboarding 第 12 步，onboarding 改 4 頁）**：上表「onboarding 第 4 頁靜態揭露頁」已改成 4 頁版 onboarding **最後一頁**的一行揭露「你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI。」＋「看完整說明」，點下去打開跟設定頁「AI 與你的隱私」同一段完整揭露的 sheet（含廠商行 Anthropic Claude／DeepSeek、同意閘那句、登入前事件先存手機再補送）。onboarding 頁面本身照舊不列廠商名；設定頁的常駐入口不動；各 AI 功能首次使用前的同意閘不動；onboarding 不放付費牆。onboarding 第 1 頁右上「我有帳號」直接到登入頁（審核員用這個最快）。
 
 ### 拒審點以外的加固（同期落地）
 
@@ -51,7 +53,7 @@ The app is not a social network, does not provide public posting or user-to-user
 Privacy and AI processing:
 - Conversation content is local-first and stored on the user's device by default.
 - When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the required content for that request is sent through our backend processing service to the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/screenshot recognition; DeepSeek API and Anthropic Claude API for the practice chat feature) to generate the response.
-- Before the first AI request of each feature is sent, the app shows a consent dialog that explains what data will be sent and names the specific recipients (VibeSync backend processing and Anthropic Claude API, or DeepSeek API and Anthropic Claude API for practice chat). Consent is stored per account. Practice chat has its own separate consent. If the user declines, the request is not sent. Onboarding also includes a static "AI & privacy" disclosure page, and a persistent "AI and your privacy" page with the full provider details is always available in Settings.
+- Before the first AI request of each feature is sent, the app shows a consent dialog that explains what data will be sent and names the specific recipients (VibeSync backend processing and Anthropic Claude API, or DeepSeek API and Anthropic Claude API for practice chat). Consent is stored per account. Practice chat has its own separate consent. If the user declines, the request is not sent. The last onboarding page also states that the conversations and screenshots the user sends are passed through our backend to third-party AI, with a "看完整說明" (full details) link that opens the same full disclosure, provider names included, as the persistent "AI and your privacy" page that is always available in Settings.
 - We do not use users' raw conversations to train our own model.
 - Users can delete conversations locally and can delete their account in the app.
 
@@ -71,7 +73,7 @@ Subscriptions:
 - Free users can use the core analysis flow within quota limits; quota exhaustion leads to the paywall, while model rate limits and transient errors show retry messages instead.
 
 Reviewer demo flow:
-1. On first launch the app shows onboarding (product intro plus the AI & privacy disclosure page). Complete it, then sign in with the provided reviewer account.
+1. On first launch the app shows a 4-page onboarding: pick what you want to do first, answer one sample signal-reading question (bundled content, no AI request), optionally pick goals, and a final page with the AI disclosure line and its "看完整說明" (full details) link. Tap "我有帳號" (I have an account) at the top right of the first page to go straight to sign-in, or go through the pages and tap "繼續" (Continue) on the last page. Then sign in with the provided reviewer account. If you picked an option on the first page, that feature opens right after sign-in; go back to reach the home screen.
 2. On the home screen, create or select a conversation.
 3. Paste a short sample chat, or upload a chat screenshot.
 4. Tap analysis to view heat score, conversation stage, and reply suggestions.

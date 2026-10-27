@@ -76,22 +76,39 @@ void main() {
       );
     });
 
-    test('onboarding 維持精簡版，不列廠商也不展開重播細節', () {
-      // 廠商名刻意不在 onboarding 出現（避免誤解練習室女孩＝DeepSeek）。
-      expect(AiPrivacyDisclosure.onboardingDescription,
-          isNot(contains('DeepSeek')));
+    // onboarding 轉換第 12 步：獨立隱私頁縮成最後一頁的一行，完整說明在
+    // 「看完整說明」的 sheet（跟設定頁同一段 description）。
+    test('onboarding 那一行就是揭露的第一句：送第三方 AI，不列廠商也不展開重播細節', () {
       expect(
-          AiPrivacyDisclosure.onboardingDescription, isNot(contains('保留 7 天')));
+        AiPrivacyDisclosure.onboardingLine,
+        '你送出的對話與截圖，會經 VibeSync 後端傳送至第三方 AI',
+      );
+      expect(
+        AiPrivacyDisclosure.description,
+        startsWith(AiPrivacyDisclosure.onboardingLine),
+      );
+      // 廠商名刻意不在 onboarding 頁面上出現（避免誤解練習室女孩＝DeepSeek）。
+      for (final phrase in ['DeepSeek', 'Anthropic', '保留 7 天']) {
+        expect(AiPrivacyDisclosure.onboardingLine, isNot(contains(phrase)));
+      }
+    });
+
+    test('同意閘那一句還在完整說明裡（onboarding 頁面上拿掉了）', () {
+      expect(
+        AiPrivacyDisclosure.description,
+        contains('每個 AI 功能首次使用前，都會先徵求你的同意'),
+      );
     });
   });
 
   // onboarding 轉換第 4 步：登入前的使用事件先存在手機、登入後補送並連到帳號
   // （Eric 2026-10-27「照預設」補進設定頁）。揭露的數字跟 FunnelTracker 綁在一起。
+  // 第 12 步：例子換成 4 頁版真的會記的事件（選了哪條路徑、測驗題答對沒有）。
   group('登入前的使用事件：設定頁寫明先存手機、登入後補送', () {
     test('設定頁逐字寫出這一段', () {
       expect(
         AiPrivacyDisclosure.description,
-        contains('還沒登入時的使用事件（例如 onboarding 看到第幾頁、回答有沒有對象）\n'
+        contains('還沒登入時的使用事件（例如 onboarding 看到第幾頁、選了想先做哪件事、測驗題有沒有答對）\n'
             '會先存在這支手機，存的是事件名稱、固定選項值與發生時間，\n'
             '不含對話內容或名字，最多 50 筆。登入後才補送，並記下送給哪個帳號，\n'
             '之後只送給這個帳號；換成別的帳號登入，或已存超過 7 天的，都不送、直接刪除'),
@@ -109,11 +126,18 @@ void main() {
       );
     });
 
-    test('onboarding 精簡版不加這段', () {
+    test('onboarding 那一行不加這段（在「看完整說明」裡）', () {
       for (final phrase in ['還沒登入', '補送', '最多 50 筆']) {
-        expect(
-            AiPrivacyDisclosure.onboardingDescription, isNot(contains(phrase)));
+        expect(AiPrivacyDisclosure.onboardingLine, isNot(contains(phrase)));
       }
+    });
+
+    test('例子跟 4 頁版真的會記的事件對得上（不再寫已經沒有的「有沒有對象」題）', () {
+      expect(AiPrivacyDisclosure.description, isNot(contains('回答有沒有對象')));
+      expect(
+        FunnelTracker.eventProps.keys,
+        containsAll(['onboarding_intent', 'onboarding_quiz_answer']),
+      );
     });
   });
 }

@@ -63,7 +63,7 @@ class PracticeCollectionScreen extends ConsumerStatefulWidget {
     this.showOnboardingGuide = false,
   });
 
-  /// onboarding 分流「還沒，先去練習」落地引導：Sydney 泡泡指向翻牌鈕。
+  /// onboarding 第 1 頁「還沒有對象，想先練」落地引導：Sydney 泡泡指向翻牌鈕。
   /// 只由 `/practice-collection?guide=1` 帶進來（onboarding 一生只完成一次，
   /// 查詢參數天然只出現那一次），其他入口一律 false，不需要持久化旗標。
   final bool showOnboardingGuide;

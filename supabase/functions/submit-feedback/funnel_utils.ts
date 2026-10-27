@@ -63,6 +63,15 @@ const QUOTA_BLOCK_SOURCES = new Set([
   "server",
 ]);
 
+// onboarding 第 1 頁選的路徑（onboarding 轉換第 12 步，對應 app 的 OnboardingIntent）：
+// 她回我了＝analyze、剛配對＝opener、還沒有對象＝practice、先逛逛＝browse。
+const ONBOARDING_INTENTS = new Set([
+  "analyze",
+  "opener",
+  "practice",
+  "browse",
+]);
+
 // 只拿來比對、不落庫的鍵（主審 r2 P2；Eric 2026-10-18 核准）：購買事件帶開始購買
 // 時的帳號。認證權杖在送出當下才取，付款確認期間換了帳號，事件就會用到別人的登入；
 // 跟登入的不同就整筆拒絕。row 的 user_id 本來就是帳號，驗完不存。
@@ -98,14 +107,21 @@ const PROP_SPECS: Record<string, PropSpec> = {
   scope: { kind: "enum", values: QUOTA_BLOCK_SCOPES },
   // 不叫 source：這張表以鍵名全域共用值域，source 已經是 about_me_opened 的鍵。
   block_source: { kind: "enum", values: QUOTA_BLOCK_SOURCES },
+  // onboarding 轉換第 12 步。這兩個鍵名原本沒人用；以後別的事件要用同名的鍵，
+  // 值域會跟這裡共用。
+  intent: { kind: "enum", values: ONBOARDING_INTENTS },
+  correct: { kind: "bool" },
 };
 
 /** event → 允許的 properties 鍵。字典外 event 一律 400。 */
 export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
   onboarding_page_view: ["page_index"],
   onboarding_skip: ["page_index"],
+  // 9 頁版的分流頁才送（4 頁版改送 onboarding_intent）；舊版 App 照樣收。
   onboarding_branch_answer: ["has_partner"],
   onboarding_questionnaire_submit: ["goals_count"],
+  onboarding_intent: ["intent"],
+  onboarding_quiz_answer: ["correct"],
   quota_strip_tap: [],
   opener_entry_tap: [],
   coach_entry_tap: ["has_partner"],

@@ -5,6 +5,8 @@
 // 不選任何東西也能往下走（略過語意由 parent 的「下一步」承擔）。
 // 2026-08-04 拍板：互動風格題整條移除（那條線已從關於我頁與 prompt 拿掉），
 // 問卷只留練習目標。
+// onboarding 轉換第 12 步：4 頁版的第 3 頁；標題不再說「讓建議更像你」——目標只有
+// 教練 1:1 會參考（關於我 PR-5）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,15 +34,29 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('渲染標題與 5 個目標 chips，不再有互動風格題', (tester) async {
+  testWidgets('標題只說教練 1:1 會參考，不誇大成「建議更像你」', (tester) async {
     await _pump(tester);
 
-    expect(find.text('30 秒，讓建議更像你'), findsOneWidget);
+    expect(find.text('選個目標，教練 1:1 會參考'), findsOneWidget);
+    expect(find.text(OnboardingQuestionnairePage.title), findsOneWidget);
+    expect(find.textContaining('建議更像你'), findsNothing);
+    expect(find.textContaining('30 秒'), findsNothing);
+  });
+
+  testWidgets('渲染 5 個目標 chips，不再有互動風格題', (tester) async {
+    await _pump(tester);
+
     expect(find.text('你平常聊天的風格是？'), findsNothing);
     for (final label in ['穩重', '直接', '幽默', '溫柔', '俏皮']) {
       expect(find.text(label), findsNothing);
     }
-    for (final label in ['想約得出來', '想先能自在聊天，不要那麼緊繃', '想讓對話更幽默、有來有往', '想培養穩定的親近感', '想找到聊得來的對象、不設限交往']) {
+    for (final label in [
+      '想約得出來',
+      '想先能自在聊天，不要那麼緊繃',
+      '想讓對話更幽默、有來有往',
+      '想培養穩定的親近感',
+      '想找到聊得來的對象、不設限交往'
+    ]) {
       expect(find.text(label), findsOneWidget);
     }
   });
@@ -54,7 +70,8 @@ void main() {
     );
 
     // 鏡像卡會複誦 chip 同字樣，點擊一律走 chip key 不走文字。
-    await tester.tap(find.byKey(const ValueKey('onboarding-goal-humorousReply')));
+    await tester
+        .tap(find.byKey(const ValueKey('onboarding-goal-humorousReply')));
     expect(changed, isNull);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-goal-softInvite')));

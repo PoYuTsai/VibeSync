@@ -183,7 +183,8 @@ final router = GoRouter(
         firstRun: state.uri.queryParameters['firstRun'] == '1',
       ),
     ),
-    // F5-A7：設定頁常駐「AI 與你的隱私」靜態揭露（onboarding 第 4 頁可略過的補位）。
+    // F5-A7：設定頁常駐「AI 與你的隱私」靜態揭露（onboarding 最後一頁只有一行＋看完整
+    // 說明、整段 onboarding 也可略過，這裡是隨時查得到的入口）。
     GoRoute(
       path: '/settings/ai-privacy',
       builder: (context, state) => const AiPrivacyScreen(),
@@ -247,8 +248,8 @@ final router = GoRouter(
     ),
     GoRoute(
       path: '/practice-collection',
-      // guide=1 只由 onboarding 分流「還沒，先去練習」帶進來：落地出 Sydney
-      // 引導泡泡。其他入口不帶參數，行為不變。
+      // guide=1 只由 onboarding 第 1 頁「還沒有對象，想先練」帶進來（登入後由暫存
+      // 交接 push）：落地出 Sydney 引導泡泡。其他入口不帶參數，行為不變。
       builder: (context, state) => PracticeCollectionScreen(
         showOnboardingGuide: state.uri.queryParameters['guide'] == '1',
       ),

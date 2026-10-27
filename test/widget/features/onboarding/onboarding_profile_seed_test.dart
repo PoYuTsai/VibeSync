@@ -1,19 +1,25 @@
 // test/widget/features/onboarding/onboarding_profile_seed_test.dart
 //
-// 「關於我」重新定位（2026-08-03 report）：分流頁答案（有沒有對象）不再
-// 轉寫進 notes——那格 100 字要留給用戶自己的真實自述，「有沒有對象」已經
-// 有 onboarding_branch_answer funnel event 記錄，不需要佔用 profile。
-// 只有問卷（風格/目標）真的有選才建 profile；純分流頁答案不建任何資料。
+// 已登入時走完 onboarding（少見：這支手機沒看過 onboarding）直接種「關於我」：
+// 「關於我」重新定位（2026-08-03 report）後只種問卷目標；路徑（第 1 頁）有
+// onboarding_intent 漏斗事件記，不寫進 profile。目標全略過就不建任何資料。
 // 鐵則：只在 profile 全空時種、失敗靜默放過、絕不擋導頁。
+// onboarding 轉換第 12 步：4 頁版，種子在最後一頁按「繼續」時寫。
+// 未登入的情況走暫存交接，見 onboarding_handoff_applier_test。
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibesync/features/learning/domain/models/chat_quiz.dart';
+import 'package:vibesync/features/onboarding/data/onboarding_quiz.dart';
+import 'package:vibesync/features/onboarding/data/onboarding_service.dart';
+import 'package:vibesync/features/onboarding/domain/onboarding_intent.dart';
 import 'package:vibesync/features/onboarding/presentation/screens/onboarding_screen.dart';
-import 'package:vibesync/features/user_profile/data/providers/user_profile_providers.dart';
+import 'package:vibesync/features/onboarding/presentation/widgets/onboarding_intent_page.dart';
 import 'package:vibesync/features/user_profile/data/repositories/user_profile_repository.dart';
 import 'package:vibesync/features/user_profile/domain/entities/user_profile.dart';
+
+import '../../../helpers/chat_quiz_test_content.dart';
+import '../../../helpers/onboarding_test_harness.dart';
 
 const _uid = 'test-uid';
 
@@ -38,204 +44,127 @@ class _FakeRepo implements UserProfileRepository {
   }
 }
 
-GoRouter _stubRouter() => GoRouter(
-      initialLocation: '/onboarding',
-      routes: [
-        GoRoute(
-          path: '/onboarding',
-          builder: (_, __) => const OnboardingScreen(),
-        ),
-        GoRoute(
-          path: '/',
-          builder: (_, __) => const Scaffold(body: Text('main-shell')),
-        ),
-        GoRoute(
-          path: '/partner/new',
-          builder: (_, __) => const Scaffold(body: Text('partner-new-screen')),
-        ),
-        GoRoute(
-          path: '/practice-collection',
-          builder: (_, __) =>
-              const Scaffold(body: Text('practice-collection-screen')),
-        ),
-      ],
-    );
+late ChatQuizCatalog _catalog;
 
-Future<void> _pumpToBranchingPage(
+/// 已登入：選路徑 → 作答 → 目標頁（選 [goals]）→ 最後一頁。
+Future<void> _walkToFinish(
   WidgetTester tester, {
   required _FakeRepo repo,
+  OnboardingIntent intent = OnboardingIntent.analyze,
+  List<PracticeGoal> goals = const [],
 }) async {
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        userProfileRepositoryProvider.overrideWithValue(repo),
-        authUserProfileScopeProvider.overrideWith((ref) => Stream.value(_uid)),
-      ],
-      child: MaterialApp.router(routerConfig: _stubRouter()),
-    ),
+  await pumpOnboardingApp(
+    tester,
+    catalog: _catalog,
+    signedInUid: _uid,
+    profileRepository: repo,
+  );
+  await chooseIntent(tester, intent);
+  final question = _catalog.findQuestion(kOnboardingQuizQuestionId)!;
+  await tester.tap(
+    find.byKey(ValueKey('onboarding-quiz-choice-${question.choices.first.id}')),
   );
   await tester.pumpAndSettle();
-  for (var i = 0; i < 8; i++) {
-    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+  await tapLabel(tester, OnboardingScreen.nextLabel);
+  for (final goal in goals) {
+    await tester.tap(find.byKey(ValueKey('onboarding-goal-${goal.name}')));
     await tester.pumpAndSettle();
   }
+  await tapLabel(tester, OnboardingScreen.nextLabel);
+  expect(find.text(OnboardingScreen.finishLabel), findsOneWidget);
 }
 
 void main() {
-  setUp(() {
+  setUpAll(() async {
+    _catalog = await loadProductionChatQuizCatalog();
+  });
+
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await OnboardingService.reset();
   });
 
-  testWidgets('問卷全略過＋答「有」→ 不建任何 profile，照常導頁', (tester) async {
+  testWidgets('目標全略過＋繼續 → 不建任何 profile，照常導頁', (tester) async {
     final repo = _FakeRepo();
-    await _pumpToBranchingPage(tester, repo: repo);
+    await _walkToFinish(tester, repo: repo);
 
-    await tester.tap(find.text('有，幫我分析對話'));
-    await tester.pumpAndSettle();
+    await tapLabel(tester, OnboardingScreen.finishLabel);
 
-    expect(find.text('partner-new-screen'), findsOneWidget);
+    expect(find.text('partner-new-screen next=screenshot'), findsOneWidget);
     expect(repo.saveCount, 0);
     expect(repo.byOwner[_uid], isNull);
   });
 
-  testWidgets('問卷全略過＋答「還沒」→ 不建任何 profile，照常導頁', (tester) async {
+  testWidgets('有選目標＋繼續 → 一筆種子只帶 goals（照選的順序），notes 不寫', (tester) async {
     final repo = _FakeRepo();
-    await _pumpToBranchingPage(tester, repo: repo);
+    await _walkToFinish(
+      tester,
+      repo: repo,
+      intent: OnboardingIntent.practice,
+      goals: const [PracticeGoal.humorousReply, PracticeGoal.softInvite],
+    );
 
-    await tester.tap(find.text('還沒，先去練習'));
-    await tester.pumpAndSettle();
+    await tapLabel(tester, OnboardingScreen.finishLabel);
 
-    expect(find.text('practice-collection-screen'), findsOneWidget);
-    expect(repo.saveCount, 0);
-    expect(repo.byOwner[_uid], isNull);
+    expect(find.text('practice-collection-screen guide=1'), findsOneWidget);
+    expect(repo.saveCount, 1);
+    final saved = repo.byOwner[_uid]!;
+    expect(
+      saved.practiceGoals,
+      [PracticeGoal.humorousReply, PracticeGoal.softInvite],
+    );
+    expect(saved.interactionStyle, isNull);
+    expect(saved.notes, isNull);
   });
 
-  testWidgets('已有非空 profile → 絕不覆蓋（即使問卷有選）', (tester) async {
+  testWidgets('已有非空 profile → 絕不覆蓋（即使選了目標）', (tester) async {
     final repo = _FakeRepo();
-    final existing = UserProfile.create(
+    repo.byOwner[_uid] = UserProfile.create(
       interactionStyle: InteractionStyle.humorous,
       notes: '使用者自己寫的',
       updatedAt: DateTime.utc(2026, 7, 1),
     );
-    repo.byOwner[_uid] = existing;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          userProfileRepositoryProvider.overrideWithValue(repo),
-          authUserProfileScopeProvider
-              .overrideWith((ref) => Stream.value(_uid)),
-        ],
-        child: MaterialApp.router(routerConfig: _stubRouter()),
-      ),
+    await _walkToFinish(
+      tester,
+      repo: repo,
+      goals: const [PracticeGoal.softInvite],
     );
-    await tester.pumpAndSettle();
 
-    for (var i = 0; i < 6; i++) {
-      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.text('想約得出來'));
-    await tester.pumpAndSettle();
-    for (var i = 0; i < 2; i++) {
-      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.text('有，幫我分析對話'));
-    await tester.pumpAndSettle();
+    await tapLabel(tester, OnboardingScreen.finishLabel);
 
-    expect(find.text('partner-new-screen'), findsOneWidget);
+    expect(find.text('partner-new-screen next=screenshot'), findsOneWidget);
     expect(repo.saveCount, 0);
     expect(repo.byOwner[_uid]?.notes, '使用者自己寫的');
   });
 
-  testWidgets('問卷有選＋種子寫入失敗 → 靜默放過，onboarding 照常完成', (tester) async {
+  testWidgets('種子寫入失敗 → 靜默放過，onboarding 照常完成並導頁', (tester) async {
     final repo = _FakeRepo()..throwOnSave = true;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          userProfileRepositoryProvider.overrideWithValue(repo),
-          authUserProfileScopeProvider
-              .overrideWith((ref) => Stream.value(_uid)),
-        ],
-        child: MaterialApp.router(routerConfig: _stubRouter()),
-      ),
+    await _walkToFinish(
+      tester,
+      repo: repo,
+      intent: OnboardingIntent.opener,
+      goals: const [PracticeGoal.softInvite],
     );
-    await tester.pumpAndSettle();
 
-    for (var i = 0; i < 6; i++) {
-      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.text('想約得出來'));
-    await tester.pumpAndSettle();
-    for (var i = 0; i < 2; i++) {
-      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.text('還沒，先去練習'));
-    await tester.pumpAndSettle();
+    await tapLabel(tester, OnboardingScreen.finishLabel);
 
-    expect(find.text('practice-collection-screen'), findsOneWidget);
+    expect(find.text(openerStubText), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('onboarding_completed'), isTrue);
   });
 
-  testWidgets('問卷有選＋答「有」→ 一筆合併種子帶 goals，notes 不寫入', (tester) async {
+  testWidgets('「先逛逛」→ 不種任何種子，落在首頁', (tester) async {
     final repo = _FakeRepo();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          userProfileRepositoryProvider.overrideWithValue(repo),
-          authUserProfileScopeProvider
-              .overrideWith((ref) => Stream.value(_uid)),
-        ],
-        child: MaterialApp.router(routerConfig: _stubRouter()),
-      ),
+    await pumpOnboardingApp(
+      tester,
+      catalog: _catalog,
+      signedInUid: _uid,
+      profileRepository: repo,
     );
-    await tester.pumpAndSettle();
 
-    // 滑 6 次到問卷頁（index 6），選一個目標。
-    for (var i = 0; i < 6; i++) {
-      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
-      await tester.pumpAndSettle();
-    }
-    expect(find.text('30 秒，讓建議更像你'), findsOneWidget);
-    await tester.tap(find.text('想約得出來'));
-    await tester.pumpAndSettle();
+    await tapLabel(tester, OnboardingIntentPage.browseLabel);
 
-    // 再滑 2 次到分流頁，答「有」。
-    for (var i = 0; i < 2; i++) {
-      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
-      await tester.pumpAndSettle();
-    }
-    await tester.tap(find.text('有，幫我分析對話'));
-    await tester.pumpAndSettle();
-
-    expect(repo.saveCount, 1);
-    final saved = repo.byOwner[_uid]!;
-    expect(saved.interactionStyle, isNull);
-    expect(saved.practiceGoals, [PracticeGoal.softInvite]);
-    expect(saved.notes, isNull);
-  });
-
-  testWidgets('「略過」→ 不種任何種子', (tester) async {
-    final repo = _FakeRepo();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          userProfileRepositoryProvider.overrideWithValue(repo),
-          authUserProfileScopeProvider
-              .overrideWith((ref) => Stream.value(_uid)),
-        ],
-        child: MaterialApp.router(routerConfig: _stubRouter()),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('略過'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('main-shell'), findsOneWidget);
+    expect(find.text(mainShellStubText), findsOneWidget);
     expect(repo.saveCount, 0);
   });
 }

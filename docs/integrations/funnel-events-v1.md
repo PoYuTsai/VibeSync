@@ -25,10 +25,12 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 
 | event | properties（白名單鍵） | 打點位置 |
 |---|---|---|
-| `onboarding_page_view` | `page_index` (int) | OnboardingScreen.onPageChanged |
-| `onboarding_skip` | `page_index` (int) | _skipOnboarding |
-| `onboarding_branch_answer` | `has_partner` (bool) | _completeOnboardingTo |
-| `onboarding_questionnaire_submit` | `goals_count` (int) | 批 2 問卷頁（2026-08-04 拿掉互動風格題後 style_set 移除） |
+| `onboarding_page_view` | `page_index` (int) | OnboardingScreen：每換一頁一筆（含按上一頁回去），第 0 頁在進場時補。2026-10-27 起 4 頁版是 0–3（0 選路徑、1 測驗題、2 目標、3 登入後做什麼）；9 頁版是 0–8 |
+| `onboarding_skip` | `page_index` (int) | 不走完 onboarding 就離開：4 頁版只有第 1 頁的「先逛逛」（`page_index`＝0）。「我有帳號」不記；第 2、3 頁的「直接開始」「略過」只是跳到最後一頁，也不記 |
+| `onboarding_branch_answer` | `has_partner` (bool) | 9 頁版的分流頁。4 頁版（2026-10-27 onboarding 轉換第 12 步）不送，改送 `onboarding_intent`；留在字典給舊版 App 與手機裡還沒補送的佇列 |
+| `onboarding_questionnaire_submit` | `goals_count` (int) | 按下 onboarding 最後的按鈕時（4 頁版是最後一頁的「繼續」；2026-08-04 拿掉互動風格題後 style_set 移除）。按「直接開始」跳過目標頁的人也會送，`goals_count`＝0 |
+| `onboarding_intent` | `intent` (enum: `analyze` / `opener` / `practice` / `browse`) | 4 頁版第 1 頁（2026-10-27 onboarding 轉換第 12 步）：她回我了＝`analyze`、剛配對＝`opener`、還沒有對象＝`practice`、先逛逛＝`browse`。每按一次記一筆，按上一頁回來改選會再記一筆，以最後一筆為準 |
+| `onboarding_quiz_answer` | `correct` (bool) | 4 頁版第 2 頁那一題第一次作答時（2026-10-27）：答對 true、答錯 false；作答一次就定案，按「直接開始」跳過的不記 |
 | `quota_strip_tap` | — | HomeQuotaStrip |
 | `opener_entry_tap` | — | HomeFeatureEntries |
 | `coach_entry_tap` | `has_partner` (bool) | HomeFeatureEntries |
@@ -62,11 +64,15 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - `block_source`：`precheck` / `server` 之一，其他值剝除整鍵。不叫 `source`：server 的值域
   表以鍵名全域共用，`source` 已經是 `about_me_opened` 的鍵（`checklist` / `card` /
   `settings`），兩邊值域互不相通。
+- `intent`：`analyze` / `opener` / `practice` / `browse` 之一，其他值剝除整鍵。只有
+  `onboarding_intent` 收（2026-10-27）。
+- `correct`：只收 true/false，其他值剝除整鍵。只有 `onboarding_quiz_answer` 收；不帶題號
+  或選了哪個選項。
 - `purchaser`：只有 `paywall_purchase_completed` 收。必須是 UUID 而且等於登入帳號的
   `user.id`；缺少、格式不對或不同，**整筆拒絕**（400，不寫入）。驗完剝掉、不落庫。
   其他事件帶了一律剝掉（2026-10-18 主審 r2：認證權杖在 HTTP 送出當下才取，付款確認
   期間換帳號時，事件會用到別人的登入；Eric 核准由 server 比對擋下）。
-- bool 鍵只收 true/false（`has_partner`、`has_style`、`has_notes`、`has_custom_topics`、`is_recommended`）。
+- bool 鍵只收 true/false（`has_partner`、`has_style`、`has_notes`、`has_custom_topics`、`is_recommended`、`correct`）。
 - 任何 string 值長度上限 40 字元，超長截斷。
 
 付費頁三個事件的解讀（2026-10-18）：
@@ -76,6 +82,15 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - 結果頁的「看方案」連點時付費頁只開一次（防重入），所以 `locked_cards_upgrade_tap` 可能比 `entry=locked_cards` 的 `paywall_opened` 多。
 - 付款確認期間換帳號或登出，那筆購買事件會被丟掉（寧可少記，不記到別人身上）。
 - 免費看幾張卡的決定（audit 三層方案）：累積二到四週，比 `entry=locked_cards` 開了幾次付費頁、其中幾次買了。
+
+onboarding 4 頁版的解讀（2026-10-27，onboarding 轉換第 12 步）：
+
+- server 白名單要先部署：舊 server 不認得 `onboarding_intent`、`onboarding_quiz_answer`，
+  回 400；這兩個事件多半是登入前排隊、登入後補送，補送被拒會再試，每筆最多 3 次就丟掉。
+- 事件不帶 App 版本，9 頁版與 4 頁版的 `page_index` 意義不同：跨版本比較要用新版上線日期切
+  （同一支手機只會走其中一版）。
+- 4 頁版沒有「有沒有對象」這一題：`intent`＝`practice` 是「還沒有對象，想先練」，其他三個值
+  不代表一定有對象（`browse` 是沒選）。
 
 ## once-flag 去重（2026-10-27 起送成功才算）
 

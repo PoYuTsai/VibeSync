@@ -131,6 +131,8 @@ void main() {
       'onboarding_skip': ['page_index'],
       'onboarding_branch_answer': ['has_partner'],
       'onboarding_questionnaire_submit': ['goals_count'],
+      'onboarding_intent': ['intent'],
+      'onboarding_quiz_answer': ['correct'],
       'quota_strip_tap': <String>[],
       'opener_entry_tap': <String>[],
       'coach_entry_tap': ['has_partner'],
@@ -154,6 +156,28 @@ void main() {
       'locked_cards_upgrade_tap': ['locked_count'],
       'quota_block_shown': ['feature', 'scope', 'block_source'],
     });
+  });
+
+  // onboarding 轉換第 12 步：4 頁版的路徑與測驗題事件，目的地、題號、選項都不出手機。
+  test('onboarding 路徑與測驗題事件：只帶白名單鍵', () async {
+    final wire = _Wire();
+    final tracker = FunnelTracker(invoker: wire.call, currentUserId: _signedIn);
+
+    await tracker.track('onboarding_intent', properties: {
+      'intent': 'practice',
+      'route': '/practice-collection?guide=1',
+    });
+    await tracker.track('onboarding_quiz_answer', properties: {
+      'correct': true,
+      'questionId': 'q-1-1-01',
+      'choiceId': 'q-1-1-01-a',
+    });
+
+    expect(wire.names, ['onboarding_intent', 'onboarding_quiz_answer']);
+    expect(wire.props, [
+      {'intent': 'practice'},
+      {'correct': true},
+    ]);
   });
 
   // 付費頁與鎖卡（Eric 2026-10-18）：價格、商品 id、收據連手機都不出。
