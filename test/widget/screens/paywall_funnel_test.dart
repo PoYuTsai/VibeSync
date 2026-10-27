@@ -224,6 +224,9 @@ Future<(GoRouter, _StubSubscriptionNotifier)> _pumpPaywall(
   if (seededState != null) {
     stub.seedState(seededState);
     await tester.pump();
+    // 免費用戶預設選 Starter 月繳（Onboarding 第 9 步）；種的狀態只有 Essential 有
+    // 價格時，下一幀才換到有價格的那一張。
+    await tester.pump();
   }
   _signInAs(signedInAs);
   return (router, stub);
@@ -237,7 +240,8 @@ Future<void> _openPaywall(
   unawaited(router.push('/paywall', extra: entry));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 600));
-  expect(find.text('方案與額度'), findsOneWidget);
+  // 這裡的方案都是免費：看購買版（Onboarding 第 9 步）。
+  expect(find.text('升級方案'), findsOneWidget);
 }
 
 Future<void> _tapSubscribe(WidgetTester tester, String label) async {
@@ -428,7 +432,7 @@ void main() {
         tracker: _recordingTracker(sent),
         entry: PaywallEntry.monthlyQuotaShort,
         onPurchase: () async => _success(SubscriptionTierHelper.starter),
-        // 只有 Starter 有價格時，預設選取會換到 Starter。
+        // 免費用戶預設就是 Starter 月繳。
         seededState: _stateWith('vibesync_starter_monthly', 'Starter'),
       );
       await tester.pump();

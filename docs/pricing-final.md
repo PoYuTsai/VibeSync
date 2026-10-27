@@ -121,7 +121,7 @@
 ### 月繳 / 季繳切換規則
 
 同方案更改月繳 / 季繳會由 App Store 確認，實際生效時間與費用以 Apple 畫面為準。
-Paywall 目前預設先選 `essential_monthly`；若該方案尚未回傳，會 fallback 到第一個 available package，避免首屏卡在「正在同步方案資訊」。
+Paywall 預設選取照目前方案（Onboarding 第 9 步，Eric 2026-10-27 決定）：免費用戶看購買版、先選 `starter_monthly`；Starter、Essential 用戶看管理版、先選 `essential_monthly`；「推薦」徽章跟著預設那張。該方案尚未回傳時，會 fallback 到第一個 available package，避免首屏卡在「正在同步方案資訊」。
 同 tier 的月繳 / 季繳在 app 內視為不同產品，不應互相被誤判成同一個目前方案。
 
 ---

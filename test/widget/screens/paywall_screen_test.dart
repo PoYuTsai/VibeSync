@@ -8,12 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
+import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/opener/domain/opener_access.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 import 'package:vibesync/features/subscription/presentation/subscription_diagnostics_gate.dart';
+import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 
 class _StubSubscriptionNotifier extends SubscriptionNotifier {
   _StubSubscriptionNotifier({
@@ -64,26 +66,108 @@ class _StubSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
+/// 已付費的方案狀態：付費頁給管理版。
+SubscriptionState _paidState(String tier) {
+  final limits = SubscriptionTierHelper.limitsFor(tier);
+  return SubscriptionState(
+    tier: tier,
+    monthlyLimit: limits.monthly,
+    dailyLimit: limits.daily,
+  );
+}
+
+StoreProduct _storeProduct(
+  String id,
+  String title,
+  double price,
+  String priceString,
+  String period,
+) =>
+    StoreProduct(
+      id,
+      'description',
+      title,
+      price,
+      priceString,
+      'TWD',
+      subscriptionPeriod: period,
+    );
+
+/// 四個方案都有 App Store 價格（測試編的價格；季繳價隨便訂的）。
+Map<String, StoreProduct> _allProducts() => {
+      'starter_monthly':
+          _storeProduct('starter_monthly', 'Starter', 590, r'NT$590', 'P1M'),
+      'starter_quarterly': _storeProduct(
+          'starter_quarterly', 'Starter', 1590, r'NT$1,590', 'P3M'),
+      'essential_monthly': _storeProduct(
+          'essential_monthly', 'Essential', 1290, r'NT$1,290', 'P1M'),
+      'essential_quarterly': _storeProduct(
+          'essential_quarterly', 'Essential', 3490, r'NT$3,490', 'P3M'),
+    };
+
+/// 購買版的方案卡（key 帶方案 id）。
+Finder _buyCard(String optionId) =>
+    find.byKey(ValueKey('paywall-buy-card-$optionId'));
+
+Finder _inBuyCard(String optionId, Finder finder) =>
+    find.descendant(of: _buyCard(optionId), matching: finder);
+
+/// 購買版的方案卡有沒有選到（卡片的 Semantics selected）。
+bool _buyCardSelected(WidgetTester tester, String optionId) =>
+    tester.widget<Semantics>(_buyCard(optionId)).properties.selected ?? false;
+
+/// 畫得出來的那幾個：沒有徽章的卡留了一個隱形的徽章佔位對齊高度，不算。
+int _visibleCount(Finder finder) => finder
+    .evaluate()
+    .where(
+      (element) =>
+          element.findAncestorWidgetOfExactType<Visibility>()?.visible ?? true,
+    )
+    .length;
+
+/// 徽章是不是橘色漸層底（「推薦」樣式）。
+bool _badgeIsOrange(WidgetTester tester, Finder badgeText) {
+  final container = tester.widget<Container>(
+    find.ancestor(of: badgeText, matching: find.byType(Container)).first,
+  );
+  final gradient = (container.decoration as BoxDecoration?)?.gradient;
+  return gradient is LinearGradient &&
+      gradient.colors.contains(AppColors.ctaStart);
+}
+
 void main() {
+  /// 沒給 [state] 就是真的 SubscriptionNotifier：測試環境沒登入，方案是免費。
   Future<void> pumpPaywall(
     WidgetTester tester, {
     Future<void> Function()? refreshUsage,
+    SubscriptionState? state,
+    PaywallEntry entry = PaywallEntry.general,
+    Size size = const Size(430, 1400),
   }) async {
-    await tester.binding.setSurfaceSize(const Size(430, 1400));
+    await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final stub =
+        state == null ? null : (_StubSubscriptionNotifier()..seedState(state));
 
     await tester.pumpWidget(
       ProviderScope(
+        // 同一個測試裡重開時整棵換掉，override 才會換。
+        key: UniqueKey(),
         overrides: [
+          if (stub != null) subscriptionProvider.overrideWith((ref) => stub),
           subscriptionScreenRefreshProvider.overrideWithValue(
             refreshUsage ?? () async {},
           ),
         ],
-        child: const MaterialApp(home: PaywallScreen()),
+        child: MaterialApp(home: PaywallScreen(entry: entry)),
       ),
     );
     await tester.pump();
   }
+
+  /// 管理版：Starter 用戶打開付費頁。
+  Future<void> pumpManagePaywall(WidgetTester tester) =>
+      pumpPaywall(tester, state: _paidState(SubscriptionTierHelper.starter));
 
   group('PaywallScreen', () {
     testWidgets('refreshes subscription usage snapshot on entry',
@@ -96,14 +180,23 @@ void main() {
       expect(refreshCalls, 1);
     });
 
-    testWidgets('shows launch-ready title and upgrade/downgrade copy',
-        (tester) async {
-      await pumpPaywall(tester);
+    // Onboarding 第 9 步：付費用戶照舊看管理版，升降級怎麼算對他們是必要的。
+    testWidgets('付費用戶看管理版：標題、定位句、升降級說明照舊', (tester) async {
+      for (final tier in [
+        SubscriptionTierHelper.starter,
+        SubscriptionTierHelper.essential,
+      ]) {
+        await pumpPaywall(tester, state: _paidState(tier));
 
-      expect(find.text('方案與額度'), findsOneWidget);
-      expect(find.text('完整教練帶路\n把她約出來更有把握'), findsOneWidget);
-      expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
-      expect(find.textContaining('降級則會在下次續訂時生效'), findsOneWidget);
+        expect(find.text('方案與額度'), findsOneWidget, reason: tier);
+        expect(find.text('升級方案'), findsNothing, reason: tier);
+        expect(find.text('完整教練帶路\n把她約出來更有把握'), findsOneWidget);
+        expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
+        expect(find.textContaining('降級則會在下次續訂時生效'), findsOneWidget);
+        expect(find.text('目前方案與額度'), findsOneWidget);
+        expect(
+            find.byKey(const ValueKey('paywall-buy-bottom-bar')), findsNothing);
+      }
     });
 
     testWidgets('close button falls back home when paywall has no back stack',
@@ -135,31 +228,32 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('方案與額度'), findsOneWidget);
+      // 測試環境沒登入＝免費，看購買版。
+      expect(find.text('升級方案'), findsOneWidget);
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
 
       expect(find.text('home-root'), findsOneWidget);
-      expect(find.text('方案與額度'), findsNothing);
+      expect(find.text('升級方案'), findsNothing);
     });
 
-    testWidgets('shows current Free quota summary with remaining counts',
-        (tester) async {
-      await pumpPaywall(tester);
+    // 免費用戶的購買版不放額度膠囊（Onboarding 第 9 步）；管理版照舊。
+    testWidgets('管理版顯示目前方案與剩餘額度', (tester) async {
+      await pumpManagePaywall(tester);
 
       expect(find.text('目前方案與額度'), findsOneWidget);
-      expect(find.text('目前方案：Free'), findsOneWidget);
+      expect(find.text('目前方案：Starter'), findsOneWidget);
       expect(find.text('本月剩餘'), findsOneWidget);
       expect(find.text('今日剩餘'), findsOneWidget);
-      // 免費額度照常數算，之後再調也不用改這裡。
-      const monthly = AppConstants.freeMonthlyLimit;
-      const daily = AppConstants.freeDailyLimit;
+      // 額度照常數算，之後再調也不用改這裡。
+      const monthly = AppConstants.starterMonthlyLimit;
+      const daily = AppConstants.starterDailyLimit;
       expect(find.text('$monthly/$monthly'), findsOneWidget);
       expect(find.text('$daily/$daily'), findsOneWidget);
     });
 
     testWidgets('比較表的每日、每月額度三欄都照方案常數', (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       List<String?> cellsOf(String feature) {
         final row = find
@@ -188,7 +282,7 @@ void main() {
 
     testWidgets('comparison table names tiers and uses human-readable values',
         (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       expect(find.text('方案功能比較'), findsOneWidget);
       expect(find.text('Free'), findsOneWidget);
@@ -234,7 +328,7 @@ void main() {
     });
 
     testWidgets('比較表不再列燈號走勢與邀約進度：不分方案都看完整紀錄（Eric 2026-10-19）', (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       expect(find.text('燈號走勢與邀約進度'), findsNothing);
       expect(find.text('燈號紀錄與邀約進度'), findsNothing);
@@ -243,7 +337,7 @@ void main() {
     });
 
     testWidgets('比較表有開場救星：句數照開場權益契約，排在回覆卡下面', (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       // Eric 2026-10-18：免費看 5 句裡的 3 句，兩個付費方案都看完整 5 句。數字從
       // OpenerAccessContract 算，不寫死。
@@ -268,7 +362,7 @@ void main() {
 
     testWidgets('comparison table includes practice girl and model copy',
         (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       // 鏡像 server draw_decision.ts：free=0（起步一次性贈抽）/3/5。
       expect(find.text('陪練女孩翻牌'), findsOneWidget);
@@ -298,7 +392,7 @@ void main() {
 
     testWidgets('explains the Free vs paid practice-girl continuation rule',
         (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       // Free has no daily draw (removed 2026-08-02); only one round per girl.
       // Upgrading unlocks daily draws and continuing the same girl.
@@ -307,9 +401,10 @@ void main() {
       expect(find.textContaining('每天仍可翻出'), findsNothing); // 舊前提絕不回歸
     });
 
-    testWidgets('shows four product options while prices are syncing',
-        (tester) async {
-      await pumpPaywall(tester);
+    // Onboarding 第 9 步：「推薦」徽章與橘色樣式跟著預設那一張。以前橘色畫在
+    // Essential 季繳、預設卻選 Essential 月繳，兩個對不上。
+    testWidgets('管理版：價格同步前四張方案卡也排好，推薦的橘色徽章在預設的 Essential 月繳', (tester) async {
+      await pumpManagePaywall(tester);
 
       expect(find.text('Starter 月繳'), findsOneWidget);
       expect(find.text('Starter 季繳'), findsOneWidget);
@@ -324,24 +419,54 @@ void main() {
       expect(find.text('本次扣款金額'), findsOneWidget);
       expect(find.text('正在向 App Store 取得價格'), findsOneWidget);
       expect(find.text('重新載入 App Store 價格'), findsOneWidget);
+
+      // 推薦（橘色）就在 Essential 月繳那張卡上；最划算、入門是一般徽章。
+      final recommended = find.text('推薦');
+      final essentialMonthlyCard = find.ancestor(
+        of: find.text('Essential 月繳'),
+        matching: find.byType(AnimatedContainer),
+      );
+      expect(
+        find.descendant(of: essentialMonthlyCard, matching: recommended),
+        findsOneWidget,
+      );
+      expect(_badgeIsOrange(tester, recommended), isTrue);
+      expect(_badgeIsOrange(tester, find.text('最划算')), isFalse);
+      expect(_badgeIsOrange(tester, find.text('入門').first), isFalse);
+      expect(_badgeIsOrange(tester, find.text('入門').last), isFalse);
     });
 
-    testWidgets('Essential monthly option is selected by default',
+    // Onboarding 第 9 步（Eric 2026-10-27 選 Starter）：免費用戶預設 Starter 月繳；
+    // Starter 用戶預設升級的 Essential 月繳；Essential 用戶照舊 Essential 月繳。
+    testWidgets('預設選取照目前方案：免費 Starter 月繳，Starter、Essential 用戶 Essential 月繳',
         (tester) async {
-      await pumpPaywall(tester);
-
-      final essentialMonthlyRadio = tester.widget<Radio<String>>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is Radio<String> && widget.value == 'essential_monthly',
-        ),
+      await pumpPaywall(
+        tester,
+        state: SubscriptionState(storeProducts: _allProducts()),
       );
-      expect(essentialMonthlyRadio.groupValue, 'essential_monthly');
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(_buyCardSelected(tester, 'essential_monthly'), isFalse);
+      expect(find.text(r'以 NT$590 訂閱 Starter 月繳'), findsOneWidget);
+
+      for (final tier in [
+        SubscriptionTierHelper.starter,
+        SubscriptionTierHelper.essential,
+      ]) {
+        await pumpPaywall(tester, state: _paidState(tier));
+        final essentialMonthlyRadio = tester.widget<Radio<String>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Radio<String> && widget.value == 'essential_monthly',
+          ),
+        );
+        expect(essentialMonthlyRadio.groupValue, 'essential_monthly',
+            reason: tier);
+      }
     });
 
     testWidgets('can switch selected product option before purchasing',
         (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       await tester.tap(find.text('Starter 月繳'));
       await tester.pump();
@@ -356,7 +481,7 @@ void main() {
     });
 
     testWidgets('選卡只剩 240ms 邊框漸變：沒有掃邊流星那種持續動態光', (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
       // 首幀預選 essential_monthly：不排任何動畫幀。
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.binding.transientCallbackCount, 0);
@@ -375,7 +500,7 @@ void main() {
 
     testWidgets('shows consistent legal and subscription management links',
         (tester) async {
-      await pumpPaywall(tester);
+      await pumpManagePaywall(tester);
 
       expect(find.text('服務條款'), findsOneWidget);
       expect(find.text('隱私政策'), findsOneWidget);
@@ -490,6 +615,9 @@ void main() {
       if (seededState != null) {
         stub.seedState(seededState);
         await tester.pump();
+        // 免費用戶預設選 Starter 月繳（Onboarding 第 9 步）；種的狀態只有 Essential
+        // 有價格時，下一幀才換到有價格的那一張。
+        await tester.pump();
       }
       return stub;
     }
@@ -542,6 +670,8 @@ void main() {
       await tester.pump();
       if (seededState != null) {
         stub.seedState(seededState);
+        await tester.pump();
+        // 同上：預設的 Starter 月繳沒價格時，下一幀才換到有價格的那一張。
         await tester.pump();
       }
       return stub;
@@ -743,6 +873,74 @@ void main() {
       expect(find.textContaining('同步逾時'), findsOneWidget);
       await flushSnackBars(tester);
     });
+
+    // Onboarding 第 9 步：付款成功時方案已經換成付費，關頁前還要刷新一次；這段時間
+    // 遮罩底下維持購買版，不換成管理版、選取也不換成付費用戶的預設。
+    testWidgets('購買處理中方案變成付費：遮罩底下維持購買版與選取，恢復購買先停用', (tester) async {
+      final starterMonthly = Package(
+        r'$rc_monthly',
+        PackageType.monthly,
+        _storeProduct('starter_monthly', 'Starter', 590, r'NT$590', 'P1M'),
+        const PresentedOfferingContext('default', null, null),
+      );
+      final offering = Offering(
+        'default',
+        'Default offering',
+        const {},
+        [starterMonthly],
+      );
+      final offerings = Offerings({'default': offering}, current: offering);
+      final refresh = Completer<void>();
+      late final _StubSubscriptionNotifier stub;
+      stub = await pumpPaywallWithStub(
+        tester,
+        onPurchase: () async {
+          final limits =
+              SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.starter);
+          stub.seedState(SubscriptionState(
+            tier: SubscriptionTierHelper.starter,
+            monthlyLimit: limits.monthly,
+            dailyLimit: limits.daily,
+            offerings: offerings,
+          ));
+          return const SubscriptionPurchaseResult(
+            success: true,
+            cancelled: false,
+            isDeferredDowngrade: false,
+            requestedTier: SubscriptionTierHelper.starter,
+            previousTier: SubscriptionTierHelper.free,
+            activeTier: SubscriptionTierHelper.starter,
+          );
+        },
+        onRefresh: () => refresh.future,
+        seededState: SubscriptionState(offerings: offerings),
+      );
+
+      final cta = find.text(r'以 NT$590 訂閱 Starter 月繳');
+      expect(cta, findsOneWidget);
+      await tester.tap(cta, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump();
+
+      expect(purchasingOverlay(), findsWidgets);
+      expect(find.text('升級方案'), findsOneWidget);
+      expect(find.text('方案與額度'), findsNothing);
+      expect(find.textContaining('升級會立即生效'), findsNothing);
+      expect(_buyCardSelected(tester, 'starter_monthly'), isTrue);
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, '恢復購買'))
+            .onPressed,
+        isNull,
+      );
+
+      refresh.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('方案已更新'), findsOneWidget);
+      expect(find.text('home-root'), findsOneWidget);
+      await flushSnackBars(tester);
+    });
   });
 
   // 付費頁標題依入口換（Eric 2026-10-18）：鎖住的卡、額度用完、其他入口照舊。
@@ -865,7 +1063,14 @@ void main() {
           expect(find.text(entry.headlineFor(tier)), findsOneWidget,
               reason: '$tier $entry');
           expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
-          expect(find.text('方案與額度'), findsOneWidget);
+          // 免費用戶看購買版（Onboarding 第 9 步），付費用戶看管理版。
+          expect(
+            find.text(
+              tier == SubscriptionTierHelper.free ? '升級方案' : '方案與額度',
+            ),
+            findsOneWidget,
+            reason: '$tier $entry',
+          );
         }
       }
     });
@@ -935,11 +1140,17 @@ void main() {
           reason: tier,
         );
         expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
-        expect(find.text('方案與額度'), findsOneWidget);
+        expect(
+          find.text(
+            tier == SubscriptionTierHelper.free ? '升級方案' : '方案與額度',
+          ),
+          findsOneWidget,
+          reason: tier,
+        );
       }
     });
 
-    testWidgets('從鎖住的卡打開：標題跟著換，其他內容照舊', (tester) async {
+    testWidgets('從鎖住的卡打開：大標跟著換；免費用戶看購買版', (tester) async {
       await tester.binding.setSurfaceSize(const Size(430, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -960,8 +1171,352 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
-      expect(find.text('方案與額度'), findsOneWidget);
-      expect(find.textContaining('升級會立即生效'), findsAtLeastNWidgets(1));
+      expect(find.text('升級方案'), findsOneWidget);
+      expect(find.textContaining('升級會立即生效'), findsNothing);
+    });
+  });
+
+  // Onboarding 第 9 步：免費用戶撞額度時打開的是購買版——第一屏就看得到兩張方案卡、
+  // App Store 價格，購買鈕固定在底部。
+  group('購買版（免費用戶）', () {
+    SubscriptionState freeWithProducts() => SubscriptionState(
+          dailyMessagesUsed: AppConstants.freeDailyLimit,
+          storeProducts: _allProducts(),
+        );
+    Finder bottomBar() => find.byKey(const ValueKey('paywall-buy-bottom-bar'));
+    Finder inBottomBar(Finder finder) =>
+        find.descendant(of: bottomBar(), matching: finder);
+    Finder segment(String label) => find.descendant(
+          of: find.byType(BrandSegmentedButton<bool>),
+          matching: find.text(label),
+        );
+
+    testWidgets('第一屏（390x844，扣掉瀏海與底部橫條）就有兩張方案卡、價格與固定在底部的購買鈕；沒有按比例計費句',
+        (tester) async {
+      final dpr = tester.view.devicePixelRatio;
+      tester.view.padding = FakeViewPadding(top: 47 * dpr, bottom: 34 * dpr);
+      addTearDown(tester.view.resetPadding);
+      await pumpPaywall(
+        tester,
+        state: freeWithProducts(),
+        entry: PaywallEntry.dailyQuotaUsedUp,
+        size: const Size(390, 844),
+      );
+
+      // 兩張卡整張都在固定底部上面，不用捲就看得到；價格是 App Store 回傳的字串。
+      final barTop = tester.getTopLeft(bottomBar()).dy;
+      for (final id in ['starter_monthly', 'essential_monthly']) {
+        expect(_buyCard(id), findsOneWidget, reason: id);
+        expect(tester.getRect(_buyCard(id)).bottom, lessThanOrEqualTo(barTop),
+            reason: id);
+      }
+      expect(_buyCard('starter_quarterly'), findsNothing);
+      expect(_buyCard('essential_quarterly'), findsNothing);
+      expect(
+          _inBuyCard('starter_monthly', find.text(r'NT$590')), findsOneWidget);
+      expect(_inBuyCard('essential_monthly', find.text(r'NT$1,290')),
+          findsOneWidget);
+
+      // 購買鈕、自動續訂說明、條款與隱私都在固定底部，底部橫條上面（App Review
+      // 3.1.2）。
+      final buy = inBottomBar(find.text(r'以 NT$590 訂閱 Starter 月繳'));
+      expect(buy, findsOneWidget);
+      expect(tester.getRect(buy).bottom, lessThanOrEqualTo(844 - 34));
+      expect(inBottomBar(find.text('每月自動續訂，可隨時在 iPhone 設定取消')), findsOneWidget);
+      expect(inBottomBar(find.text('服務條款')), findsOneWidget);
+      expect(inBottomBar(find.text('隱私政策')), findsOneWidget);
+
+      // 標題、X、右上恢復購買；大標第二行先講恢復時間、做成副標；差異句。
+      expect(find.text('升級方案'), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '恢復購買'), findsOneWidget);
+      final headline = tester.widget<Text>(find.text(
+        PaywallEntry.dailyQuotaUsedUp.headlineFor(SubscriptionTierHelper.free),
+      ));
+      final title = headline.textSpan! as TextSpan;
+      expect(title.text, '今天的額度用完了');
+      final subtitle = title.children!.single as TextSpan;
+      expect(subtitle.text, '\n每天早上 8 點恢復；升級後每天能用更多');
+      expect(subtitle.style!.fontSize!, lessThan(title.style!.fontSize!));
+      expect(find.textContaining('它認得你聊的每一個她'), findsOneWidget);
+
+      // 管理版的東西不放：按比例計費句、額度膠囊、降級排程、管理訂閱；比較表收著。
+      expect(find.textContaining('按比例'), findsNothing);
+      expect(find.textContaining('升級會立即生效'), findsNothing);
+      expect(find.text('目前方案與額度'), findsNothing);
+      expect(find.text('本月剩餘'), findsNothing);
+      expect(find.text('今日剩餘'), findsNothing);
+      expect(find.textContaining('已排程降級'), findsNothing);
+      expect(find.text('管理訂閱'), findsNothing);
+      expect(find.text('方案與額度'), findsNothing);
+      expect(find.text('方案功能比較'), findsNothing);
+      // 不寫試用、倒數、打折。
+      expect(find.textContaining(RegExp('試用|倒數|限時|打折|折扣|優惠')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('最矮的 iPhone（375x667）也排得下：沒有溢出，購買鈕在畫面裡', (tester) async {
+      await pumpPaywall(
+        tester,
+        state: freeWithProducts(),
+        entry: PaywallEntry.monthlyQuotaUsedUp,
+        size: const Size(375, 667),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getRect(find.text(r'以 NT$590 訂閱 Starter 月繳')).bottom,
+        lessThanOrEqualTo(667),
+      );
+      for (final id in ['starter_monthly', 'essential_monthly']) {
+        expect(
+          tester.getRect(_inBuyCard(id, find.textContaining('NT\$'))).bottom,
+          lessThan(tester.getTopLeft(bottomBar()).dy),
+          reason: '$id 的價格在第一屏',
+        );
+      }
+    });
+
+    // 卡片權益只用真的數字（Eric：一個數字都不要自己編），冊數跟比較表那兩格一致；
+    // 草稿潤飾 7/28 起全方案都能用（D-4），不能寫成 Essential 才有。
+    testWidgets('卡片權益照 AppConstants 與比較表；不把草稿潤飾寫成 Essential 權益',
+        (tester) async {
+      await pumpPaywall(tester, state: freeWithProducts());
+
+      String cardText(String id) => tester
+          .widgetList<Text>(_inBuyCard(id, find.byType(Text)))
+          .map((text) => text.data ?? text.textSpan?.toPlainText() ?? '')
+          .join();
+      final starter = cardText('starter_monthly');
+      expect(
+        starter,
+        contains('每月 ${AppConstants.starterMonthlyLimit} 則・'
+            '每天 ${AppConstants.starterDailyLimit} 則'),
+      );
+      expect(
+        starter,
+        contains('陪練每天翻 ${AppConstants.starterDailyDrawLimit} 位、同一位能續聊'),
+      );
+      expect(starter, contains('互動電子書 4 冊＋聊天測驗全關卡'));
+      final essential = cardText('essential_monthly');
+      expect(
+        essential,
+        contains('每月 ${AppConstants.essentialMonthlyLimit} 則・'
+            '每天 ${AppConstants.essentialDailyLimit} 則'),
+      );
+      expect(
+        essential,
+        contains('陪練每天翻 ${AppConstants.essentialDailyDrawLimit} 位、同一位能續聊'),
+      );
+      expect(essential, contains('互動電子書全 7 冊、夜市實戰影片完整版'));
+      expect(find.textContaining('草稿潤飾'), findsNothing);
+
+      // 冊數、夜市影片跟比較表同一格。
+      await tester.tap(find.byKey(const ValueKey('paywall-compare-toggle')));
+      await tester.pumpAndSettle();
+      List<String?> cellsOf(String feature) => tester
+          .widgetList<Text>(find.descendant(
+            of: find
+                .ancestor(of: find.text(feature), matching: find.byType(Row))
+                .first,
+            matching: find.byType(Text),
+          ))
+          .map((text) => text.data)
+          .toList();
+      expect(cellsOf('互動電子書'), ['互動電子書', '第 1 冊＋試讀', '4 冊', '全 7 冊']);
+      expect(cellsOf('聊天測驗'), ['聊天測驗', '免費關卡', '全部關卡', '全部關卡']);
+      expect(cellsOf('夜市實戰影片'), ['夜市實戰影片', '第一段', '第一段', '完整流程＋復盤']);
+    });
+
+    testWidgets('比較全部方案：預設收著，點了才展開既有的比較表', (tester) async {
+      await pumpPaywall(tester, state: freeWithProducts());
+
+      expect(find.text('方案功能比較'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('paywall-compare-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('方案功能比較'), findsOneWidget);
+      expect(find.text('陪練女孩翻牌'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('paywall-compare-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('方案功能比較'), findsNothing);
+    });
+
+    testWidgets('切到季繳：卡片換季繳價，月均價無條件進位、字比扣款金額小；續訂說明與購買鈕改季', (tester) async {
+      await pumpPaywall(tester, state: freeWithProducts());
+
+      // 季繳那一格寫選到的方案省多少：1 - 1590 ÷ (590 × 3) = 10.2% → 省 10%。
+      await tester.tap(segment('季繳 省 10%'));
+      await tester.pumpAndSettle();
+
+      expect(_buyCard('starter_monthly'), findsNothing);
+      expect(_buyCard('essential_monthly'), findsNothing);
+      final starterPrice =
+          _inBuyCard('starter_quarterly', find.text(r'NT$1,590'));
+      expect(starterPrice, findsOneWidget);
+      expect(_inBuyCard('essential_quarterly', find.text(r'NT$3,490')),
+          findsOneWidget);
+      // 1590 ÷ 3 = 530 整除；3490 ÷ 3 = 1163.33… 無條件進位成 1,164，寫「約」。
+      final starterAverage =
+          _inBuyCard('starter_quarterly', find.text(r'平均每月 NT$530'));
+      expect(starterAverage, findsOneWidget);
+      expect(
+        _inBuyCard('essential_quarterly', find.text(r'平均每月約 NT$1,164')),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<Text>(starterAverage).style!.fontSize!,
+        lessThan(tester.widget<Text>(starterPrice).style!.fontSize!),
+      );
+      expect(
+          _inBuyCard('starter_quarterly', find.text('省 10%')), findsOneWidget);
+      expect(
+          _inBuyCard('essential_quarterly', find.text('省 9%')), findsOneWidget);
+      // 續訂週期寫季，不能寫成每月。
+      expect(inBottomBar(find.text('每 3 個月自動續訂，可隨時在 iPhone 設定取消')),
+          findsOneWidget);
+      expect(find.text('每月自動續訂，可隨時在 iPhone 設定取消'), findsNothing);
+      expect(find.text(r'以 NT$1,590 訂閱 Starter 季繳'), findsOneWidget);
+
+      // 點 Essential：季繳那一格換成 Essential 省多少；切回月繳還是 Essential。
+      await tester.tap(_buyCard('essential_quarterly'));
+      await tester.pumpAndSettle();
+      expect(find.text(r'以 NT$3,490 訂閱 Essential 季繳'), findsOneWidget);
+      expect(segment('季繳 省 9%'), findsOneWidget);
+      await tester.tap(segment('月繳'));
+      await tester.pumpAndSettle();
+      expect(_buyCardSelected(tester, 'essential_monthly'), isTrue);
+      expect(find.text(r'以 NT$1,290 訂閱 Essential 月繳'), findsOneWidget);
+      expect(inBottomBar(find.text('每月自動續訂，可隨時在 iPhone 設定取消')), findsOneWidget);
+      // 選卡只有 240ms 的邊框漸變，跑完就靜止。
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.binding.transientCallbackCount, 0);
+    });
+
+    testWidgets('推薦徽章與橘色樣式跟著預設那張：免費是 Starter，月繳、季繳都標在 Starter', (tester) async {
+      await pumpPaywall(tester, state: freeWithProducts());
+
+      final starterBadge = _inBuyCard('starter_monthly', find.text('推薦'));
+      expect(_visibleCount(starterBadge), 1);
+      expect(_badgeIsOrange(tester, starterBadge), isTrue);
+      expect(
+          _visibleCount(_inBuyCard('essential_monthly', find.text('推薦'))), 0);
+      // 管理版的固定標籤（入門、最划算）不放進購買版。
+      expect(find.text('入門'), findsNothing);
+      expect(find.text('最划算'), findsNothing);
+
+      await tester.tap(segment('季繳 省 10%'));
+      await tester.pumpAndSettle();
+      expect(
+          _visibleCount(_inBuyCard('starter_quarterly', find.text('推薦'))), 1);
+      expect(
+          _visibleCount(_inBuyCard('essential_quarterly', find.text('推薦'))), 0);
+    });
+
+    testWidgets('價格還沒到：卡片寫價格同步中，購買鈕改成重新載入價格', (tester) async {
+      await pumpPaywall(tester, state: const SubscriptionState());
+
+      expect(_inBuyCard('starter_monthly', find.text('價格同步中')), findsOneWidget);
+      expect(
+          _inBuyCard('essential_monthly', find.text('價格同步中')), findsOneWidget);
+      expect(inBottomBar(find.text('重新載入 App Store 價格')), findsOneWidget);
+      expect(find.textContaining('平均每月'), findsNothing);
+    });
+  });
+
+  // Onboarding 第 9 步：第一幀的方案可能還是本機快取（isLoading），先排骨架，等第一次
+  // 同步完才決定購買版或管理版，不先閃錯的那一版再換。
+  group('方案同步中先排骨架', () {
+    Finder skeleton() => find.byKey(const ValueKey('paywall-loading-skeleton'));
+    bool manageShown() =>
+        find.text('方案與額度').evaluate().isNotEmpty ||
+        find.textContaining('升級會立即生效').evaluate().isNotEmpty;
+    bool buyShown() => find.text('升級方案').evaluate().isNotEmpty;
+
+    Future<_StubSubscriptionNotifier> pumpWith(
+      WidgetTester tester,
+      SubscriptionState initial,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final stub = _StubSubscriptionNotifier()..seedState(initial);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            subscriptionProvider.overrideWith((ref) => stub),
+            subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+          ],
+          child: const MaterialApp(home: PaywallScreen()),
+        ),
+      );
+      return stub;
+    }
+
+    SubscriptionState loading(String tier) {
+      final limits = SubscriptionTierHelper.limitsFor(tier);
+      return SubscriptionState(
+        tier: tier,
+        monthlyLimit: limits.monthly,
+        dailyLimit: limits.daily,
+        isLoading: true,
+      );
+    }
+
+    testWidgets('快取是付費、同步完是免費：先骨架，直接進購買版，中間不閃管理版', (tester) async {
+      final stub =
+          await pumpWith(tester, loading(SubscriptionTierHelper.starter));
+
+      for (var frame = 0; frame < 3; frame++) {
+        expect(skeleton(), findsOneWidget);
+        expect(manageShown(), isFalse);
+        expect(buyShown(), isFalse);
+        // 骨架也關得掉。
+        expect(find.byIcon(Icons.close), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+
+      stub.seedState(const SubscriptionState());
+      await tester.pump();
+      expect(skeleton(), findsNothing);
+      expect(buyShown(), isTrue);
+      expect(manageShown(), isFalse);
+    });
+
+    testWidgets('快取是免費、同步完是 Starter：先骨架，不先閃購買版，直接進管理版', (tester) async {
+      final stub = await pumpWith(tester, loading(SubscriptionTierHelper.free));
+
+      expect(skeleton(), findsOneWidget);
+      expect(buyShown(), isFalse);
+      expect(manageShown(), isFalse);
+
+      stub.seedState(_paidState(SubscriptionTierHelper.starter));
+      await tester.pump();
+      expect(skeleton(), findsNothing);
+      expect(manageShown(), isTrue);
+      expect(buyShown(), isFalse);
+    });
+
+    testWidgets('同步一直沒回來：最多等 2 秒，就照當下的方案排版面', (tester) async {
+      await pumpWith(tester, loading(SubscriptionTierHelper.free));
+
+      expect(skeleton(), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1900));
+      expect(skeleton(), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(skeleton(), findsNothing);
+      expect(buyShown(), isTrue);
+    });
+
+    testWidgets('版面排好之後再刷新（isLoading 又變 true）：不閃回骨架', (tester) async {
+      final stub = await pumpWith(tester, const SubscriptionState());
+      await tester.pump();
+      expect(buyShown(), isTrue);
+
+      // 每次打開付費頁都會刷新方案；購買時也會把 isLoading 設成 true。
+      stub.seedState(const SubscriptionState(isLoading: true));
+      await tester.pump();
+      expect(skeleton(), findsNothing);
+      expect(buyShown(), isTrue);
     });
   });
 }
