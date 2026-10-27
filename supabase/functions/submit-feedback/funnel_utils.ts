@@ -25,11 +25,13 @@ const ABOUT_ME_SOURCES = new Set([
   "settings",
 ]);
 
-// 付費頁從哪裡打開（對應 app 的 PaywallEntry）。
+// 付費頁從哪裡打開（對應 app 的 PaywallEntry）。practice_draw＝練習室翻牌撞牆
+// （Onboarding 第 2 步，2026-10-27）。
 const PAYWALL_ENTRIES = new Set([
   "general",
   "locked_cards",
   "quota_exhausted",
+  "practice_draw",
 ]);
 
 // 買到的付費方案；free 不是購買結果，不收。

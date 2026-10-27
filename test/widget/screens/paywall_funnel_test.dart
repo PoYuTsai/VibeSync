@@ -24,7 +24,7 @@ import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/features/subscription/presentation/screens/paywall_screen.dart';
 
 /// 字典裡 entry 的值（docs/integrations/funnel-events-v1.md）：額度不夠的四種都記
-/// quota_exhausted；加入口要一起補。
+/// quota_exhausted，練習室翻牌撞牆記 practice_draw；加入口要一起補。
 const _wireEntry = {
   PaywallEntry.general: 'general',
   PaywallEntry.lockedCards: 'locked_cards',
@@ -32,6 +32,7 @@ const _wireEntry = {
   PaywallEntry.dailyQuotaShort: 'quota_exhausted',
   PaywallEntry.monthlyQuotaUsedUp: 'quota_exhausted',
   PaywallEntry.monthlyQuotaShort: 'quota_exhausted',
+  PaywallEntry.practiceDraw: 'practice_draw',
 };
 
 /// 帳號 id 是 UUID（伺服器只收 UUID 的 purchaser）。

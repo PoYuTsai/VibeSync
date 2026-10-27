@@ -91,4 +91,31 @@ void main() {
       );
     }
   });
+
+  // Onboarding 第 2 步：翻牌照台北中午 12 點換窗（不是一般額度的早上 8 點），中午前
+  // 用完也不能說「明天」；伺服器翻牌 429 講同一句。
+  test('翻牌用完的說法：先講中午 12 點恢復；Starter 補升級，Essential 不提升級', () {
+    expect(kPracticeDrawResetLine, '每天中午 12 點恢復');
+    expect(
+      practiceDrawUsedUpMessage(SubscriptionTierHelper.starter),
+      '今天的翻牌用完了，每天中午 12 點恢復；也可以升級。',
+    );
+    expect(
+      practiceDrawUsedUpMessage(SubscriptionTierHelper.essential),
+      '今天的翻牌用完了，每天中午 12 點恢復。',
+    );
+    expect(
+      practiceDrawUsedUpMessage(null),
+      practiceDrawUsedUpMessage(SubscriptionTierHelper.free),
+    );
+    for (final tier in [
+      SubscriptionTierHelper.free,
+      SubscriptionTierHelper.starter,
+      SubscriptionTierHelper.essential,
+    ]) {
+      final text = practiceDrawUsedUpMessage(tier);
+      expect(text, isNot(contains('明天')), reason: tier);
+      expect(text, isNot(contains(kDailyQuotaResetLine)), reason: tier);
+    }
+  });
 }

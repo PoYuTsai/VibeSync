@@ -12,6 +12,8 @@ import '../../../../shared/widgets/ai_data_sharing_consent.dart';
 import '../../../../shared/widgets/chat_bubble.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../data/repositories/practice_game_intro_store.dart';
 import '../../data/repositories/practice_session_repository.dart';
@@ -406,7 +408,18 @@ class _PracticeChatScreenState extends ConsumerState<PracticeChatScreen> {
                       state.upgradeRequired ||
                       state.drawUpgradeRequired ||
                       state.drawQuotaExceeded,
-                  onUpgrade: () => context.push('/paywall'),
+                  // 翻牌撞牆才帶翻牌入口（Onboarding 第 2 步）；共用額度用完、續聊被擋
+                  // 照舊一般入口。兩種旗標同時在（送訊息失敗會沿用先前的翻牌旗標）
+                  // 時也走一般入口：只有確定是翻牌的錯才換大標。
+                  onUpgrade: () => context.push(
+                    '/paywall',
+                    extra: (state.drawUpgradeRequired ||
+                                state.drawQuotaExceeded) &&
+                            !state.quotaExceeded &&
+                            !state.upgradeRequired
+                        ? PaywallEntry.practiceDraw
+                        : PaywallEntry.general,
+                  ),
                   onDismiss: () => ref
                       .read(practiceChatControllerProvider.notifier)
                       .clearError(),
@@ -496,8 +509,9 @@ class _PracticeLockedEntry extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final upgradeLocked = state.drawUpgradeRequired;
     final quotaLocked = state.drawQuotaExceeded;
+    final subscription = ref.watch(subscriptionProvider);
     // 批 3：free 每日免費抽已移除，「每日」字樣只對付費 tier 為真。
-    final isPremium = ref.watch(subscriptionProvider).isPremium;
+    final isPremium = subscription.isPremium;
     return Center(
       child: SingleChildScrollView(
         key: const ValueKey('practice-locked-entry'),
@@ -533,7 +547,12 @@ class _PracticeLockedEntry extends ConsumerWidget {
                 width: double.infinity,
                 child: FilledButton(
                   key: const ValueKey('practice-draw-upgrade-primary'),
-                  onPressed: AppHaptics.onPress(() => context.push('/paywall')),
+                  onPressed: AppHaptics.onPress(
+                    () => context.push(
+                      '/paywall',
+                      extra: PaywallEntry.practiceDraw,
+                    ),
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.ctaStart,
                     foregroundColor: AppColors.onCta,
@@ -570,7 +589,10 @@ class _PracticeLockedEntry extends ConsumerWidget {
               const SizedBox(height: 8),
               OutlinedButton(
                 key: const ValueKey('practice-draw-upgrade'),
-                onPressed: () => context.push('/paywall'),
+                onPressed: () => context.push(
+                  '/paywall',
+                  extra: PaywallEntry.practiceDraw,
+                ),
                 child: const Text('升級解鎖'),
               ),
             ] else if (state.drawQuotaExceeded) ...[
@@ -578,7 +600,8 @@ class _PracticeLockedEntry extends ConsumerWidget {
               Text(
                 // 翻牌窗以台北中午 12 點為界（server draw_decision.ts）；
                 // 「明天中午」在中午前用完的情境是錯的，講週期不講日期。
-                state.errorMessage ?? '額度已用完，每天中午 12 點重置。',
+                state.errorMessage ??
+                    practiceDrawUsedUpMessage(subscription.tier),
                 key: const ValueKey('practice-draw-quota'),
                 textAlign: TextAlign.center,
                 style: AppTypography.caption.copyWith(

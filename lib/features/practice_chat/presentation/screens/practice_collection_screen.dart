@@ -16,6 +16,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../../subscription/presentation/paywall_entry.dart';
+import '../../../subscription/presentation/quota_copy.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
@@ -389,11 +391,14 @@ class _PracticeCollectionScreenState
       // （Free 每日免費抽已於 2026-08-02 移除，只剩一次性首抽，進練習室就發，
       // 見 _maybeGrantFirstDraw；Free 無額度時 server 回 402 走 drawUpgradeRequired 分支）。
       if (state.drawUpgradeRequired) {
-        context.push('/paywall');
+        context.push('/paywall', extra: PaywallEntry.practiceDraw);
         return;
       }
       if (state.drawQuotaExceeded) {
-        _showDrawSnackBar(state.errorMessage ?? '今日額度已用完，明天再來或升級方案繼續練習。');
+        _showDrawSnackBar(
+          state.errorMessage ??
+              practiceDrawUsedUpMessage(ref.read(subscriptionProvider).tier),
+        );
         return;
       }
       if (collectionComplete) {
@@ -411,7 +416,7 @@ class _PracticeCollectionScreenState
     // revealed（換一位）：Free／已標升級 → 付費牆。
     final subscription = ref.read(subscriptionProvider);
     if (subscription.isFreeUser || state.drawUpgradeRequired) {
-      context.push('/paywall');
+      context.push('/paywall', extra: PaywallEntry.practiceDraw);
       return;
     }
 
@@ -423,24 +428,24 @@ class _PracticeCollectionScreenState
     if (freeRemaining != null &&
         freeRemaining <= 0 &&
         (state.drawExtraCost ?? 0) <= 0) {
-      context.push('/paywall');
+      context.push('/paywall', extra: PaywallEntry.practiceDraw);
       return;
     }
 
+    // 翻牌窗是台北中午 12 點換（不是「明天」）；Essential 不叫他升級。
+    final drawUsedUp = practiceDrawUsedUpMessage(subscription.tier);
     if (state.drawQuotaExceeded) {
-      notifier.lockDrawQuotaExceeded();
+      notifier.lockDrawQuotaExceeded(message: drawUsedUp);
       _showDrawSnackBar(
-        ref.read(practiceChatControllerProvider).errorMessage ??
-            '今日額度已用完，明天再來或升級方案繼續練習。',
+        ref.read(practiceChatControllerProvider).errorMessage ?? drawUsedUp,
       );
       return;
     }
 
     if (_hasInsufficientPaidDrawQuota(subscription, state)) {
-      notifier.lockDrawQuotaExceeded();
+      notifier.lockDrawQuotaExceeded(message: drawUsedUp);
       _showDrawSnackBar(
-        ref.read(practiceChatControllerProvider).errorMessage ??
-            '今日額度已用完，明天再來或升級方案繼續練習。',
+        ref.read(practiceChatControllerProvider).errorMessage ?? drawUsedUp,
       );
       return;
     }
@@ -617,7 +622,7 @@ class _PracticeCollectionScreenState
         if (!mounted) return;
         AppHaptics.failure();
         unawaited(ref.read(subscriptionScreenRefreshProvider)());
-        context.push('/paywall');
+        context.push('/paywall', extra: PaywallEntry.practiceDraw);
       } else if (next.drawQuotaExceeded || next.errorMessage != null) {
         AppHaptics.failure();
         _showDrawSnackBar(next.errorMessage ?? '翻牌失敗了，再試一次。');
@@ -1485,7 +1490,7 @@ class _SrTicketSection extends ConsumerWidget {
       return _SrTicketCard(
         cardKey: const ValueKey('collection-sr-ticket-locked'),
         locked: true,
-        onTap: () => context.push('/paywall'),
+        onTap: () => context.push('/paywall', extra: PaywallEntry.practiceDraw),
       );
     }
     final status = ref.watch(srTicketStatusProvider);

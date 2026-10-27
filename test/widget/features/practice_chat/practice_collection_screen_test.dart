@@ -19,6 +19,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_dr
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 
 /// 同其他 widget test 的 seeded-notifier idiom：constructor 在 super 同步初始化後
 /// 直接覆寫 state；無 Supabase user 時後續 async 初始化全 no-op。
@@ -92,6 +93,7 @@ class _DrawSpyController extends _SeededPracticeChatController {
 
   int drawCalls = 0;
   int lockQuotaCalls = 0;
+  String? lastLockMessage;
   bool? lastDrawSrTicket;
 
   @override
@@ -101,10 +103,9 @@ class _DrawSpyController extends _SeededPracticeChatController {
   }
 
   @override
-  void lockDrawQuotaExceeded({
-    String message = '今日額度已用完，明天再來或升級方案繼續練習。',
-  }) {
+  void lockDrawQuotaExceeded({required String message}) {
     lockQuotaCalls++;
+    lastLockMessage = message;
     super.lockDrawQuotaExceeded(message: message);
   }
 
@@ -167,6 +168,17 @@ const _paidSubscription = SubscriptionState(
   monthlyLimit: 100,
   dailyLimit: 30,
 );
+
+const _essentialSubscription = SubscriptionState(
+  tier: SubscriptionTierHelper.essential,
+  monthlyLimit: 800,
+  dailyLimit: 120,
+);
+
+/// 付費方案今天的翻牌用完了（Onboarding 第 2 步）：翻牌是台北中午 12 點恢復，不是
+/// 「明天」；Starter 可以升級，Essential 只講恢復時間。
+const _drawUsedUpUpgradeable = '今天的翻牌用完了，每天中午 12 點恢復；也可以升級。';
+const _drawUsedUpTopTier = '今天的翻牌用完了，每天中午 12 點恢復。';
 
 class _SeededCollection extends PracticeCollectionNotifier {
   _SeededCollection(this._ids);
@@ -247,8 +259,14 @@ Widget collectionRouterApp({
       ),
       GoRoute(
         path: '/paywall',
-        builder: (context, state) => const Scaffold(
-          body: Text('paywall-stub', key: ValueKey('paywall-stub')),
+        // 替身把入口印出來：翻牌撞牆要帶 practiceDraw（Onboarding 第 2 步）。
+        builder: (context, state) => Scaffold(
+          body: Column(
+            children: [
+              const Text('paywall-stub', key: ValueKey('paywall-stub')),
+              Text('entry:${PaywallEntry.fromRouteExtra(state.extra).name}'),
+            ],
+          ),
         ),
       ),
     ],
@@ -725,21 +743,40 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
       expect(controller.drawCalls, 0);
     });
 
     testWidgets('locked＋drawQuotaExceeded 點擊 → snackbar 顯示 errorMessage、不 draw',
         (tester) async {
       final controller = _DrawSpyController(
-        _lockedSeed(
-            quotaExceeded: true, errorMessage: '今日額度已用完，明天再來或升級方案繼續練習。'),
+        _lockedSeed(quotaExceeded: true, errorMessage: _drawUsedUpUpgradeable),
       );
       await pumpApp(tester, collectionApp(controller: controller));
 
       await tester.tap(find.byKey(drawButton));
       await tester.pump();
 
-      expect(find.text('今日額度已用完，明天再來或升級方案繼續練習。'), findsOneWidget);
+      expect(find.text(_drawUsedUpUpgradeable), findsOneWidget);
+      expect(controller.drawCalls, 0);
+    });
+
+    testWidgets('locked＋drawQuotaExceeded 沒有訊息 → 照方案講中午 12 點恢復（Essential 不提升級）',
+        (tester) async {
+      final controller = _DrawSpyController(_lockedSeed(quotaExceeded: true));
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          subscription: _essentialSubscription,
+        ),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(find.text(_drawUsedUpTopTier), findsOneWidget);
+      expect(find.textContaining('明天'), findsNothing);
       expect(controller.drawCalls, 0);
     });
 
@@ -752,6 +789,7 @@ void main() {
       await tester.pumpAndSettle(); // revealed 無脈動，可 settle
 
       expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
       expect(controller.drawCalls, 0);
     });
@@ -776,6 +814,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
       expect(controller.drawCalls, 0);
     });
@@ -887,7 +926,28 @@ void main() {
 
       expect(controller.lockQuotaCalls, 1);
       expect(controller.drawCalls, 0);
-      expect(find.text('今日額度已用完，明天再來或升級方案繼續練習。'), findsOneWidget);
+      expect(controller.lastLockMessage, _drawUsedUpUpgradeable);
+      expect(find.text(_drawUsedUpUpgradeable), findsOneWidget);
+    });
+
+    testWidgets('revealed＋Essential＋drawQuotaExceeded → 只講中午 12 點恢復，不叫他升級',
+        (tester) async {
+      final controller = _DrawSpyController(_revealedSeed(quotaExceeded: true));
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          subscription: _essentialSubscription,
+        ),
+      );
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pump();
+
+      expect(controller.lockQuotaCalls, 1);
+      expect(controller.lastLockMessage, _drawUsedUpTopTier);
+      expect(find.text(_drawUsedUpTopTier), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
     });
 
     testWidgets('revealed＋付費但額度不足付費翻牌 → 同鎖、不彈 dialog、不 draw', (tester) async {
@@ -910,6 +970,7 @@ void main() {
       await tester.pump();
 
       expect(controller.lockQuotaCalls, 1);
+      expect(controller.lastLockMessage, _drawUsedUpUpgradeable);
       expect(controller.drawCalls, 0);
       expect(find.byType(AlertDialog), findsNothing);
     });
@@ -1068,6 +1129,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
 
         expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+        expect(find.text('entry:practiceDraw'), findsOneWidget);
       });
     });
 
@@ -1147,6 +1209,7 @@ void main() {
 
       // 產品拍板：Free 額度用完絕不出加抽/升級 snackbar，一律直接進 paywall。
       expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
       expect(find.byType(SnackBar), findsNothing);
       // 402 常來自 stale 訂閱快照（付費過期降 free）→ 順帶重同步一次。
       expect(refreshCalls, 1);

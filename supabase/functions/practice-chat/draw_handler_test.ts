@@ -10,6 +10,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  drawQuotaExceededMessage,
   type DrawSupabaseClient,
   handleDrawProfile,
   handleDrawStatus,
@@ -323,6 +324,11 @@ Deno.test("Starter 額外抽 quota 不足：RPC RAISE daily → 429 quota payloa
   assertEquals(body.error, "Daily limit exceeded");
   assertEquals(body.dailyLimit, 50);
   assertEquals(body.quotaNeeded, 5);
+  // 翻牌的說法（Onboarding 第 2 步）：講中午 12 點恢復，不是一般額度的早上 8 點。
+  assertEquals(
+    body.message,
+    "今天的翻牌用完了，每天中午 12 點恢復；也可以升級。",
+  );
 });
 
 Deno.test("Essential 額外抽 quota 不足：RPC RAISE monthly → 429 monthly payload", async () => {
@@ -334,6 +340,28 @@ Deno.test("Essential 額外抽 quota 不足：RPC RAISE monthly → 429 monthly 
   assertEquals(result.status, 429);
   assertEquals(body.error, "Monthly limit exceeded");
   assertEquals(body.monthlyLimit, 800);
+  // 每月額度不夠也一樣：免費翻牌照樣中午恢復；Essential 不叫他升級。
+  assertEquals(body.message, "今天的翻牌用完了，每天中午 12 點恢復。");
+});
+
+Deno.test("翻牌 429 的說法：Starter 可以升級，Essential 只講恢復時間，不認得的方案當免費", () => {
+  assertEquals(
+    drawQuotaExceededMessage("starter"),
+    "今天的翻牌用完了，每天中午 12 點恢復；也可以升級。",
+  );
+  assertEquals(
+    drawQuotaExceededMessage("essential"),
+    "今天的翻牌用完了，每天中午 12 點恢復。",
+  );
+  assertEquals(
+    drawQuotaExceededMessage("unknown_tier"),
+    drawQuotaExceededMessage("free"),
+  );
+  for (const tier of ["free", "starter", "essential"]) {
+    const text = drawQuotaExceededMessage(tier);
+    assert(!text.includes("明天"), `${tier} 不能說明天`);
+    assert(!text.includes("早上 8 點"), `${tier} 翻牌不是早上 8 點恢復`);
+  }
 });
 
 // ── idempotent replay：回原本抽到的那一位 ──────────────────────────────

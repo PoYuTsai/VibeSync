@@ -227,8 +227,16 @@ Deno.test("new_topic_copied：只收 is_recommended 布林，字串或其他鍵�
 
 // 付費頁與鎖卡的漏斗（Eric 2026-10-18：量從哪裡打開付費頁、買了哪個方案、
 // 鎖卡區塊被點時鎖了幾張）。值域在 server 強制，不合就剝掉那個鍵、事件照收。
-Deno.test("paywall_opened：entry 只收三種入口，其他值剝除整鍵", () => {
-  for (const entry of ["general", "locked_cards", "quota_exhausted"]) {
+Deno.test("paywall_opened：entry 只收四種入口，其他值剝除整鍵", () => {
+  // practice_draw：練習室翻牌撞牆（Onboarding 第 2 步）。
+  for (
+    const entry of [
+      "general",
+      "locked_cards",
+      "quota_exhausted",
+      "practice_draw",
+    ]
+  ) {
     const ok = buildFunnelRow("u", {
       event: "paywall_opened",
       properties: { entry },
@@ -237,7 +245,9 @@ Deno.test("paywall_opened：entry 只收三種入口，其他值剝除整鍵", (
     if (ok.ok) assertEquals(ok.row.properties, { entry });
   }
 
-  for (const bad of ["lockedCards", "home", "", 1, true, null]) {
+  for (
+    const bad of ["lockedCards", "practiceDraw", "home", "", 1, true, null]
+  ) {
     const result = buildFunnelRow("u", {
       event: "paywall_opened",
       properties: { entry: bad },

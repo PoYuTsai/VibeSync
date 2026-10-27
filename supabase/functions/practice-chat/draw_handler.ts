@@ -254,6 +254,7 @@ export async function handleDrawProfile(
         continue;
       }
       return mapDrawRpcError(msg, {
+        tier,
         freeAllowance,
         allowPaidExtra,
         sub,
@@ -540,9 +541,23 @@ async function handleSrTicketDraw(args: {
   return { body: { error: "draw_failed" }, status: 500 };
 }
 
+/**
+ * 付費額外抽但一般額度不夠（429）時給使用者看的話（Onboarding 第 2 步，2026-10-27）。
+ * 這時今天的免費翻牌已經用完，講翻牌什麼時候恢復（台北中午 12 點換窗，見
+ * draw_decision.ts）；不沿用一般額度那句——那句講早上 8 點與「升級方案可取得更多
+ * 分析與教練額度」，Essential 還會被叫去升級。Starter 可以再升級；Essential 只講
+ * 恢復時間。App 的 quota_copy.dart practiceDrawUsedUpMessage 講同一句。
+ */
+export function drawQuotaExceededMessage(tier: string): string {
+  return normalizeTier(tier) === "essential"
+    ? "今天的翻牌用完了，每天中午 12 點恢復。"
+    : "今天的翻牌用完了，每天中午 12 點恢復；也可以升級。";
+}
+
 function mapDrawRpcError(
   message: string,
   ctx: {
+    tier: string;
     freeAllowance: number;
     allowPaidExtra: boolean;
     sub: SubscriptionRow;
@@ -568,29 +583,36 @@ function mapDrawRpcError(
       },
     };
   }
-  // 付費額外抽但 quota 不足 → 沿用既有 429 quota payload（不回 profile、不扣費）。
+  // 付費額外抽但 quota 不足 → 沿用既有 429 quota payload（不回 profile、不扣費），
+  // 只把 message 換成翻牌的說法（App 直接顯示這句）。
   if (message.includes("PRACTICE_DRAW_QUOTA_EXCEEDED_MONTHLY")) {
     return {
       status: 429,
-      body: buildQuotaExceededPayload({
-        sub: ctx.sub,
-        cost: PRACTICE_DRAW_EXTRA_COST,
-        reason: "monthly_limit_exceeded",
-        monthlyLimit: ctx.limits.monthly,
-        dailyLimit: ctx.limits.daily,
-      }),
+      body: {
+        ...buildQuotaExceededPayload({
+          sub: ctx.sub,
+          cost: PRACTICE_DRAW_EXTRA_COST,
+          reason: "monthly_limit_exceeded",
+          monthlyLimit: ctx.limits.monthly,
+          dailyLimit: ctx.limits.daily,
+        }),
+        message: drawQuotaExceededMessage(ctx.tier),
+      },
     };
   }
   if (message.includes("PRACTICE_DRAW_QUOTA_EXCEEDED_DAILY")) {
     return {
       status: 429,
-      body: buildQuotaExceededPayload({
-        sub: ctx.sub,
-        cost: PRACTICE_DRAW_EXTRA_COST,
-        reason: "daily_limit_exceeded",
-        monthlyLimit: ctx.limits.monthly,
-        dailyLimit: ctx.limits.daily,
-      }),
+      body: {
+        ...buildQuotaExceededPayload({
+          sub: ctx.sub,
+          cost: PRACTICE_DRAW_EXTRA_COST,
+          reason: "daily_limit_exceeded",
+          monthlyLimit: ctx.limits.monthly,
+          dailyLimit: ctx.limits.daily,
+        }),
+        message: drawQuotaExceededMessage(ctx.tier),
+      },
     };
   }
   // PRACTICE_DRAW_NO_SUBSCRIPTION / 其他未預期 → 500 fail-closed。

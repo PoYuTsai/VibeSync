@@ -13,6 +13,18 @@ const kDailyQuotaResetLine = '每天早上 8 點恢復';
 /// 每月額度什麼時候恢復。
 const kMonthlyQuotaResetLine = '每月 1 號早上 8 點恢復';
 
+/// 練習室翻牌什麼時候恢復：翻牌照台北中午 12 點換窗（`practice-chat/draw_decision.ts`），
+/// 跟一般額度的早上 8 點不同；中午前用完也不能說「明天」。
+const kPracticeDrawResetLine = '每天中午 12 點恢復';
+
+/// 付費方案今天的翻牌用完了（每日免費翻牌用完、加抽又不夠額度）時的說明（Onboarding
+/// 第 2 步）：先講什麼時候恢復；Starter 還能升級就補一句，Essential 只講恢復時間。
+/// 伺服器翻牌 429 的訊息（`practice-chat/draw_handler.ts` 的
+/// drawQuotaExceededMessage）講同一句。
+String practiceDrawUsedUpMessage(String? tier) => canUpgradeQuota(tier)
+    ? '今天的翻牌用完了，$kPracticeDrawResetLine；也可以升級。'
+    : '今天的翻牌用完了，$kPracticeDrawResetLine。';
+
 /// 還有更高的方案可以升級（免費、Starter）；Essential 回 false。
 bool canUpgradeQuota(String? tier) =>
     SubscriptionTierHelper.normalizeTier(tier) !=

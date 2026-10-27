@@ -869,6 +869,75 @@ void main() {
       }
     });
 
+    // Onboarding 第 2 步：翻牌撞牆的專屬大標。免費版沒有每日翻牌，不寫恢復時間；付費
+    // 方案先講翻牌什麼時候恢復（台北中午 12 點，不是一般額度的早上 8 點），Essential
+    // 不叫他升級。
+    test('翻牌入口的大標照目前方案：免費講升級後多什麼，付費先講中午 12 點恢復', () {
+      expect(
+        PaywallEntry.practiceDraw.headlineFor(SubscriptionTierHelper.free),
+        '想再練一位？\n免費版只有一次翻牌；升級後每天翻 '
+        '${AppConstants.starterDailyDrawLimit} 位，同一位能續聊',
+      );
+      expect(
+        PaywallEntry.practiceDraw.headlineFor(SubscriptionTierHelper.starter),
+        '今天的翻牌用完了\n每天中午 12 點恢復；升級 Essential 每天翻 '
+        '${AppConstants.essentialDailyDrawLimit} 位',
+      );
+      final essential = PaywallEntry.practiceDraw
+          .headlineFor(SubscriptionTierHelper.essential);
+      expect(essential, '今天的翻牌用完了\n每天中午 12 點恢復');
+      expect(essential, isNot(contains('升級')));
+      expect(
+        PaywallEntry.practiceDraw.headlineFor(null),
+        PaywallEntry.practiceDraw.headlineFor(SubscriptionTierHelper.free),
+        reason: '不認得的方案當免費',
+      );
+      for (final tier in tiers) {
+        final text = PaywallEntry.practiceDraw.headlineFor(tier);
+        expect(text, isNot(contains('明天')), reason: tier);
+        expect(text, isNot(contains('早上 8 點')), reason: tier);
+      }
+      expect(PaywallEntry.practiceDraw.funnelValue, 'practice_draw');
+    });
+
+    testWidgets('從翻牌撞牆打開：免費、Starter、Essential 各換翻牌大標', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final tier in tiers) {
+        final stub = _StubSubscriptionNotifier();
+        final limits = SubscriptionTierHelper.limitsFor(tier);
+        stub.seedState(SubscriptionState(
+          tier: tier,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+        ));
+        // 每一輪換新的 ProviderScope：同一個 scope 重建時 override 不會換掉。
+        await tester.pumpWidget(
+          ProviderScope(
+            key: ValueKey('practice-draw-$tier'),
+            overrides: [
+              subscriptionProvider.overrideWith((ref) => stub),
+              subscriptionScreenRefreshProvider.overrideWithValue(
+                () async {},
+              ),
+            ],
+            child: const MaterialApp(
+              home: PaywallScreen(entry: PaywallEntry.practiceDraw),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.text(PaywallEntry.practiceDraw.headlineFor(tier)),
+          findsOneWidget,
+          reason: tier,
+        );
+        expect(find.text('完整教練帶路\n把她約出來更有把握'), findsNothing);
+        expect(find.text('方案與額度'), findsOneWidget);
+      }
+    });
+
     testWidgets('從鎖住的卡打開：標題跟著換，其他內容照舊', (tester) async {
       await tester.binding.setSurfaceSize(const Size(430, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));

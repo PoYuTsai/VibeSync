@@ -1,3 +1,5 @@
+import '../../../core/constants/app_constants.dart';
+import '../domain/services/subscription_tier_helper.dart';
 import 'quota_copy.dart';
 
 /// 付費頁從哪裡打開（Eric 2026-10-18）：大標跟著入口換，方案、價格、比較表都一樣。
@@ -19,7 +21,11 @@ enum PaywallEntry {
   monthlyQuotaUsedUp,
 
   /// 這個月還有額度，但不夠這次用。
-  monthlyQuotaShort;
+  monthlyQuotaShort,
+
+  /// 練習室翻牌撞牆（Onboarding 第 2 步）：免費首抽用掉後想再抽一位、付費方案今天的
+  /// 翻牌用完。共用額度用完、續聊同一位被擋仍是一般入口。
+  practiceDraw;
 
   /// 額度不夠時的入口（主審 r1 P2-3）：剩 0 則才算用完；還有剩、或不知道剩幾則，
   /// 只說不夠這次用。
@@ -48,11 +54,29 @@ enum PaywallEntry {
       PaywallEntry.dailyQuotaShort => '今天的額度不夠這次用\n$dailyNext',
       PaywallEntry.monthlyQuotaUsedUp => '這個月的額度用完了\n$monthlyNext',
       PaywallEntry.monthlyQuotaShort => '這個月的額度不夠這次用\n$monthlyNext',
+      PaywallEntry.practiceDraw => _practiceDrawHeadline(tier),
     };
   }
 
+  /// 翻牌入口的大標（Onboarding 第 2 步）：免費版沒有每日翻牌，不寫恢復時間，直接講
+  /// 升級後多了什麼；付費方案是今天的翻牌用完了，先講什麼時候恢復（台北中午 12 點，
+  /// 跟一般額度的早上 8 點不同），Starter 再補升級 Essential 多幾位，Essential 只講
+  /// 恢復時間。
+  static String _practiceDrawHeadline(String? tier) {
+    switch (SubscriptionTierHelper.normalizeTier(tier)) {
+      case SubscriptionTierHelper.essential:
+        return '今天的翻牌用完了\n$kPracticeDrawResetLine';
+      case SubscriptionTierHelper.starter:
+        return '今天的翻牌用完了\n$kPracticeDrawResetLine；'
+            '升級 Essential 每天翻 ${AppConstants.essentialDailyDrawLimit} 位';
+      default:
+        return '想再練一位？\n免費版只有一次翻牌；'
+            '升級後每天翻 ${AppConstants.starterDailyDrawLimit} 位，同一位能續聊';
+    }
+  }
+
   /// 漏斗事件的 entry 值（docs/integrations/funnel-events-v1.md）。額度不夠的四種
-  ///（今天／這個月、用完／不夠這次用）都記 quota_exhausted；server 只收這三個值，
+  ///（今天／這個月、用完／不夠這次用）都記 quota_exhausted；server 只收這四個值，
   /// 加入口要同一批改字典與 server 白名單。
   String get funnelValue => switch (this) {
         PaywallEntry.general => 'general',
@@ -62,5 +86,6 @@ enum PaywallEntry {
         PaywallEntry.monthlyQuotaUsedUp ||
         PaywallEntry.monthlyQuotaShort =>
           'quota_exhausted',
+        PaywallEntry.practiceDraw => 'practice_draw',
       };
 }

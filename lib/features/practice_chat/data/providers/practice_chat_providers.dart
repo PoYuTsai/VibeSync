@@ -1697,8 +1697,12 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   }
 
   /// 換一位開新陪練（== 翻一張新牌）。
+  ///
+  /// [message] 由呼叫端照方案給（quota_copy.dart 的 practiceDrawUsedUpMessage）：
+  /// 翻牌是台北中午 12 點恢復，Essential 不能再升級；controller 拿不到方案，所以
+  /// 不給預設字（Onboarding 第 2 步拿掉了舊的「明天再來」）。
   void lockDrawQuotaExceeded({
-    String message = '今日額度已用完，明天再來或升級方案繼續練習。',
+    required String message,
   }) {
     state = state.copyWith(
       drawQuotaExceeded: true,

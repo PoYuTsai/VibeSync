@@ -33,6 +33,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_re
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 import 'package:vibesync/shared/widgets/ai_data_sharing_consent.dart';
 import 'package:vibesync/shared/widgets/brand/brand_kit.dart';
 import 'package:vibesync/shared/widgets/chat_bubble.dart';
@@ -3203,6 +3204,168 @@ void main() {
 
     expect(find.byKey(const ValueKey('practice-profile-hero')), findsOneWidget);
     expect(find.text('升級'), findsOneWidget);
+  });
+
+  // Onboarding 第 2 步：翻牌撞牆的升級入口帶 PaywallEntry.practiceDraw（付費頁換
+  // 翻牌大標、漏斗記 practice_draw）；共用額度用完、續聊被擋照舊一般入口。
+  group('翻牌撞牆的付費頁入口', () {
+    Future<void> pumpRouted(WidgetTester tester, PracticeChatState seed) async {
+      final controller =
+          _SeededPracticeChatController(seed: seed, repository: repo);
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const PracticeChatScreen(),
+          ),
+          GoRoute(
+            path: '/paywall',
+            builder: (context, state) => Scaffold(
+              body: Text(
+                'entry:${PaywallEntry.fromRouteExtra(state.extra).name}',
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            practiceChatControllerProvider.overrideWith((ref) => controller),
+            subscriptionProvider.overrideWith(
+              (ref) => _SeededSubscriptionNotifier(
+                const SubscriptionState(
+                  tier: SubscriptionTierHelper.starter,
+                  monthlyLimit: 100,
+                  dailyLimit: 30,
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+    }
+
+    Future<void> tapAndLand(WidgetTester tester, Finder target) async {
+      await tester.tap(target);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    PracticeChatState lockedDrawSeed({
+      bool upgradeRequired = false,
+      bool quotaExceeded = false,
+    }) =>
+        PracticeChatState(
+          sessionId: 'draw-entry-locked',
+          createdAt: DateTime(2026, 10, 27, 13),
+          girl: null,
+          personaId: '',
+          personaLabel: '',
+          difficulty: 'normal',
+          difficultyLabel: '一般',
+          drawStatus: PracticeDrawStatus.locked,
+          drawUpgradeRequired: upgradeRequired,
+          drawQuotaExceeded: quotaExceeded,
+        );
+
+    testWidgets('錯誤橫幅：翻牌 402 旗標 → practiceDraw', (tester) async {
+      await pumpRouted(
+        tester,
+        revealedPreMsgSeed().copyWith(
+          drawUpgradeRequired: true,
+          errorMessage: '升級後每天可以翻更多陪練女孩。',
+        ),
+      );
+      await tapAndLand(tester, find.text('升級'));
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
+    });
+
+    testWidgets('錯誤橫幅：翻牌 429 旗標 → practiceDraw', (tester) async {
+      await pumpRouted(
+        tester,
+        revealedPreMsgSeed().copyWith(
+          drawQuotaExceeded: true,
+          errorMessage: '今天的翻牌用完了，每天中午 12 點恢復；也可以升級。',
+        ),
+      );
+      await tapAndLand(tester, find.text('升級'));
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
+    });
+
+    testWidgets('錯誤橫幅：共用額度用完 → 一般入口', (tester) async {
+      await pumpRouted(
+        tester,
+        revealedPreMsgSeed().copyWith(
+          quotaExceeded: true,
+          errorMessage: '本月額度已用完',
+        ),
+      );
+      await tapAndLand(tester, find.text('升級'));
+      expect(find.text('entry:general'), findsOneWidget);
+    });
+
+    testWidgets('錯誤橫幅：續聊同一位被擋 → 一般入口', (tester) async {
+      await pumpRouted(
+        tester,
+        revealedPreMsgSeed().copyWith(
+          upgradeRequired: true,
+          errorMessage: '升級後可以續聊同一位。',
+        ),
+      );
+      await tapAndLand(tester, find.text('升級'));
+      expect(find.text('entry:general'), findsOneWidget);
+    });
+
+    testWidgets('錯誤橫幅：共用額度與翻牌旗標同時在 → 一般入口（不確定是翻牌就不換大標）', (tester) async {
+      await pumpRouted(
+        tester,
+        revealedPreMsgSeed().copyWith(
+          quotaExceeded: true,
+          drawQuotaExceeded: true,
+          errorMessage: '本月額度已用完',
+        ),
+      );
+      await tapAndLand(tester, find.text('升級'));
+      expect(find.text('entry:general'), findsOneWidget);
+    });
+
+    testWidgets('翻牌鎖住（402）：主鈕帶 practiceDraw', (tester) async {
+      await pumpRouted(tester, lockedDrawSeed(upgradeRequired: true));
+      await tapAndLand(
+        tester,
+        find.byKey(const ValueKey('practice-draw-upgrade-primary')),
+      );
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
+    });
+
+    testWidgets('翻牌鎖住（402）：「升級解鎖」帶 practiceDraw', (tester) async {
+      await pumpRouted(tester, lockedDrawSeed(upgradeRequired: true));
+      await tapAndLand(
+        tester,
+        find.byKey(const ValueKey('practice-draw-upgrade')),
+      );
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
+    });
+
+    testWidgets('翻牌鎖住（429）：「查看方案」帶 practiceDraw，沒訊息時講中午 12 點恢復',
+        (tester) async {
+      await pumpRouted(tester, lockedDrawSeed(quotaExceeded: true));
+      expect(
+        find.text('今天的翻牌用完了，每天中午 12 點恢復；也可以升級。'),
+        findsOneWidget,
+      );
+      await tapAndLand(
+        tester,
+        find.byKey(const ValueKey('practice-draw-upgrade-primary')),
+      );
+      expect(find.text('entry:practiceDraw'), findsOneWidget);
+    });
   });
 
   // ── 翻牌揭曉儀式 overlay（Batch 4 commit 2）─────────────────────────────

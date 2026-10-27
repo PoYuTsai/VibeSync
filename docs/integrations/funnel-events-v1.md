@@ -40,7 +40,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `about_me_saved` | `has_style` (bool), `goals_count` (int), `seeds_count` (int), `has_notes` (bool), `has_custom_topics` (bool) | AboutMeScreen 儲存成功後 |
 | `about_me_cleared` | — | AboutMeScreen 清除成功後 |
 | `new_topic_copied` | `is_recommended` (bool) | NewTopicView 複製開場句（2026-10-12：量新話題有沒有被拿去傳；只記是不是推薦那題，不含句子） |
-| `paywall_opened` | `entry` (enum: `general` / `locked_cards` / `quota_exhausted`) | PaywallScreen.initState：每開一次一筆。入口是 go_router extra 帶來的 PaywallEntry，沒帶算 `general`；額度不夠的四種入口（今天／這個月、用完／不夠這次用）都記 `quota_exhausted`（2026-10-18：量從哪裡打開付費頁） |
+| `paywall_opened` | `entry` (enum: `general` / `locked_cards` / `quota_exhausted` / `practice_draw`) | PaywallScreen.initState：每開一次一筆。入口是 go_router extra 帶來的 PaywallEntry，沒帶算 `general`；額度不夠的四種入口（今天／這個月、用完／不夠這次用）都記 `quota_exhausted`（2026-10-18：量從哪裡打開付費頁）；練習室翻牌撞牆記 `practice_draw`（2026-10-27 Onboarding 第 2 步：免費首抽用掉後再按翻牌、402 後自動開的付費頁、SR 限定翻牌鎖卡、練習室翻牌鎖住時的升級鈕，以及錯誤橫幅確定是翻牌的錯時；共用額度用完、續聊同一位被擋、Game 介紹「查看方案」仍記 `general`） |
 | `paywall_purchase_completed` | `tier` (enum: `starter` / `essential`), `entry` (同上 enum), `purchaser` (UUID，只驗證、不落庫) | PaywallScreen._subscribe：RevenueCat 回成功才記；`tier` 是買的商品對應的方案。取消、失敗、逾時、例外、排程降級、恢復購買都不記；不帶價格、商品 id、收據。`purchaser` 是開始購買時的登入帳號，付款確認回來時已換帳號或登出就不送 |
 | `locked_cards_upgrade_tap` | `locked_count` (int) | GuideV3LockedBlock「看方案」：結果頁與分析紀錄共用同一塊，張數就是區塊寫的「還有 N 張」 |
 
@@ -64,6 +64,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 付費頁三個事件的解讀（2026-10-18）：
 
 - server 白名單要先部署，app 送的這三個事件才收得到；舊 server 回 400，client 吞掉，資料就少了那段。
+- `entry=practice_draw`（2026-10-27）也是 server 先部署：舊 server 不認得這個值只剝掉 `entry`、事件照收，那段期間的翻牌入口會變成沒有 `entry` 的 `paywall_opened`。
 - 結果頁的「看方案」連點時付費頁只開一次（防重入），所以 `locked_cards_upgrade_tap` 可能比 `entry=locked_cards` 的 `paywall_opened` 多。
 - 付款確認期間換帳號或登出，那筆購買事件會被丟掉（寧可少記，不記到別人身上）。
 - 免費看幾張卡的決定（audit 三層方案）：累積二到四週，比 `entry=locked_cards` 開了幾次付費頁、其中幾次買了。

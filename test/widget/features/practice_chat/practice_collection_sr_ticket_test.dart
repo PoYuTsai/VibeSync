@@ -11,6 +11,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_session
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
+import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
 
 /// SR 限定翻牌券卡三態（2026-08-08 拍板）：
 ///   premium＋未用 → 金券（點了直接券抽）
@@ -107,8 +108,14 @@ void main() {
         ),
         GoRoute(
           path: '/paywall',
-          builder: (_, __) => const Scaffold(
-            body: Text('paywall-stub', key: ValueKey('paywall-stub')),
+          // 替身把入口印出來：鎖定灰券是翻牌入口（Onboarding 第 2 步）。
+          builder: (_, state) => Scaffold(
+            body: Column(
+              children: [
+                const Text('paywall-stub', key: ValueKey('paywall-stub')),
+                Text('entry:${PaywallEntry.fromRouteExtra(state.extra).name}'),
+              ],
+            ),
           ),
         ),
       ],
@@ -175,6 +182,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('paywall-stub')), findsOneWidget);
+    expect(find.text('entry:practiceDraw'), findsOneWidget);
   });
 
   testWidgets('premium＋已用 → 兩種券卡都不顯示', (tester) async {
