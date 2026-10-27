@@ -6,6 +6,7 @@
 // - Essential 已經是最高方案：不叫他升級，只說什麼時候恢復；免費、Starter 照舊有升級那句。
 // - 回覆微調上一輪失敗、或送出後還沒回來就關掉重開：免費次數照樣標待確認（主審第 1、2 輪 P2）。
 // - 這個月和今天都不夠：跟伺服器一樣先看本月（主審第 1 輪 P3）。
+// - 付款後自動接續分析（Onboarding 第 14 步）：成交且額度夠才開始、只開始一次。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
+import 'package:uuid/uuid.dart';
 import 'package:vibesync/core/services/funnel_tracker.dart';
 import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/core/services/supabase_service.dart';
@@ -89,15 +91,28 @@ class _SeededStreamingAnalyzeNotifier extends StreamingAnalyzeNotifier {
   void emit(StreamingAnalysisState next) => state = next;
 }
 
-/// 指定的方案與用量；重新整理、同步都回到同一份（不打 RevenueCat）。
+/// 指定的方案與用量；重新整理、同步都回到同一份（不打 RevenueCat）。付費頁帶回方案
+/// （成交）後換成 [afterPurchase]：伺服器同步好的新方案與用量；沒給就還是原本那份
+/// （例如伺服器還沒同步好）。
 class _SeededSubscriptionNotifier extends SubscriptionNotifier {
-  _SeededSubscriptionNotifier(this._seed) {
+  _SeededSubscriptionNotifier(this._seed, {this.afterPurchase}) {
     state = _seed;
   }
 
-  final SubscriptionState _seed;
+  SubscriptionState _seed;
+  final SubscriptionState? afterPurchase;
+
+  /// 付費頁帶回來、拿去同步的方案。
+  final syncedTiers = <String>[];
 
   void restoreSeed() => state = _seed;
+
+  @override
+  Future<void> forceSyncTier(String tier) async {
+    syncedTiers.add(tier);
+    _seed = afterPurchase ?? _seed;
+    restoreSeed();
+  }
 
   @override
   Future<void> refresh() async => restoreSeed();
@@ -117,17 +132,43 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }) {}
 }
 
-/// 記下送出幾次分析：按升級鈕不能開始分析。
+/// 記下送出的每一次分析：按升級鈕不能開始分析。[errors] 依序給前幾次送出的錯誤
+/// （例如伺服器回額度不足），排完之後的照舊什麼都不回。
 class _RecordingAnalyzeStreamClient extends AnalyzeStreamClient {
   _RecordingAnalyzeStreamClient()
       : super(displayMapper: const AnalysisStreamContentDisplayMapper());
 
-  int streamCalls = 0;
+  final requests = <AnalyzeStreamRequest>[];
+  final errors = <Exception>[];
+
+  int get streamCalls => requests.length;
 
   @override
   Stream<AnalysisStreamUpdate> stream(AnalyzeStreamRequest request) {
-    streamCalls++;
+    requests.add(request);
+    if (errors.isNotEmpty) return Stream.error(errors.removeAt(0));
     return const Stream.empty();
+  }
+}
+
+/// 記下組了幾次請求：付款後接續要用原本那份，不重組。
+class _CountingAnalysisRunPreparer extends AnalysisRunPreparer {
+  _CountingAnalysisRunPreparer()
+      : super(
+          memory: _NoopConversationMemory(),
+          resolvePartnerSummary: (_) => null,
+          resolveEffectiveStyleContext: (_) => null,
+        );
+
+  int assembleCalls = 0;
+
+  @override
+  Future<AnalysisRunPreparation> assemble({
+    required Conversation conversation,
+    required AnalysisRunGate gate,
+  }) {
+    assembleCalls++;
+    return super.assemble(conversation: conversation, gate: gate);
   }
 }
 
@@ -430,19 +471,25 @@ class _Harness {
     required this.funnel,
     required this.transport,
     required this.streaming,
+    required this.subscription,
+    required this.preparer,
   });
 
   final _RecordingAnalyzeStreamClient recorder;
   final _SentFunnel funnel;
   final _FakeOptimizeTransport transport;
   final _SeededStreamingAnalyzeNotifier Function() streaming;
+  final _SeededSubscriptionNotifier Function() subscription;
+  final _CountingAnalysisRunPreparer preparer;
 }
 
+/// [afterPurchase]：付費頁帶回方案（成交）後的方案與用量，見 [_SeededSubscriptionNotifier]。
 Future<_Harness> _pumpScreen(
   WidgetTester tester, {
   required SubscriptionState plan,
   StreamingAnalysisState seed = const StreamingAnalysisState.idle(),
   Conversation? conversation,
+  SubscriptionState? afterPurchase,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -456,6 +503,7 @@ Future<_Harness> _pumpScreen(
   final recorder = _RecordingAnalyzeStreamClient();
   final funnel = _SentFunnel();
   final transport = _FakeOptimizeTransport();
+  final preparer = _CountingAnalysisRunPreparer();
   late final _SeededSubscriptionNotifier subscription;
   late final _SeededStreamingAnalyzeNotifier streaming;
 
@@ -481,13 +529,7 @@ Future<_Harness> _pumpScreen(
         streamingAnalyzeProvider.overrideWith(
           () => streaming = _SeededStreamingAnalyzeNotifier(seed),
         ),
-        analysisRunPreparerProvider.overrideWithValue(
-          AnalysisRunPreparer(
-            memory: _NoopConversationMemory(),
-            resolvePartnerSummary: (_) => null,
-            resolveEffectiveStyleContext: (_) => null,
-          ),
-        ),
+        analysisRunPreparerProvider.overrideWithValue(preparer),
         partnerContextResolverProvider.overrideWithValue(
           PartnerContextResolver(
             partnerRepo: _NoPartnerRepo(),
@@ -497,7 +539,10 @@ Future<_Harness> _pumpScreen(
           ),
         ),
         subscriptionProvider.overrideWith(
-          (ref) => subscription = _SeededSubscriptionNotifier(plan),
+          (ref) => subscription = _SeededSubscriptionNotifier(
+            plan,
+            afterPurchase: afterPurchase,
+          ),
         ),
         usageDataProvider.overrideWithValue(
           UsageData(
@@ -573,6 +618,8 @@ Future<_Harness> _pumpScreen(
     funnel: funnel,
     transport: transport,
     streaming: () => streaming,
+    subscription: () => subscription,
+    preparer: preparer,
   );
 }
 
@@ -585,6 +632,42 @@ Future<void> _tapOrb(WidgetTester tester) async {
 
 Finder _inPreviewDialog(Finder finder) =>
     find.descendant(of: find.byType(AnalysisPreviewDialog), matching: finder);
+
+/// 付費頁付款成功：跟 PaywallScreen 一樣帶著買到的方案關頁
+/// （_leavePaywall(result.activeTier)），不走 RevenueCat。
+Future<void> _completePurchase(WidgetTester tester, String tier) async {
+  GoRouter.of(tester.element(find.byType(PaywallScreen))).pop(tier);
+  await tester.pumpAndSettle();
+}
+
+/// 關掉付費頁（右上角的叉叉），什麼都沒買。
+Future<void> _closePaywall(WidgetTester tester) async {
+  await tester.tap(find.descendant(
+    of: find.byType(PaywallScreen),
+    matching: find.byIcon(Icons.close),
+  ));
+  await tester.pumpAndSettle();
+  expect(find.byType(PaywallScreen), findsNothing);
+}
+
+/// 她說了 [count] 則、每則 [charsEach] 字（超過 2000 字要確認 20 則用）。
+Conversation _longConversation({int count = 3, int charsEach = 800}) {
+  return Conversation(
+    id: _conversationId,
+    name: '小雲',
+    messages: [
+      for (var i = 1; i <= count; i++)
+        Message(
+          id: 'long-$i',
+          content: '$i${'好' * (charsEach - 1)}',
+          isFromMe: false,
+          timestamp: DateTime(2026, 10, 18, 12, i),
+        ),
+    ],
+    createdAt: DateTime(2026, 10, 18, 12),
+    updatedAt: DateTime(2026, 10, 18, 12),
+  );
+}
 
 /// 打開草稿潤飾面板、送出一段草稿。潤飾要登入（帳號是同意與計費的 key）；畫面
 /// 先載好才登入，訂閱狀態就不會去讀伺服器和 Hive。
@@ -749,6 +832,137 @@ void main() {
       expect(find.byType(PaywallScreen), findsNothing);
       expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
       expect(harness.recorder.streamCalls, 0);
+    });
+  });
+
+  // Onboarding 第 14 步：確認框按查看升級方案、付款成功回來，額度也夠了就直接把剛剛那段
+  // 分析跑完，只開始一次；沒買、關掉、買了還是不夠，照舊不開始。最大風險是重複扣額度。
+  group('付款後自動接續分析（Onboarding 第 14 步）', () {
+    testWidgets('免費今天用完 → 買到 Starter、額度夠：自動開始，只開始一次，用原本那份請求', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free, dailyUsed: _dailyLimitOf(_free)),
+        afterPurchase: _plan(_starter),
+      );
+      await _tapOrb(tester);
+      expect(harness.preparer.assembleCalls, 1);
+      await tester.tap(_inPreviewDialog(find.text('查看升級方案')));
+      await tester.pumpAndSettle();
+      // 付費頁開著時還沒開始。
+      expect(find.byType(PaywallScreen), findsOneWidget);
+      expect(harness.recorder.streamCalls, 0);
+
+      await _completePurchase(tester, _starter);
+
+      expect(harness.subscription().syncedTiers, [_starter]);
+      expect(harness.recorder.streamCalls, 1);
+      // 不重組、不重跑預覽：同一份請求直接送出。
+      expect(harness.preparer.assembleCalls, 1);
+      expect(find.byType(AnalysisPreviewDialog), findsNothing);
+      final request = harness.recorder.requests.single;
+      expect([for (final m in request.messages) m.id], ['m1']);
+      expect(request.confirmedOvercharge, isNull);
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+
+    testWidgets('買到了，但重新整理後額度還是不夠（例如伺服器還沒同步好）：不開始', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free, dailyUsed: _dailyLimitOf(_free)),
+      );
+      await _tapOrb(tester);
+      await tester.tap(_inPreviewDialog(find.text('查看升級方案')));
+      await tester.pumpAndSettle();
+
+      await _completePurchase(tester, _starter);
+
+      expect(harness.subscription().syncedTiers, [_starter]);
+      expect(harness.recorder.streamCalls, 0);
+      expect(find.byType(AnalysisPreviewDialog), findsNothing);
+    });
+
+    testWidgets('關掉付費頁：不開始；開始分析的鎖已放掉，再按一次照常跳確認框', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free, dailyUsed: _dailyLimitOf(_free)),
+        afterPurchase: _plan(_starter),
+      );
+      await _tapOrb(tester);
+      await tester.tap(_inPreviewDialog(find.text('查看升級方案')));
+      await tester.pumpAndSettle();
+
+      await _closePaywall(tester);
+
+      expect(harness.subscription().syncedTiers, isEmpty);
+      expect(harness.recorder.streamCalls, 0);
+      await _tapOrb(tester);
+      expect(find.text('開始分析前'), findsOneWidget);
+      expect(harness.recorder.streamCalls, 0);
+    });
+
+    testWidgets('超過 2000 字（要確認 20 則）：買到 Starter 後自動開始，帶這時才產生的確認憑證',
+        (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free),
+        afterPurchase: _plan(_starter),
+        conversation: _longConversation(),
+      );
+      await _tapOrb(tester);
+      // 前提：2400 字一次 20 則，免費每天的額度不夠。
+      expect(find.text('內容較長，確認後才會扣'), findsOneWidget);
+      expect(_inPreviewDialog(find.text('20 則')), findsOneWidget);
+      await tester.tap(_inPreviewDialog(find.text('查看升級方案')));
+      await tester.pumpAndSettle();
+
+      await _completePurchase(tester, _starter);
+
+      expect(harness.recorder.streamCalls, 1);
+      final request = harness.recorder.requests.single;
+      final confirmation = request.confirmedOvercharge;
+      expect(confirmation, isNotNull);
+      expect(
+        confirmation!.payloadHash,
+        MessageCalculator.analysisRequestPayloadHash(request.messages),
+      );
+      expect(confirmation.billableChars, 2400);
+      expect(Uuid.isValidUUID(fromString: confirmation.confirmationId), isTrue);
+    });
+
+    testWidgets('伺服器回額度不足（429）：付費頁自動打開，買到也不自動重送；他再按一次是新的確認編號', (tester) async {
+      // 本機以為 Starter 今天還夠 20 則，伺服器說不夠。伺服器的額度 429 在 claim 確認
+      // 編號之前，那個編號從沒被用掉；下一次照樣產生新的，不沿用。
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_starter),
+        afterPurchase: _plan(_essential),
+        conversation: _longConversation(),
+      );
+      harness.recorder.errors.add(DailyLimitExceededException(
+        dailyLimit: _dailyLimitOf(_starter),
+        used: _dailyLimitOf(_starter) - 5,
+        remaining: 5,
+        quotaNeeded: MessageCalculator.overchargeUnits,
+      ));
+      await _tapOrb(tester);
+      await tester.tap(_inPreviewDialog(find.text('確認使用 20 則')));
+      await tester.pumpAndSettle();
+      expect(harness.recorder.streamCalls, 1);
+      final first = harness.recorder.requests.single.confirmedOvercharge!;
+      expect(find.byType(PaywallScreen), findsOneWidget);
+
+      await _completePurchase(tester, _essential);
+
+      expect(harness.subscription().syncedTiers, [_essential]);
+      expect(harness.recorder.streamCalls, 1, reason: '照開場救星：429 那條路不自動重送');
+
+      await _tapOrb(tester);
+      await tester.tap(_inPreviewDialog(find.text('確認使用 20 則')));
+      await tester.pumpAndSettle();
+      expect(harness.recorder.streamCalls, 2);
+      final second = harness.recorder.requests.last.confirmedOvercharge!;
+      expect(second.confirmationId, isNot(first.confirmationId));
+      expect(second.payloadHash, first.payloadHash);
     });
   });
 

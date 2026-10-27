@@ -369,11 +369,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   bool _isPaywallInFlight = false;
 
   /// [entry]：從哪裡打開，付費頁的大標跟著換（Eric 2026-10-18）。
-  Future<void> _showPaywall(
+  ///
+  /// 回傳有沒有成交：付費頁帶回方案、而且畫面還在（Onboarding 第 14 步：分析前確認框
+  /// 靠它決定付款後要不要接著分析）。[refreshOldFreeReplies] 是 false 時，成交後不重新
+  /// 整理舊的免費結果：確認框那時還拿著開始分析的鎖，重新整理會被鎖擋掉、只留一句誤導
+  /// 的提示；接著分析的新結果會換掉舊的，沒接著分析時舊結果上「升級後重新整理」的鈕
+  /// 照樣在。
+  Future<bool> _showPaywall(
     BuildContext context, {
     PaywallEntry entry = PaywallEntry.general,
+    bool refreshOldFreeReplies = true,
   }) async {
-    if (_isPaywallInFlight) return;
+    if (_isPaywallInFlight) return false;
     _isPaywallInFlight = true;
     _clearAnalysisSnackBarsBeforePush();
     final String? unlockedTier;
@@ -383,16 +390,28 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _isPaywallInFlight = false;
     }
     if (!mounted) {
-      return;
+      return false;
     }
 
-    if (unlockedTier != null && unlockedTier.isNotEmpty) {
-      await ref.read(subscriptionProvider.notifier).forceSyncTier(unlockedTier);
+    final unlocked = unlockedTier != null && unlockedTier.isNotEmpty;
+    if (unlocked) {
+      try {
+        await ref
+            .read(subscriptionProvider.notifier)
+            .forceSyncTier(unlockedTier);
+      } catch (error) {
+        // 錢已扣、同步失敗：照開場救星，照樣往下重新整理再看額度（伺服器扣額度前會再跟
+        // RevenueCat 對一次）。確認框會等這裡回來，同步失敗不能變成「分析暫時失敗」。
+        debugPrint('AnalysisScreen paywall force sync failed: $error');
+      }
     }
 
     await ref.read(subscriptionProvider.notifier).refresh();
-    if (!mounted || unlockedTier == null || unlockedTier.isEmpty) {
-      return;
+    if (!mounted || !unlocked) {
+      return false;
+    }
+    if (!refreshOldFreeReplies) {
+      return true;
     }
 
     final subscription = ref.read(subscriptionProvider);
@@ -400,6 +419,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _showFloatingSnackBar('已升級完整分析，正在幫你刷新回覆選項。');
       await _refreshPremiumReplies();
     }
+    return true;
   }
 
   // 潤飾、微調撞到額度的說明照目前方案：Essential 不叫他升級，只說什麼時候恢復
@@ -2522,26 +2542,40 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       _trackQuotaBlock(QuotaBlockSource.precheck,
           isMonthly: usage.monthlyRemaining < units);
     }
+    var upgradeTapped = false;
     final confirmed = await showAnalysisPreviewDialog(
       context: context,
       preview: preview,
       usage: usage,
       onUpgrade: () {
+        upgradeTapped = true;
         Navigator.of(context, rootNavigator: true).pop(false);
-        // 額度不夠才有這顆鈕：跟伺服器一樣先看本月、再看今天，付費頁照每日或每月、
-        // 用完或只是不夠換大標，漏斗記 quota_exhausted（Eric 2026-10-18）。
-        final isMonthly = usage.monthlyRemaining < units;
-        _showPaywall(
-          context,
-          entry: PaywallEntry.forQuota(
-            isMonthly: isMonthly,
-            remaining:
-                isMonthly ? usage.monthlyRemaining : usage.dailyRemaining,
-          ),
-        );
       },
     );
-    if (!confirmed || !mounted) {
+    if (!mounted) {
+      return (confirmed: false, overcharge: null);
+    }
+    if (upgradeTapped) {
+      // 額度不夠才有這顆鈕：跟伺服器一樣先看本月、再看今天，付費頁照每日或每月、
+      // 用完或只是不夠換大標，漏斗記 quota_exhausted（Eric 2026-10-18）。
+      final isMonthly = usage.monthlyRemaining < units;
+      final purchased = await _showPaywall(
+        context,
+        entry: PaywallEntry.forQuota(
+          isMonthly: isMonthly,
+          remaining: isMonthly ? usage.monthlyRemaining : usage.dailyRemaining,
+        ),
+        refreshOldFreeReplies: false,
+      );
+      // 付款後自動接續（Onboarding 第 14 步）：成交、重新整理後額度也夠，才用同一份請求
+      // 接著開始（還在開始分析的鎖裡，不重組、不重跑預覽）。沒成交、關掉付費頁、買了
+      // 額度還是不夠，照舊不開始。伺服器回額度不足的那條路不在這裡，照開場救星不接續。
+      if (!purchased ||
+          !mounted ||
+          !_buildPreviewUsageData().canAfford(units)) {
+        return (confirmed: false, overcharge: null);
+      }
+    } else if (!confirmed) {
       return (confirmed: false, overcharge: null);
     }
 
@@ -2549,7 +2583,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       // 用戶已在確認框看到精確「本次將使用 20 則」。生成一次性確認憑證：
       // 綁定即將送出 payload 的 hash + 計費字數 + confirmationId
       //（定案 #5：server 以 hash 驗證內容未變、以 confirmationId 做
-      // idempotency claim，重送/雙送絕不重扣 20）。
+      // idempotency claim，重送/雙送絕不重扣 20）。付款後接續的那次也在這裡才產生，
+      // 一定是新的 confirmationId；這次分析之前沒送出過任何請求，沒有舊的可以沿用。
       return (
         confirmed: true,
         overcharge: OverchargeConfirmationPayload(
