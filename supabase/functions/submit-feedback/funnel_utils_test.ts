@@ -205,6 +205,7 @@ Deno.test("dictionary stays aligned with docs/integrations/funnel-events-v1.md",
     paywall_opened: ["entry"],
     paywall_purchase_completed: ["tier", "entry", "purchaser"],
     locked_cards_upgrade_tap: ["locked_count"],
+    quota_block_shown: ["feature", "scope", "block_source"],
   });
 });
 
@@ -463,4 +464,153 @@ Deno.test("其他事件帶了 purchaser：剝掉，事件照收", () => {
   });
   assert(quota.ok);
   if (quota.ok) assertEquals(quota.row.properties, {});
+});
+
+// 額度不足事件（onboarding 轉換第 6 步）：三個鍵都是固定選項，值域在 server 強制，
+// 不合就剝掉那個鍵、事件照收。「誰先擋下」叫 block_source 不叫 source：PROP_SPECS
+// 以鍵名全域共用值域，source 已經是 about_me_opened 的鍵（checklist／card／settings）。
+const QUOTA_FEATURES = [
+  "analyze",
+  "opener",
+  "new_topic",
+  "coach",
+  "practice",
+  "keyboard",
+];
+const QUOTA_SCOPES = ["daily", "monthly", "unknown"];
+const QUOTA_SOURCES = ["precheck", "server"];
+
+Deno.test("quota_block_shown：feature、scope、block_source 都在值域內就照收", () => {
+  for (const feature of QUOTA_FEATURES) {
+    for (const scope of QUOTA_SCOPES) {
+      for (const block_source of QUOTA_SOURCES) {
+        const result = buildFunnelRow("u", {
+          event: "quota_block_shown",
+          properties: { feature, scope, block_source },
+        });
+        assert(result.ok);
+        if (result.ok) {
+          assertEquals(result.row.properties, { feature, scope, block_source });
+        }
+      }
+    }
+  }
+});
+
+Deno.test("quota_block_shown：值域外的值剝掉那個鍵，事件照收", () => {
+  const cases: Array<[Record<string, unknown>, Record<string, unknown>]> = [
+    [
+      { feature: "paywall", scope: "daily", block_source: "server" },
+      { scope: "daily", block_source: "server" },
+    ],
+    [
+      { feature: "analyze", scope: "weekly", block_source: "server" },
+      { feature: "analyze", block_source: "server" },
+    ],
+    [
+      { feature: "analyze", scope: "daily", block_source: "client" },
+      { feature: "analyze", scope: "daily" },
+    ],
+    [
+      { feature: "newTopic", scope: "Daily", block_source: "SERVER" },
+      {},
+    ],
+    [{ feature: 1, scope: true, block_source: null }, {}],
+    [{ feature: "任意自由文字".repeat(20), scope: "", block_source: "" }, {}],
+  ];
+  for (const [properties, expected] of cases) {
+    const result = buildFunnelRow("u", {
+      event: "quota_block_shown",
+      properties,
+    });
+    assert(result.ok, `${JSON.stringify(properties)} 只剝鍵，事件照收`);
+    if (result.ok) assertEquals(result.row.properties, expected);
+  }
+});
+
+Deno.test("quota_block_shown：剩幾則、方案、對話等白名單外的鍵一律剝掉", () => {
+  const result = buildFunnelRow("u", {
+    event: "quota_block_shown",
+    properties: {
+      feature: "opener",
+      scope: "monthly",
+      block_source: "precheck",
+      remaining: 2,
+      tier: "free",
+      entry: "quota_exhausted",
+      conversationText: "對話原文絕不落庫",
+    },
+  });
+  assert(result.ok);
+  if (result.ok) {
+    assertEquals(result.row.properties, {
+      feature: "opener",
+      scope: "monthly",
+      block_source: "precheck",
+    });
+  }
+});
+
+// 兩個鍵名分開，值域互不相通：額度不足事件帶 source 會被剝掉，關於我帶
+// precheck／server 也照樣剝掉（關於我的值域沒有被放寬）。
+Deno.test("block_source 與關於我的 source 互不相通", () => {
+  const quotaWithSource = buildFunnelRow("u", {
+    event: "quota_block_shown",
+    properties: { feature: "coach", scope: "unknown", source: "server" },
+  });
+  assert(quotaWithSource.ok);
+  if (quotaWithSource.ok) {
+    assertEquals(quotaWithSource.row.properties, {
+      feature: "coach",
+      scope: "unknown",
+    });
+  }
+
+  for (const value of QUOTA_SOURCES) {
+    const aboutMe = buildFunnelRow("u", {
+      event: "about_me_opened",
+      properties: { source: value, block_source: value },
+    });
+    assert(aboutMe.ok);
+    if (aboutMe.ok) assertEquals(aboutMe.row.properties, {});
+  }
+
+  for (const value of ["checklist", "card", "settings"]) {
+    const quota = buildFunnelRow("u", {
+      event: "quota_block_shown",
+      properties: { feature: "coach", scope: "unknown", block_source: value },
+    });
+    assert(quota.ok);
+    if (quota.ok) {
+      assertEquals(quota.row.properties, {
+        feature: "coach",
+        scope: "unknown",
+      });
+    }
+  }
+});
+
+Deno.test("feature、scope、block_source 只有 quota_block_shown 收：其他事件帶了剝掉", () => {
+  const result = buildFunnelRow("u", {
+    event: "paywall_opened",
+    properties: {
+      entry: "quota_exhausted",
+      feature: "analyze",
+      scope: "daily",
+      block_source: "server",
+    },
+  });
+  assert(result.ok);
+  if (result.ok) {
+    assertEquals(result.row.properties, { entry: "quota_exhausted" });
+  }
+});
+
+Deno.test("quota_block_shown 的 properties 鍵名是原型上的名字：不帶進來、不丟錯", () => {
+  const raw = JSON.parse(
+    '{"event":"quota_block_shown","properties":{"__proto__":{"block_source":"server"},"constructor":"x","feature":"keyboard"}}',
+  );
+  const result = buildFunnelRow("u", raw);
+  assert(result.ok);
+  if (result.ok) assertEquals(result.row.properties, { feature: "keyboard" });
 });

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/services/funnel_tracker.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -434,6 +435,7 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
       if (error == null) return;
       if (!context.mounted) return;
       if (error is CoachChatQuotaExceededException) {
+        _trackQuotaBlock(error);
         AppHaptics.failure();
         widget.onQuotaExceeded?.call(CoachSurface.paywallEntryFor(error));
         return;
@@ -897,6 +899,20 @@ class _CoachSurfaceState extends ConsumerState<CoachSurface>
     }
     return () => onQuotaExceeded(CoachSurface.paywallEntryFor(error));
   }
+
+  /// 額度不足事件（onboarding 轉換第 6 步）：只記錄，不影響額度判斷與付費頁。
+  /// 教練沒有預檢，只有伺服器 429；沒帶錯誤碼就分不出每日或每月。
+  void _trackQuotaBlock(CoachChatQuotaExceededException error) => unawaited(
+        ref.read(funnelTrackerProvider).trackQuotaBlockShown(
+              feature: QuotaBlockFeature.coach,
+              scope: switch (error.code) {
+                'MONTHLY_LIMIT_EXCEEDED' => QuotaBlockScope.monthly,
+                'DAILY_LIMIT_EXCEEDED' => QuotaBlockScope.daily,
+                _ => QuotaBlockScope.unknown,
+              },
+              source: QuotaBlockSource.server,
+            ),
+      );
 
   Future<void> _retryLastQuestion() async {
     final question = _lastAskedQuestion?.trim();

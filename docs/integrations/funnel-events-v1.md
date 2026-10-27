@@ -44,6 +44,7 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 | `paywall_opened` | `entry` (enum: `general` / `locked_cards` / `quota_exhausted`) | PaywallScreen.initState：每開一次一筆。入口是 go_router extra 帶來的 PaywallEntry，沒帶算 `general`；額度不夠的四種入口（今天／這個月、用完／不夠這次用）都記 `quota_exhausted`（2026-10-18：量從哪裡打開付費頁） |
 | `paywall_purchase_completed` | `tier` (enum: `starter` / `essential`), `entry` (同上 enum), `purchaser` (UUID，只驗證、不落庫) | PaywallScreen._subscribe：RevenueCat 回成功才記；`tier` 是買的商品對應的方案。取消、失敗、逾時、例外、排程降級、恢復購買都不記；不帶價格、商品 id、收據。`purchaser` 是開始購買時的登入帳號，付款確認回來時已換帳號或登出就不送 |
 | `locked_cards_upgrade_tap` | `locked_count` (int) | GuideV3LockedBlock「看方案」：結果頁與分析紀錄共用同一塊，張數就是區塊寫的「還有 N 張」 |
+| `quota_block_shown` | `feature` (enum: `analyze` / `opener` / `new_topic` / `coach` / `practice` / `keyboard`), `scope` (enum: `daily` / `monthly` / `unknown`), `block_source` (enum: `precheck` / `server`) | 告訴使用者「額度不夠」的那一刻（2026-10-27）：分析確認框不足與 429、開場救星預檢與 429、新話題預檢／按鈕被擋／429、教練 429、練習翻牌 402／429 與「換一位」、加抽前的預檢、鍵盤額度訊號。同一次執行同一個 feature＋scope 只記一次，見「額度不足事件」 |
 
 值域限制（server 端強制）：
 
@@ -55,6 +56,12 @@ Tier 2 埋點前置債）。資料落 `public.funnel_events`，只有 service ro
 - `source`：上表 enum 之一，其他值剝除整鍵。
 - `entry`：上表 enum 之一，其他值剝除整鍵。
 - `tier`：`starter` / `essential` 之一（`free` 不是購買結果），其他值剝除整鍵。
+- `feature`：`analyze` / `opener` / `new_topic` / `coach` / `practice` / `keyboard` 之一，
+  其他值剝除整鍵。
+- `scope`：`daily` / `monthly` / `unknown` 之一，其他值剝除整鍵。
+- `block_source`：`precheck` / `server` 之一，其他值剝除整鍵。不叫 `source`：server 的值域
+  表以鍵名全域共用，`source` 已經是 `about_me_opened` 的鍵（`checklist` / `card` /
+  `settings`），兩邊值域互不相通。
 - `purchaser`：只有 `paywall_purchase_completed` 收。必須是 UUID 而且等於登入帳號的
   `user.id`；缺少、格式不對或不同，**整筆拒絕**（400，不寫入）。驗完剝掉、不落庫。
   其他事件帶了一律剝掉（2026-10-18 主審 r2：認證權杖在 HTTP 送出當下才取，付款確認
@@ -101,6 +108,24 @@ onboarding 走在登入之前，那時伺服器沒有帳號可以掛，事件以
   的時間，算 onboarding 各頁時間要看 `client_ts`。伺服器不用改。
 - 從頭到尾沒登入就離開的人仍然看不到；那一段改用 App Store Connect 的首次下載數對照每天
   新帳號數粗估。onboarding 各頁的流失率只代表後來有登入的人。
+
+## 額度不足事件（2026-10-27）
+
+撞到額度是免費用戶最可能付費的時刻，但很多擋下發生在 App 端（確認框直接停用「開始
+分析」），請求沒送出、伺服器看不到；以前只記得點進付費頁的人。`quota_block_shown`
+在每個「告訴使用者額度不夠」的地方記一筆（onboarding 轉換第 6 步）：
+
+- 同一次執行、同一個 `feature`＋`scope` 只記一次（App 重開才會再記）：算的是「撞過
+  額度的人」，不是撞了幾次。同一次執行先被預檢擋過，之後的 429 不會再記。
+- `block_source=precheck`：App 自己先擋，請求沒送出（伺服器的 ai_logs 看不到）；
+  `block_source=server`：伺服器回 429／402，或鍵盤轉來伺服器確認過的額度訊號。
+- `scope` 照畫面上告訴他的每日或每月；App 分不出來時是 `unknown`：練習翻牌一律 unknown
+  （402 是方案沒有翻牌額度、429 沒帶是哪一種，加抽前的預檢也照同一個口徑）、鍵盤訊號、
+  教練 429 沒帶錯誤碼。
+- 只是記錄，不改任何額度判斷、按鈕狀態或付費頁。
+- server 白名單要先部署，app 送的才收得到；舊 server 對不認得的事件回 400，client 不算
+  記過，下次擋到時再送（同一次執行最多 3 次）。
+- 每週 cohort 查詢的「7 天內撞額度」用這個事件（以 `user_id` 去重）。
 
 ## 讀取方式
 

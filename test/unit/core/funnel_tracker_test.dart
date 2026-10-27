@@ -152,6 +152,7 @@ void main() {
       'paywall_opened': ['entry'],
       'paywall_purchase_completed': ['tier', 'entry', 'purchaser'],
       'locked_cards_upgrade_tap': ['locked_count'],
+      'quota_block_shown': ['feature', 'scope', 'block_source'],
     });
   });
 
@@ -651,6 +652,178 @@ void main() {
       expect(wire.names, [
         'first_analysis_completed',
         'checklist_item_done',
+      ]);
+    });
+  });
+
+  // onboarding 轉換第 6 步：告訴使用者「額度不夠」的那一刻記一筆。
+  group('額度不足事件 quota_block_shown', () {
+    String? uid;
+    late _Wire wire;
+    late FunnelTracker tracker;
+
+    setUp(() {
+      uid = _uid;
+      wire = _Wire();
+      tracker = FunnelTracker(invoker: wire.call, currentUserId: () => uid);
+    });
+
+    List<Object?> quotaProps() => [
+          for (final e in wire.sent)
+            if (e['event'] == 'quota_block_shown') e['properties'],
+        ];
+
+    test('enum 送出的值跟 server 白名單逐字一致（funnel_utils.ts 的三個 Set）', () {
+      expect([
+        for (final f in QuotaBlockFeature.values) f.wire
+      ], [
+        'analyze',
+        'opener',
+        'new_topic',
+        'coach',
+        'practice',
+        'keyboard',
+      ]);
+      expect([
+        for (final s in QuotaBlockScope.values) s.wire
+      ], [
+        'daily',
+        'monthly',
+        'unknown',
+      ]);
+      expect([
+        for (final s in QuotaBlockSource.values) s.wire
+      ], [
+        'precheck',
+        'server',
+      ]);
+    });
+
+    test('只帶 feature、scope、block_source 三個固定值（不叫 source，避開關於我那個鍵）', () async {
+      await tracker.trackQuotaBlockShown(
+        feature: QuotaBlockFeature.newTopic,
+        scope: QuotaBlockScope.monthly,
+        source: QuotaBlockSource.precheck,
+      );
+
+      expect(wire.names, ['quota_block_shown']);
+      expect(quotaProps(), [
+        {
+          'feature': 'new_topic',
+          'scope': 'monthly',
+          'block_source': 'precheck'
+        },
+      ]);
+    });
+
+    test('同一次執行同一個 feature＋scope 只記一次；block_source 不同不算新的一次；換 scope 或功能各記一次',
+        () async {
+      Future<void> block(
+        QuotaBlockFeature feature,
+        QuotaBlockScope scope,
+        QuotaBlockSource source,
+      ) =>
+          tracker.trackQuotaBlockShown(
+            feature: feature,
+            scope: scope,
+            source: source,
+          );
+
+      await block(QuotaBlockFeature.analyze, QuotaBlockScope.daily,
+          QuotaBlockSource.precheck);
+      await block(QuotaBlockFeature.analyze, QuotaBlockScope.daily,
+          QuotaBlockSource.server);
+      await block(QuotaBlockFeature.analyze, QuotaBlockScope.daily,
+          QuotaBlockSource.precheck);
+      await block(QuotaBlockFeature.analyze, QuotaBlockScope.monthly,
+          QuotaBlockSource.server);
+      await block(QuotaBlockFeature.coach, QuotaBlockScope.daily,
+          QuotaBlockSource.server);
+
+      expect(quotaProps(), [
+        {'feature': 'analyze', 'scope': 'daily', 'block_source': 'precheck'},
+        {'feature': 'analyze', 'scope': 'monthly', 'block_source': 'server'},
+        {'feature': 'coach', 'scope': 'daily', 'block_source': 'server'},
+      ]);
+
+      // 下次開 App（新的 tracker）會再記。
+      await FunnelTracker(invoker: wire.call, currentUserId: () => uid)
+          .trackQuotaBlockShown(
+        feature: QuotaBlockFeature.analyze,
+        scope: QuotaBlockScope.daily,
+        source: QuotaBlockSource.precheck,
+      );
+      expect(quotaProps(), hasLength(4));
+    });
+
+    test('同時觸發只送一次（例如每次重建都碰到被擋的按鈕）', () async {
+      final gate = Completer<void>();
+      final slow = FunnelTracker(
+        invoker: (fn, {required body}) async {
+          await gate.future;
+          return wire.call(fn, body: body);
+        },
+        currentUserId: () => uid,
+      );
+
+      final calls = [
+        for (var i = 0; i < 3; i++)
+          slow.trackQuotaBlockShown(
+            feature: QuotaBlockFeature.practice,
+            scope: QuotaBlockScope.unknown,
+            source: QuotaBlockSource.precheck,
+          ),
+      ];
+      gate.complete();
+      await Future.wait(calls);
+
+      expect(quotaProps(), hasLength(1));
+    });
+
+    test(
+        '送失敗不算記過，下次擋到再送；同一次執行最多試 '
+        '${FunnelTracker.maxOnceAttemptsPerRun} 次', () async {
+      wire.status = (_) => 400; // 舊 server 不認得這個事件
+      for (var i = 0; i < FunnelTracker.maxOnceAttemptsPerRun + 2; i++) {
+        await tracker.trackQuotaBlockShown(
+          feature: QuotaBlockFeature.keyboard,
+          scope: QuotaBlockScope.unknown,
+          source: QuotaBlockSource.server,
+        );
+      }
+      expect(wire.sent, hasLength(FunnelTracker.maxOnceAttemptsPerRun));
+
+      wire.status = (_) => 200;
+      final retry = FunnelTracker(invoker: wire.call, currentUserId: () => uid);
+      await retry.trackQuotaBlockShown(
+        feature: QuotaBlockFeature.keyboard,
+        scope: QuotaBlockScope.unknown,
+        source: QuotaBlockSource.server,
+      );
+      await retry.trackQuotaBlockShown(
+        feature: QuotaBlockFeature.keyboard,
+        scope: QuotaBlockScope.unknown,
+        source: QuotaBlockSource.server,
+      );
+      expect(wire.sent, hasLength(FunnelTracker.maxOnceAttemptsPerRun + 1));
+    });
+
+    test('沒登入：排進佇列就算記過，不重複排', () async {
+      uid = null;
+      for (var i = 0; i < 2; i++) {
+        await tracker.trackQuotaBlockShown(
+          feature: QuotaBlockFeature.opener,
+          scope: QuotaBlockScope.daily,
+          source: QuotaBlockSource.server,
+        );
+      }
+
+      expect(wire.sent, isEmpty);
+      final queue = await _storedQueue();
+      expect([
+        for (final e in queue) e['properties']
+      ], [
+        {'feature': 'opener', 'scope': 'daily', 'block_source': 'server'},
       ]);
     });
   });

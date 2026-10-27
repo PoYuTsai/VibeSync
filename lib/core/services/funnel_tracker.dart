@@ -17,6 +17,46 @@ typedef FunnelUploadInvoker = Future<int> Function(
 /// 目前登入的帳號 id，沒登入回 null（測試注入用）。
 typedef FunnelCurrentUserId = String? Function();
 
+/// `quota_block_shown.feature`：哪個功能撞到額度（onboarding 轉換第 6 步）。
+enum QuotaBlockFeature {
+  analyze('analyze'),
+  opener('opener'),
+  newTopic('new_topic'),
+  coach('coach'),
+  practice('practice'),
+  keyboard('keyboard');
+
+  const QuotaBlockFeature(this.wire);
+
+  /// 送到伺服器的值（server 白名單 QUOTA_BLOCK_FEATURES）。
+  final String wire;
+}
+
+/// `quota_block_shown.scope`：撞到的是每日還是每月額度；App 分不出來就是 unknown。
+enum QuotaBlockScope {
+  daily('daily'),
+  monthly('monthly'),
+  unknown('unknown');
+
+  const QuotaBlockScope(this.wire);
+
+  /// 送到伺服器的值（server 白名單 QUOTA_BLOCK_SCOPES）。
+  final String wire;
+}
+
+/// `quota_block_shown.block_source`：App 自己先擋（precheck），還是伺服器回 429／402
+/// 或鍵盤轉來伺服器確認過的訊號（server）。鍵名不叫 source：server 的值域表以鍵名全域
+/// 共用，source 已經是 about_me_opened 的鍵。
+enum QuotaBlockSource {
+  precheck('precheck'),
+  server('server');
+
+  const QuotaBlockSource(this.wire);
+
+  /// 送到伺服器的值（server 白名單 QUOTA_BLOCK_SOURCES）。
+  final String wire;
+}
+
 /// Best-effort 去識別化漏斗埋點（Tier 2 批 1.5）。
 ///
 /// 鐵則（隱私＋韌性，照 CoachingOutcomeUploader）：
@@ -93,6 +133,7 @@ class FunnelTracker {
     // purchaser：開始購買時的帳號，伺服器比對登入帳號用，不落庫。
     'paywall_purchase_completed': ['tier', 'entry', 'purchaser'],
     'locked_cards_upgrade_tap': ['locked_count'],
+    'quota_block_shown': ['feature', 'scope', 'block_source'],
   };
 
   final FunnelUploadInvoker _invoke;
@@ -105,6 +146,11 @@ class FunnelTracker {
   final _onceInFlight = <String>{};
   final _onceAttempts = <String, int>{};
   final _onceQueuedSignedOut = <String>{};
+
+  // 額度不足事件在這次執行中的狀態（記憶體，鍵是 feature|scope）。
+  final _quotaBlockDone = <String>{};
+  final _quotaBlockInFlight = <String>{};
+  final _quotaBlockAttempts = <String, int>{};
 
   /// 送一發事件；伺服器收下（2xx）才回 true，其他（沒送到、被拒、丟錯）一律
   /// false，不丟錯。字典外事件直接丟棄（連手機都不出）。
@@ -173,6 +219,40 @@ class FunnelTracker {
       debugPrint('[FunnelTracker] once-flag failed (ignored): $e');
     } finally {
       _onceInFlight.remove(flagKey);
+    }
+  }
+
+  /// 額度不足事件（onboarding 轉換第 6 步）：在「告訴使用者額度不夠」的那一刻記一筆。
+  /// 同一次執行、同一個 feature＋scope 只記一次：送成功或排進佇列才算數，送失敗的
+  /// 下次再擋到時再送（同一次執行最多 [maxOnceAttemptsPerRun] 次）。只記錄，不影響
+  /// 任何額度判斷、按鈕狀態或付費頁。
+  Future<void> trackQuotaBlockShown({
+    required QuotaBlockFeature feature,
+    required QuotaBlockScope scope,
+    required QuotaBlockSource source,
+  }) async {
+    final key = '${feature.wire}|${scope.wire}';
+    if (_quotaBlockDone.contains(key) || _quotaBlockInFlight.contains(key)) {
+      return;
+    }
+    if ((_quotaBlockAttempts[key] ?? 0) >= maxOnceAttemptsPerRun) return;
+    _quotaBlockInFlight.add(key);
+    _quotaBlockAttempts[key] = (_quotaBlockAttempts[key] ?? 0) + 1;
+    try {
+      final queued = _currentUserId() == null;
+      final sent = await track(
+        'quota_block_shown',
+        properties: {
+          'feature': feature.wire,
+          'scope': scope.wire,
+          'block_source': source.wire,
+        },
+      );
+      if (sent || queued) _quotaBlockDone.add(key);
+    } catch (e) {
+      debugPrint('[FunnelTracker] quota block failed (ignored): $e');
+    } finally {
+      _quotaBlockInFlight.remove(key);
     }
   }
 

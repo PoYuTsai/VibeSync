@@ -38,6 +38,29 @@ const PAID_TIERS = new Set([
   "essential",
 ]);
 
+// 額度不足事件（onboarding 轉換第 6 步）：哪個功能、哪一種額度、誰先擋下。
+const QUOTA_BLOCK_FEATURES = new Set([
+  "analyze",
+  "opener",
+  "new_topic",
+  "coach",
+  "practice",
+  "keyboard",
+]);
+
+// App 分不出每日或每月時送 unknown。
+const QUOTA_BLOCK_SCOPES = new Set([
+  "daily",
+  "monthly",
+  "unknown",
+]);
+
+// precheck＝App 先擋（請求沒送出）；server＝伺服器回 429／402 或鍵盤的額度訊號。
+const QUOTA_BLOCK_SOURCES = new Set([
+  "precheck",
+  "server",
+]);
+
 // 只拿來比對、不落庫的鍵（主審 r2 P2；Eric 2026-10-18 核准）：購買事件帶開始購買
 // 時的帳號。認證權杖在送出當下才取，付款確認期間換了帳號，事件就會用到別人的登入；
 // 跟登入的不同就整筆拒絕。row 的 user_id 本來就是帳號，驗完不存。
@@ -69,6 +92,10 @@ const PROP_SPECS: Record<string, PropSpec> = {
     min: LOCKED_COUNT_MIN,
     max: LOCKED_COUNT_MAX,
   },
+  feature: { kind: "enum", values: QUOTA_BLOCK_FEATURES },
+  scope: { kind: "enum", values: QUOTA_BLOCK_SCOPES },
+  // 不叫 source：這張表以鍵名全域共用值域，source 已經是 about_me_opened 的鍵。
+  block_source: { kind: "enum", values: QUOTA_BLOCK_SOURCES },
 };
 
 /** event → 允許的 properties 鍵。字典外 event 一律 400。 */
@@ -98,6 +125,7 @@ export const FUNNEL_EVENT_PROPS: Record<string, readonly string[]> = {
   paywall_opened: ["entry"],
   paywall_purchase_completed: ["tier", "entry", PURCHASER_KEY],
   locked_cards_upgrade_tap: ["locked_count"],
+  quota_block_shown: ["feature", "scope", "block_source"],
 };
 
 export interface FunnelRow {

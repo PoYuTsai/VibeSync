@@ -1034,4 +1034,116 @@ void main() {
       expect(_refineQuotaLine(tester), noFreeLine);
     });
   });
+
+  // onboarding 轉換第 6 步：告訴使用者「額度不夠」的那一刻記一筆 quota_block_shown，
+  // 只是記錄；確認框、付費頁、升級卡照舊。
+  group('額度不足事件（quota_block_shown）', () {
+    Map<String, String> quotaBlock(String scope, String source) =>
+        {'feature': 'analyze', 'scope': scope, 'block_source': source};
+
+    testWidgets('確認框額度不足：記一筆 daily／precheck；按取消也算，再打開不重記', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_free, dailyUsed: _dailyLimitOf(_free)),
+      );
+      await _tapOrb(tester);
+      expect(find.text('開始分析前'), findsOneWidget);
+      expect(harness.funnel.propsOf('quota_block_shown'), [
+        quotaBlock('daily', 'precheck'),
+      ]);
+
+      await tester.tap(_inPreviewDialog(find.text('取消')));
+      await tester.pumpAndSettle();
+      await _tapOrb(tester);
+      expect(find.text('開始分析前'), findsOneWidget);
+
+      expect(harness.funnel.propsOf('quota_block_shown'), [
+        quotaBlock('daily', 'precheck'),
+      ]);
+      expect(harness.funnel.propsOf('paywall_opened'), isEmpty);
+      expect(harness.recorder.streamCalls, 0);
+    });
+
+    testWidgets('這個月不夠（今天還有）：跟確認框一樣先看本月，scope 記 monthly', (tester) async {
+      final harness = await _pumpScreen(
+        tester,
+        plan: _plan(_starter, monthlyUsed: _monthlyLimitOf(_starter)),
+      );
+      await _tapOrb(tester);
+
+      expect(harness.funnel.propsOf('quota_block_shown'), [
+        quotaBlock('monthly', 'precheck'),
+      ]);
+    });
+
+    testWidgets('分析途中撞到每日額度（429）：記一筆 daily／server，付費頁照舊打開', (tester) async {
+      final harness = await _pumpScreen(tester, plan: _plan(_free));
+
+      harness.streaming().emit(const StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+            recommendationPreviewErrorCode: 'DAILY_LIMIT_EXCEEDED',
+            recommendationPreviewErrorMessage: '今日額度已用完',
+            quotaExceeded: QuotaExceededInfo(
+              isMonthly: false,
+              remaining: 0,
+              quotaNeeded: 2,
+            ),
+          ));
+      await tester.pumpAndSettle();
+
+      expect(harness.funnel.propsOf('quota_block_shown'), [
+        quotaBlock('daily', 'server'),
+      ]);
+      expect(harness.funnel.propsOf('paywall_opened'), [_quotaFunnelEntry]);
+    });
+
+    testWidgets('只有每月的錯誤碼、沒有額度明細：照錯誤碼記 monthly／server', (tester) async {
+      final harness = await _pumpScreen(tester, plan: _plan(_starter));
+
+      harness.streaming().emit(const StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+            recommendationPreviewErrorCode: 'MONTHLY_LIMIT_EXCEEDED',
+            recommendationPreviewErrorMessage: '本月額度已用完',
+          ));
+      await tester.pumpAndSettle();
+
+      expect(harness.funnel.propsOf('quota_block_shown'), [
+        quotaBlock('monthly', 'server'),
+      ]);
+    });
+
+    testWidgets('已經送到部分內容才撞到額度：升級卡出現，記一筆 server，scope 照額度明細', (tester) async {
+      final harness = await _pumpScreen(tester, plan: _plan(_free));
+
+      harness.streaming().emit(const StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedAfterRecommendation,
+            streamErrorMessage: '本月額度已用完',
+            quotaExceeded: QuotaExceededInfo(
+              isMonthly: true,
+              remaining: 1,
+              quotaNeeded: 3,
+            ),
+          ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(QuotaExceededUpgradeCard), findsOneWidget);
+      expect(harness.funnel.propsOf('quota_block_shown'), [
+        quotaBlock('monthly', 'server'),
+      ]);
+    });
+
+    testWidgets('不是額度的失敗：不記', (tester) async {
+      final harness = await _pumpScreen(tester, plan: _plan(_free));
+
+      harness.streaming().emit(const StreamingAnalysisState(
+            phase: StreamingAnalyzePhase.failedBeforeRecommendation,
+            recommendationPreviewErrorCode: 'NETWORK_ERROR',
+            recommendationPreviewErrorMessage: '分析暫時失敗，請稍後再試。',
+          ));
+      await tester.pumpAndSettle();
+
+      expect(harness.funnel.propsOf('quota_block_shown'), isEmpty);
+    });
+  });
 }
