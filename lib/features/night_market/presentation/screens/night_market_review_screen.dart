@@ -54,6 +54,9 @@ class NightMarketReviewScreen extends ConsumerWidget {
     // route) `popUntil` is a no-op, so this is a strict superset of the
     // original behaviour, not a change for them.
     void exitReview() {
+      // 這一層已經在退出（使用者正按返回、退出動畫還沒跑完，或剛退過一次）：
+      // 不再退。popUntil 找不到正在退出的這一層，會把下面的頁面也關掉。
+      if (!homeRoute.isActive) return;
       navigator.popUntil((route) => identical(route, homeRoute));
       onExit();
     }
@@ -94,6 +97,16 @@ class NightMarketReviewScreen extends ConsumerWidget {
         return;
       }
       _openKnowledge(context, scenario, item, openChapter);
+    }
+
+    // 帳號已經不是打開復盤的人（包括第一次畫出來之前就換了，監聽接不到那一下）：
+    // 不畫復盤內容，下一格安全退出。
+    final account = ref.watch(nightMarketAccountIdProvider);
+    if (!account.hasValue || account.value != viewerAccountId) {
+      if (account.hasValue) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => exitReview());
+      }
+      return const SizedBox.shrink();
     }
 
     final mindsets = scenario.review

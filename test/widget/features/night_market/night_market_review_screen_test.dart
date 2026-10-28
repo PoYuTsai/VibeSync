@@ -27,8 +27,9 @@ class _ReviewHarness {
   void switchAccount(String? id) => _accounts.add(id);
 }
 
-Stream<String?> _accountStream(Stream<String?> changes) async* {
-  yield _viewer;
+Stream<String?> _accountStream(
+    String? initial, Stream<String?> changes) async* {
+  yield initial;
   yield* changes;
 }
 
@@ -43,6 +44,7 @@ Future<_ReviewHarness> _show(
   WidgetTester tester, {
   double scale = 1,
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
+  String? initialAccount = _viewer,
 }) async {
   await tester.binding.setSurfaceSize(Size(scale == 1 ? 390 : 320, 844));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -57,8 +59,8 @@ Future<_ReviewHarness> _show(
       // mid-test via [_ReviewHarness.setAccess].
       ebookSubscriptionAccessProvider
           .overrideWith((ref) => ref.watch(_testAccessProvider)),
-      nightMarketAccountIdProvider
-          .overrideWith((ref) => _accountStream(accounts.stream)),
+      nightMarketAccountIdProvider.overrideWith(
+          (ref) => _accountStream(initialAccount, accounts.stream)),
     ],
   );
   addTearDown(container.dispose);
@@ -256,6 +258,28 @@ void main() {
       expect(find.byKey(_homeMarkerKey), findsOneWidget);
       expect(find.text('把這段互動看懂'), findsNothing);
       expect(find.text('片段解析 2／6'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('第一次畫出來之前帳號就換了：不畫復盤內容，直接退回入口', (tester) async {
+      // 入口核對的是 viewer-a，復盤畫出來時帳號已經是 viewer-b（監聽接不到這一下）。
+      await _show(tester, initialAccount: 'viewer-b');
+
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(find.text('把這段互動看懂'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('正在按返回、退出動畫還沒跑完時換帳號：不會多退一層', (tester) async {
+      final harness = await _show(tester);
+      await tester.tap(find.byTooltip('回練習室'));
+      await tester.pump();
+
+      harness.switchAccount('viewer-b');
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
