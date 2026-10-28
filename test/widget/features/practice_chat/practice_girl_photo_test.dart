@@ -74,7 +74,7 @@ void main() {
     });
 
     testWidgets(
-        'practiceGirlPhotoCacheWidth：框的長邊×裝置像素比，夾 64–4096；框不是有限正數回 null',
+        'practiceGirlPhotoCacheWidth：框的長邊×裝置像素比，夾 64–4096；寬或高不是有限正數回 null',
         (tester) async {
       final results = <String, int?>{};
       await tester.pumpWidget(
@@ -91,6 +91,8 @@ void main() {
             results['很大 2000×2000'] = w(2000, 2000);
             results['無限寬'] = w(double.infinity, 320);
             results['零'] = w(0, 0);
+            results['寬是零 0×40'] = w(0, 40);
+            results['高是無限 40×∞'] = w(40, double.infinity);
             return const SizedBox();
           }),
         ),
@@ -104,6 +106,8 @@ void main() {
         '很大 2000×2000': 4096,
         '無限寬': null,
         '零': null,
+        '寬是零 0×40': null,
+        '高是無限 40×∞': null,
       });
     });
   });

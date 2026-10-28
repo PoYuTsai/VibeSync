@@ -71,15 +71,16 @@ class PracticeGirlPhoto extends StatelessWidget {
 }
 
 /// 人物照依顯示框（[width]×[height] pt）的解碼寬：照片都是直幅或正方（寬 ≤ 高），解成
-/// 「框的長邊×裝置像素比」寬，`BoxFit.cover` 裁切後兩個方向都不會被放大。框的大小不是
-/// 有限正數時回 null（解原尺寸）。
+/// 「框的長邊×裝置像素比」寬，`BoxFit.cover` 裁切後兩個方向都不會被放大。框的寬或高
+/// 不是有限正數時回 null（解原尺寸）。
 int? practiceGirlPhotoCacheWidth(
   BuildContext context, {
   required double width,
   required double height,
 }) {
+  bool usable(double v) => v.isFinite && v > 0;
+  if (!usable(width) || !usable(height)) return null;
   final side = math.max(width, height);
-  if (!side.isFinite || side <= 0) return null;
   return (side * MediaQuery.devicePixelRatioOf(context))
       .round()
       .clamp(64, 4096)
