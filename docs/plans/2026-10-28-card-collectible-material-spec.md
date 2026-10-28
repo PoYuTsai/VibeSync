@@ -771,6 +771,17 @@ python3 tools/practice-card-material/concept_match.py --still build/card_back_st
 - 閃光檢查（§11，最終程式碼重錄 60 fps，任一秒最多幾次閃光，N／R／SR）：25 cm 是 2／2／2（上限 2），20 cm 是 2.5／2.5／3（上限 3），全部過。P2 同一台機器是 25 cm 2／2／**3**、20 cm 2.5／2.5／3：卡背沒有增加閃光，SR 25 cm 反而從 3 降到 2：P2 最多的那一秒包含 R0＋約 670 ms 徽記白光退掉（降）、R0＋約 900 ms 整張卡染金（升）兩次轉折；新卡背的染金改成從徽記擴散、SR 的染色脈衝撐到染金結束，這一段不再算成轉折。P3 最多的那一秒都在翻牌峰值之後（光刃、卡面），不在卡背。
 - 沒跑：iPhone 實機目視與效能（Gate-3）；R、SR 成品圖在 R0＋600 ms 前有沒有解好、會不會跳格，要真機確認（§6.8）。
 
+### 16.3 P4 實作紀錄（2026-10-28，Draft：Gate-3 通過才合併）
+
+做了（§13.3）：
+
+- V3 卡背五張（`practice_draw_card_back_v3_{base,emblem_mask,frame_mask,glow,lines_mask}.webp`，273 KiB）從 `assets/images/practice/` 移到 `docs/archive/practice-draw-v3/`（附 README），app 不再打包。不刪：v4 的描圖、構圖鎖定與底面煙霧質感還要用。V3 產生器預設也輸出到那裡。
+- 工具改讀封存位置；`render_card_back.py` 找不到煙霧質感的來源時不再默默改用 0（會讓重新渲染悄悄變樣），直接報錯。重新渲染 7 張 v4 素材，跟 P3 提交的逐位元相同。
+- 拿掉只剩舊卡背染色在用的：V3 素材常數、`practiceRevealFrameGlow`、`practiceRevealLinesGlow`、`PracticeRevealBackColors` 的 `tint`／`tintDeep`／`holo`（只留環境光要的 `glow`、`ambientAlpha`）、主題的 `backTintDeep`、色票 `nBackTintDeep`／`rBackTintDeep`／`srBackTintDeep`／`holoViolet`。`backTint` 還是衝擊波光環的顏色，保留。
+- 測試：拿掉兩個舊函式的測試；`practice_reveal_visuals_test.dart` 的「卡背顏色」改看環境光的顏色（一樣驗只升到真實稀有度）。授權文件更新 V3 素材的位置。
+
+驗證：`flutter analyze` 沒有問題；`test/unit/features/practice_chat/`、`test/widget/features/practice_chat/`、`test/lint/` 889 過；`python3 -m unittest discover -s tools/practice-card-material` 10 個全過。畫面不變，沒有重錄閃光。
+
 ---
 
 ## 17. 風險、不做的事、後續
