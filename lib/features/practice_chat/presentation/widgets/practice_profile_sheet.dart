@@ -65,6 +65,11 @@ class _PracticeProfileSheet extends StatelessWidget {
                       width: 248,
                       height: 310,
                       borderRadius: BorderRadius.circular(22),
+                      cacheWidth: practiceGirlPhotoCacheWidth(
+                        context,
+                        width: 248,
+                        height: 310,
+                      ),
                     ),
                     const Positioned(
                       bottom: 10,
