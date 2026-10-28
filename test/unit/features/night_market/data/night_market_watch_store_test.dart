@@ -120,23 +120,40 @@ void main() {
       expect(await container.read(nightMarketWatchedProvider.future), isFalse);
     });
 
-    test('markWatched 記在目前帳號底下，馬上變成看完', () async {
+    test('markWatched 記在這一輪的帳號底下，馬上變成看完', () async {
       final store = InMemoryNightMarketWatchStore();
       final container = containerFor(() => Stream.value('user-a'), store);
       expect(await container.read(nightMarketWatchedProvider.future), isFalse);
 
-      await container.read(nightMarketWatchedProvider.notifier).markWatched();
+      await container
+          .read(nightMarketWatchedProvider.notifier)
+          .markWatched('user-a');
 
       expect(store.watchedAccounts, {'user-a'});
       expect(container.read(nightMarketWatchedProvider).valueOrNull, isTrue);
     });
 
-    test('沒登入：markWatched 不寫入，維持沒看完', () async {
+    test('沒有帳號：markWatched 不寫入，維持沒看完', () async {
       final store = InMemoryNightMarketWatchStore();
       final container = containerFor(() => Stream.value(null), store);
       expect(await container.read(nightMarketWatchedProvider.future), isFalse);
 
-      await container.read(nightMarketWatchedProvider.notifier).markWatched();
+      await container
+          .read(nightMarketWatchedProvider.notifier)
+          .markWatched('  ');
+
+      expect(store.watchedAccounts, isEmpty);
+      expect(container.read(nightMarketWatchedProvider).valueOrNull, isFalse);
+    });
+
+    test('當下的帳號已經不是這一輪的人：不寫入（主審 r1 P1）', () async {
+      final store = InMemoryNightMarketWatchStore();
+      final container = containerFor(() => Stream.value('user-b'), store);
+      expect(await container.read(nightMarketWatchedProvider.future), isFalse);
+
+      await container
+          .read(nightMarketWatchedProvider.notifier)
+          .markWatched('user-a');
 
       expect(store.watchedAccounts, isEmpty);
       expect(container.read(nightMarketWatchedProvider).valueOrNull, isFalse);
@@ -164,7 +181,9 @@ void main() {
       final container = containerFor(accounts, store);
       expect(await container.read(nightMarketWatchedProvider.future), isFalse);
 
-      await container.read(nightMarketWatchedProvider.notifier).markWatched();
+      await container
+          .read(nightMarketWatchedProvider.notifier)
+          .markWatched('user-a');
 
       expect(store.inner.watchedAccounts, {'user-a'});
       expect(await container.read(nightMarketWatchedProvider.future), isFalse);

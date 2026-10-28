@@ -34,18 +34,19 @@ class NightMarketWatchedController extends AsyncNotifier<bool> {
     }
   }
 
-  /// 最後一段播完、進到復盤時呼叫：記在當下的帳號底下。寫入期間換了帳號，
-  /// 就不把「看完」發布出去（新帳號照自己的紀錄重算）。
-  Future<void> markWatched() async {
-    final account = await _currentAccount();
-    if (account.isEmpty) return;
+  /// 最後一段播完、進到復盤時呼叫，記在 [accountId]（這一輪是誰看的）底下。
+  /// 當下的帳號已經不是他就不寫（主審 r1 P1：不能把上一個人的完播記給新帳號）；
+  /// 寫入期間換了帳號，也不把「看完」發布出去（新帳號照自己的紀錄重算）。
+  Future<void> markWatched(String accountId) async {
+    final owner = accountId.trim();
+    if (owner.isEmpty || await _currentAccount() != owner) return;
     try {
-      await ref.read(nightMarketWatchStoreProvider).markWatched(account);
+      await ref.read(nightMarketWatchStoreProvider).markWatched(owner);
     } catch (e) {
       debugPrint('NightMarket watched write failed: $e');
       return;
     }
-    if (await _currentAccount() == account) state = const AsyncData(true);
+    if (await _currentAccount() == owner) state = const AsyncData(true);
   }
 
   Future<String> _currentAccount() async =>

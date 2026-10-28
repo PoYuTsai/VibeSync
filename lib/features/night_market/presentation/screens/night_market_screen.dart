@@ -56,6 +56,10 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   /// frozen frame with no way forward.
   bool _awaitingReviewAccess = false;
 
+  /// 這一輪是哪個帳號在看（按「開始」或從頭重播時記下）。進復盤、記看完之前
+  /// 都要跟當下的帳號一樣（主審 r1 P1）。
+  String? _runAccountId;
+
   NightMarketBeat get _beat => _scenario.beatById(_beatId)!;
 
   @override
@@ -144,9 +148,24 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
     if (mounted) setState(() => _awaitingReviewAccess = true);
     await _withEssentialGate(_beat.access, () async {
       if (!mounted) return;
+      // 這一輪是別的帳號看的（例如停在「重試」時換了帳號）：不算現在這個帳號
+      // 看完、也不進復盤，從頭再看一次（主審 r1 P1）。
+      final owner = _runAccountId;
+      final current = await ref.read(nightMarketAccountIdProvider.future);
+      if (!mounted) return;
+      if (current != owner) {
+        showNightMarketGateNotice(context, '帳號換了，請從頭看一次');
+        setState(() => _awaitingReviewAccess = false);
+        await _restart();
+        return;
+      }
       // 最後一段播完、真的進到復盤才算看完；之後學習頁的「查看復盤」才打得開
       // （Eric 2026-10-28）。記錄放在 provider 裡寫，畫面先關掉也照樣寫完。
-      unawaited(ref.read(nightMarketWatchedProvider.notifier).markWatched());
+      if (owner != null) {
+        unawaited(
+          ref.read(nightMarketWatchedProvider.notifier).markWatched(owner),
+        );
+      }
       setState(() {
         _finished = true;
         _awaitingReviewAccess = false;
@@ -157,11 +176,18 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
 
   Future<void> _start() async {
     setState(() => _started = true);
-    await _load(_scenario.initialBeatId);
+    await _beginRun();
   }
 
   Future<void> _restart() async {
     setState(() => _finished = false);
+    await _beginRun();
+  }
+
+  /// 從 S1 開始一輪，記下這一輪是哪個帳號在看（[_runAccountId]）。
+  Future<void> _beginRun() async {
+    _runAccountId = await ref.read(nightMarketAccountIdProvider.future);
+    if (!mounted) return;
     await _load(_scenario.initialBeatId);
   }
 

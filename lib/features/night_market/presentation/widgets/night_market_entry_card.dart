@@ -48,8 +48,11 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 讀取中或讀不到都當沒看完（fail closed）。
-    final watched = ref.watch(nightMarketWatchedProvider).valueOrNull ?? false;
+    // 讀取中或讀不到都當沒看完（fail closed）。unwrapPrevious：換帳號重讀時，
+    // 不沿用上一個帳號的「看完」（主審 r1 P3）。
+    final watched =
+        ref.watch(nightMarketWatchedProvider).unwrapPrevious().valueOrNull ??
+            false;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

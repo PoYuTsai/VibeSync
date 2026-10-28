@@ -641,6 +641,17 @@ void main() {
       expect(platform.creations, hasLength(3));
     }
 
+    // 跟上面 S3 ending 那組同一招：提示在底部會停留一段時間、擋住後面排隊的提示，
+    // 直接清掉再等退場動畫跑完。
+    Future<void> clearNotices(WidgetTester tester) async {
+      await tester.pump();
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .clearSnackBars();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
     testWidgets('最後一段播完、進到復盤才記成看完；前兩段播完都還沒記', (tester) async {
       final harness = await _pumpStarted(tester, alreadyWatched: false);
       await reachS3End(tester);
@@ -656,10 +667,7 @@ void main() {
       await reachS3End(tester);
       harness.setAccess(const EbookSubscriptionAccess.resolving());
       await _complete(tester, platform);
-      tester
-          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
-          .clearSnackBars();
-      await tester.pump(const Duration(milliseconds: 300));
+      await clearNotices(tester);
       expect(find.text('復盤'), findsNothing);
       expect(harness.watchStore.watchedAccounts, isEmpty);
 
@@ -669,6 +677,29 @@ void main() {
       await tester.pump(const Duration(milliseconds: 30));
       expect(find.text('復盤'), findsOneWidget);
       expect(harness.watchStore.watchedAccounts, {'harness-owner'});
+    });
+
+    testWidgets('停在「重試」時換了帳號：不進復盤、誰都不記，從頭再看一次（主審 r1 P1）', (tester) async {
+      final harness = await _pumpStarted(tester, alreadyWatched: false);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await clearNotices(tester);
+      expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+
+      harness.switchAccount('another-owner');
+      await tester.pump();
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(find.text('復盤'), findsNothing);
+      expect(harness.watchStore.watchedAccounts, isEmpty);
+      expect(find.text('帳號換了，請從頭看一次'), findsOneWidget);
+      expect(platform.creations, hasLength(4));
+      expect(platform.creations.last.dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
     });
   });
 
