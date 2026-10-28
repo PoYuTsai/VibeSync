@@ -9,6 +9,8 @@
 // 為何 JPEG 而非 WebP：本機無 cwebp/Pillow，且 Dart `image` 套件 WebP 僅 decode。
 // JPEG 由既有 `image` 依賴直接編碼；檔名 practice_girl_NNN.jpg 與 photoId 一致，
 // 日後若要改用 WebP（Windows cwebp 重壓）只需替換同名檔，client 路徑不變。
+// 高解析 WebP（長邊 1800）改用同目錄的 make_hd_photos.py（Pillow）：副檔名改成 .webp，
+// app 端只改 practiceGirlPhotoAsset()（典藏材質規格 2026-10-28 §8）。
 import 'dart:io';
 
 import 'package:image/image.dart' as img;
