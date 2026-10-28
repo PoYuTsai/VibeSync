@@ -52,4 +52,59 @@ void main() {
       findsOneWidget,
     );
   });
+
+  group('解碼大小（典藏材質規格 §8.4）', () {
+    testWidgets('帶 cacheWidth：用 ResizeImage 包同一張 asset、寬度照給的', (tester) async {
+      final girl = practiceGirlProfiles.first;
+      await tester.pumpWidget(
+        _host(PracticeGirlPhoto(
+          profile: girl,
+          width: 40,
+          height: 40,
+          circle: true,
+          cacheWidth: 120,
+        )),
+      );
+
+      final img = tester.widget<Image>(find.byType(Image));
+      final resized = img.image as ResizeImage;
+      expect(resized.width, 120);
+      expect(
+          (resized.imageProvider as AssetImage).assetName, girl.photoAssetPath);
+    });
+
+    testWidgets(
+        'practiceGirlPhotoCacheWidth：框的長邊×裝置像素比，夾 64–4096；框不是有限正數回 null',
+        (tester) async {
+      final results = <String, int?>{};
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(devicePixelRatio: 3),
+          child: Builder(builder: (context) {
+            int? w(double width, double height) =>
+                practiceGirlPhotoCacheWidth(context,
+                    width: width, height: height);
+            results['頭像 40×40'] = w(40, 40);
+            results['個人頁 248×310'] = w(248, 310);
+            results['動態 4:3 300×225'] = w(300, 225);
+            results['很小 10×10'] = w(10, 10);
+            results['很大 2000×2000'] = w(2000, 2000);
+            results['無限寬'] = w(double.infinity, 320);
+            results['零'] = w(0, 0);
+            return const SizedBox();
+          }),
+        ),
+      );
+
+      expect(results, {
+        '頭像 40×40': 120,
+        '個人頁 248×310': 930,
+        '動態 4:3 300×225': 900,
+        '很小 10×10': 64,
+        '很大 2000×2000': 4096,
+        '無限寬': null,
+        '零': null,
+      });
+    });
+  });
 }

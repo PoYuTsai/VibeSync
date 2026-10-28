@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -11,6 +13,9 @@ import '../../domain/entities/practice_girl_profile.dart';
 /// - 否則 rounded-rect（預設圓角 16，或 caller 指定 `borderRadius`），用於首屏大卡。
 ///
 /// 來源圖多為直幅，故 `BoxFit.cover` + `Alignment.topCenter` 以保住臉部。
+///
+/// 小圖帶 [cacheWidth]（典藏材質規格 docs/plans/2026-10-28-card-collectible-material-spec.md
+/// §8.4）：用 [practiceGirlPhotoCacheWidth] 依顯示框算，不為 40 pt 的頭像解整張原圖。
 class PracticeGirlPhoto extends StatelessWidget {
   const PracticeGirlPhoto({
     super.key,
@@ -21,6 +26,7 @@ class PracticeGirlPhoto extends StatelessWidget {
     this.borderRadius,
     this.fit = BoxFit.cover,
     this.alignment = Alignment.topCenter,
+    this.cacheWidth,
   });
 
   final PracticeGirlProfile profile;
@@ -31,6 +37,9 @@ class PracticeGirlPhoto extends StatelessWidget {
   final BoxFit fit;
   final AlignmentGeometry alignment;
 
+  /// 解碼寬（裝置像素）；null＝解原尺寸（揭曉卡、點照片看全圖）。
+  final int? cacheWidth;
+
   @override
   Widget build(BuildContext context) {
     final image = Image.asset(
@@ -40,6 +49,7 @@ class PracticeGirlPhoto extends StatelessWidget {
       fit: fit,
       alignment: alignment,
       filterQuality: FilterQuality.medium,
+      cacheWidth: cacheWidth,
       errorBuilder: (context, error, stack) => _PhotoFallback(
         profile: profile,
         width: width,
@@ -58,6 +68,22 @@ class PracticeGirlPhoto extends StatelessWidget {
       child: SizedBox(width: width, height: height, child: image),
     );
   }
+}
+
+/// 人物照依顯示框（[width]×[height] pt）的解碼寬：照片都是直幅或正方（寬 ≤ 高），解成
+/// 「框的長邊×裝置像素比」寬，`BoxFit.cover` 裁切後兩個方向都不會被放大。框的大小不是
+/// 有限正數時回 null（解原尺寸）。
+int? practiceGirlPhotoCacheWidth(
+  BuildContext context, {
+  required double width,
+  required double height,
+}) {
+  final side = math.max(width, height);
+  if (!side.isFinite || side <= 0) return null;
+  return (side * MediaQuery.devicePixelRatioOf(context))
+      .round()
+      .clamp(64, 4096)
+      .toInt();
 }
 
 class PracticeGirlPhotoExpandHint extends StatelessWidget {

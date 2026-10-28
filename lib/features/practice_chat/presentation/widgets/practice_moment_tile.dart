@@ -133,6 +133,11 @@ class _MomentAvatar extends StatelessWidget {
         width: kMomentAvatarSize,
         height: kMomentAvatarSize,
         circle: true,
+        cacheWidth: practiceGirlPhotoCacheWidth(
+          context,
+          width: kMomentAvatarSize,
+          height: kMomentAvatarSize,
+        ),
       );
     }
     // catalog 查不到時的兜底圓：不 crash、不留破圖框。
@@ -197,6 +202,11 @@ class _MomentImage extends StatelessWidget {
           height: height,
           borderRadius: BorderRadius.circular(18),
           alignment: const Alignment(0, -0.55),
+          cacheWidth: practiceGirlPhotoCacheWidth(
+            context,
+            width: width,
+            height: height,
+          ),
         );
       case MomentSceneImage(:final assetPath):
         return ClipRRect(
