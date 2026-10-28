@@ -25,7 +25,10 @@
 - 外框：照原圖量到的尺寸參數化重建（外框細線、側邊第二道細線、上下飾板、側飾條、四角飾板、
   「//」刻記、卡緣暗帶），上下左右對稱、斜邊一律 45°；不描輪廓（V3 的外框遮罩含卡片外緣，
   執行時由拋光外框取代）。
-- 底面稜面與內環的放射刻線是照示意圖新加的裝飾，不是描出來的。
+- 收尾（#114 Gate-2a 第 1 輪審查：節點附近斷線、碎線）：左右節點群照示意圖重畫（菱形框、軸線、
+  往弧環的一對斜線），清掉描成線路的環與短於 20 px（約 6 pt）的碎段，端點貼到節點的角，線路
+  只留左半邊再鏡射到右邊（示意圖左右對稱、上下不對稱），星軌弧左右對齊。
+- 底面稜面與內外環之間的刻度盤是照示意圖新加的裝飾，不是描出來的。
 座標全部換到 1200×1800 畫布（§5.1 的對位：中心元件以外環圓心為準等比放大 s＝1800／1428，
 圓心對到畫布正中；外框元件各自貼齊最近的卡緣，飾板與刻記沿卡緣置中）。
 """
@@ -573,6 +576,180 @@ def mirror_axis_circuits(polys: list[np.ndarray], widths: list[float], center: n
     return [q + center for q, _ in out], [w for _, w in out]
 
 
+# ── 收尾：節點群、殘段、左右對稱（#114 Gate-2a 第 1 輪審查：節點附近斷線、碎線）─────────
+
+def _dense(pts, step: float = 1.5) -> np.ndarray:
+    p = np.asarray(pts, float)
+    out = [p[0]]
+    for a, b in zip(p[:-1], p[1:]):
+        n = max(1, int(np.ceil(np.hypot(*(b - a)) / step)))
+        out.extend(a + (b - a) * t for t in np.linspace(0, 1, n + 1)[1:])
+    return np.array(out)
+
+
+def _poly_len(pts) -> float:
+    p = np.asarray(pts, float)
+    return float(np.sum(np.hypot(*np.diff(p, axis=0).T)))
+
+
+def _node_polys(elements) -> list[np.ndarray]:
+    return [np.asarray(e['points'], float) for e in elements if e['layer'].startswith('node-')]
+
+
+def _inside(pt, poly) -> bool:
+    x, y = pt
+    inside = False
+    for (x0, y0), (x1, y1) in zip(poly, np.roll(poly, -1, axis=0)):
+        if (y0 > y) != (y1 > y) and x < x0 + (y - y0) * (x1 - x0) / (y1 - y0):
+            inside = not inside
+    return inside
+
+
+def side_cluster(nodes: dict[str, np.ndarray], outer_r: float, arc_r: float) -> list[dict]:
+    """左側節點群（照示意圖一重畫，V3 遮罩這一塊被光暈蓋住、左右也不對稱）：
+    - 外側實心菱形外圍一個完整的菱形框：上下頂點在外環上（中線 ±50），右頂點是中間的小節點，
+      左頂點離上下頂點的水平距離是右半邊的 0.68 倍（示意圖量的比例）；
+    - 一條貫穿三個節點的軸線；
+    - 內側菱形往弧環拉一對斜線（端點在弧上、中線 ±71，同 V3 上半那一條）。
+    座標是 1200×1800 畫布；右側由左右鏡射產生。"""
+    cy = CANVAS_H / 2
+    cx = CANVAS_W / 2
+    xo, xs, xi = (nodes[k][0] for k in ('outer', 'small', 'inner'))
+    dy = 50.0
+    xt = cx - np.sqrt(outer_r ** 2 - dy ** 2)
+    xl = xt - 0.68 * (xs - xt)
+    frame = [(xl, cy), (xt, cy - dy), (xs, cy), (xt, cy + dy), (xl, cy)]
+    da = 71.0
+    xa = cx - np.sqrt(arc_r ** 2 - da ** 2)
+    pts = [
+        ('node-frame', frame, 3.28),
+        ('node-axis', [(xo, cy), (xi, cy)], 5.04),
+        ('node-spoke-up', [(xi, cy), (xa, cy - da)], 3.28),
+        ('node-spoke-down', [(xi, cy), (xa, cy + da)], 3.28),
+    ]
+    return [{'id': name, 'kind': 'polyline', 'layer': 'circuit', 'points': [list(map(float, q)) for q in p],
+             'width': w} for name, p, w in pts]
+
+
+def _snap_to_nodes(pts: np.ndarray, node_polys, tol: float = 8.0) -> np.ndarray:
+    """端點在節點外、離節點的角 tol 以內：貼到那個角（連接線剛好碰到節點，不留縫）。"""
+    pts = pts.copy()
+    for j in (0, -1):
+        p = pts[j]
+        for poly in node_polys:
+            if _inside(p, poly):
+                break
+            d = np.hypot(*(poly - p).T)
+            k = int(np.argmin(d))
+            if d[k] <= tol:
+                pts[j] = poly[k]
+                break
+    return pts
+
+
+def _symmetric_arcs(arcs: list[dict]) -> None:
+    """星軌弧左右對齊：左右鏡射是角度 θ → 180° − θ；鏡射後最接近的那一段（跨中軸的是自己）
+    兩者取平均。就地修改，起點落在 −180°..180°。"""
+    def norm(a0, a1):
+        k = np.floor((a0 + 180) / 360)
+        return round(float(a0 - 360 * k), 2), round(float(a1 - 360 * k), 2)
+
+    done: set[int] = set()
+    for i, a in enumerate(arcs):
+        if i in done:
+            continue
+        m0, m1 = 180 - a['a1'], 180 - a['a0']
+        mmid = (m0 + m1) / 2
+
+        def gap(b):
+            d = ((b['a0'] + b['a1']) / 2 - mmid) % 360
+            return min(d, 360 - d)
+
+        j = min(range(len(arcs)), key=lambda k: gap(arcs[k]))
+        b = arcs[j]
+        shift = round(((b['a0'] + b['a1']) / 2 - mmid) / 360) * 360
+        n0, n1 = (b['a0'] + m0 + shift) / 2, (b['a1'] + m1 + shift) / 2
+        b['a0'], b['a1'] = norm(n0, n1)
+        if j != i:
+            a['a0'], a['a1'] = norm(180 - n1, 180 - n0)
+        done.update({i, j})
+
+
+def tidy(elements: list[dict], outer_r: float, inner_r: float, arc_r: float) -> list[dict]:
+    """描完以後的收尾（畫布座標）：
+    1. 左右節點群換成 [side_cluster]；
+    2. 清掉描成線路的環（每一點都在環或弧上 ±4 px）與短於 20 px（約 6 pt）的碎段；
+    3. 連接線端點貼到節點的角；
+    4. 線路只留左半邊（含跨中軸的那半段），右半邊鏡射；星軌弧左右對齊。"""
+    cx, cy = CANVAS_W / 2, CANVAS_H / 2
+    radii = [outer_r, inner_r, arc_r]
+    circuits = [e for e in elements if e['layer'] == 'circuit']
+    others = [e for e in elements if e['layer'] != 'circuit']
+    nodes = [e for e in others if e['layer'] == 'node-diamond']
+
+    def node_at(x):
+        return min((np.mean(np.asarray(e['points'], float), axis=0) for e in nodes),
+                   key=lambda c: np.hypot(c[0] - x, c[1] - cy))
+
+    cluster_nodes = {'outer': node_at(cx - outer_r), 'small': node_at(cx - (outer_r + inner_r) / 2 - 20),
+                     'inner': node_at(cx - inner_r - 20)}
+
+    def in_cluster(p):
+        p = np.asarray(p, float)
+        return bool(np.all((p[:, 0] < cx - arc_r + 30) & (np.abs(p[:, 1] - cy) < 140)))
+
+    def on_circle(p):
+        d = np.hypot(*(_dense(p) - (cx, cy)).T)
+        return any(np.all(np.abs(d - r) <= 4.0) for r in radii)
+
+    kept = [e for e in circuits if not in_cluster(e['points']) and not in_cluster(np.array(e['points']) * (-1, 1) + (CANVAS_W, 0))
+            and not on_circle(e['points'])]
+    kept = [e for e in kept if _poly_len(e['points']) >= 20.0]
+    kept += side_cluster(cluster_nodes, outer_r, arc_r)
+
+    node_polys = _node_polys(others)
+    left: list[dict] = []
+    for e in kept:
+        p = _snap_to_nodes(np.asarray(e['points'], float), node_polys)
+        xs = p[:, 0]
+        if np.all(np.abs(xs - cx) <= 1.0):
+            left.append({**e, 'points': p.tolist()})  # 中軸上的線本身就對稱
+        elif np.all(xs <= cx + 1.0):
+            left.append({**e, 'points': p.tolist()})
+        elif np.any(xs < cx - 1.0):
+            # 跨中軸：從左端走到第一次碰到中軸為止，只留這左半段
+            if p[0][0] > p[-1][0]:
+                p = p[::-1]
+            half = [p[0]]
+            for a, b in zip(p[:-1], p[1:]):
+                if (a[0] - cx) * (b[0] - cx) <= 0 and b[0] != a[0]:
+                    t = (cx - a[0]) / (b[0] - a[0])
+                    half.append(a + (b - a) * t)
+                    break
+                half.append(b)
+            left.append({**e, 'points': np.array(half).tolist(), '_axis_half': True})
+    out = []
+    for e in left:
+        p = np.asarray(e['points'], float)
+        if np.all(np.abs(p[:, 0] - cx) <= 1.0):
+            out.append({k: v for k, v in e.items() if k != '_axis_half'})
+            continue
+        m = p * (-1, 1) + (CANVAS_W, 0)
+        if e.get('_axis_half'):
+            # 跨中軸的線：左半段（終點在中軸上）＋鏡像倒著接回來，成一條
+            joined = np.vstack([p, m[::-1][1:]])
+            out.append({k: v for k, v in e.items() if k != '_axis_half'} | {'points': joined.tolist()})
+        else:
+            out.append(e)
+            out.append({**e, 'id': e['id'] + '-m', 'points': m.tolist()})
+    for k, e in enumerate(out):
+        e['id'] = f'line-{k}'
+        e['points'] = [[round(float(x), 2), round(float(y), 2)] for x, y in e['points']]
+    arcs = [e for e in others if e['kind'] == 'arc']
+    _symmetric_arcs(arcs)
+    return others + out
+
+
 def snap_width(w: float) -> float:
     """線寬分兩級：細線路（< 3 px）與主線（軸、連接線、節點框）。"""
     return 2.6 if w < 3.0 else 4.0
@@ -787,13 +964,19 @@ def build_facets() -> list[dict]:
     return [_round_el(e) for e in els]
 
 
-def build_etch(center_canvas, r0: float, r1: float, step_deg: float = 2.5) -> list[dict]:
-    """內環裡的放射刻線（示意圖二 01 金屬蝕刻）：r0 到 r1 之間每 step 度一條。"""
+def build_etch(center_canvas, inner_r: float, outer_r: float) -> list[dict]:
+    """內外環之間的刻度盤（示意圖一的底面蝕刻，#114 Gate-2a 第 2 輪照示意圖量）：內環外 8 px 到
+    一圈細弧（兩環間距的 64%）之間每 2° 一條放射細線，每 4° 一條粗一點；弧本身也是細線。
+    第 1 輪放在弧與內環之間的窄縫，示意圖那裡沒有。"""
     cx, cy = center_canvas
-    els = []
-    for k, a in enumerate(np.arange(0, 360, step_deg)):
+    r0 = inner_r + 8.0
+    r1 = inner_r + 0.64 * (outer_r - inner_r)
+    els = [{'id': 'etch-dial', 'kind': 'ring', 'layer': 'etch', 'center': [cx, cy],
+            'r': round(r1, 2), 'width': 1.4}]
+    for k, a in enumerate(np.arange(0, 360, 2.0)):
         th = np.radians(a)
-        els.append({'id': f'etch-{k}', 'kind': 'polyline', 'layer': 'etch', 'width': 1.2,
+        els.append({'id': f'etch-{k}', 'kind': 'polyline', 'layer': 'etch',
+                    'width': 1.4 if k % 2 == 0 else 1.0,
                     'points': [[round(cx + r0 * np.cos(th), 2), round(cy + r0 * np.sin(th), 2)],
                                [round(cx + r1 * np.cos(th), 2), round(cy + r1 * np.sin(th), 2)]]})
     return els
@@ -906,13 +1089,14 @@ def trace(overlay: Path | None) -> dict:
                          'points': [mapping.center_pt(q) for q in pts],
                          'width': round(snap_width(p['width']) * SCALE, 2)})
 
+    elements = tidy(elements, outer_r * SCALE, inner_r * SCALE, arc_r * SCALE)
     for e in elements:
         e['anchor'] = 'center'
     for e in build_frame():
         e['anchor'] = 'mid' if e['layer'] in ('plate', 'mark') else 'edge'
         elements.append(e)
-    for e in build_facets() + build_etch(mapping.center_pt(center), (arc_r + 6) * SCALE,
-                                         (inner_r - 6) * SCALE):
+    for e in build_facets() + build_etch(mapping.center_pt(center), inner_r * SCALE,
+                                         outer_r * SCALE):
         e['anchor'] = 'free'
         elements.append(e)
 

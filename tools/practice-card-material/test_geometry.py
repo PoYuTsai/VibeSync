@@ -1,4 +1,5 @@
-"""構圖鎖定檢查（典藏材質規格 §5.1）：新的向量構圖反推回 904×1428，跟 V3 的遮罩比。
+"""構圖鎖定檢查（典藏材質規格 §5.1）：新的向量構圖反推回 904×1428，跟 V3 的遮罩比；另外檢查
+線路沒有碎段、線路與星軌弧左右對稱（#114 Gate-2a 第 1 輪審查）。
 
 python3 -m unittest discover -s tools/practice-card-material -p 'test_geometry.py'
 另存一張紅（舊）＋青（新）疊圖到 build/card_material/geometry_overlay.png，附在 PR。
@@ -59,6 +60,19 @@ def to_source(geo: dict) -> dict:
             e['width'] = el['width'] / s
         out.append(e)
     return {'canvas': [SRC_W, SRC_H], 'elements': out}
+
+
+def _dense(pts, step: float = 1.5) -> np.ndarray:
+    p = np.asarray(pts, float)
+    out = [p[0]]
+    for a, b in zip(p[:-1], p[1:]):
+        n = max(1, int(np.ceil(np.hypot(*(b - a)) / step)))
+        out.extend(a + (b - a) * t for t in np.linspace(0, 1, n + 1)[1:])
+    return np.array(out)
+
+
+def _length(pts) -> float:
+    return float(np.sum(np.hypot(*np.diff(np.asarray(pts, float), axis=0).T)))
 
 
 def iou(a: np.ndarray, b: np.ndarray) -> float:
@@ -147,6 +161,40 @@ class GeometryLockTest(unittest.TestCase):
         # 外框線（畫在飾條下面，渲染時被蓋住）
         self.assertLessEqual(float(np.median(d_to_ref[got])), 2.0)
         self.assertGreaterEqual(covered, 0.85)
+
+    def test_線路沒有碎段(self):
+        """#114 Gate-2a 第 1 輪審查：節點附近的斷線、碎線。線路不得短於 20 px（畫布，約 6 pt），
+        也不能整條貼在星軌上（那是描圖時把環描成線路的殘段）。"""
+        circuits = [e for e in self.geo['elements'] if e['layer'] == 'circuit']
+        rings = [e for e in self.geo['elements'] if e['kind'] in ('ring', 'arc')]
+        shortest = min(_length(e['points']) for e in circuits)
+        print(f'\n線路 {len(circuits)} 條，最短 {shortest:.1f} px')
+        self.assertGreaterEqual(shortest, 20.0)
+        for e in circuits:
+            p = _dense(e['points'])
+            for r in rings:
+                d = np.hypot(*(p - np.array(r['center'])).T)
+                self.assertFalse(np.all(np.abs(d - r['r']) <= 4.0), f"{e['id']} 整條貼在 {r['id']} 上")
+
+    def test_線路與星軌弧左右對稱(self):
+        """示意圖左右鏡射後幾乎完全重合（R／SR 0.89–0.94）：線路鏡射後都要落在某條線路上（≤ 1 px），
+        星軌弧鏡射後要對上另一段（≤ 0.5°）。上下不對稱（示意圖本身上下就不一樣），不檢查。"""
+        w = self.geo['canvas'][0]
+        circuits = [e for e in self.geo['elements'] if e['layer'] == 'circuit']
+        allp = np.vstack([_dense(e['points']) for e in circuits])
+        worst = 0.0
+        for e in circuits:
+            m = _dense(e['points']) * (-1, 1) + (w, 0)
+            d = np.hypot(m[:, None, 0] - allp[None, :, 0], m[:, None, 1] - allp[None, :, 1]).min(axis=1)
+            worst = max(worst, float(d.max()))
+        print(f'\n線路鏡射最大偏差 {worst:.2f} px')
+        self.assertLessEqual(worst, 1.0)
+        arcs = [e for e in self.geo['elements'] if e['kind'] == 'arc']
+        for a in arcs:
+            m0, m1 = 180 - a['a1'], 180 - a['a0']
+            ok = any(min(abs((m0 - b['a0']) % 360), 360 - abs((m0 - b['a0']) % 360)) <= 0.5 and
+                     min(abs((m1 - b['a1']) % 360), 360 - abs((m1 - b['a1']) % 360)) <= 0.5 for b in arcs)
+            self.assertTrue(ok, f"{a['id']} 鏡射後對不上")
 
     def test_疊圖輸出(self):
         old = np.maximum.reduce([self.emblem_mask, self.frame_mask, self.lines_mask]) > 0.5
