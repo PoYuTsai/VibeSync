@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
-import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
 
 /// 讀 JPEG 檔頭的 SOF 段拿寬高（不解整張圖）。
 ({int width, int height}) _jpegSize(List<int> b) {
@@ -37,7 +36,6 @@ void main() {
         g.photoAssetPath,
         'assets/images/practice_girls/${g.photoId}.jpg',
       );
-      expect(g.photoAssetPath, practiceGirlPhotoAsset(g.photoId));
     }
   });
 

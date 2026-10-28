@@ -13,7 +13,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../practice_chat/domain/entities/practice_girl_profile.dart';
 import '../../domain/models/ebook.dart';
 
 IconData ebookThemeIcon(EbookTheme theme) {
@@ -65,17 +64,18 @@ String ebookCoverPhotoAsset(Ebook book) {
 }
 
 String _ebookThemePhotoAsset(EbookTheme theme) {
+  const base = 'assets/images/practice_girls';
   switch (theme) {
     case EbookTheme.compass:
-      return practiceGirlPhotoAsset('practice_girl_012');
+      return '$base/practice_girl_012.jpg';
     case EbookTheme.lens:
-      return practiceGirlPhotoAsset('practice_girl_034');
+      return '$base/practice_girl_034.jpg';
     case EbookTheme.firstAid:
-      return practiceGirlPhotoAsset('practice_girl_061');
+      return '$base/practice_girl_061.jpg';
     case EbookTheme.bridge:
-      return practiceGirlPhotoAsset('practice_girl_083');
+      return '$base/practice_girl_083.jpg';
     case EbookTheme.core:
-      return practiceGirlPhotoAsset('practice_girl_022');
+      return '$base/practice_girl_022.jpg';
   }
 }
 

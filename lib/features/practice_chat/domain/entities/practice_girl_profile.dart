@@ -1,11 +1,5 @@
 import 'practice_girl_rarity.dart';
 
-/// 人物照的 bundled asset 路徑（photoId＝practice_girl_NNN，由 tools/gen-practice-photos 產生）。
-/// 寫死人物照路徑的地方一律走這裡：換高解析 WebP（典藏材質規格
-/// docs/plans/2026-10-28-card-collectible-material-spec.md §8.3）時只改這一行。
-String practiceGirlPhotoAsset(String photoId) =>
-    'assets/images/practice_girls/$photoId.jpg';
-
 /// 一位陪練女孩的「display-only」profile（與 Edge `practice_persona.ts` 的
 /// `PracticeGirlProfile` 對齊，但**不含** prompt／reactionModel／signalStyle 等
 /// server-only 欄位）。client 只拿來顯示與送 allowlisted id，絕不送 prompt 文字。
@@ -51,7 +45,7 @@ class PracticeGirlProfile {
   final List<String> lifestyleTags;
   final String selfIntro;
 
-  /// bundled 照片 asset 路徑（photoId == profileId == practice_girl_NNN），見
-  /// [practiceGirlPhotoAsset]。
-  String get photoAssetPath => practiceGirlPhotoAsset(photoId);
+  /// bundled 照片 asset 路徑（photoId == profileId == practice_girl_NNN）。
+  /// 對應 `assets/images/practice_girls/`，由 tools/gen-practice-photos 產生。
+  String get photoAssetPath => 'assets/images/practice_girls/$photoId.jpg';
 }
