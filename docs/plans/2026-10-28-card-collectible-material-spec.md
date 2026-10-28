@@ -224,15 +224,15 @@ V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）�
   - 中心元件（徽記、兩圈星軌、節點、軸線、線路、內環刻線）：以原圖中心為準等比放大，比例 s＝1800／1428＝1.2605，中心對到畫布正中（600, 900）。原圖量到的重心在（0.4979, 0.4980）×尺寸，視為設計上的正中。
   - 外框元件（卡緣暗帶、四角飾板、上下飾板、側飾條、外框線、「//」刻記）：各自貼齊最近的卡緣，離卡緣的距離乘 s。2:3 比原圖寬，多出來的約 60 px 寬度落在側飾條與中心構圖之間的底面上。
   - 底面稜面：照原圖描成多邊形，貼齊最近的角。
-- **徽記描圖規則**：迷宮立方是等角構圖。描出輪廓後，邊的方向吸附到 30°／90°／150°（以及少數 0°），頂點吸附到等角格點（間距＝筆畫寬的一半），筆畫寬全徽記一致。
+- **徽記描圖規則**：迷宮立方是等角構圖。描出輪廓後，邊的方向吸附到 30°／90°／150°（以及少數 0°），位置用原始輪廓點擬合，再把筆畫寬統一（同一筆的兩條對邊各移一半，中心線不動），頂點取相鄰兩條線的交點。P3 實作時試過頂點吸附到等角格點：原圖的邊本來就不在格上，IoU 掉到 0.89–0.90，所以不吸附（§16.2）。
 - **構圖鎖定檢查**（`test_geometry.py`，CI 不跑、PR 必附結果）：把新幾何依上面的對位關係反推回 904×1428，跟 V3 的三張遮罩比：
 
 | 檢查 | 門檻 |
 |---|---|
 | 徽記 IoU | ≥ 0.90（原圖邊緣有抖動，乾淨的向量本來就不會到 1） |
 | 星軌半徑（原圖量到內環 234、外環 361 px） | ±1.5 px |
-| 菱形、方形節點中心 | ±2 px |
-| 外框元件（貼齊卡緣後）IoU | ≥ 0.90 |
+| 菱形、方形節點中心 | ±4.5 px（只比原圖沒跟旁邊小點黏在一起的；黏住或缺的依對稱補上，§16.2） |
+| 外框元件（貼齊卡緣後） | 面積 IoU ≥ 0.85；外框細線中位距離 ≤ 2 px、覆蓋 ≥ 85%（§16.2） |
 | 疊圖 | 另存一張紅（舊）＋青（新）疊圖，附在 PR |
 
 ### 5.2 高度圖與材質編號（`heightfield.py`）
@@ -252,7 +252,7 @@ V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）�
 | 底面稜面 | ±0.04 | 2 | 柔 | 清漆 |
 | 內環放射刻線（01 金屬蝕刻） | −0.06 | 1 | V 槽 | — |
 
-另外輸出：材質編號（底面／卡緣／飾板／側飾條／徽記／細線／節點）、拉絲方向場、**高光遮罩**（會反光的地方：飾板、倒角、徽記、節點、細線）、**全息遮罩**（只有 SR 用：倒角、側飾條外緣 3.5% 寬、節點切面、細線兩側；平面頂面與底面為 0）、**發光遮罩**（徽記與節點、外框、線路）。
+另外輸出：材質編號（底面／卡緣／飾板／側飾條／徽記／細線／節點）、拉絲方向場、**高光遮罩**（執行時高光帶用：倒角、斜面、細線、節點 1，飾板、側飾條、卡緣、徽記的平頂 0.25——高光帶掃過大面積時只是一層薄光，不把校準好的平面洗白，§11）、**全息遮罩**（只有 SR 用：倒角、側飾條外緣 3.5% 寬、節點切面、細線兩側；平面頂面與底面為 0）、**發光遮罩**（徽記與節點、外框、線路）。
 
 ### 5.3 材質與打光（`render_card_back.py`）
 
@@ -363,8 +363,8 @@ V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）�
 一個純函式 `practiceCardLight({yawDeg, pitchDeg, front})`（附錄 §18.1），widget 與測試共用：
 
 - 卡背以等待姿態（yaw −10°、pitch 4°）為基準，卡面以落定姿態（yaw 180°，等於正面 0°、pitch 0°）為基準，取差值的弧度 Δyaw、Δpitch。
-- **高光帶位置** band＝0.35 − 2.2·Δyaw − 0.8·Δpitch（沿 115° 對角軸，0＝左上角、1＝右下角）；帶寬 ±0.11，強度 N 0.26／R 0.30／SR 0.34。
-- **浮雕補光** relief＝clamp(−3·Δyaw, −1, 1)：正值把 `light.R` 的正半疊亮、負值把負半壓暗，看起來像光從左上慢慢移到上方或左方。
+- **高光帶位置** band＝0.35 − 2.2·Δyaw − 0.8·Δpitch（沿 115° 對角軸，0＝左上角、1＝右下角）；帶寬 ±0.11，強度 N 0.26／R 0.30／SR 0.34（乘上高光遮罩：平頂只有 0.25 倍），顏色是這一階外框的亮色（`rimHi`）。
+- **浮雕補光** relief＝clamp(−3·Δyaw, −1, 1)：`light.R` 是光從左上移到右上時的明暗差。正值把變亮的那一半疊亮（`plus` 白）、變暗的那一半壓暗（黑）；負值反過來。看起來像光跟著卡片轉動慢慢移動。最大不透明度 0.6。
 - **全息相位** holo＝0.15＋1.4·Δyaw＋0.6·Δpitch（彩虹週期數），只有 SR 用。
 
 代表姿態算出來的高光帶位置：
@@ -380,7 +380,7 @@ V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）�
 
 ### 6.5 SR 全息
 
-`saveLayer(Paint()..blendMode = BlendMode.color)`：圖層裡先畫 `light.G`（換成白色透明度×全息強度），再用 `srcIn` 畫一條 115° 的重複漸層（`TileMode.repeated`，週期 0.35×卡寬；色序：玫瑰 `#F6B0AC` → 洋紅 `#F99EE6` → 紫 `#8B448F` → 天空藍 `#B1DAFE` → 香檳 `#FDF2AE` → 玫瑰），漸層起點依全息相位平移。`color` 混色只換色相與飽和度、保留底下金屬的明暗，所以看起來是金屬本身在變色，不是蓋一層彩虹。全息強度：dye.gold 從 0 到 1 的同時從 0 升到 1，之後維持。
+`saveLayer(Paint()..blendMode = BlendMode.color)`：圖層裡先畫 `light.G`（換成白色透明度×全息強度），再用 `srcIn` 畫一條 115° 的重複漸層（`TileMode.repeated`，週期 0.35×卡寬；色序：玫瑰 `#F6B0AC` → 洋紅 `#F99EE6` → 紫 `#8B448F` → 天空藍 `#B1DAFE` → 香檳 `#FDF2AE` → 玫瑰），漸層起點依全息相位平移。`color` 混色只換色相與飽和度、保留底下金屬的明暗，所以看起來是金屬本身在變色，不是蓋一層彩虹。全息強度：dye.gold 從 0 到 1 的同時從 0 升到 1，之後維持；不透明度上限 0.35，右邊強、左邊弱（0.25 → 1，同離線全息的權重）——成品圖本身已經有全息，執行時這層只負責讓色帶跟著轉動走。
 
 ### 6.6 額外發光（對應 V3／V3.1 的函式）
 
@@ -391,10 +391,10 @@ V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）�
 | 等待心跳 | 等待姿態的徽記亮度（`_waitingPose().emblem`，0.30–0.45＋心跳 0.12）減 0.30 | `glowmask.R` |
 | 蓄力 | `practiceRevealChargeGlow(ms)`×0.5 | `glowmask.R`，N 卡背上 |
 | N 銀光脈衝 | `practiceRevealEmblemGlow(ms, n)` 減掉蓄力值（0.80 → 1.00 → 0.85 的那一段） | `glowmask.R` |
-| 染藍、染金脈衝 | R／SR：dye 進行時升到 1，結束後 280 ms 退回 0（`AppMotion.easeOut`） | `glowmask` 三個通道＋`glow` 泛光 |
+| 染藍、染金脈衝 | R／SR：dye 進行時升到 1，結束後 280 ms 退回 0（`AppMotion.easeOut`）；SR 的染藍脈衝撐到染金結束才退，兩段合成一次升降 | `glowmask` 三個通道＋`glow` 泛光 |
 | 徽記白光 | `practiceRevealEmblemWhite(ms)`（不變） | B8 |
 
-`practiceRevealFrameGlow`、`practiceRevealLinesGlow` 與 `goldWash` 的現有用途全部由上表取代；環境光、泛光、光刃、衝擊波、星塵等 V3.1 的卡外光效**不變**（只換 R 的顏色，M9）。
+各通道的最大不透明度（`plus`）：徽記 0.3、外框 0.4、線路 0.5、泛光 0.5。`practiceRevealFrameGlow`、`practiceRevealLinesGlow` 與 `goldWash` 的現有用途全部由上表取代；環境光、泛光、光刃、衝擊波、星塵等 V3.1 的卡外光效**不變**（只換 R 的顏色，M9）。
 
 ### 6.7 拋光外框（卡背、卡面共用）
 
@@ -734,6 +734,42 @@ python3 tools/practice-card-material/concept_match.py --still build/card_back_st
 - 閃光檢查（§11，60 fps 錄影，任一秒最多幾次閃光，N／R／SR；外框受光角修正後重錄，跟修正前量的一樣）：25 cm 是 2／2／**3**（上限 2），20 cm 是 2.5／2.5／3（上限 3）。同一台機器重錄 main `070074c` 的 SR：25 cm 也是 **3**、20 cm 也是 3，兩個距離的轉折時間點與次數都跟 P2 一樣；逐幀比對，卡片側立（錄影 1867 ms）以前兩組畫面完全一樣，卡面轉進來以後只有外框與照片四周內縮 0.5 pt 的固定差異（平均亮度差 −0.002）。所以 P2 沒有增加閃光；SR 25 cm 超過上限是 main 就有的（#109 當時量到 2 次），要在 #109 的錄影環境重量確認，不在 P2 處理。
 - 對照圖：停住畫面用 24 fps 錄影第 96 幀；SR 特寫用卡面靜態錄製器。
 - 沒跑：iPhone 實機目視（Gate-3）。
+
+
+### 16.2 P3 實作紀錄（2026-10-28）
+
+做了：
+
+- 離線管線 `tools/practice-card-material/`（說明見該資料夾的 `README.md`）：
+  - `trace_geometry.py` 從 V3 遮罩描出向量構圖 `card_back_geometry.json`（297 個元件：徽記 5 塊、星軌環與弧 9、線路 82、節點 22、外框 25、底面稜面 10、內環放射刻線 144）。
+  - 構圖鎖定（`test_geometry.py`）：徽記 IoU 0.928（門檻 0.90）、內外環半徑在 ±1.5 px 內、節點中心最大 4.14 px（門檻 4.5）、外框面積 IoU 0.906（0.85）、外框細線中位距離 2.00 px／覆蓋 87.6%（2 px／85%）；紅青疊圖 `build/card_material/geometry_overlay.png`。
+  - `heightfield.py`、`render_card_back.py`：高度圖 → 法線 → 每階、每種材質一條顏色坡度（`calibrate.py` 對 `targets.json` 二分搜尋校準）＋拉絲、染色的異向高光、倒角亮線、環境遮蔽、底面煙霧質感與清漆、SR 薄膜全息、自發光泛光。三階一次渲染約 1 分鐘，同一份 JSON 重跑逐位元相同。
+  - 7 張素材合計 518 KiB（上限 2.3 MB）：N 112、R 127、SR 128、light 74、glowmask 31、glow 31、雜訊磚 15 KiB。
+- 執行時（`practice_card_material.dart`）：`PracticeCardMaterialSlot`／`PracticeCardMaterialImages`／`PracticeCardMaterialLoader`（一律解成卡片實際像素寬，`glowmask`、`glow` 解一半；N 那組在儀式掛上後第一幀之後解，R、SR 按下翻牌才解；收卡釋放 R、SR，卸載全部釋放，連圖片快取一起清）、`PracticeCardBackPainter`（B0–B9＋退路；成品圖不透明，上一階轉化完就不再畫底下那幾張）、`practiceCardDiffusion`、`practiceCardBackEnergy`／`practiceCardBackDyePulse`、遮罩通道矩陣 `practiceChannelAlpha`／`practiceReliefHalf`；`PracticeCardRimPainter` 加 `holoStrength`（卡背的全息邊跟著染金升起來）。
+- 卡背（`practice_reveal_card.dart`）：`PracticeRevealCardBack` 改成新 painter＋拋光外框（顏色跟著染色走，SR 染金後加全息邊）＋徽記白光泛光（V3.1 沿用）；V3 的染色參數（`colors`、`emblemGlow`、`frameGlow`、`linesGlow`、`goldWash`）與 `_HoloRimPainter` 拿掉。
+- 儀式（`practice_draw_ceremony.dart`）：素材載入與釋放時機；等待、揭曉的卡背都傳入姿態算出的光（§6.4）與額外發光（§6.6）；`debugCeremonyCardBack` 改成給素材、時間、姿態、額外發光；新增 `practiceCeremonyCardPixelWidth`；`kPracticeRevealBackAssets` 改名 `kPracticeRevealSpriteAssets`，只剩光效貼圖。
+- 色票與主題：M9（`rBackTint` `#8BC5FC`、`rBackTintDeep` `#6B93F7`、`rGlow` `#4FB0FF`）、退路底色 `cardBackField`；主題加 `backSpecular`（0.26／0.30／0.34）。
+- DESIGN.md §7 新增「抽卡卡片典藏材質（卡背，P3）」一列；`docs/licenses/practice_draw_reference_assets.md` 補 v4 素材的來源。
+- 測試：`practice_card_material_test.dart` 補卡背（素材解碼寬與分組、檔案大小上限、轉化擴散、額外發光、painter 圖層組合的稀有度誠實、擴散光環、退路、R／SR 還沒解好時維持上一階、低檔、高光帶進出、`shouldRepaint`、遮罩通道實際畫出來的透明度）；`practice_chat_screen_style_test.dart` 的稀有度誠實改看 `dye` 與 `energy`；兩個錄製器改用 v4 素材（卡背靜止圖 12 張）。
+- 對照圖：`docs/reviews/2026-10-28-card-material-p3/`。
+
+和原規劃不同的地方：
+
+- §5.1：徽記不吸附等角格點（吸附後 IoU 0.89–0.90，原圖的邊本來就不在格上），改成方向吸附＋筆畫寬統一；外框不描輪廓，照量到的尺寸參數化重建（V3 外框遮罩含卡片外緣，描出來會多一圈）；節點只比原圖沒跟旁邊小點黏在一起的（黏住的偏 7–22 px，依對稱補上並標 `synthesized`）；中軸兩側線路的下半部用上半部的鏡像（V3 遮罩下半部的斜線很淡、描出來是斷的）。鎖定門檻已同步。
+- §5.3 的參數表是起點，最後的值以 `render_card_back.TIERS` 為準（校準過）。結構上的差異：不用 ACES 色調映射，顏色坡度本身就是目標 sRGB 色，只把加上去的亮部柔和壓回 1（ACES 會把校準好的中間調一起壓暗、偏色）；底面加了 V3 底圖的煙霧質感（示意圖的底面不是平的）；四角飾板獨立一種材質（拉絲 45°）；R 側飾條左右不同色（陽極鈦干涉色：左藍紫、右天藍），SR 右側飾條偏暖；高光染成該階的亮色；徽記不上全息（示意圖的徽記沒有彩邊），全息右邊強、左邊弱。
+- §5.2 高光遮罩：平頂 0.25、倒角與細線 1。原本整片金屬都是 1，停住姿態的高光帶會把上飾板洗成近白（app 實際畫面對示意圖 ΔE 8–15）。§6.4 的高光帶也染成這一階外框的亮色。
+- §6.4 浮雕補光照物理方向做成雙向（relief＞0 變亮的一半疊亮、變暗的一半壓暗；relief＜0 反過來），一樣是兩次繪製。
+- §6.5 執行時全息的不透明度上限 0.35、右邊強左邊弱：成品圖已經有全息，0.5 時 SR 右側飾條偏粉（ΔE 6.6）。
+- §6.6 SR 的染藍脈衝撐到染金結束才退，兩段合成一次升降（不然 850 ms 前後多一次降升）；各通道強度徽記 0.3、外框 0.4、線路 0.5、泛光 0.5（徽記 0.6 時蓄力中的徽記糊成一片白、看不到倒角）。
+- 舊參數與 `_HoloRimPainter` 在 P3 就拿掉（新卡背不再用，留著是死碼）。V3 素材檔與常數（描圖、煙霧質感的來源）、只剩舊染色在用的 `holoViolet`、`PracticeRevealBackColors.tint／tintDeep`、`practiceRevealFrameGlow`、`practiceRevealLinesGlow` 留到 P4。
+
+驗證（2026-10-28，Flutter 3.47.0，雲端 Linux）：
+
+- 工具：`python3 -m unittest discover -s tools/practice-card-material` 10 個全過（構圖鎖定 6、素材 4）。
+- 色差：成品圖 30 個區域全部在門檻內；app 實際畫出來的停住卡背（錄製器 `back_{n,r,sr}.png`：等待基準姿態、沒有額外發光，含拋光外框、高光帶、顆粒）也是 30／30，最大 N 2.8、R 5.1（四角飾板）、SR 4.4。
+- `flutter analyze --no-fatal-infos`：沒有問題。完整測試 `flutter test --concurrency=1`（跟 CI 一樣全量、序列，跑在執行時那個 commit）：5129 過、13 略過、0 失敗。
+- 閃光檢查（§11，最終程式碼重錄 60 fps，任一秒最多幾次閃光，N／R／SR）：25 cm 是 2／2／2（上限 2），20 cm 是 2.5／2.5／3（上限 3），全部過。P2 同一台機器是 25 cm 2／2／**3**、20 cm 2.5／2.5／3：卡背沒有增加閃光，SR 25 cm 反而從 3 降到 2：P2 最多的那一秒包含 R0＋約 670 ms 徽記白光退掉（降）、R0＋約 900 ms 整張卡染金（升）兩次轉折；新卡背的染金改成從徽記擴散、SR 的染色脈衝撐到染金結束，這一段不再算成轉折。P3 最多的那一秒都在翻牌峰值之後（光刃、卡面），不在卡背。
+- 沒跑：iPhone 實機目視與效能（Gate-3）；R、SR 成品圖在 R0＋600 ms 前有沒有解好、會不會跳格，要真機確認（§6.8）。
 
 ---
 
