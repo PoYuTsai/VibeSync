@@ -1,0 +1,39 @@
+{
+  "note": "典藏材質規格 §2.2、§5.5：示意圖一（卡背三階）的取樣色。區域是相對卡片寬高的矩形 [x0, y0, x1, y1]；stat：median＝中位數、top3／top15＝亮度前 3%／15% 的平均、p35＝亮度第 35 百分位附近的平均。只有數字，不含示意圖。門檻：飾板、側飾條、卡緣、徽記 ΔE ≤ 6；底面 ΔE ≤ 4。",
+  "regions": {
+    "top-plate": {"rect": [0.40, 0.006, 0.60, 0.024], "stat": "median", "limit": 6},
+    "top-plate-hi": {"rect": [0.36, 0.002, 0.64, 0.028], "stat": "top3", "limit": 6},
+    "side-bar-left": {"rect": [0.006, 0.43, 0.048, 0.57], "stat": "median", "limit": 6},
+    "side-bar-right": {"rect": [0.952, 0.43, 0.994, 0.57], "stat": "median", "limit": 6},
+    "corner-plate": {"rect": [0.048, 0.033, 0.070, 0.042], "stat": "median", "limit": 6},
+    "edge-band": {"rect": [0.008, 0.16, 0.030, 0.30], "stat": "median", "limit": 6},
+    "field-dark": {"rect": [0.14, 0.56, 0.30, 0.70], "stat": "p35", "limit": 4},
+    "field-mid": {"rect": [0.14, 0.56, 0.30, 0.70], "stat": "median", "limit": 4},
+    "emblem": {"rect": [0.36, 0.40, 0.64, 0.60], "stat": "top15", "limit": 6},
+    "emblem-hi": {"rect": [0.36, 0.40, 0.64, 0.60], "stat": "top3", "limit": 6}
+  },
+  "targets": {
+    "n": {
+      "top-plate": "#D3DCE7", "top-plate-hi": "#E4EBF3",
+      "side-bar-left": "#ABB6C3", "side-bar-right": "#AFB8C6",
+      "corner-plate": "#D3DCE8", "edge-band": "#707781",
+      "field-dark": "#111214", "field-mid": "#191A1E",
+      "emblem": "#EAF1F7", "emblem-hi": "#F8FBFE"
+    },
+    "r": {
+      "top-plate": "#8BC5FC", "top-plate-hi": "#B0E0FB",
+      "side-bar-left": "#6B93F7", "side-bar-right": "#70B8FD",
+      "corner-plate": "#7DD6FC", "edge-band": "#63B4ED",
+      "field-dark": "#0D0F16", "field-mid": "#14171F",
+      "emblem": "#B2DDFC", "emblem-hi": "#D4F1FD"
+    },
+    "sr": {
+      "top-plate": "#FDE38C", "top-plate-hi": "#FDF2AE",
+      "side-bar-left": "#D7A562", "side-bar-right": "#DCB183",
+      "corner-plate": "#FBE77A", "edge-band": "#E4DDC7",
+      "field-dark": "#17130D", "field-mid": "#211B13",
+      "emblem": "#FDF3B7", "emblem-hi": "#FEFBD4"
+    }
+  },
+  "holo": {"hue_range_deg": [300, 230], "share": [0.02, 0.08]}
+}
