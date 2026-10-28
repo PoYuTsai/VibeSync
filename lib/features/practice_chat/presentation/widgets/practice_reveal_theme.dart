@@ -37,6 +37,7 @@ class PracticeRevealTheme {
     required this.rimDark,
     required this.rimMid,
     required this.rimHi,
+    required this.backSpecular,
     required this.glow,
     required this.ambientAlpha,
     required this.burstCounts,
@@ -61,6 +62,9 @@ class PracticeRevealTheme {
   final Color rimDark;
   final Color rimMid;
   final Color rimHi;
+
+  /// 卡背高光帶的強度（典藏材質規格 §6.4：N 0.26、R 0.30、SR 0.34）。
+  final double backSpecular;
 
   /// 環境光、卡面外光、光刃外暈的顏色。
   final Color glow;
@@ -112,6 +116,7 @@ class PracticeRevealTheme {
     rimDark: PracticeRevealPalette.nRimDark,
     rimMid: PracticeRevealPalette.nRimMid,
     rimHi: PracticeRevealPalette.nRimHi,
+    backSpecular: 0.26,
     glow: PracticeRevealPalette.nGlow,
     ambientAlpha: 0.22,
     burstCounts: (high: 24, medium: 24, low: 24),
@@ -134,6 +139,7 @@ class PracticeRevealTheme {
     rimDark: PracticeRevealPalette.rRimDark,
     rimMid: PracticeRevealPalette.rRimMid,
     rimHi: PracticeRevealPalette.rRimHi,
+    backSpecular: 0.30,
     glow: PracticeRevealPalette.rGlow,
     ambientAlpha: 0.32,
     burstCounts: (high: 48, medium: 48, low: 48),
@@ -156,6 +162,7 @@ class PracticeRevealTheme {
     rimDark: PracticeRevealPalette.srRimDark,
     rimMid: PracticeRevealPalette.srRimMid,
     rimHi: PracticeRevealPalette.srRimHi,
+    backSpecular: 0.34,
     glow: PracticeRevealPalette.srGlow,
     ambientAlpha: 0.45,
     burstCounts: (high: 160, medium: 80, low: 48),

@@ -18,10 +18,10 @@ abstract final class PracticeRevealPalette {
   static const Color nStar = Color(0xFFCBD5E1);
   static const Color nOrb = Color(0xFFE2E8F0);
 
-  // ── R：電光藍 ──
-  static const Color rBackTint = Color(0xFF38BDF8);
-  static const Color rBackTintDeep = Color(0xFF818CF8);
-  static const Color rGlow = Color(0xFF38BDF8);
+  // ── R：電光藍（典藏材質 M9：照示意圖一的鈦藍取樣，比 V3 的天空藍再飽和一點）──
+  static const Color rBackTint = Color(0xFF8BC5FC);
+  static const Color rBackTintDeep = Color(0xFF6B93F7);
+  static const Color rGlow = Color(0xFF4FB0FF);
   static const Color rBadgeLight = Color(0xFFBAE6FD);
   static const Color rBadgeDeep = Color(0xFF38BDF8);
   static const Color rStar = Color(0xFF7DD3FC);
@@ -68,6 +68,9 @@ abstract final class PracticeRevealPalette {
   static const Color srRimDark = Color(0xFF4A3618);
   static const Color srRimMid = Color(0xFFB8925A);
   static const Color srRimHi = Color(0xFFFDF2BA);
+
+  /// 卡背素材還沒解碼好時的深色底（§6.8；示意圖一 N 底面的中間調）。
+  static const Color cardBackField = Color(0xFF191A1E);
 
   // 六角牌（§7.3）：拉絲銀面上 → 下、壓印字；SR 金倒角上 → 下（示意圖取樣）。
   static const Color badgeFaceTop = Color(0xFFF6F6F6);
