@@ -400,10 +400,10 @@ V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）�
 
 `PracticeCardRimPainter`，畫在卡片圓角裁切之後、貼著卡緣往內 2 pt：
 
-- 截面：外 0.5 pt 暗、中 1 pt 亮（依角度變化）、內 0.5 pt 暗，看起來像一根細金屬管。
-- 角度變化：中段用 `SweepGradient`，在受光角 θ 最亮、對角次亮、底部最暗。受光角 θ＝225°＋180°×(band − 0.35)（225°＝左上，依 §6.4 的 band 跟著姿態走），θ 處再疊一段 40° 長的白色受光點（α 0.85）。
+- 截面：外 0.35 pt 暗、中 1.3 pt 亮（依角度變化）、內 0.35 pt 暗，看起來像一根細金屬管（P2 照示意圖把中段調寬，原寫 0.5／1／0.5）。
+- 角度變化：中段用 `SweepGradient`，在受光角 θ 最亮、對角 θ＋180° 次亮（示意圖二的右下角）、兩者之間最暗。受光角 θ＝225°＋180°×(band − 0.35)（225°＝左上，依 §6.4 的 band 跟著姿態走），θ 處再疊一段 40° 長的白色受光點（α 0.85）。
 - 每階顏色（暗／中／亮）：N `#3A3F47`／`#9AA4B1`／`#F4F7FA`；R `#14284F`／`#4E86D6`／`#C6EBFF`；SR `#4A3618`／`#B8925A`／`#FDF2BA`（SR 取自示意圖二）。
-- SR 全息邊：同樣寬度再畫一道全息色帶（色序同 §6.5），依角度加權：右側直邊最強（示意圖二），其他地方 0.2；α 0.45、一般混色；色帶隨全息相位旋轉。
+- SR 全息邊：同樣寬度再畫一道全息色帶（色序同 §6.5），依角度加權：右側直邊最強（示意圖二），其他地方 0.2；α 0.6、一般混色；一圈 4 個循環（右側直邊看得到整組玫瑰到天空藍）；色帶隨全息相位平移。
 - 卡背的成品圖本身有一圈槍鐵暗帶（§5.2），拋光框壓在它的最外側，兩者合起來就是示意圖一的「暗帶＋拋光亮邊」。
 
 ### 6.8 退路
@@ -702,6 +702,37 @@ python3 tools/practice-card-material/concept_match.py --still build/card_back_st
 - 順序：P1 和 P2 可以同時做 → P3 → 真機通過後 P4。
 - 審查：一般 PR，一位非作者模型的獨立 AI reviewer；Eric 做正式 GitHub review 與合併決定。實作分派由 Eric 決定（V3.1 是 Bruce 寫、Codex 審）。
 - 每一刀都照 DESIGN.md §10 先出改前／改後對照圖給 Eric 看過才 commit；含示意圖的對照私下給，不入庫。
+
+### 16.1 P2 實作紀錄（2026-10-28）
+
+做了：
+
+- 共用件 `lib/features/practice_chat/presentation/widgets/practice_card_material.dart`：`practiceCardLight()`（§6.4 的公式）、`PracticeCardRimPainter`（§6.7）、全息色序 `practiceHoloColorAt()`。P3 的卡背直接沿用。
+- 卡面（`practice_reveal_card.dart`）：1.5 px 漸層框與內高光 → 2 pt 拋光外框＋內緣細暗線；六角牌改版（0.20×卡寬、夾 60–80 pt、高 0.62×寬、落在卡內左 12 上 16、拉絲銀面、SR 金倒角＋受光點、`headlineMedium` 24 w900 壓印字、包 `RepaintBoundary`）；煙燻玻璃資訊欄（§7.5）；名字 24 w800、行高 1.15、兩行間距 4，基本資訊 15 w500 白 0.88；十面切面星 18＋6（中心距 24）。
+- 儀式（`practice_draw_ceremony.dart`）：牌的飛入落點改到卡內；卡面的光由 `_revealPose()` 算出，停住時剛好是 `PracticeCardLight.settled`，零動畫幀不變。
+- 主題與色票：主題的 `frameLight／frameDeep` 換成 `rimDark／rimMid／rimHi`，新增 `starLit／starShade／starEdge`；色票新增 §9 的外框、牌、煙燻玻璃、切面星、全息色，拿掉只剩舊漸層框在用的 `{n,r,sr}FrameLight／FrameDeep` 與只剩舊牌面在用的 `badgeMetalMid／badgeMetalDeep`（`infoGlass` 自介對話框還在用，保留）。
+- DESIGN.md §7 新增「抽卡卡片典藏材質（卡面，P2）」一列。
+- 測試：新增 `test/unit/features/practice_chat/practice_card_material_test.dart`（姿態光、全息色序、玻璃反光位置、切面星的十個面）；`practice_draw_reveal_rarity_test.dart` 補典藏材質一組（牌的位置與尺寸、星星尺寸與中心距、字級、各稀有度的外框色與 SR 才有全息邊）；星星改用每顆的 key 數（不再找 `Icons.star_rounded`）；`practice_chat_screen_style_test.dart` 牌的落點與停住版面改成「收在卡內、左 12、上 16」。
+- 錄製器：新增 `test/tools/card_face_still_recorder_test.dart`（`RECORD_CARDFACE=1`，N／R／SR 停住卡面各一張）。
+- 對照圖：`docs/reviews/2026-10-28-card-material-p2/`。
+
+和原規劃不同的地方：
+
+- 外框照示意圖把中段調寬（0.35／1.3／0.35），補上對角次亮；SR 全息邊 α 0.6、一圈 4 個循環（§6.7 已同步）。
+- 資訊欄的顆粒（§7.5 最後一層）先不做：雜訊磚素材 P3 才加，P2 不加素材；目前看不到色帶。
+- 星星光暈 α 改 0.25＋0.35×脈衝（原寫 0.35）：深色玻璃上 0.35 會糊成一團。牌面拉絲線距 0.5 pt、α 0.02–0.07；SR 受光點裁在牌的外形裡，不飄到牌外。
+- §7.2 的照片 `ResizeImage` 解碼移到 P1：現在的照片只有 1080 高、比顯示尺寸小，這時縮小解碼省不到記憶體，要跟高解析照片一起做。
+- M9（R 改色）屬於卡背與 R 的光效，放到 P3；P2 沒動 R 的光色。
+
+還沒做：P1（等 Eric 提供人物照來源目錄）、P3、P4。
+
+驗證（2026-10-28，Flutter 3.47.0，雲端 Linux）：
+
+- `flutter analyze --no-fatal-infos`：沒有問題。
+- 完整測試 `flutter test --concurrency=1`：5106 過、12 略過、0 失敗。
+- 閃光檢查（§11，60 fps 錄影，任一秒最多幾次閃光，N／R／SR）：25 cm 是 2／2／**3**（上限 2），20 cm 是 2.5／2.5／3（上限 3）。同一台機器重錄 main `070074c` 的 SR：25 cm 也是 **3**、20 cm 也是 3，兩個距離的轉折時間點與次數都跟 P2 一樣；逐幀比對，卡片側立（錄影 1867 ms）以前兩組畫面完全一樣，卡面轉進來以後只有外框與照片四周內縮 0.5 pt 的固定差異（平均亮度差 −0.002）。所以 P2 沒有增加閃光；SR 25 cm 超過上限是 main 就有的（#109 當時量到 2 次），要在 #109 的錄影環境重量確認，不在 P2 處理。
+- 對照圖：停住畫面用 24 fps 錄影第 96 幀；SR 特寫用卡面靜態錄製器。
+- 沒跑：iPhone 實機目視（Gate-3）。
 
 ---
 
