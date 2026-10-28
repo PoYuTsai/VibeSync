@@ -701,6 +701,28 @@ void main() {
       expect(platform.creations.last.dataSource.asset,
           'assets/videos/night_market/s1_notice.mp4');
     });
+
+    testWidgets('換帳號重播時連按兩下「重試」：只重播一次、誰都不記、不開復盤', (tester) async {
+      final harness = await _pumpStarted(tester, alreadyWatched: false);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await clearNotices(tester);
+
+      harness.switchAccount('another-owner');
+      await tester.pump();
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      final retry = find.widgetWithText(FilledButton, '重試');
+      await tester.tap(retry);
+      await tester.tap(retry, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(find.text('復盤'), findsNothing);
+      expect(harness.watchStore.watchedAccounts, isEmpty);
+      expect(platform.creations, hasLength(4));
+    });
   });
 
   group('full round-trip reentrancy', () {

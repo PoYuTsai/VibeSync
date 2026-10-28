@@ -87,11 +87,14 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
   /// 沒有 Essential 的人去看影片時，第一個停點就會遇到付費牆。
   ///
   /// 重入旗標包住整段（看完紀錄 → 付費牆來回 → 進復盤），只在 `finally` 放掉。
+  /// 整段綁按下去那一刻的帳號 [viewer]：看的是他的看完紀錄，打開的復盤也綁他。
   Future<void> _openReview() async {
     if (_reviewGateInFlight) return;
     _reviewGateInFlight = true;
     try {
-      if (!await _hasWatched()) {
+      final viewer = await _currentAccount();
+      if (!mounted) return;
+      if (!_hasWatched(viewer)) {
         if (!mounted) return;
         showNightMarketGateNotice(
           context,
@@ -101,16 +104,25 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
         );
         return;
       }
-      if (!mounted) return;
-      await _openReviewWhenWatched();
+      await _openReviewWhenWatched(viewer);
     } finally {
       _reviewGateInFlight = false;
     }
   }
 
-  Future<bool> _hasWatched() async {
+  Future<String?> _currentAccount() async {
     try {
-      return await ref.read(nightMarketWatchedProvider.future);
+      return await ref.read(nightMarketAccountIdProvider.future);
+    } catch (e) {
+      debugPrint('NightMarket account read failed: $e');
+      return null;
+    }
+  }
+
+  /// 讀不到一律當沒看完（fail closed）。
+  bool _hasWatched(String? viewer) {
+    try {
+      return ref.read(nightMarketWatchStoreProvider).hasWatched(viewer);
     } catch (e) {
       debugPrint('NightMarket watched check failed: $e');
       return false;
@@ -124,7 +136,7 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
   ///
   /// Runs inside [_openReview]'s reentrancy guard, which already covers the
   /// whole "open paywall -> sync/refresh -> enter review" round trip.
-  Future<void> _openReviewWhenWatched() async {
+  Future<void> _openReviewWhenWatched(String? viewer) async {
     final gate = gateFor(
       EbookAccess.essential,
       ref.read(ebookSubscriptionAccessProvider),
@@ -136,7 +148,7 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
         // doesn't incorrectly skip straight to a confirmation-only retry.
         _pendingConfirmation = false;
         _pendingConfirmationAccountId = null;
-        _pushReview();
+        await _pushReview(viewer);
         break;
       case ChatQuizGate.resolving:
         showNightMarketGateNotice(context, '正在確認你的訂閱狀態，請稍後再點一次');
@@ -173,14 +185,20 @@ class _NightMarketEntryCardState extends ConsumerState<NightMarketEntryCard> {
         // Unlocked -> go straight into the recap, not the S1 playback.
         // Cancelled/still locked/pending -> stay on this card, no
         // restricted content shown.
-        if (outcome == NightMarketUnlockOutcome.unlocked) _pushReview();
+        if (outcome == NightMarketUnlockOutcome.unlocked) {
+          await _pushReview(viewer);
+        }
     }
   }
 
-  void _pushReview() {
+  /// 按下去之後中途換了帳號就不開：新帳號照自己的看完紀錄重新按。
+  Future<void> _pushReview(String? viewer) async {
+    final current = await _currentAccount();
+    if (!mounted || current != viewer) return;
     Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (reviewContext) => NightMarketReviewScreen(
         scenario: buildNightMarketScenario(),
+        viewerAccountId: viewer,
         onExit: () => Navigator.of(reviewContext).pop(),
         onRestart: () {
           Navigator.of(reviewContext).pop();

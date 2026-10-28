@@ -60,6 +60,9 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   /// 都要跟當下的帳號一樣（主審 r1 P1）。
   String? _runAccountId;
 
+  /// [_resolveEnding] 正在跑。
+  bool _resolvingEnding = false;
+
   NightMarketBeat get _beat => _scenario.beatById(_beatId)!;
 
   @override
@@ -145,34 +148,46 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   /// relying on this listener (which won't fire again once the video is
   /// paused at the end) ever re-running on its own.
   Future<void> _resolveEnding() async {
-    if (mounted) setState(() => _awaitingReviewAccess = true);
-    await _withEssentialGate(_beat.access, () async {
-      if (!mounted) return;
-      // 這一輪是別的帳號看的（例如停在「重試」時換了帳號）：不算現在這個帳號
-      // 看完、也不進復盤，從頭再看一次（主審 r1 P1）。
-      final owner = _runAccountId;
-      final current = await ref.read(nightMarketAccountIdProvider.future);
-      if (!mounted) return;
-      if (current != owner) {
-        showNightMarketGateNotice(context, '帳號換了，請從頭看一次');
-        setState(() => _awaitingReviewAccess = false);
-        await _restart();
-        return;
-      }
-      // 最後一段播完、真的進到復盤才算看完；之後學習頁的「查看復盤」才打得開
-      // （Eric 2026-10-28）。記錄放在 provider 裡寫，畫面先關掉也照樣寫完。
-      if (owner != null) {
-        unawaited(
-          ref.read(nightMarketWatchedProvider.notifier).markWatched(owner),
-        );
-      }
-      setState(() {
-        _finished = true;
-        _awaitingReviewAccess = false;
+    // 上一次還沒跑完（例如換帳號正在重播）就再按一次「重試」：直接忽略
+    // （Eric 2026-10-28 要補的主審 r2 殘餘風險）。
+    if (_resolvingEnding) return;
+    _resolvingEnding = true;
+    try {
+      if (mounted) setState(() => _awaitingReviewAccess = true);
+      await _withEssentialGate(_beat.access, () async {
+        if (!mounted || !_atCompletedEnding) return;
+        // 這一輪是別的帳號看的（例如停在「重試」時換了帳號）：不算現在這個帳號
+        // 看完、也不進復盤，從頭再看一次（主審 r1 P1）。
+        final owner = _runAccountId;
+        final current = await ref.read(nightMarketAccountIdProvider.future);
+        if (!mounted || !_atCompletedEnding) return;
+        if (current != owner) {
+          showNightMarketGateNotice(context, '帳號換了，請從頭看一次');
+          setState(() => _awaitingReviewAccess = false);
+          await _restart();
+          return;
+        }
+        // 最後一段播完、真的進到復盤才算看完；之後學習頁的「查看復盤」才打得開
+        // （Eric 2026-10-28）。記錄放在 provider 裡寫，畫面先關掉也照樣寫完。
+        if (owner != null) {
+          unawaited(
+            ref.read(nightMarketWatchedProvider.notifier).markWatched(owner),
+          );
+        }
+        setState(() {
+          _finished = true;
+          _awaitingReviewAccess = false;
+        });
       });
-    });
-    if (mounted && !_finished) setState(() {});
+      if (mounted && !_finished) setState(() {});
+    } finally {
+      _resolvingEnding = false;
+    }
   }
+
+  /// 畫面還停在最後一段播完的那一格（沒有被重播、換段，也還沒進復盤）。記看完、
+  /// 進復盤前都要再確認一次。
+  bool get _atCompletedEnding => _beat.ending && _completed && !_finished;
 
   Future<void> _start() async {
     setState(() => _started = true);
@@ -651,6 +666,7 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
 
   Widget _reviewPage() => NightMarketReviewScreen(
         scenario: _scenario,
+        viewerAccountId: _runAccountId,
         onRestart: _restart,
         onExit: () => Navigator.of(context).maybePop(),
       );

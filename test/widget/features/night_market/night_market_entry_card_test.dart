@@ -132,6 +132,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('復盤'), findsOneWidget);
     });
+
+    testWidgets('從卡片打開的復盤綁按下去的帳號：換帳號就退回卡片', (tester) async {
+      final harness = await _pump(tester);
+      await tester.tap(find.text(NightMarketEntryCard.reviewLabel));
+      await tester.pumpAndSettle();
+      expect(find.text('復盤'), findsOneWidget);
+
+      harness.switchAccount('another-owner');
+      await tester.pumpAndSettle();
+
+      expect(find.text('復盤'), findsNothing);
+      expect(find.text(NightMarketEntryCard.lockedReviewLabel), findsOneWidget);
+    });
   });
 
   group('review entry paywall (Free/Starter)', () {
