@@ -307,24 +307,6 @@ double practiceRevealEmblemGlow(double ms, PracticeGirlRarity rarity) {
           );
 }
 
-/// 卡背外框亮度（0..1）：蓄力 0.25 → 0.60；R／SR 染藍時跟徽記一起衝到 1.0 並維持
-/// （V3.1 §5.3 整張卡染色）。N 不變色，維持 0.60。
-double practiceRevealFrameGlow(
-  double ms, [
-  PracticeGirlRarity rarity = PracticeGirlRarity.n,
-]) {
-  final charged = 0.25 + 0.35 * practiceRevealChargeGlow(ms);
-  if (rarity == PracticeGirlRarity.n) return charged;
-  final dye = PracticeRevealTiming.enter.transform(
-    practiceRevealSeg(
-      ms,
-      PracticeRevealTiming.dyeBlueMs,
-      PracticeRevealTiming.dyeBlueEndMs,
-    ),
-  );
-  return charged + (1 - charged) * dye;
-}
-
 /// 卡片背後環境光的放大倍率：1.00 →（染藍）1.15 →（染金）1.35。
 double practiceRevealAmbientScale(double ms, PracticeGirlRarity rarity) {
   final dye = practiceRevealDye(ms, rarity);
@@ -813,30 +795,6 @@ double practiceRevealEmblemWhite(double ms) {
               PracticeRevealTiming.whiteFlashEndMs,
             ),
           ));
-}
-
-/// 卡背線路發光（V3.1 §5.3，0..1）：N 恆 0（全程銀）；R／SR 染藍 120 ms 亮到 0.85，藍色
-/// 蓄力期間慢慢呼吸到 0.8 倍，不閃。
-double practiceRevealLinesGlow(double ms, PracticeGirlRarity rarity) {
-  if (rarity == PracticeGirlRarity.n) return 0;
-  final dye = PracticeRevealTiming.enter.transform(
-    practiceRevealSeg(
-      ms,
-      PracticeRevealTiming.dyeBlueMs,
-      PracticeRevealTiming.dyeBlueEndMs,
-    ),
-  );
-  final breath = 0.9 +
-      0.1 *
-          math.cos(
-            math.pi *
-                practiceRevealSeg(
-                  ms,
-                  PracticeRevealTiming.dyeBlueEndMs,
-                  PracticeRevealTiming.flipStartMs,
-                ),
-          );
-  return 0.85 * dye * breath;
 }
 
 /// 一圈光環在某一刻的樣子：半徑與線寬（px）、不透明度。

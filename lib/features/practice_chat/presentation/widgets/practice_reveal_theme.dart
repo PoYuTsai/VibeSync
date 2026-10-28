@@ -33,7 +33,6 @@ int practiceRevealBloomLayers(PracticeRevealEffectTier tier) =>
 class PracticeRevealTheme {
   const PracticeRevealTheme._({
     required this.backTint,
-    required this.backTintDeep,
     required this.rimDark,
     required this.rimMid,
     required this.rimHi,
@@ -54,9 +53,8 @@ class PracticeRevealTheme {
     required this.holo,
   });
 
-  /// 卡背徽記與外框的染色漸層（左上 → 右下）。
+  /// 稀有度的主色（衝擊波光環的顏色）。
   final Color backTint;
-  final Color backTintDeep;
 
   /// 卡面拋光外框的暗／中／亮（典藏材質規格 §6.7）：截面外暗、中亮、內暗，亮度隨受光角變化。
   final Color rimDark;
@@ -112,7 +110,6 @@ class PracticeRevealTheme {
 
   static const PracticeRevealTheme n = PracticeRevealTheme._(
     backTint: PracticeRevealPalette.nBackTint,
-    backTintDeep: PracticeRevealPalette.nBackTintDeep,
     rimDark: PracticeRevealPalette.nRimDark,
     rimMid: PracticeRevealPalette.nRimMid,
     rimHi: PracticeRevealPalette.nRimHi,
@@ -135,7 +132,6 @@ class PracticeRevealTheme {
 
   static const PracticeRevealTheme r = PracticeRevealTheme._(
     backTint: PracticeRevealPalette.rBackTint,
-    backTintDeep: PracticeRevealPalette.rBackTintDeep,
     rimDark: PracticeRevealPalette.rRimDark,
     rimMid: PracticeRevealPalette.rRimMid,
     rimHi: PracticeRevealPalette.rRimHi,
@@ -158,7 +154,6 @@ class PracticeRevealTheme {
 
   static const PracticeRevealTheme sr = PracticeRevealTheme._(
     backTint: PracticeRevealPalette.srBackTint,
-    backTintDeep: PracticeRevealPalette.srBackTintDeep,
     rimDark: PracticeRevealPalette.srRimDark,
     rimMid: PracticeRevealPalette.srRimMid,
     rimHi: PracticeRevealPalette.srRimHi,
@@ -191,25 +186,20 @@ class PracticeRevealTheme {
   }
 }
 
-/// 卡背在染色時間軸上當下的顏色。等待期與 N 全程是銀；R 只會銀 → 藍；SR 才會再
-/// 藍 → 金（[practiceRevealDye] 保證只升到真實稀有度）。
+/// 環境光、環境星塵跟著卡背染色走的顏色（典藏材質 P3 起卡背本身由 `PracticeCardBackPainter`
+/// 畫，這裡只剩卡外光效用的顏色）。等待期與 N 全程是銀；R 只會銀 → 藍；SR 才會再藍 → 金
+/// （[practiceRevealDye] 保證只升到真實稀有度）。
 @immutable
 class PracticeRevealBackColors {
   const PracticeRevealBackColors({
-    required this.tint,
-    required this.tintDeep,
     required this.glow,
     required this.ambientAlpha,
-    required this.holo,
   });
 
   /// 還沒染色的銀（等待期、N）。
   static final PracticeRevealBackColors silver = PracticeRevealBackColors(
-    tint: PracticeRevealTheme.n.backTint,
-    tintDeep: PracticeRevealTheme.n.backTintDeep,
     glow: PracticeRevealTheme.n.glow,
     ambientAlpha: PracticeRevealTheme.n.ambientAlpha,
-    holo: 0,
   );
 
   /// [ms]＝揭曉經過的毫秒。
@@ -218,32 +208,22 @@ class PracticeRevealBackColors {
     const silverTheme = PracticeRevealTheme.n;
     const blueTheme = PracticeRevealTheme.r;
     const goldTheme = PracticeRevealTheme.sr;
-    Color mix(Color a, Color b, Color c) =>
-        Color.lerp(Color.lerp(a, b, dye.blue), c, dye.gold)!;
-    double mixD(double a, double b, double c) =>
+    double mix(double a, double b, double c) =>
         (a + (b - a) * dye.blue) * (1 - dye.gold) + c * dye.gold;
     return PracticeRevealBackColors(
-      tint: mix(silverTheme.backTint, blueTheme.backTint, goldTheme.backTint),
-      tintDeep: mix(
-        silverTheme.backTintDeep,
-        blueTheme.backTintDeep,
-        goldTheme.backTintDeep,
-      ),
-      glow: mix(silverTheme.glow, blueTheme.glow, goldTheme.glow),
-      ambientAlpha: mixD(
+      glow: Color.lerp(
+        Color.lerp(silverTheme.glow, blueTheme.glow, dye.blue),
+        goldTheme.glow,
+        dye.gold,
+      )!,
+      ambientAlpha: mix(
         silverTheme.ambientAlpha,
         blueTheme.ambientAlpha,
         goldTheme.ambientAlpha,
       ),
-      holo: dye.gold,
     );
   }
 
-  final Color tint;
-  final Color tintDeep;
   final Color glow;
   final double ambientAlpha;
-
-  /// SR 全息彩邊的強度（0..1，跟著染金走）。
-  final double holo;
 }

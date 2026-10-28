@@ -9,7 +9,7 @@ import 'package:vibesync/features/practice_chat/presentation/widgets/practice_re
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_theme.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_timing.dart';
 
-/// V3 揭曉外觀的純邏輯（規格 §6.3、§7）：稀有度主題、卡背染色、星塵。
+/// V3 揭曉外觀的純邏輯（規格 §6.3、§7）：稀有度主題、環境光跟著卡背染色、星塵。
 void main() {
   group('稀有度主題', () {
     test('N／R／SR 各自一組，星塵顆數與掃光強度隨稀有度遞增，只有 SR 有全息', () {
@@ -53,7 +53,7 @@ void main() {
     });
   });
 
-  group('卡背顏色（只升到真實稀有度）', () {
+  group('環境光跟著卡背染色（只升到真實稀有度）', () {
     double distance(Color a, Color b) =>
         (a.r - b.r).abs() + (a.g - b.g).abs() + (a.b - b.b).abs();
 
@@ -61,29 +61,25 @@ void main() {
       final silver = PracticeRevealBackColors.silver;
       for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 10) {
         final nColors = PracticeRevealBackColors.at(ms, PracticeGirlRarity.n);
-        expect(nColors.tint, silver.tint, reason: 'N $ms');
-        expect(nColors.holo, 0);
+        expect(nColors.glow, silver.glow, reason: 'N $ms');
 
         final rColors = PracticeRevealBackColors.at(ms, PracticeGirlRarity.r);
         expect(
-          distance(rColors.tint, PracticeRevealPalette.srBackTint),
+          distance(rColors.glow, PracticeRevealPalette.srGlow),
           greaterThan(0.3),
           reason: 'R 不會出現金（$ms）',
         );
-        expect(rColors.holo, 0);
       }
       final rEnd = PracticeRevealBackColors.at(2000, PracticeGirlRarity.r);
-      expect(rEnd.tint, PracticeRevealPalette.rBackTint);
+      expect(rEnd.glow, PracticeRevealPalette.rGlow);
       final srEnd = PracticeRevealBackColors.at(2000, PracticeGirlRarity.sr);
-      expect(srEnd.tint, PracticeRevealPalette.srBackTint);
-      expect(srEnd.holo, 1);
+      expect(srEnd.glow, PracticeRevealPalette.srGlow);
       expect(srEnd.ambientAlpha, closeTo(0.45, 1e-9));
     });
 
     test('SR 先藍後金：染金前（0.85 s 前）就是 R 的藍', () {
       final srBlue = PracticeRevealBackColors.at(800, PracticeGirlRarity.sr);
-      expect(srBlue.tint, PracticeRevealPalette.rBackTint);
-      expect(srBlue.holo, 0);
+      expect(srBlue.glow, PracticeRevealPalette.rGlow);
     });
   });
 

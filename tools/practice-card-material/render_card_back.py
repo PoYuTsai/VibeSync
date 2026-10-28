@@ -27,6 +27,7 @@ import heightfield as hf
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'assets/images/practice'
+V3 = ROOT / 'docs/archive/practice-draw-v3'  # V3 卡背（煙霧質感的來源；已移出 app）
 SEED = 20261028
 
 L1 = np.array([-0.55, -0.62, 0.56]) / np.linalg.norm([-0.55, -0.62, 0.56])  # 左上主光
@@ -174,13 +175,11 @@ def normals(height: np.ndarray, k: float = 7.0) -> np.ndarray:
 def smoke_texture(shape: tuple[int, int]) -> np.ndarray:
     """原卡背的煙霧質感（V3 底圖的低頻亮度，線條先挖掉再用正規化卷積補起來），標準化到約 ±1。
     只取低頻，放大到畫布不會變糊；沿用原圖的「霧」而不是另外生成。"""
-    base = ROOT / 'assets/images/practice/practice_draw_card_back_v3_base.webp'
-    if not base.exists():
-        return np.zeros(shape, np.float32)
-    lum = np.asarray(Image.open(base).convert('L'), np.float32) / 255.0
+    lum = np.asarray(Image.open(V3 / 'practice_draw_card_back_v3_base.webp').convert('L'),
+                     np.float32) / 255.0
     art = np.zeros_like(lum)
     for name in ('emblem_mask', 'lines_mask', 'frame_mask'):
-        a = np.asarray(Image.open(ROOT / f'assets/images/practice/practice_draw_card_back_v3_{name}.webp'))
+        a = np.asarray(Image.open(V3 / f'practice_draw_card_back_v3_{name}.webp'))
         art = np.maximum(art, a[..., 3].astype(np.float32) / 255.0)
     keep = (art < 0.08).astype(np.float32)
     keep = 1 - np.clip(gauss(1 - keep, 2.0) * 3, 0, 1)  # 線條旁邊的光暈也挖掉

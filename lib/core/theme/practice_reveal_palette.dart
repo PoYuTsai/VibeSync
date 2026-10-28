@@ -11,7 +11,6 @@ abstract final class PracticeRevealPalette {
 
   // ── N：銀 ──
   static const Color nBackTint = Color(0xFFE2E8F0);
-  static const Color nBackTintDeep = Color(0xFF94A3B8);
   static const Color nGlow = Color(0xFFCBD5E1);
   static const Color nBadgeLight = Color(0xFFF8FAFC);
   static const Color nBadgeDeep = Color(0xFFA9B0B8);
@@ -20,7 +19,6 @@ abstract final class PracticeRevealPalette {
 
   // ── R：電光藍（典藏材質 M9：照示意圖一的鈦藍取樣，比 V3 的天空藍再飽和一點）──
   static const Color rBackTint = Color(0xFF8BC5FC);
-  static const Color rBackTintDeep = Color(0xFF6B93F7);
   static const Color rGlow = Color(0xFF4FB0FF);
   static const Color rBadgeLight = Color(0xFFBAE6FD);
   static const Color rBadgeDeep = Color(0xFF38BDF8);
@@ -29,16 +27,14 @@ abstract final class PracticeRevealPalette {
 
   // ── SR：香檳金 ──
   static const Color srBackTint = Color(0xFFFDE68A);
-  static const Color srBackTintDeep = Color(0xFFF59E0B);
   static const Color srGlow = Color(0xFFF5C451);
   static const Color srBadgeLight = Color(0xFFFDE68A);
   static const Color srBadgeDeep = Color(0xFFF59E0B);
   static const Color srStar = Color(0xFFFFD166);
   static const Color srOrb = Color(0xFFF5D58D);
 
-  // ── SR 全息彩邊 ──
+  // ── SR 卡面掃光的兩道細彩邊、粉色星塵 ──
   static const Color holoCyan = Color(0xFF22D3EE);
-  static const Color holoViolet = Color(0xFF8B5CF6);
   static const Color holoPink = Color(0xFFEC4899);
 
   // ── 卡面 ──

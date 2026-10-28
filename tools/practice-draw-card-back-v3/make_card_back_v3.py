@@ -13,6 +13,9 @@
 
 全部預先做好，app 只染色、不在逐幀 painter 裡做模糊（規格 §12）。
 
+2026-10-28 典藏材質起 app 改用 v4 卡背（`tools/practice-card-material/`），這五張移出 app、
+輸出到 `docs/archive/practice-draw-v3/`，留給 v4 描圖與底面煙霧質感當來源。
+
 用法（在 repo 根目錄）：
   python3 tools/practice-draw-card-back-v3/make_card_back_v3.py
 需要 Pillow（含 webp）與 numpy。
@@ -28,7 +31,7 @@ from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'docs/archive/practice-draw-v2/practice_draw_card_back_base.png'
-OUT_DIR = ROOT / 'assets/images/practice'
+OUT_DIR = ROOT / 'docs/archive/practice-draw-v3'
 
 # 線條強度：卡背底（拉絲面板）亮度約 0.12–0.35，金框、徽記與星軌線約 0.6–0.95。
 LINE_LO = 0.36

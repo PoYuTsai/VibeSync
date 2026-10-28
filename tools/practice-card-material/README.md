@@ -63,6 +63,6 @@ python3 tools/practice-card-material/trace_geometry.py --overlay build/card_mate
 
 ## 來源與授權
 
-構圖描自 V3 卡背遮罩（V3 由 V2 卡背去色萃取，來源與授權見
+構圖描自 V3 卡背遮罩（`docs/archive/practice-draw-v3/`，已移出 app；V3 由 V2 卡背去色萃取，來源與授權見
 `docs/licenses/practice_draw_reference_assets.md`）；底面的煙霧質感取自 V3 底圖。材質、打光、
 全息全部由這個資料夾的程式渲染。示意圖只用來取樣目標色（`targets.json` 只有數字），不入庫。
