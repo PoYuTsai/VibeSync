@@ -9,6 +9,7 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../data/night_market_story.dart';
 import '../../domain/night_market_scenario.dart';
 import '../night_market_essential_gate.dart';
+import '../night_market_watch_gate.dart';
 import 'night_market_review_screen.dart';
 
 /// Full-screen, VR-style run of the night-market scenario: no UI while the
@@ -142,12 +143,14 @@ class _NightMarketScreenState extends ConsumerState<NightMarketScreen>
   Future<void> _resolveEnding() async {
     if (mounted) setState(() => _awaitingReviewAccess = true);
     await _withEssentialGate(_beat.access, () async {
-      if (mounted) {
-        setState(() {
-          _finished = true;
-          _awaitingReviewAccess = false;
-        });
-      }
+      if (!mounted) return;
+      // 最後一段播完、真的進到復盤才算看完；之後學習頁的「查看復盤」才打得開
+      // （Eric 2026-10-28）。記錄放在 provider 裡寫，畫面先關掉也照樣寫完。
+      unawaited(ref.read(nightMarketWatchedProvider.notifier).markWatched());
+      setState(() {
+        _finished = true;
+        _awaitingReviewAccess = false;
+      });
     });
     if (mounted && !_finished) setState(() {});
   }

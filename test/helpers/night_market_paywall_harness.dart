@@ -13,7 +13,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vibesync/features/night_market/data/night_market_watch_store.dart';
 import 'package:vibesync/features/night_market/presentation/night_market_essential_gate.dart';
+import 'package:vibesync/features/night_market/presentation/night_market_watch_gate.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
@@ -104,12 +106,16 @@ class NightMarketPaywallHarness {
     required this.container,
     required this.router,
     required this.notifier,
+    required this.watchStore,
     required StreamController<String?> accountController,
   }) : _accountController = accountController;
 
   final ProviderContainer container;
   final GoRouter router;
   final FakeSubscriptionNotifier notifier;
+
+  /// 「看完過」的本機紀錄（Eric 2026-10-28：查看復盤要先看完影片）。
+  final InMemoryNightMarketWatchStore watchStore;
   final StreamController<String?> _accountController;
 
   void setAccess(EbookSubscriptionAccess access) {
@@ -139,6 +145,9 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
   bool forceSyncTierShouldFail = false,
   bool revenueCatRecoveryConfirmsEssential = false,
   String? initialAccountId = 'harness-owner',
+  // 預設這個帳號已經看完過，原有的付費牆情境照舊直接測 Essential 那道門；
+  // 要測「沒看完不能開復盤」或「看完才記」時傳 false。
+  bool alreadyWatched = true,
   List<GoRoute> extraRoutes = const [],
   Size size = const Size(390, 844),
 }) async {
@@ -152,6 +161,11 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
         : null,
   );
   final accountController = StreamController<String?>.broadcast();
+  final watchStore = InMemoryNightMarketWatchStore(
+    watchedAccounts: [
+      if (alreadyWatched && initialAccountId != null) initialAccountId,
+    ],
+  );
 
   container = ProviderContainer(
     overrides: [
@@ -164,6 +178,7 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
       subscriptionProvider.overrideWith((ref) => notifier),
       subscriptionScreenRefreshProvider
           .overrideWith((ref) => () => notifier.refresh()),
+      nightMarketWatchStoreProvider.overrideWithValue(watchStore),
     ],
   );
   addTearDown(container.dispose);
@@ -228,11 +243,16 @@ Future<NightMarketPaywallHarness> pumpNightMarketPaywallHarness(
       child: MaterialApp.router(routerConfig: router),
     ),
   );
+  // 帳號與「看完過」紀錄都是非同步讀的（Eric 2026-10-28 的看完紀錄）：先讓它們
+  // 算完，測試一開始看到的就是穩定的畫面。
+  await tester.pump();
+  await tester.pump();
 
   return NightMarketPaywallHarness(
     container: container,
     router: router,
     notifier: notifier,
+    watchStore: watchStore,
     accountController: accountController,
   );
 }

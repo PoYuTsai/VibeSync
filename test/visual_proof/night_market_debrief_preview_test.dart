@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/core/theme/app_theme.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
-import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
+import 'package:vibesync/features/night_market/data/night_market_watch_store.dart';
+import 'package:vibesync/features/night_market/presentation/night_market_essential_gate.dart';
+import 'package:vibesync/features/night_market/presentation/night_market_watch_gate.dart';
 import 'package:vibesync/features/night_market/presentation/screens/night_market_screen.dart';
 import 'package:vibesync/features/night_market/presentation/widgets/night_market_entry_card.dart';
 
@@ -48,6 +50,12 @@ void main() {
       overrides: [
         ebookSubscriptionAccessProvider
             .overrideWithValue(const EbookSubscriptionAccess.essential()),
+        // 「查看復盤」要先看完影片（Eric 2026-10-28）：這份截圖拍的是看完之後的樣子。
+        nightMarketAccountIdProvider
+            .overrideWith((ref) => Stream.value('proof-owner')),
+        nightMarketWatchStoreProvider.overrideWithValue(
+          InMemoryNightMarketWatchStore(watchedAccounts: ['proof-owner']),
+        ),
       ],
       child: MaterialApp.router(
         routerConfig: router,
