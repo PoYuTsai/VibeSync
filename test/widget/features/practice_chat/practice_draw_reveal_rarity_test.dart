@@ -1,4 +1,5 @@
-// 翻牌揭曉「結果卡」的稀有度呈現（V3：外框光暈／膠囊稀有度牌／只畫亮星）。
+// 翻牌揭曉「結果卡」的稀有度呈現（V3：外框光暈／稀有度牌／只畫亮星；典藏材質規格
+// docs/plans/2026-10-28-card-collectible-material-spec.md §7：拋光外框、牌收進卡內、切面星、字級）。
 //
 // 紅線：只驗結果卡停住時的靜態裝飾，不碰翻牌演出時間軸（beat 常數／controller 皆不涉入）。
 import 'package:flutter/material.dart';
@@ -7,8 +8,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_catalog.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_girl_rarity.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_card_material.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_rarity_style.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_theme.dart';
 
 void main() {
@@ -36,6 +39,18 @@ void main() {
       );
     });
   });
+
+  /// 切面星每顆一個 key（典藏材質規格 §7.7）：亮了幾顆就有幾個，空星不畫。
+  int litStars() {
+    var count = 0;
+    while (find
+        .byKey(ValueKey('practice-draw-ceremony-star-$count'))
+        .evaluate()
+        .isNotEmpty) {
+      count++;
+    }
+    return count;
+  }
 
   Future<void> pumpGrandCard(
     WidgetTester tester,
@@ -74,10 +89,8 @@ void main() {
       final stars =
           find.byKey(const ValueKey('practice-draw-ceremony-rarity-stars'));
       expect(stars, findsOneWidget);
-      expect(
-        find.descendant(of: stars, matching: find.byIcon(Icons.star_rounded)),
-        findsNWidgets(4),
-      );
+      expect(litStars(), 4);
+      // 空星不畫：亮星以外沒有其他星形。
       expect(
         find.descendant(
             of: stars, matching: find.byIcon(Icons.star_outline_rounded)),
@@ -94,12 +107,7 @@ void main() {
         find.descendant(of: badge, matching: find.text('R')),
         findsOneWidget,
       );
-      final stars =
-          find.byKey(const ValueKey('practice-draw-ceremony-rarity-stars'));
-      expect(
-        find.descendant(of: stars, matching: find.byIcon(Icons.star_rounded)),
-        findsNWidgets(3),
-      );
+      expect(litStars(), 3);
     });
 
     testWidgets('N 卡：稀有度牌顯 N、2 顆亮星；外光用 N 主題的銀', (tester) async {
@@ -111,12 +119,7 @@ void main() {
         find.descendant(of: badge, matching: find.text('N')),
         findsOneWidget,
       );
-      final stars =
-          find.byKey(const ValueKey('practice-draw-ceremony-rarity-stars'));
-      expect(
-        find.descendant(of: stars, matching: find.byIcon(Icons.star_rounded)),
-        findsNWidgets(2),
-      );
+      expect(litStars(), 2);
 
       // 外框外光套揭曉主題色：結果卡外框 Container 的 boxShadow 帶 N 主題的銀。
       final front = tester.widget<Container>(
@@ -204,8 +207,8 @@ void main() {
       final badgeRect = tester.getRect(find.byKey(badge));
       expect(tag.left - badgeRect.right, closeTo(6, 0.5));
       expect(tag.center.dy, closeTo(badgeRect.center.dy, 0.5));
-      // 跟牌一樣跨在卡片上緣：一半以上在卡片內，不會整個飄在卡片外面。
-      expect(tag.center.dy, greaterThan(card.top));
+      // 跟牌一起收在卡片內（典藏材質規格 §7.3、§7.4）。
+      expect(tag.top, greaterThan(card.top));
       expect(tag.right, lessThan(card.right));
       expect(
         tag.overlaps(tester.getRect(
@@ -279,6 +282,77 @@ void main() {
 
       expect(find.byKey(newTag), findsNothing);
       expect(find.textContaining('已收藏'), findsNothing);
+    });
+  });
+
+  group('典藏材質（規格 docs/plans/2026-10-28-card-collectible-material-spec.md §7）',
+      () {
+    Rect frontRect(WidgetTester tester) => tester.getRect(
+          find.byKey(const ValueKey('practice-draw-ceremony-front')),
+        );
+
+    testWidgets('六角牌收在卡片左上角內（左 12、上 16），寬 0.20×卡寬（夾 60–80）、高 0.62×寬',
+        (tester) async {
+      await pumpGrandCard(tester, sr); // 300 寬的卡 → 牌寬 60（剛好在下限）
+      final card = frontRect(tester);
+      final badge = tester.getRect(
+        find.byKey(const ValueKey('practice-draw-ceremony-rarity-badge')),
+      );
+      expect(badge.left - card.left, closeTo(12, 0.5));
+      expect(badge.top - card.top, closeTo(16, 0.5));
+      expect(badge.width, closeTo(60, 0.5));
+      expect(badge.height, closeTo(60 * 0.62, 0.5));
+      expect(practiceRevealBadgeWidth(354), closeTo(70.8, 1e-9));
+      expect(practiceRevealBadgeWidth(240), 60);
+      expect(practiceRevealBadgeWidth(500), 80);
+      // SR 落地小光環的圓心就是牌的中心。
+      expect(
+        card.topLeft + practiceRevealBadgeCenter(card.size),
+        offsetMoreOrLessEquals(badge.center, epsilon: 0.5),
+      );
+    });
+
+    testWidgets('切面星 18 pt、中心距 24（間距 6）', (tester) async {
+      await pumpGrandCard(tester, sr);
+      final rects = [
+        for (var i = 0; i < 4; i++)
+          tester
+              .getRect(find.byKey(ValueKey('practice-draw-ceremony-star-$i'))),
+      ];
+      for (final r in rects) {
+        expect(r.width, closeTo(18, 0.01));
+        expect(r.height, closeTo(18, 0.01));
+      }
+      for (var i = 1; i < rects.length; i++) {
+        expect(rects[i].center.dx - rects[i - 1].center.dx, closeTo(24, 0.01));
+      }
+    });
+
+    testWidgets('資訊欄字級：名字 24 w800、基本資訊 15（M5 照示意圖）', (tester) async {
+      await pumpGrandCard(tester, sr);
+      final name = tester.widget<Text>(find.text(sr.displayName));
+      expect(name.style!.fontSize, 24);
+      expect(name.style!.fontWeight, FontWeight.w800);
+      final meta = tester.widget<Text>(find.textContaining('${sr.age} · '));
+      expect(meta.style!.fontSize, 15);
+    });
+
+    testWidgets('拋光外框用該稀有度的外框色；只有 SR 有全息邊；停住時受光點在左上（225°）', (tester) async {
+      for (final girl in [n, r, sr]) {
+        await pumpGrandCard(tester, girl);
+        final rim = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((p) => p.foregroundPainter)
+            .whereType<PracticeCardRimPainter>()
+            .single;
+        final theme = PracticeRevealTheme.of(girl.rarity);
+        expect(rim.dark, theme.rimDark);
+        expect(rim.mid, theme.rimMid);
+        expect(rim.hi, theme.rimHi);
+        expect(rim.holo, girl.rarity == PracticeGirlRarity.sr);
+        expect(rim.light, PracticeCardLight.settled);
+        expect(rim.light.glintDeg, closeTo(225, 1e-9));
+      }
     });
   });
 }

@@ -34,8 +34,9 @@ class PracticeRevealTheme {
   const PracticeRevealTheme._({
     required this.backTint,
     required this.backTintDeep,
-    required this.frameLight,
-    required this.frameDeep,
+    required this.rimDark,
+    required this.rimMid,
+    required this.rimHi,
     required this.glow,
     required this.ambientAlpha,
     required this.burstCounts,
@@ -45,6 +46,9 @@ class PracticeRevealTheme {
     required this.badgeLight,
     required this.badgeDeep,
     required this.star,
+    required this.starLit,
+    required this.starShade,
+    required this.starEdge,
     required this.orb,
     required this.holo,
   });
@@ -53,9 +57,10 @@ class PracticeRevealTheme {
   final Color backTint;
   final Color backTintDeep;
 
-  /// 卡面外框的 135° 漸層（亮 → 深 → 亮）。
-  final Color frameLight;
-  final Color frameDeep;
+  /// 卡面拋光外框的暗／中／亮（典藏材質規格 §6.7）：截面外暗、中亮、內暗，亮度隨受光角變化。
+  final Color rimDark;
+  final Color rimMid;
+  final Color rimHi;
 
   /// 環境光、卡面外光、光刃外暈的顏色。
   final Color glow;
@@ -87,8 +92,13 @@ class PracticeRevealTheme {
   final Color badgeLight;
   final Color badgeDeep;
 
-  /// 亮星顏色；星塵也用它（另一半是白）。
+  /// 亮星的光暈色；星塵、星光、小光點也用它（另一半是白）。
   final Color star;
+
+  /// 切面星的亮面／暗面／邊（典藏材質規格 §7.7）。
+  final Color starLit;
+  final Color starShade;
+  final Color starEdge;
 
   /// 收卡光球、落點光環、圖鑑那一格發光的顏色。
   final Color orb;
@@ -99,8 +109,9 @@ class PracticeRevealTheme {
   static const PracticeRevealTheme n = PracticeRevealTheme._(
     backTint: PracticeRevealPalette.nBackTint,
     backTintDeep: PracticeRevealPalette.nBackTintDeep,
-    frameLight: PracticeRevealPalette.nFrameLight,
-    frameDeep: PracticeRevealPalette.nFrameDeep,
+    rimDark: PracticeRevealPalette.nRimDark,
+    rimMid: PracticeRevealPalette.nRimMid,
+    rimHi: PracticeRevealPalette.nRimHi,
     glow: PracticeRevealPalette.nGlow,
     ambientAlpha: 0.22,
     burstCounts: (high: 24, medium: 24, low: 24),
@@ -110,6 +121,9 @@ class PracticeRevealTheme {
     badgeLight: PracticeRevealPalette.nBadgeLight,
     badgeDeep: PracticeRevealPalette.nBadgeDeep,
     star: PracticeRevealPalette.nStar,
+    starLit: PracticeRevealPalette.nStarLit,
+    starShade: PracticeRevealPalette.nStarShade,
+    starEdge: PracticeRevealPalette.nStarEdge,
     orb: PracticeRevealPalette.nOrb,
     holo: false,
   );
@@ -117,8 +131,9 @@ class PracticeRevealTheme {
   static const PracticeRevealTheme r = PracticeRevealTheme._(
     backTint: PracticeRevealPalette.rBackTint,
     backTintDeep: PracticeRevealPalette.rBackTintDeep,
-    frameLight: PracticeRevealPalette.rFrameLight,
-    frameDeep: PracticeRevealPalette.rFrameDeep,
+    rimDark: PracticeRevealPalette.rRimDark,
+    rimMid: PracticeRevealPalette.rRimMid,
+    rimHi: PracticeRevealPalette.rRimHi,
     glow: PracticeRevealPalette.rGlow,
     ambientAlpha: 0.32,
     burstCounts: (high: 48, medium: 48, low: 48),
@@ -128,6 +143,9 @@ class PracticeRevealTheme {
     badgeLight: PracticeRevealPalette.rBadgeLight,
     badgeDeep: PracticeRevealPalette.rBadgeDeep,
     star: PracticeRevealPalette.rStar,
+    starLit: PracticeRevealPalette.rStarLit,
+    starShade: PracticeRevealPalette.rStarShade,
+    starEdge: PracticeRevealPalette.rStarEdge,
     orb: PracticeRevealPalette.rOrb,
     holo: false,
   );
@@ -135,8 +153,9 @@ class PracticeRevealTheme {
   static const PracticeRevealTheme sr = PracticeRevealTheme._(
     backTint: PracticeRevealPalette.srBackTint,
     backTintDeep: PracticeRevealPalette.srBackTintDeep,
-    frameLight: PracticeRevealPalette.srFrameLight,
-    frameDeep: PracticeRevealPalette.srFrameDeep,
+    rimDark: PracticeRevealPalette.srRimDark,
+    rimMid: PracticeRevealPalette.srRimMid,
+    rimHi: PracticeRevealPalette.srRimHi,
     glow: PracticeRevealPalette.srGlow,
     ambientAlpha: 0.45,
     burstCounts: (high: 160, medium: 80, low: 48),
@@ -146,6 +165,9 @@ class PracticeRevealTheme {
     badgeLight: PracticeRevealPalette.srBadgeLight,
     badgeDeep: PracticeRevealPalette.srBadgeDeep,
     star: PracticeRevealPalette.srStar,
+    starLit: PracticeRevealPalette.srStarLit,
+    starShade: PracticeRevealPalette.srStarShade,
+    starEdge: PracticeRevealPalette.srStarEdge,
     orb: PracticeRevealPalette.srOrb,
     holo: true,
   );

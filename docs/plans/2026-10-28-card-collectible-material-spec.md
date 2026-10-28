@@ -1,0 +1,945 @@
+# 抽卡卡片「典藏材質」升級實作規格（2026-10-28）
+
+> **狀態**：§1 的 M1–M10 於 2026-10-28 由 PR 作者照「建議」欄先定，待 Eric 在 PR review 確認（Gate-1，比照 V3 §1 的做法）。P2（卡面）與本規格同一張 PR，實作紀錄見 §16.1；P1 等 Eric 提供人物照來源目錄；P3（卡背）、P4（清理）之後各開一張 PR。
+> **基準**：main `070074c`。抽卡揭曉已合併 V3 四刀、V3.1 第一刀（#107）、第二刀第一步（#109）、第四刀（#105）；V3.1 的 SR 3.85 s 時間軸沒有合併，揭曉仍是三種稀有度共用 2.7 s。
+> **驗收基準**（2026-10-28 指示：「完全照這示意圖」）：
+> 1. **示意圖一**「VibeSync｜卡背材質升級示意——保留原構圖・精修材質與光學層次」：N 鉑銀霧面、R 電光鈦藍、SR 香檳金全息三張卡背，下排「浮雕徽記」「精密倒角」「局部全息」三格特寫。
+> 2. **示意圖二**「VibeSync｜SR 正反面質感示意——原設計延續・材質精修提案」：SR 卡背、揭曉卡面（Mia），右排「01 金屬蝕刻」「02 霧面與亮面」「03 煙燻玻璃」三格特寫。
+>
+> 兩張圖是本次 session 上傳的，**不入庫**（M10；repo 公開，比照 V3 §19）。§2 把兩張圖的每個元素寫成文字、比例與取樣色值，實作和審查不看原圖也能照做；最後由 Eric 拿原圖目視驗收。
+> **相關規格**：V3 `docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md`。V3.1 規格沒有合進 main（PR #104 關閉時是 Draft），程式註解引用的 `docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md` 以該 PR head `7706c5d` 為準。
+> **範圍**：揭曉儀式裡的**卡背**、**卡面**的畫質與材質，以及 100 張人物照的解析度。**不動**：揭曉時間軸與流程、聲音、觸覺、抽卡 API、額度、扣費、機率、server、DB、Edge，以及圖鑑格子卡的樣式（夥伴稿：圖鑑卡不帶稀有度彩邊）。
+> **風險等級**：R1（純 UI 與素材）。人物照換格式會改 client 端的 `photoAssetPath`，不碰 server 的 `profileId`。
+
+---
+
+## 0. 摘要
+
+一句話：構圖、徽記、星軌、人物都**不換**，只把畫質和材質做到示意圖的程度。卡背改成「向量重建＋離線材質渲染」的三階成品圖（鉑銀 → 鈦藍 → 香檳金），卡片轉動時，高光、浮雕的受光方向、SR 的全息色帶會跟著動，停住時定格。卡面改成拋光金屬框、銀面金邊六角牌、煙燻玻璃資訊欄和切面金屬星。人物照升級到在 iPhone 上接近 1:1 顯示的解析度。
+
+| 項目 | 現在（main） | 本規格 |
+|---|---|---|
+| 卡背解析度 | 素材 904×1428，用 `BoxFit.fill` 撐成 2:3，**橫向拉寬 5.3%**；iPhone 15 放大 1.17×、Pro Max 1.29× | 向量重建成 2:3、1200×1800，所有 iPhone 都不放大（≤ 1.0×） |
+| 卡背材質 | 一張灰石墨底圖，加上執行時染色的線條遮罩；SR 的金色是整張卡疊 `BlendMode.color`，連底面也染黃 | 三階各一張離線渲染的成品圖：拉絲金屬飾板、45° 精密倒角、浮雕徽記、蝕刻線、SR 局部全息；三階的底面都維持深色 |
+| 稀有度變色 | 遮罩染色（銀 → 藍 → 金） | 材質轉化：從徽記往外擴散成下一階的成品圖，前緣帶一圈光（時點照 V3 不變） |
+| 光 | 固定不動 | 高光帶、浮雕補光、SR 全息色帶依卡片姿態移動；停住時定格（V3 D7 不變） |
+| 卡面外框 | 1.5 px 漸層線 | 2 pt 拋光金屬框（管狀明暗＋一個受光點）；SR 右側有全息邊 |
+| 稀有度牌 | 扁平銀色六角，**超出**卡片左上角 12 px | 拉絲銀面＋拋光倒角（SR 是金倒角）、深色壓印字，**收進卡片內**（M4） |
+| 資訊欄 | 藍黑半透明底，名字 19、基本資訊 12 | 煙燻玻璃（中性炭灰、上緣受光、斜邊高光、底部厚度陰影），名字 24、基本資訊 15（M5） |
+| 星星 | Material 圓角星 20 px | 十面切面金屬星 18 px，中心距一樣是 24（M6） |
+| 人物照 | 高 1080 px 的 JPEG；iPhone 15 放大倍率中位數 1.73×、最大 2.10× | 長邊 1800 px 的 WebP；中位數 1.04×、最大 1.26×（M3） |
+
+### 0.1「質感超越日系、美系卡牌遊戲」怎麼驗
+
+不用形容詞驗收，改成下面幾條看得到、量得到的標準：
+
+| 面向 | 標準 | 怎麼驗 |
+|---|---|---|
+| 銳利 | 卡背在所有 iPhone 上不放大、不變形；人物照在 iPhone 15/16 的放大倍率中位數 ≤ 1.05× | §3.1、§3.6 的算法進測試；停住畫面放大 2 倍看不到鋸齒、色帶、壓縮塊 |
+| 材質分級 | 三階是三種不同的金屬（鉑銀霧面、陽極鈦、香檳金），不是同一張圖換顏色；SR 多一層局部全息 | 三階靜止圖並排；色差表（§5.5） |
+| 光跟著動 | 卡片轉動時，反光、浮雕受光、全息色帶跟著移動，ProMotion 機型 120 Hz | 預覽片＋真機 |
+| 克制 | 全息只在斜面、只佔該區 2–8%；停住零動畫；閃光檢查通過 | §5.5、§11、§14 |
+| 誠實 | 稀有度只升到真實的那一階（V3 起的原則） | §14.2 第 1 條 |
+| 對標 | Gate-2b 另外附一組並排：我們的停住畫面，對 Eric 指定的 2–3 款日系或美系卡牌遊戲的抽卡結果截圖（私下提供、不入庫），由 Eric 判斷 | Gate-2b |
+
+需要 Eric 決定的事都在 §1。
+
+---
+
+## 1. 拍板項目（Gate-1：2026-10-28 PR 作者照「建議」欄先定，待 Eric 確認）
+
+| # | 題目 | 選項 | 建議 |
+|---|---|---|---|
+| M1 | 驗收基準 | A 以兩張示意圖為唯一基準：停住的卡面、三階卡背靜止畫面逐元素對照，附區域色差表（§5.5）／B 示意圖只當方向參考 | **A**。指示是「完全照這示意圖」。卡片比例維持 app 現在的 2:3：示意圖本身的比例不一致（圖一卡背約 0.685、圖二卡面約 0.638），所以對照的是元素相對卡寬的比例、材質和色值 |
+| M2 | 卡背做法 | A 向量重建構圖 → 高度圖 → 離線材質渲染（numpy＋Pillow，跟 repo 現有產生器同樣的依賴），三階各一張成品圖加共用遮罩，執行時只疊動態光／B 執行時用 FragmentShader 即時算材質／C 沿用「銀底＋染色」，只補紋理 | **A**。靜止畫面能做到跟示意圖一樣，執行時沒有新技術（不加套件、不建 shader），效能跟現在差不多。B 的光最真，但要多一套 shader 建置與測試，V3.1 E7 也決定過不加，留到 V4 再評估。C 做不出示意圖的金屬與全息 |
+| M3 | 人物照 | A 100 張升到長邊 1800、改存 WebP（估 13–22 MiB，現在 JPEG 11.8 MiB）／B 長邊 2048（Pro Max 也接近 1:1，估 17–28 MiB）／C 不動 | **A**。iPhone 15/16 放大倍率中位數 1.04×，Pro Max 1.15×；換 WebP 抵掉大部分體積增加 |
+| M4 | 稀有度牌位置 | A 照示意圖收進卡片內（左 12、上 16）／B 維持 V3.1 K2（超出卡片左上角 12 px） | **A**。示意圖的牌整個在卡片裡。這會推翻 V3.1 K2 的定案，要 Eric 明確同意 |
+| M5 | 資訊欄字級 | A 照示意圖：名字 24、基本資訊 15／B 維持 19／12 | **A**。兩個都在 DESIGN.md §3 的字級尺度內；示意圖量出來是 24／15 |
+| M6 | 星星 | A 照示意圖：十面切面金屬星 18 px、間距 6（中心距 24 不變）／B 維持 20 px Material 星 | **A** |
+| M7 | 動態光 | A 高光帶、浮雕補光、全息色帶跟著卡片姿態走，停住定格／B 只用靜態成品圖 | **A**。卡片在等待、蓄力、翻牌時本來就會轉，光跟著動才像實體金屬；停住時姿態固定，光也固定，不增加停住期間的動畫幀 |
+| M8 | 停住時手指拖動或陀螺儀傾斜看反光 | A 不做（維持 V3 D7、V3.1 E6）／B 做 | **A**。示意圖是靜止畫面，不需要這個也能達標；要做的話另開一刀，重新評估 D7 與耗電 |
+| M9 | R 的揭曉配色 | A 照示意圖改成較淺的電光鈦藍（飾板 `#8BC5FC`、側飾條 `#6B93F7`），R 的環境光、光刃、衝擊波跟著從 `#38BDF8` 換成 `#4FB0FF`／B 維持 V3 D9 的 `#38BDF8 → #818CF8` | **A**。只改揭曉，圖鑑的 `#64B5F6` 不動（同 D9 的分法） |
+| M10 | 示意圖要不要入庫 | A 不入庫，色值寫成數字放進 `tools/practice-card-material/targets.json`／B 放進 `docs/` | **A**（同 V3 §19：repo 公開）。對照圖私下給 Eric |
+
+---
+
+## 2. 示意圖拆解（驗收描述）
+
+### 2.1 量測方法
+
+- 兩張圖都是 1536×1024。先抓每張卡的外框範圍，把位置換成「相對卡寬／卡高」，再取區域的中位數或亮部平均（亮部＝亮度前 3% 或前 15%）。
+- 尺寸換算以 iPhone 15/16 的揭曉卡（354×531 pt）為準：示意圖二的卡面寬 495 px，1 px ≈ 0.715 pt。
+- 示意圖是生成的示意，不同張之間有出入：圖二的 SR 卡背比圖一暗、蝕刻細線比較多。**色值以圖一為準；蝕刻、霧面與亮面的對比等細節以圖二的 01、02 格為準。**
+
+### 2.2 卡背三階（示意圖一）
+
+三張卡的構圖跟現有卡背完全一樣（V2 原圖的外框、飾板、迷宮立方徽記、兩圈星軌、菱形與方形節點、線路、四角稜面），只有材質不同。
+
+| 元素 | N 鉑銀霧面 | R 電光鈦藍 | SR 香檳金全息 |
+|---|---|---|---|
+| 上方飾板（拉絲面，中位數） | `#D3DCE7` 冷調鉑銀，拉絲明顯、偏霧 | `#8BC5FC` 天藍 | `#FDE38C` 香檳金 |
+| 上方飾板高光（前 3%） | `#E4EBF3` | `#B0E0FB` | `#FDF2AE` |
+| 左／右側飾條 | `#ABB6C3`／`#AFB8C6` 緞面銀，垂直拉絲 | `#6B93F7`／`#70B8FD` 由天藍往藍紫漸變（陽極鈦的干涉色） | `#D7A562`／`#DCB183` 較深的古銅金，外緣有全息 |
+| 四角飾板 | `#D3DCE8` | `#7DD6FC` 偏青 | `#FBE77A` |
+| 卡緣（飾板之間） | `#707781` 槍鐵色寬帶，最外一道拋光亮邊 | `#63B4ED` 藍鋼 | `#E4DDC7` 淡香檳 |
+| 底面（暗部／中間調） | `#111214`／`#191A1E` 中性石墨 | `#0D0F16`／`#14171F` 藍黑 | `#17130D`／`#211B13` 暖黑褐 |
+| 底面紋理 | 四角與上半部有大塊、低對比的稜面（比底色亮一階），左上一道斜向清漆反光，細顆粒 | 同左，稜面略帶藍 | 同左，稜面帶暖金、細金粉 |
+| 徽記本體（前 15%）／最亮（前 3%） | `#EAF1F7`／`#F8FBFE` 近白銀，浮雕 | `#B2DDFC`／`#D4F1FD` 冰藍 | `#FDF3B7`／`#FEFBD4` 淡金 |
+| 徽記外圍光暈（落在底面上） | `#313338` 中性白光 | `#212C44` 藍光 | `#49371F` 暖金光 |
+| 星軌線、節點亮部 | `#FBFCFD` | `#DEF6FD` | `#FDF9D0` |
+| 全息 | 無 | 無（側飾條的藍紫是材質本身的漸變，不是全息） | 在側飾條外緣、四角飾板倒角、卡緣、節點切面上出現；取樣到的色相：玫瑰 `#F6B0AC`、洋紅 `#F99EE6`、紫 `#8B448F`、天空藍 `#B1DAFE`；在這些區域佔 2–8%（很克制，不是整片彩虹） |
+
+### 2.3 卡背三格特寫（示意圖一下排）
+
+| 特寫 | 看到的 | 實作要求 |
+|---|---|---|
+| 浮雕徽記 | 迷宮立方是凸起的金屬浮雕：頂面是拉絲金屬（中間調，不是純白），四周 45° 倒角朝左上的面亮、朝右下的面暗；底下是深色底面與嵌入的星軌細線；節點是小的金屬錐 | 徽記高度最高，倒角 8 px（1200 寬畫布），頂面依立方三個面各自的方向拉絲；受光邊要有 1 px 的「邊緣亮線」 |
+| 精密倒角 | 飾板外緣是窄而直的 45° 倒角，倒角上緣一條銳利亮線；卡緣是圓潤的拋光邊，反光很強；飾板與底面之間有一道細刻線 | 倒角 6 px、平直；凸邊亮線 1 px；卡緣用執行時的拋光外框（§6.7）；飾板內側有一道 1.5 px 細線 |
+| 局部全息 | 金色嵌線交會處的菱形節點是切面寶石，邊緣折出粉、藍、綠的彩光；底面是深色拉絲 | 全息只出現在「斜面」上（倒角、節點切面、細線兩側），平面頂面和底面不出現 |
+
+### 2.4 SR 卡背與卡面（示意圖二）
+
+**卡背（左）**：跟圖一的 SR 同構圖。01「金屬蝕刻」：內環裡有細密的放射刻線與同心導線，徽記是金色浮雕、節點是凸起的金色鉚釘。02「霧面與亮面」：飾板頂面是霧面拉絲金，倒角是亮面拋光金，卡緣最外一道是全息細邊。
+
+**卡面（中）**：量測值換算成 iPhone 15 的 pt，再收斂到設計憲法的尺度。
+
+| 元素 | 示意圖量到的 | 取樣色 | 本規格採用 |
+|---|---|---|---|
+| 外框 | 約 1.8 pt 的拋光金屬框，截面像一根細管（外暗、中間亮、內暗），左上最亮；右側直邊是全息（藍、紫、粉、白） | 亮 `#FDF2BA`、中 `#B8925A` | 2 pt；圓角 24（外）／22（照片） |
+| 照片 | 滿版、銳利，臉上雀斑、髮絲都看得清楚 | — | 長邊 1800 的人物照（§8） |
+| 六角牌 | 寬約 0.20×卡寬（71 pt）、高約 0.62×牌寬；離卡片左緣約 10.5 pt、上緣約 17 pt；牌面是拉絲銀，上亮下暗；倒角是一圈約 1.5–1.8 pt 的拋光金，上緣中央一個亮點；「SR」深炭色粗體，約 24 pt；下方有柔和陰影 | 牌面上 `#F6F6F6`、下 `#979798`；金倒角亮 `#FCEDBE`；字 `#212021` | 寬 0.20×卡寬（夾在 60–80 pt）、高 0.62×寬；左 12、上 16；倒角 2 pt |
+| NEW | 橘色膠囊，高約 20.7 pt、寬約 46.5 pt，跟牌垂直置中，在牌右邊 | 底 `#FB5E0C`、字 `#06090B` | 沿用共用的 `PracticeNewBadge`（`ctaStart`＋`onCta`，尺寸已吻合），牌右邊 6 pt |
+| 資訊欄 | 左右、下方各內縮約 12 pt；高約 0.214×卡寬（76 pt）；炭灰煙燻玻璃，看得到一點後面的照片；上緣與左緣一道細亮邊，右側一道淡淡的斜向反光 | 玻璃 `#262425`（中性炭灰，不是藍黑） | 內縮 12、圓角 18；整欄高度以 ≈ 0.214×卡寬為目標 |
+| 名字 | 大寫字高約 17.9 pt（約 24 pt 字），白、粗 | `#FEFEFE` | `headlineMedium` 24、w800、行高 1.15 |
+| 基本資訊 | 中文字高約 14.8 pt（約 15 pt 字），淺灰、一般字重；文字左緣離玻璃邊約 21 pt | `#E4E1E1` | `bodyMedium` 15、w500、白 @0.88；左右內距 16（示意圖約 20，取尺度內的 16） |
+| 星星 | 4 顆，每顆約 18 pt、中心距 24.4 pt；切面金屬星（每個尖角分亮暗兩半），外圍一圈暖金光 | 亮面 `#FDF6B2`、暗面 `#F8CE51` | 18 pt、間距 6（中心距 24）；右內距 16 |
+
+**03「煙燻玻璃」**：玻璃有厚度。上緣、左緣受光（一道亮邊），角落折射出一點卡緣的金色；星星是有立體切面的亮金色；卡緣的全息細邊在角落最明顯。
+
+### 2.5 示意圖跟現有決策不同的地方
+
+| 現有決策 | 示意圖 | 處理 |
+|---|---|---|
+| V3.1 K2 B：牌超出卡片左上角 12 px | 牌在卡片內 | M4 |
+| V3 規格 D6、§6.6：名字 19、基本資訊 12 | 24／15 | M5 |
+| V3.1 §5.11：星星 20 px、間距 4 | 18 px、間距 6（中心距一樣是 24） | M6 |
+| V3 D9：R 揭曉用 `#38BDF8 → #818CF8` | 較淺的電光鈦藍 | M9 |
+| V3.1 K1：SR 牌是金倒角 | 一致（銀面、金倒角） | 不用改 |
+| V3 D6：只畫亮星 | 一致（SR 4 顆） | 不用改 |
+
+---
+
+## 3. 現況診斷（量測）
+
+### 3.1 卡片實際像素 vs 素材解析度
+
+卡片尺寸照 `practiceCeremonyCardSize()`（`practice_draw_ceremony.dart:44-64`：寬 0.90×螢幕、上限 390 pt、2:3、卡高上限 0.64×螢幕高）。
+
+| 機型 | 卡片（pt） | 卡片（px） | 卡背 904×1428 放大（橫／縱） | 照片框（px） |
+|---|---|---|---|---|
+| iPhone SE 3（2×） | 285×427 | 569×854 | 0.63／0.60 | 563×848 |
+| iPhone 13 mini | 338×506 | 1012×1519 | 1.12／1.06 | 1004×1510 |
+| iPhone 15/16 | 354×531 | 1061×1592 | 1.17／1.11 | 1052×1583 |
+| iPhone 16 Pro | 362×543 | 1085×1628 | 1.20／1.14 | 1076×1619 |
+| iPhone 15/16 Plus | 387×580 | 1161×1742 | 1.28／1.22 | 1152×1732 |
+| iPhone 16 Pro Max | 390×585 | 1170×1755 | 1.29／1.23 | 1161×1746 |
+
+### 3.2 卡背比例被拉寬
+
+素材是 904×1428（0.633），卡片是 2:3（0.667）。`practice_reveal_card.dart:209` 用 `BoxFit.fill`，所以畫面上的徽記與星軌**橫向被拉寬 5.3%**：圓不是正圓、立方的角度也歪了一點。
+
+### 3.3 原圖本身的瑕疵
+
+V2 原圖（`docs/archive/practice-draw-v2/practice_draw_card_back_base.png`）是生成圖。放大到原生解析度看：徽記筆畫邊緣有抖動與鋸齒，暗縫裡有塗抹痕，直線不完全直，飾板的漸層有髒點。現在的 V3 卡背是從這張圖去色得來（`tools/practice-draw-card-back-v3/make_card_back_v3.py`），瑕疵全部留著，再被放大 1.1–1.3 倍就變成「糊」。要做到「精密」，構圖必須重建成向量（§5.1），不能再從點陣圖萃取。
+
+### 3.4 卡背是「染色」，不是「材質」
+
+- 等待與 N：一張中性石墨底圖，徽記、外框、線路遮罩用 `ShaderMask(BlendMode.srcIn)` 填上漸層（`practice_reveal_card.dart:154-179`）。所以金屬看起來是「發光的線」，不是有倒角、有拉絲的金屬件。
+- SR 的金：整張底圖疊一層 `BlendMode.color` 的金色漸層（`:132-147`），連深色底面也被染成黃褐色；示意圖的 SR 底面是暖黑，只有金屬件是金色。
+- SR 全息：卡緣一圈 3 px 的掃描漸層描邊（`_HoloRimPainter`，`:219`），跟示意圖「只在斜面上出現」不同。
+
+### 3.5 卡面
+
+| 元素 | 現在 | 位置 |
+|---|---|---|
+| 外框 | 1.5 px 線性漸層，加一圈 1 px 內高光 | `practice_reveal_card.dart:52`、`:385-404`、`:511-537` |
+| 六角牌 | 銀色漸層扁平六角，寬 0.24×卡寬、高 0.46×寬，超出卡片 12 px；字是 `titleLarge`（19）縮放 | `:67-69`、`:542-661` |
+| 資訊欄 | 模糊照片＋`infoGlass #0F0E16` @0.68（偏藍黑），1 px 白 @0.12 邊；名字 19、基本資訊 12 w600 白 @0.78 | `:666-799` |
+| 星星 | `Icons.star_rounded` 20 px 加文字陰影 | `:60`、`:803-894` |
+
+### 3.6 人物照
+
+- 100 張全部高 1080 px，寬 500–1080 px（32 張窄於 600 px），JPEG q82，合計 12,338,823 bytes（11.8 MiB）。轉檔工具把長邊限制在 1080（`tools/gen-practice-photos/convert_practice_photos.dart` 的 `--max 1080`）。
+- 揭曉卡用 `BoxFit.cover`＋`Alignment.topCenter` 把照片撐滿卡片，照片放大倍率如下（照片框尺寸見 §3.1；揭曉開頭還有 1.08 倍的緩縮）：
+
+| 長邊 | iPhone 15/16（中位／最大） | iPhone 16 Pro Max（中位／最大） | iPhone SE 3（中位／最大） |
+|---|---|---|---|
+| 1080（現在） | 1.73×／2.10× | 1.91×／2.32× | 0.93×／1.13× |
+| 1620 | 1.15×／1.40× | 1.27×／1.55× | 0.62×／0.75× |
+| **1800（M3 A）** | **1.04×／1.26×** | **1.15×／1.39×** | 0.56×／0.68× |
+| 2048（M3 B） | 0.91×／1.11× | 1.01×／1.22× | 0.49×／0.59× |
+
+- `PracticeGirlPhoto` 沒有 `cacheWidth`（`practice_girl_photo.dart:36-43`），每個用到的地方都解全尺寸原圖；圖鑑縮圖另外有 `cacheWidth: 360`（`practice_collection_screen.dart:1485-1492`）。
+
+---
+
+## 4. 方案總覽
+
+```
+離線（tools/practice-card-material/，Python：numpy＋Pillow）
+  V2 原圖 ──描圖（一次性）──▶ card_back_geometry.json（向量：卡緣、飾板、外框線、徽記、
+                              │                          星軌、節點、線路、稜面、刻線）
+                              ├─ 構圖鎖定檢查：重新柵格化後對 V3 遮罩（§5.1）
+                              ▼
+                        heightfield.py：高度圖、材質編號、拉絲方向、全息與高光遮罩
+                              ▼
+                        render_card_back.py：離線打光＋三階材質
+                              ├──▶ practice_card_back_v4_{n,r,sr}.webp（成品圖）
+                              └──▶ practice_card_back_v4_{light,glowmask,glow}.webp（遮罩）
+                        concept_match.py：成品圖對 targets.json 的區域色差表
+
+執行時（Flutter，不加套件、不加 shader）
+  PracticeCardBackPainter：成品圖 → 轉化擴散 → 浮雕補光 → 高光帶 → SR 全息 → 額外發光 → 顆粒
+  PracticeCardRimPainter（卡背、卡面共用）：拋光金屬框＋受光點＋SR 全息邊
+  卡面：高解析照片＋V3 掃光＋六角牌＋NEW＋煙燻玻璃資訊欄＋切面星
+  practiceCardLight(姿態)：一個純函式算出這一刻的光（高光帶位置、浮雕補光、全息相位）
+```
+
+設計原則：
+
+1. **靜止畫面靠成品圖**：停住時看到的就是離線渲染的結果，可以逐張跟示意圖調到一樣。
+2. **動態只疊便宜的層**：執行時只畫圖片和漸層、最多 3 個 `saveLayer`，不做逐幀模糊（V3 §12）。
+3. **光從姿態算**：不另開 controller、不加 Timer；卡片怎麼轉，光就怎麼走；姿態不動，光就不動。
+4. **稀有度誠實不變**：N 只會用 N 的成品圖；R 只會出現 N → R；SR 才會出現 R → SR（`practiceRevealDye` 保證，§14 要有測試）。
+
+---
+
+## 5. 卡背素材管線（`tools/practice-card-material/`）
+
+### 5.1 構圖向量重建
+
+- **畫布**：1200×1800（2:3），原點左上，單位 px。iPhone 15 上 1 pt ≈ 3.39 px；Pro Max 的 1170 px 寬也不需要放大。
+- **單一真相**：`card_back_geometry.json`（多邊形、圓、線段、圓弧，座標是畫布 px）。描圖用的 `trace_geometry.py` 只跑一次，可以用 scikit-image 或 potrace 當開發工具；描完人工修整後提交 JSON。之後的渲染只依賴 numpy＋Pillow，用 `ImageDraw` 以 4 倍解析度柵格化，再縮回 1×，得到反鋸齒的覆蓋率遮罩。
+- **對位**：
+  - 中心元件（徽記、兩圈星軌、節點、軸線、線路、內環刻線）：以原圖中心為準等比放大，比例 s＝1800／1428＝1.2605，中心對到畫布正中（600, 900）。原圖量到的重心在（0.4979, 0.4980）×尺寸，視為設計上的正中。
+  - 外框元件（卡緣暗帶、四角飾板、上下飾板、側飾條、外框線、「//」刻記）：各自貼齊最近的卡緣，離卡緣的距離乘 s。2:3 比原圖寬，多出來的約 60 px 寬度落在側飾條與中心構圖之間的底面上。
+  - 底面稜面：照原圖描成多邊形，貼齊最近的角。
+- **徽記描圖規則**：迷宮立方是等角構圖。描出輪廓後，邊的方向吸附到 30°／90°／150°（以及少數 0°），頂點吸附到等角格點（間距＝筆畫寬的一半），筆畫寬全徽記一致。
+- **構圖鎖定檢查**（`test_geometry.py`，CI 不跑、PR 必附結果）：把新幾何依上面的對位關係反推回 904×1428，跟 V3 的三張遮罩比：
+
+| 檢查 | 門檻 |
+|---|---|
+| 徽記 IoU | ≥ 0.90（原圖邊緣有抖動，乾淨的向量本來就不會到 1） |
+| 星軌半徑（原圖量到內環 234、外環 361 px） | ±1.5 px |
+| 菱形、方形節點中心 | ±2 px |
+| 外框元件（貼齊卡緣後）IoU | ≥ 0.90 |
+| 疊圖 | 另存一張紅（舊）＋青（新）疊圖，附在 PR |
+
+### 5.2 高度圖與材質編號（`heightfield.py`）
+
+距離場在 1× 上算（用 numpy 寫距離轉換，或反覆做 3×3 侵蝕；倒角寬度不超過 8 px，兩種都夠用）。高度單位任意，法線用 N＝normalize(−k·∂H/∂x, −k·∂H/∂y, 1)，k 起點 7。
+
+| 元件 | 高度 | 倒角寬（px） | 剖面 | 頂面 |
+|---|---|---|---|---|
+| 卡緣暗帶（成品圖內） | 0.30 | 4 | 45° | 槍鐵緞面 |
+| 上下飾板、四角飾板 | 0.55 | 6 | 45° 平直倒角 | 拉絲：上下 0°、四角沿 ±45° |
+| 側飾條 | 0.50 | 6 | 45° | 拉絲 90° |
+| 外框細線 | 0.18 | 1.5 | 圓弧 | 拋光 |
+| 徽記 | 1.00 | 8 | 45° | 立方三個面各自沿等角方向拉絲（30°／150°／90°） |
+| 星軌環、線路 | 0.20 | 1.5 | 圓弧 | 拋光＋發光芯 |
+| 菱形節點 | 0.45 | 全斜（四面錐） | 4 面 | 拋光＋發光芯 |
+| 方形節點 | 0.40 | 全斜（四面錐） | 4 面 | 拋光 |
+| 底面稜面 | ±0.04 | 2 | 柔 | 清漆 |
+| 內環放射刻線（01 金屬蝕刻） | −0.06 | 1 | V 槽 | — |
+
+另外輸出：材質編號（底面／卡緣／飾板／側飾條／徽記／細線／節點）、拉絲方向場、**高光遮罩**（會反光的地方：飾板、倒角、徽記、節點、細線）、**全息遮罩**（只有 SR 用：倒角、側飾條外緣 3.5% 寬、節點切面、細線兩側；平面頂面與底面為 0）、**發光遮罩**（徽記與節點、外框、線路）。
+
+### 5.3 材質與打光（`render_card_back.py`）
+
+**光源**（正交視角，視線 V＝(0, 0, 1)，x 向右、y 向下）：主光 L1＝normalize(−0.55, −0.62, 0.56)（左上），補光 L2＝normalize(0.60, 0.50, 0.62)×0.2；環境是暗棚加左上一大塊柔光箱、右側一條燈條。另加一道依位置的大範圍漸層（左上亮、右下暗），做出示意圖飾板「左段亮、右段暗」的感覺。
+
+**著色**（金屬沒有漫射，顏色全部來自反射）：
+
+| 項 | 做法 |
+|---|---|
+| 金屬底色 | 每階三色坡度（暗 → 中 → 亮，見下表），t＝0.78×位置漸層＋0.40×受光度×坡度＋拉絲擾動 |
+| 拉絲 | 白雜訊沿拉絲方向做 24–40 px 的動態模糊，標準化後乘「拉絲強度」加進 t；高光沿垂直拉絲的方向拉長（Ward 異向高光） |
+| 邊緣亮線 | 用高度圖的拉普拉斯找凸邊，朝向 L1 的凸邊加 1 px 白（0.85）——「精密倒角」的關鍵 |
+| 環境遮蔽 | ao＝clip(1 − 1.4×(blur(H, 10) − H), 0.55, 1) |
+| 底面 | 兩色坡度（暗部 → 中間調）依稜面高度；左上一道清漆斜向反光（α 0.045）；**不加逐像素顆粒**（WebP 會把顆粒壓壞，顆粒在執行時加，§6.2 B9） |
+| 刻線 | V 槽：槽底暗、靠光的一側槽壁亮 |
+| SR 全息 | 只在全息遮罩上，用薄膜干涉近似：R_λ＝0.5＋0.5·cos(2π·2n·d·cosθ／λ)，λ＝650／532／450 nm，n＝1.45，d＝420 ± 160 nm（平滑變化）；全息色＝R_λ×(亮度×1.25＋0.05)，混合比例＝遮罩×0.55 |
+| 自發光與泛光 | 發光遮罩×發光色；泛光＝三層模糊（σ 4／14／40 px，權重 0.7／0.45／0.25）×強度 |
+| 色調 | ACES 近似色調映射 → sRGB |
+
+**三階材質參數**（坡度起點取自 2026-10-28 的可行性試算，§19；目標值見 §2.2，用 §5.5 的工具調到達標）：
+
+| 參數 | N 鉑銀霧面 | R 電光鈦藍 | SR 香檳金全息 |
+|---|---|---|---|
+| 飾板坡度（暗／中／亮） | `#59616C`／`#AEB8C5`／`#F2F6FA` | `#1F3F86`／`#79B4F5`／`#D8F1FF` | `#6E4E1E`／`#E6C46E`／`#FFF6C8` |
+| 側飾條坡度（暗／中） | `#4E5662`／`#9AA5B3` | `#2B2F8C`／`#6C8EF2`（往藍紫） | `#6A4520`／`#CFA05C` |
+| 徽記坡度（暗／中／亮） | `#5E6672`／`#C9D2DD`／`#FFFFFF` | `#2C5BA8`／`#9CCBFA`／`#F2FBFF` | `#7A5A26`／`#F1D489`／`#FFFBE0` |
+| 卡緣暗帶（暗／中／亮） | `#2E3238`／`#8C949E`／`#F4F7FA` | `#14284F`／`#4E86D6`／`#C6EBFF` | `#3E2E16`／`#B8925A`／`#FFF2C4` |
+| 底面（暗／中） | `#0C0D10`／`#22242A` | `#090C14`／`#18202E` | `#100C07`／`#2A2117` |
+| 拉絲強度 | 0.09（霧面） | 0.08 | 0.08 |
+| 異向高光粗糙度 | 0.55（霧） | 0.42 | 0.34（較亮） |
+| 發光色／強度 | `#DCE6F2`／0.45 | `#4FB0FF`／0.9 | `#FFC95E`／0.85 |
+| 全息 | 0 | 0 | 0.55 |
+
+### 5.4 輸出
+
+| 檔案 | 尺寸 | 格式 | 內容 | 大小上限 |
+|---|---|---|---|---|
+| `assets/images/practice/practice_card_back_v4_n.webp` | 1200×1800 | 有損 q90、不透明 | N 成品圖（不含最外 2 pt 拋光框，§6.7；四角留滿，執行時圓角裁切） | 600 KB |
+| `…_v4_r.webp`、`…_v4_sr.webp` | 同上 | 同上 | R、SR 成品圖 | 各 600 KB |
+| `…_v4_light.webp` | 1200×1800 | 無損 RGB | R＝浮雕補光差（0.5＝不變；離線用右上主光再算一次，跟左上的差）、G＝全息遮罩、B＝高光遮罩 | 300 KB |
+| `…_v4_glowmask.webp` | 600×900 | 無損 RGB | R＝徽記與節點、G＝外框、B＝線路（額外發光用） | 80 KB |
+| `…_v4_glow.webp` | 600×900 | 有損 RGBA | 預先模糊好的白色泛光（取代 V3 的 `_v3_glow`） | 60 KB |
+| `assets/images/practice/practice_card_noise.webp` | 128×128 | 無損灰階 | 執行時顆粒、拉絲共用的雜訊磚 | 20 KB |
+
+合計 ≤ 2.3 MB（V3 卡背五張合計 273 KiB）。遮罩用 RGB 打包而不是放在 alpha：Flutter 解碼後是預乘 alpha，alpha 為 0 的像素 RGB 會被清掉，所以遮罩圖一律不透明。
+
+### 5.5 對照工具與目標值
+
+- `targets.json`：§2.2、§2.4 的取樣色與取樣區域（相對卡片的矩形＋統計方式：中位數／前 3%／前 15%／後 35%）。只有數字，不含示意圖。
+- `concept_match.py --still <我們的靜止圖> [--concept <示意圖路徑，本機私有>]`：
+  - 一定輸出：各區域的實測色、目標色、CIEDE2000 色差表；SR 全息區的色相分布。
+  - 有給示意圖時，另外輸出並排對照圖（不入庫）。
+  - 警示門檻：飾板、側飾條、卡緣、徽記 ΔE ≤ 6；底面 ΔE ≤ 4；SR 全息色相要落在玫瑰到天空藍之間、佔全息區 2–8%。門檻只是提示，最後以 Eric 目視為準。
+
+### 5.6 重跑與授權
+
+- 同一份 JSON、同一個種子，重跑逐位元相同（比照 `make_sprites.py`、`make_card_back_v3.py`）。
+- 在 WSL 或雲端工作階段跑；需要 Pillow（含 webp）與 numpy。目標：1200×1800 三階全部輸出 < 2 分鐘。
+- `docs/licenses/practice_draw_reference_assets.md` 補上 v4 素材：構圖描自 V2 卡背（來源與授權同 V2），材質由 repo 內的工具渲染。這也剛好回應該文件最後一段「要零生成相似風險時，換成內部渲染的等價素材」。
+
+---
+
+## 6. 卡背執行時
+
+### 6.1 素材載入與記憶體
+
+新增 `PracticeCardMaterialImages`（持有解碼好的 `ui.Image`；沿用 `_loadSprites()` 的模式：`AssetImage.resolve` → `ImageStreamListener` → `setState`，卸載時釋放）。一律用 `ResizeImage` 解成卡片實際像素寬（卡寬 pt×裝置像素比，上限 1200），不解原尺寸。
+
+| 時機 | 解碼 | 記憶體（iPhone 15／Pro Max） |
+|---|---|---|
+| 儀式掛上後第一幀之後（`addPostFrameCallback`，不擋圖鑑首屏；解碼在背景執行緒） | N 成品圖、`light`、`glowmask`、`glow`、雜訊磚 | ≈ 17 MB／≈ 21 MB |
+| 按下翻牌（drawing 開始） | R、SR 成品圖（最早到 R0＋600 ms 才用到） | ≈ 14 MB／≈ 16 MB |
+| R0（沿用 V3） | 人物照（`ResizeImage`，寬＝照片框×1.08） | ≈ 8 MB／≈ 9 MB |
+| 收卡完成（hidden） | evict R、SR 成品圖與人物照的 `ResizeImage` key | — |
+| 儀式卸載 | 全部 evict、釋放 | — |
+
+儀式期間圖片合計：iPhone 15 ≈ 40 MB、Pro Max ≈ 48 MB（V3 現在約 30 MB）。上限 48 MB。
+
+### 6.2 圖層與混色
+
+全部在一個 `PracticeCardBackPainter` 裡畫（每一層要不同的混色模式，用 widget 疊做不到），外面維持 V3 的 `ClipRRect(24)`；拋光外框在裁切之後另外畫（§6.7）。
+
+| # | 層 | 什麼時候畫 | 混色 | 說明 |
+|---|---|---|---|---|
+| B0 | N 成品圖 | 一直 | 一般 | |
+| B1 | R 成品圖（轉化擴散） | R／SR，dye.blue > 0 | `saveLayer`＋徑向遮罩 `dstIn` | dye.blue＝1 之後直接畫，不開 layer |
+| B2 | SR 成品圖（轉化擴散） | SR，dye.gold > 0 | 同上 | |
+| B3 | 轉化前緣光環 | 擴散進行中 | `plus` | 主題 `glow` 色 |
+| B4 | 浮雕補光 | 一直（低檔不畫） | 正半 `plus` 白、負半一般混色的黑 | `light.R`，§6.4 |
+| B5 | 高光帶 | 一直 | `saveLayer(plus)`：`light.B` 當遮罩＋115° 漸層 `srcIn` | §6.4 |
+| B6 | SR 全息 | SR，全息強度 > 0（低檔不畫） | `saveLayer(color)`：`light.G` 當遮罩＋重複彩虹漸層 `srcIn` | §6.5 |
+| B7 | 額外發光 | 有額外能量時 | `plus` | `glowmask` 三個通道＋`glow` 泛光，§6.6 |
+| B8 | 徽記白光 | R0＋560–720 | 一般 | `glowmask.R` 填白＋泛光貼圖，沿用 V3.1 §5.2 |
+| B9 | 顆粒 | 一直 | `overlay`，α 0.025 | 雜訊磚 `ImageShader` 重複鋪，防色帶 |
+
+遮罩的通道換成透明度用 `ColorFilter.matrix`（附錄 §18.2）。矩陣的輸出會被夾在 0–1，所以「浮雕補光」的正負兩半各用一個矩陣就能拆開，不需要 shader。
+
+### 6.3 稀有度轉化（銀 → 鈦藍 → 香檳金）
+
+- 進度直接用 `practiceRevealDye(ms, rarity)`：`blue` 是 R0＋600–720，`gold` 是 R0＋850–1000（main 現行時間軸；V3.1 的 SR 時間軸若之後合併，跟著它走，不用改這裡）。
+- 擴散中心＝徽記中心（卡片正中）；半徑 r＝t×1.2×半對角線（354×531 的卡約 319 pt），t 已經過 `enter` 曲線，不再疊曲線；遮罩邊緣柔化寬度 0.18×半對角線。
+- 前緣光環：在半徑 r 畫一圈寬 0.06×半對角線的徑向漸層光，α＝0.65×sin(π·t)（開始與結束都是 0），顏色＝主題 `glow`。
+- 結果：R 的卡會在 120 ms 內從徽記往外「變成」鈦藍；SR 再過 130 ms 變成香檳金。底面始終深色（成品圖本來就是）。
+- **稀有度誠實**：N 不畫 B1、B2；R 不畫 B2；SR 的 B2 在 R0＋850 之前不畫。
+
+### 6.4 跟著姿態走的光
+
+一個純函式 `practiceCardLight({yawDeg, pitchDeg, front})`（附錄 §18.1），widget 與測試共用：
+
+- 卡背以等待姿態（yaw −10°、pitch 4°）為基準，卡面以落定姿態（yaw 180°，等於正面 0°、pitch 0°）為基準，取差值的弧度 Δyaw、Δpitch。
+- **高光帶位置** band＝0.35 − 2.2·Δyaw − 0.8·Δpitch（沿 115° 對角軸，0＝左上角、1＝右下角）；帶寬 ±0.11，強度 N 0.26／R 0.30／SR 0.34。
+- **浮雕補光** relief＝clamp(−3·Δyaw, −1, 1)：正值把 `light.R` 的正半疊亮、負值把負半壓暗，看起來像光從左上慢慢移到上方或左方。
+- **全息相位** holo＝0.15＋1.4·Δyaw＋0.6·Δpitch（彩虹週期數），只有 SR 用。
+
+代表姿態算出來的高光帶位置：
+
+| 時刻 | 姿態 | band | 看到的 |
+|---|---|---|---|
+| 等待 | yaw −10° ± 4°、pitch 4° | 0.35 ∓ 0.15 | 一道高光在左上到中間之間慢慢來回 |
+| 蓄力完成 | yaw −15°、pitch 9° | 0.47 | 高光往中間移 |
+| 翻牌前的回拉（`easeInBack`） | yaw ≈ −25° | ≈ 0.88 | 高光滑到右下 |
+| 翻牌前半 | yaw 0° → 90° | −0.10 → 卡外 | 卡片轉側時，一道光從右下掃過整張卡、從左上離開 |
+| 卡面落定 | 正面 −90° → 0° | 卡外 → 0.35 | 外框受光點與玻璃反光從右下滑進來，停在左上（示意圖二的受光位置） |
+| 停住 | 固定 | 0.35 | 不動（零動畫幀） |
+
+### 6.5 SR 全息
+
+`saveLayer(Paint()..blendMode = BlendMode.color)`：圖層裡先畫 `light.G`（換成白色透明度×全息強度），再用 `srcIn` 畫一條 115° 的重複漸層（`TileMode.repeated`，週期 0.35×卡寬；色序：玫瑰 `#F6B0AC` → 洋紅 `#F99EE6` → 紫 `#8B448F` → 天空藍 `#B1DAFE` → 香檳 `#FDF2AE` → 玫瑰），漸層起點依全息相位平移。`color` 混色只換色相與飽和度、保留底下金屬的明暗，所以看起來是金屬本身在變色，不是蓋一層彩虹。全息強度：dye.gold 從 0 到 1 的同時從 0 升到 1，之後維持。
+
+### 6.6 額外發光（對應 V3／V3.1 的函式）
+
+成品圖已經包含「靜止時」該有的光（示意圖的徽記光暈、R／SR 的線路光）。執行時的發光層只畫**超出靜止值的額外能量**，靜止時為 0：
+
+| 額外能量 | 算法 | 畫在哪 |
+|---|---|---|
+| 等待心跳 | 等待姿態的徽記亮度（`_waitingPose().emblem`，0.30–0.45＋心跳 0.12）減 0.30 | `glowmask.R` |
+| 蓄力 | `practiceRevealChargeGlow(ms)`×0.5 | `glowmask.R`，N 卡背上 |
+| N 銀光脈衝 | `practiceRevealEmblemGlow(ms, n)` 減掉蓄力值（0.80 → 1.00 → 0.85 的那一段） | `glowmask.R` |
+| 染藍、染金脈衝 | R／SR：dye 進行時升到 1，結束後 280 ms 退回 0（`AppMotion.easeOut`） | `glowmask` 三個通道＋`glow` 泛光 |
+| 徽記白光 | `practiceRevealEmblemWhite(ms)`（不變） | B8 |
+
+`practiceRevealFrameGlow`、`practiceRevealLinesGlow` 與 `goldWash` 的現有用途全部由上表取代；環境光、泛光、光刃、衝擊波、星塵等 V3.1 的卡外光效**不變**（只換 R 的顏色，M9）。
+
+### 6.7 拋光外框（卡背、卡面共用）
+
+`PracticeCardRimPainter`，畫在卡片圓角裁切之後、貼著卡緣往內 2 pt：
+
+- 截面：外 0.35 pt 暗、中 1.3 pt 亮（依角度變化）、內 0.35 pt 暗，看起來像一根細金屬管（P2 照示意圖把中段調寬，原寫 0.5／1／0.5）。
+- 角度變化：中段用 `SweepGradient`，在受光角 θ 最亮、對角 θ＋180° 次亮（示意圖二的右下角）、兩者之間最暗。受光角 θ＝225°＋180°×clamp(band − 0.35, −1, 1)（225°＝左上，依 §6.4 的 band 跟著姿態走；band 在卡外時停在離左上半圈的右下角，不繞著外框轉圈），θ 處再疊一段 40° 長的白色受光點（α 0.85）。
+- 每階顏色（暗／中／亮）：N `#3A3F47`／`#9AA4B1`／`#F4F7FA`；R `#14284F`／`#4E86D6`／`#C6EBFF`；SR `#4A3618`／`#B8925A`／`#FDF2BA`（SR 取自示意圖二）。
+- SR 全息邊：同樣寬度再畫一道全息色帶（色序同 §6.5），依角度加權：右側直邊最強（示意圖二），其他地方 0.2；α 0.6、一般混色；一圈 4 個循環（右側直邊看得到整組玫瑰到天空藍）；色帶隨全息相位平移。
+- 卡背的成品圖本身有一圈槍鐵暗帶（§5.2），拋光框壓在它的最外側，兩者合起來就是示意圖一的「暗帶＋拋光亮邊」。
+
+### 6.8 退路
+
+素材還沒解碼好（理論上不會：N 那組在圖鑑頁開啟後就開始解）時，畫深色底（主題底面色）＋拋光外框＋V3.1 的泛光，不留白、不丟例外。R／SR 成品圖還沒好時，先維持上一階的成品圖；解碼好的那一幀依當下的染色進度接著畫（可能直接從較大的半徑開始），不另開計時。按下翻牌就開始解碼，到 R0＋600 ms 還沒解好的機率很低，PR 裡要記錄真機有沒有看到跳格。
+
+### 6.9 效果檔位
+
+沿用 `kPracticeRevealEffectTier`：高、中檔畫全部；低檔不畫 B4（浮雕補光）與 B6（SR 全息），其他照畫。
+
+---
+
+## 7. 卡面
+
+### 7.1 外框
+
+`PracticeRevealCardFront` 拿掉 1.5 px 漸層框與內高光，改成：外圓角 24 → 2 pt 拋光外框（§6.7）→ 照片裁成圓角 22；照片邊緣內側畫一道 1 pt 黑 @0.55 的細線（拉開金屬框與照片）。卡外的稀有度色外光（`BoxShadow` 主題 `glow` @0.35、模糊 24）不變。
+
+### 7.2 照片
+
+高解析人物照（§8），`ResizeImage` 解成照片框寬×1.08（緩縮起點）；儀式在 R0 預快取時用同一個 provider，翻開那一刻直接有圖。緩縮、掃光（`PracticeRevealSheenPainter`）照 V3。
+
+### 7.3 六角牌（`PracticeRevealRarityBadge` 改版）
+
+| 項目 | 規格 |
+|---|---|
+| 尺寸 | 寬＝0.20×卡寬，夾在 60–80 pt；高＝0.62×寬；左右尖角內收 0.27×高 |
+| 位置 | 落定在卡片內：左 12、上 16（M4）；飛入的起點與曲線照 V3.1 §5.10，只換落點 |
+| 倒角 | 2 pt。SR 金（示意圖取樣）：垂直漸層 0% `#FCEDBE` → 20% `#DCA658` → 55% `#8E5731`（左右尖角的高度最暗）→ 100% `#AA8F5A`，上緣中央一個白色受光點（徑向漸層，α 0.9）；N／R 銀：`badgeMetalLight → badgeBevelDeep`（沿用） |
+| 牌面 | 上 `#F6F6F6` → 55% `#C9CACC` → 下 `#979798`；疊雜訊磚做的水平拉絲（`ImageShader` 水平拉長 8 倍，`overlay` α 0.12） |
+| 字 | `AppTypography.headlineMedium`（24）w900、`#212021`、字距 0.5，`FittedBox` 縮到牌面內；壓印感：字下方一道白 @0.5、位移 (0, 0.75) 的文字陰影 |
+| 陰影 | `canvas.drawShadow` 黑、高度 3（沿用） |
+
+### 7.4 NEW
+
+沿用共用的 `PracticeNewBadge`（`ctaStart`＋`onCta`，示意圖的 `#FB5E0C`／`#06090B` 與它幾乎一樣），放在牌右邊 6 pt、跟牌垂直置中。共用元件不改，練習室入口卡不受影響。
+
+### 7.5 煙燻玻璃資訊欄
+
+內縮左右下各 12、圓角 18（DESIGN.md §4 次級容器），由下到上：
+
+| 層 | 規格 |
+|---|---|
+| 模糊照片 | 同一張、同緩縮的照片副本，`ImageFiltered` σ 16（沿用 V3 做法，不用 `BackdropFilter`） |
+| 煙燻底色 | `infoSmoke #141213` @0.80（中性炭灰；目標是疊在三張參考照上的平均結果落在 `#262425` 附近，α 可在 0.72–0.86 調） |
+| 上緣受光 | 垂直漸層：白 @0.07（頂）→ 0（45% 高） |
+| 斜向反光 | 115° 帶狀，白 @0.05、寬 30%；中心在欄寬 72% 處，隨 §6.4 的 band 平移（落定時從右滑進來） |
+| 斜邊 | 1 pt 描邊，漸層：左上白 @0.32 → 右下白 @0.10 |
+| 厚度陰影 | 底部往上 6 pt，黑 @0.22 → 0 |
+| 顆粒 | 雜訊磚，`overlay` α 0.02（防色帶） |
+
+### 7.6 文字
+
+- 名字：`headlineMedium`（24）、w800、白、行高 1.15、單行省略。
+- 基本資訊：`bodyMedium`（15）、w500、白 @0.88，跟星星同一行；「 · 已收藏」規則不變（太長先省略前面的基本資訊）。
+- 內距：左右 16、上下 12；兩行間距 4–8，以整欄高度 ≈ 0.214×卡寬（iPhone 15 約 76 pt）為準。
+- 對比：基本資訊（白 @0.88）對煙燻底，一般照片約 12:1；最壞情況（照片純白、煙燻 α 取下限 0.72）約 5.8:1，都符合 DESIGN.md §8 的 4.5:1。
+- 卡面文字放大上限 1.3（`MediaQuery.withClampedTextScaling`）不變；375×667、文字 1.3 倍時，資訊欄最高約 95 pt，仍在卡內。
+
+### 7.7 切面星（`PracticeRevealStars` 改版）
+
+- 形狀：五角星，內外半徑比 0.45；每個尖角從中心切成左右兩個三角形，共 10 面。
+- 明暗：每一面依面法線跟左上主光的夾角，在「暗面色 → 亮面色」之間取值；邊緣 0.75 pt 描邊（邊色 @0.6）；中心一個小亮點（白 @0.7）。
+- 顏色（亮／暗／邊）：SR `#FDF6B2`／`#F8CE51`／`#B7791F`；R `#EAF7FF`／`#7DB8F5`／`#3F6FD6`；N `#FFFFFF`／`#B8C2CE`／`#6B7684`。
+- 光暈：星星後面一個徑向漸層（主題 `glow` @0.35、半徑 0.9×星寬），不用 `MaskFilter.blur`。
+- 尺寸 18、間距 6；點亮的縮放、脈衝、四芒星光、六顆小光點（V3.1 §5.11）全部保留。
+
+### 7.8 N／R 卡面（示意圖沒畫的部分）
+
+照 SR 的規則換顏色：外框用 §6.7 的 N／R 色；牌面同為銀、倒角用銀；星星用 §7.7 的 N／R 色；玻璃、字級、版面三階一樣。全息只有 SR。
+
+---
+
+## 8. 人物照高解析
+
+### 8.1 目標
+
+長邊 1800 px（M3 A），sRGB，WebP q82（method 6），去掉中繼資料。顯示放大倍率見 §3.6。
+
+### 8.2 來源分流
+
+1. **量來源**：`tools/gen-practice-photos/inspect_sources.py --src <來源目錄>` 印出 100 張來源 PNG 的解析度（來源在 Eric 本機的 upload_ready 目錄，路徑只走參數，不寫進程式，比照現有轉檔工具）。
+2. **來源長邊 ≥ 1800**：Lanczos 縮到 1800。
+3. **來源長邊 < 1800**：先 2× 超解析（不開臉部修復、不用會重畫五官的生成式放大），再縮到 1800。
+4. **一致性檢查**（只對第 3 步）：把結果縮回現有檔案的尺寸，跟現有 JPEG 比亮度 SSIM ≥ 0.93；沒過的那張保留原圖。
+5. **Eric 目視**：100 張改前／改後的眼睛區域 100% 放大對照表；任何一張看起來不像同一個人就退回原圖。
+
+工具：新增 `tools/gen-practice-photos/make_hd_photos.py`（Pillow），在 WSL 跑；原本的 Dart 工具（只能出 JPEG）保留。
+
+### 8.3 路徑與體積
+
+- 副檔名從 `.jpg` 改 `.webp`。寫死路徑的地方一起改，最好收成一個函式：`practice_girl_profile.dart:50`（`photoAssetPath`）、`practice_room_entry_card.dart:14`、`lib/features/learning/presentation/widgets/ebook_cover_badge.dart:67-76`，以及兩個釘路徑的測試。
+- 體積：拿現有照片放大到長邊 1600 試壓，WebP 平均 107 KB；換算長邊 1800 的下限約 13 MiB。真的高解析來源細節更多，預估 13–22 MiB（現在 11.8 MiB）。以實測為準，上限 22 MiB。
+
+### 8.4 解碼大小
+
+`PracticeGirlPhoto` 加可選的 `cacheWidth`（內部用 `ResizeImage`）。小圖一律帶上，避免為了 40 pt 的頭像解 1200×1800 的原圖：
+
+| 用處 | 顯示大小 | `cacheWidth` |
+|---|---|---|
+| 練習室頭像（`practice_chat_screen.dart` 699、1702） | 40 pt 圓 | 尺寸×裝置像素比 |
+| 動態牆頭像、配圖（`practice_moment_tile.dart` 131、194） | 頭像／4:3 框 | 同上 |
+| 練習室大圖（`practice_chat_screen.dart` 1233） | 全寬×320 | 寬×裝置像素比 |
+| 個人頁（`practice_profile_sheet.dart` 63） | 248×310 | 同上 |
+| 揭曉卡 | 卡片 | §7.2 |
+| 點照片看全圖 | 全螢幕 | 不帶（要看全解析度） |
+| 圖鑑縮圖 | 格子 | 維持 360 |
+
+圖鑑一頁最多要解 100 張縮圖：WebP 縮小解碼的速度要在 PR 裡實測（Android DevTools 或 TestFlight 目視捲動）。若明顯變慢，再另出一組 360 寬縮圖（約 2.5 MB），這一版先不做。
+
+---
+
+## 9. 色票（`lib/core/theme/practice_reveal_palette.dart`）
+
+新增（全部收在這個檔，DESIGN.md §11 的棘輪只豁免 `lib/core/theme/`）：
+
+| 名稱 | 值 | 用途 |
+|---|---|---|
+| `nRimDark`／`nRimMid`／`nRimHi` | `#3A3F47`／`#9AA4B1`／`#F4F7FA` | N 拋光外框 |
+| `rRimDark`／`rRimMid`／`rRimHi` | `#14284F`／`#4E86D6`／`#C6EBFF` | R 拋光外框 |
+| `srRimDark`／`srRimMid`／`srRimHi` | `#4A3618`／`#B8925A`／`#FDF2BA` | SR 拋光外框 |
+| `badgeFaceTop`／`badgeFaceMid`／`badgeFaceBottom` | `#F6F6F6`／`#C9CACC`／`#979798` | 牌面 |
+| `badgeInk` | `#212021` | 牌上的字 |
+| `srBadgeBevelHi`／`srBadgeBevelMid`／`srBadgeBevelDeep`／`srBadgeBevelLow` | `#FCEDBE`／`#DCA658`／`#8E5731`／`#AA8F5A` | SR 牌金倒角（上 → 下） |
+| `infoSmoke` | `#141213` | 煙燻玻璃 |
+| `{n,r,sr}StarLit`／`StarShade`／`StarEdge` | 見 §7.7 | 切面星 |
+| `holoRose`／`holoMagenta`／`holoPlum`／`holoSky` | `#F6B0AC`／`#F99EE6`／`#8B448F`／`#B1DAFE` | SR 全息（示意圖取樣） |
+| `srHoloChampagne` | `#FDF2AE` | 全息色帶的香檳段 |
+
+修改：
+
+| 名稱 | 現在 | 改成 | 理由 |
+|---|---|---|---|
+| `rBackTint`／`rBackTintDeep` | `#38BDF8`／`#818CF8` | `#8BC5FC`／`#6B93F7` | M9 |
+| `rGlow` | `#38BDF8` | `#4FB0FF` | 示意圖 R 光暈偏飽和的藍 |
+
+`rStar`、`rOrb`（`#7DD3FC`）不改：星星改用 `rStarLit` 等，收卡光球的顏色不在 M9 範圍。V3 用的 `nBackTint…srBackTintDeep`、`holoCyan`、`holoViolet`、`holoPink`：環境光、光刃、星塵、收卡光球還在用的保留；只剩卡背染色在用的，等清理那一刀（§16）刪掉。
+
+---
+
+## 10. 效能、記憶體與 App 體積
+
+| 項目 | 規格 |
+|---|---|
+| 每幀卡背成本 | 最多 3 個 `saveLayer`（轉化擴散、高光帶、SR 全息）、約 12 次圖片或漸層繪製；V3 現在是 1 個 `ShaderMask` 加約 8 次繪製 |
+| 等待期間 | 只有 B0、B4、B5、B9（1 個 `saveLayer`）；等待本來就有動畫，不增加幀數 |
+| 停住 | 零動畫幀（V3 D7）：姿態不動 → 光不動 → painter 的 `shouldRepaint` 回 false |
+| 120 Hz | `ios/Runner/Info.plist` 已開 `CADisableMinimumFrameDurationOnPhone`，ProMotion 機型每幀預算 8.3 ms；新層全是圖片與漸層，沒有逐幀模糊 |
+| 預先模糊 | 泛光、光暈全部是離線模糊好的貼圖；不在 painter 裡用 `MaskFilter.blur`（V3 §12） |
+| `RepaintBoundary` | 卡片外層沿用 V3 的一個 |
+| 記憶體 | 儀式期間圖片 ≤ 48 MB（§6.1）；收卡後 evict R、SR 成品圖與人物照 |
+| App 體積 | 卡背 +2.0 MB 左右（≤ 2.3 MB）；人物照 +1–10 MiB（≤ 22 MiB）。現有 `assets/` 96 MB，其中影片 72 MB |
+| 驗收 | Eric 沒有 Mac，不能在本機對 iPhone 跑 DevTools：TestFlight 真機目視（重點看翻牌掃光、轉化擴散、SR 全息）；可以的話用 Android 或桌面 DevTools 當參考，raster < 8 ms |
+
+---
+
+## 11. 閃光安全
+
+沿用 V3.1 §3 的標準與工具（`tools/practice-reveal-flash-check`，60 fps 錄影）：25 cm 任一秒 ≤ 2 次、20 cm ≤ 3 次，揭曉與收卡都算。新層的限制：
+
+- 高光帶在大面積上的相對亮度增量 ΔY ≤ 0.08；只有拋光外框、倒角邊線這種細區可以更亮。
+- 轉化擴散是「單向」變化（銀變藍、藍變金），前緣光環很細，不構成一升一降的大面積閃光；仍要跟 R0＋560–720 的徽記白光一起量。
+- 翻牌前那一道掃光要跟光刃、前層泛光一起量；超過上限就先降高光帶強度，不動 V3.1 的光刃。
+
+---
+
+## 12. DESIGN.md 自查與登記
+
+| 條目 | 自查 |
+|---|---|
+| §1 色彩身分 | 不動暗紫底與橘色重點；新顏色只在揭曉卡內 |
+| §2／§7 彩色光暈 | 新增的彩色光（卡背成品圖內的發光、全息色帶、轉化前緣光環、拋光外框的受光點與全息邊、切面星光暈）都屬揭曉儀式，要在 §7 新增一列「抽卡卡片典藏材質」並寫明理由：稀有度靠材質分級、停住時靜止 |
+| §3 字級 | 名字 24、基本資訊 15、牌上字 24（縮放）；沒有 < 12 |
+| §4 圓角 | 卡 24、照片 22、資訊欄 18；六角牌與星星是路徑，不是容器圓角 |
+| §5 間距 | 12／16／6／4–8 都在尺度內；示意圖約 20 的文字內距取 16 |
+| §6 動效 | 不新增動畫曲線；轉化擴散用現有 `practiceRevealDye`（`enter`），脈衝退場用 `AppMotion.easeOut` |
+| §8 對比 | 基本資訊一般約 12:1、最壞約 5.8:1；名字更高 |
+| 常見 AI-slop | 「毛玻璃」：資訊欄是示意圖指定的煙燻玻璃，屬實體卡片材質、只在揭曉卡內，V3 已有，這次一起寫進 §7 登記；沒有漸層字、沒有裝飾 emoji、沒有無用途的外框（外框是卡片本身的金屬邊） |
+| §11 棘輪 | 色值全部在 palette；新檔若有彩色 `BoxShadow`，照規定加進 `kColoredShadowAllowedFiles` 並在 §7 登記，不重產基準放行 |
+
+---
+
+## 13. 檔案清單
+
+### 13.1 新增
+
+| 檔案 | 內容 |
+|---|---|
+| `tools/practice-card-material/README.md` | 管線說明、指令、依賴 |
+| `tools/practice-card-material/card_back_geometry.json` | 向量構圖（單一真相） |
+| `tools/practice-card-material/trace_geometry.py` | 一次性描圖（開發工具） |
+| `tools/practice-card-material/heightfield.py`、`render_card_back.py` | 高度圖、材質渲染 |
+| `tools/practice-card-material/concept_match.py`、`targets.json` | 對照與目標色 |
+| `tools/practice-card-material/test_geometry.py`、`test_render.py` | 構圖鎖定、重跑一致、大小上限、色差 |
+| `assets/images/practice/practice_card_back_v4_{n,r,sr,light,glowmask,glow}.webp`、`practice_card_noise.webp` | §5.4 |
+| `lib/features/practice_chat/presentation/widgets/practice_card_material.dart` | `PracticeCardMaterialImages`、`PracticeCardBackPainter`、`PracticeCardRimPainter`、`practiceCardLight()`、通道矩陣 |
+| `tools/gen-practice-photos/inspect_sources.py`、`make_hd_photos.py` | §8 |
+| `test/unit/features/practice_chat/practice_card_material_test.dart` | 純函式與稀有度誠實 |
+
+### 13.2 修改
+
+| 檔案 | 內容 |
+|---|---|
+| `practice_reveal_card.dart` | 卡背改用新 painter；卡面外框、六角牌、玻璃、文字、切面星 |
+| `practice_draw_ceremony.dart` | 素材載入時機與 evict；把姿態算出的光傳給卡背卡面；牌的落點改到卡內 |
+| `practice_reveal_theme.dart` | 每階的材質參數（外框色、星色、高光強度、全息） |
+| `lib/core/theme/practice_reveal_palette.dart` | §9 |
+| `practice_girl_photo.dart` | 可選 `cacheWidth` |
+| `practice_girl_profile.dart`、`practice_room_entry_card.dart`、`ebook_cover_badge.dart` | `.webp` 路徑 |
+| `practice_chat_screen.dart`、`practice_moment_tile.dart`、`practice_profile_sheet.dart` | 帶上 `cacheWidth` |
+| `assets/images/practice_girls/*.jpg → *.webp` | 100 張 |
+| `test/tools/card_back_still_recorder_test.dart` | 輸出 v4 三階卡背（靜止＋三個姿態）與三階卡面停住圖 |
+| `DESIGN.md` | §7 新增一列 |
+| `docs/licenses/practice_draw_reference_assets.md` | v4 素材來源；人物照若用超解析，記錄工具與授權 |
+
+### 13.3 移出（清理那一刀，真機通過後）
+
+- `practice_draw_card_back_v3_{base,emblem_mask,frame_mask,glow,lines_mask}.webp`（git 歷史保留；V3 產生器留著，來源仍在 `docs/archive/`）。
+- `PracticeRevealCardBack` 的舊參數（`goldWash`、`linesGlow` 等）、`_HoloRimPainter`、只剩卡背染色在用的色票。
+
+---
+
+## 14. 測試計畫
+
+### 14.1 會受影響的既有測試
+
+| 檔案 | 影響 |
+|---|---|
+| `test/widget/features/practice_chat/practice_chat_screen_style_test.dart` | 卡背的 key 與參數換新 painter；牌落地的斷言（約第 4108–4109 行 `card.left − landed.left ≈ 12`）與停住版面的斷言（約第 4168–4174 行「往外超出最多 12 px」）改成「完全在卡內、左 12、上 16」；星星原本用 `find.byIcon(Icons.star_rounded)` 數（約第 4181 行），改用每顆星的 key 數 |
+| `test/widget/features/practice_chat/practice_draw_reveal_rarity_test.dart` | 卡面 seam 照舊（`debugCeremonyCardFront`），斷言改新字級與牌位置 |
+| `test/unit/features/practice_chat/domain/entities/practice_girl_photo_asset_test.dart`、`test/widget/features/practice_chat/practice_room_entry_card_test.dart` | `.webp` 路徑 |
+
+### 14.2 新測試要釘住的行為
+
+1. **稀有度誠實**：每 50 ms 取樣卡背圖層組合，N 只有 B0；R 不出現 B2；SR 的 B2 不早於 R0＋850。
+2. **轉化擴散**：t＝0 半徑 0、t＝1 半徑 ≥ 1.2×半對角線、半徑單調；前緣光環 α 在 t＝0 與 1 都是 0。
+3. **姿態光**：`practiceCardLight` 在等待基準姿態回 band 0.35、卡面落定也回 0.35；band 對 yaw 單調遞減；relief 夾在 −1..1；同一姿態算兩次結果相同。
+4. **停住靜止**：停住後 `pumpAndSettle` 收得了，沒有排程中的幀；卡背、卡面 painter 在姿態不變時 `shouldRepaint` 回 false。
+5. **退路**：素材沒解碼好時卡背照樣畫得出來，不丟例外。
+6. **版面**：375×667 與 390×844 上，牌的範圍完全在卡片內且離邊 ≥ 8 pt；NEW 在牌右邊、垂直置中；資訊欄在卡內；名字 24、基本資訊 15；文字放大 1.3 倍時「已收藏」仍完整可見。
+7. **星星**：數量依稀有度（N 2、R 3、SR 4）；尺寸 18、中心距 24。
+8. **人物照**：100 個 `.webp` 都存在、長邊 1800（來源不足 1800 而保留原圖的，照清單例外）、合計 ≤ 22 MiB；揭曉卡預快取的 provider 跟卡面用的 provider 相等（同一個 `ResizeImage` key）。
+9. **棘輪**：`test/lint/` 全綠，沒有 palette 以外的色碼、沒有出格圓角。
+10. **工具**（Python，PR 附結果）：構圖鎖定門檻（§5.1）、重跑逐位元相同、輸出尺寸與大小上限、區域色差表。
+11. **閃光**：N／R／SR 各錄一支 60 fps，跑 §11 的兩個距離。
+
+### 14.3 指令
+
+依 `.agent/environment.json` 在 WSL 跑：
+
+```bash
+flutter analyze
+flutter test test/unit/features/practice_chat/ test/widget/features/practice_chat/ test/lint/
+RECORD_CARDBACK=1 flutter test test/tools/card_back_still_recorder_test.dart          # 三階卡背、卡面靜止圖
+RECORD_CEREMONY=1 RECORD_RARITY=sr flutter test test/tools/ceremony_preview_recorder_test.dart
+RECORD_CEREMONY=1 RECORD_FPS=60 flutter test test/tools/ceremony_preview_recorder_test.dart
+python3 tools/practice-reveal-flash-check/flash_check.py --fps 60 build/card_draw_preview/{n,r,sr}
+python3 tools/practice-card-material/render_card_back.py && python3 -m unittest discover -s tools/practice-card-material   # 同 flash-check 的測法
+python3 tools/practice-card-material/concept_match.py --still build/card_back_stills/back_sr.png
+```
+
+---
+
+## 15. 驗收與 Gate
+
+| Gate | 內容 | 誰看 |
+|---|---|---|
+| Gate-1 | 本規格、M1–M10、現況／示意圖／可行性樣張三排對照（私下提供） | Eric |
+| Gate-2a 卡背 | 三階卡背靜止圖（產生器輸出＋app 內錄的）對示意圖一；三格特寫（徽記、角落倒角、SR 節點全息）對示意圖一下排；色差表；構圖鎖定疊圖 | Eric |
+| Gate-2b 卡面 | 三階停住畫面對示意圖二中間；牌、玻璃、星星特寫對 01–03；人物照改前改後對照表 | Eric |
+| Gate-2c 動態 | N／R／SR 預覽片（轉化擴散、跟著姿態走的光、SR 全息）；閃光檢查結果 | Eric |
+| Gate-3 | TestFlight 真機：材質清楚、不卡、不燙（Dogfood-approved 另計） | Eric 的 iPhone |
+
+**功能完成條件**（全部滿足才叫完成）：
+
+1. 停住的卡面、三階卡背靜止畫面，Eric 對著示意圖目視認可；色差表沒有未說明的超標。
+2. 所有 iPhone 上卡背不放大、不變形；人物照放大倍率符合 §3.6 的 1800 那一列。
+3. 稀有度誠實、只翻一次、停住靜止、跳過與返回鍵行為都不退步（V3 §15）。
+4. 閃光檢查兩個距離都過。
+5. 真機翻牌、轉化、收卡看不出卡頓。
+6. analyze、相關測試、棘輪全綠；DESIGN.md §7 已登記。
+
+---
+
+## 16. 交付切片
+
+一個目的一張 PR（`AGENTS.md`）：
+
+| 刀 | 內容 | 可單獨驗證的結果 | 依賴 |
+|---|---|---|---|
+| P1 人物照高解析 | §8 全部（工具、100 張 WebP、路徑、`cacheWidth`） | 練習室、圖鑑、揭曉的照片都變清楚；圖鑑捲動不變慢 | 無；要 Eric 提供來源目錄 |
+| P2 卡面典藏材質 | 拋光外框（共用 painter）、六角牌、NEW 位置、煙燻玻璃、字級、切面星、姿態光（卡面部分） | Gate-2b | 無（P1 先合併的話對照更準） |
+| P3 卡背典藏材質 | §5 管線與素材、§6 執行時（含轉化擴散、姿態光、全息、載入時機） | Gate-2a、2c | P2 的外框 painter |
+| P4 清理 | §13.3 | App 變小、只剩新路徑 | Gate-3 通過 |
+
+- 順序：P1 和 P2 可以同時做 → P3 → 真機通過後 P4。
+- 審查：一般 PR，一位非作者模型的獨立 AI reviewer；Eric 做正式 GitHub review 與合併決定。實作分派由 Eric 決定（V3.1 是 Bruce 寫、Codex 審）。
+- 每一刀都照 DESIGN.md §10 先出改前／改後對照圖給 Eric 看過才 commit；含示意圖的對照私下給，不入庫。
+
+### 16.1 P2 實作紀錄（2026-10-28）
+
+做了：
+
+- 共用件 `lib/features/practice_chat/presentation/widgets/practice_card_material.dart`：`practiceCardLight()`（§6.4 的公式）、`PracticeCardRimPainter`（§6.7）、全息色序 `practiceHoloColorAt()`。P3 的卡背直接沿用。
+- 卡面（`practice_reveal_card.dart`）：1.5 px 漸層框與內高光 → 2 pt 拋光外框＋內緣細暗線；六角牌改版（0.20×卡寬、夾 60–80 pt、高 0.62×寬、落在卡內左 12 上 16、拉絲銀面、SR 金倒角＋受光點、`headlineMedium` 24 w900 壓印字、包 `RepaintBoundary`）；煙燻玻璃資訊欄（§7.5）；名字 24 w800、行高 1.15、兩行間距 4，基本資訊 15 w500 白 0.88；十面切面星 18＋6（中心距 24）。
+- 儀式（`practice_draw_ceremony.dart`）：牌的飛入落點改到卡內；卡面的光由 `_revealPose()` 算出，停住時剛好是 `PracticeCardLight.settled`，零動畫幀不變。
+- 主題與色票：主題的 `frameLight／frameDeep` 換成 `rimDark／rimMid／rimHi`，新增 `starLit／starShade／starEdge`；色票新增 §9 的外框、牌、煙燻玻璃、切面星、全息色，拿掉只剩舊漸層框在用的 `{n,r,sr}FrameLight／FrameDeep` 與只剩舊牌面在用的 `badgeMetalMid／badgeMetalDeep`（`infoGlass` 自介對話框還在用，保留）。
+- DESIGN.md §7 新增「抽卡卡片典藏材質（卡面，P2）」一列。
+- 測試：新增 `test/unit/features/practice_chat/practice_card_material_test.dart`（姿態光、全息色序、玻璃反光位置、切面星的十個面）；`practice_draw_reveal_rarity_test.dart` 補典藏材質一組（牌的位置與尺寸、星星尺寸與中心距、字級、各稀有度的外框色與 SR 才有全息邊）；星星改用每顆的 key 數（不再找 `Icons.star_rounded`）；`practice_chat_screen_style_test.dart` 牌的落點與停住版面改成「收在卡內、左 12、上 16」。
+- 錄製器：新增 `test/tools/card_face_still_recorder_test.dart`（`RECORD_CARDFACE=1`，N／R／SR 停住卡面各一張）。
+- 對照圖：`docs/reviews/2026-10-28-card-material-p2/`。
+
+和原規劃不同的地方：
+
+- 外框照示意圖把中段調寬（0.35／1.3／0.35），補上對角次亮；SR 全息邊 α 0.6、一圈 4 個循環（§6.7 已同步）。
+- 外框受光角夾在離左上半圈以內（§6.7 已同步）：卡面剛轉過側立時 §6.4 的 band 遠在卡外（yaw 90° 時約 3.8），直接換算角度，受光點會在落定的 0.45 s 裡繞著外框轉將近兩圈。夾住以後，側立時停在右下角，卡片轉到最後約 26° 才沿右邊、上緣滑到左上，跟 §6.4 表格「從右下滑進來，停在左上」一致。高光帶本身（P3 卡背用）不夾，照舊可以掃出卡外。
+- 資訊欄的顆粒（§7.5 最後一層）先不做：雜訊磚素材 P3 才加，P2 不加素材；目前看不到色帶。
+- 星星光暈 α 改 0.25＋0.35×脈衝（原寫 0.35）：深色玻璃上 0.35 會糊成一團。牌面拉絲線距 0.5 pt、α 0.02–0.07；SR 受光點裁在牌的外形裡，不飄到牌外。
+- §7.2 的照片 `ResizeImage` 解碼移到 P1：現在的照片只有 1080 高、比顯示尺寸小，這時縮小解碼省不到記憶體，要跟高解析照片一起做。
+- M9（R 改色）屬於卡背與 R 的光效，放到 P3；P2 沒動 R 的光色。
+
+還沒做：P1（等 Eric 提供人物照來源目錄）、P3、P4。
+
+驗證（2026-10-28，Flutter 3.47.0，雲端 Linux）：
+
+- `flutter analyze --no-fatal-infos`：沒有問題。
+- 完整測試 `flutter test --concurrency=1`：5106 過、12 略過、0 失敗。
+- 閃光檢查（§11，60 fps 錄影，任一秒最多幾次閃光，N／R／SR；外框受光角修正後重錄，跟修正前量的一樣）：25 cm 是 2／2／**3**（上限 2），20 cm 是 2.5／2.5／3（上限 3）。同一台機器重錄 main `070074c` 的 SR：25 cm 也是 **3**、20 cm 也是 3，兩個距離的轉折時間點與次數都跟 P2 一樣；逐幀比對，卡片側立（錄影 1867 ms）以前兩組畫面完全一樣，卡面轉進來以後只有外框與照片四周內縮 0.5 pt 的固定差異（平均亮度差 −0.002）。所以 P2 沒有增加閃光；SR 25 cm 超過上限是 main 就有的（#109 當時量到 2 次），要在 #109 的錄影環境重量確認，不在 P2 處理。
+- 對照圖：停住畫面用 24 fps 錄影第 96 幀；SR 特寫用卡面靜態錄製器。
+- 沒跑：iPhone 實機目視（Gate-3）。
+
+---
+
+## 17. 風險、不做的事、後續
+
+### 17.1 風險
+
+| 風險 | 處理 |
+|---|---|
+| 示意圖本身不一致（比例、兩張的 SR 明暗不同），不可能每個像素都一樣 | M1：對元素比例、材質、色值；兩張的差異依 §2.1 的規則取捨 |
+| 離線渲染器要調很多輪才像 | Gate-2a 最多三輪；三輪還不行，只把「成品圖」那一步換成 Blender 渲染（幾何、遮罩、執行時都不用改） |
+| 超解析改變臉 | §8.2 的 SSIM 門檻＋Eric 逐張目視；沒過的保留原圖 |
+| App 變大 | 卡背 ≤ 2.3 MB、人物照 ≤ 22 MiB 寫進測試 |
+| 舊機型效能 | 效果檔位調到低：不畫浮雕補光與全息 |
+| 圖鑑縮圖解 WebP 變慢 | §8.4 實測；不行再出縮圖組 |
+
+### 17.2 不做
+
+- 揭曉時間軸、流程、聲音、觸覺、抽卡 API、額度、扣費、機率、server、DB、Edge。
+- 圖鑑格子卡的樣式。
+- 陀螺儀、手指傾斜（M8）；執行時 shader（M2 B）；3D 模型；Lottie／Rive；新套件。
+- 換人物、換構圖、換徽記。
+
+### 17.3 後續可選
+
+- V4：FragmentShader 版材質（真的即時打光，可以接陀螺儀）。
+- 圖鑑卡套用同一套金屬外框（要先推翻「圖鑑卡不帶稀有度彩邊」的夥伴稿決定）。
+- reduce-motion 使用者的靜態結果卡（V3 §17 已列）也可以直接用新卡面。
+
+---
+
+## 18. 附錄：程式草圖
+
+### 18.1 姿態光
+
+```dart
+/// 卡片這一刻的光。卡背以等待姿態為基準、卡面以落定姿態為基準；姿態不動，光就不動。
+@immutable
+class PracticeCardLight {
+  const PracticeCardLight({
+    required this.band,
+    required this.relief,
+    required this.holoPhase,
+  });
+
+  /// 高光帶中心（沿 115° 對角軸，0＝左上角、1＝右下角）。
+  final double band;
+
+  /// 浮雕補光（−1..1）。
+  final double relief;
+
+  /// SR 全息色帶的相位（週期數）。
+  final double holoPhase;
+
+  /// 外框受光點的角度（度，225＝左上）。
+  double get glintDeg => 225 + 180 * (band - 0.35);
+}
+
+PracticeCardLight practiceCardLight({
+  required double yawDeg,
+  required double pitchDeg,
+  required bool front,
+}) {
+  const toRad = math.pi / 180;
+  final dYaw = (front
+          ? yawDeg - 180
+          : yawDeg - PracticeRevealTiming.waitingYaw) *
+      toRad;
+  final dPitch =
+      (pitchDeg - (front ? 0 : PracticeRevealTiming.waitingPitch)) * toRad;
+  return PracticeCardLight(
+    band: 0.35 - 2.2 * dYaw - 0.8 * dPitch,
+    relief: (-3 * dYaw).clamp(-1.0, 1.0),
+    holoPhase: 0.15 + 1.4 * dYaw + 0.6 * dPitch,
+  );
+}
+```
+
+### 18.2 遮罩通道 → 透明度
+
+`ColorFilter.matrix` 的位移欄是 0–255、輸出會被夾在 0–1：
+
+```dart
+/// 把遮罩圖的第 [channel] 個通道（0＝R、1＝G、2＝B）變成 [color] 的透明度×[strength]。
+ColorFilter practiceChannelAlpha(int channel, Color color, double strength) {
+  final a = [0.0, 0.0, 0.0]..[channel] = strength;
+  return ColorFilter.matrix(<double>[
+    0, 0, 0, 0, color.r * 255, //
+    0, 0, 0, 0, color.g * 255, //
+    0, 0, 0, 0, color.b * 255, //
+    a[0], a[1], a[2], 0, 0,
+  ]);
+}
+
+/// 浮雕補光（`light.R`，0.5＝不變）。正半：α＝clamp(2R − 1)×w；負半：α＝clamp(1 − 2R)×w。
+ColorFilter practiceReliefLift(double w) => ColorFilter.matrix(<double>[
+      0, 0, 0, 0, 255, //
+      0, 0, 0, 0, 255, //
+      0, 0, 0, 0, 255, //
+      2 * w, 0, 0, 0, -255 * w,
+    ]);
+
+ColorFilter practiceReliefShade(double w) => ColorFilter.matrix(<double>[
+      0, 0, 0, 0, 0, //
+      0, 0, 0, 0, 0, //
+      0, 0, 0, 0, 0, //
+      -2 * w, 0, 0, 0, 255 * w,
+    ]);
+```
+
+### 18.3 卡背 painter 骨架
+
+```dart
+class PracticeCardBackPainter extends CustomPainter {
+  PracticeCardBackPainter({
+    required this.images,
+    required this.rarity,
+    required this.dye, // practiceRevealDye(ms, rarity)
+    required this.light, // practiceCardLight(...)
+    required this.energy, // §6.6 的額外能量（徽記、外框、線路、泛光）
+    required this.emblemWhite,
+    required this.tier, // PracticeRevealEffectTier
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final n = images.n;
+    if (n == null) return _paintFallback(canvas, rect);
+    _image(canvas, n, rect); // B0
+    if (dye.blue > 0) _wipe(canvas, images.r, rect, dye.blue); // B1＋B3
+    if (dye.gold > 0) _wipe(canvas, images.sr, rect, dye.gold); // B2＋B3
+    if (tier != PracticeRevealEffectTier.low) _relief(canvas, rect); // B4
+    _specularBand(canvas, rect); // B5
+    if (rarity == PracticeGirlRarity.sr && dye.gold > 0 &&
+        tier != PracticeRevealEffectTier.low) {
+      _holo(canvas, rect, strength: dye.gold); // B6
+    }
+    _energy(canvas, rect); // B7
+    _emblemWhite(canvas, rect); // B8
+    _grain(canvas, rect); // B9
+  }
+
+  /// 轉化擴散：下一階的成品圖從徽記往外長出來，前緣一圈光。
+  void _wipe(Canvas canvas, ui.Image? next, Rect rect, double t) {
+    if (next == null) return; // 還沒解碼好：維持上一階（§6.8）
+    if (t >= 1) return _image(canvas, next, rect);
+    final center = rect.center;
+    final halfDiag = (rect.bottomRight - center).distance;
+    final r = t * 1.2 * halfDiag;
+    final soft = 0.18 * halfDiag;
+    canvas.saveLayer(rect, Paint());
+    _image(canvas, next, rect);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..shader = ui.Gradient.radial(
+          center,
+          r + soft,
+          const [Colors.white, Colors.white, Colors.transparent],
+          [0, r / (r + soft), 1],
+        ),
+    );
+    canvas.restore();
+    // 前緣光環（plus），α＝0.65·sin(πt)
+  }
+
+  // _relief、_specularBand、_holo、_energy、_emblemWhite、_grain：見 §6.2–§6.6。
+
+  @override
+  bool shouldRepaint(PracticeCardBackPainter old) =>
+      old.images != images ||
+      old.dye != dye ||
+      old.light.band != light.band ||
+      old.light.relief != light.relief ||
+      old.light.holoPhase != light.holoPhase ||
+      old.energy != energy ||
+      old.emblemWhite != emblemWhite ||
+      old.tier != tier;
+}
+```
+
+### 18.4 離線渲染器主流程
+
+```python
+geo = load_geometry('card_back_geometry.json')        # 向量構圖
+cov = rasterize(geo, size=(1200, 1800), ss=4)         # 4 倍柵格化 → 1× 覆蓋率（反鋸齒）
+H, mat, brush_dir = build_heightfield(cov, PROFILES)  # §5.2
+N = normals(H, k=7.0)
+for tier in ('n', 'r', 'sr'):
+    rgb = shade_metal(N, H, mat, brush_dir, MATERIALS[tier], LIGHTS)   # 坡度色、異向高光、邊緣亮線、AO
+    rgb = shade_field(rgb, H, mat, MATERIALS[tier])                    # 稜面、清漆、刻線
+    if tier == 'sr':
+        rgb = thin_film(rgb, N, holo_mask(mat, H), MATERIALS['sr'])    # 局部全息
+    rgb = add_emissive_bloom(rgb, emissive_mask(mat), MATERIALS[tier]) # 發光與泛光
+    save_webp(aces_to_srgb(rgb), f'practice_card_back_v4_{tier}.webp', quality=90)
+save_masks(relief_delta(N), holo_mask(...), gloss_mask(...), glow_masks(...))
+```
+
+---
+
+## 19. 參考資料與量測紀錄
+
+- **示意圖**：本次 session 上傳的兩張 1536×1024 原檔，不入庫；Eric 手上有原檔。
+- **取樣方法**：卡片外框範圍 → 正規化 → 區域中位數或亮部平均（§2.1）；本文件的所有色值都是這樣取得，`targets.json` 照抄。
+- **現況對照圖**（已入庫）：`docs/reviews/2026-10-18-card-draw-v3-1-slice1/`（`hold-before-after.jpg`、`n/r/sr-reveal-before-after.jpg`）。
+- **放大倍率與體積**：§3.1、§3.6、§8.3 的數字由 `practiceCeremonyCardSize()` 的公式與 `assets/images/practice_girls/` 的實際檔案算出；照片 WebP 體積是拿現有 10 張放大後試壓的估計，正式數字以 P1 實測為準。
+- **可行性試算**（2026-10-28，未入庫）：用現有 V3 的三張遮罩與底圖當高度和稜面來源，以 §5.3 的打光與三階參數離線渲染 904×1428 的 N／R／SR。結果：拉絲飾板、倒角明暗、槍鐵卡緣、鈦藍漸變、香檳金與克制的 SR 全息都做得出來，三階的底面都維持深色（現在的 SR 會被染黃）。差距在底面稜面太淡、整體略暗，以及原圖遮罩的邊緣抖動（例如徽記左下角的缺口）——前兩項是調參，最後一項就是 §5.1 要向量重建的原因。§5.3 的參數表即以這次試算為起點。
