@@ -8,10 +8,11 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../subscription/data/providers/subscription_providers.dart';
+import '../../domain/entities/practice_girl_profile.dart';
 import 'practice_new_badge.dart';
 
-const String kPracticeRoomEntryHeroAsset =
-    'assets/images/practice_girls/practice_girl_038.jpg';
+final String kPracticeRoomEntryHeroAsset =
+    practiceGirlPhotoAsset('practice_girl_038');
 const double kPracticeRoomEntryHeroBlurSigma = 1.4;
 
 /// 學習 tab 第一屏主視覺：AI 實戰練習室 Hero。
