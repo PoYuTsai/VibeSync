@@ -4079,7 +4079,8 @@ void main() {
     await finishCeremony(tester);
   });
 
-  testWidgets('V3.1：六角牌 1.94 s 才出現、第一幀就是正確稀有度，從畫面左上外面砸進來，2.06 s 落在卡片左上角（§5.10）',
+  testWidgets(
+      'V3.1：六角牌 1.94 s 才出現、第一幀就是正確稀有度，從畫面左上外面砸進來，2.06 s 落在卡片左上角內（§5.10、典藏材質 §7.3）',
       (tester) async {
     final girl = practiceGirlProfiles
         .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
@@ -4105,8 +4106,11 @@ void main() {
     ); // 2061：剛落地
     final card = tester.getRect(find.byKey(_ceremonyFrontKey));
     final landed = tester.getRect(find.byKey(badgeKey));
-    expect(card.left - landed.left, closeTo(12, 1), reason: '$landed');
-    expect(card.top - landed.top, closeTo(12, 1), reason: '$landed');
+    // 典藏材質規格 §7.3：落點收在卡片左上角內（左 12、上 16）。
+    expect(landed.left - card.left, closeTo(kPracticeRevealBadgeInset.dx, 1),
+        reason: '$landed');
+    expect(landed.top - card.top, closeTo(kPracticeRevealBadgeInset.dy, 1),
+        reason: '$landed');
 
     await finishCeremony(tester);
   });
@@ -4142,7 +4146,7 @@ void main() {
     await finishCeremony(tester);
   });
 
-  testWidgets('V3.1：停住時六角牌壓在卡片左上角（最多超出 12 px、不出螢幕），資訊欄在卡片內、星星在資訊欄內、只畫亮星',
+  testWidgets('典藏材質：停住時六角牌收在卡片左上角內（左 12、上 16），資訊欄在卡片內、星星在資訊欄內、只畫亮星',
       (tester) async {
     final girl = practiceGirlProfiles
         .firstWhere((g) => g.rarity == PracticeGirlRarity.sr);
@@ -4165,26 +4169,30 @@ void main() {
         .getRect(find.byKey(const ValueKey('practice-draw-ceremony-info')));
     const starsKey = ValueKey('practice-draw-ceremony-rarity-stars');
     final stars = tester.getRect(find.byKey(starsKey));
-    // V3.1 §5.10：牌壓在卡片左上角，往外超出最多 12 px，整塊還在螢幕內。
+    // 典藏材質規格 §7.3（M4 照示意圖）：牌整塊收在卡片左上角內，離左緣 12、上緣 16。
     final screen = tester
         .getRect(find.byKey(const ValueKey('practice-draw-ceremony-continue')));
-    expect(card.left - badge.left, inInclusiveRange(0, 12.5), reason: '$badge');
-    expect(card.top - badge.top, inInclusiveRange(0, 12.5), reason: '$badge');
-    expect(badge.right, greaterThan(card.left + 24), reason: '牌要壓在卡片上');
-    expect(badge.bottom, greaterThan(card.top + 12), reason: '牌要壓在卡片上');
+    expect(badge.left - card.left, closeTo(kPracticeRevealBadgeInset.dx, 0.5),
+        reason: '$badge');
+    expect(badge.top - card.top, closeTo(kPracticeRevealBadgeInset.dy, 0.5),
+        reason: '$badge');
+    expect(inside(card, badge), isTrue, reason: '牌 $badge 超出卡片 $card');
     expect(inside(screen, badge), isTrue, reason: '牌 $badge 超出螢幕 $screen');
     expect(inside(card, info), isTrue, reason: '資訊欄 $info 超出卡片 $card');
     expect(inside(info, stars), isTrue, reason: '星星 $stars 超出資訊欄 $info');
     expect(badge.overlaps(info), isFalse);
-    expect(
-      find.descendant(
-          of: find.byKey(starsKey), matching: find.byIcon(Icons.star_rounded)),
-      findsNWidgets(girl.rarity.stars),
-    );
-    expect(
-      find.descendant(
+    // 只畫亮星（V3 D6=A）：切面星每顆一個 key，第 stars 顆起不存在。
+    for (var i = 0; i < girl.rarity.stars; i++) {
+      expect(
+        find.descendant(
           of: find.byKey(starsKey),
-          matching: find.byIcon(Icons.star_outline_rounded)),
+          matching: find.byKey(ValueKey('practice-draw-ceremony-star-$i')),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byKey(ValueKey('practice-draw-ceremony-star-${girl.rarity.stars}')),
       findsNothing,
     );
 

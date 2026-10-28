@@ -11,6 +11,7 @@ import '../../../../core/theme/practice_reveal_palette.dart';
 import '../../data/providers/practice_chat_providers.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
+import 'practice_card_material.dart';
 import 'practice_draw_sfx.dart';
 import 'practice_reveal_card.dart';
 import 'practice_reveal_painters.dart';
@@ -1339,14 +1340,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   }
 
   /// 六角牌飛入的起點相對落點的位移（V3.1 §5.10）：起點在畫面左上外面（−0.5 螢幕寬、
-  /// −0.3 螢幕高），落點是卡片左上角往外 12 px。
+  /// −0.3 螢幕高），落點收在卡片左上角內（典藏材質規格 §7.3：左 12、上 16）。
   Offset _stampFrom(Size size, Offset cardCenter, Size cardSize) {
-    final landing = cardCenter -
-        cardSize.center(Offset.zero) -
-        const Offset(
-          kPracticeRevealBadgeOverhang,
-          kPracticeRevealBadgeOverhang,
-        );
+    final landing =
+        cardCenter - cardSize.center(Offset.zero) + kPracticeRevealBadgeInset;
     return Offset(-0.5 * size.width, -0.3 * size.height) - landing;
   }
 
@@ -1403,6 +1400,12 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
                 stampFrom: stampFrom,
               ),
               isNew: _revealIsNew,
+              // 外框受光點、SR 全息邊、玻璃反光跟著卡片姿態走；停住時姿態固定，光也固定。
+              light: practiceCardLight(
+                yawDeg: pose.yaw,
+                pitchDeg: pose.pitch,
+                front: true,
+              ),
             ),
           )
         : PracticeRevealCardBack(
