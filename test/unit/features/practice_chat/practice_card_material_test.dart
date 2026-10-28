@@ -40,6 +40,28 @@ void main() {
       expect(band(0), lessThan(0));
     });
 
+    test('外框受光點：側立時停在右下，落定時沿右邊、上緣滑到左上，不繞著外框轉圈', () {
+      double glint(double yaw, {bool front = true}) =>
+          practiceCardLight(yawDeg: yaw, pitchDeg: 0, front: front).glintDeg;
+      // 卡面剛轉過側立（yaw 90°）：band 遠在卡外，受光點停在右下角（225°＋180°）。
+      expect(glint(90), closeTo(405, 1e-9));
+      for (var yaw = 90.0; yaw < 180; yaw += 5) {
+        expect(glint(yaw + 5), lessThanOrEqualTo(glint(yaw)),
+            reason: 'yaw $yaw');
+      }
+      expect(glint(180), closeTo(225, 1e-9));
+      // 任何姿態（卡背翻牌也一樣）都只離左上半圈以內。
+      for (var yaw = -90.0; yaw <= 270; yaw += 15) {
+        for (final front in [false, true]) {
+          expect(
+            glint(yaw, front: front),
+            inInclusiveRange(45.0, 405.0),
+            reason: '${front ? '卡面' : '卡背'} yaw $yaw',
+          );
+        }
+      }
+    });
+
     test('浮雕補光夾在 −1..1；同一姿態算兩次結果相同', () {
       for (var yaw = -90.0; yaw <= 270; yaw += 15) {
         final a = practiceCardLight(yawDeg: yaw, pitchDeg: 9, front: false);

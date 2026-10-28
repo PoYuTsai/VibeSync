@@ -34,8 +34,9 @@ class PracticeCardLight {
   /// SR 全息色帶的相位（週期數）。
   final double holoPhase;
 
-  /// 外框受光點的角度（度；0＝右、90＝下，225＝左上）。
-  double get glintDeg => 225 + 180 * (band - 0.35);
+  /// 外框受光點的角度（度；0＝右、90＝下，225＝左上）。band 在卡外（翻牌側立時）只算到離
+  /// 左上半圈的右下角為止：受光點從右下滑進來、停在左上，不會繞著外框轉圈。
+  double get glintDeg => 225 + 180 * (band - 0.35).clamp(-1.0, 1.0);
 
   @override
   bool operator ==(Object other) =>
