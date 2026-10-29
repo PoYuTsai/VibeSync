@@ -79,6 +79,48 @@ def iou(a: np.ndarray, b: np.ndarray) -> float:
     return float((a & b).sum() / max((a | b).sum(), 1))
 
 
+def _seg_gap(p, a, b) -> float:
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    ab = b - a
+    t = np.clip(np.dot(p - a, ab) / max(np.dot(ab, ab), 1e-9), 0, 1)
+    return float(np.hypot(*(p - (a + t * ab))))
+
+
+def _polyline_gap(p, pts) -> float:
+    return min(_seg_gap(p, a, b) for a, b in zip(pts[:-1], pts[1:]))
+
+
+def _poly_gap(p, pts) -> float:
+    """點到多邊形邊界的距離，點在裡面時是負的。"""
+    q = np.asarray(pts, float)
+    d = min(_seg_gap(p, q[i], q[(i + 1) % len(q)]) for i in range(len(q)))
+    inside = False
+    for (x0, y0), (x1, y1) in zip(q, np.roll(q, -1, axis=0)):
+        if (y0 > p[1]) != (y1 > p[1]) and p[0] < x0 + (p[1] - y0) * (x1 - x0) / (y1 - y0):
+            inside = not inside
+    return -d if inside else d
+
+
+def _ring_gap(p, r) -> float:
+    c = np.asarray(r['center'], float)
+    if r['kind'] == 'arc':
+        ang = np.degrees(np.arctan2(p[1] - c[1], p[0] - c[0]))
+        a0, a1 = r['a0'], r['a1']
+        if not any(a0 <= ang + k <= a1 for k in (-360, 0, 360)):
+            ends = [c + r['r'] * np.array([np.cos(np.radians(a)), np.sin(np.radians(a))]) for a in (a0, a1)]
+            return min(float(np.hypot(*(p - e))) for e in ends)
+    return abs(float(np.hypot(*(p - c))) - r['r'])
+
+
+def _crossing(pa: np.ndarray, close: np.ndarray) -> bool:
+    """貼近的點只是交叉口附近一小段（兩條線斜著穿過彼此）：連續貼近的長度 ≤ 10 px。"""
+    run = best = 0
+    for c in close:
+        run = run + 1 if c else 0
+        best = max(best, run)
+    return best <= 10
+
+
 class GeometryLockTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -195,6 +237,58 @@ class GeometryLockTest(unittest.TestCase):
             ok = any(min(abs((m0 - b['a0']) % 360), 360 - abs((m0 - b['a0']) % 360)) <= 0.5 and
                      min(abs((m1 - b['a1']) % 360), 360 - abs((m1 - b['a1']) % 360)) <= 0.5 for b in arcs)
             self.assertTrue(ok, f"{a['id']} 鏡射後對不上")
+
+    def test_徽記沒有描圖短邊(self):
+        """#114 第 3 輪：描圖把尖角磨成一小段平頭或斜切（5.9–10.7 px），倒角後變成捏起來的小三角面。
+        修完最短的是鉤端那段 15.5 px 的直邊（原圖就有的鉤），不是描圖留下的。"""
+        shortest = min(float(np.hypot(*(np.roll(p, -1, axis=0) - p).T).min())
+                       for p in (np.asarray(e['points'], float) for e in self.geo['elements']
+                                 if e['layer'] == 'emblem'))
+        print(f'\n徽記最短邊 {shortest:.1f} px')
+        self.assertGreaterEqual(shortest, 15.0)
+
+    def test_線路端點不是差一點點才碰到(self):
+        """#114 第 3 輪：端點跟旁邊的線、環、節點之間看得到的縫，要嘛接上（≤ 0.5 px），要嘛是刻意留的
+        間隙（≥ 4 px，約 1.2 pt）；差 1–3 px 的看起來是斷線或錯接。這是回歸檢查，不拿來自動刪線。"""
+        els = self.geo['elements']
+        circuits = [e for e in els if e['layer'] == 'circuit']
+        polys = [e for e in els if e['kind'] == 'polygon' and e['layer'] in ('node-diamond', 'node-square',
+                                                                               'emblem')]
+        rings = [e for e in els if e['kind'] in ('ring', 'arc') and e['layer'] == 'orbit']
+        lines = circuits + [e for e in els if e['layer'] == 'frame-line']
+        worst = []
+        for e in circuits:
+            for j in (0, -1):
+                p = np.asarray(e['points'][j], float)
+                gaps = [_poly_gap(p, q['points']) - e['width'] / 2 for q in polys]
+                gaps += [_ring_gap(p, r) - (r['width'] + e['width']) / 2 for r in rings]
+                gaps += [_polyline_gap(p, o['points']) - (o['width'] + e['width']) / 2
+                         for o in lines if o is not e]
+                g = min(gaps)
+                if 0.5 < g < 4.0:
+                    worst.append((e['id'], [round(v, 1) for v in p], round(g, 2)))
+        self.assertEqual(worst, [])
+
+    def test_沒有雙線(self):
+        """#114 第 3 輪：線路彼此、線路跟外框細線、星軌弧跟線路，不能平行貼在 3 px 內超過 10 px
+        （鏡射重疊、描兩次、把蓋帽橫桿描成弧，都會變成一條比旁邊粗、兩端冒頭的線）。"""
+        els = self.geo['elements']
+        lines = [e for e in els if e['layer'] in ('circuit', 'frame-line')]
+        arcs = [e for e in els if e['kind'] == 'arc' and e['layer'] == 'orbit']
+        dense = [(e, _dense(e['points'], 1.0)) for e in lines]
+        dense += [(a, np.array([[a['center'][0] + a['r'] * np.cos(np.radians(t)),
+                                  a['center'][1] + a['r'] * np.sin(np.radians(t))]
+                                 for t in np.arange(a['a0'], a['a1'], 0.25)])) for a in arcs]
+        bad = []
+        for i, (a, pa) in enumerate(dense):
+            for b, pb in dense[i + 1:]:
+                if a['layer'] == 'frame-line' and b['layer'] == 'frame-line':
+                    continue
+                d = np.hypot(pa[:, None, 0] - pb[None, :, 0], pa[:, None, 1] - pb[None, :, 1]).min(axis=1)
+                close = d <= 3.0
+                if close.sum() > 10 and not _crossing(pa, close):
+                    bad.append((a['id'], b['id'], int(close.sum())))
+        self.assertEqual(bad, [])
 
     def test_疊圖輸出(self):
         old = np.maximum.reduce([self.emblem_mask, self.frame_mask, self.lines_mask]) > 0.5

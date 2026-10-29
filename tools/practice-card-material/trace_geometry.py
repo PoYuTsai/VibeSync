@@ -28,6 +28,9 @@
 - 收尾（#114 Gate-2a 第 1 輪審查：節點附近斷線、碎線）：左右節點群照示意圖重畫（菱形框、軸線、
   往弧環的一對斜線），清掉描成線路的環與短於 20 px（約 6 pt）的碎段，端點貼到節點的角，線路
   只留左半邊再鏡射到右邊（示意圖左右對稱、上下不對稱），星軌弧左右對齊。
+- 接角（#114 第 3 輪，逐一對 V2 原圖）：徽記描圖留下的 4 個短邊收成原圖的尖角或一刀切齊
+  （[EMBLEM_JOINTS]）；上下節點群原圖連續、描圖斷開或多描一份的接點逐一接好（[join_circuits]）。
+  都是列出座標的明確修正，描圖結果一變就報錯，不用長度門檻自動刪改。
 - 底面稜面與內外環之間的刻度盤是照示意圖新加的裝飾，不是描出來的。
 座標全部換到 1200×1800 畫布（§5.1 的對位：中心元件以外環圓心為準等比放大 s＝1800／1428，
 圓心對到畫布正中；外框元件各自貼齊最近的卡緣，飾板與刻記沿卡緣置中）。
@@ -750,6 +753,227 @@ def tidy(elements: list[dict], outer_r: float, inner_r: float, arc_r: float) -> 
     return others + out
 
 
+def _line_hit(p, d, a, b) -> np.ndarray:
+    """從 p 沿方向 d 的直線，跟直線 a–b 的交點。"""
+    p, d, a, b = (np.asarray(v, float) for v in (p, d, a, b))
+    e = b - a
+    den = d[0] * e[1] - d[1] * e[0]
+    t = ((a[0] - p[0]) * e[1] - (a[1] - p[1]) * e[0]) / den
+    return p + t * d
+
+
+def _find_edge(elements: list[dict], a, b, tol: float = 2.0) -> tuple[dict, int]:
+    """找出頂點 i、i+1 分別在 a、b 附近（tol px）的那個徽記多邊形；找不到或不只一個就報錯
+    （描圖結果變了，要重新檢查這些接角，不能默默跳過）。"""
+    hits = []
+    for e in elements:
+        if e['layer'] != 'emblem':
+            continue
+        p = np.asarray(e['points'], float)
+        for i in range(len(p)):
+            if (np.hypot(*(p[i] - a)) <= tol and np.hypot(*(p[(i + 1) % len(p)] - b)) <= tol):
+                hits.append((e, i))
+    assert len(hits) == 1, f'徽記接角 {a}→{b} 找到 {len(hits)} 處'
+    return hits[0]
+
+
+# 徽記描圖留下的短邊（#114 第 3 輪，對 V2 原圖）：原圖是尖角或一刀切齊，描圖把轉角磨出一小段平頭
+# 或斜切，倒角以後變成捏起來的小三角面。（短邊起點, 終點, 做法）
+EMBLEM_JOINTS = [
+    ((794.7, 759.5), (800.6, 759.5), 'corner'),  # 右側面右上角：5.9 px 平頭 → 尖角（同左側面左上角）
+    ((539.5, 846.2), (546.4, 842.2), 'corner'),  # Y 左臂端：8 px 斜切 → 一刀直切（同其他筆畫的端）
+    ((733.8, 949.4), (727.5, 949.4), 'corner'),  # 右側面鉤端：6.2 px 平頭 → 一刀 30° 切齊
+    ((594.5, 1148.5), (585.2, 1143.1), 'bottom'),  # 立方體下頂點：10.7 px 斜切 → 沿外輪廓收成 V
+]
+
+
+def emblem_joints(elements: list[dict]) -> None:
+    """就地修 [EMBLEM_JOINTS]：
+    - corner：拿掉短邊，前後兩條邊延長到交點；
+    - bottom：短邊改沿左側面的底邊（延長線）切到右側面底邊的交點，外輪廓收成乾淨的六角形，
+      不留一根比左側面更低的尖刺（原圖最低點也在下頂點附近）。"""
+    left_bottom = None
+    for e in elements:
+        if e['layer'] == 'emblem' and not e.get('hole'):
+            p = np.asarray(e['points'], float)
+            for i in range(len(p)):
+                u, v = p[i], p[(i + 1) % len(p)]
+                ang = np.degrees(np.arctan2(v[1] - u[1], v[0] - u[0])) % 180
+                if (abs(ang - 30) < 1 and max(u[1], v[1]) > 1100 and max(u[0], v[0]) < CANVAS_W / 2
+                        and np.hypot(*(v - u)) > 40):  # 左側面的底邊（不是要修的那段短斜切）
+                    left_bottom = (u, v)
+    for a, b, kind in EMBLEM_JOINTS:
+        e, i = _find_edge(elements, np.array(a), np.array(b))
+        p = [np.asarray(q, float) for q in e['points']]
+        n = len(p)
+        prev, pa, pb, nxt = p[i - 1], p[i], p[(i + 1) % n], p[(i + 2) % n]
+        if kind == 'corner':
+            p[i] = _line_hit(prev, pa - prev, nxt, pb)
+            del p[(i + 1) % n]
+        else:
+            u, v = left_bottom
+            p[i] = _line_hit(prev, pa - prev, u, v)      # 右側面底邊 × 左側面底邊＝下頂點
+            p[(i + 1) % n] = _line_hit(nxt, pb - nxt, u, v)  # 中柱左緣 × 左側面底邊
+        e['points'] = [[round(float(x), 2), round(float(y), 2)] for x, y in p]
+
+
+def _find_line(circuits: list[dict], pt, tol: float = 2.0) -> tuple[dict, int]:
+    """端點在 pt 附近（tol px）的那條線路與端點索引（0 或 -1）；找不到或不只一條就報錯。"""
+    hits = [(e, j) for e in circuits for j in (0, -1)
+            if np.hypot(*(np.asarray(e['points'][j], float) - pt)) <= tol]
+    assert len(hits) == 1, f'線路端點 {pt} 找到 {len(hits)} 處'
+    return hits[0]
+
+
+def _mx(pt) -> np.ndarray:
+    return np.array([CANVAS_W - pt[0], pt[1]], float)
+
+
+def join_circuits(elements: list[dict], inner_r: float) -> list[dict]:
+    """上下節點群的接點（#114 第 3 輪，逐一對 V2 原圖：這些地方原圖是連續的，描圖斷開、差幾 px
+    或多描了一份）。座標是左半邊的，右半邊鏡射同步；上下兩組各自列（上下本來就不對稱）：
+    1. 中軸 ±2.5 px 內的點鎖到中軸，鏡射後完全重疊的線只留一條（框底點 599／601 兩條交叉成雙線）；
+    2. 上下飾板底下那條橫線拿掉：外框細線已經有這一段，疊成雙線、兩端多出短刺；
+    3. 頂部中央那段內弧拿掉：它是蓋帽橫桿被當成弧描出來的，貼在橫桿下面成雙線、兩端冒頭；
+    4. 外側直線在外環處斷開：上半（直線＋往節點的斜線）跟下半（環內直線）接成一條、細線寬；
+    5. 往上下實心菱形的斜線延長到碰到菱形的面（原圖是碰到的）；
+    6. 中軸主線延長到菱形框頂點的小節點；
+    7. 「/」線延長到菱形框的側頂點，保持 45°（轉角沿直線上移）；
+    8. 內環邊：框腳、蓋帽斜腳、往外的斜線收在同一個交點（蓋帽斜腳與斜線延長線的交點）。"""
+    cx = CANVAS_W / 2
+    circuits = [e for e in elements if e['layer'] == 'circuit']
+    others = [e for e in elements if e['layer'] != 'circuit']
+    nodes = [e for e in others if e['layer'].startswith('node-')]
+
+    def node_at(c):
+        hit = [e for e in nodes if np.hypot(*(np.mean(np.asarray(e['points'], float), axis=0) - c)) <= 2]
+        assert len(hit) == 1, f'節點 {c} 找到 {len(hit)} 顆'
+        return np.asarray(hit[0]['points'], float)
+
+    def pts(e):
+        return np.asarray(e['points'], float)
+
+    def put(e, p):
+        e['points'] = np.asarray(p, float).tolist()
+
+    # 1. 中軸
+    for e in circuits:
+        p = pts(e)
+        p[np.abs(p[:, 0] - cx) <= 2.5, 0] = cx
+        put(e, p)
+    uniq, seen = [], set()
+    for e in circuits:
+        p = np.round(pts(e), 1)
+        key = tuple(map(tuple, p)) if tuple(p[0]) <= tuple(p[-1]) else tuple(map(tuple, p[::-1]))
+        if key not in seen:
+            seen.add(key)
+            uniq.append(e)
+    circuits = uniq
+
+    # 2. 飾板底下的橫線
+    for y in (101.2, 1698.8):
+        e, _ = _find_line(circuits, np.array([436.3, y]))
+        circuits.remove(e)
+    # 3. 頂部中央的內弧
+    dup = [e for e in others if e['kind'] == 'arc' and abs((e['a0'] + e['a1']) / 2 + 90) < 1
+           and e['a1'] - e['a0'] < 10]
+    assert len(dup) == 1, f'頂部中央內弧找到 {len(dup)} 段'
+    others.remove(dup[0])
+
+    for sign in (-1, 1):
+        def y(v):  # 上組的 y 換到這一組（下組是上組沿卡片中線鏡射的座標）
+            return v if sign < 0 else CANVAS_H - v
+
+        tip = node_at((cx, y(293.1)))     # 卡片上（下）方的實心菱形
+        small = node_at((cx, y(406.9)))   # 菱形框頂點的小節點
+
+        for mirror in (False, True):
+            f = _mx if mirror else (lambda q: np.asarray(q, float))
+
+            # 4. 外環處斷開的直線：下半段（環內）接到上半段（直線＋斜線）的環上端點
+            lower, lj = _find_line(circuits, f((482.9, y(471.8))))
+            upper, uj = _find_line(circuits, f((483.7, y(460.0))))
+            far = pts(lower)[1 + lj]  # 下半段的另一端（靠內環那一端）
+            p = pts(upper)
+            p[:, 0] = np.where(np.abs(p[:, 0] - far[0]) <= 1.5, far[0], p[:, 0])
+            p = np.vstack([far[None], p[1:]]) if uj == 0 else np.vstack([p[:-1], far[None]])
+            put(upper, p)
+            upper['width'] = min(upper['width'], lower['width'])
+            circuits.remove(lower)
+
+            # 5. 往實心菱形的斜線碰到菱形的面
+            c = tip.mean(axis=0)
+            half = float(np.ptp(tip[:, 0])) / 2
+            e, j = _find_line(circuits, f((582.9, y(305.8))))
+            p = pts(e)
+            k = 1 if j == 0 else -2
+            d = p[j] - p[k]
+            d /= np.hypot(*d)
+            gap = abs(p[j][0] - c[0]) + abs(p[j][1] - c[1]) - half  # 菱形用 L1 距離
+            p[j] = p[j] + d * (gap + 0.8) / (abs(d[0]) + abs(d[1]))  # 收進菱形面底下 0.8 px
+            put(e, p)
+
+            # 7. 「/」線延長到菱形框的側頂點（保持 45°）
+            e, j = _find_line(circuits, f((543.9, y(464.7))))
+            sv = f((557.9, y(446.9)))
+            p = pts(e)
+            k = 1 if j == 0 else -2
+            p[k][1] = sv[1] - np.sign(sv[1] - p[k][1]) * abs(sv[0] - p[k][0])
+            p[j] = sv
+            put(e, p)
+
+        # 6. 中軸主線延長到框頂點的小節點（中軸上只有一條，不用鏡射）
+        sc = small.mean(axis=0)
+        sh = float(np.ptp(small[:, 1])) / 2
+        e, j = _find_line(circuits, np.array([cx, y(389.9)]))
+        p = pts(e)
+        p[j][1] = sc[1] + sign * (sh - 0.8)  # 小節點朝外的頂點，收進去 0.8 px
+        put(e, p)
+
+    # 8. 內環邊的三向交點（上組：蓋帽斜腳 × 往外斜線；下組同理）
+    for leg_end, leg_in, spoke_end, frame_end in (
+            ((563.4, 613.2), (580.8, 630.6), (560.6, 607.1), (558.7, 600.3)),
+            ((566.1, 1193.6), (579.6, 1176.4), (553.4, 1191.8), (558.7, 1199.7))):
+        for mirror in (False, True):
+            f = _mx if mirror else (lambda q: np.asarray(q, float))
+            cap, cj = _find_line(circuits, f(leg_end))
+            spoke, sj = _find_line(circuits, f(spoke_end))
+            leg, fj = _find_line(circuits, f(frame_end))
+            sp = pts(spoke)
+            sk = 1 if sj == 0 else -2
+            meet = _line_hit(f(leg_in), f(leg_end) - f(leg_in), sp[sk], sp[sj])
+            assert abs(np.hypot(*(meet - (cx, CANVAS_H / 2))) - inner_r) < 10, meet
+            for e, j in ((cap, cj), (spoke, sj), (leg, fj)):
+                p = pts(e)
+                p[j] = meet
+                put(e, p)
+
+    # 9. 下組的內弧接著線路走：原圖是內弧彎下來直接變成線路；描圖讓弧多走了 8°、線路又從弧上
+    #    先折一小段 45°，兩條平行貼在一起成雙線、弧端冒頭。弧收在線路的起點，線路拿掉那段小折角
+    #    （起點的切線方向 31°，跟下一段 31° 接成一直線）。上組本來就接好了，不用改。
+    for start, kink in (((464.2, 1127.4), (475.4, 1138.6)),):
+        for mirror in (False, True):
+            f = _mx if mirror else (lambda q: np.asarray(q, float))
+            line, j = _find_line(circuits, f(start))
+            p = pts(line)
+            k = 1 if j == 0 else -2
+            assert np.hypot(*(p[k] - f(kink))) <= 2, p[k]
+            put(line, np.delete(p, k if k >= 0 else len(p) + k, axis=0))
+            ang = float(np.degrees(np.arctan2(p[j][1] - CANVAS_H / 2, p[j][0] - cx)))
+            arc = [a for a in others if a['kind'] == 'arc' and a['a0'] < ang < a['a1']]
+            assert len(arc) == 1, f'線路起點 {p[j]} 落在 {len(arc)} 段內弧上'
+            a = arc[0]
+            # 弧從線路起點往線路去的那一端收掉（下組線路往中軸走：左邊收 a0、右邊收 a1）
+            if mirror:
+                a['a1'] = round(ang, 2)
+            else:
+                a['a0'] = round(ang, 2)
+
+    for e in circuits:
+        e['points'] = [[round(float(a), 2), round(float(b), 2)] for a, b in e['points']]
+    return others + circuits
+
+
 def snap_width(w: float) -> float:
     """線寬分兩級：細線路（< 3 px）與主線（軸、連接線、節點框）。"""
     return 2.6 if w < 3.0 else 4.0
@@ -1063,7 +1287,10 @@ def trace(overlay: Path | None) -> dict:
     # 細線
     # 細線門檻放低到 0.3：底部那幾條斜的線路在遮罩裡比較淡
     thin = (art > 0.3) & ~ndimage.binary_dilation(thick, iterations=2)
-    thin = morphology.remove_small_objects(thin, max_size=30)
+    try:
+        thin = morphology.remove_small_objects(thin, max_size=30)
+    except TypeError:  # scikit-image < 0.26：同一件事叫 min_size（小於它的拿掉）
+        thin = morphology.remove_small_objects(thin, min_size=31)
     # 徽記周圍（原圖的髒缺口）不出線
     thin &= ~ndimage.binary_dilation(em, iterations=6)
     dt = ndimage.distance_transform_edt(art > 0.5)
@@ -1090,6 +1317,8 @@ def trace(overlay: Path | None) -> dict:
                          'width': round(snap_width(p['width']) * SCALE, 2)})
 
     elements = tidy(elements, outer_r * SCALE, inner_r * SCALE, arc_r * SCALE)
+    emblem_joints(elements)
+    elements = join_circuits(elements, inner_r * SCALE)
     for e in elements:
         e['anchor'] = 'center'
     for e in build_frame():
