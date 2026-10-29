@@ -48,6 +48,7 @@ def main() -> None:
     targets = json.loads(cm.TARGETS.read_text())
     hfm = hf.build(scale=args.scale)
     smoke = rc.smoke_texture(hfm['height'].shape)
+    prep = rc.prepare(hfm, smoke)  # 法線、反射、環境光、紋理跟 base 無關，只算一次
     result = {}
     for name, tier in rc.TIERS.items():
         lo = {k: -0.6 for k in PROBES}
@@ -57,7 +58,7 @@ def main() -> None:
             for k in PROBES:
                 base[k] = (lo[k] + hi[k]) / 2
             t = rc.Tier(**{**tier.__dict__, 'base': base})
-            img, _ = rc.shade(hfm, t, smoke=smoke)
+            img, _ = rc.shade(hfm, t, smoke=smoke, prep=prep)
             for k, (got, want) in measure(img.astype(np.float64), name, targets).items():
                 if got < want:
                     lo[k] = base[k]
@@ -65,7 +66,7 @@ def main() -> None:
                     hi[k] = base[k]
         result[name] = {k: round(v, 3) for k, v in base.items()}
         t = rc.Tier(**{**tier.__dict__, 'base': result[name]})
-        img, _ = rc.shade(hfm, t, smoke=smoke)
+        img, _ = rc.shade(hfm, t, smoke=smoke, prep=prep)
         rows = cm.match(img.astype(np.float64), name, targets)
         print(name, result[name])
         for r in rows:

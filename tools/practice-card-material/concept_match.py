@@ -168,14 +168,14 @@ def _masks(size: tuple[int, int]) -> dict[str, np.ndarray]:
     cover = g.rasterize(geo, layers=['emblem', 'plate', 'sidebar', 'edge-band', 'frame-line'])
     hgt, wid = cover['emblem'].shape
     yy, xx = np.mgrid[0:hgt, 0:wid]
-    face = hf.emblem_brush(geo, (hgt, wid))
+    face = hf.emblem_face_map(geo, (hgt, wid))
     inner = hf.chamfer_distance(cover['emblem'], 12) >= 11  # 倒角 8 px＋3 px
     plate = (hf.chamfer_distance(cover['plate'], 16) >= 14) & (yy < hgt / 2)
     bar = (hf.chamfer_distance(cover['sidebar'], 14) >= 12) & (cover['plate'] < 0.5)
     band = (hf.chamfer_distance(cover['edge-band'], 14) >= 12) & (cover['frame-line'] < 0.5) & \
         (cover['sidebar'] < 0.5) & (np.abs(yy - hgt / 2) < 0.38 * hgt) & (np.abs(yy - hgt / 2) > 0.16 * hgt)
-    raw = {'face-top': inner & (face == 90), 'face-left': inner & (face == 30),
-           'face-right': inner & (face == 150), 'plate': plate, 'bar': bar, 'band': band}
+    raw = {'face-top': inner & (face == hf.FACE_TOP), 'face-left': inner & (face == hf.FACE_LEFT),
+           'face-right': inner & (face == hf.FACE_RIGHT), 'plate': plate, 'bar': bar, 'band': band}
     out = {}
     for k, m in raw.items():
         im = Image.fromarray(m.astype(np.uint8) * 255).resize(size, Image.BILINEAR)
@@ -239,8 +239,12 @@ def texture_rows(img: np.ndarray, tier: str, targets: dict | None = None) -> lis
         b = got['brush'][part]
         rows.append({'name': f'{part}-continuity', 'got': b['continuity'], 'want': want['brush'][part][0],
                      'ok': b['continuity'] <= 0.6})
-        ratio = b['contrast'] / want['brush'][part][1]
-        rows.append({'name': f'{part}-contrast', 'got': b['contrast'], 'want': want['brush'][part][1],
+        target = want['brush'][part][1]
+        if target is None:  # 示意圖沒有量到：只印實測值
+            rows.append({'name': f'{part}-contrast', 'got': b['contrast'], 'want': float('nan'), 'ok': True})
+            continue
+        ratio = b['contrast'] / target
+        rows.append({'name': f'{part}-contrast', 'got': b['contrast'], 'want': target,
                      'ok': 0.5 <= ratio <= 1.6})
     return rows
 

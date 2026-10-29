@@ -1,7 +1,7 @@
 """卡背素材的檢查（典藏材質規格 §5.6、§14.2 第 10 點）：
 
 - 提交的素材：尺寸、大小上限（§5.4）、遮罩不透明（Flutter 解碼後是預乘 alpha，遮罩不能放 alpha）；
-- 三階成品圖對 targets.json 的區域色差都在門檻內（§5.5）；
+- 三階成品圖對 targets.json 的區域色差都在門檻內（§5.5）、紋理指標（拉絲連續性、徽記三面明暗、底面顆粒）；
 - 重跑逐位元相同（用 1/4 解析度跑兩次比對，省時間）。
 
 python3 -m unittest discover -s tools/practice-card-material -p 'test_render.py'
@@ -57,6 +57,23 @@ class AssetTest(unittest.TestCase):
                              .convert('RGB'), np.float64) / 255.0
             bad = [r for r in cm.match(img, tier) if not r['ok']]
             self.assertEqual(bad, [], tier)
+
+
+    def test_紋理指標(self):
+        """#114 第 3 輪：色差只管顏色接近，這裡守住質感的幾個量（回歸檢查，不能代替目視）：
+        - 拉絲沒有整條長紋：上飾板、側飾條、卡緣暗帶的連續性 ≤ 0.6（示意圖 0.3–0.5，第 1 輪 0.97–0.99）；
+        - 徽記三面有明暗：右面／上面 ≤ 0.93、左面／上面 0.92–1.02（示意圖 0.85–0.94、0.96–0.99）；
+        - 底面不是平滑塑膠：細顆粒 ≥ 1.0（第 1 輪 0.2–0.3）。"""
+        for tier in ('n', 'r', 'sr'):
+            img = np.asarray(Image.open(ASSETS / f'practice_card_back_v4_{tier}.webp')
+                             .convert('RGB'), np.float64) / 255.0
+            got = cm.texture(img)
+            for part in ('plate', 'bar', 'band'):
+                self.assertLessEqual(got['brush'][part]['continuity'], 0.6, f'{tier} {part}')
+            left, right = got['faces']['ratio']
+            self.assertLessEqual(right, 0.93, tier)
+            self.assertTrue(0.92 <= left <= 1.02, f'{tier} {left:.3f}')
+            self.assertGreaterEqual(got['field']['fine'], 1.0, tier)
 
 
 class DeterminismTest(unittest.TestCase):
