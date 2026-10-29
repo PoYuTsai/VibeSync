@@ -665,7 +665,7 @@ class PracticeCardBackPainter extends CustomPainter {
   /// 全息色帶的週期（卡寬的倍數，同離線渲染）。
   static const double _kHoloPeriod = 0.35;
 
-  /// 額外發光各通道的最大不透明度（`plus` 混色）。
+  /// 額外發光各通道的最大不透明度（`screen` 混色）。
   static const double _kEmblemGain = 0.3;
   static const double _kFrameGain = 0.4;
   static const double _kLinesGain = 0.5;
@@ -813,7 +813,8 @@ class PracticeCardBackPainter extends CustomPainter {
   }
 
   /// 浮雕補光（§6.4）：`light.R` 是光從左上移到右上時的明暗差。relief＞0 把變亮的那一半疊亮
-  /// （`plus` 白）、變暗的那一半壓暗（黑）；relief＜0 反過來。看起來像光跟著卡片轉動慢慢移動。
+  /// （`plus` 這一階金屬的亮色，金屬的反光帶自己的顏色，香檳金不會被白光洗淡）、變暗的那一半
+  /// 壓暗（黑）；relief＜0 反過來。看起來像光跟著卡片轉動慢慢移動。
   void _relief(Canvas canvas, Rect rect) {
     final mask = images[PracticeCardMaterialSlot.light]!;
     final strength = light.relief.abs() * _kReliefGain;
@@ -826,7 +827,7 @@ class PracticeCardBackPainter extends CustomPainter {
         ..blendMode = BlendMode.plus
         ..colorFilter = practiceReliefHalf(
           upper: toward,
-          color: Colors.white,
+          color: _tint,
           strength: strength,
         ),
     );
@@ -871,15 +872,7 @@ class PracticeCardBackPainter extends CustomPainter {
       PracticeRevealTheme.r.backSpecular,
       PracticeRevealTheme.sr.backSpecular,
     );
-    final tint = Color.lerp(
-      Color.lerp(
-        PracticeRevealTheme.n.rimHi,
-        PracticeRevealTheme.r.rimHi,
-        dye.blue,
-      ),
-      PracticeRevealTheme.sr.rimHi,
-      dye.gold,
-    )!;
+    final tint = _tint;
     canvas.saveLayer(rect, Paint()..blendMode = BlendMode.plus);
     _image(
       canvas,
@@ -911,6 +904,17 @@ class PracticeCardBackPainter extends CustomPainter {
   /// 染色當下的值：銀 → 藍 → 金（[dye] 只升到真實稀有度）。
   double _mix(double n, double r, double sr) =>
       (n + (r - n) * dye.blue) * (1 - dye.gold) + sr * dye.gold;
+
+  /// 這一階金屬反光的顏色（外框的亮色，跟著染色走）。
+  Color get _tint => Color.lerp(
+        Color.lerp(
+          PracticeRevealTheme.n.rimHi,
+          PracticeRevealTheme.r.rimHi,
+          dye.blue,
+        ),
+        PracticeRevealTheme.sr.rimHi,
+        dye.gold,
+      )!;
 
   /// SR 全息（§6.5）：`light.G`（×染金進度）當遮罩、右邊強左邊弱（示意圖二），再 `srcIn` 一條
   /// 115° 的重複彩虹；整層 `color` 混色只換色相與飽和度、保留金屬的明暗。色帶隨全息相位平移。
@@ -958,7 +962,9 @@ class PracticeCardBackPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// 額外發光（§6.6，`plus`）：`glowMask` 三個通道與 `glow` 泛光，顏色跟著染色走。
+  /// 額外發光（§6.6）：`glowMask` 三個通道與 `glow` 泛光，顏色跟著染色走。用 `screen` 疊（結果
+  /// ＝底＋光×(1−底)）：暗的地方（徽記外圍的光暈、暗帶）幾乎照樣加亮，本來就亮的金屬只微微提亮、
+  /// 不會一起爆成一片白，蓄力與脈衝時徽記的倒角、拉絲仍看得到（#114 第 3 輪；原本是 `plus`）。
   void _energy(Canvas canvas, Rect rect) {
     final color = Color.lerp(
       Color.lerp(
@@ -981,7 +987,7 @@ class PracticeCardBackPainter extends CustomPainter {
         mask,
         rect,
         Paint()
-          ..blendMode = BlendMode.plus
+          ..blendMode = BlendMode.screen
           ..colorFilter =
               practiceChannelAlpha(channel, color, (value * gain).clamp(0, 1)),
       );
@@ -993,7 +999,7 @@ class PracticeCardBackPainter extends CustomPainter {
         glow,
         rect,
         Paint()
-          ..blendMode = BlendMode.plus
+          ..blendMode = BlendMode.screen
           ..colorFilter = ColorFilter.mode(
             color.withValues(alpha: (energy.bloom * _kBloomGain).clamp(0, 1)),
             BlendMode.srcIn,

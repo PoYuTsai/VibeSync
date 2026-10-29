@@ -514,6 +514,53 @@ void main() {
       );
     });
 
+    test('額外發光用 screen 疊：本來就亮的金屬只微微提亮，不會跟暗處一樣加到爆白', () async {
+      Future<int> lit(Color base) async {
+        final painter = PracticeCardBackPainter(
+          images: PracticeCardMaterialImages({
+            PracticeCardMaterialSlot.n: await _solid(base),
+            // R 0.5＝沒有浮雕差、B 0＝沒有高光遮罩：只看額外發光
+            PracticeCardMaterialSlot.light:
+                await _solid(const Color(0xFF808000)),
+            PracticeCardMaterialSlot.glowMask: await _solid(Colors.white),
+            PracticeCardMaterialSlot.glow: await _solid(Colors.white),
+          }),
+          dye: (blue: 0.0, gold: 0.0),
+          light: const PracticeCardLight(band: 5, relief: 0, holoPhase: 0),
+          energy: const PracticeCardBackEnergy(emblem: 1, bloom: 1),
+        );
+        final px =
+            await _pixel((canvas, rect) => painter.paint(canvas, rect.size));
+        return px[0];
+      }
+
+      final dark = await lit(const Color(0xFF202020));
+      final bright = await lit(const Color(0xFFE0E0E0));
+      expect(bright, lessThan(250), reason: 'plus 會直接加到 255');
+      expect(bright - 0xE0, lessThan((dark - 0x20) ~/ 3));
+    });
+
+    test('浮雕補光的亮半邊染這一階金屬的亮色：SR 是淡金，不是白光', () async {
+      final painter = PracticeCardBackPainter(
+        images: PracticeCardMaterialImages({
+          for (final slot in [
+            PracticeCardMaterialSlot.n,
+            PracticeCardMaterialSlot.r,
+            PracticeCardMaterialSlot.sr,
+          ])
+            slot: await _solid(Colors.black),
+          // R 1＝浮雕補光差最大（變亮的那一半）、G 0＝沒有全息、B 0＝沒有高光遮罩
+          PracticeCardMaterialSlot.light: await _solid(const Color(0xFFFF0000)),
+        }),
+        dye: (blue: 1.0, gold: 1.0),
+        light: const PracticeCardLight(band: 5, relief: 1, holoPhase: 0),
+      );
+      final px =
+          await _pixel((canvas, rect) => painter.paint(canvas, rect.size));
+      expect(px[0], greaterThan(100));
+      expect(px[2], lessThan(px[0] - 20), reason: '淡金（#FDF2BA）：藍比紅少');
+    });
+
     test('每一層都畫得出來（假素材，揭曉全程與等待）', () async {
       for (final rarity in PracticeGirlRarity.values) {
         for (var ms = 0.0; ms <= PracticeRevealTiming.flipPeakMs; ms += 100) {
