@@ -35,9 +35,9 @@ void main() {
       expect(themes.map((t) => t.ambientAlpha), [0.22, 0.32, 0.45]);
       expect(themes.map((t) => t.sheenStrength), [0.35, 0.55, 0.85]);
       expect(themes.map((t) => t.holo), [false, false, true]);
-      // D9=A：揭曉的 R 用較亮的電光藍，和圖鑑的 #64B5F6 分開。
-      expect(themes[1].backTint, PracticeRevealPalette.rBackTint);
-      expect(themes[1].backTint, isNot(const Color(0xFF64B5F6)));
+      // D9=A：揭曉的 R 用較亮的電光藍，和圖鑑的 #64B5F6 分開（典藏材質 M9 起衝擊波跟環境光同色）。
+      expect(themes[1].shockwave, PracticeRevealPalette.rGlow);
+      expect(themes[1].shockwave, isNot(const Color(0xFF64B5F6)));
     });
 
     test('泛光層數：高、中檔前後兩層，低檔只畫後層（§9）；檔位可在測試覆寫', () {

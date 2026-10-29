@@ -18,7 +18,6 @@ abstract final class PracticeRevealPalette {
   static const Color nOrb = Color(0xFFE2E8F0);
 
   // ── R：電光藍（典藏材質 M9：照示意圖一的鈦藍取樣，比 V3 的天空藍再飽和一點）──
-  static const Color rBackTint = Color(0xFF8BC5FC);
   static const Color rGlow = Color(0xFF4FB0FF);
   static const Color rBadgeLight = Color(0xFFBAE6FD);
   static const Color rBadgeDeep = Color(0xFF38BDF8);

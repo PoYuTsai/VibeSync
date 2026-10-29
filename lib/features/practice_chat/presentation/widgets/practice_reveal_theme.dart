@@ -32,7 +32,6 @@ int practiceRevealBloomLayers(PracticeRevealEffectTier tier) =>
 @immutable
 class PracticeRevealTheme {
   const PracticeRevealTheme._({
-    required this.backTint,
     required this.rimDark,
     required this.rimMid,
     required this.rimHi,
@@ -53,9 +52,6 @@ class PracticeRevealTheme {
     required this.orb,
     required this.holo,
   });
-
-  /// 稀有度的主色（衝擊波光環的顏色）。
-  final Color backTint;
 
   /// 卡面拋光外框的暗／中／亮（典藏材質規格 §6.7）：截面外暗、中亮、內暗，亮度隨受光角變化。
   final Color rimDark;
@@ -114,7 +110,6 @@ class PracticeRevealTheme {
   final bool holo;
 
   static const PracticeRevealTheme n = PracticeRevealTheme._(
-    backTint: PracticeRevealPalette.nBackTint,
     rimDark: PracticeRevealPalette.nRimDark,
     rimMid: PracticeRevealPalette.nRimMid,
     rimHi: PracticeRevealPalette.nRimHi,
@@ -137,7 +132,6 @@ class PracticeRevealTheme {
   );
 
   static const PracticeRevealTheme r = PracticeRevealTheme._(
-    backTint: PracticeRevealPalette.rBackTint,
     rimDark: PracticeRevealPalette.rRimDark,
     rimMid: PracticeRevealPalette.rRimMid,
     rimHi: PracticeRevealPalette.rRimHi,
@@ -160,7 +154,6 @@ class PracticeRevealTheme {
   );
 
   static const PracticeRevealTheme sr = PracticeRevealTheme._(
-    backTint: PracticeRevealPalette.srBackTint,
     rimDark: PracticeRevealPalette.srRimDark,
     rimMid: PracticeRevealPalette.srRimMid,
     rimHi: PracticeRevealPalette.srRimHi,
