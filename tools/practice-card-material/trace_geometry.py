@@ -26,7 +26,7 @@
   「//」刻記、卡緣暗帶），上下左右對稱、斜邊一律 45°；不描輪廓（V3 的外框遮罩含卡片外緣，
   執行時由拋光外框取代）。
 - 收尾（#114 Gate-2a 第 1 輪審查：節點附近斷線、碎線）：左右節點群照示意圖重畫（菱形框、軸線、
-  往弧環的一對斜線），清掉描成線路的環與短於 20 px（約 6 pt）的碎段，端點貼到節點的角，線路
+  往弧環的一對斜線），清掉描成線路的環與逐一列座標的描圖碎段（`TRACE_FRAGMENTS`），端點貼到節點的角，線路
   只留左半邊再鏡射到右邊（示意圖左右對稱、上下不對稱），星軌弧左右對齊。
 - 接角（#114 第 3 輪，逐一對 V2 原圖）：徽記描圖留下的 4 個短邊收成原圖的尖角或一刀切齊
   （[EMBLEM_JOINTS]）；上下節點群原圖連續、描圖斷開或多描一份的接點逐一接好（[join_circuits]）。
@@ -678,10 +678,45 @@ def _symmetric_arcs(arcs: list[dict]) -> None:
         done.update({i, j})
 
 
+# 描圖留下、確定要拿掉的短線路：畫布座標的兩端點（各 ±1.5 px，不分方向）。逐一列出、每一筆要剛好命中
+# 一條，描圖結果一變就報錯；其他短於 MIN_CIRCUIT_LEN 的線路也報錯，不靠長度門檻自動刪線（#114 第 3 輪
+# 審查：門檻會讓真的短線靜默消失）。
+TRACE_FRAGMENTS = [
+    ((558.7, 600.28), (569.02, 606.11)),  # 上方節點群：外環跟蓋帽左斜腳交界，外環邊描成的一小段（外環另有圓環）
+    ((558.7, 1199.72), (569.02, 1193.89)),  # 下方節點群：同上
+    # 右上、右下斜角小方節點往外的一小段延伸線（V2 原圖有）。右半邊的線路本來就不留、由左半邊鏡射，
+    # 左邊兩顆的延伸線在 V3 遮罩裡淡到描不出來，所以四顆都沒有；要不要加回待 Eric 確認（規格 §16.3）。
+    ((944.92, 564.45), (958.78, 550.58)),
+    ((944.52, 1229.13), (956.5, 1241.1)),
+]
+MIN_CIRCUIT_LEN = 20.0  # 畫布 px，約 6 pt
+
+
+def drop_fragments(circuits: list[dict], fragments=TRACE_FRAGMENTS, tol: float = 1.5) -> list[dict]:
+    """拿掉 [fragments] 列的描圖碎段，每一筆要剛好命中一條；剩下的線路還有短於 [MIN_CIRCUIT_LEN] 的就
+    報錯——是真的線就修描圖，是碎段就加進 [TRACE_FRAGMENTS]。"""
+    def same(e: dict, frag) -> bool:
+        p = np.asarray(e['points'], float)
+        ends = np.asarray(frag, float)
+        return len(p) == 2 and min(np.abs(p - ends).max(), np.abs(p - ends[::-1]).max()) <= tol
+
+    drop = []
+    for frag in fragments:
+        hits = [e for e in circuits if same(e, frag)]
+        assert len(hits) == 1, f'描圖碎段 {frag} 找到 {len(hits)} 條'
+        drop.append(hits[0])
+    kept = [e for e in circuits if all(e is not d for d in drop)]
+    short = [np.round(np.asarray(e['points'], float), 2).tolist() for e in kept
+             if _poly_len(e['points']) < MIN_CIRCUIT_LEN]
+    assert not short, f'沒有登記的短線路（< {MIN_CIRCUIT_LEN:g} px）：{short}'
+    return kept
+
+
 def tidy(elements: list[dict], outer_r: float, inner_r: float, arc_r: float) -> list[dict]:
     """描完以後的收尾（畫布座標）：
     1. 左右節點群換成 [side_cluster]；
-    2. 清掉描成線路的環（每一點都在環或弧上 ±4 px）與短於 20 px（約 6 pt）的碎段；
+    2. 清掉描成線路的環（每一點都在環或弧上 ±4 px）與 [TRACE_FRAGMENTS] 列的描圖碎段（[drop_fragments]，
+       其他短線報錯）；
     3. 連接線端點貼到節點的角；
     4. 線路只留左半邊（含跨中軸的那半段），右半邊鏡射；星軌弧左右對齊。"""
     cx, cy = CANVAS_W / 2, CANVAS_H / 2
@@ -707,7 +742,7 @@ def tidy(elements: list[dict], outer_r: float, inner_r: float, arc_r: float) -> 
 
     kept = [e for e in circuits if not in_cluster(e['points']) and not in_cluster(np.array(e['points']) * (-1, 1) + (CANVAS_W, 0))
             and not on_circle(e['points'])]
-    kept = [e for e in kept if _poly_len(e['points']) >= 20.0]
+    kept = drop_fragments(kept)
     kept += side_cluster(cluster_nodes, outer_r, arc_r)
 
     node_polys = _node_polys(others)

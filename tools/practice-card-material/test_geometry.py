@@ -304,5 +304,30 @@ class GeometryLockTest(unittest.TestCase):
         self.assertTrue(OVERLAY.exists())
 
 
+class TraceFragmentsTest(unittest.TestCase):
+    """#114 第 3 輪審查：描圖碎段逐一列座標拿掉，不靠長度門檻；清單以外的短線、清單裡找不到的碎段都報錯。"""
+
+    def test_只拿掉列出的碎段_其他短線報錯(self):
+        import trace_geometry as tg  # 要 scikit-image、scipy（描圖工具已裝）
+        long = {'points': [[0.0, 0.0], [0.0, 40.0]]}
+        frag = {'points': [[10.0, 10.0], [10.0, 15.0]]}
+        frags = [((10.0, 15.0), (10.0, 10.0))]  # 不分方向
+        self.assertEqual(tg.drop_fragments([long, frag], frags), [long])
+        stray = {'points': [[50.0, 50.0], [50.0, 55.0]]}
+        with self.assertRaisesRegex(AssertionError, '沒有登記的短線路'):
+            tg.drop_fragments([long, frag, stray], frags)
+        with self.assertRaisesRegex(AssertionError, '找到 0 條'):
+            tg.drop_fragments([long], frags)  # 描圖結果變了：清單裡的碎段不見
+
+    def test_重描跟提交的構圖逐位元相同(self):
+        """清單每一筆都要命中現行描圖（不然描圖就報錯）、都短於門檻；拿掉後跟提交的 JSON 一樣。"""
+        import json
+        import trace_geometry as tg
+        for a, b in tg.TRACE_FRAGMENTS:
+            self.assertLess(float(np.hypot(*np.subtract(b, a))), tg.MIN_CIRCUIT_LEN, (a, b))
+        got = json.dumps(tg.trace(None), ensure_ascii=False, indent=1)
+        self.assertEqual(got, tg.OUT.read_text())
+
+
 if __name__ == '__main__':
     unittest.main()
