@@ -337,6 +337,17 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 卡片變大（轉向、iPad 分割畫面、網頁視窗放大）：已經在解或解好的卡背素材換新寬度重解，不然會
+    // 一直畫小圖放大（§6.1）。第一次呼叫時還沒開始解，不做事。
+    _material.upgrade(
+      configuration: createLocalImageConfiguration(context),
+      cardPixelWidth: practiceCeremonyCardPixelWidth(context),
+    );
+  }
+
   /// 監看 `drawStatus` 轉場驅動儀式。只在「曾進入 drawing」後才有反應，避免進房就
   /// 已是 revealed（草稿／續玩還原）誤觸發。
   void _onStateChange(PracticeChatState? prev, PracticeChatState next) {

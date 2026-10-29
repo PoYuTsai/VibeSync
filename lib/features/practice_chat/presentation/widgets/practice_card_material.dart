@@ -318,16 +318,34 @@ class PracticeCardMaterialImages {
 /// 卡背素材的解碼與釋放（§6.1）：沿用儀式光效貼圖的模式（`ImageProvider.resolve` →
 /// `ImageStreamListener`），每張圖各留一份 [ImageInfo]；釋放時連同圖片快取裡的那一份一起清掉。
 class PracticeCardMaterialLoader {
-  PracticeCardMaterialLoader({required this.onChanged});
+  /// [debugProviderFor]：測試用，換掉 [PracticeCardMaterialSlot.provider]（例如給一張解不出來的圖）。
+  PracticeCardMaterialLoader({
+    required this.onChanged,
+    ImageProvider Function(PracticeCardMaterialSlot slot, int cardPixelWidth)?
+        debugProviderFor,
+  }) : _providerFor = debugProviderFor ?? _slotProvider;
 
   /// 有圖解好或被釋放時呼叫（呼叫端 setState）；[dispose] 時不呼叫。
   final ValueChanged<PracticeCardMaterialImages> onChanged;
+
+  final ImageProvider Function(
+      PracticeCardMaterialSlot slot, int cardPixelWidth) _providerFor;
+
+  static ImageProvider _slotProvider(
+    PracticeCardMaterialSlot slot,
+    int cardPixelWidth,
+  ) =>
+      slot.provider(cardPixelWidth);
 
   PracticeCardMaterialImages get images => _images;
   PracticeCardMaterialImages _images = PracticeCardMaterialImages.none;
 
   final Map<PracticeCardMaterialSlot, _CardMaterialRequest> _requests = {};
   bool _disposed = false;
+
+  /// 卡片像素寬比解碼時大超過這個倍數才換寬度重解（[upgrade]）：放大 10% 以內看不出糊，網頁拖拉
+  /// 視窗時也不會一直重解。
+  static const double upgradeRatio = 1.1;
 
   /// 開始解碼 [slots]；正在解或已經解好的跳過。[cardPixelWidth] 見
   /// [PracticeCardMaterialSlot.provider]。
@@ -339,26 +357,69 @@ class PracticeCardMaterialLoader {
     if (_disposed) return;
     for (final slot in slots) {
       if (_requests.containsKey(slot)) continue;
-      final request = _CardMaterialRequest(
-        slot.provider(cardPixelWidth),
-        configuration,
-      );
-      _requests[slot] = request;
-      request.start(
-        onImage: (info) {
-          if (_disposed || _requests[slot] != request) {
-            info.dispose();
-            return;
-          }
-          request.info = info;
-          _images = _images.withImage(slot, info.image);
-          onChanged(_images);
-        },
-        onError: () {
-          if (_requests[slot] == request) _requests.remove(slot);
-        },
-      );
+      _start(slot, configuration, cardPixelWidth);
     }
+  }
+
+  /// 卡片變大（轉向、iPad 分割畫面、網頁視窗放大）：已經在解或解好的素材，[cardPixelWidth] 比解碼
+  /// 時大超過 [upgradeRatio] 就換新寬度重解。新圖解好前繼續畫舊圖、解好才釋放舊的，解不出來就留著
+  /// 舊圖；變小不重解，雜訊磚原尺寸解、跟卡寬無關。還沒開始解的不在這裡開始（首屏照舊等第一幀之後）。
+  void upgrade({
+    required ImageConfiguration configuration,
+    required int cardPixelWidth,
+  }) {
+    if (_disposed) return;
+    final width = _decodeWidth(cardPixelWidth);
+    for (final slot in _requests.keys.toList()) {
+      if (slot == PracticeCardMaterialSlot.noise) continue;
+      final current = _requests[slot]!;
+      if (width <= current.cardPixelWidth * upgradeRatio) continue;
+      // 畫面上正在用的那張留到新圖解好；還在解、還沒畫出來的那張（初次或上一次重解）不等了。
+      final shown = current.info != null ? current : current.takePrevious();
+      if (!identical(shown, current)) current.release();
+      _start(slot, configuration, width, previous: shown);
+    }
+  }
+
+  /// 解碼用的卡片像素寬：上限原圖寬（再寬也解不出更多細節，不必重解）。
+  static int _decodeWidth(int cardPixelWidth) =>
+      cardPixelWidth.clamp(1, PracticeCardMaterialSlot.sourceWidth);
+
+  void _start(
+    PracticeCardMaterialSlot slot,
+    ImageConfiguration configuration,
+    int cardPixelWidth, {
+    _CardMaterialRequest? previous,
+  }) {
+    final request = _CardMaterialRequest(
+      _providerFor(slot, cardPixelWidth),
+      configuration,
+      cardPixelWidth: _decodeWidth(cardPixelWidth),
+      previous: previous,
+    );
+    _requests[slot] = request;
+    request.start(
+      onImage: (info) {
+        if (_disposed || _requests[slot] != request) {
+          info.dispose();
+          return;
+        }
+        request.info = info;
+        _images = _images.withImage(slot, info.image);
+        request.takePrevious()?.release();
+        onChanged(_images);
+      },
+      onError: () {
+        if (_requests[slot] != request) return;
+        // 重解失敗：換回畫面上的舊圖（有的話），之後卡片再變大還會再試。
+        final shown = request.takePrevious();
+        if (shown != null) {
+          _requests[slot] = shown;
+        } else {
+          _requests.remove(slot);
+        }
+      },
+    );
   }
 
   /// 釋放 [slots]：還在解的不等了，解好的放掉自己那份並從圖片快取清掉。
@@ -384,10 +445,22 @@ class PracticeCardMaterialLoader {
 }
 
 class _CardMaterialRequest {
-  _CardMaterialRequest(this.provider, this.configuration);
+  _CardMaterialRequest(
+    this.provider,
+    this.configuration, {
+    required this.cardPixelWidth,
+    _CardMaterialRequest? previous,
+  }) : _previous = previous;
 
   final ImageProvider provider;
   final ImageConfiguration configuration;
+
+  /// 解碼時的卡片像素寬（已經夾在原圖寬以內）；[PracticeCardMaterialLoader.upgrade] 拿它比。
+  final int cardPixelWidth;
+
+  /// 換寬度重解時畫面上還在用的舊圖：這張解好才釋放，解不出來就換回它。
+  _CardMaterialRequest? _previous;
+
   ImageStream? _stream;
   ImageStreamListener? _listener;
   ImageInfo? info;
@@ -415,7 +488,16 @@ class _CardMaterialRequest {
     stream.addListener(listener);
   }
 
+  /// 拿走 [_previous]（之後由呼叫端釋放或換回）。
+  _CardMaterialRequest? takePrevious() {
+    final previous = _previous;
+    _previous = null;
+    return previous;
+  }
+
+  /// 不等了、放掉解好的那份並從圖片快取清掉；還留著的舊圖一起放。
   void release() {
+    takePrevious()?.release();
     final listener = _listener;
     if (listener != null) _stream?.removeListener(listener);
     _listener = null;

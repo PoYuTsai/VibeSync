@@ -3,6 +3,7 @@
 // 卡背（§5.4、§6）的素材解碼大小、轉化擴散、額外發光、圖層組合（稀有度誠實）與遮罩通道。
 
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -218,6 +219,130 @@ void main() {
         total += bytes;
       }
       expect(total, lessThanOrEqualTo(2300 * 1024));
+    });
+  });
+
+  group('卡背素材解碼器（§6.1）', () {
+    const config = ImageConfiguration.empty;
+    const n = PracticeCardMaterialSlot.n;
+    const noise = PracticeCardMaterialSlot.noise;
+
+    setUp(() {
+      imageCache.clear();
+      imageCache.clearLiveImages();
+    });
+
+    /// 等真的 WebP 在背景解完：等到 [done] 成立，最多約 6 秒。
+    Future<void> waitFor(WidgetTester tester, bool Function() done) =>
+        tester.runAsync(() async {
+          for (var i = 0; i < 200 && !done(); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+          }
+        });
+
+    Future<void> realWait(WidgetTester tester) => tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 300)),
+        );
+
+    Future<bool> cached(WidgetTester tester, int cardPixelWidth) async {
+      final key = await tester.runAsync(
+        () => n.provider(cardPixelWidth).obtainKey(config),
+      );
+      return imageCache.statusForKey(key!).tracked;
+    }
+
+    testWidgets('卡片變大超過 10% 才換寬度重解：新圖解好前留著舊圖，解好才換、舊的從快取清掉；變小、雜訊磚、超過原圖寬都不重解',
+        (tester) async {
+      final changes = <PracticeCardMaterialImages>[];
+      final calls = <(PracticeCardMaterialSlot, int)>[];
+      final loader = PracticeCardMaterialLoader(
+        onChanged: changes.add,
+        debugProviderFor: (slot, width) {
+          calls.add((slot, width));
+          return slot.provider(width);
+        },
+      );
+      addTearDown(loader.dispose);
+
+      loader.load({n, noise}, configuration: config, cardPixelWidth: 500);
+      await waitFor(tester, () => changes.length == 2);
+      expect(loader.images[n]!.width, 500);
+      final grain = loader.images[noise];
+      expect(grain!.width, 128);
+
+      loader.upgrade(configuration: config, cardPixelWidth: 550);
+      expect(calls, hasLength(2), reason: '只大 10%：不重解');
+
+      // 橫向 → 直向（卡片像素寬約 2.1 倍）：只有跟卡寬有關的那張重解，新圖解好前還是畫舊圖。
+      loader.upgrade(configuration: config, cardPixelWidth: 1053);
+      expect(calls.last, (n, 1053));
+      expect(calls, hasLength(3), reason: '雜訊磚原尺寸解，不重解');
+      expect(loader.images[n]!.width, 500);
+      await waitFor(tester, () => changes.length == 3);
+      expect(loader.images[n]!.width, 1053);
+      expect(loader.images[noise], same(grain));
+      await realWait(tester); // 從快取清掉也是非同步的
+      expect(await cached(tester, 500), isFalse, reason: '舊寬度那張從快取清掉');
+
+      loader.upgrade(configuration: config, cardPixelWidth: 800);
+      expect(calls, hasLength(3), reason: '變小不重解');
+      loader.upgrade(configuration: config, cardPixelWidth: 5000);
+      expect(calls.last, (n, 1200), reason: '上限原圖寬');
+      await waitFor(tester, () => changes.length == 4);
+      expect(loader.images[n]!.width, 1200);
+      loader.upgrade(configuration: config, cardPixelWidth: 6000);
+      expect(calls, hasLength(4), reason: '已經解成原圖寬，再大也不重解');
+
+      loader.evict({n, noise});
+      expect(loader.images[n], isNull);
+      expect(loader.images[noise], isNull);
+      expect(changes, hasLength(5));
+    });
+
+    testWidgets('重解失敗：留著原本的圖、不通知；卡片再變大會再試', (tester) async {
+      final changes = <PracticeCardMaterialImages>[];
+      final widths = <int>[];
+      final loader = PracticeCardMaterialLoader(
+        onChanged: changes.add,
+        // 只有第一次（500）是真的素材，之後給一張解不出來的圖。
+        debugProviderFor: (slot, width) {
+          widths.add(width);
+          return width == 500
+              ? slot.provider(width)
+              : MemoryImage(Uint8List.fromList(const [0, 1, 2, 3]));
+        },
+      );
+      addTearDown(loader.dispose);
+
+      loader.load({n}, configuration: config, cardPixelWidth: 500);
+      await waitFor(tester, () => changes.length == 1);
+      final shown = loader.images[n];
+
+      loader.upgrade(configuration: config, cardPixelWidth: 1053);
+      await realWait(tester);
+      expect(loader.images[n], same(shown));
+      expect(changes, hasLength(1));
+
+      loader.upgrade(configuration: config, cardPixelWidth: 1053);
+      expect(widths, [500, 1053, 1053]);
+      await realWait(tester);
+      expect(loader.images[n], same(shown));
+    });
+
+    testWidgets('重解還沒回來就卸載：不再通知，新舊兩個寬度都從快取清掉', (tester) async {
+      final changes = <PracticeCardMaterialImages>[];
+      final loader = PracticeCardMaterialLoader(onChanged: changes.add);
+
+      loader.load({n}, configuration: config, cardPixelWidth: 500);
+      await waitFor(tester, () => changes.length == 1);
+      loader.upgrade(configuration: config, cardPixelWidth: 1053);
+      loader.dispose();
+      await realWait(tester);
+
+      expect(changes, hasLength(1));
+      expect(loader.images[n], isNull);
+      expect(await cached(tester, 500), isFalse);
+      expect(await cached(tester, 1053), isFalse);
     });
   });
 
