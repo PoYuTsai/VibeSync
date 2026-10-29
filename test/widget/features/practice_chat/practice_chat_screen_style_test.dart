@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/core/theme/practice_reveal_palette.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_game_intro_store.dart';
@@ -4040,6 +4041,13 @@ void main() {
             .painter! as PracticeRevealShockwavePainter;
         expect(
             painter.rings, hasLength(rarity == PracticeGirlRarity.sr ? 2 : 1));
+        // 典藏材質 M9：R 的衝擊波跟環境光、光刃一起換成 #4FB0FF；SR 維持香檳金。
+        expect(
+          painter.tint,
+          rarity == PracticeGirlRarity.r
+              ? PracticeRevealPalette.rGlow
+              : PracticeRevealPalette.srBackTint,
+        );
       }
 
       await finishCeremony(tester);

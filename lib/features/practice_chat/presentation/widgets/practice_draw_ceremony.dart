@@ -1036,7 +1036,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               key: const ValueKey('practice-draw-ceremony-shockwave'),
               painter: PracticeRevealShockwavePainter(
                 rings: rings,
-                tint: theme.backTint,
+                tint: theme.shockwave,
               ),
             ),
           ),
