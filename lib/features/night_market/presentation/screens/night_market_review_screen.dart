@@ -17,15 +17,21 @@ import 'night_market_review_player.dart';
 /// inside it (expiry, revocation) — every further navigation re-checks the
 /// gate rather than trusting that earlier check forever, and falls back to
 /// [onExit] instead of building another restricted page.
+///
+/// 復盤也綁打開它的帳號 [viewerAccountId]（看完影片、通過 Essential 的那個人；
+/// Eric 2026-10-28 要補的主審殘餘風險）：帳號換了就整份退出，往子頁走也要是
+/// 同一個人。
 class NightMarketReviewScreen extends ConsumerWidget {
   const NightMarketReviewScreen({
     super.key,
     required this.scenario,
+    required this.viewerAccountId,
     required this.onRestart,
     required this.onExit,
   });
 
   final NightMarketScenario scenario;
+  final String? viewerAccountId;
   final VoidCallback onRestart;
   final VoidCallback onExit;
 
@@ -35,7 +41,8 @@ class NightMarketReviewScreen extends ConsumerWidget {
     final navigator = Navigator.of(context);
     bool stillAllowed() =>
         gateFor(EbookAccess.essential, ref.read(ebookSubscriptionAccessProvider)) ==
-        ChatQuizGate.allowed;
+            ChatQuizGate.allowed &&
+        ref.read(nightMarketAccountIdProvider).valueOrNull == viewerAccountId;
     // Losing access can be discovered from arbitrarily deep inside this
     // flow (a chapter, a knowledge detail, a clip player) — calling the
     // constructor's raw [onExit] directly from there only pops ONE level,
@@ -47,9 +54,22 @@ class NightMarketReviewScreen extends ConsumerWidget {
     // route) `popUntil` is a no-op, so this is a strict superset of the
     // original behaviour, not a change for them.
     void exitReview() {
+      // 這一層已經在退出（使用者正按返回、退出動畫還沒跑完，或剛退過一次）：
+      // 不再退。popUntil 找不到正在退出的這一層，會把下面的頁面也關掉。
+      if (!homeRoute.isActive) return;
       navigator.popUntil((route) => identical(route, homeRoute));
       onExit();
     }
+
+    // 帳號從打開復盤的人換成別人：連同疊在上面的子頁一起退出，不等下一次點擊。
+    ref.listen<AsyncValue<String?>>(nightMarketAccountIdProvider,
+        (previous, next) {
+      if (previous?.valueOrNull == viewerAccountId &&
+          next.hasValue &&
+          next.value != viewerAccountId) {
+        exitReview();
+      }
+    });
     void openChapter(NightMarketReviewChapter chapter) {
       if (!stillAllowed()) {
         exitReview();
@@ -63,6 +83,7 @@ class NightMarketReviewScreen extends ConsumerWidget {
             scenario: scenario,
             chapter: chapter,
             onChapter: openChapter,
+            stillAllowed: stillAllowed,
             onExit: exitReview,
           ),
         ),
@@ -76,6 +97,16 @@ class NightMarketReviewScreen extends ConsumerWidget {
         return;
       }
       _openKnowledge(context, scenario, item, openChapter);
+    }
+
+    // 帳號已經不是打開復盤的人（包括第一次畫出來之前就換了，監聽接不到那一下）：
+    // 不畫復盤內容，下一格安全退出。
+    final account = ref.watch(nightMarketAccountIdProvider);
+    if (!account.hasValue || account.value != viewerAccountId) {
+      if (account.hasValue) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => exitReview());
+      }
+      return const SizedBox.shrink();
     }
 
     final mindsets = scenario.review
@@ -210,24 +241,25 @@ void _openKnowledge(
   ));
 }
 
-class _ChapterScreen extends ConsumerWidget {
+class _ChapterScreen extends StatelessWidget {
   const _ChapterScreen({
     required this.scenario,
     required this.chapter,
     required this.onChapter,
+    required this.stillAllowed,
     required this.onExit,
   });
 
   final NightMarketScenario scenario;
   final NightMarketReviewChapter chapter;
   final ValueChanged<NightMarketReviewChapter> onChapter;
+
+  /// 跟復盤頁同一套：Essential 還在、而且還是打開復盤的那個帳號。
+  final bool Function() stillAllowed;
   final VoidCallback onExit;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    bool stillAllowed() =>
-        gateFor(EbookAccess.essential, ref.read(ebookSubscriptionAccessProvider)) ==
-        ChatQuizGate.allowed;
+  Widget build(BuildContext context) {
     void openClip() {
       if (!stillAllowed()) {
         onExit();

@@ -1473,7 +1473,7 @@ class _CollectionCard extends ConsumerWidget {
 }
 
 /// 收藏頁專用縮圖：大量同屏時必 cacheWidth 降採樣，不解全尺寸原圖。
-/// PracticeGirlPhoto 不支援 cacheWidth，故此頁自建輕量版（fallback 行為比照）。
+/// 鎖卡要剪影、畫質用 low，故此頁自建輕量版（fallback 行為比照 PracticeGirlPhoto）。
 class _CollectionCardPhoto extends StatelessWidget {
   const _CollectionCardPhoto({required this.profile, required this.locked});
 

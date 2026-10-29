@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/core/theme/app_theme.dart';
-import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
 import 'package:vibesync/features/night_market/data/night_market_story.dart';
+import 'package:vibesync/features/night_market/presentation/night_market_essential_gate.dart';
 import 'package:vibesync/features/night_market/presentation/screens/night_market_review_screen.dart';
 import 'package:vibesync/shared/widgets/reveal_pill.dart';
 
@@ -11,12 +13,24 @@ final _testAccessProvider = StateProvider<EbookSubscriptionAccess>(
   (ref) => const EbookSubscriptionAccess.essential(),
 );
 
+/// 打開復盤的帳號（Eric 2026-10-28：復盤綁打開它的帳號）。
+const _viewer = 'viewer-a';
+
 class _ReviewHarness {
-  _ReviewHarness(this.container);
+  _ReviewHarness(this.container, this._accounts);
   final ProviderContainer container;
+  final StreamController<String?> _accounts;
 
   void setAccess(EbookSubscriptionAccess access) =>
       container.read(_testAccessProvider.notifier).state = access;
+
+  void switchAccount(String? id) => _accounts.add(id);
+}
+
+Stream<String?> _accountStream(
+    String? initial, Stream<String?> changes) async* {
+  yield initial;
+  yield* changes;
 }
 
 /// A marker only visible on the real screen the review flow was entered
@@ -30,9 +44,12 @@ Future<_ReviewHarness> _show(
   WidgetTester tester, {
   double scale = 1,
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
+  String? initialAccount = _viewer,
 }) async {
   await tester.binding.setSurfaceSize(Size(scale == 1 ? 390 : 320, 844));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  final accounts = StreamController<String?>.broadcast();
+  addTearDown(accounts.close);
   final container = ProviderContainer(
     overrides: [
       _testAccessProvider.overrideWith((ref) => access),
@@ -42,6 +59,8 @@ Future<_ReviewHarness> _show(
       // mid-test via [_ReviewHarness.setAccess].
       ebookSubscriptionAccessProvider
           .overrideWith((ref) => ref.watch(_testAccessProvider)),
+      nightMarketAccountIdProvider.overrideWith(
+          (ref) => _accountStream(initialAccount, accounts.stream)),
     ],
   );
   addTearDown(container.dispose);
@@ -65,6 +84,7 @@ Future<_ReviewHarness> _show(
                 MaterialPageRoute(
                   builder: (reviewContext) => NightMarketReviewScreen(
                     scenario: buildNightMarketScenario(),
+                    viewerAccountId: _viewer,
                     onRestart: () {},
                     onExit: () => Navigator.of(reviewContext).pop(),
                   ),
@@ -79,7 +99,7 @@ Future<_ReviewHarness> _show(
   ));
   await tester.tap(find.byKey(_homeMarkerKey));
   await tester.pumpAndSettle();
-  return _ReviewHarness(container);
+  return _ReviewHarness(container, accounts);
 }
 
 Future<void> _tap(WidgetTester tester, Finder target) async {
@@ -223,6 +243,57 @@ void main() {
       expect(find.text('片段解析 2／6'), findsNothing);
       expect(find.text('回看片段'), findsNothing); // the player's own AppBar title
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('復盤綁打開它的帳號（Eric 2026-10-28）', () {
+    testWidgets('換了帳號：連同疊在上面的章節一起退回入口，不等下一次點擊', (tester) async {
+      final harness = await _show(tester);
+      await _tap(tester, find.text('接住感受，建立信任'));
+      expect(find.text('片段解析 2／6'), findsOneWidget);
+
+      harness.switchAccount('viewer-b');
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(find.text('把這段互動看懂'), findsNothing);
+      expect(find.text('片段解析 2／6'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('第一次畫出來之前帳號就換了：不畫復盤內容，直接退回入口', (tester) async {
+      // 入口核對的是 viewer-a，復盤畫出來時帳號已經是 viewer-b（監聽接不到這一下）。
+      await _show(tester, initialAccount: 'viewer-b');
+
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(find.text('把這段互動看懂'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('正在按返回、退出動畫還沒跑完時換帳號：不會多退一層', (tester) async {
+      final harness = await _show(tester);
+      await tester.tap(find.byTooltip('回練習室'));
+      await tester.pump();
+
+      harness.switchAccount('viewer-b');
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(_homeMarkerKey), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('帳號沒換：章節與知識點照常打得開', (tester) async {
+      await _show(tester);
+      await _tap(tester, find.text('接住感受，建立信任'));
+      expect(find.text('片段解析 2／6'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('所有知識點（27）'));
+      await _tap(tester, find.text('廢物測試'));
+
+      expect(find.text('知識詳解'), findsOneWidget);
+      expect(find.byKey(_homeMarkerKey), findsNothing);
     });
   });
 }

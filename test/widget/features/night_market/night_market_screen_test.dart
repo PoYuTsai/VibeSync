@@ -26,6 +26,7 @@ Future<NightMarketPaywallHarness> _pumpStarted(
   EbookSubscriptionAccess access = const EbookSubscriptionAccess.essential(),
   bool forceSyncTierShouldFail = false,
   bool revenueCatRecoveryConfirmsEssential = false,
+  bool alreadyWatched = true,
 }) async {
   final harness = await pumpNightMarketPaywallHarness(
     tester,
@@ -33,6 +34,7 @@ Future<NightMarketPaywallHarness> _pumpStarted(
     access: access,
     forceSyncTierShouldFail: forceSyncTierShouldFail,
     revenueCatRecoveryConfirmsEssential: revenueCatRecoveryConfirmsEssential,
+    alreadyWatched: alreadyWatched,
   );
   await tester.tap(find.text('開始'));
   await tester.pump();
@@ -623,6 +625,103 @@ void main() {
       expect(platform.creations, hasLength(4));
       expect(platform.creations[3].dataSource.asset,
           'assets/videos/night_market/s1_notice.mp4');
+    });
+  });
+
+  group('看完才記（Eric 2026-10-28：查看復盤要先看完影片）', () {
+    Future<void> reachS3End(WidgetTester tester) async {
+      await _complete(tester, platform);
+      await tester.tap(find.text(_mainChoice));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await _complete(tester, platform);
+      await tester.tap(find.textContaining('我之前也去過一次'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(platform.creations, hasLength(3));
+    }
+
+    // 跟上面 S3 ending 那組同一招：提示在底部會停留一段時間、擋住後面排隊的提示，
+    // 直接清掉再等退場動畫跑完。
+    Future<void> clearNotices(WidgetTester tester) async {
+      await tester.pump();
+      tester
+          .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+          .clearSnackBars();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    testWidgets('最後一段播完、進到復盤才記成看完；前兩段播完都還沒記', (tester) async {
+      final harness = await _pumpStarted(tester, alreadyWatched: false);
+      await reachS3End(tester);
+      expect(harness.watchStore.watchedAccounts, isEmpty);
+
+      await _complete(tester, platform);
+      expect(find.text('復盤'), findsOneWidget);
+      expect(harness.watchStore.watchedAccounts, {'harness-owner'});
+    });
+
+    testWidgets('最後一段播完但訂閱還在確認：先不記，重試進到復盤才記', (tester) async {
+      final harness = await _pumpStarted(tester, alreadyWatched: false);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await clearNotices(tester);
+      expect(find.text('復盤'), findsNothing);
+      expect(harness.watchStore.watchedAccounts, isEmpty);
+
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(find.text('復盤'), findsOneWidget);
+      expect(harness.watchStore.watchedAccounts, {'harness-owner'});
+    });
+
+    testWidgets('停在「重試」時換了帳號：不進復盤、誰都不記，從頭再看一次（主審 r1 P1）', (tester) async {
+      final harness = await _pumpStarted(tester, alreadyWatched: false);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await clearNotices(tester);
+      expect(find.widgetWithText(FilledButton, '重試'), findsOneWidget);
+
+      harness.switchAccount('another-owner');
+      await tester.pump();
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      await tester.tap(find.widgetWithText(FilledButton, '重試'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(find.text('復盤'), findsNothing);
+      expect(harness.watchStore.watchedAccounts, isEmpty);
+      expect(find.text('帳號換了，請從頭看一次'), findsOneWidget);
+      expect(platform.creations, hasLength(4));
+      expect(platform.creations.last.dataSource.asset,
+          'assets/videos/night_market/s1_notice.mp4');
+    });
+
+    testWidgets('換帳號重播時連按兩下「重試」：只重播一次、誰都不記、不開復盤', (tester) async {
+      final harness = await _pumpStarted(tester, alreadyWatched: false);
+      await reachS3End(tester);
+      harness.setAccess(const EbookSubscriptionAccess.resolving());
+      await _complete(tester, platform);
+      await clearNotices(tester);
+
+      harness.switchAccount('another-owner');
+      await tester.pump();
+      harness.setAccess(const EbookSubscriptionAccess.essential());
+      final retry = find.widgetWithText(FilledButton, '重試');
+      await tester.tap(retry);
+      await tester.tap(retry, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pump(const Duration(milliseconds: 30));
+
+      expect(find.text('復盤'), findsNothing);
+      expect(harness.watchStore.watchedAccounts, isEmpty);
+      expect(platform.creations, hasLength(4));
     });
   });
 
