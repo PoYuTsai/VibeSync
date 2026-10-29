@@ -20,6 +20,7 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 TARGETS = HERE / 'targets.json'
+LIGHT = HERE.parents[1] / 'assets/images/practice/practice_card_back_v4_light.webp'
 LUMA = np.array([0.2126, 0.7152, 0.0722])
 
 
@@ -112,16 +113,34 @@ def match(still: np.ndarray, tier: str, targets: dict | None = None) -> list[dic
     return rows
 
 
-def holo_hues(still: np.ndarray, mask: np.ndarray | None = None) -> dict:
-    """SR 全息：飽和度夠高的像素佔比與色相分布（示意圖：玫瑰到天空藍、佔全息區 2–8%）。"""
+def holo_region(size: tuple[int, int]) -> np.ndarray:
+    """全息區＝`light` 素材的 G 通道（倒角、側飾條外緣、節點切面、細線兩側；§5.3），縮到 [size]（寬, 高）
+    後取 > 0.5。"""
+    g = Image.open(LIGHT).convert('RGB').getchannel('G').resize(size, Image.BILINEAR)
+    return np.asarray(g) > 127
+
+
+def hue_between(hue: np.ndarray, start: float, end: float) -> np.ndarray:
+    """色相（度）落在從 [start] 往上走到 [end] 的範圍；end 比 start 小時跨過 360°。"""
+    return (hue >= start) & (hue <= end) if start <= end else (hue >= start) | (hue <= end)
+
+
+def holo_hues(still: np.ndarray, targets: dict | None = None, region: np.ndarray | None = None) -> dict:
+    """SR 全息（§5.5）：全息區裡有顏色（飽和度 > 0.25、亮度 > 0.45；§2.2 的四個全息色飽和度 0.30–0.52，
+    玫瑰與天空藍最淡）而且色相落在 targets.json `holo.hue_range_deg`（天空藍往上繞到玫瑰）的像素，佔全息區
+    的比例，對 `holo.share` 判定；另回傳全息區裡有顏色的像素的色相分布（每格 30°，香檳金也在裡面）。
+    [region] 預設 [holo_region]。"""
+    targets = targets or json.loads(TARGETS.read_text())
+    holo = targets['holo']
     hsv = np.asarray(Image.fromarray((still * 255).astype(np.uint8)).convert('HSV'), np.float64)
-    sat = hsv[..., 1] / 255
-    val = hsv[..., 2] / 255
-    sel = (sat > 0.35) & (val > 0.45)
-    if mask is not None:
-        sel &= mask
-    hue = hsv[..., 0][sel] / 255 * 360
-    return {'share': float(sel.mean()), 'hues': np.histogram(hue, bins=12, range=(0, 360))[0].tolist()}
+    hue = hsv[..., 0] / 255 * 360
+    if region is None:
+        region = holo_region((still.shape[1], still.shape[0]))
+    colored = region & (hsv[..., 1] / 255 > 0.25) & (hsv[..., 2] / 255 > 0.45)
+    share = float((colored & hue_between(hue, *holo['hue_range_deg'])).sum() / max(1, region.sum()))
+    lo, hi = holo['share']
+    return {'share': share, 'want': [lo, hi], 'ok': lo <= share <= hi,
+            'hues': np.histogram(hue[colored], bins=12, range=(0, 360))[0].tolist()}
 
 
 # ── 紋理指標（§5.5，#114 Gate-2a 第 2 輪）────────────────────────────────────
@@ -268,7 +287,9 @@ def main() -> None:
         for r in texture_rows(img, tier):
             print(f'{r["name"]:<20}{r["got"]:>9.2f}{r["want"]:>9.2f} {"✓" if r["ok"] else "✗"}')
     if tier == 'sr':
-        print('全息：', holo_hues(img))
+        h = holo_hues(img)
+        print(f'全息：玫瑰到天空藍佔全息區 {h["share"]:.1%}（示意圖 {h["want"][0]:.0%}–{h["want"][1]:.0%}）'
+              f'{" ✓" if h["ok"] else " ✗"}；全息區有顏色的像素色相分布（每 30°）{h["hues"]}')
     if args.concept:
         a = Image.open(args.still).convert('RGB')
         b = Image.open(args.concept).convert('RGB')

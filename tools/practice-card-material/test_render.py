@@ -76,6 +76,21 @@ class AssetTest(unittest.TestCase):
             self.assertGreaterEqual(got['field']['fine'], 1.0, tier)
 
 
+    def test_全息量測只算全息區的玫瑰到天空藍(self):
+        """#114 第 3 輪審查：以前分母是整張圖、香檳金也算全息。現在分母是全息區，色相從天空藍往上繞到玫瑰。"""
+        still = np.zeros((4, 10, 3))
+        region = np.zeros((4, 10), bool)
+        region[:2] = True  # 全息區 20 格
+        for x, c in enumerate(['#F6B0AC', '#F99EE6', '#8B448F', '#B1DAFE']):  # §2.2 的四個全息色
+            still[0, x] = cm.hex_rgb(c)
+        still[1] = cm.hex_rgb('#FDE38C')  # 全息區裡的香檳金：不算
+        still[2] = cm.hex_rgb('#F99EE6')  # 全息區外的洋紅：不算
+        got = cm.holo_hues(still, region=region)
+        self.assertAlmostEqual(got['share'], 4 / 20)
+        self.assertFalse(got['ok'])  # 20% 超過示意圖的 2–8%
+        self.assertEqual(sum(got['hues']), 14)  # 有顏色的：四個全息色＋十格香檳金
+
+
 class DeterminismTest(unittest.TestCase):
     def test_重跑逐位元相同(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
