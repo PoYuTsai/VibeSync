@@ -291,7 +291,7 @@ def main() -> None:
             print(f'{r["name"]:<20}{r["got"]:>9.2f}{r["want"]:>9.2f} {"✓" if r["ok"] else "✗"}')
     if tier == 'sr':
         h = holo_hues(img)
-        print(f'全息：玫瑰到天空藍佔全息區 {h["share"]:.1%}（示意圖 {h["want"][0]:.0%}–{h["want"][1]:.0%}）'
+        print(f'全息：玫瑰到天空藍佔全息區 {h["share"]:.2%}（示意圖 {h["want"][0]:.0%}–{h["want"][1]:.0%}）'
               f'{" ✓" if h["ok"] else " ✗"}；全息區有顏色的像素色相分布（每 30°）{h["hues"]}')
     if args.concept:
         a = Image.open(args.still).convert('RGB')
