@@ -25,6 +25,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_message
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_card_material.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
@@ -3968,10 +3969,6 @@ void main() {
     await finishCeremony(tester);
   });
 
-  // 卡背染色取樣：同色＝三個通道差距總和很小（lerp 的浮點誤差不算變色）。
-  bool nearColor(Color a, Color b) =>
-      (a.r - b.r).abs() + (a.g - b.g).abs() + (a.b - b.b).abs() < 0.01;
-
   for (final rarity in PracticeGirlRarity.values) {
     testWidgets('V3：稀有度誠實（${rarity.label}）——卡背每 50 ms 取樣，只升到真實稀有度',
         (tester) async {
@@ -3984,36 +3981,29 @@ void main() {
       var sawBlue = false;
       var sawGold = false;
       var sawLines = false;
-      var sawGoldWash = false;
       for (var ms = 0.0; ms < PracticeRevealTiming.flipPeakMs; ms += 50) {
         final back = tester.widget<PracticeRevealCardBack>(
           find.byType(PracticeRevealCardBack),
         );
-        final tint = back.colors.tint;
-        // V3.1 §5.3：N 的線路遮罩全程不亮；R／SR 染藍後線路一起發光。
-        sawLines |= back.linesGlow > 0;
+        // 典藏材質 §6.3：R 的成品圖從徽記擴散出來、SR 再擴散成金；N 全程是銀。
+        sawBlue |= back.dye.blue > 0.99;
+        sawGold |= back.dye.gold > 0.99;
+        // §6.6：N 的外框與線路不額外發光；R／SR 染色時一起亮。
+        sawLines |= back.energy.lines > 0;
         if (rarity == PracticeGirlRarity.n) {
-          expect(back.linesGlow, 0, reason: 'N 線路不亮（$ms ms）');
+          expect(back.dye.blue, 0, reason: 'N 全程銀（$ms ms）');
+          expect(back.energy.lines, 0, reason: 'N 線路不亮（$ms ms）');
+          expect(back.energy.frame, 0, reason: 'N 外框不亮（$ms ms）');
         }
-        sawBlue |= nearColor(tint, PracticeRevealPalette.rBackTint);
-        sawGold |= nearColor(tint, PracticeRevealPalette.srBackTint);
-        if (rarity == PracticeGirlRarity.n) {
-          expect(nearColor(tint, PracticeRevealPalette.nBackTint), isTrue,
-              reason: 'N 全程銀（$ms ms）');
+        if (rarity != PracticeGirlRarity.sr ||
+            ms <= PracticeRevealTiming.dyeGoldMs) {
+          expect(back.dye.gold, 0, reason: '${rarity.label} 不會出現金（$ms ms）');
         }
-        if (rarity != PracticeGirlRarity.sr) {
-          expect(sawGold, isFalse, reason: '${rarity.label} 不會出現金（$ms ms）');
-          expect(back.colors.holo, 0);
-          expect(back.goldWash, 0, reason: '${rarity.label} 底圖不變金（$ms ms）');
-        }
-        sawGoldWash |= back.goldWash > 0.99;
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(sawBlue, rarity != PracticeGirlRarity.n);
       expect(sawGold, rarity == PracticeGirlRarity.sr);
       expect(sawLines, rarity != PracticeGirlRarity.n);
-      // V3.1 §5.3：SR 染金後整張卡（底圖）變香檳金。
-      expect(sawGoldWash, rarity == PracticeGirlRarity.sr);
 
       await finishCeremony(tester);
     });
@@ -4052,11 +4042,65 @@ void main() {
             .painter! as PracticeRevealShockwavePainter;
         expect(
             painter.rings, hasLength(rarity == PracticeGirlRarity.sr ? 2 : 1));
+        // 典藏材質 M9：R 的衝擊波跟環境光、光刃一起換成 #4FB0FF；SR 維持香檳金。
+        expect(
+          painter.tint,
+          rarity == PracticeGirlRarity.r
+              ? PracticeRevealPalette.rGlow
+              : PracticeRevealPalette.srBackTint,
+        );
       }
 
       await finishCeremony(tester);
     });
   }
+
+  testWidgets('典藏材質 §6.1：橫向掛上再轉直向（卡片變大）→ 已解好的卡背素材換新寬度重解，舊寬度那張放掉',
+      (tester) async {
+    imageCache.clear();
+    imageCache.clearLiveImages();
+    // MediaQuery 跟著 view 走（surface 只管排版）：像素比 3 的手機橫放。
+    tester.view.devicePixelRatio = 3;
+    tester.view.physicalSize = const Size(844 * 3, 390 * 3);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final api = _DrawApi(() => Completer<PracticeDrawResult>().future);
+    await pumpLocked(tester, api: api, surface: const Size(844, 390));
+    final ceremony = find.byType(PracticeDrawCeremony);
+
+    Future<ImageCacheStatus> status(int cardPixelWidth) async {
+      final config = createLocalImageConfiguration(tester.element(ceremony));
+      final key = await tester.runAsync(
+        () => PracticeCardMaterialSlot.n
+            .provider(cardPixelWidth)
+            .obtainKey(config),
+      );
+      return imageCache.statusForKey(key!);
+    }
+
+    // 解碼在背景執行緒：真的等，最多約 6 秒。
+    Future<void> waitUntil(Future<bool> Function() done) async {
+      for (var i = 0; i < 200 && !await done(); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 30)),
+        );
+      }
+    }
+
+    final small = practiceCeremonyCardPixelWidth(tester.element(ceremony));
+    await waitUntil(() async => (await status(small)).keepAlive);
+    expect((await status(small)).keepAlive, isTrue,
+        reason: '第一幀之後解好 N 卡背（橫向的卡寬）');
+
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3); // 轉成直向
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pump();
+    final large = practiceCeremonyCardPixelWidth(tester.element(ceremony));
+    expect(large, greaterThan(small * PracticeCardMaterialLoader.upgradeRatio));
+    await waitUntil(() async => !(await status(small)).tracked);
+    expect((await status(large)).keepAlive, isTrue, reason: '換成直向的卡寬重解');
+    expect((await status(small)).tracked, isFalse, reason: '新圖解好才放掉舊寬度那張');
+  });
 
   testWidgets('V3.1 §9：低檔只畫後層泛光，翻牌峰值也沒有前層', (tester) async {
     debugPracticeRevealEffectTierOverride = PracticeRevealEffectTier.low;
@@ -4969,7 +5013,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Center(
-          child: debugCeremonyCardBack(width: 240, height: 360, glow: 0.6),
+          child: debugCeremonyCardBack(width: 240, height: 360),
         ),
       ),
     );

@@ -37,7 +37,9 @@ class PracticeRevealTheme {
     required this.rimDark,
     required this.rimMid,
     required this.rimHi,
+    required this.backSpecular,
     required this.glow,
+    required this.shockwave,
     required this.ambientAlpha,
     required this.burstCounts,
     required this.burstSpeed,
@@ -62,8 +64,15 @@ class PracticeRevealTheme {
   final Color rimMid;
   final Color rimHi;
 
+  /// 卡背高光帶的強度（典藏材質規格 §6.4：N 0.26、R 0.30、SR 0.34）。
+  final double backSpecular;
+
   /// 環境光、卡面外光、光刃外暈的顏色。
   final Color glow;
+
+  /// 翻牌峰值衝擊波光環的顏色（V3.1 §5.6；N 沒有衝擊波）。R 跟環境光、光刃同色（典藏材質 M9
+  /// 的 `#4FB0FF`），SR 維持香檳金。
+  final Color shockwave;
 
   /// 卡片背後環境光的不透明度。
   final double ambientAlpha;
@@ -112,7 +121,9 @@ class PracticeRevealTheme {
     rimDark: PracticeRevealPalette.nRimDark,
     rimMid: PracticeRevealPalette.nRimMid,
     rimHi: PracticeRevealPalette.nRimHi,
+    backSpecular: 0.26,
     glow: PracticeRevealPalette.nGlow,
+    shockwave: PracticeRevealPalette.nBackTint,
     ambientAlpha: 0.22,
     burstCounts: (high: 24, medium: 24, low: 24),
     burstSpeed: 1.0,
@@ -134,7 +145,9 @@ class PracticeRevealTheme {
     rimDark: PracticeRevealPalette.rRimDark,
     rimMid: PracticeRevealPalette.rRimMid,
     rimHi: PracticeRevealPalette.rRimHi,
+    backSpecular: 0.30,
     glow: PracticeRevealPalette.rGlow,
+    shockwave: PracticeRevealPalette.rGlow,
     ambientAlpha: 0.32,
     burstCounts: (high: 48, medium: 48, low: 48),
     burstSpeed: 1.2,
@@ -156,7 +169,9 @@ class PracticeRevealTheme {
     rimDark: PracticeRevealPalette.srRimDark,
     rimMid: PracticeRevealPalette.srRimMid,
     rimHi: PracticeRevealPalette.srRimHi,
+    backSpecular: 0.34,
     glow: PracticeRevealPalette.srGlow,
+    shockwave: PracticeRevealPalette.srBackTint,
     ambientAlpha: 0.45,
     burstCounts: (high: 160, medium: 80, low: 48),
     burstSpeed: 1.7,

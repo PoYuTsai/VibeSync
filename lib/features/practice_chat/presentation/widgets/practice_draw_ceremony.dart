@@ -64,6 +64,13 @@ Size practiceCeremonyCardSize(Size screen) {
   return Size(w, h);
 }
 
+/// 揭曉卡的實際像素寬（卡寬 pt×裝置像素比）：卡背素材解成這個寬，不解原尺寸（典藏材質規格
+/// §6.1）。錄製工具預先解碼時用同一個寬，儀式就直接拿到快取。
+int practiceCeremonyCardPixelWidth(BuildContext context) =>
+    (practiceCeremonyCardSize(MediaQuery.sizeOf(context)).width *
+            MediaQuery.devicePixelRatioOf(context))
+        .ceil();
+
 /// 每日翻牌「揭曉儀式」全螢幕 overlay（V3：單次翻牌＋停住等點擊＋收卡飛行）。
 ///
 /// 規格：`docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md`。第二刀換上 V3 外觀：
@@ -272,6 +279,14 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   Offset _archiveControl2 = Offset.zero;
   Rect? _archiveTarget;
 
+  /// 卡背素材（典藏材質規格 §6.1）：儀式掛上後第一幀之後解 N 那組，按下翻牌再解 R、SR；收卡
+  /// 釋放 R、SR，卸載時全部釋放。還沒解好時卡背畫深色底（§6.8）。
+  late final PracticeCardMaterialLoader _material = PracticeCardMaterialLoader(
+    onChanged: (_) {
+      if (mounted) setState(() {});
+    },
+  );
+
   /// 光效貼圖（泛光、四芒星光、光點）：抽牌開始時跟卡背一起解碼；還沒好時 painter 用漸層代替。
   PracticeRevealSprites _sprites = PracticeRevealSprites.none;
   final List<ImageInfo> _spriteInfos = [];
@@ -293,6 +308,10 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
   void initState() {
     super.initState();
     _sfx = ref.read(practiceDrawSfxProvider);
+    // N 卡背那組在第一幀之後才開始解（解碼在背景執行緒），不擋圖鑑首屏。
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadCardMaterial(PracticeCardMaterialSlot.base),
+    );
     _reveal.addListener(_onRevealTick);
     _reveal.addStatusListener((status) {
       if (status == AnimationStatus.completed &&
@@ -316,6 +335,17 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         _toHidden();
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 卡片變大（轉向、iPad 分割畫面、網頁視窗放大）：已經在解或解好的卡背素材換新寬度重解，不然會
+    // 一直畫小圖放大（§6.1）。第一次呼叫時還沒開始解，不做事。
+    _material.upgrade(
+      configuration: createLocalImageConfiguration(context),
+      cardPixelWidth: practiceCeremonyCardPixelWidth(context),
+    );
   }
 
   /// 監看 `drawStatus` 轉場驅動儀式。只在「曾進入 drawing」後才有反應，避免進房就
@@ -420,14 +450,29 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     }
   }
 
-  /// 卡背素材與光效貼圖先解碼好，入場第一幀就有卡背；painter 要的貼圖另外拿一份。
+  /// 按下翻牌：卡背素材補解 R、SR 成品圖（N 那組通常已經好了），光效貼圖先解碼好；painter 要的
+  /// 貼圖另外拿一份。
   void _precacheBack() {
-    for (final asset in kPracticeRevealBackAssets) {
+    _loadCardMaterial({
+      ...PracticeCardMaterialSlot.base,
+      ...PracticeCardMaterialSlot.tiers,
+    });
+    for (final asset in kPracticeRevealSpriteAssets) {
       unawaited(
         precacheImage(AssetImage(asset), context, onError: (_, __) {}),
       );
     }
     _loadSprites();
+  }
+
+  /// 卡背素材開始解碼（解成卡片實際像素寬，§6.1）；正在解或已經解好的跳過。
+  void _loadCardMaterial(Set<PracticeCardMaterialSlot> slots) {
+    if (!mounted) return;
+    _material.load(
+      slots,
+      configuration: createLocalImageConfiguration(context),
+      cardPixelWidth: practiceCeremonyCardPixelWidth(context),
+    );
   }
 
   /// painter 直接畫的三張貼圖：只載一次，各自留一份 [ImageInfo]，卸載時釋放。
@@ -687,6 +732,8 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     _caption.stop();
     _sfx.stopWaitingLoop(); // 收掉 overlay（hidden／收卡完成／淡出完成）一律停等待 loop。
     _sfx.stopRevealBed(); // 揭曉結束／收掉 overlay → 配樂 bed 不殘留。
+    // R、SR 成品圖只在揭曉用得到：收掉 overlay 就釋放（N 那組留著，下一次抽牌第一幀就有卡背）。
+    _material.evict(PracticeCardMaterialSlot.tiers);
     _firedBeats.clear();
     _reveal.value = 0;
     _archive.value = 0;
@@ -707,6 +754,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
     for (final info in _spriteInfos) {
       info.dispose();
     }
+    _material.dispose();
     super.dispose();
   }
 
@@ -999,7 +1047,7 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               key: const ValueKey('practice-draw-ceremony-shockwave'),
               painter: PracticeRevealShockwavePainter(
                 rings: rings,
-                tint: theme.backTint,
+                tint: theme.shockwave,
               ),
             ),
           ),
@@ -1367,9 +1415,14 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
               child: PracticeRevealCardBack(
                 width: cardSize.width,
                 height: cardSize.height,
-                colors: PracticeRevealBackColors.silver,
-                emblemGlow: pose.emblem,
-                frameGlow: practiceRevealFrameGlow(0),
+                images: _material.images,
+                // 高光帶、浮雕補光跟著左右微擺走（§6.4）；徽記呼吸與心跳是額外發光（§6.6）。
+                light: practiceCardLight(
+                  yawDeg: pose.yaw,
+                  pitchDeg: pose.pitch,
+                  front: false,
+                ),
+                energy: PracticeCardBackEnergy.waiting(pose.emblem),
               ),
             ),
           ),
@@ -1411,16 +1464,20 @@ class _PracticeDrawCeremonyState extends ConsumerState<PracticeDrawCeremony>
         : PracticeRevealCardBack(
             width: cardSize.width,
             height: cardSize.height,
-            colors: PracticeRevealBackColors.at(ms, rarity),
-            emblemGlow: lerpDouble(
-              _startPose.emblem,
-              practiceRevealEmblemGlow(ms, rarity),
+            images: _material.images,
+            // 轉化擴散只升到真實稀有度（§6.3）；翻牌前的回拉與側立時，高光帶從右下掃過整張卡。
+            dye: practiceRevealDye(ms, rarity),
+            light: practiceCardLight(
+              yawDeg: pose.yaw,
+              pitchDeg: pose.pitch,
+              front: false,
+            ),
+            energy: PracticeCardBackEnergy.lerp(
+              PracticeCardBackEnergy.waiting(_startPose.emblem),
+              practiceCardBackEnergy(ms, rarity),
               blend,
-            )!,
-            frameGlow: practiceRevealFrameGlow(ms, rarity),
-            linesGlow: practiceRevealLinesGlow(ms, rarity),
+            ),
             emblemWhite: practiceRevealEmblemWhite(ms),
-            goldWash: practiceRevealDye(ms, rarity).gold,
           );
 
     return Opacity(
@@ -1462,27 +1519,29 @@ Widget debugCeremonyCardFront({
       isNew: isNew,
     );
 
-/// 卡背的 test/preview seam：讓 still-recorder 與 widget test 免跑整條儀式即可單獨渲染
-/// 某個稀有度染色完成後的卡背（N 銀、R 藍、SR 金）。[glow]＝徽記亮度。
+/// 卡背的 test/preview seam：讓 still-recorder 與 widget test 免跑整條儀式即可單獨渲染卡背。
+/// 預設是揭曉時間軸 [ms]＝翻牌起手那一刻（N 銀、R 藍、SR 金都已轉化完），姿態＝等待基準
+/// （光在左上）；[energy] 不給就照時間軸算（給 [PracticeCardBackEnergy.none]＝成品圖靜止的樣子）；
+/// [images] 不給就是素材還沒解好的退路。
 @visibleForTesting
 Widget debugCeremonyCardBack({
   required double width,
   required double height,
   PracticeGirlRarity rarity = PracticeGirlRarity.n,
-  double glow = 0.6,
+  PracticeCardMaterialImages images = PracticeCardMaterialImages.none,
+  double ms = PracticeRevealTiming.flipStartMs,
+  double yawDeg = PracticeRevealTiming.waitingYaw,
+  double pitchDeg = PracticeRevealTiming.waitingPitch,
+  PracticeCardBackEnergy? energy,
 }) =>
     PracticeRevealCardBack(
       width: width,
       height: height,
-      colors:
-          PracticeRevealBackColors.at(PracticeRevealTiming.flipStartMs, rarity),
-      emblemGlow: glow,
-      frameGlow:
-          practiceRevealFrameGlow(PracticeRevealTiming.flipStartMs, rarity),
-      linesGlow:
-          practiceRevealLinesGlow(PracticeRevealTiming.flipStartMs, rarity),
-      goldWash:
-          practiceRevealDye(PracticeRevealTiming.flipStartMs, rarity).gold,
+      images: images,
+      dye: practiceRevealDye(ms, rarity),
+      light: practiceCardLight(yawDeg: yawDeg, pitchDeg: pitchDeg, front: false),
+      energy: energy ?? practiceCardBackEnergy(ms, rarity),
+      emblemWhite: practiceRevealEmblemWhite(ms),
     );
 
 /// 收卡光球的目標格（overlay 本地座標）：widget test 驗「光球飛向剛抽到的那一格」。

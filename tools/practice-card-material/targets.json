@@ -1,0 +1,51 @@
+{
+  "note": "典藏材質規格 §2.2、§5.5：示意圖一（卡背三階）的取樣色。區域是相對卡片寬高的矩形 [x0, y0, x1, y1]；stat：median＝中位數、top3／top15＝亮度前 3%／15% 的平均、p35＝亮度第 35 百分位附近的平均。只有數字，不含示意圖。門檻：飾板、側飾條、卡緣、徽記 ΔE ≤ 6；底面 ΔE ≤ 4。卡緣（edge-band）第 1 輪取到亮色、範圍偏外；#114 第 2 輪用正確的卡片邊界重量示意圖，改成深色金屬帶。",
+  "regions": {
+    "top-plate": {"rect": [0.40, 0.006, 0.60, 0.024], "stat": "median", "limit": 6},
+    "top-plate-hi": {"rect": [0.36, 0.002, 0.64, 0.028], "stat": "top3", "limit": 6},
+    "side-bar-left": {"rect": [0.006, 0.43, 0.048, 0.57], "stat": "median", "limit": 6},
+    "side-bar-right": {"rect": [0.952, 0.43, 0.994, 0.57], "stat": "median", "limit": 6},
+    "corner-plate": {"rect": [0.048, 0.033, 0.070, 0.042], "stat": "median", "limit": 6},
+    "edge-band": {"rect": [0.014, 0.16, 0.034, 0.30], "stat": "median", "limit": 6},
+    "field-dark": {"rect": [0.14, 0.56, 0.30, 0.70], "stat": "p35", "limit": 4},
+    "field-mid": {"rect": [0.14, 0.56, 0.30, 0.70], "stat": "median", "limit": 4},
+    "emblem": {"rect": [0.36, 0.40, 0.64, 0.60], "stat": "top15", "limit": 6},
+    "emblem-hi": {"rect": [0.36, 0.40, 0.64, 0.60], "stat": "top3", "limit": 6}
+  },
+  "targets": {
+    "n": {
+      "top-plate": "#D3DCE7", "top-plate-hi": "#E4EBF3",
+      "side-bar-left": "#ABB6C3", "side-bar-right": "#AFB8C6",
+      "corner-plate": "#D3DCE8", "edge-band": "#34373C",
+      "field-dark": "#111214", "field-mid": "#191A1E",
+      "emblem": "#EAF1F7", "emblem-hi": "#F8FBFE"
+    },
+    "r": {
+      "top-plate": "#8BC5FC", "top-plate-hi": "#B0E0FB",
+      "side-bar-left": "#6B93F7", "side-bar-right": "#70B8FD",
+      "corner-plate": "#7DD6FC", "edge-band": "#25365E",
+      "field-dark": "#0D0F16", "field-mid": "#14171F",
+      "emblem": "#B2DDFC", "emblem-hi": "#D4F1FD"
+    },
+    "sr": {
+      "top-plate": "#FDE38C", "top-plate-hi": "#FDF2AE",
+      "side-bar-left": "#D7A562", "side-bar-right": "#DCB183",
+      "corner-plate": "#FBE77A", "edge-band": "#362F23",
+      "field-dark": "#17130D", "field-mid": "#211B13",
+      "emblem": "#FDF3B7", "emblem-hi": "#FEFBD4"
+    }
+  },
+  "holo": {"note": "SR 全息：色相從 hue_range_deg[0] 往上走、跨過 360° 到 [1]，涵蓋規格 §2.2 取樣的天空藍 #B1DAFE 208°、紫 #8B448F 297°、洋紅 #F99EE6 312°、玫瑰 #F6B0AC 3°，前後各留一點；share＝這些像素佔全息區（light 素材 G 通道）的比例。#114 第 3 輪審查前寫的 [300, 230] 沒有被程式用到、方向也不明。", "hue_range_deg": [200, 15], "share": [0.02, 0.08]},
+  "texture": {
+    "note": "#114 第 2 輪在示意圖上量的紋理指標（量法見 concept_match.py）：底面細顆粒、霧面、平均亮度取三個純底面角落（卡寬 410 px）；徽記三面平均亮度比（左／上、右／上；示意圖 0.96–0.99、0.85–0.94，取中間）；拉絲連續性（卡寬 784 px，示意圖約 0.3–0.5）。示意圖的拉絲對比沒有留下數字（null），只印實測值、不判定。",
+    "field": {"width": 410, "regions": [[0.12, 0.07, 0.25, 0.15], [0.75, 0.07, 0.88, 0.15], [0.12, 0.85, 0.25, 0.93]]},
+    "targets": {
+      "n": {"field": {"fine": 3.5, "haze": 5.4, "mean": 55}, "faces": [0.97, 0.89],
+            "brush": {"plate": [0.4, null], "bar": [0.4, null], "band": [0.4, null]}},
+      "r": {"field": {"fine": 3.5, "haze": 4.3, "mean": 46}, "faces": [0.97, 0.89],
+            "brush": {"plate": [0.4, null], "bar": [0.4, null], "band": [0.4, null]}},
+      "sr": {"field": {"fine": 4.7, "haze": 6.0, "mean": 53}, "faces": [0.97, 0.89],
+             "brush": {"plate": [0.4, null], "bar": [0.4, null], "band": [0.4, null]}}
+    }
+  }
+}

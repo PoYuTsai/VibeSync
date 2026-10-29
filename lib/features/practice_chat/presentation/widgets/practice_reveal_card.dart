@@ -1,7 +1,8 @@
 // 抽卡揭曉 V3 的卡片外觀（規格 docs/plans/2026-10-15-card-draw-v3-luxury-reveal-spec.md
 // §6.4–§6.6）：
-// - 卡背：中性石墨銀底圖＋執行時依稀有度染色的徽記／外框／線路遮罩＋預先模糊好的光暈；
-//   V3.1 加徽記白光與整張卡染色（docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md §5.2、§5.3）。
+// - 卡背：典藏材質（docs/plans/2026-10-28-card-collectible-material-spec.md §6）的 N／R／SR 成品圖，
+//   執行時只做轉化擴散、跟著姿態走的光、SR 全息與額外發光（[PracticeCardBackPainter]）；徽記白光
+//   沿用 V3.1（docs/plans/2026-10-17-card-draw-v3-1-polish-spec.md §5.2）。
 // - 卡面：照片緩縮、全息掃光、六角金屬稀有度牌（V3.1 §5.10：從畫面外飛進來，出現前不存在）、
 //   兩行資訊欄、只畫亮星（V3.1 §5.11 加四芒星光）。典藏材質（docs/plans/2026-10-28-card-collectible-
 //   material-spec.md §7）：2 pt 拋光金屬外框、拉絲銀面＋拋光倒角的六角牌（收進卡片內）、煙燻玻璃
@@ -24,7 +25,9 @@ import 'practice_reveal_painters.dart';
 import 'practice_reveal_theme.dart';
 import 'practice_reveal_timing.dart';
 
-/// 卡背四張素材（由 `tools/practice-draw-card-back-v3/make_card_back_v3.py` 從原卡背離線產出）。
+/// V3 卡背素材（`tools/practice-draw-card-back-v3/make_card_back_v3.py` 從原卡背離線產出）。典藏
+/// 材質 P3 起執行時改用 [PracticeCardMaterialSlot] 的 v4 素材；這五張還是 v4 描圖與底面煙霧質感
+/// 的來源，等真機驗收通過後的清理那一刀（規格 §13.3）連同檔案一起移走。
 const String kPracticeRevealBackBaseAsset =
     'assets/images/practice/practice_draw_card_back_v3_base.webp';
 const String kPracticeRevealBackEmblemMaskAsset =
@@ -36,13 +39,8 @@ const String kPracticeRevealBackGlowAsset =
 const String kPracticeRevealBackLinesMaskAsset =
     'assets/images/practice/practice_draw_card_back_v3_lines_mask.webp';
 
-/// 抽牌一開始就預快取的卡背素材與光效貼圖。
-const List<String> kPracticeRevealBackAssets = [
-  kPracticeRevealBackBaseAsset,
-  kPracticeRevealBackEmblemMaskAsset,
-  kPracticeRevealBackFrameMaskAsset,
-  kPracticeRevealBackGlowAsset,
-  kPracticeRevealBackLinesMaskAsset,
+/// 抽牌一開始就預快取的光效貼圖（卡背素材由 [PracticeCardMaterialLoader] 解碼）。
+const List<String> kPracticeRevealSpriteAssets = [
   kPracticeRevealBloomAsset,
   kPracticeRevealSparkleAsset,
   kPracticeRevealParticleAsset,
@@ -89,172 +87,100 @@ Offset practiceRevealBadgeCenter(Size card) {
 /// 徽記白光的泛光大小（相對卡寬）：徽記約 0.35×卡寬，泛光取 1.8 倍。
 const double _kEmblemBloomFactor = 0.63;
 
-/// 卡背：中性石墨銀底圖上，徽記與外框遮罩套稀有度漸層（亮度＝不透明度），光暈圖
-/// 染色後墊在線條下面。全部預先做好，執行時只染色、不做模糊（規格 §6.5、§12）。
+/// 卡背（典藏材質規格 §6）：離線渲染好的 N／R／SR 成品圖，加上執行時的轉化擴散、跟著姿態走的
+/// 光、SR 全息與額外發光（[PracticeCardBackPainter]），圓角裁切後壓 2 pt 拋光外框（§6.7，顏色
+/// 跟著染色走、SR 染金後加全息邊）；徽記白光另疊一張預先模糊好的泛光（V3.1 §5.2）。動畫狀態
+/// 全部由呼叫端算好傳進來，這裡只負責畫。
 class PracticeRevealCardBack extends StatelessWidget {
   const PracticeRevealCardBack({
     super.key,
     required this.width,
     required this.height,
-    required this.colors,
-    required this.emblemGlow,
-    required this.frameGlow,
-    this.linesGlow = 0,
+    required this.images,
+    this.dye = (blue: 0.0, gold: 0.0),
+    this.light = PracticeCardLight.settled,
+    this.energy = PracticeCardBackEnergy.none,
     this.emblemWhite = 0,
-    this.goldWash = 0,
   });
 
   final double width;
   final double height;
 
-  /// 染色當下的顏色（銀 → 藍 → 金）。
-  final PracticeRevealBackColors colors;
+  /// 解碼好的卡背素材；還沒好時畫深色底（§6.8），不留白、不丟例外。
+  final PracticeCardMaterialImages images;
 
-  /// 線路發光（0..1，V3.1 §5.3）：R／SR 染藍後線路跟外框、徽記一起發光；N 恆 0。
-  final double linesGlow;
+  /// 染色進度（[practiceRevealDye]）：銀 → 藍 → 金，只升到真實稀有度。等待期與 N 全程是 0。
+  final ({double blue, double gold}) dye;
+
+  /// 這一刻的光（卡片姿態算出來的，§6.4）；等待基準姿態算出來就是 [PracticeCardLight.settled]。
+  final PracticeCardLight light;
+
+  /// 靜止值以外的額外發光（§6.6）。
+  final PracticeCardBackEnergy energy;
 
   /// 徽記白光（0..1，V3.1 §5.2）：徽記遮罩填白，再疊一張白色泛光。
   final double emblemWhite;
 
-  /// SR 整張卡變香檳金（0..1，V3.1 §5.3）：底圖疊一層金色漸層（`BlendMode.color`，保留
-  /// 底圖的明暗、只換色相），構圖不變。N／R 恆 0。
-  final double goldWash;
-
-  /// 徽記與星軌線條亮度（0..1）。
-  final double emblemGlow;
-
-  /// 外框亮度（0..1）。
-  final double frameGlow;
-
   @override
   Widget build(BuildContext context) {
-    final glowAlpha = (0.15 + 0.65 * emblemGlow).clamp(0.0, 1.0);
-    return SizedBox(
-      key: const ValueKey('practice-draw-ceremony-back'),
-      width: width,
-      height: height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(kPracticeRevealCardRadius),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (goldWash > 0.01)
-              ShaderMask(
-                key: const ValueKey('practice-draw-ceremony-gold-wash'),
-                blendMode: BlendMode.color,
-                shaderCallback: (rect) => LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    PracticeRevealPalette.srBackTint
-                        .withValues(alpha: goldWash),
-                    PracticeRevealPalette.srBackTintDeep
-                        .withValues(alpha: goldWash),
-                  ],
-                ).createShader(rect),
-                child: _layer(kPracticeRevealBackBaseAsset),
-              )
-            else
-              _layer(kPracticeRevealBackBaseAsset),
-            _layer(
-              kPracticeRevealBackGlowAsset,
-              color: colors.glow.withValues(alpha: glowAlpha),
-            ),
-            ShaderMask(
-              blendMode: BlendMode.srcIn,
-              shaderCallback: (rect) => LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [colors.tint, colors.tintDeep],
-              ).createShader(rect),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _layer(
-                    kPracticeRevealBackFrameMaskAsset,
-                    color: Colors.white.withValues(alpha: frameGlow),
-                  ),
-                  _layer(
-                    kPracticeRevealBackEmblemMaskAsset,
-                    color: Colors.white.withValues(alpha: emblemGlow),
-                  ),
-                ],
-              ),
-            ),
-            if (linesGlow > 0.01)
-              _layer(
-                kPracticeRevealBackLinesMaskAsset,
-                color: colors.glow.withValues(alpha: linesGlow),
-              ),
-            if (emblemWhite > 0.01)
-              _layer(
-                kPracticeRevealBackEmblemMaskAsset,
-                color: Colors.white.withValues(alpha: emblemWhite),
-              ),
-            if (emblemWhite > 0.01)
-              Center(
-                child: Image.asset(
-                  kPracticeRevealBloomAsset,
-                  key: const ValueKey('practice-draw-ceremony-emblem-white'),
-                  width: width * _kEmblemBloomFactor,
-                  height: width * _kEmblemBloomFactor,
-                  fit: BoxFit.fill,
-                  gaplessPlayback: true,
-                  excludeFromSemantics: true,
-                  color: Colors.white.withValues(alpha: 0.9 * emblemWhite),
-                  colorBlendMode: BlendMode.srcIn,
+    const n = PracticeRevealTheme.n;
+    const r = PracticeRevealTheme.r;
+    const sr = PracticeRevealTheme.sr;
+    Color mix(Color silver, Color blue, Color gold) =>
+        Color.lerp(Color.lerp(silver, blue, dye.blue), gold, dye.gold)!;
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    return CustomPaint(
+      foregroundPainter: PracticeCardRimPainter(
+        dark: mix(n.rimDark, r.rimDark, sr.rimDark),
+        mid: mix(n.rimMid, r.rimMid, sr.rimMid),
+        hi: mix(n.rimHi, r.rimHi, sr.rimHi),
+        light: light,
+        holo: dye.gold > 0,
+        holoStrength: dye.gold,
+        // 成品圖自己有一圈槍鐵暗帶，拋光框壓在它最外側（§6.7），不另畫內緣暗線。
+        innerLine: false,
+        radius: kPracticeRevealCardRadius,
+      ),
+      child: SizedBox(
+        key: const ValueKey('practice-draw-ceremony-back'),
+        width: width,
+        height: height,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(kPracticeRevealCardRadius),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
+                painter: PracticeCardBackPainter(
+                  images: images,
+                  dye: dye,
+                  light: light,
+                  energy: energy,
+                  emblemWhite: emblemWhite,
+                  tier: practiceRevealEffectTier,
+                  grainScale: 1 / dpr,
                 ),
               ),
-            if (colors.holo > 0.01)
-              CustomPaint(painter: _HoloRimPainter(strength: colors.holo)),
-          ],
+              if (emblemWhite > 0.01)
+                Center(
+                  child: Image.asset(
+                    kPracticeRevealBloomAsset,
+                    key: const ValueKey('practice-draw-ceremony-emblem-white'),
+                    width: width * _kEmblemBloomFactor,
+                    height: width * _kEmblemBloomFactor,
+                    fit: BoxFit.fill,
+                    gaplessPlayback: true,
+                    excludeFromSemantics: true,
+                    color: Colors.white.withValues(alpha: 0.9 * emblemWhite),
+                    colorBlendMode: BlendMode.srcIn,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
-
-  Widget _layer(String asset, {Color? color}) => Image.asset(
-        asset,
-        fit: BoxFit.fill,
-        filterQuality: FilterQuality.medium,
-        gaplessPlayback: true,
-        excludeFromSemantics: true,
-        color: color,
-        colorBlendMode: color == null ? null : BlendMode.srcIn,
-      );
-}
-
-/// SR 卡背外框的全息彩虹描邊（α 0.35）。
-class _HoloRimPainter extends CustomPainter {
-  _HoloRimPainter({required this.strength});
-
-  final double strength;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = (Offset.zero & size).deflate(2);
-    final alpha = 0.35 * strength;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        rect,
-        const Radius.circular(kPracticeRevealCardRadius - 2),
-      ),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..shader = SweepGradient(
-          colors: [
-            PracticeRevealPalette.holoCyan.withValues(alpha: alpha),
-            PracticeRevealPalette.holoViolet.withValues(alpha: alpha),
-            PracticeRevealPalette.holoPink.withValues(alpha: alpha),
-            PracticeRevealPalette.holoCyan.withValues(alpha: alpha),
-          ],
-        ).createShader(rect),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_HoloRimPainter old) => old.strength != strength;
 }
 
 /// 卡面在揭曉／收卡時間軸上某一刻的狀態。

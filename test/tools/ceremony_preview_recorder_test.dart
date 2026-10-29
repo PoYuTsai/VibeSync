@@ -31,6 +31,8 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_hint.da
 import 'package:vibesync/features/practice_chat/domain/entities/practice_learning_mode.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_collection_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_card_material.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
@@ -248,16 +250,21 @@ void main() {
       );
       await tester.pump();
 
-      // 預載照片與卡背素材（測試環境 asset 可載則顯真圖；不可載則 fallback 初始字）。
+      // 預載照片、光效貼圖與卡背素材（測試環境 asset 可載則顯真圖；不可載則 fallback 初始字）。
+      // 卡背素材用儀式同一組 provider（解成卡片實際像素寬），儀式拿到的就是這裡解好的快取。
       final ctx = tester.element(find.byType(PracticeCollectionScreen));
+      final cardPixelWidth = practiceCeremonyCardPixelWidth(ctx);
       await tester.runAsync(() async {
-        for (final asset in [
-          ...kPracticeRevealBackAssets,
-          for (final g in practiceGirlProfiles.take(8)) g.photoAssetPath,
-          girl.photoAssetPath,
+        for (final provider in <ImageProvider>[
+          for (final asset in kPracticeRevealSpriteAssets) AssetImage(asset),
+          for (final slot in PracticeCardMaterialSlot.values)
+            slot.provider(cardPixelWidth),
+          for (final g in practiceGirlProfiles.take(8))
+            AssetImage(g.photoAssetPath),
+          AssetImage(girl.photoAssetPath),
         ]) {
           try {
-            await precacheImage(AssetImage(asset), ctx);
+            await precacheImage(provider, ctx);
           } catch (_) {}
         }
       });

@@ -6,6 +6,7 @@ Scope:
 - `assets/audio/practice_draw/practice_draw_reveal_bed_v6.m4a`（2026-10-15 起取代 bed v5：同一素材剪出的同一段，再混入本專案原創的翻牌紙聲，見 `assets/audio/practice_draw/licenses/practice_draw_audio.md` 的 V3 第三刀）
 - `docs/archive/practice-draw-v2/practice_draw_card_back_base.png`、`practice_draw_card_back_neon.png`（V2 卡背；2026-10-15 起 app 不再使用，第四刀從 `assets/images/practice/` 移出 app 套件，留給 V3 卡背產生器當來源、宣傳片企劃當參考）
 - `assets/images/practice/practice_draw_card_back_v3_base.webp`、`practice_draw_card_back_v3_emblem_mask.webp`、`practice_draw_card_back_v3_frame_mask.webp`、`practice_draw_card_back_v3_glow.webp`（2026-10-15，V3 卡背：由上面的 `practice_draw_card_back_base.png` 以 `tools/practice-draw-card-back-v3/make_card_back_v3.py` 離線去色成石墨銀、拆出徽記與外框遮罩、預先模糊光暈；構圖與徽記不變，來源與授權同下）
+- `assets/images/practice/practice_card_back_v4_n.webp`、`practice_card_back_v4_r.webp`、`practice_card_back_v4_sr.webp`、`practice_card_back_v4_light.webp`、`practice_card_back_v4_glowmask.webp`、`practice_card_back_v4_glow.webp`、`practice_card_noise.webp`（2026-10-28，典藏材質卡背：構圖由 `tools/practice-card-material/trace_geometry.py` 從上面的 V3 遮罩描成向量 `card_back_geometry.json`，構圖與徽記不變、來源與授權同下；材質、打光、全息由 repo 內的 `render_card_back.py` 渲染，底面的煙霧質感取自 V3 底圖。材質這一層是內部渲染，朝最後一段「換成內部渲染的等價素材」的方向走了一步）
 
 Removed:
 - `assets/images/practice/practice_draw_explosion_reference.webp`（2026-10-15，V3 單次翻牌拿掉第二次翻牌的爆點疊圖，檔案移除）
