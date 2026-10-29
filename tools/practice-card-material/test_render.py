@@ -90,6 +90,11 @@ class AssetTest(unittest.TestCase):
         self.assertFalse(got['ok'])  # 20% 超過示意圖的 2–8%
         self.assertEqual(sum(got['hues']), 14)  # 有顏色的：四個全息色＋十格香檳金
 
+    def test_全息區含低權重的節點與線路(self):
+        """#114 第 3 輪審查（第 1 輪重送）P3：權重只管混多少，節點 0.35（G 89）、線路 0.3（G 77）也是全息區。"""
+        g = np.array([[0, 77, 89, 128, 255]], np.uint8)
+        self.assertEqual(cm.holo_region((5, 1), g).tolist(), [[False, True, True, True, True]])
+
 
 class DeterminismTest(unittest.TestCase):
     def test_重跑逐位元相同(self):

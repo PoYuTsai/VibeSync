@@ -113,11 +113,14 @@ def match(still: np.ndarray, tier: str, targets: dict | None = None) -> list[dic
     return rows
 
 
-def holo_region(size: tuple[int, int]) -> np.ndarray:
-    """全息區＝`light` 素材的 G 通道（倒角、側飾條外緣、節點切面、細線兩側；§5.3），縮到 [size]（寬, 高）
-    後取 > 0.5。"""
-    g = Image.open(LIGHT).convert('RGB').getchannel('G').resize(size, Image.BILINEAR)
-    return np.asarray(g) > 127
+def holo_region(size: tuple[int, int], g: np.ndarray | None = None) -> np.ndarray:
+    """全息區＝`light` 素材 G 通道有全息的地方（倒角與側飾條外緣 1、外框細線與刻記 0.5、節點切面 0.35、
+    星軌與線路兩側 0.3；§5.3）。權重只決定渲染時混多少，不決定算不算全息區，所以低權重也算。縮到
+    [size]（寬, 高）後取最低權重 0.3 的一半以上（雙線性縮放的邊緣各算一半）。[g] 測試用，預設讀素材。"""
+    if g is None:
+        g = np.asarray(Image.open(LIGHT).convert('RGB').getchannel('G'))
+    g = np.asarray(Image.fromarray(g).resize(size, Image.BILINEAR))
+    return g >= 0.15 * 255
 
 
 def hue_between(hue: np.ndarray, start: float, end: float) -> np.ndarray:
