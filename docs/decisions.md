@@ -1133,6 +1133,8 @@
 
 **測試**: `test/unit/features/night_market/data/night_market_story_test.dart`（beat access 宣告＋isPremium／isEssential 陷阱守門）、`test/unit/features/subscription/data/subscription_sync_integrity_test.dart`（R1/R2 純函式：帳號一致性、單向採用 RevenueCat 較高檔位）、`test/widget/features/night_market/night_market_screen_test.dart`／`night_market_entry_card_test.dart`（Free／Starter／resolving／unavailable／解鎖重播／Starter 購買仍鎖／同步失敗但 RevenueCat 確認會持久解鎖／同步與 RevenueCat 都無法確認則維持鎖定／帳號中途切換不套用／中途離頁不炸／教練卡與 S3 完播前失去授權會重新擋／Completer 控制的完整回合重入競態）、`test/widget/screens/paywall_screen_test.dart`（比較表新列）。共用鷹架：`test/helpers/night_market_paywall_harness.dart`（帳號來源改用真的 `StreamController`，不再是側門 `StateProvider`）。
 
+**補充（2026-10-28）：學習頁的「查看復盤」要先看完影片**。Eric 原話「現在只有我跟夥伴 那改吧 照預設」：這個帳號在這支手機上把影片看完過一次（最後一段播完、真的進到復盤那一刻），「查看復盤」才往下走上面第 5 點的 Essential 閘門；沒看完時按鈕寫「看完影片解鎖復盤」，點了只提示「先把影片看完，復盤才會打開」並可直接去看影片，不開付費牆（沒有 Essential 的人看影片時，第一個停點就會遇到付費牆）。看完紀錄只存在這支手機的加密 settingsBox（key `night_market_watched_v1:<帳號 id>`，沒登入不寫），換手機或刪 App 重裝要再看一次；不動伺服器與資料庫。更新前看過的人沒有紀錄，要再看完一次（Eric 接受）。影片內的流程（每段播完才出選項、最後一段播完才進復盤、中途離開不記進度）不變。同日補主審殘餘風險（Eric「小風險也順便補起來」）：看完紀錄與進復盤都綁「這一輪是誰在看」，換帳號就從頭重播；最後的「重試」防重複按，進復盤前再確認畫面還停在最後一段播完；復盤頁綁打開它的帳號，帳號換了連同子頁整份退出，往章節、知識點、片段回看走也要是同一個人。
+
 ## ADR #47 — [2026-09-17] 開場救星兩段式：先分析、再讓用戶補充、按生成才扣費
 
 **狀態**: 🟢 產品決策已採用（Eric 2026-09-17 交辦即採用附件 §17：分析不扣、首次可交付生成扣一般 3／既有條件 0、一局共三組、24h 固定保存），**實作待驗收** — 分支 `opener-two-stage`（基準 main `3134c513`）；第一～四輪獨立複核 BLOCK 後已修正、第五輪 `bf658fae` APPROVE_WITH_RISK（殘留 P2-R5-IO 另案，見複核包 §7 與仲裁佇列），產品程式凍結在 `bf658fae`；驗收：真 Postgres 並行 11/11 PASS（結案）、真模型一輪已跑（$3.634）**內容未過**→內容守門／推薦重排補修＋離線回放 97/97（複核包 §12–13），新 prompt 待一輪確認（估 $1.64，需另授權）；未 push、未部署、migration 未套 production；部署與付費真模型評估皆未授權。

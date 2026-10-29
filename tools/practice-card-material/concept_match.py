@@ -3,7 +3,8 @@
   python3 tools/practice-card-material/concept_match.py --still build/card_back_stills/back_sr.png [--tier sr]
       [--concept <示意圖單張卡背，本機私有>]
 
-一定輸出：各區域的實測色、目標色、CIEDE2000 色差，超過門檻標 ✗。
+一定輸出：各區域的實測色、目標色、CIEDE2000 色差，超過門檻標 ✗；再加紋理指標（#114 Gate-2a
+第 2 輪：色差只管顏色接近，管不到質感）：底面細顆粒、霧面、平均亮度，徽記三面明暗比，拉絲連續性。
 有給 --concept 時另外輸出並排對照圖（不入庫）。門檻只是提示，最後以 Eric 目視為準。
 只依賴 numpy＋Pillow。
 """
@@ -19,6 +20,8 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 TARGETS = HERE / 'targets.json'
+LIGHT = HERE.parents[1] / 'assets/images/practice/practice_card_back_v4_light.webp'
+LUMA = np.array([0.2126, 0.7152, 0.0722])
 
 
 def hex_rgb(s: str) -> np.ndarray:
@@ -110,16 +113,162 @@ def match(still: np.ndarray, tier: str, targets: dict | None = None) -> list[dic
     return rows
 
 
-def holo_hues(still: np.ndarray, mask: np.ndarray | None = None) -> dict:
-    """SR 全息：飽和度夠高的像素佔比與色相分布（示意圖：玫瑰到天空藍、佔全息區 2–8%）。"""
+def holo_region(size: tuple[int, int], g: np.ndarray | None = None) -> np.ndarray:
+    """全息區＝`light` 素材 G 通道有全息的地方（倒角與側飾條外緣 1、外框細線與刻記 0.5、節點切面 0.35、
+    星軌與線路兩側 0.3；§5.3）。權重只決定渲染時混多少，不決定算不算全息區，所以低權重也算。縮到
+    [size]（寬, 高）後取最低權重 0.3 的一半以上（雙線性縮放的邊緣各算一半）。[g] 測試用，預設讀素材。"""
+    if g is None:
+        g = np.asarray(Image.open(LIGHT).convert('RGB').getchannel('G'))
+    g = np.asarray(Image.fromarray(g).resize(size, Image.BILINEAR))
+    return g >= 0.15 * 255
+
+
+def hue_between(hue: np.ndarray, start: float, end: float) -> np.ndarray:
+    """色相（度）落在從 [start] 往上走到 [end] 的範圍；end 比 start 小時跨過 360°。"""
+    return (hue >= start) & (hue <= end) if start <= end else (hue >= start) | (hue <= end)
+
+
+def holo_hues(still: np.ndarray, targets: dict | None = None, region: np.ndarray | None = None) -> dict:
+    """SR 全息（§5.5）：全息區裡有顏色（飽和度 > 0.25、亮度 > 0.45；§2.2 的四個全息色飽和度 0.30–0.52，
+    玫瑰與天空藍最淡）而且色相落在 targets.json `holo.hue_range_deg`（天空藍往上繞到玫瑰）的像素，佔全息區
+    的比例，對 `holo.share` 判定；另回傳全息區裡有顏色的像素的色相分布（每格 30°，香檳金也在裡面）。
+    [region] 預設 [holo_region]。"""
+    targets = targets or json.loads(TARGETS.read_text())
+    holo = targets['holo']
     hsv = np.asarray(Image.fromarray((still * 255).astype(np.uint8)).convert('HSV'), np.float64)
-    sat = hsv[..., 1] / 255
-    val = hsv[..., 2] / 255
-    sel = (sat > 0.35) & (val > 0.45)
-    if mask is not None:
-        sel &= mask
-    hue = hsv[..., 0][sel] / 255 * 360
-    return {'share': float(sel.mean()), 'hues': np.histogram(hue, bins=12, range=(0, 360))[0].tolist()}
+    hue = hsv[..., 0] / 255 * 360
+    if region is None:
+        region = holo_region((still.shape[1], still.shape[0]))
+    colored = region & (hsv[..., 1] / 255 > 0.25) & (hsv[..., 2] / 255 > 0.45)
+    share = float((colored & hue_between(hue, *holo['hue_range_deg'])).sum() / max(1, region.sum()))
+    lo, hi = holo['share']
+    return {'share': share, 'want': [lo, hi], 'ok': lo <= share <= hi,
+            'hues': np.histogram(hue[colored], bins=12, range=(0, 360))[0].tolist()}
+
+
+# ── 紋理指標（§5.5，#114 Gate-2a 第 2 輪）────────────────────────────────────
+
+def _blur(a: np.ndarray, sigma: float) -> np.ndarray:
+    """可分離高斯（邊緣反射）。"""
+    r = max(1, int(np.ceil(3 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    out = np.pad(a, r, mode='reflect')
+    out = sum(k[i] * out[i:i + a.shape[0], :] for i in range(2 * r + 1))
+    return sum(k[i] * out[:, i:i + a.shape[1]] for i in range(2 * r + 1))
+
+
+def luma(img: np.ndarray, width: int) -> np.ndarray:
+    """sRGB（0..1）→ 卡寬縮到 width px 的亮度（0..255）。"""
+    h = round(width * img.shape[0] / img.shape[1])
+    im = Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)).resize((width, h), Image.LANCZOS)
+    return np.asarray(im, np.float64) @ LUMA
+
+
+def field_texture(img: np.ndarray, regions, width: int = 410) -> dict:
+    """純底面區域（卡寬 410 px，約手機上卡片的 pt 寬）：細顆粒＝σ1 高通的標準差、霧面＝σ1–σ8 帶通的
+    標準差、平均亮度；三個區域取平均。"""
+    lum = luma(img, width)
+    h, w = lum.shape
+    fine, haze, mean = [], [], []
+    for x0, y0, x1, y1 in regions:
+        r = lum[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)]
+        b1, b8 = _blur(r, 1.0), _blur(r, 8.0)
+        fine.append((r - b1)[4:-4, 4:-4].std())
+        haze.append((b1 - b8)[8:-8, 8:-8].std())
+        mean.append(r.mean())
+    return {'fine': float(np.mean(fine)), 'haze': float(np.mean(haze)), 'mean': float(np.mean(mean))}
+
+
+def _masks(size: tuple[int, int]) -> dict[str, np.ndarray]:
+    """量測用遮罩（畫布 1200×1800 算好再縮）：徽記三面的平頂（倒角內縮 3 px）、上飾板、左右側飾條、
+    卡緣暗帶左右兩段的內部。示意圖跟向量構圖的邊有幾 px 的落差，飾板、飾條、暗帶都往內縮 12–14 px，
+    邊上的亮線（飾板上緣、SR 的金邊）才不會算進拉絲。"""
+    import geometry as g
+    import heightfield as hf
+    geo = g.load()
+    cover = g.rasterize(geo, layers=['emblem', 'plate', 'sidebar', 'edge-band', 'frame-line'])
+    hgt, wid = cover['emblem'].shape
+    yy, xx = np.mgrid[0:hgt, 0:wid]
+    face = hf.emblem_face_map(geo, (hgt, wid))
+    inner = hf.chamfer_distance(cover['emblem'], 12) >= 11  # 倒角 8 px＋3 px
+    plate = (hf.chamfer_distance(cover['plate'], 16) >= 14) & (yy < hgt / 2)
+    bar = (hf.chamfer_distance(cover['sidebar'], 14) >= 12) & (cover['plate'] < 0.5)
+    band = (hf.chamfer_distance(cover['edge-band'], 14) >= 12) & (cover['frame-line'] < 0.5) & \
+        (cover['sidebar'] < 0.5) & (np.abs(yy - hgt / 2) < 0.38 * hgt) & (np.abs(yy - hgt / 2) > 0.16 * hgt)
+    raw = {'face-top': inner & (face == hf.FACE_TOP), 'face-left': inner & (face == hf.FACE_LEFT),
+           'face-right': inner & (face == hf.FACE_RIGHT), 'plate': plate, 'bar': bar, 'band': band}
+    out = {}
+    for k, m in raw.items():
+        im = Image.fromarray(m.astype(np.uint8) * 255).resize(size, Image.BILINEAR)
+        out[k] = np.asarray(im) > 250
+    return out
+
+
+def emblem_faces(img: np.ndarray) -> dict:
+    """徽記三個面平頂的平均亮度（0..255）與左面、右面對上面的比值。"""
+    lum = img @ LUMA * 255
+    m = _masks((img.shape[1], img.shape[0]))
+    top, left, right = (float(lum[m[k]].mean()) for k in ('face-top', 'face-left', 'face-right'))
+    return {'top': top, 'left': left, 'right': right, 'ratio': [left / top, right / top]}
+
+
+def brush_continuity(img: np.ndarray, width: int = 784) -> dict:
+    """拉絲連續性：上飾板、側飾條、卡緣暗帶的細節（σ3 高通），往 12 個方向各平移 6 px 的相關係數取
+    最大——整條連續的直紋（第 1 輪）接近 1，示意圖那種細碎的短拉絲很低。卡寬 784 px（示意圖原圖 2 倍）；
+    另回傳細節的標準差（拉絲對比）。"""
+    lum = luma(img, width)
+    det = lum - _blur(lum, 3.0)
+    m = _masks((lum.shape[1], lum.shape[0]))
+    out = {}
+    for name in ('plate', 'bar', 'band'):
+        sel = m[name]
+        best = -1.0
+        for th in np.radians(np.arange(0, 180, 15)):
+            dx, dy = int(round(6 * np.cos(th))), int(round(6 * np.sin(th)))
+            sh = np.roll(np.roll(det, -dy, 0), -dx, 1)
+            both = sel & np.roll(np.roll(sel, -dy, 0), -dx, 1)
+            a, b = det[both], sh[both]
+            best = max(best, float(np.corrcoef(a, b)[0, 1]))
+        out[name] = {'continuity': best, 'contrast': float(det[sel].std())}
+    return out
+
+
+def texture(img: np.ndarray, targets: dict | None = None) -> dict:
+    targets = targets or json.loads(TARGETS.read_text())
+    tex = targets['texture']
+    return {'field': field_texture(img, tex['field']['regions'], tex['field']['width']),
+            'faces': emblem_faces(img), 'brush': brush_continuity(img)}
+
+
+def texture_rows(img: np.ndarray, tier: str, targets: dict | None = None) -> list[dict]:
+    """紋理指標對示意圖：底面細顆粒、霧面在示意圖的 ±35% 內，平均亮度 ±10；徽記左右面比值 ±0.05；
+    拉絲連續性 ≤ 0.6（示意圖 0.2–0.5、第 1 輪 0.97–0.99），拉絲對比在示意圖的 0.5–1.6 倍。"""
+    targets = targets or json.loads(TARGETS.read_text())
+    want = targets['texture']['targets'][tier]
+    got = texture(img, targets)
+    rows = []
+    f = got['field']
+    for k, tol in (('fine', 0.35), ('haze', 0.35)):
+        rows.append({'name': f'field-{k}', 'got': f[k], 'want': want['field'][k],
+                     'ok': abs(f[k] / want['field'][k] - 1) <= tol})
+    rows.append({'name': 'field-mean', 'got': f['mean'], 'want': want['field']['mean'],
+                 'ok': abs(f['mean'] - want['field']['mean']) <= 10})
+    for i, side in enumerate(('left', 'right')):
+        rows.append({'name': f'emblem-{side}/top', 'got': got['faces']['ratio'][i],
+                     'want': want['faces'][i], 'ok': abs(got['faces']['ratio'][i] - want['faces'][i]) <= 0.05})
+    for part in ('plate', 'bar', 'band'):
+        b = got['brush'][part]
+        rows.append({'name': f'{part}-continuity', 'got': b['continuity'], 'want': want['brush'][part][0],
+                     'ok': b['continuity'] <= 0.6})
+        target = want['brush'][part][1]
+        if target is None:  # 示意圖沒有量到：只印實測值
+            rows.append({'name': f'{part}-contrast', 'got': b['contrast'], 'want': float('nan'), 'ok': True})
+            continue
+        ratio = b['contrast'] / target
+        rows.append({'name': f'{part}-contrast', 'got': b['contrast'], 'want': target,
+                     'ok': 0.5 <= ratio <= 1.6})
+    return rows
 
 
 def main() -> None:
@@ -136,8 +285,14 @@ def main() -> None:
     print(f'{"區域":<16}{"實測":>9}{"目標":>9}{"ΔE2000":>9}')
     for r in rows:
         print(f'{r["region"]:<16}{r["got"]:>9}{r["want"]:>9}{r["de"]:>9.2f} {"✓" if r["ok"] else "✗"}')
+    if 'texture' in json.loads(TARGETS.read_text()):
+        print(f'{"紋理":<20}{"實測":>9}{"示意圖":>9}')
+        for r in texture_rows(img, tier):
+            print(f'{r["name"]:<20}{r["got"]:>9.2f}{r["want"]:>9.2f} {"✓" if r["ok"] else "✗"}')
     if tier == 'sr':
-        print('全息：', holo_hues(img))
+        h = holo_hues(img)
+        print(f'全息：玫瑰到天空藍佔全息區 {h["share"]:.2%}（示意圖 {h["want"][0]:.0%}–{h["want"][1]:.0%}）'
+              f'{" ✓" if h["ok"] else " ✗"}；全息區有顏色的像素色相分布（每 30°）{h["hues"]}')
     if args.concept:
         a = Image.open(args.still).convert('RGB')
         b = Image.open(args.concept).convert('RGB')

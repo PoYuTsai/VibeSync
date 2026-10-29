@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive_ce.dart' show Box;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
+import 'package:vibesync/core/theme/practice_reveal_palette.dart';
 import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_draw_draft_store.dart';
 import 'package:vibesync/features/practice_chat/data/repositories/practice_game_intro_store.dart';
@@ -24,6 +25,7 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_message
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
 import 'package:vibesync/features/practice_chat/presentation/screens/practice_chat_screen.dart';
+import 'package:vibesync/features/practice_chat/presentation/widgets/practice_card_material.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_ceremony.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_draw_sfx.dart';
 import 'package:vibesync/features/practice_chat/presentation/widgets/practice_reveal_card.dart';
@@ -4040,11 +4042,65 @@ void main() {
             .painter! as PracticeRevealShockwavePainter;
         expect(
             painter.rings, hasLength(rarity == PracticeGirlRarity.sr ? 2 : 1));
+        // 典藏材質 M9：R 的衝擊波跟環境光、光刃一起換成 #4FB0FF；SR 維持香檳金。
+        expect(
+          painter.tint,
+          rarity == PracticeGirlRarity.r
+              ? PracticeRevealPalette.rGlow
+              : PracticeRevealPalette.srBackTint,
+        );
       }
 
       await finishCeremony(tester);
     });
   }
+
+  testWidgets('典藏材質 §6.1：橫向掛上再轉直向（卡片變大）→ 已解好的卡背素材換新寬度重解，舊寬度那張放掉',
+      (tester) async {
+    imageCache.clear();
+    imageCache.clearLiveImages();
+    // MediaQuery 跟著 view 走（surface 只管排版）：像素比 3 的手機橫放。
+    tester.view.devicePixelRatio = 3;
+    tester.view.physicalSize = const Size(844 * 3, 390 * 3);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final api = _DrawApi(() => Completer<PracticeDrawResult>().future);
+    await pumpLocked(tester, api: api, surface: const Size(844, 390));
+    final ceremony = find.byType(PracticeDrawCeremony);
+
+    Future<ImageCacheStatus> status(int cardPixelWidth) async {
+      final config = createLocalImageConfiguration(tester.element(ceremony));
+      final key = await tester.runAsync(
+        () => PracticeCardMaterialSlot.n
+            .provider(cardPixelWidth)
+            .obtainKey(config),
+      );
+      return imageCache.statusForKey(key!);
+    }
+
+    // 解碼在背景執行緒：真的等，最多約 6 秒。
+    Future<void> waitUntil(Future<bool> Function() done) async {
+      for (var i = 0; i < 200 && !await done(); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 30)),
+        );
+      }
+    }
+
+    final small = practiceCeremonyCardPixelWidth(tester.element(ceremony));
+    await waitUntil(() async => (await status(small)).keepAlive);
+    expect((await status(small)).keepAlive, isTrue,
+        reason: '第一幀之後解好 N 卡背（橫向的卡寬）');
+
+    tester.view.physicalSize = const Size(390 * 3, 844 * 3); // 轉成直向
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pump();
+    final large = practiceCeremonyCardPixelWidth(tester.element(ceremony));
+    expect(large, greaterThan(small * PracticeCardMaterialLoader.upgradeRatio));
+    await waitUntil(() async => !(await status(small)).tracked);
+    expect((await status(large)).keepAlive, isTrue, reason: '換成直向的卡寬重解');
+    expect((await status(small)).tracked, isFalse, reason: '新圖解好才放掉舊寬度那張');
+  });
 
   testWidgets('V3.1 §9：低檔只畫後層泛光，翻牌峰值也沒有前層', (tester) async {
     debugPracticeRevealEffectTierOverride = PracticeRevealEffectTier.low;

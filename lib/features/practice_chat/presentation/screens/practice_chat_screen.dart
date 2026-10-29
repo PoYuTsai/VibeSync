@@ -702,6 +702,11 @@ class _PracticeProfileBar extends StatelessWidget {
                 width: 40,
                 height: 40,
                 circle: true,
+                cacheWidth: practiceGirlPhotoCacheWidth(
+                  context,
+                  width: 40,
+                  height: 40,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1235,6 +1240,12 @@ class _PracticeProfileHero extends StatelessWidget {
                   width: double.infinity,
                   height: 320,
                   borderRadius: BorderRadius.circular(22),
+                  // 全寬：以螢幕寬當框寬的上限。
+                  cacheWidth: practiceGirlPhotoCacheWidth(
+                    context,
+                    width: MediaQuery.sizeOf(context).width,
+                    height: 320,
+                  ),
                 ),
                 const Positioned(
                   right: 10,
@@ -1705,6 +1716,11 @@ class _PracticeBubbleAvatar extends StatelessWidget {
         width: ChatAvatarGutter.avatarSize,
         height: ChatAvatarGutter.avatarSize,
         circle: true,
+        cacheWidth: practiceGirlPhotoCacheWidth(
+          context,
+          width: ChatAvatarGutter.avatarSize,
+          height: ChatAvatarGutter.avatarSize,
+        ),
       ),
     );
   }

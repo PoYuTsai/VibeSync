@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vibesync/core/theme/app_theme.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
-import 'package:vibesync/features/learning/presentation/widgets/ebook_access_gate.dart';
+import 'package:vibesync/features/night_market/data/night_market_watch_store.dart';
+import 'package:vibesync/features/night_market/presentation/night_market_essential_gate.dart';
+import 'package:vibesync/features/night_market/presentation/night_market_watch_gate.dart';
 import 'package:vibesync/features/night_market/presentation/screens/night_market_screen.dart';
 import 'package:vibesync/features/night_market/presentation/widgets/night_market_entry_card.dart';
 
@@ -22,6 +24,8 @@ void main() {
     await tester.binding.setSurfaceSize(kPhone);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final captureKey = GlobalKey();
+    // 先拍還沒看完的樣子，再記成看完、拍原本的復盤流程（Eric 2026-10-28）。
+    final watchStore = InMemoryNightMarketWatchStore();
     final theme = AppTheme.darkTheme;
     final router = GoRouter(routes: [
       GoRoute(
@@ -48,6 +52,10 @@ void main() {
       overrides: [
         ebookSubscriptionAccessProvider
             .overrideWithValue(const EbookSubscriptionAccess.essential()),
+        // 「查看復盤」要先看完影片（Eric 2026-10-28）。
+        nightMarketAccountIdProvider
+            .overrideWith((ref) => Stream.value('proof-owner')),
+        nightMarketWatchStoreProvider.overrideWithValue(watchStore),
       ],
       child: MaterialApp.router(
         routerConfig: router,
@@ -94,6 +102,17 @@ void main() {
           const AssetImage('assets/images/night_market/cover.jpg'),
           tester.element(find.byType(NightMarketEntryCard)),
         ));
+    await tester.pumpAndSettle();
+    await capture('night_market_review_entry_locked.png');
+    await tester.tap(find.byKey(const ValueKey('night-market-review-entry')));
+    await tester.pumpAndSettle();
+    await capture('night_market_review_entry_watch_first.png');
+    tester
+        .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+        .clearSnackBars();
+    await watchStore.markWatched('proof-owner');
+    ProviderScope.containerOf(tester.element(find.byType(NightMarketEntryCard)))
+        .invalidate(nightMarketWatchedProvider);
     await tester.pumpAndSettle();
     await capture('night_market_review_entry.png');
     await tap('查看復盤');
