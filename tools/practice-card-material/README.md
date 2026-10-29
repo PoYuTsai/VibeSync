@@ -37,7 +37,7 @@ SR 香檳金全息。構圖先描成向量，再用高度圖＋打光離線渲�
 # 重新渲染 7 張素材（同一份 JSON、同一個種子，逐位元相同；約 1 分鐘）
 python3 tools/practice-card-material/render_card_back.py [--preview build/card_material]
 
-# 檢查：構圖鎖定（另存疊圖 build/card_material/geometry_overlay.png）、素材、色差、重跑一致
+# 檢查：構圖鎖定（要 scikit-image、scipy；另存疊圖 build/card_material/geometry_overlay.png）、素材、色差、重跑一致
 python3 -m unittest discover -s tools/practice-card-material
 
 # app 裡實際畫出來的卡背靜止圖（build/card_back_stills/），再對示意圖目標色
@@ -54,7 +54,7 @@ pip install scikit-image scipy
 python3 tools/practice-card-material/trace_geometry.py --overlay build/card_material/trace_overlay.png
 ```
 
-依賴：渲染與檢查只要 numpy＋Pillow（含 WebP）；描圖另外要 scikit-image、scipy（0.25 與 0.26 都可以）。
+依賴：渲染、量測（`concept_match.py`、`calibrate.py`）與素材檢查（`test_render.py`）只要 numpy＋Pillow（含 WebP）；描圖與構圖鎖定檢查（`trace_geometry.py`、`test_geometry.py`）另外要 scikit-image、scipy（0.25 與 0.26 都可以）。
 
 ## 構圖鎖定（§5.1）
 
