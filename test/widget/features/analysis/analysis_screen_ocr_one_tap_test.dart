@@ -7,6 +7,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +19,8 @@ import 'package:vibesync/core/services/message_calculator.dart';
 import 'package:vibesync/core/services/usage_service.dart';
 import 'package:vibesync/features/analysis/application/analysis_run_preparer.dart';
 import 'package:vibesync/features/analysis/data/notifiers/streaming_analyze_notifier.dart';
+import 'package:vibesync/features/analysis/application/ports/screenshot_recognition_ports.dart';
+import 'package:vibesync/features/analysis/application/screenshot_import_coordinator.dart';
 import 'package:vibesync/features/analysis/data/providers/analysis_providers.dart';
 import 'package:vibesync/features/analysis/data/services/analyze_stream_client.dart';
 import 'package:vibesync/features/analysis/data/services/conversation_memory_adapter.dart';
@@ -188,6 +191,27 @@ class _StubConversationRepository extends ConversationRepository {
     }
     _conversation = c;
   }
+}
+
+/// 辨識一律沒命中快取（[_pumpOcrScreen] 的 recognitionError 用）。
+class _MissRecognitionCache implements OcrRecognitionCachePort {
+  @override
+  Future<void> invalidate(
+      List<Uint8List> images, String conversationId) async {}
+
+  @override
+  Future<RecognizedConversation?> read(
+    List<Uint8List> images,
+    String conversationId,
+  ) async =>
+      null;
+
+  @override
+  Future<void> write({
+    required List<Uint8List> images,
+    required RecognizedConversation recognizedConversation,
+    required String conversationId,
+  }) async {}
 }
 
 class _MemoryConversationArchiveStore implements ConversationArchiveStore {
@@ -370,6 +394,8 @@ Future<_Harness> _pumpOcrScreen(
   SubscriptionState subscription = const SubscriptionState(),
   // 同一頁換一批（[_repickAndRecognize]）時，第二張圖辨識出來的內容。
   List<RecognizedMessage>? laterRecognizedMessages,
+  // 有給就讓辨識直接丟這個錯（不讀快取、不打網路）。
+  Object? recognitionError,
 }) async {
   await tester.binding.setSurfaceSize(const Size(430, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -458,6 +484,33 @@ Future<_Harness> _pumpOcrScreen(
           subscriptionNotifier = _SeededSubscriptionNotifier(subscription);
           return subscriptionNotifier;
         }),
+        if (recognitionError != null)
+          screenshotImportCoordinatorFactoryProvider.overrideWith(
+            (ref) => ({required String conversationId}) =>
+                ScreenshotImportCoordinator(
+                  conversationId: conversationId,
+                  getConversation: (id) => ref
+                      .read(conversationRepositoryProvider)
+                      .getConversation(id),
+                  createConversation: ({
+                    required name,
+                    required messages,
+                    partnerId,
+                  }) =>
+                      throw UnimplementedError(),
+                  persistImportedConversation: (_) async {},
+                  partnerById: (_) => null,
+                  recognizeScreenshots: ({
+                    required images,
+                    sessionContext,
+                    knownContactName,
+                    onProgress,
+                    onTelemetry,
+                  }) async =>
+                      throw recognitionError,
+                  recognitionCache: _MissRecognitionCache(),
+                ),
+          ),
         // 確認流程照舊讀本機用量（只拿重置時間；方案載好時數字以方案為準）。
         usageDataProvider.overrideWithValue(
           UsageData(
@@ -1220,6 +1273,64 @@ void main() {
       expect(find.byType(AnalysisErrorCard), findsNothing);
       expect(find.text('開始分析前'), findsNothing);
       expect(harness.recorder.streamCalls, 0);
+    });
+  });
+
+  // 2026-10-31：本月額度用完時截圖辨識也會被擋。沒有更高方案可升（Essential）就不叫
+  // 他升級；還能升級的方案照舊給「查看方案」。
+  group('辨識撞到本月額度', () {
+    Future<void> recognizeIntoMonthlyLimit(
+      WidgetTester tester,
+      SubscriptionState plan,
+    ) async {
+      await _pumpOcrScreen(
+        tester,
+        recognizedMessages: const [],
+        subscription: plan,
+        recognitionError: MonthlyLimitExceededException(
+          monthlyLimit: plan.monthlyLimit,
+          used: plan.monthlyLimit,
+          remaining: 0,
+          quotaNeeded: 1,
+        ),
+      );
+      final picker = tester.widget<ImagePickerWidget>(
+        find.byType(ImagePickerWidget),
+      );
+      picker.onImagesChanged([_imageBytes]);
+      await tester.pump();
+      final recognizeButton = find.text('辨識截圖文字（1 張）');
+      await tester.ensureVisible(recognizeButton);
+      await tester.tap(recognizeButton);
+      await _pumpFrames(tester);
+      // 辨識畫面圍籬 135 秒的計時器：推過去，測試結束時不留計時器。
+      await tester.pump(const Duration(seconds: 136));
+      await tester.pump();
+      expect(find.textContaining('本月額度已用完'), findsOneWidget);
+    }
+
+    testWidgets('Essential：不叫他升級，鈕寫「稍後再試」', (tester) async {
+      await recognizeIntoMonthlyLimit(tester, _essentialPlan());
+
+      expect(find.text('查看方案'), findsNothing);
+      expect(find.text('稍後再試'), findsOneWidget);
+      expect(find.textContaining('升級'), findsNothing);
+    });
+
+    testWidgets('Starter：照舊給「查看方案」', (tester) async {
+      final limits =
+          SubscriptionTierHelper.limitsFor(SubscriptionTierHelper.starter);
+      await recognizeIntoMonthlyLimit(
+        tester,
+        SubscriptionState(
+          tier: SubscriptionTierHelper.starter,
+          monthlyLimit: limits.monthly,
+          dailyLimit: limits.daily,
+        ),
+      );
+
+      expect(find.text('查看方案'), findsOneWidget);
+      expect(find.text('升級後可解鎖更完整的分析能力與較高額度。'), findsOneWidget);
     });
   });
 }

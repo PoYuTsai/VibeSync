@@ -111,8 +111,12 @@ Deno.test("stream retry reuses the stream ledger without charging again", async 
   const source = await readIndexSource();
   const branch = streamBranch(source);
 
+  // 只有主分析的串流 run 能續看（2026-10-31：辨識等其他請求帶 runId 不算續看）。
   assert(
-    source.includes('const isStreamRetryMode = responseMode === "stream"'),
+    source.includes(
+      "const isStreamRetryMode = plainAnalyzeRequest &&\n" +
+        '      responseMode === "stream" &&',
+    ),
   );
   assert(
     branch.includes(

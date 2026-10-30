@@ -926,6 +926,110 @@ for (const scope of ["monthly", "daily"] as const) {
   });
 }
 
+// 第一段額度預查（Eric＋Bruce 2026-10-30；開關 OPENER_ANALYZE_QUOTA_GATE，沒設＝關）：
+// 分析本身不扣，但付不起第一次產生（3 則）就不打模型、不計限流、釋放作業，回跟第二段同一個
+// 429；額度補回來之後同一筆請求照常分析。開關沒開時照舊分析（舊版 App 付款回來會卡住）。
+Deno.test("第一段額度預查：開關沒設＝關，剩不到 3 則照舊分析", async () => {
+  const h = await harness();
+  try {
+    h.sub.daily_messages_used = 9;
+    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+    assertEquals(response.status, 200);
+    assertEquals(h.script.calls.length, 1);
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("第一段額度預查：開關值不分大小寫、忽略前後空白；on 或 true 才開，其他值＝關", async () => {
+  for (const value of ["true", " On ", "1", "off"]) {
+    const h = await harness();
+    try {
+      h.env.OPENER_ANALYZE_QUOTA_GATE = value;
+      h.sub.daily_messages_used = 9;
+      const res = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+      const gated = value === "true" || value === " On ";
+      assertEquals(res.status, gated ? 429 : 200, JSON.stringify(value));
+    } finally {
+      await h.db.close();
+    }
+  }
+});
+
+for (const scope of ["monthly", "daily"] as const) {
+  Deno.test(`第一段額度預查：${scope === "monthly" ? "本月" : "本月夠、今天"}剩不到 3 則 → 不分析、429 帶 quotaScope=${scope}`, async () => {
+    const h = await harness();
+    try {
+      h.env.OPENER_ANALYZE_QUOTA_GATE = "on";
+      if (scope === "monthly") h.sub.monthly_messages_used = 28;
+      else h.sub.daily_messages_used = 8;
+      const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+      assertEquals(response.status, 429);
+      const body = await json(response);
+      assertEquals(body.quotaScope, scope);
+      assertEquals(body.quotaNeeded, 3);
+      assert(typeof body.monthlyLimit === "number", "訂閱額度 429 必須帶額度鍵讓 App 顯示方案入口");
+      assert(String(body.message).startsWith(scope === "monthly" ? "本月" : "今日"));
+      assertEquals(h.script.calls.length, 0, "付不起就不打模型");
+      const attempts = await h.db.query<{ n: number }>("SELECT count(*)::int AS n FROM public.model_call_rate_limits");
+      assertEquals(attempts.rows[0].n, 0, "擋下的請求不計限流");
+      const open = await h.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.opener_sessions WHERE state <> 'released'`);
+      assertEquals(open.rows[0].n, 0, "作業要釋放");
+
+      h.sub.monthly_messages_used = 0;
+      h.sub.daily_messages_used = 0;
+      const retried = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+      assertEquals(retried.status, 200, "額度補回來之後同一筆請求照常分析");
+    } finally {
+      await h.db.close();
+    }
+  });
+}
+
+Deno.test("第一段額度預查：先跟 RevenueCat 對帳，對帳後付得起就照常分析", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_ANALYZE_QUOTA_GATE = "on";
+    h.sub.daily_messages_used = 9;
+    const reasons: string[] = [];
+    const response = await handleOpenerAnalyzeRequest(h.deps(analyzeBody(), {
+      refreshTierFromRevenueCat: (reason) => {
+        reasons.push(reason);
+        h.sub.daily_messages_used = 0;
+        return Promise.resolve("applied" as const);
+      },
+    }));
+    assertEquals(response.status, 200);
+    assertEquals(reasons, ["opener_analyze_quota_exceeded"]);
+  } finally {
+    await h.db.close();
+  }
+});
+
+Deno.test("第一段額度預查：已分析好的同一筆請求重送照樣重播（不打模型）；零扣費與測試帳號不擋", async () => {
+  const h = await harness();
+  try {
+    h.env.OPENER_ANALYZE_QUOTA_GATE = "on";
+    await analyzed(h);
+    const callsAfterFirst = h.script.calls.length;
+    h.sub.daily_messages_used = 10;
+    const replay = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+    assertEquals(replay.status, 200);
+    assertEquals((await json(replay)).replayed, true);
+    assertEquals(h.script.calls.length, callsAfterFirst, "重播不打模型");
+
+    // 降級後已用可能超過上限：零扣費的請求還是不擋。
+    h.sub.daily_messages_used = 12;
+    const free = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_4, profileInfo: undefined, initialUserNote: "想從狗開" })));
+    assertEquals(free.status, 200, "沒圖沒對方資料＝零扣費，不擋");
+
+    const tester = await handleOpenerAnalyzeRequest(h.deps(analyzeBody({ analysisRequestId: GEN_3 }), { accountIsTest: true }));
+    assertEquals(tester.status, 200, "測試帳號不受額度影響");
+  } finally {
+    await h.db.close();
+  }
+});
+
 Deno.test("B11：已扣費的同局，其他功能把額度用完後剩餘生成仍可用、不再要求付費", async () => {
   const h = await harness();
   try {
