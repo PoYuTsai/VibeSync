@@ -399,9 +399,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   final _freeTextController = TextEditingController();
   OpenerQuotaExceededException? _handledQuotaError;
 
-  /// 重開「分析中」草稿時自動續分析的那一次：撞到額度只顯示說明與升級鈕，不自動開
-  /// 付費頁（不然每次打開草稿都跳一次付費頁）。用戶自己按分析就清掉。
-  bool _autoResumingAnalysis = false;
+  /// 重開「分析中」或「生成中」草稿時自動續做的那一次：撞到額度只顯示說明與升級鈕，
+  /// 不自動開付費頁（不然每次打開草稿都跳一次付費頁）。續做結束（離開分析中／生成中）
+  /// 或用戶自己按分析、生成就清掉。
+  bool _autoResuming = false;
 
   // R4a：舊單段草稿（flow=null）在兩段式畫面裡的回看狀態——結果只顯示、可複製
   // 與回報，不觸發新分析或扣費；改任何對方資料就清掉。
@@ -483,8 +484,11 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         previousPhase == OpenerFlowPhase.analyzing) {
       _snapToResults();
     }
-    final autoResumed = _autoResumingAnalysis;
-    if (state.phase != OpenerFlowPhase.analyzing) _autoResumingAnalysis = false;
+    final autoResumed = _autoResuming;
+    if (state.phase != OpenerFlowPhase.analyzing &&
+        state.phase != OpenerFlowPhase.generating) {
+      _autoResuming = false;
+    }
     final quotaError = state.quotaError;
     if (quotaError != null && !identical(quotaError, _handledQuotaError)) {
       _handledQuotaError = quotaError;
@@ -543,7 +547,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         _mode != OpeningRescueMode.opener) {
       return;
     }
-    _autoResumingAnalysis = false; // 用戶自己按的：撞到額度照常開付費頁
+    _autoResuming = false; // 用戶自己按的：撞到額度照常開付費頁
     final input = OpenerGenerationInput.fromActiveTab(
       useScreenshotTab: _selectedTab == 0,
       images: _images,
@@ -566,6 +570,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           owner != _owner ||
           version != _inputVersion) {
         return;
+      }
+      // 上一次被額度擋下：先看額度（必要時刷新，還不夠就開付費頁），夠了才再送同一筆
+      // 請求；不夠就不送，不然每按一次就被伺服器擋一次、再自動跳付費頁（主審 2026-10-31
+      // P2）。
+      if (_flow.state.quotaError != null) {
+        if (!await _canStartGeneration(_estimatedCost)) return;
+        if (!mounted || owner != _owner || version != _inputVersion) return;
+        _flow.clearQuotaError();
       }
       if (_mode == OpeningRescueMode.opener) FocusScope.of(context).unfocus();
       await _flow.analyze(
@@ -644,6 +656,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       return true;
     }
 
+    // 等刷新、等付費頁的時候畫面可能已經關掉：之後不能再讀 ref。
+    if (!mounted) return false;
     if (_currentUsageSnapshot().canAfford(cost)) {
       return true;
     }
@@ -659,7 +673,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           remaining: isMonthly ? usage.monthlyRemaining : usage.dailyRemaining,
         ),
       );
-      if (_currentUsageSnapshot().canAfford(cost)) {
+      if (mounted && _currentUsageSnapshot().canAfford(cost)) {
         return true;
       }
     }
@@ -725,15 +739,21 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
     }
     if (!mounted) return;
 
+    // 兩段式被額度擋下的說明與升級鈕看 controller 的 quotaError：額度真的夠了（付款、
+    // 或額度已恢復）才清掉；還不夠就留著，按分析時再判一次（主審 2026-10-31 P2）。
+    // 不照方案清：付費方案額度也用完時，說明要留著。
+    if (_flow.state.quotaError != null) {
+      if (_currentUsageSnapshot().canAfford(_estimatedCost)) {
+        _flow.clearQuotaError();
+      }
+      return;
+    }
     final subscription = ref.read(subscriptionProvider);
     if (OpeningRescueScreen.shouldClearPaywallQuotaError(
       hasError: _error != null,
       isPremium: subscription.isPremium,
     )) {
       setState(() => _error = null);
-      // 第一段被額度擋下時「分析」鈕看 controller 的 quotaError：付款回來一起清掉，
-      // 不然按鈕一直是灰的（預審 2026-10-31 P2）。
-      _flow.clearQuotaError();
     }
   }
 
@@ -812,7 +832,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       });
       _flow.restoreDraft(draft);
       if (_flow.hasPendingAnalysis && pendingAnalysis.imageCount == 0) {
-        _autoResumingAnalysis = true;
+        _autoResuming = true;
         unawaited(_flow.resumePendingAnalysis());
       }
       return;
@@ -828,6 +848,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       });
       _flow.restoreDraft(draft);
       if (_flow.hasPendingGeneration) {
+        _autoResuming = true;
         unawaited(_flow.resumePendingGeneration());
       }
       _snapToResults();
@@ -1316,10 +1337,8 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                       ? '重新分析'
                       : '分析開場方向',
       hint: input.hasContent ? '看完分析，再決定要不要生成開場白。' : '先加入截圖或輸入她的資料',
-      onPressed: _inputLocked ||
-              !input.hasContent ||
-              _initialNoteTooLong ||
-              _flow.state.quotaError != null
+      // 上一次被額度擋下也照樣能按：_analyzeTwoStage 先看額度，夠了才再送。
+      onPressed: _inputLocked || !input.hasContent || _initialNoteTooLong
           ? null
           // 「重新分析」也送目前畫面上的補充：同輸入同補充時指紋相同，
           // controller 沿用待續的 analysisRequestId；改過補充就是新的一次分析。
@@ -1442,9 +1461,13 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
           onFreeTextChanged: _flow.setFreeText,
           onGenerate: () {
             FocusScope.of(context).unfocus();
+            _autoResuming = false;
             unawaited(_flow.generate(fresh: generation != null));
           },
-          onSkip: () => unawaited(_flow.skipAndGenerate()),
+          onSkip: () {
+            _autoResuming = false;
+            unawaited(_flow.skipAndGenerate());
+          },
           generationsRemaining: state.generationsRemaining,
           quotaCharged: analysis.quotaCharged,
           busy: state.phase == OpenerFlowPhase.generating,
@@ -2100,7 +2123,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
                 _flow.state.analysis?.includedGenerationCount ??
                     OpenerFlowContract.includedGenerationCount,
             onAdjust: _flow.adjustContribution,
-            onRegenerate: () => unawaited(_flow.generate(fresh: true)),
+            onRegenerate: () {
+              _autoResuming = false;
+              unawaited(_flow.generate(fresh: true));
+            },
             onNewSession: () {
               _flow.startNewSession();
               unawaited(_analyzeTwoStage());
