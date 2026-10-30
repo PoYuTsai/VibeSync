@@ -820,6 +820,19 @@ void main() {
       await tester.pump();
     }
 
+    // 翻牌是隨機抽：機率一直寫在翻牌鈕這一區，免費、付費都看得到（Apple 審核準則 3.1.1）。
+    for (final subscription in [const SubscriptionState(), _paidSubscription]) {
+      testWidgets('翻牌機率一直寫在翻牌鈕這一區（${subscription.tier}）', (tester) async {
+        await pumpApp(tester, collectionApp(subscription: subscription));
+
+        expect(
+          find.byKey(const ValueKey('collection-draw-odds-line')),
+          findsOneWidget,
+        );
+        expect(find.text('翻牌機率：SR 10%・R 30%・N 60%'), findsOneWidget);
+      });
+    }
+
     testWidgets('翻牌鈕在圖鑑摘要右側顯示', (tester) async {
       await pumpApp(tester, collectionApp());
 
@@ -972,7 +985,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text('今日 1 次免費換人已用完，再按一次會扣 5 則額度。'), findsOneWidget);
+      // 扣額度翻牌的確認窗也講機率（Apple 審核準則 3.1.1）。
+      expect(
+        find.text('今日 1 次免費換人已用完，再按一次會扣 5 則額度。\n\n'
+            '翻牌機率：SR 10%・R 30%・N 60%。'),
+        findsOneWidget,
+      );
       expect(controller.drawCalls, 0); // 未確認前絕不 draw
 
       await tester.tap(find.byKey(confirmKey));
@@ -1567,7 +1585,11 @@ void main() {
         expect(controller.currentState.drawFreeRemaining, 0);
         expect(controller.drawCalls, 0, reason: '會扣額度：先問，不直接送出');
         expect(find.byType(AlertDialog), findsOneWidget);
-        expect(find.text('今日 3 次免費換人已用完，再按一次會扣 5 則額度。'), findsOneWidget);
+        expect(
+          find.text('今日 3 次免費換人已用完，再按一次會扣 5 則額度。\n\n'
+              '翻牌機率：SR 10%・R 30%・N 60%。'),
+          findsOneWidget,
+        );
       });
 
       testWidgets('降成 Starter 之後補水一直沒回來：不拿舊的「剩 2 次」翻，提示稍後再按，不送出也不開付費頁',

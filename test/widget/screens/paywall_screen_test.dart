@@ -374,6 +374,11 @@ void main() {
       // SR 限定翻牌（2026-08-08 拍板）：兩檔都送 1 次，白紙黑字回答「哪檔才有」。
       expect(find.text('SR 限定翻牌'), findsOneWidget);
       expect(find.text('送 1 次'), findsNWidgets(2));
+      // 翻牌是隨機抽：付費前公開機率（Apple 審核準則 3.1.1，送審前盤點 2026-10-30）。
+      expect(
+        find.text('翻牌機率：SR 10%・R 30%・N 60%；SR 限定翻牌固定抽到 SR。'),
+        findsOneWidget,
+      );
       // 零資訊「AI 模型」列已移除，換電子書/測驗兩列真差異。
       expect(find.text('AI 模型'), findsNothing);
       expect(find.text('互動電子書'), findsOneWidget);

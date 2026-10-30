@@ -24,6 +24,7 @@ import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../opener/domain/opener_access.dart';
+import '../../../practice_chat/domain/entities/practice_girl_rarity.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -1360,6 +1361,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           Text(
             '免費版同一位陪練女孩只能練一輪；升級後每天可翻新的陪練女孩，'
             '也能續聊同一位，把對話練得更完整。',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.onBackgroundSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // 翻牌是隨機抽：付費前公開機率（Apple 審核準則 3.1.1）。
+          Text(
+            '${practiceDrawOddsLine()}；SR 限定翻牌固定抽到 SR。',
+            key: const ValueKey('paywall-draw-odds-line'),
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary,
             ),

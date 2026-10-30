@@ -592,6 +592,8 @@ class _PracticeCollectionScreenState
       if (collectionComplete)
         '已收藏 $unlockedCount/${practiceGirlProfiles.length}，接下來可能抽到重複角色。',
       if (paidConfirmation) _paidDrawSpendMessage(state),
+      // 扣額度翻牌＝付費取得隨機角色：確認前再講一次機率（Apple 審核準則 3.1.1）。
+      if (paidConfirmation) '${practiceDrawOddsLine()}。',
     ];
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1278,6 +1280,15 @@ class _CollectionHeader extends StatelessWidget {
                       ],
                     ),
                   ],
+                  // 翻牌是隨機抽：機率一直寫在翻牌鈕這一區（Apple 審核準則 3.1.1）。
+                  const SizedBox(height: 6),
+                  Text(
+                    practiceDrawOddsLine(),
+                    key: const ValueKey('collection-draw-odds-line'),
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onBackgroundSecondary,
+                    ),
+                  ),
                 ],
               ),
             ),
