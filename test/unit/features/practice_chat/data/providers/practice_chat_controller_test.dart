@@ -1143,6 +1143,135 @@ void main() {
       expect(c.currentState.drawFreeRemaining, 4);
     });
 
+    test('refreshDrawQuotaForNewTier：標成還沒確認；補水失敗留著，成功才清', () async {
+      api.statusHandler = () async => throw Exception('boom');
+      final c = makeController();
+      await c.refreshDrawQuotaForNewTier();
+      expect(c.drawQuotaUnconfirmed, true);
+
+      api.statusHandler = () async => (
+            freeAllowance: 3,
+            freeUsed: 3,
+            freeRemaining: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+      expect(c.drawQuotaUnconfirmed, false);
+      expect(c.currentState.drawFreeRemaining, 0);
+    });
+
+    test('換方案那發補水被新的一發作廢 → 還是沒確認，新的那發落地才清', () async {
+      final first = Completer<PracticeDrawQuotaStatus>();
+      final second = Completer<PracticeDrawQuotaStatus>();
+      var call = 0;
+      api.statusHandler = () => (call++ == 0 ? first : second).future;
+      final c = makeController();
+
+      final a = c.refreshDrawQuotaForNewTier();
+      final b = c.refreshDrawQuotaForNewTier(); // 方案又換了
+      first.complete((
+        freeAllowance: 5,
+        freeUsed: 3,
+        freeRemaining: 2,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await a;
+      expect(c.drawQuotaUnconfirmed, true, reason: '作廢那發不算確認');
+      expect(c.drawQuotaRefreshInFlight, isNotNull);
+      expect(c.currentState.drawFreeRemaining, isNull);
+
+      second.complete((
+        freeAllowance: 3,
+        freeUsed: 3,
+        freeRemaining: 0,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await b;
+      await Future<void>.delayed(Duration.zero);
+      expect(c.drawQuotaUnconfirmed, false);
+      expect(c.drawQuotaRefreshInFlight, isNull);
+      expect(c.currentState.drawFreeRemaining, 0);
+    });
+
+    test('方案沒確認時一般翻牌回應落地 → 算確認了，不另外補抓', () async {
+      api.statusHandler = () async => throw Exception('boom');
+      final c = makeController();
+      await c.refreshDrawQuotaForNewTier();
+      expect(c.drawQuotaUnconfirmed, true);
+      final calls = api.statusCallCount;
+
+      await c.drawNewPracticeGirl(); // 預設 drawResult 帶伺服器這一窗的額度
+      await Future<void>.delayed(Duration.zero);
+      expect(c.drawQuotaUnconfirmed, false);
+      expect(api.statusCallCount, calls);
+    });
+
+    test('翻牌途中方案換了 → 那次回應不算確認，抽完補抓新方案的數字', () async {
+      final drawGate = Completer<PracticeDrawResult>();
+      api.drawHandler = ({currentProfileId}) => drawGate.future;
+      api.statusHandler = () async => (
+            freeAllowance: 3,
+            freeUsed: 4,
+            freeRemaining: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      final c = makeController();
+
+      final draw = c.drawNewPracticeGirl();
+      // 翻牌在路上時降成 Starter：正在翻牌，補水先不送。
+      await c.refreshDrawQuotaForNewTier();
+      expect(c.drawQuotaUnconfirmed, true);
+      expect(api.statusCallCount, 0);
+
+      // 伺服器照換方案前的 Essential 算：這一窗 5 次、翻了 4 次、還剩 1 次。
+      drawGate.complete(
+        drawResult(freeAllowance: 5, freeUsed: 4, freeRemaining: 1),
+      );
+      await draw;
+      await Future<void>.delayed(Duration.zero);
+      await c.drawQuotaRefreshInFlight;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(api.statusCallCount, 1, reason: '抽完補抓');
+      expect(c.drawQuotaUnconfirmed, false);
+      expect(c.currentState.drawFreeAllowance, 3);
+      expect(c.currentState.drawFreeRemaining, 0, reason: '不留換方案前的「還剩 1 次」');
+    });
+
+    // Codex 主審第 1 輪 P2：買完方案、補水還在路上就先用 SR 券。券抽起手作廢那發補水，
+    // 券抽又不帶額度；抽完要補抓，不然換方案前的「剩 0 次」會一直把一般翻牌送回付費頁。
+    test('方案換了、補水還在路上就用 SR 券 → 抽完自動補抓，換成新方案的數字', () async {
+      final first = Completer<PracticeDrawQuotaStatus>();
+      var call = 0;
+      api.statusHandler = () {
+        if (call++ == 0) return first.future;
+        return Future.value((
+          freeAllowance: 5,
+          freeUsed: 1,
+          freeRemaining: 4,
+          nextResetAt: '2999-01-01T04:00:00.000Z',
+        ));
+      };
+      final c = makeController();
+
+      unawaited(c.refreshDrawQuotaForNewTier());
+      await c.drawNewPracticeGirl(srTicket: true);
+      // 被券抽作廢的那發這時才回來（還是換方案前的數字）：不能落地。
+      first.complete((
+        freeAllowance: 1,
+        freeUsed: 1,
+        freeRemaining: 0,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await Future<void>.delayed(Duration.zero);
+      await c.drawQuotaRefreshInFlight;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(api.statusCallCount, 2, reason: '券抽完補抓一次');
+      expect(c.drawQuotaUnconfirmed, false);
+      expect(c.currentState.drawFreeRemaining, 4);
+    });
+
     test('失敗 → fail-quiet，既有已知值原封不動', () async {
       api.statusHandler = () async => throw Exception('boom');
       final c = await makeRevealed(); // draw 回應已種額度
@@ -2283,6 +2412,12 @@ void main() {
       expect(s.drawUpgradeRequired, false);
       expect(s.errorMessage, isNull);
       expect(s.drawFreeRemaining, 4);
+      expect(
+        container
+            .read(practiceChatControllerProvider.notifier)
+            .drawQuotaUnconfirmed,
+        false,
+      );
     });
 
     test('方案沒換（只有用量數字變）→ 不重抓', () async {

@@ -1548,6 +1548,24 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   Future<void>? get drawQuotaRefreshInFlight => _drawQuotaRefreshInFlight;
   Future<void>? _drawQuotaRefreshInFlight;
 
+  /// 方案換了、這一窗的額度還沒跟伺服器確認（[refreshDrawQuotaForNewTier] 標上；補水成功
+  /// 落地或一般翻牌回應落地才清）。還沒確認時手上的是換方案前的數字：圖鑑不拿它決定
+  /// 免費翻、付費頁或扣額度（Codex 主審第 1 輪 P1：降級時舊的「還剩 2 次」會跳過扣額度
+  /// 確認框，伺服器照新方案直接扣）。
+  bool get drawQuotaUnconfirmed => _drawQuotaUnconfirmed;
+  bool _drawQuotaUnconfirmed = false;
+
+  /// 方案換了幾次（[refreshDrawQuotaForNewTier] 遞增）。翻牌途中方案換了，那次回應可能是
+  /// 伺服器照換方案前的方案算的，不能拿來當確認。
+  int _drawQuotaTierGeneration = 0;
+
+  /// 方案換了（provider 聽 tier 呼叫）：手上的額度標成還沒確認，跟伺服器重抓。
+  Future<void> refreshDrawQuotaForNewTier() {
+    _drawQuotaTierGeneration++;
+    _drawQuotaUnconfirmed = true;
+    return refreshDrawQuotaStatus();
+  }
+
   /// 圖鑑額度列 v2：唯讀補水本窗翻牌額度（app 重啟後跨 session 也準確）。
   /// fail-quiet：任何失敗保持現狀，額度列顯示已知值或不顯示（寧缺勿誤）。
   /// 刻意不動 drawExtraCost——那是 draw 回應在宣傳的加抽價，status 不帶。
@@ -1568,6 +1586,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     try {
       final status = await _api.fetchDrawQuotaStatus();
       if (!mounted || state.isDrawing || epoch != _drawQuotaEpoch) return;
+      _drawQuotaUnconfirmed = false;
       final next = state.copyWith(
         drawFreeAllowance: status.freeAllowance,
         drawFreeUsed: status.freeUsed,
@@ -1609,6 +1628,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     final prior = state;
+    final tierGeneration = _drawQuotaTierGeneration;
     // 起手就作廢在途 status 補水：即使本次 draw 在 client 端 timeout／失敗，
     // server 可能已入帳，抽前拍的快照已不可信（Codex 雙審 blocking 2）。
     _drawQuotaEpoch++;
@@ -1701,6 +1721,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         drawNextResetAt:
             srTicket ? prior.drawNextResetAt : result.draw.nextResetAt,
       );
+      // 一般翻牌的回應就是伺服器這一窗的額度：算確認了。券抽不帶額度、翻牌途中方案又換了
+      // （回應可能照換方案前的方案算），都照舊沒確認，交給 finally 補抓。
+      if (!srTicket && tierGeneration == _drawQuotaTierGeneration) {
+        _drawQuotaUnconfirmed = false;
+      }
       await _saveDraftFromState(result.draw.nextResetAt);
       _notifyProfileUnlocked(girl.profileId); // 圖鑑：抽到即解鎖
       // 付費額外翻牌會扣一般 quota → 同步訂閱剩餘額度。
@@ -1746,6 +1771,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             : PracticeDrawStatus.error,
         errorMessage: '翻牌失敗了，再試一次。',
       );
+    } finally {
+      // 這次翻牌起手作廢了在途的補水：方案換了還沒確認（券抽不帶額度、翻牌途中方案又換
+      // 了、翻牌被擋或失敗）就補抓一次，不然換方案前的數字會一直留著（Codex 主審第 1 輪
+      // P2：買完先用 SR 券，一般翻牌仍被舊的「剩 0 次」送回付費頁）。
+      if (mounted && _drawQuotaUnconfirmed) {
+        unawaited(refreshDrawQuotaStatus());
+      }
     }
   }
 
@@ -3170,12 +3202,12 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
   );
   // 方案一換（剛買、升級、到期降級），這一窗的翻牌額度就跟伺服器重抓：圖鑑按翻牌前的
   // 判斷用的是手上的數字，不重抓的話，剛買 Essential 的人會被換方案前的「剩 0 次」送回
-  // 付費頁（2026-10-30 dogfood）。重抓只更新數字、解除過期的鎖，翻不翻得到照樣由
-  // server 裁決。
+  // 付費頁（2026-10-30 dogfood）。重抓之前手上的數字標成還沒確認；重抓只更新數字、
+  // 解除過期的鎖，翻不翻得到照樣由 server 裁決。
   ref.listen<String>(
     subscriptionProvider.select((s) => s.tier),
     (previous, next) {
-      if (previous != next) unawaited(controller.refreshDrawQuotaStatus());
+      if (previous != next) unawaited(controller.refreshDrawQuotaForNewTier());
     },
   );
   return controller;

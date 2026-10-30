@@ -44,6 +44,11 @@ const Duration kFirstDrawGrantWait = Duration(seconds: 10);
 @visibleForTesting
 const Duration kDrawQuotaRefreshWait = Duration(seconds: 5);
 
+/// 方案換了、等過補水還是沒確認這一窗的翻牌額度時（逾時、失敗）的提示：不拿換方案前的
+/// 數字翻，請他再按一次。
+@visibleForTesting
+const String kDrawQuotaUnconfirmedMessage = '翻牌次數還在更新，請稍後再按一次。';
+
 /// 發光時間軸（0→1）映強度：前 8%（約 120 ms）快速亮起，接住光球落位那一下 →
 /// 停留到 40% → 淡出，收尾歸 0 不殘留。
 @visibleForTesting
@@ -417,13 +422,19 @@ class _PracticeCollectionScreenState
     }
 
     final notifier = ref.read(practiceChatControllerProvider.notifier);
-    // 額度補水還在路上（剛進頁，或剛買、升級方案）：先等它回來再判斷。下面的判斷都看
-    // 手上的「剩幾次、能不能加抽」，拿換方案前的數字會把剛買 Essential 的人又送回
-    // 付費頁（2026-10-30 dogfood）。
-    final pendingRefresh =
-        skipQuotaRefreshWait ? null : notifier.drawQuotaRefreshInFlight;
-    if (pendingRefresh != null) {
-      unawaited(_drawAfterQuotaRefresh(pendingRefresh));
+    // 額度補水還在路上（剛進頁，或剛買、升級、降級方案）、或方案換了還沒確認：先等它回來
+    // 再判斷。下面的判斷都看手上的「剩幾次、能不能加抽」：拿換方案前的數字，剛買
+    // Essential 的人會被送回付費頁（2026-10-30 dogfood），降級的人會跳過扣額度確認框
+    // （Codex 主審第 1 輪 P1）。
+    if (!skipQuotaRefreshWait &&
+        (notifier.drawQuotaRefreshInFlight != null ||
+            notifier.drawQuotaUnconfirmed)) {
+      unawaited(_drawAfterQuotaRefresh(notifier));
+      return;
+    }
+    if (notifier.drawQuotaUnconfirmed) {
+      // 等過了還是沒確認（逾時、失敗）：不拿換方案前的數字翻，請他再按（再按會再補抓一次）。
+      _showDrawSnackBar(kDrawQuotaUnconfirmedMessage);
       return;
     }
 
@@ -531,15 +542,31 @@ class _PracticeCollectionScreenState
     _onDrawPressed();
   }
 
-  /// 額度補水還在路上就按了翻牌：翻牌鈕轉圈等它回來（最多 [kDrawQuotaRefreshWait]），
-  /// 再用新的數字照常走一次翻牌判斷；逾時就不再等，用手上的數字判斷（這次按的只等
-  /// 這一次）。補水只更新數字、解除過期的鎖，翻不翻得到照樣由 server 裁決。
-  Future<void> _drawAfterQuotaRefresh(Future<void> refresh) async {
+  /// 額度補水還在路上、或方案換了還沒確認時按了翻牌：翻牌鈕轉圈等補水回來（最多
+  /// [kDrawQuotaRefreshWait]），再用新的數字照常走一次翻牌判斷（這次按的只等這一次）。
+  /// 方案換了卻沒有補水在路上（先前那發失敗或被翻牌作廢）就先補抓一次。逾時之後方案
+  /// 還沒確認就不翻、請他再按；沒換方案的就用手上的數字照舊判斷。補水只更新數字、
+  /// 解除過期的鎖，翻不翻得到照樣由 server 裁決。
+  Future<void> _drawAfterQuotaRefresh(PracticeChatController notifier) async {
     setState(() => _waitingForDrawQuotaRefresh = true);
-    await refresh.timeout(kDrawQuotaRefreshWait, onTimeout: () {});
+    if (notifier.drawQuotaRefreshInFlight == null) {
+      unawaited(notifier.refreshDrawQuotaStatus());
+    }
+    await _waitForDrawQuotaRefresh(notifier)
+        .timeout(kDrawQuotaRefreshWait, onTimeout: () {});
     if (!mounted) return;
     setState(() => _waitingForDrawQuotaRefresh = false);
     _onDrawPressed(skipQuotaRefreshWait: true);
+  }
+
+  /// 等到沒有補水在路上為止：等的那發被新的一發作廢（例如等的時候方案又換了），就接著
+  /// 等新的那發，不拿作廢那發之前的數字判斷（Codex 主審第 1 輪 P1）。
+  Future<void> _waitForDrawQuotaRefresh(PracticeChatController notifier) async {
+    for (var pending = notifier.drawQuotaRefreshInFlight;
+        pending != null && mounted;
+        pending = notifier.drawQuotaRefreshInFlight) {
+      await pending;
+    }
   }
 
   /// SR 限定翻牌券抽：券固定 SR、不扣額度，沒有「值不值」的猶豫 → 不彈確認框，
