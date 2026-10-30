@@ -1538,32 +1538,81 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   /// 只收這一句，別的錯誤訊息不動。
   static const _drawUpgradeRequiredMessage = '升級後每天可以翻更多陪練女孩。';
 
+  /// 翻牌 429（加抽額度不夠）或圖鑑預判額度不夠（[lockDrawQuotaExceeded]）上鎖時留在
+  /// state 的那句話；解除過期的鎖時只收這一句，鎖住之後又出的別的錯誤訊息不動。
+  String? _drawQuotaLockMessage;
+
+  /// 進行中的額度補水（[refreshDrawQuotaStatus]），沒有就是 null。圖鑑按翻牌前先等它
+  /// 回來再判斷：方案剛換時補水還在路上，手上的還是換方案前的數字（2026-10-30
+  /// dogfood：剛買 Essential 馬上按翻牌，又被送回付費頁）。
+  Future<void>? get drawQuotaRefreshInFlight => _drawQuotaRefreshInFlight;
+  Future<void>? _drawQuotaRefreshInFlight;
+
+  /// 方案換了、這一窗的額度還沒跟伺服器確認（[refreshDrawQuotaForNewTier] 標上；補水成功
+  /// 落地或一般翻牌回應落地才清）。還沒確認時手上的是換方案前的數字：圖鑑不拿它決定
+  /// 免費翻、付費頁或扣額度（Codex 主審第 1 輪 P1：降級時舊的「還剩 2 次」會跳過扣額度
+  /// 確認框，伺服器照新方案直接扣）。
+  bool get drawQuotaUnconfirmed => _drawQuotaUnconfirmed;
+  bool _drawQuotaUnconfirmed = false;
+
+  /// 方案換了幾次（[refreshDrawQuotaForNewTier] 遞增）。翻牌途中方案換了，那次回應可能是
+  /// 伺服器照換方案前的方案算的，不能拿來當確認。
+  int _drawQuotaTierGeneration = 0;
+
+  /// 方案換了（provider 聽 tier 呼叫）：手上的額度標成還沒確認，跟伺服器重抓。
+  Future<void> refreshDrawQuotaForNewTier() {
+    _drawQuotaTierGeneration++;
+    _drawQuotaUnconfirmed = true;
+    return refreshDrawQuotaStatus();
+  }
+
   /// 圖鑑額度列 v2：唯讀補水本窗翻牌額度（app 重啟後跨 session 也準確）。
   /// fail-quiet：任何失敗保持現狀，額度列顯示已知值或不顯示（寧缺勿誤）。
   /// 刻意不動 drawExtraCost——那是 draw 回應在宣傳的加抽價，status 不帶。
-  Future<void> refreshDrawQuotaStatus() async {
+  Future<void> refreshDrawQuotaStatus() {
+    final refresh = _refreshDrawQuotaStatus();
+    _drawQuotaRefreshInFlight = refresh;
+    unawaited(refresh.whenComplete(() {
+      if (identical(_drawQuotaRefreshInFlight, refresh)) {
+        _drawQuotaRefreshInFlight = null;
+      }
+    }));
+    return refresh;
+  }
+
+  Future<void> _refreshDrawQuotaStatus() async {
     if (state.isDrawing) return;
     final epoch = ++_drawQuotaEpoch;
     try {
       final status = await _api.fetchDrawQuotaStatus();
       if (!mounted || state.isDrawing || epoch != _drawQuotaEpoch) return;
+      _drawQuotaUnconfirmed = false;
       final next = state.copyWith(
         drawFreeAllowance: status.freeAllowance,
         drawFreeUsed: status.freeUsed,
         drawFreeRemaining: status.freeRemaining,
         drawNextResetAt: status.nextResetAt,
       );
-      // server 說這一窗還有免費翻牌（例如首抽剛發下來），先前 402 留下的「要升級」鎖
-      // 就過期了：解除，下一次翻牌照常送出、由 server 裁決，不會多給、也繞不過付費
-      // （Codex 主審第 1 輪 P2：首抽發放比第一次翻牌慢時，人會被鎖在付費頁）。
-      state = next.drawUpgradeRequired && status.freeRemaining > 0
-          ? next.copyWith(
-              drawUpgradeRequired: false,
-              errorMessage: next.errorMessage == _drawUpgradeRequiredMessage
-                  ? null
-                  : next.errorMessage,
-            )
-          : next;
+      // server 說這一窗還有免費翻牌（首抽剛發下來、剛買或升級方案），先前 402「要升級」
+      // 與 429「加抽額度不夠」留下的鎖就過期了：解除，下一次翻牌照常送出、由 server
+      // 裁決，不會多給、也繞不過付費（Codex 主審第 1 輪 P2：首抽發放比第一次翻牌慢時，
+      // 人會被鎖在付費頁；2026-10-30 dogfood：剛買 Essential 一樣被換方案前的鎖擋住）。
+      if (status.freeRemaining <= 0 ||
+          !(next.drawUpgradeRequired || next.drawQuotaExceeded)) {
+        state = next;
+        return;
+      }
+      final staleMessage = (next.drawUpgradeRequired &&
+              next.errorMessage == _drawUpgradeRequiredMessage) ||
+          (next.drawQuotaExceeded &&
+              next.errorMessage != null &&
+              next.errorMessage == _drawQuotaLockMessage);
+      _drawQuotaLockMessage = null;
+      state = next.copyWith(
+        drawUpgradeRequired: false,
+        drawQuotaExceeded: false,
+        errorMessage: staleMessage ? null : next.errorMessage,
+      );
     } catch (_) {
       // fail-quiet：唯讀補水失敗不打擾使用者，也不覆蓋既有已知值。
     }
@@ -1579,6 +1628,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
       return;
     }
     final prior = state;
+    final tierGeneration = _drawQuotaTierGeneration;
     // 起手就作廢在途 status 補水：即使本次 draw 在 client 端 timeout／失敗，
     // server 可能已入帳，抽前拍的快照已不可信（Codex 雙審 blocking 2）。
     _drawQuotaEpoch++;
@@ -1671,6 +1721,11 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
         drawNextResetAt:
             srTicket ? prior.drawNextResetAt : result.draw.nextResetAt,
       );
+      // 一般翻牌的回應就是伺服器這一窗的額度：算確認了。券抽不帶額度、翻牌途中方案又換了
+      // （回應可能照換方案前的方案算），都照舊沒確認，交給 finally 補抓。
+      if (!srTicket && tierGeneration == _drawQuotaTierGeneration) {
+        _drawQuotaUnconfirmed = false;
+      }
       await _saveDraftFromState(result.draw.nextResetAt);
       _notifyProfileUnlocked(girl.profileId); // 圖鑑：抽到即解鎖
       // 付費額外翻牌會扣一般 quota → 同步訂閱剩餘額度。
@@ -1701,6 +1756,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
     } on PracticeQuotaExceededException catch (e) {
       if (!mounted) return;
       _rotateDrawRequestId(drawRequestId); // 4xx 明確拒絕 → rotate
+      _drawQuotaLockMessage = e.message;
       state = prior.copyWith(
         drawQuotaExceeded: true,
         errorMessage: e.message,
@@ -1715,6 +1771,13 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
             : PracticeDrawStatus.error,
         errorMessage: '翻牌失敗了，再試一次。',
       );
+    } finally {
+      // 這次翻牌起手作廢了在途的補水：方案換了還沒確認（券抽不帶額度、翻牌途中方案又換
+      // 了、翻牌被擋或失敗）就補抓一次，不然換方案前的數字會一直留著（Codex 主審第 1 輪
+      // P2：買完先用 SR 券，一般翻牌仍被舊的「剩 0 次」送回付費頁）。
+      if (mounted && _drawQuotaUnconfirmed) {
+        unawaited(refreshDrawQuotaStatus());
+      }
     }
   }
 
@@ -1726,6 +1789,7 @@ class PracticeChatController extends StateNotifier<PracticeChatState> {
   void lockDrawQuotaExceeded({
     required String message,
   }) {
+    _drawQuotaLockMessage = message;
     state = state.copyWith(
       drawQuotaExceeded: true,
       drawUpgradeRequired: false,
@@ -3116,7 +3180,7 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
   } catch (e) {
     debugPrint('AnalysisHistory repository unavailable: $e');
   }
-  return PracticeChatController(
+  final controller = PracticeChatController(
     api: ref.read(practiceChatApiServiceProvider),
     repository: repository,
     draftStore: ref.read(practiceDrawDraftStoreProvider),
@@ -3136,6 +3200,17 @@ final practiceChatControllerProvider = StateNotifierProvider.autoDispose<
     historyRepository: historyRepository,
     funnelTracker: ref.read(funnelTrackerProvider),
   );
+  // 方案一換（剛買、升級、到期降級），這一窗的翻牌額度就跟伺服器重抓：圖鑑按翻牌前的
+  // 判斷用的是手上的數字，不重抓的話，剛買 Essential 的人會被換方案前的「剩 0 次」送回
+  // 付費頁（2026-10-30 dogfood）。重抓之前手上的數字標成還沒確認；重抓只更新數字、
+  // 解除過期的鎖，翻不翻得到照樣由 server 裁決。
+  ref.listen<String>(
+    subscriptionProvider.select((s) => s.tier),
+    (previous, next) {
+      if (previous != next) unawaited(controller.refreshDrawQuotaForNewTier());
+    },
+  );
+  return controller;
 });
 
 /// 最近 5 場練習（read-only 歷史）。
