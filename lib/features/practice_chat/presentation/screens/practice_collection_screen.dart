@@ -20,6 +20,7 @@ import '../../../subscription/data/providers/subscription_providers.dart';
 import '../../../subscription/presentation/paywall_entry.dart';
 import '../../../subscription/presentation/quota_copy.dart';
 import '../../data/providers/practice_chat_providers.dart';
+import '../../domain/entities/practice_draw_odds.dart';
 import '../../domain/entities/practice_girl_catalog.dart';
 import '../../domain/entities/practice_girl_profile.dart';
 import '../../domain/entities/practice_girl_rarity.dart';
@@ -592,8 +593,9 @@ class _PracticeCollectionScreenState
       if (collectionComplete)
         '已收藏 $unlockedCount/${practiceGirlProfiles.length}，接下來可能抽到重複角色。',
       if (paidConfirmation) _paidDrawSpendMessage(state),
-      // 扣額度翻牌＝付費取得隨機角色：確認前再講一次機率（Apple 審核準則 3.1.1）。
-      if (paidConfirmation) '${practiceDrawOddsLine()}。',
+      // 扣額度翻牌＝付費取得隨機角色：確認前講這一次實際的機率（Apple 審核準則 3.1.1）。
+      if (paidConfirmation)
+        _drawOddsSentence(state, collectionComplete: collectionComplete),
     ];
     final confirmed = await showDialog<bool>(
       context: context,
@@ -652,6 +654,32 @@ class _PracticeCollectionScreenState
   }
 
   // ── 以下三個 helper 語義照抄 practice_chat_screen（Task 7 才收殺原件）──
+
+  /// 這一次翻牌實際的機率：server 排除收藏過的與目前這位，擲中的稀有度沒有新角色
+  /// 就依 SR→R→N 補位（practice_draw_odds.dart）。
+  Map<PracticeGirlRarity, int> _currentDrawOdds(
+    PracticeChatState state,
+    Set<String> unlocked,
+  ) =>
+      practiceDrawEffectiveOdds(
+        catalog: practiceGirlProfiles,
+        excludedProfileIds: unlocked,
+        currentProfileId: state.girl?.profileId,
+      );
+
+  /// 扣額度確認窗那一句：這一次實際的機率；還沒集滿就附上機率怎麼隨收藏改變（集滿
+  /// 後改成可能重複、回到基本機率，上面已經另外講）。
+  String _drawOddsSentence(
+    PracticeChatState state, {
+    required bool collectionComplete,
+  }) {
+    final line = practiceDrawOddsLine(
+      _currentDrawOdds(state, ref.read(practiceUnlockedProfileIdsProvider)),
+    );
+    return collectionComplete
+        ? '$line。'
+        : '$line（$kPracticeDrawOddsFallbackNote）。';
+  }
 
   bool _needsPaidDrawConfirmation(PracticeChatState state) {
     final remaining = state.drawFreeRemaining;
@@ -855,6 +883,7 @@ class _PracticeCollectionScreenState
                       onDrawPressed: _onDrawPressed,
                       freeQuota: _currentFreeQuota(chatState),
                       isFreeUser: isFreeUser,
+                      drawOdds: _currentDrawOdds(chatState, unlocked),
                     ),
                   ),
                   // 模擬社群動態入口（Threads 版面）：唯讀 feed，只顯示已抽到
@@ -1128,6 +1157,7 @@ class _CollectionHeader extends StatelessWidget {
     required this.onDrawPressed,
     required this.freeQuota,
     required this.isFreeUser,
+    required this.drawOdds,
   });
 
   final int unlockedCount;
@@ -1146,6 +1176,9 @@ class _CollectionHeader extends StatelessWidget {
 
   /// 免費帳號沒有每日免費翻牌，額度列裡只會是那一次首抽，字要跟著換。
   final bool isFreeUser;
+
+  /// 這一次翻牌實際的機率（照收藏與目前這位、server 的補位規則算）。
+  final Map<PracticeGirlRarity, int> drawOdds;
 
   @override
   Widget build(BuildContext context) {
@@ -1280,15 +1313,25 @@ class _CollectionHeader extends StatelessWidget {
                       ],
                     ),
                   ],
-                  // 翻牌是隨機抽：機率一直寫在翻牌鈕這一區（Apple 審核準則 3.1.1）。
+                  // 翻牌是隨機抽：這一次實際的機率一直寫在翻牌鈕這一區，還沒集滿就
+                  // 附上機率怎麼隨收藏改變（Apple 審核準則 3.1.1）。圖鑑還在載入時
+                  // 收藏是空的、數字是基本機率，規則那句照樣看得到。
                   const SizedBox(height: 6),
                   Text(
-                    practiceDrawOddsLine(),
+                    practiceDrawOddsLine(drawOdds),
                     key: const ValueKey('collection-draw-odds-line'),
                     style: AppTypography.caption.copyWith(
                       color: AppColors.onBackgroundSecondary,
                     ),
                   ),
+                  if (unlockedCount < total)
+                    Text(
+                      kPracticeDrawOddsFallbackNote,
+                      key: const ValueKey('collection-draw-odds-note'),
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.onBackgroundSecondary,
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -378,7 +378,8 @@ void main() {
       expect(find.text('送 1 次'), findsNWidgets(2));
       // 翻牌是隨機抽：付費前公開機率（Apple 審核準則 3.1.1，送審前盤點 2026-10-30）。
       expect(
-        find.text('翻牌機率：SR 10%・R 30%・N 60%；SR 限定翻牌固定抽到 SR。'),
+        find.text('翻牌機率：SR 10%・R 30%・N 60%；'
+            '某個稀有度收藏完後，它的機率依 SR、R、N 的順序轉給還有新角色的稀有度；SR 限定翻牌固定抽到 SR。'),
         findsOneWidget,
       );
       // 零資訊「AI 模型」列已移除，換電子書/測驗兩列真差異。
@@ -579,6 +580,7 @@ void main() {
       SubscriptionState? seededState,
       SrTicketStatus? srTicket,
       bool srTicketFails = false,
+      List<SrTicketStatus>? srTicketSequence,
     }) async {
       await tester.binding.setSurfaceSize(const Size(430, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -618,6 +620,10 @@ void main() {
             subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
             if (srTicketFails)
               srTicketStatusProvider.overrideWith(_FailingSrTicketStatus.new)
+            else if (srTicketSequence != null)
+              srTicketStatusProvider.overrideWith(
+                () => _SequenceSrTicketStatus(srTicketSequence),
+              )
             else if (srTicket != null)
               srTicketStatusProvider
                   .overrideWith(() => _FixedSrTicketStatus(srTicket)),
@@ -825,6 +831,52 @@ void main() {
         await flushSnackBars(tester);
       });
     }
+
+    // 主審第 1 輪 P2：券狀態只看 isPremium，Starter 升 Essential 時不會自己重查。
+    // 付款前快取的是「還沒用」，別台裝置在這中間用掉了：付款成功要重查，不能照舊快取
+    // 說「已解鎖」。
+    testWidgets(
+        'purchase success re-checks the SR ticket instead of a stale cache',
+        (tester) async {
+      await pumpPaywallWithStub(
+        tester,
+        onPurchase: () async => const SubscriptionPurchaseResult(
+          success: true,
+          cancelled: false,
+          isDeferredDowngrade: false,
+          requestedTier: SubscriptionTierHelper.essential,
+          previousTier: SubscriptionTierHelper.starter,
+          activeTier: SubscriptionTierHelper.essential,
+        ),
+        seededState: stateWithEssentialMonthly(),
+        srTicketSequence: [
+          (eligible: true, granted: true, consumed: false),
+          (eligible: true, granted: true, consumed: true),
+        ],
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PaywallScreen)),
+      );
+      container.read(srTicketStatusProvider);
+      await tester.pump();
+      expect(
+        container.read(srTicketStatusProvider).valueOrNull?.consumed,
+        isFalse,
+        reason: '付款前快取的是還沒用的券',
+      );
+
+      final cta = find.textContaining('訂閱 Essential');
+      await tester.ensureVisible(cta);
+      await tester.pump();
+      await tester.tap(cta, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump();
+
+      expect(find.textContaining('方案已更新，目前方案：Essential。'), findsOneWidget);
+      expect(find.textContaining('SR 限定翻牌'), findsNothing);
+      await flushSnackBars(tester);
+    });
 
     testWidgets('top-level paywall purchase success falls back home',
         (tester) async {
@@ -1286,6 +1338,7 @@ void main() {
       expect(renewalText(tester), '由 Apple ID 扣款，每月自動續訂，可隨時在 iPhone 設定取消');
       expect(inBottomBar(find.text('服務條款')), findsOneWidget);
       expect(inBottomBar(find.text('隱私政策')), findsOneWidget);
+      expect(inBottomBar(find.text('翻牌機率')), findsOneWidget);
 
       // 標題、X、右上恢復購買；大標第二行先講恢復時間、做成副標；差異句。
       expect(find.text('升級方案'), findsOneWidget);
@@ -1401,6 +1454,41 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('paywall-compare-toggle')));
       await tester.pumpAndSettle();
       expect(find.text('方案功能比較'), findsNothing);
+    });
+
+    // 主審第 1 輪 P2：比較表預設收著，免費用戶不展開也能付款。翻牌是隨機抽，購買鈕
+    // 旁邊要一直有「翻牌機率」，點開就是完整機率（Apple 審核準則 3.1.1）。
+    testWidgets('購買鈕旁邊一直有「翻牌機率」，比較表收著也點得開完整機率', (tester) async {
+      await pumpPaywall(tester, state: freeWithProducts());
+
+      expect(find.text('方案功能比較'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('paywall-draw-odds-line')),
+        findsNothing,
+      );
+      final link = inBottomBar(
+        find.byKey(const ValueKey('paywall-buy-draw-odds-link')),
+      );
+      expect(link, findsOneWidget);
+      expect(
+        find.descendant(of: link, matching: find.text('翻牌機率')),
+        findsOneWidget,
+      );
+
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(find.text('陪練女孩翻牌機率'), findsOneWidget);
+      expect(
+        find.text('翻牌機率：SR 10%・R 30%・N 60%。\n\n'
+            '翻牌不會抽到收藏過的角色；某個稀有度收藏完後，它的機率依 SR、R、N 的順序轉給還有新角色的稀有度。'
+            '全部收藏完後可能抽到重複角色，機率回到上面的數字。\n\n'
+            'SR 限定翻牌固定抽到 SR。'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('知道了'));
+      await tester.pumpAndSettle();
+      expect(find.text('陪練女孩翻牌機率'), findsNothing);
     });
 
     testWidgets('切到季繳：卡片換季繳價，月均價無條件進位、字比扣款金額小；續訂說明與購買鈕改季', (tester) async {
@@ -1704,6 +1792,18 @@ class _FixedSrTicketStatus extends SrTicketStatusNotifier {
 
   @override
   Future<SrTicketStatus> build() async => _status;
+}
+
+/// 每次 build（第一次讀、被 invalidate 之後重查）依序回下一個狀態，最後一個之後
+/// 一直回最後一個。
+class _SequenceSrTicketStatus extends SrTicketStatusNotifier {
+  _SequenceSrTicketStatus(this._statuses);
+
+  final List<SrTicketStatus> _statuses;
+
+  @override
+  Future<SrTicketStatus> build() async =>
+      _statuses.length > 1 ? _statuses.removeAt(0) : _statuses.single;
 }
 
 /// 查券失敗（網路、伺服器錯誤）：付款成功那句就不提券。

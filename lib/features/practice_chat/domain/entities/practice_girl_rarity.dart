@@ -25,10 +25,7 @@ enum PracticeGirlRarity {
   final int drawOddsPercent;
 }
 
-/// 翻牌機率那一行（圖鑑翻牌鈕下方、扣額度翻牌的確認窗、付費頁）：Apple 審核準則
-/// 3.1.1 要求隨機取得的東西在付費前公開機率（送審前盤點 2026-10-30）。
-String practiceDrawOddsLine() =>
-    '翻牌機率：${PracticeGirlRarity.values.map((r) => '${r.label} ${r.drawOddsPercent}%').join('・')}';
+// 公開給使用者看的機率與「這一次實際的機率」在 practice_draw_odds.dart。
 
 /// profileId → rarity 查表（lazy 建一次；catalog 是 const，永不變動）。
 final Map<String, PracticeGirlRarity> _rarityByProfileId = {

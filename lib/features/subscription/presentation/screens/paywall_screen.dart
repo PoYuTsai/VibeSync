@@ -25,7 +25,7 @@ import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../opener/domain/opener_access.dart';
 import '../../../practice_chat/data/providers/practice_chat_providers.dart';
-import '../../../practice_chat/domain/entities/practice_girl_rarity.dart';
+import '../../../practice_chat/domain/entities/practice_draw_odds.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
 import '../../domain/services/subscription_tier_helper.dart';
@@ -1051,7 +1051,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// 購買版固定底部：購買鈕＋扣款與自動續訂說明（照選到的週期寫，季繳寫每 3 個月）＋
   /// 條款、隱私連結，都在購買鈕旁邊看得到（App Review 3.1.2）。「由 Apple ID 扣款」
   /// 是管理版本來就有的揭露（主審第 1 輪建議補回）。說明拆成幾段，窄螢幕只在逗號後
-  /// 換行。
+  /// 換行。連結那一列多一個「翻牌機率」（[_showDrawOdds]）：底部不能再長高，第一屏
+  /// 要看得到兩張方案卡。
   Widget _buildBuyBottomBar({
     required Widget primaryButton,
     required bool isQuarterly,
@@ -1117,6 +1118,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         },
                         style: linkStyle,
                         child: Text('隱私政策', style: AppTypography.caption),
+                      ),
+                      Text('|', style: AppTypography.caption),
+                      TextButton(
+                        key: const ValueKey('paywall-buy-draw-odds-link'),
+                        onPressed: _showDrawOdds,
+                        style: linkStyle,
+                        child: Text('翻牌機率', style: AppTypography.caption),
                       ),
                     ],
                   ),
@@ -1370,7 +1378,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           const SizedBox(height: 6),
           // 翻牌是隨機抽：付費前公開機率（Apple 審核準則 3.1.1）。
           Text(
-            '${practiceDrawOddsLine()}；SR 限定翻牌固定抽到 SR。',
+            '${practiceDrawOddsLine()}；$kPracticeDrawOddsFallbackNote；'
+            'SR 限定翻牌固定抽到 SR。',
             key: const ValueKey('paywall-draw-odds-line'),
             style: AppTypography.caption.copyWith(
               color: AppColors.onBackgroundSecondary,
@@ -1948,11 +1957,52 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
   }
 
+  /// 翻牌是隨機抽：購買鈕旁邊的「翻牌機率」打開完整說明。比較表預設收著，免費用戶
+  /// 不展開也能付款，機率要在付款前看得到（Apple 審核準則 3.1.1，主審第 1 輪 P2）。
+  void _showDrawOdds() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.brandSurface2,
+        title: Text(
+          '陪練女孩翻牌機率',
+          style: AppTypography.titleMedium.copyWith(
+            color: AppColors.onBackgroundPrimary,
+          ),
+        ),
+        content: Text(
+          '${practiceDrawOddsLine()}。\n\n'
+          '翻牌不會抽到收藏過的角色；$kPracticeDrawOddsFallbackNote。'
+          '全部收藏完後可能抽到重複角色，機率回到上面的數字。\n\n'
+          'SR 限定翻牌固定抽到 SR。',
+          key: const ValueKey('paywall-draw-odds-dialog-text'),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.onBackgroundSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              '知道了',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.ctaStart,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 付款成功那句的 SR 限定翻牌：真的有一張還沒用的券才講。券每個帳號一輩子只發
   /// 一次，用過券再升級、退訂後重新訂閱都不會再發；查不到或逾時就不講，不宣傳可能
   /// 不存在的獎勵（送審前盤點 2026-10-30）。
   Future<String> _availableSrTicketLine() async {
     try {
+      // 強制重查：provider 只看 isPremium，升級（Starter→Essential）時不會自己重查，
+      // 快取可能是別台裝置用掉券之前的狀態（主審第 1 輪 P2）。
+      ref.invalidate(srTicketStatusProvider);
       final status = await ref
           .read(srTicketStatusProvider.future)
           .timeout(_srTicketStatusTimeout);
