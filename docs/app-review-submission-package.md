@@ -1,6 +1,6 @@
 ﻿# App Review Submission Package
 
-最後更新：2026-07-04（**已送審**：build 305，§6.3 判定 Submit GO；H batch 完成紀錄見 §6.3）；2026-10-27 §0 補註、§1 Review Notes 的隱私段與 Reviewer demo flow 第 1 步改成 4 頁版 onboarding（Onboarding 第 12 步）
+最後更新：2026-07-04（**已送審**：build 305，§6.3 判定 Submit GO；H batch 完成紀錄見 §6.3）；2026-10-27 §0 補註、§1 Review Notes 的隱私段與 Reviewer demo flow 第 1 步改成 4 頁版 onboarding（Onboarding 第 12 步）；2026-10-30 新增 §1.2 iOS 1.0.1 送審文案（年齡確認、翻牌機率、繁中商店頁），取代 §1 與 §1.1
 
 這份文件是送審前的「主控台」：App Store Connect 審核說明、Reviewer 測試步驟、Privacy Label 對照、Go/No-Go gate 都先放這裡。密碼、API key、Apple sandbox 帳密不要 commit，請只填在 App Store Connect 的 App Review Information。
 
@@ -40,6 +40,8 @@
 送出前仍需人工 gate（Eric 側 Batch H）：見 §6.3。
 
 ## 1. App Review Information 草稿（1.0.1，2026-08-19 重寫）
+
+> superseded 2026-10-30：1.0.1 送審改用 §1.2 的 Review Notes（多了年齡確認、翻牌機率，示範步驟換成燈號與任務卡）。這段留作歷史。
 
 可貼到 App Store Connect 的 Review Notes，送審前請補上測試帳號密碼與當前 build number。
 
@@ -96,6 +98,8 @@ Notes:
 
 ## 1.1 App Store Metadata 草稿
 
+> superseded 2026-10-30：副標、描述、關鍵字、年齡分級改用 §1.2（照 `docs/positioning.md` 第五節、18+）。這段留作歷史。
+
 這段是給 App Store Connect 商品頁與審核 metadata 的安全版本。避免使用「把妹、操控、約砲、保證成功」等高風險詞。
 
 | 欄位 | 建議草稿 |
@@ -141,6 +145,147 @@ VibeSync offers Free, Starter, and Essential plans. Paid plans are auto-renewabl
 
 ```text
 聊天,社交,溝通,對話,AI教練,回覆建議,情感,約會,聊天分析,自我提升
+```
+
+---
+
+## 1.2 iOS 1.0.1 送審文案（2026-10-30 草稿，Eric 截圖那一步再逐欄確認）
+
+App Store Connect 由 Eric 手動填；這裡只放可直接貼的文字。商店頁用語照 `docs/positioning.md`（品類詞「戀愛教練」、副標與關鍵字照第五節）。標「待確認」的是我無法從程式確認、要 Eric 看一眼的地方。
+
+### 這個版本的新內容（What's New，繁中）
+
+```text
+・AI 鍵盤：在 LINE、IG 等聊天 App 裡直接產生回覆建議（選用功能，需在設定開啟）
+・對話分析改版：先看燈號與局面判讀，再給你這一輪該做什麼的任務卡
+・問教練：Sydney 一對一陪你想下一步，卡關時也能幫你想新話題
+・開場救星：上傳對方的交友軟體自介，找出好接的點，寫出第一句
+・AI 實戰練習室：翻牌認識不同個性的陪練女孩，收藏進圖鑑（翻牌機率在翻牌鈕旁邊）
+・學習專區：互動電子書、聊天測驗與夜市實戰影片
+・新手引導縮短成 4 頁，登入後加入 18 歲年齡確認
+・修正多項問題、提升穩定度
+```
+
+### 副標（30 字內）
+
+```text
+AI 戀愛教練｜曖昧聊天分析
+```
+
+### 關鍵字（逗號分隔，100 字內）
+
+```text
+戀愛教練,曖昧,暈船,開場白,高情商回覆,聊天分析,戀愛話術
+```
+
+（positioning 第五節定稿；還有空間，要加可以考慮「交友,回覆建議,聊天技巧」，避免「把妹、撩妹、約砲、保證」這類高風險字。）
+
+### 宣傳文字（Promotional Text，170 字內，可隨時改、不用送審）
+
+```text
+一句話救不了一段曖昧。VibeSync 陪你看懂她現在的狀態、決定下一步，把聊天推進到約出來。
+```
+
+### 描述（繁中，取代目前的英文描述）
+
+```text
+你的 AI 戀愛教練，從曖昧帶到約出來。
+
+一句話救不了一段曖昧。VibeSync 不只教你這一句怎麼回，而是陪你看懂她現在的狀態、決定下一步，把聊天推進到約出來。
+
+【對話分析】貼上聊天內容或上傳截圖，先看燈號與局面判讀，再拿到這一輪該做什麼的任務卡。
+【Coach 1:1】卡關時直接問教練，依你們的對話脈絡給具體建議。
+【開場救星】上傳對方的交友軟體自介，幫你找出好接的點，寫出第一句。
+【AI 實戰練習室】跟不同個性的陪練女孩模擬聊天，練完有拆解卡告訴你哪裡可以更好。
+【AI 鍵盤】在聊天 App 裡直接產生回覆建議（選用功能，需開啟完整取用）。
+【學習專區】互動電子書、聊天測驗與實戰影片，補上聊天的基本功。
+
+隱私
+・對話內容預設存在你的手機。
+・只有在你主動使用分析、教練等 AI 功能時，才會把那一次需要的內容送到 VibeSync 後端與第三方 AI 處理；每個 AI 功能第一次使用前都會先徵求你的同意。
+・VibeSync 不會替你發送訊息，也不保證任何交友或感情結果。
+・本服務僅提供年滿 18 歲者使用。
+
+訂閱說明
+・VibeSync 提供免費版與 Starter、Essential 兩種付費方案（月繳或季繳），付費方案為 Apple 自動續訂訂閱。
+・確認購買後由 Apple ID 扣款；除非在當期結束前至少 24 小時關閉自動續訂，否則會自動續訂，並在當期結束前 24 小時內扣款。
+・可隨時在 iPhone「設定」>（你的名字）>「訂閱項目」管理或取消。
+
+服務條款：https://vibesyncai.app/terms
+隱私權政策：https://vibesyncai.app/privacy
+```
+
+### 年齡分級
+
+- 產品決定是 18+（DEC-08；條款 3.1 與隱私頁第 8 節都寫年滿 18 歲）。問卷照實填（使用者可能輸入曖昧、感情內容；沒有使用者之間的公開內容）。
+- 待確認：如果問卷算出來低於 18+，App Store Connect 有沒有「調高分級」的選項要在填的時候看；我沒辦法從這裡核實。
+
+### App 隱私標示要核對的項目（7/04 填表之後新增的）
+
+| 新增的資料流 | 建議對照的類別 | 備註 |
+|---|---|---|
+| AI 鍵盤送出的文字、選用的最近截圖 | 使用者內容（其他使用者內容；照片或影片） | 伺服器不存原文與截圖，只存 HMAC 與產生的回覆 24 小時；隱私頁第 11 節 |
+| 功能使用事件 | 使用資料：產品互動（連結到帳號） | 登入前先存手機、登入後補送 |
+| Sentry 崩潰與錯誤回報 | 診斷：當機資料（不連結到身分） | 送出前清掉附件、截圖、畫面結構 |
+| 年齡確認紀錄 | 其他資料（連結到帳號，App 功能） | 只存成年或未成年、規則版本、時間 |
+
+### Review Notes（英文，取代 §1 那份）
+
+```text
+VibeSync is an AI dating-conversation coaching app for Traditional Chinese users. It helps users review their own private chat context, understand conversation signals, and prepare better replies with AI-assisted suggestions and 1:1 coaching.
+
+The app is not a social network, does not provide public posting or user-to-user messaging, does not automate messages to third parties, and does not guarantee dating or relationship outcomes.
+
+Age confirmation (new in this version):
+- VibeSync is for adults (18+). After sign-in, the app asks for birth year and month (nothing is preselected). The app decides on the device whether the user is 18 or older and records only the result (adult or minor), a policy version and a timestamp on the account; the birth date itself is never sent or stored.
+- An account recorded as under 18 cannot use the app's features, including the AI keyboard. It can still open Settings to log out or delete the account, or email support if the date was entered by mistake.
+- Please choose a birth year and month that make the reviewer account 18 or older. Choosing an under-18 date locks that account until support resets it.
+
+Privacy and AI processing:
+- Conversation content is local-first and stored on the user's device by default.
+- When the user explicitly requests analysis, screenshot recognition, opener help, draft polishing, AI coaching, or practice chat, only the required content for that request is sent through our backend processing service to the corresponding third-party AI provider (Anthropic Claude API for analysis/coaching/screenshot recognition; DeepSeek API and Anthropic Claude API for the practice chat feature) to generate the response.
+- Before the first AI request of each feature is sent, the app shows a consent dialog that explains what data will be sent and names the specific recipients. Consent is stored per account. Practice chat has its own separate consent. If the user declines, the request is not sent. The last onboarding page also states that the conversations and screenshots the user sends are passed through our backend to third-party AI, with a "看完整說明" (full details) link that opens the same full disclosure, provider names included, as the persistent "AI and your privacy" page in Settings.
+- We do not use users' raw conversations to train our own model.
+- Users can delete conversations locally and can delete their account in the app (Settings > 隱私與資料 > 刪除帳號).
+
+Photo Library access (two uses, both user-initiated):
+1. In the main app, the user can choose a chat screenshot with the photo picker to run screenshot recognition. This is a normal picker flow.
+2. The optional keyboard extension has an opt-in "recent screenshot" assist, described below. It is OFF by default. When enabled by the user, it reads only system screenshots (never other photos) and only while the VibeSync keyboard is open.
+
+Keyboard extension:
+- VibeSync includes an optional iOS keyboard extension that generates reply suggestions. It requires Full Access for network requests; without Full Access no request is sent and no quota is charged.
+- Text flow: only when the user explicitly loads text into the keyboard, picks a style, and taps generate is that text sent via our backend to Anthropic Claude. Normal typing in other apps is never uploaded.
+- Optional "recent screenshot" assist: the user must first enable it inside the VibeSync app (Settings > Keyboard) through a dedicated consent dialog, then grant Photos permission. The keyboard always shows a thumbnail of exactly which screenshot is being used, and the user can cancel before or during the request. Consent can be revoked at any time in Settings.
+- Our servers store neither the screenshot image nor the recognized text; only a keyed hash and the generated suggestions are kept for at most 24 hours to prevent double-charging on retries. Details are in section 11 of our privacy policy (https://vibesyncai.app/privacy).
+
+Practice room character draws (randomized items):
+- In the AI practice room, the user meets practice characters by drawing a card. The draw is random: SR 10%, R 30%, N 60%. Characters already collected are not drawn again; when every character of a rarity has been collected, that rarity's share passes to the next rarity that still has new characters, checked in SR, R, N order.
+- The odds for the next draw are shown next to the draw button at all times. Before any draw that spends message quota, a confirmation dialog repeats the odds, and nothing is spent unless the user confirms. On the subscription page, a "翻牌機率" (draw odds) link next to the purchase button opens the full odds. The one-time "SR 限定翻牌" (SR-only draw) included with a subscription always gives an SR character.
+
+Subscriptions:
+- Paid plans are Apple auto-renewable subscriptions managed through App Store in-app purchase.
+- The app includes Restore Purchases and subscription management entry points.
+- Free users can use the core analysis flow within quota limits; quota exhaustion leads to the paywall, while model rate limits and transient errors show retry messages instead.
+
+Reviewer demo flow:
+1. On first launch the app shows a 4-page onboarding. Tap "我有帳號" (I have an account) at the top right of the first page to go straight to sign-in, or go through the pages and tap "繼續" (Continue) on the last page. Then sign in with the provided reviewer account.
+2. Complete the age confirmation with an 18+ birth year and month (see above).
+3. On the home screen, create or select a conversation.
+4. Paste a short sample chat, or upload a chat screenshot.
+5. Tap analysis to see the signal light, the read of the situation, and the task cards for this round.
+6. Tap "Ask Coach" to test the 1:1 coaching flow (each feature asks for AI consent on first use).
+7. Open Settings / Subscription to verify plan, quota, Restore Purchases, Terms, Privacy, and account deletion entry points.
+8. Optional: try the opener helper from the new-conversation sheet.
+9. Optional: open the practice chat. It asks for its own separate AI consent (DeepSeek and Anthropic) before starting; the draw odds are next to the draw button.
+10. Optional (keyboard): in Settings > Keyboard, follow the setup steps and enable the VibeSync keyboard in iOS Settings (Full Access required for generation).
+
+Reviewer account:
+- Email: [fill in App Store Connect only]
+- Password: [fill in App Store Connect only]
+
+Notes:
+- If a screenshot is unreadable or unsupported, the app may ask the user to retry or enter text manually.
+- Some AI responses vary slightly because they are generated dynamically.
 ```
 
 ---
