@@ -650,6 +650,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               ? '也可以升級取得更多額度。'
               : null;
         }
+        // 只有不能再升級的方案會走到這裡（見 _applyRecognitionErrorState）。
+        if (errorCode == 'MONTHLY_LIMIT_EXCEEDED') return null;
         return '稍等一下再試。';
       case AnalysisErrorAction.addIncomingMessage:
         return _selectedImages.isNotEmpty
@@ -2408,9 +2410,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   /// 呼叫端自己包 setState。
   void _applyRecognitionErrorState(Object error) {
     if (error is AnalysisException) {
+      // 本月額度用完時辨識也會被擋（2026-10-31）：沒有更高方案可升（Essential）就不叫
+      // 他升級，訊息裡已經說什麼時候恢復。
+      final cannotUpgrade = error is MonthlyLimitExceededException &&
+          !canUpgradeQuota(ref.read(subscriptionProvider).tier);
       _applyErrorState(
         message: error.message,
-        action: error.suggestedAction,
+        action:
+            cannotUpgrade ? AnalysisErrorAction.wait : error.suggestedAction,
         origin: _AnalysisErrorOrigin.recognition,
         errorCode: error.code,
       );
