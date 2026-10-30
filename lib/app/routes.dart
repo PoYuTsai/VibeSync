@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/theme/app_motion.dart';
+import '../features/age_gate/data/age_gate_repository.dart';
+import '../features/age_gate/domain/age_gate.dart';
+import '../features/age_gate/presentation/screens/age_gate_screen.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/coach_chat/data/services/coach_chat_api_service.dart'
@@ -53,10 +56,12 @@ String? resolveAppRedirect({
   required bool isLoggedIn,
   required bool isOnboardingCompleted,
   required bool isPasswordRecovery,
+  required bool isAdultConfirmed,
   required String matchedLocation,
 }) {
   final isLoginRoute = matchedLocation == '/login';
   final isOnboardingRoute = matchedLocation == '/onboarding';
+  final isAgeGateRoute = matchedLocation == '/age-gate';
 
   // Unauthenticated: onboarding comes BEFORE login（2026-08-18 拍板：價值主張
   // 放在要帳號之前）。未完成 onboarding 先看 onboarding；完成後只剩 /login。
@@ -80,8 +85,15 @@ String? resolveAppRedirect({
     return isOnboardingRoute ? null : '/onboarding';
   }
 
-  // Onboarding finished -> never show /login or /onboarding again.
-  if (isLoginRoute || isOnboardingRoute) {
+  // 18+ 年齡確認（AGE-01）：帳號還沒確認成年（沒有紀錄、或記成未成年）就只能待在
+  // 年齡確認頁；設定頁開著，讓人能登出、刪除帳號。
+  if (!isAdultConfirmed) {
+    if (isAgeGateRoute || matchedLocation == '/settings') return null;
+    return '/age-gate';
+  }
+
+  // Onboarding finished -> never show /login, /onboarding or /age-gate again.
+  if (isLoginRoute || isOnboardingRoute || isAgeGateRoute) {
     return '/';
   }
 
@@ -101,6 +113,8 @@ final router = GoRouter(
     isLoggedIn: SupabaseService.isAuthenticated,
     isOnboardingCompleted: OnboardingService.isCompletedSync,
     isPasswordRecovery: SupabaseService.isPasswordRecoveryInProgress,
+    isAdultConfirmed:
+        AgeGateService.isAdultConfirmed(SupabaseService.currentUser),
     matchedLocation: state.matchedLocation,
   ),
   routes: [
@@ -111,6 +125,13 @@ final router = GoRouter(
     GoRoute(
       path: '/onboarding',
       builder: (context, state) => const OnboardingScreen(),
+    ),
+    GoRoute(
+      path: '/age-gate',
+      builder: (context, state) => AgeGateScreen(
+        blocked: AgeGateService.resultFor(SupabaseService.currentUser) ==
+            AgeGateResult.minor,
+      ),
     ),
     GoRoute(
       path: '/',

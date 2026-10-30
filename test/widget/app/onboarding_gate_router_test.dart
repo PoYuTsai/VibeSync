@@ -40,6 +40,9 @@ GoRouter _gatedRouter({
         isLoggedIn: isLoggedIn,
         isOnboardingCompleted: isOnboardingCompleted,
         isPasswordRecovery: isPasswordRecovery,
+        // 這份測 onboarding 與登入的閘門；年齡確認在 redirect_matrix_test 與
+        // age_gate_router_test。
+        isAdultConfirmed: true,
         matchedLocation: state.matchedLocation,
       ),
       routes: [
@@ -160,6 +163,7 @@ void main() {
             // 跟 App 的 router 一樣，每次導航都讀記憶體裡的完成旗標。
             isOnboardingCompleted: OnboardingService.isCompletedSync,
             isPasswordRecovery: false,
+            isAdultConfirmed: false,
             matchedLocation: state.matchedLocation,
           ),
           routes: [
