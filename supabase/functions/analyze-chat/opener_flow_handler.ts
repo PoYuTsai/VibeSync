@@ -466,9 +466,11 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   //    只在「尚未進入兩段式」時退回舊單段。停用新局的旗標放在 claim 之後（R6b）：
   //    已保存的分析同 analysisRequestId 重試仍能取回，旗標只擋真正的新局。
   const newSessionsDisabled = env("OPENER_TWO_STAGE_ENABLED") === "false";
-  // 第一段額度預查的開關（2026-10-31）：沒設＝關。build 546 以前的 App 在第一段收到額度
-  // 429 時，付款回來「分析」鈕會一直停用；等能恢復的新版普及、Eric 核准後才設成 on。
-  const analyzeQuotaGateOn = env("OPENER_ANALYZE_QUOTA_GATE") === "on";
+  // 第一段額度預查的開關（2026-10-31）：沒設＝關，on 或 true（不分大小寫）才開。build 546
+  // 以前的 App 在第一段收到額度 429 時，付款回來「分析」鈕會一直停用；等能恢復的新版普及、
+  // Eric 核准後才設成 on。
+  const gateValue = env("OPENER_ANALYZE_QUOTA_GATE")?.trim().toLowerCase();
+  const analyzeQuotaGateOn = gateValue === "on" || gateValue === "true";
   const dbContract = await readOpenerFlowDbContractVersion(rpc);
   if (!dbContract.ok) {
     logWarn("opener_flow_db_contract_unreadable", { user, error: dbContract.message });

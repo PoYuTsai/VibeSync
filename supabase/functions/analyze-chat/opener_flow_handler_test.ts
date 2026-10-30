@@ -941,6 +941,21 @@ Deno.test("第一段額度預查：開關沒設＝關，剩不到 3 則照舊分
   }
 });
 
+Deno.test("第一段額度預查：開關值不分大小寫、忽略前後空白；on 或 true 才開，其他值＝關", async () => {
+  for (const value of ["true", " On ", "1", "off"]) {
+    const h = await harness();
+    try {
+      h.env.OPENER_ANALYZE_QUOTA_GATE = value;
+      h.sub.daily_messages_used = 9;
+      const res = await handleOpenerAnalyzeRequest(h.deps(analyzeBody()));
+      const gated = value === "true" || value === " On ";
+      assertEquals(res.status, gated ? 429 : 200, JSON.stringify(value));
+    } finally {
+      await h.db.close();
+    }
+  }
+});
+
 for (const scope of ["monthly", "daily"] as const) {
   Deno.test(`第一段額度預查：${scope === "monthly" ? "本月" : "本月夠、今天"}剩不到 3 則 → 不分析、429 帶 quotaScope=${scope}`, async () => {
     const h = await harness();
