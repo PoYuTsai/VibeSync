@@ -52,8 +52,7 @@ class StreamModeException extends AnalysisException {
 /// 扣費之前，這次沒有扣額度。
 class AppUpdateRequiredException extends AnalysisException {
   static const errorCode = 'APP_UPDATE_REQUIRED';
-  static const userMessage =
-      '這個版本已經停止支援，請到 App Store 更新到最新版（TestFlight 測試者請到 TestFlight 更新）。';
+  static const userMessage = '這個版本已經停止支援，請到 App Store 更新到最新版。';
 
   AppUpdateRequiredException()
       : super(

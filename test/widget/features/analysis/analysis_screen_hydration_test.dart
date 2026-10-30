@@ -3781,8 +3781,7 @@ void main() {
   // 最低 App 版本閘門（Eric 2026-10-18）：被擋是「只能更新」，不是內容錯誤，
   // 也不給重新分析；更新視窗只在當下的轉場跳一次。
   group('最低 App 版本閘門（APP_UPDATE_REQUIRED）', () {
-    const updateMessage =
-        '這個版本已經停止支援，請到 App Store 更新到最新版（TestFlight 測試者請到 TestFlight 更新）。';
+    const updateMessage = '這個版本已經停止支援，請到 App Store 更新到最新版。';
 
     StreamingAnalysisState blocked(Conversation conversation) {
       return StreamingAnalysisState(

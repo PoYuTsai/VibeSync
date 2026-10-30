@@ -15,8 +15,7 @@ import 'package:vibesync/features/analysis/data/services/analyze_stream_client.d
 import 'package:vibesync/features/analysis/presentation/helpers/analysis_stream_content_display.dart';
 import 'package:vibesync/features/conversation/domain/entities/message.dart';
 
-const _gateMessage =
-    '這個版本已經停止支援，請到 App Store 更新到最新版（TestFlight 測試者請到 TestFlight 更新）。';
+const _gateMessage = '這個版本已經停止支援，請到 App Store 更新到最新版。';
 
 Message _msg(String content) {
   return Message(

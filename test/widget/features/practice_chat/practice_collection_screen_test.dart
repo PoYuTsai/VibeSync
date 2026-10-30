@@ -313,6 +313,9 @@ const _essentialSubscription = SubscriptionState(
 const _drawUsedUpUpgradeable = '今天的翻牌用完了，每天中午 12 點恢復；也可以升級。';
 const _drawUsedUpTopTier = '今天的翻牌用完了，每天中午 12 點恢復。';
 
+/// 機率怎麼隨收藏改變（還沒集滿時，翻牌鈕這一區與扣額度確認窗都講）。
+const _drawOddsNote = '某個稀有度收藏完後，它的機率依 SR、R、N 的順序轉給還有新角色的稀有度';
+
 class _SeededCollection extends PracticeCollectionNotifier {
   _SeededCollection(this._ids);
 
@@ -820,6 +823,54 @@ void main() {
       await tester.pump();
     }
 
+    // 翻牌是隨機抽：機率一直寫在翻牌鈕這一區，免費、付費都看得到；還沒集滿就附上
+    // 機率怎麼隨收藏改變（Apple 審核準則 3.1.1）。
+    for (final subscription in [const SubscriptionState(), _paidSubscription]) {
+      testWidgets('翻牌機率一直寫在翻牌鈕這一區（${subscription.tier}）', (tester) async {
+        await pumpApp(tester, collectionApp(subscription: subscription));
+
+        expect(
+          find.byKey(const ValueKey('collection-draw-odds-line')),
+          findsOneWidget,
+        );
+        expect(find.text('翻牌機率：SR 10%・R 30%・N 60%'), findsOneWidget);
+        expect(find.text(_drawOddsNote), findsOneWidget);
+      });
+    }
+
+    // 主審第 1 輪 P1：server 不會再抽到收藏過的角色，擲中的稀有度沒有新角色就依
+    // SR、R、N 的順序補位。SR 收齊的人，SR 那 10% 轉給 R：畫面跟確認窗都要講這一次
+    // 實際的機率，不能還寫 SR 10%。
+    testWidgets('SR 都收藏過了：翻牌鈕這一區與扣額度確認窗講這一次實際的機率', (tester) async {
+      final controller = _DrawSpyController(
+        _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 5),
+      );
+      final allSr = {
+        for (final p in practiceGirlProfiles)
+          if (p.rarity == PracticeGirlRarity.sr) p.profileId,
+      };
+      await pumpApp(
+        tester,
+        collectionApp(
+          controller: controller,
+          subscription: _paidSubscription,
+          unlocked: allSr,
+        ),
+      );
+
+      expect(find.text('翻牌機率：SR 0%・R 40%・N 60%'), findsOneWidget);
+      expect(find.text(_drawOddsNote), findsOneWidget);
+
+      await tester.tap(find.byKey(drawButton));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('今日 1 次免費換人已用完，再按一次會扣 5 則額度。\n\n'
+            '翻牌機率：SR 0%・R 40%・N 60%（$_drawOddsNote）。'),
+        findsOneWidget,
+      );
+      expect(controller.drawCalls, 0);
+    });
+
     testWidgets('翻牌鈕在圖鑑摘要右側顯示', (tester) async {
       await pumpApp(tester, collectionApp());
 
@@ -972,7 +1023,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text('今日 1 次免費換人已用完，再按一次會扣 5 則額度。'), findsOneWidget);
+      // 扣額度翻牌的確認窗也講機率（Apple 審核準則 3.1.1）。
+      expect(
+        find.text('今日 1 次免費換人已用完，再按一次會扣 5 則額度。\n\n'
+            '翻牌機率：SR 10%・R 30%・N 60%（$_drawOddsNote）。'),
+        findsOneWidget,
+      );
       expect(controller.drawCalls, 0); // 未確認前絕不 draw
 
       await tester.tap(find.byKey(confirmKey));
@@ -995,6 +1051,11 @@ void main() {
           unlocked: allUnlocked,
         ),
       );
+      expect(find.text('翻牌機率：SR 10%・R 30%・N 60%'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('collection-draw-odds-note')),
+        findsNothing,
+      );
 
       await tester.tap(find.byKey(drawButton));
       await tester.pumpAndSettle();
@@ -1009,6 +1070,9 @@ void main() {
         find.textContaining('今日 1 次免費換人已用完，再按一次會扣 5 則額度。'),
         findsOneWidget,
       );
+      // 集滿後改成可能重複、回到基本機率：機率照講，不再附「收藏完後」那句。
+      expect(find.textContaining('翻牌機率：SR 10%・R 30%・N 60%。'), findsOneWidget);
+      expect(find.textContaining(_drawOddsNote), findsNothing);
       expect(find.text('要扣額度翻牌嗎？'), findsNothing);
       expect(controller.drawCalls, 0);
 
@@ -1567,7 +1631,11 @@ void main() {
         expect(controller.currentState.drawFreeRemaining, 0);
         expect(controller.drawCalls, 0, reason: '會扣額度：先問，不直接送出');
         expect(find.byType(AlertDialog), findsOneWidget);
-        expect(find.text('今日 3 次免費換人已用完，再按一次會扣 5 則額度。'), findsOneWidget);
+        expect(
+          find.text('今日 3 次免費換人已用完，再按一次會扣 5 則額度。\n\n'
+              '翻牌機率：SR 10%・R 30%・N 60%（$_drawOddsNote）。'),
+          findsOneWidget,
+        );
       });
 
       testWidgets('降成 Starter 之後補水一直沒回來：不拿舊的「剩 2 次」翻，提示稍後再按，不送出也不開付費頁',
