@@ -1,6 +1,7 @@
 // 18+ 年齡確認頁（AGE-01）接上真的 resolveAppRedirect：登入、看完 onboarding、
 // 帳號還沒確認成年 → 只能在年齡確認頁；成年 → 回首頁；未成年 → 鎖住，只剩聯絡
-// 客服與設定頁（登出、刪除帳號）；連不上 → 請他再按一次，不放行。
+// 客服與設定頁（登出、刪除帳號）；連不上 → 請他再按一次，不放行。路由只看 session
+// 裡的帳號紀錄（主審第 1 輪 P2），換 token 失敗也不放行。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,40 +22,56 @@ User _user(Map<String, dynamic> appMetadata) => User(
       createdAt: _at,
     );
 
-/// 送出後照實記下（跟真的 repository 一樣寫進 AgeGateService），或模擬連不上。
-class _FakeAgeGateRepository extends AgeGateRepository {
-  _FakeAgeGateRepository() : super(currentUserId: () => 'u1');
+/// 目前的 session：路由每次導頁都讀它；換 token 成功時換成帶著新紀錄的使用者。
+class _Session {
+  _Session(Map<String, dynamic> appMetadata) : user = _user(appMetadata);
 
+  User user;
+}
+
+/// 照伺服器的規則記下（未成年鎖住），換 token 成功就更新 session；也能模擬連不上、
+/// 換 token 失敗。
+class _FakeAgeGateRepository extends AgeGateRepository {
+  _FakeAgeGateRepository(this.session) : super(currentUserId: () => 'u1');
+
+  final _Session session;
   bool fail = false;
+  bool refreshFails = false;
   final requests = <AgeGateResult>[];
 
   @override
-  Future<AgeGateResult> record(AgeGateResult result) async {
+  Future<AgeGateRecordOutcome> record(AgeGateResult result) async {
     requests.add(result);
     if (fail) throw const AgeGateRecordException('offline');
-    AgeGateService.remember('u1', result);
-    return result;
+    final recorded =
+        AgeGateService.resultFor(session.user) == AgeGateResult.minor
+            ? AgeGateResult.minor
+            : result;
+    if (!refreshFails) {
+      session.user = _user({
+        'age_gate': {'result': recorded.name, 'policy': 1, 'at': _at},
+      });
+    }
+    return (result: recorded, sessionUpdated: !refreshFails);
   }
 }
 
 void main() {
-  tearDown(AgeGateService.debugReset);
-
   Future<_FakeAgeGateRepository> pumpApp(
     WidgetTester tester, {
     Map<String, dynamic> appMetadata = const {},
   }) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final user = _user(appMetadata);
-    final repository = _FakeAgeGateRepository();
+    final session = _Session(appMetadata);
+    final repository = _FakeAgeGateRepository(session);
     final router = GoRouter(
       initialLocation: '/',
       redirect: (context, state) => resolveAppRedirect(
         isLoggedIn: true,
         isOnboardingCompleted: true,
         isPasswordRecovery: false,
-        isAdultConfirmed: AgeGateService.isAdultConfirmed(user),
+        isAdultConfirmed: AgeGateService.isAdultConfirmed(session.user),
         matchedLocation: state.matchedLocation,
       ),
       routes: [
@@ -65,7 +82,8 @@ void main() {
         GoRoute(
           path: '/age-gate',
           builder: (_, __) => AgeGateScreen(
-            blocked: AgeGateService.resultFor(user) == AgeGateResult.minor,
+            blocked:
+                AgeGateService.resultFor(session.user) == AgeGateResult.minor,
             now: () => DateTime(2026, 10, 30),
           ),
         ),
@@ -207,6 +225,22 @@ void main() {
     expect(find.text('main-shell'), findsNothing);
 
     repository.fail = false;
+    await submitAndConfirm(tester);
+    expect(repository.requests, [AgeGateResult.adult, AgeGateResult.adult]);
+    expect(find.text('main-shell'), findsOneWidget);
+  });
+
+  testWidgets('成年寫入成功但換 token 失敗：不放行、請再按一次；再按一次換成功就回首頁', (tester) async {
+    final repository = await pumpApp(tester);
+    repository.refreshFails = true;
+    await pick(tester, 'year', '1990 年');
+    await pick(tester, 'month', '5 月');
+
+    await submitAndConfirm(tester);
+    expect(find.text(kAgeGateRecordFailedMessage), findsOneWidget);
+    expect(find.text('main-shell'), findsNothing);
+
+    repository.refreshFails = false;
     await submitAndConfirm(tester);
     expect(repository.requests, [AgeGateResult.adult, AgeGateResult.adult]);
     expect(find.text('main-shell'), findsOneWidget);

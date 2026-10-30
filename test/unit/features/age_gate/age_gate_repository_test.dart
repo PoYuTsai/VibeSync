@@ -1,5 +1,6 @@
 // 年齡確認的紀錄送到伺服器（sync-subscription `record_age_gate`）：伺服器回的紀錄
-// 才算數；寫失敗不放行；寫成功後換一次 token，換不成功不影響結果。
+// 才算數；寫失敗不放行；寫成功後換一次 token，換成功（session 帶著新紀錄）路由才
+// 放行。不另外記在記憶體（主審第 1 輪 P2）。
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -31,30 +32,47 @@ class _Harness {
       );
 }
 
-User _user(String id) => User(
-      id: id,
-      appMetadata: const {},
+User _sessionUser(Map<String, dynamic> appMetadata) => User(
+      id: 'u1',
+      appMetadata: appMetadata,
       userMetadata: const {},
       aud: 'authenticated',
       createdAt: _at,
     );
 
+FunctionResponse _recorded(String result) => FunctionResponse(
+      status: 200,
+      data: {
+        'ageGate': {'result': result, 'policy': 1, 'at': _at},
+      },
+    );
+
 void main() {
-  tearDown(AgeGateService.debugReset);
+  test('送出結果與版本，不送生日；伺服器記下成年 → 回成年、換 token', () async {
+    final harness = _Harness(() => _recorded('adult'));
 
-  test('送出結果與版本，不送生日；伺服器記下成年 → 回成年、路由放行、換 token', () async {
-    final harness = _Harness(() => FunctionResponse(status: 200, data: {
-          'ageGate': {'result': 'adult', 'policy': 1, 'at': _at},
-        }));
+    final outcome = await harness.build().record(AgeGateResult.adult);
 
-    final result = await harness.build().record(AgeGateResult.adult);
-
-    expect(result, AgeGateResult.adult);
+    expect(outcome.result, AgeGateResult.adult);
+    expect(outcome.sessionUpdated, isTrue);
     final (functionName, body) = harness.calls.single;
     expect(functionName, 'sync-subscription');
     expect(body, {'mode': 'record_age_gate', 'result': 'adult', 'policy': 1});
     expect(harness.refreshes, 1);
-    expect(AgeGateService.isAdultConfirmed(_user('u1')), isTrue);
+  });
+
+  test('不另外記在記憶體：寫成功後，路由還是只看 session 裡的紀錄', () async {
+    final harness = _Harness(() => _recorded('adult'));
+
+    await harness.build().record(AgeGateResult.adult);
+
+    expect(AgeGateService.isAdultConfirmed(_sessionUser(const {})), isFalse);
+    expect(
+      AgeGateService.isAdultConfirmed(_sessionUser(const {
+        'age_gate': {'result': 'adult', 'policy': 1, 'at': _at},
+      })),
+      isTrue,
+    );
   });
 
   test('未成年鎖住（409）：照伺服器的未成年紀錄走', () async {
@@ -65,36 +83,27 @@ void main() {
       }),
     );
 
-    final result = await harness.build().record(AgeGateResult.adult);
+    final outcome = await harness.build().record(AgeGateResult.adult);
 
-    expect(result, AgeGateResult.minor);
-    expect(AgeGateService.resultFor(_user('u1')), AgeGateResult.minor);
+    expect(outcome.result, AgeGateResult.minor);
   });
 
   test('伺服器回的紀錄跟送出的不同：照伺服器', () async {
-    final harness = _Harness(() => FunctionResponse(status: 200, data: {
-          'ageGate': {'result': 'minor', 'policy': 1, 'at': _at},
-        }));
+    final harness = _Harness(() => _recorded('minor'));
 
     expect(
-      await harness.build().record(AgeGateResult.adult),
+      (await harness.build().record(AgeGateResult.adult)).result,
       AgeGateResult.minor,
     );
   });
 
-  test('換 token 失敗：結果照算，路由靠這次記下的放行', () async {
-    final harness = _Harness(
-      () => FunctionResponse(status: 200, data: {
-        'ageGate': {'result': 'adult', 'policy': 1, 'at': _at},
-      }),
-      refreshFails: true,
-    );
+  test('換 token 失敗：結果照伺服器，但標成 session 還沒更新（畫面請他再按）', () async {
+    final harness = _Harness(() => _recorded('adult'), refreshFails: true);
 
-    expect(
-      await harness.build().record(AgeGateResult.adult),
-      AgeGateResult.adult,
-    );
-    expect(AgeGateService.isAdultConfirmed(_user('u1')), isTrue);
+    final outcome = await harness.build().record(AgeGateResult.adult);
+
+    expect(outcome.result, AgeGateResult.adult);
+    expect(outcome.sessionUpdated, isFalse);
   });
 
   for (final (label, respond)
@@ -113,14 +122,13 @@ void main() {
     ),
     ('回應不是 JSON 物件', () => FunctionResponse(status: 200, data: 'ok')),
   ]) {
-    test('沒寫成功（$label）：丟錯、不放行、不換 token', () async {
+    test('沒寫成功（$label）：丟錯、不換 token', () async {
       final harness = _Harness(respond);
 
       await expectLater(
         harness.build().record(AgeGateResult.adult),
         throwsA(isA<AgeGateRecordException>()),
       );
-      expect(AgeGateService.isAdultConfirmed(_user('u1')), isFalse);
       expect(harness.refreshes, 0);
     });
   }

@@ -85,16 +85,25 @@ class _AgeGateScreenState extends ConsumerState<AgeGateScreen> {
         ? AgeGateResult.adult
         : AgeGateResult.minor;
     try {
-      final recorded = await ref.read(ageGateRepositoryProvider).record(result);
+      final outcome = await ref.read(ageGateRepositoryProvider).record(result);
       if (!mounted) return;
-      if (recorded == AgeGateResult.adult) {
-        context.go('/');
+      if (outcome.result == AgeGateResult.minor) {
+        setState(() {
+          _submitting = false;
+          _blocked = true;
+        });
         return;
       }
-      setState(() {
-        _submitting = false;
-        _blocked = true;
-      });
+      if (!outcome.sessionUpdated) {
+        // 伺服器已經記下成年，但 session 還沒帶到這筆紀錄（路由只看 session）：
+        // 請他再按一次，伺服器不會重寫，只是再換一次 token。
+        setState(() {
+          _submitting = false;
+          _failed = true;
+        });
+        return;
+      }
+      context.go('/');
     } catch (error) {
       debugPrint('Age gate record failed: $error');
       if (!mounted) return;

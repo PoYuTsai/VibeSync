@@ -116,9 +116,7 @@ void main() {
     });
   });
 
-  group('AgeGateService：路由讀的確認狀態', () {
-    tearDown(AgeGateService.debugReset);
-
+  group('AgeGateService：路由讀的確認狀態（只看 session 裡的帳號紀錄）', () {
     test('沒登入或沒紀錄：沒確認成年', () {
       expect(AgeGateService.isAdultConfirmed(null), isFalse);
       expect(AgeGateService.isAdultConfirmed(_user('u1', const {})), isFalse);
@@ -140,14 +138,22 @@ void main() {
       );
     });
 
-    test('這次執行剛寫成功的紀錄優先（session 還沒換新），只算同一個帳號', () {
-      AgeGateService.remember('u1', AgeGateResult.adult);
-      expect(AgeGateService.isAdultConfirmed(_user('u1', const {})), isTrue);
-      expect(AgeGateService.isAdultConfirmed(_user('u2', const {})), isFalse);
+    // 主審第 1 輪 P2：不另外記在記憶體。別台裝置改成未成年、客服清掉紀錄之後，
+    // 換到新 session 就照新紀錄走。
+    test('同一個帳號換了 session：照新 session 的紀錄', () {
+      const at = '2026-10-30T08:00:00.000Z';
+      final before = _user('u1', const {
+        'age_gate': {'result': 'adult', 'policy': 1, 'at': at},
+      });
+      final changedElsewhere = _user('u1', const {
+        'age_gate': {'result': 'minor', 'policy': 1, 'at': at},
+      });
+      final clearedBySupport = _user('u1', const {'provider': 'apple'});
 
-      AgeGateService.remember('u1', AgeGateResult.minor);
-      expect(
-          AgeGateService.resultFor(_user('u1', const {})), AgeGateResult.minor);
+      expect(AgeGateService.isAdultConfirmed(before), isTrue);
+      expect(AgeGateService.resultFor(changedElsewhere), AgeGateResult.minor);
+      expect(AgeGateService.isAdultConfirmed(changedElsewhere), isFalse);
+      expect(AgeGateService.resultFor(clearedBySupport), isNull);
     });
   });
 }

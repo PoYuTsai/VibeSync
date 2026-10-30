@@ -284,14 +284,17 @@ void main() {
         '/partner/p1',
         '/paywall',
         '/practice-collection',
+        // 鍵盤設定不開：別用 startsWith('/settings') 一次放行整組設定子頁。
+        '/settings/keyboard',
       ]) {
         expect(notConfirmed(location), '/age-gate', reason: location);
       }
     });
 
-    test('還沒確認成年：停在 /age-gate，設定頁（登出、刪除帳號）開著', () {
+    test('還沒確認成年：停在 /age-gate，設定頁（登出、刪除帳號）與 AI 隱私說明開著', () {
       expect(notConfirmed('/age-gate'), isNull);
       expect(notConfirmed('/settings'), isNull);
+      expect(notConfirmed('/settings/ai-privacy'), isNull);
     });
 
     test('onboarding 還沒看完：先看 onboarding，再問年齡', () {

@@ -20,23 +20,28 @@ const CORE_FUNCTIONS: Array<{ file: string; bodyRead: RegExp }> = [
   { file: "practice-chat/handler.ts", bodyRead: /await req\.text\(\)/ },
 ];
 
+// 整段呼叫＋擋下就回應要一字不差地出現一次；只寫在註解裡或少了 return 都不算。
+const GATE_STATEMENT =
+  /const ageGateBlock = checkAgeGate\(\{\s*user,\s*enforcement: Deno\.env\.get\("AGE_GATE_ENFORCE"\),\s*\}\);\s*if \(ageGateBlock\) \{\s*return jsonResponse\(ageGateBlock\.body, ageGateBlock\.status\);\s*\}/g;
+
 for (const { file, bodyRead } of CORE_FUNCTIONS) {
   Deno.test(`${file}：驗完使用者就檢查年齡，才讀請求內容`, () => {
     const source = read(file);
     const auth = source.indexOf("auth.getUser(");
-    const gate = source.indexOf("checkAgeGate({");
+    const statements = [...source.matchAll(GATE_STATEMENT)];
     const body = source.search(bodyRead);
     assert(auth >= 0, "找不到 auth.getUser(");
+    assert(
+      source.indexOf("auth.getUser(", auth + 1) < 0,
+      "只能有一個驗使用者的地方",
+    );
+    assert(statements.length === 1, "年齡檢查整段要剛好出現一次");
+    const gate = statements[0].index!;
     assert(gate > auth, "checkAgeGate 要在 auth.getUser 之後");
     assert(body > gate, "checkAgeGate 要在讀請求內容之前");
     assert(
-      source.includes('enforcement: Deno.env.get("AGE_GATE_ENFORCE")'),
-      "開關要讀 AGE_GATE_ENFORCE",
-    );
-    assert(
-      /if \(ageGateBlock\) \{\s*return jsonResponse\(ageGateBlock\.body, ageGateBlock\.status\);/
-        .test(source),
-      "擋下時照 checkAgeGate 的 status／body 回應",
+      source.split("checkAgeGate(").length === 2,
+      "checkAgeGate 只呼叫一次",
     );
   });
 }
