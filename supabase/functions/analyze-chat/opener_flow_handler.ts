@@ -280,6 +280,52 @@ function rpcFailureResponse(
   return flowError("OPENER_FLOW_FAILED", "服務暫時異常，請稍後再試；本次不會扣額度。", 503, { retryable: true });
 }
 
+/** 付得起 [cost] 嗎：不夠就先跟 RevenueCat 對帳一次（剛付款的人資料庫方案可能還沒更新）。
+ *  測試帳號、零扣費永遠付得起。 */
+async function canAffordOpenerCost(
+  deps: OpenerFlowHandlerDeps,
+  cost: number,
+  refreshReason: string,
+): Promise<boolean> {
+  if (deps.accountIsTest || cost <= 0) return true;
+  const quota = deps.quota;
+  const exceeds = () =>
+    quota().sub.monthly_messages_used + cost > quota().monthlyLimit ||
+    quota().sub.daily_messages_used + cost > quota().dailyLimit;
+  if (exceeds()) await deps.refreshTierFromRevenueCat(refreshReason);
+  return !exceeds();
+}
+
+/** 付不起時的 429（第一段、第二段同一個形狀）。 */
+function openerQuotaExceededResponse(
+  deps: OpenerFlowHandlerDeps,
+  cost: number,
+  stage: "analyze" | "generate",
+  user: string,
+): Response {
+  const quota = deps.quota;
+  const monthlyRemaining = Math.max(0, quota().monthlyLimit - quota().sub.monthly_messages_used);
+  const dailyRemaining = Math.max(0, quota().dailyLimit - quota().sub.daily_messages_used);
+  logWarn(`opener_${stage}_quota_exceeded`, { user, monthlyRemaining, dailyRemaining });
+  // quotaScope：哪個額度擋下，App 照它說本月或今日、開哪個付費頁入口（Eric 2026-10-18）；
+  // 跟 message 同一個條件：先看本月、再看今天。只加欄位。
+  const quotaScope = monthlyRemaining < cost ? "monthly" : "daily";
+  return jsonResponse({
+    error: "額度不足",
+    message: quotaScope === "monthly"
+      ? "本月額度不足，升級方案可取得更多開場與分析額度。"
+      : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。",
+    quotaScope,
+    quotaNeeded: cost,
+    monthlyRemaining,
+    dailyRemaining,
+    monthlyLimit: quota().monthlyLimit,
+    dailyLimit: quota().dailyLimit,
+    monthlyUsed: quota().sub.monthly_messages_used,
+    dailyUsed: quota().sub.daily_messages_used,
+  }, 429);
+}
+
 function releaseFailedResponse(): Response {
   return flowError("OPENER_CLAIM_RELEASE_RETRYABLE", "請求狀態暫時無法釋放，請稍後用同一筆請求重試。", 503, { retryable: true });
 }
@@ -420,6 +466,9 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
   //    只在「尚未進入兩段式」時退回舊單段。停用新局的旗標放在 claim 之後（R6b）：
   //    已保存的分析同 analysisRequestId 重試仍能取回，旗標只擋真正的新局。
   const newSessionsDisabled = env("OPENER_TWO_STAGE_ENABLED") === "false";
+  // 第一段額度預查的開關（2026-10-31）：沒設＝關。build 546 以前的 App 在第一段收到額度
+  // 429 時，付款回來「分析」鈕會一直停用；等能恢復的新版普及、Eric 核准後才設成 on。
+  const analyzeQuotaGateOn = env("OPENER_ANALYZE_QUOTA_GATE") === "on";
   const dbContract = await readOpenerFlowDbContractVersion(rpc);
   if (!dbContract.ok) {
     logWarn("opener_flow_db_contract_unreadable", { user, error: dbContract.message });
@@ -516,6 +565,14 @@ export async function handleOpenerAnalyzeRequest(deps: OpenerFlowHandlerDeps): P
     // 走到這裡＝沒有可重播的快照、真的要開新局：停用中，釋放資格後退回舊單段。
     if (!await release()) return releaseFailedResponse();
     return flowError("OPENER_FLOW_UNAVAILABLE", "新版開場流程暫停中，改用一般生成。本次不會扣額度。", 503, { retryable: false });
+  }
+
+  // 3b. 額度預查（Eric＋Bruce 2026-10-30；開關 OPENER_ANALYZE_QUOTA_GATE）：第一段不扣，
+  //     但付不起第一次產生就不打模型、不計限流，免得額度用完的帳號一直白跑讀圖分析。
+  //     重播已在 claim 回掉；零扣費的請求（沒圖、沒對方資料）與測試帳號不擋。
+  if (analyzeQuotaGateOn && !await canAffordOpenerCost(deps, firstGenerationCost, "opener_analyze_quota_exceeded")) {
+    if (!await release()) return releaseFailedResponse();
+    return openerQuotaExceededResponse(deps, firstGenerationCost, "analyze", user);
   }
 
   // 4. 限流（scope 與第二段、舊單段共用 opener 3/分 30/日）。
@@ -779,34 +836,9 @@ export async function handleOpenerGenerateRequest(deps: OpenerFlowHandlerDeps): 
   // 4. 額度預查（只在尚未扣費的會話）；已扣費的同局剩餘生成不因其他功能用完額度而擋。
   const cost = activeSession.firstGenerationCost;
   const needsCharge = !deps.accountIsTest && !activeSession.quotaCharged && cost > 0;
-  if (needsCharge) {
-    const exceeds = () =>
-      quota().sub.monthly_messages_used + cost > quota().monthlyLimit ||
-      quota().sub.daily_messages_used + cost > quota().dailyLimit;
-    if (exceeds()) await deps.refreshTierFromRevenueCat("opener_generate_quota_exceeded");
-    if (exceeds()) {
-      if (!await release()) return releaseFailedResponse();
-      const monthlyRemaining = Math.max(0, quota().monthlyLimit - quota().sub.monthly_messages_used);
-      const dailyRemaining = Math.max(0, quota().dailyLimit - quota().sub.daily_messages_used);
-      logWarn("opener_generate_quota_exceeded", { user, monthlyRemaining, dailyRemaining });
-      // quotaScope：哪個額度擋下，App 照它說本月或今日、開哪個付費頁入口（Eric 2026-10-18）；
-      // 跟 message 同一個條件：先看本月、再看今天。只加欄位。
-      const quotaScope = monthlyRemaining < cost ? "monthly" : "daily";
-      return jsonResponse({
-        error: "額度不足",
-        message: quotaScope === "monthly"
-          ? "本月額度不足，升級方案可取得更多開場與分析額度。"
-          : "今日額度不足，每天早上 8 點恢復；也可以升級取得更多額度。",
-        quotaScope,
-        quotaNeeded: cost,
-        monthlyRemaining,
-        dailyRemaining,
-        monthlyLimit: quota().monthlyLimit,
-        dailyLimit: quota().dailyLimit,
-        monthlyUsed: quota().sub.monthly_messages_used,
-        dailyUsed: quota().sub.daily_messages_used,
-      }, 429);
-    }
+  if (needsCharge && !await canAffordOpenerCost(deps, cost, "opener_generate_quota_exceeded")) {
+    if (!await release()) return releaseFailedResponse();
+    return openerQuotaExceededResponse(deps, cost, "generate", user);
   }
 
   // 5. 限流（新的模型作業才計次；重播已在 claim 回掉）。
