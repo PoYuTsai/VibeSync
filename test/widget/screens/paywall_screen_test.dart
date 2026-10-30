@@ -10,6 +10,8 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:vibesync/core/constants/app_constants.dart';
 import 'package:vibesync/core/theme/app_colors.dart';
 import 'package:vibesync/features/opener/domain/opener_access.dart';
+import 'package:vibesync/features/practice_chat/data/providers/practice_chat_providers.dart';
+import 'package:vibesync/features/practice_chat/data/services/practice_chat_api_service.dart';
 import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
 import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 import 'package:vibesync/features/subscription/presentation/paywall_entry.dart';
@@ -575,6 +577,8 @@ void main() {
       Future<SubscriptionPurchaseResult> Function()? onPurchase,
       Future<bool> Function()? onClearPendingDowngrade,
       SubscriptionState? seededState,
+      SrTicketStatus? srTicket,
+      bool srTicketFails = false,
     }) async {
       await tester.binding.setSurfaceSize(const Size(430, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -612,6 +616,11 @@ void main() {
           overrides: [
             subscriptionProvider.overrideWith((ref) => stub),
             subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+            if (srTicketFails)
+              srTicketStatusProvider.overrideWith(_FailingSrTicketStatus.new)
+            else if (srTicket != null)
+              srTicketStatusProvider
+                  .overrideWith(() => _FixedSrTicketStatus(srTicket)),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -750,6 +759,7 @@ void main() {
         ),
         onRefresh: () => Completer<void>().future,
         seededState: stateWithEssentialMonthly(),
+        srTicket: (eligible: true, granted: true, consumed: false),
       );
 
       final cta = find.textContaining('訂閱 Essential');
@@ -776,6 +786,45 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('collection-stub')), findsOneWidget);
     });
+
+    // 送審前盤點 2026-10-30：SR 限定翻牌每個帳號一輩子只發一次。用過券再升級、
+    // 退訂後重新訂閱都不會再發，付款成功不能說「已解鎖」一張不存在的券。
+    for (final (label, ticket, fails) in [
+      ('券已經用過', (eligible: true, granted: true, consumed: true), false),
+      ('查不到券的狀態', null, true),
+    ]) {
+      testWidgets(
+          'purchase success without an unused SR ticket ($label): no SR line',
+          (tester) async {
+        await pumpPaywallWithStub(
+          tester,
+          onPurchase: () async => const SubscriptionPurchaseResult(
+            success: true,
+            cancelled: false,
+            isDeferredDowngrade: false,
+            requestedTier: SubscriptionTierHelper.essential,
+            previousTier: SubscriptionTierHelper.starter,
+            activeTier: SubscriptionTierHelper.essential,
+          ),
+          seededState: stateWithEssentialMonthly(),
+          srTicket: ticket,
+          srTicketFails: fails,
+        );
+
+        final cta = find.textContaining('訂閱 Essential');
+        await tester.ensureVisible(cta);
+        await tester.pump();
+        await tester.tap(cta, warnIfMissed: false);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 4));
+        await tester.pump();
+
+        expect(find.textContaining('方案已更新，目前方案：Essential。'), findsOneWidget);
+        expect(find.textContaining('SR 限定翻牌'), findsNothing);
+        expect(find.text('去翻牌'), findsOneWidget);
+        await flushSnackBars(tester);
+      });
+    }
 
     testWidgets('top-level paywall purchase success falls back home',
         (tester) async {
@@ -1645,4 +1694,21 @@ void main() {
       expect(buyShown(), isTrue);
     });
   });
+}
+
+/// SR 限定翻牌券狀態固定成測試給的值（不打 API）。
+class _FixedSrTicketStatus extends SrTicketStatusNotifier {
+  _FixedSrTicketStatus(this._status);
+
+  final SrTicketStatus _status;
+
+  @override
+  Future<SrTicketStatus> build() async => _status;
+}
+
+/// 查券失敗（網路、伺服器錯誤）：付款成功那句就不提券。
+class _FailingSrTicketStatus extends SrTicketStatusNotifier {
+  @override
+  Future<SrTicketStatus> build() async =>
+      throw StateError('sr ticket lookup failed');
 }

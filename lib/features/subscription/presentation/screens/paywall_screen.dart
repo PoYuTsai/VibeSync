@@ -24,6 +24,7 @@ import '../../../../shared/services/link_launch_service.dart';
 import '../../../../shared/widgets/brand/brand_kit.dart';
 import '../../../../shared/widgets/pressable_scale.dart';
 import '../../../opener/domain/opener_access.dart';
+import '../../../practice_chat/data/providers/practice_chat_providers.dart';
 import '../../../practice_chat/domain/entities/practice_girl_rarity.dart';
 import '../../data/providers/subscription_providers.dart';
 import '../../domain/services/quarterly_savings.dart';
@@ -54,6 +55,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   static const _purchaseTimeout = Duration(seconds: 45);
   static const _planRefreshTimeout = Duration(seconds: 20);
   static const _postSuccessRefreshTimeout = Duration(seconds: 20);
+  static const _srTicketStatusTimeout = Duration(seconds: 3);
 
   /// 方案還在同步時，骨架最多擋這麼久；之後照當下的方案先排版面。
   static const _layoutResolveTimeout = Duration(seconds: 2);
@@ -1902,6 +1904,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       // 錢已扣：成功呈現不得依賴 refresh 成敗，逾時/失敗只記 log。
       await _refreshAfterSuccessBestEffort(notifier);
       if (!mounted) return;
+      final srTicketLine = await _availableSrTicketLine();
+      if (!mounted) return;
       AppHaptics.celebrate();
 
       final purchasedTier =
@@ -1910,13 +1914,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               : 'Starter';
       // 輕慶祝（2026-08-08 拍板）：SR 券解鎖訊息搭在同一顆 snackbar＋「去翻牌」
       // action——點了才去、不點不打斷；券本體由圖鑑金券入口承接
-      // （srTicketStatusProvider watch isPremium，翻轉即自動 ensure）。
+      // （srTicketStatusProvider watch isPremium，翻轉即自動 ensure）。券只有真的
+      // 還有一張沒用的才講（[_availableSrTicketLine]）。
       // router 先抓：action 觸發時 paywall 已 pop，不能再用本頁 context 導頁。
       final router = GoRouter.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '方案已更新，目前方案：$purchasedTier。🎴 已解鎖 SR 限定翻牌 ×1。',
+            '方案已更新，目前方案：$purchasedTier。$srTicketLine',
           ),
           backgroundColor: AppColors.success,
           duration: const Duration(seconds: 6),
@@ -1940,6 +1945,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       if (mounted) {
         setState(() => _isPurchasing = false);
       }
+    }
+  }
+
+  /// 付款成功那句的 SR 限定翻牌：真的有一張還沒用的券才講。券每個帳號一輩子只發
+  /// 一次，用過券再升級、退訂後重新訂閱都不會再發；查不到或逾時就不講，不宣傳可能
+  /// 不存在的獎勵（送審前盤點 2026-10-30）。
+  Future<String> _availableSrTicketLine() async {
+    try {
+      final status = await ref
+          .read(srTicketStatusProvider.future)
+          .timeout(_srTicketStatusTimeout);
+      return status.eligible && status.granted && !status.consumed
+          ? '🎴 已解鎖 SR 限定翻牌 ×1。'
+          : '';
+    } catch (_) {
+      return '';
     }
   }
 
