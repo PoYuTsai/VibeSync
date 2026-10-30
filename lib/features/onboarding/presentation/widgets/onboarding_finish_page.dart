@@ -60,7 +60,9 @@ class OnboardingFinishPage extends StatelessWidget {
           ),
         OnboardingIntent.practice => (
             title: '登入後，先抽一位練習夥伴',
-            detail: '免費帳號第一次進練習室，會先送一次翻牌。',
+            // 登入前不知道方案：送的那一次只給免費帳號，付費方案用每天的免費翻牌
+            // （Bruce 2026-10-30 真機、Eric 選 A）。
+            detail: '免費帳號第一次進練習室會先送一次翻牌；付費方案用每天的免費翻牌。',
           ),
         OnboardingIntent.browse || null => (
             title: '登入後就能開始',
