@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/services/supabase_service.dart';
 import '../core/theme/app_motion.dart';
+import '../features/age_gate/data/age_gate_repository.dart';
+import '../features/age_gate/domain/age_gate.dart';
+import '../features/age_gate/presentation/screens/age_gate_screen.dart';
 import '../features/analysis/presentation/screens/analysis_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/coach_chat/data/services/coach_chat_api_service.dart'
@@ -53,10 +56,12 @@ String? resolveAppRedirect({
   required bool isLoggedIn,
   required bool isOnboardingCompleted,
   required bool isPasswordRecovery,
+  required bool isAdultConfirmed,
   required String matchedLocation,
 }) {
   final isLoginRoute = matchedLocation == '/login';
   final isOnboardingRoute = matchedLocation == '/onboarding';
+  final isAgeGateRoute = matchedLocation == '/age-gate';
 
   // Unauthenticated: onboarding comes BEFORE login（2026-08-18 拍板：價值主張
   // 放在要帳號之前）。未完成 onboarding 先看 onboarding；完成後只剩 /login。
@@ -80,13 +85,44 @@ String? resolveAppRedirect({
     return isOnboardingRoute ? null : '/onboarding';
   }
 
-  // Onboarding finished -> never show /login or /onboarding again.
-  if (isLoginRoute || isOnboardingRoute) {
+  // 18+ 年齡確認（AGE-01）：帳號還沒確認成年（沒有紀錄、或記成未成年）就只能待在
+  // 年齡確認頁；設定頁開著，讓人能登出、刪除帳號，「AI 與你的隱私」說明也看得到。
+  // 鍵盤設定等其他設定子頁不開。
+  if (!isAdultConfirmed) {
+    const openWhileUnconfirmed = {
+      '/age-gate',
+      '/settings',
+      '/settings/ai-privacy'
+    };
+    return openWhileUnconfirmed.contains(matchedLocation) ? null : '/age-gate';
+  }
+
+  // Onboarding finished -> never show /login, /onboarding or /age-gate again.
+  if (isLoginRoute || isOnboardingRoute || isAgeGateRoute) {
     return '/';
   }
 
   return null;
 }
+
+/// 正式路由每次導頁的判斷：從登入狀態、onboarding 旗標、session 裡帳號的年齡紀錄
+/// 取值交給 [resolveAppRedirect]。抽成函式，測試才接得上真的資料來源。
+@visibleForTesting
+String? liveAppRedirect(String matchedLocation) => resolveAppRedirect(
+      isLoggedIn: SupabaseService.isAuthenticated,
+      isOnboardingCompleted: OnboardingService.isCompletedSync,
+      isPasswordRecovery: SupabaseService.isPasswordRecoveryInProgress,
+      isAdultConfirmed:
+          AgeGateService.isAdultConfirmed(SupabaseService.currentUser),
+      matchedLocation: matchedLocation,
+    );
+
+/// `/age-gate` 的畫面：帳號已經記成未成年就直接是鎖住的畫面。
+@visibleForTesting
+AgeGateScreen buildAgeGateScreen() => AgeGateScreen(
+      blocked: AgeGateService.resultFor(SupabaseService.currentUser) ==
+          AgeGateResult.minor,
+    );
 
 /// 跟進提醒本地通知的 deep-link：導到對象詳情頁並聚焦 coach 跟進區。
 /// 用 [PartnerDetailScreen] 的常數組字串，避免 query 參數與路由分歧。
@@ -97,12 +133,7 @@ String followUpDeepLink(String partnerId) =>
 final router = GoRouter(
   initialLocation: '/login',
   refreshListenable: _routerRefreshListenable,
-  redirect: (context, state) => resolveAppRedirect(
-    isLoggedIn: SupabaseService.isAuthenticated,
-    isOnboardingCompleted: OnboardingService.isCompletedSync,
-    isPasswordRecovery: SupabaseService.isPasswordRecoveryInProgress,
-    matchedLocation: state.matchedLocation,
-  ),
+  redirect: (context, state) => liveAppRedirect(state.matchedLocation),
   routes: [
     GoRoute(
       path: '/login',
@@ -111,6 +142,10 @@ final router = GoRouter(
     GoRoute(
       path: '/onboarding',
       builder: (context, state) => const OnboardingScreen(),
+    ),
+    GoRoute(
+      path: '/age-gate',
+      builder: (context, state) => buildAgeGateScreen(),
     ),
     GoRoute(
       path: '/',

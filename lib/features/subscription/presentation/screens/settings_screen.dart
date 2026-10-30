@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/config/environment.dart';
+import '../../../../core/constants/support_contact.dart';
 import '../../../../core/services/account_deletion_cleanup.dart';
 import '../../../../core/services/app_haptics.dart';
 import '../../../../core/services/revenuecat_service.dart';
@@ -150,7 +151,7 @@ class DefaultAccountLogoutActions extends AccountLogoutActions {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _manageSubscriptionsUrl =
       'https://apps.apple.com/account/subscriptions';
-  static const _supportEmail = 'vibesyncaiapp@gmail.com';
+  static const _supportEmail = kSupportEmail;
   static const _pendingDowngradeRefreshTimeout = Duration(seconds: 20);
   static const _restoreTimeout = Duration(seconds: 45);
 

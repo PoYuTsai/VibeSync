@@ -13,7 +13,9 @@
 //   - Authenticated + onboarding complete   -> never sees /login or /onboarding.
 //   - Password recovery keeps the user on /login to set a new password.
 //   - onboarding 轉換第 12 步：第 1 頁右上「我有帳號」直接到登入，App 要先記成看過
-//     onboarding 再 go('/login')，否則會被拉回 /onboarding（見最後一組）。
+//     onboarding 再 go('/login')，否則會被拉回 /onboarding（見倒數第二組）。
+//   - 18+ 年齡確認（AGE-01）：登入、看完 onboarding 之後，帳號還沒確認成年就只能
+//     待在 /age-gate，設定頁開著（見最後一組）。其他組都當已確認成年。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/app/routes.dart';
 
@@ -22,11 +24,13 @@ String? redirect({
   required bool isOnboardingCompleted,
   required String matchedLocation,
   bool isPasswordRecovery = false,
+  bool isAdultConfirmed = true,
 }) =>
     resolveAppRedirect(
       isLoggedIn: isLoggedIn,
       isOnboardingCompleted: isOnboardingCompleted,
       isPasswordRecovery: isPasswordRecovery,
+      isAdultConfirmed: isAdultConfirmed,
       matchedLocation: matchedLocation,
     );
 
@@ -260,6 +264,88 @@ void main() {
           matchedLocation: '/onboarding',
         ),
         '/',
+      );
+    });
+  });
+
+  group('resolveAppRedirect — 18+ 年齡確認（AGE-01）', () {
+    String? notConfirmed(String location, {bool onboarded = true}) => redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: onboarded,
+          matchedLocation: location,
+          isAdultConfirmed: false,
+        );
+
+    test('還沒確認成年（沒紀錄或未成年）：哪裡都導去 /age-gate', () {
+      for (final location in [
+        '/',
+        '/login',
+        '/onboarding',
+        '/partner/p1',
+        '/paywall',
+        '/practice-collection',
+        // 鍵盤設定不開：別用 startsWith('/settings') 一次放行整組設定子頁。
+        '/settings/keyboard',
+      ]) {
+        expect(notConfirmed(location), '/age-gate', reason: location);
+      }
+    });
+
+    test('還沒確認成年：停在 /age-gate，設定頁（登出、刪除帳號）與 AI 隱私說明開著', () {
+      expect(notConfirmed('/age-gate'), isNull);
+      expect(notConfirmed('/settings'), isNull);
+      expect(notConfirmed('/settings/ai-privacy'), isNull);
+    });
+
+    test('onboarding 還沒看完：先看 onboarding，再問年齡', () {
+      expect(notConfirmed('/', onboarded: false), '/onboarding');
+      expect(notConfirmed('/onboarding', onboarded: false), isNull);
+      expect(notConfirmed('/age-gate', onboarded: false), '/onboarding');
+    });
+
+    test('沒登入：照舊先 onboarding／登入，不問年齡', () {
+      for (final onboarded in [false, true]) {
+        expect(
+          redirect(
+            isLoggedIn: false,
+            isOnboardingCompleted: onboarded,
+            matchedLocation: '/age-gate',
+            isAdultConfirmed: false,
+          ),
+          onboarded ? '/login' : '/onboarding',
+        );
+      }
+    });
+
+    test('重設密碼中：停在 /login 設新密碼，不被年齡確認打斷', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/login',
+          isPasswordRecovery: true,
+          isAdultConfirmed: false,
+        ),
+        isNull,
+      );
+    });
+
+    test('確認成年之後：/age-gate 回首頁，其他頁照常', () {
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/age-gate',
+        ),
+        '/',
+      );
+      expect(
+        redirect(
+          isLoggedIn: true,
+          isOnboardingCompleted: true,
+          matchedLocation: '/partner/p1',
+        ),
+        isNull,
       );
     });
   });

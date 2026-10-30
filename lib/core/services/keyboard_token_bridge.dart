@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../features/age_gate/domain/age_gate.dart';
 import 'supabase_service.dart';
 
 abstract class KeyboardCredentialStore {
@@ -78,15 +79,21 @@ class KeyboardTokenBridge {
     await bridge.syncCurrentSession(refreshIfExpired: true);
     await _authSubscription?.cancel();
     _authSubscription = SupabaseService.authStateChanges.listen((state) {
-      if (state.event == AuthChangeEvent.signedOut) {
-        unawaited(bridge._enqueue(bridge.clear));
-        return;
-      }
-      final payload = _payloadFromSession(state.session);
-      if (payload != null) {
-        unawaited(bridge._enqueue(() => bridge.sync(payload)));
-      }
+      unawaited(bridge._enqueue(() => bridge.handleAuthState(state)));
     });
+  }
+
+  /// 登出就清掉；沒有或過期的 session 照舊不動；帳號還沒確認成年（沒紀錄或
+  /// 未成年，18+ 年齡確認 AGE-01）就不給鍵盤 token、已經給過的也清掉，鍵盤的
+  /// AI 回覆跟 App 一起鎖住；其餘照常同步。
+  @visibleForTesting
+  Future<void> handleAuthState(AuthState state) async {
+    if (state.event == AuthChangeEvent.signedOut) return clear();
+    final session = state.session;
+    final payload = _payloadFromSession(session);
+    if (session == null || payload == null) return;
+    if (!_isAdultConfirmed(session)) return clear();
+    return sync(payload);
   }
 
   static Future<void> syncOnForeground() async {
@@ -120,8 +127,15 @@ class KeyboardTokenBridge {
         debugPrint('Keyboard token refresh failed: $error');
       }
     }
+    await applyCurrentSession(session);
+  }
+
+  /// 啟動與回到前景時：有可用的 session、而且帳號確認成年（18+ 年齡確認 AGE-01）
+  /// 才同步給鍵盤，否則清掉。
+  @visibleForTesting
+  Future<void> applyCurrentSession(Session? session) async {
     final payload = _payloadFromSession(session);
-    if (payload == null) {
+    if (session == null || payload == null || !_isAdultConfirmed(session)) {
       await clear();
     } else {
       await sync(payload);
@@ -180,6 +194,10 @@ class KeyboardTokenBridge {
   @visibleForTesting
   Future<bool> consumeQuotaExceededSignalForTesting(String expectedUserId) =>
       _consumeQuotaExceededSignal(expectedUserId);
+
+  static bool _isAdultConfirmed(Session session) =>
+      ageGateResultFromAppMetadata(session.user.appMetadata) ==
+      AgeGateResult.adult;
 
   static KeyboardSessionPayload? _payloadFromSession(Session? session) {
     final expiresAt = session?.expiresAt;
