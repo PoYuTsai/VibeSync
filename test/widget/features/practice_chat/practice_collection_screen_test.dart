@@ -360,6 +360,7 @@ Widget collectionApp({
   Set<String> unlocked = const {},
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
+  SubscriptionNotifier? subscriptionNotifier,
   PracticeCollectionNotifier? collectionNotifier,
   bool showOnboardingGuide = false,
   PracticeChatApiService? api,
@@ -369,6 +370,7 @@ Widget collectionApp({
       unlocked: unlocked,
       controller: controller,
       subscription: subscription,
+      subscriptionNotifier: subscriptionNotifier,
       collectionNotifier: collectionNotifier,
       api: api,
     ),
@@ -1649,6 +1651,115 @@ void main() {
         expect(find.text(kDrawQuotaUnconfirmedMessage), findsOneWidget);
         expect(find.byType(AlertDialog), findsNothing);
         expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+      });
+
+      // Codex 主審第 2 輪 P1：圖鑑集滿、還剩免費次數 → 確認窗只問「可能抽到重複角色」；
+      // 開著的時候降成 Starter，按「仍要翻牌」不能直接送出（伺服器會照新方案扣 5 則）。
+      final allUnlocked = practiceGirlProfiles.map((p) => p.profileId).toSet();
+      const chargeLine = '今日 3 次免費換人已用完，再按一次會扣 5 則額度。';
+
+      testWidgets('集滿的確認窗開著時降成 Starter、補水還沒回來：按「仍要翻牌」先不送出，回來要扣額度就改問扣額度',
+          (tester) async {
+        final downgradeGate = Completer<void>();
+        // 進頁那發馬上回：Essential 這一窗剩 2 次。
+        final statusApi = _StatusApi()
+          ..freeAllowance = 5
+          ..freeUsed = 3;
+        final subscription =
+            _SwitchableSubscriptionNotifier(_essentialSubscription);
+        final controller = _GrantRaceController(
+          _revealedSeed(freeAllowance: 5, freeRemaining: 2, extraCost: 5),
+          statusApi.api(),
+        );
+        await pumpApp(
+          tester,
+          collectionApp(
+            controller: controller,
+            unlocked: allUnlocked,
+            subscriptionNotifier: subscription,
+            api: statusApi.api(),
+          ),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(find.text('角色已集滿'), findsOneWidget);
+        expect(find.textContaining(chargeLine), findsNothing,
+            reason: '還有免費次數：只問重複');
+
+        // 確認窗開著時降成 Starter（3 次、這一窗已經翻了 3 次），補水卡在半路。
+        statusApi
+          ..freeAllowance = 3
+          ..freeUsed = 3
+          ..gates[statusApi.statusCalls] = downgradeGate;
+        subscription.switchTo(_paidSubscription);
+        unawaited(controller.refreshDrawQuotaForNewTier());
+
+        await tester.tap(find.byKey(confirmKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.drawCalls, 0, reason: '方案還沒確認：不送出');
+        expect(spinnerOnDrawButton(), findsOneWidget);
+
+        downgradeGate.complete();
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.drawCalls, 0);
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.textContaining(chargeLine), findsOneWidget,
+            reason: '這次要扣額度：先講清楚');
+
+        // 看過扣額度的說明再確認，才送出。
+        await tester.tap(find.byKey(confirmKey));
+        await tester.pump();
+        expect(controller.drawCalls, 1);
+      });
+
+      testWidgets('集滿的確認窗開著時降成 Starter、補水已經回來剩 0 次：按「仍要翻牌」不送出，改問扣額度',
+          (tester) async {
+        final statusApi = _StatusApi()
+          ..freeAllowance = 5
+          ..freeUsed = 3;
+        final subscription =
+            _SwitchableSubscriptionNotifier(_essentialSubscription);
+        final controller = _GrantRaceController(
+          _revealedSeed(freeAllowance: 5, freeRemaining: 2, extraCost: 5),
+          statusApi.api(),
+        );
+        await pumpApp(
+          tester,
+          collectionApp(
+            controller: controller,
+            unlocked: allUnlocked,
+            subscriptionNotifier: subscription,
+            api: statusApi.api(),
+          ),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(find.text('角色已集滿'), findsOneWidget);
+        expect(find.textContaining(chargeLine), findsNothing);
+
+        // 確認窗開著時降成 Starter，補水馬上回來：這一窗剩 0 次。
+        statusApi
+          ..freeAllowance = 3
+          ..freeUsed = 3;
+        subscription.switchTo(_paidSubscription);
+        unawaited(controller.refreshDrawQuotaForNewTier());
+        await tester.pump();
+        expect(controller.drawQuotaUnconfirmed, isFalse);
+        expect(controller.currentState.drawFreeRemaining, 0);
+
+        await tester.tap(find.byKey(confirmKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.drawCalls, 0, reason: '剛才只同意了重複，沒同意扣額度');
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.textContaining(chargeLine), findsOneWidget);
       });
     });
 

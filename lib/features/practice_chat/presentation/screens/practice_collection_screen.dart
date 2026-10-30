@@ -635,7 +635,18 @@ class _PracticeCollectionScreenState
     if (confirmed != true || !mounted) return;
     final latest = ref.read(practiceChatControllerProvider);
     if (latest.isDrawing || latest.isPersistingTurn) return;
-    ref.read(practiceChatControllerProvider.notifier).drawNewPracticeGirl();
+    final notifier = ref.read(practiceChatControllerProvider.notifier);
+    // 確認窗開著的時候方案可能換了：按下去之後用最新的數字再判斷一次。額度還沒確認、
+    // 或現在其實會扣額度而剛才的確認窗沒提，就不送出，重走一次翻牌判斷（等補水、跳出
+    // 寫明扣額度的確認窗）。伺服器加抽不需要同意，這裡是唯一的關卡（Codex 主審第 2 輪
+    // P1：集滿只問了「可能重複」，開著時降級，按「仍要翻牌」就被扣 5 則）。
+    if (notifier.drawQuotaUnconfirmed ||
+        notifier.drawQuotaRefreshInFlight != null ||
+        (_needsPaidDrawConfirmation(latest) && !paidConfirmation)) {
+      _onDrawPressed();
+      return;
+    }
+    notifier.drawNewPracticeGirl();
   }
 
   // ── 以下三個 helper 語義照抄 practice_chat_screen（Task 7 才收殺原件）──
