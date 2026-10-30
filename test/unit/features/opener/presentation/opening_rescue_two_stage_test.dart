@@ -78,6 +78,21 @@ class _StickySubscriptionNotifier extends _SeededSubscriptionNotifier {
   Future<void> refresh() async => state = _seed;
 }
 
+/// 付費頁按「購買」會帶 essential 回來：訂閱跟著變成付費，背景刷新不把它刷回免費。
+class _PurchasableSubscriptionNotifier extends _SeededSubscriptionNotifier {
+  _PurchasableSubscriptionNotifier(super.seed);
+
+  @override
+  Future<void> forceSyncTier(String tier) async =>
+      state = state.copyWith(tier: tier);
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  Future<void> syncWithRevenueCat() async {}
+}
+
 /// 有設就讓生成走真的 OpenerService 傳輸（伺服器回這個 client 給的回應），
 /// 錯誤對映與說法從真的 service 一路走到畫面。
 http.Client? _generateTransport;
@@ -323,6 +338,39 @@ Future<void> _pumpManualWithPaywall(WidgetTester tester,
                       child: const Text('關閉付費牆'))));
         }),
   ])));
+  await tester.pump(const Duration(milliseconds: 600));
+  await tester.tap(find.text('手動輸入'));
+  await tester.pumpAndSettle();
+}
+
+/// 付費頁有「購買」鈕（帶 essential 回來）：測付款回來之後的畫面。
+Future<void> _pumpManualWithPurchase(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(390, 4200));
+  await tester.pumpWidget(ProviderScope(
+      overrides: [
+        ..._screenOverrides(SubscriptionTierHelper.free),
+        subscriptionProvider.overrideWith((ref) =>
+            _PurchasableSubscriptionNotifier(const SubscriptionState(
+                tier: SubscriptionTierHelper.free,
+                monthlyLimit: 30,
+                dailyLimit: 10))),
+        subscriptionScreenRefreshProvider.overrideWithValue(() async {}),
+      ],
+      child: MaterialApp.router(
+          routerConfig: GoRouter(routes: [
+        GoRoute(path: '/', builder: (_, __) => const OpeningRescueScreen()),
+        GoRoute(
+            path: '/paywall',
+            builder: (context, state) {
+              _paywallOpens++;
+              return Scaffold(
+                  body: Center(
+                      child: TextButton(
+                          onPressed: () =>
+                              context.pop(SubscriptionTierHelper.essential),
+                          child: const Text('購買'))));
+            }),
+      ]))));
   await tester.pump(const Duration(milliseconds: 600));
   await tester.tap(find.text('手動輸入'));
   await tester.pumpAndSettle();
@@ -692,6 +740,80 @@ void main() {
     expect(find.textContaining('這次分析已扣過'), findsOneWidget);
     expect(find.byKey(const ValueKey('opener-skip-button')), findsNothing,
         reason: '調整模式不提供略過');
+  });
+
+  // 伺服器第一段額度關卡（OPENER_ANALYZE_QUOTA_GATE，2026-10-31）：分析被額度擋下會
+  // 自動開付費頁；付款回來「分析」鈕要能再按，重新分析沿用同一筆請求（預審 P2）。
+  testWidgets('第一段額度不足：付款回來後分析鈕可以再按，重新分析成功', (tester) async {
+    _paywallOpens = 0;
+    await _pumpManualWithPurchase(tester);
+    service.analyzeError = const OpenerQuotaExceededException(
+        message: '今日額度不足。',
+        dailyRemaining: 1,
+        quotaNeeded: 3,
+        isMonthly: false);
+    await tester.enterText(
+        find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == '例如：喜歡爬山、養了一隻貓，週末常去咖啡店'),
+        '有養一隻狗，假日會去河堤');
+    await tester.pump();
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-analyze-button')),
+        until: find.text('購買'));
+    expect(_paywallOpens, 1, reason: '分析被額度擋下，自動開一次付費頁');
+    final firstRequestId = service.lastAnalysisRequestId;
+
+    service.analyzeError = null;
+    await _tapAndSettleAsync(tester, find.text('購買'),
+        until: find.byKey(const ValueKey('opener-analyze-button')));
+    await _settleBounded(tester);
+    await _tapAndSettleAsync(
+        tester, find.byKey(const ValueKey('opener-analyze-button')),
+        until: find.byKey(const ValueKey('opener-approach-summary')));
+
+    expect(
+        find.byKey(const ValueKey('opener-approach-summary')), findsOneWidget,
+        reason: '付款回來按得到分析，重新分析成功');
+    expect(service.analyzeCalls, 2);
+    expect(service.lastAnalysisRequestId, firstRequestId,
+        reason: '重新分析沿用同一筆請求');
+    expect(_paywallOpens, 1);
+  });
+
+  testWidgets('第一段額度不足：重開「分析中」草稿自動續分析撞到額度，不自動開付費頁，按升級才開', (tester) async {
+    await tester.runAsync(() async {
+      final cache = OpenerResultCacheService(ownerIdResolver: () => 'user-a');
+      await cache.saveDraft(
+        sourceLabel: '截圖自介',
+        flow: OpenerDraftFlow(
+          stage: OpenerDraftFlowStage.analyzing,
+          contributionDraft: const OpenerContributionDraft(freeText: '想從狗開'),
+          analysisRequestId: 'req-pending-quota',
+          inputFingerprint: _analysisFingerprint,
+          pendingAnalysis: const OpenerPendingAnalysis(
+              bio: '有養一隻狗，假日會去河堤', initialNote: '想從狗開'),
+        ),
+      );
+    });
+    _paywallOpens = 0;
+    await _pumpManualWithPaywall(tester);
+    service.analyzeError = const OpenerQuotaExceededException(
+        message: '今日額度不足。',
+        dailyRemaining: 1,
+        quotaNeeded: 3,
+        isMonthly: false);
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
+    await _tapAndSettleAsync(tester, find.text('回看'),
+        until: find.byKey(const ValueKey('opener-upgrade-button')));
+
+    expect(service.analyzeCalls, 1, reason: '回看照舊自動續分析');
+    expect(_paywallOpens, 0, reason: '自動續分析撞到額度不自動開付費頁');
+    expect(find.byKey(const ValueKey('opener-upgrade-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('opener-upgrade-button')));
+    await _settleBounded(tester);
+    expect(_paywallOpens, 1, reason: '自己按升級才開');
   });
 
   testWidgets('額度不足：生成被伺服器擋下、關掉付費牆後，錯誤下方給「升級方案」不給「再試一次」', (tester) async {

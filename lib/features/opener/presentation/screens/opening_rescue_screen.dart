@@ -399,6 +399,10 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
   final _freeTextController = TextEditingController();
   OpenerQuotaExceededException? _handledQuotaError;
 
+  /// 重開「分析中」草稿時自動續分析的那一次：撞到額度只顯示說明與升級鈕，不自動開
+  /// 付費頁（不然每次打開草稿都跳一次付費頁）。用戶自己按分析就清掉。
+  bool _autoResumingAnalysis = false;
+
   // R4a：舊單段草稿（flow=null）在兩段式畫面裡的回看狀態——結果只顯示、可複製
   // 與回報，不觸發新分析或扣費；改任何對方資料就清掉。
   bool _legacyDraftView = false;
@@ -479,12 +483,14 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         previousPhase == OpenerFlowPhase.analyzing) {
       _snapToResults();
     }
+    final autoResumed = _autoResumingAnalysis;
+    if (state.phase != OpenerFlowPhase.analyzing) _autoResumingAnalysis = false;
     final quotaError = state.quotaError;
     if (quotaError != null && !identical(quotaError, _handledQuotaError)) {
       _handledQuotaError = quotaError;
       _trackQuotaBlock(QuotaBlockSource.server,
           isMonthly: quotaError.isMonthly);
-      if (_mode == OpeningRescueMode.opener) {
+      if (_mode == OpeningRescueMode.opener && !autoResumed) {
         unawaited(_showPaywallAndRefresh(entry: _quotaEntryFor(quotaError)));
       }
     }
@@ -537,6 +543,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
         _mode != OpeningRescueMode.opener) {
       return;
     }
+    _autoResumingAnalysis = false; // 用戶自己按的：撞到額度照常開付費頁
     final input = OpenerGenerationInput.fromActiveTab(
       useScreenshotTab: _selectedTab == 0,
       images: _images,
@@ -724,6 +731,9 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       isPremium: subscription.isPremium,
     )) {
       setState(() => _error = null);
+      // 第一段被額度擋下時「分析」鈕看 controller 的 quotaError：付款回來一起清掉，
+      // 不然按鈕一直是灰的（預審 2026-10-31 P2）。
+      _flow.clearQuotaError();
     }
   }
 
@@ -802,6 +812,7 @@ class _OpeningRescueScreenState extends ConsumerState<OpeningRescueScreen> {
       });
       _flow.restoreDraft(draft);
       if (_flow.hasPendingAnalysis && pendingAnalysis.imageCount == 0) {
+        _autoResumingAnalysis = true;
         unawaited(_flow.resumePendingAnalysis());
       }
       return;

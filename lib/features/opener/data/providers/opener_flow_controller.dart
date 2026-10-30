@@ -262,6 +262,13 @@ class OpenerFlowController extends ChangeNotifier {
   /// 用戶明確開始新的一局（到期／三組用完後）。
   void startNewSession() => resetForInputChange();
 
+  /// 付款回來後清掉額度錯誤：「分析」鈕重新可以按。失敗的那一步照舊標著，「重新分析」
+  /// 沿用同一筆請求（伺服器第一段額度關卡，2026-10-31）。
+  void clearQuotaError() {
+    if (_state.quotaError == null) return;
+    _set(_state.copyWith(clearError: true));
+  }
+
   // ── 第一段 ─────────────────────────────────────────────────────────────
 
   Future<void> analyze({
@@ -381,7 +388,8 @@ class OpenerFlowController extends ChangeNotifier {
         completedPhases: const {},
       ));
     } on OpenerQuotaExceededException catch (e) {
-      // 第一段不扣費，理論上不會發生；保守處理成可重試錯誤。
+      // 第一段不扣費，但伺服器開了第一段額度關卡（OPENER_ANALYZE_QUOTA_GATE）時，付不起
+      // 第一次生成就會擋在這裡：留著草稿與同一筆請求，付款或額度恢復後「重新分析」。
       if (!_isCurrent(op)) return;
       _set(_state.copyWith(phase: OpenerFlowPhase.editing, error: e.message, quotaError: e, failedOperation: OpenerFlowFailedOperation.analyze));
     } on OpenerFlowException catch (e) {
