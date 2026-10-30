@@ -1,6 +1,6 @@
 """卡背構圖的一次性描圖（典藏材質規格 docs/plans/2026-10-28-card-collectible-material-spec.md §5.1）。
 
-從 V3 卡背的三張遮罩（`assets/images/practice/practice_draw_card_back_v3_*_mask.webp`，904×1428，
+從 V3 卡背的三張遮罩（`docs/archive/practice-draw-v3/practice_draw_card_back_v3_*_mask.webp`，904×1428，
 由 V2 原圖萃取）描出向量構圖，寫進 card_back_geometry.json；之後的渲染只讀 JSON，不再碰點陣圖。
 這支是開發工具：用 scikit-image／scipy 描邊，跑一次、人工檢查疊圖後提交 JSON，平常不用重跑
 （render_card_back.py 只需要 numpy＋Pillow）。
@@ -48,7 +48,7 @@ from scipy import ndimage
 from skimage import measure, morphology
 
 ROOT = Path(__file__).resolve().parents[2]
-ASSETS = ROOT / 'assets/images/practice'
+ASSETS = ROOT / 'docs/archive/practice-draw-v3'  # V3 卡背（已移出 app）
 OUT = Path(__file__).resolve().parent / 'card_back_geometry.json'
 
 SRC_W, SRC_H = 904, 1428

@@ -16,7 +16,7 @@ from PIL import Image
 import geometry as g
 
 ROOT = Path(__file__).resolve().parents[2]
-ASSETS = ROOT / 'assets/images/practice'
+ASSETS = ROOT / 'docs/archive/practice-draw-v3'  # V3 卡背（已移出 app）
 OVERLAY = ROOT / 'build/card_material/geometry_overlay.png'
 SRC_W, SRC_H = 904, 1428
 FRAME_LAYERS = ['frame-line', 'plate', 'sidebar', 'plate-corner', 'mark']

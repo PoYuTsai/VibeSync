@@ -25,20 +25,6 @@ import 'practice_reveal_painters.dart';
 import 'practice_reveal_theme.dart';
 import 'practice_reveal_timing.dart';
 
-/// V3 卡背素材（`tools/practice-draw-card-back-v3/make_card_back_v3.py` 從原卡背離線產出）。典藏
-/// 材質 P3 起執行時改用 [PracticeCardMaterialSlot] 的 v4 素材；這五張還是 v4 描圖與底面煙霧質感
-/// 的來源，等真機驗收通過後的清理那一刀（規格 §13.3）連同檔案一起移走。
-const String kPracticeRevealBackBaseAsset =
-    'assets/images/practice/practice_draw_card_back_v3_base.webp';
-const String kPracticeRevealBackEmblemMaskAsset =
-    'assets/images/practice/practice_draw_card_back_v3_emblem_mask.webp';
-const String kPracticeRevealBackFrameMaskAsset =
-    'assets/images/practice/practice_draw_card_back_v3_frame_mask.webp';
-const String kPracticeRevealBackGlowAsset =
-    'assets/images/practice/practice_draw_card_back_v3_glow.webp';
-const String kPracticeRevealBackLinesMaskAsset =
-    'assets/images/practice/practice_draw_card_back_v3_lines_mask.webp';
-
 /// 抽牌一開始就預快取的光效貼圖（卡背素材由 [PracticeCardMaterialLoader] 解碼）。
 const List<String> kPracticeRevealSpriteAssets = [
   kPracticeRevealBloomAsset,

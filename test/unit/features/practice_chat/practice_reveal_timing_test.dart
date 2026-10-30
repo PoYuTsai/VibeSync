@@ -300,14 +300,6 @@ void main() {
         expect(practiceRevealEmblemGlow(720, rarity), closeTo(1.0, 1e-9));
         expect(practiceRevealEmblemGlow(1200, rarity), closeTo(1.0, 1e-9));
       }
-      expect(practiceRevealFrameGlow(0), closeTo(0.25, 1e-9));
-      expect(practiceRevealFrameGlow(600), closeTo(0.60, 1e-9));
-      // V3.1 §5.3：R／SR 染藍時外框跟徽記一起衝到 1.0；N 維持 0.60。
-      expect(practiceRevealFrameGlow(1200, n), closeTo(0.60, 1e-9));
-      for (final rarity in [r, sr]) {
-        expect(practiceRevealFrameGlow(599, rarity), closeTo(0.60, 1e-2));
-        expect(practiceRevealFrameGlow(720, rarity), closeTo(1.0, 1e-9));
-      }
     });
 
     test('環境光 1.00 → 藍 1.15 → 金 1.35', () {
@@ -610,23 +602,6 @@ void main() {
         final v = practiceRevealEmblemWhite(ms);
         expect(v, inInclusiveRange(0, 0.95), reason: '$ms');
         if (ms <= 560 || ms >= 720) expect(v, 0, reason: '$ms');
-      }
-    });
-
-    test('線路發光：N 全程 0；R／SR 染藍 120 ms 亮到 0.85，藍色蓄力期間在 0.8–1.0 倍之間慢慢呼吸、不閃', () {
-      for (var ms = 0.0; ms <= PracticeRevealTiming.revealMs; ms += 5) {
-        expect(practiceRevealLinesGlow(ms, n), 0, reason: '$ms');
-      }
-      for (final rarity in [r, sr]) {
-        expect(practiceRevealLinesGlow(599, rarity), 0);
-        expect(practiceRevealLinesGlow(720, rarity), closeTo(0.85, 1e-9));
-        var last = 1.0;
-        for (var ms = 720.0; ms <= 1100; ms += 10) {
-          final v = practiceRevealLinesGlow(ms, rarity);
-          expect(v, inInclusiveRange(0.8 * 0.85 - 1e-9, 0.85 + 1e-9));
-          expect(v, lessThanOrEqualTo(last + 1e-9), reason: '只退不閃（$ms）');
-          last = v;
-        }
       }
     });
 

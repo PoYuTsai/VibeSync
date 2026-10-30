@@ -834,6 +834,23 @@ Gate-2a 第 1 輪審查不通過（拉絲粗長平行、暗底太平滑、外框
 
 跟示意圖仍有的差距（等 Eric 拿原圖目視）：底面細顆粒、霧面、四角亮度刻意比示意圖克制（細顆粒約示意圖的四到六成、霧面約三成、四角平均亮度約一半），避免正常尺寸變成砂紙或雲霧。
 
+### 16.4 P4 實作紀錄（2026-10-28，Draft：Gate-3 通過才合併）
+
+做了（§13.3）：
+
+- V3 卡背五張（`practice_draw_card_back_v3_{base,emblem_mask,frame_mask,glow,lines_mask}.webp`，273 KiB）從 `assets/images/practice/` 移到 `docs/archive/practice-draw-v3/`（附 README），app 不再打包。不刪：v4 的描圖、構圖鎖定與底面煙霧質感還要用。V3 產生器預設也輸出到那裡。
+- 工具改讀封存位置；`render_card_back.py` 找不到煙霧質感的來源時不再默默改用 0（會讓重新渲染悄悄變樣），直接報錯。重新渲染 7 張 v4 素材，跟 P3 提交的逐位元相同。
+- 拿掉只剩舊卡背染色在用的：V3 素材常數、`practiceRevealFrameGlow`、`practiceRevealLinesGlow`、`PracticeRevealBackColors` 的 `tint`／`tintDeep`／`holo`（只留環境光要的 `glow`、`ambientAlpha`）、主題的 `backTintDeep`、色票 `nBackTintDeep`／`rBackTintDeep`／`srBackTintDeep`／`holoViolet`。`backTint` 還是衝擊波光環的顏色，保留（跟上第 3 輪後也拿掉，見本節最後）。
+- 測試：拿掉兩個舊函式的測試；`practice_reveal_visuals_test.dart` 的「卡背顏色」改看環境光的顏色（一樣驗只升到真實稀有度）。授權文件更新 V3 素材的位置。
+
+驗證：`flutter analyze` 沒有問題；`test/unit/features/practice_chat/`、`test/widget/features/practice_chat/`、`test/lint/` 889 過；`python3 -m unittest discover -s tools/practice-card-material` 10 個全過。畫面不變，沒有重錄閃光。
+
+跟上第 3 輪（2026-10-30，#114 squash 進 main `2c68f6f0` 之後）：
+
+- 合併基準點指定為這條分支跟 #114 最後 head 的共同祖先 `9c52d134`，只合入第 2、3 輪；唯一衝突是本節原本也編成 §16.3，改編 §16.4。上面的改動逐行保留。
+- 第 3 輪讓衝擊波改用主題的 `shockwave`（R＝`rGlow`），`backTint` 只剩上面拿掉的舊染色在用：主題的 `backTint` 與色票 `rBackTint` 一起拿掉。`nBackTint`、`srBackTint` 是 N／SR `shockwave` 的值，保留。D9=A 的測試（揭曉的 R 跟圖鑑的 `#64B5F6` 分開）改看 `shockwave`。
+- 驗證：`flutter analyze` 整個專案沒有問題；完整測試 `flutter test --concurrency=3` 5161 過、13 略過、0 失敗（比 #114 少的 1 支是上面拿掉的線路發光測試）；`python3 -m unittest discover -s tools/practice-card-material` 20 項全過（含重描跟提交的 JSON 逐位元相同）；從封存位置的 V3 素材重新渲染，7 張 v4 素材跟第 3 輪提交的逐位元相同。
+
 ---
 
 ## 17. 風險、不做的事、後續
