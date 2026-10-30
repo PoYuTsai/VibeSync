@@ -229,6 +229,7 @@ import {
   practiceGenerationRetryAdvice,
   sanitizePracticeFailureCode,
 } from "./telemetry.ts";
+import { checkAgeGate } from "../_shared/age_gate.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const CHAT_MAX_TOKENS = 200;
@@ -2256,6 +2257,15 @@ export function createPracticeChatHandler(
     );
     if (userError || !user) {
       return jsonResponse({ error: "unauthorized" }, 401);
+    }
+
+    // 18+ 年齡閘門（AGE-01）：開關 AGE_GATE_ENFORCE 沒設＝關，誰都不擋。
+    const ageGateBlock = checkAgeGate({
+      user,
+      enforcement: Deno.env.get("AGE_GATE_ENFORCE"),
+    });
+    if (ageGateBlock) {
+      return jsonResponse(ageGateBlock.body, ageGateBlock.status);
     }
 
     const rawText = await req.text();

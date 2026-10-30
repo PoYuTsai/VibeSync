@@ -181,6 +181,7 @@ import {
   shouldFailPaidTierSync,
   subscriptionTierRank,
 } from "./tier_sync_contract.ts";
+import { checkAgeGate } from "../_shared/age_gate.ts";
 
 // 訊息制額度。跟 _shared/quota.ts 同步：免費 30／15（Bruce 10/18 維持，Eric 2026-10-19
 // 照他改回）；tier_limits_parity_test.ts 鎖住三份一致。
@@ -295,6 +296,15 @@ async function handleAnalyzeChat(
 
     if (authError || !user) {
       return jsonResponse({ error: "Invalid token" }, 401);
+    }
+
+    // 18+ 年齡閘門（AGE-01）：開關 AGE_GATE_ENFORCE 沒設＝關，誰都不擋。
+    const ageGateBlock = checkAgeGate({
+      user,
+      enforcement: Deno.env.get("AGE_GATE_ENFORCE"),
+    });
+    if (ageGateBlock) {
+      return jsonResponse(ageGateBlock.body, ageGateBlock.status);
     }
 
     // 測試帳號：不檢查額度、不扣額度

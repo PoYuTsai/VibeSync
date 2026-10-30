@@ -9,6 +9,7 @@ import {
 } from "./revenuecat_expiration.ts";
 import { shouldResetUsageOnTierSync } from "./usage_reset.ts";
 import { applyResetsIfNeeded } from "../_shared/quota.ts";
+import { handleRecordAgeGate } from "../_shared/age_gate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -159,11 +160,6 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
   }
 
   try {
-    if (!REVENUECAT_IOS_API_KEY) {
-      console.error("REVENUECAT_IOS_API_KEY is not configured");
-      return jsonResponse({ error: "Server misconfigured" }, 500);
-    }
-
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !/^Bearer\s+\S+/i.test(authHeader)) {
       return jsonResponse({ error: "Unauthorized" }, 401);
@@ -177,6 +173,37 @@ serve(withOperationalErrorMonitoring("sync-subscription", async (req) => {
     }
 
     const requestBody = isPlainObject(body) ? body : {};
+
+    // 18+ 年齡閘門的紀錄（AGE-01）：跟訂閱同步無關，先分流，不碰 RevenueCat。
+    // 只寫 auth app_metadata 的 age_gate 一個鍵（GoTrue 對 app_metadata 是逐鍵合併，
+    // provider 等其他鍵不動）。
+    if (requestBody.mode === "record_age_gate") {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser(stripBearer(authHeader));
+      if (authError || !user) {
+        return jsonResponse({ error: "Invalid token" }, 401);
+      }
+      const recorded = await handleRecordAgeGate(
+        { user, body: requestBody },
+        {
+          updateAppMetadata: (userId, appMetadata) =>
+            supabase.auth.admin.updateUserById(userId, {
+              app_metadata: appMetadata,
+            }),
+          now: () => new Date(),
+        },
+      );
+      return jsonResponse(recorded.body, recorded.status);
+    }
+
+    if (!REVENUECAT_IOS_API_KEY) {
+      console.error("REVENUECAT_IOS_API_KEY is not configured");
+      return jsonResponse({ error: "Server misconfigured" }, 500);
+    }
+
     const expectedTier = normalizeTier(requestBody.expectedTier);
     const resetUsage = requestBody.resetUsage === true;
     const revenueCatAppUserId = requestBody.revenueCatAppUserId;

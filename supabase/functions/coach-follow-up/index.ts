@@ -38,6 +38,7 @@ import {
   tierRank,
 } from "../_shared/quota.ts";
 import { enforceModelRateLimit } from "../_shared/model_rate_limit.ts";
+import { checkAgeGate } from "../_shared/age_gate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -323,6 +324,15 @@ export async function handleRequest(req: Request): Promise<Response> {
   );
   if (userError || !user) {
     return jsonResponse({ error: "unauthorized" }, 401);
+  }
+
+  // 18+ 年齡閘門（AGE-01）：開關 AGE_GATE_ENFORCE 沒設＝關，誰都不擋。
+  const ageGateBlock = checkAgeGate({
+    user,
+    enforcement: Deno.env.get("AGE_GATE_ENFORCE"),
+  });
+  if (ageGateBlock) {
+    return jsonResponse(ageGateBlock.body, ageGateBlock.status);
   }
 
   // ── Body size guard + JSON parse ──
