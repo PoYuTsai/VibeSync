@@ -10,6 +10,20 @@
 
 ## 2026-10
 
+### [2026-10-30] 剛買完方案馬上按翻牌，又被送回付費頁（「今天的翻牌用完了」）
+
+**Symptom**: TestFlight（2026-10-30，Eric）：免費版翻完唯一一次免費翻牌，按翻牌進付費頁、買了 Essential；付費頁關掉回到圖鑑，馬上再按翻牌又開了付費頁，大標是 Essential 才有的「今天的翻牌用完了／每天中午 12 點恢復」，下面卻寫目前方案 Essential、本月 800/800、今日 120/120。離開圖鑑再進來、或重開 App 才翻得到。
+
+**Root Cause**: 圖鑑翻牌鈕的預判（`_onDrawPressed`：免費用完又不能加抽 → 付費頁；`drawUpgradeRequired`／`drawQuotaExceeded` 兩個鎖）看的是 controller 手上這一窗的翻牌額度，這組數字只在進圖鑑頁（`initState` → `refreshDrawQuotaStatus`）與翻牌回應時更新。購買流程先同步伺服器（`sync-subscription`）再更新 App 的方案，伺服器已經是 Essential、其實會讓他翻，但 controller 沒有跟著重抓，付費頁 pop 回同一個圖鑑時還是買之前的「剩 0 次、不能加抽」。`refreshDrawQuotaStatus` 也只解 402 的鎖，429「加抽額度不夠」的鎖要等下一次翻牌或 controller 重建才會清。
+
+**Fix**: `practiceChatControllerProvider` 聽 `subscriptionProvider` 的 tier，一換就 `refreshDrawQuotaStatus()`；補水看到這一窗還有免費翻牌時，402 與 429 兩個鎖都解除（只收鎖的那句話，鎖住之後又出的別的錯訊息不動）。圖鑑按翻牌時補水還在路上（`drawQuotaRefreshInFlight`），翻牌鈕先轉圈等它（最多 `kDrawQuotaRefreshWait` 5 秒），逾時就照舊用手上的數字判斷。只動 App 端的數字與鎖：翻不翻得到、要不要扣額度照樣由伺服器裁決，「扣 N 則」確認框不動。
+
+**Prevention**: `practice_chat_controller_test` 鎖 429 與預判鎖的解除與不解除、別的錯訊息不動、在途補水的 getter、provider 方案一換就重抓（方案沒換不重抓）；`practice_collection_screen_test` 重現「免費翻完 → 買 Essential → 補水還沒回來就按翻牌」與等候上限。拿掉三處修正各自會讓對應測試失敗。
+
+**殘餘**: 購買當下 `sync-subscription` 三次都失敗時，伺服器要等 RevenueCat webhook 才換方案，那段時間按翻牌仍會被伺服器用舊方案擋下（402 → 付費頁）。
+
+**相關檔案**: `lib/features/practice_chat/data/providers/practice_chat_providers.dart`、`lib/features/practice_chat/presentation/screens/practice_collection_screen.dart`
+
 ### [2026-10-21] 練習室的她把自己的大頭照講成「你拍的」，還拿認識當天的細節考人
 
 **Symptom**: 真機（2026-10-21）Tina（`practice_girl_036`，SR、Game 模式、認識管道「街頭搭訕」）先問對方「那天我手上拿什麼」，再自己公布答案「就是你上次那天在便利商店外面拍的自拍裡，手上拿的東西」。那張是她自己的大頭照（photoScene：晚上在便利商店門口拍的自拍，手上一瓶奶茶）。一句話錯三件事：拿系統沒給過的認識當天細節考人、把自己的大頭照當成那天的標準答案、把自己的自拍講成對方拍的。

@@ -29,6 +29,23 @@ class _SeededSubscriptionNotifier extends SubscriptionNotifier {
   }
 }
 
+/// 方案由測試切換（模擬在付費頁買了方案）；背景同步不會把它刷回免費。
+class _SwitchableSubscriptionNotifier extends SubscriptionNotifier {
+  _SwitchableSubscriptionNotifier(this._current) {
+    state = _current;
+  }
+
+  SubscriptionState _current;
+
+  void switchTo(SubscriptionState next) => state = _current = next;
+
+  @override
+  Future<void> syncWithRevenueCat() async => state = _current;
+
+  @override
+  Future<void> refresh() async => state = _current;
+}
+
 class _UnusedPracticeSessionBox extends Fake implements Box<PracticeSession> {}
 
 class _FakePracticeSessionRepository extends PracticeSessionRepository {
@@ -114,6 +131,45 @@ class _DelayedGrantApi {
               );
             default:
               throw UnimplementedError('競態測試不接 ${body['mode']}');
+          }
+        },
+      );
+}
+
+/// 買完方案、額度補水還在路上（2026-10-30 dogfood）：draw_status 照 server 的樣子回
+/// [freeAllowance]／[freeUsed]（回應當下才讀，測試可以先改再放行）；設了 [gate] 就卡到
+/// 它完成才回。進場發首抽一律回 500（畫面吞掉，不會多補水一次）。
+class _StatusApi {
+  int freeAllowance = 1;
+  int freeUsed = 1;
+  Completer<void>? gate;
+  int statusCalls = 0;
+
+  PracticeChatApiService api() => PracticeChatApiService(
+        invoker: (name, {required body}) async {
+          switch (body['mode']) {
+            case 'grant_onboarding_draw_bonus':
+              return const PracticeInvokeResponse(
+                status: 500,
+                data: {'error': 'bonus_grant_failed'},
+              );
+            case 'draw_status':
+              statusCalls++;
+              final pending = gate;
+              if (pending != null) await pending.future;
+              return PracticeInvokeResponse(
+                status: 200,
+                data: {
+                  'draw': {
+                    'freeAllowance': freeAllowance,
+                    'freeUsed': freeUsed,
+                    'freeRemaining': freeAllowance - freeUsed,
+                    'nextResetAt': '2999-01-01T04:00:00.000Z',
+                  },
+                },
+              );
+            default:
+              throw UnimplementedError('補水測試不接 ${body['mode']}');
           }
         },
       );
@@ -267,6 +323,7 @@ List<Override> _collectionOverrides({
   Set<String> unlocked = const {},
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
+  SubscriptionNotifier? subscriptionNotifier,
   PracticeCollectionNotifier? collectionNotifier,
   VoidCallback? onSubscriptionRefresh,
   PracticeChatApiService? api,
@@ -279,8 +336,10 @@ List<Override> _collectionOverrides({
     ),
     // 免費＋圖鑑 0 張進場會發首抽：沒指定替身就用一打就炸的 API，失敗由畫面吞掉。
     practiceChatApiServiceProvider.overrideWithValue(api ?? _unusedApi()),
-    subscriptionProvider
-        .overrideWith((ref) => _SeededSubscriptionNotifier(subscription)),
+    subscriptionProvider.overrideWith(
+      (ref) =>
+          subscriptionNotifier ?? _SeededSubscriptionNotifier(subscription),
+    ),
     // 402 導 paywall 順帶的訂閱重同步 seam：測試絕不打網路，只記呼叫。
     subscriptionScreenRefreshProvider.overrideWithValue(() async {
       onSubscriptionRefresh?.call();
@@ -316,6 +375,7 @@ Widget collectionApp({
 Widget collectionRouterApp({
   PracticeChatController? controller,
   SubscriptionState subscription = const SubscriptionState(),
+  SubscriptionNotifier? subscriptionNotifier,
   VoidCallback? onSubscriptionRefresh,
   PracticeChatApiService? api,
 }) {
@@ -343,6 +403,7 @@ Widget collectionRouterApp({
     overrides: _collectionOverrides(
       controller: controller,
       subscription: subscription,
+      subscriptionNotifier: subscriptionNotifier,
       onSubscriptionRefresh: onSubscriptionRefresh,
       api: api,
     ),
@@ -1332,6 +1393,110 @@ void main() {
 
         // 收尾：讓卡住的發放結束，不留懸著的請求。
         grants.grant.complete();
+        await tester.pump();
+      });
+    });
+
+    // 2026-10-30 dogfood：免費翻完、在付費頁買了 Essential，回到圖鑑馬上按翻牌，又被換方案
+    // 前的「剩 0 次、不能加抽」送回付費頁（大標「今天的翻牌用完了」）。
+    group('買完方案、額度補水還在路上', () {
+      Finder spinnerOnDrawButton() => find.descendant(
+            of: find.byKey(drawButton),
+            matching: find.byType(CircularProgressIndicator),
+          );
+
+      testWidgets('免費翻完、買了 Essential：補水還沒回來就按翻牌 → 先轉圈等，回來還有次數就直接翻、不再進付費頁',
+          (tester) async {
+        final statusApi = _StatusApi(); // 換方案前：免費首抽 1 次、用掉了
+        final subscription =
+            _SwitchableSubscriptionNotifier(const SubscriptionState());
+        final controller = _GrantRaceController(
+          _revealedSeed(freeAllowance: 1, freeRemaining: 0, extraCost: 0),
+          statusApi.api(),
+        );
+        await pumpApp(
+          tester,
+          collectionRouterApp(
+            controller: controller,
+            subscriptionNotifier: subscription,
+            api: statusApi.api(),
+          ),
+        );
+        await tester.pump();
+
+        // 買之前：免費翻完再按 → 付費頁（正確）。
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('entry:practiceDraw'), findsOneWidget);
+
+        // 在付費頁買了 Essential：方案換了，provider 會重抓這一窗的額度（接線測在
+        // practice_chat_controller_test；這裡的 controller 是替身，由測試代為觸發）。
+        // 補水卡在半路，伺服器這一窗已經是 Essential 的 5 次、用掉 1 次。
+        statusApi
+          ..freeAllowance = 5
+          ..gate = Completer<void>();
+        subscription.switchTo(_essentialSubscription);
+        unawaited(controller.refreshDrawQuotaStatus());
+        GoRouter.of(tester.element(find.byKey(const ValueKey('paywall-stub'))))
+            .pop();
+        // 退場轉場走完前 Navigator 會擋住點擊：推過一秒再按。
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+
+        // 補水還沒回來就按翻牌：先轉圈等，不拿換方案前的「剩 0 次」送回付費頁。
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(controller.drawCalls, 0, reason: '補水還沒回來，先不判斷');
+        expect(spinnerOnDrawButton(), findsOneWidget);
+        expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+
+        await tester.tap(find.byKey(drawButton), warnIfMissed: false);
+        await tester.pump();
+        expect(controller.drawCalls, 0, reason: '轉圈時不能再按');
+
+        statusApi.gate!.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(controller.currentState.drawFreeRemaining, 4);
+        expect(controller.drawCalls, 1);
+        expect(spinnerOnDrawButton(), findsNothing);
+        expect(find.byKey(const ValueKey('paywall-stub')), findsNothing);
+      });
+
+      testWidgets('補水卡住超過等候上限：不再等，用手上的數字照舊判斷（不會多送一次翻牌）', (tester) async {
+        final statusApi = _StatusApi()..gate = Completer<void>();
+        final controller = _GrantRaceController(
+          _revealedSeed(freeAllowance: 5, freeRemaining: 0, extraCost: 0),
+          statusApi.api(),
+        );
+        await pumpApp(
+          tester,
+          collectionRouterApp(
+            controller: controller,
+            subscription: _essentialSubscription,
+            api: statusApi.api(),
+          ),
+        );
+        await tester.pump();
+        expect(statusApi.statusCalls, 1, reason: '進頁補水卡在半路');
+
+        await tester.tap(find.byKey(drawButton));
+        await tester.pump();
+        expect(controller.drawCalls, 0);
+        expect(spinnerOnDrawButton(), findsOneWidget);
+
+        await tester.pump(kDrawQuotaRefreshWait);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        // 手上的數字是剩 0 次、不能加抽 → 照舊開付費頁，也沒有送出翻牌。
+        expect(controller.drawCalls, 0);
+        expect(find.text('entry:practiceDraw'), findsOneWidget);
+
+        // 收尾：讓卡住的補水結束，不留懸著的請求。
+        statusApi.gate!.complete();
         await tester.pump();
       });
     });

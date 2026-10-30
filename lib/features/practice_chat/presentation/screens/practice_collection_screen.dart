@@ -39,6 +39,11 @@ const Duration kCollectionHighlightGlow = Duration(milliseconds: 1500);
 @visibleForTesting
 const Duration kFirstDrawGrantWait = Duration(seconds: 10);
 
+/// 額度補水還在路上（剛進頁，或剛買、升級方案）的時候按翻牌，最多等它這麼久；逾時就
+/// 不再等，用手上的數字照舊判斷。
+@visibleForTesting
+const Duration kDrawQuotaRefreshWait = Duration(seconds: 5);
+
 /// 發光時間軸（0→1）映強度：前 8%（約 120 ms）快速亮起，接住光球落位那一下 →
 /// 停留到 40% → 淡出，收尾歸 0 不殘留。
 @visibleForTesting
@@ -105,6 +110,9 @@ class _PracticeCollectionScreenState
 
   /// 按了翻牌、正在等首抽發完：翻牌鈕轉圈、先不送出（Codex 主審第 1 輪 P2）。
   bool _waitingForFirstDrawGrant = false;
+
+  /// 按了翻牌、正在等額度補水回來：翻牌鈕轉圈、先不判斷（2026-10-30 dogfood）。
+  bool _waitingForDrawQuotaRefresh = false;
 
   /// 沒對象的新用戶不能一按翻牌就撞付費頁（Onboarding 第 1 步，決策 C，Eric
   /// 2026-10-27）：免費帳號走進練習室、圖鑑一張都沒有，就先把那一次免費翻牌發給他。
@@ -392,11 +400,12 @@ class _PracticeCollectionScreenState
   /// 翻牌鈕 gating（練習室舊 _requestNewPartner 的語義搬家，原件已刪，兩態分流）。
   /// 鐵律：本頁絕不 read-then-navigate autoDispose controller；build 有 watch
   /// 掛著 listener，這裡的 read 只是取當下值。
-  void _onDrawPressed() {
+  void _onDrawPressed({bool skipQuotaRefreshWait = false}) {
     final state = ref.read(practiceChatControllerProvider);
     if (state.isDrawing ||
         state.isPersistingTurn ||
-        _waitingForFirstDrawGrant) {
+        _waitingForFirstDrawGrant ||
+        _waitingForDrawQuotaRefresh) {
       return;
     }
     // 首抽還在發：先等它回來再翻。搶在發放生效前送出，server 還沒有那一次首抽，會回
@@ -408,6 +417,16 @@ class _PracticeCollectionScreenState
     }
 
     final notifier = ref.read(practiceChatControllerProvider.notifier);
+    // 額度補水還在路上（剛進頁，或剛買、升級方案）：先等它回來再判斷。下面的判斷都看
+    // 手上的「剩幾次、能不能加抽」，拿換方案前的數字會把剛買 Essential 的人又送回
+    // 付費頁（2026-10-30 dogfood）。
+    final pendingRefresh =
+        skipQuotaRefreshWait ? null : notifier.drawQuotaRefreshInFlight;
+    if (pendingRefresh != null) {
+      unawaited(_drawAfterQuotaRefresh(pendingRefresh));
+      return;
+    }
+
     final unlockedCount = ref.read(unlockedPracticeGirlCountProvider);
     final collectionComplete = unlockedCount >= practiceGirlProfiles.length;
 
@@ -510,6 +529,17 @@ class _PracticeCollectionScreenState
     setState(() => _waitingForFirstDrawGrant = false);
     _firstDrawGrant = null; // 逾時也只等這一次
     _onDrawPressed();
+  }
+
+  /// 額度補水還在路上就按了翻牌：翻牌鈕轉圈等它回來（最多 [kDrawQuotaRefreshWait]），
+  /// 再用新的數字照常走一次翻牌判斷；逾時就不再等，用手上的數字判斷（這次按的只等
+  /// 這一次）。補水只更新數字、解除過期的鎖，翻不翻得到照樣由 server 裁決。
+  Future<void> _drawAfterQuotaRefresh(Future<void> refresh) async {
+    setState(() => _waitingForDrawQuotaRefresh = true);
+    await refresh.timeout(kDrawQuotaRefreshWait, onTimeout: () {});
+    if (!mounted) return;
+    setState(() => _waitingForDrawQuotaRefresh = false);
+    _onDrawPressed(skipQuotaRefreshWait: true);
   }
 
   /// SR 限定翻牌券抽：券固定 SR、不扣額度，沒有「值不值」的猶豫 → 不彈確認框，
@@ -774,12 +804,14 @@ class _PracticeCollectionScreenState
                       countBumpColor: _countBumpColor,
                       total: total,
                       drawPulse: _drawPulse,
-                      // 等首抽發完的那一下也轉圈、不能再按。
-                      drawIsDrawing:
-                          chatState.isDrawing || _waitingForFirstDrawGrant,
+                      // 等首抽發完、等額度補水回來的那一下也轉圈、不能再按。
+                      drawIsDrawing: chatState.isDrawing ||
+                          _waitingForFirstDrawGrant ||
+                          _waitingForDrawQuotaRefresh,
                       drawEnabled: !chatState.isDrawing &&
                           !chatState.isPersistingTurn &&
-                          !_waitingForFirstDrawGrant,
+                          !_waitingForFirstDrawGrant &&
+                          !_waitingForDrawQuotaRefresh,
                       onDrawPressed: _onDrawPressed,
                       freeQuota: _currentFreeQuota(chatState),
                       isFreeUser: isFreeUser,

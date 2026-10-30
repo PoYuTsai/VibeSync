@@ -20,8 +20,28 @@ import 'package:vibesync/features/practice_chat/domain/entities/practice_message
 import 'package:vibesync/features/practice_chat/domain/entities/practice_profile.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_session.dart';
 import 'package:vibesync/features/practice_chat/domain/entities/practice_temperature.dart';
+import 'package:vibesync/features/subscription/data/providers/subscription_providers.dart';
+import 'package:vibesync/features/subscription/domain/services/subscription_tier_helper.dart';
 
 import '../../../../../helpers/memory_analysis_history_repository.dart';
+
+/// 方案由測試切換；底層建構時的背景同步（syncWithRevenueCat／refresh）不會把它刷回
+/// 免費（同 opener 測試的 sticky idiom）。
+class _SwitchableSubscriptionNotifier extends SubscriptionNotifier {
+  _SwitchableSubscriptionNotifier(this._current) {
+    state = _current;
+  }
+
+  SubscriptionState _current;
+
+  void switchTo(SubscriptionState next) => state = _current = next;
+
+  @override
+  Future<void> syncWithRevenueCat() async => state = _current;
+
+  @override
+  Future<void> refresh() async => state = _current;
+}
 
 /// 清除後的合約：保留世代的空 tombstone（見 store 的 clearForSession 文件）。
 /// 「已清除」＝null 或空 context。
@@ -1030,6 +1050,97 @@ void main() {
 
       expect(c.currentState.drawUpgradeRequired, true);
       expect(c.currentState.errorMessage, '升級後每天可以翻更多陪練女孩。');
+    });
+
+    // 2026-10-30 dogfood：加抽額度不夠被 429 鎖住，升級 Essential 後這一窗還有免費翻牌，
+    // 鎖跟那句「用完了」要一起解除（server 照樣裁決，不會多給）。
+    test('429 加抽額度不夠鎖住後 server 說還有免費翻牌 → 解除鎖與那句話', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeQuotaExceededException('今天的翻牌用完了，每天中午 12 點恢復；也可以升級。');
+      final c = makeController();
+      await c.drawNewPracticeGirl();
+      expect(c.currentState.drawQuotaExceeded, true);
+
+      api.statusHandler = () async => (
+            freeAllowance: 5,
+            freeUsed: 3,
+            freeRemaining: 2,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+      final s = c.currentState;
+
+      expect(s.drawQuotaExceeded, false);
+      expect(s.errorMessage, isNull);
+      expect(s.drawFreeRemaining, 2);
+    });
+
+    test('圖鑑預判上的鎖（lockDrawQuotaExceeded）：server 說沒有次數就照舊，有次數才解除', () async {
+      const usedUp = '今天的翻牌用完了，每天中午 12 點恢復。';
+      final c = makeController();
+      c.lockDrawQuotaExceeded(message: usedUp);
+
+      api.statusHandler = () async => (
+            freeAllowance: 3,
+            freeUsed: 3,
+            freeRemaining: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+      expect(c.currentState.drawQuotaExceeded, true);
+      expect(c.currentState.errorMessage, usedUp);
+
+      api.statusHandler = () async => (
+            freeAllowance: 5,
+            freeUsed: 3,
+            freeRemaining: 2,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+      expect(c.currentState.drawQuotaExceeded, false);
+      expect(c.currentState.errorMessage, isNull);
+    });
+
+    test('鎖住之後又出了別的錯 → 只解翻牌的鎖，別的錯與提示不動', () async {
+      final c = makeController();
+      c.lockDrawQuotaExceeded(message: '今天的翻牌用完了，每天中午 12 點恢復。');
+      c.continueWithSamePartner(isPaid: false); // 續同一位要升級：換成另一句話
+      final other = c.currentState.errorMessage;
+      expect(c.currentState.drawQuotaExceeded, true);
+      expect(other, isNot('今天的翻牌用完了，每天中午 12 點恢復。'));
+
+      api.statusHandler = () async => (
+            freeAllowance: 5,
+            freeUsed: 3,
+            freeRemaining: 2,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      await c.refreshDrawQuotaStatus();
+
+      expect(c.currentState.drawQuotaExceeded, false);
+      expect(c.currentState.errorMessage, other);
+      expect(c.currentState.upgradeRequired, true, reason: '續聊要升級不是翻牌的鎖');
+    });
+
+    test('drawQuotaRefreshInFlight：補水在路上有值，回來就清掉', () async {
+      final gate = Completer<PracticeDrawQuotaStatus>();
+      api.statusHandler = () => gate.future;
+      final c = makeController();
+      expect(c.drawQuotaRefreshInFlight, isNull);
+
+      final refresh = c.refreshDrawQuotaStatus();
+      expect(c.drawQuotaRefreshInFlight, isNotNull);
+
+      gate.complete((
+        freeAllowance: 5,
+        freeUsed: 1,
+        freeRemaining: 4,
+        nextResetAt: '2999-01-01T04:00:00.000Z',
+      ));
+      await refresh;
+      await Future<void>.delayed(Duration.zero);
+      expect(c.drawQuotaRefreshInFlight, isNull);
+      expect(c.currentState.drawFreeRemaining, 4);
     });
 
     test('失敗 → fail-quiet，既有已知值原封不動', () async {
@@ -2103,6 +2214,95 @@ void main() {
       final state = container.read(practiceChatControllerProvider);
       expect(state.drawStatus, PracticeDrawStatus.locked);
       expect(state.girl, isNull);
+    });
+  });
+
+  // ── 方案換了就重抓翻牌額度（2026-10-30 dogfood：剛買 Essential 又被送回付費頁）──
+  group('方案換了 → provider 重抓這一窗的翻牌額度', () {
+    late _SwitchableSubscriptionNotifier subscription;
+
+    Future<void> settle() async {
+      for (var i = 0; i < 5; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    ProviderContainer makeContainer() {
+      subscription = _SwitchableSubscriptionNotifier(const SubscriptionState());
+      final container = ProviderContainer(
+        overrides: [
+          practiceSessionRepositoryProvider.overrideWithValue(repo),
+          practiceChatApiServiceProvider.overrideWithValue(api),
+          practiceDrawDraftStoreProvider.overrideWithValue(draftStore),
+          practicePendingHintStoreProvider
+              .overrideWithValue(InMemoryPracticePendingHintStore()),
+          analysisHistoryRepositoryProvider.overrideWithValue(history),
+          subscriptionProvider.overrideWith((ref) => subscription),
+        ],
+      );
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    test('免費翻完被 402 鎖住，買了 Essential → 自動重抓、解除鎖', () async {
+      api.drawHandler = ({currentProfileId}) async =>
+          throw PracticeDrawUpgradeRequiredException(
+            freeAllowance: 1,
+            extraCostMessages: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      api.statusHandler = () async => (
+            freeAllowance: 5,
+            freeUsed: 1,
+            freeRemaining: 4,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      final container = makeContainer();
+      final keepAlive =
+          container.listen(practiceChatControllerProvider, (_, __) {});
+      addTearDown(keepAlive.close);
+      await container
+          .read(practiceChatControllerProvider.notifier)
+          .drawNewPracticeGirl();
+      await settle();
+      expect(
+        container.read(practiceChatControllerProvider).drawUpgradeRequired,
+        true,
+      );
+      final before = api.statusCallCount;
+
+      subscription.switchTo(const SubscriptionState(
+        tier: SubscriptionTierHelper.essential,
+        monthlyLimit: 800,
+        dailyLimit: 120,
+      ));
+      await settle();
+
+      expect(api.statusCallCount, before + 1);
+      final s = container.read(practiceChatControllerProvider);
+      expect(s.drawUpgradeRequired, false);
+      expect(s.errorMessage, isNull);
+      expect(s.drawFreeRemaining, 4);
+    });
+
+    test('方案沒換（只有用量數字變）→ 不重抓', () async {
+      api.statusHandler = () async => (
+            freeAllowance: 0,
+            freeUsed: 0,
+            freeRemaining: 0,
+            nextResetAt: '2999-01-01T04:00:00.000Z',
+          );
+      final container = makeContainer();
+      final keepAlive =
+          container.listen(practiceChatControllerProvider, (_, __) {});
+      addTearDown(keepAlive.close);
+      await settle();
+      final before = api.statusCallCount;
+
+      subscription.switchTo(const SubscriptionState(dailyMessagesUsed: 3));
+      await settle();
+
+      expect(api.statusCallCount, before);
     });
   });
 
