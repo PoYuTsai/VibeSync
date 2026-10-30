@@ -782,7 +782,7 @@ final class KeyboardScreenshotAssistCoordinator {
                     stage: .readingChat
                 )
             )
-            setMessage("正在安全重送同一筆 payload 與 requestId…")
+            setMessage("連線中斷，正在重新送出同一次分析…")
             send(outbound)
         case .newRequestAfterUserChange, .terminal:
             break
@@ -1355,7 +1355,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 state: .failed(binding, .lookupSameRequest)
             )
             setMessage(
-                "已停止等待；下次只會查詢同一筆 requestId，不會重複送出。"
+                "已停止等待；下次會先查這一次的結果，不會重複送出。"
             )
             return
         }
@@ -1467,7 +1467,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 self.setState(
                     .failed(nil, .lookupSameRequest),
                     message:
-                        "上一筆結果仍在確認；不會建立新 requestId，請稍後重新開啟。"
+                        "上一次的結果還在確認，請稍後再打開。"
                 )
             }
         }
@@ -1631,7 +1631,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 self.setState(
                     .failed(nil, .lookupSameRequest),
                     message:
-                        "無法重新驗證原截圖；已保留同一筆 requestId，不會建立新請求。"
+                        "沒辦法重新確認原本那張截圖；會沿用這一次，不會重新送出。"
                 )
                 return
             }
@@ -2052,7 +2052,7 @@ final class KeyboardScreenshotAssistCoordinator {
                 operationID: operation.binding.operationID
             )
         )
-        setMessage("連線不確定，正在用同一筆 requestId 查詢結果…")
+        setMessage("連線不穩，正在確認剛才的結果…")
         activeTask?.cancel()
         let expectedLifecycle = lifecycleID
         activeTask = network.lookup(
@@ -2164,7 +2164,7 @@ final class KeyboardScreenshotAssistCoordinator {
             } else {
                 failCurrentOperation(
                     policy: .lookupSameRequest,
-                    message: "結果仍在確認；只能以同一筆 requestId 再查詢。"
+                    message: "結果還在確認，請稍後再查一次。"
                 )
             }
         case .requestPending:

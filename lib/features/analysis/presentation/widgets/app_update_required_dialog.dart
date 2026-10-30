@@ -8,7 +8,7 @@ import '../../../../core/services/app_haptics.dart';
 import '../../../../shared/widgets/brand/brand_dialog.dart';
 import '../../domain/errors/analysis_exceptions.dart';
 
-/// App Store 上的 VibeSync 頁面；TestFlight 測試者照說明文字到 TestFlight 更新。
+/// App Store 上的 VibeSync 頁面。正式版的提示不提 TestFlight（送審前盤點 2026-10-30）。
 const appStoreUpdateUrl = 'https://apps.apple.com/tw/app/vibesync/id6760161877';
 
 /// 開商店頁的動作。測試換成假的，不真的開 App Store。

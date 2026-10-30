@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vibesync/features/analysis/presentation/widgets/app_update_required_dialog.dart';
 
-const _gateMessage =
-    '這個版本已經停止支援，請到 App Store 更新到最新版（TestFlight 測試者請到 TestFlight 更新）。';
+const _gateMessage = '這個版本已經停止支援，請到 App Store 更新到最新版。';
 
 Future<List<Uri>> _pumpAndOpen(
   WidgetTester tester, {
