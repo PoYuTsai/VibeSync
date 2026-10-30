@@ -89,7 +89,10 @@ function fakeSupabase(usage: Usage, rpcCalls: string[]) {
   };
 }
 
-async function recognize(usage: Usage) {
+async function recognize(
+  usage: Usage,
+  extraBody: Record<string, unknown> = {},
+) {
   const rpcCalls: string[] = [];
   const fetchBefore = fetchCalls;
   const quiet = [console.log, console.warn, console.error];
@@ -109,6 +112,7 @@ async function recognize(usage: Usage) {
           recognizeOnly: true,
           messages: [],
           images: [{ data: "AAAA", mediaType: "image/jpeg", order: 1 }],
+          ...extraBody,
         }),
       }),
     );
@@ -185,6 +189,23 @@ Deno.test("還剩 1 則：照舊免費辨識（過了額度關卡，走到 OCR �
     "OCR 限流的 429 不帶額度鍵",
   );
   assert(result.rpcCalls.includes("increment_ocr_usage"));
+  assertEquals(result.fetched, 0);
+});
+
+// 主審 2026-10-31 P3：辨識請求帶 responseMode stream＋analysisRunId 假裝續看，也不能
+// 跳過額度關卡、先佔 OCR 次數。
+Deno.test("假裝串流續看的辨識請求：額度用完一樣先擋，不佔 OCR 次數", async () => {
+  const result = await recognize(
+    { tier: "free", monthlyUsed: FREE_DAILY, dailyUsed: FREE_DAILY },
+    {
+      responseMode: "stream",
+      analysisRunId: "7a1c9e2b-4d3f-4b8a-9c6e-1f2a3b4c5d6e",
+    },
+  );
+
+  assertEquals(result.status, 429);
+  assertEquals(result.payload.dailyLimit, FREE_DAILY);
+  assertEquals(result.rpcCalls.includes("increment_ocr_usage"), false);
   assertEquals(result.fetched, 0);
 });
 

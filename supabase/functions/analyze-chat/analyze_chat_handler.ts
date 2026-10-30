@@ -426,7 +426,10 @@ async function handleAnalyzeChat(
       }, modeResolution.status);
     }
     const { responseMode, analysisRunId } = modeResolution;
-    const isStreamRetryMode = responseMode === "stream" &&
+    // 只有主分析有串流 run 可以續看（原始 run 已扣）；別的請求帶 runId 不算續看，
+    // 照樣先過額度關卡（例如截圖辨識，主審 2026-10-31 P3）。
+    const isStreamRetryMode = plainAnalyzeRequest &&
+      responseMode === "stream" &&
       analysisRunId !== null;
 
     // optimize_message has exactly one authoritative response/billing path.
