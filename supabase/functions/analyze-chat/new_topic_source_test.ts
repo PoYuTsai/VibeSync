@@ -38,14 +38,15 @@ Deno.test("index：new_topic 不被 generic analyze gates／optimize shape 接�
     })(),
     "new_topic",
   );
-  // generic 月/日 gate 排除（new_topic 用自己的固定 cost 3 gate）。
+  // generic 月/日 gate 排除（new_topic 用自己的固定 cost 3 gate）。截圖辨識
+  // 2026-10-30 起不再排除（額度用完就擋），所以條件開頭不再有 !recognizeOnly。
   const monthlyGate = indexSource.indexOf(
-    "!recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&",
+    "!isOpenerMode && !isNewTopicMode && !accountIsTest &&",
   );
   assert(monthlyGate >= 0);
   assert(
     indexSource.indexOf(
-      "!recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&",
+      "!isOpenerMode && !isNewTopicMode && !accountIsTest &&",
       monthlyGate + 1,
     ) > monthlyGate,
     "月與日兩個 generic gate 都必須排除 new_topic",

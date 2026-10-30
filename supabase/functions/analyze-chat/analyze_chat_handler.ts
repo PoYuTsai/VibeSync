@@ -310,7 +310,9 @@ async function handleAnalyzeChat(
     // 測試帳號：不檢查額度、不扣額度
     const accountIsTest = TEST_EMAILS.includes(user.email || "");
 
-    // Parse request early so recognizeOnly can bypass quota checks.
+    // Parse request early: recognizeOnly skips the paid-tier sync gate and is
+    // never charged, but is blocked once quota is used up (see the monthly and
+    // daily checks below).
     const contentLengthHeader = req.headers.get("content-length");
     const contentLength = contentLengthHeader
       ? Number(contentLengthHeader)
@@ -632,8 +634,11 @@ async function handleAnalyzeChat(
 
     // A stream retry already charged the recommendation on its original run,
     // so it resumes by run id without being blocked by a now-exhausted quota.
+    // 截圖辨識（recognizeOnly）不扣額度，但額度用完（本月或今天）就跟分析一樣擋下，
+    // 不打模型、不佔 OCR 限流次數（Eric＋Bruce 2026-10-30：沒額度的帳號不能一直
+    // 白跑讀圖）。剩 1 則以上照舊免費辨識。
     if (
-      !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
+      !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOpenerFlowMode &&
       !isOptimizeMessageRequestShape &&
       !isStreamRetryMode &&
@@ -649,6 +654,7 @@ async function handleAnalyzeChat(
       ) {
         logWarn("monthly_limit_exceeded", {
           user: summarizeUser(user.id),
+          recognizeOnly,
           tier: sub.tier,
           expectedTier,
           effectiveTier,
@@ -672,10 +678,10 @@ async function handleAnalyzeChat(
       }
     }
 
-    // Check daily limit（測試帳號與 stream retry 跳過，同上）。
+    // Check daily limit（測試帳號與 stream retry 跳過，同上；截圖辨識也擋）。
     if (
       !careOnlyFromQuota &&
-      !recognizeOnly && !isOpenerMode && !isNewTopicMode && !accountIsTest &&
+      !isOpenerMode && !isNewTopicMode && !accountIsTest &&
       !isOpenerFlowMode &&
       !isOptimizeMessageRequestShape &&
       !isStreamRetryMode &&
@@ -691,6 +697,7 @@ async function handleAnalyzeChat(
       ) {
         logWarn("daily_limit_exceeded", {
           user: summarizeUser(user.id),
+          recognizeOnly,
           tier: sub.tier,
           expectedTier,
           effectiveTier,
